@@ -20,7 +20,6 @@
 #include "access/aosegfiles.h"
 #include "storage/bufpage.h"
 #include "utils/tqual.h"
-#include "access/itup.h"
 
 typedef struct HeapScanDescData
 {
@@ -59,10 +58,7 @@ typedef HeapScanDescData *HeapScanDesc;
  * and amgetbitmap-based index scans.  Some fields are only relevant in
  * amgettuple-based scans.
  */
-struct TupleTableSlot;
-typedef struct IndexScanDescData IndexScanDescData;
-typedef IndexScanDescData *IndexScanDesc;
-struct IndexScanDescData
+typedef struct IndexScanDescData
 {
 	/* scan parameters */
 	Relation	heapRelation;	/* heap relation descriptor, or NULL */
@@ -91,36 +87,12 @@ struct IndexScanDescData
 	HeapTupleData xs_ctup;		/* current heap tuple, if any */
 	Buffer		xs_cbuf;		/* current heap buffer in scan, if any */
 	/* NB: if xs_cbuf is not InvalidBuffer, we hold a pin on that buffer */
+} IndexScanDescData;
 
-	/*
-	 * Function pointers to functions that fetch a tuple for different table type.
-	 *
-	 * The function fetchFunc() calls fetch routines for different table type, and
-	 * does relevant visibility check for the tuple of the given tuple id. If
-	 * the tuple is visible, this function return the tuple. Otherwise, this function
-	 * returns NULL.
-	 *
-	 * The function isTupleVisible() calls routines to check visibility for different
-	 * table type.
-	 */
-    HeapTuple (*fetchFunc)(IndexScanDesc scan);
-	bool (*isTupleVisible)(IndexScanDesc scan, ItemPointer tid);	
-	/* 
-	 * If we are using covering index scan to satisfy a query from the index
-	 * itself then, we copy the index tuple to xs_tup.
-	 */ 
-	IndexTuple xs_itup;
-	bool xs_want_itup;
-
-	/* Fetch descriptor for AO/CO tables */
-	void *aoFetchDesc;
-
-	/* TupleTableSlot for fetching AO/CO tuples */
-	struct TupleTableSlot *slot;
-};
+typedef IndexScanDescData *IndexScanDesc;
 
 /*
- * used for scan of external relations
+ * used for scan of external relations with the file protocol
  */
 typedef struct FileScanDescData
 {
@@ -131,7 +103,6 @@ typedef struct FileScanDescData
 	char	   *fs_uri;			/* the URI string */
 	bool		fs_noop;		/* no op. this segdb has no file to scan */
 	uint32      fs_scancounter;	/* copied from struct ExternalScan in plan */
-	List	   *fs_scanquals;	/* referenced scan qualifier list */
 	
 	/* current file parse state */
 	struct CopyStateData *fs_pstate;

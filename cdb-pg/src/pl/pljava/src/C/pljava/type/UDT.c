@@ -264,6 +264,8 @@ UDT UDT_registerUDT(jclass clazz, Oid typeId, Form_pg_type pgType, TupleDesc td,
 {
 	jstring jcn;
 	MemoryContext currCtx;
+	HeapTuple nspTup;
+	Form_pg_namespace nspStruct;
 	TypeClass udtClass;
 	UDT udt;
 	int signatureLen;
@@ -271,7 +273,7 @@ UDT UDT_registerUDT(jclass clazz, Oid typeId, Form_pg_type pgType, TupleDesc td,
 	char* className;
 	char* classSignature;
 	char* sp;
-	char* cp;
+	const char* cp;
 	const char* tp;
 	char c;
 
@@ -287,19 +289,19 @@ UDT UDT_registerUDT(jclass clazz, Oid typeId, Form_pg_type pgType, TupleDesc td,
 		return (UDT)existing;
 	}
 
-	cp = get_namespace_name(pgType->typnamespace);
-	if(!cp)
-		ereport(ERROR, (errmsg("cache lookup failed for namespace %u", 
-							   pgType->typnamespace)));
+	nspTup = PgObject_getValidTuple(NAMESPACEOID, pgType->typnamespace, "namespace");
+	nspStruct = (Form_pg_namespace)GETSTRUCT(nspTup);
 
 	/* Concatenate namespace + '.' + typename
 	 */
+	cp = NameStr(nspStruct->nspname);
 	tp = NameStr(pgType->typname);
 	sp = palloc(strlen(cp) + strlen(tp) + 2);
 	sprintf(sp, "%s.%s", cp, tp);
 	sqlTypeName = String_createJavaStringFromNTS(sp);
 	pfree(sp);
-	pfree(cp);
+
+	ReleaseSysCache(nspTup);
 
 	/* Create a Java Signature String from the class name
 	 */

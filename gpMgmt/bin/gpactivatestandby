@@ -19,7 +19,6 @@ import sys
 import signal
 import glob
 import time
-import shutil
 from datetime import datetime, timedelta
 
 # import GPDB modules
@@ -31,7 +30,6 @@ try:
     from gppylib import gparray
     from gppylib.userinput import ask_yesno
     from gppylib.gp_dbid import writeGpDbidFile
-    from gppylib.operations.filespace import PG_SYSTEM_FILESPACE, GP_TRANSACTION_FILES_FILESPACE, GP_TEMPORARY_FILES_FILESPACE, GetFilespaceEntries, GetFilespaceEntriesDict
 except ImportError, e_:
     sys.exit('ERROR: Cannot import modules.  Please check that you '
              'have sourced greenplum_path.sh.  Detail: ' + str(e_))
@@ -372,46 +370,6 @@ def get_config():
     
     return array
 
-#-------------------------------------------------------------------------
-def update_flat_file(array, flat_file):
-    """
-        If the transaction/temporary filespaces have
-        ever been moved, we need to update the flat file.
-        The filespace directories are copied by the 
-        copy_master_filespaces method.
-    """
-
-    logger.info('Updating filespace flat files')    
-
-    pg_system_fs_entries = GetFilespaceEntriesDict(GetFilespaceEntries(array, PG_SYSTEM_FILESPACE).run()).run() 
-   
-    flat_file_location = os.path.join(pg_system_fs_entries[1][2], flat_file) 
-        
-    if not os.path.exists(flat_file_location):
-        return
-
-    logger.debug('flat file location for transaction files = %s' % flat_file_location)
-    #Copy over the updated flat file to the standby
-    with open(flat_file_location) as read_file:
-        lines_to_write = ''
-        for line in read_file:
-            tokens = line.split()
-            if len(tokens) != 2:
-                lines_to_write += line
-            elif tokens[0] == '1':
-                lines_to_write += line
-
-    temp_flat_file = os.path.join(flat_file_location + '.tmp')
-    
-    try:
-        with open(temp_flat_file, 'w') as write_file:
-            write_file.write(lines_to_write)
-     
-        #Rewrite the master flat file to include the standby information 
-        shutil.move(temp_flat_file, flat_file_location)
-    except Exception, e:
-        raise Exception('Failed to update flat file')
-
 
 #-------------------------------------------------------------------------
 def update_config():
@@ -562,8 +520,6 @@ try:
     array_ = get_config()
     update_config()
     update_gpdbid_file(array_)
-    update_flat_file(array_, GP_TRANSACTION_FILES_FILESPACE)
-    update_flat_file(array_, GP_TEMPORARY_FILES_FILESPACE)
 
     # This should be stop_master, but due to filerep issue (MPP-9559)
     # we need to stop all the segments too.

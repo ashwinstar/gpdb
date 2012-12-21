@@ -1,7 +1,7 @@
 /*--------------------------------------------------------------------------
  *
  * cdbhash.c
- *	  Provides hashing routines to support consistent data distribution/location within Greenplum Database.
+ *	  Provides hashing routines to support consistant data distribution/location within Greenplum Database.
  *
  * Copyright (c) 2005-2008, Greenplum inc
  *
@@ -9,32 +9,29 @@
  */
 #include "postgres.h"
 
-#include <assert.h>
 #include <ctype.h>
-#include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/socket.h>
+#include <assert.h>
+#include "utils/builtins.h"
 #include "catalog/pg_type.h"
+#include "parser/parse_type.h"
+#include "utils/numeric.h"
+#include "utils/inet.h"
+#include "utils/timestamp.h"
+#include "utils/array.h"
+#include "utils/date.h"
+#include "utils/cash.h"
+#include "utils/datetime.h"
+#include "utils/nabstime.h"
+#include "utils/varbit.h"
+#include "utils/acl.h"
+#include "fmgr.h"
+#include "utils/fmgroids.h"
+#include "utils/lsyscache.h"
+#include "utils/syscache.h"
 #include "cdb/cdbhash.h"
 #include "cdb/cdbutil.h"
-#include "parser/parse_type.h"
-#include "fmgr.h"
-#include "utils/acl.h"
-#include "utils/array.h"
-#include "utils/builtins.h"
-#include "utils/cash.h"
-#include "utils/complex_type.h"
-#include "utils/date.h"
-#include "utils/datetime.h"
-#include "utils/fmgroids.h"
-#include "utils/inet.h"
-#include "utils/lsyscache.h"
-#include "utils/nabstime.h"
-#include "utils/numeric.h"
-#include "utils/syscache.h"
-#include "utils/timestamp.h"
-#include "utils/uuid.h"
-#include "utils/varbit.h"
-
 
 /*
  * 32 bit FNV-1 and FNV-1a non-zero initial basis
@@ -228,13 +225,8 @@ hashDatum(Datum datum, Oid type, datumHashFunction hashFn, void *clientData)
 	oidvector  *oidvec_buf;
 	
 	Cash		cash_buf;
-	Complex    *complex_ptr;
-	Complex   	complex_buf;
-	double		complex_real;
-	double		complex_imag;
 	AclItem	   *aclitem_ptr;
 	uint32		aclitem_buf;
-	pg_uuid_t  *uuid_buf;
 	
 	/*
 	 * special case buffers
@@ -563,41 +555,17 @@ hashDatum(Datum datum, Oid type, datumHashFunction hashFn, void *clientData)
 			
 		/*
 		 * ANYARRAY is a pseudo-type. We use it to include
-		 * any of the array types.  The caller needs to be sure
-		 * to set the type ANYARRAYOID before calling cdbhash on an array.
+		 * any of the array types (OIDs 1007-1033 in pg_type.h).
+		 * caller needs to be sure the type is ANYARRAYOID
+		 * before calling cdbhash on an array (INSERT and COPY do so).
 		 */
-		case ANYARRAYOID:
-		{
-			Oid		elmtype;
-			int16	elmlen;
-			bool	elmbyval;
-			char	elmalign;
-			int			i, length;
-			Datum	   *values;
-			bool	   *nulls;
-
+		case ANYARRAYOID:	
+					
 			arrbuf = DatumGetArrayTypeP(datum);
-			elmtype = ARR_ELEMTYPE(arrbuf);
-			get_typlenbyvalalign(elmtype, &elmlen, &elmbyval, &elmalign);
-
-			/*
-			 * For array types, we calculate tha hash value element by element
-			 * so that extra padding bytes between elements (in by-ref case)
-			 * don't bother.  Also, we consider NULL elements.
-			 */
-			deconstruct_array(arrbuf, elmtype,
-							  elmlen, elmbyval, elmalign,
-							  &values, &nulls, &length);
-			for (i = 0; i < length; i++)
-			{
-				if (nulls[i])
-					cdbhashnull((CdbHash *) clientData);
-				else
-					cdbhash((CdbHash *) clientData, values[i], elmtype);
-			}
-			return;
-		}
-
+			len = VARSIZE(arrbuf) - VARHDRSZ;
+			buf = VARDATA(arrbuf);
+			break;
+			
 		case INT2VECTOROID:
 			i2vec_buf = (int2vector *) DatumGetPointer(datum);
 			len = i2vec_buf->dim1 * sizeof(int2);
@@ -615,35 +583,7 @@ hashDatum(Datum datum, Oid type, datumHashFunction hashFn, void *clientData)
 			len = sizeof(Cash);
 			buf = &cash_buf;
 			break;
-
-		case COMPLEXOID:		
-			complex_ptr  = DatumGetComplexP(datum);
-			complex_real = re(complex_ptr);
-			complex_imag = im(complex_ptr);
-			/*
-			 * On IEEE-float machines, minus zero and zero have different bit
-			 * patterns but should compare as equal.  We must ensure that they
-			 * have the same hash value, which is most easily done this way:
-			 */
-			if (0 == complex_real)
-			{
-				complex_real = (double) 0;
-			}
-			if (0 == complex_imag)
-			{
-				complex_imag = (double) 0;
-			}
-			INIT_COMPLEX(&complex_buf, complex_real, complex_imag);
-			len = sizeof(Complex);
-			buf = (unsigned char *) &complex_buf;
-			break;
 				
-		case UUIDOID:
-			uuid_buf = (pg_uuid_t *) DatumGetUUIDP(datum);
-			len = sizeof(pg_uuid_t);
-			buf = &(uuid_buf->data);
-			break;
-
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_CDB_FEATURE_NOT_YET),
@@ -749,26 +689,22 @@ typeIsArrayType(Oid typeoid)
 		typeform->typinput == F_ARRAY_IN)
 		res = true;
 
-	ReleaseType(tup);
+	ReleaseSysCache(tup);
 	return res;
 }
 
 
 bool isGreenplumDbHashable(Oid typid)
 {
+	/* we can hash all arrays */
+	if (typeIsArrayType(typid))
+		return true;
 	/*
 	 * if this type is a domain type, get its base type.
 	 */
 	if (get_typtype(typid) == 'd')
 		typid = getBaseType(typid);
-
-	/*
-	 * if this type is an array type, get its element type.
-	 * Currently we don't support array type of domain.
-	 */
-	if (typeIsArrayType(typid))
-		typid = get_element_type(typid);
-
+	
 	switch(typid)
 	{
 		case INT2OID:		
@@ -807,11 +743,10 @@ bool isGreenplumDbHashable(Oid typid)
 		case VARBITOID:
 		case BOOLOID:			
 		case ACLITEMOID:
+		case ANYARRAYOID:	
 		case INT2VECTOROID:
 		case OIDVECTOROID:	
 		case CASHOID: 
-		case COMPLEXOID:
-		case UUIDOID:
 			return true;
 		default:
 			return false;

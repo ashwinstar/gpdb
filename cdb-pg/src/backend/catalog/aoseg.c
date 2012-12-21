@@ -116,7 +116,7 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
 	/* TODO: disallow it at CREATE TABLE time */
 	Assert(!(shared_relation && !IsBootstrapProcessingMode()) );
 
-	GetAppendOnlyEntryAuxOids(relOid, SnapshotNow, &aoseg_relid, &aoseg_idxid, NULL, NULL);
+	GetAppendOnlyEntryAuxOids(relOid, &aoseg_relid, &aoseg_idxid, NULL, NULL);
 
 	/*
 	 * Was a aoseg table already created?

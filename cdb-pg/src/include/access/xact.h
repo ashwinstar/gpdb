@@ -164,17 +164,6 @@ typedef enum
 	XACT_INFOKIND_PREPARE
 } XactInfoKind;
 
-typedef struct XidBuffer
-{
-	uint32          max_bufs;
-	uint32          actual_bufs;
-	uint32          last_buf_cnt;
-	TransactionId   **ids_buf;
-} XidBuffer;
-
-extern XidBuffer subxbuf;
-extern File subxip_file;
-
 /* ----------------
  *		extern definitions
  * ----------------
@@ -185,10 +174,11 @@ extern char *XactInfoKind_Name(
 	const XactInfoKind		kind);
 extern void SetSharedTransactionId(void);
 extern void SetSharedTransactionId_reader(TransactionId xid, CommandId cid);
+extern void GetSubtransactionsForSharedSnapshot(uint32 *subcnt, TransactionId *subxids);
+extern bool CheckSharedSnapshotForSubtransaction(TransactionId xid);
 extern void SetXactSeqXlog(void);
 extern bool IsTransactionState(void);
 extern bool IsAbortInProgress(void);
-extern bool IsCommitInProgress(void);
 extern bool IsAbortedTransactionBlockState(void);
 extern void GetAllTransactionXids(
 	DistributedTransactionId	*distribXid,
@@ -216,7 +206,6 @@ extern bool PrepareTransactionBlock(char *gid);
 extern void UserAbortTransactionBlock(void);
 extern void ReleaseSavepoint(List *options);
 extern void DefineSavepoint(char *name);
-extern void DefineDispatchSavepoint(char *name);
 extern void RollbackToSavepoint(List *options);
 extern void BeginInternalSubTransaction(char *name);
 extern void ReleaseCurrentSubTransaction(void);
@@ -246,7 +235,6 @@ extern void RecordDistributedForgetCommitted(struct TMGXACT_LOG *gxact_log);
 extern bool RecordCrashTransactionAbortRecord(
 	TransactionId				xid,
 	PersistentEndXactRecObjects *persistentAbortObjects);
-extern void EarlyVacuumRecordTransactionCommit(void);
 
 extern int	xactGetCommittedChildren(TransactionId **ptr);
 
@@ -261,21 +249,8 @@ extern bool xact_redo_get_info(
 extern void xact_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record);
 extern const char *IsoLevelAsUpperString(int IsoLevel);
 
-#ifdef WATCH_VISIBILITY_IN_ACTION
+extern void ShowSubtransactionsForSharedSnapshot(uint32 subcnt, const TransactionId *subxids);
+
 extern char* WatchCurrentTransactionString(void);
-#endif
-
-extern bool FindXidInXidBuffer(XidBuffer *xidbuf,
-			       TransactionId xid, uint32 *cnt, int32 *index);
-extern void AddSortedToXidBuffer(XidBuffer *xidbuf, TransactionId *xids,
-                                 uint32 cnt);
-extern void ResetXidBuffer(XidBuffer *xidbuf);
-extern TransactionId GetLastTransactionIdFromSnapshot(DistributedTransactionId dxid);
-
-void ShowSubtransactionsForSharedSnapshot(void);
-void GetSubXidsInXidBuffer(void);
-void UpdateSubtransactionsInSharedSnapshot(DistributedTransactionId dxid);
-
-extern void ClearTransactionFromPgProc_UnderLock(void);
 
 #endif   /* XACT_H */

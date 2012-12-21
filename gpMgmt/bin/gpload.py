@@ -38,8 +38,7 @@ except Exception, e:
     errorMsg = "gpload was unable to import The PyGreSQL Python module (pg.py) - %s\n" % str(e)
     sys.stderr.write(str(errorMsg))
     sys.exit(2)
-
-import hashlib
+ 
 import datetime,getpass,os,signal,socket,subprocess,threading,time,traceback,re
 import platform
 thePlatform = platform.system()
@@ -81,8 +80,6 @@ valid_tokens = {
     "local_hostname": {'parse_children': False, 'parent': "source"},
     "port_range": {'parse_children': False, 'parent': "source"},
     "file": {'parse_children': False, 'parent': "source"},
-    "ssl": {'parse_children': False, 'parent': "source"},
-    "certificates_path": {'parse_children': False, 'parent': "source"},
     "columns": {'parse_children': False, 'parent': "input"},
     "transform": {'parse_children': True, 'parent': "input"},
     "transform_config": {'parse_children': True, 'parent': "input"},
@@ -1126,7 +1123,7 @@ class gpload:
         # Create Temp and External table names. However external table name could 
         # get overwritten with another name later on (see create_external_table_name). 
         self.unique_suffix = '%s_%d'%(datetime.datetime.today().strftime('%Y%m%d_%H%M%S'),os.getpid())
-        self.staging_table_name = 'temp_staging_gpload_' + self.unique_suffix
+        self.tempTableName = 'temp_gpload' + self.unique_suffix
         self.extTableName  = 'ext_gpload' + self.unique_suffix
 
         # SQL to run in order to undo our temporary work
@@ -1558,30 +1555,6 @@ class gpload:
         return fragment
 
 
-    def gpfdist_ssl(self, popenList):
-        """
-        Adds gpfdist --ssl option to popenList when ssl option specified as true in YAML file.
-
-        @param popenList: gpfdist options (updated)
-        """
-        ssl = self.getconfig('gpload:input:source:ssl',bool, False)
-        certificates_path = self.getconfig('gpload:input:source:certificates_path', unicode, None)
-
-        if ssl and certificates_path:
-            dir_exists = os.path.isdir(certificates_path)
-            if dir_exists == False:
-                self.log(self.ERROR, "could not access CERTIFICATES_PATH directory: %s" % certificates_path)			
-
-            popenList.append('--ssl')
-            popenList.append(certificates_path)
-
-        else:
-            if ssl:
-                self.control_file_error("CERTIFICATES_PATH is required when SSL is specified as true")
-            elif certificates_path:    # ssl=false (or not specified) and certificates_path is specified
-                self.control_file_error("CERTIFICATES_PATH is specified while SSL is not specified as true")
-
-
     def start_gpfdists(self):
         """
         Start gpfdist daemon(s)
@@ -1617,7 +1590,6 @@ class gpload:
 
             # build gpfdist parameters
             popenList = ['gpfdist']
-            self.gpfdist_ssl(popenList)
             self.gpfdist_port_options(name, availablePorts, popenList)
             file = self.gpfdist_filenames(name, popenList)
             self.gpfdist_timeout_options(popenList)
@@ -1657,6 +1629,7 @@ class gpload:
                 self.log(self.ERROR, "could not run %s: %s" % \
                                 (' '.join(popenList), str(e)))
 
+
             """ 
             Reading from stderr and stdout on a Popen object can result in a dead lock if done at the same time.
             Create a lock to share when reading stderr and stdout from gpfdist. 
@@ -1678,7 +1651,7 @@ class gpload:
 
                 line = line.strip('\n')
                 self.log(self.LOG,'gpfdist says: ' + line)
-                if (line.startswith('Serving HTTP on port ') or line.startswith('Serving HTTPS on port ')):
+                if line.startswith('Serving HTTP on port '):
                     port = int(line[21:line.index(',')])
                     break
 
@@ -1691,12 +1664,6 @@ class gpload:
             t.start()
             self.threads.append(t)
 
-            ssl = self.getconfig('gpload:input:source:ssl', bool, False)
-            if ssl:
-                protocol = 'gpfdists'
-            else:
-                protocol = 'gpfdist'
-
             for l in local_hostname:
                 if type(l) != str and type(l) != unicode:
                     self.control_file_error(name + ":local_hostname must be a YAML sequence of strings")
@@ -1707,7 +1674,7 @@ class gpload:
                 # MPP-13617
                 if ':' in l:
                     l = '[' + l + ']'
-                self.locations.append('%s://%s:%d%s%s%s' % (protocol, l, port, sep, '%20'.join(file), fragment))
+                self.locations.append('gpfdist://%s:%d%s%s%s' % (l, port, sep, '%20'.join(file), fragment))
         if not found_source:
             self.control_file_error("configuration file must contain source definition")
 
@@ -1812,13 +1779,13 @@ class gpload:
 
                 # Mark this column as having no mapping, which is important
                 # for do_insert()
-                self.from_columns.append([quote_ident(key),d[key],None, False])
+                self.from_columns.append([key,d[key],None, False])
         else:
             self.from_columns = self.into_columns
             self.from_cols_from_user = False
 
         # make sure that all columns have a type
-        for name, typ, mapto, hasseq in self.from_columns:
+        for name, typ, map, hasseq in self.from_columns:
             if typ == None:
                 self.log(self.ERROR, 'column "%s" has no type ' % name +
                        'and does not appear in target table "%s"' % self.schemaTable)
@@ -2008,35 +1975,56 @@ class gpload:
         self.log(self.DEBUG, "query used to identify reusable external relations: %s" % sql)
         return sql
 
-    #
-    # Create a string from the following conditions to reuse staging table:
-    # 1. same target table
-    # 2. same number of columns
-    # 3. same names and types, in the same order
-    # 4. same distribution key (according to columns' names and thier order)
-    #
-    def get_staging_conditions_string(self, target_table_name, staging_cols, distribution_cols):
-			
-        columns_num = len(staging_cols)
-
-        staging_cols_str = '-'.join(map(lambda col:'%s-%s' % (quote(quote_unident(col[0])), quote(col[1])), staging_cols))
-
-        distribution_cols_str = '-'.join([quote(quote_unident(col)) for col in distribution_cols])
-		
-        return '%s:%s:%s:%s' % (target_table_name, columns_num, staging_cols_str, distribution_cols_str)
-
-		
+    # In order to find out whether we have an existing temp table in the 
+    # catalog which could be reused for this operation we need to make sure
+    # that it has the same column names and types, and same distribution key
     #
     # This function will return the SQL to run in order to find out whether
-    # we have an existing staging table in the catalog which could be reused for this 
-    # operation, according to the mathod and the encoding conditions.
-    #
-    def get_reuse_staging_table_query(self, encoding_conditions):
-		
-        sql = """SELECT oid::regclass
-                 FROM pg_class
-                 WHERE relname = 'staging_gpload_reusable_%s';""" % (encoding_conditions)
-	    
+    # such a table exists.
+    # 
+    def get_reuse_temptable_query(self, shortTableName, from_cols, distcols):
+
+        sql = """select attrelid::regclass
+                 from (
+                        select 
+                            attrelid, 
+                            row_number() over (partition by attrelid order by attnum) as attord, 
+                            attnum,
+                            attname,
+                            atttypid::regtype 
+                        from 
+                            pg_attribute
+                            join
+                            pg_class
+                            on (pg_class.oid = attrelid)
+                        where 
+                            relstorage = 'h' and
+                            relkind = 'r' and
+                            relname like 'temp_gpload_reusable_%s_%%' and
+                            pg_class.oid in (select localoid from gp_distribution_policy 
+                                             where attrnums = (select attrnums 
+                                                               from gp_distribution_policy d, pg_class c, pg_namespace n 
+                                                               where d.localoid = c.oid and 
+                                                                     c.relnamespace = n.oid and
+                                                                     n.nspname = '%s' and 
+                                                                     c.relname = '%s')) and
+                            attnum > 0 and
+                            not attisdropped
+                    ) pgattr
+                 group by attrelid
+                 having 
+                    count(*) = %s and 
+                    bool_and(case """ % (shortTableName, quote_unident(self.schema), quote_unident(self.table), len(from_cols))              
+              
+        for i, c in enumerate(from_cols):
+            name = c[0]
+            typ = c[1]
+            sql+= "when attord = %s then atttypid = %s::regtype and attname = %s\n" % (i+1, quote(typ), quote(quote_unident(name)))
+
+        sql+= """else true 
+                 end)
+                 limit 1;"""
+        
         self.log(self.DEBUG, "query used to identify reusable temporary relations: %s" % sql)
         return sql
     
@@ -2044,12 +2032,14 @@ class gpload:
     # Create a new external table or find a reusable external table to use for this operation
     #    
     def create_external_table(self):
+        
 
         # extract all control file information and transform it accordingly
         # in order to construct a CREATE EXTERNAL TABLE statement if will be
         # needed later on
         
-        self.error_table = self.getconfig('gpload:input:error_table', unicode, None)
+        self.error_table = self.getconfig('gpload:input:error_table', unicode,
+                                          None)
         formatType = self.getconfig('gpload:input:format', unicode, 'text').lower()
         formatOpts = ""
         locationStr = ','.join(map(quote,self.locations))
@@ -2174,7 +2164,7 @@ class gpload:
         
 
         try:
-            self.db.query(sql.encode('utf-8'))
+                self.db.query(sql.encode('utf-8'))
         except Exception, e:
             self.log(self.ERROR, 'could not run SQL "%s": %s' % (sql, unicode(e)))
 
@@ -2183,87 +2173,96 @@ class gpload:
         if self.reuse_tables == False:
             self.cleanupSql.append('drop external table if exists %s'%self.extTableName)
 
-		
     # 
-    # Create a new staging table or find a reusable staging table to use for this operation
+    # Create a new external table or find a reusable external table to use for this operation
     # (only valid for update/merge operations).
     #    
-    def create_staging_table(self):
+    def create_temp_table(self):
                 
         # Do some initial work to extract the update_columns and metadata
-        # that may be needed in order to create or reuse a temp table            
+        # that may be needed in order to create or reuse a temp table
+            
+        a = self.getconfig('gpload:output:update_columns', list)
+
         if not self.from_cols_from_user:
             # don't put values serial columns
-            from_cols = filter(lambda a: a[3] != True, self.from_columns)
+            from_cols = filter(lambda a: a[3] != True,
+                               self.from_columns)
         else:
             from_cols = self.from_columns
 
-        # MPP-18366: the columns of the staging table are from_cols, but with their corresponding
-		# types in the target table (to handle MAPPING issues)
-        cols = [x[0] for x in from_cols]
-        columns_for_staging = [c for c in self.into_columns if c[0] in cols]
-
         # make sure we set the correct distribution policy
         distcols = self.getconfig('gpload:output:match_columns', list)
-        distcols = map(quote_ident, distcols)
 
         # MPP-13399, CR-2227
         including_defaults = ""
         if self.getconfig('gpload:output:including_defaults',bool,True):
             including_defaults = " including defaults"
 
-        sql = "SELECT * FROM pg_class WHERE relname LIKE 'temp_gpload_reusable_%%';"
-        resultList = self.db.query(sql.encode('utf-8')).getresult()
-        if len(resultList) > 0:
-            self.log(self.WARN, """Old style, reusable tables named "temp_gpload_reusable_*" from a previous versions were found.
-                         Greenplum recommends running "DROP TABLE temp_gpload_reusable_..." on each table. This only needs to be done once.""")
-		
         # If the 'reuse tables' option was specified we now try to find an
-        # already existing staging table in the catalog which will match
-        # the one that we need to use. It must meet the reuse conditions
-        is_temp_table = 'TEMP '
-        if self.reuse_tables == True:
-            is_temp_table = ''
-            target_table_name = quote_unident(self.table)
+        # already existing temp table in the catalog which will match
+        # the one that we need to use. It must have identical attributes
+        # and be called 'temp_gpload_reusable_<tbl>_*'
 
-            # create a string from all reuse conditions for staging tables and ancode it 
-            conditions_str = self.get_staging_conditions_string(target_table_name, columns_for_staging, distcols)
-            encoding_conditions = hashlib.md5(conditions_str).hexdigest()
-					
-            sql = self.get_reuse_staging_table_query(encoding_conditions)
+        # MPP-14775 - If this is a 'merge' operation, we don't attempt reusing tables.
+        # get_reuse_temptable_query is not prepared to handle 'merge' cases, in which the yaml
+        # file specifies only a proper subset of the target table's columns; that function
+        # consumes from_cols and dist_cols, whereas the create table ddl for 'merge' below does not.
+        # Thus, the get_reuse_temptable_query would have us reuse a table that we would
+        # not create ourselves. This leads to errors later in the merge operation, in do_method_merge,
+        # where there are assumptions that the temp table had been created "LIKE" the target table.
+        # So, we disable merge + reuse_tables for now.
+        method = self.getconfig('gpload:output:mode', unicode, 'insert').lower()
+        is_temp_table = 'temp'
+        if method == 'update' and self.reuse_tables == True:
+            is_temp_table = ''
+            tableName = quote_unident(self.table)
+
+            # MPP-13348
+            shortTableName = shortname(tableName)
+            self.log(self.DEBUG, "create_temp_table: %s shortTableName: %s" % (tableName, shortTableName))
+
+            sql = self.get_reuse_temptable_query(shortTableName, from_cols, distcols)
+            
             resultList = self.db.query(sql.encode('utf-8')).getresult()
-           
+            
             if len(resultList) > 0:
                 
                 # found a temp table to reuse. no need to create one. we're done here.
-                self.staging_table_name = (resultList[0])[0]
-                self.log(self.INFO, "reusing staging table %s" % self.staging_table_name)
+                self.tempTableName = (resultList[0])[0]
+                self.log(self.INFO, "reusing temp table %s" % self.tempTableName)
                 
                 # truncate it so we don't use old data
-                self.do_truncate(self.staging_table_name)
+                self.do_truncate(self.tempTableName)
                 
                 return
         
-            # didn't find an existing staging table suitable for reuse. Format a reusable
+            # didn't find an existing temp table suitable for reuse. Format a reusable
             # name and issue a CREATE TABLE on it (without TEMP!). Hopefully we can use it 
             # next time around
-            # we no longer need the timestamp, since we will never want to create few
-            # tables with same encoding_conditions
-            self.staging_table_name = "staging_gpload_reusable_%s" % (encoding_conditions)
-            self.log(self.INFO, "did not find a staging table to reuse. creating %s" % self.staging_table_name)
-		
+
+            self.tempTableName = "temp_gpload_reusable_%s_created_%s" % (shortTableName, self.unique_suffix)
+            self.log(self.INFO, "did not find a temp table to reuse. creating %s" % self.tempTableName)
+        
         # MPP-14667 - self.reuse_tables should change one, and only one, aspect of how we build the following table,
         # and that is, whether it's a temp table or not. In other words, is_temp_table = '' iff self.reuse_tables == True.
-        sql = 'CREATE %sTABLE %s ' % (is_temp_table, self.staging_table_name)
-        cols = map(lambda a:'%s %s' % (a[0], a[1]), columns_for_staging)
-        sql += "(%s)" % ','.join(cols)
-        sql += " DISTRIBUTED BY (%s)" % ', '.join(distcols)
-        self.log(self.LOG, sql)
+        if method=='update':
+            # it would be tempting to use LIKE here but we cannot as it
+            # inherits NOT NULL and other constraints from the target table
+            # which might not actually be violated by this update.
+            sql = 'create %s table %s' % (is_temp_table, self.tempTableName)
+            cols = map(lambda a:'%s %s' % (a[0], a[1]), from_cols)
+            sql += "(%s)" % ','.join(cols)
+            sql += " distributed by (%s)" % ', '.join(distcols)
+            self.log(self.LOG, sql)
+        else: # (merge)
+            sql = 'create %s table %s(like %s%s)' % (is_temp_table, self.tempTableName, self.get_qualified_tablename(), including_defaults)
+            self.log(self.DEBUG, sql)
 
         if not self.options.D:
             self.db.query(sql.encode('utf-8'))
             if not self.reuse_tables:
-                self.cleanupSql.append('DROP TABLE IF EXISTS %s' % self.staging_table_name)
+                self.cleanupSql.append('drop table if exists %s' % self.tempTableName)
 
 
     def count_errors(self):
@@ -2297,9 +2296,9 @@ class gpload:
             cols = filter(lambda a:a[3] == False, cols)
 
         sql = 'INSERT INTO %s' % dest
-        sql += ' (%s)' % ','.join(map(lambda a:a[0], cols))
-        sql += ' SELECT %s' % ','.join(map(lambda a:a[2], cols))
-        sql += ' FROM %s' % self.extTableName
+        sql += ' (%s)'%','.join(map(lambda a:a[0], cols))
+        sql += ' SELECT %s '%','.join(map(lambda a:a[2], cols))
+        sql += ' FROM %s'%self.extTableName
 
         # cktan: progress thread is not reliable. revisit later.
         #progress = Progress(self,self.ports)
@@ -2309,6 +2308,7 @@ class gpload:
         if not self.options.D:
             try:
                 self.rowsInserted = self.db.query(sql.encode('utf-8'))
+
             except Exception, e:
                 # We need to be a bit careful about the error since it may contain non-unicode characters
                 strE = unicode(str(e), errors = 'ignore')
@@ -2399,11 +2399,8 @@ class gpload:
             try:
                 self.rowsUpdated = self.db.query(sql.encode('utf-8'))
             except Exception, e:
-                # We need to be a bit careful about the error since it may contain non-unicode characters
-                strE = unicode(str(e), errors = 'ignore')
-                strF = unicode(str(sql), errors = 'ignore')
-                self.log(self.ERROR, strE + ' encountered while running ' + strF)
-				
+                self.log(self.ERROR, 'error encountered executing SQL "%s": %s' % (sql, str(e)))
+    
     def get_qualified_tablename(self):
     
         tblname = "%s.%s" % (self.schema, self.table)        
@@ -2431,76 +2428,86 @@ class gpload:
         return attrs
 
     def table_supports_update(self):
-        """Columns being updated cannot appear in the distribution key."""
+        '''
+        Columns being updated cannot appear in the distribution key. Further,
+        match_columns must be equal to the distribution key as we do not
+        support UPDATE ... FROM unless this is the case.
+        '''
         distKeyList = self.get_table_dist_key()
         distkey = set()
         for dk in distKeyList:
             distkey.add(quote_ident(dk)) 
 
+        if len(distkey) == 0: # randomly distributed
+            self.log(self.ERROR, 'table "' + self.schemaTable + '" is ' +
+                        'distributed randomly and ' +
+                        'therefore does not support update or merge via gpload')
+
         self.distkey = distkey
-        if len(distkey) != 0:
-            # not randomly distributed - check that UPDATE_COLUMNS isn't part of the distribution key
-            updateColumnList = self.getconfig('gpload:output:update_columns',
-                                              list,
-                                              returnOriginal=True)
-            update_columns = convertListToDelimited(updateColumnList)
-            update_columns = set(update_columns)
-            a = distkey.intersection(update_columns)
-            if len(a):
-                self.control_file_error('update_columns cannot reference column(s) in distribution key (%s)' % ', '.join(list(distkey)))        
+        # update_columns better not be in distkey
+        updateColumnList = self.getconfig('gpload:output:update_columns'
+                                          , list
+                                          , returnOriginal=True
+                                          )
+        update_columns = convertListToDelimited(updateColumnList)
+        update_columns = set(update_columns)
+        a = distkey.intersection(update_columns)
+        if len(a):
+            self.control_file_error('update_columns cannot reference column(s) in distribution key (%s)' % ', '.join(list(distkey)))
+
+        # remember, match_columns might be a superset of the key
+        matchColumnList = self.getconfig('gpload:output:match_columns'
+                                        , list
+                                        , returnOriginal=True
+                                        )
+        match_columns = convertListToDelimited(matchColumnList)
+        match_columns = set(match_columns)
+        a = distkey.intersection(match_columns)
+        if a != distkey:
+            self.log(self.ERROR, 
+                    'match_columns (' + ', '.join(match_columns) + ') ' +
+                    'must contain all attributes in distribution key '+
+                    '(' + ', '.join(list(distkey)) + ')')
 
     def do_method_update(self):
         """Load the data in and update an existing table based upon it"""
 
         self.table_supports_update()
-        self.create_staging_table()            
+        self.create_temp_table()            
 
         self.create_external_table()
-        self.do_insert(self.staging_table_name)
+        self.do_insert(self.tempTableName)
         # These rows are inserted temporarily for processing, so set inserted rows back to zero.
         self.rowsInserted = 0
-        self.do_update(self.staging_table_name, 0)
+        self.do_update(self.tempTableName, 0)
 
     def do_method_merge(self):
         """insert data not already in the table, update remaining items"""
         
         self.table_supports_update()
-        self.create_staging_table()        
+        self.create_temp_table()        
         self.create_external_table()
-        self.do_insert(self.staging_table_name)
+        self.do_insert(self.tempTableName)
         self.rowsInserted = 0 # MPP-13024. No rows inserted yet (only to temp table).
-        self.do_update(self.staging_table_name, 0)
-		
-        # insert new rows to the target table
+        self.do_update(self.tempTableName, 0)
+        sql = 'insert into %s(' % self.get_qualified_tablename()
         match = self.map_stuff('gpload:output:match_columns',lambda x,y:'into_table.%s=from_table.%s'%(x,y),0)
         matchColumns = self.getconfig('gpload:output:match_columns',list)
-        matchColumns = map(quote_ident, matchColumns)
-		
-        cols = filter(lambda a:a[2] != None, self.into_columns)				
-        sql = 'INSERT INTO %s ' % self.get_qualified_tablename()
-        sql += '(%s) ' % ','.join(map(lambda a:a[0], cols))
-        sql += '(SELECT %s ' % ','.join(map(lambda a:'from_table.%s' % a[0], cols))
-        sql += 'FROM (SELECT *, row_number() OVER (PARTITION BY %s) AS gpload_row_number ' % ','.join(matchColumns)
-        sql += 'FROM %s) AS from_table ' % self.staging_table_name
-        sql += 'LEFT OUTER JOIN %s into_table ' % self.get_qualified_tablename()
-        sql += 'ON %s '%' AND '.join(match)
-        where = self.map_stuff('gpload:output:match_columns',lambda x,y:'into_table.%s IS NULL'%x,0)
-        sql += 'WHERE %s ' % ' AND '.join(where)
-        sql += 'AND gpload_row_number=1)'
-
+        sql += 'select %s '%','.join(map(lambda a:'from_table.%s' % a[0], self.into_columns))
+        sql += 'from(select *,row_number()over(partition by %s)as gpload_row_number '%','.join(matchColumns)
+        sql += 'from %s)as from_table '%self.tempTableName
+        sql += 'left outer join %s into_table ' % self.get_qualified_tablename()
+        sql += 'on %s '%' and '.join(match)
+        where = self.map_stuff('gpload:output:match_columns',lambda x,y:'into_table.%s is null'%x,0)
+        sql += 'where %s '%' and '.join(where)
+        sql += 'and gpload_row_number=1 '
+        sql += ')'
         self.log(self.LOG, sql)
         if not self.options.D:
-            try:
-                self.rowsInserted = self.db.query(sql.encode('utf-8'))
-            except Exception, e:
-                # We need to be a bit careful about the error since it may contain non-unicode characters
-                strE = unicode(str(e), errors = 'ignore')
-                strF = unicode(str(sql), errors = 'ignore')
-                self.log(self.ERROR, strE + ' encountered while running ' + strF)
-				
+            self.rowsInserted = self.db.query(sql.encode('utf-8'))
 
     def do_truncate(self, tblname):
-        self.log(self.LOG, "Truncate table %s" %(tblname))
+        self.log(self.LOG, "Truncate table")
         if not self.options.D:
             try:
                 truncateSQLtext = "truncate %s" % tblname
@@ -2550,10 +2557,6 @@ class gpload:
             self.do_method_merge()
         else:
             self.control_file_error('unsupported method %s' % method)
-
-        # truncate the staging table to avoid dumping it's content - see MPP-15474
-        if method=='merge' or method=='update':
-            self.do_truncate(self.staging_table_name)
 
         if after:
             self.log(self.LOG, "Post-SQL from user: %s" % after)

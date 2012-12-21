@@ -9,7 +9,6 @@
  */
 
 #include "postgres.h"
-#include "access/catquery.h"
 #include "optimizer/planpartition.h"
 #include "optimizer/walkers.h"
 #include "optimizer/clauses.h"
@@ -416,66 +415,6 @@ static bool ContainsSubplan(Plan *p)
 }
 
 /**
- * Collects a bitmapset of all varnos referred to in a plan.
- */
-typedef struct CollectVarnoContext
-{
-	plan_tree_base_prefix base;
-	Bitmapset	*varnos;
-} CollectVarnoContext;
-
-/**
- * Walker method to adjust varnos by offset.
- */
-static bool
-CollectVarnoWalker(Node *node, CollectVarnoContext *ctx)
-{
-	Assert(ctx);
-
-	if (node == NULL)
-	{
-		return false;
-	}
-	else if (IsA(node, Var))
-	{
-		Var		   *var = (Var *) node;
-		ctx->varnos = bms_add_member(ctx->varnos, var->varno);
-		return false;
-
-	}
-	return plan_tree_walker(node, CollectVarnoWalker, ctx);
-}
-
-/**
- * Inner plan and outer plan refer to a common varno. This is possible in a plan that involves a NL-Index Scan.
- * In this case, DPE cannot be applied
- */
-static bool ContainsCrossReference(Plan *join, PartitionJoinMutatorContext *ctx)
-{
-	CollectVarnoContext vctx;
-	vctx.base.node = (Node *) ctx->root;
-	vctx.varnos = NULL;
-
-	CollectVarnoWalker((Node *) join->lefttree, &vctx);
-
-	/**
-	 * Save varnos referred to in the left child.
-	 */
-	Bitmapset *lbms = vctx.varnos;
-
-	vctx.varnos = NULL;
-	CollectVarnoWalker((Node *) join->righttree, &vctx);
-
-	/**
-	 * Save varnos referred to in the right child.
-	 */
-	Bitmapset *rbms = vctx.varnos;
-
-	return (bms_num_members(bms_intersect(lbms, rbms)) > 0);
-}
-
-
-/**
  * Match join condition.
  */
 static void MatchJoinPattern(Plan *join, PartitionJoinMutatorContext *ctx)
@@ -489,8 +428,7 @@ static void MatchJoinPattern(Plan *join, PartitionJoinMutatorContext *ctx)
 
 	if (!(joinNode->jointype == JOIN_INNER
 			|| joinNode->jointype == JOIN_IN)
-			|| ContainsSubplan(join->righttree)
-			|| ContainsCrossReference(join, ctx))
+			|| ContainsSubplan(join->righttree))
 	{
 		ctx->safeToConvert = false;
 		return;
@@ -624,21 +562,14 @@ static bool IsJoin(Node *node)
  */
 static Oid RelationGetTypeOid(Oid relationOid)
 {
-	int fetchCount;
-	Oid typeOid;
-
 	Assert(relationOid != InvalidOid);
-	typeOid = caql_getoid_plus(
-			NULL,
-			&fetchCount,
-			NULL,
-			cql("SELECT reltype FROM pg_class "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(relationOid)));
-
-	Assert(fetchCount);
-
+	HeapTuple tup = SearchSysCache(RELOID,
+									ObjectIdGetDatum(relationOid),
+									0, 0, 0);
+	Form_pg_class pgClass = (Form_pg_class) GETSTRUCT(tup);
+	Oid typeOid = pgClass->reltype;
 	Assert(typeOid != InvalidOid);
+	ReleaseSysCache(tup);
 
 	return typeOid;
 }
@@ -1082,7 +1013,12 @@ static void InitPMI(PartitionMatchInfo *pmi, Oid partitionOid, MemoryContext mct
 	pmi->partitionOid = partitionOid;
 	pmi->partitionInfo = RelationBuildPartitionDescByOid(pmi->partitionOid, false);
 
-	pmi->partitionState = createPartitionState(pmi->partitionInfo, 0);
+	pmi->partitionState = makeNode(PartitionState);
+	Size sz = num_partition_levels(pmi->partitionInfo) * sizeof(void *);
+	pmi->partitionState->amstate = palloc0(sz);
+	pmi->partitionState->max_partition_attr =
+			max_partition_attr(pmi->partitionInfo);
+	pmi->partitionState->result_partition_array_size = 0;
 
 	/**
 	 * Initialize hash table
@@ -1144,8 +1080,7 @@ static void AddRecordPMI(PartitionMatchInfo *pmi, HeapTupleHeader record)
 
 	heap_deform_tuple(&pmi->tuple, pmi->tupleDesc, pmi->values, pmi->nulls);
 
-	Assert(pmi->partitionState != NULL);
-	List *partIds = selectPartitionMulti(pmi->partitionInfo, pmi->values, pmi->nulls, pmi->tupleDesc, pmi->partitionState->accessMethods);
+	List *partIds = selectPartitionMulti(pmi->partitionInfo, pmi->values, pmi->nulls, pmi->tupleDesc, pmi->partitionState);
 
 	ListCell *lc = NULL;
 	foreach (lc, partIds)
@@ -1155,7 +1090,6 @@ static void AddRecordPMI(PartitionMatchInfo *pmi, HeapTupleHeader record)
 		AddPartitionMatch(pmi, partId);
 	}
 
-	list_free(partIds);
 	MemoryContextSwitchTo(oldCtx);
 }
 

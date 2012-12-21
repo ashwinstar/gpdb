@@ -251,8 +251,6 @@ LDAP_LIBS_BE = @LDAP_LIBS_BE@
 LD = @LD@
 with_gnu_ld = @with_gnu_ld@
 ld_R_works = @ld_R_works@
-RSA_BSAFE_DY_LIBS = @RSA_BSAFE_DY_LIBS@
-RSA_BSAFE_STATIC_LIBS = @RSA_BSAFE_STATIC_LIBS@
 
 # We want -L for libpgport.a to be first in LDFLAGS.  We also need LDFLAGS
 # to be a "recursively expanded" variable, else adjustments to rpathdir

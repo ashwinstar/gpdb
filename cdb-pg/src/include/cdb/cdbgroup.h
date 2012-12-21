@@ -56,14 +56,12 @@ extern Plan *add_second_stage_agg(PlannerInfo *root,
 								  const char *alias,
 								  List **p_current_pathkeys,
 								  Plan *result_plan,
-								  bool use_root);
+								  bool use_root,
+								  bool adjust_scatter);
 extern List *generate_subquery_tlist(Index varno, List *input_tlist,
 									 bool keep_resjunk, int **p_resno_map);
 extern List *reconstruct_pathkeys(PlannerInfo *root, List *pathkeys, int *resno_map,
 								  List *orig_tlist, List *new_tlist);
 extern List *augment_subplan_tlist(List *tlist, List *exprs, int *pnum, AttrNumber **pcols, bool return_resno);
-
-extern Plan *within_agg_planner(PlannerInfo *root, AggClauseCounts *agg_counts,
-								GroupContext *group_context);
 
 #endif   /* CDBGROUP_H */

@@ -139,14 +139,14 @@ Java_org_postgresql_pljava_internal_AclId__1fromName(JNIEnv* env, jclass clazz, 
 		PG_TRY();
 		{
 			char* roleName = String_createNTS(jname);
-			Oid roleId = get_roleid(roleName);
-
-			if(!OidIsValid(roleId))
+			HeapTuple roleTup = SearchSysCache(AUTHNAME, PointerGetDatum(roleName), 0, 0, 0);
+			if(!HeapTupleIsValid(roleTup))
 				ereport(ERROR,
 						(errcode(ERRCODE_UNDEFINED_OBJECT),
 						 errmsg("role \"%s\" does not exist", roleName)));
 
-			result = AclId_create(roleId);
+			result = AclId_create(HeapTupleGetOid(roleTup));
+			ReleaseSysCache(roleTup);
 		}
 		PG_CATCH();
 		{

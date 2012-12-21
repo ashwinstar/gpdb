@@ -410,7 +410,7 @@ DdaserverMain(int argc, char *argv[])
 	BaseInit();
 
 	/* See InitPostgres()... */
-    InitProcess(false /*isQueryProc*/);
+    InitProcess();	
 	InitBufferPoolBackend();
 	InitXLOGAccess();
 

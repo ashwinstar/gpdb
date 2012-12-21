@@ -9,7 +9,6 @@
  */
 #include "postgres.h"
 
-#include "access/catquery.h"
 #include "catalog/pg_type.h"            /* INT8OID */
 #include "nodes/makefuncs.h"
 #include "optimizer/clauses.h"
@@ -1498,24 +1497,15 @@ static bool is_attribute_nonnullable(Oid relationOid, AttrNumber attrNumber)
 {
 	HeapTuple			attributeTuple = NULL;
 	Form_pg_attribute 	attribute = NULL;
-	bool				result = true;
-	cqContext		   *pcqCtx;
+	bool result = true;
 	
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_attribute "
-				" WHERE attrelid = :1 "
-				" AND attnum = :2 ",
-				ObjectIdGetDatum(relationOid),
-				Int16GetDatum(attrNumber)));
-
-	attributeTuple = caql_getnext(pcqCtx);
-
+	attributeTuple = SearchSysCache(ATTNUM,
+						   ObjectIdGetDatum(relationOid),
+						   Int16GetDatum(attrNumber), 0, 0);
+						  									 
+						  			
 	if (!HeapTupleIsValid(attributeTuple))
-	{
-		caql_endscan(pcqCtx);
 		return false;
-	}
 
 	attribute = (Form_pg_attribute) GETSTRUCT(attributeTuple);
 	
@@ -1525,7 +1515,7 @@ static bool is_attribute_nonnullable(Oid relationOid, AttrNumber attrNumber)
 	if (!attribute->attnotnull)
 		result = false;
 	
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(attributeTuple);
 
 	return result;
 }
@@ -1831,9 +1821,7 @@ static Node *make_outer_nonnull_clause(SubLink *sublink)
 {
 	Node *outerNonNullClause = NULL;
 
-	Assert(IsA(sublink->testexpr, BoolExpr) || 
-			IsA(sublink->testexpr, OpExpr) ||
-			IsA(sublink->testexpr, RowCompareExpr));
+	Assert(nodeTag(sublink->testexpr) == T_BoolExpr || nodeTag(sublink->testexpr) == T_OpExpr);
 
 	switch(nodeTag(sublink->testexpr))
 	{
@@ -1881,32 +1869,6 @@ static Node *make_outer_nonnull_clause(SubLink *sublink)
 				outerNonNullClause = (Node *) nullTest; /* represents foo(a) is not null OR bar(b) is not null */
 				break;
 			}
-			
-		case T_RowCompareExpr:
-			{
-				/* 
-				 * This is the case when the testexpr involves multiple columns
-				 * such as (a,b) < all (select max(a),min(b) from m)
-				 */
-				List *exprList = NIL;
-				RowCompareExpr *rowcompExpr = (RowCompareExpr *) sublink->testexpr;
-				
-				ListCell *lc = NULL;
-				foreach (lc, rowcompExpr->largs)
-				{
-					Expr *expr = (Expr *) lfirst(lc);
-					
-					NullTest *nullTest = makeNode(NullTest);
-					nullTest->arg = expr;
-					nullTest->nulltesttype = IS_NOT_NULL; /* nullTest represents expr is not null */
-					
-					exprList = lappend(exprList, nullTest);
-				}
-				outerNonNullClause = (Node *) make_orclause(exprList); /* represents a is not null OR b is not null */
-				break;
-			
-			}
-		
 		default:
 			Assert(false && "Unsupported sublink expression");
 		

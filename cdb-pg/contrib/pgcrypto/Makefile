@@ -30,13 +30,11 @@ DATA_built	= pgcrypto.sql
 DATA		= uninstall_pgcrypto.sql
 EXTRA_CLEAN	= gen-rtab
 
-# TODO: MPP-14272
-# REGRESS = init md5 sha1 hmac-md5 hmac-sha1 blowfish rijndael \
-#	$(CF_TESTS) \
-#	crypt-des crypt-md5 crypt-blowfish crypt-xdes \
-#	pgp-armor pgp-decrypt pgp-encrypt $(CF_PGP_TESTS) \
-#	pgp-pubkey-decrypt pgp-pubkey-encrypt pgp-info
-REGRESS = init md5 sha1
+REGRESS = init md5 sha1 hmac-md5 hmac-sha1 blowfish rijndael \
+	$(CF_TESTS) \
+	crypt-des crypt-md5 crypt-blowfish crypt-xdes \
+	pgp-armor pgp-decrypt pgp-encrypt $(CF_PGP_TESTS) \
+	pgp-pubkey-decrypt pgp-pubkey-encrypt pgp-info
 
 
 ifdef USE_PGXS

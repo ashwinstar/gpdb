@@ -15,7 +15,6 @@
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
-#include "access/catquery.h"
 #include "access/transam.h"
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
@@ -61,7 +60,6 @@ typedef struct
 		indexed_tlist *inner_itlist;
 		Index		skip_rel;
 		int			rtoffset;
-		bool		use_outer_tlist_for_matching_nonvars;
 	} fix_join_expr_context;
 
 typedef struct
@@ -109,11 +107,6 @@ static Var *search_indexed_tlist_for_non_var(Node *node,
 											 indexed_tlist *itlist,
 											 Index newvarno);
 static List *fix_join_expr(PlannerGlobal *glob,
-						   List *clauses,
-						   indexed_tlist *outer_itlist,
-						   indexed_tlist *inner_itlist,
-						   Index skip_rel, int rtoffset);
-static List *fix_hashjoin_expr(PlannerGlobal *glob,
 						   List *clauses,
 						   indexed_tlist *outer_itlist,
 						   indexed_tlist *inner_itlist,
@@ -480,6 +473,13 @@ set_plan_refs(PlannerGlobal *glob, Plan *plan, const int rtoffset)
 			
 			splan->scan.scanrelid += rtoffset;
 
+#ifdef USE_ASSERT_CHECKING
+			RangeTblEntry *rte = rt_fetch(splan->scan.scanrelid, glob->finalrtable);
+			char relstorage = get_rel_relstorage(rte->relid);
+			Assert(relstorage != RELSTORAGE_AOROWS &&
+				   relstorage != RELSTORAGE_AOCOLS);
+#endif
+
 			splan->scan.plan.targetlist =
 			fix_scan_list(glob, splan->scan.plan.targetlist, rtoffset);
 			splan->scan.plan.qual =
@@ -559,6 +559,14 @@ set_plan_refs(PlannerGlobal *glob, Plan *plan, const int rtoffset)
 				return  cdb_insert_result_node(glob, plan, rtoffset);
 			
 			splan->scan.scanrelid += rtoffset;
+			
+#ifdef USE_ASSERT_CHECKING
+			/* We only support TidScans on heap tables currently */
+			RangeTblEntry *rte = rt_fetch(splan->scan.scanrelid, glob->finalrtable);
+			char relstorage = get_rel_relstorage(rte->relid);
+			Assert(relstorage == RELSTORAGE_HEAP);
+#endif
+
 			splan->scan.plan.targetlist =
 			fix_scan_list(glob, splan->scan.plan.targetlist, rtoffset);
 			splan->scan.plan.qual =
@@ -777,7 +785,6 @@ set_plan_refs(PlannerGlobal *glob, Plan *plan, const int rtoffset)
 				}
 			}
 			pfree(subplan_itlist);
-			/* For now window->sequence contains only constants.  May change. */
 		}
 			break;
 		case T_Result:
@@ -1298,14 +1305,14 @@ set_join_references(PlannerGlobal *glob, Join *join, int rtoffset)
 	{
 		HashJoin   *hj = (HashJoin *) join;
 		
-		hj->hashclauses = fix_hashjoin_expr(glob,
+		hj->hashclauses = fix_join_expr(glob,
 										hj->hashclauses,
 										outer_itlist,
 										inner_itlist,
 										(Index) 0,
 										rtoffset);
 		
-		hj->hashqualclauses = fix_hashjoin_expr(glob,
+		hj->hashqualclauses = fix_join_expr(glob,
 											hj->hashqualclauses,
 											outer_itlist,
 											inner_itlist,
@@ -1883,45 +1890,8 @@ fix_join_expr(PlannerGlobal *glob,
 	context.inner_itlist = inner_itlist;
 	context.skip_rel = skip_rel;
 	context.rtoffset = rtoffset;
-	context.use_outer_tlist_for_matching_nonvars = true;
 	return (List *) fix_join_expr_mutator((Node *) clauses, &context);
 }
-
-/*
- * fix_hashjoin_expr
- *	   A special case of fix_join_expr used to process hash join.
- *	   The main use case is MPP-18537, where we have a constant in the target list
- *	   of hash join's outer child, and the constant is used when computing hash
- *	   value of hash join's inner child.
- *
- *	   Example: select * from A, B where A.i = least(B.i,4) and A.j=4;
- *	   Here, B's hash value is least(B.i,4), and constant 4 is defined by A's target list
- *
- *	   Since during building hash table on the inner child of hash join, we cannot access
- *	   the target list of hash join's outer child, this function skips using outer target list
- *	   when matching non-vars.
- *
- */
-static List *
-fix_hashjoin_expr(PlannerGlobal *glob,
-			  List *clauses,
-			  indexed_tlist *outer_itlist,
-			  indexed_tlist *inner_itlist,
-			  Index skip_rel,
-			  int rtoffset)
-{
-	fix_join_expr_context context;
-
-	context.glob = glob;
-	context.outer_itlist = outer_itlist;
-	context.inner_itlist = inner_itlist;
-	context.skip_rel = skip_rel;
-	context.rtoffset = rtoffset;
-	/* skips using outer target list when matching non-vars */
-	context.use_outer_tlist_for_matching_nonvars = false;
-	return (List *) fix_join_expr_mutator((Node *) clauses, &context);
-}
-
 
 static Node *
 fix_join_expr_mutator(Node *node, fix_join_expr_context *context)
@@ -1961,7 +1931,7 @@ fix_join_expr_mutator(Node *node, fix_join_expr_context *context)
 		elog(ERROR, "variable not found in subplan target lists");
 	}
 	/* Try matching more complex expressions too, if tlists have any */
-	if (context->use_outer_tlist_for_matching_nonvars && context->outer_itlist->has_non_vars)
+	if (context->outer_itlist->has_non_vars)
 	{
 		newvar = search_indexed_tlist_for_non_var(node,
 												  context->outer_itlist,
@@ -2233,16 +2203,10 @@ record_plan_function_dependency(PlannerGlobal *glob, Oid funcid)
 	{
 		HeapTuple	func_tuple;
 		PlanInvalItem *inval_item;
-		cqContext	*pcqCtx;
 		
-		pcqCtx = caql_beginscan(
-				NULL,
-				cql("SELECT * FROM pg_proc "
-					" WHERE oid = :1 ",
-					ObjectIdGetDatum(funcid)));
-
-		func_tuple = caql_getnext(pcqCtx);
-
+		func_tuple = SearchSysCache(PROCOID,
+									ObjectIdGetDatum(funcid),
+									0, 0, 0);
 		if (!HeapTupleIsValid(func_tuple))
 			elog(ERROR, "cache lookup failed for function %u", funcid);
 		
@@ -2257,7 +2221,7 @@ record_plan_function_dependency(PlannerGlobal *glob, Oid funcid)
 		
 		glob->invalItems = lappend(glob->invalItems, inval_item);
 		
-		caql_endscan(pcqCtx);
+		ReleaseSysCache(func_tuple);
 	}
 }
 
@@ -2366,3 +2330,4 @@ cdb_insert_result_node(PlannerGlobal *glob, Plan *plan, int rtoffset)
 	
     return resultplan;
 }                               /* cdb_insert_result_node */
+

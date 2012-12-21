@@ -213,7 +213,6 @@ cdbdisp_seterrcode(int                  errcode,        /* ERRCODE_xxx or 0 */
 
     /* Was the command canceled? */
     if (errcode == ERRCODE_GP_OPERATION_CANCELED ||
-    	errcode == ERRCODE_GP_OPERATION_CANCELED_ERRORLESS ||
         errcode == ERRCODE_QUERY_CANCELED)
         dispatchResult->wasCanceled = true;
 
@@ -238,8 +237,7 @@ cdbdisp_seterrcode(int                  errcode,        /* ERRCODE_xxx or 0 */
      * Interconnection errors are given lower precedence because often
      * they are secondary to an earlier and more interesting error.
      */
-    if ((errcode == ERRCODE_GP_OPERATION_CANCELED ||
-    	 errcode == ERRCODE_GP_OPERATION_CANCELED_ERRORLESS) &&
+    if (errcode == ERRCODE_GP_OPERATION_CANCELED &&
         dispatchResult->requestedCancel)
     {}                          /* nop */
 
@@ -497,19 +495,17 @@ cdbdisp_debugDispatchResult(CdbDispatchResult  *dispatchResult,
                    pri[lenpri-1] > '\0')
                 lenpri--;
 
-			ereport(elevel_error, (
-				 errmsg("DispatchResult: (%s) %s %.*s (%s)",
-						sqlstate,
-						PQresStatus(PQresultStatus(pgresult)),
-						lenpri,
-						pri ? pri : "",
-						whoami),
-				 errdetail("(%s:%s) %s",
-						   PQresultErrorField(pgresult, PG_DIAG_SOURCE_FILE),
-						   PQresultErrorField(pgresult, PG_DIAG_SOURCE_LINE),
-						   dtl ? dtl : "") ));
-
-
+            ereport(elevel_error, (
+                 errmsg("DispatchResult: (%s) %s %.*s (%s)",
+                        sqlstate,
+                        PQresStatus(PQresultStatus(pgresult)),
+                        lenpri,
+                        pri ? pri : "",
+                        whoami),
+                 errdetail("(%s:%s) %s",
+                           PQresultErrorField(pgresult, PG_DIAG_SOURCE_FILE),
+                           PQresultErrorField(pgresult, PG_DIAG_SOURCE_LINE),
+                           dtl ? dtl : "") ));
         }
     }                           /* for each PGresult */
 
@@ -533,7 +529,7 @@ cdbdisp_debugDispatchResult(CdbDispatchResult  *dispatchResult,
              dispatchResult->segdbDesc->error_message.data);
 	}
 
-    /* Should have either an error code or an ok result or an errorless cancel state */
+    /* Should have either an error code or an ok result. */
     if (!dispatchResult->errcode &&
         dispatchResult->okindex < 0)
     {
@@ -791,53 +787,6 @@ cdbdisp_sumCmdTuples(CdbDispatchResults *results, int sliceIndex)
     return sum;
 }                               /* cdbdisp_sumCmdTuples */
 
-extern List *sstat_list;
-
-void cdbdisp_getStatementStats(CdbDispatchResults *results)
-{
-	CdbDispatchResult *dispatchResult;
-	CdbDispatchResult *resultEnd = cdbdisp_resultEnd(results, -1);
-	PGresult *pgresult;
-	CdbQEStatementStats *sstats;
-
-	for (dispatchResult = cdbdisp_resultBegin(results, -1);
-			dispatchResult < resultEnd; ++dispatchResult)
-	{
-		pgresult = cdbdisp_getPGresult(dispatchResult, dispatchResult->okindex);
-		if (pgresult)
-		{
-			pgCdbStatCell * statcell;
-			MemoryContext oldcontext;
-
-			/* Find our statistics in list of response messages.  If none, skip. */
-			for (statcell = pgresult->cdbstats; statcell;
-					statcell = statcell->next)
-			{
-				if (IsA((Node *)statcell->data, CdbQEStatementStats))
-					break;
-			}
-			if (!statcell)
-				continue;
-
-			/*
-			 * Our current context will disappear before we report the stats, so
-			 * we need to put the stats in a better memory context.  TopMemoryContext
-			 * works, but is overkill.  Maybe QueryMemoryContext?
-			 */
-			oldcontext = MemoryContextSwitchTo(TopMemoryContext);
-
-			sstats = makeNode(CdbQEStatementStats);
-
-			memcpy(sstats, statcell->data, sizeof(CdbQEStatementStats));
-
-			sstat_list = lappend(sstat_list, sstats);
-
-			MemoryContextSwitchTo(oldcontext);
-
-		}
-	}
-
-}
 /*
  * If several tuples were eliminated/rejected from the result because of
  * bad data formatting (this is currenly only possible in external tables
@@ -1000,6 +949,13 @@ cdbdisp_resultBegin(CdbDispatchResults *results, int sliceIndex)
     if (sliceIndex < 0)
         return &results->resultArray[0];
     
+    /*
+     * If we are using dispatch agents, the DA handled the slicing,
+     * so we only get one final result
+     */
+    if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent)
+    	return &results->resultArray[0];
+
     si = &results->sliceMap[sliceIndex];
 
     Assert(sliceIndex < results->sliceCapacity &&
@@ -1023,6 +979,9 @@ cdbdisp_resultEnd(CdbDispatchResults *results, int sliceIndex)
     if (sliceIndex < 0)
         return &results->resultArray[results->resultCount];
     
+    if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent)
+       	return &results->resultArray[results->resultCount];
+
     si = &results->sliceMap[sliceIndex];
 
     return &results->resultArray[si->resultEnd];

@@ -16,7 +16,6 @@
  */
 #include "postgres.h"
 
-#include "access/catquery.h"
 #include "access/twophase.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
@@ -190,7 +189,6 @@ CheckDropPermissions(RangeVar *rel, char rightkind, bool missing_ok)
 	Oid			relOid;
 	HeapTuple	tuple;
 	Form_pg_class classform;
-	cqContext	*pcqCtx;
 
 	relOid = RangeVarGetRelid(rel, true);
 	if (!OidIsValid(relOid))
@@ -199,14 +197,9 @@ CheckDropPermissions(RangeVar *rel, char rightkind, bool missing_ok)
 		return false;
 	}
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(relOid)));
-
-	tuple = caql_getnext(pcqCtx);
-
+	tuple = SearchSysCache(RELOID,
+						   ObjectIdGetDatum(relOid),
+						   0, 0, 0);
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for relation %u", relOid);
 
@@ -228,7 +221,7 @@ CheckDropPermissions(RangeVar *rel, char rightkind, bool missing_ok)
 				 errmsg("permission denied: \"%s\" is a system catalog",
 						rel->relname)));
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(tuple);
 
 	return true;
 }
@@ -246,21 +239,15 @@ CheckDropRelStorage(RangeVar *rel, ObjectType removeType)
 	Oid			relOid;
 	HeapTuple	tuple;
 	Form_pg_class classform;
-	cqContext	*pcqCtx;
 
 	relOid = RangeVarGetRelid(rel, true);
 	
 	if (!OidIsValid(relOid))
 		return false;
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(relOid)));
-
-	tuple = caql_getnext(pcqCtx);
-
+	tuple = SearchSysCache(RELOID,
+						   ObjectIdGetDatum(relOid),
+						   0, 0, 0);
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for relation %u", relOid);
 
@@ -297,7 +284,7 @@ CheckDropRelStorage(RangeVar *rel, ObjectType removeType)
 				 errOmitLocation(true)));
 	}
 	
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(tuple);
 
 	return true;
 }
@@ -313,18 +300,11 @@ CheckRelationOwnership(RangeVar *rel, bool noCatalogs)
 {
 	Oid			relOid;
 	HeapTuple	tuple;
-	cqContext  *pcqCtx;
 
 	relOid = RangeVarGetRelid(rel, false);
-
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(relOid)));
-
-	tuple = caql_getnext(pcqCtx);
-
+	tuple = SearchSysCache(RELOID,
+						   ObjectIdGetDatum(relOid),
+						   0, 0, 0);
 	if (!HeapTupleIsValid(tuple))		/* should not happen */
 		elog(ERROR, "cache lookup failed for relation %u", relOid);
 
@@ -342,7 +322,7 @@ CheckRelationOwnership(RangeVar *rel, bool noCatalogs)
 							rel->relname)));
 	}
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(tuple);
 }
 
 /*
@@ -836,8 +816,7 @@ ProcessUtility(Node *parsetree,
 								sendDtxExplicitBegin();
 							}
 
-							DefineDispatchSavepoint(
-									name);
+							DefineSavepoint(name);
 						}
 						break;
 
@@ -970,15 +949,6 @@ ProcessUtility(Node *parsetree,
 							&(((CreateStmt *) parsetree)->oidInfo.aoblkdirComptypeOid),
 							((CreateStmt *)parsetree)->is_part_child);
 				}
-				CommandCounterIncrement();
-				/*
-				 * Deferred statements should be evaluated *after* AO tables
-				 * are updated correctly.  Otherwise, they may not have
-				 * segment information yet and operations like create_index
-				 * in the deferred statements cannot see the relfile.
-				 */
-				EvaluateDeferredStatements(
-						((CreateStmt *) parsetree)->deferredStmts);
 			}
 			break;
 
@@ -1229,7 +1199,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_CreateFunctionStmt:		/* CREATE FUNCTION */
-			CreateFunction((CreateFunctionStmt *) parsetree, queryString);
+			CreateFunction((CreateFunctionStmt *) parsetree);
 			break;
 
 		case T_AlterFunctionStmt:		/* ALTER FUNCTION */
@@ -1384,7 +1354,7 @@ ProcessUtility(Node *parsetree,
 
 					appendStringInfo(&buffer, "LOAD '%s'", stmt->filename);
 
-					CdbDoCommand(buffer.data, false, /*no txn*/ false, GANGSCOPE_WRITER);
+					CdbDoCommand(buffer.data, false, /*no txn*/ false);
 				}
 			}
 			break;
@@ -1476,7 +1446,7 @@ ProcessUtility(Node *parsetree,
 
 					appendStringInfo(&buffer, "RESET %s", n->name);
 
-					CdbDoCommand(buffer.data, false, /*no txn*/ false, GANGSCOPE_WRITER);
+					CdbDoCommand(buffer.data, false, /*no txn*/ false);
 				}
 			}
 			break;
@@ -1595,44 +1565,12 @@ ProcessUtility(Node *parsetree,
 						 errmsg("must be superuser to do CHECKPOINT")));
 			if (Gp_role == GP_ROLE_DISPATCH)
 			{
-				CdbDoCommand("CHECKPOINT", false, false, false);
+				CdbDoCommand("CHECKPOINT", false, false);
 			}
 			RequestCheckpoint(true, false);
 			break;
 
 		case T_ReindexStmt:
-		if (gp_new_reindex_database)
-			{
-				ReindexStmt *stmt = (ReindexStmt *) parsetree;
-
-				switch (stmt->kind)
-				{
-					case OBJECT_INDEX:
-						ReindexIndex(stmt);
-						break;
-					case OBJECT_TABLE:
-						ReindexTable(stmt);
-						break;
-					case OBJECT_DATABASE:
-						/*
-						 * REINDEX DATABASE will execute/dispatch REINDEX TABLE on
-						 * each table found in pg_class.
-						 */
-						ReindexDatabaseNew(stmt);
-						break;
-					default:
-						elog(ERROR, "unrecognized object type: %d",
-							 (int) stmt->kind);
-						break;
-				}
-
-				if (stmt->kind != OBJECT_DATABASE &&
-					Gp_role == GP_ROLE_DISPATCH)
-				{
-					CdbDispatchUtilityStatement((Node *) stmt, "ProcessUtility");
-				}
-			}
-		else
 			{
 				ReindexStmt *stmt = (ReindexStmt *) parsetree;
 
@@ -1675,7 +1613,7 @@ ProcessUtility(Node *parsetree,
 						else
 							appendStringInfo(&buffer, "REINDEX DATABASE \"%s\"", stmt->name);
 
-						CdbDoCommand(buffer.data, false, /*no txn*/ false, false);
+						CdbDoCommand(buffer.data, false, /*no txn*/ false);
 					}
 				}
 			}

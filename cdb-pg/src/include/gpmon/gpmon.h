@@ -16,13 +16,12 @@ extern apr_int64_t gpmon_tick;
 typedef struct gpmon_packet_t gpmon_packet_t;
 typedef struct gpmon_qlogkey_t gpmon_qlogkey_t;
 typedef struct gpmon_qlog_t gpmon_qlog_t;
+typedef struct gpmon_qexeckey_t gpmon_qexeckey_t;
 typedef struct gpmon_qexec_t gpmon_qexec_t;
 typedef struct gpmon_hello_t gpmon_hello_t;
 typedef struct gpmon_metrics_t gpmon_metrics_t;
 typedef struct gpmon_seginfo_t gpmon_seginfo_t;
 typedef struct gpmon_filerepinfo_t gpmon_filerepinfo_t;
-typedef struct gpmon_fsinfokey_t gpmon_fsinfokey_t;
-typedef struct gpmon_fsinfo_t gpmon_fsinfo_t;
 
 /*
  * this dir sits in $MASTER_DATA_DIRECTORY. always include the
@@ -31,8 +30,6 @@ typedef struct gpmon_fsinfo_t gpmon_fsinfo_t;
 #define GPMON_DIR   "./gpperfmon/data/"
 #define GPMON_DIR_MAX_PATH 100
 #define GPMON_DB    "gpperfmon"
-
-#define GPMON_FSINFO_MAX_PATH 255
 #define GPMON_UNKNOWN "Unknown"
 
 /*
@@ -56,29 +53,8 @@ extern void gpmon_qlog_query_text(const gpmon_packet_t *gpmonPacket,
 extern void gpmon_qlog_query_start(gpmon_packet_t *gpmonPacket);
 extern void gpmon_qlog_query_end(gpmon_packet_t *gpmonPacket);
 extern void gpmon_qlog_query_error(gpmon_packet_t *gpmonPacket);
-extern void gpmon_qlog_query_canceling(gpmon_packet_t *gpmonPacket);
 extern void gpmon_send(gpmon_packet_t*);
 extern void gpmon_gettmid(apr_int32_t*);
-extern void gpmon_save_command_cnt(void);
-
-/* ------------------------------------------------------------------
-         FSINFO
-   ------------------------------------------------------------------ */
-
-struct gpmon_fsinfokey_t 
-{
-	char fsname [GPMON_FSINFO_MAX_PATH];
-	char hostname[NAMEDATALEN];
-};
-
-struct gpmon_fsinfo_t
-{
-	gpmon_fsinfokey_t key;
-	
-	apr_int64_t bytes_used;
-	apr_int64_t bytes_available;
-	apr_int64_t bytes_total;
-};
 
 /* ------------------------------------------------------------------
          METRICS
@@ -126,7 +102,7 @@ struct gpmon_metrics_t
 
 struct gpmon_qlogkey_t {
     /* if you modify this, do not forget to edit gpperfmon/src/gpmon/gpmonlib.c:gpmon_ntohpkt() */
-	apr_int32_t tmid;  /* transaction time */
+    apr_int32_t tmid;  /* transaction time */
     apr_int32_t ssid; /* session id */
     apr_int32_t ccnt; /* command count */
 };
@@ -134,10 +110,10 @@ struct gpmon_qlogkey_t {
 /* process metrics ... filled in by gpsmon */
 typedef struct gpmon_proc_metrics_t gpmon_proc_metrics_t;
 struct gpmon_proc_metrics_t {
-    apr_uint32_t fd_cnt;		/* # opened files / sockets etc */
-    float        cpu_pct;	/* cpu usage % */
+    apr_int32_t fd_cnt;		/* # opened files / sockets etc */
+    float       cpu_pct;	/* cpu usage % */
     struct {
-    	apr_uint64_t size, resident, share;
+		apr_int64_t size, resident, share;
     } mem;
 };
 
@@ -148,7 +124,6 @@ struct gpmon_proc_metrics_t {
 #define GPMON_QLOG_STATUS_START    2
 #define GPMON_QLOG_STATUS_DONE     3
 #define GPMON_QLOG_STATUS_ERROR    4
-#define GPMON_QLOG_STATUS_CANCELING 5
 
 #define GPMON_NUM_SEG_CPU 10
 
@@ -169,22 +144,20 @@ struct gpmon_qlog_t
          QEXEC
    ------------------------------------------------------------------ */
 
-typedef struct gpmon_qexec_hash_key_t {
-	apr_int16_t segid;	/* segment id */
-	apr_int32_t pid; 	/* process id */
-	apr_int16_t nid;	/* plan node id */
-}gpmon_qexec_hash_key_t;
 
 /* XXX According to CK.
  * QE will NOT need to touch anything begin with _
  */
-typedef struct gpmon_qexeckey_t {
+struct gpmon_qexeckey_t {
     /* if you modify this, do not forget to edit gpperfmon/src/gpmon/gpmonlib.c:gpmon_ntohpkt() */
     apr_int32_t tmid;  /* transaction time */
     apr_int32_t ssid; /* session id */
     apr_int16_t ccnt;	/* command count */
-    gpmon_qexec_hash_key_t hash_key;
-}gpmon_qexeckey_t;
+    apr_int16_t segid;	/* segment id */
+    apr_int32_t pid; 	/* process id */
+    apr_int16_t nid;	/* plan node id */
+    apr_int16_t zero;		/* unused */
+};
 
 
 enum {
@@ -212,11 +185,11 @@ struct gpmon_qexec_t {
 	apr_uint16_t			nodeType; 					/* using enum PerfmonNodeType */
 	apr_byte_t 				status;    /* node status using PerfmonNodeStatus */
 	apr_int32_t 			tstart, tduration; /* start (wall clock) time and duration.  XXX Leave as 0 for now. */
-	apr_uint64_t 			p_mem, p_memmax;   /* XXX Aset instrumentation.  Leave as 0 for now. */
-	apr_uint64_t			_cpu_elapsed; /* CPU elapsed for iter */
+	apr_int64_t 			p_mem, p_memmax;   /* XXX Aset instrumentation.  Leave as 0 for now. */
+	apr_int64_t				_cpu_elapsed; /* CPU elapsed for iter */
 	gpmon_proc_metrics_t 	_p_metrics;
-	apr_uint64_t 			rowsout, rowsout_est;
-	apr_uint64_t 			measures[GPMON_QEXEC_M_COUNT];
+	apr_int64_t 			rowsout, rowsout_est;
+	apr_int64_t 			measures[GPMON_QEXEC_M_COUNT];
 	char 					relation_name[SCAN_REL_NAME_BUF_SIZE];
 };
 
@@ -359,8 +332,7 @@ enum gpmon_pkttype_t {
     GPMON_PKTTYPE_SEGINFO = 5,
     GPMON_PKTTYPE_FILEREP = 6,
     GPMON_PKTTYPE_QUERY_HOST_METRICS = 7, // query metrics update from a segment such as CPU per query
-    GPMON_PKTTYPE_FSINFO = 8,
-    
+
     GPMON_PKTTYPE_MAX
 };
 
@@ -378,7 +350,6 @@ struct gpmon_packet_t {
 		gpmon_qexec_t   qexec;
 		gpmon_seginfo_t seginfo;
 		gpmon_filerepinfo_t filerepinfo;
-		gpmon_fsinfo_t fsinfo;
     } u;
 };
 
@@ -402,7 +373,6 @@ typedef enum PerfmonNodeType
     PMNT_BitmapAppendOnlyScan,
     PMNT_BitmapHeapScan,
     PMNT_BitmapIndexScan,
-	PMNT_DynamicTableScan,
     PMNT_ExternalScan,
     PMNT_FunctionScan,
     PMNT_Group,
@@ -417,7 +387,6 @@ typedef enum PerfmonNodeType
     PMNT_HashUniqueOuterJoin,
     PMNT_HashUniqueInnerJoin,
     PMNT_IndexScan,
-	PMNT_IndexOnlyScan,
     PMNT_Limit,
     PMNT_Materialize,
     PMNT_MergeJoin,
@@ -445,7 +414,6 @@ typedef enum PerfmonNodeType
     PMNT_Result,
     PMNT_Repeat,
     PMNT_SeqScan,
-	PMNT_Sequence,
     PMNT_SetOp,
     PMNT_SetOpIntersect,
     PMNT_SetOpIntersectAll,
@@ -455,7 +423,6 @@ typedef enum PerfmonNodeType
     PMNT_Sort,
     PMNT_SubqueryScan,
 	PMNT_TableFunctionScan,
-	PMNT_TableScan,
     PMNT_TidScan,
     PMNT_Unique,
     PMNT_ValuesScan,

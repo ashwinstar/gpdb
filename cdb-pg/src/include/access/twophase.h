@@ -32,7 +32,7 @@
 typedef struct prpt_map
 {
   TransactionId xid;
-  XLogRecPtr    xlogrecptr;
+  XLogRecPtr    xlogrecptr;;
 } prpt_map;
 
 typedef struct prepared_transaction_agg_state

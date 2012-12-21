@@ -233,7 +233,7 @@ static int bz_file_open(gfile_t *fd)
 }
 #endif
 
-
+#ifndef WIN32
 /* GZ */
 struct zlib_stuff
 {
@@ -490,7 +490,7 @@ static int gz_file_open(gfile_t *fd)
 
 	return 0;
 }
-
+#endif
 
 #ifdef GPFXDIST
 /*
@@ -672,8 +672,7 @@ gfile_open_flags(int writing, int usesync)
 }
 
 
-int gfile_open(gfile_t* fd, const char* fpath, int flags, struct gpfxdist_t* transform, const int file_permissions,
-			   int* response_code, const char** response_string)
+int gfile_open(gfile_t* fd, const char* fpath, int flags, int* response_code, const char** response_string, struct gpfxdist_t* transform)
 {
 	const char* s = strrchr(fpath, '.');
 	bool_t is_win_pipe = FALSE;
@@ -847,7 +846,7 @@ int gfile_open(gfile_t* fd, const char* fpath, int flags, struct gpfxdist_t* tra
 			}
 #endif
 			if (flags != GFILE_OPEN_FOR_READ)
-				fd->fd.filefd = open(fpath, O_WRONLY | O_CREAT | O_BINARY | O_APPEND | syncFlag, file_permissions);
+				fd->fd.filefd = open(fpath, O_WRONLY | O_CREAT | O_BINARY | O_APPEND | syncFlag, S_IRUSR | S_IWUSR);
 			else
 				fd->fd.filefd = open(fpath, O_RDONLY | O_BINARY);
 		}
@@ -909,6 +908,9 @@ int gfile_open(gfile_t* fd, const char* fpath, int flags, struct gpfxdist_t* tra
 #endif
 	if (s && strcasecmp(s,".gz")==0)
 	{
+#ifdef WIN32
+		gfile_printf_then_putc_newline(".gz not supported");
+#else
 		/*
 		 * flag used by function gfile close
 		 */
@@ -920,6 +922,7 @@ int gfile_open(gfile_t* fd, const char* fpath, int flags, struct gpfxdist_t* tra
 		}
 
 		return gz_file_open(fd);
+#endif
 	}
 	else if (s && strcasecmp(s,".bz2")==0)
 	{

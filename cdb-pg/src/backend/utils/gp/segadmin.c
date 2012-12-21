@@ -8,7 +8,6 @@
 #include "postgres.h"
 #include "miscadmin.h"
 
-#include "access/catquery.h"
 #include "catalog/gp_segment_config.h"
 #include "catalog/pg_filespace.h"
 #include "catalog/pg_filespace_entry.h"
@@ -67,7 +66,7 @@ segment_has_mirror(int16 contentid)
 	return content_get_mirror_dbid(contentid) != 0;
 }
 
-/*
+/* 
  * As the function name says, test whether a given dbid is the dbid of the
  * standby master.
  */
@@ -99,20 +98,14 @@ get_maxdbid()
 	Relation rel = heap_open(GpSegmentConfigRelationId, AccessExclusiveLock);
 	int16 dbid = 0;
 	HeapTuple tuple;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
+	HeapScanDesc scandesc;
 
-	pcqCtx = caql_beginscan(
-			caql_addrel(cqclr(&cqc), rel),
-			cql("SELECT * FROM gp_segment_configuration ",
-				NULL));
+	scandesc = heap_beginscan(rel, SnapshotNow, 0, NULL);
 
-	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
-	{
-		dbid = Max(dbid, 
-				   ((Form_gp_segment_configuration)GETSTRUCT(tuple))->dbid);
-	}
-	caql_endscan(pcqCtx);
+	while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
+		dbid = Max(dbid, ((Form_gp_segment_configuration)GETSTRUCT(tuple))->dbid);
+
+	heap_endscan(scandesc);
 	heap_close(rel, NoLock);
 
 	return dbid;
@@ -144,21 +137,14 @@ get_availableDbId()
 	/* scan GpSegmentConfigRelationId */
 	Relation rel = heap_open(GpSegmentConfigRelationId, AccessExclusiveLock);
 	HeapTuple tuple;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
-
-	pcqCtx = caql_beginscan(
-			caql_addrel(cqclr(&cqc), rel),
-			cql("SELECT * FROM gp_segment_configuration ",
-				NULL));
-
-	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
+	HeapScanDesc scandesc = heap_beginscan(rel, SnapshotNow, 0, NULL);
+	while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
 	{
 		int32 dbid = (int32) ((Form_gp_segment_configuration)GETSTRUCT(tuple))->dbid;
 		(void) hash_search(htab, (void *) &dbid, HASH_ENTER, NULL);
 	}
-	caql_endscan(pcqCtx);
 
+	heap_endscan(scandesc);
 	heap_close(rel, NoLock);
 
 	/* search for available dbid */
@@ -178,7 +164,7 @@ get_availableDbId()
 
 /*
  * Get the highest contentid defined in the system. As above, we
- * AccessExclusiveLock gp_segment_configuration to prevent races but no
+ * AccessExclusiveLock gp_segment_configuration to prevent races but no 
  * one should be calling this code concurrently if we've done our job right.
  */
 static int16
@@ -187,20 +173,15 @@ get_maxcontentid()
 	Relation rel = heap_open(GpSegmentConfigRelationId, AccessExclusiveLock);
 	int16 contentid = 0;
 	HeapTuple tuple;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
+	HeapScanDesc scandesc;
 
-	pcqCtx = caql_beginscan(
-			caql_addrel(cqclr(&cqc), rel),
-			cql("SELECT * FROM gp_segment_configuration ",
-				NULL));
+	scandesc = heap_beginscan(rel, SnapshotNow, 0, NULL);
 
-	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
-	{
+	while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
 		contentid = Max(contentid,
 						((Form_gp_segment_configuration)GETSTRUCT(tuple))->content);
-	}
-	caql_endscan(pcqCtx);
+
+	heap_endscan(scandesc);
 	heap_close(rel, NoLock);
 
 	return contentid;
@@ -293,7 +274,7 @@ mirroring_sanity_check(int flags, const char *func)
 			elog(ERROR, "%s cannot be run on the master", func);
 	}
 
-	if ((flags & STANDBY_ONLY) == STANDBY_ONLY)
+	if ((flags && STANDBY_ONLY) == STANDBY_ONLY)
 	{
 		if (GpIdentity.dbid == UNINITIALIZED_GP_IDENTITY_VALUE)
 			elog(ERROR, "%s requires valid GpIdentity dbid", func);
@@ -313,6 +294,10 @@ must_update_persistent(int16 pridbid, seginfo *i)
 
 	/* if we're adding a mirror for host that is not this machine, return */
 	if (i->db.role == SEGMENT_ROLE_MIRROR && pridbid != GpIdentity.dbid)
+		return false;
+
+	/* nothing more to do if we're on the master */
+	if (pridbid == MASTER_DBID)
 		return false;
 
 	return true;
@@ -409,7 +394,7 @@ update_filespaces(int16 pridbid, seginfo *i, bool add, ArrayType *fsmap)
 {
 	Assert((add && PointerIsValid(fsmap)) || !add);
 
-	/*
+	/* 
 	 * If we're on the master, process the pg_filespace_entry rows for this
 	 * segment.
 	 */
@@ -448,7 +433,7 @@ update_tablespaces(int16 pridbid, seginfo *i, bool add)
 		return;
 	}
 
-	if (pridbid == MASTER_DBID || !must_update_persistent(pridbid, i))
+	if (!must_update_persistent(pridbid, i))
 		return;
 
 	/*
@@ -465,7 +450,7 @@ update_tablespaces(int16 pridbid, seginfo *i, bool add)
 static void
 update_databases(int16 pridbid, seginfo *i, bool add)
 {
-	if (pridbid == MASTER_DBID || !must_update_persistent(pridbid, i))
+	if (!must_update_persistent(pridbid, i))
 		return;
 
 	/*
@@ -482,7 +467,7 @@ update_databases(int16 pridbid, seginfo *i, bool add)
 static void
 update_relations(int16 pridbid, seginfo *i, bool add)
 {
-	if (pridbid == MASTER_DBID || !must_update_persistent(pridbid, i))
+	if (!must_update_persistent(pridbid, i))
 		return;
 
 	/*
@@ -498,7 +483,7 @@ update_relations(int16 pridbid, seginfo *i, bool add)
 static void
 dispatch_add_to_segment(int16 pridbid, int16 segdbid, ArrayType *fsmap)
 {
-	/*
+	/* 
 	 * We want to dispatch the statement:
 	 *
 	 *   SELECT gp_add_segment_persistent_entries(targetdbid, mirdbid,
@@ -514,7 +499,7 @@ dispatch_add_to_segment(int16 pridbid, int16 segdbid, ArrayType *fsmap)
 	FmgrInfo flinfo;
 	char *a;
 
-	/*
+	/* 
 	 * array_out caches data in flinfo, as we cannot just
 	 * do a DirectFunctionCall1().
 	 */
@@ -528,7 +513,7 @@ dispatch_add_to_segment(int16 pridbid, int16 segdbid, ArrayType *fsmap)
 					 segdbid,
 					 a);
 
-	CdbDoCommand(q->data, true, false, GANGSCOPE_WRITER);
+	CdbDoCommand(q->data, true, false);
 }
 
 /*
@@ -538,13 +523,13 @@ dispatch_add_to_segment(int16 pridbid, int16 segdbid, ArrayType *fsmap)
 static void
 add_segment_persistent_entries(int16 pridbid, seginfo *i, ArrayType *fsmap)
 {
-	/*
+	/* 
 	 * Add filespace entries in pg_filespace_entry and
 	 * gp_persistent_filespace_node
 	 */
 	update_filespaces(pridbid, i, true, fsmap);
 
-	/*
+	/* 
 	 * Update gp_persistent_tablespace_node.
 	 */
 	update_tablespaces(pridbid, i, true);
@@ -559,7 +544,7 @@ add_segment_persistent_entries(int16 pridbid, seginfo *i, ArrayType *fsmap)
 	 */
 	update_relations(pridbid, i, true);
 
-	/*
+	/* 
 	 * If we're adding a new segment mirror, we need to dispatch to that
 	 * segment's primary.
 	 */
@@ -574,13 +559,13 @@ add_segment_persistent_entries(int16 pridbid, seginfo *i, ArrayType *fsmap)
 static void
 remove_segment_persistent_entries(int16 pridbid, seginfo *i)
 {
-	/*
+	/* 
 	 * Remove filespace entries in pg_filespace_entry and
 	 * gp_persistent_filespace_node
 	 */
 	update_filespaces(pridbid, i, false, NULL);
 
-	/*
+	/* 
 	 * Update gp_persistent_tablespace_node.
 	 */
 	update_tablespaces(pridbid, i, false);
@@ -595,7 +580,7 @@ remove_segment_persistent_entries(int16 pridbid, seginfo *i)
 	 */
 	update_relations(pridbid, i, false);
 
-	/*
+	/* 
 	 * If we're adding a segment mirror, we need to dispatch to that
 	 * segment's primary.
 	 */
@@ -609,7 +594,7 @@ remove_segment_persistent_entries(int16 pridbid, seginfo *i)
 						 pridbid,
 						 i->db.dbid);
 
-		CdbDoCommand(q->data, true, false, GANGSCOPE_WRITER);
+		CdbDoCommand(q->data, true, false);
 	}
 }
 
@@ -623,21 +608,13 @@ add_segment_config(seginfo *i)
 	Datum values[Natts_gp_segment_configuration];
 	bool nulls[Natts_gp_segment_configuration];
 	HeapTuple tuple;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
-
-	pcqCtx = 
-			caql_beginscan(
-					caql_addrel(cqclr(&cqc), rel),
-					cql("INSERT INTO gp_segment_configuration ",
-						NULL));
 
 	MemSet(nulls, false, sizeof(nulls));
 
 	values[Anum_gp_segment_configuration_dbid - 1] = Int16GetDatum(i->db.dbid);
 	values[Anum_gp_segment_configuration_content - 1] = Int16GetDatum(i->db.segindex);
 	values[Anum_gp_segment_configuration_role - 1] = CharGetDatum(i->db.role);
-	values[Anum_gp_segment_configuration_preferred_role - 1] =
+	values[Anum_gp_segment_configuration_preferred_role - 1] = 
 		CharGetDatum(i->db.preferred_role);
 	values[Anum_gp_segment_configuration_mode - 1] =
 		CharGetDatum(i->db.mode);
@@ -658,12 +635,13 @@ add_segment_config(seginfo *i)
 
 	nulls[Anum_gp_segment_configuration_san_mounts - 1] = true;
 
-	tuple = caql_form_tuple(pcqCtx, values, nulls);
+	tuple = heap_form_tuple(RelationGetDescr(rel),
+							values,
+							nulls);
 
-	/* insert a new tuple */
-	caql_insert(pcqCtx, tuple); /* implicit update of index as well */
+	simple_heap_insert(rel, tuple);
+	CatalogUpdateIndexes(rel, tuple);
 
-	caql_endscan(pcqCtx);
 	heap_close(rel, NoLock);
 }
 
@@ -686,19 +664,25 @@ add_segment_config_entry(int16 pridbid, seginfo *i, ArrayType *fsmap)
 static void
 remove_segment_config(int16 dbid)
 {
-	cqContext	cqc;
-	int numDel = 0;
+	HeapTuple tuple;
+	HeapScanDesc scandesc;
+	ScanKeyData key;
 	Relation rel = heap_open(GpSegmentConfigRelationId,
 							 RowExclusiveLock);
 
-	numDel = caql_getcount(
-			caql_addrel(cqclr(&cqc), rel),
-			cql("DELETE FROM gp_segment_configuration "
-				" WHERE dbid = :1 ",
-				Int16GetDatum(dbid)));
+	ScanKeyInit(&key,
+				Anum_gp_segment_configuration_dbid,
+				BTEqualStrategyNumber, F_INT2EQ,
+				Int16GetDatum(dbid));
+	scandesc = heap_beginscan(rel, SnapshotNow, 1, &key);
 
-	Insist(numDel > 0);
+	tuple = heap_getnext(scandesc, ForwardScanDirection);
 
+	Insist(HeapTupleIsValid(tuple));
+
+	simple_heap_delete(rel, &tuple->t_self);
+
+	heap_endscan(scandesc);
 	heap_close(rel, NoLock);
 }
 
@@ -960,7 +944,7 @@ gp_add_master_standby(PG_FUNCTION_ARGS)
 	int maxdbid;
 	Relation gprel;
 	ArrayType *fsmap;
-
+   
 	if (PG_ARGISNULL(0))
 		elog(ERROR, "host name cannot be NULL");
 	if (PG_ARGISNULL(1))
@@ -1009,7 +993,7 @@ update_gp_master_mirroring(char *str)
 {
 	volatile bool connected = false;
 	volatile bool resetModsDML = false;
-
+	
 	PG_TRY();
 	{
 		StringInfoData sql;
@@ -1089,7 +1073,7 @@ gp_remove_master_standby(PG_FUNCTION_ARGS)
  */
 Datum
 gp_prep_new_segment(PG_FUNCTION_ARGS)
-{
+{	
 	int16		 pridbid;
 	int16        mirdbid;
 	ArrayType	*fsmap;
@@ -1099,7 +1083,7 @@ gp_prep_new_segment(PG_FUNCTION_ARGS)
 
 	fsmap = PG_GETARG_ARRAYTYPE_P(0);
 
-	/*
+	/* 
 	 * The restriction on single-user mode (as opposed to utility mode) is
 	 * because the database cannot be fully started under the postmaster
 	 * when a database has been created in a filespace other than "pg_system"
@@ -1107,10 +1091,10 @@ gp_prep_new_segment(PG_FUNCTION_ARGS)
 	 * this is the function to fix the filespace locations it MUST be run
 	 * in a mode that can startup in this circumstance.
 	 */
-	mirroring_sanity_check(SUPERUSER | SEGMENT_ONLY | SINGLE_USER_MODE,
+	mirroring_sanity_check(SUPERUSER | SEGMENT_ONLY | SINGLE_USER_MODE, 
 						   "gp_prep_new_segment");
-
-	/*
+	
+	/* 
 	 * If the guc isn't set then this function is being called incorrectly -
 	 * the guc is required to start the database when there is a database
 	 * defined in a filespace other than pg_system.
@@ -1119,7 +1103,7 @@ gp_prep_new_segment(PG_FUNCTION_ARGS)
 		elog(ERROR, "gp_prep_new_segment requires the database to be started "
 			 "with gp_before_filespace_setup=true");
 
-	/*
+	/* 
 	 * Fixup the filespace locations for this segment.
 	 *
 	 * :HACK:
@@ -1136,7 +1120,7 @@ gp_prep_new_segment(PG_FUNCTION_ARGS)
 	mirdbid = PersistentFilespace_LookupMirrorDbid(MASTER_DBID);
 	persist_all_filespaces(mirdbid, pridbid, fsmap);
 
-	/*
+	/* 
 	 * Clear out the existing mirror information from gp_persistent_filespace.
 	 */
 	desist_all_filespaces(mirdbid);
@@ -1145,7 +1129,7 @@ gp_prep_new_segment(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(true);
 }
 
-/*
+/* 
  * Perform operations necessary to mask a standby master the actual
  * master in the persistent catalogs.
  */
@@ -1167,43 +1151,43 @@ segment_config_activate_standby(int16 standbydbid, int16 newdbid)
 	/* we use AccessExclusiveLock to prevent races */
 	Relation rel = heap_open(GpSegmentConfigRelationId, AccessExclusiveLock);
 	HeapTuple tuple;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
-	int numDel = 0;
+	HeapScanDesc scandesc;
+	ScanKeyData key;
 
 	/* first, delete the old master */
 	Insist(newdbid == MASTER_DBID);
+	ScanKeyInit(&key,
+				Anum_gp_segment_configuration_dbid,
+				BTEqualStrategyNumber, F_INT2EQ,
+				Int16GetDatum(newdbid));
+	scandesc = heap_beginscan(rel, SnapshotNow, 1, &key);
+	tuple = heap_getnext(scandesc, ForwardScanDirection);
 
-	numDel = caql_getcount(
-			caql_addrel(cqclr(&cqc), rel),
-			cql("DELETE FROM gp_segment_configuration "
-				" WHERE dbid = :1 ",
-				Int16GetDatum(newdbid)));
-
-	if (0 == numDel)
+	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cannot find old master, dbid %i", newdbid);
 
-	/* now, set out old dbid to the new dbid */
-	pcqCtx = caql_beginscan(
-			caql_addrel(cqclr(&cqc), rel),
-			cql("SELECT * FROM gp_segment_configuration "
-				" WHERE dbid = :1 "
-				" FOR UPDATE ",
-				Int16GetDatum(standbydbid)));
+	simple_heap_delete(rel, &tuple->t_self);
+	heap_endscan(scandesc);
 
-	tuple = caql_getnext(pcqCtx);
+	/* now, set out old dbid to the new dbid */
+	ScanKeyInit(&key,
+				Anum_gp_segment_configuration_dbid,
+				BTEqualStrategyNumber, F_INT2EQ,
+				Int16GetDatum(standbydbid));
+	scandesc = heap_beginscan(rel, SnapshotNow, 1, &key);
+	tuple = heap_getnext(scandesc, ForwardScanDirection);
 
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cannot find standby, dbid %i", standbydbid);
-
-	 tuple = heap_copytuple(tuple); 
+	
+	tuple = heap_copytuple(tuple);
 	((Form_gp_segment_configuration)GETSTRUCT(tuple))->dbid = newdbid;
 	((Form_gp_segment_configuration)GETSTRUCT(tuple))->role = SEGMENT_ROLE_PRIMARY;
 	((Form_gp_segment_configuration)GETSTRUCT(tuple))->preferred_role = SEGMENT_ROLE_PRIMARY;
+	simple_heap_update(rel, &tuple->t_self, tuple);
+	CatalogUpdateIndexes(rel, tuple);
 
-	caql_update_current(pcqCtx, tuple); /* implicit update of index as well */
-
-	caql_endscan(pcqCtx);
+	heap_endscan(scandesc);
 
 	heap_close(rel, NoLock);
 }
@@ -1214,40 +1198,41 @@ segment_config_activate_standby(int16 standbydbid, int16 newdbid)
 static void
 filespace_entry_activate_standby(int standbydbid, int newdbid)
 {
-	/*
+	/* 
 	 * Heavy lock isn't required here, we've serialised operations with
 	 * the lock on gp_segment_configuration.
 	 */
 	Relation rel = heap_open(FileSpaceEntryRelationId, RowExclusiveLock);
 	HeapTuple tuple;
-	cqContext  *pcqCtx;
-	cqContext	cqc;
-	int numDel = 0;
+	HeapScanDesc scandesc;
+	ScanKeyData key;
 
 	/* first, delete the old master */
 	Insist(newdbid == MASTER_DBID);
+	ScanKeyInit(&key,
+				Anum_pg_filespace_entry_fsedbid,
+				BTEqualStrategyNumber, F_INT2EQ,
+				Int16GetDatum(newdbid));
+	scandesc = heap_beginscan(rel, SnapshotNow, 1, &key);
+	while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
+		simple_heap_delete(rel, &tuple->t_self);
 
-	numDel = caql_getcount(
-			caql_addrel(cqclr(&cqc), rel),
-			cql("DELETE FROM pg_filespace_entry "
-				" WHERE fsedbid = :1 ",
-				Int16GetDatum(newdbid)));
+	heap_endscan(scandesc);
 
-	pcqCtx = caql_beginscan(
-			caql_addrel(cqclr(&cqc), rel),
-			cql("SELECT * FROM pg_filespace_entry "
-				" WHERE fsedbid = :1 "
-				" FOR UPDATE ",
-				Int16GetDatum(standbydbid)));
-
-	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
+	ScanKeyInit(&key,
+				Anum_pg_filespace_entry_fsedbid,
+				BTEqualStrategyNumber, F_INT2EQ,
+				Int16GetDatum(standbydbid));
+	scandesc = heap_beginscan(rel, SnapshotNow, 1, &key);
+	while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
 	{
 		tuple = heap_copytuple(tuple);
 		((Form_pg_filespace_entry)GETSTRUCT(tuple))->fsedbid = newdbid;
-		caql_update_current(pcqCtx, tuple);
+		simple_heap_update(rel, &tuple->t_self, tuple);
+		CatalogUpdateIndexes(rel, tuple);
 	}
 
-	caql_endscan(pcqCtx);
+	heap_endscan(scandesc);
 	heap_close(rel, NoLock);
 }
 
@@ -1299,7 +1284,7 @@ gp_activate_standby(PG_FUNCTION_ARGS)
 
 	persistent_activate_standby(olddbid, newdbid);
 
-	/*
+	/* 
 	 * Now the persistent tables now about us, so we can switch our
 	 * identity
 	 */

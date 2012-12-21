@@ -41,12 +41,6 @@
 #include "utils/hsearch.h"
 #include "utils/pg_crc.h"
 
-#ifdef O_DIRECT
-#define PG_O_DIRECT                             O_DIRECT
-#else
-#define PG_O_DIRECT                             0
-#endif
-
 /*
  * It specifies fields maintained by each entry in hash table
  * of open files.
@@ -858,10 +852,6 @@ FileRepMirror_RunConsumer(void)
 			case FileRepOperationOpen:
 			case FileRepOperationCreateAndOpen:
 				found = FALSE;
-
-				/* MPP-16542 : mask off O_DIRECT for filerep mirror shmem alignment issue */
-				if (fileRepMessageHeader->fileRepOperationDescription.open.fileFlags & PG_O_DIRECT)
-					fileRepMessageHeader->fileRepOperationDescription.open.fileFlags &= ~PG_O_DIRECT;
 				
 				entry = FileRepMirror_LookupFileName(fileName);
 				

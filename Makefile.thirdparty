@@ -30,7 +30,6 @@ aix5_ppc_64_BLD_BITS=64
 aix5_ppc_32_BLD_BITS=32
 rhel4_x86_64_BLD_BITS=64
 rhel4_x86_32_BLD_BITS=32
-rhel6_x86_64_BLD_BITS=64
 rhel5_x86_64_BLD_BITS=64
 rhel5_x86_32_BLD_BITS=32
 sol8_sparc_BLD_BITS=32
@@ -125,18 +124,17 @@ BLD_THIRDPARTY_LIBS_BASE_TO_REMOVE:=$(strip $(tmpBLD_THIRDPARTY_LIBS_BASE_TO_REM
 # the BASE directory structure for you from the //tools depot in Perforce
 # --------------------------------------------------------------------------------
 define tmpBLD_THIRDPARTY_LIBS_BASE
-	DDBoostSDK/2.4.1.0-289644
+	DDBoostSDK/2.4.0.2-268577
 	apr/1.2.12
 	apr-util/1.2.12
-	bzip2/1.0.6
-	clapack/3.1.1-p1
+	bzip2/1.0.5
+	clapack/3.1.1
 	curl/7.21.7
-	emcconnect/1.1
+	emcconnect/1.0
 	json-c/0.6
-	gimli/1.1.54
 	krb5/1.6.2
 	libedit/3.0
-	libesmtp/1.0.4-p1
+	libesmtp/1.0.4
 	libevent/1.4.6
 	lighttpd/1.4.28
 	net-snmp/5.5

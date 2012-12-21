@@ -31,7 +31,6 @@
 #include <unistd.h>
 
 #include "access/genam.h"
-#include "access/catquery.h"
 #include "access/heapam.h"
 #include "access/reloptions.h"
 #include "access/sysattr.h"
@@ -235,7 +234,8 @@ ScanPgRelation(Oid targetRelId, bool indexOK, Relation *pg_class_relation)
 {
 	HeapTuple	pg_class_tuple;
 	Relation	pg_class_desc;
-	cqContext	cqc;
+	SysScanDesc pg_class_scan;
+	ScanKeyData key[1];
 
 	/*
 	 * If something goes wrong during backend startup, we might find ourselves
@@ -249,6 +249,10 @@ ScanPgRelation(Oid targetRelId, bool indexOK, Relation *pg_class_relation)
 	/*
 	 * form a scan key
 	 */
+	ScanKeyInit(&key[0],
+				ObjectIdAttributeNumber,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(targetRelId));
 
 	/*
 	 * Open pg_class and fetch a tuple.  Force heap scan if we haven't yet
@@ -257,21 +261,21 @@ ScanPgRelation(Oid targetRelId, bool indexOK, Relation *pg_class_relation)
 	 * scan by setting indexOK == false.
 	 */
 	pg_class_desc = heap_open(RelationRelationId, AccessShareLock);
+	pg_class_scan = systable_beginscan(pg_class_desc, ClassOidIndexId,
+									   indexOK && criticalRelcachesBuilt,
+									   SnapshotNow,
+									   1, key);
 
-	pg_class_tuple = caql_getfirst(
-			caql_syscache(
-					caql_indexOK(caql_addrel(cqclr(&cqc), pg_class_desc), 
-								 (indexOK && criticalRelcachesBuilt)),
-					false),
-			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(targetRelId)));
+	pg_class_tuple = systable_getnext(pg_class_scan);
 
 	/*
-	 * Must copy tuple before releasing buffer. -- already a copy
+	 * Must copy tuple before releasing buffer.
 	 */
+	if (HeapTupleIsValid(pg_class_tuple))
+		pg_class_tuple = heap_copytuple(pg_class_tuple);
 
 	/* all done */
+	systable_endscan(pg_class_scan);
 
 	if (pg_class_relation == NULL)
 		heap_close(pg_class_desc, AccessShareLock);
@@ -298,18 +302,6 @@ GpRelationNodeBeginScan(
 	/*
 	 * form a scan key
 	 */
-	/* XXX XXX: break this out -- find callers - jic 2011/12/09 */
-	/* maybe it's ok - return a cql context ? */
-
-	/* XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX */
-	/* no json defs for persistent tables ? */
-/*
-	cqxx("SELECT * FROM gp_relation_node_relfilenode "
-		 " WHERE oid = :1 ",
-		 ObjectIdGetDatum(relfilenode));
-*/
-	/* XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX */
-
 	ScanKeyInit(&gpRelationNodeScan->scankey[0],
 				Anum_gp_relation_node_relfilenode_oid,
 				BTEqualStrategyNumber, F_OIDEQ,
@@ -407,17 +399,6 @@ ScanGpRelationNodeTuple(
 	/*
 	 * form a scan key
 	 */
-
-	/* XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX */
-/*
-	cqxx("SELECT * FROM gp_relation_node "
-		 " WHERE relfilenode_oid = :1 "
-		 " AND segment_file_num = :2 ",
-		 ObjectIdGetDatum(relfilenode),
-		 Int32GetDatum(segmentFileNum));
-*/
-	/* XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX */
-
 	ScanKeyInit(&key[0],
 				Anum_gp_relation_node_relfilenode_oid,
 				BTEqualStrategyNumber, F_OIDEQ,
@@ -496,22 +477,6 @@ FetchGpRelationNodeTuple(
 						&createMirrorDataLossTrackingSessionNum,
 						persistentTid,
 						persistentSerialNum);
-	if (Debug_check_for_invalid_persistent_tid)
-	{
-		if (actualRelationNode != relfilenode)
-		{
-			elog(ERROR, 
-				 "FetchGpRelationNodeTuple relfilenode mismatch (actual %u, expected %u)",
-				 actualRelationNode,
-				 relfilenode);
-		}
-		if (PersistentStore_IsZeroTid(persistentTid))
-		{	
-			elog(ERROR, 
-				 "FetchGpRelationNodeTuple has invalid TID (0,0) for relfilenode %u",
-				 relfilenode);
-		}
-	}
 	Assert (actualRelationNode == relfilenode);
 	
 	return tuple;
@@ -552,26 +517,6 @@ ReadGpRelationNode(
 	}
 	else
 	{
-		if (Debug_persistent_print)
-		{
-			TupleVisibilitySummary tupleVisibilitySummary;
-			char *tupleVisibilitySummaryString;
-			
-			GetTupleVisibilitySummary(
-									tuple,
-									&tupleVisibilitySummary);
-			tupleVisibilitySummaryString = GetTupleVisibilitySummaryString(&tupleVisibilitySummary);
-			
-			elog(Persistent_DebugPrintLevel(), 
-				 "ReadGpRelationNode: For relfilenode %u, segment file #%d found persistent serial number " INT64_FORMAT ", TID %s (gp_relation_node tuple visibility: %s)",
-				 relfilenode,
-				 segmentFileNum,
-				 *persistentSerialNum,
-				 ItemPointerToString(persistentTid),
-				 tupleVisibilitySummaryString);
-			pfree(tupleVisibilitySummaryString);
-		}
-
 		found = true;
 		heap_freetuple(tuple);
 	}
@@ -593,7 +538,6 @@ RelationFetchSegFile0GpRelationNode(
 			relation->rd_segfile0_relationnodeinfo.persistentSerialNum = 0;
 		
 			relation->rd_segfile0_relationnodeinfo.isPresent = true;
-			relation->rd_segfile0_relationnodeinfo.tidAllowedToBeZero = true;
 			
 			return; // The initdb process will load the persistent table once we out of bootstrap mode.
 		}
@@ -608,19 +552,6 @@ RelationFetchSegFile0GpRelationNode(
 				 relation->rd_rel->relname.data,
 				 relation->rd_id,
 				 relation->rd_node.relNode);
-		}
-
-		Assert(!Persistent_BeforePersistenceWork());
-		if (Debug_check_for_invalid_persistent_tid &&
-			PersistentStore_IsZeroTid(&relation->rd_segfile0_relationnodeinfo.persistentTid))
-		{	
-			elog(ERROR, 
-				 "RelationFetchSegFile0GpRelationNode has invalid TID (0,0) into relation %u/%u/%u '%s', serial number " INT64_FORMAT,
-				 relation->rd_node.spcNode,
-				 relation->rd_node.dbNode,
-				 relation->rd_node.relNode,
-				 NameStr(relation->rd_rel->relname),
-				 relation->rd_segfile0_relationnodeinfo.persistentSerialNum);
 		}
 
 		relation->rd_segfile0_relationnodeinfo.isPresent = true;
@@ -642,38 +573,12 @@ RelationFetchGpRelationNodeForXLog_Index(
 	countInThisBackend++;
 
 	if (deep >= 2)
-	{
-		int saveDeep;
-
-		if (Debug_gp_relation_node_fetch_wait_for_debugging)
-		{
-			/* Code for investigating MPP-16395, will be removed as part of the fix */
-			elog(WARNING, "RelationFetchGpRelationNodeForXLog_Index [%d] for non-heap %u/%u/%u (deep %d) -- waiting for debug attach...",
-				 countInThisBackend,
-				 relation->rd_node.spcNode,
-				 relation->rd_node.dbNode,
-				 relation->rd_node.relNode,
-				 deep);
-
-			for (int i=0; i < 24 * 60; i++)
-			{
-				pg_usleep(60000000L); /* 60 sec */
-			}
-		}
-
-		/*
-		 * Reset counter in case the user continues to use the session.
-		 */
-		saveDeep = deep;
-		deep = 0;
-
-		elog(ERROR, "RelationFetchGpRelationNodeForXLog_Index [%d] for non-heap %u/%u/%u (deep %d)",
+		elog(ERROR, "RelationFetchGpRelationNodeForXLog [%d] for non-heap %u/%u/%u (deep %d)",
 			 countInThisBackend,
 			 relation->rd_node.spcNode,
 			 relation->rd_node.dbNode,
 			 relation->rd_node.relNode,
-			 saveDeep);
-	}
+			 deep);
 
 	RelationFetchSegFile0GpRelationNode(relation);
 
@@ -733,7 +638,6 @@ AllocateRelationDesc(Form_pg_class relp)
 	 * needing it to open pg_class and then relation_open does infinite recursion...
 	 */
 	relation->rd_segfile0_relationnodeinfo.isPresent = false;
-	relation->rd_segfile0_relationnodeinfo.tidAllowedToBeZero = false;
 
 	/* and allocate attribute tuple form storage */
 	relation->rd_att = CreateTemplateTupleDesc(relationForm->relnatts,
@@ -835,8 +739,8 @@ RelationBuildTupleDesc(Relation relation)
 {
 	HeapTuple	pg_attribute_tuple;
 	Relation	pg_attribute_desc;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
+	SysScanDesc pg_attribute_scan;
+	ScanKeyData skey[2];
 	int			need;
 	TupleConstr *constr;
 	AttrDefault *attrdef = NULL;
@@ -856,6 +760,14 @@ RelationBuildTupleDesc(Relation relation)
 	 * (Eliminating system attribute rows at the index level is lots faster
 	 * than fetching them.)
 	 */
+	ScanKeyInit(&skey[0],
+				Anum_pg_attribute_attrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(RelationGetRelid(relation)));
+	ScanKeyInit(&skey[1],
+				Anum_pg_attribute_attnum,
+				BTGreaterStrategyNumber, F_INT2GT,
+				Int16GetDatum(0));
 
 	/*
 	 * Open pg_attribute and begin a scan.	Force heap scan if we haven't yet
@@ -863,24 +775,18 @@ RelationBuildTupleDesc(Relation relation)
 	 * without a pg_internal.init file).
 	 */
 	pg_attribute_desc = heap_open(AttributeRelationId, AccessShareLock);
-
-	pcqCtx = caql_beginscan(
-			caql_syscache(
-					caql_indexOK(caql_addrel(cqclr(&cqc), pg_attribute_desc), 
-								 criticalRelcachesBuilt),
-					false),
-			cql("SELECT * FROM pg_attribute "
-				" WHERE attrelid = :1 "
-				" AND attnum > :2 ",
-				ObjectIdGetDatum(RelationGetRelid(relation)),
-				Int16GetDatum(0)));
+	pg_attribute_scan = systable_beginscan(pg_attribute_desc,
+										   AttributeRelidNumIndexId,
+										   criticalRelcachesBuilt,
+										   SnapshotNow,
+										   2, skey);
 
 	/*
 	 * add attribute data to relation->rd_att
 	 */
 	need = relation->rd_rel->relnatts;
 
-	while (HeapTupleIsValid(pg_attribute_tuple = caql_getnext(pcqCtx)))
+	while (HeapTupleIsValid(pg_attribute_tuple = systable_getnext(pg_attribute_scan)))
 	{
 		Form_pg_attribute attp;
 
@@ -918,7 +824,7 @@ RelationBuildTupleDesc(Relation relation)
 	/*
 	 * end the scan and close the attribute relation
 	 */
-	caql_endscan(pcqCtx);
+	systable_endscan(pg_attribute_scan);
 	heap_close(pg_attribute_desc, AccessShareLock);
 
 	if (need != 0)
@@ -1008,8 +914,8 @@ RelationBuildRuleLock(Relation relation)
 	HeapTuple	rewrite_tuple;
 	Relation	rewrite_desc;
 	TupleDesc	rewrite_tupdesc;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
+	SysScanDesc rewrite_scan;
+	ScanKeyData key;
 	RuleLock   *rulelock;
 	int			numlocks;
 	RewriteRule **rules;
@@ -1036,6 +942,14 @@ RelationBuildRuleLock(Relation relation)
 	numlocks = 0;
 
 	/*
+	 * form a scan key
+	 */
+	ScanKeyInit(&key,
+				Anum_pg_rewrite_ev_class,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(RelationGetRelid(relation)));
+
+	/*
 	 * open pg_rewrite and begin a scan
 	 *
 	 * Note: since we scan the rules using RewriteRelRulenameIndexId, we will
@@ -1045,17 +959,12 @@ RelationBuildRuleLock(Relation relation)
 	 */
 	rewrite_desc = heap_open(RewriteRelationId, AccessShareLock);
 	rewrite_tupdesc = RelationGetDescr(rewrite_desc);
+	rewrite_scan = systable_beginscan(rewrite_desc,
+									  RewriteRelRulenameIndexId,
+									  true, SnapshotNow,
+									  1, &key);
 
-	pcqCtx = caql_beginscan(
-			caql_syscache(
-					caql_indexOK(caql_addrel(cqclr(&cqc), rewrite_desc), 
-								 true),
-					false),
-			cql("SELECT * FROM pg_rewrite "
-				" WHERE ev_class = :1 ",
-				ObjectIdGetDatum(RelationGetRelid(relation))));
-
-	while (HeapTupleIsValid(rewrite_tuple = caql_getnext(pcqCtx)))
+	while (HeapTupleIsValid(rewrite_tuple = systable_getnext(rewrite_scan)))
 	{
 		Form_pg_rewrite rewrite_form = (Form_pg_rewrite) GETSTRUCT(rewrite_tuple);
 		bool		isnull;
@@ -1128,7 +1037,7 @@ RelationBuildRuleLock(Relation relation)
 	/*
 	 * end the scan and close the attribute relation
 	 */
-	caql_endscan(pcqCtx);
+	systable_endscan(rewrite_scan);
 	heap_close(rewrite_desc, AccessShareLock);
 
 	/*
@@ -1555,8 +1464,8 @@ LookupOpclassInfo(Oid operatorClassOid,
 	OpClassCacheEnt *opcentry;
 	bool		found;
 	Relation	rel;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
+	SysScanDesc scan;
+	ScanKeyData skey[2];
 	HeapTuple	htup;
 	bool		indexOK;
 
@@ -1622,20 +1531,19 @@ LookupOpclassInfo(Oid operatorClassOid,
 	 */
 	if (numStrats > 0)
 	{
+		ScanKeyInit(&skey[0],
+					Anum_pg_amop_amopclaid,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(operatorClassOid));
+		ScanKeyInit(&skey[1],
+					Anum_pg_amop_amopsubtype,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(InvalidOid));
 		rel = heap_open(AccessMethodOperatorRelationId, AccessShareLock);
+		scan = systable_beginscan(rel, AccessMethodStrategyIndexId, indexOK,
+								  SnapshotNow, 2, skey);
 
-		pcqCtx = caql_beginscan(
-				caql_syscache(
-						caql_indexOK(caql_addrel(cqclr(&cqc), rel), 
-									 indexOK),
-						false),
-				cql("SELECT * FROM pg_amop "
-					" WHERE amopclaid = :1 "
-					" AND amopsubtype = :2 ",
-					ObjectIdGetDatum(operatorClassOid),
-					ObjectIdGetDatum(InvalidOid)));
-
-		while (HeapTupleIsValid(htup = caql_getnext(pcqCtx)))
+		while (HeapTupleIsValid(htup = systable_getnext(scan)))
 		{
 			Form_pg_amop amopform = (Form_pg_amop) GETSTRUCT(htup);
 
@@ -1647,7 +1555,7 @@ LookupOpclassInfo(Oid operatorClassOid,
 				amopform->amopopr;
 		}
 
-		caql_endscan(pcqCtx);
+		systable_endscan(scan);
 		heap_close(rel, AccessShareLock);
 	}
 
@@ -1657,20 +1565,19 @@ LookupOpclassInfo(Oid operatorClassOid,
 	 */
 	if (numSupport > 0)
 	{
+		ScanKeyInit(&skey[0],
+					Anum_pg_amproc_amopclaid,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(operatorClassOid));
+		ScanKeyInit(&skey[1],
+					Anum_pg_amproc_amprocsubtype,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(InvalidOid));
 		rel = heap_open(AccessMethodProcedureRelationId, AccessShareLock);
+		scan = systable_beginscan(rel, AccessMethodProcedureIndexId, indexOK,
+								  SnapshotNow, 2, skey);
 
-		pcqCtx = caql_beginscan(
-				caql_syscache(
-						caql_indexOK(caql_addrel(cqclr(&cqc), rel), 
-									 indexOK),
-						false),
-				cql("SELECT * FROM pg_amproc "
-					" WHERE amopclaid = :1 "
-					" AND amprocsubtype = :2 ",
-					ObjectIdGetDatum(operatorClassOid),
-					ObjectIdGetDatum(InvalidOid)));
-
-		while (HeapTupleIsValid(htup = caql_getnext(pcqCtx)))
+		while (HeapTupleIsValid(htup = systable_getnext(scan)))
 		{
 			Form_pg_amproc amprocform = (Form_pg_amproc) GETSTRUCT(htup);
 
@@ -1683,7 +1590,7 @@ LookupOpclassInfo(Oid operatorClassOid,
 				amprocform->amproc;
 		}
 
-		caql_endscan(pcqCtx);
+		systable_endscan(scan);
 		heap_close(rel, AccessShareLock);
 	}
 
@@ -1773,7 +1680,6 @@ formrdesc(const char *relationName, Oid relationReltype,
 	 * Physical file-system information.
 	 */
 	relation->rd_segfile0_relationnodeinfo.isPresent = false;
-	relation->rd_segfile0_relationnodeinfo.tidAllowedToBeZero = false;
 	
 	/*
 	 * initialize attribute tuple form
@@ -2045,11 +1951,6 @@ RelationReloadClassinfo(Relation relation)
 	if (relation->rd_amcache)
 		pfree(relation->rd_amcache);
 	relation->rd_amcache = NULL;
-
-	/* Forget gp_relation_node information -- it may have changed. */
-	MemSet(&relation->rd_segfile0_relationnodeinfo, 0, sizeof(RelationNodeInfo));
-
-
 	/* Okay, now it's valid again */
 	relation->rd_isvalid = true;
 }
@@ -2290,9 +2191,6 @@ RelationClearRelation(Relation relation, bool rebuild)
 
 		/* preserve rd_cdbpolicy, as there are probably pointers to it */
 		SWAPFIELD(struct GpPolicy *, rd_cdbpolicy);
-
-		/* preserve persistent table information for the relation  */
-		SWAPFIELD(struct RelationNodeInfo, rd_segfile0_relationnodeinfo);
 
 #undef SWAPFIELD
 
@@ -2816,7 +2714,6 @@ RelationBuildLocalRelation(const char *relname,
 	 * disk file is created.
 	 */
 	rel->rd_segfile0_relationnodeinfo.isPresent = false;
-	rel->rd_segfile0_relationnodeinfo.tidAllowedToBeZero = false;
 
 	/*
 	 * Insert relation physical and logical identifiers (OIDs) into the right
@@ -2932,14 +2829,8 @@ RelationCacheInitializePhase2(void)
 	 * Try to load the relcache cache file.  If unsuccessful, bootstrap the
 	 * cache with pre-made descriptors for the critical "nailed-in" system
 	 * catalogs.
-	 *
-	 * During upgrade, however, we want to build the relcache from scratch.
-	 * This is because the nailed relations given just below may have been
-	 * updated, and the relcache init file may be based on a stale
-	 * understanding of these nailed relations.
 	 */
 	if (IsBootstrapProcessingMode() ||
-		gp_upgrade_mode ||
 		!load_relcache_init_file())
 	{
 		needNewCacheFile = true;
@@ -3234,27 +3125,25 @@ AttrDefaultFetch(Relation relation)
 	AttrDefault *attrdef = relation->rd_att->constr->defval;
 	int			ndef = relation->rd_att->constr->num_defval;
 	Relation	adrel;
+	SysScanDesc adscan;
+	ScanKeyData skey;
 	HeapTuple	htup;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
 	Datum		val;
 	bool		isnull;
 	int			found;
 	int			i;
 
-	adrel = heap_open(AttrDefaultRelationId, AccessShareLock);
-	pcqCtx = caql_beginscan(
-			caql_syscache(
-					caql_indexOK(caql_addrel(cqclr(&cqc), adrel), 
-								 true),
-					false),
-			cql("SELECT * FROM pg_attrdef "
-				" WHERE adrelid = :1 ",
-				ObjectIdGetDatum(RelationGetRelid(relation))));
+	ScanKeyInit(&skey,
+				Anum_pg_attrdef_adrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(RelationGetRelid(relation)));
 
+	adrel = heap_open(AttrDefaultRelationId, AccessShareLock);
+	adscan = systable_beginscan(adrel, AttrDefaultIndexId, true,
+								SnapshotNow, 1, &skey);
 	found = 0;
 
-	while (HeapTupleIsValid(htup = caql_getnext(pcqCtx)))
+	while (HeapTupleIsValid(htup = systable_getnext(adscan)))
 	{
 		Form_pg_attrdef adform = (Form_pg_attrdef) GETSTRUCT(htup);
 
@@ -3287,7 +3176,7 @@ AttrDefaultFetch(Relation relation)
 				 adform->adnum, RelationGetRelationName(relation));
 	}
 
-	caql_endscan(pcqCtx);
+	systable_endscan(adscan);
 	heap_close(adrel, AccessShareLock);
 
 	if (found != ndef)
@@ -3304,25 +3193,23 @@ CheckConstraintFetch(Relation relation)
 	ConstrCheck *check = relation->rd_att->constr->check;
 	int			ncheck = relation->rd_att->constr->num_check;
 	Relation	conrel;
+	SysScanDesc conscan;
+	ScanKeyData skey[1];
 	HeapTuple	htup;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
 	Datum		val;
 	bool		isnull;
 	int			found = 0;
 
+	ScanKeyInit(&skey[0],
+				Anum_pg_constraint_conrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(RelationGetRelid(relation)));
+
 	conrel = heap_open(ConstraintRelationId, AccessShareLock);
+	conscan = systable_beginscan(conrel, ConstraintRelidIndexId, true,
+								 SnapshotNow, 1, skey);
 
-	pcqCtx = caql_beginscan(
-			caql_syscache(
-					caql_indexOK(caql_addrel(cqclr(&cqc), conrel), 
-								 true),
-						false),
-			cql("SELECT * FROM pg_constraint "
-				" WHERE conrelid = :1 ",
-				ObjectIdGetDatum(RelationGetRelid(relation))));
-
-	while (HeapTupleIsValid(htup = caql_getnext(pcqCtx)))
+	while (HeapTupleIsValid(htup = systable_getnext(conscan)))
 	{
 		Form_pg_constraint conform = (Form_pg_constraint) GETSTRUCT(htup);
 
@@ -3350,7 +3237,7 @@ CheckConstraintFetch(Relation relation)
 		found++;
 	}
 
-	caql_endscan(pcqCtx);
+	systable_endscan(conscan);
 	heap_close(conrel, AccessShareLock);
 
 	if (found != ncheck)
@@ -3404,9 +3291,9 @@ List *
 RelationGetIndexList(Relation relation)
 {
 	Relation	indrel;
+	SysScanDesc indscan;
+	ScanKeyData skey;
 	HeapTuple	htup;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
 	List	   *result;
 	Oid			oidIndex;
 	MemoryContext oldcxt;
@@ -3425,19 +3312,16 @@ RelationGetIndexList(Relation relation)
 	oidIndex = InvalidOid;
 
 	/* Prepare to scan pg_index for entries having indrelid = this rel. */
+	ScanKeyInit(&skey,
+				Anum_pg_index_indrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(RelationGetRelid(relation)));
 
 	indrel = heap_open(IndexRelationId, AccessShareLock);
+	indscan = systable_beginscan(indrel, IndexIndrelidIndexId, true,
+								 SnapshotNow, 1, &skey);
 
-	pcqCtx = caql_beginscan(
-			caql_syscache(
-					caql_indexOK(caql_addrel(cqclr(&cqc), indrel), 
-								 true),
-						false),
-			cql("SELECT * FROM pg_index "
-				" WHERE indrelid = :1 ",
-				ObjectIdGetDatum(RelationGetRelid(relation))));
-
-	while (HeapTupleIsValid(htup = caql_getnext(pcqCtx)))
+	while (HeapTupleIsValid(htup = systable_getnext(indscan)))
 	{
 		Form_pg_index index = (Form_pg_index) GETSTRUCT(htup);
 
@@ -3453,7 +3337,7 @@ RelationGetIndexList(Relation relation)
 			oidIndex = index->indexrelid;
 	}
 
-	caql_endscan(pcqCtx);
+	systable_endscan(indscan);
 	heap_close(indrel, AccessShareLock);
 
 	/* Now save a copy of the completed list in the relcache entry. */

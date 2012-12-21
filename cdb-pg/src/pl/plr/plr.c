@@ -48,22 +48,15 @@ static bool	plr_be_init_done = false;
 /* namespace OID for the PL/R language handler function */
 static Oid plr_nspOid = InvalidOid;
 
-/* A global variable defined by R runtime that controls whether R's own
- * signal handlers are installed or not.
- * By default, R initializes it to 1. In plr, the better option is not to
- * install R's own signal handlers so that the embedding process can have
- * more control over how the signals are processed.
- *
- * There is another global variable R_interrupts_suspended that controls whether
- * R's own signal handlers (whether it is installed is
- * controlled by R_SignalHandlers) are used to deal with signals.
- * Set R_interrupts_suspended to TRUE only prevents R from running it's own
- * handlers; R's handlers still are registered and override postgres' handlers.
- *
- * It's preferred to set R_SignalHandlers to 0 so that R's signal handlers are not
- * installed at all.
- */
-extern int R_SignalHandlers;
+/* 
+ * A global variable defined by R runtime that controls whether signals are 
+ * handled by R's handlers or ignored.
+ * By default, R initializes it to FALSE. In PLR, the better option is to 
+ * disable R's handler so that the embedding process can have more control 
+ * over how the signals are processed. 
+ */ 
+extern Rboolean R_interrupts_suspended; 
+
 
 /*
  * defines
@@ -184,7 +177,6 @@ static Datum plr_trigger_handler(PG_FUNCTION_ARGS);
 static Datum plr_func_handler(PG_FUNCTION_ARGS);
 static plr_function *compile_plr_function(FunctionCallInfo fcinfo);
 static plr_function *do_compile(FunctionCallInfo fcinfo,
-								cqContext	*pcqCtx,
 								HeapTuple procTup,
 								plr_func_hashkey *hashkey);
 static SEXP plr_parse_func_body(const char *body);
@@ -209,9 +201,6 @@ plr_call_handler(PG_FUNCTION_ARGS)
 {
 	Datum			retval;
 
-	/* reset to 0 to make sure that R's signal handlers are not installed. */
-	R_SignalHandlers = 0;
-	
 	/* save caller's context */
 	plr_caller_context = CurrentMemoryContext;
 
@@ -222,6 +211,9 @@ plr_call_handler(PG_FUNCTION_ARGS)
 
 	/* initialize R if needed */
 	plr_init_all(fcinfo->flinfo->fn_oid);
+
+	/* reset the flag to TRUE to make sure that R's handlers are disabled. */ 
+	R_interrupts_suspended = true; 
 
 	if (CALLED_AS_TRIGGER(fcinfo))
 		retval = plr_trigger_handler(fcinfo);
@@ -410,6 +402,11 @@ plr_init(void)
 	 */
 	R_Interactive = false;
 #endif
+
+	/* 
+	 * This will instruct the RVM to bypass its own signal handlers. 
+	 */
+	R_interrupts_suspended = true; 
 
 	plr_pm_init_done = true;
 }
@@ -798,21 +795,14 @@ compile_plr_function(FunctionCallInfo fcinfo)
 	plr_function	   *function;
 	plr_func_hashkey	hashkey;
 	bool				hashkey_valid = false;
-	cqContext		   *pcqCtx;
-
 	ERRORCONTEXTCALLBACK;
 
 	/*
 	 * Lookup the pg_proc tuple by Oid; we'll need it in any case
 	 */
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_proc "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(funcOid)));
-
-	procTup = caql_getnext(pcqCtx);
-
+	procTup = SearchSysCache(PROCOID,
+							 ObjectIdGetDatum(funcOid),
+							 0, 0, 0);
 	if (!HeapTupleIsValid(procTup))
 		/* internal error */
 		elog(ERROR, "cache lookup failed for proc %u", funcOid);
@@ -891,10 +881,10 @@ compile_plr_function(FunctionCallInfo fcinfo)
 		/*
 		 * Do the hard part.
 		 */
-		function = do_compile(fcinfo, pcqCtx, procTup, &hashkey);
+		function = do_compile(fcinfo, procTup, &hashkey);
 	}
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(procTup);
 
 	/*
 	 * Save pointer in FmgrInfo to avoid search on subsequent calls
@@ -915,7 +905,6 @@ compile_plr_function(FunctionCallInfo fcinfo)
  */
 static plr_function *
 do_compile(FunctionCallInfo fcinfo,
-		   cqContext	*pcqCtx,
 		   HeapTuple procTup,
 		   plr_func_hashkey *hashkey)
 {
@@ -937,7 +926,6 @@ do_compile(FunctionCallInfo fcinfo,
 	char				   *proc_source;
 	MemoryContext			oldcontext;
 	char				   *p;
-	cqContext			   *lancqCtx;
 
 	/* grab the function name */
 	proname = NameStr(procStruct->proname);
@@ -970,14 +958,9 @@ do_compile(FunctionCallInfo fcinfo,
 	function->fn_tid = procTup->t_self;
 
 	/* Lookup the pg_language tuple by Oid*/
-	lancqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_language "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(procStruct->prolang)));
-
-	langTup = caql_getnext(lancqCtx);
-
+	langTup = SearchSysCache(LANGOID,
+							 ObjectIdGetDatum(procStruct->prolang),
+							 0, 0, 0);
 	if (!HeapTupleIsValid(langTup))
 	{
 		xpfree(function->proname);
@@ -988,8 +971,7 @@ do_compile(FunctionCallInfo fcinfo,
 	}
 	langStruct = (Form_pg_language) GETSTRUCT(langTup);
 	function->lanpltrusted = langStruct->lanpltrusted;
-
-	caql_endscan(lancqCtx);
+	ReleaseSysCache(langTup);
 
 	/* get the functions return type */
 	if (procStruct->prorettype == ANYARRAYOID ||
@@ -1008,18 +990,10 @@ do_compile(FunctionCallInfo fcinfo,
 	 */
 	if (!is_trigger)
 	{
-		cqContext	*typcqCtx;
-
 		function->result_typid = result_typid;
-
-		typcqCtx = caql_beginscan(
-				NULL,
-				cql("SELECT * FROM pg_type "
-					" WHERE oid = :1 ",
-					ObjectIdGetDatum(function->result_typid)));
-
-		typeTup = caql_getnext(typcqCtx);
-
+		typeTup = SearchSysCache(TYPEOID,
+								 ObjectIdGetDatum(function->result_typid),
+								 0, 0, 0);
 		if (!HeapTupleIsValid(typeTup))
 		{
 			xpfree(function->proname);
@@ -1032,7 +1006,7 @@ do_compile(FunctionCallInfo fcinfo,
 
 		/* Disallow pseudotype return type except VOID or RECORD */
 		/* (note we already replaced ANYARRAY/ANYELEMENT) */
-		if (typeStruct->typtype == TYPTYPE_PSEUDO)
+		if (typeStruct->typtype == 'p')
 		{
 			if (procStruct->prorettype == VOIDOID ||
 				procStruct->prorettype == RECORDOID)
@@ -1150,7 +1124,7 @@ do_compile(FunctionCallInfo fcinfo,
 				function->result_elem_typalign = typalign;
 			}
 		}
-		caql_endscan(typcqCtx);
+		ReleaseSysCache(typeTup);
 	}
 	else /* trigger */
 	{
@@ -1171,7 +1145,6 @@ do_compile(FunctionCallInfo fcinfo,
 		function->nargs = procStruct->pronargs;
 		for (i = 0; i < function->nargs; i++)
 		{
-			cqContext	*typcqCtx;
 			/*
 			 * Since we already did the replacement of polymorphic
 			 * argument types by actual argument types while computing
@@ -1179,14 +1152,9 @@ do_compile(FunctionCallInfo fcinfo,
 			 */
 			function->arg_typid[i] = hashkey->argtypes[i];
 
-			typcqCtx = caql_beginscan(
-					NULL,
-					cql("SELECT * FROM pg_type "
-						" WHERE oid = :1 ",
-						ObjectIdGetDatum(function->arg_typid[i])));
-
-			typeTup = caql_getnext(typcqCtx);
-
+			typeTup = SearchSysCache(TYPEOID,
+						ObjectIdGetDatum(function->arg_typid[i]),
+									 0, 0, 0);
 			if (!HeapTupleIsValid(typeTup))
 			{
 				Oid		arg_typid = function->arg_typid[i];
@@ -1201,7 +1169,7 @@ do_compile(FunctionCallInfo fcinfo,
 			/* Disallow pseudotype argument
 			 * note we already replaced ANYARRAY/ANYELEMENT
 			 */
-			if (typeStruct->typtype == TYPTYPE_PSEUDO)
+			if (typeStruct->typtype == 'p')
 			{
 				Oid		arg_typid = function->arg_typid[i];
 
@@ -1233,7 +1201,7 @@ do_compile(FunctionCallInfo fcinfo,
 				appendStringInfo(proc_internal_args, ",");
 			SET_ARG_NAME;
 
-			caql_endscan(typcqCtx);
+			ReleaseSysCache(typeTup);
 
 			if (function->arg_elem[i] != InvalidOid)
 			{
@@ -1346,8 +1314,8 @@ do_compile(FunctionCallInfo fcinfo,
 					 proc_internal_args->data);
 
 	/* Add user's function definition to proc body */
-	prosrcdatum = caql_getattr(pcqCtx,
-							   Anum_pg_proc_prosrc, &isnull);
+	prosrcdatum = SysCacheGetAttr(PROCOID, procTup,
+								  Anum_pg_proc_prosrc, &isnull);
 	if (isnull)
 		elog(ERROR, "null prosrc");
 	proc_source = DatumGetCString(DirectFunctionCall1(textout, prosrcdatum));
@@ -1611,42 +1579,45 @@ fetchArgNames(HeapTuple procTup, int nargs)
 static Oid
 getNamespaceOidFromFunctionOid(Oid fnOid)
 {
+	HeapTuple			procTuple;
+	HeapTuple			langTuple;
+	Form_pg_proc		procStruct;
+	Form_pg_language	langStruct;
 	Oid					langOid;
 	Oid					hfnOid;
 	Oid					nspOid;
-	int					fetchCount;
 
-	/* Lookup the language for the called function by OID */
-	langOid  = caql_getoid_plus(
-			NULL,
-			&fetchCount,
-			NULL,
-			cql("SELECT prolang FROM pg_proc "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(fnOid)));
+	/* Lookup the pg_proc tuple for the called function by OID */
+	procTuple = SearchSysCache(PROCOID, ObjectIdGetDatum(fnOid), 0, 0, 0);
 
-	if (!fetchCount)
+	if (!HeapTupleIsValid(procTuple))
 		/* internal error */
 		elog(ERROR, "cache lookup failed for function %u", fnOid);
 
-	/* Lookup the language handler by OID */
-	hfnOid  = caql_getoid_plus(
-			NULL,
-			&fetchCount,
-			NULL,
-			cql("SELECT lanplcallfoid FROM pg_language "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(langOid)));
-	if (!fetchCount)
+	procStruct = (Form_pg_proc) GETSTRUCT(procTuple);
+	langOid = procStruct->prolang;
+	ReleaseSysCache(procTuple);
+
+	/* Lookup the pg_language tuple by OID */
+	langTuple = SearchSysCache(LANGOID, ObjectIdGetDatum(langOid), 0, 0, 0);
+	if (!HeapTupleIsValid(langTuple))
 		/* internal error */
 		elog(ERROR, "cache lookup failed for language %u", langOid);
 
-	/* Lookup the namespace for the language handler function by OID */
-	nspOid = get_func_namespace(hfnOid);
+	langStruct = (Form_pg_language) GETSTRUCT(langTuple);
+	hfnOid = langStruct->lanplcallfoid;
+	ReleaseSysCache(langTuple);
 
-	if (!OidIsValid(nspOid))
+	/* Lookup the pg_proc tuple for the language handler by OID */
+	procTuple = SearchSysCache(PROCOID, ObjectIdGetDatum(hfnOid), 0, 0, 0);
+
+	if (!HeapTupleIsValid(procTuple))
 		/* internal error */
 		elog(ERROR, "cache lookup failed for function %u", hfnOid);
+
+	procStruct = (Form_pg_proc) GETSTRUCT(procTuple);
+	nspOid = procStruct->pronamespace;
+	ReleaseSysCache(procTuple);
 
 	return nspOid;
 }

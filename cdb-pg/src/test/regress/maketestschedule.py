@@ -293,7 +293,7 @@ class ArchitectureSpecificTemplateManager:
         archLabel = archString[index+1:].strip()
 
         confLineMatcher = re.compile("([^ ]+)\s*:\s*'(.*)'\s*")
-        for archLine in readAllLinesFromFile(os.path.dirname(sys.argv[0]) + "/arch_config", stripLines=True, skipEmptyLines=True):
+        for archLine in readAllLinesFromFile("arch_config", stripLines=True, skipEmptyLines=True):
             match = confLineMatcher.match(archLine)
             if match is not None:
                 (arch, regExString) = match.group(1,2)
@@ -391,7 +391,6 @@ class TestScheduler:
         addEdges("olap_window_seq", "olap_setup")
         addEdges("arrays", "create_table", "copy")
         addEdges("transactions", "create_misc")
-        addEdges("function_extensions", "int8")
 
         # these both use (and pkill) gpdist, so keep them separate.
         graph.addDependency("sreh", "exttab1", isOrderingDependencyOnly=True)

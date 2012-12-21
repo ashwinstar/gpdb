@@ -26,5 +26,4 @@ bin/run_operator_tests.pl
 bin/test_fsync
 docs/cli_help/gpsuspend_help
 lib/python/gppylib/programs/clsInjectFault.py
-lib/postgresql/plperl.so
 sbin/gpsuspend.py

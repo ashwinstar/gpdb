@@ -49,7 +49,6 @@ Usage: gpdetective <option> [dbname]
 #============================================================
 import sys, os, tempfile, subprocess, re, getopt, types, traceback, datetime
 from gppylib.gpcoverage import GpCoverage
-from gppylib.operations.filespace import GP_TRANSACTION_FILES_FILESPACE, GP_TEMPORARY_FILES_FILESPACE
 
 libdir = sys.path[0] + '/lib'
 try: 
@@ -62,7 +61,14 @@ GPHOME=os.environ.get('GPHOME')
 SRC_GPPATH=". %s/greenplum_path.sh;" % GPHOME
 
 #============================================================
-__version__ = 'version $Revision$'
+def pretty_version(v):
+    '''
+    Turns the RCS revision number into a prettier format
+    '''
+    m = re.compile('Revision: #(\d+)').search(v)
+    if m: return str((float(m.group(1))+100)/100)
+    else: return str(v)
+__version__ = pretty_version('$Revision$')
 
 #============================================================
 def usage(exitarg = None):
@@ -131,7 +137,7 @@ class GPDetective:
     pg_dump_options = None
     rungpstate    = True
     runpg_dumpall = True
-    rungpcheck  = True
+    rungpcheckos  = True
     rungpcheckcat = True
     runcore       = True
     runconnected  = True
@@ -209,8 +215,6 @@ class GPDetective:
                 elif switch == '--cores':
                     self.runcore = truth(switch, val)
                 elif switch[1] in 'hpPU':
-                    if (switch[1] == 'p' or switch[1] == 'h') and not self.runconnected:
-                        raise Exception('You cannot use -p or -h with connect=false')
                     self.opt[switch] = val
         except Exception, e:
             usage('Error: ' + str(e))
@@ -234,11 +238,6 @@ class GPDetective:
         try: self.opt['-p'] = int(self.opt['-p'])
         except ValueError: exit('Error: Could not determine PORT')
 
-        #If connect=false, make sure that the master data directory is set
-        if not self.runconnected:
-            if not os.environ.get('MASTER_DATA_DIRECTORY'):
-                exit('Error: MASTER_DATA_DIRECTORY has to be set for connect=false')
-
         # Connect to master
         if self.runconnected == True:
           try:
@@ -253,7 +252,7 @@ class GPDetective:
         # Setup the log directory
         self.mklogdir()
         self.errlog = open('error.log', 'w')
-        self.errlog.write('gpdetective ' + __version__ + '\n')
+        self.errlog.write('gpdetective version ' + __version__ + '\n')
         self.errlog.flush()
         print 'Collecting information'
         self.getConfiguration()
@@ -303,13 +302,13 @@ class GPDetective:
            elif diagList[0] == 'n' or diagList[0] == 'none':
               # One diagnostic 'none' implies turn off everyting.
               self.rungpstate    = False
-              self.rungpcheck  = False
+              self.rungpcheckos  = False
               self.rungpcheckcat = False
               return
         
         # If we got this far, turn everything off.
         self.rungpstate    = False
-        self.rungpcheck  = False
+        self.rungpcheckos  = False
         self.rungpcheckcat = False
 
         # Go through the list, and selectively turn on the corresponding diagnostic
@@ -319,7 +318,7 @@ class GPDetective:
             elif diag == 's' or diag == 'state':
                self.rungpstate = True
             elif diag == 'o' or diag == 'os':
-               self.rungpcheck = True
+               self.rungpcheckos = True
             elif diag == 'c' or diag == 'catalog':
                self.rungpcheckcat = True
             else:
@@ -561,7 +560,12 @@ class GPDetective:
             cmd.insert(0, 'ssh')
             cmd.insert(1, host)
         
-        return subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=self.errlog).communicate()[0].strip()
+        # A stupid hack to ignore unmatched globs in 'ls'
+        if (cmd[0] == 'ls'):
+            x = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+        else:            
+            x = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=self.errlog)
+        return str(x.communicate()[0].strip())
 
     #------------------------------------------------------------
     def log(self, test):
@@ -943,59 +947,10 @@ class GPDetective:
                             '%s/pg_changetracking_%s_mirror/FILEREP_LOG' % m.group(1,3)])
 
     #------------------------------------------------------------
-    def filespaceFlatFiles(self):
-        """
-        Copy the flat files for temporary/transaction filespaces
-        from all the segments, master and standby.
-        """
-
-        #Copy files from primaries
-        host_rx = re.compile('(.*)\:(.*)/([^/]*)')
-        for seg in self.segments:
-            m = host_rx.search(seg[1])
-            tempStr = self.runCmd(['scp', '-qr',
-                                   '%s/%s' % (seg[1], GP_TRANSACTION_FILES_FILESPACE), 
-                                   '%s/pg_changetracking_%s/%s' % (m.group(1), m.group(3), GP_TRANSACTION_FILES_FILESPACE)])
-
-            tempStr = self.runCmd(['scp', '-qr',
-                                   '%s/%s' % (seg[1], GP_TEMPORARY_FILES_FILESPACE), 
-                                   '%s/pg_changetracking_%s/%s' % (m.group(1), m.group(3), GP_TEMPORARY_FILES_FILESPACE)])
-
-        #Copy files from mirrors
-        for seg in self.mirrors: 
-            m = host_rx.search(seg[1])
-            tempStr = self.runCmd(['scp', '-qr',
-                                   '%s/%s' % (seg[1], GP_TRANSACTION_FILES_FILESPACE), 
-                                   '%s/pg_changetracking_%s_mirror/%s' % (m.group(1), m.group(3), GP_TRANSACTION_FILES_FILESPACE)])
-
-            tempStr = self.runCmd(['scp', '-qr',
-                                   '%s/%s' % (seg[1], GP_TEMPORARY_FILES_FILESPACE), 
-                                   '%s/pg_changetracking_%s_mirror/%s' % (m.group(1), m.group(3), GP_TEMPORARY_FILES_FILESPACE)])
-        
-        #Copy files from backupmaster
-        host_rx = re.compile('(.*)/([^/]*)')
-        if self.backupmasterhostdir is not None and self.backupmasterhostname is not None:
-            m = host_rx.search(self.backupmasterhostdir)
-            tempStr = self.runCmd(['scp', '-q',
-                                   '%s/%s' % (self.backupmasterhostname + ':' + self.backupmasterhostdir, 
-                                              GP_TRANSACTION_FILES_FILESPACE),
-                                   '%s/%s' % (m.group(1), GP_TRANSACTION_FILES_FILESPACE)])
-            tempStr = self.runCmd(['scp', '-q',
-                                   '%s/%s' % (self.backupmasterhostname + ':' + self.backupmasterhostdir, 
-                                              GP_TEMPORARY_FILES_FILESPACE),
-                                   '%s/%s' % (m.group(1), GP_TEMPORARY_FILES_FILESPACE)])
-        
-        #Copy files from the master
-        tempStr = self.runCmd(['cp', '%s/%s' % (self.masterdir, GP_TRANSACTION_FILES_FILESPACE), 
-                                     'master/%s' % (GP_TRANSACTION_FILES_FILESPACE)])
-        tempStr = self.runCmd(['cp', '%s/%s' % (self.masterdir, GP_TEMPORARY_FILES_FILESPACE), 
-                                     'master/%s' % (GP_TEMPORARY_FILES_FILESPACE)])
- 
-    #------------------------------------------------------------
     def systemInfo(self):
         '''
         1. Run gpstate
-        2. Run gpcheck
+        2. Run gpcheckos
         '''
         self.log('systemInfo')
 
@@ -1005,16 +960,12 @@ class GPDetective:
 #        self.writeCmd('gpstate_master.log',         
 #                      ['gpstate', '-d', self.masterdir])
 
-        if self.rungpcheck == True:
-           self.writeCmd('gpcheck_master.log',   
-                         ['gpcheck', '-h', self.opt['-h']])
-           self.writeCmd('gpcheck_verbose_master.log',
-                         ['gpcheck', '--stdout', 'h', self.opt['-h']])
+        if self.rungpcheckos == True:
+           self.writeCmd('gpcheckos_master.log',   
+                         ['gpcheckos', '-vm', '-h', self.opt['-h']])
            if self.runconnected == True:
-              self.writeCmd('gpcheck_segments.log', 
-                            ['gpcheck', '-f', 'hosts'])
-              self.writeCmd('gpcheck_verbose_segments.log', 
-                            ['gpcheck', '--stdout', '-f', 'hosts'])
+              self.writeCmd('gpcheckos_segments.log', 
+                            ['gpcheckos', '-vf', 'hosts'])
         
 
     #------------------------------------------------------------
@@ -1222,9 +1173,6 @@ class GPDetective:
         '''
         Creates the temporary directory and cds to that location
         '''
-        if self.tempdir and not os.path.isabs(self.tempdir):
-            raise Exception('Please specify the absolute path for the temp directory')
-
         self.logdir = tempfile.mkdtemp(dir=self.tempdir)
         os.chdir(self.logdir)
         timestamp = self.runCmd('date +%Y%m%d%H%M%S')
@@ -1265,7 +1213,6 @@ try:
     d = GPDetective()
     try:    
         d.copyLogs()
-        d.filespaceFlatFiles()
         d.systemInfo()
         if d.runconnected == True:
            d.checkCatalog()

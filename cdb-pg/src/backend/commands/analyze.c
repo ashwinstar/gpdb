@@ -26,7 +26,6 @@
 #include <math.h>
 
 #include "access/heapam.h"
-#include "access/catquery.h"
 #include "catalog/heap.h"
 #include "access/transam.h"
 #include "access/tuptoaster.h"
@@ -81,7 +80,6 @@ bool			gp_statistics_use_fkeys = FALSE;
 int				gp_statistics_blocks_target = 25;
 double			gp_statistics_ndistinct_scaling_ratio_threshold = 0.10;
 double			gp_statistics_sampling_threshold = 10000;
-bool 			gp_statistics_master_sample = FALSE;
 
 /**
  * This struct contains statistics produced during ANALYZE
@@ -130,9 +128,6 @@ static bool	isFixedWidth(Oid relationOid, const char *attributeName, float4 *wid
 static bool hasMaxDefined(Oid relationOid, const char *attributeName);
 
 /* Sampling related */
-static void runCtasForSampleTable(StringInfoData strSelectQuery, float4 sampleSizeReqd, float4 *sampleTableRelTuples, char *sampleSchemaName, char *sampleTableName);
-static void populateSampleTableOnMaster(StringInfoData strSelectQuery, float4 requestedSampleSize, float4 *sampleTableRelTuples, char *sampleSchemaName, char *sampleTableName);
-
 static float4 estimateSampleSize(Oid relationOid, const char *attributeName, float4 relTuples);
 static char* temporarySampleTableName(Oid relationOid);
 static Oid buildSampleTable(Oid relationOid, 
@@ -228,30 +223,25 @@ void analyzeStatement(VacuumStmt *stmt, List *relids)
 	 * Disable autostats so that analyze is not called during their creation. */
 
 	GpAutoStatsModeValue autostatvalBackup = gp_autostats_mode;
-	GpAutoStatsModeValue autostatInFunctionsvalBackup = gp_autostats_mode_in_functions;
 
 	gp_autostats_mode = GP_AUTOSTATS_NONE;
-	gp_autostats_mode_in_functions = GP_AUTOSTATS_NONE;
 
 	PG_TRY();
 	{
 		analyzeStmt(stmt, relids);
 		gp_autostats_mode = autostatvalBackup;
-		gp_autostats_mode_in_functions = autostatInFunctionsvalBackup;
 	}
 
 	/* Clean up in case of error. */
 	PG_CATCH();
 	{
 		gp_autostats_mode = autostatvalBackup;
-		gp_autostats_mode_in_functions = autostatInFunctionsvalBackup;
 
 		/* Carry on with error handling. */
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
 	Assert(gp_autostats_mode == autostatvalBackup);
-	Assert(gp_autostats_mode_in_functions == autostatInFunctionsvalBackup);
 }
 
 /**
@@ -351,12 +341,26 @@ void analyzeStmt(VacuumStmt *stmt, List *relids)
 	{
 		/**
 		 * ANALYZE one relation (optionally, a list of columns).
+		 * If this happens to be a partitioned table, we create an explicit
+		 * list of relids with all partitioned relations.
+		 * TODO: In the future, we must do away with treating partitions separately.
 		 */
 		Oid relationOid = InvalidOid;
 		Assert(relids == NIL);
 		Assert(stmt->relation != NULL);
 		relationOid = RangeVarGetRelid(stmt->relation, false);
-		lRelOids = list_make1_oid(relationOid);
+		if (rel_is_partitioned(relationOid))
+		{
+			PartitionNode *pn = get_parts(relationOid, 0 /*level*/ ,
+					0 /*parent*/, false /* inctemplate */, CurrentMemoryContext);
+			Assert(pn);
+			lRelOids = all_partition_relids(pn);
+			lRelOids = lappend_oid(lRelOids, relationOid);
+		}
+		else
+		{
+			lRelOids = list_make1_oid(relationOid);
+		}
 	}
 
 	/*
@@ -587,14 +591,10 @@ static List*	buildExplicitAttributeNames(Oid relationOid, VacuumStmt *stmt)
 	foreach (le, stmt->va_cols)
 	{
 		HeapTuple	attributeTuple;
-		cqContext  *pcqCtx;
 		char *attributeName = strVal(lfirst(le));
 		Assert(attributeName);
 
-		pcqCtx = caql_getattname_scan(NULL, relationOid, attributeName);
-
-		attributeTuple = caql_get_current(pcqCtx);
-
+		attributeTuple = SearchSysCacheAttName(relationOid, attributeName);
 		/* Ensure that we can actually analyze the attribute. */
 		if (HeapTupleIsValid(attributeTuple))
 		{
@@ -612,6 +612,8 @@ static List*	buildExplicitAttributeNames(Oid relationOid, VacuumStmt *stmt)
 			{
 				lExplicitAttNames = lappend(lExplicitAttNames, attributeName);
 			}
+			
+			ReleaseSysCache(attributeTuple);
 		}
 		else
 		{
@@ -621,9 +623,6 @@ static List*	buildExplicitAttributeNames(Oid relationOid, VacuumStmt *stmt)
 							errmsg("Relation %s does not have an attribute named %s.", 
 									get_rel_name(relationOid),attributeName)));
 		}
-
-		caql_endscan(pcqCtx);
-
 	}
 	return lExplicitAttNames;
 }
@@ -654,28 +653,32 @@ static bool analyzePermitted(Oid relationOid)
 static List* analyzableRelations(void)
 {
 	List	   		*lRelOids = NIL;
-	cqContext		*pcqCtx;
+	Relation		pgclass = NULL;
+	HeapScanDesc 	scan = NULL;
 	HeapTuple		tuple = NULL;
+	ScanKeyData 	key;
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_class "
-				" WHERE relkind = :1 ",
-				CharGetDatum(RELKIND_RELATION)));
+	ScanKeyInit(&key,
+			Anum_pg_class_relkind,
+			BTEqualStrategyNumber, F_CHAREQ,
+			CharGetDatum(RELKIND_RELATION));
 
-	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
+	pgclass = heap_open(RelationRelationId, AccessShareLock);
+
+	scan = heap_beginscan(pgclass, SnapshotNow, 1 /* key length */, &key);
+
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
 		Oid candidateOid = HeapTupleGetOid(tuple);
 		if (analyzePermitted(candidateOid)
-				&& candidateOid != StatisticRelationId
-				&& !rel_is_child_partition(candidateOid))
+				&& candidateOid != StatisticRelationId)
 		{
 			lRelOids = lappend_oid(lRelOids, candidateOid);
 		}
 	}
 
-	caql_endscan(pcqCtx);
-
+	heap_endscan(scan);
+	heap_close(pgclass, AccessShareLock);
 	return lRelOids;
 }
 
@@ -906,17 +909,12 @@ static int4 numberOfMCVEntries(Oid relationOid, const char *attributeName)
 	HeapTuple			attributeTuple = NULL;
 	Form_pg_attribute 	attribute = NULL;
 	int4	 			nMCVEntries = 0;
-	cqContext		   *pcqCtx;
-
-	pcqCtx = caql_getattname_scan(NULL, relationOid, attributeName);
-
-	attributeTuple = caql_get_current(pcqCtx);
+	
+	attributeTuple = SearchSysCacheAttName(relationOid, attributeName);
 	Assert(HeapTupleIsValid(attributeTuple));
 	attribute = (Form_pg_attribute) GETSTRUCT(attributeTuple);
 	nMCVEntries = attribute->attstattarget;
-
-	caql_endscan(pcqCtx);
-
+	ReleaseSysCache(attributeTuple);
 	if (nMCVEntries < 0)
 		nMCVEntries = (int4) default_statistics_target;
 	return nMCVEntries;
@@ -1137,92 +1135,6 @@ static void spiCallback_getEachResultColumnAsArray(void *clientData)
 }
 
 /**
- * This method creates the shell of the sample table
- */
-static void runCtasForSampleTable(StringInfoData strSelectQuery, float4 sampleSizeReqd, float4 *sampleTableRelTuples, char *sampleSchemaName, char *sampleTableName)
-{
-	StringInfoData strCreateTable;
-	initStringInfo(&strCreateTable);
-	appendStringInfo(&strCreateTable, "create table %s.%s as (",
-			quote_identifier(sampleSchemaName), quote_identifier(sampleTableName));
-
-	appendStringInfoString(&strCreateTable, strSelectQuery.data);
-	appendStringInfo(&strCreateTable, " limit %lu ) distributed randomly", (unsigned long) sampleSizeReqd);
-
-	spiExecuteWithCallback(strCreateTable.data, false /*readonly*/, 0 /*tcount */,
-	                        spiCallback_getProcessedAsFloat4, sampleTableRelTuples);
-
-	if (gp_statistics_master_sample)
-	{
-		elog(elevel, "Create the shell of the sample table");
-	}
-
-	elog(elevel, "Created sample table %s.%s with nrows=%.0f",
-			quote_identifier(sampleSchemaName),
-			quote_identifier(sampleTableName),
-			*sampleTableRelTuples);
-
-	pfree(strCreateTable.data);
-}
-
-/**
- * This function first delete the distribution policy of the sample table to make it a master only table.
- * It then populates the table with the sample.
- */
-static void populateSampleTableOnMaster(StringInfoData strSelectQuery, float4 requestedSampleSize, float4 *sampleTableRelTuples, char *sampleSchemaName, char *sampleTableName)
-{
-	float4 distPolicyTuples = 1.0;
-
-	/* Delete the distribution policy of the sample table*/
-	StringInfoData strDeleteDistPolicy;
-	initStringInfo(&strDeleteDistPolicy);
-
-	/* allow the modification of catalog table*/
-	bool allowSystemTableModsDMLOld = allowSystemTableModsDML;
-	allowSystemTableModsDML = true;
-
-	elog(elevel, "Deleting the distribution policy of the sample table '%s.%s'",
-					quote_identifier(sampleSchemaName),
-					quote_identifier(sampleTableName)
-					);
-
-	appendStringInfo(&strDeleteDistPolicy,
-					"delete from gp_distribution_policy where localoid = (select oid from pg_class where relname = '%s.%s')",
-					quote_identifier(sampleSchemaName),
-					quote_identifier(sampleTableName)
-					);
-
-	spiExecuteWithCallback(strDeleteDistPolicy.data, false /*readonly*/, 0 /*tcount */,
-			                        spiCallback_getProcessedAsFloat4, &distPolicyTuples);
-
-	/* insert the sample data into a master only sample table*/
-	StringInfoData strInsert;
-	initStringInfo(&strInsert);
-	appendStringInfo(&strInsert,
-					"insert into %s.%s ",
-					quote_identifier(sampleSchemaName),
-					quote_identifier(sampleTableName)
-					);
-	appendStringInfoString(&strInsert, strSelectQuery.data);
-	appendStringInfo(&strInsert, " limit %lu ",(unsigned long) requestedSampleSize);
-
-	elog(elevel, "Inserting the sample into the table %s.%s with nrows=%.0f",
-					quote_identifier(sampleSchemaName),
-					quote_identifier(sampleTableName),
-					requestedSampleSize);
-
-
-	spiExecuteWithCallback(strInsert.data, false /*readonly*/, 0 /*tcount */,
-	                       spiCallback_getProcessedAsFloat4, sampleTableRelTuples);
-
-	/* reset the permission to modifying catalog table*/
-	allowSystemTableModsDML = allowSystemTableModsDMLOld;
-
-	pfree(strDeleteDistPolicy.data);
-	pfree(strInsert.data);
-}
-
-/**
  * This method builds a sampled version of the given relation. The sampled
  * version is created in a temp namespace. Note that ANALYZE can be
  * executed only by the database owner. It is safe to assume that the database
@@ -1247,7 +1159,7 @@ static Oid buildSampleTable(Oid relationOid,
 		float4 *sampleTableRelTuples)
 {
 	int nAttributes = -1;
-
+	StringInfoData str;
 	int i = 0;
 	ListCell *le = NULL;
 	const char *schemaName = NULL;
@@ -1267,45 +1179,38 @@ static Oid buildSampleTable(Oid relationOid,
 	tableName = get_rel_name(relationOid); //must be pfreed
 	sampleTableName = temporarySampleTableName(relationOid); // must be pfreed 
 
-	/* generate the string select query */
-	StringInfoData strSelectQuery;
-	initStringInfo(&strSelectQuery);
-	appendStringInfo(&strSelectQuery, "select ");
-
+	initStringInfo(&str);
+	appendStringInfo(&str, "create table %s.%s as (select ", 
+			quote_identifier(sampleSchemaName), quote_identifier(sampleTableName)); 
+	
 	nAttributes = list_length(lAttributeNames);
 
 	foreach_with_count(le, lAttributeNames, i)
 	{
-		appendStringInfo(&strSelectQuery, "Ta.%s", quote_identifier((const char *) lfirst(le)));
+		appendStringInfo(&str, "Ta.%s", quote_identifier((const char *) lfirst(le)));
 		if (i < nAttributes - 1)
 		{
-			appendStringInfo(&strSelectQuery, ", ");
+			appendStringInfo(&str, ", ");
 		}
 		else
 		{
-			appendStringInfo(&strSelectQuery, " ");
+			appendStringInfo(&str, " ");			
 		}
 	}
 	
-	appendStringInfo(&strSelectQuery, "from %s.%s as Ta where random() < %.38f ",
-		quote_identifier(schemaName),
-		quote_identifier(tableName), randomThreshold);
+	appendStringInfo(&str, "from only %s.%s as Ta where random() < %.38f limit %lu) distributed randomly", 
+			quote_identifier(schemaName), 
+			quote_identifier(tableName), randomThreshold, (unsigned long) requestedSampleSize);
 
+	spiExecuteWithCallback(str.data, false /*readonly*/, 0 /*tcount */, 
+	                        spiCallback_getProcessedAsFloat4, sampleTableRelTuples);
 
-	/**
-	 * Solution to MPP-14406: To alleviate the performance issue with analyze
-	 * create the sample table on the master when gp_statistics_master_sample is
-	 * set to on.
-	 */
-	if (gp_statistics_master_sample)
-	{
-		runCtasForSampleTable(strSelectQuery, 0.0, sampleTableRelTuples, sampleSchemaName, sampleTableName);
-		populateSampleTableOnMaster(strSelectQuery, requestedSampleSize, sampleTableRelTuples,  sampleSchemaName, sampleTableName);
-	}
-	else
-	{
-		runCtasForSampleTable(strSelectQuery, requestedSampleSize, sampleTableRelTuples,  sampleSchemaName, sampleTableName);
-	}
+	pfree(str.data);
+		
+	elog(elevel, "Created sample table %s.%s with nrows=%.0f", 
+			quote_identifier(sampleSchemaName), 
+			quote_identifier(sampleTableName), 
+			*sampleTableRelTuples);
 
 	rangeVar = makeRangeVar(sampleSchemaName, sampleTableName, -1);
 	sampleTableOid = RangeVarGetRelid(rangeVar, true);
@@ -1330,7 +1235,6 @@ static Oid buildSampleTable(Oid relationOid,
 	 */
 	updateReltuplesRelpagesInCatalog(sampleTableOid, *sampleTableRelTuples, 2);
 
-	pfree(strSelectQuery.data);
 	pfree((void *) rangeVar);
 	pfree((void *) sampleTableName);
 	pfree((void *) tableName);
@@ -1412,52 +1316,32 @@ static void analyzeEstimateIndexpages(Oid relationOid, Oid indexOid, float4 *ind
  * 	relPages  - estimated number of pages
  */
 static void analyzeEstimateReltuplesRelpages(Oid relationOid, float4 *relTuples, float4 *relPages)
-{
+{	
+	StringInfoData 	sqlstmt;
+	float4          spiResult[2];
+	
 	*relPages = 0.0;		
 	*relTuples = 0.0;			
+		
+	initStringInfo(&sqlstmt);
 	
-	List *allRelOids = NIL;
-	if (rel_is_partitioned(relationOid))
+	if (isMasterOnly(relationOid))
 	{
-		PartitionNode *pn = get_parts(relationOid, 0 /*level*/ ,
-				0 /*parent*/, false /* inctemplate */, CurrentMemoryContext);
-		Assert(pn);
-		allRelOids = all_partition_relids(pn);
+		appendStringInfo(&sqlstmt, "select sum(gp_statistics_estimate_reltuples_relpages_oid(c.oid))::float4[] "
+				"from pg_class c where c.oid=%d", relationOid);		
 	}
 	else
 	{
-		allRelOids = list_make1_oid(relationOid);
+		appendStringInfo(&sqlstmt, "select sum(gp_statistics_estimate_reltuples_relpages_oid(c.oid))::float4[] "
+				"from gp_dist_random('pg_class') c where c.oid=%d", relationOid);
 	}
 
-	/* iterate over all parts and add up estimates */
-	ListCell *lc = NULL;
-	foreach (lc, allRelOids)
-	{
-		Oid singleOid = lfirst_oid(lc);
-		StringInfoData 	sqlstmt;
-		float4          spiResult[2];
+    spiExecuteWithCallback(sqlstmt.data, false /*readonly*/, 0 /*tcount */,
+        	                        spiCallback_getSingleResultRowArrayAsTwoFloat4, spiResult);
+    *relTuples = spiResult[0];
+    *relPages = spiResult[1];
 
-		initStringInfo(&sqlstmt);
-
-		if (isMasterOnly(singleOid))
-		{
-			appendStringInfo(&sqlstmt, "select sum(gp_statistics_estimate_reltuples_relpages_oid(c.oid))::float4[] "
-					"from pg_class c where c.oid=%d", singleOid);
-		}
-		else
-		{
-			appendStringInfo(&sqlstmt, "select sum(gp_statistics_estimate_reltuples_relpages_oid(c.oid))::float4[] "
-					"from gp_dist_random('pg_class') c where c.oid=%d", singleOid);
-		}
-
-		spiExecuteWithCallback(sqlstmt.data, false /*readonly*/, 0 /*tcount */,
-				spiCallback_getSingleResultRowArrayAsTwoFloat4, spiResult);
-		*relTuples += spiResult[0];
-		*relPages += spiResult[1];
-
-		pfree(sqlstmt.data);
-	}
-
+	pfree(sqlstmt.data);
 	return;
 }
 
@@ -1475,8 +1359,6 @@ static void updateReltuplesRelpagesInCatalog(Oid relationOid, float4 relTuples, 
 	HeapTuple	tuple = NULL;
 	Form_pg_class pgcform = NULL;
 	bool		dirty = false;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
 
 	Assert(relationOid != InvalidOid);
 	Assert(relTuples > -1.0);
@@ -1499,16 +1381,10 @@ static void updateReltuplesRelpagesInCatalog(Oid relationOid, float4 relTuples, 
 	 */
 	pgclass = heap_open(RelationRelationId, RowExclusiveLock);
 
-	pcqCtx = caql_addrel(cqclr(&cqc), pgclass);
-
 	/* Fetch a copy of the tuple to scribble on */
-	tuple = caql_getfirst(
-			pcqCtx,
-			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 "
-				" FOR UPDATE ",
-				ObjectIdGetDatum(relationOid)));
-
+	tuple = SearchSysCacheCopy(RELOID,
+							  ObjectIdGetDatum(relationOid),
+							  0, 0, 0);
 	/* We have locked the relation. We should not have trouble finding pg_class tuple */
 	Assert(HeapTupleIsValid(tuple));
 	pgcform = (Form_pg_class) GETSTRUCT(tuple);
@@ -1557,12 +1433,8 @@ static bool isOrderedAndHashable(Oid relationOid, const char *attributeName)
 	Operator	equalityOperator = NULL;
 	Operator	ltOperator = NULL;
 	bool		result = true;
-	cqContext  *pcqCtx;
 	
-	pcqCtx = caql_getattname_scan(NULL, relationOid, attributeName);
-
-	attributeTuple = caql_get_current(pcqCtx);
-
+	attributeTuple = SearchSysCacheAttName(relationOid, attributeName);
 	Assert(HeapTupleIsValid(attributeTuple));	
 	attribute = (Form_pg_attribute) GETSTRUCT(attributeTuple);	
 
@@ -1571,20 +1443,20 @@ static bool isOrderedAndHashable(Oid relationOid, const char *attributeName)
 	if (!equalityOperator)
 		result = false;
 	else
-		ReleaseOperator(equalityOperator);
+		ReleaseSysCache(equalityOperator);
 
 	/* Does type have "<" operator */
 	ltOperator = ordering_oper(attribute->atttypid, true);
 	if (!ltOperator)
 		result = false;
 	else
-		ReleaseOperator(ltOperator);
+		ReleaseSysCache(ltOperator);
 	
 	/* Is the attribute hashable?*/
 	if (!isGreenplumDbHashable(attribute->atttypid))
 		result = false;
 	
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(attributeTuple);
 	
 	return result;
 }
@@ -1604,12 +1476,8 @@ static bool hasMaxDefined(Oid relationOid, const char *attributeName)
 	Oid			maxAggregateFunction = InvalidOid;
 	bool		result = true;
 	List		*funcNames = NIL;
-	cqContext	*pcqCtx;
-
-	pcqCtx = caql_getattname_scan(NULL, relationOid, attributeName);
-
-	attributeTuple = caql_get_current(pcqCtx);
-
+	
+	attributeTuple = SearchSysCacheAttName(relationOid, attributeName);
 	Assert(HeapTupleIsValid(attributeTuple));	
 	attribute = (Form_pg_attribute) GETSTRUCT(attributeTuple);	
 	
@@ -1617,10 +1485,12 @@ static bool hasMaxDefined(Oid relationOid, const char *attributeName)
 	funcNames = list_make1(makeString("max"));
 	maxAggregateFunction = LookupFuncName(funcNames, 1 /* nargs to function */, 
 										&attribute->atttypid, true);
-	if (!OidIsValid(maxAggregateFunction))
+	if (maxAggregateFunction == InvalidOid)
+	{
 		result = false;
+	}
 	
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(attributeTuple);	
 	return result;
 }
 
@@ -1638,17 +1508,12 @@ static bool isBoolType(Oid relationOid, const char *attributeName)
 	HeapTuple	attributeTuple = NULL;
 	Form_pg_attribute attribute = NULL;
 	bool		isBool = false;
-	cqContext  *pcqCtx;
-
-	pcqCtx = caql_getattname_scan(NULL, relationOid, attributeName);
-
-	attributeTuple = caql_get_current(pcqCtx);
-
+	
+	attributeTuple = SearchSysCacheAttName(relationOid, attributeName);
 	Assert(HeapTupleIsValid(attributeTuple));
 	attribute = (Form_pg_attribute) GETSTRUCT(attributeTuple);
 	isBool = (attribute->atttypid == BOOLOID);
-
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(attributeTuple);
 	return isBool;
 }
 
@@ -1677,7 +1542,7 @@ static float4 analyzeComputeNDistinct(Oid sampleTableOid,
 	sampleTableName = get_rel_name(sampleTableOid); // must be pfreed 	
 
 	initStringInfo(&str);
-	appendStringInfo(&str, "select count(*)::float4 from (select Ta.%s from %s.%s as Ta group by Ta.%s) as Tb",
+	appendStringInfo(&str, "select count(*)::float4 from (select Ta.%s from only %s.%s as Ta group by Ta.%s) as Tb", 
 			quote_identifier(attributeName), 
 			quote_identifier(sampleSchemaName), 
 			quote_identifier(sampleTableName),
@@ -1718,7 +1583,7 @@ static float4 analyzeComputeNRepeating(Oid relationOid,
 	sampleTableName = get_rel_name(relationOid); // must be pfreed 	
 
 	initStringInfo(&str);
-	appendStringInfo(&str, "select count(v)::float4 from (select Ta.%s as v, count(Ta.%s) as f from %s.%s as Ta group by Ta.%s) as foo where f > 1",
+	appendStringInfo(&str, "select count(v)::float4 from (select Ta.%s as v, count(Ta.%s) as f from only %s.%s as Ta group by Ta.%s) as foo where f > 1", 
 			quote_identifier(attributeName), 
 			quote_identifier(attributeName),
 			quote_identifier(sampleSchemaName), 
@@ -1818,19 +1683,16 @@ static bool isNotNull(Oid relationOid, const char *attributeName)
 	HeapTuple	attributeTuple = NULL;
 	Form_pg_attribute attribute = NULL;
 	bool		nonNull = false;
-	cqContext  *pcqCtx;
-
-	pcqCtx = caql_getattname_scan(NULL, relationOid, attributeName);
-
-	attributeTuple = caql_get_current(pcqCtx);
 	
+	attributeTuple = SearchSysCacheAttName(relationOid, attributeName);
 	Assert(HeapTupleIsValid(attributeTuple));
 	attribute = (Form_pg_attribute) GETSTRUCT(attributeTuple);
 	nonNull = attribute->attnotnull;
-
-	caql_endscan(pcqCtx);
-
-	return (nonNull);
+	ReleaseSysCache(attributeTuple);
+	if (nonNull)
+		return true;
+	else
+		return false;
 }
 
 /**
@@ -1852,7 +1714,7 @@ static float4 analyzeNullCount(Oid relationOid, const char *attributeName)
 	sampleTableName = get_rel_name(relationOid); // must be pfreed 	
 
 	initStringInfo(&str);
-	appendStringInfo(&str, "select count(*)::float4 from %s.%s as Ta where Ta.%s is null",
+	appendStringInfo(&str, "select count(*)::float4 from only %s.%s as Ta where Ta.%s is null", 
 			quote_identifier(sampleSchemaName), 
 			quote_identifier(sampleTableName), 
 			quote_identifier(attributeName));
@@ -1882,19 +1744,13 @@ static bool	isFixedWidth(Oid relationOid, const char *attributeName, float4 *wid
 	HeapTuple	attributeTuple = NULL;
 	Form_pg_attribute attribute = NULL;
 	float4	avgwidth = 0.0;
-	cqContext	*pcqCtx;
-
 	Assert(width);
 	
-	pcqCtx = caql_getattname_scan(NULL, relationOid, attributeName);
-
-	attributeTuple = caql_get_current(pcqCtx);
-
+	attributeTuple = SearchSysCacheAttName(relationOid, attributeName);
 	Assert(HeapTupleIsValid(attributeTuple));
 	attribute = (Form_pg_attribute) GETSTRUCT(attributeTuple);
 	avgwidth = get_typlen(attribute->atttypid);
-
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(attributeTuple);
 	
 	if (avgwidth > 0)
 	{
@@ -1930,7 +1786,7 @@ static float4 analyzeComputeAverageWidth(Oid relationOid,
 	sampleTableName = get_rel_name(relationOid); // must be pfreed 	
 	
 	initStringInfo(&str);
-	appendStringInfo(&str, "select avg(pg_column_size(Ta.%s))::float4 from %s.%s as Ta where Ta.%s is not null",
+	appendStringInfo(&str, "select avg(pg_column_size(Ta.%s))::float4 from only %s.%s as Ta where Ta.%s is not null", 
 			quote_identifier(attributeName), 
 			quote_identifier(sampleSchemaName), 
 			quote_identifier(sampleTableName), 
@@ -1977,7 +1833,7 @@ static void analyzeComputeMCV(Oid relationOid,
 	sampleTableName = get_rel_name(relationOid); // must be pfreed 	
 	
 	initStringInfo(&str);
-	appendStringInfo(&str, "select Ta.%s as v, count(Ta.%s)::float4/%f::float4 as f from %s.%s as Ta "
+	appendStringInfo(&str, "select Ta.%s as v, count(Ta.%s)::float4/%f::float4 as f from only %s.%s as Ta "
 			"where Ta.%s is not null group by (Ta.%s) order by f desc limit %u", 
 			quote_identifier(attributeName), 
 			quote_identifier(attributeName), 
@@ -2055,8 +1911,8 @@ static void analyzeComputeHistogram(Oid relationOid,
 	 */
 	
 	appendStringInfo(&str, "select v from ("
-			"select Ta.%s as v, row_number() over (order by Ta.%s) as r from %s.%s as Ta where %s "
-			"union select max(Tb.%s) as v, 1 as r from %s.%s as Tb where %s) as foo "
+			"select Ta.%s as v, row_number() over (order by Ta.%s) as r from only %s.%s as Ta where %s "
+			"union select max(Tb.%s) as v, 1 as r from only %s.%s as Tb where %s) as foo "
 			"where r %% %u = 1 group by v order by v", 
 			quote_identifier(attributeName), 
 			quote_identifier(attributeName), 
@@ -2311,12 +2167,8 @@ static void updateAttributeStatisticsInCatalog(Oid relationOid, const char *attr
 		Form_pg_attribute attribute;
 		Operator	equalityOperator;
 		Operator	ltOperator;
-		cqContext  *pcqCtx;
 
-		pcqCtx = caql_getattname_scan(NULL, relationOid, attributeName);
-		
-		attributeTuple = caql_get_current(pcqCtx);
-
+		attributeTuple = SearchSysCacheAttName(relationOid, attributeName);
 		Assert(HeapTupleIsValid(attributeTuple));
 		attribute = (Form_pg_attribute) GETSTRUCT(attributeTuple);
 		attNum = attribute->attnum;
@@ -2325,7 +2177,7 @@ static void updateAttributeStatisticsInCatalog(Oid relationOid, const char *attr
 		if (equalityOperator)
 		{
 			equalityOid = oprid(equalityOperator);
-			ReleaseOperator(equalityOperator);
+			ReleaseSysCache(equalityOperator);
 		}
 		
 		ltOperator = ordering_oper(attribute->atttypid, true);
@@ -2333,9 +2185,9 @@ static void updateAttributeStatisticsInCatalog(Oid relationOid, const char *attr
 		if (ltOperator)
 		{
 			ltOid = oprid(ltOperator);
-			ReleaseOperator(ltOperator);
+			ReleaseSysCache(ltOperator);
 		}
-		caql_endscan(pcqCtx);
+		ReleaseSysCache(attributeTuple);
 	}
 
 	for (i = 0; i < Natts_pg_statistic; ++i)
@@ -2448,48 +2300,39 @@ static void updateAttributeStatisticsInCatalog(Oid relationOid, const char *attr
 
 	/* Now work on pg_statistic */
 	{
-		HeapTuple	oldStatisticsTuple;
-		cqContext  *pcqCtx;
+		HeapTuple oldStatisticsTuple;
+		Relation	pgstatisticRel;
 
-		pcqCtx = caql_beginscan(
-				NULL,
-				cql("SELECT * FROM pg_statistic "
-					" WHERE starelid = :1 "
-					" AND staattnum = :2 "
-					" FOR UPDATE ",
-					ObjectIdGetDatum(relationOid),
-					Int16GetDatum(attNum)));
-
-		oldStatisticsTuple = caql_getnext(pcqCtx);
+		pgstatisticRel = heap_open(StatisticRelationId, RowExclusiveLock);
+		oldStatisticsTuple = SearchSysCache(STATRELATT, 
+											ObjectIdGetDatum(relationOid),
+											Int16GetDatum(attNum),
+											0,0);
 
 		if (HeapTupleIsValid(oldStatisticsTuple))
 		{
 			/* pg_statistic tuple exists. */
-			HeapTuple stup = caql_modify_current(pcqCtx,
+			HeapTuple stup = heap_modify_tuple(oldStatisticsTuple,
+					RelationGetDescr(pgstatisticRel),
 					values,
 					nulls,
 					replaces);
-
-			caql_update_current(pcqCtx, stup);
-			/* and Update indexes (implicit) */
-
+			ReleaseSysCache(oldStatisticsTuple);
+			simple_heap_update(pgstatisticRel, &stup->t_self, stup);
+			CatalogUpdateIndexes(pgstatisticRel, stup);
 			heap_freetuple(stup);
 		}
 		else
 		{
-			/* insert new tuple into pg_statistic. we are guaranteed
-			 * no-one else will overwrite this row because of
-			 * ShareUpdateExclusiveLock on the relation. 
-			 */
-
-			HeapTuple stup = caql_form_tuple(pcqCtx, values, nulls);
-
-			caql_insert(pcqCtx, stup);
-			/* and Update indexes (implicit) */
-
+			/* insert new tuple into pg_statistic. we are guaranteed no-one else
+			 * will overwrite this row because of ShareUpdateExclusiveLock on the relation. */
+			HeapTuple stup = heap_form_tuple(RelationGetDescr(pgstatisticRel), values, nulls);
+			simple_heap_insert(pgstatisticRel, stup);
+			CatalogUpdateIndexes(pgstatisticRel, stup);
 			heap_freetuple(stup);
 		}
-		caql_endscan(pcqCtx);
+
+		heap_close(pgstatisticRel, RowExclusiveLock);	
 	}
 
 }
@@ -2605,7 +2448,7 @@ static void gp_statistics_estimate_reltuples_relpages_heap(Relation rel, float4 
 					targtuple.t_data = (HeapTupleHeader) PageGetItem(targpage, itemid);
 					targtuple.t_len = ItemIdGetLength(itemid);
 
-					if(!HeapTupleSatisfiesVisibility(rel, &targtuple, SnapshotNow, targbuffer, "gp_statistics_estimate_reltuples_relpages_heap"))
+					if(!HeapTupleSatisfiesVisibility(rel, &targtuple, SnapshotNow, targbuffer))
 					{
 						nrowsdead += 1;
 					}
@@ -2662,7 +2505,7 @@ static void gp_statistics_estimate_reltuples_relpages_ao_cs(Relation rel, float4
 	*relpages = 0.0;
 	
     /* get table level statistics from the pg_aoseg table */
-	aoEntry = GetAppendOnlyEntry(RelationGetRelid(rel), SnapshotNow);
+	aoEntry = GetAppendOnlyEntry(RelationGetRelid(rel));
     aocsInfo = GetAllAOCSFileSegInfo(rel, aoEntry, SnapshotNow, &nsegs);
     if (aocsInfo)
     {
@@ -2713,7 +2556,7 @@ static void gp_statistics_estimate_reltuples_relpages_ao_rows(Relation rel, floa
 	Assert(rel->rd_rel->relkind == RELKIND_RELATION);
 	Assert(RelationIsAoRows(rel));
 	
-	fstotal = GetSegFilesTotals(rel, SnapshotNow);
+	fstotal = GetSegFilesTotals(rel);
 	Assert(fstotal);
 	/**
 	 * The planner doesn't understand AO's blocks, so need this method to try to fudge up a number for
@@ -2749,7 +2592,7 @@ gp_statistics_estimate_reltuples_relpages_oid(PG_FUNCTION_ARGS)
 	ArrayType   *result;
 	
 	Relation rel = try_relation_open(relOid, AccessShareLock, false);
-
+	
 	if (rel != NULL)
 	{
 		if (rel->rd_rel->relkind == RELKIND_RELATION)
@@ -2765,7 +2608,7 @@ gp_statistics_estimate_reltuples_relpages_oid(PG_FUNCTION_ARGS)
 			else if	(RelationIsAoCols(rel))
 			{
 				gp_statistics_estimate_reltuples_relpages_ao_cs(rel, &reltuples, &relpages);
-			}
+			}	
 		}
 		else if (rel->rd_rel->relkind == RELKIND_INDEX)
 		{
@@ -2796,3 +2639,5 @@ gp_statistics_estimate_reltuples_relpages_oid(PG_FUNCTION_ARGS)
 
 	PG_RETURN_ARRAYTYPE_P(result);
 }
+
+

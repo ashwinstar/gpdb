@@ -18,9 +18,6 @@
 
 extern void transformFromClause(ParseState *pstate, List *frmList);
 extern void transformWindowClause(ParseState *pstate, Query *qry);
-extern SequenceSpec *getSequenceSpec(List *speclist);
-extern bool useSequenceSemantics(List *speclist);
-extern void transformSequenceClause(ParseState *pstate, Query *qry);
 extern int setTargetTable(ParseState *pstate, RangeVar *relation,
 			   bool inh, bool alsoSource, AclMode requiredPerms);
 extern bool interpretInhOption(InhOption inhOpt);

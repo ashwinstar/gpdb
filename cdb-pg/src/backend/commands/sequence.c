@@ -15,7 +15,6 @@
  */
 #include "postgres.h"
 
-#include "access/catquery.h"
 #include "access/heapam.h"
 #include "access/transam.h"
 #include "access/xact.h"
@@ -343,19 +342,6 @@ Sequence_FetchGpRelationNodeForXLog(Relation rel)
 				 ItemPointerToString(&rel->rd_segfile0_relationnodeinfo.persistentTid));
 	}
 
-	if (Debug_check_for_invalid_persistent_tid &&
-		!Persistent_BeforePersistenceWork() &&
-		PersistentStore_IsZeroTid(&rel->rd_segfile0_relationnodeinfo.persistentTid))
-	{	
-		elog(ERROR, 
-			 "Sequence_FetchGpRelationNodeForXLog has invalid TID (0,0) for relation %u/%u/%u '%s', serial number " INT64_FORMAT,
-			 rel->rd_node.spcNode,
-			 rel->rd_node.dbNode,
-			 rel->rd_node.relNode,
-			 NameStr(rel->rd_rel->relname),
-			 rel->rd_segfile0_relationnodeinfo.persistentSerialNum);
-	}
-
 	rel->rd_segfile0_relationnodeinfo.isPresent = true;
 }
 
@@ -480,8 +466,6 @@ DefineSequence(CreateSeqStmt *seq)
 	stmt->relation = seq->sequence;
 	stmt->inhRelations = NIL;
 	stmt->constraints = NIL;
-	stmt->inhOids = NIL;
-	stmt->parentOidCount = 0;
 	stmt->options = list_make1(defWithOids(false));
 	stmt->oncommit = ONCOMMIT_NOOP;
 	stmt->tablespacename = NULL;
@@ -1145,16 +1129,12 @@ lastval(PG_FUNCTION_ARGS)
 				 errmsg("lastval is not yet defined in this session")));
 
 	/* Someone may have dropped the sequence since the last nextval() */
-	if (0 == caql_getcount(
-				NULL,
-				cql("SELECT COUNT(*) FROM pg_class "
-					" WHERE oid = :1 ",
-					ObjectIdGetDatum(last_used_seq->relid))))
-	{
+	if (!SearchSysCacheExists(RELOID,
+							  ObjectIdGetDatum(last_used_seq->relid),
+							  0, 0, 0))
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("lastval is not yet defined in this session")));
-	}
 
 	seqrel = open_share_lock(last_used_seq);
 

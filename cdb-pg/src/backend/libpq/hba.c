@@ -729,7 +729,7 @@ check_network_callback(struct sockaddr * addr, struct sockaddr * netmask,
 /*
  * Use pg_foreach_ifaddr to check a samehost or samenet match
  */
-bool
+static bool
 check_same_host_or_net(SockAddr *raddr, IPCompareMethod method)
 {
 	check_network_data cn;

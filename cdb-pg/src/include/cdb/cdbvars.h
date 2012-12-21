@@ -111,6 +111,7 @@ typedef enum
 	GP_ROLE_UTILITY = 0,		/* Operating as a simple database engine */
 	GP_ROLE_DISPATCH,			/* Operating as the parallel query dispatcher */
 	GP_ROLE_EXECUTE,			/* Operating as a parallel query executor */
+	GP_ROLE_DISPATCHAGENT,		/* A dispatch relay agent */
 	GP_ROLE_UNDEFINED			/* Should never see this role in use */
 } GpRoleValue;
 
@@ -178,7 +179,6 @@ extern bool gp_is_callback;
 
 /*
  * Use query dispatch agents?
- * NOTE: DEPRECATED GUC.
  */
 extern bool gp_use_dispatch_agent;
 
@@ -296,22 +296,6 @@ extern bool Debug_print_dispatch_plan;
 extern bool Debug_print_plannedstmt;
 
 /*
- * gp_backup_directIO
- *
- * when set to 'true' the dump with direct I\O is enabled
- */
-extern bool gp_backup_directIO;
-
-
-/*
- * gp_backup_directIO_readChunk
- *
- *  This parameter controls the readChunk that is used during directI\O backup
- *  The value of this parameter is in megabyte
- */
-extern int gp_backup_directIO_read_chunk_mb;
-
-/*
  * gp_external_enable_exec
  *
  * when set to 'true' external tables that were defined with an EXECUTE
@@ -325,7 +309,7 @@ extern bool gp_external_enable_exec;
  * gp_external_grant_privileges
  *
  * when set to 'false' only superusers can create external tables.
- * when set to 'true' http, gpfdist and gpfdists external tables are also allowed to be
+ * when set to 'true' http and gpfdist external tables are also allowed to be
  * created by non superusers. Default is 'false'
  */
 extern bool gp_external_grant_privileges;
@@ -333,7 +317,7 @@ extern bool gp_external_grant_privileges;
 /* gp_external_max_segs
  *
  * The maximum number of segment databases that will get assigned to
- * connect to a specific gpfdist (or gpfdists) client (1 gpfdist:// URI). The limit
+ * connect to a specific gpfdist client (1 gpfdist:// URI). The limit
  * is good to have as there is a number of segdbs that as we increase
  * it won't add to performance but may actually decrease it, while
  * occupying unneeded resources. By having a limit we can control our
@@ -411,15 +395,8 @@ extern bool gpvars_assign_gp_fts_probe_pause(bool newval, bool doit, GucSource s
  *
  */
 extern int	gp_connections_per_thread; /* GUC var - server operating mode.  */
-
 extern bool assign_gp_connections_per_thread(int newval, bool doit, GucSource source);
 extern const char *show_gp_connections_per_thread(void);
-
-/*
- * If number of subtransactions within a transaction exceed this limit,
- * then a warning is given to the user.
- */
-extern int32 gp_subtrans_warn_limit;
 
 extern bool assign_gp_write_shared_snapshot(bool newval, bool doit, GucSource source);
 
@@ -438,8 +415,6 @@ extern int	gp_fts_probe_timeout; /* GUC var - specifies probe timeout for FTS */
 extern int	gp_fts_probe_interval; /* GUC var - specifies polling interval for FTS */
 extern int	gp_fts_probe_threadcount; /* GUC var - specifies number of threads to use for FTS probes */
 extern bool	gp_fts_transition_parallel; /* GUC var - controls parallel segment transition for FTS */
-
-extern int gp_log_retry_count; /* GUC var - specifies the number of retries for elog before it gives up */
 
 extern int gp_gang_creation_retry_count; /* How many retries ? */
 extern int gp_gang_creation_retry_timer; /* How long between retries */
@@ -487,19 +462,7 @@ extern const char *gpvars_show_gp_interconnect_type(void);
  * This guc is specific to the UDP-interconnect.
  *
  */
-
 extern int	Gp_interconnect_queue_depth;
-
-/*
- * Parameter Gp_interconnect_snd_queue_depth
- *
- * The run-time parameter Gp_interconnect_snd_queue_depth controls the
- * average number of outstanding messages on the sender side
- *
- * This guc is specific to the UDP-interconnect.
- *
- */
-extern int	Gp_interconnect_snd_queue_depth;
 
 /* UDP recv buf size in KB.  For testing */
 extern int 	Gp_udp_bufsize_k;
@@ -579,9 +542,6 @@ extern int gp_udpic_dropseg; /* specifies which segments to apply the
 							  * them. */
 extern int gp_udpic_dropxmit_percent;
 extern int gp_udpic_dropacks_percent;
-extern int gp_udpic_fault_inject_percent;
-extern int gp_udpic_fault_inject_bitmap;
-extern int gp_udpic_network_disable_ipv6;
 #endif
 
 /*
@@ -758,11 +718,17 @@ extern double gp_selectivity_damping_factor;
 extern bool gp_selectivity_damping_sigsort;
 
 
+/* ----- Internal Features ----- */
+
 /*
- * MPP-16062 : Disabling DDL support for inheritance
- * Only allow inheritance DDL when guc is true
+ * gp_enable_alter_table_inherit_cols
+ *
+ * Allows the use of the ALTER TABLE client INHERIT parent [( column_list )]
+ * optional column_list.  If this variable is false (the default), use of
+ * the optional column_list.  This variable is used by pg_dump --gp-migrator
+ * to enable use of the extended syntax.
  */
-extern bool gp_enable_inheritance;
+extern bool gp_enable_alter_table_inherit_cols;
 
 
 /* ----- Experimental Features ----- */
@@ -991,7 +957,6 @@ extern bool		gp_statistics_use_fkeys;
 extern int 		gp_statistics_blocks_target;
 extern double	gp_statistics_ndistinct_scaling_ratio_threshold;
 extern double	gp_statistics_sampling_threshold;
-extern bool 	gp_statistics_master_sample;
 
 /* Analyze tools */
 extern int gp_motion_slice_noop;
@@ -1020,9 +985,6 @@ extern int gp_workfile_type_hashjoin;
 extern bool gp_mapreduce_define;
 extern bool coredump_on_memerror;
 
-/* if catquery.c is built with the logquery option, allow caql logging */
-extern bool	gp_enable_caql_logging;
-
 /* Autostats feature for MPP-4082. */
 typedef enum
 {
@@ -1032,15 +994,11 @@ typedef enum
 } GpAutoStatsModeValue;
 extern GpAutoStatsModeValue gp_autostats_mode;
 extern char                *gp_autostats_mode_string;
-extern GpAutoStatsModeValue gp_autostats_mode_in_functions;
-extern char                *gp_autostats_mode_in_functions_string;
 extern int                  gp_autostats_on_change_threshold;
 extern bool					log_autostats;
-/* hook functions to set gp_autostats_mode and gp_autostats_mode_in_functions */
+/* hook functions to set gp_autostats_mode */
 extern const char *gpvars_assign_gp_autostats_mode(const char *newval, bool doit, GucSource source);
 extern const char *gpvars_show_gp_autostats_mode(void);
-extern const char *gpvars_assign_gp_autostats_mode_in_functions(const char *newval, bool doit, GucSource source);
-extern const char *gpvars_show_gp_autostats_mode_in_functions(void);
 
 
 /* --------------------------------------------------------------------------------------------------
@@ -1143,10 +1101,4 @@ extern const char *gpvars_show_gp_resqueue_memory_policy(void);
 
 extern bool gpvars_assign_statement_mem(int newval, bool doit, GucSource source __attribute__((unused)) );
 
-extern void increment_command_count(void);
-
-/*
- * switch to control inverse distribution function strategy.
- */
-extern char *gp_idf_deduplicate_str;
 #endif   /* GPVARS_H */

@@ -34,8 +34,6 @@
  */
 #include "postgres.h"
 
-#include "access/genam.h"
-#include "access/catquery.h"
 #include "access/heapam.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
@@ -117,13 +115,6 @@ DefineOperator(List *names, List *parameters, Oid newOid)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 					errmsg("setof type not allowed for operator argument")));
-		}
-		else if (gp_upgrade_mode && pg_strcasecmp(defel->defname, "OID") == 0)
-		{
-			/* Catalog obj's OID must be less than FirstBootstrapObjectId */
-			int64 oid = defGetInt64(defel);
-			Insist(oid < FirstBootstrapObjectId);
-			newOid = oid;
 		}
 		else if (pg_strcasecmp(defel->defname, "procedure") == 0)
 			functionName = defGetQualifiedName(defel);
@@ -233,8 +224,7 @@ RemoveOperator(RemoveFuncStmt *stmt)
 	TypeName   *typeName1 = (TypeName *) linitial(stmt->args);
 	TypeName   *typeName2 = (TypeName *) lsecond(stmt->args);
 	Oid			operOid;
-	Oid			operNsp;
-	int			fetchCount = 0;
+	HeapTuple	tup;
 	ObjectAddress object;
 
 	Assert(list_length(stmt->args) == 2);
@@ -250,25 +240,20 @@ RemoveOperator(RemoveFuncStmt *stmt)
 		return;
 	}
 
-	operNsp = caql_getoid_plus(
-			NULL,
-			&fetchCount,
-			NULL,
-			cql("SELECT oprnamespace FROM pg_operator "
-				" WHERE oid = :1 "
-				" FOR UPDATE ",
-				ObjectIdGetDatum(operOid)));
-
-	if (0 == fetchCount) /* should not happen */
+	tup = SearchSysCache(OPEROID,
+						 ObjectIdGetDatum(operOid),
+						 0, 0, 0);
+	if (!HeapTupleIsValid(tup)) /* should not happen */
 		elog(ERROR, "cache lookup failed for operator %u", operOid);
 
 	/* Permission check: must own operator or its namespace */
 	if (!pg_oper_ownercheck(operOid, GetUserId()) &&
-		!pg_namespace_ownercheck(operNsp,
+		!pg_namespace_ownercheck(((Form_pg_operator) GETSTRUCT(tup))->oprnamespace,
 								 GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_OPER,
 					   NameListToString(operatorName));
 
+	ReleaseSysCache(tup);
 
 	/*
 	 * Do the deletion
@@ -291,15 +276,22 @@ RemoveOperator(RemoveFuncStmt *stmt)
 void
 RemoveOperatorById(Oid operOid)
 {
-	if (0 == caql_getcount(
-				NULL,
-				cql("DELETE FROM pg_operator "
-					" WHERE oid = :1 ",
-					ObjectIdGetDatum(operOid))))
-	{
-		/* should not happen */
+	Relation	relation;
+	HeapTuple	tup;
+
+	relation = heap_open(OperatorRelationId, RowExclusiveLock);
+
+	tup = SearchSysCache(OPEROID,
+						 ObjectIdGetDatum(operOid),
+						 0, 0, 0);
+	if (!HeapTupleIsValid(tup)) /* should not happen */
 		elog(ERROR, "cache lookup failed for operator %u", operOid);
-	}
+
+	simple_heap_delete(relation, &tup->t_self);
+
+	ReleaseSysCache(tup);
+
+	heap_close(relation, RowExclusiveLock);
 }
 
 void
@@ -341,20 +333,12 @@ AlterOperatorOwner_internal(Relation rel, Oid operOid, Oid newOwnerId)
 	HeapTuple	tup;
 	AclResult	aclresult;
 	Form_pg_operator oprForm;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
 
 	Assert(RelationGetRelid(rel) == OperatorRelationId);
 
-	pcqCtx = caql_addrel(cqclr(&cqc), rel);
-
-	tup = caql_getfirst(
-			pcqCtx,
-			cql("SELECT * FROM pg_operator "
-				" WHERE oid = :1 "
-				" FOR UPDATE ",
-				ObjectIdGetDatum(operOid)));
-
+	tup = SearchSysCacheCopy(OPEROID,
+							 ObjectIdGetDatum(operOid),
+							 0, 0, 0);
 	if (!HeapTupleIsValid(tup)) /* should not happen */
 		elog(ERROR, "cache lookup failed for operator %u", operOid);
 
@@ -391,7 +375,9 @@ AlterOperatorOwner_internal(Relation rel, Oid operOid, Oid newOwnerId)
 		 */
 		oprForm->oprowner = newOwnerId;
 
-		caql_update_current(pcqCtx, tup); /* implicit update of index as well*/
+		simple_heap_update(rel, &tup->t_self, tup);
+
+		CatalogUpdateIndexes(rel, tup);
 
 		/* Update owner dependency reference */
 		changeDependencyOnOwner(OperatorRelationId, operOid, newOwnerId);

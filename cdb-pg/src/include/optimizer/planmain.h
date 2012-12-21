@@ -100,8 +100,6 @@ extern RangeTblEntry *package_plan_as_rte(Query *query, Plan *plan, Alias *eref,
 extern Value *get_tle_name(TargetEntry *tle, List* rtable, const char *default_name);
 extern bool contain_windowref(Node *node, void *context);
 extern bool window_edge_is_delayed(WindowFrameEdge *edge);
-extern Plan *wrap_plan(PlannerInfo *root, Plan *plan, Query *query, List **p_pathkeys,
-       const char *alias_name, List *col_names, Query **query_p);
 
 
 /*
@@ -172,7 +170,7 @@ extern MergeJoin *make_mergejoin(List *tlist,
 			   JoinType jointype);
 extern Window *make_window(PlannerInfo *root, List *tlist,
 		   int numPartCols, AttrNumber *partColIdx, List *windowKeys,
-		   Node *sequence, WindowSemantics semantics, Plan *lefttree);
+		   Plan *lefttree);
 extern Material *make_material(Plan *lefttree);
 extern Plan *materialize_finished_plan(PlannerInfo *root, Plan *subplan);
 extern Unique *make_unique(Plan *lefttree, List *distinctList);

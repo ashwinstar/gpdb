@@ -49,20 +49,13 @@ typedef struct AppendOnlyStorageWrite
 			 * logging and error messages.
 			 */
 
-	char		*title;
-			/*
-			 * A phrase that better describes the purpose of the this open.
-			 *
-			 * The caller manages the storage for this.
-			 */
-			 
 	AppendOnlyStorageAttributes		storageAttributes;
 			/*
 			 * The Append-Only Storage Attributes
 			 * from relation creation.
 			 */
 
-	int32			regularHeaderLen;
+	int32			fixedHeaderLen;
 			/*
 			 * Fixed header length as determined by the checksum flag in
 			 * storageAttributes.
@@ -115,9 +108,6 @@ typedef struct AppendOnlyStorageWrite
 
 	int64   lastWriteBeginPosition;
 			/* The beginning of the write buffer for the last write. */
-
-	AoHeaderKind	getBufferAoHeaderKind;
-			/* The kind of header specifed to ~_GetBuffer. */
 
 	int32	currentCompleteHeaderLen;
 			/*
@@ -198,26 +188,11 @@ extern void AppendOnlyStorageWrite_Init(
 				 * Name of the relation to use in system
 				 * logging and error messages.
 				 */
-
-	char							*title,
-				/*
-				 * A phrase that better describes the purpose of the this open.
-				 *
-				 * The caller manages the storage for this.
-				 */
-
 	AppendOnlyStorageAttributes		*storageAttributes);
 				/*
 				 * The Append-Only Storage Attributes
 				 * from relation creation.
 				 */
-
-/*
- * Return (read-only) pointer to relation name.
- */
-extern char* AppendOnlyStorageWrite_RelationName(
-	AppendOnlyStorageWrite			*storageWrite);
-
 
 /*
  * Finish using the AppendOnlyStorageWrite session created with ~Init.
@@ -353,8 +328,8 @@ extern int32 AppendOnlyStorageWrite_FixedHeaderLen(
  * begin written.
  */
 extern int32 AppendOnlyStorageWrite_CompleteHeaderLen(
-	AppendOnlyStorageWrite		*storageWrite,
-	AoHeaderKind				aoHeaderKind);
+	AppendOnlyStorageWrite		*storageWrite);
+
 
 // -----------------------------------------------------------------------------
 // Writing �Short� Content Efficiently that is not being Bulk Compressed
@@ -385,8 +360,7 @@ extern int32 AppendOnlyStorageWrite_CompleteHeaderLen(
  * room for another buffer.
  */
 extern uint8 *AppendOnlyStorageWrite_GetBuffer(
-	AppendOnlyStorageWrite		*storageWrite,
-	int 						aoHeaderKind);
+	AppendOnlyStorageWrite		*storageWrite);
 
 /*
  * Test if a buffer is currently allocated.
@@ -514,8 +488,6 @@ extern void AppendOnlyStorageWrite_SetFirstRowNum(
 	int64						firstRowNum);
 
 
-extern char *AppendOnlyStorageWrite_ContextStr(
-	AppendOnlyStorageWrite		*storageWrite);
 
 #endif   /* CDBAPPENDONLYSTORAGEWRITE_H */
 

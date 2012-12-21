@@ -990,7 +990,7 @@ dumpEntryConnections(int elevel, ChunkTransportStateEntry *pEntry)
 void adjustMasterRouting(Slice *recvSlice)
 {
 	ListCell *lc = NULL;
-	foreach(lc, recvSlice->workerProcesses)
+	foreach(lc, recvSlice->primaryProcesses)
 	{
 		CdbProcess *cdbProc = (CdbProcess *)lfirst(lc);
 

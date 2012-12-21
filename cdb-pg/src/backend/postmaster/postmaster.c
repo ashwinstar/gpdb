@@ -135,7 +135,6 @@
 #include "postmaster/syslogger.h"
 #include "postmaster/backoff.h"
 #include "postmaster/perfmon_segmentinfo.h"
-#include "postmaster/optserver.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/pg_shmem.h"
@@ -147,7 +146,6 @@
 #include "utils/datetime.h"
 #include "utils/faultinjector.h"
 #include "utils/memutils.h"
-#include "utils/performancecounter.h"
 #include "utils/ps_status.h"
 #include "utils/resscheduler.h"
 
@@ -194,7 +192,6 @@ typedef struct bkend
 static Dllist *BackendList;
 
 /* #define DO_DDA_SERV 1 */
-/* #define GP_OPT_PROCESS 1 */
 /* CDB */
 typedef enum pmsub_type
 {
@@ -208,9 +205,6 @@ typedef enum pmsub_type
 	PerfmonProc,
 	BackoffProc,
 	PerfmonSegmentInfoProc,
-#ifdef GP_OPT_PROCESS
-	OptProc,
-#endif
 	MaxPMSubType
 } PMSubType;
 
@@ -489,11 +483,6 @@ static PMSubProc PMSubProcList[MaxPMSubType] =
 	{0, PerfmonSegmentInfoProc,
 	(PMSubStartCallback*)&perfmon_segmentinfo_start,
 	"stats sender process", PMSUBPROC_FLAG_QD_AND_QE, true},
-#ifdef GP_OPT_PROCESS
-	{0, OptProc,
-	(PMSubStartCallback*)&optimizer_start,
-	"optimizer process", PMSUBPROC_FLAG_QD, true},
-#endif // !GP_OPT_PROCESS
 #ifdef DO_DDA_SERV
 	{0, DdaServerProc,
 	 (PMSubStartCallback*)&ddaserver_start,
@@ -537,7 +526,6 @@ extern char    *locale_collate;
 static void getInstallationPaths(const char *argv0);
 static void checkDataDir(void);
 static void checkPgDir(const char *dir);
-static void checkPgDir2(const char *dir);
 
 #ifdef USE_TEST_UTILS
 static void SimExProcExit(void);
@@ -580,7 +568,7 @@ static bool ServiceStartable(PMSubProc *subProc);
 static int	ServerLoop(void);
 static int	BackendStartup(Port *port);
 static int	ProcessStartupPacket(Port *port, bool SSLdone);
-static void processCancelRequest(Port *port, void *pkt, ProtocolVersion proto);
+static void processCancelRequest(Port *port, void *pkt);
 static void processPrimaryMirrorTransitionRequest(Port *port, void *pkt);
 static void processPrimaryMirrorTransitionQuery(Port *port, void *pkt);
 static int	initMasks(fd_set *rmask);
@@ -704,7 +692,6 @@ static bool AreFileReplicationStructuresRequired = false;
 /* Macros to check exit status of a child process */
 #define EXIT_STATUS_0(st)  ((st) == 0)
 #define EXIT_STATUS_1(st)  (WIFEXITED(st) && WEXITSTATUS(st) == 1)
-#define EXIT_STATUS_2(st)  (WIFEXITED(st) && WEXITSTATUS(st) == 2)
 
 /* if we are a QD postmaster or not */
 extern bool Gp_entry_postmaster;
@@ -1827,37 +1814,6 @@ static void checkPgDir(const char *dir)
 	}
 }
 
-/*
- * check if file or directory under current transaction filespace exists and is accessible
- */
-static void checkPgDir2(const char *dir)
-{
-	Assert(DataDir);
-
-	struct stat st;
-	char buf[MAXPGPATH];
-	char *path = makeRelativeToTxnFilespace((char*)dir);
-
-	snprintf(buf, MAXPGPATH, "%s", path);
-	buf[ARRAY_SIZE(buf) - 1] = '\0';
-
-	if (stat(buf, &st) != 0)
-	{
-		/* check if pg_log is there */
-		snprintf(buf, ARRAY_SIZE(buf), "%s%s", DataDir, "/pg_log");
-		if (stat(buf, &st) == 0)
-		{
-			elog(LOG, "System file or directory missing (%s), shutting down segment", path);
-		}
-
-		pfree(path);
-		/* quit all processes and exit */
-		pmdie(SIGQUIT);
-	}
-
-	pfree(path);
-}
-
 
 #ifdef USE_TEST_UTILS
 /*
@@ -2090,13 +2046,6 @@ BeginResetOfPostmasterAfterChildrenAreShutDown(void)
 	 */
 	Save_DtxStartTime = getDtxStartTime();
 
-#ifdef USE_TEST_UTILS
-		if (gp_simex_init)
-		{
-			simex_save_sync_bitvector_container();
-		}
-#endif
-
 	/*
 	 * reset shared memory and semaphores;
 	 * this happens before forking the filerep peer reset process;
@@ -2104,13 +2053,6 @@ BeginResetOfPostmasterAfterChildrenAreShutDown(void)
 	 */
 	shmem_exit(0 /*code*/);
 	reset_shared(PostPortNumber, true /*isReset*/);
-
-#ifdef USE_TEST_UTILS
-		if (gp_simex_init)
-		{
-			simex_restore_sync_bitvector_container();
-		}
-#endif
 
 	if (primaryMirrorPostmasterResetShouldRestartPeer())
 	{
@@ -2272,7 +2214,7 @@ ServerLoop(void)
 										   DDLNotSpecified,
 										   "",	//databaseName
 										   ""); // tableName
-#endif
+#endif											
         }
         else
         {
@@ -2287,17 +2229,13 @@ ServerLoop(void)
 			checkPgDir("");
 			checkPgDir("/base");
 			checkPgDir("/global");
+			checkPgDir("/pg_distributedlog");
+			checkPgDir("/pg_distributedxidmap");
+			checkPgDir("/pg_multixact");
+			checkPgDir("/pg_subtrans");
 			checkPgDir("/pg_twophase");
 			checkPgDir("/pg_utilitymodedtmredo");
-			checkPgDir2("pg_distributedlog");
-			checkPgDir2("pg_distributedxidmap");
-			checkPgDir2("pg_multixact");
-			checkPgDir2("pg_subtrans");
-			checkPgDir2("pg_xlog");
-			checkPgDir2("pg_clog");
-			checkPgDir2("pg_multixact/members");
-			checkPgDir2("pg_multixact/offsets");
-			checkPgDir2("pg_xlog/archive_status");
+			checkPgDir("/pg_xlog");
 		}
 
 #ifdef USE_TEST_UTILS
@@ -2593,9 +2531,10 @@ ProcessStartupPacket(Port *port, bool SSLdone)
 	 * request code.
 	 */
 	port->proto = proto = ntohl(*((ProtocolVersion *) buf));
-	if (proto == CANCEL_REQUEST_CODE || proto == CANCEL_NOERR_CODE)
+
+	if (proto == CANCEL_REQUEST_CODE)
 	{
-		processCancelRequest(port, buf, proto);
+		processCancelRequest(port, buf);
 		return 127;				/* XXX */
 	}
 	else if (proto == PRIMARY_MIRROR_TRANSITION_REQUEST_CODE)
@@ -2814,16 +2753,16 @@ retry1:
      * CDB: Process "gpqeid" parameter string for qExec startup.
      */
     if (gpqeid)
-    {
         cdbgang_parse_gpqeid_params(port, gpqeid);
-    }
-    else if (gpdaid || gpqdid)
+    else if (gpqdid)
+    	cdbgang_parse_gpqdid_params(port, gpqdid);
+    else if (gpdaid)
 	{
 		ereport(FATAL,
 				(errcode(ERRCODE_CANNOT_CONNECT_NOW),
 				 errSendAlert(true),
 				 errOmitLocation(true),
-				 errmsg("GPAgent and QD callbacks are deprecated.")));
+				 errmsg("GPAgent deprecated.")));
 	}
 
 	/*
@@ -2956,7 +2895,6 @@ processTransitionRequest_beginPostmasterReset(void)
  	int counterToReturn;
 
  	PrimaryMirrorModeTransitionArguments args = primaryMirrorGetArgumentsFromLocalMemory();
- 	bool resetRequired = false;
 
 	if (args.mode == PMModeMaster)
 	{
@@ -2993,8 +2931,8 @@ processTransitionRequest_beginPostmasterReset(void)
 		else
 		{
 			elog(LOG, "postmaster reset request received from primary");
+			SendPostmasterSignal(PMSIGNAL_POSTMASTER_RESET_BY_PEER);
 			counterToReturn = pmResetCounter + 1;
-			resetRequired = true;
 		}
 
 		/* report success along with target reset counter value */
@@ -3002,11 +2940,6 @@ processTransitionRequest_beginPostmasterReset(void)
 	}
 
 	sendPrimaryMirrorTransitionResult(statusBuf);
-
-	if (resetRequired)
-	{
-		SendPostmasterSignal(PMSIGNAL_POSTMASTER_RESET_BY_PEER);
-	}
 }
 
 static void
@@ -3127,8 +3060,8 @@ processTransitionRequest_getMirrorStatus(void)
 							  "verificationCompletedCount:%0.2f\n"
 							  "estimatedCompletionVerificationTimeSecondsSinceEpoch:" INT64_FORMAT "\n"
 							  "verificationToken:%s\n",
-			 getMirrorModeLabel(pm_mode),
-			 getSegmentStateLabel(s_state),
+			 getMirrorModeLabel(pm_mode), 
+			 getSegmentStateLabel(s_state), 
 			 getDataStateLabel(d_state),
 			 getFaultTypeLabel(f_type),
 			 databaseStatus,
@@ -3308,51 +3241,11 @@ exit:
 
 }
 
-
-static void
-processTransitionRequest_performanceCounterAction(void * inputBuf, int *offsetPtr, int length)
-{
-	bool  wasRead;
-	char *PerformanceCounterName = readNextStringFromString(inputBuf, offsetPtr, length);
-	char *type                   = readNextStringFromString(inputBuf, offsetPtr, length);
-	int   sleepTimeSeconds       = readIntFromString(inputBuf, offsetPtr, length, &wasRead);
-	const int bufLen             = 1000;
-	char  buf[bufLen];
-
-	init_ps_display("performance counter inject process", "", "", "");
-
-	if ( ! wasRead)
-	{
-		sendPrimaryMirrorTransitionResult(PROTOCOL_VIOLATION);
-		ereport(COMMERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
-							errmsg("invalid performance counter packet (missing some data values)")));
-		snprintf(buf, sizeof(buf), "Failure: invalid performance counter packet (missing some data values)");
-	}
-	else
-	{
-		if (sleepTimeSeconds < 0 || sleepTimeSeconds > 7200)
-		{
-			ereport(COMMERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
-					errmsg("invalid sleep time, allowed range [0, 7200 sec]")));
-			snprintf(buf, sizeof(buf), "Failure: invalid sleep time, allowed range [0, 7200 sec]");
-		}
-		else
-		{
-			elog(DEBUG1, "PERFORMANCE COUNTER: Name %s Type %s, SleepTime %d", PerformanceCounterName, type, sleepTimeSeconds );
-
-			PerformanceCounter_TakeAction(PerformanceCounterName, type, sleepTimeSeconds, buf, bufLen);
-		}
-	}
-
-	sendPrimaryMirrorTransitionResult(buf);
-}
-
-
 /**
  * Send a verification request.
  * No validation of request is performed here.
- * The check to verify if this is a valid request is done in the verification thread.
- *
+ * The check to verify if this is a valid request is done in the verification thread.	
+ * 
  * TODO: Remove the logs after verification
  */
 static void
@@ -3364,6 +3257,9 @@ processFilerepVerifyRequest(void * inputBuf, int *offsetPtr, int length)
 	char *token = readNextStringFromString(inputBuf, offsetPtr, length);
 
 
+	//char *estimateOnly = readNextStringFromString(inputBuf, offsetPtr, length);
+	//char *contentNumber = readNextStringFromString(inputBuf, offsetPtr, length);
+
 	char *abort = readNextStringFromString(inputBuf, offsetPtr, length);
 	char *suspend = readNextStringFromString(inputBuf, offsetPtr, length);
 	char *resume = readNextStringFromString(inputBuf, offsetPtr, length);
@@ -3372,11 +3268,13 @@ processFilerepVerifyRequest(void * inputBuf, int *offsetPtr, int length)
 
 	char *logLevel = readNextStringFromString(inputBuf, offsetPtr, length);
 
+	//char *history = readNextStringFromString(inputBuf, offsetPtr, length);
+
+	//char *state = readNextStringFromString(inputBuf, offsetPtr, length);
+
 	int status = STATUS_OK;
 
 	FileRepVerifyArguments *args;
-
-
 	args = createNewFileRepVerifyArguments();
 
 	if (NULL == args){
@@ -3390,83 +3288,152 @@ processFilerepVerifyRequest(void * inputBuf, int *offsetPtr, int length)
 
 	if(fullVerify == NULL || (strlen(fullVerify) == 0))
 	{
+		//elog(LOG, "fullVerify is NULL");
 		args->fullVerify = false;
 	}
 	else
 	{
+		//elog(LOG, "fullverify %s\n", fullVerify);
 		args->fullVerify = true;
 	}
 
-	if (!(file == NULL || (strlen(file) == 0)))
+	if(file == NULL || (strlen(file) == 0))
 	{
+		//elog(LOG, "file is NULL");
+	}
+	else
+	{
+		//elog(LOG, "file is %s\n", file);
 		strncpy(args->compareFile, file, strlen(file)+1);
 	}
 
-	if (!(token == NULL || (strlen(token) == 0)))
+#if 0
+	if(history == NULL || (strlen(history) == 0))
 	{
+		//elog(LOG, "history is NULL");
+		args->printHistory = false;
+	}
+
+	else
+	{
+		//elog(LOG, "history is %s", history);
+		args->printHistory = true;
+	}
+#endif
+	if(token == NULL || (strlen(token) == 0))
+	{
+		//elog(LOG, "Token is NULL");
+	}
+	else
+	{
+		//elog(LOG, "Token is %s\n", Token);
 		strncpy(args->token, token, strlen(token)+1);
 	}
 
-	if (!(logLevel == NULL || (strlen(logLevel) == 0)))
+	if(logLevel == NULL || (strlen(logLevel) == 0))
 	{
+		//elog(LOG, "logLevel is NULL\n");
+	}
+	else
+	{
+		//elog(LOG, "logLevel is %s\n", logLevel);
 		strcpy(args->logLevel, logLevel);
 	}
 
-
-	if (!(directoryTree == NULL || (strlen(directoryTree) == 0)))
+#if 0
+	if(estimateOnly == NULL || (strlen(estimateOnly) == 0))
 	{
+		//elog(LOG, "estimateOnly is NULL");
+	}
+	else
+	{
+		//elog(LOG, "estimate is %s\n", estimateOnly);
+		args->estimateOnly = true;
+	}
+
+	if(contentNumber == NULL || (strlen(contentNumber) == 0))
+	{
+		//elog(LOG, "contentNumber is NULL");
+	}
+	else
+	{
+		//elog(LOG, "contentNumber is %s\n", contentNumber);
+		strncpy(args->contentNumber, contentNumber, strlen(contentNumber) + 1);
+	}
+
+#endif
+
+
+
+	if(directoryTree == NULL || (strlen(directoryTree) == 0))
+	{
+		//elog(LOG, "directoryTree is NULL");
+	}
+	else
+	{
+		//elog(LOG, "directoryTree is %s\n", directoryTree);
 		strncpy(args->directoryTree, directoryTree, strlen(directoryTree)+1);
 	}
 
 	if(abort == NULL || (strlen(abort) == 0))
 	{
+	  ///		elog(LOG, "abort is NULL");
 		args->abort = false;
 	}
 	else
 	{
+	  //		elog(LOG, "abort is %s\n", abort);
 		args->abort = true;
 	}
 
 	if(resume == NULL || (strlen(resume) == 0))
 	{
 		args->resume = false;
+		//elog(LOG, "resume is NULL");
 	}
 	else
 	{
+		//elog(LOG, "resume is %s\n", resume);
 		args->resume = true;
 	}
 
 	if(suspend == NULL || (strlen(suspend) == 0))
 	{
+		//elog(LOG, "suspend is NULL");
 		args->suspend = false;
 	}
 	else
 	{
+		//elog(LOG, "suspend is %s\n", suspend);
 		args->suspend = true;
 	}
 
-	if (!(ignorePattern == NULL || (strlen(ignorePattern) == 0)))
+	if(ignorePattern == NULL || (strlen(ignorePattern) == 0))
 	{
-		if (strlen(ignorePattern)+1 >  IGNORE_PATTERN_LENGTH)
-		{
-			snprintf(statusBuf, RESPONSE_LEN+50,
-					 "Failure: ignore file list exceeds max length of %d chars\n",
-					 IGNORE_PATTERN_LENGTH);
+		//elog(LOG, "ignorePattern is NULL");
+	}
+	else
+	{
+		//elog(LOG, "ignorePattern is %s\n", ignorePattern);
+		if (strlen(ignorePattern)+1 >  IGNORE_PATTERN_LENGTH){
+			snprintf(statusBuf, RESPONSE_LEN+50, "Failure: ignore file list exceeds max length of %d chars\n", IGNORE_PATTERN_LENGTH);
 			sendPrimaryMirrorTransitionResult(responseMsg);
 			return;
 
 		}
 		strncpy(args->ignorePattern, ignorePattern, strlen(ignorePattern)+1);
-
+	
 	}
 
-	if (!(dirIgnorePath == NULL || (strlen(dirIgnorePath) == 0)))
+	if(dirIgnorePath == NULL || (strlen(dirIgnorePath) == 0))
 	{
-		if (strlen(dirIgnorePath)+1 >  DIR_IGNOREPATH_LENGTH )
-		{
-			snprintf(statusBuf, RESPONSE_LEN+50,
-					 "Failure: ignore directory list exceeds max length of %d chars\n",
-					 DIR_IGNOREPATH_LENGTH );
+		//elog(LOG, "dirIgnorePath is NULL");
+	}
+	else
+	{
+		//elog(LOG, "dirIgnorePath is %s\n", dirIgnorePath);
+		if (strlen(dirIgnorePath)+1 >  DIR_IGNOREPATH_LENGTH ){
+			snprintf(statusBuf, RESPONSE_LEN+50, "Failure: ignore directory list exceeds max length of %d chars\n", DIR_IGNOREPATH_LENGTH );
 			sendPrimaryMirrorTransitionResult(responseMsg);
 			return;
 
@@ -3475,17 +3442,26 @@ processFilerepVerifyRequest(void * inputBuf, int *offsetPtr, int length)
 
 	}
 
+#if 0
+	if((state == NULL) || (strlen(state) == 0))
+	{
+		//elog(LOG, "state is NULL");
+		args->reportState = false;
+	}
+	else
+	{
+		elog(LOG, "state is %s\n", state);
+		args->reportState = true;
+	}
+#endif
 
 	responseMsg[0] = '\0';
 	status = processVerifyRequest(args, responseMsg, RESPONSE_LEN);
 
-	if(status == STATUS_OK)
-	{
+	if(status == STATUS_OK){
 	  snprintf(statusBuf, RESPONSE_LEN+50, "Success: %s\n", responseMsg);
 	  sendPrimaryMirrorTransitionResult("Success:\n");
-	}
-	else
-	{
+	} else{
 	  snprintf(statusBuf, RESPONSE_LEN+50, "Failure: %s\n", responseMsg);
 	  sendPrimaryMirrorTransitionResult(responseMsg);
 	}
@@ -3574,14 +3550,6 @@ processPrimaryMirrorTransitionRequest(Port *port, void *pkt)
 	{
 		processTransitionRequest_faultInject(buf, &offset, length);
 	}
-	else if (strcmp("getPerformanceCounterStatus", targetModeStr ) == 0)
-	{
-		processTransitionRequest_performanceCounterAction(buf, &offset, length);
-	}
-	else if (strcmp("PerformanceCounterAction", targetModeStr) == 0)
-	{
-		processTransitionRequest_performanceCounterAction(buf, &offset, length);
-	}
 	else if(strcmp("gp_verify", targetModeStr) == 0)
 	{
 		processFilerepVerifyRequest(buf, &offset, length);
@@ -3642,14 +3610,6 @@ processPrimaryMirrorTransitionRequest(Port *port, void *pkt)
              */
             args->dataState = DataStateInResync;
 			args->forceFullResync = TRUE;
-
-			/*
-			 * The system may have been configured to use a new filespace for transaction files
-			 * when this segment was down. Now when the segment comes up, we need to make sure
-			 * to reload all the info abt the location of txn files from the flat files and hence
-			 * make sure that the mirror starts using the logs at the right location
-			 */
-			primaryMirrorPopulateFilespaceInfo();
         }
 		else
 		{
@@ -3823,7 +3783,7 @@ processPrimaryMirrorTransitionQuery(Port *port, void *pkt)
  * Nothing is sent back to the client.
  */
 static void
-processCancelRequest(Port *port, void *pkt, ProtocolVersion proto)
+processCancelRequest(Port *port, void *pkt)
 {
 	CancelRequestPacket *canc = (CancelRequestPacket *) pkt;
 	int			backendPID;
@@ -3857,19 +3817,10 @@ processCancelRequest(Port *port, void *pkt, ProtocolVersion proto)
 		{
 			if (bp->cancel_key == cancelAuthCode)
 			{
-				/* if this is an errorless cancel request, update the cancellingBackend flag */
-				if (proto == CANCEL_NOERR_CODE && !ResetCancellingPid(bp->pid))
-				{
-					ereport(LOG,
-							(errmsg_internal("ResetCancellingPid on %d failed",
-									bp->pid)));
-
-				}
-
 				/* Found a match; signal that backend to cancel current op */
 				ereport(DEBUG2,
 						(errmsg_internal("processing cancel request: sending SIGINT to process %d",
-								bp->pid)));
+										 backendPID)));
 				signal_child(bp->pid, SIGINT);
 			}
 			else
@@ -4801,7 +4752,7 @@ static void do_reaper()
 
 				if (ServiceStartable(subProc))
 				{
-					if (StartupPidsAllZero() &&
+					if (StartupPidsAllZero() && 
 						!FatalError && Shutdown == NoShutdown)
 					{
 						/*
@@ -4914,9 +4865,7 @@ static void do_reaper()
 				 * if filerep exited unexpectedly on the mirror, the mirror
 				 * is no longer usable so it is shut down
 				 */
-				if (!EXIT_STATUS_0(exitstatus) &&
-				    !EXIT_STATUS_2(exitstatus) &&
-				    pm_mode == PMModeMirrorSegment)
+				if (!EXIT_STATUS_0(exitstatus) && pm_mode == PMModeMirrorSegment)
 				{
 					elog(LOG, "postmaster reset on mirror, shutting down mirror");
 
@@ -4926,7 +4875,6 @@ static void do_reaper()
 				/* filerep died, we mark a fault */
 				updateSegmentState(SegmentStateFault, FaultTypeMirror);
 			}
-
 
             /* PostmasterStateMachine logic does the rest */
 			continue;
@@ -5409,7 +5357,7 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 								 (int) StartupPass3PID)));
 		signal_child(StartupPass3PID, (SendStop ? SIGSTOP : SIGQUIT));
 	}
-
+	
 	/* Take care of the startup process too */
 	if (pid == StartupPass4PID)
 		StartupPass4PID = 0;
@@ -5474,7 +5422,7 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
              * Note that this is not ideal from a "don't touch shared memory during reset"
              *     perspective.
              */
-            signal_filerep_to_shutdown(SegmentStateImmediateShutdown);
+            signal_filerep_to_shutdown(SegmentStateShutdown);
         }
     }
 
@@ -5818,7 +5766,7 @@ static PMState StateMachineCheck_WaitPreBgWriter(void)
     Assert(pmState == PM_CHILD_STOP_WAIT_PREBGWRITER );
 
     /* waiting for pre-bgwriter services to exit */
-    bool moveToNextState =
+    bool moveToNextState = 
     		(!ServiceProcessesExist(/* excludeFlags */ PMSUBPROC_FLAG_STOP_AFTER_BGWRITER) &&
     		 CheckpointPID == 0);
     return moveToNextState ? (pmState+1) : pmState;
@@ -6140,7 +6088,7 @@ PostmasterStateMachine(void)
         {
             if ( DO_STATE_MACHINE_LOGGING )
                 elog(LOG, "Postmaster State Machine: no change from %s", gPmStateLabels[pmState]);
-
+                
             /* current state was not completed ... quit and wait to be called again */
             break;
         }
@@ -6647,7 +6595,27 @@ BackendInitialize(Port *port)
 	/*
 	 * Now perform authentication exchange.
 	 */
-	ClientAuthentication(port);
+
+	/*
+	 *  GPDB: If this is internal communications between segments, the protocol must be 3, and the special flag nibble must be 7.
+	 *  Otherwise, this is not a trusted connection, and must go through normal client authentication
+	 *
+	 *  This is not really secure, but no client that uses normal libpq can fake this... It requires either a custom libpq,
+	 *  or using a program that does it's own wire protocol communications and bypasses libpq.
+	 *
+	 *  The SyncMaster doesn't need authentication, but why is it going through this code, instead of being an AuxilliaryProcess ?
+	 */
+	if (PG_PROTOCOL_MAJOR(port->proto) != 3 || port->proto >> 28 != 7) /* Check for special startup packed that indicates internal communications */
+	{
+		/* Do normal client authentication via pg_hba.conf */
+		ClientAuthentication(port); /* might not return, if failure */
+	}
+	else
+	{
+		/* Just tell the client he is authorized, with no check of pg_hba.conf, and no password required */
+		FakeClientAuthentication(port);
+	}
+
 
 	/*
 	 * Done with authentication.  Disable timeout, and prevent SIGTERM/SIGQUIT
@@ -7111,7 +7079,7 @@ internal_forkexec(int argc, char *argv[], Port *port)
 /* This should really be in a header file */
 NON_EXEC_STATIC void
 PerfmonMain(int argc, char *argv[]);
-#endif
+#endif 
 
 /*
  * SubPostmasterMain -- Get the fork/exec'd process into a state equivalent
@@ -7251,7 +7219,7 @@ SubPostmasterMain(int argc, char *argv[])
 		InitShmemAccess(UsedShmemSegAddr);
 
 		/* Need a PGPROC to run CreateSharedMemoryAndSemaphores */
-		InitProcess(false /*isQueryProc*/);
+		InitProcess();
 
 		/*
 		 * Attach process to shared data structures.  If testing EXEC_BACKEND
@@ -7295,7 +7263,7 @@ SubPostmasterMain(int argc, char *argv[])
 		InitShmemAccess(UsedShmemSegAddr);
 
 		/* Need a PGPROC to run CreateSharedMemoryAndSemaphores */
-		InitProcess(false /*isQueryProc*/);
+		InitProcess();
 
 		/* Attach process to shared data structures */
 		CreateSharedMemoryAndSemaphores(false, 0);

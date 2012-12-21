@@ -1,0 +1,4 @@
+$def with (stime, etime, interval)
+<?xml version="1.0"?>
+<system start="$stime" end="$etime" interval="$interval" noresult="true">
+</system>

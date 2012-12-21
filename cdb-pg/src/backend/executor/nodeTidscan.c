@@ -27,11 +27,8 @@
 #include "access/heapam.h"
 #include "catalog/pg_type.h"
 #include "cdb/cdbvars.h"
-#include "cdb/cdbappendonlyam.h"
-#include "cdb/cdbaocsam.h"
 #include "executor/execdebug.h"
 #include "executor/nodeTidscan.h"
-#include "nodes/tidbitmap.h"
 #include "optimizer/clauses.h"
 #include "utils/array.h"
 #include "parser/parsetree.h"
@@ -66,8 +63,8 @@ TidListCreate(TidScanState *tidstate)
 
 	/*
 	 * We initialize the array with enough slots for the case that all quals
-	 * are simple OpExprs, or just one CurrentOfExpr. If there's any ScalarArrayOpExprs, 
-	 * we may have to enlarge the array.
+	 * are simple OpExprs.	If there's any ScalarArrayOpExprs, we may have to
+	 * enlarge the array.
 	 */
 	numAllocTids = list_length(evalList);
 	tidList = (ItemPointerData *)
@@ -153,16 +150,6 @@ TidListCreate(TidScanState *tidstate)
 			pfree(ipdatums);
 			pfree(ipnulls);
 		}
-		else if (expr && IsA(expr, CurrentOfExpr))
-		{
-			/* 
-			 * CURRENT OF must be the only expr. This allows us to avoid
-			 * a repalloc of the tidList. 
-			 */
-			Insist(list_length(evalList) == 1);	
-			CurrentOfExpr *cexpr = (CurrentOfExpr *) expr;
-			tidList[numTids++] = cexpr->ctid;
-		} 
 		else
 			elog(ERROR, "could not identify CTID expression");
 	}
@@ -218,224 +205,6 @@ itemptr_comparator(const void *a, const void *b)
 	return 0;
 }
 
-/*
- * CreateHeapTidScanInfo
- *    Create a HeapTidScanInfo to support tid scan on a Heap table.
- */
-static void
-CreateHeapTidScanInfo(TidScanState *node)
-{
-	Assert(node != NULL);
-	Assert(RelationIsHeap(node->ss.ss_currentRelation));
-	
-	node->additionalInfo = palloc0(sizeof(HeapTidScanInfo));
-}
-
-/*
- * FreeHeapTidScanInfo
- *   Free a HeapTidScanInfo.
- */
-static void
-FreeHeapTidScanInfo(TidScanState *node)
-{
-	Assert(node != NULL &&
-		   node->additionalInfo != NULL);
-
-	pfree(node->additionalInfo);
-	node->additionalInfo = NULL;
-}
-
-/*
- * CreateAOTidScanInfo
- *    Create an AOTidScanInfo to support tid scan on an AO table.
- */
-static void
-CreateAOTidScanInfo(TidScanState *node)
-{
-	Assert(node != NULL);
-	Relation currentRelation = node->ss.ss_currentRelation;
-	Assert(RelationIsAoRows(currentRelation));
-	
-	AOTidScanInfo *scanInfo = palloc0(sizeof(AOTidScanInfo));
-	EState *estate = node->ss.ps.state;
-	scanInfo->aoFetchDesc = appendonly_fetch_init(currentRelation,
-												  estate->es_snapshot);
-	node->additionalInfo = scanInfo;
-}
-
-/*
- * FreeAOTidScanInfo
- *    Free an AOTidScanInfo.
- */
-static void
-FreeAOTidScanInfo(TidScanState *node)
-{
-	Assert(node != NULL &&
-		   node->additionalInfo != NULL);
-	
-	AOTidScanInfo *scanInfo = (AOTidScanInfo *)node->additionalInfo;
-	Assert(scanInfo->aoFetchDesc != NULL);
-	appendonly_fetch_finish(scanInfo->aoFetchDesc);
-	pfree(scanInfo->aoFetchDesc);
-	pfree(scanInfo);
-	node->additionalInfo = NULL;
-}
-
-/*
- * CreateAOCSTidScanInfo
- *    Create an AOCSTidScanInfo to support tid scan on an AOCS table.
- */
-static void
-CreateAOCSTidScanInfo(TidScanState *node)
-{
-	Assert(node != NULL);
-	Relation currentRelation = node->ss.ss_currentRelation;
-	Assert(RelationIsAoCols(currentRelation));
-
-	AOCSTidScanInfo *scanInfo = palloc0(sizeof(AOCSTidScanInfo));
-	int numAttrs = currentRelation->rd_att->natts;
-	bool *proj = palloc0(sizeof(bool) * numAttrs);
-	GetNeededColumnsForScan((Node *)node->ss.ps.plan->targetlist, proj, numAttrs);
-	GetNeededColumnsForScan((Node *)node->ss.ps.plan->qual, proj, numAttrs);
-	
-	/*
-	 * Check whether there is a columns specified in the targetlist or qual.
-	 */
-	int i = 0;
-	for (i = 0; i < numAttrs; i++)
-	{
-		if (proj[i])
-		{
-			break;
-		}
-	}
-	
-	/*
-	 * In some cases (for example, count(*)), no columns are specified.
-	 * We always scan the first column.
-	 */
-	if (i == numAttrs)
-	{
-		proj[0] = true;
-	}
-	
-	EState *estate = node->ss.ps.state;
-	scanInfo->aocsFetchDesc = aocs_fetch_init(currentRelation,
-											  estate->es_snapshot,
-											  proj);
-	node->additionalInfo = scanInfo;
-}
-
-/*
- * FreeAOCSTidScanInfo
- *    Free an AOCSTidScanInfo.
- */
-static void
-FreeAOCSTidScanInfo(TidScanState *node)
-{
-	Assert(node != NULL &&
-		   node->additionalInfo != NULL);
-	
-	AOCSTidScanInfo *scanInfo = (AOCSTidScanInfo *)node->additionalInfo;
-	Assert(scanInfo->aocsFetchDesc != NULL);
-	aocs_fetch_finish(scanInfo->aocsFetchDesc);
-	pfree(scanInfo->aocsFetchDesc);
-	pfree(scanInfo);
-	node->additionalInfo = NULL;
-}
-
-/*
- * FetchHeapTupleByTid
- *   Fetch a heap tuple by the given tid.
- *
- * This function stores the fetched tuple into the scan tuple slot if any,
- * and returns true. Otherwise, this function returns false.
- */
-static bool
-FetchHeapTupleByTid(TidScanState *node, ItemPointer tid)
-{
-	Assert(node != NULL &&
-		   node->additionalInfo != NULL);
-	HeapTidScanInfo *scanInfo = (HeapTidScanInfo *)node->additionalInfo;
-	scanInfo->tss_htup.t_self = *tid;
-	
-	EState *estate = node->ss.ps.state;
-	Snapshot snapshot = estate->es_snapshot;
-	Buffer buffer = InvalidBuffer;
-	Relation heapRelation = node->ss.ss_currentRelation;
-	TupleTableSlot *slot = node->ss.ss_ScanTupleSlot;
-
-	if (heap_fetch(heapRelation, snapshot, &(scanInfo->tss_htup),
-				   &buffer, false /* keep_buf */, NULL /* stats_relation */))
-	{
-		/*
-		 * store the scanned tuple in the scan tuple slot of the scan
-		 * state.  Eventually we will only do this and not return a tuple.
-		 * Note: we pass 'false' because tuples returned by amgetnext are
-		 * pointers onto disk pages and were not created with palloc() and
-		 * so should not be pfree()'d.
-		 */
-		ExecStoreHeapTuple(&(scanInfo->tss_htup),
-						   slot,
-						   buffer,
-						   false /* ShouldFree */);
-		
-		/*
-		 * At this point we have an extra pin on the buffer, because
-		 * ExecStoreTuple incremented the pin count. Drop our local pin.
-		 */
-		ReleaseBuffer(buffer);
-
-		return true;
-	}
-	
-	return false;
-}
-
-/*
- * FetchAOTupleByTid
- *   Fetch an AO tuple by the given tid.
- *
- * This function stores the fetched tuple into the scan tuple slot if any,
- * and returns true. Otherwise, if no tuple is found, this function
- * returns false.
- */
-static bool
-FetchAOTupleByTid(TidScanState *node, ItemPointer tid)
-{
-	Assert(node != NULL &&
-		   node->additionalInfo != NULL);
-	AOTidScanInfo *scanInfo = (AOTidScanInfo *)node->additionalInfo;
-	TupleTableSlot *slot = node->ss.ss_ScanTupleSlot;
-
-	AOTupleId aoTid;
-	tbm_convert_appendonly_tid_out(tid, &aoTid);
-
-	return appendonly_fetch(scanInfo->aoFetchDesc, &aoTid, slot);
-}
-
-/*
- * FetchAOCSTupleByTid
- *   Fetch an AOCS tuple by the given tid.
- *
- * This function stores the fetched tuple into the scan tuple slot if any,
- * and returns true. Otherwise, if no tuple is found, this function
- * returns false.
- */
-static bool
-FetchAOCSTupleByTid(TidScanState *node, ItemPointer tid)
-{
-	Assert(node != NULL &&
-		   node->additionalInfo != NULL);
-	AOCSTidScanInfo *scanInfo = (AOCSTidScanInfo *)node->additionalInfo;
-	TupleTableSlot *slot = node->ss.ss_ScanTupleSlot;
-
-	AOTupleId aoTid;
-	tbm_convert_appendonly_tid_out(tid, &aoTid);
-
-	return aocs_fetch(scanInfo->aocsFetchDesc, &aoTid, slot);
-}
-
 /* ----------------------------------------------------------------
  *		TidNext
  *
@@ -451,8 +220,10 @@ TidNext(TidScanState *node)
 	ScanDirection direction;
 	Snapshot	snapshot;
 	Relation	heapRelation;
+	HeapTuple	tuple;
 	TupleTableSlot *slot;
 	Index		scanrelid;
+	Buffer		buffer = InvalidBuffer;
 	ItemPointerData *tidList;
 	int			numTids;
 	bool		bBackward;
@@ -505,6 +276,8 @@ TidNext(TidScanState *node)
 	tidList = node->tss_TidList;
 	numTids = node->tss_NumTids;
 
+	tuple = &(node->tss_htup);
+
 	/*
 	 * Initialize or advance scan position, depending on direction.
 	 */
@@ -532,11 +305,29 @@ TidNext(TidScanState *node)
 
 	while (node->tss_TidPtr >= 0 && node->tss_TidPtr < numTids)
 	{
-		if (node->fetchTupleByTid(node, &tidList[node->tss_TidPtr]))
+		tuple->t_self = tidList[node->tss_TidPtr];
+		if (heap_fetch(heapRelation, snapshot, tuple, &buffer, false, NULL))
 		{
+			/*
+			 * store the scanned tuple in the scan tuple slot of the scan
+			 * state.  Eventually we will only do this and not return a tuple.
+			 * Note: we pass 'false' because tuples returned by amgetnext are
+			 * pointers onto disk pages and were not created with palloc() and
+			 * so should not be pfree()'d.
+			 */
+			ExecStoreHeapTuple(tuple,		/* tuple to store */
+						   slot,	/* slot to store in */
+						   buffer,		/* buffer associated with tuple  */
+						   false);		/* don't pfree */
+
+			/*
+			 * At this point we have an extra pin on the buffer, because
+			 * ExecStoreTuple incremented the pin count. Drop our local pin.
+			 */
+			ReleaseBuffer(buffer);
+
 			return slot;
 		}
-		
 		/* Bad TID or failed snapshot qual; try next */
 		if (bBackward)
 			node->tss_TidPtr--;
@@ -634,8 +425,6 @@ ExecEndTidScan(TidScanState *node)
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 	ExecClearTuple(node->ss.ss_ScanTupleSlot);
 
-	node->freeAdditionalInfo(node);
-	
 	/*
 	 * close the heap relation.
 	 */
@@ -740,33 +529,12 @@ ExecInitTidScan(TidScan *node, EState *estate, int eflags)
 	currentRelation = ExecOpenScanRelation(estate, node->scan.scanrelid);
 
 	tidstate->ss.ss_currentRelation = currentRelation;
+	tidstate->ss.ss_currentScanDesc = NULL;		/* no heap scan here */
 
 	/*
 	 * get the scan type from the relation descriptor.
 	 */
 	ExecAssignScanType(&tidstate->ss, RelationGetDescr(currentRelation));
-
-	if (RelationIsHeap(currentRelation))
-	{
-		tidstate->createAdditionalInfo = CreateHeapTidScanInfo;
-		tidstate->freeAdditionalInfo = FreeHeapTidScanInfo;
-		tidstate->fetchTupleByTid = FetchHeapTupleByTid;
-	}
-	else if (RelationIsAoRows(currentRelation))
-	{
-		tidstate->createAdditionalInfo = CreateAOTidScanInfo;
-		tidstate->freeAdditionalInfo = FreeAOTidScanInfo;
-		tidstate->fetchTupleByTid = FetchAOTupleByTid;
-	}
-	else
-	{
-		Assert(RelationIsAoCols(currentRelation));
-		tidstate->createAdditionalInfo = CreateAOCSTidScanInfo;
-		tidstate->freeAdditionalInfo = FreeAOCSTidScanInfo;
-		tidstate->fetchTupleByTid = FetchAOCSTupleByTid;
-	}
-
-	tidstate->createAdditionalInfo(tidstate);
 
 	/*
 	 * Initialize result tuple type and projection info.

@@ -8,7 +8,6 @@
 #include "executor/instrument.h"
 #include "storage/buffile.h"
 #include "utils/tuplestorenew.h"
-#include "utils/faultinjector.h"
 
 #include "cdb/cdbvars.h"                /* currentSliceId */
 
@@ -629,13 +628,9 @@ ntuplestore_create(int maxBytes)
 
 	Assert(maxBytes >= 0);
 	store->page_max = maxBytes / BLCKSZ;
-
-	if (store->page_max < 16)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
-				 errmsg(ERRMSG_GP_INSUFFICIENT_STATEMENT_MEMORY)));
-	}
+	/* give me at least 16 pages */
+	if(store->page_max < 16)
+		store->page_max = 16;
 
 	store->first_page = (NTupleStorePage *) check_malloc(sizeof(NTupleStorePage));
 	init_page(store->first_page);
@@ -792,14 +787,6 @@ ntuplestore_flush(NTupleStore *ts)
 void 
 ntuplestore_destroy(NTupleStore *ts)
 {
-	/*
-	 * If segment got an Out-of-Memory error during ntuplestore_create, this
-	 * pointer can be NULL when this function is called during clean-up.
-	 */
-	if (NULL == ts)
-	{
-		return;
-	}
 	ntuplestore_cleanup(ts, true);
 	UnregisterXactCallbackOnce(XCallBack_NTS, (void *) ts);
 }
@@ -807,14 +794,6 @@ ntuplestore_destroy(NTupleStore *ts)
 NTupleStoreAccessor* 
 ntuplestore_create_accessor(NTupleStore *ts, bool isWriter)
 {
-
-#ifdef FAULT_INJECTOR
-					FaultInjector_InjectFaultIfSet(NtuplestoreCreateAccessor,
-													DDLNotSpecified,
-													"" /* databaseName */,
-													"" /* tableName */);
-#endif
-
 	NTupleStoreAccessor *acc = (NTupleStoreAccessor *) palloc(sizeof(NTupleStoreAccessor));
 
 	acc->store = ts;
@@ -839,15 +818,6 @@ ntuplestore_create_accessor(NTupleStore *ts, bool isWriter)
 	
 void ntuplestore_destroy_accessor(NTupleStoreAccessor *acc)
 {
-	/*
-	 * If segment got an Out-of-Memory error during ntuplestore_create_accessor,
-	 * this pointer can be NULL when this function is called during clean-up.
-	 */
-	if (NULL == acc)
-	{
-		return;
-	}
-
 	if(!acc->store)
 	{
 		Assert(!acc->page);

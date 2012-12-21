@@ -1,0 +1,34 @@
+$def with (id, ckeys, tab, tree, node)
+<?xml version="1.0"?>
+$if node == None:
+    <queryplan/>
+$else:
+    <queryplan id="$id">
+    $ stack = [{node : 0}]
+    $ parent = stack[0].keys()[0]
+    $ child = stack[0].values()[0]
+    $while stack:
+        $while child < len(tree[parent]):
+            $ n = tree[parent][child]
+            $ v = tab[n]
+            <iterator nid="$n"\
+            $for c in ckeys:
+                $ m = v.get(c)
+                $if m != None:
+                     $c="${m}"\
+            >\
+            $if tree[parent][child] in tree.keys():
+                $ stack.append({parent : child})
+                $ parent = tree[parent][child]
+                $ child = 0
+                $break
+            </iterator>
+            $ child = child + 1
+        $else:
+            $ element = stack.pop()
+            $ parent = element.keys()[0]
+            $ child = element.values()[0] + 1
+            $if not stack:
+                $break
+            </iterator>
+    </queryplan>

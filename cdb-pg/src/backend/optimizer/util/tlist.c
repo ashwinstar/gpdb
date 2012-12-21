@@ -16,10 +16,9 @@
 #include "postgres.h"
 
 #include "nodes/makefuncs.h"
-#include "optimizer/clauses.h"
-#include "optimizer/planmain.h"
 #include "optimizer/tlist.h"
 #include "optimizer/var.h"
+#include "optimizer/clauses.h"
 #include "parser/parse_expr.h"
 #include "utils/lsyscache.h"
 
@@ -135,9 +134,9 @@ add_to_flat_tlist(List *tlist, List *exprs, bool resjunk)
 
 	foreach(v, exprs)
 	{
-		Expr		   *expr = (Expr *) lfirst(v);
+		Node		   *expr = (Node *) lfirst(v);
 
-		if (!tlist_member_ignoring_RelabelType(expr, tlist))
+		if (!tlist_member(expr, tlist))
 		{
 			TargetEntry *tle;
 
@@ -274,39 +273,6 @@ get_sortgrouplist_exprs(List *sortClauses, List *targetList)
 		sortexpr = get_sortgroupclause_expr(sortcl, targetList);
 		result = lappend(result, sortexpr);
 	}
-	return result;
-}
-
-/*
- * get_grouplist_colidx
- *		Given a list of GroupClauses, build an array of the referenced
- *		targetlist resno.  If numCols is not NULL, it is filled by the
- *		length of returned array.  Results are allocated by palloc.
- */
-AttrNumber *
-get_grouplist_colidx(List *groupClauses, List *targetList, int *numCols)
-{
-	AttrNumber	   *result;
-	List		   *tles;
-	ListCell	   *l;
-	int				i, len;
-
-	len = num_distcols_in_grouplist(groupClauses);
-	if (numCols)
-		*numCols = len;
-
-	if (len == 0)
-		return NULL;
-
-	result = (AttrNumber *) palloc(sizeof(AttrNumber) * len);
-	tles = get_sortgroupclauses_tles(groupClauses, targetList);
-	foreach_with_count (l, tles, i)
-	{
-		TargetEntry	   *tle = lfirst(l);
-
-		result[i] = tle->resno;
-	}
-
 	return result;
 }
 

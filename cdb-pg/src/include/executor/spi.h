@@ -145,14 +145,5 @@ extern void SPI_cursor_close(Portal portal);
 
 extern void AtEOXact_SPI(bool isCommit);
 extern void AtEOSubXact_SPI(bool isCommit, SubTransactionId mySubid);
-extern bool SPI_context(void);
-
-/**
- * Memory reservation related routines.
- */
-extern void SPI_InitMemoryReservation(void);
-extern uint64 SPI_GetMemoryReservation(void);
-extern void SPI_ReserveMemory(uint64 mem_reserved);
-extern bool SPI_IsMemoryReserved(void);
 
 #endif   /* SPI_H */

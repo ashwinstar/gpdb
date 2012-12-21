@@ -84,6 +84,8 @@ extern void PersistentFileSysObj_Scan(
 
 extern void PersistentFileSysObj_FlushXLog(void);
 
+extern int64 PersistentFileSysObj_MyHighestSerialNum(
+	PersistentFsObjType 	fsObjType);
 extern int64 PersistentFileSysObj_CurrentMaxSerialNum(
 	PersistentFsObjType 	fsObjType);
 
@@ -586,6 +588,4 @@ extern void PersistentFileSysObj_ActivateStandby(
 								   int16 oldmaster,
 								   int16 newmaster,
 								   bool flushToXLog);
-
-extern void PersistentFileSysObj_DoGlobalSequenceScan(void);
 #endif   /* CDBPERSISTENTFILESYSOBJ_H */

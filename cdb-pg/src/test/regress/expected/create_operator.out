@@ -29,12 +29,3 @@ CREATE OPERATOR #%# (
 -- Test comments
 COMMENT ON OPERATOR ###### (int4, NONE) IS 'bad right unary';
 ERROR:  operator does not exist: integer ######
--- Test illegal operator name
-CREATE OPERATOR => (
-   leftarg = path,
-   rightarg = path,
-   procedure = path_inter
-);
-ERROR:  syntax error at or near "=>"
-LINE 1: CREATE OPERATOR => (
-                        ^

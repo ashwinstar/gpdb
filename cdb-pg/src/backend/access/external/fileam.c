@@ -83,16 +83,11 @@ static void open_external_writable_source(ExternalInsertDesc extInsertDesc);
 static int	external_getdata(URL_FILE *extfile, CopyState pstate, int maxread);
 static void external_senddata(URL_FILE *extfile, CopyState pstate);
 static void external_scan_error_callback(void *arg);
-static DataLineStatus readHeaderLine(CopyState pstate);
+void readHeaderLine(CopyState pstate);
 static void close_external_source(FILE *dataSource, bool failOnError, const char *relname);
 static void parseFormatString(CopyState pstate, char *fmtstr, bool iscustom);
 static void justifyDatabuf(StringInfo buf);
 
-static void base16_encode(const char *src, int len, char *dest);
-static char *get_eol_delimiter(List *custom_formatter_params);
-static void external_set_env_vars_ext(extvar_t *extvar, char *uri, bool csv, char *escape,
-									  char *quote, bool header, uint32 scancounter,
-									  List *custom_formatter_params);
 
 /* ----------------------------------------------------------------
 *				   external_ interface functions
@@ -113,9 +108,6 @@ elog(DEBUG2, "external_getnext returning tuple")
 #define FILEDEBUG_3
 #endif   /* !defined(FILEDEBUGALL) */
 
-/* this macro must be the same as EMPTY_DELIM_STR in gpfdist.c */
-#define EMPTY_DELIM_STR "empty"
-
 /*
  * A global reference to our data source so it could be freed
  * from the outside during an error/abort (in AbortTransaction).
@@ -130,8 +122,7 @@ static FILE *g_dataSource = NULL;
 FileScanDesc
 external_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 			   List *uriList, List *fmtOpts, char fmtType, bool isMasterOnly,
-			   int rejLimit, bool rejLimitInRows, Oid fmterrtbl, int encoding,
-			   List *scanquals)
+			   int rejLimit, bool rejLimitInRows, Oid fmterrtbl, int encoding)
 {
 	FileScanDesc scan;
 	TupleDesc	tupDesc = NULL;
@@ -160,7 +151,6 @@ external_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 	scan->fs_rd = relation;
 	scan->fs_scanrelid = scanrelid;
 	scan->fs_scancounter = scancounter;
-	scan->fs_scanquals = scanquals;
 	scan->fs_noop = false;
 	scan->fs_file = NULL;
 	scan->fs_formatter = NULL;
@@ -459,6 +449,7 @@ HeapTuple
 external_getnext(FileScanDesc scan, ScanDirection direction)
 {
 	HeapTuple	tuple;
+
 	if (scan->fs_noop)
 		return NULL;
 
@@ -475,9 +466,12 @@ external_getnext(FileScanDesc scan, ScanDirection direction)
 	 */
 	if (!scan->fs_file)
 		open_external_readable_source(scan);
+
 	/* Note: no locking manipulations needed */
 	FILEDEBUG_1;
+
 	tuple = externalgettup(scan, direction);
+
 
 	if (tuple == NULL)
 	{
@@ -485,10 +479,12 @@ external_getnext(FileScanDesc scan, ScanDirection direction)
 
 		return NULL;
 	}
+
 	/*
 	 * if we get here it means we have a new current scan tuple
 	 */
 	FILEDEBUG_3;				/* external_getnext returning tuple */
+
 	pgstat_count_heap_getnext(scan->fs_rd);
 
 	return tuple;
@@ -985,10 +981,9 @@ externalgettup_defined(FileScanDesc scan)
 				/* on first time around just throw the header line away */
 				if (pstate->header_line && pstate->bytesread > 0)
 				{
-					DataLineStatus ret_mode = LINE_OK;
 					PG_TRY();
 					{
-						ret_mode = readHeaderLine(pstate);
+						readHeaderLine(pstate);
 					}
 					PG_CATCH();
 					{
@@ -1014,9 +1009,6 @@ externalgettup_defined(FileScanDesc scan)
 						}
 					}
 					PG_END_TRY();
-					
-					if (ret_mode == NEED_MORE_DATA)
-						continue;					
 
 					EXT_RESET_LINEBUF;
 					pstate->header_line = false;
@@ -1110,18 +1102,19 @@ externalgettup_custom(FileScanDesc scan)
 					 */
 					PG_TRY();
 					{
+						Datum					d;
 						FunctionCallInfoData	fcinfo;
 
 						/* per call formatter prep */
-						FunctionCallPrepareFormatter(&fcinfo,
-													 0,
-													 pstate,
-													 formatter,
-													 scan->fs_rd,
-													 scan->fs_tupDesc,
-													 scan->in_functions,
-													 scan->typioparams);
-						(void) FunctionCallInvoke(&fcinfo);
+					FunctionCallPrepareFormatter(&fcinfo,
+												 0,
+												 pstate,
+												 formatter,
+												 scan->fs_rd,
+												 scan->fs_tupDesc,
+												 scan->in_functions,
+												 scan->typioparams);
+					d = FunctionCallInvoke(&fcinfo);
 
 					}
 					PG_CATCH();
@@ -1138,17 +1131,16 @@ externalgettup_custom(FileScanDesc scan)
 						pstate->cur_lineno = formatter->fmt_badrow_num;
 						pstate->cur_byteno = formatter->fmt_bytesread;
 						resetStringInfo(&pstate->line_buf);
-
 						if (formatter->fmt_badrow_len > 0)
 						{
-							if (formatter->fmt_badrow_data)
+							if ( NULL != formatter->fmt_badrow_data )
 								appendBinaryStringInfo(&pstate->line_buf,
 													   formatter->fmt_badrow_data,
 													   formatter->fmt_badrow_len);
 
 							formatter->fmt_databuf.cursor += formatter->fmt_badrow_len;
-							if (formatter->fmt_databuf.cursor > formatter->fmt_databuf.len ||
-								formatter->fmt_databuf.cursor < 0 )
+							if (    formatter->fmt_databuf.cursor > formatter->fmt_databuf.len
+								 || formatter->fmt_databuf.cursor < 0 )
 							{
 								formatter->fmt_databuf.cursor = formatter->fmt_databuf.len;
 							}
@@ -1634,21 +1626,19 @@ open_external_readable_source(FileScanDesc scan)
 
 	/* set up extvar */
 	memset(&extvar, 0, sizeof(extvar));
-	external_set_env_vars_ext(&extvar,
+	external_set_env_vars(&extvar,
 						  scan->fs_uri,
 						  scan->fs_pstate->csv_mode,
 						  scan->fs_pstate->escape,
 						  scan->fs_pstate->quote,
 						  scan->fs_pstate->header_line,
-						  scan->fs_scancounter,
-						  scan->fs_pstate->custom_formatter_params);
+						  scan->fs_scancounter);
 
     /* actually open the external source */
     scan->fs_file = (FILE*) url_fopen(scan->fs_uri,
 									  false /* for read */,
 									  &extvar,
 									  scan->fs_pstate,
-									  scan->fs_scanquals,
 									  &response_code,
 									  &response_string);
 
@@ -1687,21 +1677,19 @@ open_external_writable_source(ExternalInsertDesc extInsertDesc)
 
 	/* set up extvar */
 	memset(&extvar, 0, sizeof(extvar));
-	external_set_env_vars_ext(&extvar,
+	external_set_env_vars(&extvar,
 						  extInsertDesc->ext_uri,
 						  extInsertDesc->ext_pstate->csv_mode,
 						  extInsertDesc->ext_pstate->escape,
 						  extInsertDesc->ext_pstate->quote,
 						  extInsertDesc->ext_pstate->header_line,
-						  0,
-						  extInsertDesc->ext_pstate->custom_formatter_params);
+						  0);
 
     /* actually open the external source */
     extInsertDesc->ext_file = (FILE*) url_fopen(extInsertDesc->ext_uri,
 												true /* forwrite */,
 												&extvar,
 												extInsertDesc->ext_pstate,
-												NIL , /* no quals for write */
 												&response_code,
 												&response_string);
 
@@ -1891,19 +1879,11 @@ external_scan_error_callback(void *arg)
  * This function should be called only once for each data file
  * and only if HEADER is specified in the SQL command.
  */
-static DataLineStatus readHeaderLine(CopyState pstate)
+void readHeaderLine(CopyState pstate)
 {
-	DataLineStatus ret_mode = LINE_OK;
-	
 	pstate->line_done = pstate->csv_mode ?
 		CopyReadLineCSV(pstate, pstate->bytesread) :
 		CopyReadLineText(pstate, pstate->bytesread);
-	
-	/* Did not get a complete and valid data line? */
-	if(!pstate->line_done && !pstate->fe_eof)
-		ret_mode = NEED_MORE_DATA;
-	
-	return ret_mode;
 }
 
 /*
@@ -2310,6 +2290,7 @@ static void parseFormatString(CopyState pstate, char *fmtstr, bool iscustom)
 
 	token = strtokx2(fmtstr, whitespace, NULL, NULL,
 					0, false, true, encoding);
+
 	if (!iscustom)
 	{
 		if (token)
@@ -2497,27 +2478,30 @@ static void parseFormatString(CopyState pstate, char *fmtstr, bool iscustom)
 			char	*key = token;
 			char	*val = NULL;
 			StringInfoData key_modified;
-
+			
 			initStringInfo(&key_modified);
 
 			while (key)
 			{
+				
 				/* MPP-14467 - replace meta chars back to original */
 				resetStringInfo(&key_modified);
 				appendStringInfoString(&key_modified, key);
 				replaceStringInfoString(&key_modified, "<gpx20>", " ");
-
+				
 				val = strtokx2(NULL, whitespace, NULL, "'",
 								nonstd_backslash, true, true, encoding);
 				if (val)
 				{
+
 					if (pg_strcasecmp(key, "formatter") == 0)
 					{
 						pstate->custom_formatter_name = pstrdup(val);
 						formatter_found = true;
 					}
 					else
-						l = lappend(l, makeDefElem(pstrdup(key_modified.data),
+
+					l = lappend(l, makeDefElem(pstrdup(key_modified.data), 
 									(Node *)makeString(pstrdup(val))));
 				}
 				else
@@ -2557,58 +2541,12 @@ error:
 
 }
 
-/*
- * returns the value of line_delim, or NULL if line_delim was not specified.
- */
-static char*
-get_eol_delimiter(List* custom_formatter_params)
-{
-	ListCell* cell;
-	
-	if (custom_formatter_params == NIL)
-		return NULL;
-	
-	foreach(cell, custom_formatter_params)
-	{
-		DefElem *elem = (DefElem *)lfirst(cell);
-		
-		if (pg_strcasecmp(elem->defname, "line_delim") == 0)
-			return strVal(elem->arg);
-	}
-	
-	return NULL;
-}
-
-/*
- * Encode src to base 16 and put the result in dest.
- * len should be grather than 0, src and dest should not be NULL.
- */
-static void
-base16_encode(const char* src, int len, char* dest)
-{
-	assert(src && dest && len > 0);
-	
-	for (; len-- ; dest += 2)
-	{
-	    snprintf(dest, 3, "%02x", *(src++));
-	}
-}
-
 void
 external_set_env_vars(extvar_t *extvar, char* uri, bool csv, char* escape, char* quote, bool header, uint32 scancounter)
 {
-	external_set_env_vars_ext(extvar, uri, csv, escape, quote, header, scancounter, NULL);
-}
-
-static void
-external_set_env_vars_ext(extvar_t *extvar, char* uri, bool csv, char* escape, char* quote, bool header,
-						  uint32 scancounter, List* custom_formatter_params)
-{
-
 	time_t 		now = time(0);
 	struct tm* 	tm = localtime(&now);
 	char*		result = (char *) palloc(7);        /* sign, 5 digits, '\0' */
-	char* encoded_delim = "";
 
 	sprintf(extvar->GP_CSVOPT,
 			"m%dx%dq%dh%d",
@@ -2673,30 +2611,4 @@ external_set_env_vars_ext(extvar_t *extvar, char* uri, bool csv, char* escape, c
  	extvar->GP_HADOOP_CONN_JARDIR  = gp_hadoop_connector_jardir;
  	extvar->GP_HADOOP_CONN_VERSION = gp_hadoop_connector_version;
  	extvar->GP_HADOOP_HOME         = gp_hadoop_home;
-
-	if (NULL != custom_formatter_params)
-	{
-		char* line_delim_str = get_eol_delimiter(custom_formatter_params);
-		
-		if (line_delim_str)
-		{
-			int	line_delim_len = (int)strlen(line_delim_str);
-			
-			if (line_delim_len > 0)
-			{
-				encoded_delim = (char*)(palloc(line_delim_len * 2 + 1));
-				base16_encode(line_delim_str, line_delim_len, encoded_delim);			
-			}
-			else
-			{
-				/*
-				 * base16_encode returns a string with even length, so for empty delimiter
-				 * the string which will be sent is with odd length.
-				 */
-				encoded_delim = "empty";
-			}
-		}
-	}
-	
-	extvar->GP_LINE_DELIM_STR = pstrdup(encoded_delim);
 }

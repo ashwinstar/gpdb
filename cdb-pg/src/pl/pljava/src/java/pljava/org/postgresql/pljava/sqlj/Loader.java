@@ -26,7 +26,6 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.ArrayList;
 
 import org.postgresql.pljava.internal.Backend;
 import org.postgresql.pljava.internal.Oid;
@@ -265,18 +264,6 @@ public class Loader extends ClassLoader
 		throw new ClassNotFoundException(name);
 	}
 
-	/**
-	 * Find the first resource with the given name through all the jar files
-	 * for example, assume we have two jar files: a jar file, named a.jar, 
-	 * has a file A.class; the other jar file, named b.jar, has a file A.class. 
-	 * We set pljava_classpth='a.jar:b.jar',  then findResource("A.class") will 
-	 * return the A.class in a.jar.
-	 * 
-	 * @param name	The resouce name, which is case sensitive.
-	 *
-	 * @return The URL matches with the given name.
-	 *
-	 */
 	protected URL findResource(String name)
 	{
 		// Scan through all jar files in the classpath
@@ -285,39 +272,8 @@ public class Loader extends ClassLoader
 			JarLoader loader = (JarLoader) iter.next();
 			URL url = loader.findResource(name);
 			if (url != null)
-			{
 				return url;
-			}
 		}
-
 		return null;
-	}
-	
-	/**
-	 * Find all the resources which match with the given name through all the 
- 	 * jar files. For example, if two jar files have the same three resources 
-	 * (A.class, dir1/A.class and dir2/A.class) then findResources("A.class") 
-	 * will return the URLs of these six resources of the two jar files.
-	 * 
-	 * @param name	The resouce name which is case sensitive.
-	 *
-	 * @return The enumeration of URLs match with the given name.
-	 *
-	 * @throws  IOException If I/O errors occur.
-	 *
-	 */
-	protected Enumeration findResources(String name)
-		throws IOException
-	{
-		ArrayList<URL> res = new ArrayList<URL>();
-		
-		// Scan through all jar files in the classpath
-		for (ListIterator iter = m_jarloaders.listIterator(); iter.hasNext();)
-		{
-			JarLoader loader      = (JarLoader) iter.next();
-			res.addAll(Collections.list(loader.findResources(name))); 
-		}
-
-		return Collections.enumeration(res);
 	}
 }

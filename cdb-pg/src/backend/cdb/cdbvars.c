@@ -54,9 +54,9 @@ char		*qdHostname;		/*QD hostname */
 int			qdPostmasterPort;	/*Master Segment Postmaster port. */
 char       *gp_qd_callback_info;	/* info for QE to call back to QD */
 
-bool 		gp_is_callback;		/* DEPRECATED. are we executing a callback query? */
+bool 		gp_is_callback;		/* are we executing a callback query? */
 
-bool		gp_use_dispatch_agent;	/* Deprecated, has no effect */
+bool		gp_use_dispatch_agent;	/* Use experimental code for Query Dispatch Agent */
 
 unsigned long gp_qd_proc_offset;	/* the proc entry for the original backend on the QD */
 
@@ -72,15 +72,11 @@ bool		Debug_print_dispatch_plan;	/* Shall we log the plan we'll dispatch? */
 
 bool		Debug_print_plannedstmt;	/* Shall we log the final planned statement? */
 
-bool            gp_backup_directIO = false;     /* disable\enable direct I/O dump */
-
-int             gp_backup_directIO_read_chunk_mb = 20; /* size of readChunk buffer for directIO dump */
-
 bool		gp_external_enable_exec = true; /* allow ext tables with EXECUTE */
 
-bool		gp_external_grant_privileges = false; /* allow creating http/gpfdist/gpfdists for non-su */
+bool		gp_external_grant_privileges = false; /* allow creating http/gpfdist for non-su */
 
-int			gp_external_max_segs;      /* max segdbs per gpfdist/gpfdists URI */
+int			gp_external_max_segs;      /* max segdbs per gpfdist URI */
 
 int			gp_safefswritesize;  /* set for safe AO writes in non-mature fs */
 
@@ -123,7 +119,7 @@ int			gp_fts_probe_retries = 5;
 /*
  * Probe timeout for fts prober.
  */
-int			gp_fts_probe_timeout = 20;
+int			gp_fts_probe_timeout = 180;
 
 /*
  * Polling interval for the fts prober. A scan of the entire system starts
@@ -135,12 +131,12 @@ int			gp_fts_probe_interval=60;
  * Number of threads to use for probe of segments (it is a good idea to have this
  * larger than the number of segments per host.
  */
-int			gp_fts_probe_threadcount=16;
+int			gp_fts_probe_threadcount=5;
 
 /*
  * Controls parallel segment transition (failover).
  */
-bool		gp_fts_transition_parallel = true;
+bool		gp_fts_transition_parallel = false;
 
 /* The number of retries to request a segment state transition. */
 int gp_fts_transition_retries = 5;
@@ -202,11 +198,10 @@ int			Gp_max_packet_size;	/* max Interconnect packet size */
 int			Gp_interconnect_queue_depth=4;	/* max number of messages
 											 * waiting in rx-queue
 											 * before we drop.*/
-int			Gp_interconnect_snd_queue_depth=4;
 
 int			Gp_interconnect_hash_multiplier=2;	/* sets the size of the hash table used by the UDP-IC */
 
-int			interconnect_setup_timeout=7200;
+int			interconnect_setup_timeout=20;
 
 int			Gp_interconnect_type = INTERCONNECT_TYPE_TCP;
 
@@ -229,9 +224,6 @@ int			Gp_udp_bufsize_k; /* UPD recv buf size, in KB */
 int gp_udpic_dropseg = UNDEF_SEGMENT;
 int gp_udpic_dropxmit_percent = 0;
 int gp_udpic_dropacks_percent = 0;
-int gp_udpic_fault_inject_percent = 0;
-int gp_udpic_fault_inject_bitmap = 0;
-int gp_udpic_network_disable_ipv6 = 0;
 #endif
 
 /*
@@ -285,8 +277,8 @@ int 		gp_motion_slice_noop = 0;
 int 		gp_ltrace_flag = 0;
 #endif
 
-/* For disabling INHERITANCE - MPP-16062 */
-bool		gp_enable_inheritance = true;
+/* Internal Features */
+bool		gp_enable_alter_table_inherit_cols = false;
 
 /* Greenplum Database Experimental Feature GUCs */
 int         gp_distinct_grouping_sets_threshold = 32;
@@ -347,14 +339,9 @@ bool		gp_fts_probe_pause=false;
 /* Force core dump on memory context error */
 bool 		coredump_on_memerror=false;
 
-/* if catquery.c is built with the logquery option, allow caql logging */
-bool		gp_enable_caql_logging = true;
-
 /* Experimental feature for MPP-4082. Please read doc before setting this guc */
 GpAutoStatsModeValue gp_autostats_mode;
 char                *gp_autostats_mode_string;
-GpAutoStatsModeValue gp_autostats_mode_in_functions;
-char                *gp_autostats_mode_in_functions_string;
 int                  gp_autostats_on_change_threshold = 100000;
 bool				 log_autostats=true;
 /* --------------------------------------------------------------------------------------------------
@@ -447,6 +434,10 @@ string_to_role(const char *string)
 	{
 		role = GP_ROLE_EXECUTE;
 	}
+	else if (pg_strcasecmp(string, "dispatchagent") == 0 || pg_strcasecmp(string, "qda") == 0)
+	{
+		role = GP_ROLE_DISPATCHAGENT;
+	}
 	else if (pg_strcasecmp(string, "utility") == 0)
 	{
 		role = GP_ROLE_UTILITY;
@@ -469,6 +460,8 @@ role_to_string(GpRoleValue role)
 			return "dispatch";
 		case GP_ROLE_EXECUTE:
 			return "execute";
+		case GP_ROLE_DISPATCHAGENT:
+			return "dispatchagent";
 		case GP_ROLE_UTILITY:
 			return "utility";
 		case GP_ROLE_UNDEFINED:
@@ -650,7 +643,7 @@ assign_gp_use_dispatch_agent(bool newval, bool doit, GucSource source __attribut
 		 * will wipe them out.
 		 */
 		if (newval != gp_use_dispatch_agent && Gp_role != GP_ROLE_UTILITY)
-			disconnectGangsByScope(GANGSCOPE_ALL);
+			disconnectAndDestroyAllGangs();
 		gp_use_dispatch_agent = newval;
 	}
 
@@ -923,43 +916,6 @@ gpvars_show_gp_interconnect_type(void)
 }                               /* gpvars_show_gp_log_interconnect */
 
 
-/*
- * Parse the string value of gp_autostats_mode and gp_autostats_mode_in_functions
- */
-static int
-gpvars_parse_gp_autostats_mode(const char *newval, bool inFunctions)
-{
-	int newtype = 0;
-
-	if (newval == NULL || newval[0] == 0 ||
-		!pg_strcasecmp("none", newval))
-	{
-		newtype = GP_AUTOSTATS_NONE;
-	}
-	else if (!pg_strcasecmp("on_change", newval) || !pg_strcasecmp("onchange", newval))
-	{
-		newtype = GP_AUTOSTATS_ON_CHANGE;
-	}
-	else if (!pg_strcasecmp("on_no_stats", newval))
-	{
-		newtype = GP_AUTOSTATS_ON_NO_STATS;
-	}
-	else
-	{
-		const char *autostats_mode_string;
-		if (inFunctions)
-		{
-			autostats_mode_string = gpvars_show_gp_autostats_mode_in_functions();
-		}
-		else
-		{
-			autostats_mode_string = gpvars_show_gp_autostats_mode();
-		}
-		elog(ERROR, "Unknown autostats mode. (current type is '%s')", autostats_mode_string);
-	}
-
-	return newtype;
-}
 
 /*
  * gpvars_assign_gp_autostats_mode
@@ -968,7 +924,17 @@ gpvars_parse_gp_autostats_mode(const char *newval, bool inFunctions)
 const char *
 gpvars_assign_gp_autostats_mode(const char *newval, bool doit, GucSource source __attribute__((unused)) )
 {
-	int newtype = gpvars_parse_gp_autostats_mode(newval, false /* inFunctions */);
+	int newtype = 0;
+
+	if (newval == NULL || newval[0] == 0 ||
+		!pg_strcasecmp("none", newval))
+		newtype = GP_AUTOSTATS_NONE;
+	else if (!pg_strcasecmp("on_change", newval) || !pg_strcasecmp("onchange", newval))
+		newtype = GP_AUTOSTATS_ON_CHANGE;
+	else if (!pg_strcasecmp("on_no_stats", newval))
+		newtype = GP_AUTOSTATS_ON_NO_STATS;
+	else
+		elog(ERROR, "Unknown autostats mode. (current type is '%s')", gpvars_show_gp_autostats_mode());
 
 	if (doit)
 	{
@@ -978,23 +944,10 @@ gpvars_assign_gp_autostats_mode(const char *newval, bool doit, GucSource source 
 	return newval;
 }
 
-/*
- * Common function to show the value of the gp_autostats_mode
- * and gp_autostats_mode_in_functions GUCs
- */
-static const char *
-gpvars_show_gp_autostats_mode_common(bool inFunctions)
+const char *
+gpvars_show_gp_autostats_mode(void)
 {
-	GpAutoStatsModeValue autostats_mode;
-	if (inFunctions)
-	{
-		autostats_mode = gp_autostats_mode_in_functions;
-	}
-	else
-	{
-		autostats_mode = gp_autostats_mode;
-	}
-	switch(autostats_mode)
+	switch(gp_autostats_mode)
 	{
 		case GP_AUTOSTATS_NONE:
 			return "NONE";
@@ -1007,37 +960,6 @@ gpvars_show_gp_autostats_mode_common(bool inFunctions)
 	}
 }
 
-const char *
-gpvars_show_gp_autostats_mode(void)
-{
-	return gpvars_show_gp_autostats_mode_common(false /* inFunctions */);
-}
-
-/*
- * gpvars_assign_gp_autostats_mode_in_functions
- * gpvars_show_gp_autostats_mode_in_functions
- */
-
-const char *
-gpvars_assign_gp_autostats_mode_in_functions(const char *newval, bool doit, GucSource source __attribute__((unused)) )
-{
-	bool inFunctions = true;
-	int newtype = gpvars_parse_gp_autostats_mode(newval, inFunctions);
-
-	if (doit)
-	{
-		gp_autostats_mode_in_functions = newtype;
-	}
-
-	return newval;
-}
-
-
-const char *
-gpvars_show_gp_autostats_mode_in_functions(void)
-{
-	return gpvars_show_gp_autostats_mode_common(true /* inFunctions */);
-}
 
 /* gp_enable_gpperfmon and gp_gpperfmon_send_interval are GUCs that we'd like
  * to have propagate from master to segments but we don't want non-super users
@@ -1201,18 +1123,4 @@ gpvars_assign_statement_mem(int newval, bool doit, GucSource source __attribute_
 	}
 
 	return true;
-}
-
-/*
- * increment_command_count
- *    Increment gp_command_count. If the new command count is 0 or a negative number, reset it to 1.
- */
-void
-increment_command_count()
-{
-	gp_command_count++;
-	if (gp_command_count <= 0)
-	{
-		gp_command_count = 1;
-	}
 }

@@ -222,7 +222,7 @@ def _get_default_formatter():
     """
     Returns the default formatter, constructing it if needed.
     The default formatter formats things using Greenplum standard logging:
-      <date>:<pid> <programname>:<hostname>:<username>:[LEVEL]:-message
+      <date>:<programname>:<hostname>:<username>:[LEVEL]:-message
     NOTE: internal use only
     """
     global _DEFAULT_FORMATTER
@@ -231,7 +231,7 @@ def _get_default_formatter():
     if _DEFAULT_FORMATTER == None:
         formatStr = "%(asctime)s:%(programname)s:%(name)s-[%(levelname)-s]:-%(message)s"
         appName = _APP_NAME_FOR_DEFAULT_FORMAT.replace("%", "") # to make sure we don't produce a format string
-        formatStr = formatStr.replace("%(programname)s", "%06d %s" % (os.getpid(), appName))
+        formatStr = formatStr.replace("%(programname)s", appName)
         _DEFAULT_FORMATTER = logging.Formatter(formatStr,"%Y%m%d:%H:%M:%S")
     return _DEFAULT_FORMATTER
 

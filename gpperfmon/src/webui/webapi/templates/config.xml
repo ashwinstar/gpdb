@@ -1,0 +1,10 @@
+$def with (configuration)
+<?xml version="1.0"?>
+<config>
+$for sect_name, sect_val in configuration.iteritems():
+    <${sect_name.replace(" ","_")}>
+    $for item_name, item_val in sect_val.iteritems():
+        <${item_name.replace(" ","_")}>${item_val}</${item_name.replace(" ","_")}>   
+    </${sect_name.replace(" ","_")}>
+</config>
+

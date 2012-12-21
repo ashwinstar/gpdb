@@ -19,15 +19,17 @@ Usage: gpcheckcat [<option>] [dbname]
 '''
 import sys, os, subprocess, tempfile, stat, re
 from threading import Thread
-from datetime import timedelta
-from time import localtime, strftime, time
+from datetime import datetime
+from time import localtime, strftime
+import time
 import getopt
 
 try:
+    from gppylib.gplog import *
+    from gppylib.gpcatalog import *
+    from gppylib.commands.unix import *
     from pygresql.pgdb import DatabaseError
     from pygresql import pg
-    from gppylib.gpcatalog import *
-    from gpcheckcat_lib import *
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
@@ -35,6 +37,11 @@ parallelism = 8
 # cache OID -> object name cache
 oidmap = {}
 
+#-------------------------------------------------------------------------------
+EXECNAME = os.path.split(__file__)[-1]
+setup_tool_logging(EXECNAME,getLocalHostname(),getUserName())
+very_quiet_stdout_logging()
+logger = get_default_logger()
 #-------------------------------------------------------------------------------
 
 ################
@@ -115,11 +122,38 @@ class Global():
         
     def reset_stmt_queues(self):
 
+        # dictionary of SQL statements. Key is dbid
+        self.Remove = {}
+    
+        # dictionary of SQL statements. Key is dbid
+        self.AdjustConname = {}
+    
+        # dictionary of SQL statements. Key is dbid
+        self.DemoteConstraint = {}
+    
+        # array of SQL statements. Key is dbid
+        self.ReSync = {}
+    
+        # Indexes to rebuild
+        self.Reindex = []
+    
+        # constraints which are actually unenforcable
+        self.Constraints = []
+    
+        # ownership fixups
+        self.Owners = []
+    
+        # drop leaked temporary schemas
+        self.Schemas = []
+    
+        # fix distribution policies
+        self.Policies = []
+        
         self.missingEntryStatus = None
         self.inconsistentEntryStatus = None
         self.foreignKeyStatus = None
         self.aclStatus = None
-        self.demoteConstraintStatus = None
+
 
         # the following variables used for reporting purposes
         self.elapsedTime = 0
@@ -136,6 +170,22 @@ def usage(exitarg = None):
     print __doc__
     sys.exit(exitarg)
 
+
+###############################
+
+def getversion():
+    versions = ["3.2", "3.3", "4.0", "4.1", "main"]
+    db = connect()
+    curs = db.query('''
+    select regexp_replace(version(), 
+       E'.*PostgreSQL [^ ]+ .Greenplum Database ([1-9]+.[0-9]+|main).*', 
+       E'\\\\1') as ver;''')
+
+    row = curs.getresult()[0]
+    version = row[0]
+
+    logger.debug('got version %s' % version)
+    return version
 
 ###############################
 def getalldbs():
@@ -171,7 +221,7 @@ def parseCommandLine():
     if GV.opt['-l']: return
 
     if GV.opt['-v']:
-        log_verbose()
+        enable_verbose_logging()
 
     setdef('-P', 'PGPASSWORD')
     setdef('-U', 'PGUSER')
@@ -291,23 +341,6 @@ class execThread(Thread):
             self.error = e
     
 
-def processThread(threads):
-    batch = []
-    for th in threads:
-        logger.debug('waiting on thread %s' % th.getName())
-        th.join()
-        if th.error:
-            setError(ERROR_NOREPAIR)
-            myprint("%s:%d:%s : %s" % 
-                     (th.cfg['hostname'],
-                      th.cfg['port'],
-                      th.cfg['datadir'],
-                      str(th.error)))
-        else:
-            batch.append([th.cfg, th.curs])
-    return batch
-
-
 #############
 def connect2run(qry, col=None):
     logger.debug('%s' % qry)
@@ -329,14 +362,31 @@ def connect2run(qry, col=None):
 
         # we don't want too much going on at once
         if (i % GV.opt['-B']) == 0:
-            # process this batch of threads
-            batch.extend(processThread(threads))
+            for th in threads:
+                logger.debug('waiting on thread %s' % th.getName())
+                th.join()
+                batch.append([th.cfg, th.curs])
+
             threads = []
 
         i += 1
 
-    # process the rest of threads
-    batch.extend(processThread(threads))
+    for th in threads:
+        logger.debug('waiting on thread %s' % th.getName())
+        th.join()
+
+        # XXX - this is not a good way to report the error due to the way that
+        # this function is usually called - the error gets reported before the
+        # test message and the test reports as "passing".
+        if th.error:
+            setError(ERROR_NOREPAIR)
+            myprint("%s:%d:%s : %s" % 
+                         (th.cfg['hostname'],
+                          th.cfg['port'],
+                          th.cfg['datadir'],
+                          str(th.error)))
+        else:
+            batch.append([th.cfg, th.curs])
 
     err = []
     for [cfg, curs] in batch:
@@ -377,10 +427,47 @@ def getGPConfiguration():
     db.close()
     return cfg
 
-
 def checkDistribPolicy():
     logger.info('-----------------------------------')
-    logger.info('Checking constraints on randomly distributed tables and unique constraints are only on distribution columns')
+    logger.info('Checking constraints on randomly distributed tables')
+    qry = '''
+    select n.nspname, rel.relname, pk.conname as constraint
+    from   pg_constraint pk
+      join pg_class rel on (pk.conrelid = rel.oid)
+      join pg_namespace n on (rel.relnamespace = n.oid)
+      join gp_distribution_policy d on (rel.oid = d.localoid)
+    where pk.contype in('p', 'u') and d.attrnums is null
+    '''
+
+    db = connect2(GV.cfg[1])
+    try:
+        curs = db.query(qry)
+        err = []
+        for row in curs.dictresult():
+            err.append([GV.cfg[1], ('nspname', 'relname', 'constraint'), row])
+
+        if not err:
+            logger.info('[OK] randomly distributed tables')
+        else:
+            GV.testStatus = False
+            setError(ERROR_REMOVE)
+            logger.info('[FAIL] randomly distributed tables')
+            logger.error('pg_constraint has %d issue(s)' % len(err))
+            logger.error(qry)
+            for e in err: 
+                logger.error(formatErr(e[0], e[1], e[2]))
+            for e in err:
+                cons = e[2]
+                removeIndexConstraint(cons['nspname'], cons['relname'],
+                                  cons['constraint'])
+    except Exception, e:
+        setError(ERROR_NOREPAIR)
+        myprint('[ERROR] executing test: checkDistribPolicy')
+        myprint('  Execution error: ' + str(e))
+
+
+    logger.info('-----------------------------------')
+    logger.info('Checking that unique constraints are only on distribution columns')
 
     # final part of the WHERE clause here is a little tricky: we want to make
     # sure that the set of distribution columns is a left subset of the
@@ -395,7 +482,6 @@ def checkDistribPolicy():
           (d.attrnums is null or not 
            d.attrnums operator(pg_catalog.<@) pk.conkey)
     '''
-    db = connect2(GV.cfg[1])
     try:
         curs = db.query(qry)
 
@@ -404,24 +490,18 @@ def checkDistribPolicy():
             err.append([GV.cfg[1], ('nspname', 'relname', 'constraint'), row])
 
         if not err:
-            logger.info('[OK] randomly distributed tables and unique constraints')
+            logger.info('[OK] unique constraints')
         else:
             GV.testStatus = False
             setError(ERROR_REMOVE)
-            logger.info('[FAIL] randomly distributed tables and unique constraints')
+            logger.info('[FAIL] unique constraints')
             logger.error('pg_constraint has %d issue(s)' % len(err))
             logger.error(qry)
-            stmt = '\n'
+            for e in err: logger.error(formatErr(e[0], e[1], e[2]))
             for e in err:
-                logger.error(formatErr(e[0], e[1], e[2]))
                 cons = e[2]
-                stmt += 'ALTER TABLE "{nspname}"."{relname}" DROP CONSTRAINT "{constraint}" CASCADE;\n'\
-                        .format( nspname    = cons['nspname'],
-                                 relname    = cons['relname'],
-                                 constraint = cons['constraint'] )
-            comment = 'Dropping invalid unique constraints'
-            RSCRIPT.create_repair_script(GV.dbname, MASTERDB, 'removeConstraint', stmt, comment)
-
+                removeIndexConstraint(cons['nspname'], cons['relname'],
+                                  cons['constraint'])
     except Exception, e:
         setError(ERROR_NOREPAIR)
         myprint('[ERROR] executing test: checkDistribPolicy')
@@ -472,7 +552,7 @@ def checkPartitionIntegrity():
 
     except Exception, e:
         setError(ERROR_NOREPAIR)
-        myprint('[ERROR] executing test: checkPartitionIntegrity')
+        myprint('[ERROR] executing test: checkPartitionInterity')
         myprint('  Execution error: ' + str(e))
 
     # MPP-9283: look for partitions create "with oids".
@@ -499,13 +579,15 @@ def checkPartitionIntegrity():
             logger.info('[FAIL] partition with oids check')
             logger.error('partition with oids check found %d issue(s)' % len(err))
             logger.error(qry)
-            for e in err:
+            for e in err[0:100]: 
                 row = e[2]
                 logger.error(" table %s.%s oid %s" % 
                          (row['nspname'], row['relname'], row['oid']))
+            if len(err) > 100:
+                logger.error("...")
     except Exception, e:
         setError(ERROR_NOREPAIR)
-        myprint('[ERROR] executing test: checkPartitionIntegrity')
+        myprint('[ERROR] executing test: checkPartitionInterity')
         myprint('  Execution error: ' + str(e))
 
         # TODO: add repair script
@@ -590,27 +672,37 @@ def checkPartitionIntegrity():
             setError(ERROR_REMOVE)
             logger.info('[FAIL] partition distribution policy check')
             logger.error('partition distribution policy check found %d issue(s)' % len(err))
-            logger.error(qry)
+            if len(err) > 100:
+                logger.error(qry)
 
-            stmt = '\n'
+            count = 0
             for e in err:
+                cfg = e[0]
                 col = e[1]
                 row = e[2]
 
                 # generate repair script for this row
-                stmt += 'ALTER TABLE %s SET DISTRIBUTED RANDOMLY;\n' % row['parchildrelid']
+                distributeRandomly(row['parchildrelid'])
 
-                logger.error("--------")
-                logger.error("  " + " | ".join(map(str, col)))
-                logger.error("  " + "-+-".join(['-'*len(x) for x in col]))
+                # report at most 100 rows, for brevity
+                if count == 100:
+                    logger.error("...")
+                    count += 1
+                if count > 100:
+                    continue
+
+                if count == 0:
+                    logger.error("--------")
+                    logger.error("  " + " | ".join(map(str, col)))
+                    logger.error("  " + "-+-".join(['-'*len(x) for x in col]))
+
+            
                 logger.error("  " + " | ".join([str(row[x]) for x in col]))
-
-            comment = 'Fixing distribution policies'
-            RSCRIPT.create_repair_script(GV.dbname, MASTERDB, 'fixDistribution', stmt, comment)
+                count += 1
 
     except Exception, e:
         setError(ERROR_NOREPAIR)
-        myprint('[ERROR] executing test: checkPartitionIntegrity')
+        myprint('[ERROR] executing test: checkPartitionInterity')
         myprint('  Execution error: ' + str(e))
 
 
@@ -1137,21 +1229,35 @@ set
     classid = 'pg_class'::regclass,
     objid = {indexoid}
 where
-    classid = 'pg_constraint'::regclass and
-    objid = (
-             select oid
+    (classid, objid, objsubid, refclassid, refobjid, refobjsubid, deptype) =
+    (
+        select  
+            d.classid,
+            d.objid,
+            d.objsubid,
+            d.refclassid,
+            d.refobjid,
+            d.refobjsubid,
+            d.deptype
+        from 
+            pg_depend d
+        where 
+            d.classid = 'pg_constraint'::regclass and
+            d.objid = (
+               select oid
                from pg_constraint
-              where
-                    conrelid = {partoid} and
-                    conname = {quoted_conname} and
-                    contypid = 0 and
-                    contype = {quoted_contype}
-         ) and
-    objsubid = 0 and
-    refclassid = 'pg_class'::regclass and
-    refobjid = {partoid} and
-    refobjsubid <> 0 and
-    deptype = 'a';
+               where
+                  conrelid = {partoid} and
+                  conname = {quoted_conname} and
+                  contypid = 0 and
+                  contype = {quoted_contype}
+            ) and
+            d.objsubid = 0 and
+            d.refclassid = 'pg_class'::regclass and
+            d.refobjid = {partoid} and
+            d.refobjsubid <> 0 and
+            d.deptype = 'a'
+    );
 --Delete constraint {conname} leaving its index {indexid}
 delete 
 from
@@ -1570,17 +1676,15 @@ def checkPartitionRegularity():
     # Rio partitioning changes introduce new regularity requirements for constraints
     # on partitioned tables.  These are the checks.
     #
-    okayToRun = GV.missingEntryStatus and GV.inconsistentEntryStatus \
-                and GV.foreignKeyStatus and not GV.opt['-R']
+    okayToRun = GV.missingEntryStatus and GV.inconsistentEntryStatus and GV.foreignKeyStatus
     irregular = False
 
     logger.info('-----------------------------------')
     logger.info('Checking pg_partition/pg_constraint regularity ...')
     
     if not okayToRun:
-        myprint('--- unable to run pg_partition/pg_constraint regularity checks')
-        myprint('--- prerequisite tests (inconsistent, missing_extraneous, foreign_key) failed or not run')
-        GV.totalTestRun -= 1 
+        logger.warn('unable to run pg_partition/pg_constraint regularity checks')
+        logger.warn('prerequisite tests failed or not run')
         return
     
     db = connect()
@@ -1650,6 +1754,8 @@ def checkPartitionRegularity():
     
     if irregular:
         logger.warn('skipping test %s due to constraint irregularities' % testname)
+    elif GV.Remove:
+        logger.warn('skipping test %s due to required removals' % testname)
     else:
         # logger.info('Checking %s ...' % testname)
 
@@ -1667,18 +1773,21 @@ def checkPartitionRegularity():
                 logger.info('[OK]  %s' % testname)
             else:
                 GV.testStatus = False
-                GV.demoteConstraintStatus = True
                 setError(ERROR_REMOVE)
                 logger.info('[FAIL]  %s' % testname)
                 logger.error(' %s test has %d issue(s)' % ( testname, len(err) ) )
                 efmt = '  partitioned table "{tableid}" has unenforced {con_type_phrase} constraint: "{partid}"'
                 repair_fmt = partitionRegularityChecks['unenforced_constraint_repairs']
-                stmt = '\n'
-                for e in sorted(err):
-                    logger.error(efmt.format(**e))
-                    stmt += repair_fmt.format(**e) + '\n'
-                comment = 'demote constraint'
-                RSCRIPT.create_repair_script(GV.dbname, SEGDBS, 'demoteUnenforcedConstraint', stmt, comment)
+                n = 0
+                for e in err:
+                    n = n+1
+                    if n <= 100:
+                        logger.error(efmt.format(**e))
+                    repair_sequence = repair_fmt.format(**e)
+                    for dbid in GV.cfg:
+                        addDemoteConstraint(dbid, repair_sequence)
+                    if len(err) > 100:
+                        logger.error("...")
 
         except Exception, e:
             setError(ERROR_NOREPAIR)
@@ -1690,7 +1799,9 @@ def checkPartitionRegularity():
     
     if irregular:
         logger.warn('skipping test %s due to constraint irregularities' % testname)
-    elif GV.demoteConstraintStatus:
+    elif GV.Remove:
+        logger.warn('skipping test %s due to required removals' % testname)
+    elif GV.DemoteConstraint:
         logger.warn('skipping test %s due to unenforced constraint removals' % testname)
     else:
         # logger.info('Checking %s ...' % testname)
@@ -1710,27 +1821,19 @@ def checkPartitionRegularity():
                 logger.info('[FAIL]  %s' % testname)
                 logger.error(' %s test has %d issue(s)' % ( testname, len(err) ) )
                 efmt = '  part table "%s" has constraint named "%s"; should be "%s"'
-                stmt = '\n'
+                n = 0
                 for e in err:
-                    # part name, wrong constraint name, right constraint name
-                    logger.error(efmt % (e['partid'], e['partconname'], e['tableconname']))
-                    relname    = e['tableid']
-                    relid      = int(e['partrelid'])
-                    oldconname = quote_value(e['partconname'])
-                    newconname = quote_value(e['tableconname'])
-
-                    stmt += """
---Constraint Name: {oldconname} on {relname} becomes {newconname}
-UPDATE pg_constraint
-SET conname = {newconname}
-WHERE conrelid = {relid} and conname = {oldconname};
-                            """.format(oldconname = oldconname,
-                                       newconname = newconname,
-                                       relname = relname,
-                                       relid = relid)
-
-                comment = 'adjust partitioned table conname'
-                RSCRIPT.create_repair_script(GV.dbname, SEGDBS, 'adjustConname', stmt, comment)
+                    n = n+1
+                    if n <= 100:
+                        # part name, wrong constraint name, right constraint name
+                       logger.error(efmt % (e['partid'], e['partconname'], e['tableconname']))
+                    for dbid in GV.cfg:
+                        buildAdjustConname(
+					     	dbid, e['tableid'], int(e['partrelid']), 
+		    				quote_value(e['partconname']), 
+			    			quote_value(e['tableconname']) )
+                if len(err) > 100:
+                    logger.error("...")
 
         except Exception, e:
             setError(ERROR_NOREPAIR)
@@ -1738,94 +1841,6 @@ WHERE conrelid = {relid} and conname = {oldconname};
             myprint('  Execution error: ' + str(e))
 
     db.close()
-
-#############
-def checkInheritanceDeprecation():
-    """
-    MPP-16335 - Paris deprecated the use of inheritance as a first-class feature. 
-    Any use of inheritance unrelated to partitioning is exposed by these checks.
-    """
-    logger.info('-----------------------------------')
-    logger.info('Checking inheritance deprecation ...')
-    qry = """
-    SELECT parent_relation.oid as parent_oid,
-           parent_namespace.nspname as parent_nspname,
-           parent_relation.relname as parent_name,
-           child_relation.oid as child_oid,
-           child_namespace.nspname as child_nspname,
-           child_relation.relname as child_name
-    FROM pg_inherits,
-         pg_class parent_relation,
-         pg_namespace parent_namespace,
-         pg_class child_relation,
-         pg_namespace child_namespace
-    WHERE inhparent = parent_relation.oid
-      AND parent_relation.relnamespace = parent_namespace.oid
-      AND inhrelid = child_relation.oid
-      AND child_relation.relnamespace = child_namespace.oid
-      AND NOT EXISTS (
-        SELECT * 
-        FROM pg_partition_rule
-        WHERE parchildrelid = inhrelid
-    )
-    """
-    testname = 'inheritance'
-    err = []
-    try:
-        db = connect2(GV.cfg[1], utilityMode=False)
-
-        """
-        gp_enable_inheritance - it does exactly what it sounds like. 
-
-        In normal circumstances, the presence or absence of the GUC determines whether
-        we look to expose use of inheritance unrelated to partitioning.
-
-        In upgrade circumstances, we must run checkcat against an older GPDB, where
-        the GUC will not exist. Since our desire is to have customers pursue a migration
-        away from any usage of inheritance, we will run this test during upgrade; 
-        if, however, a customer feels that inheritance is still necessary,
-        we provide an environment variable GP_ENABLE_INHERITANCE which causes this
-        test to be skipped, thereby unblocking upgrade.
-
-        The endgame is to rip out inheritance entirely, after the PARIS release.
-        """
-        skip = False
-        if "GP_ENABLE_INHERITANCE" in os.environ:
-            skip = True
-        elif DBVERSION > "4.2":
-            curs = db.query("SHOW gp_enable_inheritance")
-            inheritance_enabled = curs.getresult()[0][0]
-            if inheritance_enabled == "on":
-                skip = True
-            
-        if skip:
-            logger.info('Detected override of inheritance deprecation')
-            logger.info('[SKIP]  %s' % testname)
-        else:
-            curs = db.query(qry)
-            for row in curs.dictresult():
-                err.append(row)
-
-            if not err:
-                logger.info('[OK]  %s' % testname)
-            else:
-                GV.testStatus = False
-                setError(ERROR_NOREPAIR)
-                logger.info('[FAIL]  %s' % testname)
-                logger.error('Inheritance has been deprecated and is no longer supported.')
-                logger.error('%s test has %d issue(s)' % (testname, len(err)) )
-                logger.error(qry)
-                for e in err:
-                    logger.error('    Table "%s.%s" directly inherits from "%s.%s".'
-                                    % (e['child_nspname'],
-                                       e['child_name'],
-                                       e['parent_nspname'],
-                                       e['parent_name']))
-
-    except Exception, e:
-        setError(ERROR_NOREPAIR)
-        myprint('[ERROR] executing test: %s' % testname)
-        myprint('  Execution error: ' + str(e))
 
 #############
 def checkPGClass():
@@ -1847,58 +1862,56 @@ def checkPGClass():
         logger.info('[FAIL] pg_class')
         logger.error('pg_class has %d issue(s)' % len(err))
         logger.error(qry)
-        for e in err:
+        for e in err[0:100]: 
             logger.error(formatErr(e[0], e[1], e[2]))
-
-
-#############
-def checkRemoveLeakedTempSchema():
-    # MPP-16655: 
-    #     This test is to check for leaked temp table & schema
-    #     It will also automatically remove them if found
-    logger.info('-----------------------------------')
-    logger.info('Checking for leaked temporary schemas')
-
-    qry = """
-          SELECT n.nspname, n.sess_id
-            FROM 
-                (select nspname, replace(nspname,'pg_temp_','')::int as sess_id
-                   from pg_namespace
-                  where nspname ~ '^pg_temp_[0-9]+'
-                 union all
-                 select nspname, replace(nspname,'pg_temp_','')::int as sess_id
-                   from gp_dist_random('pg_namespace')
-                  where nspname ~ '^pg_temp_[0-9]+'
-                ) as n
-           LEFT OUTER JOIN pg_stat_activity as x
-             ON (n.sess_id = x.sess_id)
-          WHERE x.sess_id is null;
-          """
-    try:
-        db = connect()
-        curs = db.query(qry)
-        if curs.ntuples() == 0:
-            logger.info('[OK] temporary schemas')
-        else:
-            logger.info('[FAIL] temporary schemas')
-            logger.error('found %d unbound temporary schemas' % curs.ntuples())
-            for row in curs.getresult():
-                logger.error("  ... %s" % row[0])
-            logger.info('Remove leaked temporary schemas')
-            for row in curs.dictresult():
-                qry = 'DROP SCHEMA IF EXISTS "%s" CASCADE;' % row['nspname']
-                db.query(qry)
-    except Exception, e:
-        setError(ERROR_NOREPAIR)
-        myprint('[ERROR] executing test: checkLeakedTempSchema')
-        myprint('  Execution error: ' + str(e))
+        if len(err) > 100:
+            logger.error("...")
 
 
 #############
 def checkPGNamespace():
+    logger.info('-----------------------------------')
+    logger.info('Checking for leaked temporary schemas')
+    db = connect2(GV.cfg[1], utilityMode=False)
+    
+    # The simpler form of this query that pushed the union into the
+    # inner select does not run correctly on 3.2.x
+    qry = '''
+    SELECT distinct nspname as schema
+    FROM (
+      SELECT nspname, replace(nspname, 'pg_temp_','')::int as sess_id
+      FROM   gp_dist_random('pg_namespace')
+      WHERE  nspname ~ '^pg_temp_[0-9]+'
+    ) n LEFT OUTER JOIN pg_stat_activity x using (sess_id)
+    WHERE x.sess_id is null
+    UNION
+    SELECT nspname as schema
+    FROM (
+      SELECT nspname, replace(nspname, 'pg_temp_','')::int as sess_id
+      FROM   pg_namespace
+      WHERE  nspname ~ '^pg_temp_[0-9]+'
+    ) n LEFT OUTER JOIN pg_stat_activity x using (sess_id)
+    WHERE x.sess_id is null
+    '''
+    try:
+        curs = db.query(qry)
+        if curs.ntuples() == 0:
+            logger.info('[OK] temporary schemas')
+        else: 
+            GV.testStatus = False
+            setError(ERROR_REMOVE)
+            logger.info('[FAIL] temporary schemas')
+            logger.error('found %d unbound temporary schemas' % curs.ntuples())
+            for row in curs.getresult():
+                logger.error("  ... %s" % row[0])
+                GV.Schemas.append(row[0])
+    except Exception, e:
+        setError(ERROR_NOREPAIR)
+        myprint('[ERROR] executing test: checkPGNamespace')
+        myprint('  Execution error: ' + str(e))
+
     # Check for objects in various catalogs that are in a schema that has
     # been dropped.
-    logger.info('-----------------------------------')
     logger.info('Checking missing schema definitions ...')
     qry = '''
     SELECT o.catalog, o.nsp
@@ -1918,54 +1931,235 @@ def checkPGNamespace():
         logger.info('[OK] missing schema definitions')
     else:
         GV.testStatus = False
-        setError(ERROR_NOREPAIR)
+        setError(ERROR_REMOVE)
         logger.info('[FAIL] missing schema definitons')
         logger.error('found %d references to non-existent schemas' % len(err))
         logger.error(qry)
-        for e in err:
+
+        for e in err[0:100]: 
             logger.error(formatErr(e[0], e[1], e[2]))
+        if len(err) > 100:
+            logger.error("...")
+        schemaids = {}
+        for e in err:
+            seg = e[0]['dbid'] 
+            if not schemaids.has_key(seg):
+                schemaids[seg] = []
+                
+            schemaids[seg].append(e[2]['nsp'])    
+
+        for seg in schemaids:
+            # unique
+            schemas = set(schemaids[seg])
+            for schemaid in schemas:
+                c = GV.cfg[seg]
+                removeSchema(seg, connect2(c), schemaid)
+
 
 
 #############
-'''
-Produce repair scripts to remove dangling entries of gp_fastsequence:
-	- one file per segment dbid
-	- contains DELETE statements to remove catalog entry
-'''
-def removeFastSequence(db):
-    '''
-    MPP-14758: gp_fastsequence does not get cleanup after a failed transaction (AO/CO)
-    Note: this is slightly different from the normal foreign key check 
-          because it streches the cross reference across segments. 
-          This makes it safe in the event of cross consistency issues with pg_class, 
-          but may not repair some issues when there are cross consistency problems
-    '''
+# remove all remnants of a schema
+def removeSchema(seg, db, schemaid):
     try:
-        qry = """ 
-			         SELECT gp_segment_id, array_agg(objid) as objids
-                        FROM (select gp_segment_id, objid from gp_fastsequence
-                              union
-                              select gp_segment_id, objid from gp_dist_random('gp_fastsequence')) AS fs
-                        LEFT OUTER JOIN 
-                             (select oid from pg_class 
-                              union
-                              select oid from gp_dist_random('pg_class')) AS c
-                        ON (fs.objid = c.oid)
-                     WHERE c.oid IS NULL GROUP BY gp_segment_id;
-              """
-
+        # see if table has a toast table and if so, remove that
+        # must do it like this so we can get toast tables
+        qry = 'select oid from pg_class where relnamespace = %i' % schemaid
         curs = db.query(qry)
         for row in curs.dictresult():
-            segid  = row['gp_segment_id']
-            objids = [i for i in row['objids'][1:-1].split(',')]
-            stmt = '\n'
-            for objid in objids:
-                stmt += 'DELETE FROM gp_fastsequence WHERE objid = %s; \n' % (objid)
-            comment = 'Removing gp_fastsequence entries'
-            RSCRIPT.create_repair_script(GV.dbname, segid, 'removeFastSequence', stmt, comment)
+            removeTable(seg, db, row['oid'])
+    
+        # get schema name
+        curs = db.query('select nspname from pg_namespace where oid = %i' % schemaid)
+        if curs.ntuples() > 0:
+            row = db.getresult()[0]
+            schemaname = row[0]
+            oidmap[schemaid] = schemaname
+        else:
+            schemaname = str(schemaid)
+    
+        buildRemove(seg, 'schema operators', 'pg_operator',
+                    dict([('oprnamespace', schemaid)]), schemaname)
+    
+        buildRemove(seg, 'schema types', 'pg_type',
+                    dict([('typnamespace', schemaid)]), schemaname)
+    
+        buildRemove(seg, 'schema procedures', 'pg_proc',
+                    dict([('pronamespace', schemaid)]), schemaname)
+    
+        removeDepend(seg, db, schemaid, schemaname)
 
     except Exception, e:
-        logger.error('removeFastSequence: ' + str(e))
+        logger.error('removeSchema: ' + str(e))
+    
+
+#############
+def removeTable(seg, db, reloid):
+    try:
+        # see if table has a toast table and if so, remove that
+        qry = """
+          SELECT oid, reltoastrelid, reltoastidxid
+          FROM pg_class
+          WHERE oid = %i
+        """ % reloid
+        curs = db.query(qry)
+        for row in curs.dictresult():
+            if row['reltoastrelid'] != 0:
+                removeTable(seg, db, row['reltoastrelid'])
+            if row['reltoastidxid'] != 0:
+                removeTable(seg, db, row['reltoastidxid'])
+    
+        if reloid in oidmap:
+            rel = oidmap[reloid]
+        else:
+            # get relname
+            curs = db.query('select nspname, relname, relnamespace from pg_namespace n' +
+                        ' right outer join pg_class c on ' +
+                        '(c.relnamespace = n.oid) where c.oid = %i' % reloid)
+            if curs.ntuples() > 0:
+                row = curs.getresult()[0]
+                nspname = row[0]
+                relname = row[1]
+                if nspname == None:
+                    nspname = str(row[2])
+                rel = nspname + '.' + relname
+                oidmap[reloid] = rel
+            else:
+                rel = str(reloid)
+    
+        removeInheritance(seg, db, reloid, rel)
+        removeStats(seg, db, reloid, rel)
+        removeAttributes(seg, db, reloid, rel)
+        removeRelTuple(seg, db, reloid, rel)
+        removeIndexes(seg, db, reloid, rel)
+        removeRelType(seg, db, reloid, rel)
+        removeExtTable(seg, db, reloid, rel)
+        removeAppendOnly(seg, db, reloid, rel)
+        removeDepend(seg, db, reloid, rel)
+    
+        if seg == -1:
+            removePolicy(seg, db, reloid, rel)
+
+    except Exception, e:
+        logger.error('removeTable: ' + str(e))
+
+def removeInheritance(seg, db, reloid, rel):
+    buildRemove(seg, 'inheritance', 'pg_inherits',
+                dict([('inhrelid', reloid),('inhparent', reloid)]), rel)
+
+
+def removeIndexConstraint(nspname, relname, constraint):
+    GV.Constraints.append('ALTER TABLE "%s"."%s" DROP CONSTRAINT "%s";' % \
+            (nspname, relname, constraint))
+
+def distributeRandomly(rel):
+    GV.Policies.append('ALTER TABLE %s SET DISTRIBUTED RANDOMLY;' % rel)
+
+def removeStats(seg, db, reloid, rel):
+    buildRemove(seg, 'statistics', 'pg_statistic',
+                dict([('starelid', reloid)]), rel)
+
+def removeRelTuple(seg, db, reloid, rel):
+    buildRemove(seg, 'relation tuple', 'pg_class',
+                dict([('oid', reloid)]), rel)
+
+def removeExtTable(seg, db, reloid, rel):
+    buildRemove(seg, 'external table definition', 'pg_exttable',
+                dict([('reloid', reloid)]), rel)
+
+def removePolicy(seg, db, reloid, rel):
+    buildRemove(seg, 'Distribution policy', 'gp_distribution_policy',
+                dict([('localoid', reloid)]), rel)
+
+def removeAttributes(seg, db, reloid, rel):
+    buildRemove(seg, 'attributes', 'pg_attribute',
+                dict([('attrelid', reloid)]), rel)
+    removeAttrDefs(seg, db, reloid, rel)
+    removeConstraints(seg, db, reloid, rel)
+
+def removeAttrDefs(seg, db, reloid, rel):
+    buildRemove(seg, 'attribute defaults', 'pg_attrdef',
+                dict([('adrelid', reloid)]), rel)
+
+def removeConstraints(seg, db, reloid, rel):
+    buildRemove(seg, 'constraints', 'pg_constraint',
+                dict([('conrelid', reloid)]), rel)
+
+def removeRelType(seg, db, reloid, rel):
+    buildRemove(seg, 'relation type tuple', 'pg_type',
+                dict([('typrelid', reloid)]), rel)
+
+def removeIndexes(seg, db, reloid, rel):
+    buildRemove(seg, 'indexes', 'pg_index', {'indrelid': reloid}, rel)
+
+def removeAppendOnly(seg, db, reloid, rel):
+    try:
+        # see if table has appendonly subtables and if so, remove them
+        qry = """
+          SELECT relid, segrelid, segidxid
+          FROM pg_appendonly
+          WHERE relid = %i
+        """ % reloid
+        curs = db.query(qry)
+        if curs.ntuples() == 0:
+            return
+        for row in curs.dictresult():
+            if row['segrelid'] != 0:
+                removeTable(seg, db, row['segrelid'])
+            if row['segidxid'] != 0:
+                removeTable(seg, db, row['segidxid'])
+        
+        buildRemove(seg, 'append only subtables', 'pg_appendonly',
+                    {'relid': reloid}, rel)
+
+    except Exception, e:
+        myprint('removeAppendOnly: ' + str(e))
+
+
+def removeDepend(seg, db, reloid, rel):
+    buildRemove(seg, 'dependencies', 'pg_depend',
+                {'objid': reloid, 'refobjid': reloid}, rel)
+    buildRemove(seg, 'shared dependencies', 'pg_shdepend',
+                {'objid': reloid, 'refobjid': reloid}, rel)
+
+def buildRemove(seg, name, table, cols, objname):
+    first = False
+    fullstr = ''
+    str = ''
+    for col in cols:
+        if not first:
+            fullstr = '--Object Name: %s\n--Remove %s for %i\n' %  \
+                (objname, name, cols[col])
+        if len(str) > 0:
+            str += ' or '
+        str += '%s = \'%s\'' % (col, cols[col])
+    fullstr += 'DELETE FROM %s WHERE %s;' % (table, str)
+    addRemove(seg, fullstr)
+
+def addRemove(seg, line):
+    if not GV.Remove.has_key(seg):
+        GV.Remove[seg] = []
+    GV.Remove[seg].append(line)
+
+def buildAdjustConname(seg, relname, relid, oldconname, newconname):
+    # relname text
+    # relid oid as int
+    # old/newconname text
+    stmt = '--Constraint Name: %s on %s becomes %s\n' % \
+        (oldconname, relname, newconname)
+    stmt += 'UPDATE pg_constraint\n'
+    stmt += 'SET conname = %s\n' % newconname
+    stmt += 'WHERE conrelid = %d and conname = %s;' % (relid, oldconname)
+    addAdjustConname(seg, stmt)
+
+def addAdjustConname(seg, stmt):
+    if not GV.AdjustConname.has_key(seg):
+        GV.AdjustConname[seg] = []
+    GV.AdjustConname[seg].append(stmt)
+
+def addDemoteConstraint(seg, repair_sequence):
+    if not GV.DemoteConstraint.has_key(seg):
+        GV.DemoteConstraint[seg] = []
+    GV.DemoteConstraint[seg].append(repair_sequence)    
 
 
 #############
@@ -2029,9 +2223,7 @@ def checkDepend():
             setError(ERROR_NOREPAIR)
             logger.info('[FAIL] basic object dependencies')
             logger.error('  found %d dependencies on dropped objects' % len(err))
-            logger.info(qry)
-            for e in err:
-                logger.error(formatErr(e[0], e[1], e[2]))
+            # logger.info(qry)
 
     except Exception, e:
         setError(ERROR_NOREPAIR)
@@ -2039,6 +2231,21 @@ def checkDepend():
         myprint("  Execution error: " + str(e))
         myprint(qry)
         
+
+def fixupowners(nspname, relname, oldrole, newrole):
+    
+    # Must first alter the table to the wrong owner, then back to the right
+    # owner.  The purpose of this is that AT doesn't dispatch the change unless
+    # it think the table actually changed owner.
+    #
+    # Note: this means that the Owners list must be run in the order given.
+    #
+    GV.Owners.append('-- owner for "%s"."%s"' % (nspname, relname))
+    GV.Owners.append('ALTER TABLE "%s"."%s" OWNER TO "%s";' % 
+                  (nspname, relname, oldrole))
+    GV.Owners.append('ALTER TABLE "%s"."%s" OWNER TO "%s";' % 
+                  (nspname, relname, newrole))
+
 
 def checkOwners():
     logger.info('-----------------------------------')
@@ -2093,25 +2300,15 @@ def checkOwners():
             logger.info('[FAIL] table ownership')
             logger.error('found %d table ownership issue(s)' % len(rows))
             logger.error('%s' % qry)
-            for row in rows:
+            for row in rows[0:100]:
                 logger.error('  %s.%s relowner %s != %s'
                     % (row['nspname'], row['relname'], row['rolname'],
                        row['master_rolname']))
-
-            stmt = ''
+            if len(rows) > 100:
+                logger.error("...")
             for row in rows:
-                stmt += """
--- owner for "{nspname}"."{relname}"
-ALTER TABLE "{nspname}"."{relname}" OWNER TO "{oldrole}";
-ALTER TABLE "{nspname}"."{relname}" OWNER TO "{newrole}";
-                        """.format(nspname = row['nspname'],
-                                   relname = row['relname'],
-                                   oldrole = row['rolname'],
-                                   newrole = row['master_rolname'])
-
-            comment = 'Correcting table ownership'
-            RSCRIPT.create_repair_script(GV.dbname, MASTERDB, 'fixOwner', stmt, comment)
-
+                fixupowners(row['nspname'], row['relname'], row['rolname'],
+                            row['master_rolname'])
     except Exception, e:
         setError(ERROR_NOREPAIR)
         myprint("[ERROR] executing: check table ownership")
@@ -2151,10 +2348,12 @@ ALTER TABLE "{nspname}"."{relname}" OWNER TO "{newrole}";
             logger.info('[FAIL] type ownership')
             logger.error('found %d type ownership issue(s)' % len(rows))
             logger.error('%s' % qry)
-            for row in rows:
+            for row in rows[0:100]:
                 logger.error('  %s.%s typeowner %s != %s'
                     % (row['nspname'], row['typname'], row['rolname'],
                        row['master_rolname']))
+            if len(rows) > 100:
+                logger.error("...")
 
     except Exception, e:
         setError(ERROR_NOREPAIR)
@@ -2207,7 +2406,6 @@ def checkPersistentTables():
             when p.persistent_state = 3 then 'drop pending'
             when p.persistent_state = 4 then 'abort create'
             when p.persistent_state = 5 then 'JIT create pending'
-            when p.persistent_state = 6 then 'bulk load create pending'
             else 'unknown state: ' || p.persistent_state
        end as persistent_state,
        case when p.mirror_existence_state = 0 then 'mirror free'
@@ -2249,7 +2447,6 @@ def checkPersistentTables():
              when p.persistent_state = 3 then 'drop pending'
              when p.persistent_state = 4 then 'abort create'
              when p.persistent_state = 5 then 'JIT create pending'
-             when p.persistent_state = 6 then 'bulk load create pending'
              else 'unknown state: ' || p.persistent_state
         end as persistent_state,
         p.persistent_serial_num, s.sequence_num
@@ -2269,7 +2466,6 @@ def checkPersistentTables():
             when p.persistent_state = 3 then 'drop pending'
             when p.persistent_state = 4 then 'abort create'
             when p.persistent_state = 5 then 'JIT create pending'
-            when p.persistent_state = 6 then 'bulk load create pending'
             else 'unknown state: ' || p.persistent_state
        end as persistent_state,
        case when p.mirror_existence_state = 0 then 'mirror free'
@@ -2324,7 +2520,6 @@ def checkPersistentTables():
              when p.persistent_state = 3 then 'drop pending'
              when p.persistent_state = 4 then 'abort create'
              when p.persistent_state = 5 then 'JIT create pending'
-             when p.persistent_state = 6 then 'bulk load create pending'
              else 'unknown state: ' || p.persistent_state
         end as persistent_state,
         p.persistent_serial_num, s.sequence_num
@@ -2344,7 +2539,6 @@ def checkPersistentTables():
             when p.persistent_state = 3 then 'drop pending'
             when p.persistent_state = 4 then 'abort create'
             when p.persistent_state = 5 then 'JIT create pending'
-            when p.persistent_state = 6 then 'bulk load create pending'
             else 'unknown state: ' || p.persistent_state
        end as persistent_state,
        case when p.mirror_existence_state = 0 then 'mirror free'
@@ -2397,7 +2591,6 @@ def checkPersistentTables():
              when p.persistent_state = 3 then 'drop pending'
              when p.persistent_state = 4 then 'abort create'
              when p.persistent_state = 5 then 'JIT create pending'
-             when p.persistent_state = 6 then 'bulk load create pending'
              else 'unknown state: ' || p.persistent_state
         end as persistent_state,
         p.persistent_serial_num, s.sequence_num
@@ -2417,7 +2610,6 @@ def checkPersistentTables():
             when p.persistent_state = 3 then 'drop pending'
             when p.persistent_state = 4 then 'abort create'
             when p.persistent_state = 5 then 'JIT create pending'
-            when p.persistent_state = 6 then 'bulk load create pending'
             else 'unknown state: ' || p.persistent_state
        end as persistent_state,
        case when p.mirror_existence_state = 0 then 'mirror free'
@@ -2525,7 +2717,6 @@ def checkPersistentTables():
              when p.persistent_state = 3 then 'drop pending'
              when p.persistent_state = 4 then 'abort create'
              when p.persistent_state = 5 then 'JIT create pending'
-             when p.persistent_state = 6 then 'bulk load create pending'
              else 'unknown state: ' || p.persistent_state
         end as persistent_state,
         p.persistent_serial_num, s.sequence_num
@@ -2597,21 +2788,35 @@ def checkPersistentTables():
             logger.error('%s found %d issue(s)' % (qname, len(err)))
             logger.error(qry)
             
+            # Report at most 100 rows per segment, for brevity
             last    = None
+            count   = 0
             for e in err:
                 cfg = e[0]
                 col = e[1]
                 row = e[2]
                 
-                # If this is a new host start again, print host info
+                # If this is a new host start again
                 if last != cfg:
+                    count = 0
                     last = cfg
+
+                if count == 100:
+                    logger.error("...")
+                    count += 1
+                if count > 100:
+                    continue
+
+                # Actual formatting could be prettied up more
+                if count == 0:
                     logger.error("--------")
                     logger.error("%s:%s:%s" % (cfg['hostname'], 
                                                cfg['port'], 
                                                cfg['datadir']))
                     logger.error("  " + " | ".join(map(str, col)))
                 logger.error("  " + " | ".join([str(row[x]) for x in col]))
+                count += 1
+
     return
 
 
@@ -2710,9 +2915,9 @@ def checkTableACL(cat):
             # logger.error(qry)
 
             fields = curs.listfields()
-            log_literal(logging.ERROR,"    " + " | ".join(fields))
+            log_literal(logger,logging.ERROR,"    " + " | ".join(fields))
             for row in curs.getresult():
-                log_literal(logging.ERROR,"    " + " | ".join(map(str, row)))
+                log_literal(logger,logging.ERROR,"    " + " | ".join(map(str, row)))
             processACLResult(catname, fields, curs.getresult())
 
     except Exception, e:
@@ -2750,12 +2955,14 @@ def checkTableForeignKey(cat):
     # skip tables without fkey
     if len(fkeylist) <= 0:
         return
-    if len(pkeylist) <= 0:
+    if len(cat.getPrimaryKey()) <= 0:
         return
 
     # skip these master-only tables
     skipped_masteronly = ['gp_relation_node', 'pg_description', 'pg_shdescription', 
                           'pg_stat_last_operation', 'pg_stat_last_shoperation', 'pg_statistic']
+    # skip this check because of MPP-14758:
+    skipped_masteronly.append('gp_fastsequence')
 
     if catname in skipped_masteronly:
         return
@@ -2767,14 +2974,25 @@ def checkTableForeignKey(cat):
         if re.match("only", GV.opt['-S'], re.I) and not isShared:
             return
  
+    # primary key lists
+    cat1pkeys = []
+    pkeys     = []
+
+    # build array of catalog primary keys (with aliases) and
+    # primary key alias list
+    for pk in pkeylist:
+        cat1pkeys.append('cat1.' + pk + ' as %s_%s' % (catname,pk))
+        pkeys.append('%s_%s' % (catname,pk))
+
     logger.info('Building %d queries to check FK constraint on table %s' % (len(fkeylist),catname))
     for fkeydef in fkeylist:
-        pkcatname      = fkeydef.getPkeyTableName()
-        pklist         = fkeydef.getPKey()
-        fklist         = fkeydef.getColumns()
-        casted_fklist  = [c+autoCast.get(coltypes[c],'') for c in fklist]
+        castedFkey  = [c+autoCast.get(coltypes[c],'') for c in fkeydef.getColumns()]
+        fkeystr     = ', '.join(castedFkey)
+        cat1fkeystr = 'cat1.' + ', cat1.'.join(fkeydef.getColumns())
+        pkeystr     = ', '.join(fkeydef.getPKey())
+        pkcatname   = fkeydef.getPkeyTableName()
 
-        qry = fkQuery(catname, pkeylist, casted_fklist, pkcatname, pklist)
+        qry = fkQuery(catname, pkcatname, fkeystr, pkeystr, pkeys, cat1pkeys)
        
         # Execute the query
         try:
@@ -2784,25 +3002,21 @@ def checkTableForeignKey(cat):
 
             if nrows == 0:
                 logger.info('[OK] Foreign key check for %s(%s) referencing %s(%s)'%
-                            (catname, ','.join(fklist), pkcatname, ','.join(pklist)))
+                            (catname, fkeystr, pkcatname, pkeystr))
             else:
                 GV.testStatus = False
                 setError(ERROR_NOREPAIR)
                 GV.foreignKeyStatus = False
                 logger.info('[FAIL] Foreign key check for %s(%s) referencing %s(%s)'%
-                            (catname, ','.join(fklist), pkcatname, ','.join(pklist)))
+                            (catname, fkeystr, pkcatname, pkeystr))
                 logger.error('  %s has %d issue(s): entry has NULL reference of %s(%s)'% 
-                            (catname, nrows, pkcatname, '.'.join(pklist)))
+                            (catname, nrows, pkcatname, pkeystr))
 
                 fields = curs.listfields()
-                log_literal(logging.ERROR,"    " + " | ".join(fields))
+                log_literal(logger,logging.ERROR,"    " + " | ".join(fields))
                 for row in curs.getresult():
-                    log_literal(logging.ERROR,"    " + " | ".join(map(str, row)))
-                processForeignKeyResult(catname, len(fklist), pkcatname, fields, curs.getresult())
-
-                if catname == 'gp_fastsequence' and pkcatname == 'pg_class':
-                    setError(ERROR_REMOVE)
-                    removeFastSequence(db)
+                    log_literal(logger,logging.ERROR,"    " + " | ".join(map(str, row)))
+                processForeignKeyResult(catname, pkcatname, fields, curs.getresult())
 
         except Exception, e:
             setError(ERROR_NOREPAIR)
@@ -2813,100 +3027,40 @@ def checkTableForeignKey(cat):
 
 
 #-------------------------------------------------------------------------------
-def fkQuery(fktab_name, fktab_pklist, casted_fklist, pktab_name, pktab_pklist):
-
-    '''
-    SAMPLE QUERY: pg_attrdef(adrelid,adnum) references pg_attribute(attrelid,attnum)
-
-    SELECT pg_attrdef_adrelid, pg_attrdef_adnum, pg_attribute_attrelid, pg_attribute_attnum,
-           array_agg(gp_segment_id order by gp_segment_id) as segids
-    FROM (
-          SELECT cat1.gp_segment_id, 
-                 cat1.adrelid AS pg_attrdef_adrelid, cat1.adnum AS pg_attrdef_adnum, 
-                 cat1.adrelid AS pg_attribute_attrelid, cat1.adnum AS pg_attribute_attnum
-          FROM
-              gp_dist_random('pg_attrdef') cat1 LEFT OUTER JOIN
-              gp_dist_random('pg_attribute') cat2
-              ON (cat1.gp_segment_id = cat2.gp_segment_id AND
-                  cat1.adrelid = cat2.attrelid AND cat1.adnum = cat2.attnum )
-          WHERE cat2.attrelid IS NULL AND cat2.attnum IS NULL
-            AND cat1.adrelid != 0 AND cat1.adnum != 0
-          UNION ALL
-          SELECT -1 as gp_segment_id, 
-                 cat1.adrelid AS pg_attrdef_adrelid, cat1.adnum AS pg_attrdef_adnum, 
-                 cat1.adrelid AS pg_attribute_attrelid, cat1.adnum AS pg_attribute_attnum
-          FROM
-              pg_attrdef cat1 LEFT OUTER JOIN
-              pg_attribute cat2
-              ON (cat1.gp_segment_id = cat2.gp_segment_id AND
-                  cat1.adrelid = cat2.attrelid AND cat1.adnum = cat2.attnum )
-          WHERE cat2.attrelid IS NULL AND cat2.attnum IS NULL
-            AND cat1.adrelid != 0 AND cat1.adnum != 0
-          ORDER BY pg_attrdef_adrelid, pg_attrdef_adnum, gp_segment_id
-    ) allresults
-    GROUP BY pg_attrdef_adrelid, pg_attrdef_adnum, pg_attribute_attrelid, pg_attribute_attnum
-    '''
-
-    # fktab_pk_alias            --> pg_attrdef_adrelid, pg_attrdef_adnum
-    # pktab_pk_alias            --> pg_attribute_attrelid, pg_attribute_attnum 
-    # cat1_pk_as_fktab_pk_alias --> cat1.adrelid AS pg_attrdef_adrelid, cat1.adnum AS pg_attrdef_adnum
-    # cat1_fk_as_pktab_pk_alias --> cat1.adrelid AS pg_attribute_attrelid, cat1.adnum AS pg_attribute_attnum
-    # cat1_fk_not_zero          --> cat1.adrelid != 0 AND cat1.adnum != 0
-    # cat2_pk_is_null           --> cat2.attrelid IS NULL AND cat2.attnum IS NULL
-    # cat1_fk_equal_cat2_pk     --> cat1.adrelid = cat2.attrelid AND cat1.adnum = cat2.attnum
-
-    assert(len(pktab_pklist) == len(casted_fklist))
-
-    cat1_fk_equal_cat2_pk     = ''
-    cat1_fk_as_pktab_pk_alias = ''
-    for i in range(len(pktab_pklist)):
-        if cat1_fk_as_pktab_pk_alias != '':
-            cat1_fk_equal_cat2_pk     += ' AND '
-            cat1_fk_as_pktab_pk_alias += ', '
-        cat1_fk_equal_cat2_pk     += 'cat1.%s = cat2.%s' % (casted_fklist[i], pktab_pklist[i])
-        cat1_fk_as_pktab_pk_alias += 'cat1.%s AS %s_%s'  % (casted_fklist[i], pktab_name, pktab_pklist[i])
-
-    fktab_pk_alias            = ', '.join(['%s_%s' % (fktab_name,pk) for pk in fktab_pklist])
-    pktab_pk_alias            = ', '.join(['%s_%s' % (pktab_name,pk) for pk in pktab_pklist])
-    cat1_pk_as_fktab_pk_alias = ', '.join(['cat1.%s AS %s_%s' % (pk,fktab_name,pk) for pk in fktab_pklist])
-
-    cat2_pk_is_null  = ' AND '.join(['cat2.%s IS NULL' % pk for pk in pktab_pklist])
-    cat1_fk_not_zero = ' AND '.join(['cat1.%s != 0' % fk for fk in casted_fklist])  
+def fkQuery(catname, pkcatname, fkeystr, pkeystr, pkeys, cat1pkeys):
 
     qry = """
-          SELECT {fktab_pk_alias}, {pktab_pk_alias},
+          SELECT {primary_key_alias}, {cat2_dot_pk},
                  array_agg(gp_segment_id order by gp_segment_id) as segids
           FROM (
-                SELECT cat1.gp_segment_id, {cat1_pk_as_fktab_pk_alias}, {cat1_fk_as_pktab_pk_alias}
+                SELECT cat1.gp_segment_id, {cat1_dot_pk}, cat1.{FK1} as {cat2_dot_pk} 
                 FROM
-                    gp_dist_random('{fktab_name}') cat1 LEFT OUTER JOIN
-                    gp_dist_random('{pktab_name}') cat2
+                    gp_dist_random('{CATALOG1}') cat1 LEFT OUTER JOIN
+                    gp_dist_random('{CATALOG2}') cat2
                     ON (cat1.gp_segment_id = cat2.gp_segment_id AND
-                        {cat1_fk_equal_cat2_pk} )
-                WHERE {cat2_pk_is_null}
-                  AND {cat1_fk_not_zero}
+                        cat1.{FK1} = cat2.{PK2} )
+                WHERE cat2.{PK2} is NULL
+                  AND cat1.{FK1} != 0
                 UNION ALL
-                SELECT -1 as gp_segment_id, {cat1_pk_as_fktab_pk_alias}, {cat1_fk_as_pktab_pk_alias}
+                SELECT -1 as gp_segment_id, {cat1_dot_pk}, cat1.{FK1} as {cat2_dot_pk} 
                 FROM
-                    {fktab_name} cat1 LEFT OUTER JOIN
-                    {pktab_name} cat2
+                    {CATALOG1} cat1 LEFT OUTER JOIN
+                    {CATALOG2} cat2
                     ON (cat1.gp_segment_id = cat2.gp_segment_id AND
-                        {cat1_fk_equal_cat2_pk} )
-                WHERE {cat2_pk_is_null}
-                  AND {cat1_fk_not_zero}
-                ORDER BY {fktab_pk_alias}, gp_segment_id
+                        cat1.{FK1} = cat2.{PK2} )
+                WHERE cat2.{PK2} is NULL
+                  AND cat1.{FK1} != 0
+                ORDER BY {primary_key_alias}, gp_segment_id
           ) allresults
-          GROUP BY {fktab_pk_alias}, {pktab_pk_alias}
-          """.format(fktab_pk_alias            = fktab_pk_alias,
-                     pktab_pk_alias            = pktab_pk_alias,
-                     cat1_pk_as_fktab_pk_alias = cat1_pk_as_fktab_pk_alias,
-                     cat1_fk_as_pktab_pk_alias = cat1_fk_as_pktab_pk_alias,
-                     fktab_name                = fktab_name,
-                     pktab_name                = pktab_name,
-                     cat2_pk_is_null           = cat2_pk_is_null,
-                     cat1_fk_not_zero          = cat1_fk_not_zero,
-                     cat1_fk_equal_cat2_pk     = cat1_fk_equal_cat2_pk)
-                     
+          GROUP BY {primary_key_alias}, {cat2_dot_pk}
+          """.format(FK1      = fkeystr,
+                     PK2      = pkeystr,
+                     CATALOG1 = catname,
+                     CATALOG2 = pkcatname,
+                     cat1_dot_pk = ', '.join(cat1pkeys) ,
+                     cat2_dot_pk = '%s_%s' % (pkcatname,pkeystr),
+                     primary_key_alias    = ', '.join(pkeys))
+
     return qry
 
 
@@ -2976,9 +3130,9 @@ def checkTableMissingEntry(cat):
             logger.error('  %s has %d issue(s)' % (catname, nrows))
 
             fields = curs.listfields()
-            log_literal(logging.ERROR,"    " + " | ".join(fields))
+            log_literal(logger,logging.ERROR,"    " + " | ".join(fields))
             for row in curs.getresult():
-                log_literal(logging.ERROR,"    " + " | ".join(map(str, row)))
+                log_literal(logger,logging.ERROR,"    " + " | ".join(map(str, row)))
             processMissingDuplicateEntryResult(catname, fields, curs.getresult(), "missing")
            
 
@@ -3008,11 +3162,6 @@ def missingEntryQuery(max_content, catname, pkey, castedPkey):
     #     If the non-nulls are <= 1/2 the result report those segments as "extra"
 
     qry = """
-          SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-          
-          -- distribute catalog table from master, so that we can avoid to gather
-          CREATE TEMPORARY TABLE _tmp_master ON COMMIT DROP AS
-              SELECT gp_segment_id segid, {primary_key} FROM {catalog};
           SELECT {oidcasted_pk}, exists, array_agg(segid order by segid) as segids
           FROM
           (
@@ -3021,13 +3170,13 @@ def missingEntryQuery(max_content, catname, pkey, castedPkey):
                    count(*) over (partition by {primary_key}, actual.segid is null) as subcount
             FROM (
                  SELECT segid, {primary_key}
-                 FROM(  SELECT distinct {primary_key} FROM _tmp_master
+                 FROM ( SELECT distinct {primary_key} FROM {catalog}
                         UNION 
                         SELECT distinct {primary_key} FROM gp_dist_random('{catalog}') ) all_pks,
                       ( SELECT distinct content as segid from gp_segment_configuration) all_segs
                ) ideal
                LEFT OUTER JOIN
-               ( SELECT segid, {primary_key} FROM _tmp_master
+               ( SELECT gp_segment_id as segid, {primary_key} FROM {catalog}
                  UNION ALL
                  SELECT gp_segment_id as segid, {primary_key} FROM gp_dist_random('{catalog}')
                ) actual USING (segid, {primary_key})
@@ -3035,27 +3184,12 @@ def missingEntryQuery(max_content, catname, pkey, castedPkey):
           WHERE subcount <= ({max_content}+2)/2.0
           GROUP BY {oidcasted_pk}, exists;
           """.format(oidcasted_pk = ','.join(castedPkey),
-                     primary_key = ','.join(pkey),
-                     catalog = catname,
-                     max_content = max_content)
+                     primary_key  = ','.join(pkey),
+                     catalog      = catname,
+                     max_content  = max_content)
 
     return qry
 
-def transformTextArrayCols(catname, columns, colnames, coltypes):
-    # Distributing by hash(text[]) is potentially dangerous,
-    # so if the table has text[] column, then we need array_to_string
-    #
-    # We should fix the text[] hash expression issue, but
-    # for this script, this seems like a reasonable workaround.
-
-    transformed = []
-    for i in range(len(columns)):
-        if coltypes[colnames[i]] == '_text':
-            transformed.append("array_to_string(" + columns[i] + ", ',')")
-        else:
-            transformed.append(columns[i])
-
-    return transformed
 
 #-------------------------------------------------------------------------------
 def checkInconsistentEntry():
@@ -3101,15 +3235,12 @@ def checkTableInconsistentEntry(cat):
 
     castedPkey = cat.getPrimaryKey()
     castedPkey = [ c+autoCast.get(coltypes[c],'') for c in castedPkey ]
-    castcols = [ c+autoCast.get(coltypes[c],'') for c in columns ]
+    columns = [ c+autoCast.get(coltypes[c],'') for c in columns ]
 
-    # transform text[] cols for sure. See comments on transformTextArrayCols
-    castcols = transformTextArrayCols(catname, castcols, columns, cat.getTableColtypes())
-    castcols = [castcols[i] + ' AS ' + columns[i] for i in range(len(columns))]
     if cat.tableHasConsistentOids():
-        qry = inconsistentEntryQuery(GV.max_content, catname, ['oid'], columns, castcols)
+        qry = inconsistentEntryQuery(GV.max_content, catname, ['oid'], columns)
     else:
-        qry = inconsistentEntryQuery(GV.max_content, catname, castedPkey, columns, castcols)
+        qry = inconsistentEntryQuery(GV.max_content, catname, castedPkey, columns)
 
     # Execute the query
     try:
@@ -3127,9 +3258,9 @@ def checkTableInconsistentEntry(cat):
             logger.error('  %s has %d issue(s)' % (catname, nrows))
 
             fields = curs.listfields()
-            log_literal(logging.ERROR,"    " + " | ".join(fields))
+            log_literal(logger,logging.ERROR,"    " + " | ".join(fields))
             for row in curs.getresult():
-                log_literal(logging.ERROR,"    " + " | ".join(map(str, row)))
+                log_literal(logger,logging.ERROR,"    " + " | ".join(map(str, row)))
             processInconsistentEntryResult(catname, pkey, fields, curs.getresult())
 
 
@@ -3140,8 +3271,9 @@ def checkTableInconsistentEntry(cat):
         myprint('  Execution error: ' + str(e))
         myprint(qry)
 
+
 #-------------------------------------------------------------------------------
-def inconsistentEntryQuery(max_content, catname, pkey, columns, castcols):
+def inconsistentEntryQuery(max_content, catname, pkey, columns):
 
         #-- ==============
         #--  Inconsistent
@@ -3163,13 +3295,8 @@ def inconsistentEntryQuery(max_content, catname, pkey, columns, castcols):
         #-- SET GUC due to MPP-14531:
 
         qry = """
-              SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-              
               SET gp_enable_mk_sort=off; 
 
-              -- distribute catalog table from master, so that we can avoid to gather
-              CREATE TEMPORARY TABLE _tmp_master ON COMMIT DROP AS
-                  SELECT gp_segment_id segid, {columns} FROM {catalog};
               SELECT {columns}, array_agg(gp_segment_id order by gp_segment_id) as segids
               FROM
               (
@@ -3181,9 +3308,10 @@ def inconsistentEntryQuery(max_content, catname, pkey, columns, castcols):
                           count(*) over (partition by {pkey}) as pcount,
                           gp_segment_id, {columns}
                    from (
-                     select segid gp_segment_id, {castcols} from _tmp_master
+                     select gp_segment_id, {columns}
+                     from   {catalog}
                      union all
-                     select gp_segment_id, {castcols}
+                     select gp_segment_id, {columns}
                      from   gp_dist_random('{catalog}')
                    ) all_segments
                  ) counted_segments
@@ -3192,10 +3320,9 @@ def inconsistentEntryQuery(max_content, catname, pkey, columns, castcols):
               ) rowresult
               GROUP BY {columns}
               ORDER BY {pkey}, segids;
-              """.format(pkey = ','.join(pkey),
-                         catalog = catname,
-                         columns = ','.join(columns),
-                         castcols = ','.join(castcols),
+              """.format(pkey        = ','.join(pkey),
+                         catalog     = catname,
+                         columns     = ','.join(columns),
                          max_content = max_content)
 
         return qry
@@ -3261,9 +3388,9 @@ def checkTableDuplicateEntry(cat):
             logger.error('  %s has %d issue(s)' % (catname, nrows))
 
             fields = curs.listfields()
-            log_literal(logging.ERROR,"    " + " | ".join(fields))
+            log_literal(logger,logging.ERROR,"    " + " | ".join(fields))
             for row in curs.getresult():
-                log_literal(logging.ERROR,"    " + " | ".join(map(str, row)))
+                log_literal(logger,logging.ERROR,"    " + " | ".join(map(str, row)))
             processMissingDuplicateEntryResult(catname, fields, curs.getresult(), "duplicate")
 
     except Exception, e:
@@ -3283,102 +3410,21 @@ def duplicateEntryQuery(catname, pkey):
     #--
 
     qry = """
-          SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-
-          -- distribute catalog table from master, so that we can avoid to gather
-          CREATE TEMPORARY TABLE _tmp_master ON COMMIT DROP AS
-              SELECT gp_segment_id segid, {pkey} FROM {catalog};
           SELECT {pkey}, total, array_agg(segid order by segid) as segids
           FROM (
-              SELECT segid, {pkey}, count(*) as total
-              FROM (
-                   select segid, {pkey} FROM _tmp_master
-                   union all
-                   select gp_segment_id as segid, {pkey} FROM gp_dist_random('{catalog}')
-              ) all_segments
-              GROUP BY segid, {pkey}
-              HAVING count(*) > 1
+               SELECT segid, {pkey}, count(*) as total
+               FROM (
+                    select gp_segment_id as segid, {pkey} FROM {catalog}
+                    union all
+                    select gp_segment_id as segid, {pkey} FROM gp_dist_random('{catalog}')
+               ) all_segments
+               GROUP BY segid, {pkey}
+               HAVING count(*) > 1
           ) rowresult
           GROUP BY {pkey}, total
           """.format(catalog = catname,
-                     pkey = ','.join(pkey))
+                     pkey    = ','.join(pkey))
 
-    return qry
-
-
-#-------------------------------------------------------------------------------
-def checkDuplicatePersistentEntry():
-
-    """
-    MPP-18178: check duplicate entries in gp_persistent_relation_node
-    	have the same: tablespace_oid, database_oid, relfilenode_oid, segment_file_num
-    	except mirror_existence_state != 6 (MIRROR DROP PENDING)
-    """
-
-    catname = 'gp_persistent_relation_node'
-    fields = ['tablespace_oid', 'database_oid', 'relfilenode_oid', 'segment_file_num']
-    excol = 'mirror_existence_state'
-    state = 6 
-
-    qry = duplicatePersistentEntryQuery(catname, fields, excol, state)
-
-    try:
-        db = connect2(GV.cfg[1], utilityMode=False)
-        curs  = db.query(qry)
-        nrows = curs.ntuples()
-
-        if nrows == 0:
-            logger.info('[OK] Checking for duplicate persistent entries for ' + catname)
-        else:
-            GV.testStatus = False
-            setError(ERROR_NOREPAIR)
-            logger.error('[FAIL] Checking for duplicate persistent entries for ' + catname)
-            logger.error('  %s has %d issue(s)' % (catname, nrows))
-
-            fields = curs.listfields()
-            log_literal(logging.ERROR, "    " + " | ".join(fields))
-            for row in curs.getresult():
-                log_literal(logging.ERROR, "    " + " | ".join(map(str, row)))
-            processMissingDuplicateEntryResult(catname, fields, curs.getresult(), "duplicate")
-
-    except Exception, e:
-        setError(ERROR_NOREPAIR)
-        myprint('[ERROR] Executing: duplicate persistent entries check for ' + catname)
-        myprint('  Execution error: ' + str(e))
-        myprint(qry)
-
-
-def duplicatePersistentEntryQuery(catname, pkey, excol, state):
-    
-    """
-    Check for duplicate persistent table entries:
-    	the query is similar to the duplicate catalog entries query, except an extra condition 
-    	and the check is limited to the connected database for reporting purposes
-    """
-    
-    qry = """
-          SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-          
-          -- distribute catalog table from master, so that we can avoid to gather
-          CREATE TEMPORARY TABLE _tmp_master ON COMMIT DROP AS
-              SELECT gp_segment_id segid, {pkey}, {excol} FROM {catalog};
-          SELECT {pkey}, total, array_agg(segid order by segid) as segids
-          FROM (
-              SELECT segid, {pkey}, count(*) as total
-              FROM (
-                   select segid, {pkey} from _tmp_master
-                   where {excol} != {state}
-                   union all
-                   select gp_segment_id as segid, {pkey} from gp_dist_random('{catalog}') 
-                   where {excol} != {state}
-              ) all_segments 
-                LEFT OUTER JOIN pg_database d ON (all_segments.database_oid = d.oid)
-              WHERE d.datname = '{dbname}'
-              GROUP BY segid, {pkey}
-              HAVING count(*) > 1
-          ) rowresult 
-          GROUP BY {pkey}, total
-          """.format(catalog=catname, pkey=','.join(pkey), excol=excol, state=state, dbname=GV.dbname)
     return qry
 
 
@@ -3391,14 +3437,6 @@ def duplicatePersistentEntryQuery(catname, pkey, excol, state):
 ############################################################################
 
 name_test = {
-    "tempschema":
-    {
-         "description": "Check for leaked temp schemas and remove them if found",
-         "fn": lambda: checkRemoveLeakedTempSchema(),
-         "version": 'main',
-         "order": 0,
-         "online": True
-    },
     "duplicate":
     {
          "description": "Check for duplicate entries",
@@ -3457,7 +3495,7 @@ name_test = {
     },
     "namespace":
     {
-         "description": "Check for missing schema definition",
+         "description": "Check for leaked temporary schema and missing schema definition",
          "fn": lambda: checkPGNamespace(),
          "version": 'main',
          "order": 8,
@@ -3465,7 +3503,7 @@ name_test = {
     },
     "distribution_policy":
     {
-         "description": "Check constraints on randomly distributed tables and unique constraints are only on distribution columns",
+         "description": "Check constraints on randomly distributed tables",
          "fn": lambda: checkDistribPolicy(),
          "version": 'main',
          "order": 9,
@@ -3502,22 +3540,6 @@ name_test = {
          "version": 'main',
          "order": 14,
          "online": True
-    },
-    "inheritance_deprecation":
-    {
-        "description": "Check for usage of inheritance unrelated to partitioning",
-        "fn": lambda: checkInheritanceDeprecation(),
-        "version": 'main',
-        "order": 15,
-        "online": True
-    },
-    "duplicate_persistent":
-    {
-        "description": "Check for duplicate gp_persistent_relation_node entries",
-        "fn": lambda: checkDuplicatePersistentEntry(),
-        "version": 'main',
-        "order": 16,
-        "online": True
     }
 }
 
@@ -3543,12 +3565,12 @@ def runTestCatname(cat):
 
     for t in sorted(tests):
         myprint("Performing test '%s' for %s" % (t,cat.getTableName()))
-        stime = time()
+        stime = time.time()
         tests[t]()
-        etime = time()
+        etime = time.time()
         elapsed = etime - stime
         GV.elapsedTime += elapsed
-        elapsed = str(timedelta(seconds=elapsed))[:-4]
+        elapsed = str(datetime.timedelta(seconds=elapsed))[:-4]
         GV.totalTestRun += 1
         myprint('Total runtime for this test: %s' % (elapsed))
 
@@ -3566,12 +3588,12 @@ def runOneTest(name):
         myprint("Performing test '%s'" % name)
         GV.totalTestRun += 1
         GV.testStatus = True
-        stime = time()
+        stime = time.time()
         name_test[name]["fn"]()
-        etime = time()
+        etime = time.time()
         elapsed = etime - stime
         GV.elapsedTime += elapsed
-        elapsed = str(timedelta(seconds=elapsed))[:-4]
+        elapsed = str(datetime.timedelta(seconds=elapsed))[:-4]
         myprint('Total runtime for this test: %s' % (elapsed))
         if GV.testStatus == False:
             GV.failedTest.append(name)
@@ -3580,10 +3602,224 @@ def runOneTest(name):
 
 #-------------------------------------------------------------------------------
 def runAllTests():
-    '''Perform catalog check for specified database'''
+    '''
+    perform catalog check for specified database
+    '''
+
     for name in sorted(name_test, key=lambda x: name_test[x]["order"]):
-        if name_test[name]["version"] >= DBVERSION:
+        if name_test[name]["version"] >= GV.version:
             runOneTest(name)
+
+    closeDbs()
+
+    logger.info("------------------------------------")
+
+    fixes = (len(GV.Remove) > 0 or 
+             len(GV.AdjustConname) > 0 or
+             len(GV.DemoteConstraint) > 0 or
+             len(GV.ReSync) > 0 or 
+             len(GV.Reindex) > 0 or 
+             len(GV.Constraints) > 0 or
+             len(GV.Owners) > 0 or 
+             len(GV.Schemas) > 0 or
+             len(GV.Policies) > 0)
+    if GV.opt['-g'] != None and fixes:
+        try:
+            if not os.path.exists(GV.opt['-g']):
+                os.mkdir(GV.opt['-g'])
+        except Exception, e:
+            logger.fatal('Unable to create directory "%s": %s' % 
+                         (GV.opt['-g'], str(e)))
+            sys.exit(1)
+                   
+        logger.debug('Building catalog repair scripts')
+        # set allow_system_table_mods GUC for gpdb >= 4.2
+        catmod_guc = ""
+        if GV.version >= "4.2":
+            catmod_guc = "-c allow_system_table_mods=dml"
+
+        # build a script to run these files     
+        script = '#!/bin/bash\ncd $(dirname $0)\n'
+
+        # don't remove anything if ReSync possible --
+        # comment out the delete statements from the repair scripts
+        maybeRemove = "";
+        if len(GV.ReSync):
+            maybeRemove="# "
+        
+        # use the per-dbid loop for removal and for contraint
+        # name adjustments
+        
+        dbids = set(GV.Remove.keys())
+        dbids = dbids.union(GV.AdjustConname.keys())
+        dbids = dbids.union(GV.DemoteConstraint.keys())
+
+        for seg in dbids:
+            # dbid.host.port.dbname.sql
+            c = GV.cfg[seg]
+            filename = '%i.%s.%i.%s.sql' % (seg, c['hostname'],
+                        c['port'], GV.dbname)
+            filename = filename.replace(' ', '_')
+            fullpath = '%s/%s' % (GV.opt['-g'], filename)
+            try:
+                file = open(fullpath, 'w')
+            except Exception, e:
+                logger.fatal('Unable to create file "%s": %s' % 
+                             (fullpath, str(e)))
+                sys.exit(1)
+
+            #unique
+            lines = set()
+            if GV.Remove.has_key(seg):
+                lines = lines.union(GV.Remove[seg])
+            if GV.AdjustConname.has_key(seg):
+                lines = lines.union(GV.AdjustConname[seg])
+            if GV.DemoteConstraint.has_key(seg):
+                lines = lines.union(GV.DemoteConstraint[seg])
+
+            # make sure it is sorted
+            li = list(lines)
+            li.sort()
+            file.write('BEGIN;\n');
+            for line in li:
+                file.write(line + '\n')
+            file.write('COMMIT;\n');
+
+            file.close()
+
+            script += '%secho "Repairing segment %i"\n' % (maybeRemove, seg)
+            script += '''
+{maybe}env PGOPTIONS="-c gp_session_role=utility {guc}" psql -X -a -h {hostname} -p {port} -f {fname} "{dbname}" > {fname}.out
+'''.format(
+                maybe = maybeRemove,
+                guc = catmod_guc,
+                hostname = c['hostname'], 
+                port = c['port'], 
+                fname = filename, 
+                dbname = GV.dbname)
+
+        if len(GV.Reindex) > 0:
+            filename = 'reindex.sql'
+            fullpath = '%s/%s' % (GV.opt['-g'], filename)
+            try:
+                file = open(fullpath, 'w')
+            except Exception, e:
+                logger.fatal('Unable to create file "%s": %s' % 
+                             (fullpath, str(e)))
+                sys.exit(1)
+
+            for r in GV.Reindex:
+                file.write('REINDEX INDEX %s;\n' % r)
+            file.close()
+
+            script += 'echo "Reindexing potentially damaged bitmap indexes"\n'
+            c = GV.cfg[1]
+            script += 'psql -X -a -h %s -p %i -f %s "%s" > %s.out 2>&1\n' % \
+                    (c['hostname'], c['port'], filename, GV.dbname, filename)
+
+        if len(GV.Constraints) > 0:
+            GV.Constraints = list(set(GV.Constraints))
+            filename = 'removeconstraints.sql'
+            fullpath = '%s/%s' % (GV.opt['-g'], filename)
+            try:
+                file = open(fullpath, 'w')
+            except Exception, e:
+                logger.fatal('Unable to create file "%s": %s' % 
+                             (fullpath, str(e)))
+                sys.exit(1)
+
+            for r in GV.Constraints:
+                file.write('%s\n' % r)
+            file.close()
+
+            script += 'echo "Dropping invalid unique constraints"\n'
+            c = GV.cfg[1]
+            script += 'psql -X -a -h %s -p %i -f %s "%s" > %s.out 2>&1\n' % \
+                    (c['hostname'], c['port'], filename, GV.dbname, filename)
+
+        if len(GV.Owners) > 0:
+            # Previously we removed duplicate statements from the "Owners" list
+            # by casting it through a "list(set(...))", however this does not work
+            # since the order of items in the list is important for correct 
+            # results.
+            filename = 'fixowners.sql'
+            fullpath = '%s/%s' % (GV.opt['-g'], filename)
+
+            try:
+                file = open(fullpath, 'w')
+            except Exception, e:
+                logger.fatal('Unable to create file "%s": %s' %
+                             (fullpath, str(e)))
+                sys.exit(1)
+
+            for r in GV.Owners:
+                file.write('%s\n' % r)
+            file.close()
+
+            script += 'echo "Correcting table ownership"\n'
+            c = GV.cfg[1]
+            script += 'psql -X -a -h %s -p %i -f %s "%s" > %s.out 2>&1\n' % \
+                    (c['hostname'], c['port'], filename, GV.dbname, filename)
+
+        if len(GV.Schemas) > 0:
+            # Remove leaked temporary schemas
+            filename = 'fixnamespace.sql'
+            fullpath = '%s/%s' % (GV.opt['-g'], filename)
+
+            try:
+                file = open(fullpath, 'w')
+            except Exception, e:
+                logger.fatal('Unable to create file "%s": %s' %
+                             (fullpath, str(e)))
+                sys.exit(1)
+
+            for s in GV.Schemas:
+                file.write('DROP SCHEMA IF EXISTS "%s" CASCADE;\n' % s)
+            file.close()
+
+            script += 'echo "Dropping temporary schemas"\n'
+            c = GV.cfg[1]
+            script += 'psql -X -a -h %s -p %i -f %s "%s" > %s.out 2>&1\n' % \
+                    (c['hostname'], c['port'], filename, GV.dbname, filename)
+
+        if len(GV.Policies) > 0:
+            # changes to distribution policies
+            filename = 'fixdistribution.sql'
+            fullpath = '%s/%s' % (GV.opt['-g'], filename)
+
+            try:
+                file = open(fullpath, 'w')
+            except Exception, e:
+                logger.fatal('Unable to create file "%s": %s' %
+                             (fullpath, str(e)))
+                sys.exit(1)
+
+            for r in GV.Policies:
+                file.write('%s\n' % r)
+            file.close()
+
+            script += 'echo "Fixing distribution policies"\n'
+            c = GV.cfg[1]
+            script += 'psql -X -a -h %s -p %i -f %s "%s" > %s.out 2>&1\n' % \
+                    (c['hostname'], c['port'], filename, GV.dbname, filename)
+
+
+        try:
+            path = '%s/runsql.sh' % GV.opt['-g']
+            file = open(path, 'w')
+            file.write(script)
+            file.close()
+            os.chmod(path, stat.S_IXUSR | stat.S_IRUSR | stat.S_IWUSR)
+        except Exception, e:
+            logger.fatal('Could not write script: %s' % str(e))
+            sys.exit(1)
+
+        myprint('')
+        myprint('[INFO]: repair scripts generated in directory %s' % GV.opt['-g'])
+
+    if GV.retcode >= ERROR_NOREPAIR:
+        logger.warn('[WARN]: unable to generate repairs for some issues')
+    logger.info("Check complete")
 
 
 #-------------------------------------------------------------------------------
@@ -3647,9 +3883,6 @@ TableMainColumn['pg_attrdef']     = ['adrelid','pg_class']
 TableMainColumn['pg_constraint']  = ['conrelid','pg_class']
 TableMainColumn['pg_trigger']     = ['tgrelid','pg_class']
 TableMainColumn['pg_rewrite']     = ['ev_class','pg_class']
-
-# Persistent table
-TableMainColumn['gp_persistent_relation_node'] = ['relfilenode_oid', 'pg_class']
 
 # Cast OID alias type to OID since our graph of objects is based on OID
 # int2vector is also casted to int2[] due to the lack of an <(int2vector, int2vector) operator
@@ -3718,8 +3951,6 @@ def getOidFromPK(catname, pkeys):
 
 
 #-------------------------------------------------------------------------------
-# TODO: use execSQLForSingletonRow
-#-------------------------------------------------------------------------------
 def getClassOidForType(oid):
     # For FK check: pg_type entry is missing, so we need to use pg_class
     qry = """ 
@@ -3737,19 +3968,6 @@ def getClassOidForType(oid):
         curs = db.query(qry)
         if len(curs.dictresult()) == 0: return 0
         return curs.dictresult().pop()['oid']
-    except Exception, e:
-        setError(ERROR_NOREPAIR)
-        myprint('  Execution error: ' + str(e))
-
-
-#-------------------------------------------------------------------------------
-def getClassOidForRelfilenode(relfilenode):
-    qry = "SELECT oid FROM pg_class WHERE relfilenode = %d;" % (relfilenode)
-    try:
-        dburl = dbconn.DbURL(hostname=GV.opt['-h'], port=GV.opt['-p'], dbname=GV.dbname)
-        conn = dbconn.connect(dburl)
-        oid = dbconn.execSQLForSingletonRow(conn, qry)[0]
-        return oid
     except Exception, e:
         setError(ERROR_NOREPAIR)
         myprint('  Execution error: ' + str(e))
@@ -3830,10 +4048,6 @@ def processMissingDuplicateEntryResult(catname, colname, allValues, type):
             if typrelid != 0: 
                 oid = typrelid
                 rowObjName = 'pg_class'
-        # Special case: persistent table
-        if catname == 'gp_persistent_relation_node':
-            relfilenode = oid
-            oid = getClassOidForRelfilenode(relfilenode) 
 
         gpObj = getGPObject(oid, rowObjName)
 
@@ -3909,36 +4123,31 @@ def processInconsistentEntryResult(catname, pknames, colname, allValues):
 
 
 #-------------------------------------------------------------------------------
-def processForeignKeyResult(catname, fklen, pkcatname, colname, allValues):
+def processForeignKeyResult(catname, pkcatname, colname, allValues):
     
     '''
     colname:    pg_class_relname | pg_class_relnamespace | pg_type_oid | segids
     allValues:            test11 | 2200 | 17389 | {-1,0,1,2,3}
                            test4 | 2200 | 17077 | {-1,0,1,2,3}
-
-    colname:	pg_attrdef_adrelid | pg_attrdef_adnum | pg_attribute_attrelid | pg_attribute_attnum | segids
-    allValues:			   1262477 | 2 | 1262477 | 2 | {-1}
- 						   1265066 | 2 | 1265066 | 2 | {-1}
-
     '''
 
     gpObjName = pkcatname
-    gpColName = colname[-(fklen+1)].rsplit('_',1)[1]
+    gpColName = colname[-2].rsplit('_',1)[1]
     fkeytab  = catname
-    fkeylist = [name.rsplit('_',1)[1] for name in colname[:-(fklen+1)]]
+    fkeylist = [name.rsplit('_',1)[1] for name in colname[:-2]]
 
-    # This pkcatname may not be a GPObject (e.g. pg_attribute)
+    # This catname may not be a GPObject (e.g. pg_attribute)
     #    1. pg_attrdef(adrelid) referencing pg_attribute(attrelid)
     #    2. pg_rewrite(ev_class) referencing pg_attribute(attrelid)
     if pkcatname in TableMainColumn:
-        if gpColName == TableMainColumn[pkcatname][0]:
-            gpObjName = TableMainColumn[pkcatname][1]
+        if gpColName == TableMainColumn[catname][0]:
+            gpObjName = TableMainColumn[catname][1]
 
     # Process each row
     for row in allValues:
         rowObjName = gpObjName
         segids = row[-1]
-        oid = row[len(colname)-(fklen+1)]
+        oid = row[len(colname)-2]
         # Build fkeys dict: used to find oid of pg_class
         fkeys = dict((n,row[colname.index(fkeytab+'_'+n)]) for n in fkeylist)
         issue = CatForeignKeyIssue(pkcatname, {gpColName: oid}, segids, catname, fkeys)
@@ -4440,11 +4649,11 @@ def checkcatReport():
             reportAllIssuesRecursive(child, graph)
 
     buildGraph()
-    reportedTest = ['duplicate','missing_extraneous','inconsistent','foreign_key','acl', 'duplicate_persistent'] 
+    reportedTest = ['duplicate','missing_extraneous','inconsistent','foreign_key','acl'] 
     myprint('')
     myprint('SUMMARY REPORT')
     myprint('===================================================================')
-    elapsed = str(timedelta(seconds=GV.elapsedTime))[:-4]
+    elapsed = str(datetime.timedelta(seconds=GV.elapsedTime))[:-4]
     myprint('Total runtime for %d test(s): %s' % (GV.totalTestRun, elapsed))
 
     if len(GPObjectGraph) == 0 and len(GV.failedTest) == 0:
@@ -4465,11 +4674,11 @@ def checkcatReport():
     notReported = set(GV.failedTest).difference(reportedTest)
     if len(notReported) > 0:
         myprint('Failed test(s) that are not reported here: %s' % (', '.join(notReported)))
-        myprint('See %s for detail\n' % logfile)
+        myprint('See %s for detail\n' % get_logfile())
 
 
 def myprint(str):
-    log_literal(logging.CRITICAL,str)
+    log_literal(logger,logging.CRITICAL,str)
 
 
 #############
@@ -4480,7 +4689,8 @@ if __name__ == '__main__':
         listAllTests()
         sys.exit(GV.retcode)
 
-    if DBVERSION < "4.0":
+    GV.version = getversion()
+    if GV.version < "4.0":
         myprint("Error: only Greenplum database version >= 4.0 are supported\n")
         sys.exit(GV.retcode)
 
@@ -4488,7 +4698,7 @@ if __name__ == '__main__':
     GV.report_cfg = getReportConfiguration()
     GV.max_content = max([GV.cfg[dbid]['content'] for dbid in GV.cfg])
     GV.catalog = getCatalog()
-
+    
     for dbname in GV.alldb:
 
         # Reset global variables
@@ -4499,7 +4709,7 @@ if __name__ == '__main__':
 
         myprint('')
         myprint("Connected as user \'%s\' to database '%s', port '%d', gpdb version '%s'" \
-                   % (GV.opt['-U'], GV.dbname, GV.report_cfg[-1]['port'], DBVERSION))
+                   % (GV.opt['-U'], GV.dbname, GV.report_cfg[-1]['port'], GV.version))
         myprint('-------------------------------------------------------------------')
            
         if GV.opt['-R']:
@@ -4526,14 +4736,5 @@ if __name__ == '__main__':
         # skip shared tables on subsequent passes
         if not GV.opt['-S']:
             GV.opt['-S'] = "none"
-
-    # One repair script for the entire runs 
-    logger.info("------------------------------------")
-    if RSCRIPT.create_script_driver(GV.opt['-g']):
-        myprint('[INFO]: repair scripts generated in directory %s' % GV.opt['-g'])
-
-    if GV.retcode >= ERROR_NOREPAIR:
-        logger.warn('[WARN]: unable to generate repairs for some issues')
-    logger.info("Check complete")
 
     sys.exit(GV.retcode)

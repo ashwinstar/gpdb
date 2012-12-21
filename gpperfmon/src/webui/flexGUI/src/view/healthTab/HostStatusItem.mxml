@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:HBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="20"
+	 horizontalGap="2" verticalAlign="bottom" paddingBottom="0" borderSides="bottom" borderStyle="solid" borderColor="#D5E1C3" 
+	 creationComplete="initComp()" styleName="statusItemNormalStyle" xmlns:healthTab="view.healthTab.*">
+	 <mx:Script>
+	 	<![CDATA[
+			import model.Health;
+	 		
+	 		private var __status:String;
+	 		[Bindable]private var __statusLabel:String;
+	 		[Bindable]private var __statusCount:int;
+	 		private var __parentRef:HostItem;
+	 		
+	 		private function initComp():void{
+	 			statusLbl.text = __statusLabel;
+	 			statusCountLbl.text = "" + __statusCount;
+	 			statusImg.status = __status;
+	 			
+	 			this.addEventListener(MouseEvent.CLICK, handleMouseClick);
+	 		}//end of initComp
+	 		
+	 		/**
+	 		 * Gets triggered when user clicks on the item. The background gets toggled based on the 
+	 		 * select status 
+	 		 */
+	 		private function handleMouseClick(eventObj:MouseEvent):void{
+	 			toggleStatusItemSelection(true);
+	 			__parentRef.statusItemClicked(this);
+	 		}//end fo handleMouseClick
+	 		
+	 		/**
+	 		 * Toggles the selected status of the item. This function is sexposed to the parent component
+	 		 */
+	 		internal function toggleStatusItemSelection(flag:Boolean):void{
+	 			if(flag){
+	 				this.styleName = "statusItemSelectedStyle";
+	 			}else{
+	 				this.styleName = "statusItemNormalStyle";
+	 			}
+	 		}//end of toggleItemSelection
+	 		
+	 		//PROPERTIES
+	 		public function set status(val:String):void{
+	 			__status = val;
+	 			__statusLabel = Health.statusLabel(val);
+	 			
+	 			if (statusLbl) {
+	 				statusLbl.text = __statusLabel;
+	 				statusImg.status = val ;
+	 			}
+	 		}
+	 		
+	 		public function get status():String{
+	 			return __status;
+	 		}
+	 		
+	 		public function set statusCount(val:int):void{
+	 			__statusCount = val;
+	 			
+	 			if(statusCountLbl){
+	 				statusCountLbl.text = "" + __statusCount;
+	 			}	 			
+	 		}
+	 		
+	 		public function get statusCount():int{
+	 			return __statusCount;
+	 		}
+	 		
+	 		public function set showBorder(val:Boolean):void{
+	 			if(!val){
+	 				this.setStyle("borderStyle", "none");
+	 			}
+	 		}
+	 		
+	 		public function set parentRef(val:HostItem):void{
+	 			__parentRef = val;
+	 		}
+	 		
+	 		public function get parentRef():HostItem{
+	 			return __parentRef ;
+	 		}
+	 		
+	 	]]>
+	 </mx:Script>
+			<mx:Label id="statusLbl" width="100%" styleName="hostItemStatusLbl" height="17" paddingBottom="0" text="{__statusLabel}"/>
+			<mx:Label id="statusCountLbl" width="35" styleName="hostItemStatusLbl" height="17" paddingBottom="0" text="{__statusCount}"/>	
+			<healthTab:StatusLED id="statusImg"/>
+</mx:HBox>

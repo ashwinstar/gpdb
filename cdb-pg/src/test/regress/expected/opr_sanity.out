@@ -43,42 +43,9 @@ SELECT p1.oid, p1.proname
 FROM pg_proc as p1
 WHERE p1.prolang = 0 OR p1.prorettype = 0 OR
        p1.pronargs < 0 OR
-       p1.pronargdefaults < 0 OR
-       p1.pronargdefaults > p1.pronargs OR
        array_lower(p1.proargtypes, 1) != 0 OR
        array_upper(p1.proargtypes, 1) != p1.pronargs-1 OR
        0::oid = ANY (p1.proargtypes);
- oid | proname 
------+---------
-(0 rows)
-
--- prosrc should never be null or empty
-SELECT p1.oid, p1.proname
-FROM pg_proc as p1
-WHERE prosrc IS NULL OR prosrc = '' OR prosrc = '-';
- oid | proname 
------+---------
-(0 rows)
-
--- pronargdefaults should be 0 iff proargdefaults is null
-SELECT p1.oid, p1.proname
-FROM pg_proc AS p1
-WHERE (pronargdefaults <> 0) != (proargdefaults IS NOT NULL);
- oid | proname 
------+---------
-(0 rows)
-
--- probin should be non-empty for C functions, null everywhere else
-SELECT p1.oid, p1.proname
-FROM pg_proc as p1
-WHERE prolang = 13 AND (probin IS NULL OR probin = '' OR probin = '-');
- oid | proname 
------+---------
-(0 rows)
-
-SELECT p1.oid, p1.proname
-FROM pg_proc as p1
-WHERE prolang != 13 AND probin IS NOT NULL;
  oid | proname 
 -----+---------
 (0 rows)
@@ -108,10 +75,6 @@ WHERE p1.oid != p2.oid AND
 --
 -- Note: ignoring gp_deprecated here since the function ignores its parameters
 -- always errors and never returns a value.
---
--- MPP-17314 / MPP-17340 - The presence of "convert" below is temporary. The
--- function was incorrectly defined in an older release. It will be deleted
--- from the catalog with MPP-17340.
 SELECT p1.oid, p1.proname, p2.oid, p2.proname
 FROM pg_proc AS p1, pg_proc AS p2
 WHERE p1.oid < p2.oid AND
@@ -131,15 +94,6 @@ WHERE p1.oid < p2.oid AND
 	  NOT IN (select winfunc from pg_window)));
  oid  |      proname      | oid  |       proname       
 ------+-------------------+------+---------------------
- 2991 | interval_bound    | 2992 | interval_bound
- 2992 | interval_bound    | 2993 | interval_bound
- 2991 | interval_bound    | 2993 | interval_bound
- 2994 | interval_bound    | 2995 | interval_bound
- 2995 | interval_bound    | 2996 | interval_bound
- 2994 | interval_bound    | 2996 | interval_bound
- 2997 | interval_bound    | 2998 | interval_bound
- 2998 | interval_bound    | 2999 | interval_bound
- 2997 | interval_bound    | 2999 | interval_bound
  3211 | matrix_add        | 3212 | int2_matrix_accum
  3210 | matrix_add        | 3212 | int2_matrix_accum
  3209 | matrix_add        | 3212 | int2_matrix_accum
@@ -153,7 +107,7 @@ WHERE p1.oid < p2.oid AND
  3213 | int4_matrix_accum | 3215 | float8_matrix_accum
  3212 | int2_matrix_accum | 3215 | float8_matrix_accum
  5044 | gp_elog           | 5045 | gp_elog
-(22 rows)
+(13 rows)
 
 -- Look for uses of different type OIDs in the argument/result type fields
 -- for different aliases of the same built-in function.

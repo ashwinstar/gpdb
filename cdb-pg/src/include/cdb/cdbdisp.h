@@ -15,7 +15,6 @@
 
 #include "cdb/cdbselect.h"
 #include "cdb/cdbtm.h"
-#include "cdb/cdbgang.h"
 #include <pthread.h>
 
 #define CDB_MOTION_LOST_CONTACT_STRING "Interconnect error master lost contact with segment."
@@ -71,7 +70,7 @@ typedef struct DispatchCommandQueryParms
 	/*
 	 * Used by dispatch agent if NOT using sliced execution
 	 */
-	int			writer_gang_id;
+	int			primary_gang_id;
 
 } DispatchCommandQueryParms;
 
@@ -85,7 +84,7 @@ typedef struct DispatchCommandDtxProtocolParms
 	char*						dtxProtocolCommandLoggingStr;
 	char						gid[TMGIDSIZE];
 	DistributedTransactionId	gxid;
-	int							writer_gang_id;
+	int							primary_gang_id;
 	char *argument;
 	int argumentLength;
 } DispatchCommandDtxProtocolParms;
@@ -179,7 +178,7 @@ extern CdbDispatchDirectDesc default_dispatch_direct_desc;
 
 typedef struct CdbDispatcherState
 {
-	struct CdbDispatchResults    *results;
+	struct CdbDispatchResults    *primaryResults;
 	struct CdbDispatchCmdThreads *dispatchThreads;
 } CdbDispatcherState;
 
@@ -240,7 +239,7 @@ CdbCheckDispatchResult(struct CdbDispatcherState *ds, bool cancelUnfinishedWork)
 /*--------------------------------------------------------------------*/
 
 struct pg_result **
-cdbdisp_returnResults(struct CdbDispatchResults *results,
+cdbdisp_returnResults(struct CdbDispatchResults *primaryResults,
 						StringInfo errmsgbuf,
 						int *numresults);
 /*
@@ -305,7 +304,7 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand		dtxProtocolCommand,
  * be dispatched should be done inside of a global transaction or not.
  *
  * The CdbDispatchResults objects allocated for the command
- * exist in ds->results.
+ * are returned in *pPrimaryResults
  * The caller, after calling CdbCheckDispatchResult(), can
  * examine the CdbDispatchResults objects, can keep them as
  * long as needed, and ultimately must free them with
@@ -325,7 +324,6 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
                         bool                        cancelOnError,
                         bool						needTwoPhase,
                         bool						withSnapshot,
-                        GangScope					dispatchTo,
 						struct CdbDispatcherState *ds); /* OUT */
 
 /* Wait for all QEs to finish, then report any errors from the given
@@ -337,7 +335,7 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
  */
 void
 cdbdisp_finishCommand(struct CdbDispatcherState *ds,
-					  void (*handle_results_callback)(struct CdbDispatchResults *results, void *ctx),
+					  void (*handle_results_callback)(struct CdbDispatchResults *primaryResults, void *ctx),
 					  void *ctx);
 
 /*
@@ -364,24 +362,33 @@ cdbdisp_handleError(struct CdbDispatcherState *ds);
  * If not all QEs execute the command successfully, throws an error and
  * does not return.
  *
- * 'needTwoPhase' specifies whether to dispatch within a distributed
+ * needTwoPhase specifies whether to dispatch within a distributed 
  * transaction or not.
- *
- * 'dispatchTo' specified whether to dispatch to all gangs (readers as
- * well). In most cases we want to dispatch to the writer gang only,
- * besides one case currently - setting GUC values.
  */
 void
-CdbDoCommand(const char *strCommand, bool cancelOnError, bool needTwoPhase, GangScope dispatchTo);
+CdbDoCommand(const char *strCommand, bool cancelOnError, bool needTwoPhase);
+
+/*
+ * Special for sending SET commands that change GUC variables, so they go to all
+ * gangs, both reader and writer
+ */
+void
+CdbDoCommandOnAllGangs(const char *strCommand, bool cancelOnError, bool needTwoPhase);
 
 /*--------------------------------------------------------------------*/
 struct SliceTable;
+
+void
+cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
+				  bool cancelOnError,
+				  struct SliceTable *sliceTbl,
+				  struct CdbDispatcherState *ds); /* OUT: fields filled in */
 
 /* Compose and dispatch the MPPEXEC commands corresponding to a plan tree
  * within a complete parallel plan.
  *
  * The CdbDispatchResults objects allocated for the plan are
- * returned in ds->results.
+ * returned in *pPrimaryResults
  * The caller, after calling CdbCheckDispatchResult(), can
  * examine the CdbDispatchResults objects, can keep them as
  * long as needed, and ultimately must free them with

@@ -148,42 +148,4 @@ SELECT q1 FROM int8_tbl EXCEPT (((SELECT q2 FROM int8_tbl ORDER BY q2 LIMIT 1)))
 
 (((((select * from int8_tbl))))) ORDER BY 1,2;
 
-create temp table t_union1 (a int, b int);
-select distinct a, null as c from t_union1 union select a, b from t_union1;
-drop table t_union1;
 
-select null union select distinct null;
-
-select 1 union select distinct null;
-
-select 1 a, NULL b, NULL c UNION SELECT 2, 3, NULL UNION SELECT 3, NULL, 4;
-
-select ARRAY[1, 2, 3] union select distinct null;
-
--- This can preserve domain types, but we keep compatibility for now
--- See MPP-7509
-select pg_typeof(a) from (select 'a'::information_schema.sql_identifier a union all
-select 'b'::information_schema.sql_identifier)a;
-
-(select * from (
-     (select '1' as a union select null)
-     union
-     (select 1 union select distinct null)
-   )s) 
-  union
-  (select * from (
-     (select '1' union select null)
-     union
-     (select 1 union select distinct null)
-  )s2);
-
--- Yet, we keep behaviors on text-like columns
-select pg_typeof(a) from(select 'foo' a union select 'foo'::name)s;
-select pg_typeof(a) from(select 1 x, 'foo' a union
-    select 1, 'foo' union select 1, 'foo'::name)s;
-select pg_typeof(a) from(select 1 x, 'foo' a union
-    (select 1, 'foo' union select 1, 'foo'::name))s;
-
-CREATE TABLE union_ctas (a, b) AS SELECT 1, 2 UNION SELECT 1, 1 UNION SELECT 1, 1;
-SELECT * FROM union_ctas;
-DROP TABLE union_ctas;

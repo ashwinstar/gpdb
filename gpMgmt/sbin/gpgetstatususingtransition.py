@@ -113,7 +113,7 @@ class GpSegStatusProgram:
                             "resyncNumCompleted","resyncTotalToComplete","estimatedCompletionTimeSecondsSinceEpoch", \
                             "changeTrackingBytesUsed","verificationStatus","verificationMode", 
                             "verificationStartTimeSecondsSinceEpoch", "verificationCompletedCount", "verificationTotalCount",
-                            "estimatedCompletionVerificationTimeSecondsSinceEpoch", "verificationToken"]:
+                            "estimatedCompletionVerificationTimeSecondsSinceEpoch"]:
             if expected not in data:
                 logger.warn("Missing data key %s from str %s" % (expected, str))
                 return None

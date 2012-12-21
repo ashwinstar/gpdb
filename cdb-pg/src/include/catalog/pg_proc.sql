@@ -908,10 +908,6 @@
 
  CREATE FUNCTION array_smaller(anyarray, anyarray) RETURNS anyarray LANGUAGE internal IMMUTABLE STRICT AS 'array_smaller' WITH (OID=516, DESCRIPTION="smaller of two");
 
- CREATE FUNCTION generate_subscripts(anyarray, int4, bool) RETURNS SETOF int4 LANGUAGE internal IMMUTABLE STRICT AS 'generate_subscripts' WITH (OID=823, DESCRIPTION ="array subscripts generator");
-  
- CREATE FUNCTION generate_subscripts(anyarray, int4) RETURNS SETOF int4 LANGUAGE internal IMMUTABLE STRICT AS 'generate_subscripts_nodir' WITH (OID=824, DESCRIPTION ="array subscripts generator");
- 
 -- MPP -- array_add -- special for prospective customer 
  CREATE FUNCTION array_add(_int4, _int4) RETURNS _int4 LANGUAGE internal IMMUTABLE STRICT AS 'array_int4_add' WITH (OID=6012, DESCRIPTION="itemwise add two integer arrays");
 
@@ -1463,22 +1459,6 @@
 
  CREATE FUNCTION int48div(int4, int8) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT AS 'int48div' WITH (OID=1281, DESCRIPTION="divide");
 
- CREATE FUNCTION int82pl(int8, int2) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT AS 'int82pl' WITH (OID=3241, DESCRIPTION="add");
-
- CREATE FUNCTION int82mi(int8, int2) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT AS 'int82mi' WITH (OID=3242, DESCRIPTION="subtract");
-
- CREATE FUNCTION int82mul(int8, int2) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT AS 'int82mul' WITH (OID=3243, DESCRIPTION="multiply");
-
- CREATE FUNCTION int82div(int8, int2) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT AS 'int82div' WITH (OID=3244, DESCRIPTION="divide");
-
- CREATE FUNCTION int28pl(int2, int8) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT AS 'int28pl' WITH (OID=3245, DESCRIPTION="add");
-
- CREATE FUNCTION int28mi(int2, int8) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT AS 'int28mi' WITH (OID=3246, DESCRIPTION="subtract");
-
- CREATE FUNCTION int28mul(int2, int8) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT AS 'int28mul' WITH (OID=3247, DESCRIPTION="multiply");
-
- CREATE FUNCTION int28div(int2, int8) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT AS 'int28div' WITH (OID=3248, DESCRIPTION="divide");
-
  CREATE FUNCTION oid(int8) RETURNS oid LANGUAGE internal IMMUTABLE STRICT AS 'i8tooid' WITH (OID=1287, DESCRIPTION="convert int8 to oid");
 
  CREATE FUNCTION int8(oid) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT AS 'oidtoi8' WITH (OID=1288, DESCRIPTION="convert oid to int8");
@@ -1569,10 +1549,6 @@
 
  CREATE FUNCTION interval_div("interval", float8) RETURNS "interval" LANGUAGE internal IMMUTABLE STRICT AS 'interval_div' WITH (OID=1326, DESCRIPTION="divide");
 
- CREATE FUNCTION interval_interval_div("interval", "interval") RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'interval_interval_div' WITH (OID=2918, DESCRIPTION="divide");
-
- CREATE FUNCTION interval_interval_mod("interval", "interval") RETURNS "interval" LANGUAGE internal IMMUTABLE STRICT AS 'interval_interval_mod' WITH (OID=2919, DESCRIPTION="divide");
-
  CREATE FUNCTION dlog10(float8) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'dlog10' WITH (OID=1339, DESCRIPTION="base 10 logarithm");
 
  CREATE FUNCTION "log"(float8) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'dlog10' WITH (OID=1340, DESCRIPTION="base 10 logarithm");
@@ -1646,7 +1622,7 @@
 
  CREATE FUNCTION char_length(text) RETURNS int4 LANGUAGE internal IMMUTABLE STRICT AS 'textlen' WITH (OID=1381, DESCRIPTION="character length");
 
- CREATE FUNCTION date_part(text, abstime) RETURNS pg_catalog.float8 LANGUAGE sql STABLE STRICT  AS $$select pg_catalog.date_part($1, cast($2 as timestamp with time zone))$$  WITH (OID=1382, DESCRIPTION="extract field from abstime");
+ CREATE FUNCTION date_part(text, abstime) RETURNS pg_catalog.float8 LANGUAGE sql STABLE STRICT AS $$select pg_catalog.date_part($1, cast($2 as timestamp with time zone))$$  WITH (OID=1382, DESCRIPTION="extract field from abstime");
 
  CREATE FUNCTION date_part(text, reltime) RETURNS pg_catalog.float8 LANGUAGE sql STABLE STRICT AS $$select pg_catalog.date_part($1, cast($2 as pg_catalog.interval))$$  WITH (OID=1383, DESCRIPTION="extract field from reltime");
 
@@ -1946,7 +1922,7 @@
 
  CREATE FUNCTION random() RETURNS float8 LANGUAGE internal VOLATILE STRICT AS 'drandom' WITH (OID=1598, DESCRIPTION="random value");
 
- CREATE FUNCTION setseed(float8) RETURNS int4 LANGUAGE internal VOLATILE STRICT MODIFIES SQL DATA AS 'setseed' WITH (OID=1599, DESCRIPTION="set random seed");
+ CREATE FUNCTION setseed(float8) RETURNS int4 LANGUAGE internal VOLATILE STRICT AS 'setseed' WITH (OID=1599, DESCRIPTION="set random seed");
 
 -- OIDS 1600 - 1699
 
@@ -2083,13 +2059,7 @@
 -- return client encoding name i.e. session encoding 
  CREATE FUNCTION pg_client_encoding() RETURNS name LANGUAGE internal STABLE STRICT AS 'pg_client_encoding' WITH (OID=810, DESCRIPTION="encoding name of current database");
 
- CREATE FUNCTION length(bytea, name) RETURNS int4 LANGUAGE internal STABLE STRICT AS 'length_in_encoding' WITH (OID=2966, DESCRIPTION="length of string in specified encoding");
-
- CREATE FUNCTION convert_from(bytea, name) RETURNS text LANGUAGE internal STABLE STRICT AS 'pg_convert_from' WITH (OID=2967, DESCRIPTION="convert string with specified source encoding name");
-
- CREATE FUNCTION convert_to(text, name) RETURNS bytea LANGUAGE internal STABLE STRICT AS 'pg_convert_to' WITH (OID=2968, DESCRIPTION="convert string with specified destination encoding name");
-
- CREATE FUNCTION "convert"(bytea, name, name) RETURNS bytea LANGUAGE internal STABLE STRICT AS 'pg_convert' WITH (OID=2969, DESCRIPTION="convert string with specified encoding names");
+ CREATE FUNCTION "convert"(text, name) RETURNS text LANGUAGE internal STABLE STRICT AS 'pg_convert' WITH (OID=1717, DESCRIPTION="convert string with specified destination encoding name");
 
  CREATE FUNCTION "convert"(text, name, name) RETURNS text LANGUAGE internal STABLE STRICT AS 'pg_convert2' WITH (OID=1813, DESCRIPTION="convert string with specified encoding names");
 
@@ -2122,12 +2092,6 @@
 
  CREATE FUNCTION pg_get_serial_sequence(text, text) RETURNS text LANGUAGE internal STABLE STRICT AS 'pg_get_serial_sequence' WITH (OID=1665, DESCRIPTION="name of sequence for a serial column");
 
- CREATE FUNCTION pg_get_function_arguments(oid) RETURNS text LANGUAGE internal STABLE STRICT AS 'pg_get_function_arguments' WITH (OID=2934, DESCRIPTION="argument list of a function");
-
- CREATE FUNCTION pg_get_function_result(oid) RETURNS text LANGUAGE internal STABLE STRICT AS 'pg_get_function_result' WITH (OID=2935, DESCRIPTION="result type of a function");
- 
- CREATE FUNCTION pg_get_function_identity_arguments(oid) RETURNS text LANGUAGE internal STABLE STRICT AS 'pg_get_function_identity_arguments' WITH (OID=2936, DESCRIPTION="identity argument list of a function");
-
  CREATE FUNCTION pg_get_partition_def(oid) RETURNS text LANGUAGE internal STABLE STRICT AS 'pg_get_partition_def' WITH (OID=5024);
 
  CREATE FUNCTION pg_get_partition_def(oid, bool) RETURNS text LANGUAGE internal STABLE STRICT AS 'pg_get_partition_def_ext' WITH (OID=5025, DESCRIPTION="partition configuration for a given relation");
@@ -2145,29 +2109,29 @@
  CREATE FUNCTION pg_typeof("any") RETURNS regtype LANGUAGE internal STABLE AS 'pg_typeof' WITH (OID=822, DESCRIPTION="returns the type of the argument");
 
 -- Generic referential integrity constraint triggers 
- CREATE FUNCTION "RI_FKey_check_ins"() RETURNS trigger LANGUAGE internal VOLATILE STRICT MODIFIES SQL DATA AS 'RI_FKey_check_ins' WITH (OID=1644, DESCRIPTION="referential integrity FOREIGN KEY ... REFERENCES");
+ CREATE FUNCTION "RI_FKey_check_ins"() RETURNS trigger LANGUAGE internal VOLATILE STRICT AS 'RI_FKey_check_ins' WITH (OID=1644, DESCRIPTION="referential integrity FOREIGN KEY ... REFERENCES");
 
- CREATE FUNCTION "RI_FKey_check_upd"() RETURNS trigger LANGUAGE internal VOLATILE STRICT MODIFIES SQL DATA AS 'RI_FKey_check_upd' WITH (OID=1645, DESCRIPTION="referential integrity FOREIGN KEY ... REFERENCES");
+ CREATE FUNCTION "RI_FKey_check_upd"() RETURNS trigger LANGUAGE internal VOLATILE STRICT AS 'RI_FKey_check_upd' WITH (OID=1645, DESCRIPTION="referential integrity FOREIGN KEY ... REFERENCES");
 
- CREATE FUNCTION "RI_FKey_cascade_del"() RETURNS trigger LANGUAGE internal VOLATILE STRICT MODIFIES SQL DATA AS 'RI_FKey_cascade_del' WITH (OID=1646, DESCRIPTION="referential integrity ON DELETE CASCADE");
+ CREATE FUNCTION "RI_FKey_cascade_del"() RETURNS trigger LANGUAGE internal VOLATILE STRICT AS 'RI_FKey_cascade_del' WITH (OID=1646, DESCRIPTION="referential integrity ON DELETE CASCADE");
 
- CREATE FUNCTION "RI_FKey_cascade_upd"() RETURNS trigger LANGUAGE internal VOLATILE STRICT MODIFIES SQL DATA AS 'RI_FKey_cascade_upd' WITH (OID=1647, DESCRIPTION="referential integrity ON UPDATE CASCADE");
+ CREATE FUNCTION "RI_FKey_cascade_upd"() RETURNS trigger LANGUAGE internal VOLATILE STRICT AS 'RI_FKey_cascade_upd' WITH (OID=1647, DESCRIPTION="referential integrity ON UPDATE CASCADE");
 
- CREATE FUNCTION "RI_FKey_restrict_del"() RETURNS trigger LANGUAGE internal VOLATILE STRICT MODIFIES SQL DATA AS 'RI_FKey_restrict_del' WITH (OID=1648, DESCRIPTION="referential integrity ON DELETE RESTRICT");
+ CREATE FUNCTION "RI_FKey_restrict_del"() RETURNS trigger LANGUAGE internal VOLATILE STRICT AS 'RI_FKey_restrict_del' WITH (OID=1648, DESCRIPTION="referential integrity ON DELETE RESTRICT");
 
- CREATE FUNCTION "RI_FKey_restrict_upd"() RETURNS trigger LANGUAGE internal VOLATILE STRICT MODIFIES SQL DATA AS 'RI_FKey_restrict_upd' WITH (OID=1649, DESCRIPTION="referential integrity ON UPDATE RESTRICT");
+ CREATE FUNCTION "RI_FKey_restrict_upd"() RETURNS trigger LANGUAGE internal VOLATILE STRICT AS 'RI_FKey_restrict_upd' WITH (OID=1649, DESCRIPTION="referential integrity ON UPDATE RESTRICT");
 
- CREATE FUNCTION "RI_FKey_setnull_del"() RETURNS trigger LANGUAGE internal VOLATILE STRICT MODIFIES SQL DATA AS 'RI_FKey_setnull_del' WITH (OID=1650, DESCRIPTION="referential integrity ON DELETE SET NULL");
+ CREATE FUNCTION "RI_FKey_setnull_del"() RETURNS trigger LANGUAGE internal VOLATILE STRICT AS 'RI_FKey_setnull_del' WITH (OID=1650, DESCRIPTION="referential integrity ON DELETE SET NULL");
 
- CREATE FUNCTION "RI_FKey_setnull_upd"() RETURNS trigger LANGUAGE internal VOLATILE STRICT MODIFIES SQL DATA AS 'RI_FKey_setnull_upd' WITH (OID=1651, DESCRIPTION="referential integrity ON UPDATE SET NULL");
+ CREATE FUNCTION "RI_FKey_setnull_upd"() RETURNS trigger LANGUAGE internal VOLATILE STRICT AS 'RI_FKey_setnull_upd' WITH (OID=1651, DESCRIPTION="referential integrity ON UPDATE SET NULL");
 
- CREATE FUNCTION "RI_FKey_setdefault_del"() RETURNS trigger LANGUAGE internal VOLATILE STRICT MODIFIES SQL DATA AS 'RI_FKey_setdefault_del' WITH (OID=1652, DESCRIPTION="referential integrity ON DELETE SET DEFAULT");
+ CREATE FUNCTION "RI_FKey_setdefault_del"() RETURNS trigger LANGUAGE internal VOLATILE STRICT AS 'RI_FKey_setdefault_del' WITH (OID=1652, DESCRIPTION="referential integrity ON DELETE SET DEFAULT");
 
- CREATE FUNCTION "RI_FKey_setdefault_upd"() RETURNS trigger LANGUAGE internal VOLATILE STRICT MODIFIES SQL DATA AS 'RI_FKey_setdefault_upd' WITH (OID=1653, DESCRIPTION="referential integrity ON UPDATE SET DEFAULT");
+ CREATE FUNCTION "RI_FKey_setdefault_upd"() RETURNS trigger LANGUAGE internal VOLATILE STRICT AS 'RI_FKey_setdefault_upd' WITH (OID=1653, DESCRIPTION="referential integrity ON UPDATE SET DEFAULT");
 
- CREATE FUNCTION "RI_FKey_noaction_del"() RETURNS trigger LANGUAGE internal VOLATILE STRICT MODIFIES SQL DATA AS 'RI_FKey_noaction_del' WITH (OID=1654, DESCRIPTION="referential integrity ON DELETE NO ACTION");
+ CREATE FUNCTION "RI_FKey_noaction_del"() RETURNS trigger LANGUAGE internal VOLATILE STRICT AS 'RI_FKey_noaction_del' WITH (OID=1654, DESCRIPTION="referential integrity ON DELETE NO ACTION");
 
- CREATE FUNCTION "RI_FKey_noaction_upd"() RETURNS trigger LANGUAGE internal VOLATILE STRICT MODIFIES SQL DATA AS 'RI_FKey_noaction_upd' WITH (OID=1655, DESCRIPTION="referential integrity ON UPDATE NO ACTION");
+ CREATE FUNCTION "RI_FKey_noaction_upd"() RETURNS trigger LANGUAGE internal VOLATILE STRICT AS 'RI_FKey_noaction_upd' WITH (OID=1655, DESCRIPTION="referential integrity ON UPDATE NO ACTION");
 
  CREATE FUNCTION varbiteq(varbit, varbit) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'biteq' WITH (OID=1666, DESCRIPTION="equal");
 
@@ -2528,49 +2492,6 @@
 
  CREATE FUNCTION icregexnejoinsel(internal, oid, internal, int2) RETURNS float8 LANGUAGE internal STABLE STRICT AS 'icregexnejoinsel' WITH (OID=1829, DESCRIPTION="join selectivity of case-insensitive regex non-match");
 
--- Sequences and time series
- CREATE FUNCTION interval_bound(numeric, numeric) RETURNS numeric LANGUAGE internal IMMUTABLE STRICT AS 'numeric_interval_bound' WITH (OID=2991, DESCRIPTION="boundary of the interval containing the given value");
-
- CREATE FUNCTION interval_bound(numeric, numeric, int4) RETURNS numeric LANGUAGE internal IMMUTABLE AS 'numeric_interval_bound' WITH (OID=2992, DESCRIPTION="boundary of the interval containing the given value");
-
- CREATE FUNCTION interval_bound(numeric, numeric, int4, numeric) RETURNS numeric LANGUAGE internal IMMUTABLE AS 'numeric_interval_bound' WITH (OID=2993, DESCRIPTION="boundary of the interval containing the given value");
-
- CREATE FUNCTION interval_bound(timestamp, "interval") RETURNS timestamp LANGUAGE internal IMMUTABLE STRICT AS 'timestamp_interval_bound' WITH (OID=2994, DESCRIPTION="boundary of the interval containing the given value");
-
- CREATE FUNCTION interval_bound(timestamp, "interval", int4) RETURNS timestamp LANGUAGE internal IMMUTABLE AS 'timestamp_interval_bound' WITH (OID=2995, DESCRIPTION="boundary of the interval containing the given value");
-
- CREATE FUNCTION interval_bound(timestamp, "interval", int4, timestamp) RETURNS timestamp LANGUAGE internal IMMUTABLE AS 'timestamp_interval_bound' WITH (OID=2996, DESCRIPTION="boundary of the interval containing the given value");
-
- CREATE FUNCTION interval_bound(timestamptz, "interval") RETURNS timestamptz LANGUAGE internal IMMUTABLE STRICT AS 'timestamptz_interval_bound' WITH (OID=2997, DESCRIPTION="boundary of the interval containing the given value");
-
- CREATE FUNCTION interval_bound(timestamptz, "interval", int4) RETURNS timestamptz LANGUAGE internal IMMUTABLE AS 'timestamptz_interval_bound' WITH (OID=2998, DESCRIPTION="boundary of the interval containing the given value");
-
- CREATE FUNCTION interval_bound(timestamptz, "interval", int4, timestamptz) RETURNS timestamptz LANGUAGE internal IMMUTABLE AS 'timestamptz_interval_bound' WITH (OID=2999, DESCRIPTION="boundary of the interval containing the given value");
-
---
--- Note that these functions are for use with the sequence clause.  Though cataloged
--- separately, they must track the interval_bound function.  They use the datatype
--- of the input ordering key of a SEQUENCE clause to select the overload of function
--- sequence_key that returns the correct datatype.
---
--- If there is a definition for 
---     interval_bound(DTin, ...) returns DTout, 
--- then there must be a definition for 
---      sequence_key(DTin) return DTout.
---
- CREATE FUNCTION sequence_key("numeric") RETURNS "numeric" LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7076, proiswin="t");
-
- CREATE FUNCTION sequence_key_numeric(internal) RETURNS "numeric" LANGUAGE internal IMMUTABLE STRICT AS 'sequence_key_numeric' WITH (OID=7077, proiswin="t");
-
- CREATE FUNCTION sequence_key("timestamp") RETURNS "timestamp" LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7078, proiswin="t");
-
- CREATE FUNCTION sequence_key_timestamp(internal) RETURNS "timestamp" LANGUAGE internal IMMUTABLE STRICT AS 'sequence_key_timestamp' WITH (OID=7079, proiswin="t");
-
- CREATE FUNCTION sequence_key(timestamptz) RETURNS timestamptz LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7080, proiswin="t");
-
- CREATE FUNCTION sequence_key_timestamptz(internal) RETURNS timestamptz LANGUAGE internal IMMUTABLE STRICT AS 'sequence_key_timestamptz' WITH (OID=7081, proiswin="t");
-
-
 -- Aggregate-related functions 
  CREATE FUNCTION float8_avg(bytea) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'float8_avg' WITH (OID=1830, DESCRIPTION="AVG aggregate final function");
 
@@ -2843,7 +2764,7 @@
 
  CREATE FUNCTION encode(bytea, text) RETURNS text LANGUAGE internal IMMUTABLE STRICT AS 'binary_encode' WITH (OID=1946, DESCRIPTION="Convert bytea value into some ascii-only text string");
 
- CREATE FUNCTION "decode"(text, text) RETURNS bytea LANGUAGE internal IMMUTABLE STRICT AS 'binary_decode' WITH (OID=1947, DESCRIPTION="Convert ascii-encoded text string into bytea value");
+ CREATE FUNCTION decode(text, text) RETURNS bytea LANGUAGE internal IMMUTABLE STRICT AS 'binary_decode' WITH (OID=1947, DESCRIPTION="Convert ascii-encoded text string into bytea value");
 
  CREATE FUNCTION byteaeq(bytea, bytea) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'byteaeq' WITH (OID=1948, DESCRIPTION="equal");
 
@@ -2991,7 +2912,7 @@
 
  CREATE FUNCTION pg_show_all_settings() RETURNS SETOF record LANGUAGE internal STABLE STRICT AS 'show_all_settings' WITH (OID=2084, DESCRIPTION="SHOW ALL as a function");
 
- CREATE FUNCTION pg_lock_status() RETURNS SETOF record LANGUAGE internal VOLATILE STRICT READS SQL DATA AS 'pg_lock_status' WITH (OID=1371, DESCRIPTION="view system lock information");
+ CREATE FUNCTION pg_lock_status() RETURNS SETOF record LANGUAGE internal VOLATILE STRICT AS 'pg_lock_status' WITH (OID=1371, DESCRIPTION="view system lock information");
 
  CREATE FUNCTION pg_prepared_xact() RETURNS SETOF record LANGUAGE internal VOLATILE STRICT AS 'pg_prepared_xact' WITH (OID=1065, DESCRIPTION="view two-phase transactions");
 
@@ -3058,8 +2979,6 @@
  CREATE FUNCTION pg_logdir_ls() RETURNS SETOF record LANGUAGE internal VOLATILE STRICT AS 'pg_logdir_ls' WITH (OID=6050, DESCRIPTION="ls the log dir");
 
  CREATE FUNCTION pg_file_length(text) RETURNS int8 LANGUAGE internal VOLATILE STRICT AS 'pg_file_length' WITH (OID=6051, DESCRIPTION="Get the length of a file (via stat)");
-
- CREATE FUNCTION bool(text) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'textbool' WITH (OID=2970, DESCRIPTION="convert text to boolean");
 
  CREATE FUNCTION text(bool) RETURNS text LANGUAGE internal IMMUTABLE STRICT AS 'booltext' WITH (OID=2971, DESCRIPTION="convert boolean to text");
 
@@ -3303,8 +3222,6 @@
 -- #define ROW_NUMBER_TYPE 20
 
  CREATE FUNCTION rank() RETURNS int8 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7001, proiswin="t");
-
- CREATE FUNCTION sequence_index() RETURNS int8 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7082, proiswin="t");
 
  CREATE FUNCTION dense_rank() RETURNS int8 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7002, proiswin="t");
 
@@ -4053,23 +3970,23 @@
 
  CREATE FUNCTION pg_column_size("any") RETURNS int4 LANGUAGE internal STABLE STRICT AS 'pg_column_size' WITH (OID=1269, DESCRIPTION="bytes required to store the value, perhaps with compression");
 
- CREATE FUNCTION pg_tablespace_size(oid) RETURNS int8 LANGUAGE internal VOLATILE STRICT READS SQL DATA AS 'pg_tablespace_size_oid' WITH (OID=2322, DESCRIPTION="Calculate total disk space usage for the specified tablespace");
+ CREATE FUNCTION pg_tablespace_size(oid) RETURNS int8 LANGUAGE internal VOLATILE STRICT AS 'pg_tablespace_size_oid' WITH (OID=2322, DESCRIPTION="Calculate total disk space usage for the specified tablespace");
 
- CREATE FUNCTION pg_tablespace_size(name) RETURNS int8 LANGUAGE internal VOLATILE STRICT READS SQL DATA AS 'pg_tablespace_size_name' WITH (OID=2323, DESCRIPTION="Calculate total disk space usage for the specified tablespace");
+ CREATE FUNCTION pg_tablespace_size(name) RETURNS int8 LANGUAGE internal VOLATILE STRICT AS 'pg_tablespace_size_name' WITH (OID=2323, DESCRIPTION="Calculate total disk space usage for the specified tablespace");
 
- CREATE FUNCTION pg_database_size(oid) RETURNS int8 LANGUAGE internal VOLATILE STRICT READS SQL DATA AS 'pg_database_size_oid' WITH (OID=2324, DESCRIPTION="Calculate total disk space usage for the specified database");
+ CREATE FUNCTION pg_database_size(oid) RETURNS int8 LANGUAGE internal VOLATILE STRICT AS 'pg_database_size_oid' WITH (OID=2324, DESCRIPTION="Calculate total disk space usage for the specified database");
 
- CREATE FUNCTION pg_database_size(name) RETURNS int8 LANGUAGE internal VOLATILE STRICT READS SQL DATA AS 'pg_database_size_name' WITH (OID=2168, DESCRIPTION="Calculate total disk space usage for the specified database");
+ CREATE FUNCTION pg_database_size(name) RETURNS int8 LANGUAGE internal VOLATILE STRICT AS 'pg_database_size_name' WITH (OID=2168, DESCRIPTION="Calculate total disk space usage for the specified database");
 
- CREATE FUNCTION pg_relation_size(oid) RETURNS int8 LANGUAGE internal VOLATILE STRICT READS SQL DATA AS 'pg_relation_size_oid' WITH (OID=2325, DESCRIPTION="Calculate disk space usage for the specified table or index");
+ CREATE FUNCTION pg_relation_size(oid) RETURNS int8 LANGUAGE internal VOLATILE STRICT AS 'pg_relation_size_oid' WITH (OID=2325, DESCRIPTION="Calculate disk space usage for the specified table or index");
 
- CREATE FUNCTION pg_relation_size(text) RETURNS int8 LANGUAGE internal VOLATILE STRICT READS SQL DATA AS 'pg_relation_size_name' WITH (OID=2289, DESCRIPTION="Calculate disk space usage for the specified table or index");
+ CREATE FUNCTION pg_relation_size(text) RETURNS int8 LANGUAGE internal VOLATILE STRICT AS 'pg_relation_size_name' WITH (OID=2289, DESCRIPTION="Calculate disk space usage for the specified table or index");
 
- CREATE FUNCTION pg_total_relation_size(oid) RETURNS int8 LANGUAGE internal VOLATILE STRICT READS SQL DATA AS 'pg_total_relation_size_oid' WITH (OID=2286, DESCRIPTION="Calculate total disk space usage for the specified table and associated indexes and toast tables");
+ CREATE FUNCTION pg_total_relation_size(oid) RETURNS int8 LANGUAGE internal VOLATILE STRICT AS 'pg_total_relation_size_oid' WITH (OID=2286, DESCRIPTION="Calculate total disk space usage for the specified table and associated indexes and toast tables");
 
- CREATE FUNCTION pg_total_relation_size(text) RETURNS int8 LANGUAGE internal VOLATILE STRICT READS SQL DATA AS 'pg_total_relation_size_name' WITH (OID=2287, DESCRIPTION="Calculate total disk space usage for the specified table and associated indexes and toast tables");
+ CREATE FUNCTION pg_total_relation_size(text) RETURNS int8 LANGUAGE internal VOLATILE STRICT AS 'pg_total_relation_size_name' WITH (OID=2287, DESCRIPTION="Calculate total disk space usage for the specified table and associated indexes and toast tables");
 
- CREATE FUNCTION pg_size_pretty(int8) RETURNS text LANGUAGE internal VOLATILE STRICT READS SQL DATA AS 'pg_size_pretty' WITH (OID=2288, DESCRIPTION="Convert a long int to a human readable text using size units");
+ CREATE FUNCTION pg_size_pretty(int8) RETURNS text LANGUAGE internal VOLATILE STRICT AS 'pg_size_pretty' WITH (OID=2288, DESCRIPTION="Convert a long int to a human readable text using size units");
 
  CREATE FUNCTION gpdb_fdw_validator(_text, oid) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'gpdb_fdw_validator' WITH (OID=2897);
 
@@ -4451,10 +4368,6 @@
 
  CREATE FUNCTION generate_series(int8, int8) RETURNS SETOF int8 LANGUAGE internal VOLATILE STRICT AS 'generate_series_int8' WITH (OID=1069, DESCRIPTION="non-persistent series generator");
 
- CREATE FUNCTION generate_series("timestamp", "timestamp", "interval") RETURNS SETOF "timestamp" LANGUAGE internal VOLATILE STRICT AS 'generate_series_timestamp' WITH (OID=2916, DESCRIPTION="non-persistent series generator");
-
- CREATE FUNCTION generate_series("timestamptz", "timestamptz", "interval") RETURNS SETOF "timestamptz" LANGUAGE internal VOLATILE STRICT AS 'generate_series_timestamptz' WITH (OID=2917, DESCRIPTION="non-persistent series generator");
-
 -- boolean aggregates
  CREATE FUNCTION booland_statefunc(bool, bool) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'booland_statefunc' WITH (OID=2515, DESCRIPTION="boolean-and aggregate transition function");
 
@@ -4746,7 +4659,7 @@
 -- #define MPP_EXECUTION_SEGMENT_OID 6022
 -- #define MPP_EXECUTION_SEGMENT_TYPE 23
 
- CREATE FUNCTION pg_highest_oid() RETURNS oid LANGUAGE internal VOLATILE STRICT READS SQL DATA AS 'pg_highest_oid' WITH (OID=6023, DESCRIPTION="Highest oid used so far");
+ CREATE FUNCTION pg_highest_oid() RETURNS oid LANGUAGE internal VOLATILE STRICT AS 'pg_highest_oid' WITH (OID=6023, DESCRIPTION="Highest oid used so far");
 
  CREATE FUNCTION gp_distributed_xacts() RETURNS SETOF record LANGUAGE internal VOLATILE AS 'gp_distributed_xacts__' WITH (OID=6035, DESCRIPTION="view mpp distributed transaction state");
 
@@ -4766,8 +4679,6 @@
  CREATE FUNCTION row_number_immed(internal) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT AS 'row_number_immed' WITH (OID=7100, DESCRIPTION="window immediate function");
 
  CREATE FUNCTION rank_immed(internal) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT AS 'rank_immed' WITH (OID=7101, DESCRIPTION="window immediate function");
-
- CREATE FUNCTION sequence_index_immed(internal) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT AS 'sequence_index_immed' WITH (OID=7183, DESCRIPTION="window immediate function");
 
  CREATE FUNCTION dense_rank_immed(internal) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT AS 'dense_rank_immed' WITH (OID=7102, DESCRIPTION="window immediate function");
 
@@ -5331,104 +5242,6 @@
 
  CREATE FUNCTION last_value_any(internal, anyarray) RETURNS anyarray LANGUAGE internal IMMUTABLE STRICT AS 'last_value_generic' WITH (OID=7291, proiswin="t");
 
- CREATE FUNCTION next_known_frame_maker ( internal ) RETURNS internal LANGUAGE internal IMMUTABLE STRICT AS 'next_known_frame_maker' WITH (OID=7699, DESCRIPTION="internal window frame maker"); 
-
- CREATE FUNCTION last_known( int8, anyelement ) RETURNS int8 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7700, proiswin="t", DESCRIPTION="last_known for first argument type int8"); 
-
- CREATE FUNCTION last_known( int4, anyelement ) RETURNS int4 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7701, proiswin="t", DESCRIPTION="last_known for first argument type int4"); 
-
- CREATE FUNCTION last_known( int2, anyelement ) RETURNS int2 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7702, proiswin="t", DESCRIPTION="last_known for first argument type int2"); 
-
- CREATE FUNCTION last_known( float8, anyelement ) RETURNS float8 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7703, proiswin="t", DESCRIPTION="last_known for first argument type float8"); 
-
- CREATE FUNCTION last_known( float4, anyelement ) RETURNS float4 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7704, proiswin="t", DESCRIPTION="last_known for first argument type float4"); 
-
- CREATE FUNCTION last_known( date, anyelement ) RETURNS date LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7705, proiswin="t", DESCRIPTION="last_known for first argument type date"); 
-
- CREATE FUNCTION last_known( time, anyelement ) RETURNS time LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7706, proiswin="t", DESCRIPTION="last_known for first argument type time"); 
-
- CREATE FUNCTION last_known( timestamp, anyelement ) RETURNS timestamp LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7707, proiswin="t", DESCRIPTION="last_known for first argument type timestamp"); 
-
- CREATE FUNCTION last_known( timestamptz, anyelement ) RETURNS timestamptz LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7708, proiswin="t", DESCRIPTION="last_known for first argument type timestamptz"); 
-
- CREATE FUNCTION last_known( timetz, anyelement ) RETURNS timetz LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7709, proiswin="t", DESCRIPTION="last_known for first argument type timetz"); 
-
- CREATE FUNCTION last_known( "interval", anyelement ) RETURNS "interval" LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7710, proiswin="t", DESCRIPTION="last_known for first argument type "interval""); 
-
- CREATE FUNCTION last_known( "numeric", anyelement ) RETURNS "numeric" LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7711, proiswin="t", DESCRIPTION="last_known for first argument type "numeric""); 
-
- CREATE FUNCTION last_known_int64( internal, int8, anyelement ) RETURNS int8 LANGUAGE internal IMMUTABLE AS 'last_known_generic' WITH (OID=7712, proiswin="t", DESCRIPTION="internal window variant"); 
-
- CREATE FUNCTION last_known_int32( internal, int4, anyelement ) RETURNS int4 LANGUAGE internal IMMUTABLE AS 'last_known_generic' WITH (OID=7713, proiswin="t", DESCRIPTION="internal window variant"); 
-
- CREATE FUNCTION last_known_int16( internal, int2, anyelement ) RETURNS int2 LANGUAGE internal IMMUTABLE AS 'last_known_generic' WITH (OID=7714, proiswin="t", DESCRIPTION="internal window variant"); 
-
- CREATE FUNCTION last_known_float8( internal, float8, anyelement ) RETURNS float8 LANGUAGE internal IMMUTABLE AS 'last_known_generic' WITH (OID=7715, proiswin="t", DESCRIPTION="internal window variant"); 
-
- CREATE FUNCTION last_known_float4( internal, float4, anyelement ) RETURNS float4 LANGUAGE internal IMMUTABLE AS 'last_known_generic' WITH (OID=7716, proiswin="t", DESCRIPTION="internal window variant"); 
-
- CREATE FUNCTION last_known_dateadt( internal, date, anyelement ) RETURNS date LANGUAGE internal IMMUTABLE AS 'last_known_generic' WITH (OID=7717, proiswin="t", DESCRIPTION="internal window variant"); 
-
- CREATE FUNCTION last_known_timeadt( internal, time, anyelement ) RETURNS time LANGUAGE internal IMMUTABLE AS 'last_known_generic' WITH (OID=7718, proiswin="t", DESCRIPTION="internal window variant"); 
-
- CREATE FUNCTION last_known_timestamp( internal, timestamp, anyelement ) RETURNS timestamp LANGUAGE internal IMMUTABLE AS 'last_known_generic' WITH (OID=7719, proiswin="t", DESCRIPTION="internal window variant"); 
-
- CREATE FUNCTION last_known_timestamptz( internal, timestamptz, anyelement ) RETURNS timestamptz LANGUAGE internal IMMUTABLE AS 'last_known_generic' WITH (OID=7720, proiswin="t", DESCRIPTION="internal window variant"); 
-
- CREATE FUNCTION last_known_timetzadt( internal, timetz, anyelement ) RETURNS timetz LANGUAGE internal IMMUTABLE AS 'last_known_generic' WITH (OID=7721, proiswin="t", DESCRIPTION="internal window variant"); 
-
- CREATE FUNCTION last_known_interval( internal, "interval", anyelement ) RETURNS "interval" LANGUAGE internal IMMUTABLE AS 'last_known_generic' WITH (OID=7722, proiswin="t", DESCRIPTION="internal window variant"); 
-
- CREATE FUNCTION last_known_numeric( internal, "numeric", anyelement ) RETURNS "numeric" LANGUAGE internal IMMUTABLE AS 'last_known_generic' WITH (OID=7723, proiswin="t", DESCRIPTION="internal window variant"); 
-
- CREATE FUNCTION next_known( int8, anyelement ) RETURNS int8 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7740, proiswin="t", DESCRIPTION="next_known for first argument type int8"); 
-
- CREATE FUNCTION next_known( int4, anyelement ) RETURNS int4 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7741, proiswin="t", DESCRIPTION="next_known for first argument type int4"); 
-
- CREATE FUNCTION next_known( int2, anyelement ) RETURNS int2 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7742, proiswin="t", DESCRIPTION="next_known for first argument type int2"); 
-
- CREATE FUNCTION next_known( float8, anyelement ) RETURNS float8 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7743, proiswin="t", DESCRIPTION="next_known for first argument type float8"); 
-
- CREATE FUNCTION next_known( float4, anyelement ) RETURNS float4 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7744, proiswin="t", DESCRIPTION="next_known for first argument type float4"); 
-
- CREATE FUNCTION next_known( date, anyelement ) RETURNS date LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7745, proiswin="t", DESCRIPTION="next_known for first argument type date"); 
-
- CREATE FUNCTION next_known( time, anyelement ) RETURNS time LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7746, proiswin="t", DESCRIPTION="next_known for first argument type time"); 
-
- CREATE FUNCTION next_known( timestamp, anyelement ) RETURNS timestamp LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7747, proiswin="t", DESCRIPTION="next_known for first argument type timestamp"); 
-
- CREATE FUNCTION next_known( timestamptz, anyelement ) RETURNS timestamptz LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7748, proiswin="t", DESCRIPTION="next_known for first argument type timestamptz"); 
-
- CREATE FUNCTION next_known( timetz, anyelement ) RETURNS timetz LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7749, proiswin="t", DESCRIPTION="next_known for first argument type timetz"); 
-
- CREATE FUNCTION next_known( "interval", anyelement ) RETURNS "interval" LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7750, proiswin="t", DESCRIPTION="next_known for first argument type "interval""); 
-
- CREATE FUNCTION next_known( "numeric", anyelement ) RETURNS "numeric" LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7751, proiswin="t", DESCRIPTION="next_known for first argument type "numeric""); 
-
- CREATE FUNCTION next_known_int64( internal, int8, anyelement ) RETURNS int8 LANGUAGE internal IMMUTABLE AS 'next_known_generic' WITH (OID=7752, proiswin="t", DESCRIPTION="internal window variant"); 
-
- CREATE FUNCTION next_known_int32( internal, int4, anyelement ) RETURNS int4 LANGUAGE internal IMMUTABLE AS 'next_known_generic' WITH (OID=7753, proiswin="t", DESCRIPTION="internal window variant"); 
-
- CREATE FUNCTION next_known_int16( internal, int2, anyelement ) RETURNS int2 LANGUAGE internal IMMUTABLE AS 'next_known_generic' WITH (OID=7754, proiswin="t", DESCRIPTION="internal window variant"); 
-
- CREATE FUNCTION next_known_float8( internal, float8, anyelement ) RETURNS float8 LANGUAGE internal IMMUTABLE AS 'next_known_generic' WITH (OID=7755, proiswin="t", DESCRIPTION="internal window variant"); 
-
- CREATE FUNCTION next_known_float4( internal, float4, anyelement ) RETURNS float4 LANGUAGE internal IMMUTABLE AS 'next_known_generic' WITH (OID=7756, proiswin="t", DESCRIPTION="internal window variant"); 
-
- CREATE FUNCTION next_known_dateadt( internal, date, anyelement ) RETURNS date LANGUAGE internal IMMUTABLE AS 'next_known_generic' WITH (OID=7757, proiswin="t", DESCRIPTION="internal window variant"); 
-
- CREATE FUNCTION next_known_timeadt( internal, time, anyelement ) RETURNS time LANGUAGE internal IMMUTABLE AS 'next_known_generic' WITH (OID=7758, proiswin="t", DESCRIPTION="internal window variant"); 
-
- CREATE FUNCTION next_known_timestamp( internal, timestamp, anyelement ) RETURNS timestamp LANGUAGE internal IMMUTABLE AS 'next_known_generic' WITH (OID=7759, proiswin="t", DESCRIPTION="internal window variant"); 
-
- CREATE FUNCTION next_known_timestamptz( internal, timestamptz, anyelement ) RETURNS timestamptz LANGUAGE internal IMMUTABLE AS 'next_known_generic' WITH (OID=7760, proiswin="t", DESCRIPTION="internal window variant"); 
-
- CREATE FUNCTION next_known_timetzadt( internal, timetz, anyelement ) RETURNS timetz LANGUAGE internal IMMUTABLE AS 'next_known_generic' WITH (OID=7761, proiswin="t", DESCRIPTION="internal window variant"); 
-
- CREATE FUNCTION next_known_interval( internal, "interval", anyelement ) RETURNS "interval" LANGUAGE internal IMMUTABLE AS 'next_known_generic' WITH (OID=7762, proiswin="t", DESCRIPTION="internal window variant"); 
-
- CREATE FUNCTION next_known_numeric( internal, "numeric", anyelement ) RETURNS "numeric" LANGUAGE internal IMMUTABLE AS 'next_known_generic' WITH (OID=7763, proiswin="t", DESCRIPTION="internal window variant"); 
-
  CREATE FUNCTION cume_dist_prelim(internal) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT AS 'cume_dist_prelim' WITH (OID=7204, DESCRIPTION="window preliminary function");
 -- #define CUME_DIST_PRELIM_OID 7204
 -- #define CUME_DIST_PRELIM_TYPE 20
@@ -5445,17 +5258,17 @@
 
  CREATE FUNCTION ntile_final(_int8, int8) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT AS 'ntile_final' WITH (OID=7305, DESCRIPTION="window final function");
 
- CREATE FUNCTION get_ao_distribution(IN reloid oid, OUT segmentid int4, OUT tupcount float8) RETURNS SETOF pg_catalog.record LANGUAGE internal VOLATILE READS SQL DATA AS 'get_ao_distribution_oid' WITH (OID=7169, DESCRIPTION="show append only table tuple distribution across segment databases");
+ CREATE FUNCTION get_ao_distribution(IN reloid oid, OUT segmentid int4, OUT tupcount float8) RETURNS SETOF pg_catalog.record LANGUAGE internal VOLATILE AS 'get_ao_distribution_oid' WITH (OID=7169, DESCRIPTION="show append only table tuple distribution across segment databases");
 
- CREATE FUNCTION get_ao_distribution(IN relname text, OUT segmentid int4, OUT tupcount float8) RETURNS SETOF pg_catalog.record LANGUAGE internal VOLATILE READS SQL DATA AS 'get_ao_distribution_name' WITH (OID=7170, DESCRIPTION="show append only table tuple distribution across segment databases");
+ CREATE FUNCTION get_ao_distribution(IN relname text, OUT segmentid int4, OUT tupcount float8) RETURNS SETOF pg_catalog.record LANGUAGE internal VOLATILE AS 'get_ao_distribution_name' WITH (OID=7170, DESCRIPTION="show append only table tuple distribution across segment databases");
 
- CREATE FUNCTION get_ao_compression_ratio(oid) RETURNS float8 LANGUAGE internal VOLATILE READS SQL DATA AS 'get_ao_compression_ratio_oid' WITH (OID=7171, DESCRIPTION="show append only table compression ratio");
+ CREATE FUNCTION get_ao_compression_ratio(oid) RETURNS float8 LANGUAGE internal VOLATILE AS 'get_ao_compression_ratio_oid' WITH (OID=7171, DESCRIPTION="show append only table compression ratio");
 
- CREATE FUNCTION get_ao_compression_ratio(text) RETURNS float8 LANGUAGE internal VOLATILE READS SQL DATA AS 'get_ao_compression_ratio_name' WITH (OID=7172, DESCRIPTION="show append only table compression ratio");
+ CREATE FUNCTION get_ao_compression_ratio(text) RETURNS float8 LANGUAGE internal VOLATILE AS 'get_ao_compression_ratio_name' WITH (OID=7172, DESCRIPTION="show append only table compression ratio");
 
- CREATE FUNCTION gp_update_ao_master_stats(oid) RETURNS float8 LANGUAGE internal VOLATILE MODIFIES SQL DATA AS 'gp_update_ao_master_stats_oid' WITH (OID=7173, DESCRIPTION="append only tables utility function");
+ CREATE FUNCTION gp_update_ao_master_stats(oid) RETURNS float8 LANGUAGE internal VOLATILE AS 'gp_update_ao_master_stats_oid' WITH (OID=7173, DESCRIPTION="append only tables utility function");
 
- CREATE FUNCTION gp_update_ao_master_stats(text) RETURNS float8 LANGUAGE internal VOLATILE MODIFIES SQL DATA AS 'gp_update_ao_master_stats_name' WITH (OID=7174, DESCRIPTION="append only tables utility function");
+ CREATE FUNCTION gp_update_ao_master_stats(text) RETURNS float8 LANGUAGE internal VOLATILE AS 'gp_update_ao_master_stats_name' WITH (OID=7174, DESCRIPTION="append only tables utility function");
 
  CREATE FUNCTION gp_persistent_build_db(bool) RETURNS int4 LANGUAGE internal VOLATILE AS 'gp_persistent_build_db' WITH (OID=7178, DESCRIPTION="populate the persistent tables and gp_relation_node for the current database");
 
@@ -5544,35 +5357,6 @@
 
  CREATE FUNCTION xml_is_well_formed_content(text) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'xml_is_well_formed_content' WITH (OID=2990, DESCRIPTION="determine if a string is well formed XML content");
 
--- function for UUID type 
- CREATE FUNCTION uuid_in(cstring) RETURNS uuid LANGUAGE internal IMMUTABLE STRICT AS 'uuid_in' WITH (OID=2952, DESCRIPTION="I/O");
- 
- CREATE FUNCTION uuid_out(uuid) RETURNS cstring LANGUAGE internal IMMUTABLE STRICT AS 'uuid_out' WITH (OID=2953, DESCRIPTION="I/O");
- 
- CREATE FUNCTION uuid_lt(uuid, uuid) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'uuid_lt' WITH (OID=2954, DESCRIPTION="less-than");
- 
- CREATE FUNCTION uuid_le(uuid, uuid) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'uuid_le' WITH (OID=2955, DESCRIPTION="less-than-or-equal");
- 
- CREATE FUNCTION uuid_eq(uuid, uuid) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'uuid_eq' WITH (OID=2956, DESCRIPTION="equal");
- 
- CREATE FUNCTION uuid_ge(uuid, uuid) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'uuid_ge' WITH (OID=2957, DESCRIPTION="greater-than-or-equal");
- 
- CREATE FUNCTION uuid_gt(uuid, uuid) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'uuid_gt' WITH (OID=2958, DESCRIPTION="greater-than");
- 
- CREATE FUNCTION uuid_ne(uuid, uuid) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'uuid_ne' WITH (OID=2959, DESCRIPTION="not-equal");
- 
- CREATE FUNCTION uuid_cmp(uuid, uuid) RETURNS int4 LANGUAGE internal IMMUTABLE STRICT AS 'uuid_cmp' WITH (OID=2960, DESCRIPTION="btree less-equal-greater");
- 
- CREATE FUNCTION uuid_recv(internal) RETURNS uuid LANGUAGE internal IMMUTABLE STRICT AS 'uuid_recv' WITH (OID=2961, DESCRIPTION="I/O");
- 
- CREATE FUNCTION uuid_send(uuid) RETURNS bytea LANGUAGE internal IMMUTABLE STRICT AS 'uuid_send' WITH (OID=2962, DESCRIPTION="I/O");
- 
- CREATE FUNCTION uuid_hash(uuid) RETURNS int4 LANGUAGE internal IMMUTABLE STRICT AS 'uuid_hash' WITH (OID=2963, DESCRIPTION="hash");
- 
- CREATE FUNCTION text_uuid(text) RETURNS uuid LANGUAGE internal IMMUTABLE STRICT AS 'text_uuid' WITH (OID=2964, DESCRIPTION="convert text to uuid");
- 
- CREATE FUNCTION uuid_text(uuid) RETURNS text LANGUAGE internal IMMUTABLE STRICT AS 'uuid_text' WITH (OID=2965, DESCRIPTION="convert uuid to text");
- 
 
 -- the bitmap index access method routines
  CREATE FUNCTION bmgettuple(internal, internal) RETURNS bool LANGUAGE internal VOLATILE STRICT AS 'bmgettuple' WITH (OID=3050, DESCRIPTION="bitmap(internal)");
@@ -5744,191 +5528,3 @@
  CREATE FUNCTION gp_dummy_compression_decompress(internal, int4, internal, int4, internal, internal) RETURNS internal LANGUAGE internal VOLATILE AS 'dummy_compression_decompress' WITH (OID=3067, DESCRIPTION="Dummy compression decompressor");
 
  CREATE FUNCTION gp_dummy_compression_validator(internal) RETURNS internal LANGUAGE internal VOLATILE AS 'dummy_compression_validator' WITH (OID=3068, DESCRIPTION="Dummy compression validator");
- 
- CREATE FUNCTION gp_cancel_query(int4, int4) RETURNS bool LANGUAGE internal VOLATILE AS 'gp_cancel_query' WITH (OID=5075, DESCRIPTION="Cancels a specific query");
-
- CREATE FUNCTION txid_snapshot_in(cstring) RETURNS txid_snapshot LANGUAGE internal IMMUTABLE STRICT AS 'txid_snapshot_in' WITH (OID=2924, DESCRIPTION="I/O");
-
- CREATE FUNCTION txid_snapshot_out(txid_snapshot) RETURNS cstring LANGUAGE internal IMMUTABLE STRICT AS 'txid_snapshot_out' WITH (OID=2925, DESCRIPTION="I/O");
-
- CREATE FUNCTION txid_snapshot_recv(internal) RETURNS txid_snapshot LANGUAGE internal IMMUTABLE STRICT AS 'txid_snapshot_recv' WITH (OID=2926, DESCRIPTION="I/O");
-
- CREATE FUNCTION txid_snapshot_send(txid_snapshot) RETURNS bytea LANGUAGE internal IMMUTABLE STRICT AS 'txid_snapshot_send' WITH (OID=2927, DESCRIPTION="I/O");
- 
- CREATE FUNCTION txid_current() RETURNS int8 LANGUAGE internal STABLE STRICT AS 'txid_current' WITH (OID=2928, DESCRIPTION="get current transaction ID");
-
- CREATE FUNCTION txid_current_snapshot() RETURNS txid_snapshot LANGUAGE internal STABLE STRICT AS 'txid_current_snapshot' WITH (OID=2929, DESCRIPTION="get current snapshot");
-
- CREATE FUNCTION txid_snapshot_xmin(txid_snapshot) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT AS 'txid_snapshot_xmin' WITH (OID=2930, DESCRIPTION="get xmin of snapshot");
-
- CREATE FUNCTION txid_snapshot_xmax(txid_snapshot) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT AS 'txid_snapshot_xmax' WITH (OID=2931, DESCRIPTION="get xmax of snapshot");
-
- CREATE FUNCTION txid_snapshot_xip(txid_snapshot) RETURNS SETOF int8 LANGUAGE internal IMMUTABLE STRICT AS 'txid_snapshot_xip' WITH (OID=2932, DESCRIPTION="get set of in-progress txids in snapshot");
- 
- CREATE FUNCTION txid_visible_in_snapshot(int8, txid_snapshot) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'txid_visible_in_snapshot' WITH (OID=2933, DESCRIPTION="is xid visible in snapshot?");
-
- -- functions for the complex data type
- CREATE FUNCTION complex_in(cstring) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_in' WITH (OID=9026, DESCRIPTION="I/O");
-
- CREATE FUNCTION complex_out(complex) RETURNS cstring LANGUAGE internal IMMUTABLE STRICT AS 'complex_out' WITH (OID=9027, DESCRIPTION="I/O");
-
- CREATE FUNCTION complex_recv(internal) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_recv' WITH (OID=9028, DESCRIPTION="I/O");
-
- CREATE FUNCTION complex_send(complex) RETURNS bytea LANGUAGE internal IMMUTABLE STRICT AS 'complex_send' WITH (OID=9029, DESCRIPTION="I/O");
- 
- CREATE FUNCTION complex(float8, float8) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'construct_complex' WITH (OID=9030, DESCRIPTION="constructs a complex number with given real part and imaginary part");
-
- CREATE FUNCTION complex_trig(float8, float8) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'construct_complex_trig' WITH (OID=9031, DESCRIPTION="constructs a complex number with given magnitude and phase");
-
- CREATE FUNCTION re(complex) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'complex_re' WITH (OID=9032, DESCRIPTION="returns the real part of the argument");
-
- CREATE FUNCTION im(complex) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'complex_im' WITH (OID=9033, DESCRIPTION="returns the imaginary part of the argument");
-
- CREATE FUNCTION radians(complex) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'complex_arg' WITH (OID=9035, DESCRIPTION="returns the phase of the argument");
-
- CREATE FUNCTION complexabs(complex) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'complex_mag' WITH (OID=9036, DESCRIPTION="returns the magnitude of the argument");
- 
- CREATE FUNCTION abs(complex) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'complex_mag' WITH (OID=9037, DESCRIPTION="returns the magnitude of the argument");
-
- CREATE FUNCTION conj(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_conj' WITH (OID=9038, DESCRIPTION="returns the conjunction of the argument");
-
- CREATE FUNCTION hashcomplex(complex) RETURNS int4 LANGUAGE internal IMMUTABLE STRICT AS 'complex_hash' WITH (OID=9039, DESCRIPTION="hash");
-
- CREATE FUNCTION complex_eq(complex, complex) RETURNS bool  LANGUAGE internal IMMUTABLE STRICT AS 'complex_eq' WITH (OID=9040, DESCRIPTION="equal");
-
- CREATE FUNCTION complex_ne(complex, complex) RETURNS bool  LANGUAGE internal IMMUTABLE STRICT AS 'complex_ne' WITH (OID=9041, DESCRIPTION="not equal");
-
- CREATE FUNCTION complex_pl(complex, complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_pl' WITH (OID=9042, DESCRIPTION="plus");
-
- CREATE FUNCTION complex_up(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_up' WITH (OID=9043, DESCRIPTION="unary plus");
-
- CREATE FUNCTION complex_mi(complex, complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_mi' WITH (OID=9044, DESCRIPTION="minus");
-
- CREATE FUNCTION complex_um(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_um' WITH (OID=9045, DESCRIPTION="unary minus");
-
- CREATE FUNCTION complex_mul(complex, complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_mul' WITH (OID=9046, DESCRIPTION="multiply");
-
- CREATE FUNCTION complex_div(complex, complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_div' WITH (OID=9047, DESCRIPTION="divide");
-
- CREATE FUNCTION complex_power(complex, complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_pow' WITH (OID=9048, DESCRIPTION="exponentiation (x^y)");
-
- CREATE FUNCTION complex_sqrt(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_sqrt' WITH (OID=9049, DESCRIPTION="square root");
-
- CREATE FUNCTION complex_cbrt(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_cbrt' WITH (OID=9050, DESCRIPTION="cube root");
-
- CREATE FUNCTION degrees(complex) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'complex_degrees' WITH (OID=9051, DESCRIPTION="phase to degrees");
-
- CREATE FUNCTION exp(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_exp' WITH (OID=9052, DESCRIPTION="natural exponential (e^x)");
-
- CREATE FUNCTION ln(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_ln' WITH (OID=9053, DESCRIPTION="natural logarithm");
-
- CREATE FUNCTION log(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_log10' WITH (OID=9054, DESCRIPTION="base 10 logarithm");
-
- CREATE FUNCTION log(complex, complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_log' WITH (OID=9055, DESCRIPTION="logarithm base arg1 of arg2");
-
- CREATE FUNCTION acos(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_acos' WITH (OID=9056, DESCRIPTION="acos");
-
- CREATE FUNCTION asin(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_asin' WITH (OID=9057, DESCRIPTION="asin");
-
- CREATE FUNCTION atan(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_atan' WITH (OID=9058, DESCRIPTION="atan");
-
- CREATE FUNCTION cos(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_cos' WITH (OID=9059, DESCRIPTION="cos");
-
- CREATE FUNCTION cot(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_cot' WITH (OID=9060, DESCRIPTION="cot");
-
- CREATE FUNCTION sin(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_sin' WITH (OID=9061, DESCRIPTION="sin");
-
- CREATE FUNCTION tan(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_tan' WITH (OID=9062, DESCRIPTION="tan");
-
- CREATE FUNCTION dotproduct(_complex, _complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_dot_product' WITH (OID=9063, DESCRIPTION="dot product");
-
- CREATE FUNCTION float82complex(float8) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'float82complex' WITH (OID=9064, DESCRIPTION="(internal) type cast from float8 to complex");
-
- CREATE FUNCTION float42complex(float4) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'float42complex' WITH (OID=9065, DESCRIPTION="(internal) type cast from float4 to complex");
-
- CREATE FUNCTION int82complex(int8) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'int82complex' WITH (OID=9066, DESCRIPTION="(internal) type cast from int8 to complex");
-
- CREATE FUNCTION int42complex(int4) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'int42complex' WITH (OID=9067, DESCRIPTION="(internal) type cast from int4 to complex");
-
- CREATE FUNCTION int22complex(int2) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'int22complex' WITH (OID=9068, DESCRIPTION="(internal) type cast from int2 to complex");
-
- CREATE FUNCTION power(complex, complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_pow' WITH (OID=9084, DESCRIPTION="exponentiation (x^y)");
-
- CREATE FUNCTION sqrt(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_sqrt' WITH (OID=9085, DESCRIPTION="square root");
-
- CREATE FUNCTION cbrt(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_cbrt' WITH (OID=9086, DESCRIPTION="cube root"); 
- 
- CREATE FUNCTION numeric2point("numeric") RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'numeric2complex' WITH (OID=9087, DESCRIPTION="(internal) type cast from numeric to complex");
-
-CREATE FUNCTION gp_get_part_constraints(oid, oid) RETURNS text LANGUAGE internal IMMUTABLE AS 'gp_get_part_constraints' WITH (OID=9926, DESCRIPTION="gp_get_part_constraints");
-
-CREATE FUNCTION gp_map_attnums(oid, oid, int2vector) RETURNS int2vector LANGUAGE internal IMMUTABLE AS 'gp_map_attnums' WITH (OID=9927, DESCRIPTION="gp_map_attnums");
-
-CREATE FUNCTION gp_map_attnums_in_expr(oid, oid, text) RETURNS text LANGUAGE internal IMMUTABLE AS 'gp_map_attnums_in_expr' WITH (OID=9929, DESCRIPTION="gp_map_attnums_in_expr");
-
- CREATE FUNCTION lead_lag_frame_maker(internal) RETURNS internal LANGUAGE internal VOLATILE STRICT AS 'lead_lag_frame_maker' WITH (OID=5081);
-
- CREATE FUNCTION wm_frame_maker(internal) RETURNS internal LANGUAGE internal VOLATILE STRICT AS 'wm_frame_maker' WITH (OID=5082);
-
- CREATE FUNCTION wm_avg(float8, _float8, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'window_dummy' WITH (OID=7184, proiswin="t");
-
- CREATE FUNCTION wm_var_pop(float8, _float8, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'window_dummy' WITH (OID=7185, proiswin="t");
-
- CREATE FUNCTION wm_var_samp(float8, _float8, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'window_dummy' WITH (OID=7186, proiswin="t");
-
- CREATE FUNCTION wm_stddev_pop(float8, _float8, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'window_dummy' WITH (OID=7187, proiswin="t");
-
- CREATE FUNCTION wm_stddev_samp(float8, _float8, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'window_dummy' WITH (OID=7188, proiswin="t");
-
- CREATE FUNCTION wm_avg(numeric, _numeric, int4) RETURNS numeric LANGUAGE internal IMMUTABLE STRICT AS 'window_dummy' WITH (OID=7189, proiswin="t");
-
- CREATE FUNCTION wm_var_pop(numeric, _numeric, int4) RETURNS numeric LANGUAGE internal IMMUTABLE STRICT AS 'window_dummy' WITH (OID=7190, proiswin="t");
-
- CREATE FUNCTION wm_var_samp(numeric, _numeric, int4) RETURNS numeric LANGUAGE internal IMMUTABLE STRICT AS 'window_dummy' WITH (OID=7191, proiswin="t");
-
- CREATE FUNCTION wm_stddev_pop(numeric, _numeric, int4) RETURNS numeric LANGUAGE internal IMMUTABLE STRICT AS 'window_dummy' WITH (OID=7192, proiswin="t");
-
- CREATE FUNCTION wm_stddev_samp(numeric, _numeric, int4) RETURNS numeric LANGUAGE internal IMMUTABLE STRICT AS 'window_dummy' WITH (OID=7193, proiswin="t");
-
- CREATE FUNCTION float8_wm_avg(internal, float8, _float8, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'float8_wm_avg' WITH (OID=7194, DESCRIPTION="weighted moving average");
-
- CREATE FUNCTION float8_wm_var_pop(internal, float8, _float8, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'float8_wm_var_pop' WITH (OID=7195, DESCRIPTION="weighted moving variance");
-
- CREATE FUNCTION float8_wm_var_samp(internal, float8, _float8, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'float8_wm_var_samp' WITH (OID=7196, DESCRIPTION="weighted moving variance");
-
- CREATE FUNCTION float8_wm_stddev_pop(internal, float8, _float8, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'float8_wm_stddev_pop' WITH (OID=7197, DESCRIPTION="weighted moving standard deviation");
-
- CREATE FUNCTION float8_wm_stddev_samp(internal, float8, _float8, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'float8_wm_stddev_samp' WITH (OID=7198, DESCRIPTION="weighted moving standard deviation");
-
- CREATE FUNCTION numeric_wm_avg(internal, numeric, _numeric, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'numeric_wm_avg' WITH (OID=7199, DESCRIPTION="weighted moving average");
-
- CREATE FUNCTION numeric_wm_var_pop(internal, numeric, _numeric, int4) RETURNS numeric LANGUAGE internal IMMUTABLE STRICT AS 'numeric_wm_var_pop' WITH (OID=7200, DESCRIPTION="weighted moving variance");
-
- CREATE FUNCTION numeric_wm_var_samp(internal, numeric, _numeric, int4) RETURNS numeric LANGUAGE internal IMMUTABLE STRICT AS 'numeric_wm_var_samp' WITH (OID=7201, DESCRIPTION="weighted moving variance");
-
- CREATE FUNCTION numeric_wm_stddev_pop(internal, numeric, _numeric, int4) RETURNS numeric LANGUAGE internal IMMUTABLE STRICT AS 'numeric_wm_stddev_pop' WITH (OID=7202, DESCRIPTION="weighted moving standard deviation");
-
- CREATE FUNCTION numeric_wm_stddev_samp(internal, numeric, _numeric, int4) RETURNS numeric LANGUAGE internal IMMUTABLE STRICT AS 'numeric_wm_stddev_samp' WITH (OID=7203, DESCRIPTION="weighted moving standard deviation");
-
-CREATE FUNCTION linear_interpolate( anyelement, anyelement, int8, anyelement, int8 ) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT AS 'linterp_int64' WITH (OID=6072, DESCRIPTION="linear interpolation: x, x0,y0, x1,y1"); 
-
-CREATE FUNCTION linear_interpolate( anyelement, anyelement, int4, anyelement, int4 ) RETURNS int4 LANGUAGE internal IMMUTABLE STRICT AS 'linterp_int32' WITH (OID=6073, DESCRIPTION="linear interpolation: x, x0,y0, x1,y1"); 
-
-CREATE FUNCTION linear_interpolate( anyelement, anyelement, int2, anyelement, int2 ) RETURNS int2 LANGUAGE internal IMMUTABLE STRICT AS 'linterp_int16' WITH (OID=6074, DESCRIPTION="linear interpolation: x, x0,y0, x1,y1"); 
-
-CREATE FUNCTION linear_interpolate( anyelement, anyelement, float8, anyelement, float8 ) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'linterp_float8' WITH (OID=6075, DESCRIPTION="linear interpolation: x, x0,y0, x1,y1"); 
-
-CREATE FUNCTION linear_interpolate( anyelement, anyelement, float4, anyelement, float4 ) RETURNS float4 LANGUAGE internal IMMUTABLE STRICT AS 'linterp_float4' WITH (OID=6076, DESCRIPTION="linear interpolation: x, x0,y0, x1,y1"); 
-
-CREATE FUNCTION linear_interpolate( anyelement, anyelement, date, anyelement, date ) RETURNS date LANGUAGE internal IMMUTABLE STRICT AS 'linterp_DateADT' WITH (OID=6077, DESCRIPTION="linear interpolation: x, x0,y0, x1,y1"); 
-
-CREATE FUNCTION linear_interpolate( anyelement, anyelement, time, anyelement, time ) RETURNS time LANGUAGE internal IMMUTABLE STRICT AS 'linterp_TimeADT' WITH (OID=6078, DESCRIPTION="linear interpolation: x, x0,y0, x1,y1"); 
-
-CREATE FUNCTION linear_interpolate( anyelement, anyelement, timestamp, anyelement, timestamp ) RETURNS timestamp LANGUAGE internal IMMUTABLE STRICT AS 'linterp_Timestamp' WITH (OID=6079, DESCRIPTION="linear interpolation: x, x0,y0, x1,y1"); 
-
-CREATE FUNCTION linear_interpolate( anyelement, anyelement, timestamptz, anyelement, timestamptz ) RETURNS timestamptz LANGUAGE internal IMMUTABLE STRICT AS 'linterp_TimestampTz' WITH (OID=6080, DESCRIPTION="linear interpolation: x, x0,y0, x1,y1"); 
-
-CREATE FUNCTION linear_interpolate( anyelement, anyelement, "interval", anyelement, "interval" ) RETURNS "interval" LANGUAGE internal IMMUTABLE STRICT AS 'linterp_Interval' WITH (OID=6081, DESCRIPTION="linear interpolation: x, x0,y0, x1,y1"); 
-
-CREATE FUNCTION linear_interpolate( anyelement, anyelement, "numeric", anyelement, "numeric" ) RETURNS "numeric" LANGUAGE internal IMMUTABLE STRICT AS 'linterp_Numeric' WITH (OID=6082, DESCRIPTION="linear interpolation: x, x0,y0, x1,y1"); 
-	

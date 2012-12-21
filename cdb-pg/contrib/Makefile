@@ -5,19 +5,14 @@ top_builddir = ..
 include $(top_builddir)/src/Makefile.global
 
 WANTED_DIRS = \
-		fuzzystrmatch \
 		gp_filedump \
-		gp_clog_manipulator \
 		xlogdump \
 		pgbench \
 		orafce \
 		changetrackingdump \
 		formatter \
 		formatter_fixedwidth \
-		extprotocol \
-		gp_cancel_query \
-		gp_partition_functions \
-		gp_internal_tools
+		extprotocol
 
 ifeq ($(with_openssl),yes)
 WANTED_DIRS += sslinfo

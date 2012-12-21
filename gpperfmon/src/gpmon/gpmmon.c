@@ -15,7 +15,6 @@
 #include "apr_hash.h"
 #include "apr_lib.h"
 #include "apr_strings.h"
-#include "apr_queue.h"
 #include "apr_pools.h"
 #include "apr_tables.h"
 #include "apr_thread_proc.h"
@@ -30,12 +29,36 @@
 #include "libpq-fe.h"
 #include <time.h>
 
-#define YES_TEXT "yes"
-#define NO_TEXT "no"
 
 #define SET_MAXFD(fd)  if (fd < opt.max_fd) ; else opt.max_fd = fd
 
-mmon_options_t opt = { 0 };
+/* gpmmon options */
+struct
+{
+	int argc;
+	const char* const *argv;
+	const char* pname;
+	char* gpdb_port;
+	char* conf_file;
+	char* log_dir;
+	char* smon_log_dir;
+	char* smdw_aliases;
+	apr_uint64_t max_log_size;
+	int max_fd; /* this is the max fd value we ever seen */
+	int v;
+	int q;
+	int m;
+	int d;
+	int qamode;
+	int emcconnect; 		// config entry in gpperfmon.conf
+	int harvest_interval;
+	int snmp_interval;
+	apr_uint64_t tail_buffer_max;
+	int console;
+	int health_harvest_interval;
+	int warning_disk_space_percentage;
+	int error_disk_space_percentage;
+} opt = { 0 };
 
 /* gpmmon host */
 static struct
@@ -57,7 +80,6 @@ static struct
 	char* standby_master_hostname;
 	apr_thread_mutex_t *agg_mutex; /* lock when accessing the agg data */
 	agg_t* agg;
-	apr_hash_t* fsinfotab; /* This is the persistent fsinfo hash table: key = gpmon_fsinfokey_t, value = mmon_fsinfo_t ptr */
 
 	apr_thread_mutex_t *tailfile_mutex; /* lock when accessing the physical tail files */
 
@@ -87,25 +109,18 @@ static apr_thread_t* conm_th = NULL;
 static apr_thread_t* event_th = NULL;
 static apr_thread_t* harvest_th = NULL;
 static apr_thread_t* snmp_th = NULL;
-static apr_thread_t* message_th = NULL;
-apr_queue_t* message_queue = NULL;
 
 /* signal masks */
 sigset_t unblocksig;
 sigset_t blocksig;
-
-/* Temporary global memory to store the qexec line upon a receive until it is copied into a mmon_qexec_t struct; only use in main receive thread*/
-char	qexec_mmon_temp_line[QEXEC_MAX_ROW_BUF_SIZE];
-
-extern int gpdb_exec_search_for_at_least_one_row(const char* QUERY, PGconn* persistant_conn);
 
 
 /* Function defs */
 static int read_conf_file(char *conffile);
 static void gethostlist();
 static void getconfig(void);
-static apr_status_t sendpkt(int sock, const gp_smon_to_mmon_packet_t* pkt);
-static apr_status_t recvpkt(int sock, gp_smon_to_mmon_packet_t* pkt, bool loop_until_all_recv);
+static apr_status_t sendpkt(int sock, const gpmon_packet_t* pkt);
+static apr_status_t recvpkt(int sock, gpmon_packet_t* pkt);
 
 
 #define MMON_LOG_FILENAME_SIZE (MAXPATHLEN+1)
@@ -168,8 +183,6 @@ static void cleanup()
 		apr_thread_join(&tstatus, harvest_th);
 	if (snmp_th)
 		apr_thread_join(&tstatus, snmp_th);
-	if (message_th)
-		apr_thread_join(&tstatus, message_th);
 
 	for (i = 0; i < ax.hosttabsz; i++)
 	{
@@ -226,8 +239,8 @@ static void recv_from_gx(SOCKET sock, short event, void* arg)
 {
 	host_t* h = arg;
 	int e;
-	gp_smon_to_mmon_packet_t pktbuf;
-	gp_smon_to_mmon_packet_t* pkt = 0;
+	gpmon_packet_t pktbuf;
+	gpmon_packet_t* pkt = 0;
 	TR2(("recv_from_gx sock %d host %s port %d\n", sock, h->hostname, ax.port));
 
 	if (!(event & EV_READ))
@@ -239,13 +252,29 @@ static void recv_from_gx(SOCKET sock, short event, void* arg)
 	{
 		if (!h->eflag)
 		{
-			e = recvpkt(sock, &pktbuf, true);
-			if (e == APR_FROM_OS_ERROR(EINTR)) {
-				TR1(("at %s: connection dropped by host %s port %d [set eflag]\n", FLINE, h->hostname, ax.port));
-				h->eflag = 1;
-			} else if( e != 0 ) {
-				gpmon_warningx(FLINE, e, "cannot get packet from host %s port %d", h->hostname, ax.port);
-				h->eflag = 1;
+			char* p = (char*) &pktbuf;
+			char* q = p + sizeof(pktbuf);
+			while (p < q)
+			{
+				int n = recv(sock, p, q - p, 0);
+				if (n == -1)
+				{
+					switch (errno)
+					{
+					case EINTR:
+					case EAGAIN:
+						continue;
+					}
+					gpmon_warningx(FLINE, APR_FROM_OS_ERROR(errno), "cannot get packet from host %s port %d", h->hostname, ax.port);
+					break;
+				}
+				p += n;
+				if (p == (char*) &pktbuf)
+				{
+					TR1(("at %s: connection dropped by host %s port %d [set eflag]\n", FLINE, h->hostname, ax.port));
+					h->eflag = 1;
+					break;
+				}
 			}
 		}
 		if (h->eflag)
@@ -256,10 +285,9 @@ static void recv_from_gx(SOCKET sock, short event, void* arg)
 		else
 		{
 			pkt = &pktbuf;
-			TR2(("received packet %d from %s:%d\n", pkt->header.pkttype, h->hostname, ax.port));
+			TR2(("received packet %d from %s:%d\n", pkt->pkttype, h->hostname, ax.port));
 		}
 	}
-
 	apr_thread_mutex_unlock(h->mutex);
 	if (pkt)
 	{
@@ -394,76 +422,44 @@ static void* event_main(apr_thread_t* thread_, void* arg_)
 	return 0;
 }
 
-
-static apr_status_t conm_connect(SOCKET* retsock, const char* ipstr, int port, bool ipv6)
+static apr_status_t conm_connect(SOCKET* retsock, const char* ipstr, int port)
 {
 	struct sockaddr_in sa;
-	struct sockaddr_in6 sa6;
 	SOCKET sock = -1;
-	gp_smon_to_mmon_packet_t pkt;
+	gpmon_packet_t pkt = { 0 };
 	int e = 0;
-	unsigned short family = 0;
-	struct sockaddr * sockaddrlive = NULL;
-	size_t length = 0;
 
-	memset(&pkt, 0, sizeof(gp_smon_to_mmon_packet_t));
-
-
-	if (ipv6)
+	if (-1 == (sock = socket(AF_INET, SOCK_STREAM, 0)))
 	{
-		family = AF_INET6;
-		memset(&sa6, 0, sizeof(sa6));
-		sa6.sin6_family = AF_INET6;
-		sa6.sin6_port = htons(port);
-		inet_pton(AF_INET6, ipstr, &(sa6.sin6_addr));
-		sockaddrlive = (struct sockaddr *)&sa6;
-		length = sizeof(sa6);
-	}
-	else
-	{
-		family = AF_INET;
-		memset(&sa, 0, sizeof(sa));
-		sa.sin_family = AF_INET;
-		sa.sin_addr.s_addr = inet_addr(ipstr);
-		sa.sin_port = htons(port);
-		sockaddrlive = (struct sockaddr *)&sa;
-		length = sizeof(sa);
-	}
-	
-	if (-1 == (sock = socket(family, SOCK_STREAM, 0)))
-	{
-		gpmon_warningx(FLINE, 0, "error %d from socket system call", sock);
+		e = APR_FROM_OS_ERROR(errno);
+		gpmon_warningx(FLINE, e, "socket()");
 		goto bail;
 	}
 
 	SET_MAXFD(sock);
+	memset(&sa, 0, sizeof(sa));
+	sa.sin_family = AF_INET;
+	sa.sin_addr.s_addr = inet_addr(ipstr);
+	sa.sin_port = htons(port);
 
-	if (-1 == connect(sock, sockaddrlive, length))
+	if (-1 == connect(sock, (void*) &sa, sizeof(sa)))
 	{
 		e = APR_FROM_OS_ERROR(errno);
-		gpmon_warningx(FLINE, e, "connect system call failed");
+		gpmon_warningx(FLINE, e, "connect()");
 		goto bail;
 	}
 
-	gp_smon_to_mmon_set_header(&pkt, GPMON_PKTTYPE_HELLO);
+	pkt.magic = GPMON_MAGIC;
+	pkt.version = GPMON_PACKET_VERSION;
+	pkt.pkttype = GPMON_PKTTYPE_HELLO;
 	pkt.u.hello.signature = ax.signature;
 	if (0 != (e = sendpkt(sock, &pkt)))
-	{
-		gpmon_warningx(FLINE, 0, "error %d from sendpkt system call", e);
-		goto bail;
-	}
+	goto bail;
 
-	if (0 != (e = recvpkt(sock, &pkt, false))) {
-		gpmon_warningx(FLINE, 0, "error %d from recvpkt system call", e);
-		goto bail;
-	}
+	if (0 != (e = recvpkt(sock, &pkt)))
+	goto bail;
 
-	if (0 != (e = gpmon_ntohpkt(pkt.header.magic, pkt.header.version, pkt.header.pkttype))) {
-		gpmon_warningx(FLINE, 0, "error %d from recvpkt gpmon_ntohpkt", e);
-		goto bail;
-	}
-
-	if (pkt.header.pkttype != GPMON_PKTTYPE_HELLO)
+	if (pkt.pkttype != GPMON_PKTTYPE_HELLO)
 	{
 		gpmon_warning(FLINE, "invalid packet type");
 		e = APR_EINVAL;
@@ -563,17 +559,9 @@ static void* conm_main(apr_thread_t* thread_, void* arg_)
 						ptr_smon_log_location_suffix = gpperfmon_string;
 					}
 
-					if (h->smon_bin_location) { //if this if filled, then use it as the directory for smon istead of the default
-						snprintf(line, line_size, "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'"
-								" %s %s -m %" FMT64 " -l %s%s -v %d %s%d ",
-								active_hostname, h->smon_bin_location, opt.max_log_size, ptr_smon_log_location, ptr_smon_log_location_suffix, opt.v,
-								((opt.iterator_aggregate)?"-a ":""), ax.port);
-					} else {
-						snprintf(line, line_size, "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'"
-								" %s %s/bin/gpsmon -m %" FMT64 " -l %s%s -v %d %s%d ",
-								active_hostname, ax.gphome, opt.max_log_size, ptr_smon_log_location, ptr_smon_log_location_suffix, opt.v,
-								((opt.iterator_aggregate)?"-a ":""), ax.port);
-					}
+					snprintf(line, line_size, "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'"
+							" %s %s/bin/gpsmon -m %" FMT64 " -l %s%s -v %d %d ",
+							active_hostname, ax.gphome, opt.max_log_size, ptr_smon_log_location, ptr_smon_log_location_suffix, opt.v, ax.port);
 
 					if (h->ever_connected)
 					{
@@ -613,12 +601,11 @@ static void* conm_main(apr_thread_t* thread_, void* arg_)
 				SOCKET sock = 0;
 				char* active_hostname = get_connection_hostname(h);
 				char* active_ip = get_connection_ip(h);
-				bool ipv6 = get_connection_ipv6_status(h);
 
 				TR1(("connecting to %s (%s:%d)\n", active_hostname, active_ip, ax.port));
-				if (0 != (e = conm_connect(&sock, active_ip, ax.port, ipv6)))
+				if (0 != (e = conm_connect(&sock, active_ip, ax.port)))
 				{
-					gpmon_warningx(FLINE, 0, "cannot connect to %s (%s:%d)",
+					gpmon_warningx(FLINE, e, "cannot connect to %s (%s:%d)",
 							active_hostname, active_ip, ax.port);
 					continue;
 				}
@@ -649,16 +636,10 @@ static void* snmp_main(apr_thread_t* thread_, void* arg_)
 	snprintf(snmp_module_params.externaltable_dir, PATH_MAX, "%s/gpperfmon/data", ax.master_data_directory);
 	snmp_module_params.health_harvest_interval = opt.health_harvest_interval;
 	snmp_module_params.warning_disk_space_percentage = opt.warning_disk_space_percentage;
-	if (snmp_module_params.warning_disk_space_percentage == 0) {
-		snmp_module_params.warning_disk_space_percentage = 90;
-	}
 	snmp_module_params.error_disk_space_percentage = opt.error_disk_space_percentage;
-	if (snmp_module_params.error_disk_space_percentage == 0) {
-		snmp_module_params.error_disk_space_percentage = 95;
-	}
+
 	if (arg_ && *((int*)arg_) == 1) {
 		snmp_module_params.healthmon_running_separately = 1;
-		TR0(("healthmond will do healthmonitoring, not doing snmp....\n"));
 	} else {
 		snmp_module_params.healthmon_running_separately = 0;
 	}
@@ -740,17 +721,12 @@ static void* harvest_main(apr_thread_t* thread_, void* arg_)
 
 	gpdb_check_partitions();
 
-	if (opt.iterator_aggregate) {
-		remove_segid_constraint();
-	}
-
 	for (loop = 1; !ax.exit; loop++)
 	{
 		apr_sleep(apr_time_from_sec(1));
 
 		if (0 == (loop % opt.harvest_interval))
 		{
-			int e;
 			/* 	
 				PROCESS:
 				1) WITH TAIL MUTEX: rename tail files to stage files
@@ -771,29 +747,20 @@ static void* harvest_main(apr_thread_t* thread_, void* arg_)
 				   will still be reading the tail files for an entire harvest cycle.  (this is not perfect logic but ok)
 			*/
 
-			apr_pool_t* pool; /* create this pool so we can destroy it each loop */
-
-
-			if (0 != (e = apr_pool_create(&pool, ax.pool))) {
-				interuptable_sleep(30); // sleep to prevent loop of forking process and failing
-				gpmon_fatalx(FLINE, e, "apr_pool_create failed");
-				return (void*)1;
-			}
-
 			/* LOCK TAIL MUTEX ****************************************/
 			apr_thread_mutex_lock(ax.tailfile_mutex);
 
 			ax._tail_buffer_bytes += ax.tail_buffer_bytes;
 			ax.tail_buffer_bytes = 0;
 
-			status = gpdb_rename_tail_files(pool);
+			status = gpdb_rename_tail_files(ax.pool);
 
-			status = gpdb_truncate_tail_files(pool);
+			status = gpdb_truncate_tail_files(ax.pool);
 
 			apr_thread_mutex_unlock(ax.tailfile_mutex);
 			/* UNLOCK TAIL MUTEX ****************************************/
 
-			status = gpdb_copy_stage_to_harvest_files(pool);
+			status = gpdb_copy_stage_to_harvest_files(ax.pool);
 
 			if (status == APR_SUCCESS)
 			{
@@ -814,7 +781,7 @@ static void* harvest_main(apr_thread_t* thread_, void* arg_)
 					better to lose some perf data and self fix than calling support to have them manually find the corrupted perf data and clear it themselves
 					we also delete the data if the size of the data is greater than our max data size
 				*/
-				status = gpdb_empty_harvest_files(pool);
+				status = gpdb_empty_harvest_files(ax.pool);
 
 				if (status != APR_SUCCESS)
 				{
@@ -823,8 +790,6 @@ static void* harvest_main(apr_thread_t* thread_, void* arg_)
 				consecutive_failures = 0;
 				ax._tail_buffer_bytes = 0;
 			}
-
-			apr_pool_destroy(pool); /*destroy the pool since we are done with it*/
 		}
 		if (0 == (loop % partition_check_interval))
 		{
@@ -834,38 +799,7 @@ static void* harvest_main(apr_thread_t* thread_, void* arg_)
 
 	return APR_SUCCESS;
 }
-/* Separate thread for message sending */
-static void* message_main(apr_thread_t* thread_, void* arg_)
-{
-	apr_queue_t *queue = arg_;
-	void *query = NULL;
-	char *query_str = NULL;
-	apr_status_t status;
 
-	TR2(("In message_main: error_disk_space_percentage = %d, warning_disk_space_percentage = %d, disk_space_interval = %d, max_disk_space_messages_per_interval = %d\n",
-			opt.error_disk_space_percentage, opt.warning_disk_space_percentage, opt.disk_space_interval, opt.max_disk_space_messages_per_interval));
-	while (1) {
-		query = NULL;
-		status = apr_queue_pop(queue, &query);
-		if (status == APR_EINTR) { //the blocking operation was interrupted (try again)
-			continue;
-		} else if (status != APR_SUCCESS) {
-			interuptable_sleep(30); // sleep to prevent loop of forking process and failing
-			gpmon_fatalx(FLINE, status, "message_main ERROR: apr_queue_pop failed: returned %d", status);
-			return (void*)1;
-		} else if (NULL == query) {
-			TR0(("message_main ERROR: apr_queue_pop returned NULL\n"));
-		} else { // send the message
-			query_str = query; // have to do this because we still build on SUN!!!
-			if (!gpdb_exec_search_for_at_least_one_row((const char *)query_str, NULL)) {
-				TR0(("message_main ERROR: query %s failed. Cannot send message\n", query_str));
-			}
-			free(query);
-		}
-
-	}
-	return APR_SUCCESS;
-}
 int is_gpdb_appliance()
 {
 	FILE* fd = fopen(PATH_TO_APPLIANCE_VERSION_FILE, "r");
@@ -992,15 +926,8 @@ static void gpmmon_main(void)
 	/* get hostlist */
 	gethostlist();
 
-	/* create the persistent fsinfo hash table */
-	ax.fsinfotab = apr_hash_make(ax.pool);
-	if (!ax.fsinfotab) {
-		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
-		gpmon_fatalx(FLINE, e, "apr_hash_make for fsinfo hash table failed");
-	}
-
 	/* create the agg */
-	if (0 != (e = agg_create(&ax.agg, 1, ax.pool, ax.fsinfotab)))
+	if (0 != (e = agg_create(&ax.agg, 1, ax.pool)))
 	{
 		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, e, "agg_create failed");
@@ -1023,21 +950,7 @@ static void gpmmon_main(void)
 	/* spawn harvest thread */
 	if (0 != (e = apr_thread_create(&harvest_th, ta, harvest_main, 0, ax.pool)))
 	{
-		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
-		gpmon_fatalx(FLINE, e, "apr_thread_create failed");
-	}
-
-	/* Create message queue */
-	if (0 != (e = apr_queue_create(&message_queue, MAX_MESSAGES_PER_INTERVAL, ax.pool)))
-	{
-		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
-		gpmon_fatalx(FLINE, e, "apr_queue_create failed");
-	}
-
-	/* spawn disk space message thread */
-	if (0 != (e = apr_thread_create(&message_th, ta, message_main, message_queue, ax.pool)))
-	{
-		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+        	interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, e, "apr_thread_create failed");
 	}
 
@@ -1117,7 +1030,7 @@ static void gpmmon_main(void)
 			apr_thread_mutex_unlock(ax.tailfile_mutex);
 
 			/* make a new one, copy only recently updated entries */
-			if (0 != (e = agg_dup(&newagg, ax.agg, ax.pool, ax.fsinfotab)))
+			if (0 != (e = agg_dup(&newagg, ax.agg, ax.pool)))
 			{
 				interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 				gpmon_fatalx(FLINE, e, "agg_dup failed");
@@ -1137,7 +1050,6 @@ static void gpmmon_main(void)
 		if (!opt.console && (ticks_since_last_log_check > log_check_interval))
 		{
 			apr_finfo_t finfo;
-			//it is ok to use the parent pool here b/c it is not for used for allocation in apr_stat
 			if (0 == apr_stat(&finfo, mmon_log_filename, APR_FINFO_SIZE, ax.pool))
 			{
 				if (opt.max_log_size != 0 && finfo.size > opt.max_log_size)
@@ -1173,8 +1085,6 @@ static int read_conf_file(char *conffile)
 	opt.max_log_size = 0;
 	opt.log_dir = strdup(DEFAULT_GPMMON_LOGDIR);
 	opt.emcconnect = 1; // assume enabled unless disabled explicitly
-	opt.max_disk_space_messages_per_interval = MAX_MESSAGES_PER_INTERVAL;
-	opt.disk_space_interval = (60*MINIMUM_MESSAGE_INTERVAL);
 
 	if (!fp)
 	{
@@ -1272,24 +1182,6 @@ static int read_conf_file(char *conffile)
 
 				opt.smon_log_dir = strdup(pVal);
 			}
-			else if (apr_strnatcasecmp(pName, "hadoop_hostfile") == 0)
-			{
-				if (opt.smon_hadoop_swonly_clusterfile)
-					free(opt.smon_hadoop_swonly_clusterfile);
-				opt.smon_hadoop_swonly_clusterfile = strdup(pVal);
-			}
-			else if (apr_strnatcasecmp(pName, "hadoop_logdir") == 0)
-			{
-				if (opt.smon_hadoop_swonly_logdir)
-					free(opt.smon_hadoop_swonly_logdir);
-				opt.smon_hadoop_swonly_logdir = strdup(pVal);
-			}
-			else if (apr_strnatcasecmp(pName, "hadoop_smon_path") == 0)
-			{
-				if (opt.smon_hadoop_swonly_binfile)
-					free(opt.smon_hadoop_swonly_binfile);
-				opt.smon_hadoop_swonly_binfile = strdup(pVal);
-			}
 			else if (apr_strnatcasecmp(pName, "smdw_aliases") == 0)
 			{
 				opt.smdw_aliases = strdup(pVal);
@@ -1311,15 +1203,6 @@ static int read_conf_file(char *conffile)
 			} 
 			else if (apr_strnatcasecmp(pName, "error_disk_space_percentage") == 0) {
 				opt.error_disk_space_percentage = atoi(pVal);
-			}
-			else if (apr_strnatcasecmp(pName, "disk_space_interval") == 0) {
-				opt.disk_space_interval = (time_t) (atoi(pVal)*60); //interval in seconds but set in minutes, so multiply
-			}
-			else if (apr_strnatcasecmp(pName, "max_disk_space_messages_per_interval") == 0) {
-				opt.max_disk_space_messages_per_interval = atoi(pVal);
-			}
-			else if (apr_strnatcasecmp(pName, "iterator_aggregate") == 0) {
-				opt.iterator_aggregate = atoi(pVal);
 			}
 			else
 			{
@@ -1380,41 +1263,18 @@ static int read_conf_file(char *conffile)
 		opt.snmp_interval = 10;
 	}
 
-	if (opt.warning_disk_space_percentage < 0 || opt.warning_disk_space_percentage >= 100)
+	if (opt.warning_disk_space_percentage <= 0 || opt.warning_disk_space_percentage >= 100)
 	{
-		fprintf(stderr, "Performance Monitor - warning_disk_space_percentage must be between 1 and 100.  Disabling.\n");
-		opt.warning_disk_space_percentage = 0;
+		fprintf(stderr, "Performance Monitor - warning_disk_space_percentage must be between 0 and 100.  Using 90.\n");
+		opt.warning_disk_space_percentage = 90;
 	}
 
 
-	if (opt.error_disk_space_percentage < 0 || opt.error_disk_space_percentage >= 100)
+	if (opt.error_disk_space_percentage <= 0 || opt.error_disk_space_percentage >= 100)
 	{
-		fprintf(stderr, "Performance Monitor - error_disk_space_percentage must be between 1 and 100.  Disabling.\n");
-		opt.error_disk_space_percentage = 0;
+		fprintf(stderr, "Performance Monitor - error_disk_space_percentage must be between 0 and 100.  Using 95.\n");
+		opt.error_disk_space_percentage = 95;
 	}
-
-	if (opt.error_disk_space_percentage < opt.warning_disk_space_percentage) {
-		fprintf(stderr, "Performance Monitor - error_disk_space_percentage less than warning_disk_space_percentage, so setting to warning_disk_space_percentage.\n");
-		opt.error_disk_space_percentage = opt.warning_disk_space_percentage;
-	}
-
-	if (opt.max_disk_space_messages_per_interval > MAX_MESSAGES_PER_INTERVAL) {
-		fprintf(stderr, "Performance Monitor - max_disk_space_messages_per_interval must be not be greater than %d.  Setting to %d.\n",MAX_MESSAGES_PER_INTERVAL, MAX_MESSAGES_PER_INTERVAL );
-		opt.max_disk_space_messages_per_interval = MAX_MESSAGES_PER_INTERVAL;
-	} else if (opt.max_disk_space_messages_per_interval < MIN_MESSAGES_PER_INTERVAL) {
-		fprintf(stderr, "Performance Monitor - max_disk_space_messages_per_interval must be not be less than %d.  Setting to %d.\n",MIN_MESSAGES_PER_INTERVAL, MIN_MESSAGES_PER_INTERVAL );
-		opt.max_disk_space_messages_per_interval = MIN_MESSAGES_PER_INTERVAL;
-	}
-
-	if (opt.disk_space_interval < (60 *MINIMUM_MESSAGE_INTERVAL) ) {
-		fprintf(stderr, "Performance Monitor - disk_space_interval must be not be less than %d minute.  Setting to %d minute.\n",MINIMUM_MESSAGE_INTERVAL, MINIMUM_MESSAGE_INTERVAL );
-		opt.disk_space_interval = (60 *MINIMUM_MESSAGE_INTERVAL);
-	} else if (opt.disk_space_interval > (60 *MAXIMUM_MESSAGE_INTERVAL) ) {
-		fprintf(stderr, "Performance Monitor - disk_space_interval must be not be greater than than %d minutes.  Setting to %d minutes.\n",MAXIMUM_MESSAGE_INTERVAL, MAXIMUM_MESSAGE_INTERVAL );
-		opt.disk_space_interval = (60 *MAXIMUM_MESSAGE_INTERVAL);
-	}
-
-
 
 	if (opt.tail_buffer_max == 0)
 	{
@@ -1629,12 +1489,12 @@ int main(int argc, const char* const argv[])
 		strncpy(work_dir, GPMON_DIR, MAXPATHLEN);
 		work_dir[MAXPATHLEN] = 0;
 
-		if (gpmon_recursive_mkdir(work_dir))
-		{
-			fprintf(stderr, "\ncannot create directory %s/%s", ax.master_data_directory, GPMON_DIR);
-			interuptable_sleep(30); // sleep to prevent loop of forking process and failing
-			gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), "cannot create directory %s/%s", ax.master_data_directory, GPMON_DIR);
-		}
+        if (gpmon_recursive_mkdir(work_dir))
+        {
+            fprintf(stderr, "\ncannot create directory %s/%s", ax.master_data_directory, GPMON_DIR);
+            interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+            gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), "cannot create directory %s/%s", ax.master_data_directory, GPMON_DIR);
+        }
 	}
 
 	gpmmon_main();
@@ -1659,8 +1519,8 @@ void populate_smdw_aliases(host_t* host)
 	{
 		if (!host->addressinfo_tail)
 		{
-			interuptable_sleep(30); // sleep to prevent loop of forking process and failing
-			gpmon_fatalx(FLINE, 0, "smdw addressname structure is inconsistent");
+            		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+            		gpmon_fatalx(FLINE, 0, "smdw addressname structure is inconsistent");
 		}
 
 		// permenant memory for address list -- stored for duration
@@ -1678,9 +1538,7 @@ void populate_smdw_aliases(host_t* host)
 	}
 }
 
-// returnParamIsIpv6 will be set to true for IPv6 addresses
-// the actual IP address string is returned from the function
-char* get_ip_for_host(char* host, bool* returnParamIsIpv6)
+char* get_ip_for_host(char* host)
 {
 	char * ipstr;
 	int			ret;
@@ -1711,13 +1569,11 @@ char* get_ip_for_host(char* host, bool* returnParamIsIpv6)
     {
         struct sockaddr_in* sock = (struct sockaddr_in*)addrs->ai_addr;
 	    inet_ntop(addrs->ai_family, &sock->sin_addr, ipstr, 128);
-		*returnParamIsIpv6 = false;
     }
     else if (addrs->ai_family == AF_INET6)
     {
         struct sockaddr_in6* sock = (struct sockaddr_in6*)addrs->ai_addr;
 	    inet_ntop(addrs->ai_family, &sock->sin6_addr, ipstr, 128);
-		*returnParamIsIpv6 = true;
     }
     else
     {
@@ -1735,7 +1591,7 @@ static void gethostlist()
 	int i = 0;
 
 	/* Connect to database, get segment hosts from gp_segment_configuration */
-	gpdb_get_hostlist(&ax.hosttabsz, &ax.hosttab, ax.pool, &opt);
+	gpdb_get_hostlist(&ax.hosttabsz, &ax.hosttab, ax.pool);
 
 	for (i = 0; i < ax.hosttabsz; ++i)
 	{
@@ -1751,7 +1607,7 @@ static void gethostlist()
 		addressinfo = ax.hosttab[i].addressinfo_head;		
 		while (addressinfo)
 		{
-			addressinfo->ipstr = get_ip_for_host(addressinfo->address, &addressinfo->ipv6);
+			addressinfo->ipstr = get_ip_for_host(addressinfo->address);
 			if (!addressinfo->ipstr)
 			{
 				interuptable_sleep(60); // sleep to prevent loop of forking process and failing
@@ -1769,16 +1625,11 @@ static void gethostlist()
 		addressinfo_holder_t* addressinfo;
 		int counter = 0;
 
-		TR0(("HOST: (hostname %s) (is_master %d) (datadir %s) (host_alias_count %d) (hdm %d) (hdw %d) (hbw %d) (hdc %d) (dia %d)\n",
+		TR1(("HOST: (hostname %s) (is_master %d) (datadir %s) (host_alias_count %d)\n", 
 			ax.hosttab[i].hostname, 
 			ax.hosttab[i].is_master,
 			ax.hosttab[i].data_dir,
-			ax.hosttab[i].address_count,
-			ax.hosttab[i].is_hdm,
-			ax.hosttab[i].is_hdw,
-			ax.hosttab[i].is_hbw,
-			ax.hosttab[i].is_hdc,
-			ax.hosttab[i].is_etl));
+			ax.hosttab[i].address_count));
 
 		addressinfo = ax.hosttab[i].addressinfo_head;		
 		while (addressinfo)
@@ -1790,13 +1641,7 @@ static void gethostlist()
 				gpmon_fatalx(FLINE, 0, "address counter exceeds number of addresses for host %s", ax.hosttab[i].hostname);
 			}
 
-			const char* ipv6on = NULL;
-			if (addressinfo->ipv6)
-				ipv6on = YES_TEXT;
-			else
-				ipv6on = NO_TEXT;
-			
-			TR1(("\tALIAS: (host %s) (ipstr %s) (ipv6 %s)\n", addressinfo->address, addressinfo->ipstr, ipv6on));
+			TR1(("\tALIAS: (host %s) (ipstr %s)\n", addressinfo->address, addressinfo->ipstr));
 			addressinfo = addressinfo->next;
 		}
 	}
@@ -1805,7 +1650,7 @@ static void gethostlist()
 }
 
 /* send a packet thru sock */
-static apr_status_t sendpkt(int sock, const gp_smon_to_mmon_packet_t* pkt)
+static apr_status_t sendpkt(int sock, const gpmon_packet_t* pkt)
 {
 	const char* p = (const char*) pkt;
 	const char* q = p + sizeof(*pkt);
@@ -1826,14 +1671,17 @@ static apr_status_t sendpkt(int sock, const gp_smon_to_mmon_packet_t* pkt)
 	}
 	return 0;
 }
-/* recv data through a sock */
-static apr_status_t recv_data(int sock, char* data, size_t data_size, bool loop_until_all_recv )
+
+/* recv a packet thru sock */
+static apr_status_t recvpkt(int sock, gpmon_packet_t* pkt)
 {
-	char* p = data;
-	char* q = p + data_size;
-	while (p < q) {
+	char* p = (char*) pkt;
+	char* q = p + sizeof(*pkt);
+	while (p < q)
+	{
 		int n = recv(sock, p, q - p, 0);
-		if (n == -1) {
+		if (n == -1)
+		{
 			switch (errno)
 			{
 			case EINTR:
@@ -1843,46 +1691,12 @@ static apr_status_t recv_data(int sock, char* data, size_t data_size, bool loop_
 			return APR_FROM_OS_ERROR(errno);
 		}
 		p += n;
-		if (loop_until_all_recv) { // loop until we get all the data
-			if (p == (char*) &data) {
-				return APR_FROM_OS_ERROR(EINTR);
-			}
-		} else if (n == 0) { // didn't get data this time so return an error
+		if (n == 0)
 			return APR_FROM_OS_ERROR(EINTR);
-		}
 	}
 
-	TR2(("read data from sock %d\n", sock));
-	return 0;
-}
-
-/* recv a packet thru sock */
-static apr_status_t recvpkt(int sock, gp_smon_to_mmon_packet_t* pkt, bool loop_until_all_recv)
-{
-	int e = 0;
-
-	//receive the header
-	if (0 != (e = recv_data(sock, (char *)&pkt->header, sizeof(gp_smon_to_mmon_header_t), loop_until_all_recv))) {
-		return e;
-	}
-
-	if (pkt->header.pkttype == GPMON_PKTTYPE_QEXEC) {
-		// Get the data portion, then get the line
-		if (0 != (e = recv_data(sock, (char *)&pkt->u.qexec_packet.data, sizeof(qexec_packet_data_t), loop_until_all_recv))) {
-			return e;
-		}
-		if (0 != (e = recv_data(sock, qexec_mmon_temp_line, pkt->u.qexec_packet.data.size_of_line, loop_until_all_recv))) {
-			return e;
-		}
-		pkt->u.qexec_packet.line = qexec_mmon_temp_line;
-		TR2(("received qexec line size %d, %s\n", pkt->u.qexec_packet.data.size_of_line, pkt->u.qexec_packet.line));
-	} else {
-		//receive the union packet
-		if (0 != (e = recv_data(sock, (char *)&pkt->u, get_size_by_pkttype_smon_to_mmon(pkt->header.pkttype), loop_until_all_recv))) {
-			return e;
-		}
-	}
-	return 0;
+	TR2(("read packet from sock %d\n", sock));
+	return gpmon_ntohpkt(pkt);
 }
 
 

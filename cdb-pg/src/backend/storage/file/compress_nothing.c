@@ -5,27 +5,16 @@
 #include "c.h"
 #include <unistd.h>
 #include <storage/bfz.h>
-#include <utils/memutils.h>
-#include <storage/fd.h>
 
 /*
  * This file implements bfz compression algorithm "nothing".
  * We don't compress at all.
  */
 
-/*
- * bfz_nothing_close_ex
- *  Close a file and freeing up descriptor, buffers etc.
- *
- *  This is also called from an xact end callback, hence it should
- *  not contain any elog(ERROR) calls.
- */
 static void
 bfz_nothing_close_ex(bfz_t * thiz)
 {
-	gp_retry_close(thiz->fd);
-	thiz->fd = -1;
-	pfree(thiz->freeable_stuff);
+	free(thiz->freeable_stuff);
 	thiz->freeable_stuff = NULL;
 }
 
@@ -69,8 +58,7 @@ bfz_nothing_write_ex(bfz_t * bfz, const char *buffer, int size)
 void
 bfz_nothing_init(bfz_t * thiz)
 {
-	/* Allocate this in TopMemoryContext since it needs to be alive during cleanup */
-	struct bfz_freeable_stuff *fs = MemoryContextAlloc(TopMemoryContext, sizeof *fs);
+	struct bfz_freeable_stuff *fs = malloc(sizeof *fs);
 
 	if (!fs)
 		ereport(ERROR,
@@ -82,4 +70,38 @@ bfz_nothing_init(bfz_t * thiz)
 	fs->read_ex = bfz_nothing_read_ex;
 	fs->write_ex = bfz_nothing_write_ex;
 	fs->close_ex = bfz_nothing_close_ex;
+}
+
+static void *
+bfz_threaded_nothing_compress(void *arg)
+{
+	bfz_t	   *thiz = (bfz_t *) arg;
+	struct bfz_threaded_freeable_stuff *fs = (void *) thiz->freeable_stuff;
+	int			i;
+	char		buffer[BFZ_BUFFER_SIZE];
+
+	while ((i = pipe_read(&fs->pipe, buffer, sizeof buffer)) != 0)
+		bfz_nothing_write_ex(thiz, buffer, i);
+	return NULL;
+}
+
+static void *
+bfz_threaded_nothing_uncompress(void *arg)
+{
+	bfz_t	   *thiz = (bfz_t *) arg;
+	struct bfz_threaded_freeable_stuff *fs = (void *) thiz->freeable_stuff;
+	int			i;
+	char		buffer[BFZ_BUFFER_SIZE];
+
+	while ((i = readAndRetry(thiz->fd, buffer, sizeof buffer)) > 0)
+		pipe_write(&fs->pipe, buffer, i);
+	pipe_done_writing(&fs->pipe);
+
+	return NULL;
+}
+
+void
+bfz_threaded_nothing_init(bfz_t * thiz)
+{
+	bfz_threaded_init(thiz, bfz_threaded_nothing_compress, bfz_threaded_nothing_uncompress);
 }

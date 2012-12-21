@@ -20,13 +20,7 @@ typedef struct AnyTableData *AnyTable;
 
 #define PG_GETARG_ANYTABLE(n) (DatumGetAnyTable(PG_GETARG_DATUM(n)))
 
-#define TF_SET_USERDATA(userdata) tf_set_userdata_internal(fcinfo, userdata)
-#define TF_GET_USERDATA() tf_get_userdata_internal(fcinfo)
-
 extern TupleDesc AnyTable_GetTupleDesc(AnyTable);
 extern HeapTuple AnyTable_GetNextTuple(AnyTable);
-
-extern void tf_set_userdata_internal(FunctionCallInfo fcinfo, bytea *userdata);
-extern bytea *tf_get_userdata_internal(FunctionCallInfo fcinfo);
 
 #endif

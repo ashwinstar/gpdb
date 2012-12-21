@@ -130,7 +130,7 @@ static void doNegateFloat(Value *v);
 static List *mergeTableFuncParameters(List *func_args, List *columns);
 static TypeName *TableFuncTypeName(List *columns);
 static void setWindowExclude(WindowFrame *wframe, WindowExclusion exclude);
-static Node *makeIsNotDistinctFromNode(Node *expr, int position);
+
 
 %}
 
@@ -282,12 +282,12 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 				OptTableElementList OptExtTableElementList TableElementList ExtTableElementList
 				OptInherit definition
 				OptWith opt_distinct opt_definition func_args func_args_list
-				func_args_with_defaults func_args_with_defaults_list
 				func_as createfunc_opt_list alterfunc_opt_list
 				aggr_args aggr_args_list old_aggr_definition old_aggr_list
 				oper_argtypes RuleActionList RuleActionMulti
 				cdb_string_list
 				opt_column_list columnList opt_name_list exttab_auth_list keyvalue_list
+				opt_inherited_column_list
 				sort_clause opt_sort_clause sortby_list index_params
 				name_list from_clause from_list opt_array_bounds
 				qualified_name_list any_name any_name_list
@@ -309,8 +309,8 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 %type <range>	OptTempTableName OptErrorTableName
 %type <into>	into_clause create_as_target
 
-%type <defelt>	createfunc_opt_item common_func_opt_item function_properties
-%type <fun_param> func_arg func_arg_with_default table_func_column
+%type <defelt>	createfunc_opt_item common_func_opt_item
+%type <fun_param> func_arg table_func_column
 %type <fun_param_mode> arg_class
 %type <typnam>	func_return func_type
 
@@ -354,11 +354,9 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 %type <node>	columnDef ExtcolumnDef
 %type <node>	cdb_string
 %type <defelt>	def_elem old_aggr_elem keyvalue_pair
-%type <node>	def_arg columnElem where_clause where_or_current_clause
+%type <node>	def_arg columnElem where_clause
 				a_expr b_expr c_expr simple_func func_expr AexprConst indirection_el
 				columnref in_expr having_clause func_table array_expr
-%type <list>	func_arg_list
-%type <node>	func_arg_expr
 %type <list>	window_definition_list window_clause
 %type <boolean>	window_frame_units
 %type <ival>	window_frame_exclusion
@@ -370,19 +368,10 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 %type <list>	window_partition_clause opt_window_partition_clause
 				opt_window_order_clause
 %type <str>		opt_window_name window_name
-%type <ival>	opt_null_treatment
-
-%type <list>	sequence_clause sequence_or_window_clause
-%type <str>		sequence_name
-%type <node>	sequence_clause_spec sequence_definition sequence_generator
-%type <list>	sequence_partition_clause opt_sequence_partition_clause
-				sequence_order_clause
 
 %type <list>	row type_list array_expr_list
-%type <node>	case_expr case_arg when_clause when_operand case_default
+%type <node>	case_expr case_arg when_clause case_default
 %type <list>	when_clause_list
-%type <node>	decode_expr search_result decode_default
-%type <list>	search_result_list
 %type <ival>	sub_type
 %type <list>	OptCreateAs CreateAsList
 %type <node>	CreateAsElement ctext_expr
@@ -449,9 +438,9 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 %type <list>	opt_check_option
 %type <node>	OptTabPartitionsNumber OptTabSubPartitionsNumber 
 %type <node>	OptTabPartitionSpec OptTabSubPartitionSpec TabSubPartitionTemplate      /* PartitionSpec */
-%type <list>	TabPartitionElemList TabSubPartitionElemList TabSubPartitionTemplateElemList/* list of PartitionElem */
+%type <list>	TabPartitionElemList TabSubPartitionElemList /* list of PartitionElem */
 
-%type <node> 	TabPartitionElem TabSubPartitionElem  TabSubPartitionTemplateElem/* PartitionElem */
+%type <node> 	TabPartitionElem TabSubPartitionElem  /* PartitionElem */
 
 %type <node> 	TabPartitionBoundarySpec OptTabPartitionBoundarySpec  /* PartitionBoundSpec */
 %type <list> 	TabPartitionBoundarySpecValList
@@ -495,12 +484,12 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 	CACHE CALLED CASCADE CASCADED CASE CAST CHAIN CHAR_P
 	CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE
 	CLUSTER COALESCE COLLATE COLUMN COMMENT COMMIT
-	COMMITTED CONCURRENTLY CONNECTION CONSTRAINT CONSTRAINTS CONTAINS CONTENT_P CONTINUE_P CONVERSION_P CONVERT COPY COST
+	COMMITTED CONCURRENTLY CONNECTION CONSTRAINT CONSTRAINTS CONTENT_P CONTINUE_P CONVERSION_P CONVERT COPY COST
 	CREATE CREATEDB CREATEEXTTABLE
 	CREATEROLE CREATEUSER CROSS CSV CUBE CURRENT CURRENT_CATALOG CURRENT_DATE CURRENT_ROLE CURRENT_SCHEMA
 	CURRENT_TIME CURRENT_TIMESTAMP CURRENT_USER CURSOR CYCLE
 
-	DATA_P DATABASE DAY_P DEALLOCATE DEC DECIMAL_P DECLARE DECODE DEFAULT DEFAULTS
+	DATA_P DATABASE DAY_P DEALLOCATE DEC DECIMAL_P DECLARE DEFAULT DEFAULTS
 	DEFERRABLE DEFERRED DEFINER DELETE_P DELIMITER DELIMITERS DENY
 	DESC DISABLE_P DISTINCT DISTRIBUTED DO DOMAIN_P DOUBLE_P DROP
 
@@ -529,8 +518,8 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 	LIKE LIMIT LIST LISTEN LOAD LOCAL LOCALTIME LOCALTIMESTAMP LOCATION
 	LOCK_P LOG_P LOGIN_P
 
-	MAPPING MASTER MATCH MAXVALUE MEDIAN MERGE MINUTE_P MINVALUE MIRROR
-	MISSING MODE MODIFIES MODIFY MONTH_P MOVE
+	MAPPING MASTER MATCH MAXVALUE MERGE MINUTE_P MINVALUE MIRROR MISSING MODE MODIFY 
+	MONTH_P MOVE
 
 	NAME_P NAMES NATIONAL NATURAL NCHAR NEW NEWLINE NEXT NO NOCREATEDB NOCREATEEXTTABLE
 	NOCREATEROLE NOCREATEUSER NOINHERIT NOLOGIN_P NONE NOOVERCOMMIT NOSUPERUSER
@@ -539,22 +528,22 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 	OBJECT_P OF OFF OFFSET OIDS OLD ON ONLY OPERATOR OPTION OPTIONS OR
 	ORDER ORDERED OTHERS OUT_P OUTER_P OVER OVERCOMMIT OVERLAPS OVERLAY OWNED OWNER
 
-	PARTIAL PARTITION PARTITIONS PASSWORD PERCENT PERCENTILE_CONT PERCENTILE_DISC
-	PLACING POSITION PRECEDING PRECISION PRESERVE PREPARE PREPARED PRIMARY
+	PARTIAL PARTITION PARTITIONS PASSWORD PERCENT PLACING POSITION
+	PRECEDING PRECISION PRESERVE PREPARE PREPARED PRIMARY
 	PRIOR PRIVILEGES PROCEDURAL PROCEDURE PROTOCOL
 
 	QUEUE QUOTE
 
-	RANDOMLY RANGE READ READABLE READS REAL REASSIGN RECHECK RECURSIVE 
+	RANDOMLY RANGE READ READABLE REAL REASSIGN RECHECK RECURSIVE 
     REFERENCES REINDEX REJECT_P RELATIVE_P 
-	RELEASE RENAME REPEATABLE REPLACE RESET RESOURCE RESPECT RESTART RESTRICT
+	RELEASE RENAME REPEATABLE REPLACE RESET RESOURCE RESTART RESTRICT 
 	RETURNING RETURNS REVOKE RIGHT
 	ROLE ROLLBACK ROLLUP ROW ROWS RULE
 
 	SAVEPOINT SCATTER SCHEMA SCROLL SEARCH SECOND_P 
     SECURITY SEGMENT SELECT SEQUENCE
 	SERIALIZABLE SERVER SESSION SESSION_USER SET SETOF SETS SHARE
-	SHOW SIMILAR SIMPLE SMALLINT SOME SPLIT SQL STABLE START STATEMENT
+	SHOW SIMILAR SIMPLE SMALLINT SOME SPLIT STABLE START STATEMENT
 	STATISTICS STDIN STDOUT STORAGE STRICT_P 
 	SUBPARTITION SUBPARTITIONS
 	SUBSTRING SUPERUSER_P SYMMETRIC
@@ -567,10 +556,10 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 	UNBOUNDED UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN UNLISTEN UNTIL
 	UPDATE USER USING
 
-	VACUUM VALID VALIDATION VALIDATOR VALUE_P VALUES VARCHAR VARIADIC VARYING
+	VACUUM VALID VALIDATION VALIDATOR VALUE_P VALUES VARCHAR VARYING
 	VERBOSE VERSION_P VIEW VOLATILE
 
-	WEB WHEN WHERE WINDOW WITH WITHIN WITHOUT WORK WRAPPER WRITABLE WRITE
+	WEB WHEN WHERE WINDOW WITH WITHOUT WORK WRAPPER WRITABLE WRITE
 
 	YEAR_P
 
@@ -585,7 +574,6 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 /* Special token types, not actually keywords - see the "lex" file */
 %token <str>	IDENT FCONST SCONST BCONST XCONST Op
 %token <ival>	ICONST PARAM
-%token			EQUAL_ARROW
 
 /* precedence: lowest to highest */
 %nonassoc	SET				/* see relation_expr_opt_alias */
@@ -652,7 +640,6 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 			%nonassoc CONCURRENTLY
 			%nonassoc CONNECTION
 			%nonassoc CONSTRAINTS
-			%nonassoc CONTAINS
 			%nonassoc CONTENT_P
 			%nonassoc CONTINUE_P
 			%nonassoc CONVERSION_P
@@ -753,7 +740,6 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 			%nonassoc MIRROR
 			%nonassoc MISSING
 			%nonassoc MODE
-			%nonassoc MODIFIES
 			%nonassoc MODIFY
 			%nonassoc MONTH_P
 			%nonassoc MOVE
@@ -801,7 +787,6 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 			%nonassoc RANDOMLY
 			%nonassoc READ
 			%nonassoc READABLE
-			%nonassoc READS
 			%nonassoc REASSIGN
 			%nonassoc RECHECK
 			%nonassoc RECURSIVE
@@ -836,7 +821,6 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 			%nonassoc SHOW
 			%nonassoc SIMPLE
 			%nonassoc SPLIT
-			%nonassoc SQL
 			%nonassoc STABLE
 			%nonassoc START
 			%nonassoc STATEMENT
@@ -877,7 +861,6 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 			%nonassoc VOLATILE
 			%nonassoc WEB
 			%nonassoc WITH
-			%nonassoc WITHIN
 			%nonassoc WITHOUT
 			%nonassoc WORK
 			%nonassoc WRAPPER
@@ -905,7 +888,6 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 			%nonassoc INTEGER
 			%nonassoc INTERVAL
 			%nonassoc LEAST
-			%nonassoc MEDIAN
 			%nonassoc NATIONAL
 			%nonassoc NCHAR
 			%nonassoc NONE
@@ -913,8 +895,6 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 			%nonassoc NUMERIC
 			%nonassoc OUT_P
 			%nonassoc OVERLAY
-			%nonassoc PERCENTILE_CONT
-			%nonassoc PERCENTILE_DISC
 			%nonassoc POSITION
 			%nonassoc PRECISION
 			%nonassoc REAL
@@ -1495,7 +1475,6 @@ OptAlterRoleList:
 OptAlterRoleElem:
 			OptRoleElem								{ $$ = $1; }
 			| DROP DENY FOR deny_point				{ $$ = makeDefElem("drop_deny", $4); }
-		;
 
 
 /*****************************************************************************
@@ -2090,13 +2069,10 @@ alter_table_cmd:
 			/* ALTER TABLE <relation> ALTER [COLUMN] <colname> {SET DEFAULT <expr>|DROP DEFAULT} */
 			| ALTER opt_column ColId alter_column_default
 				{
-					ColumnDef *colDef = makeNode(ColumnDef);
-					colDef->raw_default = $4;
-					
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_ColumnDefault;
 					n->name = $3;
-					n->def = (Node *) colDef;
+					n->def = $4;
 					$$ = (Node *)n;
 				}
 			/* ALTER TABLE <relation> ALTER [COLUMN] <colname> DROP NOT NULL */
@@ -2239,47 +2215,21 @@ alter_table_cmd:
 					n->subtype = AT_DisableTrigUser;
 					$$ = (Node *)n;
 				}
-			/* ALTER TABLE <name> INHERIT <parent> */
-			| INHERIT qualified_name 
+			/* ALTER TABLE <name> INHERIT <parent> [( column_list )] */
+			| INHERIT qualified_name opt_inherited_column_list
 				{
-					/* 
-				 	 * Deprecated feature: MPP-16062
-					 * Allowed only when gp_enable_inheritance is true 
-					 */
-					if (!gp_enable_inheritance)
-					{
-						ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("INHERITANCE support deprecated")));
-					}
-					else
-					{
-						AlterTableCmd *n = makeNode(AlterTableCmd);
-						n->subtype = AT_AddInherit;
-						n->def = (Node *)list_make1($2);
-						$$ = (Node *)n;
-					}
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_AddInherit;
+					n->def = (Node *)list_make2($2, $3);
+					$$ = (Node *)n;
 				}
 			/* ALTER TABLE <name> NO INHERIT <parent> */
 			| NO INHERIT qualified_name
 				{
-					/* 
-				 	 * Deprecated feature: MPP-16062
-					 * Allowed only when gp_enable_inheritance is true 
-					 */
-					if (!gp_enable_inheritance)
-					{
-						ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("INHERITANCE support deprecated")));
-					}
-					else
-					{
-						AlterTableCmd *n = makeNode(AlterTableCmd);
-						n->subtype = AT_DropInherit;
-						n->def = (Node *) $3;
-						$$ = (Node *)n;
-					}
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_DropInherit;
+					n->def = (Node *) $3;
+					$$ = (Node *)n;
 				}
 			/* ALTER TABLE <name> SET [WITH] [DISTRIBUTED BY] */
 			/* distro only */
@@ -2871,7 +2821,7 @@ alter_table_partition_cmd:
 					$$ = (Node *)n;
 				}
 			| SET SUBPARTITION TEMPLATE
-            '(' TabSubPartitionTemplateElemList ')' 
+            '(' TabSubPartitionElemList ')' 
 				{
 					AlterPartitionId  *pid   = makeNode(AlterPartitionId);
 					AlterPartitionCmd *pc    = makeNode(AlterPartitionCmd);
@@ -3717,6 +3667,21 @@ opt_column_list:
 			| /*EMPTY*/								{ $$ = NIL; }
 		;
 		
+opt_inherited_column_list:
+			'('
+				{
+					/* Allowed only when
+					 * gp_enable_alter_table_inherit_cols is true 
+					 */
+					if (!gp_enable_alter_table_inherit_cols)
+					{
+						yyerror("syntax error");
+					}
+				}
+				columnList ')'						{ $$ = $3; }
+			| /*EMPTY*/								{ $$ = NIL; }
+		;
+
 columnList:
 			columnElem								{ $$ = list_make1($1); }
 			| columnList ',' columnElem				{ $$ = lappend($1, $3); }
@@ -3783,23 +3748,7 @@ key_action:
 			| SET DEFAULT				{ $$ = FKCONSTR_ACTION_SETDEFAULT; }
 		;
 
-OptInherit: INHERITS '(' qualified_name_list ')'	
-			{
-				/* 
-				 * Deprecated feature: MPP-16062
-				 * Allowed only when gp_enable_inheritance is true 
-				 */
-				if (!gp_enable_inheritance)
-				{
-					ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						errmsg("INHERITANCE support deprecated")));
-				}
-				else
-				{ 
-					$$ = $3; 
-				}
-			}
+OptInherit: INHERITS '(' qualified_name_list ')'	{ $$ = $3; }
 			| /*EMPTY*/								{ $$ = NIL; }
 		;
 
@@ -3951,11 +3900,6 @@ TabSubPartitionElemList:
 			| TabSubPartitionElemList ',' 
               TabSubPartitionElem					{ $$ = lappend($1, $3); }
 		;
-
-TabSubPartitionTemplateElemList:
-            TabSubPartitionTemplateElem						{ $$ = list_make1($1); }
-			| TabSubPartitionTemplateElemList ',' 
-              TabSubPartitionTemplateElem					{ $$ = lappend($1, $3); }
 
 tab_part_val_no_paran: AexprConst { $$ = $1; }
 			| CAST '(' tab_part_val AS Typename ')'
@@ -4186,6 +4130,10 @@ TabPartitionElem:
                         n->AddPartDesc = NULL;
                         $$ = (Node *)n;
 				}
+			| column_reference_storage_directive
+				{
+					$$ = (Node *)$1;
+				}
             ;
 
 TabSubPartitionElem: 
@@ -4238,18 +4186,11 @@ TabSubPartitionElem:
                         n->AddPartDesc = NULL;
                         $$ = (Node *)n;
 				}
-            ;
-
-TabSubPartitionTemplateElem: TabSubPartitionElem 
-				{
-					$$ = (Node *)$1;
-				}
 			| column_reference_storage_directive
 				{
 					$$ = (Node *)$1;
 				}
             ;
-		
 
 TabPartitionNameDecl: PARTITION PartitionColId
 				{
@@ -4361,7 +4302,7 @@ OptTabPartitionBy:
 
 TabSubPartitionTemplate:
 			SUBPARTITION TEMPLATE 
-            '(' TabSubPartitionTemplateElemList ')' 
+            '(' TabSubPartitionElemList ')' 
 				{
 					PartitionSpec *n = makeNode(PartitionSpec); 
 					n->partElem  = $4;
@@ -5826,13 +5767,13 @@ DefineStmt:
 					n->comptypeOid = 0;
 					$$ = (Node *)n;
 				}
-			| CREATE opt_trusted PROTOCOL name definition
+			| CREATE opt_trusted PROTOCOL any_name definition
 				{
 					DefineStmt *n = makeNode(DefineStmt);
 					n->kind = OBJECT_EXTPROTOCOL;
 					n->oldstyle = false;
 					n->trusted = $2;
-					n->defnames = list_make1(makeString($4));
+					n->defnames = $4;
 					n->args = NIL;
 					n->newOid = 0;
 					n->definition = $5;
@@ -6799,7 +6740,7 @@ opt_class:	any_name								{ $$ = $1; }
  *****************************************************************************/
 
 CreateFunctionStmt:
-			CREATE opt_or_replace FUNCTION func_name func_args_with_defaults
+			CREATE opt_or_replace FUNCTION func_name func_args
 			RETURNS func_return createfunc_opt_list opt_definition
 				{
 					CreateFunctionStmt *n = makeNode(CreateFunctionStmt);
@@ -6813,7 +6754,7 @@ CreateFunctionStmt:
 					n->shelltypeOid = 0;
 					$$ = (Node *)n;
 				}
-			| CREATE opt_or_replace FUNCTION func_name func_args_with_defaults
+			| CREATE opt_or_replace FUNCTION func_name func_args
 			  RETURNS TABLE '(' table_func_column_list ')' 
               createfunc_opt_list opt_definition
 				{
@@ -6829,7 +6770,7 @@ CreateFunctionStmt:
 					n->shelltypeOid = 0;
 					$$ = (Node *)n;
 				}
-			| CREATE opt_or_replace FUNCTION func_name func_args_with_defaults
+			| CREATE opt_or_replace FUNCTION func_name func_args
 			  createfunc_opt_list opt_definition
 				{
 					CreateFunctionStmt *n = makeNode(CreateFunctionStmt);
@@ -6860,22 +6801,6 @@ func_args_list:
 		;
 
 /*
- * func_args_with_defaults is separate because we only want to accept
- * defaults in CREATE FUNCTION, not in ALTER etc.
- */
-func_args_with_defaults:
-		'(' func_args_with_defaults_list ')'	{ $$ = $2; }
-		| '(' ')'								{ $$ = NIL; }
-		;
-		
-func_args_with_defaults_list:
-		func_arg_with_default				{ $$ = list_make1( $1); }
-		| func_args_with_defaults_list ',' func_arg_with_default    
-											{ $$ = lappend($1, $3); }
-		;
-
-
-/*
  * The style with arg_class first is SQL99 standard, but Oracle puts
  * param_name first; accept both since it's likely people will try both
  * anyway.  Don't bother trying to save productions by letting arg_class
@@ -6892,7 +6817,6 @@ func_arg:
 					n->name = $2;
 					n->argType = $3;
 					n->mode = $1;
-					n->defexpr = NULL;
 					$$ = n;
 				}
 			| param_name arg_class func_type
@@ -6901,7 +6825,6 @@ func_arg:
 					n->name = $1;
 					n->argType = $3;
 					n->mode = $2;
-					n->defexpr = NULL;
 					$$ = n;
 				}
 			| param_name func_type
@@ -6910,7 +6833,6 @@ func_arg:
 					n->name = $1;
 					n->argType = $2;
 					n->mode = FUNC_PARAM_IN;
-					n->defexpr = NULL;
 					$$ = n;
 				}
 			| arg_class func_type
@@ -6919,7 +6841,6 @@ func_arg:
 					n->name = NULL;
 					n->argType = $2;
 					n->mode = $1;
-					n->defexpr = NULL;
 					$$ = n;
 				}
 			| func_type
@@ -6928,35 +6849,15 @@ func_arg:
 					n->name = NULL;
 					n->argType = $1;
 					n->mode = FUNC_PARAM_IN;
-					n->defexpr = NULL;
 					$$ = n;
 				}
 		;
-		
-func_arg_with_default:
-		func_arg					
-				{ 
-					$$ = $1;
-				}
-		| func_arg DEFAULT a_expr
-				{
-					$$ = $1;
-					$$->defexpr = $3;
-				}
-		| func_arg '=' a_expr
-				{
-					$$ = $1;	
-					$$->defexpr = $3;
-				}
-		;
- 
 
 /* INOUT is SQL99 standard, IN OUT is for Oracle compatibility */
 arg_class:	IN_P									{ $$ = FUNC_PARAM_IN; }
 			| OUT_P									{ $$ = FUNC_PARAM_OUT; }
 			| INOUT									{ $$ = FUNC_PARAM_INOUT; }
 			| IN_P OUT_P							{ $$ = FUNC_PARAM_INOUT; }
-			| VARIADIC								{ $$ = FUNC_PARAM_VARIADIC; }
 		;
 
 /*
@@ -7053,25 +6954,6 @@ common_func_opt_item:
 				}
 		;
 
-function_properties:
-			NO SQL 
-				{
-					$$ = makeDefElem("prodataaccess", (Node *)makeString("none"));
-				}
-			| CONTAINS SQL 
-				{
-					$$ = makeDefElem("prodataaccess", (Node *)makeString("contains"));
-				}
-			| READS SQL DATA_P 
-				{
-					$$ = makeDefElem("prodataaccess", (Node *)makeString("reads"));
-				}
-			| MODIFIES SQL DATA_P
-				{
-					$$ = makeDefElem("prodataaccess", (Node *)makeString("modifies"));
-				}
-		;
-
 createfunc_opt_item:
 			AS func_as
 				{
@@ -7082,10 +6964,6 @@ createfunc_opt_item:
 					$$ = makeDefElem("language", (Node *)makeString($2));
 				}
 			| common_func_opt_item
-				{
-					$$ = $1;
-				}
-			| function_properties
 				{
 					$$ = $1;
 				}
@@ -7109,7 +6987,6 @@ table_func_column:	param_name func_type
 					n->name = $1;
 					n->argType = $2;
 					n->mode = FUNC_PARAM_TABLE;
-					n->defexpr = NULL;
 					$$ = n;
 				}
 		;
@@ -7465,15 +7342,6 @@ RenameStmt: ALTER AGGREGATE func_name aggr_args RENAME TO name
 					n->newname = $6;
 					$$ = (Node *)n;
 				}
-			| ALTER EXTERNAL TABLE relation_expr RENAME TO name
-				{
-					RenameStmt *n = makeNode(RenameStmt);
-					n->renameType = OBJECT_TABLE;
-					n->relation = $4;
-					n->subname = NULL;
-					n->newname = $7;
-					$$ = (Node *)n;
-				}
 			| ALTER INDEX relation_expr RENAME TO name
 				{
 					RenameStmt *n = makeNode(RenameStmt);
@@ -7490,15 +7358,6 @@ RenameStmt: ALTER AGGREGATE func_name aggr_args RENAME TO name
 					n->relation = $3;
 					n->subname = $6;
 					n->newname = $8;
-					$$ = (Node *)n;
-				}
-			| ALTER EXTERNAL TABLE relation_expr RENAME opt_column name TO name
-				{
-					RenameStmt *n = makeNode(RenameStmt);
-					n->renameType = OBJECT_COLUMN;
-					n->relation = $4;
-					n->subname = $7;
-					n->newname = $9;
 					$$ = (Node *)n;
 				}
 			| ALTER TRIGGER name ON relation_expr RENAME TO name
@@ -7596,14 +7455,6 @@ AlterObjectSchemaStmt:
 					n->objectType = OBJECT_TABLE;
 					n->relation = $3;
 					n->newschema = $6;
-					$$ = (Node *)n;
-				}
-			| ALTER EXTERNAL TABLE relation_expr SET SCHEMA name
-				{
-					AlterObjectSchemaStmt *n = makeNode(AlterObjectSchemaStmt);
-					n->objectType = OBJECT_TABLE;
-					n->relation = $4;
-					n->newschema = $7;
 					$$ = (Node *)n;
 				}
 			| ALTER TYPE_P SimpleTypename SET SCHEMA name
@@ -7730,11 +7581,11 @@ AlterOwnerStmt: ALTER AGGREGATE func_name aggr_args OWNER TO RoleId
 					n->newowner = $6;
 					$$ = (Node *)n;
 				}
-			| ALTER PROTOCOL name OWNER TO RoleId
+			| ALTER PROTOCOL any_name OWNER TO RoleId
 				{
 					AlterOwnerStmt *n = makeNode(AlterOwnerStmt);
 					n->objectType = OBJECT_EXTPROTOCOL;
-					n->object = list_make1(makeString($3));
+					n->object = $3;
 					n->newowner = $6;
 					$$ = (Node *)n;
 				}
@@ -8700,7 +8551,7 @@ returning_clause:
  *****************************************************************************/
 
 DeleteStmt: DELETE_P FROM relation_expr_opt_alias
-			using_clause where_or_current_clause returning_clause
+			using_clause where_clause returning_clause
 				{
 					DeleteStmt *n = makeNode(DeleteStmt);
 					n->relation = $3;
@@ -8764,7 +8615,7 @@ opt_nowait:	NOWAIT							{ $$ = TRUE; }
 UpdateStmt: UPDATE relation_expr_opt_alias
 			SET set_clause_list
 			from_clause
-			where_or_current_clause
+			where_clause
 			returning_clause
 				{
 					UpdateStmt *n = makeNode(UpdateStmt);
@@ -9015,7 +8866,7 @@ select_clause:
 simple_select:
 			SELECT opt_distinct target_list
 			into_clause from_clause where_clause
-			group_clause having_clause sequence_or_window_clause
+			group_clause having_clause window_clause
 				{
 					SelectStmt *n = makeNode(SelectStmt);
 					n->distinctClause = $2;
@@ -9029,28 +8880,6 @@ simple_select:
 					$$ = (Node *)n;
 				}
 			| values_clause							{ $$ = $1; }
-			| TABLE qualified_name
-				{
-					/* same as SELECT * FROM qualified_name */
-					ColumnRef *cr = makeNode(ColumnRef);
-					ResTarget *rt = makeNode(ResTarget);
-					SelectStmt *n = makeNode(SelectStmt);
-
-					cr->fields = list_make1(makeString("*"));
-					cr->location = -1;
-
-					rt->name = NULL;
-					rt->indirection = NIL;
-					rt->val = (Node *)cr;
-					rt->location = -1;
-
-					$2->inhOpt = INH_DEFAULT;
-					$2->alias = NULL;
-
-					n->targetList = list_make1(rt);
-					n->fromClause = list_make1($2);
-					$$ = (Node *)n;
-				}
 			| select_clause UNION opt_all select_clause
 				{
 					$$ = makeSetOp(SETOP_UNION, $3, $1, $4);
@@ -9354,6 +9183,7 @@ having_clause:
 
 window_clause:
 			WINDOW window_definition_list			{ $$ = $2; }
+			| /*EMPTY*/								{ $$ = NIL; }
 		;
 
 window_definition_list: 
@@ -9511,92 +9341,6 @@ window_frame_exclusion: EXCLUDE CURRENT ROW { $$ = WINDOW_EXCLUSION_CUR_ROW; }
 			| EXCLUDE NO OTHERS { $$ = WINDOW_EXCLUSION_NO_OTHERS; }
 			| /*EMPTY*/ { $$ = WINDOW_EXCLUSION_NULL; }
 		;
-
-
-/*
- * The SEQUENCE clause is a non-standard feature.  The syntax looks like
- *
- * SEQUENCE <sequence name> AS (
- *    [PARTITION BY <cluster key>]
- *    ORDER BY <order key>
- *    WITH <sequence key>
- *    EVERY <interval width> 
- *    BETWEEN <low bound> AND <high bound>
- *    )
- * 
- * It is a subclause of SELECT that appears after grouping.  It is mutually, 
- * exclusive with the windowClause.  See simple_select for details.
- */
-
-sequence_clause:
-		SEQUENCE sequence_name AS '(' sequence_clause_spec ')'
-			{
-				SequenceSpec *ss = (SequenceSpec*)$5;
-				ss->seqname = $2;
-				ss->location = @2;
-				$$ = list_make1(ss);
-			}
-		;
-
-sequence_name: ColId				{ $$ = $1; }
-		;
-
-sequence_or_window_clause:
-		sequence_clause				{ $$ = $1; }
-		| window_clause				{ $$ = $1; }
-		| /*EMPTY*/					{ $$ = NIL; }
-		;
-
-sequence_clause_spec:
-		opt_sequence_partition_clause sequence_order_clause sequence_definition
-			{
-				SequenceSpec *ss = makeNode(SequenceSpec);
-				ss->seqname = NULL;
-				ss->partition = $1;
-				ss->order = $2;
-				ss->seqdef = (SequenceDefn *)$3;
-				ss->location = -1;
-				$$ = (Node *)ss;
-			}
-		;
-
-opt_sequence_partition_clause: 
-		sequence_partition_clause	{ $$ = $1; }
-		| /*EMPTY*/					{ $$ = NIL; }
-		;
-
-sequence_partition_clause: 
-		PARTITION BY sortby_list	{ $$ = (List *)$3; }
-		;
-
-sequence_order_clause: sort_clause	{ $$ = $1; }
-		;
-
-sequence_definition:
-		WITH attr_name sequence_generator
-			{
-				SequenceDefn *sd = (SequenceDefn*)$3;
-				sd->keyname = $2;
-				$$ = (Node *)sd;
-			}
-		;
-
-sequence_generator:
-		EVERY b_expr BETWEEN b_expr AND b_expr
-			{
-				SequenceDefn *sd = makeNode(SequenceDefn);
-				sd->keyname = NULL;
-				sd->span = (Node *)$2;
-				sd->seqlow = (Node *)$4;
-				sd->seqlim = (Node *)$6;
-				$$ = (Node *)sd;
-			}
-		;
-
-
-/*
- * Done with SEQUENCE clause grammar.
- */
 
 for_locking_clause:
 			for_locking_items						{ $$ = $1; }
@@ -9982,17 +9726,6 @@ func_table: func_expr								{ $$ = $1; }
 where_clause:
 			WHERE a_expr							{ $$ = $2; }
 			| /*EMPTY*/								{ $$ = NULL; }
-		;
-
-/* variant for UPDATE and DELETE */
-where_or_current_clause: 
-			where_clause							{ $$ = $1; }
-			| WHERE CURRENT OF name
-				{
-					CurrentOfExpr *n = makeNode(CurrentOfExpr);
-					n->cursor_name = $4;
-					$$ = (Node *) n;
-				}
 		;
 
 
@@ -10614,7 +10347,6 @@ a_expr:		c_expr									{ $$ = $1; }
                     n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
-					n->func_variadic = FALSE;
 					n->over = NULL;
 					n->location = @2;
 					$$ = (Node *) n;
@@ -10675,7 +10407,6 @@ a_expr:		c_expr									{ $$ = $1; }
                     n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
-					n->func_variadic = FALSE;
 					n->over = NULL;
 					n->location = @4;
 					$$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "~~", $1, (Node *) n, @2);
@@ -10690,7 +10421,6 @@ a_expr:		c_expr									{ $$ = $1; }
                     n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
-					n->func_variadic = FALSE;
 					n->over = NULL;
 					n->location = @5;
 					$$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "!~~", $1, (Node *) n, @2);
@@ -10705,7 +10435,6 @@ a_expr:		c_expr									{ $$ = $1; }
                     n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
-					n->func_variadic = FALSE;
 					n->over = NULL;
 					n->location = @4;
 					$$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "~~*", $1, (Node *) n, @2);
@@ -10720,7 +10449,6 @@ a_expr:		c_expr									{ $$ = $1; }
                     n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
-					n->func_variadic = FALSE;
 					n->over = NULL;
 					n->location = @5;
 					$$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "!~~*", $1, (Node *) n, @2);
@@ -10736,7 +10464,6 @@ a_expr:		c_expr									{ $$ = $1; }
                     n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
-					n->func_variadic = FALSE;
 					n->over = NULL;
 					n->location = @2;
 					$$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "~", $1, (Node *) n, @2);
@@ -10749,7 +10476,6 @@ a_expr:		c_expr									{ $$ = $1; }
                     n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
-					n->func_variadic = FALSE;
 					n->over = NULL;
 					n->location = @5;
 					$$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "~", $1, (Node *) n, @2);
@@ -10764,7 +10490,6 @@ a_expr:		c_expr									{ $$ = $1; }
                     n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
-					n->func_variadic = FALSE;
 					n->over = NULL;
 					n->location = @5;
 					$$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "!~", $1, (Node *) n, @2);
@@ -10777,7 +10502,6 @@ a_expr:		c_expr									{ $$ = $1; }
                     n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
-					n->func_variadic = FALSE;
 					n->over = NULL;
 					n->location = @6;
 					$$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "!~", $1, (Node *) n, @2);
@@ -11076,18 +10800,14 @@ b_expr:		c_expr
  * ambiguity to the b_expr syntax.
  */
 c_expr:		columnref								{ $$ = $1; }
-			| func_expr opt_null_treatment OVER '(' window_spec ')'
+			| func_expr OVER '(' window_spec ')'
 				{
 					/*
 					 * We break out the window function from func_expr
 					 * to avoid shift/reduce errors.
 					 */
 					if (IsA($1, FuncCall))
-					{
-						FuncCall *func = (FuncCall *) $1;
-						func->over = $5;
-						func->null_treatment = $2;
-					}
+						((FuncCall *)$1)->over = $4;
 					else
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
@@ -11125,8 +10845,6 @@ c_expr:		columnref								{ $$ = $1; }
 						$$ = $2;
 				}
 			| case_expr
-				{ $$ = $1; }
-			| decode_expr
 				{ $$ = $1; }
 			| func_expr
 				{ $$ = $1; }
@@ -11202,23 +10920,6 @@ table_value_select_clause:
 window_name: ColId { $$ = $1; }
 		;
 
-/*
- * RESPECT NULLS | IGNORE NULLS
- */
-opt_null_treatment: 	RESPECT NULLS_P
-				{
-					$$ = NULL_TREATMENT_RESPECT;
-				}
-			| IGNORE_P NULLS_P
-				{
-					$$ = NULL_TREATMENT_IGNORE;
-				}
-			| /*EMPTY*/
-				{
-					$$ = NULL_TREATMENT_NONE;
-				}
-			;
-
 
 simple_func: 	func_name '(' ')'
 				{
@@ -11228,35 +10929,12 @@ simple_func: 	func_name '(' ')'
                     n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
-					n->func_variadic = FALSE;
 					n->agg_filter = NULL;
 					n->location = @1;
 					n->over = NULL;
 					$$ = (Node *)n;
 				}
-			| func_name '(' VARIADIC func_arg_expr ')'
-				{
-					FuncCall *n = makeNode(FuncCall);
-					n->funcname = $1;
-					n->args = list_make1($4);
-					n->agg_star = FALSE;
-					n->agg_distinct = FALSE;
-					n->func_variadic = TRUE;
-					n->location = @1;
-					$$ = (Node *)n;
-				}
-			| func_name '(' func_arg_list ',' VARIADIC func_arg_expr ')'
-				{
-					FuncCall *n = makeNode(FuncCall);
-					n->funcname = $1;
-					n->args = lappend($3, $6);
-					n->agg_star = FALSE;
-					n->agg_distinct = FALSE;
-					n->func_variadic = TRUE;
-					n->location = @1;
-					$$ = (Node *)n;
-				}
-			| func_name '(' func_arg_list opt_sort_clause ')'
+			| func_name '(' expr_list opt_sort_clause ')'
 				{
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = $1;
@@ -11264,13 +10942,12 @@ simple_func: 	func_name '(' ')'
                     n->agg_order = $4;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
-					n->func_variadic = FALSE;
 					n->agg_filter = NULL;
 					n->location = @1;
 					n->over = NULL;
 					$$ = (Node *)n;
 				}
-			| func_name '(' ALL func_arg_list opt_sort_clause')'
+			| func_name '(' ALL expr_list opt_sort_clause')'
 				{
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = $1;
@@ -11278,7 +10955,6 @@ simple_func: 	func_name '(' ')'
                     n->agg_order = $5;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
-					n->func_variadic = FALSE;
 					n->agg_filter = NULL;
 					/* Ideally we'd mark the FuncCall node to indicate
 					 * "must be an aggregate", but there's no provision
@@ -11288,7 +10964,7 @@ simple_func: 	func_name '(' ')'
 					n->over = NULL;
 					$$ = (Node *)n;
 				}
-			| func_name '(' DISTINCT func_arg_list opt_sort_clause')'
+			| func_name '(' DISTINCT expr_list opt_sort_clause')'
 				{
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = $1;
@@ -11296,7 +10972,6 @@ simple_func: 	func_name '(' ')'
                     n->agg_order = $5;
 					n->agg_star = FALSE;
 					n->agg_distinct = TRUE;
-					n->func_variadic = FALSE;
 					n->agg_filter = NULL;
 					n->location = @1;
 					n->over = NULL;
@@ -11320,7 +10995,6 @@ simple_func: 	func_name '(' ')'
                     n->agg_order = NIL;
 					n->agg_star = TRUE;
 					n->agg_distinct = FALSE;
-					n->func_variadic = FALSE;
 					n->agg_filter = NULL;
 					n->location = @1;
 					n->over = NULL;
@@ -11431,7 +11105,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
                     n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
-					n->func_variadic = FALSE;
 					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
@@ -11570,7 +11243,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
                     n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
-					n->func_variadic = FALSE;
 					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
@@ -11583,7 +11255,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
                     n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
-					n->func_variadic = FALSE;
 					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
@@ -11596,7 +11267,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
                     n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
-					n->func_variadic = FALSE;
 					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
@@ -11609,7 +11279,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
                     n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
-					n->func_variadic = FALSE;
 					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
@@ -11622,7 +11291,7 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
                     n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
-					n->func_variadic = FALSE;
+					/*n->func_variadic = FALSE;*/
 					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
@@ -11635,7 +11304,7 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
                     n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
-					n->func_variadic = FALSE;
+					/*n->func_variadic = FALSE;*/
 					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
@@ -11650,7 +11319,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
                     n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
-					n->func_variadic = FALSE;
 					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
@@ -11668,7 +11336,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
                     n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
-					n->func_variadic = FALSE;
 					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
@@ -11682,7 +11349,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
                     n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
-					n->func_variadic = FALSE;
 					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
@@ -11698,7 +11364,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
                     n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
-					n->func_variadic = FALSE;
 					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
@@ -11720,7 +11385,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
                     n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
-					n->func_variadic = FALSE;
 					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
@@ -11736,7 +11400,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
                     n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
-					n->func_variadic = FALSE;
 					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
@@ -11749,7 +11412,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
                     n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
-					n->func_variadic = FALSE;
 					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
@@ -11762,7 +11424,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
                     n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
-					n->func_variadic = FALSE;
 					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
@@ -11775,7 +11436,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
                     n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
-					n->func_variadic = FALSE;
 					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
@@ -11793,7 +11453,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
                     n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
-					n->func_variadic = FALSE;
 					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
@@ -11806,7 +11465,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
                     n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
-					n->func_variadic = FALSE;
 					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
@@ -11846,52 +11504,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
 				{
 					GroupId *gid = makeNode(GroupId);
 					$$ = (Node *)gid;
-				}
-			| MEDIAN '(' a_expr ')'
-				{
-					/*
-					 * MEDIAN is parsed as an alias to percentile_cont(0.5).
-					 * We keep track of original expression to deparse
-					 * it later in views, etc.
-					 */
-					PercentileExpr *n = makeNode(PercentileExpr);
-					SortBy		   *sortby;
-
-					n->perctype = UNKNOWNOID;
-					n->args = list_make1(makeAConst(makeFloat(pstrdup("0.5")), @1));
-					n->perckind = PERC_MEDIAN;
-					sortby = makeNode(SortBy);
-					sortby->node = $3;
-					sortby->sortby_kind = SORTBY_ASC;
-					sortby->useOp = NIL;
-					n->sortClause = list_make1(sortby);
-					n->location = @1;
-					$$ = (Node *) n;
-				}
-			| PERCENTILE_CONT '(' a_expr ')' WITHIN GROUP_P '(' ORDER BY sortby_list ')'
-				{
-					/*
-					 * PERCENTILE_CONT and PERCENTILE_DISC are supported as
-					 * grammer for now.  When it comes to catalog support,
-					 * we'll be able to remove this grammer.
-					 */
-					PercentileExpr *n = makeNode(PercentileExpr);
-					n->perctype = UNKNOWNOID;
-					n->args = list_make1($3);
-					n->perckind = PERC_CONT;
-					n->sortClause = $10;
-					n->location = @1;
-					$$ = (Node *) n;
-				}
-			| PERCENTILE_DISC '(' a_expr ')' WITHIN GROUP_P '(' ORDER BY sortby_list ')'
-				{
-					PercentileExpr *n = makeNode(PercentileExpr);
-					n->perctype = UNKNOWNOID;
-					n->args = list_make1($3);
-					n->perckind = PERC_DISC;
-					n->sortClause = $10;
-					n->location = @1;
-					$$ = (Node *) n;
 				}
 		;
 
@@ -11974,33 +11586,6 @@ expr_list:	a_expr
 				{
 					$$ = lappend($1, $3);
 				}
-		;
-		
-/* function arguments can have names */
-func_arg_list:	
-			func_arg_expr
-				{
-					$$ = list_make1($1);
-				}
-			| func_arg_list ',' func_arg_expr
-				{
-					$$ = lappend($1, $3);
-				}		
-		;	
-		
-func_arg_expr:  a_expr
-				{
-					$$ = $1;
-				}
-			| param_name EQUAL_ARROW a_expr
-			    {
-			    	NamedArgExpr *na = makeNode(NamedArgExpr);
-			    	na->name = $1;
-			    	na->arg = (Expr *) $3;
-			    	na->argnumber = -1;     /* until determined */
-			    	na->location = @1;
-			    	$$ = (Node *) na;
-			    }
 		;
 
 extract_list:
@@ -12185,18 +11770,13 @@ when_clause_list:
 		;
 
 when_clause:
-			WHEN when_operand THEN a_expr
+			WHEN a_expr THEN a_expr
 				{
 					CaseWhen *w = makeNode(CaseWhen);
 					w->expr = (Expr *) $2;
 					w->result = (Expr *) $4;
-					$$ = (Node *) w;
+					$$ = (Node *)w;
 				}
-			;
-			
-when_operand:
-			a_expr							{ $$ = $1; }
-			| IS NOT DISTINCT FROM a_expr	{ $$ = makeIsNotDistinctFromNode($5,@2); }
 		;
 
 case_default:
@@ -12207,50 +11787,6 @@ case_default:
 case_arg:	a_expr									{ $$ = $1; }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
-
-
-/*
- * Oracle-compatible DECODE function:
- * DECODE(lhs, rhs, res [, rhs2, res2 ]... [, def_res]): 
- * 		returns resX if lhs = rhsX, or def_res if no match found
- * It is transformed into: 
- *		CASE lhs WHEN IS NOT DISTINCT FROM rhs THEN res
- *				[WHEN IS NOT DISTINCT FROM rhs2 THEN res2] ... 
- *			ELSE def_res END
- */
-decode_expr:	
-			DECODE '(' a_expr search_result_list decode_default ')'
-				{
-					CaseExpr *c = makeNode(CaseExpr);
-					c->casetype = InvalidOid; /* not analyzed yet */
-					c->arg = (Expr *) $3;
-					c->args = $4;
-					c->defresult = (Expr *) $5;
-					$$ = (Node *) c;
-				}
-		;
-			
-search_result_list: 
-			search_result							{ $$ = list_make1($1); }
-			| search_result_list search_result		{ $$ = lappend($1, $2); }
-		;
-
-search_result:
-			',' a_expr ',' a_expr
-				{
-					Node *n = makeIsNotDistinctFromNode($2,@2);
-					CaseWhen *w = makeNode(CaseWhen);
-					w->expr = (Expr *) n;
-					w->result = (Expr *) $4;
-					$$ = (Node *) w;
-				}
-		;
-				
-decode_default: 	
-			',' a_expr	 					{ $$ = $2; }
-			| /*EMPTY*/						{ $$ = NULL; }
-		;
-
 
 /*
  * columnref starts with relation_name not ColId, so that OLD and NEW
@@ -12714,7 +12250,6 @@ unreserved_keyword:
 			| CONCURRENTLY
 			| CONNECTION
 			| CONSTRAINTS
-			| CONTAINS
 			| CONTENT_P
 			| CONTINUE_P
 			| CONVERSION_P
@@ -12807,7 +12342,6 @@ unreserved_keyword:
 			| LOCAL
 			| LOCATION
 			| LOCK_P
-			| LOG_P
 			| LOGIN_P
 			| MAPPING
 			| MASTER
@@ -12819,7 +12353,6 @@ unreserved_keyword:
 			| MIRROR
 			| MISSING
 			| MODE
-			| MODIFIES
 			| MODIFY
 			| MONTH_P
 			| MOVE
@@ -12869,7 +12402,6 @@ unreserved_keyword:
 			| RANDOMLY /* gp */
 			| READ
 			| READABLE
-			| READS
 			| REASSIGN
 			| RECHECK
 			| RECURSIVE
@@ -12882,7 +12414,6 @@ unreserved_keyword:
 			| REPLACE
 			| RESET
 			| RESOURCE
-			| RESPECT
 			| RESTART
 			| RESTRICT
 			| RETURNS
@@ -12898,6 +12429,7 @@ unreserved_keyword:
 			| SECOND_P
 			| SECURITY
 			| SEGMENT
+			| SEQUENCE
 			| SERIALIZABLE
 			| SESSION
 			| SET
@@ -12905,7 +12437,6 @@ unreserved_keyword:
 			| SHOW
 			| SIMPLE
 			| SPLIT
-			| SQL
 			| STABLE
 			| START
 			| STATEMENT
@@ -12946,7 +12477,6 @@ unreserved_keyword:
 			| VIEW
 			| VOLATILE
 			| WEB /* gp */
-			| WITHIN
 			| WITHOUT
 			| WORK
 			| WRAPPER
@@ -13013,7 +12543,6 @@ PartitionIdentKeyword: ABORT_P
 			| CONCURRENTLY
 			| CONNECTION
 			| CONSTRAINTS
-			| CONTAINS
 			| CONVERSION_P
 			| COPY
 			| COST
@@ -13104,7 +12633,6 @@ PartitionIdentKeyword: ABORT_P
 			| MIRROR
 			| MISSING
 			| MODE
-			| MODIFIES
 			| MODIFY
 			| MOVE
 			| NAMES
@@ -13167,6 +12695,7 @@ PartitionIdentKeyword: ABORT_P
 			| SCROLL
 			| SECURITY
 			| SEGMENT
+			| SEQUENCE
 			| SERIALIZABLE
 			| SESSION
 			| SET
@@ -13174,7 +12703,6 @@ PartitionIdentKeyword: ABORT_P
 			| SHOW
 			| SIMPLE
 			| SPLIT
-			| SQL
 			| STABLE
 			| START
 			| STATEMENT
@@ -13294,7 +12822,6 @@ col_name_keyword:
 			| INTEGER
 			| INTERVAL
 			| LEAST
-			| MEDIAN
 			| NATIONAL
 			| NCHAR
 			| NONE
@@ -13302,8 +12829,6 @@ col_name_keyword:
 			| NUMERIC
 			| OUT_P
 			| OVERLAY
-			| PERCENTILE_CONT
-			| PERCENTILE_DISC
 			| POSITION
 			| PRECISION
 			| REAL
@@ -13345,6 +12870,7 @@ func_name_keyword:
 			| JOIN
 			| LEFT
 			| LIKE
+			| LOG_P
 			| NATURAL
 			| NOTNULL
 			| OUTER_P
@@ -13385,7 +12911,6 @@ reserved_keyword:
 			| CURRENT_TIME
 			| CURRENT_TIMESTAMP
 			| CURRENT_USER
-			| DECODE
 			| DEFAULT
 			| DEFERRABLE
 			| DESC
@@ -13434,7 +12959,6 @@ reserved_keyword:
 			| ROWS
 			| SCATTER  /* gp */
 			| SELECT
-			| SEQUENCE
 			| SESSION_USER
 			| SOME
 			| SYMMETRIC
@@ -13448,7 +12972,6 @@ reserved_keyword:
 			| UNIQUE
 			| USER
 			| USING
-			| VARIADIC
 			| WINDOW
 			| WITH
 			| WHEN
@@ -13698,7 +13221,6 @@ makeOverlaps(List *largs, List *rargs, int location)
     n->agg_order = NIL;
 	n->agg_star = FALSE;
 	n->agg_distinct = FALSE;
-	n->func_variadic = FALSE;
 	n->over = NULL;
 	n->location = location;
 	return n;
@@ -13759,7 +13281,7 @@ extractArgTypes(List *parameters)
 	{
 		FunctionParameter *p = (FunctionParameter *) lfirst(i);
 
-		/* keep if IN or INOUT or VARIADIC */
+		/* keep if IN or INOUT */
 		if (p->mode != FUNC_PARAM_OUT && p->mode != FUNC_PARAM_TABLE)
 			result = lappend(result, p->argType);
 	}
@@ -14060,18 +13582,6 @@ setWindowExclude(WindowFrame *wframe, WindowExclusion exclude)
 	}
 }
 
-/*
- * Create the IS_NOT_DISTINCT_FROM expression node
- *     used by CASE x WHEN IS NOT DISTINCT FROM and DECODE()
- */
-static Node*
-makeIsNotDistinctFromNode(Node *expr, int position)
-{
-	Node *n = (Node *) makeA_Expr(AEXPR_NOT, NIL, NULL,
-								(Node *) makeSimpleA_Expr(AEXPR_DISTINCT, 
-	 													"=", NULL, expr, position), position);
-	return n;
-}
 
 /*
  * Must undefine base_yylex before including scan.c, since we want it

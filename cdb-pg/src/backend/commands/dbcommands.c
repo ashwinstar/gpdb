@@ -14,7 +14,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/dbcommands.c,v 1.187.2.4 2010/03/25 14:45:21 alvherre Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/dbcommands.c,v 1.187.2.2 2007/04/12 15:04:41 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -25,7 +25,6 @@
 #include <unistd.h>
 #include <sys/stat.h>
 
-#include "access/catquery.h"
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "catalog/heap.h"
@@ -612,7 +611,7 @@ createdb(CreatedbStmt *stmt)
 	PG_CATCH();
 	{
 		/* If dispatched, stop QEs and clean up after them. */
-		if (ds.results)
+		if (ds.primaryResults)
 			cdbdisp_handleError((struct CdbDispatcherState *)&ds);
 
 		PG_RE_THROW();
@@ -652,8 +651,6 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 	int			dbconnlimit = -1;
 
 	bool		shouldDispatch = (Gp_role == GP_ROLE_DISPATCH);
-	cqContext	cqc;
-	cqContext  *pcqCtx;
 
 	if (shouldDispatch)
 		if (Persistent_BeforePersistenceWork())
@@ -951,10 +948,6 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 	 * directories.
 	 */
 	pg_database_rel = heap_open(DatabaseRelationId, RowExclusiveLock);
-	pcqCtx = caql_beginscan(
-							caql_addrel(cqclr(&cqc), pg_database_rel), 
-							cql("INSERT INTO pg_database",
-								NULL));
 
 	if (Gp_role == GP_ROLE_EXECUTE && stmt->dbOid != 0)
 		dboid = stmt->dbOid;
@@ -1017,12 +1010,15 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 	new_record_nulls[Anum_pg_database_datconfig - 1] = true;
 	new_record_nulls[Anum_pg_database_datacl - 1] = true;
 
-	tuple = caql_form_tuple(pcqCtx, 
+	tuple = heap_form_tuple(RelationGetDescr(pg_database_rel),
 							new_record, new_record_nulls);
 
 	HeapTupleSetOid(tuple, dboid);
 
-	caql_insert(pcqCtx, tuple); /* implicit update of index as well */
+	simple_heap_insert(pg_database_rel, tuple);
+
+	/* Update indexes */
+	CatalogUpdateIndexes(pg_database_rel, tuple);
 
 	/*
 	 * Now generate additional catalog entries associated with the new DB
@@ -1302,7 +1298,6 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 	 * Close pg_database, but keep lock till commit (this is important to
 	 * prevent any risk of deadlock failure while updating flat file)
 	 */
-	caql_endscan(pcqCtx);
 	heap_close(pg_database_rel, NoLock);
 
 	/*
@@ -1321,6 +1316,7 @@ dropdb(const char *dbname, bool missing_ok)
 	bool		db_istemplate = true;
 	Oid			defaultTablespace = InvalidOid;
 	Relation	pgdbrel;
+	HeapTuple	tup;
 
 	AssertArg(dbname);
 
@@ -1425,23 +1421,21 @@ dropdb(const char *dbname, bool missing_ok)
 		/*
 		 * Do the DROP DATABASE as part of a distributed transaction.
 		 */
-		CdbDoCommand(buffer.data, true, true, GANGSCOPE_WRITER);
+		CdbDoCommand(buffer.data, true, true);
 	}
 
 	/*
 	 * Remove the database's tuple from pg_database.
 	 */
-
-	cqContext	cqc2;
-
-	if (0 == caql_getcount(
-				caql_addrel(cqclr(&cqc2), pgdbrel),
-				cql("DELETE FROM pg_database "
-					" WHERE oid = :1 ",
-					ObjectIdGetDatum(db_id))))
-	{
+	tup = SearchSysCache(DATABASEOID,
+						 ObjectIdGetDatum(db_id),
+						 0, 0, 0);
+	if (!HeapTupleIsValid(tup))
 		elog(ERROR, "cache lookup failed for database %u", db_id);
-	}
+
+	simple_heap_delete(pgdbrel, &tup->t_self);
+
+	ReleaseSysCache(tup);
 
 	/*
 	 * Delete any comments associated with the database.
@@ -1629,8 +1623,6 @@ RenameDatabase(const char *oldname, const char *newname)
 	Oid			db_id = InvalidOid;
 	HeapTuple	newtup;
 	Relation	rel;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
 
 	/*
 	 * Look up the target database's OID, and get exclusive lock on it. We
@@ -1683,20 +1675,13 @@ RenameDatabase(const char *oldname, const char *newname)
 				 errmsg("permission denied to rename database")));
 
 	/* rename */
-
-	pcqCtx = caql_addrel(cqclr(&cqc), rel);
-	newtup = caql_getfirst(
-			pcqCtx,
-			cql("SELECT * FROM pg_database "
-				" WHERE oid = :1 "
-				" FOR UPDATE ",
-				ObjectIdGetDatum(db_id)));
-
+	newtup = SearchSysCacheCopy(DATABASEOID,
+								ObjectIdGetDatum(db_id),
+								0, 0, 0);
 	if (!HeapTupleIsValid(newtup))
 		elog(ERROR, "cache lookup failed for database %u", db_id);
 	namestrcpy(&(((Form_pg_database) GETSTRUCT(newtup))->datname), newname);
-
-	caql_update_current(pcqCtx, newtup); /* implicit update of index as well */
+	simple_heap_update(rel, &newtup->t_self, newtup);
 
 	/* MPP-6929: metadata tracking */
 	if (Gp_role == GP_ROLE_DISPATCH)
@@ -1705,6 +1690,8 @@ RenameDatabase(const char *oldname, const char *newname)
 						   GetUserId(),
 						   "ALTER", "RENAME"
 				);
+
+	CatalogUpdateIndexes(rel, newtup);
 
 	/*
 	 * Close pg_database, but keep lock till commit (this is important to
@@ -1728,8 +1715,8 @@ AlterDatabase(AlterDatabaseStmt *stmt)
 	Relation	rel;
 	HeapTuple	tuple,
 				newtuple;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
+	ScanKeyData scankey;
+	SysScanDesc scan;
 	ListCell   *option;
 	int			connlimit = -1;
 	DefElem    *dconnlimit = NULL;
@@ -1765,15 +1752,13 @@ AlterDatabase(AlterDatabaseStmt *stmt)
 	 * connections.
 	 */
 	rel = heap_open(DatabaseRelationId, RowExclusiveLock);
-
-	pcqCtx = caql_addrel(cqclr(&cqc), rel);
-
-	tuple = caql_getfirst(
-			pcqCtx,
-			cql("SELECT * FROM pg_database" 
-				" WHERE datname = :1 FOR UPDATE", 
-				CStringGetDatum(stmt->dbname)));
-
+	ScanKeyInit(&scankey,
+				Anum_pg_database_datname,
+				BTEqualStrategyNumber, F_NAMEEQ,
+				CStringGetDatum(stmt->dbname));
+	scan = systable_beginscan(rel, DatabaseNameIndexId, true,
+							  SnapshotNow, 1, &scankey);
+	tuple = systable_getnext(scan);
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_DATABASE),
@@ -1798,10 +1783,9 @@ AlterDatabase(AlterDatabaseStmt *stmt)
 		new_record_repl[Anum_pg_database_datconnlimit - 1] = true;
 	}
 
-	newtuple = caql_modify_current(pcqCtx, new_record,
-								   new_record_nulls, new_record_repl);
-	caql_update_current(pcqCtx, newtuple); 
-	/* and Update indexes (implicit) */
+	newtuple = heap_modify_tuple(tuple, RelationGetDescr(rel), new_record,
+								 new_record_nulls, new_record_repl);
+	simple_heap_update(rel, &tuple->t_self, newtuple);
 
 	/* MPP-6929: metadata tracking */
 	if (Gp_role == GP_ROLE_DISPATCH)
@@ -1810,6 +1794,11 @@ AlterDatabase(AlterDatabaseStmt *stmt)
 						   GetUserId(),
 						   "ALTER", "CONNECTION LIMIT"
 				);
+
+	/* Update indexes */
+	CatalogUpdateIndexes(rel, newtuple);
+
+	systable_endscan(scan);
 
 	/* Close pg_database, but keep lock till commit */
 	heap_close(rel, NoLock);
@@ -1823,7 +1812,7 @@ AlterDatabase(AlterDatabaseStmt *stmt)
 
 		appendStringInfo(&buffer, "ALTER DATABASE \"%s\" CONNECTION LIMIT %d", stmt->dbname, connlimit);
 
-		CdbDoCommand(buffer.data, false, /*start txn*/ true, GANGSCOPE_WRITER);
+		CdbDoCommand(buffer.data, false, /*start txn*/ true);
 	}
 
 	/*
@@ -1843,8 +1832,8 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 	HeapTuple	tuple,
 		newtuple;
 	Relation	rel;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
+	ScanKeyData scankey;
+	SysScanDesc scan;
 	Datum		repl_val[Natts_pg_database];
 	bool		repl_null[Natts_pg_database];
 	bool		repl_repl[Natts_pg_database];
@@ -1859,15 +1848,13 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 	 * connections.
 	 */
 	rel = heap_open(DatabaseRelationId, RowExclusiveLock);
-
-	pcqCtx = caql_addrel(cqclr(&cqc), rel);
-
-	tuple = caql_getfirst(
-			pcqCtx,
-			cql("SELECT * FROM pg_database" 
-				" WHERE datname = :1 FOR UPDATE", 
-				CStringGetDatum(stmt->dbname)));
-
+	ScanKeyInit(&scankey,
+				Anum_pg_database_datname,
+				BTEqualStrategyNumber, F_NAMEEQ,
+				CStringGetDatum(stmt->dbname));
+	scan = systable_beginscan(rel, DatabaseNameIndexId, true,
+							  SnapshotNow, 1, &scankey);
+	tuple = systable_getnext(scan);
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_DATABASE),
@@ -1886,29 +1873,9 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 	{
 		alter_subtype = "RESET ALL";
 
-		ArrayType  *new = NULL;
-		Datum		datum;
-		bool		isnull;
-
-		/*
-		 * in RESET ALL, request GUC to reset the settings array; if none
-		 * left, we can set datconfig to null; otherwise use the returned
-		 * array
-		 */
-		datum = heap_getattr(tuple, Anum_pg_database_datconfig,
-							 RelationGetDescr(rel), &isnull);
-		if (!isnull)
-			new = GUCArrayReset(DatumGetArrayTypeP(datum));
-		if (new)
-		{
-			repl_val[Anum_pg_database_datconfig - 1] = PointerGetDatum(new);
-			repl_null[Anum_pg_database_datconfig - 1] = false;
-		}
-		else
-		{
-			repl_null[Anum_pg_database_datconfig - 1] = true;
-			repl_val[Anum_pg_database_datconfig - 1] = (Datum) 0;
-		}
+		/* RESET ALL, so just set datconfig to null */
+		repl_null[Anum_pg_database_datconfig - 1] = true;
+		repl_val[Anum_pg_database_datconfig - 1] = (Datum) 0;
 	}
 	else
 	{
@@ -1937,10 +1904,10 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 			repl_null[Anum_pg_database_datconfig - 1] = true;
 	}
 
-	newtuple = caql_modify_current(pcqCtx,
-								   repl_val, repl_null, repl_repl);
-	caql_update_current(pcqCtx, newtuple); 
-	/* and Update indexes (implicit) */
+	newtuple = heap_modify_tuple(tuple, RelationGetDescr(rel),
+								 repl_val, repl_null, repl_repl);
+	simple_heap_update(rel, &tuple->t_self, newtuple);
+
 
 	/* MPP-6929: metadata tracking */
 	if (Gp_role == GP_ROLE_DISPATCH)
@@ -1949,6 +1916,11 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 						   GetUserId(),
 						   "ALTER", alter_subtype
 				);
+
+	/* Update indexes */
+	CatalogUpdateIndexes(rel, newtuple);
+
+	systable_endscan(scan);
 
 	/* Close pg_database, but keep lock till commit */
 	heap_close(rel, NoLock);
@@ -2006,7 +1978,7 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 
 		}
 
-		CdbDoCommand(buffer.data, false, /*start txn*/ true, GANGSCOPE_WRITER);
+		CdbDoCommand(buffer.data, false, /*start txn*/ true);
 	}
 
 	/*
@@ -2024,8 +1996,8 @@ AlterDatabaseOwner(const char *dbname, Oid newOwnerId)
 {
 	HeapTuple	tuple;
 	Relation	rel;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
+	ScanKeyData scankey;
+	SysScanDesc scan;
 	Form_pg_database datForm;
 	Oid			dboid = InvalidOid;
 	/*
@@ -2034,15 +2006,13 @@ AlterDatabaseOwner(const char *dbname, Oid newOwnerId)
 	 * connections.
 	 */
 	rel = heap_open(DatabaseRelationId, RowExclusiveLock);
-
-	pcqCtx = caql_addrel(cqclr(&cqc), rel);
-
-	tuple = caql_getfirst(
-			pcqCtx,
-			cql("SELECT * FROM pg_database" 
-				" WHERE datname = :1 FOR UPDATE", 
-				CStringGetDatum((char *)dbname)));
-
+	ScanKeyInit(&scankey,
+				Anum_pg_database_datname,
+				BTEqualStrategyNumber, F_NAMEEQ,
+				CStringGetDatum((char *) dbname));
+	scan = systable_beginscan(rel, DatabaseNameIndexId, true,
+							  SnapshotNow, 1, &scankey);
+	tuple = systable_getnext(scan);
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_DATABASE),
@@ -2111,10 +2081,9 @@ AlterDatabaseOwner(const char *dbname, Oid newOwnerId)
 			repl_val[Anum_pg_database_datacl - 1] = PointerGetDatum(newAcl);
 		}
 
-		newtuple = caql_modify_current(pcqCtx,
-									   repl_val, repl_null, repl_repl);
-		caql_update_current(pcqCtx, newtuple); 
-		/* and Update indexes (implicit) */
+		newtuple = heap_modify_tuple(tuple, RelationGetDescr(rel), repl_val, repl_null, repl_repl);
+		simple_heap_update(rel, &newtuple->t_self, newtuple);
+		CatalogUpdateIndexes(rel, newtuple);
 
 		heap_freetuple(newtuple);
 
@@ -2131,6 +2100,8 @@ AlterDatabaseOwner(const char *dbname, Oid newOwnerId)
 					);
 
 	}
+
+	systable_endscan(scan);
 
 	/* Close pg_database, but keep lock till commit */
 	heap_close(rel, NoLock);
@@ -2166,8 +2137,6 @@ get_db_info(const char *name, LOCKMODE lockmode,
 
 	/* Caller may wish to grab a better lock on pg_database beforehand... */
 	relation = heap_open(DatabaseRelationId, AccessShareLock);
-	/* XXX XXX: should this be RowExclusive, depending on lockmode? We
-	 * try to get a lock later... */
 
 	/*
 	 * Loop covers the rare case where the database is renamed before we can
@@ -2176,30 +2145,35 @@ get_db_info(const char *name, LOCKMODE lockmode,
 	 */
 	for (;;)
 	{
-		cqContext	cqc;
-		cqContext  *pcqCtx;
+		ScanKeyData scanKey;
+		SysScanDesc scan;
 		HeapTuple	tuple;
 		Oid			dbOid;
-		int			fetchCount;
 
 		/*
 		 * there's no syscache for database-indexed-by-name, so must do it the
 		 * hard way
 		 */
+		ScanKeyInit(&scanKey,
+					Anum_pg_database_datname,
+					BTEqualStrategyNumber, F_NAMEEQ,
+					CStringGetDatum((char *) name));
 
-		dbOid = caql_getoid_plus(
-				caql_addrel(cqclr(&cqc), relation),
-				&fetchCount,
-				NULL,
-				cql("SELECT oid FROM pg_database" 
-					" WHERE datname = :1 ", 
-					CStringGetDatum((char *) name)));
+		scan = systable_beginscan(relation, DatabaseNameIndexId, true,
+								  SnapshotNow, 1, &scanKey);
 
-		if (!fetchCount)
+		tuple = systable_getnext(scan);
+
+		if (!HeapTupleIsValid(tuple))
 		{
 			/* definitely no database of that name */
+			systable_endscan(scan);
 			break;
 		}
+
+		dbOid = HeapTupleGetOid(tuple);
+
+		systable_endscan(scan);
 
 		/*
 		 * Now that we have a database OID, we can try to lock the DB.
@@ -2212,14 +2186,9 @@ get_db_info(const char *name, LOCKMODE lockmode,
 		 * the same name, we win; else, drop the lock and loop back to try
 		 * again.
 		 */
-		pcqCtx = caql_beginscan(
-				caql_addrel(cqclr(&cqc), relation),
-				cql("SELECT * FROM pg_database "
-					" WHERE oid = :1 ",
-					ObjectIdGetDatum(dbOid)));
-
-		tuple = caql_getnext(pcqCtx);
-
+		tuple = SearchSysCache(DATABASEOID,
+							   ObjectIdGetDatum(dbOid),
+							   0, 0, 0);
 		if (HeapTupleIsValid(tuple))
 		{
 			Form_pg_database dbform = (Form_pg_database) GETSTRUCT(tuple);
@@ -2250,15 +2219,13 @@ get_db_info(const char *name, LOCKMODE lockmode,
 				/* default tablespace for this database */
 				if (dbTablespace)
 					*dbTablespace = dbform->dattablespace;
-				
-				caql_endscan(pcqCtx);
+				ReleaseSysCache(tuple);
 				result = true;
 				break;
 			}
 			/* can only get here if it was just renamed */
-
+			ReleaseSysCache(tuple);
 		}
-		caql_endscan(pcqCtx);
 
 		if (lockmode != NoLock)
 			UnlockSharedObject(DatabaseRelationId, dbOid, 0, lockmode);
@@ -2275,25 +2242,19 @@ have_createdb_privilege(void)
 {
 	bool		result = false;
 	HeapTuple	utup;
-	cqContext  *pcqCtx;
 
 	/* Superusers can always do everything */
 	if (superuser())
 		return true;
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_authid "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(GetUserId())));
-
-	utup = caql_getnext(pcqCtx);
-
+	utup = SearchSysCache(AUTHOID,
+						  ObjectIdGetDatum(GetUserId()),
+						  0, 0, 0);
 	if (HeapTupleIsValid(utup))
+	{
 		result = ((Form_pg_authid) GETSTRUCT(utup))->rolcreatedb;
-
-	caql_endscan(pcqCtx);
-
+		ReleaseSysCache(utup);
+	}
 	return result;
 }
 
@@ -2313,14 +2274,13 @@ static bool
 check_db_file_conflict(Oid db_id)
 {
 	bool		result = false;
-	cqContext  *pcqCtx;
+	Relation	rel;
+	HeapScanDesc scan;
 	HeapTuple	tuple;
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_tablespace ", NULL));
-
-	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
+	rel = heap_open(TableSpaceRelationId, AccessShareLock);
+	scan = heap_beginscan(rel, SnapshotNow, 0, NULL);
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
 		Oid			dsttablespace = HeapTupleGetOid(tuple);
 		char	   *dstpath;
@@ -2343,7 +2303,8 @@ check_db_file_conflict(Oid db_id)
 		pfree(dstpath);
 	}
 
-	caql_endscan(pcqCtx);
+	heap_endscan(scan);
+	heap_close(rel, AccessShareLock);
 	return result;
 }
 
@@ -2355,24 +2316,34 @@ check_db_file_conflict(Oid db_id)
 Oid
 get_database_oid(const char *dbname)
 {
+	Relation	pg_database;
+	ScanKeyData entry[1];
+	SysScanDesc scan;
+	HeapTuple	dbtuple;
 	Oid			oid;
-	int			fetchCount;
 
 	/*
 	 * There's no syscache for pg_database indexed by name, so we must look
 	 * the hard way.
 	 */
-	oid = caql_getoid_plus(
-			NULL,
-			&fetchCount,
-			NULL,
-			cql("SELECT oid FROM pg_database" 
-				" WHERE datname = :1 ", 
-				CStringGetDatum((char *) dbname)));
+	pg_database = heap_open(DatabaseRelationId, AccessShareLock);
+	ScanKeyInit(&entry[0],
+				Anum_pg_database_datname,
+				BTEqualStrategyNumber, F_NAMEEQ,
+				CStringGetDatum((char *) dbname));
+	scan = systable_beginscan(pg_database, DatabaseNameIndexId, true,
+							  SnapshotNow, 1, entry);
+
+	dbtuple = systable_getnext(scan);
 
 	/* We assume that there can be at most one matching tuple */
-	if (!fetchCount)
+	if (HeapTupleIsValid(dbtuple))
+		oid = HeapTupleGetOid(dbtuple);
+	else
 		oid = InvalidOid;
+
+	systable_endscan(scan);
+	heap_close(pg_database, AccessShareLock);
 
 	return oid;
 }
@@ -2386,13 +2357,19 @@ get_database_oid(const char *dbname)
 char *
 get_database_name(Oid dbid)
 {
+	HeapTuple	dbtuple;
 	char	   *result;
 
-	result = caql_getcstring(
-			NULL,
-			cql("SELECT datname FROM pg_database "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(dbid)));
+	dbtuple = SearchSysCache(DATABASEOID,
+							 ObjectIdGetDatum(dbid),
+							 0, 0, 0);
+	if (HeapTupleIsValid(dbtuple))
+	{
+		result = pstrdup(NameStr(((Form_pg_database) GETSTRUCT(dbtuple))->datname));
+		ReleaseSysCache(dbtuple);
+	}
+	else
+		result = NULL;
 
 	return result;
 }

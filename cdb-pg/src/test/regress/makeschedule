@@ -1,4 +1,4 @@
-#!/usr/bin/env perl
+#!/usr/bin/perl
 
 use Cwd;
 use strict;
@@ -128,16 +128,8 @@ sub processTests
 
 
 &readSchedule(@ARGV[0]);
-
-my $srcdir = @ARGV[2];
-if ($srcdir eq '') {
-    $srcdir = '.';
-}
-
-my $arch = &getArch(&readArchConf($srcdir."/arch_config"));
-
+my $arch = &getArch(&readArchConf("arch_config"));
 &processTests("sql", "input", "expected", $arch);
 &writeSchedule(@ARGV[1]);
-
 
 #EOF

@@ -98,14 +98,3 @@ CREATE TYPE text_w_default;		-- should fail
 DROP TYPE default_test_row CASCADE;
 
 DROP TABLE default_test;
-
--- Create & Drop type as non-superuser
-CREATE USER user_bob;
-SET SESSION AUTHORIZATION user_bob;
-CREATE TYPE shell;
-DROP TYPE shell;
-CREATE TYPE compfoo as (f1 int, f2 text);
-DROP TYPE compfoo;
-RESET SESSION AUTHORIZATION;
-DROP USER user_bob;
-

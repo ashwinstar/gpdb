@@ -32,14 +32,6 @@ typedef enum FaultInjectorIdentifier_e {
 	PgXlog,
 	
 	StartPrepareTx,
-
-	FaultBeforePendingDeleteRelationEntry,
-
-	FaultBeforePendingDeleteDatabaseEntry,
-
-	FaultBeforePendingDeleteTablespaceEntry,
-
-	FaultBeforePendingDeleteFilespaceEntry,
 	
 	FileRepConsumer,
 	
@@ -142,8 +134,6 @@ typedef enum FaultInjectorIdentifier_e {
 	DtmBroadcastAbortPrepared,
 	
 	DtmXLogDistributedCommit,
-
-	DtmInit,
 	
         EndPreparedTwoPhaseSleep,
 	       /* sleep after creating two phase files */
@@ -151,25 +141,6 @@ typedef enum FaultInjectorIdentifier_e {
 	SegmentTransitionRequest,
 
 	SegmentProbeResponse,
-
-	SubtransactionFlushToFile,
-	SubtransactionReadFromFile,
-	SubtransactionRelease,
-	SubtransactionRollback,
-	SyncPersistentTable,
-	XLOGInsert,
-	LocalTmRecordTransactionCommit,
-	DatumStreamMallocFailure,
-	AbortTransactionFail,
-
-	NtuplestoreCreateAccessor,
-	UpdateCommittedEofInPersistentTable,
-
-	SetGpTestSystemCacheFlushForcePlain,
-	SetGpTestSystemCacheFlushForceOff,
-
-	UpdatePersistentSerialNumberForNewTable,
-	CheckBtreeForUniquenessViolation,
 
 	/* INSERT has to be done before that line */
 	FaultInjectorIdMax,
@@ -208,12 +179,6 @@ typedef enum FaultInjectorType_e {
 	
 	FaultInjectorTypeStatus,
 	
-	FaultInjectorTypePanicSuppress,
-
-	FaultInjectorTypeSegv,
-
-	FaultInjectorTypeSetGuc,
-
 	/* INSERT has to be done before that line */
 	FaultInjectorTypeMax,
 	

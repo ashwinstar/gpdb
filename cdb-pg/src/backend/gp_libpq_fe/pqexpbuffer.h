@@ -19,7 +19,7 @@
  * Portions Copyright (c) 1996-2010, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * src/interfaces/libpq/pqexpbuffer.h
+ * $PostgreSQL: pgsql/src/interfaces/libpq/pqexpbuffer.h,v 1.24 2010/01/02 16:58:12 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -59,14 +59,6 @@ typedef PQExpBufferData *PQExpBuffer;
  */
 #define PQExpBufferBroken(str)	\
 	((str) == NULL || (str)->maxlen == 0)
-
-/*------------------------
- * Same, but for use when using a static or local PQExpBufferData struct.
- * For that, a null-pointer test is useless and may draw compiler warnings.
- *------------------------
- */
-#define PQExpBufferDataBroken(buf)	\
-	((buf).maxlen == 0)
 
 /*------------------------
  * Initial size of the data buffer in a PQExpBuffer.

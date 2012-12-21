@@ -123,14 +123,7 @@ typedef struct AppendOnlyStorageRead
 			 * Name of the relation to use in system
 			 * logging and error messages.
 			 */
-	
-	char		*title;
-			/*
-			 * A phrase that better describes the purpose of the this open.
-			 *
-			 * The caller manages the storage for this.
-			 */
-			 
+
 	AppendOnlyStorageAttributes		storageAttributes;
 			/*
 			 * The Append-Only Storage Attributes
@@ -218,14 +211,6 @@ extern void AppendOnlyStorageRead_Init(
 				 * Name of the relation to use in system
 				 * logging and error messages.
 				 */
-
-	char							*title,
-				/*
-				 * A phrase that better describes the purpose of the this open.
-				 *
-				 * The caller manages the storage for this.
-				 */
-
 	AppendOnlyStorageAttributes		*storageAttributes);
 				/*
 				 * The Append-Only Storage Attributes
@@ -439,12 +424,8 @@ extern void AppendOnlyStorageRead_Content(
 extern void AppendOnlyStorageRead_SkipCurrentBlock(
 	AppendOnlyStorageRead		*storageRead);
 
-extern char *AppendOnlyStorageRead_ContextStr(AppendOnlyStorageRead *storageRead);
-
 extern int errcontext_appendonly_read_storage_block(AppendOnlyStorageRead *storageRead);
 
-extern char *AppendOnlyStorageRead_StorageContentHeaderStr(AppendOnlyStorageRead *storageRead);
-
-extern int errdetail_appendonly_read_storage_content_header(AppendOnlyStorageRead *storageRead);
+extern int errdetail_appendonly_read_storage_block_header(AppendOnlyStorageRead *storageRead);
 
 #endif   /* APPENDONLYSTORAGELAYER_H */

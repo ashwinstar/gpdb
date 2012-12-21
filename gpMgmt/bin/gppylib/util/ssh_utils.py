@@ -35,10 +35,6 @@ def ssh_prefix(host):
     ssh = 'ssh -o "BatchMode yes" -o "StrictHostKeyChecking no" ' + host
     return ssh
 
-def get_hosts(hostsfile):
-    hostlist = HostList()
-    hostlist.parseFile(hostsfile)
-    return hostlist.get()
 
 
 class HostList():
@@ -52,16 +48,16 @@ class HostList():
     def add(self, host, lineno=0):
         '''Add a host to the hostlist.'''
 
-        #we don't allow the user@ syntax here
+        # we don't allow the user@ syntax here
         if host.find('@') >= 0:
-            raise HostNameError("'@' is not allowed in hostname ("+host+")")
+            raise HostNameError(host, lineno)
 
         # MPP-13617 - check for ipv6
         if host.find(':') >= 0:
             try:
                 socket.inet_pton(socket.AF_INET6, host)
             except socket.error, e:
-                raise HostNameError("illegal IPv6 address specified in ("+host+")")
+                raise HostNameError(str(e), lineno)
 
         # MPP-13617 - check for ipv4
         if host.find('.') >= 0:
@@ -70,7 +66,7 @@ class HostList():
                 try:
                     socket.inet_pton(socket.AF_INET, host)
                 except socket.error, e:
-                    raise HostNameError("illegal IPv4 address specified in ("+host+")")
+                    raise HostNameError(str(e), lineno)
 
         self.list.append(host)
         return self.list
@@ -118,9 +114,7 @@ class HostList():
         
         for finished_cmd in pool.getCompletedItems():
             hostname = finished_cmd.get_hostname()
-            if (not hostname):
-                unique[finished_cmd.remoteHost] = finished_cmd.remoteHost
-            elif not unique.get(hostname):
+            if not unique.get(hostname):
                 unique[hostname] = finished_cmd.remoteHost
             elif hostname == finished_cmd.remoteHost:
                 unique[hostname] = finished_cmd.remoteHost
@@ -190,27 +184,14 @@ class Session(cmd.Cmd):
         if origTERM:
             os.putenv('TERM', origTERM)
 
-        some_errors = False
-        good_list = []
         for p in self.pxssh:
-            
-            success_login = False
             if self.verbose: print '[INFO] login %s' % p.x_peer
-            try:
-                success_login = p.loginWait(set_term_dumb=True)
-            except Exception as e:
-                pass
-
-            if success_login:
-                good_list.append(p)
-            else:
-                some_errors = True
+            if not p.loginWait(set_term_dumb=True):
                 print '[ERROR] unable to login to %s' % p.x_peer
-
-        if some_errors:
-            print 'hint: use gpssh-exkeys to setup public-key authentication between hosts'
-
-        self.pxssh = good_list
+                print
+                print 'hint: use gpssh-exkeys to setup public-key authentication between hosts'
+                print
+                raise self.SessionError('Error logging into host %s' % p.x_peer)
 
     def close(self):
         return self.clean()

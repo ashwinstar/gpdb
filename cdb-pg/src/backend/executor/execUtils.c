@@ -49,6 +49,7 @@
 #include "access/appendonlywriter.h"
 #include "catalog/index.h"
 #include "executor/execdebug.h"
+#include "executor/nodeFunctionscan.h"
 #include "parser/parsetree.h"
 #include "utils/memutils.h"
 #include "utils/relcache.h"
@@ -67,7 +68,7 @@
 #include "cdb/cdbsreh.h"
 #include "cdb/memquota.h"
 #include "catalog/catalog.h" // isMasterOnly()
-#include "executor/spi.h"
+
 #include "utils/elog.h"
 #include "miscadmin.h"
 
@@ -84,7 +85,6 @@ int			NTupleDeleted;
 int			NIndexTupleInserted;
 int			NIndexTupleProcessed;
 
-DynamicTableScanInfo *dynamicTableScanInfo = NULL;
 
 static EState *InternalCreateExecutorState(MemoryContext qcontext,
 										   bool is_subquery);
@@ -183,23 +183,7 @@ CreateExecutorState(void)
 									 ALLOCSET_DEFAULT_INITSIZE,
 									 ALLOCSET_DEFAULT_MAXSIZE);
 
-	EState *estate = InternalCreateExecutorState(qcontext, false);
-
-	/*
-	 * Initialize dynamicTableScanInfo. Since this is shared by subqueries,
-	 * this can not be put inside InternalCreateExecutorState.
-	 */
-	MemoryContext oldcontext = MemoryContextSwitchTo(qcontext);
-	
-	estate->dynamicTableScanInfo = palloc(sizeof(DynamicTableScanInfo));
-	estate->dynamicTableScanInfo->numScans = 0;
-	estate->dynamicTableScanInfo->pidIndexes = NULL;
-	estate->dynamicTableScanInfo->memoryContext = qcontext;
-	estate->dynamicTableScanInfo->partsMetadata = NIL;
-
-	MemoryContextSwitchTo(oldcontext);
-
-	return estate;
+	return InternalCreateExecutorState(qcontext, false);
 }
 
 /* ----------------
@@ -221,11 +205,6 @@ CreateSubExecutorState(EState *parent_estate)
     EState *es = InternalCreateExecutorState(parent_estate->es_query_cxt, true);
 
     es->showstatctx = parent_estate->showstatctx;                   /*CDB*/
-
-	/* Subqueries share the same dynamicTableScanInfo with their parents. */
-	es->dynamicTableScanInfo = parent_estate->dynamicTableScanInfo;
-
-	es->subplanLevel = parent_estate->subplanLevel + 1;
     return es;
 }
 
@@ -306,10 +285,7 @@ InternalCreateExecutorState(MemoryContext qcontext, bool is_subquery)
 
 	estate->dispatcherState = palloc0(sizeof(struct CdbDispatcherState));
 
-	estate->currentSliceIdInPlan = 0;
-	estate->currentExecutingSliceId = 0;
-	estate->subplanLevel = 0;
-	estate->rootSliceId = 0;
+	estate->current_slice_no = 0;
 
 	/*
 	 * Return the executor state structure
@@ -317,23 +293,6 @@ InternalCreateExecutorState(MemoryContext qcontext, bool is_subquery)
 	MemoryContextSwitchTo(oldcontext);
 
 	return estate;
-}
-
-/*
- * freeDynamicTableScanInfo
- *   Free the space for DynamicTableScanInfo.
- */
-static void
-freeDynamicTableScanInfo(DynamicTableScanInfo *scanInfo)
-{
-	Assert(scanInfo != NULL);
-	
-	if (scanInfo->partsMetadata != NIL)
-	{
-		list_free_deep(scanInfo->partsMetadata);
-	}
-	
-	pfree(scanInfo);
 }
 
 /* ----------------
@@ -374,17 +333,6 @@ FreeExecutorState(EState *estate)
 	{
 		pfree(estate->dispatcherState);
 		estate->dispatcherState = NULL;
-	}
-
-	/*
-	 * Free dynamicTableScanInfo. In a subquery, we don't do this, since
-	 * the subquery shares the value with its parent.
-	 */
-	if (!estate->es_is_subquery &&
-		estate->dynamicTableScanInfo != NULL)
-	{
-		freeDynamicTableScanInfo(estate->dynamicTableScanInfo);
-		estate->dynamicTableScanInfo = NULL;
 	}
 
 	/*
@@ -1248,7 +1196,6 @@ ExecInsertIndexTuples(TupleTableSlot *slot,
  */
 static void
 ExecUpdateAOtupCount(ResultRelInfo *result_rels,
-					 Snapshot shapshot,
 					 int num_result_rels,
 					 uint64 processed)
 {
@@ -1397,7 +1344,9 @@ ShareNodeEntry *
 ExecGetShareNodeEntry(EState* estate, int shareidx, bool fCreate)
 {
 	Assert(shareidx >= 0);
-	Assert(estate->es_sharenode != NULL);
+
+	if(estate->es_sharenode == NULL)
+		estate->es_sharenode = (List **) palloc0(sizeof(List *));
 
 	if(!fCreate)
 	{
@@ -1467,11 +1416,11 @@ InitSliceTable(EState *estate, int nMotions, int nSubplans)
 		slice->numGangMembersToBeActive = 0;
 		slice->directDispatch.isDirectDispatch = false;
 		slice->directDispatch.contentIds = NIL;
-		slice->gang = NULL;
-		slice->gangId = 0;
+		slice->primaryGang = NULL;
+		slice->primary_gang_id = 0;
 		slice->parentIndex = -1;
 		slice->children = NIL;
-		slice->workerProcesses = NIL;
+		slice->primaryProcesses = NIL;
 
 		table->slices = lappend(table->slices, slice);
 	}
@@ -1529,13 +1478,13 @@ sliceCalculateNumSendingProcesses(Slice *slice, int numSegmentsInCluster)
 		case GANGTYPE_UNALLOCATED:
 			return 0; /* does not send */
 
-		case GANGTYPE_MASTERDB_READER:
+		case GANGTYPE_ENTRYDB_READER:
 			return 1; /* on master */
 
-		case GANGTYPE_WRITER:
+		case GANGTYPE_PRIMARY_WRITER:
 			return 0; /* writers don't send */
 
-		case GANGTYPE_SEGDB_READER:
+		case GANGTYPE_PRIMARY_READER:
 			if ( is1GangSlice(slice))
 				return 1;
 			else if ( slice->directDispatch.isDirectDispatch)
@@ -1559,9 +1508,10 @@ sliceCalculateNumSendingProcesses(Slice *slice, int numSegmentsInCluster)
  * SELECT,	but will run on QE(s) in case it's an INSERT, UPDATE, or
  * DELETE. Because we restrict UPDATE and DELETE to have no motions
  * (i.e., one slice) and because INSERT must always route tuples,
- * the assignment for these will be the writer gang, which we represent as
+ * the assigment for these will be primary and mirror writer gangs,
+ * which we represent as
  *
- *	  (gangType, gangSize) =  <GANGTYPE_WRITER, N>
+ *	  (gangType, gangSize) =  <GANGTYPE_PRIMARY_WRITER, N>
  */
 void
 InitRootSlices(QueryDesc *queryDesc)
@@ -1585,7 +1535,7 @@ InitRootSlices(QueryDesc *queryDesc)
 					Assert(slice->gangType == GANGTYPE_UNALLOCATED && slice->gangSize == 0);
 					if (queryDesc->plannedstmt->intoClause != NULL)
 					{
-						slice->gangType = GANGTYPE_WRITER;
+						slice->gangType = GANGTYPE_PRIMARY_WRITER;
 						slice->gangSize = getgpsegmentCount();
 						slice->numGangMembersToBeActive = sliceCalculateNumSendingProcesses(slice, getgpsegmentCount());
 					}
@@ -1603,7 +1553,7 @@ InitRootSlices(QueryDesc *queryDesc)
 					Oid reloid = getrelid(idx, queryDesc->plannedstmt->rtable);
 					if (!isMasterOnly(reloid))
 					{
-						slice->gangType = GANGTYPE_WRITER;
+						slice->gangType = GANGTYPE_PRIMARY_WRITER;
 						slice->gangSize = getgpsegmentCount();
 						slice->numGangMembersToBeActive = sliceCalculateNumSendingProcesses(slice, getgpsegmentCount());
 			        }
@@ -1672,8 +1622,8 @@ static void AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceR
  *		there are no cases of the planner specifying a fixed Motion to a
  *		QE, so we don't know the case works.
  *
- * On successful exit, the CDBProcess lists (workerProcesses, mirrorProcesses)
- * and the Gang pointers (gang, mirrorGang) are set correctly in each
+ * On successful exit, the CDBProcess lists (primaryProcesses, mirrorProcesses)
+ * and the Gang pointers (primaryGang, mirrorGang) are set correctly in each
  * slice in the slice table.
  */
 void
@@ -1719,14 +1669,14 @@ AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
 	 * Get the gangs we'll use.
 	 *
 	 * As a general rule the first gang is a writer and the rest are readers.
-	 * If this happens to be an extended query protocol then all gangs are readers.
+	 * If this happens to be a cursor query then all gangs are readers.
 	 */
 	if (inv.numNgangs > 0)
 	{
 		inv.vecNgangs = (Gang **) palloc(sizeof(Gang *) * inv.numNgangs);
 		for (i = 0; i < inv.numNgangs; i++)
 		{
-			if (i == 0 && !queryDesc->extended_query)
+			if (i == 0 && !queryDesc->cursor_query)
 			{
 				inv.vecNgangs[i] = allocateWriterGang();
 
@@ -1734,7 +1684,7 @@ AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
 			}
 			else
 			{
-				inv.vecNgangs[i] = allocateGang(GANGTYPE_SEGDB_READER, getgpsegmentCount(), 0, queryDesc->portal_name);
+				inv.vecNgangs[i] = allocateGang(GANGTYPE_PRIMARY_READER, getgpsegmentCount(), 0, queryDesc->portal_name);
 			}
 		}
 	}
@@ -1743,7 +1693,7 @@ AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
 		inv.vec1gangs_primary_reader = (Gang **) palloc(sizeof(Gang *) * inv.num1gangs_primary_reader);
 		for (i = 0; i < inv.num1gangs_primary_reader; i++)
 		{
-			inv.vec1gangs_primary_reader[i] = allocateGang(GANGTYPE_SEGDB_READER, 1, utility_segment_index, queryDesc->portal_name);
+			inv.vec1gangs_primary_reader[i] = allocateGang(GANGTYPE_PRIMARY_READER, 1, utility_segment_index, queryDesc->portal_name);
 		}
 	}
 	if (inv.num1gangs_entrydb_reader > 0)
@@ -1751,7 +1701,7 @@ AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
 		inv.vec1gangs_entrydb_reader = (Gang **) palloc(sizeof(Gang *) * inv.num1gangs_entrydb_reader);
 		for (i = 0; i < inv.num1gangs_entrydb_reader; i++)
 		{
-			inv.vec1gangs_entrydb_reader[i] = allocateGang(GANGTYPE_MASTERDB_READER, 1, -1, queryDesc->portal_name);
+			inv.vec1gangs_entrydb_reader[i] = allocateGang(GANGTYPE_ENTRYDB_READER, 1, -1, queryDesc->portal_name);
 		}
 	}
 
@@ -1786,7 +1736,7 @@ ReleaseGangs(QueryDesc *queryDesc)
 {
 	Assert(queryDesc != NULL);
 
-	deallocatePortalGangs(queryDesc->portal_name);
+	freeGangsForPortal(queryDesc->portal_name);
 }
 
 
@@ -1830,15 +1780,15 @@ InventorySliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 			/* Roots that run on the  QD don't need a gang. */
 			break;
 
-		case GANGTYPE_MASTERDB_READER:
+		case GANGTYPE_ENTRYDB_READER:
             Assert(slice->gangSize == 1);
 			req->num1gangs_entrydb_reader++;
 			break;
 
-		case GANGTYPE_WRITER:
+		case GANGTYPE_PRIMARY_WRITER:
 			req->writer = TRUE;
 			/* fall through */
-		case GANGTYPE_SEGDB_READER:
+		case GANGTYPE_PRIMARY_READER:
 			if (is1GangSlice(slice))
 			{
 				req->num1gangs_primary_reader++;
@@ -1891,53 +1841,53 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 		case GANGTYPE_UNALLOCATED:
 			/* Roots that run on the  QD don't need a gang. */
 
-			slice->gang = NULL;
-			slice->workerProcesses = getCdbProcessesForQD();
+			slice->primaryGang = NULL;
+			slice->primaryProcesses = getCdbProcessesForQD(true);
 			break;
 
-		case GANGTYPE_MASTERDB_READER:
-			slice->gang = req->vec1gangs_entrydb_reader[req->nxt1gang_entrydb_reader];
-			Assert(slice->gang != NULL);
-			slice->gangId = slice->gang->gang_id;
-			slice->workerProcesses = getCdbProcessList(slice->gang,
+		case GANGTYPE_ENTRYDB_READER:
+			slice->primaryGang = req->vec1gangs_entrydb_reader[req->nxt1gang_entrydb_reader];
+			Assert(slice->primaryGang != NULL);
+			slice->primary_gang_id = slice->primaryGang->gang_id;
+			slice->primaryProcesses = getCdbProcessList(slice->primaryGang,
                                                         slice->sliceIndex,
 														NULL);
 			req->nxt1gang_entrydb_reader++;
 
-			Assert(sliceCalculateNumSendingProcesses(slice, getgpsegmentCount()) == countNonNullValues(slice->workerProcesses));
+			Assert(sliceCalculateNumSendingProcesses(slice, getgpsegmentCount()) == countNonNullValues(slice->primaryProcesses));
 			break;
 
-		case GANGTYPE_WRITER:
+		case GANGTYPE_PRIMARY_WRITER:
 			Assert(slice->gangSize == getgpsegmentCount());
 			Assert(req->numNgangs > 0 && req->nxtNgang == 0 && req->writer);
 			Assert(req->vecNgangs[0] != NULL);
 
-			slice->gang = req->vecNgangs[req->nxtNgang];
-			Assert(slice->gang != NULL);
-			slice->gangId = slice->gang->gang_id;
-			slice->workerProcesses = getCdbProcessList(slice->gang, slice->sliceIndex, &slice->directDispatch);
+			slice->primaryGang = req->vecNgangs[req->nxtNgang];
+			Assert(slice->primaryGang != NULL);
+			slice->primary_gang_id = slice->primaryGang->gang_id;
+			slice->primaryProcesses = getCdbProcessList(slice->primaryGang, slice->sliceIndex, &slice->directDispatch);
 
 			req->nxtNgang++;
 			break;
 
-		case GANGTYPE_SEGDB_READER:
+		case GANGTYPE_PRIMARY_READER:
 			if (is1GangSlice(slice))
 			{
-				slice->gang = req->vec1gangs_primary_reader[req->nxt1gang_primary_reader];
+				slice->primaryGang = req->vec1gangs_primary_reader[req->nxt1gang_primary_reader];
 				req->nxt1gang_primary_reader++;
 			}
 			else
 			{
 				Assert(slice->gangSize == getgpsegmentCount());
-				slice->gang = req->vecNgangs[req->nxtNgang];
+				slice->primaryGang = req->vecNgangs[req->nxtNgang];
 				req->nxtNgang++;
 			}
-			Assert(slice->gang != NULL);
-			slice->gangId = slice->gang->gang_id;
-			slice->workerProcesses = getCdbProcessList(slice->gang,
+			Assert(slice->primaryGang != NULL);
+			slice->primary_gang_id = slice->primaryGang->gang_id;
+			slice->primaryProcesses = getCdbProcessList(slice->primaryGang,
                                                         slice->sliceIndex,
                                                         &slice->directDispatch);
-			Assert(sliceCalculateNumSendingProcesses(slice, getgpsegmentCount()) == countNonNullValues(slice->workerProcesses));
+			Assert(sliceCalculateNumSendingProcesses(slice, getgpsegmentCount()) == countNonNullValues(slice->primaryProcesses));
 			break;
 	}
 
@@ -2024,9 +1974,9 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 	/*
 	 * If QD, wait for QEs to finish and check their results.
 	 */
-	if (estate->dispatcherState->results)
+	if (estate->dispatcherState->primaryResults)
 	{
-		CdbDispatchResults *pr = estate->dispatcherState->results;
+		CdbDispatchResults *pr = estate->dispatcherState->primaryResults;
 		HTAB 			   *aopartcounts = NULL;
 
 		/*
@@ -2093,13 +2043,9 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 			/* counts from a (non partitioned) AO table */
 
 			ExecUpdateAOtupCount(estate->es_result_relations,
-								 estate->es_snapshot,
 								 estate->es_num_result_relations,
 								 estate->es_processed);
 		}
-
-		/* Gather the per-QE per-Slice statement statistics */
-		cdbdisp_getStatementStats(pr);
 
 		/*
 		 * Check and free the results of all gangs. If any QE had an
@@ -2137,40 +2083,11 @@ void mppExecutorCleanup(QueryDesc *queryDesc)
 	estate = queryDesc->estate;
 
 	/*
-	 * If this query is being canceled, record that when the gpperfmon
-	 * is enabled.
-	 */
-	if (gp_enable_gpperfmon &&
-		Gp_role == GP_ROLE_DISPATCH &&
-		queryDesc->gpmon_pkt &&
-		QueryCancelCleanup)
-	{			
-		gpmon_qlog_query_canceling(queryDesc->gpmon_pkt);
-
-		if (gp_cancel_query_print_log)
-		{
-			elog(LOG, "canceling query (%d, %d)",
-				 queryDesc->gpmon_pkt->u.qlog.key.ssid,
-				 queryDesc->gpmon_pkt->u.qlog.key.ccnt);
-		}
-	}
-
-	/*
-	 * Delaying the cancellation for a specified time.
-	 */
-	if (Gp_role == GP_ROLE_DISPATCH &&
-		QueryCancelCleanup &&
-		gp_cancel_query_delay_time > 0)
-	{
-		pg_usleep(gp_cancel_query_delay_time * 1000);
-	}
-
-	/*
 	 * Request any commands still executing on qExecs to stop.
 	 * Wait for them to finish and clean up the dispatching structures.
 	 * Replace current error info with QE error info if more interesting.
 	 */
-	if (estate->dispatcherState && estate->dispatcherState->results)
+	if (estate->dispatcherState && estate->dispatcherState->primaryResults)
 	{
 		/*
 		 * If we are finishing a query before all the tuples of the query
@@ -2208,17 +2125,8 @@ void mppExecutorCleanup(QueryDesc *queryDesc)
 	 */
 	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
 	{
-		SPI_InitMemoryReservation();
+		InitFunctionScanMemoryReservedStack();
 	}
-}
-
-void
-initGpmonPktForDefunctOperators(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
-{
-	Assert(IsA(planNode, SeqScan) ||
-		   IsA(planNode, AppendOnlyScan) ||
-		   IsA(planNode, AOCSScan));
-	insist_log(false, "SeqScan/AppendOnlyScan/AOCSScan are defunct");
 }
 
 /*
@@ -2230,17 +2138,13 @@ void (*initGpmonPktFuncs[])(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *e
 {
 	&initGpmonPktForResult, /* T_Result */
 	&initGpmonPktForAppend, /* T_Append */
-	&initGpmonPktForSequence, /* T_Sequence */
 	&initGpmonPktForBitmapAnd, /* T_BitmapAnd */
 	&initGpmonPktForBitmapOr, /* T_BitmapOr */
-	&initGpmonPktForDefunctOperators, /* T_SeqScan */
+	&initGpmonPktForSeqScan, /* T_SeqScan */
 	&initGpmonPktForExternalScan, /* T_ExternalScan */
-	&initGpmonPktForDefunctOperators, /* T_AppendOnlyScan */
-	&initGpmonPktForDefunctOperators, /* T_AOCSScan */
-	&initGpmonPktForTableScan, /* T_TableScan */
-	&initGpmonPktForDynamicTableScan, /* reserved for T_DynamicTableScan */
+	&initGpmonPktForAppendOnlyScan, /* T_AppendOnlyScan */
+	&initGpmonPktForAOCSScan, /* T_AOCSScan */
 	&initGpmonPktForIndexScan, /* T_IndexScan */
-	&initGpmonPktForIndexOnlyScan, /* T_IndexOnlyScan */
 	&initGpmonPktForBitmapIndexScan, /* T_BitmapIndexScan */
 	&initGpmonPktForBitmapHeapScan, /* T_BitmapHeapScan */
 	&initGpmonPktForBitmapAppendOnlyScan, /* T_BitmapAppendOnlyScan */
@@ -2323,20 +2227,6 @@ sendInitGpmonPkts(Plan *node, EState *estate)
 			break;
 		}
 
-		case T_Sequence:
-		{
-			Sequence *sequence = (Sequence *)node;
-
-			ListCell *lc;
-			foreach (lc, sequence->subplans)
-			{
-				Plan *subplan = (Plan *)lfirst(lc);
-				
-				sendInitGpmonPkts(subplan, estate);
-			}
-			break;
-		}
-
 		case T_BitmapAnd:
 		{
 			ListCell *lc;
@@ -2366,10 +2256,8 @@ sendInitGpmonPkts(Plan *node, EState *estate)
 		case T_SeqScan:
 		case T_AppendOnlyScan:
 		case T_AOCSScan:
-		case T_DynamicTableScan:
 		case T_ExternalScan:
 		case T_IndexScan:
-		case T_IndexOnlyScan:
 		case T_BitmapIndexScan:
 		case T_TidScan:
 		case T_FunctionScan:
@@ -2543,3 +2431,4 @@ int RootSliceIndex(EState *estate)
 
 	return result;
 }
+

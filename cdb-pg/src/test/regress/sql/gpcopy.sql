@@ -547,7 +547,7 @@ COPY copy_regression_newline from stdin with delimiter '|' newline 'lf' csv;
 \.
 
 -- negative: text
-COPY copy_regression_newline from stdin with delimiter '|' newline 'cr'; -- should fail MPP-13736
+COPY copy_regression_newline from stdin with delimiter '|' newline 'cr';
 1|1
 2|2
 \.

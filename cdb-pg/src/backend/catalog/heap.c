@@ -31,7 +31,6 @@
 #include "postgres.h"
 
 #include "access/genam.h"
-#include "access/catquery.h"
 #include "access/heapam.h"
 #include "access/sysattr.h"
 #include "access/transam.h"
@@ -76,7 +75,6 @@
 #include "utils/memutils.h"             /* CDB: GetMemoryChunkContext */
 #include "utils/relcache.h"
 #include "utils/syscache.h"
-#include "utils/faultinjector.h"
 
 #include "cdb/cdbvars.h"
 
@@ -84,11 +82,8 @@
 #include "cdb/cdbpersistentfilesysobj.h"
 #include "catalog/gp_persistent.h"
 
-#include "utils/guc.h"
-
-static void MetaTrackAddUpdInternal(cqContext  *pcqCtx,
-									Oid			classid,
-									Oid			objoid,
+static void MetaTrackAddUpdInternal(Oid			classid, 
+									Oid			objoid, 
 									Oid			relowner,
 									char*		actionname,
 									char*		subtype,
@@ -114,6 +109,7 @@ static Oid StoreRelCheck(Relation rel, char *ccname, char *ccbin, Oid conoid);
 static Node* cookConstraint (ParseState *pstate,
 							 Node 		*raw_constraint,
 							 char		*relname);
+static void StoreConstraints(Relation rel, TupleDesc tupdesc);
 static List *insert_ordered_unique_oid(List *list, Oid datum);
 
 /* ----------------------------------------------------------------
@@ -410,25 +406,12 @@ heap_create(const char *relname,
 													&rel->rd_segfile0_relationnodeinfo.persistentSerialNum);
 			}
 		}
-
-
-		if (Debug_check_for_invalid_persistent_tid &&
-			!Persistent_BeforePersistenceWork() &&
-			PersistentStore_IsZeroTid(&rel->rd_segfile0_relationnodeinfo.persistentTid))
-		{	
-			elog(ERROR, 
-				 "setNewRelfilenodeCommon has invalid TID (0,0) into relation %u/%u/%u '%s', serial number " INT64_FORMAT,
-				 rel->rd_node.spcNode,
-				 rel->rd_node.dbNode,
-				 rel->rd_node.relNode,
-				 NameStr(rel->rd_rel->relname),
-				 rel->rd_segfile0_relationnodeinfo.persistentSerialNum);
-		}
+		
 
 		rel->rd_segfile0_relationnodeinfo.isPresent = true;
 
 		if (Debug_persistent_print)
-			elog(Persistent_DebugPrintLevel(),
+			elog(Persistent_DebugPrintLevel(), 
 			     "heap_create: '%s', Append-Only '%s', persistent TID %s and serial number " INT64_FORMAT " for CREATE",
 				 relpath(rel->rd_node),
 				 (isAppendOnly ? "true" : "false"),
@@ -596,9 +579,8 @@ CheckAttributeType(const char *attname, Oid atttypid)
  * --------------------------------
  */
 
-static void MetaTrackAddUpdInternal(cqContext  *pcqCtx,
-									Oid			classid,
-									Oid			objoid,
+static void MetaTrackAddUpdInternal(Oid			classid, 
+									Oid			objoid, 
 									Oid			relowner,
 									char*		actionname,
 									char*		subtype,
@@ -629,21 +611,19 @@ static void MetaTrackAddUpdInternal(cqContext  *pcqCtx,
 	uname.data[0] = '\0';
 
 	{
-		char	*rolnamestr;
-		int		 fetchCount;
+		HeapTuple	utup;
 
-		rolnamestr = caql_getcstring_plus(
-				NULL,
-				&fetchCount,
-				NULL,
-				cql("SELECT rolname FROM pg_authid "
-					" WHERE oid = :1 ",
-					ObjectIdGetDatum(relowner)));
+		utup = SearchSysCache(AUTHOID,
+							  ObjectIdGetDatum(relowner),
+							  0, 0, 0);
 
-		if (fetchCount)
+		if (HeapTupleIsValid(utup))
 		{
-			namestrcpy(&uname, rolnamestr);
-			pfree(rolnamestr);
+			namestrcpy(&uname, 
+					   NameStr(
+							   ((Form_pg_authid) GETSTRUCT(utup))->rolname)
+					);
+			ReleaseSysCache(utup);
 		}
 		else
 		{
@@ -666,20 +646,22 @@ static void MetaTrackAddUpdInternal(cqContext  *pcqCtx,
 
 	if (HeapTupleIsValid(old_tuple))
 	{
-		new_tuple = caql_modify_current(pcqCtx,
-										values,
-										isnull, new_record_repl);
+		new_tuple = heap_modify_tuple(old_tuple, 
+									  RelationGetDescr(rel), values,
+									  isnull, new_record_repl);
 
-		caql_update_current(pcqCtx, new_tuple);
-		/* and Update indexes (implicit) */
+		simple_heap_update(rel, &old_tuple->t_self, new_tuple);
 	}
 	else
 	{
-		new_tuple = caql_form_tuple(pcqCtx, values, isnull);
+		Oid s1;
 
-		(void) caql_insert(pcqCtx, new_tuple);
-		/* and Update indexes (implicit) */
+		new_tuple = heap_form_tuple(RelationGetDescr(rel), values, isnull);
+
+		s1 = simple_heap_insert(rel, new_tuple);
 	}
+	/* keep the system catalog indexes current */
+	CatalogUpdateIndexes(rel, new_tuple);
 
 	if (HeapTupleIsValid(old_tuple))
 		heap_freetuple(new_tuple);
@@ -687,57 +669,41 @@ static void MetaTrackAddUpdInternal(cqContext  *pcqCtx,
 } /* end MetaTrackAddUpdInternal */
 
 
-void MetaTrackAddObject(Oid		classid,
-						Oid		objoid,
+void MetaTrackAddObject(Oid		classid, 
+						Oid		objoid, 
 						Oid		relowner,
 						char*	actionname,
 						char*	subtype)
 {
 	Relation	rel;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
 
 	if (IsBootstrapProcessingMode())
 		return;
 
 	if (IsSharedRelation(classid))
-	{
 		rel = heap_open(StatLastShOpRelationId, RowExclusiveLock);
-		pcqCtx = caql_beginscan(
-				caql_addrel(cqclr(&cqc), rel),
-				cql("INSERT INTO pg_stat_last_shoperation ",
-					NULL));
-	}
 	else
-	{
 		rel = heap_open(StatLastOpRelationId, RowExclusiveLock);
-		pcqCtx = caql_beginscan(
-				caql_addrel(cqclr(&cqc), rel),
-				cql("INSERT INTO pg_stat_last_operation ",
-					NULL));
-	}
 
-	MetaTrackAddUpdInternal(pcqCtx,
-							classid, objoid, relowner,
-							actionname, subtype,
+	MetaTrackAddUpdInternal(classid, objoid, relowner, 
+							actionname, subtype, 
 							rel, InvalidOid);
 
-	caql_endscan(pcqCtx);
 	heap_close(rel, RowExclusiveLock);
 
 /*	CommandCounterIncrement(); */
 
 } /* end MetaTrackAddObject */
 
-void MetaTrackUpdObject(Oid		classid,
-						Oid		objoid,
+void MetaTrackUpdObject(Oid		classid, 
+						Oid		objoid, 
 						Oid		relowner,
 						char*	actionname,
 						char*	subtype)
 {
 	HeapTuple	tuple;
-	cqContext  *pcqCtx;
-	cqContext	cqc;
+	ScanKeyData key[3];
+	SysScanDesc scan;
 	Relation	rel;
 	int			ii = 0;
 
@@ -749,86 +715,100 @@ void MetaTrackUpdObject(Oid		classid,
 	else
 		rel = heap_open(StatLastOpRelationId, RowExclusiveLock);
 
+	ScanKeyInit(&key[0],
+				Anum_pg_statlastop_classid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(classid));
+	ScanKeyInit(&key[1],
+				Anum_pg_statlastop_objid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(objoid));
+	ScanKeyInit(&key[2],
+				Anum_pg_statlastop_staactionname,
+				BTEqualStrategyNumber, F_NAMEEQ,
+				CStringGetDatum(actionname));
+
 	if (IsSharedRelation(classid))
-	{
-		pcqCtx = caql_beginscan(
-				caql_addrel(cqclr(&cqc), rel),
-				cql("SELECT * FROM pg_stat_last_shoperation "
-					" WHERE classid = :1 "
-					" AND objid = :2 "
-					" AND staactionname = :3 "
-					" FOR UPDATE ",
-					ObjectIdGetDatum(classid),
-					ObjectIdGetDatum(objoid),
-					CStringGetDatum(actionname)));
-	}
+		scan = systable_beginscan(rel,
+								  StatLastShOpClassidObjidStaactionnameIndexId,
+								  /* XXX XXX XXX XXX : snapshotnow ? */
+								  true, SnapshotNow, 3, key);
 	else
-	{
-		pcqCtx = caql_beginscan(
-				caql_addrel(cqclr(&cqc), rel),
-				cql("SELECT * FROM pg_stat_last_operation "
-					" WHERE classid = :1 "
-					" AND objid = :2 "
-					" AND staactionname = :3 "
-					" FOR UPDATE ",
-					ObjectIdGetDatum(classid),
-					ObjectIdGetDatum(objoid),
-					CStringGetDatum(actionname)));
-	}
+		scan = systable_beginscan(rel,
+								  StatLastOpClassidObjidStaactionnameIndexId,
+								  /* XXX XXX XXX XXX : snapshotnow ? */
+								  true, SnapshotNow, 3, key);
 
 	/* should be a unique index - only 1 answer... */
-	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
+	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
 	{
 		if (HeapTupleIsValid(tuple))
 		{
-			MetaTrackAddUpdInternal(pcqCtx,
-									classid, objoid, relowner,
-									actionname, subtype,
+			MetaTrackAddUpdInternal(classid, objoid, relowner, 
+									actionname, subtype, 
 									rel, tuple);
-			
+
 /*			CommandCounterIncrement(); */
 
 			ii++;
 		}
 	}
-	caql_endscan(pcqCtx);
+	systable_endscan(scan);
 	heap_close(rel, RowExclusiveLock);
 
 	/* add it if it didn't already exist */
 	if (!ii)
-		MetaTrackAddObject(classid,
-						   objoid,
+		MetaTrackAddObject(classid, 
+						   objoid, 
 						   relowner,
 						   actionname,
 						   subtype);
 
 } /* end MetaTrackUpdObject */
-void MetaTrackDropObject(Oid		classid,
+void MetaTrackDropObject(Oid		classid, 
 						 Oid		objoid)
 {
+	HeapTuple tuple;
+	ScanKeyData key[2];
+	SysScanDesc scan;
+	Relation rel;
 	int ii = 0;
 
 	if (IsSharedRelation(classid))
-	{
-		ii = caql_getcount(
-				NULL,
-				cql("DELETE FROM pg_stat_last_shoperation "
-					" WHERE classid = :1 "
-					" AND objid = :2 ",
-					ObjectIdGetDatum(classid),
-					ObjectIdGetDatum(objoid)));
-	}
+		rel = heap_open(StatLastShOpRelationId, RowExclusiveLock);
 	else
-	{
-		ii = caql_getcount(
-				NULL,
-				cql("DELETE FROM pg_stat_last_operation "
-					" WHERE classid = :1 "
-					" AND objid = :2 ",
-					ObjectIdGetDatum(classid),
-					ObjectIdGetDatum(objoid)));
-	}
+		rel = heap_open(StatLastOpRelationId, RowExclusiveLock);
 
+	ScanKeyInit(&key[0],
+				Anum_pg_statlastop_classid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(classid));
+	ScanKeyInit(&key[1],
+				Anum_pg_statlastop_objid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(objoid));
+
+	if (IsSharedRelation(classid))
+		scan = systable_beginscan(rel,
+								  StatLastShOpClassidObjidIndexId,
+								  /* XXX XXX XXX XXX : snapshotnow ? */
+								  true, SnapshotNow, 2, key);
+	else
+		scan = systable_beginscan(rel,
+								  StatLastOpClassidObjidIndexId,
+								  /* XXX XXX XXX XXX : snapshotnow ? */
+								  true, SnapshotNow, 2, key);
+
+	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
+	{
+		if (HeapTupleIsValid(tuple))
+		{
+			simple_heap_delete(rel, &tuple->t_self);
+			ii++;
+		}
+	}
+	systable_endscan(scan);
+	heap_close(rel, RowExclusiveLock);
 } /* end MetaTrackDropObject */
 
 
@@ -850,18 +830,18 @@ AddNewAttributeTuples(Oid new_rel_oid,
 	const Form_pg_attribute *dpp;
 	int			i;
 	HeapTuple	tup;
+	Relation	rel;
+	CatalogIndexState indstate;
 	int			natts = tupdesc->natts;
 	ObjectAddress myself,
 				referenced;
-	cqContext  *pcqCtx;
 
 	/*
 	 * open pg_attribute and its indexes.
 	 */
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("INSERT INTO pg_attribute ",
-				NULL));
+	rel = heap_open(AttributeRelationId, RowExclusiveLock);
+
+	indstate = CatalogOpenIndexes(rel);
 
 	/*
 	 * First we add the user attributes.  This is also a convenient place to
@@ -881,8 +861,9 @@ AddNewAttributeTuples(Oid new_rel_oid,
 							 ATTRIBUTE_TUPLE_SIZE,
 							 (void *) *dpp);
 
-		caql_insert(pcqCtx, tup);
-		/* and Update indexes (implicit) */
+		simple_heap_insert(rel, tup);
+
+		CatalogIndexInsert(indstate, tup);
 
 		heap_freetuple(tup);
 
@@ -935,8 +916,9 @@ AddNewAttributeTuples(Oid new_rel_oid,
 				/* attStruct->attstattarget = 0; */
 				/* attStruct->attcacheoff = -1; */
 
-				caql_insert(pcqCtx, tup);
-				/* and Update indexes (implicit) */
+				simple_heap_insert(rel, tup);
+
+				CatalogIndexInsert(indstate, tup);
 
 				heap_freetuple(tup);
 			}
@@ -947,7 +929,9 @@ AddNewAttributeTuples(Oid new_rel_oid,
 	/*
 	 * clean up
 	 */
-	caql_endscan(pcqCtx); /* close rel, indexes */
+	CatalogCloseIndexes(indstate);
+
+	heap_close(rel, RowExclusiveLock);
 }
 
 /* --------------------------------
@@ -972,8 +956,6 @@ InsertPgClassTuple(Relation pg_class_desc,
 	Datum		values[Natts_pg_class];
 	bool		nulls[Natts_pg_class];
 	HeapTuple	tup;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
 
 	/* This is a tad tedious, but way cleaner than what we used to do... */
 	memset(values, 0, sizeof(values));
@@ -1014,12 +996,7 @@ InsertPgClassTuple(Relation pg_class_desc,
 	else
 		nulls[Anum_pg_class_reloptions - 1] = true;
 
-	pcqCtx = caql_beginscan(
-			caql_addrel(cqclr(&cqc), pg_class_desc),
-			cql("INSERT INTO pg_class ",
-				NULL));
-
-	tup = caql_form_tuple(pcqCtx, values, nulls);
+	tup = heap_form_tuple(RelationGetDescr(pg_class_desc), values, nulls);
 
 	/*
 	 * The new tuple must have the oid already chosen for the rel.	Sure would
@@ -1028,10 +1005,9 @@ InsertPgClassTuple(Relation pg_class_desc,
 	HeapTupleSetOid(tup, new_rel_oid);
 
 	/* finally insert the new tuple, update the indexes, and clean up */
-	caql_insert(pcqCtx, tup);
-	/* and Update indexes (implicit) */
+	simple_heap_insert(pg_class_desc, tup);
 
-	caql_endscan(pcqCtx);
+	CatalogUpdateIndexes(pg_class_desc, tup);
 
 	heap_freetuple(tup);
 }
@@ -1184,27 +1160,13 @@ InsertGpRelationNodeTuple(
 	Datum		values[Natts_gp_relation_node];
 	bool		nulls[Natts_gp_relation_node];
 	HeapTuple	tuple;
-//	cqContext	cqc;
-//	cqContext  *pcqCtx;
 
-	if (Debug_check_for_invalid_persistent_tid &&
-		!Persistent_BeforePersistenceWork() &&
-		PersistentStore_IsZeroTid(persistentTid))
-	{	
-		elog(ERROR, 
-			 "Inserting with invalid TID (0,0) into relation id %u '%s', relfilenode %u, segment file #%d, serial number " INT64_FORMAT,
-			 relationId,
-			 relname,
-			 relfilenode,
-			 segmentFileNum,
-			 persistentSerialNum);
-	}
 
 	memset(values, 0, sizeof(values));
 	memset(nulls, false, sizeof(nulls));
 
 	if (Debug_persistent_print)
-		elog(Persistent_DebugPrintLevel(),
+		elog(Persistent_DebugPrintLevel(), 
 			 "InsertGpRelationNodeTuple: Inserting into relation id %u '%s', relfilenode %u, segment file #%d, serial number " INT64_FORMAT ", TID %s",
 			 relationId,
 			 relname,
@@ -1213,11 +1175,7 @@ InsertGpRelationNodeTuple(
 			 persistentSerialNum,
 			 ItemPointerToString(persistentTid));
 
-//	pcqCtx = caql_beginscan(
-//			caql_addrel(cqclr(&cqc), pg_class_desc),
-//			cqlXXX("INSERT INTO gp_relation_node ",
-//				NULL));
-
+	
 	GpRelationNode_SetDatumValues(
 								values,
 								relfilenode,
@@ -1226,8 +1184,6 @@ InsertGpRelationNodeTuple(
 								persistentTid,
 								persistentSerialNum);
 
-//	tuple = caql_form_tuple(pcqCtx, values, nulls);
-	/* XXX XXX: note optional index update */
 	tuple = heap_form_tuple(RelationGetDescr(gp_relation_node), values, nulls);
 
 	/* finally insert the new tuple, update the indexes, and clean up */
@@ -1237,8 +1193,6 @@ InsertGpRelationNodeTuple(
 	{
 		CatalogUpdateIndexes(gp_relation_node, tuple);
 	}
-
-//	caql_endscan(pcqCtx);
 
 	heap_freetuple(tuple);
 }
@@ -1257,19 +1211,8 @@ UpdateGpRelationNodeTuple(
 	bool		repl_repl[Natts_gp_relation_node];
 	HeapTuple	newtuple;
 
-	if (Debug_check_for_invalid_persistent_tid &&
-		!Persistent_BeforePersistenceWork() &&
-		PersistentStore_IsZeroTid(persistentTid))
-	{	
-		elog(ERROR, 
-			 "Updating with invalid TID (0,0) in relfilenode %u, segment file #%d, serial number " INT64_FORMAT,
-			 relfilenode,
-			 segmentFileNum,
-			 persistentSerialNum);
-	}
-
 	if (Debug_persistent_print)
-		elog(Persistent_DebugPrintLevel(),
+		elog(Persistent_DebugPrintLevel(), 
 			 "UpdateGpRelationNodeTuple: Updating relfilenode %u, segment file #%d, serial number " INT64_FORMAT " at TID %s",
 			 relfilenode,
 			 segmentFileNum,
@@ -1282,7 +1225,7 @@ UpdateGpRelationNodeTuple(
 
 	repl_repl[Anum_gp_relation_node_relfilenode_oid - 1] = true;
 	repl_val[Anum_gp_relation_node_relfilenode_oid - 1] = ObjectIdGetDatum(relfilenode);
-
+	
 	repl_repl[Anum_gp_relation_node_segment_file_num - 1] = true;
 	repl_val[Anum_gp_relation_node_segment_file_num - 1] = Int32GetDatum(segmentFileNum);
 
@@ -1290,12 +1233,12 @@ UpdateGpRelationNodeTuple(
 
 	repl_repl[Anum_gp_relation_node_persistent_tid- 1] = true;
 	repl_val[Anum_gp_relation_node_persistent_tid- 1] = PointerGetDatum(persistentTid);
-
+	
 	repl_repl[Anum_gp_relation_node_persistent_serial_num - 1] = true;
 	repl_val[Anum_gp_relation_node_persistent_serial_num - 1] = Int64GetDatum(persistentSerialNum);
 
 	newtuple = heap_modify_tuple(tuple, RelationGetDescr(gp_relation_node), repl_val, repl_null, repl_repl);
-
+	
 	simple_heap_update(gp_relation_node, &newtuple->t_self, newtuple);
 
 	CatalogUpdateIndexes(gp_relation_node, newtuple);
@@ -1320,7 +1263,7 @@ AddNewRelationNodeTuple(
 							/* updateIndex */ true,
 							&new_rel->rd_segfile0_relationnodeinfo.persistentTid,
 							new_rel->rd_segfile0_relationnodeinfo.persistentSerialNum);
-
+							
 	}
 }
 
@@ -1397,7 +1340,7 @@ heap_create_with_catalog(const char *relname,
 	}
 
 	/* MPP-8058: disallow OIDS on column-oriented tables */
-	if (tupdesc->tdhasoid &&
+	if (tupdesc->tdhasoid && 
 		IsNormalProcessingMode() &&
         (Gp_role == GP_ROLE_DISPATCH))
 	{
@@ -1493,14 +1436,6 @@ heap_create_with_catalog(const char *relname,
 											  ownerid);
 		else
 		{
-#ifdef FAULT_INJECTOR
-	if (FaultInjector_InjectFaultIfSet(     UpdatePersistentSerialNumberForNewTable,
-						DDLNotSpecified,
-						"" /* databaseName */,
-						"" /* tableName */))
-		;
-#endif
-
 			new_type_oid = TypeCreateWithOid(relname,	/* type name */
 					   relnamespace,		/* type namespace */
 					   relid, /* relation oid */
@@ -1611,10 +1546,13 @@ heap_create_with_catalog(const char *relname,
 	}
 
 	/*
-	 * We used to store pre-cooked constraints and defaults here.
-	 * We now store them along with raw constraints and defaults to ensure that
-	 * 	we have oid of pg_constraint and pg_attrdef consistent across segments
+	 * Store any supplied constraints and defaults.
+	 *
+	 * NB: this may do a CommandCounterIncrement and rebuild the relcache
+	 * entry, so the relation must be valid and self-consistent at this point.
+	 * In particular, there are not yet constraints and defaults anywhere.
 	 */
+	StoreConstraints(new_rel_desc, tupdesc);
 
 	/*
 	 * If there's a special on-commit action, remember it
@@ -1658,11 +1596,11 @@ heap_create_with_catalog(const char *relname,
 		}
 
 		/* MPP-7576: don't track internal namespace tables */
-		switch (relnamespace)
+		switch (relnamespace) 
 		{
 			case PG_CATALOG_NAMESPACE:
 				/* MPP-7773: don't track objects in system namespace
-				 * if modifying system tables (eg during upgrade)
+				 * if modifying system tables (eg during upgrade)  
 				 */
 				if (allowSystemTableModsDDL)
 					doIt = false;
@@ -1713,26 +1651,51 @@ heap_create_with_catalog(const char *relname,
 static void
 RelationRemoveInheritance(Oid relid)
 {
-	int numDel = 0;
+	Relation	catalogRelation;
+	SysScanDesc scan;
+	ScanKeyData key;
+	HeapTuple	tuple;
 
-	numDel = caql_getcount(
-			NULL,
-			cql("DELETE FROM pg_inherits "
-				" WHERE inhrelid = :1 ",
-				ObjectIdGetDatum(relid)));
+	catalogRelation = heap_open(InheritsRelationId, RowExclusiveLock);
+
+	ScanKeyInit(&key,
+				Anum_pg_inherits_inhrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relid));
+
+	scan = systable_beginscan(catalogRelation, InheritsRelidSeqnoIndexId, true,
+							  SnapshotNow, 1, &key);
+
+	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
+		simple_heap_delete(catalogRelation, &tuple->t_self);
+
+	systable_endscan(scan);
+	heap_close(catalogRelation, RowExclusiveLock);
 }
 
-/* del_part_entry_by_key is superfluous - removed */
+static void
+del_part_entry_by_key(Relation rel, Oid indexOid, ScanKey key, int nkeys)
+{
+	SysScanDesc scan;
+	HeapTuple tuple;
+
+	scan = systable_beginscan(rel, indexOid,
+							  true, SnapshotNow, nkeys, key);
+
+	while ((tuple = systable_getnext(scan)))
+		simple_heap_delete(rel, &tuple->t_self);
+
+	systable_endscan(scan);
+}
 
 static void
 RemovePartitioning(Oid relid)
 {
+	ScanKeyData key;
 	Relation rel;
 	HeapTuple tuple;
+	SysScanDesc scan;
 	Relation pgrule;
-	cqContext	*pcqCtx;
-	cqContext	 cqc, cqcrul;
-	int			 numDel = 0;
 
 	if (Gp_role == GP_ROLE_EXECUTE)
 		return;
@@ -1743,37 +1706,41 @@ RemovePartitioning(Oid relid)
 	rel = heap_open(PartitionRelationId, RowExclusiveLock);
 	pgrule = heap_open(PartitionRuleRelationId,
 					   RowExclusiveLock);
+	ScanKeyInit(&key,
+				Anum_pg_partition_parrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relid));
 
-	pcqCtx = caql_beginscan(
-			caql_addrel(cqclr(&cqc), rel),
-			cql("SELECT * FROM pg_partition "
-				" WHERE parrelid = :1 "
-				" FOR UPDATE ",
-				ObjectIdGetDatum(relid)));
+	scan = systable_beginscan(rel, PartitionParrelidIndexId,
+							  true, SnapshotNow, 1, &key);
 
-	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
+	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
 	{
+		ScanKeyData rkey;
 		Oid paroid = HeapTupleGetOid(tuple);
 
-		numDel = caql_getcount(
-				caql_addrel(cqclr(&cqcrul), pgrule),
-				cql("DELETE FROM pg_partition_rule "
-					" WHERE paroid = :1 ",
-					ObjectIdGetDatum(paroid)));
+		ScanKeyInit(&rkey,
+					Anum_pg_partition_rule_paroid,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(paroid));
+
+		del_part_entry_by_key(pgrule, 
+						  PartitionRuleParoidParparentruleParruleordIndexId,
+							  &rkey, 1);
 
 		/* remove ourself */
-		caql_delete_current(pcqCtx);
+		simple_heap_delete(rel, &tuple->t_self);
 	}
-	caql_endscan(pcqCtx);
+	systable_endscan(scan);
 	heap_close(rel, NoLock);
 
 	/* we might be a leaf partition: delete any records */
+	ScanKeyInit(&key,
+				Anum_pg_partition_rule_parchildrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relid));
 
-	numDel = caql_getcount(
-			caql_addrel(cqclr(&cqcrul), pgrule),
-			cql("DELETE FROM pg_partition_rule "
-				" WHERE parchildrelid = :1 ",
-				ObjectIdGetDatum(relid)));
+	del_part_entry_by_key(pgrule, PartitionRuleParchildrelidIndexId, &key, 1);
 
 	heap_close(pgrule, NoLock);
 
@@ -1791,27 +1758,24 @@ RemovePartitioning(Oid relid)
 void
 DeleteRelationTuple(Oid relid)
 {
+	Relation	pg_class_desc;
 	HeapTuple	tup;
-	cqContext  *pcqCtx;
 
 	/* Grab an appropriate lock on the pg_class relation */
+	pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 "
-				" FOR UPDATE ",
-				ObjectIdGetDatum(relid)));
-
-	tup = caql_getnext(pcqCtx);
-
+	tup = SearchSysCache(RELOID,
+						 ObjectIdGetDatum(relid),
+						 0, 0, 0);
 	if (!HeapTupleIsValid(tup))
 		elog(ERROR, "cache lookup failed for relation %u", relid);
 
 	/* delete the relation tuple from pg_class, and finish up */
-	caql_delete_current(pcqCtx);
+	simple_heap_delete(pg_class_desc, &tup->t_self);
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(tup);
+
+	heap_close(pg_class_desc, RowExclusiveLock);
 }
 
 /*
@@ -1825,13 +1789,30 @@ DeleteRelationTuple(Oid relid)
 void
 DeleteAttributeTuples(Oid relid)
 {
-	int numDel = 0;
+	Relation	attrel;
+	SysScanDesc scan;
+	ScanKeyData key[1];
+	HeapTuple	atttup;
 
-	numDel = caql_getcount(
-			NULL,
-			cql("DELETE FROM pg_attribute "
-				" WHERE attrelid = :1 ",
-				ObjectIdGetDatum(relid)));
+	/* Grab an appropriate lock on the pg_attribute relation */
+	attrel = heap_open(AttributeRelationId, RowExclusiveLock);
+
+	/* Use the index to scan only attributes of the target relation */
+	ScanKeyInit(&key[0],
+				Anum_pg_attribute_attrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relid));
+
+	scan = systable_beginscan(attrel, AttributeRelidNumIndexId, true,
+							  SnapshotNow, 1, key);
+
+	/* Delete all the matching tuples */
+	while ((atttup = systable_getnext(scan)) != NULL)
+		simple_heap_delete(attrel, &atttup->t_self);
+
+	/* Clean up after the scan */
+	systable_endscan(scan);
+	heap_close(attrel, RowExclusiveLock);
 }
 
 void
@@ -1880,8 +1861,6 @@ RemoveAttributeById(Oid relid, AttrNumber attnum)
 	HeapTuple	tuple;
 	Form_pg_attribute attStruct;
 	char		newattname[NAMEDATALEN];
-	cqContext	cqc;
-	cqContext  *pcqCtx;
 
 	/*
 	 * Grab an exclusive lock on the target table, which we will NOT release
@@ -1894,17 +1873,10 @@ RemoveAttributeById(Oid relid, AttrNumber attnum)
 
 	attr_rel = heap_open(AttributeRelationId, RowExclusiveLock);
 
-	pcqCtx = caql_addrel(cqclr(&cqc), attr_rel);
-
-	tuple = caql_getfirst(
-			pcqCtx,
-			cql("SELECT * FROM pg_attribute "
-				" WHERE attrelid = :1 "
-				" AND attnum = :2 "
-				" FOR UPDATE ",
-				ObjectIdGetDatum(relid),
-				Int16GetDatum(attnum)));
-
+	tuple = SearchSysCacheCopy(ATTNUM,
+							   ObjectIdGetDatum(relid),
+							   Int16GetDatum(attnum),
+							   0, 0);
 	if (!HeapTupleIsValid(tuple))		/* shouldn't happen */
 		elog(ERROR, "cache lookup failed for attribute %d of relation %u",
 			 attnum, relid);
@@ -1914,7 +1886,7 @@ RemoveAttributeById(Oid relid, AttrNumber attnum)
 	{
 		/* System attribute (probably OID) ... just delete the row */
 
-		caql_delete_current(pcqCtx);
+		simple_heap_delete(attr_rel, &tuple->t_self);
 	}
 	else
 	{
@@ -1947,8 +1919,10 @@ RemoveAttributeById(Oid relid, AttrNumber attnum)
 				 "........pg.dropped.%d........", attnum);
 		namestrcpy(&(attStruct->attname), newattname);
 
-		caql_update_current(pcqCtx, tuple);
+		simple_heap_update(attr_rel, &tuple->t_self, tuple);
 
+		/* keep the system catalog indexes current */
+		CatalogUpdateIndexes(attr_rel, tuple);
 	}
 
 	/*
@@ -1966,43 +1940,37 @@ RemoveAttributeById(Oid relid, AttrNumber attnum)
 }
 
 /*
- * RemoveAttrDefault
+ *		RemoveAttrDefault
  *
- * If the specified relation/attribute has a default, remove it and return its
- * old pg_attrdef.oid. The caller can use this oid for the new default if it
- * needs to create another one. If no default, raise error if complain is true,
- * else return InvalidOid.
+ * If the specified relation/attribute has a default, remove it.
+ * (If no default, raise error if complain is true, else return quietly.)
  */
-Oid
+void
 RemoveAttrDefault(Oid relid, AttrNumber attnum,
 				  DropBehavior behavior, bool complain)
 {
 	Relation	attrdef_rel;
-	cqContext  *pcqCtx;
-	cqContext	cqc;
+	ScanKeyData scankeys[2];
+	SysScanDesc scan;
 	HeapTuple	tuple;
 	bool		found = false;
-	Oid			adoid = InvalidOid;
 
-	/*
-	 * select *
-	 * from pg_attrdef
-	 * where adrelid = :relid and adnum = :attnum
-	 */
 	attrdef_rel = heap_open(AttrDefaultRelationId, RowExclusiveLock);
 
-	pcqCtx = caql_beginscan(
-			caql_addrel(cqclr(&cqc), attrdef_rel),
-			cql("SELECT * FROM pg_attrdef "
-				" WHERE adrelid = :1 "
-				" AND adnum = :2 "
-				" FOR UPDATE ",
-				ObjectIdGetDatum(relid),
-				Int16GetDatum(attnum)));
+	ScanKeyInit(&scankeys[0],
+				Anum_pg_attrdef_adrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relid));
+	ScanKeyInit(&scankeys[1],
+				Anum_pg_attrdef_adnum,
+				BTEqualStrategyNumber, F_INT2EQ,
+				Int16GetDatum(attnum));
 
-	/* XXX XXX: SELECT oid ... due to unique index ? */
+	scan = systable_beginscan(attrdef_rel, AttrDefaultIndexId, true,
+							  SnapshotNow, 2, scankeys);
+
 	/* There should be at most one matching tuple, but we loop anyway */
-	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
+	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
 	{
 		ObjectAddress object;
 
@@ -2011,19 +1979,16 @@ RemoveAttrDefault(Oid relid, AttrNumber attnum,
 		object.objectSubId = 0;
 
 		performDeletion(&object, behavior);
-		
+
 		found = true;
-		adoid = object.objectId;
 	}
 
-	caql_endscan(pcqCtx);
+	systable_endscan(scan);
 	heap_close(attrdef_rel, RowExclusiveLock);
 
 	if (complain && !found)
 		elog(ERROR, "could not find attrdef tuple for relation %u attnum %d",
 			 relid, attnum);
-
-	return adoid;
 }
 
 /*
@@ -2039,10 +2004,8 @@ RemoveAttrDefaultById(Oid attrdefId)
 	Relation	attrdef_rel;
 	Relation	attr_rel;
 	Relation	myrel;
-	cqContext  *adrcqCtx;
-	cqContext  *attcqCtx;
-	cqContext	cqc;
-	cqContext	cqc2;
+	ScanKeyData scankeys[1];
+	SysScanDesc scan;
 	HeapTuple	tuple;
 	Oid			myrelid;
 	AttrNumber	myattnum;
@@ -2051,15 +2014,15 @@ RemoveAttrDefaultById(Oid attrdefId)
 	attrdef_rel = heap_open(AttrDefaultRelationId, RowExclusiveLock);
 
 	/* Find the pg_attrdef tuple */
+	ScanKeyInit(&scankeys[0],
+				ObjectIdAttributeNumber,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(attrdefId));
 
-	adrcqCtx = caql_beginscan(
-			caql_addrel(cqclr(&cqc), attrdef_rel),
-			cql("SELECT * FROM pg_attrdef "
-				" WHERE oid = :1 "
-				" FOR UPDATE ",
-				ObjectIdGetDatum(attrdefId)));
+	scan = systable_beginscan(attrdef_rel, AttrDefaultOidIndexId, true,
+							  SnapshotNow, 1, scankeys);
 
-	tuple = caql_getnext(adrcqCtx);
+	tuple = systable_getnext(scan);
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "could not find tuple for attrdef %u", attrdefId);
 
@@ -2070,33 +2033,28 @@ RemoveAttrDefaultById(Oid attrdefId)
 	myrel = relation_open(myrelid, AccessExclusiveLock);
 
 	/* Now we can delete the pg_attrdef row */
-	caql_delete_current(adrcqCtx);
+	simple_heap_delete(attrdef_rel, &tuple->t_self);
 
-	caql_endscan(adrcqCtx);
+	systable_endscan(scan);
 	heap_close(attrdef_rel, RowExclusiveLock);
 
 	/* Fix the pg_attribute row */
 	attr_rel = heap_open(AttributeRelationId, RowExclusiveLock);
 
-	attcqCtx = caql_addrel(cqclr(&cqc2), attr_rel);
-
-	tuple = caql_getfirst(
-			attcqCtx,
-			cql("SELECT * FROM pg_attribute "
-				" WHERE attrelid = :1 "
-				" AND attnum = :2 "
-				" FOR UPDATE ",
-				ObjectIdGetDatum(myrelid),
-				Int16GetDatum(myattnum)));
-
+	tuple = SearchSysCacheCopy(ATTNUM,
+							   ObjectIdGetDatum(myrelid),
+							   Int16GetDatum(myattnum),
+							   0, 0);
 	if (!HeapTupleIsValid(tuple))		/* shouldn't happen */
 		elog(ERROR, "cache lookup failed for attribute %d of relation %u",
 			 myattnum, myrelid);
 
 	((Form_pg_attribute) GETSTRUCT(tuple))->atthasdef = false;
 
-	caql_update_current(attcqCtx, tuple);
-	/* and Update indexes (implicit) */
+	simple_heap_update(attr_rel, &tuple->t_self, tuple);
+
+	/* keep the system catalog indexes current */
+	CatalogUpdateIndexes(attr_rel, tuple);
 
 	/*
 	 * Our update of the pg_attribute row will force a relcache rebuild, so
@@ -2113,9 +2071,9 @@ remove_gp_relation_node_and_schedule_drop(
 	Relation	rel)
 {
 	PersistentFileSysRelStorageMgr relStorageMgr;
-
+	
 	if (Debug_persistent_print)
-		elog(Persistent_DebugPrintLevel(),
+		elog(Persistent_DebugPrintLevel(), 
 			 "remove_gp_relation_node_and_schedule_drop: dropping relation '%s', relation id %u '%s', relfilenode %u",
 			 rel->rd_rel->relname.data,
 			 rel->rd_id,
@@ -2133,9 +2091,9 @@ remove_gp_relation_node_and_schedule_drop(
 		DeleteGpRelationNodeTuple(
 								rel,
 								/* segmentFileNum */ 0);
-
+		
 		if (Debug_persistent_print)
-			elog(Persistent_DebugPrintLevel(),
+			elog(Persistent_DebugPrintLevel(), 
 				 "remove_gp_relation_node_and_schedule_drop: For Buffer Pool managed relation '%s' persistent TID %s and serial number " INT64_FORMAT " for DROP",
 				 relpath(rel->rd_node),
 				 ItemPointerToString(&rel->rd_segfile0_relationnodeinfo.persistentTid),
@@ -2146,14 +2104,14 @@ remove_gp_relation_node_and_schedule_drop(
 		Relation relNodeRelation;
 
 		GpRelationNodeScan	gpRelationNodeScan;
-
+		
 		HeapTuple tuple;
-
+		
 		int32 segmentFileNum;
-
+		
 		ItemPointerData persistentTid;
 		int64 persistentSerialNum;
-
+		
 		relNodeRelation = heap_open(GpRelationNodeRelationId, RowExclusiveLock);
 
 		GpRelationNodeBeginScan(
@@ -2161,7 +2119,7 @@ remove_gp_relation_node_and_schedule_drop(
 						rel->rd_id,
 						rel->rd_rel->relfilenode,
 						&gpRelationNodeScan);
-
+		
 		while ((tuple = GpRelationNodeGetNext(
 								&gpRelationNodeScan,
 								&segmentFileNum,
@@ -2169,16 +2127,16 @@ remove_gp_relation_node_and_schedule_drop(
 								&persistentSerialNum)))
 		{
 			if (Debug_persistent_print)
-				elog(Persistent_DebugPrintLevel(),
+				elog(Persistent_DebugPrintLevel(), 
 					 "remove_gp_relation_node_and_schedule_drop: For Append-Only relation %u relfilenode %u scanned segment file #%d, serial number " INT64_FORMAT " at TID %s for DROP",
 					 rel->rd_id,
 					 rel->rd_rel->relfilenode,
 					 segmentFileNum,
 					 persistentSerialNum,
 					 ItemPointerToString(&persistentTid));
-
+			
 			simple_heap_delete(relNodeRelation, &tuple->t_self);
-
+			
 			MirroredFileSysObj_ScheduleDropAppendOnlyFile(
 											&rel->rd_node,
 											segmentFileNum,
@@ -2186,9 +2144,9 @@ remove_gp_relation_node_and_schedule_drop(
 											&persistentTid,
 											persistentSerialNum);
 		}
-
+		
 		GpRelationNodeEndScan(&gpRelationNodeScan);
-
+		
 		heap_close(relNodeRelation, RowExclusiveLock);
 	}
 }
@@ -2309,7 +2267,7 @@ heap_drop_with_catalog(Oid relid)
 
 	if (is_foreign_rel)
 		RemoveForeignTableEntry(relid);
-
+	
 	/*
  	 * delete distribution policy if present
  	 */
@@ -2333,9 +2291,10 @@ heap_drop_with_catalog(Oid relid)
  * Store a default expression for column attnum of relation rel.
  * The expression must be presented as a nodeToString() string.
  */
-Oid
-StoreAttrDefault(Relation rel, AttrNumber attnum, Node *expr, Oid attrdefOid)
+void
+StoreAttrDefault(Relation rel, AttrNumber attnum, char *adbin)
 {
+	Node	   *expr;
 	char	   *adsrc;
 	Relation	adrel;
 	HeapTuple	tuple;
@@ -2344,12 +2303,14 @@ StoreAttrDefault(Relation rel, AttrNumber attnum, Node *expr, Oid attrdefOid)
 	Relation	attrrel;
 	HeapTuple	atttup;
 	Form_pg_attribute attStruct;
+	Oid			attrdefOid;
 	ObjectAddress colobject,
 				defobject;
-	cqContext  *adrcqCtx;
-	cqContext  *attcqCtx;
-	cqContext	cqc;
-	cqContext	cqc2;
+
+	/*
+	 * Need to construct source equivalent of given node-string.
+	 */
+	expr = stringToNode(adbin);
 
 	/*
 	 * Also deparse it to form the mostly-obsolete adsrc field.
@@ -2364,58 +2325,20 @@ StoreAttrDefault(Relation rel, AttrNumber attnum, Node *expr, Oid attrdefOid)
 	 */
 	values[Anum_pg_attrdef_adrelid - 1] = RelationGetRelid(rel);
 	values[Anum_pg_attrdef_adnum - 1] = attnum;
-	values[Anum_pg_attrdef_adbin - 1] = CStringGetTextDatum(nodeToString(expr));
+	values[Anum_pg_attrdef_adbin - 1] = CStringGetTextDatum(adbin);
 	values[Anum_pg_attrdef_adsrc - 1] = CStringGetTextDatum(adsrc);
 
 	adrel = heap_open(AttrDefaultRelationId, RowExclusiveLock);
 
-	adrcqCtx = caql_beginscan(
-			caql_addrel(cqclr(&cqc), adrel),
-			cql("INSERT INTO pg_attrdef ", 
-				NULL));
+	tuple = heap_form_tuple(adrel->rd_att, values, nulls);
+	attrdefOid = simple_heap_insert(adrel, tuple);
 
-	if (Debug_check_for_invalid_persistent_tid)
-	{	
-		elog(LOG, 
-			 "StoreAttrDefault[1] relation %u/%u/%u '%s', isPresent %s, serial number " INT64_FORMAT ", TID %s",
-			 adrel->rd_node.spcNode,
-			 adrel->rd_node.dbNode,
-			 adrel->rd_node.relNode,
-			 NameStr(adrel->rd_rel->relname),
-			 (adrel->rd_segfile0_relationnodeinfo.isPresent ? "true" : "false"),
-			 adrel->rd_segfile0_relationnodeinfo.persistentSerialNum,
-			 ItemPointerToString(&adrel->rd_segfile0_relationnodeinfo.persistentTid));
-	}
-
-	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
-	RelationFetchGpRelationNodeForXLog(adrel);
-
-	if (Debug_check_for_invalid_persistent_tid)
-	{	
-		elog(LOG, 
-			 "StoreAttrDefault[2] relation %u/%u/%u '%s', isPresent %s, serial number " INT64_FORMAT ", TID %s",
-			 adrel->rd_node.spcNode,
-			 adrel->rd_node.dbNode,
-			 adrel->rd_node.relNode,
-			 NameStr(adrel->rd_rel->relname),
-			 (adrel->rd_segfile0_relationnodeinfo.isPresent ? "true" : "false"),
-			 adrel->rd_segfile0_relationnodeinfo.persistentSerialNum,
-			 ItemPointerToString(&adrel->rd_segfile0_relationnodeinfo.persistentTid));
-	}
-
-	tuple = caql_form_tuple(adrcqCtx, values, nulls);
-
-	/* force tuple to have the desired OID */
-	if (OidIsValid(attrdefOid))
-		HeapTupleSetOid(tuple, attrdefOid);
-	attrdefOid = caql_insert(adrcqCtx, tuple);
-	/* and Update indexes (implicit) */
+	CatalogUpdateIndexes(adrel, tuple);
 
 	defobject.classId = AttrDefaultRelationId;
 	defobject.objectId = attrdefOid;
 	defobject.objectSubId = 0;
 
-	caql_endscan(adrcqCtx);
 	heap_close(adrel, RowExclusiveLock);
 
 	/* now can free some of the stuff allocated above */
@@ -2429,18 +2352,10 @@ StoreAttrDefault(Relation rel, AttrNumber attnum, Node *expr, Oid attrdefOid)
 	 * exists.
 	 */
 	attrrel = heap_open(AttributeRelationId, RowExclusiveLock);
-
-	attcqCtx = caql_addrel(cqclr(&cqc2), attrrel);
-
-	atttup = caql_getfirst(
-			attcqCtx,
-			cql("SELECT * FROM pg_attribute "
-				" WHERE attrelid = :1 "
-				" AND attnum = :2 "
-				" FOR UPDATE ",
-				ObjectIdGetDatum(RelationGetRelid(rel)),
-				Int16GetDatum(attnum)));
-
+	atttup = SearchSysCacheCopy(ATTNUM,
+								ObjectIdGetDatum(RelationGetRelid(rel)),
+								Int16GetDatum(attnum),
+								0, 0);
 	if (!HeapTupleIsValid(atttup))
 		elog(ERROR, "cache lookup failed for attribute %d of relation %u",
 			 attnum, RelationGetRelid(rel));
@@ -2448,8 +2363,9 @@ StoreAttrDefault(Relation rel, AttrNumber attnum, Node *expr, Oid attrdefOid)
 	if (!attStruct->atthasdef)
 	{
 		attStruct->atthasdef = true;
-		caql_update_current(attcqCtx, atttup);
-		/* and Update indexes (implicit) */
+		simple_heap_update(attrrel, &atttup->t_self, atttup);
+		/* keep catalog indexes current */
+		CatalogUpdateIndexes(attrrel, atttup);
 	}
 	heap_close(attrrel, RowExclusiveLock);
 	heap_freetuple(atttup);
@@ -2468,8 +2384,6 @@ StoreAttrDefault(Relation rel, AttrNumber attnum, Node *expr, Oid attrdefOid)
 	 * Record dependencies on objects used in the expression, too.
 	 */
 	recordDependencyOnExpr(&defobject, expr, NIL, DEPENDENCY_NORMAL);
-
-	return attrdefOid;
 }
 
 /*
@@ -2564,19 +2478,50 @@ StoreRelCheck(Relation rel, char *ccname, char *ccbin, Oid conOid)
 }
 
 /*
+ * Store defaults and constraints passed in via the tuple constraint struct.
+ *
+ * NOTE: only pre-cooked expressions will be passed this way, which is to
+ * say expressions inherited from an existing relation.  Newly parsed
+ * expressions can be added later, by direct calls to StoreAttrDefault
+ * and StoreRelCheck (see AddRelationRawConstraints()).
+ */
+static void
+StoreConstraints(Relation rel, TupleDesc tupdesc)
+{
+	TupleConstr *constr = tupdesc->constr;
+	int			i;
+
+	if (!constr)
+		return;					/* nothing to do */
+
+	/*
+	 * Deparsing of constraint expressions will fail unless the just-created
+	 * pg_attribute tuples for this relation are made visible.	So, bump the
+	 * command counter.  CAUTION: this will cause a relcache entry rebuild.
+	 */
+	CommandCounterIncrement();
+
+	for (i = 0; i < constr->num_defval; i++)
+		StoreAttrDefault(rel, constr->defval[i].adnum,
+						 constr->defval[i].adbin);
+}
+
+
+/*
  * AddRelationConstraints
  *
  * Add both raw (not-yet-transformed) and cooked column default expressions and/or
- * constraint check expressions to an existing relation. This is defined to do both
+ * constraint check expressions to an existing relation.  This is defined to do both
  * for efficiency in DefineRelation, but of course you can do just one or
  * the other by passing empty lists.
  *
  * rel: relation to be modified
- * colDefaults: list of ColumnDef nodes
+ * rawColDefaults: list of RawColumnDefault structures
  * constraints: list of Constraint nodes
  *
- * All entries in colDefaults will be processed.  Entries in constraints
- * will be processed only if they are CONSTR_CHECK type.
+ * All entries in rawColDefaults will be processed.  Entries in rawConstraints
+ * will be processed only if they are CONSTR_CHECK type and contain a "raw"
+ * expression.
  *
  * Returns a list of CookedConstraint nodes that shows the cooked form of
  * the default and constraint expressions added to the relation.
@@ -2588,7 +2533,7 @@ StoreRelCheck(Relation rel, char *ccname, char *ccbin, Oid conOid)
  */
 List *
 AddRelationConstraints(Relation rel,
-						  List *colDefaults,
+						  List *rawColDefaults,
 						  List *constraints)
 {
 	List	   *cookedConstraints = NIL;
@@ -2628,27 +2573,16 @@ AddRelationConstraints(Relation rel,
 	/*
 	 * Process column default expressions.
 	 */
-	foreach(cell, colDefaults)
+	foreach(cell, rawColDefaults)
 	{
-		ColumnDef  *colDef = (ColumnDef *) lfirst(cell);
-
+		RawColumnDefault *colDef = (RawColumnDefault *) lfirst(cell);
 		Form_pg_attribute atp = rel->rd_att->attrs[colDef->attnum - 1];
 
-		if (colDef->raw_default != NULL)
-		{
-			Insist (colDef->cooked_default == NULL);
-			expr = cookDefault(pstate, colDef->raw_default,
-							   atp->atttypid, atp->atttypmod,
-							   NameStr(atp->attname));
-		}
-		else
-		{
-			Insist (colDef->cooked_default != NULL);
-			expr = stringToNode(colDef->cooked_default);
-		}
+		expr = cookDefault(pstate, colDef->raw_default,
+						   atp->atttypid, atp->atttypmod,
+						   NameStr(atp->attname));
 
-		colDef->default_oid = StoreAttrDefault(rel, colDef->attnum,
-											   expr, colDef->default_oid);
+		StoreAttrDefault(rel, colDef->attnum, nodeToString(expr));
 
 		cooked = (CookedConstraint *) palloc(sizeof(CookedConstraint));
 		cooked->contype = CONSTR_DEFAULT;
@@ -2851,20 +2785,11 @@ SetRelationNumChecks(Relation rel, int numchecks)
 	Relation	relrel;
 	HeapTuple	reltup;
 	Form_pg_class relStruct;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
 
 	relrel = heap_open(RelationRelationId, RowExclusiveLock);
-
-	pcqCtx = caql_addrel(cqclr(&cqc), relrel);
-
-	reltup = caql_getfirst(
-			pcqCtx,
-			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 "
-				" FOR UPDATE ",
-				ObjectIdGetDatum(RelationGetRelid(rel))));
-
+	reltup = SearchSysCacheCopy(RELOID,
+								ObjectIdGetDatum(RelationGetRelid(rel)),
+								0, 0, 0);
 	if (!HeapTupleIsValid(reltup))
 		elog(ERROR, "cache lookup failed for relation %u",
 			 RelationGetRelid(rel));
@@ -2874,8 +2799,10 @@ SetRelationNumChecks(Relation rel, int numchecks)
 	{
 		relStruct->relchecks = numchecks;
 
-		caql_update_current(pcqCtx, reltup);
-		/* and Update indexes (implicit) */
+		simple_heap_update(relrel, &reltup->t_self, reltup);
+
+		/* keep catalog indexes current */
+		CatalogUpdateIndexes(relrel, reltup);
 	}
 	else
 	{
@@ -2993,20 +2920,27 @@ RemoveRelConstraints(Relation rel, const char *constrName,
 					 DropBehavior behavior)
 {
 	int			ndeleted = 0;
-	cqContext  *pcqCtx;
+	Relation	conrel;
+	SysScanDesc conscan;
+	ScanKeyData key[1];
 	HeapTuple	contup;
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_constraint "
-				" WHERE conrelid = :1 "
-				" FOR UPDATE ",
-				ObjectIdGetDatum(RelationGetRelid(rel))));
+	/* Grab an appropriate lock on the pg_constraint relation */
+	conrel = heap_open(ConstraintRelationId, RowExclusiveLock);
+
+	/* Use the index to scan only constraints of the target relation */
+	ScanKeyInit(&key[0],
+				Anum_pg_constraint_conrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(RelationGetRelid(rel)));
+
+	conscan = systable_beginscan(conrel, ConstraintRelidIndexId, true,
+								 SnapshotNow, 1, key);
 
 	/*
 	 * Scan over the result set, removing any matching entries.
 	 */
-	while (HeapTupleIsValid(contup = caql_getnext(pcqCtx)))
+	while ((contup = systable_getnext(conscan)) != NULL)
 	{
 		Form_pg_constraint con = (Form_pg_constraint) GETSTRUCT(contup);
 
@@ -3025,7 +2959,8 @@ RemoveRelConstraints(Relation rel, const char *constrName,
 	}
 
 	/* Clean up after the scan */
-	caql_endscan(pcqCtx);
+	systable_endscan(conscan);
+	heap_close(conrel, RowExclusiveLock);
 
 	return ndeleted;
 }
@@ -3040,26 +2975,39 @@ RemoveRelConstraints(Relation rel, const char *constrName,
 void
 RemoveStatistics(Oid relid, AttrNumber attnum)
 {
-	int numDel = 0;
+	Relation	pgstatistic;
+	SysScanDesc scan;
+	ScanKeyData key[2];
+	int			nkeys;
+	HeapTuple	tuple;
+
+	pgstatistic = heap_open(StatisticRelationId, RowExclusiveLock);
+
+	ScanKeyInit(&key[0],
+				Anum_pg_statistic_starelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relid));
 
 	if (attnum == 0)
-	{
-		numDel = caql_getcount(
-				NULL,
-				cql("DELETE FROM pg_statistic "
-					" WHERE starelid = :1 ",
-					ObjectIdGetDatum(relid)));
-	}
+		nkeys = 1;
 	else
 	{
-		numDel = caql_getcount(
-				NULL,
-				cql("DELETE FROM pg_statistic "
-					" WHERE starelid = :1 "
-					" AND staattnum = :2 ",
-					ObjectIdGetDatum(relid),
-					Int16GetDatum(attnum)));		 
+		ScanKeyInit(&key[1],
+					Anum_pg_statistic_staattnum,
+					BTEqualStrategyNumber, F_INT2EQ,
+					Int16GetDatum(attnum));
+		nkeys = 2;
 	}
+
+	scan = systable_beginscan(pgstatistic, StatisticRelidAttnumIndexId, true,
+							  SnapshotNow, nkeys, key);
+
+	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
+		simple_heap_delete(pgstatistic, &tuple->t_self);
+
+	systable_endscan(scan);
+
+	heap_close(pgstatistic, RowExclusiveLock);
 }
 
 
@@ -3090,7 +3038,7 @@ RelationTruncateIndexes(Relation heapRelation)
 
 		/* Now truncate the actual file (and discard buffers) */
 		RelationTruncate(
-					currentIndex,
+					currentIndex, 
 					0,
 					/* markPersistentAsPhysicallyTruncated */ true);
 
@@ -3139,12 +3087,9 @@ heap_truncate(List *relids)
 			relations = lappend(relations, trel);
 		}
 
-		/*
-		 * CONCERN: Not clear this EVER makes sense for Append-Only.
-		 */
 		if (RelationIsAoRows(rel) || RelationIsAoCols(rel))
 		{
-			aoEntry = GetAppendOnlyEntry(rid, SnapshotNow);
+			aoEntry = GetAppendOnlyEntry(rid);
 
 			/* If there is an aoseg table, add it to the list too */
 			aosegrelid = aoEntry->segrelid;
@@ -3176,7 +3121,7 @@ heap_truncate(List *relids)
 
 		/* Truncate the actual file (and discard buffers) */
 		RelationTruncate(
-					rel,
+					rel, 
 					0,
 					/* markPersistentAsPhysicallyTruncated */ false);
 
@@ -3377,13 +3322,6 @@ insert_ordered_unique_oid(List *list, Oid datum)
 	return list;
 }
 
-/*
- * setNewRelfilenodeCommon
- *
- * Replaces relfilenode and updates pg_class / gp_relation_node.
- * If the updating relation is gp_relation_node's index, the caller
- * should rebuild the index by index_build().
- */
 static void
 setNewRelfilenodeCommon(Relation relation, Oid newrelfilenode)
 {
@@ -3393,9 +3331,6 @@ setNewRelfilenodeCommon(Relation relation, Oid newrelfilenode)
 	Form_pg_class rd_rel;
 	bool		isAppendOnly;
 	Relation	gp_relation_node;
-	bool		is_gp_relation_node_index;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
 
 	/*
 	 * Find the pg_class tuple for the given relation.	This is not used
@@ -3404,15 +3339,9 @@ setNewRelfilenodeCommon(Relation relation, Oid newrelfilenode)
 	pg_class = heap_open(RelationRelationId, RowExclusiveLock);
 	gp_relation_node = heap_open(GpRelationNodeRelationId, RowExclusiveLock);
 
-	pcqCtx = caql_addrel(cqclr(&cqc), pg_class);
-
-	tuple = caql_getfirst(
-			pcqCtx,
-			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 "
-				" FOR UPDATE ",
-				ObjectIdGetDatum(RelationGetRelid(relation))));
-
+	tuple = SearchSysCacheCopy(RELOID,
+							   ObjectIdGetDatum(RelationGetRelid(relation)),
+							   0, 0, 0);
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "could not find tuple for relation %u",
 			 RelationGetRelid(relation));
@@ -3426,16 +3355,16 @@ setNewRelfilenodeCommon(Relation relation, Oid newrelfilenode)
 	newrnode = relation->rd_node;
 	newrnode.relNode = newrelfilenode;
 
-	isAppendOnly = (relation->rd_rel->relstorage == RELSTORAGE_AOROWS ||
+	isAppendOnly = (relation->rd_rel->relstorage == RELSTORAGE_AOROWS || 
 					relation->rd_rel->relstorage == RELSTORAGE_AOCOLS);
-
+	
 	if (!isAppendOnly)
 	{
 		SMgrRelation srel;
 
 		PersistentFileSysRelStorageMgr localRelStorageMgr;
 		PersistentFileSysRelBufpoolKind relBufpoolKind;
-
+		
 		GpPersistentRelationNode_GetRelationInfo(
 											relation->rd_rel->relkind,
 											relation->rd_rel->relstorage,
@@ -3443,14 +3372,14 @@ setNewRelfilenodeCommon(Relation relation, Oid newrelfilenode)
 											&localRelStorageMgr,
 											&relBufpoolKind);
 		Assert(localRelStorageMgr == PersistentFileSysRelStorageMgr_BufferPool);
-
+		
 		srel = smgropen(newrnode);
-
+	
 		MirroredFileSysObj_TransactionCreateBufferPoolFile(
 											srel,
 											relBufpoolKind,
 											relation->rd_isLocalBuf,
-											NameStr(relation->rd_rel->relname),
+											relation->rd_rel->relname.data,
 											/* doJustInTimeDirCreate */ true,
 											/* bufferPoolBulkLoad */ false,
 											&relation->rd_segfile0_relationnodeinfo.persistentTid,
@@ -3462,29 +3391,16 @@ setNewRelfilenodeCommon(Relation relation, Oid newrelfilenode)
 		MirroredFileSysObj_TransactionCreateAppendOnlyFile(
 											&newrnode,
 											/* segmentFileNum */ 0,
-											NameStr(relation->rd_rel->relname),
+											relation->rd_rel->relname.data,
 											/* doJustInTimeDirCreate */ true,
 											&relation->rd_segfile0_relationnodeinfo.persistentTid,
 											&relation->rd_segfile0_relationnodeinfo.persistentSerialNum);
 	}
 
-	if (Debug_check_for_invalid_persistent_tid &&
-		!Persistent_BeforePersistenceWork() &&
-		PersistentStore_IsZeroTid(&relation->rd_segfile0_relationnodeinfo.persistentTid))
-	{	
-		elog(ERROR, 
-			 "setNewRelfilenodeCommon has invalid TID (0,0) for relation %u/%u/%u '%s', serial number " INT64_FORMAT,
-			 newrnode.spcNode,
-			 newrnode.dbNode,
-			 newrnode.relNode,
-			 NameStr(relation->rd_rel->relname),
-			 relation->rd_segfile0_relationnodeinfo.persistentSerialNum);
-	}
-
 	relation->rd_segfile0_relationnodeinfo.isPresent = true;
-
+	
 	if (Debug_persistent_print)
-		elog(Persistent_DebugPrintLevel(),
+		elog(Persistent_DebugPrintLevel(), 
 			 "setNewRelfilenodeCommon: NEW '%s', Append-Only '%s', persistent TID %s and serial number " INT64_FORMAT,
 			 relpath(newrnode),
 			 (isAppendOnly ? "true" : "false"),
@@ -3496,27 +3412,19 @@ setNewRelfilenodeCommon(Relation relation, Oid newrelfilenode)
 	rd_rel->relpages = 0;		/* it's empty until further notice */
 	rd_rel->reltuples = 0;
 
-	/*
-	 * If the swapping relation is an index of gp_relation_node,
-	 * updating itself is bogus; if gp_relation_node has old indexlist,
-	 * CatalogUpdateIndexes updates old index file, and is crash-unsafe.
-	 * Hence, here we skip it and count on later index_build.
-	 * (Or should we add index_build() call after CCI beflow in this case?)
-	 */
-	is_gp_relation_node_index = relation->rd_index &&
-								relation->rd_index->indrelid == GpRelationNodeRelationId;
 	InsertGpRelationNodeTuple(
 						gp_relation_node,
 						relation->rd_id,
-						NameStr(relation->rd_rel->relname),
+						relation->rd_rel->relname.data,
 						newrelfilenode,
 						/* segmentFileNum */ 0,
-						/* updateIndex */ !is_gp_relation_node_index,
+						/* updateIndex */ true,
 						&relation->rd_segfile0_relationnodeinfo.persistentTid,
 						relation->rd_segfile0_relationnodeinfo.persistentSerialNum);
 
-	caql_update_current(pcqCtx, tuple);
-	/* and Update indexes (implicit) */
+	simple_heap_update(pg_class, &tuple->t_self, tuple);
+
+	CatalogUpdateIndexes(pg_class, tuple);
 
 	heap_freetuple(tuple);
 
@@ -3586,3 +3494,4 @@ setNewRelfilenodeToOid(Relation relation, Oid newrelfilenode)
 
 	return newrelfilenode;
 }
+

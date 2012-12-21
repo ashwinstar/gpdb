@@ -47,18 +47,10 @@ clean-local:
 ifdef SUBDIRS
 	for dir in $(SUBDIRS); do $(MAKE) -C $$dir clean || exit; done
 endif
-	rm -f objfiles.txt SUBSYS.o $(OBJS)
-	@if [ -d $(CURDIR)/test ]; then $(MAKE) -C $(CURDIR)/test clean; fi
+	rm -f $(subsysfilename) $(OBJS)
 
 
 coverage: $(gcda_files:.gcda=.c.gcov) lcov.info
 ifdef SUBDIRS
 	for dir in $(SUBDIRS); do $(MAKE) -C $$dir coverage || exit; done
-endif
-
-.PHONY : unittest-check
-unittest-check:
-	@if [ -d $(CURDIR)/test ]; then $(MAKE) -C $(CURDIR)/test check; fi
-ifdef SUBDIRS
-	for dir in $(SUBDIRS); do $(MAKE) -C $$dir unittest-check || exit; done
 endif

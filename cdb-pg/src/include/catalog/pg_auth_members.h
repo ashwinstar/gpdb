@@ -32,17 +32,14 @@
    admin_option  boolean
    );
 
-   create unique index on pg_auth_members(roleid, member) with (indexid=2694, CamelCase=AuthMemRoleMem, syscacheid=AUTHMEMROLEMEM, syscache_nbuckets=128);
-
-   create unique index on pg_auth_members(member, roleid) with (indexid=2695, CamelCase=AuthMemMemRole, syscacheid=AUTHMEMMEMROLE, syscache_nbuckets=128);
+   create unique index on pg_auth_members(roleid, member) with (indexid=2694, CamelCase=AuthMemRoleMem);
+   create unique index on pg_auth_members(member, roleid) with (indexid=2695, CamelCase=AuthMemMemRole);
 
    alter table pg_auth_members add fk roleid  on pg_authid(oid);
    alter table pg_auth_members add fk member  on pg_authid(oid);
+   alter table pg_auth_members add fk grantor on pg_authid(oid);
 
    TIDYCAT_ENDFAKEDEF
-
-   NOTE: we don't mark grantor a foreign key since we don't actually
-   do not remove entries when a grantor is dropped. See DropRole().
 */
 
 /* ----------------

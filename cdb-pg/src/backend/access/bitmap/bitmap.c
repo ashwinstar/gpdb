@@ -61,6 +61,7 @@ bmbuild(PG_FUNCTION_ARGS)
 	double      reltuples;
 	BMBuildState bmstate;
 	IndexBuildResult *result;
+	TupleDesc	tupDesc;
 	Oid comptypeOid = InvalidOid;
 	Oid indexOid = InvalidOid;
 	Oid heapOid = InvalidOid;
@@ -80,6 +81,8 @@ bmbuild(PG_FUNCTION_ARGS)
 				errmsg("index \"%s\" already contains data",
 				RelationGetRelationName(index)),
 				errSendAlert(true)));
+
+	tupDesc = RelationGetDescr(index);
 
 	if (indexInfo->opaque != NULL)
 	{
@@ -133,7 +136,7 @@ bmbuild(PG_FUNCTION_ARGS)
 		/* FlushRelationBuffers will have opened rd_smgr */
         smgrimmedsync(index->rd_smgr);
     }
-
+	
 	/* return statistics */
 	result = (IndexBuildResult *) palloc0(sizeof(IndexBuildResult));
 
@@ -184,7 +187,7 @@ bmgettuple(PG_FUNCTION_ARGS)
 
 	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_ENTER;
 
-	/*
+	/* 
 	 * If we have already begun our scan, continue in the same direction.
 	 * Otherwise, start up the scan.
 	 */
@@ -222,6 +225,7 @@ bmgetmulti(PG_FUNCTION_ARGS)
 
 	if (res)
 	{
+		BMScanPosition  sp;
 		IndexScanDesc copy = copy_scan_desc(scan);
 		BMStreamOpaque *so;
 		int vec;
@@ -238,6 +242,7 @@ bmgetmulti(PG_FUNCTION_ARGS)
 		/* create a memory context for the stream */
 
 		so = palloc(sizeof(BMStreamOpaque));
+		sp = ((BMScanOpaque)copy->opaque)->bm_currPos;
 		so->scan = copy;
 		so->entry = NULL;
 		so->is_done = false;
@@ -245,9 +250,9 @@ bmgetmulti(PG_FUNCTION_ARGS)
 
 		if(!bm)
 		{
-			/*
+			/* 
 			 * We must create the StreamBitmap outside of our temporary
-			 * memory context. The reason is, because we glue all the
+			 * memory context. The reason is, because we glue all the 
 			 * related streams together, bitmap_stream_free() will
 			 * descend the stream tree and free up all the nodes by
 			 * killing their memory context. If we lose the StreamBitmap
@@ -263,7 +268,7 @@ bmgetmulti(PG_FUNCTION_ARGS)
 		}
 		else
 		{
-			elog(ERROR, "non stream bitmap");
+			elog(ERROR, "non stream bitmap"); 
 		}
 
 		/*
@@ -371,7 +376,7 @@ bmendscan(PG_FUNCTION_ARGS)
 	if (so->bm_currPos != NULL)
 	{
 		/*
-		 * release the buffers that have been stored for each related
+		 * release the buffers that have been stored for each related 
 		 * bitmap vector.
 		 */
 		if (so->bm_currPos->nvec > 1)
@@ -516,7 +521,7 @@ bmrestrpos(PG_FUNCTION_ARGS)
 		{
 			if (BufferIsValid((bmScanPos[vectorNo]).bm_lovBuffer))
 				IncrBufferRefCount((bmScanPos[vectorNo]).bm_lovBuffer);
-		}
+		}		
 
 		memcpy(so->bm_currPos->posvecs, bmScanPos,
 			   so->bm_markPos->nvec *
@@ -551,7 +556,7 @@ bmbulkdelete(PG_FUNCTION_ARGS)
 	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_ENTER;
 
 	Assert(info->extra_oids != NULL && list_length(info->extra_oids) == 3);
-
+	
 	new_relfilenode = linitial_oid(info->extra_oids);
 	extra_oids = lappend_oid(extra_oids, lsecond_oid(info->extra_oids));
 	extra_oids = lappend_oid(extra_oids, lthird_oid(info->extra_oids));
@@ -561,7 +566,7 @@ bmbulkdelete(PG_FUNCTION_ARGS)
 	/* allocate stats if first time through, else re-use existing struct */
 	if (result == NULL)
 		result = (IndexBulkDeleteResult *)
-			palloc0(sizeof(IndexBulkDeleteResult));
+			palloc0(sizeof(IndexBulkDeleteResult));	
 
 	new_relfilenode = reindex_index(RelationGetRelid(rel), new_relfilenode, &extra_oids);
 	CommandCounterIncrement();
@@ -575,7 +580,7 @@ bmbulkdelete(PG_FUNCTION_ARGS)
 	result->tuples_removed = 0;
 
 	list_free(extra_oids);
-
+	
 	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_EXIT;
 
 	PG_RETURN_POINTER(result);
@@ -593,7 +598,7 @@ bmvacuumcleanup(PG_FUNCTION_ARGS)
 
 	IndexVacuumInfo *info = (IndexVacuumInfo *) PG_GETARG_POINTER(0);
 	Relation	rel = info->index;
-	IndexBulkDeleteResult *stats =
+	IndexBulkDeleteResult *stats = 
 			(IndexBulkDeleteResult *) PG_GETARG_POINTER(1);
 
 	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_ENTER;
@@ -676,11 +681,11 @@ stream_free(StreamNode *self)
 }
 
 static void
-cleanup_pos(BMScanPosition pos)
+cleanup_pos(BMScanPosition pos) 
 {
 	if (pos->nvec == 0)
 		return;
-
+	
 	/*
 	 * Only cleanup bm_batchWords if we have more than one vector since
 	 * _bitmap_cleanup_scanpos() will clean it up for the single vector
@@ -696,7 +701,7 @@ cleanup_pos(BMScanPosition pos)
  * pull the next block of tids from a bitmap stream
  */
 
-static bool
+static bool 
 pull_stream(StreamNode *self, PagetableEntry *e)
 {
 	StreamNode 	   *n = self;
@@ -726,7 +731,7 @@ pull_stream(StreamNode *self, PagetableEntry *e)
 		is->opaque = NULL;
 		return false;
 	}
-
+	
 	MemSet(e, 0, sizeof(PagetableEntry));
 
 	scan = so->scan;
@@ -740,7 +745,7 @@ pull_stream(StreamNode *self, PagetableEntry *e)
 		bool found;
 
 		CHECK_FOR_INTERRUPTS();
-
+		
 		if (scanPos != NULL)
 			res = _bitmap_nextbatchwords(scan, ForwardScanDirection);
 		else
@@ -835,9 +840,9 @@ copy_scan_desc(IndexScanDesc scan)
 
 		/* the actual words now */
 		/* use copy */
-	    w->hwords = palloc0(sizeof(BM_HRL_WORD) *
+	    w->hwords = palloc0(sizeof(BM_HRL_WORD) * 
 					BM_CALC_H_WORDS(sp->bm_batchWords->maxNumOfWords));
-    	w->cwords = palloc0(sizeof(BM_HRL_WORD) *
+    	w->cwords = palloc0(sizeof(BM_HRL_WORD) * 
 					sp->bm_batchWords->maxNumOfWords);
 
 		memcpy(w->hwords, sp->bm_batchWords->hwords,
@@ -869,7 +874,7 @@ copy_scan_desc(IndexScanDesc scan)
 				bmScanPos->bm_nextBlockNo = spp->bm_nextBlockNo;
 				bmScanPos->bm_readLastWords = spp->bm_readLastWords;
 
-				bmScanPos->bm_batchWords =
+				bmScanPos->bm_batchWords = 
 					(BMBatchWords *) palloc0(sizeof(BMBatchWords));
 				_bitmap_init_batchwords(bmScanPos->bm_batchWords,
 									BM_NUM_OF_HRL_WORDS_PER_PAGE,
@@ -923,17 +928,17 @@ restart:
 		result->lastScanWordNo = 0;
 		if (result->nextTid < end)
 			return false;
-
+		
 		else
 			return true;
 	}
-
+		
 	/*
 	 * XXX: We assume that BM_HRL_WORD_SIZE is not greater than
 	 * TBM_BITS_PER_BITMAPWORD for tidbitmap.
 	 */
 	Assert(BM_HRL_WORD_SIZE <= TBM_BITS_PER_BITMAPWORD);
-	Assert(nhrlwords >= 1);
+	Assert(nhrlwords >= 1); 
 	Assert((result->nextTid - start) % BM_HRL_WORD_SIZE == 0);
 
 	/*
@@ -947,7 +952,7 @@ restart:
 		if (IS_FILL_WORD(words->hwords, result->lastScanWordNo))
 		{
 			uint64	fillLength;
-
+			
 			if (word == 0)
 				fillLength = 1;
 			else
@@ -972,12 +977,12 @@ restart:
 			{
 				/*
 				 * This word represents compressed non-matches. If it
-				 * is sufficiently large, we might be able to skip over a
+				 * is sufficiently large, we might be able to skip over a 
 				 * large range of blocks which would have no matches
 				 */
 				result->lastScanWordNo++;
 				words->nwords--;
-
+				
 				if(fillLength * BM_HRL_WORD_SIZE > end - result->nextTid)
 				{
 					result->nextTid += fillLength * BM_HRL_WORD_SIZE;
@@ -1026,7 +1031,7 @@ restart:
 			blockno = result->nextTid / BM_MAX_TUPLES_PER_PAGE;
 			result->lastScanWordNo++;
 			words->nwords--;
-
+			
 			if(newentry)
 				goto restart;
 			else
@@ -1049,7 +1054,7 @@ restart:
 				newWord |= ((tbm_bitmapword)(LITERAL_ALL_ONE)) <<
 					(hrlwordno * BM_HRL_WORD_SIZE);
 			}
-
+					
 			words->cwords[result->lastScanWordNo]--;
 			if (FILL_LENGTH(words->cwords[result->lastScanWordNo]) == 0)
 			{
@@ -1105,14 +1110,14 @@ restart:
  * is hidden away inside the metadata page of the index.  Future versions should
  * move this information into the catalog.
  */
-void
+void 
 GetBitmapIndexAuxOids(Relation index, Oid *heapId, Oid *indexId)
 {
 	MIRROREDLOCK_BUFMGR_DECLARE;
 
 	Buffer     metabuf;
 	BMMetaPage metapage;
-
+	
 
 	/* Only Bitmap Indexes have bitmap related sub-objects */
 	if (!RelationIsBitmapIndex(index))
@@ -1121,10 +1126,10 @@ GetBitmapIndexAuxOids(Relation index, Oid *heapId, Oid *indexId)
 		*indexId = InvalidOid;
 		return;
 	}
-
+		
 	// -------- MirroredLock ----------
 	MIRROREDLOCK_BUFMGR_LOCK;
-
+	
 	metabuf = _bitmap_getbuf(index, BM_METAPAGE, BM_READ);
 	metapage = _bitmap_get_metapage_data(index, metabuf);
 
@@ -1132,8 +1137,8 @@ GetBitmapIndexAuxOids(Relation index, Oid *heapId, Oid *indexId)
 	*indexId = metapage->bm_lov_indexId;
 
 	_bitmap_relbuf(metabuf);
-
+	
 	MIRROREDLOCK_BUFMGR_UNLOCK;
 	// -------- MirroredLock ----------
-
+	
 }

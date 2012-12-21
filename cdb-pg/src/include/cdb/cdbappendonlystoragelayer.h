@@ -110,6 +110,14 @@ typedef struct AppendOnlyStorageAttributes
 			 * and content.  Otherwise, no checksums.
 			 */
 
+	bool				use32BitAlignment;
+			/*
+			 * When true, do old-style rounding of
+			 * Append-Only Storage Block lengths to 32-bit
+			 * boundaries.  Otherwise, round lengths to
+			 * 64-bit boundaries.
+			 */
+
 	int					safeFSWriteSize;
 			/*
 			 * The page round out with zero padding byte length.

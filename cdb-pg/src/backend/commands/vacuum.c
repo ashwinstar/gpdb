@@ -25,7 +25,6 @@
 
 #include "access/clog.h"
 #include "access/genam.h"
-#include "access/catquery.h"
 #include "access/heapam.h"
 #include "catalog/heap.h"
 #include "access/transam.h"
@@ -222,7 +221,7 @@ static void move_plain_tuple(Relation rel,
 				 ExecContext ec);
 static void update_hint_bits(Relation rel, VacPageList fraged_pages,
 				 int num_fraged_pages, BlockNumber last_move_dest_block,
-				 int num_moved, TransactionId currentXid);
+				 int num_moved);
 static void vacuum_heap(VRelStats *vacrelstats, Relation onerel,
 			VacPageList vacpagelist);
 static void vacuum_page(Relation onerel, Buffer buffer, VacPage vacpage);
@@ -408,15 +407,8 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 	 * another one before exiting to match the commit waiting for us back in
 	 * PostgresMain().
 	 */
-	if (gp_suppress_distributed_tx_vacuum)
-	{
+	if (Gp_role != GP_ROLE_EXECUTE)
 		CommitTransactionCommand();
-	}
-	else
-	{
-		if (Gp_role != GP_ROLE_EXECUTE)
-			CommitTransactionCommand();
-	}
 
 	PG_TRY();
 	{
@@ -469,15 +461,8 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 
 			if (onerel == NULL)
 			{
-				if (gp_suppress_distributed_tx_vacuum)
-				{
+				if (Gp_role != GP_ROLE_EXECUTE)
 					CommitTransactionCommand();
-				}
-				else
-				{
-					if (Gp_role != GP_ROLE_EXECUTE)
-						CommitTransactionCommand();
-				}
 
 				continue;
 			}
@@ -645,15 +630,8 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 				vacstmt->relation = NULL;
 			}
 
-			if (gp_suppress_distributed_tx_vacuum)
-			{
+			if (Gp_role != GP_ROLE_EXECUTE)
 				CommitTransactionCommand();
-			}
-			else
-			{
-				if (Gp_role != GP_ROLE_EXECUTE)
-					CommitTransactionCommand();
-			}
 
 			/*
 			 * Now release the session-level lock on the master table.
@@ -777,20 +755,21 @@ get_rel_oids(List *relids, const RangeVar *vacrel, const char *stmttype,
 	else
 	{
 		/* Process all plain relations listed in pg_class */
+		Relation	pgclass;
+		HeapScanDesc scan;
 		HeapTuple	tuple;
-		cqContext	cqc;
-		cqContext  *pcqCtx;
+		ScanKeyData key;
 
-		/* NOTE: force heapscan in caql */
-		pcqCtx = caql_beginscan(
-				caql_syscache(
-						caql_indexOK(cqclr(&cqc), false),
-						false),
-				cql("SELECT * FROM pg_class "
-					" WHERE relkind = :1 ",
-					CharGetDatum(RELKIND_RELATION)));
+		ScanKeyInit(&key,
+					Anum_pg_class_relkind,
+					BTEqualStrategyNumber, F_CHAREQ,
+					CharGetDatum(RELKIND_RELATION));
 
-		while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
+		pgclass = heap_open(RelationRelationId, AccessShareLock);
+
+		scan = heap_beginscan(pgclass, SnapshotNow, 1, &key);
+
+		while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 		{
 			Form_pg_class classForm = (Form_pg_class) GETSTRUCT(tuple);
 
@@ -812,7 +791,8 @@ get_rel_oids(List *relids, const RangeVar *vacrel, const char *stmttype,
 			MemoryContextSwitchTo(oldcontext);
 		}
 
-		caql_endscan(pcqCtx);
+		heap_endscan(scan);
+		heap_close(pgclass, AccessShareLock);
 	}
 
 	return oid_list;
@@ -919,8 +899,6 @@ vac_update_relstats(Relation rel, BlockNumber num_pages, double num_tuples,
 	Form_pg_class pgcform;
 	Oid			relid = RelationGetRelid(rel);
 	bool		dirty;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
 
 	Assert(relid != InvalidOid);
 
@@ -986,16 +964,10 @@ vac_update_relstats(Relation rel, BlockNumber num_pages, double num_tuples,
 	 */
 	rd = heap_open(RelationRelationId, RowExclusiveLock);
 
-	pcqCtx = caql_addrel(cqclr(&cqc), rd);
-
 	/* Fetch a copy of the tuple to scribble on */
-	ctup = caql_getfirst(
-			pcqCtx,
-			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 "
-				" FOR UPDATE ",
-				ObjectIdGetDatum(relid)));
-
+	ctup = SearchSysCacheCopy(RELOID,
+							  ObjectIdGetDatum(relid),
+							  0, 0, 0);
 	if (!HeapTupleIsValid(ctup))
 		elog(ERROR, "pg_class entry for relid %u vanished during vacuuming",
 			 relid);
@@ -1087,10 +1059,8 @@ vac_update_datfrozenxid(void)
 	HeapTuple	tuple;
 	Form_pg_database dbform;
 	Relation	relation;
+	SysScanDesc scan;
 	HeapTuple	classTup;
-	cqContext  *pcqCtx;
-	cqContext	cqc;
-
 	TransactionId newFrozenXid;
 	bool		dirty = false;
 
@@ -1106,11 +1076,12 @@ vac_update_datfrozenxid(void)
 	 * We must seqscan pg_class to find the minimum Xid, because there is no
 	 * index that can help us here.
 	 */
-	pcqCtx = caql_beginscan(
-			caql_indexOK(cqclr(&cqc), false),
-			cql("SELECT * FROM pg_class ", NULL));
+	relation = heap_open(RelationRelationId, AccessShareLock);
 
-	while (HeapTupleIsValid(classTup = caql_getnext(pcqCtx)))
+	scan = systable_beginscan(relation, InvalidOid, false,
+							  SnapshotNow, 0, NULL);
+
+	while ((classTup = systable_getnext(scan)) != NULL)
 	{
 		Form_pg_class classForm = (Form_pg_class) GETSTRUCT(classTup);
 
@@ -1138,27 +1109,18 @@ vac_update_datfrozenxid(void)
 	}
 
 	/* we're done with pg_class */
-	caql_endscan(pcqCtx);
+	systable_endscan(scan);
+	heap_close(relation, AccessShareLock);
 
 	Assert(TransactionIdIsNormal(newFrozenXid));
 
 	/* Now fetch the pg_database tuple we need to update. */
 	relation = heap_open(DatabaseRelationId, RowExclusiveLock);
 
-	cqContext  *dbcqCtx;
-	cqContext	dbcqc;
-
-	dbcqCtx = caql_addrel(cqclr(&dbcqc), relation);
-
 	/* Fetch a copy of the tuple to scribble on */
-
-	tuple = caql_getfirst(
-			dbcqCtx,
-			cql("SELECT * FROM pg_database "
-				" WHERE oid = :1 "
-				" FOR UPDATE ",
-				ObjectIdGetDatum(MyDatabaseId)));
-
+	tuple = SearchSysCacheCopy(DATABASEOID,
+							   ObjectIdGetDatum(MyDatabaseId),
+							   0, 0, 0);
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "could not find tuple for database %u", MyDatabaseId);
 	dbform = (Form_pg_database) GETSTRUCT(tuple);
@@ -1210,9 +1172,9 @@ static void
 vac_truncate_clog(TransactionId frozenXID)
 {
 	TransactionId myXID = GetCurrentTransactionId();
+	Relation	relation;
+	HeapScanDesc scan;
 	HeapTuple	tuple;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
 	NameData	oldest_datname;
 	bool		frozenAlreadyWrapped = false;
 
@@ -1231,11 +1193,11 @@ vac_truncate_clog(TransactionId frozenXID)
 	 * the worst possible outcome is that pg_clog is not truncated as
 	 * aggressively as it could be.
 	 */
-	pcqCtx = caql_beginscan(
-			caql_indexOK(cqclr(&cqc), false),
-			cql("SELECT * FROM pg_database ", NULL));
+	relation = heap_open(DatabaseRelationId, AccessShareLock);
 
-	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
+	scan = heap_beginscan(relation, SnapshotNow, 0, NULL);
+
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
 		Form_pg_database dbform = (Form_pg_database) GETSTRUCT(tuple);
 
@@ -1250,7 +1212,9 @@ vac_truncate_clog(TransactionId frozenXID)
 		}
 	}
 
-	caql_endscan(pcqCtx);
+	heap_endscan(scan);
+
+	heap_close(relation, AccessShareLock);
 
 	/*
 	 * Do not truncate CLOG if we seem to have suffered wraparound already;
@@ -1316,8 +1280,7 @@ vacuum_rel(Relation onerel, VacuumStmt *vacstmt, LOCKMODE lmode, List *updated_s
 	toast_relid = onerel->rd_rel->reltoastrelid;
 	if (RelationIsAoRows(onerel) ||
 		RelationIsAoCols(onerel))
-		GetAppendOnlyEntryAuxOids(RelationGetRelid(onerel), SnapshotNow,
-								  &aoseg_relid, NULL,
+		GetAppendOnlyEntryAuxOids(RelationGetRelid(onerel), &aoseg_relid, NULL,
 								  &aoblkdir_relid, NULL);
 
 	/*
@@ -1681,7 +1644,7 @@ scan_heap(VRelStats *vacrelstats, Relation onerel,
 			tuple.t_len = ItemIdGetLength(itemid);
 			ItemPointerSet(&(tuple.t_self), blkno, offnum);
 
-			switch (HeapTupleSatisfiesVacuum(onerel, &tuple.t_self, tuple.t_data, OldestXmin, buf, true, "scan_heap"))
+			switch (HeapTupleSatisfiesVacuum(tuple.t_data, OldestXmin, buf, true))
 			{
 				case HEAPTUPLE_DEAD:
 					tupgone = true;		/* we can delete the tuple */
@@ -1989,7 +1952,6 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 				vacuumed_pages;
 	int			keep_tuples = 0;
 	PGRUsage	ru0;
-	TransactionId	saveCurrentXid;
 
 	pg_rusage_init(&ru0);
 
@@ -2320,12 +2282,9 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 						break;
 					}
 					/* must check for DEAD or MOVED_IN tuple, too */
-					nextTstatus = HeapTupleSatisfiesVacuum(onerel,
-														   &nextTid,
-														   nextTdata,
+					nextTstatus = HeapTupleSatisfiesVacuum(nextTdata,
 														   OldestXmin,
-														   nextBuf, true,
-														   "repair_frag");
+														   nextBuf, true);
 					if (nextTstatus == HEAPTUPLE_DEAD ||
 						nextTstatus == HEAPTUPLE_INSERT_IN_PROGRESS)
 					{
@@ -2697,7 +2656,6 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 		ReleaseBuffer(dst_buffer);
 	}
 
-	saveCurrentXid = GetCurrentTransactionId();
 	if (num_moved > 0)
 	{
 		/*
@@ -2708,21 +2666,8 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 		 * lot of extra code to close and re-open the relation, indexes, etc.
 		 * For now, a quick hack: record status of current transaction as
 		 * committed, and continue.
-		 *
-		 * Writing 2 commit XLOG records breaks our new crash recovery which wants
-		 * to determine if a transaction has aborted.  So, for Greenplum we are replacing
-		 * the call to RecordTransactionCommit with a special call that writes a
-		 * commit record but puts the xact.c statemachine in a state that will not
-		 * release the resources yet and will not write another XLOG record...
 		 */
-		if (gp_suppress_distributed_tx_vacuum)
-		{
-			EarlyVacuumRecordTransactionCommit();
-		}
-		else
-		{
-			RecordTransactionCommit();
-		}
+		RecordTransactionCommit();
 	}
 
 	/*
@@ -2768,7 +2713,7 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 	 * future transactions examining these tuples.
 	 */
 	update_hint_bits(onerel, fraged_pages, num_fraged_pages,
-					 last_move_dest_block, num_moved, saveCurrentXid);
+					 last_move_dest_block, num_moved);
 
 	/*
 	 * It'd be cleaner to make this report at the bottom of this routine, but
@@ -3231,10 +3176,11 @@ move_plain_tuple(Relation rel,
  */
 static void
 update_hint_bits(Relation rel, VacPageList fraged_pages, int num_fraged_pages,
-				 BlockNumber last_move_dest_block, int num_moved, TransactionId currentXid)
+				 BlockNumber last_move_dest_block, int num_moved)
 {
 	MIRROREDLOCK_BUFMGR_DECLARE;
 
+	TransactionId myXID = GetCurrentTransactionId();
 	int			checked_moved = 0;
 	int			i;
 	VacPage    *curpage;
@@ -3281,7 +3227,7 @@ update_hint_bits(Relation rel, VacPageList fraged_pages, int num_fraged_pages,
 			 */
 			if (!(htup->t_infomask & HEAP_MOVED))
 				elog(ERROR, "HEAP_MOVED_OFF/HEAP_MOVED_IN was expected");
-			if (HeapTupleHeaderGetXvac(htup) != currentXid)
+			if (HeapTupleHeaderGetXvac(htup) != myXID)
 				elog(ERROR, "invalid XVAC in tuple header");
 
 			if (htup->t_infomask & HEAP_MOVED_IN)
@@ -3950,7 +3896,7 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 
 	volatile int disp_phase=0;
 
-	Assert(Gp_role == GP_ROLE_DISPATCH);
+	Assert(Gp_role == GP_ROLE_DISPATCH); //Maybe dispatch agent? 	
 	Assert(vacstmt);
 	Assert(vacstmt->vacuum);
 	Assert(!vacstmt->analyze);
@@ -3992,27 +3938,14 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 	 */
 	PG_TRY();
 	{
-		if (gp_suppress_distributed_tx_vacuum)
-		{
-			cdbdisp_dispatchCommand( "vacuum" , pszVacuum, pszVacuum_len,
-									 true /* cancelOnError */, 
-									 false /* needTwoPhase */,
-									 false /* withSnapshot */,
-									 GANGSCOPE_WRITER,
-									 (struct CdbDispatcherState *)&ds);
-		}
-		else
-		{
-			/* mark the dtx as dirty */
-			dtmPreCommand("cdbdisp_dispatchCommand", "(none)", NULL,
-					true /* needs two-phase */, true /* withSnapshot */, false /* inCursor */);
+		/* mark the dtx as dirty */
+		dtmPreCommand("cdbdisp_dispatchCommand", "(none)", NULL,
+				true /* needs two-phase */, true /* withSnapshot */, false /* inCursor */);
 
-			cdbdisp_dispatchCommand( "vacuum" , pszVacuum, pszVacuum_len,
-									 true /* cancelOnError */, true /* needTwoPhase */,
-									 true /* withSnapshot */,
-									 GANGSCOPE_WRITER,
-									 (struct CdbDispatcherState *)&ds);
-		}
+		cdbdisp_dispatchCommand( "vacuum" , pszVacuum, pszVacuum_len,
+								 true /* cancelOnError */, true /* needTwoPhase */,
+								 true /* withSnapshot */,
+								 (struct CdbDispatcherState *)&ds);
 
 		disp_phase = 1;
 
@@ -4052,7 +3985,7 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 		 * Handle errors/cancels here: we may catch *either* of the
 		 * two dispatch operations above.
 		 */
-		if (dispatch_inflight && ds.results)
+		if (dispatch_inflight && ds.primaryResults)
 			cdbdisp_handleError((struct CdbDispatcherState *)&ds);
 
 		PG_RE_THROW();
@@ -4370,3 +4303,4 @@ vacuum_combine_stats(CdbDispatchResults *primaryResults,
 	}
 
 }
+

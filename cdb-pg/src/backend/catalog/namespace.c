@@ -20,7 +20,6 @@
 #include "postgres.h"
 
 #include "access/genam.h"
-#include "access/catquery.h"
 #include "access/xact.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
@@ -34,10 +33,8 @@
 #include "catalog/pg_type.h"
 #include "commands/dbcommands.h"
 #include "commands/schemacmds.h"
-#include "funcapi.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
-#include "parser/parse_func.h"
 #include "storage/backendid.h"
 #include "storage/ipc.h"
 #include "utils/acl.h"
@@ -166,8 +163,6 @@ static void InitTempTableNamespace(void);
 static void RemoveTempRelations(Oid tempNamespaceId);
 static void RemoveTempRelationsCallback(int code, Datum arg);
 static void NamespaceCallback(Datum arg __attribute__((unused)) , Oid relid __attribute__((unused)) );
-static bool MatchNamedCall(HeapTuple proctup, int nargs, List *argnames,
-						   int **argnumbers);
 static bool TempNamespaceValid(bool error_if_removed);
 
 /* These don't really need to appear in any header file */
@@ -296,12 +291,9 @@ RangeVarGetCreationNamespace(const RangeVar *newRelation)
 			return myTempNamespace;
 		}
 		/* use exact schema given */
-		namespaceId = caql_getoid(
-				NULL,
-				cql("SELECT oid FROM pg_namespace "
-					" WHERE nspname = :1 ",
-					CStringGetDatum(newRelation->schemaname)));
-
+		namespaceId = GetSysCacheOid(NAMESPACENAME,
+									 CStringGetDatum(newRelation->schemaname),
+									 0, 0, 0);
 		if (!OidIsValid(namespaceId))
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_SCHEMA),
@@ -373,15 +365,10 @@ RelationIsVisible(Oid relid)
 	Form_pg_class relform;
 	Oid			relnamespace;
 	bool		visible;
-	cqContext  *pcqCtx;
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(relid)));
-
-	reltup = caql_getnext(pcqCtx);
+	reltup = SearchSysCache(RELOID,
+							ObjectIdGetDatum(relid),
+							0, 0, 0);
 
 	if (!HeapTupleIsValid(reltup))
 	{
@@ -390,7 +377,7 @@ RelationIsVisible(Oid relid)
 		 * Note that the caller may not have gotten a lock on the relation.
 		 * Therefore, it is possible that the relation may have been dropped
 		 * by the time this method is called. Therefore, we simply return false
-		 * when we cannot find the relation in syscache instead of erroring out.
+		 * when we cannot find the relation in SysCache instead of erroring out.
 		 */
 		return false;
 	}
@@ -437,7 +424,7 @@ RelationIsVisible(Oid relid)
 		}
 	}
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(reltup);
 
 	return visible;
 }
@@ -462,14 +449,10 @@ TypenameGetTypid(const char *typname)
 	{
 		Oid			namespaceId = lfirst_oid(l);
 
-		typid = caql_getoid(
-				NULL,
-				cql("SELECT oid FROM pg_type "
-					" WHERE typname = :1 "
-					" AND typnamespace = :2 ",
-					CStringGetDatum((char *) typname),
-					ObjectIdGetDatum(namespaceId)));
-
+		typid = GetSysCacheOid(TYPENAMENSP,
+							   PointerGetDatum((char *) typname),
+							   ObjectIdGetDatum(namespaceId),
+							   0, 0);
 		if (OidIsValid(typid))
 			return typid;
 	}
@@ -491,16 +474,10 @@ TypeIsVisible(Oid typid)
 	Form_pg_type typform;
 	Oid			typnamespace;
 	bool		visible;
-	cqContext  *pcqCtx;
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_type "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(typid)));
-
-	typtup = caql_getnext(pcqCtx);
-
+	typtup = SearchSysCache(TYPEOID,
+							ObjectIdGetDatum(typid),
+							0, 0, 0);
 	if (!HeapTupleIsValid(typtup))
 		elog(ERROR, "cache lookup failed for type %u", typid);
 	typform = (Form_pg_type) GETSTRUCT(typtup);
@@ -537,14 +514,10 @@ TypeIsVisible(Oid typid)
 				visible = true;
 				break;
 			}
-			
-			if (caql_getcount(
-						NULL,
-						cql("SELECT COUNT(*) FROM pg_type "
-							" WHERE typname = :1 "
-							" AND typnamespace = :2 ",
-							CStringGetDatum((char *) typname),
-							ObjectIdGetDatum(namespaceId))))
+			if (SearchSysCacheExists(TYPENAMENSP,
+									 PointerGetDatum((char *) typname),
+									 ObjectIdGetDatum(namespaceId),
+									 0, 0))
 			{
 				/* Found something else first in path */
 				break;
@@ -552,7 +525,7 @@ TypeIsVisible(Oid typid)
 		}
 	}
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(typtup);
 
 	return visible;
 }
@@ -564,75 +537,23 @@ TypeIsVisible(Oid typid)
  *		retrieve a list of the possible matches.
  *
  * If nargs is -1, we return all functions matching the given name,
- * regardless of argument count. (argnames must be NIL, and expand_variadic
- * and expand_defaults must be false, in this case.)
- *
- * If argnames isn't NIL, we are considering a named- or mixed-notation call,
- * and only functions having all the listed argument names will be returned.
- * (We assume that length(argnames) <= nargs and all the passed-in names are
- * distinct.)  The returned structs will include an argnumbers array showing
- * the actual argument index for each logical argument position.
- *
- * If expand_variadic is true, then variadic functions having the same number
- * or fewer arguments will be retrieved, with the variadic argument and any
- * additional argument positions filled with the variadic element type.
- * nvargs in the returned struct is set to the number of such arguments.
- * If expand_variadic is false, variadic arguments are not treated specially,
- * and the returned nvargs will always be zero.
- *
- * If expand_defaults is true, functions that could match after insertion of
- * default argument values will also be retrieved.  In this case the returned
- * structs could have nargs > passed-in nargs, and ndargs is set to the number
- * of additional args (which can be retrieved from the function's
- * proargdefaults entry).
- *
- * It is not possible for nvargs and ndargs to both be nonzero in the same
- * list entry, since default insertion allows matches to functions with more
- * than nargs arguments while the variadic transformation requires the same
- * number or less.
- *
- * When argnames isn't NIL, the returned args[] type arrays are not ordered
- * according to the functions' declarations, but rather according to the call:
- * first any positional arguments, then the named arguments, then defaulted
- * arguments (if needed and allowed by expand_defaults).  The argnumbers[]
- * array can be used to map this back to the catalog information.
- * argnumbers[k] is set to the proargtypes index of the k'th call argument.
+ * regardless of argument count.
  *
  * We search a single namespace if the function name is qualified, else
- * all namespaces in the search path.  In the multiple-namespace case,
- * we arrange for entries in earlier namespaces to mask identical entries in
- * later namespaces.
- *
- * When expanding variadics, we arrange for non-variadic functions to mask
- * variadic ones if the expanded argument list is the same.  It is still
- * possible for there to be conflicts between different variadic functions,
- * however.
- *
- * It is guaranteed that the return list will never contain multiple entries
- * with identical argument lists.  When expand_defaults is true, the entries
- * could have more than nargs positions, but we still guarantee that they are
- * distinct in the first nargs positions. However, if argnames isn't NIL or
- * either expand_variadic or expand_defaults is true, there might be multiple
- * candidate functions that expand to identical argument lists.  Rather than
- * throw error here, we report such situations by returning a single entry
- * with oid = 0 that represents a set of such conflicting candidates.
+ * all namespaces in the search path.  The return list will never contain
+ * multiple entries with identical argument lists --- in the multiple-
+ * namespace case, we arrange for entries in earlier namespaces to mask
+ * identical entries in later namespaces.
  */
 FuncCandidateList
-FuncnameGetCandidates(List *names, int nargs, List *argnames,
-					  bool expand_variadic, bool expand_defaults)
+FuncnameGetCandidates(List *names, int nargs)
 {
 	FuncCandidateList resultList = NULL;
-	bool		any_special = false;
 	char	   *schemaname;
 	char	   *funcname;
 	Oid			namespaceId;
 	CatCList   *catlist;
 	int			i;
-	bool		isnull;
-	Datum		datum;
-
-	/* check for caller's error */
-	Assert(nargs >= 0 || !(expand_variadic | expand_defaults));
 
 	/* deconstruct the name list */
 	DeconstructQualifiedName(names, &schemaname, &funcname);
@@ -650,47 +571,28 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 	}
 
 	/* Search syscache by name only */
-
-	catlist = caql_begin_CacheList(
-			NULL,
-			cql("SELECT * FROM pg_proc "
-				" WHERE proname = :1 "
-				" ORDER BY proname, "
-				" proargtypes, "
-				" pronamespace ",
-				CStringGetDatum(funcname)));
+	catlist = SearchSysCacheList(PROCNAMEARGSNSP, 1,
+								 CStringGetDatum(funcname),
+								 0, 0, 0);
 
 	for (i = 0; i < catlist->n_members; i++)
 	{
 		HeapTuple	proctup = &catlist->members[i]->tuple;
 		Form_pg_proc procform = (Form_pg_proc) GETSTRUCT(proctup);
 		int			pronargs = procform->pronargs;
-		int			effective_nargs;
 		int			pathpos = 0;
-		bool		variadic;
-		bool		use_defaults;
-		Oid			va_elem_type;
-		int		   *argnumbers = NULL;
 		FuncCandidateList newResult;
 
-		Oid			provariadic;
-		int			pronargdefaults;
-
-		/* Obtain provariadic and pronargdefaults */
-		datum = SysCacheGetAttr(PROCOID, proctup,
-								Anum_pg_proc_provariadic, &isnull);
-		provariadic = DatumGetObjectId(datum);
-
-		datum = SysCacheGetAttr(PROCOID, proctup,
-								Anum_pg_proc_pronargdefaults, &isnull);
-		pronargdefaults = DatumGetObjectId(datum);
-
+		/* Ignore if it doesn't match requested argument count */
+		if (nargs >= 0 && pronargs != nargs)
+			continue;
 
 		if (OidIsValid(namespaceId))
 		{
 			/* Consider only procs in specified namespace */
 			if (procform->pronamespace != namespaceId)
 				continue;
+			/* No need to check args, they must all be different */
 		}
 		else
 		{
@@ -709,269 +611,55 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 			}
 			if (nsp == NULL)
 				continue;		/* proc is not in search path */
-		}
 
-		if (argnames != NIL)
-		{
 			/*
-			 * Call uses named or mixed notation
+			 * Okay, it's in the search path, but does it have the same
+			 * arguments as something we already accepted?	If so, keep only
+			 * the one that appears earlier in the search path.
 			 *
-			 * Named or mixed notation can match a variadic function only
-			 * if expand_variadic is off; otherwise there is no way to match
-			 * the presumed-nameless parameters expanded from the variadic
-			 * array.
-			 */
-
-			if (OidIsValid(provariadic) && expand_variadic)
-				continue;
-			va_elem_type = InvalidOid;
-			variadic = false;
-
-			/*
-			 * Check argument count.
-			 */
-			Assert(nargs >= 0);         /* -1 not supported with argnames */
-			if (pronargs > nargs && expand_defaults)
-			{
-				/* Ignore if not enough default expressions */
-				if (nargs + pronargdefaults < pronargs)
-					continue;
-				use_defaults = true;
-			}
-			else
-				use_defaults = false;
-
-			/* Ignore if it doesn't match requested argument count */
-			if (pronargs != nargs && !use_defaults)
-				continue;
-
-			/* Check for argument name match, generate positional mapping */
-			if (!MatchNamedCall(proctup, nargs, argnames, &argnumbers))
-				continue;
-
-			/* Named argument matching is always "special" */
-			any_special = true;
-		}
-		else
-		{
-			/*
-			 * Call uses positional notation
-			 *
-			 * Check if function is variadic, and get variadic element type if
-			 * so.  If expand_variadic is false, we should just ignore
-			 * variadic-ness.
-			 */
-			if (pronargs <= nargs && expand_variadic)
-			{
-				va_elem_type = provariadic;
-				variadic = OidIsValid(va_elem_type);
-				any_special |= variadic;
-			}
-			else
-			{
-				va_elem_type = InvalidOid;
-				variadic = false;
-			}
-			/*
-			 * Check if function can match by using parameter defaults.
-			 */
-			if (pronargs > nargs && expand_defaults)
-			{
-				/* Ignore if not enough default expressions */
-				if (nargs + pronargdefaults < pronargs)
-					continue;
-				use_defaults = true;
-				any_special = true;
-			}
-        else
-        	use_defaults = false;
-
-			/* Ignore if it doesn't match requested argument count */
-			if (nargs >= 0 && pronargs != nargs && !variadic && !use_defaults)
-				continue;
-		}
-
-
-
-		/*
-		 * We must compute the effective argument list so that we can easily
-		 * compare it to earlier results.  We waste a palloc cycle if it gets
-		 * masked by an earlier result, but really that's a pretty infrequent
-		 * case so it's not worth worrying about.
-		 */
-		effective_nargs = Max(pronargs, nargs);
-		newResult = (FuncCandidateList)
-					palloc(sizeof(struct _FuncCandidateList) - sizeof(Oid)
-								+ effective_nargs * sizeof(Oid));
-		newResult->pathpos = pathpos;
-		newResult->oid = HeapTupleGetOid(proctup);
-		newResult->nargs = effective_nargs;
-
-		newResult->argnumbers = argnumbers;
-		if (argnumbers)
-		{
-			/* Re-order the argument types into call's logical order */
-			Oid        *proargtypes = procform->proargtypes.values;
-			int         i;
-
-			for (i = 0; i < pronargs; i++)
-				newResult->args[i] = proargtypes[argnumbers[i]];
-		}
-		else
-		{
-			/* Simple positional case, just copy proargtypes as-is */
-			memcpy(newResult->args, procform->proargtypes.values,
-					pronargs * sizeof(Oid));
-		}
-
-		if (variadic)
-		{
-			int     i;
-			newResult->nvargs = effective_nargs - pronargs + 1;
-			/* Expand variadic argument into N copies of element type */
-			for (i = pronargs - 1; i < effective_nargs; i++)
-				newResult->args[i] = va_elem_type;
-		}
-		else
-			newResult->nvargs = 0;
-
-		newResult->ndargs = use_defaults ? pronargs - nargs : 0;
-
-		/*
-		 * Does it have the same arguments as something we already accepted?
-		 * If so, decide what to do to avoid returning duplicate argument
-		 * lists.  We can skip this check for the single-namespace case if no
-		 * special (named, variadic or defaults) match has been made, since
-		 * then the unique index on pg_proc guarantees all the matches have
-		 * different argument lists.
-		 */
-		if (resultList != NULL &&
-			(any_special || !OidIsValid(namespaceId)))
-		{
-			/*
-			 * If we have an ordered list from caql_begin_CacheList (the normal
+			 * If we have an ordered list from SearchSysCacheList (the normal
 			 * case), then any conflicting proc must immediately adjoin this
 			 * one in the list, so we only need to look at the newest result
 			 * item.  If we have an unordered list, we have to scan the whole
-			 * result list. Also, if either the current candidate or any
-			 * previous candidate is a special match, we can't assume that
-			 * conflicts are adjacent.
-			 *
-			 * We ignore defaulted arguments in deciding what is a match.
+			 * result list.
 			 */
-			FuncCandidateList prevResult;
-			if (catlist->ordered && !any_special)
+			if (resultList)
 			{
-				/* ndargs must be 0 if !any_special */
-				if (effective_nargs == resultList->nargs &&
-					memcmp(newResult->args,
-						   resultList->args,
-						   effective_nargs * sizeof(Oid)) == 0)
-					prevResult = resultList;
-				else
-					prevResult = NULL;
-			}
-			else
-			{
-				int     cmp_nargs = newResult->nargs - newResult->ndargs;
+				FuncCandidateList prevResult;
 
-				for (prevResult = resultList;
-					 prevResult;
-					 prevResult = prevResult->next)
+				if (catlist->ordered)
 				{
-					if (cmp_nargs == prevResult->nargs - prevResult->ndargs &&
-						memcmp(newResult->args,
-							   prevResult->args,
-							   cmp_nargs * sizeof(Oid)) == 0)
-						break;
-				}
-			}
-
-			if (prevResult)
-			{
-				/*
-				 * We have a match with a previous result.  Decide which one
-				 * to keep, or mark it ambiguous if we can't decide.  The
-				 * logic here is preference > 0 means prefer the old result,
-				 * preference < 0 means prefer the new, preference = 0 means
-				 * ambiguous.
-				 */
-				int     preference;
-
-				if (pathpos != prevResult->pathpos)
-				{
-					/*
-					 * Prefer the one that's earlier in the search path.
-					 */
-					preference = pathpos - prevResult->pathpos;
-				}
-				else if (variadic && prevResult->nvargs == 0)
-				{
-					/*
-					 * With variadic functions we could have, for example,
-					 * both foo(numeric) and foo(variadic numeric[]) in
-					 * the same namespace; if so we prefer the
-					 * non-variadic match on efficiency grounds.
-					 */
-
-					preference = 1;
-				}
-				else if (!variadic && prevResult->nvargs > 0)
-				{
-					preference = -1;
-				}
-				else
-				{
-					/*----------
-					 * We can't decide.  This can happen with, for example,
-					 * both foo(numeric, variadic numeric[]) and
-					 * foo(variadic numeric[]) in the same namespace, or
-					 * both foo(int) and foo (int, int default something)
-					 * in the same namespace, or both foo(a int, b text)
-					 * and foo(b text, a int) in the same namespace.
-					 *----------
-					 */
-					preference = 0;
-				}
-
-				if (preference > 0)
-				{
-					/* keep previous result */
-					pfree(newResult);
-					continue;
-				}
-				else if (preference < 0)
-				{
-					/* remove previous result from the list */
-					if (prevResult == resultList)
-						resultList = prevResult->next;
+					if (pronargs == resultList->nargs &&
+						memcmp(procform->proargtypes.values,
+							   resultList->args,
+							   pronargs * sizeof(Oid)) == 0)
+						prevResult = resultList;
 					else
-					{
-						FuncCandidateList prevPrevResult;
-
-						for (prevPrevResult = resultList;
-							 prevPrevResult;
-							 prevPrevResult = prevPrevResult->next)
-						{
-							if (prevResult == prevPrevResult->next)
-							{
-								prevPrevResult->next = prevResult->next;
-								break;
-							}
-						}
-
-						Assert(prevPrevResult);     /* assert we found it */
-					}
-
-					pfree(prevResult);
-					/* fall through to add newResult to list */
+						prevResult = NULL;
 				}
 				else
 				{
-					/* mark old result as ambiguous, discard new */
-					prevResult->oid = InvalidOid;
-					pfree(newResult);
-					continue;
+					for (prevResult = resultList;
+						 prevResult;
+						 prevResult = prevResult->next)
+					{
+						if (pronargs == prevResult->nargs &&
+							memcmp(procform->proargtypes.values,
+								   prevResult->args,
+								   pronargs * sizeof(Oid)) == 0)
+							break;
+					}
+				}
+				if (prevResult)
+				{
+					/* We have a match with a previous result */
+					Assert(pathpos != prevResult->pathpos);
+					if (pathpos > prevResult->pathpos)
+						continue;		/* keep previous result */
+					/* replace previous result */
+					prevResult->pathpos = pathpos;
+					prevResult->oid = HeapTupleGetOid(proctup);
+					continue;	/* args are same, of course */
 				}
 			}
 		}
@@ -979,137 +667,23 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 		/*
 		 * Okay to add it to result list
 		 */
+		newResult = (FuncCandidateList)
+			palloc(sizeof(struct _FuncCandidateList) - sizeof(Oid)
+				   + pronargs * sizeof(Oid));
+		newResult->pathpos = pathpos;
+		newResult->oid = HeapTupleGetOid(proctup);
+		newResult->nargs = pronargs;
+		memcpy(newResult->args, procform->proargtypes.values,
+			   pronargs * sizeof(Oid));
+
 		newResult->next = resultList;
 		resultList = newResult;
 	}
 
-	caql_end_CacheList(catlist);
+	ReleaseSysCacheList(catlist);
 
 	return resultList;
 }
-
-/*
- * MatchNamedCall
- *		Given a pg_proc heap tuple and a call's list of argument names,
- *		check whether the function could match the call.
- *
- * The call could match if all supplied argument names are accepted by
- * the function, in positions after the last positional argument, and there
- * are defaults for all unsupplied arguments.
- *
- * The number of positional arguments is nargs - list_length(argnames).
- * Note caller has already done basic checks on argument count.
- *
- * On match, return true and fill *argnumbers with a palloc'd array showing
- * the mapping from call argument positions to actual function argument
- * numbers.  Defaulted arguments are included in this map, at positions
- * after the last supplied argument.
- */
-static bool
-MatchNamedCall(HeapTuple proctup, int nargs, List *argnames, int **argnumbers)
-{
-	Form_pg_proc procform = (Form_pg_proc) GETSTRUCT(proctup);
-	int         pronargs = procform->pronargs;
-	int         numposargs = nargs - list_length(argnames);
-	int         pronallargs;
-	Oid        *p_argtypes;
-	char      **p_argnames;
-	char       *p_argmodes;
-	bool        arggiven[FUNC_MAX_ARGS];
-	bool        isnull;
-	int         ap;             /* call args position */
-	int         pp;             /* proargs position */
-	ListCell   *lc;
-
-	Assert(argnames != NIL);
-	Assert(numposargs >= 0);
-	Assert(nargs <= pronargs);
-
-	/* Ignore this function if its proargnames is null */
-	(void) SysCacheGetAttr(PROCOID, proctup, Anum_pg_proc_proargnames,
-						   &isnull);
-	if (isnull)
-		return false;
-
-	/* OK, let's extract the argument names and types */
-	pronallargs = get_func_arg_info(proctup,
-									&p_argtypes, &p_argnames, &p_argmodes);
-	Assert(p_argnames != NULL);
-
-	/* initialize state for matching */
-	*argnumbers = (int *) palloc(pronargs * sizeof(int));
-	memset(arggiven, false, pronargs * sizeof(bool));
-
-	/* there are numposargs positional args before the named args */
-	for (ap = 0; ap < numposargs; ap++)
-	{
-		(*argnumbers)[ap] = ap;
-		arggiven[ap] = true;
-	}
-
-	/* now examine the named args */
-	foreach(lc, argnames)
-	{
-		char   *argname = (char *) lfirst(lc);
-		bool    found;
-		int     i;
-
-		pp = 0;
-		found = false;
-		for (i = 0; i < pronallargs; i++)
-		{
-			/* consider only input parameters */
-			if (p_argmodes &&
-				(p_argmodes[i] != FUNC_PARAM_IN &&
-				 p_argmodes[i] != FUNC_PARAM_INOUT &&
-				 p_argmodes[i] != FUNC_PARAM_VARIADIC))
-				continue;
-			if (p_argnames[i] && strcmp(p_argnames[i], argname) == 0)
-			{
-				/* fail if argname matches a positional argument */
-				if (arggiven[pp])
-					return false;
-				arggiven[pp] = true;
-				(*argnumbers)[ap] = pp;
-				found = true;
-				break;
-			}
-			/* increase pp only for input parameters */
-			pp++;
-		}
-		/* if name isn't in proargnames, fail */
-		if (!found)
-			return false;
-		ap++;
-	}
-
-	Assert(ap == nargs);        /* processed all actual parameters */
-
-	/* Check for default arguments */
-	if (nargs < pronargs)
-	{
-
-		Datum datum = SysCacheGetAttr(PROCOID, proctup,
-									  Anum_pg_proc_pronargdefaults, &isnull);
-		int pronargdefaults = DatumGetObjectId(datum);
-		int first_arg_with_default = pronargs - pronargdefaults;
-
-		for (pp = numposargs; pp < pronargs; pp++)
-		{
-			if (arggiven[pp])
-				continue;
-			/* fail if arg not given and no default available */
-			if (pp < first_arg_with_default)
-				return false;
-			(*argnumbers)[ap++] = pp;
-		}
-	}
-
-	Assert(ap == pronargs);     /* processed all function parameters */
-
-	return true;
-}
-
 
 /*
  * FunctionIsVisible
@@ -1124,16 +698,10 @@ FunctionIsVisible(Oid funcid)
 	Form_pg_proc procform;
 	Oid			pronamespace;
 	bool		visible;
-	cqContext  *pcqCtx;
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_proc "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(funcid)));
-
-	proctup = caql_getnext(pcqCtx);
-
+	proctup = SearchSysCache(PROCOID,
+							 ObjectIdGetDatum(funcid),
+							 0, 0, 0);
 	if (!HeapTupleIsValid(proctup))
 		elog(ERROR, "cache lookup failed for function %u", funcid);
 	procform = (Form_pg_proc) GETSTRUCT(proctup);
@@ -1163,8 +731,7 @@ FunctionIsVisible(Oid funcid)
 
 		visible = false;
 
-		clist = FuncnameGetCandidates(list_make1(makeString(proname)),
-									  nargs, NIL, false, false);
+		clist = FuncnameGetCandidates(list_make1(makeString(proname)), nargs);
 
 		for (; clist; clist = clist->next)
 		{
@@ -1178,7 +745,7 @@ FunctionIsVisible(Oid funcid)
 		}
 	}
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(proctup);
 
 	return visible;
 }
@@ -1210,44 +777,35 @@ OpernameGetOprid(List *names, Oid oprleft, Oid oprright)
 	{
 		/* search only in exact schema given */
 		Oid			namespaceId;
-		Oid			operoid;
+		HeapTuple	opertup;
 
 		namespaceId = LookupExplicitNamespace(schemaname);
+		opertup = SearchSysCache(OPERNAMENSP,
+								 CStringGetDatum(opername),
+								 ObjectIdGetDatum(oprleft),
+								 ObjectIdGetDatum(oprright),
+								 ObjectIdGetDatum(namespaceId));
+		if (HeapTupleIsValid(opertup))
+		{
+			Oid			result = HeapTupleGetOid(opertup);
 
-		operoid = caql_getoid(
-				NULL,
-				cql("SELECT oid FROM pg_operator "
-					" WHERE oprname = :1 "
-					" AND oprleft = :2 "
-					" AND oprright = :3 "
-					" AND oprnamespace = :4 ",
-					CStringGetDatum(opername),
-					ObjectIdGetDatum(oprleft),
-					ObjectIdGetDatum(oprright),
-					ObjectIdGetDatum(namespaceId)));
-
-		return operoid;
+			ReleaseSysCache(opertup);
+			return result;
+		}
+		return InvalidOid;
 	}
 
 	/* Search syscache by name and argument types */
-	catlist = caql_begin_CacheList(
-			NULL,
-			cql("SELECT * FROM pg_operator "
-				" WHERE oprname = :1 "
-				" AND oprleft = :2 "
-				" AND oprright = :3 "
-				" ORDER BY oprname, "
-				" oprleft, "
-				" oprright, "
-				" oprnamespace ",
-				CStringGetDatum(opername),
-				ObjectIdGetDatum(oprleft),
-				ObjectIdGetDatum(oprright)));
+	catlist = SearchSysCacheList(OPERNAMENSP, 3,
+								 CStringGetDatum(opername),
+								 ObjectIdGetDatum(oprleft),
+								 ObjectIdGetDatum(oprright),
+								 0);
 
 	if (catlist->n_members == 0)
 	{
 		/* no hope, fall out early */
-		caql_end_CacheList(catlist);
+		ReleaseSysCacheList(catlist);
 		return InvalidOid;
 	}
 
@@ -1275,13 +833,13 @@ OpernameGetOprid(List *names, Oid oprleft, Oid oprright)
 			{
 				Oid			result = HeapTupleGetOid(opertup);
 
-				caql_end_CacheList(catlist);
+				ReleaseSysCacheList(catlist);
 				return result;
 			}
 		}
 	}
 
-	caql_end_CacheList(catlist);
+	ReleaseSysCacheList(catlist);
 	return InvalidOid;
 }
 
@@ -1330,15 +888,9 @@ OpernameGetCandidates(List *names, char oprkind)
 	}
 
 	/* Search syscache by name only */
-	catlist = caql_begin_CacheList(
-			NULL, 
-			cql("SELECT * FROM pg_operator "
-				" WHERE oprname = :1 "
-				" ORDER BY oprname, "
-				" oprleft, "
-				" oprright, "
-				" oprnamespace ",
-				CStringGetDatum(opername)));
+	catlist = SearchSysCacheList(OPERNAMENSP, 1,
+								 CStringGetDatum(opername),
+								 0, 0, 0);
 
 	/*
 	 * In typical scenarios, most if not all of the operators found by the
@@ -1395,7 +947,7 @@ OpernameGetCandidates(List *names, char oprkind)
 			 * arguments as something we already accepted?	If so, keep only
 			 * the one that appears earlier in the search path.
 			 *
-			 * If we have an ordered list from caql_begin_CacheList (the normal
+			 * If we have an ordered list from SearchSysCacheList (the normal
 			 * case), then any conflicting oper must immediately adjoin this
 			 * one in the list, so we only need to look at the newest result
 			 * item.  If we have an unordered list, we have to scan the whole
@@ -1447,16 +999,13 @@ OpernameGetCandidates(List *names, char oprkind)
 		newResult->pathpos = pathpos;
 		newResult->oid = HeapTupleGetOid(opertup);
 		newResult->nargs = 2;
-		newResult->nvargs = 0;
-		newResult->ndargs = 0;
-		newResult->argnumbers = NULL;
 		newResult->args[0] = operform->oprleft;
 		newResult->args[1] = operform->oprright;
 		newResult->next = resultList;
 		resultList = newResult;
 	}
 
-	caql_end_CacheList(catlist);
+	ReleaseSysCacheList(catlist);
 
 	return resultList;
 }
@@ -1474,16 +1023,10 @@ OperatorIsVisible(Oid oprid)
 	Form_pg_operator oprform;
 	Oid			oprnamespace;
 	bool		visible;
-	cqContext  *pcqCtx;
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_operator "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(oprid)));
-
-	oprtup = caql_getnext(pcqCtx);
-
+	oprtup = SearchSysCache(OPEROID,
+							ObjectIdGetDatum(oprid),
+							0, 0, 0);
 	if (!HeapTupleIsValid(oprtup))
 		elog(ERROR, "cache lookup failed for operator %u", oprid);
 	oprform = (Form_pg_operator) GETSTRUCT(oprtup);
@@ -1514,7 +1057,7 @@ OperatorIsVisible(Oid oprid)
 				   == oprid);
 	}
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(oprtup);
 
 	return visible;
 }
@@ -1543,16 +1086,11 @@ OpclassnameGetOpcid(Oid amid, const char *opcname)
 		if (namespaceId == myTempNamespace)
 			continue;			/* do not look in temp namespace */
 
-		opcid = caql_getoid(
-				NULL,
-				cql("SELECT oid FROM pg_opclass "
-					" WHERE opcamid = :1 "
-					" AND opcname = :2 "
-					" AND opcnamespace = :3 ",
-					ObjectIdGetDatum(amid),
-					CStringGetDatum((char *) opcname),
-					ObjectIdGetDatum(namespaceId)));
-
+		opcid = GetSysCacheOid(CLAAMNAMENSP,
+							   ObjectIdGetDatum(amid),
+							   PointerGetDatum((char *) opcname),
+							   ObjectIdGetDatum(namespaceId),
+							   0);
 		if (OidIsValid(opcid))
 			return opcid;
 	}
@@ -1574,16 +1112,10 @@ OpclassIsVisible(Oid opcid)
 	Form_pg_opclass opcform;
 	Oid			opcnamespace;
 	bool		visible;
-	cqContext  *pcqCtx;
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_opclass "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(opcid)));
-
-	opctup = caql_getnext(pcqCtx);
-
+	opctup = SearchSysCache(CLAOID,
+							ObjectIdGetDatum(opcid),
+							0, 0, 0);
 	if (!HeapTupleIsValid(opctup))
 		elog(ERROR, "cache lookup failed for opclass %u", opcid);
 	opcform = (Form_pg_opclass) GETSTRUCT(opctup);
@@ -1612,7 +1144,7 @@ OpclassIsVisible(Oid opcid)
 		visible = (OpclassnameGetOpcid(opcform->opcamid, opcname) == opcid);
 	}
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(opctup);
 
 	return visible;
 }
@@ -1639,14 +1171,10 @@ ConversionGetConid(const char *conname)
 		if (namespaceId == myTempNamespace)
 			continue;			/* do not look in temp namespace */
 
-		conid = caql_getoid(
-				NULL,
-				cql("SELECT oid FROM pg_conversion "
-					" WHERE conname = :1 "
-					" AND connamespace = :2 ",
-					CStringGetDatum((char *) conname),
-					ObjectIdGetDatum(namespaceId)));
-
+		conid = GetSysCacheOid(CONNAMENSP,
+							   PointerGetDatum((char *) conname),
+							   ObjectIdGetDatum(namespaceId),
+							   0, 0);
 		if (OidIsValid(conid))
 			return conid;
 	}
@@ -1668,16 +1196,10 @@ ConversionIsVisible(Oid conid)
 	Form_pg_conversion conform;
 	Oid			connamespace;
 	bool		visible;
-	cqContext  *pcqCtx;
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_conversion "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(conid)));
-
-	contup = caql_getnext(pcqCtx);
-
+	contup = SearchSysCache(CONOID,
+							ObjectIdGetDatum(conid),
+							0, 0, 0);
 	if (!HeapTupleIsValid(contup))
 		elog(ERROR, "cache lookup failed for conversion %u", conid);
 	conform = (Form_pg_conversion) GETSTRUCT(contup);
@@ -1706,7 +1228,7 @@ ConversionIsVisible(Oid conid)
 		visible = (ConversionGetConid(conname) == conid);
 	}
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(contup);
 
 	return visible;
 }
@@ -1788,12 +1310,9 @@ LookupExplicitNamespace(const char *nspname)
 		 */
 	}
 
-	namespaceId = caql_getoid(
-			NULL,
-			cql("SELECT oid FROM pg_namespace "
-				" WHERE nspname = :1 ",
-				CStringGetDatum((char *) nspname)));
-
+	namespaceId = GetSysCacheOid(NAMESPACENAME,
+								 CStringGetDatum((char *) nspname),
+								 0, 0, 0);
 	if (!OidIsValid(namespaceId))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_SCHEMA),
@@ -1833,12 +1352,9 @@ LookupCreationNamespace(const char *nspname)
 		return myTempNamespace;
 	}
 
-	namespaceId = caql_getoid(
-			NULL,
-			cql("SELECT oid FROM pg_namespace "
-				" WHERE nspname = :1 ",
-				CStringGetDatum((char *) nspname)));
-
+	namespaceId = GetSysCacheOid(NAMESPACENAME,
+								 CStringGetDatum((char *) nspname),
+								 0, 0, 0);
 	if (!OidIsValid(namespaceId))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_SCHEMA),
@@ -1885,12 +1401,9 @@ QualifiedNameGetCreationNamespace(List *names, char **objname_p)
 			return myTempNamespace;
 		}
 		/* use exact schema given */
-		namespaceId = caql_getoid(
-				NULL,
-				cql("SELECT oid FROM pg_namespace "
-					" WHERE nspname = :1 ",
-					CStringGetDatum(schemaname)));
-
+		namespaceId = GetSysCacheOid(NAMESPACENAME,
+									 CStringGetDatum(schemaname),
+									 0, 0, 0);
 		if (!OidIsValid(namespaceId))
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_SCHEMA),
@@ -2212,25 +1725,20 @@ recomputeNamespacePath(void)
 		if (strcmp(curname, "$user") == 0)
 		{
 			/* $user --- substitute namespace matching user name, if any */
-			char	   *rname = NULL;
-			int			fetchCount;
+			HeapTuple	tuple;
 
-			rname = caql_getcstring_plus(
-					NULL,
-					&fetchCount,
-					NULL,
-					cql("SELECT rolname FROM pg_authid "
-						" WHERE oid = :1 ",
-						ObjectIdGetDatum(roleid)));
-
-			if (fetchCount)
+			tuple = SearchSysCache(AUTHOID,
+								   ObjectIdGetDatum(roleid),
+								   0, 0, 0);
+			if (HeapTupleIsValid(tuple))
 			{
-				namespaceId = caql_getoid(
-						NULL,
-						cql("SELECT oid FROM pg_namespace "
-							" WHERE nspname = :1 ",
-							CStringGetDatum(rname)));
+				char	   *rname;
 
+				rname = NameStr(((Form_pg_authid) GETSTRUCT(tuple))->rolname);
+				namespaceId = GetSysCacheOid(NAMESPACENAME,
+											 CStringGetDatum(rname),
+											 0, 0, 0);
+				ReleaseSysCache(tuple);
 				if (OidIsValid(namespaceId) &&
 					!list_member_oid(oidlist, namespaceId) &&
 					pg_namespace_aclcheck(namespaceId, roleid,
@@ -2257,12 +1765,9 @@ recomputeNamespacePath(void)
 		else
 		{
 			/* normal namespace reference */
-			namespaceId = caql_getoid(
-					NULL,
-					cql("SELECT oid FROM pg_namespace "
-						" WHERE nspname = :1 ",
-						CStringGetDatum(curname)));
-
+			namespaceId = GetSysCacheOid(NAMESPACENAME,
+										 CStringGetDatum(curname),
+										 0, 0, 0);
 			if (OidIsValid(namespaceId) &&
 				!list_member_oid(oidlist, namespaceId) &&
 				pg_namespace_aclcheck(namespaceId, roleid,
@@ -2343,7 +1848,7 @@ static void
 InitTempTableNamespace(void)
 {
 	char				 namespaceName[NAMEDATALEN];
-	int					 fetchCount;
+	HeapTuple			 tup;
 	char				*rolname;
 	CreateSchemaStmt   	*stmt;
 
@@ -2406,16 +1911,11 @@ InitTempTableNamespace(void)
 	 */
 		
 	/* Lookup the name of the superuser */
-
-	rolname = caql_getcstring_plus(
-					NULL,
-					&fetchCount,
-					NULL,
-					cql("SELECT rolname FROM pg_authid "
-						" WHERE oid = :1 ",
-						ObjectIdGetDatum(BOOTSTRAP_SUPERUSERID)));
-
-	Assert(fetchCount);  /* bootstrap user MUST exist */
+	tup = SearchSysCache(AUTHOID, ObjectIdGetDatum(BOOTSTRAP_SUPERUSERID),
+						 0,0,0);
+	Assert(HeapTupleIsValid(tup));  /* bootstrap user MUST exist */
+	rolname = pstrdup(NameStr(((Form_pg_authid) GETSTRUCT(tup))->rolname));
+	ReleaseSysCache(tup);
 
 	/* Execute the internal DDL */
 	stmt = makeNode(CreateSchemaStmt);
@@ -2437,7 +1937,7 @@ ExistsCommittedTempNamespace(void)
 	 * a portal, because it relies on there being a valid ResourceOwner,
 	 * which is needed if you want to call syscache or catcache. (ugh).
 	 *
-	 * TempNameSpaceValid does use getsyscacheoid()
+	 * TempNameSpaceValid does use GetSysCacheOid()
 	 *
 	 */
 	return TempNamespaceValid(false) &&
@@ -2683,19 +2183,14 @@ assign_search_path(const char *newval, bool doit, GucSource source)
 				continue;
 			if (strcmp(curname, "pg_temp") == 0)
 				continue;
-
-			if (0 == caql_getcount(
-						NULL,
-						cql("SELECT COUNT(*) FROM pg_namespace "
-							" WHERE nspname = :1 ",
-							CStringGetDatum(curname))))
-			{
+			if (!SearchSysCacheExists(NAMESPACENAME,
+									  CStringGetDatum(curname),
+									  0, 0, 0))
 				if (Gp_role != GP_ROLE_EXECUTE)
 					ereport((source == PGC_S_TEST) ? NOTICE : ERROR,
 							(errcode(ERRCODE_UNDEFINED_SCHEMA),
 							 errmsg("schema \"%s\" does not exist", curname),
 							 errOmitLocation(true)));
-			}
 		}
 	}
 
@@ -2773,19 +2268,13 @@ TempNamespaceValid(bool error_if_removed)
 	{
 		/*
 		 * Warning:  To use the syscache, there must be a valid ResourceOwner.
-		 * This implies we must be in a Portal, and if we are in a
-		 * Portal, we are in a transaction.  So you can't use this if
-		 * we are currently idle.
+		 * This implies we must be in a Portal, and if we are in a Portal, we are in
+		 * a transaction.  So you can't use this if we are currently idle.
 		 */
 		AcceptInvalidationMessages();  /* minimize race conditions */
-
-		/* NOTE: use of syscache with caql ! */
-		/* XXX XXX: jic 20120430: is this correct - check if oid exists? */
-		myTempNamespace = caql_getoid(
-				NULL,
-				cql("SELECT oid FROM pg_namespace "
-					" WHERE oid = :1 ",
-					ObjectIdGetDatum(myTempNamespace)));
+		myTempNamespace = GetSysCacheOid(NAMESPACEOID,
+									 	 ObjectIdGetDatum(myTempNamespace),
+									 	 0, 0, 0);
 
 		if (OidIsValid(myTempNamespace))
 			return true;
@@ -2863,7 +2352,7 @@ fetch_search_path(bool includeImplicit)
  * operate on SnapshotNow semantics and so might see the object as already
  * gone when it's still visible to the MVCC snapshot.  (There is no race
  * condition in the current coding because we don't accept sinval messages
- * between the searchsyscacheexists/getcount test and the subsequent lookup.)
+ * between the SearchSysCacheExists test and the subsequent lookup.)
  */
 
 Datum
@@ -2871,11 +2360,9 @@ pg_table_is_visible(PG_FUNCTION_ARGS)
 {
 	Oid			oid = PG_GETARG_OID(0);
 
-	if (0 == caql_getcount(
-				NULL,
-				cql("SELECT COUNT(*) FROM pg_class "
-					" WHERE oid = :1 ",
-					ObjectIdGetDatum(oid))))
+	if (!SearchSysCacheExists(RELOID,
+							  ObjectIdGetDatum(oid),
+							  0, 0, 0))
 		PG_RETURN_NULL();
 
 	PG_RETURN_BOOL(RelationIsVisible(oid));
@@ -2886,11 +2373,9 @@ pg_type_is_visible(PG_FUNCTION_ARGS)
 {
 	Oid			oid = PG_GETARG_OID(0);
 
-	if (0 == caql_getcount(
-				NULL,
-				cql("SELECT COUNT(*) FROM pg_type "
-					" WHERE oid = :1 ",
-					ObjectIdGetDatum(oid))))
+	if (!SearchSysCacheExists(TYPEOID,
+							  ObjectIdGetDatum(oid),
+							  0, 0, 0))
 		PG_RETURN_NULL();
 
 	PG_RETURN_BOOL(TypeIsVisible(oid));
@@ -2901,11 +2386,9 @@ pg_function_is_visible(PG_FUNCTION_ARGS)
 {
 	Oid			oid = PG_GETARG_OID(0);
 
-	if (0 == caql_getcount(
-				NULL,
-				cql("SELECT COUNT(*) FROM pg_proc "
-					" WHERE oid = :1 ",
-					ObjectIdGetDatum(oid))))
+	if (!SearchSysCacheExists(PROCOID,
+							  ObjectIdGetDatum(oid),
+							  0, 0, 0))
 		PG_RETURN_NULL();
 
 	PG_RETURN_BOOL(FunctionIsVisible(oid));
@@ -2916,11 +2399,9 @@ pg_operator_is_visible(PG_FUNCTION_ARGS)
 {
 	Oid			oid = PG_GETARG_OID(0);
 
-	if (0 == caql_getcount(
-				NULL,
-				cql("SELECT COUNT(*) FROM pg_operator "
-					" WHERE oid = :1 ",
-					ObjectIdGetDatum(oid))))
+	if (!SearchSysCacheExists(OPEROID,
+							  ObjectIdGetDatum(oid),
+							  0, 0, 0))
 		PG_RETURN_NULL();
 
 	PG_RETURN_BOOL(OperatorIsVisible(oid));
@@ -2931,11 +2412,9 @@ pg_opclass_is_visible(PG_FUNCTION_ARGS)
 {
 	Oid			oid = PG_GETARG_OID(0);
 
-	if (0 == caql_getcount(
-				NULL,
-				cql("SELECT COUNT(*) FROM pg_opclass "
-					" WHERE oid = :1 ",
-					ObjectIdGetDatum(oid))))
+	if (!SearchSysCacheExists(CLAOID,
+							  ObjectIdGetDatum(oid),
+							  0, 0, 0))
 		PG_RETURN_NULL();
 
 	PG_RETURN_BOOL(OpclassIsVisible(oid));
@@ -2946,11 +2425,9 @@ pg_conversion_is_visible(PG_FUNCTION_ARGS)
 {
 	Oid			oid = PG_GETARG_OID(0);
 
-	if (0 == caql_getcount(
-				NULL,
-				cql("SELECT COUNT(*) FROM pg_conversion "
-					" WHERE oid = :1 ",
-					ObjectIdGetDatum(oid))))
+	if (!SearchSysCacheExists(CONOID,
+							  ObjectIdGetDatum(oid),
+							  0, 0, 0))
 		PG_RETURN_NULL();
 
 	PG_RETURN_BOOL(ConversionIsVisible(oid));

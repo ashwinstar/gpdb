@@ -34,6 +34,4 @@ extern bool focusPlan(Plan *plan, bool stable, bool rescannable);
 extern bool repartitionPlan(Plan *plan, bool stable, bool rescannable, List *hashExpr);
 extern bool broadcastPlan(Plan *plan, bool stable, bool rescannable);
 
-extern void update_flow_from_sortclauses(Flow *flow, List *sortclauses, List *tlist);
-
 #endif   /* CDBLLIZE_H */

@@ -50,23 +50,3 @@ SELECT AVG(random) FROM RANDOM_TBL
 -----
 (0 rows)
 
-SET seed TO 0.1;
-SELECT random() INTO RANDOM_TBL_X FROM onek;
-SET seed TO 0.1;
-SELECT random() INTO RANDOM_TBL_Y FROM onek;
--- our design ensures the same query pattern since setting new seed
--- makes the identical result.
-SELECT * FROM RANDOM_TBL_X
-EXCEPT ALL
-SELECT * FROM RANDOM_TBL_Y;
- random 
---------
-(0 rows)
-
--- setseed()
-SELECT setseed(0.1);
- setseed 
----------
-       0
-(1 row)
-

@@ -15,8 +15,6 @@
  */
 #include "postgres.h"
 
-#include "access/catquery.h"
-
 #include "catalog/pg_aggregate.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
@@ -128,8 +126,6 @@ typedef struct RefInfo
 	
 	Expr	   *resultexpr; /* Result expression for upper target list in parallel target list */
 	AttrNumber	resno; /* Attribute number of result in sequential target list */
-
-	Oid			framemakerfunc; /* frame maker function */
 } RefInfo;
 
 /* Macros to determine what kind of window function a RefInfo represents
@@ -196,8 +192,6 @@ typedef struct WindowContext
 	
 	bool			has_unordered_aggs;
 	bool			has_deferred_window_fns;
-	SequenceSpec   *sequence;
-	WindowSemantics semantics;
 	
 	 /* Only for sequential plans */
 	bool			original_range;
@@ -284,6 +278,8 @@ static Node *translate_upper_vars_sequential(Node *node, WindowContext *context)
 static FromExpr *plan_window_jointree(PlannerInfo *root, WindowContext *context);
 static Expr *make_window_join_term(Oid type, Index lftvarno, AttrNumber lftattrno, Index rgtvarno, AttrNumber rgtattrno, bool no_nulls);
 static Oid *get_window_attr_types(List *targetlist, int nattrs, AttrNumber *attrs);
+static Plan *wrap_plan(PlannerInfo *root, Plan *plan, Query *query, List **p_pathkeys, 
+       const char *alias_name, List *col_names, Query **query_p);
 static Plan *add_join_to_wrapper(PlannerInfo *root, Plan *plan, Query *query, List *join_tlist,
 								 unsigned partkey_len, 
 								 const char *alias_name, List *col_names, 
@@ -291,8 +287,7 @@ static Plan *add_join_to_wrapper(PlannerInfo *root, Plan *plan, Query *query, Li
 static Query *copy_common_subquery(Query *original, List *targetList);
 static char *get_function_name(Oid proid, const char *dflt);
 
-/* Plan a window or sequence query.
- */
+
 Plan *
 window_planner(PlannerInfo *root, double tuple_fraction, List **pathkeys_ptr)
 {
@@ -313,19 +308,6 @@ window_planner(PlannerInfo *root, double tuple_fraction, List **pathkeys_ptr)
 #ifdef CDB_WINDOW_DISPLAY	
 	elog_node_display(NOTICE, "Window  query target list", parse->targetList, true);
 	elog_node_display(NOTICE, "Window  query window  clause", parse->windowClause, true);
-#endif
-
-	context->sequence = getSequenceSpec(parse->windowClause);
-	if ( useSequenceSemantics(parse->windowClause) )
-		context->semantics = WINDOW_SEMANTICS_SEQ;
-	else
-		context->semantics = WINDOW_SEMANTICS_STD;
-
-#ifdef CDB_SEQUENCE_DISPLAY	
-	if ( context->sequence != NULL )
-	{
-		elog_node_display(NOTICE, "Sequence specified: ", context->sequence, true);
-	}
 #endif
 	
 	/* Create a map: (varno,varattno)  <--> (integer) for use in recording
@@ -348,8 +330,8 @@ window_planner(PlannerInfo *root, double tuple_fraction, List **pathkeys_ptr)
 	preprocess_window_tlist(parse->targetList, context);
 
 	/* Create an array of SpecInfo structures corresponding to the distinct
-	 * SequenceSpec and referenced WindowSpec nodes in the input. Refer back 
-	 * to this array from the array of RefInfo structures.
+	 * referenced WindowSpec nodes in the input. Refer back to this array
+	 * from the array of RefInfo structures.
 	 */
 	inventory_window_specs(parse->windowClause, context);
 
@@ -374,14 +356,14 @@ window_planner(PlannerInfo *root, double tuple_fraction, List **pathkeys_ptr)
 	if ( context->nwindowinfos == 1 && 
 		!(context->has_unordered_aggs || context->has_deferred_window_fns) )
 	{
-		result_plan = plan_trivial_window_query(root, context, pathkeys_ptr);
+		return plan_trivial_window_query(root, context, pathkeys_ptr);
 	}
 	else
 	{
 		if ( root->config->gp_enable_sequential_window_plans )
-			result_plan = plan_sequential_window_query(root, context, pathkeys_ptr);
+			return plan_sequential_window_query(root, context, pathkeys_ptr);
 		else
-			result_plan = plan_parallel_window_query(root, context, pathkeys_ptr);
+			return plan_parallel_window_query(root, context, pathkeys_ptr);
 	}
 
 	/* TODO Check our API.
@@ -419,9 +401,6 @@ static WindowContext *newWindowContext()
 	context->coplan_count = 0;
 	context->has_unordered_aggs = false;
 	context->has_deferred_window_fns = false;
-	
-	context->sequence = NULL;
-	context->semantics = WINDOW_SEMANTICS_STD;
 
 	context->original_range = true;
 	context->subquery = NULL;
@@ -852,7 +831,7 @@ static void inventory_window_specs(List *window_specs, WindowContext *context)
 	foreach ( lcr, context->refinfos )
 	{
 		RefInfo *rinfo = (RefInfo *)lfirst(lcr);
-		if (OidIsValid(rinfo->framemakerfunc))
+		if ( rinfo->winkind == WINKIND_LEAD || rinfo->winkind == WINKIND_LAG )
 			nextra++;
 	}
 	
@@ -867,44 +846,25 @@ static void inventory_window_specs(List *window_specs, WindowContext *context)
 	i = 0;
 	foreach ( lcs, window_specs )
 	{
-		Node *node = (Node *)lfirst(lcs);
+		WindowSpec *spec = (WindowSpec *) lfirst(lcs);
 		Bitmapset *map = NULL;
 		ListCell *lc;
 		Bitmapset *orderset = NULL;
 		
-		List *order = NIL;
-		WindowFrame *frame = NULL;
-		List *partition = NIL;
-		
-		if (IsA(node, WindowSpec) || IsA(node, SeqWindowSpec))
-		{
-			WindowSpec *spec = (WindowSpec *)node;
-			order = spec->order;
-			frame = spec->frame;
-			partition = spec->partition;
-		}
-		else if (IsA(node, SequenceSpec))
-		{
-			SequenceSpec *spec = (SequenceSpec *)node;
-			order = spec->order;
-			frame = NULL;
-			partition = spec->partition;
-		}
-		
-		foreach ( lcp, partition )
+		foreach ( lcp, spec->partition )
 		{
 			SortClause *sc = (SortClause *) lfirst(lcp);
 			map = bms_add_member(map, sc->tleSortGroupRef);
 		}
 		specinfos[i].specindex = i;
 		specinfos[i].partset = map;
-		specinfos[i].order = order;
-		specinfos[i].frame = frame;
+		specinfos[i].order = spec->order;
+		specinfos[i].frame = spec->frame;
 		specinfos[i].refset = NULL;
 		specinfos[i].windowindex = 0;
 		specinfos[i].keylevel = 0;
-		specinfos[i].partkey = partition;
-		
+		specinfos[i].partkey = spec->partition;
+
 		/* Construct unique_order for each SpecInfo by removing
 		 * keys that are duplicates of partitioning keys and other
 		 * ORDER BY keys.
@@ -944,21 +904,76 @@ static void inventory_window_specs(List *window_specs, WindowContext *context)
 		WindowRef *ref = rinfo->ref;
 		int sindex = ref->winspec;
 		SpecInfo *sinfo = &specinfos[sindex];
-
+		
 		/* If Special Framing ... */
-		if (OidIsValid(rinfo->framemakerfunc))
-		{
-			SpecInfo	   *xinfo = sinfo;
-
+		if ( rinfo->winkind == WINKIND_LEAD || rinfo->winkind == WINKIND_LAG )
+		{ 
+			Node *offset = NULL;
+			WindowFrame * frame = NULL;
+			SpecInfo *xinfo = sinfo;
+			
+			/* Add a new "extra" SpecInfo for the specially framed window
+			 * reference.  Note that we could be better by recognizing a
+			 * previously added "extra" that meets our needs, but we
+			 * don't do that yet.
+			 */
 			sindex = nspec++;
 			sinfo = &specinfos[sindex];
 			memcpy(sinfo, xinfo, sizeof(SpecInfo));
 			sinfo->specindex = sindex;
-			sinfo->refset = NULL;
+			sinfo->refset = NULL; /* MPP-4836 */
+			
+			Assert( sinfo->frame == NULL );
+			
+			/* At the moment, the only special framing requirements are for
+			 * LEAD and LAG.  These carry an offset as their second argument
+			 * and, by now, the offset has be resolved to a Const node, if
+			 * possible.
+			 */	
+			if ( list_length(ref->args) > 1 )
+			{
+				offset = (Node*)list_nth(ref->args,1);
+			}
+			else
+			{
+				Const *c = (Const*)makeNode(Const);
+				c->consttype = INT8OID;
+				c->constlen = 8;
+				c->constvalue = 1;
+				c->constisnull = false;
+				c->constbyval = true;
+				offset = (Node*)c;
+			}
+			
+			frame = makeNode(WindowFrame);
+			frame->system_generated = true;
+			frame->is_between = true;
+			frame->is_rows = true;
+			frame->trail = makeNode(WindowFrameEdge);
+			frame->lead = makeNode(WindowFrameEdge);
 
-			Assert(sinfo->frame == NULL);
-			sinfo->frame = (WindowFrame *) DatumGetPointer(
-				OidFunctionCall1(rinfo->framemakerfunc, PointerGetDatum(ref)));
+			switch ( rinfo->winkind )
+			{
+			case WINKIND_LAG:
+				if ( IsA(offset,Const) )
+					frame->trail->kind = frame->lead->kind = WINDOW_BOUND_PRECEDING;
+				else
+					frame->trail->kind = frame->lead->kind = WINDOW_DELAYED_BOUND_PRECEDING;
+				break;
+				
+			case WINKIND_LEAD:
+				if ( IsA(offset,Const) )
+					frame->trail->kind = frame->lead->kind = WINDOW_BOUND_FOLLOWING;
+				else
+					frame->trail->kind = frame->lead->kind = WINDOW_DELAYED_BOUND_FOLLOWING;
+				break;
+				
+			default:
+				elog(ERROR, "internal window framing error");
+			}
+			
+			frame->trail->val = frame->lead->val = offset;
+			sinfo->frame = frame;
 		}
 		else if ( sinfo->frame != NULL )
 		{
@@ -1351,8 +1366,8 @@ static bool validateBound(Node *node, bool is_rows)
 				 errmsg("%s parameter cannot be negative", is_rows ? "ROWS" : "RANGE"),
 						   errOmitLocation(true)));
 	
-	ReleaseOperator(tup);
-	ReleaseType(typ);
+	ReleaseSysCache(tup);
+	ReleaseSysCache(typ);
 	
 	return TRUE;
 }
@@ -1672,20 +1687,14 @@ lookup_window_function(RefInfo *rinfo)
 	HeapTuple	tuple;
 	Form_pg_proc proform;
 	bool isagg, iswin;
-	cqContext	*procqCtx;
 	Oid transtype = InvalidOid;
 	
 	Oid fnoid = rinfo->ref->winfnoid;
 	
 	/* pg_proc */
-	procqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_proc "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(fnoid)));
-
-	tuple = caql_getnext(procqCtx);
-
+	tuple = SearchSysCache(PROCOID,
+							  ObjectIdGetDatum(fnoid),
+							  0, 0, 0);
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for function %u", fnoid);
 	proform = (Form_pg_proc) GETSTRUCT(tuple);
@@ -1699,23 +1708,17 @@ lookup_window_function(RefInfo *rinfo)
 			 errmsg("can not call ordinary function, %s, as window function", NameStr(proform->proname)),
 					   errOmitLocation(true)));
 	}
-	caql_endscan(procqCtx);
+	ReleaseSysCache(tuple);
 	
 	Assert( isagg != iswin );
 	
 	if ( isagg )
 	{
-		Form_pg_aggregate		 aggform;
-		cqContext				*aggcqCtx;
-
-		aggcqCtx = caql_beginscan(
-				NULL,
-				cql("SELECT * FROM pg_aggregate "
-					" WHERE aggfnoid = :1 ",
-					ObjectIdGetDatum(fnoid)));
-		
-		tuple = caql_getnext(aggcqCtx);
-
+		Form_pg_aggregate aggform;
+	
+		tuple = SearchSysCache(AGGFNOID,
+								  ObjectIdGetDatum(fnoid),
+								  0, 0, 0);
 		if (!HeapTupleIsValid(tuple))
 			elog(ERROR, "cache lookup failed for aggregate function %u", fnoid);
 		aggform = (Form_pg_aggregate) GETSTRUCT(tuple);
@@ -1727,10 +1730,10 @@ lookup_window_function(RefInfo *rinfo)
 		rinfo->hasinvprelim = (aggform->agginvprelimfn != InvalidOid);
 		transtype = aggform->aggtranstype;
 
-		caql_endscan(aggcqCtx);
+		ReleaseSysCache(tuple);
 		
 		/*
-		 * If the transition type is pass-by-reference, note the estimated 
+		 * If the transition type is pass-by-refernce, note the estimated 
 		 * size of the value itself, plus palloc overhead.
 		 */
 		if (!get_typbyval(transtype))
@@ -1746,17 +1749,11 @@ lookup_window_function(RefInfo *rinfo)
 	}
 	else /* iswin */
 	{
-		Form_pg_window	 winform;
-		cqContext		*wincqCtx;
-
-		wincqCtx = caql_beginscan(
-				NULL,
-				cql("SELECT * FROM pg_window "
-					" WHERE winfnoid = :1 ",
-					ObjectIdGetDatum(fnoid)));
-
-		tuple = caql_getnext(wincqCtx);
-
+		Form_pg_window winform;
+	
+		tuple = SearchSysCache(WINFNOID,
+								  ObjectIdGetDatum(fnoid),
+								  0, 0, 0);
 		if (!HeapTupleIsValid(tuple))
 			elog(ERROR, "cache lookup failed for window function %u", fnoid);
 		winform = (Form_pg_window) GETSTRUCT(tuple);
@@ -1765,9 +1762,8 @@ lookup_window_function(RefInfo *rinfo)
 		rinfo->needcount = winform->wincount;
 		rinfo->winpretype = winform->winpretype;
 		rinfo->winfinfunc = winform->winfinfunc;		
-		rinfo->framemakerfunc = winform->winframemakerfunc;
 
-		caql_endscan(wincqCtx);
+		ReleaseSysCache(tuple);
 	}
 }
 
@@ -2029,9 +2025,7 @@ static Plan *plan_trivial_window_query(PlannerInfo *root, WindowContext *context
 	List *lower_tlist = context->lower_tlist;
 	CdbPathLocus input_locus, output_locus;
 	List *pathkeys = NIL;
-	List *window_pathkeys = NIL;
-	SequenceSpec *sspec = context->sequence;
-	Node *seqdef = (sspec ? (Node*)sspec->seqdef : NULL);
+	List *window_pathkeys = NIL;	
 	
 	Assert ( pathkeys_ptr );
 	Assert (context->nwindowinfos == 1);
@@ -2061,27 +2055,14 @@ static Plan *plan_trivial_window_query(PlannerInfo *root, WindowContext *context
 	result_plan = (Plan*) make_window(root, context->upper_tlist, 
 									  winfo->partkey_len, winfo->partkey_attrs,
 									  winfo->key_list, /* XXX copy? */
-									  seqdef, context->semantics,
 									  result_plan);
 	
 	/* 
 	 * Add a Flow node to the top node, if it doesn't have one yet.
 	 * Retrieve distribution info from the next-to-top node which
-	 * must have a Flow node.  Note that, if this window is a
-	 * sequence producer, we need to change the sort order since
-	 * the output sort order differs from the input sort order.
+	 * must have a Flow node.
 	 */
-	if ( sspec != NULL )
-	{				
-		List *new_order = list_concat(sspec->partition, sspec->postorder);
-		result_plan->flow = pull_up_Flow(result_plan,
-										 result_plan->lefttree,
-										 false);
-		pathkeys = make_pathkeys_for_sortclauses(new_order, context->upper_tlist);
-		pathkeys = canonicalize_pathkeys(root, pathkeys);
-		update_flow_from_sortclauses(result_plan->flow, new_order, context->upper_tlist);
-	}
-	else if (!result_plan->flow)
+	if (!result_plan->flow)
 		result_plan->flow = pull_up_Flow(result_plan, 
 										 result_plan->lefttree, 
 										 (pathkeys != NIL));
@@ -2305,7 +2286,6 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 	Query *agg_subquery;
 	bool hasaux, hasagg;
 	CdbPathLocus input_locus = *locus_ptr;
-	Node *seqdef = (context->sequence ? (Node*)context->sequence->seqdef: NULL);
 
 	/* In-Out parameters */
 	List *pathkeys = *pathkeys_ptr;
@@ -2542,7 +2522,6 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 							winfo->partkey_len,
 							partkey,
 							(List*) translate_upper_vars_sequential((Node*)winfo->key_list, context), /* XXX mutate windowKeys to translate any Var nodes in frame vals. */
-							seqdef, context->semantics,
 							window_plan);
 							
 			window_plan->flow = pull_up_Flow(window_plan, window_plan->lefttree, true);
@@ -2785,7 +2764,6 @@ static Plan *plan_parallel_window_query(PlannerInfo *root, WindowContext *contex
 	List *targetlist;
 	List *rtable;
 	FromExpr *jointree;
-	Node *seqdef = (context->sequence? (Node*)context->sequence->seqdef: NULL);
 	
 	int i;
 	
@@ -2821,7 +2799,6 @@ static Plan *plan_parallel_window_query(PlannerInfo *root, WindowContext *contex
 		subplan = (Plan*) make_window(root, lower_tlist, 
 										  0, NULL, /* No paritioning */
 										  NIL, /* No ordering */
-										  seqdef, context->semantics,
 										  subplan);
 		if (!subplan->flow)
 			subplan->flow = pull_up_Flow(subplan, 
@@ -3280,14 +3257,12 @@ static RangeTblEntry *rte_for_coplan(
 		Plan *input_plan, 
 		CdbPathLocus subplan_locus,
 		List *subplan_pathkeys,
-		WindowContext *context,
 		WindowInfo *winfo,
 		Coplan *coplan)
 {
 	RangeTblEntry *rte;
 	Plan *new_plan = input_plan;
 	Alias *new_eref;
-	Node* seqdef = (context->sequence? (Node*)context->sequence->seqdef: NULL);
 	
 	/* Now new_plan is suitable input for a coplan of this winfo. 
 	 * Add the coplan processing.
@@ -3296,11 +3271,10 @@ static RangeTblEntry *rte_for_coplan(
 	{
 		case COPLAN_WINDOW:
 			new_plan = (Plan*) 
-				make_window(root, coplan->targetlist,
-							winfo->partkey_len, winfo->partkey_attrs,
-							winfo->key_list, /* XXX copy? */
-							seqdef, context->semantics,
-							new_plan);
+				make_window(root, coplan->targetlist, 
+						winfo->partkey_len, winfo->partkey_attrs,
+						winfo->key_list, /* XXX copy? */
+						new_plan);
 		break;
 	case COPLAN_AGG:
 		if ( coplan->partkey_len > 0 )
@@ -3546,7 +3520,6 @@ List *plan_window_rtable(PlannerInfo *root, WindowContext *context)
 					(Plan *) lfirst(lc),
 					context->subplan_locus,
 					(List *)lfirst(pk_lc),
-					context,
 					winfo,
 					winfo->window_coplan);
 			lc = lnext(lc);
@@ -3563,7 +3536,6 @@ List *plan_window_rtable(PlannerInfo *root, WindowContext *context)
 					(Plan *) lfirst(lc),
 					context->subplan_locus,
 					(List *)lfirst(pk_lc),
-					context,
 					winfo,
 					winfo->agg_coplan);
 			lc = lnext(lc);
@@ -3944,24 +3916,26 @@ char *get_function_name(Oid proid, const char *dflt)
 {
 	char	   *result;
 
-	if (!OidIsValid(proid))
+	if (proid == InvalidOid)
 	{
 		result = pstrdup(dflt);
 	}
 	else
 	{
-		int			fetchCount;
-
-		result = caql_getcstring_plus(
-				NULL,
-				&fetchCount,
-				NULL,
-				cql("SELECT proname FROM pg_proc "
-					" WHERE oid = :1 ",
-					ObjectIdGetDatum(proid)));
+		HeapTuple proctup = SearchSysCache(PROCOID,
+										   ObjectIdGetDatum(proid),
+										   0, 0, 0);
 	
-		if (!fetchCount)
+		if (HeapTupleIsValid(proctup))
+		{
+			Form_pg_proc procform = (Form_pg_proc) GETSTRUCT(proctup);
+			result = pstrdup(NameStr(procform->proname));	
+			ReleaseSysCache(proctup);
+		}
+		else
+		{
 			result = pstrdup(dflt);
+		}
 	}
 
 	return result;
@@ -4043,22 +4017,6 @@ Plan *wrap_plan(PlannerInfo *root, Plan *plan, Query *query,
 	
 	Assert( query_p != NULL );
 	
-	/*
-	 * If NIL passed for col_names, generates it from subplan's targetlist.
-	 */
-	if (col_names == NIL)
-	{
-		ListCell	   *l;
-
-		foreach (l, plan->targetlist)
-		{
-			TargetEntry	   *tle = lfirst(l);
-			Value		   *col_name;
-
-			col_name = get_tle_name(tle, query->rtable, NULL);
-			col_names = lappend(col_names, col_name);
-		}
-	}
 	/* Make the subquery RTE. Note that this will include a Query derived
 	 * from the input Query.
 	 */
@@ -4066,7 +4024,7 @@ Plan *wrap_plan(PlannerInfo *root, Plan *plan, Query *query,
 	eref->aliasname = pstrdup(alias_name);
 	eref->colnames = col_names;
 
-	rte = package_plan_as_rte(query, plan, eref, p_pathkeys ? *p_pathkeys : NIL);
+	rte = package_plan_as_rte(query, plan, eref, *p_pathkeys);
 	
 	/* Make the target list for the plan and for the wrapper Query
 	 * that will correspond to it.
@@ -4127,7 +4085,7 @@ Plan *wrap_plan(PlannerInfo *root, Plan *plan, Query *query,
 									  subq_tlist);
 
 	/* Construct the new pathkeys */
-	if (p_pathkeys != NULL)
+	if (*p_pathkeys != NULL)
 		*p_pathkeys = reconstruct_pathkeys(root, *p_pathkeys, resno_map,
 										   ((SubqueryScan *)plan)->subplan->targetlist,
 										   subq_tlist);
@@ -4286,3 +4244,4 @@ window_edge_is_delayed(WindowFrameEdge *edge)
 
 	return false;
 }
+

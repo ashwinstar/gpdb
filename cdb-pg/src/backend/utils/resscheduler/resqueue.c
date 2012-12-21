@@ -410,8 +410,7 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 		 */
 		if (ResourceCleanupIdleGangs)
 		{
-	        elog(DEBUG3, "ResLockAcquire: destroying all available reader gangs");
-			disconnectGangsByScope(GANGSCOPE_AVAILABLE_READERS);
+			cleanupIdleReaderGangs();
 		}
 
 		/*
@@ -1939,7 +1938,7 @@ pg_resqueue_status_kv(PG_FUNCTION_ARGS)
 			case 0:
 			{
 				values[1] = PointerGetDatum(cstring_to_text("rsqcountlimit"));
-				snprintf(buf, ARRAY_SIZE(buf), "%.2f", record->queuecountthreshold);
+				snprintf(buf, ARRAY_SIZE(buf), "%d", (int) ceil(record->queuecountthreshold));
 				values[2] = PointerGetDatum(cstring_to_text(buf));
 				break;
 			}

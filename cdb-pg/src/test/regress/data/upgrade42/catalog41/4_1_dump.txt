@@ -839,7 +839,7 @@
  CREATE FUNCTION upg_catalog.datetime_pl(upg_catalog.date, upg_catalog."time") RETURNS upg_catalog."timestamp" LANGUAGE internal IMMUTABLE STRICT AS 'datetime_timestamp';
  CREATE FUNCTION upg_catalog.datetimetz_pl(upg_catalog.date, upg_catalog.timetz) RETURNS upg_catalog.timestamptz LANGUAGE internal IMMUTABLE STRICT AS 'datetimetz_timestamptz';
  CREATE FUNCTION upg_catalog.dcbrt(upg_catalog.float8) RETURNS upg_catalog.float8 LANGUAGE internal IMMUTABLE STRICT AS 'dcbrt';
- CREATE FUNCTION upg_catalog."decode"(upg_catalog.text, upg_catalog.text) RETURNS upg_catalog.bytea LANGUAGE internal IMMUTABLE STRICT AS 'binary_decode';
+ CREATE FUNCTION upg_catalog.decode(upg_catalog.text, upg_catalog.text) RETURNS upg_catalog.bytea LANGUAGE internal IMMUTABLE STRICT AS 'binary_decode';
  CREATE FUNCTION upg_catalog.degrees(upg_catalog.float8) RETURNS upg_catalog.float8 LANGUAGE internal IMMUTABLE STRICT AS 'degrees';
  CREATE FUNCTION upg_catalog.dense_rank_immed(upg_catalog.internal) RETURNS upg_catalog.int8 LANGUAGE internal IMMUTABLE STRICT AS 'dense_rank_immed';
  CREATE FUNCTION upg_catalog.dexp(upg_catalog.float8) RETURNS upg_catalog.float8 LANGUAGE internal IMMUTABLE STRICT AS 'dexp';

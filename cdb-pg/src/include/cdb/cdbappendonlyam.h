@@ -54,7 +54,6 @@
 typedef struct AppendOnlyInsertDescData
 {
 	Relation		aoi_rel;
-	Snapshot		appendOnlyMetaDataSnapshot;
 	MemTupleBinding *mt_bind;
 	File			appendFile;
 	int				appendFilePathNameMaxLen;
@@ -80,14 +79,7 @@ typedef struct AppendOnlyInsertDescData
 	int32			usableBlockSize;
 	int32			maxDataLen;
 	int32			tempSpaceLen;
-
-	char						*title;
-				/*
-				 * A phrase that better describes the purpose of the this open.
-				 *
-				 * We manage the storage for this.
-				 */
-
+	
 	/*
 	 * These serve the equivalent purpose of the uppercase constants of the same
 	 * name in tuptoaster.h but here we make these values dynamic.
@@ -149,8 +141,6 @@ typedef struct AppendOnlyScanDescData
 {
 	/* scan parameters */
 	Relation	aos_rd;				/* target relation descriptor */
-	Snapshot	appendOnlyMetaDataSnapshot;
-
 	Index       aos_scanrelid;
 	int			aos_nkeys;			/* number of scan keys */
 	ScanKey		aos_key;			/* array of scan key descriptors */
@@ -180,13 +170,6 @@ typedef struct AppendOnlyScanDescData
 
 	AppendOnlyStorageAttributes	storageAttributes;
 	AppendOnlyStorageRead		storageRead;
-
-	char						*title;
-				/*
-				 * A phrase that better describes the purpose of the this open.
-				 *
-				 * We manage the storage for this.
-				 */
 
 	AppendOnlyEntry		*aoEntry;
 	
@@ -242,20 +225,11 @@ typedef struct AppendOnlyFetchDetail
 typedef struct AppendOnlyFetchDescData
 {
 	Relation		relation;
-	Snapshot		appendOnlyMetaDataSnapshot;
 
 	MemoryContext	initContext;
 
 	AppendOnlyStorageAttributes	storageAttributes;
 	AppendOnlyStorageRead		storageRead;
-
-	char						*title;
-				/*
-				 * A phrase that better describes the purpose of the this open.
-				 *
-				 * We manage the storage for this.
-				 */
-
 
 	int				totalSegfiles;
 	FileSegInfo 	**segmentFileInfo;
@@ -283,7 +257,6 @@ typedef struct AppendOnlyFetchDescData
 
 	int64	skipBlockCount;
 
-	bool		onlyVisibilityCheck;
 }	AppendOnlyFetchDescData;
 
 typedef AppendOnlyFetchDescData *AppendOnlyFetchDesc;
@@ -294,7 +267,7 @@ typedef AppendOnlyFetchDescData *AppendOnlyFetchDesc;
  */
 
 extern AppendOnlyScanDesc appendonly_beginscan(Relation relation,
-											   Snapshot appendOnlyMetaDataSnapshot,
+											   Snapshot snapshot,
 											   int nkeys, 
 											   ScanKey key);
 extern void appendonly_rescan(AppendOnlyScanDesc scan, ScanKey key);
@@ -304,7 +277,7 @@ extern MemTuple appendonly_getnext(AppendOnlyScanDesc scan,
 									TupleTableSlot *slot);
 extern AppendOnlyFetchDesc appendonly_fetch_init(
 	Relation 	relation,
-	Snapshot 	appendOnlyMetaDataSnapshot);
+	Snapshot 	snapshot);
 extern bool appendonly_fetch(
 	AppendOnlyFetchDesc aoFetchDesc,
 	AOTupleId *aoTid,
@@ -321,13 +294,5 @@ extern void appendonly_insert(
 		AOTupleId *aoTupleId);
 extern void appendonly_insert_finish(AppendOnlyInsertDesc aoInsertDesc);
 extern BlockNumber RelationGuessNumberOfBlocks(double totalbytes);
-extern bool is_appendonly_tuple_visible(IndexScanDesc scan, ItemPointer tid);
-extern AppendOnlyFetchDesc appendonly_visibilitycheck_init(
-	Relation 	relation,
-	Snapshot 	appendOnlyMetaDataSnapshot);
-extern bool appendonly_visibilitycheck(
-	AppendOnlyFetchDesc aoFetchDesc,
-	AOTupleId *aoTid,
-	TupleTableSlot *slot);
-extern void appendonly_visibilitycheck_finish(AppendOnlyFetchDesc aoFetchDesc);
+
 #endif   /* APPENDONLYAM_H */

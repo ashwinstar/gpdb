@@ -65,6 +65,7 @@ static void fix_append_rel_relids(List *append_rel_list, Index varno,
 					  Relids subrelids);
 static Node *find_jointree_node_for_rel(Node *jtnode, int relid);
 
+extern void UpdateScatterClause(Query *query, List *newtlist);
 
 /*
  * pull_up_IN_clauses
@@ -407,6 +408,11 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 		ResolveNew((Node *) parse->targetList,
 				   varno, 0, rte,
 				   subtlist, CMD_SELECT, 0);
+
+	if (parse->scatterClause)
+	{
+		UpdateScatterClause(parse, newTList);
+	}
 
 	parse->targetList = newTList;
 

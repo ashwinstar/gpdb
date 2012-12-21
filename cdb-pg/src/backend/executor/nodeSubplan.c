@@ -684,9 +684,7 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 	sp_estate->es_instrument = estate->es_instrument;
 
     sp_estate->es_sliceTable = estate->es_sliceTable;
-	sp_estate->currentSliceIdInPlan = estate->currentSliceIdInPlan;
-	sp_estate->currentExecutingSliceId = estate->currentExecutingSliceId;
-	sp_estate->rootSliceId = estate->currentExecutingSliceId;
+	sp_estate->current_slice_no = estate->current_slice_no;
 	sp_estate->motionlayer_context = estate->motionlayer_context;
 	sp_estate->es_sharenode = estate->es_sharenode;
 
@@ -1080,7 +1078,8 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 		queryDesc->estate->es_sliceTable = gbl_queryDesc->estate->es_sliceTable;
 		queryDesc->estate->es_param_exec_vals = gbl_queryDesc->estate->es_param_exec_vals;
 		queryDesc->estate->motionlayer_context = gbl_queryDesc->estate->motionlayer_context;
-		queryDesc->extended_query = gbl_queryDesc->extended_query;
+
+		queryDesc->cursor_query = gbl_queryDesc->cursor_query;
 	}
 
 	/*
@@ -1117,7 +1116,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			 * may mess up our snapshot-sync mechanism. So we've
 			 * called verify_shared_snapshot() down in the dispatcher.
 			 */
-			if (queryDesc->extended_query)
+			if (queryDesc->cursor_query)
 			{
 				/*
 				 * We rewind the segmateSync value since the InitPlan can
@@ -1264,7 +1263,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
         if (shouldDispatch && 
 			queryDesc && queryDesc->estate &&
 			queryDesc->estate->dispatcherState &&
-			queryDesc->estate->dispatcherState->results)
+			queryDesc->estate->dispatcherState->primaryResults)
         {
             /* If EXPLAIN ANALYZE, collect execution stats from qExecs. */
             if (planstate->instrument)
@@ -1282,7 +1281,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
                 /* Jam stats into subplan's Instrumentation nodes. */
                 explainRecvStats = true;
                 cdbexplain_recvExecStats(planstate,
-                                         queryDesc->estate->dispatcherState->results,
+                                         queryDesc->estate->dispatcherState->primaryResults,
                                          LocallyExecutingSliceIndex(queryDesc->estate),
                                          econtext->ecxt_estate->showstatctx);
             }
@@ -1316,16 +1315,13 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
         if (planstate->instrument)
         {
             cdbexplain_localExecStats(planstate, econtext->ecxt_estate->showstatctx);
-            if (!explainRecvStats &&
-				shouldDispatch)
+            if (!explainRecvStats)
             {
-				Assert(queryDesc != NULL &&
-					   queryDesc->estate != NULL);
                 /* Wait for all gangs to finish.  Cancel slowpokes. */
                 CdbCheckDispatchResult(queryDesc->estate->dispatcherState, true);
 
                 cdbexplain_recvExecStats(planstate,
-                                         queryDesc->estate->dispatcherState->results,
+                                         queryDesc->estate->dispatcherState->primaryResults,
                                          LocallyExecutingSliceIndex(queryDesc->estate),
                                          econtext->ecxt_estate->showstatctx);
             }
@@ -1339,7 +1335,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 		 * Wait for them to finish and clean up the dispatching structures.
          * Replace current error info with QE error info if more interesting.
 		 */
-        if (shouldDispatch && queryDesc && queryDesc->estate && queryDesc->estate->dispatcherState && queryDesc->estate->dispatcherState->results)
+        if (shouldDispatch && queryDesc && queryDesc->estate && queryDesc->estate->dispatcherState && queryDesc->estate->dispatcherState->primaryResults)
 			cdbdisp_handleError(queryDesc->estate->dispatcherState);
 		
 		/* teardown the sequence server */

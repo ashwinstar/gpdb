@@ -74,7 +74,7 @@ int			optreset;
 #include "ddp_api.h"
 static char *formDDBoostFileName(char *pszBackupKey, bool isPostData, char *ddBoostDir);
 
-extern ddp_client_info_t dd_client_info;
+static ddp_client_info_t cl_info = {DDP_CL_DDP, "Test DD Client"};
 
 static ddp_inst_desc_t ddp_inst = DDP_INVALID_DESCRIPTOR;
 static ddp_conn_desc_t ddp_conn = DDP_INVALID_DESCRIPTOR;
@@ -510,8 +510,8 @@ main(int argc, char **argv)
 	if (dd_boost_enabled)
 	{
 
-		if (connectToDDSystem(&ddp_inst, &ddp_conn, &dd_client_info, &DDP_SU_NAME))
-		{
+		if (initDDSystem(&ddp_inst, &ddp_conn, &cl_info, &DDP_SU_NAME))
+               	{
 			mpp_err_msg(logInfo, progname, "Initializing DD system failed\n");
 			exit(1);
 		}

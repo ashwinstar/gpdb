@@ -20,7 +20,6 @@
 #include "optimizer/var.h"
 #include "parser/parsetree.h"
 #include "rewrite/rewriteManip.h"
-#include "access/sysattr.h"
 
 
 typedef struct
@@ -37,8 +36,7 @@ typedef struct
 typedef struct
 {
 	int			min_varlevel;
-	int			max_varlevel;
-} find_minimum_maximum_var_level_context;
+} find_minimum_var_level_context;
 
 typedef struct
 {
@@ -70,11 +68,10 @@ static Relids alias_relid_set(PlannerInfo *root, Relids relids);
  */
 typedef struct Cdb_walk_vars_context
 {
-    Cdb_walk_vars_callback_Var      	callback_var;
-    Cdb_walk_vars_callback_Aggref   	callback_aggref;
-    Cdb_walk_vars_callback_CurrentOf    callback_currentof;
-    void                           	   *context;
-    int                             	sublevelsup;
+    Cdb_walk_vars_callback_Var      callback_var;
+    Cdb_walk_vars_callback_Aggref   callback_aggref;
+    void                           *context;
+    int                             sublevelsup;
 } Cdb_walk_vars_context;
 
 static bool
@@ -93,10 +90,6 @@ cdb_walk_vars_walker(Node *node, void *wvwcontext)
         ctx->callback_aggref != NULL)
         return ctx->callback_aggref((Aggref *)node, ctx->context, ctx->sublevelsup);
 
-    if (IsA(node, CurrentOfExpr) &&
-        ctx->callback_currentof != NULL)
-        return ctx->callback_currentof((CurrentOfExpr *)node, ctx->context, ctx->sublevelsup);
-
     if (IsA(node, Query))
 	{
 		bool    b;
@@ -114,7 +107,6 @@ bool
 cdb_walk_vars(Node                         *node,
               Cdb_walk_vars_callback_Var    callback_var,
               Cdb_walk_vars_callback_Aggref callback_aggref,
-              Cdb_walk_vars_callback_CurrentOf callback_currentof,
               void                         *context,
               int                           levelsup)
 {
@@ -122,7 +114,6 @@ cdb_walk_vars(Node                         *node,
 
     ctx.callback_var = callback_var;
     ctx.callback_aggref = callback_aggref;
-    ctx.callback_currentof = callback_currentof;
     ctx.context = context;
     ctx.sublevelsup = levelsup;
 
@@ -154,22 +145,13 @@ pull_varnos_cbVar(Var *var, void *context, int sublevelsup)
 	return false;
 }
 
-static bool
-pull_varnos_cbCurrentOf(CurrentOfExpr *expr, void *context, int sublevelsup)
-{
-	Assert(sublevelsup == 0);
-	pull_varnos_context *ctx = (pull_varnos_context *)context;
-	ctx->varnos = bms_add_member(ctx->varnos, expr->cvarno);
-	return false;
-}
-
 static inline Relids
 pull_varnos_of_level(Node *node, int levelsup)      /*CDB*/
 {
 	pull_varnos_context context;
 
 	context.varnos = NULL;
-    cdb_walk_vars(node, pull_varnos_cbVar, NULL, pull_varnos_cbCurrentOf, &context, levelsup);
+    cdb_walk_vars(node, pull_varnos_cbVar, NULL, &context, levelsup);
 	return context.varnos;
 }                               /* pull_varnos_of_level */
 
@@ -205,7 +187,7 @@ contain_var_reference_cbVar(Var    *var,
 	return false;
 }
 
-static bool
+bool
 contain_var_reference(Node *node, int varno, int varattno, int levelsup)
 {
 	contain_var_reference_context context;
@@ -213,27 +195,9 @@ contain_var_reference(Node *node, int varno, int varattno, int levelsup)
 	context.varno = varno;
 	context.varattno = varattno;
 
-	return cdb_walk_vars(node, contain_var_reference_cbVar, NULL, NULL, &context, levelsup);
+	return cdb_walk_vars(node, contain_var_reference_cbVar, NULL, &context, levelsup);
 }
 
-bool
-contain_ctid_var_reference(Scan *scan)
-{
-	/* Check if targetlist contains a var node referencing the ctid column */
-	bool want_ctid_in_targetlist =
-			contain_var_reference((Node *) scan->plan.targetlist,
-			scan->scanrelid,
-			SelfItemPointerAttributeNumber,
-			0);
-	/* Check if qual contains a var node referencing the ctid column */
-	bool want_ctid_in_qual =
-			contain_var_reference((Node *) scan->plan.qual,
-			scan->scanrelid,
-			SelfItemPointerAttributeNumber,
-			0);
-
-	return want_ctid_in_targetlist || want_ctid_in_qual;
-}
 
 /*
  * contain_var_clause
@@ -293,7 +257,6 @@ contain_vars_of_level_cbAggref(Aggref *aggref, void *unused, int sublevelsup)
                          contain_vars_of_level_cbVar,
                          contain_vars_of_level_cbAggref,
                          NULL,
-                         NULL,
                          sublevelsup);
 }
 
@@ -303,7 +266,6 @@ contain_vars_of_level(Node *node, int levelsup)
 	return cdb_walk_vars(node,
                          contain_vars_of_level_cbVar,
                          contain_vars_of_level_cbAggref,
-                         NULL,
                          NULL,
                          levelsup);
 }
@@ -337,7 +299,6 @@ contain_vars_of_level_or_above_cbAggref(Aggref *aggref, void *unused, int sublev
                          contain_vars_of_level_or_above_cbVar,
                          contain_vars_of_level_or_above_cbAggref,
                          NULL,
-                         NULL,
                          sublevelsup);
 }
 
@@ -348,29 +309,29 @@ contain_vars_of_level_or_above(Node *node, int levelsup)
                          contain_vars_of_level_or_above_cbVar,
                          contain_vars_of_level_or_above_cbAggref,
                          NULL,
-                         NULL,
                          levelsup);
 }
 
 
 /*
- * find_minimum_maximum_var_level_cbVar
- *	  Recursively scan a clause to find the (minimum, maximum) variable level it
- *	  contains --- for example, (0,0) if there are only local variables, (0,1)
- *	  if there is a mix between local variables and one-level-up outer references, etc.
- *	  Subqueries are scanned to see if they possess relevant outer references.
- *	  (But any local variables within subqueries are not relevant.)
+ * find_minimum_var_level
+ *	  Recursively scan a clause to find the lowest variable level it
+ *	  contains --- for example, zero is returned if there are any local
+ *	  variables, one if there are no local variables but there are
+ *	  one-level-up outer references, etc.  Subqueries are scanned to see
+ *	  if they possess relevant outer references.  (But any local variables
+ *	  within subqueries are not relevant.)
  *
  *	  -1 is returned if the clause has no variables at all.
  *
  * Will recurse into sublinks.	Also, may be invoked directly on a Query.
  */
 static bool
-find_minimum_maximum_var_level_cbVar(Var   *var,
+find_minimum_var_level_cbVar(Var   *var,
 							 void  *context,
                              int    sublevelsup)
 {
-    find_minimum_maximum_var_level_context *ctx = (find_minimum_maximum_var_level_context *)context;
+    find_minimum_var_level_context *ctx = (find_minimum_var_level_context *)context;
     int			varlevelsup = var->varlevelsup;
 
 	/* convert levelsup to frame of reference of original query */
@@ -382,19 +343,20 @@ find_minimum_maximum_var_level_cbVar(Var   *var,
 			ctx->min_varlevel > varlevelsup)
 		{
 			ctx->min_varlevel = varlevelsup;
-		}
 
-		if (ctx->max_varlevel < 0 ||
-			ctx->max_varlevel < varlevelsup)
-		{
-			ctx->max_varlevel = varlevelsup;
+			/*
+			 * As soon as we find a local variable, we can abort the tree
+			 * traversal, since min_varlevel is then certainly 0.
+			 */
+			if (varlevelsup == 0)
+				return true;
 		}
 	}
     return false;
 }
 
 static bool
-find_minimum_maximum_var_level_cbAggref(Aggref *aggref,
+find_minimum_var_level_cbAggref(Aggref *aggref,
 						        void   *context,
                                 int     sublevelsup)
 {
@@ -403,7 +365,7 @@ find_minimum_maximum_var_level_cbAggref(Aggref *aggref,
 	 * the same result from looking at the Vars in the aggregate's argument,
 	 * but this fails in the case of a Var-less aggregate call (COUNT(*)).
 	 */
-	find_minimum_maximum_var_level_context *ctx = (find_minimum_maximum_var_level_context *)context;
+    find_minimum_var_level_context *ctx = (find_minimum_var_level_context *)context;
     int			agglevelsup = aggref->agglevelsup;
 
 	/* convert levelsup to frame of reference of original query */
@@ -415,41 +377,38 @@ find_minimum_maximum_var_level_cbAggref(Aggref *aggref,
 			ctx->min_varlevel > agglevelsup)
 		{
 			ctx->min_varlevel = agglevelsup;
-		}
 
-		if (ctx->max_varlevel < 0 ||
-			ctx->max_varlevel < agglevelsup)
-		{
-			ctx->max_varlevel = agglevelsup;
+			/*
+			 * As soon as we find a local aggregate, we can abort the tree
+			 * traversal, since min_varlevel is then certainly 0.
+			 */
+			if (agglevelsup == 0)
+				return true;
 		}
 	}
 
     /* visit aggregate's args */
 	return cdb_walk_vars((Node *)aggref->args,
-                         find_minimum_maximum_var_level_cbVar,
-                         find_minimum_maximum_var_level_cbAggref,
-                         NULL,
+                         find_minimum_var_level_cbVar,
+                         find_minimum_var_level_cbAggref,
                          ctx,
                          sublevelsup);
 }
 
-void
-find_minimum_maximum_var_level(Node *node, int *min_level, int *max_level)
+int
+find_minimum_var_level(Node *node)
 {
-	find_minimum_maximum_var_level_context context;
+	find_minimum_var_level_context context;
 
 	context.min_varlevel = -1;	/* signifies nothing found yet */
-	context.max_varlevel = -1;	/* signifies nothing found yet */
 
 	cdb_walk_vars(node,
-                  find_minimum_maximum_var_level_cbVar,
-                  find_minimum_maximum_var_level_cbAggref,
-                  NULL,
+                  find_minimum_var_level_cbVar,
+                  find_minimum_var_level_cbAggref,
                   &context,
                   0);
 
-	*min_level = context.min_varlevel;
-	*max_level = context.max_varlevel;
+	return context.min_varlevel;
 }
 
 

@@ -11,7 +11,6 @@
 #include <fcntl.h>
 
 #include "access/genam.h"
-#include "access/catquery.h"
 #include "access/sysattr.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
@@ -135,10 +134,6 @@ static char *pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 							int prettyFlags);
 static char *pg_get_expr_worker(text *expr, Oid relid, char *relname,
 				   int prettyFlags);
-static int print_function_arguments(StringInfo buf, 
-									cqContext *pcqCtx,
-									HeapTuple proctup,
-									bool print_table_args, bool print_defaults);
 static void make_ruledef(StringInfo buf, HeapTuple ruletup, TupleDesc rulettc,
 			 int prettyFlags);
 static void make_viewdef(StringInfo buf, HeapTuple ruletup, TupleDesc rulettc,
@@ -209,9 +204,7 @@ static Node *processIndirection(Node *node, deparse_context *context,
 				   bool printit);
 static void printSubscripts(ArrayRef *aref, deparse_context *context);
 static char *generate_relation_name(Oid relid, List *namespaces);
-static char *generate_function_name(Oid funcid, int nargs,
-									List *argnames, Oid *argtypes,
-									bool *is_variadic);
+static char *generate_function_name(Oid funcid, int nargs, Oid *argtypes);
 static char *generate_operator_name(Oid operid, Oid arg1, Oid arg2);
 static text *string_to_text(char *str);
 static char *flatten_reloptions(Oid relid);
@@ -462,7 +455,8 @@ pg_get_triggerdef(PG_FUNCTION_ARGS)
 	Form_pg_trigger trigrec;
 	StringInfoData buf;
 	Relation	tgrel;
-	cqContext	cqc;
+	ScanKeyData skey[1];
+	SysScanDesc tgscan;
 	int			findx = 0;
 	char	   *tgname;
 
@@ -471,11 +465,15 @@ pg_get_triggerdef(PG_FUNCTION_ARGS)
 	 */
 	tgrel = heap_open(TriggerRelationId, AccessShareLock);
 
-	ht_trig = caql_getfirst(
-			caql_addrel(cqclr(&cqc), tgrel),
-			cql("SELECT * FROM pg_trigger "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(trigid)));
+	ScanKeyInit(&skey[0],
+				ObjectIdAttributeNumber,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(trigid));
+
+	tgscan = systable_beginscan(tgrel, TriggerOidIndexId, true,
+								SnapshotNow, 1, skey);
+
+	ht_trig = systable_getnext(tgscan);
 
 	if (!HeapTupleIsValid(ht_trig))
 		elog(ERROR, "could not find tuple for trigger %u", trigid);
@@ -541,7 +539,7 @@ pg_get_triggerdef(PG_FUNCTION_ARGS)
 		appendStringInfo(&buf, "FOR EACH STATEMENT ");
 
 	appendStringInfo(&buf, "EXECUTE PROCEDURE %s(",
-					 generate_function_name(trigrec->tgfoid, 0, NIL, NULL, NULL));
+					 generate_function_name(trigrec->tgfoid, 0, NULL));
 
 	if (trigrec->tgnargs > 0)
 	{
@@ -585,6 +583,7 @@ pg_get_triggerdef(PG_FUNCTION_ARGS)
 	appendStringInfo(&buf, ")");
 
 	/* Clean up */
+	systable_endscan(tgscan);
 
 	heap_close(tgrel, AccessShareLock);
 
@@ -654,21 +653,13 @@ pg_get_indexdef_worker(Oid indexrelid, int colno, bool showTblSpc,
 	StringInfoData buf;
 	char	   *str;
 	char	   *sep;
-	cqContext  *idxcqCtx;
-	cqContext  *irlcqCtx;
-	cqContext  *amcqCtx;
 
 	/*
 	 * Fetch the pg_index tuple by the Oid of the index
 	 */
-	idxcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_index "
-				" WHERE indexrelid = :1 ",
-				ObjectIdGetDatum(indexrelid)));
-
-	ht_idx = caql_getnext(idxcqCtx);
-
+	ht_idx = SearchSysCache(INDEXRELID,
+							ObjectIdGetDatum(indexrelid),
+							0, 0, 0);
 	if (!HeapTupleIsValid(ht_idx))
 	{
 		/* Was: elog(ERROR, "cache lookup failed for index %u", indexrelid); */
@@ -681,22 +672,17 @@ pg_get_indexdef_worker(Oid indexrelid, int colno, bool showTblSpc,
 	Assert(indexrelid == idxrec->indexrelid);
 
 	/* Must get indclass the hard way */
-	indclassDatum = caql_getattr(idxcqCtx,
-								 Anum_pg_index_indclass, &isnull);
+	indclassDatum = SysCacheGetAttr(INDEXRELID, ht_idx,
+									Anum_pg_index_indclass, &isnull);
 	Assert(!isnull);
 	indclass = (oidvector *) DatumGetPointer(indclassDatum);
 
 	/*
 	 * Fetch the pg_class tuple of the index relation
 	 */
-	irlcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(indexrelid)));
-	
-	ht_idxrel = caql_getnext(irlcqCtx);
-
+	ht_idxrel = SearchSysCache(RELOID,
+							   ObjectIdGetDatum(indexrelid),
+							   0, 0, 0);
 	if (!HeapTupleIsValid(ht_idxrel))
 		elog(ERROR, "cache lookup failed for relation %u", indexrelid);
 	idxrelrec = (Form_pg_class) GETSTRUCT(ht_idxrel);
@@ -704,14 +690,9 @@ pg_get_indexdef_worker(Oid indexrelid, int colno, bool showTblSpc,
 	/*
 	 * Fetch the pg_am tuple of the index' access method
 	 */
-	amcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_am "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(idxrelrec->relam)));
-
-	ht_am = caql_getnext(amcqCtx);
-
+	ht_am = SearchSysCache(AMOID,
+						   ObjectIdGetDatum(idxrelrec->relam),
+						   0, 0, 0);
 	if (!HeapTupleIsValid(ht_am))
 		elog(ERROR, "cache lookup failed for access method %u",
 			 idxrelrec->relam);
@@ -728,8 +709,8 @@ pg_get_indexdef_worker(Oid indexrelid, int colno, bool showTblSpc,
 		bool		isnull;
 		char	   *exprsString;
 
-		exprsDatum = caql_getattr(idxcqCtx,
-								  Anum_pg_index_indexprs, &isnull);
+		exprsDatum = SysCacheGetAttr(INDEXRELID, ht_idx,
+									 Anum_pg_index_indexprs, &isnull);
 		Assert(!isnull);
 		exprsString = TextDatumGetCString(exprsDatum);
 		indexprs = (List *) stringToNode(exprsString);
@@ -847,8 +828,8 @@ pg_get_indexdef_worker(Oid indexrelid, int colno, bool showTblSpc,
 			char	   *predString;
 
 			/* Convert text string to node tree */
-			predDatum = caql_getattr(idxcqCtx,
-									 Anum_pg_index_indpred, &isnull);
+			predDatum = SysCacheGetAttr(INDEXRELID, ht_idx,
+										Anum_pg_index_indpred, &isnull);
 			Assert(!isnull);
 			predString = TextDatumGetCString(predDatum);
 			node = (Node *) stringToNode(predString);
@@ -862,10 +843,9 @@ pg_get_indexdef_worker(Oid indexrelid, int colno, bool showTblSpc,
 	}
 
 	/* Clean up */
-
-	caql_endscan(idxcqCtx);
-	caql_endscan(irlcqCtx);
-	caql_endscan(amcqCtx);
+	ReleaseSysCache(ht_idx);
+	ReleaseSysCache(ht_idxrel);
+	ReleaseSysCache(ht_am);
 
 	return buf.data;
 }
@@ -918,7 +898,8 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 {
 	StringInfoData buf;
 	Relation	conDesc;
-	cqContext	cqc;
+	SysScanDesc conscan;
+	ScanKeyData skey[1];
 	HeapTuple	tup;
 	Form_pg_constraint conForm;
 
@@ -928,12 +909,15 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 	 */
 	conDesc = heap_open(ConstraintRelationId, AccessShareLock);
 
-	tup = caql_getfirst(
-			caql_addrel(cqclr(&cqc), conDesc),
-			cql("SELECT * FROM pg_constraint "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(constraintId)));
+	ScanKeyInit(&skey[0],
+				ObjectIdAttributeNumber,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(constraintId));
 
+	conscan = systable_beginscan(conDesc, ConstraintOidIndexId, true,
+								 SnapshotNow, 1, skey);
+
+	tup = systable_getnext(conscan);
 	if (!HeapTupleIsValid(tup))
 		elog(ERROR, "could not find tuple for constraint %u", constraintId);
 	conForm = (Form_pg_constraint) GETSTRUCT(tup);
@@ -1162,6 +1146,7 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 	}
 
 	/* Cleanup */
+	systable_endscan(conscan);
 	heap_close(conDesc, AccessShareLock);
 
 	return buf.data;
@@ -1285,8 +1270,8 @@ pg_get_userbyid(PG_FUNCTION_ARGS)
 {
 	Oid			roleid = PG_GETARG_OID(0);
 	Name		result;
-	int			fetchCount;
-	char	   *rname = NULL;
+	HeapTuple	roletup;
+	Form_pg_authid role_rec;
 
 	/*
 	 * Allocate space for the result
@@ -1297,18 +1282,14 @@ pg_get_userbyid(PG_FUNCTION_ARGS)
 	/*
 	 * Get the pg_authid entry and print the result
 	 */
-	rname = caql_getcstring_plus(
-			NULL,
-			&fetchCount,
-			NULL,
-			cql("SELECT rolname FROM pg_authid "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(roleid)));
-
-	if (fetchCount)
+	roletup = SearchSysCache(AUTHOID,
+							 ObjectIdGetDatum(roleid),
+							 0, 0, 0);
+	if (HeapTupleIsValid(roletup))
 	{
-		StrNCpy(NameStr(*result), rname, NAMEDATALEN);
-		pfree(rname);
+		role_rec = (Form_pg_authid) GETSTRUCT(roletup);
+		StrNCpy(NameStr(*result), NameStr(role_rec->rolname), NAMEDATALEN);
+		ReleaseSysCache(roletup);
 	}
 	else
 		sprintf(NameStr(*result), "unknown (OID=%u)", roleid);
@@ -1334,7 +1315,9 @@ pg_get_serial_sequence(PG_FUNCTION_ARGS)
 	char	   *column;
 	AttrNumber	attnum;
 	Oid			sequenceId = InvalidOid;
-	cqContext  *pcqCtx;
+	Relation	depRel;
+	ScanKeyData key[3];
+	SysScanDesc scan;
 	HeapTuple	tup;
 
 	/* Get the OID of the table */
@@ -1352,18 +1335,25 @@ pg_get_serial_sequence(PG_FUNCTION_ARGS)
 						column, tablerv->relname)));
 
 	/* Search the dependency table for the dependent sequence */
+	depRel = heap_open(DependRelationId, AccessShareLock);
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_depend "
-				" WHERE refclassid = :1 "
-				" AND refobjid = :2 "
-				" AND refobjsubid = :3 ",
-				ObjectIdGetDatum(RelationRelationId),
-				ObjectIdGetDatum(tableOid),
-				Int32GetDatum(attnum)));
+	ScanKeyInit(&key[0],
+				Anum_pg_depend_refclassid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(RelationRelationId));
+	ScanKeyInit(&key[1],
+				Anum_pg_depend_refobjid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(tableOid));
+	ScanKeyInit(&key[2],
+				Anum_pg_depend_refobjsubid,
+				BTEqualStrategyNumber, F_INT4EQ,
+				Int32GetDatum(attnum));
 
-	while (HeapTupleIsValid(tup = caql_getnext(pcqCtx)))
+	scan = systable_beginscan(depRel, DependReferenceIndexId, true,
+							  SnapshotNow, 3, key);
+
+	while (HeapTupleIsValid(tup = systable_getnext(scan)))
 	{
 		Form_pg_depend deprec = (Form_pg_depend) GETSTRUCT(tup);
 
@@ -1382,7 +1372,8 @@ pg_get_serial_sequence(PG_FUNCTION_ARGS)
 		}
 	}
 
-	caql_endscan(pcqCtx);
+	systable_endscan(scan);
+	heap_close(depRel, AccessShareLock);
 
 	if (OidIsValid(sequenceId))
 	{
@@ -1390,17 +1381,11 @@ pg_get_serial_sequence(PG_FUNCTION_ARGS)
 		Form_pg_class classtuple;
 		char	   *nspname;
 		char	   *result;
-		cqContext  *relcqCtx;
 
 		/* Get the sequence's pg_class entry */
-		relcqCtx = caql_beginscan(
-				NULL,
-				cql("SELECT * FROM pg_class "
-					" WHERE oid = :1 ",
-					ObjectIdGetDatum(sequenceId)));
-
-		classtup = caql_getnext(relcqCtx);
-
+		classtup = SearchSysCache(RELOID,
+								  ObjectIdGetDatum(sequenceId),
+								  0, 0, 0);
 		if (!HeapTupleIsValid(classtup))
 			elog(ERROR, "cache lookup failed for relation %u", sequenceId);
 		classtuple = (Form_pg_class) GETSTRUCT(classtup);
@@ -1415,250 +1400,13 @@ pg_get_serial_sequence(PG_FUNCTION_ARGS)
 		result = quote_qualified_identifier(nspname,
 											NameStr(classtuple->relname));
 
-		caql_endscan(relcqCtx);
+		ReleaseSysCache(classtup);
 
 		PG_RETURN_TEXT_P(string_to_text(result));
 	}
 
 	PG_RETURN_NULL();
 }
-
-/*
- * pg_get_function_arguments
- * 		Get a nicely-formatted list of arguments for a function.
- * 		This is everything that would go between the parentheses in
- * 		CREATE FUNCTION.
- */
-Datum
-pg_get_function_arguments(PG_FUNCTION_ARGS)
-{
-	Oid         	funcid = PG_GETARG_OID(0);
-	StringInfoData	buf;
-	HeapTuple   	proctup;
-	cqContext	   *pcqCtx;
-
-	initStringInfo(&buf);
-
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_proc "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(funcid)));
-
-	proctup = caql_getnext(pcqCtx);
-
-	if (!HeapTupleIsValid(proctup))
-		elog(ERROR, "cache lookup failed for function %u", funcid);
-
-	(void) print_function_arguments(&buf, pcqCtx, proctup, false, true);
-
-	caql_endscan(pcqCtx);
-
-	PG_RETURN_TEXT_P(string_to_text(buf.data));
-}
-
-
-/*
- * pg_get_function_identity_arguments
- * 		Get a formatted list of arguments for a function.
- * 		This is everything that would go between the parentheses in
- * 		ALTER FUNCTION, etc. In particular, don't print defaults.
- */
-Datum
-pg_get_function_identity_arguments(PG_FUNCTION_ARGS)
-{
-	Oid         funcid = PG_GETARG_OID(0);
-	StringInfoData buf;
-	HeapTuple   proctup;
-	cqContext	   *pcqCtx;
-
-	initStringInfo(&buf);
-
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_proc "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(funcid)));
-
-	proctup = caql_getnext(pcqCtx);
-
-	if (!HeapTupleIsValid(proctup))
-		elog(ERROR, "cache lookup failed for function %u", funcid);
-
-	(void) print_function_arguments(&buf, pcqCtx, proctup, false, false);
-
-	caql_endscan(pcqCtx);
-
-	PG_RETURN_TEXT_P(string_to_text(buf.data));
-}
-
-
-/*
- * pg_get_function_result
- * 		Get a nicely-formatted version of the result type of a function.
- * 		This is what would appear after RETURNS in CREATE FUNCTION.
- */
-Datum
-pg_get_function_result(PG_FUNCTION_ARGS)
-{
-	Oid         	funcid = PG_GETARG_OID(0);
-	StringInfoData 	buf;
-	StringInfoData	argbuf;
-	HeapTuple   	proctup;
-	Form_pg_proc 	procform;
-	int         	ntabargs = 0;
-	cqContext	   *pcqCtx;
-
-	initStringInfo(&buf);
-	initStringInfo(&argbuf);
-
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_proc "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(funcid)));
-
-	proctup = caql_getnext(pcqCtx);
-
-	if (!HeapTupleIsValid(proctup))
-		elog(ERROR, "cache lookup failed for function %u", funcid);
-	procform = (Form_pg_proc) GETSTRUCT(proctup);
-
-	ntabargs = print_function_arguments(&argbuf, pcqCtx, proctup, true, true);
-
-	/* We have 3 cases: table function, setof function and others */
-	if (ntabargs > 0)
-	{
-		appendStringInfoString(&buf, "TABLE(");
-		appendStringInfoString(&buf, argbuf.data);
-		appendStringInfoString(&buf, ")");
-	}
-	else if (procform->proretset)
-	{
-		appendStringInfoString(&buf, "SETOF ");
-		appendStringInfoString(&buf, format_type_be(procform->prorettype));
-	}
-	else
-		appendStringInfoString(&buf, format_type_be(procform->prorettype));
-
-	caql_endscan(pcqCtx);
-
-	PG_RETURN_TEXT_P(string_to_text(buf.data));
-}
-
-/*
- * Common code for pg_get_function_arguments and pg_get_function_result:
- * append the desired subset of arguments to buf.  We print only TABLE
- * arguments when print_table_args is true, and all the others when it's false.
- * We print argument defaults only if print_defaults is true.
- * Function return value is the number of arguments printed.
- */
-static int
-print_function_arguments(StringInfo buf, cqContext *pcqCtx, HeapTuple proctup,
-						 bool print_table_args, bool print_defaults)
-{
-	Form_pg_proc proc = (Form_pg_proc) GETSTRUCT(proctup);
-	int         numargs;
-	Oid        *argtypes;
-	char      **argnames;
-	char       *argmodes;
-	int         argsprinted;
-	int			inputargno;
-	int			nlackdefaults;
-	ListCell   *nextargdefault = NULL;
-	Datum       proargdefaults;
-	bool        isnull;
-	int         i;
-
-	numargs = get_func_arg_info(proctup,
-								&argtypes, &argnames, &argmodes);
-
-	nlackdefaults = numargs;
-	proargdefaults = caql_getattr(pcqCtx,
-								  Anum_pg_proc_proargdefaults, &isnull);
-	if (!isnull && print_defaults)
-	{
-		char   *str;
-		List   *argdefaults;
-
-		str = TextDatumGetCString(proargdefaults);
-		argdefaults = (List *) stringToNode(str);
-		Assert(IsA(argdefaults, List));
-		pfree(str);
-		nextargdefault = list_head(argdefaults);
-		/* nlackdefaults counts only *input* arguments lacking defaults */
-		nlackdefaults = proc->pronargs - list_length(argdefaults);
-	}
-
-	argsprinted = 0;
-	inputargno = 0;
-	for (i = 0; i < numargs; i++)
-	{
-		Oid     argtype = argtypes[i];
-		char   *argname = argnames ? argnames[i] : NULL;
-		char    argmode = argmodes ? argmodes[i] : PROARGMODE_IN;
-		const char *modename;
-
-		bool	isinput;
-
-		switch (argmode)
-		{
-			case PROARGMODE_IN:
-				modename = "";
-				isinput = true;
-				break;
-			case PROARGMODE_INOUT:
-				modename = "INOUT ";
-				isinput = true;
-				break;
-			case PROARGMODE_OUT:
-				modename = "OUT ";
-				isinput = false;
-				break;
-			case PROARGMODE_VARIADIC:
-				modename = "VARIADIC ";
-				isinput = true;
-				break;
-			case PROARGMODE_TABLE:
-				modename = "";
-				isinput = false;
-				break;
-			default:
-				elog(ERROR, "invalid parameter mode '%c'", argmode);
-				modename = NULL; /* keep compiler quiet */
-				isinput = false;
-				break;
-		}
-		if (isinput)
-			inputargno++;       /* this is a 1-based counter */
-
-		if (print_table_args != (argmode == PROARGMODE_TABLE))
-			continue;
-
-		if (argsprinted)
-			appendStringInfoString(buf, ", ");
-		appendStringInfoString(buf, modename);
-		if (argname && argname[0])
-			appendStringInfo(buf, "%s ", quote_identifier(argname));
-		appendStringInfoString(buf, format_type_be(argtype));
-
-		if (print_defaults && isinput && inputargno > nlackdefaults)
-		{
-			Node    *expr;
-
-			Assert(nextargdefault != NULL);
-			expr = (Node *) lfirst(nextargdefault);
-			nextargdefault = lnext(nextargdefault);
-
-			appendStringInfo(buf, " DEFAULT %s",
-							 deparse_expression(expr, NIL, false, false));
-		}
-		argsprinted++;
-	}
-
-	return argsprinted;
-}
-
 
 
 /*
@@ -2341,18 +2089,7 @@ get_select_query_def(Query *query, deparse_context *context,
 			appendStringInfo(buf, "BY ");
 			foreach(lc, query->scatterClause)
 			{
-				ScatterClause  *clause = (SortClause *) lfirst(lc);
-				Node		   *expr;
-
-				/*
-				 * At one time, scatterClause had expression nodes,
-				 * but now it uses ScatterClause.  Just in case a VIEW
-				 * has the old style, check if the new style or not.
-				 */
-				if (IsA(clause, ScatterClause))
-					expr = get_sortgroupclause_expr(clause, query->targetList);
-				else
-					expr = (Node *) clause;
+				Node *expr = (Node *) lfirst(lc);
 
 				get_rule_expr(expr, context, false);
 				if (lc->next)
@@ -3663,7 +3400,6 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 		case T_Param:
 		case T_CoerceToDomainValue:
 		case T_SetToDefault:
-		case T_CurrentOfExpr:
 			/* single words: always simple */
 			return true;
 
@@ -3675,7 +3411,6 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 		case T_NullIfExpr:
 		case T_Aggref:
 		case T_FuncExpr:
-		case T_PercentileExpr:
 			/* function-like: name(..) or name[..] */
 			return true;
 
@@ -4036,14 +3771,6 @@ get_rule_expr(Node *node, deparse_context *context,
 			get_func_expr((FuncExpr *) node, context, showimplicit);
 			break;
 
-		case T_NamedArgExpr:
-			{
-				NamedArgExpr *na = (NamedArgExpr *) node;
-				appendStringInfo(buf, "%s => ", quote_identifier(na->name));
-				get_rule_expr((Node *)na->arg, context, showimplicit);
-			}
-			break;
-
 		case T_OpExpr:
 			get_oper_expr((OpExpr *) node, context);
 			break;
@@ -4317,22 +4044,9 @@ get_rule_expr(Node *node, deparse_context *context,
 							appendStringInfo(buf, "TRUE");
 						else if (not_clause(w))
 						{
-							Expr *arg = get_notclausearg((Expr *) w);
-							if (IsA(arg, CaseTestExpr))
-								appendStringInfo(buf, "FALSE");
-							else
-							{
-								/* WHEN IS NOT DISTINCT FROM */
-								DistinctExpr 	*dexpr;
-								Node			*rhs;
-
-								Insist(IsA(arg, DistinctExpr));
-								dexpr = (DistinctExpr *) arg;
-
-								appendStringInfo(buf, "IS NOT DISTINCT FROM ");
-								rhs = (Node *) lsecond(dexpr->args);
-								get_rule_expr(rhs, context, false);
-							}
+							Assert(IsA(get_notclausearg((Expr *) w),
+									   CaseTestExpr));
+							appendStringInfo(buf, "FALSE");
 						}
 						else
 							elog(ERROR, "unexpected CASE WHEN clause: %d",
@@ -4614,45 +4328,6 @@ get_rule_expr(Node *node, deparse_context *context,
 			appendStringInfo(buf, "DEFAULT");
 			break;
 
-		case T_CurrentOfExpr:
-			appendStringInfo(buf, "CURRENT OF %s",
-			quote_identifier(((CurrentOfExpr *) node)->cursor_name));
-			break;
-
-		case T_PercentileExpr:
-			{
-				PercentileExpr *p = (PercentileExpr *) node;
-
-				if (p->perckind == PERC_MEDIAN)
-				{
-					Node	   *expr;
-
-					expr = get_sortgroupclause_expr(linitial(p->sortClause), p->sortTargets);
-					appendStringInfoString(buf, "median(");
-					get_rule_expr(expr, context, false);
-					appendStringInfoString(buf, ")");
-				}
-				else
-				{
-					if (p->perckind == PERC_CONT)
-					{
-						appendStringInfoString(buf, "percentile_cont(");
-					}
-					else if (p->perckind == PERC_DISC)
-					{
-						appendStringInfoString(buf, "percentile_disc(");
-					}
-					else
-						Assert(false);
-					get_rule_expr((Node *) p->args, context, true);
-					appendStringInfoString(buf, ") WITHIN GROUP ");
-					get_sortlist_expr(p->sortClause,
-									  p->sortTargets,
-									  false, context, "ORDER BY ");
-				}
-			}
-			break;
-
 		case T_List:
 			{
 				char	   *sep;
@@ -4706,16 +4381,10 @@ get_oper_expr(OpExpr *expr, deparse_context *context)
 		Node	   *arg = (Node *) linitial(args);
 		HeapTuple	tp;
 		Form_pg_operator optup;
-		cqContext	   *pcqCtx;
 
-		pcqCtx = caql_beginscan(
-				NULL,
-				cql("SELECT * FROM pg_operator "
-					" WHERE oid = :1 ",
-					ObjectIdGetDatum(opno)));
-
-		tp = caql_getnext(pcqCtx);
-
+		tp = SearchSysCache(OPEROID,
+							ObjectIdGetDatum(opno),
+							0, 0, 0);
 		if (!HeapTupleIsValid(tp))
 			elog(ERROR, "cache lookup failed for operator %u", opno);
 		optup = (Form_pg_operator) GETSTRUCT(tp);
@@ -4738,7 +4407,7 @@ get_oper_expr(OpExpr *expr, deparse_context *context)
 			default:
 				elog(ERROR, "bogus oprkind: %d", optup->oprkind);
 		}
-		caql_endscan(pcqCtx);
+		ReleaseSysCache(tp);
 	}
 	if (!PRETTY_PAREN(context))
 		appendStringInfoChar(buf, ')');
@@ -4755,8 +4424,6 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 	Oid			funcoid = expr->funcid;
 	Oid			argtypes[FUNC_MAX_ARGS];
 	int			nargs;
-	List	   *argnames;
-	bool		is_variadic;
 	ListCell   *l;
 
 	/*
@@ -4800,35 +4467,19 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 	 * the argument datatypes.
 	 */
 	nargs = 0;
-	argnames = NIL;
 	foreach(l, expr->args)
 	{
 		if (nargs >= FUNC_MAX_ARGS)
 			ereport(ERROR,
 					(errcode(ERRCODE_TOO_MANY_ARGUMENTS),
 					 errmsg("too many arguments")));
-
-		Node   *arg = (Node *) lfirst(l);
-		if (IsA(arg, NamedArgExpr))
-			argnames = lappend(argnames, ((NamedArgExpr *) arg)->name);
-		argtypes[nargs] = exprType(arg);
+		argtypes[nargs] = exprType((Node *) lfirst(l));
 		nargs++;
 	}
 
 	appendStringInfo(buf, "%s(",
-					 generate_function_name(funcoid, nargs,
-							 	 	 	 	argnames, argtypes,
-							 	 	 	 	&is_variadic));
-	nargs = 0;
-	foreach(l, expr->args)
-	{
-		if (nargs++ > 0)
-			appendStringInfoString(buf, ", ");
-		if (is_variadic && lnext(l) == NULL)
-			appendStringInfoString(buf, "VARIADIC ");
-		get_rule_expr((Node *) lfirst(l), context, true);
-
-	}
+					 generate_function_name(funcoid, nargs, argtypes));
+	get_rule_expr((Node *) expr->args, context, true);
 	appendStringInfoChar(buf, ')');
 }
 
@@ -4886,10 +4537,7 @@ get_agg_expr(Aggref *aggref, deparse_context *context)
 			ereport(ERROR,
 					(errcode(ERRCODE_TOO_MANY_ARGUMENTS),
 					 errmsg("too many arguments")));
-
-		Node   *arg = (Node *) lfirst(l);
-		Assert(!IsA(arg, NamedArgExpr));
-		argtypes[nargs] = exprType(arg);
+		argtypes[nargs] = exprType((Node *) lfirst(l));
 		nargs++;
 	}
 
@@ -4920,7 +4568,7 @@ get_agg_expr(Aggref *aggref, deparse_context *context)
 	}
 
 	appendStringInfo(buf, "%s(%s",
-					 generate_function_name(fnoid, nargs, NIL, argtypes, NULL),
+					 generate_function_name(fnoid, nargs, argtypes),
 					 aggref->aggdistinct ? "DISTINCT " : "");
 	/* aggstar can be set only in zero-argument aggregates */
 	if (aggref->aggstar)
@@ -5149,35 +4797,16 @@ get_windowref_expr(WindowRef *wref, deparse_context *context)
 			ereport(ERROR,
 					(errcode(ERRCODE_TOO_MANY_ARGUMENTS),
 					 errmsg("too many arguments")));
-
-		Node   *arg = (Node *) lfirst(l);
-		Assert(!IsA(arg, NamedArgExpr));
-		argtypes[nargs] = exprType(arg);
+		argtypes[nargs] = exprType((Node *) lfirst(l));
 		nargs++;
 	}
 
 	appendStringInfo(buf, "%s(",
-					 generate_function_name(wref->winfnoid, nargs, NIL,
-							 	 	 	 	argtypes, NULL));
+					 generate_function_name(wref->winfnoid, nargs, argtypes));
 
 	get_rule_expr((Node *) wref->args, context, true);
 	appendStringInfoChar(buf, ')');
 
-	switch(wref->null_treatment)
-	{
-		case NULL_TREATMENT_NONE:
-			/* Do nothing */
-			break;
-		case NULL_TREATMENT_RESPECT:
-			appendStringInfo(buf, " RESPECT NULLS");
-			break;
-		case NULL_TREATMENT_IGNORE:
-			appendStringInfo(buf, " IGNORE NULLS");
-			break;
-		default:
-			elog(ERROR, "unexpected null treatment %d", wref->null_treatment);
-			break;
-	}
 	/* now for the OVER clause */
 	appendStringInfo(buf, " OVER");
 
@@ -5852,20 +5481,14 @@ get_opclass_name(Oid opclass, Oid actual_datatype,
 	char	   *opcname;
 	char	   *nspname;
 	bool		isvisible;
-	cqContext  *pcqCtx;
 
 	/* Domains use their base type's default opclass */
 	if (OidIsValid(actual_datatype))
 		actual_datatype = getBaseType(actual_datatype);
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_opclass "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(opclass)));
-
-	ht_opc = caql_getnext(pcqCtx);
-
+	ht_opc = SearchSysCache(CLAOID,
+							ObjectIdGetDatum(opclass),
+							0, 0, 0);
 	if (!HeapTupleIsValid(ht_opc))
 		elog(ERROR, "cache lookup failed for opclass %u", opclass);
 	opcrec = (Form_pg_opclass) GETSTRUCT(ht_opc);
@@ -5898,7 +5521,7 @@ get_opclass_name(Oid opclass, Oid actual_datatype,
 							 quote_identifier(opcname));
 		}
 	}
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(ht_opc);
 }
 
 /*
@@ -6163,16 +5786,10 @@ generate_relation_name(Oid relid, List *namespaces)
 	char	   *relname;
 	char	   *nspname;
 	char	   *result;
-	cqContext  *pcqCtx;
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(relid)));
-
-	tp = caql_getnext(pcqCtx);
-
+	tp = SearchSysCache(RELOID,
+						ObjectIdGetDatum(relid),
+						0, 0, 0);
 	if (!HeapTupleIsValid(tp))
 		elog(ERROR, "cache lookup failed for relation %u", relid);
 	reltup = (Form_pg_class) GETSTRUCT(tp);
@@ -6211,7 +5828,7 @@ generate_relation_name(Oid relid, List *namespaces)
 
 	result = quote_qualified_identifier(nspname, relname);
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(tp);
 
 	return result;
 }
@@ -6219,15 +5836,13 @@ generate_relation_name(Oid relid, List *namespaces)
 /*
  * generate_function_name
  *		Compute the name to display for a function specified by OID,
- *		given that it is being called with the specified actual arg names and
- *		types.  (Those matter because of ambiguous-function resolution rules.)
+ *		given that it is being called with the specified actual arg types.
+ *		(Arg types matter because of ambiguous-function resolution rules.)
  *
- * The result includes all necessary quoting and schema-prefixing. We can
- * also pass back an indication of whether the function is variadic.
+ * The result includes all necessary quoting and schema-prefixing.
  */
 static char *
-generate_function_name(Oid funcid, int nargs, List *argnames, Oid *argtypes,
-					   bool *is_variadic)
+generate_function_name(Oid funcid, int nargs, Oid *argtypes)
 {
 	HeapTuple	proctup;
 	Form_pg_proc procform;
@@ -6240,41 +5855,27 @@ generate_function_name(Oid funcid, int nargs, List *argnames, Oid *argtypes,
 	bool		p_retset;
 	bool        p_retstrict;
 	bool        p_retordered;
-	int			p_nvargs;
 	Oid		   *p_true_typeids;
-	Datum		varDatum;
-	int			varOid;
-	bool		isnull;
-	cqContext  *pcqCtx;
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_proc "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(funcid)));
-
-	proctup = caql_getnext(pcqCtx);
-
+	proctup = SearchSysCache(PROCOID,
+							 ObjectIdGetDatum(funcid),
+							 0, 0, 0);
 	if (!HeapTupleIsValid(proctup))
 		elog(ERROR, "cache lookup failed for function %u", funcid);
 	procform = (Form_pg_proc) GETSTRUCT(proctup);
 	proname = NameStr(procform->proname);
+	Assert(nargs == procform->pronargs);
 
 	/*
 	 * The idea here is to schema-qualify only if the parser would fail to
 	 * resolve the correct function given the unqualified func name with the
-	 * specified argtypes. If the function is variadic, we should presume
-	 * that VARIADIC will be included in the call.
+	 * specified argtypes.
 	 */
-	varDatum = caql_getattr(pcqCtx,
-							Anum_pg_proc_provariadic, &isnull);
-	varOid   = DatumGetInt32(varDatum);
 	p_result = func_get_detail(list_make1(makeString(proname)),
-							   NIL, argnames, nargs, argtypes,
-							   !OidIsValid(varOid), true,
+							   NIL, nargs, argtypes,
 							   &p_funcid, &p_rettype,
 							   &p_retset, &p_retstrict, &p_retordered,
-							   &p_nvargs, &p_true_typeids, NULL);
+							   &p_true_typeids);
 	if ((p_result == FUNCDETAIL_NORMAL || p_result == FUNCDETAIL_AGGREGATE) &&
 		p_funcid == funcid)
 		nspname = NULL;
@@ -6283,17 +5884,7 @@ generate_function_name(Oid funcid, int nargs, List *argnames, Oid *argtypes,
 
 	result = quote_qualified_identifier(nspname, proname);
 
-	/* Check variadic-ness if caller cares */
-	if (is_variadic)
-	{
-		/* "any" variadics are not treated as variadics for listing */
-		if (OidIsValid(varOid) && varOid != ANYOID)
-			*is_variadic = true;
-		else
-			*is_variadic = false;
-	}
-
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(proctup);
 
 	return result;
 }
@@ -6318,18 +5909,12 @@ generate_operator_name(Oid operid, Oid arg1, Oid arg2)
 	char	   *oprname;
 	char	   *nspname;
 	Operator	p_result;
-	cqContext  *pcqCtx;
 
 	initStringInfo(&buf);
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_operator "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(operid)));
-
-	opertup = caql_getnext(pcqCtx);
-
+	opertup = SearchSysCache(OPEROID,
+							 ObjectIdGetDatum(operid),
+							 0, 0, 0);
 	if (!HeapTupleIsValid(opertup))
 		elog(ERROR, "cache lookup failed for operator %u", operid);
 	operform = (Form_pg_operator) GETSTRUCT(opertup);
@@ -6374,9 +5959,9 @@ generate_operator_name(Oid operid, Oid arg1, Oid arg2)
 		appendStringInfoChar(&buf, ')');
 
 	if (p_result != NULL)
-		ReleaseOperator(p_result);
+		ReleaseSysCache(p_result);
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(opertup);
 
 	return buf.data;
 }
@@ -6433,72 +6018,21 @@ flatten_reloptions(Oid relid)
 	HeapTuple	tuple;
 	Datum		reloptions;
 	bool		isnull;
-	cqContext  *pcqCtx;
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(relid)));
-
-	tuple = caql_getnext(pcqCtx);
-
+	tuple = SearchSysCache(RELOID,
+						   ObjectIdGetDatum(relid),
+						   0, 0, 0);
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for relation %u", relid);
 
-	reloptions = caql_getattr(pcqCtx,
-							  Anum_pg_class_reloptions, &isnull);
+	reloptions = SysCacheGetAttr(RELOID, tuple,
+								 Anum_pg_class_reloptions, &isnull);
 	if (!isnull)
 		result = reloptions_to_string(reloptions);
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(tuple);
 
 	return result;
-}
-
-/*
- * Build a string for use within the partition level WITH () clause.
- *
- * The reason this is not just flatten_reloptions() is that for the AOCO case,
- * we do not want to emit options stored in pg_class.reloptions, other than
- * appendonly=true, orientation=column. All the other values are just
- * default values. The real values, where they different from the default, are
- * stored in pg_attribute_storage.attoptions. This is handled by
- * column_encodings_to_string().
- */
-static char *
-get_partition_reloptions(Oid relid)
-{
-	char	   *result = NULL;
-	HeapTuple	tuple;
-	Datum		reloptions;
-	bool		isnull;
-	cqContext  *pcqCtx;
-
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(relid)));
-
-	tuple = caql_getnext(pcqCtx);
-
-	if (!HeapTupleIsValid(tuple))
-		elog(ERROR, "cache lookup failed for relation %u", relid);
-
-	reloptions = caql_getattr(pcqCtx,
-							  Anum_pg_class_reloptions, &isnull);
-	if (!isnull)
-	{
-		if (((Form_pg_class)GETSTRUCT(tuple))->relstorage == RELSTORAGE_AOCOLS)
-			result = pstrdup("orientation=column, appendonly=true");
-		else
-			result = reloptions_to_string(reloptions);
-	}
-	caql_endscan(pcqCtx);
-
-	return result;
-
 }
 
 static void
@@ -6718,6 +6252,7 @@ partition_rule_def_worker(PartitionRule *rule, Node *start,
 	char				*reloptions	   = NULL;
 	char				*tspaceoptions = NULL;
 	bool				 needspace	   = false;
+	char 				*colenc = NULL;
 
 	if (OidIsValid(rule->parchildrelid))
 	{
@@ -6746,7 +6281,7 @@ partition_rule_def_worker(PartitionRule *rule, Node *start,
 			}
 		}
 
-		reloptions = get_partition_reloptions(rule->parchildrelid);
+		reloptions = flatten_reloptions(rule->parchildrelid);
 
 		if (bLeafTablename) /* MPP-6297: dump by tablename */	
 		{
@@ -6795,6 +6330,12 @@ partition_rule_def_worker(PartitionRule *rule, Node *start,
 			reloptions = sid1.data;
 		}
 
+		/* COLUMN ... ENCODING ( ) for the partition */
+		if (prettyFlags & PRETTYFLAG_INDENT)
+			indent += PRETTYINDENT_STD;
+
+		colenc = make_partition_column_encoding_str(rule->parchildrelid,
+													indent);
 	}
 	else if ((PointerIsValid(rule->parreloptions) ||
 			  OidIsValid(rule->partemplatespaceId))
@@ -6861,6 +6402,8 @@ partition_rule_def_worker(PartitionRule *rule, Node *start,
 
 			tspaceoptions = sid3.data;
 		}
+
+		/* We do not dump per partition column encodings for templates */
 	}
 
 	initStringInfo(&str);
@@ -6968,12 +6511,12 @@ partition_rule_def_worker(PartitionRule *rule, Node *start,
 						 tspaceoptions);
 	}
 
+	if (colenc && strlen(colenc) > 0)
+		appendStringInfo(&str, " %s", colenc);
+
 	return str.data;
 }
 
-/*
- * Writes out rule of partition, as well as column compression if any.
- */
 static void
 write_out_rule(PartitionRule *rule, PartitionNode *pn, Node *start, 
 			   Node *end,
@@ -7002,13 +6545,12 @@ write_out_rule(PartitionRule *rule, PartitionNode *pn, Node *start,
 	 * because for an EVERY clause inclusivity/exclusivity
 	 * can differ 
 	 */
-	str = partition_rule_def_worker(rule, start,
-									end, end_rule,
+   	str = partition_rule_def_worker(rule, start, 
+									end, end_rule, 
 									every, pn->part, handleevery,
 									body->prettyFlags,
 									bLeafTablename,
 									body->indentLevel);
-
 	if (str && strlen(str))
 	{
 		if (strlen(body->buf->data) && !first_rule && 
@@ -7018,34 +6560,7 @@ write_out_rule(PartitionRule *rule, PartitionNode *pn, Node *start,
 		appendStringInfoString(body->buf, str);
 		*needcomma = true;
 	}
-
-	if (str)
-		pfree(str);
-
-	/*
-	 * We dump per partition column encoding for non-templates,
-	 * and do not dump them for templates.
-	 */
-	if (OidIsValid(rule->parchildrelid))
-	{
-		int		indent_enc = body->indentLevel;
-		char   *col_enc;
-
-		/* COLUMN ... ENCODING ( ) for the partition */
-		if (PRETTY_INDENT(body))
-			indent_enc += PRETTYINDENT_STD;
-		col_enc = make_partition_column_encoding_str(rule->parchildrelid,
-													 indent_enc);
-
-		if (col_enc && strlen(col_enc) > 0)
-		{
-			appendStringInfo(body->buf, " %s", col_enc);
-			*needcomma = true;
-		}
-
-		if (col_enc)
-			pfree(col_enc);
-	}
+	pfree(str);
 
 	get_partition_recursive(children, head, body, leveldone, bLeafTablename);
 
@@ -7575,21 +7090,26 @@ static char *
 get_rule_def_common(Oid partid, int prettyFlags, int bLeafTablename)
 {
 	Relation rel;
-	cqContext	cqc;
+	ScanKeyData key;
+	SysScanDesc scan;
 	HeapTuple tuple;
 	PartitionRule *rule;
 	Partition *part;
 
 	rel = heap_open(PartitionRuleRelationId, AccessShareLock);
 
-	tuple = caql_getfirst(
-			caql_addrel(cqclr(&cqc), rel),
-			cql("SELECT * FROM pg_partition_rule "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(partid)));
+	ScanKeyInit(&key,
+				ObjectIdAttributeNumber,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(partid));
 
+	scan = systable_beginscan(rel, PartitionRuleOidIndexId,
+							  true, SnapshotNow, 1, &key);
+
+	tuple = systable_getnext(scan);
 	if (!HeapTupleIsValid(tuple))
 	{
+		systable_endscan(scan);
 		heap_close(rel, AccessShareLock);
 		return NULL;
 	}
@@ -7597,18 +7117,24 @@ get_rule_def_common(Oid partid, int prettyFlags, int bLeafTablename)
 
 	rule = ruleMakePartitionRule(tuple, RelationGetDescr(rel), 
 								 CurrentMemoryContext);
+	systable_endscan(scan);
 	heap_close(rel, AccessShareLock);
 
 	/* lookup pg_partition by oid */
 	rel = heap_open(PartitionRelationId, AccessShareLock);
 
-	tuple = caql_getfirst(
-			caql_addrel(cqclr(&cqc), rel),
-			cql("SELECT * FROM pg_partition "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(rule->paroid)));
+	ScanKeyInit(&key,
+				ObjectIdAttributeNumber,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(rule->paroid));
+
+	scan = systable_beginscan(rel, PartitionOidIndexId,
+							  true, SnapshotNow, 1, &key);
+
+	tuple = systable_getnext(scan);
 	if (!HeapTupleIsValid(tuple))
 	{
+		systable_endscan(scan);
 		heap_close(rel, AccessShareLock);
 
 		return NULL;
@@ -7617,6 +7143,7 @@ get_rule_def_common(Oid partid, int prettyFlags, int bLeafTablename)
 	part = partMakePartition(tuple, RelationGetDescr(rel),
 							 CurrentMemoryContext);
 
+	systable_endscan(scan);
 	heap_close(rel, AccessShareLock);
 
 	return partition_rule_def_worker(rule, rule->parrangestart, 

@@ -438,7 +438,7 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 
 			tupgone = false;
 
-			switch (HeapTupleSatisfiesVacuum(onerel, &tuple.t_self, tuple.t_data, OldestXmin, buf, false, "lazy_scan_heap"))
+			switch (HeapTupleSatisfiesVacuum(tuple.t_data, OldestXmin, buf, false))
 			{
 				case HEAPTUPLE_DEAD:
 					tupgone = true;		/* we can delete the tuple */
@@ -973,7 +973,7 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 					relname)));
 
 	/* get statistics from the pg_aoseg table */
-	fstotal = GetSegFilesTotals(aorel, SnapshotNow);
+	fstotal = GetSegFilesTotals(aorel);
 
 	/* calculate the values we care about */
 	eof = (double)fstotal->totalbytes;
@@ -1027,7 +1027,7 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 		FileSegInfo **segfile_array = NULL;	/* array of all segfiles information */
 		int total_segfiles;
 		int i;
-		AppendOnlyEntry *aoEntry = GetAppendOnlyEntry(RelationGetRelid(aorel), SnapshotNow);
+		AppendOnlyEntry *aoEntry = GetAppendOnlyEntry(RelationGetRelid(aorel));
 
 		/* Get information about all the file segments we need to scan */
 		segfile_array = GetAllFileSegInfo(aorel, aoEntry, SnapshotNow, &total_segfiles);
@@ -1177,7 +1177,7 @@ vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 					get_namespace_name(RelationGetNamespace(aorel)),
 					relname)));
 
-	aoEntry = GetAppendOnlyEntry(RelationGetRelid(aorel), SnapshotNow);
+	aoEntry = GetAppendOnlyEntry(RelationGetRelid(aorel));
 
 	allseg = GetAllAOCSFileSegInfo(aorel, aoEntry, SnapshotNow, &totalseg);
 	if (Debug_persistent_print)

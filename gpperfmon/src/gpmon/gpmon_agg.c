@@ -4,9 +4,9 @@
 #include "apr_general.h"
 #include "apr_hash.h"
 #include "apr_time.h"
-#include "apr_queue.h"
 #include "gpmon/gpmon.h"
 #include "gpmon_agg.h"
+#include "gpmonlib.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -14,204 +14,74 @@
 #include <math.h>
 #include <sys/stat.h>
 
-typedef enum disk_space_message_t
-{
-	DISK_SPACE_NO_MESSAGE_SENT = 0,
-	DISK_SPACE_WARNING_SENT ,
-	DISK_SPACE_ERROR_SENT
-} disk_space_message_t;
 
-typedef struct mmon_fsinfo_t
-{
-	gpmon_fsinfokey_t key;
 
-	apr_int64_t				bytes_used;
-	apr_int64_t				bytes_available;
-	apr_int64_t				bytes_total;
-	disk_space_message_t	sent_error_flag;
-	time_t					last_update_timestamp;
-} mmon_fsinfo_t; //the fsinfo structure used in mmon
+typedef struct qenode_t qenode_t;
+struct qenode_t {
+    gpmon_qexec_t qexec;
+    apr_int64_t cpu_elapsed;
+    qenode_t* next;
+};
 
-typedef struct mmon_qexec_t
-{
-	gpmon_qexeckey_t 	key;
-	apr_uint64_t 		rowsout;
-	apr_uint64_t		_cpu_elapsed; /* CPU elapsed for iter */
-	apr_uint64_t 		measures_rows_in;
-	char*				line;
-} mmon_qexec_t;  //The qexec structure used in mmon
+typedef struct qdnode_t qdnode_t;
+struct qdnode_t {
+    apr_int64_t  last_updated_generation;
+    int          recorded;
+    int		 qenode_recorded;
+    int          num_metrics_packets;
+    gpmon_qlog_t qlog;
+    qenode_t*    qenode_list;
+};
 
-typedef struct qdnode_t {
-	apr_int64_t last_updated_generation;
-	int recorded;
-	int qexec_recorded;
-	int num_metrics_packets;
-	gpmon_qlog_t qlog;
-	apr_hash_t* qexec_hash;
-} qdnode_t;
-
-typedef struct gpmon_filrep_holder_t
+typedef struct gpmon_filrep_holder_t gpmon_filrep_holder_t;
+struct gpmon_filrep_holder_t
 {
 	gpmmon_filerep_key_t key;
 	double elapsedTime_secs_primary;
 	double elapsedTime_secs_mirror;
 	gpmon_filerep_primarystats_s primary;
 	gpmon_filerep_mirrorstats_s mirror;
-} gpmon_filrep_holder_t;
+};
 
 
 struct agg_t 
 {
 	apr_int64_t generation;
 	apr_pool_t* pool;
-	apr_pool_t* parent_pool;
 	apr_hash_t* qtab;		/* key = gpmon_qlog_key_t, value = qdnode ptr. */
 	apr_hash_t* htab;		/* key = hostname, value = gpmon_metrics_t ptr */
 	apr_hash_t* stab;		/* key = databaseid, value = gpmon_seginfo_t ptr */
 	apr_hash_t* ftab;		/* key = gpmmon_filerep_key_t, value = gpmon_filrep_holder_t ptr */
-	apr_hash_t* fsinfotab;	/* This is the persistent fsinfo hash table: key = gpmon_fsinfokey_t, value = mmon_fsinfo_t ptr */
 };
 
-typedef struct dbmetrics_t {
-	apr_int32_t queries_total;
-	apr_int32_t queries_running;
-	apr_int32_t queries_queued;
-} dbmetrics_t;
+typedef struct dbmetrics_t dbmetrics_t;
+struct dbmetrics_t {
+    apr_int32_t queries_total;
+    apr_int32_t queries_running;
+    apr_int32_t queries_queued;
+};
 
 extern int min_query_time;
 extern int min_detailed_query_time;
-extern mmon_options_t opt;
-extern apr_queue_t* message_queue;
 
 extern void incremement_tail_bytes(apr_uint64_t bytes);
 
-
-/**
- * Disk space check helper function
- * Note- trys to push a message on a queue so that the message thread can send the message
- */
-static apr_status_t  check_disk_space(mmon_fsinfo_t* rec)
-{
-	static time_t interval_start_time = 0;
-	static unsigned int number_messages_sent_this_interval = 0;
-	time_t now = 0;
-	int used_disk_space_percent =  ROUND_DIVIDE((rec->bytes_used *100),rec->bytes_total);
-
-	now = time(NULL);
-	// reset the interval if needed
-	if ((now - interval_start_time) >= opt.disk_space_interval){
-		interval_start_time = now;
-		number_messages_sent_this_interval = 0;
-	}
-
-	// Check the disk space if we haven't already sent an error
-	if (rec->sent_error_flag != DISK_SPACE_ERROR_SENT) {
-		disk_space_message_t send_flag = DISK_SPACE_NO_MESSAGE_SENT;
-		char* message = 0;
-
-		// check for errors and then warnings
-		if ((opt.error_disk_space_percentage != 0) && (used_disk_space_percent >= opt.error_disk_space_percentage)) {
-			//Send an error if the error_disk_space_percentage threshold is set and the used_disk_space_percent is greater or equal to it
-			send_flag = DISK_SPACE_ERROR_SENT;
-			message = "ERROR";
-		} else if ((rec->sent_error_flag != DISK_SPACE_WARNING_SENT) && (opt.warning_disk_space_percentage != 0 ) &&
-					(used_disk_space_percent >= opt.warning_disk_space_percentage)) {
-			//Send warning if the warning_disk_space_percentage threshold is set and the used_disk_space_percent is greater or equal to it
-			//and if a warning has not already been sent
-			send_flag = DISK_SPACE_WARNING_SENT;
-			message = "WARNING";
-		} else if ((rec->sent_error_flag == DISK_SPACE_WARNING_SENT) && (used_disk_space_percent < opt.warning_disk_space_percentage)) {
-			//if a warning as been sent and the used disk has fallen below the below the warning threshold reset the send flag
-			rec->sent_error_flag = DISK_SPACE_NO_MESSAGE_SENT;
-		}
-
-		// Send a warning or error if needed by putting the message in a queue
-		if (send_flag != DISK_SPACE_NO_MESSAGE_SENT){
-			//only sent the message if
-			if (number_messages_sent_this_interval < opt.max_disk_space_messages_per_interval) {
-				char *query;
-				apr_status_t status;
-				unsigned int query_size_max = NAMEDATALEN + GPMON_FSINFO_MAX_PATH + 200;
-
-				query = malloc(query_size_max);
-				if (!query) {
-					TR0(("check_disk_space ERROR: malloc(%d) returned NULL, out of memory\n", query_size_max));
-					return APR_ENOMEM;
-				}
-				snprintf(query, query_size_max, "select gp_elog('%s: percent used disk space for %s %s is %d%%', True)",
-						message, rec->key.hostname, rec->key.fsname, used_disk_space_percent);
-
-				status = apr_queue_trypush(message_queue, (void *) query);
-				if (status == APR_EINTR) { //blocking interrupted try one more time
-					status = apr_queue_trypush(message_queue, (void *) query);
-				}
-				if (status != APR_SUCCESS) {
-					TR0(("check_disk_space ERROR: apr_queue_trypush returned %d; cannot send %s\n", status, query));
-					free(query);
-				} else {
-					number_messages_sent_this_interval++;
-				}
-
-			} else {
-				TR1(("check_disk_space: message max reached: Not sending message for %s %s. used_disk_space_percent = %d%%\n", rec->key.hostname, rec->key.fsname, used_disk_space_percent));
-			}
-
-			rec->sent_error_flag = send_flag;
-		}
-
-	} else if ( ( opt.warning_disk_space_percentage != 0 ) && ( used_disk_space_percent < opt.warning_disk_space_percentage )) {
-		//if there is a warning percent to check and the used disk has fallen below the below the warning threshold reset the send flag
-		rec->sent_error_flag = DISK_SPACE_NO_MESSAGE_SENT;
-	} else if ( ( opt.warning_disk_space_percentage == 0 ) && ( used_disk_space_percent < opt.error_disk_space_percentage )) {
-		//if there is no warning percent to check and the used disk has fallen below the below the error threshold reset the send flag
-		rec->sent_error_flag = DISK_SPACE_NO_MESSAGE_SENT;
-	}
-	return 0;
-}
-
-static apr_status_t agg_put_fsinfo(agg_t* agg, const gpmon_fsinfo_t* met)
-{
-	mmon_fsinfo_t* rec;
-
-	rec = apr_hash_get(agg->fsinfotab, &met->key, sizeof(met->key));
-	if (!rec) {
-		// Use the parent pool because we need the fsinfo to be persistent and never be freed
-		rec = apr_palloc(agg->parent_pool, sizeof(*rec));
-		if (!rec)
-			return APR_ENOMEM;
-		rec->key = met->key;
-		rec->sent_error_flag = DISK_SPACE_NO_MESSAGE_SENT;
-		apr_hash_set(agg->fsinfotab, &met->key, sizeof(met->key), rec);
-	}
-	rec->bytes_available = met->bytes_available;
-	rec->bytes_total = met->bytes_total;
-	rec->bytes_used = met->bytes_used;
-	rec->last_update_timestamp = time(NULL); //set the updated timestamp for the packet
-
-	// if both the option percentages are set to 0 than the disk space check is disabled
-	// Also if max_disk_space_messages_per_interval is 0 the disk space check is disabled
-	if (((opt.warning_disk_space_percentage) || (opt.error_disk_space_percentage)) &&
-			(opt.max_disk_space_messages_per_interval != 0)) {
-		check_disk_space(rec);
-	}
-	return 0;
-}
-
 static apr_status_t agg_put_metrics(agg_t* agg, const gpmon_metrics_t* met)
 {
-	gpmon_metrics_t* rec;
+    gpmon_metrics_t* rec;
 
-	rec = apr_hash_get(agg->htab, met->hname, APR_HASH_KEY_STRING);
-	if (rec) {
-		*rec = *met;
-	} else {
-		rec = apr_palloc(agg->pool, sizeof(*rec));
-		if (!rec)
-			return APR_ENOMEM;
-		*rec = *met;
-		apr_hash_set(agg->htab, rec->hname, APR_HASH_KEY_STRING, rec);
-	}
-	return 0;
+    rec = apr_hash_get(agg->htab, met->hname, APR_HASH_KEY_STRING);
+    if (rec) {
+	*rec = *met;
+    }
+    else {
+	rec = apr_palloc(agg->pool, sizeof(*rec));
+	if (!rec)
+	    return APR_ENOMEM;
+	*rec = *met;
+	apr_hash_set(agg->htab, rec->hname, APR_HASH_KEY_STRING, rec);
+    }
+    return 0;
 }
 
 static apr_status_t agg_put_segment(agg_t* agg, const gpmon_seginfo_t* seg)
@@ -232,8 +102,8 @@ static apr_status_t agg_put_segment(agg_t* agg, const gpmon_seginfo_t* seg)
 		}
 		*rec = *seg;
 		apr_hash_set(agg->stab, &rec->dbid, sizeof(rec->dbid), rec);
-	}
-	return 0;
+    }
+    return 0;
 }
 
 static apr_status_t agg_put_filerep(agg_t* agg, const gpmon_filerepinfo_t* filerep)
@@ -270,7 +140,7 @@ static apr_status_t agg_put_filerep(agg_t* agg, const gpmon_filerepinfo_t* filer
 		apr_hash_set(agg->ftab, &rec->key, sizeof(rec->key), rec);
 	}
 
-	return 0;
+    return 0;
 }
 
 
@@ -296,97 +166,111 @@ static apr_status_t agg_put_query_metrics(agg_t* agg, const gpmon_qlog_t* qlog, 
 static apr_status_t agg_put_qlog(agg_t* agg, const gpmon_qlog_t* qlog,
 				 apr_int64_t generation)
 {
-	qdnode_t* node;
+    qdnode_t* node;
 
-	node = apr_hash_get(agg->qtab, &qlog->key, sizeof(qlog->key));
-	if (node) {
-		node->qlog = *qlog;
-		if (0 != strcmp(qlog->db, GPMON_DB)) {
-			TR2(("agg_put_qlog: found %d.%d.%d generation %d recorded %d\n", qlog->key.tmid, qlog->key.ssid, qlog->key.ccnt, generation, node->recorded));
-		}
-	} else {
-		node = apr_pcalloc(agg->pool, sizeof(*node));
-		if (!node)
-			return APR_ENOMEM;
-
-		node->qlog = *qlog;
-		node->recorded = 0;
-		node->qexec_recorded = 0;
-		node->qlog.cpu_elapsed = 0;
-		node->qlog.p_metrics.cpu_pct = 0.0;
-		node->num_metrics_packets = 0;
-
-		node->qexec_hash = apr_hash_make(agg->pool);
-		if (!node->qexec_hash) {
-			TR2(("agg_put_qlog: qexec_hash = apr_hash_make(agg->pool) returned null\n"));
-			return APR_ENOMEM;
-		}
-
-		apr_hash_set(agg->qtab, &node->qlog.key, sizeof(node->qlog.key), node);
-		if (0 != strcmp(qlog->db, GPMON_DB)) {
-			TR2(("agg_put: new %d.%d.%d generation %d recorded %d\n", qlog->key.tmid, qlog->key.ssid, qlog->key.ccnt, generation, node->recorded));
-		}
+    node = apr_hash_get(agg->qtab, &qlog->key, sizeof(qlog->key));
+    if (node) {
+	node->qlog = *qlog;
+	if (0 != strcmp(qlog->db, GPMON_DB)) {
+	    TR2(("agg_put: found %d.%d.%d generation %d recorded %d\n", qlog->key.tmid,
+		qlog->key.ssid, qlog->key.ccnt, generation, node->recorded));
 	}
-	node->last_updated_generation = generation;
+    }
+    else {
+	node = apr_palloc(agg->pool, sizeof(*node));
+	if (! node)
+	    return APR_ENOMEM;
+	node->qlog = *qlog;
+	node->recorded = 0;
+	node->qenode_recorded = 0;
+	node->qenode_list = 0;
+	node->qlog.cpu_elapsed = 0;
+	node->qlog.p_metrics.cpu_pct = 0.0;
+	node->num_metrics_packets = 0;
+	apr_hash_set(agg->qtab, &node->qlog.key, sizeof(node->qlog.key), node);
+	if (0 != strcmp(qlog->db, GPMON_DB)) {
+	    TR2(("agg_put: new %d.%d.%d generation %d recorded %d\n", qlog->key.tmid,
+		qlog->key.ssid, qlog->key.ccnt, generation, node->recorded));
+	}
+    }
+    node->last_updated_generation = generation;
 
-	return 0;
+    return 0;
 }
 
 
-static apr_status_t agg_put_qexec(agg_t* agg, const qexec_packet_t* qexec_packet, apr_int64_t generation)
+static apr_status_t agg_put_qexec(agg_t* agg, const gpmon_qexec_t* qexec,
+				  apr_int64_t generation)
 {
 	qdnode_t* dp;
 	gpmon_qlogkey_t key;
-	mmon_qexec_t* mmon_qexec_existing = 0;
+	qenode_t* ep;
+	qenode_t** epp;
+	int diff;
 
 	/* find qdnode of this qexec */
-	key.tmid = qexec_packet->data.key.tmid;
-	key.ssid = qexec_packet->data.key.ssid;
-	key.ccnt = qexec_packet->data.key.ccnt;
+	key.tmid = qexec->key.tmid;
+	key.ssid = qexec->key.ssid;
+	key.ccnt = qexec->key.ccnt;
 	dp = apr_hash_get(agg->qtab, &key, sizeof(key));
 
-	if (!dp) { /* not found, internal SPI query.  Ignore. */
-		return 0;
+	//TR0(("%s %s.%d.%d: %ld\n", (dp? "YES":"NO"), qexec->_hname, qexec->key.pid, qexec->key.nid, qexec->_cpu_elapsed));
+	if (!dp) 
+	{
+    		/* not found, internal SPI query.  Ignore. */
+    		return 0;
 	}
 
-	mmon_qexec_existing = apr_hash_get(dp->qexec_hash, &qexec_packet->data.key.hash_key, sizeof(qexec_packet->data.key.hash_key));
+
+	/* find qexec in qenode_list */
+	diff = 0;
+	for (ep = dp->qenode_list, epp = &dp->qenode_list; ep; epp = &ep->next, ep = ep->next) 
+	{
+		// different segment id, not a match
+		diff = ep->qexec.key.segid - qexec->key.segid;
+		if (diff)
+			continue;
+
+		// different node id, not a match
+		diff = ep->qexec.key.nid - qexec->key.nid;
+		if (diff)
+	    		continue;
+
+		// complete match break
+		diff = ep->qexec.key.pid - qexec->key.pid;
+		if (!diff)
+	    		break;
+    	}
 
 	/* if found, replace it */
-	if (mmon_qexec_existing) {
-		mmon_qexec_existing->key.ccnt = qexec_packet->data.key.ccnt;
-		mmon_qexec_existing->key.ssid = qexec_packet->data.key.ssid;
-		mmon_qexec_existing->key.tmid = qexec_packet->data.key.tmid;
-		mmon_qexec_existing->_cpu_elapsed = qexec_packet->data._cpu_elapsed;
-		mmon_qexec_existing->measures_rows_in = qexec_packet->data.measures_rows_in;
-		mmon_qexec_existing->rowsout = qexec_packet->data.rowsout;
-
-		// Alloc new memory for the line if the line we have received is longer than the old one
-		if (qexec_packet->data.size_of_line > (1+strlen(mmon_qexec_existing->line))) {
-			if (! (mmon_qexec_existing->line = apr_palloc(agg->pool, qexec_packet->data.size_of_line))) {
-				return APR_ENOMEM;
-			}
-		}
-
-		memcpy(mmon_qexec_existing->line, qexec_packet->line, qexec_packet->data.size_of_line );
+	if (ep && diff == 0) 
+	{
+		ep->qexec = *qexec;
+		ep->cpu_elapsed = qexec->_cpu_elapsed;
 	}
-	else {
-		/* not found, make new hash entry */
+	else 
+	{
+		qenode_t* x;
+		/* not found, make new qenode */
+		if (! (x = apr_palloc(agg->pool, sizeof(*x))))
+	    	return APR_ENOMEM;
 
-		//allocate the line plus the packet
-		if (! (mmon_qexec_existing = apr_palloc(agg->pool, sizeof(mmon_qexec_t)+qexec_packet->data.size_of_line+1))) {
+		x->qexec = *qexec;
+		x->cpu_elapsed = qexec->_cpu_elapsed;
+		x->next = ep;
+		*epp = x;
+	}
 
-			return APR_ENOMEM;
+	if (0) 
+	{
+		int cnt = 0;
+		TR0(("list now:\n"));
+
+		for (ep = dp->qenode_list; ep; ep = ep->next) 
+		{
+		TR0(("%d: %s.%d.%d: %ld\n", ++cnt, ep->qexec._hname, ep->qexec.key.nid, ep->qexec.key.pid, ep->cpu_elapsed));
 		}
-		memcpy(&mmon_qexec_existing->key, &qexec_packet->data.key, sizeof(gpmon_qexeckey_t));
-		mmon_qexec_existing->_cpu_elapsed = qexec_packet->data._cpu_elapsed;
-		mmon_qexec_existing->measures_rows_in = qexec_packet->data.measures_rows_in;
-		mmon_qexec_existing->rowsout = qexec_packet->data.rowsout;
-
-		// put the line in the memory after the qexec packet
-		mmon_qexec_existing->line = (char*)(((char *)mmon_qexec_existing) + sizeof(mmon_qexec_t));
-
-		memcpy(mmon_qexec_existing->line, qexec_packet->line, qexec_packet->data.size_of_line );
-		apr_hash_set(dp->qexec_hash, &mmon_qexec_existing->key.hash_key, sizeof(mmon_qexec_existing->key.hash_key), mmon_qexec_existing);
+		TR0(("  -- \n"));
 	}
 
 	dp->last_updated_generation = generation;
@@ -394,176 +278,172 @@ static apr_status_t agg_put_qexec(agg_t* agg, const qexec_packet_t* qexec_packet
 }
 
 
-apr_status_t agg_create(agg_t** retagg, apr_int64_t generation, apr_pool_t* parent_pool, apr_hash_t* fsinfotab)
+apr_status_t agg_create(agg_t** retagg, apr_int64_t generation,
+			apr_pool_t* parent_pool)
 {
-	int e;
-	apr_pool_t* pool;
-	agg_t* agg;
+    int e;
+    apr_pool_t* pool;
+    agg_t* agg;
 
-	if (0 != (e = apr_pool_create(&pool, parent_pool)))
-		return e;
+    if (0 != (e = apr_pool_create(&pool, parent_pool)))
+	return e;
 
-	agg = apr_pcalloc(pool, sizeof(*agg));
-	if (!agg) {
-		apr_pool_destroy(pool);
-		return APR_ENOMEM;
-	}
+    agg = apr_pcalloc(pool, sizeof(*agg));
+    if (!agg) {
+	apr_pool_destroy(pool);
+	return APR_ENOMEM;
+    }
 
-	agg->generation = generation;
-	agg->pool = pool;
-	agg->parent_pool = parent_pool;
-	agg->fsinfotab = fsinfotab; // This hash table for the fsinfo is persistent and will use the parent pool
+    agg->generation = generation;
+    agg->pool = pool;
+    agg->qtab = apr_hash_make(pool);
+    if (!agg->qtab) {
+	apr_pool_destroy(pool);
+	return APR_ENOMEM;
+    }
 
-	agg->qtab = apr_hash_make(pool);
-	if (!agg->qtab) {
-		apr_pool_destroy(pool);
-		return APR_ENOMEM;
-	}
+    agg->htab = apr_hash_make(pool);
+    if (!agg->htab) {
+	apr_pool_destroy(pool);
+	return APR_ENOMEM;
+    }
 
-	agg->htab = apr_hash_make(pool);
-	if (!agg->htab) {
-		apr_pool_destroy(pool);
-		return APR_ENOMEM;
-	}
+    agg->stab = apr_hash_make(pool);
+    if (!agg->stab) {
+	apr_pool_destroy(pool);
+	return APR_ENOMEM;
+    }
 
-	agg->stab = apr_hash_make(pool);
-	if (!agg->stab) {
-		apr_pool_destroy(pool);
-		return APR_ENOMEM;
-	}
+    agg->ftab = apr_hash_make(pool);
+    if (!agg->ftab) {
+	apr_pool_destroy(pool);
+	return APR_ENOMEM;
+    }
 
-	agg->ftab = apr_hash_make(pool);
-	if (!agg->ftab) {
-		apr_pool_destroy(pool);
-		return APR_ENOMEM;
-	}
-
-	*retagg = agg;
-	return 0;
+    *retagg = agg;
+    return 0;
 }
 
 
-apr_status_t agg_dup(agg_t** retagg, agg_t* oldagg, apr_pool_t* parent_pool, apr_hash_t* fsinfotab)
+apr_status_t agg_dup(agg_t** retagg, agg_t* oldagg, apr_pool_t* parent_pool)
 {
-	int e, cnt;
-	agg_t* newagg;
-	apr_hash_index_t *hi, *hj;
+    int e;
+    agg_t* newagg;
+    apr_hash_index_t* hi;
 
-	if (0 != (e = agg_create(&newagg, oldagg->generation + 1, parent_pool, fsinfotab))) {
-		return e;
+    if (0 != (e = agg_create(&newagg, oldagg->generation + 1, parent_pool))) {
+	return e;
+    }
+
+    for (hi = apr_hash_first(0, oldagg->qtab); hi; hi = apr_hash_next(hi)) {
+	void* vptr;
+	qdnode_t* dp;
+	qenode_t* ep;
+	qdnode_t* newdp;
+	qenode_t** tail;
+	int cnt;
+	apr_int32_t status;
+
+	apr_hash_this(hi, 0, 0, &vptr);
+	dp = vptr;
+
+	/* skip all entries that weren't updated recently and aren't waiting in a queue */
+	/* Read status from query text as this is reliable */
+	status = get_query_status(dp->qlog.key.tmid, dp->qlog.key.ssid, dp->qlog.key.ccnt);
+	if (dp->last_updated_generation < newagg->generation - 1
+            && status != GPMON_QLOG_STATUS_SUBMIT
+            && status != GPMON_QLOG_STATUS_START) {
+	    if (0 != strcmp(dp->qlog.db, GPMON_DB)) {
+		TR2(("agg_dup: skip %d.%d.%d generation %d, current generation %d, recorded %d\n",
+		    dp->qlog.key.tmid, dp->qlog.key.ssid, dp->qlog.key.ccnt,
+		    (int) dp->last_updated_generation,
+		    (int) newagg->generation, dp->recorded));
+	    }
+	    continue;
 	}
 
-	for (hi = apr_hash_first(0, oldagg->qtab); hi; hi = apr_hash_next(hi)) {
-		void* vptr;
-		qdnode_t* dp;
-		qdnode_t* newdp;
-		apr_int32_t status;
+	/* check if we missed a status change */
+	if (dp->qlog.status != status)
+		dp->qlog.status = status;
 
-		apr_hash_this(hi, 0, 0, &vptr);
-		dp = vptr;
-
-		/* skip all entries that weren't updated recently and aren't waiting in a queue */
-		/* Read status from query text as this is reliable */
-		status = get_query_status(dp->qlog.key.tmid, dp->qlog.key.ssid,
-				dp->qlog.key.ccnt);
-		if (dp->last_updated_generation
-				< newagg->generation - 1 && status != GPMON_QLOG_STATUS_SUBMIT
-				&& status != GPMON_QLOG_STATUS_CANCELING
-				&& status != GPMON_QLOG_STATUS_START) {
-			if (0 != strcmp(dp->qlog.db, GPMON_DB)) {
-				TR2( ("agg_dup: skip %d.%d.%d generation %d, current generation %d, recorded %d\n", dp->qlog.key.tmid, dp->qlog.key.ssid, dp->qlog.key.ccnt, (int) dp->last_updated_generation, (int) newagg->generation, dp->recorded));
-			}
-			continue;
-		}
-
-		/* check if we missed a status change */
-		if (dp->qlog.status != status)
-			dp->qlog.status = status;
-
-		if (0 != strcmp(dp->qlog.db, GPMON_DB)) {
-			TR2( ("agg_dup: add %d.%d.%d, generation %d, recorded %d:\n", dp->qlog.key.tmid, dp->qlog.key.ssid, dp->qlog.key.ccnt, dp->last_updated_generation, dp->recorded));
-		}
-
-		/* dup this entry */
-		if (!(newdp = apr_palloc(newagg->pool, sizeof(*newdp)))) {
-			agg_destroy(newagg);
-			return APR_ENOMEM;
-		}
-
-		*newdp = *dp;
-
-		newdp->qexec_hash = apr_hash_make(newagg->pool);
-		if (!newdp->qexec_hash) {
-			agg_destroy(newagg);
-			return APR_ENOMEM;
-		}
-
-		cnt = 0;
-		// Copy the qexec hash table
-		for (hj = apr_hash_first(newagg->pool, dp->qexec_hash); hj; hj = apr_hash_next(hj)) {
-			mmon_qexec_t* new_qexec;
-			size_t len;
-
-			apr_hash_this(hj, 0, 0, &vptr);
-			len = strlen(((mmon_qexec_t*)vptr)->line)+1;
-
-			//allocate the line plus the packet
-			if (!(new_qexec = apr_pcalloc(newagg->pool, sizeof(mmon_qexec_t)+len+1))) {
-				agg_destroy(newagg);
-				return APR_ENOMEM;
-			}
-			*new_qexec = *((mmon_qexec_t*)vptr);
-
-			// put the line in the memory after the qexec packet
-			new_qexec->line = (char*)(((char*)new_qexec) + sizeof(mmon_qexec_t));
-
-			memcpy(new_qexec->line, ((mmon_qexec_t*)vptr)->line, len );
-			apr_hash_set(newdp->qexec_hash, &(new_qexec->key.hash_key), sizeof(new_qexec->key.hash_key), new_qexec);
-			TR2( ("\t    %d: (%d, %d)\n", ++cnt, new_qexec->key.hash_key.segid, new_qexec->key.hash_key.nid));
-		}
-
-		// reset metrics that are accumulated each quantum
-		newdp->qlog.cpu_elapsed = 0;
-		newdp->qlog.p_metrics.cpu_pct = 0.0;
-		newdp->num_metrics_packets = 0;
-
-		apr_hash_set(newagg->qtab, &newdp->qlog.key, sizeof(newdp->qlog.key), newdp);
+	if (0 != strcmp(dp->qlog.db, GPMON_DB)) {
+	    TR2(("agg_dup: add %d.%d.%d, generation %d, recorded %d:\n",
+		 dp->qlog.key.tmid, dp->qlog.key.ssid,
+		dp->qlog.key.ccnt, dp->last_updated_generation, dp->recorded));
 	}
 
-	*retagg = newagg;
-	return 0;
+	/* dup this entry */
+	if (! (newdp = apr_palloc(newagg->pool, sizeof(*newdp)))) {
+	    agg_destroy(newagg);
+	    return APR_ENOMEM;
+	}
+	*newdp = *dp;
+	newdp->qenode_list = 0;
+
+	// reset metrics that are accumulated each quantum
+	newdp->qlog.cpu_elapsed = 0;
+	newdp->qlog.p_metrics.cpu_pct = 0.0;
+	newdp->num_metrics_packets = 0;
+
+	apr_hash_set(newagg->qtab, &newdp->qlog.key, sizeof(newdp->qlog.key), newdp);
+
+	/* dup all qexec entries hanging off dp */
+	cnt = 0;
+	tail = &newdp->qenode_list;
+	for (ep = dp->qenode_list; ep; ep = ep->next) {
+	    qenode_t* x;
+	    if (! (x = apr_pcalloc(newagg->pool, sizeof(*x)))) {
+		agg_destroy(newagg);
+		return APR_ENOMEM;
+	    }
+	    x->qexec = ep->qexec;
+		x->cpu_elapsed = ep->cpu_elapsed;
+	    *tail = x;
+	    tail = &x->next;
+
+	    TR2(("\t    %d: (%d, %d) op %d\n", ++cnt,
+		 x->qexec.key.segid,
+		 x->qexec.key.nid,
+		 x->qexec.nodeType));
+	}
+    }
+
+    *retagg = newagg;
+    return 0;
 }
+
+
 
 void agg_destroy(agg_t* agg)
 {
-	apr_pool_destroy(agg->pool);
+    apr_pool_destroy(agg->pool);
 }
 
-apr_status_t agg_put(agg_t* agg, const gp_smon_to_mmon_packet_t* pkt)
-{
-	if (pkt->header.pkttype == GPMON_PKTTYPE_METRICS)
-		return agg_put_metrics(agg, &pkt->u.metrics);
-	if (pkt->header.pkttype == GPMON_PKTTYPE_QLOG)
-		return agg_put_qlog(agg, &pkt->u.qlog, agg->generation);
-	if (pkt->header.pkttype == GPMON_PKTTYPE_QEXEC)
-		return agg_put_qexec(agg, &pkt->u.qexec_packet, agg->generation);
-	if (pkt->header.pkttype == GPMON_PKTTYPE_SEGINFO)
-		return agg_put_segment(agg, &pkt->u.seginfo);
-	if (pkt->header.pkttype == GPMON_PKTTYPE_FILEREP)
-		return agg_put_filerep(agg, &pkt->u.filerepinfo);
-	if (pkt->header.pkttype == GPMON_PKTTYPE_QUERY_HOST_METRICS)
-		return agg_put_query_metrics(agg, &pkt->u.qlog, agg->generation);
-	if (pkt->header.pkttype == GPMON_PKTTYPE_FSINFO)
-		return agg_put_fsinfo(agg, &pkt->u.fsinfo);
 
-	gpmon_warning(FLINE, "unknown packet type %d", pkt->header.pkttype);
+
+apr_status_t agg_put(agg_t* agg, const gpmon_packet_t* pkt)
+{
+	if (pkt->pkttype == GPMON_PKTTYPE_METRICS)
+		return agg_put_metrics(agg, &pkt->u.metrics);
+	if (pkt->pkttype == GPMON_PKTTYPE_QLOG)
+		return agg_put_qlog(agg, &pkt->u.qlog, agg->generation);
+	if (pkt->pkttype == GPMON_PKTTYPE_QEXEC)
+		return agg_put_qexec(agg, &pkt->u.qexec, agg->generation);
+	if (pkt->pkttype == GPMON_PKTTYPE_SEGINFO)
+		return agg_put_segment(agg, &pkt->u.seginfo);
+	if (pkt->pkttype == GPMON_PKTTYPE_FILEREP)
+		return agg_put_filerep(agg, &pkt->u.filerepinfo);
+	if (pkt->pkttype == GPMON_PKTTYPE_QUERY_HOST_METRICS)
+		return agg_put_query_metrics(agg, &pkt->u.qlog, agg->generation);
+
+	gpmon_warning(FLINE, "unknown packet type %d", pkt->pkttype);
 	return 0;
 }
 
 
 typedef struct bloom_t bloom_t;
 struct bloom_t {
-	unsigned char map[1024];
+    unsigned char map[1024];
 };
 static void bloom_init(bloom_t* bloom);
 static void bloom_set(bloom_t* bloom, const char* name);
@@ -571,7 +451,6 @@ static int  bloom_isset(bloom_t* bloom, const char* name);
 
 static void delete_old_files(bloom_t* bloom);
 
-static apr_uint32_t write_fsinfo(agg_t* agg, const char* nowstr);
 static apr_uint32_t write_system(agg_t* agg, const char* nowstr);
 static apr_uint32_t write_segmentinfo(agg_t* agg, char* nowstr);
 static apr_uint32_t write_filerepinfo(agg_t* agg, char* nowstr);
@@ -583,23 +462,100 @@ static apr_uint32_t write_qlog_full(FILE* fp, qdnode_t *qdnode, const char* nows
 typedef char single_metric_string[SINGLE_METRIC_BUFSZ];
 
 /* write the iterator table row to disk.
+   note the for tail / history tables we dont record current cpu % but we do for now tables
 */
-static apr_uint32_t write_qexec_row(FILE* fp_now, FILE* fp_tail, const mmon_qexec_t* qexec, bool tail_write)
+static apr_uint32_t write_qenode_row(FILE* fp, const qenode_t* qenode, const char* nowstr, bool historicalinfo)
 {
+	const int WRITE_QENODE_ROW_BUF_SIZE = 2048;
+	char line[WRITE_QENODE_ROW_BUF_SIZE];
+	single_metric_string metrics[GPMON_QEXEC_M_DBCOUNT];
 	int bytes_written = 0;
+	char qexec_tstamp[GPMON_DATE_BUF_SIZE];
+	int i;
+	const gpmon_qexec_t* qexec = &qenode->qexec;
+	const char* measure_name = NULL;
+	const char* unit_name = NULL;
+	apr_status_t r = APR_SUCCESS;
+	char phase[4] = " ";
+	char tname[16] = "Name";
 
-	bytes_written = strlen(qexec->line) + 1;
+	for (i = 0; i < GPMON_QEXEC_M_DBCOUNT; i++) 
+	{
+		if (r == APR_SUCCESS)
+		{
+			/* after this function returns failure 1 time don't try again for remaing numbers in array */
 
-	fprintf(fp_now, "%s\n", qexec->line);
-	if (tail_write) {
-		fprintf(fp_tail, "%s\n", qexec->line);
+			/* GPMON_QEXEC_M_DBCOUNT is number of metrics output to the DB
+				GPMON_QEXEC_M_COUNT   is number of metrics in the packets */
+
+			if (i < GPMON_QEXEC_M_COUNT)
+			{
+				r = gpdb_getnode_metricinfo(qexec->nodeType, i, &measure_name, &unit_name);
+			}
+			else
+			{
+				r = APR_NOTFOUND;
+			}
+		}
+
+		if (r == APR_SUCCESS)
+		{
+			snprintf(metrics[i], SINGLE_METRIC_BUFSZ, "%s|%s|%" FMT64 "|0", measure_name, unit_name, qexec->measures[i]);
+		}
+		else
+		{
+			snprintf(metrics[i], SINGLE_METRIC_BUFSZ, "%s", "null|null|null|null");
+		}
 	}
+
+	snprintf(line, WRITE_QENODE_ROW_BUF_SIZE, 
+		"%s|%d|%d|%d|%d|%d|%d|%d|%s|%s|%s|%s|%d|%" FMT64 "|%" FMT64 "|%" FMT64 "|%" FMT64 "|%" FMT64 "|%" FMT64 "|%.2f|%s|%" FMT64 "|%" FMT64 "|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s" "|%s|%s",
+		nowstr,
+		qexec->key.tmid,
+		qexec->key.ssid,
+		qexec->key.ccnt,
+		qexec->key.segid,
+		qexec->key.pid,
+		qexec->key.nid,
+		qexec->pnid,
+		qexec->_hname,
+		gpdb_getnodename(qexec->nodeType),
+		gpdb_getnodestatus(qexec->status),
+		gpmon_datetime((time_t)qexec->tstart, qexec_tstamp),
+		qexec->tduration,
+		qexec->p_mem, 
+		qexec->p_memmax,
+		qexec->_p_metrics.mem.size,
+		qexec->_p_metrics.mem.resident,
+		qexec->_p_metrics.mem.share,
+		qenode->cpu_elapsed,
+		(historicalinfo ? 0.0 : qexec->_p_metrics.cpu_pct),
+		phase,
+		qexec->rowsout, 
+		qexec->rowsout_est,
+		metrics[0], metrics[1], metrics[2], metrics[3],
+		metrics[4], metrics[5], metrics[6], metrics[7],
+		metrics[8], metrics[9], metrics[10], metrics[11],
+		metrics[12], metrics[13], metrics[14], metrics[15],
+		tname,
+		qexec->relation_name);
+
+	bytes_written = strlen(line) + 1;
+	if (bytes_written == WRITE_QENODE_ROW_BUF_SIZE)
+	{
+		gpmon_warning(FLINE, "iterator line too long ... ignored: %s", line);
+		return 0;
+	}
+
+	fprintf(fp, "%s\n", line);
 	return bytes_written;
 }
 
+
+
 apr_status_t agg_dump(agg_t* agg)
 {
-	apr_hash_index_t *hi, *hj;
+	apr_hash_index_t* hi;
 	bloom_t bloom;
 	char nowstr[GPMON_DATE_BUF_SIZE];
 	int e = 0;
@@ -643,10 +599,6 @@ apr_status_t agg_dump(agg_t* agg)
 	bloom_set(&bloom, GPMON_DIR "filerep_tail.dat");
 	bloom_set(&bloom, GPMON_DIR "filerep_stage.dat");
 	bloom_set(&bloom, GPMON_DIR "_filerep_tail.dat");
-	bloom_set(&bloom, GPMON_DIR "diskspace_now.dat");
-	bloom_set(&bloom, GPMON_DIR "diskspace_tail.dat");
-	bloom_set(&bloom, GPMON_DIR "diskspace_stage.dat");
-	bloom_set(&bloom, GPMON_DIR "_diskspace_tail.dat");
 	
 
 	/* dump metrics */
@@ -659,10 +611,6 @@ apr_status_t agg_dump(agg_t* agg)
 
 	/* write filerep metrics */
 	temp_bytes_written = write_filerepinfo(agg, nowstr);
-	incremement_tail_bytes(temp_bytes_written);
-	
-	/* write fsinfo metrics */
-	temp_bytes_written = write_fsinfo(agg, nowstr);
 	incremement_tail_bytes(temp_bytes_written);
 
 	if (! (fp_queries_tail = fopen(GPMON_DIR "queries_tail.dat", "a"))) 
@@ -681,30 +629,29 @@ apr_status_t agg_dump(agg_t* agg)
 	
 		if (qdnode->qlog.status == GPMON_QLOG_STATUS_DONE || qdnode->qlog.status == GPMON_QLOG_STATUS_ERROR) 
 		{
-			if (!qdnode->recorded && ((qdnode->qlog.tfin - qdnode->qlog.tstart) >= min_query_time))
+		    if (!qdnode->recorded && ((qdnode->qlog.tfin - qdnode->qlog.tstart) >= min_query_time)) 
 			{
 				TR1(("queries_tail: %x add query %d.%d.%d, status %d, generation %d, recorded %d\n",
-						agg->qtab, qdnode->qlog.key.tmid, qdnode->qlog.key.ssid, qdnode->qlog.key.ccnt, qdnode->qlog.status, qdnode->last_updated_generation, qdnode->recorded));
+			    	agg->qtab, qdnode->qlog.key.tmid, qdnode->qlog.key.ssid, qdnode->qlog.key.ccnt, qdnode->qlog.status, qdnode->last_updated_generation, qdnode->recorded));
 	
 				temp_bytes_written += write_qlog_full(fp_queries_tail, qdnode, nowstr);
 				incremement_tail_bytes(temp_bytes_written);
 
 				qdnode->recorded = 1;
-			}
+		    }
 		}
 		else
 		{
 			switch (qdnode->qlog.status)
 			{
 			case GPMON_QLOG_STATUS_START:
-			case GPMON_QLOG_STATUS_CANCELING:
 				dbmetrics.queries_running++;
 				break;
 			case GPMON_QLOG_STATUS_SUBMIT:
-				dbmetrics.queries_queued++;
-				break;
+	                	dbmetrics.queries_queued++;
+	                	break;
 			default:
-				/* Not interested */
+	                	/* Not interested */
 				break;
 			}
 		}
@@ -740,8 +687,7 @@ apr_status_t agg_dump(agg_t* agg)
 	{
 		void* vptr;
 		qdnode_t* qdnode;
-		bool tail_write = false;
-
+		qenode_t* ep;
 
 		apr_hash_this(hi, 0, 0, &vptr);
 		qdnode = vptr;
@@ -751,11 +697,17 @@ apr_status_t agg_dump(agg_t* agg)
 			const int fname_size = sizeof(GPMON_DIR) + 100;
 			char fname[fname_size];
 			snprintf(fname, fname_size, GPMON_DIR "q%d-%d-%d.txt",
-			qdnode->qlog.key.tmid, qdnode->qlog.key.ssid,
-			qdnode->qlog.key.ccnt);
+			    qdnode->qlog.key.tmid, qdnode->qlog.key.ssid,
+			    qdnode->qlog.key.ccnt);
 	
 			bloom_set(&bloom, fname);
 		}
+
+		/* not interesting */
+		/* CK: keep this for now
+		if (qdnode->qenode_list == 0)
+			continue;
+		*/
 
 		/* write to _query_now.dat */
 		if (qdnode->qlog.status != GPMON_QLOG_STATUS_DONE && qdnode->qlog.status != GPMON_QLOG_STATUS_ERROR)
@@ -767,21 +719,21 @@ apr_status_t agg_dump(agg_t* agg)
 			write_qlog(fp_queries_now, qdnode, nowstr, 1);
 		}
 
-		/* write iterators now and tail data */
-		if (qdnode->recorded && !qdnode->qexec_recorded && ((qdnode->qlog.tfin - qdnode->qlog.tstart) >= min_detailed_query_time)) {
-			tail_write = true;
-			qdnode->qexec_recorded = 1;
+		/* write iterators now data */
+		for (ep = qdnode->qenode_list; ep; ep = ep->next) 
+		{
+			write_qenode_row(fp_iters_now, ep, nowstr, false);
 		}
 
-		for (hj = apr_hash_first(0, qdnode->qexec_hash); hj; hj = apr_hash_next(hj)) {
-			apr_hash_this(hj, 0, 0, &vptr);
-
-			if (tail_write) {
-				temp_bytes_written += write_qexec_row(fp_iters_now, fp_iters_tail, (const mmon_qexec_t*) vptr, tail_write);
+		/* write iterators tail data */
+		if (qdnode->recorded && !qdnode->qenode_recorded && ((qdnode->qlog.tfin - qdnode->qlog.tstart) >= min_detailed_query_time)) 
+		{
+		    for (ep = qdnode->qenode_list; ep; ep = ep->next) 
+			{
+				temp_bytes_written += write_qenode_row(fp_iters_tail, ep, nowstr, true);
 				incremement_tail_bytes(temp_bytes_written);
-			} else {
-				write_qexec_row(fp_iters_now, fp_iters_tail, (const mmon_qexec_t*) vptr, tail_write);
 			}
+			qdnode->qenode_recorded = 1;
 		}
 	}
 
@@ -795,7 +747,6 @@ apr_status_t agg_dump(agg_t* agg)
 	rename(GPMON_DIR "_queries_now.dat", GPMON_DIR "queries_now.dat");
 	rename(GPMON_DIR "_database_now.dat", GPMON_DIR "database_now.dat");
 	rename(GPMON_DIR "_filerep_now.dat", GPMON_DIR "filerep_now.dat");
-	rename(GPMON_DIR "_diskspace_now.dat", GPMON_DIR "diskspace_now.dat");
 	
 	/* clean up ... delete all old files by checking our bloom filter */
 	delete_old_files(&bloom);
@@ -817,37 +768,37 @@ static void delete_old_files(bloom_t* bloom)
 	char findDir[256] = {0};
 	char findCmd[512] = {0};
 	FILE* fp = NULL;
-	time_t cutoff = time(0) - gpmmon_quantum() * 3;
+    time_t cutoff = time(0) - gpmmon_quantum() * 3;
 
-	/* Need to remove trailing / in dir so find results are consistent
+    /* Need to remove trailing / in dir so find results are consistent
      * between platforms
      */
-	strncpy(findDir, GPMON_DIR, 255);
-	if (findDir[strlen(findDir) -1] == '/')
-		findDir[strlen(findDir) - 1] = '\0';
+    strncpy(findDir, GPMON_DIR, 255);
+    if (findDir[strlen(findDir) -1] == '/')
+    	findDir[strlen(findDir) - 1] = '\0';
 
-	snprintf(findCmd, 512, "find %s -name \"q*-*.txt\" 2> /dev/null", findDir);
-	fp = popen(findCmd, "r");
+    snprintf(findCmd, 512, "find %s -name \"q*-*.txt\" 2> /dev/null", findDir);
+    fp = popen(findCmd, "r");
 
-	if (fp)
+    if (fp)
 	{
 		for (;;)
 		{
-			char line[1024];
-			char* p;
-			struct stat stbuf;
+		    char line[1024];
+		    char* p;
+		    struct stat stbuf;
 			apr_int32_t status;
 
-			line[sizeof(line) - 1] = 0;
-			if (! (p = fgets(line, sizeof(line), fp)))
+		    line[sizeof(line) - 1] = 0;
+		    if (! (p = fgets(line, sizeof(line), fp)))
 				break;
-			if (line[sizeof(line) - 1])
+		    if (line[sizeof(line) - 1])
 				continue; 	/* fname too long */
 
-			p = gpmon_trim(p);
-			TR2(("Checking file %s\n", p));
+		    p = gpmon_trim(p);
+		    TR2(("Checking file %s\n", p));
 
-			if (0 == stat(p, &stbuf))
+		    if (0 == stat(p, &stbuf))
 			{
 #if defined(sun) || defined(linux)
 				int expired = stbuf.st_mtime < cutoff;
@@ -879,14 +830,14 @@ static void delete_old_files(bloom_t* bloom)
 						unlink(p);
 					}
 				}
-			}
+		    }
 		}
 		pclose(fp);
-	}
-	else
-	{
-		gpmon_warning(FLINE, "Failed to get a list of query text files.\n");
-	}
+    }
+    else
+    {
+    	gpmon_warning(FLINE, "Failed to get a list of query text files.\n");
+    }
 }
 
 static apr_uint32_t write_filerepinfo(agg_t* agg, char* nowstr)
@@ -934,32 +885,32 @@ static apr_uint32_t write_filerepinfo(agg_t* agg, char* nowstr)
 			sp->primary.write_syscall_size_max,
 			sp->primary.write_syscall_time_avg,
 			sp->primary.write_syscall_time_max,
-			((sp->elapsedTime_secs_primary >0)?(sp->primary.write_syscall_count / sp->elapsedTime_secs_primary):0),
+			sp->primary.write_syscall_count / sp->elapsedTime_secs_primary,
 			sp->primary.fsync_syscall_time_avg,
 			sp->primary.fsync_syscall_time_max,
-			((sp->elapsedTime_secs_primary >0)?(sp->primary.fsync_syscall_count  / sp->elapsedTime_secs_primary):0),
+			sp->primary.fsync_syscall_count  / sp->elapsedTime_secs_primary,
 			sp->primary.write_shmem_size_avg,
 			sp->primary.write_shmem_size_max,
 			sp->primary.write_shmem_time_avg,
 			sp->primary.write_shmem_time_max,
-			((sp->elapsedTime_secs_primary >0)?(sp->primary.write_shmem_count / sp->elapsedTime_secs_primary):0),
+			sp->primary.write_shmem_count / sp->elapsedTime_secs_primary,
 			sp->primary.fsync_shmem_time_avg,
 			sp->primary.fsync_shmem_time_max,
-			((sp->elapsedTime_secs_primary >0)?(sp->primary.fsync_shmem_count / sp->elapsedTime_secs_primary):0),
+			sp->primary.fsync_shmem_count / sp->elapsedTime_secs_primary,
 			sp->primary.roundtrip_fsync_msg_time_avg,
 			sp->primary.roundtrip_fsync_msg_time_max,
-			((sp->elapsedTime_secs_primary >0)?(sp->primary.roundtrip_fsync_msg_count / sp->elapsedTime_secs_primary):0),
+			sp->primary.roundtrip_fsync_msg_count / sp->elapsedTime_secs_primary,
 			sp->primary.roundtrip_test_msg_time_avg, 
 			sp->primary.roundtrip_test_msg_time_max,
-			((sp->elapsedTime_secs_primary >0)?(sp->primary.roundtrip_test_msg_count / sp->elapsedTime_secs_primary):0),
+			sp->primary.roundtrip_test_msg_count / sp->elapsedTime_secs_primary,
 			sp->mirror.write_syscall_size_avg,
 			sp->mirror.write_syscall_size_max,
 			sp->mirror.write_syscall_time_avg,
 			sp->mirror.write_syscall_time_max, 
-			((sp->elapsedTime_secs_mirror >0)?(sp->mirror.write_syscall_count / sp->elapsedTime_secs_mirror):0), 
+			sp->mirror.write_syscall_count / sp->elapsedTime_secs_mirror, 
 			sp->mirror.fsync_syscall_time_avg, 
 			sp->mirror.fsync_syscall_time_max,
-			((sp->elapsedTime_secs_mirror >0)?(sp->mirror.fsync_syscall_count / sp->elapsedTime_secs_mirror):0));
+			sp->mirror.fsync_syscall_count / sp->elapsedTime_secs_mirror);
 
 		bytes_this_record = strlen(line) + 1;
 		if (bytes_this_record == line_size)
@@ -1018,67 +969,6 @@ static apr_uint32_t write_segmentinfo(agg_t* agg, char* nowstr)
 	fclose(fp);
 	fclose(fp2);
 	return bytes_written;
-}
-
-static apr_uint32_t write_fsinfo(agg_t* agg, const char* nowstr)
-{
-	FILE* fp = fopen(GPMON_DIR "diskspace_tail.dat", "a");
-	FILE* fp2 = fopen(GPMON_DIR "_diskspace_now.dat", "w");
-	apr_hash_index_t* hi;
-	const int line_size = 512;
-	char line[line_size];
-	apr_uint32_t bytes_written = 0;
-	static time_t last_time_fsinfo_written = 0;
-
-	if (!fp || !fp2) 
-	{
-		if (fp) fclose(fp);
-		if (fp2) fclose(fp2);
-		return 0;
-	}
-	
-	for (hi = apr_hash_first(0, agg->fsinfotab); hi; hi = apr_hash_next(hi))
-	{
-		mmon_fsinfo_t* fsp;
-		void* valptr = 0;
-		int bytes_this_line;
-		
-		apr_hash_this(hi, 0, 0, (void**) &valptr);
-		fsp = (mmon_fsinfo_t*) valptr;
-
-		// We only want to write the fsinfo for packets that have been updated since the last time we wrote
-		// the fsinfo, so skip the fsinfo if its timestamp is less than the last time written timestamp
-		if (fsp->last_update_timestamp < last_time_fsinfo_written) {
-			continue;
-		}
-
-		snprintf(line, line_size, "%s|%s|%s|%" FMT64 "|%" FMT64 "|%" FMT64,
-				nowstr,
-				fsp->key.hostname,
-				fsp->key.fsname,
-				fsp->bytes_total,
-				fsp->bytes_used,
-				fsp->bytes_available);
-		
-		TR2(("write_fsinfo(): writing %s\n", line));
-		bytes_this_line = strlen(line) + 1;
-		if (bytes_this_line == line_size){
-			gpmon_warning(FLINE, "fsinfo metrics line too long ... ignored: %s", line);
-			continue;
-		}
-
-		fprintf(fp, "%s\n", line);
-		fprintf(fp2, "%s\n", line);
-
-		bytes_written += bytes_this_line;
-	}
-
-	fclose(fp);
-	fclose(fp2);
-
-	last_time_fsinfo_written = time(NULL); //set the static time written variable
-
-	return bytes_written;	
 }
 
 static apr_uint32_t write_dbmetrics(dbmetrics_t* dbmetrics, char* nowstr)
@@ -1190,23 +1080,17 @@ static apr_uint32_t write_system(agg_t* agg, const char* nowstr)
 
 static apr_int64_t get_rowsout(qdnode_t* qdnode)
 {
+    qenode_t* pqe = NULL;
+    apr_int64_t rowsout = 0;
 
-	apr_hash_index_t *hi;
-	//qenode_t* pqe = NULL;
-	apr_int64_t rowsout = 0;
-	void* valptr;
-	mmon_qexec_t* qexec;
+    for (pqe = qdnode->qenode_list; pqe; pqe = pqe->next)
+        if (pqe->qexec.key.segid == -1 && pqe->qexec.key.nid == 1)
+        {
+            rowsout = pqe->qexec.rowsout;
+            break;
+        }
 
-	for (hi = apr_hash_first(NULL, qdnode->qexec_hash); hi; hi = apr_hash_next(hi)) {
-	//for (pqe = qdnode->qenode_list; pqe; pqe = pqe->next) {
-		apr_hash_this(hi, 0, 0, &valptr);
-		qexec = (mmon_qexec_t*) valptr;
-		if (qexec->key.hash_key.segid == -1 && qexec->key.hash_key.nid == 1) {
-			rowsout = qexec->rowsout;
-			break;
-		}
-	}
-	return rowsout;
+    return rowsout;
 }
 
 static double get_cpu_skew(qdnode_t* qdnode)
@@ -1215,7 +1099,7 @@ static double get_cpu_skew(qdnode_t* qdnode)
     apr_hash_t* segtab;
     apr_hash_index_t *hi;
 
-//    qenode_t* pqe = NULL;
+    qenode_t* pqe = NULL;
 
     apr_int64_t cpu_avg = 0;
     apr_int64_t* seg_cpu_sum = NULL;
@@ -1242,36 +1126,33 @@ static double get_cpu_skew(qdnode_t* qdnode)
         return 0.0f;
 	}
 
-	/* Calc mean per segment */
-	TR2( ("Calc mean per segment\n"));
-	for (hi = apr_hash_first(NULL, qdnode->qexec_hash); hi; hi = apr_hash_next(hi))
-	{
-		mmon_qexec_t* qexec;
-		apr_hash_this(hi, 0, 0, &valptr);
-		qexec = (mmon_qexec_t*) valptr;
+    /* Calc mean per segment */
+    for (pqe = qdnode->qenode_list; pqe; pqe = pqe->next)
+    {
+        /* Skip QD */
+        if (pqe->qexec.key.segid == -1)
+            continue;
 
-		/* Skip QD */
-		if (qexec->key.hash_key.segid == -1)
-			continue;
+        seg_cpu_sum = apr_hash_get(segtab, &pqe->qexec.key.segid,
+                                   sizeof(pqe->qexec.key.segid));
 
-		seg_cpu_sum = apr_hash_get(segtab, &qexec->key.hash_key.segid,
-				sizeof(qexec->key.hash_key.segid));
+        if (!seg_cpu_sum) {
+            seg_cpu_sum = apr_palloc(tmp_pool, sizeof(apr_int64_t));
+            *seg_cpu_sum = 0;
+        }
 
-		if (!seg_cpu_sum) {
-			seg_cpu_sum = apr_palloc(tmp_pool, sizeof(apr_int64_t));
-			*seg_cpu_sum = 0;
-		}
-
-		*seg_cpu_sum += qexec->_cpu_elapsed;
-		TR2( ("(SKEW) Iterator data for seg %d.  CPU Elapsed: %" FMT64 "\n", qexec->key.hash_key.segid, qexec->_cpu_elapsed));
-		apr_hash_set(segtab, &qexec->key.hash_key.segid, sizeof(qexec->key.hash_key.segid), seg_cpu_sum);
-	}
+        *seg_cpu_sum += pqe->cpu_elapsed;
+        TR2(("(SKEW) Iterator data for seg %d.  CPU Elapsed: %" FMT64 "\n",
+             pqe->qexec.key.segid, pqe->cpu_elapsed));
+        apr_hash_set(segtab, &pqe->qexec.key.segid,
+                     sizeof(pqe->qexec.key.segid), seg_cpu_sum);
+    }
 
     /* Calc mean across all segments */
     for (hi = apr_hash_first(NULL, segtab); hi; hi = apr_hash_next(hi))
     {
         apr_hash_this(hi, 0, 0, &valptr);
-        seg_cpu_sum = (apr_int64_t*) valptr;
+	seg_cpu_sum = (apr_int64_t*) valptr;
         cpu_avg += *seg_cpu_sum;
         TR2(("(SKEW) Segment rusage: %d\n", *seg_cpu_sum));
         segcnt++;
@@ -1292,7 +1173,7 @@ static double get_cpu_skew(qdnode_t* qdnode)
         apr_int64_t dev = 0;
 
         apr_hash_this(hi, NULL, NULL, &valptr);
-        seg_cpu_sum = (apr_int64_t*) valptr;
+	seg_cpu_sum = (apr_int64_t*) valptr;
         dev = *seg_cpu_sum - cpu_avg;
         TR2(("(SKEW) Deviation: %d\n", dev));
         var += dev * dev;
@@ -1315,6 +1196,8 @@ static double get_row_skew(qdnode_t* qdnode)
     apr_pool_t* tmp_pool;
     apr_hash_t* segtab;
     apr_hash_index_t *hi;
+
+    qenode_t* pqe = NULL;
 
     apr_int64_t row_out_avg = 0;
     apr_int64_t* seg_row_out_sum = NULL;
@@ -1341,36 +1224,33 @@ static double get_row_skew(qdnode_t* qdnode)
         return 0.0f;
 	}
 
-	/* Calc rows in sum per segment */
-	TR2( ("Calc rows in sum  per segment\n"));
-	for (hi = apr_hash_first(NULL, qdnode->qexec_hash); hi; hi = apr_hash_next(hi))
-	{
-		mmon_qexec_t* qexec;
-		apr_hash_this(hi, 0, 0, &valptr);
-		qexec = (mmon_qexec_t*) valptr;
+    /* Calc rows in sum per segment */
+    for (pqe = qdnode->qenode_list; pqe; pqe = pqe->next)
+    {
+        /* Skip QD */
+        if (pqe->qexec.key.segid == -1)
+            continue;
 
-		/* Skip QD */
-		if (qexec->key.hash_key.segid == -1)
-			continue;
+        seg_row_out_sum = apr_hash_get(segtab, &pqe->qexec.key.segid,
+                                   sizeof(pqe->qexec.key.segid));
 
-		seg_row_out_sum = apr_hash_get(segtab, &qexec->key.hash_key.segid, sizeof(qexec->key.hash_key.segid));
+        if (!seg_row_out_sum) {
+            seg_row_out_sum = apr_palloc(tmp_pool, sizeof(apr_int64_t));
+            *seg_row_out_sum = 0;
+        }
 
-		if (!seg_row_out_sum) {
-			seg_row_out_sum = apr_palloc(tmp_pool, sizeof(apr_int64_t));
-			*seg_row_out_sum = 0;
-		}
-
-		*seg_row_out_sum += qexec->measures_rows_in;
-		TR2(("(SKEW) Iterator data for seg %d.  Rows out: %" FMT64 "\n", qexec->key.hash_key.segid, qexec->rowsout));
-		apr_hash_set(segtab, &qexec->key.hash_key.segid, sizeof(qexec->key.hash_key.segid), seg_row_out_sum);
-	}
-
+        *seg_row_out_sum += pqe->qexec.measures[GPMON_QEXEC_M_ROWSIN];
+        TR2(("(SKEW) Iterator data for seg %d.  Rows out: %" FMT64 "\n",
+             pqe->qexec.key.segid, pqe->qexec.rowsout));
+        apr_hash_set(segtab, &pqe->qexec.key.segid,
+                     sizeof(pqe->qexec.key.segid), seg_row_out_sum);
+    }
 
     /* Calc rows in mean across all segments */
     for (hi = apr_hash_first(NULL, segtab); hi; hi = apr_hash_next(hi))
     {
         apr_hash_this(hi, 0, 0, &valptr);
-        seg_row_out_sum = (apr_int64_t*) valptr;
+	seg_row_out_sum = (apr_int64_t*) valptr;
         row_out_avg += *seg_row_out_sum;
         segcnt++;
     }

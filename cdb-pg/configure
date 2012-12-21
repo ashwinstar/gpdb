@@ -634,8 +634,6 @@ PTHREAD_CC
 acx_pthread_config
 LIBOBJS
 HAVE_IPV6
-RSA_BSAFE_STATIC_LIBS
-RSA_BSAFE_DY_LIBS
 CURL_LIBS
 CURL_CFLAGS
 CURL_CONFIG
@@ -4323,34 +4321,6 @@ $as_echo "no" >&6; }
 fi
 rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
 
-  # Disable FP optimizations that cause various errors on gcc 4.5+ or maybe 4.6+
-  { $as_echo "$as_me:${as_lineno-$LINENO}: checking if $CC supports -fexcess-precision=standard" >&5
-$as_echo_n "checking if $CC supports -fexcess-precision=standard... " >&6; }
-pgac_save_CFLAGS=$CFLAGS
-CFLAGS="$pgac_save_CFLAGS -fexcess-precision=standard"
-cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-
-int
-main ()
-{
-
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_compile "$LINENO"; then :
-  { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
-$as_echo "yes" >&6; }
-else
-  CFLAGS="$pgac_save_CFLAGS"
-                    { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
-$as_echo "no" >&6; }
-fi
-rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
-
-  # Disable this check for gcc 4.6, until we clean up the code.
-  # PGAC_PROG_CC_CFLAGS_OPT([-Wno-unused-but-set-variable])
 elif test "$ICC" = yes; then
   # Intel's compiler has a bug/misoptimization in checking for
   # division by NAN (NaN == 0), -mp1 fixes it, so add it to the CFLAGS.
@@ -4690,7 +4660,7 @@ _ACEOF
 
 
 if `echo "$GP_VERSION" | grep "main build" > /dev/null 2>&1` ; then
-   GP_VERSION="5.0.0"
+   GP_VERSION="4.2.0"
 fi
 
 GP_MAJORVERSION=`expr "$GP_VERSION" : '\([0-9][0-9]*\.[0-9][0-9]*\)'`
@@ -5786,7 +5756,7 @@ fi
 #
 
 # Assume system is ELF if it predefines __ELF__ as 1,
-# otherwise believe host_os based default.
+# otherwise believe host_os based default.PostgreSQL
 case $host_os in
     freebsd1*|freebsd2*) elf=no;;
     freebsd3*|freebsd4*) elf=yes;;
@@ -9008,6 +8978,238 @@ if test "$ac_res" != no; then :
 fi
 
 
+# Check for f2c, needed by blas and lapack
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for library containing c_cos" >&5
+$as_echo_n "checking for library containing c_cos... " >&6; }
+if ${ac_cv_search_c_cos+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_func_search_save_LIBS=$LIBS
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+/* Override any GCC internal prototype to avoid an error.
+   Use char because int might match the return type of a GCC
+   builtin and then its argument prototype would still apply.  */
+#ifdef __cplusplus
+extern "C"
+#endif
+char c_cos ();
+int
+main ()
+{
+return c_cos ();
+  ;
+  return 0;
+}
+_ACEOF
+for ac_lib in '' f2c; do
+  if test -z "$ac_lib"; then
+    ac_res="none required"
+  else
+    ac_res=-l$ac_lib
+    LIBS="-l$ac_lib  $ac_func_search_save_LIBS"
+  fi
+  if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_search_c_cos=$ac_res
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext
+  if ${ac_cv_search_c_cos+:} false; then :
+  break
+fi
+done
+if ${ac_cv_search_c_cos+:} false; then :
+
+else
+  ac_cv_search_c_cos=no
+fi
+rm conftest.$ac_ext
+LIBS=$ac_func_search_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_search_c_cos" >&5
+$as_echo "$ac_cv_search_c_cos" >&6; }
+ac_res=$ac_cv_search_c_cos
+if test "$ac_res" != no; then :
+  test "$ac_res" = "none required" || LIBS="$ac_res $LIBS"
+
+fi
+
+
+# Check for blas, needed by lappack
+# On some platforms (Solaris), there is an f2c_ prefix on all blas functions
+# On others, (OSX), there is not.   Try both ways
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for library containing f2c_sgemm" >&5
+$as_echo_n "checking for library containing f2c_sgemm... " >&6; }
+if ${ac_cv_search_f2c_sgemm+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_func_search_save_LIBS=$LIBS
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+/* Override any GCC internal prototype to avoid an error.
+   Use char because int might match the return type of a GCC
+   builtin and then its argument prototype would still apply.  */
+#ifdef __cplusplus
+extern "C"
+#endif
+char f2c_sgemm ();
+int
+main ()
+{
+return f2c_sgemm ();
+  ;
+  return 0;
+}
+_ACEOF
+for ac_lib in '' blas; do
+  if test -z "$ac_lib"; then
+    ac_res="none required"
+  else
+    ac_res=-l$ac_lib
+    LIBS="-l$ac_lib  $ac_func_search_save_LIBS"
+  fi
+  if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_search_f2c_sgemm=$ac_res
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext
+  if ${ac_cv_search_f2c_sgemm+:} false; then :
+  break
+fi
+done
+if ${ac_cv_search_f2c_sgemm+:} false; then :
+
+else
+  ac_cv_search_f2c_sgemm=no
+fi
+rm conftest.$ac_ext
+LIBS=$ac_func_search_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_search_f2c_sgemm" >&5
+$as_echo "$ac_cv_search_f2c_sgemm" >&6; }
+ac_res=$ac_cv_search_f2c_sgemm
+if test "$ac_res" != no; then :
+  test "$ac_res" = "none required" || LIBS="$ac_res $LIBS"
+
+fi
+
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for library containing sgemm" >&5
+$as_echo_n "checking for library containing sgemm... " >&6; }
+if ${ac_cv_search_sgemm+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_func_search_save_LIBS=$LIBS
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+/* Override any GCC internal prototype to avoid an error.
+   Use char because int might match the return type of a GCC
+   builtin and then its argument prototype would still apply.  */
+#ifdef __cplusplus
+extern "C"
+#endif
+char sgemm ();
+int
+main ()
+{
+return sgemm ();
+  ;
+  return 0;
+}
+_ACEOF
+for ac_lib in '' blas; do
+  if test -z "$ac_lib"; then
+    ac_res="none required"
+  else
+    ac_res=-l$ac_lib
+    LIBS="-l$ac_lib  $ac_func_search_save_LIBS"
+  fi
+  if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_search_sgemm=$ac_res
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext
+  if ${ac_cv_search_sgemm+:} false; then :
+  break
+fi
+done
+if ${ac_cv_search_sgemm+:} false; then :
+
+else
+  ac_cv_search_sgemm=no
+fi
+rm conftest.$ac_ext
+LIBS=$ac_func_search_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_search_sgemm" >&5
+$as_echo "$ac_cv_search_sgemm" >&6; }
+ac_res=$ac_cv_search_sgemm
+if test "$ac_res" != no; then :
+  test "$ac_res" = "none required" || LIBS="$ac_res $LIBS"
+
+fi
+
+
+# Check for lapack
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for library containing dgesdd_" >&5
+$as_echo_n "checking for library containing dgesdd_... " >&6; }
+if ${ac_cv_search_dgesdd_+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_func_search_save_LIBS=$LIBS
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+/* Override any GCC internal prototype to avoid an error.
+   Use char because int might match the return type of a GCC
+   builtin and then its argument prototype would still apply.  */
+#ifdef __cplusplus
+extern "C"
+#endif
+char dgesdd_ ();
+int
+main ()
+{
+return dgesdd_ ();
+  ;
+  return 0;
+}
+_ACEOF
+for ac_lib in '' lapack; do
+  if test -z "$ac_lib"; then
+    ac_res="none required"
+  else
+    ac_res=-l$ac_lib
+    LIBS="-l$ac_lib  $ac_func_search_save_LIBS"
+  fi
+  if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_search_dgesdd_=$ac_res
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext
+  if ${ac_cv_search_dgesdd_+:} false; then :
+  break
+fi
+done
+if ${ac_cv_search_dgesdd_+:} false; then :
+
+else
+  ac_cv_search_dgesdd_=no
+fi
+rm conftest.$ac_ext
+LIBS=$ac_func_search_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_search_dgesdd_" >&5
+$as_echo "$ac_cv_search_dgesdd_" >&6; }
+ac_res=$ac_cv_search_dgesdd_
+if test "$ac_res" != no; then :
+  test "$ac_res" = "none required" || LIBS="$ac_res $LIBS"
+
+fi
+
+
 # Check for net-snmp
 if test "$enable_snmp" = yes ; then
 	{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for netsnmp_ds_set_string in -lnetsnmp" >&5
@@ -9112,112 +9314,6 @@ else
 fi
 
 fi
-
-# RSA BSAFE crypto-C ME library. We don't want this added to $LIBS.
-pgac_save_LIBS="$LIBS"
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for R_LIB_CTX_new in -lccme_core" >&5
-$as_echo_n "checking for R_LIB_CTX_new in -lccme_core... " >&6; }
-if ${ac_cv_lib_ccme_core_R_LIB_CTX_new+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  ac_check_lib_save_LIBS=$LIBS
-LIBS="-lccme_core  $LIBS"
-cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-
-/* Override any GCC internal prototype to avoid an error.
-   Use char because int might match the return type of a GCC
-   builtin and then its argument prototype would still apply.  */
-#ifdef __cplusplus
-extern "C"
-#endif
-char R_LIB_CTX_new ();
-int
-main ()
-{
-return R_LIB_CTX_new ();
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_link "$LINENO"; then :
-  ac_cv_lib_ccme_core_R_LIB_CTX_new=yes
-else
-  ac_cv_lib_ccme_core_R_LIB_CTX_new=no
-fi
-rm -f core conftest.err conftest.$ac_objext \
-    conftest$ac_exeext conftest.$ac_ext
-LIBS=$ac_check_lib_save_LIBS
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_ccme_core_R_LIB_CTX_new" >&5
-$as_echo "$ac_cv_lib_ccme_core_R_LIB_CTX_new" >&6; }
-if test "x$ac_cv_lib_ccme_core_R_LIB_CTX_new" = xyes; then :
-  cat >>confdefs.h <<_ACEOF
-#define HAVE_LIBCCME_CORE 1
-_ACEOF
-
-  LIBS="-lccme_core $LIBS"
-
-fi
-
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for R_PROV_FIPS140_self_tests_full in -lccme_fipsprov" >&5
-$as_echo_n "checking for R_PROV_FIPS140_self_tests_full in -lccme_fipsprov... " >&6; }
-if ${ac_cv_lib_ccme_fipsprov_R_PROV_FIPS140_self_tests_full+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  ac_check_lib_save_LIBS=$LIBS
-LIBS="-lccme_fipsprov  $LIBS"
-cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-
-/* Override any GCC internal prototype to avoid an error.
-   Use char because int might match the return type of a GCC
-   builtin and then its argument prototype would still apply.  */
-#ifdef __cplusplus
-extern "C"
-#endif
-char R_PROV_FIPS140_self_tests_full ();
-int
-main ()
-{
-return R_PROV_FIPS140_self_tests_full ();
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_link "$LINENO"; then :
-  ac_cv_lib_ccme_fipsprov_R_PROV_FIPS140_self_tests_full=yes
-else
-  ac_cv_lib_ccme_fipsprov_R_PROV_FIPS140_self_tests_full=no
-fi
-rm -f core conftest.err conftest.$ac_objext \
-    conftest$ac_exeext conftest.$ac_ext
-LIBS=$ac_check_lib_save_LIBS
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_ccme_fipsprov_R_PROV_FIPS140_self_tests_full" >&5
-$as_echo "$ac_cv_lib_ccme_fipsprov_R_PROV_FIPS140_self_tests_full" >&6; }
-if test "x$ac_cv_lib_ccme_fipsprov_R_PROV_FIPS140_self_tests_full" = xyes; then :
-  cat >>confdefs.h <<_ACEOF
-#define HAVE_LIBCCME_FIPSPROV 1
-_ACEOF
-
-  LIBS="-lccme_fipsprov $LIBS"
-
-fi
-
-
-if test "$ac_cv_lib_ccme_core_R_LIB_CTX_new" = yes ; then
-	if test "$ac_cv_lib_ccme_fipsprov_R_PROV_FIPS140_self_tests_full" = yes ; then
-
-$as_echo "#define HAVE_RSA_BSAFE_FIPS 1" >>confdefs.h
-
-		RSA_BSAFE_DY_LIBS="-lccme_core -lccme_fipsprov"
-		RSA_BSAFE_STATIC_LIBS="$LIBRARY_DIRS/libccme_core.a $LIBRARY_DIRS/libccme_fipsprov.a"
-	fi
-fi
-
-
-LIBS="$pgac_save_LIBS"
 
 ##
 ## Header files
@@ -11130,7 +11226,6 @@ fi
 cat >>confdefs.h <<_ACEOF
 #define HAVE_DECL_STRLCAT $ac_have_decl
 _ACEOF
-
 ac_fn_c_check_decl "$LINENO" "strlcpy" "ac_cv_have_decl_strlcpy" "$ac_includes_default"
 if test "x$ac_cv_have_decl_strlcpy" = xyes; then :
   ac_have_decl=1
@@ -11417,19 +11512,6 @@ else
   case " $LIBOBJS " in
   *" inet_aton.$ac_objext "* ) ;;
   *) LIBOBJS="$LIBOBJS inet_aton.$ac_objext"
- ;;
-esac
-
-fi
-
-ac_fn_c_check_func "$LINENO" "memmem" "ac_cv_func_memmem"
-if test "x$ac_cv_func_memmem" = xyes; then :
-  $as_echo "#define HAVE_MEMMEM 1" >>confdefs.h
-
-else
-  case " $LIBOBJS " in
-  *" memmem.$ac_objext "* ) ;;
-  *) LIBOBJS="$LIBOBJS memmem.$ac_objext"
  ;;
 esac
 

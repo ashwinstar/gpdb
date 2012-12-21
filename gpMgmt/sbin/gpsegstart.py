@@ -129,8 +129,7 @@ class GpSegStart:
     Logic to start segment servers on this host.
     """
 
-    def __init__(self, dblist, gpversion, collation, mirroringMode, num_cids, era, 
-                 timeout, pickledTransitionData, specialMode, wrapper, wrapper_args):
+    def __init__(self, dblist, gpversion, collation, mirroringMode, num_cids, timeout, pickledTransitionData, specialMode, wrapper, wrapper_args):
 
         # validate/store arguments
         #
@@ -151,7 +150,6 @@ class GpSegStart:
 
         self.mirroringMode         = mirroringMode
         self.num_cids              = num_cids
-        self.era                   = era
         self.timeout               = timeout
         self.pickledTransitionData = pickledTransitionData
 
@@ -233,7 +231,6 @@ class GpSegStart:
             cmd = gp.SegmentStart("Starting seg at dir %s" % datadir, 
                                   seg,
                                   self.num_cids,
-                                  self.era,
                                   self.mirroringMode,
                                   noWait=(self.mirroringMode == 'quiescent'),
                                   timeout=self.timeout,
@@ -281,7 +278,7 @@ class GpSegStart:
             # (look for the protocol message type PRIMARY_MIRROR_TRANSITION_REQUEST_CODE )
             #
             port = seg.getSegmentPort()
-            cmd  = gp.SendSegmentTransitionMessage.buildTransitionMessageCommand(transitionData, datadir, port)
+            cmd  = gp.SendFilerepTransitionMessage.buildTransitionMessageCommand(transitionData, datadir, port)
 
             self.pool.addCommand(cmd)
         self.pool.join()
@@ -305,7 +302,7 @@ class GpSegStart:
             stderrFromFailure = res.stderr.replace("\n", " ").strip()
             shouldStop = False
 
-            if res.rc == gp.SendSegmentTransitionMessage.TRANSITION_ERRCODE_ERROR_SERVER_DID_NOT_RETURN_DATA:
+            if res.rc == gp.SendFilerepTransitionMessage.TRANSITION_ERRCODE_ERROR_SERVER_DID_NOT_RETURN_DATA:
                 msg        = "Segment did not respond to startup request; check segment logfile"
                 reasoncode = gp.SEGSTART_ERROR_SERVER_DID_NOT_RESPOND
 
@@ -332,7 +329,7 @@ class GpSegStart:
                 reasoncode = gp.SEGSTART_ERROR_SERVER_IS_IN_SHUTDOWN
 
             else:
-                if res.rc == gp.SendSegmentTransitionMessage.TRANSITION_ERRCODE_ERROR_SOCKET:
+                if res.rc == gp.SendFilerepTransitionMessage.TRANSITION_ERRCODE_ERROR_SOCKET:
 
                     # Couldn't connect to server to do transition or got another problem
                     # communicating, must make sure it's halted!
@@ -519,9 +516,10 @@ class GpSegStart:
         parser.add_option("-D", "--dblist", dest="dblist", action="append", type="string")
         parser.add_option("-M", "--mirroringmode", dest="mirroringMode", type="string")
         parser.add_option("-p", "--pickledTransitionData", dest="pickledTransitionData", type="string")
-        parser.add_option("-V", "--gp-version", dest="gpversion", metavar="GP_VERSION", help="expected software version")
-        parser.add_option("-n", "--numsegments", dest="num_cids", help="number of distinct content ids in cluster")
-        parser.add_option("", "--era", dest="era", help="master era")
+        parser.add_option("-V", "--gp-version", dest="gpversion", metavar="GP_VERSION",
+                            help="expected software version")
+        parser.add_option("-n", "--numsegments", dest="num_cids",
+                          help="number of distinct content ids in cluster")
         parser.add_option("-t", "--timeout", dest="timeout", type="int", default=gp.SEGMENT_TIMEOUT_DEFAULT,
                           help="seconds to wait")
         parser.add_option('-U', '--specialMode', type='choice', choices=['upgrade', 'maintenance'],
@@ -542,7 +540,6 @@ class GpSegStart:
                           options.collation,
                           options.mirroringMode,
                           options.num_cids,
-                          options.era,
                           options.timeout,
                           options.pickledTransitionData,
                           options.specialMode,

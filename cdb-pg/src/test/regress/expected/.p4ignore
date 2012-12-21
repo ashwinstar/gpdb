@@ -18,9 +18,3 @@ filespace.out
 gpcheckmirrorseg.out
 upgrade.out
 auth_constraint.out
-basic_fuzzystrmatch.out
-catversion.out
-custom_format.out
-table_functions.out
-tidycat2.out
-caql.out

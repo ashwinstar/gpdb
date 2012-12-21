@@ -16,11 +16,6 @@ from gppylib.operations.utils import RemoteOperation, ParallelOperation
 
 logger = gplog.get_default_logger()
 
-# MPP-15307
-# DUMP_DATE dictates the db_dumps/ subdirectory to which gpcrondump will dump.
-# It is computed just once to ensure different pieces of logic herein operate on the same subdirectory.
-DUMP_DATE = datetime.now().strftime("%Y%m%d")
-
 DUMP_DIR = 'db_dumps'
 GLOBAL_PREFIX = 'gp_global_1_1_'
 MASTER_DBDUMP_PREFIX = 'gp_dump_1_1_'
@@ -34,13 +29,11 @@ INJECT_GP_DUMP_FAILURE = None
 class DumpDatabase(Operation):
     # TODO: very verbose constructor = room for improvement. in the parent constructor, we could use kwargs
     # to automatically take in all arguments and perhaps do some data type validation.
-    def __init__(self, dump_database, dump_schema, include_dump_tables, exclude_dump_tables, include_dump_tables_file, exclude_dump_tables_file, backup_dir, report_dir, free_space_percent, compress, clear_catalog_dumps, encoding, output_options, batch_default, master_datadir, master_port, ddboost):
+    def __init__(self, dump_database, dump_schema, include_dump_tables, exclude_dump_tables, backup_dir, report_dir, free_space_percent, compress, clear_catalog_dumps, encoding, output_options, batch_default, master_datadir, master_port, ddboost):
         self.dump_database = dump_database
         self.dump_schema = dump_schema
         self.include_dump_tables = include_dump_tables
         self.exclude_dump_tables = exclude_dump_tables
-        self.include_dump_tables_file = include_dump_tables_file,
-        self.exclude_dump_tables_file = exclude_dump_tables_file,
         self.backup_dir = backup_dir
         self.report_dir = report_dir
         self.free_space_percent = free_space_percent
@@ -57,8 +50,6 @@ class DumpDatabase(Operation):
                                                         dump_schema = self.dump_schema,
                                                         include_dump_tables = self.include_dump_tables,
                                                         exclude_dump_tables = self.exclude_dump_tables,
-                                                        include_dump_tables_file = self.include_dump_tables_file[0],
-                                                        exclude_dump_tables_file = self.exclude_dump_tables_file[0],
                                                         backup_dir = self.backup_dir,
                                                         report_dir = self.report_dir,
                                                         free_space_percent = self.free_space_percent,
@@ -67,14 +58,15 @@ class DumpDatabase(Operation):
                                                         master_datadir = self.master_datadir,
                                                         master_port = self.master_port).run()
 
+        dump_date = datetime.now().strftime("%Y%m%d")
         if self.backup_dir is not None:
-            dump_path = os.path.join(self.backup_dir, DUMP_DIR, DUMP_DATE) 
+            dump_path = os.path.join(self.backup_dir, DUMP_DIR, dump_date) 
         else:
-            dump_path = os.path.join(DUMP_DIR, DUMP_DATE)
+            dump_path = os.path.join(DUMP_DIR, dump_date)
         if self.report_dir is not None:
-            report_path = os.path.join(self.report_dir, DUMP_DIR, DUMP_DATE)
+            report_path = os.path.join(self.report_dir, DUMP_DIR, dump_date)
         else:
-            report_path = os.path.join(self.master_datadir, DUMP_DIR, DUMP_DATE)
+            report_path = os.path.join(self.master_datadir, DUMP_DIR, dump_date)
         dump_line = "gp_dump -p %d -U %s --gp-d=%s --gp-r=%s --gp-s=p" % (self.master_port, getUserName(), dump_path, report_path) 
         if self.ddboost:
             dump_line += " --ddboost"
@@ -105,10 +97,6 @@ class DumpDatabase(Operation):
             schema, table = dump_table.split('.')
             dump_line += " --exclude-table=\"\\\"%s\\\"\".\"\\\"%s\\\"\"" % (schema, table)
             #dump_line += " --exclude-table=\"%s\".\"%s\"" % (schema, table)
-        if self.include_dump_tables_file[0] is not None:
-            dump_line += " --table-file=%s" % self.include_dump_tables_file
-        if self.exclude_dump_tables_file[0] is not None:
-            dump_line += " --exclude-table-file=%s" % self.exclude_dump_tables_file
         for opt in self.output_options:
             dump_line += " %s" % opt
         logger.info("Dump command line %s" % dump_line)
@@ -143,8 +131,9 @@ class PostDumpDatabase(Operation):
         self.ddboost = ddboost
     def execute(self):
         # First, get timestamp from .rpt file
+        dump_date = datetime.now().strftime("%Y%m%d")
         path = self.report_dir if self.report_dir is not None else self.master_datadir
-        path = os.path.join(path, DUMP_DIR, DUMP_DATE)
+        path = os.path.join(path, DUMP_DIR, dump_date)
         reports = ListFilesByPattern(path, "gp_dump_*.rpt").run()
         if not reports:
             logger.error("Could not locate a report file on master.")
@@ -164,7 +153,7 @@ class PostDumpDatabase(Operation):
 
         # Check master dumps
         path = self.backup_dir if self.backup_dir is not None else self.master_datadir
-        path = os.path.join(path, DUMP_DIR, DUMP_DATE)
+        path = os.path.join(path, DUMP_DIR, timestamp[0:8])
         status_file = os.path.join(path, "%s%s" % (MASTER_STATUS_PREFIX, timestamp))
         dump_file = os.path.join(path, "%s%s" % (MASTER_DBDUMP_PREFIX, timestamp))
         if self.compress: dump_file += ".gz"
@@ -189,7 +178,7 @@ class PostDumpDatabase(Operation):
         segs = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary(current_role=True)]
         for seg in segs:
             path = self.backup_dir if self.backup_dir is not None else seg.getSegmentDataDirectory()
-            path = os.path.join(path, DUMP_DIR, DUMP_DATE)
+            path = os.path.join(path, DUMP_DIR, timestamp[0:8])
             status_file = os.path.join(path, "%s%d_%s" % (SEG_STATUS_PREFIX, seg.getSegmentDbId(), timestamp))
             dump_file = os.path.join(path, "%s%d_%s" % (SEG_DBDUMP_PREFIX, seg.getSegmentDbId(), timestamp))   
             if self.compress: dump_file += ".gz"
@@ -253,15 +242,11 @@ class NoDumpFile(Exception): pass
 
 
 class ValidateDumpDatabase(Operation):
-    def __init__(self, dump_database, dump_schema, include_dump_tables, exclude_dump_tables, 
-                 include_dump_tables_file, exclude_dump_tables_file, backup_dir, report_dir, 
-                 free_space_percent, compress, batch_default, master_datadir, master_port):
+    def __init__(self, dump_database, dump_schema, include_dump_tables, exclude_dump_tables, backup_dir, report_dir, free_space_percent, compress, batch_default, master_datadir, master_port):
         self.dump_database = dump_database
         self.dump_schema = dump_schema
         self.include_dump_tables = include_dump_tables
         self.exclude_dump_tables = exclude_dump_tables
-        self.include_dump_tables_file = include_dump_tables_file
-        self.exclude_dump_tables_file = exclude_dump_tables_file
         self.backup_dir = backup_dir
         self.report_dir = report_dir
         self.free_space_percent = free_space_percent
@@ -290,8 +275,6 @@ class ValidateDumpDatabase(Operation):
                                                        dump_schema = self.dump_schema,
                                                        include_dump_tables = self.include_dump_tables,
                                                        exclude_dump_tables = self.exclude_dump_tables,
-                                                       include_dump_tables_file = self.include_dump_tables_file,
-                                                       exclude_dump_tables_file = self.exclude_dump_tables_file,
                                                        master_port = self.master_port).run()
 
         if self.free_space_percent is not None:
@@ -364,18 +347,25 @@ class ValidateSegDiskSpace(Operation):
             conn = dbconn.connect(dburl, utility=True)
             if self.include_dump_tables:
                 for dump_table in self.include_dump_tables:
-                    needed_space += execSQLForSingleton(conn, "SELECT pg_relation_size('%s')/1024;" % dump_table)
+                    schema, table = dump_table.split('.')
+                    needed_space += execSQLForSingleton(conn, "select sotdsize/1024 from gp_toolkit.gp_size_of_table_disk where sotdschemaname='%s' and sotdtablename='%s';" % (schema, table))
             else:
-                needed_space = execSQLForSingleton(conn, "SELECT pg_database_size('%s')/1024;" % self.dump_database)
+                needed_space = execSQLForSingleton(conn, "select sodddatsize/1024 from gp_toolkit.gp_size_of_database where sodddatname='%s';" % self.dump_database)
+        except UnexpectedRowsError, e:
+            logger.exception("Disk space queries have failed. Cannot estimate disk space needed for dump.")
+            raise ExceptionNoStackTraceNeeded("Cannot estimate disk space needed for dump. Use -b to override this check.")
         finally:
             if conn is not None:
                 conn.close()
         if self.compress:
             needed_space = needed_space / COMPRESSION_FACTOR
-        
-        # get free available space
-        stat_res = os.statvfs(self.datadir);
-        free_space = (stat_res.f_bavail * stat_res.f_frsize) / 1024
+
+        cmd = Command('Querying free disk space',
+                      'df -k %s' % self.datadir)
+        cmd.run()
+        lines = cmd.get_results().stdout.split('\n')
+        columns = lines[1].split()
+        free_space = int(columns[3])
 
         if free_space == 0 or (free_space - needed_space) / free_space < self.free_space_percent / 100:
             logger.error("Disk space: [Need: %dK, Free %dK]" % (needed_space, free_space))
@@ -468,10 +458,12 @@ class ValidateAllDumpDirs(Operation):
 
 
 class ValidateDumpDirs(Operation):
+    # TODO: go one level deeper with dump_date
     def __init__(self, dir):
         self.dir = dir
     def execute(self):
-        path = os.path.join(self.dir, DUMP_DIR, DUMP_DATE)
+        dump_date = datetime.now().strftime("%Y%m%d")
+        path = os.path.join(self.dir, DUMP_DIR, dump_date)
         exists = CheckDir(path).run()
         if exists:
             logger.info("Directory %s exists" % path)
@@ -496,32 +488,26 @@ class DumpDirNotWritable(Exception): pass
 
 
 class ValidateDumpTargets(Operation):
-    def __init__(self, dump_database, dump_schema, include_dump_tables, exclude_dump_tables, 
-                 include_dump_tables_file, exclude_dump_tables_file, master_port):
+    def __init__(self, dump_database, dump_schema, include_dump_tables, exclude_dump_tables, master_port):
         self.dump_database = dump_database
         self.dump_schema = dump_schema
         self.include_dump_tables = include_dump_tables
         self.exclude_dump_tables = exclude_dump_tables
-        self.include_dump_tables_file = include_dump_tables_file
-        self.exclude_dump_tables_file = exclude_dump_tables_file
         self.master_port = master_port
     def execute(self):
-        if ((len(self.include_dump_tables) > 0 or (self.include_dump_tables_file is not None)) and 
-            (len(self.exclude_dump_tables) > 0 or (self.exclude_dump_tables_file is not None))):
-            raise ExceptionNoStackTraceNeeded("Cannot use -t/--table-file and -T/--exclude-table-file options at same time")
-        elif len(self.include_dump_tables) > 0 or self.include_dump_tables_file is not None:
+        if len(self.include_dump_tables) > 0 and len(self.exclude_dump_tables) > 0:
+            raise ExceptionNoStackTraceNeeded("Cannot use -t and -T options at same time")
+        elif len(self.include_dump_tables) > 0:
             logger.info("Configuring for single-database, include-table dump")
             ValidateIncludeTargets(dump_database = self.dump_database,
                                    dump_schema = self.dump_schema,
                                    include_dump_tables = self.include_dump_tables,
-                                   include_dump_tables_file = self.include_dump_tables_file,
                                    master_port = self.master_port).run()
-        elif len(self.exclude_dump_tables) > 0 or self.exclude_dump_tables_file is not None:
+        elif len(self.exclude_dump_tables) > 0:
             logger.info("Configuring for single-database, exclude-table dump")
             self.exclude_dump_tables = ValidateExcludeTargets(dump_database = self.dump_database,
                                                               dump_schema = self.dump_schema,
                                                               exclude_dump_tables = self.exclude_dump_tables,
-                                                              exclude_dump_tables_file = self.exclude_dump_tables_file,
                                                               master_port = self.master_port).run()
         else:
             logger.info("Configuring for single database dump")
@@ -530,27 +516,13 @@ class ValidateDumpTargets(Operation):
 
 
 class ValidateIncludeTargets(Operation):
-    def __init__(self, dump_database, dump_schema, include_dump_tables, include_dump_tables_file, master_port):
+    def __init__(self, dump_database, dump_schema, include_dump_tables, master_port):
         self.dump_database = dump_database
         self.dump_schema = dump_schema
         self.include_dump_tables = include_dump_tables
-        self.include_dump_tables_file = include_dump_tables_file
         self.master_port = master_port
     def execute(self):
-        
-        dump_tables = []
         for dump_table in self.include_dump_tables:
-            dump_tables.append(dump_table)
-                
-        if self.include_dump_tables_file is not None:
-            include_file = open(self.include_dump_tables_file, 'rU')   
-            if not include_file:
-                raise ExceptionNoStackTraceNeeded("Can't open file %s" % include_dump_tables_file);
-            for line in include_file:
-                dump_tables.append(line.strip('\n'));
-            include_file.close()
-     
-        for dump_table in dump_tables:
             if '.' not in dump_table:
                 raise ExceptionNoStackTraceNeeded("No schema name supplied for table %s" % dump_table)
             schema, table = dump_table.split('.')
@@ -569,28 +541,14 @@ class ValidateIncludeTargets(Operation):
 
 
 class ValidateExcludeTargets(Operation):
-    def __init__(self, dump_database, dump_schema, exclude_dump_tables, exclude_dump_tables_file, master_port):
+    def __init__(self, dump_database, dump_schema, exclude_dump_tables, master_port):
         self.dump_database = dump_database
         self.dump_schema = dump_schema
         self.exclude_dump_tables = exclude_dump_tables
-        self.exclude_dump_tables_file = exclude_dump_tables_file
         self.master_port = master_port
     def execute(self):
         rebuild_excludes = []
-        
-        dump_tables = []
         for dump_table in self.exclude_dump_tables:
-            dump_tables.append(dump_table)
-                 
-        if self.exclude_dump_tables_file is not None:
-            exclude_file = open(self.exclude_dump_tables_file, 'rU')   
-            if not exclude_file:
-                raise ExceptionNoStackTraceNeeded("Can't open file %s" % exclude_dump_tables_file);
-            for line in exclude_file:
-                dump_tables.append(line.strip('\n'));
-            exclude_file.close()
-        
-        for dump_table in dump_tables:
             if '.' not in dump_table:
                 raise ExceptionNoStackTraceNeeded("No schema name supplied for exclude table %s" % dump_table)   
             schema, table = dump_table.split('.')
@@ -642,7 +600,7 @@ class ValidateSchemaExists(Operation):
         try:
             dburl = dbconn.DbURL(port = self.master_port, dbname = self.database)
             conn = dbconn.connect(dburl)
-            count = execSQLForSingleton(conn, "select count(*) from pg_namespace where nspname='%s';" % self.schema)
+            count = execSQLForSingleton(conn, "select count(*) from pg_database where datname='%s';" % self.database)
             if count == 0:
                 raise ExceptionNoStackTraceNeeded("Schema %s does not exist in database %s." % (self.schema, self.database))
         finally:
@@ -743,14 +701,14 @@ class DumpGlobal(Operation):
     def execute(self):
         logger.info("Commencing pg_catalog dump")
         if self.backup_dir is not None:
-            global_file = os.path.join(self.backup_dir, DUMP_DIR, DUMP_DATE, "%s%s" % (GLOBAL_PREFIX, self.timestamp))
+            global_file = os.path.join(self.backup_dir, DUMP_DIR, self.timestamp[0:8], "%s%s" % (GLOBAL_PREFIX, self.timestamp))
         else:
-            global_file = os.path.join(self.master_datadir, DUMP_DIR, DUMP_DATE, "%s%s" % (GLOBAL_PREFIX, self.timestamp))
+            global_file = os.path.join(self.master_datadir, DUMP_DIR, self.timestamp[0:8], "%s%s" % (GLOBAL_PREFIX, self.timestamp))
         Command('Dump global objects', 
                 "pg_dumpall -g --gp-syntax > %s" % global_file).run(validateAfter=True)
         if self.ddboost:       
             abspath = global_file
-            relpath = os.path.join(DUMP_DIR, DUMP_DATE, "%s%s" % (GLOBAL_PREFIX, self.timestamp))
+            relpath = os.path.join(DUMP_DIR, self.timestamp[0:8], "%s%s" % (GLOBAL_PREFIX, self.timestamp))
             logger.debug('Copying %s to DDBoost' % abspath)
             cmd = Command('DDBoost copy of %s' % abspath, 
                           'gpddboost --copyToDDBoost --from-file=%s --to-file=%s' % (abspath, relpath))
@@ -761,24 +719,25 @@ class DumpGlobal(Operation):
 class DumpConfig(Operation):
     # TODO: Should we really just give up if one of the tars fails? 
     # TODO: WorkerPool
-    def __init__(self, backup_dir, master_datadir, master_port, ddboost):
+    def __init__(self, timestamp, backup_dir, master_datadir, master_port, ddboost):
+        self.timestamp = timestamp
         self.backup_dir = backup_dir
         self.master_datadir = master_datadir
         self.master_port = master_port
         self.ddboost = ddboost
     def execute(self):
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        config_backup_file = "gp_master_config_files_%s.tar" % timestamp
+        dump_date = self.timestamp[0:8]
+        config_backup_file = "gp_master_config_files_%s.tar" % self.timestamp
         if self.backup_dir is not None:
-            path = os.path.join(self.backup_dir, DUMP_DIR, DUMP_DATE, config_backup_file)
+            path = os.path.join(self.backup_dir, DUMP_DIR, dump_date, config_backup_file)
         else:
-            path = os.path.join(self.master_datadir, DUMP_DIR, DUMP_DATE, config_backup_file)
+            path = os.path.join(self.master_datadir, DUMP_DIR, dump_date, config_backup_file)
         logger.info("Dumping master config files")
         Command("Dumping master configuration files",
                 "tar cf %s %s/*.conf" % (path, self.master_datadir)).run(validateAfter=True)
         if self.ddboost:
             abspath = path
-            relpath = os.path.join(DUMP_DIR, DUMP_DATE, config_backup_file)
+            relpath = os.path.join(DUMP_DIR, dump_date, config_backup_file)
             logger.debug('Copying %s to DDBoost' % abspath)
             cmd = Command('DDBoost copy of %s' % abspath,
                           'gpddboost --copyToDDBoost --from-file=%s --to-file=%s' % (abspath, relpath))
@@ -788,11 +747,11 @@ class DumpConfig(Operation):
         gparray = GpArray.initFromCatalog(dbconn.DbURL(port = self.master_port), utility=True)
         primaries = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary(current_role=True)]
         for seg in primaries:
-            config_backup_file = "gp_segment_config_files_0_%d_%s.tar" % (seg.getSegmentDbId(), timestamp)
+            config_backup_file = "gp_segment_config_files_0_%d_%s.tar" % (seg.getSegmentDbId(), self.timestamp)
             if self.backup_dir is not None:
-                path = os.path.join(self.backup_dir, DUMP_DIR, DUMP_DATE, config_backup_file)
+                path = os.path.join(self.backup_dir, DUMP_DIR, dump_date, config_backup_file)
             else:
-                path = os.path.join(seg.getSegmentDataDirectory(), DUMP_DIR, DUMP_DATE, config_backup_file)
+                path = os.path.join(seg.getSegmentDataDirectory(), DUMP_DIR, dump_date, config_backup_file)
             host = seg.getSegmentHostName()
             Command("Dumping segment config files",
                     "tar cf %s %s/*.conf" % (path, seg.getSegmentDataDirectory()),
@@ -800,7 +759,7 @@ class DumpConfig(Operation):
                     remoteHost=host).run(validateAfter=True)
             if self.ddboost:
                 abspath = path
-                relpath = os.path.join(DUMP_DIR, DUMP_DATE, config_backup_file)
+                relpath = os.path.join(DUMP_DIR, dump_date, config_backup_file)
                 logger.debug('Copying %s to DDBoost' % abspath)
                 cmd = Command('DDBoost copy of %s' % abspath,
                               'gpddboost --copyToDDBoost --from-file=%s --to-file=%s' % (abspath, relpath),
@@ -832,7 +791,7 @@ class DeleteCurrentDump(Operation):
                 logger.warn("Error encountered during deletion of %s on %s" % (self.timestamp, seg.getSegmentHostName()))
 
         if self.ddboost:
-            relpath = os.path.join(DUMP_DIR, DUMP_DATE)
+            relpath = os.path.join(DUMP_DIR, self.timestamp[0:8])
             logger.debug('Listing %s on DDBoost to locate dump files with timestamp %s' % (relpath, self.timestamp))
             cmd = Command('DDBoost list dump files',
                           'gpddboost --listDirectory --dir=%s' % relpath)
@@ -854,7 +813,8 @@ class DeleteCurrentSegDump(Operation):
         self.timestamp = timestamp
         self.datadir = datadir
     def execute(self):
-        path = os.path.join(self.datadir, DUMP_DIR, DUMP_DATE)
+        dump_date = self.timestamp[0:8]
+        path = os.path.join(self.datadir, DUMP_DIR, dump_date)
         filenames = ListFilesByPattern(path, "*%s*" % self.timestamp).run()
         for filename in filenames:
             RemoveFile(os.path.join(path, filename)).run()
@@ -880,9 +840,10 @@ class DeleteOldestDumps(Operation):
             old_dates = cmd.get_results().stdout.splitlines()
         else:
             old_dates = ListFiles(os.path.join(self.master_datadir, DUMP_DIR)).run()
+        dump_date = datetime.now().strftime("%Y%m%d")
         try: 
-            old_dates.remove(DUMP_DATE)
-        except ValueError, e:            # DUMP_DATE was not found in old_dates
+            old_dates.remove(dump_date)
+        except ValueError, e:            # dump_date was not found in old_dates
             pass
         if len(old_dates) == 0:
             logger.info("No old backup sets to remove")

@@ -9,6 +9,4 @@ else
         echo "[FATAL]:-Cannot source greenplum_path.sh file!"
         exit 2
 fi
-
-
-exec gpcrondump.py $*
+gpcrondump.py $*

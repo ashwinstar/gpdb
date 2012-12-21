@@ -18,7 +18,6 @@
 #include "fmgr.h"
 #include "nodes/parsenodes.h"
 #include "executor/executor.h" /* for AttrMap */
-#include "utils/guc.h"
 
 /*
  *		Defined in adt/
@@ -85,7 +84,6 @@ extern Datum boolin(PG_FUNCTION_ARGS);
 extern Datum boolout(PG_FUNCTION_ARGS);
 extern Datum boolrecv(PG_FUNCTION_ARGS);
 extern Datum boolsend(PG_FUNCTION_ARGS);
-extern Datum textbool(PG_FUNCTION_ARGS);
 extern Datum booltext(PG_FUNCTION_ARGS);
 extern Datum booleq(PG_FUNCTION_ARGS);
 extern Datum boolne(PG_FUNCTION_ARGS);
@@ -359,6 +357,8 @@ extern Datum dtanh(PG_FUNCTION_ARGS);
 extern Datum degrees(PG_FUNCTION_ARGS);
 extern Datum dpi(PG_FUNCTION_ARGS);
 extern Datum radians(PG_FUNCTION_ARGS);
+extern Datum drandom(PG_FUNCTION_ARGS);
+extern Datum setseed(PG_FUNCTION_ARGS);
 extern Datum float8_accum(PG_FUNCTION_ARGS);
 extern Datum float4_accum(PG_FUNCTION_ARGS);
 extern Datum float8_decum(PG_FUNCTION_ARGS);
@@ -408,12 +408,6 @@ extern Datum pg_highest_oid(PG_FUNCTION_ARGS); /* MPP */
 extern Datum gp_max_distributed_xid(PG_FUNCTION_ARGS); /* MPP */
 extern Datum gp_distributed_xid(PG_FUNCTION_ARGS); /* MPP */
 
-extern Datum float8_wm_avg(PG_FUNCTION_ARGS);
-extern Datum float8_wm_var_pop(PG_FUNCTION_ARGS);
-extern Datum float8_wm_var_samp(PG_FUNCTION_ARGS);
-extern Datum float8_wm_stddev_pop(PG_FUNCTION_ARGS);
-extern Datum float8_wm_stddev_samp(PG_FUNCTION_ARGS);
-
 /* dbsize.c */
 extern Datum pg_tablespace_size_oid(PG_FUNCTION_ARGS);
 extern Datum pg_tablespace_size_name(PG_FUNCTION_ARGS);
@@ -443,7 +437,6 @@ extern Datum current_database(PG_FUNCTION_ARGS);
 extern Datum current_query(PG_FUNCTION_ARGS);
 extern Datum pg_cancel_backend(PG_FUNCTION_ARGS);
 extern Datum pg_terminate_backend(PG_FUNCTION_ARGS);
-extern Datum gp_cancel_query(PG_FUNCTION_ARGS);
 extern Datum pg_reload_conf(PG_FUNCTION_ARGS);
 extern Datum pg_tablespace_databases(PG_FUNCTION_ARGS);
 extern Datum pg_rotate_logfile(PG_FUNCTION_ARGS);
@@ -586,9 +579,6 @@ extern Datum pg_get_expr(PG_FUNCTION_ARGS);
 extern Datum pg_get_expr_ext(PG_FUNCTION_ARGS);
 extern Datum pg_get_userbyid(PG_FUNCTION_ARGS);
 extern Datum pg_get_serial_sequence(PG_FUNCTION_ARGS);
-extern Datum pg_get_function_arguments(PG_FUNCTION_ARGS);
-extern Datum pg_get_function_identity_arguments(PG_FUNCTION_ARGS);
-extern Datum pg_get_function_result(PG_FUNCTION_ARGS);
 extern char *deparse_expression(Node *expr, List *dpcontext,
 				   bool forceprefix, bool showimplicit);
 extern char *deparse_expr_sweet(Node *expr, List *dpcontext,
@@ -937,7 +927,6 @@ extern Datum numeric_exp(PG_FUNCTION_ARGS);
 extern Datum numeric_ln(PG_FUNCTION_ARGS);
 extern Datum numeric_log(PG_FUNCTION_ARGS);
 extern Datum numeric_power(PG_FUNCTION_ARGS);
-extern Datum numeric_interval_bound(PG_FUNCTION_ARGS);
 extern Datum int4_numeric(PG_FUNCTION_ARGS);
 extern Datum numeric_int4(PG_FUNCTION_ARGS);
 extern Datum int8_numeric(PG_FUNCTION_ARGS);
@@ -994,13 +983,6 @@ extern Datum numeric_demalg(PG_FUNCTION_ARGS); /* MPP */
 extern Datum int8_avg_demalg(PG_FUNCTION_ARGS); /* MPP */
 extern Datum float8_avg_demalg(PG_FUNCTION_ARGS); /* MPP */
 extern Datum numeric_avg_demalg(PG_FUNCTION_ARGS); /* MPP */
-extern Datum sequence_key_numeric(PG_FUNCTION_ARGS); /* MPP */
-
-extern Datum numeric_wm_avg(PG_FUNCTION_ARGS);
-extern Datum numeric_wm_var_pop(PG_FUNCTION_ARGS);
-extern Datum numeric_wm_var_samp(PG_FUNCTION_ARGS);
-extern Datum numeric_wm_stddev_pop(PG_FUNCTION_ARGS);
-extern Datum numeric_wm_stddev_samp(PG_FUNCTION_ARGS);
 
 /* ri_triggers.c */
 extern Datum RI_FKey_check_ins(PG_FUNCTION_ARGS);
@@ -1040,7 +1022,6 @@ extern int32 type_maximum_size(Oid type_oid, int32 typemod);
 /* quote.c */
 extern Datum quote_ident(PG_FUNCTION_ARGS);
 extern Datum quote_literal(PG_FUNCTION_ARGS);
-extern Datum quote_nullable(PG_FUNCTION_ARGS);
 
 /* guc.c */
 extern Datum show_config_by_name(PG_FUNCTION_ARGS);
@@ -1063,18 +1044,6 @@ extern Datum pg_advisory_unlock_int4(PG_FUNCTION_ARGS);
 extern Datum pg_advisory_unlock_shared_int4(PG_FUNCTION_ARGS);
 extern Datum pg_advisory_unlock_all(PG_FUNCTION_ARGS);
 
-/* txid.c */
-extern Datum txid_snapshot_in(PG_FUNCTION_ARGS);
-extern Datum txid_snapshot_out(PG_FUNCTION_ARGS);
-extern Datum txid_snapshot_recv(PG_FUNCTION_ARGS);
-extern Datum txid_snapshot_send(PG_FUNCTION_ARGS);
-extern Datum txid_current(PG_FUNCTION_ARGS);
-extern Datum txid_current_snapshot(PG_FUNCTION_ARGS);
-extern Datum txid_snapshot_xmin(PG_FUNCTION_ARGS);
-extern Datum txid_snapshot_xmax(PG_FUNCTION_ARGS);
-extern Datum txid_snapshot_xip(PG_FUNCTION_ARGS);
-extern Datum txid_visible_in_snapshot(PG_FUNCTION_ARGS);
-
 /* access/transam/twophase.c */
 extern Datum pg_prepared_xact(PG_FUNCTION_ARGS);
 
@@ -1086,22 +1055,6 @@ extern Datum pg_prepared_statement(PG_FUNCTION_ARGS);
 
 /* utils/mmgr/portalmem.c */
 extern Datum pg_cursor(PG_FUNCTION_ARGS);
-
-/* uuid.c */
-extern Datum uuid_in(PG_FUNCTION_ARGS);
-extern Datum uuid_out(PG_FUNCTION_ARGS);
-extern Datum uuid_send(PG_FUNCTION_ARGS);
-extern Datum uuid_recv(PG_FUNCTION_ARGS);
-extern Datum uuid_lt(PG_FUNCTION_ARGS);
-extern Datum uuid_le(PG_FUNCTION_ARGS);
-extern Datum uuid_eq(PG_FUNCTION_ARGS);
-extern Datum uuid_ge(PG_FUNCTION_ARGS);
-extern Datum uuid_gt(PG_FUNCTION_ARGS);
-extern Datum uuid_ne(PG_FUNCTION_ARGS);
-extern Datum uuid_cmp(PG_FUNCTION_ARGS);
-extern Datum uuid_hash(PG_FUNCTION_ARGS);
-extern Datum text_uuid(PG_FUNCTION_ARGS);
-extern Datum uuid_text(PG_FUNCTION_ARGS);
 
 /* tqual.c */
 extern Datum mpp_global_xid_map(PG_FUNCTION_ARGS);
@@ -1231,29 +1184,4 @@ extern Datum dummy_compression_validator(PG_FUNCTION_ARGS);
 extern Datum gp_compressor(PG_FUNCTION_ARGS);
 extern Datum gp_decompressor(PG_FUNCTION_ARGS);
 extern Datum test_quicklz_compression(PG_FUNCTION_ARGS);
-
-/* percentile.c */
-extern Datum percentile_cont_trans(PG_FUNCTION_ARGS);
-extern Datum percentile_disc_trans(PG_FUNCTION_ARGS);
-
-/* gp_partition_funtions.c */
-extern Datum gp_partition_propagation(PG_FUNCTION_ARGS);
-extern void dumpDynamicTableScanPidIndex(int index);
-extern Datum gp_partition_selection(PG_FUNCTION_ARGS);
-extern Datum gp_partition_expansion(PG_FUNCTION_ARGS);
-extern Datum gp_map_attnums_in_expr(PG_FUNCTION_ARGS);
-extern Datum gp_map_attnums(PG_FUNCTION_ARGS);
-extern Datum gp_get_part_constraints(PG_FUNCTION_ARGS);
-extern Datum gp_get_parts_index_relid(PG_FUNCTION_ARGS);
-extern Datum gp_get_parts_index_info_function(PG_FUNCTION_ARGS);
-extern Datum gp_partition_inverse(PG_FUNCTION_ARGS);
-
-/* gp_rand.c */
-extern Datum drandom(PG_FUNCTION_ARGS);
-extern Datum setseed(PG_FUNCTION_ARGS);
-extern uint32 get_seed_per_query(void);
-extern void set_seed_per_query(unsigned int seed, int init_pos, int leap_width);
-extern bool assign_random_seed(double value, bool doit, GucSource source);
-extern const char *show_random_seed(void);
-
 #endif   /* BUILTINS_H */

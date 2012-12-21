@@ -14,7 +14,6 @@
  */
 #include "postgres.h"
 
-#include "access/catquery.h"
 #include "access/xact.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
@@ -35,7 +34,7 @@
 #include "catalog/pg_namespace.h"
 #include "cdb/cdbvars.h"
 #include "optimizer/clauses.h"
-#include "executor/spi.h"
+#include "executor/nodeFunctionscan.h"
 #include "cdb/memquota.h"
 #include "postmaster/autovacuum.h"
 
@@ -243,21 +242,15 @@ init_sql_fcache(FmgrInfo *finfo)
 	Datum		tmp;
 	bool		isNull;
 	ListCell * list_item;
-	cqContext  *pcqCtx;
 
 	fcache = (SQLFunctionCachePtr) palloc0(sizeof(SQLFunctionCache));
 
 	/*
 	 * get the procedure tuple corresponding to the given function Oid
 	 */
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_proc "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(foid)));
-
-	procedureTuple = caql_getnext(pcqCtx);
-
+	procedureTuple = SearchSysCache(PROCOID,
+									ObjectIdGetDatum(foid),
+									0, 0, 0);
 	if (!HeapTupleIsValid(procedureTuple))
 		elog(ERROR, "cache lookup failed for function %u", foid);
 	procedureStruct = (Form_pg_proc) GETSTRUCT(procedureTuple);
@@ -326,9 +319,10 @@ init_sql_fcache(FmgrInfo *finfo)
 	/*
 	 * Parse and rewrite the queries in the function text.
 	 */
-	tmp = caql_getattr(pcqCtx,
-					   Anum_pg_proc_prosrc,
-					   &isNull);
+	tmp = SysCacheGetAttr(PROCOID,
+						  procedureTuple,
+						  Anum_pg_proc_prosrc,
+						  &isNull);
 	if (isNull)
 		elog(ERROR, "null prosrc for function %u", foid);
 	fcache->src = TextDatumGetCString(tmp);
@@ -404,7 +398,7 @@ init_sql_fcache(FmgrInfo *finfo)
 											  fcache,
 											  fcache->readonly_func);
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(procedureTuple);
 
 	finfo->fn_extra = (void *) fcache;
 }
@@ -485,9 +479,9 @@ postquel_start(execution_state *es, SQLFunctionCachePtr fcache)
 		
 		
     	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE
-    			&& SPI_IsMemoryReserved())
+    			&& !IsEmptyMemoryReservedForFunctionScan())
     	{
-    		es->qd->plannedstmt->query_mem = SPI_GetMemoryReservation();                		
+    		es->qd->plannedstmt->query_mem = CurrentFunctionScanMemoryReserved();                		
     	}
 
     	ExecutorStart(es->qd, 0);
@@ -579,7 +573,7 @@ postquel_end(execution_state *es)
 				Oid			relationOid = InvalidOid; 					/* relation that is modified */
 				AutoStatsCmdType cmdType = AUTOSTATS_CMDTYPE_SENTINEL; 	/* command type */
 				autostats_get_cmdtype(es->qd->plannedstmt, &cmdType, &relationOid);
-				auto_stats(cmdType, relationOid, es->qd->es_processed, true /* inFunction */);
+				auto_stats(cmdType, relationOid, es->qd->es_processed);
 			}
 		}
 		PG_CATCH();
@@ -945,22 +939,13 @@ sql_exec_error_callback(void *arg)
 	Form_pg_proc functup;
 	char	   *fn_name;
 	int			syntaxerrposition;
-	cqContext  *pcqCtx;
 
 	/* Need access to function's pg_proc tuple */
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_proc "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(flinfo->fn_oid)));
-
-	func_tuple = caql_getnext(pcqCtx);
-
+	func_tuple = SearchSysCache(PROCOID,
+								ObjectIdGetDatum(flinfo->fn_oid),
+								0, 0, 0);
 	if (!HeapTupleIsValid(func_tuple))
-	{
-		caql_endscan(pcqCtx);
 		return;					/* shouldn't happen */
-	}
 	functup = (Form_pg_proc) GETSTRUCT(func_tuple);
 	fn_name = NameStr(functup->proname);
 
@@ -974,9 +959,8 @@ sql_exec_error_callback(void *arg)
 		Datum		tmp;
 		char	   *prosrc;
 
-		tmp = caql_getattr(pcqCtx,
-						   Anum_pg_proc_prosrc,
-						   &isnull);
+		tmp = SysCacheGetAttr(PROCOID, func_tuple, Anum_pg_proc_prosrc,
+							  &isnull);
 		if (isnull)
 			elog(ERROR, "null prosrc");
 		prosrc = DatumGetCString(DirectFunctionCall1(textout, tmp));
@@ -1026,7 +1010,7 @@ sql_exec_error_callback(void *arg)
 		errcontext("SQL function \"%s\" during startup", fn_name);
 	}
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(func_tuple);
 }
 
 

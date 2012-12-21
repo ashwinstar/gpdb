@@ -1,0 +1,256 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:VBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%"
+	paddingLeft="5" paddingRight="5" horizontalAlign="left" 
+	xmlns:model="model.*" xmlns:view="view.*">
+
+<mx:Script>
+    <![CDATA[
+    	import mx.events.ItemClickEvent;
+    	import model.Queries;
+    	import value.Query;
+    	import mx.collections.ArrayCollection;
+      	import model.GPPerfMonModelLocator;
+      	import mx.managers.PopUpManager;
+      	import mx.core.IFlexDisplayObject;
+      	import model.Resources;
+  	    import mx.utils.ObjectUtil; 	
+  	   			
+  	  [Bindable]
+	  public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();	
+	  
+	  public var magGlass:Class = Resources.magGlass;
+	  
+	  private function showSearch():void {
+            // Create a modal TitleWindow container.
+      		var searchWindow:IFlexDisplayObject =
+                    PopUpManager.createPopUp(this, QuerySearchPopup, true);
+            PopUpManager.centerPopUp(searchWindow);
+      }
+
+	  private function querySelectionChange(evt:Event):void {
+	  	    if (dgQueries.selectedItem)
+	  			mdl.queries.selectedQueryID = dgQueries.selectedItem.id;  	    
+      }
+      
+	  private function queryDataChange(evt:Event):void {
+	  	if (!mdl.queries)
+	  		return;
+	  		
+	  	if (!dgQueries.selectedItem || 
+	  	    (dgQueries.selectedItem.id != mdl.queries.selectedQueryID))
+	  	{
+	  		// Look to reset selected item based on query ID
+	  		for each(var query:Query in dgQueries.dataProvider)
+	  		{
+	  			if (query.id == mdl.queries.selectedQueryID)
+	  			{
+	  				dgQueries.selectedItem = query;
+	  				return;
+	  			}
+			}		
+			mdl.queries.selectedQueryID = 'None Selected';
+	  	}		  
+      }
+      
+    public function getDateLabel(item:Object,column:DataGridColumn):String 
+	{
+		return dateFormatter.format(item[column.dataField]);
+	}	
+	
+	private function qListToggleClick(event:ItemClickEvent):void
+	{
+		mdl.nav.queryTabPage = event.index;
+		
+		// Handle pausing or resuming of query plan requests based on page
+  		if (mdl.nav.queryTabPage == 4)
+  			mdl.queries.resumeQueryPlan();
+  		else
+  			mdl.queries.pauseQueryPlan();
+	}
+	
+	public function gotoQueryDetailPage():void
+	{
+		var active:Boolean = (mdl.nav.queryTabPage==0) || (mdl.nav.queryTabPage==1);
+		mdl.nav.jumpToQueryDetails(dgQueries.selectedItem as Query, active); 
+	}
+
+	public function toggleWatched(item:Object):void
+	{
+		var q:Query = item as Query;
+		if (q)
+		{
+			q.watched = !q.watched;
+			
+			if (q.watched)
+			{
+				mdl.queries.watchedQueriesCounts[q.status]++;
+				mdl.queries.watchedQueriesArray.addItem(q);
+			}
+			else
+			{
+				var count:int = 0;
+				for each (var i:Query in mdl.queries.watchedQueriesArray)
+				{
+					if (i.id == q.id)
+					{
+						mdl.queries.watchedQueriesCounts[q.status]--;
+						mdl.queries.watchedQueriesArray.removeItemAt(count);
+						break;
+					}
+					
+					count++;
+				}
+			}
+			mdl.queries.updateWatchedQueriesSummary();
+		}
+	}
+
+	  private function toggleQDBar(event:Event):void
+	  {
+	  	mdl.nav.queryDetailTabPage=qdToggle.selectedIndex
+	  	if (qdToggle.selectedIndex == 1)
+	  	{
+			mdl.queries.doQueryPlan(mdl.nav.detailQuery);
+	  	}
+	  }
+
+	  private function CopyToClipboard():void
+	  {
+	  	 if (mdl.nav.detailQuery)
+	  	 {
+	  	 	if (qdToggle.selectedIndex == 0)
+	  	 		System.setClipboard(ObjectUtil.toString(mdl.nav.detailQuery));
+	  	 	else if (qdToggle.selectedIndex == 1)
+	  	 	 	System.setClipboard(ObjectUtil.toString(mdl.queries.queryPlanCurrent));
+	  	 }  	 
+	  }	  
+	
+    ]]>
+</mx:Script>	
+
+    <mx:DateFormatter id="dateFormatter" formatString="L:NN:SS A, MMM-D-YYYY"/>
+
+	<mx:ToggleButtonBar id="qListToggle" dataProvider="{mdl.nav.queryListToggle}"
+		 selectedIndex="{mdl.nav.queryTabPage}" itemClick="qListToggleClick(event)"/>
+		
+	<mx:ViewStack selectedIndex="{mdl.nav.queryTabPage==4?1:0}" width="100%" height="100%">
+		<mx:VBox width="100%" height="100%">
+			
+			<mx:VBox width="100%" backgroundColor="0xBFDC92" verticalGap="0"
+				paddingTop="3" paddingBottom="3" paddingLeft="5" paddingRight="5">
+				<mx:HBox width="100%" verticalAlign="middle"
+					visible="{qListToggle.selectedIndex==3}"
+					includeInLayout="{qListToggle.selectedIndex==3}">
+					<mx:Button label="New Search" visible="{qListToggle.selectedIndex==3}" 
+						includeInLayout="{qListToggle.selectedIndex==3}"
+						click="showSearch();"/>	
+					<mx:Spacer width="10"/>
+					<mx:VBox width="100%" verticalGap="0">
+						<mx:Text htmlText="{mdl.nav.qsearchSummary}" width="500"/>
+						<mx:Text htmlText="{mdl.queries.searchedQueriesSummary}"/>	
+					</mx:VBox>	
+				</mx:HBox>
+				<mx:Text htmlText="{mdl.queries.queryNowSummary}" visible="{qListToggle.selectedIndex==0}" 
+						includeInLayout="{qListToggle.selectedIndex==0}"/>
+				<mx:Text text="Note: Non-superuser mode -- other users' queries are not displayed" 
+						visible="{(qListToggle.selectedIndex==0) &amp;&amp; !mdl.session.isSuperuser}" 
+						includeInLayout="{(qListToggle.selectedIndex==0) &amp;&amp; !mdl.session.isSuperuser}"/>
+				<mx:Text htmlText="{mdl.queries.myQueryNowSummary}" visible="{qListToggle.selectedIndex==1}" 
+						includeInLayout="{qListToggle.selectedIndex==1}"/>
+				<mx:Text htmlText="{mdl.queries.watchedQueriesSummary}" visible="{qListToggle.selectedIndex==2}" 
+						includeInLayout="{qListToggle.selectedIndex==2}"/>
+					
+			</mx:VBox>
+			
+				
+			<mx:VDividedBox height="100%" width="100%">
+
+				<mx:DataGrid id="dgQueries" width="100%" height="60%" fontSize="9" 
+					dataProvider="{mdl.queries.queryArrayLookup.getItemAt(mdl.nav.queryTabPage)}"
+					doubleClickEnabled="true" doubleClick="gotoQueryDetailPage()"
+					change="querySelectionChange(event)" updateComplete="queryDataChange(event)"
+					rollOverColor="0xDFFCB2" selectionColor="0xBFDC92">
+					<mx:columns>
+						<mx:DataGridColumn headerText="Watch" width="45" dataField="watched">
+							<mx:itemRenderer>
+								<mx:Component>
+									<mx:VBox width="100%" height="100%" horizontalAlign="center">
+										<mx:CheckBox click="outerDocument.toggleWatched(data)" selected="{data.watched}"/>					
+									</mx:VBox>
+								</mx:Component>
+							</mx:itemRenderer>
+						</mx:DataGridColumn>
+						<mx:DataGridColumn headerText="Query ID" dataField="id" width="140"/>		
+						<mx:DataGridColumn headerText="Submit Time" dataField="tsubmit" 
+							labelFunction="getDateLabel" width="140"/>
+						<mx:DataGridColumn headerText="Username" dataField="username" width="70"/>
+						<mx:DataGridColumn headerText="Database" dataField="db" width="70"/>
+						<mx:DataGridColumn headerText="Status" dataField="status" width="60"/>		
+						<mx:DataGridColumn headerText="Wait time" dataField="time_queued" 
+							width="55" headerWordWrap="true"/>
+						<mx:DataGridColumn headerText="Run time" dataField="time_run"
+							width="60" headerWordWrap="true"/>				
+						<mx:DataGridColumn headerText="Rows out" dataField="rows_out"
+							width="55" headerWordWrap="true"/>	
+						<mx:DataGridColumn headerText="CPU %" dataField="cpu_currpct" width="50"/>
+						<mx:DataGridColumn headerText="CPU total" dataField="cpu_elapsed"
+							width="60" headerWordWrap="true"/>
+						<mx:DataGridColumn headerText="CPU skew" dataField="skew_cpu"
+							width="55" headerWordWrap="true"/>	
+						<mx:DataGridColumn headerText="Row skew" dataField="skew_rows"
+							width="55" headerWordWrap="true"/>	
+						<mx:DataGridColumn headerText="Details" width="45">
+							<mx:itemRenderer>
+								<mx:Component>
+									<mx:VBox width="100%" height="100%" horizontalAlign="center">
+										<!--Same as Comment#1-->
+										<mx:Image initialize="im1.source=outerDocument.magGlass" scaleContent="false" 
+												  click="outerDocument.gotoQueryDetailPage()" id="im1"/>				
+									</mx:VBox>
+								</mx:Component>
+							</mx:itemRenderer>
+						</mx:DataGridColumn>			
+					</mx:columns>
+				</mx:DataGrid>
+				
+				<mx:Panel title="{'Query Text (' + mdl.queries.selectedQueryID + ')'}"
+					width="100%" height="40%" styleName="smallMetricGraph" layout="horizontal">
+						<mx:TextArea editable="false" width="100%" height="100%"
+						    text="{dgQueries.selectedItem.query_text}"/>
+				</mx:Panel>		
+				
+			</mx:VDividedBox>			
+			
+		</mx:VBox>
+		
+		<mx:VBox width="100%" height="100%" horizontalAlign="left">
+			
+			<mx:VBox width="100%" backgroundColor="0xBFDC92" verticalGap="0"
+				paddingTop="3" paddingBottom="3" paddingLeft="10" paddingRight="10">
+				<mx:HBox width="100%" verticalAlign="middle">
+					<mx:ToggleButtonBar id="qdToggle" dataProvider="{queryDetailsStack}" 
+						selectedIndex="{mdl.nav.queryDetailTabPage}"
+				   		itemClick="toggleQDBar(event)"/>
+					<mx:Text text="{mdl.nav.detailQuery?('Query ' + mdl.nav.detailQuery.id):'No Query Selected'}" 
+						styleName="dashboardTitle"/>	
+					<mx:Spacer width="100%"/>
+					<mx:Label text="Watched"/>
+					<mx:CheckBox selected="{mdl.nav.detailQuery.watched}"
+						click="toggleWatched(mdl.nav.detailQuery)"/>
+					<mx:Button label="Copy to Clipboard" click="CopyToClipboard()"/>	
+				</mx:HBox>	
+			</mx:VBox>
+		
+			<mx:ViewStack id="queryDetailsStack" width="100%" height="100%">
+				<view:QueryDetailSummary label="Query Details"/>
+				<view:QueryDetailPlan label="Query Plan"/>
+			</mx:ViewStack>			
+			
+		</mx:VBox>
+		
+	</mx:ViewStack>
+		
+	
+	
+</mx:VBox>
+

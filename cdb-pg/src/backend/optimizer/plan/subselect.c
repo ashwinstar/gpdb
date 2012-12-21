@@ -14,7 +14,6 @@
  */
 #include "postgres.h"
 
-#include "access/catquery.h"
 #include "catalog/catalog.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
@@ -831,28 +830,21 @@ hash_ok_operator(OpExpr *expr)
 	Oid			opid = expr->opno;
 	HeapTuple	tup;
 	Form_pg_operator optup;
-	cqContext  *pcqCtx;
-	bool		result = true;
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_operator "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(opid)));
-
-	tup = caql_getnext(pcqCtx);
-
+	tup = SearchSysCache(OPEROID,
+						 ObjectIdGetDatum(opid),
+						 0, 0, 0);
 	if (!HeapTupleIsValid(tup))
 		elog(ERROR, "cache lookup failed for operator %u", opid);
 	optup = (Form_pg_operator) GETSTRUCT(tup);
-
 	if (!optup->oprcanhash || optup->oprcom != opid ||
 		!func_strict(optup->oprcode))
-		result = false;
-
-	caql_endscan(pcqCtx);
-
-	return result;
+	{
+		ReleaseSysCache(tup);
+		return false;
+	}
+	ReleaseSysCache(tup);
+	return true;
 }
 
 /*
@@ -1492,3 +1484,4 @@ SS_make_initplan_from_plan(PlannerInfo *root, Plan *plan,
 	
 	return prm;
 }
+

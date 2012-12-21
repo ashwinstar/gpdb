@@ -20,11 +20,9 @@
 #include <limits.h>
 
 #include "catalog/pg_type.h"
-#include "executor/nodeWindow.h"
 #include "libpq/pqformat.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
-#include "utils/float_utils.h"
 
 
 #ifndef M_PI
@@ -44,6 +42,23 @@ static const uint32 nan[2] = {0xffffffff, 0x7fffffff};
 /* not sure what the following should be, but better to make it over-sufficient */
 #define MAXFLOATWIDTH	64
 #define MAXDOUBLEWIDTH	128
+
+/*
+ * check to see if a float4/8 val has underflowed or overflowed
+ */
+#define CHECKFLOATVAL(val, inf_is_valid, zero_is_valid)			\
+do {															\
+	if (isinf(val) && !(inf_is_valid))							\
+		ereport(ERROR,											\
+				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),	\
+		  errmsg("value out of range: overflow"),errOmitLocation(true)));				\
+																\
+	if ((val) == 0.0 && !(zero_is_valid))						\
+		ereport(ERROR,											\
+				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),	\
+		 errmsg("value out of range: underflow"),errOmitLocation(true)));				\
+} while(0)
+
 
 /* ========== USER I/O ROUTINES ========== */
 
@@ -1804,6 +1819,42 @@ radians(PG_FUNCTION_ARGS)
 	PG_RETURN_FLOAT8(result);
 }
 
+
+/*
+ *		drandom		- returns a random number
+ */
+Datum
+drandom(PG_FUNCTION_ARGS)
+{
+	float8		result;
+
+	/* result [0.0 - 1.0) */
+	result = (double) random() / ((double) MAX_RANDOM_VALUE + 1);
+
+	PG_RETURN_FLOAT8(result);
+}
+
+
+/*
+ *		setseed		- set seed for the random number generator
+ */
+Datum
+setseed(PG_FUNCTION_ARGS)
+{
+	float8		seed = PG_GETARG_FLOAT8(0);
+	int			iseed;
+
+	if (seed < -1 || seed > 1)
+		elog(ERROR, "setseed parameter %f out of range [-1,1]", seed);
+
+	iseed = (int) (seed * MAX_RANDOM_VALUE);
+	srandom((unsigned int) iseed);
+
+	PG_RETURN_VOID();
+}
+
+
+
 /*
  *		=========================
  *		FLOAT AGGREGATE OPERATORS
@@ -3112,137 +3163,3 @@ float8_regr_amalg(PG_FUNCTION_ARGS)
 	}
 }
 
-/*
- * Scans the window and the calculate transition values as in float8_accum.
- */
-static int
-float8_wm_accum(PG_FUNCTION_ARGS, float8 *psumWX2, float8 *psumWX,
-			   float8 *psumW, float8 *psumW2)
-{
-	WindowFuncContext	wcontext = windowGetContext(fcinfo);
-	WindowBufferCursor	cursor;
-	Datum				winvalue;
-	bool				isnull;
-	ArrayType		   *weight = PG_GETARG_ARRAYTYPE_P(2);
-	int32				offset = PG_GETARG_INT32(3);
-	int64				row_index;
-	float8			   *w;
-	int					numweight = 0,
-						k, numrow = 0;
-	float8				sumWX2, sumWX, sumW, sumW2;
-
-	w = (float8 *) ARR_DATA_PTR(weight);
-	numweight = ArrayGetNItems(ARR_NDIM(weight), ARR_DIMS(weight));
-	row_index = windowGetRowIndex(wcontext);
-	k = numweight - 1 - row_index - offset;
-	k = Max(k, 0);
-	sumWX2 = sumWX = sumW = sumW2 = 0.0;
-	cursor = windowBufferBeginScan(wcontext, true);
-	for (;;)
-	{
-		float8		x;
-
-		if (!windowBufferNext(cursor))
-			break;
-		winvalue = windowBufferGetArg(cursor, 0, &isnull);
-		if (isnull)
-		{
-			/* Skip input. */
-			k++;
-			break;
-		}
-		/* Shouldn't happen */
-		if (k >= numweight)
-			elog(ERROR, "frame size doesn't match weight vector");
-		x = DatumGetFloat8(winvalue);
-		sumWX2 += w[k] * x * x;
-		sumWX += w[k] * x;
-		sumW += w[k];
-		sumW2 += w[k] * w[k];
-		k++;
-		numrow++;
-	}
-	windowBufferEndScan(cursor);
-
-	*psumWX2 = sumWX2;
-	*psumWX = sumWX;
-	*psumW = sumW;
-	*psumW2 = sumW2;
-
-	return numrow;
-}
-
-/*
- * The finalization process of (var|stddev)_(pop|samp)
- */
-static Datum
-float8_wm_stddev_body(PG_FUNCTION_ARGS, bool variance, bool sample)
-{
-	float8				sumWX2, sumWX, sumW, sumW2;
-	int					N;
-	float8				numerator, denominator, result;
-
-	N = float8_wm_accum(fcinfo, &sumWX2, &sumWX, &sumW, &sumW2);
-
-	/*
-	 * Population variance is undefined when N is 0 and sample variance
-	 * is undefined when N is 0 or 1, so return NULL.
-	 */
-	if (N <= (sample ? 1 : 0))
-		PG_RETURN_NULL();
-
-	numerator = sumWX2 * sumW - sumWX * sumWX;
-	CHECKFLOATVAL(numerator, isinf(sumWX2) || isinf(sumWX) || isinf(sumW), true);
-
-	/* Watch out for roundoff error producing a negative numerator */
-	if (numerator <= 0.0)
-		PG_RETURN_FLOAT8(0.0);
-
-	denominator = sumW * sumW;
-	if (sample)
-		denominator = denominator - sumW2;
-
-	result = numerator / denominator;
-	if (!variance)
-		result = sqrt(result);
-
-	PG_RETURN_FLOAT8(result);
-}
-
-Datum
-float8_wm_avg(PG_FUNCTION_ARGS)
-{
-	float8				sumWX2, sumWX, sumW, sumW2;
-	int					N;
-
-	N = float8_wm_accum(fcinfo, &sumWX2, &sumWX, &sumW, &sumW2);
-
-	if (N <= 0)
-		PG_RETURN_NULL();
-
-	PG_RETURN_FLOAT8(sumWX / sumW);
-}
-
-Datum
-float8_wm_var_pop(PG_FUNCTION_ARGS)
-{
-	return float8_wm_stddev_body(fcinfo, true, false);
-}
-
-Datum
-float8_wm_var_samp(PG_FUNCTION_ARGS)
-{
-	return float8_wm_stddev_body(fcinfo, true, true);
-}
-
-Datum
-float8_wm_stddev_pop(PG_FUNCTION_ARGS)
-{
-	return float8_wm_stddev_body(fcinfo, false, false);
-}
-
-Datum
-float8_wm_stddev_samp(PG_FUNCTION_ARGS)
-{
-	return float8_wm_stddev_body(fcinfo, false, true);
-}

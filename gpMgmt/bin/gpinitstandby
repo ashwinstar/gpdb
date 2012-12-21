@@ -6,7 +6,6 @@
 import os
 import sys
 import signal
-import shutil
 
 # import GPDB modules
 try:
@@ -19,7 +18,6 @@ try:
     from gppylib.userinput import *
     from gppylib.gp_dbid import GpDbidFile
     from gppylib.operations.package import SyncPackages
-    from gppylib.operations.filespace import PG_SYSTEM_FILESPACE, GP_TRANSACTION_FILES_FILESPACE, GP_TEMPORARY_FILES_FILESPACE, GetFilespaceEntries, GetFilespaceEntriesDict, MoveFilespaceError
 except ImportError, e:
     sys.exit('ERROR: Cannot import modules.  Please check that you '
              'have sourced greenplum_path.sh.  Detail: ' + str(e))
@@ -91,7 +89,6 @@ def parseargs():
     
     parser = OptParser(option_class=OptChecker,
                        version='%prog version $Revision$')
-
     parser.setHelp([])
     parser.remove_option('-h')
     
@@ -160,11 +157,6 @@ def parseargs():
     # -L and -s are exclusive
     if options.standby_host and options.no_restart:
         logger.error('Options -s and -L cannot be specified together.')
-        parser.exit(2, None)
-
-    # -L and -n are exclusive
-    if options.no_restart and options.no_update:
-        logger.error('Options -L and -n cannot be specified together.')
         parser.exit(2, None)
 
     # we either need to delete or create or sync
@@ -342,13 +334,6 @@ def delete_standby(options):
         logger.error('Failed to remove standby master from catalog.')
         raise GpInitStandbyException(ex)
     
-    #repopulate flat file
-    pg_system_fs_entries = GetFilespaceEntriesDict(GetFilespaceEntries(array, PG_SYSTEM_FILESPACE).run()).run() 
-    flat_file_location = os.path.join(pg_system_fs_entries[1][2], GP_TRANSACTION_FILES_FILESPACE) 
-    remove_standby_from_flat_file(flat_file_location, GP_TRANSACTION_FILES_FILESPACE, array.standbyMaster)
-    flat_file_location = os.path.join(pg_system_fs_entries[1][2], GP_TEMPORARY_FILES_FILESPACE) 
-    remove_standby_from_flat_file(flat_file_location, GP_TEMPORARY_FILES_FILESPACE, array.standbyMaster)
-
     if not options.no_restart:
         start_database()
 	
@@ -486,8 +471,6 @@ def create_standby(options):
                                           master_filespace_map,
                                           standby_filespace_map)
         update_gpdbid_file(options, array)
-        update_flat_file(array, standby_filespace_map, GP_TRANSACTION_FILES_FILESPACE)
-        update_flat_file(array, standby_filespace_map, GP_TEMPORARY_FILES_FILESPACE)
         cleanup_pg_hba_conf_backup(array)
 
         if master_mode == 'utility':
@@ -545,8 +528,7 @@ def update_pg_hba_conf(options, array):
         
         new_section = ['# standby master host ip addresses\n']
         for ip in standby_ips:
-            cidr_suffix = '/128' if ':' in ip else '/32' # MPP-15889
-            new_section.append('host\tall\t%s\t%s%s\ttrust\n' % (current_user, ip, cidr_suffix))
+            new_section.append('host\tall\t%s\t%s/32\ttrust\n' % (current_user, ip))
             
         # insert new section
         pg_hba_conf[index:index] = new_section
@@ -819,7 +801,6 @@ def update_gpdbid_file(options, array):
         cmd = gp.GpCreateDBIdFile('update gp_dbid file',
                                   standby_datadir,
                                   standby_dbid,
-                                  verbose=logging_is_verbose(),
                                   ctxt=base.REMOTE,
                                   remoteHost=options.standby_host)
 
@@ -828,109 +809,6 @@ def update_gpdbid_file(options, array):
         logger.error('Failed to update standby master\'s gp_dbid file.')
         raise GpInitStandbyException(ex)
 
-#-------------------------------------------------------------------------
-def write_temp_flat_file(flat_file_location, flat_file, array, standby_filespace_dict):
-
-    standby_master = array.standbyMaster
-    master = array.master
-
-    temp_file = None
-    if os.path.exists(flat_file_location):
-        logger.info('Writing standby information to %s flat file' % flat_file_location)
-        temp_file = flat_file + '.tmp'
-        lines_to_write = ""
-
-        #Read data
-        with open(flat_file_location, 'r') as read_file:
-            for line in read_file:
-                fs_info = line.split()
-                if len(fs_info) != 2:
-                    fs_oid = fs_info[0]
-                    lines_to_write += line.strip()
-                else:
-                    fs_dir = fs_info[1]
-                    fs_info[0] = str(standby_master.getSegmentDbId())
-                    fs_info[1] = standby_filespace_dict[array.getFileSpaceName(int(fs_oid))] 
-                    lines_to_write += ' '.join(fs_info)
-
-                lines_to_write += '\n'
-            #We now write the peer information
-            lines_to_write +=( str(master.getSegmentDbId()) + ' ' + fs_dir + '\n' )
-
-        #Write data
-        with open(temp_file, 'w') as write_file:
-            write_file.write(lines_to_write)   
-
-        #Check what we've written
-        with open(temp_file) as file:
-            contents = file.read()
-            if contents != lines_to_write:
-                raise MoveFilespaceError('Failed to write contents to flat file.')
-
-    return temp_file
-
-#-------------------------------------------------------------------------
-def remove_standby_from_flat_file(flat_file_location, flat_file, standby_master):
-
-    if os.path.exists(flat_file_location):
-        logger.info('Removing standby entry from %s flat file' % flat_file)    
-        temp_file = flat_file + '.tmp'
-        lines_to_write = ""
-        with open(temp_file, 'w') as write_file:
-            with open(flat_file_location, 'r') as read_file:
-                for line in read_file:
-                    fs_info = line.split()
-                    if fs_info[0] == str(standby_master.getSegmentDbId()): 
-                        continue
-                    else:
-                        lines_to_write += line
-        
-            write_file.write(lines_to_write)                
-            logger.debug('Wrote %s to %s' % (lines_to_write, temp_file))
-
-        #Check what we've written
-        with open(temp_file) as file:
-            contents = file.read()
-            if contents != lines_to_write:
-                raise MoveFilespaceError('Failed to write contents to flat file.')
-        
-        shutil.move(temp_file, flat_file_location)
-
-#-------------------------------------------------------------------------
-def update_flat_file(array, standby_filespace_map, flat_file):
-    """
-        If the transaction/temporary filespaces have
-        ever been moved, we need to update the flat file.
-        The filespace directories are copied by the 
-        copy_master_filespaces method.
-    """
-
-    logger.info('Updating filespace flat files')    
-
-    standby_filespace_dict = {}
-    for i in standby_filespace_map:
-        standby_filespace_dict[i[0]] = i[1]
-
-    pg_system_fs_entries = GetFilespaceEntriesDict(GetFilespaceEntries(array, PG_SYSTEM_FILESPACE).run()).run() 
-   
-    flat_file_location = os.path.join(pg_system_fs_entries[1][2], flat_file) 
-    logger.debug('flat file location for transaction files = %s' % flat_file_location)
-    #Copy over the updated flat file to the standby
-    temp_flat_file = write_temp_flat_file(flat_file_location, flat_file, 
-                                          array, standby_filespace_dict)
-    
-    if temp_flat_file:
-        cpCmd = unix.Scp('gpinitstandby updating flat file for transaction filespace', 
-                         os.path.join(os.getcwd(), temp_flat_file),
-                         flat_file_location,
-                         dstHost=array.standbyMaster.getSegmentHostName()    
-                        )
-        cpCmd.run(validateAfter=True)
-        logger.debug('results of scp = %s' % cpCmd.get_results())
-       
-        #Rewrite the master flat file to include the standby information 
-        shutil.move(temp_flat_file, flat_file_location)
-    
 #-------------------------------------------------------------------------
 # Rollback functions
 #-------------------------------------------------------------------------
@@ -976,9 +854,7 @@ def undo_update_pg_hba_conf(array):
     
     logger.info('Backing up pg_hba.conf file...')
     master_data_dir = array.master.getSegmentDataDirectory()
-    pg_hba_backup = os.path.join(master_data_dir, PG_HBA_BACKUP)
-    if os.path.exists(pg_hba_backup):
-        os.system('mv %s %s/pg_hba.conf' % (pg_hba_backup, master_data_dir))
+    os.system('mv %s/%s %s/pg_hba.conf' % (master_data_dir, PG_HBA_BACKUP, master_data_dir))
 
 #-------------------------------------------------------------------------
 # Main
@@ -986,15 +862,14 @@ def undo_update_pg_hba_conf(array):
 try:
     # setup logging
     logger = get_default_logger()
-    
+    setup_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName())
+
     (options, args) = parseargs()
-    
-    setup_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName(),options.logfile)
 
     # Turn on debug logging if needed
     if options.debug:
         enable_verbose_logging()
-    if options.quiet:
+    elif options.quiet:
         quiet_stdout_logging()
 
     # Kick off the work

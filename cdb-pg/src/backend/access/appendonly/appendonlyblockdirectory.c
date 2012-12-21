@@ -25,6 +25,7 @@
 #include "utils/guc.h"
 #include "cdb/cdbappendonlyam.h"
 
+int gp_blockdirectory_entry_min_range = 0;
 int gp_blockdirectory_minipage_size = NUM_MINIPAGE_ENTRIES;
 
 static inline uint32 minipage_size(uint32 nEntry)
@@ -53,7 +54,7 @@ static void extract_minipage(
 static void write_minipage(AppendOnlyBlockDirectory *blockDirectory,
 						   int columnGroupNo);
 
-void
+void 
 AppendOnlyBlockDirectoryEntry_GetBeginRange(
 	AppendOnlyBlockDirectoryEntry	*directoryEntry,
 	int64							*fileOffset,
@@ -63,7 +64,7 @@ AppendOnlyBlockDirectoryEntry_GetBeginRange(
 	*firstRowNum = directoryEntry->range.firstRowNum;
 }
 
-void
+void 
 AppendOnlyBlockDirectoryEntry_GetEndRange(
 	AppendOnlyBlockDirectoryEntry	*directoryEntry,
 	int64							*afterFileOffset,
@@ -95,10 +96,10 @@ init_internal(AppendOnlyBlockDirectory *blockDirectory)
 	TupleDesc heapTupleDesc;
 	TupleDesc idxTupleDesc;
 	int groupNo;
-
+	
 	Assert(blockDirectory->blkdirRel != NULL);
 	Assert(blockDirectory->blkdirIdx != NULL);
-
+	
 	blockDirectory->memoryContext =
 		AllocSetContextCreate(CurrentMemoryContext,
 							  "BlockDirectoryContext",
@@ -132,12 +133,12 @@ init_internal(AppendOnlyBlockDirectory *blockDirectory)
 	for (groupNo = 0; groupNo < blockDirectory->numColumnGroups; groupNo++)
 	{
 		MinipagePerColumnGroup *minipageInfo = &blockDirectory->minipages[groupNo];
-
+		
 		minipageInfo->minipage =
 			palloc0(minipage_size(NUM_MINIPAGE_ENTRIES));
 		minipageInfo->numMinipageEntries = 0;
 	}
-
+	
 
 	MemoryContextSwitchTo(oldcxt);
 }
@@ -155,13 +156,12 @@ void
 AppendOnlyBlockDirectory_Init_forSearch(
 	AppendOnlyBlockDirectory *blockDirectory,
 	AppendOnlyEntry *aoEntry,
-	Snapshot appendOnlyMetaDataSnapshot,
 	FileSegInfo **segmentFileInfo,
 	int totalSegfiles,
 	Relation aoRel,
 	int numColumnGroups,
 	bool isAOCol)
-{
+{	
 	Assert(aoEntry != NULL);
 
 	blockDirectory->aoRel = aoRel;
@@ -185,7 +185,6 @@ AppendOnlyBlockDirectory_Init_forSearch(
 	blockDirectory->segmentFileInfo = segmentFileInfo;
 	blockDirectory->totalSegfiles = totalSegfiles;
 	blockDirectory->aoRel = aoRel;
-	blockDirectory->appendOnlyMetaDataSnapshot = appendOnlyMetaDataSnapshot;
 	blockDirectory->numColumnGroups = numColumnGroups;
 	blockDirectory->isAOCol = isAOCol;
 	blockDirectory->currentSegmentFileNum = -1;
@@ -216,7 +215,6 @@ void
 AppendOnlyBlockDirectory_Init_forInsert(
 	AppendOnlyBlockDirectory *blockDirectory,
 	AppendOnlyEntry *aoEntry,
-	Snapshot appendOnlyMetaDataSnapshot,
 	FileSegInfo *segmentFileInfo,
 	int64 lastSequence,
 	Relation aoRel,
@@ -229,7 +227,6 @@ AppendOnlyBlockDirectory_Init_forInsert(
 	Assert(aoEntry != NULL);
 
 	blockDirectory->aoRel = aoRel;
-	blockDirectory->appendOnlyMetaDataSnapshot = appendOnlyMetaDataSnapshot;
 
 	if (!OidIsValid(aoEntry->blkdirrelid))
 	{
@@ -243,11 +240,11 @@ AppendOnlyBlockDirectory_Init_forInsert(
 	blockDirectory->segmentFileInfo = NULL;
 	blockDirectory->totalSegfiles = -1;
 	blockDirectory->currentSegmentFileInfo = segmentFileInfo;
-
+	
 	blockDirectory->currentSegmentFileNum = segno;
 	blockDirectory->numColumnGroups = numColumnGroups;
 	blockDirectory->isAOCol = isAOCol;
-
+	
 	Assert(OidIsValid(aoEntry->blkdirrelid));
 
 	blockDirectory->blkdirRel =
@@ -289,9 +286,9 @@ set_directoryentry_range(
 	AOCSFileSegInfo *aocsFsInfo = NULL;
 	MinipageEntry *entry;
 	MinipageEntry *next_entry = NULL;
-
+	
 	Assert(entry_no >= 0 && ((uint32)entry_no) < minipageInfo->numMinipageEntries);
-
+	
 	fsInfo = blockDirectory->currentSegmentFileInfo;
 	Assert(fsInfo != NULL);
 
@@ -305,28 +302,29 @@ set_directoryentry_range(
 	{
 		next_entry = &(minipageInfo->minipage->entry[entry_no + 1]);
 	}
-
+	
 	directoryEntry->range.fileOffset = entry->fileOffset;
 	directoryEntry->range.firstRowNum = entry->firstRowNum;
 	if (next_entry != NULL)
 	{
 		directoryEntry->range.afterFileOffset = next_entry->fileOffset;
+		directoryEntry->range.lastRowNum = entry->firstRowNum + entry->rowCount - 1;
 	}
 	else
 	{
 		if (!blockDirectory->isAOCol)
 		{
 			directoryEntry->range.afterFileOffset = fsInfo->eof;
+			directoryEntry->range.lastRowNum = (~(((int64)1) << 63)); /* set to the maximal value */
 		}
-
+		
 		else
 		{
 			directoryEntry->range.afterFileOffset =
 				aocsFsInfo->vpinfo.entry[columnGroupNo].eof;
+			directoryEntry->range.lastRowNum = (~(((int64)1) << 63)); /* set to the maximal value */
 		}
 	}
-
-	directoryEntry->range.lastRowNum = entry->firstRowNum + entry->rowCount - 1;
 
 	/*
 	 * When crashes during inserts, or cancellation during inserts,
@@ -346,12 +344,12 @@ set_directoryentry_range(
 	{
 		directoryEntry->range.afterFileOffset = fsInfo->eof;
 	}
-
+	
 	if (blockDirectory->isAOCol &&
 		directoryEntry->range.afterFileOffset >
 		aocsFsInfo->vpinfo.entry[columnGroupNo].eof)
 	{
-		directoryEntry->range.afterFileOffset =
+		directoryEntry->range.afterFileOffset = 
 			aocsFsInfo->vpinfo.entry[columnGroupNo].eof;
 	}
 
@@ -392,8 +390,9 @@ AppendOnlyBlockDirectory_GetEntry(
 	Relation blkdirIdx = blockDirectory->blkdirIdx;
 	int numScanKeys = blockDirectory->numScanKeys;
 	ScanKey scanKeys = blockDirectory->scanKeys;
-
+	
 	TupleDesc heapTupleDesc;
+	TupleDesc idxTupleDesc;
 	FileSegInfo *fsInfo = NULL;
 	IndexScanDesc idxScanDesc;
 	HeapTuple tuple = NULL;
@@ -401,11 +400,11 @@ AppendOnlyBlockDirectory_GetEntry(
 		&blockDirectory->minipages[columnGroupNo];
 	int entry_no = -1;
 	int tmpGroupNo;
-
+	
 	if (blkdirRel == NULL || blkdirIdx == NULL)
 	{
 		Assert(RelationIsValid(blockDirectory->aoRel));
-
+		
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_INTERNAL_ERROR),
 				 errmsg("Block directory for append-only relation '%s' does not exist",
@@ -431,7 +430,7 @@ AppendOnlyBlockDirectory_GetEntry(
 		minipageInfo->numMinipageEntries > 0)
 	{
 		Assert(blockDirectory->currentSegmentFileInfo != NULL);
-
+		
 		/*
 		 * Check if the existing minipage contains the requested
 		 * rowNum. If so, just get it.
@@ -459,16 +458,18 @@ AppendOnlyBlockDirectory_GetEntry(
 		{
 			MinipageEntry *entry =
 				&minipageInfo->minipage->entry[minipageInfo->numMinipageEntries - 1];
-
+			
 			if (rowNum < entry->firstRowNum + entry->rowCount - 1)
 				return false;
 		}
 	}
 
+	blockDirectory->currentSegmentFileNum = segmentFileNum;
+
 	for (i = 0; i < blockDirectory->totalSegfiles; i++)
 	{
 		fsInfo = blockDirectory->segmentFileInfo[i];
-
+		
 		if (!blockDirectory->isAOCol && segmentFileNum == fsInfo->segno)
 			break;
 		else if (blockDirectory->isAOCol && segmentFileNum ==
@@ -477,6 +478,7 @@ AppendOnlyBlockDirectory_GetEntry(
 	}
 
 	Assert(fsInfo != NULL);
+	blockDirectory->currentSegmentFileInfo = fsInfo;
 
 	/*
 	 * Search the btree index to find the minipage that contains
@@ -484,6 +486,7 @@ AppendOnlyBlockDirectory_GetEntry(
 	 * currently we will need to access all columns at the same time.
 	 */
 	heapTupleDesc = RelationGetDescr(blkdirRel);
+	idxTupleDesc = RelationGetDescr(blkdirIdx);
 
 	Assert(numScanKeys == 3);
 
@@ -494,42 +497,27 @@ AppendOnlyBlockDirectory_GetEntry(
 		scanKeys[0].sk_argument = Int32GetDatum(segmentFileNum);
 		scanKeys[1].sk_argument = Int32GetDatum(tmpGroupNo);
 		scanKeys[2].sk_argument = Int64GetDatum(rowNum);
-
+		
 		idxScanDesc = index_beginscan(blkdirRel, blkdirIdx,
-									  blockDirectory->appendOnlyMetaDataSnapshot,
+									  ActiveSnapshot,
 									  numScanKeys, scanKeys);
-
+	
 		tuple = index_getnext(idxScanDesc, BackwardScanDirection);
 
 		if (tuple != NULL)
 		{
-			/*
-			 * MPP-17061: we need to update currentSegmentFileNum
-			 * & currentSegmentFileInfo at the same time when we 
-			 * load the minipage for the block directory entry we
-			 * found, otherwise we would risk having inconsistency
-			 * between currentSegmentFileNum/currentSegmentFileInfo
-			 * and minipage contents, which would cause wrong block
-			 * header offset being returned in following block 
-			 * directory entry look up.
-			 */
-			blockDirectory->currentSegmentFileNum = segmentFileNum;
-			blockDirectory->currentSegmentFileInfo = fsInfo;
+			MinipagePerColumnGroup *minipageInfo;
+			
+			minipageInfo = &blockDirectory->minipages[tmpGroupNo];
 			extract_minipage(blockDirectory,
 							 tuple,
 							 heapTupleDesc,
 							 tmpGroupNo);
 		}
-		else
-		{
-			/* MPP-17061: index look up failed, row is invisible */
-			index_endscan(idxScanDesc);
-			return false;
-		}	
 
 		index_endscan(idxScanDesc);
 	}
-
+	
 	{
 		MinipagePerColumnGroup *minipageInfo;
 		minipageInfo = &blockDirectory->minipages[columnGroupNo];
@@ -543,25 +531,39 @@ AppendOnlyBlockDirectory_GetEntry(
 									   rowNum);
 
 		/* If there are no entries, return false. */
-		if (entry_no == -1)
+		if (entry_no == -1 && minipageInfo->numMinipageEntries == 0)
 			return false;
 
+		if (entry_no == -1)
+		{
+			/*
+			 * Since the last few blocks may not be logged in the block
+			 * directory, we always use the last entry.
+			 */
+			entry_no = minipageInfo->numMinipageEntries - 1;
+		}
 		return set_directoryentry_range(blockDirectory,
 										columnGroupNo,
 										entry_no,
 										directoryEntry);
 	}
-
+	
 	return false;
 }
 
 /*
  * AppendOnlyBlockDirectory_InsertEntry
  *
- * Insert an entry to the block directory. This entry is appended to the
+ * Insert an entry to the block directory. This entry is appended to the 
  * in-memory minipage. If the minipage is full, it is written to the block
  * directory relation on disk. After that, the new entry is added to the
  * new in-memory minipage.
+ *
+ * To reduce the size of a block directory, this function ignores new entries
+ * when the range between the offset value of the latest existing entry and
+ * the offset of the new entry is smaller than gp_blockdirectory_entry_min_range
+ * (if it is set). Otherwise, the latest existing entry is updated with new
+ * rowCount value, and the given new entry is appended to the in-memory minipage.
  *
  * If the block directory for the appendonly relation does not exist,
  * this function simply returns.
@@ -579,16 +581,47 @@ AppendOnlyBlockDirectory_InsertEntry(
 	MinipageEntry *entry = NULL;
 	MinipagePerColumnGroup *minipageInfo =
 		&blockDirectory->minipages[columnGroupNo];
+	int lastEntryNo;
 
 	if (rowCount == 0)
 		return false;
-
+	
 	if (blockDirectory->blkdirRel == NULL ||
 		blockDirectory->blkdirIdx == NULL)
 		return false;
 
 	Assert(minipageInfo->numMinipageEntries <= (uint32)NUM_MINIPAGE_ENTRIES);
 
+	lastEntryNo = minipageInfo->numMinipageEntries - 1;
+	if (lastEntryNo >= 0)
+	{
+		entry = &(minipageInfo->minipage->entry[lastEntryNo]);
+
+		Assert(entry->firstRowNum < firstRowNum);
+		Assert(entry->fileOffset < fileOffset);
+		
+		if (gp_blockdirectory_entry_min_range > 0 &&
+			fileOffset - entry->fileOffset < gp_blockdirectory_entry_min_range)
+			return true;
+		
+		/* Update the rowCount in the latest entry */
+		Assert(entry->rowCount <= firstRowNum - entry->firstRowNum);
+
+		if (Debug_appendonly_print_blockdirectory)
+			ereport(LOG,
+					(errmsg("Append-only block directory update entry: "
+							"(firstRowNum, columnGroupNo, fileOffset, rowCount) = (" INT64_FORMAT
+							", %d, " INT64_FORMAT ", " INT64_FORMAT ") at index %d to "
+							"(firstRowNum, columnGroupNo, fileOffset, rowCount) = (" INT64_FORMAT
+							", %d, " INT64_FORMAT ", " INT64_FORMAT ")",
+							entry->firstRowNum, columnGroupNo, entry->fileOffset, entry->rowCount,
+							minipageInfo->numMinipageEntries - 1,
+							entry->firstRowNum, columnGroupNo, entry->fileOffset,
+							firstRowNum - entry->firstRowNum)));
+		
+		entry->rowCount = firstRowNum - entry->firstRowNum;
+	}
+	
 	if (minipageInfo->numMinipageEntries >= (uint32)gp_blockdirectory_minipage_size)
 	{
 		write_minipage(blockDirectory, columnGroupNo);
@@ -603,16 +636,16 @@ AppendOnlyBlockDirectory_InsertEntry(
 			   minipageInfo->numMinipageEntries * sizeof(MinipageEntry));
 		minipageInfo->numMinipageEntries = 0;
 	}
-
+	
 	Assert(minipageInfo->numMinipageEntries < (uint32)gp_blockdirectory_minipage_size);
 
 	entry = &(minipageInfo->minipage->entry[minipageInfo->numMinipageEntries]);
 	entry->firstRowNum = firstRowNum;
 	entry->fileOffset = fileOffset;
 	entry->rowCount = rowCount;
-
+	
 	minipageInfo->numMinipageEntries++;
-
+	
 	if(Debug_appendonly_print_blockdirectory)
 	{
 		ereport(LOG,
@@ -639,17 +672,17 @@ init_scankeys(TupleDesc tupleDesc,
 	int keyNo;
 
 	Assert(nkeys <= tupleDesc->natts);
-
+	
 	for (keyNo = 0; keyNo < nkeys; keyNo ++)
 	{
-		ScanKey scanKey = (ScanKey)(((char *)scanKeys) +
+		ScanKey scanKey = (ScanKey)(((char *)scanKeys) + 
 									keyNo * sizeof(ScanKeyData));
 		RegProcedure opfuncid;
 		StrategyNumber strategyNumber = strategyNumbers[keyNo];
 
 		Assert(strategyNumber <= BTMaxStrategyNumber &&
 			   strategyNumber != InvalidStrategy);
-
+		
 		if (strategyNumber == BTEqualStrategyNumber)
 		{
 			opfuncid = equality_oper_funcid(tupleDesc->attrs[keyNo]->atttypid);
@@ -665,11 +698,11 @@ init_scankeys(TupleDesc tupleDesc,
 		else
 		{
 			Oid gtOid, leOid;
-
+			
 			gtOid = reverse_ordering_oper_opid(tupleDesc->attrs[keyNo]->atttypid);
 			leOid = get_negator(gtOid);
 			opfuncid = get_opcode(leOid);
-
+			
 			ScanKeyEntryInitialize(scanKey,
 								   0, /* sk_flag */
 								   keyNo + 1, /* attribute number to scan */
@@ -705,9 +738,9 @@ copy_out_minipage(MinipagePerColumnGroup *minipageInfo,
 	memcpy(minipageInfo->minipage, detoast_value, VARSIZE(detoast_value));
 	if (detoast_value != value)
 		pfree(detoast_value);
-
+	
 	Assert(minipageInfo->minipage->nEntry <= NUM_MINIPAGE_ENTRIES);
-
+	
 	minipageInfo->numMinipageEntries = minipageInfo->minipage->nEntry;
 }
 
@@ -732,7 +765,7 @@ extract_minipage(AppendOnlyBlockDirectory *blockDirectory,
 	int64 eof;
 	int start, end, mid=0;
 	bool found = false;
-
+	
 	heap_deform_tuple(tuple, tupleDesc, values, nulls);
 
 	Assert(blockDirectory->currentSegmentFileNum ==
@@ -746,7 +779,7 @@ extract_minipage(AppendOnlyBlockDirectory *blockDirectory,
 					  nulls[Anum_pg_aoblkdir_minipage - 1]);
 
 	ItemPointerCopy(&tuple->t_self, &minipageInfo->tupleTid);
-
+	
 	/*
 	 * When crashes during inserts, or cancellation during inserts,
 	 * there are out-of-date minipage entries in the block directory.
@@ -797,24 +830,26 @@ load_last_minipage(AppendOnlyBlockDirectory *blockDirectory,
 {
 	Relation blkdirRel = blockDirectory->blkdirRel;
 	Relation blkdirIdx = blockDirectory->blkdirIdx;
+	TupleDesc idxTupleDesc;
 	TupleDesc heapTupleDesc;
 	IndexScanDesc idxScanDesc;
 	HeapTuple tuple = NULL;
 	MemoryContext oldcxt;
 	int numScanKeys = blockDirectory->numScanKeys;
 	ScanKey scanKeys = blockDirectory->scanKeys;
-
+	
 #ifdef USE_ASSERT_CHECKING
 	StrategyNumber *strategyNumbers = blockDirectory->strategyNumbers;
 #endif /* USE_ASSERT_CHECKING */
-
+	
 	Assert(blockDirectory->aoRel != NULL);
 	Assert(blockDirectory->blkdirRel != NULL);
 	Assert(blockDirectory->blkdirIdx != NULL);
 
 	oldcxt = MemoryContextSwitchTo(blockDirectory->memoryContext);
-
+	
 	heapTupleDesc = RelationGetDescr(blkdirRel);
+	idxTupleDesc = RelationGetDescr(blkdirIdx);
 
 	Assert(numScanKeys == 3);
 	Assert(blockDirectory->currentSegmentFileInfo != NULL);
@@ -824,7 +859,7 @@ load_last_minipage(AppendOnlyBlockDirectory *blockDirectory,
 	Assert(strategyNumbers != NULL);
 	if (lastSequence == 0)
 		lastSequence = 1;
-
+	
 	scanKeys[0].sk_argument =
 		Int32GetDatum(blockDirectory->currentSegmentFileNum);
 	scanKeys[1].sk_argument = Int32GetDatum(columnGroupNo);
@@ -835,9 +870,9 @@ load_last_minipage(AppendOnlyBlockDirectory *blockDirectory,
 	 * that contains the last minipage.
 	 */
 	idxScanDesc = index_beginscan(blkdirRel, blkdirIdx,
-								  blockDirectory->appendOnlyMetaDataSnapshot,
+								  ActiveSnapshot,
 								  numScanKeys, scanKeys);
-
+	
 	tuple = index_getnext(idxScanDesc, BackwardScanDirection);
 	if (tuple != NULL)
 	{
@@ -846,7 +881,7 @@ load_last_minipage(AppendOnlyBlockDirectory *blockDirectory,
 						 heapTupleDesc,
 						 columnGroupNo);
 	}
-
+	
 	index_endscan(idxScanDesc);
 
 	MemoryContextSwitchTo(oldcxt);
@@ -857,7 +892,7 @@ load_last_minipage(AppendOnlyBlockDirectory *blockDirectory,
 						"(columnGroupNo, lastSequence, nEntries) = (%d, " INT64_FORMAT ", %u)",
 						columnGroupNo, lastSequence,
 						blockDirectory->minipages[columnGroupNo].numMinipageEntries)));
-
+	
 }
 
 /*
@@ -875,19 +910,19 @@ find_minipage_entry(Minipage *minipage,
 	int start_no, end_no;
 	int entry_no;
 	MinipageEntry *entry;
-
+	
 	start_no = 0;
 	end_no = numEntries - 1;
 	while (start_no <= end_no)
 	{
 		entry_no = start_no + (end_no - start_no + 1) / 2;
 		Assert(entry_no >= start_no && entry_no <= end_no);
-
+		
 		entry = &(minipage->entry[entry_no]);
-
+		
 		Assert(entry->firstRowNum > 0);
 		Assert(entry->rowCount > 0);
-
+		
 		if (entry->firstRowNum <= rowNum &&
 			entry->firstRowNum + entry->rowCount > rowNum)
 			break;
@@ -900,7 +935,7 @@ find_minipage_entry(Minipage *minipage,
 			start_no = entry_no + 1;
 		}
 	}
-
+	
 	if (start_no <= end_no)
 		return entry_no;
 	else
@@ -924,13 +959,13 @@ write_minipage(AppendOnlyBlockDirectory *blockDirectory,
 	TupleDesc heapTupleDesc = RelationGetDescr(blkdirRel);
 	MinipagePerColumnGroup *minipageInfo =
 		&blockDirectory->minipages[columnGroupNo];
-
+	
 	Assert(minipageInfo->numMinipageEntries > 0);
 
 	oldcxt = MemoryContextSwitchTo(blockDirectory->memoryContext);
-
+	
 	Assert(blkdirRel != NULL);
-
+	
 	values[Anum_pg_aoblkdir_segno - 1] =
 		Int32GetDatum(blockDirectory->currentSegmentFileNum);
 	nulls[Anum_pg_aoblkdir_segno - 1] = false;
@@ -949,13 +984,13 @@ write_minipage(AppendOnlyBlockDirectory *blockDirectory,
 	values[Anum_pg_aoblkdir_minipage - 1] =
 		PointerGetDatum(minipageInfo->minipage);
 	nulls[Anum_pg_aoblkdir_minipage - 1] = false;
-
+	
 	tuple = heaptuple_form_to(heapTupleDesc,
 							  values,
 							  nulls,
 							  NULL,
 							  NULL);
-
+	
 	/*
 	 * Write out the minipage to the block directory relation.
 	 * If this minipage is already in the relation, we update
@@ -987,11 +1022,11 @@ write_minipage(AppendOnlyBlockDirectory *blockDirectory,
 
 		simple_heap_insert(blkdirRel, tuple);
 	}
-
+	
 	CatalogUpdateIndexes(blkdirRel, tuple);
-
+	
 	heap_freetuple(tuple);
-
+	
 	MemoryContextSwitchTo(oldcxt);
 }
 
@@ -1006,12 +1041,12 @@ AppendOnlyBlockDirectory_End_forInsert(
 	if (blockDirectory->blkdirRel == NULL ||
 		blockDirectory->blkdirIdx == NULL)
 		return;
-
+	
 	for (groupNo = 0; groupNo < blockDirectory->numColumnGroups; groupNo++)
 	{
 		MinipagePerColumnGroup *minipageInfo =
 			&blockDirectory->minipages[groupNo];
-
+		
 		if (minipageInfo->numMinipageEntries > 0)
 		{
 			write_minipage(blockDirectory, groupNo);
@@ -1021,7 +1056,7 @@ AppendOnlyBlockDirectory_End_forInsert(
 								"(columnGroupNo, nEntries) = (%d, %u)",
 								groupNo, minipageInfo->numMinipageEntries)));
 		}
-
+		
 		pfree(minipageInfo->minipage);
 	}
 
@@ -1039,10 +1074,10 @@ AppendOnlyBlockDirectory_End_forInsert(
 	pfree(blockDirectory->minipages);
 	pfree(blockDirectory->scanKeys);
 	pfree(blockDirectory->strategyNumbers);
-
+	
 	index_close(blockDirectory->blkdirIdx, RowExclusiveLock);
 	heap_close(blockDirectory->blkdirRel, RowExclusiveLock);
-
+	
 	MemoryContextDelete(blockDirectory->memoryContext);
 }
 
@@ -1051,7 +1086,7 @@ AppendOnlyBlockDirectory_End_forSearch(
 	AppendOnlyBlockDirectory *blockDirectory)
 {
 	int groupNo;
-
+	
 	if (blockDirectory->blkdirRel == NULL ||
 		blockDirectory->blkdirIdx == NULL)
 		return;
@@ -1075,7 +1110,7 @@ AppendOnlyBlockDirectory_End_forSearch(
 	pfree(blockDirectory->minipages);
 	pfree(blockDirectory->scanKeys);
 	pfree(blockDirectory->strategyNumbers);
-
+	
 	index_close(blockDirectory->blkdirIdx, AccessShareLock);
 	heap_close(blockDirectory->blkdirRel, AccessShareLock);
 

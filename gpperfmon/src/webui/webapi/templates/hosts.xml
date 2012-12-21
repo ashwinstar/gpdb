@@ -1,0 +1,6 @@
+$def with (nodes)
+<?xml version="1.0"?>
+<hosts>
+$for n in nodes:
+    <host>$n</host>
+</hosts>

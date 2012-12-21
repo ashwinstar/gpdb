@@ -9,24 +9,7 @@
 #include "apr_hash.h"
 #include "time.h"
 
-#define GPMON_HOSTTTYPE_HDW 1
-#define GPMON_HOSTTTYPE_HDM 2
-#define GPMON_HOSTTTYPE_ETL 3
-#define GPMON_HOSTTTYPE_HBW 4
-#define GPMON_HOSTTTYPE_HDC 5
-
-#define MAX_SMON_PATH_SIZE (1024)
-
 #define GPDB_CONNECTION_STRING "dbname='" GPMON_DB "' user='" GPMON_DBUSER "' connect_timeout='30'"
-
-#ifdef USE_CONNECTEMC
-int find_token_in_config_string(char* buffer, char**result, const char* token);
-#else
-int find_token_in_config_string(char* buffer, char**result, const char* token)
-{
-    return 1;
-}
-#endif
 
 // assumes a valid connection already exists
 static const char* gpdb_exec_only(PGconn* conn, PGresult** pres, const char* query)
@@ -185,380 +168,11 @@ struct hostinfo_holder_t
 	apr_uint32_t address_count;
 
 	char* datadir;
-	char* smon_dir;
 	char* hostname;
 	int is_master;
-	int is_hdm;
-	int is_hdw;
-	int is_hbw;
-	int is_hdc;
-	int is_etl;
 };
 
-
-
-
-void initializeHostInfoDataWithAddress(struct hostinfo_holder_t* holder, char* address, int firstAddress)
-{
-	// USE permenant memory to store this data
-
-	addressinfo_holder_t* aiholder = calloc(1, sizeof(addressinfo_holder_t));
-	CHECKMEM(aiholder);
-
-	aiholder->address = strdup(address);
-	CHECKMEM(aiholder->address);
-
-	if (firstAddress)
-	{
-		holder->addressinfo_head = holder->addressinfo_tail = aiholder;
-	}
-	else
-	{
-		holder->addressinfo_tail->next = aiholder;
-		holder->addressinfo_tail = aiholder;
-	}
-}
-
-void initializeHostInfoDataFromFileEntry(apr_pool_t* tmp_pool, struct hostinfo_holder_t* holder,
-		char* primary_hostname, char* hostEntry, int hostType, char* smon_bin_dir, char* smon_log_dir)
-{
-	holder->hostname = apr_pstrdup(tmp_pool, primary_hostname);
-	CHECKMEM(holder->hostname);
-
-	if (smon_bin_dir && smon_log_dir) {		
-
-		holder->smon_dir = apr_pstrdup(tmp_pool, smon_bin_dir);
-		CHECKMEM(holder->smon_dir);
-
-		holder->datadir = apr_pstrdup(tmp_pool, smon_log_dir);
-		CHECKMEM(holder->datadir);
-
-	} else {
-		holder->smon_dir = NULL;
-		holder->datadir = apr_pstrdup(tmp_pool, "/opt/dca/var/gpsmon");
-		CHECKMEM(holder->datadir);
-	}
-
- 	switch(hostType){
-		case GPMON_HOSTTTYPE_HDW:
-			holder->is_hdw = 1;
-		break;
-		case GPMON_HOSTTTYPE_HDM:
-			holder->is_hdm = 1;
-		break;
-		case GPMON_HOSTTTYPE_ETL:
-			holder->is_etl = 1;
-		break;
-		case GPMON_HOSTTTYPE_HBW:
-			holder->is_hbw = 1;
-		break;
-		case GPMON_HOSTTTYPE_HDC:
-			holder->is_hdc = 1;
-		break;
-	}
-
-	holder->address_count = 0;
-	int firstAddress = 1;
-
-	while(*hostEntry)
-	{	
-		char* location = strchr(hostEntry, ',');
-		if (location)
-			*location = 0;
-
-		initializeHostInfoDataWithAddress(holder, hostEntry, firstAddress);
-		holder->address_count++;
-		if (!location)
-			return; // there were no commas so this is the last address in the hostEntry
-		*location = ',';
-		hostEntry = location+1; 
-		firstAddress = 0;
-	}
-}
-
-
-void process_line_in_devices_cnf(apr_pool_t* tmp_pool, apr_hash_t* htab, char* line)
-{
-	if (!line)
-	{
-		gpmon_warningx(FLINE, 0, "Line in devices file is null, skipping");
-		return; 
-	}
-
-	char* host;
-    char* device;
-    char* category;
-	char primary_hostname[64];
-
-	char* location = strchr(line, '#');
-	if (location)
-	{
-		*location = 0;
-		// remove comments from the line
-	}
-
-	if (!line)
-	{
-		gpmon_warningx(FLINE, 0, "Line in devices file is null after removing comments, skipping");
-		return; 
-	}
-
-	// we do these in reverse order so inserting null chars does not prevent finding other tokens
-    if (find_token_in_config_string(line, &host, "Host"))
-	{
-        return;
-	}
-
-    if (find_token_in_config_string(line, &device, "Device"))
-	{
-        return;
-	}
-
-    if (find_token_in_config_string(line, &category, "Category"))
-	{
-        return;
-	}
-
-	int monitored_device = 0;
-	int hostType = 0;
-	if (strcmp(device, "Spidey0001") == 0)
-	{
-		monitored_device = 1;
-		hostType = GPMON_HOSTTTYPE_HDW;
-	}
-
-	if (strcmp(device, "Spidey0002") == 0)
-	{
-		monitored_device = 1;
-		hostType = GPMON_HOSTTTYPE_HDM;
-	}
-
-	if (strcmp(device, "Spidey0003") == 0)
-	{
-		monitored_device = 1;
-		hostType = GPMON_HOSTTTYPE_HBW;
-	}
-
-	if (strcmp(device, "EtlHost") == 0) 
-	{
-		monitored_device = 1;
-		hostType = GPMON_HOSTTTYPE_ETL;
-	}
-
-	//For V2
-	if (strcmp(device, "Locust0001") == 0)
-	{
-		monitored_device = 1;
-		hostType = GPMON_HOSTTTYPE_HDW;
-	}
-
-	if (strcmp(device, "Locust0002") == 0)
-	{
-		monitored_device = 1;
-		hostType = GPMON_HOSTTTYPE_HDM;
-	}
-
-	if (strcmp(device, "Locust0003") == 0)
-	{
-		monitored_device = 1;
-		hostType = GPMON_HOSTTTYPE_HDC;
-	}
-
-	if (strcmp(device, "EtlHostV2") == 0)
-	{
-		monitored_device = 1;
-		hostType = GPMON_HOSTTTYPE_ETL;
-	}
-
-	// segment host, switch, etc ... we are only adding additional hosts required for performance monitoring
-	if (!monitored_device)
-		return;
-
-	strncpy(primary_hostname, host, sizeof(primary_hostname));
-	primary_hostname[sizeof(primary_hostname) - 1] = 0;
-	location = strchr(primary_hostname, ',');
-	if (location)
-		*location = 0;
-
-	struct hostinfo_holder_t* hostinfo_holder = apr_hash_get(htab, primary_hostname, APR_HASH_KEY_STRING);
-	if (hostinfo_holder) {
-		gpmon_warningx(FLINE, 0, "Host '%s' is duplicated in devices.cnf", primary_hostname);
-		return;
-	}
-	
-	// OK Lets add this record at this point
-	hostinfo_holder = apr_pcalloc(tmp_pool, sizeof(struct hostinfo_holder_t));
-	CHECKMEM(hostinfo_holder);
-
-	apr_hash_set(htab, primary_hostname, APR_HASH_KEY_STRING, hostinfo_holder);
-
-	initializeHostInfoDataFromFileEntry(tmp_pool, hostinfo_holder, primary_hostname, host, hostType, NULL, NULL);
-}
-
-
-void process_line_in_hadoop_cluster_info(apr_pool_t* tmp_pool, apr_hash_t* htab, char* line, char* smon_bin_location, char* smon_log_location)
-{
-	if (!line) {
-		gpmon_warningx(FLINE, 0, "Line in hadoop cluster info file is null, skipping");
-		return;
-	}
-
-	char* host;
-	char* category;
-
-	char primary_hostname[64];
-
-	char* location = strchr(line, '#');
-	if (location) {
-		*location = 0; // remove comments from the line
-	}
-
-	if (!line) {
-		gpmon_warningx(FLINE, 0, "Line in devices file is null after removing comments, skipping");
-		return;
-	}
-
-	// we do these in reverse order so inserting null chars does not prevent finding other tokens
-	if (find_token_in_config_string(line, &category, "Categories")) {
-		return;
-	}
-	location = strchr(category, ','); //remove the comma and extra categories
-	if (location) {
-		*location = 0;
-	}
-
-	if (find_token_in_config_string(line, &host, "Hostname")) {
-		return;
-	}
-	TR1(("Found hadoop host %s\n",host ));
-	// look for the 3 hadoop host types
-	int monitored_device = 0;
-	int hostType = 0;
-	if (strcmp(category, "hdm") == 0)
-	{
-		monitored_device = 1;
-		hostType = GPMON_HOSTTTYPE_HDM;
-	}
-
-	if (strcmp(category, "hdw") == 0)
-	{
-		monitored_device = 1;
-		hostType = GPMON_HOSTTTYPE_HDW;
-	}
-
-	if (strcmp(category, "hdc") == 0)
-	{
-		monitored_device = 1;
-		hostType = GPMON_HOSTTTYPE_HDC;
-	}
-	// The below code is the same as the devices file parsing code
-
-	// segment host, switch, etc ... we are only adding additional hosts required for performance monitoring
-	if (!monitored_device) {
-		return;
-	}
-
-	strncpy(primary_hostname, host, sizeof(primary_hostname));
-	primary_hostname[sizeof(primary_hostname) - 1] = 0;
-	location = strchr(primary_hostname, ',');
-	if (location) {
-		*location = 0;
-	}
-
-	struct hostinfo_holder_t* hostinfo_holder = apr_hash_get(htab, primary_hostname, APR_HASH_KEY_STRING);
-	if (hostinfo_holder) {
-		gpmon_warningx(FLINE, 0, "Host '%s' is duplicated in clusterinfo.txt", primary_hostname);
-		return;
-	}
-
-	// OK Lets add this record at this point
-	hostinfo_holder = apr_pcalloc(tmp_pool, sizeof(struct hostinfo_holder_t));
-	CHECKMEM(hostinfo_holder);
-
-	apr_hash_set(htab, primary_hostname, APR_HASH_KEY_STRING, hostinfo_holder);
-
-	initializeHostInfoDataFromFileEntry(tmp_pool, hostinfo_holder, primary_hostname, host, hostType, smon_bin_location, smon_log_location);
-}
-
-//Return 1 if not an appliance and 0 if an appliance
-int get_appliance_hosts_and_add_to_hosts(apr_pool_t* tmp_pool, apr_hash_t* htab)
-{
-	// open devices.cnf and then start reading the data
-	// populate all relevant hosts: Spidey0001, Spidey0002, EtlHost
-	FILE* fd = fopen(PATH_TO_APPLIANCE_VERSION_FILE, "r");
-	if (!fd)
-	{
-		TR0(("not an appliance ... not reading devices.cnf\n"));
-		return 1;
-	}
-	fclose(fd);
-
-	fd = fopen(PATH_TO_APPLAINCE_DEVICES_FILE, "r");
-	if (!fd)
-	{
-		gpmon_warningx(FLINE, 0, "can not read %s, ignoring\n", PATH_TO_APPLAINCE_DEVICES_FILE);
-		return 0;
-	}
-
-	char* line;
-	char buffer[1024];
-
-	while (NULL != fgets(buffer, sizeof(buffer), fd))
-	{
-		// remove new line 
-		line = gpmon_trim(buffer);
-		process_line_in_devices_cnf(tmp_pool, htab, line);
-	}
-
-	fclose(fd);
-	return 0;
-}
-
-//Return 1 if not a hadoop software only cluster and 0 it is a hadoop software only cluster
-int get_hadoop_hosts_and_add_to_hosts(apr_pool_t* tmp_pool, apr_hash_t* htab, mmon_options_t* opt)
-{
-	if (!opt->smon_hadoop_swonly_binfile){
-		TR0(("hadoop_smon_path not specified in gpmmon config. not processing hadoop nodes\n"));
-		return 1;
-	}
-
-	char* smon_log_dir;
-	char* hadoop_cluster_file;
-	if (opt->smon_hadoop_swonly_logdir){
-		smon_log_dir = opt->smon_hadoop_swonly_logdir;
-	}
-	else{
-		smon_log_dir = (char*)PATH_TO_HADOOP_SMON_LOGS;
-	}
-	if (opt->smon_hadoop_swonly_clusterfile){
-		hadoop_cluster_file = opt->smon_hadoop_swonly_clusterfile;
-	}
-	else{
-		hadoop_cluster_file = (char*)DEFAULT_PATH_TO_HADOOP_HOST_FILE;
-	}
-
-	FILE* fd = fopen(hadoop_cluster_file, "r");
-	if (!fd)
-	{
-		TR0(("not a hadoop software only cluster ... not reading %s\n", hadoop_cluster_file));
-		return 1;
-	}
-
-	char* line;
-	char buffer[1024];
-
-	// process the hostlines
-	while (NULL != fgets(buffer, sizeof(buffer), fd)) {
-		line = gpmon_trim(buffer);// remove new line
-		process_line_in_hadoop_cluster_info(tmp_pool, htab, line, opt->smon_hadoop_swonly_binfile, smon_log_dir);
-	}
-
-	fclose(fd);
-	return 0;
-}
-
-
-void gpdb_get_hostlist(int* hostcnt, host_t** host_table, apr_pool_t* global_pool, mmon_options_t* opt)
+void gpdb_get_hostlist(int* hostcnt, host_t** host_table, apr_pool_t* global_pool)
 {
 	apr_pool_t* pool;
 	PGconn* conn = 0;
@@ -653,12 +267,6 @@ void gpdb_get_hostlist(int* hostcnt, host_t** host_table, apr_pool_t* global_poo
 
 		}
 
-		// if we have any appliance specific hosts such as hadoop nodes add them to the hash table
-		if (get_appliance_hosts_and_add_to_hosts(pool, htab)){
-			TR0(("Not an appliance: checking for SW Only hadoop hosts.\n"));
-			get_hadoop_hosts_and_add_to_hosts(pool, htab, opt); // Not an appliance, so check for SW only hadoop nodes.
-		} 
-
 		unique_hosts = apr_hash_count(htab);
 
 		// allocate memory for host list (not freed ever)
@@ -680,31 +288,12 @@ void gpdb_get_hostlist(int* hostcnt, host_t** host_table, apr_pool_t* global_poo
 
 			hosts[hostcounter].hostname = strdup(hostinfo_holder->hostname);
 			hosts[hostcounter].data_dir = strdup(hostinfo_holder->datadir);
-			if (hostinfo_holder->smon_dir){
-				hosts[hostcounter].smon_bin_location = strdup(hostinfo_holder->smon_dir);
-			}
 			hosts[hostcounter].is_master = hostinfo_holder->is_master;
 			hosts[hostcounter].addressinfo_head = hostinfo_holder->addressinfo_head;
 			hosts[hostcounter].addressinfo_tail = hostinfo_holder->addressinfo_tail;
 			hosts[hostcounter].address_count = hostinfo_holder->address_count;
 			hosts[hostcounter].connection_hostname.current = hosts[hostcounter].addressinfo_head;
 			hosts[hostcounter].snmp_hostname.current = hosts[hostcounter].addressinfo_head;
-
-			if (hostinfo_holder->is_hdm)
-				hosts[hostcounter].is_hdm = 1;
-			
-			if (hostinfo_holder->is_hdw)
-				hosts[hostcounter].is_hdw = 1;
-
-			if (hostinfo_holder->is_etl)
-				hosts[hostcounter].is_etl = 1;
-
-			if (hostinfo_holder->is_hbw)
-				hosts[hostcounter].is_hbw = 1;
-
-			if (hostinfo_holder->is_hdc)
-				hosts[hostcounter].is_hdc = 1;
-
 			apr_thread_mutex_create(&hosts[hostcounter].mutex, APR_THREAD_MUTEX_UNNESTED, global_pool); // use the global pool so the mutexes last beyond this function
 
 			hostcounter++;
@@ -920,32 +509,13 @@ static apr_status_t harvest(const char* tbl, apr_pool_t* pool, PGconn* conN)
 {
 	PGconn* conn = 0;
 	PGresult* result = 0;
-	const int QRYBUFSIZ = 1792;
+	const int QRYBUFSIZ = 1024;
 	char qrybuf[QRYBUFSIZ];
 	const char* QRYFMT = "insert into %s_history select * from _%s_tail;";
 	const char* errmsg;
 	apr_status_t res = APR_SUCCESS;
 
-	if (strcmp(tbl, "iterators") == 0) { //this is to leave the cpu percentage out of iterators history
-		const char* ITERQRYFMT = "insert into %s_history (ctime, tmid, ssid, ccnt, segid, pid, nid, pnid, hostname, ntype, nstatus, tstart, "
-		"tduration, pmemsize, pmemmax, memsize, memresid, memshare, cpu_elapsed, cpu_currpct, phase, rows_out, rows_out_est, m0_name, m0_unit, m0_val, "
-		"m0_est, m1_name, m1_unit, m1_val, m1_est, m2_name, m2_unit, m2_val, m2_est, m3_name, m3_unit, m3_val, m3_est, m4_name, m4_unit, "
-		"m4_val, m4_est, m5_name, m5_unit, m5_val, m5_est, m6_name, m6_unit, m6_val, m6_est, m7_name, m7_unit, m7_val, m7_est, m8_name, "
-		"m8_unit, m8_val, m8_est, m9_name, m9_unit, m9_val, m9_est, m10_name, m10_unit, m10_val, m10_est, m11_name, m11_unit, m11_val, "
-		"m11_est, m12_name, m12_unit, m12_val, m12_est, m13_name, m13_unit, m13_val, m13_est, m14_name, m14_unit, m14_val, m14_est, m15_name, "
-		"m15_unit, m15_val, m15_est, t0_name, t0_val) select ctime, tmid, ssid, ccnt, segid, pid, nid, pnid, hostname, ntype, nstatus, tstart, "
-		"tduration, pmemsize, pmemmax, memsize, memresid, memshare, cpu_elapsed, 0, phase, rows_out, rows_out_est, m0_name, m0_unit, m0_val, "
-		"m0_est, m1_name, m1_unit, m1_val, m1_est, m2_name, m2_unit, m2_val, m2_est, m3_name, m3_unit, m3_val, m3_est, m4_name, m4_unit, "
-		"m4_val, m4_est, m5_name, m5_unit, m5_val, m5_est, m6_name, m6_unit, m6_val, m6_est, m7_name, m7_unit, m7_val, m7_est, m8_name, "
-		"m8_unit, m8_val, m8_est, m9_name, m9_unit, m9_val, m9_est, m10_name, m10_unit, m10_val, m10_est, m11_name, m11_unit, m11_val, "
-		"m11_est, m12_name, m12_unit, m12_val, m12_est, m13_name, m13_unit, m13_val, m13_est, m14_name, m14_unit, m14_val, m14_est, "
-		"m15_name, m15_unit, m15_val, m15_est, t0_name, t0_val from _%s_tail;";
-
-		snprintf(qrybuf, QRYBUFSIZ, ITERQRYFMT, tbl, tbl);
-	}
-	else {
-		snprintf(qrybuf, QRYBUFSIZ, QRYFMT, tbl, tbl);
-	}
+	snprintf(qrybuf, QRYBUFSIZ, QRYFMT, tbl, tbl);
 
 	errmsg = gpdb_exec(&conn, &result, qrybuf);
 	if (errmsg)
@@ -956,30 +526,6 @@ static apr_status_t harvest(const char* tbl, apr_pool_t* pool, PGconn* conN)
 	else
 	{
 		TR1(("load completed OK: %s\n", tbl));
-	}
-
-	PQclear(result);
-	PQfinish(conn);
-	return res;
-}
-
-/**
- * This function removes the not null constraint from the segid column so that we can set it to null when the segment aggregation flag is true
- */
-apr_status_t remove_segid_constraint(void)
-{
-	PGconn* conn = 0;
-	PGresult* result = 0;
-	const char* ALTERSTR = "alter table iterators_history alter column segid drop not null;";
-	const char* errmsg;
-	apr_status_t res = APR_SUCCESS;
-
-	errmsg = gpdb_exec(&conn, &result, ALTERSTR);
-	if (errmsg) {
-		res = 1;
-		gpmon_warningx(FLINE, 0, "---- Alter FAILED ---- on command: %s with error %s\n", ALTERSTR, errmsg);
-	} else {
-		TR1(("remove_segid_constraint: alter completed OK\n"));
 	}
 
 	PQclear(result);
@@ -1073,7 +619,7 @@ static apr_status_t append_to_harvest(const char* tbl, apr_pool_t* pool, PGconn*
 
 typedef apr_status_t eachtablefunc(const char* tbl, apr_pool_t*, PGconn*);
 
-char* all_tables[] = { "system", "queries", "iterators", "database", "segment", "filerep", "diskspace" };
+char* all_tables[] = { "system", "queries", "iterators", "database", "segment", "filerep" };
 
 apr_status_t call_for_each_table(eachtablefunc func, apr_pool_t* pool, PGconn* conn)
 { 

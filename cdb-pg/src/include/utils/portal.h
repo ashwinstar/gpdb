@@ -195,8 +195,7 @@ typedef struct PortalData
 	bool		visible;		/* include this portal in pg_cursors? */
 	
 	/* MPP: is this portal a CURSOR, or protocol level portal? */	
-	bool		is_extended_query; /* simple or extended query protocol? */
-	bool		is_simply_updatable;
+	bool		is_cursor;
 } PortalData;
 
 extern PortalStatus PortalGetStatus(PortalData *p);

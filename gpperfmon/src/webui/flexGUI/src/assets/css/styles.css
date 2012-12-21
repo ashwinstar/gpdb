@@ -1,0 +1,206 @@
+Application {
+   backgroundColor: #DFFCB2;
+   padding-top: 0;
+   padding-bottom: 0;
+   padding-left: 0;
+   padding-right: 0;
+   fontFamily: Verdana;
+}
+
+Panel {
+   borderColor: #BFDC92;
+}
+
+.mainTabNavigator {
+   tabHeight: 25;
+   dropShadowEnabled: true;
+   tabStyleName: "myTabs";
+   firstTabStyleName: "myTabs";
+   lastTabStyleName: "myTabs";
+   selectedTabTextStyleName: "mySelectedTabs";
+}
+
+.myTabs {
+   cornerRadius: 10;
+
+}
+
+.mySelectedTabs {
+}
+
+.secondaryTabNavigator {
+   tabHeight: 20;
+   dropShadowEnabled: true;
+   tabStyleName: "secondaryTabs";
+   firstTabStyleName: "secondaryTabs";
+   lastTabStyleName: "secondaryTabs";
+   selectedTabTextStyleName: "mySelectedTabs";
+}
+
+.secondaryTabs {
+   cornerRadius: 50;
+
+}
+
+.smallMetricGraph {
+   borderThicknessLeft: 5;
+   borderThicknessTop: 5;
+   borderThicknessBottom: 5;
+   borderThicknessRight: 5;
+   headerHeight: 18;
+}
+
+.dashboardMinigraphs {
+   borderThicknessLeft: 5;
+   borderThicknessTop: 5;
+   borderThicknessBottom: 5;
+   borderThicknessRight: 5;
+   headerHeight: 18;	
+   padding-top: 2;
+   padding-bottom: 2;
+   padding-left: 2;
+   padding-right: 2;
+}
+
+.largeMetricGraphCombo {
+   fontSize: 12;
+   fontWeight: bold;
+}
+
+.largeMetricGraphTitleBackground {
+   backgroundColor: #BFDC92;
+   backgroundAlpha: 0.4;
+   padding-top: 4;
+   padding-bottom: 4;
+   padding-left: 4;
+   padding-right: 4;
+}
+
+.dashboardTitle {
+   fontSize: 14;
+   fontWeight: bold;	
+}
+
+.dashboardMetricTitle {
+   fontSize: 10;	
+}
+
+.dashboardMetricValue {
+   fontSize: 12;
+   fontWeight: bold;	
+}
+
+.titlelessPanel {
+   borderThicknessLeft: 5;
+   borderThicknessTop: 5;
+   borderThicknessBottom: 5;
+   borderThicknessRight: 5;
+   roundedBottomCorners: true;
+   headerHeight: 0;
+}
+
+.mainTitle {
+	fontWeight: bold;
+	fontSize: 16;
+}
+
+.mainSubTitle {
+	fontWeight: bold;
+	fontSize: 10;
+}
+
+.footerText {
+	fontSize: 9;
+}
+
+.dbStatusLabelStyle {
+	fontSize: 10;
+	color: #FFFFFF;
+	fontWeight: bold;
+}
+
+.dbDegradeStyle {
+	background-color: #de2701;
+}
+
+.dbUnBalancedStyle {
+	background-color: #ea7b29;
+}
+
+.hostItemLbl{
+        fontWeight:bold;
+        fontSize:11px;
+        color:#0b333c;
+}
+
+.hostItemStatusLbl{
+        fontSize:11px;
+        color:#79816d;
+}
+
+.hostItemSelectedStyle{
+        backgroundColor:#c4cdb6;
+}
+
+.hostItemNormalStyle{
+        backgroundColor:#F7F7F7;
+}
+
+.statusItemSelectedStyle{
+        backgroundColor:#c4cdb6;
+}
+
+.statusItemNormalStyle{
+        backgroundColor:#E5F1D3;
+}
+
+.consolidatedViewSectionHeaderStyle{
+        fontSize:14px;
+        fontWeight:bold;
+        color:#0b333c;
+        paddingLeft:4px;
+        paddingTop:2px;
+}
+
+.consolidatedViewDGHeaderStyle{
+        fontSize:12px;
+        fontWeight:bold;
+        color:#0b333c;
+}
+
+.hostsSectionStyle{
+        backgroundColor:#bfdc92;
+        verticalGap:0px;
+}
+
+.hostsSectionHeaderStyle{
+        backgroundColor:#efefef;
+        borderSides:"top, bottom";
+        borderStyle:solid;
+        borderColor:#b7babc;
+        paddingLeft:4px;
+}
+
+.hostsContainerStyle{
+        backgroundColor:#FFFFFF;
+}
+
+.detailsSectionStyle{
+        backgroundColor:#c4cdb6;
+        verticalGap:0px;
+}
+.commonHealthDetails{
+        fontFamily:Verdana ;
+        fontWeight:bold;
+        fontSize:11;
+}
+
+.healthTabBreadCrumbActiveStyle{
+        fontSize:15px;
+        color:#333333;
+}
+
+.healthTabBreadCrumbInactiveStyle{
+        fontSize:15px;
+        color:#AAAAAA;
+}

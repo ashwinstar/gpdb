@@ -60,10 +60,12 @@ OPTIONS
 -f <hostfile_gpssh>
 
 Specifies the name of a file that contains a list of hosts 
-that will participate in this SCP session. The syntax of the 
-host file is one host per line as follows:
+that will participate in this SCP session. The host name is 
+required, and you can optionally specify an alternate user 
+name and/or ssh port number per host. The syntax of the host 
+file is one host per line as follows:
 
-<hostname>
+[<username>@]<hostname>[:<scp_port>]
 
 -h <hostname>
 

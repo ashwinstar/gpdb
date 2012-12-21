@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:VDividedBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%"
+	xmlns:util="util.*">
+
+<mx:Script>
+    <![CDATA[
+      import util.Debug;
+      import mx.utils.ObjectUtil;   
+      import model.GPPerfMonModelLocator;
+		
+  	  [Bindable]
+	  public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();		
+    ]]>
+</mx:Script>	
+
+	<mx:VBox height="100%" width="100%">
+		<mx:HBox verticalAlign="middle">
+			<mx:Label text="Display internal 'model' (click to refresh) "/>
+			<mx:Button label="NavState" click="{area.text = ObjectUtil.toString(mdl.nav)}"/>
+			<mx:Button label="Session" click="{area.text = ObjectUtil.toString(mdl.session)}"/>
+			<mx:Button label="System" click="{area.text = ObjectUtil.toString(mdl.system)}"/>
+			<mx:Button label="Database" click="{area.text = ObjectUtil.toString(mdl.db)}"/>
+			<mx:Button label="Queries" click="{area.text = ObjectUtil.toString(mdl.queries)}"/>
+		</mx:HBox>
+		<mx:TextArea editable="false" id="area" width="100%" height="100%"/>
+	</mx:VBox>
+	<mx:VBox height="100%" width="100%">
+		<mx:HBox verticalAlign="middle">
+			<mx:Label text="Internal logging output "/>
+			<mx:Button label="Clear" click="{Debug.debugBuffer = ''}"/>
+		</mx:HBox>
+		<mx:TextArea editable="false" text="{Debug.debugBuffer}" width="100%" height="100%"/>
+	</mx:VBox>		
+</mx:VDividedBox>

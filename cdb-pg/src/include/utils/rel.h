@@ -118,9 +118,6 @@ typedef struct RelationNodeInfo
 {
 	bool	isPresent;
 
-	bool	tidAllowedToBeZero;
-				// Persistent TID allowed to be zero for "Before Persistence" or Recovery.
-
 	ItemPointerData		persistentTid;
 	int64				persistentSerialNum;
 } RelationNodeInfo;
@@ -144,14 +141,6 @@ typedef struct RelationData
 	char		rd_indexvalid;	/* state of rd_indexlist: 0 = not valid, 1 =
 								 * valid, 2 = temporarily forced */
 	SubTransactionId rd_createSubid;	/* rel was created in current xact */
-
-	/*
-	 * Debugging information, Values from CREATE TABLE, if present.
-	 */
-	bool				rd_haveCreateDebugInfo;
-	bool				rd_createDebugIsZeroTid;
-	ItemPointerData		rd_createDebugPersistentTid;
-	int64				rd_createDebugPersistentSerialNum;
 
 	/*
 	 * rd_createSubid is the ID of the highest subtransaction the rel has

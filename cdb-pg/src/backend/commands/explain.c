@@ -417,7 +417,7 @@ ExplainOnePlan_internal(PlannedStmt *plannedstmt,
         /* Wait for completion of all qExec processes. */
         PG_TRY();
         {
-            if (estate->dispatcherState && estate->dispatcherState->results)
+            if (estate->dispatcherState && estate->dispatcherState->primaryResults)
 			{
                 CdbCheckDispatchResult(estate->dispatcherState, false); 
 			}
@@ -437,9 +437,9 @@ ExplainOnePlan_internal(PlannedStmt *plannedstmt,
             cdbexplain_localExecStats(queryDesc->planstate, es->showstatctx);
 
         /* Fill in the plan's Instrumentation with stats from qExecs. */
-        if (estate->dispatcherState && estate->dispatcherState->results)
+        if (estate->dispatcherState && estate->dispatcherState->primaryResults)
             cdbexplain_recvExecStats(queryDesc->planstate,
-                                     estate->dispatcherState->results,
+                                     estate->dispatcherState->primaryResults,
                                      LocallyExecutingSliceIndex(estate),
                                      es->showstatctx);
 	}
@@ -752,12 +752,12 @@ appendGangAndDirectDispatchInfo(StringInfo str, PlanState *planstate, int sliceI
 	switch (slice->gangType)
 	{
 		case GANGTYPE_UNALLOCATED:
-		case GANGTYPE_MASTERDB_READER:
+		case GANGTYPE_ENTRYDB_READER:
 			appendStringInfo(str, "  (slice%d)", sliceId);
 			break;
 
-		case GANGTYPE_WRITER:
-		case GANGTYPE_SEGDB_READER:
+		case GANGTYPE_PRIMARY_WRITER:
+		case GANGTYPE_PRIMARY_READER:
 		{
 			int numSegments;
 			appendStringInfo(str, "  (slice%d;", sliceId);
@@ -846,9 +846,6 @@ explain_outNode(StringInfo str,
 			break;
 		case T_Append:
 			pname = "Append";
-			break;
-		case T_Sequence:
-			pname = "Sequence";
 			break;
 		case T_BitmapAnd:
 			pname = "BitmapAnd";
@@ -949,12 +946,6 @@ explain_outNode(StringInfo str,
 		case T_AOCSScan:
 			pname = "Append-only Columnar Scan";
 			break;
-		case T_TableScan:
-			pname = "Table Scan";
-			break;
-		case T_DynamicTableScan:
-			pname = "Dynamic Table Scan";
-			break;
 		case T_ExternalScan:
 			pname = "External Scan";
 			break;
@@ -1017,16 +1008,7 @@ explain_outNode(StringInfo str,
 			}
 			break;
 		case T_Window:
-			if ( ((Window *) plan)->sequence != NULL )
-			{
-			/* If this is a sequence, there must be windowKeys. */
-				Assert(list_length(((Window *) plan)->windowKeys) > 0);
-				pname = "Sequence";
-			}
-			else
-			{
-				pname = "Window";
-			}
+			pname = "Window";
 			break;
 		case T_TableFunctionScan:
 			pname = "Table Function Scan";
@@ -1121,8 +1103,6 @@ explain_outNode(StringInfo str,
 		case T_ExternalScan:
 		case T_AppendOnlyScan:
 		case T_AOCSScan:
-		case T_TableScan:
-		case T_DynamicTableScan:
 		case T_BitmapHeapScan:
 		case T_BitmapAppendOnlyScan:
 		case T_TidScan:
@@ -1143,13 +1123,6 @@ explain_outNode(StringInfo str,
 				if (strcmp(rte->eref->aliasname, relname) != 0)
 					appendStringInfo(str, " %s",
 									 quote_identifier(rte->eref->aliasname));
-
-				/* Print partIndex for DynamicTableScan */
-				if (IsA(plan, DynamicTableScan))
-				{
-					appendStringInfo(str, " (partIndex: %d)",
-									 ((DynamicTableScan *)plan)->partIndex);
-				}
 			}
 			break;
 		case T_BitmapIndexScan:
@@ -1246,6 +1219,10 @@ explain_outNode(StringInfo str,
 								 quote_identifier(valsname));
 			}
 			break;
+		case T_Material:
+			if (((Material *) plan)->cdb_strict)
+				appendStringInfo(str, " for deadlock safety");
+			break;
 		default:
 			break;
 	}
@@ -1313,8 +1290,6 @@ explain_outNode(StringInfo str,
 		case T_ExternalScan:
 		case T_AppendOnlyScan:
 		case T_AOCSScan:
-		case T_TableScan:
-		case T_DynamicTableScan:
 		case T_FunctionScan:
 		case T_ValuesScan:
 			show_scan_qual(plan->qual,
@@ -1645,10 +1620,7 @@ explain_outNode(StringInfo str,
 			Plan	   *subnode = (Plan *) lfirst(lst);
 
 			for (i = 0; i < indent; i++)
-			{
 				appendStringInfo(str, "  ");
-			}
-
 			appendStringInfo(str, "  ->  ");
 
 			/*
@@ -1659,31 +1631,6 @@ explain_outNode(StringInfo str,
 			 */
 			explain_outNode(str, subnode,
 							appendstate->appendplans[j],
-							outer_plan,
-							indent + 3, es);
-			j++;
-		}
-	}
-
-	if (IsA(plan, Sequence))
-	{
-		Sequence *sequence = (Sequence *) plan;
-		SequenceState *sequenceState = (SequenceState *) planstate;
-		ListCell *lc;
-		int j = 0;
-		foreach(lc, sequence->subplans)
-		{
-			Plan *subnode = (Plan *) lfirst(lc);
-
-			for (i = 0; i < indent; i++)
-			{
-				appendStringInfo(str, "  ");
-			}
-			
-			appendStringInfo(str, "  ->  ");
-
-			explain_outNode(str, subnode,
-							sequenceState->subplans[j],
 							outer_plan,
 							indent + 3, es);
 			j++;
@@ -1804,8 +1751,8 @@ static void show_plan_tlist(Plan *plan, StringInfo str, int indent,
 	/* No work if empty tlist (this occurs eg in bitmap indexscans) */
 	if (plan->targetlist == NIL)
 		return;
-	/* Suppress printing the targetlist of Append and Sequence. */
-	if (IsA(plan, Append) || IsA(plan, Sequence))
+	/* The tlist of an Append isn't real helpful, so suppress it */
+	if (IsA(plan, Append))
 		return;
 
 	/* TODO: Likewise for RecursiveUnion */

@@ -830,17 +830,7 @@ ExecFetchSlotHeapTuple(TupleTableSlot *slot)
 	if(!htup)
 	{
 		if(slot->PRIVATE_tts_htup_buf)
-		{
 			pfree(slot->PRIVATE_tts_htup_buf);
-			/*
-			 * After pfree, also set the pointer to NULL. In case the MemoryContextAlloc
-			 * below fails (e.g. out of memory), then we'll jump to AbortTransaction
-			 * and eventually we'll try to free this buffer again if it's not NULL
-			 */
-			slot->PRIVATE_tts_htup_buf = NULL;
-			slot->PRIVATE_tts_htup_buf_len = 0;
-		}
-
 		slot->PRIVATE_tts_htup_buf = (HeapTuple) MemoryContextAlloc(slot->tts_mcxt, tuplen);
 		slot->PRIVATE_tts_htup_buf_len = tuplen;
 
@@ -892,16 +882,7 @@ MemTuple ExecFetchSlotMemTuple(TupleTableSlot *slot, bool inline_toast)
 	if(!newTuple)
 	{
 		if(slot->PRIVATE_tts_mtup_buf)
-		{
 			pfree(slot->PRIVATE_tts_mtup_buf);
-			/*
-			 * After pfree, also set the pointer to NULL. In case the MemoryContextAlloc
-			 * below fails (e.g. out of memory), then we'll jump to AbortTransaction
-			 * and eventually we'll try to free this buffer again if it's not NULL
-			 */
-			slot->PRIVATE_tts_mtup_buf = NULL;
-			slot->PRIVATE_tts_mtup_buf_len = 0;
-		}
 
 		slot->PRIVATE_tts_mtup_buf = MemoryContextAlloc(slot->tts_mcxt, tuplen);
 		slot->PRIVATE_tts_mtup_buf_len = tuplen;
@@ -1524,39 +1505,3 @@ slot_getsysattr(TupleTableSlot *slot, int attnum, bool *isnull)
         return result;
 }                               /* slot_getsysattr */
 
-/*
- * Set a synthetic ctid based on a fake ctid. Fake ctid is incremented before
- * the assignment.
- */
-void
-slot_set_ctid_from_fake(TupleTableSlot *slot, ItemPointerData *fake_ctid)
-{
-	/* Uninitialized */
-	if (!ItemPointerIsValid(fake_ctid))
-	{
-		ItemPointerSetBlockNumber(fake_ctid, 0);
-		ItemPointerSetOffsetNumber(fake_ctid, FirstOffsetNumber);
-	}
-	else
-	{
-		/* would we overflow? */
-		if (ItemPointerGetOffsetNumber(fake_ctid) ==
-			MaxOffsetNumber - 1)
-		{
-			/* How can we overflow 2^46? */
-			Assert(ItemPointerGetBlockNumber(fake_ctid) !=
-				   MaxBlockNumber - 1);
-			ItemPointerSetBlockNumber(fake_ctid,
-					ItemPointerGetBlockNumber(fake_ctid) + 1);
-			ItemPointerSetOffsetNumber(fake_ctid,
-					FirstOffsetNumber);
-		}
-		else
-		{
-			ItemPointerSetOffsetNumber(fake_ctid,
-				ItemPointerGetOffsetNumber(fake_ctid) + 1);
-		}
-	}
-
-	slot_set_ctid(slot, fake_ctid);
-}

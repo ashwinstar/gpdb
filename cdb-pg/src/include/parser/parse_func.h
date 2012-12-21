@@ -43,21 +43,14 @@ typedef enum
 
 extern Node *ParseFuncOrColumn(ParseState *pstate,
 				  List *funcname, List *fargs, List *agg_order,
-				  bool agg_star, bool agg_distinct,
-				  bool func_variadic, bool is_column,
-				  WindowSpec *over, int location, FuncCall *funccall);
+				  bool agg_star, bool agg_distinct, bool is_column,
+				  WindowSpec *over, int location, Node *agg_filter);
 
 extern FuncDetailCode func_get_detail(List *funcname, List *fargs,
-									  List *fargnames,
 									  int nargs, Oid *argtypes,
-									  bool expand_variadic,
-									  bool expand_defaults,
 									  Oid *funcid, Oid *rettype,
 									  bool *retset, bool *retstrict, 
-									  bool *retordered,
-									  int *nvargs,
-									  Oid **true_typeids,
-									  List **argdefaults);
+									  bool *retordered, Oid **true_typeids);
 
 extern int func_match_argtypes(int nargs,
 					Oid *input_typeids,
@@ -75,12 +68,10 @@ extern void make_fn_arguments(ParseState *pstate,
 				  Oid *actual_arg_types,
 				  Oid *declared_arg_types);
 
-extern const char *funcname_signature_string(const char *funcname, int nargs,
-									List *argnames, const Oid *argtypes);
-extern const char *func_signature_string(List *funcname, int nargs,
-									const Oid *argtypes);
-extern const char *func_signature_named_string(List *funcname, int nargs,
-									List *argnames, const Oid *argtypes);
+extern const char *funcname_signature_string(const char *funcname,
+						  int nargs, const Oid *argtypes);
+extern const char *func_signature_string(List *funcname,
+					  int nargs, const Oid *argtypes);
 
 extern Oid LookupFuncName(List *funcname, int nargs, const Oid *argtypes,
 			   bool noError);

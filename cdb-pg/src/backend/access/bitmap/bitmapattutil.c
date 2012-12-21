@@ -122,10 +122,6 @@ _bitmap_create_lov_heapandindex(Relation rel,
 		/* XLOG the metapage */
 		if (!XLog_UnconvertedCanBypassWal() && !lovIndex->rd_istemp)
 		{
-			
-			// Fetch gp_persistent_relation_node information that will be added to XLOG record.
-			RelationFetchGpRelationNodeForXLog(lovIndex);
-			
 			_bt_lognewpage(lovIndex,
 						   btree_metapage,
 						   BufferGetBlockNumber(btree_metabuf));
@@ -343,12 +339,6 @@ _bitmap_findvalue(Relation lovHeap, Relation lovIndex,
 
 		found = true;
 		heapTupDesc = RelationGetDescr(lovHeap);
-
-		/*
-		 * Bitmap index internally uses a heap and a b-tree index on this heap 
-		 * If scanDesc->xs_want_itup is set, then the above index_getnext call 
-		 * will get the index tuple, along with the tuple		       
-		 */	
 
 		d = heap_getattr(tuple, tupDesc->natts + 1, heapTupDesc, blockNull);
 		*lovBlock =	DatumGetInt32(d);

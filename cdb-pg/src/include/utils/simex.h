@@ -35,7 +35,6 @@ typedef enum SimExESClass
 	SimExESClass_Base = 0,
 	SimExESClass_OOM = SimExESClass_Base,	// out-of-memory
 	SimExESClass_Cancel,					// cancel
-	SimExESClass_Terminate,					// terminate the process
 	SimExESClass_CacheInvalidation,         // cache invaldation messages
 	SimExESClass_SysError,				    // system call failure
 	SimExESClass_ProcKill,					// kill process with SIGKILL
@@ -61,7 +60,7 @@ typedef enum SimExESSubClass
 	SimExESSubClass_OK = 0,
 	SimExESSubClass_OOM_ReturnNull,
 	SimExESSubClass_Cancel_QueryCancel,
-	SimExESSubClass_Terminate_ProcDie,
+	SimExESSubClass_Cancel_ProcDie,
 	SimExESSubClass_CacheInvalidation,
 	SimExESSubClass_SysError_Net,
 	SimExESSubClass_ProcKill_BgWriter,
@@ -84,8 +83,6 @@ static inline void SimExESSubClass_CheckValid(int subclass)
 /* interface */
 extern void simex_init(void);
 extern void simex_set_sync_bitvector_container(SyncBitvectorContainer container);
-extern void simex_save_sync_bitvector_container(void);
-extern void simex_restore_sync_bitvector_container(void);
 extern int32 simex_get_subclass_count(void);
 extern SimExESSubClass simex_check(const char *file, int32 line);
 

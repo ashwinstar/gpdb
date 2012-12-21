@@ -7,7 +7,7 @@
  *
  * NOTES
  *
- *	- According to src/backend/executor/execHeapScan.c
+ *	- According to src/backend/executor/nodeSeqScan.c
  *		"tuples returned by heap_getnext() are pointers onto disk
  *		pages and were not created with palloc() and so should not
  *		be pfree()'d"
@@ -18,7 +18,6 @@
 #include "postgres.h"
 #include "fmgr.h"
 #include "funcapi.h"
-#include "access/catquery.h"
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
 #include "parser/parse_oper.h"
@@ -135,42 +134,42 @@ getCdbComponentInfo(bool DNSLookupAsError)
 		/*
 		 * dbid
 		 */
-		attr = heap_getattr(gp_seg_config_tuple, Anum_gp_segment_configuration_dbid, RelationGetDescr(gp_seg_config_rel), &isNull);
+		attr = heap_getattr(gp_seg_config_tuple, Anum_gp_segment_configuration_dbid, gp_seg_config_rel->rd_att, &isNull);
 		Assert(!isNull);
 		dbid = DatumGetInt16(attr);
 
 		/*
 		 * content
 		 */
-		attr = heap_getattr(gp_seg_config_tuple, Anum_gp_segment_configuration_content, RelationGetDescr(gp_seg_config_rel), &isNull);
+		attr = heap_getattr(gp_seg_config_tuple, Anum_gp_segment_configuration_content, gp_seg_config_rel->rd_att, &isNull);
 		Assert(!isNull);
 		content = DatumGetInt16(attr);
 
 		/*
 		 * role
 		 */
-		attr = heap_getattr(gp_seg_config_tuple, Anum_gp_segment_configuration_role, RelationGetDescr(gp_seg_config_rel), &isNull);
+		attr = heap_getattr(gp_seg_config_tuple, Anum_gp_segment_configuration_role, gp_seg_config_rel->rd_att, &isNull);
 		Assert(!isNull);
 		role = DatumGetChar(attr);
 
 		/*
 		 * preferred-role
 		 */
-		attr = heap_getattr(gp_seg_config_tuple, Anum_gp_segment_configuration_preferred_role, RelationGetDescr(gp_seg_config_rel), &isNull);
+		attr = heap_getattr(gp_seg_config_tuple, Anum_gp_segment_configuration_preferred_role, gp_seg_config_rel->rd_att, &isNull);
 		Assert(!isNull);
 		preferred_role = DatumGetChar(attr);
 
 		/*
 		 * mode
 		 */
-		attr = heap_getattr(gp_seg_config_tuple, Anum_gp_segment_configuration_mode, RelationGetDescr(gp_seg_config_rel), &isNull);
+		attr = heap_getattr(gp_seg_config_tuple, Anum_gp_segment_configuration_mode, gp_seg_config_rel->rd_att, &isNull);
 		Assert(!isNull);
 		mode = DatumGetChar(attr);
 
 		/*
 		 * status
 		 */
-		attr = heap_getattr(gp_seg_config_tuple, Anum_gp_segment_configuration_status, RelationGetDescr(gp_seg_config_rel), &isNull);
+		attr = heap_getattr(gp_seg_config_tuple, Anum_gp_segment_configuration_status, gp_seg_config_rel->rd_att, &isNull);
 		Assert(!isNull);
 		status = DatumGetChar(attr);
 
@@ -222,28 +221,28 @@ getCdbComponentInfo(bool DNSLookupAsError)
 		/*
 		 * hostname
 		 */
-		attr = heap_getattr(gp_seg_config_tuple, Anum_gp_segment_configuration_hostname, RelationGetDescr(gp_seg_config_rel), &isNull);
+		attr = heap_getattr(gp_seg_config_tuple, Anum_gp_segment_configuration_hostname, gp_seg_config_rel->rd_att, &isNull);
 		Assert(!isNull);
 		pRow->hostname = TextDatumGetCString(attr);
 
 		/*
 		 * address
 		 */
-		attr = heap_getattr(gp_seg_config_tuple, Anum_gp_segment_configuration_address, RelationGetDescr(gp_seg_config_rel), &isNull);
+		attr = heap_getattr(gp_seg_config_tuple, Anum_gp_segment_configuration_address, gp_seg_config_rel->rd_att, &isNull);
 		Assert(!isNull);
 		pRow->address = TextDatumGetCString(attr);
 		
 		/*
 		 * port
 		 */
-		attr = heap_getattr(gp_seg_config_tuple, Anum_gp_segment_configuration_port, RelationGetDescr(gp_seg_config_rel), &isNull);
+		attr = heap_getattr(gp_seg_config_tuple, Anum_gp_segment_configuration_port, gp_seg_config_rel->rd_att, &isNull);
 		Assert(!isNull);
 		pRow->port = DatumGetInt32(attr);
 
 		/*
 		 * Filerep_port
 		 */
-		attr = heap_getattr(gp_seg_config_tuple, Anum_gp_segment_configuration_replication_port, RelationGetDescr(gp_seg_config_rel), &isNull);
+		attr = heap_getattr(gp_seg_config_tuple, Anum_gp_segment_configuration_replication_port, gp_seg_config_rel->rd_att, &isNull);
 		if (!isNull)
 			pRow->filerep_port = DatumGetInt32(attr);
 		else
@@ -513,7 +512,7 @@ cdb_cleanup(int code __attribute__((unused)) , Datum arg __attribute__((unused))
 {
 	elog(DEBUG1, "Cleaning up Greenplum components...");
 
-	disconnectGangsByScope(GANGSCOPE_ALL);
+	disconnectAndDestroyAllGangs();
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
@@ -815,8 +814,8 @@ getAddressesForDBid(CdbComponentDatabaseInfo *c, int elevel)
 	Relation	gp_db_interface_rel;
 	Relation	gp_interface_rel;
 	HeapTuple	tuple;
-	cqContext  *pcqCtx;
-	cqContext	cqc;
+	ScanKeyData	key;
+	SysScanDesc	dbscan, ifacescan;
 
 	int			j, i=0;
 	struct priority_iface *ifaces=NULL;
@@ -835,13 +834,14 @@ getAddressesForDBid(CdbComponentDatabaseInfo *c, int elevel)
 		
 	gp_db_interface_rel = heap_open(GpDbInterfacesRelationId, AccessShareLock);
 
-	pcqCtx = caql_beginscan(
-			caql_addrel(cqclr(&cqc), gp_db_interface_rel),
-			cql("SELECT * FROM gp_db_interfaces "
-				" WHERE dbid = :1 ",
-				Int16GetDatum(c->dbid)));
+	ScanKeyInit(&key, Anum_gp_db_interfaces_dbid,
+				BTEqualStrategyNumber, F_INT2EQ,
+				ObjectIdGetDatum(c->dbid));
 
-	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
+	dbscan = systable_beginscan(gp_db_interface_rel, GpDbInterfacesDbidIndexId,
+								true, SnapshotNow, 1, &key);
+
+	while (HeapTupleIsValid(tuple = systable_getnext(dbscan)))
 	{
 		i++;
 		if (i > iface_max)
@@ -857,16 +857,16 @@ getAddressesForDBid(CdbComponentDatabaseInfo *c, int elevel)
 		}
 
 		/* dbid is for sanity-check on scan condition only */
-		attr = heap_getattr(tuple, Anum_gp_db_interfaces_dbid, RelationGetDescr(gp_db_interface_rel), &isNull);
+		attr = heap_getattr(tuple, Anum_gp_db_interfaces_dbid, gp_db_interface_rel->rd_att, &isNull);
 		Assert(!isNull);
 		dbid = DatumGetInt16(attr);
 		Assert(dbid == c->dbid);
 
-		attr = heap_getattr(tuple, Anum_gp_db_interfaces_interfaceid, RelationGetDescr(gp_db_interface_rel), &isNull);
+		attr = heap_getattr(tuple, Anum_gp_db_interfaces_interfaceid, gp_db_interface_rel->rd_att, &isNull);
 		Assert(!isNull);
 		iface_id = DatumGetInt16(attr);
 
-		attr = heap_getattr(tuple, Anum_gp_db_interfaces_priority, RelationGetDescr(gp_db_interface_rel), &isNull);
+		attr = heap_getattr(tuple, Anum_gp_db_interfaces_priority, gp_db_interface_rel->rd_att, &isNull);
 		Assert(!isNull);
 		priority = DatumGetInt16(attr);
 
@@ -876,7 +876,7 @@ getAddressesForDBid(CdbComponentDatabaseInfo *c, int elevel)
 	iface_count = i;
 
 	/* Finish up scan and close appendonly catalog. */
-	caql_endscan(pcqCtx);
+	systable_endscan(dbscan);
 
 	heap_close(gp_db_interface_rel, AccessShareLock);
 
@@ -899,34 +899,38 @@ getAddressesForDBid(CdbComponentDatabaseInfo *c, int elevel)
 			int status=0;
 
 			/* Start a new scan. */
-			tuple = caql_getfirst(
-					caql_addrel(cqclr(&cqc), gp_interface_rel),
-					cql("SELECT * FROM gp_interfaces "
-						" WHERE interfaceid = :1 ",
-						Int16GetDatum(ifaces[i].interface_id)));
+			ScanKeyInit(&key, Anum_gp_interfaces_interfaceid,
+						BTEqualStrategyNumber, F_INT2EQ,
+						ObjectIdGetDatum(ifaces[i].interface_id));
+
+			ifacescan = systable_beginscan(gp_interface_rel, GpInterfacesInterfaceidIndexId,
+										   true, SnapshotNow, 1, &key);
+
+			tuple = systable_getnext(ifacescan);
 
 			Assert(HeapTupleIsValid(tuple));
 
 			/* iface_id is for sanity-check on scan condition only */
-			attr = heap_getattr(tuple, Anum_gp_interfaces_interfaceid, RelationGetDescr(gp_interface_rel), &isNull);
+			attr = heap_getattr(tuple, Anum_gp_interfaces_interfaceid, gp_interface_rel->rd_att, &isNull);
 			Assert(!isNull);
 			iface_id = DatumGetInt16(attr);
 			Assert(iface_id == ifaces[i].interface_id); 
 
-			attr = heap_getattr(tuple, Anum_gp_interfaces_status, RelationGetDescr(gp_interface_rel), &isNull);
+			attr = heap_getattr(tuple, Anum_gp_interfaces_status, gp_interface_rel->rd_att, &isNull);
 			Assert(!isNull);
 			status = DatumGetInt16(attr);
 
 			/* if the status is "alive" use the interface. */
 			if (status == 1)
 			{
-				attr = heap_getattr(tuple, Anum_gp_interfaces_address, RelationGetDescr(gp_interface_rel), &isNull);
+				attr = heap_getattr(tuple, Anum_gp_interfaces_address, gp_interface_rel->rd_att, &isNull);
 				Assert(!isNull);
 				name = getDnsCachedAddress(DatumGetCString(attr), c->port, elevel);
 				if (name)
 					c->hostaddrs[j++] = pstrdup(name);
 			}
 
+			systable_endscan(ifacescan);
 		}
 
 		heap_close(gp_interface_rel, AccessShareLock);
@@ -1026,7 +1030,9 @@ master_standby_dbid(void)
 {
 	int16 dbid = 0;
 	int16 contentid = -1;
-	bool bOnly;
+	ScanKeyData key[2];
+	HeapScanDesc scandesc;
+	Relation rel;
 	HeapTuple tup;
 
 	/*
@@ -1036,22 +1042,30 @@ master_standby_dbid(void)
 	if (GpIdentity.segindex != MASTER_CONTENT_ID)
 		elog(ERROR, "master_standby_dbid() executed on execution segment");
 
-	tup = caql_getfirst_only(
-			NULL,
-			&bOnly,
-			cql("SELECT * FROM gp_segment_configuration "
-				" WHERE content = :1 "
-				" AND role = :2 ",
-				Int16GetDatum(contentid),
-				CharGetDatum('m')));
+	rel = heap_open(GpSegmentConfigRelationId, AccessShareLock);
+
+	ScanKeyInit(&key[0], Anum_gp_segment_configuration_content,
+				BTEqualStrategyNumber, F_INT2EQ,
+				Int16GetDatum(contentid));
+	ScanKeyInit(&key[1], Anum_gp_segment_configuration_role,
+				BTEqualStrategyNumber, F_CHAREQ,
+				CharGetDatum('m'));
+
+	scandesc = heap_beginscan(rel, SnapshotNow, 2, key);
+	tup = heap_getnext(scandesc, ForwardScanDirection);
 
 	if (HeapTupleIsValid(tup))
 	{
 		dbid = ((Form_gp_segment_configuration) GETSTRUCT(tup))->dbid;
+
 		/* We expect a single result, assert this */
-		Assert(bOnly);
+		Assert(!HeapTupleIsValid(heap_getnext(scandesc, ForwardScanDirection)));
 	}
+
+	heap_endscan(scandesc);
+
 	/* no need to hold the lock, it's a catalog */
+	heap_close(rel, AccessShareLock);
 
 	return dbid;
 }
@@ -1059,10 +1073,10 @@ master_standby_dbid(void)
 CdbComponentDatabaseInfo *
 dbid_get_dbinfo(int16 dbid)
 {
+	SysScanDesc scandesc;
 	HeapTuple tuple;
 	Relation rel;
-	cqContext	cqc;
-	bool bOnly;
+	ScanKeyData key;
 	CdbComponentDatabaseInfo *i = NULL;
 
 	/*
@@ -1074,13 +1088,12 @@ dbid_get_dbinfo(int16 dbid)
 		elog(ERROR, "dbid_get_dbinfo() executed on execution segment");
 
 	rel = heap_open(GpSegmentConfigRelationId, AccessShareLock);
-
-	tuple = caql_getfirst_only(
-			caql_addrel(cqclr(&cqc), rel),
-			&bOnly,
-			cql("SELECT * FROM gp_segment_configuration "
-				" WHERE dbid = :1 ",
-				Int16GetDatum(dbid)));
+	ScanKeyInit(&key, Anum_gp_segment_configuration_dbid,
+				BTEqualStrategyNumber, F_INT2EQ,
+				Int16GetDatum(dbid));
+	scandesc = systable_beginscan(rel, GpSegmentConfigDbidIndexId,
+								  true, SnapshotNow, 1, &key);
+	tuple = systable_getnext(scandesc);
 
 	if (HeapTupleIsValid(tuple))
 	{
@@ -1172,13 +1185,14 @@ dbid_get_dbinfo(int16 dbid)
 		else
 			i->filerep_port = -1;
 
-		Assert(bOnly); /* should be only 1 */
+		Assert(!HeapTupleIsValid(systable_getnext(scandesc)));
 	}
 	else
 	{
 		elog(ERROR, "could not find configuration entry for dbid %i", dbid);
 	}
 
+	systable_endscan(scandesc);
 	heap_close(rel, NoLock);
 
 	return i;
@@ -1194,7 +1208,9 @@ int16
 contentid_get_dbid(int16 contentid, char role, bool getPreferredRoleNotCurrentRole)
 {
 	int16 dbid = 0;
-	bool bOnly;
+	ScanKeyData key[2];
+	HeapScanDesc scandesc;
+	Relation rel;
 	HeapTuple tup;
 
 	/*
@@ -1205,38 +1221,33 @@ contentid_get_dbid(int16 contentid, char role, bool getPreferredRoleNotCurrentRo
 	if (GpIdentity.segindex != MASTER_CONTENT_ID)
 		elog(ERROR, "contentid_get_dbid() executed on execution segment");
 
-	/* XXX XXX: CHECK THIS  XXX jic 2011/12/09 */
-	if (getPreferredRoleNotCurrentRole)
-	{
-		tup = caql_getfirst_only(
-				NULL,
-				&bOnly,
-				cql("SELECT * FROM gp_segment_configuration "
-					" WHERE content = :1 "
-					" AND preferred_role = :2 ",
-					Int16GetDatum(contentid),
-					CharGetDatum(role)));
-	}
-	else
-	{
-		tup = caql_getfirst_only(
-				NULL,
-				&bOnly,
-				cql("SELECT * FROM gp_segment_configuration "
-					" WHERE content = :1 "
-					" AND role = :2 ",
-					Int16GetDatum(contentid),
-					CharGetDatum(role)));
-	}
+	rel = heap_open(GpSegmentConfigRelationId, AccessShareLock);
+
+	ScanKeyInit(&key[0], Anum_gp_segment_configuration_content,
+				BTEqualStrategyNumber, F_INT2EQ,
+				Int16GetDatum(contentid));
+
+    int roleColumn = getPreferredRoleNotCurrentRole ? Anum_gp_segment_configuration_preferred_role :
+                                                      Anum_gp_segment_configuration_role; 
+	ScanKeyInit(&key[1], roleColumn,
+				BTEqualStrategyNumber, F_CHAREQ,
+				CharGetDatum(role));
+
+	scandesc = heap_beginscan(rel, SnapshotNow, 2, key);
+	tup = heap_getnext(scandesc, ForwardScanDirection);
 
 	if (HeapTupleIsValid(tup))
 	{
 		dbid = ((Form_gp_segment_configuration) GETSTRUCT(tup))->dbid;
-		/* We expect a single result, assert this */
-		Assert(bOnly); /* should be only 1 */
-	}
-	/* no need to hold the lock, it's a catalog */
 
+		/* We expect a single result, assert this */
+		Assert(!HeapTupleIsValid(heap_getnext(scandesc, ForwardScanDirection)));
+	}
+
+	heap_endscan(scandesc);
+
+	/* no need to hold the lock, it's a catalog */
+	heap_close(rel, AccessShareLock);
 	return dbid;
 }
 
@@ -1250,7 +1261,9 @@ my_mirror_dbid(void)
 {
 	int16 dbid = 0;
 	int16 contentid = (int16)GpIdentity.segindex;
-	bool bOnly;
+	ScanKeyData	key[2];
+	HeapScanDesc	scandesc;
+	Relation rel;
 	HeapTuple tup;
 
 	/*
@@ -1261,22 +1274,29 @@ my_mirror_dbid(void)
 	if (GpIdentity.segindex != MASTER_CONTENT_ID)
 		elog(ERROR, "my_mirror_dbid() executed on execution segment");
 
-	tup = caql_getfirst_only(
-			NULL,
-			&bOnly,
-			cql("SELECT dbid FROM gp_segment_configuration "
-				" WHERE content = :1 "
-				" AND role = :2 ",
-				Int16GetDatum(contentid),
-				CharGetDatum('m')));
+	rel = heap_open(GpSegmentConfigRelationId, AccessShareLock);
+	ScanKeyInit(&key[0], Anum_gp_segment_configuration_content,
+				BTEqualStrategyNumber, F_INT2EQ,
+				ObjectIdGetDatum(contentid));
+	ScanKeyInit(&key[1], Anum_gp_segment_configuration_role,
+				BTEqualStrategyNumber, F_CHAREQ,
+				CharGetDatum('m'));
+
+	scandesc = heap_beginscan(rel, SnapshotNow, 2, key);
+	tup = heap_getnext(scandesc, ForwardScanDirection);
 
 	if (HeapTupleIsValid(tup))
 	{
 		dbid = ((Form_gp_segment_configuration) GETSTRUCT(tup))->dbid;
+
 		/* We expect a single result, assert this */
-		Assert(bOnly); /* should be only 1 */
+		Assert(!HeapTupleIsValid(heap_getnext(scandesc, ForwardScanDirection)));
 	}
+
+	heap_endscan(scandesc);
+
 	/* no need to hold the lock, it's a catalog */
+	heap_close(rel, AccessShareLock);
 
 	return dbid;
 }

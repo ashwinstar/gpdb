@@ -13,19 +13,13 @@
 #include "storage/fd.h"
 #include "storage/relfilenode.h"
 
-#include "access/catquery.h"
-#include "access/genam.h"
-#include "access/heapam.h"
-#include "access/persistentfilesysobjname.h"
-#include "access/nbtree.h"
-#include "access/transam.h"
 #include "catalog/catalog.h"
-#include "catalog/heap.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_database.h"
 #include "catalog/gp_persistent.h"
+#include "access/persistentfilesysobjname.h"
 #include "cdb/cdbdirectopen.h"
 #include "cdb/cdbpersistentstore.h"
 #include "cdb/cdbpersistentfilesysobj.h"
@@ -35,11 +29,16 @@
 #include "storage/itemptr.h"
 #include "utils/hsearch.h"
 #include "storage/shmem.h"
+#include "access/genam.h"
+#include "access/heapam.h"
+#include "access/transam.h"
+#include "catalog/heap.h"
 #include "utils/guc.h"
 #include "storage/smgr.h"
 #include "utils/builtins.h"
 #include "cdb/cdbdatabaseinfo.h"
 #include "utils/syscache.h"
+#include "access/nbtree.h"
 #include "storage/bufpage.h"
 
 static void
@@ -499,17 +498,15 @@ PersistentBuild_BuildDb(
 	Relation			 gp_global_sequence;
 	Relation			 pg_database;
 	HeapTuple			 tuple;
+	HeapScanDesc		 scandesc;
 	Form_pg_database	 form_pg_database;
 	DatabaseInfo		*info;
 	Oid					 defaultTablespace;
 	int					 t;
-	cqContext			 cqc;
-	cqContext			 dbcqc;
-	cqContext			*pcqCtx;
 
 	/*
 	 * Turn this on so we don't try to fetch persistence information from
-	 * gp_relation_node for gp_relation_node and its index until we've done the
+	 * gp_releation_node for gp_relation_node and its index until we've done the
 	 * assignment with PersistentRelation_AddCreated.
 	 */
 	gp_before_persistence_work = true;
@@ -532,25 +529,19 @@ PersistentBuild_BuildDb(
 	 * persistent tables. 
 	 */
 	gp_global_sequence = heap_open(GpGlobalSequenceRelationId, RowExclusiveLock);
-
-
-	pcqCtx = caql_beginscan(
-			caql_addrel(cqclr(&cqc), gp_global_sequence),
-			cql("SELECT * FROM gp_global_sequence "
-				" FOR UPDATE ",
-				NULL));
-
-	tuple = caql_getnext(pcqCtx);
-
+	scandesc = heap_beginscan(gp_global_sequence, SnapshotAny, 0, NULL);
+	tuple = heap_getnext(scandesc, ForwardScanDirection);
 	if (!HeapTupleIsValid(tuple))
 	{
+		TupleDesc		tupDesc;
 		Datum			values[Natts_gp_global_sequence];
 		bool			nulls[Natts_gp_global_sequence];
 
 		/* Insert N frozen tuples of value 0 */
+		tupDesc = RelationGetDescr(gp_global_sequence);
 		MemSet(nulls, false, sizeof(nulls));
 		values[Anum_gp_global_sequence_sequence_num-1] = Int64GetDatum(0);
-		tuple = caql_form_tuple(pcqCtx, values, nulls);
+		tuple = heap_form_tuple(tupDesc, values, nulls);
 
 		if (!HeapTupleIsValid(tuple))
 			elog(ERROR, "failed to build global sequence tuple");
@@ -558,20 +549,16 @@ PersistentBuild_BuildDb(
 		for (t = 0; t < GpGlobalSequence_MaxSequenceTid; t++)
 			frozen_heap_insert(gp_global_sequence, tuple);
 	}
-	caql_endscan(pcqCtx);
+	heap_endscan(scandesc);
 	heap_close(gp_global_sequence, RowExclusiveLock);
 
 	/* Lookup the information for the current database */
-	pg_database = heap_open(DatabaseRelationId, RowExclusiveLock);
+	pg_database = heap_open(DatabaseRelationId, AccessShareLock);
 
 	/* Fetch a copy of the tuple to scribble on */
-	tuple = caql_getfirst(			
-			caql_addrel(cqclr(&dbcqc), pg_database),
-			cql("SELECT * FROM pg_database "
-				" WHERE oid = :1 "
-				" FOR UPDATE ",
-				ObjectIdGetDatum(dbOid)));
-
+	tuple = SearchSysCacheCopy(DATABASEOID,
+							   ObjectIdGetDatum(dbOid),
+							   0, 0, 0);
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "could not find tuple for database %u", dbOid);
 	form_pg_database = (Form_pg_database) GETSTRUCT(tuple);
@@ -583,7 +570,7 @@ PersistentBuild_BuildDb(
 			 "PersistentBuild_BuildDb: dbOid %u, '%s', mirror existence state '%s', "
 			 "data synchronization state '%s'",
 			 dbOid,
-			 NameStr(form_pg_database->datname),
+			 form_pg_database->datname.data,
 			 MirroredObjectExistenceState_Name(mirrorExistenceState),
 			 MirroredRelDataSynchronizationState_Name(
 				 relDataSynchronizationState));
@@ -627,7 +614,7 @@ PersistentBuild_BuildDb(
 										relDataSynchronizationState,
 										&count);
 
-	heap_close(pg_database, RowExclusiveLock);
+	heap_close(pg_database, AccessShareLock);
 
 	gp_before_persistence_work = false;
 
@@ -661,9 +648,9 @@ gp_persistent_build_all(PG_FUNCTION_ARGS)
 	bool mirrored = PG_GETARG_BOOL(0);
 
 	Relation pg_tablespace;
+	Relation pg_database;
+	HeapScanDesc scan;
 	HeapTuple tuple;
-	cqContext	 cqc;
-	cqContext	*pcqCtx;
 	
 	Datum	*d;
 	bool	*null;
@@ -680,15 +667,8 @@ gp_persistent_build_all(PG_FUNCTION_ARGS)
 							  TableSpaceRelationId,
 							  AccessShareLock);
 	
-	pcqCtx = caql_beginscan(
-			caql_syscache(
-					caql_indexOK(caql_addrel(cqclr(&cqc), pg_tablespace), 
-								 false),
-					false),
-			cql("SELECT * FROM pg_tablespace ",
-				NULL));
-
-	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
+	scan = heap_beginscan(pg_tablespace, SnapshotNow, 0, NULL);
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
 		Oid tablespaceOid;
 		
@@ -699,7 +679,7 @@ gp_persistent_build_all(PG_FUNCTION_ARGS)
 		
 		tablespaceOid = HeapTupleGetOid(tuple);
 		
-		heap_deform_tuple(tuple, RelationGetDescr(pg_tablespace), d, null);
+		heap_deform_tuple(tuple, pg_tablespace->rd_att, d, null);
 						
 		if (tablespaceOid == DEFAULTTABLESPACE_OID ||
 			tablespaceOid == GLOBALTABLESPACE_OID)
@@ -725,7 +705,7 @@ gp_persistent_build_all(PG_FUNCTION_ARGS)
 										/* flushToXLog */ false);
 	}
 	
-	caql_endscan(pcqCtx);
+	heap_endscan(scan);
 	
 	heap_close(pg_tablespace, AccessShareLock);
 	
@@ -747,15 +727,12 @@ gp_persistent_build_all(PG_FUNCTION_ARGS)
 	/*
 	 * Now, the remaining databases.
 	 */
+	pg_database = heap_open(
+						DatabaseRelationId,
+						AccessShareLock);
 
-	pcqCtx = caql_beginscan(
-			caql_syscache(
-					caql_indexOK(cqclr(&cqc), false),
-					false),
-			cql("SELECT * FROM pg_database ",
-				NULL));
-
-	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
+	scan = heap_beginscan(pg_database, SnapshotNow, 0, NULL);
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
 		Oid dbOid;
 		
@@ -778,8 +755,10 @@ gp_persistent_build_all(PG_FUNCTION_ARGS)
 							mirrored);
 	}
 
-	caql_endscan(pcqCtx);
+	heap_endscan(scan);
 
+	heap_close(pg_database, AccessShareLock);
+	
 	PersistentStore_FlushXLog();
 
 	PG_RETURN_INT32(1);
@@ -794,9 +773,10 @@ PersistentBuild_FindGpRelationNodeIndex(
 	RelFileNode		*relFileNode)
 {
 	Relation	pg_class_rel;
+
+	HeapScanDesc scan;
 	HeapTuple	tuple;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
+
 	bool found;
 
 	/*
@@ -806,17 +786,9 @@ PersistentBuild_FindGpRelationNodeIndex(
 			DirectOpen_PgClassOpen(
 							defaultTablespace, 
 							database);
-
+	scan = heap_beginscan(pg_class_rel, SnapshotNow, 0, NULL);
 	found = false;
-	pcqCtx = caql_beginscan(
-			caql_syscache(
-					caql_indexOK(caql_addrel(cqclr(&cqc), pg_class_rel), 
-								 false),
-					false),
-			cql("SELECT * FROM pg_class ",
-				NULL));
-
-	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
 		Oid 			relationOid;
 
@@ -834,7 +806,7 @@ PersistentBuild_FindGpRelationNodeIndex(
 
 		reltablespace = form_pg_class->reltablespace;
 
-		if (!OidIsValid(reltablespace))
+		if (reltablespace == 0)
 		{
 			reltablespace = defaultTablespace;
 		}
@@ -846,7 +818,7 @@ PersistentBuild_FindGpRelationNodeIndex(
 		found = true;
 		break;
 	}
-	caql_endscan(pcqCtx);
+	heap_endscan(scan);
 
 	DirectOpen_PgClassClose(pg_class_rel);
 
@@ -860,23 +832,22 @@ PersistentBuild_FindGpRelationNodeIndex(
 static int64
 PersistentBuild_TruncateAllGpRelationNode(void)
 {
-	HeapTuple	 tuple;
-	cqContext	 cqc;
-	cqContext	*pcqCtx;
-	int64		 count;
+	Relation pg_database;
+	HeapScanDesc scan;
+	HeapTuple tuple;
+
+	int64 count;
+
+	pg_database = heap_open(
+						DatabaseRelationId,
+						AccessShareLock);
 
 	/*
 	 * Truncate gp_relation_node and its index in each database.
 	 */
+	scan = heap_beginscan(pg_database, SnapshotNow, 0, NULL);
 	count = 0;
-	pcqCtx = caql_beginscan(
-			caql_syscache(
-					caql_indexOK(cqclr(&cqc), false),
-					false),
-			cql("SELECT * FROM pg_database ",
-				NULL));
-
-	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
 		Form_pg_database form_pg_database =
 						(Form_pg_database)GETSTRUCT(tuple);
@@ -894,7 +865,7 @@ PersistentBuild_TruncateAllGpRelationNode(void)
 			elog(Persistent_DebugPrintLevel(), 
 				 "PersistentBuild_TruncateAllGpRelationNode: dbOid %u, '%s'",
 				 dbOid,
-				 NameStr(form_pg_database->datname));
+				 form_pg_database->datname.data);
 
 		if (Debug_persistent_print)
 			elog(Persistent_DebugPrintLevel(), 
@@ -903,7 +874,7 @@ PersistentBuild_TruncateAllGpRelationNode(void)
 				 relFileNode.dbNode,
 				 relFileNode.relNode,
 				 dbOid,
-				 NameStr(form_pg_database->datname));
+				 form_pg_database->datname.data);
 
 		relFileNode.spcNode = dattablespace;
 		relFileNode.dbNode = dbOid;
@@ -931,7 +902,7 @@ PersistentBuild_TruncateAllGpRelationNode(void)
 				 relFileNode.dbNode,
 				 relFileNode.relNode,
 				 dbOid,
-				 NameStr(form_pg_database->datname),
+				 form_pg_database->datname.data,
 				 ((relFileNode.relNode != GpRelationNodeOidIndexId) ? "true" : "false"),
 				 ((relFileNode.spcNode != dattablespace) ? "true" : "false"));
 
@@ -955,7 +926,9 @@ PersistentBuild_TruncateAllGpRelationNode(void)
 		count++;
 	}
 
-	caql_endscan(pcqCtx);
+	heap_endscan(scan);
+
+	heap_close(pg_database, AccessShareLock);
 
 	return count;
 }
@@ -1067,9 +1040,9 @@ PersistentBuild_SetRelationBufpoolKind(
 Datum
 gp_persistent_set_relation_bufpool_kind_all(PG_FUNCTION_ARGS)
 {
-	cqContext	cqc;
-	cqContext  *pcqCtx;
-	HeapTuple	tuple;
+	Relation pg_database;
+	HeapScanDesc scan;
+	HeapTuple tuple;
 
         if (!gp_upgrade_mode)
                 ereport(ERROR,
@@ -1085,14 +1058,12 @@ gp_persistent_set_relation_bufpool_kind_all(PG_FUNCTION_ARGS)
 	 */
 	PersistentFileSysObj_BuildInitScan();
 
-	pcqCtx = caql_beginscan(
-			caql_syscache(
-					caql_indexOK(cqclr(&cqc), false),
-					false),
-			cql("SELECT * FROM pg_database ",
-				NULL));
+	pg_database = heap_open(
+						DatabaseRelationId,
+						AccessShareLock);
 
-	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
+	scan = heap_beginscan(pg_database, SnapshotNow, 0, NULL);
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
 		Form_pg_database form_pg_database =
 						(Form_pg_database)GETSTRUCT(tuple);
@@ -1113,7 +1084,9 @@ gp_persistent_set_relation_bufpool_kind_all(PG_FUNCTION_ARGS)
 											dbOid);
 	}
 
-	caql_endscan(pcqCtx);
+	heap_endscan(scan);
+
+	heap_close(pg_database, AccessShareLock);
 
 	PG_RETURN_INT32(1);
 }

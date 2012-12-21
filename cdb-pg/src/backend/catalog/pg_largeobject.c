@@ -15,7 +15,6 @@
 #include "postgres.h"
 
 #include "access/genam.h"
-#include "access/catquery.h"
 #include "access/heapam.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_largeobject.h"
@@ -77,12 +76,30 @@ void
 LargeObjectDrop(Oid loid)
 {
 	bool		found = false;
+	Relation	pg_largeobject;
+	ScanKeyData skey[1];
+	SysScanDesc sd;
+	HeapTuple	tuple;
 
-	found = (0 != caql_getcount(
-					 NULL,
-					 cql("DELETE FROM pg_largeobject "
-						 " WHERE loid = :1 ",
-						 ObjectIdGetDatum(loid))));
+	ScanKeyInit(&skey[0],
+				Anum_pg_largeobject_loid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(loid));
+
+	pg_largeobject = heap_open(LargeObjectRelationId, RowExclusiveLock);
+
+	sd = systable_beginscan(pg_largeobject, LargeObjectLoidPagenoIndexId, true,
+							SnapshotNow, 1, skey);
+
+	while ((tuple = systable_getnext(sd)) != NULL)
+	{
+		simple_heap_delete(pg_largeobject, &tuple->t_self);
+		found = true;
+	}
+
+	systable_endscan(sd);
+
+	heap_close(pg_largeobject, RowExclusiveLock);
 
 	if (!found)
 		ereport(ERROR,
@@ -94,16 +111,29 @@ bool
 LargeObjectExists(Oid loid)
 {
 	bool		retval = false;
+	Relation	pg_largeobject;
+	ScanKeyData skey[1];
+	SysScanDesc sd;
 
 	/*
 	 * See if we can find any tuples belonging to the specified LO
 	 */
+	ScanKeyInit(&skey[0],
+				Anum_pg_largeobject_loid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(loid));
 
-	retval = (0 != caql_getcount(
-					  NULL,
-					  cql("SELECT COUNT(*) FROM pg_largeobject "
-						  " WHERE loid = :1 ",
-						  ObjectIdGetDatum(loid))));
+	pg_largeobject = heap_open(LargeObjectRelationId, AccessShareLock);
+
+	sd = systable_beginscan(pg_largeobject, LargeObjectLoidPagenoIndexId, true,
+							SnapshotNow, 1, skey);
+
+	if (systable_getnext(sd) != NULL)
+		retval = true;
+
+	systable_endscan(sd);
+
+	heap_close(pg_largeobject, AccessShareLock);
 
 	return retval;
 }

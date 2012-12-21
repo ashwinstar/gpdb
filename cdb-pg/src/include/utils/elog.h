@@ -16,7 +16,6 @@
 #define ELOG_H
 
 #include "c.h"
-#include <sys/time.h>
 #include <setjmp.h>
 
 /* Error level codes */
@@ -475,8 +474,6 @@ write_stderr(const char *fmt,...)
    the supplied arguments. */
 __attribute__((format(printf, 1, 2)));
 
-extern void write_stderr_retry(const char *buf, size_t len);
-
 #if defined(pg_on_solaris)
 extern size_t backtrace(void **buffer, int size);
 extern char **backtrace_symbols(void *const *buffer, int size);
@@ -511,8 +508,5 @@ extern char *stack_base_ptr;
 
 /* GUCs */
 extern bool gp_log_stack_trace_lines;   /* session GUC, controls line info in stack traces */
-
-extern const char *SegvBusIllName(int signal);
-extern void StandardHandlerForSigillSigsegvSigbus_OnMainThread(char * processName, SIGNAL_ARGS);
 
 #endif   /* ELOG_H */

@@ -1198,13 +1198,6 @@ puttuple_common(Tuplesortstate_mk *state, MKEntry *e)
             elog(ERROR, "invalid tuplesort state");
             break;
     }
-
-	if (state->gpmon_pkt)
-	{
-		Gpmon_M_Set(state->gpmon_pkt,
-					GPMON_SORT_MEMORY_BYTE,
-					MemoryContextGetCurrentSpace(state->sortcontext));
-	}
 }
 
 /*
@@ -1255,8 +1248,6 @@ tuplesort_performsort_mk(Tuplesortstate_mk *state)
             elog(INFO, "Done tuple dump.  Mem peak is now %ld", (long)MemoryContextGetPeakSpace(state->sortcontext));
 #endif // PRINT_SPILL_AND_MEMORY_MESSAGES
 
-	    elog(DEBUG1, "ExecSort: mksort starting merge runs"); 
-
             mergeruns(state);
 
             state->pos.eof_reached = false;
@@ -1270,13 +1261,6 @@ tuplesort_performsort_mk(Tuplesortstate_mk *state)
             break;
     }
     MemoryContextSwitchTo(oldcontext);
-
-	if (state->gpmon_pkt)
-	{
-		Gpmon_M_Set(state->gpmon_pkt,
-					GPMON_SORT_MEMORY_BYTE,
-					MemoryContextGetCurrentSpace(state->sortcontext));
-	}
 }
 
 void tuplesort_flush_mk(Tuplesortstate_mk *state)

@@ -15,14 +15,6 @@ gpfilespace [<connection_option> ...] [-l <logfile_directory>]
 gpfilespace [<connection_option> ...] [-l <logfile_directory>] 
             -c <fs_config_file>
 
-gpfilespace --movetempfilespace {<filespace_name>|default}
-
-gpfilespace --movetransfilespace {<filespace_name>|default}
-
-gpfilespace --showtempfilespace
-
-gpfilespace --showtransfilespace
-
 gpfilespace -v | -?
 
 
@@ -47,18 +39,6 @@ in the current directory by default.
 
 Once you have a configuration file, you can run gpfilespace with 
 the -c option to create the filespace in Greenplum Database.
-
-You will need to create a filespace before you can use the 
-gpfilespace --movetempfilespace or --movetransfilespace option to 
-move your temporary or transaction files to the new location.
-
-Use either gpfilespace --showtempfilespace or --showtransfilespace 
-options to show the name of the filespace currently associated with 
-temporary or transaction files. 
-
-Note: If segments are down due to a power or nic failure, you may 
-see inconsistencies during filespace creation. You may not be able 
-to bring up the Greenplum Database.
 
 
 *****************************************************
@@ -101,29 +81,6 @@ OPTIONS
  can manually edit the file to make any required changes to the 
  filespace layout before creating the filespace in Greenplum Database.
 
---movetempfilespace {<filespace_name>|default}
- 
- Moves temporary files to a new filespace or to the default location.
-
---movetransfilespace {<filespace_name>|default}
- 
- Moves transaction files to a new filespace or to the default location.
-
---showtempfilespace
-
- Show the name of the filespace currently associated with temporary 
- files. This option checks that all primary and mirror segments, master 
- and master standby are using the same filespace or temporary files.You 
- will receive a warning message and an email if any inconsistencies 
- exist.
-
---showtransfilespace
-
- Show the name of the filespace currently associated with transaction 
- files. This option checks that all primary and mirror segments, master 
- and master standby are using the same filespace or transaction files.
- You will receive a warning message and an email if any inconsistencies 
- exist.
 
 -v | --version (show utility version)
 

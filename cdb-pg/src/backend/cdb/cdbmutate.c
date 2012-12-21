@@ -539,6 +539,7 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 								bool *nulls;
 								Datum *values;
 								EState *estate = CreateExecutorState();
+								Size sz;
 								ResultRelInfo *rri;
 
 								/* 4: build tuple, look up partitioning key */
@@ -568,9 +569,14 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 									}
 								}
 								estate->es_result_partitions = pn;
-								estate->es_partition_state =
-									createPartitionState(estate->es_result_partitions, 1 /*resultPartSize */);
+								estate->es_partition_state = makeNode(PartitionState);
 
+								sz = num_partition_levels(estate->es_result_partitions);
+								sz *= sizeof(void *);
+								estate->es_partition_state->amstate = palloc0(sz);
+								estate->es_partition_state->max_partition_attr =
+									max_partition_attr(estate->es_result_partitions);
+								estate->es_partition_state->result_partition_array_size = 1;
 								rri = makeNode(ResultRelInfo);
 								rri->ri_RangeTableIndex = 1;      /* dummy */
 								rri->ri_RelationDesc = rel;

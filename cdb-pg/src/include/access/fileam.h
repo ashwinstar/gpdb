@@ -60,8 +60,7 @@ extern FileScanDesc external_beginscan(Relation relation, Index scanrelid,
 								   uint32 scancounter, List *uriList,
 								   List *fmtOpts, char fmtType, bool isMasterOnly,
 								   int rejLimit, bool rejLimitInRows,
-								   Oid fmterrtbl, int encoding,
-								   List *scanquals);
+								   Oid fmterrtbl, int encoding);
 extern void external_rescan(FileScanDesc scan);
 extern void external_endscan(FileScanDesc scan);
 extern void external_stopscan(FileScanDesc scan);

@@ -15,7 +15,6 @@
  */
 #include "postgres.h"
 
-#include "access/catquery.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_type.h"
 #include "lib/stringinfo.h"
@@ -128,14 +127,10 @@ LookupTypeName(ParseState *pstate, const TypeName *typname)
 			Oid			namespaceId;
 
 			namespaceId = LookupExplicitNamespace(schemaname);
-
-			restype = caql_getoid(
-					NULL,
-					cql("SELECT oid FROM pg_type "
-						" WHERE typname = :1 "
-						" AND typnamespace = :2 ",
-						CStringGetDatum(tname),
-						ObjectIdGetDatum(namespaceId)));
+			restype = GetSysCacheOid(TYPENAMENSP,
+									 PointerGetDatum(tname),
+									 ObjectIdGetDatum(namespaceId),
+									 0, 0);
 		}
 		else
 		{
@@ -195,12 +190,12 @@ appendTypeNameToBuffer(const TypeName *typname, StringInfo string)
  * it is mostly used for reporting lookup errors.
  */
 char *
-TypeNameToString(const TypeName *typeName)
+TypeNameToString(const TypeName *typename)
 {
 	StringInfoData string;
 
 	initStringInfo(&string);
-	appendTypeNameToBuffer(typeName, &string);
+	appendTypeNameToBuffer(typename, &string);
 	return string.data;
 }
 
@@ -261,7 +256,7 @@ typenameTypeId(ParseState *pstate, const TypeName *typname)
  * typenameType - given a TypeName, return a Type structure
  *
  * This is equivalent to typenameTypeId + syscache fetch of Type tuple.
- * NB: caller must ReleaseType the type tuple when done with it.
+ * NB: caller must ReleaseSysCache the type tuple when done with it.
  */
 Type
 typenameType(ParseState *pstate, const TypeName *typname)
@@ -292,7 +287,7 @@ typenameType(ParseState *pstate, const TypeName *typname)
 }
 
 /* return a Type structure, given a type id */
-/* NB: caller must ReleaseType the type tuple when done with it */
+/* NB: caller must ReleaseSysCache the type tuple when done with it */
 Type
 typeidType(Oid id)
 {
@@ -387,20 +382,19 @@ stringTypeDatum(Type tp, char *string, int32 atttypmod)
 Oid
 typeidTypeRelid(Oid type_id)
 {
+	HeapTuple	typeTuple;
+	Form_pg_type type;
 	Oid			result;
-	int			fetchCount = 0;
 
-	result = caql_getoid_plus(
-					NULL,
-					&fetchCount,
-					NULL,
-					cql("SELECT typrelid FROM pg_type "
-						" WHERE oid = :1 ",
-						ObjectIdGetDatum(type_id)));
-
-	if (0 == fetchCount)
+	typeTuple = SearchSysCache(TYPEOID,
+							   ObjectIdGetDatum(type_id),
+							   0, 0, 0);
+	if (!HeapTupleIsValid(typeTuple))
 		elog(ERROR, "cache lookup failed for type %u", type_id);
 
+	type = (Form_pg_type) GETSTRUCT(typeTuple);
+	result = type->typrelid;
+	ReleaseSysCache(typeTuple);
 	return result;
 }
 

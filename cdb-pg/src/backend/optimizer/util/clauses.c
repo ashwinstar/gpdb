@@ -20,7 +20,6 @@
 
 #include "postgres.h"
 
-#include "access/catquery.h"
 #include "catalog/pg_aggregate.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_operator.h"
@@ -38,7 +37,6 @@
 #include "parser/analyze.h"
 #include "parser/parse_clause.h"
 #include "parser/parse_coerce.h"
-#include "parser/parse_func.h"
 #include "parser/parse_expr.h"
 #include "tcop/tcopprot.h"
 #include "utils/acl.h"
@@ -53,11 +51,10 @@
 typedef struct
 {
 	ParamListInfo boundParams;
+	PlannerGlobal *glob;
 	List	   *active_fns;
 	Node	   *case_val;
 	bool		transform_stable_funcs;
-	bool		recurse_queries; /* recurse into query structures */
-	bool		transform_saop; /* transform scalar array ops */
 } eval_const_expressions_context;
 
 typedef struct
@@ -87,26 +84,13 @@ static List *simplify_and_arguments(List *args,
 					   eval_const_expressions_context *context,
 					   bool *haveNull, bool *forceFalse);
 static Expr *simplify_boolean_equality(List *args);
-static Expr *simplify_function(Oid funcid, Oid result_type, List **args,
-				  bool has_named_args,
+static Expr *simplify_function(Oid funcid, Oid result_type, List *args,
 				  bool allow_inline,
 				  eval_const_expressions_context *context);
-static List *reorder_function_arguments(List *args, Oid result_type,
-				  cqContext	*pcqCtx,
-				  HeapTuple func_tuple,
-				  eval_const_expressions_context *context);
-static List *add_function_defaults(List *args, Oid result_type,
-								   cqContext *pcqCtx,
-								   HeapTuple func_tuple,
-								   eval_const_expressions_context *context);
-static List *fetch_function_defaults(cqContext *pcqCtx, HeapTuple func_tuple);
-static void recheck_cast_function_args(List *args, Oid result_type,
-									   HeapTuple func_tuple);
 static Expr *evaluate_function(Oid funcid, Oid result_type, List *args,
 				  HeapTuple func_tuple,
 				  eval_const_expressions_context *context);
 static Expr *inline_function(Oid funcid, Oid result_type, List *args,
-				cqContext *pcqCtx,
 				HeapTuple func_tuple,
 				eval_const_expressions_context *context);
 static Node *substitute_actual_parameters(Node *expr, int nargs, List *args,
@@ -114,6 +98,7 @@ static Node *substitute_actual_parameters(Node *expr, int nargs, List *args,
 static Node *substitute_actual_parameters_mutator(Node *node,
 							  substitute_actual_parameters_context *context);
 static void sql_inline_error_callback(void *arg);
+static Expr *evaluate_expr(Expr *expr, Oid result_type);
 static bool contain_grouping_clause_walker(Node *node, void *context);
 
 
@@ -384,9 +369,6 @@ contain_agg_clause_walker(Node *node, void *context)
 	if (IsA(node, GroupId) || IsA(node, GroupingFunc))
 		return true;
 
-	if (IsA(node, PercentileExpr))
-		return true;
-
 	Assert(!IsA(node, SubLink));
 	return expression_tree_walker(node, contain_agg_clause_walker, context);
 }
@@ -432,7 +414,6 @@ count_agg_clauses_walker(Node *node, AggClauseCounts *counts)
 		Oid			aggprelimfn;
 		int			i;
 		ListCell   *l;
-		cqContext  *pcqCtx;
 
 		Assert(aggref->agglevelsup == 0);
 		counts->numAggs++;
@@ -472,22 +453,16 @@ count_agg_clauses_walker(Node *node, AggClauseCounts *counts)
 		}
 
 		/* fetch aggregate transition datatype from pg_aggregate */
-		pcqCtx = caql_beginscan(
-				NULL,
-				cql("SELECT * FROM pg_aggregate "
-					" WHERE aggfnoid = :1 ",
-					ObjectIdGetDatum(aggref->aggfnoid)));
-
-		aggTuple = caql_getnext(pcqCtx);
-
+		aggTuple = SearchSysCache(AGGFNOID,
+								  ObjectIdGetDatum(aggref->aggfnoid),
+								  0, 0, 0);
 		if (!HeapTupleIsValid(aggTuple))
 			elog(ERROR, "cache lookup failed for aggregate %u",
 				 aggref->aggfnoid);
 		aggform = (Form_pg_aggregate) GETSTRUCT(aggTuple);
 		aggtranstype = aggform->aggtranstype;
 		aggprelimfn = aggform->aggprelimfn;
-		
-		caql_endscan(pcqCtx);
+		ReleaseSysCache(aggTuple);
 		
 		/* CDB wants to know whether the function can do 2-stage aggregation */
 		if ( aggprelimfn == InvalidOid )
@@ -605,6 +580,38 @@ expression_returns_set_walker(Node *node, void *context)
 		/* else fall through to check args */
 	}
 
+	/* Avoid recursion for some cases that can't return a set */
+	if (IsA(node, Aggref))
+		return false;
+	if (IsA(node, Grouping))
+		return false;
+	if (IsA(node, GroupId))
+		return false;
+	if (IsA(node, WindowRef))
+		return false;
+	if (IsA(node, DistinctExpr))
+		return false;
+	if (IsA(node, ScalarArrayOpExpr))
+		return false;
+	if (IsA(node, BoolExpr))
+		return false;
+	if (IsA(node, SubLink))
+		return false;
+	if (IsA(node, SubPlan))
+		return false;
+	if (IsA(node, ArrayExpr))
+		return false;
+	if (IsA(node, RowExpr))
+		return false;
+	if (IsA(node, RowCompareExpr))
+		return false;
+	if (IsA(node, CoalesceExpr))
+		return false;
+	if (IsA(node, MinMaxExpr))
+		return false;
+	if (IsA(node, NullIfExpr))
+		return false;
+
 	return expression_tree_walker(node, expression_returns_set_walker,
 								  context);
 }
@@ -640,8 +647,6 @@ contain_subplans_walker(Node *node, void *context)
 		return true;			/* abort the tree traversal and return true */
 	return expression_tree_walker(node, contain_subplans_walker, context);
 }
-
-
 
 
 /*****************************************************************************
@@ -1516,32 +1521,6 @@ rowtype_field_matches(Oid rowtypeid, int fieldnum,
 }
 
 
-/**
- * fold_constants
- *
- * Recurses into query tree and folds all constant expressions.
- */
-Query *fold_constants(Query *q, ParamListInfo boundParams)
-{
-	eval_const_expressions_context context;
-
-	context.boundParams = boundParams;
-	context.active_fns = NIL;	/* nothing being recursively simplified */
-	context.case_val = NULL;	/* no CASE being examined */
-	context.transform_stable_funcs = true;	/* safe transformations only */
-	context.recurse_queries = true; /* recurse into query structures */
-	context.transform_saop = false; /* do not transform scalar array ops */
-
-	return (Query *) query_or_expression_tree_mutator
-						(
-						(Node *) q,
-						eval_const_expressions_mutator,
-						&context,
-						0
-						);
-}
-
-
 /*--------------------
  * eval_const_expressions
  *
@@ -1570,8 +1549,7 @@ Query *fold_constants(Query *q, ParamListInfo boundParams)
  * OR clauses into N-argument form.  See comments in prepqual.c.
  *
  * NOTE: another critical effect is that any function calls that require
- * default arguments will be expanded, and named-argument calls will be
- * converted to positional notation.  The executor won't handle either.
+ * default arguments will be expanded.
  *--------------------
  */
 Node *
@@ -1582,17 +1560,16 @@ eval_const_expressions(PlannerInfo *root, Node *node)
 	if (root)
 	{
 		context.boundParams = root->glob->boundParams;	/* bound Params */
+		context.glob = root->glob; /* for inlined-function dependencies */
 	}
 	else
 	{
 		context.boundParams = NULL;
+		context.glob = NULL;
 	}
 	context.active_fns = NIL;	/* nothing being recursively simplified */
 	context.case_val = NULL;	/* no CASE being examined */
 	context.transform_stable_funcs = true;	/* safe transformations only */
-	context.recurse_queries = false; /* do not recurse into query structures */
-	context.transform_saop = true; 	/* transform scalar array ops */
-
 	return eval_const_expressions_mutator(node, &context);
 }
 
@@ -1621,9 +1598,6 @@ estimate_expression_value(PlannerInfo *root, Node *node)
 	context.active_fns = NIL;	/* nothing being recursively simplified */
 	context.case_val = NULL;	/* no CASE being examined */
 	context.transform_stable_funcs = true;	/* unsafe transformations OK */
-	context.recurse_queries = false; /* do not recurse into query structures */
-	context.transform_saop = true; 	/* transform scalar array ops */
-
 	return eval_const_expressions_mutator(node, &context);
 }
 
@@ -1682,41 +1656,31 @@ eval_const_expressions_mutator(Node *node,
 	{
 		FuncExpr   *expr = (FuncExpr *) node;
 		List	   *args;
-		bool        has_named_args;
 		Expr	   *simple;
 		FuncExpr   *newexpr;
-		ListCell   *lc;
 
 		/*
-		 * Reduce constants in the FuncExpr's arguments, and check to see
-		 * if there are any named args.
+		 * Reduce constants in the FuncExpr's arguments.  We know args is
+		 * either NIL or a List node, so we can call expression_tree_mutator
+		 * directly rather than recursing to self.
 		 */
-		args = NIL;
-		has_named_args = false;
-		foreach(lc, expr->args)
-		{
-			Node   *arg = (Node *) lfirst(lc);
-
-			arg = eval_const_expressions_mutator(arg, context);
-			if (IsA(arg, NamedArgExpr))
-				has_named_args = true;
-			args = lappend(args, arg);
-		}
+		args = (List *) expression_tree_mutator((Node *) expr->args,
+											  eval_const_expressions_mutator,
+												(void *) context);
 
 		/*
 		 * Code for op/func reduction is pretty bulky, so split it out as a
 		 * separate function.
 		 */
-		simple = simplify_function(expr->funcid, expr->funcresulttype, &args,
-								   has_named_args, true, context);
+		simple = simplify_function(expr->funcid, expr->funcresulttype, args,
+								   true, context);
 		if (simple)				/* successfully simplified it */
 			return (Node *) simple;
 
 		/*
 		 * The expression cannot be simplified any further, so build and
 		 * return a replacement FuncExpr node using the possibly-simplified
-		 * arguments. Note that we have also converted the argument list
-		 * to positional notation.
+		 * arguments.
 		 */
 		newexpr = makeNode(FuncExpr);
 		newexpr->funcid = expr->funcid;
@@ -1763,8 +1727,8 @@ eval_const_expressions_mutator(Node *node,
 		 * Code for op/func reduction is pretty bulky, so split it out as a
 		 * separate function.
 		 */
-		simple = simplify_function(expr->opfuncid, expr->opresulttype, &args,
-								   false, true, context);
+		simple = simplify_function(expr->opfuncid, expr->opresulttype, args,
+								   true, context);
 		if (simple)				/* successfully simplified it */
 			return (Node *) simple;
 
@@ -1852,7 +1816,7 @@ eval_const_expressions_mutator(Node *node,
 			 * a separate function.
 			 */
 			simple = simplify_function(expr->opfuncid, expr->opresulttype,
-									   &args, false, false, context);
+									   args, false, context);
 			if (simple)			/* successfully simplified it */
 			{
 				/*
@@ -2176,7 +2140,7 @@ eval_const_expressions_mutator(Node *node,
 
         return (Node *) saop; /* this has been walked and is a new one */
 	}
-	if (IsA(node, ArrayExpr) && context->transform_saop)
+	if (IsA(node, ArrayExpr))
 	{
 		ArrayExpr  *arrayexpr = (ArrayExpr *) node;
 		ArrayExpr  *newarray;
@@ -2435,18 +2399,6 @@ eval_const_expressions_mutator(Node *node,
 		newbtest->arg = (Expr *) arg;
 		newbtest->booltesttype = btest->booltesttype;
 		return (Node *) newbtest;
-	}
-
-	/* recurse into query structure if requested */
-	if (IsA(node, Query) && context->recurse_queries)
-	{
-		return (Node *)
-					query_tree_mutator
-					(
-					(Query *) node,
-					eval_const_expressions_mutator,
-					(void *) context,
-					0);
 	}
 
 	/*
@@ -2724,22 +2676,14 @@ simplify_boolean_equality(List *args)
  *
  * Returns a simplified expression if successful, or NULL if cannot
  * simplify the function call.
- *
- * This function is also responsible for converting named-notation argument
- * lists into positional notation and/or adding any needed default argument
- * expressions; which is a bit grotty, but it avoids an extra fetch of the
- * function's pg_proc tuple.  For this reason, the args list is
- * pass-by-reference, and it may get modified even if simplification fails.
  */
 static Expr *
-simplify_function(Oid funcid, Oid result_type, List **args,
-				  bool has_named_args,
+simplify_function(Oid funcid, Oid result_type, List *args,
 				  bool allow_inline,
 				  eval_const_expressions_context *context)
 {
 	HeapTuple	func_tuple;
 	Expr	   *newexpr;
-	cqContext  *pcqCtx;
 
 	/*
 	 * We have two strategies for simplification: either execute the function
@@ -2749,282 +2693,22 @@ simplify_function(Oid funcid, Oid result_type, List **args,
 	 * to the function's pg_proc tuple, so fetch it just once to use in both
 	 * attempts.
 	 */
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_proc "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(funcid)));
-
-	func_tuple = caql_getnext(pcqCtx);
-
+	func_tuple = SearchSysCache(PROCOID,
+								ObjectIdGetDatum(funcid),
+								0, 0, 0);
 	if (!HeapTupleIsValid(func_tuple))
 		elog(ERROR, "cache lookup failed for function %u", funcid);
 
-	/*
-	 * While we have the tuple, reorder named arguments and add default
-	 * arguments if needed.
-	 */
-	if (has_named_args)
-		*args = reorder_function_arguments(*args, result_type, 
-										   pcqCtx,
-										   func_tuple,
-										   context);
-	else if (((Form_pg_proc) GETSTRUCT(func_tuple))->pronargs > list_length(*args))
-		*args = add_function_defaults(*args, result_type, pcqCtx,
-									  func_tuple, context);
-
-	newexpr = evaluate_function(funcid, result_type, *args,
+	newexpr = evaluate_function(funcid, result_type, args,
 								func_tuple, context);
 
 	if (!newexpr && allow_inline)
-		newexpr = inline_function(funcid, result_type, *args,
-								  pcqCtx,
+		newexpr = inline_function(funcid, result_type, args,
 								  func_tuple, context);
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(func_tuple);
 
 	return newexpr;
-}
-
-
-/*
- * reorder_function_arguments: convert named-notation args to positional args
- *
- * This function also inserts default argument values as needed, since it's
- * impossible to form a truly valid positional call without that.
- */
-static List *
-reorder_function_arguments(List *args, Oid result_type, 
-						   cqContext *pcqCtx,
-						   HeapTuple func_tuple,
-						   eval_const_expressions_context *context)
-{
-	Form_pg_proc funcform = (Form_pg_proc) GETSTRUCT(func_tuple);
-	int         pronargs = funcform->pronargs;
-	int         nargsprovided = list_length(args);
-	Node       *argarray[FUNC_MAX_ARGS];
-	Bitmapset  *defargnumbers;
-	ListCell   *lc;
-	int         i;
-	Datum		datum;
-	int			pronargdefaults;
-	bool		isnull;
-
-	Assert(nargsprovided <= pronargs);
-	if (pronargs > FUNC_MAX_ARGS)
-		elog(ERROR, "too many function arguments");
-	MemSet(argarray, 0, pronargs * sizeof(Node *));
-
-	/* Deconstruct the argument list into an array indexed by argnumber */
-	i = 0;
-	foreach(lc, args)
-	{
-		Node   *arg = (Node *) lfirst(lc);
-
-		if (!IsA(arg, NamedArgExpr))
-		{
-			/* positional argument, assumed to precede all named args */
-			Assert(argarray[i] == NULL);
-			argarray[i++] = arg;
-		}
-		else
-		{
-			NamedArgExpr *na = (NamedArgExpr *) arg;
-
-			Assert(argarray[na->argnumber] == NULL);
-			argarray[na->argnumber] = (Node *) na->arg;
-		}
-	}
-
-	/*
-	 * Fetch default expressions, if needed, and insert into array at
-	 * proper locations (they aren't necessarily consecutive or all used)
-	 */
-	defargnumbers = NULL;
-	datum = caql_getattr(pcqCtx,
-						 Anum_pg_proc_pronargdefaults, &isnull);
-	pronargdefaults = DatumGetObjectId(datum);
-
-	if (nargsprovided < pronargs)
-	{
-		List   *defaults = fetch_function_defaults(pcqCtx, func_tuple);
-
-		i = pronargs - pronargdefaults;
-		foreach(lc, defaults)
-		{
-			if (argarray[i] == NULL)
-			{
-				argarray[i] = (Node *) lfirst(lc);
-				defargnumbers = bms_add_member(defargnumbers, i);
-			}
-			i++;
-		}
-	}
-
-	/* Now reconstruct the args list in proper order */
-	args = NIL;
-	for (i = 0; i < pronargs; i++)
-	{
-		Assert(argarray[i] != NULL);
-		args = lappend(args, argarray[i]);
-	}
-
-	/* Recheck argument types and add casts if needed */
-	recheck_cast_function_args(args, result_type, func_tuple);
-
-	/*
-	 * Lastly, we have to recursively simplify the defaults we just added
-	 * (but don't recurse on the args passed in, as we already did those).
-	 * This isn't merely an optimization, it's *necessary* since there could
-	 * be functions with named or defaulted arguments down in there.
-	 *
-	 * Note that we do this last in hopes of simplifying any typecasts that
-	 * were added by recheck_cast_function_args --- there shouldn't be any new
-	 * casts added to the explicit arguments, but casts on the defaults are
-	 * possible.
-	 */
-	if (defargnumbers != NULL)
-	{
-		i = 0;
-		foreach(lc, args)
-		{
-			if (bms_is_member(i, defargnumbers))
-				lfirst(lc) = eval_const_expressions_mutator((Node *) lfirst(lc),
-															context);
-			i++;
-		}
-	}
-
-	return args;
-}
-
-
-/*
- * add_function_defaults: add missing function arguments from its defaults
- *
- * This is used only when the argument list was positional to begin with,
- * and so we know we just need to add defaults at the end.
- */
-static List *
-add_function_defaults(List *args, Oid result_type, 
-					  cqContext *pcqCtx,
-					  HeapTuple func_tuple,
-					  eval_const_expressions_context *context)
-{
-	Form_pg_proc funcform = (Form_pg_proc) GETSTRUCT(func_tuple);
-	int         nargsprovided = list_length(args);
-	List       *defaults;
-	int         ndelete;
-	ListCell   *lc;
-
-	/* Get all the default expressions from the pg_proc tuple */
-	defaults = fetch_function_defaults(pcqCtx, func_tuple);
-
-	/* Delete any unused defaults from the list */
-	ndelete = nargsprovided + list_length(defaults) - funcform->pronargs;
-	if (ndelete < 0)
-		elog(ERROR, "not enough default arguments");
-	while (ndelete-- > 0)
-		defaults = list_delete_first(defaults);
-
-	/* And form the combined argument list */
-	args = list_concat(args, defaults);
-
-	/* Recheck argument types and add casts if needed */
-	recheck_cast_function_args(args, result_type, func_tuple);
-
-	/*
-	 * Lastly, we have to recursively simplify the defaults we just added
-	 * (but don't recurse on the args passed in, as we already did those).
-	 * This isn't merely an optimization, it's *necessary* since there could
-	 * be functions with named or defaulted arguments down in there.
-	 *
-	 * Note that we do this last in hopes of simplifying any typecasts that
-	 * were added by recheck_cast_function_args --- there shouldn't be any new
-	 * casts added to the explicit arguments, but casts on the defaults are
-	 * possible.
-	 */
-
-	foreach(lc, args)
-	{
-		if (nargsprovided-- > 0)
-			continue;           /* skip original arg positions */
-		lfirst(lc) = eval_const_expressions_mutator((Node *) lfirst(lc),
-													context);
-	}
-	return args;
-}
-
-/*
- * fetch_function_defaults: get function's default arguments as expression list
- */
-static List *
-fetch_function_defaults(cqContext *pcqCtx,
-						HeapTuple func_tuple)
-{
-	List       *defaults;
-	Datum       proargdefaults;
-	bool        isnull;
-	char       *str;
-
-	/* The error cases here shouldn't happen, but check anyway */
-	proargdefaults = caql_getattr(pcqCtx,
-								  Anum_pg_proc_proargdefaults,
-								  &isnull);
-	if (isnull)
-		elog(ERROR, "not enough default arguments");
-	str = TextDatumGetCString(proargdefaults);
-	defaults = (List *) stringToNode(str);
-	Assert(IsA(defaults, List));
-	pfree(str);
-	return defaults;
-}
-
-/*
- * recheck_cast_function_args: recheck function args and typecast as needed
- * after adding defaults.
- *
- * It is possible for some of the defaulted arguments to be polymorphic;
- * therefore we can't assume that the default expressions have the correct
- * data types already. We have to re-resolve polymorphics and do coercion
- * just like the parser did.
- *
- * This should be a no-op if there are no polymorphic arguments,
- * but we do it anyway to be sure.
- *
- * Note: if any casts are needed, the args list is modified in-place.
- */
-static void
-recheck_cast_function_args(List *args, Oid result_type, HeapTuple func_tuple)
-{
-	Form_pg_proc funcform = (Form_pg_proc) GETSTRUCT(func_tuple);
-	int         nargs;
-	Oid         actual_arg_types[FUNC_MAX_ARGS];
-	Oid         declared_arg_types[FUNC_MAX_ARGS];
-	Oid         rettype;
-	ListCell   *lc;
-
-	if (list_length(args) > FUNC_MAX_ARGS)
-		elog(ERROR, "too many function arguments");
-	nargs = 0;
-	foreach(lc, args)
-	{
-		actual_arg_types[nargs++] = exprType((Node *) lfirst(lc));
-	}
-	Assert(nargs == funcform->pronargs);
-	memcpy(declared_arg_types, funcform->proargtypes.values,
-		   funcform->pronargs * sizeof(Oid));
-	rettype = enforce_generic_type_consistency(actual_arg_types,
-											   declared_arg_types,
-											   nargs,
-											   funcform->prorettype);
-
-	/* let's just check we got the same answer as the parser did ... */
-	if (rettype != result_type)
-		elog(ERROR, "function's resolved result type changed during planning");
-
-	/* perform any necessary typecasting of arguments */
-	make_fn_arguments(NULL, args, actual_arg_types, declared_arg_types);
 }
 
 /*
@@ -3153,7 +2837,6 @@ evaluate_function(Oid funcid, Oid result_type, List *args,
  */
 static Expr *
 inline_function(Oid funcid, Oid result_type, List *args,
-				cqContext *pcqCtx,
 				HeapTuple func_tuple,
 				eval_const_expressions_context *context)
 {
@@ -3196,9 +2879,6 @@ inline_function(Oid funcid, Oid result_type, List *args,
 	 * finger the function that bad information came from.
 	 */
 	sqlerrcontext.callback = sql_inline_error_callback;
-	/* XXX XXX: could pass the pcqCtx or prosrc directly here to avoid
-	 * SysCacheGetAttr 
-	 */
 	sqlerrcontext.arg = func_tuple;
 	sqlerrcontext.previous = error_context_stack;
 	error_context_stack = &sqlerrcontext;
@@ -3228,9 +2908,10 @@ inline_function(Oid funcid, Oid result_type, List *args,
 	}
 
 	/* Fetch and parse the function body */
-	tmp = caql_getattr(pcqCtx,
-					   Anum_pg_proc_prosrc,
-					   &isNull);
+	tmp = SysCacheGetAttr(PROCOID,
+						  func_tuple,
+						  Anum_pg_proc_prosrc,
+						  &isNull);
 	if (isNull)
 		elog(ERROR, "null prosrc for function %u", funcid);
 	src = DatumGetCString(DirectFunctionCall1(textout, tmp));
@@ -3485,7 +3166,7 @@ sql_inline_error_callback(void *arg)
  * We use the executor's routine ExecEvalExpr() to avoid duplication of
  * code and ensure we get the same result as the executor would get.
  */
-Expr *
+static Expr *
 evaluate_expr(Expr *expr, Oid result_type)
 {
 	EState	   *estate;
@@ -3551,6 +3232,765 @@ evaluate_expr(Expr *expr, Oid result_type)
 	return (Expr *) makeConst(result_type, -1, resultTypLen,
 							  const_val, const_is_null,
 							  resultTypByVal);
+}
+
+
+
+/*--------------------
+ * expression_tree_mutator() is designed to support routines that make a
+ * modified copy of an expression tree, with some nodes being added,
+ * removed, or replaced by new subtrees.  The original tree is (normally)
+ * not changed.  Each recursion level is responsible for returning a copy of
+ * (or appropriately modified substitute for) the subtree it is handed.
+ * A mutator routine should look like this:
+ *
+ * Node * my_mutator (Node *node, my_struct *context)
+ * {
+ *		if (node == NULL)
+ *			return NULL;
+ *		// check for nodes that special work is required for, eg:
+ *		if (IsA(node, Var))
+ *		{
+ *			... create and return modified copy of Var node
+ *		}
+ *		else if (IsA(node, ...))
+ *		{
+ *			... do special transformations of other node types
+ *		}
+ *		// for any node type not specially processed, do:
+ *		return expression_tree_mutator(node, my_mutator, (void *) context);
+ * }
+ *
+ * The "context" argument points to a struct that holds whatever context
+ * information the mutator routine needs --- it can be used to return extra
+ * data gathered by the mutator, too.  This argument is not touched by
+ * expression_tree_mutator, but it is passed down to recursive sub-invocations
+ * of my_mutator.  The tree walk is started from a setup routine that
+ * fills in the appropriate context struct, calls my_mutator with the
+ * top-level node of the tree, and does any required post-processing.
+ *
+ * Each level of recursion must return an appropriately modified Node.
+ * If expression_tree_mutator() is called, it will make an exact copy
+ * of the given Node, but invoke my_mutator() to copy the sub-node(s)
+ * of that Node.  In this way, my_mutator() has full control over the
+ * copying process but need not directly deal with expression trees
+ * that it has no interest in.
+ *
+ * Just as for expression_tree_walker, the node types handled by
+ * expression_tree_mutator include all those normally found in target lists
+ * and qualifier clauses during the planning stage.
+ *
+ * expression_tree_mutator will handle SubLink nodes by recursing normally
+ * into the "testexpr" subtree (which is an expression belonging to the outer
+ * plan).  It will also call the mutator on the sub-Query node; however, when
+ * expression_tree_mutator itself is called on a Query node, it does nothing
+ * and returns the unmodified Query node.  The net effect is that unless the
+ * mutator does something special at a Query node, sub-selects will not be
+ * visited or modified; the original sub-select will be linked to by the new
+ * SubLink node.  Mutators that want to descend into sub-selects will usually
+ * do so by recognizing Query nodes and calling query_tree_mutator (below).
+ *
+ * expression_tree_mutator will handle a SubPlan node by recursing into the
+ * "testexpr" and the "args" list (which belong to the outer plan), but it
+ * will simply copy the link to the inner plan, since that's typically what
+ * expression tree mutators want.  A mutator that wants to modify the subplan
+ * can force appropriate behavior by recognizing SubPlan expression nodes
+ * and doing the right thing.
+ *--------------------
+ */
+
+Node *
+expression_tree_mutator(Node *node,
+						Node *(*mutator) (),
+						void *context)
+{
+	/*
+	 * The mutator has already decided not to modify the current node, but we
+	 * must call the mutator for any sub-nodes.
+	 */
+
+#define FLATCOPY(newnode, node, nodetype)  \
+	( (newnode) = makeNode(nodetype), \
+	  memcpy((newnode), (node), sizeof(nodetype)) )
+
+#define CHECKFLATCOPY(newnode, node, nodetype)	\
+	( AssertMacro(IsA((node), nodetype)), \
+	  (newnode) = makeNode(nodetype), \
+	  memcpy((newnode), (node), sizeof(nodetype)) )
+
+#define MUTATE(newfield, oldfield, fieldtype)  \
+		( (newfield) = (fieldtype) mutator((Node *) (oldfield), context) )
+
+	if (node == NULL)
+		return NULL;
+
+	/* Guard against stack overflow due to overly complex expressions */
+	check_stack_depth();
+
+	switch (nodeTag(node))
+	{
+		case T_Var:
+		case T_Const:
+		case T_Param:
+		case T_CoerceToDomainValue:
+		case T_CaseTestExpr:
+		case T_SetToDefault:
+		case T_RangeTblRef:
+		case T_OuterJoinInfo:
+		case T_String:
+		case T_Null:
+			/* primitive node types with no expression subnodes */
+			return (Node *) copyObject(node);
+		case T_Aggref:
+			{
+				Aggref	   *aggref = (Aggref *) node;
+				Aggref	   *newnode;
+
+				FLATCOPY(newnode, aggref, Aggref);
+				MUTATE(newnode->args, aggref->args, List *);
+				MUTATE(newnode->aggorder, aggref->aggorder, AggOrder*);
+				return (Node *) newnode;
+			}
+			break;
+		case T_AggOrder:
+			{
+				AggOrder	*aggorder = (AggOrder *)node;
+				AggOrder	*newnode;
+				
+				FLATCOPY(newnode, aggorder, AggOrder);
+				MUTATE(newnode->sortTargets, aggorder->sortTargets, List *);
+				MUTATE(newnode->sortClause, aggorder->sortClause, List *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_GroupingFunc:
+			{
+				GroupingFunc *newnode;
+
+				newnode = copyObject(node);
+				return (Node *)newnode;
+			}
+			break;
+		case T_Grouping:
+			{
+				Grouping *grping = (Grouping *) node;
+				Grouping *newnode;
+
+				FLATCOPY(newnode, grping, Grouping);
+				return (Node *) newnode;
+			}
+			break;
+		case T_GroupId:
+			{
+				GroupId *grpid = (GroupId *) node;
+				GroupId *newnode;
+
+				FLATCOPY(newnode, grpid, GroupId);
+				return (Node *) newnode;
+			}
+			break;
+		case T_TableFunctionScan:
+			{
+				TableFunctionScan *tablefunc = (TableFunctionScan *) node;
+				TableFunctionScan *newnode;
+
+				FLATCOPY(newnode, tablefunc, TableFunctionScan);
+				return (Node *) newnode;
+			}
+			break;
+		case T_WindowRef:
+			{
+				WindowRef   *windowref = (WindowRef *) node;
+				WindowRef   *newnode;
+
+				FLATCOPY(newnode, windowref, WindowRef);
+				MUTATE(newnode->args, windowref->args, List *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_WindowFrame:
+			{
+				WindowFrame	*frame = (WindowFrame *) node;
+				WindowFrame *newnode;
+				
+				FLATCOPY(newnode, frame, WindowFrame);
+				MUTATE(newnode->trail, frame->trail, WindowFrameEdge *);
+				MUTATE(newnode->lead, frame->lead, WindowFrameEdge *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_WindowFrameEdge:
+			{
+				WindowFrameEdge	*edge = (WindowFrameEdge *) node;
+				WindowFrameEdge *newnode;
+				
+				FLATCOPY(newnode, edge, WindowFrameEdge);
+				MUTATE(newnode->val, edge->val, Node *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_WindowSpec:
+			{
+				WindowSpec *winspec = (WindowSpec *) node;
+				WindowSpec *newnode;
+
+				FLATCOPY(newnode, winspec, WindowSpec);
+
+				MUTATE(newnode->partition, winspec->partition, List *);
+				MUTATE(newnode->order, winspec->order, List *);
+				MUTATE(newnode->frame, winspec->frame, WindowFrame *);
+
+				return (Node *) newnode;
+
+			}
+		case T_SortClause:
+			{
+				SortClause *sortcl = (SortClause *) node;
+				SortClause *newnode;
+
+				FLATCOPY(newnode, sortcl, SortClause);
+
+				return (Node *) newnode;
+			}
+		case T_GroupClause: /* same as SortClause for now */
+			{
+				GroupClause *groupcl = (GroupClause *) node;
+				GroupClause *newnode;
+				
+				FLATCOPY(newnode, groupcl, GroupClause);
+				
+				return (Node *) newnode;
+			}
+		case T_GroupingClause:
+			{
+				GroupingClause *grpingcl = (GroupingClause *) node;
+				GroupingClause *newnode;
+				
+				FLATCOPY(newnode, grpingcl, GroupingClause);
+				MUTATE(newnode->groupsets, grpingcl->groupsets, List *);
+				return (Node *)newnode;
+			}
+			break;
+		case T_ArrayRef:
+			{
+				ArrayRef   *arrayref = (ArrayRef *) node;
+				ArrayRef   *newnode;
+
+				FLATCOPY(newnode, arrayref, ArrayRef);
+				MUTATE(newnode->refupperindexpr, arrayref->refupperindexpr,
+					   List *);
+				MUTATE(newnode->reflowerindexpr, arrayref->reflowerindexpr,
+					   List *);
+				MUTATE(newnode->refexpr, arrayref->refexpr,
+					   Expr *);
+				MUTATE(newnode->refassgnexpr, arrayref->refassgnexpr,
+					   Expr *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_FuncExpr:
+			{
+				FuncExpr   *expr = (FuncExpr *) node;
+				FuncExpr   *newnode;
+
+				FLATCOPY(newnode, expr, FuncExpr);
+				MUTATE(newnode->args, expr->args, List *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_TableValueExpr:
+			{
+				TableValueExpr   *expr = (TableValueExpr *) node;
+				TableValueExpr   *newnode;
+
+				FLATCOPY(newnode, expr, TableValueExpr);
+
+				/* The subquery already pulled up into the T_TableFunctionScan node */
+				newnode->subquery = (Node *) NULL;
+				return (Node *) newnode;
+			}
+			break;
+		case T_OpExpr:
+			{
+				OpExpr	   *expr = (OpExpr *) node;
+				OpExpr	   *newnode;
+
+				FLATCOPY(newnode, expr, OpExpr);
+				MUTATE(newnode->args, expr->args, List *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_DistinctExpr:
+			{
+				DistinctExpr *expr = (DistinctExpr *) node;
+				DistinctExpr *newnode;
+
+				FLATCOPY(newnode, expr, DistinctExpr);
+				MUTATE(newnode->args, expr->args, List *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_ScalarArrayOpExpr:
+			{
+				ScalarArrayOpExpr *expr = (ScalarArrayOpExpr *) node;
+				ScalarArrayOpExpr *newnode;
+
+				FLATCOPY(newnode, expr, ScalarArrayOpExpr);
+				MUTATE(newnode->args, expr->args, List *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_BoolExpr:
+			{
+				BoolExpr   *expr = (BoolExpr *) node;
+				BoolExpr   *newnode;
+
+				FLATCOPY(newnode, expr, BoolExpr);
+				MUTATE(newnode->args, expr->args, List *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_SubLink:
+			{
+				SubLink    *sublink = (SubLink *) node;
+				SubLink    *newnode;
+
+				FLATCOPY(newnode, sublink, SubLink);
+				MUTATE(newnode->testexpr, sublink->testexpr, Node *);
+
+				/*
+				 * Also invoke the mutator on the sublink's Query node, so it
+				 * can recurse into the sub-query if it wants to.
+				 */
+				MUTATE(newnode->subselect, sublink->subselect, Node *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_SubPlan:
+			{
+				SubPlan    *subplan = (SubPlan *) node;
+				SubPlan    *newnode;
+
+				FLATCOPY(newnode, subplan, SubPlan);
+				/* transform testexpr */
+				MUTATE(newnode->testexpr, subplan->testexpr, Node *);
+				/* transform args list (params to be passed to subplan) */
+				MUTATE(newnode->args, subplan->args, List *);
+				/* but not the sub-Plan itself, which is referenced as-is */
+				return (Node *) newnode;
+			}
+			break;
+		case T_FieldSelect:
+			{
+				FieldSelect *fselect = (FieldSelect *) node;
+				FieldSelect *newnode;
+
+				FLATCOPY(newnode, fselect, FieldSelect);
+				MUTATE(newnode->arg, fselect->arg, Expr *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_FieldStore:
+			{
+				FieldStore *fstore = (FieldStore *) node;
+				FieldStore *newnode;
+
+				FLATCOPY(newnode, fstore, FieldStore);
+				MUTATE(newnode->arg, fstore->arg, Expr *);
+				MUTATE(newnode->newvals, fstore->newvals, List *);
+				newnode->fieldnums = list_copy(fstore->fieldnums);
+				return (Node *) newnode;
+			}
+			break;
+		case T_RelabelType:
+			{
+				RelabelType *relabel = (RelabelType *) node;
+				RelabelType *newnode;
+
+				FLATCOPY(newnode, relabel, RelabelType);
+				MUTATE(newnode->arg, relabel->arg, Expr *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_ConvertRowtypeExpr:
+			{
+				ConvertRowtypeExpr *convexpr = (ConvertRowtypeExpr *) node;
+				ConvertRowtypeExpr *newnode;
+
+				FLATCOPY(newnode, convexpr, ConvertRowtypeExpr);
+				MUTATE(newnode->arg, convexpr->arg, Expr *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_CaseExpr:
+			{
+				CaseExpr   *caseexpr = (CaseExpr *) node;
+				CaseExpr   *newnode;
+
+				FLATCOPY(newnode, caseexpr, CaseExpr);
+				MUTATE(newnode->arg, caseexpr->arg, Expr *);
+				MUTATE(newnode->args, caseexpr->args, List *);
+				MUTATE(newnode->defresult, caseexpr->defresult, Expr *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_CaseWhen:
+			{
+				CaseWhen   *casewhen = (CaseWhen *) node;
+				CaseWhen   *newnode;
+
+				FLATCOPY(newnode, casewhen, CaseWhen);
+				MUTATE(newnode->expr, casewhen->expr, Expr *);
+				MUTATE(newnode->result, casewhen->result, Expr *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_ArrayExpr:
+			{
+				ArrayExpr  *arrayexpr = (ArrayExpr *) node;
+				ArrayExpr  *newnode;
+
+				FLATCOPY(newnode, arrayexpr, ArrayExpr);
+				MUTATE(newnode->elements, arrayexpr->elements, List *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_RowExpr:
+			{
+				RowExpr    *rowexpr = (RowExpr *) node;
+				RowExpr    *newnode;
+
+				FLATCOPY(newnode, rowexpr, RowExpr);
+				MUTATE(newnode->args, rowexpr->args, List *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_RowCompareExpr:
+			{
+				RowCompareExpr *rcexpr = (RowCompareExpr *) node;
+				RowCompareExpr *newnode;
+
+				FLATCOPY(newnode, rcexpr, RowCompareExpr);
+				MUTATE(newnode->largs, rcexpr->largs, List *);
+				MUTATE(newnode->rargs, rcexpr->rargs, List *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_CoalesceExpr:
+			{
+				CoalesceExpr *coalesceexpr = (CoalesceExpr *) node;
+				CoalesceExpr *newnode;
+
+				FLATCOPY(newnode, coalesceexpr, CoalesceExpr);
+				MUTATE(newnode->args, coalesceexpr->args, List *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_MinMaxExpr:
+			{
+				MinMaxExpr *minmaxexpr = (MinMaxExpr *) node;
+				MinMaxExpr *newnode;
+
+				FLATCOPY(newnode, minmaxexpr, MinMaxExpr);
+				MUTATE(newnode->args, minmaxexpr->args, List *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_NullIfExpr:
+			{
+				NullIfExpr *expr = (NullIfExpr *) node;
+				NullIfExpr *newnode;
+
+				FLATCOPY(newnode, expr, NullIfExpr);
+				MUTATE(newnode->args, expr->args, List *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_NullTest:
+			{
+				NullTest   *ntest = (NullTest *) node;
+				NullTest   *newnode;
+
+				FLATCOPY(newnode, ntest, NullTest);
+				MUTATE(newnode->arg, ntest->arg, Expr *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_BooleanTest:
+			{
+				BooleanTest *btest = (BooleanTest *) node;
+				BooleanTest *newnode;
+
+				FLATCOPY(newnode, btest, BooleanTest);
+				MUTATE(newnode->arg, btest->arg, Expr *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_CoerceToDomain:
+			{
+				CoerceToDomain *ctest = (CoerceToDomain *) node;
+				CoerceToDomain *newnode;
+
+				FLATCOPY(newnode, ctest, CoerceToDomain);
+				MUTATE(newnode->arg, ctest->arg, Expr *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_TargetEntry:
+			{
+				TargetEntry *targetentry = (TargetEntry *) node;
+				TargetEntry *newnode;
+
+				FLATCOPY(newnode, targetentry, TargetEntry);
+				MUTATE(newnode->expr, targetentry->expr, Expr *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_Query:
+			/* Do nothing with a sub-Query, per discussion above */
+			return node;
+		case T_CommonTableExpr:
+			{
+				CommonTableExpr *cte = (CommonTableExpr *) node;
+				CommonTableExpr *newnode;
+
+				FLATCOPY(newnode, cte, CommonTableExpr);
+
+				/*
+				 * Also invoke the mutator on the CTE's Query node, so it can
+				 * recurse into the sub-query if it wants to.
+				 */
+				MUTATE(newnode->ctequery, cte->ctequery, Node *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_List:
+			{
+				/*
+				 * We assume the mutator isn't interested in the list nodes
+				 * per se, so just invoke it on each list element. NOTE: this
+				 * would fail badly on a list with integer elements!
+				 */
+				List	   *resultlist;
+				ListCell   *temp;
+
+				resultlist = NIL;
+				foreach(temp, (List *) node)
+				{
+					resultlist = lappend(resultlist,
+										 mutator((Node *) lfirst(temp),
+												 context));
+				}
+				return (Node *) resultlist;
+			}
+			break;
+		case T_FromExpr:
+			{
+				FromExpr   *from = (FromExpr *) node;
+				FromExpr   *newnode;
+
+				FLATCOPY(newnode, from, FromExpr);
+				MUTATE(newnode->fromlist, from->fromlist, List *);
+				MUTATE(newnode->quals, from->quals, Node *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_JoinExpr:
+			{
+				JoinExpr   *join = (JoinExpr *) node;
+				JoinExpr   *newnode;
+
+				FLATCOPY(newnode, join, JoinExpr);
+				MUTATE(newnode->larg, join->larg, Node *);
+				MUTATE(newnode->rarg, join->rarg, Node *);
+				MUTATE(newnode->subqfromlist, join->subqfromlist, List *);  /*CDB*/
+				MUTATE(newnode->quals, join->quals, Node *);
+				/* We do not mutate alias or using by default */
+				return (Node *) newnode;
+			}
+			break;
+		case T_SetOperationStmt:
+			{
+				SetOperationStmt *setop = (SetOperationStmt *) node;
+				SetOperationStmt *newnode;
+
+				FLATCOPY(newnode, setop, SetOperationStmt);
+				MUTATE(newnode->larg, setop->larg, Node *);
+				MUTATE(newnode->rarg, setop->rarg, Node *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_InClauseInfo:
+			{
+				InClauseInfo *ininfo = (InClauseInfo *) node;
+				InClauseInfo *newnode;
+
+				FLATCOPY(newnode, ininfo, InClauseInfo);
+				MUTATE(newnode->sub_targetlist, ininfo->sub_targetlist, List *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_AppendRelInfo:
+			{
+				AppendRelInfo *appinfo = (AppendRelInfo *) node;
+				AppendRelInfo *newnode;
+
+				FLATCOPY(newnode, appinfo, AppendRelInfo);
+				MUTATE(newnode->translated_vars, appinfo->translated_vars, List *);
+				return (Node *) newnode;
+			}
+			break;
+		default:
+            ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+                            errmsg_internal("unrecognized node type: %d",
+				                            nodeTag(node)) ));
+			break;
+	}
+	/* can't get here, but keep compiler happy */
+	return NULL;
+}
+
+
+/*
+ * query_tree_mutator --- initiate modification of a Query's expressions
+ *
+ * This routine exists just to reduce the number of places that need to know
+ * where all the expression subtrees of a Query are.  Note it can be used
+ * for starting a walk at top level of a Query regardless of whether the
+ * mutator intends to descend into subqueries.	It is also useful for
+ * descending into subqueries within a mutator.
+ *
+ * Some callers want to suppress mutating of certain items in the Query,
+ * typically because they need to process them specially, or don't actually
+ * want to recurse into subqueries.  This is supported by the flags argument,
+ * which is the bitwise OR of flag values to suppress mutating of
+ * indicated items.  (More flag bits may be added as needed.)
+ *
+ * Normally the Query node itself is copied, but some callers want it to be
+ * modified in-place; they must pass QTW_DONT_COPY_QUERY in flags.	All
+ * modified substructure is safely copied in any case.
+ */
+Query *
+query_tree_mutator(Query *query,
+				   Node *(*mutator) (),
+				   void *context,
+				   int flags)
+{
+	Assert(query != NULL && IsA(query, Query));
+
+	if (!(flags & QTW_DONT_COPY_QUERY))
+	{
+		Query	   *newquery;
+
+		FLATCOPY(newquery, query, Query);
+		query = newquery;
+	}
+
+	MUTATE(query->targetList, query->targetList, List *);
+	MUTATE(query->returningList, query->returningList, List *);
+	MUTATE(query->jointree, query->jointree, FromExpr *);
+	MUTATE(query->setOperations, query->setOperations, Node *);
+	MUTATE(query->groupClause, query->groupClause, List *);
+	MUTATE(query->scatterClause, query->scatterClause, List *);
+	MUTATE(query->havingQual, query->havingQual, Node *);
+	MUTATE(query->windowClause, query->windowClause, List *);
+	MUTATE(query->limitOffset, query->limitOffset, Node *);
+	MUTATE(query->limitCount, query->limitCount, Node *);
+	if (!(flags & QTW_IGNORE_CTE_SUBQUERIES))
+		MUTATE(query->cteList, query->cteList, List *);
+	else	/* else copy CTE list as-is */
+		query->cteList = copyObject(query->cteList);
+	query->rtable = range_table_mutator(query->rtable,
+										mutator, context, flags);
+	return query;
+}
+
+/*
+ * range_table_mutator is just the part of query_tree_mutator that processes
+ * a query's rangetable.  This is split out since it can be useful on
+ * its own.
+ */
+List *
+range_table_mutator(List *rtable,
+					Node *(*mutator) (),
+					void *context,
+					int flags)
+{
+	List	   *newrt = NIL;
+	ListCell   *rt;
+
+	foreach(rt, rtable)
+	{
+		RangeTblEntry *rte = (RangeTblEntry *) lfirst(rt);
+		RangeTblEntry *newrte;
+
+		FLATCOPY(newrte, rte, RangeTblEntry);
+		switch (rte->rtekind)
+		{
+			case RTE_RELATION:
+			case RTE_SPECIAL:
+            case RTE_VOID:
+			case RTE_CTE:
+				/* we don't bother to copy eref, aliases, etc; OK? */
+				break;
+			case RTE_SUBQUERY:
+				if (!(flags & QTW_IGNORE_RT_SUBQUERIES))
+				{
+					CHECKFLATCOPY(newrte->subquery, rte->subquery, Query);
+					MUTATE(newrte->subquery, newrte->subquery, Query *);
+				}
+				else
+				{
+					/* else, copy RT subqueries as-is */
+					newrte->subquery = copyObject(rte->subquery);
+				}
+				break;
+			case RTE_JOIN:
+				if (!(flags & QTW_IGNORE_JOINALIASES))
+					MUTATE(newrte->joinaliasvars, rte->joinaliasvars, List *);
+				else
+				{
+					/* else, copy join aliases as-is */
+					newrte->joinaliasvars = copyObject(rte->joinaliasvars);
+				}
+				break;
+			case RTE_FUNCTION:
+				MUTATE(newrte->funcexpr, rte->funcexpr, Node *);
+				break;
+			case RTE_TABLEFUNCTION:
+				MUTATE(newrte->funcexpr, rte->funcexpr, Node *);
+				MUTATE(newrte->subquery, rte->subquery, Query *);
+				break;
+			case RTE_VALUES:
+				MUTATE(newrte->values_lists, rte->values_lists, List *);
+				break;
+		}
+		newrt = lappend(newrt, newrte);
+	}
+	return newrt;
+}
+
+/*
+ * query_or_expression_tree_mutator --- hybrid form
+ *
+ * This routine will invoke query_tree_mutator if called on a Query node,
+ * else will invoke the mutator directly.  This is a useful way of starting
+ * the recursion when the mutator's normal change of state is not appropriate
+ * for the outermost Query node.
+ */
+Node *
+query_or_expression_tree_mutator(Node *node,
+								 Node *(*mutator) (),
+								 void *context,
+								 int flags)
+{
+	if (node && IsA(node, Query))
+		return (Node *) query_tree_mutator((Query *) node,
+										   mutator,
+										   context,
+										   flags);
+	else
+		return mutator(node, context);
 }
 
 /* 

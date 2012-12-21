@@ -22,7 +22,6 @@
 #include "access/transam.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
-#include "cdb/cdbvars.h"
 #include "executor/spi_priv.h"
 #include "funcapi.h"
 #include "optimizer/clauses.h"
@@ -175,8 +174,6 @@ static bool compatible_tupdesc(TupleDesc td1, TupleDesc td2);
 static void exec_set_found(PLpgSQL_execstate *estate, bool state);
 static void plpgsql_create_econtext(PLpgSQL_execstate *estate);
 static void free_var(PLpgSQL_var *var);
-static void exec_check_cache_plan(PLpgSQL_expr *expr);
-static void exec_free_plan(PLpgSQL_expr *expr);
 
 
 /* ----------
@@ -1349,8 +1346,8 @@ exec_stmt_getdiag(PLpgSQL_execstate *estate, PLpgSQL_stmt_getdiag *stmt)
 			case PLPGSQL_GETDIAG_ROW_COUNT:
 
 				exec_assign_value(estate, var,
-								  UInt64GetDatum(estate->eval_processed),
-								  INT8OID, &isnull);
+								  UInt32GetDatum(estate->eval_processed),
+								  INT4OID, &isnull);
 				break;
 
 			case PLPGSQL_GETDIAG_RESULT_OID:
@@ -2371,15 +2368,6 @@ exec_prepare_plan(PLpgSQL_execstate *estate,
 	exec_simple_check_plan(expr);
 
 	SPI_freeplan(plan);
-
-	if (Gp_role != GP_ROLE_EXECUTE)
-	{
-		/* 
-		 * if we are not in EXECUTE mode, check if plan should be cached. 
-		 */
-		exec_check_cache_plan(expr);
-	}
-
 	pfree(argtypes);
 }
 
@@ -2403,13 +2391,6 @@ exec_stmt_execsql(PLpgSQL_execstate *estate,
 	 * On the first call for this statement generate the plan, and detect
 	 * whether the statement is INSERT/UPDATE/DELETE
 	 */
-
- 	/* if we find a cached plan, check if we want to use it */
-	if (expr->plan != NULL)
-	{
-		exec_free_plan(expr);
-	}
-	
 	if (expr->plan == NULL)
 	{
 		_SPI_plan  *spi_plan;
@@ -2543,7 +2524,7 @@ exec_stmt_execsql(PLpgSQL_execstate *estate,
 	}
 
 	/* All variants should save result info for GET DIAGNOSTICS */
-	estate->eval_processed = SPI_processed64;
+	estate->eval_processed = SPI_processed;
 	estate->eval_lastoid = SPI_lastoid;
 
 	/* Process INTO if present */
@@ -3010,13 +2991,6 @@ exec_stmt_open(PLpgSQL_execstate *estate, PLpgSQL_stmt_open *stmt)
 		 * ----------
 		 */
 		query = stmt->query;
-
-	 	/* if we find a cached plan, check if we want to use it */
-		if (query->plan != NULL)
-		{
-			exec_free_plan(query);
-		}
-	
 		if (query->plan == NULL)
 			exec_prepare_plan(estate, query);
 	}
@@ -3120,12 +3094,6 @@ exec_stmt_open(PLpgSQL_execstate *estate, PLpgSQL_stmt_open *stmt)
 		}
 
 		query = curvar->cursor_explicit_expr;
-		/* if we find a cached plan, check if we want to use it */
-		if (query->plan != NULL)
-		{
-			exec_free_plan(query);
-		}
-
 		if (query->plan == NULL)
 			exec_prepare_plan(estate, query);
 	}
@@ -3381,6 +3349,12 @@ exec_assign_value(PLpgSQL_execstate *estate,
 				 */
 				PLpgSQL_row *row = (PLpgSQL_row *) target;
 
+				/* Source must be of RECORD or composite type */
+				if (!(valtype == RECORDOID ||
+					  get_typtype(valtype) == 'c'))
+					ereport(ERROR,
+							(errcode(ERRCODE_DATATYPE_MISMATCH),
+							 errmsg("cannot assign non-composite value to a row variable")));
 				if (*isNull)
 				{
 					/* If source is null, just assign nulls to the row */
@@ -3394,13 +3368,7 @@ exec_assign_value(PLpgSQL_execstate *estate,
 					TupleDesc	tupdesc;
 					HeapTupleData tmptup;
 
-					/* Source must be of RECORD or composite type */
-					if (!(valtype == RECORDOID ||
-						  get_typtype(valtype) == 'c'))
-						ereport(ERROR,
-								(errcode(ERRCODE_DATATYPE_MISMATCH),
-								 errmsg("cannot assign non-composite value to a row variable")));
-					/* So source is a tuple Datum, safe to do this: */
+					/* Else source is a tuple Datum, safe to do this: */
 					td = DatumGetHeapTupleHeader(value);
 					/* Extract rowtype info and find a tupdesc */
 					tupType = HeapTupleHeaderGetTypeId(td);
@@ -3423,6 +3391,12 @@ exec_assign_value(PLpgSQL_execstate *estate,
 				 */
 				PLpgSQL_rec *rec = (PLpgSQL_rec *) target;
 
+				/* Source must be of RECORD or composite type */
+				if (!(valtype == RECORDOID ||
+					  get_typtype(valtype) == 'c'))
+					ereport(ERROR,
+							(errcode(ERRCODE_DATATYPE_MISMATCH),
+							 errmsg("cannot assign non-composite value to a record variable")));
 				if (*isNull)
 				{
 					/* If source is null, just assign nulls to the record */
@@ -3436,13 +3410,7 @@ exec_assign_value(PLpgSQL_execstate *estate,
 					TupleDesc	tupdesc;
 					HeapTupleData tmptup;
 
-					/* Source must be of RECORD or composite type */
-					if (!(valtype == RECORDOID ||
-						  get_typtype(valtype) == 'c'))
-						ereport(ERROR,
-								(errcode(ERRCODE_DATATYPE_MISMATCH),
-								 errmsg("cannot assign non-composite value to a record variable")));
-					/* So source is a tuple Datum, safe to do this: */
+					/* Else source is a tuple Datum, safe to do this: */
 					td = DatumGetHeapTupleHeader(value);
 					/* Extract rowtype info and find a tupdesc */
 					tupType = HeapTupleHeaderGetTypeId(td);
@@ -3930,7 +3898,6 @@ exec_eval_expr(PLpgSQL_execstate *estate,
 {
 	int			rc;
 
-	
 	/*
 	 * If not already done create a plan for this expression
 	 */
@@ -3995,14 +3962,8 @@ exec_run_select(PLpgSQL_execstate *estate,
 	char	   *nulls;
 	int			rc;
 
-	/* if we find a cached plan, check if we want to use it */
-	if (expr->plan != NULL)
-	{
-		exec_free_plan(expr);
-	}
-
 	/*
-	 * generate the plan if needed
+	 * On the first call for this expression generate the plan
 	 */
 	if (expr->plan == NULL)
 		exec_prepare_plan(estate, expr);
@@ -4972,90 +4933,3 @@ free_var(PLpgSQL_var *var)
 		var->freeval = false;
 	}
 }
-
-
-
-/* ----------
- * exec_check_cache_plan -		Check if a plan can be cached
- * 
- * This routine checks if plan can be cached to avoid stale 
- * plan issues as seen with MPP-16204.
- *
- * 	- If the input expr contains only UTILITY statements, the routine 
- *	  sets cachable to true.
- * ----------
- */
-static void
-exec_check_cache_plan(PLpgSQL_expr *expr)
-{
-	_SPI_plan	*spi_plan = (_SPI_plan *) expr->plan; 
-	PlannedStmt	*stmt = NULL; 
-	Plan		*plan = NULL; 
-	ListCell	*plan_list_item = NULL;
-
-	/* 
-	 * store the current transaction id. we will only free the plan
-	 * if the next invocation of the plan is from a different	
-	 * transaction 
-	 */
-	expr->transaction_id = GetTopTransactionId();
-
-	/* 
-	 * we can have multiple PlannedStmt. Walk all of them
-	 */
-	foreach (plan_list_item, spi_plan->ptlist)
-	{
-		if (IsA((lfirst(plan_list_item)), PlannedStmt))
-		{
-			stmt = (PlannedStmt *)lfirst(plan_list_item);
-			plan = stmt ? stmt->planTree : NULL;
-		}
-		else
-		{
-			/* UTILITY statements */
-		  	plan = NULL;
-		}
-
-		if (plan == NULL)
-		{
-			continue;	
-		}
-		else
-		{
-			expr->cachable = false;
-			return;
-		}
-	}
-
- 	expr->cachable = true;
-	return; 
-}
-
-/* 
- * exec_free_plan
- * 
- * This routine frees the plan cached by PL/pgSQL under the following 
- * conditions 
- *	- the use_count is 0 . This is to protect the plan under recursive 
- *	  invocations and
- *	- exec_check_cache_plan has indicated that it is not safe to cache the 
- * 	  plan and
- *	- we are not in EXECUTE mode
- * 	- if the plan was compiled in a different transaction (this check is 
- *	  made so we don't free the plans too aggresively.
-*/
-static void
-exec_free_plan(PLpgSQL_expr *expr)
-{
-	TransactionId txid = GetTopTransactionId();
-
-	if (((_SPI_plan *)expr->plan)->use_count == 0 
-		&& !expr->cachable 
-		&& Gp_role != GP_ROLE_EXECUTE 
-		&& (gp_plpgsql_clear_cache_always || expr->transaction_id != txid)) 
-	{
-		SPI_freeplan(expr->plan);
-		expr->plan = NULL;
-	}
-}
-

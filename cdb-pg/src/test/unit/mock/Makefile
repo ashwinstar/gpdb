@@ -1,1 +1,0 @@
-COMMON_MOCK_OBJS=${MOCK_DIR}/cdbcat_mock.o

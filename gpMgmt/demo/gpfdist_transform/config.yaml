@@ -10,11 +10,3 @@ TRANSFORMATIONS:
   dblp_output:
     TYPE:     output
     COMMAND:  /bin/bash dblp/output_transform.sh %filename%
-
-  mef_input:
-    TYPE:     input
-    COMMAND:  /bin/bash mef/input_transform.sh %filename%
-
-  rig_input:
-    TYPE:     input
-    COMMAND:  /bin/bash rig/input_transform.sh %filename%

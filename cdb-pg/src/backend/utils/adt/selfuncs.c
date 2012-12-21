@@ -77,7 +77,6 @@
 #include <ctype.h>
 #include <math.h>
 
-#include "access/catquery.h"
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_type.h"
@@ -184,12 +183,11 @@ eqsel(PG_FUNCTION_ARGS)
 		PG_RETURN_FLOAT8(0.0);
 	}
 
-	if (HeapTupleIsValid(getStatsTuple(&vardata)))
+	if (HeapTupleIsValid(vardata.statsTuple))
 	{
 		Form_pg_statistic stats;
-		HeapTuple tp = getStatsTuple(&vardata);
 
-		stats = (Form_pg_statistic) GETSTRUCT(tp);
+		stats = (Form_pg_statistic) GETSTRUCT(vardata.statsTuple);
 
 		if (IsA(other, Const))
 		{
@@ -205,7 +203,7 @@ eqsel(PG_FUNCTION_ARGS)
 			 * test.  If you don't like this, maybe you shouldn't be using
 			 * eqsel for your operator...)
 			 */
-			if (get_attstatsslot(tp,
+			if (get_attstatsslot(vardata.statsTuple,
 								 vardata.atttype, vardata.atttypmod,
 								 STATISTIC_KIND_MCV, InvalidOid,
 								 &values, &nvalues,
@@ -307,7 +305,7 @@ eqsel(PG_FUNCTION_ARGS)
 			 * Cross-check: selectivity should never be estimated as more than
 			 * the most common value's.
 			 */
-			if (get_attstatsslot(tp,
+			if (get_attstatsslot(vardata.statsTuple,
 								 vardata.atttype, vardata.atttypmod,
 								 STATISTIC_KIND_MCV, InvalidOid,
 								 NULL, NULL,
@@ -399,14 +397,13 @@ scalarineqsel(PlannerInfo *root, Oid operator, bool isgt,
 				hist_selec,
 				sumcommon;
 	double		selec;
-	HeapTuple	tp = getStatsTuple(vardata);
 
-	if (!HeapTupleIsValid(getStatsTuple(vardata)))
+	if (!HeapTupleIsValid(vardata->statsTuple))
 	{
 		/* no stats available, so default result */
 		return DEFAULT_INEQ_SEL;
 	}
-	stats = (Form_pg_statistic) GETSTRUCT(tp);
+	stats = (Form_pg_statistic) GETSTRUCT(vardata->statsTuple);
 
 	fmgr_info(get_opcode(operator), &opproc);
 
@@ -490,13 +487,12 @@ mcv_selectivity_cdb(VariableStatData   *vardata,
 	float4	   *numbers;
 	int			nnumbers;
 	int			i;
-	HeapTuple	tp = getStatsTuple(vardata);
 
 	mcv_selec = 0.0;
 	sumcommon = 0.0;
 
-	if (HeapTupleIsValid(tp) &&
-		get_attstatsslot(tp,
+	if (HeapTupleIsValid(vardata->statsTuple) &&
+		get_attstatsslot(vardata->statsTuple,
 						 vardata->atttype, vardata->atttypmod,
 						 STATISTIC_KIND_MCV, InvalidOid,
 						 &values, &nvalues,
@@ -558,14 +554,13 @@ histogram_selectivity(VariableStatData *vardata, FmgrInfo *opproc,
 	double		result;
 	Datum	   *values;
 	int			nvalues;
-	HeapTuple	tp = getStatsTuple(vardata);
 
 	/* check sanity of parameters */
 	Assert(n_skip >= 0);
 	Assert(min_hist_size > 2 * n_skip);
 
-	if (HeapTupleIsValid(tp) &&
-		get_attstatsslot(tp,
+	if (HeapTupleIsValid(vardata->statsTuple) &&
+		get_attstatsslot(vardata->statsTuple,
 						 vardata->atttype, vardata->atttypmod,
 						 STATISTIC_KIND_HISTOGRAM, InvalidOid,
 						 &values, &nvalues,
@@ -620,7 +615,6 @@ ineq_histogram_selectivity(VariableStatData *vardata,
 	double		hist_selec;
 	Datum	   *values;
 	int			nvalues;
-	HeapTuple	tp = getStatsTuple(vardata);
 
 	hist_selec = 0.0;
 
@@ -634,8 +628,8 @@ ineq_histogram_selectivity(VariableStatData *vardata,
 	 * appears in pg_statistic is sorted the same way our operator sorts, or
 	 * the reverse way if isgt is TRUE.
 	 */
-	if (HeapTupleIsValid(tp) &&
-		get_attstatsslot(tp,
+	if (HeapTupleIsValid(vardata->statsTuple) &&
+		get_attstatsslot(vardata->statsTuple,
 						 vardata->atttype, vardata->atttypmod,
 						 STATISTIC_KIND_HISTOGRAM, InvalidOid,
 						 &values, &nvalues,
@@ -1154,11 +1148,8 @@ patternsel(PG_FUNCTION_ARGS, Pattern_Type ptype, bool negate)
         fewsel = fewvalues * eqsel;
         selec = Min(Max(selec, fewsel), 1.0);
 
-		if (HeapTupleIsValid(getStatsTuple(&vardata)))
-		{
-			HeapTuple tp = getStatsTuple(&vardata);
-			nullfrac = ((Form_pg_statistic) GETSTRUCT(tp))->stanullfrac;
-		}
+		if (HeapTupleIsValid(vardata.statsTuple))
+			nullfrac = ((Form_pg_statistic) GETSTRUCT(vardata.statsTuple))->stanullfrac;
 		else
 			nullfrac = 0.0;
 
@@ -1270,7 +1261,7 @@ booltestsel(PlannerInfo *root, BoolTestType booltesttype, Node *arg,
 
 	examine_variable(root, arg, varRelid, &vardata);
 
-	if (HeapTupleIsValid(getStatsTuple(&vardata)))
+	if (HeapTupleIsValid(vardata.statsTuple))
 	{
 		Form_pg_statistic stats;
 		double		freq_null;
@@ -1278,13 +1269,11 @@ booltestsel(PlannerInfo *root, BoolTestType booltesttype, Node *arg,
 		int			nvalues;
 		float4	   *numbers;
 		int			nnumbers;
-		HeapTuple	tp = getStatsTuple(&vardata);
 
-
-		stats = (Form_pg_statistic) GETSTRUCT(tp);
+		stats = (Form_pg_statistic) GETSTRUCT(vardata.statsTuple);
 		freq_null = stats->stanullfrac;
 
-		if (get_attstatsslot(tp,
+		if (get_attstatsslot(vardata.statsTuple,
 							 vardata.atttype, vardata.atttypmod,
 							 STATISTIC_KIND_MCV, InvalidOid,
 							 &values, &nvalues,
@@ -1451,13 +1440,12 @@ nulltestsel(PlannerInfo *root, NullTestType nulltesttype,
 
 	examine_variable(root, arg, varRelid, &vardata);
 
-	if (HeapTupleIsValid(getStatsTuple(&vardata)))
+	if (HeapTupleIsValid(vardata.statsTuple))
 	{
 		Form_pg_statistic stats;
-		HeapTuple tp = getStatsTuple(&vardata);
 		double		freq_null;
 
-		stats = (Form_pg_statistic) GETSTRUCT(tp);
+		stats = (Form_pg_statistic) GETSTRUCT(vardata.statsTuple);
 		freq_null = stats->stanullfrac;
 
 		switch (nulltesttype)
@@ -1877,11 +1865,10 @@ eqjoinsel(PG_FUNCTION_ARGS)
 	nd1 = get_variable_numdistinct(&vardata1);
 	nd2 = get_variable_numdistinct(&vardata2);
 
-	if (HeapTupleIsValid(getStatsTuple(&vardata1)))
+	if (HeapTupleIsValid(vardata1.statsTuple))
 	{
-		HeapTuple tp = getStatsTuple(&vardata1);
-		stats1 = (Form_pg_statistic) GETSTRUCT(tp);
-		have_mcvs1 = get_attstatsslot(tp,
+		stats1 = (Form_pg_statistic) GETSTRUCT(vardata1.statsTuple);
+		have_mcvs1 = get_attstatsslot(vardata1.statsTuple,
 									  vardata1.atttype,
 									  vardata1.atttypmod,
 									  STATISTIC_KIND_MCV,
@@ -1890,11 +1877,10 @@ eqjoinsel(PG_FUNCTION_ARGS)
 									  &numbers1, &nnumbers1);
 	}
 
-	if (HeapTupleIsValid(getStatsTuple(&vardata2)))
+	if (HeapTupleIsValid(vardata2.statsTuple))
 	{
-		HeapTuple tp = getStatsTuple(&vardata2);
-		stats2 = (Form_pg_statistic) GETSTRUCT(tp);
-		have_mcvs2 = get_attstatsslot(tp,
+		stats2 = (Form_pg_statistic) GETSTRUCT(vardata2.statsTuple);
+		have_mcvs2 = get_attstatsslot(vardata2.statsTuple,
 									  vardata2.atttype,
 									  vardata2.atttypmod,
 									  STATISTIC_KIND_MCV,
@@ -2512,9 +2498,7 @@ estimate_num_groups(PlannerInfo *root, List *groupExprs, double input_rows)
 		 * complicated.
 		 */
 		examine_variable(root, groupexpr, 0, &vardata);
-		
-		if (HeapTupleIsValid(getStatsTuple(&vardata))
-			|| vardata.isunique)
+		if (vardata.statsTuple != NULL || vardata.isunique)
 		{
 			varinfos = add_unique_group_var(root, varinfos,
 											groupexpr, &vardata);
@@ -2702,12 +2686,11 @@ estimate_hash_bucketsize(PlannerInfo *root, Node *hashkey, double nbuckets)
 	/* Get number of distinct values and fraction that are null */
 	ndistinct = get_variable_numdistinct(&vardata);
 
-	if (HeapTupleIsValid(getStatsTuple(&vardata)))
+	if (HeapTupleIsValid(vardata.statsTuple))
 	{
-		HeapTuple tp = getStatsTuple(&vardata);
 		Form_pg_statistic stats;
 
-		stats = (Form_pg_statistic) GETSTRUCT(tp);
+		stats = (Form_pg_statistic) GETSTRUCT(vardata.statsTuple);
 		stanullfrac = stats->stanullfrac;
 	}
 	else
@@ -2754,11 +2737,9 @@ estimate_hash_bucketsize(PlannerInfo *root, Node *hashkey, double nbuckets)
 	 */
 	mcvfreq = 0.0;
 
-	if (HeapTupleIsValid(getStatsTuple(&vardata)))
+	if (HeapTupleIsValid(vardata.statsTuple))
 	{
-		HeapTuple tp = getStatsTuple(&vardata);
-
-		if (get_attstatsslot(tp,
+		if (get_attstatsslot(vardata.statsTuple,
 							 vardata.atttype, vardata.atttypmod,
 							 STATISTIC_KIND_MCV, InvalidOid,
 							 NULL, NULL, &numbers, &nnumbers))
@@ -3250,6 +3231,102 @@ get_join_variables(PlannerInfo *root, List *args,
 }
 
 /*
+ * This method returns a pointer to the largest child relation for an inherited (incl partitioned)
+ * relation. If there are multiple levels in the hierarchy, we delve down recursively till we
+ * find the largest (as determined from the path structure).
+ * Input: a partitioned table
+ * Output: largest child partition. If there are no child partition because all of them have been eliminated, then
+ *         returns NULL.
+ */
+static RelOptInfo* largest_child_relation(PlannerInfo *root, RelOptInfo *rel)
+{
+	AppendPath *append_path = NULL;
+	ListCell *subpath_lc = NULL;
+	RelOptInfo *largest_child_in_subpath = NULL;
+	double max_rows = -1.0;
+
+	Assert(IsA(rel->cheapest_total_path, AppendPath));
+	
+	append_path = (AppendPath *) rel->cheapest_total_path;
+	
+	foreach(subpath_lc, append_path->subpaths)
+	{
+		RelOptInfo *candidate_child = NULL;
+		Path *subpath = lfirst(subpath_lc);
+		
+		if (IsA(subpath, AppendPath))
+		{
+			candidate_child = largest_child_relation(root, subpath->parent);
+		}
+		else
+		{
+			candidate_child = subpath->parent;
+		}
+
+		if (candidate_child && candidate_child->rows > max_rows)
+		{
+			max_rows = candidate_child->rows;
+			largest_child_in_subpath = candidate_child;
+		}
+	}
+	
+	return largest_child_in_subpath;
+}
+
+/*
+ * The purpose of this method is to make the statistics (on a specific column) of a child partition 
+ * representative of the parent relation. This entails the following assumptions:
+ * 1.  if ndistinct<=-1.0 in child partition, the column is a unique column in the child partition. We
+ * 	   expect the column to remain distinct in the master as well.
+ * 2.  if -1.0 < ndistinct < 0.0, the absolute number of ndistinct values in the child partition is a fraction
+ *     of the number of rows in the partition. We expect that the absolute number of ndistinct in the master
+ *     to stay the same. Therefore, we convert this to a positive number.
+ *     The method get_variable_numdistinct will multiply this by the number of tuples in the master relation.
+ * 3.  if ndistinct is positive, it indicates a small absolute number of distinct values. We expect these
+ * 	   values to be repeated in all partitions. Therefore, we expect no change in the ndistinct in the master.
+ * 
+ * Input: 
+ * 	   statsTuple, which is a heaptuple representing statistics on a child relation. It expects statstuple to be non-null.
+ * 	   scalefactor, which is in the range (0.0,1.0] 
+ * 
+ * Output:
+ * 	   This method modifies the tuple passed to it. 
+ */
+static void inline adjust_partition_table_statistic_for_parent(HeapTuple statsTuple, double childtuples)
+{
+	Form_pg_statistic stats;
+	
+	Assert(HeapTupleIsValid(statsTuple));
+
+	stats = (Form_pg_statistic) GETSTRUCT(statsTuple);
+
+	if (stats->stadistinct <= -1.0)
+	{
+		/*
+		 * Case 1 as described above. 
+		 */
+
+		return;
+	}
+	else if (stats->stadistinct < 0.0)
+	{
+		/* 
+		 * Case 2 as described above.
+		 */
+		
+		stats->stadistinct = ((double) -1.0) * stats->stadistinct * childtuples;
+	}
+	else
+	{
+		/**
+		 * Case 3 as described above.
+		 */
+		
+		return;
+	}
+}
+
+/*
  * examine_variable
  *		Try to look up statistical data about an expression.
  *		Fill in a VariableStatData struct to describe the expression.
@@ -3289,6 +3366,13 @@ examine_variable(PlannerInfo *root, Node *node, int varRelid,
 	/* Save the exposed type of the expression */
 	vardata->vartype = exprType(node);
 
+	/* 	 
+	 * By default, the stats tuple comes from the catalog. In the case of inherited/partitioned tables, 
+	 * Under certain circumstances, the stats tuple may have been 'generated'. We should set this flag
+	 * appropriately in such circumstances.
+	 */
+	vardata->statsTupleFromSysCache=true;
+
 	vardata->numdistinctFromPrimaryKey = -1.0; /* ignore by default*/
 
 	/* Look inside any binary-compatible relabeling */
@@ -3326,19 +3410,9 @@ examine_variable(PlannerInfo *root, Node *node, int varRelid,
 
 			if (ConstraintGetPrimaryKeyOf(rte->relid, var->varattno, &pkrelid, &pkattno))
 			{
-				cqContext  *relcqCtx;
-				HeapTuple	pkStatsTuple;
-
-				/* SELECT reltuples FROM pg_class */
-
-				relcqCtx = caql_beginscan(
-						NULL,
-						cql("SELECT * FROM pg_class "
-							" WHERE oid = :1 ",
-							ObjectIdGetDatum(pkrelid)));
-				
-				pkStatsTuple = caql_getnext(relcqCtx);
-
+				HeapTuple	pkStatsTuple = SearchSysCache(RELOID,
+						ObjectIdGetDatum(pkrelid),
+						0, 0, 0);
 				if (HeapTupleIsValid(pkStatsTuple)) 
 				{
 					Form_pg_class classForm = (Form_pg_class) GETSTRUCT(pkStatsTuple);
@@ -3347,22 +3421,62 @@ examine_variable(PlannerInfo *root, Node *node, int varRelid,
 						vardata->numdistinctFromPrimaryKey = classForm->reltuples;
 					}
 				}
-
-				caql_endscan(relcqCtx);
+				ReleaseSysCache(pkStatsTuple);
 			}
 		}
-		if (rte->rtekind == RTE_RELATION)
+		if (rte->inh)
 		{
-			vardata->statscqCtx = caql_beginscan(
-					NULL,
-					cql("SELECT * FROM pg_statistic "
-						" WHERE starelid = :1 "
-						" AND staattnum = :2 ",
-						ObjectIdGetDatum(rte->relid),
-						Int16GetDatum(var->varattno)));
-			
-			/* fetch the tuple */
-			(void) caql_getnext(vardata->statscqCtx);
+			/*
+			 * If gp_statistics_pullup_from_child_partition is set, we attempt to pull up statistics from
+			 * the largest child partition in an inherited or a partitioned table.
+			 */
+			if (gp_statistics_pullup_from_child_partition  &&
+				vardata->rel->cheapest_total_path != NULL)
+			{
+				RelOptInfo *childrel = largest_child_relation(root, vardata->rel);
+				vardata->statsTuple = NULL;
+
+				if (childrel)
+				{
+					HeapTuple childStatsTuple;
+					HeapTuple parentStatsTuple;
+	                	
+					RangeTblEntry *child_rte = NULL;
+	                    
+					child_rte = rt_fetch(childrel->relid, root->parse->rtable);
+
+					Assert(child_rte != NULL);
+	                    
+					/*
+					 * Get statistics from the child partition.
+					 */
+	                    
+					childStatsTuple = SearchSysCache(STATRELATT,
+													 ObjectIdGetDatum(child_rte->relid),
+													 Int16GetDatum(var->varattno),
+													 0, 0);
+	                    
+					if (HeapTupleIsValid(childStatsTuple)) 
+					{
+						/*
+						 * Duplicate this tuple, modify it per our assumptions then assign it
+						 * as this variable's statistics. 
+						 */
+						parentStatsTuple = heap_copytuple(childStatsTuple);
+						adjust_partition_table_statistic_for_parent(parentStatsTuple, childrel->tuples);
+						vardata->statsTuple = parentStatsTuple;
+						vardata->statsTupleFromSysCache=false;
+						ReleaseSysCache(childStatsTuple);
+					}	                    
+				}
+			}
+		}
+		else if (rte->rtekind == RTE_RELATION)
+		{
+			vardata->statsTuple = SearchSysCache(STATRELATT,
+												 ObjectIdGetDatum(rte->relid),
+												 Int16GetDatum(var->varattno),
+												 0, 0);
 		}
 		else
 		{
@@ -3479,39 +3593,53 @@ examine_variable(PlannerInfo *root, Node *node, int varRelid,
 							index->indpred == NIL)
 							vardata->isunique = true;
 						/* Has it got stats? */
-
-						vardata->statscqCtx = caql_beginscan(
-								NULL,
-								cql("SELECT * FROM pg_statistic "
-									" WHERE starelid = :1 "
-									" AND staattnum = :2 ",
-									ObjectIdGetDatum(index->indexoid),
-									Int16GetDatum(pos + 1)));
-			
-						/* fetch the tuple */
-						(void) caql_getnext(vardata->statscqCtx);
-
-						if (HeapTupleIsValid(getStatsTuple(vardata)))
+						vardata->statsTuple = SearchSysCache(STATRELATT,
+										   ObjectIdGetDatum(index->indexoid),
+													  Int16GetDatum(pos + 1),
+															 0, 0);
+						if (vardata->statsTuple)
 							break;
 					}
 					indexpr_item = lnext(indexpr_item);
 				}
 			}
-			if (HeapTupleIsValid(getStatsTuple(vardata)))
+			if (vardata->statsTuple)
 				break;
 		}
 	}
 }
 
 /**
- * This method is called to free the stats tuple allocated by examine_variable.
+ * This method is called to free the stats tuple allocated by examine_variable. There are three possibilities:
+ * 1. stats tuple is NULL : possible that in certain cases no stats tuple was assigned (as in the case of subqueries). 
+ * 2. stats tuple is in the catalog cache : if a base table is involved
+ * 3. stats tuple was constructed (does not exist in catalog) : e.g. in the case of a partitioned table, we clone and modify the
+ *                                     child relation's statistics tuple (see adjust_partition_table_statistic_for_master()).
+ * The statistics tuple may be from the cache or may have been generated (as in the case of partitioned table).
+ * These two cases are handled by this method.
+ * 
  * Input: vardata. Must be non-NULL.
  */
 void ReleaseVariableStats(VariableStatData vardata)
 {
-	if (vardata.statscqCtx)
-		caql_endscan(vardata.statscqCtx);
-	vardata.statscqCtx = NULL;
+	HeapTuple tup = vardata.statsTuple;
+	if (!HeapTupleIsValid(tup))
+	{
+		/* Case 1 */
+		return;
+	}
+
+	if (vardata.statsTupleFromSysCache)
+	{
+		/* Case 2 : we let the catalog cache take care of freeing the tuple */
+		ReleaseSysCache(tup);
+	}
+	else
+	{	
+		/* Case 3 : we free it like any other tuple */
+		heap_freetuple(tup);
+	}
+	vardata.statsTuple = NULL;
 }
 
 /*
@@ -3543,13 +3671,12 @@ get_variable_numdistinct(VariableStatData *vardata)
 	 * get an estimate even without a pg_statistic entry, or can get a better
 	 * value than is in pg_statistic.
 	 */
-	if (HeapTupleIsValid(getStatsTuple(vardata)))
+	if (HeapTupleIsValid(vardata->statsTuple))
 	{
 		/* Use the pg_statistic entry */
 		Form_pg_statistic stats;
-		HeapTuple tp = getStatsTuple(vardata);
 
-		stats = (Form_pg_statistic) GETSTRUCT(tp);
+		stats = (Form_pg_statistic) GETSTRUCT(vardata->statsTuple);
 		stadistinct = stats->stadistinct;
 	}
 	else if (vardata->vartype == BOOLOID)
@@ -3663,14 +3790,13 @@ get_variable_maximum(PlannerInfo *root, VariableStatData *vardata,
 	Datum	   *values;
 	int			nvalues;
 	int			i;
-	HeapTuple	tp = getStatsTuple(vardata);
 
-	if (!HeapTupleIsValid(tp))
+	if (!HeapTupleIsValid(vardata->statsTuple))
 	{
 		/* no stats available, so default result */
 		return false;
 	}
-	stats = (Form_pg_statistic) GETSTRUCT(tp);
+	stats = (Form_pg_statistic) GETSTRUCT(vardata->statsTuple);
 
 	get_typlenbyval(vardata->atttype, &typLen, &typByVal);
 
@@ -3681,7 +3807,7 @@ get_variable_maximum(PlannerInfo *root, VariableStatData *vardata,
 	 * the one we want, fail --- this suggests that there is data we can't
 	 * use.
 	 */
-	if (get_attstatsslot(tp,
+	if (get_attstatsslot(vardata->statsTuple,
 						 vardata->atttype, vardata->atttypmod,
 						 STATISTIC_KIND_HISTOGRAM, sortop,
 						 &values, &nvalues,
@@ -3699,7 +3825,7 @@ get_variable_maximum(PlannerInfo *root, VariableStatData *vardata,
 		Oid			rsortop = get_commutator(sortop);
 
 		if (OidIsValid(rsortop) &&
-			get_attstatsslot(tp,
+			get_attstatsslot(vardata->statsTuple,
 							 vardata->atttype, vardata->atttypmod,
 							 STATISTIC_KIND_HISTOGRAM, rsortop,
 							 &values, &nvalues,
@@ -3712,7 +3838,7 @@ get_variable_maximum(PlannerInfo *root, VariableStatData *vardata,
 			}
 			free_attstatsslot(vardata->atttype, values, nvalues, NULL, 0);
 		}
-		else if (get_attstatsslot(tp,
+		else if (get_attstatsslot(vardata->statsTuple,
 								  vardata->atttype, vardata->atttypmod,
 								  STATISTIC_KIND_HISTOGRAM, InvalidOid,
 								  &values, &nvalues,
@@ -3729,7 +3855,7 @@ get_variable_maximum(PlannerInfo *root, VariableStatData *vardata,
 	 * the MCVs.  However, usually the MCVs will not be the extreme values, so
 	 * avoid unnecessary data copying.
 	 */
-	if (get_attstatsslot(tp,
+	if (get_attstatsslot(vardata->statsTuple,
 						 vardata->atttype, vardata->atttypmod,
 						 STATISTIC_KIND_MCV, InvalidOid,
 						 &values, &nvalues,
@@ -4954,7 +5080,6 @@ btcostestimate(PG_FUNCTION_ARGS)
 	bool		found_saop;
 	double		num_sa_scans;
 	ListCell   *l;
-	cqContext  *stacqCtx;
 
     /*
      * CDB: Tell caller how many leading indexcols are matched by '=' quals.
@@ -5140,15 +5265,10 @@ btcostestimate(PG_FUNCTION_ARGS)
 		colnum = 1;
 	}
 
-	stacqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_statistic "
-				" WHERE starelid = :1 "
-				" AND staattnum = :2 ",
-				ObjectIdGetDatum(relid),
-				Int16GetDatum(colnum)));
-
-	tuple = caql_getnext(stacqCtx);
+	tuple = SearchSysCache(STATRELATT,
+						   ObjectIdGetDatum(relid),
+						   Int16GetDatum(colnum),
+						   0, 0);
 
 	if (HeapTupleIsValid(tuple))
 	{
@@ -5172,8 +5292,8 @@ btcostestimate(PG_FUNCTION_ARGS)
 
 			free_attstatsslot(InvalidOid, NULL, 0, numbers, nnumbers);
 		}
+		ReleaseSysCache(tuple);
 	}
-	caql_endscan(stacqCtx);
 
 	PG_RETURN_VOID();
 }

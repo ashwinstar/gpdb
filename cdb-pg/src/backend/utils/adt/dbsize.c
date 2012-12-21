@@ -5,7 +5,7 @@
  * Copyright (c) 2002-2008, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/dbsize.c,v 1.9.2.3 2010/01/23 21:29:17 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/dbsize.c,v 1.9.2.1 2007/03/11 06:44:11 alvherre Exp $
  *
  */
 
@@ -19,7 +19,6 @@
 #include "lib/stringinfo.h"
 
 #include "access/heapam.h"
-#include "access/catquery.h"
 #include "access/appendonlywriter.h"
 #include "access/aocssegfiles.h"
 #include "catalog/catalog.h"
@@ -130,8 +129,6 @@ db_dir_size(const char *path)
 	while ((direntry = ReadDir(dirdesc, path)) != NULL)
 	{
 		struct stat fst;
-
-		CHECK_FOR_INTERRUPTS();
 
 		if (strcmp(direntry->d_name, ".") == 0 ||
 			strcmp(direntry->d_name, "..") == 0)
@@ -308,8 +305,6 @@ calculate_tablespace_size(Oid tblspcOid)
 	{
 		struct stat fst;
 
-		CHECK_FOR_INTERRUPTS();
-
 		if (strcmp(direntry->d_name, ".") == 0 ||
 			strcmp(direntry->d_name, "..") == 0)
 			continue;
@@ -436,9 +431,9 @@ calculate_relation_size(Relation rel)
         }
     }
 	else if (RelationIsAoRows(rel))
-		totalsize = GetAOTotalBytes(rel, SnapshotNow);
+		totalsize = GetAOTotalBytes(rel);
 	else if (RelationIsAoCols(rel))
-		totalsize = GetAOCSTotalBytes(rel, SnapshotNow);
+		totalsize = GetAOCSTotalBytes(rel);
            
     /* RELSTORAGE_VIRTUAL has no space usage */
     return totalsize;
@@ -462,21 +457,13 @@ pg_relation_size_oid(PG_FUNCTION_ARGS)
 		elog(ERROR, "This query is not currently supported by GPDB.");
 	}
 
-	rel = try_relation_open(relOid, AccessShareLock, false);
-
-	/*
-	 * Since some operation modifying catalog may have happened,
-	 * it is possible that cache lookup fails. Ideally we want to deal with
-	 * that case correctly, it's ok for now to just return NULL.
-	 */
-	if (!RelationIsValid(rel))
-		PG_RETURN_NULL();
-
+	rel = relation_open(relOid, AccessShareLock);
+	
 	if (relOid == 0 || rel->rd_node.relNode == 0)
 		size = 0;
 	else
-		size = calculate_relation_size(rel);
-
+		size = calculate_relation_size(rel); 
+	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		StringInfoData buffer;
@@ -524,49 +511,37 @@ pg_relation_size_name(PG_FUNCTION_ARGS)
 	{
 		elog(ERROR, "This query is not currently supported by GPDB.");
 	}
-
+	
 	relrv = makeRangeVarFromNameList(textToQualifiedNameList(relname));
-
+	
 	if (Gp_role == GP_ROLE_EXECUTE && relrv->schemaname != NULL)
 	{
 		Oid namespaceId;
 		Oid relOid;
 		/*
-		 * Do this the hard way, because the optimizer wants to be
-		 * able to use this function on relations the user might not
-		 * have direct access to.
+		 * Do this the hard way, because the optimizer wants to be able to use this
+		 * function on relations the user might not have direct access to.
 		 */
 
 		AcceptInvalidationMessages();
-
-		namespaceId = caql_getoid(
-				NULL,
-				cql("SELECT oid FROM pg_namespace "
-					" WHERE nspname = :1 ",
-					CStringGetDatum(relrv->schemaname)));
-
+		
+		namespaceId =  GetSysCacheOid(NAMESPACENAME,
+									  CStringGetDatum(relrv->schemaname),
+									  0, 0, 0);
 		relOid = get_relname_relid(relrv->relname, namespaceId);
-
-		if (!OidIsValid(relOid))
+		
+		if (relOid == InvalidOid)
 		{
 			size = 0;
 			PG_RETURN_INT64(size);
 		}
-
+		
 		/* Let relation_open do the rest */
-		rel = try_relation_open(relOid, AccessShareLock, false);
+		rel = relation_open(relOid, AccessShareLock);
 	}
 	else
-		rel = try_relation_openrv(relrv, AccessShareLock, false);
-
-	/*
-	 * Since some operation modifying catalog may have happened,
-	 * it is possible that cache lookup fails. Ideally we want to deal with
-	 * that case correctly, it's ok for now to just return NULL.
-	 */
-	if (!RelationIsValid(rel))
-		PG_RETURN_NULL();
-
+		rel = relation_openrv(relrv, AccessShareLock);
+	
 	if (rel->rd_node.relNode == 0)
 		size = 0;
 	else
@@ -576,12 +551,12 @@ pg_relation_size_name(PG_FUNCTION_ARGS)
 	{
 		char * rawname;
 		StringInfoData buffer;
-
+		
 		initStringInfo(&buffer);
-
+		
 		rawname = DatumGetCString(DirectFunctionCall1(textout,
 													  PointerGetDatum(relname)));
-
+		
 		initStringInfo(&buffer);
 
 		appendStringInfo(&buffer, "select sum(pg_relation_size('%s'))::int8 from gp_dist_random('gp_id');", rawname);
@@ -601,25 +576,25 @@ pg_relation_size_name(PG_FUNCTION_ARGS)
  *  and aoblkdir data.
  */
 static int64
-calculate_total_relation_size(Relation heapRel)
+calculate_total_relation_size(Oid Relid)
 {
-	Oid			Relid;
+	Relation	heapRel;
 	Oid			toastOid;
 	AppendOnlyEntry *aoEntry = NULL;
 	int64		size;
 	ListCell   *cell;
 
-	Relid = heapRel->rd_id;
+	heapRel = relation_open(Relid, AccessShareLock);
 	toastOid = heapRel->rd_rel->reltoastrelid;
 
 	if (RelationIsAoRows(heapRel) || RelationIsAoCols(heapRel))
-		aoEntry = GetAppendOnlyEntry(Relid, SnapshotNow);
-
+		aoEntry = GetAppendOnlyEntry(Relid);
+	
 	/* Get the heap size */
 	if (Relid == 0 || heapRel->rd_node.relNode == 0)
 		size = 0;
 	else
-		size = calculate_relation_size(heapRel);
+		size = calculate_relation_size(heapRel); 
 
 	/* Include any dependent indexes */
 	if (heapRel->rd_rel->relhasindex)
@@ -633,7 +608,7 @@ calculate_total_relation_size(Relation heapRel)
 
 			iRel = relation_open(idxOid, AccessShareLock);
 
-			size += calculate_relation_size(iRel);
+			size += calculate_relation_size(iRel); 
 
 			relation_close(iRel, AccessShareLock);
 		}
@@ -643,36 +618,24 @@ calculate_total_relation_size(Relation heapRel)
 
 	/* Recursively include toast table (and index) size */
 	if (OidIsValid(toastOid))
-	{
-		Relation	toastrel;
-
-		toastrel = relation_open(toastOid, AccessShareLock);
-		size += calculate_total_relation_size(toastrel);
-		relation_close(toastrel, AccessShareLock);
-	}
+		size += calculate_total_relation_size(toastOid);
 
 	if (aoEntry != NULL)
 	{
-		Relation	segrel;
-
 		Assert(OidIsValid(aoEntry->segrelid));
-		segrel = relation_open(aoEntry->segrelid, AccessShareLock);
-		size += calculate_total_relation_size(segrel);
-		relation_close(segrel, AccessShareLock);
+		size += calculate_total_relation_size(aoEntry->segrelid);
 
         /* block directory may not exist, post upgrade or new table that never has indexes */
-		if (OidIsValid(aoEntry->blkdirrelid))
+   		if (OidIsValid(aoEntry->blkdirrelid))
         {
-			Relation	blkdirrel;
-
-			blkdirrel = relation_open(aoEntry->blkdirrelid, AccessShareLock);
-			size += calculate_total_relation_size(blkdirrel);
-			relation_close(blkdirrel, AccessShareLock);
+     		size += calculate_total_relation_size(aoEntry->blkdirrelid);
         }
 	}
 
 	if (aoEntry != NULL)
 		pfree(aoEntry);
+
+	relation_close(heapRel, AccessShareLock);
 
 	return size;
 }
@@ -682,19 +645,9 @@ pg_total_relation_size_oid(PG_FUNCTION_ARGS)
 {
 	int64		size = 0;
 	Oid			relOid = PG_GETARG_OID(0);
-	Relation	rel;
-
-	rel = try_relation_open(relOid, AccessShareLock, false);
-	/*
-	 * Since some operation modifying catalog may have happened,
-	 * it is possible that cache lookup fails. Ideally we want to deal with
-	 * that case correctly, it's ok for now to just return NULL.
-	 */
-	if (!RelationIsValid(rel))
-		PG_RETURN_NULL();
-
-	size = calculate_total_relation_size(rel);
-
+	
+	size = calculate_total_relation_size(relOid);
+	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		StringInfoData buffer;
@@ -720,8 +673,6 @@ pg_total_relation_size_oid(PG_FUNCTION_ARGS)
 		size += get_size_from_segDBs(buffer.data);
 	}
 
-	relation_close(rel, AccessShareLock);
-
 	PG_RETURN_INT64(size);
 }
 
@@ -732,10 +683,9 @@ pg_total_relation_size_name(PG_FUNCTION_ARGS)
 	text	   *relname = PG_GETARG_TEXT_P(0);
 	RangeVar   *relrv;
 	Oid			relid;
-	Relation	rel;
 
 	relrv = makeRangeVarFromNameList(textToQualifiedNameList(relname));
-
+	
 	if (Gp_role == GP_ROLE_EXECUTE && relrv->schemaname != NULL)
 	{
 		Oid namespaceId;
@@ -744,44 +694,30 @@ pg_total_relation_size_name(PG_FUNCTION_ARGS)
 		 */
 		AcceptInvalidationMessages();
 
-		namespaceId = caql_getoid(
-				NULL,
-				cql("SELECT oid FROM pg_namespace "
-					" WHERE nspname = :1 ",
-					CStringGetDatum(relrv->schemaname)));
-
+		namespaceId =  GetSysCacheOid(NAMESPACENAME,
+								 CStringGetDatum(relrv->schemaname),
+								 0, 0, 0);
 		relid = get_relname_relid(relrv->relname, namespaceId);
-		rel = try_relation_open(relid, AccessShareLock, false);
 	}
 	else
-		rel = try_relation_openrv(relrv, AccessShareLock, false);
+		relid = RangeVarGetRelid(relrv, false);
 
-	/*
-	 * Since some operation modifying catalog may have happened,
-	 * it is possible that cache lookup fails. Ideally we want to deal with
-	 * that case correctly, it's ok for now to just return NULL.
-	 */
-	if (!RelationIsValid(rel))
-		PG_RETURN_NULL();
-
-	size = calculate_total_relation_size(rel);
-
+	size = calculate_total_relation_size(relid);
+	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		char * rawname;
 		StringInfoData buffer;
-
+		
 		initStringInfo(&buffer);
-
+		
 		rawname = DatumGetCString(DirectFunctionCall1(textout,
 													  PointerGetDatum(relname)));
-
+		
 		appendStringInfo(&buffer, "select sum(pg_total_relation_size('%s'))::int8 from gp_dist_random('gp_id');", rawname);
-
+		
 		size += get_size_from_segDBs(buffer.data);
 	}
-
-	relation_close(rel, AccessShareLock);
 
 	PG_RETURN_INT64(size);
 }

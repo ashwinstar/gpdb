@@ -24,7 +24,6 @@
 #include "miscadmin.h"
 #include "postmaster/postmaster.h"
 
-#define EMPTY_STR '\0'
 #ifdef USE_DDBOOST
 #include "ddp_api.h"
 #include "utils/guc.h"
@@ -38,7 +37,6 @@ static bool createBackupDirectory(char *pszPathName);
 static char *findAcceptableBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, int segid);
 static char *formBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool is_compress, bool isPostData);
 static char *formStatusFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool bIsBackup);
-static char *formThrottleCmd(char *pszBackupFileName, int directIO_read_chunk_mb, bool bIsThrottlingEnabled);
 static char *relativeToAbsolute(char *pszRelativeDirectory);
 static void testCmdsExist(char *pszCompressionProgram, char *pszBackupProgram);
 static char *testProgramExists(char *pszProgramName);
@@ -55,7 +53,6 @@ static int dd_boost_enabled = 0;
 #endif
 
 #define MAX_DDBOOST_BUF_NAME 50
-#define MAX_MKDIR_STRING_LEN 1200
 
 static char *gpDDBoostPg = NULL;
 
@@ -91,21 +88,17 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 		   *pszStatusFileName;
 	char       *pszSaveBackupfileName;
 	char	   *pszDBName,
-	           *pszUserName;
-	pid_t	   newpid;
+		   *pszUserName;
+	pid_t		newpid;
 	char	   *pszCmdLine;
-	int        port;
+	int		port;
 	char	   *pszKeyParm;		/* dispatch node */
-	int	   segid;
-	int	   len;
-	int	   instid;			/* dispatch node */
-	bool	   is_compress;
-	bool	   rsyncable;
-	itimers    savetimers;
-
-	char       *pszThrottleCmd;
-	char        emptyStr = EMPTY_STR;
-
+	int		segid;
+	int		len;
+	int		instid;			/* dispatch node */
+	bool		is_compress;
+	bool		rsyncable;
+	itimers 	savetimers;
 #ifdef USE_DDBOOST
 	char       	*pszDDBoostFileName = NULL;
 	char	   	*pszDDBoostDirName = "db_dumps";		/* Default directory */	
@@ -268,29 +261,6 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 				 errmsg("out of memory")));
 	}
 
-	pszThrottleCmd = &emptyStr;       /* We do this to point to prevent memory leak*/
-	if(gp_backup_directIO)
-	{
-		if (testProgramExists("throttlingD.py") == NULL)
-		{
-			/*throttlingD.py does not exist*/
-			const char *gp_home = getenv("GPHOME");
-			if (!gp_home)
-				gp_home = "";
-
-			ereport(ERROR,
-					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-							errmsg("throttlingD.py not found in GPHOME\\bin (GPHOME: %s)", gp_home)));
-		}
-
-		pszThrottleCmd = formThrottleCmd(pszBackupFileName, gp_backup_directIO_read_chunk_mb, true);
-	}
-	else
-	{
-		// when directIO is disabled --> need to pipe the dump to backupFile (No throttling will be done)
-		pszThrottleCmd = formThrottleCmd(pszBackupFileName, 0, false);
-	}
-
 #ifdef USE_DDBOOST
 	if (dd_boost_enabled)
 	{
@@ -378,9 +348,10 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 		+ 23 + 1			/* " " or "--post-data-schema-only" */
 		+ strlen("_post_data")
 		+ strlen(pszDBName) + 1
+		+ 1 + 1				/* > */
+		+ strlen(pszBackupFileName)
 		+ 2 + 1				/* 2> */
-		+ strlen(pszStatusFileName) + 1
-		+ strlen(pszThrottleCmd)
+		+ strlen(pszStatusFileName)
 		+ 1;
 
 #ifdef USE_DDBOOST
@@ -443,16 +414,17 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 		{
 			/* gp_dump_agent + options, pipe into compression program, direct
 		 	* stdout to backup file and stderr to status file */
-			sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2> %s | %s %s",
+			sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2> %s | %s > %s",
 				bkPg, pszKeyParm, pszBackupDirectory, port, pszUserName, pszPassThroughParameters,
-				pszDataOption, pszDBName, pszStatusFileName, compPg, pszThrottleCmd);
+				pszDataOption, pszDBName, pszStatusFileName, compPg, pszBackupFileName);
 		}
 		else
 		{
-			sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2> %s %s",
-					bkPg, pszKeyParm, pszBackupDirectory,
-					port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName,
-					pszStatusFileName, pszThrottleCmd);
+			sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2> %s > %s",
+				bkPg, pszKeyParm, pszBackupDirectory, 
+				port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName,
+				pszStatusFileName, pszBackupFileName);
+
 		}
 	}
 #else
@@ -461,16 +433,16 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
         {
                 /* gp_dump_agent + options, pipe into compression program, direct
                  * stdout to backup file and stderr to status file */
-                sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2> %s | %s %s",
+                sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2> %s | %s > %s",
                                 bkPg, pszKeyParm, pszBackupDirectory, port, pszUserName, pszPassThroughParameters,
-                                pszDataOption, pszDBName, pszStatusFileName, compPg, pszThrottleCmd);
+                                pszDataOption, pszDBName, pszStatusFileName, compPg, pszBackupFileName);
         }
         else
         {
-                sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2> %s %s",
+                sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2> %s > %s",
                                 bkPg, pszKeyParm, pszBackupDirectory,
                                 port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName,
-                                pszStatusFileName, pszThrottleCmd);
+                                pszStatusFileName, pszBackupFileName);
         }
 #endif
 
@@ -492,7 +464,7 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 	else if (newpid == 0)
 	{
 
-	    /* This execs a shell that runs the gp_dump_agent program	*/
+		/* This execs a shell that runs the gp_dump_agent program	*/
 		execl("/bin/sh", "sh", "-c", pszCmdLine, NULL);
 
 		ereport(ERROR,
@@ -509,44 +481,9 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 	{
 		int stat;
 		waitpid(newpid, &stat, 0);
-
-		/* Since we going to re-formated the file names, we need to re-create the command line with the correct length */
-		int 	newlen = len -
-				strlen(pszBackupFileName) -
-				strlen(pszStatusFileName) -
-				strlen(pszDataOption) -
-				strlen(pszThrottleCmd);
-
-		/* re-format the file names */
 		pszBackupFileName = formBackupFilePathName(pszBackupDirectory, pszBackupKey, is_compress, true);
 		pszStatusFileName = formStatusFilePathName(pszBackupDirectory, pszBackupKey, true);
 		pszDataOption = "--post-data-schema-only" ;
-
-		if(gp_backup_directIO)
-		{
-			pszThrottleCmd = formThrottleCmd(pszBackupFileName, gp_backup_directIO_read_chunk_mb, true);
-		}
-		else
-		{
-			pszThrottleCmd = formThrottleCmd(pszBackupFileName, 0, false);
-		}
-
-		/* Delete the old command */
-		pfree(pszCmdLine);
-
-		/* Calculate the new length */
-		newlen += strlen(pszBackupFileName) +
-				strlen(pszStatusFileName) +
-				strlen(pszDataOption) +
-				strlen(pszThrottleCmd);
-
-		pszCmdLine = (char *) palloc(newlen);
-		if (pszCmdLine == NULL)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_OUT_OF_MEMORY),
-					 errmsg("out of memory")));
-		}
 
 #ifdef USE_DDBOOST
 		if(dd_boost_enabled)
@@ -583,16 +520,16 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 			{
 				/* gp_dump_agent + options, pipe into compression program, direct
 			 	* stdout to backup file and stderr to status file */
-				sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2>> %s | %s %s",
+				sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2>> %s | %s > %s",
 					bkPg, pszKeyParm, pszBackupDirectory, port, pszUserName, pszPassThroughParameters,
-					pszDataOption, pszDBName, pszStatusFileName, compPg, pszThrottleCmd);
+					pszDataOption, pszDBName, pszStatusFileName, compPg, pszBackupFileName);
 			}
 			else
 			{
-				sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2>> %s %s",
+				sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2>> %s > %s",
 					bkPg, pszKeyParm, pszBackupDirectory, 
 					port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName,
-					pszStatusFileName, pszThrottleCmd);
+					pszStatusFileName, pszBackupFileName);
 
 			}
 		}
@@ -602,16 +539,16 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 		{
 			/* gp_dump_agent + options, pipe into compression program, direct
 			 * stdout to backup file and stderr to status file */
-			sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2>> %s | %s %s",
+			sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2>> %s | %s > %s",
 					bkPg, pszKeyParm, pszBackupDirectory, port, pszUserName, pszPassThroughParameters,
-					pszDataOption, pszDBName, pszStatusFileName, compPg, pszThrottleCmd);
+					pszDataOption, pszDBName, pszStatusFileName, compPg, pszBackupFileName);
 		}
 		else
 		{
-			sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2>> %s %s",
+			sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2>> %s > %s",
 					bkPg, pszKeyParm, pszBackupDirectory, 
 					port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName,
-					pszStatusFileName, pszThrottleCmd);
+					pszStatusFileName, pszBackupFileName);
 		}
 #endif
 
@@ -691,8 +628,6 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 #ifdef USE_DDBOOST
 	char       *ddFileName = NULL;
 	char       *dd_boost_buffer_size = NULL;
-        char       *mkdirStr = NULL;
-        int        err = 0;
 	
 	ddFileName = (char*)palloc(MAX_PATH_NAME);
 	if (!ddFileName)
@@ -760,30 +695,6 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
         if (strstr(pszPassThroughParameters,"--dd_boost_enabled") != NULL)
         {
                 dd_boost_enabled = 1;
-                 
-                /* When restoring from DDBoost to a fresh cluster, we will not have the *
-                * db_dumps/<date> directory. This is required to store the status file *
-                * Fix is to create the specified backup directory for every ddboost    *
-                * restore. It a directory already exists, then no side effect is seen  *
-                */
-                mkdirStr = (char*)malloc(MAX_MKDIR_STRING_LEN);
-                if (!mkdirStr)
-                {
-                    ereport(ERROR,
-                     (errcode(ERRCODE_OUT_OF_MEMORY),
-                     errmsg("out of memory")));
-                }
- 
-                memset(mkdirStr, 0, MAX_MKDIR_STRING_LEN);
-                sprintf(mkdirStr, "mkdir -p %s", pszBackupDirectory);
-                err = system(mkdirStr);
-                free(mkdirStr);
-                if (err)
-                {
-                    ereport(ERROR,
-                        (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-                        errmsg("Creating backup directory %s failed with error %d", pszBackupDirectory, err)));
-                }
         }
 	/* Initialise the DDBoost connection and use it to open the file */
 
@@ -982,7 +893,7 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 			sprintf(pszCmdLine, "%s --gp-k %s --dd_boost_buf_size %s --gp-d %s %s -p %d -U %s %s %s -d %s %s %s %s 2>&2",
 				bkPg, pszKeyParm, dd_boost_buffer_size, pszBackupDirectory, pszOnErrorStop, port, pszUserName, pszPassThroughParameters,
 				pszPassThroughTargetInfo, pszDBName, pszBackupFileName,
-				postDataSchemaOnly ? "2>>" : "2>", pszStatusFileName);
+				postDataSchemaOnly ? "2>" : "2", pszStatusFileName);
 		}
 		else
 		{
@@ -1566,55 +1477,6 @@ formStatusFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool bIsBac
 	strcat(pszFileName, pszBackupKey);
 
 	return pszFileName;
-}
-
-/* formThrottleCmd(char *pszBackupFileName, int directIO_read_chunk_mb, bool bIsThrottlingEnabled) returns char*
- *
- * This function takes the backup file name and creates
- * the throttlin command
- */
-char *
-formThrottleCmd(char *pszBackupFileName, int directIO_read_chunk_mb, bool bIsThrottlingEnabled)
-{
-	int 	throttleCMDLen = 0;
-	char	*pszThrottleCmd;
-
-	if(bIsThrottlingEnabled)
-	{
-		throttleCMDLen = strlen("| throttlingD.py ")
-				+ 3 + 1     /* gp_backup_directIO_read_chunk_mb */
-				+ strlen(pszBackupFileName)
-				+ 1;
-
-		/* Create the throttlingD.py string */
-		pszThrottleCmd = (char *)palloc(throttleCMDLen);
-		if (pszThrottleCmd == NULL)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_OUT_OF_MEMORY), errmsg("out of memory")));
-		}
-		sprintf(pszThrottleCmd, "| throttlingD.py %d %s",directIO_read_chunk_mb ,pszBackupFileName);
-	}
-	else
-	{
-		// when directIO is disabled --> need to pipe the dump to backupFile (No throttling will be done)
-		throttleCMDLen = 2 + 1     /* > */
-				+ strlen(pszBackupFileName)
-				+ 1;
-
-		/* Create the empty throttling string */
-		pszThrottleCmd = (char *)palloc(throttleCMDLen);
-
-		if (pszThrottleCmd == NULL)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_OUT_OF_MEMORY), errmsg("out of memory")));
-		}
-
-		sprintf(pszThrottleCmd, " > %s",pszBackupFileName);
-	}
-
-	return pszThrottleCmd;
 }
 
 /*

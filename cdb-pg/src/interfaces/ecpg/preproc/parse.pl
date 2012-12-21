@@ -44,7 +44,6 @@ $replace_string{'WITH_TIME'} = 'with time';
 $replace_string{'NULLS_FIRST'} = 'nulls first';
 $replace_string{'NULLS_LAST'} = 'nulls last';
 $replace_string{'TYPECAST'} = '::';
-$replace_string{'EQUAL_ARROW'} = '=>';
 
 # specific replace_types for specific non-terminals - never include the ':'
 # ECPG-only replace_types are defined in ecpg-replace_types

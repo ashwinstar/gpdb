@@ -46,10 +46,12 @@ static int	numCatalogIds = 0;
  */
 static TableInfo *tblinfo;
 static TypeInfo *typinfo;
+static TypeStorageOptions *typestorageoptions;
 static FuncInfo *funinfo;
 static OprInfo *oprinfo;
 static int	numTables;
 static int	numTypes;
+static int  numTypeStorageOptions;
 static int	numFuncs;
 static int	numOperators;
 
@@ -105,6 +107,11 @@ getSchemaData(int *numTablesPtr)
 	if (g_verbose)
 		write_msg(NULL, "reading user-defined types\n");
 	typinfo = getTypes(&numTypes);
+
+	/* this must be after getFuncs */
+	if (g_verbose)
+		write_msg(NULL, "reading type storage options\n");
+	typestorageoptions = getTypeStorageOptions(&numTypeStorageOptions);
 
 	/* this must be after getFuncs, too */
 	if (g_verbose)
@@ -1028,54 +1035,6 @@ simple_string_list_member(SimpleStringList *list, const char *val)
 			return true;
 	}
 	return false;
-}
-
-
-/*
- * openFileAndAppendToList: Read parameters from file
- * and append values to given list.
- * (Used to read multiple include/exclude tables.)
- *
- * reason - list name, to be logged.
- *
- * File format: one value per line.
- */
-bool
-open_file_and_append_to_list(const char *fileName, SimpleStringList *list, const char *reason, bool addMessagePrint)
-{
-
-	char buf[1024];
-    if (addMessagePrint)
-    {
-        write_msg(NULL, "Opening file %s for %s\n", fileName, reason);
-    }
-	FILE* file = fopen(fileName, "r");
-
-	if (file == NULL)
-		return false;
-
-	int lineNum = 0;
-	while (fgets(buf, sizeof(buf), file) != NULL)
-	{
-		int size = strlen(buf);
-		if (buf[size-1] == '\n')
-			buf[size-1] = '\0'; /* remove new line */
-        
-        if (addMessagePrint)
-        {
-            write_msg(NULL, "Line #%d, value: %s\n", ++lineNum, buf);
-        }
-		simple_string_list_append(list, buf);
-	}
-    if (fclose(file) != 0)
-		return false;
-    if (addMessagePrint)
-    {
-        write_msg(NULL, "Got %d lines from file %s\n", lineNum, fileName);
-        write_msg(NULL, "Finished reading file %s successfully\n", fileName);   
-    }
-
-	return true;
 }
 
 

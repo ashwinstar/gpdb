@@ -252,7 +252,7 @@ void DropErrorTable(CdbSreh *cdbsreh)
 	RemoveRelation(errtbl_rv,DROP_RESTRICT, NULL);
 				   
 	/* dispatch the DROP to the QEs */
-	CdbDoCommand(dropstmt.data, false, /*no txn */ false, GANGSCOPE_WRITER);
+	CdbDoCommand(dropstmt.data, false, /*no txn */ false);
 
 	pfree(dropstmt.data);
 }

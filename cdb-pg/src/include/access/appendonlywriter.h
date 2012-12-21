@@ -114,9 +114,10 @@ extern AppendOnlyWriterData	*AppendOnlyWriter;
  */
 extern Size AppendOnlyWriterShmemSize(void);
 extern void InitAppendOnlyWriter(void);
+extern Size AppendOnlyWriterShmemSize(void);
 extern int  SetSegnoForWrite(int existingsegno, Oid relid);
 extern List *assignPerRelSegno(List *all_rels);
-extern void UpdateMasterAosegTotals(Relation parentrel,
+extern void UpdateMasterAosegTotals(Relation parentrel, 
 									int segno, 
 									uint64 tupcount);
 extern bool AORelRemoveHashEntry(Oid relid);
@@ -124,7 +125,6 @@ extern void AtCommit_AppendOnly(void);
 extern void AtAbort_AppendOnly(void);
 extern void AtEOXact_AppendOnly(void);
 
-extern void ValidateAppendOnlyMetaDataSnapshot(
-	Snapshot *appendOnlyMetaDataSnapshot);
+
 
 #endif  /* APPENDONLYWRITER_H */

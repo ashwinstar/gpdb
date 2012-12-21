@@ -28,7 +28,6 @@
 
 
 #include <dirent.h>
-#include <sys/stat.h>
 
 
 typedef struct
@@ -480,10 +479,8 @@ gp_persistent_relation_node_check(PG_FUNCTION_ARGS)
 		if (fdata->databaseDir)
 		{
 			struct dirent		*dent;
-			struct stat		fstat;
-			Datum			values[Natts_gp_persistent_relation_node];
-			bool			nulls[Natts_gp_persistent_relation_node];
-			char			absname[MAXPGPATH];
+			Datum				 values[Natts_gp_persistent_relation_node];
+			bool				 nulls[Natts_gp_persistent_relation_node];
 			
 			dent = ReadDir(fdata->databaseDir, fdata->databaseDirName);
 			if (!dent)
@@ -500,22 +497,6 @@ gp_persistent_relation_node_check(PG_FUNCTION_ARGS)
 			
 			/* Skip things that don't look like relfilenodes */
 			if (!strToRelfilenode(dent->d_name, &relfilenode, &segnum))
-				continue;
-
-			/* Skip things that don't look like normal files */
-			snprintf(&absname[0], MAXPGPATH, "%s/%s",
-					 fdata->databaseDirName,
-					 dent->d_name);
-			if (stat(&absname[0], &fstat) < 0)
-			{
-				if (errno == ENOENT)
-					continue;
-				else
-					ereport(ERROR,
-						(errcode_for_file_access(),
-						 errmsg("could not stat file \"%s\": %m", &absname[0])));
-			}
-			if (!S_ISREG(fstat.st_mode))
 				continue;
 
 			/* Return relfilenodes as we find them */

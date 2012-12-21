@@ -12,6 +12,6 @@ subdir = src/backend/utils/datumstream
 top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
-OBJS = datumstream.o datumstreamblock.o
+OBJS = datumstream.o 
 
 include $(top_srcdir)/src/backend/common.mk

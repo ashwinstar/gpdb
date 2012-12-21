@@ -287,21 +287,6 @@ static uint8 *BufferedReadUseBeforeBuffer(
 	bufferedRead->largeReadPosition = nextPosition;
 	bufferedRead->largeReadLen = nextReadLen;
 	
-	/*
-	 * MPP-17061: nextReadLen should never be 0, since the code will return above
-	 * if inEffectFileLen is equal to nextPosition.
-	 */
-	if (nextReadLen == 0)
-	{
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-				errmsg("Unexpected internal error,"
-				" largeReadLen is set to 0 before calling BufferedReadIo." 
-				" remainingFileLen is " INT64_FORMAT 
-				" inEffectFileLen is " INT64_FORMAT 
-				" nextPosition is " INT64_FORMAT, 
-				remainingFileLen, inEffectFileLen, nextPosition)));
-	}
-	
 	BufferedReadIo(bufferedRead);
 
 	extraLen = maxReadAheadLen - beforeLen;
@@ -395,21 +380,18 @@ void BufferedReadSetTemporaryRange(
 	{
 		int64	remainingFileLen;
 
-		/* 
-		 * Seek to the requested beginning position. 
-		 * MPP-17061: allow seeking backward(negative offset) in file,
-		 * this could happen during index scan, if we do look up for a
-		 * block directory entry at the end of the segment file, followed
-		 * by a look up for a block directory entry at the beginning of file.
-		 */
-		int64 seekOffset = beginFileOffset - largeReadAfterPos;
-		int64 seekPos = FileSeek(bufferedRead->file, seekOffset, SEEK_CUR);
-		if (seekPos != beginFileOffset)
-			ereport(ERROR, (errcode_for_file_access(),
-							errmsg("unable to seek to position for table \"%s\" in file \"%s\" (errcode %d):%m",
-								   bufferedRead->relationName,
-								   bufferedRead->filePathName,
-								   errno)));
+		/* Seek to the requested beginning position */
+		if (beginFileOffset > largeReadAfterPos)
+		{
+			int64 seekOffset = beginFileOffset - largeReadAfterPos;
+			int64 seekPos = FileSeek(bufferedRead->file, seekOffset, SEEK_CUR);
+			if (seekPos != beginFileOffset)
+				ereport(ERROR, (errcode_for_file_access(),
+								errmsg("unable to seek to position for table \"%s\" in file \"%s\" (errcode %d)",
+									   bufferedRead->relationName,
+									   bufferedRead->filePathName,
+									   errno)));
+		}
 
 		bufferedRead->bufferOffset = 0;
 

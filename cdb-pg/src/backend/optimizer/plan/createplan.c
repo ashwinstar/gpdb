@@ -21,7 +21,6 @@
 
 #include "miscadmin.h" /* work_mem */
 
-#include "access/hd_work_mgr.h"
 #include "catalog/pg_type.h"    /* INT8OID */
 #include "nodes/makefuncs.h"
 #include "executor/execHHashagg.h"
@@ -172,7 +171,6 @@ static Sort *make_sort(PlannerInfo *root, Plan *lefttree, int numCols,
 		  AttrNumber *sortColIdx, Oid *sortOperators);
 
 static List *flatten_grouping_list(List *groupcls);
-static bool is_gpfusion_protocol(Uri *uri);
 
 
 /*
@@ -1108,21 +1106,6 @@ create_aocsscan_plan(CreatePlanContext *ctx, Path *best_path,
 	return scan_plan;
 }
 
-/*
- * is_gpfusion_protocol
- * tests if the external table custom protocol is an HADOOP protocol - gpfusion
- */
-static bool is_gpfusion_protocol(Uri *uri)
-{	
-	if (uri->protocol != URI_CUSTOM || uri->customprotocol == NULL)
-		return false;
-	
-	if (strcmp(uri->customprotocol, "gpfusion") == 0)
-		return true;
-	
-	return false;
-}
-
 
 /*
  * create_externalscan_plan
@@ -1140,7 +1123,7 @@ static bool is_gpfusion_protocol(Uri *uri)
  *                      and one only primary segdb.
  *   - 'http' protocol: each location (URI of http server) gets mapped to one 
  *                      and one only primary segdb.
- *   - 'gpfdist' and 'gpfdists' protocols: all locations (URI of gpfdist(s) client) are mapped
+ *   - 'gpfdist' protocol: all locations (URI of gpfdist client) are mapped 
  *                      to all primary segdbs. If there are less URIs than
  *                      segdbs (usually the case) the URIs are duplicated
  *                      so that there will be one for each segdb. However, if
@@ -1167,7 +1150,6 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	List			*modifiedloclist = NIL;
 	ListCell		*c = NULL;
 	char			**segdb_file_map = NULL;
-	char			**segdb_work_map = NULL;
 	char			*first_uri_str = NULL;
 	bool			ismasteronly = false;
 	bool			islimitinrows = false;
@@ -1184,13 +1166,12 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	bool			found_match = false;
 	bool			done = false;
 
-	/* gpfdist(s) or EXECUTE specific variables */
+	/* gpfdist or EXECUTE specific variables */
 	int				total_to_skip = 0;
 	int				max_participants_allowed = 0;
 	int			num_segs_participating = 0;
 	bool			*skip_map = NULL;
 	bool			should_skip_randomly = false;
-	bool            is_custom_hd = false;
 
 	/* it should be an external rel... */
 	Assert(scan_relid > 0);
@@ -1293,10 +1274,10 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	 * relationship. The only difference between them is that file:// URI must 
 	 * be assigned to a segdb on a host that is local to that URI.
 	 *
-	 * 2) segment mapping for tables with LOCATION gpfdist(s):// or custom protocol
+	 * 2) segment mapping for tables with LOCATION gpfdist:// or custom protocol
 	 *
 	 * This protocol is more complicated - in here we usually duplicate the user
-	 * supplied gpfdist(s):// URIs until there is one available to every segdb.
+	 * supplied gpfdist:// URIs until there is one available to every segdb. 
 	 * However, in some cases (as determined by gp_external_max_segs GUC) we
 	 * don't want to use *all* segdbs but instead figure out how many and pick
 	 * them randomly (this is mainly for better performance and resource mgmt).
@@ -1308,6 +1289,11 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	 * ON clause). Depending on the ON clause specification we could go many
 	 * different ways, for example: assign the command to all segdb, or one
 	 * command per host, or assign to 5 random segments, etc...
+	 *
+	 * 4) segment mapping for tables with LOCATION gphdfs://
+	 *
+	 * The file chuck division and assignment will be done in the external
+	 * Java program. We simply assign the location to all the segdbs.
 	 */
 
 	/* (1) */
@@ -1409,14 +1395,12 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 
 	}
 	/* (2) */
-	else if(using_location && (uri->protocol == URI_GPFDIST || 
-							   uri->protocol == URI_GPFDISTS || 
-							   uri->protocol == URI_CUSTOM))
+	else if(using_location && (uri->protocol == URI_GPFDIST || uri->protocol == URI_CUSTOM))
 	{
 		/*
-		 * Re-write the location list for GPFDIST or GPFDISTS before mapping to segments.
+		 * Re-write the location list for GPFDIST before mapping to segments.
 		 *
-		 * If we happen to be dealing with URI's with the 'gpfdist' (or 'gpfdists') protocol
+		 * If we happen to be dealing with URI's with the 'gpfdist' protocol
 		 * we do an extra step here. 
 		 *
 		 * (*) We modify the locationlist so that every
@@ -1443,21 +1427,8 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 		num_segs_participating = total_primaries;
 
 		/* max num of segs that are allowed to participate in the operation */
-		if ((uri->protocol == URI_GPFDIST) || (uri->protocol == URI_GPFDISTS)){
-			max_participants_allowed = list_length(rel->locationlist) *
-					gp_external_max_segs;
-		}
-		else
-		{
-			/* for custom protocol, set max_participants_allowed to num_segs_participating
-			 * so that assignment to segments will use all available segments */
-			Assert(uri->protocol == URI_CUSTOM);
-			max_participants_allowed = num_segs_participating;
-		}
-
-		elog(DEBUG5,
-			 "num_segs_participating = %d. max_participants_allowed = %d. number of URIs = %d",
-			 num_segs_participating, max_participants_allowed, list_length(rel->locationlist));
+		max_participants_allowed = list_length(rel->locationlist) * 
+			gp_external_max_segs;
 
 		/* see (**) above */
 		if(num_segs_participating > max_participants_allowed)
@@ -1468,7 +1439,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 
 			elog(NOTICE, "External scan %s will utilize %d out "
 				 "of %d segment databases", 
-				 (uri->protocol == URI_GPFDIST ? "from gpfdist(s) server" : "using custom protocol"),
+				 (uri->protocol == URI_GPFDIST ? "from gpfdist server" : "using custom protocol"),
 				 num_segs_participating,
 				 total_primaries);
 		}
@@ -1481,7 +1452,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 							"%d primary segments.",list_length(rel->locationlist),
 							num_segs_participating),
 									 errOmitLocation(true)));
-		
+
 		/* 
 		 * restart location list and fill in new list until number of
 		 * locations equals the number of segments participating in this
@@ -1513,21 +1484,16 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 		if(should_skip_randomly)
 			skip_map = makeRandomSegMap(total_primaries, total_to_skip);
 
-		is_custom_hd = is_gpfusion_protocol(uri);
-		if (is_custom_hd)
-		{
-			segdb_work_map = map_hddata_2gp_segments((char *) strVal(linitial(rel->locationlist)), 
-													num_segs_participating);	
-			Assert(segdb_work_map != NULL);
-		}
-		
 		/* 
 		 * assign each URI from the new location list a primary segdb 
 		 */
 		foreach(c, modifiedloclist)
 		{
 			const char	*uri_str = (char *) strVal(lfirst(c));
+
 			uri = ParseExternalTableUri(uri_str);
+
+			found_candidate = false;
 			found_match = false;
 
 			/*
@@ -1558,46 +1524,25 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 							continue; /* skip it */					
 					}
 
-					if (segdb_file_map[segind] == NULL) /* segment was not already activated */
+					/* a valid primary segdb exist on this host */
+					found_candidate = true;
+
+					if(segdb_file_map[segind] == NULL)
 					{
-						if (!is_custom_hd) /* non-hadoop protocols */
-						{
-							/* segdb not taken yet. assign this URI to this segdb */
-							segdb_file_map[segind] = pstrdup(uri_str);	
-							found_match = true;
-						}
-						else if(segdb_work_map[segind] != NULL)
-						{
-							/* 
-							 * if in hadoop protocol we require a data-fragments allocation in
-							 * segdb_work_map for this segment in order to activate segment
-							 */
-							char opt_delim = '?';
-							StringInfoData seg_uri;
-							
-							initStringInfoOfSize(&seg_uri, 512);
-							appendStringInfoString(&seg_uri, uri_str);
-							/*if the segwork string is the first option we delimit it with '?' otherwise with '&'*/
-							if (strchr(uri_str, '?') != NULL) 
-								opt_delim = '&';
-							appendStringInfoChar(&seg_uri, opt_delim);
-							appendStringInfoString(&seg_uri, segdb_work_map[segind]);
-							segdb_file_map[segind] = seg_uri.data;	
-							found_match = true;
-						}
+						/* segdb not taken yet. assign this URI to this segdb */
+						segdb_file_map[segind] = pstrdup(uri_str);
+						found_match = true;					
 					}
+
+					/* too bad. this segdb already has an external source assigned */
 				}
 			}
 
-			/* 
-			 * We failed to find a segdb for this gpfdist(s) URI 
-			 * when is_custom_hd is true it means that the HD segment allocation algorithm
-			 * is activated and in this case in not necessay true that all segments are allocated 
-			 */
-			if(!found_match && !is_custom_hd)
+			/* We failed to find a segdb for this gpfdist URI */
+			if(!found_match)
 			{
 				/* should never happen */
-				elog(LOG, "external tables gpfdist(s) allocation error. "
+				elog(LOG, "external tables gpfdist allocation error. "
 					 "total_primaries: %d, num_segs_participating %d "
 					 "max_participants_allowed %d, total_to_skip %d",
 					 total_primaries, num_segs_participating,
@@ -1606,12 +1551,10 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 				ereport(ERROR,
 						(errcode(ERRCODE_GP_INTERNAL_ERROR),
 						 errmsg("Internal error in createplan for external tables"
-								" when trying to assign segments for gpfdist(s)")));
+								" when trying to assign segments for gpfdist")));
 			}		
 		}
-		
-		if (is_custom_hd)
-			free_hddata_2gp_segments(segdb_work_map, num_segs_participating);
+
 	}
 	/* (3) */
 	else if(using_execute)
@@ -1800,6 +1743,19 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 					(errcode(ERRCODE_GP_INTERNAL_ERROR),
 					 errmsg("Internal error in createplan for external tables: "
 							"got invalid ON clause code %s", on_clause)));
+		}
+	}
+	/* (4) */
+	else if(using_location && uri->protocol == URI_GPHDFS)
+	{
+		const char	*uri_str = (char *) strVal(lfirst(list_head(rel->locationlist)));
+
+		for (i = 0; i < db_info->total_segment_dbs; i++)
+		{
+			CdbComponentDatabaseInfo *p = &db_info->segment_db_info[i];
+			int segind = p->segindex;
+
+			segdb_file_map[segind] = pstrdup(uri_str);
 		}
 	}
 	else
@@ -2436,20 +2392,11 @@ create_tidscan_plan(CreatePlanContext *ctx, TidPath *best_path,
 	/*
 	 * Remove any clauses that are TID quals.  This is a bit tricky since the
 	 * tidquals list has implicit OR semantics.
-	 *
-	 * In the case of CURRENT OF, however, we do want the CurrentOfExpr to 
-	 * reside in both the tidlist and the qual, as CurrentOfExpr is effectively
-	 * a ctid, gp_segment_id, and tableoid qual. Constant folding will
-	 * finish up this qual rewriting to ensure what we dispatch is a sane interpretation
-	 * of CURRENT OF behavior.
 	 */
-	if (!(list_length(scan_clauses) == 1 && IsA(linitial(scan_clauses), CurrentOfExpr)))
-	{
-		ortidquals = best_path->tidquals;
-		if (list_length(ortidquals) > 1)
-			ortidquals = list_make1(make_orclause(ortidquals));
-		scan_clauses = list_difference(scan_clauses, ortidquals);
-	}
+	ortidquals = best_path->tidquals;
+	if (list_length(ortidquals) > 1)
+		ortidquals = list_make1(make_orclause(ortidquals));
+	scan_clauses = list_difference(scan_clauses, ortidquals);
 
 	/* Sort clauses into best execution order */
 	scan_clauses = order_qual_clauses(ctx->root, scan_clauses);
@@ -3742,6 +3689,8 @@ make_append(List *appendplans, bool isTarget, List *tlist)
 {
 	Append	   *node = makeNode(Append);
 	Plan	   *plan = &node->plan;
+	ListCell   *subnode;
+	double		weighted_total_width = 0.0;	/* maintain weighted total */
 	/*
 	 * Compute cost as sum of subplan costs.  We charge nothing extra for the
 	 * Append itself, which perhaps is too optimistic, but since it doesn't do
@@ -3751,14 +3700,17 @@ make_append(List *appendplans, bool isTarget, List *tlist)
 	plan->total_cost = 0;
 	plan->plan_rows = 0;
 	plan->plan_width = 0;
+	foreach(subnode, appendplans)
+	{
+		Plan	   *subplan = (Plan *) lfirst(subnode);
 
-	/* extract estimates from the parent part */
-	ListCell   *subnode = list_head(appendplans);
-	Plan	   *subplan = (Plan *) lfirst(subnode);
-	plan->startup_cost = subplan->startup_cost;
-	plan->total_cost += subplan->total_cost;
-	plan->plan_rows += subplan->plan_rows;
-	plan->plan_width = subplan->plan_width;
+		if (subnode == list_head(appendplans))	/* first node? */
+			plan->startup_cost = subplan->startup_cost;
+		plan->total_cost += subplan->total_cost;
+		plan->plan_rows += subplan->plan_rows;
+		weighted_total_width += (double) subplan->plan_rows * (double) subplan->plan_width;
+	}
+	plan->plan_width = (int) ceil(weighted_total_width / Max(1.0,plan->plan_rows));
 	plan->targetlist = tlist;
 	plan->qual = NIL;
 	plan->lefttree = NULL;
@@ -4611,7 +4563,7 @@ Plan *add_agg_cost(PlannerInfo *root, Plan *plan,
 
 Window *make_window(PlannerInfo *root, List *tlist,
 		   int numPartCols, AttrNumber *partColIdx, List *windowKeys,
-		   Node *sequence, WindowSemantics semantics, Plan *lefttree)
+		   Plan *lefttree)
 {
 	Window *node = makeNode(Window);
 	Plan	   *plan = &node->plan;
@@ -4623,8 +4575,6 @@ Window *make_window(PlannerInfo *root, List *tlist,
 	node->numPartCols = numPartCols;
 	node->partColIdx = partColIdx;
 	node->windowKeys = windowKeys;
-	node->sequence = sequence;
-	node->semantics = semantics;
 
 	numOrderCols = numPartCols;
 	foreach(cell, windowKeys)

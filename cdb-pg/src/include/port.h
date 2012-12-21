@@ -400,17 +400,6 @@ extern size_t strlcat(char *dst, const char *src, size_t siz);
 extern size_t strlcpy(char *dst, const char *src, size_t siz);
 #endif
 
-/* 
- * Return the first occurrence of needle in haystack, or NULL if needle doesn't appear.
- * using memcmp and not strcmp (i.e. works also for not null-terminate strings).
- *
- * Needed because OSX does not have memmem and linux does not have strnstr...
- */
-#if !HAVE_MEMMEM
-extern void *memmem (const void *haystack, size_t haystacklen,
-					 const void *needle, size_t needlelen);
-#endif
-
 #if !defined(HAVE_RANDOM) && !defined(__BORLANDC__)
 extern long random(void);
 #endif
@@ -454,27 +443,5 @@ extern void qsort_arg(void *base, size_t nel, size_t elsize,
 
 /* port/chklocale.c */
 extern int	pg_get_encoding_from_locale(const char *ctype);
-
-
-
-#if (defined(__X86__) || defined(__x86_64__) || defined(__x86_64) || (defined(__APPLE__) && defined(i386)))
-/*
- * x86 64-bit way to get cpu ticks.
- */
-static unsigned long long inline get_rdtsc(void)
-{
-  unsigned hi, lo;
-  __asm__ __volatile__ ("rdtsc" : "=a"(lo), "=d"(hi));
-  return ( (unsigned long long)lo)|( ((unsigned long long)hi)<<32 );
-}
-#else
-/*
- * Not supported for non x86 64-bit platforms for now. We could add it later.
- */
-static unsigned long long inline get_rdtsc(void)
-{
-	return 0;
-}
-#endif
 
 #endif   /* PG_PORT_H */

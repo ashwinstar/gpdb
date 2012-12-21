@@ -69,6 +69,3 @@ select '-9223372036854775808'::int8;
 select '-9223372036854775809'::int8;
 select '9223372036854775807'::int8;
 select '9223372036854775808'::int8;
-
--- int2 vs int8
-SELECT q1 + 1::int2 pl, q1 - 1::int2 mi, q1 * 1::int2 mul, q1 / 1::int2 div, q1 % 1::int2 mod FROM INT8_TBL;

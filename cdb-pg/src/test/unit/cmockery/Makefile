@@ -1,1 +1,0 @@
-CMOCKERY_OBJS=${CMOCKERY_DIR}/cmockery.o

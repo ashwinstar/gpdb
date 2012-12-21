@@ -483,6 +483,35 @@ GetOldestXmin(bool allDbs)
 	return result;
 }
 
+char *DebugGetSnapshotString(const Snapshot snapshot)
+{
+	static char buffer[200];
+
+	int index;
+	int len;
+
+	sprintf(buffer, "Local snapshot xmin %u, xmax %u, xcnt %d (", 
+		    snapshot->xmin, snapshot->xmax, snapshot->xcnt);
+	for (index = 0; index < snapshot->xcnt; index++)
+	{
+		if (index > 0)
+			strcat(buffer, ", ");
+		len = strlen(buffer);
+		sprintf(&buffer[len], 
+			    "%u",
+			    snapshot->xip[index]);
+
+		if (len > sizeof(buffer) - 25)
+		{
+			strcat(buffer, " ... ");
+			break;
+		}
+	}
+	strcat(buffer, ")");
+
+	return buffer;
+}
+
 void
 updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, char *debugCaller)
 {
@@ -510,12 +539,12 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, cha
 	 * Copy all active subtransctions to shared snapshot.
 	 *
 	 */
-	UpdateSubtransactionsInSharedSnapshot(dtxContextInfo->distributedXid);
+    GetSubtransactionsForSharedSnapshot((uint32 *)&SharedLocalSnapshotSlot->subcnt,
+										(TransactionId *)SharedLocalSnapshotSlot->subxids);
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),
-		 "updateSharedLocalSnapshot subxid cnt: total %u, in memory %u",
-		 SharedLocalSnapshotSlot->total_subcnt,
-		 SharedLocalSnapshotSlot->inmemory_subcnt);
+		 "updateSharedLocalSnapshot count of subtransaction ids %u",
+		 SharedLocalSnapshotSlot->subcnt);
 
 	if (snapshot->xcnt > 0)
 	{
@@ -567,6 +596,10 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, cha
 		SharedLocalSnapshotSlot->slotid,
 		debugCaller,
 		DtxContextToString(DistributedTransactionContext));
+	elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Dump Local* %s)", 
+	 	  QEDtxContextInfo.distributedSnapshot.header.distribSnapshotId,
+	 	  DebugGetSnapshotString((const Snapshot)&SharedLocalSnapshotSlot->snapshot));
+
 }
 
 static int
@@ -946,10 +979,8 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 				
 				if (Debug_print_full_dtm)
 				{
-					ShowSubtransactionsForSharedSnapshot();
+					ShowSubtransactionsForSharedSnapshot(SharedLocalSnapshotSlot->subcnt, (const TransactionId *)SharedLocalSnapshotSlot->subxids);
 				}
-
-				GetSubXidsInXidBuffer();
 
 				elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),
 					 "GetSnapshotData(): READER currentcommandid %d curcid %d segmatesync %d",
@@ -1639,53 +1670,4 @@ FindProcByGpSessionId(long gp_session_id)
 		
 	LWLockRelease(ProcArrayLock);
 	return NULL;
-}
-
-/*
- * FindAndSignalProcess
- *     Find the PGPROC entry in procArray which contains the given sessionId and commandId,
- *     and send the corresponding process an interrupt signal.
- *
- * This function returns false if not such an entry found in procArray or the interrupt
- * signal can not be sent to the process.
- */
-bool
-FindAndSignalProcess(int sessionId, int commandId)
-{
-	Assert(sessionId > 0 && commandId > 0);
-	bool queryCancelled = false;
-	int pid = 0;
-
-	LWLockAcquire(ProcArrayLock, LW_SHARED);
-
-	for (int index = 0; index < procArray->numProcs; index++)
-	{
-		PGPROC *proc = procArray->procs[index];
-		
-		if (proc->mppSessionId == sessionId &&
-			proc->queryCommandId == commandId)
-		{
-			/* If we have setsid(), signal the backend's whole process group */
-#ifdef HAVE_SETSID
-			if (kill(-proc->pid, SIGINT) == 0)
-#else
-			if (kill(proc->pid, SIGINT) == 0)
-#endif
-			{
-				pid = proc->pid;
-				queryCancelled = true;
-			}
-			
-			break;
-		}
-	}
-
-	LWLockRelease(ProcArrayLock);
-
-	if (gp_cancel_query_print_log && queryCancelled)
-	{
-		elog(NOTICE, "sent an interrupt to process %d", pid);
-	}
-
-	return queryCancelled;
 }

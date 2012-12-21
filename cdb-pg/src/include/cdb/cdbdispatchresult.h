@@ -68,7 +68,7 @@ typedef struct CdbDispatchResult
 	bool 						QEWriter_Dirty;
 
 	int					numrowsrejected; /* num rows rejected in SREH mode */
-
+	
 }   CdbDispatchResult;
 
 
@@ -269,9 +269,6 @@ HTAB *process_aotupcounts(PartitionNode *parts, HTAB *ht,
  */
 void
 cdbdisp_sumRejectedRows(CdbDispatchResults *results);
-
-void
-cdbdisp_getStatementStats(CdbDispatchResults *results);
 
 /*
  * max of the lastOid values returned from the QEs

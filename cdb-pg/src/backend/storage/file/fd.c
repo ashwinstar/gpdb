@@ -235,10 +235,10 @@ static File AllocateVfd(void);
 static void FreeVfd(File file);
 
 static int	FileAccess(File file);
+static char *make_database_relative(const char *filename);
 static void AtProcExit_Files(int code, Datum arg);
 static void CleanupTempFiles(bool isProcExit);
 static void RemovePgTempFilesInDir(const char *tmpdirname);
-static bool HasTempFilePrefix(char * fileName);
 
 
 /*
@@ -747,6 +747,23 @@ FreeVfd(File file)
 	VfdCache[0].nextFree = file;
 }
 
+/*
+ * make_database_relative()
+ *		Prepend DatabasePath to the given file name.
+ *
+ * Result is a palloc'd string.
+ */
+static char *
+make_database_relative(const char *filename)
+{
+	char	   *buf;
+
+	Assert(!is_absolute_path(filename));
+	buf = (char *) palloc(strlen(DatabasePath) + strlen(filename) + 2);
+	sprintf(buf, "%s/%s", DatabasePath, filename);
+	return buf;
+}
+
 /* returns 0 on success, -1 on re-open failure (with errno set) */
 static int
 FileAccess(File file)
@@ -855,11 +872,9 @@ PathNameOpenFile(FileName fileName, int fileFlags, int fileMode)
 
 /*
  * open a file in the database directory ($PGDATA/base/DIROID/)
- * if we are using the system default filespace. Otherwise open
- * the file in the filespace configured for temporary files.
+ *
  * The passed name MUST be a relative path.  Effectively, this
- * prepends DatabasePath or path of the filespace to it and then 
- * acts like PathNameOpenFile.
+ * prepends DatabasePath to it and then acts like PathNameOpenFile.
  */
 File
 FileNameOpenFile(FileName fileName, int fileFlags, int fileMode)
@@ -867,13 +882,7 @@ FileNameOpenFile(FileName fileName, int fileFlags, int fileMode)
 	File		fd;
 	char	   *fname;
 
-	Assert(!is_absolute_path(fileName));
-	fname = (char*)palloc(PATH_MAX);
-	if (snprintf(fname, PATH_MAX, "%s/%s", getCurrentTempFilePath, fileName) > PATH_MAX)
-	{
-		ereport(ERROR, (errmsg("cannot generate path %s/%s", getCurrentTempFilePath,
-                        fileName)));
-	}
+	fname = make_database_relative(fileName);
 	fd = PathNameOpenFile(fname, fileFlags, fileMode);
 	pfree(fname);
 	return fd;
@@ -935,11 +944,6 @@ OpenTemporaryFile(const char   *fileName,
     if (create)
         fileFlags |= O_TRUNC | O_CREAT;
 
-    char tempfileprefix[MAXPGPATH];
-
-    int len = GetTempFilePrefix(tempfileprefix, MAXPGPATH, fileName);
-    insist_log(len <= MAXPGPATH - 1, "could not generate temporary file name");
-
     if (makenameunique)
 	{
 		/*
@@ -947,8 +951,10 @@ OpenTemporaryFile(const char   *fileName,
 		 * database instance.
 		 */
 		snprintf(tempfilepath, sizeof(tempfilepath),
-				 "%s_%d_%04d.%ld",
-				 tempfileprefix,
+				 "%s/%s_%s_%d_%04d.%ld",
+                 PG_TEMP_FILES_DIR,
+				 PG_TEMP_FILE_PREFIX,
+				 fileName,
 				 MyProcPid,
                  extentseqnum,
                  tempFileCounter++);
@@ -956,9 +962,11 @@ OpenTemporaryFile(const char   *fileName,
 	else
 	{
         snprintf(tempfilepath, sizeof(tempfilepath),
-				 "%s.%04d",
-				 tempfileprefix,
-				 extentseqnum);
+				 "%s/%s_%s.%04d",
+                 PG_TEMP_FILES_DIR,
+				 PG_TEMP_FILE_PREFIX,
+                 fileName,
+                 extentseqnum);
 	}
 
 	file = FileNameOpenFile(tempfilepath, fileFlags, 0600);
@@ -978,8 +986,7 @@ OpenTemporaryFile(const char   *fileName,
 		 * just did the same thing.  If it doesn't work then we'll bomb out on
 		 * the second create attempt, instead.
 		 */
-		dirpath = (char*)palloc(PATH_MAX);
-		snprintf(dirpath, PATH_MAX, "%s/%s", getCurrentTempFilePath, PG_TEMP_FILES_DIR);
+		dirpath = make_database_relative(PG_TEMP_FILES_DIR);
 		mkdir(dirpath, S_IRWXU);
 		pfree(dirpath);
 
@@ -1043,16 +1050,6 @@ FileClose(File file)
 		if (unlink(vfdP->fileName))
 			elog(DEBUG1, "failed to unlink \"%s\": %m",
 				 vfdP->fileName);
-		
-		if (Debug_unlink_print)
-		{
-			ereport(LOG,
-					(errmsg("dropping file '%s' fd '%u' fdstate '%d' create_subid '%u' ",
-					vfdP->fileName,
-					vfdP->fd,
-					vfdP->fdstate,
-					vfdP->create_subid)));
-		}
 	}
 
 	/*
@@ -1913,54 +1910,44 @@ RemovePgTempFilesInDir(const char *tmpdirname)
 		snprintf(rm_path, sizeof(rm_path), "%s/%s",
 				 tmpdirname, temp_de->d_name);
 
-		if (HasTempFilePrefix(temp_de->d_name))
-		{
+		if (strncmp(temp_de->d_name,
+					PG_TEMP_FILE_PREFIX,
+					strlen(PG_TEMP_FILE_PREFIX)) == 0)
 			unlink(rm_path);	/* note we ignore any error */
-		}
 		else
-		{
 			elog(LOG,
 				 "unexpected file found in temporary-files directory: \"%s\"",
 				 rm_path);
-		}
 	}
 
 	FreeDir(temp_dir);
 }
 
-/*
- * Generate the prefix for a new temp file name. This will be checked
- * before cleaning up, to make sure we only delete what we created.
- * Caller is responsible for allocating the input buffer large enough
- * for the fileName and prefix.
- * Returns needlen > buflen if buffer is not large enough to store prefix.
- */
-size_t
-GetTempFilePrefix(char * buf, size_t buflen, const char * fileName)
+size_t MakeTempFileName(char *buf, size_t buflen, char *relativepath)
 {
-	size_t needlen = strlen(PG_TEMP_FILES_DIR)
-			+ strlen(PG_TEMP_FILE_PREFIX)
-			+ strlen(fileName)
-			+ 2; /* enough for a slash and a _ */
+	extern int Gp_segment;
+	extern int gp_session_id;
+	extern int gp_command_count;
+	extern int currentSliceId;
 
-	if (buflen < needlen)
+	size_t needlen = strlen(DatabasePath) 
+		+ strlen(PG_TEMP_FILES_DIR) 
+		+ strlen(relativepath)
+		+ 60; /* enough for two slash, four _%d, and eos */
+
+	if(buflen < needlen)
 		return needlen;
-	
-	snprintf(buf, buflen, "%s/%s_%s",
+
+	snprintf(buf, buflen, "%s/%s/%s_%d_%d_%d_%d",
+			DatabasePath, 
 			PG_TEMP_FILES_DIR,
-			PG_TEMP_FILE_PREFIX,
-			fileName);
+			relativepath,
+			Gp_segment,
+			gp_session_id,
+			gp_command_count,
+			currentSliceId
+		);
 
 	return needlen;
 }
-
-/*
- * Check if a temporary file matches the expected prefix. This
- * is done before deleting it as a sanity check.
- */
-static bool HasTempFilePrefix(char * fileName)
-{
-	return (strncmp(fileName,
-						PG_TEMP_FILE_PREFIX,
-						strlen(PG_TEMP_FILE_PREFIX)) == 0);
-}
+	

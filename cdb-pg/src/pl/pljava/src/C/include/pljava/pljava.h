@@ -30,9 +30,7 @@ extern int vsnprintf(char* buf, size_t count, const char* format, va_list arg);
 #include <lib/stringinfo.h>
 #include <fmgr.h>
 #include <mb/pg_wchar.h>
-#include <access/catquery.h>
 #include <utils/syscache.h>
-#include <utils/lsyscache.h>
 #include <utils/memutils.h>
 #include <tcop/tcopprot.h>
 

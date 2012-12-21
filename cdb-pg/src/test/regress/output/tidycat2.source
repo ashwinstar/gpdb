@@ -2871,57 +2871,6 @@ psql:@abs_srcdir@/data/tidyproc.sql:5337: NOTICE:  return type fake_internal is 
  CREATE FUNCTION cosh(float8) RETURNS float8 LANGUAGE internal IMMUTABLE AS 'dcosh';
  CREATE FUNCTION sinh(float8) RETURNS float8 LANGUAGE internal IMMUTABLE AS 'dsinh';
  CREATE FUNCTION tanh(float8) RETURNS float8 LANGUAGE internal IMMUTABLE AS 'dtanh';
- /* last_known/next_known interpolation helpers */
- CREATE FUNCTION last_known( int8, anyelement ) RETURNS int8 LANGUAGE internal IMMUTABLE as 'last_known_generic';
- CREATE FUNCTION last_known( int4, anyelement ) RETURNS int4 LANGUAGE internal IMMUTABLE as 'last_known_generic';
- CREATE FUNCTION last_known( int2, anyelement ) RETURNS int2 LANGUAGE internal IMMUTABLE as 'last_known_generic';
- CREATE FUNCTION last_known( float8, anyelement ) RETURNS float8 LANGUAGE internal IMMUTABLE as 'last_known_generic';
- CREATE FUNCTION last_known( float4, anyelement ) RETURNS float4 LANGUAGE internal IMMUTABLE as 'last_known_generic';
- CREATE FUNCTION last_known( date, anyelement ) RETURNS date LANGUAGE internal IMMUTABLE as 'last_known_generic';
- CREATE FUNCTION last_known( time, anyelement ) RETURNS time LANGUAGE internal IMMUTABLE as 'last_known_generic';
- CREATE FUNCTION last_known( timestamp, anyelement ) RETURNS timestamp LANGUAGE internal IMMUTABLE as 'last_known_generic';
- CREATE FUNCTION last_known( timestamptz, anyelement ) RETURNS timestamptz LANGUAGE internal IMMUTABLE as 'last_known_generic';
- CREATE FUNCTION last_known( timetz, anyelement ) RETURNS timetz LANGUAGE internal IMMUTABLE as 'last_known_generic';
- CREATE FUNCTION last_known( "interval", anyelement ) RETURNS "interval" LANGUAGE internal IMMUTABLE as 'last_known_generic';
- CREATE FUNCTION last_known( "numeric", anyelement ) RETURNS "numeric" LANGUAGE internal IMMUTABLE as 'last_known_generic';
- CREATE FUNCTION last_known_int64( internal, int8, anyelement ) RETURNS int8 LANGUAGE internal IMMUTABLE as 'window_dummy'; 
- CREATE FUNCTION last_known_int32( internal, int4, anyelement ) RETURNS int4 LANGUAGE internal IMMUTABLE as 'window_dummy'; 
- CREATE FUNCTION last_known_int16( internal, int2, anyelement ) RETURNS int2 LANGUAGE internal IMMUTABLE as 'window_dummy'; 
- CREATE FUNCTION last_known_float8( internal, float8, anyelement ) RETURNS float8 LANGUAGE internal IMMUTABLE as 'window_dummy'; 
- CREATE FUNCTION last_known_float4( internal, float4, anyelement ) RETURNS float4 LANGUAGE internal IMMUTABLE as 'window_dummy'; 
- CREATE FUNCTION last_known_dateadt( internal, date, anyelement ) RETURNS date LANGUAGE internal IMMUTABLE as 'window_dummy'; 
- CREATE FUNCTION last_known_timeadt( internal, time, anyelement ) RETURNS time LANGUAGE internal IMMUTABLE as 'window_dummy'; 
- CREATE FUNCTION last_known_timestamp( internal, timestamp, anyelement ) RETURNS timestamp LANGUAGE internal IMMUTABLE as 'window_dummy'; 
- CREATE FUNCTION last_known_timestamptz( internal, timestamptz, anyelement ) RETURNS timestamptz LANGUAGE internal IMMUTABLE as 'window_dummy'; 
- CREATE FUNCTION last_known_timetzadt( internal, timetz, anyelement ) RETURNS timetz LANGUAGE internal IMMUTABLE as 'window_dummy'; 
- CREATE FUNCTION last_known_interval( internal, "interval", anyelement ) RETURNS "interval" LANGUAGE internal IMMUTABLE as 'window_dummy'; 
- CREATE FUNCTION last_known_numeric( internal, "numeric", anyelement ) RETURNS "numeric" LANGUAGE internal IMMUTABLE as 'window_dummy'; 
- CREATE FUNCTION next_known( int8, anyelement ) RETURNS int8 LANGUAGE internal IMMUTABLE as 'next_known_generic';
- CREATE FUNCTION next_known( int4, anyelement ) RETURNS int4 LANGUAGE internal IMMUTABLE as 'next_known_generic';
- CREATE FUNCTION next_known( int2, anyelement ) RETURNS int2 LANGUAGE internal IMMUTABLE as 'next_known_generic';
- CREATE FUNCTION next_known( float8, anyelement ) RETURNS float8 LANGUAGE internal IMMUTABLE as 'next_known_generic';
- CREATE FUNCTION next_known( float4, anyelement ) RETURNS float4 LANGUAGE internal IMMUTABLE as 'next_known_generic';
- CREATE FUNCTION next_known( date, anyelement ) RETURNS date LANGUAGE internal IMMUTABLE as 'next_known_generic';
- CREATE FUNCTION next_known( time, anyelement ) RETURNS time LANGUAGE internal IMMUTABLE as 'next_known_generic';
- CREATE FUNCTION next_known( timestamp, anyelement ) RETURNS timestamp LANGUAGE internal IMMUTABLE as 'next_known_generic';
- CREATE FUNCTION next_known( timestamptz, anyelement ) RETURNS timestamptz LANGUAGE internal IMMUTABLE as 'next_known_generic';
- CREATE FUNCTION next_known( timetz, anyelement ) RETURNS timetz LANGUAGE internal IMMUTABLE as 'next_known_generic';
- CREATE FUNCTION next_known( "interval", anyelement ) RETURNS "interval" LANGUAGE internal IMMUTABLE as 'next_known_generic';
- CREATE FUNCTION next_known( "numeric", anyelement ) RETURNS "numeric" LANGUAGE internal IMMUTABLE as 'next_known_generic';
- CREATE FUNCTION next_known_int64( internal, int8, anyelement ) RETURNS int8 LANGUAGE internal IMMUTABLE as 'window_dummy'; 
- CREATE FUNCTION next_known_int32( internal, int4, anyelement ) RETURNS int4 LANGUAGE internal IMMUTABLE as 'window_dummy'; 
- CREATE FUNCTION next_known_int16( internal, int2, anyelement ) RETURNS int2 LANGUAGE internal IMMUTABLE as 'window_dummy'; 
- CREATE FUNCTION next_known_float8( internal, float8, anyelement ) RETURNS float8 LANGUAGE internal IMMUTABLE as 'window_dummy'; 
- CREATE FUNCTION next_known_float4( internal, float4, anyelement ) RETURNS float4 LANGUAGE internal IMMUTABLE as 'window_dummy'; 
- CREATE FUNCTION next_known_dateadt( internal, date, anyelement ) RETURNS date LANGUAGE internal IMMUTABLE as 'window_dummy'; 
- CREATE FUNCTION next_known_timeadt( internal, time, anyelement ) RETURNS time LANGUAGE internal IMMUTABLE as 'window_dummy'; 
- CREATE FUNCTION next_known_timestamp( internal, timestamp, anyelement ) RETURNS timestamp LANGUAGE internal IMMUTABLE as 'window_dummy'; 
- CREATE FUNCTION next_known_timestamptz( internal, timestamptz, anyelement ) RETURNS timestamptz LANGUAGE internal IMMUTABLE as 'window_dummy'; 
- CREATE FUNCTION next_known_timetzadt( internal, timetz, anyelement ) RETURNS timetz LANGUAGE internal IMMUTABLE as 'window_dummy'; 
- CREATE FUNCTION next_known_interval( internal, "interval", anyelement ) RETURNS "interval" LANGUAGE internal IMMUTABLE as 'window_dummy'; 
- CREATE FUNCTION next_known_numeric( internal, "numeric", anyelement ) RETURNS "numeric" LANGUAGE internal IMMUTABLE as 'window_dummy'; 
- CREATE FUNCTION next_known_frame_maker( internal ) RETURNS internal LANGUAGE internal AS 'next_known_frame_maker'; 
-
 -- how many tidycat procs?
 select pc1.proname
 from 
@@ -4314,30 +4263,6 @@ order by proname;
  lag_xid
  language_handler_in
  language_handler_out
- last_known
- last_known
- last_known
- last_known
- last_known
- last_known
- last_known
- last_known
- last_known
- last_known
- last_known
- last_known
- last_known_dateadt
- last_known_float4
- last_known_float8
- last_known_int16
- last_known_int32
- last_known_int64
- last_known_interval
- last_known_numeric
- last_known_timeadt
- last_known_timestamp
- last_known_timestamptz
- last_known_timetzadt
  last_value
  last_value
  last_value
@@ -4815,31 +4740,6 @@ order by proname;
  network_subeq
  network_sup
  network_supeq
- next_known
- next_known
- next_known
- next_known
- next_known
- next_known
- next_known
- next_known
- next_known
- next_known
- next_known
- next_known
- next_known_dateadt
- next_known_float4
- next_known_float8
- next_known_framemaker
- next_known_int16
- next_known_int32
- next_known_int64
- next_known_interval
- next_known_numeric
- next_known_timeadt
- next_known_timestamp
- next_known_timestamptz
- next_known_timetzadt
  nextval
  nlikejoinsel
  nlikesel

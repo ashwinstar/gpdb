@@ -48,8 +48,8 @@
    amopopr       oid
    );
 
-   create unique index on pg_amop(amopclaid, amopsubtype, amopstrategy) with (indexid=2653, CamelCase=AccessMethodStrategy, syscacheid=AMOPSTRATEGY, syscache_nbuckets=64);
-   create unique index on pg_amop(amopopr, amopclaid) with (indexid=2654, CamelCase=AccessMethodOperator, syscacheid=AMOPOPID, syscache_nbuckets=64);
+   create unique index on pg_amop(amopclaid, amopsubtype, amopstrategy) with (indexid=2653, CamelCase=AccessMethodStrategy);
+   create unique index on pg_amop(amopopr, amopclaid) with (indexid=2654, CamelCase=AccessMethodOperator);
 
    alter table pg_amop add fk amopclaid on pg_opclass(oid);
    alter table pg_amop add fk amopsubtype on pg_type(oid);
@@ -543,16 +543,6 @@ DATA(insert (	 397	0 4 f 1075 ));
 DATA(insert (	 397	0 5 f 1073 ));
 
 /*
- * btree uuid_ops
- */
-
-DATA(insert (  3075  0 1 f 3069 ));
-DATA(insert (  3075  0 2 f 3070 ));
-DATA(insert (  3075  0 3 f 3071 ));
-DATA(insert (  3075  0 4 f 3072 ));
-DATA(insert (  3075  0 5 f 3073 ));
-
-/*
  *	hash index _ops
  */
 
@@ -624,9 +614,6 @@ DATA(insert (	2232	0 1 f 2334 ));
 DATA(insert (	2235	0 1 f  974 ));
 /* numeric_ops */
 DATA(insert (	7676    0 1 f 1752 ));
-/* uuid_ops */
-DATA(insert (	3076	0 1 f 3071 ));
-
 
 /*
  *	gist box_ops

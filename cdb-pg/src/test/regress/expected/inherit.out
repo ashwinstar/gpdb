@@ -1,33 +1,11 @@
 --
--- Test without inheritance guc
---
-set gp_enable_inheritance = false;
-drop schema if exists inherit cascade;
-NOTICE:  schema "inherit" does not exist, skipping
-create schema inherit;
-set search_path=inherit;
-create table parent(a int);
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-create table child() inherits (parent); -- should error out
-ERROR:  INHERITANCE support deprecated
---
--- Support inheritance by setting the guc
---
-set gp_enable_inheritance = true;
---
 -- Test inheritance features
 --
 CREATE TABLE a (dummy serial, aa TEXT);
 NOTICE:  CREATE TABLE will create implicit sequence "a_dummy_seq" for serial column "a.dummy"
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'dummy' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 CREATE TABLE b (bb TEXT) INHERITS (a);
-NOTICE:  Table has parent, setting distribution columns to match parent table
 CREATE TABLE c (cc TEXT) INHERITS (a);
-NOTICE:  Table has parent, setting distribution columns to match parent table
 CREATE TABLE d (dd TEXT) INHERITS (b,c,a);
-NOTICE:  Table has parent, setting distribution columns to match parent table
 NOTICE:  merging multiple inherited definitions of column "dummy"
 NOTICE:  merging multiple inherited definitions of column "aa"
 NOTICE:  merging multiple inherited definitions of column "dummy"
@@ -563,18 +541,12 @@ SELECT relname, d.* FROM ONLY d, pg_class where d.tableoid = pg_class.oid ORDER 
 CREATE TEMP TABLE z (b TEXT, PRIMARY KEY(aa, b)) inherits (a);
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "z_pkey" for table "z"
 INSERT INTO z VALUES (NULL, 'text'); -- should fail
-ERROR:  null value in column "dummy" violates not-null constraint  (seg1 siva-mac.local:40041 pid=37416)
+ERROR:  null value in column "dummy" violates not-null constraint
 -- Check UPDATE with inherited target and an inherited source table
 create temp table foo(f1 int, f2 int);
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'f1' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 create temp table foo2(f3 int) inherits (foo);
-NOTICE:  Table has parent, setting distribution columns to match parent table
 create temp table bar(f1 int, f2 int);
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'f1' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 create temp table bar2(f3 int) inherits (bar);
-NOTICE:  Table has parent, setting distribution columns to match parent table
 insert into foo values(1,1);
 insert into foo values(3,3);
 insert into foo2 values(2,2,2);
@@ -588,24 +560,24 @@ insert into bar2 values(2,2,2);
 insert into bar2 values(3,3,3);
 insert into bar2 values(4,4,4);
 update bar set f2 = f2 + 100 where f1 in (select f1 from foo);
+ ERROR:  Cannot parallelize that UPDATE yet
+ DETAIL:  Result depends on values of CTID system column.  Support for CTID system column may change in the future.
 SELECT relname, bar.* FROM bar, pg_class where bar.tableoid = pg_class.oid
 order by 1,2;
  relname | f1 | f2  
----------+----+-----
- bar     |  1 | 101
- bar     |  2 | 102
- bar     |  3 | 103
- bar     |  4 |   4
- bar2    |  1 | 101
- bar2    |  2 | 102
- bar2    |  3 | 103
- bar2    |  4 |   4
+---------+----+----
+ bar     |  1 | 1
+ bar     |  2 | 2
+ bar     |  3 | 3
+ bar     |  4 | 4
+ bar2    |  1 | 1
+ bar2    |  2 | 2
+ bar2    |  3 | 3
+ bar2    |  4 | 4
 (8 rows)
 
 /* Test inheritance of structure (LIKE) */
 CREATE TABLE inhx (xx text DEFAULT 'text');
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'xx' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 /*
  * Test double inheritance
  *
@@ -613,7 +585,6 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
  * INCLUDING DEFAULTS is specified 
  */
 CREATE TABLE inhe (ee text, LIKE inhx) inherits (b);
-NOTICE:  Table has parent, setting distribution columns to match parent table
 INSERT INTO inhe VALUES ('ee-col1', 'ee-col2', DEFAULT, 'ee-col4');
 ERROR:  invalid input syntax for integer: "ee-col1"
 SELECT * FROM inhe; /* Columns aa, bb, xx value NULL, ee */
@@ -637,10 +608,8 @@ SELECT * FROM a; /* Has ee entry */
 (0 rows)
 
 CREATE TABLE inhf (LIKE inhx, LIKE inhx); /* Throw error */
-NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 ERROR:  column "xx" duplicated
 CREATE TABLE inhf (LIKE inhx INCLUDING DEFAULTS INCLUDING CONSTRAINTS);
-NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 INSERT INTO inhf DEFAULT VALUES;
 SELECT * FROM inhf; /* Single entry with value 'text' */
   xx  
@@ -652,16 +621,13 @@ ALTER TABLE inhx add constraint foo CHECK (xx = 'text');
 ALTER TABLE inhx ADD PRIMARY KEY (xx);
 NOTICE:  ALTER TABLE / ADD PRIMARY KEY will create implicit index "inhx_pkey" for table "inhx"
 CREATE TABLE inhg (LIKE inhx); /* Doesn't copy constraint */
-NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 INSERT INTO inhg VALUES ('foo');
 DROP TABLE inhg;
 CREATE TABLE inhg (x text, LIKE inhx INCLUDING CONSTRAINTS, y text); /* Copies constraints */
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'x' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 INSERT INTO inhg VALUES ('x', 'text', 'y'); /* Succeeds */
 INSERT INTO inhg VALUES ('x', 'text', 'y'); /* Succeeds -- Unique constraints not copied */
 INSERT INTO inhg VALUES ('x', 'foo',  'y');  /* fails due to constraint */
-ERROR:  new row for relation "inhg" violates check constraint "foo"  (seg1 siva-mac.local:40041 pid=37416)
+ERROR:  new row for relation "inhg" violates check constraint "foo"
 SELECT * FROM inhg; /* Two records with three columns in order x=x, xx=text, y=y */
  x |  xx  | y 
 ---+------+---
@@ -674,22 +640,37 @@ CREATE TABLE inhg (x text, LIKE inhx INCLUDING INDEXES, y text); /* copies index
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "inhg_pkey" for table "inhg"
 INSERT INTO inhg VALUES (5, 10);
 INSERT INTO inhg VALUES (20, 10); -- should fail
-ERROR:  duplicate key violates unique constraint "inhg_pkey"  (seg0 siva-mac.local:40040 pid=37415)
+ERROR:  duplicate key value violates unique constraint "inhg_pkey"
 DROP TABLE inhg;
 /* Multiple primary keys creation should fail */
 CREATE TABLE inhg (x text, LIKE inhx INCLUDING INDEXES, PRIMARY KEY(x)); /* fails */
 ERROR:  multiple primary keys for table "inhg" are not allowed
 CREATE TABLE inhz (xx text DEFAULT 'text', yy int UNIQUE);
 NOTICE:  CREATE TABLE / UNIQUE will create implicit index "inhz_yy_key" for table "inhz"
-CREATE UNIQUE INDEX inhz_xx_idx on inhz (xx, yy) WHERE xx <> 'test';
+CREATE UNIQUE INDEX inhz_xx_idx on inhz (xx) WHERE xx <> 'test';
+/* Ok to create multiple unique indexes */
+CREATE TABLE inhg (x text UNIQUE, LIKE inhz INCLUDING INDEXES);
+NOTICE:  CREATE TABLE / UNIQUE will create implicit index "inhg_x_key" for table "inhg"
+NOTICE:  CREATE TABLE / UNIQUE will create implicit index "inhg_yy_key" for table "inhg"
+INSERT INTO inhg (xx, yy, x) VALUES ('test', 5, 10);
+INSERT INTO inhg (xx, yy, x) VALUES ('test', 10, 15);
+INSERT INTO inhg (xx, yy, x) VALUES ('foo', 10, 15); -- should fail
+ERROR:  duplicate key value violates unique constraint "inhg_x_key"
+DROP TABLE inhg;
 DROP TABLE inhz;
+-- Test changing the type of inherited columns
+insert into d values('test','one','two','three');
+ERROR:  invalid input syntax for integer: "test"
+alter table a alter column aa type integer using bit_length(aa);
+select * from d ORDER BY 1,2,3;
+ dummy | aa | bb | cc | dd 
+-------+----+----+----+----
+(0 rows)
+
 -- Tests for casting between the rowtypes of parent and child
 -- tables. See the pgsql-hackers thread beginning Dec. 4/04
 create table base (i integer);
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 create table derived () inherits (base);
-NOTICE:  Table has parent, setting distribution columns to match parent table
 insert into derived (i) values (0);
 select derived::base from derived;
  derived 
@@ -700,14 +681,9 @@ select derived::base from derived;
 drop table derived;
 drop table base;
 create table p1(ff1 int);
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'ff1' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 create table p2(f1 text);
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'f1' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 create function p2text(p2) returns text as 'select $1.f1' language sql;
 create table c1(f3 int) inherits(p1,p2);
-NOTICE:  Table has parent, setting distribution columns to match parent table
 insert into c1 values(123456789, 'hi', 42);
 select p2text(c1.*) from c1;
  p2text 

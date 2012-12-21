@@ -14,7 +14,6 @@
 #include "postgres.h"
 #include "executor/spi.h"
 #include "fmgr.h"
-#include "access/catquery.h"
 #include "commands/vacuum.h"
 #include "nodes/relation.h"
 #include "parser/parsetree.h"
@@ -174,9 +173,6 @@ Datum LWGEOM_gist_joinsel(PG_FUNCTION_ARGS)
 	Oid relid1, relid2;
 
 	HeapTuple stats1_tuple, stats2_tuple, class_tuple;
-	cqContext  *pcqCtx1;
-	cqContext  *pcqCtx2;
-	cqContext  *relcqCtx;
 	GEOM_STATS *geomstats1, *geomstats2;
 	/*
 	* These are to avoid casting the corresponding
@@ -232,21 +228,11 @@ Datum LWGEOM_gist_joinsel(PG_FUNCTION_ARGS)
 	POSTGIS_DEBUGF(3, "Working with relations oids: %d %d", relid1, relid2);
 
 	/* Read the stats tuple from the first column */
-	pcqCtx1 = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_statistic "
-				" WHERE starelid = :1 "
-				" AND staattnum = :2 ",
-				ObjectIdGetDatum(relid1), 
-				Int16GetDatum(var1->varattno)));
-
-	stats1_tuple = caql_getnext(pcqCtx1);
-
-	if ( !HeapTupleIsValid(stats1_tuple) )
+	stats1_tuple = SearchSysCache(STATRELATT, ObjectIdGetDatum(relid1), Int16GetDatum(var1->varattno), 0, 0);
+	if ( ! stats1_tuple )
 	{
 		POSTGIS_DEBUG(3, " No statistics, returning default geometry join selectivity");
 
-		caql_endscan(pcqCtx1);
 		PG_RETURN_FLOAT8(DEFAULT_GEOMETRY_JOINSEL);
 	}
 
@@ -258,29 +244,20 @@ Datum LWGEOM_gist_joinsel(PG_FUNCTION_ARGS)
 	{
 		POSTGIS_DEBUG(3, " STATISTIC_KIND_GEOMETRY stats not found - returning default geometry join selectivity");
 
-		caql_endscan(pcqCtx1);
+		ReleaseSysCache(stats1_tuple);
 		PG_RETURN_FLOAT8(DEFAULT_GEOMETRY_JOINSEL);
 	}
 
+
 	/* Read the stats tuple from the second column */
-	pcqCtx2 = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_statistic "
-				" WHERE starelid = :1 "
-				" AND staattnum = :2 ",
-				ObjectIdGetDatum(relid2), 
-				Int16GetDatum(var2->varattno)));
-
-	stats2_tuple = caql_getnext(pcqCtx2);
-
-	if ( !HeapTupleIsValid(stats2_tuple) )
+	stats2_tuple = SearchSysCache(STATRELATT, ObjectIdGetDatum(relid2), Int16GetDatum(var2->varattno), 0, 0);
+	if ( ! stats2_tuple )
 	{
 		POSTGIS_DEBUG(3, " No statistics, returning default geometry join selectivity");
 
 		free_attstatsslot(0, NULL, 0, (float *)geomstats1,
 		                  geomstats1_nvalues);
-		caql_endscan(pcqCtx1);
-		caql_endscan(pcqCtx2);
+		ReleaseSysCache(stats1_tuple);
 		PG_RETURN_FLOAT8(DEFAULT_GEOMETRY_JOINSEL);
 	}
 
@@ -293,8 +270,8 @@ Datum LWGEOM_gist_joinsel(PG_FUNCTION_ARGS)
 
 		free_attstatsslot(0, NULL, 0, (float *)geomstats1,
 		                  geomstats1_nvalues);
-		caql_endscan(pcqCtx1);
-		caql_endscan(pcqCtx2);
+		ReleaseSysCache(stats2_tuple);
+		ReleaseSysCache(stats1_tuple);
 		PG_RETURN_FLOAT8(DEFAULT_GEOMETRY_JOINSEL);
 	}
 
@@ -318,11 +295,10 @@ Datum LWGEOM_gist_joinsel(PG_FUNCTION_ARGS)
 
 	/* Free the statistic tuples */
 	free_attstatsslot(0, NULL, 0, (float *)geomstats1, geomstats1_nvalues);
-	caql_endscan(pcqCtx1);
+	ReleaseSysCache(stats1_tuple);
 
 	free_attstatsslot(0, NULL, 0, (float *)geomstats2, geomstats2_nvalues);
-	caql_endscan(pcqCtx2);
-
+	ReleaseSysCache(stats2_tuple);
 
 	/*
 	* OK, so before we calculate the join selectivity we also need to
@@ -331,13 +307,8 @@ Datum LWGEOM_gist_joinsel(PG_FUNCTION_ARGS)
 	* divided by the total number of tuples - hence we need to
 	* multiply out the returned selectivity by the total number of rows.
 	*/
-	relcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(relid1)));
-
-	class_tuple = caql_getnext(relcqCtx);
+	class_tuple = SearchSysCache(RELOID, ObjectIdGetDatum(relid1),
+	                             0, 0, 0);
 
 	if (HeapTupleIsValid(class_tuple))
 	{
@@ -345,15 +316,11 @@ Datum LWGEOM_gist_joinsel(PG_FUNCTION_ARGS)
 		num1_tuples = reltup->reltuples;
 	}
 
-	caql_endscan(relcqCtx);
+	ReleaseSysCache(class_tuple);
 
-	relcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(relid2)));
 
-	class_tuple = caql_getnext(relcqCtx);
+	class_tuple = SearchSysCache(RELOID, ObjectIdGetDatum(relid2),
+	                             0, 0, 0);
 
 	if (HeapTupleIsValid(class_tuple))
 	{
@@ -361,7 +328,8 @@ Datum LWGEOM_gist_joinsel(PG_FUNCTION_ARGS)
 		num2_tuples = reltup->reltuples;
 	}
 
-	caql_endscan(relcqCtx);
+	ReleaseSysCache(class_tuple);
+
 
 	/*
 	* Finally calculate the estimate of the number of rows returned
@@ -657,7 +625,6 @@ Datum LWGEOM_gist_sel(PG_FUNCTION_ARGS)
 	List *args = (List *) PG_GETARG_POINTER(2);
 	/* int varRelid = PG_GETARG_INT32(3); */
 	Oid relid;
-	cqContext  *pcqCtx;
 	HeapTuple stats_tuple;
 	GEOM_STATS *geomstats;
 	/*
@@ -738,21 +705,10 @@ Datum LWGEOM_gist_sel(PG_FUNCTION_ARGS)
 
 	relid = getrelid(self->varno, root->parse->rtable);
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_statistic "
-				" WHERE starelid = :1 "
-				" AND staattnum = :2 ",
-				ObjectIdGetDatum(relid), 
-				Int16GetDatum(self->varattno)));
-
-	stats_tuple = caql_getnext(pcqCtx);
-
-	if ( !HeapTupleIsValid(stats_tuple) )
+	stats_tuple = SearchSysCache(STATRELATT, ObjectIdGetDatum(relid), Int16GetDatum(self->varattno), 0, 0);
+	if ( ! stats_tuple )
 	{
 		POSTGIS_DEBUG(3, " No statistics, returning default estimate");
-
-		caql_endscan(pcqCtx);
 
 		PG_RETURN_FLOAT8(DEFAULT_GEOMETRY_SEL);
 	}
@@ -764,8 +720,7 @@ Datum LWGEOM_gist_sel(PG_FUNCTION_ARGS)
 	{
 		POSTGIS_DEBUG(3, " STATISTIC_KIND_GEOMETRY stats not found - returning default geometry selectivity");
 
-		caql_endscan(pcqCtx);
-
+		ReleaseSysCache(stats_tuple);
 		PG_RETURN_FLOAT8(DEFAULT_GEOMETRY_SEL);
 	}
 
@@ -789,8 +744,7 @@ Datum LWGEOM_gist_sel(PG_FUNCTION_ARGS)
 	POSTGIS_DEBUGF(3, " returning computed value: %f", selectivity);
 
 	free_attstatsslot(0, NULL, 0, (float *)geomstats, geomstats_nvalues);
-
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(stats_tuple);
 	PG_RETURN_FLOAT8(selectivity);
 
 }

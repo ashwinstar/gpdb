@@ -13,7 +13,6 @@
  */
 #include "postgres.h"
 
-#include "access/catquery.h"
 #include "access/printtup.h"
 #include "access/sysattr.h"
 #include "access/xact.h"
@@ -46,7 +45,6 @@
 #include "executor/functions.h"
 #include "cdb/memquota.h"
 #include "executor/nodeFunctionscan.h"
-#include "nodes/stack.h"
 
 extern char *savedSeqServerHost;
 extern int savedSeqServerPort;
@@ -442,7 +440,6 @@ SPI_execute(const char *src, bool read_only, long tcount)
 	plan.query = src;
 	plan.nargs = 0;
 	plan.argtypes = NULL;
-	plan.use_count = 0;
 
 	_SPI_prepare_plan(src, &plan);
 
@@ -557,7 +554,6 @@ SPI_prepare(const char *src, int nargs, Oid *argtypes)
 	plan.query = src;
 	plan.nargs = nargs;
 	plan.argtypes = argtypes;
-	plan.use_count = 0;
 
 	_SPI_prepare_plan(src, &plan);
 
@@ -845,7 +841,7 @@ char *
 SPI_gettype(TupleDesc tupdesc, int fnumber)
 {
 	Oid			typoid;
-	int			fetchCount;
+	HeapTuple	typeTuple;
 	char	   *result;
 
 	SPI_result = 0;
@@ -862,20 +858,18 @@ SPI_gettype(TupleDesc tupdesc, int fnumber)
 	else
 		typoid = (SystemAttributeDefinition(fnumber, true))->atttypid;
 
-	result = caql_getcstring_plus(
-			NULL,
-			&fetchCount,
-			NULL,
-			cql("SELECT typname FROM pg_type "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(typoid)));
+	typeTuple = SearchSysCache(TYPEOID,
+							   ObjectIdGetDatum(typoid),
+							   0, 0, 0);
 
-	if (!fetchCount)
+	if (!HeapTupleIsValid(typeTuple))
 	{
 		SPI_result = SPI_ERROR_TYPUNKNOWN;
 		return NULL;
 	}
 
+	result = pstrdup(NameStr(((Form_pg_type) GETSTRUCT(typeTuple))->typname));
+	ReleaseSysCache(typeTuple);
 	return result;
 }
 
@@ -1104,15 +1098,12 @@ SPI_cursor_open(const char *name, SPIPlanPtr plan,
 	else
 		paramLI = NULL;
 
-	/* Copy the plan's query string into the portal */
-	char *query_string = pstrdup(spiplan->query);
-
 	/*
 	 * Set up the portal.
 	 */
 	PortalDefineQuery(portal,
 					  NULL,		/* no statement name */
-					  query_string,
+					  spiplan->query,
 					  T_SelectStmt,
 					  CreateCommandTag(PortalListGetPrimaryStmt(qtlist)),
 					  ptlist,
@@ -1140,7 +1131,7 @@ SPI_cursor_open(const char *name, SPIPlanPtr plan,
 	/*
 	 * Greenplum Database needs this
 	 */
-	portal->is_extended_query = true;
+	portal->is_cursor = true;
 
 	/*
 	 * Set up the snapshot to use.	(PortalStart will do CopySnapshot, so we
@@ -1649,9 +1640,6 @@ _SPI_execute_plan(_SPI_plan * plan, Datum *Values, const char *Nulls,
 		spierrcontext.previous = error_context_stack;
 		error_context_stack = &spierrcontext;
 
-		/* indicate plan is being used */
-		plan->use_count++;
-
 		foreach(query_list_list_item, query_list_list)
 		{
 			List	   *query_list = lfirst(query_list_list_item);
@@ -1833,9 +1821,6 @@ fail:
 
 		/* Restore global vars and propagate error */
 		ActiveSnapshot = saveActiveSnapshot;
-
-		/* decrement plan use_count */
-		plan->use_count--;
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -1853,9 +1838,6 @@ fail:
 
 	/* tuptable now is caller's responsibility, not SPI's */
 	_SPI_current->tuptable = NULL;
-
-	/* plan execution is done */
-	plan->use_count--;
 
 	/*
 	 * If none of the queries had canSetTag, we return the last query's result
@@ -1886,104 +1868,88 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
 			else
 				res = SPI_OK_SELECT;
 
-			/* 
-			 * Checking if we need to put this through resource queue.
-			 * Same as in pquery.c, except we check ActivePortal->releaseResLock.
-			 * If the Active portal already hold a lock on the queue, we cannot
-			 * acquire it again.
-			 */
-			if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler &&
-					!superuser()
-			   )
-			{
-				/*
-				 * This is SELECT, so we should have planTree anyway.
-				 */
-				Assert(queryDesc->plannedstmt->planTree);
+            /* 
+             * Checking if we need to put this through resource queue.
+             * Same as in pquery.c, except we check ActivePortal->releaseResLock.
+             * If the Active portal already hold a lock on the queue, we cannot
+             * acquire it again.
+             */
+            if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler &&
+                    !superuser() && 
+                    queryDesc->plannedstmt->planTree &&
+                    queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL 
+               )
+            {
 
-				/* 
-				 * MPP-6421 - An active portal may not yet be defined if we're
-				 * constant folding a stable or volatile function marked as
-				 * immutable -- a hack some customers use for partition pruning.
-				 *
-				 * MPP-16571 - Don't warn about such an event because there are
-				 * legitimate parts of the code where we evaluate stable and
-				 * volatile functions without an active portal -- describe
-				 * functions for table functions, for example.
-				 */
-				if (ActivePortal)
+                /* 
+                 * MPP-6421
+                 *
+                 * If everything goes right, at this moment, we should already have
+                 * an valid portal.  However, if user (mistakenly) declared a stable
+                 * or volatile function as immutable, we will try to do constant folding
+                 * for the immutable function.  Constand folding happends at planning
+                 * time, when we did not start portal yet.
+                 *
+                 * Ideally we catch this in create function ddl, but that is hard.
+                 * So at least we should not fail with SIGSEGV.  The RIGHT way is to
+                 * elog error here. However, customer depends on this constant folding
+                 * feature in order to do partition pruning.  So we will issue a warning
+                 * instead.
+                 *
+                 * NOTE: This is tricky, in under certain work, it may give the wrong
+                 * , or, should I say, unexpected results!
+                 *
+                 * We need better partition pruning strategy.  
+                 */
+                if (!ActivePortal)
 				{
-					if (!ActivePortal->releaseResLock)
-					{
-						/* 
-						 * One scenario where this condition is hit is if 
-						 * the query running in the ActivePortal has a cost that is 
-						 * lower than the queue threshold, so it doesn't acquire
-						 * the resource queue lock. 
-						 * We may come here again due to an internal SPI query (example 
-						 * auto-stats) and we don't have a resource queue slot.
-						 */
-						PortalSetStatus(ActivePortal, PORTAL_QUEUE);
-			
-						/* MPP-18517 - Portal queue information may have been wiped out when
-						 * we decided to let the query bypass the queue. Re-populate it 
-						 */
-						if (ActivePortal->queueId == InvalidOid)
-						{
-							ActivePortal->queueId = GetResQueueId();
-							ActivePortal->portalId = ResCreatePortalId(ActivePortal->name);
-						}
-					
-						if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
-						{
-							queryDesc->plannedstmt->query_mem =
-								ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt, 
-												ActivePortal->queueId);
-						}
-
-						ActivePortal->releaseResLock =
-							ResLockPortal(ActivePortal, queryDesc);
-						PortalSetStatus(ActivePortal, PORTAL_ACTIVE);
-					} 
-					else
-					{
-						/**
-						 * If we're in this case, then we already have a
-						 * resource queue lock which means we're calling an SPI
-						 * query after we've gone through the resource queue. We
-						 * need to determine how much memory this query
-						 * deserves. There are two possibilities:
-						 * 1) We're not in a function scan. We calculate the
-						 * query's limit using the queue. We don't go through
-						 * the queue, though.
-						 * 2) We're inside a function scan. We use the memory
-						 * allocated to the function scan operator.
-						 */
-						Assert(ActivePortal);
-						Assert(ActivePortal->releaseResLock);
-
-						if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
-						{
-							if (!SPI_IsMemoryReserved())
-							{
-								queryDesc->plannedstmt->query_mem = 
-									ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt,
-																	 ActivePortal->queueId);						
-							}
-							else
-							{
-								queryDesc->plannedstmt->query_mem = 
-									SPI_GetMemoryReservation();
-							}
-							Assert(queryDesc->plannedstmt->query_mem > 0);
-						}
-					}
+                    ereport(WARNING,
+                            (errcode(ERRCODE_WARNING),
+                             errmsg("A stable or volatile function is used as if it is immutable"),
+                             errhint("The function should be declared as stable or volatile in create function statement.")));
 				}
-			}
+                else if (!ActivePortal->releaseResLock)
+                {
+                	/** TODO: siva - can we ever reach this point? */
+                    PortalSetStatus(ActivePortal, PORTAL_QUEUE);
+            		
+                    if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
+                    {
+            			queryDesc->plannedstmt->query_mem = ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt, ActivePortal->queueId);
+                    }
+                    
+                    ActivePortal->releaseResLock = ResLockPortal(ActivePortal, queryDesc);
+                    PortalSetStatus(ActivePortal, PORTAL_ACTIVE);
+                } 
+                else
+                {
+                	/**
+                	 * If we're in this case, then we already have a resource queue lock which means we're calling an SPI query after
+                	 * we've gone through the resource queue. We need to determine how much memory this query deserves. There are two possibilities:
+                	 * 1) We're not in a function scan. We calculate the query's limit using the queue. We don't go through the queue, though.
+                	 * 2) We're inside a function scan. We use the memory allocated to the function scan operator.
+                	 */
+                	Assert(ActivePortal);
+                	Assert(ActivePortal->releaseResLock);
+
+                	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
+                	{
+                		if (IsEmptyMemoryReservedForFunctionScan())
+                		{
+                			queryDesc->plannedstmt->query_mem = ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt, ActivePortal->queueId);                		
+                		}
+                		else
+                		{
+                			queryDesc->plannedstmt->query_mem = CurrentFunctionScanMemoryReserved();
+                		}
+                		Assert(queryDesc->plannedstmt->query_mem > 0);
+                	}
+                }
+            }
 
 			break;
-		/* TODO Find a better way to indicate "returning".  When PlannedStmt
-		 * support is finished, the queryTree field will be gone.
+		/* TODO Find a better way to indicate "returning".  When PlannedStmt support is finished, the
+		 *      queryTree field will be gone.
 		 */
 		case CMD_INSERT:
 			if (queryDesc->plannedstmt->returningLists)
@@ -2037,13 +2003,13 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
 	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE
 			&& superuser())
 	{
-		if (!SPI_IsMemoryReserved())
+		if (IsEmptyMemoryReservedForFunctionScan())
 		{
 			queryDesc->plannedstmt->query_mem = ResourceQueueGetSuperuserQueryMemoryLimit();                		
 		}
 		else
 		{
-			queryDesc->plannedstmt->query_mem = SPI_GetMemoryReservation();
+			queryDesc->plannedstmt->query_mem = CurrentFunctionScanMemoryReserved();
 		}
 		Assert(queryDesc->plannedstmt->query_mem > 0);
 	}
@@ -2093,7 +2059,7 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
 			Oid	relationOid = InvalidOid; 	/* relation that is modified */
 			AutoStatsCmdType cmdType = AUTOSTATS_CMDTYPE_SENTINEL; 	/* command type */
 			autostats_get_cmdtype(queryDesc->plannedstmt, &cmdType, &relationOid);
-			auto_stats(cmdType, relationOid, queryDesc->es_processed, true /* inFunction */);
+			auto_stats(cmdType, relationOid, queryDesc->es_processed);
 		}
 	}
 	PG_CATCH();
@@ -2337,72 +2303,8 @@ _SPI_copy_plan(SPIPlanPtr plan, int location)
 		newplan->argtypes = NULL;
 
 	newplan->run_via_callback_to_qd = plan->run_via_callback_to_qd;
-	newplan->use_count = plan->use_count;
 
 	MemoryContextSwitchTo(oldcxt);
 
 	return newplan;
-}
-
-/**
- * Memory reserved for SPI cals
- */
-static uint64 SPIMemReserved = 0;
-
-/**
- * Initialize the SPI memory reservation stack. See SPI_ReserveMemory() for detailed comments on how this stack
- * is used.
- */
-void SPI_InitMemoryReservation(void)
-{
-	Assert(gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE);
-	SPIMemReserved = (uint64) statement_mem * 1024L;;
-}
-
-/**
- * Push memory reserved for next SPI call. It is possible for an operator to (after several levels of nesting),
- * result in execution of SQL statements via SPI e.g. a pl/pgsql function that issues queries. These queries must be sandboxed into
- * the memory limits of the operator. This stack represents the nesting of these operators and each
- * operator will push its own limit.
- */
-void SPI_ReserveMemory(uint64 mem_reserved)
-{
-	Assert(gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE);
-	if (mem_reserved > 0
-			&& (SPIMemReserved == 0 || mem_reserved < SPIMemReserved))
-	{
-		SPIMemReserved = mem_reserved;
-	}
-
-	if (gp_log_resqueue_memory)
-	{
-		elog(gp_resqueue_memory_log_level, "SPI memory reservation %d", (int) SPIMemReserved);
-	}
-}
-
-/**
- * What was the amount of memory reserved for the last operator? See SPI_ReserveMemory()
- * for details.
- */
-uint64 SPI_GetMemoryReservation(void)
-{
-	Assert(gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE);
-	return SPIMemReserved;
-}
-
-/**
- * Is memory reserved stack empty?
- */
-bool SPI_IsMemoryReserved(void)
-{
-	Assert(gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE);
-	return (SPIMemReserved == 0);
-}
-
-/**
-  * Are we in SPI context 
-  */
-extern bool SPI_context(void) 
-{ 
-	return (_SPI_connected != -1); 
 }

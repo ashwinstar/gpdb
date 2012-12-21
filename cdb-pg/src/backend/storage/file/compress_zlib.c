@@ -1,7 +1,6 @@
 /* compress_zlib.c */
 #include "c.h"
 #include "storage/bfz.h"
-#include "utils/memutils.h"
 #include <zlib.h>
 
 struct bfz_zlib_freeable_stuff
@@ -12,13 +11,6 @@ struct bfz_zlib_freeable_stuff
 
 /* This file implements bfz compression algorithm "zlib". */
 
-/*
- * bfz_zlib_close_ex
- *  Close a file and freeing up descriptor, buffers etc.
- *
- *  This is also called from an xact end callback, hence it should
- *  not contain any elog(ERROR) calls.
- */
 static void
 bfz_zlib_close_ex(bfz_t * thiz)
 {
@@ -26,11 +18,13 @@ bfz_zlib_close_ex(bfz_t * thiz)
 
 	if (fs->f)
 	{
-		/* gzclose also closes thiz->fd */
+		if ((thiz->fd = dup(thiz->fd)) == -1)
+			ereport(ERROR,
+					(errcode(ERRCODE_IO_ERROR),
+					errmsg("could not duplicate file descriptor: %m")));
 		gzclose(fs->f);
-		thiz->fd = -1;
 	}
-	pfree(fs);
+	free(fs);
 	thiz->freeable_stuff = NULL;
 }
 
@@ -90,8 +84,7 @@ bfz_zlib_read_ex(bfz_t * thiz, char *buffer, int size)
 void
 bfz_zlib_init(bfz_t * thiz)
 {
-	/* Allocate this in TopMemoryContext since it needs to be alive during cleanup */
-	struct bfz_zlib_freeable_stuff *fs = MemoryContextAlloc(TopMemoryContext, sizeof *fs);
+	struct bfz_zlib_freeable_stuff *fs = malloc(sizeof *fs);
 
 	if (!fs)
 		ereport(ERROR,
@@ -112,4 +105,62 @@ bfz_zlib_init(bfz_t * thiz)
 		ereport(ERROR,
 				(errcode(ERRCODE_IO_ERROR),
 				errmsg("could not open temporary file: %m")));
+}
+
+static void *
+bfz_threaded_zlib_compress(void *arg)
+{
+	bfz_t	   *thiz = (bfz_t *) arg;
+	struct bfz_threaded_freeable_stuff *fs = (void *) thiz->freeable_stuff;
+	gzFile		f = gzdopen(thiz->fd, "wb1");
+	int			size;
+	char		buf[BFZ_BUFFER_SIZE];
+
+	if (!f)
+		ereport(ERROR,
+				(errcode(ERRCODE_IO_ERROR),
+				errmsg("could not open temporary file: %m")));
+	while ((size = pipe_read(&fs->pipe, buf, sizeof buf)) != 0)
+		gzwrite_fully(f, buf, size);
+	if ((thiz->fd = dup(thiz->fd)) == -1)
+		ereport(ERROR,
+				(errcode(ERRCODE_IO_ERROR),
+				errmsg("could not duplicate file descriptor: %m")));
+	gzclose(f);
+
+	return NULL;
+}
+
+static void *
+bfz_threaded_zlib_uncompress(void *arg)
+{
+	bfz_t	   *thiz = (bfz_t *) arg;
+	struct bfz_threaded_freeable_stuff *fs = (void *) thiz->freeable_stuff;
+	gzFile		f = gzdopen(thiz->fd, "rb");
+	int			size;
+	char		buf[BFZ_BUFFER_SIZE];
+
+	if (!f)
+		ereport(ERROR,
+				(errcode(ERRCODE_IO_ERROR),
+				errmsg("could not open temporary file: %m")));
+
+	while ((size = gzread_fully(f, buf, sizeof buf)) != 0)
+		pipe_write(&fs->pipe, buf, size);
+
+	if ((thiz->fd = dup(thiz->fd)) == -1)
+		ereport(ERROR,
+				(errcode(ERRCODE_IO_ERROR),
+				errmsg("could not duplicate file descriptor: %m")));
+
+	gzclose(f);
+	pipe_done_writing(&fs->pipe);
+
+	return NULL;
+}
+
+void
+bfz_threaded_zlib_init(bfz_t * thiz)
+{
+	bfz_threaded_init(thiz, bfz_threaded_zlib_compress, bfz_threaded_zlib_uncompress);
 }

@@ -58,7 +58,7 @@
 #include "storage/shmem.h"
 #include "miscadmin.h"
 #include "cdb/cdbmirroredflatfile.h"
-#include "postmaster/primary_mirror_mode.h"
+
 
 /*
  * Define segment size.  A page is the same BLCKSZ as is used everywhere
@@ -150,6 +150,7 @@ static bool SlruPhysicalWritePage(SlruCtl ctl, int pageno, int slotno,
 					  SlruFlush fdata);
 static void SlruReportIOError(SlruCtl ctl, int pageno, TransactionId xid);
 static int	SlruSelectLRUPage(SlruCtl ctl, int pageno);
+
 
 /*
  * Initialization of shared memory
@@ -1134,8 +1135,6 @@ SlruScanDirectory(SlruCtl ctl, int cutoffPage, bool doDeletions)
 	int			segno;
 	int			segpage;
 	char		path[MAXPGPATH];
-	char		*dir = NULL;
-	char		*mirrorDir = NULL;
 
 	/*
 	 * The cutoff point is the start of the segment containing cutoffPage.
@@ -1144,25 +1143,8 @@ SlruScanDirectory(SlruCtl ctl, int cutoffPage, bool doDeletions)
 	 */
 	cutoffPage -= cutoffPage % SLRU_PAGES_PER_SEGMENT;
 
-	/* 
-	 * PG_SUBTRANS is initialized with the default directory. Make sure
-	 * it is relative to the current transaction filespace
-	 */
-	if (isTxnDir(ctl->Dir))
-	{
-		dir = makeRelativeToTxnFilespace(ctl->Dir);
-		mirrorDir = makeRelativeToPeerTxnFilespace(ctl->Dir);
-	}
-	else
-	{
-		dir = (char*)palloc(MAXPGPATH);
-		strncpy(dir, ctl->Dir, MAXPGPATH);
-		mirrorDir = (char*)palloc(MAXPGPATH);
-		strncpy(mirrorDir, ctl->Dir, MAXPGPATH);
-	}
-
-	cldir = AllocateDir(dir);
-	while ((clde = ReadDir(cldir, dir)) != NULL)
+	cldir = AllocateDir(ctl->Dir);
+	while ((clde = ReadDir(cldir, ctl->Dir)) != NULL)
 	{
 		if (strlen(clde->d_name) == 4 &&
 			strspn(clde->d_name, "0123456789ABCDEF") == 4)
@@ -1174,10 +1156,7 @@ SlruScanDirectory(SlruCtl ctl, int cutoffPage, bool doDeletions)
 				found = true;
 				if (doDeletions)
 				{
-					if (snprintf(path, MAXPGPATH, "%s/%s", dir, clde->d_name) > MAXPGPATH)
-					{
-						ereport(ERROR, (errmsg("cannot form path %s/%s", dir, clde->d_name)));
-					}
+					snprintf(path, MAXPGPATH, "%s/%s", ctl->Dir, clde->d_name);
 					ereport(DEBUG2,
 							(errmsg("removing file \"%s\"", path)));
 
@@ -1192,9 +1171,6 @@ SlruScanDirectory(SlruCtl ctl, int cutoffPage, bool doDeletions)
 		}
 	}
 	FreeDir(cldir);
-
-	pfree(dir);
-	pfree(mirrorDir);
 
 	return found;
 }
@@ -1280,24 +1256,8 @@ SlruRecoverMirrorDir(char *slru_dir)
 	struct dirent	*clde;
 	int				retval = 0;
 	
-	char		*dir = NULL;
-	char		*mirrorDir = NULL;
-
-	if (isTxnDir(slru_dir))
-        {
-                dir = makeRelativeToTxnFilespace(slru_dir);
-                mirrorDir = makeRelativeToPeerTxnFilespace(slru_dir);
-        }
-        else
-        {
-                dir = (char*)palloc(MAXPGPATH);
-                strncpy(dir, slru_dir, MAXPGPATH);
-                mirrorDir = (char*)palloc(MAXPGPATH);
-                strncpy(mirrorDir, slru_dir, MAXPGPATH);
-        }
-	
-	cldir = AllocateDir(dir);
-	while ((clde = ReadDir(cldir, dir)) != NULL) {
+	cldir = AllocateDir(slru_dir);
+	while ((clde = ReadDir(cldir, slru_dir)) != NULL) {
 		if (strlen(clde->d_name) == 4 &&
 			strspn(clde->d_name, "0123456789ABCDEF") == 4) {
 			
@@ -1309,9 +1269,7 @@ SlruRecoverMirrorDir(char *slru_dir)
 		}
 	}
 	FreeDir(cldir);
-
-	pfree(dir);
-	pfree(mirrorDir);	
+	
 	return retval;
 }
 

@@ -2225,7 +2225,7 @@ hash_safe_tlist(List *tlist)
 		if (!optup)
 			return false;
 		oprcanhash = ((Form_pg_operator) GETSTRUCT(optup))->oprcanhash;
-		ReleaseOperator(optup);
+		ReleaseSysCache(optup);
 		if (!oprcanhash)
 			return false;
 	}
@@ -2373,14 +2373,9 @@ create_ctescan_path(PlannerInfo *root, RelOptInfo *rel, List *pathkeys)
 	pathnode->parent = rel;
 	pathnode->pathkeys = pathkeys;
 
-	pathnode->locus = cdbpathlocus_from_subquery(root, rel->subplan, rel->relid);
-
-	/*
-	 * We can't extract these two values from the subplan, so we simple set
-	 * them to their worst case here.
-	 */
-	pathnode->motionHazard = true;
-	pathnode->rescannable = false;
+    pathnode->locus = cdbpathlocus_from_subquery(root, rel->subplan, rel->relid);
+	pathnode->motionHazard = false;
+	pathnode->rescannable = true;
 
 	cost_ctescan(pathnode, root, rel);
 

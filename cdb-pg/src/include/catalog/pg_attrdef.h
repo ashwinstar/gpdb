@@ -35,7 +35,7 @@
    create unique index on pg_attrdef(adrelid, adnum) with (indexid=2656, CamelCase=AttrDefault);
    create unique index on pg_attrdef(oid) with (indexid=2657, CamelCase=AttrDefaultOid);
 
-   alter table pg_attrdef add fk (adrelid,adnum) on pg_attribute(attrelid,attnum);
+   alter table pg_attrdef add fk adrelid on pg_attribute(attrelid);
 
    TIDYCAT_ENDFAKEDEF
 */

@@ -329,11 +329,9 @@ typedef struct FuncCall
     List       *agg_order;      /* ORDER BY (list of SortBy) */
 	bool		agg_star;		/* argument was really '*' */
 	bool		agg_distinct;	/* arguments were labeled DISTINCT */
-	bool		func_variadic;	/* last argument was labeled VARIADIC */
 	int			location;		/* token location, or -1 if unknown */
 	Node	   *over;			/* over clause */
     Node       *agg_filter;     /* aggregation filter clause */
-	NullTreatment null_treatment; /* RESPECT NULLS | IGNORE NULLS */
 } FuncCall;
 
 /*
@@ -462,13 +460,10 @@ typedef struct ColumnDef
 	int			inhcount;		/* number of times column is inherited */
 	bool		is_local;		/* column has local (non-inherited) def'n */
 	bool		is_not_null;	/* NOT NULL constraint specified? */
-	AttrNumber	attnum;			/* attribute number */
-	Oid			default_oid;	/* attrdef oid */
 	Node	   *raw_default;	/* default value (untransformed parse tree) */
 	char	   *cooked_default; /* nodeToString representation */
 	List	   *constraints;	/* other constraints on column */
 	List	   *encoding;		/* ENCODING clause */
-	bool	   default_is_null;	/* DEFAULT NULL case */
 } ColumnDef;
 
 /*
@@ -675,7 +670,6 @@ typedef struct RangeTblEntry
 	Node	   *funcexpr;		/* expression tree for func call */
 	List	   *funccoltypes;	/* OID list of column type OIDs */
 	List	   *funccoltypmods; /* integer list of column typmods */
-	bytea	   *funcuserdata;	/* describe function user data. assume bytea */
 
 	/*
 	 * Fields valid for a values RTE (else NIL):
@@ -760,17 +754,6 @@ typedef struct SortClause
  * nodetags...).  We have routines that operate interchangeably on both.
  */
 typedef SortClause GroupClause;
-
-/*
- * ScatterClause -
- *	   representation of SCATTER BY clauses
- *
- * ScatterClause only needs tleSortGroupRef field to reference into
- * targetlist.  However, using the same structure with SortClause,
- * we can use the same helper functions which reduces amount of
- * additional work.
- */
-typedef SortClause ScatterClause;
 
 /*
  * GroupingClause -
@@ -1018,72 +1001,6 @@ typedef struct WindowSpecParse
 
 
 /* ----------------------
- *     Sequence Definition input to analysis
- *
- * The parser may produce a SequenceDefn that defines the reference
- * sequence for a sequence specification.  It is just a sub-structure
- * of SequenceSpec.
- * 
- * For now, the sequence is restricted to a generated sequence based
- * a step size (width) and low and high bounds.  Further the sequence
- * key (name) is restricted to be a single column name for use in the
- * derived sequence. 
- *
- * Either restriction might be relaxed someday, e.g, to accept a query
- * result as the definition of the sequence or to allow a multi-column
- * sequence key.
- *
- * The analyzer must translate this for use by the planner.
- * ----------------------
- */
-typedef struct SequenceDefn
-{
-	NodeTag type;
-	char	*keyname;	/* name of the key column */
-	Node	*span;		/* interval or numeric */
-	Node	*seqlow;	/* timestamp, timestamptz, or numeric */
-	Node	*seqlim;	/* timestamp, timestamptz, or numeric */
-} SequenceDefn;
-
-
-/* ----------------------
- *     Sequence Specification input to analysis
- *
- * The parser may produce a SequenceSpec that defines a derived sequence.
- * The analyzer must translate this for use by the planner.
- * ----------------------
- */
-typedef struct SequenceSpec
-{
-	NodeTag type;
-	char *seqname;	/* name of the sequence */
-	List *partition; /* PARTITION BY clause or NULL */
-	List *order; /* ORDER BY clause required on input */
-	List *postorder; /* ORDER BY clause produced on output. */
-	SequenceDefn *seqdef; /* definition of the reference sequence */
-	int			location;		/* token location, or -1 if unknown */
-} SequenceSpec;
-
-/* ----------------------
- *     Sequence Window Specification input to analysis
- *
- * The analyzer may split a sequence query into a lower subquery that
- * implements the sequence using a SequenceSpec and an upper query that 
- * operates on the sequenced result.  Such window queries have different
- * semantics from ordinary ones  The analyzer converts the SequenceSpec
- * that indicates that a window as implements a sequence, into a
- * SeqWindowSpec (cast compatible with a WindowSpec) to indicate that
- * the window operates as the upper query.
- *
- * This somewhat shady use of node type allows the analyzer to communicate
- * with the planner without disrupting stored views the way, say, adding
- * a flag to the Query node would.
- * ----------------------
- */
-typedef WindowSpec SeqWindowSpec;
-
-
-/* ----------------------
  *		Set Operation node for post-analysis query trees
  *
  * After parse analysis, a SELECT with set operations is represented by a
@@ -1206,7 +1123,6 @@ typedef enum AlterTableType
 	AT_AddColumn,				/* add column */
 	AT_AddColumnRecurse,		/* internal to commands/tablecmds.c */
 	AT_ColumnDefault,			/* alter column default */
-	AT_ColumnDefaultRecurse,	/* internal to commands/tablecmds.c */
 	AT_DropNotNull,				/* alter column drop not null */
 	AT_SetNotNull,				/* alter column set not null */
 	AT_SetStatistics,			/* alter column statistics */
@@ -1464,8 +1380,6 @@ typedef struct CreateStmt
 	List	   *tableElts;		/* column definitions (list of ColumnDef) */
 	List	   *inhRelations;	/* relations to inherit from (list of
 								 * inhRelation) */
-	List	   *inhOids;		/* list relations Oids to inherit from */
-	int			parentOidCount; /* count of parent with OIDs */
 	List	   *constraints;	/* constraints (list of Constraint nodes) */
 	List	   *options;		/* options from WITH clause */
 	OnCommitAction oncommit;	/* what do we do at COMMIT? */
@@ -2181,7 +2095,6 @@ typedef struct DeclareCursorStmt
 	char	   *portalname;		/* name of the portal (cursor) */
 	int			options;		/* bitmask of options (see above) */
 	Node	   *query;			/* the raw SELECT query */
-	bool		is_simply_updatable;
 } DeclareCursorStmt;
 
 /* ----------------------
@@ -2281,8 +2194,7 @@ typedef struct FunctionParameter
 	NodeTag		type;
 	char	   *name;			/* parameter name, or NULL if not given */
 	TypeName   *argType;		/* TypeName for parameter type */
-	FunctionParameterMode mode; /* IN/OUT/INOUT/VARIADIC/TABLE */
-	Node	   *defexpr;		/* raw default expr, or NULL if not given */
+	FunctionParameterMode mode; /* IN/OUT/INOUT */
 } FunctionParameter;
 
 typedef struct AlterFunctionStmt

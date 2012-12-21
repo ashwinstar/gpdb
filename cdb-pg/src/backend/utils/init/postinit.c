@@ -18,7 +18,6 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#include "access/catquery.h"
 #include "access/heapam.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
@@ -159,17 +158,11 @@ CheckMyDatabase(const char *name, bool am_superuser)
 {
 	HeapTuple	tup;
 	Form_pg_database dbform;
-	cqContext	*pcqCtx;
 
 	/* Fetch our real pg_database row */
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_database "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(MyDatabaseId)));
-
-	tup = caql_getnext(pcqCtx);
-
+	tup = SearchSysCache(DATABASEOID,
+						 ObjectIdGetDatum(MyDatabaseId),
+						 0, 0, 0);
 	if (!HeapTupleIsValid(tup))
 		elog(ERROR, "cache lookup failed for database %u", MyDatabaseId);
 	dbform = (Form_pg_database) GETSTRUCT(tup);
@@ -270,8 +263,8 @@ CheckMyDatabase(const char *name, bool am_superuser)
 		Datum		datum;
 		bool		isnull;
 
-		datum = caql_getattr(pcqCtx, Anum_pg_database_datconfig,
-							 &isnull);
+		datum = SysCacheGetAttr(DATABASEOID, tup, Anum_pg_database_datconfig,
+								&isnull);
 		if (!isnull)
 		{
 			ArrayType  *a = DatumGetArrayTypeP(datum);
@@ -280,7 +273,7 @@ CheckMyDatabase(const char *name, bool am_superuser)
 		}
 	}
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(tup);
 }
 
 
@@ -651,6 +644,10 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	{
 		addSharedSnapshot("Query Dispatcher", gp_session_id);
 	}
+	else if (Gp_role == GP_ROLE_DISPATCHAGENT)
+	{
+		SharedLocalSnapshotSlot = NULL;
+	}
     else if (Gp_segment == -1 && Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer)
     {
 		/* 
@@ -723,8 +720,17 @@ ShutdownPostgres(int code, Datum arg)
 static bool
 ThereIsAtLeastOneRole(void)
 {
-	return (caql_getcount(
-					NULL,
-					cql("SELECT count(*) FROM pg_authid ",
-						NULL)) > 0);
+	Relation	pg_authid_rel;
+	HeapScanDesc scan;
+	bool		result;
+
+	pg_authid_rel = heap_open(AuthIdRelationId, AccessShareLock);
+
+	scan = heap_beginscan(pg_authid_rel, SnapshotNow, 0, NULL);
+	result = (heap_getnext(scan, ForwardScanDirection) != NULL);
+
+	heap_endscan(scan);
+	heap_close(pg_authid_rel, AccessShareLock);
+
+	return result;
 }

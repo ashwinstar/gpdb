@@ -15,8 +15,7 @@ SYNOPSIS
 
 gpmigrator <old_GPHOME_path> <new_GPHOME_path>
            [-d <master_data_directory>] 
-           [-l <logfile_directory>] [-q] 
-           [--check-only] [--debug] [-R]
+           [-l <logfile_directory>] [-q] [--debug] [-R]
 
 gpmigrator --version | -v
 
@@ -102,16 +101,6 @@ OPTIONS
 -R (revert)
  
  In the event of an error during upgrade, reverts all changes made by gpmigrator.
-
-
---check-only
-
- Runs pre-migrate checks to verify that your database is healthy.
- Checks include: 
-  * Check catalog health
-  * Check that the Greenplum Database binaries on each segment match 
-    those on the master
-  * Check for a minium amount of free disk space
 
 
 --help | -h

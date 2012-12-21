@@ -75,7 +75,6 @@ static const char *logInfo = "INFO";
 static const char *logWarn = "WARN";
 static const char *logError = "ERROR";
 
-int g_gp_max_query_elements = MAX_QUERY_ELEMENTS_DEFAULT;
 
 /*
  * Object inclusion/exclusion lists
@@ -92,7 +91,6 @@ SimpleStringList table_include_patterns = {NULL, NULL};
 SimpleOidList table_include_oids = {NULL, NULL};
 SimpleStringList table_exclude_patterns = {NULL, NULL};
 SimpleOidList table_exclude_oids = {NULL, NULL};
-
 
 
 /* these are to avoid passing around info for findNamespace() */
@@ -442,10 +440,10 @@ selectSourceSchema(const char *schemaName)
 	curSchemaName = strdup(schemaName);
 }
 
+
 /*
  * Find the OIDs of all schemas matching the given list of patterns,
  * and append them to the given OID list.
- * Query for OIDS is done in max_query_elements chunks.
  */
 static void
 expand_schema_name_patterns(SimpleStringList *patterns, SimpleOidList *oids)
@@ -454,12 +452,6 @@ expand_schema_name_patterns(SimpleStringList *patterns, SimpleOidList *oids)
 	PGresult   *res;
 	SimpleStringListCell *cell;
 	int			i;
-	/*
-	 * When the number of patterns (schemas) is too high
-	 * max_stack_depth might be breached, so the query
-	 * must be broken down to several queries.
-	 */
-	int query_element_count = 0;
 
 	if (patterns->head == NULL)
 		return;					/* nothing to do */
@@ -473,44 +465,31 @@ expand_schema_name_patterns(SimpleStringList *patterns, SimpleOidList *oids)
 
 	for (cell = patterns->head; cell; cell = cell->next)
 	{
-		if (query_element_count != 0)
+		if (cell != patterns->head)
 			appendPQExpBuffer(query, "UNION ALL\n");
 		appendPQExpBuffer(query,
 						  "SELECT oid FROM pg_catalog.pg_namespace n\n");
 		processSQLNamePattern(g_conn, query, cell->val, false, false,
 							  NULL, "n.nspname", NULL,
 							  NULL);
-		query_element_count++;
-		if ((cell->next == NULL) || (query_element_count >= g_gp_max_query_elements))
-		{
-			if (g_verbose)
-				mpp_err_msg(logInfo, progname, "query with %d union elements\n", query_element_count);
-			res = PQexec(g_conn, query->data);
-			check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
-
-			for (i = 0; i < PQntuples(res); i++)
-			{
-				simple_oid_list_append(oids, atooid(PQgetvalue(res, i, 0)));
-			}
-
-			PQclear(res);
-			destroyPQExpBuffer(query);
-
-			/* restart new query */
-			if (cell->next)
-			{
-				query = createPQExpBuffer();
-				query_element_count = 0;
-			}
-		}
 	}
 
+	res = PQexec(g_conn, query->data);
+	check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+
+	for (i = 0; i < PQntuples(res); i++)
+	{
+		simple_oid_list_append(oids, atooid(PQgetvalue(res, i, 0)));
+	}
+
+	PQclear(res);
+	destroyPQExpBuffer(query);
 }
+
 
 /*
  * Find the OIDs of all tables matching the given list of patterns,
  * and append them to the given OID list.
- * Query for OIDS is done in max_query_elements chunks.
  */
 static void
 expand_table_name_patterns(SimpleStringList *patterns, SimpleOidList *oids)
@@ -519,12 +498,6 @@ expand_table_name_patterns(SimpleStringList *patterns, SimpleOidList *oids)
 	PGresult   *res;
 	SimpleStringListCell *cell;
 	int			i;
-	/*
-	 * When the number of patterns (tables) is too high
-	 * max_stack_depth might be breached, so the query
-	 * must be broken down to several queries.
-	 */
-	int query_element_count = 0;
 
 	if (patterns->head == NULL)
 		return;					/* nothing to do */
@@ -538,7 +511,7 @@ expand_table_name_patterns(SimpleStringList *patterns, SimpleOidList *oids)
 
 	for (cell = patterns->head; cell; cell = cell->next)
 	{
-		if (query_element_count != 0)
+		if (cell != patterns->head)
 			appendPQExpBuffer(query, "UNION ALL\n");
 		appendPQExpBuffer(query,
 						  "SELECT c.oid"
@@ -549,31 +522,18 @@ expand_table_name_patterns(SimpleStringList *patterns, SimpleOidList *oids)
 		processSQLNamePattern(g_conn, query, cell->val, true, false,
 							  "n.nspname", "c.relname", NULL,
 							  "pg_catalog.pg_table_is_visible(c.oid)");
-		query_element_count++;
-		if ((cell->next == NULL) || (query_element_count >= g_gp_max_query_elements))
-		{
-			if (g_verbose)
-				mpp_err_msg(logInfo, progname, "query with %d union elements\n", query_element_count);
-			res = PQexec(g_conn, query->data);
-			check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
-
-			for (i = 0; i < PQntuples(res); i++)
-			{
-				simple_oid_list_append(oids, atooid(PQgetvalue(res, i, 0)));
-			}
-
-			PQclear(res);
-			destroyPQExpBuffer(query);
-
-			/* restart new query */
-			if (cell->next)
-			{
-				query = createPQExpBuffer();
-				query_element_count = 0;
-			}
-		}
 	}
 
+	res = PQexec(g_conn, query->data);
+	check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+
+	for (i = 0; i < PQntuples(res); i++)
+	{
+		simple_oid_list_append(oids, atooid(PQgetvalue(res, i, 0)));
+	}
+
+	PQclear(res);
+	destroyPQExpBuffer(query);
 }
 
 
@@ -830,10 +790,6 @@ getTypes(int *numTypes)
 	int			i_typrelkind;
 	int			i_typtype;
 	int			i_typisdefined;
-	int         i_typnamestorage = -1;
-	int         i_typoptions = -1;
-	int 		i_typarraynamestorage = -1;
-	int			i_typarrayoptions = -1;
 
 	/*
 	 * we include even the built-in types because those may be used as array
@@ -847,49 +803,16 @@ getTypes(int *numTypes)
 	/* Make sure we are in proper schema */
 	selectSourceSchema("pg_catalog");
 
-	if (g_gp_supportsAttributeEncoding == false)
-	{
-		appendPQExpBuffer(query, "SELECT tableoid, oid, typname, "
-				"typnamespace, "
-				"(%s typowner) as rolname, "
-				"typinput::oid as typinput, "
-				"typoutput::oid as typoutput, typelem, typrelid, "
-				"CASE WHEN typrelid = 0 THEN ' '::\"char\" "
-				"ELSE (SELECT relkind FROM pg_class WHERE oid = typrelid) END as typrelkind, "
-				"typtype, typisdefined "
-				"FROM pg_type",
-				username_subquery);
-	}
-	else
-	{
-		appendPQExpBuffer(query, "SELECT t.tableoid AS tableoid, "
-				"t.oid AS oid, "
-				"t.typname AS typname, "
-				"t.typnamespace AS typnamespace, "
-				"(%s t.typowner) as rolname, "
-				"t.typinput::oid as typinput, "
-				"t.typoutput::oid as typoutput, "
-				"t.typelem AS typelem, "
-				"t.typrelid AS typrelid, "
-				"CASE WHEN t.typrelid = 0 THEN ' '::\"char\" "
-				"ELSE (SELECT relkind FROM pg_class WHERE oid = t.typrelid) END as typrelkind, "
-				"t.typtype AS typtype, "
-				"t.typisdefined AS typisdefined, "
-				"CASE WHEN t.oid > 10000 OR substring(t.typname from 1 for 1) = '_' "
-				" THEN  quote_ident(t.typname) "
-				" ELSE  pg_catalog.format_type(t.oid, NULL) "
-				" END   as typnamestorage, "
-				"array_to_string(a.typoptions, ', ') AS typoptions, "
-				"quote_ident(b.typname) as typarraynamestorage, "
-				"array_to_string(b.typoptions, ', ') AS typarrayoptions "
-				"FROM pg_type AS t"
-				" LEFT JOIN pg_catalog.pg_type_encoding a ON a.typid = t.oid"
-				" LEFT JOIN (SELECT a.typoptions AS typoptions, t.typname AS typname "
-				"FROM pg_catalog.pg_type_encoding a JOIN pg_type t ON t.oid = a.typid) AS b"
-				" ON b.typname = '_' || t.typname "
-				" WHERE t.typisdefined = 't'",
-				username_subquery);
-	}
+	appendPQExpBuffer(query, "SELECT tableoid, oid, typname, "
+					  "typnamespace, "
+					  "(%s typowner) as rolname, "
+					  "typinput::oid as typinput, "
+					  "typoutput::oid as typoutput, typelem, typrelid, "
+					  "CASE WHEN typrelid = 0 THEN ' '::\"char\" "
+					  "ELSE (SELECT relkind FROM pg_class WHERE oid = typrelid) END as typrelkind, "
+					  "typtype, typisdefined "
+					  "FROM pg_type",
+					  username_subquery);
 
 	res = PQexec(g_conn, query->data);
 	check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
@@ -910,13 +833,6 @@ getTypes(int *numTypes)
 	i_typrelkind = PQfnumber(res, "typrelkind");
 	i_typtype = PQfnumber(res, "typtype");
 	i_typisdefined = PQfnumber(res, "typisdefined");
-	if (g_gp_supportsAttributeEncoding)
-	{
-		i_typnamestorage = PQfnumber(res, "typnamestorage");
-		i_typoptions = PQfnumber(res, "typoptions");
-		i_typarraynamestorage = PQfnumber(res, "typarraynamestorage");
-		i_typarrayoptions = PQfnumber(res, "typarrayoptions");
-	}
 
 	for (i = 0; i < ntups; i++)
 	{
@@ -933,22 +849,6 @@ getTypes(int *numTypes)
 		tinfo[i].typrelkind = *PQgetvalue(res, i, i_typrelkind);
 		tinfo[i].typtype = *PQgetvalue(res, i, i_typtype);
 		tinfo[i].shellType = NULL;
-
-		/* storage options */
-		if (g_gp_supportsAttributeEncoding)
-		{
-			tinfo[i].typnamestorage = strdup(PQgetvalue(res, i, i_typnamestorage));
-			tinfo[i].typoptions = strdup(PQgetvalue(res, i, i_typoptions));
-			tinfo[i].typarraynamestorage = strdup(PQgetvalue(res, i, i_typarraynamestorage));
-			tinfo[i].typarrayoptions = strdup(PQgetvalue(res, i, i_typarrayoptions));
-		}
-		else
-		{
-			tinfo[i].typnamestorage = NULL;
-			tinfo[i].typoptions = NULL;
-			tinfo[i].typarraynamestorage = NULL;
-			tinfo[i].typarrayoptions = NULL;
-		}
 
 		/*
 		 * If it's a table's rowtype, use special type code to facilitate
@@ -1026,6 +926,85 @@ getTypes(int *numTypes)
 
 	return tinfo;
 }
+
+
+/*
+ * getTypeStorageOptions:
+ *	  read all types with storage options in the system catalogs and return them in the
+ * TypeStorageOptions* structure
+ *
+ *	numTypes is set to the number of types with storage options read in
+ *
+ */
+TypeStorageOptions *
+getTypeStorageOptions(int *numTypes)
+{
+	PGresult   *res;
+	int			ntups;
+	int			i;
+	PQExpBuffer query = createPQExpBuffer();
+	TypeStorageOptions   *tstorageoptions;
+	int			i_oid;
+	int			i_typname;
+	int			i_typnamespace;
+	int			i_typoptions;
+	int			i_rolname;
+
+	if (g_gp_supportsAttributeEncoding == false)
+	{
+		numTypes = 0;
+		tstorageoptions = (TypeStorageOptions *) malloc(0);
+		return tstorageoptions;
+	}
+
+	/* Make sure we are in proper schema */
+	selectSourceSchema("pg_catalog");
+
+	appendPQExpBuffer(query, "SELECT "
+			"  t.typname AS typname"
+			", t.oid AS oid"
+			", t.typnamespace AS typnamespace"
+			", (%s typowner) as rolname"
+			", array_to_string(a.typoptions, ', ') AS typoptions "
+			" FROM pg_type AS t "
+			" INNER JOIN pg_catalog.pg_type_encoding a ON a.typid = t.oid"
+			" WHERE t.typisdefined = 't'", username_subquery);
+
+	res = PQexec(g_conn, query->data);
+	check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+
+	ntups = PQntuples(res);
+
+	tstorageoptions = (TypeStorageOptions *) malloc(ntups * sizeof(TypeStorageOptions));
+
+	i_typname = PQfnumber(res, "typname");
+	i_oid = PQfnumber(res, "oid");
+	i_typnamespace = PQfnumber(res, "typnamespace");
+	i_typoptions = PQfnumber(res, "typoptions");
+	i_rolname = PQfnumber(res, "rolname");
+
+	for (i = 0; i < ntups; i++)
+	{
+		tstorageoptions[i].dobj.objType = DO_TYPE_STORAGE_OPTIONS;
+		AssignDumpId(&tstorageoptions[i].dobj);
+		tstorageoptions[i].dobj.name = strdup(PQgetvalue(res, i, i_typname));
+		tstorageoptions[i].dobj.catId.oid = atooid(PQgetvalue(res, i, i_oid));
+		tstorageoptions[i].dobj.namespace = findNamespace(atooid(PQgetvalue(res, i, i_typnamespace)),tstorageoptions[i].dobj.catId.oid);
+		tstorageoptions[i].typoptions = strdup(PQgetvalue(res, i, i_typoptions));
+		tstorageoptions[i].rolname = strdup(PQgetvalue(res, i, i_rolname));
+	}
+
+	*numTypes = ntups;
+
+	PQclear(res);
+
+	destroyPQExpBuffer(query);
+
+	return tstorageoptions;
+}
+
+
+
 
 /*
  * getOperators:
@@ -1427,13 +1406,8 @@ getExtProtocols(int *numExtProtocols)
 		if (strlen(ptcinfo[i].ptcowner) == 0)
 			mpp_err_msg(logWarn, progname, "WARNING: owner of external protocol \"%s\" appears to be invalid\n",
 						ptcinfo[i].dobj.name);
+		
 
-		/* NOTE, MPP-17173
-		 * read/write/validate can have a NULL value in early 4.2 versions. This
-		 * is a bug since they are defined as NOT NULL in the catalog. We leave
-		 * this harmless isnull check now, and it can be removed in the next
-		 * major version, which has the catalog fix in.
-		 */
 		if (PQgetisnull(res, i, i_ptcreadid))
 			ptcinfo[i].ptcreadid = InvalidOid;
 		else

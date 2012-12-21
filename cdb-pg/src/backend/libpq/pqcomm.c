@@ -1250,10 +1250,10 @@ pq_flush(void)
 	int			res;
 
 	/* No-op if reentrant call */
-	if (Gp_role == GP_ROLE_DISPATCH && IsUnderPostmaster)
+	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && IsUnderPostmaster)
 		pthread_mutex_lock(&send_mutex);
 	res = internal_flush();
-	if (Gp_role == GP_ROLE_DISPATCH && IsUnderPostmaster)
+	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && IsUnderPostmaster)
 		pthread_mutex_unlock(&send_mutex);
 	return res;
 }
@@ -1300,13 +1300,9 @@ internal_flush(void)
 
 			/*
 			 * We drop the buffered data anyway so that processing can
-			 * continue, even though we'll probably quit soon.  We also set a
-			 * flag that'll cause the next CHECK_FOR_INTERRUPTS to terminate
-			 * the connection.
+			 * continue, even though we'll probably quit soon.
 			 */
 			PqSendPointer = 0;
-			ClientConnectionLost = 1;
-			InterruptPending = 1;
 			return EOF;
 		}
 
@@ -1356,7 +1352,7 @@ int
 pq_putmessage(char msgtype, const char *s, size_t len)
 {
     int ret = EOF;
-	if (Gp_role == GP_ROLE_DISPATCH && IsUnderPostmaster)
+	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && IsUnderPostmaster)
 		pthread_mutex_lock(&send_mutex);
 
     if (DoingCopyOut)
@@ -1383,13 +1379,13 @@ pq_putmessage(char msgtype, const char *s, size_t len)
 	if (internal_putbytes(s, len))
 		goto fail;
 
-	if (Gp_role == GP_ROLE_DISPATCH && IsUnderPostmaster)
+	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && IsUnderPostmaster)
 		pthread_mutex_unlock(&send_mutex);
 
 	return 0;
 
 fail:
-	if (Gp_role == GP_ROLE_DISPATCH && IsUnderPostmaster)
+	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && IsUnderPostmaster)
 		pthread_mutex_unlock(&send_mutex);
 	return EOF;
 }

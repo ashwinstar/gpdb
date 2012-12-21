@@ -46,7 +46,9 @@
 #include "utils/guc.h"
 #include "utils/elog.h"
 #include "utils/builtins.h"
-#include "sendalert_common.h"
+#if USE_CONNECTEMC
+#include "emcconnect/api.h"
+#endif
 
 extern int	PostPortNumber;
 
@@ -112,6 +114,10 @@ extern pg_time_t	MyStartTime;
 #endif
 
 
+
+#if USE_CONNECTEMC
+static int send_alert_via_connect_emc(const GpErrorData * errorData, const char * subject, EmcConnectSeverity severity, EmcConnectDetailedSymptom symptom);
+#endif
 
 int send_alert_from_chunks(const PipeProtoChunk *chunk,
 		const PipeProtoChunk * saved_chunks_in)
@@ -536,6 +542,69 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData, const char * 
 }
 #endif
 
+#if USE_CONNECTEMC
+static int send_alert_via_connect_emc(const GpErrorData * errorData, const char * subject, EmcConnectSeverity severity, EmcConnectDetailedSymptom symptom)
+{
+	int retVal = 0;
+
+	char msg[2048];
+	EmcConnectStatus status = EMC_CONNECT_STATUS_OK; // we will mark status the same for all GPDB dial homes... severity distinguishes the level
+	char myhostname[255];	/* gethostname usually is limited to 65 chars out, but make this big to be safe */
+	struct stat statbuf;
+
+	if (gp_emcconnect_transport == EMCCONNECT_MODE_TYPE_OFF) {
+		return retVal;
+	}
+
+	myhostname[0] = '\0';
+	strcpy(msg,subject); /* subject is no more than 128 bytes */
+	if (errorData->error_detail != NULL && strlen(errorData->error_detail) > 0)
+	{
+		strcat(msg,"\n");
+		strncat(msg,errorData->error_detail,500);
+	}
+
+	{
+		char portnum[16];
+		myhostname[0] = '\0';
+
+		if (gethostname(myhostname, sizeof(myhostname)) == 0)
+		{
+			strcat(myhostname," on port ");
+			pg_ltoa(PostPortNumber,portnum);
+			strcat(myhostname,portnum);
+		}
+	}
+
+	/*
+	 * Connect EMC is usually in /opt/connectemc, but Ivan was talking about having it in /opt/greenplum/connectemc,
+	 * so to be safe, allow for either.
+	 */
+	if (stat("/opt/connectemc",&statbuf) != 0)
+		if (stat("/opt/greenplum/connectemc",&statbuf) != 0)
+		{
+			/* Connect EMC is not installed */
+			return -1;
+		}
+
+	elog(DEBUG1, "Sending via connectEMC: %s", subject);
+	retVal = gpmon_emcconnect_send_alert(EMC_CONNECT_SYMPTOM_GPDB, symptom,
+									status,
+									severity,
+									EMC_CONNECT_ORIGIN_GPDBALERTS,
+									gp_emcconnect_transport,
+									GP_VERSION,
+									"GPDB notification", // display name 
+									"", // snmpoid
+									myhostname,
+									msg);
+	if (retVal)
+		elog(LOG,"Error (%d) creating EMC Connect XML Event File from sendalert", retVal);
+
+	return retVal;
+}
+#endif
+
 #if USE_EMAIL
 static int send_alert_via_email(const GpErrorData * errorData,
 		const char * subject, const char * email_priority)
@@ -551,19 +620,6 @@ static int send_alert_via_email(const GpErrorData * errorData,
 	List *elemlist = NIL;
 	ListCell *l = NULL;
 	int success = 0;
-        static int num_connect_failures = 0;
-        static time_t last_connect_failure_ts = 0;
-
-
-        if (gp_email_connect_failures && num_connect_failures >= gp_email_connect_failures) {
-            if (time(0) - last_connect_failure_ts > gp_email_connect_avoid_duration) {
-                num_connect_failures = 0;
-                elog(LOG, "Retrying emails now...");
-            } else {
-                elog(LOG, "Not attempting emails as of now");
-                return -1;
-            }
-        }
 
 	if (gp_email_to == NULL || strlen(gp_email_to) == 0)
 	{
@@ -797,14 +853,8 @@ static int send_alert_via_email(const GpErrorData * errorData,
 	/* smtp_8bitmime_set_body(message, E8bitmime_8BITMIME); */
 
 	/* Initiate a connection to the SMTP server and transfer the message. */
-        int num_smtp_failures = 0;
-        int smtp_ret = smtp_start_session_with_timeout(session, gp_email_connect_timeout, &num_smtp_failures, NULL, 0); 
-	if (smtp_ret <= 0)
+	if (!smtp_start_session(session))
 	{
-                 if (num_smtp_failures > 0) { /* SMTP server issue */
-                     num_connect_failures++;
-                     last_connect_failure_ts = time(0);  
-                 }
 		/*
 		 * If we get here, we can't talk to the SMTP server at all
 		 */
@@ -817,7 +867,6 @@ static int send_alert_via_email(const GpErrorData * errorData,
 	}
 	else
 	{
-                
 		/* I would expect this to be always zero here, but just in case it's not */
 		if (smtp_errno() != 0)
 		{
@@ -828,7 +877,6 @@ static int send_alert_via_email(const GpErrorData * errorData,
 
 			elog(LOG, "SMTP server problem %d  %s", smtperr, buf);
 		}
-                num_connect_failures = 0;
 		/*
 		 * Report on the success or otherwise of the mail transfer.
 		 * This really only tells the "overall" status, so if an individual e-mail fails,
@@ -879,6 +927,9 @@ int send_alert(const GpErrorData * errorData)
 	char email_priority[2];
 	bool send_via_snmp = true;
 	char snmp_severity[2];
+	bool send_via_connectemc = false;
+	EmcConnectSeverity connectemc_severity;
+	EmcConnectDetailedSymptom connectemc_symptom;
 
 	static char previous_subject[128];
 	pg_time_t current_time;
@@ -903,7 +954,10 @@ int send_alert(const GpErrorData * errorData)
 						&send_via_email,
 						email_priority,
 						&send_via_snmp,
-						snmp_severity);
+						snmp_severity,
+						&send_via_connectemc,
+						&connectemc_severity,
+						&connectemc_symptom);
 
 
 	/*
@@ -988,6 +1042,15 @@ int send_alert(const GpErrorData * errorData)
 	else
 		elog(DEBUG4,"Not sending via e-mail");
 
+#endif
+
+#if USE_CONNECTEMC
+	/* Connect EMC is only available on RHEL5 64 systems */
+
+	if (send_via_connectemc)
+		send_alert_via_connect_emc(errorData, subject, connectemc_severity, connectemc_symptom);
+	else
+		elog(DEBUG5,"Not sending via connect emc");
 #endif
 
 	return 0;

@@ -30,17 +30,13 @@ where queue_attribute is:
    MIN_COST=float
    PRIORITY={MIN|LOW|MEDIUM|HIGH|MAX}
 
-ALTER RESOURCE QUEUE name WITHOUT ( queue_attribute [, ... ] ) 
+ALTER RESOURCE QUEUE name WITHOUT ( queue_attribute=value [, ... ] ) 
 where queue_attribute is:
-   ACTIVE_STATEMENTS
-   MEMORY_LIMIT
-   MAX_COST
-   COST_OVERCOMMIT
-   MIN_COST
-
-   Note: A resource queue must have either an ACTIVE_STATEMENTS 
-   or a MAX_COST value. Do not remove both these queue_attributes 
-   from a resource queue.
+   ACTIVE_STATEMENTS=integer
+   MEMORY_LIMIT='memory_units'
+   MAX_COST=float
+   COST_OVERCOMMIT={TRUE|FALSE}
+   MIN_COST=float
 
 </synopsis>
  </refsynopsisdiv>
@@ -49,22 +45,13 @@ where queue_attribute is:
   <title>Description</title>
 
   <para>
-   ALTER RESOURCE QUEUE changes the limits of a resource queue. 
-   Only a superuser can alter a resource queue. A resource queue 
-   must have either an ACTIVE_STATEMENTS or a MAX_COST value 
-   (or it can have both). You can also set or reset priority for 
-   a resource queue to control the relative share of available CPU 
-   resources used by queries associated with the queue, or memory 
-   limit of a resource queue to control the amount of memory that 
-   all queries submitted through the queue can consume on a segment host.
-  </para>
-
-  <para>
-   ALTER RESOURCE QUEUE WITHOUT removes the specified limits on 
-   a resource that were previously set. A resource queue must have 
-   either an ACTIVE_STATEMENTS or a MAX_COST value. Do not remove both 
-   these queue_attributes from a resource queue.
-
+   <command>ALTER RESOURCE QUEUE</command> allows you to change or reset 
+   attributes of a resource queue that was previously created with the 
+   <command>CREATE RESOURCE QUEUE</command> command. To change the roles
+   assigned to a resource queue, use the <command>ALTER ROLE</command>.
+   A resource queue must have either an <literal>ACTIVE_STATEMENTS</literal> 
+   or a <literal>MAX_COST</literal> defined (or it can have both).  
+   You must be a database superuser to use this command.
   </para>
 
   </refsect1>
@@ -93,19 +80,6 @@ where queue_attribute is:
         should be an integer greater than 0, or -1. A setting of -1 means no 
         <literal>ACTIVE_STATEMENTS</literal> limit.
       </para>
-      </listitem>
-     </varlistentry>
-
-<varlistentry>
-      <term><literal>MEMORY_LIMIT</literal> <replaceable class="parameter">float</replaceable></term>
-       <listitem>
-       <para>
-        Sets the total memory quota for all statements submitted from users 
-        in this resource queue. Memory units can be specified in kB, MB or GB. 
-        The minimum memory quota for a resource queue is 10MB. There is no maximum; 
-        however the upper boundary at query execution time is limited by the physical 
-        memory of a segment host. The default value is no limit (-1).
-       </para>
       </listitem>
      </varlistentry>
 
@@ -228,15 +202,6 @@ ALTER RESOURCE QUEUE powerusers WITH (COSTLIMIT=-1.0);
 ALTER RESOURCE QUEUE myqueue WITH (ACTIVE_STATEMENTS=30, MAX_COST=5000.00);
 </programlisting>
   </para>
-
-  <para>
-   Remove the MAX_COST and MEMORY_LIMIT limits from a resource queue:
-<programlisting>
-ALTER RESOURCE QUEUE myqueue WITHOUT (MAX_COST, MEMORY_LIMIT);
-</programlisting>
-  </para>
-
-
  </refsect1>
  
  <refsect1>

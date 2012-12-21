@@ -389,7 +389,7 @@ DistributedLog_ShmemInit(void)
 	/* Set up SLRU for the distributed log. */
 	DistributedLogCtl->PagePrecedes = DistributedLog_PagePrecedes;
 	SimpleLruInit(DistributedLogCtl, "DistributedLogCtl", NUM_DISTRIBUTEDLOG_BUFFERS,
-				  DistributedLogControlLock, DISTRIBUTEDLOG_DIR);
+				  DistributedLogControlLock, "pg_distributedlog");
 
 	/* Create or attach to the shared structure */
 	DistributedLogShared = 
@@ -479,13 +479,8 @@ DistributedLog_UpgradeCheck(bool inRecovery)
 {
 	char		path[MAXPGPATH];
 	DIR		   *dir;
-	char		*distributedLogDir = makeRelativeToTxnFilespace(DISTRIBUTEDLOG_DIR);
 	
-	if (snprintf(path, MAXPGPATH, "%s", distributedLogDir) > MAXPGPATH)
-	{
-		ereport(ERROR, (errmsg("cannot form path: %s", distributedLogDir)));		
-	}
-	pfree(distributedLogDir);
+	snprintf(path, MAXPGPATH, "%s", DISTRIBUTEDLOG_DIR);
 	
 	dir = opendir(path);
 	if (dir == NULL)

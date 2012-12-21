@@ -1,4 +1,10 @@
 --
+-- checkpoint so that if we have a crash in the tests, replay of the
+-- just-completed CREATE DATABASE won't discard the core dump file
+--
+checkpoint;
+
+--
 -- Test result value processing
 --
 
@@ -32,8 +38,7 @@ SELECT perl_set_int(5);
 SELECT * FROM perl_set_int(5);
 
 
-CREATE TYPE testnestperl AS (f5 integer[]);
-CREATE TYPE testrowperl AS (f1 integer, f2 text, f3 text, f4 testnestperl);
+CREATE TYPE testrowperl AS (f1 integer, f2 text, f3 text);
 
 CREATE OR REPLACE FUNCTION perl_row() RETURNS testrowperl AS $$
     return undef;
@@ -42,9 +47,8 @@ $$ LANGUAGE plperl;
 SELECT perl_row();
 SELECT * FROM perl_row();
 
-
 CREATE OR REPLACE FUNCTION perl_row() RETURNS testrowperl AS $$
-    return {f2 => 'hello', f1 => 1, f3 => 'world', 'f4' => { 'f5' => [[1]] } };
+    return {f2 => 'hello', f1 => 1, f3 => 'world'};
 $$ LANGUAGE plperl;
 
 SELECT perl_row();
@@ -62,10 +66,7 @@ CREATE OR REPLACE FUNCTION perl_set() RETURNS SETOF testrowperl AS $$
     return [
         { f1 => 1, f2 => 'Hello', f3 =>  'World' },
         undef,
-        { f1 => 3, f2 => 'Hello', f3 =>  'PL/Perl', 'f4' => {} },
-        { f1 => 4, f2 => 'Hello', f3 =>  'PL/Perl', 'f4' => { 'f5' => undef }},
-        { f1 => 5, f2 => 'Hello', f3 =>  'PL/Perl', 'f4' => { 'f5' => '{1}' }},
-        { f1 => 6, f2 => 'Hello', f3 =>  'PL/Perl', 'f4' => { 'f5' => [1] }},
+        { f1 => 3, f2 => 'Hello', f3 =>  'PL/Perl' }
     ];
 $$  LANGUAGE plperl;
 
@@ -75,17 +76,15 @@ SELECT * FROM perl_set();
 CREATE OR REPLACE FUNCTION perl_set() RETURNS SETOF testrowperl AS $$
     return [
         { f1 => 1, f2 => 'Hello', f3 =>  'World' },
-        { f1 => 2, f2 => 'Hello', f3 =>  'PostgreSQL', 'f4' => undef },
-        { f1 => 3, f2 => 'Hello', f3 =>  'PL/Perl', 'f4' => {} },
-        { f1 => 4, f2 => 'Hello', f3 =>  'PL/Perl', 'f4' => { 'f5' => undef }},
-        { f1 => 5, f2 => 'Hello', f3 =>  'PL/Perl', 'f4' => { 'f5' => '{1}' }},
-        { f1 => 6, f2 => 'Hello', f3 =>  'PL/Perl', 'f4' => { 'f5' => [1] }},
-        { f1 => 7, f2 => 'Hello', f3 =>  'PL/Perl', 'f4' => '({1})' },
+        { f1 => 2, f2 => 'Hello', f3 =>  'PostgreSQL' },
+        { f1 => 3, f2 => 'Hello', f3 =>  'PL/Perl' }
     ];
 $$  LANGUAGE plperl;
 
 SELECT perl_set();
 SELECT * FROM perl_set();
+
+
 
 CREATE OR REPLACE FUNCTION perl_record() RETURNS record AS $$
     return undef;
@@ -93,15 +92,15 @@ $$ LANGUAGE plperl;
 
 SELECT perl_record();
 SELECT * FROM perl_record();
-SELECT * FROM perl_record() AS (f1 integer, f2 text, f3 text, f4 testnestperl);
+SELECT * FROM perl_record() AS (f1 integer, f2 text, f3 text);
 
 CREATE OR REPLACE FUNCTION perl_record() RETURNS record AS $$
-    return {f2 => 'hello', f1 => 1, f3 => 'world', 'f4' => { 'f5' => [1] } };
+    return {f2 => 'hello', f1 => 1, f3 => 'world'};
 $$ LANGUAGE plperl;
 
 SELECT perl_record();
 SELECT * FROM perl_record();
-SELECT * FROM perl_record() AS (f1 integer, f2 text, f3 text, f4 testnestperl);
+SELECT * FROM perl_record() AS (f1 integer, f2 text, f3 text);
 
 
 CREATE OR REPLACE FUNCTION perl_record_set() RETURNS SETOF record AS $$
@@ -304,11 +303,11 @@ SELECT * FROM recurse(3);
 
 
 ---
---- Test array return
+--- Test arrary return
 ---
-CREATE OR REPLACE FUNCTION  array_of_text() RETURNS TEXT[][]
-LANGUAGE plperl as $$
-    return [['a"b',undef,'c,d'],['e\\f',undef,'g']];
+CREATE OR REPLACE FUNCTION  array_of_text() RETURNS TEXT[][] 
+LANGUAGE plperl as $$ 
+    return [['a"b',undef,'c,d'],['e\\f',undef,'g']]; 
 $$;
 
 SELECT array_of_text();
@@ -317,7 +316,7 @@ SELECT array_of_text();
 -- Test spi_prepare/spi_exec_prepared/spi_freeplan
 --
 CREATE OR REPLACE FUNCTION perl_spi_prepared(INTEGER) RETURNS INTEGER AS $$
-   my $x = spi_prepare('select $1 AS a', 'INTEGER');
+   my $x = spi_prepare('select $1 AS a', 'INT4');
    my $q = spi_exec_prepared( $x, $_[0] + 1);
    spi_freeplan($x);
 return $q->{rows}->[0]->{a};
@@ -338,50 +337,3 @@ CREATE OR REPLACE FUNCTION perl_spi_prepared_set(INTEGER, INTEGER) RETURNS SETOF
 $$ LANGUAGE plperl;
 SELECT * from perl_spi_prepared_set(1,2);
 
---
--- Test prepare with a type with spaces
---
-CREATE OR REPLACE FUNCTION perl_spi_prepared_double(double precision) RETURNS double precision AS $$
-  my $x = spi_prepare('SELECT 10.0 * $1 AS a', 'DOUBLE PRECISION');
-  my $q = spi_query_prepared($x,$_[0]);
-  my $result;
-  while (defined (my $y = spi_fetchrow($q))) {
-      $result = $y->{a};
-  }
-  spi_freeplan($x);
-  return $result;
-$$ LANGUAGE plperl;
-SELECT perl_spi_prepared_double(4.35) as "double precision";
-
---
--- Test with a bad type
---
-CREATE OR REPLACE FUNCTION perl_spi_prepared_bad(double precision) RETURNS double precision AS $$
-  my $x = spi_prepare('SELECT 10.0 * $1 AS a', 'does_not_exist');
-  my $q = spi_query_prepared($x,$_[0]);
-  my $result;
-  while (defined (my $y = spi_fetchrow($q))) {
-      $result = $y->{a};
-  }
-  spi_freeplan($x);
-  return $result;
-$$ LANGUAGE plperl;
-SELECT perl_spi_prepared_bad(4.35) as "double precision";
-
--- Test with a row type
-CREATE OR REPLACE FUNCTION perl_spi_prepared() RETURNS INTEGER AS $$
-   my $x = spi_prepare('select $1::footype AS a', 'footype');
-   my $q = spi_exec_prepared( $x, '(1, 2)');
-   spi_freeplan($x);
-return $q->{rows}->[0]->{a}->{x};
-$$ LANGUAGE plperl;
-SELECT * from perl_spi_prepared();
-
-CREATE OR REPLACE FUNCTION perl_spi_prepared_row(footype) RETURNS footype AS $$
-   my $footype = shift;
-   my $x = spi_prepare('select $1 AS a', 'footype');
-   my $q = spi_exec_prepared( $x, {}, $footype );
-   spi_freeplan($x);
-return $q->{rows}->[0]->{a};
-$$ LANGUAGE plperl;
-SELECT * from perl_spi_prepared_row('(1, 2)');

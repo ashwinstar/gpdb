@@ -1,0 +1,25 @@
+#!/bin/bash
+
+if [ x$1 != x ] ; then
+    GPPERFMON_HOME=$1
+else
+    GPPERFMON_HOME="\`pwd\`"
+fi
+
+LIB_PATH="LD_LIBRARY_PATH=\$GPPERFMONHOME/lib:\$LD_LIBRARY_PATH"
+LIB_EXPORT="export LD_LIBRARY_PATH"
+
+if [ "Darwin" = `uname -s` ] ; then
+    LIB_PATH="DYLD_LIBRARY_PATH=\$GPPERFMONHOME/lib:\$DYLD_LIBRARY_PATH"
+    LIB_EXPORT="export DYLD_LIBRARY_PATH"
+fi
+
+cat<<EOF
+GPPERFMONHOME=${GPPERFMON_HOME}
+PATH=\$GPPERFMONHOME/bin:\$PATH
+${LIB_PATH}
+
+export GPPERFMONHOME
+export PATH
+${LIB_EXPORT}
+EOF

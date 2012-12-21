@@ -43,15 +43,12 @@ PostgreSQL documentation
 <synopsis>
 
 CREATE [[GLOBAL | LOCAL] {TEMPORARY | TEMP}] TABLE table_name ( 
-[ { column_name data_type [ DEFAULT default_expr ]     [column_constraint [ ... ]
-[ ENCODING ( storage_directive [,...] ) ]
-] 
-   | table_constraint
-   | LIKE other_table [{INCLUDING | EXCLUDING} 
-                      {DEFAULTS | CONSTRAINTS}] ...}
-   [, ... ] ]
-   [column_reference_storage_directive [, …] ]
-   )
+       [ { column_name data_type [DEFAULT default_expr] 
+           [column_constraint [ ... ]]
+           | table_constraint
+           | LIKE other_table [{INCLUDING | EXCLUDING} 
+                                {DEFAULTS | CONSTRAINTS}] ...}
+           [, ... ] ] )
    [ INHERITS ( parent_table [, ... ] ) ]
    [ WITH ( storage_parameter=value [, ... ] )
    [ ON COMMIT {PRESERVE ROWS | DELETE ROWS | DROP} ]
@@ -71,15 +68,16 @@ CREATE [[GLOBAL | LOCAL] {TEMPORARY | TEMP}] TABLE table_name (
     )
 
 where storage_parameter is:
+
    APPENDONLY={TRUE|FALSE}
-   BLOCKSIZE={8192-2097152}
    ORIENTATION={COLUMN|ROW}
-   COMPRESSTYPE={ZLIB|QUICKLZ|RLE_TYPE|NONE}
-   COMPRESSLEVEL={0-9}
+   COMPRESSTYPE={ZLIB|QUICKLZ}
+   COMPRESSLEVEL={0-9 | 1}
    FILLFACTOR={10-100}
    OIDS[=TRUE|FALSE]
 
 where column_constraint is:
+
    [CONSTRAINT constraint_name]
    NOT NULL | NULL 
    | UNIQUE [USING INDEX TABLESPACE tablespace]
@@ -87,11 +85,9 @@ where column_constraint is:
    | PRIMARY KEY [USING INDEX TABLESPACE tablespace] 
                  [WITH ( FILLFACTOR = value )]
    | CHECK ( expression )
-   | REFERENCES table_name [ ( column_name [, ... ] ) ]
-            [ key_match_type ]
-            [ key_action ]
 
 and table_constraint is:
+
    [CONSTRAINT constraint_name]
    UNIQUE ( column_name [, ... ] )
           [USING INDEX TABLESPACE tablespace] 
@@ -100,40 +96,18 @@ and table_constraint is:
                  [USING INDEX TABLESPACE tablespace] 
                  [WITH ( FILLFACTOR=value )] 
    | CHECK ( expression )
-   | FOREIGN KEY ( column_name [, ... ] )
-            REFERENCES table_name [ ( column_name [, ... ] ) ]
-            [ key_match_type ]
-            [ key_action ]
-            [ key_checking_mode ]
-
-where key_match_type is:
-     MATCH FULL
-   | SIMPLE
-where key_action is:
-     ON DELETE
-   | ON UPDATE
-   | ON DELETE
-   | ON UPDATE
-   | NO ACTION
-   | RESTRICT
-   | CASCADE
-   | SET NULL
-   | SET DEFAULT
-
-where key_checking_mode is:
-     DEFERRABLE
-   | NOT DEFERRABLE
-   | INITIALLY DEFERRED
-   | INITIALLY IMMEDIATE
 
 where partition_type is:
+
     LIST
   | RANGE
 
 where partition_specification is:
+
 partition_element [, ...]
 
 and partition_element is:
+
    DEFAULT PARTITION name
   | [PARTITION name] VALUES (list_value [,...] )
   | [PARTITION name] 
@@ -144,13 +118,14 @@ and partition_element is:
      END ([datatype] 'end_value') [INCLUSIVE | EXCLUSIVE]
      [ EVERY ([datatype] [number | INTERVAL] 'interval_value') ]
 [ WITH ( partition_storage_parameter=value [, ... ] ) ]
-[column_reference_storage_directive [, ...] ]
-
 [ TABLESPACE tablespace ]
 
 where subpartition_spec or template_spec is:
+
 subpartition_element [, ...]
+
 and subpartition_element is:
+
    DEFAULT SUBPARTITION name
   | [SUBPARTITION name] VALUES (list_value [,...] )
   | [SUBPARTITION name] 
@@ -161,18 +136,7 @@ and subpartition_element is:
      END ([datatype] 'end_value') [INCLUSIVE | EXCLUSIVE]
      [ EVERY ([datatype] [number | INTERVAL] 'interval_value') ]
 [ WITH ( partition_storage_parameter=value [, ... ] ) ]
-[column_reference_storage_directive [, ...] ]
 [ TABLESPACE tablespace ]
-
-where storage_directive is:
-   COMPRESSTYPE={ZLIB | QUICKLZ | RLE_TYPE | NONE} 
- | COMPRESSLEVEL={0-9} 
- | BLOCKSIZE={8192-2097152}
-
-Where column_reference_storage_directive is:
-
-   COLUMN column_name ENCODING ( storage_directive [, ... ] ), ... 
- | DEFAULT COLUMN ENCODING ( storage_directive [, ... ] )
 
 </synopsis>
 
@@ -262,19 +226,9 @@ Where column_reference_storage_directive is:
 
    a column constraint is only a notational convenience for use when the
 
-   constraint only affects one column.    For more information, search for 
-   
-   "Column-level Compression" in the Greenplum Database Administrator Guide.
+   constraint only affects one column.
 
   </para>
-
-  <para>
-
-   Note: You cannot create a table with both column encodings
- 
-   and compression parameters in a WITH clause.
-
-  </para?
 
  </refsect1>
 
@@ -639,17 +593,6 @@ Where column_reference_storage_directive is:
       If a constraint name is not specified, the system generates a name.
 
      </para>
- 
-     <para>
-
-     Note: The specified constraint_name is used for the constraint, but a 
-
-     system-generated unique name is used for the index name. In some prior 
-  
-     releases, the provided name was used for both the constraint name 
-     and the index name. 
-     
-    </para>
 
     </listitem>
 

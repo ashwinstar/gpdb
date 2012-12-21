@@ -55,11 +55,6 @@
  * course, only if the interrupt holdoff counter is zero).	See the
  * related code for details.
  *
- * A lost connection is handled similarly, although the loss of connection
- * does not raise a signal, but is detected when we fail to write to the
- * socket. If there was a signal for a broken connection, we could make use of
- * it by setting ClientConnectionLost in the signal handler.
- *
  * A related, but conceptually distinct, mechanism is the "critical section"
  * mechanism.  A critical section not only holds off cancel/die interrupts,
  * but causes any ereport(ERROR) or ereport(FATAL) to become ereport(PANIC)
@@ -73,11 +68,8 @@
 /* these are marked volatile because they are set by signal handlers: */
 extern PGDLLIMPORT volatile bool InterruptPending;
 extern volatile bool QueryCancelPending;
-extern volatile bool QueryCancelErrorless;/* GPDB only */
 extern volatile bool QueryCancelCleanup; /* GPDB only */
 extern volatile bool ProcDiePending;
-
-extern volatile bool ClientConnectionLost;
 
 /* these are marked volatile because they are examined by signal handlers: */
 extern volatile bool ImmediateInterruptOK;
@@ -99,11 +91,7 @@ do { \
 		CHECK_TIME_SLICE(); \
 	} \
 \
-	if (gp_simex_init && \
-		gp_simex_run && \
-		(gp_simex_class == SimExESClass_Cancel || \
-		 gp_simex_class == SimExESClass_Terminate) && \
-		!InterruptPending) \
+	if (gp_simex_init && gp_simex_run && gp_simex_class == SimExESClass_Cancel && !InterruptPending) \
 	{\
 		SimExESSubClass subclass = SimEx_CheckInject(); \
 		if (subclass == SimExESSubClass_Cancel_QueryCancel) \
@@ -111,7 +99,7 @@ do { \
 			InterruptPending = true; \
 			QueryCancelPending = true; \
 		}\
-		else if (subclass == SimExESSubClass_Terminate_ProcDie) \
+		else if (subclass == SimExESSubClass_Cancel_ProcDie) \
 		{\
 			InterruptPending = true; \
 			ProcDiePending = true; \
@@ -332,9 +320,8 @@ extern char *GetUserNameFromId(Oid roleid);
 extern Oid	GetUserId(void);
 extern Oid	GetOuterUserId(void);
 extern Oid	GetSessionUserId(void);
-extern void 	SetSessionUserId(Oid userid, bool is_superuser);
+extern void 	SetSessionUserId(Oid, bool);
 extern Oid	GetAuthenticatedUserId(void);
-extern bool IsAuthenticatedUserSuperUser(void);
 extern void GetUserIdAndContext(Oid *userid, bool *sec_def_context);
 extern void SetUserIdAndContext(Oid userid, bool sec_def_context);
 extern bool InSecurityDefinerContext(void);

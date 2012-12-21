@@ -1,7 +1,6 @@
 COMMAND NAME: gpfdist
 
-Serves data files to or writes data files out from Greenplum
-Database segments.
+Serves external table files to Greenplum Database segments.
 
 *****************************************************
 SYNOPSIS
@@ -9,7 +8,7 @@ SYNOPSIS
 
 
 gpfdist [-d <directory>] [-p <http_port>] [-l <log_file>] [-t <timeout>]  
-[-S] [-v | -V] [-m <maxlen>] [--ssl certificate_path]
+[-S] [-v | -V] [-m <maxlen>]
 
 gpfdist [-? | --help] | --version
 
@@ -18,53 +17,33 @@ DESCRIPTION
 *****************************************************
 
 
-gpfdist is Greenplum's parallel file distribution program. 
-It is used by readable external tables and gpload to serve 
-external table files to all Greenplum Database segments in 
-parallel. It is used by writable external tables to accept 
-output streams from Greenplum Database segments in parallel 
-and write them out to a file.
+gpfdist is a utility that serves external table files to all 
+Greenplum Database segments in parallel. The benefit of using 
+gpfdist over other file protocols is that you are guaranteed maximum 
+parallelism while reading from external tables, thereby offering the 
+best performance as well as easier administration of external tables.
 
-In order for gpfdist to be used by an external table, the 
-LOCATION clause of the external table definition (as defined by
-CREATE EXTERNAL TABLE) must specify the external table data 
-using the gpfdist:// protocol 
+If files are compressed using gzip (have a .gz file extension), gpfdist 
+will uncompress the files automatically provided that gunzip is in 
+your path.
 
-NOTE: If the --ssl option is specified to enable SSL security, 
-create the external table with the gpfdists:// protocol.
+In order for gpfdist to be used to serve external table files, the 
+external table definition (as defined by CREATE EXTERNAL TABLE) must 
+specify the directory name that contains the external table data 
+using the gpfdist:// protocol. 
 
-The benefit of using gpfdist is that you are guaranteed maximum 
-parallelism while reading from or writing to external tables, 
-thereby offering the best performance as well as easier 
-administration of external tables.
+When Greenplum Database users select from an external table, gpfdist 
+parses and serves the data files evenly to all the segment instances in 
+the Greenplum Database system.
 
-For readable external tables, gpfdist parses and serves data 
-files evenly to all the segment instances in the Greenplum Database 
-system when users SELECT from the external table. For writable 
-external tables, gpfdist accepts parallel output streams from 
-the segments when users INSERT into the external table, and 
-writes to an output file.
-
-
-For readable external tables, if load files are compressed using 
-gzip or bzip2 (have a .gz or .bz2 file extension), gpfdist 
-uncompresses the files automatically before loading provided 
-that gunzip or bunzip2 is in your path. 
-
-NOTE: Currently, readable external tables do not support 
-compression on Windows platforms, and writable external 
-tables do not support compression on any platforms.
-
-Most likely, you will want to run gpfdist on your ETL machines 
-rather than the hosts where Greenplum Database is installed. 
-To install gpfdist on another host, simply copy the utility 
-over to that host and add gpfdist to your $PATH.
-
-NOTE: When using IPv6, always enclose the numeric IP address 
-in brackets.
+Most likely, you will want to run gpfdist on your ETL machines rather 
+than the hosts where Greenplum Database is installed. To install gpfidist 
+on another host, simply copy the utility over to that host and add gpfdist 
+to your $PATH.
 
 You can also run gpfdist as a Windows Service. See below for
 details.
+
 
 *****************************************************
 OPTIONS
@@ -73,9 +52,8 @@ OPTIONS
 
 -d <directory>
 
-The directory from which gpfdist will serve files for 
-readable external tables or create output files for writable
-external tables. If not specified, defaults to the current directory.
+The directory from which gpfdist will serve files. If not specified, 
+defaults to the current directory.
 
 
 -l <log_file>
@@ -101,8 +79,7 @@ systems with a lot of network traffic.
 Sets the maximum allowed data row length in bytes. Default is 32768.
 Should be used when user data includes very wide rows, i.e when
 "line too long" error message is receieved. Should not be used otherwise
-as it increases resource allocation. 
-Valid range is 32K to 256MB. (The upper limit is 1MB on Windows systems.)
+as it increases resource allocation. Valid range is 32K to 1MB.
 
 
 -S (use O_SYNC)
@@ -110,20 +87,6 @@ Valid range is 32K to 256MB. (The upper limit is 1MB on Windows systems.)
 Opens the file for synchronous I/O with the O_SYNC flag. Any writes to 
 the resulting file descriptor block gpfdist until the data is 
 physically written to the underlying hardware.
-
---ssl certificate_path
-
-Adds SSL encryption to data transferred with gpfdist. After executing 
-gpfdist with the --ssl certificate_path option, the only way 
-to load data from this file server is with the gpfdists protocol. 
-The location specified in certificate_path must 
-contain the following files:
-
-- The server certificate file, server.crt
-- The server private key file, server.key
-- The trusted certificate authorities, root.crt
-
-The root directory (/) cannot be specified as certificate_path.
  
 
 -v (verbose)
@@ -226,4 +189,3 @@ SEE ALSO
 *****************************************************
 
 CREATE EXTERNAL TABLE
-gpload

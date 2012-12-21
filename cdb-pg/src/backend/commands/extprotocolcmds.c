@@ -14,7 +14,6 @@
 
 #include "access/heapam.h"
 #include "access/genam.h"
-#include "access/catquery.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_extprotocol.h"
@@ -41,13 +40,22 @@ void
 DefineExtProtocol(List *name, List *parameters, Oid newOid, bool trusted)
 {
 	char	   *protName;
+	Oid			protNamespace;
+	AclResult	aclresult;
 	List	   *readfuncName = NIL;
 	List	   *writefuncName = NIL;
 	List	   *validatorfuncName = NIL;
 	ListCell   *pl;
 	Oid			protOid;
 
-	protName = strVal(linitial(name));
+	/* Convert list of names to a name and namespace */
+	protNamespace = QualifiedNameGetCreationNamespace(name, &protName);
+
+	/* Check we have creation rights in target namespace */
+	aclresult = pg_namespace_aclcheck(protNamespace, GetUserId(), ACL_CREATE);
+	if (aclresult != ACLCHECK_OK)
+		aclcheck_error(aclresult, ACL_KIND_NAMESPACE,
+					   get_namespace_name(protNamespace));
 
 	foreach(pl, parameters)
 	{
@@ -85,17 +93,18 @@ DefineExtProtocol(List *name, List *parameters, Oid newOid, bool trusted)
 	 * Most of the argument-checking is done inside of ExtProtocolCreate
 	 */
 	protOid = ExtProtocolCreateWithOid(protName,			/* protocol name */
+									   protNamespace,		/* namespace */
 									   readfuncName,		/* read function name */
 									   writefuncName,		/* write function name */
 									   validatorfuncName, 	/* validator function name */
 									   newOid,
 									   trusted);
-
+					
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		DefineStmt * stmt = makeNode(DefineStmt);
 		stmt->kind = OBJECT_EXTPROTOCOL;
-		stmt->oldstyle = false;
+		stmt->oldstyle = false;  
 		stmt->defnames = name;
 		stmt->args = NIL;
 		stmt->definition = parameters;
@@ -119,7 +128,7 @@ RemoveExtProtocol(List *names, DropBehavior behavior, bool missing_ok)
 	Oid			protocolOid = InvalidOid;
 	ObjectAddress object;
 
-	/*
+	/* 
 	 * General DROP (object) syntax allows fully qualified names, but
 	 * protocols are global objects that do not live in schemas, so
 	 * it is a syntax error if a fully qualified name was given.
@@ -166,7 +175,7 @@ RemoveExtProtocol(List *names, DropBehavior behavior, bool missing_ok)
 	object.objectSubId = 0;
 
 	performDeletion(&object, behavior);
-
+	
 }
 
 /*
@@ -187,43 +196,53 @@ AlterExtProtocolOwner(const char *name, Oid newOwnerId)
 {
 	HeapTuple	tup;
 	Relation	rel;
+	TupleDesc	dsc;
 	Oid			ptcId;
 	Oid			ownerId;
 	AclResult	aclresult;
 	bool		isNull;
 	bool		isTrusted;
+	ScanKeyData	key;
+	SysScanDesc	scan;
 	Datum		ownerDatum;
 	Datum		trustedDatum;
-	cqContext	cqc;	
-	cqContext  *pcqCtx;
+	
 	
 	/*
 	 * Check the pg_extprotocol relation to be certain the protocol
-	 * is there.
+	 * is there. 
 	 */
 	rel = heap_open(ExtprotocolRelationId, RowExclusiveLock);
-
-	pcqCtx = caql_addrel(cqclr(&cqc), rel);
-
-	tup = caql_getfirst(
-			pcqCtx,
-			cql("SELECT * FROM pg_extprotocol "
-				" WHERE ptcname = :1 "
-				" FOR UPDATE ",
-				CStringGetDatum(name)));
-
+	dsc = RelationGetDescr(rel);
+	
+	ScanKeyInit(&key,
+				Anum_pg_extprotocol_ptcname,
+				BTEqualStrategyNumber,
+				F_NAMEEQ,
+				CStringGetDatum(name));
+	
+	scan = systable_beginscan(rel, 
+							  ExtprotocolPtcnameIndexId, 
+							  true,
+							  SnapshotNow, 
+							  1, 
+							  &key);
+	
+	tup = systable_getnext(scan);
+	
 	if (!HeapTupleIsValid(tup))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("protocol \"%s\" does not exist",
 						name)));
-
+	
 	ptcId = HeapTupleGetOid(tup);
-
-	ownerDatum = caql_getattr(pcqCtx,
+	
+	ownerDatum = heap_getattr(tup, 
 							  Anum_pg_extprotocol_ptcowner,
+							  dsc, 
 							  &isNull);
-
+	
 	if(isNull)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -232,10 +251,11 @@ AlterExtProtocolOwner(const char *name, Oid newOwnerId)
 
 	ownerId = DatumGetObjectId(ownerDatum);
 
-	trustedDatum = caql_getattr(pcqCtx,
-								Anum_pg_extprotocol_ptctrusted,
-								&isNull);
-
+	trustedDatum = heap_getattr(tup, 
+							 Anum_pg_extprotocol_ptctrusted,
+							 dsc, 
+							 &isNull);
+	
 	if(isNull)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -243,7 +263,7 @@ AlterExtProtocolOwner(const char *name, Oid newOwnerId)
 						 name)));
 
 	isTrusted = DatumGetBool(trustedDatum);
-
+	
 	if (ownerId != newOwnerId)
 	{
 		Acl		   *newAcl;
@@ -275,10 +295,10 @@ AlterExtProtocolOwner(const char *name, Oid newOwnerId)
 		if(!isTrusted && !superuser_arg(newOwnerId))
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-					 errmsg("untrusted protocol \"%s\" can't be owned by non superuser",
+					 errmsg("untrusted protocol \"%s\" can't be owned by non superuser", 
 							 name)));
 
-
+		
 		MemSet(values, 0, sizeof(values));
 		MemSet(nulls, false, sizeof(nulls));
 		MemSet(replaces, false, sizeof(replaces));
@@ -286,10 +306,11 @@ AlterExtProtocolOwner(const char *name, Oid newOwnerId)
 		replaces[Anum_pg_extprotocol_ptcowner - 1] = true;
 		values[Anum_pg_extprotocol_ptcowner - 1] = ObjectIdGetDatum(newOwnerId);
 
-		aclDatum = caql_getattr(pcqCtx,
+		aclDatum = heap_getattr(tup, 
 								Anum_pg_extprotocol_ptcacl,
+								dsc, 
 								&isNull);
-
+		
 		if (!isNull)
 		{
 			newAcl = aclnewowner(DatumGetAclP(aclDatum),
@@ -298,18 +319,21 @@ AlterExtProtocolOwner(const char *name, Oid newOwnerId)
 			values[Anum_pg_extprotocol_ptcacl - 1] = PointerGetDatum(newAcl);
 		}
 
-		newtuple = caql_modify_current(pcqCtx, values,
-									   nulls, replaces);
+		newtuple = heap_modify_tuple(tup, RelationGetDescr(rel), values,
+									 nulls, replaces);
 
-		caql_update_current(pcqCtx, newtuple);
-		/* and Update indexes (implicit) */
+		simple_heap_update(rel, &newtuple->t_self, newtuple);
+
+		/* keep the catalog indexes up to date */
+		CatalogUpdateIndexes(rel, newtuple);
 
 		heap_freetuple(newtuple);
-
+		
 		/* Update owner dependency reference */
 		changeDependencyOnOwner(ExtprotocolRelationId, ptcId, newOwnerId);
 	}
 
+	systable_endscan(scan);	
 	heap_close(rel, NoLock);
 }
 
@@ -321,44 +345,57 @@ RenameExtProtocol(const char *oldname, const char *newname)
 {
 	HeapTuple	tup;
 	Relation	rel;
+	TupleDesc	dsc;
 	Oid			ptcId;
+	Oid			ownerId;
 	bool		isNull;
-	cqContext	cqc;		
-	cqContext  *pcqCtx;
+	ScanKeyData	key;
+	SysScanDesc	scan;
+	Datum		ownerDatum;
+	
 	
 	/*
-	 * Check the pg_extprotocol relation to be certain the protocol
-	 * is there.
+	 * Check the pg_extprotocol relation to be certain the protocol 
+	 * is there. 
 	 */
 	rel = heap_open(ExtprotocolRelationId, RowExclusiveLock);
-
-	pcqCtx = caql_addrel(cqclr(&cqc), rel);
-
-	tup = caql_getfirst(
-			pcqCtx,
-			cql("SELECT * FROM pg_extprotocol "
-				" WHERE ptcname = :1 "
-				" FOR UPDATE ",
-				CStringGetDatum(oldname)));
-
+	dsc = RelationGetDescr(rel);
+	
+	ScanKeyInit(&key,
+				Anum_pg_extprotocol_ptcname,
+				BTEqualStrategyNumber,
+				F_NAMEEQ,
+				CStringGetDatum(oldname));
+	
+	scan = systable_beginscan(rel, 
+							  ExtprotocolPtcnameIndexId, 
+							  true,
+							  SnapshotNow, 
+							  1, 
+							  &key);
+	
+	tup = systable_getnext(scan);
+	
 	if (!HeapTupleIsValid(tup))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("protocol \"%s\" does not exist",
 						oldname)));
-
+	
 	ptcId = HeapTupleGetOid(tup);
-
-	/* just check the null flag */
-	(void) caql_getattr(pcqCtx,
-						Anum_pg_extprotocol_ptcowner,
-						&isNull);
-
+	
+	ownerDatum = heap_getattr(tup, 
+							  Anum_pg_extprotocol_ptcowner,
+							  dsc, 
+							  &isNull);
+	
 	if(isNull)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("internal error: protocol \"%s\"  has no owner defined",
-						 oldname)));
+						 oldname)));	
+
+	ownerId = DatumGetObjectId(ownerDatum);
 
 	if (strcmp(oldname, newname) != 0)
 	{
@@ -382,15 +419,18 @@ RenameExtProtocol(const char *oldname, const char *newname)
 
 		replaces[Anum_pg_extprotocol_ptcname - 1] = true;
 		values[Anum_pg_extprotocol_ptcname - 1] = CStringGetDatum(newname);
+		
+		newtuple = heap_modify_tuple(tup, RelationGetDescr(rel), values,
+									 nulls, replaces);
 
-		newtuple = caql_modify_current(pcqCtx, values,
-									   nulls, replaces);
+		simple_heap_update(rel, &newtuple->t_self, newtuple);
 
-		caql_update_current(pcqCtx, newtuple);
-		/* and Update indexes (implicit) */
+		/* keep the catalog indexes up to date */
+		CatalogUpdateIndexes(rel, newtuple);
 
-		heap_freetuple(newtuple);
+		heap_freetuple(newtuple);		
 	}
 
+	systable_endscan(scan);	
 	heap_close(rel, NoLock);
 }

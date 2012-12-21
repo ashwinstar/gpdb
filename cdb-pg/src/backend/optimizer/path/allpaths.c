@@ -366,18 +366,9 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	 * paths because they are processed in TID order.  The appendonlyam.c module will
 	 * optimize fetches in TID order by keeping the last decompressed block between fetch
 	 * calls.
-	 *
-	 * In Paris, IndexScan on AO indexes is enabled. However, there is no plan to
-	 * change the costing model for AO indexes in the old planner, since the new
-	 * optimizer will do btter job on that. So to preserve the prior behavior in the
-	 * old planner, IndexScan is chosen only when the following three conditions are true:
-	 *    enable_seqscan=off
-	 *    enable_bitmapscan=off
-	 *    enable_indexscan=on
 	 */
-	if ((relstorage == RELSTORAGE_AOROWS ||
-		 relstorage == RELSTORAGE_AOCOLS) &&
-		!(!enable_seqscan && !enable_bitmapscan && enable_indexscan))
+	if (relstorage == RELSTORAGE_AOROWS ||
+		relstorage == RELSTORAGE_AOCOLS)
 		indexpathlist = NIL;
 
     if (indexpathlist && root->config->enable_indexscan)
@@ -387,7 +378,12 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 
 	/* Consider TID scans */
     create_tidscan_paths(root, rel, &tidpathlist);
-
+    
+    /* AO and CO tables do not currently support TidScans. Disable TidScan path for such tables */
+	if (relstorage == RELSTORAGE_AOROWS ||
+		relstorage == RELSTORAGE_AOCOLS)
+		tidpathlist = NIL;
+    
     if (tidpathlist && root->config->enable_tidscan)
         pathlist = list_concat(pathlist, tidpathlist);
 
@@ -430,6 +426,9 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	List	   *subpaths = NIL;
 	ListCell   *l;
 
+	/* weighted average of widths */
+	double width_avg = 0;
+
 	/*
 	 * XXX for now, can't handle inherited expansion of FOR UPDATE/SHARE; can
 	 * we do better?  (This will take some redesign because the executor
@@ -441,12 +440,12 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("SELECT FOR UPDATE/SHARE is not supported for inheritance queries")));
 
-	/* Mark rel with estimated output rows, width, etc */
-	set_baserel_size_estimates(root, rel);
-
-	/* global numbers desired */
-	rel->tuples = rel->tuples * root->config->cdbpath_segments;
-	rel->rows = rel->rows * root->config->cdbpath_segments;
+	/*
+	 * Initialize to compute size estimates for whole append relation
+	 */
+	rel->rows = 0;
+	rel->tuples = 0;
+	rel->width = 0;
 
 	/*
 	 * Generate access paths for each member relation, and pick the cheapest
@@ -519,15 +518,14 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		else
 			subpaths = lappend(subpaths, childpath);
 
-
 		/*
-		 * Propagate information from parent to child.
+		 * Propagate size information from the child back to the parent. For
+		 * simplicity, we use the largest widths from any child as the parent
+		 * estimates.
 		 */
-		childrel->tuples = rel->tuples / (list_length(root->append_rel_list) - 1);
-		childrel->tuples = Max(1.0, childrel->tuples);
-		childrel->rows = rel->rows / (list_length(root->append_rel_list) - 1);
-		childrel->rows = Max(1.0, childrel->rows);
-		childrel->width = rel->width;
+        rel->tuples += childrel->tuples;
+		rel->rows += cdbpath_rows(root, childrel->cheapest_total_path);
+		width_avg += cdbpath_rows(root, childrel->cheapest_total_path) * childrel->width;
 
 		forboth(parentvars, rel->reltargetlist,
 				childvars, childrel->reltargetlist)
@@ -546,6 +544,8 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 			}
 		}
 	}
+
+	rel->width = (int) (width_avg / Max(1.0, rel->rows));
 
     /* CDB: Just one child (or none)?  Set flag if result is at most 1 row. */
     if (!subpaths)
@@ -602,6 +602,7 @@ static void
 set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 					  Index rti, RangeTblEntry *rte)
 {
+	Query	   *parse = root->parse;
 	Query	   *subquery = rte->subquery;
 	double		tuple_fraction;
 	List	   *pathkeys;
@@ -627,20 +628,24 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		rel->onerow = false;
 
 		/* Set-returning function in tlist could give any number of rows. */
-		if (expression_returns_set((Node *)subquery->targetList))
+		if (expression_returns_set((Node *)parse->targetList))
 		{}
 
 		/* Always one row if aggregate function without GROUP BY. */
-		else if (!subquery->groupClause &&
-				 (subquery->hasAggs || subquery->havingQual))
+		else if (!parse->groupClause &&
+				 (parse->hasAggs || parse->havingQual))
+			rel->onerow = true;
+
+		/* Just a targetlist with no FROM clause? */
+		else if (!parse->jointree->fromlist)
 			rel->onerow = true;
 
 		/* LIMIT 1 or less? */
-		else if (subquery->limitCount &&
-				 IsA(subquery->limitCount, Const) &&
-				 !((Const *)subquery->limitCount)->constisnull)
+		else if (parse->limitCount &&
+				 IsA(parse->limitCount, Const) &&
+				 !((Const *)parse->limitCount)->constisnull)
 		{
-			Const  *cnst = (Const *)subquery->limitCount;
+			Const  *cnst = (Const *)parse->limitCount;
 
 			if (cnst->consttype == INT8OID &&
 				DatumGetInt64(cnst->constvalue) <= 1)
@@ -653,11 +658,11 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		 * we'd better tell the subquery to plan for full retrieval. (XXX This
 		 * could probably be made more intelligent ...)
 		 */
-		if (subquery->hasAggs ||
-			subquery->groupClause ||
-			subquery->havingQual ||
-			subquery->distinctClause ||
-			subquery->sortClause ||
+		if (parse->hasAggs ||
+			parse->groupClause ||
+			parse->havingQual ||
+			parse->distinctClause ||
+			parse->sortClause ||
 			has_multiple_baserels(root))
 			tuple_fraction = 0.0;	/* default case */
 		else
@@ -775,11 +780,6 @@ void set_cte_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 		 * in case we need to create another plan for the CTE
 		 */
 		Query		  *subquery = (Query *) copyObject(cte->ctequery);
-
-		/**
-		 * Push down quals
-		 */
-		subquery = push_down_restrict(root, rel, rte, rel->relid, subquery);
 
 		subplan = subquery_planner(cteroot->glob, subquery, cteroot,
 								   tuple_fraction, &subroot, config);
@@ -1292,10 +1292,6 @@ subquery_is_pushdown_safe(Query *subquery, Query *topquery,
 
 	/* Check point 4 */
 	if ( contain_window_functions((Node*)subquery->targetList) )
-		return false;
-
-	/* Targetlist must not contain SRF */
-	if ( expression_returns_set((Node *) subquery->targetList))
 		return false;
 
 	/* See point 5. */

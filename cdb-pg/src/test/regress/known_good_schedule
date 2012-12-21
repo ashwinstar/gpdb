@@ -11,10 +11,8 @@ test: int8
 test: oid
 test: float4
 test: float8
-test: complex
 test: bit
 test: numeric
-test: txid
 test: strings
 test: numerology
 test: point
@@ -53,7 +51,7 @@ test: create_aggregate
 test: create_operator
 test: create_index
 test: drop_if_exists
-test: inherit
+ignore: inherit
 test: vacuum
 test: create_view
 ignore: sanity_check
@@ -130,7 +128,6 @@ test: olap_window_seq
 test: tpch500GB
 test: partition
 test: dpe
-test: sirv_functions
 test: appendonly
 test: aocs
 test: gp_hashagg
@@ -149,7 +146,6 @@ test: eagerfree
 test: toast
 test: mapred
 test: gpparams
-test: catversion
 test: tidycat
 test: tidycat2
 test: upgrade
@@ -161,30 +157,10 @@ test: foreign_data
 test: gp_toolkit
 test: filespace
 test: orafunk
+test: gpcheckmirrorseg
 test: trig
 test: xml
 test: auth_constraint
 test: column_compression
-test: role
-test: rle
-ignore: tpch500GB_orca
-test: portals_updatable
-test: plpgsql_cache
-test: percentile
-test: gp_cancel_query
-test: function_extensions
-test: basic_fuzzystrmatch
-ignore: timeseries
-test: uuid
-test: caql
-test: icudp_no_fault_injection
-test: parser
-test: resource_queue_function
-test: co_nestloop_idxscan
-ignore: icudp_full
-test: gp_optimizer
-#
-# gpcheckmirrorseg should be last to check mirror integrity
-#
-test: gpcheckmirrorseg
-# end of tests
+
+

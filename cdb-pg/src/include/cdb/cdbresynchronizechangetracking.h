@@ -180,6 +180,7 @@ extern bool ChangeTracking_PrintRelationChangeInfo(
 									  uint8		xl_info,
 									  void		*data, 
 									  XLogRecPtr *loc,
+									  bool	  weAreGeneratingXLogNow,
 									  bool	  printSkipIssuesOnly);
 
 extern int ChangeTracking_GetInfoArrayDesiredMaxLength(RmgrId rmid, uint8 info);

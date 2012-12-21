@@ -38,7 +38,6 @@
  */
 #include "postgres.h"
 
-#include "access/catquery.h"
 #include "access/heapam.h"
 #include "access/hio.h"
 #include "access/multixact.h"
@@ -50,7 +49,6 @@
 #include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/gp_policy.h"
-#include "catalog/gp_fastsequence.h"
 #include "catalog/namespace.h"
 #include "miscadmin.h"
 #include "pgstat.h"
@@ -59,11 +57,9 @@
 #include "utils/lsyscache.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
-#include "utils/faultinjector.h"
 #include "storage/freespace.h"
 #include "utils/guc.h"
 #include "cdb/cdbfilerepprimary.h"
-#include "cdb/cdbpersistentrecovery.h"
 
 static XLogRecPtr log_heap_update(Relation reln, Buffer oldbuf,
 		   ItemPointerData from, Buffer newbuf, HeapTuple newtup, bool move);
@@ -257,7 +253,17 @@ heapgetpage(HeapScanDesc scan, BlockNumber page, bool backward)
 				loctup.t_len = ItemIdGetLength(lpp);
 				ItemPointerSet(&(loctup.t_self), page, lineoff);
 
-				valid = HeapTupleSatisfiesVisibility(scan->rs_rd, &loctup, snapshot, buffer, "heapgetpage");
+				valid = HeapTupleSatisfiesVisibility(scan->rs_rd, &loctup, snapshot, buffer);
+#ifdef WATCH_VISIBILITY_IN_ACTION
+				elog(LOG, "VISIBILITY(%s) %s %s",
+				     (valid ? "true" : "false"),
+	     		     RelationGetRelationName(scan->rs_rd),
+				     WatchVisibilityInActionString(
+				     			page,
+				     			lineoff,
+				     			&loctup,
+				     			snapshot));
+#endif
 				if (valid)
 				{
 					t_xmax = HeapTupleHeaderGetXmax(loctup.t_data);
@@ -468,12 +474,47 @@ heapgettup(HeapScanDesc scan,
 				valid = HeapTupleSatisfiesVisibility(scan->rs_rd,
 													 tuple,
 													 snapshot,
-													 scan->rs_cbuf,
-													 "heapgettup");
+													 scan->rs_cbuf);
+#ifdef WATCH_VISIBILITY_IN_ACTION
+//				if (gp_watch_visibility_in_action)
+				{
+					bool keyMatches = true;
 
+					/*
+					 * Always test the key reguardless if it is visible.
+					 */
+					if (key != NULL)
+						HeapKeyTest(tuple, RelationGetDescr(scan->rs_rd),
+									nkeys, key, keyMatches);
+
+					/*
+					 * Log when the key matches.
+					 */
+					if (keyMatches)
+					{
+						elog(LOG, "VISIBILITY(%s) %s %s",
+						     (valid ? "true" : "false"),
+			     		     RelationGetRelationName(scan->rs_rd),
+						     WatchVisibilityInActionString(page,lineoff,tuple,snapshot));
+					}
+
+					if (valid && !keyMatches)
+						valid = false;
+				}
+//				else
+//				{
+//					/*
+//					 * Normal path copied from below...
+//					 */
+//					if (valid && key != NULL)
+//						HeapKeyTest(tuple, RelationGetDescr(scan->rs_rd),
+//									nkeys, key, valid);
+//				}
+#else
 				if (valid && key != NULL)
 					HeapKeyTest(tuple, RelationGetDescr(scan->rs_rd),
 								nkeys, key, valid);
+#endif
 
 				if (valid)
 				{
@@ -896,11 +937,9 @@ try_relation_open(Oid relationId, LOCKMODE lockmode, bool noWait)
 	 * Now that we have the lock, probe to see if the relation really exists
 	 * or not.
 	 */
-	if (0 == caql_getcount(
-				NULL,
-				cql("SELECT COUNT(*) FROM pg_class "
-					" WHERE oid = :1 ",
-					ObjectIdGetDatum(relationId))))
+	if (!SearchSysCacheExists(RELOID,
+							  ObjectIdGetDatum(relationId),
+							  0, 0, 0))
 	{
 		/* Release useless lock */
 		if (lockmode != NoLock)
@@ -1785,7 +1824,18 @@ heap_release_fetch(Relation relation,
 	/*
 	 * check time qualification of tuple, then release lock
 	 */
-	valid = HeapTupleSatisfiesVisibility(relation, tuple, snapshot, buffer, "heap_release_fetch");
+	valid = HeapTupleSatisfiesVisibility(relation, tuple, snapshot, buffer);
+
+#ifdef WATCH_VISIBILITY_IN_ACTION
+	elog(LOG, "VISIBILITY(%s) %s %s",
+	     (valid ? "true" : "false"),
+	     RelationGetRelationName(relation),
+	     WatchVisibilityInActionString(
+	     			ItemPointerGetBlockNumber(tid),
+	     			offnum,
+	     			tuple,
+	     			snapshot));
+#endif
 
 	LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
 	
@@ -1937,7 +1987,17 @@ heap_get_latest_tid(Relation relation,
 		 * Check time qualification of tuple; if visible, set it as the new
 		 * result candidate.
 		 */
-		valid = HeapTupleSatisfiesVisibility(relation, &tp, snapshot, buffer, "heap_get_latest_tid");
+		valid = HeapTupleSatisfiesVisibility(relation, &tp, snapshot, buffer);
+#ifdef WATCH_VISIBILITY_IN_ACTION
+		elog(LOG, "VISIBILITY(%s) %s %s",
+		     (valid ? "true" : "false"),
+		     RelationGetRelationName(relation),
+		     WatchVisibilityInActionString(
+		     			ItemPointerGetBlockNumber(&ctid),
+		     			offnum,
+		     			&tp,
+		     			snapshot));
+#endif
 		if (valid)
 			*tid = ctid;
 
@@ -2336,7 +2396,7 @@ heap_delete(Relation relation, ItemPointer tid,
 	tp.t_self = *tid;
 
 l1:
-	result = HeapTupleSatisfiesUpdate(relation, &tp.t_self, tp.t_data, cid, buffer, "heap_delete");
+	result = HeapTupleSatisfiesUpdate(relation, tp.t_data, cid, buffer);
 
 	if (result == HeapTupleInvisible)
 	{
@@ -2460,7 +2520,7 @@ l1:
 	if (crosscheck != InvalidSnapshot && result == HeapTupleMayBeUpdated)
 	{
 		/* Perform additional check for serializable RI updates */
-		if (!HeapTupleSatisfiesSnapshot(relation, &tp.t_self, tp.t_data, crosscheck, buffer, "heap_delete"))
+		if (!HeapTupleSatisfiesSnapshot(relation, tp.t_data, crosscheck, buffer))
 			result = HeapTupleUpdated;
 	}
 
@@ -2668,7 +2728,7 @@ heap_update_internal(Relation relation, ItemPointer otid, HeapTuple newtup,
 	 */
 
 l2:
-	result = HeapTupleSatisfiesUpdate(relation, &oldtup.t_self, oldtup.t_data, cid, buffer, "heap_update_internal");
+	result = HeapTupleSatisfiesUpdate(relation, oldtup.t_data, cid, buffer);
 
 	if (result == HeapTupleInvisible)
 	{
@@ -2791,7 +2851,7 @@ l2:
 	if (crosscheck != InvalidSnapshot && result == HeapTupleMayBeUpdated)
 	{
 		/* Perform additional check for serializable RI updates */
-		if (!HeapTupleSatisfiesSnapshot(relation, &oldtup.t_self, oldtup.t_data, crosscheck, buffer, "heap_update_internal"))
+		if (!HeapTupleSatisfiesSnapshot(relation, oldtup.t_data, crosscheck, buffer))
 			result = HeapTupleUpdated;
 	}
 
@@ -3258,7 +3318,7 @@ heap_lock_tuple(Relation relation, HeapTuple tuple, Buffer *buffer,
 	tuple->t_len = ItemIdGetLength(lp);
 
 l3:
-	result = HeapTupleSatisfiesUpdate(relation, &tuple->t_self, tuple->t_data, cid, *buffer, "heap_lock_tuple");
+	result = HeapTupleSatisfiesUpdate(relation, tuple->t_data, cid, *buffer);
 
 	if (result == HeapTupleInvisible)
 	{
@@ -3731,132 +3791,6 @@ heap_inplace_update_internal(Relation relation, HeapTuple tuple, TransactionId x
 
 	MarkBufferDirty(buffer);
 
-#ifdef FAULT_INJECTOR
-	if (FaultInjector_InjectFaultIfSet(
-									XLOGInsert,
-									DDLNotSpecified,
-									"" /* databaseName */,
-									"" /* tableName */) == FaultInjectorTypeSkip)
-	{
-		END_CRIT_SECTION();
-
-		UnlockReleaseBuffer(buffer);
-
-		MIRROREDLOCK_BUFMGR_UNLOCK;
-		// -------- MirroredLock ----------
-		
-		/* Send out shared cache inval if necessary */
-		if (!IsBootstrapProcessingMode())
-			CacheInvalidateHeapTuple(relation, tuple);
-		return;
-	}
-#endif
-
-	/* XLOG stuff */
-	if (!relation->rd_istemp)
-	{
-		xl_heap_inplace xlrec;
-		XLogRecPtr	recptr;
-		XLogRecData rdata[2];
-
-		xl_heaptid_set(&xlrec.target, relation, &tuple->t_self);
-
-		rdata[0].data = (char *) &xlrec;
-		rdata[0].len = SizeOfHeapInplace;
-		rdata[0].buffer = InvalidBuffer;
-		rdata[0].next = &(rdata[1]);
-
-		rdata[1].data = (char *) htup + htup->t_hoff;
-		rdata[1].len = newlen;
-		rdata[1].buffer = buffer;
-		rdata[1].buffer_std = true;
-		rdata[1].next = NULL;
-
-		if (!isFrozen)
-			recptr = XLogInsert(RM_HEAP_ID, XLOG_HEAP_INPLACE, rdata);
-		else
-			recptr = XLogInsert_OverrideXid(RM_HEAP_ID, XLOG_HEAP_INPLACE, rdata, FrozenTransactionId);
-
-		PageSetLSN(page, recptr);
-		PageSetTLI(page, ThisTimeLineID);
-	}
-
-	END_CRIT_SECTION();
-
-	UnlockReleaseBuffer(buffer);
-	
-	MIRROREDLOCK_BUFMGR_UNLOCK;
-	// -------- MirroredLock ----------
-	
-	/* Send out shared cache inval if necessary */
-	if (!IsBootstrapProcessingMode())
-		CacheInvalidateHeapTuple(relation, tuple);
-}
-
-
-/*
- * heap_inplace_frozen_delete_internal - frozen delete a tuple "in place" 
- * by modifying its MVCC header. Overwriting MVCC header violates both MVCC
- * and transactional safety, so the uses of this function in Postgres are 
- * extremely limited. Nonetheless we find some places to use it.
- *
- * Modified from heap_inplace_update_internal.
- */
-static void
-heap_inplace_frozen_delete_internal(Relation relation, HeapTuple tuple, TransactionId xid)
-{
-	MIRROREDLOCK_BUFMGR_DECLARE;
-
-	bool		isFrozen = (xid == FrozenTransactionId);
-	Buffer		buffer;
-	Page		page;
-	OffsetNumber offnum;
-	ItemId		lp = NULL;
-	HeapTupleHeader htup;
-	uint32		oldlen;
-	uint32		newlen;
-
-	/* 
-	 * Fetch gp_persistent_relation_node information that will be added
-	 * to XLOG record.
-	 */
-	RelationFetchGpRelationNodeForXLog(relation);
-	
-	// -------- MirroredLock ----------
-	MIRROREDLOCK_BUFMGR_LOCK;
-	
-	buffer = ReadBuffer(relation, ItemPointerGetBlockNumber(&(tuple->t_self)));
-	LockBuffer(buffer, BUFFER_LOCK_EXCLUSIVE);
-	page = (Page) BufferGetPage(buffer);
-
-	offnum = ItemPointerGetOffsetNumber(&(tuple->t_self));
-	if (PageGetMaxOffsetNumber(page) >= offnum)
-		lp = PageGetItemId(page, offnum);
-
-	if (PageGetMaxOffsetNumber(page) < offnum || !ItemIdIsUsed(lp))
-		elog(ERROR, "heap_inplace_frozen_delete_internal: invalid lp");
-
-	htup = (HeapTupleHeader) PageGetItem(page, lp);
-
-	oldlen = ItemIdGetLength(lp) - htup->t_hoff;
-	newlen = tuple->t_len - tuple->t_data->t_hoff;
-	if (oldlen != newlen || htup->t_hoff != tuple->t_data->t_hoff)
-		elog(ERROR, "heap_inplace_frozen_delete_internal: wrong tuple length");
-
-	/* NO EREPORT(ERROR) from here till changes are logged */
-	START_CRIT_SECTION();
-
-	htup->t_infomask &= 0;
-	htup->t_infomask |= HEAP_XMIN_INVALID;
-	HeapTupleHeaderSetXmin(htup, 0);
-	HeapTupleHeaderSetXmax(htup, FrozenTransactionId);
-
-	memcpy((char *) htup + htup->t_hoff,
-		   (char *) tuple->t_data + tuple->t_data->t_hoff,
-		   newlen);
-
-	MarkBufferDirty(buffer);
-
 	/* XLOG stuff */
 	if (!relation->rd_istemp)
 	{
@@ -3907,18 +3841,6 @@ frozen_heap_inplace_update(Relation relation, HeapTuple tuple)
 	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_ENTER;
 
 	heap_inplace_update_internal(relation, tuple, FrozenTransactionId);
-
-	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_EXIT;
-}
-
-void
-frozen_heap_inplace_delete(Relation relation, HeapTuple tuple)
-{
-	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_DECLARE;
-
-	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_ENTER;
-
-	heap_inplace_frozen_delete_internal(relation, tuple, FrozenTransactionId);
 
 	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_EXIT;
 }
@@ -4785,42 +4707,6 @@ heap_xlog_insert(XLogRecPtr lsn, XLogRecord *record)
 	HeapTupleHeaderSetCmin(htup, FirstCommandId);
 	htup->t_ctid = xlrec->target.tid;
 
-	/* MPP-16881: if GPDB crashed when CTAS for AO/CO is running, we should "frozen"
-	 * delete left-over entries in gp_fastsequence catalog table when replaying XLOG
-	 * during Pass3 crash recovery.
-	 */
-	if (xlrec->target.node.relNode == FastSequenceRelationId)
-	{
-		Form_gp_fastsequence redo_entry = 
-							(Form_gp_fastsequence) ((char *) htup + htup->t_hoff);
-		HASH_SEQ_STATUS iterateStatus;
-		hash_seq_init(&iterateStatus, pass2RecoveryHashShmem->hash);
-	
-		while (true)
-		{
-			Pass2RecoveryHashEntry_s *entry = 
-									(Pass2RecoveryHashEntry_s *)
-									hash_seq_search(&iterateStatus);
-			
-			if (entry == NULL)
-				break;
-			
-			if (entry->objid == redo_entry->objid)
-			{
-				htup->t_infomask &= 0;
-				htup->t_infomask |= HEAP_XMIN_INVALID;
-				HeapTupleHeaderSetXmin(htup, 0);
-				HeapTupleHeaderSetXmax(htup, FrozenTransactionId);
-				hash_seq_term(&iterateStatus); 
-				if (Debug_persistent_print)
-					elog(LOG, "frozen deleting gp_fastsequence entry"
-						 "for aborted AO insert transaction on objid %d",
-						 redo_entry->objid);
-				break;
-			}
-		}
-	}
-
 	offnum = PageAddItem(page, (Item) htup, newlen, offnum,
 						 LP_USED | OverwritePageMode);
 	if (offnum == InvalidOffsetNumber)
@@ -5249,8 +5135,8 @@ out_target(StringInfo buf, xl_heaptid *target)
 {
 	appendStringInfo(buf, "rel %u/%u/%u; tid %u/%u",
 			 target->node.spcNode, target->node.dbNode, target->node.relNode,
-			 (&(target->tid) != NULL && (&(target->tid))->ip_posid != 0) ? ItemPointerGetBlockNumber(&(target->tid)) : 0,
-                         (&(target->tid) != NULL && (&(target->tid))->ip_posid != 0) ? ItemPointerGetOffsetNumber(&(target->tid)) : 0);
+					 ItemPointerGetBlockNumber(&(target->tid)),
+					 ItemPointerGetOffsetNumber(&(target->tid)));
 }
 
 void
@@ -5423,12 +5309,4 @@ heap2_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record)
 	}
 	else
 		appendStringInfo(buf, "UNKNOWN");
-}
-
-bool 
-is_heap_tuple_visible(IndexScanDesc relation, ItemPointerData tid)
-{
-	/* Currently index only scans is not supported on heap tuples */
-	elog(ERROR, "Index only scan not supported for Heap relation");	
-	return false;
 }

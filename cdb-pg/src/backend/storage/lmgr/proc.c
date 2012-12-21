@@ -234,10 +234,7 @@ Prepend(PGPROC *myProc)
 	}
 
 	/* Atomically increment numFreeProcs */
-	if (myProc->isQueryProc)
-	{
-		gp_atomic_add_32(&ProcGlobal->numFreeProcs, 1);
-	}
+	gp_atomic_add_32(&ProcGlobal->numFreeProcs, 1);
 }
 
 
@@ -247,7 +244,7 @@ Prepend(PGPROC *myProc)
  * Use compare_and_swap to avoid using lock and guarantee atomic operation.
  */
 static PGPROC *
-RemoveFirst(bool isQueryProc)
+RemoveFirst()
 {
 	volatile PROC_HDR *procglobal = ProcGlobal;
 	SHMEM_OFFSET myOffset;
@@ -257,10 +254,7 @@ RemoveFirst(bool isQueryProc)
 	 * Decrement numFreeProcs before removing the first entry from the
 	 * free list.
 	 */
-	if (isQueryProc)
-	{
-		gp_atomic_add_32(&procglobal->numFreeProcs, -1);
-	}
+	gp_atomic_add_32(&procglobal->numFreeProcs, -1);
 
 	int32 casResult = false;
 	while(!casResult)
@@ -269,7 +263,6 @@ RemoveFirst(bool isQueryProc)
 
 		if (myOffset == INVALID_OFFSET)
 		{
-			freeProc = NULL;
 			break;
 		}
 		
@@ -287,7 +280,7 @@ RemoveFirst(bool isQueryProc)
 
 	}
 
-	if (freeProc == NULL && isQueryProc)
+	if (freeProc == NULL)
 	{
 		/*
 		 * Increment numFreeProcs since we didn't remove any entry from
@@ -303,7 +296,7 @@ RemoveFirst(bool isQueryProc)
  * InitProcess -- initialize a per-process data structure for this backend
  */
 void
-InitProcess(bool isQueryProc)
+InitProcess(void)
 {
 	/* use volatile pointer to prevent code rearrangement */
 	volatile PROC_HDR *procglobal = ProcGlobal;
@@ -319,7 +312,7 @@ InitProcess(bool isQueryProc)
 	if (MyProc != NULL)
 		elog(ERROR, "you already exist");
 
-	MyProc = RemoveFirst(isQueryProc);
+	MyProc = RemoveFirst();
 	
 	if (MyProc == NULL)
 	{
@@ -353,12 +346,10 @@ InitProcess(bool isQueryProc)
 	LocalDistribXactRef_Init(&MyProc->localDistribXactRef);
 	MyProc->xmin = InvalidTransactionId;
 	MyProc->pid = MyProcPid;
-	MyProc->cancellingPid = MyProcPid;
 	/* databaseId and roleId will be filled in later */
 	MyProc->databaseId = InvalidOid;
 	MyProc->roleId = InvalidOid;
 	MyProc->inVacuum = false;
-	MyProc->isQueryProc = isQueryProc;
 	MyProc->postmasterResetRequired = true;
 	MyProc->lwWaiting = false;
 	MyProc->lwExclusive = false;
@@ -384,17 +375,16 @@ InitProcess(bool isQueryProc)
      * its gp_session_id down to all of its qExecs.  If this is a qExec,
      * we have already received the gp_session_id from the qDisp.
      */
-    elog(DEBUG1,"InitProcess(): PID %d ptr %p gp_session_id %d", 
-		MyProcPid, MyProc, mppLocalProcessSerial);
-
+    elog(DEBUG1,"InitProcess(): gp_session_id %d, gp_is_callback %d",gp_session_id,gp_is_callback);
+    Assert(gp_session_id > 0 || !gp_is_callback);
     if (Gp_role == GP_ROLE_DISPATCH && gp_session_id == -1)
         gp_session_id = mppLocalProcessSerial;
-
     MyProc->mppSessionId = gp_session_id;
+    
     MyProc->mppIsWriter = Gp_is_writer;
     
     if (Gp_role == GP_ROLE_DISPATCH)
-    	MyProc->mppIsWriter = true;
+    	MyProc->mppIsWriter = !gp_is_callback;
 
 
 	/*
@@ -406,8 +396,6 @@ InitProcess(bool isQueryProc)
 
 	/* Set wait portal (do not check if resource scheduling is enabled) */
 	MyProc->waitPortalId = INVALID_PORTALID;
-
-	MyProc->queryCommandId = -1;
 
 	/*
 	 * Arrange to clean up at backend exit.
@@ -523,7 +511,6 @@ InitAuxiliaryProcess(void)
     MyProc->mppSessionId = 0;
     MyProc->mppIsWriter = false;
 	MyProc->inVacuum = false;
-	MyProc->isQueryProc = false;
 	MyProc->postmasterResetRequired = true;
 	MyProc->lwWaiting = false;
 	MyProc->lwExclusive = false;
@@ -539,8 +526,6 @@ InitAuxiliaryProcess(void)
 	 * necessary anymore, but seems like a good idea for cleanliness.)
 	 */
 	PGSemaphoreReset(&MyProc->sem);
-
-	MyProc->queryCommandId = -1;
 
 	/*
 	 * Arrange to clean up at process exit.
@@ -1422,30 +1407,26 @@ disable_sig_alarm(bool is_statement_timeout)
 
 /*
  * We get here when a session has been idle for a while (waiting for the
- * client to send us SQL to execute).  The idea is to consume less resources
- * while sitting idle, so we can support more sessions being logged on.
+ * client to send us SQL to execute).  The idea is to consume less resources while sitting idle,
+ * so we can support more sessions being logged on.
  *
- * The expectation is that if the session is logged on, but nobody is sending
- * us work to do, we want to free up whatever resources we can.  Usually it
- * means there is a human being at the other end of the connection, and that
- * person has walked away from their terminal, or just hasn't decided what to
- * do next.  We could be idle for a very long time (many hours).
+ * The expectation is that if the session is logged on, but nobody is sending us work to do,
+ * we want to free up whatever resources we can.  Usually it means there is a human being at the
+ * other end of the connection, and that person has walked away from their terminal, or just hasn't
+ * decided what to do next.  We could be idle for a very long time (many hours).
  *
- * Of course, freeing gangs means that the next time the user does send in an
- * SQL statement, we need to allocate gangs (at least the writer gang) to do
- * anything.  This entails extra work, so we don't want to do this if we don't
- * think the session has gone idle.
+ * Of course, freeing gangs means that the next time the user does send in an SQL statement,
+ * we need to allocate gangs (at least the writer gang) to do anything.  This entails extra work,
+ * so we don't want to do this if we don't think the session has gone idle.
  *
- * We can call cleanupIdleReaderGangs() to just free some resources, or
- * disconnectAllIdleGangs() to free up everything possible on the segDB side.
- * At the moment, I can't find a reason to use cleanupIdleReaderGangs(), but
- * if we wanted to, we would have two timeouts:  The first when we free the
- * reader gangs, and the second later time free the writer gang. My current
- * thinking is that it is better to free all the gangs as soon as we decide
+ * We can call cleanupIdleReaderGangs() to just free some resources, or cleanupAllIdleGangs() to
+ * free up everything possible on the segDB side.  At the moment, I can't find a reason to
+ * use cleanupIdleReaderGangs(), but it we wanted to, we would have two timeouts:  The first
+ * when we free the reader gangs, and the second later time free the writer gang.
+ * My current thinking is that it is better to free all the gangs as soon as we decide
  * the session is idle.
  *
- * P.s:  Is there anything we can free up on the master (QD) side?  I can't
- * think of anything.
+ * P.s:  Is there anything we can free up on the master (QD) side?  I can't think of anything.
  *
  */
 static void
@@ -1461,7 +1442,7 @@ HandleClientWaitTimeout(void)
 	 */
 	if (gangsExist())
 	{
-		disconnectAllIdleGangs();
+		cleanupAllIdleGangs();
 	}
 
 }
@@ -1619,6 +1600,9 @@ ResProcSleep(LOCKMODE lockmode, LOCALLOCK *locallock, void *incrementSet)
 
 	MyProc->waitStatus = STATUS_ERROR;	/* initialize result for error */
 
+	/* Mark that we are waiting for a lock */
+	lockAwaited = locallock;
+
 	/* Now check the status of the self lock footgun. */
 	selflock = ResCheckSelfDeadLock(lock, proclock, incrementSet);
 	if (selflock)
@@ -1627,12 +1611,8 @@ ResProcSleep(LOCKMODE lockmode, LOCALLOCK *locallock, void *incrementSet)
 		ereport(ERROR,
 				(errcode(ERRCODE_T_R_DEADLOCK_DETECTED),
 				 errmsg("deadlock detected, locking against self"),
-				 errhint("It is likely that a query is waiting on itself for resources. Check resource queue limits."), 
 						   errOmitLocation(true)));
 	}
-
-	/* Mark that we are waiting for a lock */
-	lockAwaited = locallock;
 
 	/* Ok to wait.*/
 	LWLockRelease(partitionLock);
@@ -1829,32 +1809,4 @@ freeProcEntryAndReturnReset(int pid)
 	}
 
 	return resetRequired;
-}
-/*
- * ResetCancellingPid -- sets the value of cancellingPid to 0, which means
- * that an errorless cancel is requested (see MPP-16671).
- *
- * Since, ideally, we don't want to hold a lock when updating this field,
- * we are using cancellingPid which is better than a boolean value
- * to indicate whether an errorless cancellation is requested
- */
-bool
-ResetCancellingPid(int pid)
-{
-	Assert(ProcGlobal != NULL);
-	int32 swapped = 0;
-
-	PGPROC *procs = ProcGlobal->procs;
-	/* set cancellingPid to 0 on pid */
-	for (int i = 0; i < MaxBackends; i++)
-	{
-		PGPROC *myProc = &procs[i];
-
-		if (myProc->pid == pid)
-		{
-			swapped = compare_and_swap_32(&(myProc->cancellingPid), pid, 0);
-		}
-	}
-
-	return swapped;
 }

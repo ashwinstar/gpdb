@@ -7,8 +7,6 @@
 #ifndef AOCS_SEGFILES_H
 #define AOCS_SEGFILES_H
 
-#include "storage/lock.h"
-
 #define Natts_pg_aocsseg 5
 #define Anum_pg_aocs_segno 1
 #define Anum_pg_aocs_tupcount 2
@@ -123,39 +121,21 @@ extern AOCSFileSegInfo *
 GetAOCSFileSegInfo(
 	Relation 			prel,
 	AppendOnlyEntry 	*aoEntry,
-	Snapshot 			appendOnlyMetaDataSnapshot,
+	Snapshot 			snapshot,
 	int32 				segno);
 
-
-extern AOCSFileSegInfo **
-GetAllAOCSFileSegInfo(
-	Relation 			prel, 
-	AppendOnlyEntry 	*aoEntry, 
-	Snapshot 			appendOnlyMetaDataSnapshot, 
-	int 				*totalseg);
-
-extern AOCSFileSegInfo **
-GetAllAOCSFileSegInfo_pg_aocsseg_rel(
-	int 				numOfColumsn, 
-	char 				*relationName, 
-	AppendOnlyEntry 	*aoEntry, 
-	Relation 			pg_aocsseg_rel, 
-	Snapshot 			appendOnlyMetaDataSnapshot, 
-	LOCKMODE 			lm, 
-	int32 				*totalseg);
-
+extern AOCSFileSegInfo **GetAllAOCSFileSegInfo(Relation prel, AppendOnlyEntry *aoEntry, Snapshot snapshot, int *totalseg);
+extern AOCSFileSegInfo **GetAllAOCSFileSegInfo_pg_aocsseg_rel(int numOfColumsn, char *relationName, AppendOnlyEntry *aoEntry, Relation pg_aocsseg_rel, Snapshot snapshot, int32 *totalseg);
 extern void FreeAllAOCSSegFileInfo(AOCSFileSegInfo **allAOCSSegInfo, int totalSegFiles);
 
-extern int64 GetAOCSTotalBytes(
-	Relation parentrel, 
-	Snapshot appendOnlyMetaDataSnapshot);
+extern int64 GetAOCSTotalBytes(Relation parentrel);
 
 extern AOCSFileSegInfo *NewAOCSFileSegInfo(int4 segno, int4 nvp);
 extern void InsertInitialAOCSFileSegInfo(Oid segrelid, int32 segno, int32 nvp); 
 extern void UpdateAOCSFileSegInfo(struct AOCSInsertDescData *desc);
 extern void AOCSFileSegInfoAddCount(Relation prel, AppendOnlyEntry *aoEntry, int32 segno, int64 tupadded, int64 varblockadded); 
 
-extern Datum gp_update_aocol_master_stats_internal(Relation parentrel, Snapshot appendOnlyMetaDataSnapshot);
+extern Datum gp_update_aocol_master_stats_internal(Relation parentrel);
 extern Datum aocol_compression_ratio_internal(Relation parentrel);
 
 #endif

@@ -91,7 +91,6 @@ typedef int Py_ssize_t;
 #include <fcntl.h>
 
 /* postgreSQL stuff */
-#include "access/catquery.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "commands/trigger.h"
@@ -375,9 +374,8 @@ static PyObject *PLy_procedure_call(PLyProcedure *, char *, PyObject *);
 
 static PLyProcedure *PLy_procedure_get(Oid fn_oid, bool is_trigger);
 
-static PLyProcedure *PLy_procedure_create(cqContext	*pcqCtx,
-										  HeapTuple procTup,
-										  Oid fn_oid, bool is_trigger);
+static PLyProcedure *PLy_procedure_create(HeapTuple procTup,
+					 Oid fn_oid, bool is_trigger);
 
 static void PLy_procedure_compile(PLyProcedure *, const char *);
 static char *PLy_procedure_munge_source(const char *, const char *);
@@ -508,7 +506,6 @@ plpython_validator(PG_FUNCTION_ARGS)
 	HeapTuple	tuple;
 	Form_pg_proc procStruct;
 	bool		is_trigger;
-	cqContext  *pcqCtx;
 
 	if (!check_function_bodies)
 	{
@@ -516,21 +513,14 @@ plpython_validator(PG_FUNCTION_ARGS)
 	}
 
 	/* Get the new function's pg_proc entry */
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_proc "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(funcoid)));
-
-	tuple = caql_getnext(pcqCtx);
-
+	tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcoid));
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for function %u", funcoid);
 	procStruct = (Form_pg_proc) GETSTRUCT(tuple);
 
 	is_trigger = PLy_procedure_is_trigger(procStruct);
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(tuple);
 
 	PLy_procedure_get(funcoid, is_trigger);
 
@@ -1028,12 +1018,13 @@ PLy_trigger_build_args(FunctionCallInfo fcinfo, PLyProcedure *proc, HeapTuple *r
 static Datum
 PLy_function_handler(FunctionCallInfo fcinfo, PLyProcedure *proc)
 {
-	Datum						rv;
-	FuncCallContext	*volatile	funcctx		   = NULL;
-	PyObject 		*volatile	plargs		   = NULL;
-	PyObject		*volatile	plrv		   = NULL;
-	bool						bFirstTimeCall = false; 
-	ErrorContextCallback		plerrcontext;
+	Datum		rv;
+	FuncCallContext  *	 funcctx 	= NULL;
+	PyObject   *volatile plargs 	= NULL;
+	PyObject   *volatile plrv 		= NULL;
+	bool				 bFirstTimeCall = false; 
+
+	ErrorContextCallback plerrcontext;
 
 	PG_TRY();
 	{
@@ -1495,7 +1486,6 @@ PLy_procedure_valid(PLyProcedure *proc, HeapTuple procTup)
 	{
 		Oid			relid;
 		HeapTuple	relTup;
-		cqContext  *pcqCtx;
 
 		/* Short-circuit on first changed argument */
 		if (!valid)
@@ -1511,15 +1501,7 @@ PLy_procedure_valid(PLyProcedure *proc, HeapTuple procTup)
 
 		/* Get the pg_class tuple for the argument type */
 		relid = proc->args[i].typ_relid;
-
-		pcqCtx = caql_beginscan(
-				NULL,
-				cql("SELECT * FROM pg_class "
-					" WHERE oid = :1 ",
-					ObjectIdGetDatum(relid)));
-
-		relTup  = caql_getnext(pcqCtx);
-
+		relTup = SearchSysCache1(RELOID, ObjectIdGetDatum(relid));
 		if (!HeapTupleIsValid(relTup))
 			elog(ERROR, "cache lookup failed for relation %u", relid);
 
@@ -1528,7 +1510,7 @@ PLy_procedure_valid(PLyProcedure *proc, HeapTuple procTup)
 			  ItemPointerEquals(&proc->args[i].typrel_tid, &relTup->t_self)))
 			valid = false;
 
-		caql_endscan(pcqCtx);
+		ReleaseSysCache(relTup);
 	}
 
 	return valid;
@@ -1550,16 +1532,8 @@ PLy_procedure_get(Oid fn_oid, bool is_trigger)
 	HeapTuple	procTup;
 	PLyProcedureEntry *volatile entry;
 	bool		found;
-	cqContext  *pcqCtx;
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_proc "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(fn_oid)));
-
-	procTup  = caql_getnext(pcqCtx);
-
+	procTup = SearchSysCache1(PROCOID, ObjectIdGetDatum(fn_oid));
 	if (!HeapTupleIsValid(procTup))
 		elog(ERROR, "cache lookup failed for function %u", fn_oid);
 
@@ -1576,16 +1550,14 @@ PLy_procedure_get(Oid fn_oid, bool is_trigger)
 		if (!found)
 		{
 			/* Haven't found it, create a new cache entry */
-			entry->proc = PLy_procedure_create(pcqCtx,
-											   procTup, fn_oid, is_trigger);
+			entry->proc = PLy_procedure_create(procTup, fn_oid, is_trigger);
 		}
 		else if (!PLy_procedure_valid(entry->proc, procTup))
 		{
 			/* Found it, but it's invalid, free and reuse the cache entry */
 			PLy_procedure_delete(entry->proc);
 			PLy_free(entry->proc);
-			entry->proc = PLy_procedure_create(pcqCtx,
-											   procTup, fn_oid, is_trigger);
+			entry->proc = PLy_procedure_create(procTup, fn_oid, is_trigger);
 		}
 		/* Found it and it's valid, it's fine to use it */
 	}
@@ -1602,7 +1574,7 @@ PLy_procedure_get(Oid fn_oid, bool is_trigger)
 	}
 	PG_END_TRY();
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(procTup);
 
 	return entry->proc;
 }
@@ -1611,8 +1583,7 @@ PLy_procedure_get(Oid fn_oid, bool is_trigger)
  * Create a new PLyProcedure structure
  */
 static PLyProcedure *
-PLy_procedure_create(cqContext	*pcqCtx,
-					 HeapTuple procTup, Oid fn_oid, bool is_trigger)
+PLy_procedure_create(HeapTuple procTup, Oid fn_oid, bool is_trigger)
 {
 	char		procName[NAMEDATALEN + 256];
 	Form_pg_proc procStruct;
@@ -1658,16 +1629,9 @@ PLy_procedure_create(cqContext	*pcqCtx,
 		{
 			HeapTuple	rvTypeTup;
 			Form_pg_type rvTypeStruct;
-			cqContext	*typcqCtx;
 
-			typcqCtx = caql_beginscan(
-					NULL,
-					cql("SELECT * FROM pg_type "
-						" WHERE oid = :1 ",
-						ObjectIdGetDatum(procStruct->prorettype)));
-
-			rvTypeTup = caql_getnext(typcqCtx);
-
+			rvTypeTup = SearchSysCache1(TYPEOID,
+								   ObjectIdGetDatum(procStruct->prorettype));
 			if (!HeapTupleIsValid(rvTypeTup))
 				elog(ERROR, "cache lookup failed for type %u",
 					 procStruct->prorettype);
@@ -1705,7 +1669,7 @@ PLy_procedure_create(cqContext	*pcqCtx,
 				PLy_output_datum_func(&proc->result, rvTypeTup);
 			}
 
-			caql_endscan(typcqCtx);
+			ReleaseSysCache(rvTypeTup);
 		}
 
 		/*
@@ -1743,7 +1707,6 @@ PLy_procedure_create(cqContext	*pcqCtx,
 			{
 				HeapTuple	argTypeTup;
 				Form_pg_type argTypeStruct;
-				cqContext	*typcqCtx;
 
 				if (modes &&
 					(modes[i] == PROARGMODE_OUT ||
@@ -1752,14 +1715,8 @@ PLy_procedure_create(cqContext	*pcqCtx,
 
 				Assert(types[i] == procStruct->proargtypes.values[pos]);
 
-				typcqCtx = caql_beginscan(
-						NULL,
-						cql("SELECT * FROM pg_type "
-							" WHERE oid = :1 ",
-							ObjectIdGetDatum(types[i])));
-
-				argTypeTup = caql_getnext(typcqCtx);
-
+				argTypeTup = SearchSysCache1(TYPEOID,
+											 ObjectIdGetDatum(types[i]));
 				if (!HeapTupleIsValid(argTypeTup))
 					elog(ERROR, "cache lookup failed for type %u", types[i]);
 				argTypeStruct = (Form_pg_type) GETSTRUCT(argTypeTup);
@@ -1788,7 +1745,7 @@ PLy_procedure_create(cqContext	*pcqCtx,
 				/* get argument name */
 				proc->argnames[pos] = names ? PLy_strdup(names[i]) : NULL;
 
-				caql_endscan(typcqCtx);
+				ReleaseSysCache(argTypeTup);
 
 				pos++;
 			}
@@ -1797,8 +1754,8 @@ PLy_procedure_create(cqContext	*pcqCtx,
 		/*
 		 * get the text of the function.
 		 */
-		prosrcdatum = caql_getattr(pcqCtx,
-								   Anum_pg_proc_prosrc, &isnull);
+		prosrcdatum = SysCacheGetAttr(PROCOID, procTup,
+									  Anum_pg_proc_prosrc, &isnull);
 		if (isnull)
 			elog(ERROR, "null prosrc");
 		procSource = TextDatumGetCString(prosrcdatum);
@@ -2169,19 +2126,10 @@ PLy_input_tuple_funcs(PLyTypeInfo *arg, TupleDesc desc)
 	if (desc->tdtypeid != RECORDOID && !TransactionIdIsValid(arg->typrel_xmin))
 	{
 		HeapTuple	relTup;
-		cqContext  *relcqCtx;
 
 		/* Get the pg_class tuple corresponding to the type of the input */
 		arg->typ_relid = typeidTypeRelid(desc->tdtypeid);
-
-		relcqCtx = caql_beginscan(
-				NULL,
-				cql("SELECT * FROM pg_class "
-					" WHERE oid = :1 ",
-					ObjectIdGetDatum(arg->typ_relid)));
-
-		relTup = caql_getnext(relcqCtx);
-
+		relTup = SearchSysCache1(RELOID, ObjectIdGetDatum(arg->typ_relid));
 		if (!HeapTupleIsValid(relTup))
 			elog(ERROR, "cache lookup failed for relation %u", arg->typ_relid);
 
@@ -2189,13 +2137,12 @@ PLy_input_tuple_funcs(PLyTypeInfo *arg, TupleDesc desc)
 		arg->typrel_xmin = HeapTupleHeaderGetXmin(relTup->t_data);
 		arg->typrel_tid = relTup->t_self;
 
-		caql_endscan(relcqCtx);
+		ReleaseSysCache(relTup);
 	}
 	
 	for (i = 0; i < desc->natts; i++)
 	{
 		HeapTuple	typeTup;
-		cqContext  *typcqCtx;
 		
 		if (desc->attrs[i]->attisdropped)
 			continue;
@@ -2203,14 +2150,8 @@ PLy_input_tuple_funcs(PLyTypeInfo *arg, TupleDesc desc)
 		if (arg->in.r.atts[i].typoid == desc->attrs[i]->atttypid)
 			continue;			/* already set up this entry */
 
-		typcqCtx = caql_beginscan(
-				NULL,
-				cql("SELECT * FROM pg_type "
-					" WHERE oid = :1 ",
-					ObjectIdGetDatum(desc->attrs[i]->atttypid)));
-
-		typeTup = caql_getnext(typcqCtx);
-
+		typeTup = SearchSysCache1(TYPEOID,
+								  ObjectIdGetDatum(desc->attrs[i]->atttypid));
 		if (!HeapTupleIsValid(typeTup))
 			elog(ERROR, "cache lookup failed for type %u",
 				 desc->attrs[i]->atttypid);
@@ -2219,7 +2160,7 @@ PLy_input_tuple_funcs(PLyTypeInfo *arg, TupleDesc desc)
 							  desc->attrs[i]->atttypid,
 							  typeTup);
 
-		caql_endscan(typcqCtx);
+		ReleaseSysCache(typeTup);
 	}
 }
 
@@ -2269,7 +2210,6 @@ PLy_output_tuple_funcs(PLyTypeInfo *arg, TupleDesc desc)
 	for (i = 0; i < desc->natts; i++)
 	{
 		HeapTuple	typeTup;
-		cqContext  *typcqCtx;
 
 		if (desc->attrs[i]->attisdropped)
 			continue;
@@ -2277,21 +2217,15 @@ PLy_output_tuple_funcs(PLyTypeInfo *arg, TupleDesc desc)
 		if (arg->out.r.atts[i].typoid == desc->attrs[i]->atttypid)
 			continue;			/* already set up this entry */
 
-		typcqCtx = caql_beginscan(
-				NULL,
-				cql("SELECT * FROM pg_type "
-					" WHERE oid = :1 ",
-					ObjectIdGetDatum(desc->attrs[i]->atttypid)));
-
-		typeTup = caql_getnext(typcqCtx);
-
+		typeTup = SearchSysCache1(TYPEOID,
+								  ObjectIdGetDatum(desc->attrs[i]->atttypid));
 		if (!HeapTupleIsValid(typeTup))
 			elog(ERROR, "cache lookup failed for type %u",
 				 desc->attrs[i]->atttypid);
 
 		PLy_output_datum_func2(&(arg->out.r.atts[i]), typeTup);
 
-		caql_endscan(typcqCtx);
+		ReleaseSysCache(typeTup);
 	}
 }
 
@@ -3505,7 +3439,6 @@ PLy_spi_prepare(PyObject *self __attribute__((unused)), PyObject *args)
 	void	   *tmpplan;
 	volatile MemoryContext oldcontext;
 	volatile ResourceOwner oldowner;
-
 	volatile int nargs;
 
 	if (!PyArg_ParseTuple(args, "s|O", &query, &list))
@@ -3555,7 +3488,6 @@ PLy_spi_prepare(PyObject *self __attribute__((unused)), PyObject *args)
 			Oid			typeId;
 			int32		typmod;
 			Form_pg_type typeStruct;
-			cqContext  *typcqCtx;
 
 			optr = PySequence_GetItem(list, i);
 			if (PyString_Check(optr))
@@ -3577,14 +3509,8 @@ PLy_spi_prepare(PyObject *self __attribute__((unused)), PyObject *args)
 
 			parseTypeString(sptr, &typeId, &typmod);
 
-			typcqCtx = caql_beginscan(
-					NULL,
-					cql("SELECT * FROM pg_type "
-						" WHERE oid = :1 ",
-						ObjectIdGetDatum(typeId)));
-
-			typeTup = caql_getnext(typcqCtx);
-
+			typeTup = SearchSysCache1(TYPEOID,
+									  ObjectIdGetDatum(typeId));
 			if (!HeapTupleIsValid(typeTup))
 				elog(ERROR, "cache lookup failed for type %u", typeId);
 
@@ -3604,8 +3530,7 @@ PLy_spi_prepare(PyObject *self __attribute__((unused)), PyObject *args)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				   errmsg("plpy.prepare does not support composite types")));
-
-			caql_endscan(typcqCtx);
+			ReleaseSysCache(typeTup);
 		}
 
 		pg_verifymbstr(query, strlen(query), false);

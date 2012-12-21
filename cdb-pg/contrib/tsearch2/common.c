@@ -4,7 +4,6 @@
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_proc.h"
 #include "utils/syscache.h"
-#include "utils/lsyscache.h"
 #include "miscadmin.h"
 
 #include "ts_cfg.h"
@@ -125,18 +124,25 @@ text_cmp(text *a, text *b)
 char *
 get_namespace(Oid funcoid)
 {
+	HeapTuple	tuple;
+	Form_pg_proc proc;
+	Form_pg_namespace nsp;
 	Oid			nspoid;
 	char	   *txt;
 
-	nspoid = get_func_namespace(funcoid);
-
-	if (!OidIsValid(nspoid))
+	tuple = SearchSysCache(PROCOID, ObjectIdGetDatum(funcoid), 0, 0, 0);
+	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for proc oid %u", funcoid);
+	proc = (Form_pg_proc) GETSTRUCT(tuple);
+	nspoid = proc->pronamespace;
+	ReleaseSysCache(tuple);
 
-	txt = get_namespace_name(nspoid);
-
-	if (NULL == txt)
+	tuple = SearchSysCache(NAMESPACEOID, ObjectIdGetDatum(nspoid), 0, 0, 0);
+	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for namespace oid %u", nspoid);
+	nsp = (Form_pg_namespace) GETSTRUCT(tuple);
+	txt = pstrdup(NameStr((nsp->nspname)));
+	ReleaseSysCache(tuple);
 
 	return txt;
 }
@@ -144,12 +150,16 @@ get_namespace(Oid funcoid)
 Oid
 get_oidnamespace(Oid funcoid)
 {
+	HeapTuple	tuple;
+	Form_pg_proc proc;
 	Oid			nspoid;
 
-	nspoid = get_func_namespace(funcoid);
-
-	if (!OidIsValid(nspoid))
+	tuple = SearchSysCache(PROCOID, ObjectIdGetDatum(funcoid), 0, 0, 0);
+	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for proc oid %u", funcoid);
+	proc = (Form_pg_proc) GETSTRUCT(tuple);
+	nspoid = proc->pronamespace;
+	ReleaseSysCache(tuple);
 
 	return nspoid;
 }

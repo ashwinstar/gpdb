@@ -52,7 +52,7 @@ class GpdbRestore(Operation):
             raise ProgramArgumentValidationException("Only supply one of -t, -b, -R, or -s.")
 
         if options.list_tables and options.db_timestamp is None:
-            raise ProgramArgumentValidationException("Need to supply -t <timestamp> for -L option")
+            raise ProgramArgumentValidationException("Need to suppy -t <timestamp> for -L option")
 
         if options.masterDataDirectory is None:
             options.masterDataDirectory = gp.get_masterdatadir()
@@ -216,11 +216,8 @@ class GpdbRestore(Operation):
         logger.info("--------------------------------------------------------------------")
         logger.info("List of database tables for dump file with time stamp %s" % self.db_timestamp)
         logger.info("--------------------------------------------------------------------")
-        external_table_print = {}
-        external_table_print[True] = "External "
-        external_table_print[False] = ""
-        for is_external, schema, table, owner in dump_tables:
-            logger.info("%sTable %s.%s Owner %s" % (external_table_print[is_external], schema, table, owner))
+        for schema, table, owner in dump_tables:
+            logger.info("Table %s.%s Owner %s" % (schema, table, owner))
         logger.info("--------------------------------------------------------------------")
 
     def _gather_info(self):
@@ -238,8 +235,7 @@ class GpdbRestore(Operation):
         (restore_timestamp, restore_db, compress) = (None, None, None)
         if self.db_timestamp is not None:
             (restore_timestamp, restore_db, compress) = ValidateTimestamp(master_datadir = self.master_datadir, 
-                                                                          candidate_timestamp = self.db_timestamp,
-                                                                            ddboost = self.ddboost).run()
+                                                                          candidate_timestamp = self.db_timestamp).run()
         elif self.db_date_dir is not None:
             (restore_timestamp, restore_db, compress) = self._validate_db_date_dir()
         elif self.db_host_path is not None:
@@ -293,14 +289,7 @@ class GpdbRestore(Operation):
         return (restore_timestamp, restore_db, compress)
 
     def _validate_db_host_path(self):
-        # The format of the -R option should be 'hostname:path_to_dumpset', hence the length should be 2 (hostname, path_to_dumpset)
-        if len(self.db_host_path) != 2:
-            raise ProgramArgumentValidationException("The arguments of the -R flag are incorrect. The correct form should be as follows:\nIPv4_address:path_to_dumpset\n-OR-\n[IPv6_address]:path_to_dumpset\n", False)
-        
-        host, path = self.db_host_path       
-        logger.debug("The host is %s" % host)
-        logger.debug("The path is %s" % path)    
-
+        host, path = self.db_host_path
         Ping.local('Pinging %s' % host, host)
         matching = ListRemoteFilesByPattern(path, "%s*" % CREATEDB_PREFIX, host).run()
         if len(matching) == 0:

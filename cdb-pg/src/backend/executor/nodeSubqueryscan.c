@@ -83,12 +83,36 @@ SubqueryNext(SubqueryScanState *node)
     if (node->cdb_want_ctid &&
         !TupIsNull(slot))
     {
-    	slot_set_ctid_from_fake(slot, &node->cdb_fake_ctid);
-    }
+		/* uninitialised */
+		if (!ItemPointerIsValid(&node->cdb_fake_ctid))
+		{
+			ItemPointerSetBlockNumber(&node->cdb_fake_ctid, 0);
+			ItemPointerSetOffsetNumber(&node->cdb_fake_ctid, FirstOffsetNumber);
+		}
+		else
+		{
+			/* would we overflow? */
+			if (ItemPointerGetOffsetNumber(&node->cdb_fake_ctid) == 
+				MaxOffsetNumber - 1)
+			{
+				/* How can we overflow 2^46? */
+				Assert(ItemPointerGetBlockNumber(&node->cdb_fake_ctid) !=
+					   MaxBlockNumber - 1);
+				ItemPointerSetBlockNumber(&node->cdb_fake_ctid,
+						ItemPointerGetBlockNumber(&node->cdb_fake_ctid) + 1);
+				ItemPointerSetOffsetNumber(&node->cdb_fake_ctid, 
+										   FirstOffsetNumber);
+			}
+			else
+				ItemPointerSetOffsetNumber(&node->cdb_fake_ctid,
+					ItemPointerGetOffsetNumber(&node->cdb_fake_ctid) + 1);
 
+		}
+
+		slot_set_ctid(slot, &node->cdb_fake_ctid);
+    }
     if (!TupIsNull(slot))
     {
-		Gpmon_M_Incr(GpmonPktFromSubqueryScanState(node), GPMON_QEXEC_M_ROWSIN);
         Gpmon_M_Incr_Rows_Out(GpmonPktFromSubqueryScanState(node));
         CheckSendPlanStateGpmonPkt(&node->ss.ps);
     }
@@ -124,6 +148,7 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 {
 	SubqueryScanState *subquerystate;
 	EState	   *sp_estate;
+    List       *tlist;
 
 	/* check for unsupported flags */
 	Assert(!(eflags & EXEC_FLAG_MARK));
@@ -168,8 +193,12 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 		ExecInitExpr((Expr *) node->scan.plan.qual,
 					 (PlanState *) subquerystate);
 
-	/* Check if targetlist or qual contains a var node referencing the ctid column */
-	subquerystate->cdb_want_ctid = contain_ctid_var_reference(&node->scan);
+    /* CDB: Does targetlist contain a Var node referencing the ctid column? */
+    tlist = node->scan.plan.targetlist;
+    subquerystate->cdb_want_ctid = contain_var_reference((Node *)tlist,
+                                                         node->scan.scanrelid,
+                                                         SelfItemPointerAttributeNumber,
+                                                         0);
 	ItemPointerSetInvalid(&subquerystate->cdb_fake_ctid);
 
 #define SUBQUERYSCAN_NSLOTS 2
@@ -208,9 +237,7 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	 * global state is already set up by the code that called us.
 	 */
 	sp_estate->es_sliceTable = estate->es_sliceTable;
-	sp_estate->currentSliceIdInPlan = estate->currentSliceIdInPlan;
-	sp_estate->currentExecutingSliceId = estate->currentExecutingSliceId;
-	sp_estate->rootSliceId = estate->currentExecutingSliceId;
+	sp_estate->current_slice_no = estate->current_slice_no;
 	
 	/* 
 	 * also load shared nodes list 
@@ -309,8 +336,6 @@ ExecSubqueryReScan(SubqueryScanState *node, ExprContext *exprCtxt)
 	EState	   *estate;
 
 	estate = node->ss.ps.state;
-
-	ItemPointerSet(&node->cdb_fake_ctid, 0, 0);
 
 	/*
 	 * ExecReScan doesn't know about my subplan, so I have to do

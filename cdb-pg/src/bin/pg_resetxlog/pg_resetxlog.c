@@ -57,7 +57,6 @@
 #include "access/xlog_internal.h"
 #include "catalog/catversion.h"
 #include "catalog/pg_control.h"
-#include "postmaster/primary_mirror_mode.h"
 
 extern int	optind;
 extern char *optarg;
@@ -77,9 +76,6 @@ static void KillExistingXLOG(void);
 static void WriteEmptyXLOG(void);
 static void usage(void);
 
-#ifndef BUFFER_LEN
-#define BUFFER_LEN (2 * (MAXPGPATH))
-#endif
 
 int
 main(int argc, char *argv[])
@@ -420,7 +416,7 @@ ReadControlFile(void)
 	  ((ControlFileData *) buffer)->pg_control_version == PG_CONTROL_VERSION)
 	{
 		/* Check the CRC. */
-		crc = crc32c(crc32cInit(), buffer, offsetof(ControlFileData, crc));
+		crc = crc32cSlicingBy8(crc32cInit(), &ControlFile, offsetof(ControlFileData, crc));
 		crc32cFinish(crc);
 
 		if (EQ_CRC32(crc, ((ControlFileData *) buffer)->crc))
@@ -650,7 +646,7 @@ RewriteControlFile(void)
 	ControlFile.minRecoveryPoint.xrecoff = 0;
 
 	/* Contents are protected with a CRC */
-	ControlFile.crc = crc32c(crc32cInit(), &ControlFile, offsetof(ControlFileData, crc));
+	ControlFile.crc = crc32cSlicingBy8(crc32cInit(), &ControlFile, offsetof(ControlFileData, crc));
 	crc32cFinish(ControlFile.crc);
 	/*
 	INIT_CRC32(ControlFile.crc);
@@ -780,9 +776,6 @@ WriteEmptyXLOG(void)
 	char		path[MAXPGPATH];
 	int			fd;
 	int			nbytes;
-	FILE		*fp = NULL;
-	char 		*pch = NULL;
-	char 		buf[BUFFER_LEN];
 
 	/* Use malloc() to ensure buffer is MAXALIGNED */
 	buffer = (char *) malloc(XLOG_BLCKSZ);
@@ -814,8 +807,8 @@ WriteEmptyXLOG(void)
 	memcpy(XLogRecGetData(record), &ControlFile.checkPointCopy,
 		   sizeof(CheckPoint));
 
-	crc = crc32c(crc32cInit(), &ControlFile.checkPointCopy, sizeof(CheckPoint));
-	crc = crc32c(crc, (char *) record + sizeof(pg_crc32), SizeOfXLogRecord - sizeof(pg_crc32));
+	crc = crc32cSlicingBy8(crc32cInit(), &ControlFile.checkPointCopy, sizeof(CheckPoint));
+	crc = crc32cSlicingBy8(crc, (char *) record + sizeof(pg_crc32), SizeOfXLogRecord - sizeof(pg_crc32));
 	crc32cFinish(crc);
 	/*
 	INIT_CRC32(crc);
@@ -826,35 +819,8 @@ WriteEmptyXLOG(void)
 	*/
 	record->xl_crc = crc;
 
-	/* 
-	 * If we make the filespace for transaction files configurable, then
-	 * pg_resetxlog should pick up the XLOG files from the right location.
-	 * Check the flat file for determining the right location of XLOG files
-	 */
-	fp = fopen(TXN_FILESPACE_FLATFILE, "r");
-	if (fp)
-        {
-                MemSet(buf, 0, BUFFER_LEN);
-                if (fgets(buf, BUFFER_LEN, fp))
-			;	/* First line is Filespace OID, skip it */
-
-                MemSet(buf, 0, BUFFER_LEN);
-                if (fgets(buf, BUFFER_LEN, fp))
-                {
-                        buf[strlen(buf)-1]='\0';
-                        pch = strtok(buf, " ");	/* The first part is DBID. Skip it */
-                        pch = strtok(NULL, " ");
-                        sprintf(path,"%s/%s", pch, XLOGDIR);
-                }
-	}
-	else
-	{
-		/* No flat file. Use the default pg_system filespace */
-		sprintf(path, "%s", XLOGDIR);
-	}
-
 	/* Write the first page */
-	XLogFilePath2(path, ControlFile.checkPointCopy.ThisTimeLineID,
+	XLogFilePath(path, ControlFile.checkPointCopy.ThisTimeLineID,
 				 newXlogId, newXlogSeg);
 
 	unlink(path);

@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Canvas xmlns:mx="http://www.adobe.com/2006/mxml"
+	width="100%" height="100%" xmlns:panel="panel.*" xmlns:chart="chart.*"
+	creationPolicy="queued" creationComplete="canvasInit(event)">
+<mx:HBox width="{this.width}" height="{this.height}">
+
+<mx:Script>
+    <![CDATA[
+      import model.GPPerfMonModelLocator;
+      import mx.charts.events.ChartItemEvent;
+      import model.Resources;
+      import mx.managers.CursorManager;
+  			
+  	  [Bindable]
+	  public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();	
+	  
+	  // What cursor are we showing?
+	  private var cursorID:int = 0;
+	  
+	private function canvasInit(event:Event): void 
+	{ 
+		event.target.addEventListener(ChartItemEvent.CHANGE, chartItemEventChange, true, 0, true); 
+	} 
+
+	private function chartItemEventChange(event: Event): void 
+	{ 
+		var evt:ChartItemEvent = event as ChartItemEvent;
+		if (evt)
+			evt.stopImmediatePropagation(); 
+	}
+	
+	private function changeCursor(e:MouseEvent):void{
+		if (cursorID == 0)
+		{
+			cursorID = CursorManager.setCursor(Resources.spyglassCursor);
+		}
+	}
+	private function restoreCursor(e:MouseEvent):void{
+		if (cursorID != 0)
+		{
+			CursorManager.removeCursor(cursorID);
+			cursorID = 0;
+		}
+	}	
+    ]]>
+</mx:Script>	
+	
+	<mx:VBox width="100%" height="100%">
+		<mx:HBox width="100%" height="100%">
+			
+			<!-- Comment#1:	changed the way data binding occurs by using the recommended
+					ArrayList wrapper and getItemAt method to eliminate compiler warnings.
+			-->
+			<mx:Panel title="{mdl.nav.metricsList.getItemAt(0)}"
+				styleName="smallMetricGraph" width="50%" height="100%" id="p1">	
+				<chart:ActiveQueriesChart id="smg0" width="100%" height="100%" 
+					click="{mdl.nav.metricSelected=0; mdl.nav.systemTabPage=1;}"
+					mouseOver="{changeCursor(event)}"
+					mouseOut="{restoreCursor(event)}"/>			
+			</mx:Panel>			
+					
+			<!--Same as Comment #1-->
+			<mx:Panel title="{mdl.nav.metricsList.getItemAt(1)}"
+				styleName="smallMetricGraph" width="50%" height="100%" id="p2">
+					<chart:MemoryChart id="smg1" width="100%" height="100%" 
+					click="{mdl.nav.metricSelected=1; mdl.nav.systemTabPage=1;}"
+					mouseOver="{changeCursor(event)}"
+					mouseOut="{restoreCursor(event)}"/>	
+			</mx:Panel>					
+				
+		</mx:HBox>
+		<mx:HBox width="100%" height="100%">
+		
+			<!--Same as Comment #1-->
+			<mx:Panel title="{mdl.nav.metricsList.getItemAt(2)}"
+				styleName="smallMetricGraph" width="50%" height="100%" id="p3">
+				<chart:CPUChart width="100%" height="100%" 
+					click="{mdl.nav.metricSelected=2; mdl.nav.systemTabPage=1;}"
+					mouseOver="{changeCursor(event)}"
+					mouseOut="{restoreCursor(event)}"/>	
+			</mx:Panel>			
+					
+			<!--Same as Comment #1-->
+			<mx:Panel title="{mdl.nav.metricsList.getItemAt(3)}"
+				styleName="smallMetricGraph" width="50%" height="100%" id="p4">
+					<chart:LoadChart width="100%" height="100%" 
+					click="{mdl.nav.metricSelected=3; mdl.nav.systemTabPage=1;}"
+					mouseOver="{changeCursor(event)}"
+					mouseOut="{restoreCursor(event)}"/>	
+			</mx:Panel>					
+				
+		</mx:HBox>
+		<mx:HBox width="100%" height="100%">
+		
+			<!--Same as Comment #1-->
+			<mx:Panel title="{mdl.nav.metricsList.getItemAt(4)}" 
+				styleName="smallMetricGraph" width="50%" height="100%" id="p5">
+				<chart:SwapInUseChart width="100%" height="100%" 
+					click="{mdl.nav.metricSelected=4; mdl.nav.systemTabPage=1;}"
+					mouseOver="{changeCursor(event)}"
+					mouseOut="{restoreCursor(event)}"/>		
+			</mx:Panel>			
+					
+			<!--Same as Comment #1-->
+			<mx:Panel title="{mdl.nav.metricsList.getItemAt(5)}"  
+				styleName="smallMetricGraph" width="50%" height="100%" id="p6">
+					<chart:SwapPagingChart width="100%" height="100%" 
+					click="{mdl.nav.metricSelected=5; mdl.nav.systemTabPage=1;}"
+					mouseOver="{changeCursor(event)}"
+					mouseOut="{restoreCursor(event)}"/>		
+			</mx:Panel>					
+				
+		</mx:HBox>		
+		<mx:HBox width="100%" height="100%">
+			
+			<!--Same as Comment #1-->
+			<mx:Panel title="{mdl.nav.metricsList.getItemAt(6)}"
+				styleName="smallMetricGraph" width="50%" height="100%" id="p7">
+				<chart:DiskIOPSChart width="100%" height="100%" 
+					click="{mdl.nav.metricSelected=6; mdl.nav.systemTabPage=1;}"
+					mouseOver="{changeCursor(event)}"
+					mouseOut="{restoreCursor(event)}"/>		
+			</mx:Panel>							
+					
+			<!--Same as Comment #1-->
+			<mx:Panel title="{mdl.nav.metricsList.getItemAt(7)}"
+				styleName="smallMetricGraph" width="50%" height="100%" id="p8">
+					<chart:DiskIOBytesChart width="100%" height="100%" 
+					click="{mdl.nav.metricSelected=7; mdl.nav.systemTabPage=1;}"
+					mouseOver="{changeCursor(event)}"
+					mouseOut="{restoreCursor(event)}"/>		
+			</mx:Panel>								
+				
+		</mx:HBox>
+		<mx:HBox width="100%" height="100%">
+		
+			<!--Same as Comment #1-->
+			<mx:Panel title="{mdl.nav.metricsList.getItemAt(8)}" 
+				styleName="smallMetricGraph" width="50%" height="100%" id="p9">
+					<chart:NetworkPacketsChart width="100%" height="100%" 
+					click="{mdl.nav.metricSelected=8; mdl.nav.systemTabPage=1;}"
+					mouseOver="{changeCursor(event)}"
+					mouseOut="{restoreCursor(event)}"/>	
+			</mx:Panel>					
+					
+			<!--Same as Comment #1-->
+			<mx:Panel title="{mdl.nav.metricsList.getItemAt(9)}"
+				styleName="smallMetricGraph" width="50%" height="100%" id="p10">
+					<chart:NetworkBytesChart width="100%" height="100%" 
+					click="{mdl.nav.metricSelected=9; mdl.nav.systemTabPage=1;}"
+					mouseOver="{changeCursor(event)}"
+					mouseOut="{restoreCursor(event)}"/>		
+			</mx:Panel>								
+				
+		</mx:HBox>				
+	</mx:VBox>		
+
+</mx:HBox>
+</mx:Canvas>

@@ -101,7 +101,6 @@ static char *pwfilename = NULL;
 static char *authmethod = "";
 static bool debug = false;
 static bool noclean = false;
-static char *backend_output = DEVNULL;
 
 /**
  * Build the minimal set of files needed for a mirror db.  Note that this could be removed
@@ -267,19 +266,19 @@ do { \
 			if (fprintf(cmdfd, fmt, arg1, arg2, arg3) < 0 || fflush(cmdfd) < 0) \
 				output_failed = true, output_errno = errno; \
 		} while (0)
-
+		
 #define PG_CMD_PRINTF4(fmt, arg1, arg2, arg3, arg4) \
 	do { \
 		if (fprintf(cmdfd, fmt, arg1, arg2, arg3, arg4) < 0 || fflush(cmdfd) < 0) \
 			output_failed = true, output_errno = errno; \
 	} while (0)
-
+	
 #define PG_CMD_PRINTF5(fmt, arg1, arg2, arg3, arg4, arg5) \
 			do { \
 				if (fprintf(cmdfd, fmt, arg1, arg2, arg3, arg4, arg5) < 0 || fflush(cmdfd) < 0) \
 					output_failed = true, output_errno = errno; \
 			} while (0)
-
+			
 #ifndef WIN32
 #define QUOTE_PATH	""
 #define DIR_SEP "/"
@@ -1315,7 +1314,7 @@ test_config_settings(void)
 				 "< \"%s\" > \"%s\" 2>&1%s",
 				 SYSTEMQUOTE, backend_exec, boot_options,
 				 test_conns, test_buffs, test_max_fsm,
-				 DEVNULL, backend_output, SYSTEMQUOTE);
+				 DEVNULL, DEVNULL, SYSTEMQUOTE);
 		status = system(cmd);
 		if (status == 0)
 		{
@@ -1357,7 +1356,7 @@ test_config_settings(void)
 				 "< \"%s\" > \"%s\" 2>&1%s",
 				 SYSTEMQUOTE, backend_exec, boot_options,
 				 n_connections, test_buffs, test_max_fsm,
-				 DEVNULL, backend_output, SYSTEMQUOTE);
+				 DEVNULL, DEVNULL, SYSTEMQUOTE);
 		status = system(cmd);
 		if (status == 0)
         {
@@ -1655,7 +1654,7 @@ setup_auth(void)
 	snprintf(cmd, sizeof(cmd),
 			 "\"%s\" %s template1 >%s",
 			 backend_exec, backend_options,
-			 backend_output);
+			 DEVNULL);
 
 	PG_CMD_OPEN;
 
@@ -1735,7 +1734,7 @@ get_set_pwd(void)
 	snprintf(cmd, sizeof(cmd),
 			 "\"%s\" %s template1 >%s",
 			 backend_exec, backend_options,
-			 backend_output);
+			 DEVNULL);
 
 	PG_CMD_OPEN;
 
@@ -1829,7 +1828,7 @@ setup_depend(void)
 	snprintf(cmd, sizeof(cmd),
 			 "\"%s\" %s template1 >%s",
 			 backend_exec, backend_options,
-			 backend_output);
+			 DEVNULL);
 
 	PG_CMD_OPEN;
 
@@ -1862,7 +1861,7 @@ setup_sysviews(void)
 	snprintf(cmd, sizeof(cmd),
 			 "\"%s\" %s -j template1 >%s",
 			 backend_exec, backend_options,
-			 backend_output);
+			 DEVNULL);
 
 	PG_CMD_OPEN;
 
@@ -1893,7 +1892,7 @@ setup_description(void)
 	snprintf(cmd, sizeof(cmd),
 			 "\"%s\" %s template1 >%s",
 			 backend_exec, backend_options,
-			 backend_output);
+			 DEVNULL);
 
 	PG_CMD_OPEN;
 
@@ -1945,7 +1944,7 @@ setup_conversion(void)
 	snprintf(cmd, sizeof(cmd),
 			 "\"%s\" %s template1 >%s",
 			 backend_exec, backend_options,
-			 backend_output);
+			 DEVNULL);
 
 	PG_CMD_OPEN;
 
@@ -1996,7 +1995,7 @@ setup_privileges(void)
 	snprintf(cmd, sizeof(cmd),
 			 "\"%s\" %s template1 >%s",
 			 backend_exec, backend_options,
-			 backend_output);
+			 DEVNULL);
 
 	PG_CMD_OPEN;
 
@@ -2059,7 +2058,7 @@ setup_schema(void)
 	snprintf(cmd, sizeof(cmd),
 			 "\"%s\" %s -j template1 >%s",
 			 backend_exec, backend_options,
-			 backend_output);
+			 DEVNULL);
 
 	PG_CMD_OPEN;
 
@@ -2076,7 +2075,7 @@ setup_schema(void)
 	snprintf(cmd, sizeof(cmd),
 			 "\"%s\" %s template1 >%s",
 			 backend_exec, backend_options,
-			 backend_output);
+			 DEVNULL);
 
 	PG_CMD_OPEN;
 
@@ -2118,7 +2117,7 @@ setup_cdb_schema(void)
 	snprintf(cmd, sizeof(cmd),
 			 "\"%s\" %s -j template1 >%s",
 			 backend_exec, backend_options,
-			 backend_output);
+			 DEVNULL);
 
 	PG_CMD_OPEN;
 
@@ -2135,7 +2134,7 @@ setup_cdb_schema(void)
 	snprintf(cmd, sizeof(cmd),
 			 "\"%s\" %s template1 >%s",
 			 backend_exec, backend_options,
-			 backend_output);
+			 DEVNULL);
 
 	check_ok();
 }
@@ -2148,17 +2147,17 @@ setup_gp_persistent_tables(void)
 {
 	PG_CMD_DECL;
 
-	fprintf(stdout, _("loading file-system persistent tables for template1 (mirrored = %s) ... \n"),
+	fprintf(stdout, _("loading file-system persistent tables for template1 (mirrored = %s) ... \n"), 
 		    (gIsFileRepMirrored  ? "true" : "false"));
 	fflush(stdout);
 
 	snprintf(cmd, sizeof(cmd),
 			 "\"%s\" %s -c gp_before_persistence_work=on template1 >%s",
 			 backend_exec, backend_options,
-			 backend_output);
+			 DEVNULL);
 
 	PG_CMD_OPEN;
-
+	
 	PG_CMD_PRINTF1("SELECT gp_persistent_build_db(%s);\n",
 				   (gIsFileRepMirrored  ? "true" : "false"));
 
@@ -2182,7 +2181,7 @@ vacuum_db(void)
 	snprintf(cmd, sizeof(cmd),
 			 "\"%s\" %s template1 >%s",
 			 backend_exec, backend_options,
-			 backend_output);
+			 DEVNULL);
 
 	PG_CMD_OPEN;
 
@@ -2236,7 +2235,7 @@ make_template0(void)
 	snprintf(cmd, sizeof(cmd),
 			 "\"%s\" %s template1 >%s",
 			 backend_exec, backend_options,
-			 backend_output);
+			 DEVNULL);
 
 	PG_CMD_OPEN;
 
@@ -2277,7 +2276,7 @@ make_postgres(void)
 	snprintf(cmd, sizeof(cmd),
 			 "\"%s\" %s template1 >%s",
 			 backend_exec, backend_options,
-			 backend_output);
+			 DEVNULL);
 
 	PG_CMD_OPEN;
 
@@ -2791,7 +2790,6 @@ main(int argc, char *argv[])
         {"max_fsm_pages", required_argument, NULL, 1002},       /*CDB*/
         {"shared_buffers", required_argument, NULL, 1003},      /*CDB*/
         {"is_filerep_mirrored", required_argument, NULL, 1004},      /*CDB*/
-        {"backend_output", optional_argument, NULL, 1005},      /*CDB*/
 		{"help", no_argument, NULL, '?'},
 		{"version", no_argument, NULL, 'V'},
 		{"debug", no_argument, NULL, 'd'},
@@ -2831,7 +2829,6 @@ main(int argc, char *argv[])
 		"pg_distributedxidmap",		// Old directory.
 		"pg_distributedlog",		// New directory.
 		"pg_utilitymodedtmredo",
-		"gp_performance_counters",
 		"base",
 		"base/1",
 		"pg_tblspc",
@@ -2971,9 +2968,6 @@ main(int argc, char *argv[])
     				exit(1);
                 }
                 break;
-			case 1005:
-				backend_output = xstrdup(optarg);
-				break;
 			default:
 				/* getopt_long already emitted a complaint */
 				fprintf(stderr, _("Try \"%s --help\" for more information.\n"),

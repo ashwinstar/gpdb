@@ -59,7 +59,6 @@ typedef struct SegmentDatabaseDescriptor
     int4					backendPid;
     char                   *whoami;         /* QE identifier for msgs */
     struct SegmentDatabaseDescriptor * myAgent;
-	bool					canceled;
 
 } SegmentDatabaseDescriptor;
 

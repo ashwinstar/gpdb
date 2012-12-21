@@ -27,12 +27,6 @@
 #include "utils/relcache.h"
 #include "gpmon/gpmon.h"                /* gpmon_packet_t */
 
-/*
- * Currently, since grouping is defined as uint64 internally, it limits the
- * maximum number of grouping attributes to 64.
- */
-#define MAX_GROUPING_ATTRS_IN_GROUPING_EXTENSION 64
-
 struct CdbDispatchResults;              /* in cdbdispatchresult.h */
 struct CdbExplain_ShowStatCtx;          /* private, in "cdb/cdbexplain.c" */
 struct ChunkTransportState;             /* #include "cdb/cdbinterconnect.h" */
@@ -258,7 +252,6 @@ typedef struct JunkFilter
  *  aoprocessed			???
  *  partInsertMap		map input attrno to target attrno
  *  partSlot			TupleTableSlot for the target part relation
- *  resultSlot          TupleTableSlot for the target relation
  * ----------------
  */
 typedef struct ResultRelInfo
@@ -285,7 +278,6 @@ typedef struct ResultRelInfo
 	uint64                  ri_aoprocessed; /* tuples processed for AO */
 	struct AttrMap			*ri_partInsertMap;
 	struct TupleTableSlot			*ri_partSlot;
-	struct TupleTableSlot *ri_resultSlot;
 } ResultRelInfo;
 
 typedef struct ShareNodeEntry
@@ -294,24 +286,7 @@ typedef struct ShareNodeEntry
 
 	Node *sharePlan;
 	Node *shareState;
-	int		refcount; /* reference count to guard from too-eager-free risk */
 } ShareNodeEntry;
-
-/*
- * PartitionAccessMethods
- *    Defines the lookup access methods for partitions, one for each level.
- */
-typedef struct PartitionAccessMethods
-{
-	/* Number of partition levels */
-	int partLevels;
-	
-	/* Access methods, one for each level */
-	void **amstate;
-
-	/* Memory context for access methods */
-	MemoryContext part_cxt;
-} PartitionAccessMethods;
 
 typedef struct PartitionState
 {
@@ -320,66 +295,9 @@ typedef struct PartitionState
 	AttrNumber max_partition_attr;
 	int result_partition_array_size; /* max elements of result relation array */
 	HTAB *result_partition_hash;
-	PartitionAccessMethods *accessMethods;
+	MemoryContext part_cxt;
+	void **amstate; /* access method specific lookup, one for each level */
 } PartitionState;
-
-/*
- * PartitionMetadata
- *   Defines the metadata for partitions.
- */
-typedef struct PartitionMetadata
-{
-	PartitionNode *partsAndRules;
-	PartitionAccessMethods *accessMethods;
-} PartitionMetadata;
-
-/*
- * DynamicTableScanInfo
- *   Encapsulate the information that is needed to maintain the pid indexes
- * for all dynamic table scans in a plan.
- */
-typedef struct DynamicTableScanInfo
-{
-	/*
-	 * The total number of unique dynamic table scans in the plan.
-	 */
-	int numScans;
-
-	/*
-	 * An array of pid indexes, one for each unique dynamic table scans.
-	 * Each of these pid indexes maintains unique pids that are involved
-	 * in the scan.
-	 */
-	HTAB **pidIndexes;
-
-	/*
-	 * Partitioning metadata for all relevant partition tables.
-	 */
-	List *partsMetadata;
-
-	/*
-	 * The memory context in which pidIndexes are allocated.
-	 */
-	MemoryContext memoryContext;
-} DynamicTableScanInfo;
-
-/*
- * Number of pids used when initializing the pid-index hash table for each dynamic
- * table scan.
- */
-#define INITIAL_NUM_PIDS 1000
-
-/*
- * The initial estimate size for dynamic table scan pid-index array, and the
- * default incremental number when the array is out of space.
- */
-#define NUM_PID_INDEXES_ADDED 10
-
-/*
- * The global variable for the information relevant to dynamic table scans.
- * During execution, this will point to the value initialized in EState.
- */
-extern DynamicTableScanInfo *dynamicTableScanInfo;
 
 /* ----------------
  *          EState information
@@ -484,39 +402,10 @@ typedef struct EState
 	 * The slice number for the current node that is
 	 * being processed. During the tree traversal, 
 	 * this value is set by Motion and InitPlan nodes.
-	 *
-	 * currentSliceIdInPlan and currentExecutingSliceId
-	 * are basically the same, except for InitPlan nodes.
-	 * For InitPlan nodes, the nodes in the top slice have
-	 * an assigned slice id in the plan, while the executing
-	 * slice id for these nodes is the root slice id.
 	 */
-	int currentSliceIdInPlan;
-	int currentExecutingSliceId;
-
-	/*
-	 * Each subplan has its own EState. This value indicates
-	 * the level of the corresponding subplan for this EState
-	 * with respect to the main plan tree.
-	 *
-	 * This is used to determine whether we could eager free
-	 * the Material node on top of Broadcast inside a subplan
-	 * (for supporting correlated subqueries). The Material
-	 * node can be eager-free'ed only when this value is 0.
-	 */
-	int subplanLevel;
-
-	/*
-	 * The root slice id for this EState.
-	 */
-	int rootSliceId;
+	int current_slice_no;
 
 	struct PlanState *planstate;        /* plan's state tree */
-
-	/*
-	 * Information relevant to dynamic table scans.
-	 */
-	DynamicTableScanInfo *dynamicTableScanInfo;
 
 } EState;
 
@@ -1016,19 +905,6 @@ typedef struct CoerceToDomainState
         List           *constraints;        /* list of DomainConstraintState nodes */
 } CoerceToDomainState;
 
-
-/* ----------------
- *                PercentileExprState node
- * ----------------
- */
-typedef struct PercentileExprState
-{
-	ExprState			xprstate;
-	List			   *args;		/* states of argument expressions */
-	List			   *tlist;		/* combined TargetList */
-	int					aggno;		/* ID number within its plan node */
-} PercentileExprState;
-
 /*
  * DomainConstraintState - one item to check during CoerceToDomain
  *
@@ -1141,8 +1017,6 @@ typedef struct Gpmon_NameVal_Text
         char *value;
 } Gpmon_NameVal_Text;
 
-/* Gpperfmon helper functions defined in execGpmon.h */
-extern char *GetScanRelNameGpmon(Oid relid, char schema_table_name[SCAN_REL_NAME_BUF_SIZE]);
 extern void CheckSendPlanStateGpmonPkt(PlanState *ps);
 extern void EndPlanStateGpmonPkt(PlanState *ps);
 extern void InitPlanNodeGpmonPkt(Plan* plan, gpmon_packet_t *gpmon_pkt, EState *estate,
@@ -1241,21 +1115,6 @@ typedef struct AppendState
         int                        as_lastplan;
 } AppendState;
 
-/*
- * SequenceState
- */
-typedef struct SequenceState
-{
-	PlanState ps;
-	PlanState **subplans;
-	int numSubplans;
-
-	/*
-	 * True if no subplan has been executed.
-	 */
-	bool initState;
-} SequenceState;
-
 /* ----------------
  *         BitmapAndState information
  * ----------------
@@ -1306,57 +1165,32 @@ enum {
         SCAN_DONE         = 4,
 };
 
-/*
- * TableType
- *   Enum for different types of tables.
- */
-typedef enum
-{
-	TableTypeHeap,
-	TableTypeAppendOnly,
-	TableTypeAOCS,
-	TableTypeInvalid,
-} TableType;
-
 typedef struct ScanState
 {
-	PlanState        ps;                                /* its first field is NodeTag */
-	Relation        ss_currentRelation;
-	struct TupleTableSlot *ss_ScanTupleSlot;
-	
-	int scan_state;
-	
-	/* The type of the table that is being scanned */
-	TableType tableType;
+        PlanState        ps;                                /* its first field is NodeTag */
+        Relation        ss_currentRelation;
+        struct HeapScanDescData * ss_currentScanDesc;
+        struct TupleTableSlot *ss_ScanTupleSlot;
 
+        int scan_state;
+
+        /* CKTAN */
+        struct {
+                HeapTupleData item[512];
+                int bot, top;
+                HeapTuple last;
+                int seen_EOS;
+        } ss_heapTupleData;
 } ScanState;
 
 /*
- * SeqScanOpaqueData
- *   Additional state data (in addition to ScanState) for scanning heap table.
+ * SeqScan uses a bare ScanState as its state node, since it needs
+ * no additional fields.
  */
-typedef struct SeqScanOpaqueData
-{
-	struct HeapScanDescData * ss_currentScanDesc;
+typedef ScanState SeqScanState;
 
-	struct {
-		HeapTupleData item[512];
-		int bot, top;
-		HeapTuple last;
-		int seen_EOS;
-	} ss_heapTupleData;
-	
-} SeqScanOpaqueData;
-
-/*
- * SeqScanState
- *   State data for scanning heap table.
- */
-typedef struct SeqScanState
-{
-	ScanState ss;
-	SeqScanOpaqueData *opaque;
-} SeqScanState;
+/* Gpperfmon helper function */
+extern char *GetScanRelNameGpmon(Oid relid, char schema_table_name[SCAN_REL_NAME_BUF_SIZE]);
 
 /*
  * These structs store information about index quals that don't have simple
@@ -1379,39 +1213,33 @@ typedef struct
         bool           *elem_nulls;                /* array of num_elems is-null flags */
 } IndexArrayKeyInfo;
 
-/*
- * IndexScanState information
- *    Defines the state that is needed to execute IndexScan node.
+/* ----------------
+ *         IndexScanState information
+ *
+ *                indexqualorig           execution state for indexqualorig expressions
+ *                ScanKeys                   Skey structures to scan index rel
+ *                NumScanKeys                   number of Skey structs
+ *                RuntimeKeys                   info about Skeys that must be evaluated at runtime
+ *                NumRuntimeKeys           number of RuntimeKeys structs
+ *                RuntimeKeysReady   true if runtime Skeys have been computed
+ *                RuntimeContext           expr context for evaling runtime Skeys
+ *                RelationDesc           index relation descriptor
+ *                ScanDesc                   index scan descriptor
+ * ----------------
  */
 typedef struct IndexScanState
 {
-	ScanState ss;
-
-	/* Execution state for indexqualorig expressions. */
-	List           *indexqualorig;
-
-	/* ScanKeys to scan the index relation. */
-	ScanKey iss_ScanKeys;
-	int iss_NumScanKeys;
-
-	/* ScanKeys that must be evaluated at runtime. */
-	IndexRuntimeKeyInfo *iss_RuntimeKeys;
-	int iss_NumRuntimeKeys;
-	bool iss_RuntimeKeysReady;
-	ExprContext *iss_RuntimeContext;
-
-	/* The index relation and its scan descriptor */
-	Relation        iss_RelationDesc;
-	struct IndexScanDescData *iss_ScanDesc;
+        ScanState        ss;                                /* its first field is NodeTag */
+        List           *indexqualorig;
+        ScanKey                iss_ScanKeys;
+        int                        iss_NumScanKeys;
+        IndexRuntimeKeyInfo *iss_RuntimeKeys;
+        int                        iss_NumRuntimeKeys;
+        bool                iss_RuntimeKeysReady;
+        ExprContext *iss_RuntimeContext;
+        Relation        iss_RelationDesc;
+        struct IndexScanDescData *iss_ScanDesc;
 } IndexScanState;
-
-/*
- * IndexOnlyScanState
- *   Defines the state that is needed to execute IndexOnlyScan node.
- *
- * Currently, it is the same as IndexScanState.
- */
-typedef IndexScanState IndexOnlyScanState;
 
 /* ----------------
  *         BitmapIndexScanState information
@@ -1431,18 +1259,18 @@ typedef IndexScanState IndexOnlyScanState;
  */
 typedef struct BitmapIndexScanState
 {
-	ScanState        ss;                                /* its first field is NodeTag */
-	Node            *bitmap;                        /* output bitmap */
-	ScanKey                biss_ScanKeys;
-	int                        biss_NumScanKeys;
-	IndexRuntimeKeyInfo *biss_RuntimeKeys;
-	int                        biss_NumRuntimeKeys;
-	IndexArrayKeyInfo *biss_ArrayKeys;
-	int                        biss_NumArrayKeys;
-	bool                biss_RuntimeKeysReady;
-	ExprContext *biss_RuntimeContext;
-	Relation        biss_RelationDesc;
-	struct IndexScanDescData *biss_ScanDesc;
+        ScanState        ss;                                /* its first field is NodeTag */
+        Node            *bitmap;                        /* output bitmap */
+        ScanKey                biss_ScanKeys;
+        int                        biss_NumScanKeys;
+        IndexRuntimeKeyInfo *biss_RuntimeKeys;
+        int                        biss_NumRuntimeKeys;
+        IndexArrayKeyInfo *biss_ArrayKeys;
+        int                        biss_NumArrayKeys;
+        bool                biss_RuntimeKeysReady;
+        ExprContext *biss_RuntimeContext;
+        Relation        biss_RelationDesc;
+        struct IndexScanDescData *biss_ScanDesc;
 } BitmapIndexScanState;
 
 /* ----------------
@@ -1455,11 +1283,10 @@ typedef struct BitmapIndexScanState
  */
 typedef struct BitmapHeapScanState
 {
-	ScanState        ss;                                /* its first field is NodeTag */
-	struct HeapScanDescData * ss_currentScanDesc;
-	List           *bitmapqualorig;
-	Node  *tbm;
-	struct TBMIterateResult *tbmres;
+        ScanState        ss;                                /* its first field is NodeTag */
+        List           *bitmapqualorig;
+        Node  *tbm;
+        struct TBMIterateResult *tbmres;
 } BitmapHeapScanState;
 
 /* ----------------
@@ -1486,37 +1313,6 @@ typedef struct BitmapAppendOnlyScanState
 	bool        isAORow; /* If this is for AO Row tables. */
 } BitmapAppendOnlyScanState;
 
-/*
- * HeapTidScanInfo
- *   Additional info that are needed to support tidscan on a Heap table.
- */
-typedef struct HeapTidScanInfo
-{
-	HeapTupleData tss_htup;
-} HeapTidScanInfo;
-
-struct AppendOnlyFetchDescData;
-
-/*
- * AOTidScanInfo
- *  Additional info that are needed to support tidscan on an AO table.
- */
-typedef struct AOTidScanInfo
-{
-	struct AppendOnlyFetchDescData *aoFetchDesc;
-} AOTidScanInfo;
-
-struct AOCSFetchDescData;
-
-/*
- * AOCSTidScanInfo
- *  Additional info that are needed to support tidscan on an AOCS table.
- */
-typedef struct AOCSTidScanInfo
-{
-	struct AOCSFetchDescData *aocsFetchDesc;
-} AOCSTidScanInfo;
-
 /* ----------------
  *         TidScanState information
  *
@@ -1525,36 +1321,16 @@ typedef struct AOCSTidScanInfo
  *                TidList                   evaluated item pointers (array of size NumTids)
  * ----------------
  */
-typedef struct TidScanState TidScanState;
-struct TidScanState
+typedef struct TidScanState
 {
-	ScanState ss;
-	
-	/* List of tid quals */
-	List *tss_tidquals;
-
-	/* Number of tids in this scan */
-	int tss_NumTids;
-
-	/* index of the currently fetched tid */
-	int tss_TidPtr;
-	
-	/* index of marked tid */
-	int tss_MarkTidPtr;
-
-	/* evaluated item pointers (array of size NumTids) */
-	ItemPointerData *tss_TidList;
-
-	/* additional info that are needed for various table type */
-	void *additionalInfo;
-
-	/* create and free functions to create additional info for various table type */
-	void (*createAdditionalInfo)(TidScanState *node);
-	void (*freeAdditionalInfo)(TidScanState *node);
-
-	/* fetch function for various table type */
-	bool (*fetchTupleByTid)(TidScanState *node, ItemPointer tid);
-};
+        ScanState        ss;                                /* its first field is NodeTag */
+        List           *tss_tidquals;        /* list of ExprState nodes */
+        int                        tss_NumTids;
+        int                        tss_TidPtr;
+        int                        tss_MarkTidPtr;
+        ItemPointerData *tss_TidList;
+        HeapTupleData tss_htup;
+} TidScanState;
 
 /* ----------------
  *         SubqueryScanState information
@@ -1619,7 +1395,6 @@ typedef struct TableFunctionState
 	ReturnSetInfo				 rsinfo;		/* Resultset Context */
 	bool						 is_rowtype;	/* Function returns records */
 	bool						 is_firstcall;
-	bytea						*userdata;		/* bytea given by describe func */
 } TableFunctionState;
 
 
@@ -1662,42 +1437,23 @@ typedef struct ValuesScanState
  */
 typedef struct ExternalScanState
 {
-	ScanState ss;
-	struct FileScanDescData *ess_ScanDesc;
-	bool cdb_want_ctid;
-	ItemPointerData cdb_fake_ctid;
+        ScanState        ss;
+        struct FileScanDescData        *ess_ScanDesc;
 } ExternalScanState;
 
 /* ----------------
- * AppendOnlyScanState information
- *
- *   AppendOnlyScan nodes are used to scan append only tables
- *
- *   aos_ScanDesc is the additional data that is needed for scanning
- * AppendOnly table.
- * ----------------
- */
+*         AppendOnlyScanState information
+*
+*                AppendOnlyScan nodes are used to scan append only tables
+*
+*                aos_ScanDesc                the context of the append only scan
+* ----------------
+*/
 typedef struct AppendOnlyScanState
 {
         ScanState        ss;
         struct AppendOnlyScanDescData *aos_ScanDesc;
 } AppendOnlyScanState;
-
-/*
- * AOCSScanOpaqueData
- *    Additional data (in addition to ScanState) for scanning AppendOnly
- * columnar table.
- */
-typedef struct AOCSScanOpaqueData
-{
-	/*
-	 * The array to indicate columns that are involved in the scan.
-	 */
-	bool *proj;
-	int  ncol;
-
-	struct AOCSScanDescData *scandesc;
-} AOCSScanOpaqueData;
 
 /* -----------------------------------------------
  *      AOCSScanState
@@ -1705,47 +1461,11 @@ typedef struct AOCSScanOpaqueData
  */
 typedef struct AOCSScanState
 {
-	ScanState ss;
-	AOCSScanOpaqueData *opaque;
+        ScanState ss;
+        bool *proj;
+        int  ncol;
+        struct AOCSScanDescData *scandesc;
 } AOCSScanState;
-
-/*
- * TableScanState
- *   Encapsulate the scan state for different table type.
- *
- * During execution, the 'opaque' is mapped to different XXXOpaqueData
- * for different table type.
- */
-typedef struct TableScanState
-{
-	ScanState ss;
-
-	/*
-	 * Opaque data that is associated with different table type.
-	 */
-	void *opaque;
-	
-} TableScanState;
-
-/*
- * DynamicTableScanState
- */
-typedef struct DynamicTableScanState
-{
-	TableScanState tableScanState;
-
-	/*
-	 * Pid index that maintains all unique partition pids for this dynamic
-	 * table scan to scan.
-	 */
-	HTAB *pidIndex;
-	
-	/*
-	 * The status of sequentially scan the pid index.
-	 */
-	HASH_SEQ_STATUS pidStatus;
-
-} DynamicTableScanState;
 
 /* ----------------------------------------------------------------
  *                                 Join State Information
@@ -1929,7 +1649,6 @@ typedef struct ShareInputScanState
         void                 *ts_markpos; 
 
         void             *share_lk_ctxt;
-		bool				freed; /* is this node already freed? */
 } ShareInputScanState;
 
 /* XXX Should move into buf file */
@@ -1973,67 +1692,45 @@ typedef struct SortState
 typedef struct AggStatePerAggData *AggStatePerAgg;
 typedef struct AggStatePerGroupData *AggStatePerGroup;
 
-/*
- * There are four different types of Agg nodes:
- *   (1) Scalar (Plain) Agg: Inputs are read in and aggregated into a single value. This Agg
- *       always returns a single value, even when there are no inputs at all.
- *   (2) Ordinary Grouping Agg node: Inputs come in as groups. Each group is aggregated.
- *       This Agg will handle the ordinary grouping and first stage of rollup Agg.
- *   (3) Intermediate Rollup Agg node: There are two different inputs:
- *       (a) Inputs that just need to be pass-through. These tuples are coming from
- *           2+ level downstream of rollup Aggs, and do not need to be aggregated.
- *       (b) Inputs that need to be aggregated as groups. These tuples also need to
- *           be pass-through.
- *   (4) Final Rollup Agg node: This is similar to (3), except that the pass-through
- *       tuples need to be finalized.
- */
-typedef enum AggType
-{
-	AggTypeScalar,
-	AggTypeGroup,
-	AggTypeIntermediateRollup,
-	AggTypeFinalRollup
-} AggType;
-
 typedef struct AggState
 {
-	ScanState        ss;                                /* its first field is NodeTag */
-	List           *aggs;                        /* all Aggref nodes in targetlist & quals */
-	int                        numaggs;                /* length of list (could be zero!) */
-	FmgrInfo   *eqfunctions;        /* per-grouping-field equality fns */
-	FmgrInfo   *hashfunctions;        /* per-grouping-field hash fns */
-	AggStatePerAgg peragg;                /* per-Aggref information */
-	MemoryContext aggcontext;        /* memory context for long-lived data */
-	ExprContext *tmpcontext;        /* econtext for input expressions */
-	bool                agg_done;                /* indicates completion of Agg scan */
+        ScanState        ss;                                /* its first field is NodeTag */
+        List           *aggs;                        /* all Aggref nodes in targetlist & quals */
+        int                        numaggs;                /* length of list (could be zero!) */
+        FmgrInfo   *eqfunctions;        /* per-grouping-field equality fns */
+        FmgrInfo   *hashfunctions;        /* per-grouping-field hash fns */
+        AggStatePerAgg peragg;                /* per-Aggref information */
+        MemoryContext aggcontext;        /* memory context for long-lived data */
+        ExprContext *tmpcontext;        /* econtext for input expressions */
+        bool                agg_done;                /* indicates completion of Agg scan */
+        bool        has_partial_agg;/* indicate if a partial aggregate result
+                                                                 * has been calculated in the previous call.
+                                                                  */
 
-	/* these fields are used in AGG_PLAIN and AGG_SORTED modes: */
-	AggStatePerGroup pergroup;        /* per-Aggref-per-group working state */
-	struct MemTupleData *       grp_firstTuple; /* copy of first tuple of current group */
-	/* these fields are used in AGG_HASHED mode: */
-	TupleHashTable hashtable;        /* hash table with one entry per group */
-	struct TupleTableSlot *hashslot;        /* slot for loading hash table */
-	List           *hash_needed;        /* list of columns needed in hash table */
-	TupleHashIterator hashiter; /* for iterating through hash table */
-    
-	/* MPP */
-	struct HashAggTable *hhashtable;
-	MemoryManagerContainer mem_manager;
-	
-	AggType aggType;
-	
-	  /* ROLLUP */
-	AggStatePerGroup perpassthru; /* per-Aggref-per-pass-through-tuple working state */
-	
-	/*
-	 * The following are used to define how to modify input tuples to
-	 * satisfy the rollup level of this Agg node.
-	 */
-	int num_attrs;                /* number of grouping attributes for the Agg node */
-	Datum *replValues;
-	bool *replIsnull;
-	bool *doReplace;
-	List	   *percs;			/* all PercentileExpr nodes in targetlist & quals */
+        /* these fields are used in AGG_PLAIN and AGG_SORTED modes: */
+        AggStatePerGroup pergroup;        /* per-Aggref-per-group working state */
+        struct MemTupleData *       grp_firstTuple; /* copy of first tuple of current group */
+        /* these fields are used in AGG_HASHED mode: */
+        TupleHashTable hashtable;        /* hash table with one entry per group */
+        struct TupleTableSlot *hashslot;        /* slot for loading hash table */
+        List           *hash_needed;        /* list of columns needed in hash table */
+        TupleHashIterator hashiter; /* for iterating through hash table */
+        
+        /* MPP */
+        struct HashAggTable *hhashtable;
+        MemoryManagerContainer mem_manager;
+
+        /* ROLLUP */
+        AggStatePerGroup perpassthru; /* per-Aggref-per-pass-through-tuple working state */
+
+        /*
+         * The following are used to define how to modify input tuples to
+         * satisfy the rollup level of this Agg node.
+         */
+        int num_attrs;                /* number of grouping attributes for the Agg node */
+        Datum *replValues;
+        bool *replIsnull;
+        bool *doReplace;
 } AggState;
 
 
@@ -2047,110 +1744,63 @@ typedef struct WindowInputBufferData *WindowInputBuffer;
 
 typedef struct WindowState
 {
-	PlanState        ps;                                /* its first field is NodeTag */
-	List           *wrxstates;                /* all WindowRefExprState nodes in targetlist */        
-	FmgrInfo   *eqfunctions;        /* equality fns for partition key */
-	struct TupleTableSlot *priorslot;        /* place for prior tuple */
-	struct TupleTableSlot *curslot;        /* current tuple */
-	struct TupleTableSlot *spare;        /* current tuple */
-	struct TupleTableSlot *saveslot; /* convenient place holder */
-	struct TupleTableSlot *synthslot; /* place for sequences to set up synthesized tuples */
+        PlanState        ps;                                /* its first field is NodeTag */
+        List           *wrxstates;                /* all WindowRefExprState nodes in targetlist */        
+        FmgrInfo   *eqfunctions;        /* equality fns for partition key */
+        struct TupleTableSlot *priorslot;        /* place for prior tuple */
+        struct TupleTableSlot *curslot;        /* current tuple */
+        struct TupleTableSlot *spare;        /* current tuple */
+        struct TupleTableSlot *saveslot; /* convenient place holder */
 
-	/* meta data about the current slot */
-	bool cur_slot_is_new; /* is this a slot from a buffer or outer plan */
-	bool cur_slot_part_break; /* slot breaks the partition key */
-	int cur_slot_key_break; /* break level of the key in the slot */
-	
-	/* Array of working states per distinct window function */
-	int                        numfuncs;
-	WindowStatePerFunction  func_state;
-	
-	/* Per row state */
-	int64                row_index;
+        /* meta data about the current slot */
+        bool cur_slot_is_new; /* is this a slot from a buffer or outer plan */
+        bool cur_slot_part_break; /* slot breaks the partition key */
+        int cur_slot_key_break; /* break level of the key in the slot */
+        
+        /* Array of working states per distinct window function */
+        int                        numfuncs;
+        WindowStatePerFunction  func_state;
+        
+        /* Per row state */
+        int64                row_index;
 
-	int                        numlevels;
+        int                        numlevels;
 
-	WindowStatePerLevel level_state;
-	
-	/* Where is this node allocated? */
-	MemoryContext win_context;
+        WindowStatePerLevel level_state;
 
-	/* memory context for transition value processing */
-	/* XXX: we should probably have one context per level, so that we can
-	 * reset it when there's a key change at that level
-	 */
-	MemoryContext transcontext;
-	MemoryManagerContainer mem_manager;
+        /* memory context for transition value processing */
+        /* XXX: we should probably have one context per level, so that we can
+         * reset it when there's a key change at that level
+         */
+        MemoryContext transcontext;
+        MemoryManagerContainer mem_manager;
 
-	/*
-	 * context for comparing datums immediately.
-	 * we need reset this context every time we run comparison,
-	 * since window frame may contain unlimited number of rows.
-	 */
-	MemoryContext cmpcontext;
+        /*
+         * context for comparing datums immediately.
+         * we need reset this context every time we run comparison,
+         * since window frame may contain unlimited number of rows.
+         */
+        MemoryContext cmpcontext;
 
-	/* framed window functions need access to their frames */
-	WindowStatePerFunction cur_funcstate;
+        /* framed window functions need access to their frames */
+        WindowStatePerFunction cur_funcstate;
 
-	/* input buffer */
-	WindowInputBuffer input_buffer;
+        /* input buffer */
+        WindowInputBuffer input_buffer;
 
-	/* Indicate if any function need a peer count. */
-	bool need_peercount;
+        /* Indicate if any function need a peer count. */
+        bool need_peercount;
 
-	/* A char buffer to temporarily hold serialized data
-	 * before writing them to the frame buffer.
-	 *
-	 * Use this pre-allocated buffer to avoid doing
-	 * palloc/pfree many times.
-	 *
-	 * The size of this array is specified by 'max_size'.
-	 */
-	char *serial_array;
-	Size max_size;
-	
-	/* If implementing a sequence, seq_state holds the sequence 
-	 * definition; otherwise it is NULL. (Note that more general 
-	 * sequences than generated ones might be supported.  In this 
-	 * case, this field would need to change to a more general 
-	 * type, e.g. Node*.  But by the time that support is needed,
-	 * we may have switched to a better, outer-join-based approach 
-	 * to gap-filling.) 
-	 *
-	 * The remaining seq_ fields are used only when seq_state is
-	 * non-null.
-	 */
-	struct GeneratedSequenceState *seq_state;
-	MemoryContext seq_context;
-	FmgrInfo *seq_coerce_fn;
-	FmgrInfo *seq_compare_fn;
-	ExprState *seq_extrapolate_estate;
-	bool seq_output_done; /* Done producing output? */
-	
-	bool seq_input_done; /* Input exhausted? */
-	bool seq_input_some; /* Seen an input row. */
-	bool seq_input_in_part; /* Current input in current part? */
-	
-	/* Facts about the partitioning key in the input.
-	 */
-	Oid *seq_partkey_type;
-	int16 *seq_partkey_typlen;
-	bool *seq_partkey_typbyval;
-	
-	/* Facts about the sequence key
-	 */
-	Oid seq_key_type;
-	int16 seq_key_typlen;
-	bool seq_key_typbyval;
-	
-	struct TupleTableSlot *seq_input_synth;
-	struct TupleTableSlot *seq_input_next;
-	
-	bool seq_seq_done; /* Sequence exhausted? */
-	bool seq_seq_item_used; /* Used current sequence item in output? */
-	bool seq_seq_next_exists; /* Is there a staged item in seq_item? */
-	Datum seq_seq_next; /* The currently staged sequence  */
-	
+        /* A char buffer to temporarily hold serialized data
+         * before writing them to the frame buffer.
+         *
+         * Use this pre-allocated buffer to avoid doing
+         * palloc/pfree many times.
+         *
+         * The size of this array is specified by 'max_size'.
+         */
+        char *serial_array;
+        Size max_size;
 } WindowState;
 
 /* ----------------
@@ -2296,14 +1946,13 @@ typedef struct MotionState
 extern void sendInitGpmonPkts(Plan *node, EState *estate);
 extern void initGpmonPktForResult(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
 extern void initGpmonPktForAppend(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
-extern void initGpmonPktForSequence(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
 extern void initGpmonPktForBitmapAnd(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
 extern void initGpmonPktForBitmapOr(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
-extern void initGpmonPktForTableScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
-extern void initGpmonPktForDynamicTableScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForSeqScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForAppendOnlyScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForAOCSScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
 extern void initGpmonPktForExternalScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
 extern void initGpmonPktForIndexScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
-extern void initGpmonPktForIndexOnlyScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
 extern void initGpmonPktForBitmapIndexScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
 extern void initGpmonPktForBitmapHeapScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
 extern void initGpmonPktForBitmapAppendOnlyScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
@@ -2326,7 +1975,7 @@ extern void initGpmonPktForMotion(Plan *planNode, gpmon_packet_t *gpmon_pkt, ESt
 extern void initGpmonPktForShareInputScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
 extern void initGpmonPktForWindow(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
 extern void initGpmonPktForRepeat(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
-extern void initGpmonPktForDefunctOperators(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+
 /*
  * The funcion pointers to init gpmon package for each plan node. 
  * The order of the function pointers are the same as the one defined in

@@ -377,9 +377,9 @@ select * from direct_test;
 INFO:  Dispatch command to ALL contents
  key | value 
 -----+-------
+   2 | 100
      | cow
    1 | 100
-   2 | 100
 (3 rows)
 
 prepare test_update (int) as update direct_test set value = 'boo' where key = $1;
@@ -590,14 +590,14 @@ INFO:  Dispatch command to SINGLE content
 (1 row)
 
 SELECT * FROM direct_test_type_int2 WHERE id = 1::int4;
-INFO:  Dispatch command to ALL contents
+INFO:  Dispatch command to SINGLE content
  id 
 ----
   1
 (1 row)
 
 SELECT * FROM direct_test_type_int2 WHERE id = 1::int8;
-INFO:  Dispatch command to ALL contents
+INFO:  Dispatch command to SINGLE content
  id 
 ----
   1
@@ -611,14 +611,14 @@ INFO:  Dispatch command to SINGLE content
 (1 row)
 
 SELECT * FROM direct_test_type_int2 WHERE 1::int4 = id;
-INFO:  Dispatch command to ALL contents
+INFO:  Dispatch command to SINGLE content
  id 
 ----
   1
 (1 row)
 
 SELECT * FROM direct_test_type_int2 WHERE 1::int8 = id;
-INFO:  Dispatch command to ALL contents
+INFO:  Dispatch command to SINGLE content
  id 
 ----
   1
@@ -639,7 +639,7 @@ INFO:  Dispatch command to SINGLE content
 (1 row)
 
 SELECT * FROM direct_test_type_int4 WHERE id = 1::int8;
-INFO:  Dispatch command to ALL contents
+INFO:  Dispatch command to SINGLE content
  id 
 ----
   1
@@ -660,7 +660,7 @@ INFO:  Dispatch command to SINGLE content
 (1 row)
 
 SELECT * FROM direct_test_type_int4 WHERE 1::int8 = id;
-INFO:  Dispatch command to ALL contents
+INFO:  Dispatch command to SINGLE content
  id 
 ----
   1
@@ -710,49 +710,49 @@ INFO:  Dispatch command to SINGLE content
 
 -- overflow test
 SELECT * FROM direct_test_type_int2 WHERE id = 32768::int4;
-INFO:  Dispatch command to ALL contents
+INFO:  Dispatch command to SINGLE content
  id 
 ----
 (0 rows)
 
 SELECT * FROM direct_test_type_int2 WHERE id = -32769::int4;
-INFO:  Dispatch command to ALL contents
+INFO:  Dispatch command to SINGLE content
  id 
 ----
 (0 rows)
 
 SELECT * FROM direct_test_type_int2 WHERE 32768::int4 = id;
-INFO:  Dispatch command to ALL contents
+INFO:  Dispatch command to SINGLE content
  id 
 ----
 (0 rows)
 
 SELECT * FROM direct_test_type_int2 WHERE -32769::int4 = id;
-INFO:  Dispatch command to ALL contents
+INFO:  Dispatch command to SINGLE content
  id 
 ----
 (0 rows)
 
 SELECT * FROM direct_test_type_int2 WHERE id = 2147483648::int8;
-INFO:  Dispatch command to ALL contents
+INFO:  Dispatch command to SINGLE content
  id 
 ----
 (0 rows)
 
 SELECT * FROM direct_test_type_int2 WHERE id = -2147483649::int8;
-INFO:  Dispatch command to ALL contents
+INFO:  Dispatch command to SINGLE content
  id 
 ----
 (0 rows)
 
 SELECT * FROM direct_test_type_int2 WHERE 2147483648::int8 = id;
-INFO:  Dispatch command to ALL contents
+INFO:  Dispatch command to SINGLE content
  id 
 ----
 (0 rows)
 
 SELECT * FROM direct_test_type_int2 WHERE -2147483649::int8 = id;
-INFO:  Dispatch command to ALL contents
+INFO:  Dispatch command to SINGLE content
  id 
 ----
 (0 rows)

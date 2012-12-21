@@ -105,6 +105,28 @@ ServiceInit(ServiceConfig *serviceConfig, ServiceCtrl *serviceCtrl)
 	serviceCtrl->listenerPort = -1;
 }
 
+// -----------------------------------------------------------------------------
+
+/*
+ * Kludge to prevent our error handling by raising and
+ * catching ERROR from becoming a PANIC in critical sections...
+ */
+#define DECLARE_SAVE_SUPPRESS_PANIC()\
+	int SaveSuppressPanic = false
+
+#define SUPPRESS_PANIC()\
+	{\
+		SaveSuppressPanic = SuppressPanic;\
+		SuppressPanic = true;\
+	}
+
+#define RESTORE_PANIC()\
+	{\
+		SuppressPanic = SaveSuppressPanic;\
+	}
+
+// -----------------------------------------------------------------------------
+
 static char ClientErrorString[200] = "";
 
 char *ServiceGetLastClientErrorString(void)

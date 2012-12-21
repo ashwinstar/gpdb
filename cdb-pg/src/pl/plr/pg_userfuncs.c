@@ -45,9 +45,7 @@ static ArrayType *plr_array_create(FunctionCallInfo fcinfo,
  * reload_modules :
  *		interface to allow plr_modules to be reloaded on demand
  *----------------------------------------------------------------------------
- * This feature of plr is not supported on GreenPlum
  */
-#if 0
 PG_FUNCTION_INFO_V1(reload_plr_modules);
 Datum
 reload_plr_modules(PG_FUNCTION_ARGS)
@@ -66,7 +64,6 @@ reload_plr_modules(PG_FUNCTION_ARGS)
 
 	PG_RETURN_TEXT_P(PG_STR_GET_TEXT("OK"));
 }
-#endif
 
 /*-----------------------------------------------------------------------------
  * install_rcmd :
@@ -221,7 +218,6 @@ plr_array_create(FunctionCallInfo fcinfo, int numelems, int elem_start)
 	Oid			functypeid;
 	Oid		   *funcargtypes;
 	ArrayType  *result;
-	cqContext  *pcqCtx;
 
 	if (numelems == 0)
 		ereport(ERROR,
@@ -231,14 +227,9 @@ plr_array_create(FunctionCallInfo fcinfo, int numelems, int elem_start)
 	/*
 	 * Get the type metadata for the array return type and its elements
 	 */
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_proc "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(funcid)));
-
-	tp = caql_getnext(pcqCtx);
-
+	tp = SearchSysCache(PROCOID,
+						ObjectIdGetDatum(funcid),
+						0, 0, 0);
 	if (!HeapTupleIsValid(tp))
 		/* internal error */
 		elog(ERROR, "function OID %u does not exist", funcid);
@@ -262,7 +253,7 @@ plr_array_create(FunctionCallInfo fcinfo, int numelems, int elem_start)
 					 errmsg("argument %d datatype not " \
 							"compatible with return data type", i + 1)));
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(tp);
 
 	for (i = 0; i < numelems; i++)
 		dvalues[i] = PG_GETARG_DATUM(elem_start + i);

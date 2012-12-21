@@ -77,12 +77,6 @@ static void GlobalSequence_UpdateTuple(
 		
 	frozen_heap_inplace_update(gpGlobalSequenceRel, globalSequenceTuple);
 
-	/* MPP-17181 : we need to persistently sync the newly allocated 
-	 * sequence numbers to disk before returning them.
-	 */
-	FlushRelationBuffers(gpGlobalSequenceRel);
-	smgrimmedsync(gpGlobalSequenceRel->rd_smgr);
-
 	heap_freetuple(globalSequenceTuple);
 
 	DirectOpen_GpGlobalSequenceClose(gpGlobalSequenceRel);

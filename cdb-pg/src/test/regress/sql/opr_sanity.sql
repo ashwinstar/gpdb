@@ -50,30 +50,9 @@ SELECT p1.oid, p1.proname
 FROM pg_proc as p1
 WHERE p1.prolang = 0 OR p1.prorettype = 0 OR
        p1.pronargs < 0 OR
-       p1.pronargdefaults < 0 OR
-       p1.pronargdefaults > p1.pronargs OR
        array_lower(p1.proargtypes, 1) != 0 OR
        array_upper(p1.proargtypes, 1) != p1.pronargs-1 OR
        0::oid = ANY (p1.proargtypes);
-
--- prosrc should never be null or empty
-SELECT p1.oid, p1.proname
-FROM pg_proc as p1
-WHERE prosrc IS NULL OR prosrc = '' OR prosrc = '-';
-
--- pronargdefaults should be 0 iff proargdefaults is null
-SELECT p1.oid, p1.proname
-FROM pg_proc AS p1
-WHERE (pronargdefaults <> 0) != (proargdefaults IS NOT NULL);
-
--- probin should be non-empty for C functions, null everywhere else
-SELECT p1.oid, p1.proname
-FROM pg_proc as p1
-WHERE prolang = 13 AND (probin IS NULL OR probin = '' OR probin = '-');
-
-SELECT p1.oid, p1.proname
-FROM pg_proc as p1
-WHERE prolang != 13 AND probin IS NOT NULL;
 
 -- Look for conflicting proc definitions (same names and input datatypes).
 -- (This test should be dead code now that we have the unique index
@@ -98,10 +77,6 @@ WHERE p1.oid != p2.oid AND
 --
 -- Note: ignoring gp_deprecated here since the function ignores its parameters
 -- always errors and never returns a value.
---
--- MPP-17314 / MPP-17340 - The presence of "convert" below is temporary. The
--- function was incorrectly defined in an older release. It will be deleted
--- from the catalog with MPP-17340.
 
 SELECT p1.oid, p1.proname, p2.oid, p2.proname
 FROM pg_proc AS p1, pg_proc AS p2

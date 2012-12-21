@@ -23,7 +23,6 @@
 #include <unistd.h>
 
 #include "access/genam.h"
-#include "access/catquery.h"
 #include "access/heapam.h"
 #include "access/reloptions.h"
 #include "access/transam.h"
@@ -400,7 +399,7 @@ AutoVacMain(int argc, char *argv[])
 	 * had to do some stuff with LWLocks).
 	 */
 #ifndef EXEC_BACKEND
-	InitProcess(false /*isQueryProc*/);
+	InitProcess();
 #endif
 
 	/*
@@ -606,11 +605,10 @@ autovac_get_database_list(void)
 static void
 do_autovacuum(PgStat_StatDBEntry *dbentry)
 {
-	Relation	avRel;
+	Relation	classRel,
+				avRel;
 	HeapTuple	tuple;
-	cqContext	*pcqCtx;
-	cqContext	*dbcqCtx;
-	cqContext	 cqc;
+	HeapScanDesc relScan;
 	Form_pg_database dbForm;
 	List	   *vacuum_tables = NIL;
 	List	   *toast_table_ids = NIL;
@@ -635,14 +633,9 @@ do_autovacuum(PgStat_StatDBEntry *dbentry)
 	 * We use zero in template and nonconnectable databases,
 	 * else the system-wide default.
 	 */
-	dbcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_database "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(MyDatabaseId)));
-
-	tuple = caql_getnext(dbcqCtx);
-
+	tuple = SearchSysCache(DATABASEOID,
+						   ObjectIdGetDatum(MyDatabaseId),
+						   0, 0, 0);
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for database %u", MyDatabaseId);
 	dbForm = (Form_pg_database) GETSTRUCT(tuple);
@@ -652,7 +645,7 @@ do_autovacuum(PgStat_StatDBEntry *dbentry)
 	else
 		default_freeze_min_age = vacuum_freeze_min_age;
 
-	caql_endscan(dbcqCtx);
+	ReleaseSysCache(tuple);
 
 	/*
 	 * StartTransactionCommand and CommitTransactionCommand will automatically
@@ -664,6 +657,7 @@ do_autovacuum(PgStat_StatDBEntry *dbentry)
 	/* The database hash where pgstat keeps shared relations */
 	shared = pgstat_fetch_stat_dbentry(InvalidOid);
 
+	classRel = heap_open(RelationRelationId, AccessShareLock);
 	avRel = heap_open(AutovacuumRelationId, AccessShareLock);
 
 	/*
@@ -683,18 +677,16 @@ do_autovacuum(PgStat_StatDBEntry *dbentry)
 	 * vacuuming; we go back and re-mark them after finding all the vacuumable
 	 * toast tables.
 	 */
+	relScan = heap_beginscan(classRel, SnapshotNow, 0, NULL);
 
-	pcqCtx = caql_beginscan(
-			caql_indexOK(cqclr(&cqc), false),
-			cql("SELECT * FROM pg_class ", NULL));
-
-	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
+	while ((tuple = heap_getnext(relScan, ForwardScanDirection)) != NULL)
 	{
 		Form_pg_class classForm = (Form_pg_class) GETSTRUCT(tuple);
 		Form_pg_autovacuum avForm = NULL;
 		PgStat_StatTabEntry *tabentry;
+		SysScanDesc avScan;
 		HeapTuple	avTup;
-		cqContext	cqc2;
+		ScanKeyData entry[1];
 		Oid			relid;
 
 		/* Consider only regular, toast and aosegment tables. */
@@ -714,11 +706,15 @@ do_autovacuum(PgStat_StatDBEntry *dbentry)
 		relid = HeapTupleGetOid(tuple);
 
 		/* See if we have a pg_autovacuum entry for this relation. */
-		avTup = caql_getfirst(
-				caql_addrel(cqclr(&cqc2), avRel), 
-				cql("SELECT * FROM pg_autovacuum "
-					" WHERE vacrelid = :1 ",
-					ObjectIdGetDatum(relid)));
+		ScanKeyInit(&entry[0],
+					Anum_pg_autovacuum_vacrelid,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(relid));
+
+		avScan = systable_beginscan(avRel, AutovacuumRelidIndexId, true,
+									SnapshotNow, 1, entry);
+
+		avTup = systable_getnext(avScan);
 
 		if (HeapTupleIsValid(avTup))
 			avForm = (Form_pg_autovacuum) GETSTRUCT(avTup);
@@ -735,11 +731,12 @@ do_autovacuum(PgStat_StatDBEntry *dbentry)
 		test_rel_for_autovac(relid, tabentry, classForm, avForm,
 							 &vacuum_tables, &toast_table_ids);
 
-/*		systable_endscan(avScan); */
+		systable_endscan(avScan);
 	}
 
-	caql_endscan(pcqCtx);
+	heap_endscan(relScan);
 	heap_close(avRel, AccessShareLock);
+	heap_close(classRel, AccessShareLock);
 
 	/*
 	 * Perform operations on collected tables.
@@ -1294,8 +1291,6 @@ bool autostats_on_change_check(AutoStatsCmdType cmdType, uint64 ntuples)
  */
 bool autostats_on_no_stats_check(AutoStatsCmdType cmdType, Oid relationOid) 
 {
-	cqContext	*pcqCtx;
-
 	if (cmdType == AUTOSTATS_CMDTYPE_CTAS)
 		return true;
 		
@@ -1312,14 +1307,9 @@ bool autostats_on_no_stats_check(AutoStatsCmdType cmdType, Oid relationOid)
 		/*
 		 * Must get the relation's tuple from pg_class
 		 */
-		pcqCtx = caql_beginscan(
-				NULL,
-				cql("SELECT * FROM pg_class "
-					" WHERE oid = :1 ",
-					ObjectIdGetDatum(relationOid)));
-
-		tuple = caql_getnext(pcqCtx);
-
+		tuple = SearchSysCache(RELOID,
+				ObjectIdGetDatum(relationOid),
+				0, 0, 0);
 		if (!HeapTupleIsValid(tuple)) 
 		{
 			ereport(ERROR,
@@ -1335,8 +1325,7 @@ bool autostats_on_no_stats_check(AutoStatsCmdType cmdType, Oid relationOid)
 				classForm->reltuples);
 
 		result = (classForm->relpages ==0 && classForm->reltuples < 1);
-
-		caql_endscan(pcqCtx);
+		ReleaseSysCache(tuple);
 		return result;
 	}	
 	
@@ -1425,7 +1414,7 @@ void autostats_get_cmdtype(PlannedStmt * stmt, AutoStatsCmdType * pcmdType, Oid 
  * on_no_stats 	: 	if the operation is a ctas/insert-select and there are no stats on the modified table, 
  * 					an automatic analyze is issued.
  */
-void auto_stats(AutoStatsCmdType cmdType, Oid relationOid, uint64 ntuples, bool inFunction)
+void auto_stats(AutoStatsCmdType cmdType, Oid relationOid, uint64 ntuples) 
 {
 	TimestampTz start;
 	bool policyCheck = false;
@@ -1439,17 +1428,7 @@ void auto_stats(AutoStatsCmdType cmdType, Oid relationOid, uint64 ntuples, bool 
 	Assert (relationOid != InvalidOid);
 	Assert (cmdType >=0 && cmdType <= AUTOSTATS_CMDTYPE_SENTINEL); /* it is a valid command as per auto-stats */
 	
-	GpAutoStatsModeValue actual_gp_autostats_mode;
-	if (inFunction)
-	{
-		actual_gp_autostats_mode = gp_autostats_mode_in_functions;
-	}
-	else
-	{
-		actual_gp_autostats_mode = gp_autostats_mode;
-	}
-
-	switch(actual_gp_autostats_mode)
+	switch(gp_autostats_mode) 
 	{
 		case GP_AUTOSTATS_ON_CHANGE:
 			policyCheck = autostats_on_change_check(cmdType, ntuples);
@@ -1458,7 +1437,7 @@ void auto_stats(AutoStatsCmdType cmdType, Oid relationOid, uint64 ntuples, bool 
 			policyCheck = autostats_on_no_stats_check(cmdType, relationOid);
 			break;
 		default:
-			Assert(actual_gp_autostats_mode == GP_AUTOSTATS_NONE);
+			Assert(gp_autostats_mode == GP_AUTOSTATS_NONE);
 			policyCheck = false;
 			break;
 	}
@@ -1477,17 +1456,8 @@ void auto_stats(AutoStatsCmdType cmdType, Oid relationOid, uint64 ntuples, bool 
 
 	if (log_autostats) 
 	{
-		const char *autostats_mode;
-		if (inFunction)
-		{
-			autostats_mode = gpvars_show_gp_autostats_mode_in_functions();
-		}
-		else
-		{
-			autostats_mode = gpvars_show_gp_autostats_mode();
-		}
 		elog(LOG, "In mode %s, command %s on (dboid,tableoid)=(%d,%d) modifying %d tuples caused Auto-ANALYZE.", 
-				autostats_mode,
+				gpvars_show_gp_autostats_mode(),
 				autostats_cmdtype_to_string(cmdType), 
 				MyDatabaseId,
 				relationOid, 

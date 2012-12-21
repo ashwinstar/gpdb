@@ -47,11 +47,11 @@
  * and page numbers in TruncateSUBTRANS (see SubTransPagePrecedes).
  */
 
-/* We need eight bytes per xact */
-#define SUBTRANS_XACTS_PER_PAGE (BLCKSZ / sizeof(SubTransData))
+/* We need four bytes per xact */
+#define SUBTRANS_XACTS_PER_PAGE (BLCKSZ / sizeof(TransactionId))
 
-#define TransactionIdToPage(xid) ((xid) / (uint32) SUBTRANS_XACTS_PER_PAGE)
-#define TransactionIdToEntry(xid) ((xid) % (uint32) SUBTRANS_XACTS_PER_PAGE)
+#define TransactionIdToPage(xid) ((xid) / (TransactionId) SUBTRANS_XACTS_PER_PAGE)
+#define TransactionIdToEntry(xid) ((xid) % (TransactionId) SUBTRANS_XACTS_PER_PAGE)
 
 
 /*
@@ -65,53 +65,6 @@ static SlruCtlData SubTransCtlData;
 static int	ZeroSUBTRANSPage(int pageno);
 static bool SubTransPagePrecedes(int page1, int page2);
 
-/*
- * Function to fetch the subtransaction data from subtrans log.
- * Subtransaction data stores Immediate and TopMost Parent for the XID.
- */
-static void
-SubTransGetData(TransactionId xid, SubTransData* subData)
-{
-	MIRRORED_LOCK_DECLARE;
-
-	int			pageno = TransactionIdToPage(xid);
-	int			entryno = TransactionIdToEntry(xid);
-	int			slotno;
-	SubTransData *ptr;
-
-	/* Can't ask about stuff that might not be around anymore */
-	Assert(TransactionIdFollowsOrEquals(xid, TransactionXmin));
-
-	/* Bootstrap and frozen XIDs have no parent and itself as topMostParent */
-	if (!TransactionIdIsNormal(xid))
-	{
-		subData->parent = InvalidTransactionId;
-		subData->topMostParent = xid;
-		return;
-	}
-
-	MIRRORED_LOCK;
-
-	/* lock is acquired by SimpleLruReadPage_ReadOnly */
-
-	slotno = SimpleLruReadPage_ReadOnly(SubTransCtl, pageno, xid, NULL);
-	ptr = (SubTransData *) SubTransCtl->shared->page_buffer[slotno];
-	ptr += entryno;
-
-	subData->parent = ptr->parent;
-	subData->topMostParent = ptr->topMostParent;
-	if ( subData->topMostParent == InvalidTransactionId )
-	{
-		/* Here means parent is Main XID, hence set parent itself as topMostParent */
-		subData->topMostParent = xid;
-	}
-
-	LWLockRelease(SubtransControlLock);
-
-	MIRRORED_UNLOCK;
-
-	return;
-}
 
 /*
  * Record the parent of a subtransaction in the subtrans log.
@@ -124,36 +77,20 @@ SubTransSetParent(TransactionId xid, TransactionId parent)
 	int			pageno = TransactionIdToPage(xid);
 	int			entryno = TransactionIdToEntry(xid);
 	int			slotno;
-	SubTransData *ptr;
-	SubTransData subData;
-
-	/*
-	 * Main Xact has parent and topMostParent as InvalidTransactionId
-	 */
-	if ( parent != InvalidTransactionId )
-	{
-		/* Get the topMostParent for Parent */
-		SubTransGetData(parent, &subData);
-	}
-	else
-	{
-		subData.topMostParent = InvalidTransactionId;
-	}
+	TransactionId *ptr;
 
 	MIRRORED_LOCK;
 
 	LWLockAcquire(SubtransControlLock, LW_EXCLUSIVE);
 
 	slotno = SimpleLruReadPage(SubTransCtl, pageno, xid);
-	ptr = (SubTransData *) SubTransCtl->shared->page_buffer[slotno];
+	ptr = (TransactionId *) SubTransCtl->shared->page_buffer[slotno];
 	ptr += entryno;
 
 	/* Current state should be 0 */
-	Assert(ptr->parent == InvalidTransactionId);
-	Assert(ptr->topMostParent == InvalidTransactionId);
+	Assert(*ptr == InvalidTransactionId);
 
-	ptr->parent = parent;
-	ptr->topMostParent = subData.topMostParent;
+	*ptr = parent;
 
 	SubTransCtl->shared->page_dirty[slotno] = true;
 
@@ -168,27 +105,72 @@ SubTransSetParent(TransactionId xid, TransactionId parent)
 TransactionId
 SubTransGetParent(TransactionId xid)
 {
-	SubTransData subData;
-	SubTransGetData(xid, &subData);
+	MIRRORED_LOCK_DECLARE;
 
-	return subData.parent;
+	int			pageno = TransactionIdToPage(xid);
+	int			entryno = TransactionIdToEntry(xid);
+	int			slotno;
+	TransactionId *ptr;
+	TransactionId parent;
+
+	/* Can't ask about stuff that might not be around anymore */
+	Assert(TransactionIdFollowsOrEquals(xid, TransactionXmin));
+
+	/* Bootstrap and frozen XIDs have no parent */
+	if (!TransactionIdIsNormal(xid))
+		return InvalidTransactionId;
+
+	MIRRORED_LOCK;
+
+	/* lock is acquired by SimpleLruReadPage_ReadOnly */
+
+	slotno = SimpleLruReadPage_ReadOnly(SubTransCtl, pageno, xid, NULL);
+	ptr = (TransactionId *) SubTransCtl->shared->page_buffer[slotno];
+	ptr += entryno;
+
+	parent = *ptr;
+
+	LWLockRelease(SubtransControlLock);
+
+	MIRRORED_UNLOCK;
+
+	return parent;
 }
 
 /*
  * SubTransGetTopmostTransaction
  *
  * Returns the topmost transaction of the given transaction id.
+ *
+ * Because we cannot look back further than TransactionXmin, it is possible
+ * that this function will lie and return an intermediate subtransaction ID
+ * instead of the true topmost parent ID.  This is OK, because in practice
+ * we only care about detecting whether the topmost parent is still running
+ * or is part of a current snapshot's list of still-running transactions.
+ * Therefore, any XID before TransactionXmin is as good as any other.
  */
 TransactionId
 SubTransGetTopmostTransaction(TransactionId xid)
 {
-	Assert(TransactionIdIsValid(xid));
-	SubTransData subData;
-	SubTransGetData(xid, &subData);
+	TransactionId parentXid = xid,
+				previousXid = xid;
 
-	Assert(TransactionIdIsValid(subData.topMostParent));
-	return subData.topMostParent;
+	/* Can't ask about stuff that might not be around anymore */
+	Assert(TransactionIdFollowsOrEquals(xid, TransactionXmin));
+
+	while (TransactionIdIsValid(parentXid))
+	{
+		previousXid = parentXid;
+		if (TransactionIdPrecedes(parentXid, TransactionXmin))
+			break;
+		parentXid = SubTransGetParent(parentXid);
+	}
+
+	Assert(TransactionIdIsValid(previousXid));
+
+	return previousXid;
 }
+
 
 /*
  * Initialization of shared memory for SUBTRANS
@@ -362,11 +344,9 @@ CheckPointSUBTRANS(void)
 void
 ExtendSUBTRANS(TransactionId newestXact)
 {
-	int			pageno;
+	MIRRORED_LOCK_DECLARE;
 
-	/*
-	 * Caller must have already taken mirrored lock shared.
-	 */
+	int			pageno;
 
 	/*
 	 * No work except at first XID of a page.  But beware: just after
@@ -378,6 +358,8 @@ ExtendSUBTRANS(TransactionId newestXact)
 
 	pageno = TransactionIdToPage(newestXact);
 
+	MIRRORED_LOCK;
+
 	LWLockAcquire(SubtransControlLock, LW_EXCLUSIVE);
 
 	/* Zero the page */
@@ -385,6 +367,7 @@ ExtendSUBTRANS(TransactionId newestXact)
 
 	LWLockRelease(SubtransControlLock);
 
+	MIRRORED_UNLOCK;
 }
 
 
@@ -430,9 +413,9 @@ SubTransPagePrecedes(int page1, int page2)
 	TransactionId xid1;
 	TransactionId xid2;
 
-	xid1 = ((uint32) page1) * SUBTRANS_XACTS_PER_PAGE;
+	xid1 = ((TransactionId) page1) * SUBTRANS_XACTS_PER_PAGE;
 	xid1 += FirstNormalTransactionId;
-	xid2 = ((uint32) page2) * SUBTRANS_XACTS_PER_PAGE;
+	xid2 = ((TransactionId) page2) * SUBTRANS_XACTS_PER_PAGE;
 	xid2 += FirstNormalTransactionId;
 
 	return TransactionIdPrecedes(xid1, xid2);

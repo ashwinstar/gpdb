@@ -15,8 +15,7 @@ include $(top_builddir)/src/Makefile.global
 
 DIRS = initdb ipcclean pg_ctl pg_dump \
 	psql scripts pg_config pg_controldata pg_resetxlog \
-	gpmapreduce gpmirrortransition gpupgrade gphdfs/src/protocol_formatter \
-	gpfusion
+	gpmapreduce gpmirrortransition gpupgrade gphdfs/src/protocol_formatter
 
 ifeq ($(enable_gphdfs),yes)
 DIRS+=gphdfs

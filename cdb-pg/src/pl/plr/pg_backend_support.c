@@ -181,55 +181,47 @@ get_lib_pathstr(Oid funcid)
 	HeapTuple			procedureTuple;
 	Form_pg_proc		procedureStruct;
 	Oid					language;
+	HeapTuple			languageTuple;
+	Form_pg_language	languageStruct;
 	Oid					lang_funcid;
 	Datum				tmp;
 	bool				isnull;
 	char			   *raw_path;
 	char			   *cooked_path;
-	int					fetchCount;
-	cqContext		   *pcqCtx;
 
 	/* get the pg_proc entry */
-	language = caql_getoid_plus(
-			NULL,
-			&fetchCount,
-			NULL,
-			cql("SELECT prolang FROM pg_proc "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(funcid)));
-
-	if (!fetchCount)
+	procedureTuple = SearchSysCache(PROCOID,
+									ObjectIdGetDatum(funcid),
+									0, 0, 0);
+	if (!HeapTupleIsValid(procedureTuple))
 		/* internal error */
 		elog(ERROR, "cache lookup failed for function %u", funcid);
+	procedureStruct = (Form_pg_proc) GETSTRUCT(procedureTuple);
 
 	/* now get the pg_language entry */
-	lang_funcid = caql_getoid_plus(
-			NULL,
-			&fetchCount,
-			NULL,
-			cql("SELECT lanplcallfoid FROM pg_language "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(language)));
+	language = procedureStruct->prolang;
+	ReleaseSysCache(procedureTuple);
 
-	if (!fetchCount)
+	languageTuple = SearchSysCache(LANGOID,
+								   ObjectIdGetDatum(language),
+								   0, 0, 0);
+	if (!HeapTupleIsValid(languageTuple))
 		/* internal error */
 		elog(ERROR, "cache lookup failed for language %u", language);
+	languageStruct = (Form_pg_language) GETSTRUCT(languageTuple);
+	lang_funcid = languageStruct->lanplcallfoid;
+	ReleaseSysCache(languageTuple);
 
 	/* finally, get the pg_proc entry for the language handler */
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_proc "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(lang_funcid)));
-
-	procedureTuple = caql_getnext(pcqCtx);
-
+	procedureTuple = SearchSysCache(PROCOID,
+									ObjectIdGetDatum(lang_funcid),
+									0, 0, 0);
 	if (!HeapTupleIsValid(procedureTuple))
 		/* internal error */
 		elog(ERROR, "cache lookup failed for function %u", lang_funcid);
 	procedureStruct = (Form_pg_proc) GETSTRUCT(procedureTuple);
 
-	tmp = caql_getattr(pcqCtx, Anum_pg_proc_probin, &isnull);
+	tmp = SysCacheGetAttr(PROCOID, procedureTuple, Anum_pg_proc_probin, &isnull);
 	raw_path = DatumGetCString(DirectFunctionCall1(byteaout, tmp));
 
 #if PG_VERSION_NUM >= 80500
@@ -255,7 +247,7 @@ get_lib_pathstr(Oid funcid)
 	if (!cooked_path)
 		cooked_path = pstrdup(raw_path);
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(procedureTuple);
 
 	return cooked_path;
 }

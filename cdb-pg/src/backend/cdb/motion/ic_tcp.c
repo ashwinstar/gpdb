@@ -227,6 +227,7 @@ setupTCPListeningSocket(int backlog, int *listenerSocketFd, uint16 *listenerPort
 				NULL, 0, NI_NUMERICHOST);
 		hints.ai_flags |= AI_NUMERICHOST;
 		localname = myname;
+		elog(LOG, "binding to %s only",localname);
 		if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
 				ereport(DEBUG4, (errmsg("binding listener %s", localname)));
 	}
@@ -564,7 +565,7 @@ startOutgoingConnections(ChunkTransportState *transportStates,
 	pEntry = createChunkTransportState(transportStates,
 									   sendSlice,
 									   recvSlice,
-									   list_length(recvSlice->workerProcesses));
+									   list_length(recvSlice->primaryProcesses));
 
 	/*
 	 * Setup a MotionConn entry for each of our outbound connections.
@@ -573,7 +574,7 @@ startOutgoingConnections(ChunkTransportState *transportStates,
 	 */
     conn = pEntry->conns;
 
-    foreach(cell, recvSlice->workerProcesses)
+    foreach(cell, recvSlice->primaryProcesses)
 	{
         cdbProc = (CdbProcess *)lfirst(cell);
         if (cdbProc)
@@ -1121,12 +1122,12 @@ readRegisterMessage(ChunkTransportState *transportStates,
     /*
      * Find and verify the CdbProcess node for the sending process.
      */
-    if (list_length(pEntry->sendSlice->workerProcesses) == 1)
+    if (list_length(pEntry->sendSlice->primaryProcesses) == 1)
         iconn = 0;
     else
         iconn = msg.srcContentId;
 
-    cdbproc = (CdbProcess *)list_nth(pEntry->sendSlice->workerProcesses, iconn);
+    cdbproc = (CdbProcess *)list_nth(pEntry->sendSlice->primaryProcesses, iconn);
 
     if (msg.srcContentId != cdbproc->contentid ||
         msg.srcListenerPort != cdbproc->listenerPort ||
@@ -1434,12 +1435,12 @@ SetupTCPInterconnect(EState *estate)
 		 * primary-process entries, so we count the entries.
 		 */
 		activeNumProcs = 0;
-		totalNumProcs = list_length(aSlice->workerProcesses);
+		totalNumProcs = list_length(aSlice->primaryProcesses);
 		for (i=0; i < totalNumProcs; i++)
 		{
 			CdbProcess *cdbProc;
 
-			cdbProc = list_nth(aSlice->workerProcesses, i);
+			cdbProc = list_nth(aSlice->primaryProcesses, i);
 			if (cdbProc)
 				activeNumProcs++;
 		}

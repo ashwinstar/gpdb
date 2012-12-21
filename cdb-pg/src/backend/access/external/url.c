@@ -62,41 +62,6 @@
 
 #define HOST_NAME_SIZE 100
 
-/*
- * SSL support GUCs - should be added soon. Until then we will use stubs
- * 
- *  SSL Params
- *	extssl_protocol  CURL_SSLVERSION_TLSv1 				
- *  extssl_cipher 	 TLS_RSA_WITH_AES_128_CBC_SHA
- *  extssl_verifycert 	1
- *  extssl_verifyhost 	2 										
- *  extssl_cert 		"gpfdists/client.crt"
- *  extssl_key 			"gpfdists/client.key"
- *  extssl_pass 		"?" 										
- *  extssl_crl 			NULL 									
- *  Misc Params
- *  extssl_libcurldebug 1 	
- */
-
-static int extssl_protocol  = CURL_SSLVERSION_TLSv1; 
-const char* extssl_cipher = "AES128-SHA";
-static int extssl_verifycert = 1;
-static int extssl_verifyhost = 2;
-const char* extssl_cert = "gpfdists/client.crt";
-const char* extssl_key = "gpfdists/client.key";
-const char* extssl_ca = "gpfdists/root.crt";
-const char* extssl_pass = NULL;
-const char* extssl_crl = NULL;
-static int extssl_libcurldebug = 1;
-char extssl_key_full[MAXPGPATH] = {0};
-char extssl_cer_full[MAXPGPATH] = {0};
-char extssl_cas_full[MAXPGPATH] = {0};
-
-/* Will hold the last curl error					*/
-/* Currently it is in use only for SSL connection,	*/
-/* but we should consider using it always			*/
-static char curl_Error_Buffer[CURL_ERROR_SIZE];
-
 static char *interpretError(int exitCode, char *buf, size_t buflen, char *err, size_t errlen);
 static const char *getSignalNameFromCode(int signo);
 static int popen_with_stderr(int *rwepipe, const char *exe, bool forwrite);
@@ -109,64 +74,9 @@ static int32  InvokeExtProtocol(void		*ptr,
 								bool		last_call);
 void extract_http_domain(char* i_path, char* o_domain, int dlen);
 
+
 /* we use a global one for convenience */
 CURLM *multi_handle = 0;
-
-static inline char* encode_percent_url(char* url)
-{
-	char 	*ptr;
-	char 	*encoded_url;
-	int 	 i, count;
-
-	if (!url)			/* if url is null there is no encoding to do */
-		return url;
-
-	/* count number of characters to encode */
-	count = 0;
-
-	for (i = 0; url[i]; i++)
-	{
-		/* The only two characters we encode are space and percent
-		 * (unlike a standard browser which encodes many more characters) */
-		if ('%' == url[i] || ' ' == url[i])
-			count++;
-	}
-
-	if (!count)		/* No encoding needed */
-		return url;
-
-	/* Allocate memory.
-	 * Each encoded character needs an additional 2 characters,
-	 * and one more character for the null-terminator */
-	ptr = encoded_url = palloc(strlen(url) + 2*count + 1);
-
-
-	/* copy data into encoded_url */
-	for (i = 0; url[i] != '\0'; i++)
-	{
-		switch (url[i])
-		{
-			case ' ':	/* Swap space with %20 */
-				strcpy(ptr, "%20");
-				ptr += 3;
-				break;
-
-			case '%': /* swap % with %25 */
-				strcpy(ptr, "%25");
-				ptr += 3;
-				break;
-
-			/* add other cases here */
-
-			default:
-				*ptr = url[i];
-				++ptr;
-		} /* end switch */
-
-	}	/* end for */
-	*ptr = '\0';
-	return encoded_url;
-}
 
 /*
  * header_callback
@@ -361,12 +271,11 @@ check_response(URL_FILE *file, int *rc, const char **response_string)
 					snprintf(connmsg, sizeof connmsg, "error code = %d (%s)", 
 							 (int) oserrno, strerror((int)oserrno));
 			}
-
+			
 			ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE),
 							errmsg("connection with gpfdist failed for %s. "
-									"effective url: %s. %s\n%s", file->url, effective_url,
-									(oserrno != 0 ? connmsg : ""),
-									(curl_Error_Buffer[0] != '\0' ? curl_Error_Buffer : "")),
+									"effective url: %s. %s", file->url, effective_url,
+									(oserrno != 0 ? connmsg : "")),
 						    errOmitLocation(true)));
 		}
 		else
@@ -834,18 +743,6 @@ url_has_ipv6_format (char *url)
 	return is6;
 }
 
-static int
-is_file_exists(const char* filename)
-{
-	FILE* file;
-    if ((file = fopen(filename, "r")) > 0)
-    {
-        fclose(file);
-        return 1;
-    }
-    return 0;
-}
-
 /*
  * url_fopen
  *
@@ -859,13 +756,7 @@ is_file_exists(const char* filename)
  * which will internally call url_fclose().
  */
 URL_FILE *
-url_fopen(char *url,
-		  bool forwrite,
-		  extvar_t *ev,
-		  CopyState pstate,
-		  List *scanquals,
-		  int *response_code,
-		  const char **response_string)
+url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *response_code, const char **response_string)
 {
 
 	/* an EXECUTE string will always be prefixed like this */
@@ -873,7 +764,6 @@ url_fopen(char *url,
 	URL_FILE*	file;
 	int 		e;
 	int         ip_mode;
-	char		*encoded_url;
 
 	/*
 	 * if 'url' starts with "execute:" then it's a command to execute and
@@ -888,16 +778,7 @@ url_fopen(char *url,
 		return url_execute_fopen(url, cmd, forwrite, ev);
 	}
 
-	/* encode the urls of the following protocols to percent format */
-	if (IS_FILE_URI(url) 	|| IS_GPFDISTS_URI(url)
-							|| IS_GPFDIST_URI(url) || IS_HTTP_URI(url))
-	{
-		encoded_url = encode_percent_url(url);
-	}
-	else
-		encoded_url = url;
-
-	if (!(file = (URL_FILE *) malloc(sizeof(URL_FILE) + strlen(encoded_url) + 1)))
+	if (!(file = (URL_FILE *)malloc(sizeof(URL_FILE) + strlen(url) + 1)))
 	{
 		elog(ERROR, "out of memory");
 	}
@@ -905,14 +786,11 @@ url_fopen(char *url,
     memset(file, 0, sizeof(URL_FILE));
 
 	file->url = ((char *) file) + sizeof(URL_FILE);
-	strcpy(file->url, encoded_url);
-
-	/* Reset curl_Error_Buffer */
-	curl_Error_Buffer[0] = '\0';
+	strcpy(file->url, url);
 
     if (IS_FILE_URI(url))
     {
-		char*	path = strchr(file->url + strlen(PROTOCOL_FILE), '/');
+		char*	path = strchr(url + strlen(PROTOCOL_FILE), '/');
 		struct fstream_options fo;
 
 		Insist(!forwrite);
@@ -932,9 +810,6 @@ url_fopen(char *url,
 		fo.escape = pstate->escape ? *pstate->escape : 0;
 		fo.header = pstate->header_line;
 		fo.bufsize = 32 * 1024;
-		/* The file permissions are used only for WRITABLE protocols.	*/
-		/* file:// is a readable protocol.								*/
-		fo.file_permissions = 0;
 		pstate->header_line = 0;
 
 		/*
@@ -952,14 +827,14 @@ url_fopen(char *url,
 			return NULL;
 		}
     }
-    else if (IS_HTTP_URI(url) || IS_GPFDIST_URI(url) || IS_GPFDISTS_URI(url))
+    else if (IS_HTTP_URI(url) || IS_GPFDIST_URI(url))
     {
 		int sz;
 
 		bool is_ipv6 = url_has_ipv6_format(file->url);
 		
 		sz = make_url(file->url, 0, is_ipv6);
-
+		
         file->type = CFTYPE_CURL; /* marked as URL */
 
 		if (sz < 0)
@@ -970,47 +845,21 @@ url_fopen(char *url,
 			elog(ERROR, "illegal URL: %s", url_cpy);
 		}
 
-		if (!IS_GPFDISTS_URI(url))
-		{
-			file->u.curl.curl_url = palloc(sz);
-			memset(file->u.curl.curl_url, 0, sz);
-			file->u.curl.for_write = forwrite;
-			
-			make_url(file->url, file->u.curl.curl_url, is_ipv6);
-			/*
-			 * We need to call is_url_ipv6 for the case where inside make_url function
-			 * a domain name was transformed to an IPv6 address.
-			 */
-			if ( !is_ipv6 )
-				is_ipv6 = url_has_ipv6_format(file->u.curl.curl_url);	
-		}
-		else
-		{
-			/*
-			 * SSL support addition
-			 * 
-			 * negotiation will fail if verifyhost is on, so we *must*
-			 * not reoslve the hostname in this case. I have decided
-			 * to not resolve it anyway and let libcurl do the work.
-			 */
-			char* tmp_resolved;
-			int url_len = strlen(file->url);
-			file->u.curl.curl_url = palloc0(url_len + 1);
-			memcpy(file->u.curl.curl_url, file->url, url_len);
-			file->u.curl.for_write = forwrite;
-			
-			tmp_resolved = palloc0(sz);
-			make_url(file->url, tmp_resolved, is_ipv6);
-			
-			/* keep the same ipv6 logic here */
-			if ( !is_ipv6 )
-				is_ipv6 = url_has_ipv6_format(tmp_resolved);
-		}
+		file->u.curl.curl_url = palloc(sz);
+		memset(file->u.curl.curl_url, 0, sz);
+		file->u.curl.for_write = forwrite;
 		
-		if (IS_GPFDIST_URI(file->u.curl.curl_url) || IS_GPFDISTS_URI(file->u.curl.curl_url))
+		make_url(file->url, file->u.curl.curl_url, is_ipv6);
+		/*
+		 * We need to call is_url_ipv6 for the case where inside make_url function
+		 * a domain name was transformed to an IPv6 address.
+		 */
+		if ( !is_ipv6 )
+			is_ipv6 = url_has_ipv6_format( file->u.curl.curl_url);
+
+		if (IS_GPFDIST_URI(file->u.curl.curl_url))
 		{
-			/* replace gpfdist:// with http:// or gpfdists:// with https://
-			 * by overriding 'dist' with 'http' */
+			/* replace gpfdist:// with http:// */
 			file->u.curl.curl_url += 3;
 			memcpy(file->u.curl.curl_url, "http", 4);
 			pstate->header_line = 0;
@@ -1022,6 +871,8 @@ url_fopen(char *url,
 			url_fclose(file, false, pstate->cur_relname);
 			elog(ERROR, "internal error: curl_easy_init failed");
 		}
+
+
         if (CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_URL, file->u.curl.curl_url)))
 		{
 			url_fclose(file, false, pstate->cur_relname);
@@ -1090,13 +941,13 @@ url_fopen(char *url,
 			extract_http_domain(file->url, domain, HOST_NAME_SIZE);
 			set_httpheader(file, "Host", domain);
 		}
-
+		
+		
 		if (set_httpheader(file, "X-GP-XID", ev->GP_XID) ||
 			set_httpheader(file, "X-GP-CID", ev->GP_CID) ||
 			set_httpheader(file, "X-GP-SN", ev->GP_SN) ||
 			set_httpheader(file, "X-GP-SEGMENT-ID", ev->GP_SEGMENT_ID) ||
-			set_httpheader(file, "X-GP-SEGMENT-COUNT", ev->GP_SEGMENT_COUNT) ||
-			set_httpheader(file, "X-GP-LINE-DELIM-STR", ev->GP_LINE_DELIM_STR))
+			set_httpheader(file, "X-GP-SEGMENT-COUNT", ev->GP_SEGMENT_COUNT))
 		{
 			url_fclose(file, false, pstate->cur_relname);
 			elog(ERROR, "internal error: some header value is too long");
@@ -1172,140 +1023,7 @@ url_fopen(char *url,
 					 e, curl_easy_strerror(e));
 			}
 		}
-						
-		/*
-		 * SSL configuration
-		 */
-		if (IS_GPFDISTS_URI(url))
-		{
-			Insist(PointerIsValid(DataDir));
-			elog(LOG,"trying to load certificates from %s", DataDir);
-			
-			/* curl will save its last error in curlErrorBuffer */
-			if ( CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_ERRORBUFFER, curl_Error_Buffer)))
-			{
-				url_fclose(file, false, pstate->cur_relname);
-				elog(ERROR, "internal error: curl_easy_setopt CURLOPT_ERRORBUFFER error (%d - %s)",
-					 e, curl_easy_strerror(e));
-			}
 
-			/* cert is stored PEM coded in file... */
-			if ( CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_SSLCERTTYPE, "PEM")))
-			{
-				url_fclose(file, false, pstate->cur_relname);
-				elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLCERTTYPE error (%d - %s)",
-					 e, curl_easy_strerror(e));
-			}
-
-		  	/* set the cert for client authentication */
-		  	if (extssl_cert != NULL)
-		  	{
-		  		memset(extssl_cer_full, 0, MAXPGPATH);
-		  		snprintf(extssl_cer_full, MAXPGPATH, "%s/%s", DataDir, extssl_cert);
-				
-				if (!is_file_exists(extssl_cer_full))
-					elog(ERROR, "file %s doesn't exists", extssl_cer_full);
-							   
-		  		if ( CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_SSLCERT, extssl_cer_full)))
-		  		{
-					url_fclose(file, false, pstate->cur_relname);
-					elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLKEY error (%d - %s)",
-						 e, curl_easy_strerror(e));
-				}
-		  	}
-
-		  	/* set the key passphrase */
-		  	if (extssl_pass != NULL)
-		  	{
-		  		if ( CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_KEYPASSWD, extssl_pass)))
-		  		{
-					url_fclose(file, false, pstate->cur_relname);
-					elog(ERROR, "internal error: curl_easy_setopt CURLOPT_KEYPASSWD error (%d - %s)",
-						 e, curl_easy_strerror(e));
-				}
-		  	}
-
-		  	if ( CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_SSLKEYTYPE,"PEM")))
-		  	{
-				url_fclose(file, false, pstate->cur_relname);
-				elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLKEYTYPE error (%d - %s)",
-					 e, curl_easy_strerror(e));
-			}
-
-		  	/* set the private key (file or ID in engine) */
-		  	if (extssl_key != NULL)
-		  	{
-		  		memset(extssl_key_full, 0, MAXPGPATH);
-		  		snprintf(extssl_key_full, MAXPGPATH, "%s/%s", DataDir,extssl_key);
-				
-				if (!is_file_exists(extssl_key_full))
-					elog(ERROR, "file %s doesn't exists", extssl_cer_full);
-				
-		  		if ( CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_SSLKEY, extssl_key_full)))
-		  		{
-					url_fclose(file, false, pstate->cur_relname);
-					elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLKEY error (%d - %s)",
-						 e, curl_easy_strerror(e));
-				}
-		  	}
-
-		  	/* set the file with the certs vaildating the server */
-		  	if (extssl_ca != NULL)
-		  	{
-		  		memset(extssl_cas_full, 0, MAXPGPATH);
-		  		snprintf(extssl_cas_full, MAXPGPATH, "%s/%s", DataDir, extssl_ca);
-				
-				if (!is_file_exists(extssl_cas_full))
-					elog(ERROR, "file %s doesn't exists", extssl_cer_full);
-				
-		  		if ( CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_CAINFO, extssl_cas_full)))
-		  		{
-					url_fclose(file, false, pstate->cur_relname);
-					elog(ERROR, "internal error: curl_easy_setopt CURLOPT_CAINFO error (%d - %s)",
-						 e, curl_easy_strerror(e));
-				}
-		  	}
-
-		  	/* set cert verification */
-		  	if ( CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_SSL_VERIFYPEER, (long)extssl_verifycert)))
-		  	{
-		  		url_fclose(file, false, pstate->cur_relname);
-				elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSL_VERIFYPEER error (%d - %s)",
-					 e, curl_easy_strerror(e));
-		  	}
-			
-			/* set host verification */
-		  	if ( CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_SSL_VERIFYHOST, (long)extssl_verifyhost)))
-		  	{
-				url_fclose(file, false, pstate->cur_relname);
-				elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSL_VERIFYHOST error (%d - %s)",
-					 e, curl_easy_strerror(e));
-			}
-			/* set ciphersuite */
-		  	if ( CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_SSL_CIPHER_LIST, extssl_cipher)))
-		  	{
-				url_fclose(file, false, pstate->cur_relname);
-				elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSL_CIPHER_LIST error (%d - %s)",
-					 e, curl_easy_strerror(e));
-			}
-			/* set protocol */
-		  	if ( CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_SSLVERSION, extssl_protocol)))
-		  	{
-				url_fclose(file, false, pstate->cur_relname);
-				elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLVERSION error (%d - %s)",
-					 e, curl_easy_strerror(e));
-			}
-		  	/* set debug */
-		  	if ( CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_VERBOSE, (long)extssl_libcurldebug)))
-		  	{
-		  		if (extssl_libcurldebug)
-		  		{
-		  			elog(INFO, "internal error: curl_easy_setopt CURLOPT_VERBOSE error (%d - %s)",
-		  					e, curl_easy_strerror(e));
-		  		}
-			}
-		}
-        
         /* 
          * lets check our connection.
          * start the fetch if we're SELECTing (GET request), or write an
@@ -1397,17 +1115,14 @@ url_fopen(char *url,
 		/* we found our function. set it in custom file handler */
 		fmgr_info(procOid, file->u.custom.protocol_udf);
 
-		/* have the custom file handler point at the qual list */
-		file->u.custom.scanquals = scanquals;
-
 		MemoryContextSwitchTo(oldcontext);
 		
 		file->u.custom.extprotocol->prot_user_ctx = NULL;
 		file->u.custom.extprotocol->prot_last_call = false;
 		file->u.custom.extprotocol->prot_url = NULL;
 		file->u.custom.extprotocol->prot_databuf = NULL;
-		file->u.custom.extprotocol->prot_scanquals = NIL;
-
+		
+		
 		pfree(prot_name);
     }
 	
@@ -1857,7 +1572,6 @@ static size_t gp_proto1_read(char *buf, int bufsz, URL_FILE *file, CopyState pst
 		n = bufsz;
 
 	memcpy(buf, curl->in.ptr + curl->in.bot, n);
-
 	curl->in.bot += n;
 	curl->block.datalen -= n;
 	// elog(NOTICE, "returning %d bytes, %d bytes left \n", n, curl->block.datalen);
@@ -2047,7 +1761,7 @@ url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file, CopyState pstate
 
 			assert(size == 1);
 
-			n = fstream_read(file->u.file.fp, ptr, nmemb, &fo, whole_rows, "\n", 1);
+			n = fstream_read(file->u.file.fp, ptr, nmemb, &fo, whole_rows);
 			want = n > 0 ? n : 0;
 
 			if (n > 0 && fo.line_number)
@@ -2173,7 +1887,7 @@ url_rewind(URL_FILE *file, const char *relname)
 			url_fclose(file, true, relname);
 
 			/* most of these are null fo us. */
-			url_fopen(url, false, NULL, NULL, NIL, NULL, 0);
+			url_fopen(url, false, NULL, NULL, NULL, 0);
 			break;
 
 		case CFTYPE_CURL:
@@ -2557,8 +2271,8 @@ InvokeExtProtocol(void 	   		*ptr,
 				  bool			 last_call)
 {
 	FunctionCallInfoData	fcinfo;
-	ExtProtocolData		   *extprotocol = file->u.custom.extprotocol;
-	FmgrInfo			   *extprotocol_udf = file->u.custom.protocol_udf;
+	ExtProtocolData*		extprotocol = file->u.custom.extprotocol;
+	FmgrInfo*				extprotocol_udf = file->u.custom.protocol_udf;
 	Datum					d;
 	MemoryContext			oldcontext;
 	
@@ -2570,7 +2284,6 @@ InvokeExtProtocol(void 	   		*ptr,
 	extprotocol->prot_relation = (last_call ? NULL : pstate->rel);
 	extprotocol->prot_databuf  = (last_call ? NULL : (char *)ptr);
 	extprotocol->prot_maxbytes = nbytes;
-	extprotocol->prot_scanquals = file->u.custom.scanquals;
 	extprotocol->prot_last_call = last_call;
 	
 	InitFunctionCallInfoData(/* FunctionCallInfoData */ fcinfo, 

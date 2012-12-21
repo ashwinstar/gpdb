@@ -10,8 +10,8 @@ CREATE TABLE plr_modules (
   modsrc text
 );
 
--- INSERT INTO plr_modules VALUES (0, 'pg.test.module.load <-function(msg) {print(msg)}');
--- select reload_plr_modules();
+INSERT INTO plr_modules VALUES (0, 'pg.test.module.load <-function(msg) {print(msg)}');
+select reload_plr_modules();
 
 --
 -- user defined R function test
@@ -85,8 +85,8 @@ insert into foo values(9,'cat2',1.30);
 
 create or replace function r_median(_float8) returns float as 'median(arg1)' language 'plr';
 select r_median('{1.23,1.31,1.42,1.27}'::_float8);
-CREATE AGGREGATE "median" (sfunc = plr_array_accum, basetype = float8, stype = _float8, finalfunc = r_median);
-select f1, "median"(f2) from foo group by f1 order by f1;
+CREATE AGGREGATE median (sfunc = plr_array_accum, basetype = float8, stype = _float8, finalfunc = r_median);
+select f1, median(f2) from foo group by f1 order by f1;
 
 --create or replace function r_gamma(_float8) returns float as 'gamma(arg1)' language 'plr';
 --select round(r_gamma('{1.23,1.31,1.42,1.27}'::_float8)::numeric,8);

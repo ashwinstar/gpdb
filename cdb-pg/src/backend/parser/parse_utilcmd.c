@@ -26,7 +26,6 @@
 
 #include "postgres.h"
 
-#include "access/catquery.h"
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/reloptions.h"
@@ -87,20 +86,14 @@ generateClonedIndexStmt(CreateStmtContext *cxt, Relation source_idx,
 	Oid			keycoltype;
 	Datum		datum;
 	bool		isnull;
-	cqContext  *pcqCtx;
 
 	/*
 	 * Fetch pg_class tuple of source index.  We can't use the copy in the
 	 * relcache entry because it doesn't include optional fields.
 	 */
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(source_relid)));
-
-	ht_idxrel = caql_getnext(pcqCtx);
-
+	ht_idxrel = SearchSysCache(RELOID,
+							   ObjectIdGetDatum(source_relid),
+							   0, 0, 0);
 	if (!HeapTupleIsValid(ht_idxrel))
 		elog(ERROR, "cache lookup failed for relation %u", source_relid);
 	idxrelrec = (Form_pg_class) GETSTRUCT(ht_idxrel);
@@ -235,8 +228,8 @@ generateClonedIndexStmt(CreateStmtContext *cxt, Relation source_idx,
 	}
 
 	/* Copy reloptions if any */
-	datum = caql_getattr(pcqCtx,
-						 Anum_pg_class_reloptions, &isnull);
+	datum = SysCacheGetAttr(RELOID, ht_idxrel,
+							Anum_pg_class_reloptions, &isnull);
 	if (!isnull)
 		index->options = untransformRelOptions(datum);
 
@@ -255,7 +248,7 @@ generateClonedIndexStmt(CreateStmtContext *cxt, Relation source_idx,
 	}
 
 	/* Clean up */
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(ht_idxrel);
 
 	return index;
 }
@@ -272,16 +265,10 @@ get_opclass(Oid opclass, Oid actual_datatype)
 	HeapTuple	ht_opc;
 	Form_pg_opclass opc_rec;
 	List	   *result = NIL;
-	cqContext  *pcqCtx;
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_opclass "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(opclass)));
-
-	ht_opc = caql_getnext(pcqCtx);
-
+	ht_opc = SearchSysCache(CLAOID,
+							ObjectIdGetDatum(opclass),
+							0, 0, 0);
 	if (!HeapTupleIsValid(ht_opc))
 		elog(ERROR, "cache lookup failed for opclass %u", opclass);
 	opc_rec = (Form_pg_opclass) GETSTRUCT(ht_opc);
@@ -295,8 +282,7 @@ get_opclass(Oid opclass, Oid actual_datatype)
 		result = list_make2(makeString(nsp_name), makeString(opc_name));
 	}
 
-	caql_endscan(pcqCtx);
-
+	ReleaseSysCache(ht_opc);
 	return result;
 }
 

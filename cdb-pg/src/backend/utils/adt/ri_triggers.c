@@ -227,7 +227,7 @@ RI_FKey_check(PG_FUNCTION_ARGS)
 	 * can be entitled to change its xmin/xmax.
 	 */
 	Assert(new_row_buf != InvalidBuffer);
-	if (!HeapTupleSatisfiesItself( /* relation = ??? */ NULL, &new_row->t_self, new_row->t_data, new_row_buf, "RI_FKey_check"))
+	if (!HeapTupleSatisfiesItself( /* relation = ??? */ NULL, new_row->t_data, new_row_buf))
 		return PointerGetDatum(NULL);
 
 	/*

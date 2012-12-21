@@ -597,7 +597,6 @@ void BackoffBackendTick()
 			|| ProcDiePending		/* Proc is dying */
 			|| QueryCancelPending	/* Statement cancellation */
 			|| QueryCancelCleanup	/* Statement cancellation */
-			|| QueryCancelErrorless	/* Statement cancellation */
 			|| InterruptHoldoffCount != 0 /* We're holding off on handling interrupts */
 			|| CritSectionCount != 0	/* In critical section */
 	)
@@ -844,7 +843,7 @@ void BackoffSweeper()
 			if (se->isActive)
 				appendStringInfo(&str, "(%d,%f)", i, se->targetUsage);
 		}
-		elog(LOG, "%s", (const char *) str.data);
+		elog(LOG, "%s", str.data);
 		pfree(str.data);
 	}
 
@@ -1158,7 +1157,7 @@ NON_EXEC_STATIC void BackoffSweeperMain(int argc, char *argv[])
 	BaseInit();
 
 	/* See InitPostgres()... */
-	InitProcess(false /*isQueryProc*/);
+	InitProcess();
 
 	SetProcessingMode(NormalProcessing);
 

@@ -9,7 +9,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/varbit.c,v 1.50.2.3 2010/01/07 19:53:27 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/varbit.c,v 1.50.2.1 2007/08/21 02:40:12 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -872,23 +872,13 @@ bitsubstr(PG_FUNCTION_ARGS)
 			   *ps;
 
 	bitlen = VARBITLEN(arg);
+	/* If we do not have an upper bound, set bitlen */
+	if (l == -1)
+		l = bitlen;
+	e = s + l;
 	s1 = Max(s, 1);
-	/* If we do not have an upper bound, use end of string */
-	if (l < 0)
-	{
-		e1 = bitlen + 1;
-	}
-	else
-	{
-		e = s + l;
-		/* guard against overflow, even though we don't allow L<0 here */
-		if (e < s)
-			ereport(ERROR,
-					(errcode(ERRCODE_SUBSTRING_ERROR),
-					 errmsg("negative substring length not allowed")));
-		e1 = Min(e, bitlen + 1);
-	}
-	if (s1 > bitlen || e1 <= s1)
+	e1 = Min(e, bitlen + 1);
+	if (s1 > bitlen || e1 < 1)
 	{
 		/* Need to return a zero-length bitstring */
 		len = VARBITTOTALLEN(0);
@@ -1286,12 +1276,7 @@ bitfromint4(PG_FUNCTION_ARGS)
 	/* store first fractional byte */
 	if (destbitsleft > srcbitsleft)
 	{
-		int		val = (int) (a >> (destbitsleft - 8));
-
-		/* Force sign-fill in case the compiler implements >> as zero-fill */
-		if (a < 0)
-			val |= (-1) << (srcbitsleft + 8 - destbitsleft);
-		*r++ = (bits8) (val & BITMASK);
+		*r++ = (bits8) ((a >> (srcbitsleft - 8)) & BITMASK);
 		destbitsleft -= 8;
 	}
 	/* Now srcbitsleft and destbitsleft are the same, need not track both */
@@ -1371,12 +1356,7 @@ bitfromint8(PG_FUNCTION_ARGS)
 	/* store first fractional byte */
 	if (destbitsleft > srcbitsleft)
 	{
-		int		val = (int) (a >> (destbitsleft - 8));
-
-		/* Force sign-fill in case the compiler implements >> as zero-fill */
-		if (a < 0)
-			val |= (-1) << (srcbitsleft + 8 - destbitsleft);
-		*r++ = (bits8) (val & BITMASK);
+		*r++ = (bits8) ((a >> (srcbitsleft - 8)) & BITMASK);
 		destbitsleft -= 8;
 	}
 	/* Now srcbitsleft and destbitsleft are the same, need not track both */

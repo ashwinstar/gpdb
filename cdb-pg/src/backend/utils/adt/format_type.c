@@ -17,7 +17,6 @@
 
 #include <ctype.h>
 
-#include "access/catquery.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_type.h"
 #include "utils/builtins.h"
@@ -122,24 +121,15 @@ format_type_internal(Oid type_oid, int32 typemod,
 	Oid			array_base_type;
 	bool		is_array;
 	char	   *buf;
-	cqContext  *typcqCtx;
-	cqContext  *basecqCtx;
 
 	if (type_oid == InvalidOid && allow_invalid)
 		return pstrdup("-");
 
-	typcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_type "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(type_oid)));
-
-	tuple = caql_getnext(typcqCtx);
-
+	tuple = SearchSysCache(TYPEOID,
+						   ObjectIdGetDatum(type_oid),
+						   0, 0, 0);
 	if (!HeapTupleIsValid(tuple))
 	{
-		caql_endscan(typcqCtx);
-
 		if (allow_invalid)
 			return pstrdup("???");
 		else
@@ -178,8 +168,8 @@ format_type_internal(Oid type_oid, int32 typemod,
 	 */
 	array_base_type = typeform->typelem;
 
-	if (OidIsValid(array_base_type) &&
-		typeform->typtype != TYPTYPE_DOMAIN &&
+	if (array_base_type != InvalidOid &&
+		typeform->typtype != 'd' &&
 		/* TODO: Change test to use pg_type.typarray when introducing 8.3 updates */
 		NameStr(typeform->typname)[0] == '_' &&
 		typeform->typinput == F_ARRAY_IN)
@@ -188,20 +178,14 @@ format_type_internal(Oid type_oid, int32 typemod,
 		Form_pg_type base_typeform;
 
 		/* Switch our attention to the array element type */
-		basecqCtx = caql_beginscan(
-				NULL,
-				cql("SELECT * FROM pg_type "
-					" WHERE oid = :1 ",
-					ObjectIdGetDatum(array_base_type)));
-
-		base_tuple = caql_getnext(basecqCtx);
-
+		base_tuple = SearchSysCache(TYPEOID,
+							   ObjectIdGetDatum(array_base_type),
+							   0, 0, 0);
 		if (!HeapTupleIsValid(base_tuple))
 		{
 			if (allow_invalid)
 			{
-				caql_endscan(basecqCtx);
-				caql_endscan(typcqCtx);
+				ReleaseSysCache(tuple);
 				return pstrdup("???[]");
 			}
 			else
@@ -220,25 +204,15 @@ format_type_internal(Oid type_oid, int32 typemod,
 		 */
 		if (strcmp(NameStr(base_typeform->typname), NameStr(typeform->typname)+1) == 0)
 		{
-			/* NOTE: a little grotesque, but since we are switching
-			 * the base tuple for the type tuple, free the typcqctx,
-			 * then switch the caql context for the base tuple as well
-			 * so it gets freed at the end
-			 */
-
-			caql_endscan(typcqCtx);
-
+			ReleaseSysCache(tuple);
 			tuple = base_tuple;
-
-			typcqCtx = basecqCtx; /* NOTE: switch the caql ctx */
-
 			typeform = base_typeform;
 			type_oid = array_base_type;
 			is_array = true;
 		}
 		else
 		{
-			caql_endscan(basecqCtx);
+			ReleaseSysCache(base_tuple);
 			is_array = false;
 		}
 	}
@@ -479,9 +453,7 @@ format_type_internal(Oid type_oid, int32 typemod,
 	if (is_array)
 		buf = psnprintf(strlen(buf) + 3, "%s[]", buf);
 
-	caql_endscan(typcqCtx); /* NOTE: this could be the base tuple ctx
-							 * if it was an array 
-							 */
+	ReleaseSysCache(tuple);
 
 	return buf;
 }

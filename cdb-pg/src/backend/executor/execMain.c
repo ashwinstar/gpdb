@@ -152,8 +152,8 @@ static void intorel_startup(DestReceiver *self, int operation, TupleDesc typeinf
 static void intorel_receive(TupleTableSlot *slot, DestReceiver *self);
 static void intorel_shutdown(DestReceiver *self);
 static void intorel_destroy(DestReceiver *self);
+static TupleTableSlot * CompressedHeapTupleSlot(TupleTableSlot *slot, ResultRelInfo *resultRelInfo);
 static void ClearPartitionState(EState *estate);
-static void SetupRNG(QueryDesc *queryDesc);
 
 /*
  * For a partitioned insert target only:  
@@ -348,11 +348,6 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
     estate->showstatctx = queryDesc->showstatctx;
 
 	/*
-	 * Shared input info is needed when ROLE_EXECUTE or sequential plan
-	 */
-	estate->es_sharenode = (List **) palloc0(sizeof(List *));
-
-	/*
 	 * Initialize the motion layer for this query.
 	 *
 	 * NOTE: need to be in estate->es_query_cxt before the call.
@@ -365,18 +360,17 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	if (Gp_role == GP_ROLE_DISPATCH && queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL) 
 	{
 		/*
-         * If this is an extended query (normally cursor or bind/exec) - before
-         * starting the portal, we need to make sure that the shared snapshot is
-         * already set by a writer gang, or the cursor query readers will
-         * timeout waiting for one that may not exist (in some cases). Therefore
-         * we insert a small hack here and dispatch a SET query that will do it
-         * for us. (This is also done in performOpenCursor() for the simple
-         * query protocol).
+         * If this is a cursor query - before starting the portal, we need to
+		 * make sure that the shared snapshot is already set by a writer gang,
+		 * or the cursor query readers will timeout waiting for one that may not
+		 * exist (in some cases). Therefore we insert a small hack here and
+		 * dispatch a SET query that will do it for us. (This is also done in
+		 * performOpenCursor() for the simple query protocol).
 		 *
 		 * MPP-7504/MPP-7448: We also call this down inside the dispatcher after
 		 * the pre-dispatch evaluator has run.
 		 */
-		if (queryDesc->extended_query)
+		if (queryDesc->cursor_query)
 		{
 			verify_shared_snapshot_ready();
 		}
@@ -457,6 +451,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	}
 	else if (Gp_role == GP_ROLE_EXECUTE)
 	{
+		estate->es_sharenode = (List **) palloc0(sizeof(List *));
 
         /* qDisp should have sent us a slice table via MPPEXEC */
 		if (queryDesc->plannedstmt != NULL && queryDesc->plannedstmt->sliceTable != NULL)
@@ -471,8 +466,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 
 			estate->es_sliceTable = sliceTable;
 
-			estate->currentSliceIdInPlan = slice->rootIndex;
-			estate->currentExecutingSliceId = slice->rootIndex;
+			estate->current_slice_no = slice->rootIndex;
 
 			/* set our global sliceid variable for elog. */
 			currentSliceId = LocallyExecutingSliceIndex(estate);
@@ -607,13 +601,6 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		}
 
 		/*
-		 * Prepare random seed before dispatching.  QEs will receive the
-		 * random seed from QD via PlannedStmt.
-		 */
-		if (Gp_role != GP_ROLE_EXECUTE)
-			queryDesc->plannedstmt->query_random_seed = get_seed_per_query();
-
-		/*
 		 * if in dispatch mode, time to serialize plan and query
 		 * trees, and fire off cdb_exec command to each of the qexecs
 		 */
@@ -630,7 +617,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			 */
 			needDtxTwoPhase = ExecutorSaysTransactionDoesWrites();
 			dtmPreCommand("ExecutorStart", "(none)", queryDesc->plannedstmt,
-					needDtxTwoPhase, true /* wantSnapshot */, queryDesc->extended_query );
+					needDtxTwoPhase, true /* wantSnapshot */, queryDesc->cursor_query );
 
 			/*
 			 * First, see whether we need to pre-execute any initPlan subplans.
@@ -711,12 +698,6 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		if(estate->es_interconnect_is_setup)
 			Assert(estate->interconnect_context != NULL);
 
-		/*
-		 * We could set seed in GP_IGNORE, but random never gets called
-		 * so we skip it for cleanness.
-		 */
-		if (exec_identity != GP_IGNORE)
-			SetupRNG(queryDesc);
     }
 	PG_CATCH();
 	{
@@ -785,21 +766,6 @@ ExecutorRun(QueryDesc *queryDesc,
 	estate = queryDesc->estate;
 
 	Assert(estate != NULL);
-
-	/*
-	 * Set dynamicTableScanInfo to the one in estate, and reset its value at
-	 * the end of ExecutorRun(). This is to support two cases:
-	 *
-	 * (1) For PLPgsql/SQL functions. There might be multiple DynamicTableScanInfos
-	 * involved, one for each statement in the function. We set the global variable
-	 * dynamicTableScanInfo to the value for the running statement here, and reset
-	 * its value at the end of ExecutorRun().
-	 *
-	 * (2) For cursor queries. Each cursor query has its own set of DynamicTableScanInfos,
-	 * and they could be called in different orders.
-	 */
-	DynamicTableScanInfo *origDynamicTableScanInfo = dynamicTableScanInfo;
-	dynamicTableScanInfo = estate->dynamicTableScanInfo;
 
 	/*
 	 * Switch into per-query memory context
@@ -919,17 +885,9 @@ ExecutorRun(QueryDesc *queryDesc,
 		 */
 		if(result == NULL)
 			estate->es_got_eos = true;
-
-		AssertImply(dynamicTableScanInfo != NULL,
-					dynamicTableScanInfo != origDynamicTableScanInfo);
-		dynamicTableScanInfo = origDynamicTableScanInfo;
     }
 	PG_CATCH();
 	{
-		AssertImply(dynamicTableScanInfo != NULL,
-					dynamicTableScanInfo != origDynamicTableScanInfo);
-		dynamicTableScanInfo = origDynamicTableScanInfo;
-
         /* If EXPLAIN ANALYZE, let qExec try to return stats to qDisp. */
         if (estate->es_sliceTable &&
             estate->es_sliceTable->doInstrument &&
@@ -998,16 +956,6 @@ ExecutorEnd(QueryDesc *queryDesc)
 		}
 	}
 
-	if (gp_partitioning_dynamic_selection_log &&
-		estate->dynamicTableScanInfo != NULL &&
-		estate->dynamicTableScanInfo->numScans > 0)
-	{
-		for (int scanNo = 0; scanNo < estate->dynamicTableScanInfo->numScans; scanNo++)
-		{
-			dumpDynamicTableScanPidIndex(scanNo);
-		}
-	}
-	
 	/*
 	 * Switch into per-query memory context to run ExecEndPlan
 	 */
@@ -1315,249 +1263,6 @@ fail:
 		ExecutorMarkTransactionDoesWrites();
 }
 
-/*
- * BuildPartitionNodeFromRoot
- *   Build PartitionNode for the root partition of a given partition oid.
- */
-static PartitionNode *
-BuildPartitionNodeFromRoot(Oid relid)
-{
-	PartitionNode *partitionNode = NULL;
-	
-	if (rel_is_child_partition(relid))
-	{
-		relid = rel_partition_get_master(relid);
-	}
-
-	partitionNode = RelationBuildPartitionDescByOid(relid, false /* inctemplate */);
-
-	return partitionNode;
-}
-
-/*
- * createPartitionAccessMethods
- *   Create a PartitionAccessMethods object.
- *
- * Note that the memory context for the access method is not set at this point. It will
- * be set during execution.
- */
-static PartitionAccessMethods *
-createPartitionAccessMethods(int numLevels)
-{
-	PartitionAccessMethods *accessMethods = palloc(sizeof(PartitionAccessMethods));;
-	accessMethods->partLevels = numLevels;
-	accessMethods->amstate = palloc0(numLevels * sizeof(void *));
-	accessMethods->part_cxt = NULL;
-
-	return accessMethods;
-}
-
-/*
- * createPartitionState
- *   Create a PartitionState object.
- *
- * Note that the memory context for the access method is not set at this point. It will
- * be set during execution.
- */
-PartitionState *
-createPartitionState(PartitionNode *partsAndRules,
-					 int resultPartSize)
-{
-	Assert(partsAndRules != NULL);
-	
-	PartitionState *partitionState = makeNode(PartitionState);
-	partitionState->accessMethods = createPartitionAccessMethods(num_partition_levels(partsAndRules));
-	partitionState->max_partition_attr = max_partition_attr(partsAndRules);
-	partitionState->result_partition_array_size = resultPartSize;
-
-	return partitionState;
-}
-
-/*
- * InitializeResultRelations
- *   Initialize result relation relevant information
- *
- * CDB: Note that we need this info even if we aren't the slice that will be doing
- * the actual updating, since it's where we learn things, such as if the row needs to
- * contain OIDs or not.
- */
-static void
-InitializeResultRelations(PlannedStmt *plannedstmt, EState *estate, CmdType operation)
-{
-	Assert(plannedstmt != NULL && estate != NULL);
-
-	if (plannedstmt->resultRelations == NULL)
-	{
-		/*
-		 * if no result relation, then set state appropriately
-		 */
-		estate->es_result_relations = NULL;
-		estate->es_num_result_relations = 0;
-		estate->es_result_relation_info = NULL;
-		estate->es_result_partitions = NULL;
-		estate->es_result_aosegnos = NIL;
-
-		return;
-	}
-
-	List	   *resultRelations = plannedstmt->resultRelations;
-	int			numResultRelations = list_length(resultRelations);
-	ResultRelInfo *resultRelInfos;
-
-	List *rangeTable = estate->es_range_table;
-	
-	if (numResultRelations > 1)
-	{
-		/*
-		 * Multiple result relations (due to inheritance)
-		 * stmt->resultRelations identifies them all
-		 */
-		ResultRelInfo *resultRelInfo;
-		
-		resultRelInfos = (ResultRelInfo *)
-			palloc(numResultRelations * sizeof(ResultRelInfo));
-		resultRelInfo = resultRelInfos;
-		ListCell *lc = NULL;
-		foreach(lc, resultRelations)
-		{
-			initResultRelInfo(resultRelInfo,
-							  lfirst_int(lc),
-							  rangeTable,
-							  operation,
-							  estate->es_instrument,
-							  (Gp_role != GP_ROLE_EXECUTE || Gp_is_writer));
-			
-			resultRelInfo++;
-		}
-	}
-	else
-	{
-		/*
-		 * Single result relation identified by stmt->queryTree->resultRelation
-		 */
-		numResultRelations = 1;
-		resultRelInfos = (ResultRelInfo *) palloc(sizeof(ResultRelInfo));
-		initResultRelInfo(resultRelInfos,
-						  linitial_int(plannedstmt->resultRelations),
-						  rangeTable,
-						  operation,
-						  estate->es_instrument,
-						  (Gp_role != GP_ROLE_EXECUTE || Gp_is_writer));
-	}
-	
-	/*
-	 * In some occasions when inserting data into a target relations we
-	 * need to pass some specific information from the QD to the QEs.
-	 * we do this information exchange here, via the parseTree. For now
-	 * this is used for partitioned and append-only tables.
-	 */
-	
-	estate->es_result_relations = resultRelInfos;
-	estate->es_num_result_relations = numResultRelations;
-	/* Initialize to first or only result rel */
-	estate->es_result_relation_info = resultRelInfos;
-	
-	if (Gp_role == GP_ROLE_EXECUTE)
-	{
-		estate->es_result_partitions = plannedstmt->result_partitions;
-		estate->es_result_aosegnos = plannedstmt->result_aosegnos;
-	}
-	else
-	{
-		List 	*all_relids = NIL;
-		Oid		 relid = getrelid(linitial_int(plannedstmt->resultRelations), rangeTable);
-
-		if (rel_is_child_partition(relid))
-		{
-			relid = rel_partition_get_master(relid);
-		}
-
-		estate->es_result_partitions = BuildPartitionNodeFromRoot(relid);
-		
-		/*
-		 * list all the relids that may take part in this insert operation
-		 */
-		all_relids = lappend_oid(all_relids, relid);
-		all_relids = list_concat(all_relids,
-								 all_partition_relids(estate->es_result_partitions));
-		
-		estate->es_result_aosegnos = assignPerRelSegno(all_relids);
-		
-		plannedstmt->result_partitions = estate->es_result_partitions;
-		plannedstmt->result_aosegnos = estate->es_result_aosegnos;
-		
-		/* Set any QD resultrels segno, just in case. The QEs set their own in ExecInsert(). */
-		int relno = 0;
-		ResultRelInfo* relinfo;
-		for (relno = 0; relno < numResultRelations; relno ++)
-		{
-			relinfo = &(resultRelInfos[relno]);
-			ResultRelInfoSetSegno(relinfo, estate->es_result_aosegnos);
-		}
-	}
-	
-	estate->es_partition_state = NULL;
-	if (estate->es_result_partitions)
-	{
-		estate->es_partition_state = createPartitionState(estate->es_result_partitions,
-														  estate->es_num_result_relations);
-	}
-}
-
-/*
- * InitializeQueryPartsMetadata
- *   Initialize partitioning metadata for all partitions involved in the query.
- */
-static void
-InitializeQueryPartsMetadata(PlannedStmt *plannedstmt, EState *estate)
-{
-	Assert(plannedstmt != NULL && estate != NULL);
-	
-	if (plannedstmt->queryPartOids == NIL)
-	{
-		plannedstmt->queryPartsMetadata = NIL;
-		return;
-	}
-
-	if (Gp_role != GP_ROLE_EXECUTE)
-	{
-		/*
-		 * Non-QEs populate the partitioning metadata for all
-		 * relevant partitions in the query.
-		 */
-		plannedstmt->queryPartsMetadata = NIL;
-		ListCell *lc = NULL;
-		foreach (lc, plannedstmt->queryPartOids)
-		{
-			Oid relid = (Oid)lfirst_oid(lc);
-			PartitionNode *partitionNode = BuildPartitionNodeFromRoot(relid);
-			Assert(partitionNode != NULL);
-			plannedstmt->queryPartsMetadata =
-				lappend(plannedstmt->queryPartsMetadata, partitionNode);
-		}
-	}
-	
-	/* Populate the partitioning metadata to EState */
-	Assert(estate->dynamicTableScanInfo != NULL &&
-		   estate->dynamicTableScanInfo->memoryContext != NULL);
-	
-	MemoryContext oldContext = MemoryContextSwitchTo(estate->dynamicTableScanInfo->memoryContext);
-	
-	ListCell *lc = NULL;
-	foreach(lc, plannedstmt->queryPartsMetadata)
-	{
-		PartitionNode *partsAndRules = (PartitionNode *)lfirst(lc);
-		
-		PartitionMetadata *metadata = palloc(sizeof(PartitionMetadata));
-		metadata->partsAndRules = partsAndRules;
-		Assert(metadata->partsAndRules != NULL);
-		metadata->accessMethods = createPartitionAccessMethods(num_partition_levels(metadata->partsAndRules));
-		estate->dynamicTableScanInfo->partsMetadata =
-			lappend(estate->dynamicTableScanInfo->partsMetadata, metadata);
-	}
-	
-	MemoryContextSwitchTo(oldContext);
-}
 
 /* ----------------------------------------------------------------
  *		InitPlan
@@ -1581,35 +1286,26 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 
 	Assert(plannedstmt->intoPolicy == NULL
 		   || plannedstmt->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
-
-	if (DEBUG1 >= log_min_messages)
-	{
-		char msec_str[32];
-		switch (check_log_duration(msec_str, false))
-		{
-			case 1:
-			case 2:
-				ereport(LOG, (errmsg("duration to InitPlan start: %s ms", msec_str),
-							  errOmitLocation(true)));
-				break;
-			default:
-				/* do nothing */
-				break;
-		}
-	}
-
 	/*
 	 * Do permissions checks.  It's sufficient to examine the query's top
 	 * rangetable here --- subplan RTEs will be checked during
 	 * ExecInitSubPlan().
 	 */
-	if (operation != CMD_SELECT ||
-		(Gp_role != GP_ROLE_EXECUTE &&
-		 !(shouldDispatch && cdbpathlocus_querysegmentcatalogs)))
-	{
-		ExecCheckRTPerms(plannedstmt->rtable);
-	}
-	else
+
+	if (DEBUG1 >= log_min_messages)
+		{
+			char		msec_str[32];
+			switch (check_log_duration(msec_str, false))
+			{
+				case 1:
+				case 2:
+					ereport(LOG, (errmsg("duration to InitPlan start: %s ms", msec_str),
+							errOmitLocation(true)));
+					break;
+			}
+		}
+
+	if (operation == CMD_SELECT && (Gp_role == GP_ROLE_EXECUTE || (shouldDispatch && cdbpathlocus_querysegmentcatalogs)))
 	{
 		/*
 		 * We don't check the rights here, so we can query pg_statistic even if we are a non-privileged user.
@@ -1620,11 +1316,11 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		 * pg_statistic and pg_class, and pg_class is normally readable by everyone.
 		 */
 
-		ListCell *lc = NULL;
+		ListCell   *l;
 
-		foreach(lc, plannedstmt->rtable)
+		foreach(l, plannedstmt->rtable)
 		{
-			RangeTblEntry *rte = lfirst(lc);
+			RangeTblEntry *rte = lfirst(l);
 
 			if (rte->rtekind != RTE_RELATION)
 				continue;
@@ -1632,16 +1328,19 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 			if (rte->requiredPerms == 0)
 				continue;
 
-			/*
-			 * Ignore access rights check on pg_statistic and pg_class, so
-			 * the QD can retreive the statistics from the QEs.
-			 */
-			if (rte->relid != StatisticRelationId && rte->relid != RelationRelationId)
+			if (rte->relid == StatisticRelationId || rte->relid == RelationRelationId)
 			{
-				ExecCheckRTEPerms(rte);
+				/*
+				 * Ignore access rights check on pg_statistic and pg_class, so
+				 * the QD can retreive the statistics from the QEs.
+				 */
 			}
+			else
+				ExecCheckRTEPerms(rte);
 		}
 	}
+	else
+		ExecCheckRTPerms(plannedstmt->rtable);
 
 	/*
 	 * get information from query descriptor
@@ -1660,12 +1359,132 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	 * the actual updating, since it's where we learn things, such as if the row needs to
 	 * contain OIDs or not.
 	 */
-	InitializeResultRelations(plannedstmt, estate, operation);
+	if (plannedstmt->resultRelations)
+	{
+		List	   *resultRelations = plannedstmt->resultRelations;
+		int			numResultRelations = list_length(resultRelations);
+		ResultRelInfo *resultRelInfos;
 
-	/*
-	 * If there are partitions involved in the query, initialize partitioning metadata.
-	 */
-	InitializeQueryPartsMetadata(plannedstmt, estate);
+		if (numResultRelations > 1)
+		{
+			/*
+			 * Multiple result relations (due to inheritance)
+			 * stmt->resultRelations identifies them all
+			 */
+			ResultRelInfo *resultRelInfo;
+
+			resultRelInfos = (ResultRelInfo *)
+				palloc(numResultRelations * sizeof(ResultRelInfo));
+			resultRelInfo = resultRelInfos;
+			foreach(l, resultRelations)
+			{
+				initResultRelInfo(resultRelInfo,
+								  lfirst_int(l),
+								  rangeTable,
+								  operation,
+								  estate->es_instrument,
+								  (Gp_role != GP_ROLE_EXECUTE || Gp_is_writer));
+
+				resultRelInfo++;
+			}
+		}
+		else
+		{
+			/*
+			 * Single result relation identified by stmt->queryTree->resultRelation
+			 */
+			numResultRelations = 1;
+			resultRelInfos = (ResultRelInfo *) palloc(sizeof(ResultRelInfo));
+			initResultRelInfo(resultRelInfos,
+					          linitial_int(plannedstmt->resultRelations),
+							  rangeTable,
+							  operation,
+							  estate->es_instrument,
+							  (Gp_role != GP_ROLE_EXECUTE || Gp_is_writer));
+		}
+
+		/*
+		 * In some occasions when inserting data into a target relations we
+		 * need to pass some specific information from the QD to the QEs.
+		 * we do this information exchange here, via the parseTree. For now
+		 * this is used for partitioned and append-only tables.
+		 */
+
+		estate->es_result_relations = resultRelInfos;
+		estate->es_num_result_relations = numResultRelations;
+		/* Initialize to first or only result rel */
+		estate->es_result_relation_info = resultRelInfos;
+
+		if (Gp_role == GP_ROLE_EXECUTE)
+		{
+			estate->es_result_partitions = plannedstmt->result_partitions;
+			estate->es_result_aosegnos = plannedstmt->result_aosegnos;
+		}
+		else
+		{
+			List 	*all_relids = NIL;
+			Oid		 relid = getrelid(linitial_int(plannedstmt->resultRelations), rangeTable);
+			if (rel_is_child_partition(relid))
+			{
+				relid = rel_partition_get_master(relid);
+			}
+			Relation tmp = heap_open(relid, NoLock);
+
+			estate->es_result_partitions = RelationBuildPartitionDesc(tmp, false);
+
+			/*
+			 * list all the relids that may take part in this insert operation
+			 */
+			all_relids = lappend_oid(all_relids, relid);
+			all_relids = list_concat(all_relids,
+							all_partition_relids(estate->es_result_partitions));
+
+			estate->es_result_aosegnos = assignPerRelSegno(all_relids);
+
+			plannedstmt->result_partitions = estate->es_result_partitions;
+			plannedstmt->result_aosegnos = estate->es_result_aosegnos;
+			heap_close(tmp, NoLock);
+
+			/* Set any QD resultrels segno, just in case. The QEs set their own in ExecInsert(). */
+			{
+				int relno = 0;
+				ResultRelInfo* relinfo;
+				for (relno = 0; relno < numResultRelations; relno ++)
+				{
+					relinfo = &(resultRelInfos[relno]);
+					ResultRelInfoSetSegno(relinfo, estate->es_result_aosegnos);
+				}
+			}
+		}
+
+		if (estate->es_result_partitions)
+		{
+			Size sz;
+			estate->es_partition_state = makeNode(PartitionState);
+
+			sz = num_partition_levels(estate->es_result_partitions);
+			sz *= sizeof(void *);
+			estate->es_partition_state->amstate = palloc0(sz);
+			estate->es_partition_state->max_partition_attr =
+				max_partition_attr(estate->es_result_partitions);
+			estate->es_partition_state->result_partition_array_size =
+				estate->es_num_result_relations;
+
+		}
+		else
+			estate->es_partition_state = NULL;
+	}
+	else
+	{
+		/*
+		 * if no result relation, then set state appropriately
+		 */
+		estate->es_result_relations = NULL;
+		estate->es_num_result_relations = 0;
+		estate->es_result_relation_info = NULL;
+		estate->es_result_partitions = NULL;
+		estate->es_result_aosegnos = NIL;
+	}
 
 	/*
 	 * Detect whether we're doing SELECT INTO.  If so, set the es_into_oids
@@ -2332,13 +2151,6 @@ ExecEndPlan(PlanState *planstate, EState *estate)
         if (resultRelInfo->ri_extInsertDesc)
         	external_insert_finish(resultRelInfo->ri_extInsertDesc);
 
-		if (resultRelInfo->ri_resultSlot)
-		{
-			Assert(resultRelInfo->ri_resultSlot->tts_tupleDescriptor);
-			ReleaseTupleDesc(resultRelInfo->ri_resultSlot->tts_tupleDescriptor);
-			ExecClearTuple(resultRelInfo->ri_resultSlot);
-		}
-
 		/* Close indices and then the relation itself */
 		ExecCloseIndices(resultRelInfo);
 		heap_close(resultRelInfo->ri_RelationDesc, NoLock);
@@ -2594,12 +2406,6 @@ lnext:	;
 					LockTupleMode lockmode;
 					HTSU_Result test;
 
-					/* CDB: CTIDs were not fetched for distributed relation. */
-					Relation relation = erm->relation;
-					if (relation->rd_cdbpolicy &&
-						relation->rd_cdbpolicy->ptype == POLICYTYPE_PARTITIONED)
-						continue;
-
 					if (!ExecGetJunkAttribute(junkfilter,
 											  slot,
 											  erm->resname,
@@ -2773,29 +2579,6 @@ ExecSelect(TupleTableSlot *slot,
 	(estate->es_processed)++;
 }
 
-/*
- * reconstructTupleValues
- *   Re-construct tuple values based on the pre-defined mapping.
- */
-static void
-reconstructTupleValues(AttrMap *map,
-					Datum *oldValues, bool *oldIsnull, int oldNumAttrs,
-					Datum *newValues, bool *newIsnull, int newNumAttrs)
-{
-	for (int oldAttNo = 1; oldAttNo <= oldNumAttrs; oldAttNo++)
-	{
-		int newAttNo = attrMap(map, oldAttNo);
-		if (newAttNo == 0)
-		{
-			continue;
-		}
-
-		Assert(newAttNo <= newNumAttrs);
-		newValues[newAttNo - 1] = oldValues[oldAttNo - 1];
-		newIsnull[newAttNo - 1] = oldIsnull[oldAttNo - 1];
-	}
-}
-
 /* ----------------------------------------------------------------
  *		ExecInsert
  *
@@ -2811,6 +2594,7 @@ ExecInsert(TupleTableSlot *slot,
 		   EState *estate)
 {
 	void		*tuple = NULL;
+    void		*tofree = NULL;
 	ResultRelInfo *resultRelInfo = NULL;
 	Relation	resultRelationDesc = NULL;
 	Relation	baseRelationDesc = NULL;
@@ -2852,24 +2636,66 @@ ExecInsert(TupleTableSlot *slot,
 	rel_is_aocols = RelationIsAoCols(resultRelationDesc);
 	rel_is_aorows = RelationIsAoRows(resultRelationDesc);
 	rel_is_external = RelationIsExternal(resultRelationDesc);
+		
+	/*
+	 * get the heap tuple out of the tuple table slot, making sure we have a
+	 * writable copy
+	 */
+	if (rel_is_aorows)
+    {
+        TupleDesc dslot = slot->tts_tupleDescriptor;
+        TupleDesc drel = resultRelationDesc->rd_att;
 
-	partslot = reconstructMatchingTupleSlot(slot, resultRelInfo);
-	if (rel_is_heap || rel_is_external)
+        if (resultRelInfo->tupdesc_match == 0)
+        {
+            /* We do a deep compare of the attrs */
+
+            if (!equalTupleDescs(dslot, drel, false))
+            {
+                resultRelInfo->mt_bind = create_memtuple_binding(drel);
+                resultRelInfo->tupdesc_match = -1;
+            }
+            else
+                resultRelInfo->tupdesc_match = 1;
+        }
+
+        if (resultRelInfo->tupdesc_match == 1)
+        {
+            Assert(resultRelInfo->mt_bind == NULL);
+            tuple = (MemTuple) ExecFetchSlotMemTuple(slot, false);
+        }
+        else
+        {
+            Datum *d;
+            bool *n;
+
+            Assert(resultRelInfo->tupdesc_match == -1);
+            Assert(resultRelInfo->mt_bind);
+            slot_getallattrs(slot);
+
+            d = slot_get_values(slot);
+            n = slot_get_isnull(slot);
+
+            tuple = memtuple_form_to(resultRelInfo->mt_bind, d, n, NULL, NULL, false);
+            tofree = tuple;
+        }
+    }
+	else if(rel_is_aocols)
 	{
-		tuple = ExecFetchSlotHeapTuple(partslot);
-	}
-	else if (rel_is_aorows)
-	{
-		tuple = ExecFetchSlotMemTuple(partslot, false);
+		/* We will not serialize slot for ao cs table */
+		tuple = NULL;
 	}
 	else
 	{
-		Assert(rel_is_aocols);
-		tuple = ExecFetchSlotMemTuple(partslot, true);
+		Assert(RelationIsHeap(resultRelationDesc) || 
+			   RelationIsExternal(resultRelationDesc));
+		tuple = (HeapTuple) ExecFetchSlotHeapTuple(slot);
+		partslot = CompressedHeapTupleSlot(slot, resultRelInfo);
 	}
 
-	Assert(partslot != NULL && tuple != NULL);
-
+	AssertEquivalent(rel_is_aocols, (tuple == NULL));
+	AssertEquivalent(rel_is_heap || rel_is_external, (partslot != NULL));
+	
 	/* BEFORE ROW INSERT Triggers */
 	if (resultRelInfo->ri_TrigDesc &&
 		resultRelInfo->ri_TrigDesc->n_before_row[TRIGGER_EVENT_INSERT] > 0)
@@ -2884,6 +2710,8 @@ ExecInsert(TupleTableSlot *slot,
 
 		if (newtuple == NULL)	/* "do nothing" */
         {
+            if (tofree != NULL)
+                pfree(tofree);
 			return;
         }
 
@@ -2897,12 +2725,17 @@ ExecInsert(TupleTableSlot *slot,
 			 */
 			TupleTableSlot *newslot = estate->es_trig_tuple_slot;
 
-			if (newslot->tts_tupleDescriptor != partslot->tts_tupleDescriptor)
-				ExecSetSlotDescriptor(newslot, partslot->tts_tupleDescriptor);
+			if (newslot->tts_tupleDescriptor != slot->tts_tupleDescriptor)
+				ExecSetSlotDescriptor(newslot, slot->tts_tupleDescriptor);
 			ExecStoreGenericTuple(newtuple, newslot, false);
-			newslot->tts_tableOid = partslot->tts_tableOid; /* for constraints */
+			newslot->tts_tableOid = slot->tts_tableOid; /* for constraints */
+			slot = newslot;
 			tuple = newtuple;
-			partslot = newslot;
+			if (partslot)
+			{
+				Assert(rel_is_heap || rel_is_external);
+				partslot = newslot;
+			}
 		}
 	}
 
@@ -2910,7 +2743,7 @@ ExecInsert(TupleTableSlot *slot,
 	 * Check the constraints of the tuple
 	 */
 	if (resultRelationDesc->rd_att->constr)
-		ExecConstraints(resultRelInfo, partslot, estate);
+		ExecConstraints(resultRelInfo, partslot ? partslot : slot, estate);
 
 	/*
 	 * insert the tuple
@@ -2943,8 +2776,8 @@ ExecInsert(TupleTableSlot *slot,
 			resultRelInfo->ri_aocsInsertDesc = aocs_insert_init(resultRelationDesc, resultRelInfo->ri_aosegno);
 		}
 
-		newId = aocs_insert(resultRelInfo->ri_aocsInsertDesc, partslot);
-		aoTupleId = *((AOTupleId*)slot_get_ctid(partslot));
+		newId = aocs_insert(resultRelInfo->ri_aocsInsertDesc, slot);
+		aoTupleId = *((AOTupleId*)slot_get_ctid(slot));
 	}
 	else if (rel_is_external)
 	{
@@ -2959,7 +2792,7 @@ ExecInsert(TupleTableSlot *slot,
 		Insist(rel_is_heap);
 		
 		newId = heap_insert(resultRelationDesc,
-							tuple,
+							ExecFetchSlotHeapTuple(partslot),
 							estate->es_snapshot->curcid,
 							true, true, GetCurrentTransactionId());
 	}
@@ -2971,7 +2804,7 @@ ExecInsert(TupleTableSlot *slot,
 
 	/* CDB: Set 'tableOid' to target relid in case RETURNING needs it. */
 	sourceTableOid = slot->tts_tableOid;
-	partslot->tts_tableOid = RelationGetRelid(resultRelationDesc);
+	slot->tts_tableOid = RelationGetRelid(resultRelationDesc);
 
 	if (rel_is_aorows || rel_is_aocols)
 	{
@@ -2979,13 +2812,19 @@ ExecInsert(TupleTableSlot *slot,
 		 * insert index entries for AO Row-Store tuple
 		 */
 		if (resultRelInfo->ri_NumIndices > 0)
-			ExecInsertIndexTuples(partslot, (ItemPointer)&aoTupleId, estate, false);
+			ExecInsertIndexTuples(slot, (ItemPointer)&aoTupleId, estate, false);
 	}
 	else
 	{
 		/* Use parttuple for index update in case this is an indexed heap table. */
-		TupleTableSlot *xslot = partslot;
+		TupleTableSlot *xslot = slot;
 		void *xtuple = tuple;
+	
+		if ( partslot )
+		{
+			xslot = partslot;
+			xtuple = ExecFetchSlotHeapTuple(partslot);
+		}
 
 		setLastTid(&(((HeapTuple) xtuple)->t_self));
 
@@ -2993,20 +2832,24 @@ ExecInsert(TupleTableSlot *slot,
 		 * insert index entries for tuple
 		 */
 		if (resultRelInfo->ri_NumIndices > 0)
-			ExecInsertIndexTuples(xslot, &(((HeapTuple) xtuple)->t_self), estate, false);
+			ExecInsertIndexTuples(partslot? partslot: slot, &(((HeapTuple) xtuple)->t_self), estate, false);
 
 	}
 
 	/* AFTER ROW INSERT Triggers */
-	ExecARInsertTriggers(estate, resultRelInfo, tuple);
+        ExecARInsertTriggers(estate, resultRelInfo, tuple);
 
 	/* Process RETURNING if present */
 	if (resultRelInfo->ri_projectReturning)
 		ExecProcessReturning(resultRelInfo->ri_projectReturning,
-							 partslot, planSlot, dest);
+							 slot, planSlot, dest);
 
 	/* CDB: Restore 'tableOid' sysattr in case slot belongs to our caller. */
 	slot->tts_tableOid = sourceTableOid;
+
+    /* clean up */
+    if (tofree != NULL)
+        pfree(tofree);
 }
 
 /* ----------------------------------------------------------------
@@ -3194,11 +3037,10 @@ ExecUpdate(TupleTableSlot *slot,
 		bool *nulls;
 		Oid targetid;
 
-		Assert(estate->es_partition_state != NULL &&
-			   estate->es_partition_state->accessMethods != NULL);
-		if (!estate->es_partition_state->accessMethods->part_cxt)
-			estate->es_partition_state->accessMethods->part_cxt =
+		if (!estate->es_partition_state->part_cxt)
+			estate->es_partition_state->part_cxt =
 				GetPerTupleExprContext(estate)->ecxt_per_tuple_memory;
+
 
 		Assert(PointerIsValid(estate->es_result_partitions));
 
@@ -3210,7 +3052,7 @@ ExecUpdate(TupleTableSlot *slot,
 
 		targetid = selectPartition(estate->es_result_partitions, values,
 								   nulls, slot->tts_tupleDescriptor,
-								   estate->es_partition_state->accessMethods);
+								   estate->es_partition_state);
 
 		if (!OidIsValid(targetid))
 			ereport(ERROR,
@@ -4650,14 +4492,12 @@ get_part(EState *estate, Datum *values, bool *isnull, TupleDesc tupdesc)
 	ResultPartHashEntry *entry;
 
 	/* add a short term memory context if one wasn't assigned already */
-	Assert(estate->es_partition_state != NULL &&
-		estate->es_partition_state->accessMethods != NULL);
-	if (!estate->es_partition_state->accessMethods->part_cxt)
-		estate->es_partition_state->accessMethods->part_cxt =
+	if (!estate->es_partition_state->part_cxt)
+		estate->es_partition_state->part_cxt =
 			GetPerTupleExprContext(estate)->ecxt_per_tuple_memory;
 
 	targetid = selectPartition(estate->es_result_partitions, values,
-							   isnull, tupdesc, estate->es_partition_state->accessMethods);
+							   isnull, tupdesc, estate->es_partition_state);
 
 	if (!OidIsValid(targetid))
 		ereport(ERROR,
@@ -5189,16 +5029,17 @@ map_part_attrs(Relation base, Relation part, AttrMap **map_ptr, bool throw)
  * Use the supplied ResultRelInfo to create an appropriately restructured 
  * version of the tuple in the supplied slot, if necessary.
  *
- * slot -- slot containing the input tuple
+ * slot -- slot containing the input (uncompressed) tuple
  * resultRelInfo -- info pertaining to the target part of an insert 
  *
  * If no restructuring is required, the result is the argument slot, else
  * it is the slot from the argument result info updated to hold the 
  * restructured tuple.
  */
-TupleTableSlot *
-reconstructMatchingTupleSlot(TupleTableSlot *slot, ResultRelInfo *resultRelInfo)
+static TupleTableSlot *
+CompressedHeapTupleSlot(TupleTableSlot *slot, ResultRelInfo *resultRelInfo)
 {
+	int i, j;
 	int natts;
 	Datum *values;
 	bool *isnull;
@@ -5207,27 +5048,12 @@ reconstructMatchingTupleSlot(TupleTableSlot *slot, ResultRelInfo *resultRelInfo)
 	Datum *partvalues;
 	bool *partisnull;
 	
+	Assert(TupHasHeapTuple(slot));
+	
 	map = resultRelInfo->ri_partInsertMap;
-
-	TupleDesc inputTupDesc = slot->tts_tupleDescriptor;
-	TupleDesc resultTupDesc = resultRelInfo->ri_RelationDesc->rd_att;
-	bool tupleDescMatch = (resultRelInfo->tupdesc_match == 1);
-	if (resultRelInfo->tupdesc_match == 0)
-	{
-		tupleDescMatch = equalTupleDescs(inputTupDesc, resultTupDesc, false);
-
-		if (tupleDescMatch)
-		{
-			resultRelInfo->tupdesc_match = 1;
-		}
-		else
-		{
-			resultRelInfo->tupdesc_match = -1;
-		}
-	}
-
-	/* No map and matching tuple descriptor means no restructuring needed. */
-	if (map == NULL && tupleDescMatch)
+	
+	/* No map means no restructuring needed. */
+	if ( map == NULL )
 		return slot;
 	
 	/* Put the given tuple into attribute arrays. */
@@ -5235,27 +5061,9 @@ reconstructMatchingTupleSlot(TupleTableSlot *slot, ResultRelInfo *resultRelInfo)
 	slot_getallattrs(slot);
 	values = slot_get_values(slot);
 	isnull = slot_get_isnull(slot);
-
-	/*
-	 * Get the target slot ready. If this is a child partition table,
-	 * set target slot to ri_partSlot. Otherwise, use ri_resultSlot.
-	 */
-	if (map != NULL)
-	{
-		Assert(resultRelInfo->ri_partSlot != NULL);
-		partslot = resultRelInfo->ri_partSlot;
-	}
-	else
-	{
-		if (resultRelInfo->ri_resultSlot == NULL)
-		{
-			resultRelInfo->ri_resultSlot = MakeSingleTupleTableSlot(resultTupDesc);
-		}
-		
-		partslot = resultRelInfo->ri_resultSlot;
-	}
 	
-	partslot = ExecStoreAllNullTuple(partslot);
+	/* Get the target slot ready. */
+	partslot = ExecStoreAllNullTuple(resultRelInfo->ri_partSlot);
 	partvalues = slot_get_values(partslot);
 	partisnull = slot_get_isnull(partslot);
 	
@@ -5265,8 +5073,16 @@ reconstructMatchingTupleSlot(TupleTableSlot *slot, ResultRelInfo *resultRelInfo)
 	 * attribute numbers corresponding to dropped attributes will be 
 	 * missing.
 	 */
-	reconstructTupleValues(map, values, isnull, natts,
-						partvalues, partisnull, partslot->tts_tupleDescriptor->natts);
+	for ( i = 1; i <= natts; i++ )
+	{
+		j = attrMap(map, i);
+		if ( j == 0 )
+			continue;
+		
+		partvalues[j-1] = values[i-1];
+		partisnull[j-1] = isnull[i-1];
+	}
+	
 	partslot = ExecStoreVirtualTuple(partslot);
 	
 	return partslot;
@@ -5307,56 +5123,3 @@ ClearPartitionState(EState *estate)
 	/* No need for hash_seq_term() since we iterated to end. */
 }
 
-/*
- * Set up the random number generator (RNG) with the cluster information.
- * This happens every time we start a query, because the set of processes
- * involved in a query may change from one to another.
- */
-static void
-SetupRNG(QueryDesc *queryDesc)
-{
-	if (queryDesc->plannedstmt != NULL)
-	{
-		EState		   *estate = queryDesc->estate;
-		SliceTable	   *sliceTable;
-		ListCell	   *l;
-		int				num_proc = 0;
-		int				start_pos = 0;
-
-		sliceTable = estate->es_sliceTable;
-
-		if (sliceTable)
-		{
-			/*
-			 * Both of QD and QE in dispatching query case.
-			 * Calculate my position and total number of process
-			 * to tell the number of leap.
-			 */
-			foreach (l, sliceTable->slices)
-			{
-				Slice	   *s = lfirst(l);
-				int			id_in_slice;
-
-				id_in_slice = (Gp_segment == -1 ? 0 : Gp_segment);
-				if (s->sliceIndex == sliceTable->localSlice)
-					start_pos = num_proc + id_in_slice;
-				/*
-				 * Slice::gangSize is bogus.
-				 * Look at actual process list.
-				 */
-				num_proc += list_length(s->workerProcesses);
-			}
-		}
-		else
-		{
-			/*
-			 * Non-dispatch case.
-			 */
-			num_proc = 1;
-			start_pos = 0;
-		}
-
-		set_seed_per_query(queryDesc->plannedstmt->query_random_seed,
-						   start_pos, num_proc);
-	}
-}

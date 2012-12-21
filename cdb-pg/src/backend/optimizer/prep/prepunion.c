@@ -115,6 +115,7 @@ plan_set_operations(PlannerInfo *root, double tuple_fraction,
 	Assert(topop && IsA(topop, SetOperationStmt));
 
 	/* check for unsupported stuff */
+	Assert(parse->utilityStmt == NULL);
 	Assert(parse->jointree->fromlist == NIL);
 	Assert(parse->jointree->quals == NULL);
 	Assert(parse->groupClause == NIL);
@@ -306,8 +307,7 @@ generate_union_plan(SetOperationStmt *op, PlannerInfo *root,
 		optype = choose_setop_type(planlist);
 		adjust_setop_arguments(planlist, optype);
 	}
-	else if (Gp_role == GP_ROLE_UTILITY ||
-			 Gp_role == GP_ROLE_EXECUTE) /* MPP-2928 */
+	else if ( Gp_role == GP_ROLE_UTILITY ) /* MPP-2928 */
 	{
 		optype = PSETOP_SEQUENTIAL_QD;
 	}
@@ -901,10 +901,9 @@ expand_inherited_rtentry(PlannerInfo *root, RangeTblEntry *rte, Index rti)
 			continue;
 
 		/*
-		 * Intermediate partitions of a partitioned table do not possess any data and can be skipped.
-		 * This is not the case for inherited tables.
+		 * show only leaf tables when the parent table is partitioned
 		 */
-		if (rel_is_child_partition(childOID) && !rel_is_leaf_partition(childOID))
+		if (rel_is_partitioned(parentOID) && !rel_is_leaf_partition(childOID))
 		{
 			continue;
 		}
@@ -1210,14 +1209,6 @@ adjust_appendrel_attrs_mutator(Node *node, AppendRelInfoContext *ctx)
 			/* system attributes don't need any other translation */
 		}
 		return (Node *) var;
-	}
-	if (IsA(node, CurrentOfExpr))
-	{
-		CurrentOfExpr *cexpr = (CurrentOfExpr *) copyObject(node);
-
-		if (cexpr->cvarno == appinfo->parent_relid)
-			cexpr->cvarno = appinfo->child_relid;
-		return (Node *) cexpr;
 	}
 	if (IsA(node, RangeTblRef))
 	{

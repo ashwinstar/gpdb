@@ -8,6 +8,11 @@ REVISION=$2
 
 ARTIFACT_DIR=$( dirname ${FILE} )
 
+## echo "    src=${FILE}"
+## echo "    dest=${ARTIFACT_DIR}/../${REVISION}"
+## echo "======================================================================"
+## echo ""
+
 ##
 ## Expand tarball
 ##
@@ -16,7 +21,15 @@ if [ ! -f "${FILE}" ]; then
     echo "WARNING: tarball does not exist (${FILE})"
     exit 2
 else
-    pushd ${ARTIFACT_DIR}/..
+    if [ ! -d ${ARTIFACT_DIR}/../${REVISION} ]; then
+        mkdir -p ${ARTIFACT_DIR}/../${REVISION}
+        if [ $? != 0 ]; then
+            echo "FATAL: Problem creating exapand directory (${ARTIFACT_DIR}/../${REVISION})"
+            exit 1
+        fi
+    fi
+
+    pushd ${ARTIFACT_DIR}/../${REVISION}
     gunzip -qc ${FILE} | tar xf -
     popd
 
@@ -24,21 +37,7 @@ else
         echo "FATAL: Problem exapanding tarball (${FILE})"
         exit 1
     fi
-fi
 
-## ----------------------------------------------------------------------
-## Devel package processing
-##   Restore object files into loation used for build
-## ----------------------------------------------------------------------
-
-echo "${FILE}" | grep devel
-if [ $? = 0 ]; then
-    BASE_PULSE_PROJECT=`tar tvf ${FILE} | head -1 | sed -e 's|\(.* \./\)\(.*\)|\2|' | cut -d '/' -f1`
-    BASE_BUILD_STAGE=`tar tvf ${FILE}  | head -1 | sed -e 's|\(.* \./\)\(.*\)|\2|' | cut -d '/' -f2`
-    rm -rf /opt/releng/build/${BASE_PULSE_PROJECT}/${BASE_BUILD_STAGE}
-    cd ..
-    [ ! -d /opt/releng/build/${BASE_PULSE_PROJECT} ] && mkdir -p /opt/releng/build/${BASE_PULSE_PROJECT}
-    ln -s ${ARTIFACT_DIR}/../${BASE_PULSE_PROJECT}/${BASE_BUILD_STAGE} /opt/releng/build/${BASE_PULSE_PROJECT}/${BASE_BUILD_STAGE}
 fi
 
 exit 0

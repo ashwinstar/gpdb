@@ -222,6 +222,42 @@ class CatalogTable():
     def get_update_sql(self):
         raise CatalogError("Programmer Error!  subclasses should override")
     
+class GpVersionAtInitdbTable(CatalogTable):
+    """ pg_catalog.gp_version_at_initdb
+    
+    template1=# \d pg_catalog.gp_version_at_initdb;
+    Table "pg_catalog.gp_version_at_initdb"
+         Column     |   Type   | Modifiers 
+    ----------------+----------+-----------
+     schemaversion  | smallint | not null
+     productversion | text     | 
+    Tablespace: "pg_global"
+    
+    """
+    schemaversion=-1
+    productversion=None
+    
+    def __init__(self,conn):
+        try:
+            cursor = conn.cursor()
+            cursor.execute(self.get_select_sql())
+            if cursor.rowcount != 1:
+                raise CatalogError("pgcatalog.gp_version_at_initdb had unexpected row count "\
+                                   "of: %d.  Was expecting 1." % cursor.rowcount)
+            row = cursor.fetchone()
+            self.schemaversion = int(row[0])
+            self.productversion = row[1]
+        finally:
+            if cursor: cursor.close()
+    
+    def get_select_sql(self):
+        return "SELECT * FROM pg_catalog.gp_version_at_initdb"
+    
+    def get_update_sql(self):
+        return "UPDATE pg_catalog.gp_version_at_initdb SET schemaversion = %d, "\
+               " productversion = '%s' " % (self.schemaversion,self.productversion)
+
+
 
 class GpConfigurationTable(CatalogTable):
     """pg_catalog.gp_segment_configuration

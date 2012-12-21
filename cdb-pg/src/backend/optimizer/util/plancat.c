@@ -19,7 +19,6 @@
 #include <math.h>
 
 #include "access/genam.h"
-#include "access/catquery.h"
 #include "access/heapam.h"
 #include "access/aocssegfiles.h"
 #include "catalog/gp_policy.h"
@@ -137,13 +136,20 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
      */
     rel->cdbpolicy = RelationGetPartitioningKey(relation);
 
-    cdb_estimate_rel_size(rel,
-    		relation,
-    		relation,
-    		rel->attr_widths - rel->min_attr,
-    		&rel->pages,
-    		&rel->tuples,
-    		&rel->cdb_default_stats_used);
+	/*
+	 * Estimate relation size --- unless it's an inheritance parent, in which
+	 * case the size will be computed later in set_append_rel_pathlist, and we
+	 * must leave it zero for now to avoid bollixing the total_table_pages
+	 * calculation.
+	 */
+	if (!inhparent)
+	    cdb_estimate_rel_size(rel,
+                              relation,
+                              relation,
+                              rel->attr_widths - rel->min_attr,
+					          &rel->pages,
+                              &rel->tuples,
+                              &rel->cdb_default_stats_used);
 
 	/*
 	 * Make list of indexes.  Ignore indexes on system catalogs if told to.
@@ -504,7 +510,7 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 			if(RelationIsAoRows(rel))
 			{
 				/* MPP-7629 */
-				FileSegTotals	*fstotal = GetSegFilesTotals(rel, SnapshotNow);
+				FileSegTotals	*fstotal = GetSegFilesTotals(rel);
 				
 				Assert(fstotal);
 				curpages = RelationGuessNumberOfBlocks((double)fstotal->totalbytes);
@@ -518,7 +524,7 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 				
 				int					nsegs, i , j;
 				double				totalBytes = 0;
-				AppendOnlyEntry*	aoEntry = GetAppendOnlyEntry(RelationGetRelid(rel), SnapshotNow);
+				AppendOnlyEntry*	aoEntry = GetAppendOnlyEntry(RelationGetRelid(rel));
 				AOCSFileSegInfo**	aocsInfo = GetAllAOCSFileSegInfo(rel, aoEntry, SnapshotNow, &nsegs);
 				
 			    if (aocsInfo)
@@ -1101,9 +1107,11 @@ List *
 find_inheritance_children(Oid inhparent)
 {
 	List	   *list = NIL;
+	Relation	relation;
+	HeapScanDesc scan;
 	HeapTuple	inheritsTuple;
 	Oid			inhrelid;
-	cqContext  *pcqCtx;
+	ScanKeyData key[1];
 
 	/*
 	 * Can skip the scan if pg_class shows the relation has never had a
@@ -1112,19 +1120,19 @@ find_inheritance_children(Oid inhparent)
 	if (!has_subclass(inhparent))
 		return NIL;
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_inherits "
-				" WHERE inhparent = :1 ",
-				ObjectIdGetDatum(inhparent)));
-
-	while (HeapTupleIsValid(inheritsTuple = caql_getnext(pcqCtx)))
+	ScanKeyInit(&key[0],
+				Anum_pg_inherits_inhparent,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(inhparent));
+	relation = heap_open(InheritsRelationId, AccessShareLock);
+	scan = heap_beginscan(relation, SnapshotNow, 1, key);
+	while ((inheritsTuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
 		inhrelid = ((Form_pg_inherits) GETSTRUCT(inheritsTuple))->inhrelid;
 		list = lappend_oid(list, inhrelid);
 	}
-	caql_endscan(pcqCtx);
-
+	heap_endscan(scan);
+	heap_close(relation, AccessShareLock);
 	return list;
 }
 
@@ -1145,22 +1153,15 @@ has_subclass(Oid relationId)
 {
 	HeapTuple	tuple;
 	bool		result;
-	cqContext  *pcqCtx;
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(relationId)));
-	
-	tuple = caql_getnext(pcqCtx);
-
+	tuple = SearchSysCache(RELOID,
+						   ObjectIdGetDatum(relationId),
+						   0, 0, 0);
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for relation %u", relationId);
 
 	result = ((Form_pg_class) GETSTRUCT(tuple))->relhassubclass;
-
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(tuple);
 	return result;
 }
 
@@ -1286,3 +1287,4 @@ cdb_default_stats_warning_for_table(Oid reloid)
     if (relname)
         pfree(relname);
 }                               /* cdb_default_stats_warning_for_table */
+

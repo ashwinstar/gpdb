@@ -172,7 +172,7 @@ typedef FormData_gp_persistent_relation_node *Form_gp_persistent_relation_node;
    persistent_serial_num                         bigint  
    );
 
-   alter table gp_relation_node add fk relfilenode_oid on pg_class(relfilenode);
+   alter table gp_relation_node add fk relfilenode_oid on pg_class(oid);
 
    TIDYCAT_ENDFAKEDEF
 */

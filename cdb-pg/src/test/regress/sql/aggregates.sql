@@ -11,14 +11,18 @@ SELECT avg(a) AS avg_32 FROM aggtest WHERE a < 100;
 
 SELECT avg(b)::numeric(10,3) AS avg_107_943 FROM aggtest;
 
+SELECT avg(gpa) AS avg_3_4 FROM ONLY student;
+
 
 SELECT sum(four) AS sum_1500 FROM onek;
 SELECT sum(a) AS sum_198 FROM aggtest;
 SELECT sum(b) AS avg_431_773 FROM aggtest;
+SELECT sum(gpa) AS avg_6_8 FROM ONLY student;
 
 SELECT max(four) AS max_3 FROM onek;
 SELECT max(a) AS max_100 FROM aggtest;
 SELECT max(aggtest.b) AS max_324_78 FROM aggtest;
+SELECT max(student.gpa) AS max_3_7 FROM student;
 
 SELECT stddev_pop(b) FROM aggtest;
 SELECT stddev_samp(b) FROM aggtest;
@@ -65,7 +69,7 @@ SELECT sum2(q1,q2) FROM int8_tbl;
 
 -- test for outer-level aggregates
 
--- this should fail because the aggregate function accesses outer reference
+-- this should work
 select ten, sum(distinct four) from onek a
 group by ten
 having exists (select 1 from onek b where sum(distinct a.four) = b.four);

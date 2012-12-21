@@ -219,17 +219,8 @@ static PGcancel *volatile cancelConn = NULL;
 static CRITICAL_SECTION cancelConnLock;
 #endif
 
-/*
- * Write buffer to stderr and ignore the return value.
- */
-static void
-write_stderr_ignore_retval(const char *buf)
-{
-	size_t len = strlen(buf);
-	ssize_t ret = write(fileno(stderr), buf, len);
-	/* Keep compiler happy */
-	(void) ret;
-}
+#define write_stderr(str)	write(fileno(stderr), str, strlen(str))
+
 
 #ifndef WIN32
 
@@ -253,11 +244,11 @@ handle_sigint(SIGNAL_ARGS)
 	if (cancelConn != NULL)
 	{
 		if (PQcancel(cancelConn, errbuf, sizeof(errbuf)))
-			write_stderr_ignore_retval("Cancel request sent\n");
+			write_stderr("Cancel request sent\n");
 		else
 		{
-			write_stderr_ignore_retval("Could not send cancel request: ");
-			write_stderr_ignore_retval(errbuf);
+			write_stderr("Could not send cancel request: ");
+			write_stderr(errbuf);
 		}
 	}
 
@@ -291,11 +282,11 @@ consoleHandler(DWORD dwCtrlType)
 		if (cancelConn != NULL)
 		{
 			if (PQcancel(cancelConn, errbuf, sizeof(errbuf)))
-				write_stderr_ignore_retval("Cancel request sent\n");
+				write_stderr("Cancel request sent\n");
 			else
 			{
-				write_stderr_ignore_retval("Could not send cancel request: ");
-				write_stderr_ignore_retval(errbuf);
+				write_stderr("Could not send cancel request: ");
+				write_stderr(errbuf);
 			}
 		}
 		LeaveCriticalSection(&cancelConnLock);

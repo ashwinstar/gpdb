@@ -12,7 +12,6 @@
 
 #include "utils/rel.h"
 #include "utils/tqual.h"
-#include "storage/lock.h"
 #include "catalog/pg_appendonly.h"
 
 #define Natts_pg_aoseg					6
@@ -24,8 +23,6 @@
 
 #define InvalidFileSegNumber			-1
 #define InvalidUncompressedEof			-1
-
-#define AO_FILESEGINFO_ARRAY_SIZE		8
 
 /*
  * pg_aoseg_nnnnnn table values for FormData_pg_attribute.
@@ -114,13 +111,13 @@ InsertInitialSegnoEntry(AppendOnlyEntry *aoEntry, int segno);
   * to append data to the segment file.
   */
 extern FileSegInfo *
-GetFileSegInfo(Relation parentrel, AppendOnlyEntry *aoEntry, Snapshot appendOnlyMetaDataSnapshot, int segno);
+GetFileSegInfo(Relation parentrel, AppendOnlyEntry *aoEntry, Snapshot snapshot, int segno);
 
 extern FileSegInfo **
-GetAllFileSegInfo(Relation parentrel, AppendOnlyEntry *aoEntry, Snapshot appendOnlyMetaDataSnapshot, int *totalsegs);
+GetAllFileSegInfo(Relation parentrel, AppendOnlyEntry *aoEntry, Snapshot snapshot, int *totalsegs);
 
 extern FileSegInfo **
-GetAllFileSegInfo_pg_aoseg_rel(char *relationName, AppendOnlyEntry *aoEntry, Relation pg_aoseg_rel, Snapshot appendOnlyMetaDataSnapshot, LOCKMODE lm, int *totalsegs);
+GetAllFileSegInfo_pg_aoseg_rel(char *relationName, AppendOnlyEntry *aoEntry, Relation pg_aoseg_rel, Snapshot snapshot, int *totalsegs);
 
 extern void
 UpdateFileSegInfo(Relation parentrel,
@@ -132,9 +129,9 @@ UpdateFileSegInfo(Relation parentrel,
 				  int64 varblocks_added);
 
 extern FileSegTotals *
-GetSegFilesTotals(Relation parentrel, Snapshot appendOnlyMetaDataSnapshot);
+GetSegFilesTotals(Relation parentrel);
 
-extern int64 GetAOTotalBytes(Relation parentrel, Snapshot appendOnlyMetaDataSnapshot);
+extern int64 GetAOTotalBytes(Relation parentrel);
 
 extern void FreeAllSegFileInfo(FileSegInfo **allSegInfo,
 							   int totalSegFiles);

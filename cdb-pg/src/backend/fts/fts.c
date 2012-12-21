@@ -16,7 +16,6 @@
 #include <unistd.h>
 
 #include "access/genam.h"
-#include "access/catquery.h"
 #include "access/heapam.h"
 #include "libpq/pqsignal.h"
 #include "miscadmin.h"
@@ -281,7 +280,7 @@ ftsMain(int argc, char *argv[])
 	BaseInit();
 
 	/* See InitPostgres()... */
-	InitProcess(false /*isQueryProc*/);
+	InitProcess();	
 	InitBufferPoolBackend();
 	InitXLOGAccess();
 
@@ -568,60 +567,56 @@ FtsFindSuperuser(bool try_bootstrap)
 	char *suser = NULL;
 	Relation auth_rel;
 	HeapTuple	auth_tup;
-	cqContext  *pcqCtx;
-	cqContext	cqc;
+	HeapScanDesc auth_scan;
+	ScanKeyData key[3];
 	bool	isNull;
 
-	auth_rel = heap_open(AuthIdRelationId, AccessShareLock);
+	ScanKeyInit(&key[0],
+				Anum_pg_authid_rolsuper,
+				BTEqualStrategyNumber, F_BOOLEQ,
+				BoolGetDatum(true));
+
+	ScanKeyInit(&key[1],
+				Anum_pg_authid_rolcanlogin,
+				BTEqualStrategyNumber, F_BOOLEQ,
+				BoolGetDatum(true));
 
 	if (try_bootstrap)
 	{
-		pcqCtx = caql_beginscan(
-				caql_addrel(cqclr(&cqc), auth_rel),
-				cql("SELECT * FROM pg_authid "
-					" WHERE rolsuper = :1 "
-					" AND rolcanlogin = :2 "
-					" AND oid = :3 ",
-					BoolGetDatum(true),
-					BoolGetDatum(true),
-					ObjectIdGetDatum(BOOTSTRAP_SUPERUSERID)));
-	}
-	else
-	{
-		pcqCtx = caql_beginscan(
-				caql_addrel(cqclr(&cqc), auth_rel),
-				cql("SELECT * FROM pg_authid "
-					" WHERE rolsuper = :1 "
-					" AND rolcanlogin = :2 ",
-					BoolGetDatum(true),
-					BoolGetDatum(true)));
+		ScanKeyInit(&key[2],
+					ObjectIdAttributeNumber,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(BOOTSTRAP_SUPERUSERID));
 	}
 
-	while (HeapTupleIsValid(auth_tup = caql_getnext(pcqCtx)))
+	auth_rel = heap_open(AuthIdRelationId, AccessShareLock);
+	auth_scan = heap_beginscan(auth_rel, SnapshotNow, try_bootstrap ? 3 : 2, key);
+	while (HeapTupleIsValid(auth_tup = heap_getnext(auth_scan, ForwardScanDirection)))
 	{
 		Datum	attrName;
+		Datum	attrNameOid;
 		Oid		userOid;
 		Datum	validuntil;
 
-		validuntil = heap_getattr(auth_tup, Anum_pg_authid_rolvaliduntil, 
-								  RelationGetDescr(auth_rel), &isNull);
+		validuntil = heap_getattr(auth_tup, Anum_pg_authid_rolvaliduntil, auth_rel->rd_att, &isNull);
 		/* we actually want it to be NULL, that means always valid */
 		if (!isNull)
 			continue;
 
-		attrName = heap_getattr(auth_tup, Anum_pg_authid_rolname, 
-								RelationGetDescr(auth_rel), &isNull);
+		attrName = heap_getattr(auth_tup, Anum_pg_authid_rolname, auth_rel->rd_att, &isNull);
 		Assert(!isNull);
 		suser = pstrdup(DatumGetCString(attrName));
 
-		userOid = HeapTupleGetOid(auth_tup);
+		attrNameOid = heap_getattr(auth_tup, ObjectIdAttributeNumber, auth_rel->rd_att, &isNull);
+		Assert(!isNull);
+		userOid = DatumGetObjectId(attrNameOid);
 
 		SetSessionUserId(userOid, true);
 
 		break;
 	}
 
-	caql_endscan(pcqCtx);
+	heap_endscan(auth_scan);
 	heap_close(auth_rel, AccessShareLock);
 	return suser;
 }
@@ -697,7 +692,7 @@ probePublishUpdate(uint8 *probe_results)
 			continue;
 		}
 
-		Assert(failover_strategy == 'f');
+		Assert(failover_strategy == 'f' || failover_strategy == 's');
 		Assert(mirror != NULL);
 
 		/* changes required for primary and mirror */
@@ -724,11 +719,24 @@ probePublishUpdate(uint8 *probe_results)
 			     primary->segindex, primary->dbid, mirror->dbid);
 		}
 
-		/* get current state */
-		stateOld = FtsGetPairStateFilerep(primary, mirror);
+		if (failover_strategy == 'f')
+		{
+			/* get current state */
+			stateOld = FtsGetPairStateFilerep(primary, mirror);
 
-		/* get new state */
-		stateNew = transition(stateOld, trans, primary, mirror, &changes[0], &changes[1]);
+			/* get new state */
+			stateNew = transition(stateOld, trans, primary, mirror, &changes[0], &changes[1]);
+		}
+		else
+		{
+			Assert(failover_strategy == 's');
+
+			/* get current state */
+			stateOld = FtsGetPairStateSAN(primary, mirror);
+
+			/* get new state */
+			stateNew = transition(stateOld, trans, primary, mirror, &changes[0], &changes[1]);
+		}
 
 		/* check if transition is required */
 		if (stateNew != stateOld)
@@ -817,8 +825,14 @@ transition
 	}
 
 	/* get new state for primary and mirror */
-	Assert(failover_strategy == 'f');
-	stateNew = FtsTransitionFilerep(stateOld, trans);
+	if (failover_strategy == 'f')
+	{
+		stateNew = FtsTransitionFilerep(stateOld, trans);
+	}
+	else
+	{
+		stateNew = FtsTransitionSAN(stateOld, trans);
+	}
 
 	/* check if transition is required */
 	if (stateNew != stateOld)
@@ -836,7 +850,14 @@ transition
 			elog(LOG, "FTS: state machine transition from %d to %d.", stateOld, stateNew);
 		}
 
-		FtsResolveStateFilerep(&pairState);
+		if (failover_strategy == 'f')
+		{
+			FtsResolveStateFilerep(&pairState);
+		}
+		else
+		{
+			FtsResolveStateSAN(&pairState);
+		}
 
 		buildSegmentStateChange(primary, changesPrimary, pairState.statePrimary);
 		buildSegmentStateChange(mirror, changesMirror, pairState.stateMirror);
@@ -858,6 +879,8 @@ updateConfiguration(FtsSegmentStatusChange *changes, int changeEntries)
 	Assert(changes != NULL);
 
 	PGconn *entryConn = NULL;
+	char timestamp_str[TIMESTAMP_BUF_SIZE];
+
 	CdbComponentDatabaseInfo *entryDB = &cdb_component_dbs->entry_db_info[0];
 
 	if (entryDB->dbid != GpIdentity.dbid)
@@ -891,10 +914,16 @@ updateConfiguration(FtsSegmentStatusChange *changes, int changeEntries)
 
 	if (commit)
 	{
-		Assert(failover_strategy == 'f');
-
-		/* FILEREP response */
-		FtsFailoverFilerep(changes, changeEntries);
+		if (failover_strategy == 'f')
+		{
+			/* FILEREP response */
+			FtsFailoverFilerep(changes, changeEntries);
+		}
+		else if (failover_strategy == 's')
+		{
+			/* SAN response */
+			FtsFailoverSAN(changes, changeEntries, timestamp_str);
+		}
 	}
 
 	if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
@@ -980,24 +1009,19 @@ getFailoverStrategy(char *strategy)
 {
 	Relation	strategy_rel;
 	HeapTuple	strategy_tup;
-	cqContext  *pcqCtx;
-	cqContext	cqc;
+	HeapScanDesc strategy_scan;
 	bool	isNull=true;
 
 	Assert(strategy != NULL);
 
 	strategy_rel = heap_open(GpFaultStrategyRelationId, AccessShareLock);
+	strategy_scan = heap_beginscan(strategy_rel, SnapshotNow, 0, NULL);
 
-	/* XXX XXX: only one of these? then would be getfirst... */
-	pcqCtx = caql_beginscan(
-			caql_addrel(cqclr(&cqc), strategy_rel),
-			cql("SELECT * FROM gp_fault_strategy ", NULL));
-
-	while (HeapTupleIsValid(strategy_tup = caql_getnext(pcqCtx)))
+	while (HeapTupleIsValid(strategy_tup = heap_getnext(strategy_scan, ForwardScanDirection)))
 	{
 		Datum	strategy_datum;
 
-		strategy_datum = heap_getattr(strategy_tup, Anum_gp_fault_strategy_fault_strategy, RelationGetDescr(strategy_rel), &isNull);
+		strategy_datum = heap_getattr(strategy_tup, Anum_gp_fault_strategy_fault_strategy, strategy_rel->rd_att, &isNull);
 
 		if (isNull)
 			break;
@@ -1005,7 +1029,7 @@ getFailoverStrategy(char *strategy)
 		*strategy = DatumGetChar(strategy_datum);
 	}
 
-	caql_endscan(pcqCtx);
+	heap_endscan(strategy_scan);
 	heap_close(strategy_rel, AccessShareLock);
 
 	return;
@@ -1022,6 +1046,7 @@ FtsIsSegmentAlive(CdbComponentDatabaseInfo *segInfo)
 				return true;
 			/* fallthrough */
 		case 'n':
+		case 's':
 			if (SEGMENT_IS_ACTIVE_PRIMARY(segInfo))
 				return true;
 			break;
@@ -1237,10 +1262,6 @@ openSelfConn(CdbComponentDatabaseInfo *entryDB)
 	/*
 	 * Do not need to set host, since FTS is running on the same host
 	 * as the master node.
-	 *
-	 * NOTE: do not be tempted to add a host and force TCP: we use ident
-	 * authentication to test that this is the master connecting back to itself
-	 * and we cannot do that via TCP. See MPP-15802.
 	 */
 	appendPQExpBuffer(entryBuffer, "port=%u ", entryDB->port);
 	appendPQExpBuffer(entryBuffer, "dbname=%s ", probeDatabase);

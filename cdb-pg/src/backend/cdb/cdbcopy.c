@@ -115,7 +115,9 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 	oldcontext = MemoryContextSwitchTo(MessageContext);
 
 	QueryContext = CurrentMemoryContext;
-
+	
+	/* dispatch copy command to both primary and mirror writer gangs */
+	
 	/*
 	 * Let's parse the copy command into a query tree, serialize it, and
 	 * send it down to the QE or DA.
@@ -129,11 +131,13 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 	/*
 	 * parse it to a raw parsetree 
 	 */
+	
 	parsetree_list = pg_parse_query(copyCmd);
 	
 	/*
 	 * Assume it will be one statement node, not multiple ones.
 	 */
+
 	parsetree = (Node *) linitial(parsetree_list);
 	Assert(nodeTag(parsetree) == T_CopyStmt);
 	
@@ -146,6 +150,7 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 	 * statement has a "select" statement embedded, this
 	 * is essential.
 	 */
+	
 	querytree_list = pg_analyze_and_rewrite(parsetree, copyCmd,
 													NULL, 0);
 	
@@ -188,7 +193,6 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 								false 		/* cancelonError */, 
 								c->copy_in 	/* need2phase */, 
 								true 		/* withSnapshot */,
-								GANGSCOPE_WRITER,
 								&ds);
 
 	/*  MPP-3017: insert a call like this to expand the timing, and
@@ -554,15 +558,14 @@ processCopyEndResults(CdbCopy *c,
 				
 			if (PQresultStatus(res) == PGRES_COPY_IN)
 			{
-				elog(DEBUG1,"Segment still in copy in, retrying the putCopyEnd");
-				PQputCopyEnd(q->conn, NULL);
+				elog(LOG,"Bug, still in copy in, retrying the putCopyEnd");
+				result = PQputCopyEnd(q->conn, NULL);
 			}
 
 			if (PQresultStatus(res) == PGRES_COPY_OUT)
 			{
-				elog(DEBUG1,"Segment still in copy out, retrying the cdbCopyGetData");
-				uint64 rows_processed = 0;
-				cdbCopyGetData(c, true /* copy_cancel */, &rows_processed);
+				elog(LOG,"Segment still in copy out, cleaning retrying the putCopyEnd");
+				result = PQputCopyEnd(q->conn, NULL);
 			}
 
 			/* in SREH mode, check if this seg rejected (how many) rows */

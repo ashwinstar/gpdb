@@ -1,9 +1,9 @@
 import os
 
 from gppylib import gplog
-from gppylib.commands.base import Command, WorkerPool, REMOTE
+from gppylib.commands.base import Command, WorkerPool
 from gppylib.commands.gp import get_masterdatadir, SendFilerepVerifyMessage
-from gppylib.commands.unix import Scp, PathIsDirectory
+from gppylib.commands.unix import Scp
 from gppylib.db import dbconn
 from gppylib.db.dbconn import UnexpectedRowsError
 from gppylib.gparray import GpArray, FAULT_STRATEGY_LABELS, FAULT_STRATEGY_FILE_REPLICATION
@@ -82,7 +82,6 @@ class TriggerFilerepVerifyMessages(Operation):
 
         logger.info('Sending gp_primarymirror requests...')
         pool = WorkerPool(min(len(to_trigger), self.batch_default))
-
         for pseg in to_trigger:
             host, port = pseg.getSegmentHostName(), pseg.getSegmentPort()
             cmd = SendFilerepVerifyMessage(name = 'verify %s' % host, host = host, port = port,
@@ -134,11 +133,6 @@ class ValidateVerification(Operation):
         if my_fault_strategy != FAULT_STRATEGY_FILE_REPLICATION:
             raise NoMirroringError('Fault strategy %s does not support mirror verification.' % FAULT_STRATEGY_LABELS[my_fault_strategy])
 
-        if self.content is not None:
-            contents = set( [seg.getSegmentContentId() for seg in gparray.getDbList()] )
-            if self.content not in contents:
-                raise InvalidContentIDError(self.content)
-
         logger.info('Validating target contents...')
         to_verify = [x for x in gparray.getDbList() if x.isSegmentQE()]
         if self.content is not None:
@@ -147,9 +141,7 @@ class ValidateVerification(Operation):
             to_verify = [x for x in to_verify if x.isSegmentPrimary(current_role=True)]
         return to_verify
 class NoMirroringError(Exception): pass
-class InvalidContentIDError(Exception):
-    def __init__(self, content):
-        Exception.__init__(self, "%d is not a valid content ID." % content)
+
 
 
 class AbortVerification(Operation):
@@ -244,7 +236,7 @@ class CleanVerification(Operation):
         for seg in to_clean:
             host = seg.getSegmentHostName()
             path = os.path.join(seg.getSegmentDataDirectory(), 'pg_verify', "*%s*" % self.token)
-            cmd = Command('cleanup', 'rm -f %s' % path, ctxt=REMOTE, remoteHost=host)
+            cmd = Command('cleanup', 'rm -f %s' % path, remoteHost=host)
             pool.addCommand(cmd)
 
         logger.info('Waiting for clean commands to complete...')
@@ -334,29 +326,6 @@ class GatherResults(Operation):
         to_gather = ValidateVerification(content = self.content,
                                          primaries_only = False).run()
 
-        #maps a segment data directory to a segment
-        seg_datadir_map = {}
-        for seg in to_gather:
-            seg_datadir_map[seg.getSegmentDataDirectory()] = seg 
-    
-        #A mirror segment might not have the pg_verify directory. In such 
-        #cases we just ignore the mirror segment and depend only on the primary
-        #to deduce the results of the verification.
-        pool = WorkerPool(min(len(to_gather), self.batch_default))
-        for seg in to_gather:
-            if seg.isSegmentMirror():
-                cmd = PathIsDirectory('Check pg_verify directory on mirror',
-                                       os.path.join(seg.getSegmentDataDirectory(), 'pg_verify'),
-                                       ctxt=REMOTE,
-                                       remoteHost=seg.getSegmentHostName())
-                pool.addCommand(cmd)
-        pool.join()
-        pool.haltWork()
-
-        for cmd in pool.getCompletedItems():
-            if cmd.get_results().stdout.strip() == 'False':
-                to_gather.remove(seg_datadir_map[os.path.dirname(cmd.directory)])
-
         dest_base = os.path.join(self.master_datadir, 'pg_verify', self.token)
         if CheckDir(dest_base).run():
             # TODO: if end user has mucked around with artifacts on master, a regathering may
@@ -426,7 +395,7 @@ class ValidateResultFile(Operation):
     def execute(self):
         path = os.path.join(self.datadir, "pg_verify", "verification_%s.result" % self.token)
         with open(path, 'r') as f:
-            phrase = f.readline().strip()
+            phrase = f.readline()
         return self.translate.get(phrase, VerificationState.RUNNING)
 
 

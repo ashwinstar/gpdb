@@ -27,7 +27,7 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "parser/parsetree.h"
-#include "optimizer/var.h"
+
 
 static TupleTableSlot *ExternalNext(ExternalScanState *node);
 
@@ -78,15 +78,6 @@ ExternalNext(ExternalScanState *node)
 		Gpmon_M_Incr_Rows_Out(GpmonPktFromExtScanState(node));
 		CheckSendPlanStateGpmonPkt(&node->ss.ps);
 		ExecStoreGenericTuple(tuple, slot, true);
-
-	    /*
-	     * CDB: Label each row with a synthetic ctid if needed for subquery dedup.
-	     */
-	    if (node->cdb_want_ctid &&
-	        !TupIsNull(slot))
-	    {
-	    	slot_set_ctid_from_fake(slot, &node->cdb_fake_ctid);
-	    }
 	}
 	else
 	{
@@ -97,7 +88,7 @@ ExternalNext(ExternalScanState *node)
 			ExecEagerFreeExternalScan(node);
 		}
 	}
-
+	
 
 	return slot;
 }
@@ -160,10 +151,6 @@ ExecInitExternalScan(ExternalScan *node, EState *estate, int eflags)
 		ExecInitExpr((Expr *) node->scan.plan.qual,
 					 (PlanState *) externalstate);
 
-	/* Check if targetlist or qual contains a var node referencing the ctid column */
-	externalstate->cdb_want_ctid = contain_ctid_var_reference(&node->scan);
-	ItemPointerSetInvalid(&externalstate->cdb_fake_ctid);
-
 #define EXTSCAN_NSLOTS 2
 
 	/*
@@ -189,8 +176,7 @@ ExecInitExternalScan(ExternalScan *node, EState *estate, int eflags)
 									 node->rejLimit,
 									 node->rejLimitInRows,
 									 node->fmterrtbl,
-									 node->encoding,
-									 node->scan.plan.qual);
+									 node->encoding);
 
 	externalstate->ss.ss_currentRelation = currentRelation;
 	externalstate->ess_ScanDesc = currentScanDesc;
@@ -321,8 +307,6 @@ ExecExternalReScan(ExternalScanState *node, ExprContext *exprCtxt)
      	CheckSendPlanStateGpmonPkt(&node->ss.ps);
 	fileScan = node->ess_ScanDesc;
 
-	ItemPointerSet(&node->cdb_fake_ctid, 0, 0);
-
 	external_rescan(fileScan);
 }
 
@@ -335,7 +319,7 @@ initGpmonPktForExternalScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *e
 		RangeTblEntry *rte = rt_fetch(((ExternalScan *)planNode)->scan.scanrelid,
 									  estate->es_range_table);
 		char schema_rel_name[SCAN_REL_NAME_BUF_SIZE] = {0};
-
+		
 		Assert(GPMON_EXTSCAN_TOTAL <= (int)GPMON_QEXEC_M_COUNT);
 		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, PMNT_ExternalScan,
 							 (int64)planNode->plan_rows,

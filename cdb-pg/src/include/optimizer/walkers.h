@@ -33,18 +33,6 @@ extern bool query_or_expression_tree_walker(Node *node, bool (*walker) (),
 												   void *context, int flags);
 
 
-extern Node *expression_tree_mutator(Node *node, Node *(*mutator) (),
-												 void *context);
-
-extern Query *query_tree_mutator(Query *query, Node *(*mutator) (),
-											 void *context, int flags);
-
-extern List *range_table_mutator(List *rtable, Node *(*mutator) (),
-											 void *context, int flags);
-
-extern Node *query_or_expression_tree_mutator(Node *node, Node *(*mutator) (),
-												   void *context, int flags);
-
 /* The plan associated with a SubPlan is found in a list.  During planning this is in
  * the global structure found through the root PlannerInfo.  After planning this is in
  * the PlannedStmt.
@@ -77,7 +65,7 @@ extern "C" {
  * Useful functions that aggregate information from expressions or plans.
  */
 extern List *extract_nodes(PlannerGlobal *glob, Node *node, int nodeTag);
-extern bool contains_node_type(PlannerGlobal *glob, Node *node, int nodeTag);
+
 extern List *extract_nodes_plan(Plan *pl, int nodeTag, bool descendIntoSubqueries);
 
 #ifdef __cplusplus

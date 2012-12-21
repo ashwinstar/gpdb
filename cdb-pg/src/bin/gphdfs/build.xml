@@ -4,10 +4,10 @@
   <property file="build.properties" />
 
   <!-- Compiler options -->
-  <property name="src.dir" value="${basedir}/src/java/${gpgnet.src}" />
+  <property name="src.dir" value="${basedir}/src/java" />
   <property name="lib.dir" value="${basedir}/build/lib" />
   <property name="build.dir" value="${basedir}/build" />
-  <property name="javadoc.dir" value="${basedir}/${gphdgnet.version}-javadoc" />
+  <property name="javadoc.dir" value="${basedir}/javadoc" />
   <property name="dist.dir" value="${basedir}/dist" />
   <property name="test.src.dir" value="${basedir}/src/test"/>
   <property name="test.build.dir" value="${build.dir}/test"/>
@@ -75,7 +75,7 @@
         <format property="TODAY" pattern="yyyy-MM-dd HH:mm:ss" />
     </tstamp>
 
-    <jar destfile="${dist.dir}/${gphdgnet.version}.jar">
+    <jar destfile="${dist.dir}/gphadoop-${gphdconn.version}.jar">
       <manifest>
         <attribute name="Built-By" value="${user.name}"/>
         <attribute name="Built-Date" value="${TODAY}"/> 
@@ -107,8 +107,7 @@
 
   <target name="ivy-retrieve-hadoop" depends="ivy-init"
           description="--> Retrieve Ivy-managed artifacts for the compile configurations">
-    <ivy:settings id="basic.settings" file="ivysettings.xml"/>
-    <ivy:retrieve settingsRef="basic.settings" pattern="${build.ivy.lib.dir}/${ivy.artifact.retrieve.pattern}" sync="true" conf="compile"/>
+    <ivy:retrieve pattern="${build.ivy.lib.dir}/${ivy.artifact.retrieve.pattern}" sync="true" conf="compile"/>
     <ivy:cachepath pathid="ivy-classpath" conf="compile"/>
   </target>
 

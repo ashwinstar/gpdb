@@ -16,7 +16,6 @@
 
 #include "postgres.h"
 
-#include "access/catquery.h"
 #include "access/heapam.h"
 #include "catalog/heap.h"
 #include "catalog/pg_am.h"
@@ -59,9 +58,9 @@
 #define DISTINCT_ON_CLAUSE 2
 
 static const char *clauseText[] = {
-	"ORDER BY", 
-	"GROUP BY", 
-	"DISTINCT ON"
+    "ORDER BY", 
+    "GROUP BY", 
+    "DISTINCT ON"
 };
 
 static void extractRemainingColumns(List *common_colnames,
@@ -185,98 +184,6 @@ expr_contains_null_const(Expr *expr)
 	return expr_null_check_walker((Node *)expr, NULL);
 }
 
-/*
- * Checks if the edge type is compatible with the ORDER BY type, and returns
- * the coerced type if necessary.  This is supposed to be called against
- * RANGE edge.
- */
-static Node *
-checkFrameEdgeType(ParseState *pstate, WindowFrameEdge *e,
-				   WindowSpec *spec, Query *qry)
-{
-	Node *result_expr = e->val;
-	SortClause *sort;
-	TargetEntry *te;
-	Oid otype, rtype, newrtype, oprresult;
-	List *oprname;
-	Operator tup;
-
-	/* The caller should check this */
-	Assert(list_length(spec->order) == 1);
-	sort = (SortClause *) linitial(spec->order);
-	te = getTargetBySortGroupRef(sort->tleSortGroupRef,
-								 qry->targetList);
-	otype = exprType((Node *) te->expr);
-	rtype = exprType(e->val);
-
-	/* XXX: Reverse these if user specified DESC */
-	if (e->kind == WINDOW_BOUND_FOLLOWING)
-		oprname = list_make1(makeString("+"));
-	else
-		oprname = list_make1(makeString("-"));
-
-	tup = oper(pstate, oprname, otype, rtype, true, 0);
-
-	if (!HeapTupleIsValid(tup))
-		ereport(ERROR,
-				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("window specification RANGE parameter type "
-						"must be coercible to ORDER BY column type"),
-								   errOmitLocation(true)));
-
-	oprresult = ((Form_pg_operator) GETSTRUCT(tup))->oprresult;
-	newrtype = ((Form_pg_operator) GETSTRUCT(tup))->oprright;
-
-	ReleaseOperator(tup);
-	list_free_deep(oprname);
-
-	if (rtype != newrtype)
-	{
-		/*
-		 * We have to coerce the RHS to the new type so that we'll be
-		 * able to trivially find an operator later on.
-		 */
-		result_expr = coerce_to_target_type(NULL,
-											e->val,
-											rtype,
-											newrtype,
-											exprTypmod(e->val),
-											COERCION_EXPLICIT,
-											COERCE_IMPLICIT_CAST,
-											-1);
-		if (!PointerIsValid(result_expr))
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("type mismatch between ORDER BY and RANGE "
-							"parameter in window specification"),
-					 errhint("Operations between window specification "
-							 "the ORDER BY column and RANGE parameter "
-							 "must result in a data type which can be "
-							 "cast back to the ORDER BY column type"),
-									   errOmitLocation(true)));
-		}
-	}
-
-	if (oprresult != otype)
-	{
-		/* see if it can be coerced */
-		if (!can_coerce_type(1, &oprresult, &otype, COERCION_EXPLICIT))
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("invalid RANGE parameter"),
-					 errhint("Operations between window specification "
-							 "the ORDER BY column and RANGE parameter "
-							 "must result in a data type which can be "
-							 "cast back to the ORDER BY column type"),
-									   errOmitLocation(true)));
-
-		/* The executor will do the rest of the work */
-	}
-
-	return result_expr;
-}
-
 static void
 transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 						 WindowSpec *spec, Query *qry, bool is_rows)
@@ -312,6 +219,16 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 		}
 		else
 		{
+			TargetEntry *te;
+			Oid otype;
+			Oid rtype;
+			Oid newrtype;
+			SortClause *sort;
+			Oid oprresult;
+			List *oprname;
+			Operator tup;
+			int32 typmod;
+
 			if (list_length(spec->order) != 1)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
@@ -319,25 +236,103 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 								" RANGE is used in a window specification"),
 										   errOmitLocation(true)));
 
-			e->val = checkFrameEdgeType(pstate, e, spec, qry);
+			/* e->val should already be transformed */
+			typmod = exprTypmod(e->val);
 
 			if (IsA(e->val, Const))
 			{
-				Const *con = (Const *) e->val;
-				Oid valtype = exprType(e->val);
-				Operator tup;
+				Const *con = (Const *)e->val;
 
 				if (con->constisnull)
 					ereport(ERROR,
 							(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
 							 errmsg("RANGE parameter cannot be NULL"),
 									   errOmitLocation(true)));
+			}
 
+			sort = (SortClause *)linitial(spec->order);
+			te = getTargetBySortGroupRef(sort->tleSortGroupRef,
+										 qry->targetList);
+			otype = exprType((Node *)te->expr);
+			rtype = exprType(e->val);
+
+			/* XXX: Reverse these if user specified DESC */
+			if (e->kind == WINDOW_BOUND_FOLLOWING)
+				oprname = lappend(NIL, makeString("+"));
+			else
+				oprname = lappend(NIL, makeString("-"));
+
+			tup = oper(pstate, oprname, otype, rtype, true, 0);
+
+			if (!HeapTupleIsValid(tup))
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("window specification RANGE parameter type "
+								"must be coercible to ORDER BY column type"),
+										   errOmitLocation(true)));
+
+			oprresult = ((Form_pg_operator)GETSTRUCT(tup))->oprresult;
+			newrtype = ((Form_pg_operator)GETSTRUCT(tup))->oprright;
+			ReleaseSysCache(tup);
+			list_free_deep(oprname);
+
+			if (rtype != newrtype)
+			{
+				/*
+				 * We have to coerce the RHS to the new type so that we'll be
+				 * able to trivially find an operator later on.
+				 */
+
+				/* XXX: we assume that the typmod for the new RHS type
+				 * is the same as before... is that safe?
+				 */
+				Expr *expr =
+					(Expr *)coerce_to_target_type(NULL,
+												  e->val,
+											 	  rtype,
+											 	  newrtype, typmod,
+									 			  COERCION_EXPLICIT,
+												  COERCE_IMPLICIT_CAST,
+												  -1);
+				if (!PointerIsValid(expr))
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("type mismatch between ORDER BY and RANGE "
+									"parameter in window specification"),
+							 errhint("Operations between window specification "
+									 "the ORDER BY column and RANGE parameter "
+									 "must result in a data type which can be "
+									 "cast back to the ORDER BY column type"),
+											   errOmitLocation(true)));
+				}
+				else
+					e->val = (Node *)expr;
+			}
+
+			if (oprresult != otype)
+			{
+				/* see if it can be coerced */
+				if (!can_coerce_type(1, &oprresult, &otype, COERCION_EXPLICIT))
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("invalid RANGE parameter"),
+							 errhint("Operations between window specification "
+									 "the ORDER BY column and RANGE parameter "
+									 "must result in a data type which can be "
+									 "cast back to the ORDER BY column type"),
+											   errOmitLocation(true)));
+
+				/* The executor will do the rest of the work */
+			}
+
+			if (IsA(e->val, Const))
+			{
 				/* see if RANGE parameter is negative */
-				tup = ordering_oper(valtype, false);
+				tup = ordering_oper(newrtype, false);
 				if (HeapTupleIsValid(tup))
 				{
-					Type typ = typeidType(valtype);
+					Type typ = typeidType(newrtype);
 					Oid funcoid = oprfuncid(tup);
 					Datum zero;
 					Datum result;
@@ -358,8 +353,8 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 								 errmsg("RANGE parameter cannot be negative"),
 										   errOmitLocation(true)));
 
-					ReleaseOperator(tup);
-					ReleaseType(typ);
+					ReleaseSysCache(tup);
+					ReleaseSysCache(typ);
 				}
 			}
 		}
@@ -413,16 +408,9 @@ winref_checkspec_walker(Node *node, void *ctx)
 		{
 			HeapTuple		tuple;
 			Form_pg_window	wf;
-			cqContext	   *pcqCtx;
 
-			pcqCtx = caql_beginscan(
-					NULL,
-					cql("SELECT * FROM pg_window "
-						" WHERE winfnoid = :1 ",
-						ObjectIdGetDatum(winref->winfnoid)));
-
-			tuple = caql_getnext(pcqCtx);
-
+			tuple = SearchSysCache(WINFNOID,
+								   ObjectIdGetDatum(winref->winfnoid), 0, 0, 0);
 			/*
 			 * Check only "true" window function.
 			 * Otherwise, it must be an aggregate.
@@ -445,8 +433,9 @@ winref_checkspec_walker(Node *node, void *ctx)
 									"a framed window specification",
 									get_func_name(wf->winfnoid)),
 								parser_errposition(ref->pstate, winref->location)));
+
+				ReleaseSysCache(tuple);
 			}
-			caql_endscan(pcqCtx);
 		}
 	}
 
@@ -499,12 +488,14 @@ transformWindowClause(ParseState *pstate, Query *qry)
 	Index clauseno = -1;
 
 	/*
-	 * ParseState actually contains two kinds of window spec:  The leading
-	 * ones are from the input window clause (the SelectStmt windowClause), 
-	 * if any.  The trailing ones were added when we found OVER(...) clauses 
-	 * in the target list.  We count on the ones from the window clause 
-	 * coming first because as spec might refer to a named clause and this
-	 * should occur earlier in the list.
+	 * We have two lists of window specs: one in the ParseState -- put there
+	 * when we find the OVER(...) clause in the targetlist and the other
+	 * is windowClause, a list of named window clauses. So, we concatenate
+	 * them together.
+	 *
+	 * Note that we're careful place those found in the target list at
+	 * the end because the spec might refer to a named clause and we'll
+	 * after to know about those first.
 	 */
 
 	foreach(w, winin)
@@ -518,11 +509,6 @@ transformWindowClause(ParseState *pstate, Query *qry)
 
         /* Include this WindowSpec's location in error messages. */
         pstate->p_breadcrumb.node = (Node *)ws;
-		
-		if ( !IsA(ws, WindowSpec) )
-		{
-			elog(ERROR, "invalid call to transform a window clause: sequence clause found");
-		}
 
         if (checkExprHasWindFuncs((Node *)ws))
 		{
@@ -778,51 +764,6 @@ transformWindowClause(ParseState *pstate, Query *qry)
 									 nf->is_rows);
 			transformWindowFrameEdge(pstate, nf->lead, newspec, qry,
 									 nf->is_rows);
-
-			/*
-			 * The both edge types in RANGE should be the same type.
-			 * This coercion should come after transformWindowFrameEdge()
-			 * because we have to coerce the edge type to be compatible
-			 * with ORDER BY type before checking the common type.
-			 */
-			if (!nf->is_rows && nf->trail->val && nf->lead->val)
-			{
-				List	   *typeids = NIL;
-				Oid			trail_type, lead_type, common_type;
-				const char *context = "RANGE FRAME";
-
-				trail_type = exprType(nf->trail->val);
-				lead_type = exprType(nf->lead->val);
-				typeids = lappend_oid(typeids, trail_type);
-				typeids = lappend_oid(typeids, lead_type);
-				common_type = select_common_type(typeids, context);
-
-				nf->trail->val =
-					coerce_to_common_type(pstate,
-										  nf->trail->val,
-										  common_type,
-										  context);
-				nf->lead->val =
-					coerce_to_common_type(pstate,
-										  nf->lead->val,
-										  common_type,
-										  context);
-
-				/*
-				 * The type change may introduce missing operator
-				 * between the new edge type and ORDER BY type, here after
-				 * transformWindowFrameEdge() where we checked the operator
-				 * existence between the original type and ORDER BY type.
-				 * All built-in types should be able to find a new operator
-				 * against ORDER BY after the common type coercion, but
-				 * we double-check and error out if that's the case.
-				 */
-				nf->trail->val =
-					checkFrameEdgeType(pstate, nf->trail, newspec, qry);
-				nf->lead->val =
-					checkFrameEdgeType(pstate, nf->lead, newspec, qry);
-			}
-
 			newspec->frame = nf;
 		}
 
@@ -847,245 +788,6 @@ transformWindowClause(ParseState *pstate, Query *qry)
 		qry->windowClause = winout;
 	}
 }
-
-/*
- * getSequenceSpec
- *		Returns the first item in the list as a SequenceSpec, if that's what it
- *		is; else returns NULL.
- *
- * This is the canonical way to tell whether a list of WindowSpec pointers represents
- * a SEQUENCE.  The function should normally be applied to the windowClause list of
- * a Query node or to the p_win_clauses list of a ParseState
- */
-SequenceSpec *getSequenceSpec(List *speclist)
-{
-	if ( speclist != NULL && list_length(speclist) > 0 && IsA(linitial(speclist), SequenceSpec) )
-		return (SequenceSpec*)linitial(speclist);
-	return NULL;
-}
-
-/*
- * useSequenceSemantics
- *		Returns true, if the windowClause indicates sequence semantics; else false.
- *
- * This is the canonical way to tell whether a list of WindowSpec pointers indicates
- * that the associated window query should use sequence semantics in determining peer
- * group boundaries. The function should normally be applied to the windowClause list of
- * a Query node or to the p_win_clauses list of a ParseState, i.e., to same argument
- * as getSequenceSpec.
- */
-bool useSequenceSemantics(List *speclist)
-{
-	if ( speclist != NULL && list_length(speclist) > 0 && IsA(linitial(speclist), SeqWindowSpec) )
-		return true;
-	return false;
-}
-
-/*
- * transformSequenceClause
- * 		Process sequence clause in a SELECT query
- *
- * Checks:
- * - Column references in the PARTITION and ORDER clauses must be valid; 
- * - ORDER clause must present;
- * - no frame clause present;
- * - OVER clause limitations for sequences observed (see below).
- *
- * Then we translate it to use the proper parse nodes for the respective
- * part of the clause.
- */
-void
-transformSequenceClause(ParseState *pstate, Query *qry)
-{
-	ListCell *lc;
-	List *winout = NIL;
-	Index clauseno = -1;
-	SequenceSpec *sspec = NULL;
-	SequenceSpec *new_sspec = NULL;
-	
-	/* The list pstate->p_win_clauses should contain exactly one SequenceSpec
-	 * in the first position, along with some number of WindowSpec clauses
-	 * derived from references to the sequence or to windows in OVER clauses
-	 * encountered in WindowRefs in the target list.  We need to reconcile 
-	 * these.
-	 */
-	
-	sspec = getSequenceSpec(pstate->p_win_clauses);
-	
-	/* This should never happen, but make sure! */
-	if ( sspec == NULL )
-	{
-		elog(ERROR, "invalid call to sequence transform");
-	}
-	
-	if ( sspec->seqname == NULL || sspec->order == NIL || sspec->seqdef == NULL )
-	{
-		elog(ERROR, "invalid call to sequence transform");
-	}
-	
-	/* Transform the sequence partition and order once.
-	 */	
-	new_sspec = copyObject(sspec);
-	
-	new_sspec->partition = 
-	transformSortClause(pstate, 
-						sspec->partition, 
-						&qry->targetList, 
-						true, /* fix unknowns */
-						false /* use SQL92 rules */
-						);
-	
-	new_sspec->order = 
-	transformSortClause(pstate, 
-						sspec->order, 
-						&qry->targetList, 
-						true, /* fix unknowns */
-						false /* use SQL92 rules */
-						);
-	
-	/* We always need a basic OVER (seqname), even in the absence of any OVER
-	 * clauses.  We use the SequenceSpec (instead of a WindowSpec) and always
-	 * make it the first.
-	 */	
-	winout = list_make1(new_sspec);
-	
-	/* Additional entries correspond to WindowRefs.  These should 
-	 * be ordinary WindowSpecs (as they appear in the input list).
-	 *
-	 * There are only three valid OVER(...) clauses for sequences:
-	 * - OVER (seqname)
-	 *		seqname is the name in the SequenceSpec
-	 * - OVER (PARTITION BY partitionlist
-	 *		partitionlist matches the one in the SequenceSpec
-	 * - OVER ()
-	 */
-	
-	clauseno = -1;
-	foreach(lc, pstate->p_win_clauses)
-	{
-		WindowSpec *wspec = NULL;
-		Node *node = lfirst(lc);
-		
-		clauseno++;
-		
-		/* Skip sspec.  It is already on winout. */
-		if (clauseno == 0)
-		{
-			Assert( IsA(node, SequenceSpec) );
-			continue;
-		}
-		
-		if (! IsA(node, WindowSpec))
-		{
-			elog(ERROR, "invalid call to sequence transform");
-		}
-		
-		/* The WindowSpec at wspec enters in parse form (like sspec).  Before 
-		 * appending it to the output we'll need to put it in query form
-		 * (like new_sspec).
-		 */
-		wspec = (WindowSpec*)copyObject(node);
-		
-        /* Include this WindowSpec's location in error messages. */
-        pstate->p_breadcrumb.node = (Node *)wspec;
-        
-		/* Sanity: Only the sequence entry itself may be named. */
-        if ( wspec->name )
-        {
-			elog(ERROR, "invalid call to sequence transform");        	
-        }
-		
-        if (checkExprHasWindFuncs((Node *)wspec))
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("cannot use window function in a window "
-							"specification"),
-					 errOmitLocation(true)));
-		}
-		
-		if ( wspec->parent ) /* better be OVER (seqname) */
-		{
-			if ( strcmp(sspec->seqname, wspec->parent) != 0 )
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("name in OVER clause doesn't match sequence name "
-						 		"\"%s\"", sspec->seqname),
-						 errOmitLocation(true)));
-			}
-			if ( wspec->partition || wspec->order )
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("cannot respecify partitioning or order within "
-								"a named sequence"),
-						 errOmitLocation(true)));
-			}
-			
-			/* Copy particulars of the sequence into the window spec. */
-			wspec->partition = copyObject(new_sspec->partition);
-			wspec->order = copyObject(new_sspec->order);
-		}
-		else if (wspec->partition ) /* better be OVER (PARTITION BY partitionlist) */
-		{
-			if ( ! equal(sspec->partition, wspec->partition) )
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("partitioning clause in window specification "
-							    "conflicts with sequence \"%s\"", new_sspec->seqname),
-						 errOmitLocation(true)));
-			}
-			if ( wspec->order != NULL )
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("cannot specify order within a named sequence"),
-						 errOmitLocation(true)));
-			}
-			
-			/* Compare to parse form, but copy query form. */
-			wspec->partition = copyObject(new_sspec->partition);	
-		}
-		else /* better be OVER () */
-		{
-			if ( wspec->order )
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("cannot specify order within a named sequence"),
-						 errOmitLocation(true)));
-			}
-			
-			/* No external reference, no need to update. */	
-		}
-		
-		if ( wspec->frame )
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("framing clause may not appear "
-					 		"in window specifications for sequences"),
-					 errOmitLocation(true)));
-		}
-		
-        /* Refresh our breadcrumb in case transformSortClause stepped on it. */
-        pstate->p_breadcrumb.node = (Node *)wspec;
-
-		/* Check function restriction with this spec. */
-		winref_checkspec(pstate, qry, clauseno,
-						 PointerIsValid(wspec->order),
-						 false /* valid frame */
-						 );
-		
-        winout = lappend(winout, wspec);
-    }
-			
-	qry->windowClause = winout;
-	/* pstate->p_win_clauses = winout; */
-}
-
 
 /*
  * setTargetTable
@@ -2258,20 +1960,6 @@ transformLimitClause(ParseState *pstate, Node *clause,
 				 errmsg("argument of %s must not contain aggregates",
 						constructName)));
 	}
-	if (checkExprHasGroupExtFuncs(qual))
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_GROUPING_ERROR),
-				 errmsg("argument of %s must not contain grouping() or group_id()",
-					 	constructName)));
-	}
-	if (checkExprHasWindFuncs(qual))
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_GROUPING_ERROR),
-				 errmsg("argument of %s must not contain window functions",
-					 	constructName)));
-	}
 	if (contain_subplans(qual))
 	{
 		ereport(ERROR,
@@ -2419,8 +2107,8 @@ findTargetlistEntrySQL92(ParseState *pstate, Node *node, List **tlist,
 	TargetEntry *target_result = NULL;
 	ListCell   *tl;
 
-	/* CDB: Drop a breadcrumb in case of error. */
-	pstate->p_breadcrumb.node = node;
+    /* CDB: Drop a breadcrumb in case of error. */
+    pstate->p_breadcrumb.node = node;
 
 	/*----------
 	 * Handle two special cases as mandated by the SQL92 spec:
@@ -3219,7 +2907,6 @@ transformScatterClause(ParseState *pstate,
 	{
 		Node			*node = lfirst(olitem);
 		TargetEntry		*tle;
-		ScatterClause   *clause;
 
 		tle = findTargetlistEntrySQL99(pstate, node, targetlist);
 
@@ -3233,9 +2920,7 @@ transformScatterClause(ParseState *pstate,
 											 -1);
 		}
 
-		clause = makeNode(ScatterClause);
-		clause->tleSortGroupRef = assignSortGroupRef(tle, *targetlist);
-		outlist = lappend(outlist, clause);
+		outlist = lappend(outlist, tle->expr);
 	}
 	return outlist;
 }
@@ -3294,18 +2979,13 @@ sort_op_can_sort(Oid opid, bool mergejoin)
 	int i;
 	bool result = false;
 
-	catlist = caql_begin_CacheList(
-								   NULL,
-								   cql("SELECT * FROM pg_amop "
-									   " WHERE amopopr = :1 "
-									   " ORDER BY amopopr, "
-									   " amopclaid ",
-									   ObjectIdGetDatum(opid)));
-
+	catlist = SearchSysCacheList(AMOPOPID, 1,
+								 ObjectIdGetDatum(opid),
+								 0, 0, 0);
 	/* not associated with an AM, so can't be a match */
 	if (catlist->n_members == 0)
 	{
-		caql_end_CacheList(catlist);
+		ReleaseSysCacheList(catlist);
 		return false;
 	}
 
@@ -3338,7 +3018,7 @@ sort_op_can_sort(Oid opid, bool mergejoin)
 			}
 		}
 	}
-	caql_end_CacheList(catlist);
+	ReleaseSysCacheList(catlist);
 	return result;
 }
 
@@ -3371,30 +3051,12 @@ addTargetToSortList(ParseState *pstate, TargetEntry *tle,
 		/* if tlist item is an UNKNOWN literal, change it to TEXT */
 		if (restype == UNKNOWNOID && resolveUnknown)
 		{
-			Oid		tobe_type = InvalidOid;
-			int32	tobe_typmod;
-
-			if (pstate->p_setopTypes)
-			{
-				/* UNION, etc. case. */
-				int		idx = tle->resno - 1;
-
-				Assert(pstate->p_setopTypmods);
-				tobe_type = list_nth_oid(pstate->p_setopTypes, idx);
-				tobe_typmod = list_nth_int(pstate->p_setopTypmods, idx);
-			}
-
-			if (!OidIsValid(tobe_type))
-			{
-				tobe_type = TEXTOID;
-				tobe_typmod = -1;
-			}
 			tle->expr = (Expr *) coerce_type(pstate, (Node *) tle->expr,
-											 restype, tobe_type, tobe_typmod,
+											 restype, TEXTOID, -1,
 											 COERCION_IMPLICIT,
 											 COERCE_IMPLICIT_CAST,
 											 -1);
-			restype = tobe_type;
+			restype = TEXTOID;
 		}
 
 		sortcl->tleSortGroupRef = assignSortGroupRef(tle, targetlist);

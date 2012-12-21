@@ -22,7 +22,6 @@
  */
 #include "postgres.h"
 
-#include "access/catquery.h"
 #include "access/heapam.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
@@ -57,8 +56,6 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters,
 	AclResult	aclresult;
 	List	   *transfuncName = NIL;
 	List	   *prelimfuncName = NIL; /* MPP */
-	List       *invtransfuncName = NIL; /* MPP */
-	List       *invprelimfuncName = NIL; /* MPP */
 	List	   *finalfuncName = NIL;
 	List	   *sortoperatorName = NIL;
 	TypeName   *baseType = NULL;
@@ -107,10 +104,6 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters,
 			initval = defGetString(defel);
 		else if (pg_strcasecmp(defel->defname, "prefunc") == 0) /* MPP */
 			prelimfuncName = defGetQualifiedName(defel);
-		else if (pg_strcasecmp(defel->defname, "invprefunc") == 0) /* MPP */
-			invprelimfuncName = defGetQualifiedName(defel);
-		else if (pg_strcasecmp(defel->defname, "invsfunc") == 0) /* MPP */
-			invtransfuncName = defGetQualifiedName(defel);
 		else if (gp_upgrade_mode && pg_strcasecmp(defel->defname, "oid") == 0) /* OID */
 		{
 			int64 oid = defGetInt64(defel);
@@ -143,10 +136,6 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters,
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 				 errmsg("ordered aggregate prefunc is not supported")));
-	if (ordered && invprelimfuncName != NIL)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
-				 errmsg("ordered aggregate invprefunc is not supported")));
 
 	/*
 	 * look up the aggregate's input datatype(s).
@@ -227,9 +216,7 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters,
 									aggArgTypes,	/* input data type(s) */
 									numArgs,
 									transfuncName,	/* step function name */
-									invtransfuncName, /* inverse step function */
 									prelimfuncName,	/* prelim function name */
-									invprelimfuncName, /* inverse prelim func */
 									finalfuncName,	/* final function name */
 									sortoperatorName, /* sort operator name */
 									transTypeId,	/* transition data type */
@@ -263,7 +250,7 @@ RemoveAggregate(RemoveFuncStmt *stmt)
 	List	   *aggName = stmt->name;
 	List	   *aggArgs = stmt->args;
 	Oid			procOid;
-	Oid			namespaceOid;
+	HeapTuple	tup;
 	ObjectAddress object;
 
 	/* Look up function and make sure it's an aggregate */
@@ -282,25 +269,20 @@ RemoveAggregate(RemoveFuncStmt *stmt)
 	/*
 	 * Find the function tuple, do permissions and validity checks
 	 */
-
-	/* MPP-18891: get_func_namespace(procOid) - but with FOR UPDATE for lock */
-	namespaceOid = caql_getoid(
-			NULL,
-			cql("SELECT pronamespace FROM pg_proc "
-				" WHERE oid = :1 "
-				" FOR UPDATE ",
-				 ObjectIdGetDatum(procOid)));
-	
-	if (!OidIsValid(namespaceOid)) /* should not happen */
+	tup = SearchSysCache(PROCOID,
+						 ObjectIdGetDatum(procOid),
+						 0, 0, 0);
+	if (!HeapTupleIsValid(tup)) /* should not happen */
 		elog(ERROR, "cache lookup failed for function %u", procOid);
 
 	/* Permission check: must own agg or its namespace */
 	if (!pg_proc_ownercheck(procOid, GetUserId()) &&
-		!pg_namespace_ownercheck(namespaceOid,
+	  !pg_namespace_ownercheck(((Form_pg_proc) GETSTRUCT(tup))->pronamespace,
 							   GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_PROC,
 					   NameListToString(aggName));
 
+	ReleaseSysCache(tup);
 
 	/*
 	 * Do the deletion
@@ -327,24 +309,15 @@ RenameAggregate(List *name, List *args, const char *newname)
 	Form_pg_proc procForm;
 	Relation	rel;
 	AclResult	aclresult;
-	cqContext	cqc2;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
 
 	rel = heap_open(ProcedureRelationId, RowExclusiveLock);
 
 	/* Look up function and make sure it's an aggregate */
 	procOid = LookupAggNameTypeNames(name, args, false);
 
-	pcqCtx = caql_addrel(cqclr(&cqc), rel);
-
-	tup = caql_getfirst(
-			pcqCtx,
-			cql("SELECT * FROM pg_proc "
-				" WHERE oid = :1 "
-				" FOR UPDATE ",
-				ObjectIdGetDatum(procOid)));
-
+	tup = SearchSysCacheCopy(PROCOID,
+							 ObjectIdGetDatum(procOid),
+							 0, 0, 0);
 	if (!HeapTupleIsValid(tup)) /* should not happen */
 		elog(ERROR, "cache lookup failed for function %u", procOid);
 	procForm = (Form_pg_proc) GETSTRUCT(tup);
@@ -352,24 +325,18 @@ RenameAggregate(List *name, List *args, const char *newname)
 	namespaceOid = procForm->pronamespace;
 
 	/* make sure the new name doesn't exist */
-	if (caql_getcount(
-				caql_addrel(cqclr(&cqc2), rel),
-				cql("SELECT COUNT(*) FROM pg_proc "
-					" WHERE proname = :1 "
-					" AND proargtypes = :2 "
-					" AND pronamespace = :3 ",
-					CStringGetDatum((char *) newname),
-					PointerGetDatum(&procForm->proargtypes),
-					ObjectIdGetDatum(namespaceOid))))
-	{
+	if (SearchSysCacheExists(PROCNAMEARGSNSP,
+							 CStringGetDatum((char *) newname),
+							 PointerGetDatum(&procForm->proargtypes),
+							 ObjectIdGetDatum(namespaceOid),
+							 0))
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_FUNCTION),
 				 errmsg("function %s already exists in schema \"%s\"",
 						funcname_signature_string(newname,
-												  procForm->pronargs, NIL,
+												  procForm->pronargs,
 											   procForm->proargtypes.values),
 						get_namespace_name(namespaceOid))));
-	}
 
 	/* must be owner */
 	if (!pg_proc_ownercheck(procOid, GetUserId()))
@@ -384,7 +351,8 @@ RenameAggregate(List *name, List *args, const char *newname)
 
 	/* rename */
 	namestrcpy(&(((Form_pg_proc) GETSTRUCT(tup))->proname), newname);
-	caql_update_current(pcqCtx, tup); /* implicit update of index as well */
+	simple_heap_update(rel, &tup->t_self, tup);
+	CatalogUpdateIndexes(rel, tup);
 
 	heap_close(rel, NoLock);
 	heap_freetuple(tup);

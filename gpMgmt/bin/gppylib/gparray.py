@@ -23,7 +23,6 @@ from gppylib    import gplog
 from gppylib.db import dbconn
 from gppylib.gpversion import GpVersion
 from gppylib.commands.unix import *
-from gppylib.commands.base import Command, WorkerPool, REMOTE 
 
 
 SYSTEM_FILESPACE = 3052        # oid of the system filespace
@@ -2302,26 +2301,15 @@ class GpArray:
         for host in self.get_hostlist(True):
             if host not in existing_hosts:        
                 existing_hosts.append(host)
-
+        
         new_hosts = []
-
-        pool = WorkerPool()
+        
         for host in hosts:
-            cmd = Command(name='interfaces to hostname', cmdStr='echo %s | $GPHOME/bin/lib/gphostcachelookup.py' % host)
-            pool.addCommand(cmd)
-           
-        pool.join()
-
-        for cmd in pool.getCompletedItems():
-            host = cmd.results.stdout.strip()
-            if host in new_hosts or host in existing_hosts:
+            # see if we already have the host
+            if host in existing_hosts or host in new_hosts:
                 continue
-            new_hosts.append(host)
-
-        #Cleanup of Workerpool
-        pool.haltWork()
-        pool.joinWorkers()
-        pool.join()
+            else:
+                new_hosts.append(host)
 
         if len(new_hosts) == 0:        
             raise Exception('No new hosts to add')
@@ -2549,27 +2537,5 @@ class GpArray:
             To be called by the configuration providers only
             """
         self.__strategyLoadedFromDb = strategy
-
-
-def get_segment_hosts(master_port):
-    """
-    """
-    gparray = GpArray.initFromCatalog( dbconn.DbURL(port=master_port), utility=True )
-    segments = GpArray.getSegmentsByHostName( gparray.getDbList() )
-    return segments.keys()
-
-
-def get_session_ids(master_port):
-    """
-    """
-    conn = dbconn.connect( dbconn.DbURL(port=master_port), utility=True )
-    try:
-        rows = dbconn.execSQL(conn, "SELECT sess_id from pg_stat_activity where sess_id > 0;")
-        ids  = set(row[0] for row in rows)
-        return ids
-    finally:
-        conn.close()
-
-
 
 # === EOF ====

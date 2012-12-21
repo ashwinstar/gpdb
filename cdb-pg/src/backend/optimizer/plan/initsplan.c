@@ -1341,7 +1341,7 @@ process_implied_equality(PlannerInfo *root,
 						   (Expr *) copyObject(item1),
 						   (Expr *) copyObject(item2));
 
-	ReleaseOperator(eq_operator);
+	ReleaseSysCache(eq_operator);
 
 	/*
 	 * Push the new clause into all the appropriate restrictinfo lists.

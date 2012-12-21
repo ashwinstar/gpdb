@@ -10,15 +10,13 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #endif
-#include "c.h"
-#include "fstream/fstream.h"
-#include "fstream/gfile.h"
-#include "port.h"
+#include <fstream/fstream.h>
+#include <fstream/gfile.h>
 #include <assert.h>
 #include <glob.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include <ctype.h>		/* needed for url percent decoding */
 
 #ifdef GPFXDIST
 #include <gpfxdist.h>
@@ -48,72 +46,6 @@ struct fstream_t
 	const char*		ferror; 		 /* error string */
 	struct fstream_options options;
 };
-
-/*
- * converts a hexadecimal char digit to a decimal integer .
- */
-#define BASE16_TO_10(x) (((x) >= '0' && (x) <= '9') ? ((x) - '0') : \
-                             (toupper((x)) - 'A' + 10))
-
-static inline char *decode_percent_url(char *url);
-
-
-
-/*
- * percent-decodes the url.
- *
- * @param 	url - encoded url to be decoded.
- * @return 	a pointer to the decoded URL (which is actually the same pointer to url)
- */
-static inline char *decode_percent_url(char *url) {
-	char	*ptr;
-	char	*c;
-
-	if ( ! url )
-		return NULL;
-
-	ptr = url;
-	for (c = url;  *c; ++ptr) {
-		if (*c != '%') /* regular character no encoding needed */
-		{
-			*ptr = *c;
-			c++;
-		}
-		else
-		{
-			*ptr = (BASE16_TO_10(c[1]) * 16) + (BASE16_TO_10(c[2]));	/* convert 2 character encodings to one char */
-			c += 3;
-		}
-	}
-	*ptr = '\0';	/* add null-terminator */
-	return url;
-}
-
-
-
-/*
- * Return the last occurrence of needle in haystack, or NULL if needle doesn't appear.
- * using memcmp and not strcmp (i.e. works also for not null-terminate strings).
- */
-static char *find_last_eol_delim (const char *chunk, size_t chunk_len,
-								  const char *delimiter, size_t delimiter_len)
-{
-	char const *curr = chunk + chunk_len - delimiter_len;
-
-	if (delimiter_len == 0)
-		return (char *)curr;
-	
-	if (delimiter_len > chunk_len || chunk == NULL || delimiter == NULL)
-		return NULL;
-	
-	for (; chunk <= curr; curr--)
-	{
-		if (memcmp(curr, delimiter, delimiter_len) == 0)
-			return (char*)curr;
-	}
-	
-	return NULL;
-}
 
 /*
  * glob_and_copy
@@ -328,6 +260,45 @@ static int expand_directories(fstream_t *fs)
 	return 0;
 }
 
+static int glob_path(fstream_t *fs, const char *path)
+{
+	char	*path2 = gfile_malloc(strlen(path) + 1);
+
+	if (!path2)
+	{
+		gfile_printf_then_putc_newline("fstream out of memory");
+		return 1;
+	}
+
+	path = strcpy(path2, path);
+
+	do
+	{
+		char*	p;
+
+		while (*path == ' ')
+			path++;
+
+		p = strchr(path, ' ');
+
+		if (p)
+			*p++ = 0;
+
+		if (*path &&
+			glob_and_copy(path, GLOB_MARK | GLOB_NOCHECK, 0, &fs->glob))
+		{
+			gfile_printf_then_putc_newline("fstream glob failed");
+			return 1;
+		}
+		path = p;
+	} while (path);
+
+	gfile_free(path2);
+
+	return 0;
+}
+
+
 #ifdef GPFXDIST
 /*
  * adjust fs->glob so that it contains a single item which is a
@@ -390,10 +361,10 @@ fstream_open(const char *path, const struct fstream_options *options,
 	fs->buffer = gfile_malloc(options->bufsize);
 	
 	/*
-	 * get a list of all files that were requested to be read (e.g. when a wildcard was used)
-	 * and include them in our fstream.
+	 * get a list of all files that were requested to be read and include them
+	 * in our fstream. This includes any wildcard pattern matching.
 	 */
-	if (glob_and_copy(path, GLOB_MARK | GLOB_NOCHECK, 0, &fs->glob))
+	if (glob_path(fs, path))
 	{
 		fstream_close(fs);
 		return 0;
@@ -459,7 +430,7 @@ fstream_open(const char *path, const struct fstream_options *options,
 			return 0;
 		}
 
-	    tempfilename = apr_pstrcat(mp, tempdir, "/pathsXXXXXX", (char *)NULL);
+	    tempfilename = apr_pstrcat(mp, tempdir, "/pathsXXXXXX", NULL);
 		if ((rv = apr_file_mktemp(&f, tempfilename, APR_CREATE|APR_WRITE|APR_EXCL, mp)) != APR_SUCCESS)
 		{
 			*response_code = 500;
@@ -524,10 +495,8 @@ fstream_open(const char *path, const struct fstream_options *options,
 
 		gfile_close(&fs->fd);
 
-		fs->glob.gl_pathv[i] = decode_percent_url(fs->glob.gl_pathv[i]); /* MPP-17933 fix */
-
 		if (gfile_open(&fs->fd, fs->glob.gl_pathv[i], gfile_open_flags(options->forwrite, options->usesync),
-				 transform, options->file_permissions, response_code, response_string))
+					   response_code, response_string, transform))
 		{
 			gfile_printf_then_putc_newline("fstream unable to open file %s",
 					fs->glob.gl_pathv[i]);
@@ -570,10 +539,7 @@ static void updateCurFileState(fstream_t* fs,
  */
 static int nextFile(fstream_t*fs)
 {
-	/* The file permissions are in use only when opening the file for write */
-	/* Since here we open the file for read, this has no significance		*/
-	int 		file_permissions = 0;
-	int 		response_code;
+	int response_code;
 	const char	*response_string;
 	struct gpfxdist_t* transform = fs->options.transform;
 
@@ -588,7 +554,7 @@ static int nextFile(fstream_t*fs)
 		fs->skip_header_line = fs->options.header;
 
 		if (gfile_open(&fs->fd, fs->glob.gl_pathv[fs->fidx], GFILE_OPEN_FOR_READ, 
-				transform, file_permissions, &response_code, &response_string))
+					   &response_code, &response_string, transform))
 		{
 			gfile_printf_then_putc_newline("fstream unable to open file %s",
 											fs->glob.gl_pathv[fs->fidx]);
@@ -643,18 +609,13 @@ int fstream_read(fstream_t *fs,
 				 void *dest,
 				 int size,
 				 struct fstream_filename_and_offset *fo,
-				 const int read_whole_lines,
-				 const char *line_delim_str,
-				 const int line_delim_length)
+				 const int read_whole_lines)
 {
 	int buffer_capacity = fs->options.bufsize;
 	static char err_buf[FILE_ERROR_SZ] = {0};
-
+	
 	if (fs->ferror)
 		return -1;
-	
-	/* strlen fails on solaris in case of null string */	
-	assert(line_delim_str && line_delim_length >= 0);
 
 	for (;;)
 	{
@@ -699,25 +660,10 @@ int fstream_read(fstream_t *fs,
 			}
 			else
 			{
-				/* 
-				 * We can call memmem function in both cases, but since \n is much 
-				 * more common, the performances here are critical.
-				 * Moreover, in case of a single char as a line delimiter, the for loop is more efficient.
-				 */
-				if (line_delim_length > 1)
-				{
-					/* text header with defined EOL with length grater than 1 */
-					p = (char*)memmem(p, q-p, line_delim_str, line_delim_length);
-
-				}
-				else
-				{
-					/* text header with a single char delimiter (\n by default) */
-					for (; p < q && *p != *line_delim_str; p++)
-						;
-				}
-
-				p = (p && (p < q)) ? p + line_delim_length : 0;
+				/* text header */
+				for (; p < q && *p != '\n'; p++)
+					;
+				p = (p < q ? p + 1 : 0);
 				fs->line_number++;
 			}
 
@@ -820,25 +766,12 @@ int fstream_read(fstream_t *fs,
 			else
 			{
 				/*
-				 * TEXT: go fast, scan for end of line delimiter (\n by default) for
-				 * record boundary.
-				 * find the last EOL delimiter from the back
-				 * 
-				 * We can call find_last_eol_delim function in both cases, but since \n is much 
-				 * more common, the performances here are critical.
-				 * Moreover, in case of a single char as a line delimiter, the for loop is more efficient.
+				 * TEXT: go fast, scan for \n for record boundary
+				 * find the last \n from the back
 				 */
-				if (line_delim_length > 0)
-				{
-					p = find_last_eol_delim((char*)dest, size, line_delim_str, line_delim_length);
-				}
-				else
-				{
-					for (p = (char*)dest + size; (char*)dest <= --p && *p != *line_delim_str;)
-						;
-				}
-
-				p = (char*)dest <= p ? p + line_delim_length : 0;
+				for (p = (char*)dest + size; (char*)dest <= --p && *p != '\n';)
+					;
+				p = (char*)dest <= p ? p + 1 : 0;
 				fs->line_number = 0;
 			}
 
@@ -848,7 +781,7 @@ int fstream_read(fstream_t *fs,
 			if (!p || (char*)dest + size >= p + buffer_capacity)
 			{
 				snprintf(err_buf, sizeof(err_buf)-1, "line too long in file %s near (%lld bytes)",
-						 fs->glob.gl_pathv[fs->fidx], (long long) fs->foff);
+						fs->glob.gl_pathv[fs->fidx], (long long) fs->foff);
 				fs->ferror = err_buf;
 				gfile_printf_then_putc_newline("%s", err_buf);
 				return -1;
@@ -913,18 +846,13 @@ int fstream_read(fstream_t *fs,
 int fstream_write(fstream_t *fs,
 				  void *buf,
 				  int size,
-				  const int write_whole_lines,
-				  const char *line_delim_str,
-				  const int line_delim_length)
+				  const int write_whole_lines)
 {
 	int byteswritten = 0;
-
+	
 	if (fs->ferror)
 		return -1;
 
-	/* strlen fails on solaris in case of null string */
-	assert(line_delim_str && line_delim_length >= 0);
-	
 	/*
 	 * If we need to write all the data up to the last *complete* logical
 	 * line in the data buffer (like gpfdist for example) - we choose this
@@ -934,45 +862,34 @@ int fstream_write(fstream_t *fs,
 	 */	
 	if (write_whole_lines)
 	{
-		char *last_delim;
+		char* last_lf;
 
-	   /*
-		* scan for EOL Delimiter (\n by default) for record boundary
-		* find the last EOL Delimiter from the back
-		*
-		* We can call find_last_eol_delim function in both cases, but since \n is much 
-		* more common, the performances here are critical.
-		* Moreover, in case of a single char as a line delimiter, the for loop is more efficient.
-		*/
-		if (line_delim_length > 1)
-		{
-			last_delim = find_last_eol_delim(buf, size, line_delim_str, line_delim_length);
-		}
-		else
-		{
-			for (last_delim = (char *)buf + size; (char *)buf <= --last_delim && *last_delim != *line_delim_str;)
-				;
-		}
-		
-		last_delim = (char *)buf <= last_delim ? last_delim + line_delim_length : 0;
+		/*
+		 * scan for \n for record boundary
+		 * find the last \n from the back
+		 */
+		for (last_lf = (char*)buf + size; (char*)buf <= --last_lf && *last_lf != '\n';)
+			;
+		last_lf = (char*)buf <= last_lf ? last_lf + 1 : 0;
 
-		if (last_delim == 0)
+		if (last_lf == 0)
 		{
 			fs->ferror = "no complete data row found for writing";
 			return -1;
 		}
-				
+
 		/* TODO: need to do this more carefully for CSV, like in the read case */
 		
 		/* write data to destination file */
-		byteswritten = (int)gfile_write(&fs->fd, (char *)buf, last_delim - (char *)buf);
+		byteswritten = (int)gfile_write(&fs->fd, (char*) buf, last_lf - (char *)buf);
 		
 		/* caller should move leftover data to start of buffer */
+
 	}
 	else
 	{
 		/* write data to destination file */
-		byteswritten = (int)gfile_write(&fs->fd, (char *)buf, size);
+		byteswritten = (int)gfile_write(&fs->fd, (char*) buf, size);
 	}
 		
 	if (byteswritten < 0)
@@ -1010,9 +927,6 @@ int64_t fstream_get_compressed_position(fstream_t *fs)
  */
 int fstream_rewind(fstream_t *fs)
 {
-	/* The file permissions are in use only when opening the file for write 	*/
-	/* Since here we open the file for read, this variable has no significance	*/
-	int 		file_permissions = 0;
 	int 		response_code;
 	const char*	response_string;
 	struct gpfxdist_t* transform = fs->options.transform;
@@ -1028,7 +942,7 @@ int fstream_rewind(fstream_t *fs)
 	gfile_close(&fs->fd);
 
 	if (gfile_open(&fs->fd, fs->glob.gl_pathv[0], GFILE_OPEN_FOR_READ,
-			transform, file_permissions, &response_code, &response_string))
+				   &response_code, &response_string, transform))
 	{
 		gfile_printf_then_putc_newline("fstream unable to open file %s",
 				fs->glob.gl_pathv[0]);

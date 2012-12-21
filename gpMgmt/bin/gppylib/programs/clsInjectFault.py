@@ -172,7 +172,7 @@ class GpInjectFaultProgram:
         for segment in segments :
             logger.info("Injecting fault on %s", segment)
             # if there is an error then an exception is raised by command execution
-            cmd = gp.SendSegmentTransitionMessage("Fault Injector", inputFile.name, \
+            cmd = gp.SendFilerepTransitionMessage("Fault Injector", inputFile.name, \
                                         segment.getSegmentPort(), base.LOCAL, segment.getSegmentHostName())
             cmd.run(validateAfter=False)
 
@@ -202,7 +202,7 @@ class GpInjectFaultProgram:
             segmentsForNextPass = []
             for segment in segments:
                 logger.info("Checking for fault completion on %s", segment)
-                cmd = gp.SendSegmentTransitionMessage.local("Fault Injector Status Check", inputFile.name, \
+                cmd = gp.SendFilerepTransitionMessage.local("Fault Injector Status Check", inputFile.name, \
                                                             segment.getSegmentPort(), segment.getSegmentHostName())
                 resultStr = cmd.results.stderr.strip()
                 if resultStr == "Success: waitMore":
@@ -301,10 +301,7 @@ class GpInjectFaultProgram:
 			      "suspend (suspend execution), resume (resume execution that was suspended), " \
 			      "skip (inject skip i.e. skip checkpoint), " \
 			      "memory_full (all memory is consumed when injected), " \
-			      "reset (remove fault injection), status (report fault injection status), " \
-			      "panic_suppress (inject suppressed PANIC in critical section), " \
-			      "segv (inject a SEGV), " \
-                  "set_guc (set a GUC)" )
+			      "reset (remove fault injection), status (report fault injection status) ")
         addTo.add_option("-z", "--sleep_time_s", dest="sleepTimeSeconds", type="int", default="10" ,
                             metavar="<sleepTime>",
                             help="For 'sleep' faults, the amount of time for the sleep.  Defaults to %default." \
@@ -364,25 +361,9 @@ class GpInjectFaultProgram:
 			      "dtm_broadcast_commit_prepared (inject fault after commit broadcast), " \
 			      "dtm_broadcast_abort_prepared (inject fault after abort broadcast), " \
 			      "dtm_xlog_distributed_commit (inject fault after distributed commit was inserted in xlog), " \
-			      "fault_before_pending_delete_relation_entry (inject fault before putting pending delete relation entry, " \
-			      "fault_before_pending_delete_database_entry (inject fault before putting pending delete database entry, " \
-			      "fault_before_pending_delete_tablespace_entry (inject fault before putting pending delete tablespace entry, " \
-			      "fault_before_pending_delete_filespace_entry (inject fault before putting pending delete filespace entry, " \
-			      "dtm_init (inject fault before initializing dtm), " \
                               "end_prepare_two_phase_sleep (inject sleep after two phase file creation), " \
                               "segment_transition_request (inject fault after segment receives state transition request), " \
                               "segment_probe_response (inject fault after segment is probed by FTS), " \
-			      "sync_persistent_table (inject fault to sync persistent table to disk), " \
-			      "xlog_insert (inject fault to skip insert record into xlog), " \
-			      "local_tm_record_transaction_commit (inject fault for local transactions after transaction commit is recorded and flushed in xlog ), " \
-			      "datumstream_malloc_failure (inject fault to simulate memory allocation failure during datumstream read), " \
-			      "transaction_abort_failure (inject fault to simulate transaction abort failure), " \
-			      "ntuplestore_create_accessor (inject fault after entering ntuplestore_create_accessor),"
-			      "update_committed_eof_in_persistent_table (inject fault before committed EOF is updated in gp_persistent_relation_node for Append Only segment files), " \
-                  "set_gp_test_system_cache_flush_force_plain (set the gp_test_system_cache_flush_force GUC to plain), " \
-                  "set_gp_test_system_cache_flush_force_off (set the gp_test_system_cache_flush_force GUC to off), " \
-			      "update_persistent_serial_number_for_new_table (inject fault after a persistent serial number has been assigned to a new table), " \
-			      "check_btree_for_uniqueness_violation (inject fault after checking that a CREATE TABLE statement does not cause a unique index violation in pg_type_typname_nsp_index), " \
 			      "all (affects all faults injected, used for 'status' and 'reset'), ") 
         addTo.add_option("-c", "--ddl_statement", dest="ddlStatement", type="string",
                          metavar="ddlStatement",

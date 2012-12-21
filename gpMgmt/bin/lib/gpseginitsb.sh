@@ -66,12 +66,10 @@ UPDATE_PGHBA () {
 	STANDBY_IP_ADDRESS=(`$ECHO $IP_ADDRESS_LIST|$TR '~' ' '`)
 	for STANDBY_IP in "${STANDBY_IP_ADDRESS[@]}"
 	do
-		# MPP-15889
-        	CIDR_STANDBY_IP=$(GET_CIDRADDR $STANDBY_IP)
-		CHK_COUNT=`$TRUSTED_SHELL $QE_NAME "$GREP -c \"${CIDR_STANDBY_IP}\" ${QE_BASE_DIR}/$PG_HBA"`
+		CHK_COUNT=`$TRUSTED_SHELL $QE_NAME "$GREP -c \"${STANDBY_IP}/32\" ${QE_BASE_DIR}/$PG_HBA"`
 		if [ $CHK_COUNT -eq 0 ];then
 			LOG_MSG "[INFO][$INST_COUNT]:-Adding standby IP address $QE_NAME ${QE_BASE_DIR}/$PG_HBA file" 1
-			$TRUSTED_SHELL $QE_NAME "$ECHO host  all     all     ${CIDR_STANDBY_IP}       trust >> ${QE_BASE_DIR}/$PG_HBA"
+			$TRUSTED_SHELL $QE_NAME "$ECHO host  all     all     ${STANDBY_IP}/32        trust >> ${QE_BASE_DIR}/$PG_HBA"
 			if [ $? -ne 0 ];then
 				$ECHO "FAILED:${QE_LINE}:ADD_IP" >> $PARALLEL_STATUS_FILE
 				ERROR_EXIT "Failed to add standby IP address $QE_NAME ${QE_BASE_DIR}/$PG_HBA file" 2

@@ -29,9 +29,6 @@ typedef struct _FuncCandidateList
 	int			pathpos;		/* for internal use of namespace lookup */
 	Oid			oid;			/* the function or operator's OID */
 	int			nargs;			/* number of arg types returned */
-	int			nvargs;			/* number of args to become variadic array */
-	int         ndargs;         /* number of defaulted args */
-	int        *argnumbers;     /* args' positional indexes, if named call */
 	Oid			args[1];		/* arg types --- VARIABLE LENGTH ARRAY */
 }	*FuncCandidateList;	/* VARIABLE LENGTH STRUCT */
 
@@ -44,10 +41,7 @@ extern bool RelationIsVisible(Oid relid);
 extern Oid	TypenameGetTypid(const char *typname);
 extern bool TypeIsVisible(Oid typid);
 
-extern FuncCandidateList FuncnameGetCandidates(List *names, int nargs,
-											   List *argnames,
-											   bool expand_variadic,
-											   bool expand_defaults);
+extern FuncCandidateList FuncnameGetCandidates(List *names, int nargs);
 extern bool FunctionIsVisible(Oid funcid);
 
 extern Oid	OpernameGetOprid(List *names, Oid oprleft, Oid oprright);

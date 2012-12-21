@@ -93,7 +93,6 @@ struct PGPROC
     int         mppLocalProcessSerial;  /* this backend's PGPROC serial num */
     bool		mppIsWriter;	/* The writer gang member, holder of locks */
 	bool		postmasterResetRequired; /* Whether postmaster reset is required when this child exits */
-	bool		isQueryProc;		/* is this a QD or a QE process */
 
 	bool		inVacuum;		/* true if current xact is a LAZY VACUUM */
 
@@ -130,10 +129,6 @@ struct PGPROC
 	 */
 	uint32		combocid_map_count; /* how many entries in the map ? */
 	char		combocid_map_name[MAXPGPATH]; /* name of the map */
-
-	int queryCommandId; /* command_id for the running query */
-
-	uint32 cancellingPid; /* pid for cancel sending process, 0 indicates errorless Cancel */
 };
 
 /* NOTE: "typedef struct PGPROC PGPROC" appears in storage/lock.h. */
@@ -217,7 +212,7 @@ extern volatile bool cancel_from_timeout;
 extern int	ProcGlobalSemas(void);
 extern Size ProcGlobalShmemSize(void);
 extern void InitProcGlobal(int mppLocalProcessCounter);
-extern void InitProcess(bool isQueryProc);
+extern void InitProcess(void);
 extern void InitProcessPhase2(void);
 extern void InitAuxiliaryProcess(void);
 extern bool HaveNFreeProcs(int n);
@@ -244,5 +239,4 @@ extern bool ProcCanSetMppSessionId(void);
 extern void ProcNewMppSessionId(int *newSessionId);
 extern bool freeAuxiliaryProcEntryAndReturnReset(int pid, bool *inArray);
 extern bool freeProcEntryAndReturnReset(int pid);
-extern bool ResetCancellingPid(int pid);
 #endif   /* PROC_H */

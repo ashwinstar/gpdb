@@ -7,7 +7,7 @@
 -- This script will produce diffs if you add or change definitions in
 -- the contrib/orafce module. If you want to change the results, you
 -- must make the changes in regress/output/orafunk.source, not
--- regress/expected, and use gpsourcify.pl to generate a ".source" file.
+-- regress/expected, and use gpsourcify.pl to generate a ".out" file.
 --
 -- From the regress directory invoke the command:
 --
@@ -32,6 +32,16 @@ select nvl(NULL::text, 'B');
 select nvl(NULL::text, NULL);
 select nvl(1, 2);
 select nvl(NULL, 2);
+
+select decode(1, 1, 100, 2, 200);
+select decode(2, 1, 100, 2, 200);
+select decode(3, 1, 100, 2, 200);
+select decode(3, 1, 100, 2, 200, 300);
+select decode(NULL, 1, 100, NULL, 200, 300);
+select decode('1'::text, '1', 100, '2', 200);
+select decode(2, 1, 'ABC', 2, 'DEF');
+select decode('2009-02-05'::date, '2009-02-05', 'ok');
+select decode('2009-02-05 01:02:03'::timestamp, '2009-02-05 01:02:03', 'ok');
 
 SELECT add_months ('2003-08-01', 3);
 SELECT add_months ('2003-08-01', -3);
@@ -81,25 +91,11 @@ select round(to_date ('22-AUG-03', 'DD-MON-YY'),'Q')  =  to_date ('01-OCT-03', '
 select round(to_date ('22-AUG-03', 'DD-MON-YY'),'MONTH') =  to_date ('01-SEP-03', 'DD-MON-YY');
 select round(to_date ('22-AUG-03', 'DD-MON-YY'),'DDD')  =  to_date ('22-AUG-03', 'DD-MON-YY');
 select round(to_date ('22-AUG-03', 'DD-MON-YY'),'DAY')  =  to_date ('24-AUG-03', 'DD-MON-YY');
-select round(timestamp with time zone '2012-03-14 17:36:33.366057-07', 'HH') = (timestamp with time zone '2012-03-14 18:00:00-07');
-select round(timestamp with time zone '2012-03-14 17:36:33.366057-07', 'Mi') = (timestamp with time zone '2012-03-14 17:37:00-07');
-select round(timestamp with time zone '2012-03-14 17:36:33.366057-07', 'Q') = (timestamp with time zone '2012-04-01 00:00:00-07');
-select round(timestamp with time zone '2012-03-14 17:36:33.366057-07')::date = (date '2012-03-15');
-select round(timestamp with time zone '2012-03-14 17:36:33.366057-07'::date) = (date '2012-03-14');
-select round(timestamp with time zone '2012-03-14 17:36:33.366057-07'::date, 'Q') = (date '2012-04-01');
-
-select trunc(to_date ('22-AUG-03', 'DD-MON-YY'), 'YEAR')  =  to_date ('01-JAN-03', 'DD-MON-YY');
-select trunc(to_date ('22-AUG-03', 'DD-MON-YY'), 'Q')  =  to_date ('01-JUL-03', 'DD-MON-YY');
-select trunc(to_date ('22-AUG-03', 'DD-MON-YY'), 'MONTH') =  to_date ('01-AUG-03', 'DD-MON-YY');
-select trunc(to_date ('22-AUG-03', 'DD-MON-YY'), 'DDD')  =  to_date ('22-AUG-03', 'DD-MON-YY');
-select trunc(to_date ('22-AUG-03', 'DD-MON-YY'), 'DAY')  =  to_date ('17-AUG-03', 'DD-MON-YY');
-select trunc(timestamp with time zone '2012-03-14 17:36:33.366057-07', 'HH') = (timestamp with time zone '2012-03-14 17:00:00-07');
-select trunc(timestamp with time zone '2012-03-14 17:36:33.366057-07', 'Mi') = (timestamp with time zone '2012-03-14 17:36:00-07');
-select trunc(timestamp with time zone '2012-03-14 17:36:33.366057-07', 'Q') = (timestamp with time zone '2012-01-01 00:00:00-08');
-select trunc(timestamp with time zone '2012-03-14 17:36:33.366057-07') = (timestamp with time zone '2012-03-14 00:00:00-07');
-select trunc(timestamp with time zone '2012-03-14 17:36:33.366057-07'::date, 'Q') = (date '2012-01-01');
-select trunc(timestamp with time zone '2012-03-14 17:36:33.366057-07'::date) = (date '2012-03-14');
-
+select trunc(to_date('22-AUG-03', 'DD-MON-YY'), 'YEAR')  =  to_date ('01-JAN-03', 'DD-MON-YY');
+select trunc(to_date('22-AUG-03', 'DD-MON-YY'), 'Q')  =  to_date ('01-JUL-03', 'DD-MON-YY');
+select trunc(to_date('22-AUG-03', 'DD-MON-YY'), 'MONTH') =  to_date ('01-AUG-03', 'DD-MON-YY');
+select trunc(to_date('22-AUG-03', 'DD-MON-YY'), 'DDD')  =  to_date ('22-AUG-03', 'DD-MON-YY');
+select trunc(to_date('22-AUG-03', 'DD-MON-YY'), 'DAY')  =  to_date ('17-AUG-03', 'DD-MON-YY');
 select next_day(to_date('01-Aug-03', 'DD-MON-YY'), 'TUESDAY')  =  to_date ('05-Aug-03', 'DD-MON-YY');
 select next_day(to_date('06-Aug-03', 'DD-MON-YY'), 'WEDNESDAY') =  to_date ('13-Aug-03', 'DD-MON-YY');
 select next_day(to_date('06-Aug-03', 'DD-MON-YY'), 'SUNDAY')  =  to_date ('10-Aug-03', 'DD-MON-YY');
@@ -166,29 +162,6 @@ SELECT dump(10.23::numeric) ~ E'^Typ=1700 Len=(\\d+): \\d+(,\\d+)*$' AS t;
 SELECT dump('2008-10-10'::date) ~ E'^Typ=1082 Len=4: \\d+(,\\d+){3}$' AS t;
 SELECT dump('2008-10-10'::timestamp) ~ E'^Typ=1114 Len=8: \\d+(,\\d+){7}$' AS t;
 
--- test varchar2
-
-DROP TABLE IF EXISTS tab1;
-DROP TABLE IF EXISTS tab2;
-
-CREATE TABLE tab1 (a integer, b varchar2) DISTRIBUTED BY (a);
-CREATE TABLE tab2 (a integer, b varchar) DISTRIBUTED BY (a);
-
-INSERT INTO tab1 values (10, 'tab1-10');
-INSERT INTO tab1 values (15, 'tab1-15');
-INSERT INTO tab2 values (15, 'tab2-15');
-INSERT INTO tab2 values (20, 'tab2-20');
-
-SELECT * FROM tab1;
-SELECT * FROM tab2;
-
-UPDATE tab1 SET b = tab2.b FROM tab2 WHERE tab1.a = tab2.a;
-
-SELECT * FROM tab1;
-SELECT * FROM tab2;
-
-DROP TABLE IF EXISTS tab1;
-DROP TABLE IF EXISTS tab2;
 
 RESET DATESTYLE;
 

@@ -94,10 +94,6 @@
 #define READ_BINARY_FIELD(fldname, sz) \
 	memcpy(&local_node->fldname, *str, (sz)); (*str) += (sz)
 
-/* Read a bytea field */
-#define READ_BYTEA_FIELD(fldname) \
-	local_node->fldname = DatumGetPointer(readDatum(str, false))
-
 /* Read a dummy field */
 #define READ_DUMMY_FIELD(fldname,fldvalue) \
 	{ local_node->fldname = (0); /*(*str) += sizeof(int*);*/ }
@@ -219,7 +215,6 @@ _readDeclareCursorStmt(const char ** str)
 	READ_STRING_FIELD(portalname);
 	READ_INT_FIELD(options);
 	READ_NODE_FIELD(query);
-	READ_BOOL_FIELD(is_simply_updatable);
 
 	READ_DONE();
 }
@@ -283,20 +278,6 @@ _readGroupingClause(const char ** str)
 	READ_DONE();
 }
 
-/*
- * _readScatterClause
- */
-static ScatterClause *
-_readScatterClause(const char ** str)
-{
-	READ_LOCALS(ScatterClause);
-
-	READ_UINT_FIELD(tleSortGroupRef);
-	READ_OID_FIELD(sortop);
-
-	READ_DONE();
-}
-
 static GroupingFunc *
 _readGroupingFunc(const char ** str)
 {
@@ -338,30 +319,15 @@ _readWindowSpecParse(const char ** str)
 static WindowSpec *
 _readWindowSpec(const char ** str)
 {
-	READ_LOCALS(WindowSpec); /* Identical to SeqWindowSpec */
-	
-	READ_STRING_FIELD(name);
-	READ_STRING_FIELD(parent);
-	READ_NODE_FIELD(partition);
-	READ_NODE_FIELD(order);
-	READ_NODE_FIELD(frame);
-	READ_INT_FIELD(location);
-	
-	READ_DONE();
-}
+	READ_LOCALS(WindowSpec);
 
-static SeqWindowSpec *
-_readSeqWindowSpec(const char ** str)
-{
-	READ_LOCALS(SeqWindowSpec); /* Identical to WindowSpec */
-	
 	READ_STRING_FIELD(name);
 	READ_STRING_FIELD(parent);
 	READ_NODE_FIELD(partition);
 	READ_NODE_FIELD(order);
 	READ_NODE_FIELD(frame);
 	READ_INT_FIELD(location);
-	
+
 	READ_DONE();
 }
 
@@ -386,31 +352,6 @@ _readWindowFrameEdge(const char ** str)
 
 	READ_ENUM_FIELD(kind, WindowBoundingKind);
 	READ_NODE_FIELD(val);
-
-	READ_DONE();
-}
-
-static PercentileExpr *
-_readPercentileExpr(const char ** str)
-{
-	READ_LOCALS(PercentileExpr);
-
-	READ_OID_FIELD(perctype);
-	READ_NODE_FIELD(args);
-	READ_ENUM_FIELD(perckind, PercKind);
-	READ_NODE_FIELD(sortClause);
-	READ_NODE_FIELD(sortTargets);
-	READ_NODE_FIELD(pcExpr);
-	READ_NODE_FIELD(tcExpr);
-	READ_INT_FIELD(location);
-
-	READ_DONE();
-}
-
-static DMLActionExpr *
-_readDMLActionExpr(const char ** str)
-{
-	READ_LOCALS(DMLActionExpr);
 
 	READ_DONE();
 }
@@ -475,39 +416,6 @@ _readSetOperationStmt(const char ** str)
 	READ_NODE_FIELD(colTypes);
 	READ_NODE_FIELD(colTypmods);
 
-	READ_DONE();
-}
-
-/*
- * _readSequenceDefn 
- */
-static SequenceDefn *
-_readSequenceDefn(const char ** str)
-{
-	READ_LOCALS(SequenceDefn);
-	
-	READ_STRING_FIELD(keyname);
-	READ_NODE_FIELD(span);
-	READ_NODE_FIELD(seqlow);
-	READ_NODE_FIELD(seqlim);
-	
-	READ_DONE();
-}
-
-/*
- * _readSequenceSpec 
- */
-static SequenceSpec *
-_readSequenceSpec(const char ** str)
-{
-	READ_LOCALS(SequenceSpec);
-	
-	READ_STRING_FIELD(seqname);
-	READ_NODE_FIELD(partition);
-	READ_NODE_FIELD(order);
-	READ_NODE_FIELD(postorder);
-	READ_NODE_FIELD(seqdef);
-	
 	READ_DONE();
 }
 
@@ -1029,11 +937,9 @@ _readFuncCall(const char ** str)
     READ_NODE_FIELD(agg_order);
 	READ_BOOL_FIELD(agg_star);
 	READ_BOOL_FIELD(agg_distinct);
-	READ_BOOL_FIELD(func_variadic);
 	READ_NODE_FIELD(over);
 	READ_INT_FIELD(location);
 	READ_NODE_FIELD(agg_filter);
-	READ_ENUM_FIELD(null_treatment, NullTreatment);
 	READ_DONE();
 }
 
@@ -1239,7 +1145,6 @@ _readWindowRef(const char ** str)
 	READ_UINT_FIELD(winindex);
 	READ_ENUM_FIELD(winstage, WinStage);
 	READ_UINT_FIELD(winlevel);
-	READ_ENUM_FIELD(null_treatment, NullTreatment);
 
 	READ_DONE();
 }
@@ -1277,22 +1182,6 @@ _readFuncExpr(const char ** str)
 	READ_ENUM_FIELD(funcformat, CoercionForm);
 	READ_NODE_FIELD(args);
 	READ_BOOL_FIELD(is_tablefunc);
-
-	READ_DONE();
-}
-
-/*
- * _readNamedArgExpr
- */
-static NamedArgExpr *
-_readNamedArgExpr(const char ** str)
-{
-	READ_LOCALS(NamedArgExpr);
-
-	READ_NODE_FIELD(arg);
-	READ_STRING_FIELD(name);
-	READ_INT_FIELD(argnumber);
-	READ_INT_FIELD(location);
 
 	READ_DONE();
 }
@@ -1693,24 +1582,6 @@ _readSetToDefault(const char ** str)
 }
 
 /*
- * _readCurrentOfExpr
- */
-static CurrentOfExpr *
-_readCurrentOfExpr(const char ** str)
-{
-	READ_LOCALS(CurrentOfExpr);
-
-	READ_STRING_FIELD(cursor_name);
-	READ_UINT_FIELD(cvarno);
-	READ_OID_FIELD(target_relid);
-	READ_INT_FIELD(gp_segment_id);
-	READ_BINARY_FIELD(ctid, sizeof(ItemPointerData));	
-	READ_OID_FIELD(tableoid);
-
-	READ_DONE();
-}
-
-/*
  * _readTargetEntry
  */
 static TargetEntry *
@@ -1791,10 +1662,7 @@ _readColumnDef(const char ** str)
 	READ_INT_FIELD(inhcount);
 	READ_BOOL_FIELD(is_local);
 	READ_BOOL_FIELD(is_not_null);
-	READ_INT_FIELD(attnum);
-	READ_OID_FIELD(default_oid);
 	READ_NODE_FIELD(raw_default);
-	READ_BOOL_FIELD(default_is_null);
 	READ_STRING_FIELD(cooked_default);
 	READ_NODE_FIELD(constraints);
 	READ_NODE_FIELD(encoding);
@@ -1881,7 +1749,6 @@ _readRangeTblEntry(const char ** str)
 			READ_NODE_FIELD(funcexpr);
 			READ_NODE_FIELD(funccoltypes);
 			READ_NODE_FIELD(funccoltypmods);
-			READ_BYTEA_FIELD(funcuserdata);
 			break;
 		case RTE_VALUES:
 			READ_NODE_FIELD(values_lists);
@@ -1927,8 +1794,6 @@ _readCreateStmt(const char ** str)
 	READ_NODE_FIELD(relation);
 	READ_NODE_FIELD(tableElts);
 	READ_NODE_FIELD(inhRelations);
-	READ_NODE_FIELD(inhOids);
-	READ_INT_FIELD(parentOidCount);
 	READ_NODE_FIELD(constraints);
 	READ_NODE_FIELD(options);
 	READ_ENUM_FIELD(oncommit,OnCommitAction);
@@ -2501,7 +2366,6 @@ _readFunctionParameter(const char ** str)
 	READ_STRING_FIELD(name);
 	READ_NODE_FIELD(argType);
 	READ_ENUM_FIELD(mode, FunctionParameterMode);
-	READ_NODE_FIELD(defexpr);
 
 	READ_DONE();
 }
@@ -2736,7 +2600,6 @@ _readPlannedStmt(const char ** str)
 {
 	READ_LOCALS(PlannedStmt);
 	READ_ENUM_FIELD(commandType, CmdType);
-	READ_ENUM_FIELD(planGen, PlanGenerator);
 	READ_BOOL_FIELD(canSetTag);
 	READ_BOOL_FIELD(transientPlan);
 	READ_NODE_FIELD(planTree);
@@ -2749,8 +2612,6 @@ _readPlannedStmt(const char ** str)
 	READ_NODE_FIELD(returningLists);
 	READ_NODE_FIELD(result_partitions);
 	READ_NODE_FIELD(result_aosegnos);
-	READ_NODE_FIELD(queryPartOids);
-	READ_NODE_FIELD(queryPartsMetadata);
 	READ_NODE_FIELD(rowMarks);
 	READ_NODE_FIELD(relationOids);
 	READ_NODE_FIELD(invalItems);
@@ -2762,8 +2623,6 @@ _readPlannedStmt(const char ** str)
 	
 	READ_INT_FIELD(backoff_weight);
 	READ_UINT64_FIELD(query_mem);
-
-	READ_UINT_FIELD(query_random_seed);
 
 	READ_DONE();
 }
@@ -2831,15 +2690,6 @@ _readAppend(const char ** str)
 	READ_BOOL_FIELD(isZapped);
 	READ_BOOL_FIELD(hasXslice);
 
-	READ_DONE();
-}
-
-static Sequence *
-_readSequence(const char **str)
-{
-	READ_LOCALS(Sequence);
-	readPlanInfo(str, (Plan *)local_node);
-	READ_NODE_FIELD(subplans);
 	READ_DONE();
 }
 
@@ -2923,22 +2773,6 @@ _readAOCSScan(const char ** str)
 	READ_DONE();
 }
 
-static TableScan *
-_readTableScan(const char **str)
-{
-	READ_LOCALS(TableScan);
-	readScanInfo(str, (Scan *)local_node);
-	READ_DONE();
-}
-
-static DynamicTableScan *
-_readDynamicTableScan(const char **str)
-{
-	READ_LOCALS(DynamicTableScan);
-	readScanInfo(str, (Scan *)local_node);
-	READ_INT_FIELD(partIndex);
-	READ_DONE();
-}
 
 /*
  * _readExternalScan
@@ -2963,19 +2797,6 @@ _readExternalScan(const char ** str)
 	READ_DONE();
 }
 
-static void
-readIndexScanFields(const char ** str, IndexScan *local_node)
-{
-	readScanInfo(str, (Scan *)local_node);
-
-	READ_OID_FIELD(indexid);
-	READ_NODE_FIELD(indexqual);
-	READ_NODE_FIELD(indexqualorig);
-	READ_NODE_FIELD(indexstrategy);
-	READ_NODE_FIELD(indexsubtype);
-	READ_ENUM_FIELD(indexorderdir, ScanDirection);
-}
-
 /*
  * _readIndexScan
  */
@@ -2984,21 +2805,19 @@ _readIndexScan(const char ** str)
 {
 	READ_LOCALS(IndexScan);
 
-	readIndexScanFields(str, local_node);
+	readScanInfo(str, (Scan *)local_node);
+
+	READ_OID_FIELD(indexid);
+	READ_NODE_FIELD(indexqual);
+	READ_NODE_FIELD(indexqualorig);
+	READ_NODE_FIELD(indexstrategy);
+	READ_NODE_FIELD(indexsubtype);
+
+	READ_ENUM_FIELD(indexorderdir, ScanDirection);
 
 	READ_DONE();
 }
 
-static IndexOnlyScan *
-_readIndexOnlyScan(const char ** str)
-{
-	READ_LOCALS(IndexOnlyScan);
-	
-	/* IndexOnlyScan has the same content as IndexScan. */
-	readIndexScanFields(str, local_node);
-	
-	READ_DONE();
-}
 
 static BitmapIndexScan *
 _readBitmapIndexScan(const char ** str)
@@ -3215,8 +3034,6 @@ _readWindow(const char ** str)
 	READ_INT_FIELD(numPartCols);
 	READ_INT_ARRAY(partColIdx, numPartCols, AttrNumber);
 	READ_NODE_FIELD(windowKeys);
-	READ_NODE_FIELD(sequence);
-	READ_ENUM_FIELD(semantics, WindowSemantics);
 
 	READ_DONE();
 }
@@ -3428,77 +3245,6 @@ _readMotion(const char ** str)
 }
 
 /*
- * _readDML
- */
-static DML *
-_readDML(const char ** str)
-{
-	READ_LOCALS(DML);
-
-	READ_UINT_FIELD(scanrelid);
-	READ_INT_FIELD(oidColIdx);
-	READ_INT_FIELD(actionColIdx);
-	READ_INT_FIELD(ctidColIdx);
-
-	readPlanInfo(str, (Plan *)local_node);
-
-	READ_DONE();
-}
-
-/*
- * _readSplitUpdate
- */
-static SplitUpdate *
-_readSplitUpdate(const char ** str)
-{
-	READ_LOCALS(SplitUpdate);
-
-	READ_NODE_FIELD(insertColIdx);
-	READ_NODE_FIELD(deleteColIdx);
-	READ_INT_FIELD(actionColIdx);
-	READ_INT_FIELD(ctidColIdx);
-
-	readPlanInfo(str, (Plan *)local_node);
-
-	READ_DONE();
-}
-
-/*
- * _readRowTriggerOp
- */
-static RowTriggerOp *
-_readRowTriggerOp(const char ** str)
-{
-	READ_LOCALS(RowTriggerOp);
-
-	READ_INT_FIELD(relid);
-	READ_INT_FIELD(eventFlags);
-	READ_NODE_FIELD(oldValuesColIdx);
-	READ_NODE_FIELD(newValuesColIdx);
-
-	readPlanInfo(str, (Plan *)local_node);
-
-	READ_DONE();
-}
-
-/*
- * _readAssertOp
- */
-static AssertOp *
-_readAssertOp(const char ** str)
-{
-	READ_LOCALS(AssertOp);
-
-	READ_STRING_FIELD(errmessage);  
-	READ_INT_FIELD(errcode);
-
-	readPlanInfo(str, (Plan *)local_node);
-
-	READ_DONE();
-}
-
-
-/*
  * _readVacuumStmt
  */
 static VacuumStmt *
@@ -3541,16 +3287,16 @@ _readSlice(const char ** str)
 	READ_INT_FIELD(sliceIndex);
 	READ_INT_FIELD(rootIndex);
 	READ_ENUM_FIELD(gangType, GangType);
-	Assert(local_node->gangType <= GANGTYPE_WRITER);
+	Assert(local_node->gangType <= GANGTYPE_PRIMARY_WRITER);
 	READ_INT_FIELD(gangSize);
 	READ_INT_FIELD(numGangMembersToBeActive);
 	READ_BOOL_FIELD(directDispatch.isDirectDispatch);
 	READ_NODE_FIELD(directDispatch.contentIds); /* List of int index */
-	READ_DUMMY_FIELD(gang, NULL);
-	READ_INT_FIELD(gangId);
+	READ_DUMMY_FIELD(primaryGang, NULL);
+	READ_INT_FIELD(primary_gang_id);
 	READ_INT_FIELD(parentIndex); /* List of int index */
 	READ_NODE_FIELD(children); /* List of int index */
-	READ_NODE_FIELD(workerProcesses); /* List of (CDBProcess *) */
+	READ_NODE_FIELD(primaryProcesses); /* List of (CDBProcess *) */
 
 	READ_DONE();
 }
@@ -3930,9 +3676,6 @@ readNodeBinary(const char ** str)
 			case T_Append:
 				return_value = _readAppend(str);
 				break;
-			case T_Sequence:
-				return_value = _readSequence(str);
-				break;
 			case T_BitmapAnd:
 				return_value = _readBitmapAnd(str);
 				break;
@@ -3951,20 +3694,11 @@ readNodeBinary(const char ** str)
 			case T_AOCSScan:
 				return_value = _readAOCSScan(str);
 				break;
-			case T_TableScan:
-				return_value = _readTableScan(str);
-				break;
-			case T_DynamicTableScan:
-				return_value = _readDynamicTableScan(str);
-				break;
 			case T_ExternalScan:
 				return_value = _readExternalScan(str);
 				break;
 			case T_IndexScan:
 				return_value = _readIndexScan(str);
-				break;
-			case T_IndexOnlyScan:
-				return_value = _readIndexOnlyScan(str);
 				break;
 			case T_BitmapIndexScan:
 				return_value = _readBitmapIndexScan(str);
@@ -4035,18 +3769,6 @@ readNodeBinary(const char ** str)
 			case T_Motion:
 				return_value = _readMotion(str);
 				break;
-			case T_DML:
-				return_value = _readDML(str);
-				break;
-			case T_SplitUpdate:
-				return_value = _readSplitUpdate(str);
-				break;
-			case T_RowTriggerOp:
-				return_value = _readRowTriggerOp(str);
-				break;
-			case T_AssertOp:
-				return_value = _readAssertOp(str);
-				break;
 			case T_Alias:
 				return_value = _readAlias(str);
 				break;
@@ -4079,9 +3801,6 @@ readNodeBinary(const char ** str)
 				break;
 			case T_FuncExpr:
 				return_value = _readFuncExpr(str);
-				break;
-			case T_NamedArgExpr:
-				return_value = _readNamedArgExpr(str);
 				break;
 			case T_OpExpr:
 				return_value = _readOpExpr(str);
@@ -4154,9 +3873,6 @@ readNodeBinary(const char ** str)
 				break;
 			case T_SetToDefault:
 				return_value = _readSetToDefault(str);
-				break;
-			case T_CurrentOfExpr:
-				return_value = _readCurrentOfExpr(str);
 				break;
 			case T_TargetEntry:
 				return_value = _readTargetEntry(str);
@@ -4436,9 +4152,6 @@ readNodeBinary(const char ** str)
 			case T_GroupClause:
 				return_value = _readGroupClause(str);
 				break;
-			case T_ScatterClause:
-				return_value = _readScatterClause(str);
-				break;
 			case T_GroupingClause:
 				return_value = _readGroupingClause(str);
 				break;
@@ -4457,20 +4170,11 @@ readNodeBinary(const char ** str)
 			case T_WindowSpec:
 				return_value = _readWindowSpec(str);
 				break;
-			case T_SeqWindowSpec:
-				return_value = _readSeqWindowSpec(str);
-				break;
 			case T_WindowFrame:
 				return_value = _readWindowFrame(str);
 				break;
 			case T_WindowFrameEdge:
 				return_value = _readWindowFrameEdge(str);
-				break;
-			case T_PercentileExpr:
-				return_value = _readPercentileExpr(str);
-				break;
-			case T_DMLActionExpr:
-				return_value = _readDMLActionExpr(str);
 				break;
 			case T_RowMarkClause:
 				return_value = _readRowMarkClause(str);
@@ -4483,12 +4187,6 @@ readNodeBinary(const char ** str)
 				break;
 			case T_SetOperationStmt:
 				return_value = _readSetOperationStmt(str);
-				break;
-			case T_SequenceDefn:
-				return_value = _readSequenceDefn(str);
-				break;
-			case T_SequenceSpec:
-				return_value = _readSequenceSpec(str);
 				break;
 			case T_RangeTblEntry:
 				return_value = _readRangeTblEntry(str);

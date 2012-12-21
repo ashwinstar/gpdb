@@ -1515,7 +1515,31 @@ alter table foo_p exchange partition for(rank(6)) with table bar_p;
 drop table foo_p;
 drop table bar_p;
 
+-- non-partition table involved in inheritance
+create table foo_p (i int, j int) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
 
+create table barparent(i int, j int) distributed by (i);
+create table bar_p () inherits(barparent);
+-- should fail
+alter table foo_p exchange partition for(rank(6)) with table bar_p;
+drop table foo_p;
+drop table bar_p;
+drop table barparent;
+
+-- non-partition table involved in inheritance
+create table foo_p (i int, j int) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+
+create table bar_p(i int, j int) distributed by (i);
+create table barchild () inherits(bar_p);
+-- should fail
+alter table foo_p exchange partition for(rank(6)) with table bar_p;
+drop table foo_p;
+drop table barchild;
+drop table bar_p;
 -- rules on non-partition table
 create table foo_p (i int, j int) distributed by (i)
 partition by range(j)
@@ -2932,22 +2956,17 @@ partition b start('e') end('g')
 -- Test locking behaviour. When creating, dropping, querying or adding indexes
 -- partitioned tables, we want to lock only the master, not the children.
 
--- start_ignore
 create view locktest as
 select coalesce(
   case when relname like 'pg_toast%index' then 'toast index'
   	   when relname like 'pg_toast%' then 'toast table'
-  	   when relname like 'pg_aoseg%' then 'aoseg table'
 	   else relname end, 'dropped table'), 
 mode,
 locktype from 
 pg_locks l left outer join pg_class c on (l.relation = c.oid),
 pg_database d where relation is not null and l.database = d.oid and 
 l.gp_segment_id = -1 and
-locktype != 'catalog' and
 d.datname = current_database() order by 1, 3, 2;
--- end_ignore
-
 -- Partitioned table with toast table
 begin;
 
@@ -3095,7 +3114,9 @@ every(1));
 create table rank (i int, j int)  partition by range(j) (start(1) end(10)
 every(1));
 -- should all fail
+alter table rank_1_prt_1 no inherit rank;
 create table rank2(like rank);
+alter table rank_1_prt_1 inherit rank2;
 alter table rank_1_prt_1 alter column i type bigint;
 alter table rank_1_prt_1 set without oids;
 alter table rank_1_prt_1 drop constraint rank_1_prt_1_check;
@@ -4221,6 +4242,80 @@ drop table mpp6979dummy.mpp6979tab;
 
 drop schema mpp6979dummy;
 
+-- MPP-7898:
+
+drop table if exists r cascade; --ignore
+drop table if exists s cascade; --ignore
+
+create table s 
+    (a int, b text) 
+    distributed by (a);
+    
+insert into s values 
+    (1, 'one');
+
+-- Try to create a table that mixes inheritance and partitioning.
+-- Correct behavior: ERROR
+
+create table r 
+    ( c int, d int) 
+    inherits (s)
+    partition by range(d) 
+    (
+        start (0) 
+        end (2) 
+        every (1)
+    );
+
+ -- If (incorrectly) the previous statement works, the next one is 
+ -- likely to fail with in unexpected internal error.  This is residual 
+ -- issue MPP-7898.
+insert into r values 
+    (0, 'from r', 0, 0);
+    
+drop table if exists s cascade; --ignore
+drop table if exists r cascade; --ignore
+
+create table r 
+    ( a int, b text, c int, d int ) 
+    distributed by (a)
+    partition by range(d) 
+    (
+        start (0) 
+        end (2) 
+        every (1)
+    );
+ 
+insert into r values 
+    (0, 'from r', 0, 0);
+
+create table s 
+    ( a int, b text, c int, d int ) 
+    distributed by (a);
+    
+insert into s values 
+    (1, 'from s', 555, 555);
+
+create table t
+    ( )
+    inherits (s)
+    distributed by (a);
+
+insert into t values
+    (0, 'from t', 666, 666);
+
+-- Try to exchange in the child and parent.  
+-- Correct behavior: ERROR in both cases.
+
+alter table r exchange partition for (1) with table t;
+alter table r exchange partition for (1) with table s;
+
+drop table t cascade; --ignore
+drop table s cascade; --ignore
+drop table r cascade; --ignore
+
+-- MPP-7898 end.
+
 -- ( MPP-13750 
 
 CREATE TABLE s (id int, date date, amt decimal(10,2), units int) 
@@ -4320,478 +4415,4 @@ alter table at
     add primary key (a);
 
 -- MPP-14471 end
--- MPP-17606 (using table "at" from above)
 
-alter table at
-    alter column b
-	type numeric;
-	
--- MPP-17606 end
--- MPP-17707 start
-create table mpp17707
-( d int, p int ,x text)
-with (appendonly = true)
-distributed by (d)
-partition by range (p)
-(start (0) end (3) every (2));
-
--- Create a expression index on the partitioned table
-
-create index idx_abc on mpp17707(upper(x));
-
--- split partition 1 of table
-
-alter table mpp17707 split partition for (0) at (1)
-	into (partition x1, partition x2);
--- MPP-17707 end
-
--- MPP-17814 start
-drop table if exists plst2 cascade;
--- positive; bug was that it failed whereas it should succeed
-create table plst2
-    (            
-        a integer not null,
-        b integer not null,
-        c integer
-    )                                                                                                                   
-    distributed by (b) 
-    partition by list (a,c)
-    (
-        partition p1 values ( (1, 2), (3, 4) ),
-        partition p2 values ( (5, 6) ),
-        partition p3 values ( (2, 1) )
-    );
-drop table if exists plst2 cascade;
---negative; test legitimate failure
-create table plst2
-    (            
-        a integer not null,
-        b integer not null,
-        c integer
-    )                                                                                                                   
-    distributed by (b) 
-    partition by list (a,c)
-    (
-        partition p1 values ( (1, 2), (3, 4) ),
-        partition p2 values ( (5, 6) ),
-        partition p3 values ( (1, 2) )
-    );
-
--- postive; make sure inner part duplicates are accepted and quietly removed.
-drop table if exists plst2;
-
-create table plst2
-    ( a int, b int)
-    distributed by (a)
-    partition by list (a, b) 
-        (
-            partition p0 values ((1,2), (3,4)),
-            partition p1 values ((4,3), (2,1)),
-            partition p2 values ((4,4),(5,5),(4,4),(5,5),(4,4),(5,5)),
-            partition p3 values ((4,5),(5,6))
-        );
-
--- positive; make sure legitimate alters work.
-alter table plst2 add partition p4 values ((5,4),(6,5));
-alter table plst2 add partition p5 values ((7,8),(7,8));
-
-select conrelid::regclass, consrc  
-from pg_constraint 
-where conrelid in (
-    select parchildrelid::regclass
-    from pg_partition_rule
-    where paroid in (
-        select oid 
-        from pg_partition 
-        where parrelid = 'plst2'::regclass
-        )
-    );
-
--- negative; make sure conflicting alters fail.
-alter table plst2 add partition p6 values ((7,8),(2,1));
-
-drop table if exists plst2;
-
-
--- MPP-17814 end
-
--- MPP-18441
-create table s_heap (i1 int, t1 text, t2 text, i2 int, i3 int, n1 numeric, b1 bool)
-partition by list (t1)
-     (partition abc values('abc0', 'abc1', 'abc2'));
-insert into s_heap (t1, i1, i2, i3, n1, b1) select 'abc0', 1, 1, 1, 2.3, true
-    from generate_series(1, 5);
-alter table s_heap drop column t2;
-alter table s_heap drop column i3;
--- create co table for exchange
-create table s_heap_ex_abc (i1 int, t1 text, f1 float, i2 int, n1 numeric, b1 bool)
-    WITH (appendonly=true, orientation=column, compresstype=quicklz);
-alter table s_heap_ex_abc drop column f1;
-insert into s_heap_ex_abc select 1, 'abc1', 2, 2, true from generate_series(1, 5);
--- exchange partition
-alter table s_heap exchange partition abc with table s_heap_ex_abc;
-alter table s_heap exchange partition abc with table s_heap_ex_abc;
-drop table s_heap, s_heap_ex_abc;
--- MPP-18441 end
-
--- MPP-18443
-create table s_heap (i1 int, t1 text, i2 int , i3 int, n1 numeric,b1 bool)
-partition by list (t1)
-    (partition def values('def0', 'def1', 'def2', 'def3', 'def4', 'def5', 'def6', 'def7', 'def8', 'def9'));
-insert into s_heap(t1, i1, i2, i3, n1, b1)
-    select 'def0', 1, 1, 1, 2.3 , true from generate_series(1, 5);
-alter table s_heap drop column i3;
-create index s_heap_index on s_heap (i2);
-alter table s_heap split partition def
-    at ('def0', 'def1', 'def2', 'def3', 'def4') into (partition def5, partition def0);
-select * from s_heap_1_prt_def0;
-drop table s_heap;
--- MPP-18443 end
-
--- MPP-18445
-create table s_heap_ao ( i1 int, t1 text, i2 int , i3 int, n1 numeric,b1 bool)
-partition by list (t1)
-    (partition def values('def0', 'def1', 'def2', 'def3', 'def4', 'def5', 'def6', 'def7', 'def8', 'def9')
-        with (appendonly=true, orientation=row));
-insert into s_heap_ao(t1, i1, i2, i3, n1, b1)
-    select 'def4', 1, 1, 1, 2.3, true from generate_series(1, 2);
-insert into s_heap_ao(t1, i1, i2, i3, n1, b1)
-    select 'def5', 1, 1, 1, 2.3, true from generate_series(1, 2);
-alter table s_heap_ao drop column i3;
-create index s_heap_ao_index on s_heap_ao (i2);
-alter table s_heap_ao split partition def
-    at ('def0', 'def1', 'def2', 'def3', 'def4') into (partition def5, partition def0);
-select * from s_heap_ao_1_prt_def0;
-drop table s_heap_ao;
--- MPP-18445 end
-
--- MPP-18456
-create table s_heap_co (i1 int, t1 text, i2 int, i3 int, n1 numeric, b1 bool)
-partition by list (t1)
-    (partition def values('def0', 'def1', 'def2', 'def3', 'def4', 'def5', 'def6', 'def7', 'def8', 'def9')
-        with (appendonly=true, orientation=column));
-insert into s_heap_co(t1, i1, i2, i3, n1, b1)
-    select 'def4', 1,1, 1, 2.3, true from generate_series(1, 2);
-insert into s_heap_co(t1, i1, i2, i3, n1, b1)
-    select 'def5', 1,1, 1, 2.3, true from generate_series(1, 2);
-alter table s_heap_co drop column i3;
-create index s_heap_co_index on s_heap_co (i2);
-alter table s_heap_co split partition def
-    at ('def0', 'def1', 'def2', 'def3', 'def4') into (partition def5, partition def0);
-select * from s_heap_co_1_prt_def0;
-drop table s_heap_co;
--- MPP-18456 end
-
--- MPP-18457, MPP-18415
-CREATE TABLE non_ws_phone_leads (
-    lead_key integer NOT NULL ENCODING (compresstype=quicklz,compresslevel=1,blocksize=32768),
-    source_system_lead_id character varying(60) NOT NULL ENCODING (compresstype=quicklz,compresslevel=1,blocksize=32768),
-    dim_event_type_key smallint NOT NULL ENCODING (compresstype=quicklz,compresslevel=1,blocksize=32768),
-    dim_site_key integer NOT NULL ENCODING (compresstype=quicklz,compresslevel=1,blocksize=32768),
-    dim_date_key integer NOT NULL ENCODING (compresstype=quicklz,compresslevel=1,blocksize=32768),
-    dim_time_key integer NOT NULL ENCODING (compresstype=quicklz,compresslevel=1,blocksize=32768),
-    dim_phone_number_key integer NOT NULL ENCODING (compresstype=quicklz,compresslevel=1,blocksize=32768),
-    duration_second smallint NOT NULL ENCODING (compresstype=quicklz,compresslevel=1,blocksize=32768),
-    dim_program_key smallint NOT NULL ENCODING (compresstype=quicklz,compresslevel=1,blocksize=32768),
-    dim_call_status_key integer NOT NULL ENCODING (compresstype=quicklz,compresslevel=1,blocksize=32768),
-    dim_phone_department_set_key smallint NOT NULL ENCODING (compresstype=quicklz,compresslevel=1,blocksize=32768),
-    dim_phone_channel_set_key smallint NOT NULL ENCODING (compresstype=quicklz,compresslevel=1,blocksize=32768),
-    dim_phone_provider_key smallint NOT NULL ENCODING (compresstype=quicklz,compresslevel=1,blocksize=32768),
-    dim_phone_ad_set_key smallint NOT NULL ENCODING (compresstype=quicklz,compresslevel=1,blocksize=32768)
-)
-WITH (appendonly=true, compresstype=quicklz, orientation=column) DISTRIBUTED BY (dim_site_key ,dim_date_key) PARTITION BY RANGE(dim_date_key) 
-          (
-          PARTITION p_max START (2451545) END (9999999) WITH (tablename='non_ws_phone_leads_1_prt_p_max', orientation=column, appendonly=true ) 
-                    COLUMN lead_key ENCODING (compresstype=quicklz, compresslevel=1, blocksize=32768) 
-                    COLUMN source_system_lead_id ENCODING (compresstype=quicklz, compresslevel=1, blocksize=32768) 
-                    COLUMN dim_event_type_key ENCODING (compresstype=quicklz, compresslevel=1, blocksize=32768) 
-                    COLUMN dim_site_key ENCODING (compresstype=quicklz, compresslevel=1, blocksize=32768) 
-                    COLUMN dim_date_key ENCODING (compresstype=quicklz, compresslevel=1, blocksize=32768) 
-                    COLUMN dim_time_key ENCODING (compresstype=quicklz, compresslevel=1, blocksize=32768) 
-                    COLUMN dim_phone_number_key ENCODING (compresstype=quicklz, compresslevel=1, blocksize=32768) 
-                    COLUMN duration_second ENCODING (compresstype=quicklz, compresslevel=1, blocksize=32768) 
-                    COLUMN dim_program_key ENCODING (compresstype=quicklz, compresslevel=1, blocksize=32768) 
-                    COLUMN dim_call_status_key ENCODING (compresstype=quicklz, compresslevel=1, blocksize=32768) 
-                    COLUMN dim_phone_department_set_key ENCODING (compresstype=quicklz, compresslevel=1, blocksize=32768) 
-                    COLUMN dim_phone_channel_set_key ENCODING (compresstype=quicklz, compresslevel=1, blocksize=32768) 
-                    COLUMN dim_phone_provider_key ENCODING (compresstype=quicklz, compresslevel=1, blocksize=32768) 
-                    COLUMN dim_phone_ad_set_key ENCODING (compresstype=quicklz, compresslevel=1, blocksize=32768)
-          );
-
-INSERT INTO non_ws_phone_leads VALUES (63962490, 'CA6qOEyxOmNJUQC7', 5058, 999901, 2455441, 40435, 999904, 207, 79, 2, 9901, 9901, 1, 9901);
-
-CREATE TABLE dim_phone_numbers (
-    dim_phone_number_key integer NOT NULL,
-    media_tracker_description character varying(40) NOT NULL,
-    formatted_phone_number character varying(20) NOT NULL,
-    source_system_phone_number_id character varying(100) NOT NULL,
-    last_modified_date timestamp without time zone NOT NULL
-) DISTRIBUTED BY (dim_phone_number_key);
-
-ALTER TABLE ONLY dim_phone_numbers
-    ADD CONSTRAINT dim_phone_numbers_pk1 PRIMARY KEY (dim_phone_number_key);
-
-INSERT INTO dim_phone_numbers VALUES (999902, 'test', '800-123-4568', '8001234568', '2012-09-25 13:34:35.037637');
-INSERT INTO dim_phone_numbers VALUES (999904, 'test', '(800) 123-4570', '8001234570', '2012-09-25 13:34:35.148104');
-INSERT INTO dim_phone_numbers VALUES (999903, 'test', '(800) 123-4569', '8001234569', '2012-09-25 13:34:35.093523');
-INSERT INTO dim_phone_numbers VALUES (999901, 'test', '(800)123-4567', '8001234567', '2012-09-25 13:34:34.781042');
-
-INSERT INTO dim_phone_numbers SELECT gs.*, dim_phone_numbers.media_tracker_description, dim_phone_numbers.formatted_phone_number, dim_phone_numbers.source_system_phone_number_id, dim_phone_numbers.last_modified_date FROM dim_phone_numbers, generate_series(1,100000) gs WHERE dim_phone_numbers.dim_phone_number_key = 999901;
-
-ANALYZE dim_phone_numbers;  
-
--- Table NON_WS_PHONE_LEADS has two distribution keys
--- Equality condition with constant on one distribution key
--- Redistribute over Append
-SELECT pl.duration_Second , pl.dim_program_Key, PL.DIM_SITE_KEY, PL.DIM_DATE_KEY
-FROM NON_WS_PHONE_LEADS PL
-LEFT outer JOIN DIM_PHONE_NUMBERS DPN
-ON PL.DIM_PHONE_NUMBER_KEY = DPN.DIM_PHONE_NUMBER_KEY
-WHERE pl.SOURCE_SYSTEM_LEAD_ID = 'CA6qOEyxOmNJUQC7'
-AND PL.DIM_DATE_KEY = 2455441;
-
--- Table NON_WS_PHONE_LEADS has two distribution keys
--- Equality conditions with constants on all distribution keys
--- Redistribute over Append
-SELECT pl.duration_Second , pl.dim_program_Key, PL.DIM_SITE_KEY, PL.DIM_DATE_KEY
-FROM NON_WS_PHONE_LEADS PL
-LEFT outer JOIN DIM_PHONE_NUMBERS DPN
-ON PL.DIM_PHONE_NUMBER_KEY = DPN.DIM_PHONE_NUMBER_KEY
-WHERE pl.SOURCE_SYSTEM_LEAD_ID = 'CA6qOEyxOmNJUQC7'
-AND PL.DIM_DATE_KEY = 2455441
-AND PL.dim_site_key = 999901;
-
--- Table NON_WS_PHONE_LEADS has two distribution keys
--- Broadcast over Append
-SELECT pl.duration_Second , pl.dim_program_Key, PL.DIM_SITE_KEY, PL.DIM_DATE_KEY
-FROM NON_WS_PHONE_LEADS PL
-JOIN DIM_PHONE_NUMBERS DPN
-ON PL.DIM_PHONE_NUMBER_KEY = DPN.DIM_PHONE_NUMBER_KEY
-WHERE pl.SOURCE_SYSTEM_LEAD_ID = 'CA6qOEyxOmNJUQC7'
-AND PL.DIM_DATE_KEY = 2455441
-AND PL.dim_site_key = 999901;
-
--- Join condition uses functions
--- Broadcast over Append
-SELECT pl.duration_Second , pl.dim_program_Key, PL.DIM_SITE_KEY, PL.DIM_DATE_KEY
-FROM NON_WS_PHONE_LEADS PL
-JOIN DIM_PHONE_NUMBERS DPN
-ON PL.DIM_PHONE_NUMBER_KEY + 1 = DPN.DIM_PHONE_NUMBER_KEY + 1
-WHERE pl.SOURCE_SYSTEM_LEAD_ID = 'CA6qOEyxOmNJUQC7'
-AND PL.DIM_DATE_KEY = 2455441
-AND PL.dim_site_key = 999901;
-
--- Equality condition with constant on one distribution key
--- Redistribute over Append
--- Accessing a varchar in the SELECT clause should cause a SIGSEGV
-SELECT pl.duration_Second , pl.dim_program_Key, PL.DIM_SITE_KEY, PL.DIM_DATE_KEY, source_system_lead_id
-FROM NON_WS_PHONE_LEADS PL
-LEFT outer JOIN DIM_PHONE_NUMBERS DPN
-ON PL.DIM_PHONE_NUMBER_KEY = DPN.DIM_PHONE_NUMBER_KEY
-WHERE pl.SOURCE_SYSTEM_LEAD_ID = 'CA6qOEyxOmNJUQC7'
-AND PL.DIM_DATE_KEY = 2455441;
-
-DROP TABLE non_ws_phone_leads;
-DROP TABLE dim_phone_numbers;
-
--- Equality condition with a constant expression on one distribution key
-drop table if exists foo_p;
-drop table if exists bar;
-create table foo_p( a int, b int, k int, t text, p int) distributed by (a,b) partition by range(p) ( start(0) end(10) every (2), default partition other);
-create table bar( a int, b int, k int, t text, p int) distributed by (a);
-
-insert into foo_p select i, i % 10, i , i || 'SOME NUMBER SOME NUMBER', i % 10 from generate_series(1, 1000) i;
-
-insert into bar select i % 7, i % 6, i % 9, i || 'SOME NUMBER', i % 4 from generate_series(1, 100) i;
-insert into bar select i % 7, i % 6, i % 9, i || 'SOME NUMBER', i % 4 from generate_series(1, 10000) i;
-insert into bar select i % 7, i % 6, i % 9, i || 'SOME NUMBER', i % 4 from generate_series(1, 10000) i;
-
-analyze foo_p;
-analyze bar;
-
-explain select foo_p.b, foo_p.t from foo_p left outer join bar on foo_p.a = bar.k  where foo_p.t is not null and foo_p.a = (array[1])[1];
-
-drop table if exists foo_p;
-drop table if exists bar;
--- MPP-18457, MPP-18415 end
-
--- MPP-18359
-drop view if exists redundantly_named_part cascade;
-
-create view redundantly_named_part(tableid, partid, partname) as
-	with 
-		dups(paroid, partname) as 
-		(
-			select paroid, parname
-			from pg_partition_rule 
-			where parname is not null 
-			group by paroid, parname 
-			having count(*) > 1
-		),
-		parts(tableid, partid, paroid, partname) as
-		(
-			select p.parrelid, r.parchildrelid, r.paroid, r.parname
-			from pg_partition p, pg_partition_rule r
-			where not p.paristemplate and
-				p.oid = r.paroid
-		)
-	select p.tableid::regclass, p.partid::regclass, p.partname
-	from parts p, dups d
-	where 
-		p.paroid = d.paroid and
-		p.partname = d.partname;
-
-drop table if exists pnx;
-
-create table pnx 
-    (x int , y text)
-    distributed randomly
-    partition by list (y)
-        ( 
-            partition a values ('x1', 'x2'),
-            partition c values ('x3', 'x4')
-        );
-
-insert into pnx values
-    (1,'x1'),
-    (2,'x2'),
-    (3,'x3'), 
-    (4,'x4');
-
-select tableoid::regclass, * 
-from pnx;
-
-alter table pnx
-    split partition a at ('x1')
-    into (partition b, partition c);
-
-select * 
-from redundantly_named_part;
-
-select tableoid::regclass, * 
-from pnx;
-
-select tableoid::regclass, *
-from pnx
-where y = 'x1';
-
-select tableoid::regclass, *
-from pnx
-where x = 1;
-
-
-drop table if exists pxn;
-
-create table pxn 
-    (x int , y text)
-    distributed randomly
-    partition by list (y)
-        ( 
-            partition a values ('x1', 'x2'),
-            partition c values ('x3', 'x4')
-        );
-
-insert into pxn values
-    (1,'x1'),
-    (2,'x2'),
-    (3,'x3'), 
-    (4,'x4');
-
-select tableoid::regclass, * 
-from pxn;
-
-alter table pxn
-    split partition a at ('x1')
-    into (partition c, partition b);
-
-select * 
-from redundantly_named_part;
-
-select tableoid::regclass, * 
-from pxn;
-
-select tableoid::regclass, *
-from pxn
-where y = 'x2';
-
-select tableoid::regclass, *
-from pxn
-where x = 2;
-
-drop table if exists pxn;
-
-create table pxn 
-    (x int , y int)
-    distributed randomly
-    partition by range (y)
-        ( 
-            partition a start (0) end (10),
-            partition c start (11) end (20)
-        );
-
-insert into pxn values
-    (4,4),
-    (9,9),
-    (14,14), 
-    (19,19);
-
-select tableoid::regclass, * 
-from pxn;
-
-alter table pxn
-    split partition a at (5)
-    into (partition b, partition c);
-
-select * 
-from redundantly_named_part;
-
-select tableoid::regclass, * 
-from pxn;
-
-select tableoid::regclass, *
-from pxn
-where y = 4;
-
-select tableoid::regclass, *
-from pxn
-where x = 4;
-
-drop table if exists pxn;
-
-create table pxn 
-    (x int , y int)
-    distributed randomly
-    partition by range (y)
-        ( 
-            partition a start (0) end (10),
-            partition c start (11) end (20)
-        );
-
-insert into pxn values
-    (4,4),
-    (9,9),
-    (14,14), 
-    (19,19);
-
-select tableoid::regclass, * 
-from pxn;
-
-alter table pxn
-    split partition a at (5)
-    into (partition c, partition b);
-
-select * 
-from redundantly_named_part;
-
-select tableoid::regclass, * 
-from pxn;
-
-select tableoid::regclass, *
-from pxn
-where y = 9;
-
-select tableoid::regclass, *
-from pxn
-where x = 9;
-
--- MPP-18359 end

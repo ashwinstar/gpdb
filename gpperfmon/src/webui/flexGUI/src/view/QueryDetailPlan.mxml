@@ -1,0 +1,459 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:HDividedBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%"
+	xmlns:control="control.*">
+		
+<mx:Script>
+    <![CDATA[
+    	import mx.formatters.NumberFormatter;
+    	import mx.events.TreeEvent;
+    	import mx.controls.List;
+    	import mx.events.FlexEvent;
+        import model.GPPerfMonModelLocator;
+        import util.Debug;
+        import mx.binding.utils.BindingUtils;
+        import mx.collections.XMLListCollection;
+  			
+  	  [Bindable]
+	  public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();
+	  
+	  private var lastQueryID:String = '';
+	  private var openList:Object = new Object();
+	  private var selectedNode:String = '';
+	  
+	  // Scroll positions
+	  private var vscroll:Number = 0;
+	  private var hscroll:Number = 0;
+	  
+	  [Bindable]
+	  private var extraAttributes:String = '';
+	  [Bindable]
+	  private var selectedXML:XML = new XML();
+
+	  [Embed(source="../assets/img/aggregate.png")]	
+	  public static var ex_aggregate:Class;
+	  [Embed(source="../assets/img/append.png")]	
+	  public static var ex_append:Class;
+	  [Embed(source="../assets/img/bitmap_heap.png")]	
+	  public static var ex_bmp_heap:Class;		
+	  [Embed(source="../assets/img/bitmap_index.png")]	
+	  public static var ex_bmp_index:Class;
+	  [Embed(source="../assets/img/broadcast_motion.png")]	
+	  public static var ex_broadcast_motion:Class;
+	  [Embed(source="../assets/img/gather_motion.png")]	
+	  public static var ex_gather_motion:Class;			
+	  [Embed(source="../assets/img/explicit_motion.png")]	
+	  public static var ex_explicit_motion:Class;			
+	  [Embed(source="../assets/img/hash.png")]	
+	  public static var ex_hash:Class;
+	  [Embed(source="../assets/img/index_scan.png")]	
+	  public static var ex_index_scan:Class;		
+	  [Embed(source="../assets/img/join.png")]	
+	  public static var ex_join:Class;
+	  [Embed(source="../assets/img/limit.png")]	
+	  public static var ex_limit:Class;
+	  [Embed(source="../assets/img/materialize.png")]	
+	  public static var ex_materialize:Class;	  		
+	  [Embed(source="../assets/img/merge.png")]	
+	  public static var ex_merge:Class;			
+	  [Embed(source="../assets/img/nested.png")]	
+	  public static var ex_nested:Class;
+	  [Embed(source="../assets/img/redistribute_motion.png")]	
+	  public static var ex_redistribute_motion:Class;
+	  [Embed(source="../assets/img/result.png")]	
+	  public static var ex_result:Class;		
+	  [Embed(source="../assets/img/scan.png")]	
+	  public static var ex_scan:Class;
+	  [Embed(source="../assets/img/seek.png")]	
+	  public static var ex_seek:Class;
+	  [Embed(source="../assets/img/setop.png")]	
+	  public static var ex_setop:Class;			
+	  [Embed(source="../assets/img/sort.png")]	
+	  public static var ex_sort:Class;		
+	  [Embed(source="../assets/img/subplan.png")]	
+	  public static var ex_subplan:Class;
+	  [Embed(source="../assets/img/unique.png")]	
+	  public static var ex_unique:Class;			
+	  [Embed(source="../assets/img/unknown.png")]	
+	  public static var ex_unknown:Class;		
+		
+	// Called when the query plan data changes
+	private function treeDataChange(inputXML:XML):void
+	{
+		queryPlanTree.invalidateList();
+		queryPlanTree.invalidateDisplayList();
+		
+		if (inputXML == null)
+		{
+			if (mdl.nav.detailQuery)
+				msgLabel.text = "Loading...";
+			else
+				msgLabel.text = '';
+			openList = new Object();
+			lastQueryID = '';
+			selectedNode = '';
+			selectedXML = null;
+			extraAttributes = '';
+			queryPlanTree.dataProvider = null;
+			return;					
+		}
+		else if (inputXML.children().length() == 0)
+		{
+			msgLabel.text = "No iterator values available";
+			openList = new Object();
+			lastQueryID = '';
+			selectedNode = '';
+			selectedXML = null;
+			extraAttributes = '';
+			queryPlanTree.dataProvider = null;
+			return;
+		}
+		msgLabel.text = '';
+		queryPlanTree.dataProvider = mdl.queries.queryPlanCurrent;
+		trace(mdl.queries.queryPlanCurrent);
+		// Is it the same or a different query
+		if (lastQueryID == inputXML.@id)
+		{
+			updateTreeXML(inputXML);
+		}
+		else
+		{
+			lastQueryID = inputXML.@id;
+			openList = new Object();
+			selectedNode = '';
+			selectedXML = null;
+			extraAttributes = '';
+			replaceTreeXML(inputXML);
+		}
+	}
+	
+	// Replaces the tree XML using the input XML
+	private function replaceTreeXML(inputXML:XML):void
+	{		
+		queryPlanTree.validateNow();
+	
+		// Set all the items to be open
+		for each(var child:XML in inputXML.children())
+		{
+		   queryPlanTree.expandChildrenOf(child, true);
+		}    		
+		
+		// Save away the width of the tree items
+		queryPlanTree.contentsWidth = 
+			queryPlanTree.measureWidthOfItems();
+	}
+
+	private function buildExtraAttributes(attributes:XMLList):void
+	{
+		var name:String;
+		var valueArray:Array;
+		var numFormat:NumberFormatter = new NumberFormatter();
+
+		numFormat.precision = 2;
+		extraAttributes = '';
+		for (var i:int = 0; i < attributes.length(); i++)
+		{
+			name = attributes[i].name();
+			
+			if (name == 't0' || name == 't1' || name == 't2' || name == 't3')
+			{
+				valueArray = attributes[i].split('|');
+				extraAttributes += '<b>'+valueArray[0]+'</b>: ';
+				extraAttributes += valueArray[1] + '\n';				
+			}
+		}
+		for (var j:int = 0; j < attributes.length(); j++)
+		{
+			name = attributes[j].name();
+			
+			if (name == 'm0' || name == 'm1' || name == 'm2' || name == 'm3' ||
+			    name == 'm4' || name == 'm5' || name == 'm6' || name == 'm7' ||
+			    name == 'm8' || name == 'm9' || name == 'm10' || name == 'm11' ||
+			    name == 'm12' || name == 'm13' || name == 'm14' || name == 'm15')
+			{
+				valueArray = attributes[j].split('|');				
+				extraAttributes += '<b>'+valueArray[0]+'</b>: ';
+				extraAttributes += numFormat.format(valueArray[2]) + ' ' + valueArray[1];
+				extraAttributes += ' (avg) [estimated ' + numFormat.format(valueArray[3]) + ']\n';
+			}
+		}			
+	}
+
+	// Updates the tree XML using the input XML
+	private function updateTreeXML(inputXML:XML):void
+	{
+		queryPlanTree.validateNow();
+
+		// Set the appropriate items to be open
+		for each(var child:XML in inputXML.descendants())
+		{
+		   if (!openList[child.@nid] || openList[child.@nid] == 'open')
+		   queryPlanTree.expandItem(child, true);
+		   
+		   if (child.@nid == selectedNode)
+		   {
+		   	 	queryPlanTree.selectedItem = child;
+		   		
+		   		buildExtraAttributes(child.@*);
+		   		
+		 		selectedXML = child; 
+		   }
+		}   	 
+			
+		// Reappy the scroll positions
+		queryPlanTree.verticalScrollPosition = vscroll;
+		queryPlanTree.horizontalScrollPosition = hscroll;
+	}
+	
+	// An item opened
+	public function itemOpen(event:TreeEvent):void
+	{
+		var xml:XML = event.item as XML;
+		if (xml)
+			openList[xml.@nid] = 'open';
+	}
+
+	// An item closed
+	public function itemClose(event:TreeEvent):void
+	{
+		var xml:XML = event.item as XML;
+		if (xml)
+			openList[xml.@nid] = 'closed';
+	}
+	
+	// An item was selected
+	public function selectionChange(event:Event):void
+	{
+		var xml:XML = queryPlanTree.selectedItem as XML;
+		if (xml)
+		{
+			selectedNode = xml.@nid;
+			
+			buildExtraAttributes(xml.@*);
+			
+			selectedXML = xml; 
+		}
+	}	
+	
+	// Label function for each tree item
+	public function labelFunction(item:Object):String
+	{
+		var xml:XML = item as XML;
+		if (xml && xml.@nid)
+		{
+			var res:String = " " + xml.@ntype + " ";
+			var t0:String = xml.@t0;
+			if (t0 != '')
+			{		
+				var valueArray:Array = t0.split('|');
+				if (valueArray[0] == 'Name')
+				   res += '[' + valueArray[1] + '] ';
+			}
+				
+			res += "(" + xml.@nstatus + ")\n"
+			
+			return res + " [CPU %: " + nformat2.format(xml.@cpu_currpct) 
+			           + ", CPU total: " + (Number(xml.@cpu_elapsed)/1000.0).toFixed(2) + "]\n"
+				       + " [CPU skew: " + nformat2.format(xml.@skew_cpu) 
+					   + ", Row skew: " + nformat2.format(xml.@skew_rows) + "]"; 
+		}
+		else
+		{
+			return null;
+		}
+	}
+
+	// Icon function for each tree item
+	public function iconFunction(item:Object):Class
+	{
+		var xml:XML = item as XML;
+		if (xml && xml.@nid)
+		{
+			var nodeType:String = xml.@ntype;
+			
+			switch(nodeType) {
+				
+				case "Aggregate":
+				case "HashAggregate":
+				case "GroupAggregate":
+				case "Group":
+				  return ex_aggregate; break;
+				
+				case "Append":
+				  return ex_append; break;				
+
+				case "Bitmap Heap Scan":
+				  return ex_bmp_heap; break;
+
+				case "Bitmap Index Scan":
+				  return ex_bmp_index; break;
+				  
+				case "Broadcast Motion":				  
+				  return ex_broadcast_motion; break;
+				  
+				case "Gather Motion":
+				  return ex_gather_motion; break;		
+
+				case "Explicit Redistribute Motion":				  
+				  return ex_explicit_motion; break;
+
+				case "Hash":				  
+				  return ex_hash; break;
+				  				 
+				case "Index Scan":
+				  return ex_index_scan; break;
+				  				  
+				case "Adaptive Join":
+                case "Hash Join":
+                case "Hash Left Join":
+                case "Hash Full Join":
+                case "Hash Right Join":
+                case "Hash EXISTS Join":
+				  return ex_join; break;
+				  
+				case "Limit":				  
+				  return ex_limit; break;
+				
+				case "Materialize":
+				  return ex_materialize; break;
+				  
+				case "Merge Join":
+                case "Merge Left Join":
+                case "Merge Full Join":
+                case "Merge Right Join":
+                case "Merge EXISTS Join":
+				  return ex_merge; break;
+				  
+				case "Nested Loop":	
+				case "Nested Loop Left Join":
+                case "Nested Loop Full Join":
+                case "Nested Loop Right Join":
+				  return ex_nested; break;			
+				
+				case "Redistribute Motion":
+				  return ex_redistribute_motion; break;
+				
+				case "Result":
+   				  return ex_result; break;
+
+				case "Seq Scan":
+				case "Append-only Scan":
+				case "External Scan":
+				case "Function Scan":
+				case "Values Scan":
+				case "Shared Scan":
+				case "Tid Scan":
+	   		      return ex_scan; break;
+				  
+				case "SetOp":
+                case "SetOp Intersect":
+                case "SetOp Intersect All":
+                case "SetOp Except":
+                case "SetOpt Except All":
+				case "BitmapAnd":
+				case "BitmapOr":
+				  return ex_setop; break;				  
+				  
+				case "Sort":
+				  return ex_sort; break;
+				  				  
+				case "Subquery Scan":	
+				  return ex_subplan; break;			  				  			  				 
+
+				case "Unique":
+				  return ex_unique; break;
+				
+				case "Window":
+				default:
+				  return ex_unknown;
+			}
+		}
+		else
+		{
+			return null;
+		}
+	}
+
+	private function saveScrollPositions():void
+	{
+		vscroll = queryPlanTree.verticalScrollPosition;
+		hscroll = queryPlanTree.horizontalScrollPosition;
+	}
+	
+    ]]>
+</mx:Script>	
+	<mx:NumberFormatter id="nformat0" precision="0"/>
+    <mx:NumberFormatter id="nformat2" precision="2"/>
+
+	<mx:VBox width="60%" height="100%">
+		<mx:Label id="msgLabel" visible="{msgLabel.text!=''}" includeInLayout="{msgLabel.text!=''}"
+			 fontWeight="bold" fontSize="14"/>
+	
+<!--		<control:AutoSizeTree id="queryPlanTree" dropEnabled="false" 
+			dragEnabled="false" dragMoveEnabled="false" 
+			render="saveScrollPositions()"
+			width="100%" height="100%" alternatingItemColors="{[0xEEEEEE,0xFFFFFF]}"
+		    showRoot="false" change="selectionChange(event)"
+		    labelFunction="labelFunction" iconFunction="iconFunction"
+		    borderThickness="0" itemClose="itemClose(event)" itemOpen="itemOpen(event)"
+		    rollOverColor="0xDFFCB2" selectionColor="0xBFDC92"
+		    creationComplete="BindingUtils.bindSetter(treeDataChange, mdl.queries, 'queryPlanCurrent')"/>-->
+		    
+			<control:AutoSizeTree id="queryPlanTree" dropEnabled="false" 
+			dragEnabled="false" dragMoveEnabled="false" 
+			render="saveScrollPositions()"
+			width="100%" height="100%" alternatingItemColors="{[0xEEEEEE,0xFFFFFF]}"
+		    showRoot="false" change="selectionChange(event)"
+		    iconFunction="iconFunction"  itemRenderer="view.QueryDetailPlanTreeNodeRenderer" rowHeight="56"
+		    borderThickness="0" itemClose="itemClose(event)" itemOpen="itemOpen(event)"
+		    rollOverColor="0xDFFCB2" selectionColor="0xBFDC92"
+		    creationComplete="BindingUtils.bindSetter(treeDataChange, mdl.queries, 'queryPlanCurrent')"/>		    
+	</mx:VBox>
+
+	<mx:VBox width="40%" height="100%">
+		<mx:Form>
+			<mx:FormItem label="Node type" fontWeight="bold">
+				<mx:Label text="{selectedXML.@ntype}" fontWeight="normal"/>
+			</mx:FormItem>
+			<mx:FormItem label="Last updated" fontWeight="bold">
+				<mx:Label text="{selectedXML.@sample_time}" fontWeight="normal"/>
+			</mx:FormItem>
+			<mx:FormItem label="Node status" fontWeight="bold">
+				<mx:Label text="{selectedXML.@nstatus}" fontWeight="normal"/>
+			</mx:FormItem>			
+			<mx:FormItem label="Start time" fontWeight="bold">
+				<mx:Label text="{selectedXML.@tstart}" fontWeight="normal"/>
+			</mx:FormItem>					
+			<mx:FormItem label="Duration" fontWeight="bold">
+				<mx:Label text="{nformat2.format(selectedXML.@tduration) + ' (avg)'}" fontWeight="normal"/>
+			</mx:FormItem>						
+			<mx:FormItem label="PMem Size" fontWeight="bold">
+				<mx:Label text="{nformat0.format(selectedXML.@pmemsize) + ' (avg)'}" fontWeight="normal"/>
+			</mx:FormItem>		
+			<mx:FormItem label="PMem Max" fontWeight="bold">
+				<mx:Label text="{nformat0.format(selectedXML.@pmemmax) + ' (avg)'}" fontWeight="normal"/>
+			</mx:FormItem>	
+			<mx:FormItem label="Mem Size" fontWeight="bold">
+				<mx:Label text="{nformat0.format(selectedXML.@memsize) + ' (avg)'}" fontWeight="normal"/>
+			</mx:FormItem>		
+			<mx:FormItem label="Mem Resident" fontWeight="bold">
+				<mx:Label text="{nformat0.format(selectedXML.@memresid) + ' (avg)'}" fontWeight="normal"/>
+			</mx:FormItem>	
+			<mx:FormItem label="Shared mem" fontWeight="bold">
+				<mx:Label text="{nformat0.format(selectedXML.@memshare) + ' (avg)'}" fontWeight="normal"/>
+			</mx:FormItem>	
+			<mx:FormItem label="Rows out" fontWeight="bold">
+				<mx:Label text="{nformat0.format(selectedXML.@rows_out) + ' (sum)'}" fontWeight="normal"/>
+			</mx:FormItem>				
+			<mx:FormItem label="Rows estimate" fontWeight="bold">
+				<mx:Label text="{nformat0.format(selectedXML.@rows_out_est) + ' (sum)'}" fontWeight="normal"/>
+			</mx:FormItem>	
+		</mx:Form>	
+		
+		<mx:Label text="Additonal attributes:" fontWeight="bold"/>
+		<mx:Text htmlText="{extraAttributes}" width="100%"/>
+	</mx:VBox>
+	
+	
+	
+
+</mx:HDividedBox>

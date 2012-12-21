@@ -32,8 +32,5 @@ extern SyncBitvectorContainer SyncBitVector_ShmemInit(const char *name, int vect
 extern bool SyncBitVector_GetBit(SyncBitvectorContainer container, int32 vectorOffset, int64 bitOffset);
 extern void SyncBitVector_SetBit(SyncBitvectorContainer container, int32 vectorOffset, int64 bitOffset);
 extern bool SyncBitVector_TestTestSetBit(SyncBitvectorContainer container, int32 vectorOffset, uint64 bitOffset);
-extern void SyncBitVector_Reset(SyncBitvectorContainer container, int vectorCount);
-extern SyncBitvectorContainer SyncBitVector_Save(SyncBitvectorContainer srcContainer);
-extern void SyncBitVector_Restore(SyncBitvectorContainer shmemContainer, SyncBitvectorContainer savedContainer);
 
 #endif /* SYNCBITVECTOR_H_ */

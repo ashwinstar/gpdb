@@ -15,7 +15,6 @@
 #include "postgres.h"
 
 #include "access/genam.h"
-#include "access/catquery.h"
 #include "access/heapam.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
@@ -36,6 +35,7 @@
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
+
 #include "cdb/cdbvars.h"
 #include "cdb/cdbdisp.h"
 
@@ -58,9 +58,8 @@ static Oid	assignProcSubtype(Oid amoid, Oid typeoid, Oid procOid);
 static void addClassMember(List **list, OpClassMember *member, bool isProc);
 static void storeOperators(Oid opclassoid, List *operators);
 static void storeProcedures(Oid opclassoid, List *procedures);
-static void AlterOpClassOwner_internal(cqContext *pcqCtx,
-									   Relation rel, HeapTuple tuple,
-									   Oid newOwnerId);
+static void AlterOpClassOwner_internal(Relation rel, HeapTuple tuple,
+						   Oid newOwnerId);
 
 
 /*
@@ -92,8 +91,6 @@ DefineOpClass(CreateOpClassStmt *stmt)
 	int			i;
 	ObjectAddress myself,
 				referenced;
-	cqContext	*pcqCtx;
-	cqContext	 cqc;
 
 	/* Convert list of names to a name and namespace */
 	namespaceoid = QualifiedNameGetCreationNamespace(stmt->opclassname,
@@ -106,15 +103,9 @@ DefineOpClass(CreateOpClassStmt *stmt)
 					   get_namespace_name(namespaceoid));
 
 	/* Get necessary info about access method */
-
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_am "
-				" WHERE amname = :1 ",
-				CStringGetDatum(stmt->amname)));
-
-	tup = caql_getnext(pcqCtx);
-
+	tup = SearchSysCache(AMNAME,
+						 CStringGetDatum(stmt->amname),
+						 0, 0, 0);
 	if (!HeapTupleIsValid(tup))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -129,7 +120,7 @@ DefineOpClass(CreateOpClassStmt *stmt)
 
 	/* XXX Should we make any privilege check against the AM? */
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(tup);
 
 	/*
 	 * The question of appropriate permissions for CREATE OPERATOR CLASS is
@@ -291,32 +282,20 @@ DefineOpClass(CreateOpClassStmt *stmt)
 	}
 
 	rel = heap_open(OperatorClassRelationId, RowExclusiveLock);
-	pcqCtx = caql_beginscan(
-			caql_addrel(cqclr(&cqc), rel), 
-			cql("INSERT INTO pg_opclass",
-				NULL));
+
 	/*
 	 * Make sure there is no existing opclass of this name (this is just to
 	 * give a more friendly error message than "duplicate key").
 	 */
-
-	cqContext		 cqcx2;
-
-	if (caql_getcount(
-				caql_addrel(cqclr(&cqcx2), rel),
-				cql("SELECT COUNT(*) FROM pg_opclass "
-					" WHERE opcamid = :1 "
-					" AND opcname = :2 "
-					" AND opcnamespace = :3 ",
-					ObjectIdGetDatum(amoid),
-					CStringGetDatum(opcname),
-					ObjectIdGetDatum(namespaceoid))))
-	{
+	if (SearchSysCacheExists(CLAAMNAMENSP,
+							 ObjectIdGetDatum(amoid),
+							 CStringGetDatum(opcname),
+							 ObjectIdGetDatum(namespaceoid),
+							 0))
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),
 				 errmsg("operator class \"%s\" for access method \"%s\" already exists",
 						opcname, stmt->amname)));
-	}
 
 	/*
 	 * If we are creating a default opclass, check there isn't one already.
@@ -325,16 +304,18 @@ DefineOpClass(CreateOpClassStmt *stmt)
 	 */
 	if (stmt->isDefault)
 	{
-		cqContext		*pcqCtx2;
-		cqContext		 cqc3;
+		ScanKeyData skey[1];
+		SysScanDesc scan;
 
-		pcqCtx2 = caql_beginscan(
-				caql_addrel(cqclr(&cqc3), rel), 
-				cql("SELECT * FROM pg_opclass "
-					" WHERE opcamid = :1 ",
-					ObjectIdGetDatum(amoid)));
+		ScanKeyInit(&skey[0],
+					Anum_pg_opclass_opcamid,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(amoid));
 
-		while (HeapTupleIsValid(tup = caql_getnext(pcqCtx2)))
+		scan = systable_beginscan(rel, OpclassAmNameNspIndexId, true,
+								  SnapshotNow, 1, skey);
+
+		while (HeapTupleIsValid(tup = systable_getnext(scan)))
 		{
 			Form_pg_opclass opclass = (Form_pg_opclass) GETSTRUCT(tup);
 
@@ -348,7 +329,7 @@ DefineOpClass(CreateOpClassStmt *stmt)
 							 NameStr(opclass->opcname))));
 		}
 
-		caql_endscan(pcqCtx2);
+		systable_endscan(scan);
 	}
 
 	/*
@@ -369,16 +350,17 @@ DefineOpClass(CreateOpClassStmt *stmt)
 	values[i++] = ObjectIdGetDatum(typeoid);	/* opcintype */
 	values[i++] = BoolGetDatum(stmt->isDefault);		/* opcdefault */
 	values[i++] = ObjectIdGetDatum(storageoid); /* opckeytype */
-	
-	tup = caql_form_tuple(pcqCtx, values, nulls);
+
+	tup = heap_form_tuple(rel->rd_att, values, nulls);
 
 	if (stmt->opclassOid !=0)
 		HeapTupleSetOid(tup, stmt->opclassOid);
+		
+	opclassoid = simple_heap_insert(rel, tup);
 	
-	opclassoid = caql_insert(pcqCtx, tup);
-	/* and Update indexes (implicit) */
-
 	stmt->opclassOid = opclassoid;
+
+	CatalogUpdateIndexes(rel, tup);
 
 	heap_freetuple(tup);
 
@@ -443,7 +425,6 @@ DefineOpClass(CreateOpClassStmt *stmt)
 	/* dependency on owner */
 	recordDependencyOnOwner(OperatorClassRelationId, opclassoid, GetUserId());
 
-	caql_endscan(pcqCtx);
 	heap_close(rel, RowExclusiveLock);
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
@@ -465,21 +446,15 @@ assignOperSubtype(Oid amoid, Oid typeoid, Oid operOid)
 	Oid			subtype;
 	Operator	optup;
 	Form_pg_operator opform;
-	cqContext  *pcqCtx;
 
 	/* Subtypes are currently only supported by btree and bitmap, others use 0 */
 	if (amoid != BTREE_AM_OID && amoid != BITMAP_AM_OID)
 		return InvalidOid;
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_operator "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(operOid)));
-
-	optup = caql_getnext(pcqCtx);
-
-	if (!HeapTupleIsValid(optup))
+	optup = SearchSysCache(OPEROID,
+						   ObjectIdGetDatum(operOid),
+						   0, 0, 0);
+	if (optup == NULL)
 		elog(ERROR, "cache lookup failed for operator %u", operOid);
 	opform = (Form_pg_operator) GETSTRUCT(optup);
 
@@ -508,8 +483,7 @@ assignOperSubtype(Oid amoid, Oid typeoid, Oid operOid)
 		subtype = InvalidOid;
 	else
 		subtype = opform->oprright;
-
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(optup);
 	return subtype;
 }
 
@@ -526,21 +500,15 @@ assignProcSubtype(Oid amoid, Oid typeoid, Oid procOid)
 	Oid			subtype;
 	HeapTuple	proctup;
 	Form_pg_proc procform;
-	cqContext  *pcqCtx;
 
 	/* Subtypes are currently only supported by btree and bitmap, others use 0 */
 	if (amoid != BTREE_AM_OID && amoid != BITMAP_AM_OID)
 		return InvalidOid;
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_proc "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(procOid)));
-
-	proctup = caql_getnext(pcqCtx);
-
-	if (!HeapTupleIsValid(proctup))
+	proctup = SearchSysCache(PROCOID,
+							 ObjectIdGetDatum(procOid),
+							 0, 0, 0);
+	if (proctup == NULL)
 		elog(ERROR, "cache lookup failed for function %u", procOid);
 	procform = (Form_pg_proc) GETSTRUCT(proctup);
 
@@ -569,8 +537,7 @@ assignProcSubtype(Oid amoid, Oid typeoid, Oid procOid)
 		subtype = InvalidOid;
 	else
 		subtype = procform->proargtypes.values[1];
-
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(proctup);
 	return subtype;
 }
 
@@ -611,17 +578,14 @@ addClassMember(List **list, OpClassMember *member, bool isProc)
 static void
 storeOperators(Oid opclassoid, List *operators)
 {
+	Relation	rel;
 	Datum		values[Natts_pg_amop];
 	bool		nulls[Natts_pg_amop];
 	HeapTuple	tup;
 	ListCell   *l;
 	int			i;
-	cqContext  *pcqCtx;
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("INSERT INTO pg_amop", 
-				NULL));
+	rel = heap_open(AccessMethodOperatorRelationId, RowExclusiveLock);
 
 	foreach(l, operators)
 	{
@@ -640,14 +604,16 @@ storeOperators(Oid opclassoid, List *operators)
 		values[i++] = BoolGetDatum(op->recheck);		/* amopreqcheck */
 		values[i++] = ObjectIdGetDatum(op->object);		/* amopopr */
 
-		tup = caql_form_tuple(pcqCtx, values, nulls);
+		tup = heap_form_tuple(rel->rd_att, values, nulls);
 
-		caql_insert(pcqCtx, tup); /* implicit update of index as well */
+		simple_heap_insert(rel, tup);
+
+		CatalogUpdateIndexes(rel, tup);
 
 		heap_freetuple(tup);
 	}
 
-	caql_endscan(pcqCtx);
+	heap_close(rel, RowExclusiveLock);
 }
 
 /*
@@ -656,17 +622,14 @@ storeOperators(Oid opclassoid, List *operators)
 static void
 storeProcedures(Oid opclassoid, List *procedures)
 {
+	Relation	rel;
 	Datum		values[Natts_pg_amproc];
 	bool		nulls[Natts_pg_amproc];
 	HeapTuple	tup;
 	ListCell   *l;
 	int			i;
-	cqContext  *pcqCtx;
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("INSERT INTO pg_amproc", 
-				NULL));
+	rel = heap_open(AccessMethodProcedureRelationId, RowExclusiveLock);
 
 	foreach(l, procedures)
 	{
@@ -684,14 +647,16 @@ storeProcedures(Oid opclassoid, List *procedures)
 		values[i++] = Int16GetDatum(proc->number);		/* amprocnum */
 		values[i++] = ObjectIdGetDatum(proc->object);	/* amproc */
 
-		tup = caql_form_tuple(pcqCtx, values, nulls);
+		tup = heap_form_tuple(rel->rd_att, values, nulls);
 
-		caql_insert(pcqCtx, tup); /* implicit update of index as well */
+		simple_heap_insert(rel, tup);
+
+		CatalogUpdateIndexes(rel, tup);
 
 		heap_freetuple(tup);
 	}
 
-	caql_endscan(pcqCtx);
+	heap_close(rel, RowExclusiveLock);
 }
 
 
@@ -706,19 +671,15 @@ RemoveOpClass(RemoveOpClassStmt *stmt)
 				opcID;
 	char	   *schemaname;
 	char	   *opcname;
-	ObjectAddress object;
 	HeapTuple	tuple;
-	cqContext  *pcqCtx;
+	ObjectAddress object;
 
 	/*
 	 * Get the access method's OID.
 	 */
-	amID = caql_getoid(
-			NULL,
-			cql("SELECT oid FROM pg_am "
-				" WHERE amname = :1 ",
-				CStringGetDatum(stmt->amname)));
-
+	amID = GetSysCacheOid(AMNAME,
+						  CStringGetDatum(stmt->amname),
+						  0, 0, 0);
 	if (!OidIsValid(amID))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -738,24 +699,17 @@ RemoveOpClass(RemoveOpClassStmt *stmt)
 		Oid			namespaceId;
 
 		namespaceId = LookupExplicitNamespace(schemaname);
-
-		pcqCtx = caql_beginscan(
-				NULL,
-				cql("SELECT * FROM pg_opclass "
-					" WHERE opcamid = :1 "
-					" AND opcname = :2 "
-					" AND opcnamespace = :3 "
-					" FOR UPDATE ",
-					ObjectIdGetDatum(amID),
-					CStringGetDatum(opcname),
-					ObjectIdGetDatum(namespaceId)));
+		tuple = SearchSysCache(CLAAMNAMENSP,
+							   ObjectIdGetDatum(amID),
+							   PointerGetDatum(opcname),
+							   ObjectIdGetDatum(namespaceId),
+							   0);
 	}
 	else
 	{
-		Oid	opcID1;
 		/* Unqualified opclass name, so search the search path */
-		opcID1 = OpclassnameGetOpcid(amID, opcname);
-		if (!OidIsValid(opcID1))
+		opcID = OpclassnameGetOpcid(amID, opcname);
+		if (!OidIsValid(opcID))
 		{
 			if (!stmt->missing_ok)
 				ereport(ERROR,
@@ -770,16 +724,10 @@ RemoveOpClass(RemoveOpClassStmt *stmt)
 			return;
 		}
 
-
-		pcqCtx = caql_beginscan(
-				NULL,
-				cql("SELECT * FROM pg_opclass "
-					" WHERE oid = :1 "
-					" FOR UPDATE ",
-					ObjectIdGetDatum(opcID1)));
+		tuple = SearchSysCache(CLAOID,
+							   ObjectIdGetDatum(opcID),
+							   0, 0, 0);
 	}
-
-	tuple = caql_getnext(pcqCtx);
 
 	if (!HeapTupleIsValid(tuple))
 	{
@@ -805,7 +753,7 @@ RemoveOpClass(RemoveOpClassStmt *stmt)
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_OPCLASS,
 					   NameListToString(stmt->opclassname));
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(tuple);
 
 	/*
 	 * Do the deletion
@@ -828,35 +776,65 @@ RemoveOpClass(RemoveOpClassStmt *stmt)
 void
 RemoveOpClassById(Oid opclassOid)
 {
-	int			numDel;
+	Relation	rel;
+	HeapTuple	tup;
+	ScanKeyData skey[1];
+	SysScanDesc scan;
 
 	/*
 	 * First remove the pg_opclass entry itself.
 	 */
+	rel = heap_open(OperatorClassRelationId, RowExclusiveLock);
 
-	numDel = caql_getcount(
-			NULL,
-			cql("DELETE FROM pg_opclass "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(opclassOid)));
+	tup = SearchSysCache(CLAOID,
+						 ObjectIdGetDatum(opclassOid),
+						 0, 0, 0);
+	if (!HeapTupleIsValid(tup)) /* should not happen */
+		elog(ERROR, "cache lookup failed for opclass %u", opclassOid);
+
+	simple_heap_delete(rel, &tup->t_self);
+
+	ReleaseSysCache(tup);
+
+	heap_close(rel, RowExclusiveLock);
 
 	/*
 	 * Remove associated entries in pg_amop.
 	 */
-	numDel = caql_getcount(
-			NULL,
-			cql("DELETE FROM pg_amop "
-				" WHERE amopclaid = :1 ",
-				ObjectIdGetDatum(opclassOid)));
+	ScanKeyInit(&skey[0],
+				Anum_pg_amop_amopclaid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(opclassOid));
+
+	rel = heap_open(AccessMethodOperatorRelationId, RowExclusiveLock);
+
+	scan = systable_beginscan(rel, AccessMethodStrategyIndexId, true,
+							  SnapshotNow, 1, skey);
+
+	while (HeapTupleIsValid(tup = systable_getnext(scan)))
+		simple_heap_delete(rel, &tup->t_self);
+
+	systable_endscan(scan);
+	heap_close(rel, RowExclusiveLock);
 
 	/*
 	 * Remove associated entries in pg_amproc.
 	 */
-	numDel = caql_getcount(
-			NULL,
-			cql("DELETE FROM pg_amproc "
-				" WHERE amopclaid = :1 ",
-				ObjectIdGetDatum(opclassOid)));
+	ScanKeyInit(&skey[0],
+				Anum_pg_amproc_amopclaid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(opclassOid));
+
+	rel = heap_open(AccessMethodProcedureRelationId, RowExclusiveLock);
+
+	scan = systable_beginscan(rel, AccessMethodProcedureIndexId, true,
+							  SnapshotNow, 1, skey);
+
+	while (HeapTupleIsValid(tup = systable_getnext(scan)))
+		simple_heap_delete(rel, &tup->t_self);
+
+	systable_endscan(scan);
+	heap_close(rel, RowExclusiveLock);
 }
 
 
@@ -874,16 +852,10 @@ RenameOpClass(List *name, const char *access_method, const char *newname)
 	HeapTuple	tup;
 	Relation	rel;
 	AclResult	aclresult;
-	cqContext	cqc2;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
 
-	amOid = caql_getoid(
-			NULL,
-			cql("SELECT oid FROM pg_am "
-				" WHERE amname = :1 ",
-				CStringGetDatum((char *) access_method)));
-
+	amOid = GetSysCacheOid(AMNAME,
+						   CStringGetDatum((char *) access_method),
+						   0, 0, 0);
 	if (!OidIsValid(amOid))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -897,23 +869,15 @@ RenameOpClass(List *name, const char *access_method, const char *newname)
 	 */
 	DeconstructQualifiedName(name, &schemaname, &opcname);
 
-	pcqCtx = caql_addrel(cqclr(&cqc), rel);
-
 	if (schemaname)
 	{
 		namespaceOid = LookupExplicitNamespace(schemaname);
 
-		tup = caql_getfirst(
-				pcqCtx,
-				cql("SELECT * FROM pg_opclass "
-					" WHERE opcamid = :1 "
-					" AND opcname = :2 "
-					" AND opcnamespace = :3 "
-					" FOR UPDATE ",
-					ObjectIdGetDatum(amOid),
-					CStringGetDatum(opcname),
-					ObjectIdGetDatum(namespaceOid)));
-
+		tup = SearchSysCacheCopy(CLAAMNAMENSP,
+								 ObjectIdGetDatum(amOid),
+								 PointerGetDatum(opcname),
+								 ObjectIdGetDatum(namespaceOid),
+								 0);
 		if (!HeapTupleIsValid(tup))
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -931,13 +895,9 @@ RenameOpClass(List *name, const char *access_method, const char *newname)
 					 errmsg("operator class \"%s\" does not exist for access method \"%s\"",
 							opcname, access_method)));
 
-		tup = caql_getfirst(
-				pcqCtx,
-				cql("SELECT * FROM pg_opclass "
-					" WHERE oid = :1 "
-					" FOR UPDATE ",
-					ObjectIdGetDatum(opcOid)));
-
+		tup = SearchSysCacheCopy(CLAOID,
+								 ObjectIdGetDatum(opcOid),
+								 0, 0, 0);
 		if (!HeapTupleIsValid(tup))		/* should not happen */
 			elog(ERROR, "cache lookup failed for opclass %u", opcOid);
 
@@ -945,15 +905,11 @@ RenameOpClass(List *name, const char *access_method, const char *newname)
 	}
 
 	/* make sure the new name doesn't exist */
-	if (caql_getcount(
-				caql_addrel(cqclr(&cqc2), rel),
-				cql("SELECT COUNT(*) FROM pg_opclass "
-					" WHERE opcamid = :1 "
-					" AND opcname = :2 "
-					" AND opcnamespace = :3 ",
-					ObjectIdGetDatum(amOid),
-					CStringGetDatum((char *) newname),
-					ObjectIdGetDatum(namespaceOid))))
+	if (SearchSysCacheExists(CLAAMNAMENSP,
+							 ObjectIdGetDatum(amOid),
+							 CStringGetDatum((char *) newname),
+							 ObjectIdGetDatum(namespaceOid),
+							 0))
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),
@@ -975,7 +931,8 @@ RenameOpClass(List *name, const char *access_method, const char *newname)
 
 	/* rename */
 	namestrcpy(&(((Form_pg_opclass) GETSTRUCT(tup))->opcname), newname);
-	caql_update_current(pcqCtx, tup); /* implicit update of index as well */
+	simple_heap_update(rel, &tup->t_self, tup);
+	CatalogUpdateIndexes(rel, tup);
 
 	heap_close(rel, NoLock);
 	heap_freetuple(tup);
@@ -990,21 +947,16 @@ AlterOpClassOwner_oid(Oid opcOid, Oid newOwnerId)
 {
 	Relation	rel;
 	HeapTuple	tup;
-	cqContext	cqc;
 
 	rel = heap_open(OperatorClassRelationId, RowExclusiveLock);
 
-	tup = caql_getfirst(
-			caql_addrel(cqclr(&cqc), rel),
-				cql("SELECT * FROM pg_opclass "
-					" WHERE oid = :1 "
-					" FOR UPDATE ",
-					ObjectIdGetDatum(opcOid)));
-
+	tup = SearchSysCacheCopy(CLAOID,
+							 ObjectIdGetDatum(opcOid),
+							 0, 0, 0);
 	if (!HeapTupleIsValid(tup)) /* shouldn't happen */
 		elog(ERROR, "cache lookup failed for opclass %u", opcOid);
 
-	AlterOpClassOwner_internal(&cqc, rel, tup, newOwnerId);
+	AlterOpClassOwner_internal(rel, tup, newOwnerId);
 
 	heap_freetuple(tup);
 	heap_close(rel, NoLock);
@@ -1022,15 +974,10 @@ AlterOpClassOwner(List *name, const char *access_method, Oid newOwnerId)
 	HeapTuple	tup;
 	char	   *opcname;
 	char	   *schemaname;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
 
-	amOid = caql_getoid(
-			NULL,
-			cql("SELECT oid FROM pg_am "
-				" WHERE amname = :1 ",
-				CStringGetDatum((char *) access_method)));
-
+	amOid = GetSysCacheOid(AMNAME,
+						   CStringGetDatum((char *) access_method),
+						   0, 0, 0);
 	if (!OidIsValid(amOid))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -1044,25 +991,17 @@ AlterOpClassOwner(List *name, const char *access_method, Oid newOwnerId)
 	 */
 	DeconstructQualifiedName(name, &schemaname, &opcname);
 
-	pcqCtx = caql_addrel(cqclr(&cqc), rel);
-
 	if (schemaname)
 	{
 		Oid			namespaceOid;
 
 		namespaceOid = LookupExplicitNamespace(schemaname);
 
-		tup = caql_getfirst(
-				pcqCtx,
-				cql("SELECT * FROM pg_opclass "
-					" WHERE opcamid = :1 "
-					" AND opcname = :2 "
-					" AND opcnamespace = :3 "
-					" FOR UPDATE ",
-					ObjectIdGetDatum(amOid),
-					CStringGetDatum(opcname),
-					ObjectIdGetDatum(namespaceOid)));
-
+		tup = SearchSysCacheCopy(CLAAMNAMENSP,
+								 ObjectIdGetDatum(amOid),
+								 PointerGetDatum(opcname),
+								 ObjectIdGetDatum(namespaceOid),
+								 0);
 		if (!HeapTupleIsValid(tup))
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -1080,31 +1019,25 @@ AlterOpClassOwner(List *name, const char *access_method, Oid newOwnerId)
 					 errmsg("operator class \"%s\" does not exist for access method \"%s\"",
 							opcname, access_method)));
 
-		tup = caql_getfirst(
-				pcqCtx,
-				cql("SELECT * FROM pg_opclass "
-					" WHERE oid = :1 "
-					" FOR UPDATE ",
-					ObjectIdGetDatum(opcOid)));
-
+		tup = SearchSysCacheCopy(CLAOID,
+								 ObjectIdGetDatum(opcOid),
+								 0, 0, 0);
 		if (!HeapTupleIsValid(tup))		/* should not happen */
 			elog(ERROR, "cache lookup failed for opclass %u", opcOid);
 	}
 
-	AlterOpClassOwner_internal(pcqCtx, rel, tup, newOwnerId);
+	AlterOpClassOwner_internal(rel, tup, newOwnerId);
 
 	heap_freetuple(tup);
 	heap_close(rel, NoLock);
 }
 
 /*
- * The zeroeth parameter is the caql context, with a single valid tuple.
  * The first parameter is pg_opclass, opened and suitably locked.  The second
  * parameter is the tuple from pg_opclass we want to modify.
  */
 static void
-AlterOpClassOwner_internal(cqContext *pcqCtx,
-						   Relation rel, HeapTuple tup, Oid newOwnerId)
+AlterOpClassOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 {
 	Oid			namespaceOid;
 	AclResult	aclresult;
@@ -1120,36 +1053,38 @@ AlterOpClassOwner_internal(cqContext *pcqCtx,
 	 * If the new owner is the same as the existing owner, consider the
 	 * command to have succeeded.  This is for dump restoration purposes.
 	 */
-	if (opcForm->opcowner == newOwnerId)
-		return;
-
-	/* Superusers can always do it */
-	if (!superuser())
+	if (opcForm->opcowner != newOwnerId)
 	{
-		/* Otherwise, must be owner of the existing object */
-		if (!pg_opclass_ownercheck(HeapTupleGetOid(tup), GetUserId()))
-			aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_OPCLASS,
-						   NameStr(opcForm->opcname));
+		/* Superusers can always do it */
+		if (!superuser())
+		{
+			/* Otherwise, must be owner of the existing object */
+			if (!pg_opclass_ownercheck(HeapTupleGetOid(tup), GetUserId()))
+				aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_OPCLASS,
+							   NameStr(opcForm->opcname));
 
-		/* Must be able to become new owner */
-		check_is_member_of_role(GetUserId(), newOwnerId);
+			/* Must be able to become new owner */
+			check_is_member_of_role(GetUserId(), newOwnerId);
 
-		/* New owner must have CREATE privilege on namespace */
-		aclresult = pg_namespace_aclcheck(namespaceOid, newOwnerId,
-										  ACL_CREATE);
-		if (aclresult != ACLCHECK_OK)
-			aclcheck_error(aclresult, ACL_KIND_NAMESPACE,
-						   get_namespace_name(namespaceOid));
+			/* New owner must have CREATE privilege on namespace */
+			aclresult = pg_namespace_aclcheck(namespaceOid, newOwnerId,
+											  ACL_CREATE);
+			if (aclresult != ACLCHECK_OK)
+				aclcheck_error(aclresult, ACL_KIND_NAMESPACE,
+							   get_namespace_name(namespaceOid));
+		}
+
+		/*
+		 * Modify the owner --- okay to scribble on tup because it's a copy
+		 */
+		opcForm->opcowner = newOwnerId;
+
+		simple_heap_update(rel, &tup->t_self, tup);
+
+		CatalogUpdateIndexes(rel, tup);
+
+		/* Update owner dependency reference */
+		changeDependencyOnOwner(OperatorClassRelationId, HeapTupleGetOid(tup),
+								newOwnerId);
 	}
-
-	/*
-	 * Modify the owner --- okay to scribble on tup because it's a copy
-	 */
-	opcForm->opcowner = newOwnerId;
-
-	caql_update_current(pcqCtx, tup); /* implicit update of index as well */
-
-	/* Update owner dependency reference */
-	changeDependencyOnOwner(OperatorClassRelationId, HeapTupleGetOid(tup),
-							newOwnerId);
 }

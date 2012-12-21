@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:VBox xmlns:mx="http://www.adobe.com/2006/mxml" backgroundColor="#e5f1d3" verticalGap="0"
+	borderThickness="1" cornerRadius="3" paddingBottom="5" paddingLeft="5" 
+	paddingRight="5" paddingTop="5"
+	xmlns:healthTab="view.healthTab.*">
+	<mx:Script>
+		<![CDATA[
+		    import model.GPPerfMonModelLocator;
+		  	import model.Resources;
+		  	import model.Health;
+
+			[Bindable]
+			public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();	
+
+			[Bindable] [Embed (source="../../assets/img/white_bg_led.png")]
+	 		private var bgCls:Class;
+	 		
+	 		public function set visibilityState(val:Boolean):void {
+	 			this.visible = val ;
+	 			this.height = (val) ? 107 : 0;
+	 		}
+	 		
+		]]>
+	</mx:Script>
+	
+	<mx:Label text="Health" fontWeight="bold"/>
+	<mx:HBox width="100%" height="100%" backgroundColor="#FFFFFF">
+		<mx:Canvas  width="100%" height="100%">
+			<mx:HBox id="innerBox" width="185" height="45" x="190" y="15" backgroundColor="#edf5e1" horizontalAlign="center" verticalAlign="middle">
+				<mx:Label id="lblText" fontWeight="bold" fontSize="13" text="{mdl.health.summary.ConsolidatedStatusLabel}"/>
+			</mx:HBox>
+			<mx:Image id="wImg" width="23" height="22" x="{innerBox.x - 12}" y="{innerBox.y + 11}" source="{bgCls}"/>
+			<healthTab:StatusLED id="imgStatus" x="{wImg.x + 2}" y="{wImg.y + 2}" status="{mdl.health.summary.ConsolidatedStatus}"/>
+			<mx:Label id="updateTimeLabel" text="Last Update" x="460" y="20"/>
+			<mx:Label id="updateTimeStamp" text="{mdl.health.summary.LastUpdateTimeString}" x="410" y="35"/>
+		</mx:Canvas>
+		<mx:filters>
+			<mx:DropShadowFilter angle="90" color="#a6a6a6" strength="1"/>
+		</mx:filters>
+	</mx:HBox>
+	<mx:filters>
+			<mx:DropShadowFilter angle="60" color="#a6a6a6" strength="1"/>
+		</mx:filters>
+</mx:VBox>

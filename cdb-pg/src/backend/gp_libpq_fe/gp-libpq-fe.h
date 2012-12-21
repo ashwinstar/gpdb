@@ -290,9 +290,6 @@ extern void PQfreeCancel(PGcancel *cancel);
 /* issue a cancel request */
 extern int	PQcancel(PGcancel *cancel, char *errbuf, int errbufsize);
 
-/* issue an errorless cancel request */
-extern int	PQcancelErrorless(PGcancel *cancel, char *errbuf, int errbufsize);
-
 /* backwards compatible version of PQcancel; not thread-safe */
 extern int	PQrequestCancel(PGconn *conn);
 
@@ -637,6 +634,12 @@ extern char *PQencryptPassword(const char *passwd, const char *user);
 extern int	pg_char_to_encoding(const char *name);
 extern const char *pg_encoding_to_char(int encoding);
 extern int	pg_valid_server_encoding_id(int encoding);
+/*
+ * special routine for sending gang management commands to dispatch agent
+ */
+extern int PQsendCreateGang(PGconn * conn, int size, void * binaryGangInfo);
+
+extern int PQsendControlGang(PGconn * conn, int gang_id, const char * query);
 
 #ifdef __cplusplus
 }

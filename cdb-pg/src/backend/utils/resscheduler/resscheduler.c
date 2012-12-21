@@ -14,20 +14,14 @@
 #include "postgres.h"
 
 #include "access/genam.h"
-#include "access/catquery.h"
 #include "access/heapam.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_resqueue.h"
 #include "catalog/pg_tablespace.h"
-#include "cdb/cdbllize.h"
-#include "cdb/cdbvars.h"
-#include "cdb/memquota.h"
 #include "executor/executor.h"
-#include "miscadmin.h"
-#include "nodes/print.h"
 #include "optimizer/planner.h"
-#include "pgstat.h"
+#include "miscadmin.h"
 #include "rewrite/rewriteHandler.h"
 #include "storage/ipc.h"
 #include "storage/proc.h"
@@ -40,6 +34,10 @@
 #include "utils/resscheduler.h"
 #include "utils/syscache.h"
 
+#include "cdb/cdbllize.h"
+#include "cdb/cdbvars.h"
+#include "nodes/print.h"
+#include "cdb/memquota.h"
 /*
  * GUC variables.
  */
@@ -178,8 +176,6 @@ InitResQueues(void)
 	HeapTuple			tuple;
 	int					numQueues = 0;
 	bool				queuesok = true;
-	cqContext		   *pcqCtx;
-	cqContext			cqc;
 	
 	Assert(ResScheduler);
 
@@ -214,14 +210,10 @@ InitResQueues(void)
 		return;
 	}
 
-	/* XXX XXX: should this be rowexclusive ? */
-	pcqCtx = caql_beginscan(
-			caql_indexOK(
-					caql_addrel(cqclr(&cqc), relResqueue),
-					false),
-			cql("SELECT * FROM pg_resqueue ", NULL));
+	HeapScanDesc scan = heap_beginscan(relResqueue, SnapshotNow, 0 /* key length */, NULL);
 
-	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
+
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
 		Form_pg_resqueue	queueform;
 		Oid					queueid;
@@ -251,7 +243,7 @@ InitResQueues(void)
 		}
 	}
 
-	caql_endscan(pcqCtx);
+	heap_endscan(scan);
 	LWLockRelease(ResQueueLock);
 	UnlockRelationOid(ResQueueCapabilityRelationId, RowExclusiveLock);
 	heap_close(relResqueue, AccessShareLock);
@@ -678,32 +670,19 @@ ResLockPortal(Portal portal, QueryDesc *qDesc)
 		{
 #ifdef RESLOCK_DEBUG
 			elog(DEBUG1, "acquire resource lock for queue %u (portal %u)", 
-					queueid, portal->portalId);
+				 queueid, portal->portalId);
 #endif
 			SET_LOCKTAG_RESOURCE_QUEUE(tag, queueid);
 
-			PG_TRY();
-			{
-				lockResult = ResLockAcquire(&tag, &incData);
-			}
-			PG_CATCH();
-			{
-				/* 
-				 * We might have been waiting for a resource queue lock when we get 
-				 * here. Calling ResLockRelease without calling ResLockWaitCancel will 
-				 * cause the locallock to be cleaned up, but will leave the global
-				 * variable lockAwaited still pointing to the locallock hash 
-				 * entry.
-				 */
-				ResLockWaitCancel();
-		
-				/* Change status to no longer waiting for lock */
-				pgstat_report_waiting(false);
+            PG_TRY();
+            {
+    			lockResult = ResLockAcquire(&tag, &incData);
+            }
+            PG_CATCH();
+            {
+                ResLockRelease(&tag, portal->portalId);
 
-				/* If we had acquired the resource queue lock, release it and clean up */	
-				ResLockRelease(&tag, portal->portalId);
-
-				/*
+				/**
 				 * Perfmon related stuff: clean up if we got cancelled
 				 * while waiting.
 				 */
@@ -717,9 +696,9 @@ ResLockPortal(Portal portal, QueryDesc *qDesc)
 				portal->queueId = InvalidOid;
 				portal->portalId = INVALID_PORTALID;
 
-				PG_RE_THROW();
-			}
-			PG_END_TRY();
+                PG_RE_THROW();
+            }
+            PG_END_TRY();
 
 			/* 
 			 * See if query was too small to bother locking at all, i.e had
@@ -729,7 +708,7 @@ ResLockPortal(Portal portal, QueryDesc *qDesc)
 			{
 #ifdef RESLOCK_DEBUG
 				elog(DEBUG1, "cancel resource lock for queue %u (portal %u)", 
-						queueid, portal->portalId);
+					 queueid, portal->portalId);
 #endif
 				/* 
 				 * Reset portalId and queueid for this portal so the queue
@@ -798,21 +777,37 @@ ResUnLockPortal(Portal portal)
 Oid	
 GetResQueueForRole(Oid roleid)
 {
+	Relation		authrel;
+	HeapTuple		tup;
+	Datum			datum;
 	bool			isnull;
-	int				fetchCount;
+	TupleDesc		tupdesc;
 	Oid				queueid = InvalidOid;
 
-	queueid = caql_getoid_plus(
-			NULL,
-			&fetchCount,
-			&isnull,
-			cql("SELECT rolresqueue FROM pg_authid "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(roleid)));
+	authrel = heap_open(AuthIdRelationId, AccessShareLock);
+
+    tupdesc = RelationGetDescr(authrel);
+
+	tup = SearchSysCache(AUTHOID,
+ 						 ObjectIdGetDatum(roleid),
+						 0, 0, 0);
+	if (HeapTupleIsValid(tup))
+	{
+		datum = heap_getattr(tup, Anum_pg_authid_rolresqueue, tupdesc, &isnull);
+		if (!isnull)
+		{
+			queueid = DatumGetObjectId(datum);
+		}
+		ReleaseSysCache(tup);
+	} 
+
+	heap_close(authrel, AccessShareLock);
 
 	/* MPP-6926: use default queue if none specified */
-	if (!OidIsValid(queueid) || !fetchCount || isnull)
+	if (InvalidOid == queueid)
+	{
 		queueid = DEFAULTRESQUEUE_OID;
+	}
 
 	return queueid;
 	
@@ -855,12 +850,32 @@ Oid
 GetResQueueIdForName(char	*name)
 {
 	Oid					queueid = InvalidOid;
+	Relation			relQueue;
+	HeapTuple			tuple;
+	ScanKeyData			key;
+	SysScanDesc			rsqscan;
 
-	queueid = caql_getoid(
-			NULL,
-			cql("SELECT oid FROM pg_resqueue "
-				" WHERE rsqname = :1 ",
-				CStringGetDatum(name)));
+	/* Open the queue catalog and index scan on the name index */
+	relQueue = heap_open(ResQueueRelationId, AccessShareLock);
+
+	ScanKeyInit(&key,
+				Anum_pg_resqueue_rsqname,
+				BTEqualStrategyNumber,
+				F_NAMEEQ,
+				CStringGetDatum(name));
+
+	rsqscan = systable_beginscan(relQueue, ResQueueRsqnameIndexId, true, 
+								SnapshotNow, 1, &key);
+
+	tuple = systable_getnext(rsqscan);
+	if (HeapTupleIsValid(tuple))
+	{
+		queueid = HeapTupleGetOid(tuple);
+	}
+
+	systable_endscan(rsqscan);
+
+	heap_close(relQueue, AccessShareLock);
 
 	return queueid;
 }

@@ -1185,7 +1185,7 @@ spill_hash_table(AggState *aggstate)
 	/* Book keeping. */
 	hashtable->is_spilling = true;
 
-	Assert(hashtable->nbuckets >= spill_set->num_spill_files);
+	Assert(hashtable->nbuckets > spill_set->num_spill_files);
 
 	/*
 	 * Write each spill file. Write the last spill file first, since it will
@@ -1777,36 +1777,9 @@ agg_hash_next_pass(AggState *aggstate)
 		SpillFile *parent_spillfile;
 		int freespace = 0;
 		
-		while (file_no < spill_set->num_spill_files)
-		{
-			if (spill_set->spill_files[file_no].file_info == NULL)
-			{
-				/* Gap in spill_files array, skip it */
-				file_no++;
-				continue;
-			}
-
-			Assert(spill_set->spill_files[file_no].file_info != NULL);
-			if (spill_set->spill_files[file_no].file_info->ntuples == 0)
-			{
-				/* Batch file with no tuples in it, close it and skip it */
-				Assert(spill_set->spill_files[file_no].file_info->total_bytes == 0);
-				elog(HHA_MSG_LVL, "Skipping and closing empty batch file HashAgg_Slice%d_Batch_l%d_f%d",
-										 currentSliceId,
-										 spill_set->level, file_no);
-				/*
-				 * Close this spill file since it is empty, and its buffer space
-				 * can be freed to use.
-				 */
-				hashtable->mem_for_metadata -= closeSpillFile(spill_set, file_no);
-
-				file_no++;
-				continue;
-			}
-
-			/* Valid spill file, we're done */
-			break;
-		}
+		while (file_no < spill_set->num_spill_files &&
+			   spill_set->spill_files[file_no].file_info == NULL)
+			file_no++;
 
 		if (file_no < spill_set->num_spill_files)
 			break;

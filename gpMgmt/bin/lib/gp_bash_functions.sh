@@ -2,6 +2,7 @@
 #	Filename:-		gp_bash_functions.sh
 #	Version:-		$Revision$
 #	Updated:-		$Date$
+#	Updated:-		$Date$
 #	Status:-		Released	
 #	Author:-		G L Coombe (Greenplum)
 #	Contact:-		gcoombe@greenplum.com
@@ -154,7 +155,6 @@ VERBOSE=1
 USER_NAME=`id|$AWK '{print $1}'|$CUT -d"(" -f2|$TR -d ')'`
 PROG_NAME=`echo $0 | $TR -d '-'`
 PROG_NAME=`$BASENAME $PROG_NAME`
-PROG_PIDNAME=`echo $$ $PROG_NAME | awk '{printf "%06d %s\n", $1, $2}'`
 CALL_HOST=`$HOSTNAME|$CUT -d. -f1`
 
 #******************************************************************************
@@ -176,6 +176,7 @@ GPACTIVATEMASTER=$SCRIPTDIR/gpactivatemaster
 GPACTIVATESTANDBY=$SCRIPTDIR/gpactivatestandby
 GPADDMIRRORS=$SCRIPTDIR/gpaddmirrors
 GPINITSYSTEM=$SCRIPTDIR/gpinitsystem
+GPCONFIG=$SCRIPTDIR/gpconfig
 GPCRONDUMP=$SCRIPTDIR/gpcrondump
 GPDELETESYSTEM=$SCRIPTDIR/gpdeletesystem
 GPINITSTANDBY=$SCRIPTDIR/gpinitstandby
@@ -334,12 +335,12 @@ LOG_MSG () {
 		fi
 		if [ $VERBOSE ]; then
 				if [ $DEBUG_LEVEL -eq 1 ] || [ $DISPLAY_TXT -eq 1 ];then
-			        $ECHO "${CUR_DATE}:${TIME}:${PROG_PIDNAME}:${CALL_HOST}:${USER_NAME}-$1" | $TEE -a $LOG_FILE	
+			        $ECHO "${CUR_DATE}:${TIME}:${PROG_NAME}:${CALL_HOST}:${USER_NAME}-$1" | $TEE -a $LOG_FILE	
 				else
-				$ECHO "${CUR_DATE}:${TIME}:${PROG_PIDNAME}:${CALL_HOST}:${USER_NAME}-$1" >> $LOG_FILE
+				$ECHO "${CUR_DATE}:${TIME}:${PROG_NAME}:${CALL_HOST}:${USER_NAME}-$1" >> $LOG_FILE
 				fi
 		else
-				$ECHO "${CUR_DATE}:${TIME}:${PROG_PIDNAME}:${CALL_HOST}:${USER_NAME}-$1" >> $LOG_FILE
+				$ECHO "${CUR_DATE}:${TIME}:${PROG_NAME}:${CALL_HOST}:${USER_NAME}-$1" >> $LOG_FILE
 		fi
 }
 
@@ -1155,19 +1156,6 @@ CHK_ON_PASSIVE_STANDBY () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
-GET_CIDRADDR () {
-    # MPP-15889
-    # assuming argument is an ip address, return the address
-    # with a /32 or /128 cidr suffix based on whether or not the
-    # address contains a :
-
-    if [ `echo $1 | grep -c :` -gt 0 ]; then
-	echo $1/128
-    else
-	echo $1/32
-    fi
-}
-
 BUILD_MASTER_PG_HBA_FILE () {
         LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	if [ $# -eq 0 ];then ERROR_EXIT "[FATAL]:-Passed zero parameters, expected at least 1" 2;fi
@@ -1182,23 +1170,17 @@ BUILD_MASTER_PG_HBA_FILE () {
         $ECHO "host     all         $USER_NAME         127.0.0.1/28    trust" >> ${GP_DIR}/$PG_HBA
         for ADDR in "${MASTER_IP_ADDRESS_ALL[@]}"
         do
-        	# MPP-15889
-        	CIDRADDR=$(GET_CIDRADDR $ADDR)
-        	$ECHO "host     all         $USER_NAME         $CIDRADDR       trust" >> ${GP_DIR}/$PG_HBA
+        	$ECHO "host     all         $USER_NAME         $ADDR/32       trust" >> ${GP_DIR}/$PG_HBA
         done
         for ADDR in "${STANDBY_IP_ADDRESS_ALL[@]}"
         do
-        	# MPP-15889
-        	CIDRADDR=$(GET_CIDRADDR $ADDR)
-        	$ECHO "host     all         $USER_NAME         $CIDRADDR       trust" >> ${GP_DIR}/$PG_HBA
+        	$ECHO "host     all         $USER_NAME         $ADDR/32       trust" >> ${GP_DIR}/$PG_HBA
         done
 
         # Add all local IPV6 addresses
         for ADDR in "${MASTER_IPV6_LOCAL_ADDRESS_ALL[@]}"
         do
-        	# MPP-15889
-        	CIDRADDR=$(GET_CIDRADDR $ADDR)
-        	$ECHO "host     all         $USER_NAME         $CIDRADDR       trust" >> ${GP_DIR}/$PG_HBA
+        	$ECHO "host     all         $USER_NAME         $ADDR/128       trust" >> ${GP_DIR}/$PG_HBA
         done
         LOG_MSG "[INFO]:-Complete Master $PG_HBA configuration"
         LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -1228,37 +1210,6 @@ min_query_time = 20
 # For iterators with shorter run times, no data is collected. 
 # Minimum value is 10 seconds.
 min_detailed_query_time = 60
-
-# This should be a percentage between 0 and 100 and should be
-# less than the error_disk_space_percentage.  If a filesystem’s 
-# disk space used percentage equals or exceeds this value a 
-# warning will be logged and a warning email/snmp trap may be 
-# sent.  If this configuration is set to 0 or not specified, no 
-# warnings are sent.
-#warning_disk_space_percentage = 80
-
-# This should be a percentage between 0 and 100 and should be 
-# greater than the warning_disk_space_percentage. If a 
-# filesystem’s disk space used percentage equals or exceeds 
-# this value an error will be logged and a error email/snmp 
-# trap may be sent.  If this configuration is set to 0 or not 
-# specified, no errors are sent.
-#error_disk_space_percentage = 90
-
-#This is the interval in minutes that limits the number of 
-#error/warning messages that are sent. The minimum value for 
-#this configuration is 1.  Setting this to 0 or not specifying 
-#this configuration results in it getting set to the minimum.  
-disk_space_interval = 60
-
-#This is the maximum number of error/warning messages that 
-#will be sent in the disk_space_interval.  The maximum value
-#for this configuration is 50.  The minimum value for this 
-#configuration is 1.  Setting this configuration to greater 
-#than 50 or not specifying this configuration results in it 
-#getting set to the maximum.
-max_disk_space_messages_per_interval = 10
-
 
 log_location = $GP_DIR/gpperfmon/logs
 _EOF_
@@ -1973,8 +1924,7 @@ case $OS_TYPE in
 		PS_TXT="-ef"
 		LIB_TYPE="LD_LIBRARY_PATH"
 		ZCAT=gzcat
-		# MPP-15890
-		PG_METHOD=ident
+		PG_METHOD=trust
 		HOST_ARCH_TYPE="uname -i"
 		NOLINE_ECHO=/usr/bin/echo
 		DEFAULT_LOCALE_SETTING=en_US.UTF-8

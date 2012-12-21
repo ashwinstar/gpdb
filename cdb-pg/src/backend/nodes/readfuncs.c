@@ -142,10 +142,6 @@ inline static char extended_char(char* token, size_t length)
 	    local_node->fldname = bitmapsetRead(); \
     } while (0)
 
-/* Read a bytea field */
-#define READ_BYTEA_FIELD(fldname) \
-	local_node->fldname = DatumGetPointer(readDatum(false))
-
 /* Set field to a given value, ignoring the value read from the input */
 #define READ_DUMMY_FIELD(fldname,fldvalue)  READ_SCALAR_FIELD(fldname, fldvalue)
 
@@ -454,24 +450,6 @@ _readDeclareCursorStmt(void)
 	READ_STRING_FIELD(portalname);
 	READ_INT_FIELD(options);
 	READ_NODE_FIELD(query);
-	READ_BOOL_FIELD(is_simply_updatable);
-
-	READ_DONE();
-}
-
-/*
- * _readCurrentOfExpr
- */
-static CurrentOfExpr *
-_readCurrentOfExpr(void)
-{
-	READ_LOCALS(CurrentOfExpr);
-
-	READ_STRING_FIELD(cursor_name);
-	READ_INT_FIELD(cvarno);
-	READ_OID_FIELD(target_relid);
-
-	/* some attributes omitted as they're bound only just before executor dispatch */
 
 	READ_DONE();
 }
@@ -514,20 +492,6 @@ static GroupClause *
 _readGroupClause(void)
 {
 	READ_LOCALS(GroupClause);
-
-	READ_UINT_FIELD(tleSortGroupRef);
-	READ_OID_FIELD(sortop);
-
-	READ_DONE();
-}
-
-/*
- * _readScatterClause
- */
-static ScatterClause *
-_readScatterClause(void)
-{
-	READ_LOCALS(ScatterClause);
 
 	READ_UINT_FIELD(tleSortGroupRef);
 	READ_OID_FIELD(sortop);
@@ -629,22 +593,6 @@ _readWindowFrameEdge(const char ** str)
 	READ_DONE();
 }
 
-static PercentileExpr *
-_readPercentileExpr(const char ** str)
-{
-	READ_LOCALS(PercentileExpr);
-
-	READ_OID_FIELD(perctype);
-	READ_NODE_FIELD(args);
-	READ_ENUM_FIELD(perckind, PercKind);
-	READ_NODE_FIELD(sortClause);
-	READ_NODE_FIELD(sortTargets);
-	READ_NODE_FIELD(pcExpr);
-	READ_NODE_FIELD(tcExpr);
-	READ_INT_FIELD(location);
-
-	READ_DONE();
-}
 /*
  * _readRowMarkClause
  */
@@ -705,39 +653,6 @@ _readSetOperationStmt(void)
 	READ_NODE_FIELD(colTypes);
 	READ_NODE_FIELD(colTypmods);
 
-	READ_DONE();
-}
-
-/*
- * _readSequenceDefn 
- */
-static SequenceDefn *
-_readSequenceDefn(void)
-{
-	READ_LOCALS(SequenceDefn);
-	
-	READ_STRING_FIELD(keyname);
-	READ_NODE_FIELD(span);
-	READ_NODE_FIELD(seqlow);
-	READ_NODE_FIELD(seqlim);
-	
-	READ_DONE();
-}
-
-/*
- * _readSequenceSpec 
- */
-static SequenceSpec *
-_readSequenceSpec(void)
-{
-	READ_LOCALS(SequenceSpec);
-	
-	READ_STRING_FIELD(seqname);
-	READ_NODE_FIELD(partition);
-	READ_NODE_FIELD(order);
-	READ_NODE_FIELD(postorder);
-	READ_NODE_FIELD(seqdef);
-	
 	READ_DONE();
 }
 
@@ -1274,12 +1189,10 @@ _readFuncCall(void)
     READ_NODE_FIELD(agg_order);
 	READ_BOOL_FIELD(agg_star);
 	READ_BOOL_FIELD(agg_distinct);
-	READ_BOOL_FIELD(func_variadic);
     READ_INT_FIELD(location);
 
     READ_NODE_FIELD(over);          /*CDB*/
     READ_NODE_FIELD(agg_filter);    /*CDB*/
-	READ_ENUM_FIELD(null_treatment, NullTreatment);
 
 	READ_DONE();
 }
@@ -1515,10 +1428,6 @@ _readWindowRef(void)
 	READ_UINT_FIELD(winindex);
     READ_ENUM_FIELD(winstage, WinStage);
 	READ_UINT_FIELD(winlevel);
-	if (pg_strtok_peek_fldname("null_treatment"))
-	{
-		READ_ENUM_FIELD(null_treatment, NullTreatment);
-	}
 
 	READ_DONE();
 }
@@ -1560,22 +1469,6 @@ _readFuncExpr(void)
 	{
 		READ_BOOL_FIELD(is_tablefunc);  /* GPDB */
 	}
-
-	READ_DONE();
-}
-
-/*
- * _readNamedArgExpr
- */
-static NamedArgExpr *
-_readNamedArgExpr(void)
-{
-	READ_LOCALS(NamedArgExpr);
-
-	READ_NODE_FIELD(arg);
-	READ_STRING_FIELD(name);
-	READ_INT_FIELD(argnumber);
-	READ_INT_FIELD(location);
 
 	READ_DONE();
 }
@@ -2075,10 +1968,7 @@ _readColumnDef(void)
 	READ_INT_FIELD(inhcount);
 	READ_BOOL_FIELD(is_local);
 	READ_BOOL_FIELD(is_not_null);
-	READ_INT_FIELD(attnum);
-	READ_OID_FIELD(default_oid);
 	READ_NODE_FIELD(raw_default);
-	READ_BOOL_FIELD(default_is_null);
 	READ_STRING_FIELD(cooked_default);
 	READ_NODE_FIELD(constraints);
 	READ_NODE_FIELD(encoding);
@@ -2165,10 +2055,6 @@ _readRangeTblEntry(void)
 			READ_NODE_FIELD(funcexpr);
 			READ_NODE_FIELD(funccoltypes);
 			READ_NODE_FIELD(funccoltypmods);
-			if (pg_strtok_peek_fldname("funcuserdata"))
-			{
-				READ_BYTEA_FIELD(funcuserdata);
-			}
 			break;
 		case RTE_VALUES:
 			READ_NODE_FIELD(values_lists);
@@ -2209,8 +2095,6 @@ _readCreateStmt(void)
 	READ_NODE_FIELD(relation);
 	READ_NODE_FIELD(tableElts);
 	READ_NODE_FIELD(inhRelations);
-	READ_NODE_FIELD(inhOids);
-	READ_INT_FIELD(parentOidCount);
 	READ_NODE_FIELD(constraints);
 
 	READ_NODE_FIELD(options);
@@ -2671,7 +2555,6 @@ _readFunctionParameter(void)
 	READ_STRING_FIELD(name);
 	READ_NODE_FIELD(argType);
 	READ_ENUM_FIELD(mode, FunctionParameterMode);
-	READ_NODE_FIELD(defexpr);
 
 	READ_DONE();
 }
@@ -2944,11 +2827,11 @@ _readSlice(void)
 	READ_INT_FIELD(numGangMembersToBeActive);
 	READ_BOOL_FIELD(directDispatch.isDirectDispatch);
 	READ_NODE_FIELD(directDispatch.contentIds); /* List of int index */
-	READ_DUMMY_FIELD(gang, NULL);
-	READ_INT_FIELD(gangId);
+	READ_DUMMY_FIELD(primaryGang, NULL);
+	READ_INT_FIELD(primary_gang_id);
 	READ_INT_FIELD(parentIndex); /* List of int index */
 	READ_NODE_FIELD(children); /* List of int index */
-	READ_NODE_FIELD(workerProcesses); /* List of (CDBProcess *) */
+	READ_NODE_FIELD(primaryProcesses); /* List of (CDBProcess *) */
 
 	READ_DONE();
 }
@@ -3106,6 +2989,7 @@ static ParseNodeInfo infoAr[] =
 	{"CREATEFDWSTMT", (ReadFn)_readCreateFdwStmt},
 	{"CREATEFOREIGNSERVERSTMT", (ReadFn)_readCreateForeignServerStmt},
 	{"CREATEFOREIGNSTMT", (ReadFn)_readCreateForeignStmt},	
+	{"CREATEUSERMAPPINGSTMT", (ReadFn)_readCreateUserMappingStmt},
 	{"CREATEFUNCSTMT", (ReadFn)_readCreateFunctionStmt},
 	{"CREATEOPCLASS", (ReadFn)_readCreateOpClassStmt},
 	{"CREATEOPCLASSITEM", (ReadFn)_readCreateOpClassItem},
@@ -3115,8 +2999,6 @@ static ParseNodeInfo infoAr[] =
 	{"CREATESEQSTMT", (ReadFn)_readCreateSeqStmt},
 	{"CREATESTMT", (ReadFn)_readCreateStmt},
 	{"CREATETRIGSTMT", (ReadFn)_readCreateTrigStmt},
-	{"CREATEUSERMAPPINGSTMT", (ReadFn)_readCreateUserMappingStmt},
-	{"CURRENTOFEXPR", (ReadFn)_readCurrentOfExpr},
 	{"DECLARECURSOR", (ReadFn)_readDeclareCursorStmt},
 	{"DEFELEM", (ReadFn)_readDefElem},
 	{"DEFINESTMT", (ReadFn)_readDefineStmt},
@@ -3124,14 +3006,14 @@ static ParseNodeInfo infoAr[] =
 	{"DENYLOGINPOINT", (ReadFn)_readDenyLoginPoint},
 	{"DISTINCTEXPR", (ReadFn)_readDistinctExpr},
 	{"DROPCAST", (ReadFn)_readDropCastStmt},
-	{"DROPDBSTMT", (ReadFn)_readDropdbStmt},
 	{"DROPFDWCAST", (ReadFn)_readDropFdwStmt},
 	{"DROPFOREIGNSERVERCAST", (ReadFn)_readDropForeignServerStmt},
+	{"DROPUSERMAPPINGCAST", (ReadFn)_readDropUserMappingStmt},
+	{"DROPDBSTMT", (ReadFn)_readDropdbStmt},
 	{"DROPPLANGSTMT", (ReadFn)_readDropPLangStmt},
 	{"DROPPROPSTMT", (ReadFn)_readDropPropertyStmt},
 	{"DROPROLESTMT", (ReadFn)_readDropRoleStmt},
 	{"DROPSTMT", (ReadFn)_readDropStmt},
-	{"DROPUSERMAPPINGCAST", (ReadFn)_readDropUserMappingStmt},
 	{"EXTTABLETYPEDESC", (ReadFn)_readExtTableTypeDesc},
 	{"FIELDSELECT", (ReadFn)_readFieldSelect},
 	{"FIELDSTORE", (ReadFn)_readFieldStore},
@@ -3155,7 +3037,6 @@ static ParseNodeInfo infoAr[] =
 	{"JOINEXPR", (ReadFn)_readJoinExpr},
 	{"LOCKSTMT", (ReadFn)_readLockStmt},
 	{"MINMAX", (ReadFn)_readMinMaxExpr},
-	{"NAMEDARGEXPR", (ReadFn)_readNamedArgExpr},
 	{"NOTIFY", (ReadFn)_readNotifyStmt},
 	{"NULLIFEXPR", (ReadFn)_readNullIfExpr},
 	{"NULLTEST", (ReadFn)_readNullTest},
@@ -3163,9 +3044,8 @@ static ParseNodeInfo infoAr[] =
 	{"PARAM", (ReadFn)_readParam},
 	{"PARTITION", (ReadFn)_readPartition},
 	{"PARTITIONNODE", (ReadFn)_readPartitionNode},
-	{"PARTITIONRULE", (ReadFn)_readPartitionRule},
-	{"PERCENTILEEXPR", (ReadFn)_readPercentileExpr},
 	{"PGPARTRULE", (ReadFn)_readPgPartRule},
+	{"PARTITIONRULE", (ReadFn)_readPartitionRule},
 	{"PRIVGRANTEE", (ReadFn)_readPrivGrantee},
 	{"QUERY", (ReadFn)_readQuery},
 	{"RANGETBLREF", (ReadFn)_readRangeTblRef},
@@ -3181,10 +3061,7 @@ static ParseNodeInfo infoAr[] =
 	{"RTE", (ReadFn)_readRangeTblEntry},
 	{"RULESTMT", (ReadFn)_readRuleStmt},
 	{"SCALARARRAYOPEXPR", (ReadFn)_readScalarArrayOpExpr},
-	{"SCATTERCLAUSE", (ReadFn)_readScatterClause},
 	{"SEGFILEMAPNODE", (ReadFn)_readSegfileMapNode},
-	{"SEQUENCEDEFN", (ReadFn)_readSequenceDefn},
-	{"SEQUENCESPEC", (ReadFn)_readSequenceSpec},
 	{"SETOPERATIONSTMT", (ReadFn)_readSetOperationStmt},
 	{"SETTODEFAULT", (ReadFn)_readSetToDefault},
 	{"SINGLEROWERRORDESC",(ReadFn)_readSingleRowErrorDesc},

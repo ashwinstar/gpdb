@@ -25,7 +25,6 @@
 #include <unistd.h>
 
 #include "access/genam.h"
-#include "access/catquery.h"
 #include "access/heapam.h"
 #include "access/relscan.h"
 #include "access/sysattr.h"
@@ -100,6 +99,7 @@ static void validate_index_heapscan(Relation heapRelation,
 						IndexInfo *indexInfo,
 						Snapshot snapshot,
 						v_i_state *state);
+static Oid	IndexGetRelation(Oid indexId);
 static double IndexBuildHeapScan(Relation heapRelation,
 								 Relation indexRelation,
 								 struct IndexInfo *indexInfo,
@@ -142,8 +142,6 @@ ConstructTupleDescriptor(Relation heapRelation,
 	TupleDesc	indexTupDesc;
 	int			natts;			/* #atts in heap rel --- for error checks */
 	int			i;
-	int			fetchCount;
-	cqContext  *pcqCtx;
 
 	heapTupDesc = RelationGetDescr(heapRelation);
 	natts = RelationGetForm(heapRelation)->relnatts;
@@ -230,15 +228,9 @@ ConstructTupleDescriptor(Relation heapRelation,
 			 * Lookup the expression type in pg_type for the type length etc.
 			 */
 			keyType = exprType(indexkey);
-
-			pcqCtx = caql_beginscan(
-					NULL,
-					cql("SELECT * FROM pg_type "
-						" WHERE oid = :1 ",
-						ObjectIdGetDatum(keyType)));
-
-			tuple = caql_getnext(pcqCtx);
-
+			tuple = SearchSysCache(TYPEOID,
+								   ObjectIdGetDatum(keyType),
+								   0, 0, 0);
 			if (!HeapTupleIsValid(tuple))
 				elog(ERROR, "cache lookup failed for type %u", keyType);
 			typeTup = (Form_pg_type) GETSTRUCT(tuple);
@@ -257,7 +249,7 @@ ConstructTupleDescriptor(Relation heapRelation,
 			to->atttypmod = -1;
 			to->attislocal = true;
 
-			caql_endscan(pcqCtx);
+			ReleaseSysCache(tuple);
 		}
 
 		/*
@@ -271,29 +263,21 @@ ConstructTupleDescriptor(Relation heapRelation,
 		 * Check the opclass to see if it provides a keytype (overriding the
 		 * attribute type).
 		 */
-		keyType = caql_getoid_plus(
-				NULL,
-				&fetchCount,
-				NULL,
-				cql("SELECT opckeytype FROM pg_opclass "
-					" WHERE oid = :1 ",
-					ObjectIdGetDatum(classObjectId[i])));
-
-		if (!fetchCount)
+		tuple = SearchSysCache(CLAOID,
+							   ObjectIdGetDatum(classObjectId[i]),
+							   0, 0, 0);
+		if (!HeapTupleIsValid(tuple))
 			elog(ERROR, "cache lookup failed for opclass %u",
 				 classObjectId[i]);
+		keyType = ((Form_pg_opclass) GETSTRUCT(tuple))->opckeytype;
+		ReleaseSysCache(tuple);
 
 		if (OidIsValid(keyType) && keyType != to->atttypid)
 		{
 			/* index value and heap value have different types */
-			pcqCtx = caql_beginscan(
-					NULL,
-					cql("SELECT * FROM pg_type "
-						" WHERE oid = :1 ",
-						ObjectIdGetDatum(keyType)));
-			
-			tuple = caql_getnext(pcqCtx);
-			
+			tuple = SearchSysCache(TYPEOID,
+								   ObjectIdGetDatum(keyType),
+								   0, 0, 0);
 			if (!HeapTupleIsValid(tuple))
 				elog(ERROR, "cache lookup failed for type %u", keyType);
 			typeTup = (Form_pg_type) GETSTRUCT(tuple);
@@ -305,7 +289,7 @@ ConstructTupleDescriptor(Relation heapRelation,
 			to->attalign = typeTup->typalign;
 			to->attstorage = typeTup->typstorage;
 
-			caql_endscan(pcqCtx);
+			ReleaseSysCache(tuple);
 		}
 	}
 
@@ -337,18 +321,18 @@ InitializeAttributeOids(Relation indexRelation,
 static void
 AppendAttributeTuples(Relation indexRelation, int numatts)
 {
+	Relation	pg_attribute;
+	CatalogIndexState indstate;
 	TupleDesc	indexTupDesc;
 	HeapTuple	new_tuple;
 	int			i;
-	cqContext  *pcqCtx;
 
 	/*
 	 * open the attribute relation and its indexes
 	 */
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("INSERT INTO pg_attribute ",
-				NULL));
+	pg_attribute = heap_open(AttributeRelationId, RowExclusiveLock);
+
+	indstate = CatalogOpenIndexes(pg_attribute);
 
 	/*
 	 * insert data from new index's tupdesc into pg_attribute
@@ -369,13 +353,16 @@ AppendAttributeTuples(Relation indexRelation, int numatts)
 								   ATTRIBUTE_TUPLE_SIZE,
 								   (void *) indexTupDesc->attrs[i]);
 
-		caql_insert(pcqCtx, new_tuple);
-		/* and Update indexes (implicit) */
+		simple_heap_insert(pg_attribute, new_tuple);
+
+		CatalogIndexInsert(indstate, new_tuple);
 
 		heap_freetuple(new_tuple);
 	}
 
-	caql_endscan(pcqCtx); /* close rel, indexes */
+	CatalogCloseIndexes(indstate);
+
+	heap_close(pg_attribute, RowExclusiveLock);
 }
 
 /* ----------------------------------------------------------------
@@ -398,9 +385,10 @@ UpdateIndexRelation(Oid indexoid,
 	Datum		predDatum;
 	Datum		values[Natts_pg_index];
 	bool		nulls[Natts_pg_index];
+	Relation	pg_index;
 	HeapTuple	tuple;
 	int			i;
-	cqContext  *pcqCtx;
+
 	/*
 	 * Copy the index key and opclass info into arrays (should we make the
 	 * caller pass them like this to start with?)
@@ -442,10 +430,7 @@ UpdateIndexRelation(Oid indexoid,
 	/*
 	 * open the system catalog index relation
 	 */
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("INSERT INTO pg_index ",
-				NULL));
+	pg_index = heap_open(IndexRelationId, RowExclusiveLock);
 
 	/*
 	 * Build a pg_index tuple
@@ -468,18 +453,20 @@ UpdateIndexRelation(Oid indexoid,
 	if (predDatum == (Datum) 0)
 		nulls[Anum_pg_index_indpred - 1] = true;
 
-	tuple = caql_form_tuple(pcqCtx, values, nulls);
+	tuple = heap_form_tuple(RelationGetDescr(pg_index), values, nulls);
 
 	/*
 	 * insert the tuple into the pg_index catalog
 	 */
-	caql_insert(pcqCtx, tuple);
-	/* and Update indexes (implicit) */
+	simple_heap_insert(pg_index, tuple);
+
+	/* update the indexes on pg_index */
+	CatalogUpdateIndexes(pg_index, tuple);
 
 	/*
 	 * close the relation and free the tuple
 	 */
-	caql_endscan(pcqCtx);
+	heap_close(pg_index, RowExclusiveLock);
 	heap_freetuple(tuple);
 }
 
@@ -974,10 +961,10 @@ index_drop(Oid indexId)
 	Oid			heapId;
 	Relation	userHeapRelation;
 	Relation	userIndexRelation;
+	Relation	indexRelation;
 	HeapTuple	tuple;
 	bool		hasexprs;
 	bool		need_long_lock;
-	cqContext  *pcqCtx;
 
 	/*
 	 * To drop an index safely, we must grab exclusive lock on its parent
@@ -1025,23 +1012,20 @@ index_drop(Oid indexId)
 	/*
 	 * fix INDEX relation, and check for expressional index
 	 */
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_index "
-				" WHERE indexrelid = :1 "
-				" FOR UPDATE ",
-				ObjectIdGetDatum(indexId)));
+	indexRelation = heap_open(IndexRelationId, RowExclusiveLock);
 
-	tuple = caql_getnext(pcqCtx);
-
+	tuple = SearchSysCache(INDEXRELID,
+						   ObjectIdGetDatum(indexId),
+						   0, 0, 0);
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for index %u", indexId);
 
 	hasexprs = !heap_attisnull(tuple, Anum_pg_index_indexprs);
 
-	caql_delete_current(pcqCtx);
+	simple_heap_delete(indexRelation, &tuple->t_self);
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(tuple);
+	heap_close(indexRelation, RowExclusiveLock);
 
 	/*
 	 * if it has any expression columns, we might have stored statistics about
@@ -1283,30 +1267,25 @@ index_update_stats(Relation rel, bool hasindex, bool isprimary,
 		ReindexIsProcessingHeap(RelationRelationId))
 	{
 		/* don't assume syscache will work */
-		cqContext	cqc;
+		HeapScanDesc pg_class_scan;
+		ScanKeyData key[1];
 
-		/* heapscan, noindex */
-		tuple = caql_getfirst(
-			caql_syscache(
-					caql_indexOK(caql_addrel(cqclr(&cqc), pg_class),
-								 false),
-					false),
-			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 "
-				" FOR UPDATE ",
-				ObjectIdGetDatum(relid)));
+		ScanKeyInit(&key[0],
+					ObjectIdAttributeNumber,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(relid));
+
+		pg_class_scan = heap_beginscan(pg_class, SnapshotNow, 1, key);
+		tuple = heap_getnext(pg_class_scan, ForwardScanDirection);
+		tuple = heap_copytuple(tuple);
+		heap_endscan(pg_class_scan);
 	}
 	else
 	{
-		cqContext	cqc;
-
 		/* normal case, use syscache */
-		tuple = caql_getfirst(
-				caql_addrel(cqclr(&cqc), pg_class),
-			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 "
-				" FOR UPDATE ",
-				ObjectIdGetDatum(relid)));
+		tuple = SearchSysCacheCopy(RELOID,
+								   ObjectIdGetDatum(relid),
+								   0, 0, 0);
 	}
 
 	if (!HeapTupleIsValid(tuple))
@@ -1666,8 +1645,8 @@ IndexBuildHeapScan(Relation heapRelation,
 			
 			LockBuffer(scan->rs_cbuf, BUFFER_LOCK_SHARE);
 
-			switch (HeapTupleSatisfiesVacuum(heapRelation, &heapTuple->t_self, heapTuple->t_data, OldestXmin,
-											 scan->rs_cbuf, true, "IndexBuildHeapScan"))
+			switch (HeapTupleSatisfiesVacuum(heapTuple->t_data, OldestXmin,
+											 scan->rs_cbuf, true))
 			{
 				case HEAPTUPLE_DEAD:
 					/* Definitely dead, we can ignore it */
@@ -1961,7 +1940,7 @@ IndexBuildAppendOnlyColScan(Relation parentRelation,
 	Assert(parentRelation->rd_att != NULL);
 	proj = palloc0(parentRelation->rd_att->natts * sizeof(bool));
 
-	GetAppendOnlyEntryAuxOids(RelationGetRelid(parentRelation), SnapshotNow,
+	GetAppendOnlyEntryAuxOids(RelationGetRelid(parentRelation),
 							  NULL, NULL,
 							  &blkdirrelid, &blkdiridxid);
 
@@ -2376,7 +2355,7 @@ validate_index_heapscan(Relation heapRelation,
 				/* must hold a buffer lock to call HeapTupleSatisfiesNow */
 				LockBuffer(scan->rs_cbuf, BUFFER_LOCK_SHARE);
 
-				if (HeapTupleSatisfiesNow(scan->rs_rd, &heapTuple->t_self, heapTuple->t_data, scan->rs_cbuf, "validate_index_heapscan"))
+				if (HeapTupleSatisfiesNow(scan->rs_rd, heapTuple->t_data, scan->rs_cbuf))
 					check_unique = true;
 				else
 					check_unique = false;
@@ -2422,30 +2401,23 @@ validate_index_heapscan(Relation heapRelation,
  * IndexGetRelation: given an index's relation OID, get the OID of the
  * relation it is an index on.	Uses the system cache.
  */
-Oid
+static Oid
 IndexGetRelation(Oid indexId)
 {
 	HeapTuple	tuple;
 	Form_pg_index index;
 	Oid			result;
-	cqContext  *pcqCtx;
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_index "
-				" WHERE indexrelid = :1 ",
-				ObjectIdGetDatum(indexId)));
-
-	tuple = caql_getnext(pcqCtx);
-
+	tuple = SearchSysCache(INDEXRELID,
+						   ObjectIdGetDatum(indexId),
+						   0, 0, 0);
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for index %u", indexId);
 	index = (Form_pg_index) GETSTRUCT(tuple);
 	Assert(index->indexrelid == indexId);
 
 	result = index->indrelid;
-
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(tuple);
 	return result;
 }
 
@@ -2550,9 +2522,7 @@ reindex_index(Oid indexId, Oid newrelfilenode, List **extra_oids)
 	Form_pg_index	indexForm;
 	Oid				retrelfilenode;
 	Oid				namespaceId;
-	cqContext		cqc;
-	cqContext	   *pcqCtx;
-
+	
 	Assert(OidIsValid(indexId));
 	Assert(extra_oids != NULL);
 
@@ -2594,8 +2564,14 @@ reindex_index(Oid indexId, Oid newrelfilenode, List **extra_oids)
 	 * Since inplace processing isn't crash-safe, we only allow it in a
 	 * standalone backend.	(In the REINDEX TABLE and REINDEX DATABASE cases,
 	 * the caller should have detected this.)
+	 *
+	 * MPP: If we are in a standalone backend always perform reindex operations
+	 * in place.  In postgres this only applies to shared relations, for 
+	 * Greenplum we apply it to all tables as a means of enabling upgrade to
+	 * filerep: it is required to reindex gp_relation_node in place before it
+	 * is possible to populate the gp_persistent tables.
 	 */
-	inplace = iRel->rd_rel->relisshared;
+	inplace = iRel->rd_rel->relisshared || !IsUnderPostmaster;
 
 	if (inplace && IsUnderPostmaster)
 		ereport(ERROR,
@@ -2680,14 +2656,9 @@ reindex_index(Oid indexId, Oid newrelfilenode, List **extra_oids)
 	 */
 	pg_index = heap_open(IndexRelationId, RowExclusiveLock);
 
-	pcqCtx = caql_addrel(cqclr(&cqc), pg_index);
-
-	indexTuple = caql_getfirst(pcqCtx,
-							   cql("SELECT * FROM pg_index "
-								   " WHERE indexrelid = :1 "
-								   " FOR UPDATE ",
-								   ObjectIdGetDatum(indexId)));
-
+	indexTuple = SearchSysCacheCopy(INDEXRELID,
+									ObjectIdGetDatum(indexId),
+									0, 0, 0);
 	if (!HeapTupleIsValid(indexTuple))
 		elog(ERROR, "cache lookup failed for index %u", indexId);
 	indexForm = (Form_pg_index) GETSTRUCT(indexTuple);
@@ -2695,8 +2666,8 @@ reindex_index(Oid indexId, Oid newrelfilenode, List **extra_oids)
 	if (!indexForm->indisvalid)
 	{
 		indexForm->indisvalid = true;
-		caql_update_current(pcqCtx, indexTuple);
-		/* and Update indexes (implicit) */
+		simple_heap_update(pg_index, &indexTuple->t_self, indexTuple);
+		CatalogUpdateIndexes(pg_index, indexTuple);
 	}
 	heap_close(pg_index, RowExclusiveLock);
 
@@ -2757,9 +2728,9 @@ reindex_index(Oid indexId, Oid newrelfilenode, List **extra_oids)
  * If it is false but *oidmap is valid and we're on a QE, use the
  * new relfilenode specified in the map.
  */
-static bool
-reindex_relation_internal(Oid relid, bool toast_too, bool aoseg_too, bool aoblkdir_too,
-				 List **oidmap, bool build_map, bool ignoreNonExistent)
+bool
+reindex_relation(Oid relid, bool toast_too, bool aoseg_too, bool aoblkdir_too,
+				 List **oidmap, bool build_map)
 {
 	Relation	rel;
 	Oid			toast_relid;
@@ -2776,18 +2747,7 @@ reindex_relation_internal(Oid relid, bool toast_too, bool aoseg_too, bool aoblkd
 	 * Open and lock the relation.	ShareLock is sufficient since we only need
 	 * to prevent schema and data changes in it.
 	 */
-	if (ignoreNonExistent)
-	{
-		rel = try_heap_open(relid, ShareLock, /* noWait */ false);
-		if (rel == NULL)
-		{
-			return false;
-		}
-	}
-	else
-	{
-		rel = heap_open(relid, ShareLock);
-	}
+	rel = heap_open(relid, ShareLock);
 
 	relIsAO = (RelationIsAoRows(rel) || RelationIsAoCols(rel));
 
@@ -2904,44 +2864,25 @@ reindex_relation_internal(Oid relid, bool toast_too, bool aoseg_too, bool aoblkd
 	 * still hold the lock on the master table.
 	 */
 	if (toast_too && OidIsValid(toast_relid))
-		result |= reindex_relation_internal(toast_relid, false, false, false, oidmap, build_map, ignoreNonExistent);
+		result |= reindex_relation(toast_relid, false, false, false, oidmap, build_map);
 
 	/* Obtain the aoseg_relid and aoblkdir_relid if the relation is an AO table. */
 	if ((aoseg_too || aoblkdir_too) && relIsAO)
-		GetAppendOnlyEntryAuxOids(relid, SnapshotNow,
-								  &aoseg_relid, NULL, &aoblkdir_relid, NULL);
+		GetAppendOnlyEntryAuxOids(relid, &aoseg_relid, NULL, &aoblkdir_relid, NULL);
 
 	/*
 	 * If an AO rel has a secondary segment list rel, reindex that too while we
 	 * still hold the lock on the master table.
 	 */
 	if (aoseg_too && OidIsValid(aoseg_relid))
-		result |= reindex_relation_internal(aoseg_relid, false, false, false, oidmap, build_map, ignoreNonExistent);
+		result |= reindex_relation(aoseg_relid, false, false, false, oidmap, build_map);
 
 	/*
 	 * If an AO rel has a secondary block directory rel, reindex that too while we
 	 * still hold the lock on the master table.
 	 */
 	if (aoblkdir_too && OidIsValid(aoblkdir_relid))
-		result |= reindex_relation_internal(aoblkdir_relid, false, false, false, oidmap, build_map, ignoreNonExistent);
+		result |= reindex_relation(aoblkdir_relid, false, false, false, oidmap, build_map);
 
 	return result;
-}
-
-bool
-reindex_relation(Oid relid, bool toast_too, bool aoseg_too, bool aoblkdir_too,
-				 List **oidmap, bool build_map)
-{
-	return reindex_relation_internal(
-						relid, toast_too, aoseg_too, aoblkdir_too,
-						oidmap, build_map, /* ignoreNonExistent */ false);
-}
-
-bool
-reindex_relation_ignore_nonexist(Oid relid, bool toast_too, bool aoseg_too, bool aoblkdir_too,
-				 List **oidmap, bool build_map)
-{
-	return reindex_relation_internal(
-						relid, toast_too, aoseg_too, aoblkdir_too,
-						oidmap, build_map, /* ignoreNonExistent */ true);
 }

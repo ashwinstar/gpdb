@@ -27,7 +27,7 @@
 #include "executor/execdebug.h"
 #include "executor/instrument.h"
 #include "executor/nodeBitmapIndexscan.h"
-#include "executor/execIndexScan.h"
+#include "executor/nodeIndexscan.h"
 #include "miscadmin.h"
 #include "utils/memutils.h"
 #include "utils/lsyscache.h"
@@ -254,6 +254,7 @@ ExecInitBitmapIndexScan(BitmapIndexScan *node, EState *estate, int eflags)
 	 */
 
 	indexstate->ss.ss_currentRelation = NULL;
+	indexstate->ss.ss_currentScanDesc = NULL;
 
 	/*
 	 * Open the index relation.

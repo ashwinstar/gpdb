@@ -17,9 +17,8 @@
 
 #include <ctype.h>
 
-#include "access/genam.h"
-#include "access/catquery.h"
 #include "access/heapam.h"
+#include "access/genam.h"
 #include "catalog/heap.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_exttable.h"
@@ -61,7 +60,6 @@ static int	specialAttNum(const char *attname);
 static void warnAutoRange(ParseState *pstate, RangeVar *relation,
 			  int location);
 
-static bool get_attisdropped(Oid relid, int attnum);
 
 /*
  * refnameRangeTblEntry
@@ -481,13 +479,10 @@ scanRTEForColumn(ParseState *pstate, RangeTblEntry *rte, char *colname,
 		if (attnum != InvalidAttrNumber)
 		{
 			/* now check to see if column actually is defined */
-			if (caql_getcount(
-						NULL,
-						cql("SELECT COUNT(*) FROM pg_attribute "
-							" WHERE attrelid = :1 "
-							" AND attnum = :2 ",
-							ObjectIdGetDatum(rte->relid),
-							Int16GetDatum(attnum))))
+			if (SearchSysCacheExists(ATTNUM,
+									 ObjectIdGetDatum(rte->relid),
+									 Int16GetDatum(attnum),
+									 0, 0))
 			{
 				result = (Node *) make_var(pstate, rte, attnum, location);
 				/* Require read access */
@@ -1071,31 +1066,18 @@ addRangeTableEntryForFunction(ParseState *pstate,
 		FuncExpr *func = (FuncExpr *) funcexpr;
 		Datum     d;
 		int       i;
-
+		
 		Insist(TypeSupportsDescribe(funcrettype));
 
 		funcDescribe = lookupProcCallback(func->funcid, PROMETHOD_DESCRIBE);
 		if (OidIsValid(funcDescribe))
 		{
-			FmgrInfo	flinfo;
-			FunctionCallInfoData fcinfo;
-
-			/*
+			/* 
 			 * Describe functions have the signature  d(internal) => internal
 			 * where the parameter is the untransformed FuncExpr node and the result
-			 * is a tuple descriptor. Its context is RangeTblEntry which has
-			 * funcuserdata field to store arbitrary binary data to transport
-			 * to executor.
+			 * is a tuple descriptor.
 			 */
-			rte->funcuserdata = NULL;
-			fmgr_info(funcDescribe, &flinfo);
-			InitFunctionCallInfoData(fcinfo, &flinfo, 1, (Node *) rte, NULL);
-			fcinfo.arg[0] = PointerGetDatum(funcexpr);
-			fcinfo.argnull[0] = false;
-
-			d = FunctionCallInvoke(&fcinfo);
-			if (fcinfo.isnull)
-				elog(ERROR, "function %u returned NULL", flinfo.fn_oid);
+			d = OidFunctionCall1(funcDescribe, PointerGetDatum(funcexpr));
 			tupdesc = (TupleDesc) DatumGetPointer(d);
 
 			/* 
@@ -1479,81 +1461,6 @@ getLockingClause(ParseState *pstate, char *refname)
 	}
 
 	return NULL;
-}
-
-/*
- * isSimplyUpdatableRelation
- *
- * The oid must reference a normal, heap relation. This disallows
- * AO, AO/CO, external tables, views, etc.
- */
-bool
-isSimplyUpdatableRelation(Oid relid)
-{
-	if (OidIsValid(relid))
-	{
-		cqContext		*pcqCtx;
-		HeapTuple		 tuple;
-
-		pcqCtx = caql_beginscan(
-				NULL,
-				cql("SELECT * FROM pg_class "
-					" WHERE oid = :1 ",
-					ObjectIdGetDatum(relid)));
-
-		tuple = caql_getnext(pcqCtx);
-
-		if (!HeapTupleIsValid(tuple))
-			elog(ERROR, "cache lookup failed for relation %u", relid);
-		Form_pg_class rel = (Form_pg_class) GETSTRUCT(tuple);
-		bool is_heap_tuple = rel->relkind == RELKIND_RELATION &&
-							 rel->relstorage == RELSTORAGE_HEAP;
-
-		caql_endscan(pcqCtx);
-		return is_heap_tuple;
-	}
-	return false;
-}
-
-/*
- * extractSimplyUpdatableRTEIndex
- *  given a range table associated with a simply updatable range table,
- *    return the desired RangeTblEntry
- *
- * NOTE: The range table *MUST* belong to a simply updatable query.
- * 
- * The semantics of a simply updatable query demand a range table consisting
- * of exactly one logical table. Thus, for the simple case of a one-element
- * range table, we quickly return the index for the lone RTE.
- * However, we must also cope with inheritance, where an RTE requesting 
- * inheritance may have been expanded out into its child relations. In this
- * case, we seek to return the parent RTE.
- */
-Index
-extractSimplyUpdatableRTEIndex(List *rtable) 
-{
-	Assert(list_length(rtable) > 0);
-	if (list_length(rtable) == 1)
-		return 1;
-
-	/* 
-	 * This better be an inheritance case. 
-	 * Find the RTE with inh = true. 
-	 * Furthermore, we Insist that no other RTEs have inh = true. 
-	 */
-	Index 			temp, ret = 0;
-	ListCell        *lc;
-	foreach_with_count (lc, rtable, temp)
-	{
-		RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc);
-		if (rte->inh)
-		{
-			Insist(ret == 0);	/* to be simply updatable, there cannot be more than 1 parent table */
-			ret = temp + 1;		/* the temp counter is zero indexed */
-		}
-	}
-	Insist(ret != 0);
-	return ret;
 }
 
 /*
@@ -2079,36 +1986,6 @@ bogus:
 	return "*BOGUS*";
 }
 
-static bool get_attisdropped(Oid relid, int attnum)
-{
-	HeapTuple			 tp;
-	Form_pg_attribute	 att_tup;
-	bool				 result = false;
-	cqContext			*pcqCtx;
-
-	/* SELECT attisdropped FROM pg_attribute */
-
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_attribute "
-				" WHERE attrelid = :1 "
-				" AND attnum = :2 ",
-				ObjectIdGetDatum(relid),
-				Int16GetDatum(attnum)));
-
-	tp = caql_getnext(pcqCtx);
-
-	if (!HeapTupleIsValid(tp))		/* shouldn't happen */
-		elog(ERROR, "cache lookup failed for attribute %d of relation %u",
-			 attnum, relid);
-	att_tup = (Form_pg_attribute) GETSTRUCT(tp);
-	result	= att_tup->attisdropped;
-
-	caql_endscan(pcqCtx);
-
-	return (result);
-}
-
 /*
  * get_rte_attribute_type
  *		Get attribute type information from a RangeTblEntry
@@ -2124,18 +2001,11 @@ get_rte_attribute_type(RangeTblEntry *rte, AttrNumber attnum,
 				/* Plain relation RTE --- get the attribute's type info */
 				HeapTuple	tp;
 				Form_pg_attribute att_tup;
-				cqContext  *pcqCtx;
 
-				pcqCtx = caql_beginscan(
-						NULL,
-						cql("SELECT * FROM pg_attribute "
-							" WHERE attrelid = :1 "
-							" AND attnum = :2 ",
-							ObjectIdGetDatum(rte->relid),
-							Int16GetDatum(attnum)));
-
-				tp = caql_getnext(pcqCtx);
-
+				tp = SearchSysCache(ATTNUM,
+									ObjectIdGetDatum(rte->relid),
+									Int16GetDatum(attnum),
+									0, 0);
 				if (!HeapTupleIsValid(tp))		/* shouldn't happen */
 					elog(ERROR, "cache lookup failed for attribute %d of relation %u",
 						 attnum, rte->relid);
@@ -2154,8 +2024,7 @@ get_rte_attribute_type(RangeTblEntry *rte, AttrNumber attnum,
 					errOmitLocation(true)));
 				*vartype = att_tup->atttypid;
 				*vartypmod = att_tup->atttypmod;
-
-				caql_endscan(pcqCtx);
+				ReleaseSysCache(tp);
 			}
 			break;
 		case RTE_SUBQUERY:
@@ -2283,7 +2152,22 @@ get_rte_attribute_is_dropped(RangeTblEntry *rte, AttrNumber attnum)
 	{
 		case RTE_RELATION:
 			{
-				result = get_attisdropped(rte->relid, attnum);
+				/*
+				 * Plain relation RTE --- get the attribute's catalog entry
+				 */
+				HeapTuple	tp;
+				Form_pg_attribute att_tup;
+
+				tp = SearchSysCache(ATTNUM,
+									ObjectIdGetDatum(rte->relid),
+									Int16GetDatum(attnum),
+									0, 0);
+				if (!HeapTupleIsValid(tp))		/* shouldn't happen */
+					elog(ERROR, "cache lookup failed for attribute %d of relation %u",
+						 attnum, rte->relid);
+				att_tup = (Form_pg_attribute) GETSTRUCT(tp);
+				result = att_tup->attisdropped;
+				ReleaseSysCache(tp);
 			}
 			break;
 		case RTE_SUBQUERY:
@@ -2325,7 +2209,19 @@ get_rte_attribute_is_dropped(RangeTblEntry *rte, AttrNumber attnum)
 					 *
 					 * Same as ordinary relation RTE
 					 */
-					result = get_attisdropped(funcrelid, attnum);
+					HeapTuple	tp;
+					Form_pg_attribute att_tup;
+
+					tp = SearchSysCache(ATTNUM,
+										ObjectIdGetDatum(funcrelid),
+										Int16GetDatum(attnum),
+										0, 0);
+					if (!HeapTupleIsValid(tp))	/* shouldn't happen */
+						elog(ERROR, "cache lookup failed for attribute %d of relation %u",
+							 attnum, funcrelid);
+					att_tup = (Form_pg_attribute) GETSTRUCT(tp);
+					result = att_tup->attisdropped;
+					ReleaseSysCache(tp);
 				}
 				else
 				{

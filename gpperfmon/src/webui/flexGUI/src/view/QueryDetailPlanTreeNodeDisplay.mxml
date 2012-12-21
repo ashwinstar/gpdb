@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:VBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="54" verticalGap="0" xmlns:ns1="view.*"
+	verticalScrollPolicy="off" horizontalScrollPolicy="off" paddingTop="0">
+	<mx:Script>
+		<![CDATA[
+			
+			/**
+			 * @author vasu@divami.com
+			 * 
+			 * This component is used by the QueryDetailsPlanTreeNodeRenderer class to display the custom UI
+			 * 
+			 * Its takes the data from the itemData property to display the values
+			 */
+			//------------------
+			//PROPERTIES
+			//------------------
+			/**
+			 * Sets the data for the tree node 
+			 */
+			public function set itemData(item:Object):void{
+				var xml:XML = item as XML;
+				
+				if (xml && xml.@nid){
+					
+					var res:String = " " + xml.@ntype + " ";
+					var t0:String = xml.@t0;
+					if (t0 != '')
+					{		
+						var valueArray:Array = t0.split('|');
+						if (valueArray[0] == 'Name')
+						   res += '[' + valueArray[1] + '] ';
+					}
+						
+					res += "(" + xml.@nstatus + ")";
+					
+					//set the label
+					nodeLbl.text = res;
+					
+					//set the values
+					CPUPercentage.value = Number(xml.@cpu_currpct);
+					CPUTotal.value = Number(xml.@cpu_elapsed)/1000.0;
+					CPUSkew.value = Number(xml.@skew_cpu);
+					rowSkew.value = Number(xml.@skew_rows);
+				}				
+			}
+		]]>
+	</mx:Script>
+    	
+	<mx:Label width="100%" id="nodeLbl" text="label" paddingLeft="0" height="18"/>
+	<mx:HBox width="100%" height="18" verticalAlign="middle" paddingLeft="4" horizontalGap="0">
+		<mx:Label text="CPU % - "/>
+		<ns1:StatusIndicatorBar id="CPUPercentage"/>
+		<mx:Label text="CPU Time - "/>
+		<ns1:StatusIndicatorLED id="CPUTotal"/>
+	</mx:HBox>
+	<mx:HBox width="100%" height="18" verticalAlign="middle" paddingLeft="4" horizontalGap="0">
+		<mx:Label text="CPU Skew - "/>
+		<ns1:StatusIndicatorLED id="CPUSkew"/>
+		<mx:Spacer width="18" height="6"/>
+		<mx:Label text="Row Skew - "/>
+		<mx:Spacer width="1" height="6"/>
+		<ns1:StatusIndicatorLED id="rowSkew"/>
+	</mx:HBox>
+	
+</mx:VBox>

@@ -16,6 +16,7 @@
 
 #include "pg_dump.h"
 
+
 /*
  * Must be set to the program identifier to be used in status and diagnostic
  * messages.
@@ -73,7 +74,6 @@ extern bool g_gp_supportsSqlMed;
  */
 extern bool g_gp_catalog_only;
 
-extern int g_gp_max_query_elements;
 
 extern const CatalogId nilCatalogId;
 

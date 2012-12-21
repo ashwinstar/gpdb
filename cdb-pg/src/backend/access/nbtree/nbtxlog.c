@@ -802,7 +802,7 @@ out_insert(StringInfo buf, bool isleaf, bool ismeta, XLogRecord *record)
 	if ((record->xl_info & XLR_BKP_BLOCK_1) && !ismeta && isleaf)
 	{
 		appendStringInfo(buf, "; page %u",
-				 ((&(xlrec->target.tid))->ip_posid != 0) ? ItemPointerGetBlockNumber(&(xlrec->target.tid)) : 0);
+						 ItemPointerGetBlockNumber(&(xlrec->target.tid)));
 		return;					/* nothing to do */
 	}
 
@@ -811,9 +811,9 @@ out_insert(StringInfo buf, bool isleaf, bool ismeta, XLogRecord *record)
 	if (!(record->xl_info & XLR_BKP_BLOCK_1))
 	{
 		appendStringInfo(buf, "; add length %d item at offset %d in page %u",
-						 datalen,
-			(&(xlrec->target.tid) != NULL && (&(xlrec->target.tid))->ip_posid != 0) ? ItemPointerGetBlockNumber(&(xlrec->target.tid)) : 0,
-                        (&(xlrec->target.tid) != NULL && (&(xlrec->target.tid))->ip_posid != 0) ? ItemPointerGetOffsetNumber(&(xlrec->target.tid)) : 0);	 
+						 datalen, 
+						 ItemPointerGetOffsetNumber(&(xlrec->target.tid)),
+						 ItemPointerGetBlockNumber(&(xlrec->target.tid)));
 	}
 
 	if (ismeta)
@@ -835,14 +835,14 @@ out_split(StringInfo buf, bool onleft, bool isroot, XLogRecord *record)
 	char			*rec = XLogRecGetData(record);
 	xl_btree_split 	*xlrec = (xl_btree_split *) rec;
 	BlockNumber targetblk;
-
+	OffsetNumber targetoff;
 	BlockNumber leftsib;
 	BlockNumber rightsib;
 
 	out_target(buf, &(xlrec->target));
 
 	targetblk = ItemPointerGetBlockNumber(&(xlrec->target.tid));
-
+	targetoff = ItemPointerGetOffsetNumber(&(xlrec->target.tid));
 	leftsib = (onleft) ? targetblk : xlrec->otherblk;
 	rightsib = (onleft) ? xlrec->otherblk : targetblk;
 

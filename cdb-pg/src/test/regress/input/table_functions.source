@@ -164,10 +164,6 @@ CREATE FUNCTION error(INOUT setof example)
 CREATE FUNCTION error() RETURNS TABLE(a setof example) 
     AS $$ SELECT * FROM example $$ LANGUAGE SQL;
 
-/* ERROR: anytable cannot have default value */
-CREATE FUNCTION error(a anytable DEFAULT TABLE(select 1,'test')) RETURNS TABLE(a int, b text) 
-    AS '@abs_builddir@/regress@DLSUFFIX@', 'multiset_example' LANGUAGE C;
-
 /* Negative test cases around the "anytable" type */
 CREATE TABLE fail(x anytable);
 CREATE TYPE  fail AS (x anytable);
@@ -903,10 +899,6 @@ SELECT * FROM project( TABLE( SELECT * FROM history ), 2) order by 1;
 -- Valid operations on results
 SELECT id+1  FROM project( TABLE( SELECT * FROM history ), 1) order by 1;
 SELECT extract(day from "time") FROM project( TABLE( SELECT * FROM history ), 2) order by 1;
-SELECT * FROM project( TABLE( SELECT * FROM pg_am ),
-  CASE 1 WHEN 2 THEN 1 ELSE GREATEST(1, COALESCE(1+1)) END);
-SELECT * FROM project( TABLE( SELECT * FROM pg_am ),
-  CASE WHEN 3 IS NOT NULL AND 1 IN (1, 2) THEN floor(NULLIF(2, 3))::int END);
 
 -- ERROR: invalid operations demonstrating different return types
 SELECT extract(day from id) FROM project( TABLE( SELECT * FROM history ), 1);
@@ -918,45 +910,11 @@ SELECT "time" FROM project( TABLE( SELECT * FROM history ), 1);
 
 /* Invalid projection position */
 SELECT * FROM project( TABLE( SELECT * FROM pg_am ), NULL);
+SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 1+1);  /* not a ConstExpr */
 SELECT * FROM project( TABLE( SELECT * FROM pg_am ), -1);
 SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 0);
-SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 26);
-SELECT * FROM project( TABLE( SELECT * FROM pg_am ), (ARRAY[2,3])[1]);
-SELECT * FROM project( TABLE( SELECT * FROM pg_am ), (ROW(1, '')::example_r).a);
-SELECT * FROM project( TABLE( SELECT * FROM pg_am ),
-   CASE (SELECT count(*) FROM pg_class) WHEN 0 THEN 0 ELSE 1 END);
+SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 25);
 
--- ========================
--- User data exmaple
--- ========================
-CREATE FUNCTION ud_describe(internal) RETURNS internal
-  AS '@abs_builddir@/regress@DLSUFFIX@', 'userdata_describe'
-  LANGUAGE C;
-
-CREATE FUNCTION ud_project(anytable) RETURNS setof RECORD
-  AS '@abs_builddir@/regress@DLSUFFIX@', 'userdata_project'
-  LANGUAGE C
-  WITH (describe = ud_describe);
-
-SELECT * FROM ud_project( TABLE( SELECT * FROM history ) );
-
--- ========================
--- Passing input without modification
--- ========================
-CREATE FUNCTION noop_project(anytable) RETURNS setof RECORD
-  AS '@abs_builddir@/regress@DLSUFFIX@'
-  LANGUAGE C;
-
-SELECT * FROM noop_project( TABLE( SELECT * FROM history ) ) AS s (id integer, time timestamp);
--- SCATTER BY vs MEDIAN
-SELECT * FROM noop_project( TABLE( SELECT median(id) FROM history SCATTER BY median(id) ) ) AS s (med float);
-SELECT * FROM noop_project( TABLE( SELECT median(id) FROM history SCATTER BY count(*) ) ) AS s (med float);
-SELECT * FROM noop_project( TABLE( SELECT count(*) FROM history SCATTER BY median(id) ) ) AS s (cnt bigint);
-SELECT * FROM noop_project( TABLE( SELECT count(*) FROM history GROUP BY time SCATTER BY median(id) ) ) AS s (cnt bigint);
--- SCATTER BY vs aggregate
-SELECT * FROM noop_project( TABLE( SELECT count(*) FROM history SCATTER BY sum(id) ) ) AS s(cnt bigint);
--- SCATTER BY vs window function
-SELECT * FROM noop_project( TABLE( SELECT count(*) FROM history SCATTER BY count(*) OVER () ) ) s (cnt bigint);
 
 -- ========================
 -- More negative test cases
@@ -993,7 +951,6 @@ CREATE FUNCTION x(OUT id integer, OUT "time" timestamp, OUT sessionnum integer)
 -- PASS: completely defined at prepare time
 PREPARE p1 AS SELECT * FROM multiset_2( TABLE(SELECT * FROM example_r) ) order by a, b;
 EXECUTE p1;
-DEALLOCATE p1;
 
 -- FAIL: can't pass anytable as prepare argument
 PREPARE p2 AS SELECT * FROM multiset_2( $1 ) order by a, b;
@@ -1003,17 +960,9 @@ PREPARE p3(anytable) AS SELECT * FROM multiset_5( $1 ) order by a, b;
 PREPARE p4 AS SELECT * FROM project( TABLE( SELECT * FROM pg_am ), $1);
 PREPARE p5(integer) AS SELECT * FROM project( TABLE( SELECT * FROM pg_am ), $1);
 
--- PASS: We allow table functions with describe to be prepared.  This can
--- theoretically require need for reparse/replan, but that requires more
--- general support of prepared statements in conjunction with a plan cache.
-PREPARE p6 AS SELECT * FROM project( TABLE( SELECT * FROM example_r ), 2) ORDER BY 1;
-EXECUTE p6;
+-- FAIL: can't prepare with a dynamic result set (same reason as no view support)
+PREPARE p6 AS SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 1);
 
--- FAIL: MPP-16640: when underlying table has changed prepared statements 
--- will fail.  If this issue is ever fixed then this should pass as well.
-ALTER TABLE example_r ALTER COLUMN a TYPE numeric;
-EXECUTE p6;
-DEALLOCATE p6;
 
 -- =======
 -- Cleanup

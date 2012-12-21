@@ -41,7 +41,6 @@ static bool describeOneTSConfig(const char *oid, const char *nspname,
 static void printACLColumn(PQExpBuffer buf, const char *colname);
 static bool isGPDB(void);
 static bool isGPDB4200OrLater(void);
-static bool isGPDB5000OrLater(void);
 
 /* GPDB 3.2 used PG version 8.2.10, and we've moved the minor number up since then for each release,  4.1 = 8.2.15 */
 /* Allow for a couple of future releases.  If the version isn't in this range, we are talking to PostgreSQL, not GPDB */
@@ -105,25 +104,6 @@ static bool isGPDB4200OrLater(void)
 	return retValue;
 }
 
-/*
- * If GPDB version is 5.0, pg_proc has provariadic as column number 20.
- * When we have version() returns GPDB version instead of "main build dev" or
- * something similar, we'll fix this function.
- */
-static bool isGPDB5000OrLater(void)
-{
-	bool	retValue = false;
-
-	if (isGPDB() == true)
-	{
-		PGresult   *res;
-
-		res = PSQLexec("select attnum from pg_catalog.pg_attribute where attrelid = 1255 and attname = 'provariadic'", false);
-		if (PQntuples(res) == 1)
-			retValue = true;
-	}
-	return retValue;
-}
 
 /*----------------
  * Handlers for various slash commands displaying some sort of list
@@ -350,24 +330,6 @@ describeFunctions(const char *functypes, const char *pattern, bool verbose, bool
 						  gettext_noop("trigger"),
 						  gettext_noop("normal"),
 						  gettext_noop("Type"));
-	else if (isGPDB5000OrLater())
-		appendPQExpBuffer(&buf,
-						  "  pg_catalog.pg_get_function_result(p.oid) as \"%s\",\n"
-						  "  pg_catalog.pg_get_function_arguments(p.oid) as \"%s\",\n"
-						  " CASE\n"
-						  "  WHEN p.proisagg THEN '%s'\n"
-						  "  WHEN p.proiswin THEN '%s'\n"
-						  "  WHEN p.prorettype = 'pg_catalog.trigger'::pg_catalog.regtype THEN '%s'\n"
-						  "  ELSE '%s'\n"
-						  "END as \"%s\"",
-						  gettext_noop("Result data type"),
-						  gettext_noop("Argument data types"),
-		/* translator: "agg" is short for "aggregate" */
-						  gettext_noop("agg"),
-						  gettext_noop("window"),
-						  gettext_noop("trigger"),
-						  gettext_noop("normal"),
-						  gettext_noop("Type"));
 	else if (pset.sversion >= 80100)
 		appendPQExpBuffer(&buf,
 						  "  CASE WHEN p.proretset THEN 'SETOF ' ELSE '' END ||\n"
@@ -432,20 +394,6 @@ describeFunctions(const char *functypes, const char *pattern, bool verbose, bool
 						  gettext_noop("Type"));
 
 	if (verbose)
-	{
-		if (isGPDB5000OrLater())
-			appendPQExpBuffer(&buf,
-						  ",\n CASE\n"
-						  "  WHEN p.prodataaccess = 'n' THEN '%s'\n"
-						  "  WHEN p.prodataaccess = 'c' THEN '%s'\n"
-						  "  WHEN p.prodataaccess = 'r' THEN '%s'\n"
-						  "  WHEN p.prodataaccess = 'm' THEN '%s'\n"
-						  "END as \"%s\"",
-						  gettext_noop("no sql"),
-						  gettext_noop("contains sql"),
-						  gettext_noop("reads sql data"),
-						  gettext_noop("modifies sql data"),
-						  gettext_noop("Prodataaccess"));
 		appendPQExpBuffer(&buf,
 						  ",\n CASE\n"
 						  "  WHEN p.provolatile = 'i' THEN '%s'\n"
@@ -464,7 +412,6 @@ describeFunctions(const char *functypes, const char *pattern, bool verbose, bool
 						  gettext_noop("Language"),
 						  gettext_noop("Source code"),
 						  gettext_noop("Description"));
-	}
 
 	appendPQExpBuffer(&buf,
 					  "\nFROM pg_catalog.pg_proc p"
@@ -1841,13 +1788,13 @@ describeOneTableDetails(const char *schemaname,
 				{
 					format = "custom";
 				}
-				break;
+				break;					
 				default:
 				{
 					format = "";
 					fprintf(stderr, _("Unknown fmttype value: %c\n"), fmttype[0]);
 				}
-				break;
+				break;	
 			};
 			printfPQExpBuffer(&tmpbuf, _("Format type: %s"), format);
 			printTableAddFooter(&cont, tmpbuf.data);
@@ -1967,7 +1914,8 @@ describeOneTableDetails(const char *schemaname,
 		/* print append only table information */
 		if (tableinfo.relstorage == 'a' || tableinfo.relstorage == 'c')
 		{
-		  if (tableinfo.relstorage == 'a')
+		  /* KAS: The following getenv is to be removed before shipping. It is here just to facilitate QA. */
+		  if (tableinfo.relstorage == 'a' || (tableinfo.relstorage == 'c' && getenv("PRE42_FOOTER") != NULL))
 			{
 				printfPQExpBuffer(&buf, _("Compression Type: %s"), tableinfo.compressionType);
 				printTableAddFooter(&cont, buf.data);

@@ -11,7 +11,6 @@
 
 #include "access/transam.h"
 #include "access/xact.h"
-#include "catalog/pg_language.h"
 #include "catalog/pg_type.h"
 #include "commands/sequence.h"
 #include "commands/trigger.h"
@@ -22,8 +21,6 @@
 #include "libpq/hba.h"
 #include "utils/builtins.h"
 #include "utils/geo_decls.h"
-#include "utils/resscheduler.h"
-#include "cdb/memquota.h"
 
 #define P_MAXDIG 12
 #define LDELIM			'('
@@ -60,14 +57,6 @@ extern Datum describe(PG_FUNCTION_ARGS);
 extern Datum project(PG_FUNCTION_ARGS);
 extern Datum project_describe(PG_FUNCTION_ARGS);
 
-extern Datum userdata_describe(PG_FUNCTION_ARGS);
-extern Datum userdata_project(PG_FUNCTION_ARGS);
-extern Datum noop_project(PG_FUNCTION_ARGS);
-
-/* resource queue support */
-extern Datum checkResourceQueueMemoryLimits(PG_FUNCTION_ARGS);
-
-extern Datum checkRelationAfterInvalidation(PG_FUNCTION_ARGS);
 
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
@@ -2055,7 +2044,7 @@ project(PG_FUNCTION_ARGS)
 	 * correctly.
 	 */
 	if (PG_NARGS() != 2 || PG_ARGISNULL(0) || PG_ARGISNULL(1))
-		elog(ERROR, "invalid invocation of project");
+		elog(ERROR, "invalid invocation of mytransform");
 	scan = PG_GETARG_ANYTABLE(0);  /* Should be the first parameter */
 	position = PG_GETARG_INT32(1);
 
@@ -2120,13 +2109,14 @@ project_describe(PG_FUNCTION_ARGS)
 	Query				*qexpr;
 	TupleDesc			 tdesc;
 	TupleDesc			 odesc;
+	Expr				*aexpr;
 	int					 avalue;
-	bool				 isnull;
+	Datum				 d;
 	int					 i;
 
 	/* Fetch and validate input */
 	if (PG_NARGS() != 1 || PG_ARGISNULL(0))
-		elog(ERROR, "invalid invocation of project_describe");
+		elog(ERROR, "invalid invocation of dynamic_describe");	
 
 	fexpr = (FuncExpr*) PG_GETARG_POINTER(0);
 	Insist(IsA(fexpr, FuncExpr));   /* Assert we got what we expected */
@@ -2159,7 +2149,7 @@ project_describe(PG_FUNCTION_ARGS)
 	Insist(argtypes[0] == ANYTABLEOID);
 	Insist(argtypes[1] == INT4OID);
 
-	/* Now get the tuple descriptor for the ANYTABLE we received */
+	/* Now get th tuple descriptor for the ANYTABLE we received */
 	texpr = (TableValueExpr*) linitial(fargs);
 	Insist(IsA(texpr, TableValueExpr));  /* double check that cast */
 	
@@ -2175,9 +2165,33 @@ project_describe(PG_FUNCTION_ARGS)
 	 *
 	 * Try to evaluate that argument to a constant value.
 	 */
-	avalue = DatumGetInt32(ExecEvalFunctionArgToConst(fexpr, 1, &isnull));
-	if (isnull)
-		elog(ERROR, "unable to resolve type for function");
+	{
+		bool			 isNull;
+		ExprDoneCond	 isDone;
+		ExprState		*estate;
+
+		aexpr  = (Expr*) lsecond(fargs);
+		
+		/*
+		 * Might be able to relax this a little, the real goal is limiting to
+		 * expressions we can safely evaluate without an executor context 
+		 */
+		if (!IsA(aexpr, Const))
+			elog(ERROR, "unable to resolve type for function"); /* improve this error */
+
+		estate = ExecInitExpr(aexpr, NULL);
+		d = ExecEvalExpr(estate, NULL, &isNull, &isDone);
+
+		/* Single scalar values only please */
+		if (isDone != ExprSingleResult)
+			elog(ERROR, "unable to resolve type for function"); /* improve this error */
+
+		/* Non null values only */
+		if (isNull)
+			elog(ERROR, "unable to resolve type for function"); /* improve this error */
+
+		avalue = DatumGetInt32(d);
+	}
 
 	if (avalue < 1 || avalue > tdesc->natts)
 		elog(ERROR, "invalid column position %d", avalue);
@@ -2192,125 +2206,6 @@ project_describe(PG_FUNCTION_ARGS)
 
 	/* Finally return that tupdesc */
 	PG_RETURN_POINTER(odesc);
-}
-
-/*
- *
- */
-PG_FUNCTION_INFO_V1(userdata_project);
-Datum
-userdata_project(PG_FUNCTION_ARGS)
-{
-	FuncCallContext		*fctx;
-	ReturnSetInfo		*rsi;
-	AnyTable			 scan;
-	HeapTuple			 tuple;
-	TupleDesc			 out_tupdesc;
-	Datum				 tup_datum;
-	Datum				 values[1];
-	bool				 nulls[1];
-	bytea				*userdata;
-	char				*message;
-
-	/*
-	 * Sanity checking, shouldn't occur if our CREATE FUNCTION in SQL is done
-	 * correctly.
-	 */
-	if (PG_NARGS() != 1 || PG_ARGISNULL(0) || PG_ARGISNULL(1))
-		elog(ERROR, "invalid invocation of userdata_project");
-	scan = PG_GETARG_ANYTABLE(0);  /* Should be the first parameter */
-	if (SRF_IS_FIRSTCALL())
-	{
-		fctx = SRF_FIRSTCALL_INIT();
-	}
-	fctx = SRF_PERCALL_SETUP();
-
-	/* Get the next value from the input scan */
-	rsi			= (ReturnSetInfo *) fcinfo->resultinfo;
-	out_tupdesc = rsi->expectedDesc;
-	tuple       = AnyTable_GetNextTuple(scan);
-	if (tuple == NULL)
-		SRF_RETURN_DONE(fctx);
-
-	/* Receive message from describe function */
-	userdata = TF_GET_USERDATA();
-	if (userdata != NULL)
-	{
-		message = (char *) VARDATA(userdata);
-		values[0] = CStringGetTextDatum(message);
-		nulls[0] = false;
-	}
-	else
-	{
-		values[0] = (Datum) 0;
-		nulls[0] = true;
-	}
-	/* Construct the output tuple and convert to a datum */
-	tuple = heap_form_tuple(out_tupdesc, values, nulls);
-	tup_datum = HeapTupleGetDatum(tuple);
-
-	/* Return the next result */
-	SRF_RETURN_NEXT(fctx, tup_datum);
-}
-
-PG_FUNCTION_INFO_V1(userdata_describe);
-Datum
-userdata_describe(PG_FUNCTION_ARGS)
-{
-	FuncExpr *fexpr;
-	TupleDesc tupdesc;
-	bytea	   *userdata;
-	size_t		bytes;
-	const char *message = "copied data from describe function";
-
-	/* Fetch and validate input */
-	if (PG_NARGS() != 1 || PG_ARGISNULL(0))
-		elog(ERROR, "invalid invocation of userdata_describe");	
-
-	fexpr = (FuncExpr*) PG_GETARG_POINTER(0);
-	Insist(IsA(fexpr, FuncExpr));   /* Assert we got what we expected */
-
-	/* Build a result tuple descriptor */
-	tupdesc = CreateTemplateTupleDesc(1, false);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "message", TEXTOID, -1, 0);
-
-	/* Prepare user data */
-	bytes = VARHDRSZ + 256;
-	userdata = (bytea *) palloc0(bytes);
-	SET_VARSIZE(userdata, bytes);
-	strcpy(VARDATA(userdata), message);
-
-	/* Set to send */
-	TF_SET_USERDATA(userdata);
-
-	PG_RETURN_POINTER(tupdesc);
-}
-
-/*
- * This is do-nothing table function that passes the input relation
- * to the output relation without any modification.
- */
-PG_FUNCTION_INFO_V1(noop_project);
-Datum
-noop_project(PG_FUNCTION_ARGS)
-{
-	AnyTable			scan;
-	FuncCallContext	   *fctx;
-	ReturnSetInfo	   *rsi;
-	HeapTuple			tuple;
-
-	scan = PG_GETARG_ANYTABLE(0);
-	if (SRF_IS_FIRSTCALL())
-	{
-		fctx = SRF_FIRSTCALL_INIT();
-	}
-	fctx = SRF_PERCALL_SETUP();
-	rsi = (ReturnSetInfo *) fcinfo->resultinfo;
-	tuple = AnyTable_GetNextTuple(scan);
-	if (!tuple)
-		SRF_RETURN_DONE(fctx);
-
-	SRF_RETURN_NEXT(fctx, HeapTupleGetDatum(tuple));
 }
 
 /*
@@ -2331,73 +2226,4 @@ check_auth_time_constraints(PG_FUNCTION_ARGS)
 	 */
 	force_load_role();
 	PG_RETURN_BOOL(check_auth_time_constraints_internal(rolname, timestamp));
-}
-
-/*
- * Checks if memory limit of resource queue is in sync across
- * shared memory and catalog.
- * This function should ONLY be used for unit testing.
- */
-PG_FUNCTION_INFO_V1(checkResourceQueueMemoryLimits);
-Datum 
-checkResourceQueueMemoryLimits(PG_FUNCTION_ARGS)
-{
-	char *queueName = PG_GETARG_CSTRING(0);
-	Oid queueId;
-	ResQueue queue;
-	double v1, v2;
-
-	if (queueName == NULL)
-		return (Datum)0;
-
-	/* get OID for queue */
-	queueId = GetResQueueIdForName(queueName);
-
-	if (queueId == InvalidOid)
-		return (Datum)0;
-
-	/* ResQueueHashFind needs a lock */
-	LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
-
-	/* get shared memory version of queue */
-	queue = ResQueueHashFind(queueId);
-
-	LWLockRelease(ResQueueLock);
-
-	if (!queue)
-		return (Datum) 0;
-
-	v1 = ceil(queue->limits[RES_MEMORY_LIMIT].threshold_value);
-	v2 = ceil((double) ResourceQueueGetMemoryLimitInCatalog(queueId));
-
-	PG_RETURN_BOOL(v1 == v2);
-}
-
-/*
- * Check if Relation has the valid information after cache invalidation.
- */
-PG_FUNCTION_INFO_V1(checkRelationAfterInvalidation);
-Datum
-checkRelationAfterInvalidation(PG_FUNCTION_ARGS)
-{
-	Relation relation;
-	struct RelationNodeInfo nodeinfo;
-
-	/* The relation is arbitrary.  Any "unnailed" relation is ok */
-	relation = relation_open(LanguageRelationId, AccessShareLock);
-	RelationFetchGpRelationNodeForXLog(relation);
-	memcpy(&nodeinfo,
-		   &relation->rd_segfile0_relationnodeinfo,
-		   sizeof(struct RelationNodeInfo));
-
-	/* Invalidation messages should not blow persistent table info */
-	RelationCacheInvalidate();
-	if (memcmp(&nodeinfo,
-			   &relation->rd_segfile0_relationnodeinfo,
-			   sizeof(struct RelationNodeInfo) != 0))
-		elog(ERROR, "node info does not match");
-
-	relation_close(relation, AccessShareLock);
-
-	PG_RETURN_BOOL(true);
 }

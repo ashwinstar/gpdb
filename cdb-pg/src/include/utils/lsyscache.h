@@ -60,23 +60,13 @@ extern Oid	get_commutator(Oid opno);
 extern Oid	get_negator(Oid opno);
 extern RegProcedure get_oprrest(Oid opno);
 extern RegProcedure get_oprjoin(Oid opno);
-extern char *get_trigger_name(Oid triggerid);
-extern Oid get_trigger_relid(Oid triggerid);
-extern Oid get_trigger_funcid(Oid triggerid);
-extern int32 get_trigger_type(Oid triggerid);
-extern bool trigger_enabled(Oid triggerid);
 extern char *get_func_name(Oid funcid);
-extern Oid	get_func_namespace(Oid funcid);
 extern Oid	get_func_rettype(Oid funcid);
-extern void pfree_ptr_array(char **ptrarray, int nelements);
-extern List *get_func_output_arg_types(Oid funcid);
 extern int	get_func_nargs(Oid funcid);
 extern Oid	get_func_signature(Oid funcid, Oid **argtypes, int *nargs);
 extern bool get_func_retset(Oid funcid);
 extern bool func_strict(Oid funcid);
 extern char func_volatile(Oid funcid);
-extern char func_data_access(Oid funcid);
-extern Oid get_agg_transtype(Oid aggid);
 extern Oid	get_relname_relid(const char *relname, Oid relnamespace);
 extern char *get_rel_name(Oid relid);
 extern char *get_rel_name_partition(Oid relid);
@@ -85,7 +75,6 @@ extern Oid	get_rel_type_id(Oid relid);
 extern char get_rel_relkind(Oid relid);
 extern char get_rel_relstorage(Oid relid);
 extern Oid	get_rel_tablespace(Oid relid);
-extern char *get_type_name(Oid typid);
 extern bool get_typisdefined(Oid typid);
 extern int16 get_typlen(Oid typid);
 extern bool get_typbyval(Oid typid);
@@ -108,7 +97,6 @@ extern bool type_is_rowtype(Oid typid);
 extern Oid	get_typ_typrelid(Oid typid);
 extern Oid	get_element_type(Oid typid);
 extern Oid	get_array_type(Oid typid);
-extern Oid get_base_element_type(Oid typid);
 extern void getTypeInputInfo(Oid type, Oid *typInput, Oid *typIOParam);
 extern void getTypeOutputInfo(Oid type, Oid *typOutput, bool *typIsVarlena);
 extern void getTypeBinaryInputInfo(Oid type, Oid *typReceive, Oid *typIOParam);
@@ -117,7 +105,6 @@ extern Oid	getBaseType(Oid typid);
 extern Oid	getBaseTypeAndTypmod(Oid typid, int32 *typmod);
 extern int32 get_typavgwidth(Oid typid, int32 typmod);
 extern int32 get_attavgwidth(Oid relid, AttrNumber attnum);
-extern HeapTuple get_att_stats(Oid relid, AttrNumber attnum);
 extern bool get_attstatsslot(HeapTuple statstuple,
 				 Oid atttype, int32 atttypmod,
 				 int reqkind, Oid reqop,
@@ -129,25 +116,6 @@ extern void free_attstatsslot(Oid atttype,
 extern char *get_namespace_name(Oid nspid);
 extern Oid	get_roleid(const char *rolname);
 extern Oid	get_roleid_checked(const char *rolname);
-
-extern List *relation_oids(void);
-extern List *operator_oids(void);
-extern List *function_oids(void);
-extern bool relation_exists(Oid oid);
-extern bool index_exists(Oid oid);
-extern bool type_exists(Oid oid);
-extern bool function_exists(Oid oid);
-extern bool operator_exists(Oid oid);
-extern bool aggregate_exists(Oid oid);
-extern bool attname_exists(Oid relid, const char *attname);
-extern bool trigger_exists(Oid oid);
-extern List *get_relation_keys(Oid relid);
-
-extern bool check_constraint_exists(Oid oidCheckconstraint);
-extern List *get_check_constraint_oids(Oid relid);
-extern char *get_check_constraint_name(Oid oidCheckconstraint);
-extern Node *get_check_constraint_expr_tree(Oid oidCheckconstraint);
-Oid get_check_constraint_relid(Oid oidCheckconstraint);
 
 #define is_array_type(typid)  (get_element_type(typid) != InvalidOid)
 

@@ -31,7 +31,6 @@
 
 #include "utils/debugbreak.h"
 #include "utils/tuplesort.h"
-#include "postmaster/primary_mirror_mode.h"
 
 static TupleTableSlot *ShareInputNext(ShareInputScanState *node);
 
@@ -188,7 +187,6 @@ ShareInputNext(ShareInputScanState *node)
 		if(!gotOK)
 			return NULL;
 
-		Gpmon_M_Incr(GpmonPktFromShareInputState(node), GPMON_QEXEC_M_ROWSIN);
 		Gpmon_M_Incr_Rows_Out(GpmonPktFromShareInputState(node)); 
 		CheckSendPlanStateGpmonPkt(&node->ss.ps);
 
@@ -222,7 +220,6 @@ ExecInitShareInputScan(ShareInputScan *node, EState *estate, int eflags)
 	sisstate->ts_markpos = NULL;
 
 	sisstate->share_lk_ctxt = NULL;
-	sisstate->freed = false;
 
 	/* 
 	 * init child node.  
@@ -263,20 +260,7 @@ ExecInitShareInputScan(ShareInputScan *node, EState *estate, int eflags)
 	ExecAssignScanType(&sisstate->ss, tupDesc);
 
 	sisstate->ss.ps.ps_ProjInfo = NULL;
-
-	/*
-	 * If this is an intra-slice share node, increment reference count to
-	 * tell the underlying node not to be freed before this node is ready to
-	 * be freed.  fCreate flag to ExecGetShareNodeEntry is true because
-	 * at this point we don't have the entry which will be initialized in
-	 * the underlying node initialization later.
-	 */
-	if (node->share_type == SHARE_MATERIAL || node->share_type == SHARE_SORT)
-	{
-		ShareNodeEntry *snEntry = ExecGetShareNodeEntry(estate, node->share_id, true);
-		snEntry->refcount++;
-	}
-
+	
 	initGpmonPktForShareInputScan((Plan *)node, &sisstate->ss.ps.gpmon_pkt, estate);
 	
 	return sisstate;
@@ -311,16 +295,41 @@ ExecCountSlotsShareInputScan(ShareInputScan* node)
  */
 void ExecEndShareInputScan(ShareInputScanState *node)
 {
+	ShareInputScan * sisc = (ShareInputScan *) node->ss.ps.plan;
 
 	/* clean up tuple table */
 	ExecClearTuple(node->ss.ss_ScanTupleSlot);
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 
-	ShareInputScan * sisc = (ShareInputScan *) node->ss.ps.plan;
+	/* 
+	 * no need to call tuplestore end.  Underlying ShareInput will take
+	 * care of releasing tuplestore resources 
+	 */
+	/*
+	 * XXX Do we need to pfree the tuplestore_state and pos? 
+	 * XXX nodeMaterial.c does not, need to find out why
+	 */
+	
 	if(node->share_lk_ctxt)
 		shareinput_reader_notifydone(node->share_lk_ctxt, sisc->share_id);
 
-	ExecEagerFreeShareInputScan(node);
+	if(sisc->share_type == SHARE_MATERIAL || sisc->share_type == SHARE_MATERIAL_XSLICE) 
+	{
+		if(node->ts_pos != NULL)
+			ntuplestore_destroy_accessor((NTupleStoreAccessor *) node->ts_pos);
+		if(node->ts_markpos != NULL)
+			pfree(node->ts_markpos);
+
+		if(node->ts_state != NULL)
+		{
+			if(ntuplestore_is_readerwriter_reader((NTupleStore *) node->ts_state))
+				ntuplestore_destroy((NTupleStore *) node->ts_state);
+		}
+	}
+
+	node->ts_state = NULL;
+	node->ts_pos = NULL;
+	node->ts_markpos = NULL;
 
 	/* 
 	 * shutdown subplan.  First scanner of underlying share input will
@@ -466,16 +475,11 @@ void shareinput_create_bufname_prefix(char* p, int size, int share_id)
  */
 static void sisc_lockname(char* p, int size, int share_id, const char* name)
 {
-	if (snprintf(p, size,
+	snprintf(p, size,
 			"%s/%s/%s_gpcdb2.sisc_%d_%d_%d_%d_%s",
-			getCurrentTempFilePath, PG_TEMP_FILES_DIR, PG_TEMP_FILE_PREFIX, 
+			DatabasePath, PG_TEMP_FILES_DIR, PG_TEMP_FILE_PREFIX, 
 			Gp_segment, gp_session_id, gp_command_count, share_id, name
-			) > size)
-	{
-		ereport(ERROR, (errmsg("cannot generate path %s/%s/%s_gpcdb2.sisc_%d_%d_%d_%d_%s",
-                        getCurrentTempFilePath, PG_TEMP_FILES_DIR, PG_TEMP_FILE_PREFIX,
-                        Gp_segment, gp_session_id, gp_command_count, share_id, name)));
-	}
+			);
 }
 
 typedef struct ShareInput_Lk_Context 
@@ -498,7 +502,7 @@ static void shareinput_clean_lk_ctxt(ShareInput_Lk_Context *lk_ctxt)
 	if(lk_ctxt->readyfd >= 0)
 	{
 		err = gp_retry_close(lk_ctxt->readyfd);
-		insist_log(!err, "cannot close file: %m");
+		insist_log(!err, "shareinput_clean_lk_ctxt cannot close readyfd: %m");
 
 		lk_ctxt->readyfd = -1;
 	}
@@ -506,7 +510,7 @@ static void shareinput_clean_lk_ctxt(ShareInput_Lk_Context *lk_ctxt)
 	if(lk_ctxt->donefd >= 0)
 	{
 		err = gp_retry_close(lk_ctxt->donefd);
-		insist_log(!err, "cannot close file: %m");
+		insist_log(!err, "shareinput_clean_lk_ctxt cannot close donefd: %m");
 
 		lk_ctxt->donefd = -1;
 	}
@@ -546,10 +550,7 @@ static void create_tmp_fifo(const char *fifoname)
 	{
 		/* first try may be due to pgsql_tmp dir is not created yet. */
 		char tmpdir[MAXPGPATH];
-		if (snprintf(tmpdir, MAXPGPATH, "%s/%s", getCurrentTempFilePath, PG_TEMP_FILES_DIR) > MAXPGPATH)
-		{
-			ereport(ERROR, (errmsg("cannot create dir path %s/%s", getCurrentTempFilePath, PG_TEMP_FILES_DIR)));
-		}
+		snprintf(tmpdir, MAXPGPATH, "%s/%s", DatabasePath, PG_TEMP_FILES_DIR);
 		mkdir(tmpdir, S_IRWXU);
 
 		/* then try it again */
@@ -846,58 +847,4 @@ initGpmonPktForShareInputScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState 
 							 (int64)planNode->plan_rows, 
 							 NULL);
 	}
-}
-
-void
-ExecEagerFreeShareInputScan(ShareInputScanState *node)
-{
-	ShareInputScan	   *sisc = (ShareInputScan *) node->ss.ps.plan;
-	EState			   *estate = node->ss.ps.state;
-
-	/*
-	 * This could be called more than once.
-	 */
-	if (node->freed)
-		return;
-
-
-	if (sisc->share_type == SHARE_MATERIAL || sisc->share_type == SHARE_SORT)
-	{
-		/*
-		 * Decrement the reference count in ShareNodeEntry when it's an intra-slice share node.
-		 * The reference count tells the underlying Material/Sort node not to free
-		 * too eagerly as this node still needs to read its tuples.  Once this node
-		 * is freed, the underlying node can free its content.
-		 * We consider this reference counter only in intra-slice cases, because
-		 * inter-slice share nodes have their own pointer to the buffer and
-		 * there is no way to tell this reference over Motions anyway.
-		 */
-		ShareNodeEntry *snEntry = ExecGetShareNodeEntry(estate, sisc->share_id, false);
-		Assert(snEntry && snEntry->refcount > 0);
-		snEntry->refcount--;
-	}
-
-	/*
-	 * no need to call tuplestore end.  Underlying ShareInput will take
-	 * care of releasing tuplestore resources
-	 */
-
-	if(sisc->share_type == SHARE_MATERIAL || sisc->share_type == SHARE_MATERIAL_XSLICE)
-	{
-		if(node->ts_pos != NULL)
-			ntuplestore_destroy_accessor((NTupleStoreAccessor *) node->ts_pos);
-		if(node->ts_markpos != NULL)
-			pfree(node->ts_markpos);
-
-		if(node->ts_state != NULL)
-		{
-			if(ntuplestore_is_readerwriter_reader((NTupleStore *) node->ts_state))
-				ntuplestore_destroy((NTupleStore *) node->ts_state);
-		}
-	}
-
-	node->ts_state = NULL;
-	node->ts_pos = NULL;
-	node->ts_markpos = NULL;
-	node->freed = true;
 }

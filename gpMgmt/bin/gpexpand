@@ -17,7 +17,6 @@ from time import strftime, sleep
 
 try:
     from gppylib.commands.unix import *
-    from gppylib.fault_injection import inject_fault
     from gppylib.commands.gp import *
     from gppylib.commands.pg import PgControlData
     from gppylib.gparray import GpArray, MODE_CHANGELOGGING, STATUS_DOWN
@@ -37,9 +36,6 @@ try:
     from gppylib.operations.utils import ParallelOperation
     from gppylib.parseutils import line_reader, parse_gpexpand_segment_line, \
         canonicalize_address
-    from gppylib.operations.filespace import PG_SYSTEM_FILESPACE, GP_TRANSACTION_FILES_FILESPACE,\
-         GP_TEMPORARY_FILES_FILESPACE, GetCurrentFilespaceEntries, GetFilespaceEntries, GetFilespaceEntriesDict,\
-         RollBackFilespaceChanges, GetMoveOperationList, FileType, UpdateFlatFiles
 
 except ImportError, e:
     sys.exit('ERROR: Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
@@ -115,7 +111,7 @@ EXECNAME = os.path.split(__file__)[-1]
 def parseargs():
     parser = OptParser(option_class=OptChecker,
                 description=' '.join(description.split()),
-                version='%prog version $Revision$')
+                version='%prog version 4.0 build 21002')
     parser.setHelp(_help)
     parser.set_usage('%prog ' + _usage)
     parser.remove_option('-h')
@@ -769,19 +765,7 @@ class SegmentTemplate:
         self.pool.join()
         self.pool.check_results()
                 
-
-    def _get_transaction_filespace_dir(self, transaction_flat_file): 
-        filespace_dir = None
-
-        with open(transaction_flat_file) as file:
-            for line in file:
-                fs_info = line.split()
-                if len(fs_info) != 2:
-                    continue
-                filespace_dir = fs_info[1]
-
-        return filespace_dir
-    
+ 
     def _fixup_template(self):
         """Copies postgresql.conf and pg_hba.conf files from a valid segment on the system.
         Then modifies the template copy of pg_hba.conf"""
@@ -801,27 +785,6 @@ class SegmentTemplate:
                            self.tempDir, ctxt=REMOTE, remoteHost=self.srcSegHostname)
         cpCmd.run(validateAfter=True)
 
-        #Copy the transaction directories into template
-        pg_system_filespace_entries = GetFilespaceEntriesDict(GetFilespaceEntries(self.gparray, 
-                                                                                  PG_SYSTEM_FILESPACE).run()).run()
-        transaction_flat_file = os.path.join(pg_system_filespace_entries[1][2], GP_TRANSACTION_FILES_FILESPACE)
-        filespace_dir = None
-        if os.path.exists(transaction_flat_file):
-            filespace_dir = self._get_transaction_filespace_dir(transaction_flat_file) 
-            logger.debug('Filespace location = %s' % filespace_dir)
-
-            if filespace_dir:
-                transaction_files_dir = ['pg_xlog', 'pg_multixact', 'pg_subtrans', 'pg_clog',
-                                         'pg_distributedlog', 'pg_distributedxidmap']
-                for directory in transaction_files_dir:
-                    dst_dir = os.path.join(self.tempDir, directory)
-                    src_dir = os.path.join(filespace_dir, directory)
-
-                    mkCmd = MakeDirectory('gpexpand creating transaction directories in template', dst_dir)
-                    mkCmd.run(validateAfter=True)
-                    cpCmd = LocalDirCopy('gpexpand copying dir %s' % src_dir, src_dir, dst_dir)
-                    cpCmd.run(validateAfter=True)
-    
         # Don't need log files and gpperfmon files in template.
         rmCmd = RemoveFiles('gpexpand remove gppermfon data from template',
                             self.tempDir + '/gpperfmon/data')
@@ -841,36 +804,17 @@ class SegmentTemplate:
                             self.tempDir + '/gpexpand.*')
         rmCmd.run(validateAfter=True)
 
-        #We dont need the flat files 
-        rmCmd = RemoveFiles('gpexpand remove transaction flat file from template',
-                            self.tempDir + '/' + GP_TRANSACTION_FILES_FILESPACE)
-        rmCmd.run(validateAfter=True)
-        rmCmd = RemoveFiles('gpexpand remove temporary flat file from template',
-                            self.tempDir + '/' + GP_TEMPORARY_FILES_FILESPACE)
-        rmCmd.run(validateAfter=True)
-
         self.logger.info('Adding new segments into template pg_hba.conf')
         try:
             fp = open(self.tempDir + '/pg_hba.conf', 'a')
             try:
-                new_host_set = set()
                 for newSeg in self.gparray.getExpansionSegDbList():
                     address = newSeg.getSegmentAddress()
-                    host = newSeg.getSegmentHostName()
-                    new_host_set.add(host)
                     addrinfo = socket.getaddrinfo(address, None)
                     ipaddrlist = list(set([ (ai[0], ai[4][0]) for ai in addrinfo]))
                     fp.write('# %s\n' % address)
                     for addr in ipaddrlist:
                         fp.write('host\tall\tall\t%s/%s\ttrust\n' % (addr[1], '32' if addr[0] == socket.AF_INET else '128'))
-
-                for new_host in new_host_set:
-                    addrinfo = socket.getaddrinfo(new_host, None)
-                    ipaddrlist = list(set([ (ai[0], ai[4][0]) for ai in addrinfo]))
-                    fp.write('# %s\n' % new_host)
-                    for addr in ipaddrlist:
-                        fp.write('host\tall\tall\t%s/%s\ttrust\n' % (addr[1], '32' if addr[0] == socket.AF_INET else '128'))
-
             finally:
                 fp.close()
         except IOError, msg:
@@ -1058,7 +1002,6 @@ class gpexpand:
                 cursor = dbconn.execSQL(status_conn,'SELECT status FROM gpexpand.status ORDER BY updated DESC LIMIT 1')
                 if cursor.rowcount == 1:
                     gpexpand_db_status = cursor.fetchone()[0]
-
             except Exception, e:
                 # expansion schema doesn't exists or there was a connection failure.
                 pass
@@ -1403,7 +1346,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
                                              (fsInputFilename, str(lineNumber), str(e)))
 
         except IOError, ioe:
-           raise ExpansionError('Problem with filespace input file: %s. Exception: %s' % (fsInputFilename, str(ioe)))
+           raise ExpansionError('Problem with filespace input file: %s. Eexception:' % (fsInputFilename, str(ioe)))
         finally:
            if f != None:
               f.close()
@@ -1746,8 +1689,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
             segStartCmd = SegmentStart( name = "Starting new segment dbid %s on host %s." % (str(seg.getSegmentDbId()), seg.getSegmentHostName())
                                       , gpdb = seg
                                       , numContentsInCluster = 0  # Starting seg on it's own.
-                                      , era = None
-                                      , mirrormode = MIRROR_MODE_MIRRORLESS
+                                      , mirroringMode = MIRROR_MODE_MIRRORLESS
                                       , utilityMode = True
                                       , ctxt = REMOTE
                                       , remoteHost = seg.getSegmentHostName()
@@ -1945,8 +1887,6 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
             self.logger.info('Populating %s.%s with data from database %s' % (gpexpand_schema, status_detail_table, dbname.decode('utf-8')) )
             self._populate_regular_tables(dbname)
             self._populate_partitioned_tables(dbname)
-            inject_fault('gpexpand MPP-14620 fault injection')
-            self._update_distribution_policy(dbname)
 
         nowStr = datetime.datetime.now()
         statusSQL = "INSERT INTO %s.%s VALUES ( 'SETUP DONE', '%s' ) " % (gpexpand_schema,status_table,nowStr)
@@ -2039,6 +1979,27 @@ WHERE
 
         table_conn.commit()
         table_conn.close()
+        table_conn = self.connect_database(dbname)
+        #null out the dist policies
+        sql = """
+UPDATE  gp_distribution_policy
+  SET attrnums = NULL
+FROM pg_class c
+    JOIN pg_namespace n ON (c.relnamespace=n.oid)
+WHERE
+    localoid = c.oid
+    AND c.oid NOT IN ( SELECT parrelid as oid FROM pg_partition
+                    UNION
+                   SELECT parchildrelid as oid FROM pg_partition_rule
+                 )
+    AND n.nspname != 'gpexpand';
+        """
+
+        self.logger.debug(sql)
+        dbconn.execSQL(table_conn,sql)
+        table_conn.commit()
+        table_conn.close()
+        pass
 
 
     def _populate_partitioned_tables(self,dbname):
@@ -2120,31 +2081,7 @@ ORDER BY tablename, c2.oid desc;
 
         table_conn.commit()
         table_conn.close()
-
-
-    def _update_distribution_policy(self, dbname):
-        """ NULL out the distribution policy for both
-            regular and paritioned table before expansion
-        """
-        
         table_conn = self.connect_database(dbname)
-        #null out the dist policies
-        sql = """
-UPDATE  gp_distribution_policy
-  SET attrnums = NULL
-FROM pg_class c
-    JOIN pg_namespace n ON (c.relnamespace=n.oid)
-WHERE
-    localoid = c.oid
-    AND c.oid NOT IN ( SELECT parrelid as oid FROM pg_partition
-                    UNION
-                   SELECT parchildrelid as oid FROM pg_partition_rule
-                 )
-    AND n.nspname != 'gpexpand';
-        """
-
-        self.logger.debug(sql)
-        dbconn.execSQL(table_conn,sql)
 
         sql = """
 UPDATE gp_distribution_policy
@@ -2168,7 +2105,8 @@ UPDATE gp_distribution_policy
         dbconn.execSQL(table_conn,sql)
         table_conn.commit()
         table_conn.close()
-        
+
+
     def form_dist_policy_name(self,conn,rs_val,table_oid):
         if rs_val is None:
             return (None,None)
@@ -2354,92 +2292,6 @@ UPDATE gp_distribution_policy
             logger.exception('Syncing of Greenplum Database extensions has failed.')
             logger.warning('Please run gppkg --clean after successful expansion.')
 
-    def move_filespaces(self):
-        """
-            Move filespaces for temporary and transaction files.
-        """
-        
-        operations = []
-        segments = self.gparray.getExpansionSegDbList()
-
-        cur_filespace_entries = GetFilespaceEntriesDict(GetFilespaceEntries(self.gparray,
-                                                                            PG_SYSTEM_FILESPACE
-                                                                           ).run()).run()
-        pg_system_filespace_entries = cur_filespace_entries
-        cur_filespace_name = self.gparray.getFileSpaceName(int(cur_filespace_entries[1][0]))
-        segments = self.gparray.getExpansionSegDbList()
-
-        logger.info('Checking if Transaction filespace was moved')
-        if os.path.exists(os.path.join(cur_filespace_entries[1][2], GP_TRANSACTION_FILES_FILESPACE)): 
-            logger.info('Transaction filespace was moved')
-            new_filespace_entries = GetFilespaceEntriesDict(GetCurrentFilespaceEntries(self.gparray,
-                                                                                       FileType.TRANSACTION_FILES 
-                                                                                      ).run()).run()
-            new_filespace_name = self.gparray.getFileSpaceName(int(new_filespace_entries[1][0]))
-            operations_list = GetMoveOperationList(segments,
-                                                   FileType.TRANSACTION_FILES,
-                                                   new_filespace_name,
-                                                   new_filespace_entries,
-                                                   cur_filespace_entries,
-                                                   pg_system_filespace_entries
-                                                  ).run()
-
-            logger.info('Moving Transaction filespace on expansion segments')
-            ParallelOperation(operations_list).run()
-
-            logger.debug('Checking results of transaction files move')
-            for operation in operations_list:
-                try:
-                    operation.get_ret()
-                except Exception, e:
-                    logger.info('Transaction filespace move failed on expansion segment')
-                    RollBackFilespaceChanges(segments,
-                                             FileType.TRANSACTION_FILES,
-                                             cur_filespace_name,
-                                             cur_filespace_entries,
-                                             new_filespace_entries, 
-                                             pg_system_filespace_entries,
-                                             rollback=True
-                                            ).run()
-                    raise
-            
-        logger.info('Checking if Temporary filespace was moved')
-        if os.path.exists(os.path.join(cur_filespace_entries[1][2], GP_TEMPORARY_FILES_FILESPACE)): 
-            logger.info('Temporary filespace was moved')
-            new_filespace_entries = GetFilespaceEntriesDict(GetCurrentFilespaceEntries(self.gparray,
-                                                                                       FileType.TEMPORARY_FILES 
-                                                                                      ).run()).run()
-            new_filespace_name = self.gparray.getFileSpaceName(int(new_filespace_entries[1][0]))
-            operations_list = GetMoveOperationList(segments,
-                                                   FileType.TEMPORARY_FILES,
-                                                   new_filespace_name,
-                                                   new_filespace_entries,
-                                                   cur_filespace_entries,
-                                                   pg_system_filespace_entries
-                                                  ).run()
-
-            logger.info('Moving Temporary filespace on expansion segments')
-            ParallelOperation(operations_list).run()
-
-            logger.debug('Checking results of temporary files move')
-            for operation in operations_list:
-                try:
-                    operation.get_ret()
-                except Exception, e:
-                    logger.info('Temporary filespace move failed on expansion segment')
-                    RollBackFilespaceChanges(segments,
-                                             FileType.TEMPORARY_FILES,
-                                             cur_filespace_name,
-                                             cur_filespace_entries,
-                                             new_filespace_entries, 
-                                             pg_system_filespace_entries
-                                            ).run()
-                    raise
-
-        
-        #Update flat files on mirrors
-        UpdateFlatFiles(self.gparray, primaries=False, expansion=True).run()
-
 #-----------------------------------------------
 class ExpandTable():
 
@@ -2450,7 +2302,6 @@ class ExpandTable():
              self.storage_options,self.rank,self.status,
              self.expansion_started,self.expansion_finished,
              self.source_bytes) = row
-        self.finished_table_expansion = False
 
 
     def add_table(self,conn):
@@ -2535,19 +2386,13 @@ class ExpandTable():
         if not cancel_flag:
             dbconn.execSQL(table_conn,sql)
             table_conn.commit()
-            self.finished_table_expansion = True 
             if options.analyze:
                 sql = 'ANALYZE "%s"."%s"' % (schema_name, table_name)
                 logger.info('Analyzing %s.%s' % (schema_name.decode('utf-8'), table_name.decode('utf-8')))
                 dbconn.execSQL(table_conn, sql)
-                table_conn.commit()
 
 
     def mark_finished(self,status_conn,table_conn,finish_time):
-        
-        if not self.finished_table_expansion:
-            return
-
         sql = """UPDATE %s.%s
                   SET status = '%s', expansion_finished='%s'
                   WHERE dbname = '%s' AND schema_oid = %s
@@ -2717,10 +2562,7 @@ class ExpandCommand(SQLCommand):
 
                 self.table.mark_started(status_conn,table_conn, self.cancel_flag)
                 self.table.expand(table_conn,self.cancel_flag)
-                if self.table.finished_table_expansion:
-                    table_exp_success = True
-                else:
-                    table_exp_success = False
+                table_exp_success = True
         except Exception, ex:
             if ex.__str__().find('canceling statement due to user request') == -1 and not self.cancel_flag:
                 table_expand_error=True
@@ -3077,7 +2919,6 @@ try:
         gp_expand.add_segments()
         gp_expand.update_original_segments()
         gp_expand.update_catalog()
-        gp_expand.move_filespaces()
         gp_expand.configure_new_segment_filespaces()
         gp_expand.cleanup_new_segments()
         gp_expand.setup_schema()

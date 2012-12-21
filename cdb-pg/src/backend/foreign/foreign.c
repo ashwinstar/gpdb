@@ -12,7 +12,6 @@
  */
 #include "postgres.h"
 
-#include "access/catquery.h"
 #include "access/reloptions.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_foreign_data_wrapper.h"
@@ -47,15 +46,10 @@ GetForeignDataWrapper(Oid fdwid)
 	Datum		datum;
 	HeapTuple	tp;
 	bool		isnull;
-	cqContext  *pcqCtx;
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_foreign_data_wrapper "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(fdwid)));
-
-	tp = caql_getnext(pcqCtx);
+	tp = SearchSysCache(FOREIGNDATAWRAPPEROID,
+						ObjectIdGetDatum(fdwid),
+						0, 0, 0);
 
 	if (!HeapTupleIsValid(tp))
 		elog(ERROR, "cache lookup failed for foreign-data wrapper %u", fdwid);
@@ -69,12 +63,13 @@ GetForeignDataWrapper(Oid fdwid)
 	fdw->fdwvalidator = fdwform->fdwvalidator;
 
 	/* Extract the options */
-	datum = caql_getattr(pcqCtx,
-						 Anum_pg_foreign_data_wrapper_fdwoptions,
-						 &isnull);
+	datum = SysCacheGetAttr(FOREIGNDATAWRAPPEROID,
+							tp,
+							Anum_pg_foreign_data_wrapper_fdwoptions,
+							&isnull);
 	fdw->options = untransformRelOptions(datum);
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(tp);
 
 	return fdw;
 }
@@ -89,11 +84,9 @@ GetForeignDataWrapperOidByName(const char *fdwname, bool missing_ok)
 {
 	Oid			fdwId;
 
-	fdwId = caql_getoid(
-			NULL,
-			cql("SELECT oid FROM pg_foreign_data_wrapper "
-				" WHERE fdwname = :1 ",
-				CStringGetDatum(fdwname)));
+	fdwId = GetSysCacheOid(FOREIGNDATAWRAPPERNAME,
+						   CStringGetDatum(fdwname),
+						   0, 0, 0);
 
 	if (!OidIsValid(fdwId) && !missing_ok)
 		ereport(ERROR,
@@ -132,15 +125,10 @@ GetForeignServer(Oid serverid)
 	HeapTuple	tp;
 	Datum		datum;
 	bool		isnull;
-	cqContext  *pcqCtx;
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_foreign_server "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(serverid)));
-
-	tp = caql_getnext(pcqCtx);
+	tp = SearchSysCache(FOREIGNSERVEROID,
+						ObjectIdGetDatum(serverid),
+						0, 0, 0);
 
 	if (!HeapTupleIsValid(tp))
 		elog(ERROR, "cache lookup failed for foreign server %u", serverid);
@@ -154,26 +142,29 @@ GetForeignServer(Oid serverid)
 	server->fdwid = serverform->srvfdw;
 
 	/* Extract server type */
-	datum = caql_getattr(pcqCtx,
-						 Anum_pg_foreign_server_srvtype,
-						 &isnull);
+	datum = SysCacheGetAttr(FOREIGNSERVEROID,
+							tp,
+							Anum_pg_foreign_server_srvtype,
+							&isnull);
 	server->servertype = isnull ? NULL : pstrdup(TextDatumGetCString(datum));
 
 	/* Extract server version */
-	datum = caql_getattr(pcqCtx,
-						 Anum_pg_foreign_server_srvversion,
-						 &isnull);
+	datum = SysCacheGetAttr(FOREIGNSERVEROID,
+							tp,
+							Anum_pg_foreign_server_srvversion,
+							&isnull);
 	server->serverversion = isnull ? NULL : pstrdup(TextDatumGetCString(datum));
 
 	/* Extract the srvoptions */
-	datum = caql_getattr(pcqCtx,
-						 Anum_pg_foreign_server_srvoptions,
-						 &isnull);
+	datum = SysCacheGetAttr(FOREIGNSERVEROID,
+							tp,
+							Anum_pg_foreign_server_srvoptions,
+							&isnull);
 
 	/* untransformRelOptions does exactly what we want - avoid duplication */
 	server->options = untransformRelOptions(datum);
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(tp);
 
 	return server;
 }
@@ -187,11 +178,9 @@ GetForeignServerOidByName(const char *srvname, bool missing_ok)
 {
 	Oid			serverid;
 
-	serverid = caql_getoid(
-			NULL,
-			cql("SELECT oid FROM pg_foreign_server "
-				" WHERE srvname = :1 ",
-				CStringGetDatum(srvname)));
+	serverid = GetSysCacheOid(FOREIGNSERVERNAME,
+							  CStringGetDatum(srvname),
+							  0, 0, 0);
 
 	if (!OidIsValid(serverid) && !missing_ok)
 		ereport(ERROR,
@@ -232,32 +221,19 @@ GetUserMapping(Oid userid, Oid serverid)
 	HeapTuple	tp;
 	bool		isnull;
 	UserMapping *um;
-	cqContext  *pcqCtx;
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_user_mapping "
-				" WHERE umuser = :1 "
-				" AND umserver = :2 ",
-				ObjectIdGetDatum(userid),
-				ObjectIdGetDatum(serverid)));
-
-	tp = caql_getnext(pcqCtx);
+	tp = SearchSysCache(USERMAPPINGUSERSERVER,
+						ObjectIdGetDatum(userid),
+						ObjectIdGetDatum(serverid),
+						0, 0);
 
 	if (!HeapTupleIsValid(tp))
 	{
-		caql_endscan(pcqCtx);
-
 		/* Not found for the specific user -- try PUBLIC */
-		pcqCtx = caql_beginscan(
-				NULL,
-				cql("SELECT * FROM pg_user_mapping "
-					" WHERE umuser = :1 "
-					" AND umserver = :2 ",
-					ObjectIdGetDatum(InvalidOid),
-					ObjectIdGetDatum(serverid)));
-
-		tp = caql_getnext(pcqCtx);
+		tp = SearchSysCache(USERMAPPINGUSERSERVER,
+							ObjectIdGetDatum(InvalidOid),
+							ObjectIdGetDatum(serverid),
+							0, 0);
 	}
 
 	if (!HeapTupleIsValid(tp))
@@ -270,16 +246,17 @@ GetUserMapping(Oid userid, Oid serverid)
 	umform = (Form_pg_user_mapping) GETSTRUCT(tp);
 
 	/* Extract the umoptions */
-	datum = caql_getattr(pcqCtx,
-						 Anum_pg_user_mapping_umoptions,
-						 &isnull);
+	datum = SysCacheGetAttr(USERMAPPINGUSERSERVER,
+							tp,
+							Anum_pg_user_mapping_umoptions,
+							&isnull);
 
 	um = palloc(sizeof(UserMapping));
 	um->userid = userid;
 	um->serverid = serverid;
 	um->options = untransformRelOptions(datum);
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(tp);
 
 	return um;
 }

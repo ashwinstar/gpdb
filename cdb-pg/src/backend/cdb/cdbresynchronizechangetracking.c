@@ -442,6 +442,7 @@ bool ChangeTracking_PrintRelationChangeInfo(
 									  uint8		xl_info,
 									  void		*data, 
 									  XLogRecPtr *loc,
+									  bool		weAreGeneratingXLogNow,
 									  bool		printSkipIssuesOnly)
 {
 	bool				atLeastOneSkipIssue = false;
@@ -471,7 +472,10 @@ bool ChangeTracking_PrintRelationChangeInfo(
 
 		relationChangeInfo = &relationChangeInfoArray[i];
 
-		maxPersistentSerialNum = PersistentRelation_CurrentMaxSerialNum();
+		if (weAreGeneratingXLogNow)
+			maxPersistentSerialNum = PersistentRelation_MyHighestSerialNum();
+		else
+			maxPersistentSerialNum = PersistentRelation_CurrentMaxSerialNum();
 
 		skip = GpPersistent_SkipXLogInfo(relationChangeInfo->relFileNode.relNode);
 		if (!skip)
@@ -2308,7 +2312,6 @@ ChangeTracking_MarkTransitionToResyncCompleted(void)
 
 	FileRep_InsertConfigLogEntry("setting resync_transition_completed to true ");
 
-	changeTrackingResyncMeta->resync_mode_full = false;
 	changeTrackingResyncMeta->resync_transition_completed = true;
 	file = ChangeTracking_OpenFile(ftype);	
 	
@@ -2470,7 +2473,6 @@ ChangeTracking_RetrieveLastChangeTrackedLoc(void)
 				recptr->insync_transition_completed);
 
 		setFullResync(recptr->resync_mode_full);
-		changeTrackingResyncMeta->resync_mode_full = recptr->resync_mode_full;
 		 
 		/* 
 		 * if resync_lsn_end isn't {0,0} then we have a valid value 

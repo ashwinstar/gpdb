@@ -27,7 +27,7 @@
  * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $PostgreSQL: pgsql/src/backend/regex/regexec.c,v 1.27.4.1 2010/02/01 02:45:46 tgl Exp $
+ * $PostgreSQL: pgsql/src/backend/regex/regexec.c,v 1.27 2005/10/15 02:49:24 momjian Exp $
  *
  */
 
@@ -142,7 +142,6 @@ static int	dissect(struct vars *, struct subre *, chr *, chr *);
 static int	condissect(struct vars *, struct subre *, chr *, chr *);
 static int	altdissect(struct vars *, struct subre *, chr *, chr *);
 static int	cdissect(struct vars *, struct subre *, chr *, chr *);
-static int	ccaptdissect(struct vars *, struct subre *, chr *, chr *);
 static int	ccondissect(struct vars *, struct subre *, chr *, chr *);
 static int	crevdissect(struct vars *, struct subre *, chr *, chr *);
 static int	cbrdissect(struct vars *, struct subre *, chr *, chr *);
@@ -562,21 +561,27 @@ dissect(struct vars * v,
 		case '=':				/* terminal node */
 			assert(t->left == NULL && t->right == NULL);
 			return REG_OKAY;	/* no action, parent did the work */
+			break;
 		case '|':				/* alternation */
 			assert(t->left != NULL);
 			return altdissect(v, t, begin, end);
+			break;
 		case 'b':				/* back ref -- shouldn't be calling us! */
 			return REG_ASSERT;
+			break;
 		case '.':				/* concatenation */
 			assert(t->left != NULL && t->right != NULL);
 			return condissect(v, t, begin, end);
+			break;
 		case '(':				/* capturing */
 			assert(t->left != NULL && t->right == NULL);
 			assert(t->subno > 0);
 			subset(v, t, begin, end);
 			return dissect(v, t->left, begin, end);
+			break;
 		default:
 			return REG_ASSERT;
+			break;
 	}
 }
 
@@ -706,6 +711,8 @@ cdissect(struct vars * v,
 		 chr *begin,			/* beginning of relevant substring */
 		 chr *end)				/* end of same */
 {
+	int			er;
+
 	assert(t != NULL);
 	MDEBUG(("cdissect %ld-%ld %c\n", LOFF(begin), LOFF(end), t->op));
 
@@ -714,40 +721,31 @@ cdissect(struct vars * v,
 		case '=':				/* terminal node */
 			assert(t->left == NULL && t->right == NULL);
 			return REG_OKAY;	/* no action, parent did the work */
+			break;
 		case '|':				/* alternation */
 			assert(t->left != NULL);
 			return caltdissect(v, t, begin, end);
+			break;
 		case 'b':				/* back ref -- shouldn't be calling us! */
 			assert(t->left == NULL && t->right == NULL);
 			return cbrdissect(v, t, begin, end);
+			break;
 		case '.':				/* concatenation */
 			assert(t->left != NULL && t->right != NULL);
 			return ccondissect(v, t, begin, end);
+			break;
 		case '(':				/* capturing */
 			assert(t->left != NULL && t->right == NULL);
-			return ccaptdissect(v, t, begin, end);
+			assert(t->subno > 0);
+			er = cdissect(v, t->left, begin, end);
+			if (er == REG_OKAY)
+				subset(v, t, begin, end);
+			return er;
+			break;
 		default:
 			return REG_ASSERT;
+			break;
 	}
-}
-
-/*
- * ccaptdissect - capture subexpression matches (with complications)
- */
-static int						/* regexec return code */
-ccaptdissect(struct vars * v,
-			 struct subre * t,
-			 chr *begin,		/* beginning of relevant substring */
-			 chr *end)			/* end of same */
-{
-	int			er;
-
-	assert(t->subno > 0);
-
-	er = cdissect(v, t->left, begin, end);
-	if (er == REG_OKAY)
-		subset(v, t, begin, end);
-	return er;
 }
 
 /*
@@ -807,27 +805,17 @@ ccondissect(struct vars * v,
 	for (;;)
 	{
 		/* try this midpoint on for size */
-		if (longest(v, d2, mid, end, (int *) NULL) == end)
+		er = cdissect(v, t->left, begin, mid);
+		if (er == REG_OKAY &&
+			longest(v, d2, mid, end, (int *) NULL) == end &&
+			(er = cdissect(v, t->right, mid, end)) ==
+			REG_OKAY)
+			break;				/* NOTE BREAK OUT */
+		if (er != REG_OKAY && er != REG_NOMATCH)
 		{
-			er = cdissect(v, t->left, begin, mid);
-			if (er == REG_OKAY)
-			{
-				er = cdissect(v, t->right, mid, end);
-				if (er == REG_OKAY)
-				{
-					/* satisfaction */
-					MDEBUG(("successful\n"));
-					freedfa(d);
-					freedfa(d2);
-					return REG_OKAY;
-				}
-			}
-			if (er != REG_OKAY && er != REG_NOMATCH)
-			{
-				freedfa(d);
-				freedfa(d2);
-				return er;
-			}
+			freedfa(d);
+			freedfa(d2);
+			return er;
 		}
 
 		/* that midpoint didn't work, find a new one */
@@ -854,8 +842,11 @@ ccondissect(struct vars * v,
 		zapmem(v, t->right);
 	}
 
-	/* can't get here */
-	return REG_ASSERT;
+	/* satisfaction */
+	MDEBUG(("successful\n"));
+	freedfa(d);
+	freedfa(d2);
+	return REG_OKAY;
 }
 
 /*
@@ -914,27 +905,17 @@ crevdissect(struct vars * v,
 	for (;;)
 	{
 		/* try this midpoint on for size */
-		if (longest(v, d2, mid, end, (int *) NULL) == end)
+		er = cdissect(v, t->left, begin, mid);
+		if (er == REG_OKAY &&
+			longest(v, d2, mid, end, (int *) NULL) == end &&
+			(er = cdissect(v, t->right, mid, end)) ==
+			REG_OKAY)
+			break;				/* NOTE BREAK OUT */
+		if (er != REG_OKAY && er != REG_NOMATCH)
 		{
-			er = cdissect(v, t->left, begin, mid);
-			if (er == REG_OKAY)
-			{
-				er = cdissect(v, t->right, mid, end);
-				if (er == REG_OKAY)
-				{
-					/* satisfaction */
-					MDEBUG(("successful\n"));
-					freedfa(d);
-					freedfa(d2);
-					return REG_OKAY;
-				}
-			}
-			if (er != REG_OKAY && er != REG_NOMATCH)
-			{
-				freedfa(d);
-				freedfa(d2);
-				return er;
-			}
+			freedfa(d);
+			freedfa(d2);
+			return er;
 		}
 
 		/* that midpoint didn't work, find a new one */
@@ -961,8 +942,11 @@ crevdissect(struct vars * v,
 		zapmem(v, t->right);
 	}
 
-	/* can't get here */
-	return REG_ASSERT;
+	/* satisfaction */
+	MDEBUG(("successful\n"));
+	freedfa(d);
+	freedfa(d2);
+	return REG_OKAY;
 }
 
 /*

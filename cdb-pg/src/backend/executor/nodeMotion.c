@@ -556,7 +556,7 @@ static bool motion_mkhp_read(void *vpctxt, MKEntry *a)
 		Assert(sendSlice->sliceIndex == motion->motionID);
 
     	readerIndex = 0;
-    	foreach_with_count(lcProcess, sendSlice->workerProcesses, routeIndex)
+    	foreach_with_count(lcProcess, sendSlice->primaryProcesses, routeIndex)
     	{
     		if ( lfirst(lcProcess) != NULL)
     		{
@@ -848,7 +848,7 @@ execMotionSortedReceiverFirstTime(MotionState * node)
 	/*
 	 * We need to get a tuple from every sender, and stick it into the heap.
 	 */
-	foreach_with_count(lcProcess, sendSlice->workerProcesses, iSegIdx)
+	foreach_with_count(lcProcess, sendSlice->primaryProcesses, iSegIdx)
 	{
 		if ( lfirst(lcProcess) == NULL)
 			continue; /* skip this one: we are not receiving from it */
@@ -921,7 +921,7 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
     Slice      *recvSlice = NULL;
     SliceTable *sliceTable = estate->es_sliceTable;
 
-	int			parentSliceIndex = estate->currentSliceIdInPlan;
+	int			parentSliceIndex = estate->current_slice_no;
 
 #ifdef CDB_MOTION_DEBUG
 	int			i;
@@ -930,9 +930,7 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 	Assert(node->motionID > 0);
 	Assert(node->motionID <= sliceTable->nMotions);
 
-	estate->currentSliceIdInPlan = node->motionID;
-	int parentExecutingSliceId = estate->currentExecutingSliceId;
-	estate->currentExecutingSliceId = node->motionID;
+	estate->current_slice_no = node->motionID;
 
 	/*
 	 * create state structure
@@ -979,7 +977,7 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
         sendSlice->rootIndex = recvSlice->rootIndex;
 
 		/* The gang beneath a Motion will be a reader. */
-		sendSlice->gangType = GANGTYPE_SEGDB_READER;
+		sendSlice->gangType = GANGTYPE_PRIMARY_READER;
 
 	    /* How many sending processes in the dispatcher array? Note that targeted dispatch may reduce this number in practice */
 		sendSlice->gangSize = 1;
@@ -989,7 +987,7 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
         /* Does sending slice need 1-gang with read-only access to entry db? */
         if (sendFlow->flotype == FLOW_SINGLETON &&
             sendFlow->segindex == -1)
-            sendSlice->gangType = GANGTYPE_MASTERDB_READER;
+            sendSlice->gangType = GANGTYPE_ENTRYDB_READER;
 
         sendSlice->numGangMembersToBeActive = sliceCalculateNumSendingProcesses(sendSlice, getgpsegmentCount());
 
@@ -1006,9 +1004,9 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 			{
 				Assert(recvSlice->gangSize == 1);
 				Assert(node->outputSegIdx[0] >= 0
-					   ? (recvSlice->gangType == GANGTYPE_SEGDB_READER || 
-						  recvSlice->gangType == GANGTYPE_MASTERDB_READER)
-					   : recvSlice->gangType == GANGTYPE_MASTERDB_READER);
+					   ? (recvSlice->gangType == GANGTYPE_PRIMARY_READER || 
+						  recvSlice->gangType == GANGTYPE_ENTRYDB_READER)
+					   : recvSlice->gangType == GANGTYPE_ENTRYDB_READER);
 			}
 		}
 
@@ -1149,13 +1147,7 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
     }
 #endif
 
-	/*
-	 * Temporarily set currentExecutingSliceId to the parent value, since
-	 * this motion might be in the top slice of an InitPlan.
-	 */
-	estate->currentExecutingSliceId = parentExecutingSliceId;
 	initGpmonPktForMotion((Plan *)node, &motionstate->ps.gpmon_pkt, estate);
-	estate->currentExecutingSliceId = node->motionID;
 
 	return motionstate;
 }
@@ -1194,14 +1186,6 @@ ExecEndMotion(MotionState * node)
 	 * clean out the tuple table
 	 */
 	ExecClearTuple(node->ps.ps_ResultTupleSlot);
-
-	/*
-	 * Set the slice no for the nodes under this motion.
-	 */
-	Assert(node->ps.state != NULL);
-	node->ps.state->currentSliceIdInPlan = motNodeID;
-	int parentExecutingSliceId = node->ps.state->currentExecutingSliceId;
-	node->ps.state->currentExecutingSliceId = motNodeID;
 
 	/*
 	 * shut down the subplan
@@ -1297,13 +1281,7 @@ ExecEndMotion(MotionState * node)
         pfree(node->outputFunArray);
 #endif
 
-	/*
-	 * Temporarily set currentExecutingSliceId to the parent value, since
-	 * this motion might be in the top slice of an InitPlan.
-	 */
-	node->ps.state->currentExecutingSliceId = parentExecutingSliceId;
 	EndPlanStateGpmonPkt(&node->ps);
-	node->ps.state->currentExecutingSliceId = motNodeID;
 }
 
 

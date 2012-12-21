@@ -72,53 +72,11 @@ SyncBitvectorContainer SyncBitVector_ShmemInit(const char *name, int vectorCount
 	if (!found)
 	{
 		/* only the postmaster resets the bit vector container */
-		SyncBitVector_Reset(container, vectorCount);
+		MemSet(container, 0, size);
+		container->vectorCount = vectorCount;
 	}
 
 	return container;
-}
-
-/*
- * Resets a SyncBitVector to an empty state (all zeroes).
- */
-void SyncBitVector_Reset(SyncBitvectorContainer container, int vectorCount)
-{
-	Assert(NULL != container);
-
-	const Size size = SyncBitVector_ShmemSize(vectorCount);
-	MemSet(container, 0, size);
-	container->vectorCount = vectorCount;
-}
-
-/*
- * Copies a SyncBitVector from shared memory to the current memory context
- *
- *   The resulting SyncBitVector is palloc-ed in the current memory context
- */
-SyncBitvectorContainer SyncBitVector_Save(SyncBitvectorContainer srcContainer)
-{
-	Assert(NULL != srcContainer);
-
-	Size containerSize = SyncBitVector_ShmemSize(srcContainer->vectorCount);
-	SyncBitvectorContainer dstContainer = palloc(containerSize);
-	memcpy(dstContainer, srcContainer, containerSize);
-
-	return dstContainer;
-}
-
-/*
- * Restores the contents of a SyncBitVector in shared memory from a saved one
- */
-void SyncBitVector_Restore(SyncBitvectorContainer shmemContainer,
-		SyncBitvectorContainer savedContainer)
-{
-	Assert(NULL != shmemContainer);
-	Assert(NULL != savedContainer);
-	Assert(shmemContainer != savedContainer);
-	Assert(savedContainer->vectorCount == shmemContainer->vectorCount);
-
-	Size containerSize = SyncBitVector_ShmemSize(savedContainer->vectorCount);
-	memcpy(shmemContainer, savedContainer, containerSize);
 }
 
 /*

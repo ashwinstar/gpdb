@@ -13,25 +13,18 @@ import sys
 import socket
 from optparse import Option, OptionGroup, OptionParser, OptionValueError
 
-import re
-import stat
-
 try:
     from gppylib import gplog
     from gppylib import pgconf
     from gppylib import userinput
     from gppylib.commands.base import Command
-    from gppylib.gpddboostmanager import *
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.operations import Operation
-    from gppylib.operations.dump import ValidateDatabaseExists, ValidateSchemaExists, DeleteCurrentDump, DeleteOldestDumps, DumpDatabase, DumpConfig, DumpGlobal, MailDumpEvent, PostDumpDatabase, UpdateHistoryTable, VacuumDatabase
-    from gppylib.operations.utils import DEFAULT_NUM_WORKERS    
-    from gppylib.db import dbconn
-
-
+    from gppylib.operations.dump import DeleteCurrentDump, DeleteOldestDumps, DumpDatabase, DumpConfig, DumpGlobal, MailDumpEvent, PostDumpDatabase, UpdateHistoryTable, VacuumDatabase
+    from gppylib.operations.utils import DEFAULT_NUM_WORKERS
 except ImportError, e:
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
- 
+
 INJECT_ROLLBACK = False
 
 EXECNAME = 'gpcrondump'
@@ -42,8 +35,6 @@ logger = gplog.get_default_logger()
 
 class GpCronDump(Operation):
     def __init__(self, options, args):
-        if args:
-            logger.warn("please note that some of the arguments (%s) aren't valid and will be ignored.", args)
         if options.masterDataDirectory is None:
             options.masterDataDirectory = gp.get_masterdatadir()
         self.interactive = options.interactive
@@ -69,87 +60,51 @@ class GpCronDump(Operation):
         self.clear_catalog_dumps = options.clear_catalog_dumps
         self.batch_default = options.batch_default
         self.include_dump_tables = options.include_dump_tables
-        self.exclude_dump_tables = options.exclude_dump_tables   
-        self.include_dump_tables_file = options.include_dump_tables_file
-        self.exclude_dump_tables_file = options.exclude_dump_tables_file 
+        self.exclude_dump_tables = options.exclude_dump_tables    
         self.backup_dir = options.backup_dir
         self.report_dir = options.report_dir
         self.encoding = options.encoding
         self.output_options = options.output_options
-        self.use_ddboost = options.use_ddboost
 
         # TODO: if action is 'append', wouldn't you expect a lack of input to result in [], as opposed to None?
         if self.include_dump_tables is None: self.include_dump_tables = []
         if self.exclude_dump_tables is None: self.exclude_dump_tables = []  
-        if self.output_options is None: self.output_options = []                
-        
-        # DDBoost related parameters
-        self.ddboost_options = GpDdboostManager(options, self.master_port, self.only_ddboost_options(options))
-        
-        # This if is to check whether we want to perform some configuration, rather than actually perform a backup
-        if not (self.clear_dumps_only or bool(self.ddboost_options.ddboost_hosts) or bool(self.ddboost_options.ddboost_user) or self.ddboost_options.ddboost_config_remove  
-                or bool(self.ddboost_options.list_su) or (self.ddboost_options.create_su)):
+        if self.output_options is None: self.output_options = []
+
+        if not self.clear_dumps_only:
             if self.dump_databases is not None:
                 self.dump_databases = self.dump_databases.split(",")
             elif 'PGDATABASE' in os.environ:
                 self.dump_databases = [os.environ['PGDATABASE']]
                 logger.info("Setting dump database to value of $PGDATABASE which is %s" % self.dump_databases[0])
             else:
-                if (self.ddboost_options.managment_operations is True):
-                    # We would expect to perform the ddboost related operations here and return some exit code,
-                    # but __init__() should return None, not 'int' - hence we are forced to use
-                    # some flag
-                    self.ddboost_options.ddboost_configure_and_exit = True
-                    logger.debug("ddboost_configure_and_exit is %s" % str(self.ddboost_options.ddboost_configure_and_exit))
-                else:
-                    raise ExceptionNoStackTraceNeeded("Must supply -x <database name> because $PGDATABASE is not set")
-
+                 raise ExceptionNoStackTraceNeeded("Must supply -x <database name> because $PGDATABASE is not set")
 
         if options.bypass_disk_check:
-            self.free_space_percent = None
+            self.free_space_percent = None    
 
         if options.backup_set is not None:
             logger.info("-w is no longer supported, will continue with dump of primary segments.")
 
-        if self.use_ddboost:
+        self.ddboost = options.ddboost
+        if self.ddboost:
             self.free_space_percent = None
             logger.info('Bypassing disk space checks due to DDBoost parameters')
             if self.backup_dir is not None:
                 raise ExceptionNoStackTraceNeeded('-u cannot be used with DDBoost parameters.')
 
-    # check if one of gpcrondump option was specified, except of ddboost options
-    def only_ddboost_options(self, options):
-        return ((options.dump_databases is None) and (options.dump_schema is None) and (options.report_dir is None)
-                and (options.backup_dir is None) and (options.use_ddboost is False)
-                and not (options.include_dump_tables or options.output_options or options.clear_dumps_only or options.pre_vacuum
-                         or options.clear_dumps_only or options.dump_global or options.rollback or options.exclude_dump_tables
-                         or options.dump_config or options.clear_dumps_only or options.clear_dumps or options.post_vacuum or options.history))
-
-    def writeToFile(self, content, filePathName):
-        f = open(filePathName, 'w')
-        f.write(content)
-        f.close()
-        os.chmod(filePathName, stat.S_IREAD | stat.S_IWRITE)    
-
     def execute(self):
-
-        # Execute the DDBoost related actions. If the return value is True, 
-        # it means that only DDBoost related activity should be executed;
-        # meaning we should exit now
-        if self.ddboost_options.execute() is True:
-            return 0;
-
         if self.clear_dumps_only:
             DeleteOldestDumps(master_datadir = self.master_datadir,
                               master_port = self.master_port,
-                              ddboost = self.use_ddboost).run()
+                              ddboost = self.ddboost).run()
             return
 
         if self.post_script is not None:
             self._validate_run_program()
 
         self._validate_dump_target()
-        
+
         # final_exit_status := numeric outcome of this python program
         # current_exit_status := numeric outcome of one particular dump,
         #                        in this loop over the -x arguments
@@ -171,15 +126,13 @@ class GpCronDump(Operation):
                                         free_space_percent = self.free_space_percent,  
                                         clear_catalog_dumps = self.clear_catalog_dumps,
                                         backup_dir = self.backup_dir,
-                                        include_dump_tables_file = self.include_dump_tables_file,
-                                        exclude_dump_tables_file = self.exclude_dump_tables_file,
                                         report_dir = self.report_dir,
                                         encoding = self.encoding,
                                         output_options = self.output_options,
                                         batch_default = self.batch_default,
                                         master_datadir = self.master_datadir,
                                         master_port = self.master_port,
-                                        ddboost = self.use_ddboost).run()
+                                        ddboost = self.ddboost).run()
 
             post_dump_outcome = PostDumpDatabase(timestamp_start = dump_outcome['timestamp_start'],
                                                  compress = self.compress,
@@ -188,7 +141,7 @@ class GpCronDump(Operation):
                                                  batch_default = self.batch_default,
                                                  master_datadir = self.master_datadir,
                                                  master_port = self.master_port,
-                                                 ddboost = self.use_ddboost).run()
+                                                 ddboost = self.ddboost).run()
             
             current_exit_status = max(dump_outcome['exit_status'], post_dump_outcome['exit_status'])
             final_exit_status = max(final_exit_status, current_exit_status)
@@ -209,7 +162,7 @@ class GpCronDump(Operation):
                     DumpGlobal(timestamp = post_dump_outcome['timestamp'],
                                master_datadir = self.master_datadir,
                                backup_dir = self.backup_dir,
-                               ddboost = self.use_ddboost).run()
+                               ddboost = self.ddboost).run()
                 else:
                     logger.info("Skipping global dump due to issues during post-dump checks.")
             
@@ -229,7 +182,7 @@ class GpCronDump(Operation):
                     DeleteCurrentDump(timestamp = post_dump_outcome['timestamp'],
                                       master_datadir = self.master_datadir,
                                       master_port = self.master_port,
-                                      ddboost = self.use_ddboost).run()
+                                      ddboost = self.ddboost).run()
                     MailDumpEvent("Report from gpcrondump on host %s [FAILED]" % self.cur_host,
                                   "Failed for database %s with return code %d dump files rolled back. [Start=%s End=%s] Options passed [%s]" 
                                     % (dump_database, current_exit_status, dump_outcome['time_start'], dump_outcome['time_end'], self.options_list)).run()
@@ -244,7 +197,7 @@ class GpCronDump(Operation):
                 if self.clear_dumps:
                     deleted_dump_set = DeleteOldestDumps(master_datadir = self.master_datadir, 
                                                          master_port = self.master_port,
-                                                         ddboost = self.use_ddboost).run()
+                                                         ddboost = self.ddboost).run()
 
             if self.post_vacuum:
                 logger.info('Commencing post-dump vacuum...')
@@ -262,10 +215,12 @@ class GpCronDump(Operation):
                           % (dump_database, current_exit_status, dump_outcome['time_start'], dump_outcome['time_end'], self.options_list)).run()
 
         if self.dump_config:
-            DumpConfig(backup_dir = self.backup_dir,
+            timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+            DumpConfig(timestamp = timestamp,
+                       backup_dir = self.backup_dir,
                        master_datadir = self.master_datadir,
                        master_port = self.master_port,
-                       ddboost = self.use_ddboost).run()
+                       ddboost = self.ddboost).run()
         
         if self.post_script is not None:
             self._run_program()
@@ -276,30 +231,22 @@ class GpCronDump(Operation):
         logger.info("---------------------------------------------------")
         logger.info("Master Greenplum Instance dump parameters")
         logger.info("---------------------------------------------------")
-        if len(self.include_dump_tables) > 0 or self.include_dump_tables_file is not None:
+        if len(self.include_dump_tables) > 0:
             logger.info("Dump type                            = Single database, specific table")
             logger.info("---------------------------------------------------")
-            if len(self.include_dump_tables) > 0:
-                logger.info("Table inclusion list ")
-                logger.info("---------------------------------------------------")
-                for table in self.include_dump_tables:
-                    logger.info("Table name                             = %s" % table)
-                logger.info("---------------------------------------------------")
-            if self.include_dump_tables_file is not None:
-                logger.info("Table file name                      = %s" % self.include_dump_tables_file)
-                logger.info("---------------------------------------------------")
-        elif len(self.exclude_dump_tables) > 0 or self.exclude_dump_tables_file is not None:  
+            logger.info("Table inclusion list ")
+            logger.info("---------------------------------------------------")
+            for table in self.include_dump_tables:
+                logger.info("Table name                           = %s" % table)
+            logger.info("---------------------------------------------------")
+        elif len(self.exclude_dump_tables) > 0:  
             logger.info("Dump type                            = Single database, exclude table")
             logger.info("---------------------------------------------------")
-            if len(self.exclude_dump_tables) > 0:
-                logger.info("Table exclusion list ")
-                logger.info("---------------------------------------------------")
-                for table in self.exclude_dump_tables:
-                    logger.info("Table name                               = %s" % table)
-                logger.info("---------------------------------------------------")
-            if self.exclude_dump_tables_file is not None:
-                logger.info("Table file name                      = %s" % self.exclude_dump_tables_file)
-                logger.info("---------------------------------------------------")
+            logger.info("Table exclusion list ")
+            logger.info("---------------------------------------------------")
+            for table in self.exclude_dump_tables:
+                logger.info("Table name                           = %s" % table)
+            logger.info("---------------------------------------------------")
         else:
             logger.info("Dump type                            = Single database")
         logger.info("Database to be dumped                = %s" % dump_database)
@@ -397,22 +344,15 @@ class GpCronDump(Operation):
             
 
     def _validate_dump_target(self):
-        if len(self.dump_databases) > 1:
+         if len(self.dump_databases) > 1:
             if self.dump_schema is not None:
                 raise ExceptionNoStackTraceNeeded("Cannot supply schema name if multiple database dumps are requested")
-            if len(self.include_dump_tables) > 0 or self.include_dump_tables_file is not None:
+            if len(self.include_dump_tables) > 0:
                 raise ExceptionNoStackTraceNeeded("Cannot supply a table dump list if multiple database dumps are requested")
-            if len(self.exclude_dump_tables) > 0 or self.exclude_dump_tables_file is not None:
+            if len(self.exclude_dump_tables) > 0:
                 raise ExceptionNoStackTraceNeeded("Cannot exclude specific tables if multiple database dumps are requested")
             logger.info("Configuring for multiple database dump")
-        
-        for dump_database in self.dump_databases:              
-            ValidateDatabaseExists(database = dump_database, master_port = self.master_port).run()
-                               
-        if self.dump_schema is not None:
-            ValidateSchemaExists(database = self.dump_databases[0], schema = self.dump_schema,
-                                 master_port = self.master_port).run() 
-    
+            
     def _validate_run_program(self):
         #Check to see if the file exists
         cmd = Command('Seeking post script', "which %s" % self.post_script)
@@ -514,11 +454,6 @@ def create_parser():
                      help="Use SESSION AUTHORIZATION commands instead of ALTER OWNER commands.")
     addTo.add_option('--rsyncable', const='--rsyncable', action='append_const', dest='output_options',
                      help="Pass the --rsyncable option to gzip, if compression is being used.")
-    
-    addTo.add_option('--table-file', dest='include_dump_tables_file', metavar="<filename>",
-                     help="Dump the tables named in this file for the specified database. Option can be used only once.")
-    addTo.add_option('--exclude-table-file', dest='exclude_dump_tables_file', metavar="<filename>",
-                     help="Exclude the tables named in this file from the dump. Option can be used only once.")
 
     # TODO: Dead options. Remove eventually.
     addTo.add_option('-i', action='store_true', dest='bypass_cluster_check', default=False, help="No longer supported.")
@@ -527,17 +462,10 @@ def create_parser():
 
     parser.add_option_group(addTo)
 
-        ##############################
-        # DDBoost related parameters #
-        ##############################
     ddOpt = OptionGroup(parser, "DDBoost")
-    ddOpt.add_option('--ddboost', dest='use_ddboost', help="Dump to DDBoost using ~/DDBOOST_CONFIG", action="store_true", default=False)
+    ddOpt.add_option('--ddboost', dest='ddboost', help="Dump to DDBoost using ~/.ddconfig", action="store_true", default=False)
     parser.add_option_group(ddOpt)
-    
-    # Add DDBoost management options to the parser
-    add_ddboost_options_to_parser(parser)
-    
-    
+
     parser.setHelp([
     """
 Crontab entry (example):

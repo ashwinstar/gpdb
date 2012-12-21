@@ -25,7 +25,7 @@
    create index on pg_attribute_encoding(attrelid) with (indexid=3236, CamelCase=AttributeEncodingAttrelid);
    create unique index on pg_attribute_encoding(attrelid, attnum) with (indexid=3237, CamelCase=AttributeEncodingAttrelidAttnum);
 
-   alter table pg_attribute_encoding add fk (attrelid,attnum) on pg_attribute(attrelid,attnum);
+   alter table pg_attribute_encoding add fk attrelid on pg_attribute(attrelid);
 
    TIDYCAT_ENDDEF
 */
@@ -80,7 +80,6 @@ typedef FormData_pg_attribute_encoding *Form_pg_attribute_encoding;
 
 /* TIDYCAT_END_CODEGEN */
 
-extern PGFunction *get_funcs_for_compression(char *compresstype);
 extern PGFunction **RelationGetColumnCompressionFuncs(Relation rel);
 extern uint32 *RelationGetColumnBlocksize(Relation rel);
 extern uint32 RelationGetRelationBlocksize(Relation rel);

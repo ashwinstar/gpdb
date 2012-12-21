@@ -14,7 +14,6 @@
  */
 #include "postgres.h"
 
-#include "access/catquery.h"
 #include "access/heapam.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
@@ -46,9 +45,7 @@ AggregateCreateWithOid(const char		*aggName,
 					   Oid				*aggArgTypes,
 					   int				 numArgs,
 					   List				*aggtransfnName,
-					   List				*agginvtransfnName,
 					   List				*aggprelimfnName,
-					   List				*agginvprelimfnName,
 					   List				*aggfinalfnName,
 					   List				*aggsortopName,
 					   Oid				 aggTransType,
@@ -56,6 +53,7 @@ AggregateCreateWithOid(const char		*aggName,
 					   bool              aggordered,
 					   Oid				 procOid)
 {
+	Relation	aggdesc;
 	HeapTuple	tup;
 	bool		nulls[Natts_pg_aggregate];
 	Datum		values[Natts_pg_aggregate];
@@ -69,14 +67,13 @@ AggregateCreateWithOid(const char		*aggName,
 	bool		hasPolyArg;
 	Oid			rettype;
 	Oid			finaltype;
-	Oid         prorettype;
+	Oid			prelimrettype;
 	Oid		   *fnArgs;
 	int			nargs_transfn;
+	TupleDesc	tupDesc;
 	int			i;
 	ObjectAddress myself,
 				referenced;
-	cqContext  *pcqCtx;
-	cqContext  *pcqCtx2;
 
 	/* sanity checks (caller should have caught these) */
 	if (!aggName)
@@ -139,14 +136,9 @@ AggregateCreateWithOid(const char		*aggName,
 						NameListToString(aggtransfnName),
 						format_type_be(aggTransType))));
 
-	pcqCtx2 = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_proc "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(transfn)));
-
-	tup = caql_getnext(pcqCtx2);
-
+	tup = SearchSysCache(PROCOID,
+						 ObjectIdGetDatum(transfn),
+						 0, 0, 0);
 	if (!HeapTupleIsValid(tup))
 		elog(ERROR, "cache lookup failed for function %u", transfn);
 	proc = (Form_pg_proc) GETSTRUCT(tup);
@@ -164,36 +156,7 @@ AggregateCreateWithOid(const char		*aggName,
 					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 					 errmsg("must not omit initial value when transition function is strict and transition type is not compatible with input type")));
 	}
-	caql_endscan(pcqCtx2);
-
-	/* handle inverse transition function, if supplied */
-	if (agginvtransfnName)
-	{
-		/*
-		 * The inverse transition funtion input arguments/return value are identical
-		 * to the transition function.
-		 *
-		 * fnArgs will still be correct from when the transition function allocated them above.
-		 */
-		invtransfn = lookup_agg_function(aggtransfnName, nargs_transfn, fnArgs,
-										 &prorettype);
-	
-		elog(DEBUG5,"AggregateCreateWithOid: successfully located inverse "
-			 "transition function %s with return type %d", 
-			 func_signature_string(agginvtransfnName, nargs_transfn, fnArgs), 
-			 prorettype);
-
-		/*
-		 * Return type of invtransfn must match transfn
-		 */
-		if (prorettype != rettype)
-			ereport(ERROR,
-					(errcode(ERRCODE_DATATYPE_MISMATCH),
-					 errmsg("return type of inverse transition function %s is not %s",
-							NameListToString(agginvtransfnName),
-							format_type_be(aggTransType))));
-	}
-
+	ReleaseSysCache(tup);
 	
 	/* handle prelimfn, if supplied */
 	if (aggprelimfnName)
@@ -208,66 +171,25 @@ AggregateCreateWithOid(const char		*aggName,
 		/*
 		 * Check that such a function name and prototype exists in the catalog.
 		 */		
-		prelimfn = lookup_agg_function(aggprelimfnName, 2, fnArgs, &prorettype);
+		prelimfn = lookup_agg_function(aggprelimfnName, 2, fnArgs, &prelimrettype);
 		
 		elog(DEBUG5,"AggregateCreateWithOid: successfully located preliminary "
 					"function %s with return type %d", 
 					func_signature_string(aggprelimfnName, 2, fnArgs), 
-					prorettype);
+					prelimrettype);
 		
-		Assert(OidIsValid(prorettype));
+		Assert(OidIsValid(prelimrettype));
 		
 		/*
 		 * The preliminary return type must be of the same type as the internal 
 		 * state. (See similar error checking for transition types above)
 		 */
-		if (prorettype != rettype)
+		if (prelimrettype != rettype)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
 					 errmsg("return type of preliminary function %s is not %s",
 							NameListToString(aggprelimfnName),
 							format_type_be(rettype))));		
-	}
-
-	/* handle prelimfn, if supplied */
-	if (agginvprelimfnName)
-	{
-		/* 
-		 * The preliminary state function (pfunc) input arguments are the results of the 
-		 * state transition function (sfunc) and therefore must be of the same types.
-		 */
-		fnArgs[0] = rettype;
-		fnArgs[1] = rettype;
-		
-		/*
-		 * Check that such a function name and prototype exists in the catalog.
-		 */		
-		invprelimfn = lookup_agg_function(agginvprelimfnName, 2, fnArgs, &prorettype);
-		
-		elog(DEBUG5,"AggregateCreateWithOid: successfully located preliminary "
-					"function %s with return type %d", 
-					func_signature_string(agginvprelimfnName, 2, fnArgs), 
-					prorettype);
-		
-		Assert(OidIsValid(prorettype));
-		
-		/*
-		 * The preliminary return type must be of the same type as the internal 
-		 * state. (See similar error checking for transition types above)
-		 */
-		if (prorettype != rettype)
-			ereport(ERROR,
-					(errcode(ERRCODE_DATATYPE_MISMATCH),
-					 errmsg("return type of inverse preliminary function %s is not %s",
-							NameListToString(aggprelimfnName),
-							format_type_be(rettype))));		
-
-		/* Must have a prelimfunc to have an invprelim func */
-		if (!OidIsValid(prelimfn))
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
-					 errmsg("invalid use of inverse preliminary function "
-							"without a preliminary function")));
 	}
 
 	/* handle finalfn, if supplied */
@@ -328,7 +250,7 @@ AggregateCreateWithOid(const char		*aggName,
 							  InvalidOid,		/* no validator */
 							  InvalidOid,		/* no describe function */
 							  "aggregate_dummy",		/* placeholder proc */
-							  NULL,		/* probin */
+							  "-",		/* probin */
 							  true,		/* isAgg */
 							  false,	/* isWin */
 							  false,	/* security invoker (currently not
@@ -341,8 +263,6 @@ AggregateCreateWithOid(const char		*aggName,
 							  PointerGetDatum(NULL),	/* allParamTypes */
 							  PointerGetDatum(NULL),	/* parameterModes */
 							  PointerGetDatum(NULL),	/* parameterNames */
-							  NIL,						/* parameterDefaults */
-							  PRODATAACCESS_NONE,		/* prodataaccess */
 							  procOid);
 	/*
 	 * Okay to create the pg_aggregate entry.
@@ -368,17 +288,15 @@ AggregateCreateWithOid(const char		*aggName,
 		nulls[Anum_pg_aggregate_agginitval - 1] = true;
 	values[Anum_pg_aggregate_aggordered - 1] = BoolGetDatum(aggordered);
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("INSERT INTO pg_aggregate",
-				NULL));
+	aggdesc = heap_open(AggregateRelationId, RowExclusiveLock);
+	tupDesc = aggdesc->rd_att;
 
-	tup = caql_form_tuple(pcqCtx, values, nulls);
+	tup = heap_form_tuple(tupDesc, values, nulls);
+	simple_heap_insert(aggdesc, tup);
 
-	/* insert a new tuple */
-	caql_insert(pcqCtx, tup); /* implicit update of index as well */
+	CatalogUpdateIndexes(aggdesc, tup);
 
-	caql_endscan(pcqCtx);
+	heap_close(aggdesc, RowExclusiveLock);
 
 	/*
 	 * Create dependencies for the aggregate (above and beyond those already
@@ -456,7 +374,6 @@ lookup_agg_function(List *fnName,
 	bool		retset;
 	bool        retstrict;
 	bool        retordered;
-	int 		nvargs;
 	Oid		   *true_oid_array;
 	FuncDetailCode fdresult;
 	AclResult	aclresult;
@@ -470,9 +387,9 @@ lookup_agg_function(List *fnName,
 	 * function's return value.  it also returns the true argument types to
 	 * the function.
 	 */
-	fdresult = func_get_detail(fnName, NIL, NIL, nargs, input_types, false,
-							   false, &fnOid, rettype, &retset, &retstrict,
-							   &retordered, &nvargs, &true_oid_array, NULL);
+	fdresult = func_get_detail(fnName, NIL, nargs, input_types,
+							   &fnOid, rettype, &retset, &retstrict,
+							   &retordered, &true_oid_array);
 
 	/* only valid case is a normal function not returning a set */
 	if (fdresult != FUNCDETAIL_NORMAL || !OidIsValid(fnOid))

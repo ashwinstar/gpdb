@@ -14,7 +14,6 @@
  *-------------------------------------------------------------------------
  */
 
-#include <dlfcn.h>
 #include "postgres.h"
 
 #include <limits.h>
@@ -35,13 +34,11 @@
 #include "optimizer/prep.h"
 #include "optimizer/subselect.h"
 #include "optimizer/planpartition.h"
-#include "optimizer/transform.h"
 #include "optimizer/tlist.h"
 #include "optimizer/var.h"
 #ifdef OPTIMIZER_DEBUG
 #include "nodes/print.h"
 #endif
-#include "parser/parse_clause.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_oper.h"
 #include "parser/parsetree.h"
@@ -60,8 +57,6 @@
 #include "utils/debugbreak.h"
 #include "catalog/gp_policy.h"
 
-#include "postmaster/optserver.h"
-
 /* GUC parameter */
 double cursor_tuple_fraction = DEFAULT_CURSOR_TUPLE_FRACTION;
 
@@ -70,8 +65,6 @@ planner_hook_type planner_hook = NULL;
 
 ParamListInfo PlannerBoundParamList = NULL;		/* current boundParams */
 
-extern bool		gp_optimizer; /* Enable the optimizer */
-extern bool		gp_log_optimizer; /* Enable logging of the optimizer */
 
 /* Expression kind codes for preprocess_expression */
 #define EXPRKIND_QUAL			0
@@ -82,19 +75,6 @@ extern bool		gp_log_optimizer; /* Enable logging of the optimizer */
 #define EXPRKIND_ININFO			5
 #define EXPRKIND_APPINFO		6
 #define EXPRKIND_WINDOW_BOUND	7
-
-/*
- * struct containing optimization request parameters;
- * needs to be in sync with the argument expected by COptClient object;
- */
-struct optimizer_params
-{
-	// path where socket is initialized
-	const char *socketPath;
-
-	// input query
-	Query *query;
-};
 
 
 static Node *preprocess_expression(PlannerInfo *root, Node *expr, int kind);
@@ -108,9 +88,6 @@ static bool hash_safe_grouping(PlannerInfo *root);
 static List *make_subplanTargetList(PlannerInfo *root, List *tlist,
 					   AttrNumber **groupColIdx, bool *need_tlist_eval);
 static List *register_ordered_aggs(List *tlist, Node *havingqual, List *sub_tlist);
-
-// GP optimizer entry point
-extern PlannedStmt *PplstmtOptimize(Query *parse);
 
 typedef struct
 {
@@ -140,25 +117,12 @@ static CanonicalGroupingSets *make_canonical_groupingsets(List *groupClause);
 static int gs_compare(const void *a, const void*b);
 static void sort_canonical_gs_list(List *gs, int *p_nsets, Bitmapset ***p_sets);
 
+static Node* normalize_query_jointree(Node *expr);
+static Node *normalize_query_jointree_mutator(Node *expr, void *context);
+
 static Plan *pushdown_preliminary_limit(Plan *plan, Node *limitCount, int64 count_est, Node *limitOffset, int64 offset_est);
+
 bool is_dummy_plan(Plan *plan);
-static void fix_old_scatterclause(Query *parse);
-
-
-/**
- * Use optimizer process (server) to generate the query plan;
- * construc the planned statement from retrieved plan;
- */
-static PlannedStmt *optimize_remote(Query *pquery)
-{
-	char *error_buffer = palloc(OPT_ERROR_BUFFER_SIZE);
-	struct optimizer_params params;
-	params.query = pquery;
-	params.socketPath = OPT_SOCKET_NAME;
-
-	return libopt_exec("optimize_query", &params, error_buffer, OPT_ERROR_BUFFER_SIZE,
-	                   &QueryCancelPending);
-}
 
 
 /*****************************************************************************
@@ -179,46 +143,12 @@ PlannedStmt *
 planner(Query *parse, int cursorOptions,
 		ParamListInfo boundParams)
 {
-	PlannedStmt *result = NULL;
-
-	/**
-	 * If the new optimizer is enabled, try that first. If it does not return a plan,
-	 * then fall back to the planner.
-	 */
-	if (gp_optimizer)
-	{
-		// create a local copy and hand it to the optimizer
-		Query *pqueryCopy = (Query *) copyObject(parse);
-
-		/* perform pre-processing of query tree before calling optimizer */
-		pqueryCopy = preprocess_query_optimizer(pqueryCopy, boundParams);
-
-		if (gp_opt_local)
-		{
-			result = PplstmtOptimize(pqueryCopy);
-		}
-		else
-		{
-			result = optimize_remote(pqueryCopy);
-		}
-
-		if (gp_log_optimizer)
-		{
-			if (result)
-			{
-				elog(NOTICE, "Optimizer successfully produced plan");
-			}
-			else
-			{
-				elog(NOTICE, "Falling back to planner");
-			}
-		}
-	}
-
-	if (!result)
-	{
+	PlannedStmt *result;
+	
+	if (planner_hook)
+		result = (*planner_hook) (parse, cursorOptions, boundParams);
+	else
 		result = standard_planner(parse, cursorOptions, boundParams);
-	}
 	return result;
 }
 
@@ -300,7 +230,7 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		tuple_fraction = 0.0;
 	}
 	
-	parse = normalize_query(parse);
+	parse = (Query *) normalize_query_jointree_mutator((Node *) parse, NULL);
 
 	PlannerConfig *config = DefaultPlannerConfig();
 
@@ -401,8 +331,6 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	result->nMotionNodes = top_plan->nMotionNodes;
 	result->nInitPlans = top_plan->nInitPlans;
 	result->intoPolicy = GpPolicyCopy(CurrentMemoryContext, parse->intoPolicy);
-	result->queryPartOids = NIL;
-	result->queryPartsMetadata = NIL;
 	
 	Assert(result->utilityStmt == NULL || IsA(result->utilityStmt, DeclareCursorStmt));
 	
@@ -419,41 +347,131 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	return result;
 }
 
-/*
- * containIsNullVar
- *   Return true if the given node contains "is null" on a Var.
- */
-static bool
-containIsNullVar(PlannerGlobal *glob,
-				 Node *node)
-{
-	List *nullTestList = extract_nodes(glob, node, T_NullTest);
-	bool found = false;
 
-	ListCell *lc = NULL;
-	foreach (lc, nullTestList)
+/**
+ * This method takes a join tree that contains from expr and translates them to
+ * explicit join expressions.
+ * For example:
+ * select * from t1, t2, t3 where pred(t1.a,t2.b,t3.c);
+ * is translated to
+ * select * from t1 cross join t2 cross join t3 where pred(t1.a,t2.b,t3.c)
+ * 
+ * Note that this does not use the generic expression mutator framework because 
+ * the recursion is highly specialized.
+ */
+Node* normalize_query_jointree(Node *expr)
+{
+	Node *result = NULL;
+	
+	if (!expr)
+		return NULL;
+
+#ifdef USE_ASSERT_CHECKING
+	Node *exprCopy = copyObject(expr);
+#endif
+	
+	switch(nodeTag(expr))
 	{
-		NullTest *nullTest = (NullTest *)lfirst(lc);
-		if (nullTest->nulltesttype != IS_NULL)
-		{
-			continue;
-		}
-		
-		found = contains_node_type(glob, (Node *)nullTest->arg, T_Var);
-		if (found)
-		{
+		case T_FromExpr:
+			{
+				FromExpr *oldFrom = (FromExpr *) expr;
+				FromExpr *from = (FromExpr *) copyObject(oldFrom);		
+				if (oldFrom->fromlist)
+				{
+					Node *newFromExprEntry = (Node *) normalize_query_jointree((Node *) oldFrom->fromlist);
+					from->fromlist = list_make1(newFromExprEntry);
+				}
+				Assert(equal(from->quals, oldFrom->quals));
+				result = (Node *) from;
+				break;
+			}
+		case T_List:
+			{
+				List *crossJoinList = (List *) copyObject(expr);
+				if (list_length(crossJoinList) == 1)
+				{
+					Node *entry = lfirst(list_head(crossJoinList));
+					result = normalize_query_jointree(entry);
+				}
+				else
+				{
+					Node *larg = lfirst(list_head(crossJoinList));
+					Assert(larg);
+					larg = normalize_query_jointree(larg);
+					List *rest = list_delete_first(crossJoinList);
+					Node *rarg = normalize_query_jointree((Node *) rest);
+					JoinExpr *join = makeNode(JoinExpr);
+					join->jointype = JOIN_INNER;
+					join->isNatural = false;
+					join->larg = larg;
+					join->rarg = rarg;
+					join->quals = NULL; /* Cross product */
+					join->rtindex = 0;
+					join->subqfromlist = NIL;
+					join->usingClause = NIL; 
+					result = (Node *) join;
+				}
+				break;
+			}
+		case T_JoinExpr:
+			{
+				JoinExpr *join = (JoinExpr *) copyObject(expr);
+				join->larg = normalize_query_jointree(join->larg);
+				join->rarg = normalize_query_jointree(join->rarg);
+				result = (Node *) join;
+				break;
+			}
+		case T_RangeTblRef:
+			{
+				result = (Node *) expr;
+				break;
+			}
+		default:
+			Assert(false && "Unrecognized entry in jointree");
 			break;
-		}
 	}
 	
-	if (nullTestList != NULL)
-	{
-		list_free(nullTestList);
-	}
-
-	return found;
+	Assert(result);
+	
+	/* Assert that the input is unmodified */
+#ifdef USE_ASSERT_CHECKING
+	Assert(equal(expr, exprCopy));
+#endif
+	
+	return result;
 }
 
+/**
+ * This method walks through a query tree, finds the join tree and normalizes them.
+ * It also walks sublinks and subqueries and normalizes their jointrees as well.
+ * E.g. a query of the form SELECT x, y FROM t1, t2, t3 where x = y and y = z is transformed to:
+ * SELECT x,y FROM (t1 INNER JOIN (t2 INNER JOIN t3)) where x = y
+ * 
+ */
+Node *normalize_query_jointree_mutator(Node *expr, void *context)
+{
+	Assert(context == NULL);
+	
+	if (!expr)
+	{
+		return NULL;
+	}
+
+	switch(nodeTag(expr))
+	{
+		case T_Query:
+			{
+				Query *newQuery = (Query *) copyObject(expr);
+				newQuery->jointree = (FromExpr*) normalize_query_jointree((Node *) newQuery->jointree);
+				newQuery = (Query *) query_tree_mutator(newQuery, normalize_query_jointree_mutator, context, 0);
+				return (Node *) newQuery;
+			}
+		default:
+			break;
+	}
+	
+	return expression_tree_mutator(expr, normalize_query_jointree_mutator, context);
+}
 
 /*--------------------
  * subquery_planner
@@ -495,9 +513,6 @@ subquery_planner(PlannerGlobal *glob,
 	Plan	   *plan;
 	List	   *newHaving;
 	ListCell   *l;
-
-	/* Fix old version of scatterClause. See its comment. */
-	fix_old_scatterclause(parse);
 
 	/* Create a PlannerInfo data structure for this subquery */
 	root = makeNode(PlannerInfo);
@@ -624,7 +639,7 @@ subquery_planner(PlannerGlobal *glob,
 
 	parse->havingQual = preprocess_expression(root, parse->havingQual,
 											  EXPRKIND_QUAL);
-
+	
 	/* 
 	 * Do expression preprocessing on other expressions.
 	 */	 
@@ -632,13 +647,7 @@ subquery_planner(PlannerGlobal *glob,
 	{
 		WindowSpec *w =(WindowSpec*)lfirst(l);
 		
-		Assert( 
-			   IsA(w, WindowSpec) || 
-			   IsA(w, SequenceSpec) ||
-			   IsA(w, SeqWindowSpec) 
-			);
-		
-		if ( ( IsA(w, WindowSpec) || IsA(w, SeqWindowSpec) ) && w != NULL && w->frame != NULL )
+		if ( w != NULL && w->frame != NULL )
 		{
 			WindowFrame *f = w->frame;
 						
@@ -711,21 +720,19 @@ subquery_planner(PlannerGlobal *glob,
 	 * as Node *.
 	 */
 	newHaving = NIL;
-	bool isGroupExt = contain_extended_grouping(parse->groupClause);
 	foreach(l, (List *) parse->havingQual)
 	{
 		Node	   *havingclause = (Node *) lfirst(l);
-		
 
 		if (contain_agg_clause(havingclause) ||
 			contain_volatile_functions(havingclause) ||
-			contain_subplans(havingclause) ||
-			(isGroupExt && containIsNullVar(glob, havingclause)))
+			contain_subplans(havingclause))
 		{
 			/* keep it in HAVING */
 			newHaving = lappend(newHaving, havingclause);
 		}
-		else if (parse->groupClause && !isGroupExt)
+		else if (parse->groupClause && 
+				 !contain_extended_grouping(parse->groupClause))
 		{
 			/* move it to WHERE */
 			parse->jointree->quals = (Node *)
@@ -783,7 +790,7 @@ subquery_planner(PlannerGlobal *glob,
 		if (list_length(parse->scatterClause) == 1 && linitial(parse->scatterClause) == NULL)
 			exprList = NIL;
 		else
-			exprList = get_sortgrouplist_exprs(parse->scatterClause, parse->targetList);
+			exprList = parse->scatterClause;
 
 		/* Repartition the subquery plan based on our distribution requirements */
 		r = repartitionPlan(plan, false, false, exprList);
@@ -847,19 +854,38 @@ preprocess_expression(PlannerInfo *root, Node *expr, int kind)
 	/*
 	 * Simplify constant expressions.
 	 *
-	 * Note: an essential effect of this is to convert named-argument function
-	 * calls to positional notation and insert the current actual values
-	 * of any default arguments for functions.  To ensure that happens, we
-	 * *must* process all expressions here.  Previous PG versions sometimes
-	 * skipped const-simplification if it didn't seem worth the trouble, but
-	 * we can't do that anymore.
-	 *
 	 * Note: this also flattens nested AND and OR expressions into N-argument
 	 * form.  All processing of a qual expression after this point must be
 	 * careful to maintain AND/OR flatness --- that is, do not generate a tree
 	 * with AND directly under AND, nor OR directly under OR.
+	 *
+	 * Because this is a relatively expensive process, we skip it when the
+	 * query is trivial, such as "SELECT 2+2;". The
+	 * expression will only be evaluated once anyway, so no point in
+	 * pre-simplifying; we can't execute it any faster than the executor can,
+	 * and we will waste cycles copying the tree.  Notice however that we
+	 * still must do it for quals (to get AND/OR flatness); and if we are in a
+	 * subquery we should not assume it will be done only once.
+	 *
+	 * However, if targeted dispatch is enabled then we WILL optimize
+	 *           VALUES lists because targeted dispatch will benefit from this
+	 *           -- it IS more expensive to evaluate it on the executor
+	 *           without doing it first in the planner because the planner
+	 *           may determine that only a single segment is required!
 	 */
-	expr = eval_const_expressions(root, expr);
+	if (kind != EXPRKIND_VALUES && (
+			root->parse->jointree->fromlist != NIL ||
+			kind == EXPRKIND_QUAL ||
+
+			/* note that we could optimize the direct dispatch case
+			 *   by only doing the simplification for the distribution
+			 *   key columns.
+			 */
+			(root->config->gp_enable_direct_dispatch && kind == EXPRKIND_TARGET ) ||
+			root->query_level > 1))
+	{
+		expr = eval_const_expressions(root, expr);
+	}
 
 	/*
 	 * If it's a qual or havingQual, canonicalize it.
@@ -1178,34 +1204,6 @@ void grouping_planner_output_asserts(PlannerInfo *root, Plan *plan)
 }
 #endif
 
-/*
- * getAnySubplan
- *   Return one subplan for the given node.
- *
- * If the given node is an Append, the first subplan is returned.
- * If the given node is a SubqueryScan, its subplan is returned.
- * Otherwise, the lefttree of the given node is returned.
- */
-static Plan *
-getAnySubplan(Plan *node)
-{
-	Assert(is_plan_node((Node *)node));
-	
-	if (IsA(node, Append))
-	{
-		Append *append = (Append*)node;
-		Assert(list_length(append->appendplans) > 0);
-		return (Plan *)linitial(append->appendplans);
-	}
-
-	else if (IsA(node, SubqueryScan))
-	{
-		SubqueryScan *subqueryScan = (SubqueryScan *)node;
-		return subqueryScan->subplan;
-	}
-	
-	return node->lefttree;
-}
 
 /*--------------------
  * grouping_planner
@@ -1311,16 +1309,9 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 													  tlist);
 		sort_pathkeys = canonicalize_pathkeys(root, sort_pathkeys);
 	}
-	else if ( parse->windowClause && parse->targetList && 
-			  ( IsA(linitial(parse->windowClause), SequenceSpec) ||
-			    contain_windowref((Node *)parse->targetList, NULL) ) )
+	else if ( parse->windowClause && parse->targetList &&
+			  contain_windowref((Node *)parse->targetList, NULL) )
 	{
-		if (extract_nodes(NULL, (Node *) tlist, T_PercentileExpr) != NIL)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("window function with WITHIN GROUP aggregate is not supported")));
-		}
 		/*
 		 * Calculate pathkeys that represent ordering requirements. Stash
 		 * them in PlannerInfo so that query_planner can canonicalize them.
@@ -1354,7 +1345,6 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		int			numGroupCols;
 		bool		use_hashed_grouping = false;
 		bool        grpext = false;
-		bool		has_within = false;
 		CanonicalGroupingSets *canonical_grpsets;
 
 		/* Preprocess targetlist */
@@ -1375,25 +1365,6 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		}
 
 		grpext = is_grouping_extension(canonical_grpsets);
-		has_within = extract_nodes(NULL, (Node *) tlist, T_PercentileExpr) != NIL;
-		has_within |= extract_nodes(NULL, parse->havingQual, T_PercentileExpr) != NIL;
-
-		if (grpext && has_within)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("WITHIN GROUP aggregate cannot be used in GROUPING SETS query")));
-
-		/*
-		 * Error out when the number of grouping attributes is greater than
-		 * MAX_GROUPING_ATTRS_IN_GROUPING_EXTENSION.
-		 */
-		if (grpext && numGroupCols > MAX_GROUPING_ATTRS_IN_GROUPING_EXTENSION)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
-					 errmsg("maximum number of grouping columns exceeded (max: %d)",
-							MAX_GROUPING_ATTRS_IN_GROUPING_EXTENSION)));
-		}
 
 		/*
 		 * Will need actual number of aggregates for estimating costs.
@@ -1510,14 +1481,13 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		if ( Gp_role == GP_ROLE_DISPATCH )
 		{
 			bool querynode_changed = false;
-			bool pass_subtlist = false;
 			GroupContext group_context;
 
-			pass_subtlist = (agg_counts.aggOrder != NIL || has_within);
 			group_context.best_path = best_path;
 			group_context.cheapest_path = cheapest_path;
 			group_context.subplan = NULL;
-			group_context.sub_tlist = pass_subtlist ? sub_tlist : NIL;
+			group_context.sub_tlist = (agg_counts.aggOrder != NIL) ? 
+				sub_tlist : NIL;
 			group_context.tlist = tlist;
 			group_context.use_hashed_grouping = use_hashed_grouping;
 			group_context.tuple_fraction = tuple_fraction;
@@ -1531,15 +1501,9 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 			group_context.pcurrent_pathkeys = &current_pathkeys;
 			group_context.querynode_changed = &querynode_changed;
 
-			/* within_agg_planner calls cdb_grouping_planner */
-			if (has_within)
-				result_plan = within_agg_planner(root,
-												 &agg_counts,
-												 &group_context);
-			else
-				result_plan = cdb_grouping_planner(root,
-												   &agg_counts,
-												   &group_context);
+			result_plan = cdb_grouping_planner(root,
+											   &agg_counts,
+											   &group_context);
 
 			/* Add the Repeat node if needed. */
 			if (result_plan != NULL &&
@@ -1872,7 +1836,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
      */
     if (!result_plan->flow)
         result_plan->flow = pull_up_Flow(result_plan,
-                                         getAnySubplan(result_plan),
+                                         result_plan->lefttree,
                                          (current_pathkeys != NIL));
 
 	/*
@@ -2624,7 +2588,7 @@ hash_safe_grouping(PlannerInfo *root)
 		if (!optup)
 			return false;
 		oprcanhash = ((Form_pg_operator) GETSTRUCT(optup))->oprcanhash;
-		ReleaseOperator(optup);
+		ReleaseSysCache(optup);
 		if (!oprcanhash)
 			return false;
 	}
@@ -2840,6 +2804,7 @@ Node *register_ordered_aggs_mutator(Node *node,
 			register_AggOrder( aggref->aggorder, context );
 		}
 	}
+	Assert(!IsA(node, SubLink));
 	return expression_tree_mutator(node, 
 								   register_ordered_aggs_mutator, 
 								   (void *)context );
@@ -3531,49 +3496,4 @@ pushdown_preliminary_limit(Plan *plan, Node *limitCount, int64 count_est, Node *
 	}
 
 	return result_plan;
-}
-
-/*
- * In GPDB 4.2, scatterClause had expression nodes instead of ScatterClause
- * nodes, which was inconvenient in the planner work.  We changed the definition
- * to ScatterClause afterwards, but some VIEW may have older version, so
- * here we try convert them to the new representation.
- */
-static void
-fix_old_scatterclause(Query *parse)
-{
-	List	   *outlist;
-	ListCell   *l;
-
-	/*
-	 * No SCATTER clause, or RANDOMLY doesn't care its representation.
-	 */
-	if (!parse->scatterClause ||
-		(list_length(parse->scatterClause) == 1 &&
-		 linitial(parse->scatterClause) == NULL))
-		return;
-
-	outlist = NIL;
-	foreach (l, parse->scatterClause)
-	{
-		Node		   *node = lfirst(l);
-		TargetEntry	   *tle;
-		ScatterClause  *clause;
-
-		/*
-		 * If we found the new style, return immediately.
-		 */
-		if (IsA(node, ScatterClause))
-			return;
-
-		/*
-		 * Otherwise, convert it using target list.
-		 */
-		tle = tlist_member(node, parse->targetList);
-		Assert(tle);
-		clause = makeNode(ScatterClause);
-		clause->tleSortGroupRef = assignSortGroupRef(tle, parse->targetList);
-		outlist = lappend(outlist, clause);
-	}
-	parse->scatterClause = outlist;
 }

@@ -26,7 +26,7 @@ all : devel
 .PHONY : check installcheck installcheck-parallel
 
 # Targets for running regression tests
-.PHONY : installcheck-good installcheck-olaptest installcheck-bugbuster
+.PHONY : installcheck-good installcheck-olaptest
 
 # The pvk target builds a subset of the GPDB package that includes just the
 # tools used to verify the configuration of a set of GPDB servers.
@@ -39,7 +39,7 @@ all : devel
 .PHONY : test2 test3
 
 # Internal functions which are invoked by other rules within this makefile
-.PHONY : groupSession mkgpcc mkgpperfmon copydocs mgmtcopy copylibs
+.PHONY : groupSession mkgpcc mkgpperfmon copydocs mgmtcopy pkgplr copylibs
 .PHONY : greenplum_path RECONFIG HOMEDEP GPROOTDEP GPROOTDEP GPROOTFAIL
 .PHONY : version gccVersionCheck pygres authlibs clients loaders connectivity gppkg
 
@@ -50,6 +50,8 @@ all : devel
 # tell included makefiles where to find build-top-level resources
 BLD_TOP:=$(shell sh -c pwd)
 include Makefile.global
+include Makefile.thirdparty
+include releng/releng.mk
 
 ifneq "$(BLD_BITS)" ""
 export NO_M64=1
@@ -134,7 +136,7 @@ ISCONFIG=cdb-pg/GNUmakefile
 ## Support gppkg platforms
 ##
 
-GPPKG_PLATFORMS=rhel5_x86_64 rhel6_x86_64 suse10_x86_64
+GPPKG_PLATFORMS=rhel5_x86_64 suse10_x86_64
 
 #---------------------------------------------------------------------
 # Compiler options
@@ -170,16 +172,15 @@ DEBUGFLAGS="$(strip $(CFLAGS_INLINE) $(CFLAGS_OPT) $(DEBUG_CFLAGS_OPT) $(TRACE_G
 #---------------------------------------------------------------------
 
 DEFPORT=5432
-rhel5_x86_32_CONFIGFLAGS=--host=i686-pc-linux-gnu --enable-email --enable-snmp --enable-ddboost --with-gssapi
-rhel5_x86_64_CONFIGFLAGS=--enable-email --enable-snmp --enable-connectemc --enable-ddboost --with-gssapi
-rhel6_x86_64_CONFIGFLAGS=--enable-email --enable-snmp --enable-connectemc --enable-ddboost --with-gssapi
-sol10_x86_64_CONFIGFLAGS=--enable-email --enable-snmp --with-gssapi
+rhel5_x86_32_CONFIGFLAGS=--host=i686-pc-linux-gnu --enable-email --enable-snmp --enable-ddboost
+rhel5_x86_64_CONFIGFLAGS=--enable-email --enable-snmp --enable-connectemc --enable-ddboost
+sol10_x86_64_CONFIGFLAGS=--enable-email --enable-snmp --enable-ddboost
 sol_x86_64_CONFIGFLAGS=--enable-email
-suse10_x86_64_CONFIGFLAGS=--enable-email --enable-snmp --enable-ddboost --with-gssapi
+suse10_x86_64_CONFIGFLAGS=--enable-email --enable-snmp --enable-ddboost
 linux_x86_64_CONFIGFLAGS=--enable-email --enable-snmp
 osx104_x86_CONFIGFLAGS=--enable-email
-osx105_x86_CONFIGFLAGS=--enable-email --enable-snmp --with-gssapi
-osx106_x86_CONFIGFLAGS=--enable-email --enable-snmp --with-gssapi
+osx105_x86_CONFIGFLAGS=--enable-email --enable-snmp	
+osx106_x86_CONFIGFLAGS=--enable-email --enable-snmp
 
 BLD_CONFIGFLAGS=$($(BLD_ARCH)_CONFIGFLAGS)
 
@@ -229,7 +230,6 @@ endif
 # the same way it does on our rhel build servers so we also set LDFLAGS
 rhel5_x86_32_LIBXML2=LIBS="-lxml2"
 rhel5_x86_64_LIBXML2=LIBS="-lxml2"
-rhel6_x86_64_LIBXML2=LIBS="-lxml2"
 sol10_x86_64_LIBXML2=LIBS="-lxml2"
 sol10_sparc_64_LIBXML2=LIBS="-lxml2"
 suse10_x86_64_LIBXML2=LDFLAGS="-L$(BLD_THIRDPARTY_LIB_DIR)" LIBS="-lxml2"
@@ -335,12 +335,10 @@ export $(BLD_WHERE_THE_LIBRARY_THINGS_ARE)=$(BLD_LD_LIBRARY_PATH)
 # how much of GPDB to build by platform (default is "full")
 rhel4_x86_64_GPDB_BUILDSET=partial
 rhel4_x86_32_GPDB_BUILDSET=partial
-rhel5_x86_32_GPDB_BUILDSET=partial
 aix5_ppc_64_GPDB_BUILDSET=partial
 aix5_ppc_32_GPDB_BUILDSET=partial
 sol10_x86_32_GPDB_BUILDSET=partial
 sol10_sparc_32_GPDB_BUILDSET=partial
-sol10_sparc_64_GPDB_BUILDSET=partial
 sol9_sparc_32_GPDB_BUILDSET=partial
 sol9_sparc_64_GPDB_BUILDSET=partial
 sol9_sparc_GPDB_BUILDSET=partial
@@ -364,6 +362,7 @@ define BUILD_STEPS
 	@$(MAKE) mkplatform INSTLOC=$(INSTLOC)
 	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
+	@$(MAKE) pkgplr INSTLOC=$(INSTLOC)
 	@$(MAKE) clients INSTLOC=$(INSTLOC) CLIENTINSTLOC=$(CLIENTINSTLOC)
 	$(MAKE) set_scripts_version INSTLOC=$(CLIENTINSTLOC)
 	@$(MAKE) connectivity INSTLOC=$(INSTLOC) CONNECTIVITYINSTLOC=$(CONNECTIVITYINSTLOC)
@@ -391,7 +390,6 @@ endif
 ifeq "$(BLD_GPDB_BUILDSET)" "partial"
 define BUILD_STEPS
 	rm -f installcheck-good_SKIP
-	rm -f installcheck-bugbuster_SKIP
 	rm -rf $(INSTLOC)
 	@if [ "$(findstring win,$(BLD_ARCH))" = "win" ]; then \
 	    echo "Modifying timezone Makefile for crosscompile."; \
@@ -422,13 +420,15 @@ define BUILD_STEPS
 	cp -p $(GPMGMT)/bin/gpload.py $(INSTLOC)/bin/gpload.py
 	$(MAKE) copylibs INSTLOC=$(INSTLOC)
 	$(MAKE) clients INSTLOC=$(INSTLOC) CLIENTINSTLOC=$(CLIENTINSTLOC)
+	@$(MAKE) set_scripts_version INSTLOC=$(CLIENTINSTLOC)
 	$(MAKE) connectivity INSTLOC=$(INSTLOC) CONNECTIVITYINSTLOC=$(CONNECTIVITYINSTLOC)
+	@$(MAKE) set_scripts_version INSTLOC=$(CONNECTIVITYINSTLOC)
 	if [ "$(findstring win,$(BLD_ARCH))" != "win" ]; then \
 	  cd $(GPMGMT)/bin && $(MAKE) pygresql INSTLOC=$(INSTLOC) ; \
 	fi
 	$(MAKE) loaders INSTLOC=$(INSTLOC) LOADERSINSTLOC=$(LOADERSINSTLOC)
+	@$(MAKE) set_scripts_version INSTLOC=$(LOADERSINSTLOC)
 	touch installcheck-good_SKIP
-	touch installcheck-bugbuster_SKIP
 endef
 endif
 
@@ -468,9 +468,6 @@ env.sh:
 	echo "export CC=\"$(strip $(BLD_CC) $(BLD_CFLAGS))\"" >> env.sh
 	echo "export PATH=$(PATH)" >> env.sh
 	echo "export $(BLD_WHERE_THE_LIBRARY_THINGS_ARE)=$($(BLD_WHERE_THE_LIBRARY_THINGS_ARE))" >> env.sh
-ifneq "$(PERL_DIR)" ""
-	echo "export PERL5LIB=$(PERL_DIR)/lib/site_perl/5.12.4/x86_64-linux:$(PERL_DIR)/lib/site_perl/5.12.4:$(PERL_DIR)/lib/5.12.4/x86_64-linux:$(PERL_DIR)/lib/5.12.4" >> env.sh
-endif
 
 #---------------------------------------------------------------------
 # rsync + build
@@ -675,7 +672,7 @@ BLD_OS=Windows
 else
 BLD_OS:=$(shell uname -s)
 endif
-AIX_LOADERS_LIBS=libbz2.a libz.a libpq.a liblber*.a libldap*.a libyaml*.a
+AIX_LOADERS_LIBS=libbz2.a libz.a libpq.a liblber*.a libldap*.a
 Darwin_LOADERS_LIBS=libcrypto.*.dylib libssl.*.dylib libpq.*.dylib* libkrb5.*.dylib libcom_err.*.dylib libldap_r-*.dylib libk5crypto.*.dylib libkrb5support.*.dylib liblber-*.dylib
 Linux_LOADERS_LIBS=libcrypto.so* libssl.so.* libz.so* libpq.so* libkrb5.so* libcom_err.so* libk5crypto.so* libkrb5support.so* liblber*.so* libldap_r-*so*
 SunOS_LOADERS_LIBS=libcrypto.so* libssl.so.* libgcc_s.so.1 libz.so* libpq.so* libk5crypto.so* libkrb5support.so* liblber*.so* libldap_r-*so* libcom_err.so* libkrb5.so*
@@ -686,7 +683,7 @@ endef
 LOADERS_FILESET_LIB = $(strip $(tmpLOADERS_FILESET_LIB))
 
 aix5_ppc_32_LOADERS_LIBS_PERZL=libz.a
-aix5_ppc_64_LOADERS_LIBS_PERZL=libz.so libz.so.1 libz.so.1.2.4 libcrypto.so libcrypto.so.0.9.8 libssl.so libssl.so.0.9.8
+aix5_ppc_64_LOADERS_LIBS_PERZL=libz.so libz.so.1 libz.so.1.2.4
 
 aix5_ppc_32_LOADERS_LIBS_PERZL_LOC=/opt/freeware/lib
 aix5_ppc_64_LOADERS_LIBS_PERZL_LOC=/opt/pware64/lib
@@ -712,7 +709,6 @@ sol8_sparc_32_MPP_ARCH=SOL8-sparc_32
 rhel4_x86_32_MPP_ARCH=RHEL4-i386
 rhel4_x86_64_MPP_ARCH=RHEL4-x86_64
 rhel5_x86_64_MPP_ARCH=RHEL5-x86_64
-rhel6_x86_64_MPP_ARCH=RHEL6-x86_64
 osx10_x86_MPP_ARCH=OSX-i386
 osx105_x86_MPP_ARCH=OSX-i386
 ifneq "$($(BLD_ARCH)_MPP_ARCH)" ""
@@ -724,13 +720,6 @@ endif
 
 ifeq "$(INSTLOC)" ""
 INSTLOC=$(GPDIR)
-endif
-
-# define build flags for GP Optimizer UDFs library
-ifeq (Darwin, $(BLD_OS))
-	GPOPT_UDF_FLAGS := -m32 -dynamiclib -flat_namespace -undefined dynamic_lookup
-else
-	GPOPT_UDF_FLAGS := -m64 -shared
 endif
 
 VERSION:=$(shell [ -f VERSION ] && perl -pe 's, ,-,g' VERSION)
@@ -748,11 +737,19 @@ ifeq "$(findstring connectivity,$(BLD_TARGETS))" ""
 	# ---- build and packaging of the Connectivity package is currently disabled;
 	# ---- set BLD_TARGETS="connectivity" to enable them.
 else
-	# ---- load LD_LIBRARY_PATH with the GPDB library set and build the ODBC drivers ----
+ifneq "$(findstring $(BLD_ARCH)$(BLD_FORCE_OUR_LIBPQ),aix5_ppc_32 aix5_ppc_64)" ""
+	# ---- (for AIX) load LIBPATH with the PostgreSQL library set and build the ODBC drivers ----
+	export LIBPATH=$(BLD_THIRDPARTY_DIR)/postgresql-8.4.0/lib:$(LIBPATH); \
+	  export PG_CONFIG=$(BLD_THIRDPARTY_DIR)/postgresql-8.4.0/bin/pg_config; \
+	  cd $(BLD_TOP)/client/odbc/src && \
+	    $(MAKE) all
+else
+	# ---- (for other than AIX) load LD_LIBRARY_PATH with the GPDB library set and build the ODBC drivers ----
 	cd $(INSTLOC)/ && \
 	  . ./greenplum_path.sh; \
 	  cd $(BLD_TOP)/client/odbc/src && \
 	    $(MAKE) all
+endif
 	# ---- copy GPDB fileset ----
 	mkdir -p $(CONNECTIVITYINSTLOC_LIB)
 	(cd $(INSTLOC)/lib && $(TAR) cf - *) | (cd $(CONNECTIVITYINSTLOC_LIB)/ && $(TAR) xvpf -)$(check_pipe_for_errors)
@@ -769,6 +766,8 @@ endif
 	# ---- copy ODBC fileset ----
 	mkdir -p $(CONNECTIVITYINSTLOC_ODBC)
 	(cd client/odbc/src/greenplum-connectivity/odbc/ && $(TAR) cf - --exclude=*.la *) | (cd $(CONNECTIVITYINSTLOC_ODBC)/ && $(TAR) xvf -)$(check_pipe_for_errors)
+	# ---- copy docs fileset ----
+	cp -f client/docs/release/GPConnect$(DOC_TYPE).pdf $(CONNECTIVITYINSTLOC)
 	# ---- copy scripts fileset ----
 	mkdir -p $(CONNECTIVITYINSTLOC)
 	cp -f client/scripts/greenplum_$@_path$(SCRIPT) $(CONNECTIVITYINSTLOC)/
@@ -790,9 +789,6 @@ endif
 
 	# ---- create the installer ----
 	$(warn MPP_ARCH=$(MPP_ARCH))
-
-	# ---- updating the version in required packages ----
-	@$(MAKE) set_scripts_version INSTLOC=$(CONNECTIVITYINSTLOC)
 
 ifneq "$(findstring win,$(BLD_ARCH))" "win"
 	cd client/install/src/unix/ && \
@@ -838,6 +834,8 @@ ifneq "$(findstring $(BLD_ARCH),sol8_sparc_32 sol9_sparc_32)" ""
 	(cd $(BLD_TOP)/opensource/ && $(TAR) cf - libiconv-* libidn-* libintl-* sasl-*) | (cd $(CLIENTINSTLOC_OPENSOURCE)/ && $(TAR) xvpf -)$(check_pipe_for_errors)
 endif
 	# ---- copy docs fileset ----
+	mkdir -p $(CLIENTINSTLOC)
+	cp -f client/docs/release/GPClientTools$(DOC_TYPE).pdf $(CLIENTINSTLOC)/
 	mkdir -p $(CLIENTINSTLOC_DOCS)
 	cp -rpf client/docs/release/$(CLIENT_SQLDOCS) $(CLIENTINSTLOC_DOCS)/
 	# ---- copy scripts fileset ----
@@ -861,9 +859,6 @@ endif
 
 	# ---- create the installer ----
 	$(warn MPP_ARCH=$(MPP_ARCH))
-
-	# ---- Updating the version in required packages ----
-	@$(MAKE) set_scripts_version INSTLOC=$(CLIENTINSTLOC)
 
 ifneq "$(findstring win,$(BLD_ARCH))" "win"
 	cd client/install/src/unix/ && \
@@ -925,6 +920,8 @@ ifneq "$(findstring $(BLD_ARCH),sol8_sparc_32 sol9_sparc_32 sol10_sparc_32)" ""
 	mkdir -p $(LOADERSINSTLOC_OPENSOURCE)
 	(cd $(BLD_TOP)/opensource/ && $(TAR) cf - libiconv-* expat-*) | (cd $(LOADERSINSTLOC_OPENSOURCE)/ && $(TAR) xvpf -)$(check_pipe_for_errors)
 endif
+	# ---- copy docs fileset ----
+	cp -f client/docs/release/GPLoadTools$(DOC_TYPE).pdf $(LOADERSINSTLOC)
 	# ---- copy scripts fileset ----
 	mkdir -p $(LOADERSINSTLOC)
 	cp -f client/scripts/greenplum_$@_path$(SCRIPT) $(LOADERSINSTLOC)/
@@ -945,10 +942,6 @@ endif
 	fi
 
 	# ---- create the installer ----
-
-	# ---- updating the version in required packages ----
-	@$(MAKE) set_scripts_version INSTLOC=$(LOADERSINSTLOC)
-
 ifneq "$(findstring win,$(BLD_ARCH))" "win"
 	cd client/install/src/unix/ && \
 	  $(MAKE) TAR=$(TAR) PRODUCT=Loaders PACKAGE=greenplum-loaders README=GPLoadToolsUnix VERSION=`perl -pe 's, ,-,g' ../../../../VERSION` INSTALL_SRC=$(LOADERSINSTLOC) INSTALL_DIR=../../../..
@@ -1026,7 +1019,6 @@ SET_VERSION_SCRIPTS = \
 	bin/gpcrondump.py \
 	bin/gpdbrestore \
 	bin/gpdeletesystem \
-	bin/gpdetective \
 	bin/gpexpand \
 	bin/gpfilespace \
 	bin/gpinitstandby \
@@ -1060,15 +1052,13 @@ SET_VERSION_SCRIPTS = \
 	sbin/gpsegtoprimaryormirror.py \
 	sbin/gpsetdbid.py \
 	sbin/gpsuspend.py \
+	sbin/gpupgrademirror.py \
 	lib/python/gppylib/programs/clsAddMirrors.py \
 	lib/python/gppylib/programs/clsHostCacheLookup.py \
 	lib/python/gppylib/programs/clsInjectFault.py \
 	lib/python/gppylib/programs/clsRecoverSegment.py \
 	lib/python/gppylib/programs/clsSystemState.py \
 	lib/python/gppylib/programs/gppkg.py \
-	lib/python/gppylib/programs/kill.py \
-	lib/python/gppylib/programs/verify.py \
-	lib/python/gppylib/mainUtils.py \
 	$(NULL)
 
 set_scripts_version : 
@@ -1093,6 +1083,8 @@ mkpgbench:
 
 mkgpperfmon:
 	@cd $(GPPERFMON) && $(MAKE) BUILDDIR=$(BUILDDIR)
+	rm -f $(INSTLOC)/../greenplum-perfmon-*.zip
+	cp -p gpperfmon/installer/greenplum-perfmon-*.zip $(INSTLOC)/..
 	cp -p gpperfmon/src/gpmon/gpmmon gpperfmon/src/gpmon/gpsmon $(INSTLOC)/bin
 	cp -p gpperfmon/src/gpmon/gpmon_catqrynow.py $(INSTLOC)/sbin
 	cp -p gpperfmon/src/gpmon/gpperfmon_install $(INSTLOC)/bin
@@ -1116,6 +1108,8 @@ copydocs :
 	@if [ ! -d $(GPDOCDIR) ] ; then \
 	    echo "Error Copying Documentation: $(GPDOCDIR) is not present"; \
 	else  echo "Copying Documentation" ;  \
+	    echo "Copying $(GPDOCDIR)/pdf/GP*.pdf" ; \
+	    cp $(GPDOCDIR)/pdf/GP*.pdf $(INSTLOC)/docs/; \
 	    if [ -d $(INSTLOC)/doc/postgresql/contrib ] ; then \
 	        mkdir -p $(INSTLOC)/docs/contrib ; \
 	        echo "Copying postgresql contrib documentation" ; \
@@ -1170,7 +1164,28 @@ endif
 	echo "`date` -- INFO: Removing $(INSTLOC)/bin/gpexpandsystem"
 	rm -f $(INSTLOC)/bin/gpexpandsystem
 	rm -rf $(INSTLOC)/bin/gppylib
-	find $(INSTLOC)/lib/python/gppylib -name test -type d | xargs rm -rf
+
+pkgplr:
+	@if [ ! -z "$(PLRDIR)" ]; then \
+	    echo "`date` -- INFO: Found a previous PL/R package, removing it"; \
+	    rm -rf $(PLRDIR); \
+	fi
+	@if [ -f $(INSTLOC)/lib/postgresql/plr.so ] ; then \
+	    echo "" ; \
+	    echo "`date` -- INFO: Found plr.so, creating PL/R package" ; \
+	    mkdir $(PLRDIR) ; \
+	    cp -p $(INSTLOC)/lib/postgresql/plr.so $(PLRDIR)/ ; \
+	    if [ `uname -s` = 'SunOS' ]; then cp /releng/lib/libiconv.so.2 /releng/lib/amd64/libgcc_s.so.1 $(PLRDIR)/ ; fi ; \
+	    cp -p $(BLD_TOP)/languages/PLR/PLR_README $(PLRDIR)/ ; \
+	    echo "" ; \
+	    echo "`date` -- INFO: Cleaning up $(INSTLOC) of plr components" ; \
+	    rm -f $(INSTLOC)/share/postgresql/contrib/plr.sql ; \
+	    rm -f $(INSTLOC)/lib/postgresql/plr.so ; \
+	    echo "" ; \
+	    echo "`date` -- INFO: Creating .zip" ; \
+	    zip -q -r greenplum-plr-$(VERSION)-${MPP_ARCH}.zip $(PLRDIR) ; \
+	    echo "" ; \
+	fi
 
 BLD_LDD=ldd
 osx104_x86_LDD=otool -L
@@ -1186,20 +1201,7 @@ endif
 
 libcopy=(cd $(1) && $(TAR) cf - $(2)) | (cd $(3) && $(TAR) xvf -)$(check_pipe_for_errors)
 
-.PHONY: copy-rsa-libs
-
-copy-rsa-libs:
-	# Copy rsa-bsafe libs
-	if [ -f $(BLD_THIRDPARTY_LIB_DIR)/libcryptocme.sig ]; then \
-		cp -fp $(BLD_THIRDPARTY_LIB_DIR)/libcryptocme.s* $(INSTLOC)/lib/; \
-		cp -fp $(BLD_THIRDPARTY_LIB_DIR)/libccme_* $(INSTLOC)/lib/; \
-	fi
-	# Copy rsa lockbox libs - supported only on rhel
-ifeq "$(BLD_ARCH)" "rhel5_x86_64"
-	cp -fpr $(BLD_THIRDPARTY_LIB_DIR)/rsa_csp $(INSTLOC)/lib/;
-endif
-
-copylibs : thirdparty-dist copy-rsa-libs
+copylibs : thirdparty-dist
 	if [ `uname -s` = 'SunOS' ]; then cp `ldd $(INSTLOC)/bin/psql | grep gcc | head -1 | awk '{print $$3}'` $(INSTLOC)/lib; fi
 	if [ `uname -s` = 'Darwin' ] ; then \
 	    for lib in `otool -L $(INSTLOC)/bin/psql | egrep 'libssl|libcrypto|libcom_err|libkrb5|curl|readline|numa' | awk '{print $$1}'`; do \
@@ -1253,7 +1255,7 @@ copylibs : thirdparty-dist copy-rsa-libs
 	@if [ ! -z "$(BLD_PYTHON)" ]; then \
 	    echo "Copying python, $(BLD_PYTHON_FILESET), from $(BLD_PYTHON) into $(INSTLOC)/ext/python..."; \
 	    (cd $(BLD_PYTHON) && $(TAR) cf - $(BLD_PYTHON_FILESET)) | (cd $(INSTLOC)/ext/python/ && $(TAR) xpf -); \
-		echo "...DONE"; \
+	    echo "...DONE"; \
 	else \
 	    echo "INFO: Python not found on this platform, $(BLD_ARCH), not copying it into the GPDB package."; \
 	fi
@@ -1274,28 +1276,6 @@ else
 	cp -rp /usr/include/openssl $(INSTLOC)/include/
 	cp -rp /System/Library/OpenSSL/openssl.cnf $(INSTLOC)/etc/
 endif
-endif
-	# Copy glider stack trace capture tool
-	-cp -rp $(BLD_THIRDPARTY_BIN_DIR)/glider $(INSTLOC)/sbin/
-
-ifneq "$(BLD_GPDB_BUILDSET)" "partial"
-	# Copy GP Optimizer libraries 
-	echo "Copying Orca libraries";
-	for b in libnaucrates libgpopt; do \
-		rm -f $(INSTLOC)/lib/$$b.$(LDSFX); \
-		echo "Copying $$b"; \
-		cp  $(OPTIMIZER)/$$b/$(OBJDIR_DEFAULT)/$$b.$(LDSFX) $(INSTLOC)/lib ; \
-	done
-	rm -f $(INSTLOC)/lib/libgpos.$(LDSFX);
-	cp $(LIBGPOS_LIBDIR)/libgpos.$(LDSFX) $(INSTLOC)/lib;
-	rm -f $(INSTLOC)/lib/libxerces-c-3.1.$(LDSFX);
-	cp $(XERCES_LIBDIR)/libxerces-c-3.1.$(LDSFX) $(INSTLOC)/lib;	
-	cd $(LIBSTDC++_LIBDIR); tar cvf - * | (cd $(INSTLOC)/lib; tar xfp -)
-
-	# Create GP Optimizer UDFs library  
-	echo "Create GP Optimizer UDFs library";
-	rm -f $(INSTLOC)/lib/libgpoptudf.$(LDSFX);
-	g++ $(GPOPT_UDF_FLAGS) -L$(INSTLOC)/lib -lgpos -lnaucrates -lgpopt -o $(INSTLOC)/lib/libgpoptudf.$(LDSFX)  ./cdb-pg/src/backend/gpopt/utils/funcs.o ;
 endif
 
 greenplum_path:
@@ -1379,10 +1359,6 @@ installcheck-olaptest :
 	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, cannot check"; exit 1; fi
 	@cd $(BUILDDIR)/src/test/regress && $(MAKE) installcheck-olaptest
 
-installcheck-bugbuster :
-	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, cannot check"; exit 1; fi
-	@cd $(BUILDDIR)/src/test/regress && $(MAKE) installcheck-bugbuster
-
 #---------------------------------------------------------------------
 # More internal functions
 #---------------------------------------------------------------------
@@ -1445,24 +1421,15 @@ pygres: GPROOTDEP
 authlibs:
 	@echo "# authlibs are now provided in the ext/ directory on this platform" > authlib_libpath_setup.sh
 
-## ----------------------------------------------------------------------
 
-ifeq "$(BLD_ARCH)" "rhel6_x86_64"
-GPPKG_SOURCES = \
-	cdb-pg/src/pl/plperl \
+
+GPPKG_TARGETS = \
+	cdb-pg/contrib/pgcrypto/package \
+	cdb-pg/contrib/postgis/package \
+	cdb-pg/src/pl/plr/package \
+	cdb-pg/src/pl/plperl/package \
+	cdb-pg/src/pl/pljava/package \
 	$(NULL)
-else
-GPPKG_SOURCES = \
-	cdb-pg/contrib/pgcrypto \
-	cdb-pg/contrib/postgis \
-	cdb-pg/src/pl/plr \
-	cdb-pg/src/pl/plperl \
-	cdb-pg/src/pl/pljava \
-	cdb-pg/src/bin/gphdfs \
-	cdb-pg/src/backend/libgppc/lib \
-	cdb-pg/src/bin/pg_dump/cdb/ddboost \
-	$(NULL)
-endif
 
 ## ----------------------------------------------------------------------
 
@@ -1477,73 +1444,11 @@ ifeq "$(findstring $(BLD_ARCH),$(GPPKG_PLATFORMS))" ""
 	@echo "on this platform: $(BLD_ARCH)"
 	@echo ""
 else
-	for source in $(GPPKG_SOURCES); do \
-		$(MAKE) -C $${source}/package INSTLOC=$(INSTLOC) BLD_ARCH=`$(BLD_TOP)/releng/set_bld_arch.sh`; \
-		cp $${source}/package/*.gppkg $(GPPKGINSTLOC); \
-	done
-endif
-endif
-
-INSTALLCHECK_GPPKG_SOURCES = \
-	cdb-pg/contrib/pgcrypto \
-	cdb-pg/contrib/postgis \
-	cdb-pg/src/pl/plperl \
-	cdb-pg/src/pl/plr \
-	cdb-pg/src/backend/libgppc/lib \
-	cdb-pg/src/bin/pg_dump/cdb/ddboost \
-	$(NULL)
-
-installcheck-gppkg:
-	touch installcheck-gppkg.log
-ifeq "$(findstring gppkg,$(BLD_TARGETS))" ""
-    # ---- build and packaging of gppkgs are currently disabled
-    # ---- set BLD_TARGETS="gppkg" to enable them.
-else
-ifeq "$(findstring $(BLD_ARCH),$(GPPKG_PLATFORMS))" ""
-	@echo ""
-	@echo "The gppkg build and packaging processes are not supported"
-	@echo "on this platform: $(BLD_ARCH)"
-	@echo ""
-else
-	for source in $(INSTALLCHECK_GPPKG_SOURCES); do \
-		$(MAKE) -C $${source}/package install; \
-	done
-	source $$GPHOME/greenplum_path.sh && gpstop -a && gpstart -a
-	for source in $(INSTALLCHECK_GPPKG_SOURCES); do \
-		source $$GPHOME/greenplum_path.sh && $(MAKE) -C $${source} installcheck >> installcheck-gppkg.log; \
-	done
+	@for target in $(GPPKG_TARGETS); do \
+		$(MAKE) -C $${target} INSTLOC=$(INSTLOC); \
+		cp $${target}/*.gppkg $(GPPKGINSTLOC); \
+	done || true
 endif
 endif
 
 ## ----------------------------------------------------------------------
-## Target to install GPDB udfs. Currently, this only works on Mac OSX 
-## and Linux
-## ----------------------------------------------------------------------
-
-create_orca_installer:
-	rm -rf $(BLD_TOP)/orca_tmp
-	mkdir -p $(BLD_TOP)/orca_tmp
-	for b in libnaucrates libgpopt; do \
-		cp $(OPTIMIZER)/$$b/$(OBJDIR_DEFAULT)/$$b.$(LDSFX) $(BLD_TOP)/orca_tmp; \
-	done
-	cp $(LIBGPOS_LIBDIR)/libgpos.$(LDSFX)  $(BLD_TOP)/orca_tmp
-	cp $(XERCES_LIBDIR)/libxerces-c-3.1.$(LDSFX) $(BLD_TOP)/orca_tmp
-	tar zcvf $(BLD_TOP)/orca.tgz -C $(BLD_TOP)/orca_tmp .
-	sed \
-	  -e "s|%%BUILD_NUMBER%%|$${BUILD_NUMBER:=99999}|g" \
-	  -e "s|%%PULSE_BUILD_TIMESTAMP%%|$${PULSE_BUILD_TIMESTAMP:=n/a}|g" \
-	  -e "s|%%GPDB_VER%%|$(VERSION)|g" \
-	  -e "s|%%OPTIMIZER_VER%%|$(OPTIMIZER_VER)|g" \
-	  -e "s|%%LIBGPOS_VER%%|$(LIBGPOS_VER)|g" \
-	  -e "s|%%XERCES_VER%%|$(XERCES_VER)|g" \
-	  $(BLD_TOP)/releng/bin/orca_installer_hdr.sh > $(BLD_TOP)/releng/bin/orca_installer_hdr.sh.out
-	cat $(BLD_TOP)/releng/bin/orca_installer_hdr.sh.out $(BLD_TOP)/orca.tgz > $(BLD_TOP)/gpdb-orca-$(MPP_ARCH).sh
-	chmod a+x $(BLD_TOP)/gpdb-orca-$(MPP_ARCH).sh
-	rm -rf $(BLD_TOP)/orca_tmp
-
-## ----------------------------------------------------------------------
-
-.PHONY : unittest-check
-unittest-check:
-	$(MAKE) -C cdb-pg/src/backend unittest-check
-	$(MAKE) -C cdb-pg/src/port/test unittest-check

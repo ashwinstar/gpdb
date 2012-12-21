@@ -341,7 +341,6 @@ svec_plus(PG_FUNCTION_ARGS)
 	SvecType *svec1 = PG_GETARG_SVECTYPE_P(0);
 	SvecType *svec2 = PG_GETARG_SVECTYPE_P(1);
 	check_dimension(svec1,svec2,"svec_plus");
-	//LAL-this-helped-debug-the-pivot-bug printout_svec(svec1,"svec_plus",false);
 	SvecType *result = op_svec_by_svec_internal(1,svec1,svec2);
 	PG_RETURN_SVECTYPE_P(result);
 }
@@ -508,45 +507,6 @@ svec_log(PG_FUNCTION_ARGS)
 
 	PG_RETURN_SVECTYPE_P(svec);
 
-}
-
-PG_FUNCTION_INFO_V1( svec_min );
-
-Datum
-svec_min(PG_FUNCTION_ARGS)
-{
-	SvecType *svec = PG_GETARG_SVECTYPE_P(0);
-	SparseData sdata  = sdata_from_svec(svec);
-	double min;
-	min = min_sdata_values_double(sdata);
-
-	PG_RETURN_FLOAT8(min);
-}
-
-PG_FUNCTION_INFO_V1( svec_max );
-
-Datum
-svec_max(PG_FUNCTION_ARGS)
-{
-	SvecType *svec = PG_GETARG_SVECTYPE_P(0);
-	SparseData sdata  = sdata_from_svec(svec);
-	double max;
-	max = max_sdata_values_double(sdata);
-
-	PG_RETURN_FLOAT8(max);
-}
-
-PG_FUNCTION_INFO_V1( svec_nelements );
-
-Datum
-svec_nelements(PG_FUNCTION_ARGS)
-{
-	SvecType *svec = PG_GETARG_SVECTYPE_P(0);
-	SparseData sdata  = sdata_from_svec(svec);
-	int64 nelem;
-	nelem = nelem_sdata(sdata);
-
-	PG_RETURN_INT64(nelem);
 }
 
 /*
@@ -1166,9 +1126,6 @@ svec_pivot(PG_FUNCTION_ARGS)
 			sdata->index->cursor = len;
 		}
 	}
-
-	svec->dimension = sdata->total_value_count;
-	if (svec->dimension==1) svec->dimension=-1; //Mark svec this as a scalar
 
 	PG_RETURN_SVECTYPE_P(svec);
 }

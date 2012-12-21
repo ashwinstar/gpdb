@@ -37,7 +37,6 @@
 #include "libpq-fe.h"
 #include "fmgr.h"
 #include "funcapi.h"
-#include "access/catquery.h"
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/tupdesc.h"
@@ -1658,13 +1657,15 @@ dblink_build_sql_update(PG_FUNCTION_ARGS)
 static char **
 get_pkey_attnames(Oid relid, int16 *numatts)
 {
+	Relation	indexRelation;
+	ScanKeyData skey;
+	SysScanDesc scan;
 	HeapTuple	indexTuple;
 	int			i;
 	char	  **result = NULL;
 	Relation	rel;
 	TupleDesc	tupdesc;
 	AclResult	aclresult;
-	cqContext  *pcqCtx;
 
 	/* initialize numatts to 0 in case no primary key exists */
 	*numatts = 0;
@@ -1678,17 +1679,19 @@ get_pkey_attnames(Oid relid, int16 *numatts)
 		aclcheck_error(aclresult, ACL_KIND_CLASS,
 					   RelationGetRelationName(rel));
 
-	tupdesc = RelationGetDescr(rel);
+	tupdesc = rel->rd_att;
 
 	/* Prepare to scan pg_index for entries having indrelid = this rel. */
-
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_index "
-				" WHERE indrelid = :1 ",
+	indexRelation = heap_open(IndexRelationId, AccessShareLock);
+	ScanKeyInit(&skey,
+				Anum_pg_index_indrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(relid));
 
-	while (HeapTupleIsValid(indexTuple = caql_getnext(pcqCtx)))
+	scan = systable_beginscan(indexRelation, IndexIndrelidIndexId, true,
+							  SnapshotNow, 1, &skey);
+
+	while (HeapTupleIsValid(indexTuple = systable_getnext(scan)))
 	{
 		Form_pg_index index = (Form_pg_index) GETSTRUCT(indexTuple);
 
@@ -1707,7 +1710,8 @@ get_pkey_attnames(Oid relid, int16 *numatts)
 		}
 	}
 
-	caql_endscan(pcqCtx);
+	systable_endscan(scan);
+	heap_close(indexRelation, AccessShareLock);
 	relation_close(rel, AccessShareLock);
 
 	return result;
@@ -2176,16 +2180,10 @@ generate_relation_name(Oid relid)
 	Form_pg_class reltup;
 	char	   *nspname;
 	char	   *result;
-	cqContext  *pcqCtx;
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(relid)));
-	
-	tp = caql_getnext(pcqCtx);
-
+	tp = SearchSysCache(RELOID,
+						ObjectIdGetDatum(relid),
+						0, 0, 0);
 	if (!HeapTupleIsValid(tp))
 		elog(ERROR, "cache lookup failed for relation %u", relid);
 
@@ -2199,7 +2197,7 @@ generate_relation_name(Oid relid)
 
 	result = quote_qualified_identifier(nspname, NameStr(reltup->relname));
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(tp);
 
 	return result;
 }

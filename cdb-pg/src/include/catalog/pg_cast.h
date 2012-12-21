@@ -36,7 +36,7 @@
    );
 
    create unique index on pg_cast(oid) with (indexid=2660, CamelCase=CastOid);
-   create unique index on pg_cast(castsource, casttarget) with (indexid=2661, CamelCase=CastSourceTarget, syscacheid=CASTSOURCETARGET, syscache_nbuckets=256);
+   create unique index on pg_cast(castsource, casttarget) with (indexid=2661, CamelCase=CastSourceTarget);
 
    alter table pg_cast add fk castsource on pg_type(oid);
    alter table pg_cast add fk casttarget on pg_type(oid);
@@ -421,12 +421,6 @@ DATA(insert ( 1560 1560 1685 i ));
 DATA(insert ( 1562 1562 1687 i ));
 DATA(insert ( 1700 1700 1703 i ));
 
-/* casts text, varchar to and from uuid */
-DATA(insert OID=3077 (   25 2950 2964 a ));
-DATA(insert OID=3078 ( 2950   25 2965 a ));
-DATA(insert OID=3079 ( 1043 2950 2964 a ));
-DATA(insert OID=3080 ( 2950 1043 2965 a ));
-
 /*
  * CDB: Allow explicit cast from tid to int8
  */
@@ -441,20 +435,5 @@ DATA(insert (   27   20 6021 e ));
 DATA(insert OID = 9901 (	27 3300    0 e ));
 DATA(insert OID = 9902 ( 3300	 27    0 e ));
 
-DATA(insert OID = 9918 (	16	 25 2971 i ));
-DATA(insert OID = 9919 (	25	 16 2970 e ));
-
-DATA(insert OID = 9920 (	16 1043 2971 a ));
-DATA(insert OID = 9921 ( 1043	 16 2970 e ));
-
-/* complex category */
-DATA(insert OID=9069 (701  825 9064 i));
-DATA(insert OID=9070 (700  825 9065 i));
-DATA(insert OID=9088 (20   825 9066 i));
-DATA(insert OID=9089 (23   825 9067 i));
-DATA(insert OID=9090 (21   825 9068 i));
-DATA(insert OID=9091 (600  825 0 i));
-DATA(insert OID=9092 (825  600 0 i));
-DATA(insert OID=9093 (1700 825 9087 i));
 
 #endif   /* PG_CAST_H */

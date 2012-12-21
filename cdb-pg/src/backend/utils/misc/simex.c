@@ -49,7 +49,7 @@ const SimExESClassAssociate SimExESClassAssociateTable[] =
 {
 	{SimExESClass_OOM, SimExESSubClass_OOM_ReturnNull, "OOM_ReturnNull"},
 	{SimExESClass_Cancel, SimExESSubClass_Cancel_QueryCancel, "Cancel_QueryCancel"},
-	{SimExESClass_Terminate, SimExESSubClass_Terminate_ProcDie, "Terminate_ProcDie"},
+	{SimExESClass_Cancel, SimExESSubClass_Cancel_ProcDie, "Cancel_ProcDie"},
 	{SimExESClass_CacheInvalidation, SimExESSubClass_CacheInvalidation, "Cache_Invalidation"},
 	{SimExESClass_SysError, SimExESSubClass_SysError_Net, "SysError_Net"},
 	{SimExESClass_ProcKill, SimExESSubClass_ProcKill_BgWriter, "Send SIGKILL to writer process"},
@@ -67,7 +67,6 @@ const SimExESClassAssociate SimExESClassAssociateTable[] =
 
 /* SimEx bit vector container */
 static SyncBitvectorContainer bitvectorContainer = NULL;
-static SyncBitvectorContainer savedBitvectorContainer = NULL;
 
 /* maps bit vector offsets to ES subclasses */
 static int16 SimExESSubclassOffset[SIMEX_ES_SUBCLASS_MAX_COUNT];
@@ -203,32 +202,6 @@ int32 simex_get_subclass_count(void)
 void simex_set_sync_bitvector_container(SyncBitvectorContainer container)
 {
 	bitvectorContainer = container;
-}
-
-/*
- * Copy the bitvector container from shared memory to private memory
- */
-void simex_save_sync_bitvector_container(void)
-{
-	Assert(NULL == savedBitvectorContainer);
-
-	elog(LOG, "Saving SimEx state");
-	savedBitvectorContainer = SyncBitVector_Save(bitvectorContainer);
-
-}
-
-/*
- * Restore the bitvector container in shared memory from private memory
- */
-void simex_restore_sync_bitvector_container(void)
-{
-	Assert(NULL != savedBitvectorContainer);
-
-	elog(LOG, "Restoring SimEx state");
-	SyncBitVector_Restore(bitvectorContainer, savedBitvectorContainer);
-
-	pfree(savedBitvectorContainer);
-	savedBitvectorContainer = NULL;
 }
 
 /*

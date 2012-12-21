@@ -19,7 +19,6 @@
 #include "postgres.h"
 
 #include "access/genam.h"
-#include "access/catquery.h"
 #include "access/heapam.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
@@ -131,28 +130,20 @@ cluster(ClusterStmt *stmt)
 			{
 				HeapTuple	idxtuple;
 				Form_pg_index indexForm;
-				cqContext	*idxcqCtx;
 
 				indexOid = lfirst_oid(index);
-
-				idxcqCtx = caql_beginscan(
-						NULL,
-						cql("SELECT * FROM pg_index "
-							" WHERE indexrelid = :1 ",
-							ObjectIdGetDatum(indexOid)));
-
-				idxtuple = caql_getnext(idxcqCtx);
-
+				idxtuple = SearchSysCache(INDEXRELID,
+										  ObjectIdGetDatum(indexOid),
+										  0, 0, 0);
 				if (!HeapTupleIsValid(idxtuple))
 					elog(ERROR, "cache lookup failed for index %u", indexOid);
 				indexForm = (Form_pg_index) GETSTRUCT(idxtuple);
 				if (indexForm->indisclustered)
 				{
-					caql_endscan(idxcqCtx);
+					ReleaseSysCache(idxtuple);
 					break;
 				}
-				caql_endscan(idxcqCtx);
-
+				ReleaseSysCache(idxtuple);
 				indexOid = InvalidOid;
 			}
 
@@ -339,7 +330,6 @@ cluster_rel(RelToCluster *rvtc, bool recheck, ClusterStmt *stmt, bool printError
 	{
 		HeapTuple	tuple;
 		Form_pg_index indexForm;
-		cqContext	*idxcqCtx;
 
 		/* Check that the user still owns the relation */
 		if (!pg_class_ownercheck(rvtc->tableOid, GetUserId()))
@@ -366,11 +356,9 @@ cluster_rel(RelToCluster *rvtc, bool recheck, ClusterStmt *stmt, bool printError
 		/*
 		 * Check that the index still exists
 		 */
-		if (0 == caql_getcount(
-					NULL,
-					cql("SELECT COUNT(*) FROM pg_class "
-						" WHERE oid = :1 ",
-						ObjectIdGetDatum(rvtc->indexOid))))
+		if (!SearchSysCacheExists(RELOID,
+								  ObjectIdGetDatum(rvtc->indexOid),
+								  0, 0, 0))
 		{
 			relation_close(OldHeap, AccessExclusiveLock);
 			return false;
@@ -379,29 +367,22 @@ cluster_rel(RelToCluster *rvtc, bool recheck, ClusterStmt *stmt, bool printError
 		/*
 		 * Check that the index is still the one with indisclustered set.
 		 */
-		idxcqCtx = caql_beginscan(
-				NULL,
-				cql("SELECT * FROM pg_index "
-					" WHERE indexrelid = :1 ",
-					ObjectIdGetDatum(rvtc->indexOid)));
-
-		tuple = caql_getnext(idxcqCtx);
-
+		tuple = SearchSysCache(INDEXRELID,
+							   ObjectIdGetDatum(rvtc->indexOid),
+							   0, 0, 0);
 		if (!HeapTupleIsValid(tuple))	/* probably can't happen */
 		{
-			caql_endscan(idxcqCtx);
 			relation_close(OldHeap, AccessExclusiveLock);
 			return false;
 		}
 		indexForm = (Form_pg_index) GETSTRUCT(tuple);
 		if (!indexForm->indisclustered)
 		{
-			caql_endscan(idxcqCtx);
+			ReleaseSysCache(tuple);
 			relation_close(OldHeap, AccessExclusiveLock);
 			return false;
 		}
-		caql_endscan(idxcqCtx);
-
+		ReleaseSysCache(tuple);
 	}
 
 	/* Check index is valid to cluster on */
@@ -549,32 +530,26 @@ mark_index_clustered(Relation rel, Oid indexOid)
 	Form_pg_index indexForm;
 	Relation	pg_index;
 	ListCell   *index;
-	cqContext  *idxcqCtx;
 
 	/*
 	 * If the index is already marked clustered, no need to do anything.
 	 */
 	if (OidIsValid(indexOid))
 	{
-		idxcqCtx = caql_beginscan(
-				NULL,
-				cql("SELECT * FROM pg_index "
-					" WHERE indexrelid = :1 ",
-					ObjectIdGetDatum(indexOid)));
-
-		indexTuple = caql_getnext(idxcqCtx);
-
+		indexTuple = SearchSysCache(INDEXRELID,
+									ObjectIdGetDatum(indexOid),
+									0, 0, 0);
 		if (!HeapTupleIsValid(indexTuple))
 			elog(ERROR, "cache lookup failed for index %u", indexOid);
 		indexForm = (Form_pg_index) GETSTRUCT(indexTuple);
 
 		if (indexForm->indisclustered)
 		{
-			caql_endscan(idxcqCtx);
+			ReleaseSysCache(indexTuple);
 			return;
 		}
 
-		caql_endscan(idxcqCtx);
+		ReleaseSysCache(indexTuple);
 	}
 
 	/*
@@ -584,19 +559,11 @@ mark_index_clustered(Relation rel, Oid indexOid)
 
 	foreach(index, RelationGetIndexList(rel))
 	{
-		cqContext	cqc;
-		cqContext  *pcqCtx;
 		Oid			thisIndexOid = lfirst_oid(index);
 
-		pcqCtx = caql_addrel(cqclr(&cqc), pg_index);
-
-		indexTuple = caql_getfirst(
-				pcqCtx,
-				cql("SELECT * FROM pg_index "
-					" WHERE indexrelid = :1 "
-					" FOR UPDATE ",
-					ObjectIdGetDatum(thisIndexOid)));
-
+		indexTuple = SearchSysCacheCopy(INDEXRELID,
+										ObjectIdGetDatum(thisIndexOid),
+										0, 0, 0);
 		if (!HeapTupleIsValid(indexTuple))
 			elog(ERROR, "cache lookup failed for index %u", thisIndexOid);
 		indexForm = (Form_pg_index) GETSTRUCT(indexTuple);
@@ -608,20 +575,16 @@ mark_index_clustered(Relation rel, Oid indexOid)
 		if (indexForm->indisclustered)
 		{
 			indexForm->indisclustered = false;
-
-			caql_update_current(pcqCtx, indexTuple);
-			/* and Update indexes (implicit) */
-
+			simple_heap_update(pg_index, &indexTuple->t_self, indexTuple);
+			CatalogUpdateIndexes(pg_index, indexTuple);
 			/* Ensure we see the update in the index's relcache entry */
 			CacheInvalidateRelcacheByRelid(thisIndexOid);
 		}
 		else if (thisIndexOid == indexOid)
 		{
 			indexForm->indisclustered = true;
-
-			caql_update_current(pcqCtx, indexTuple);
-			/* and Update indexes (implicit) */
-
+			simple_heap_update(pg_index, &indexTuple->t_self, indexTuple);
+			CatalogUpdateIndexes(pg_index, indexTuple);
 			/* Ensure we see the update in the index's relcache entry */
 			CacheInvalidateRelcacheByRelid(thisIndexOid);
 		}
@@ -679,7 +642,7 @@ rebuild_relation(Relation OldHeap, Oid indexOid, ClusterStmt *stmt)
 	CommandCounterIncrement();
 
 	/* Swap the physical files of the old and new heaps. */
-	swap_relation_files(tableOid, OIDNewHeap);
+	swap_relation_files(tableOid, OIDNewHeap, true);
 
 	CommandCounterIncrement();
 
@@ -730,7 +693,6 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 	Datum		reloptions;
 	bool		isNull;
 	bool		is_part;
-	cqContext  *pcqCtx;
 
 	OldHeap = heap_open(OIDOldHeap, AccessExclusiveLock);
 	OldHeapDesc = RelationGetDescr(OldHeap);
@@ -746,9 +708,9 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 
 	/* 
 	 * Extract the oids from the oidInfo, this is used to ensure oid
-	 * synchronization between the master and segments.  
+	 * syncronization between the master and segments.  
 	 *
-	 * It is the responsibility of the caller to make sure the oidInfo is
+	 * It is the responibility of the caller to make sure the oidInfo is
 	 * correctly dispatched.
 	 */
 	OIDNewHeap = oidInfo->relOid;
@@ -772,19 +734,13 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 	/*
 	 * Use options of the old heap for new heap.
 	 */
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(OIDOldHeap)));
-
-	tuple = caql_getnext(pcqCtx);
-
+	tuple = SearchSysCache(RELOID,
+						   ObjectIdGetDatum(OIDOldHeap),
+						   0, 0, 0);
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for relation %u", OIDOldHeap);
-
-	reloptions = caql_getattr(pcqCtx, Anum_pg_class_reloptions, &isNull);
-
+	reloptions = SysCacheGetAttr(RELOID, tuple, Anum_pg_class_reloptions,
+								 &isNull);
 	if (isNull)
 		reloptions = (Datum) 0;
 
@@ -812,7 +768,7 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 	if(oidInfo)
 		oidInfo->relOid = OIDNewHeap;
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(tuple);
 
 	/*
 	 * Advance command counter so that the newly-created relation's catalog
@@ -1008,62 +964,33 @@ changeDependencyLinks(Oid baseOid1, Oid baseOid2, Oid oid1, Oid oid2,
  * the main-table data. GPDB: also swap aoseg, aoblkdir links.
  */
 void
-swap_relation_files(Oid r1, Oid r2)
+swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 {
 	Relation	relRelation;
 	HeapTuple	reltup1,
-			reltup2, reltup0;
+				reltup2;
 	Form_pg_class relform1,
 				relform2;
 	Oid			swaptemp;
 	char		swapchar;
+	CatalogIndexState indstate;
 	bool		isAO1, isAO2;
-	cqContext	cqc1;
-	cqContext	cqc2;
-	cqContext  *pcqCtx1;
-	cqContext  *pcqCtx2;
 
 	/* 
 	 * We need writable copies of both pg_class tuples.
 	 */
 	relRelation = heap_open(RelationRelationId, RowExclusiveLock);
 
-	/* NOTE: jic 20120925 a bit of a trick here.  Normally, to update
-	 * a single tuple, the preferred method is caql_getfirst(), which
-	 * returns a writeable copy.  However, in this case, we use
-	 * caql_beginscan() and copy it manually.  We use the caql context
-	 * for the beginscan/endscan block to update *both* tuples,
-	 * because it is cheaper than two single updates
-	 */
-	pcqCtx1 = caql_beginscan(
-			caql_addrel(cqclr(&cqc1), relRelation),
-			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 "
-				" FOR UPDATE ",
-				ObjectIdGetDatum(r1)));
-
-	reltup0 = caql_getnext(pcqCtx1); /* this is the real "current"
-									  * tuple for this context */
-
-	if (!HeapTupleIsValid(reltup0))
-		elog(ERROR, "cache lookup failed for relation %u", r1);
-
-	/* copy the tuple so we can update it */
-	reltup1 = heap_copytuple(reltup0);
-
+	reltup1 = SearchSysCacheCopy(RELOID,
+								 ObjectIdGetDatum(r1),
+								 0, 0, 0);
 	if (!HeapTupleIsValid(reltup1))
 		elog(ERROR, "cache lookup failed for relation %u", r1);
 	relform1 = (Form_pg_class) GETSTRUCT(reltup1);
 
-	pcqCtx2 = caql_addrel(cqclr(&cqc2), relRelation);
-
-	reltup2 = caql_getfirst(
-			pcqCtx2,	
-			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 "
-				" FOR UPDATE ",
-				ObjectIdGetDatum(r2)));
-
+	reltup2 = SearchSysCacheCopy(RELOID,
+								 ObjectIdGetDatum(r2),
+								 0, 0, 0);
 	if (!HeapTupleIsValid(reltup2))
 		elog(ERROR, "cache lookup failed for relation %u", r2);
 	relform2 = (Form_pg_class) GETSTRUCT(reltup2);
@@ -1124,6 +1051,22 @@ swap_relation_files(Oid r1, Oid r2)
 		TransferAppendonlyEntry(r2, r1);
 	}
 	
+
+	/* swap size statistics too, since new rel has freshly-updated stats */
+	if (swap_stats)
+	{
+		int4		swap_pages;
+		float4		swap_tuples;
+
+		swap_pages = relform1->relpages;
+		relform1->relpages = relform2->relpages;
+		relform2->relpages = swap_pages;
+
+		swap_tuples = relform1->reltuples;
+		relform1->reltuples = relform2->reltuples;
+		relform2->reltuples = swap_tuples;
+	}
+
 	/*
 	 * Swap relstorage so we will later know how to drop the temporary table with
 	 * the right Storage Manager (i.e. Buffer Pool or Append-Only).
@@ -1149,23 +1092,14 @@ swap_relation_files(Oid r1, Oid r2)
 			 relform2->reltablespace,
 			 relform2->relstorage);
 
-	/* XXX XXX: jic 20120925 don't **EVER** do this -- 
-	 * First, fake out caql and make the "current" tuple reltup2, 
-	 * then update it.  
-	 * Then restore the "current" tuple (reltup0) and update it with
-	 * the modified reltup1.  Note that if the "current" does not get
-	 * restored then the underlying ReleaseSysCache() in the
-	 * caql_endscan() could explode.
-	 */
+	simple_heap_update(relRelation, &reltup1->t_self, reltup1);
+	simple_heap_update(relRelation, &reltup2->t_self, reltup2);
 
-	caql_get_current(pcqCtx1) = reltup2;
-	caql_update_current(pcqCtx1, reltup2);
-
-	caql_get_current(pcqCtx1) = reltup0; /* restore real "current" */
-	caql_update_current(pcqCtx1, reltup1);
-	/* and Update indexes (implicit) */
-
-	caql_endscan(pcqCtx1);
+	/* Keep system catalogs current */
+	indstate = CatalogOpenIndexes(relRelation);
+	CatalogIndexInsert(indstate, reltup1);
+	CatalogIndexInsert(indstate, reltup2);
+	CatalogCloseIndexes(indstate);
 
 	/*
 	 * If we have toast tables associated with the relations being swapped,
@@ -1222,7 +1156,9 @@ swap_relation_files(Oid r1, Oid r2)
 static List *
 get_tables_to_cluster(MemoryContext cluster_context)
 {
-	cqContext	*pcqCtx;		
+	Relation	indRelation;
+	HeapScanDesc scan;
+	ScanKeyData entry;
 	HeapTuple	indexTuple;
 	Form_pg_index index;
 	MemoryContext old_context;
@@ -1235,15 +1171,13 @@ get_tables_to_cluster(MemoryContext cluster_context)
 	 * have indisclustered set, because CLUSTER will refuse to set it when
 	 * called with one of them as argument.
 	 */
-
-	/* XXX XXX: could bind "AND indrelid = :2 ", GetUserId */
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_index "
-				" WHERE indisclustered = :1 ",
-				BoolGetDatum(true)));
-
-	while (HeapTupleIsValid(indexTuple = caql_getnext(pcqCtx)))
+	indRelation = heap_open(IndexRelationId, AccessShareLock);
+	ScanKeyInit(&entry,
+				Anum_pg_index_indisclustered,
+				BTEqualStrategyNumber, F_BOOLEQ,
+				BoolGetDatum(true));
+	scan = heap_beginscan(indRelation, SnapshotNow, 1, &entry);
+	while ((indexTuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
 		index = (Form_pg_index) GETSTRUCT(indexTuple);
 
@@ -1263,7 +1197,9 @@ get_tables_to_cluster(MemoryContext cluster_context)
 
 		MemoryContextSwitchTo(old_context);
 	}
-	caql_endscan(pcqCtx);
+	heap_endscan(scan);
+
+	relation_close(indRelation, AccessShareLock);
 
 	return rvs;
 }

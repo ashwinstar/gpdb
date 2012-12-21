@@ -57,12 +57,6 @@ ParseExternalTableUri(const char *uri_str)
 		uri->protocol = URI_GPFDIST;
 		protocol_len = strlen(PROTOCOL_GPFDIST);
 	}
-	else if (IS_GPFDISTS_URI(uri_str))
-	{
-		uri->protocol = URI_GPFDISTS;
-		protocol_len = strlen(PROTOCOL_GPFDISTS);
-	}
-
 	else /* not recognized. treat it as a custom protocol */
 	{
 		char *post_protocol = strstr(uri_str, "://");

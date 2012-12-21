@@ -112,118 +112,91 @@ PROCESS_QE () {
     LOG_MSG "[INFO][$INST_COUNT]:-Start Function $FUNCNAME"
     LOG_MSG "[INFO][$INST_COUNT]:-Processing segment $GP_HOSTADDRESS"
 
-    MIRROR_ONLY_INITDB_OPTION=
-    if [ x"" != x"$COPY_FROM_PRIMARY_HOSTADDRESS" ]; then
-	MIRROR_ONLY_INITDB_OPTION=-m
-    fi
+	MIRROR_ONLY_INITDB_OPTION=
+	if [ x"" != x"$COPY_FROM_PRIMARY_HOSTADDRESS" ]; then
+		MIRROR_ONLY_INITDB_OPTION=-m
+	fi
 
-    # build initdb command, capturing output in ${GP_DIR}.initdb
-    cmd="$EXPORT_LIB_PATH;$INITDB"
-    cmd="$cmd $MIRROR_ONLY_INITDB_OPTION"
-    cmd="$cmd -E $ENCODING"
-    cmd="$cmd -D $GP_DIR"
-    cmd="$cmd --locale=$LOCALE_SETTING"
-    cmd="$cmd $LC_ALL_SETTINGS"
-    cmd="$cmd --max_connections=$QE_MAX_CONNECT"
-    cmd="$cmd --shared_buffers=$QE_SHARED_BUFFERS"
-    cmd="$cmd --is_filerep_mirrored=$IS_FILEREP_MIRRORED_OPTION"
-    cmd="$cmd --backend_output=$GP_DIR.initdb"
+	$TRUSTED_SHELL ${GP_HOSTADDRESS} "$EXPORT_LIB_PATH;$INITDB $MIRROR_ONLY_INITDB_OPTION -E $ENCODING -D $GP_DIR --locale=$LOCALE_SETTING $LC_ALL_SETTINGS --max_connections=$QE_MAX_CONNECT --shared_buffers=$QE_SHARED_BUFFERS --is_filerep_mirrored=$IS_FILEREP_MIRRORED_OPTION" >> $LOG_FILE 2>&1
+	RETVAL=$?
+	BACKOUT_COMMAND "$TRUSTED_SHELL ${GP_HOSTADDRESS} \"$RM -rf $GP_DIR > /dev/null 2>&1\""
+	BACKOUT_COMMAND "$ECHO \"removing directory $GP_DIR on $GP_HOSTADDRESS\""
+	PARA_EXIT $RETVAL "to start segment instance database $GP_HOSTADDRESS $GP_DIR"
 
-    $TRUSTED_SHELL ${GP_HOSTADDRESS} $cmd >> $LOG_FILE 2>&1
-    RETVAL=$?
-
-    # if there was an error, copy ${GP_DIR}.initdb to the log before cleaning it up
-    if [ $RETVAL -ne 0 ]; then
-	$TRUSTED_SHELL ${GP_HOSTADDRESS} "cat $GP_DIR.initdb" >> $LOG_FILE 2>&1
-    fi
-    $TRUSTED_SHELL ${GP_HOSTADDRESS} "rm -f $GP_DIR.initdb" >> $LOG_FILE 2>&1
-
-    BACKOUT_COMMAND "$TRUSTED_SHELL ${GP_HOSTADDRESS} \"$RM -rf $GP_DIR > /dev/null 2>&1\""
-    BACKOUT_COMMAND "$ECHO \"removing directory $GP_DIR on $GP_HOSTADDRESS\""
-    PARA_EXIT $RETVAL "to start segment instance database $GP_HOSTADDRESS $GP_DIR"
-
-    # on mirror, copy data from primary
+	# on mirror, copy data from primary
     if [ x"" != x"$COPY_FROM_PRIMARY_HOSTADDRESS" ]; then
         LOG_MSG "[INFO]:-Copying data for mirror on ${GP_HOSTADDRESS} using remote copy from primary ${COPY_FROM_PRIMARY_HOSTADDRESS} ..." 1
         RUN_COMMAND_REMOTE ${COPY_FROM_PRIMARY_HOSTADDRESS} "${EXPORT_GPHOME}; . ${GPHOME}/greenplum_path.sh; ${GPHOME}/bin/lib/pysync.py -x pg_log -x postgresql.conf -x postmaster.pid ${COPY_FROM_PRIMARY_DIR} \[${GP_HOSTADDRESS}\]:${GP_DIR}"
         RETVAL=$?
         PARA_EXIT $RETVAL "remote copy of segment data directory from ${COPY_FROM_PRIMARY_HOSTADDRESS} to ${GP_HOSTADDRESS}"
-    fi
-
-    # Configure postgresql.conf
-    LOG_MSG "[INFO][$INST_COUNT]:-Configuring segment $PG_CONF"
-    $TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO \"#MPP Specific parameters\" >> ${GP_DIR}/$PG_CONF"
-    RETVAL=$?
-    PARA_EXIT $RETVAL "Update ${GP_DIR}/$PG_CONF file"
-    $TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO \"#----------------------\" >> ${GP_DIR}/$PG_CONF"
-    RETVAL=$?
-    PARA_EXIT $RETVAL "Update ${GP_DIR}/$PG_CONF file"
-    ED_PG_CONF ${GP_DIR}/$PG_CONF "$PORT_TXT" port=$GP_PORT 0 $GP_HOSTADDRESS
-    PARA_EXIT $RETVAL "Update port number to $GP_PORT"
-    ED_PG_CONF ${GP_DIR}/$PG_CONF "$LISTEN_ADR_TXT" listen_addresses=\'*\' 0 $GP_HOSTADDRESS
-    PARA_EXIT $RETVAL "Update listen address"
-    ED_PG_CONF ${GP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" checkpoint_segments=$CHECK_POINT_SEGMENTS 0 $GP_HOSTADDRESS
-    PARA_EXIT $RETVAL "Update checkpoint segments"
-
-    if [ x"" != x"$PG_CONF_ADD_FILE" ]; then
-	LOG_MSG "[INFO][$INST_COUNT]:-Processing additional configuration parameters"
-	for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
-	do
-	    LOG_MSG "[INFO][$INST_COUNT]:-Adding config $NEW_PARAM to segment"
-	    SEARCH_TXT=`$ECHO $NEW_PARAM |$CUT -d"=" -f1`
-	    ED_PG_CONF ${GP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM 0 $GP_HOSTADDRESS
-	    PARA_EXIT $RETVAL "Update $PG_CONF $SEARCH_TXT $NEW_PARAM"
-	done
-    fi
-
-    # Configuring PG_HBA  -- on mirror, only need to add local addresses (skip the other addresses)
-    LOG_MSG "[INFO][$INST_COUNT]:-Configuring segment $PG_HBA"
-    if [ x"" = x"$COPY_FROM_PRIMARY_HOSTADDRESS" ]; then
-	for MASTER_IP in "${MASTER_IP_ADDRESS[@]}"
-	do
-	    # MPP-15889
-	    CIDR_MASTER_IP=$(GET_CIDRADDR $MASTER_IP)
-	    $TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO host	all	all	${CIDR_MASTER_IP}	trust >> ${GP_DIR}/$PG_HBA"
-	    PARA_EXIT $? "Update $PG_HBA for master IP address ${CIDR_MASTER_IP}"
-	done
-	if [ x"" != x"$STANDBY_HOSTNAME" ];then
-	    LOG_MSG "[INFO][$INST_COUNT]:-Processing Standby master IP address for segment instances"
-	    for STANDBY_IP in "${STANDBY_IP_ADDRESS[@]}"
-	    do
-	        # MPP-15889
-	        CIDR_STANDBY_IP=$(GET_CIDRADDR $STANDBY_IP)
-		$TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO host	all	all	${CIDR_STANDBY_IP}	trust >> ${GP_DIR}/$PG_HBA"
-		PARA_EXIT $? "Update $PG_HBA for master standby address ${CIDR_STANDBY_IP}"
-	    done
 	fi
-    fi
 
-    # Add all local IPV4 addresses
+	# Configure postgresql.conf
+	LOG_MSG "[INFO][$INST_COUNT]:-Configuring segment $PG_CONF"
+	$TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO \"#MPP Specific parameters\" >> ${GP_DIR}/$PG_CONF"
+	RETVAL=$?
+	PARA_EXIT $RETVAL "Update ${GP_DIR}/$PG_CONF file"
+	$TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO \"#----------------------\" >> ${GP_DIR}/$PG_CONF"
+	RETVAL=$?
+	PARA_EXIT $RETVAL "Update ${GP_DIR}/$PG_CONF file"
+	ED_PG_CONF ${GP_DIR}/$PG_CONF "$PORT_TXT" port=$GP_PORT 0 $GP_HOSTADDRESS
+	PARA_EXIT $RETVAL "Update port number to $GP_PORT"
+	ED_PG_CONF ${GP_DIR}/$PG_CONF "$LISTEN_ADR_TXT" listen_addresses=\'*\' 0 $GP_HOSTADDRESS
+	PARA_EXIT $RETVAL "Update listen address"
+	ED_PG_CONF ${GP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" checkpoint_segments=$CHECK_POINT_SEGMENTS 0 $GP_HOSTADDRESS
+	PARA_EXIT $RETVAL "Update checkpoint segments"
+
+	if [ x"" != x"$PG_CONF_ADD_FILE" ]; then
+		LOG_MSG "[INFO][$INST_COUNT]:-Processing additional configuration parameters"
+		for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
+		do
+			LOG_MSG "[INFO][$INST_COUNT]:-Adding config $NEW_PARAM to segment"
+			SEARCH_TXT=`$ECHO $NEW_PARAM |$CUT -d"=" -f1`
+			ED_PG_CONF ${GP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM 0 $GP_HOSTADDRESS
+			PARA_EXIT $RETVAL "Update $PG_CONF $SEARCH_TXT $NEW_PARAM"
+		done
+	fi
+
+	# Configuring PG_HBA  -- on mirror, only need to add local addresses (skip the other addresses)
+	LOG_MSG "[INFO][$INST_COUNT]:-Configuring segment $PG_HBA"
+        if [ x"" = x"$COPY_FROM_PRIMARY_HOSTADDRESS" ]; then
+		for MASTER_IP in "${MASTER_IP_ADDRESS[@]}"
+		do
+			$TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO host	all	all	${MASTER_IP}/32	trust >> ${GP_DIR}/$PG_HBA"
+			PARA_EXIT $? "Update $PG_HBA for master IP address ${MASTER_IP}"
+		done
+		if [ x"" != x"$STANDBY_HOSTNAME" ];then
+			LOG_MSG "[INFO][$INST_COUNT]:-Processing Standby master IP address for segment instances"
+			for STANDBY_IP in "${STANDBY_IP_ADDRESS[@]}"
+			do
+				$TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO host	all	all	${STANDBY_IP}/32	trust >> ${GP_DIR}/$PG_HBA"
+				PARA_EXIT $? "Update $PG_HBA for master standby address ${STANDBY_IP}"
+			done
+		fi
+	fi
+
+	# Add all local IPV4 addresses
     SEGMENT_IPV4_LOCAL_ADDRESS_ALL=(`$TRUSTED_SHELL $GP_HOSTADDRESS "$IFCONFIG $IFCONFIG_TXT |$GREP \"inet \"|$GREP -v \"127.0.0\"|$AWK '{print \\$2}'|$CUT -d: -f2"`)
     for ADDR in "${SEGMENT_IPV4_LOCAL_ADDRESS_ALL[@]}"
     do
-	# MPP-15889
-	CIDR_ADDR=$(GET_CIDRADDR $ADDR)
-        $TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO host     all          $USER_NAME         $CIDR_ADDR      trust >> ${GP_DIR}/$PG_HBA"
+        $TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO host     all          $USER_NAME         $ADDR/32       trust >> ${GP_DIR}/$PG_HBA"
     done
 
-    # Add all local IPV6 addresses
-    SEGMENT_IPV6_LOCAL_ADDRESS_ALL=(`$TRUSTED_SHELL $GP_HOSTADDRESS "$IPV6_ADDR_LIST_CMD | $GREP inet6 | $AWK '{print \\$2}' |$CUT -d'/' -f1"`)
-    for ADDR in "${SEGMENT_IPV6_LOCAL_ADDRESS_ALL[@]}"
-    do
-	# MPP-15889
-	CIDR_ADDR=$(GET_CIDRADDR $ADDR)
-	$TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO host     all          $USER_NAME         $CIDR_ADDR      trust >> ${GP_DIR}/$PG_HBA"
-    done
-    
+	# Add all local IPV6 addresses
+	SEGMENT_IPV6_LOCAL_ADDRESS_ALL=(`$TRUSTED_SHELL $GP_HOSTADDRESS "$IPV6_ADDR_LIST_CMD | $GREP inet6 | $AWK '{print \\$2}' |$CUT -d'/' -f1"`)
+	for ADDR in "${SEGMENT_IPV6_LOCAL_ADDRESS_ALL[@]}"
+	do
+		$TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO host     all          $USER_NAME         $ADDR/128       trust >> ${GP_DIR}/$PG_HBA"
+	done
+		
     if [ x"" = x"$COPY_FROM_PRIMARY_HOSTADDRESS" ]; then
-	# Primary: start the segment to fill in configuration
-	START_QE
-	UPDATE_MPP $GP_PORT "$ARRAY_NAME" $TOTAL_SEG $GP_DBID $GP_CONTENT 1 $GP_HOSTADDRESS $GP_DIR
-	STOP_QE
-    fi
+ 		# Primary: start the segment to fill in configuration
+		START_QE
+		UPDATE_MPP $GP_PORT "$ARRAY_NAME" $TOTAL_SEG $GP_DBID $GP_CONTENT 1 $GP_HOSTADDRESS $GP_DIR
+		STOP_QE
+	fi
 
-    LOG_MSG "[INFO]:-[$INST_COUNT]-End Function $FUNCNAME"
+	LOG_MSG "[INFO]:-[$INST_COUNT]-End Function $FUNCNAME"
 }
 
 STOP_QE() {

@@ -20,6 +20,7 @@ PostgreSQL documentation
 
  <refsynopsisdiv>
 <synopsis>
+
 ALTER TABLE [ONLY] name RENAME [COLUMN] column TO new_column
 
 ALTER TABLE name RENAME TO new_name
@@ -29,20 +30,16 @@ ALTER TABLE name SET SCHEMA new_schema
 ALTER TABLE [ONLY] name SET 
      DISTRIBUTED BY (column, [ ... ] ) 
    | DISTRIBUTED RANDOMLY 
-   | WITH (REORGANIZE=true|false) 
-   | WITH (storage_parameter=value [, ... ])
+   | WITH (REORGANIZE=true|false)
 
 ALTER TABLE [ONLY] name action [, ... ]
 
 ALTER TABLE name 
-   [ ALTER PARTITION { partition_name | FOR (RANK(number)) 
-                     | FOR (value) } partition_action [...] ] 
+   [ ALTER PARTITION { partition_name | FOR (RANK(number)) | FOR (value) } partition_action [...] ] 
    partition_action
 
 where action is one of:
-  ADD [COLUMN] column_name type
-      [ ENCODING ( storage_directive [,...] ) ] 
-      [column_constraint [ ... ]]
+  ADD [COLUMN] column_name type [column_constraint [ ... ]]
   DROP [COLUMN] column [RESTRICT | CASCADE]
   ALTER [COLUMN] column TYPE type [USING expression]
   ALTER [COLUMN] column SET DEFAULT expression
@@ -83,10 +80,10 @@ where partition_action is one of:
   EXCHANGE DEFAULT PARTITION WITH TABLE table_name
    [ WITH | WITHOUT VALIDATION ]
   SET SUBPARTITION TEMPLATE (subpartition_spec)
-  SPLIT DEFAULT PARTITION
+  SPLIT DEFAULT PARTITION 
     {  AT (list_value)
-     | START([datatype] range_value) [INCLUSIVE | EXCLUSIVE] 
-        END([datatype] range_value) [INCLUSIVE | EXCLUSIVE] }
+    | START([datatype] range_value) [INCLUSIVE | EXCLUSIVE] 
+       END([datatype] range_value) [INCLUSIVE | EXCLUSIVE] }
     [ INTO ( PARTITION new_partition_name, 
              PARTITION default_partition_name ) ]
   SPLIT PARTITION { partition_name | FOR (RANK(number)) | 
@@ -100,17 +97,16 @@ where partition_element is:
   | END ([datatype] 'end_value') [INCLUSIVE | EXCLUSIVE]
 [ WITH ( partition_storage_parameter=value [, ... ] ) ]
 [ TABLESPACE tablespace ]
-
 where subpartition_spec is:
 subpartition_element [, ...]
 and subpartition_element is:
-   DEFAULT SUBPARTITION subpartition_name
-  | [SUBPARTITION subpartition_name] VALUES (list_value [,...] )
-  | [SUBPARTITION subpartition_name] 
+   DEFAULT SUBPARTITION name
+  | [SUBPARTITION name] VALUES (list_value [,...] )
+  | [SUBPARTITION name] 
      START ([datatype] 'start_value') [INCLUSIVE | EXCLUSIVE]
      [ END ([datatype] 'end_value') [INCLUSIVE | EXCLUSIVE] ]
      [ EVERY ( [number | datatype] 'interval_value') ]
-  | [SUBPARTITION subpartition_name] 
+  | [SUBPARTITION name] 
      END ([datatype] 'end_value') [INCLUSIVE | EXCLUSIVE]
      [ EVERY ( [number | datatype] 'interval_value') ]
 [ WITH ( partition_storage_parameter=value [, ... ] ) ]
@@ -118,22 +114,10 @@ and subpartition_element is:
 
 where storage_parameter is:
    APPENDONLY={TRUE|FALSE}
-   BLOCKSIZE={8192-2097152}
+   COMPRESSTYPE={ZLIB|QUICKLZ}
+   COMPRESSLEVEL={0-9|1}
    ORIENTATION={COLUMN|ROW}
-   COMPRESSTYPE={ZLIB|QUICKLZ|RLE_TYPE|NONE}
-   COMPRESSLEVEL={0-9}
    FILLFACTOR={10-100}
-   OIDS[=TRUE|FALSE]
-
-where storage_directive is:
-   COMPRESSTYPE={ZLIB | QUICKLZ | RLE_TYPE | NONE} 
- | COMPRESSLEVEL={0-9} 
- | BLOCKSIZE={8192-2097152}
-
-Where column_reference_storage_directive is:
-
-   COLUMN column_name ENCODING ( storage_directive [, ... ] ), ... 
- | DEFAULT COLUMN ENCODING ( storage_directive [, ... ] )
 
 </synopsis>
  </refsynopsisdiv>
@@ -464,14 +448,6 @@ Where column_reference_storage_directive is:
    is possible to add several columns and/or alter the type of several
    columns in a single command.  This is particularly useful with large
    tables, since only one pass over the table need be made.
-  </para>
-
-  <para>
-   Note: If you add a partition to a table that 
-   has subpartition encodings, the new partition 
-   inherits the storage directives for the subpartitions. 
-   For more information, search for "Precedence of Compression Settings" 
-   in the Greenplum Database Administrator Guide.
   </para>
 
   <para>

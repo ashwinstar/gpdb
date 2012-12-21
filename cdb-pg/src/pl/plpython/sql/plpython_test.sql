@@ -38,7 +38,7 @@ select spi_prepared_plan_test_nested('smith');
 
 -- quick peek at the table
 --
-SELECT * FROM users order by userid;
+SELECT * FROM users;
 
 -- should fail
 --
@@ -49,7 +49,7 @@ UPDATE users SET fname = 'william' WHERE fname = 'willem';
 INSERT INTO users (fname, lname) VALUES ('william', 'smith');
 INSERT INTO users (fname, lname, username) VALUES ('charles', 'darwin', 'beagle');
 
-SELECT * FROM users order by userid;
+SELECT * FROM users;
 
 -- Greenplum doesn't support functions that execute SQL from segments
 --

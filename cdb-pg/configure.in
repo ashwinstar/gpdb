@@ -341,10 +341,6 @@ if test "$GCC" = yes -a "$ICC" = no; then
   PGAC_PROG_CC_CFLAGS_OPT([-fno-strict-aliasing])
   # Disable optimizations that assume no overflow; needed for gcc 4.3+
   PGAC_PROG_CC_CFLAGS_OPT([-fwrapv])
-  # Disable FP optimizations that cause various errors on gcc 4.5+ or maybe 4.6+
-  PGAC_PROG_CC_CFLAGS_OPT([-fexcess-precision=standard])
-  # Disable this check for gcc 4.6, until we clean up the code.
-  # PGAC_PROG_CC_CFLAGS_OPT([-Wno-unused-but-set-variable])
 elif test "$ICC" = yes; then
   # Intel's compiler has a bug/misoptimization in checking for
   # division by NAN (NaN == 0), -mp1 fixes it, so add it to the CFLAGS.
@@ -439,7 +435,7 @@ dnl If we are a development build, fake a numeric version number
 dnl this needs to be manually updated each time we branch a new version
 
 if `echo "$GP_VERSION" | grep "main build" > /dev/null 2>&1` ; then
-   GP_VERSION="5.0.0"
+   GP_VERSION="4.2.0"
 fi
                    
 [GP_MAJORVERSION=`expr "$GP_VERSION" : '\([0-9][0-9]*\.[0-9][0-9]*\)'`]
@@ -543,7 +539,7 @@ AC_SUBST(enable_connectemc)
 #
 PGAC_ARG_BOOL(enable, ddboost, no,  [  --enable-ddboost     enable connect emc support],
               [AC_DEFINE([USE_DDBOOST], 1,
-                         [Define to 1 to build with DD Boost capabilities. (--enable-ddboost)])])
+                         [Define to 1 to build with connect emc alert capabilities. (--enable-ddboost)])])
 AC_MSG_RESULT([$enable_ddboost])
 AC_SUBST(enable_ddboost)
 
@@ -776,7 +772,7 @@ AC_SUBST(with_rt)
 #
 
 # Assume system is ELF if it predefines __ELF__ as 1,
-# otherwise believe host_os based default.
+# otherwise believe host_os based default.PostgreSQL
 case $host_os in
     freebsd1*|freebsd2*) elf=no;;
     freebsd3*|freebsd4*) elf=yes;;
@@ -991,6 +987,18 @@ LIBS="$LIBS $CURL_LIBS"
 # Check for bzip2
 AC_SEARCH_LIBS(BZ2_bzDecompress, bz2)
 
+# Check for f2c, needed by blas and lapack
+AC_SEARCH_LIBS(c_cos,f2c)
+
+# Check for blas, needed by lappack
+# On some platforms (Solaris), there is an f2c_ prefix on all blas functions
+# On others, (OSX), there is not.   Try both ways
+AC_SEARCH_LIBS(f2c_sgemm, [blas])
+AC_SEARCH_LIBS(sgemm, [blas])
+
+# Check for lapack
+AC_SEARCH_LIBS(dgesdd_, [lapack])
+
 # Check for net-snmp
 if test "$enable_snmp" = yes ; then
 	AC_CHECK_LIB(netsnmp,  netsnmp_ds_set_string,  [], [AC_MSG_ERROR([library 'netsnmp' is required for snmp support])])
@@ -1003,22 +1011,6 @@ if test "$enable_email" = yes ; then
 	fi
 	AC_CHECK_LIB(esmtp,  smtp_start_session,  [], [AC_MSG_ERROR([library 'libesmtp' is required for email alert support])])
 fi
-
-# RSA BSAFE crypto-C ME library. We don't want this added to $LIBS.
-pgac_save_LIBS="$LIBS"
-AC_CHECK_LIB(ccme_core, R_LIB_CTX_new)
-AC_CHECK_LIB(ccme_fipsprov, R_PROV_FIPS140_self_tests_full)
-
-if test "$ac_cv_lib_ccme_core_R_LIB_CTX_new" = yes ; then
-	if test "$ac_cv_lib_ccme_fipsprov_R_PROV_FIPS140_self_tests_full" = yes ; then
-		AC_DEFINE(HAVE_RSA_BSAFE_FIPS, 1, [Define to 1 if you have FIPS 140-2 RSA BSAFE.])
-		RSA_BSAFE_DY_LIBS="-lccme_core -lccme_fipsprov"
-		RSA_BSAFE_STATIC_LIBS="$LIBRARY_DIRS/libccme_core.a $LIBRARY_DIRS/libccme_fipsprov.a"
-	fi
-fi
-AC_SUBST(RSA_BSAFE_DY_LIBS)
-AC_SUBST(RSA_BSAFE_STATIC_LIBS)
-LIBS="$pgac_save_LIBS"
 
 ##
 ## Header files
@@ -1342,7 +1334,7 @@ fi
 pgac_save_LIBS="$LIBS"
 LIBS=`echo "$LIBS" | sed -e 's/-ledit//g' -e 's/-lreadline//g'`
 
-AC_REPLACE_FUNCS([crypt fseeko getopt getrusage inet_aton memmem random rint srandom strdup strerror strlcat strlcpy strtol strtoul unsetenv])
+AC_REPLACE_FUNCS([crypt fseeko getopt getrusage inet_aton random rint srandom strdup strerror strlcat strlcpy strtol strtoul unsetenv])
 
 case $host_os in
 

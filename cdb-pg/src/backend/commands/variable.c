@@ -18,7 +18,6 @@
 
 #include <ctype.h>
 
-#include "access/catquery.h"
 #include "access/xact.h"
 #include "catalog/pg_authid.h"
 #include "commands/variable.h"
@@ -636,6 +635,26 @@ show_XactIsoLevel(void)
 
 
 /*
+ * Random number seed
+ */
+
+bool
+assign_random_seed(double value, bool doit, GucSource source)
+{
+	/* Can't really roll back on error, so ignore non-interactive setting */
+	if (doit && source >= PGC_S_INTERACTIVE)
+		DirectFunctionCall1(setseed, Float8GetDatum(value));
+	return true;
+}
+
+const char *
+show_random_seed(void)
+{
+	return "unavailable";
+}
+
+
+/*
  * encoding handling functions
  */
 
@@ -713,7 +732,6 @@ assign_session_authorization(const char *value, bool doit, GucSource source)
 	{
 		/* not a saved ID, so look it up */
 		HeapTuple	roleTup;
-		cqContext  *pcqCtx;
 
 		if (InSecurityDefinerContext())
 		{
@@ -741,13 +759,9 @@ assign_session_authorization(const char *value, bool doit, GucSource source)
 			return NULL;
 		}
 
-		pcqCtx = caql_beginscan(
-				NULL,
-				cql("SELECT * FROM pg_authid "
-					" WHERE rolname = :1 ",
-					CStringGetDatum((char *) value)));
-
-		roleTup = caql_getnext(pcqCtx);
+		roleTup = SearchSysCache(AUTHNAME,
+								 PointerGetDatum((char *) value),
+								 0, 0, 0);
 		if (!HeapTupleIsValid(roleTup))
 		{
 			if (source >= PGC_S_INTERACTIVE)
@@ -761,7 +775,7 @@ assign_session_authorization(const char *value, bool doit, GucSource source)
 		is_superuser = ((Form_pg_authid) GETSTRUCT(roleTup))->rolsuper;
 		actual_rolename = value;
 
-		caql_endscan(pcqCtx);
+		ReleaseSysCache(roleTup);
 	}
 
 	if (doit)
@@ -869,7 +883,6 @@ assign_role(const char *value, bool doit, GucSource source)
 	{
 		/* not a saved ID, so look it up */
 		HeapTuple	roleTup;
-		cqContext  *pcqCtx;
 
 		if (!IsTransactionState())
 		{
@@ -881,13 +894,9 @@ assign_role(const char *value, bool doit, GucSource source)
 			return NULL;
 		}
 
-		pcqCtx = caql_beginscan(
-				NULL,
-				cql("SELECT * FROM pg_authid "
-					" WHERE rolname = :1 ",
-					CStringGetDatum((char *) value)));
-
-		roleTup = caql_getnext(pcqCtx);
+		roleTup = SearchSysCache(AUTHNAME,
+								 PointerGetDatum((char *) value),
+								 0, 0, 0);
 		if (!HeapTupleIsValid(roleTup))
 		{
 			if (source >= PGC_S_INTERACTIVE)
@@ -900,7 +909,7 @@ assign_role(const char *value, bool doit, GucSource source)
 		roleid = HeapTupleGetOid(roleTup);
 		is_superuser = ((Form_pg_authid) GETSTRUCT(roleTup))->rolsuper;
 
-		caql_endscan(pcqCtx);
+		ReleaseSysCache(roleTup);
 
 		/*
 		 * Verify that session user is allowed to become this role

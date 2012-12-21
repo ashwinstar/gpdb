@@ -382,7 +382,7 @@ SendStopMessage(MotionLayerState *mlStates,
 	MotionNodeEntry *pEntry = getMotionNodeEntry(mlStates, motNodeID, "SendStopMessage");
 
 	pEntry->stopped = true;
-	if (transportStates != NULL && transportStates->doSendStopMessage != NULL)
+	if (transportStates != NULL)
 		transportStates->doSendStopMessage(transportStates, motNodeID);
 }
 
@@ -701,7 +701,7 @@ processIncomingChunks(MotionLayerState *mlStates,
 
 	/* The chunk list we just processed freed-up our rx-buffer space. */
 	if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
-		MlPutRxBuffer(transportStates, motNodeID, srcRoute);
+		ml_put_rx_buffer(transportStates, motNodeID, srcRoute);
 
 	/* Stats */
 	statChunksProcessed(mlStates, pMNEntry, numChunks, chunkBytes, tupleBytes);

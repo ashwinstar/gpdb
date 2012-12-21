@@ -84,11 +84,6 @@ cat <<EOF
 OPENSSL_CONF=\$GPHOME/etc/openssl.cnf
 EOF
 
-# openldap configuration file path
-cat <<EOF
-LDAPCONF=\$GPHOME/etc/ldap.conf
-EOF
-
 cat <<EOF
 export GPHOME
 export PATH
@@ -111,5 +106,4 @@ EOF
 
 cat <<EOF
 export OPENSSL_CONF
-export LDAPCONF
 EOF

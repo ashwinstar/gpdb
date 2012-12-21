@@ -127,11 +127,10 @@ PrepareQuery(PrepareStmt *stmt, const char *queryString)
 	query_list = QueryRewrite(query);
 
 	query_list_copy = copyObject(query_list); /* planner scribbles on query tree */
-
+	
 	/* Generate plans for queries.	Snapshot is already set. */
 	plan_list = pg_plan_queries(query_list, NULL, false);
-	(void) plan_list;
-
+	
 	/*
 	 * Save the results.  We don't have the query string for this PREPARE, but
 	 * we do have the string we got from the client, so use that.
@@ -160,6 +159,7 @@ ExecuteQuery(ExecuteStmt *stmt, const char *queryString,
 			 DestReceiver *dest, char *completionTag)
 {
 	PreparedStatement *entry;
+	char	   *query_string;
 	List	   *stmt_list;
 	MemoryContext qcontext;
 	ParamListInfo paramLI = NULL;
@@ -169,6 +169,8 @@ ExecuteQuery(ExecuteStmt *stmt, const char *queryString,
 	/* Look it up in the hash table */
 	entry = FetchPreparedStatement(stmt->name, true);
 
+	query_string = entry->query_string;
+	
 	qcontext = entry->context;
 
 	/* Evaluate parameters, if any */
@@ -193,14 +195,14 @@ ExecuteQuery(ExecuteStmt *stmt, const char *queryString,
 	 * might not be created on the segments.  (MPP-8135) */
 	{
 		List *query_list = copyObject(entry->query_list); /* planner scribbles on query tree :( */
-
+		
 		if ( stmt->into )
 		{
 			Query *query = (Query*)linitial(query_list);
 			Assert(IsA(query, Query) && query->intoClause == NULL);
 			query->intoClause = copyObject(stmt->into);
 		}
-
+		
 		stmt_list = pg_plan_queries(query_list, paramLI, false);
 	}
 
@@ -222,6 +224,8 @@ ExecuteQuery(ExecuteStmt *stmt, const char *queryString,
 
 		oldContext = MemoryContextSwitchTo(PortalGetHeapMemory(portal));
 
+		if (query_string)
+			query_string = pstrdup(query_string);
 		stmt_list = copyObject(stmt_list);
 		qcontext = PortalGetHeapMemory(portal);
 		pstmt = (PlannedStmt *) linitial(stmt_list);
@@ -234,22 +238,17 @@ ExecuteQuery(ExecuteStmt *stmt, const char *queryString,
 
 		pstmt->intoClause = copyObject(stmt->into);
 
-		/* XXX  Is it legitimate to assign a constant default policy without
+		/* XXX  Is it legitimate to assign a constant default policy without 
 		 *      even checking the relation?
 		 */
 		pstmt->intoPolicy = palloc0(sizeof(GpPolicy)- sizeof(pstmt->intoPolicy->attrs)
 									+ 255 * sizeof(pstmt->intoPolicy->attrs[0]));
-		pstmt->intoPolicy->nattrs = 1;
+		pstmt->intoPolicy->nattrs = 1;			
 		pstmt->intoPolicy->ptype = POLICYTYPE_PARTITIONED;
 		pstmt->intoPolicy->attrs[0] = 1;
-
+		
 		MemoryContextSwitchTo(oldContext);
 	}
-
-	/* Copy the plan's saved query string into the portal's memory */
-	Assert(entry->query_string != NULL); 
-	char *query_string = MemoryContextStrdup(PortalGetHeapMemory(portal),
-					   entry->query_string);
 
 	PortalDefineQuery(portal,
 					  NULL,
@@ -265,11 +264,11 @@ ExecuteQuery(ExecuteStmt *stmt, const char *queryString,
 	PortalStart(portal, paramLI, ActiveSnapshot,
 				savedSeqServerHost, savedSeqServerPort);
 
-	(void) PortalRun(portal,
-					FETCH_ALL,
+	(void) PortalRun(portal, 
+					FETCH_ALL, 
 					 true, /* Effectively always top level. */
-					 dest,
-					 dest,
+					 dest, 
+					 dest, 
 					 completionTag);
 
 	PortalDrop(portal, false);
@@ -357,7 +356,7 @@ InitQueryHashTable(void)
  * Exception: commandTag is presumed to be a pointer to a constant string,
  * or possibly NULL, so it need not be copied.	Note that commandTag should
  * be NULL only if the original query (before rewriting) was empty.
- * The original query nodetag is saved as well, only used if resource
+ * The original query nodetag is saved as well, only used if resource 
  * scheduling is enabled.
  */
 void
@@ -662,11 +661,11 @@ ExplainExecuteQuery(ExecuteStmt *execstmt, ExplainStmt *stmt, const char * query
 		paramLI = EvaluateParams(estate, execstmt->params,
 								 entry->argtype_list);
 	}
-
-
+	
+	
 	query_list = copyObject(entry->query_list); /* planner scribbles on query tree */
 	stmt_list = pg_plan_queries(query_list, paramLI, false);
-
+	
 	Assert(list_length(query_list) == list_length(stmt_list));
 
 	/* Explain each query */
@@ -674,12 +673,12 @@ ExplainExecuteQuery(ExecuteStmt *execstmt, ExplainStmt *stmt, const char * query
 	{
 		PlannedStmt *plannedstmt;
 		Query *query;
-
+		Plan *plan;
 		bool is_last_query;
-
+		
 		query = (Query *) lfirst(q);
 		plannedstmt = (PlannedStmt*) lfirst(p);
-
+		plan = plannedstmt->planTree;
 
 		is_last_query = (lnext(p) == NULL);
 

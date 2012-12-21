@@ -14,13 +14,10 @@
  */
 #include "postgres.h"
 
-#include "access/catquery.h"
 #include "catalog/pg_cast.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
-#include "nodes/nodeFuncs.h"
-#include "nodes/print.h"
 #include "optimizer/clauses.h"
 #include "parser/parsetree.h"               /* get_tle_by_resno */
 #include "parser/parse_coerce.h"
@@ -33,7 +30,7 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
-
+#include "nodes/print.h"
 
 
 static Node *coerce_type_typmod(Node *node,
@@ -52,47 +49,6 @@ static Var *coerce_unknown_var(ParseState *pstate, Var *var,
 							   Oid targetTypeId, int32 targetTypeMod,
 							   CoercionContext ccontext, CoercionForm cformat,
 							   int levelsup);
-
-
-Node*
-coerce_to_specific_type	(ParseState    *pstate,
-						 Node 		   *node,
-						 Oid 			targetTypeId,
-						 const char    *constructName)
-{
-    Oid         inputTypeId = exprType(node);
-
-    if (inputTypeId != targetTypeId)
-    {
-        Node       *newnode;
-
-        newnode = coerce_to_target_type(pstate, node, inputTypeId,
-                                        targetTypeId, -1,
-                                        COERCION_ASSIGNMENT,
-                                        COERCE_IMPLICIT_CAST,
-                                        -1);
-        if (newnode == NULL)
-            ereport(ERROR,
-                    (errcode(ERRCODE_DATATYPE_MISMATCH),
-            /* translator: first %s is name of a SQL construct, eg LIMIT */
-                     errmsg("argument of %s must be type %s, not type %s",
-                            constructName,
-                            format_type_be(targetTypeId),
-                            format_type_be(inputTypeId)),
-                     parser_errposition(pstate, exprLocation(node))));
-        node = newnode;
-    }
-
-    if (expression_returns_set(node))
-        ereport(ERROR,
-                (errcode(ERRCODE_DATATYPE_MISMATCH),
-        /* translator: %s is name of a SQL construct, eg LIMIT */
-                 errmsg("argument of %s must not return a set",
-                        constructName),
-                 parser_errposition(pstate, exprLocation(node))));
-
-    return node;
-}
 
 /*
  * coerce_to_target_type()
@@ -290,7 +246,7 @@ coerce_type(ParseState *pstate, Node *node,
 									  targetTypeId,
 									  cformat, location, false, false);
 
-		ReleaseType(targetType);
+		ReleaseSysCache(targetType);
 
 		return result;
 	}
@@ -1035,16 +991,10 @@ build_coercion_expression(Node *node, Oid funcId,
 	int			nargs;
 	List	   *args;
 	Const	   *cons;
-	cqContext  *pcqCtx;
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_proc "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(funcId)));
-
-	tp = caql_getnext(pcqCtx);
-
+	tp = SearchSysCache(PROCOID,
+						ObjectIdGetDatum(funcId),
+						0, 0, 0);
 	if (!HeapTupleIsValid(tp))
 		elog(ERROR, "cache lookup failed for function %u", funcId);
 	procstruct = (Form_pg_proc) GETSTRUCT(tp);
@@ -1063,7 +1013,7 @@ build_coercion_expression(Node *node, Oid funcId,
 	Assert(nargs < 2 || procstruct->proargtypes.values[1] == INT4OID);
 	Assert(nargs < 3 || procstruct->proargtypes.values[2] == BOOLOID);
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(tp);
 
 	args = list_make1(node);
 
@@ -1872,7 +1822,6 @@ TypeCategory(Oid inType)
 		case (FLOAT8OID):
 		case (NUMERICOID):
 		case (CASHOID):
-		case (COMPLEXOID):
 			result = NUMERIC_TYPE;
 			break;
 
@@ -2048,7 +1997,6 @@ IsBinaryCoercible(Oid srctype, Oid targettype)
 	HeapTuple	tuple;
 	Form_pg_cast castForm;
 	bool		result;
-	cqContext  *pcqCtx;
 
 	/* Fast path if same type */
 	if (srctype == targettype)
@@ -2064,28 +2012,22 @@ IsBinaryCoercible(Oid srctype, Oid targettype)
 
 	/* Also accept any array type as coercible to ANYARRAY */
 	if (targettype == ANYARRAYOID)
-		if (OidIsValid(get_element_type(srctype)))
+		if (get_element_type(srctype) != InvalidOid)
 			return true;
 
 	/* Else look in pg_cast */
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_cast "
-				" WHERE castsource = :1 "
-				" AND casttarget = :2 ",
-				ObjectIdGetDatum(srctype),
-				ObjectIdGetDatum(targettype)));
-
-	tuple = caql_getnext(pcqCtx);
-
+	tuple = SearchSysCache(CASTSOURCETARGET,
+						   ObjectIdGetDatum(srctype),
+						   ObjectIdGetDatum(targettype),
+						   0, 0);
 	if (!HeapTupleIsValid(tuple))
 		return false;			/* no cast */
 	castForm = (Form_pg_cast) GETSTRUCT(tuple);
 
-	result = (!OidIsValid(castForm->castfunc) &&
+	result = (castForm->castfunc == InvalidOid &&
 			  castForm->castcontext == COERCION_CODE_IMPLICIT);
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(tuple);
 
 	return result;
 }
@@ -2113,7 +2055,6 @@ find_coercion_pathway(Oid targetTypeId, Oid sourceTypeId,
 {
 	bool		result = false;
 	HeapTuple	tuple;
-	cqContext  *pcqCtx;
 
 	*funcid = InvalidOid;
 
@@ -2127,18 +2068,11 @@ find_coercion_pathway(Oid targetTypeId, Oid sourceTypeId,
 	if (sourceTypeId == targetTypeId)
 		return true;
 
-	/* SELECT castcontext from pg_cast */
-
 	/* Look in pg_cast */
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_cast "
-				" WHERE castsource = :1 "
-				" AND casttarget = :2 ",
-				ObjectIdGetDatum(sourceTypeId),
-				ObjectIdGetDatum(targetTypeId)));
-
-	tuple = caql_getnext(pcqCtx);
+	tuple = SearchSysCache(CASTSOURCETARGET,
+						   ObjectIdGetDatum(sourceTypeId),
+						   ObjectIdGetDatum(targetTypeId),
+						   0, 0);
 
 	if (HeapTupleIsValid(tuple))
 	{
@@ -2171,6 +2105,7 @@ find_coercion_pathway(Oid targetTypeId, Oid sourceTypeId,
 			result = true;
 		}
 
+		ReleaseSysCache(tuple);
 	}
 	else
 	{
@@ -2217,7 +2152,6 @@ find_coercion_pathway(Oid targetTypeId, Oid sourceTypeId,
 		}
 	}
 
-	caql_endscan(pcqCtx);
 	return result;
 }
 
@@ -2242,29 +2176,35 @@ find_typmod_coercion_function(Oid typeId)
 	bool		isArray = false;
 	Type		targetType;
 	Form_pg_type typeForm;
+	HeapTuple	tuple;
 
 	targetType = typeidType(typeId);
 	typeForm = (Form_pg_type) GETSTRUCT(targetType);
 
 	/* Check for a varlena array type (and not a domain) */
-	if (OidIsValid(typeForm->typelem) &&
+	if (typeForm->typelem != InvalidOid &&
 		typeForm->typlen == -1 &&
-		typeForm->typtype != TYPTYPE_DOMAIN)
+		typeForm->typtype != 'd')
 	{
 		/* Yes, switch our attention to the element type */
 		typeId = typeForm->typelem;
 		isArray = true;
 	}
-	ReleaseType(targetType);
+	ReleaseSysCache(targetType);
 
 	/* Look in pg_cast */
-	funcid = caql_getoid(
-			NULL,
-			cql("SELECT castfunc FROM pg_cast "
-				" WHERE castsource = :1 "
-				" AND casttarget = :2 ",
-				ObjectIdGetDatum(typeId),
-				ObjectIdGetDatum(typeId)));
+	tuple = SearchSysCache(CASTSOURCETARGET,
+						   ObjectIdGetDatum(typeId),
+						   ObjectIdGetDatum(typeId),
+						   0, 0);
+
+	if (HeapTupleIsValid(tuple))
+	{
+		Form_pg_cast castForm = (Form_pg_cast) GETSTRUCT(tuple);
+
+		funcid = castForm->castfunc;
+		ReleaseSysCache(tuple);
+	}
 
 	/*
 	 * Now, if we did find a coercion function for an array element type,

@@ -13,7 +13,7 @@
  *
  *-------------------------------------------------------------------------
  */
-
+ 
 #include "postgres.h"
 #include "miscadmin.h"
 #include "access/transam.h"
@@ -26,7 +26,6 @@
 #include "miscadmin.h"
 #include "utils/memutils.h"
 #include "cdb/cdbdoublylinked.h"
-#include "cdb/cdbpersistentstore.h"
 
 /*
  * Local information in the database instance (master or segment) on
@@ -34,7 +33,7 @@
  */
 typedef struct LocalDistribXactData
 {
-    /*
+    /* 
      * Number of outstanding LocalDistribXactRef
      * objects referencing this object.
      */
@@ -44,7 +43,7 @@ typedef struct LocalDistribXactData
 	 * The object index.  Useful for cross checking.
 	 */
 	int	index;
-
+	
 	/*
 	 * All double links.
 	 */
@@ -54,14 +53,14 @@ typedef struct LocalDistribXactData
 	 * Current distributed transaction state.
 	 */
 	LocalDistribXactState		state;
-
+	
 	/*
 	 * Distributed and local xids.
 	 */
 	DistributedTransactionTimeStamp	distribTimeStamp;
 	DistributedTransactionId 		distribXid;
 	TransactionId 					localXid;
-
+	
 } LocalDistribXactData;
 
 typedef LocalDistribXactData* LocalDistribXact;
@@ -81,7 +80,7 @@ typedef struct LocalDistribXactSharedData
 	 * Free list and shared list base data.
 	 */
 	int	maxElements;
-
+	
 	SharedDoublyLinkedHead		freeList;
 
 	SharedListBase	sortedLocalBase;
@@ -90,12 +89,12 @@ typedef struct LocalDistribXactSharedData
 	 * Keep so we can give an answer to gp_max_distributed_xid.
 	 */
 	DistributedTransactionId	maxDistributedTransactionId;
-
+	
 	/*
 	 * LocalDistribXactData element data -- must be last.
 	 */
 	uint8	data[0];
-
+	
 } LocalDistribXactSharedData;
 
 static LocalDistribXactSharedData* LocalDistribXactShared = NULL;
@@ -109,7 +108,7 @@ LocalDistribXactStateToString(LocalDistribXactState	state)
 	{
 	case LOCALDISTRIBXACT_STATE_ACTIVE:
 		return "Active";
-
+		
 	case LOCALDISTRIBXACT_STATE_COMMITDELIVERY:
 		return "Commit Delivery";
 
@@ -118,19 +117,19 @@ LocalDistribXactStateToString(LocalDistribXactState	state)
 
 	case LOCALDISTRIBXACT_STATE_ABORTDELIVERY:
 		return "Abort Delivery";
-
+		
 	case LOCALDISTRIBXACT_STATE_ABORTED:
 		return "Aborted";
-
+		
 	case LOCALDISTRIBXACT_STATE_PREPARED:
 		return "Prepared";
-
+		
 	case LOCALDISTRIBXACT_STATE_COMMITPREPARED:
 		return "Commit Prepared";
-
+		
 	case LOCALDISTRIBXACT_STATE_ABORTPREPARED:
 		return "Abort Prepared";
-
+		
 	default:
 		return "Unknown";
 	}
@@ -144,7 +143,7 @@ LocalDistribXactRef_Init(
 	ref->index = -1;
 }
 
-bool
+bool 
 LocalDistribXactRef_IsNil(
 	LocalDistribXactRef	*ref)
 {
@@ -160,7 +159,7 @@ LocalDistribXactRef_AssignMaster(
 {
 	Assert(LocalDistribXactRef_IsNil(ref));
 	Assert(ele->index >=0 );
-
+	
 	memcpy(ref->eyecatcher, LocalDistribXactRef_Eyecatcher, LocalDistribXactRef_EyecatcherLen);
 
 	ref->index = ele->index;
@@ -174,7 +173,7 @@ LocalDistribXactRef_AssignPgProc(
 {
 	Assert(LocalDistribXactRef_IsNil(ref));
 	Assert(ele->index >=0 );
-
+	
 	memcpy(ref->eyecatcher, LocalDistribXactRef_Eyecatcher, LocalDistribXactRef_EyecatcherLen);
 
 	ref->index = ele->index;
@@ -188,7 +187,7 @@ LocalDistribXactRef_AssignLocal(
 {
 	Assert(LocalDistribXactRef_IsNil(ref));
 	Assert(ele->index >=0 );
-
+	
 	memcpy(ref->eyecatcher, LocalDistribXactRef_Eyecatcher, LocalDistribXactRef_EyecatcherLen);
 
 	ref->index = ele->index;
@@ -201,7 +200,7 @@ LocalDistribXact_RemoveElement(
 	LocalDistribXact	ele)
 {
 	Assert(ele != NULL);
-
+	
 	SharedDoubleLinks_Remove(
 					&LocalDistribXactShared->sortedLocalBase,
 					&LocalDistribXactShared->sortedLocalList,
@@ -214,7 +213,7 @@ LocalDistribXact_Reset(
 {
 	Assert(ele != NULL);
 	Assert(ele->referenceCount == 0);
-
+	
 	ele->state = LOCALDISTRIBXACT_STATE_NONE;
 	ele->distribXid = InvalidDistributedTransactionId;
 	ele->localXid = InvalidTransactionId;
@@ -225,7 +224,7 @@ LocalDistribXactRef_ReleaseUnderLock(
 	LocalDistribXactRef	*ref)
 {
 	LocalDistribXact ele;
-
+	
 	if (strncmp(ref->eyecatcher, LocalDistribXactRef_Eyecatcher, LocalDistribXactRef_EyecatcherLen) != 0)
 		elog(FATAL, "Distributed to local xact element not valid");
 	if (ref->index != -1)
@@ -240,7 +239,7 @@ LocalDistribXactRef_ReleaseUnderLock(
 		if (ele->referenceCount == 0)
 		{
 			LocalDistribXact_RemoveElement(ele);
-
+			
 			elog((Debug_print_full_dtm ? LOG : DEBUG5),
 				 "Removing distributed transaction xid = %u (local xid = %u) in \"%s\" state for LocalDistribXact index %d",
 				 ele->distribXid,
@@ -250,15 +249,15 @@ LocalDistribXactRef_ReleaseUnderLock(
 
 			/*
 			 * Return to free list.
-			 */
+			 */	
 			LocalDistribXact_Reset(ele);
-
+			
 			SharedDoublyLinkedHead_AddLast(
 				&LocalDistribXactShared->sortedLocalBase,
 				&LocalDistribXactShared->freeList,
 				ele);
 		}
-
+		
 		ref->index = -1;
 	}
 }
@@ -270,11 +269,11 @@ LocalDistribXactRef_Release(
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
 
 	LocalDistribXactRef_ReleaseUnderLock(ref);
-
+			
 	LWLockRelease(ProcArrayLock);
 }
 
-void
+void 
 LocalDistribXactRef_Transfer(
 	LocalDistribXactRef	*target,
 	LocalDistribXactRef	*source)
@@ -290,13 +289,13 @@ LocalDistribXactRef_Transfer(
 	source->index = -1;
 }
 
-void
+void 
 LocalDistribXactRef_Clone(
 	LocalDistribXactRef	*clone,
 	LocalDistribXactRef	*source)
 {
 	LocalDistribXact 	ele;
-
+	
 	if (strncmp(clone->eyecatcher, LocalDistribXactRef_Eyecatcher, LocalDistribXactRef_EyecatcherLen) != 0)
 		elog(FATAL, "Distributed to local xact element not valid");
 	Assert (clone->index == -1);
@@ -305,22 +304,22 @@ LocalDistribXactRef_Clone(
 	Assert (source->index != -1);
 
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
-
+	
 	ele = SharedListBase_ToElement(
 						&LocalDistribXactShared->sortedLocalBase,
 						source->index);
 
 	Assert(ele->referenceCount > 0);
 	ele->referenceCount++;
-
+	
 	clone->index = source->index;
-
+	
 	LWLockRelease(ProcArrayLock);
 }
 
 // *****************************************************************************
 
-DistributedTransactionId
+DistributedTransactionId 
 LocalDistribXact_GetMaxDistributedXid(void)
 {
 	return (LocalDistribXactShared == NULL ? 0 :
@@ -365,7 +364,7 @@ LocalDistribXact_SetLocalPgProc(
 {
 	Assert(LocalDistribXactShared != NULL);
 	Assert (MyProc != NULL);
-
+	
 	MyProc->xid = ele->localXid;
 	LocalDistribXactRef_AssignPgProc(
 								&MyProc->localDistribXactRef,
@@ -383,11 +382,11 @@ LocalDistribXact_New(
 	LocalDistribXactState			state)
 {
 	LocalDistribXact 	ele;
-
+	
 	Assert(newDistribTimeStamp != 0);
 	Assert(newDistribXid != InvalidDistributedTransactionId);
 	Assert(newLocalXid != InvalidTransactionId);
-
+	
 	ele = SharedDoublyLinkedHead_RemoveFirst(
 					&LocalDistribXactShared->sortedLocalBase,
 					&LocalDistribXactShared->freeList);
@@ -429,16 +428,16 @@ LocalDistribXact_Start(
 
 	Assert(newDistribTimeStamp != 0);
 	Assert(newDistribXid != InvalidDistributedTransactionId);
-
-	localXid = GetNewTransactionId(false, false);
+	
+	localXid = GetNewTransactionId(false, false);	
 								// NOT subtrans, DO NOT Set PROC struct xid;
 
 	ele = LocalDistribXact_New(
 						newDistribTimeStamp,
-						newDistribXid,
-						localXid,
+						newDistribXid, 
+						localXid, 
 						LOCALDISTRIBXACT_STATE_ACTIVE);
-
+								
 	return ele;
 }
 
@@ -467,11 +466,11 @@ LocalDistribXact_StartOnMaster(
 	{
 		elog(FATAL, "Out of distributed transaction to local elements");
 	}
-
+		
 	LocalDistribXact_SetLocalPgProc(ele);
-
+	
 	*newLocalXid = ele->localXid;
-
+	
 	LocalDistribXactRef_AssignMaster(
 							masterLocalDistribXactRef,
 							ele);
@@ -485,14 +484,11 @@ LocalDistribXact_StartOnSegment(
 {
 	LocalDistribXact 	ele;
 
-	MIRRORED_LOCK_DECLARE;
-
 	Assert(LocalDistribXactShared != NULL);
 	Assert(newDistribTimeStamp != 0);
 	Assert(newDistribXid != InvalidDistributedTransactionId);
 	Assert(newLocalXid != NULL);
 
-	MIRRORED_LOCK;
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
 
 	ele = LocalDistribXact_Start(
@@ -503,17 +499,16 @@ LocalDistribXact_StartOnSegment(
 		LWLockRelease(ProcArrayLock);
 		elog(FATAL, "Out of distributed transaction to local elements");
 	}
-
+		
 	LocalDistribXact_SetLocalPgProc(ele);
-
+	
 	*newLocalXid = ele->localXid;
-
+	
 	LWLockRelease(ProcArrayLock);
-	MIRRORED_UNLOCK;
 
 }
 
-void
+void 
 LocalDistribXact_CreateRedoPrepared(
 	DistributedTransactionTimeStamp	redoDistribTimeStamp,
 	DistributedTransactionId 		redoDistribXid,
@@ -525,14 +520,14 @@ LocalDistribXact_CreateRedoPrepared(
 	Assert(LocalDistribXactShared != NULL);
 	Assert(redoDistribTimeStamp != 0);
 	Assert(redoDistribXid != InvalidTransactionId);
-
+	
 
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
 
 	ele = LocalDistribXact_New(
 							redoDistribTimeStamp,
-							redoDistribXid,
-							redoLocalXid,
+							redoDistribXid, 
+							redoLocalXid, 
 							LOCALDISTRIBXACT_STATE_PREPARED);
 	if (ele == NULL)
 	{
@@ -544,7 +539,7 @@ LocalDistribXact_CreateRedoPrepared(
 	LocalDistribXactRef_AssignLocal(
 							localDistribXactRef,
 							ele);
-
+	
 	LWLockRelease(ProcArrayLock);
 
 }
@@ -557,11 +552,11 @@ LocalDistribXact_GetFromRef(
 	LocalDistribXactRef			*localDistribXactRef)
 {
 	LocalDistribXact 	ele;
-
+	
 	Assert(LocalDistribXactShared != NULL);
 
 	Assert(!LocalDistribXactRef_IsNil(localDistribXactRef));
-
+	
 	ele = SharedListBase_ToElement(
 						&LocalDistribXactShared->sortedLocalBase,
 						localDistribXactRef->index);
@@ -586,13 +581,13 @@ LocalDistribXact_ChangeStateUnderLock(
 {
 	LocalDistribXact 			ele;
 	LocalDistribXactState		oldState;
-
+	
 	Assert(LocalDistribXactShared != NULL);
 
 	Assert(!LocalDistribXactRef_IsNil(localDistribXactRef));
-
+	
 	ele = LocalDistribXact_GetFromRef(
-								localXid,
+								localXid, 
 								localDistribXactRef);
 
 	/*
@@ -604,37 +599,37 @@ LocalDistribXact_ChangeStateUnderLock(
 	case LOCALDISTRIBXACT_STATE_ABORTDELIVERY:
 	case LOCALDISTRIBXACT_STATE_PREPARED:
 		if (ele->state != LOCALDISTRIBXACT_STATE_ACTIVE)
-			elog(PANIC,
+			elog(PANIC, 
 			     "Expected distributed transaction xid = %u to local element to be in state \"Active\" and "
 			     "found state \"%s\"",
 			     ele->distribXid,
 			     LocalDistribXactStateToString(ele->state));
 		break;
-
+		
 	case LOCALDISTRIBXACT_STATE_COMMITPREPARED:
 	case LOCALDISTRIBXACT_STATE_ABORTPREPARED:
 		if (ele->state != LOCALDISTRIBXACT_STATE_PREPARED)
-			elog(PANIC,
+			elog(PANIC, 
 			     "Expected distributed transaction xid = %u to local element to be in state \"Prepared\" and "
 			     "found state \"%s\"",
 			     ele->distribXid,
 			     LocalDistribXactStateToString(ele->state));
 		break;
-
+	
 	case LOCALDISTRIBXACT_STATE_COMMITTED:
 		if (ele->state != LOCALDISTRIBXACT_STATE_ACTIVE &&
 			ele->state != LOCALDISTRIBXACT_STATE_COMMITDELIVERY)
-			elog(PANIC,
+			elog(PANIC, 
 			     "Expected distributed transaction xid = %u to local element to be in state \"Active\" or \"Commit Delivery\" and "
 			     "found state \"%s\"",
 			     ele->distribXid,
 			     LocalDistribXactStateToString(ele->state));
 		break;
-
+		
 	case LOCALDISTRIBXACT_STATE_ABORTED:
 		if (ele->state != LOCALDISTRIBXACT_STATE_ACTIVE &&
 			ele->state != LOCALDISTRIBXACT_STATE_ABORTDELIVERY)
-			elog(PANIC,
+			elog(PANIC, 
 			     "Expected distributed transaction xid = %u to local element to be in state \"Active\" or \"Abort Delivery\" and "
 			     "found state \"%s\"",
 			     ele->distribXid,
@@ -645,7 +640,7 @@ LocalDistribXact_ChangeStateUnderLock(
 		elog(PANIC, "Unexpected distributed to local transaction new state: '%s'",
 			LocalDistribXactStateToString(newState));
 		break;
-
+				
 	default:
 		elog(PANIC, "Unrecognized distributed to local transaction state: %d",
 			(int) newState);
@@ -682,7 +677,7 @@ LocalDistribXact_ChangeState(
 #define MAX_LOCAL_DISTRIB_DISPLAY_BUFFER 100
 static char LocalDistribDisplayBuffer[MAX_LOCAL_DISTRIB_DISPLAY_BUFFER];
 
-char*
+char* 
 LocalDistribXact_DisplayString(
 	LocalDistribXactRef		*localDistribXactRef)
 {
@@ -691,7 +686,7 @@ LocalDistribXact_DisplayString(
 
 	if (LocalDistribXactRef_IsNil(localDistribXactRef))
 		return "distributed transaction is nil";
-
+	
 	ele = SharedListBase_ToElement(
 						&LocalDistribXactShared->sortedLocalBase,
 						localDistribXactRef->index);
@@ -717,7 +712,7 @@ LocalDistribXact_LocalXidKnown(
 	DistributedTransactionId 			*distribXid)
 {
 	LocalDistribXact 	ele;
-
+	
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
 
 	ele = LocalDistribXact_FindByLocalXid(localXid);
@@ -730,7 +725,7 @@ LocalDistribXact_LocalXidKnown(
 	}
 
 	*distribXid = ele->distribXid;
-
+			
 	LWLockRelease(ProcArrayLock);
 
 	return true;
@@ -782,26 +777,26 @@ LocalDistribXact_ShmemCreate(void)
 	{
 		int i;
 		int maxElements;
-
+		
 		/*
 		 * We're the first - initialize.
-		 */
-
+		 */	
+		
 		SharedDoublyLinkedHead_Init(&LocalDistribXactShared->sortedLocalList);
-
+		
 		SharedListBase_Init(
 					&LocalDistribXactShared->sortedLocalBase,
 					&LocalDistribXactShared->data,
 					sizeof(LocalDistribXactData),
 					offsetof(LocalDistribXactData, sortedLocalDoubleLinks));
-
+		
 		maxElements = LocalDistribXact_MaxElements();
 		LocalDistribXactShared->maxElements = maxElements;
-
+		
 		SharedDoublyLinkedHead_Init(&LocalDistribXactShared->freeList);
 
 		LocalDistribXactShared->maxDistributedTransactionId = FirstDistributedTransactionId;
-
+		
 		/*
 		 * Initalize the array of LocalDistribXact structs.
 		 */
@@ -816,7 +811,7 @@ LocalDistribXact_ShmemCreate(void)
 			ele->referenceCount = 0;
 
 			ele->index = i;
-
+			
 			SharedDoubleLinks_Init(
 				&ele->sortedLocalDoubleLinks, i);
 
@@ -856,14 +851,14 @@ typedef struct LocalDistribXactCacheEntry
 	 */
 	TransactionId 					localXid;
 										/* MUST BE FIRST: Hash table key. */
-
+										
 	DistributedTransactionId 		distribXid;
 
 	int64							visits;
 
-	DoubleLinks						lruDoubleLinks;
+	DoubleLinks						lruDoubleLinks;		
 										/* list link for LRU */
-
+										
 }	LocalDistribXactCacheEntry;
 
 /*
@@ -872,9 +867,9 @@ typedef struct LocalDistribXactCacheEntry
 static struct LocalDistribXactCache
 {
 	int32			count;
-
+										
 	DoublyLinkedHead 		lruDoublyLinkedHead;
-
+	
 	int64		hitCount;
 	int64		totalCount;
 	int64		addCount;
@@ -895,11 +890,11 @@ LocalDistribXactCache_CommittedFind(
 	// Before doing anything, see if we are enabled.
 	if (gp_max_local_distributed_cache == 0)
 		return false;
-
+	
 	if (LocalDistribCacheMemCxt == NULL)
 	{
 		HASHCTL		hash_ctl;
-
+		
 		/* Create the memory context where cross-transaction state is stored */
 		LocalDistribCacheMemCxt = AllocSetContextCreate(TopMemoryContext,
 											  "Local-distributed commit cache context",
@@ -927,8 +922,8 @@ LocalDistribXactCache_CommittedFind(
 
 	entry = (LocalDistribXactCacheEntry*) hash_search(
 													LocalDistribCacheHtab,
-													&localXid,
-													HASH_FIND,
+													&localXid, 
+													HASH_FIND, 
 													&found);
 
 	if (found)
@@ -969,7 +964,7 @@ LocalDistribXactCache_AddCommitted(
 	// Before doing anything, see if we are enabled.
 	if (gp_max_local_distributed_cache == 0)
 		return;
-
+	
 	Assert (LocalDistribCacheMemCxt != NULL);
 	Assert (LocalDistribCacheHtab != NULL);
 
@@ -979,21 +974,21 @@ LocalDistribXactCache_AddCommitted(
 		LocalDistribXactCacheEntry*	removedEntry;
 
 		Assert(LocalDistribXactCache.count == gp_max_local_distributed_cache);
-
+		
 		/*
 		 * Remove oldest.
 		 */
-		lastEntry = (LocalDistribXactCacheEntry*)
+		lastEntry = (LocalDistribXactCacheEntry*) 
 							DoublyLinkedHead_RemoveLast(
 											offsetof(LocalDistribXactCacheEntry, lruDoubleLinks),
 											&LocalDistribXactCache.lruDoublyLinkedHead);
 		Assert(lastEntry != NULL);
-
-		removedEntry = (LocalDistribXactCacheEntry*)
+					
+		removedEntry = (LocalDistribXactCacheEntry*) 
 			hash_search(LocalDistribCacheHtab, &lastEntry->localXid,
 						HASH_REMOVE, NULL);
 		Assert(lastEntry == removedEntry);
-
+		
 		LocalDistribXactCache.count--;
 
 		LocalDistribXactCache.removeCount++;
@@ -1002,8 +997,8 @@ LocalDistribXactCache_AddCommitted(
 	/* Now we can add entry to hash table */
 	entry = (LocalDistribXactCacheEntry*) hash_search(
 													LocalDistribCacheHtab,
-													&localXid,
-													HASH_ENTER,
+													&localXid, 
+													HASH_ENTER, 
 													&found);
 	if (found)
 	{
@@ -1015,7 +1010,7 @@ LocalDistribXactCache_AddCommitted(
 					offsetof(LocalDistribXactCacheEntry, lruDoubleLinks),
 					&LocalDistribXactCache.lruDoublyLinkedHead,
 					entry);
-
+	
 	entry->localXid = localXid;
 	entry->distribXid = distribXid;
 	entry->visits = 1;
@@ -1023,7 +1018,7 @@ LocalDistribXactCache_AddCommitted(
 	LocalDistribXactCache.count++;
 
 	LocalDistribXactCache.addCount++;
-
+	
 }
 
 void
@@ -1032,9 +1027,9 @@ LocalDistribXactCache_ShowStats(char *nameStr)
 		elog(LOG, "%s: Local-distributed cache counts "
 			 "(hits " INT64_FORMAT ", total " INT64_FORMAT ", adds " INT64_FORMAT ", removes " INT64_FORMAT ")",
 			 nameStr,
-			 LocalDistribXactCache.hitCount,
-			 LocalDistribXactCache.totalCount,
-			 LocalDistribXactCache.addCount,
+			 LocalDistribXactCache.hitCount, 
+			 LocalDistribXactCache.totalCount, 
+			 LocalDistribXactCache.addCount, 
 			 LocalDistribXactCache.removeCount);
 }
 
@@ -1046,15 +1041,15 @@ LocalDistribXact_GetDistributedXid(
 	DistributedTransactionId 		*distribXid)
 {
 	LocalDistribXact 			ele;
-
+	
 	Assert(LocalDistribXactShared != NULL);
 
 	Assert(!LocalDistribXactRef_IsNil(localDistribXactRef));
 	Assert(distribTimeStamp != NULL);
 	Assert(distribXid != NULL);
-
+	
 	ele = LocalDistribXact_GetFromRef(
-								localXid,
+								localXid, 
 								localDistribXactRef);
 
 	*distribTimeStamp = ele->distribTimeStamp;

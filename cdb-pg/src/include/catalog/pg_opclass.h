@@ -54,8 +54,8 @@
    opckeytype    oid     
    );
 
-   create unique index on pg_opclass(opcamid, opcname, opcnamespace) with (indexid=2686, CamelCase=OpclassAmNameNsp, syscacheid=CLAAMNAMENSP, syscache_nbuckets=64);
-   create unique index on pg_opclass(oid) with (indexid=2687, CamelCase=OpclassOid, syscacheid=CLAOID, syscache_nbuckets=64);
+   create unique index on pg_opclass(opcamid, opcname, opcnamespace) with (indexid=2686, CamelCase=OpclassAmNameNsp);
+   create unique index on pg_opclass(oid) with (indexid=2687, CamelCase=OpclassOid);
 
    alter table pg_opclass add fk opcnamespace on pg_namespace(oid);
    alter table pg_opclass add fk opcowner on pg_authid(oid);
@@ -228,9 +228,6 @@ DATA(insert OID = 2778 (	2742	_money_ops		PGNSP PGUID  791 t 790 ));
 DATA(insert OID = 2779 (	2742	_reltime_ops	PGNSP PGUID  1024 t 703 ));
 DATA(insert OID = 2780 (	2742	_tinterval_ops	PGNSP PGUID  1025 t 704 ));
 DATA(insert OID = 2904 (	403		xlogloc_ops		PGNSP PGUID  3310 t 0 ));
-
-DATA(insert OID = 3075 (    403     uuid_ops        PGNSP PGUID 2950 t 0 ));
-DATA(insert OID = 3076 (    405     uuid_ops        PGNSP PGUID 2950 t 0 ));
 
 /*
  * the operators for the on-disk bitmap index.

@@ -62,14 +62,14 @@ Datum _String_coerceObject(Type self, jobject jstr)
 
 static String String_create(TypeClass cls, Oid typeId)
 {
-	HeapTuple    typeTup = PgObject_getTypeTuple(typeId);
+	HeapTuple    typeTup = PgObject_getValidTuple(TYPEOID, typeId, "type");
 	Form_pg_type pgType  = (Form_pg_type)GETSTRUCT(typeTup);
 	String self = (String)TypeClass_allocInstance(cls, typeId);
 	MemoryContext ctx = GetMemoryChunkContext(self);
 	fmgr_info_cxt(pgType->typoutput, &self->textOutput, ctx);
 	fmgr_info_cxt(pgType->typinput,  &self->textInput,  ctx);
 	self->elementType = pgType->typelem;
-	heap_freetuple(typeTup);
+	ReleaseSysCache(typeTup);
 	return self;
 }
 

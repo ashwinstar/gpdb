@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:VBox xmlns:mx="http://www.adobe.com/2006/mxml" >
+	<mx:Script>
+		<![CDATA[
+		  	import model.Health;
+		  	import model.Database;
+
+	   		[Embed(source='../../assets/img/DBUnbalanced_icon.png')]
+	   		public static var DBUnbalancedIcon:Class;
+	   		
+	   		[Embed(source='../../assets/img/DBDegrade_Icon.png')]
+	   		public static var DBDegradeIcon:Class;
+   		  				
+	   		[Embed(source='../../assets/img/DBNormal_Icon.png')]
+	   		public static var DBNormalIcon:Class;
+	   		
+	   		[Embed(source='../../assets/img/DBDown_Icon.png')]
+	   		public static var DBDownIcon:Class;
+   		  				
+	 		[Bindable]
+	 		private var iconSrc:Class;
+	 		
+			public function set status(val:String):void {
+				switch (val) {
+	 				case Database.DBSTATE_NORMAL:
+	 					iconSrc = DBNormalIcon;
+	 					break;
+	 				case Database.DBSTATE_UNBALANCED:
+	 					iconSrc = DBUnbalancedIcon;
+	 					break;
+	 				case Database.DBSTATE_DEGRADED:
+	 					iconSrc = DBDegradeIcon;
+	 					break;
+	 				case Database.DBSTATE_DOWN:
+	 					iconSrc = DBDownIcon;
+	 					break;
+	 				default:
+	 					iconSrc = null;
+	 					break; 	
+	 			}
+			}
+		]]>
+	</mx:Script>
+	
+	<mx:Image width="48" height="36" source="{iconSrc}"/>
+</mx:VBox>

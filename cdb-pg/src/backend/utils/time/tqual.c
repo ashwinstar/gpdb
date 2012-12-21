@@ -565,7 +565,7 @@ sharedLocalSnapshot_filename(TransactionId xid, CommandId cid, uint32 segmateSyn
 {
 	int pid;
 	static char filename[MAXPGPATH];
-	
+
 	if (Gp_is_writer)
 	{
 		pid = MyProc->pid;
@@ -593,22 +593,17 @@ sharedLocalSnapshot_filename(TransactionId xid, CommandId cid, uint32 segmateSyn
 void
 dumpSharedLocalSnapshot_forCursor(void)
 {
-	SharedSnapshotSlot *src = NULL;
-	char* fname = NULL;
-	BufFile *f = NULL;
+	SharedSnapshotSlot *src;
+	BufFile *f;
 	Size count=0;
-	TransactionId *xids = NULL;
-	int64 sub_size;
-	int64 size_read;
 
 	Assert(Gp_role == GP_ROLE_DISPATCH || (Gp_role == GP_ROLE_EXECUTE && Gp_is_writer));
 	Assert(SharedLocalSnapshotSlot != NULL);
 
 	src = (SharedSnapshotSlot *)SharedLocalSnapshotSlot;
-	fname = sharedLocalSnapshot_filename(src->QDxid, src->QDcid, src->segmateSync);
 
 	/* Create our dump-file, this will either return a valid file, or throw an error */
-	f = BufFileCreateTemp_ReaderWriter(fname, true);
+	f = BufFileCreateTemp_ReaderWriter(sharedLocalSnapshot_filename(src->QDxid, src->QDcid, src->segmateSync), true);
 	/* we have our file. */
 
 #define FileWriteOK(file, ptr, size) (BufFileWrite(file, ptr, size) == size)
@@ -622,18 +617,16 @@ dumpSharedLocalSnapshot_forCursor(void)
 		/* Write our length as zero. (we'll fix it later). */
 		count = 0;
 
-		/*
-		 * We write two counts here: One is count of first part,
-		 * second is size of subtransaction xids copied from
-		 * SharedLocalSnapshotSlot. This can be a big number.
-		 */
-		FileWriteFieldWithCount(count, f, count);
-		FileWriteFieldWithCount(count, f, src->total_subcnt);
-
+		FileWriteFieldWithCount(count, f, count); /* write count itself */
 		FileWriteFieldWithCount(count, f, src->pid);
 		FileWriteFieldWithCount(count, f, src->xid);
 		FileWriteFieldWithCount(count, f, src->cid);
 		FileWriteFieldWithCount(count, f, src->startTimestamp);
+		FileWriteFieldWithCount(count, f, src->subcnt);
+
+		if (!FileWriteOK(f, &src->subxids, xipEntryCount * PGPROC_MAX_CACHED_SUBXIDS * sizeof(TransactionId)))
+			break;
+		count += xipEntryCount * PGPROC_MAX_CACHED_SUBXIDS * sizeof(TransactionId);
 
 		FileWriteFieldWithCount(count, f, src->combocidcnt);
 		FileWriteFieldWithCount(count, f, src->combocids);
@@ -641,9 +634,9 @@ dumpSharedLocalSnapshot_forCursor(void)
 		FileWriteFieldWithCount(count, f, src->snapshot.xmax);
 		FileWriteFieldWithCount(count, f, src->snapshot.xcnt);
 
-		if (!FileWriteOK(f, &src->snapshot.xip, src->snapshot.xcnt * sizeof(TransactionId)))
+		if (!FileWriteOK(f, &src->snapshot.xip, xipEntryCount * sizeof(TransactionId)))
 			break;
-		count += src->snapshot.xcnt * sizeof(TransactionId);
+		count += xipEntryCount * sizeof(TransactionId);
 
 		FileWriteFieldWithCount(count, f, src->snapshot.curcid);
 
@@ -668,52 +661,9 @@ dumpSharedLocalSnapshot_forCursor(void)
 		 *
 		 */
 
-		if (src->total_subcnt > src->inmemory_subcnt)
-		{
-			Assert(subxip_file != 0);
-
-			xids = palloc(MAX_XIDBUF_SIZE);
-
-			FileSeek(subxip_file, 0, SEEK_SET);
-			sub_size = (src->total_subcnt - src->inmemory_subcnt)
-				    * sizeof(TransactionId);
-			while (sub_size > 0)
-			{
-				size_read = (sub_size > MAX_XIDBUF_SIZE) ?
-						MAX_XIDBUF_SIZE : sub_size;
-				if (size_read != FileRead(subxip_file, (char *)xids,
-							  size_read))
-				{
-					elog(ERROR,
-					     "Error in reading subtransaction file.");
-				}
-
-				if (!FileWriteOK(f, xids, sub_size))
-				{
-					break;
-				}
-
-				sub_size -= size_read;
-			}
-
-			pfree(xids);
-			if (sub_size != 0)
-				break;
-		}
-
-		if (src->inmemory_subcnt > 0)
-		{
-			sub_size = src->inmemory_subcnt * sizeof(TransactionId);
-			if (!FileWriteOK(f, src->subxids, sub_size))
-			{
-				break;
-			}
-		}
-
 		/*
 		 * Now update our length field: seek to beginning and overwrite
-		 * our original zero-length. count does not include
-		 * subtransaction ids.
+		 * our original zero-length.
 		 */
 		if (BufFileSeek(f, 0, 0, SEEK_SET) != 0)
 			break;
@@ -739,6 +689,7 @@ dumpSharedLocalSnapshot_forCursor(void)
 void
 readSharedLocalSnapshot_forCursor(Snapshot snapshot)
 {
+	SharedSnapshotSlot *src;
 	BufFile *f;
 	char *fname=NULL;
 	Size count=0, sanity;
@@ -751,10 +702,6 @@ readSharedLocalSnapshot_forCursor(Snapshot snapshot)
 
 	uint32 combocidcnt;
 	ComboCidKeyData tmp_combocids[MaxComboCids];
-	uint32 sub_size;
-	uint32 read_size;
-	int64 subcnt;
-	TransactionId *subxids = NULL;
 
 	Assert(Gp_role == GP_ROLE_EXECUTE);
 	Assert(!Gp_is_writer);
@@ -763,15 +710,12 @@ readSharedLocalSnapshot_forCursor(Snapshot snapshot)
 	Assert(snapshot->subxip != NULL);
 
 	/*
-	 * Open our dump-file, this will either return a valid file, or
-	 * throw an error.
+	 * Open our dump-file, this will either return a valid file, or throw an error.
 	 *
-	 * NOTE: this is always run *after* the dump by the writer is
-	 * guaranteed to have completed.
+	 * NOTE: this is always run *after* the dump by the writer is guaranteed to have
+	 * completed.
 	 */
-	fname = sharedLocalSnapshot_filename(QEDtxContextInfo.distributedXid,
-		QEDtxContextInfo.curcid, QEDtxContextInfo.segmateSync);
-
+	fname = sharedLocalSnapshot_filename(QEDtxContextInfo.distributedXid, QEDtxContextInfo.curcid, QEDtxContextInfo.segmateSync);
 	f = BufFileCreateTemp_ReaderWriter(fname, false);
 	/* we have our file. */
 
@@ -781,8 +725,7 @@ readSharedLocalSnapshot_forCursor(Snapshot snapshot)
 	if (!FileReadOK(f, &count, sizeof(count)))
 		elog(ERROR, "Cursor snapshot: failed to read size");
 
-	elog(DEBUG1, "Reading in cursor-snapshot %u bytes",
-		     (unsigned int)count);
+	elog(DEBUG1, "Reading in cursor-snapshot %u bytes", (unsigned int)count);
 
 	buffer = palloc(count);
 
@@ -797,18 +740,17 @@ readSharedLocalSnapshot_forCursor(Snapshot snapshot)
 	if (!FileReadOK(f, buffer, count))
 		elog(ERROR, "Cursor snapshot: failed to read content");
 
+	/* we're done with file. */
+	BufFileClose(f);
+
 	/* we've got the entire snapshot read into our buffer. */
 	p = buffer;
 
 	/* sanity check count */
 	memcpy(&sanity, p, sizeof(sanity));
 	if (sanity != count)
-		elog(ERROR, "cursor snapshot failed sanity %u != %u",
-			    (unsigned int)sanity, (unsigned int)count);
+		elog(ERROR, "cursor snapshot failed sanity %u != %u", (unsigned int)sanity, (unsigned int)count);
 	p += sizeof(sanity);
-
-	memcpy(&sub_size, p, sizeof(uint32));
-	p += sizeof(uint32);
 
 	/* see dumpSharedLocalSnapshot_forCursor() for the correct order here */
 
@@ -823,6 +765,13 @@ readSharedLocalSnapshot_forCursor(Snapshot snapshot)
 
 	memcpy(&localXactStartTimestamp, p, sizeof(localXactStartTimestamp));
 	p += sizeof(localXactStartTimestamp);
+
+	/* subcnt and subxids omitted, we don't use them anyhow. */
+	memcpy(&snapshot->subxcnt, p, sizeof(snapshot->subxcnt));
+	p += sizeof(snapshot->subxcnt);
+
+	memcpy(snapshot->subxip, p, xipEntryCount * PGPROC_MAX_CACHED_SUBXIDS * sizeof(TransactionId));
+	p += xipEntryCount * PGPROC_MAX_CACHED_SUBXIDS * sizeof(TransactionId);
 
 	memcpy(&combocidcnt, p, sizeof(combocidcnt));
 	p += sizeof(combocidcnt);
@@ -854,49 +803,16 @@ readSharedLocalSnapshot_forCursor(Snapshot snapshot)
 	memcpy(&snapshot->xcnt, p, sizeof(snapshot->xcnt));
 	p += sizeof(snapshot->xcnt);
 
-	memcpy(snapshot->xip, p, snapshot->xcnt * sizeof(TransactionId));
-	p += snapshot->xcnt * sizeof(TransactionId);
+	memcpy(snapshot->xip, p, xipEntryCount * sizeof(TransactionId));
+	p += xipEntryCount * sizeof(TransactionId);
 
 	/* zero out the slack in the xip-array */
 	memset(snapshot->xip + snapshot->xcnt, 0, (xipEntryCount - snapshot->xcnt)*sizeof(TransactionId));
 
-	memcpy(&snapshot->curcid, p, sizeof(snapshot->curcid));
+	memcpy(&snapshot->curcid, p, sizeof(src->snapshot.curcid));
 
 	/* Now we're done with the buffer */
 	pfree(buffer);
-
-	/*
-	 * Now read the subtransaction ids. This can be a big number, so cannot
-	 * allocate memory all at once.
-	 */
-	sub_size *= sizeof(TransactionId);
-
-	ResetXidBuffer(&subxbuf);
-
-	if (sub_size)
-	{
-		subxids = palloc(MAX_XIDBUF_SIZE);
-	}
-
-	while (sub_size > 0)
-	{
-		read_size = sub_size > MAX_XIDBUF_SIZE ? MAX_XIDBUF_SIZE : sub_size;
-		if (!FileReadOK(f, (char *)subxids, read_size))
-		{
-			elog(ERROR, "Error in Reading Subtransaction file.");
-		}
-		subcnt = read_size/sizeof(TransactionId);
-		AddSortedToXidBuffer(&subxbuf, subxids, subcnt);
-		sub_size -= read_size;
-	}
-
-	if (subxids)
-	{
-		pfree(subxids);
-	}
-
-	/* we're done with file. */
-	BufFileClose(f);
 
 	SetSharedTransactionId_reader(localXid, snapshot->curcid);
 
@@ -1008,8 +924,8 @@ static char WatchVisibilityXmaxCurrent[2000];
  *			(Xmax != my-transaction &&			the row was deleted by another transaction
  *			 Xmax is not committed)))			that has not been committed
  */
-static bool
-HeapTupleSatisfiesItself_Internal(Relation relation, HeapTupleHeader tuple, Buffer buffer)
+bool
+HeapTupleSatisfiesItself(Relation relation, HeapTupleHeader tuple, Buffer buffer)
 {
 	const bool disableTupleHints = gp_disable_tuple_hints;
 
@@ -1017,98 +933,55 @@ HeapTupleSatisfiesItself_Internal(Relation relation, HeapTupleHeader tuple, Buff
 
 	if (!(tuple->t_infomask & HEAP_XMIN_COMMITTED))
 	{
-		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_NOT_HINT_COMMITTED);
-
 		if (tuple->t_infomask & HEAP_XMIN_INVALID)
-		{
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_ABORTED);
-
 			return false;
-		}
 
 		if (tuple->t_infomask & HEAP_MOVED_OFF)
 		{
 			TransactionId xvac = HeapTupleHeaderGetXvac(tuple);
 
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_MOVED_AWAY_BY_VACUUM);
-
 			if (TransactionIdIsCurrentTransactionId(xvac))
-			{
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_VACUUM_XID_CURRENT);
-
 				return false;
-			}
 			if (!TransactionIdIsInProgress(xvac))
 			{
 				if (TransactionIdDidCommit(xvac))
 				{
 					tuple->t_infomask |= HEAP_XMIN_INVALID;
 					markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ true);
-
-					WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMIN_VACUUM_MOVED_INVALID);
-
 					return false;
 				}
 				tuple->t_infomask |= HEAP_XMIN_COMMITTED;
 				markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ true);
-
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMIN_COMMITTED);
 			}
 		}
 		else if (tuple->t_infomask & HEAP_MOVED_IN)
 		{
 			TransactionId xvac = HeapTupleHeaderGetXvac(tuple);
 
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_MOVED_IN_BY_VACUUM);
-
 			if (!TransactionIdIsCurrentTransactionId(xvac))
 			{
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_VACUUM_XID_NOT_CURRENT);
-
 				if (TransactionIdIsInProgress(xvac))
-				{
-					WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_VACUUM_XID_IN_PROGRESS);
-
 					return false;
-				}
 				if (TransactionIdDidCommit(xvac))
 				{
 					tuple->t_infomask |= HEAP_XMIN_COMMITTED;
 					markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ true);
-
-					WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMIN_COMMITTED);
 				}
 				else
 				{
 					tuple->t_infomask |= HEAP_XMIN_INVALID;
 					markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ true);
-
-					WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMIN_ABORTED);
-
 					return false;
 				}
 			}
 		}
 		else if (TransactionIdIsCurrentTransactionId(HeapTupleHeaderGetXmin(tuple)))
 		{
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_CURRENT);
-#ifdef WATCH_VISIBILITY_IN_ACTION
-			strcpy(WatchVisibilityXminCurrent, WatchCurrentTransactionString());
-#endif
-			
 			if (tuple->t_infomask & HEAP_XMAX_INVALID)	/* xid invalid */
-			{
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMAX_INVALID);
-
 				return true;
-			}
 
 			if (tuple->t_infomask & HEAP_IS_LOCKED)		/* not deleter */
-			{
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_LOCKED);
-
 				return true;
-			}
 
 			Assert(!(tuple->t_infomask & HEAP_XMAX_IS_MULTI));
 
@@ -1117,9 +990,6 @@ HeapTupleSatisfiesItself_Internal(Relation relation, HeapTupleHeader tuple, Buff
 			{
 				tuple->t_infomask |= HEAP_XMAX_INVALID;
 				markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ false);
-
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMAX_ABORTED);
-
 				return true;
 			}
 
@@ -1127,65 +997,36 @@ HeapTupleSatisfiesItself_Internal(Relation relation, HeapTupleHeader tuple, Buff
 
 			return false;
 		}
+		else if (TransactionIdIsInProgress(HeapTupleHeaderGetXmin(tuple)))
+			return false;
+		else if (TransactionIdDidCommit(HeapTupleHeaderGetXmin(tuple)))
+		{
+			tuple->t_infomask |= HEAP_XMIN_COMMITTED;
+			markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ true);
+		}
 		else
 		{
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_NOT_CURRENT);
-#ifdef WATCH_VISIBILITY_IN_ACTION
-			strcpy(WatchVisibilityXminCurrent, WatchCurrentTransactionString());
-#endif
-
-			if (TransactionIdIsInProgress(HeapTupleHeaderGetXmin(tuple)))
-			{
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_IN_PROGRESS);
-
-				return false;
-			}
-			else if (TransactionIdDidCommit(HeapTupleHeaderGetXmin(tuple)))
-			{
-				tuple->t_infomask |= HEAP_XMIN_COMMITTED;
-				markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ true);
-
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMIN_COMMITTED);
-			}
-			else
-			{
-				/* it must have aborted or crashed */
-				tuple->t_infomask |= HEAP_XMIN_INVALID;
-				markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ true);
-
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMIN_ABORTED);
-
-				return false;
-			}
+			/* it must have aborted or crashed */
+			tuple->t_infomask |= HEAP_XMIN_INVALID;
+			markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ true);
+			return false;
 		}
 	}
 
 	/* by here, the inserting transaction has committed */
 
 	if (tuple->t_infomask & HEAP_XMAX_INVALID)	/* xid invalid or aborted */
-	{
-		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMAX_INVALID_OR_ABORTED);
-
 		return true;
-	}
 
 	if (tuple->t_infomask & HEAP_XMAX_COMMITTED)
 	{
-		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMAX_HINT_COMMITTED);
-
 		if (tuple->t_infomask & HEAP_IS_LOCKED)
-		{
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_LOCKED);
-
 			return true;
-		}
 		return false;			/* updated by other */
 	}
 
 	if (tuple->t_infomask & HEAP_XMAX_IS_MULTI)
 	{
-		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMAX_MULTIXACT);
-
 		/* MultiXacts are currently only allowed to lock tuples */
 		Assert(tuple->t_infomask & HEAP_IS_LOCKED);
 		return true;
@@ -1193,32 +1034,19 @@ HeapTupleSatisfiesItself_Internal(Relation relation, HeapTupleHeader tuple, Buff
 
 	if (TransactionIdIsCurrentTransactionId(HeapTupleHeaderGetXmax(tuple)))
 	{
-		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMAX_CURRENT);
-
 		if (tuple->t_infomask & HEAP_IS_LOCKED)
-		{
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_LOCKED);
-
 			return true;
-		}
 		return false;
 	}
 
 	if (TransactionIdIsInProgress(HeapTupleHeaderGetXmax(tuple)))
-	{
-		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMAX_IN_PROGRESS);
-	
 		return true;
-	}
 
 	if (!TransactionIdDidCommit(HeapTupleHeaderGetXmax(tuple)))
 	{
 		/* it must have aborted or crashed */
 		tuple->t_infomask |= HEAP_XMAX_INVALID;
 		markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ false);
-		
-		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMAX_ABORTED);
-		
 		return true;
 	}
 
@@ -1226,8 +1054,6 @@ HeapTupleSatisfiesItself_Internal(Relation relation, HeapTupleHeader tuple, Buff
 
 	if (tuple->t_infomask & HEAP_IS_LOCKED)
 	{
-		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_LOCKED);
-
 		tuple->t_infomask |= HEAP_XMAX_INVALID;
 		markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ false);
 		return true;
@@ -1235,22 +1061,7 @@ HeapTupleSatisfiesItself_Internal(Relation relation, HeapTupleHeader tuple, Buff
 
 	tuple->t_infomask |= HEAP_XMAX_COMMITTED;
 	markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ false);
-	
-	WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMAX_COMMITTED);
-
 	return false;
-}
-
-bool
-HeapTupleSatisfiesItself(Relation relation, ItemPointer tid, HeapTupleHeader tuple, Buffer buffer, char *caller)
-{
-	bool result;
-
-	result = HeapTupleSatisfiesItself_Internal(relation, tuple, buffer);
-
-	WATCH_VISIBILITY_BOOL_TRACE(relation, tid, tuple, "HeapTupleSatisfiesItself", caller, result);
-
-	return result;
 }
 
 /*
@@ -1294,8 +1105,8 @@ HeapTupleSatisfiesItself(Relation relation, ItemPointer tid, HeapTupleHeader tup
  *		the serializability guarantees we provide don't extend to xacts
  *		that do catalog accesses.  this is unfortunate, but not critical.
  */
-static bool
-HeapTupleSatisfiesNow_Internal(Relation relation, HeapTupleHeader tuple, Buffer buffer)
+bool
+HeapTupleSatisfiesNow(Relation relation, HeapTupleHeader tuple, Buffer buffer)
 {
 	const bool disableTupleHints = gp_disable_tuple_hints;
 
@@ -1409,13 +1220,6 @@ HeapTupleSatisfiesNow_Internal(Relation relation, HeapTupleHeader tuple, Buffer 
 			if (TransactionIdDidAbort(HeapTupleHeaderGetXmax(tuple)))
 			{
 				tuple->t_infomask |= HEAP_XMAX_INVALID;
-
-				/* If ComboCID format cid, roll it back to normal Cmin */
-				if (tuple->t_infomask & HEAP_COMBOCID)
-				{
-					HeapTupleHeaderSetCmin(tuple, HeapTupleHeaderGetCmin(tuple));
-				}
-
 				markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ false);
 
 				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMAX_ABORTED);
@@ -1562,18 +1366,6 @@ HeapTupleSatisfiesNow_Internal(Relation relation, HeapTupleHeader tuple, Buffer 
 	return false;
 }
 
-bool
-HeapTupleSatisfiesNow(Relation relation, ItemPointer tid, HeapTupleHeader tuple, Buffer buffer, char *caller)
-{
-	bool result;
-
-	result = HeapTupleSatisfiesNow_Internal(relation, tuple, buffer);
-
-	WATCH_VISIBILITY_BOOL_TRACE(relation, tid, tuple, "HeapTupleSatisfiesNow", caller, result);
-
-	return result;
-}
-
 /*
  * HeapTupleSatisfiesToast
  *		True iff heap tuple is valid as a TOAST row.
@@ -1588,8 +1380,8 @@ HeapTupleSatisfiesNow(Relation relation, ItemPointer tid, HeapTupleHeader tuple,
  * Among other things, this means you can't do UPDATEs of rows in a TOAST
  * table.
  */
-static bool
-HeapTupleSatisfiesToast_Internal(Relation relation, HeapTupleHeader tuple, Buffer buffer)
+bool
+HeapTupleSatisfiesToast(Relation relation, HeapTupleHeader tuple, Buffer buffer)
 {
 	const bool disableTupleHints = gp_disable_tuple_hints;
 
@@ -1597,75 +1389,44 @@ HeapTupleSatisfiesToast_Internal(Relation relation, HeapTupleHeader tuple, Buffe
 
 	if (!(tuple->t_infomask & HEAP_XMIN_COMMITTED))
 	{
-		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_NOT_HINT_COMMITTED);
-
 		if (tuple->t_infomask & HEAP_XMIN_INVALID)
-		{
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_ABORTED);
-
 			return false;
-		}
 
 		if (tuple->t_infomask & HEAP_MOVED_OFF)
 		{
 			TransactionId xvac = HeapTupleHeaderGetXvac(tuple);
 
-
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_MOVED_AWAY_BY_VACUUM);
-
 			if (TransactionIdIsCurrentTransactionId(xvac))
-			{
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_VACUUM_XID_CURRENT);
-
 				return false;
-			}
 			if (!TransactionIdIsInProgress(xvac))
 			{
 				if (TransactionIdDidCommit(xvac))
 				{
 					tuple->t_infomask |= HEAP_XMIN_INVALID;
 					markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ true);
-
-					WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMIN_VACUUM_MOVED_INVALID);
-
 					return false;
 				}
 				tuple->t_infomask |= HEAP_XMIN_COMMITTED;
 				markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ true);
-
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMIN_COMMITTED);
 			}
 		}
 		else if (tuple->t_infomask & HEAP_MOVED_IN)
 		{
 			TransactionId xvac = HeapTupleHeaderGetXvac(tuple);
 
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_MOVED_IN_BY_VACUUM);
-
 			if (!TransactionIdIsCurrentTransactionId(xvac))
 			{
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_VACUUM_XID_NOT_CURRENT);
-
 				if (TransactionIdIsInProgress(xvac))
-				{
-					WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_VACUUM_XID_IN_PROGRESS);
-
 					return false;
-				}
 				if (TransactionIdDidCommit(xvac))
 				{
 					tuple->t_infomask |= HEAP_XMIN_COMMITTED;
 					markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ true);
-
-					WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMIN_COMMITTED);
 				}
 				else
 				{
 					tuple->t_infomask |= HEAP_XMIN_INVALID;
 					markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ true);
-
-					WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMIN_ABORTED);
-
 					return false;
 				}
 			}
@@ -1674,18 +1435,6 @@ HeapTupleSatisfiesToast_Internal(Relation relation, HeapTupleHeader tuple, Buffe
 
 	/* otherwise assume the tuple is valid for TOAST. */
 	return true;
-}
-
-bool
-HeapTupleSatisfiesToast(Relation relation, ItemPointer tid, HeapTupleHeader tuple, Buffer buffer, char *caller)
-{
-	bool result;
-
-	result = HeapTupleSatisfiesToast_Internal(relation, tuple, buffer);
-
-	WATCH_VISIBILITY_BOOL_TRACE(relation, tid, tuple, "HeapTupleSatisfiesToast", caller, result);
-
-	return result;
 }
 
 /*
@@ -1715,8 +1464,8 @@ HeapTupleSatisfiesToast(Relation relation, ItemPointer tid, HeapTupleHeader tupl
  *	MultiXact includes the current transaction.  Callers that want to
  *	distinguish that case must test for it themselves.)
  */
-static HTSU_Result
-HeapTupleSatisfiesUpdate_Internal(Relation relation, HeapTupleHeader tuple, CommandId curcid,
+HTSU_Result
+HeapTupleSatisfiesUpdate(Relation relation, HeapTupleHeader tuple, CommandId curcid,
 						 Buffer buffer)
 {
 	const bool disableTupleHints = gp_disable_tuple_hints;
@@ -1725,101 +1474,58 @@ HeapTupleSatisfiesUpdate_Internal(Relation relation, HeapTupleHeader tuple, Comm
 
 	if (!(tuple->t_infomask & HEAP_XMIN_COMMITTED))
 	{
-		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_NOT_HINT_COMMITTED);
-
 		if (tuple->t_infomask & HEAP_XMIN_INVALID)
-		{
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_ABORTED);
-
 			return HeapTupleInvisible;
-		}
 
 		if (tuple->t_infomask & HEAP_MOVED_OFF)
 		{
 			TransactionId xvac = HeapTupleHeaderGetXvac(tuple);
 
 			if (TransactionIdIsCurrentTransactionId(xvac))
-			{
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_VACUUM_XID_CURRENT);
-
 				return HeapTupleInvisible;
-			}
 			if (!TransactionIdIsInProgress(xvac))
 			{
 				if (TransactionIdDidCommit(xvac))
 				{
 					tuple->t_infomask |= HEAP_XMIN_INVALID;
 					markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ true);
-
-					WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMIN_VACUUM_MOVED_INVALID);
-
 					return HeapTupleInvisible;
 				}
 				tuple->t_infomask |= HEAP_XMIN_COMMITTED;
 				markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ true);
-
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMIN_COMMITTED);
 			}
 		}
 		else if (tuple->t_infomask & HEAP_MOVED_IN)
 		{
 			TransactionId xvac = HeapTupleHeaderGetXvac(tuple);
 
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_MOVED_IN_BY_VACUUM);
-
 			if (!TransactionIdIsCurrentTransactionId(xvac))
 			{
 				if (TransactionIdIsInProgress(xvac))
-				{
-					WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_VACUUM_XID_IN_PROGRESS);
-
 					return HeapTupleInvisible;
-				}
 				if (TransactionIdDidCommit(xvac))
 				{
 					tuple->t_infomask |= HEAP_XMIN_COMMITTED;
 					markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ true);
-
-					WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMIN_COMMITTED);
 				}
 				else
 				{
 					tuple->t_infomask |= HEAP_XMIN_INVALID;
 					markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ true);
-
-					WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMIN_ABORTED);
-
 					return HeapTupleInvisible;
 				}
 			}
 		}
 		else if (TransactionIdIsCurrentTransactionId(HeapTupleHeaderGetXmin(tuple)))
 		{
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_CURRENT);
-#ifdef WATCH_VISIBILITY_IN_ACTION
-			strcpy(WatchVisibilityXminCurrent, WatchCurrentTransactionString());
-#endif
-
 			if (HeapTupleHeaderGetCmin(tuple) >= curcid)
-			{
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_INSERTED_AFTER_SCAN_STARTED);
-
 				return HeapTupleInvisible;		/* inserted after scan started */
-			}
 
 			if (tuple->t_infomask & HEAP_XMAX_INVALID)	/* xid invalid */
-			{
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMAX_INVALID);
-
 				return HeapTupleMayBeUpdated;
-			}
 
 			if (tuple->t_infomask & HEAP_IS_LOCKED)		/* not deleter */
-			{
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_LOCKED);
-
 				return HeapTupleMayBeUpdated;
-			}
 
 			Assert(!(tuple->t_infomask & HEAP_XMAX_IS_MULTI));
 
@@ -1827,103 +1533,52 @@ HeapTupleSatisfiesUpdate_Internal(Relation relation, HeapTupleHeader tuple, Comm
 			if (TransactionIdDidAbort(HeapTupleHeaderGetXmax(tuple)))
 			{
 				tuple->t_infomask |= HEAP_XMAX_INVALID;
-
-				/* If ComboCID format cid, roll it back to normal Cmin */
-				if (tuple->t_infomask & HEAP_COMBOCID)
-				{
-					HeapTupleHeaderSetCmin(tuple, HeapTupleHeaderGetCmin(tuple));
-				}
-
 				markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ false);
-
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMAX_ABORTED);
-
 				return HeapTupleMayBeUpdated;
 			}
 
 			Assert(TransactionIdIsCurrentTransactionId(HeapTupleHeaderGetXmax(tuple)));
 
 			if (HeapTupleHeaderGetCmax(tuple) >= curcid)
-			{
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_DELETED_AFTER_SCAN_STARTED);
-
 				return HeapTupleSelfUpdated;	/* updated after scan started */
-			}
 			else
-			{
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_DELETED_BEFORE_SCAN_STARTED);
-
 				return HeapTupleInvisible;		/* updated before scan started */
-			}
 		}
-		else 
+		else if (TransactionIdIsInProgress(HeapTupleHeaderGetXmin(tuple)))
+			return HeapTupleInvisible;
+		else if (TransactionIdDidCommit(HeapTupleHeaderGetXmin(tuple)))
 		{
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_NOT_CURRENT);
-#ifdef WATCH_VISIBILITY_IN_ACTION
-			strcpy(WatchVisibilityXminCurrent, WatchCurrentTransactionString());
-#endif
-			
-			if (TransactionIdIsInProgress(HeapTupleHeaderGetXmin(tuple)))
-			{
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_IN_PROGRESS);
-
-				return HeapTupleInvisible;
-			}
-			else if (TransactionIdDidCommit(HeapTupleHeaderGetXmin(tuple)))
-			{
-				tuple->t_infomask |= HEAP_XMIN_COMMITTED;
-				markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ true);
-
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMIN_COMMITTED);
-			}
-			else
-			{
-				/* it must have aborted or crashed */
-				tuple->t_infomask |= HEAP_XMIN_INVALID;
-				markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ true);
-
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMIN_ABORTED);
-
-				return HeapTupleInvisible;
-			}
+			tuple->t_infomask |= HEAP_XMIN_COMMITTED;
+			markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ true);
+		}
+		else
+		{
+			/* it must have aborted or crashed */
+			tuple->t_infomask |= HEAP_XMIN_INVALID;
+			markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ true);
+			return HeapTupleInvisible;
 		}
 	}
 
 	/* by here, the inserting transaction has committed */
 
 	if (tuple->t_infomask & HEAP_XMAX_INVALID)	/* xid invalid or aborted */
-	{
-		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMAX_INVALID_OR_ABORTED);
-
 		return HeapTupleMayBeUpdated;
-	}
 
 	if (tuple->t_infomask & HEAP_XMAX_COMMITTED)
 	{
-		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMAX_HINT_COMMITTED);
-
 		if (tuple->t_infomask & HEAP_IS_LOCKED)
-		{
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_LOCKED);
-
 			return HeapTupleMayBeUpdated;
-		}
 		return HeapTupleUpdated;	/* updated by other */
 	}
 
 	if (tuple->t_infomask & HEAP_XMAX_IS_MULTI)
 	{
-		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMAX_MULTIXACT);
-
 		/* MultiXacts are currently only allowed to lock tuples */
 		Assert(tuple->t_infomask & HEAP_IS_LOCKED);
 
 		if (MultiXactIdIsRunning(HeapTupleHeaderGetXmax(tuple)))
-		{
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMAX_MULTIXACT_RUNNING);
-
 			return HeapTupleBeingUpdated;
-		}
 		tuple->t_infomask |= HEAP_XMAX_INVALID;
 		markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ false);
 		return HeapTupleMayBeUpdated;
@@ -1931,43 +1586,22 @@ HeapTupleSatisfiesUpdate_Internal(Relation relation, HeapTupleHeader tuple, Comm
 
 	if (TransactionIdIsCurrentTransactionId(HeapTupleHeaderGetXmax(tuple)))
 	{
-		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMAX_CURRENT);
-
 		if (tuple->t_infomask & HEAP_IS_LOCKED)
-		{
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_LOCKED);
-
 			return HeapTupleMayBeUpdated;
-		}
 		if (HeapTupleHeaderGetCmax(tuple) >= curcid)
-		{
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_DELETED_AFTER_SCAN_STARTED);
-
 			return HeapTupleSelfUpdated;		/* updated after scan started */
-		}
 		else
-		{
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_DELETED_BEFORE_SCAN_STARTED);
-
 			return HeapTupleInvisible;	/* updated before scan started */
-		}
 	}
 
 	if (TransactionIdIsInProgress(HeapTupleHeaderGetXmax(tuple)))
-	{
-		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMAX_IN_PROGRESS);
-
 		return HeapTupleBeingUpdated;
-	}
 
 	if (!TransactionIdDidCommit(HeapTupleHeaderGetXmax(tuple)))
 	{
 		/* it must have aborted or crashed */
 		tuple->t_infomask |= HEAP_XMAX_INVALID;
 		markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ false);
-
-		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMAX_ABORTED);
-
 		return HeapTupleMayBeUpdated;
 	}
 
@@ -1975,8 +1609,6 @@ HeapTupleSatisfiesUpdate_Internal(Relation relation, HeapTupleHeader tuple, Comm
 
 	if (tuple->t_infomask & HEAP_IS_LOCKED)
 	{
-		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_LOCKED);
-
 		tuple->t_infomask |= HEAP_XMAX_INVALID;
 		markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ false);
 		return HeapTupleMayBeUpdated;
@@ -1984,37 +1616,7 @@ HeapTupleSatisfiesUpdate_Internal(Relation relation, HeapTupleHeader tuple, Comm
 
 	tuple->t_infomask |= HEAP_XMAX_COMMITTED;
 	markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ false);
-
-	WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMAX_COMMITTED);
-
 	return HeapTupleUpdated;	/* updated by other */
-}
-
-HTSU_Result
-HeapTupleSatisfiesUpdate(Relation relation, ItemPointer tid, HeapTupleHeader tuple, CommandId curcid,
-						 Buffer buffer, char *caller)
-{
-	HTSU_Result result;
-
-	result = HeapTupleSatisfiesUpdate_Internal(relation, tuple, curcid, buffer);
-
-	WATCH_VISIBILITY_UPDATE_TRACE(relation, tid, tuple, "HeapTupleSatisfiesUpdate", caller, result);
-
-	return result;
-}
-
-char *
-HeapTupleSatisfiesUpdate_String(HTSU_Result result)
-{
-	switch (result)
-	{
-	case HeapTupleMayBeUpdated:	return "Heap tuple may be updated";
-	case HeapTupleInvisible:	return "Heap tuple invisible";
-	case HeapTupleSelfUpdated:	return "Heap tuple self updated";
-	case HeapTupleUpdated:		return "Heap tuple updated";
-	case HeapTupleBeingUpdated:	return "Heap tuple being updated";
-	default:					return "Heap tuple unknown";
-	}
 }
 
 /*
@@ -2036,8 +1638,8 @@ HeapTupleSatisfiesUpdate_String(HTSU_Result result)
  * committed dead; or to xmin if that transaction is still in progress.
  * Similarly for SnapshotDirty->xmax.
  */
-static bool
-HeapTupleSatisfiesDirty_Internal(Relation relation, HeapTupleHeader tuple, Buffer buffer)
+bool
+HeapTupleSatisfiesDirty(Relation relation, HeapTupleHeader tuple, Buffer buffer)
 {
 	const bool disableTupleHints = gp_disable_tuple_hints;
 
@@ -2047,98 +1649,55 @@ HeapTupleSatisfiesDirty_Internal(Relation relation, HeapTupleHeader tuple, Buffe
 
 	if (!(tuple->t_infomask & HEAP_XMIN_COMMITTED))
 	{
-		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_NOT_HINT_COMMITTED);
-
 		if (tuple->t_infomask & HEAP_XMIN_INVALID)
-		{
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_ABORTED);
-
 			return false;
-		}
 
 		if (tuple->t_infomask & HEAP_MOVED_OFF)
 		{
 			TransactionId xvac = HeapTupleHeaderGetXvac(tuple);
 
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_MOVED_AWAY_BY_VACUUM);
-
 			if (TransactionIdIsCurrentTransactionId(xvac))
-			{
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_VACUUM_XID_CURRENT);
-
 				return false;
-			}
 			if (!TransactionIdIsInProgress(xvac))
 			{
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_VACUUM_XID_NOT_CURRENT);
-
 				if (TransactionIdDidCommit(xvac))
 				{
 					tuple->t_infomask |= HEAP_XMIN_INVALID;
 					markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ true);
-
-					WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMIN_VACUUM_MOVED_INVALID);
-
 					return false;
 				}
 				tuple->t_infomask |= HEAP_XMIN_COMMITTED;
 				markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ true);
-
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMIN_COMMITTED);
 			}
 		}
 		else if (tuple->t_infomask & HEAP_MOVED_IN)
 		{
 			TransactionId xvac = HeapTupleHeaderGetXvac(tuple);
 
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_MOVED_IN_BY_VACUUM);
-
 			if (!TransactionIdIsCurrentTransactionId(xvac))
 			{
 				if (TransactionIdIsInProgress(xvac))
-				{
-					WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_VACUUM_XID_IN_PROGRESS);
-
 					return false;
-				}
 				if (TransactionIdDidCommit(xvac))
 				{
 					tuple->t_infomask |= HEAP_XMIN_COMMITTED;
 					markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ true);
-
-					WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMIN_COMMITTED);
 				}
 				else
 				{
 					tuple->t_infomask |= HEAP_XMIN_INVALID;
 					markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ true);
-
-					WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMIN_ABORTED);
-
 					return false;
 				}
 			}
 		}
 		else if (TransactionIdIsCurrentTransactionId(HeapTupleHeaderGetXmin(tuple)))
 		{
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_CURRENT);
-#ifdef WATCH_VISIBILITY_IN_ACTION
-			strcpy(WatchVisibilityXminCurrent, WatchCurrentTransactionString());
-#endif
-			
 			if (tuple->t_infomask & HEAP_XMAX_INVALID)	/* xid invalid */
-			{
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMAX_INVALID);
-
 				return true;
-			}
 
 			if (tuple->t_infomask & HEAP_IS_LOCKED)		/* not deleter */
-			{
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_LOCKED);
-
 				return true;
-			}
 
 			Assert(!(tuple->t_infomask & HEAP_XMAX_IS_MULTI));
 
@@ -2147,9 +1706,6 @@ HeapTupleSatisfiesDirty_Internal(Relation relation, HeapTupleHeader tuple, Buffe
 			{
 				tuple->t_infomask |= HEAP_XMAX_INVALID;
 				markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ false);
-
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMAX_ABORTED);
-
 				return true;
 			}
 
@@ -2157,67 +1713,40 @@ HeapTupleSatisfiesDirty_Internal(Relation relation, HeapTupleHeader tuple, Buffe
 
 			return false;
 		}
+		else if (TransactionIdIsInProgress(HeapTupleHeaderGetXmin(tuple)))
+		{
+			SnapshotDirty->xmin = HeapTupleHeaderGetXmin(tuple);
+			/* XXX shouldn't we fall through to look at xmax? */
+			return true;		/* in insertion by other */
+		}
+		else if (TransactionIdDidCommit(HeapTupleHeaderGetXmin(tuple)))
+		{
+			tuple->t_infomask |= HEAP_XMIN_COMMITTED;
+			markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ true);
+		}
 		else
 		{
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_NOT_CURRENT);
-#ifdef WATCH_VISIBILITY_IN_ACTION
-			strcpy(WatchVisibilityXminCurrent, WatchCurrentTransactionString());
-#endif
-			
-			if (TransactionIdIsInProgress(HeapTupleHeaderGetXmin(tuple)))
-			{
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_IN_PROGRESS);
-
-				SnapshotDirty->xmin = HeapTupleHeaderGetXmin(tuple);
-				/* XXX shouldn't we fall through to look at xmax? */
-				return true;		/* in insertion by other */
-			}
-			else if (TransactionIdDidCommit(HeapTupleHeaderGetXmin(tuple)))
-			{
-				tuple->t_infomask |= HEAP_XMIN_COMMITTED;
-				markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ true);
-
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMIN_COMMITTED);
-			}
-			else
-			{
-				/* it must have aborted or crashed */
-				tuple->t_infomask |= HEAP_XMIN_INVALID;
-				markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ true);
-
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMIN_ABORTED);
-
-				return false;
-			}
+			/* it must have aborted or crashed */
+			tuple->t_infomask |= HEAP_XMIN_INVALID;
+			markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ true);
+			return false;
 		}
 	}
 
 	/* by here, the inserting transaction has committed */
 
 	if (tuple->t_infomask & HEAP_XMAX_INVALID)	/* xid invalid or aborted */
-	{
-		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMAX_INVALID_OR_ABORTED);
-
 		return true;
-	}
 
 	if (tuple->t_infomask & HEAP_XMAX_COMMITTED)
 	{
-		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMAX_NOT_HINT_COMMITTED);
-
 		if (tuple->t_infomask & HEAP_IS_LOCKED)
-		{
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_LOCKED);
-
 			return true;
-		}
 		return false;			/* updated by other */
 	}
 
 	if (tuple->t_infomask & HEAP_XMAX_IS_MULTI)
 	{
-		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMAX_MULTIXACT);
-
 		/* MultiXacts are currently only allowed to lock tuples */
 		Assert(tuple->t_infomask & HEAP_IS_LOCKED);
 		return true;
@@ -2225,21 +1754,13 @@ HeapTupleSatisfiesDirty_Internal(Relation relation, HeapTupleHeader tuple, Buffe
 
 	if (TransactionIdIsCurrentTransactionId(HeapTupleHeaderGetXmax(tuple)))
 	{
-		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMAX_CURRENT);
-
 		if (tuple->t_infomask & HEAP_IS_LOCKED)
-		{
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_LOCKED);
-
 			return true;
-		}
 		return false;
 	}
 
 	if (TransactionIdIsInProgress(HeapTupleHeaderGetXmax(tuple)))
 	{
-		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMAX_IN_PROGRESS);
-
 		SnapshotDirty->xmax = HeapTupleHeaderGetXmax(tuple);
 		return true;
 	}
@@ -2249,9 +1770,6 @@ HeapTupleSatisfiesDirty_Internal(Relation relation, HeapTupleHeader tuple, Buffe
 		/* it must have aborted or crashed */
 		tuple->t_infomask |= HEAP_XMAX_INVALID;
 		markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ false);
-
-		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMAX_ABORTED);
-
 		return true;
 	}
 
@@ -2259,8 +1777,6 @@ HeapTupleSatisfiesDirty_Internal(Relation relation, HeapTupleHeader tuple, Buffe
 
 	if (tuple->t_infomask & HEAP_IS_LOCKED)
 	{
-		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_LOCKED);
-
 		tuple->t_infomask |= HEAP_XMAX_INVALID;
 		markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ false);
 		return true;
@@ -2268,22 +1784,7 @@ HeapTupleSatisfiesDirty_Internal(Relation relation, HeapTupleHeader tuple, Buffe
 
 	tuple->t_infomask |= HEAP_XMAX_COMMITTED;
 	markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ false);
-
-	WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMAX_COMMITTED);
-
 	return false;				/* updated by other */
-}
-
-bool
-HeapTupleSatisfiesDirty(Relation relation, ItemPointer tid, HeapTupleHeader tuple, Buffer buffer, char *caller)
-{
-	bool result;
-
-	result = HeapTupleSatisfiesDirty_Internal(relation, tuple, buffer);
-
-	WATCH_VISIBILITY_BOOL_TRACE(relation, tid, tuple, "HeapTupleSatisfiesDirty", caller, result);
-
-	return result;
 }
 
 /*
@@ -2307,8 +1808,8 @@ HeapTupleSatisfiesDirty(Relation relation, ItemPointer tid, HeapTupleHeader tupl
  * basis of the true state of the transaction, even if we then pretend we
  * can't see it.)
  */
-static bool
-HeapTupleSatisfiesSnapshot_Internal(Relation relation, HeapTupleHeader tuple, Snapshot snapshot,
+bool
+HeapTupleSatisfiesSnapshot(Relation relation, HeapTupleHeader tuple, Snapshot snapshot,
 						   Buffer buffer)
 {
 	const bool disableTupleHints = gp_disable_tuple_hints;
@@ -2426,13 +1927,6 @@ HeapTupleSatisfiesSnapshot_Internal(Relation relation, HeapTupleHeader tuple, Sn
 			if (TransactionIdDidAbort(HeapTupleHeaderGetXmax(tuple)))
 			{
 				tuple->t_infomask |= HEAP_XMAX_INVALID;
-
-				/* If ComboCID format cid, roll it back to normal Cmin */
-				if (tuple->t_infomask & HEAP_COMBOCID)
-				{
-					HeapTupleHeaderSetCmin(tuple, HeapTupleHeaderGetCmin(tuple));
-				}
-
 				markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ false);
 
 				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMAX_ABORTED);
@@ -2615,18 +2109,6 @@ HeapTupleSatisfiesSnapshot_Internal(Relation relation, HeapTupleHeader tuple, Sn
 	return false;
 }
 
-bool
-HeapTupleSatisfiesSnapshot(Relation relation, ItemPointer tid, HeapTupleHeader tuple, Snapshot snapshot,
-						   Buffer buffer, char *caller)
-{
-	bool result;
-
-	result = HeapTupleSatisfiesSnapshot_Internal(relation, tuple, snapshot, buffer);
-
-	WATCH_VISIBILITY_SNAPSHOT_TRACE(relation, tid, tuple, snapshot, "HeapTupleSatisfiesSnapshot", caller, result);
-
-	return result;
-}
 
 /*
  * HeapTupleSatisfiesVacuum
@@ -2640,8 +2122,8 @@ HeapTupleSatisfiesSnapshot(Relation relation, ItemPointer tid, HeapTupleHeader t
  * still be visible to some open transaction, so we can't remove them,
  * even if we see that the deleting transaction has committed.
  */
-static HTSV_Result
-HeapTupleSatisfiesVacuum_Internal(HeapTupleHeader tuple, TransactionId OldestXmin,
+HTSV_Result
+HeapTupleSatisfiesVacuum(HeapTupleHeader tuple, TransactionId OldestXmin,
 						 Buffer buffer, bool vacuumFull)
 {
 	WATCH_VISIBILITY_CLEAR();
@@ -2654,97 +2136,53 @@ HeapTupleSatisfiesVacuum_Internal(HeapTupleHeader tuple, TransactionId OldestXmi
 	 */
 	if (!(tuple->t_infomask & HEAP_XMIN_COMMITTED))
 	{
-		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_NOT_HINT_COMMITTED);
-
 		if (tuple->t_infomask & HEAP_XMIN_INVALID)
 		{
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_ABORTED);
-
 			return HEAPTUPLE_DEAD;
 		}
 		else if (tuple->t_infomask & HEAP_MOVED_OFF)
 		{
 			TransactionId xvac = HeapTupleHeaderGetXvac(tuple);
 
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_MOVED_AWAY_BY_VACUUM);
-
 			if (TransactionIdIsCurrentTransactionId(xvac))
-			{
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_VACUUM_XID_CURRENT);
-
 				return HEAPTUPLE_DELETE_IN_PROGRESS;
-			}
 			if (TransactionIdIsInProgress(xvac))
-			{
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_VACUUM_XID_IN_PROGRESS);
-
 				return HEAPTUPLE_DELETE_IN_PROGRESS;
-			}
 			if (TransactionIdDidCommit(xvac))
 			{
 				tuple->t_infomask |= HEAP_XMIN_INVALID;
 				SetBufferCommitInfoNeedsSave(buffer);
-				
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMIN_VACUUM_MOVED_INVALID);
-				
 				return HEAPTUPLE_DEAD;
 			}
 			tuple->t_infomask |= HEAP_XMIN_COMMITTED;
 			SetBufferCommitInfoNeedsSave(buffer);
-			
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMIN_COMMITTED);
 		}
 		else if (tuple->t_infomask & HEAP_MOVED_IN)
 		{
 			TransactionId xvac = HeapTupleHeaderGetXvac(tuple);
 
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_MOVED_IN_BY_VACUUM);
-
 			if (TransactionIdIsCurrentTransactionId(xvac))
-			{
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_VACUUM_XID_CURRENT);
-
 				return HEAPTUPLE_INSERT_IN_PROGRESS;
-			}
 			if (TransactionIdIsInProgress(xvac))
-			{
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_VACUUM_XID_IN_PROGRESS);
-
 				return HEAPTUPLE_INSERT_IN_PROGRESS;
-			}
 			if (TransactionIdDidCommit(xvac))
 			{
 				tuple->t_infomask |= HEAP_XMIN_COMMITTED;
 				SetBufferCommitInfoNeedsSave(buffer);
-				
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMIN_COMMITTED);
 			}
 			else
 			{
 				tuple->t_infomask |= HEAP_XMIN_INVALID;
 				SetBufferCommitInfoNeedsSave(buffer);
-				
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMIN_ABORTED);
-				
 				return HEAPTUPLE_DEAD;
 			}
 		}
 		else if (TransactionIdIsInProgress(HeapTupleHeaderGetXmin(tuple)))
 		{
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_IN_PROGRESS);
-			
 			if (tuple->t_infomask & HEAP_XMAX_INVALID)	/* xid invalid */
-			{
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMAX_INVALID);
-
 				return HEAPTUPLE_INSERT_IN_PROGRESS;
-			}
 			if (tuple->t_infomask & HEAP_IS_LOCKED)
-			{
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_LOCKED);
-
 				return HEAPTUPLE_INSERT_IN_PROGRESS;
-			}
 			/* inserted and then deleted by same xact */
 			return HEAPTUPLE_DELETE_IN_PROGRESS;
 		}
@@ -2752,8 +2190,6 @@ HeapTupleSatisfiesVacuum_Internal(HeapTupleHeader tuple, TransactionId OldestXmi
 		{
 			tuple->t_infomask |= HEAP_XMIN_COMMITTED;
 			SetBufferCommitInfoNeedsSave(buffer);
-			
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMIN_COMMITTED);
 		}
 		else
 		{
@@ -2762,9 +2198,6 @@ HeapTupleSatisfiesVacuum_Internal(HeapTupleHeader tuple, TransactionId OldestXmi
 			 */
 			tuple->t_infomask |= HEAP_XMIN_INVALID;
 			SetBufferCommitInfoNeedsSave(buffer);
-				
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMIN_ABORTED);
-
 			return HEAPTUPLE_DEAD;
 		}
 		/* Should only get here if we set XMIN_COMMITTED */
@@ -2776,16 +2209,10 @@ HeapTupleSatisfiesVacuum_Internal(HeapTupleHeader tuple, TransactionId OldestXmi
 	 * about the deleting transaction?
 	 */
 	if (tuple->t_infomask & HEAP_XMAX_INVALID)
-	{
-		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMAX_INVALID_OR_ABORTED);
-
 		return HEAPTUPLE_LIVE;
-	}
 
 	if (tuple->t_infomask & HEAP_IS_LOCKED)
 	{
-		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_LOCKED);
-
 		/*
 		 * "Deleting" xact really only locked it, so the tuple is live in any
 		 * case.  However, we should make sure that either XMAX_COMMITTED or
@@ -2796,27 +2223,15 @@ HeapTupleSatisfiesVacuum_Internal(HeapTupleHeader tuple, TransactionId OldestXmi
 		 */
 		if (!(tuple->t_infomask & HEAP_XMAX_COMMITTED))
 		{
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMAX_NOT_HINT_COMMITTED);
-
 			if (tuple->t_infomask & HEAP_XMAX_IS_MULTI)
 			{
-				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMAX_MULTIXACT);
-
 				if (MultiXactIdIsRunning(HeapTupleHeaderGetXmax(tuple)))
-				{
-					WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMAX_MULTIXACT_RUNNING);
-
 					return HEAPTUPLE_LIVE;
-				}
 			}
 			else
 			{
 				if (TransactionIdIsInProgress(HeapTupleHeaderGetXmax(tuple)))
-				{
-					WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMAX_IN_PROGRESS);
-					
 					return HEAPTUPLE_LIVE;
-				}
 			}
 
 			/*
@@ -2826,18 +2241,12 @@ HeapTupleSatisfiesVacuum_Internal(HeapTupleHeader tuple, TransactionId OldestXmi
 			 */
 			tuple->t_infomask |= HEAP_XMAX_INVALID;
 			SetBufferCommitInfoNeedsSave(buffer);
-
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMAX_ABORTED);
-
 		}
-
 		return HEAPTUPLE_LIVE;
 	}
 
 	if (tuple->t_infomask & HEAP_XMAX_IS_MULTI)
 	{
-		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMAX_MULTIXACT);
-		
 		/* MultiXacts are currently only allowed to lock tuples */
 		Assert(tuple->t_infomask & HEAP_IS_LOCKED);
 		return HEAPTUPLE_LIVE;
@@ -2845,20 +2254,14 @@ HeapTupleSatisfiesVacuum_Internal(HeapTupleHeader tuple, TransactionId OldestXmi
 
 	if (!(tuple->t_infomask & HEAP_XMAX_COMMITTED))
 	{
-		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMAX_NOT_HINT_COMMITTED);
-
 		if (TransactionIdIsInProgress(HeapTupleHeaderGetXmax(tuple)))
 		{
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMAX_IN_PROGRESS);
-			
 			return HEAPTUPLE_DELETE_IN_PROGRESS;
 		}
 		else if (TransactionIdDidCommit(HeapTupleHeaderGetXmax(tuple)))
 		{
 			tuple->t_infomask |= HEAP_XMAX_COMMITTED;
 			SetBufferCommitInfoNeedsSave(buffer);
-
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMAX_COMMITTED);
 		}
 		else
 		{
@@ -2867,9 +2270,6 @@ HeapTupleSatisfiesVacuum_Internal(HeapTupleHeader tuple, TransactionId OldestXmi
 			 */
 			tuple->t_infomask |= HEAP_XMAX_INVALID;
 			SetBufferCommitInfoNeedsSave(buffer);
-
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMAX_ABORTED);
-
 			return HEAPTUPLE_LIVE;
 		}
 		/* Should only get here if we set XMAX_COMMITTED */
@@ -2890,50 +2290,17 @@ HeapTupleSatisfiesVacuum_Internal(HeapTupleHeader tuple, TransactionId OldestXmi
 		 * mustn't go away before the parent does.
 		 */
 		if (!(tuple->t_infomask & HEAP_UPDATED))
-		{
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_UPDATED);
-
 			return HEAPTUPLE_DEAD;
-		}
 	}
 
 	if (!TransactionIdPrecedes(HeapTupleHeaderGetXmax(tuple), OldestXmin))
 	{
-		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMAX_PRECEEDS_OLDEST_XMIN);
-		
 		/* deleting xact is too recent, tuple could still be visible */
 		return HEAPTUPLE_RECENTLY_DEAD;
 	}
 
 	/* Otherwise, it's dead and removable */
 	return HEAPTUPLE_DEAD;
-}
-
-HTSV_Result
-HeapTupleSatisfiesVacuum(Relation relation, ItemPointer tid, HeapTupleHeader tuple, TransactionId OldestXmin,
-						 Buffer buffer, bool vacuumFull, char *caller)
-{
-	HTSV_Result result;
-
-	result = HeapTupleSatisfiesVacuum_Internal(tuple, OldestXmin, buffer, vacuumFull);
-
-	WATCH_VISIBILITY_VACUUM_TRACE(relation, tid, tuple, "HeapTupleSatisfiesVacuum", caller, result);
-
-	return result;
-}
-
-char *
-HeapTupleSatisfiesVacuum_String(HTSV_Result result)
-{
-	switch (result)
-	{
-	case HEAPTUPLE_DEAD:				return "Heap tuple dead";
-	case HEAPTUPLE_LIVE:				return "Heap tuple live";
-	case HEAPTUPLE_RECENTLY_DEAD:		return "Heap tuple recently dead";
-	case HEAPTUPLE_INSERT_IN_PROGRESS:	return "Heap tuple insert in progress";
-	case HEAPTUPLE_DELETE_IN_PROGRESS:	return "Heap tuple delete in progress";
-	default:							return "Heap tuple unknown";
-	}
 }
 
 /*
@@ -3460,8 +2827,9 @@ static char WatchVisibilityBuffer[2000];
 
 char *
 WatchVisibilityInActionString(
-	ItemPointer		tid,
-	HeapTupleHeader	tupleHeader,
+	BlockNumber 	page,
+	OffsetNumber 	lineoff,
+	HeapTuple		tuple,
 	Snapshot		snapshot)
 {
 	int b;
@@ -3475,9 +2843,7 @@ WatchVisibilityInActionString(
 	char *snapshotStr = NULL;
 	bool atLeastOne = false;
 
-	if (snapshot == NULL)
-		snapshotStr = NULL;
-	else if (snapshot == SnapshotNow)
+	if (snapshot == SnapshotNow)
 		snapshotStr = "SnapshotNow";
 	else if (snapshot == SnapshotSelf)
 		snapshotStr = "SnapshotSelf";
@@ -3493,8 +2859,6 @@ WatchVisibilityInActionString(
 			snapshotStr = "LatestSnapshot";
 		else if (snapshot == SerializableSnapshot)
 			snapshotStr = "SerializableSnapshot";
-		else if (snapshot == ActiveSnapshot)
-			snapshotStr = "ActiveSnapshot";
 		else
 			snapshotStr = "OtherSnapshot";
 
@@ -3510,20 +2874,11 @@ WatchVisibilityInActionString(
 		}
 	}
 
-	count += sprintf(&WatchVisibilityBuffer[count],"TID %s", ItemPointerToString(tid));
-	count += sprintf(&WatchVisibilityBuffer[count]," CTID %s", ItemPointerToString(&tupleHeader->t_ctid));
-	count += sprintf(&WatchVisibilityBuffer[count]," xmin %u, xmax %u",
-		             HeapTupleHeaderGetXmin(tupleHeader),
-		             HeapTupleHeaderGetXmax(tupleHeader));
-	if (snapshot != NULL)
-	{
-		count += sprintf(&WatchVisibilityBuffer[count]," %s: ",
-		             	 snapshotStr);
-	}
-	else
-	{
-		count += sprintf(&WatchVisibilityBuffer[count],": ");
-	}
+	count += sprintf(&WatchVisibilityBuffer[count],"(%u,%u)", page, lineoff);
+	count += sprintf(&WatchVisibilityBuffer[count]," xmin %u, xmax %u, %s: ",
+		             HeapTupleHeaderGetXmin(tuple->t_data),
+		             HeapTupleHeaderGetXmax(tuple->t_data),
+		             snapshotStr);
 
 	if (WatchVisibilityAllZeros())
 	{
@@ -3589,12 +2944,6 @@ WatchVisibilityInActionString(
 				case WATCH_VISIBILITY_LOCKED:
 					count += sprintf(&WatchVisibilityBuffer[count],"Locked");
 					break;
-				case WATCH_VISIBILITY_UPDATED:
-					count += sprintf(&WatchVisibilityBuffer[count],"Updated");
-					break;
-				case WATCH_VISIBILITY_XMAX_PRECEEDS_OLDEST_XMIN:
-					count += sprintf(&WatchVisibilityBuffer[count],"xmax preceeds oldest xmin");
-					break;
 				case WATCH_VISIBILITY_SET_XMAX_ABORTED:
 					count += sprintf(&WatchVisibilityBuffer[count],"Set xmax aborted");
 					break;
@@ -3615,9 +2964,6 @@ WatchVisibilityInActionString(
 					break;
 				case WATCH_VISIBILITY_XMAX_MULTIXACT:
 					count += sprintf(&WatchVisibilityBuffer[count],"Xmax multixact");
-					break;
-				case WATCH_VISIBILITY_XMAX_MULTIXACT_RUNNING:
-					count += sprintf(&WatchVisibilityBuffer[count],"Xmax multixact running");
 					break;
 				case WATCH_VISIBILITY_XMAX_NOT_HINT_COMMITTED:
 					count += sprintf(&WatchVisibilityBuffer[count],"Xmax not hint committed");

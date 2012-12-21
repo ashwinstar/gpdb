@@ -25,6 +25,18 @@ extern void ExecIndexRestrPos(IndexScanState *node);
 extern void ExecIndexReScan(IndexScanState *node, ExprContext *exprCtxt);
 extern void ExecEagerFreeIndexScan(IndexScanState *node);
 
+/* routines exported to share code with nodeBitmapIndexscan.c */
+extern void ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
+					   List *quals, List *strategies, List *subtypes,
+					   ScanKey *scanKeys, int *numScanKeys,
+					   IndexRuntimeKeyInfo **runtimeKeys, int *numRuntimeKeys,
+					   IndexArrayKeyInfo **arrayKeys, int *numArrayKeys);
+extern void ExecIndexEvalRuntimeKeys(ExprContext *econtext,
+					   IndexRuntimeKeyInfo *runtimeKeys, int numRuntimeKeys);
+extern bool ExecIndexEvalArrayKeys(ExprContext *econtext,
+					   IndexArrayKeyInfo *arrayKeys, int numArrayKeys);
+extern bool ExecIndexAdvanceArrayKeys(IndexArrayKeyInfo *arrayKeys, int numArrayKeys);
+
 enum {
 	GPMON_INDEXSCAN_RESTOREPOS = GPMON_QEXEC_M_NODE_START,
 	GPMON_INDEXSCAN_RESCAN,

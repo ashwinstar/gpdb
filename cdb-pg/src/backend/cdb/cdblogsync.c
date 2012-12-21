@@ -157,21 +157,19 @@ openXlogEnd(XLogRecPtr *endLocation)
 	char		path[MAXPGPATH];
 	uint32		logid;
 	uint32		seg;
-	char		*xlogDir = NULL;
 
 	XLByteToSeg(*endLocation, logid, seg);
 	XLogFileName(xlogfilename, ThisTimeLineID, logid, seg);
 	elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "QDSYNC: opening logid %d seg %d file %s",
 		 logid, seg, xlogfilename);
 
-	xlogDir = makeRelativeToTxnFilespace(XLOGDIR);
 	/* the first time or file is changed */
-	if (snprintf(path, MAXPGPATH, "%s/%s", xlogDir, xlogfilename) >= MAXPGPATH)
+	if (snprintf(path, MAXPGPATH, "%s/%s", XLOGDIR, xlogfilename) >= MAXPGPATH)
 	{
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("QDSYNC: could not create xlog file \"%s/%s\"",
-						xlogDir, xlogfilename)));
+						XLOGDIR, xlogfilename)));
 	}
 
 	if (xlogfilefd >= 0)
@@ -201,8 +199,6 @@ openXlogEnd(XLogRecPtr *endLocation)
 
 	elog((Debug_print_qd_mirroring ? LOG : DEBUG5),"QDSYNC: opened '%s' offset 0x%X",
 		 xlogfilename, xlogfileoffset);
-
-	pfree(xlogDir);
 }
 
 static void
@@ -380,18 +376,12 @@ createZeroFilledNewFile(char *path)
 	int         fd;
 	char		zbuffer[XLOG_BLCKSZ];
 	int         nbytes;
-	char 		*xlogDir = NULL;
 	
 	/*
 	 * Initialize an empty (all zeroes) segment.
 	 */
-	xlogDir = makeRelativeToTxnFilespace(XLOGDIR);
-	if (snprintf(tmppath, MAXPGPATH, "%s/xlogtemp.%d", xlogDir, (int) getpid()) > MAXPGPATH)
-	{
-		ereport(ERROR, (errmsg("cannot generate dir path %s/xlogtemp.%d", xlogDir, (int) getpid())));
-	}
+	snprintf(tmppath, MAXPGPATH, XLOGDIR "/xlogtemp.%d", (int) getpid());
 
-	pfree(xlogDir);
 	unlink(tmppath);
 
 	/* do not use XLOG_SYNC_BIT here --- want to fsync only at end of fill */
@@ -476,24 +466,19 @@ static void
 openXlogNextFile(void)
 {
 	char		path[MAXPGPATH];
-	char		*xlogDir = NULL;
 
 	XLogFileName(xlogfilename, ThisTimeLineID, xlogid, xseg);
 	elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "QDSYNC: opening next logid %d seg %d file %s",
 		 xlogid, xseg, xlogfilename);
 
-	xlogDir = makeRelativeToTxnFilespace(XLOGDIR);
-
 	/* the first time or file is changed */
-	if (snprintf(path, MAXPGPATH, "%s/%s", xlogDir, xlogfilename) >= MAXPGPATH)
+	if (snprintf(path, MAXPGPATH, "%s/%s", XLOGDIR, xlogfilename) >= MAXPGPATH)
 	{
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("QDSYNC: could not create xlog file \"%s/%s\"",
-						xlogDir, xlogfilename)));
+						XLOGDIR, xlogfilename)));
 	}
-
-	pfree(xlogDir);
 
 	xlogfilefd = open(path, O_RDWR, 0);
 	if (xlogfilefd < 0)

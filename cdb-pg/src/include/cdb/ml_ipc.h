@@ -220,7 +220,7 @@ extern void readPacket(MotionConn *conn, bool inTeardown);
  * allows us to "keep" a buffer held for a connection, to avoid a copy
  * (see inplace in chunklist).
  */
-extern void  MlPutRxBuffer(ChunkTransportState *transportStates, int motNodeID, int route);
+extern void  ml_put_rx_buffer(ChunkTransportState *transportStates, int motNodeID, int route);
 
 #define getChunkTransportState(transportState, motNodeID, ppEntry) \
 	do { \

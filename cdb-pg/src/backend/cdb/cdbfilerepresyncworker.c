@@ -808,34 +808,6 @@ FileRepPrimary_ResyncBufferPoolIncrementalWrite(ChangeTrackingRequest *request)
 		{
 			Assert(request->count == 1);
 			request->entries[0].lsn_start = result->next_start_lsn;
-
-			if(Debug_filerep_print)
-			{
-				elog(LOG,
-						 "ask_for_more flag is true '%u/%u/%u'  next_start_lsn '%s(%u/%u)' ",
-						 smgr_relation->smgr_rnode.spcNode,
-						 smgr_relation->smgr_rnode.dbNode,
-						 smgr_relation->smgr_rnode.relNode,
-						 XLogLocationToString(&result->next_start_lsn),
-						 result->next_start_lsn.xlogid,
-						 result->next_start_lsn.xrecoff);
-			}
-			else
-			{
-				char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
-
-				snprintf(tmpBuf, sizeof(tmpBuf),
-						"ask_for_more flag is true '%u/%u/%u'  next_start_lsn '%s(%u/%u)' ",
-						 smgr_relation->smgr_rnode.spcNode,
-						 smgr_relation->smgr_rnode.dbNode,
-						 smgr_relation->smgr_rnode.relNode,
-						 XLogLocationToString(&result->next_start_lsn),
-						 result->next_start_lsn.xlogid,
-						 result->next_start_lsn.xrecoff);
-
-				FileRep_InsertConfigLogEntry(tmpBuf);
-			}
-
 		}
 		else
 		{

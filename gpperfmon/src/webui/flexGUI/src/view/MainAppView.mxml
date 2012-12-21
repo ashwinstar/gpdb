@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:VBox 
+	xmlns:mx="http://www.adobe.com/2006/mxml" 
+	width="100%" height="100%" 
+	xmlns:view="view.*"
+	xmlns:healthTab="view.healthTab.*"
+	paddingTop="2" paddingBottom="4"
+	paddingLeft="2" paddingRight="2" verticalGap="0"
+	creationComplete="initComp()">
+	
+<mx:Script>
+<![CDATA[
+	import flash.net.navigateToURL;
+	
+    import model.GPPerfMonModelLocator;
+  	import mx.events.CloseEvent;
+  	import mx.controls.Alert;	
+  	import model.Resources;
+  	import view.healthTab.Top_HealthTabView;
+  	
+  			
+  	[Bindable]
+	public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();	
+	private var debugModeActive:Boolean = false;
+	
+	
+	// Stores keystrokes entered into the about box
+	private var aboutKeys:String = '';
+	
+	private function initComp():void
+	{
+		if (Resources.instance.appliance) {
+			var healthTabView:Top_HealthTabView = new Top_HealthTabView;
+			healthTabView.label = "HEALTH";
+			mainTab.addChild(healthTabView);
+		}
+	}
+	
+    private function tryLogout():void 
+	{
+		var a:Alert = Alert.show("Are you sure you want to logout?", "Logout", 
+			Alert.YES|Alert.NO, this, logoutHandler, Resources.confirmIcon, Alert.NO);
+			
+		// modify the look of the Alert box
+		a.setStyle("backgroundColor", 0xffffff);
+		a.setStyle("backgroundAlpha", 0.75);
+		a.setStyle("borderColor", 0xefffe0);
+		a.setStyle("borderAlpha", 0.90);
+		a.setStyle("color", 0x000000); // text color
+	}
+	 
+	private function logoutHandler(event:CloseEvent):void
+  	{
+  		if (event.detail==Alert.YES)
+  		{
+    		mdl.session.logout()
+    	}
+  	}
+  	
+  	// Receives characters in the about box
+  	// - for turning on special modes
+  	private function aboutKeyListener(keyEvent:KeyboardEvent):void
+  	{
+  		aboutKeys += String.fromCharCode(keyEvent.charCode);
+  		if (aboutKeys == 'debug')
+		{
+  			enableDebugMode();
+			memoryMonitor(true);
+		}
+  	}
+  	
+	public function memoryMonitor(show:Boolean=true):void
+	{
+		memoryUsedLbl.visible = show;
+		memoryUsedTxt.visible = show;
+		if(show)
+		{
+			addEventListener(Event.ENTER_FRAME, displayMemory);
+		}
+		else
+		{
+			removeEventListener(Event.ENTER_FRAME, displayMemory);
+		}
+	}
+	
+	public function displayMemory(event:Event):void
+	{
+		var memory:String = Number(System.totalMemory/1024/1024).toFixed(2)+" <b>Mb</b>";
+		memoryUsedTxt.htmlText = memory;
+	}
+	
+  	private function aboutBox():void 
+	{
+		var str:String = "Greenplum Performance Monitor\n\n" + 
+					     Resources.instance.versionString + "\n\n" +
+					     Resources.copyright2;
+					  
+		var a:Alert = Alert.show(str, "About", Alert.OK, this, null, Resources.gp_logo_sml);
+			
+		// modify the look of the Alert box
+		a.setStyle("backgroundColor", 0xffffff);
+		a.setStyle("backgroundAlpha", 0.75);
+		a.setStyle("borderColor", 0xefffe0);
+		a.setStyle("borderAlpha", 0.90);
+		a.setStyle("color", 0x000000); // text color
+		
+		aboutKeys = '';
+		a.addEventListener(KeyboardEvent.KEY_DOWN, aboutKeyListener);
+	}
+  	
+  	private function toggleMainTab(event:Event):void
+  	{
+  		mdl.nav.mainPageIndex = mainTab.selectedIndex;
+  		
+  		// Handle pausing or resuming of query plan requests based on page
+  		if (mainTab.selectedIndex == 2 && mdl.nav.queryTabPage == 4)
+  			mdl.queries.resumeQueryPlan();
+  		else
+  			mdl.queries.pauseQueryPlan();
+  	}
+  	
+  	public function enableDebugMode():void
+  	{
+  		if (!debugModeActive)
+  		{
+  			var debugView:DebugView = new DebugView();
+  			debugView.label = "DEBUG";
+  			mainTab.addChild(debugView);
+  			debugModeActive = true;
+  		}
+  	}
+  	
+  	private function switchToHelpPage(event:MouseEvent):void
+  	{
+  		var urlStr:String = (Resources.instance.appliance) ? Resources.helpApplianceURL : Resources.helpGpdbURL ;
+  		var url:URLRequest = new URLRequest(urlStr);
+  		navigateToURL(url,"_blank");
+  	
+  	}// end of switchToHelpPage
+  	
+]]>   	
+</mx:Script>
+	
+	<mx:Canvas width="100%" height="100%">
+		<mx:VBox width="100%" height="100%" verticalGap="8" x="{header.x}" y="{header.y + header.height}">
+			<mx:Canvas width="100%" height="100%" minHeight="100">
+				<mx:TabNavigator id="mainTab" width="100%" height="100%" styleName="mainTabNavigator" x="0" y="8"
+					 selectedIndex="{mdl.nav.mainPageIndex}"
+					 change="toggleMainTab(event)">
+					<view:Top_DashboardView label="DASHBOARD"/>
+					<view:Top_SystemMetricsView label="SYSTEM METRICS"/>
+					<view:Top_QueryMonitorView label="QUERY MONITOR"/>
+				</mx:TabNavigator>
+			</mx:Canvas>
+	
+			<mx:HBox width="100%" verticalAlign="middle" paddingLeft="5" paddingRight="5" verticalGap="0"
+		   			 paddingTop="2" paddingBottom="2"
+		   			 backgroundColor="0xFFFFFF" borderColor="0xFFFFFF" dropShadowEnabled="true"
+		   			 borderThickness="0" borderStyle="solid" cornerRadius="6"
+		   			 styleName="footerText" minWidth="0" 
+		   			 horizontalScrollPolicy="off" verticalScrollPolicy="off">
+				<mx:HBox width="50%">
+					<mx:Label text="{Resources.copyrightShort}"/>
+				</mx:HBox>
+				<mx:Label styleName="mainSubTitle"  text="Greenplum Performance Monitor"/>	
+				<mx:HBox width="50%">
+				</mx:HBox>
+			</mx:HBox>
+		</mx:VBox>
+		
+		<mx:HBox width="100%" height="46" verticalAlign="middle" paddingLeft="5" paddingRight="2" verticalGap="0"
+		   			 paddingTop="2" paddingBottom="2" x="0" y="0" id="header"
+		   			 backgroundColor="0xFFFFFF" borderColor="0xFFFFFF" dropShadowEnabled="true"
+		   			 borderThickness="0" borderStyle="solid" cornerRadius="6"
+		   			 minWidth="0" 
+		   			 horizontalScrollPolicy="off" verticalScrollPolicy="off">
+		   	<mx:HBox width="50%" horizontalAlign="left">
+				<mx:Image source="{Resources.gp_logo_sml}" scaleContent="false"/>
+		   	</mx:HBox>
+			<mx:Label styleName="mainTitle" text="{mdl.session.databaseName}"/>			
+		   	<mx:HBox width="50%" horizontalAlign="right" verticalAlign="middle">
+				<mx:Label id="memoryUsedLbl" text="Memory:" color="red" fontWeight="bold" visible="false"/>
+				<mx:Text id="memoryUsedTxt" visible="false"/>
+				<mx:Label text="{'Welcome ' + mdl.session.username}" id="greetingLabel" fontSize="9"/>
+				<mx:LinkButton label="Logout" click="tryLogout()" fontSize="9"/>
+				<mx:LinkButton label="About" click="aboutBox()" fontSize="9"/>
+				<mx:LinkButton label="Help" fontSize="9" click="switchToHelpPage(event)" />
+		   	</mx:HBox>
+		</mx:HBox>
+	</mx:Canvas>
+	
+</mx:VBox>

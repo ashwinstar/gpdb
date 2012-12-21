@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:VBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%">
+  <mx:DataGrid width="100%" height="100%" selectable="false"
+	dataProvider="{mdl.system.selectedDataDetails.host}">
+    <mx:Script>
+        <![CDATA[
+		import model.GPPerfMonModelLocator;
+			
+		[Bindable]
+		public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();
+
+        ]]>
+    </mx:Script>
+
+	<mx:columns>
+	  <mx:DataGridColumn headerText="Server" dataField="@name" width="250"/>
+	  <mx:DataGridColumn headerText="CPU User %" dataField="cpu_user"/>
+	  <mx:DataGridColumn headerText="CPU System %" dataField="cpu_sys"/>
+	  <mx:DataGridColumn headerText="CPU Idle %" dataField="cpu_idle"/>	
+	  <mx:DataGridColumn headerText="Load 0" dataField="load0"/>
+	  <mx:DataGridColumn headerText="Load 1" dataField="load1"/>
+	  <mx:DataGridColumn headerText="Load 2" dataField="load2"/>				
+	</mx:columns>	
+  </mx:DataGrid>
+</mx:VBox>

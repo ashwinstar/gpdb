@@ -14,7 +14,6 @@
  */
 #include "postgres.h"
 
-#include "access/catquery.h"
 #include "access/heapam.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
@@ -177,9 +176,6 @@ RenameConversion(List *name, const char *newname)
 	HeapTuple	tup;
 	Relation	rel;
 	AclResult	aclresult;
-	cqContext	cqc2;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
 
 	rel = heap_open(ConversionRelationId, RowExclusiveLock);
 
@@ -190,34 +186,23 @@ RenameConversion(List *name, const char *newname)
 				 errmsg("conversion \"%s\" does not exist",
 						NameListToString(name))));
 
-	pcqCtx = caql_addrel(cqclr(&cqc), rel);
-
-	tup = caql_getfirst(
-			pcqCtx,
-			cql("SELECT * FROM pg_conversion "
-				" WHERE oid = :1 "
-				" FOR UPDATE ",
-				ObjectIdGetDatum(conversionOid)));
-
+	tup = SearchSysCacheCopy(CONOID,
+							 ObjectIdGetDatum(conversionOid),
+							 0, 0, 0);
 	if (!HeapTupleIsValid(tup)) /* should not happen */
 		elog(ERROR, "cache lookup failed for conversion %u", conversionOid);
 
 	namespaceOid = ((Form_pg_conversion) GETSTRUCT(tup))->connamespace;
 
 	/* make sure the new name doesn't exist */
-	if (caql_getcount(
-				caql_addrel(cqclr(&cqc2), rel),
-				cql("SELECT COUNT(*) FROM pg_conversion "
-					" WHERE conname = :1 "
-					" AND connamespace = :2 ",
-					CStringGetDatum((char *) newname),
-					ObjectIdGetDatum(namespaceOid))))
-	{
+	if (SearchSysCacheExists(CONNAMENSP,
+							 CStringGetDatum((char *) newname),
+							 ObjectIdGetDatum(namespaceOid),
+							 0, 0))
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),
 				 errmsg("conversion \"%s\" already exists in schema \"%s\"",
 						newname, get_namespace_name(namespaceOid))));
-	}
 
 	/* must be owner */
 	if (!pg_conversion_ownercheck(conversionOid, GetUserId()))
@@ -232,7 +217,8 @@ RenameConversion(List *name, const char *newname)
 
 	/* rename */
 	namestrcpy(&(((Form_pg_conversion) GETSTRUCT(tup))->conname), newname);
-	caql_update_current(pcqCtx, tup); /* implicit update of index as well */
+	simple_heap_update(rel, &tup->t_self, tup);
+	CatalogUpdateIndexes(rel, tup);
 
 	heap_close(rel, NoLock);
 	heap_freetuple(tup);
@@ -287,20 +273,12 @@ AlterConversionOwner_internal(Relation rel, Oid conversionOid, Oid newOwnerId)
 {
 	Form_pg_conversion convForm;
 	HeapTuple	tup;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
 
 	Assert(RelationGetRelid(rel) == ConversionRelationId);
 
-	pcqCtx = caql_addrel(cqclr(&cqc), rel);
-
-	tup = caql_getfirst(
-			pcqCtx,
-			cql("SELECT * FROM pg_conversion "
-				" WHERE oid = :1 "
-				" FOR UPDATE ",
-				ObjectIdGetDatum(conversionOid)));
-
+	tup = SearchSysCacheCopy(CONOID,
+							 ObjectIdGetDatum(conversionOid),
+							 0, 0, 0);
 	if (!HeapTupleIsValid(tup)) /* should not happen */
 		elog(ERROR, "cache lookup failed for conversion %u", conversionOid);
 
@@ -310,44 +288,43 @@ AlterConversionOwner_internal(Relation rel, Oid conversionOid, Oid newOwnerId)
 	 * If the new owner is the same as the existing owner, consider the
 	 * command to have succeeded.  This is for dump restoration purposes.
 	 */
-	if (convForm->conowner == newOwnerId)
+	if (convForm->conowner != newOwnerId)
 	{
-		heap_freetuple(tup);
-		return;
-	}
+		AclResult	aclresult;
 
-	AclResult	aclresult;
-
-	/* Superusers can always do it */
-	if (!superuser())
-	{
-		/* Otherwise, must be owner of the existing object */
-		if (!pg_conversion_ownercheck(HeapTupleGetOid(tup), GetUserId()))
+		/* Superusers can always do it */
+		if (!superuser())
+		{
+			/* Otherwise, must be owner of the existing object */
+			if (!pg_conversion_ownercheck(HeapTupleGetOid(tup), GetUserId()))
 				aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CONVERSION,
 							   NameStr(convForm->conname));
 
-		/* Must be able to become new owner */
-		check_is_member_of_role(GetUserId(), newOwnerId);
+			/* Must be able to become new owner */
+			check_is_member_of_role(GetUserId(), newOwnerId);
 
-		/* New owner must have CREATE privilege on namespace */
-		aclresult = pg_namespace_aclcheck(convForm->connamespace,
-										  newOwnerId,
-										  ACL_CREATE);
-		if (aclresult != ACLCHECK_OK)
-			aclcheck_error(aclresult, ACL_KIND_NAMESPACE,
-						   get_namespace_name(convForm->connamespace));
-	}
+			/* New owner must have CREATE privilege on namespace */
+			aclresult = pg_namespace_aclcheck(convForm->connamespace,
+											  newOwnerId,
+											  ACL_CREATE);
+			if (aclresult != ACLCHECK_OK)
+				aclcheck_error(aclresult, ACL_KIND_NAMESPACE,
+							   get_namespace_name(convForm->connamespace));
+		}
 
-	/*
-	 * Modify the owner --- okay to scribble on tup because it's a copy
-	 */
-	convForm->conowner = newOwnerId;
+		/*
+		 * Modify the owner --- okay to scribble on tup because it's a copy
+		 */
+		convForm->conowner = newOwnerId;
 
-	caql_update_current(pcqCtx, tup); /* implicit update of index as well */
+		simple_heap_update(rel, &tup->t_self, tup);
 
-	/* Update owner dependency reference */
-	changeDependencyOnOwner(ConversionRelationId, conversionOid,
+		CatalogUpdateIndexes(rel, tup);
+
+		/* Update owner dependency reference */
+		changeDependencyOnOwner(ConversionRelationId, conversionOid,
 								newOwnerId);
+	}
 
 	heap_freetuple(tup);
 }

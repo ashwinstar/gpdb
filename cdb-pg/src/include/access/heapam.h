@@ -129,7 +129,7 @@ extern void RelationFetchGpRelationNodeForXLog_Index(Relation relation);
 inline static void RelationFetchGpRelationNodeForXLog(
 	Relation		relation)
 {
-	if (!InRecovery && !relation->rd_segfile0_relationnodeinfo.isPresent &&
+	if (!relation->rd_segfile0_relationnodeinfo.isPresent &&
 		!GpPersistent_SkipXLogInfo(relation->rd_id))
 	{
 	
@@ -251,7 +251,6 @@ extern HTSU_Result heap_lock_tuple(Relation relation, HeapTuple tuple,
 				LockTupleMode mode, LockTupleWaitType waittype);
 extern void heap_inplace_update(Relation relation, HeapTuple tuple);
 extern void frozen_heap_inplace_update(Relation relation, HeapTuple tuple);
-extern void frozen_heap_inplace_delete(Relation relation, HeapTuple tuple);
 extern bool heap_freeze_tuple(HeapTupleHeader tuple, TransactionId cutoff_xid,
 							  Buffer buf);
 
@@ -329,5 +328,4 @@ extern void heap_freetuple(HeapTuple htup);
 extern HeapTuple heap_addheader(int natts, bool withoid,
 			   Size structlen, void *structure);
 
-extern bool is_heap_tuple_visible(IndexScanDesc scan, ItemPointerData tid);
 #endif   /* HEAPAM_H */

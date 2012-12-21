@@ -23,6 +23,7 @@
  * the relation file will be deleted even on system crash.  The relation file could be a heap,
  * index, or append-only (row- or column-store).
  */
+extern int64 PersistentRelation_MyHighestSerialNum(void);
 extern int64 PersistentRelation_CurrentMaxSerialNum(void);
 
 extern void PersistentRelation_CheckTablespace(
@@ -70,9 +71,8 @@ extern void PersistentRelation_AddCreatePending(
 	int64				*persistentSerialNum,
 				/* Resulting serial number for the relation.  Distinquishes the uses of the tuple. */
 
-	bool				flushToXLog,
+	bool				flushToXLog);
 				/* When true, the XLOG record for this change will be flushed to disk. */
-	bool				isLocalBuf);
 	
 extern void PersistentRelation_AddCreated(
 	RelFileNode 		*relFileNode,

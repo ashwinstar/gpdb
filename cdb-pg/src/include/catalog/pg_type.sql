@@ -396,17 +396,6 @@
 
 
 -- OIDS 800 - 899 
- CREATE TYPE complex(
-   INPUT = complex_in,
-   OUTPUT = complex_out,
-   RECEIVE = complex_recv,
-   SEND = complex_send,
-   INTERNALLENGTH = 16,
-   STORAGE = plain,
-   ALIGNMENT = double
- ) WITH (OID=825, ARRAYOID=2972, DESCRIPTION="double-precision floating point complex number, 16-byte storage");
--- #define COMPLEXOID 825
-
  CREATE TYPE macaddr(
    INPUT = macaddr_in,
    OUTPUT = macaddr_out,
@@ -706,28 +695,6 @@
 -- ARRAY TYPE regclass
 -- ARRAY TYPE regtype
 -- #define REGTYPEARRAYOID 2211
-
- CREATE TYPE uuid(
-   INPUT = uuid_in,
-   OUTPUT = uuid_out,
-   RECEIVE = uuid_recv,
-   SEND = uuid_send,
-   INTERNALLENGTH = 16,
-   STORAGE = plain,
-   ALIGNMENT = char
- ) WITH (OID=2950, ARRAYOID=2951, DESCRIPTION="UUID datatype");
- -- #define UUIDOID 2950
-
- CREATE TYPE txid_snapshot(
-   INPUT = txid_snapshot_in,
-   OUTPUT = txid_snapshot_out,
-   RECEIVE = txid_snapshot_recv,
-   SEND = txid_snapshot_send,
-   INTERNALLENGTH = -1,
-   STORAGE = extended,
-   ALIGNMENT = double
- ) WITH (OID=2922, ARRAYOID=2923, DESCRIPTION="txid snapshot");
--- #define TXID_SNAPSHOTOID	2922
 
  CREATE TYPE nb_classification(
  ) WITH (OID=3251, RELID=3250);

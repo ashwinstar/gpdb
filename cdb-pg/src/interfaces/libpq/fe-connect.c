@@ -446,7 +446,7 @@ PQconnectStartParams(const char **keywords,
 	{
 		conn->status = CONNECTION_BAD;
 		/* errorMessage is already set */
-		return conn;
+		return false;
 	}
 
 	/*
@@ -773,7 +773,7 @@ PQconndefaults(void)
 	PQconninfoOption *connOptions;
 
 	initPQExpBuffer(&errorBuf);
-	if (PQExpBufferDataBroken(errorBuf))
+	if (PQExpBufferBroken(&errorBuf))
 		return NULL;			/* out of memory already :-( */
 	connOptions = conninfo_parse("", &errorBuf, true);
 	termPQExpBuffer(&errorBuf);
@@ -3722,7 +3722,7 @@ PQconninfoParse(const char *conninfo, char **errmsg)
 	if (errmsg)
 		*errmsg = NULL;			/* default */
 	initPQExpBuffer(&errorBuf);
-	if (PQExpBufferDataBroken(errorBuf))
+	if (PQExpBufferBroken(&errorBuf))
 		return NULL;			/* out of memory already :-( */
 	connOptions = conninfo_parse(conninfo, &errorBuf, false);
 	if (connOptions == NULL && errmsg)

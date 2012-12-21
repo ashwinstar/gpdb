@@ -14,7 +14,6 @@
 #include "postgres.h"
 
 #include "access/genam.h"
-#include "access/catquery.h"
 #include "access/heapam.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
@@ -78,11 +77,9 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 	 */
 	languageName = case_translate_language_name(stmt->plname);
 
-	if (caql_getcount(
-				NULL,
-				cql("SELECT COUNT(*) FROM pg_language "
-					" WHERE lanname = :1 ",
-					CStringGetDatum(languageName))))
+	if (SearchSysCacheExists(LANGNAME,
+							 PointerGetDatum(languageName),
+							 0, 0, 0))
 	{
 		/*
 		 * MPP-7563: special case plpgsql to omit a notice if it already exists
@@ -167,8 +164,6 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 										 PointerGetDatum(NULL),
 										 PointerGetDatum(NULL),
 										 PointerGetDatum(NULL),
-										 NIL,
-										 PRODATAACCESS_NONE,
 										 stmt->plhandlerOid);
 		}
 
@@ -202,8 +197,6 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 										 PointerGetDatum(NULL),
 										 PointerGetDatum(NULL),
 										 PointerGetDatum(NULL),
-										 NIL,
-										 PRODATAACCESS_NONE,
 										 stmt->plvalidatorOid);
 			}
 		}
@@ -290,21 +283,20 @@ static void
 create_proc_lang(const char *languageName,
 				 Oid handlerOid, Oid valOid, bool trusted, Oid *plangoid)
 {
+	Relation	rel;
+	TupleDesc	tupDesc;
 	Datum		values[Natts_pg_language];
 	bool		nulls[Natts_pg_language];
 	NameData	langname;
 	HeapTuple	tup;
-	cqContext  *pcqCtx;
 	ObjectAddress myself,
 				referenced;
 
 	/*
 	 * Insert the new language into pg_language
 	 */
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("INSERT INTO pg_language", 
-				NULL));
+	rel = heap_open(LanguageRelationId, RowExclusiveLock);
+	tupDesc = rel->rd_att;
 
 	memset(values, 0, sizeof(values));
 	memset(nulls, false, sizeof(nulls));
@@ -317,13 +309,15 @@ create_proc_lang(const char *languageName,
 	values[Anum_pg_language_lanvalidator - 1] = ObjectIdGetDatum(valOid);
 	nulls[Anum_pg_language_lanacl - 1] = true;
 
-	tup = caql_form_tuple(pcqCtx, values, nulls);
+	tup = heap_form_tuple(tupDesc, values, nulls);
 
 	/* Keep oids synchronized between master and segments */
 	if (OidIsValid(*plangoid))
 		HeapTupleSetOid(tup, *plangoid);
 
-	*plangoid = caql_insert(pcqCtx, tup); /* implicit update of index as well*/
+	*plangoid = simple_heap_insert(rel, tup);
+
+	CatalogUpdateIndexes(rel, tup);
 
 	/*
 	 * Create dependencies for language
@@ -347,7 +341,7 @@ create_proc_lang(const char *languageName,
 		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
 	}
 
-	caql_endscan(pcqCtx);
+	heap_close(rel, RowExclusiveLock);
 
 }
 
@@ -359,17 +353,20 @@ find_language_template(const char *languageName)
 {
 	PLTemplate *result;
 	Relation	rel;
+	SysScanDesc scan;
+	ScanKeyData key;
 	HeapTuple	tup;
-	cqContext	cqc;
 
 	rel = heap_open(PLTemplateRelationId, AccessShareLock);
 
-	tup = caql_getfirst(
-			caql_addrel(cqclr(&cqc), rel),
-			cql("SELECT * FROM pg_pltemplate "
-				" WHERE tmplname = :1 ",
-				CStringGetDatum((char *) languageName)));
+	ScanKeyInit(&key,
+				Anum_pg_pltemplate_tmplname,
+				BTEqualStrategyNumber, F_NAMEEQ,
+				CStringGetDatum((char *) languageName));
+	scan = systable_beginscan(rel, PLTemplateNameIndexId, true,
+							  SnapshotNow, 1, &key);
 
+	tup = systable_getnext(scan);
 	if (HeapTupleIsValid(tup))
 	{
 		Form_pg_pltemplate tmpl = (Form_pg_pltemplate) GETSTRUCT(tup);
@@ -405,6 +402,8 @@ find_language_template(const char *languageName)
 	else
 		result = NULL;
 
+	systable_endscan(scan);
+
 	heap_close(rel, AccessShareLock);
 
 	return result;
@@ -429,9 +428,8 @@ void
 DropProceduralLanguage(DropPLangStmt *stmt)
 {
 	char	   *languageName;
-	int			fetchCount;
-	Oid			langOid;
-	ObjectAddress object;	
+	HeapTuple	langTup;
+	ObjectAddress object;
 
 	/*
 	 * Check permission
@@ -447,16 +445,10 @@ DropProceduralLanguage(DropPLangStmt *stmt)
 	 */
 	languageName = case_translate_language_name(stmt->plname);
 
-	langOid = caql_getoid_plus(
-			NULL,
-			&fetchCount,
-			NULL,
-			cql("SELECT oid FROM pg_language "
-				" WHERE lanname = :1 "
-				" FOR UPDATE ",
-				CStringGetDatum(languageName)));
-
-	if (0 == fetchCount)
+	langTup = SearchSysCache(LANGNAME,
+							 CStringGetDatum(languageName),
+							 0, 0, 0);
+	if (!HeapTupleIsValid(langTup))
 	{
 		if (!stmt->missing_ok)
 			ereport(ERROR,
@@ -473,8 +465,10 @@ DropProceduralLanguage(DropPLangStmt *stmt)
 	}
 
 	object.classId = LanguageRelationId;
-	object.objectId = langOid;
+	object.objectId = HeapTupleGetOid(langTup);
 	object.objectSubId = 0;
+
+	ReleaseSysCache(langTup);
 
 	/*
 	 * Do the deletion
@@ -493,16 +487,22 @@ DropProceduralLanguage(DropPLangStmt *stmt)
 void
 DropProceduralLanguageById(Oid langOid)
 {
-	if (!caql_getcount(
-				NULL,
-				cql("DELETE FROM pg_language "
-					" WHERE oid = :1 ",
-					ObjectIdGetDatum(langOid))))
-	{
-		/* should not happen */
-		elog(ERROR, "cache lookup failed for language %u", langOid);
-	}
+	Relation	rel;
+	HeapTuple	langTup;
 
+	rel = heap_open(LanguageRelationId, RowExclusiveLock);
+
+	langTup = SearchSysCache(LANGOID,
+							 ObjectIdGetDatum(langOid),
+							 0, 0, 0);
+	if (!HeapTupleIsValid(langTup))		/* should not happen */
+		elog(ERROR, "cache lookup failed for language %u", langOid);
+
+	simple_heap_delete(rel, &langTup->t_self);
+
+	ReleaseSysCache(langTup);
+
+	heap_close(rel, RowExclusiveLock);
 }
 
 /*
@@ -513,9 +513,6 @@ RenameLanguage(const char *oldname, const char *newname)
 {
 	HeapTuple	tup;
 	Relation	rel;
-	cqContext	cqc2;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
 
 	/* Translate both names for consistency with CREATE */
 	oldname = case_translate_language_name(oldname);
@@ -523,15 +520,9 @@ RenameLanguage(const char *oldname, const char *newname)
 
 	rel = heap_open(LanguageRelationId, RowExclusiveLock);
 
-	pcqCtx = caql_addrel(cqclr(&cqc), rel);
-
-	tup = caql_getfirst(
-			pcqCtx,
-			cql("SELECT * FROM pg_language "
-				" WHERE lanname = :1 "
-				" FOR UPDATE ",
-				CStringGetDatum((char *) oldname)));
-
+	tup = SearchSysCacheCopy(LANGNAME,
+							 CStringGetDatum((char *) oldname),
+							 0, 0, 0);
 	if (!HeapTupleIsValid(tup))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -539,17 +530,13 @@ RenameLanguage(const char *oldname, const char *newname)
 						   errOmitLocation(true)));
 
 	/* make sure the new name doesn't exist */
-	if (caql_getcount(
-				caql_addrel(cqclr(&cqc2), rel),
-				cql("SELECT COUNT(*) FROM pg_language "
-					" WHERE lanname = :1 ",
-					CStringGetDatum((char *) newname))))
-	{
+	if (SearchSysCacheExists(LANGNAME,
+							 CStringGetDatum((char *) newname),
+							 0, 0, 0))
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),
 				 errmsg("language \"%s\" already exists", newname),
 						   errOmitLocation(true)));
-	}
 
 	/* must be superuser, since we do not have owners for PLs */
 	if (!superuser())
@@ -560,7 +547,8 @@ RenameLanguage(const char *oldname, const char *newname)
 
 	/* rename */
 	namestrcpy(&(((Form_pg_language) GETSTRUCT(tup))->lanname), newname);
-	caql_update_current(pcqCtx, tup); /* implicit update of index as well */
+	simple_heap_update(rel, &tup->t_self, tup);
+	CatalogUpdateIndexes(rel, tup);
 
 	heap_close(rel, NoLock);
 	heap_freetuple(tup);

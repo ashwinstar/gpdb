@@ -30,45 +30,107 @@ extern apr_thread_mutex_t *logfile_mutex;
 #define LOCK_STDOUT if (logfile_mutex) { apr_thread_mutex_lock(logfile_mutex); }
 #define UNLOCK_STDOUT if (logfile_mutex) { apr_thread_mutex_unlock(logfile_mutex); }
 
-
-inline void gp_smon_to_mmon_set_header(gp_smon_to_mmon_packet_t* pkt, apr_int16_t pkttype)
+apr_status_t gpmon_ntohpkt(gpmon_packet_t* pkt)
 {
-	pkt->header.pkttype = pkttype;
-	pkt->header.magic = GPMON_MAGIC;
-	pkt->header.version = GPMON_PACKET_VERSION;
-	return;
-}
-
-/*Helper function to get the size of the union packet*/
-inline size_t get_size_by_pkttype_smon_to_mmon(apr_int16_t pkttype)
-{
-	switch (pkttype) {
-		case GPMON_PKTTYPE_HELLO:
-			return(sizeof(gpmon_hello_t));
-		case GPMON_PKTTYPE_METRICS:
-			return(sizeof(gpmon_metrics_t));
-		case GPMON_PKTTYPE_QLOG:
-			return(sizeof(gpmon_qlog_t));
-		case GPMON_PKTTYPE_QEXEC:
-			return(sizeof(qexec_packet_t));
-		case GPMON_PKTTYPE_SEGINFO:
-			return(sizeof(gpmon_seginfo_t));
-		case GPMON_PKTTYPE_FILEREP:
-			return(sizeof(gpmon_filerepinfo_t));
-		case GPMON_PKTTYPE_QUERY_HOST_METRICS:
-			return(sizeof(gpmon_qlog_t));
-		case GPMON_PKTTYPE_FSINFO:
-			return(sizeof(gpmon_fsinfo_t));
-	}
-
 	return 0;
-}
-
-apr_status_t gpmon_ntohpkt(apr_int32_t magic, apr_int16_t version, apr_int16_t pkttype)
-{
+// this should be irrelevant because the mmon process is running on the master which is the same hardware architecture
+#if 0
 	static apr_int64_t last_err_sec = 0;
 
-	if (magic != GPMON_MAGIC)
+    if (pkt->magic != GPMON_MAGIC) {
+	int i;
+
+	GPMON_NTOHL(pkt->magic);
+	GPMON_NTOHS(pkt->version);
+	GPMON_NTOHS(pkt->pkttype);
+	switch (pkt->pkttype) {
+	case GPMON_PKTTYPE_HELLO:
+	    {
+		gpmon_hello_t* p = &pkt->u.hello;
+		GPMON_NTOHLL(p->signature);
+		break;
+	    }
+	case GPMON_PKTTYPE_METRICS:
+	    {
+		gpmon_metrics_t* p = &pkt->u.metrics;
+		GPMON_NTOHLL(p->mem.total);
+		GPMON_NTOHLL(p->mem.used);
+		GPMON_NTOHLL(p->mem.actual_used);
+		GPMON_NTOHLL(p->mem.actual_free);
+		GPMON_NTOHLL(p->swap.total);
+		GPMON_NTOHLL(p->swap.used);
+		GPMON_NTOHLL(p->swap.page_in);
+		GPMON_NTOHLL(p->swap.page_out);
+		GPMON_NTOHLL(p->disk.ro_rate);
+		GPMON_NTOHLL(p->disk.wo_rate);
+		GPMON_NTOHLL(p->disk.rb_rate);
+		GPMON_NTOHLL(p->disk.wb_rate);
+		GPMON_NTOHLL(p->net.rp_rate);
+		GPMON_NTOHLL(p->net.wp_rate);
+		GPMON_NTOHLL(p->net.rb_rate);
+		GPMON_NTOHLL(p->net.wb_rate);
+		break;
+	    }
+	case GPMON_PKTTYPE_QLOG:
+	    {
+		gpmon_qlog_t* p = &pkt->u.qlog;
+		GPMON_NTOHL(p->key.tmid);
+		GPMON_NTOHL(p->key.ssid);
+		GPMON_NTOHL(p->key.ccnt);
+		GPMON_NTOHL(p->cost);
+		GPMON_NTOHL(p->tsubmit);
+		GPMON_NTOHL(p->tstart);
+		GPMON_NTOHL(p->tfin);
+		GPMON_NTOHL(p->status);
+		GPMON_NTOHLL(p->rows_out);
+		GPMON_NTOHL(p->_segmax);
+		for (i = 0; i < GPMON_NUM_SEG_CPU; i++)
+		{
+		    GPMON_NTOHL(p->_segcpu[i]);
+		}
+		break;
+	    }
+	case GPMON_PKTTYPE_QEXEC:
+	    {
+		gpmon_qexec_t* p = &pkt->u.qexec;
+		GPMON_NTOHL(p->key.tmid);
+		GPMON_NTOHL(p->key.ssid);
+		GPMON_NTOHS(p->key.ccnt);
+		GPMON_NTOHS(p->key.segid);
+		GPMON_NTOHL(p->key.pid);
+		GPMON_NTOHS(p->key.nid);
+		GPMON_NTOHS(p->key.zero);
+		GPMON_NTOHL(p->pnid);
+		GPMON_NTOHS(p->nodeType);
+		GPMON_NTOHL(p->tstart);
+		GPMON_NTOHL(p->tduration);
+		GPMON_NTOHLL(p->p_mem);
+		GPMON_NTOHLL(p->p_memmax);
+		GPMON_NTOHLL(p->_cpu_elapsed);
+		GPMON_NTOHL(p->_p_metrics.fd_cnt);
+		GPMON_NTOHLL(p->_p_metrics.mem.size);
+		GPMON_NTOHLL(p->_p_metrics.mem.resident);
+		GPMON_NTOHLL(p->_p_metrics.mem.share);
+		GPMON_NTOHLL(p->rowsout);
+		GPMON_NTOHLL(p->rowsout_est);
+		for (i = 0; i < GPMON_QEXEC_M_COUNT; i++) 
+		{
+		    GPMON_NTOHLL(p->measures[i]);
+		}
+		break;
+	    }
+	case GPMON_PKTTYPE_SEGINFO:
+		{
+		gpmon_seginfo_t* p = &pkt->u.seginfo;
+		GPMON_NTOHLL(p->dbid);
+		GPMON_NTOHLL(p->dynamic_memory_used);
+		GPMON_NTOHLL(p->dynamic_memory_available);
+		break;
+		}
+	}
+    }
+
+	if (pkt->magic != GPMON_MAGIC)
 	{
 		apr_int64_t now = time(NULL);
 		if (now - last_err_sec >= GPMON_PACKET_ERR_LOG_TIME)
@@ -79,29 +141,32 @@ apr_status_t gpmon_ntohpkt(apr_int32_t magic, apr_int16_t version, apr_int16_t p
 		return APR_EINVAL;
 	}
 
-	if (version != GPMON_PACKET_VERSION)
+	if (pkt->version != GPMON_PACKET_VERSION)
 	{
 		apr_int64_t now = time(NULL);
 		if (now - last_err_sec >= GPMON_PACKET_ERR_LOG_TIME)
 		{
 			last_err_sec = now;
-			gpmon_warning(FLINE, "bad packet (version %d, expected %d)", version, GPMON_PACKET_VERSION);
+			gpmon_warning(FLINE, "bad packet (version %d, expected %d)",
+		    			  pkt->version, GPMON_PACKET_VERSION);
 		}
 		return APR_EINVAL;
 	}
 
-    if (! (GPMON_PKTTYPE_NONE < pkttype && pkttype < GPMON_PKTTYPE_MAX))
+    if (! (GPMON_PKTTYPE_NONE < pkt->pkttype && pkt->pkttype < GPMON_PKTTYPE_MAX))
 	{
 		apr_int64_t now = time(NULL);
 		if (now - last_err_sec >= GPMON_PACKET_ERR_LOG_TIME)
 		{
 			last_err_sec = now;
-			gpmon_warning(FLINE, "bad packet (unexpected packet type %d)", pkttype);
+			gpmon_warning(FLINE, "bad packet (unexpected packet type %d)",
+		    			  pkt->pkttype);
 		}
 		return APR_EINVAL;
-	}
+    }
 
-	return 0;
+    return 0;
+#endif
 }
 
 
@@ -255,7 +320,6 @@ const char* gpmon_qlog_status_string(int gpmon_qlog_status)
     case GPMON_QLOG_STATUS_START: return "start";
     case GPMON_QLOG_STATUS_DONE: return "done";
     case GPMON_QLOG_STATUS_ERROR: return "abort";
-    case GPMON_QLOG_STATUS_CANCELING: return "canceling";
     }
     return "unknown";
 }
@@ -333,6 +397,7 @@ apr_int32_t get_query_status(apr_int32_t tmid, apr_int32_t ssid,
 		fclose(fp);
 		return GPMON_QLOG_STATUS_INVALID;
 	}
+
 	fscanf(fp, "%d", &status);
 	fclose(fp);
 	return status;
@@ -400,7 +465,6 @@ const char* gpdb_getnodestatus(PerfmonNodeStatus status)
 #define QENODE_TYPE_BITMAP_APPENDONLY_SCAN "Bitmap Append-Only Scan"
 #define QENODE_TYPE_BITMAP_HEAP_SCAN "Bitmap Heap Scan"
 #define QENODE_TYPE_BITMAP_INDEX_SCAN "Bitmap Index Scan"
-#define QENODE_TYPE_TABLE_SCAN "Table Scan"
 #define QENODE_TYPE_EXTERNAL_SCAN "External Scan"
 #define QENODE_TYPE_FUNCTION_SCAN "Function Scan"
 #define QENODE_TYPE_GROUP "Group"
@@ -415,7 +479,6 @@ const char* gpdb_getnodestatus(PerfmonNodeStatus status)
 #define QENODE_TYPE_HASH_UNIQUE_INNER_JOIN "Hash Unique Inner Join"
 #define QENODE_TYPE_HASH_UNIQUE_OUTER_JOIN "Hash Unique Outer Join"
 #define QENODE_TYPE_INDEX_SCAN "Index Scan"
-#define QENODE_TYPE_INDEX_ONLY_SCAN "Index Only Scan"
 #define QENODE_TYPE_LIMIT "Limit"
 #define QENODE_TYPE_MATERIALIZE "Materialize"
 #define QENODE_TYPE_MERGE_JOIN "Merge Join"
@@ -443,7 +506,6 @@ const char* gpdb_getnodestatus(PerfmonNodeStatus status)
 #define QENODE_TYPE_RESULT "Result"
 #define QENODE_TYPE_REPEAT "Repeat"
 #define QENODE_TYPE_SEQ_SCAN "Seq Scan"
-#define QENODE_TYPE_SEQUENCE "Sequence"
 #define QENODE_TYPE_SETOP "SetOp"
 #define QENODE_TYPE_SETOP_INTERSECT "SetOp Intersect"
 #define QENODE_TYPE_SETOP_INTERSECT_ALL "SetOp Intersect All"
@@ -453,7 +515,6 @@ const char* gpdb_getnodestatus(PerfmonNodeStatus status)
 #define QENODE_TYPE_SORT "Sort"
 #define QENODE_TYPE_SUBQUERY_SCAN "Subquery Scan"
 #define QENODE_TYPE_TABLE_FUNCTION_SCAN "Table Function Scan"
-#define QENODE_TYPE_DYNAMICTABLE_SCAN "Dynamic Table Scan"
 #define QENODE_TYPE_TID_SCAN "Tid Scan"
 #define QENODE_TYPE_UNIQUE "Unique"
 #define QENODE_TYPE_VALUES_SCAN "Values Scan"
@@ -491,7 +552,6 @@ const char* gpdb_getnodestatus(PerfmonNodeStatus status)
 #define QENODE_MEASURE_BITMAP_HEAP_SCAN_PAGES "Bitmap Heap Scan Pages"
 #define QENODE_MEASURE_BITMAP_HEAP_SCAN_RESCAN "Bitmap Heap Scan Rescan"
 #define QENODE_MEASURE_BITMAP_INDEX_SCAN_RESCAN "Bitmap Index Scan Rescan"
-#define QENODE_MEASURE_DYNAMICTABLE_SCAN_RESCAN "Dynamic Table Scan Rescan"
 #define QENODE_MEASURE_EXTERNAL_SCAN_RESCAN "External Scan Rescan"
 #define QENODE_MEASURE_HASH_SPILL_BATCHES "Hash Spill Batches"
 #define QENODE_MEASURE_HASH_SPILL_TUPLES "Hash Spill Tuples"
@@ -501,8 +561,6 @@ const char* gpdb_getnodestatus(PerfmonNodeStatus status)
 #define QENODE_MEASURE_HASH_JOIN_SPILL_BYTES "Hash Join Spill Bytes"
 #define QENODE_MEASURE_INDEX_SCAN_RESTORE_POS "Index Scan Restore Pos"
 #define QENODE_MEASURE_INDEX_SCAN_RESCAN "Index Scan Rescan"
-#define QENODE_MEASURE_INDEX_ONLY_SCAN_RESTORE_POS "Index Only Scan Restore Pos"
-#define QENODE_MEASURE_INDEX_ONLY_SCAN_RESCAN "Index Only Scan Rescan"
 #define QENODE_MEASURE_MATERIALIZE_RESCAN "Materialize Rescan"
 #define QENODE_MEASURE_MERGE_JOIN_INNER_TUPLES "Merge Join Inner Tuples"
 #define QENODE_MEASURE_MERGE_JOIN_OUTER_TUPLES "Merge Join Outer Tuples"
@@ -520,9 +578,6 @@ const char* gpdb_getnodestatus(PerfmonNodeStatus status)
 #define QENODE_MEASURE_SORT_CURRENT_SPILL_PASS_TUPLES "Sort Current Spill Pass Tuples"
 #define QENODE_MEASURE_SORT_CURRENT_SPILL_PASS_BYTES "Sort Current Spill Pass Bytes"
 #define QENODE_MEASURE_SUBQUERY_SCAN_RESCAN "Subquery Scan Rescan"
-#define QENODE_MEASURE_TABLE_SCAN_PAGE_STATS "Table Scan Page Stats"
-#define QENODE_MEASURE_TABLE_SCAN_RESTORE_POS "Table Scan Restore Pos"
-#define QENODE_MEASURE_TABLE_SCAN_RESCAN "Table Scan Rescan"
 #define QENODE_MEASURE_MOTION_BYTES_SENT "Motion Bytes Sent"
 #define QENODE_MEASURE_MOTION_TOTAL_ACK_TIME "Motion Total Ack Time"
 #define QENODE_MEASURE_MOTION_AVG_ACK_TIME "Motion Average Ack Time"
@@ -566,7 +621,7 @@ typedef struct QenodeNamesDescriptor
 	const char* nodename;
 	const char* measurenames[GPMON_QEXEC_M_COUNT];
 	const char* measureunits[GPMON_QEXEC_M_COUNT];
-	unsigned int number_metrics;
+	
 } QenodeNamesDescriptor;
 
 
@@ -579,348 +634,263 @@ QenodeNamesDescriptor nodetype_string_lookup[PMNT_MAXIMUM_ENUM] =
 
 	{PMNT_Append, QENODE_TYPE_APPEND, 
 		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_APPEND_CURRENT_INPUT_SOURCE  }, 
-		{QENODE_UNIT_ROWS, QENODE_UNIT_INPUTS },
-		2
+		{QENODE_UNIT_ROWS, QENODE_UNIT_INPUTS }
 	},
 	{PMNT_AppendOnlyScan, QENODE_TYPE_APPENDONLY_SCAN, 
 		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_APPENDONLY_SCAN_RESCAN }, 
-		{QENODE_UNIT_ROWS, QENODE_UNIT_RESCANS},
-		2
+		{QENODE_UNIT_ROWS, QENODE_UNIT_RESCANS}
 	},
 	{PMNT_Aggregate, QENODE_TYPE_AGGREGATE, 
 		QENODE_AGG_METRICS,
-		QENODE_AGG_UNITS,
-		1
+		QENODE_AGG_UNITS
 	},
 	{PMNT_GroupAggregate, QENODE_TYPE_GROUPAGGREGATE, 
 		QENODE_AGG_METRICS,
-		QENODE_AGG_UNITS,
-		1
+		QENODE_AGG_UNITS
 	},
 	{PMNT_HashAggregate, QENODE_TYPE_HASHAGGREGATE, 
 		QENODE_AGG_METRICS,
-		QENODE_AGG_UNITS,
-		1
+		QENODE_AGG_UNITS
 	},
 	{PMNT_AppendOnlyColumnarScan, QENODE_TYPE_APPENDONLY_COLUMNAR_SCAN, 
 		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_APPENDONLY_COLUMNAR_SCAN_RESCAN}, 
-		{QENODE_UNIT_ROWS, QENODE_UNIT_RESCANS},
-		2
+		{QENODE_UNIT_ROWS, QENODE_UNIT_RESCANS}
 	},
 	{PMNT_BitmapAnd, QENODE_TYPE_BITMAPAND, 
 		{QENODE_MEASURE_ROWS_IN }, 
-		{QENODE_UNIT_ROWS },
-		1
+		{QENODE_UNIT_ROWS }
 	},
 	{PMNT_BitmapOr, QENODE_TYPE_BITMAPOR, 
 		{QENODE_MEASURE_ROWS_IN }, 
-		{QENODE_UNIT_ROWS },
-		1
+		{QENODE_UNIT_ROWS }
 	},
 	{PMNT_BitmapAppendOnlyScan, QENODE_TYPE_BITMAP_APPENDONLY_SCAN, 
 		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_BITMAP_APPEDONLY_SCAN_PAGES, QENODE_MEASURE_BITMAP_APPENDONLY_SCAN_RESCAN }, 
-		{QENODE_UNIT_ROWS, QENODE_UNIT_PAGES, QENODE_UNIT_RESCANS },
-		3
+		{QENODE_UNIT_ROWS, QENODE_UNIT_PAGES, QENODE_UNIT_RESCANS }
 	},
 	{PMNT_BitmapHeapScan, QENODE_TYPE_BITMAP_HEAP_SCAN, 
 		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_BITMAP_HEAP_SCAN_PAGES, QENODE_MEASURE_BITMAP_HEAP_SCAN_RESCAN }, 
-		{QENODE_UNIT_ROWS, QENODE_UNIT_PAGES, QENODE_UNIT_RESCANS },
-		3
+		{QENODE_UNIT_ROWS, QENODE_UNIT_PAGES, QENODE_UNIT_RESCANS }
 	},
 	{PMNT_BitmapIndexScan, QENODE_TYPE_BITMAP_INDEX_SCAN,
 		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_BITMAP_INDEX_SCAN_RESCAN  }, 
-		{QENODE_UNIT_ROWS, QENODE_UNIT_RESCANS },
-		2
-	},
-	{PMNT_DynamicTableScan, QENODE_TYPE_DYNAMICTABLE_SCAN, 
-		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_DYNAMICTABLE_SCAN_RESCAN }, 
-		{QENODE_UNIT_ROWS, QENODE_UNIT_RESCANS},
-		2
+		{QENODE_UNIT_ROWS, QENODE_UNIT_RESCANS }
 	},
 	{PMNT_ExternalScan, QENODE_TYPE_EXTERNAL_SCAN,
 		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_EXTERNAL_SCAN_RESCAN }, 
-		{QENODE_UNIT_ROWS, QENODE_UNIT_RESCANS },
-		2
+		{QENODE_UNIT_ROWS, QENODE_UNIT_RESCANS }
 	},
 	{PMNT_FunctionScan, QENODE_TYPE_FUNCTION_SCAN, 
 		{QENODE_MEASURE_ROWS_IN }, 
-		{QENODE_UNIT_ROWS },
-		1
+		{QENODE_UNIT_ROWS }
 	},
 	{PMNT_Group, QENODE_TYPE_GROUP, 
 		{QENODE_MEASURE_ROWS_IN }, 
-		{QENODE_UNIT_ROWS },
-		1
+		{QENODE_UNIT_ROWS }
 	},
 	{PMNT_Hash, QENODE_TYPE_HASH, 
 		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_HASH_SPILL_BATCHES, QENODE_MEASURE_HASH_SPILL_TUPLES, QENODE_MEASURE_HASH_SPILL_BYTES}, 
-		{QENODE_UNIT_ROWS, QENODE_UNIT_BATCHES, QENODE_UNIT_TUPLES, QENODE_UNIT_BYTES },
-		4
+		{QENODE_UNIT_ROWS, QENODE_UNIT_BATCHES, QENODE_UNIT_TUPLES, QENODE_UNIT_BYTES }
 	},
 	{PMNT_HashJoin, QENODE_TYPE_HASH_JOIN, 
 		QENODE_HASHJOIN_METRICS,
-		QENODE_HASHJOIN_UNITS,
-		1
+		QENODE_HASHJOIN_UNITS
 	},
 	{PMNT_HashLeftJoin, QENODE_TYPE_HASH_LEFT_JOIN, 
 		QENODE_HASHJOIN_METRICS,
-		QENODE_HASHJOIN_UNITS,
-		1
+		QENODE_HASHJOIN_UNITS
 	},
 	{PMNT_HashLeftAntiSemiJoin, QENODE_TYPE_HASH_LEFT_ANTI_SEMI_JOIN, 
 		QENODE_HASHJOIN_METRICS,
-		QENODE_HASHJOIN_UNITS,
-		1
+		QENODE_HASHJOIN_UNITS
 	},
 	{PMNT_HashFullJoin, QENODE_TYPE_HASH_FULL_JOIN, 
 		QENODE_HASHJOIN_METRICS,
-		QENODE_HASHJOIN_UNITS,
-		1
+		QENODE_HASHJOIN_UNITS
 	},
 	{PMNT_HashRightJoin, QENODE_TYPE_HASH_RIGHT_JOIN, 
 		QENODE_HASHJOIN_METRICS,
-		QENODE_HASHJOIN_UNITS,
-		1
+		QENODE_HASHJOIN_UNITS
 	},
 	{PMNT_HashExistsJoin, QENODE_TYPE_HASH_EXISTS_JOIN, 
 		QENODE_HASHJOIN_METRICS,
-		QENODE_HASHJOIN_UNITS,
-		1
+		QENODE_HASHJOIN_UNITS
 	},
 	{PMNT_HashReverseInJoin, QENODE_TYPE_HASH_REVERSE_IN_JOIN, 
 		{QENODE_MEASURE_ROWS_IN }, 
-		{QENODE_UNIT_ROWS },
-		1
+		{QENODE_UNIT_ROWS }
 	},
 	{PMNT_HashUniqueOuterJoin, QENODE_TYPE_HASH_UNIQUE_OUTER_JOIN, 
 		{QENODE_MEASURE_ROWS_IN }, 
-		{QENODE_UNIT_ROWS },
-		1
+		{QENODE_UNIT_ROWS }
 	},
 	{PMNT_HashUniqueInnerJoin, QENODE_TYPE_HASH_UNIQUE_INNER_JOIN, 
 		{QENODE_MEASURE_ROWS_IN }, 
-		{QENODE_UNIT_ROWS },
-		1
+		{QENODE_UNIT_ROWS }
 	},
 	{PMNT_IndexScan, QENODE_TYPE_INDEX_SCAN, 
 		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_INDEX_SCAN_RESTORE_POS, QENODE_MEASURE_INDEX_SCAN_RESCAN }, 
-		{QENODE_UNIT_ROWS, QENODE_UNIT_RESTORES, QENODE_UNIT_RESCANS},
-		3
-	},
-	{PMNT_IndexOnlyScan, QENODE_TYPE_INDEX_ONLY_SCAN, 
-		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_INDEX_ONLY_SCAN_RESTORE_POS, QENODE_MEASURE_INDEX_ONLY_SCAN_RESCAN }, 
-		{QENODE_UNIT_ROWS, QENODE_UNIT_RESTORES, QENODE_UNIT_RESCANS},
-		3
+		{QENODE_UNIT_ROWS, QENODE_UNIT_RESTORES, QENODE_UNIT_RESCANS}
 	},
 	{PMNT_Limit, QENODE_TYPE_LIMIT, 
 		{QENODE_MEASURE_ROWS_IN }, 
-		{QENODE_UNIT_ROWS },
-		1
+		{QENODE_UNIT_ROWS }
 	},
 	{PMNT_Materialize, QENODE_TYPE_MATERIALIZE, 
 		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_MATERIALIZE_RESCAN}, 
-		{QENODE_UNIT_ROWS, QENODE_UNIT_RESCANS },
-		2
+		{QENODE_UNIT_ROWS, QENODE_UNIT_RESCANS }
 	},
 	{PMNT_MergeJoin, QENODE_TYPE_MERGE_JOIN, 
 		QENODE_MERGEJOIN_METRICS,
-		QENODE_MERGEJOIN_UNITS,
-		1
+		QENODE_MERGEJOIN_UNITS
 	},
 	{PMNT_MergeLeftJoin, QENODE_TYPE_MERGE_LEFT_JOIN, 
 		QENODE_MERGEJOIN_METRICS,
-		QENODE_MERGEJOIN_UNITS,
-		1
+		QENODE_MERGEJOIN_UNITS
 	},
 	{PMNT_MergeLeftAntiSemiJoin, QENODE_TYPE_MERGE_LEFT_ANTI_SEMI_JOIN, 
 		QENODE_MERGEJOIN_METRICS,
-		QENODE_MERGEJOIN_UNITS,
-		1
+		QENODE_MERGEJOIN_UNITS
 	},
 	{PMNT_MergeFullJoin, QENODE_TYPE_MERGE_FULL_JOIN, 
 		QENODE_MERGEJOIN_METRICS,
-		QENODE_MERGEJOIN_UNITS,
-		1
+		QENODE_MERGEJOIN_UNITS
 	},
 	{PMNT_MergeRightJoin, QENODE_TYPE_MERGE_RIGHT_JOIN, 
 		QENODE_MERGEJOIN_METRICS,
-		QENODE_MERGEJOIN_UNITS,
-		1
+		QENODE_MERGEJOIN_UNITS
 	},
 	{PMNT_MergeExistsJoin, QENODE_TYPE_MERGE_EXISTS_JOIN, 
 		QENODE_MERGEJOIN_METRICS,
-		QENODE_MERGEJOIN_UNITS,
-		1
+		QENODE_MERGEJOIN_UNITS
 	},
 	{PMNT_MergeReverseInJoin, QENODE_TYPE_MERGE_REVERSE_IN_JOIN, 
 		{QENODE_MEASURE_ROWS_IN }, 
-		{QENODE_UNIT_ROWS },
-		1
+		{QENODE_UNIT_ROWS }
 	},
 	{PMNT_MergeUniqueOuterJoin, QENODE_TYPE_MERGE_UNIQUE_OUTER_JOIN, 
 		{QENODE_MEASURE_ROWS_IN }, 
-		{QENODE_UNIT_ROWS },
-		1
+		{QENODE_UNIT_ROWS }
 	},
 	{PMNT_MergeUniqueInnerJoin, QENODE_TYPE_MERGE_UNIQUE_INNER_JOIN, 
 		{QENODE_MEASURE_ROWS_IN }, 
-		{QENODE_UNIT_ROWS },
-		1
+		{QENODE_UNIT_ROWS }
 	},
 	{PMNT_RedistributeMotion, QENODE_TYPE_REDISTRIBUTE_MOTION, 
 	 	QENODE_MOTION_METRICS, 
-	 	QENODE_MOTION_UNITS,
-	 	1
+	 	QENODE_MOTION_UNITS
 	},
 	{PMNT_BroadcastMotion, QENODE_TYPE_BROADCAST_MOTION, 
 	 	QENODE_MOTION_METRICS, 
-	 	QENODE_MOTION_UNITS,
-	 	1
+	 	QENODE_MOTION_UNITS
 	},
 	{PMNT_GatherMotion, QENODE_TYPE_GATHER_MOTION, 
 	 	QENODE_MOTION_METRICS, 
-	 	QENODE_MOTION_UNITS,
-	 	1
+	 	QENODE_MOTION_UNITS
 	},
 	{PMNT_ExplicitRedistributeMotion, QENODE_TYPE_EXPLICIT_REDISTRIBUTE_MOTION, 
 	 	QENODE_MOTION_METRICS, 
-	 	QENODE_MOTION_UNITS,
-	 	1
+	 	QENODE_MOTION_UNITS
 	},
 	{PMNT_NestedLoop, QENODE_TYPE_NESTED_LOOP, 
 		QENODE_NESTEDLOOP_METRICS,
-		QENODE_NESTEDLOOP_UNITS,
-		1
+		QENODE_NESTEDLOOP_UNITS
 	},
 	{PMNT_NestedLoopLeftJoin, QENODE_TYPE_NESTED_LOOP_LEFT_JOIN, 
 		QENODE_NESTEDLOOP_METRICS,
-		QENODE_NESTEDLOOP_UNITS,
-		1
+		QENODE_NESTEDLOOP_UNITS
 	},
 	{PMNT_NestedLoopLeftAntiSemiJoin, QENODE_TYPE_NESTED_LOOP_LEFT_ANTI_SEMI_JOIN, 
 		QENODE_NESTEDLOOP_METRICS,
-		QENODE_NESTEDLOOP_UNITS,
-		1
+		QENODE_NESTEDLOOP_UNITS
 	},
 	{PMNT_NestedLoopFullJoin, QENODE_TYPE_NESTED_LOOP_FULL_JOIN, 
 		QENODE_NESTEDLOOP_METRICS,
-		QENODE_NESTEDLOOP_UNITS,
-		1
+		QENODE_NESTEDLOOP_UNITS
 	},
 	{PMNT_NestedLoopRightJoin, QENODE_TYPE_NESTED_LOOP_RIGHT_JOIN, 
 		QENODE_NESTEDLOOP_METRICS,
-		QENODE_NESTEDLOOP_UNITS,
-		1
+		QENODE_NESTEDLOOP_UNITS
 	},
 	{PMNT_NestedLoopExistsJoin, QENODE_TYPE_NESTED_LOOP_EXISTS_JOIN, 
 		QENODE_NESTEDLOOP_METRICS,
-		QENODE_NESTEDLOOP_UNITS,
-		1
+		QENODE_NESTEDLOOP_UNITS
 	},
 	{PMNT_NestedLoopReverseInJoin, QENODE_TYPE_NESTED_LOOP_REVERSE_IN_JOIN, 
 		{QENODE_MEASURE_ROWS_IN }, 
-		{QENODE_UNIT_ROWS },
-		1
+		{QENODE_UNIT_ROWS }
 	},
 	{PMNT_NestedLoopUniqueOuterJoin, QENODE_TYPE_NESTED_LOOP_UNIQUE_OUTER_JOIN, 
 		{QENODE_MEASURE_ROWS_IN }, 
-		{QENODE_UNIT_ROWS },
-		1
+		{QENODE_UNIT_ROWS }
 	},
 	{PMNT_NestedLoopUniqueInnerJoin, QENODE_TYPE_NESTED_LOOP_UNIQUE_INNER_JOIN, 
 		{QENODE_MEASURE_ROWS_IN }, 
-		{QENODE_UNIT_ROWS },
-		1
+		{QENODE_UNIT_ROWS }
 	},
 	{PMNT_Result, QENODE_TYPE_RESULT, 
 		{QENODE_MEASURE_ROWS_IN }, 
-		{QENODE_UNIT_ROWS },
-		1
+		{QENODE_UNIT_ROWS }
 	},
 	{PMNT_Repeat, QENODE_TYPE_REPEAT, 
 		{QENODE_MEASURE_ROWS_IN }, 
-		{QENODE_UNIT_ROWS },
-		1
+		{QENODE_UNIT_ROWS }
 	},
 	{PMNT_SeqScan, QENODE_TYPE_SEQ_SCAN, 
 		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_SEQ_SCAN_PAGE_STATS, QENODE_MEASURE_SEQ_SCAN_RESTORE_POS, QENODE_MEASURE_SEQ_SCAN_RESCAN }, 
-		{QENODE_UNIT_ROWS, QENODE_UNIT_PAGES, QENODE_UNIT_RESTORES, QENODE_UNIT_RESCANS },
-		4
-	},
-	{PMNT_Sequence, QENODE_TYPE_SEQUENCE,
-		{QENODE_MEASURE_ROWS_IN },
-		{QENODE_UNIT_ROWS },
-		1
+		{QENODE_UNIT_ROWS, QENODE_UNIT_PAGES, QENODE_UNIT_RESTORES, QENODE_UNIT_RESCANS }
 	},
 	{PMNT_SetOp, QENODE_TYPE_SETOP, 
 		{QENODE_MEASURE_ROWS_IN }, 
-		{QENODE_UNIT_ROWS },
-		1
+		{QENODE_UNIT_ROWS }
 	},
 	{PMNT_SetOpIntersect, QENODE_TYPE_SETOP_INTERSECT, 
 		{QENODE_MEASURE_ROWS_IN }, 
-		{QENODE_UNIT_ROWS },
-		1
+		{QENODE_UNIT_ROWS }
 	},
 	{PMNT_SetOpIntersectAll, QENODE_TYPE_SETOP_INTERSECT_ALL, 
 		{QENODE_MEASURE_ROWS_IN }, 
-		{QENODE_UNIT_ROWS },
-		1
+		{QENODE_UNIT_ROWS }
 	},
 	{PMNT_SetOpExcept, QENODE_TYPE_SETOP_EXCEPT, 
 		{QENODE_MEASURE_ROWS_IN }, 
-		{QENODE_UNIT_ROWS },
-		1
+		{QENODE_UNIT_ROWS }
 	},
 	{PMNT_SetOpExceptAll, QENODE_TYPE_SETOP_EXCEPT_ALL, 
 		{QENODE_MEASURE_ROWS_IN }, 
-		{QENODE_UNIT_ROWS },
-		1
+		{QENODE_UNIT_ROWS }
 	},
 	{PMNT_SharedScan, QENODE_TYPE_SHARED_SCAN, 
 		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_SHARED_SCAN_RESTORE_POS, QENODE_MEASURE_SHARED_SCAN_RESCAN }, 
-		{QENODE_UNIT_ROWS, QENODE_UNIT_RESTORES, QENODE_UNIT_RESCANS },
-		3
+		{QENODE_UNIT_ROWS, QENODE_UNIT_RESTORES, QENODE_UNIT_RESCANS }
 	},
 	{PMNT_Sort, QENODE_TYPE_SORT, 
 		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_SORT_MEMORY_USAGE, QENODE_MEASURE_SORT_SPILL_TUPLES, QENODE_MEASURE_SORT_SPILL_BYTES, QENODE_MEASURE_SORT_SPILL_PASS, QENODE_MEASURE_SORT_CURRENT_SPILL_PASS_TUPLES, QENODE_MEASURE_SORT_CURRENT_SPILL_PASS_BYTES},
-		{QENODE_UNIT_ROWS, QENODE_UNIT_BYTES, QENODE_UNIT_TUPLES, QENODE_UNIT_BYTES, QENODE_UNIT_PASSES, QENODE_UNIT_TUPLES, QENODE_UNIT_BYTES },
-		7
+		{QENODE_UNIT_ROWS, QENODE_UNIT_BYTES, QENODE_UNIT_TUPLES, QENODE_UNIT_BYTES, QENODE_UNIT_PASSES, QENODE_UNIT_TUPLES, QENODE_UNIT_BYTES }
 	},
 	{PMNT_SubqueryScan, QENODE_TYPE_SUBQUERY_SCAN, 
 		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_SUBQUERY_SCAN_RESCAN}, 
-		{QENODE_UNIT_ROWS, QENODE_UNIT_RESCANS},
-		2
+		{QENODE_UNIT_ROWS, QENODE_UNIT_RESCANS}
 	},
 	{PMNT_TableFunctionScan, QENODE_TYPE_TABLE_FUNCTION_SCAN, 
 		{QENODE_MEASURE_ROWS_IN }, 
-		{QENODE_UNIT_ROWS },
-		1
-	},
-	{PMNT_TableScan, QENODE_TYPE_TABLE_SCAN, 
-		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_TABLE_SCAN_PAGE_STATS, QENODE_MEASURE_TABLE_SCAN_RESTORE_POS, QENODE_MEASURE_TABLE_SCAN_RESCAN }, 
-		{QENODE_UNIT_ROWS, QENODE_UNIT_PAGES, QENODE_UNIT_RESTORES, QENODE_UNIT_RESCANS },
-		4
+		{QENODE_UNIT_ROWS }
 	},
 	{PMNT_TidScan, QENODE_TYPE_TID_SCAN, 
 		{QENODE_MEASURE_ROWS_IN }, 
-		{QENODE_UNIT_ROWS },
-		1
+		{QENODE_UNIT_ROWS }
 	},
 	{PMNT_Unique, QENODE_TYPE_UNIQUE , 
 		{QENODE_MEASURE_ROWS_IN }, 
-		{QENODE_UNIT_ROWS },
-		1
+		{QENODE_UNIT_ROWS }
 	},
 	{PMNT_ValuesScan, QENODE_TYPE_VALUES_SCAN, 
 		{QENODE_MEASURE_ROWS_IN }, 
-		{QENODE_UNIT_ROWS },
-		1
+		{QENODE_UNIT_ROWS }
 	},
 	{PMNT_Window, QENODE_TYPE_WINDOW, 
 		{QENODE_MEASURE_ROWS_IN }, 
-		{QENODE_UNIT_ROWS },
-		1
+		{QENODE_UNIT_ROWS }
 	},
 };
 
@@ -970,39 +940,15 @@ apr_status_t gpdb_debug_string_lookup_table()
 	return APR_SUCCESS;
 }
 
-unsigned int gpdb_getnode_number_metrics(PerfmonNodeType type)
-{
-	QenodeNamesDescriptor* desc;
-	if( PMNT_MAXIMUM_ENUM <= type)
-	{
-		TR0( ("gpdb_getnode_number_metrics: Error node type out of range: %d >= %d\n", type, PMNT_MAXIMUM_ENUM));
-		return 0;
-	}
-	desc = &nodetype_string_lookup[type];
-	return desc->number_metrics;
-}
-
 const char* gpdb_getnodename(PerfmonNodeType type)
 {
-	QenodeNamesDescriptor* desc;
-	if( PMNT_MAXIMUM_ENUM <= type)
-	{
-		TR0( ("gpdb_getnodename: Error node type out of range: %d >= %d\n", type, PMNT_MAXIMUM_ENUM));
-		return 0;
-	}
-	desc = &nodetype_string_lookup[type];
+	QenodeNamesDescriptor* desc = &nodetype_string_lookup[type];
 	return desc->nodename;
 }
 
 apr_status_t gpdb_getnode_metricinfo(PerfmonNodeType type, apr_byte_t metricnum, const char** name, const char** unit)
 {
-	QenodeNamesDescriptor* desc;
-	if( PMNT_MAXIMUM_ENUM <= type)
-	{
-		TR0( ("gpdb_getnode_metricinfo: Error node type out of range: %d >= %d\n", type, PMNT_MAXIMUM_ENUM));
-		return APR_BADARG;
-	}
-	desc = &nodetype_string_lookup[type];
+	QenodeNamesDescriptor* desc = &nodetype_string_lookup[type];
 	if (!desc->measurenames[metricnum])
 	{
 		*name = NULL;
@@ -1067,10 +1013,6 @@ char* get_connection_ip(host_t* host)
 	return host->connection_hostname.current->ipstr;
 }
 
-bool get_connection_ipv6_status(host_t* host)
-{
-	return host->connection_hostname.current->ipv6;
-}
 
 char* get_snmp_hostname(host_t* host)
 {

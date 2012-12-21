@@ -70,7 +70,6 @@ extern int	PostgresMain(int argc, char *argv[], const char *username);
 extern long get_stack_depth_rlimit(void);
 extern void ResetUsage(void);
 extern void ShowUsage(const char *title);
-extern void SendUsageToQD(void);
 extern int	check_log_duration(char *msec_str, bool was_logged);
 extern void set_debug_options(int debug_flag,
 				  GucContext context, GucSource source);

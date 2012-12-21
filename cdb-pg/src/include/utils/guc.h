@@ -17,6 +17,10 @@
 #include "tcop/dest.h"
 #include "utils/array.h"
 
+#ifdef USE_CONNECTEMC
+#include "emcconnect/api.h"
+#endif
+
 struct StringInfoData;                  /* #include "lib/stringinfo.h" */
 
 
@@ -136,10 +140,6 @@ extern bool Debug_appendonly_print_blockdirectory;
 extern bool Debug_appendonly_print_read_block;
 extern bool Debug_appendonly_print_append_block;
 extern bool Debug_appendonly_print_segfile_choice;
-extern int  Debug_appendonly_bad_header_print_level;
-extern bool Debug_appendonly_print_datumstream;
-extern bool Debug_gp_relation_node_fetch_wait_for_debugging;
-extern bool Debug_delay_before_persistent_init_scan;
 extern bool gp_crash_recovery_abort_suppress_fatal;
 extern bool gp_persistent_statechange_suppress_error;
 extern bool Debug_bitmap_print_insert;
@@ -158,8 +158,6 @@ extern bool gp_local_distributed_cache_stats;
 extern bool gp_appendonly_verify_block_checksums;
 extern bool gp_appendonly_verify_write_block;
 extern bool gp_heap_require_relhasoids_match;
-extern bool gp_suppress_distributed_tx_vacuum;
-extern bool gp_new_reindex_database;
 extern bool	Debug_appendonly_rezero_quicklz_compress_scratch;
 extern bool	Debug_appendonly_rezero_quicklz_decompress_scratch;
 extern bool	Debug_appendonly_guard_end_quicklz_scratch;
@@ -173,13 +171,6 @@ extern bool Debug_persistent_bootstrap_print;
 extern bool Debug_bulk_load_bypass_wal;
 extern bool Debug_persistent_appendonly_commit_count_print;
 extern bool Debug_cancel_print;
-extern bool Debug_datumstream_write_print_small_varlena_info;
-extern bool Debug_datumstream_write_print_large_varlena_info;
-extern bool Debug_datumstream_read_check_large_varlena_integrity;
-extern bool Debug_datumstream_block_read_check_integrity;
-extern bool Debug_datumstream_block_write_check_integrity;
-extern bool Debug_datumstream_read_print_varlena_info;
-extern bool Debug_datumstream_write_use_small_initial_buffers;
 extern int	Debug_persistent_store_print_level;
 extern bool	Debug_database_command_print;
 extern int	Debug_database_command_print_level;
@@ -192,7 +183,6 @@ extern bool gp_before_filespace_setup;
 extern bool gp_startup_integrity_checks;
 extern bool gp_change_tracking;
 extern bool	gp_persistent_skip_free_list;
-extern bool	gp_persistent_repair_global_sequence;
 extern bool Debug_print_xlog_relation_change_info;
 extern bool Debug_print_xlog_relation_change_info_skip_issues_only;
 extern bool Debug_print_xlog_relation_change_info_backtrace_skip_issues;
@@ -203,12 +193,8 @@ extern bool Debug_filerep_config_print;
 extern bool Debug_filerep_verify_performance_print;
 extern bool Debug_filerep_memory_log_flush;
 extern bool filerep_inject_listener_fault;
-extern bool filerep_inject_db_startup_fault;
 extern bool filerep_inject_change_tracking_recovery_fault;
 extern bool gp_crash_recovery_suppress_ao_eof;
-extern bool Debug_check_for_invalid_persistent_tid;
-extern bool gp_watch_visibility_in_action;
-extern bool Debug_unlink_print;
 
 extern bool gp_upgrade_mode;
 extern bool gp_maintenance_mode;
@@ -234,9 +220,6 @@ extern bool log_statement_stats;
 extern bool log_dispatch_stats;
 extern bool log_btree_build_stats;
 
-extern bool log_performance_counters;
-extern bool log_performance_counters_clock_time;
-
 extern PGDLLIMPORT bool check_function_bodies;
 extern bool default_with_oids;
 extern bool SQL_inheritance;
@@ -249,18 +232,6 @@ extern int	log_min_duration_statement;
 extern int	num_temp_buffers;
 
 extern int ddboost_buf_size;
-
-extern bool gp_cancel_query_print_log;
-extern int gp_cancel_query_delay_time;
-
-extern bool gp_crash_handler_async;
-
-extern bool gp_perfmon_print_packet_info;
-extern bool gp_temporary_files_filespace_repair;
-
-extern bool gp_partitioning_dynamic_selection_log;
-extern double gp_thread_dispatch_wait;
-extern bool gp_plpgsql_clear_cache_always;
 
 /* Debug DTM Action */
 typedef enum
@@ -317,40 +288,12 @@ extern int  WalSendClientTimeout;
 
 extern char  *data_directory;
 
-/* ORCA related definitions */
-#define GPOPT_XFORMS 150 /* number of transformation rules */
-
-// ORCA-related gucs
-extern bool gp_opt_minidump;
-extern bool gp_opt_print_query;
-extern bool gp_opt_print_plan;
-extern bool gp_opt_print_xform;
-extern bool gp_opt_disable_xform_result_printing;
-extern bool	gp_opt_print_memo_after_exploration;
-extern bool	gp_opt_print_memo_after_implementation;
-extern bool	gp_opt_print_memo_after_optimization;
-extern bool	gp_opt_print_job_scheduler;
-extern bool	gp_opt_print_expression_properties;
-extern bool	gp_opt_print_group_properties;
-extern bool	gp_opt_print_optimization_context;
-extern bool gp_opt_print_optimization_stats;
-extern bool	gp_opt_parallel;
-extern bool	gp_opt_local;
-extern int  gp_opt_retries;
-extern bool  gp_opt_xforms[GPOPT_XFORMS];
-extern char *gp_opt_search_strategy_path;
-extern bool gp_opt_extract_dxl_stats;
-extern bool gp_opt_extract_dxl_stats_all_nodes;
-
 #if USE_EMAIL
 extern char  *gp_email_smtp_server;
 extern char  *gp_email_smtp_userid;
 extern char  *gp_email_smtp_password;
 extern char  *gp_email_from;
 extern char  *gp_email_to;
-extern int   gp_email_connect_timeout;
-extern int   gp_email_connect_failures;
-extern int   gp_email_connect_avoid_duration;
 #endif
 
 #if USE_SNMP
@@ -360,12 +303,14 @@ extern char   *gp_snmp_use_inform_or_trap;
 extern char   *gp_snmp_debug_log;
 #endif
 
+#ifdef USE_CONNECTEMC
+extern EmcConnectModeType_t gp_emcconnect_transport;
+#endif
+
 /* Hadoop Integration GUCs */
 extern char  *gp_hadoop_connector_jardir;  /* relative dir on $GPHOME of the Hadoop connector jar is located */
-extern char  *gp_hadoop_connector_version; /* connector version (internal use only) */
-extern char  *gp_hadoop_target_version; /* the target hadoop distro/version */
+extern char  *gp_hadoop_connector_version; /* connector version */
 extern char  *gp_hadoop_home;    /* $HADOOP_HOME on all segments */
-extern bool   gp_hadoop_enable_filter_pushdown; /* turn pushdown logic on/off */
 
 /* Time based authentication GUC */
 extern char  *gp_auth_time_override_str;
@@ -418,7 +363,6 @@ extern void EmitWarningsOnPlaceholders(const char *className);
 extern const char *GetConfigOption(const char *name);
 extern const char *GetConfigOptionResetString(const char *name);
 extern bool IsSuperuserConfigOption(const char *name);
-extern bool IsSusetDependOption(const char *name);
 extern void ProcessConfigFile(GucContext context);
 extern void InitializeGUCOptions(void);
 extern bool SelectConfigFiles(const char *userDoption, const char *progname);
@@ -443,7 +387,6 @@ extern char *flatten_set_variable_args(const char *name, List *args);
 extern void ProcessGUCArray(ArrayType *array, GucSource source);
 extern ArrayType *GUCArrayAdd(ArrayType *array, const char *name, const char *value);
 extern ArrayType *GUCArrayDelete(ArrayType *array, const char *name);
-extern ArrayType *GUCArrayReset(ArrayType *array);
 
 extern void pg_timezone_abbrev_initialize(void);
 

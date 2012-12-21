@@ -24,6 +24,9 @@ extern const char *show_log_timezone(void);
 extern const char *assign_XactIsoLevel(const char *value,
 					bool doit, GucSource source);
 extern const char *show_XactIsoLevel(void);
+extern bool assign_random_seed(double value,
+				   bool doit, GucSource source);
+extern const char *show_random_seed(void);
 extern const char *assign_client_encoding(const char *value,
 					   bool doit, GucSource source);
 extern const char *assign_role(const char *value,

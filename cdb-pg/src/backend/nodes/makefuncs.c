@@ -14,7 +14,6 @@
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
-#include "funcapi.h"
 
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
@@ -348,11 +347,11 @@ makeFuncExpr(Oid funcid, Oid rettype, List *args, CoercionForm fformat)
  * and no special action.
  */
 DefElem *
-makeDefElem(const char *name, Node *arg)
+makeDefElem(char *name, Node *arg)
 {
 	DefElem    *res = makeNode(DefElem);
 
-	res->defname = (char *)name;
+	res->defname = name;
 	res->arg = arg;
 	res->defaction = DEFELEM_UNSPEC;
 	return res;
@@ -369,36 +368,9 @@ makeDefElemExtended(/*char *nameSpace, */char *name, Node *arg,
 	DefElem    *res = makeNode(DefElem);
 
 	/*res->defnamespace = nameSpace;*/
-	res->defname = (char *)name;
+	res->defname = name;
 	res->arg = arg;
 	res->defaction = defaction;
 
 	return res;
 }
-
-/*
- * makeAggrefByOid -
- * 	make a trivial aggregate expression.
- *
- * If you need more info, add it to the returned pointer.
- */
-Aggref *
-makeAggrefByOid(Oid aggfnoid, List *args)
-{
-	Aggref	   *aggref;
-	Oid			rettype;
-
-	get_func_result_type(aggfnoid, &rettype, NULL);
-	aggref = makeNode(Aggref);
-	aggref->aggfnoid = aggfnoid;
-	aggref->aggtype = rettype;
-	aggref->args = args;
-	aggref->agglevelsup = 0;
-	aggref->aggstar = false;
-	aggref->aggdistinct = false;
-	aggref->aggstage = AGGSTAGE_NORMAL;
-	aggref->aggorder = NULL;
-
-	return aggref;
-}
-

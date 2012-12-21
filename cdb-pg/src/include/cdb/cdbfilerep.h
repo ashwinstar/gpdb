@@ -1,6 +1,6 @@
 /*
  *  cdbfilerep.h
- *
+ *  
  *
  *  Copyright 2009-2010, Greenplum Inc. All rights reserved.
  *
@@ -30,17 +30,17 @@
 	/* ATTENTION: Code has to be changed if FILEREP_MAX_LISTEN > 1 */
 #define FILEREP_MAX_LISTEN	1
 	/* Max number of listener */
-#define FILEREP_MESSAGEBODY_LEN 64 * 1024
+#define FILEREP_MESSAGEBODY_LEN 64 * 1024 
 	/* AppendOnly writes 64k and BufferPool writes 32k */
 
-#define FILEREP_MAX_OPEN_FILES 128 // 131072   // 128k
+#define FILEREP_MAX_OPEN_FILES 128 // 131072   // 128k 
 
 #define FILEREP_MAX_IPC_ARRAY	5
 #define FILEREP_MAX_SEMAPHORES	2 * FILEREP_MAX_IPC_ARRAY
 
 #define FILEREP_MAX_RESYNC_FILES 128  //8k
 
-#define FILEREP_OFFSET_UNDEFINED -1
+#define FILEREP_OFFSET_UNDEFINED -1  
 
 #define FILEREP_UNDEFINED 0xFFFFFFFF
 
@@ -57,7 +57,7 @@
 	snprintf(path, MAXPGPATH, CHANGETRACKINGDIR "/FILEREP_LOG")
 
 #define FILEREPFLATFILEID_WHOLE_FILE -1
-
+	
 /*
  * 'file_rep_retry == 0' indicates retry forever
  */
@@ -68,10 +68,10 @@
 #define FileRep_IncrementRetry(retry)										\
 			if ((file_rep_retry != 0) ||								\
 				(file_rep_retry == 0 && retry < FILEREP_UNDEFINED))		\
-				retry++;
+				retry++;												
 
 /* GUC parameters */
-extern int file_rep_message_body_length;
+extern int file_rep_message_body_length; 	
 extern int file_rep_buffer_size;
 extern int file_rep_ack_buffer_size;
 extern int file_rep_retry;
@@ -113,8 +113,8 @@ extern const char*  FileRepOperationVerificationTypeToString[];
  * FILEREP SHARED MEMORY
  ****************************************************************/
 /*
- * The structure describes position for next message to be inserted
- * and next message to be consumed. The same structure is used on
+ * The structure describes position for next message to be inserted 
+ * and next message to be consumed. The same structure is used on 
  * primary and mirror.
  *
  *  beginPosition
@@ -135,83 +135,83 @@ extern const char*  FileRepOperationVerificationTypeToString[];
  *													  |
  *											wraparoundPosition
  */
-
+	
 typedef struct FileRepShmem_s {
-
+	
 	int		ipcArrayIndex;
-
+	
 	char*	positionBegin;
-	/*
-	 * Begin position for buffering messages.
+	/* 
+	 * Begin position for buffering messages.  
 	 * It is initialized when shared memory is initalized.
 	 * The value does not change after.
 	 */
-
+	
 	char*	positionEnd;
-	/*
-	 * End position for buffering messages.
+	/* 
+	 * End position for buffering messages.  
 	 * It is initialized when shared memory is initalized.
 	 * The value does not change after.
 	 */
-
+	
 	char*	positionInsert;
-	/*
+	/* 
 	 * Identifies the insert position in shared memory for next message.
 	 * It is protected by FileRepShmemLock.
 	 */
-
+	
 	char*	positionConsume;
-	/*
-	 * Identifies the position in shared memory for next message to be
+	/* 
+	 * Identifies the position in shared memory for next message to be 
 	 * mirrored. It is protected by FileRepShmemLock.
 	 */
-
+	
 	char* positionWraparound;
-	/*
-	 * Identifies the end of last message in shared memory.
+	/* 
+	 * Identifies the end of last message in shared memory. 
 	 * It is protected by FileRepShmemLock
-	 * The value is updated at wraparound when message is inserted
+	 * The value is updated at wraparound when message is inserted 
 	 * at startPosition in shared memory.
-	 * It is used by consumer thread in order to detect wraparound.
+	 * It is used by consumer thread in order to detect wraparound.  
 	 */
-
+		
 	uint32	insertCount;
 	/* counter of inserted messages. It is used for testing code correctness. */
-
+	
 	uint32	consumeCount;
 	/* counter of consumed messages. It is used for testing code correctness. */
 
 	volatile sig_atomic_t state;
-
+	
 } FileRepShmem_s;
 
 /*
- * The structure describes the state of the FileRep message
+ * The structure describes the state of the FileRep message 
  * in shared memory.
  */
 typedef enum FileRepShmemMessageState_e {
-
+	
 	FileRepShmemMessageStateInitialized=0,
 		/* Memory is set to 0 (memset(). */
-
+	
 	FileRepShmemMessageStateReserved,
 		/* Memory is reserved for next message to be inserted. */
-
+	
 	FileRepShmemMessageStateReady
 		/* Message is inserted and ready to be consumed. */
-
+		 
 } FileRepShmemMessageState_e;
 
 /*
- * The structure describes FileRep Message related information
- * that is required for consuming FileRep message (removing message
+ * The structure describes FileRep Message related information 
+ * that is required for consuming FileRep message (removing message 
  * from shared memory and send it over the network to mirror).
- * That information is kept only in shared memory.
+ * That information is kept only in shared memory. 
  */
 typedef struct FileRepShmemMessageDescr_s {
-
+	
 	bool			messageSync;
-	/*
+	/* 
 	 * Synchronous FileRep Message.
 	 * Client flushes all data from buffers when
 	 * synchronous message is sent.
@@ -220,15 +220,15 @@ typedef struct FileRepShmemMessageDescr_s {
 	uint32			messageLength;
 	/* FileRep Message length (FileRepMessage_s) */
 
-	volatile sig_atomic_t	messageState;
-	/*
+	volatile sig_atomic_t	messageState; 
+	/* 
 	 * FileRep Message state.
-	 *		a) Reserved state (reserve memory for next message insert)
+	 *		a) Reserved state (reserve memory for next message insert) 
 	 *		b) Ready state (calculate Crc and insert message)
 	 *		   Message is ready to be consumed.
 	 */
-
-} FileRepShmemMessageDescr_s;
+	
+} FileRepShmemMessageDescr_s;	
 
 /*
  *
@@ -242,7 +242,7 @@ typedef struct FileRepIpcShmem_s
 	int		refCountSemP;
 
 	int		refCountSemC;
-
+	
 } FileRepIpcShmem_s;
 
 extern FileRepIpcShmem_s	*fileRepIpcArray[FILEREP_MAX_IPC_ARRAY];
@@ -253,11 +253,11 @@ typedef enum FileRep_IndexIpcArray_e
 	IndexIpcArrayShmem,
 	IndexIpcArrayAckHashShmem,
 	IndexIpcArrayVerify
-
+	
 } FileRep_IndexIpcArray_e;
 
 /*
- * Return the required number of semaphores for this module.
+ * Return the required number of semaphores for this module. 
  */
 extern int FileRepSemas(void);
 
@@ -271,7 +271,7 @@ extern void FileRepIpc_ShmemInit(void);
 extern void FileRep_IpcWait(PGSemaphoreData sem);
 
 /*
- * Unblock
+ * Unblock 
  */
 extern void FileRep_IpcSignal(PGSemaphoreData sem, int* refCount);
 
@@ -289,7 +289,7 @@ extern Size FileRep_ShmemSize(void);
  * Initialize the shared-memory for this module.
  */
 extern void FileRep_ShmemInit(void);
-
+	
 /*
  * Return the required shared-memory size for this module.
  */
@@ -308,17 +308,17 @@ extern void FileRepAck_ShmemInit(void);
 /*
  * PRIMARY
  *			*) FileRepShmem has 1 slot. All filerep messages are inserted into that slot.
- *			*) FileRepAckShmem has 2 slots. Indexing into slot is done via #define
+ *			*) FileRepAckShmem has 2 slots. Indexing into slot is done via #define 
  *			   FILEREP_ACKSHMEM_MESSAGE_SLOT_PRIMARY_ACK and
  *			   FILEREP_ACKSHMEM_MESSAGE_SLOT_PRIMARY_VERIFY
- *					1) Slot 0 is dedicated for all ACK filerep related messages.
+ *					1) Slot 0 is dedicated for all ACK filerep related messages. 
  *					   These messages has no data body.
- *					2) Slot 1 is dedicated for all ACK online verification related messages.
+ *					2) Slot 1 is dedicated for all ACK online verification related messages. 
  *					   These messages may have data body.
  *
  *	MIRROR
  *			*) FileRepShmem has 4 slots. Messages are inserted into slots based on relation type.
- *			   An exception is online verification that has dedicated slot.
+ *			   An exception is online verification that has dedicated slot. 
  *			   Indexing into slot is done via msgType.
  *					1) Slot 0 is dedicated to flat files (i.e. transaction logs) related messages
  *					2) Slot 1 is dedicated to online verification
@@ -326,7 +326,7 @@ extern void FileRepAck_ShmemInit(void);
  *					4) Slot 3 is dedicated to heap files related messages
  *			*)	FileRepAckShmem has 1 slot. All ack filerep messages are inserted into that slot.
  */
-#define FILEREP_ACKSHMEM_MESSAGE_SLOTS_PRIMARY	2
+#define FILEREP_ACKSHMEM_MESSAGE_SLOTS_PRIMARY	2 
 #define FILEREP_ACKSHMEM_MESSAGE_SLOTS_MIRROR	1
 
 #define FILEREP_SHMEM_MESSAGE_SLOTS_PRIMARY 1
@@ -335,7 +335,7 @@ extern void FileRepAck_ShmemInit(void);
 #define FILEREP_SHMEM_MAX_SLOTS		Max(FILEREP_SHMEM_MESSAGE_SLOTS_PRIMARY, FILEREP_SHMEM_MESSAGE_SLOTS_MIRROR)
 #define FILEREP_ACKSHMEM_MAX_SLOTS	Max(FILEREP_ACKSHMEM_MESSAGE_SLOTS_PRIMARY, FILEREP_ACKSHMEM_MESSAGE_SLOTS_MIRROR)
 
-#define FILEREP_ACKSHMEM_MESSAGE_SLOT_PRIMARY_ACK		0 /* Slot #0 is dedicated for ACK */
+#define FILEREP_ACKSHMEM_MESSAGE_SLOT_PRIMARY_ACK		0 /* Slot #0 is dedicated for ACK */		
 #define FILEREP_ACKSHMEM_MESSAGE_SLOT_PRIMARY_VERIFY	1 /* Slot #1 is dedicated for online verification */
 
 /*
@@ -346,7 +346,7 @@ outgoing message queue would always have 1 slot and incoming would have mailboxe
 //JNM TODO replace fileRepProcIndex with FILEREP_OUTGOING_MESSAGE_QUEUE ?
 #define FILEREP_OUTGOING_MESSAGE_QUEUE 0
 
-//must be 63 or less due to the gp_verification_history table
+//must be 63 or less due to the gp_verification_history table 
 #define FILEREP_VERIFY_MAX_REQUEST_TOKEN_LEN 63
 
 extern FileRepShmem_s	*fileRepShmemArray[FILEREP_SHMEM_MAX_SLOTS];
@@ -356,22 +356,22 @@ extern FileRepShmem_s	*fileRepAckShmemArray[FILEREP_ACKSHMEM_MAX_SLOTS];
 typedef enum FileRepState_e {
 	FileRepStateNotInitialized=0,
 	/* */
-
-	FileRepStateInitialization,
-	/*
+	
+	FileRepStateInitialization, 
+	/* 
 	 * Start listener, establish connection and reconcile
 	 * WAL to same EOF (if in-sync state).
 	 * Establish Connection (if in resync data state)
 	 */
 	FileRepStateReady,
-	/*
+	/* 
 	 * Mirroring or resynchronization is in progress.
 	 * dataState is InChangeTracking or InResync.
 	 */
-
+	
 	FileRepStateFault,
-	/*
-	 * Fault is detected on primary or mirror.
+	/* 
+	 * Fault is detected on primary or mirror. 
 	 * It transitions into Suspend state.
 	 */
     FileRepStateShutdownBackends,
@@ -384,16 +384,16 @@ typedef enum FileRepState_e {
 
 	FileRepStateShutdown,
 	/* Process is going to exit (graceful termination). */
-
+	
 	FileRepState__EnumerationCount
-} FileRepState_e;
-
+} FileRepState_e;	
+		
 /*
  * Responsibilities of this module!!!
  *
  * Mirror Message contains
  *		a) Header (describes operation and data that are mirrored)
- *		b) Crc of the header
+ *		b) Crc of the header 
  *		c) Body (contains data that are mirrored.). If mirror operation
  *         is different than 'write' then data are not mirrored
  *         and hence Body is empty.
@@ -406,35 +406,35 @@ typedef enum FileRepState_e {
  *
  */
 
-/*
- *
+/* 
+ * 
  */
 typedef enum FileRepStatus_e {
 	FileRepStatusSuccess=0,
-
+	
 	FileRepStatusNotDirectory,
-
+	
 	FileRepStatusNoSuchFileOrDirectory,
-
+	
 	FileRepStatusErrorReadingDirectory,
-
+	
 	FileRepStatusNotEmptyDirectory,
-
+	
 	FileRepStatusDirectoryExist,
-
+	
 	FileRepStatusNoSpace,
-
+	
 	FileRepStatusNoPermissions,
 
 	FileRepStatusReadOnlyFileSystem,
-
+	
 	FileRepStatusMirrorLossOccurred,
-
+	
 	FileRepStatusMirrorError,
-
+	
 	/* the number of values in this enumeration */
 	FileRepStatus__EnumerationCount
-
+	
 } FileRepStatus_e;
 
 typedef enum FileRepMessageHeaderVersion_e {
@@ -445,15 +445,15 @@ typedef enum FileRepConsumerProcIndex_e {
 	FileRepMessageTypeXLog=0,
 
 	FileRepMessageTypeVerify, // This needs to be <2 because on primary it is used as the second incoming message slot
-
+		
 	FileRepMessageTypeAO01,
 
 	FileRepMessageTypeWriter,
-
+	
 	FileRepMessageTypeShutdown,
 
 	FileRepMessageTypeUndefined,
-
+	
 
 	/* the number of values in this enumeration */
 	FileRepMessageType__EnumerationCount
@@ -461,97 +461,97 @@ typedef enum FileRepConsumerProcIndex_e {
 
 extern FileRepConsumerProcIndex_e fileRepProcIndex;
 
-/*
+/* 
  * Describe relation types that are mirrored.
  */
 typedef enum FileRepRelationType_e {
 	FileRepRelationTypeFlatFile=0,
 		/* Mirror Relation is flat file. */
-
+	
 	FileRepRelationTypeAppendOnly,
 		/* Mirror Relation is Append Only file */
-
+	
 	FileRepRelationTypeBufferPool,
 		/* Mirror Relation is Heap file. */
-
+	
 	FileRepRelationTypeBulk,
 		/* Mirror Relation is bulk loaded file. */
-
+		
 	FileRepRelationTypeDir,
 		/* Mirror Relation is generic directory create and drop. */
-
+	
 	FileRepRelationTypeUnknown,
-
+	
 	FileRepRelationTypeNotSpecified,
 
 	/* the number of values in this enumeration */
 	FileRepRelationType__EnumerationCount
 
 } FileRepRelationType_e;
-
-/*
+	
+/* 
  * Describe relation operations that are mirrored.
  */
 typedef enum FileRepOperation_e {
 	FileRepOperationOpen=0,
 		/*	Open mirror relation or flat file. */
-
+	
 	FileRepOperationWrite,
-		/* Write data to a mirror. */
-
+		/* Write data to a mirror. */ 
+	
 	FileRepOperationFlush,
 		/* Issue synchronous flush on a mirror. */
-
+	
 	FileRepOperationClose,
 		/* Close a mirror relation or flat file. */
-
+	
 	FileRepOperationFlushAndClose,
 		/* Issue synchronous flush and close a mirror relation */
-
+	
 	FileRepOperationTruncate,
 	/* Issue truncate to a mirror relation */
-
+	
 	FileRepOperationCreate,
 		/* Create a mirror relation, flat file, or database directory. */
-
+	
 	FileRepOperationDrop,
 		/* Drop mirror relation, flat file, or database directory. */
-
+	
 	FileRepOperationReconcileXLogEof,
 		/* Reconcile XLog Eof between primary and mirror */
-
+	
 	FileRepOperationRename,
 		/* Rename flat file on a mirror relation */
-
+	
 	FileRepOperationShutdown,
 		/* Transition a mirror to shutdown */
-
+	
 	FileRepOperationInSyncTransition,
 		/* Transition a mirror from InResync to InSync */
-
+	
 	FileRepOperationHeartBeat,
 		/* Verify that flow from primary to mirror and back is alive */
 
 	FileRepOperationCreateAndOpen,
 		/* Create and Open mirror relation */
-
+	
 	FileRepOperationValidation,
 		/* Validate filespace directory */
-
+	
 	FileRepOperationDropFilesFromDir,
 		/* Drop Files from specified directory */
-
+	
 	FileRepOperationDropTemporaryFiles,
 		/* Drop temporary files */
 
-	FileRepOperationVerify,
+	FileRepOperationVerify,  
 
 	/*
 	  IMPORTANT: If add new operation, add to FileRepOperationToString
 
 	  Also a number of decisions should be made about this operation:
 
-	  1) Is the operation synchronous?
+	  1) Is the operation synchronous? 
 	  Answer True/False with addition to FileRep_IsOperationSynchronous in cdbfilerep.c
 
 	  2) Should this operation carry a description field from primary to mirror?
@@ -561,7 +561,7 @@ typedef enum FileRepOperation_e {
 	  3) Should this operation carry a description field from mirror back to the primary?
 	  Answer by adding to switch statement in FileRepAckMirror_ConstructAndInsertMessage
 	  Encapsulate this decision as a bool routine like IsOperation Synchronous?
-
+	  
 	  4) Do you want to define a unique message description for this operation?
 	  If so add struct below and then add struct into union for all operations (FileRepOperationDescription_u)
 
@@ -569,48 +569,48 @@ typedef enum FileRepOperation_e {
 	  If so in FileRepMirror_RunConsumer, you need to calcuate and check the CRC over the message body
       Could encapsulate this descision as a bool routine like IsOperationSynchronous? DoesOperationCarryMessaageBody
 	*/
-
+	
 	FileRepOperationNotSpecified,
 
 	/* the number of values in this enumeration */
 	FileRepOperation__EnumerationCount
-
+	
 } FileRepOperation_e;
 
-/*
- *
+/* 
+ * 
  */
 typedef enum FileRepAckState_e {
 	FileRepAckStateNotInitialized=0,
-
+	
 	FileRepAckStateWaiting,
-
+	
 	FileRepAckStateCompleted,
-
+	
 	FileRepAckStateMirrorInFault,
 
 
 	/* the number of values in this enumeration */
 	FileRepAckState__EnumerationCount
-
+	
 } FileRepAckState_e;
 
 
-/*
- *
+/* 
+ * 
  */
 typedef enum FileRepResyncState_e {
 	FileRepResyncStateNotInitialized=0,
-
+	
 	FileRepResyncStateInitialized,
 		/* entry is initialized and file waited to be resynced */
-
+	
 	FileRepResyncStateInProgress,
 		/* file is in resync */
-
+	
 	FileRepResyncStateCompleted,
 		/* file resync completed */
-
+	
 	FileRepResyncStateFault,
 		/* file resync fault */
 
@@ -623,13 +623,13 @@ typedef enum FileRepResyncState_e {
 typedef struct FileRepRelationIdentifier_s {
 	RelFileNode	relFileNode;
 		/* The tablespace, database, and relation OIDs for the open. */
-
+	
 	uint32		segmentFileNum;
 		/* Which segment file? */
-
+	
 	char		mirrorFilespaceLocation[MAXPGPATH+1];
 		/* Mirror Filespace Location */
-
+	
 } FileRepRelationIdentifier_s;
 
 /*
@@ -638,7 +638,7 @@ typedef struct FileRepRelationIdentifier_s {
 typedef struct FileRepFlatFileIdentifier_s {
 	char	directorySimpleName[MAXPGPATH+1];
 		/* The simple name of the directory in the instance database directory. */
-
+	
 	char	fileSimpleName[MAXPGPATH+1];
 		/* The simple name of the file. */
 
@@ -650,16 +650,16 @@ typedef struct FileRepFlatFileIdentifier_s {
  */
 typedef enum FileRepDirType_e {
 	FileRepDirNotInitialized=0,
-
+	
 	FileRepDirFilespace,
 		/* filespace directory */
-
+	
 	FileRepDirTablespace,
 		/* tablespace directory */
-
+	
 	FileRepDirDatabase,
 		/* database directory */
-
+	
 } FileRepDirType_e;
 
 /*
@@ -667,16 +667,16 @@ typedef enum FileRepDirType_e {
  */
 typedef enum FileRepValidationType_e {
 	FileRepValidationNotInitialized=0,
-
+	
 	FileRepValidationFilespace,
 		/* Validate if filespace directory can be created. */
-
+	
 	FileRepValidationExistence,
-		/*
-		 * Validate if directory or file exists on mirror.
+		/* 
+		 * Validate if directory or file exists on mirror. 
 		 * Check is done during resynchronization with full copy.
 		 */
-
+		
 } FileRepValidationType_e;
 
 /*
@@ -686,13 +686,13 @@ typedef enum FileRepValidationType_e {
 typedef struct FileRepDirIdentifier_s {
 	FileRepDirType_e	fileRepDirType;
 	/* which directory */
-
+	
 	DbDirNode			dbDirNode;
 	/* The tablespace and database OIDs */
-
+	
 	char				mirrorFilespaceLocation[MAXPGPATH+1];
 	/* Mirror Filespace Location */
-
+	
 } FileRepDirIdentifier_s;
 
 /*
@@ -700,11 +700,11 @@ typedef struct FileRepDirIdentifier_s {
  * (i.e. FileRepOperationShutdown)
  */
 typedef struct FileRepUnknownIdentifier_s {
-
-	char		unknownId[FILEREP_UNKNOWN_IDENTIFIER_LEN+1];
+	
+	char		unknownId[FILEREP_UNKNOWN_IDENTIFIER_LEN+1]; 
 } FileRepUnknownIdentifier_s;
 
-/*
+/* 
  * This structure identifies uniquely receiver of the message.
  */
 typedef union FileRepIdentifier_u {
@@ -713,103 +713,103 @@ typedef union FileRepIdentifier_u {
 
 	FileRepFlatFileIdentifier_s fileRepFlatFileIdentifier;
 		/* */
-
+	
 //    FileRepFlatFileBlockIdentifier_s fileRepFlatFileBlockIdentifier;
 
-	FileRepDirIdentifier_s		fileRepDirIdentifier;
+	FileRepDirIdentifier_s		fileRepDirIdentifier; 
 		/* */
-
-	FileRepUnknownIdentifier_s	fileRepUnknownIdentifier;
+	
+	FileRepUnknownIdentifier_s	fileRepUnknownIdentifier; 
 		/* */
-
+	
 } FileRepIdentifier_u;
 
 /*
- *
+ *	 
  */
 typedef struct FileRepOperationDescriptionOpen_s {
 	int			fileFlags;
 		/* file flags */
-
+	
 	int			fileMode;
 		/* file mode */
-
+	
 	int64		logicalEof;
-
+	
 	bool		suppressError;
-
+	
 } FileRepOperationDescriptionOpen_s;
 
 /*
- *
+ *	 
  */
 typedef struct FileRepOperationDescriptionTruncate_s {
 	int64			position;
 	/* the position to cutoff the data */
-
+	
 } FileRepOperationDescriptionTruncate_s;
 
 /*
- *
+ *	 
  */
 typedef struct FileRepOperationDescriptionWrite_s {
 	int32		offset;
 		/* blocknum if buffer pool */
-
-	uint32		dataLength;
+	
+	uint32		dataLength; 
 		/* 32k for buffer pool */
-
+	
 	XLogRecPtr	lsn;
 		/* */
 } FileRepOperationDescriptionWrite_s;
-
+	
 /*
- *
+ *	 
  */
 typedef struct FileRepOperationDescriptionReconcile_s {
-
+	
 	XLogRecPtr	xLogEof;
 		/* XLog logical eof */
-
+	
 } FileRepOperationDescriptionReconcile_s;
 
 typedef struct FileRepOperationDescriptionRename_s {
-
+	
 	FileRepIdentifier_u fileRepIdentifier;
 	/* new identifier (after rename). */
-
+	
 } FileRepOperationDescriptionRename_s;
 
 typedef struct FileRepOperationDescriptionHeartBeat_s {
-
+	
 	FileRepConsumerProcIndex_e fileRepConsumerProcIndex;
 	/* identify shared memory to verify the flow on mirror  */
-
+	
 } FileRepOperationDescriptionHeartBeat_s;
 
 /*
- *
+ *	 
  */
-typedef struct FileRepOperationDescriptionValidation_s
+typedef struct FileRepOperationDescriptionValidation_s 
 {
 	FileRepValidationType_e	fileRepValidationType;
-
+	
 	int		mirrorStatus;
-
+	
 } FileRepOperationDescriptionValidation_s;
 
 /*
- *
+ *	 
  */
-typedef struct FileRepOperationDescriptionCreate_s
-{
+typedef struct FileRepOperationDescriptionCreate_s 
+{	
 	int		ignoreAlreadyExists;
-
+	
 	int		mirrorStatus;
-
+	
 } FileRepOperationDescriptionCreate_s;
 
-typedef enum FileRepOperationVerificationType_e
+typedef enum FileRepOperationVerificationType_e 
 {
 	FileRepOpVerifyType_NotInitialized=0,
 
@@ -817,87 +817,90 @@ typedef enum FileRepOperationVerificationType_e
 	FileRepOpVerifyType_EnhancedBlockHash,
 
 	FileRepOpVerifyType_RequestParameters,
-	/* Not really used now, but could be useful for repairs
+	/* Not really used now, but could be useful for repairs 
 	   if we decided to do those
 	*/
 	FileRepOpVerifyType_DirectoryContents,
 
-	/*
+	/* 
 	   If add an operation type, then should add corresponding structure into the
-	   FileRepOperationDescriptionVerify_u and add string into FileRepOperationVerificationTypeToString
+	   FileRepOperationDescriptionVerify_u and add string into FileRepOperationVerificationTypeToString 
 	*/
 
 	/* the number of values in this enumeration */
 	FileRepOpVerifyType__EnumerationCount
-
+	
 } FileRepOperationVerificationType_e;
 
 /*
- *
+ *	 
  */
 
-typedef enum FileRepOperationVerifyParameterType_e
+typedef enum FileRepOperationVerifyParameterType_e 
 {
 	FileRepOpVerifyParamterType_IgnoreInfo
-
+	
 } FileRepOperationVerifyParameterType_e;
 
-typedef struct FileRepOperationDescriptionVerify_RequestParameters_s
+typedef struct FileRepOperationDescriptionVerify_RequestParameters_s 
 {
 	char  token[FILEREP_VERIFY_MAX_REQUEST_TOKEN_LEN+1];
 	FileRepOperationVerifyParameterType_e type;
 	int numFileIgnore;
 	int numDirIgnore;
-
+	
 } FileRepOperationDescriptionVerify_RequestParameters_s;
 
 
-typedef struct FileRepOperationDescriptionVerify_SummaryItems_s
-{
+typedef struct FileRepOperationDescriptionVerify_SummaryItems_s 
+{   
 	//when sent from primary to mirror this is the number of things to be verified
 	//when sent from mirror to primary this is the number of things that mismatched
-	uint32          num_entries;
+	uint32          num_entries; 
 	bool            hashcodesValid;
 	bool            sizesValid;
-
+	
 } FileRepOperationDescriptionVerify_SummaryItems_s;
 
-typedef struct FileRepOperationDescriptionVerify_DirectoryContents_Primary_s
+typedef struct FileRepOperationDescriptionVerify_DirectoryContents_Primary_s 
 {
-	bool            firstBatch;
+	uint32          numChildrenOnPrimary;
+	bool            lastMatch;
+	bool            finalBatch;
 
 } FileRepOperationDescriptionVerify_DirectoryContents_Primary_s;
 
-typedef struct FileRepOperationDescriptionVerify_DirectoryContents_Mirror_s
+typedef struct FileRepOperationDescriptionVerify_DirectoryContents_Mirror_s 
 {
-	uint32          numChildrenInBatch;
-	bool            startOver;
-	bool            finalBatch;
-	bool            directoryExists;
+	uint32          numChildrenAddedOnMirror;
+	uint32          numChildrenMissingOnMirror;
+	uint32          numLeftOnMirrorToCompare;
+	bool            newLastMatch;
+	bool            endCompares;  //could just use this as numLeftOnMirrorToCompare == 0??
 
 } FileRepOperationDescriptionVerify_DirectoryContents_Mirror_s;
 
 
 
-typedef enum FileRepVerify_CompareException_e
+typedef enum FileRepVerify_CompareException_e 
 {
 	FileRepVerifyCompareException_None=0,
 	FileRepVerifyCompareException_AORelation,
 	FileRepVerifyCompareException_HeapRelation,
 	FileRepVerifyCompareException_BtreeIndex
-
+	
 } FileRepVerify_CompareException_e;
 
 
-typedef struct FileRepOperationDescriptionVerify_EnhancedBlockHash_s
+typedef struct FileRepOperationDescriptionVerify_EnhancedBlockHash_s 
 {
-	uint64		offset;
-	uint64		dataLength; //amount of data to be compute the hash over
-
+	int32		offset;
+	uint32		dataLength; //amount of data to be compute the hash over
+	
 	pg_crc32		hashcode;
-
+	
 	FileRepVerify_CompareException_e exception;
-
+	
 	bool isOnMirror;
 	bool lastBlock;
 
@@ -905,70 +908,70 @@ typedef struct FileRepOperationDescriptionVerify_EnhancedBlockHash_s
 
 
 
-typedef struct FileRepOperationDescriptionVerify_u
+typedef struct FileRepOperationDescriptionVerify_u 
 {
 	FileRepOperationDescriptionVerify_SummaryItems_s summaryItems;
 	FileRepOperationDescriptionVerify_EnhancedBlockHash_s enhancedBlockHash;
 	FileRepOperationDescriptionVerify_RequestParameters_s requestParameters;
-
+	
 	//Both used to support 	FileRepOpVerifyType_DirectoryContents - one for what primary sends to mirror and one for what mirror send back
-	FileRepOperationDescriptionVerify_DirectoryContents_Primary_s dirContents;
-	FileRepOperationDescriptionVerify_DirectoryContents_Mirror_s dirContentsMirror;
+	FileRepOperationDescriptionVerify_DirectoryContents_Primary_s dirContents;  
+	FileRepOperationDescriptionVerify_DirectoryContents_Mirror_s dirContentsMirror;		
 
 } FileRepOperationDescriptionVerify_u;
 
 
-typedef struct FileRepVerifyLoggingOptions_s
+typedef struct FileRepVerifyLoggingOptions_s 
 {
 	char token[FILEREP_VERIFY_MAX_REQUEST_TOKEN_LEN+1];
 	int  level;
 	char logPath[MAXPGPATH+1];
 	char fixPath[MAXPGPATH+1];
 	char chkpntPath[MAXPGPATH+1];
-
-	char externalTablePath[MAXPGPATH+1];
+	
+	char externalTablePath[MAXPGPATH+1];	
 	char resultsPath[MAXPGPATH+1];
 } FileRepVerifyLoggingOptions_s;
 
 
-typedef struct FileRepOperationDescriptionVerify_s
+typedef struct FileRepOperationDescriptionVerify_s 
 {
 	FileRepOperationVerificationType_e type;
 	FileRepOperationDescriptionVerify_u desc;
 	FileRepVerifyLoggingOptions_s logOptions;
-
+		
 } FileRepOperationDescriptionVerify_s;
 
-/*
+/* 
  *
  */
-typedef union FileRepOperationDescription_u
+typedef union FileRepOperationDescription_u 
 {
-
+	
 	FileRepOperationDescriptionOpen_s open;
 		/* */
-
+	
 	FileRepOperationDescriptionTruncate_s truncate;
 		/* */
-
+	
 	FileRepOperationDescriptionWrite_s write;
 		/* */
-
+	
 	FileRepOperationDescriptionReconcile_s reconcile;
-
+	
 	FileRepOperationDescriptionRename_s rename;
-
+	
 	FileRepOperationDescriptionHeartBeat_s heartBeat;
-
+	
 	FileRepOperationDescriptionValidation_s validation;
-
+	
 	FileRepOperationDescriptionCreate_s create;
-
+	
 	FileRepOperationDescriptionVerify_s verify;
 
 } FileRepOperationDescription_u;
 
-/*
+/* 
  * This structure describes operation to be mirrored.
  */
 typedef struct FileRepMessageHeader_s {
@@ -976,45 +979,45 @@ typedef struct FileRepMessageHeader_s {
 	  version  during handshake */
 	FileRepMessageHeaderVersion_e fileRepMessageHeaderVersion;
 		/* Message Header Version */
-
+	
 	FileRepRelationType_e fileRepRelationType;
 		/* Mirror Relation type. */
-
+	
 	FileRepOperation_e fileRepOperation;
 		/* Operation to be issued on a mirror. */
-
+	
 	FileRepIdentifier_u fileRepIdentifier;
 		/* Message Receiver identifier. */
-
+	
 	FileRepOperationDescription_u fileRepOperationDescription;
 		/* Describes metadata required to perform operation */
-
+	
 	pg_crc32 fileRepMessageBodyCrc;
 		/* CRC of the message body */
-
-	FileRepAckState_e fileRepAckState;
+	
+	FileRepAckState_e fileRepAckState;	
 		/* state/status of the ACK message */
 
 	uint32	messageCount;
-
+	
 	uint32 spareField;
 
 	uint32 messageBodyLength;
 		/* reserved for future */
-
+	
 } FileRepMessageHeader_s;
 
 typedef struct FileRepMessage_s {
 	FileRepMessageHeader_s fileRepMessageHeader;
 		/* */
-
-	pg_crc32	fileRepMessageHeaderCrc;
+	
+	pg_crc32	fileRepMessageHeaderCrc; 
 		/* */
-
+	
 	char		fileRepMessageBody[FILEREP_MESSAGEBODY_LEN+1];
 		/* */
-
-} FileRepMessage_s;
+	
+} FileRepMessage_s;	
 
 /*********************************************************
  * FILE REP PROCESSES
@@ -1022,45 +1025,45 @@ typedef struct FileRepMessage_s {
 
 typedef enum FileRepProcessType_e {
 	FileRepProcessTypeNotInitialized=0,
-
+	
 	FileRepProcessTypeMain,
 	/* Main File Rep process forked by Postmaster. */
-
+	
 	FileRepProcessTypePrimarySender,
 	/* Primary Sender process forked by main file rep process. */
-
+	
 	FileRepProcessTypeMirrorReceiver,
 	/* Mirror Receiver process forked by main file rep process. */
-
+	
 	FileRepProcessTypeMirrorConsumer,
 	/* Mirror Consumer process forked by main file rep process. */
-
+	
 	FileRepProcessTypeMirrorSenderAck,
 	/* Mirror Sender ACK process forked by main file rep process. */
-
+	
 	FileRepProcessTypePrimaryReceiverAck,
 	/* Primary Receiver ACK process forked by main file rep process. */
-
+	
 	FileRepProcessTypePrimaryConsumerAck,
 	/* Primary Consumer ACK process forked by main file rep process. */
-
+	
 	FileRepProcessTypePrimaryRecovery,
 	/* Recovery process that runs only during recovery time at gpstart */
-
+	
 	FileRepProcessTypeMirrorConsumerWriter,
-
+	
 	FileRepProcessTypeMirrorConsumerAppendOnly1,
-
+	
 	FileRepProcessTypeResyncManager,
-
+	
 	FileRepProcessTypeResyncWorker1,
 
 	FileRepProcessTypeResyncWorker2,
-
+	
 	FileRepProcessTypeResyncWorker3,
-
+	
 	FileRepProcessTypeResyncWorker4,
-
+	
 	FileRepProcessTypePrimaryVerification,
 
 	FileRepProcessTypeMirrorVerification,
@@ -1075,28 +1078,28 @@ typedef enum FileRepProcessType_e {
 	  2) Should the process be on the mirror or primary?
 	  Answer by starting in the appropriate case in switch for fileRepRole in routine FileRep_Main
 
-	  3) Consider increasing MaxFileRepSubProc
+	  3) Consider increasing MaxFileRepSubProc 
 
 	  4) Add into the FileRepSubProcList
 
-	  5) Add into the proper place in FileRepSubProcess_Main
+	  5) Add into the proper place in FileRepSubProcess_Main 
 
-	  6) For things on mirror if FileRepSubProcess_Main calls FileRepMirror_StartConsumer, then add
+	  6) For things on mirror if FileRepSubProcess_Main calls FileRepMirror_StartConsumer, then add 
 	  proper handling into FileRepMirror_StartConsumer
 
 
-
+	  
 	*/
 
 	FileRepProcessType__EnumerationCount
 	/* the count of enumeration values */
-
+	
 } FileRepProcessType_e;
 
 /*
- * Postmaster forks FileRep process. Input parameters
+ * Postmaster forks FileRep process. Input parameters 
  * are stored in shared memory. Postmaster-backend process
- * writes input parameters. FileRep and Postmaster processes
+ * writes input parameters. FileRep and Postmaster processes 
  * read them (never write).
  *
  * INPUT parameters
@@ -1106,9 +1109,9 @@ typedef enum FileRepProcessType_e {
  *			Mirror IP address
  *			Primary Port
  *			Mirror Port
- */
+ */	
 extern void FileRep_Main(void);
-
+	
 /*
  * Set state in FileRep process and sent signal to postmaster
  * (if required).
@@ -1128,11 +1131,11 @@ extern bool FileRep_IsInResynchronizeReady(void);
 extern bool FileRep_IsInChangeTracking(void);
 
 /*
- * change data state of the segment and inform postmaster to
+ * change data state of the segment and inform postmaster to 
  * signal all segment processes
  */
 extern void FileRep_SetDataState(
-								 DataState_e dataState,
+								 DataState_e dataState, 
 								 bool signalPostmaster);
 
 /*
@@ -1199,9 +1202,9 @@ extern	void FileRep_InsertLogEntry(
 #define FileRep_InsertConfigLogEntry(description)	\
 			FileRep_InsertConfigLogEntryInternal(description, __FILE__, __LINE__, PG_FUNCNAME_MACRO)
 
-extern void	FileRep_InsertConfigLogEntryInternal(char		*description,
-												 const char *fileName,
-												 int		lineNumber,
+extern void	FileRep_InsertConfigLogEntryInternal(char		*description, 
+												 const char *fileName, 
+												 int		lineNumber, 
 												 const char *funcName);
 
 extern void FileRep_Sleep1ms(int retry);
@@ -1237,15 +1240,15 @@ extern FileRepIdentifier_u FileRep_GetFlatFileIdentifier(
 
 extern FileRepIdentifier_u FileRep_GetUnknownIdentifier(
 							 char*	unknownId);
-
+														 
 extern bool FileRep_IsOperationSynchronous(
-						FileRepOperation_e fileRepOperation);
+						FileRepOperation_e fileRepOperation);		
 
 extern bool FileRep_IsIpcSleep(FileRepOperation_e fileRepOperation);
 
 extern XLogRecPtr FileRep_GetXLogRecPtrUndefined(void);
 
-
+	
 extern FileName
 FileRep_GetHashKey(
 					  FileRepIdentifier_u	 fileRepIdentifier,
@@ -1256,7 +1259,7 @@ extern FileName FileRep_GetFileName(
 				 FileRepRelationType_e	fileRepRelationType);
 
 extern void FileRep_GetRelationPath(
-						char		*relationPath,
+						char		*relationPath, 
 						RelFileNode relFileNode,
 						uint32		segmentFileNum);
 
@@ -1301,7 +1304,7 @@ typedef enum FileRepGpmonStatType_e {
 typedef struct FileRepGpmonRecord_s {
 		FileRepGpmonStatType_e whichStat;
 		/*
-		  could have a union here of different records
+		  could have a union here of different records 
 		  for each stat type if we wanted
 		*/
 
@@ -1309,15 +1312,15 @@ typedef struct FileRepGpmonRecord_s {
 		TimestampTz startTime;
 		TimestampTz endTime;
 		apr_uint32_t size;
-
+		
 } FileRepGpmonRecord_s;
 
 void FileRepStats_GpmonInit(void);
 
-void FileRepGpmonStat_OpenRecord(FileRepGpmonStatType_e whichStat,
+void FileRepGpmonStat_OpenRecord(FileRepGpmonStatType_e whichStat, 
 								 FileRepGpmonRecord_s *record);
 
-void FileRepGpmonStat_CloseRecord(FileRepGpmonStatType_e whichStat,
+void FileRepGpmonStat_CloseRecord(FileRepGpmonStatType_e whichStat, 
 								  FileRepGpmonRecord_s *record);
 
 void
@@ -1326,7 +1329,6 @@ FileRepStats_ShmemInit(void);
 Size
 FileRepStats_ShmemSize(void);
 
-extern void FileRep_resetSpinLocks(void);
 
 #endif   /* CDBFILEREP_H */
 

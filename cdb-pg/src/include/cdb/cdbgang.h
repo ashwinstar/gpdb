@@ -22,27 +22,11 @@ struct QueryDesc;               /* #include "executor/execdesc.h" */
  */
 typedef enum GangType
 {
-	GANGTYPE_UNALLOCATED,		/* a root slice executed by the qDisp */
-	GANGTYPE_MASTERDB_READER,	/* a 1-gang with read access to the entry db */
-	GANGTYPE_SEGDB_READER,		/* a 1-gang or N-gang to read the segment dbs */
-	GANGTYPE_WRITER				/* the N-gang that can update the segment dbs
-								   and sets the shared snapshot for the reader
-								   gangs */
+	GANGTYPE_UNALLOCATED,       /* a root slice executed by the qDisp */
+	GANGTYPE_ENTRYDB_READER,    /* a 1-gang with read access to the entry db */
+	GANGTYPE_PRIMARY_READER,    /* a 1-gang or N-gang to read the segment dbs */
+	GANGTYPE_PRIMARY_WRITER    /* the N-gang that can update the segment dbs */
 } GangType;
-
-/* GangScope enumeration is used in several structures related operation
- * on a set of gangs. e.g., In some cases we want free all reader gangs on
- * dispatch something any to the writer gang, etc.
- */
-typedef enum GangScope
-{
-	GANGSCOPE_WRITER,
-	GANGSCOPE_ALL_READERS,
-	GANGSCOPE_ALLOCATED_READERS,
-	GANGSCOPE_AVAILABLE_READERS,
-	GANGSCOPE_ALL,
-
-} GangScope;
 
 /*
  * A gang represents a single worker on each connected segDB
@@ -75,22 +59,35 @@ typedef struct Gang
 
 extern Gang *allocateGang(GangType type, int size, int content, char *portal_name);
 extern Gang *allocateWriterGang(void);
+
 struct DirectDispatchInfo;
 extern List *getCdbProcessList(Gang *gang, int sliceIndex, struct DirectDispatchInfo *directDispatch);
+
 extern bool gangOK(Gang *gp);
-extern List *getCdbProcessesForQD(void);
-extern void deallocatePortalGangs(char *portal_name);
-extern void disconnectGangsByScope(GangScope scope);
+
+extern List *getCdbProcessesForQD(int isPrimary);
+
+extern void freeGangsForPortal(char *portal_name);
+
+extern void disconnectAndDestroyAllGangs(void);
+
 extern void CheckForResetSession(void);
+
 extern List * getAllReaderGangs(void);
+
 extern void detectFailedConnections(void);
+
 extern CdbComponentDatabases *getComponentDatabases(void);
+
 extern bool gangsExist(void);
+
 struct SegmentDatabaseDescriptor *getSegmentDescriptorFromGang(const Gang *gp, int seg);
+
 extern Gang *findGangById(int gang_id);
 
+
 /*
- * cleanupIdleReaderGangs() and disconnectAllIdleGangs().
+ * cleanupIdleReaderGangs() and cleanupAllIdleGangs().
  *
  * These two routines are used when a session has been idle for a while (waiting for the
  * client to send us SQL to execute).  The idea is to consume less resources while sitting idle.
@@ -98,22 +95,35 @@ extern Gang *findGangById(int gang_id);
  * Only call these from an idle session.
  */
 extern void cleanupIdleReaderGangs(void);
-extern void disconnectAllIdleGangs(void);
-extern void AtPortalDrop_CleanupIdleGangs(Portal portal);
-extern int largestGangsize(void);
-extern int gp_pthread_create(pthread_t *thread, void *(*start_routine)(void *), void *arg, const char *caller);
 
+extern void cleanupAllIdleGangs(void);
+
+extern void cleanupPortalGangs(Portal portal);
+
+extern int largestGangsize(void);
+
+extern int gp_pthread_create(pthread_t *thread, void *(*start_routine)(void *), void *arg, const char *caller);
 /*
  * cdbgang_parse_gpqeid_params
  *
  * Called very early in backend initialization, to interpret the "gpqeid"
  * parameter value that a qExec receives from its qDisp.
+ *
+ * At this point, client authentication has not been done; the backend
+ * command line options have not been processed; GUCs have the settings
+ * inherited from the postmaster; etc; so don't try to do too much in here.
  */
 void
 cdbgang_parse_gpqeid_params(struct Port *port, const char* gpqeid_value);
 
+void
+cdbgang_parse_gpqdid_params(struct Port *port, const char* gpqdid_value);
+
+void
+cdbgang_parse_gpdaid_params(struct Port *port, const char* gpdaid_value);
+
 /* ----------------
- * GPDB Worker Process information
+ * MPP Worker Process information
  *
  * This structure represents the global information about a worker process.
  * It is constructed on the entry process (QD) and transmitted as part of
@@ -132,14 +142,20 @@ typedef struct CdbProcess
 	 * QE.  It needs to be explicitly transmitted to QE's,  however,
 	 */
 
-	char 	*listenerAddr; /* Interconnect listener IPv4 address, a C-string */
-	int 	listenerPort; /* Interconnect listener port */
-	int		pid; /* Backend PID of the process. */
-	int		contentid;
+	char *listenerAddr; /* Interconnect listener IPv4 address, a C-string */
+
+	int listenerPort; /* Interconnect listener port */
+	int pid; /* Backend PID of the process. */
+
+	/* Unclear about why we need these, however, it is no trouble to carry
+	 * them.
+	 */
+
+	int contentid;
 } CdbProcess;
 
 /* ----------------
- * GPDB Plan Slice information
+ * MPP Plan Slice information
  *
  * These structures summarize how a plan tree is sliced up into separate
  * units of execution or slices. A slice will execute on a each worker within
@@ -205,10 +221,10 @@ typedef struct Slice
 	 */
 	DirectDispatchInfo directDispatch;
 
-	struct Gang *gang;
+	struct Gang *primaryGang;
 
 	/* tell dispatch agents which gang we're talking about.*/
-	int          gangId;
+	int          primary_gang_id;
 
 
 	/*
@@ -217,7 +233,7 @@ typedef struct Slice
 	 * this plan slice.
 	 *
 	 * The number of processes must agree with the
-	 * the plan slice to be implemented.  In GPDB
+	 * the plan slice to be implemented.  In MPP 2
 	 * the possibilities are 1 for a slice that
 	 * operates on a single stream of tuples (e.g.,
 	 * the receiver of a fixed motion, a 1-gang), or
@@ -230,7 +246,7 @@ typedef struct Slice
 	 * an input tuple to this slice will direct it to
 	 * the H+1st process in the list.
 	 */
-	List *workerProcesses;
+	List *primaryProcesses;
 } Slice;
 
 /*

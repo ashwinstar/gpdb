@@ -24,7 +24,6 @@ sys.path.append(sys.path[0] + '/lib')
 
 try:
     import paramiko, getpass, pexpect
-    import gppylib.userinput
     from optparse import Option, OptionParser 
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.gplog import get_default_logger, setup_tool_logging
@@ -82,6 +81,7 @@ class UniqueHost:
     
     def debugStr(self):
         return "address %s hostname %s userExists %s" % (self.address, self.hostname, self.userExists)
+    
 
 def cli_help():
     help_path = os.path.join(sys.path[0], '..', 'docs', 'cli_help', EXECNAME + '_help')
@@ -110,7 +110,7 @@ def parseargs():
     parser.add_option('-f', '--file', type='string')
     parser.add_option('-u', '--user', type='string', default='gpadmin')
     parser.add_option('-g', '--group', type='string')
-    parser.add_option('-p', '--password', type='string')
+    parser.add_option('-p', '--password', type='string', default='changeme')
     parser.add_option('-c', '--commands', type='string')
     parser.add_option('--verbose', action='store_true')
     (options, args) = parser.parse_args()
@@ -419,9 +419,8 @@ def  getLocalSoftwareVersion():
     return False
 
 # True is an error
-def  simpleLocalCommand(cmdStr, checkError=True, verbose=True):
-    if verbose:
-        logger.info(cmdStr)
+def  simpleLocalCommand(cmdStr, checkError=True):
+    logger.info(cmdStr)
     try:
         cmd = Command("simpleLocalCommand", cmdStr)
         pool.addCommand(cmd)
@@ -440,11 +439,10 @@ def  simpleLocalCommand(cmdStr, checkError=True, verbose=True):
     return False
 
 # True is an error
-def  simpleRemoteCommand(cmdStr, checkError=True, verbose=True):
+def  simpleRemoteCommand(cmdStr, checkError=True):
 
     failures = set()
-    if verbose:
-        logger.info("remote command: %s" % cmdStr)
+    logger.info("remote command: %s" % cmdStr)
 
     try:
         for k in uniqueseghosts.keys():
@@ -485,27 +483,19 @@ def chownMasterSoftware():
     cmdStr = "chown -R %s:%s %s" % (options.user, options.group, installation_info.install_binary_path)
     if (simpleLocalCommand(cmdStr, True)):
         return True
-
+ 
 
 # True is an error
 def changeUserPassword():
 
-    if not options.password:
-        password = gppylib.userinput.ask_create_password()
-        if not password:
-            logger.error("error obtaining password from user")
-            return True
-    else:
-        password = options.password
-    cmd = "%s/sbin/gpchangeuserpassword --user %s --password %s" % (gphome, options.user, password)
+    cmd = "%s/sbin/gpchangeuserpassword --user %s --password %s" % (gphome, options.user, options.password)
 
-    logger.info("Changing system passwords ...")
-    if (simpleLocalCommand(cmd, False, verbose=False)):
+    if (simpleLocalCommand(cmd, False)):
         return True
 
     cmdStr = ". %s/greenplum_path.sh; %s" % (gphome, cmd)
 
-    if (simpleRemoteCommand(cmdStr, True, verbose=False)):
+    if (simpleRemoteCommand(cmdStr, True)):
         return True
 
 def md5Command():
@@ -591,24 +581,26 @@ def copyOverSoftware():
     failures = set()
 
     filename = installation_info.install_binary_path + ".tar.gz"
+    nakedExecutionInfo = NakedExecutionInfo(passwordMap, NakedExecutionInfo.SFTP_PUT, filename, filename)
     try:
         for k in uniqueseghosts.keys():
             uh = uniqueseghosts[k]
-            cmdStr = "scp %s %s:%s" % (filename, uh.address, installation_info.install_binary_dir_location)
-            cmd = Command(uh.address, cmdStr)
+            cmd = Command(uh.address, None, NAKED, uh.address, nakedExecutionInfo=nakedExecutionInfo)
             pool.addCommand(cmd)
         pool.join()
         items = pool.getCompletedItems()
         for i in items:
             if i.results.rc:
-                logger.error("command failed: '%s': %s" % (i.cmdStr, i.results.stderr.strip()))
-                failures.add(i.name)
+                logger.error("%s: %s" % (i.remoteHost, i.results.stderr))
+                failures.add(i.remoteHost)
                 
     except Exception, e:
         logger.error("%s" % e.__str__())
         return True
 
     if len(failures):
+        for h in failures:
+            logger.error("failed to copy file %s to host %s" % (filename, h))
         return True
 
 

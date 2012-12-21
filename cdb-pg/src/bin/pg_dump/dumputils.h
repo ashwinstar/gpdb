@@ -19,8 +19,6 @@
 #include "libpq-fe.h"
 #include "pqexpbuffer.h"
 
-#define MAX_QUERY_ELEMENTS_DEFAULT 1000
-
 extern void init_parallel_dump_utils(void);
 extern const char *fmtId(const char *identifier);
 extern void appendStringLiteral(PQExpBuffer buf, const char *str,

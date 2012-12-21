@@ -154,11 +154,7 @@ static const PQconninfoOption PQconninfoOptions[] = {
 	{"dbname", "PGDATABASE", NULL, NULL,
 	"Database-Name", "", 20},
 
-	/* 
-	 * For GPDB internal usage, don't honour PGHOST, as this will always lead to
-	 * unexpected behaviour.
-	 */
-	{"host", NULL, NULL, NULL,
+	{"host", "PGHOST", NULL, NULL,
 	"Database-Host", "", 40},
 
 	{"hostaddr", "PGHOSTADDR", NULL, NULL,
@@ -408,7 +404,7 @@ PQconnectStartParams(const char **keywords,
 	{
 		conn->status = CONNECTION_BAD;
 		/* errorMessage is already set */
-		return conn;
+		return false;
 	}
 
 	/*
@@ -742,7 +738,7 @@ PQconndefaults(void)
 	PQconninfoOption *connOptions;
 
 	initPQExpBuffer(&errorBuf);
-	if (PQExpBufferDataBroken(errorBuf))
+	if (PQExpBufferBroken(&errorBuf))
 		return NULL;			/* out of memory already :-( */
 	connOptions = conninfo_parse("", &errorBuf, true);
 	termPQExpBuffer(&errorBuf);
@@ -2477,7 +2473,7 @@ PQfreeCancel(PGcancel *cancel)
  */
 static int
 internal_cancel(SockAddr *raddr, int be_pid, int be_key,
-				char *errbuf, int errbufsize, bool errorlessCancel)
+				char *errbuf, int errbufsize)
 {
 	int			save_errno = SOCK_ERRNO;
 	int			tmpsock = -1;
@@ -2516,14 +2512,7 @@ retry3:
 	/* Create and send the cancel request packet. */
 
 	crp.packetlen = htonl((uint32) sizeof(crp));
-	if (errorlessCancel)
-	{
-		crp.cp.cancelRequestCode = (MsgType) htonl(CANCEL_NOERR_CODE);
-	}
-	else
-	{
-		crp.cp.cancelRequestCode = (MsgType) htonl(CANCEL_REQUEST_CODE);
-	}
+	crp.cp.cancelRequestCode = (MsgType) htonl(CANCEL_REQUEST_CODE);
 	crp.cp.backendPID = htonl(be_pid);
 	crp.cp.cancelAuthCode = htonl(be_key);
 
@@ -2596,26 +2585,7 @@ PQcancel(PGcancel *cancel, char *errbuf, int errbufsize)
 	}
 
 	return internal_cancel(&cancel->raddr, cancel->be_pid, cancel->be_key,
-						   errbuf, errbufsize, false /* normal cancel */);
-}
-
-/*
- * PQcancelErrorless: request errorless query cancel
- *
- * This is pretty much the same as the above PQCancel()
- * apart from the fact that it sends an errorless cancellation request.
- */
-int
-PQcancelErrorless(PGcancel *cancel, char *errbuf, int errbufsize)
-{
-	if (!cancel)
-	{
-		strlcpy(errbuf, "PQcancel() -- no cancel object supplied", errbufsize);
-		return FALSE;
-	}
-
-	return internal_cancel(&cancel->raddr, cancel->be_pid, cancel->be_key,
-						   errbuf, errbufsize, true /* errorless cancel*/);
+						   errbuf, errbufsize);
 }
 
 /*
@@ -2650,7 +2620,7 @@ PQrequestCancel(PGconn *conn)
 	}
 
 	r = internal_cancel(&conn->raddr, conn->be_pid, conn->be_key,
-						conn->errorMessage.data, conn->errorMessage.maxlen, false /*normal cancel*/);
+						conn->errorMessage.data, conn->errorMessage.maxlen);
 
 	if (!r)
 		conn->errorMessage.len = strlen(conn->errorMessage.data);
@@ -2916,7 +2886,7 @@ PQconninfoParse(const char *conninfo, char **errmsg)
 	if (errmsg)
 		*errmsg = NULL;			/* default */
 	initPQExpBuffer(&errorBuf);
-	if (PQExpBufferDataBroken(errorBuf))
+	if (PQExpBufferBroken(&errorBuf))
 		return NULL;			/* out of memory already :-( */
 	connOptions = conninfo_parse(conninfo, &errorBuf, false);
 	if (connOptions == NULL && errmsg)

@@ -211,14 +211,6 @@ IsBlockingOperator(Node *node)
 }
 
 /**
- * Is a result node memory intensive? It is if it contains function calls.
- */
-bool IsResultMemoryIntesive(Result *res)
-{
-	return contains_node_type(NULL, (Node *) ((Plan *) res)->targetlist, T_FuncExpr);
-}
-
-/**
  * Is an operator memory intensive?
  */
 static bool IsMemoryIntensiveOperator(Node *node)
@@ -239,11 +231,6 @@ static bool IsMemoryIntensiveOperator(Node *node)
 			{
 				Agg *agg = (Agg *) node;
 				return IsAggMemoryIntensive(agg);
-			}
-		case T_Result:
-			{
-				Result *res = (Result *) node;
-				return IsResultMemoryIntesive(res);
 			}
 		default:
 			return false;
@@ -656,13 +643,6 @@ ComputeAvgMemKBForMemIntenseOp(OperatorGroupNode *groupNode)
 	
 	const uint64 nonMemIntenseOpMemKB = (uint64)gp_resqueue_memory_policy_auto_fixed_mem;
 
-	if (groupNode->groupMemKB <= groupNode->numNonMemIntenseOps * nonMemIntenseOpMemKB)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
-				 errmsg(ERRMSG_GP_INSUFFICIENT_STATEMENT_MEMORY)));
-	}
-
 	return (((double)groupNode->groupMemKB -
 			 (double)groupNode->numNonMemIntenseOps * nonMemIntenseOpMemKB) /
 			groupNode->numMemIntenseOps);
@@ -708,13 +688,11 @@ ComputeMemLimitForChildGroups(OperatorGroupNode *parentGroupNode)
 		
 		Assert(childGroup->groupMemKB == 0);
 		
-		if (parentGroupNode->groupMemKB < totalNumNonMemIntenseOps * nonMemIntenseOpMemKB ||
-			(parentGroupNode->groupMemKB == totalNumNonMemIntenseOps * nonMemIntenseOpMemKB &&
-			 totalNumMemIntenseOps > 0))
+		if (parentGroupNode->groupMemKB < totalNumNonMemIntenseOps * nonMemIntenseOpMemKB)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
-					 errmsg(ERRMSG_GP_INSUFFICIENT_STATEMENT_MEMORY)));
+					 errmsg("insufficient memory reserved for statement")));
 		}
 
 		double memIntenseOpMemKB = 0;

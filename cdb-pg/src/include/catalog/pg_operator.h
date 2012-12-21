@@ -49,9 +49,8 @@
    oprjoin       regproc 
    );
 
-   create unique index on pg_operator(oid) with (indexid=2688, CamelCase=OperatorOid, syscacheid=OPEROID, syscache_nbuckets=1024);
-
-   create unique index on pg_operator(oprname, oprleft, oprright, oprnamespace) with (indexid=2689, CamelCase=OperatorNameNsp, syscacheid=OPERNAMENSP, syscache_nbuckets=1024);
+   create unique index on pg_operator(oid) with (indexid=2688, CamelCase=OperatorOid);
+   create unique index on pg_operator(oprname, oprleft, oprright, oprnamespace) with (indexid=2689, CamelCase=OperatorNameNsp);
 
    alter table pg_operator add fk oprnamespace on pg_namespace(oid);
    alter table pg_operator add fk oprowner on pg_authid(oid);
@@ -406,15 +405,6 @@ DATA(insert OID = 693 (  "-"	   PGNSP PGUID b f	23	20	20	 0	 0	 0	 0	 0	 0 int48
 DATA(insert OID = 694 (  "*"	   PGNSP PGUID b f	23	20	20 690	 0	 0	 0	 0	 0 int48mul - - ));
 DATA(insert OID = 695 (  "/"	   PGNSP PGUID b f	23	20	20	 0	 0	 0	 0	 0	 0 int48div - - ));
 
-DATA(insert OID = 320 (  "+"	   PGNSP PGUID b f	20	21	20 324	 0	 0	 0	 0	 0 int82pl - - ));
-DATA(insert OID = 321 (  "-"	   PGNSP PGUID b f	20	21	20	 0	 0	 0	 0	 0	 0 int82mi - - ));
-DATA(insert OID = 322 (  "*"	   PGNSP PGUID b f	20	21	20 326	 0	 0	 0	 0	 0 int82mul - - ));
-DATA(insert OID = 323 (  "/"	   PGNSP PGUID b f	20	21	20	 0	 0	 0	 0	 0	 0 int82div - - ));
-DATA(insert OID = 324 (  "+"	   PGNSP PGUID b f	21	20	20 320	 0	 0	 0	 0	 0 int28pl - - ));
-DATA(insert OID = 325 (  "-"	   PGNSP PGUID b f	21	20	20	 0	 0	 0	 0	 0	 0 int28mi - - ));
-DATA(insert OID = 326 (  "*"	   PGNSP PGUID b f	21	20	20 322	 0	 0	 0	 0	 0 int28mul - - ));
-DATA(insert OID = 327 (  "/"	   PGNSP PGUID b f	21	20	20	 0	 0	 0	 0	 0	 0 int28div - - ));
-
 DATA(insert OID = 706 (  "<->"	   PGNSP PGUID b f 603 603 701 706	 0	0  0   0   0 box_distance - - ));
 DATA(insert OID = 707 (  "<->"	   PGNSP PGUID b f 602 602 701 707	 0	0  0   0   0 path_distance - - ));
 DATA(insert OID = 708 (  "<->"	   PGNSP PGUID b f 628 628 701 708	 0	0  0   0   0 line_distance - - ));
@@ -706,8 +696,6 @@ DATA(insert OID = 1578 (  "##"	  PGNSP PGUID b f  601	601  600	  0  0 0 0 0 0 cl
 DATA(insert OID = 1583 (  "*"	  PGNSP PGUID b f 1186	701 1186	1584 0 0 0 0 0 interval_mul - - ));
 DATA(insert OID = 1584 (  "*"	  PGNSP PGUID b f  701 1186 1186	1583 0 0 0 0 0 mul_d_interval - - ));
 DATA(insert OID = 1585 (  "/"	  PGNSP PGUID b f 1186	701 1186	  0  0 0 0 0 0 interval_div - - ));
-DATA(insert OID = 2920 (  "/"	  PGNSP PGUID b f 1186	1186 701	  0  0 0 0 0 0 interval_interval_div - - ));
-DATA(insert OID = 2921 (  "%"	  PGNSP PGUID b f 1186	1186 1186	  0  0 0 0 0 0 interval_interval_mod - - ));
 
 DATA(insert OID = 1586 (  "<>"	  PGNSP PGUID b f  601	601 16 1586 1535 0 0 0 0 lseg_ne neqsel neqjoinsel ));
 DATA(insert OID = 1587 (  "<"	  PGNSP PGUID b f  601	601 16 1589 1590 0 0 0 0 lseg_lt - - ));
@@ -1002,29 +990,6 @@ DATA(insert OID = 2874 (  "@"	   PGNSP PGUID b f 600 601 16	  0  0 0 0 0 0 on_ps
 DATA(insert OID = 2875 (  "@"	   PGNSP PGUID b f 601 628 16	  0  0 0 0 0 0 on_sl - - ));
 DATA(insert OID = 2876 (  "@"	   PGNSP PGUID b f 601 603 16	  0  0 0 0 0 0 on_sb - - ));
 DATA(insert OID = 2877 (  "~"	   PGNSP PGUID b f 1034 1033	 16 0 0 0 0 0 0 aclcontains - - ));
-
-/* uuid operators */
-DATA(insert OID = 3069 (  "<"	   PGNSP PGUID b f 2950 2950 16 3073 3072 0 0 0 0 uuid_lt scalarltsel scalarltjoinsel ));
-DATA(insert OID = 3070 (  "<="	   PGNSP PGUID b f 2950 2950 16 3072 3073 0 0 0 0 uuid_le scalarltsel scalarltjoinsel ));
-DATA(insert OID = 3071 (  "="      PGNSP PGUID b t 2950 2950 16 3071 3074 0 0 0 0 uuid_eq eqsel eqjoinsel ));
-DATA(insert OID = 3072 (  ">="	   PGNSP PGUID b f 2950 2950 16 3070 3069 0 0 0 0 uuid_ge scalargtsel scalargtjoinsel ));
-DATA(insert OID = 3073 (  ">"	   PGNSP PGUID b f 2950 2950 16 3069 3070 0 0 0 0 uuid_gt scalargtsel scalargtjoinsel ));
-DATA(insert OID = 3074 (  "<>"	   PGNSP PGUID b f 2950 2950 16 3074 3071 0 0 0 0 uuid_ne neqsel neqjoinsel ));
-
-/* operators for complex data type */
-DATA(insert OID = 9071 (  "="	   PGNSP PGUID b f 825 825 16 9071 9072 0 0 0 0 complex_eq eqsel eqjoinsel)); 
-#define ComplexEqualOperator 9071
-DATA(insert OID = 9072 (  "<>"	   PGNSP PGUID b f 825 825 16  9072 9071 0 0 0 0 complex_ne  neqsel neqjoinsel)); 
-DATA(insert OID = 9073 (  "@"	   PGNSP PGUID l f 0   825 701 0	0	 0 0 0 0 complexabs  - -)); 
-DATA(insert OID = 9074 (  "+"	   PGNSP PGUID b f 825 825 825 0	0	 0 0 0 0 complex_pl  - -));
-DATA(insert OID = 9075 (  "+"	   PGNSP PGUID l f 0   825 825 0	0	 0 0 0 0 complex_up  - -));
-DATA(insert OID = 9076 (  "-"	   PGNSP PGUID b f 825 825 825 0	0	 0 0 0 0 complex_mi  - -));
-DATA(insert OID = 9077 (  "-"	   PGNSP PGUID l f 0   825 825 0	0	 0 0 0 0 complex_um  - -));
-DATA(insert OID = 9078 (  "*"	   PGNSP PGUID b f 825 825 825 0	0	 0 0 0 0 complex_mul - -));
-DATA(insert OID = 9079 (  "/"	   PGNSP PGUID b f 825 825 825 0	0	 0 0 0 0 complex_div - -)); 
-DATA(insert OID = 9080 (  "^"	   PGNSP PGUID b f 825 825 825 0	0	 0 0 0 0 complex_power 	- -));
-DATA(insert OID = 9081 (  "|/"	   PGNSP PGUID l f 0   825 825 0	0	 0 0 0 0 complex_sqrt 	- -));
-DATA(insert OID = 9082 (  "||/"	   PGNSP PGUID l f 0   825 825 0	0	 0 0 0 0 complex_cbrt	- -));
 
 
 /*

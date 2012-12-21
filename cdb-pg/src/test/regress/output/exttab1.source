@@ -484,9 +484,7 @@ location('gpfdist://@hostname@:7070/nation.tbl' )
 format 'text' ( delimiter '|' newline 'lf');
 create external table ext_newline2(like ext_newline1)
 location('gpfdist://@hostname@:7070/nation.tbl' )
-format 'text' ( delimiter '|' newline 'cr'); -- should fail with invalid newline. MPP-13736
-ERROR:  invalid value for NEWLINE (cr)
-HINT:  valid options are: 'LF', 'CRLF'
+format 'text' ( delimiter '|' newline 'cr');
 create external table ext_willfail(a int)
 location('gpfdist://@hostname@:7070/nation.tbl' )
 format 'text' ( delimiter '|' newline 'blah'); -- should fail with invalid newline.
@@ -522,13 +520,13 @@ select * from ext_newline1; -- should pass. using the correct linefeed. file has
           24 | UNITED STATES  |           1 | y final packages. slow foxes cajole quickly. quickly silent platelets breach ironic accounts. unusual pinto be
 (25 rows)
 
-select * from ext_newline2; -- should fail. using an incorrect linefeed. file has 'lf'. MPP-13736 - ext_newline2  should not be exist
-ERROR:  relation "ext_newline2" does not exist
-LINE 1: select * from ext_newline2;
-                      ^
+select * from ext_newline2; -- should fail. using an incorrect linefeed. file has 'lf'.
+ERROR:  extra data after last expected column  (seg0 slice1 @hostname@:50000 pid=64819)
+DETAIL:  
+	 External table ext_newline2, line 1 of gpfdist://@hostname@:7070/nation.tbl: "0|ALGERIA|0| haggle. carefully final deposits detect slyly agai
+1|ARGENTINA|1|al foxes promise slyly..."
 drop external table ext_newline1;
-drop external table ext_newline2; -- MPP-13736 - ext_newline2  should not be exist
-ERROR:  table "ext_newline2" does not exist
+drop external table ext_newline2;
 -- MPP-6698
 create external table ext_mpp6698(a text)
 location('gpfdist://@hostname@:7070/mpp6698.data' )
@@ -724,7 +722,7 @@ create readable external table ret_region(like wet_region) location('gpfdist://@
 -- negative
 create writable external table wet_neg1(a text, b text) location('file://@hostname@@abs_srcdir@/badt1.tbl') format 'text';
 ERROR:  unsupported URI protocol 'file' for writable external table
-HINT:  Writable external tables may use 'gpfdist', 'gpfdists' or 'gphdfs' URIs only.
+HINT:  Writable external tables may use 'gpfdist' or 'gphdfs' URIs only.
 create writable external table wet_neg1(a text, b text) location('gpfdist://@hostname@:7070/wet.out', 'gpfdist://@hostname@:7070/wet.out') format 'text';
 ERROR:  location uri "gpfdist://@hostname@:7070/wet.out" appears more than once
 create writable external web table wet_pos5(a text, b text) execute 'some command' on segment 0 format 'text';
@@ -850,14 +848,14 @@ create readable external table auth_ext_test1(a int) location ('gpfdist://host:8
 SET SESSION AUTHORIZATION exttab1_u1;
 create readable external table auth_ext_test2(a int) location ('gpfdist://host:8000/file') format 'text';
 create writable external table auth_ext_test3(a int) location ('gpfdist://host:8000/file') format 'text'; -- fail
-ERROR:  permission denied: no privilege to create a writable gpfdist(s) external table
+ERROR:  permission denied: no privilege to create a writable gpfdist external table
 SET SESSION AUTHORIZATION exttab1_u2;
 create writable external table auth_ext_test3(a int) location ('gpfdist://host:8000/file') format 'text';
 RESET SESSION AUTHORIZATION;
 ALTER ROLE exttab1_u2 NOCREATEEXTTABLE(protocol='gpfdist', type='writable');
 SET SESSION AUTHORIZATION exttab1_u2;
 create writable external table auth_ext_test4(a int) location ('gpfdist://host:8000/file') format 'text'; -- fail
-ERROR:  permission denied: no privilege to create a writable gpfdist(s) external table
+ERROR:  permission denied: no privilege to create a writable gpfdist external table
 RESET SESSION AUTHORIZATION;
 SET SESSION AUTHORIZATION exttab1_u4;
 create external table auth_ext_test5(a int) location ('gphdfs://host:8000/file') format 'text';

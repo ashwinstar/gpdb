@@ -587,11 +587,6 @@ static bool DatabaseInfo_AddGpRelationNode(
 								(void *) &relfilenode,
 								HASH_FIND,
 								&found);
-
-	//Changes to solve MPP-16346
-	if(!dbInfoRel)
-			return found;
-
 	if (found)
 	{
 		if (dbInfoRel->gpRelationNodesCount >= dbInfoRel->gpRelationNodesMaxCount)
@@ -1059,8 +1054,6 @@ DatabaseInfo_HandleAppendOnly(
 												aoEntry,
 												pg_aoseg_rel,
 												SnapshotNow, 
-										// XXX XXX or AccessShareLock - who knows?
-												NoLock,
 												&totalAoSegFiles);
 				for (i = 0; i < totalAoSegFiles; i++)
 				{
@@ -1092,8 +1085,6 @@ DatabaseInfo_HandleAppendOnly(
 																aoEntry, 
 																pg_aocsseg_rel,
 																SnapshotNow, 
-										// XXX XXX or AccessShareLock - who knows?
-																NoLock,
 																&totalAocsSegFiles);
 				for (i = 0; i < totalAocsSegFiles; i++)
 				{

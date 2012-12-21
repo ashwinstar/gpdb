@@ -229,8 +229,6 @@ DefineVirtualRelation(const RangeVar *relation, List *tlist, bool replace, Oid v
 		createStmt->relation = (RangeVar *) relation;
 		createStmt->tableElts = attrList;
 		createStmt->inhRelations = NIL;
-		createStmt->inhOids = NIL;
-		createStmt->parentOidCount = 0;
 		createStmt->constraints = NIL;
 		createStmt->options = list_make1(defWithOids(false));
 		createStmt->oncommit = ONCOMMIT_NOOP;

@@ -46,8 +46,6 @@
 // Length includes 1 extra for NUL.
 #define PersistentStoreSharedDataEyecatcher_Len 26
 
-#define PersistentStoreSharedDataMaxCachedSerialNum 100
-
 typedef struct PersistentStoreSharedData
 {
 	char	eyecatcher[PersistentStoreSharedDataEyecatcher_Len];
@@ -55,8 +53,6 @@ typedef struct PersistentStoreSharedData
 	bool	needToScanIntoSharedMemory;
 
 	int64					maxInUseSerialNum;
-
-	int64					maxCachedSerialNum;
 
 	int64					inUseCount;
 
@@ -86,7 +82,7 @@ typedef void (*PersistentStorePrintTupleCallback) (
 								ItemPointer 			persistentTid,
 								Datum					*values);
 
-#define PersistentStoreData_StaticInit {NULL,0,NULL,NULL,NULL,NULL,0,0,0}
+#define PersistentStoreData_StaticInit {NULL,0,NULL,NULL,NULL,NULL,0,0,0,0}
 
 typedef struct PersistentStoreData
 {
@@ -101,6 +97,8 @@ typedef struct PersistentStoreData
 	PersistentStoreScanTupleCallback	scanTupleCallback;
 
 	PersistentStorePrintTupleCallback	printTupleCallback;
+
+	int64			myHighestSerialNum;
 
 	int				numAttributes;
 
@@ -126,7 +124,7 @@ inline static bool PersistentStore_IsZeroTid(
 	ItemPointer		testTid)
 {
 	static ItemPointerData zeroTid = {{0,0},0};
-
+	
 	return (ItemPointerCompare(testTid, &zeroTid) == 0);
 }
 
@@ -198,7 +196,7 @@ typedef struct MirroredLockLocalVars
 		\
 	}
 #endif
-
+	
 #ifdef USE_ASSERT_CHECKING
 #define MIRRORED_UNLOCK \
 	{ \
@@ -275,7 +273,7 @@ typedef struct MirroredLockLocalVars
 		\
 	}
 #endif
-
+	
 #ifdef USE_ASSERT_CHECKING
 #define MIRRORED_UNLOCK_BY_REF \
 	{ \
@@ -365,7 +363,7 @@ typedef struct CheckpointStartLockLocalVars
 		} \
 	}
 #endif
-
+	
 #ifdef USE_ASSERT_CHECKING
 #define CHECKPOINT_START_UNLOCK \
 	{ \
@@ -395,54 +393,39 @@ typedef struct CheckpointStartLockLocalVars
 	}
 #endif
 
-/*
- * Helper DEFINEs for the Persistent state-change modules to READ or WRITE.
- * We must maintain proper lock acquisition and ordering to prevent any
- * possible deadlocks.
- *
- * The WRITE_PERSISTENT_STATE_ORDERED_LOCK gets these locks:
- *    MirroredLock        SHARED
- *    CheckpointStartLock SHARED
- *    PersistentObjLock   EXCLUSIVE
- *
- * The READ_PERSISTENT_STATE_ORDERED_LOCK gets this lock:
- *    PersistentObjLock   SHARED
- *
- * By taking a SHARED MirroredLock, the process is blocking the filerep resync logic
- * from taking an EXCLUSIVE MirroredLock, there by preventing both a mirror write and
- * persistent table I/O at the same time. The filerep logic will always wait for an
- * EXCLUSIVE lock.
- *
- * By taking a SHARED CheckpointStartLock, the process is blocking a checkpoint from
- * occurring while performing persistent table I/O. The checkpoint logic will always
- * wait for an EXCLUSIVE lock.
- *
- * By taking an exclusive PersistentObjLock, the process is preventing simultaneous
- * I/O on the persistent tables. Only one process can obtain an EXCLUSIVE
- * PersistentObjLock.
- *
- * NOTE: Below these locks are the Buffer Pool content locks.
- */
+// Helper DEFINEs for the Persistent state-change modules to READ or WRITE.
+//
+// We maintain proper lock aquistion and ordering.
+//
+//	 CheckpointStartLock	[For WRITE, prevents persistent object changes during checkpoint]
+//    MirroredLock
+//    PersistentObjLock
+//
+// NOTE: Below these locks are the Buffer Pool content locks.
+//
 
-
-/*
- * WRITE
- */
+// WRITE
 
 typedef struct WritePersistentStateLockLocalVars
 {
 	bool persistentObjLockIsHeldByMe;
+	bool checkpointLockIsHeldByMe;
 } WritePersistentStateLockLocalVars;
 
 #define WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE \
 	MIRRORED_LOCK_DECLARE; \
-	CHECKPOINT_START_LOCK_DECLARE;
 	WritePersistentStateLockLocalVars writePersistentStateLockLocalVars;
 
 #define WRITE_PERSISTENT_STATE_ORDERED_LOCK \
 	{ \
 		MIRRORED_LOCK; \
-		CHECKPOINT_START_LOCK; \
+		\
+		writePersistentStateLockLocalVars.checkpointLockIsHeldByMe = LWLockHeldByMe(CheckpointStartLock); \
+		if (!writePersistentStateLockLocalVars.checkpointLockIsHeldByMe) \
+		{ \
+			LWLockAcquire(CheckpointStartLock , LW_EXCLUSIVE); \
+		} \
+		\
 		writePersistentStateLockLocalVars.persistentObjLockIsHeldByMe = LWLockHeldByMe(PersistentObjLock); \
 		if (!writePersistentStateLockLocalVars.persistentObjLockIsHeldByMe) \
 		{ \
@@ -450,11 +433,16 @@ typedef struct WritePersistentStateLockLocalVars
 		} \
 		START_CRIT_SECTION(); \
 	}
-
+	
 #define WRITE_PERSISTENT_STATE_ORDERED_UNLOCK \
 	{ \
 		MIRRORED_UNLOCK; \
-		CHECKPOINT_START_UNLOCK; \
+		\
+		if (!writePersistentStateLockLocalVars.checkpointLockIsHeldByMe) \
+		{ \
+			LWLockRelease(CheckpointStartLock); \
+		} \
+		\
 		if (!writePersistentStateLockLocalVars.persistentObjLockIsHeldByMe) \
 		{ \
 			LWLockRelease(PersistentObjLock); \
@@ -462,9 +450,7 @@ typedef struct WritePersistentStateLockLocalVars
 		END_CRIT_SECTION(); \
 	}
 
-/*
- * READ
- */
+// READ
 
 typedef struct ReadPersistentStateLockLocalVars
 {
@@ -482,7 +468,7 @@ typedef struct ReadPersistentStateLockLocalVars
 			LWLockAcquire(PersistentObjLock , LW_SHARED); \
 		} \
 	}
-
+	
 #define READ_PERSISTENT_STATE_ORDERED_UNLOCK \
 	{ \
 		if (!readPersistentStateLockLocalVars.persistentObjLockIsHeldByMe) \
@@ -520,7 +506,7 @@ extern void PersistentStore_Init(
 	char						*tableName,
 
 	GpGlobalSequence			gpGlobalSequence,
-
+	
 	PersistentStoreOpenRel		openRel,
 
 	PersistentStoreCloseRel		closeRel,
@@ -571,13 +557,13 @@ extern bool PersistentStore_GetNext(
 extern HeapTuple PersistentStore_GetScanTupleCopy(
 	PersistentStoreScan			*storeScan);
 
-extern Relation PersistentStore_GetScanRelation(
-	PersistentStoreScan			*storeScan);
-
 extern void PersistentStore_EndScan(
 	PersistentStoreScan			*storeScan);
 
 extern void PersistentStore_FlushXLog(void);
+
+extern int64 PersistentStore_MyHighestSerialNum(
+	PersistentStoreData 	*storeData);
 
 extern int64 PersistentStore_CurrentMaxSerialNum(
 	PersistentStoreSharedData 	*storeSharedData);
@@ -597,7 +583,7 @@ extern PersistentTidIsKnownResult PersistentStore_TidIsKnown(
 	PersistentStoreSharedData 	*storeSharedData,
 
 	ItemPointer 				persistentTid,
-
+	
 	ItemPointer 				maxTid);
 
 extern void PersistentStore_UpdateTuple(
@@ -624,7 +610,7 @@ extern void PersistentStore_ReplaceTuple(
 	HeapTuple				tuple,
 
 	Datum					*newValues,
-
+	
 	bool					*replaces,
 
 	bool					flushToXLog);

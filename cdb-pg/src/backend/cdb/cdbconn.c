@@ -243,9 +243,6 @@ cdbconn_initSegmentDescriptor(SegmentDatabaseDescriptor *segdbDesc,
     /* Connection error info */
     segdbDesc->errcode = 0;
     initPQExpBuffer(&segdbDesc->error_message);
-	
-	/* was this segment canceled */
-	segdbDesc->canceled = false;
 }                               /* cdbconn_initSegmentDescriptor */
 
 
@@ -293,44 +290,37 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
     }
 
 	/*
-	 * On the master, we must use UNIX domain sockets for security -- as it can
-	 * be authenticated. See MPP-15802.
+	 * First we pick the cached hostip if we have it.
+	 *
+	 * If we don't have a cached hostip, we use the host->address,
+	 * if we don't have that we fallback to host->hostname.
 	 */
-	if (q->dbid != MASTER_DBID)
+	if (q->hostip != NULL)
 	{
-		/*
-		 * First we pick the cached hostip if we have it.
-		 *
-		 * If we don't have a cached hostip, we use the host->address,
-		 * if we don't have that we fallback to host->hostname.
-		 */
-		if (q->hostip != NULL)
+        appendPQExpBuffer(&buffer, "hostaddr=%s ", q->hostip);
+	}
+	else if (q->address != NULL)
+	{
+		if (isdigit(q->address[0]))
 		{
-	        appendPQExpBuffer(&buffer, "hostaddr=%s ", q->hostip);
+			appendPQExpBuffer(&buffer, "hostaddr=%s ", q->address);
 		}
-		else if (q->address != NULL)
+		else
 		{
-			if (isdigit(q->address[0]))
-			{
-				appendPQExpBuffer(&buffer, "hostaddr=%s ", q->address);
-			}
-			else
-			{
-				appendPQExpBuffer(&buffer, "host=%s ", q->address);
-			}
+			appendPQExpBuffer(&buffer, "host=%s ", q->address);
 		}
-	    else if (q->hostname == NULL)
-		{
-	        appendPQExpBufferStr(&buffer, "host='' " );
-		}
-	    else if (isdigit(q->hostname[0]))
-		{
-	        appendPQExpBuffer(&buffer, "hostaddr=%s ", q->hostname);
-		}
-	    else
-		{
-	        appendPQExpBuffer(&buffer, "host=%s ", q->hostname);
-		}
+	}
+    else if (q->hostname == NULL)
+	{
+        appendPQExpBufferStr(&buffer, "host='' " );
+	}
+    else if (isdigit(q->hostname[0]))
+	{
+        appendPQExpBuffer(&buffer, "hostaddr=%s ", q->hostname);
+	}
+    else
+	{
+        appendPQExpBuffer(&buffer, "host=%s ", q->hostname);
 	}
 
     appendPQExpBuffer(&buffer, "port=%u ", q->port);

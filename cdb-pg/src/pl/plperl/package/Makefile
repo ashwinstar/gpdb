@@ -3,32 +3,50 @@ all: gppkg
 BLD_TOP=../../../../../
 GPMGMT=$(BLD_TOP)/gpMgmt
 include $(BLD_TOP)/releng/tools.mk
-include $(BLD_TOP)/releng/releng.mk
 include $(BLD_TOP)/Makefile.global
 
 OS=$(word 1,$(subst _, ,$(BLD_ARCH)))
 ARCH=$(shell uname -p)
 
-# NOTE: PERL_DIR is dfined in $(BLD_TOP)/releng/releng.mk
+PERL_VER=5.12.4
+PERL_REL=1
+PERL_DIR=$(RELENG_TOOLS)/perl-$(PERL_VER)
+PERL_RPM=perl-$(PERL_VER)-$(PERL_REL).$(ARCH).rpm
 
-PLPERL_GPPKG_VER=1.2
-PLPERL_VER=1.1
-PLPERL_REL=2
-PLPERL_DIR=`cd .. && pwd`
-PLPERL_RPM_FLAGS="--define 'plperl_dir $(PLPERL_DIR)' --define 'plperl_ver $(PLPERL_VER)' --define 'plperl_rel $(PLPERL_REL)' "
+PLPERL_VER=1.0
+PLPERL_REL=1
 PLPERL_RPM=plperl-$(PLPERL_VER)-$(PLPERL_REL).$(ARCH).rpm
-PLPERL_GPPKG=plperl-$(PLPERL_GPPKG_VER)-$(OS)-$(ARCH).gppkg
+PLPERL_GPPKG=plperl-$(PLPERL_VER)-$(OS)-$(ARCH).gppkg
 
-TARGET_GPPKG=$(PLPERL_GPPKG)
-EXTRA_CLEAN+=$(PLPERL_RPM) $(PLPERL_GPPKG)
+gppkg: $(PLPERL_GPPKG)
 
-#
-# Generic rules to build gppkgs included here
-#
-include $(BLD_TOP)/releng/gppkg.mk
+# e.g. 
+# postgis-1.4.2-1-x86_64.rpm
+RPM_ARGS=$(subst -, ,$*)
+RPM_NAME=$(word 1,$(RPM_ARGS))
+%.rpm:
+	mkdir RPMS SOURCES BUILD SRPMS
+	rpmbuild -bb SPECS/$(RPM_NAME).spec --define "perl_ver $(PERL_VER)" --define "plperl_ver $(PLPERL_VER)" \
+										--define "perl_rel $(PERL_REL)" --define "plperl_rel $(PLPERL_REL)" \
+										--define "perl_dir $(PERL_DIR)"
+	mv RPMS/$(ARCH)/$*.rpm .
+	rm -rf RPMS SOURCES BUILD SRPMS
 
-gppkg:
-	$(MAKE) $(PLPERL_RPM) RPM_FLAGS=$(PLPERL_RPM_FLAGS)
-	$(MAKE) $(PLPERL_GPPKG) MAIN_RPM=$(PLPERL_RPM) 
+gppkg/gppkg_spec.yml: gppkg/gppkg_spec.yml.bk
+	cat $< | sed "s/#arch/$(ARCH)/g" | sed "s/#os/$(OS)/g" > $@
 
-.PHONY: gppkg
+$(PLPERL_GPPKG): gppkg/gppkg_spec.yml $(PERL_DIR) $(PERL_RPM) $(PLPERL_RPM)
+	rm -rf gppkg/deps
+	mkdir gppkg/deps
+	cp $(PERL_RPM) gppkg/deps
+	cp $(PLPERL_RPM) gppkg/
+	source $(INSTLOC)/greenplum_path.sh && $(GPMGMT)/bin/gppkg -b gppkg
+
+clean:
+	rm -rf RPMS SRPMS SOURCES BUILD
+	rm -rf gppkg/deps
+	rm -rf install
+	rm -rf perl-$(PLPERL_VER).$(PLPERL_REL)
+	rm -f $(PERL_GPPKG) $(PERL_RPM) $(PLPERL_RPM)
+
+.PHONY: gppkg clean

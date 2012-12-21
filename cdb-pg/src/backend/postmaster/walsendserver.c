@@ -226,7 +226,7 @@ static void
 WalSendServer_ServicePostgresInit(void)
 {
 	/* See InitPostgres()... */
-    InitProcess(false /*isQueryProc*/);
+    InitProcess();	
 	InitBufferPoolBackend();
 	InitXLOGAccess();
 

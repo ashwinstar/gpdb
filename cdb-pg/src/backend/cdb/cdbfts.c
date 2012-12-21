@@ -11,11 +11,6 @@
 #include "postgres.h"
 #include <assert.h>
 
-#include "access/heapam.h"
-#include "catalog/heap.h"
-#include "access/sysattr.h"
-#include "access/xact.h"
-#include "access/catquery.h"
 #include "miscadmin.h"
 #include "gp-libpq-fe.h"
 #include "gp-libpq-int.h"
@@ -60,6 +55,12 @@ static uint64	local_fts_statusVersion;
 static LWLockId ftsQDMirrorLock;
 static LWLockId ftsQDMirrorUpdateConfigLock;
 static struct FtsQDMirrorInfo *ftsQDMirrorInfo=NULL;
+
+/*
+ * This is a per-process global to indicate if that backend has been warned
+ * about master mirroring not being synchronized.
+ */
+static bool QDMirroringNotSynchronizedWarningGiven = false;
 
 static char *QDMirroringDisabledReasonToString(QDMIRRORDisabledReason disabledReason);
 
@@ -112,7 +113,7 @@ FtsShmemInit(void)
 
 		shared->ftsQDMirrorLock = LWLockAssign();
 		ftsQDMirrorLock = shared->ftsQDMirrorLock;
-
+		
 		shared->ftsQDMirrorUpdateConfigLock = LWLockAssign();
 		ftsQDMirrorUpdateConfigLock = shared->ftsQDMirrorUpdateConfigLock;
 
@@ -126,7 +127,6 @@ FtsShmemInit(void)
 		memset(&ftsQDMirrorInfo->newCheckpointLocation, 0, sizeof(XLogRecPtr));
 		memset(ftsQDMirrorInfo->name, 0, sizeof(ftsQDMirrorInfo->name));
 		ftsQDMirrorInfo->port = 0;
-		ftsQDMirrorInfo->QDMirroringNotSynchronizedWarningGiven = false;
 
 		/* initialize */
 		shared->ftsReadOnlyFlag = gp_set_read_only;
@@ -247,7 +247,7 @@ FtsReConfigureMPP(bool create_new_gangs)
 
 	ereport(LOG, (errmsg_internal("FTS: reconfiguration is in progress"),
 			errSendAlert(true)));
-	disconnectGangsByScope(GANGSCOPE_ALL);
+	disconnectAndDestroyAllGangs();
 
 	/* Caller should throw an error. */
 	return;
@@ -287,7 +287,7 @@ initPQConnectionBuffer(CdbComponentDatabaseInfo *q, char *username, char *dbName
 
 	if (dbName == NULL)
 		dbName = MyProcPort->database_name;
-
+	
 	/*
 	 * Build the connection string
 	 */
@@ -295,19 +295,12 @@ initPQConnectionBuffer(CdbComponentDatabaseInfo *q, char *username, char *dbName
 		appendPQExpBuffer(buffer,
 						  "options='-c gp_session_role=UTILITY -c allow_system_table_mods=dml' ");
 
-	/*
-	 * Use domain sockets on the master since we must do authentication
-	 * of this connection.
-	 */
-	if (q->dbid != MASTER_DBID)
-	{
-		if (q->hostname == NULL)
-			appendPQExpBufferStr(buffer, "host='' ");
-		else if (isdigit(q->hostname[0]))
-			appendPQExpBuffer(buffer, "hostaddr=%s ", q->hostname);
-		else
-			appendPQExpBuffer(buffer, "host=%s ", q->hostname);
-	}
+	if (q->hostname == NULL)
+		appendPQExpBufferStr(buffer, "host='' ");
+	else if (isdigit(q->hostname[0]))
+		appendPQExpBuffer(buffer, "hostaddr=%s ", q->hostname);
+	else
+		appendPQExpBuffer(buffer, "host=%s ", q->hostname);
 
 	appendPQExpBuffer(buffer, "port=%u ", q->port);
 	appendPQExpBuffer(buffer, "dbname=%s ", dbName);
@@ -324,41 +317,40 @@ getDBSuperuserName(CdbComponentDatabaseInfo *q, const char *errPrefix)
 	char *suser = NULL;
 	Relation auth_rel;
 	HeapTuple	auth_tup;
-	cqContext  *pcqCtx;
-	cqContext	cqc;
+	HeapScanDesc auth_scan;
+	ScanKeyData key[2];
 	bool	isNull;
 
+	ScanKeyInit(&key[0],
+				Anum_pg_authid_rolsuper,
+				BTEqualStrategyNumber, F_BOOLEQ,
+                BoolGetDatum(true));
+
+	ScanKeyInit(&key[1],
+				Anum_pg_authid_rolcanlogin,
+				BTEqualStrategyNumber, F_BOOLEQ,
+                BoolGetDatum(true));
+
 	auth_rel = heap_open(AuthIdRelationId, AccessShareLock);
+	auth_scan = heap_beginscan(auth_rel, SnapshotNow, 2, key);
 
-	/* XXX XXX: SELECT rolname WHERE ... AND rolvaliduntil is null ? */
-	/* XXX XXX: are there multiple matches, but only return last one ? */
-	pcqCtx = caql_beginscan(
-			caql_addrel(cqclr(&cqc), auth_rel),
-			cql("SELECT * FROM pg_authid "
-				" WHERE rolsuper = :1 "
-				" AND rolcanlogin = :2 ",
-				BoolGetDatum(true),
-				BoolGetDatum(true)));
-
-	while (HeapTupleIsValid(auth_tup = caql_getnext(pcqCtx)))
+	while (HeapTupleIsValid(auth_tup = heap_getnext(auth_scan, ForwardScanDirection)))
 	{
 		Datum	attrName;
 		Datum	validuntil;
 
-		validuntil = heap_getattr(auth_tup, Anum_pg_authid_rolvaliduntil, 
-								  RelationGetDescr(auth_rel), &isNull);
+		validuntil = heap_getattr(auth_tup, Anum_pg_authid_rolvaliduntil, auth_rel->rd_att, &isNull);
 		/* we actually want it to be NULL, that means always valid */
 		if (!isNull)
 			continue;
 
-		attrName = heap_getattr(auth_tup, Anum_pg_authid_rolname, 
-								RelationGetDescr(auth_rel), &isNull);
+		attrName = heap_getattr(auth_tup, Anum_pg_authid_rolname, auth_rel->rd_att, &isNull);
 
 		Assert(!isNull);
 
 		suser = strdup(DatumGetCString(attrName));
 	}
-	caql_endscan(pcqCtx);
+	heap_endscan(auth_scan);
 	heap_close(auth_rel, AccessShareLock);
 
 	return suser;
@@ -550,7 +542,7 @@ QDMirroringUpdate(
 					else
 					{
 						size_t escapedLen;
-
+					
 						errorMessageQuoted[0] = '\'';
 						escapedLen = PQescapeString(&errorMessageQuoted[1], errorMessage, errorMessageLen);
 						errorMessageQuoted[escapedLen + 1] = '\'';
@@ -620,7 +612,7 @@ CheckForQDMirroringWork(void)
 	QDMIRRORDisabledReason	disabledReason;
 	struct timeval          lastLogTimeVal;
 	char					errorMessage[QDMIRRORErrorMessageSize];
-
+	
 	if (ftsQDMirrorInfo == NULL)
 		return;
 	/*
@@ -637,9 +629,9 @@ CheckForQDMirroringWork(void)
 	 */
 	if (!LWLockConditionalAcquire(ftsQDMirrorUpdateConfigLock, LW_EXCLUSIVE))
 		return;
-
+	
 	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
-
+	
 	if (ftsQDMirrorInfo->updateMask == QDMIRROR_UPDATEMASK_NONE)
 	{
 		LWLockRelease(ftsQDMirrorLock);
@@ -690,11 +682,10 @@ bool QDMirroringWriteCheck(void)
 		return true;
 	}
 
-	if (ftsQDMirrorInfo->QDMirroringNotSynchronizedWarningGiven == false &&
+	if (!QDMirroringNotSynchronizedWarningGiven &&
 		ftsQDMirrorInfo->state == QDMIRROR_STATE_DISABLED)
 	{
 		giveWarning = true;
-		ftsQDMirrorInfo->QDMirroringNotSynchronizedWarningGiven = true;
 		disabledReason = ftsQDMirrorInfo->disabledReason;
 		lastLogTimeVal = ftsQDMirrorInfo->lastLogTimeVal;
 	}
@@ -715,6 +706,8 @@ bool QDMirroringWriteCheck(void)
 				        logTimeStr,
 				        QDMirroringDisabledReasonToString(disabledReason)),
 				 errSendAlert(true)));
+
+		QDMirroringNotSynchronizedWarningGiven = true;
 	}
 
 	return false;
@@ -757,7 +750,7 @@ disableQDMirroring(char *detail, char *errorMessage, QDMIRRORDisabledReason disa
 
 				gettimeofday(&lastLogTimeVal, NULL);
 
-				ftsQDMirrorInfo->QDMirroringNotSynchronizedWarningGiven = true;
+				QDMirroringNotSynchronizedWarningGiven = true;
 
 				if (ftsQDMirrorInfo->valid)
 				{
@@ -1145,7 +1138,7 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 	if (gangsExist())
 	{
 		reportError = true;
-		disconnectGangsByScope(GANGSCOPE_ALL);
+		disconnectAndDestroyAllGangs();
 	}
 
 	/*
@@ -1300,7 +1293,7 @@ FtsSetQDMirroring(struct CdbComponentDatabaseInfo *dbinfo)
 	/* Get the log message time from the NOTICE we just issued. */
 
 	gettimeofday(&ftsQDMirrorInfo->lastLogTimeVal, NULL);
-
+										
 	LWLockRelease(ftsQDMirrorLock);
 
 	connectedToWalSendServer = WalSendServerClientConnect(/* complain */ true);

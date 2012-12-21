@@ -463,6 +463,7 @@ extern PGDLLIMPORT bool assert_enabled;
 			ExceptionalCondition(CppAsString(condition), (errorType), \
 								 __FILE__, __LINE__); \
 	} while (0)
+
 /*
  *	TrapMacro is the same as Trap but it's intended for use in macros:
  *
@@ -507,8 +508,8 @@ extern int ExceptionalCondition(const char *conditionName,
 					 const char *errorType,
 					 const char *fileName, int lineNumber);
 					 
-extern int SyncAgentMain(int argc, char **argv, const char *username);
-extern void CdbProgramErrorHandler(SIGNAL_ARGS);
+extern int SyncAgentMain(int, char **, const char *);
+extern void StandardHandlerForSigillSigsegvSigbus_OnMainThread(char * processName, SIGNAL_ARGS);
 extern void gp_set_thread_sigmasks(void);
 
 

@@ -47,7 +47,6 @@
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
-#include "optimizer/clauses.h"
 #include "optimizer/planmain.h"
 #include "parser/parse_expr.h"
 #include "utils/acl.h"
@@ -160,9 +159,6 @@ static Datum ExecEvalCoerceToDomain(CoerceToDomainState *cstate,
 static Datum ExecEvalCoerceToDomainValue(ExprState *exprstate,
 							ExprContext *econtext,
 							bool *isNull, ExprDoneCond *isDone);
-static Datum ExecEvalPercentileExpr(PercentileExprState *exprstate,
-					ExprContext *econtext,
-					bool *isNull, ExprDoneCond *isDone);
 static Datum ExecEvalFieldSelect(FieldSelectState *fstate,
 					ExprContext *econtext,
 					bool *isNull, ExprDoneCond *isDone);
@@ -172,8 +168,6 @@ static Datum ExecEvalFieldStore(FieldStoreState *fstate,
 static Datum ExecEvalRelabelType(GenericExprState *exprstate,
 					ExprContext *econtext,
 					bool *isNull, ExprDoneCond *isDone);
-static bool ExecIsExprUnsafeToConst_walker(Node *node, void *context);
-static bool ExecIsExprUnsafeToConst(Node *node);
 
 
 /* ----------------------------------------------------------------
@@ -3973,30 +3967,6 @@ ExecEvalCoerceToDomainValue(ExprState *exprstate,
 	return econtext->domainValue_datum;
 }
 
-/*
- * ExecEvalPercentileExpr
- *
- * Returns a Datum whose value is the value of the precomputed
- * the value at the percentile found in the given expression context.
- * Actually,  this is almost same as ExecEvalAggref.  The main reason
- * to add this is because we don't change the catalog at the moment.
- * This will be cleaned when we can change the catalog.
- */
-static Datum
-ExecEvalPercentileExpr(PercentileExprState *exprstate,
-					   ExprContext *econtext,
-					   bool *isNull, ExprDoneCond *isDone)
-{
-	if (isDone)
-		*isDone = ExprSingleResult;
-
-	if (econtext->ecxt_aggvalues == NULL)		/* safety check */
-		elog(ERROR, "no aggregates in this expression context");
-
-	*isNull = econtext->ecxt_aggnulls[exprstate->aggno];
-	return econtext->ecxt_aggvalues[exprstate->aggno];
-}
-
 /* ----------------------------------------------------------------
  *		ExecEvalFieldSelect
  *
@@ -4182,64 +4152,6 @@ ExecEvalRelabelType(GenericExprState *exprstate,
 					bool *isNull, ExprDoneCond *isDone)
 {
 	return ExecEvalExpr(exprstate->arg, econtext, isNull, isDone);
-}
-
-
-/* ----------------------------------------------------------------
- *    ExecEvalCurrentOfExpr
- *
- *    Evaluate CURRENT OF
- *
- *    Constant folding must have bound observed values of 
- * 	gp_segment_id, ctid, and tableoid into the CurrentOfExpr for
- *	this function's consumption.
- * ----------------------------------------------------------------
- */
-static Datum
-ExecEvalCurrentOfExpr(ExprState *exprstate, ExprContext *econtext,
-						bool *isNull, ExprDoneCond *isDone)
-{
-	CurrentOfExpr 	*cexpr = (CurrentOfExpr *) exprstate->expr;
-	bool 			result = false;
-	TupleTableSlot	*slot;
-
-	if (isDone)
-		*isDone = ExprSingleResult;
-	*isNull = false;
-
-	Assert(cexpr->cvarno != INNER);
-	Assert(cexpr->cvarno != OUTER);
-
-	slot = econtext->ecxt_scantuple;
-	Assert(!TupIsNull(slot));
-
-	/* 
-	 * The currently scanned tuple must use heap storage for it to possibly
-	 * satisfy the CURRENT OF qualification. Despite our grand attempts during
-	 * parsing and constant folding to demand heap storage, the scanning of an 
-	 * AO part is still possible, when the current row uses heap storage, but the 
-	 * CURRENT OF invocation uses an unpruned scan of the partition table, yielding 
-	 * tuples from the AO parts before the desired heap tuple.
-	 */
-	if (TupHasHeapTuple(slot))
-	{
-		if (cexpr->gp_segment_id == Gp_segment &&
-			ItemPointerEquals(&cexpr->ctid, slot_get_ctid(slot)))
-		{
-			/*
-			 * If tableoid is InvalidOid, this implies that constant folding had
-			 * had determined tableoid was not necessary in uniquely identifying a tuple.
-			 * Otherwise, the given tuple's tableoid must match the CURRENT OF tableoid.
-			 */
-			if (!OidIsValid(cexpr->tableoid) ||
-				cexpr->tableoid == slot->tts_tableOid)
-			{
-				result = true;
-			}
-		}
-	}
-
-	return BoolGetDatum(result);
 }
 
 
@@ -4881,47 +4793,6 @@ ExecInitExpr(Expr *node, PlanState *parent)
 				state = (ExprState *) cstate;
 			}
 			break;
-		case T_CurrentOfExpr:
-			state = (ExprState *) makeNode(ExprState);
-			state->evalfunc = ExecEvalCurrentOfExpr;
-			break;
-		case T_PercentileExpr:
-			{
-				PercentileExpr	   *p = (PercentileExpr *) node;
-				PercentileExprState *pstate = makeNode(PercentileExprState);
-				AggState		   *aggstate = (AggState *) parent;
-				int					naggs;
-
-				if (!IsA(aggstate, AggState))
-					elog(ERROR, "PercentileExpr found in non-Agg plan node: %d",
-							(int) nodeTag(parent));
-
-				aggstate->percs = lcons(pstate, aggstate->percs);
-				naggs = ++aggstate->numaggs;
-
-				pstate->xprstate.evalfunc = (ExprStateEvalFunc) ExecEvalPercentileExpr;
-
-
-				/* This is to build TupleDesc. */
-				pstate->tlist = combinePercentileArgs(p);
-
-				/* This is to build ProjectionInfo. */
-				pstate->args = (List *) ExecInitExpr((Expr *) pstate->tlist, parent);
-
-				/*
-				 * Complain if the aggregate's arguments contain any
-				 * aggregates; nested agg functions are semantically
-				 * nonsensical.  (This should have been caught earlier,
-				 * but we defend against it here anyway.)
-				 */
-				if (naggs != aggstate->numaggs)
-					ereport(ERROR,
-							(errcode(ERRCODE_GROUPING_ERROR),
-							 errmsg("aggregate function calls may not be nested")));
-
-				state = (ExprState *) pstate;
-			}
-			break;
 		case T_TargetEntry:
 			{
 				TargetEntry *tle = (TargetEntry *) node;
@@ -5388,101 +5259,6 @@ ExecProject(ProjectionInfo *projInfo, ExprDoneCond *isDone)
 	}
 
 	return slot;
-}
-
-/*
- * ExecIsExprUnsafeToConst_walker
- *
- * Almost all of the expressions are not allowed without the executor.
- * Returns true as soon as possible we find such unsafe nodes.
- */
-static bool
-ExecIsExprUnsafeToConst_walker(Node *node, void *context)
-{
-	if (node == NULL)
-		return false;
-
-	switch(nodeTag(node))
-	{
-		/*
-		 * Param can be a Const in some situation, but the demanded use case
-		 * so far doesn't want it.
-		 */
-		case T_Const:
-		case T_CaseTestExpr:
-		case T_FuncExpr:
-		case T_OpExpr:
-		case T_DistinctExpr:
-		case T_ScalarArrayOpExpr:
-		case T_BoolExpr:
-		case T_CaseExpr:
-		case T_CoalesceExpr:
-		case T_MinMaxExpr:
-		case T_NullIfExpr:
-		case T_NullTest:
-		case T_BooleanTest:
-		case T_List:
-		case T_TypeCast:
-		case T_ArrayExpr:
-			return expression_tree_walker(node,
-					ExecIsExprUnsafeToConst_walker, NULL);
-
-		default:
-			return true;
-	}
-}
-
-/*
- * ExecIsExprUnsafeToConst
- *
- * Returns true if the expression cannot be evaluated to a const value.
- */
-static bool
-ExecIsExprUnsafeToConst(Node *node)
-{
-	Assert(node != NULL);
-	return ExecIsExprUnsafeToConst_walker(node, NULL) &&
-		!contain_volatile_functions(node);
-}
-
-/*
- * ExecEvalFunctionArgToConst
- *
- * Evaluates an argument of function expression and returns the result.
- * This is assumed to be used in the parser stage, where
- * dynamic evaluation such like Var is not available, though we put it
- * here so that we can extend it to be useful in other places later.
- */
-Datum
-ExecEvalFunctionArgToConst(FuncExpr *fexpr, int argno, bool *isnull)
-{
-	Expr		   *aexpr;
-	Oid				argtype;
-	Const		   *result;
-
-	/* argument number sanity check */
-	if (argno < 0 || list_length(fexpr->args) <= argno)
-		elog(ERROR, "invalid argument number found during evaluating function argument");
-
-	aexpr = (Expr *) list_nth(fexpr->args, argno);
-	/*
-	 * Check if the expression can be evaluated in the Const fasion.
-	 */
-	if (ExecIsExprUnsafeToConst((Node *) aexpr))
-		elog(ERROR, "unable to resolve function argument");
-
-	argtype = exprType((Node *) aexpr);
-	if (!OidIsValid(argtype))
-		elog(ERROR, "unable to resolve function argument type");
-
-	result = (Const *) evaluate_expr(aexpr, argtype);
-	/* evaluate_expr always returns Const */
-	Assert(IsA(result, Const));
-
-	if (isnull)
-		*isnull = result->constisnull;
-
-	return result->constvalue;
 }
 
 typedef struct neededColumnContext

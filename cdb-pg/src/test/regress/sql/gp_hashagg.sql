@@ -1,6 +1,5 @@
 -- tests MPP-2614
 -- two segments no mirrors
-drop table if exists test;
 create table test (id1 int4, id2 int4, day date, grp text, v int4);
 create index test_idx on test (id1,id2,day,grp);
 insert into test values (1,1,'1/1/2006','there',1);

@@ -29,7 +29,7 @@ int gp_strcoll(const char *left, const char *right)
 
 	if ( errno != 0 )
 	{
-		if ( errno == EINVAL || errno == EILSEQ)
+		if ( errno == EINVAL || EILSEQ)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_UNTRANSLATABLE_CHARACTER),
@@ -94,25 +94,6 @@ size_t gp_strxfrm(char *dst, const char *src, size_t n)
 									(unsigned long) SAFE_STR_LENGTH(src),
 									NULL_TO_DUMMY_STR(src))));
 		}
-	}
-
-	if (result >= n)
-	{
-		/* strxfrm documentation says if result >= n, contents of the dst are
-		 * indeterminate.
-		 * In this case, let's try again and return valid data.
-		 */
-		size_t dst_len = result;
-		char * tmp_dst = (char *) palloc(dst_len + 1);
-
-		result = strxfrm(tmp_dst, src, dst_len + 1);
-		Assert(result <= dst_len);
-
-		/* return a n-character null terminated string */
-		memcpy(dst, tmp_dst, n-1);
-		dst[n-1] = '\0';
-
-		pfree(tmp_dst);
 	}
 
 	return result;

@@ -133,6 +133,7 @@ typedef enum
 	DO_BLOBS,
 	DO_BLOB_COMMENTS,
 	DO_EXTPROTOCOL,
+	DO_TYPE_STORAGE_OPTIONS
 } DumpableObjectType;
 
 typedef struct _dumpableObject
@@ -175,15 +176,23 @@ typedef struct _typeInfo
 	/* If it's a domain, we store links to its constraints here: */
 	int			nDomChecks;
 	struct _constraintInfo *domChecks;
+} TypeInfo;
 
-	/* Storage options: */
+
+typedef struct _typeStorageOptions
+{
+	DumpableObject dobj;
+
+	/*
+	 * Note: dobj.name is the pg_type.typname entry.  format_type() might
+	 * produce something different than typname
+	 */
 	char     *typnamespace;
 	char     *typoptions; /* storage options */
-	char     *typnamestorage; /* format_type() of typname */
-	char	 *typarrayoptions; /* storage options of matching array type */
-	char	 *typarraynamestorage; /* format_type() of typname of matching array type */
+	char     *rolname;		/* name of owner, or empty string */
+} TypeStorageOptions;
 
-} TypeInfo;
+
 
 typedef struct _shellTypeInfo
 {
@@ -465,7 +474,6 @@ extern void simple_oid_list_append(SimpleOidList *list, Oid val);
 extern void simple_string_list_append(SimpleStringList *list, const char *val);
 extern bool simple_oid_list_member(SimpleOidList *list, Oid val);
 extern bool simple_string_list_member(SimpleStringList *list, const char *val);
-extern bool open_file_and_append_to_list(const char *fileName, SimpleStringList *list, const char *reason, bool addMessagePrint);
 
 extern char *pg_strdup(const char *string);
 extern void *pg_malloc(size_t size);
@@ -487,6 +495,7 @@ extern void sortDumpableObjectsByTypeOid(DumpableObject **objs, int numObjs);
  */
 extern NamespaceInfo *getNamespaces(int *numNamespaces);
 extern TypeInfo *getTypes(int *numTypes);
+extern TypeStorageOptions *getTypeStorageOptions(int *numTypes);
 extern FuncInfo *getFuncs(int *numFuncs);
 extern AggInfo *getAggregates(int *numAggregates);
 extern ExtProtInfo *getExtProtocols(int *numExtProtocols);

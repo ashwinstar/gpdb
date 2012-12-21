@@ -36,10 +36,3 @@ CREATE OPERATOR #%# (
 COMMENT ON OPERATOR ###### (int4, NONE) IS 'bad right unary';
 
 
--- Test illegal operator name
-CREATE OPERATOR => (
-   leftarg = path,
-   rightarg = path,
-   procedure = path_inter
-);
-

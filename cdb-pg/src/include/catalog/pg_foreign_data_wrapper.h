@@ -37,12 +37,8 @@
    fdwoptions    text[] -- FDW options
    );
 
-   create unique index on pg_foreign_data_wrapper(oid) with (indexid=3306, CamelCase=ForeignDataWrapperOid, syscacheid=FOREIGNDATAWRAPPEROID, syscache_nbuckets=8);
-
-   create unique index on pg_foreign_data_wrapper(fdwname) with (indexid=3307, CamelCase=ForeignDataWrapperName, syscacheid=FOREIGNDATAWRAPPERNAME, syscache_nbuckets=8);
-
-   alter table pg_foreign_data_wrapper add fk fdwowner on pg_authid(oid);
-   alter table pg_foreign_data_wrapper add fk fdwvalidator on pg_proc(oid);
+   create unique index on pg_foreign_data_wrapper(oid) with (indexid=3306, CamelCase=ForeignDataWrapperOid);
+   create unique index on pg_foreign_data_wrapper(fdwname) with (indexid=3307, CamelCase=ForeignDataWrapperName);
 
    TIDYCAT_ENDFAKEDEF
 */

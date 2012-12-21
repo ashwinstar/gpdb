@@ -6,7 +6,7 @@
 -- This script will produce diffs if you add or change definitions in
 -- the contrib/orafce module. If you want to change the results, you
 -- must make the changes in regress/output/orafunk.source, not
--- regress/expected, and use gpsourcify.pl to generate a ".source" file.
+-- regress/expected, and use gpsourcify.pl to generate a ".out" file.
 --
 -- From the regress directory invoke the command:
 --
@@ -27,6 +27,223 @@ BEGIN;
 CREATE OR REPLACE FUNCTION nvl(anyelement, anyelement)
 RETURNS anyelement
 AS '$libdir/orafunc','ora_nvl'
+LANGUAGE C IMMUTABLE;
+-- DECODE
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, text)
+RETURNS text
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, text, text)
+RETURNS text
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, text, anyelement, text)
+RETURNS text
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, text, anyelement, text, text)
+RETURNS text
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, text, anyelement, text, anyelement, text)
+RETURNS text
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, text, anyelement, text, anyelement, text, text)
+RETURNS text
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, bpchar)
+RETURNS bpchar
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, bpchar, bpchar)
+RETURNS bpchar
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, bpchar, anyelement, bpchar)
+RETURNS bpchar
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, bpchar, anyelement, bpchar, bpchar)
+RETURNS bpchar
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, bpchar, anyelement, bpchar, anyelement, bpchar)
+RETURNS bpchar
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, bpchar, anyelement, bpchar, anyelement, bpchar, bpchar)
+RETURNS bpchar
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, integer)
+RETURNS integer
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, integer, integer)
+RETURNS integer
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, integer, anyelement, integer)
+RETURNS integer
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, integer, anyelement, integer, integer)
+RETURNS integer
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, integer, anyelement, integer, anyelement, integer)
+RETURNS integer
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, integer, anyelement, integer, anyelement, integer, integer)
+RETURNS integer
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, bigint)
+RETURNS bigint
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, bigint, bigint)
+RETURNS bigint
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, bigint, anyelement, bigint)
+RETURNS bigint
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, bigint, anyelement, bigint, bigint)
+RETURNS bigint
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, bigint, anyelement, bigint, anyelement, bigint)
+RETURNS bigint
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, bigint, anyelement, bigint, anyelement, bigint, bigint)
+RETURNS bigint
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, numeric)
+RETURNS numeric
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, numeric, numeric)
+RETURNS numeric
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, numeric, anyelement, numeric)
+RETURNS numeric
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, numeric, anyelement, numeric, numeric)
+RETURNS numeric
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, numeric, anyelement, numeric, anyelement, numeric)
+RETURNS numeric
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, numeric, anyelement, numeric, anyelement, numeric, numeric)
+RETURNS numeric
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, date)
+RETURNS date
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, date, date)
+RETURNS date
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, date, anyelement, date)
+RETURNS date
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, date, anyelement, date, date)
+RETURNS date
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, date, anyelement, date, anyelement, date)
+RETURNS date
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, date, anyelement, date, anyelement, date, date)
+RETURNS date
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, time)
+RETURNS time
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, time, time)
+RETURNS time
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, time, anyelement, time)
+RETURNS time
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, time, anyelement, time, time)
+RETURNS time
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, time, anyelement, time, anyelement, time)
+RETURNS time
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, time, anyelement, time, anyelement, time, time)
+RETURNS time
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, timestamp)
+RETURNS timestamp
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, timestamp, timestamp)
+RETURNS timestamp
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, timestamp, anyelement, timestamp)
+RETURNS timestamp
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, timestamp, anyelement, timestamp, timestamp)
+RETURNS timestamp
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, timestamp, anyelement, timestamp, anyelement, timestamp)
+RETURNS timestamp
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, timestamp, anyelement, timestamp, anyelement, timestamp, timestamp)
+RETURNS timestamp
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, timestamptz)
+RETURNS timestamptz
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, timestamptz, timestamptz)
+RETURNS timestamptz
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, timestamptz, anyelement, timestamptz)
+RETURNS timestamptz
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, timestamptz, anyelement, timestamptz, timestamptz)
+RETURNS timestamptz
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, timestamptz, anyelement, timestamptz, anyelement, timestamptz)
+RETURNS timestamptz
+AS '$libdir/orafunc', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, timestamptz, anyelement, timestamptz, anyelement, timestamptz, timestamptz)
+RETURNS timestamptz
+AS '$libdir/orafunc', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 -- ADD_MONTHS
 CREATE OR REPLACE FUNCTION add_months(day date, value int)
@@ -53,6 +270,10 @@ RETURNS numeric
 AS '$libdir/orafunc'
 LANGUAGE 'C' IMMUTABLE STRICT;
 -- TRUNC
+CREATE OR REPLACE FUNCTION trunc(value date, fmt text)
+RETURNS date
+AS '$libdir/orafunc','ora_date_trunc'
+LANGUAGE 'C' IMMUTABLE STRICT;
 CREATE OR REPLACE FUNCTION trunc(value timestamp with time zone, fmt text)
 RETURNS timestamp with time zone
 AS '$libdir/orafunc', 'ora_timestamptz_trunc'
@@ -61,27 +282,23 @@ CREATE OR REPLACE FUNCTION trunc(value timestamp with time zone)
 RETURNS timestamp with time zone
 AS $$ SELECT trunc($1, 'DDD'); $$
 LANGUAGE 'SQL' IMMUTABLE STRICT;
-CREATE OR REPLACE FUNCTION trunc(value date, fmt text)
-RETURNS date
-AS '$libdir/orafunc', 'ora_date_trunc'
-LANGUAGE 'C' IMMUTABLE STRICT;
 CREATE OR REPLACE FUNCTION trunc(value date)
 RETURNS date
 AS $$ SELECT $1; $$
 LANGUAGE 'SQL' IMMUTABLE STRICT;
 -- ROUND
+CREATE OR REPLACE FUNCTION round(value date, fmt text)
+RETURNS date
+AS '$libdir/orafunc','ora_date_round'
+LANGUAGE 'C' IMMUTABLE STRICT;
 CREATE OR REPLACE FUNCTION round(value timestamp with time zone, fmt text)
 RETURNS timestamp with time zone
-AS '$libdir/orafunc', 'ora_timestamptz_round'
+AS '$libdir/orafunc','ora_timestamptz_round'
 LANGUAGE 'C' IMMUTABLE STRICT;
 CREATE OR REPLACE FUNCTION round(value timestamp with time zone)
 RETURNS timestamp with time zone
 AS $$ SELECT round($1, 'DDD'); $$
 LANGUAGE 'SQL' IMMUTABLE STRICT;
-CREATE OR REPLACE FUNCTION round(value date, fmt text)
-RETURNS date
-AS '$libdir/orafunc','ora_date_round'
-LANGUAGE 'C' IMMUTABLE STRICT;
 CREATE OR REPLACE FUNCTION round(value date)
 RETURNS date
 AS $$ SELECT $1; $$
@@ -156,14 +373,10 @@ CREATE OR REPLACE FUNCTION listagg2_transfn(text, text, text)
 RETURNS text
 AS '$libdir/orafunc','orafce_listagg2_transfn'
 LANGUAGE C IMMUTABLE;
-DROP AGGREGATE IF EXISTS :ORA_SCHEMA.listagg(text);
-psql:@abs_builddir@/../../../contrib/orafce/orafunc.sql:172: NOTICE:  aggregate oracompat.listagg(text) does not exist, skipping
 CREATE  AGGREGATE :ORA_SCHEMA.listagg(text) (
   SFUNC=:ORA_SCHEMA.listagg1_transfn,
   STYPE=text
 );
-DROP AGGREGATE IF EXISTS :ORA_SCHEMA.listagg(text, text);
-psql:@abs_builddir@/../../../contrib/orafce/orafunc.sql:178: NOTICE:  aggregate oracompat.listagg(text,text) does not exist, skipping
 CREATE AGGREGATE :ORA_SCHEMA.listagg(text, text) (
   SFUNC=:ORA_SCHEMA.listagg2_transfn,
   STYPE=text
@@ -193,11 +406,11 @@ RETURNS bytea
 AS '$libdir/orafunc', 'ora_nlssort'
 LANGUAGE 'C' IMMUTABLE;
 -- SUBSTR
-CREATE OR REPLACE FUNCTION substr(str text, start int)
+CREATE FUNCTION substr(str text, start int)
 RETURNS text
 AS '$libdir/orafunc','oracle_substr2'
 LANGUAGE C IMMUTABLE STRICT;
-CREATE OR REPLACE FUNCTION substr(str text, start int, len int)
+CREATE FUNCTION substr(str text, start int, len int)
 RETURNS text
 AS '$libdir/orafunc','oracle_substr3'
 LANGUAGE C IMMUTABLE STRICT;
@@ -239,6 +452,60 @@ select nvl(NULL, 2);
  nvl 
 -----
    2
+(1 row)
+
+select decode(1, 1, 100, 2, 200);
+ decode 
+--------
+    100
+(1 row)
+
+select decode(2, 1, 100, 2, 200);
+ decode 
+--------
+    200
+(1 row)
+
+select decode(3, 1, 100, 2, 200);
+ decode 
+--------
+       
+(1 row)
+
+select decode(3, 1, 100, 2, 200, 300);
+ decode 
+--------
+    300
+(1 row)
+
+select decode(NULL, 1, 100, NULL, 200, 300);
+ decode 
+--------
+    200
+(1 row)
+
+select decode('1'::text, '1', 100, '2', 200);
+ decode 
+--------
+    100
+(1 row)
+
+select decode(2, 1, 'ABC', 2, 'DEF');
+ decode 
+--------
+ DEF
+(1 row)
+
+select decode('2009-02-05'::date, '2009-02-05', 'ok');
+ decode 
+--------
+ ok
+(1 row)
+
+select decode('2009-02-05 01:02:03'::timestamp, '2009-02-05 01:02:03', 'ok');
+ decode 
+--------
+ ok
 (1 row)
 
 SELECT add_months ('2003-08-01', 3);
@@ -469,103 +736,31 @@ select round(to_date ('22-AUG-03', 'DD-MON-YY'),'DAY')  =  to_date ('24-AUG-03',
  t
 (1 row)
 
-select round(timestamp with time zone '2012-03-14 17:36:33.366057-07', 'HH') = (timestamp with time zone '2012-03-14 18:00:00-07');
+select trunc(to_date('22-AUG-03', 'DD-MON-YY'), 'YEAR')  =  to_date ('01-JAN-03', 'DD-MON-YY');
  ?column? 
 ----------
  t
 (1 row)
 
-select round(timestamp with time zone '2012-03-14 17:36:33.366057-07', 'Mi') = (timestamp with time zone '2012-03-14 17:37:00-07');
+select trunc(to_date('22-AUG-03', 'DD-MON-YY'), 'Q')  =  to_date ('01-JUL-03', 'DD-MON-YY');
  ?column? 
 ----------
  t
 (1 row)
 
-select round(timestamp with time zone '2012-03-14 17:36:33.366057-07', 'Q') = (timestamp with time zone '2012-04-01 00:00:00-07');
+select trunc(to_date('22-AUG-03', 'DD-MON-YY'), 'MONTH') =  to_date ('01-AUG-03', 'DD-MON-YY');
  ?column? 
 ----------
  t
 (1 row)
 
-select round(timestamp with time zone '2012-03-14 17:36:33.366057-07')::date = (date '2012-03-15');
+select trunc(to_date('22-AUG-03', 'DD-MON-YY'), 'DDD')  =  to_date ('22-AUG-03', 'DD-MON-YY');
  ?column? 
 ----------
  t
 (1 row)
 
-select round(timestamp with time zone '2012-03-14 17:36:33.366057-07'::date) = (date '2012-03-14');
- ?column? 
-----------
- t
-(1 row)
-
-select round(timestamp with time zone '2012-03-14 17:36:33.366057-07'::date, 'Q') = (date '2012-04-01');
- ?column? 
-----------
- t
-(1 row)
-
-select trunc(to_date ('22-AUG-03', 'DD-MON-YY'), 'YEAR')  =  to_date ('01-JAN-03', 'DD-MON-YY');
- ?column? 
-----------
- t
-(1 row)
-
-select trunc(to_date ('22-AUG-03', 'DD-MON-YY'), 'Q')  =  to_date ('01-JUL-03', 'DD-MON-YY');
- ?column? 
-----------
- t
-(1 row)
-
-select trunc(to_date ('22-AUG-03', 'DD-MON-YY'), 'MONTH') =  to_date ('01-AUG-03', 'DD-MON-YY');
- ?column? 
-----------
- t
-(1 row)
-
-select trunc(to_date ('22-AUG-03', 'DD-MON-YY'), 'DDD')  =  to_date ('22-AUG-03', 'DD-MON-YY');
- ?column? 
-----------
- t
-(1 row)
-
-select trunc(to_date ('22-AUG-03', 'DD-MON-YY'), 'DAY')  =  to_date ('17-AUG-03', 'DD-MON-YY');
- ?column? 
-----------
- t
-(1 row)
-
-select trunc(timestamp with time zone '2012-03-14 17:36:33.366057-07', 'HH') = (timestamp with time zone '2012-03-14 17:00:00-07');
- ?column? 
-----------
- t
-(1 row)
-
-select trunc(timestamp with time zone '2012-03-14 17:36:33.366057-07', 'Mi') = (timestamp with time zone '2012-03-14 17:36:00-07');
- ?column? 
-----------
- t
-(1 row)
-
-select trunc(timestamp with time zone '2012-03-14 17:36:33.366057-07', 'Q') = (timestamp with time zone '2012-01-01 00:00:00-08');
- ?column? 
-----------
- t
-(1 row)
-
-select trunc(timestamp with time zone '2012-03-14 17:36:33.366057-07') = (timestamp with time zone '2012-03-14 00:00:00-07');
- ?column? 
-----------
- t
-(1 row)
-
-select trunc(timestamp with time zone '2012-03-14 17:36:33.366057-07'::date, 'Q') = (date '2012-01-01');
- ?column? 
-----------
- t
-(1 row)
-
-select trunc(timestamp with time zone '2012-03-14 17:36:33.366057-07'::date) = (date '2012-03-14');
+select trunc(to_date('22-AUG-03', 'DD-MON-YY'), 'DAY')  =  to_date ('17-AUG-03', 'DD-MON-YY');
  ?column? 
 ----------
  t
@@ -937,56 +1132,71 @@ SELECT dump('2008-10-10'::timestamp) ~ E'^Typ=1114 Len=8: \\d+(,\\d+){7}$' AS t;
  t
 (1 row)
 
--- test varchar2
-DROP TABLE IF EXISTS tab1;
-NOTICE:  table "tab1" does not exist, skipping
-DROP TABLE IF EXISTS tab2;
-NOTICE:  table "tab2" does not exist, skipping
-CREATE TABLE tab1 (a integer, b varchar2) DISTRIBUTED BY (a);
-CREATE TABLE tab2 (a integer, b varchar) DISTRIBUTED BY (a);
-INSERT INTO tab1 values (10, 'tab1-10');
-INSERT INTO tab1 values (15, 'tab1-15');
-INSERT INTO tab2 values (15, 'tab2-15');
-INSERT INTO tab2 values (20, 'tab2-20');
-SELECT * FROM tab1;
- a  |    b
-----+---------
- 10 | tab1-10
- 15 | tab1-15
-(2 rows)
-
-SELECT * FROM tab2;
- a  |    b
-----+---------
- 20 | tab2-20
- 15 | tab2-15
-(2 rows)
-
-UPDATE tab1 SET b = tab2.b FROM tab2 WHERE tab1.a = tab2.a;
-SELECT * FROM tab1;
- a  |    b
-----+---------
- 10 | tab1-10
- 15 | tab2-15
-(2 rows)
-
-SELECT * FROM tab2;
- a  |    b
-----+---------
- 15 | tab2-15
- 20 | tab2-20
-(2 rows)
-
-DROP TABLE IF EXISTS tab1;
-DROP TABLE IF EXISTS tab2;
 RESET DATESTYLE;
 -- start_ignore
 \i @abs_builddir@/../../../contrib/orafce/uninstall_orafunc.sql
 -- Adjust the following if this is not the schema you installed into
 \set ORA_SCHEMA oracompat
-set search_path = :ORA_SCHEMA, pg_catalog;
+set search_path = :ORA_SCHEMA
 BEGIN;
+psql:@abs_builddir@/../../../contrib/orafce/uninstall_orafunc.sql:5: ERROR:  syntax error at or near "BEGIN"
+LINE 2: BEGIN;
+        ^
 DROP FUNCTION IF EXISTS nvl(anyelement, anyelement);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, text);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, text, text);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, text, anyelement, text);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, text, anyelement, text, text);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, text, anyelement, text, anyelement, text);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, text, anyelement, text, anyelement, text, text);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, bpchar);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, bpchar, bpchar);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, bpchar, anyelement, bpchar);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, bpchar, anyelement, bpchar, bpchar);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, bpchar, anyelement, bpchar, anyelement, bpchar);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, bpchar, anyelement, bpchar, anyelement, bpchar, bpchar);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, integer);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, integer, integer);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, integer, anyelement, integer);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, integer, anyelement, integer, integer);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, integer, anyelement, integer, anyelement, integer);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, integer, anyelement, integer, anyelement, integer, integer);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, bigint);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, bigint, bigint);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, bigint, anyelement, bigint);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, bigint, anyelement, bigint, bigint);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, bigint, anyelement, bigint, anyelement, bigint);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, bigint, anyelement, bigint, anyelement, bigint, bigint);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, numeric);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, numeric, numeric);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, numeric, anyelement, numeric);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, numeric, anyelement, numeric, numeric);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, numeric, anyelement, numeric, anyelement, numeric);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, numeric, anyelement, numeric, anyelement, numeric, numeric);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, date);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, date, date);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, date, anyelement, date);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, date, anyelement, date, date);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, date, anyelement, date, anyelement, date);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, date, anyelement, date, anyelement, date, date);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, time);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, time, time);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, time, anyelement, time);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, time, anyelement, time, time);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, time, anyelement, time, anyelement, time);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, time, anyelement, time, anyelement, time, time);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, timestamp);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, timestamp, timestamp);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, timestamp, anyelement, timestamp);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, timestamp, anyelement, timestamp, timestamp);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, timestamp, anyelement, timestamp, anyelement, timestamp);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, timestamp, anyelement, timestamp, anyelement, timestamp, timestamp);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, timestamptz);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, timestamptz, timestamptz);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, timestamptz, anyelement, timestamptz);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, timestamptz, anyelement, timestamptz, timestamptz);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, timestamptz, anyelement, timestamptz, anyelement, timestamptz);
+DROP FUNCTION IF EXISTS decode(anyelement, anyelement, timestamptz, anyelement, timestamptz, anyelement, timestamptz, timestamptz);
 DROP FUNCTION IF EXISTS add_months(day date, value int);
 DROP FUNCTION IF EXISTS last_day(value date);
 DROP FUNCTION IF EXISTS next_day(value date, weekday text);
@@ -1024,6 +1234,11 @@ DROP FUNCTION IF EXISTS dump("any");
 DROP FUNCTION IF EXISTS dump("any", integer);
 DROP FUNCTION IF EXISTS nlssort(text, text);
 DROP FUNCTION IF EXISTS substr(text, int, int);
+psql:@abs_builddir@/../../../contrib/orafce/uninstall_orafunc.sql:115: NOTICE:  removing built-in function "substr"
+psql:@abs_builddir@/../../../contrib/orafce/uninstall_orafunc.sql:115: ERROR:  cannot drop function substr(text,integer,integer) because it is required by the database system
 DROP FUNCTION IF EXISTS substr(text, int);
+psql:@abs_builddir@/../../../contrib/orafce/uninstall_orafunc.sql:116: NOTICE:  removing built-in function "substr"
+psql:@abs_builddir@/../../../contrib/orafce/uninstall_orafunc.sql:116: ERROR:  cannot drop function substr(text,integer) because it is required by the database system
 COMMIT;
+psql:@abs_builddir@/../../../contrib/orafce/uninstall_orafunc.sql:118: WARNING:  there is no transaction in progress
 -- end_ignore

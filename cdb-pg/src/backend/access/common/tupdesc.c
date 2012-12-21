@@ -19,7 +19,6 @@
 
 #include "postgres.h"
 
-#include "access/catquery.h"
 #include "catalog/pg_type.h"
 #include "parser/parse_type.h"
 #include "utils/builtins.h"
@@ -446,7 +445,6 @@ TupleDescInitEntry(TupleDesc desc,
 	HeapTuple	tuple;
 	Form_pg_type typeForm;
 	Form_pg_attribute att;
-	cqContext	*pcqCtx;
 
 	/*
 	 * sanity checks
@@ -485,14 +483,9 @@ TupleDescInitEntry(TupleDesc desc,
 	att->attislocal = true;
 	att->attinhcount = 0;
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_type "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(oidtypeid)));
-
-	tuple = caql_getnext(pcqCtx);
-
+	tuple = SearchSysCache(TYPEOID,
+						   ObjectIdGetDatum(oidtypeid),
+						   0, 0, 0);
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for type %u", oidtypeid);
 	typeForm = (Form_pg_type) GETSTRUCT(tuple);
@@ -503,7 +496,7 @@ TupleDescInitEntry(TupleDesc desc,
 	att->attalign = typeForm->typalign;
 	att->attstorage = typeForm->typstorage;
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(tuple);
 }
 
 
@@ -523,10 +516,12 @@ BuildDescForRelation(List *schema)
 	AttrNumber	attnum;
 	ListCell   *l;
 	TupleDesc	desc;
+	AttrDefault *attrdef = NULL;
 	TupleConstr *constr = (TupleConstr *) palloc0(sizeof(TupleConstr));
 	char	   *attname;
 	int32		atttypmod;
 	int			attdim;
+	int			ndef = 0;
 
 	/*
 	 * allocate a new tuple descriptor
@@ -566,15 +561,43 @@ BuildDescForRelation(List *schema)
 		if (entry->is_not_null)
 			constr->has_not_null = true;
 		desc->attrs[attnum - 1]->attnotnull = entry->is_not_null;
+
+		/*
+		 * Note we copy only pre-cooked default expressions. Digestion of raw
+		 * ones is someone else's problem.
+		 */
+		if (entry->cooked_default != NULL)
+		{
+			if (attrdef == NULL)
+				attrdef = (AttrDefault *) palloc(natts * sizeof(AttrDefault));
+			attrdef[ndef].adnum = attnum;
+			attrdef[ndef].adbin = pstrdup(entry->cooked_default);
+			ndef++;
+			desc->attrs[attnum - 1]->atthasdef = true;
+		}
+
 		desc->attrs[attnum - 1]->attislocal = entry->is_local;
 		desc->attrs[attnum - 1]->attinhcount = entry->inhcount;
 	}
 
-	if (constr->has_not_null)
+	if (constr->has_not_null || ndef > 0)
 	{
 		desc->constr = constr;
-		constr->defval = NULL;
-		constr->num_defval = 0;
+
+		if (ndef > 0)			/* DEFAULTs */
+		{
+			if (ndef < natts)
+				constr->defval = (AttrDefault *)
+					repalloc(attrdef, ndef * sizeof(AttrDefault));
+			else
+				constr->defval = attrdef;
+			constr->num_defval = ndef;
+		}
+		else
+		{
+			constr->defval = NULL;
+			constr->num_defval = 0;
+		}
 		constr->check = NULL;
 		constr->num_check = 0;
 	}
@@ -621,7 +644,7 @@ BuildDescFromLists(List *names, List *types, List *typmods)
 	l3 = list_head(typmods);
 	foreach(l1, names)
 	{
-		const char *attname = strVal(lfirst(l1));
+		char	   *attname = strVal(lfirst(l1));
 		Oid			atttypid;
 		int32		atttypmod;
 

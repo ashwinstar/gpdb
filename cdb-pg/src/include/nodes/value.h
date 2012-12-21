@@ -45,7 +45,7 @@ typedef struct Value
 	union ValUnion
 	{
 		long		ival;		/* machine integer */
-		char 	   *str;		/* string */
+		char	   *str;		/* string */
 	}			val;
 } Value;
 
@@ -55,7 +55,7 @@ typedef struct Value
 
 extern Value *makeInteger(long i);
 extern Value *makeFloat(char *numericStr);
-extern Value *makeString(const char *str);
+extern Value *makeString(char *str);
 extern Value *makeNullString(void);
 extern Value *makeBitString(char *str);
 

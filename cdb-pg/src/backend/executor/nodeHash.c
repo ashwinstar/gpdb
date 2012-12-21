@@ -52,12 +52,6 @@ ExecHashTableExplainBatches(HashJoinTable   hashtable,
 
 #define BLOOMVAL(hk)  (((uint64)1) << (((hk) >> 13) & 0x3f))
 
-/*
- * Define the number of tuples, which will be processed before
- * calling CHECK_FOR_INTERRUPTS()
- */
-#define HASHBUCKET_CFI_FREQUENCY 1000
-
 /* ----------------------------------------------------------------
  *		ExecHash
  *
@@ -985,7 +979,6 @@ ExecScanHashBucket(HashJoinState *hjstate,
 	else
 		hashTuple = hashTuple->next;
 
-	int numTuples = 0;
 	while (hashTuple != NULL)
 	{
 		if (hashTuple->hashvalue == hashvalue)
@@ -1009,18 +1002,6 @@ ExecScanHashBucket(HashJoinState *hjstate,
 		}
 
 		hashTuple = hashTuple->next;
-
-		numTuples++;
-		/*
-		 * In some corner cases, this linked list might be very long.
-		 * HashJoin might take a long time to finish.
-		 * Call CHECK_FOR_INTERRUPTS() from time to time to handle
-		 * the cancellation.
-		 */
-		if (numTuples % HASHBUCKET_CFI_FREQUENCY == 0)
-		{
-			CHECK_FOR_INTERRUPTS();
-		}
 	}
 
 	/*

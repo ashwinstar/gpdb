@@ -92,7 +92,6 @@
  */
 #include "postgres.h"
 
-#include "access/catquery.h"
 #include "access/nbtree.h"
 #include "catalog/pg_amop.h"
 #include "cdb/cdbvars.h"
@@ -267,13 +266,9 @@ MJExamineQuals(List *qualList, PlanState *parent)
 		 * XXX for now, insist on forward sort so that NULLs can be counted on
 		 * to be high.
 		 */
-		catlist = caql_begin_CacheList(
-				NULL,
-				cql("SELECT * FROM pg_amop "
-					" WHERE amopopr = :1 "
-					" ORDER BY amopopr, "
-					" amopclaid ",
-					ObjectIdGetDatum(qual->opno)));
+		catlist = SearchSysCacheList(AMOPOPID, 1,
+									 ObjectIdGetDatum(qual->opno),
+									 0, 0, 0);
 
 		for (i = 0; i < catlist->n_members; i++)
 		{
@@ -296,7 +291,7 @@ MJExamineQuals(List *qualList, PlanState *parent)
 			}
 		}
 
-		caql_end_CacheList(catlist);
+		ReleaseSysCacheList(catlist);
 
 		/* Check permission to call "<" operator or cmp function */
 		aclresult = pg_proc_aclcheck(ltproc, GetUserId(), ACL_EXECUTE);

@@ -24,9 +24,3 @@ filespace.sql
 gpcheckmirrorseg.sql
 upgrade.sql
 auth_constraint.sql
-basic_fuzzystrmatch.sql
-catversion.sql
-custom_format.sql
-table_functions.sql
-tidycat2.sql
-caql.sql

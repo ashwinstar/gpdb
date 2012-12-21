@@ -32,7 +32,6 @@
 #include "lib/stringinfo.h"
 #include "nodes/plannodes.h"
 #include "nodes/relation.h"
-#include "utils/builtins.h"
 #include "utils/datum.h"
 #include "cdb/cdbgang.h"
 
@@ -114,10 +113,6 @@
 #define WRITE_BITMAPSET_FIELD(fldname) \
 	(appendStringInfo(str, " :" CppAsString(fldname) " "), \
 	 _outBitmapset(str, node->fldname))
-
-/* Write a bytea field */
-#define WRITE_BYTEA_FIELD(fldname) \
-	(_outDatum(str, PointerGetDatum(node->fldname), -1, false))
 
 /* Write a dummy field -- value not displayable or copyable */
 #define WRITE_DUMMY_FIELD(fldname) \
@@ -334,7 +329,6 @@ _outPlannedStmt(StringInfo str, PlannedStmt *node)
 	WRITE_NODE_TYPE("PLANNEDSTMT");
 	
 	WRITE_ENUM_FIELD(commandType, CmdType);
-	WRITE_ENUM_FIELD(planGen, PlanGenerator);
 	WRITE_BOOL_FIELD(canSetTag);
 	WRITE_BOOL_FIELD(transientPlan);
 	
@@ -351,8 +345,6 @@ _outPlannedStmt(StringInfo str, PlannedStmt *node)
 	
 	WRITE_NODE_FIELD(result_partitions);
 	WRITE_NODE_FIELD(result_aosegnos);
-	WRITE_NODE_FIELD(queryPartOids);
-	WRITE_NODE_FIELD(queryPartsMetadata);
 	WRITE_NODE_FIELD(rowMarks);
 	WRITE_NODE_FIELD(relationOids);
 	WRITE_NODE_FIELD(invalItems);
@@ -366,7 +358,6 @@ _outPlannedStmt(StringInfo str, PlannedStmt *node)
 	WRITE_INT_FIELD(backoff_weight);
 	WRITE_UINT64_FIELD(query_mem);
 
-	WRITE_UINT_FIELD(query_random_seed);
 }
 
 static void
@@ -412,14 +403,6 @@ _outAppend(StringInfo str, Append *node)
 	WRITE_BOOL_FIELD(isTarget);
 	WRITE_BOOL_FIELD(isZapped);
 	WRITE_BOOL_FIELD(hasXslice);
-}
-
-static void
-_outSequence(StringInfo str, Sequence *node)
-{
-	WRITE_NODE_TYPE("SEQUENCE");
-	_outPlanInfo(str, (Plan *)node);
-	WRITE_NODE_FIELD(subplans);
 }
 
 static void
@@ -475,21 +458,6 @@ _outAOCSScan(StringInfo str, AOCSScan *node)
 }
 
 static void
-_outTableScan(StringInfo str, TableScan *node)
-{
-	WRITE_NODE_TYPE("TABLESCAN");
-	_outScanInfo(str, (Scan *)node);
-}
-
-static void
-_outDynamicTableScan(StringInfo str, DynamicTableScan *node)
-{
-	WRITE_NODE_TYPE("DYNAMICTABLESCAN");
-	_outScanInfo(str, (Scan *)node);
-	WRITE_INT_FIELD(partIndex);
-}
-
-static void
 _outExternalScan(StringInfo str, ExternalScan *node)
 {
 	WRITE_NODE_TYPE("EXTERNALSCAN");
@@ -508,8 +476,10 @@ _outExternalScan(StringInfo str, ExternalScan *node)
 }
 
 static void
-outIndexScanFields(StringInfo str, IndexScan *node)
+_outIndexScan(StringInfo str, IndexScan *node)
 {
+	WRITE_NODE_TYPE("INDEXSCAN");
+
 	_outScanInfo(str, (Scan *) node);
 
 	WRITE_OID_FIELD(indexid);
@@ -518,23 +488,6 @@ outIndexScanFields(StringInfo str, IndexScan *node)
 	WRITE_NODE_FIELD(indexstrategy);
 	WRITE_NODE_FIELD(indexsubtype);
 	WRITE_ENUM_FIELD(indexorderdir, ScanDirection);
-}
-
-static void
-_outIndexScan(StringInfo str, IndexScan *node)
-{
-	WRITE_NODE_TYPE("INDEXSCAN");
-
-	outIndexScanFields(str, node);
-}
-
-static void
-_outIndexOnlyScan(StringInfo str, IndexOnlyScan *node)
-{
-	WRITE_NODE_TYPE("INDEXONLYSCAN");
-	
-	/* IndexOnlyScan has the same content as IndexScan */
-	outIndexScanFields(str, (IndexScan *)node);
 }
 
 static void
@@ -714,12 +667,10 @@ _outWindow(StringInfo str, Window *node)
 		appendStringInfo(str, " %d", node->partColIdx[i]);
 
 	WRITE_NODE_FIELD(windowKeys);
-	WRITE_NODE_FIELD(sequence);
-	WRITE_ENUM_FIELD(semantics, WindowSemantics);
 }
 
 static void
-_outTableFunctionScan(StringInfo str, TableFunctionScan *node)
+_outTableFunctionScan(StringInfo str, Window *node)
 {
 	WRITE_NODE_TYPE("TABLEFUNCTIONSCAN");
 
@@ -874,68 +825,6 @@ _outMotion(StringInfo str, Motion *node)
 	_outPlanInfo(str, (Plan *) node);
 }
 
-/*
- * _outDML
- */
-static void
-_outDML(StringInfo str, DML *node)
-{
-	WRITE_NODE_TYPE("DML");
-
-	WRITE_UINT_FIELD(scanrelid);
-	WRITE_INT_FIELD(oidColIdx);
-	WRITE_INT_FIELD(actionColIdx);
-	WRITE_INT_FIELD(ctidColIdx);
-
-	_outPlanInfo(str, (Plan *) node);
-}
-
-/*
- * _outSplitUpdate
- */
-static void
-_outSplitUpdate(StringInfo str, SplitUpdate *node)
-{
-	WRITE_NODE_TYPE("SplitUpdate");
-
-	WRITE_NODE_FIELD(insertColIdx);
-	WRITE_NODE_FIELD(deleteColIdx);
-	WRITE_INT_FIELD(actionColIdx);
-	WRITE_INT_FIELD(ctidColIdx);
-	
-	_outPlanInfo(str, (Plan *) node);
-}
-
-/*
- * _outRowTriggerOp
- */
-static void
-_outRowTriggerOp(StringInfo str, RowTriggerOp *node)
-{
-	WRITE_NODE_TYPE("RowTriggerOp");
-
-	WRITE_INT_FIELD(relid);
-	WRITE_INT_FIELD(eventFlags);
-	WRITE_NODE_FIELD(oldValuesColIdx);
-	WRITE_NODE_FIELD(newValuesColIdx);
-
-	_outPlanInfo(str, (Plan *) node);
-}
-
-/*
- * _outAssertOp
- */
-static void
-_outAssertOp(StringInfo str, AssertOp *node)
-{
-	WRITE_NODE_TYPE("AssertOp");
-
-	WRITE_STRING_FIELD(errmessage);
-	WRITE_INT_FIELD(errcode);
-	
-	_outPlanInfo(str, (Plan *) node);
-}
-
 /*****************************************************************************
  *
  *	Stuff from primnodes.h.
@@ -1085,7 +974,6 @@ _outWindowRef(StringInfo str, WindowRef *node)
 	WRITE_UINT_FIELD(winindex);
 	WRITE_ENUM_FIELD(winstage, WinStage);
 	WRITE_UINT_FIELD(winlevel);
-	WRITE_ENUM_FIELD(null_treatment, NullTreatment);
 }
 
 static void
@@ -1117,17 +1005,6 @@ _outFuncExpr(StringInfo str, FuncExpr *node)
 	{
 		WRITE_BOOL_FIELD(is_tablefunc);  /* GPDB */
 	}
-}
-
-static void
-_outNamedArgExpr(StringInfo str, NamedArgExpr *node)
-{
-	WRITE_NODE_TYPE("NAMEDARGEXPR");
-
-	WRITE_NODE_FIELD(arg);
-	WRITE_STRING_FIELD(name);
-	WRITE_INT_FIELD(argnumber);
-	WRITE_INT_FIELD(location);
 }
 
 static void
@@ -1410,18 +1287,6 @@ _outSetToDefault(StringInfo str, SetToDefault *node)
 
 	WRITE_OID_FIELD(typeId);
 	WRITE_INT_FIELD(typeMod);
-}
-
-static void
-_outCurrentOfExpr(StringInfo str, CurrentOfExpr *node)
-{
-	WRITE_NODE_TYPE("CURRENTOFEXPR");
-
-	WRITE_STRING_FIELD(cursor_name);
-	WRITE_INT_FIELD(cvarno);
-	WRITE_OID_FIELD(target_relid);
-
-	/* some attributes omitted as they're bound only just before executor dispatch */
 }
 
 static void
@@ -2002,8 +1867,6 @@ _outCreateStmt(StringInfo str, CreateStmt *node)
 	WRITE_NODE_FIELD(relation);
 	WRITE_NODE_FIELD(tableElts);
 	WRITE_NODE_FIELD(inhRelations);
-	WRITE_NODE_FIELD(inhOids);
-	WRITE_INT_FIELD(parentOidCount);
 	WRITE_NODE_FIELD(constraints);
 	WRITE_NODE_FIELD(options);
 	WRITE_ENUM_FIELD(oncommit, OnCommitAction);
@@ -2566,7 +2429,7 @@ _outFunctionParameter(StringInfo str, FunctionParameter *node)
 	WRITE_STRING_FIELD(name);
 	WRITE_NODE_FIELD(argType);
 	WRITE_ENUM_FIELD(mode, FunctionParameterMode);
-	WRITE_NODE_FIELD(defexpr);
+
 }
 
 static void
@@ -2863,7 +2726,6 @@ _outDeclareCursorStmt(StringInfo str, DeclareCursorStmt *node)
 	WRITE_STRING_FIELD(portalname);
 	WRITE_INT_FIELD(options);
 	WRITE_NODE_FIELD(query);
-	WRITE_BOOL_FIELD(is_simply_updatable);
 }
 
 static void
@@ -2986,7 +2848,6 @@ _outSelectStmt(StringInfo str, SelectStmt *node)
 	{
 		WRITE_NODE_FIELD(scatterClause);
 	}
-	WRITE_NODE_FIELD(withClause);
 	WRITE_NODE_FIELD(limitOffset);
 	WRITE_NODE_FIELD(limitCount);
 	WRITE_NODE_FIELD(lockingClause);
@@ -3007,11 +2868,9 @@ _outFuncCall(StringInfo str, FuncCall *node)
     WRITE_NODE_FIELD(agg_order);
 	WRITE_BOOL_FIELD(agg_star);
 	WRITE_BOOL_FIELD(agg_distinct);
-	WRITE_BOOL_FIELD(func_variadic);
 	WRITE_NODE_FIELD(over);
 	WRITE_INT_FIELD(location);
 	WRITE_NODE_FIELD(agg_filter);
-	WRITE_ENUM_FIELD(null_treatment, NullTreatment);
 }
 
 static void
@@ -3035,12 +2894,6 @@ _outLockingClause(StringInfo str, LockingClause *node)
 }
 
 static void
-_outDMLActionExpr(StringInfo str, DMLActionExpr *node)
-{
-	WRITE_NODE_TYPE("DMLACTIONEXPR");
-}
-
-static void
 _outColumnDef(StringInfo str, ColumnDef *node)
 {
 	WRITE_NODE_TYPE("COLUMNDEF");
@@ -3050,10 +2903,7 @@ _outColumnDef(StringInfo str, ColumnDef *node)
 	WRITE_INT_FIELD(inhcount);
 	WRITE_BOOL_FIELD(is_local);
 	WRITE_BOOL_FIELD(is_not_null);
-	WRITE_INT_FIELD(attnum);
-	WRITE_OID_FIELD(default_oid);
 	WRITE_NODE_FIELD(raw_default);
-	WRITE_BOOL_FIELD(default_is_null);
 	WRITE_STRING_FIELD(cooked_default);
 	WRITE_NODE_FIELD(constraints);
 	WRITE_NODE_FIELD(encoding);
@@ -3250,15 +3100,6 @@ _outGroupClause(StringInfo str, GroupClause *node)
 }
 
 static void
-_outScatterClause(StringInfo str, ScatterClause *node)
-{
-	WRITE_NODE_TYPE("SCATTERCLAUSE");
-
-	WRITE_UINT_FIELD(tleSortGroupRef);
-	WRITE_OID_FIELD(sortop);
-}
-
-static void
 _outGroupingClause(StringInfo str, GroupingClause *node)
 {
 	WRITE_NODE_TYPE("GROUPINGCLAUSE");
@@ -3300,21 +3141,8 @@ _outWindowSpecParse(StringInfo str, WindowSpecParse *node)
 static void
 _outWindowSpec(StringInfo str, WindowSpec *node)
 {
-	WRITE_NODE_TYPE("WINDOWSPEC"); /* identical to SeqWindowSpec. */
-	
-	WRITE_STRING_FIELD(name);
-	WRITE_STRING_FIELD(parent);
-	WRITE_NODE_FIELD(partition);
-	WRITE_NODE_FIELD(order);
-	WRITE_NODE_FIELD(frame);
-    WRITE_INT_FIELD(location);
-}
+	WRITE_NODE_TYPE("WINDOWSPEC");
 
-static void
-_outSeqWindowSpec(StringInfo str, SeqWindowSpec *node)
-{
-	WRITE_NODE_TYPE("SEQWINDOWSPEC"); /* identical to WindowSpec. */
-	
 	WRITE_STRING_FIELD(name);
 	WRITE_STRING_FIELD(parent);
 	WRITE_NODE_FIELD(partition);
@@ -3342,21 +3170,6 @@ _outWindowFrameEdge(StringInfo str, WindowFrameEdge *node)
 
 	WRITE_ENUM_FIELD(kind, WindowBoundingKind);
 	WRITE_NODE_FIELD(val);
-}
-
-static void
-_outPercentileExpr(StringInfo str, PercentileExpr *node)
-{
-	WRITE_NODE_TYPE("PERCENTILEEXPR");
-
-	WRITE_OID_FIELD(perctype);
-	WRITE_NODE_FIELD(args);
-	WRITE_ENUM_FIELD(perckind, PercKind);
-	WRITE_NODE_FIELD(sortClause);
-	WRITE_NODE_FIELD(sortTargets);
-	WRITE_NODE_FIELD(pcExpr);
-	WRITE_NODE_FIELD(tcExpr);
-	WRITE_INT_FIELD(location);
 }
 
 static void
@@ -3393,29 +3206,6 @@ _outCommonTableExpr(StringInfo str, CommonTableExpr *node)
 	WRITE_NODE_FIELD(ctecolnames);
 	WRITE_NODE_FIELD(ctecoltypes);
 	WRITE_NODE_FIELD(ctecoltypmods);
-}
-
-static void
-_outSequenceDefn(StringInfo str, SequenceDefn *node)
-{
-	WRITE_NODE_TYPE("SEQUENCEDEFN");
-	
-	WRITE_STRING_FIELD(keyname);
-	WRITE_NODE_FIELD(span);
-	WRITE_NODE_FIELD(seqlow);
-	WRITE_NODE_FIELD(seqlim);
-}
-
-static void
-_outSequenceSpec(StringInfo str, SequenceSpec *node)
-{
-	WRITE_NODE_TYPE("SEQUENCESPEC");
-	
-	WRITE_STRING_FIELD(seqname);
-	WRITE_NODE_FIELD(partition);
-	WRITE_NODE_FIELD(order);
-	WRITE_NODE_FIELD(postorder);
-	WRITE_NODE_FIELD(seqdef);
 }
 
 static void
@@ -3467,11 +3257,6 @@ _outRangeTblEntry(StringInfo str, RangeTblEntry *node)
 			WRITE_NODE_FIELD(funcexpr);
 			WRITE_NODE_FIELD(funccoltypes);
 			WRITE_NODE_FIELD(funccoltypmods);
-			if (node->funcuserdata)
-			{
-				appendStringInfoLiteral(str, " :funcuserdata ");
-				WRITE_BYTEA_FIELD(funcuserdata);
-			}
 			break;
 		case RTE_VALUES:
 			WRITE_NODE_FIELD(values_lists);
@@ -3802,11 +3587,11 @@ _outSlice(StringInfo str, Slice *node)
 	WRITE_INT_FIELD(numGangMembersToBeActive);
 	WRITE_BOOL_FIELD(directDispatch.isDirectDispatch);
 	WRITE_NODE_FIELD(directDispatch.contentIds); /* List of int */
-	WRITE_DUMMY_FIELD(gang);
-	WRITE_INT_FIELD(gangId);
+	WRITE_DUMMY_FIELD(primaryGang);
+	WRITE_INT_FIELD(primary_gang_id);
 	WRITE_INT_FIELD(parentIndex); /* List of int index */
 	WRITE_NODE_FIELD(children); /* List of int index */
-	WRITE_NODE_FIELD(workerProcesses); /* List of (CDBProcess *) */
+	WRITE_NODE_FIELD(primaryProcesses); /* List of (CDBProcess *) */
 }
 
 static void
@@ -3972,9 +3757,6 @@ _outNode(StringInfo str, void *obj)
 			case T_Append:
 				_outAppend(str, obj);
 				break;
-			case T_Sequence:
-				_outSequence(str, obj);
-				break;
 			case T_BitmapAnd:
 				_outBitmapAnd(str, obj);
 				break;
@@ -3993,20 +3775,11 @@ _outNode(StringInfo str, void *obj)
 			case T_AOCSScan:
 				_outAOCSScan(str, obj);
 				break;
-			case T_TableScan:
-				_outTableScan(str, obj);
-				break;
-			case T_DynamicTableScan:
-				_outDynamicTableScan(str, obj);
-				break;
 			case T_ExternalScan:
 				_outExternalScan(str, obj);
 				break;
 			case T_IndexScan:
 				_outIndexScan(str, obj);
-				break;
-			case T_IndexOnlyScan:
-				_outIndexOnlyScan(str, obj);
 				break;
 			case T_BitmapIndexScan:
 				_outBitmapIndexScan(str, obj);
@@ -4077,18 +3850,6 @@ _outNode(StringInfo str, void *obj)
 			case T_Motion:
 				_outMotion(str, obj);
 				break;
-			case T_DML:
-				_outDML(str, obj);
-				break;
-			case T_SplitUpdate:
-				_outSplitUpdate(str, obj);
-				break;
-			case T_RowTriggerOp:
-				_outRowTriggerOp(str, obj);
-				break;
-			case T_AssertOp:
-				_outAssertOp(str, obj);
-				break;
 			case T_Alias:
 				_outAlias(str, obj);
 				break;
@@ -4121,9 +3882,6 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_FuncExpr:
 				_outFuncExpr(str, obj);
-				break;
-			case T_NamedArgExpr:
-				_outNamedArgExpr(str, obj);
 				break;
 			case T_OpExpr:
 				_outOpExpr(str, obj);
@@ -4196,9 +3954,6 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_SetToDefault:
 				_outSetToDefault(str, obj);
-				break;
-			case T_CurrentOfExpr:
-				_outCurrentOfExpr(str, obj);
 				break;
 			case T_TargetEntry:
 				_outTargetEntry(str, obj);
@@ -4584,9 +4339,6 @@ _outNode(StringInfo str, void *obj)
 			case T_GroupClause:
 				_outGroupClause(str, obj);
 				break;
-			case T_ScatterClause:
-				_outScatterClause(str, obj);
-				break;
 			case T_GroupingClause:
 				_outGroupingClause(str, obj);
 				break;
@@ -4605,17 +4357,11 @@ _outNode(StringInfo str, void *obj)
 			case T_WindowSpec:
 				_outWindowSpec(str, obj);
 				break;
-			case T_SeqWindowSpec:
-				_outSeqWindowSpec(str, obj);
-				break;
 			case T_WindowFrame:
 				_outWindowFrame(str, obj);
 				break;
 			case T_WindowFrameEdge:
 				_outWindowFrameEdge(str, obj);
-				break;
-			case T_PercentileExpr:
-				_outPercentileExpr(str, obj);
 				break;
 			case T_RowMarkClause:
 				_outRowMarkClause(str, obj);
@@ -4628,12 +4374,6 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_SetOperationStmt:
 				_outSetOperationStmt(str, obj);
-				break;
-			case T_SequenceDefn:
-				_outSequenceDefn(str, obj);
-				break;
-			case T_SequenceSpec:
-				_outSequenceSpec(str, obj);
 				break;
 			case T_RangeTblEntry:
 				_outRangeTblEntry(str, obj);
@@ -4700,10 +4440,6 @@ _outNode(StringInfo str, void *obj)
 				_outLockingClause(str, obj);
 				break;
 
-			case T_DMLActionExpr:
-				_outDMLActionExpr(str, obj);
-				break;
-
 			case T_CreateTrigStmt:
 				_outCreateTrigStmt(str, obj);
 				break;
@@ -4763,12 +4499,12 @@ _outNode(StringInfo str, void *obj)
  *	   returns the ascii representation of the Node as a palloc'd string
  */
 char *
-nodeToString(const void *obj)
+nodeToString(void *obj)
 {
 	StringInfoData str;
 
 	/* see stringinfo.h for an explanation of this maneuver */
 	initStringInfo(&str);
-	_outNode(&str, (void *)obj);
+	_outNode(&str, obj);
 	return str.data;
 }

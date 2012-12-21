@@ -187,15 +187,10 @@ checkcode: pylint
 	@echo -n "pylint_score=" > $(SRC)/../pylint_score.properties
 	@grep "Your code has been rated at" $(SRC)/../pylint.txt | sed -e "s|Your .* \(.*\)/.*|\1|" >> $(SRC)/../pylint_score.properties
 
-check-regress:
-	@echo "Running regression tests..."
-	@PYTHONPATH=$(SRC):$(SRC)/ext:$(PYTHONPATH) \
-	gppylib/gpunit discover --verbose -s gppylib -p "test_regress*.py" 2> $(SRC)/../gpMgmt_testregress_results.log 1> $(SRC)/../gpMgmt_testregress_output.log
-
 check:
 	@echo "Running unit tests..."
 	@PYTHONPATH=$(SRC):$(SRC)/ext:$(PYTHONPATH) \
-	gppylib/gpunit discover --verbose -s gppylib -p "test_unit*.py" 2> $(SRC)/../gpMgmt_testunit_results.log 1> $(SRC)/../gpMgmt_testunit_output.log
+	gppylib/unit2 discover --verbose -s gppylib 2> $(SRC)/../gpMgmt_testresults.log 1> $(SRC)/../gpMgmt_testoutput.log
 
 solarisTest:
 	@if [ `uname -s` = 'SunOS' ]; then \

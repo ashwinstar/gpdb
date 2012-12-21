@@ -691,14 +691,11 @@ dumpResQueues(PGconn *conn)
 				bWith = true;
 				appendPQExpBuffer(buf, "\n WITH (");
 			}
+			appendPQExpBuffer(buf, " %s=%s", resname, ressetting);
 
-			if (0 == strcmp("memory_limit", resname) && (strcmp(ressetting, "-1") != 0))
-			  appendPQExpBuffer(buf, " %s='%s'", resname, ressetting);
-			else
-			  appendPQExpBuffer(buf, " %s=%s", resname, ressetting);
 		}
 
-	}/* end for */
+	}							/* end for */
 
 	/* need to write out last statement */
 	if (prev_rsqname)
@@ -755,7 +752,7 @@ dumpRoles(PGconn *conn)
 
 	/*
 	 * Query to select role info get resqueue if version support it get
-	 * external table auth on gpfdist, gpfdists and http if version support it get
+	 * external table auth on gpfdist and http if version support it get
 	 * external table auth on gphdfs if version support it note: rolconfig is
 	 * dumped later
 	 */
@@ -764,7 +761,7 @@ dumpRoles(PGconn *conn)
 					  "rolcreaterole, rolcreatedb, rolcatupdate, "
 					  "rolcanlogin, rolconnlimit, rolpassword, "
 					  "rolvaliduntil, "
-					  "pg_catalog.shobj_description(oid, 'pg_authid') as rolcomment "
+			  "pg_catalog.shobj_description(oid, 'pg_authid') as rolcomment "
 					  " %s %s %s"
 					  "FROM pg_authid "
 					  "ORDER BY 1",
@@ -870,7 +867,6 @@ dumpRoles(PGconn *conn)
 
 		if (exttab_auth)
 		{
-			/* we use the same privilege for gpfdist and gpfdists */
 			if (!PQgetisnull(res, i, i_rolcreaterextgpfd) &&
 				strcmp(PQgetvalue(res, i, i_rolcreaterextgpfd), "t") == 0)
 				appendPQExpBuffer(buf, " CREATEEXTTABLE (protocol='gpfdist', type='readable')");

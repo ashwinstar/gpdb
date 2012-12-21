@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:VBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%" backgroundColor="#DFFCB2" verticalGap="0" creationComplete="initComp()">
+<mx:Script>
+	<![CDATA[
+		import mx.controls.CheckBox;
+		import mx.collections.XMLListCollection;
+		import mx.controls.dataGridClasses.DataGridListData;
+		import mx.collections.ModifiedCollectionView;
+		import mx.controls.Alert;
+		import view.healthTab.events.HostSubItemSelectEvent;
+		import model.Health;
+		import command.HealthDetailsCommand;
+		import model.GPPerfMonModelLocator;
+	  	import mx.managers.CursorManager;
+		import mx.events.DataGridEvent;
+		import util.MiscUtils;
+	
+	[Bindable]
+	public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();
+	private var compInitialized:Boolean = false ;
+	private var healthDetails:XML = null;
+
+    [Bindable]private var hostName:String;
+    
+    private var sortedColumnName:String = "Status";
+    private var sortDescendingFlag:Boolean = false;
+	
+	private function initComp():void {
+		compInitialized = true;
+		healthDetailsDG.dataProvider = null;
+		
+		for each (var status:String in mdl.health.statusList) {
+			var label:String = mdl.health.statusLabels[status];
+			var cb:CheckBox = new CheckBox();
+			cb.selected = true;
+			cb.label = label;
+			cb.name = status;
+			cb.addEventListener(MouseEvent.CLICK, showOnlyFilteredDetails);
+			
+			statusFilter.addChild(cb);
+		}
+		
+		if (healthDetails != null) {
+			refreshView();
+		}
+	}
+
+	//function is used to set the value of healthDetails Datagridheader.
+	public function set itemDetails(value:HostSubItemSelectEvent):void
+	{
+		var itemDetailsXML:XML = value.itemXML ;
+	    hostName = itemDetailsXML.HostName.toString();
+	    
+	    if (compInitialized) {
+	    	healthDetailsDG.dataProvider = null;
+	    }
+	    
+		CursorManager.setBusyCursor();
+	    var healthDetailCommand:HealthDetailsCommand = new HealthDetailsCommand;
+	    healthDetailCommand.setParameters(hostName, showHealthDetailsItems);
+	    healthDetailCommand.execute();
+	}
+										
+		
+	public function showHealthDetailsItems(details:XML):void {
+		healthDetails = details;
+		if (compInitialized) {
+			refreshView();
+		}
+	}
+	
+	private function refreshView():void {
+	 	CursorManager.removeBusyCursor();
+	 	
+	 	var event:Event = new Event("timerRefresh");
+	 	dispatchEvent(event);
+	 	
+	 	showOnlyFilteredDetails();
+	}
+	
+	private function statusLabel(item:Object, col:DataGridColumn):String {
+		return Health.statusLabel(XML(item).Status);
+	}
+	
+	public function handleRefreshClick():void {
+		CursorManager.setBusyCursor();
+		healthDetailsDG.dataProvider = null;
+	    var healthDetailCommand:HealthDetailsCommand = new HealthDetailsCommand;
+	    healthDetailCommand.setParameters(hostName, showHealthDetailsItems);
+	    healthDetailCommand.execute();
+	}
+	
+	private function showOnlyFilteredDetails(eventObj:Event = null):void{
+	    var resultXML:XMLList = new XMLList();
+	    var tempXMLlist:XMLList ;
+	    var node:XML;
+	    
+		for (var i:int = 0; i < statusFilter.numChildren; i++) {
+			var item:CheckBox = CheckBox(statusFilter.getChildAt(i));
+			if (item.selected) {
+				tempXMLlist = (healthDetails.Host.Line.(Status == item.name));
+				for each (node in tempXMLlist){
+					resultXML += node;
+		    	}
+			}
+		}
+
+	    healthDetailsDG.dataProvider = resultXML;
+	    
+	    MiscUtils.sortDataGrid(healthDetailsDG, sortedColumnName, sortDescendingFlag);
+	}//end of showOnlyFilteredDetails.
+	
+	private function handleHeaderReleaseEvent(event:DataGridEvent):void {
+			sortDescendingFlag = (DataGridColumn(healthDetailsDG.columns[event.columnIndex]).sortDescending) ;
+
+			if (sortedColumnName != event.dataField) {
+				sortedColumnName = event.dataField;
+			} else {
+				// For some reason, when you click on the same field, the sortflag is
+				// incorrectly reported.
+				sortDescendingFlag = !sortDescendingFlag;
+			}
+    }// end of handleHeaderReleaseEvent
+	
+	]]>
+</mx:Script>
+
+  <mx:HBox height="28" width="100%" backgroundColor="#bfdc92" paddingTop="4" paddingLeft="3" id="healthheaderPane">
+		<mx:Label text="{hostName}" id="healthheaderLabel" color="#0b333c" fontFamily="Verdana"  fontWeight="bold"
+	                           fontSize="11"> 
+		</mx:Label>
+		 <mx:Spacer width="100%" />
+
+		<mx:HBox id="statusFilter" paddingRight="6">
+		</mx:HBox>
+         
+  </mx:HBox>
+	<mx:DataGrid width="100%" height="100%" id="healthDetailsDG" headerRelease="handleHeaderReleaseEvent(event)">
+		<mx:columns>
+			<mx:DataGridColumn headerText="Component Name" fontFamily="Verdana" dataField="ComponentName"
+				fontWeight="normal" fontSize="11"  width="40" sortable="true" />
+			<mx:DataGridColumn headerText="Object Id" fontFamily="Verdana"  dataField="ObjectID"
+				fontWeight="normal" fontSize="11" width="50" sortable="true"/>
+			<mx:DataGridColumn headerText="Status" width="20" fontFamily="Verdana" dataField="Status"
+				fontWeight="normal" fontSize="11" sortable="true" itemRenderer="view.healthTab.StatusItemRender"/>
+			<mx:DataGridColumn headerText="Message"  fontFamily="Verdana" dataField="Message"
+				fontWeight="normal" fontSize="11" width="100" sortable="true"/>
+		</mx:columns>
+	</mx:DataGrid>
+</mx:VBox>	

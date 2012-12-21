@@ -198,19 +198,7 @@ plan_tree_mutator(Node *node,
 			}
 			break;
 
-		case T_Sequence:
-			{
-				Sequence *sequence = (Sequence *) node;
-				Sequence *newSequence = NULL;
-
-				FLATCOPY(newSequence, sequence, Sequence);
-				PLANMUTATE(newSequence, sequence);
-				MUTATE(newSequence->subplans, sequence->subplans, List *);
-
-				return (Node *) newSequence;
-			}
-
-		case T_BitmapAnd:
+        case T_BitmapAnd:
 			{
 				BitmapAnd  *old = (BitmapAnd *) node;
                 BitmapAnd  *mut;
@@ -273,30 +261,6 @@ plan_tree_mutator(Node *node,
 			}
 			break;
 				
-		case T_TableScan:
-			{
-				TableScan *tableScan = (TableScan *) node;
-				TableScan *newTableScan = NULL; 
-				
-				FLATCOPY(newTableScan, tableScan, TableScan);
-				SCANMUTATE(newTableScan, tableScan);
-
-				return (Node *) newTableScan;
-			}
-			break;
-				
-		case T_DynamicTableScan:
-			{
-				DynamicTableScan *tableScan = (DynamicTableScan *) node;
-				DynamicTableScan *newTableScan = NULL;
-				
-				FLATCOPY(newTableScan, tableScan, DynamicTableScan);
-				SCANMUTATE(newTableScan, tableScan);
-				newTableScan->partIndex = tableScan->partIndex;
-				return (Node *) newTableScan;
-			}
-			break;
-				
 		case T_ExternalScan:
 			{
 				ExternalScan    *extscan = (ExternalScan *) node;
@@ -332,23 +296,6 @@ plan_tree_mutator(Node *node,
 			}
 			break;
 			
-		case T_IndexOnlyScan:
-			{
-				IndexOnlyScan  *idxscan = (IndexOnlyScan *) node;
-				IndexOnlyScan  *newidxscan;
-
-				FLATCOPY(newidxscan, idxscan, IndexOnlyScan);
-				SCANMUTATE(newidxscan, idxscan);
-				newidxscan->indexid = idxscan->indexid;
-				MUTATE(newidxscan->indexqual, idxscan->indexqual, List *);
-				MUTATE(newidxscan->indexqualorig, idxscan->indexqualorig, List *);
-				MUTATE(newidxscan->indexstrategy, idxscan->indexstrategy, List *);
-				MUTATE(newidxscan->indexsubtype, idxscan->indexsubtype, List *);
-
-				return (Node *) newidxscan;
-			}
-			break;
-
 		case T_BitmapIndexScan:
 			{
 				BitmapIndexScan  *idxscan = (BitmapIndexScan *) node;
@@ -553,7 +500,6 @@ plan_tree_mutator(Node *node,
 				
 				COPYARRAY(newwindow, window, numPartCols, partColIdx);
 				MUTATE(newwindow->windowKeys, window->windowKeys, List *);
-				MUTATE(newwindow->sequence, window->sequence, Node *);
 				
 				return (Node *) newwindow;
 			}
@@ -887,14 +833,6 @@ set_hasxslice_in_append_walker(Node *node, void *ctx)
 			
 			((Append *)node)->hasXslice =
 				bms_is_member(context->currentSliceNo, context->slices);
-
-			return false;
-		}
-
-		case T_Sequence:
-		{
-			walk_plan_node_fields((Plan *) node, set_hasxslice_in_append_walker, ctx);
-			set_hasxslice_in_append_walker((Node *) ((Sequence *) node)->subplans, context);
 
 			return false;
 		}

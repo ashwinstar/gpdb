@@ -25,32 +25,6 @@ select * from ccddl;
 
 drop table ccddl;
 
--- MPP-17012 default encoding clause with extra options in with clause
-create table ccddl (
-	i int,
-	j int,
-	default column encoding (compresstype=zlib, compresslevel=5)
-) with (appendonly=true, orientation=column, oids=false);
-
-execute ccddlcheck;
-
-drop table ccddl;
-
-create table ccddl (
-	i int,
-	j int,
-	default column encoding (compresstype=zlib)
-) with (appendonly=true, orientation=column, fillfactor=11);
-
-execute ccddlcheck;
-
--- This is enough to force compression, specially since we'll hash
--- all to a single segment and the values are all the same.
-insert into ccddl select 1, 2 from generate_series(1, 100);
-select * from ccddl;
-
-drop table ccddl;
-
 -- Make sure we cleaned up after ourselves: should return zero rows
 -- We exclude the named tables because they're hang overs from other
 -- tests
@@ -133,6 +107,14 @@ create table ccddl_co(LIKE ccddl)
 execute ccddlcheck;
 drop table ccddl_co, ccddl;
 
+-- storage directives when we only use LIKE
+create table ccddl (i int, j int);
+create table ccddl_co (like ccddl, column i encoding(compresstype=quicklz))
+with (appendonly=true, orientation=column, compresstype=zlib);
+execute ccddlcheck;
+drop table ccddl, ccddl_co;
+
+
 -----------------------------------------------------------------------
 -- Basic syntax
 -- Expect: failure
@@ -160,11 +142,9 @@ compresslevel=100000);
 alter table ccddl add column j int encoding(a=b);
 drop table ccddl;
 
--- encoding clause has higher precedence than WITH clause
-create table ccddl (i int encoding(compresstype=quicklz)) with(compresstype=zlib,
+-- encoding clause conflicts with WITH clause
+create table a (i int encoding(compresstype=quicklz)) with(compresstype=zlib,
 appendonly=true, orientation=column);
-execute ccddlcheck;
-drop table ccddl;
 
 -- conflicting WITH and DEFAULT COLUMN ENCODING clause
 create table t1 (i int, j int, default column encoding (compresstype=quicklz))
@@ -176,6 +156,14 @@ with (appendonly=true, orientation=column);
 
 create table t1 (i int encoding (compresstype=quicklz, ahhhh=boooooo))
 with (appendonly=true, orientation=column);
+
+-- Inheritance: check that we don't support inheritance on tables using
+-- column compression
+create table ccddlparent (i int encoding (compresstype=zlib))
+with (appendonly = true, orientation = column);
+create table ccddlchild (j int encoding (compresstype=zlib))
+inherits(ccddlparent) with (appendonly = true, orientation = column);
+drop table ccddlparent cascade;
 
 -- Conflict between default and with, in the LIKE case
 create table ccddl (i int);
@@ -191,15 +179,6 @@ select 1, 1;
 execute ccddlcheck;
 drop table ccddl;
 
--- encoding clause has higher precedence than WITH clause even in the LIKE case.
--- (this change the behavior of MPP-15120) 
-create table ccddl (i int, j int);
-create table ccddl_co (like ccddl, column i encoding(compresstype=quicklz))
-with (appendonly=true, orientation=column, compresstype=zlib);
-execute ccddlcheck;
-drop table ccddl;
-drop table ccddl_co;
-
 -----------------------------------------------------------------------
 -- Partitioning support
 -- Expect: success
@@ -209,11 +188,9 @@ drop table ccddl_co;
 create table ccddl (i int, j int)
 with (appendonly = true, orientation=column)
 partition by range(j)
-(partition p1 start(1) end(10)
- column i encoding(compresstype=zlib)
- column j encoding(compresstype=quicklz),
- partition p2 start(10) end(20)
- column i encoding(compresstype=zlib)
+(partition p1 start(1) end(10),
+ partition p2 start(10) end(20),
+ column i encoding(compresstype=zlib),
  column j encoding(compresstype=quicklz)
 );
 
@@ -376,9 +353,7 @@ create table ccddl (
 	i int,
 	j int,
 	k int,
-	l int,
-	column i encoding (blocksize=65536),
-	default column encoding (compresstype=quicklz)
+	l int
 	)
 	with (appendonly=true, orientation=column)
 	partition by range(i)
@@ -389,7 +364,9 @@ create table ccddl (
 	 	partition p3 start(3) end(4) column i encoding(compresstype=rle_type)
 									 column j encoding(blocksize=8192)
 									 default column encoding
-									 	(compresstype=zlib)
+									 	(compresstype=zlib),
+		column i encoding (blocksize=65536),
+		default column encoding (compresstype=quicklz)
 	);
 
 execute ccddlcheck;
@@ -401,16 +378,16 @@ with (appendonly=true, orientation=column)
 partition by range(i) subpartition by range(j)
  (
  partition p1 start(1) end(2)
-		(subpartition sp1 start(1) end(2) column i encoding(compresstype=zlib)
-		 column i encoding (blocksize=65536)
+		(subpartition sp1 start(1) end(2) column i encoding(compresstype=zlib),
+		 column i encoding (blocksize=65536),
 		 default column encoding (compresstype=quicklz)
 		),
  partition p2 start(2) end(3)
-		column i encoding (blocksize=65536)
-		default column encoding (compresstype=quicklz)
  		(subpartition sp1 start(1) end(2)
 			column j encoding(compresstype=rle_type)
-			column k encoding(blocksize=8192)
+			column k encoding(blocksize=8192),
+		 column i encoding (blocksize=65536),
+		 default column encoding (compresstype=quicklz)
 		)
 );
 
@@ -425,8 +402,8 @@ CREATE TABLE ccddl ( c1 int ENCODING (compresstype=zlib),
 					 COLUMN c3 ENCODING (compresstype=RLE_TYPE))
 WITH (appendonly=true, orientation=column)
 	PARTITION BY RANGE (c3) (
-		START ('1900-01-01'::DATE)   END ('2100-12-31'::DATE)
-		        COLUMN c3 ENCODING (compresstype=zlib)
+		START ('1900-01-01'::DATE)   END ('2100-12-31'::DATE),
+		        COLUMN c3 ENCODING (compresstype=zlib),
 				COLUMN c2 ENCODING (compresstype=rle_type)
 	);
 
@@ -437,44 +414,14 @@ drop table ccddl;
 -- if it's explicitly marked appendonly=false. This is to support
 -- what dump has been doing all along
 create table ccddl
-	(i int, j int encoding (compresstype=quicklz), default column encoding (compresstype=zlib))
+	(i int, j int encoding (compresstype=quicklz))
 	with (appendonly=true, orientation=column)
 	partition by range(i)
 	(
 		partition p1 start(1) end(2) with(appendonly=false),
-		partition p2 start(2) end(3)
+		partition p2 start(2) end(3),
+		default column encoding (compresstype=zlib)
 	);
-execute ccddlcheck;
-drop table ccddl;
-
--- MPP-16875: ensure that WITH () is honoured
-CREATE TABLE ccddl (a int, b text)
-with (appendonly=true, orientation=column,
-	  compresstype=quicklz, compresslevel=1)
-partition by list(b)
-(partition s_abc values ('abc')
-	with (appendonly=true, orientation=column, compresstype=quicklz,
-		  compresslevel=1));
-
-alter table ccddl add partition "s_xyz" values ('xyz')
-	WITH (appendonly=true, orientation=column,
-		  compresstype=quicklz, compresslevel=1);
-execute ccddlcheck;
-drop table ccddl;
-
--- Ensure that WITH () and subpartition template column encoding rules
--- play well together
-create table ccddl (i int, d date, j int)
-  WITH (APPENDONLY=TRUE, ORIENTATION=COLUMN)
-  partition by range(d) subpartition by list(j)
-  	subpartition template (subpartition sp1 values(1),
-						   default column encoding (compresstype=zlib))
-  (start('2010-01-01') end('2010-01-05') every('1 day'::interval));
-
-alter table ccddl add partition newp 
-	start('2010-01-06') end('2010-01-07')
-	with (appendonly=true, orientation=column, compresstype=quicklz); 
-
 execute ccddlcheck;
 drop table ccddl;
 
@@ -483,15 +430,12 @@ drop table ccddl;
 -- Expect: failure
 -----------------------------------------------------------------------
 
-create table gg (i int, k int) with (appendonly=true, orientation=column)
-partition by range(k) (partition p1 start(1) end(2), column i encoding(compresstype=zlib));
-
 -- Make sure we validate the storage directives
 create table gg (i int, k int) with (appendonly=true, orientation=column)
-partition by range(k) (partition p1 start(1) end(2) column i encoding(a=b));
+partition by range(k) (partition p1 start(1) end(2), column i encoding(a=b));
 
 create table gg (i int, k int) with (appendonly=true, orientation=column)
-partition by range(k) (partition p1 start(1) end(2) column i
+partition by range(k) (partition p1 start(1) end(2), column i
 encoding(compresstype=sdf2sdf));
 
 -- We don't support partition element specific encoding clauses in subpartition
@@ -507,10 +451,9 @@ CREATE TABLE ccddl
 (a1 int,a2 char(5),a3 text,a4 timestamp ,a5 date) 
 partition by range(a1) 
 	(   
-		start(1) end(1000) every(500)
+		start(1) end(1000) every(500),
 		COLUMN a1 ENCODING (compresstype=zlib,compresslevel=4,blocksize=32768)
 	);
-drop table ccddl;
 
 -----------------------------------------------------------------------
 -- Type support

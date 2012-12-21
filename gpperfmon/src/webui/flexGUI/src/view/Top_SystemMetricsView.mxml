@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:VBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%"
+	xmlns:panel="panel.*" xmlns:chart="chart.*" xmlns:view="view.*"
+	xmlns:container="container.*" creationPolicy="queued"
+	paddingLeft="5" paddingRight="5" horizontalAlign="center" verticalGap="10">	
+
+<mx:Script>
+    <![CDATA[
+      import model.GPPerfMonModelLocator;
+      import mx.events.ListEvent;
+      import command.DatabaseHistoricCommand;
+      import command.SystemHistoricCommand;
+      import util.Debug;
+      import model.Session;
+      import util.MiscUtils;
+  			
+  	  [Bindable]
+	  public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();	
+
+	  private function durationChange(event:ListEvent):void
+	  {
+	  	// Has the dataset we'll be using changed?
+	  	if (mdl.system.activeAggLookup[duration.selectedIndex] !=
+	  		mdl.system.activeAggLookup[mdl.nav.durationSelected])
+	  	{
+	  		// Mark nothing as selected
+	  		mdl.nav.selectedSystemIndex = -1;
+	  		mdl.nav.selectedSystemItem = null;
+	  		mdl.nav.selectedDatabaseItem = null;
+			// Clear any existing detailed data
+			mdl.system.selectedDataDetails = null;
+	  	}
+	  	
+		mdl.nav.durationSelected = duration.selectedIndex;	
+			
+		if (mdl.system.activeAggLookup[duration.selectedIndex] == mdl.system.oneMinAggData)
+		{
+			// Shouldn't be here -- get 1min data on startup
+			// -- could retry if failed, but skip for now
+			if (!mdl.system.oneMin_lastReceivedDate)
+				Debug.debug("System duration change: missing 1min data");
+		} 
+		else if (mdl.system.activeAggLookup[duration.selectedIndex] == mdl.system.fiveMinAggData)
+		{
+			if (!mdl.system.fiveMin_lastReceivedDate)
+			{
+				//Issue request to get the last 24hrs of 5min system data
+				var fiveMinRequestSys:SystemHistoricCommand = new SystemHistoricCommand;
+				var fiveMinRequestDB:DatabaseHistoricCommand = new DatabaseHistoricCommand;
+				fiveMinRequestSys.setParameters('5min', mdl.session.timeArray[Session.ONE_DAY_AGO]);
+				fiveMinRequestDB.setParameters('5min', mdl.session.timeArray[Session.ONE_DAY_AGO]);
+				fiveMinRequestSys.chainCommand(fiveMinRequestDB);
+				fiveMinRequestSys.execute();	
+			}
+		}
+		else if (mdl.system.activeAggLookup[duration.selectedIndex] == mdl.system.oneHrAggData)
+		{
+			if (!mdl.system.oneHr_lastReceivedDate)
+			{
+				//Issue request to get the last two weeks of 1hr system data
+				var oneHrRequestSys:SystemHistoricCommand = new SystemHistoricCommand;
+				var oneHrRequestDB:DatabaseHistoricCommand = new DatabaseHistoricCommand;
+				oneHrRequestSys.setParameters('1hr', mdl.session.timeArray[Session.TWO_WEEKS_AGO]);
+				oneHrRequestDB.setParameters('1hr', mdl.session.timeArray[Session.TWO_WEEKS_AGO]);
+				oneHrRequestSys.chainCommand(oneHrRequestDB);
+				oneHrRequestSys.execute();	
+			}
+		}				
+		else if (mdl.system.activeAggLookup[duration.selectedIndex] == mdl.system.oneDayAggData)
+		{
+			if (!mdl.system.oneDay_lastReceivedDate)
+			{
+				//Issue request to get the last 1yrs of 1day system data
+				var oneDayRequestSys:SystemHistoricCommand = new SystemHistoricCommand;
+				var oneDayRequestDB:DatabaseHistoricCommand = new DatabaseHistoricCommand;
+				oneDayRequestSys.setParameters('1day', mdl.session.timeArray[Session.ONE_YEAR_AGO]);
+				oneDayRequestDB.setParameters('1day', mdl.session.timeArray[Session.ONE_YEAR_AGO]);
+				oneDayRequestSys.chainCommand(oneDayRequestDB);
+				oneDayRequestSys.execute();	
+			}
+		}			
+	  }
+    ]]>
+</mx:Script>	
+
+    <mx:HBox width="100%" verticalAlign="middle">
+    	<mx:ToggleButtonBar dataProvider="{systemViewStack}"/>
+    	<mx:Spacer width="100%"/>
+    	<mx:Label text="Duration: " visible="{mdl.nav.systemTabPage!=2}" 
+    								includeInLayout="{mdl.nav.systemTabPage!=2}"/>
+    	<mx:ComboBox id="duration" dataProvider="{mdl.nav.durationList}"  
+			change="durationChange(event)" visible="{mdl.nav.systemTabPage!=2}"
+			includeInLayout="{mdl.nav.systemTabPage!=2}" rowCount="7"/>
+		<mx:Label text="{'Last updated: ' + mdl.session.mostRecentTick}"
+			visible="{mdl.nav.systemTabPage==2}"
+			includeInLayout="{mdl.nav.systemTabPage==2}"/>			
+    </mx:HBox>	
+    
+    <mx:ViewStack width="100%" height="100%" id="systemViewStack"
+    	 selectedIndex="{mdl.nav.systemTabPage}" borderThickness="1" borderColor="0x000000"
+    	 change="{mdl.nav.systemTabPage = systemViewStack.selectedIndex}">
+    
+    	<view:SystemMetricsSummaryView id="sysMetricsSummaryView" label="All Metrics"/>
+    	<view:SystemMetricsDetailView id="sysMetricsDetailView" label="Detail (By Metric)"/>
+		<view:SystemMetricsNowView id="sysMetricsNowView" label="Realtime (By Server)"/>
+		
+	</mx:ViewStack>
+
+</mx:VBox>
+

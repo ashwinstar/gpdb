@@ -51,8 +51,8 @@
    attinhcount    integer
    );
 
-   create unique index on pg_attribute(attrelid, attname) with (indexid=2658, CamelCase=AttributeRelidName, syscacheid=ATTNAME, syscache_nbuckets=2048);
-   create unique index on pg_attribute(attrelid, attnum) with (indexid=2659, CamelCase=AttributeRelidNum, syscacheid=ATTNUM, syscache_nbuckets=2048);
+   create unique index on pg_attribute(attrelid, attname) with (indexid=2658, CamelCase=AttributeRelidName);
+   create unique index on pg_attribute(attrelid, attnum) with (indexid=2659, CamelCase=AttributeRelidNum);
 
    alter table pg_attribute add fk attrelid on pg_class(oid);
    alter table pg_attribute add fk atttypid on pg_type(oid);
@@ -343,11 +343,7 @@ DATA(insert ( 1247 gp_segment_id   23 0  4  -8 0 -1 -1 t p i t f f t 0));
 { 1255, {"proargnames"},	  1009, -1, -1, 16, 1, -1, -1, false, 'x', 'i', false, false, false, true, 0 }, \
 { 1255, {"prosrc"},				25, -1, -1, 17, 0, -1, -1, false, 'x', 'i', false, false, false, true, 0 }, \
 { 1255, {"probin"},				17, -1, -1, 18, 0, -1, -1, false, 'x', 'i', false, false, false, true, 0 }, \
-{ 1255, {"proacl"},			  1034, -1, -1, 19, 1, -1, -1, false, 'x', 'i', false, false, false, true, 0 }, \
-{ 1255, {"provariadic"},		26, -1, 4,  20, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
-{ 1255, {"pronargdefaults"},	21, -1, 2, 21, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
-{ 1255, {"proargdefaults"},		25, -1, -1, 22, 0, -1, -1, false, 'x', 'i', false, false, false, true, 0 }, \
-{ 1255, {"prodataaccess"},		18, -1, 1, 23, 0, -1, -1, true, 'p', 'c', true, false, false, true, 0 }
+{ 1255, {"proacl"},			  1034, -1, -1, 19, 1, -1, -1, false, 'x', 'i', false, false, false, true, 0 }
 
 DATA(insert ( 1255 proname			19 -1 NAMEDATALEN	1 0 -1 -1 f p i t f f t 0));
 DATA(insert ( 1255 pronamespace		26 -1 4   2 0 -1 -1 t p i t f f t 0));
@@ -368,10 +364,6 @@ DATA(insert ( 1255 proargnames	  1009 -1 -1 16 1 -1 -1 f x i f f f t 0));
 DATA(insert ( 1255 prosrc			25 -1 -1 17 0 -1 -1 f x i f f f t 0));
 DATA(insert ( 1255 probin			17 -1 -1 18 0 -1 -1 f x i f f f t 0));
 DATA(insert ( 1255 proacl		  1034 -1 -1 19 1 -1 -1 f x i f f f t 0));
-DATA(insert ( 1255 provariadic		26 -1 4  20 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1255 pronargdefaults	21 -1 2  21 0 -1 -1 t p s t f f t 0));
-DATA(insert ( 1255 proargdefaults	25 -1 -1 22 0 -1 -1 f x i f f f t 0));
-DATA(insert ( 1255 prodataaccess	18 -1 1 23 0 -1 -1 t p c t f f t 0));
 DATA(insert ( 1255 ctid				27 0  6  -1 0 -1 -1 f p s t f f t 0));
 DATA(insert ( 1255 oid				26 0  4  -2 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1255 xmin				28 0  4  -3 0 -1 -1 t p i t f f t 0));

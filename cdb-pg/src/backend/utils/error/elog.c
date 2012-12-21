@@ -62,13 +62,11 @@
 #include "access/xact.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
-#include "libpq/pqsignal.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "postmaster/postmaster.h"
 #include "postmaster/syslogger.h"
 #include "storage/ipc.h"
-#include "storage/proc.h"
 #include "tcop/tcopprot.h"
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
@@ -134,8 +132,6 @@ int			Log_destination = LOG_DESTINATION_STDERR;
 static bool openlog_done = false;
 static char *syslog_ident = NULL;
 static int	syslog_facility = LOG_LOCAL0;
-
-int gp_log_retry_count = 0;
 
 static void write_syslog(int level, const char *line);
 #endif
@@ -2447,6 +2443,8 @@ log_line_prefix(StringInfo buf)
                     appendStringInfo(buf, "seg%d ", Gp_segment);
                 if (currentSliceId > 0)
                     appendStringInfo(buf, "slice%d ", currentSliceId);
+                if (Gp_role == GP_ROLE_DISPATCHAGENT)
+                     appendStringInfo(buf, "*DA* ");
                 if (j < buf->len &&
                     buf->data[buf->len - 1] == ' ')
                     buf->len--;
@@ -2479,6 +2477,8 @@ log_line_prefix(StringInfo buf)
                         appendStringInfo(buf, "qe");
                     else if (Gp_role == GP_ROLE_DISPATCH)
                         appendStringInfo(buf, "qd");
+                    else if (Gp_role == GP_ROLE_DISPATCHAGENT)
+                        appendStringInfo(buf, "da");
                 }
                 break;
             case 'X':
@@ -2534,20 +2534,22 @@ unpack_sql_state(int sql_state)
     return buf;
 }
 
+#define NUM_RETRIES 1000
+
 /*
  * Send the data through the pipe.
  */
 static inline void
-gp_write_pipe_chunk(const char *buffer, int len, bool check_interrupts)
+gp_write_pipe_chunk(const char *buffer, int len)
 {
     int retval = -1;
     fd_set wfds;
     struct timeval tv;
 	int retry_no = 0;
 
-	while (retry_no < gp_log_retry_count)
+	while (retry_no < NUM_RETRIES)
 	{
-		if (check_interrupts && pthread_equal(main_tid, pthread_self()))
+		if (pthread_equal(main_tid, pthread_self()))
 		{
 			CHECK_FOR_INTERRUPTS();
 		}
@@ -2582,7 +2584,7 @@ gp_write_pipe_chunk(const char *buffer, int len, bool check_interrupts)
 		}
 	}
 
-	Assert((retval == 1) || (retval < 0 && errno != EINTR) || (retry_no == gp_log_retry_count));
+	Assert((retval == 1) || (retval < 0 && errno != EINTR) || (retry_no == NUM_RETRIES));
 
 	if (retval == 1)
 	{
@@ -2630,13 +2632,11 @@ append_string_to_pipe_chunk(PipeProtoChunk *buffer, const char* input)
 
 	/*
 	 * If this is a really long message, it does not really
-	 * make lots of sense to print them all.  Truncate it to half the
-	 * number of chunks the syslogger buffers. This will make it more likely
-	 * for the syslogger to be able to receive and reassemble this message.
+	 * make lots of sense to print them all.  Truncate it.
 	 */
-	if (len >= PIPE_MAX_PAYLOAD * (CHUNK_SLOTS / 2))
+	if (len >= PIPE_MAX_PAYLOAD * 20)
 	{
-		len = PIPE_MAX_PAYLOAD * (CHUNK_SLOTS / 2) - 1;
+		len = PIPE_MAX_PAYLOAD * 20 - 1;
 	}
 
     char *data = buffer->data + buffer->hdr.len;
@@ -2650,7 +2650,7 @@ append_string_to_pipe_chunk(PipeProtoChunk *buffer, const char* input)
 		Assert(bytes + buffer->hdr.len == PIPE_MAX_PAYLOAD);
 		buffer->hdr.len = PIPE_MAX_PAYLOAD;
 		
-		gp_write_pipe_chunk((char *)buffer, PIPE_CHUNK_SIZE, true);
+		gp_write_pipe_chunk((char *)buffer, PIPE_CHUNK_SIZE);
 
 		buffer->hdr.len = 0;
 		buffer->hdr.chunk_no++;
@@ -2874,7 +2874,7 @@ append_stacktrace(PipeProtoChunk *buffer, StringInfo append, void *const *stacka
 				if (amsyslogger)
 					write_syslogger_file_binary(symbol, symbol_len);
 				else
-					write_stderr_retry(symbol, symbol_len);
+					write(fileno(stderr), symbol, symbol_len);
         	}
         }
     }
@@ -2897,9 +2897,9 @@ write_syslogger_file_string(const char *str, bool amsyslogger, bool append_comma
         }
         else
         {
-            write_stderr_retry("\"", 1);
+            write(fileno(stderr), "\"", 1);
             syslogger_write_str(str, strlen(str), false, true);
-            write_stderr_retry("\"", 1);
+            write(fileno(stderr), "\"", 1);
         }
     }
 
@@ -2908,7 +2908,7 @@ write_syslogger_file_string(const char *str, bool amsyslogger, bool append_comma
         if (amsyslogger)
             write_syslogger_file_binary(",", 1);
         else
-            write_stderr_retry(",", 1);
+            write(fileno(stderr), ",", 1);
     }
 }
 
@@ -3035,7 +3035,7 @@ write_syslogger_in_csv(ErrorData *edata, bool amsyslogger)
     if (amsyslogger)
         write_syslogger_file_binary(LOG_EOL, strlen(LOG_EOL));
     else
-        write_stderr_retry(LOG_EOL, strlen(LOG_EOL));
+        write(fileno(stderr), LOG_EOL, strlen(LOG_EOL));
 }
 
 /*
@@ -3077,9 +3077,6 @@ write_message_to_server_log(int elevel,
 
     Assert(!am_syslogger);
 
-    if (sqlerrcode == ERRCODE_GP_OPERATION_CANCELED_ERRORLESS)
-    	return;
-
     buffer.hdr.zero = 0;
     buffer.hdr.len = 0;
     buffer.hdr.pid = MyProcPid;
@@ -3089,7 +3086,6 @@ write_message_to_server_log(int elevel,
     buffer.hdr.is_last = 'f';
     buffer.hdr.log_format = 'c';
     buffer.hdr.log_line_number = log_line_number++;
-	buffer.hdr.is_segv_msg = 'f';
     buffer.hdr.next = -1;
 
 
@@ -3195,7 +3191,7 @@ write_message_to_server_log(int elevel,
 
     /* Send the last chunk */
     buffer.hdr.is_last = 't';
-    gp_write_pipe_chunk((char *)&buffer, buffer.hdr.len + PIPE_HEADER_SIZE, true);
+    gp_write_pipe_chunk((char *)&buffer, buffer.hdr.len + PIPE_HEADER_SIZE);
 }
 
 /*
@@ -3209,9 +3205,6 @@ send_message_to_server_log(ErrorData *edata)
     int             nc;
 
 	AssertImply(mainthread() != 0, mythread() == mainthread());
-
-	if (edata->sqlerrcode == ERRCODE_GP_OPERATION_CANCELED_ERRORLESS)
-	    return;
 
     if (Log_destination & LOG_DESTINATION_STDERR)
     {
@@ -3465,7 +3458,7 @@ send_message_to_server_log(ErrorData *edata)
             if (redirection_done && !am_syslogger)
                 write_pipe_chunks(buf.data, buf.len);
             else
-                write_stderr_retry(buf.data, buf.len);
+                write(fileno(stderr), buf.data, buf.len);
     }
 
     /* If in the syslogger process, try to write messages direct to file */
@@ -3484,16 +3477,17 @@ write_pipe_chunks(char *data, int len)
 {
     PipeProtoChunk p;
 
+    int			fd = fileno(stderr);
+
     Assert(len > 0);
 
     p.hdr.zero = 0;
     p.hdr.pid = MyProcPid;
-	p.hdr.thid = mythread();
-	p.hdr.main_thid = mainthread();
-	p.hdr.chunk_no = 0;
-	p.hdr.log_format = 't';
-	p.hdr.is_segv_msg = 'f';
-	p.hdr.next = -1;
+        p.hdr.thid = mythread();
+        p.hdr.main_thid = mainthread();
+        p.hdr.chunk_no = 0;
+        p.hdr.log_format = 't';
+        p.hdr.next = -1;
 
     /* write all but the last chunk */
     while (len > PIPE_MAX_PAYLOAD)
@@ -3507,11 +3501,11 @@ write_pipe_chunks(char *data, int len)
                 Assert(p.hdr.pid != 0);
                 Assert(p.hdr.thid != 0);
 #endif
-        write_stderr_retry((char *) &p, PIPE_CHUNK_SIZE);
+        write(fd, &p, PIPE_CHUNK_SIZE);
         data += PIPE_MAX_PAYLOAD;
         len -= PIPE_MAX_PAYLOAD;
 
-		++p.hdr.chunk_no;
+                ++p.hdr.chunk_no;
     }
 
     /* write the last chunk */
@@ -3525,7 +3519,7 @@ write_pipe_chunks(char *data, int len)
         Assert(PIPE_HEADER_SIZE + len <= PIPE_CHUNK_SIZE);
 #endif
     memcpy(p.data, data, len);
-    write_stderr_retry((char *)&p, PIPE_HEADER_SIZE + len);
+    write(fd, &p, PIPE_HEADER_SIZE + len);
 }
 
 
@@ -3556,9 +3550,6 @@ static void
 send_message_to_frontend(ErrorData *edata)
 {
     StringInfoData msgbuf;
-
-    if (edata->sqlerrcode == ERRCODE_GP_OPERATION_CANCELED_ERRORLESS)
-       	return;
 
     /* 'N' (Notice) is for nonfatal conditions, 'E' is for errors */
     pq_beginmessage(&msgbuf, (edata->elevel < ERROR) ? 'N' : 'E');
@@ -3878,20 +3869,6 @@ append_with_tabs(StringInfo buf, const char *str)
     }
 }
 
-/*
- * Write a buffer to stderr, retrying only if write was interrupted.
- * Ignores any other return conditions.
- */
-void
-write_stderr_retry(const char *buf, size_t len)
-{
-	ssize_t bytes = 0;
-	do
-	{
-		bytes = write(fileno(stderr), buf, len);
-	}
-	while (bytes < 0 && errno == EINTR);
-}
 
 /*
  * Write errors to stderr (or by equal means when stderr is
@@ -4320,217 +4297,23 @@ uint32 gp_backtrace(void **stackAddresses, uint32 maxStackDepth)
  */
 char *gp_stacktrace(void **stackAddresses, uint32 stackDepth)
 {
-	StringInfoData append;
-	initStringInfo(&append);
+	StringInfo append = makeStringInfo();	/* palloc'd */
 
 #ifdef WIN32
-	appendStringInfoString(&append, "stack trace is not available for this platform");
+	appendStringInfoString(append, "stack trace is not available for this platform");
 #else
-	append_stacktrace(NULL /*PipeProtoChunk*/, &append, stackAddresses, stackDepth,
+	append_stacktrace(NULL /*PipeProtoChunk*/, append, stackAddresses, stackDepth,
 	                 false/*amsyslogger*/);
 #endif
 
 	/* we may fail to retrieve stack on opt build */
-	if (0 == append.len)
+	if (0 == append->len)
 	{
-		appendStringInfoString(&append, "failed to retrieve stack");
+		appendStringInfoString(append, "failed to retrieve stack");
 	}
 
-	return append.data;
+	return append->data;
 }
 
-/*
- * SignalName
- *   Convert a SEGV/BUS/ILL to name.
- */
-const char *
-SegvBusIllName(int signal)
-{
-	Assert(signal == SIGILL ||
-		   signal == SIGSEGV ||
-		   signal == SIGBUS);
-	
-    switch (signal)
-    {
-#ifdef SIGILL
-        case SIGILL:
-            return "SIGILL";
-#endif
-#ifdef SIGSEGV
-        case SIGSEGV:
-            return "SIGSEGV";
-#endif
-#ifdef SIGBUS
-        case SIGBUS:
-            return "SIGBUS";
-#endif
-	}
-
-	return NULL;
-}
-
-/*
- * SafeHandlerForSegvBusIll
- *   Async-safe signal handler for SEGV/BUS/ILL.
- *
- * This function simple collects the stack addresses and some process information
- * and write them to the pipe.
- */
-static void
-SafeHandlerForSegvBusIll(char *processName, SIGNAL_ARGS)
-{
-	PG_SETMASK(&BlockSig);
-
-	/* Unblock SEGV/BUS/ILL signals, and set them to their default settings. */
-#ifdef SIGILL
-	pqsignal(SIGILL, SIG_DFL);
-#endif
-#ifdef SIGSEGV
-	pqsignal(SIGSEGV, SIG_DFL);
-#endif
-#ifdef SIGBUS
-	pqsignal(SIGBUS, SIG_DFL);
-#endif
-
-	PipeProtoChunk buffer;
-	
-	buffer.hdr.zero = 0;
-	buffer.hdr.len = 0;
-	buffer.hdr.pid = MyProcPid;
-
-	/*
-	 * mythread() are not really async-safe, but syslogger requires this value
-	 * to be set as part of an identifier of a chunk. We create a fake value here to
-	 * satisfy the condition of a valid chunk. But in the syslogger, we reset its
-	 * value to 0.
-	 */
-	buffer.hdr.thid = FIXED_THREAD_ID;
-	buffer.hdr.main_thid = mainthread();
-    buffer.hdr.chunk_no = 0;
-    buffer.hdr.is_last = 't';
-    buffer.hdr.log_format = 'c';
-	buffer.hdr.is_segv_msg = 't';
-    buffer.hdr.log_line_number = 0;
-    buffer.hdr.next = -1;
-
-	char *data = buffer.data;
-	GpSegvErrorData *errorData = (GpSegvErrorData *)data;
-	
-    errorData->session_start_time = 0;
-	if (MyProcPort)
-	{
-        errorData->session_start_time = (pg_time_t)timestamptz_to_time_t(MyProcPort->SessionStartTime);
-	}
-	
-	errorData->gp_session_id = gp_session_id;
-	errorData->gp_command_count = gp_command_count;
-	errorData->gp_segment_id = Gp_segment;
-	errorData->slice_id = currentSliceId;
-	errorData->signal_num = (int32)postgres_signal_arg;
-	errorData->frame_depth = 0;
-	
-	/*
-	 * Compute how many frame addresses we are able to send in a single chunk. The total space
-	 * that is available for frame addresses is (PIPE_MAX_PAYLOAD - MAXALIGN(sizeof(GpSegvErrorData))).
-	 */
-	int frameDepth = (PIPE_MAX_PAYLOAD - MAXALIGN(sizeof(GpSegvErrorData))) / sizeof(void *);
-	Assert(frameDepth > 0);
-
-	void *stackAddressArray = data + MAXALIGN(sizeof(GpSegvErrorData));
-	void **stackAddresses = stackAddressArray;
-	errorData->frame_depth = gp_backtrace(stackAddresses, frameDepth);
-
-	buffer.hdr.len =
-		MAXALIGN(sizeof(GpSegvErrorData)) +
-		errorData->frame_depth * sizeof(void *);
-
-	gp_write_pipe_chunk((char *)&buffer, buffer.hdr.len + PIPE_HEADER_SIZE, false);
-
-	/* re-raise the signal to OS */
-	raise(postgres_signal_arg);
-}
-
-/**
- * Unsafe handler that can be called from a specific processes handler for
- *   SIGILL, SIGSEGV, and SIGBUS
- *
- * This handler logs the error and, if gp_reraise_signal is set, reraises
- *   the signal so the operating system can create a core file.
- *
- * Control will never return from this signal handler
- *
- * MUST be called from the main thread, if this process uses threads.
- */
-static void
-UnsafeHandlerForSegvBusIll(char *processName, SIGNAL_ARGS)
-{
-    int			save_errno = errno;
-
-    PG_SETMASK(&BlockSig);
-#ifdef SIGILL
-    pqsignal(SIGILL, SIG_DFL);
-#endif
-#ifdef SIGSEGV
-    pqsignal(SIGSEGV, SIG_DFL);
-#endif
-#ifdef SIGBUS
-    pqsignal(SIGBUS, SIG_DFL);
-#endif
-
-    write_stderr("\nUnexpected internal error: %s %d received signal %s\n"
-				 "(interrupt holdoff count %d, critical section count %d)\n",
-                 processName, MyProcPid, SegvBusIllName(postgres_signal_arg),
-				 InterruptHoldoffCount, CritSectionCount);
-
-    errno = save_errno;
-
-    ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR),
-                    errFatalReturn(gp_reraise_signal),
-                    errOmitLocation(true),
-                    errmsg("Unexpected internal error: %s received signal %s",
-                           processName, SegvBusIllName(postgres_signal_arg)),
-					errdetail("(interrupt holdoff count %d, critical section count %d)",
-			  				  InterruptHoldoffCount, CritSectionCount)));
-
-    /**
-     * We reach this point only if gp_reraise_signal is on.
-     */
-    Assert(gp_reraise_signal);
-
-	if (CritSectionCount == 0)
-	{
-		/* Some filerep processes may not set MyProc. */
-		if (MyProc != NULL)
-		{
-			MyProc->postmasterResetRequired = false;
-		}
-
-		/* Clean up shared memory by calling callback functions. Do not exit, though. We need to raise signal to get a core. */
-		proc_exit_prepare(0);
-		AssertImply(MyProc != NULL, !MyProc->postmasterResetRequired && "postmaster reset required flag changed unexpectedly");
-	}
-
-
-    /* CDB: Control returns here only if gp_reraise_signal is true. */
-    raise(postgres_signal_arg);
-    abort();                    /* not reached */
-}                               /* CdbProgramErrorHandler */
-
-/*
- * StandardHandlerForSigillSigsegvSigbus_OnMainThread
- *    Signal handlers for SEGV/BUS/ILL.
- */
-void
-StandardHandlerForSigillSigsegvSigbus_OnMainThread(char * processName, SIGNAL_ARGS)
-{
-	if (gp_crash_handler_async)
-	{
-		SafeHandlerForSegvBusIll(processName, postgres_signal_arg);
-	}
-	else
-	{
-		UnsafeHandlerForSegvBusIll(processName, postgres_signal_arg);
-	}
-}
 
 /* EOF */

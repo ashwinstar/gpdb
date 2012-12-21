@@ -16,7 +16,6 @@
 #include "fmgr.h"
 
 #include "access/genam.h"
-#include "access/catquery.h"
 #include "access/reloptions.h"
 #include "access/tupdesc.h"
 #include "access/tupmacs.h"
@@ -30,6 +29,7 @@
 #include "storage/gp_compress.h"
 #include "storage/quicklz1.h"
 #include "storage/quicklz3.h"
+#include "storage/rle_type.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/formatting.h"
@@ -82,6 +82,35 @@ typedef struct zlib_state
 
 } zlib_state;
 
+/* Internal state for RLE */
+typedef struct rle_type_state
+{
+	bool compress;		/* compress or decompress? */
+	int  byteLen;		/* byte length of individual data element */
+	Oid  colType;
+	char align;
+
+	/*
+	 * The compression and decompression functions.
+	 */
+	int (*compress_fn) (int typeLen_bytes,
+						Oid colType,
+						char align,
+						char *inbuf, int inSizeBytes,
+						char *outbuf,
+						int outbufSizeBytes,
+						int *outSizeBytes);
+
+	int (*decompress_fn) (int typeLen_bytes,
+						  Oid colType,
+						  char align,
+						  char *inbuf,
+						  int inSizeBytes,
+						  char *outbuf,
+						  int outbufSizeBytes,
+						  int *outSizeBytes);
+} rle_type_state;
+
 static NameData
 comptype_to_name(char *comptype)
 {
@@ -114,6 +143,9 @@ PGFunction *
 GetCompressionImplementation(char *comptype)
 {
 	HeapTuple		tuple;
+	ScanKeyData		key;
+	SysScanDesc		scan;
+	Relation		pgcomp;
 	NameData		compname;
 	PGFunction	   *funcs;
 	Form_pg_compression ctup;
@@ -121,11 +153,22 @@ GetCompressionImplementation(char *comptype)
 
 	compname = comptype_to_name(comptype);
 
-	tuple = caql_getfirst(
-			NULL,
-			cql("SELECT * FROM pg_compression "
-				" WHERE compname = :1 ",
-				NameGetDatum(&compname)));
+	pgcomp = heap_open(CompressionRelationId, AccessShareLock);
+
+	ScanKeyInit(&key,
+				Anum_pg_compression_compname,
+				BTEqualStrategyNumber,
+				F_NAMEEQ,
+				NameGetDatum(&compname));
+
+	scan = systable_beginscan(pgcomp,
+							  CompressionCompnameIndexId,
+							  true,
+							  SnapshotNow,
+							  1,
+							  &key);
+
+	tuple = systable_getnext(scan);
 
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
@@ -156,6 +199,9 @@ GetCompressionImplementation(char *comptype)
 	Insist(OidIsValid(ctup->compvalidator));
 	fmgr_info(ctup->compvalidator, &finfo);
 	funcs[COMPRESSION_VALIDATOR] = finfo.fn_addr;
+
+	systable_endscan(scan);
+	heap_close(pgcomp, AccessShareLock);
 
 	return funcs;
 }
@@ -547,35 +593,136 @@ zlib_validator(PG_FUNCTION_ARGS)
 Datum
 rle_type_constructor(PG_FUNCTION_ARGS)
 {
-	elog(ERROR, "rle_type block compression not supported");
-	PG_RETURN_VOID();
+	TupleDesc			td = PG_GETARG_POINTER(0);
+	StorageAttributes *sa	= PG_GETARG_POINTER(1);
+	CompressionState   *cs = palloc0(sizeof(CompressionState));
+	rle_type_state	   *state = palloc0(sizeof(rle_type_state));
+	bool				compress = PG_GETARG_BOOL(2);
+
+	cs->opaque = (void *) state;
+	cs->desired_sz = NULL;
+
+	Insist(PointerIsValid(td));
+	Insist(PointerIsValid(sa->comptype));
+	Insist(strcmp(sa->comptype, "rle_type") == 0);
+
+	state->compress = compress;
+	state->compress_fn = rle_type_comp;
+	state->decompress_fn = rle_type_decomp;
+
+	state->byteLen = (**td->attrs).attlen;
+	state->colType = (**td->attrs).atttypid;
+	state->align = (**td->attrs).attalign;
+
+	PG_RETURN_POINTER(cs);
 }
 
 Datum
 rle_type_destructor(PG_FUNCTION_ARGS)
 {
-	elog(ERROR, "rle_type block compression not supported");
+	CompressionState *cs = PG_GETARG_POINTER(0);
+
+	Insist(PointerIsValid(cs->opaque));
+	pfree(cs->opaque);
+
 	PG_RETURN_VOID();
 }
 
 Datum
 rle_type_compress(PG_FUNCTION_ARGS)
 {
-	elog(ERROR, "rle_type block compression not supported");
+	const void	   *src	= PG_GETARG_POINTER(0);
+	int32			src_sz = PG_GETARG_INT32(1);
+	void		   *dst	= PG_GETARG_POINTER(2);
+	int32			dst_sz = PG_GETARG_INT32(3);
+	int32		   *dst_used = PG_GETARG_POINTER(4);
+	CompressionState *cs = (CompressionState *)PG_GETARG_POINTER(5);
+	rle_type_state *state = (rle_type_state *)cs->opaque;
+
+	int res = state->compress_fn(state->byteLen, 
+					   state->colType,
+					   state->align,
+					   (char *) src, src_sz,
+					   (char *) dst, dst_sz, dst_used);
+	if (res <= 0 )
+	{
+		elog(ERROR, 
+			 "RLE compression failure; rle_type_decomp (len %d colType %d align %c src_sz %d dst_sz %d dst_used %d) returned %d; )", 
+			 state->byteLen,
+			 state->colType,
+			 state->align,
+			 src_sz,
+			 dst_sz,
+			 *dst_used,
+			 res);
+	} 
+	else if (res != src_sz)
+	{
+		/* if res > 0 but not == src_sz then compression was proceeding without 
+		 * error but in the end there was not enough room in the output buffer
+		 * to hold the result - this should also mean it is resulting in 
+		 * expansion rather than compression which is possible - res itself is 
+		 * not being passed up through the stack to
+		 *  AppendOnlyStorageWrite_CompressAppend - there it will simply
+		 * look if the dst_used is less than src_sz - if not then it will 
+		 * leave it uncompressed - we need to make sure that we don't hit 
+		 * the case where res != src_sz ie not all the input data is processed 
+		 * but dst_used happens to be exactly src_sz; so here we set dst_used to 
+		 * src_sz+ 1 to make sure we don't hit that case; Long-term, 
+		 * it might better to be able to pass the actual res up through the 
+		 * stack to AppendOnlyStorageWrite_CompressAppend 
+		 */
+		*dst_used = src_sz+1;
+	}
+
 	PG_RETURN_VOID();
 }
 
 Datum
 rle_type_decompress(PG_FUNCTION_ARGS)
 {
-	elog(ERROR, "rle_type block compression not supported");
+	const char	   *src	= PG_GETARG_POINTER(0);
+	int32			src_sz = PG_GETARG_INT32(1);
+	void		   *dst	= PG_GETARG_POINTER(2);
+	int32			dst_sz = PG_GETARG_INT32(3);
+	int32		   *dst_used = PG_GETARG_POINTER(4);
+	CompressionState *cs = (CompressionState *)PG_GETARG_POINTER(5);
+	rle_type_state *state = (rle_type_state *)cs->opaque;
+
+	Insist(src_sz > 0 && dst_sz > 0);
+
+	int res = state->decompress_fn(state->byteLen, 
+								   state->colType, 
+								   state->align,
+								   (char *) src, src_sz,
+								   (char *) dst, dst_sz, dst_used);
+	if (res <= 0 )
+	{
+		elog(ERROR, 
+			 "RLE decompression failure; rle_type_decomp (len %d colType %d align %c src_sz %d dst_sz %d dst_used %d) returned %d; )", 
+			 state->byteLen,
+			 state->colType,
+			 state->align,
+			 src_sz,
+			 dst_sz,
+			 *dst_used,
+			 res);
+	} 
+	else 
+	{
+		/* if there isn't an error then the only other reason for res != src_sz 
+		 * is if the output buffer is not big enough but we know how big it 
+		 * should be in the upper layers and that should never happen 
+		 */
+		Insist(res == src_sz);
+	}
+	
 	PG_RETURN_VOID();
 }
 
 Datum
 rle_type_validator(PG_FUNCTION_ARGS)
 {
-	elog(ERROR, "rle_type block compression not supported");
 	PG_RETURN_VOID();
 }
 
@@ -621,17 +768,29 @@ dummy_compression_validator(PG_FUNCTION_ARGS)
 bool
 compresstype_is_valid(char *comptype)
 {
+	ScanKeyData skey[1];
+	SysScanDesc scan;
+	HeapTuple	tuple;
+	Relation	pgcomp;
 	NameData	compname;
 	bool		found = false;
 
 	compname = comptype_to_name(comptype);
 
-	found = (0 !=
-			 caql_getcount(
-					 NULL,
-					 cql("SELECT COUNT(*) FROM pg_compression "
-						 " WHERE compname = :1 ",
-						 NameGetDatum(&compname))));
+	pgcomp = heap_open(CompressionRelationId, AccessShareLock);
+
+	ScanKeyInit(&skey[0],
+				Anum_pg_compression_compname,
+				BTEqualStrategyNumber, F_NAMEEQ,
+				NameGetDatum(&compname));
+	scan = systable_beginscan(pgcomp, CompressionCompnameIndexId,
+							  true, SnapshotNow, 1, skey);
+
+	tuple = systable_getnext(scan);
+	found = HeapTupleIsValid(tuple);
+
+	systable_endscan(scan);
+	heap_close(pgcomp, AccessShareLock);
 
 	return found;
 }
@@ -646,10 +805,8 @@ default_column_encoding_clause(void)
 	DefElem *e1 = makeDefElem("compresstype", (Node *)makeString("none"));
 	DefElem *e2 = makeDefElem("blocksize",
 					(Node *)makeInteger(DEFAULT_APPENDONLY_BLOCK_SIZE));
-	DefElem *e3 = makeDefElem("compresslevel",
-							  (Node *)makeInteger(0));
 
-	return list_make3(e1, e2, e3);
+	return list_make2(e1, e2);
 }
 
 bool

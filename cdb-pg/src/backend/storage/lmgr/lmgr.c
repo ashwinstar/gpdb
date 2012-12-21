@@ -97,24 +97,6 @@ LockRelationOid(Oid relid, LOCKMODE lockmode)
 }
 
 /*
- *		LockRelationOid_GetGrantMask
- *
- * given the OID for a relation, get its grantmask if it is locked
- */
-LOCKMASK
-LockRelationOid_GetGrantMask(Oid relid, char *comment)
-{
-	LOCKTAG		tag;
-	LOCKMASK	grantmask = 0;
-
-	SetLocktagRelationOid(&tag, relid);
-
-	grantmask = LockGetGrantMask(&tag, false, comment);
-
-	return (grantmask);
-}
-
-/*
  *		ConditionalLockRelationOid
  *
  * As above, but only lock if we can get the lock without blocking.
@@ -730,22 +712,8 @@ LockTagIsTemp(const LOCKTAG *tag)
 			/* field1 is dboid, field2 is reloid for all of these */
 			if ((Oid) tag->locktag_field1 == InvalidOid)
 				return false;	/* shared, so not temp */
-
-			if (gp_new_reindex_database)
-			{
-				/*
-				 * If the relation is a system catalog table, skip the namespace
-				 * check so REINDEX TABLE/DATABASE and PREPARE will not interact.
-				 */
-				if ((Oid) tag->locktag_field2 > (Oid) FirstNormalObjectId &&
-					isTempNamespace(get_rel_namespace((Oid) tag->locktag_field2)))
-					return true;
-			}
-			else
-			{
-				if (isTempNamespace(get_rel_namespace((Oid) tag->locktag_field2)))
-					return true;
-			}
+			if (isTempNamespace(get_rel_namespace((Oid) tag->locktag_field2)))
+				return true;
 			break;
 		case LOCKTAG_TRANSACTION:
 			/* there are no temp transactions */
@@ -759,64 +727,4 @@ LockTagIsTemp(const LOCKTAG *tag)
 			break;
 	}
 	return false;				/* default case */
-}
-
-/*
- *		LockDatabaseMaintenance
- *
- * Lock a database for maintenance.
- */
-void
-LockDatabaseMaintenance(Oid dbid, LOCKMODE lockmode)
-{
-	LOCKTAG		tag;
-
-	SET_LOCKTAG_DATABASE_MAINTENANCE(tag, dbid);
-
-	LockAcquire(&tag, lockmode, false, false);
-}
-
-/*
- *		UnlockDatabaseMaintenance
- *
- * Unlock for maintenance, given database id.
- */
-void
-UnlockDatabaseMaintenance(Oid dbid, LOCKMODE lockmode)
-{
-	LOCKTAG		tag;
-
-	SET_LOCKTAG_DATABASE_MAINTENANCE(tag, dbid);
-
-	LockRelease(&tag, lockmode, false);
-}
-
-/*
- *		LockCatalogObject
- *
- * Lock an object in the catalog.
- */
-void
-LockCatalogObject(Oid dbid, Oid relid, Oid keyoid, uint16 indexid,
-				  LOCKMODE lockmode)
-{
-	LOCKTAG		tag;
-
-	SET_LOCKTAG_CATALOG_OBJECT(tag, dbid, relid, keyoid, indexid);
-
-	LockAcquire(&tag, lockmode, false, false);
-}
-
-/*
- *		UnlockCatalogObject
- */
-void
-UnlockCatalogObject(Oid dbid, Oid relid, Oid keyoid, uint16 indexid, 
-					LOCKMODE lockmode)
-{
-	LOCKTAG		tag;
-
-	SET_LOCKTAG_CATALOG_OBJECT(tag, dbid, relid, keyoid, indexid);
-
-	LockRelease(&tag, lockmode, false);
 }

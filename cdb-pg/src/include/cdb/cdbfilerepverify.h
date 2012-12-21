@@ -100,7 +100,7 @@ typedef struct FileRepRelFileNodeInfo_s
 	uint32 segmentFileNum;
 
 	FileRepVerify_CompareException_e exception;
-	uint64  AO_logicalEof;
+	int64  AO_logicalEof;
 
 } FileRepRelFileNodeInfo_s;
 
@@ -121,8 +121,6 @@ typedef struct FileRepVerifyFileSummaryInfo_s
 	FileRepVerify_CompareException_e exception;
 	int64  AO_logicalEof;
 	int	   numHeapSegments; 
-	bool missingOnPrimary;
-
 	
 } FileRepVerifyFileSummaryInfo_s;
 
@@ -144,6 +142,7 @@ typedef union FileRepVerifySummaryInfo_u
 typedef struct FileRepVerifySummaryItem_s 
 {
 	bool isFile;
+
 	/*	put all in one and just record number of chars in the path part */
 	char baseDir[MAXPGPATH+1];
 	char fromBasePath[MAXPGPATH+1];
@@ -186,43 +185,24 @@ typedef enum FileRepVerifyRequestState_e
 	
 } FileRepVerifyRequestState_e;
 
-
-typedef enum FileRepVerify_RestartPoint_e 
+typedef struct FileRepVerifyRequest_RestartPoint_s 
 {
-	/* order is 
-	   1. physical verify 
-	   1.1 VerifyUserFilespaces
-	   1.2 VerifySystemFilespace 
-	   2 logical verify 
-	   2.1 VerifyRelFileNodes) 
-	*/
-	FileRepVerify_RestartPoint_INVALID=0,
-	FileRepVerify_RestartPoint_USERFILESPACES,
-	FileRepVerify_RestartPoint_SYSTEMFILESPACE,
-	FileRepVerify_RestartPoint_RELFILENODES,
-
-	/* the number of values in this enumeration */
-	FileRepVerify_RestartPoint__EnumerationCount,
-
-} FileRepVerify_RestartPoint_e;
-
-#define INVALID_PERSISTENT_SERIAL_NUM -1
-typedef struct FileRepVerifyRequest_RestartInfo_s 
-{
-
 	bool valid;
-	bool useLogical; /* if false skip physical all together */
-	bool filespacesComplete; 
+	bool useLogical;
   
-	/* logical persistent serial num refers to the serial num of the 
-	 * last rel file node  as returned by PersistentFileSysObj_OnlineVerifyScan
+	/* type logical or physical?
+	 * union of structs - one for logical and one for physical?
 	 */
-	int64 persistentSerialNum; /* Tid	 */
-    
-	/* ignore info won't change from one suspend to another - only write it once */
+	int64 logicalCheckpoint_persistentSerialNum; /* Tid	 */
+  
+	bool filespacesComplete;
+	int64 physicalCheckpoint_persistentSerialNum;
+	char	physicalCheckpoint_whereNextParent[MAXPGPATH+1];
+	char	physicalCheckpoint_whereNextChild[MAXPGPATH+1];
+
 	bool	haveWrittenIgnoreInfo;
 
-} FileRepVerifyRequest_RestartInfo_s;
+} FileRepVerifyRequest_RestartPoint_s;
 
 typedef struct FileRepVerify_CompareStats_s 
 {
@@ -237,6 +217,7 @@ typedef struct FileRepVerify_CompareStats_s
 
 	int totalMismatchesResolved; 
 	int totalFileMismatchesResolved;
+	int totalDirMismatchesResolved;
 
 	int numEnhancedCompares;
 
@@ -302,22 +283,6 @@ typedef enum FileRepVerifyDiffType_e
 	FielRepVerifyMissingRelationforFile
 	
 }FileRepVerifyDiffType_e;
-
-
-/* 
- * when we are traversing the directory structure to compare
- * directories and non-rel node files, we save a stack
- * of directory information as we descend the directory tree
- * this avoids multiple calls to AllocateDir for each level
- */
-typedef struct FileRepVerifyDirectoryStack_s
-{
-	DIR		*dir;
-	pg_crc32 hash;
-	char	 fromBasePath[MAXPGPATH+1];
-	uint32   numImmediateChildrenFound;
-	
-} FileRepVerifyDirectoryStack_s;
 /*
  * This structure will live in shared memory so it must not use any 
  * allocation to build it!
@@ -350,20 +315,13 @@ typedef struct FileRepVerifyRequest_s
 	bool isFailed;	
 	FileRepVerifyRequestState_e state;
 	/* checkpoint or restart from X */
-	FileRepVerifyRequest_RestartInfo_s restartInfo;
+	FileRepVerifyRequest_RestartPoint_s restartInfo;
 	FileRepVerify_CompareStats_s compareStats;
 	FileRepVerifyArguments_s fileRepVerifyArguments;
 	FileRepVerifyRequestType_e requestType;
 	char verifyItem[MAXPGPATH+1];
 	TimestampTz startTime;
 	TimestampTz endTime;
-
-	/*
-	 * we really shouldn't have more that a depth of 4
-	 * filerep/base/NUM/NUM
-	 */
-#define MAX_DIRECTORY_DEPTH 10	
-	FileRepVerifyDirectoryStack_s savedDirectoryStack[MAX_DIRECTORY_DEPTH];
 
 	//Rajesh used this - why do we need both?
 	struct timeval			startVerificationTime;
@@ -385,28 +343,8 @@ typedef struct FileRepVerifyMirrorRequestParams_s
 	int		numIgnoreDirs;
 	char	**ignoreFiles;
 	char	**ignoreDirs;
-
-	DIR		*compareDir;
-	char	 compareDir_Name[MAXPGPATH+1];
-	char	 compareDir_NextChild[MAXPGPATH+1];
 	
 } FileRepVerifyMirrorRequestParams_s;
-
-typedef struct FileRepVerifyShmem_s
-{
-	slock_t					lock;
-
-	volatile bool			isVerificationInProgress;
-	volatile bool			isNewRequestWaiting;
-	/* SYNCHRONOUSABORTSUSPEND*/
-	volatile bool           signalSynchronousRequests;
-
-	FileRepVerifyRequest_s	request;
-
-	bool					availableForReuse;
-	bool					resume;
-
-} FileRepVerifyShmem_s;
 
 
 extern void FileRepPrimary_StartVerification(void);

@@ -208,8 +208,6 @@ extern Datum timestamp_recv(PG_FUNCTION_ARGS);
 extern Datum timestamp_send(PG_FUNCTION_ARGS);
 extern Datum timestamptypmodin(PG_FUNCTION_ARGS);
 extern Datum timestamptypmodout(PG_FUNCTION_ARGS);
-extern Datum timestamp_interval_bound(PG_FUNCTION_ARGS);	/*GPDB*/
-extern Datum timestamptz_interval_bound(PG_FUNCTION_ARGS);	/*GPDB*/
 extern Datum timestamp_scale(PG_FUNCTION_ARGS);
 extern Datum timestamp_eq(PG_FUNCTION_ARGS);
 extern Datum timestamp_ne(PG_FUNCTION_ARGS);
@@ -261,9 +259,6 @@ extern Datum interval_justify_interval(PG_FUNCTION_ARGS);
 extern Datum interval_justify_hours(PG_FUNCTION_ARGS);
 extern Datum interval_justify_days(PG_FUNCTION_ARGS);
 
-extern float8 interval_li_fraction(Interval *x, Interval *x0, Interval *x1, bool *notnull);
-extern Interval *interval_li_value(float8 f, Interval *y0, Interval *y1);
-
 extern Datum timestamp_trunc(PG_FUNCTION_ARGS);
 extern Datum interval_trunc(PG_FUNCTION_ARGS);
 extern Datum timestamp_part(PG_FUNCTION_ARGS);
@@ -290,12 +285,6 @@ extern Datum interval_mi(PG_FUNCTION_ARGS);
 extern Datum interval_mul(PG_FUNCTION_ARGS);
 extern Datum mul_d_interval(PG_FUNCTION_ARGS);
 extern Datum interval_div(PG_FUNCTION_ARGS);
-extern bool interval_div_internal(Interval *interval1, 
-								  Interval *interval2, 
-								  float8 *quo, 
-								  Interval *rem); /* GPDB Share implementation */
-extern Datum interval_interval_div(PG_FUNCTION_ARGS);  /*GPDB*/
-extern Datum interval_interval_mod(PG_FUNCTION_ARGS);		/*GPDB*/
 extern Datum interval_accum(PG_FUNCTION_ARGS);
 extern Datum interval_decum(PG_FUNCTION_ARGS);
 extern Datum interval_avg(PG_FUNCTION_ARGS);
@@ -320,12 +309,6 @@ extern Datum timestamptz_mi_interval(PG_FUNCTION_ARGS);
 extern Datum timestamptz_age(PG_FUNCTION_ARGS);
 extern Datum timestamptz_trunc(PG_FUNCTION_ARGS);
 extern Datum timestamptz_part(PG_FUNCTION_ARGS);
-
-extern float8 timestamp_li_fraction(Timestamp x, Timestamp x0, Timestamp x1, bool *notnull);
-extern Timestamp timestamp_li_value(float8 f, Timestamp y0, Timestamp y1);
-
-extern float8 timestamptz_li_fraction(TimestampTz x, TimestampTz x0, TimestampTz x1, bool *notnull);
-extern Timestamp timestamptz_li_value(float8 f, TimestampTz y0, TimestampTz y1);
 
 extern Datum now(PG_FUNCTION_ARGS);
 extern Datum statement_timestamp(PG_FUNCTION_ARGS);
@@ -377,9 +360,5 @@ extern void isoweekdate2date(int isoweek, int isowday, int *year, int *mon, int 
 extern int	date2isoweek(int year, int mon, int mday);
 extern int	date2isoyear(int year, int mon, int mday);
 extern int	date2isoyearday(int year, int mon, int mday);
-extern Interval *interval_mul_internal(float8 factor, Interval *span);
-
-extern Datum sequence_key_timestamp(PG_FUNCTION_ARGS);
-extern Datum sequence_key_timestamptz(PG_FUNCTION_ARGS);
 
 #endif   /* TIMESTAMP_H */

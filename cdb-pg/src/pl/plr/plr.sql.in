@@ -4,11 +4,10 @@ CREATE FUNCTION plr_call_handler()
 RETURNS LANGUAGE_HANDLER
 AS 'MODULE_PATHNAME' LANGUAGE C;
 
--- This feature of PL/R cannot work on Greenplum with our current architecture.
--- CREATE OR REPLACE FUNCTION reload_plr_modules ()
--- RETURNS text
--- AS 'MODULE_PATHNAME','reload_plr_modules'
--- LANGUAGE 'C';
+CREATE OR REPLACE FUNCTION reload_plr_modules ()
+RETURNS text
+AS 'MODULE_PATHNAME','reload_plr_modules'
+LANGUAGE 'C';
 
 CREATE OR REPLACE FUNCTION install_rcmd (text)
 RETURNS text

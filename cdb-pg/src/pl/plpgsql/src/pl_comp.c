@@ -19,7 +19,6 @@
 
 #include "pl_gram.h"
 
-#include "access/catquery.h"
 #include "access/heapam.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_attrdef.h"
@@ -96,9 +95,7 @@ static PLpgSQL_function *do_compile(FunctionCallInfo fcinfo,
 		   HeapTuple procTup,
 		   PLpgSQL_function *function,
 		   PLpgSQL_func_hashkey *hashkey,
-		   bool forValidator,
-		   cqContext *pcqCtx
-);
+		   bool forValidator);
 static PLpgSQL_row *build_row_from_class(Oid classOid);
 static PLpgSQL_row *build_row_from_vars(PLpgSQL_variable **vars, int numvars);
 static PLpgSQL_type *build_datatype(HeapTuple typeTup, int32 typmod);
@@ -136,19 +133,13 @@ plpgsql_compile(FunctionCallInfo fcinfo, bool forValidator)
 	PLpgSQL_func_hashkey hashkey;
 	bool		function_valid = false;
 	bool		hashkey_valid = false;
-	cqContext  *pcqCtx;
 
 	/*
 	 * Lookup the pg_proc tuple by Oid; we'll need it in any case
 	 */
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_proc "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(funcOid)));
-
-	procTup = caql_getnext(pcqCtx);
-
+	procTup = SearchSysCache(PROCOID,
+							 ObjectIdGetDatum(funcOid),
+							 0, 0, 0);
 	if (!HeapTupleIsValid(procTup))
 		elog(ERROR, "cache lookup failed for function %u", funcOid);
 	procStruct = (Form_pg_proc) GETSTRUCT(procTup);
@@ -223,10 +214,10 @@ recheck:
 		 * Do the hard part.
 		 */
 		function = do_compile(fcinfo, procTup, function,
-							  &hashkey, forValidator, pcqCtx);
+							  &hashkey, forValidator);
 	}
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(procTup);
 
 	/*
 	 * Save pointer in FmgrInfo to avoid search on subsequent calls
@@ -266,8 +257,7 @@ do_compile(FunctionCallInfo fcinfo,
 		   HeapTuple procTup,
 		   PLpgSQL_function *function,
 		   PLpgSQL_func_hashkey *hashkey,
-		   bool forValidator,
-		   cqContext *pcqCtx)
+		   bool forValidator)
 {
 	Form_pg_proc procStruct = (Form_pg_proc) GETSTRUCT(procTup);
 	int			functype = CALLED_AS_TRIGGER(fcinfo) ? T_TRIGGER : T_FUNCTION;
@@ -291,15 +281,14 @@ do_compile(FunctionCallInfo fcinfo,
 	int		   *in_arg_varnos = NULL;
 	PLpgSQL_variable **out_arg_variables;
 	MemoryContext func_cxt;
-	cqContext  *typcqCtx;
 
 	/*
 	 * Setup the scanner input and error info.	We assume that this function
 	 * cannot be invoked recursively, so there's no need to save and restore
 	 * the static variables used here.
 	 */
-	prosrcdatum = caql_getattr(pcqCtx,
-							   Anum_pg_proc_prosrc, &isnull);
+	prosrcdatum = SysCacheGetAttr(PROCOID, procTup,
+								  Anum_pg_proc_prosrc, &isnull);
 	if (isnull)
 		elog(ERROR, "null prosrc");
 	proc_source = DatumGetCString(DirectFunctionCall1(textout, prosrcdatum));
@@ -434,8 +423,7 @@ do_compile(FunctionCallInfo fcinfo,
 				{
 					argitemtype = PLPGSQL_NSTYPE_VAR;
 					/* input argument vars are forced to be CONSTANT */
-					if (argmode == PROARGMODE_IN ||
-						argmode == PROARGMODE_VARIADIC)
+					if (argmode == PROARGMODE_IN)
 						((PLpgSQL_var *) argvariable)->isconst = true;
 				}
 				else
@@ -539,21 +527,16 @@ do_compile(FunctionCallInfo fcinfo,
 			/*
 			 * Lookup the function's return type
 			 */
-			typcqCtx = caql_beginscan(
-					NULL,
-					cql("SELECT * FROM pg_type "
-						" WHERE oid = :1 ",
-						ObjectIdGetDatum(rettypeid)));
-
-			typeTup = caql_getnext(typcqCtx);
-
+			typeTup = SearchSysCache(TYPEOID,
+									 ObjectIdGetDatum(rettypeid),
+									 0, 0, 0);
 			if (!HeapTupleIsValid(typeTup))
 				elog(ERROR, "cache lookup failed for type %u", rettypeid);
 			typeStruct = (Form_pg_type) GETSTRUCT(typeTup);
 
 			/* Disallow pseudotype result, except VOID or RECORD */
 			/* (note we already replaced ANYARRAY/ANYELEMENT) */
-			if (typeStruct->typtype == TYPTYPE_PSEUDO)
+			if (typeStruct->typtype == 'p')
 			{
 				if (rettypeid == VOIDOID ||
 					rettypeid == RECORDOID)
@@ -569,7 +552,7 @@ do_compile(FunctionCallInfo fcinfo,
 									format_type_be(rettypeid))));
 			}
 
-			if (OidIsValid(typeStruct->typrelid) ||
+			if (typeStruct->typrelid != InvalidOid ||
 				rettypeid == RECORDOID)
 				function->fn_retistuple = true;
 			else
@@ -593,8 +576,7 @@ do_compile(FunctionCallInfo fcinfo,
 												  true);
 				}
 			}
-
-			caql_endscan(typcqCtx);
+			ReleaseSysCache(typeTup);
 			break;
 
 		case T_TRIGGER:
@@ -1183,35 +1165,28 @@ plpgsql_parse_wordtype(char *word)
 	if (OidIsValid(typeOid))
 	{
 		HeapTuple	typeTup;
-		cqContext  *typcqCtx;
 
-		typcqCtx = caql_beginscan(
-				NULL,
-				cql("SELECT * FROM pg_type "
-					" WHERE oid = :1 ",
-					ObjectIdGetDatum(typeOid)));
-
-		typeTup = caql_getnext(typcqCtx);
-
+		typeTup = SearchSysCache(TYPEOID,
+								 ObjectIdGetDatum(typeOid),
+								 0, 0, 0);
 		if (HeapTupleIsValid(typeTup))
 		{
 			Form_pg_type typeStruct = (Form_pg_type) GETSTRUCT(typeTup);
 
 			if (!typeStruct->typisdefined ||
-				OidIsValid(typeStruct->typrelid))
+				typeStruct->typrelid != InvalidOid)
 			{
-				caql_endscan(typcqCtx);
+				ReleaseSysCache(typeTup);
 				pfree(cp[0]);
 				return T_ERROR;
 			}
 
 			plpgsql_yylval.dtype = build_datatype(typeTup, -1);
 
-			caql_endscan(typcqCtx);
+			ReleaseSysCache(typeTup);
 			pfree(cp[0]);
 			return T_DTYPE;
 		}
-		caql_endscan(typcqCtx);
 	}
 
 	/*
@@ -1242,9 +1217,6 @@ plpgsql_parse_dblwordtype(char *word)
 	int			i;
 	MemoryContext oldCxt;
 	int			result = T_ERROR;
-	cqContext  *relcqCtx = NULL;
-	cqContext  *attcqCtx = NULL;
-	cqContext  *typcqCtx = NULL;
 
 	/* Avoid memory leaks in the long-term function context */
 	oldCxt = MemoryContextSwitchTo(compile_tmp_cxt);
@@ -1292,14 +1264,9 @@ plpgsql_parse_dblwordtype(char *word)
 	if (!OidIsValid(classOid))
 		goto done;
 
-	relcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(classOid)));
-
-	classtup = caql_getnext(relcqCtx);
-
+	classtup = SearchSysCache(RELOID,
+							  ObjectIdGetDatum(classOid),
+							  0, 0, 0);
 	if (!HeapTupleIsValid(classtup))
 		goto done;
 	classStruct = (Form_pg_class) GETSTRUCT(classtup);
@@ -1316,23 +1283,14 @@ plpgsql_parse_dblwordtype(char *word)
 	/*
 	 * Fetch the named table field and its type
 	 */
-
-	attcqCtx = caql_getattname_scan(NULL, classOid, cp[1]);
-
-	attrtup = caql_get_current(attcqCtx);
-
+	attrtup = SearchSysCacheAttName(classOid, cp[1]);
 	if (!HeapTupleIsValid(attrtup))
 		goto done;
 	attrStruct = (Form_pg_attribute) GETSTRUCT(attrtup);
 
-	typcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_type "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(attrStruct->atttypid)));
-
-	typetup = caql_getnext(typcqCtx);
-
+	typetup = SearchSysCache(TYPEOID,
+							 ObjectIdGetDatum(attrStruct->atttypid),
+							 0, 0, 0);
 	if (!HeapTupleIsValid(typetup))
 		elog(ERROR, "cache lookup failed for type %u", attrStruct->atttypid);
 
@@ -1346,12 +1304,12 @@ plpgsql_parse_dblwordtype(char *word)
 	result = T_DTYPE;
 
 done:
-	if (relcqCtx)
-		caql_endscan(relcqCtx);
-	if (attcqCtx)
-		caql_endscan(attcqCtx);
-	if (typcqCtx)
-		caql_endscan(typcqCtx);
+	if (HeapTupleIsValid(classtup))
+		ReleaseSysCache(classtup);
+	if (HeapTupleIsValid(attrtup))
+		ReleaseSysCache(attrtup);
+	if (HeapTupleIsValid(typetup))
+		ReleaseSysCache(typetup);
 
 	MemoryContextSwitchTo(oldCxt);
 	return result;
@@ -1380,9 +1338,6 @@ plpgsql_parse_tripwordtype(char *word)
 	RangeVar   *relvar;
 	MemoryContext oldCxt;
 	int			result = T_ERROR;
-	cqContext  *relcqCtx = NULL;
-	cqContext  *attcqCtx = NULL;
-	cqContext  *typcqCtx = NULL;
 
 	/* Avoid memory leaks in the long-term function context */
 	oldCxt = MemoryContextSwitchTo(compile_tmp_cxt);
@@ -1414,14 +1369,9 @@ plpgsql_parse_tripwordtype(char *word)
 	if (!OidIsValid(classOid))
 		goto done;
 
-	relcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(classOid)));
-	
-	classtup = caql_getnext(relcqCtx);
-
+	classtup = SearchSysCache(RELOID,
+							  ObjectIdGetDatum(classOid),
+							  0, 0, 0);
 	if (!HeapTupleIsValid(classtup))
 		goto done;
 	classStruct = (Form_pg_class) GETSTRUCT(classtup);
@@ -1439,23 +1389,14 @@ plpgsql_parse_tripwordtype(char *word)
 	 * Fetch the named table field and its type
 	 */
 	plpgsql_convert_ident(cp[1], colname, 1);
-
-	attcqCtx = caql_getattname_scan(NULL, classOid, colname[0]);
-
-	attrtup = caql_get_current(attcqCtx);
-
+	attrtup = SearchSysCacheAttName(classOid, colname[0]);
 	if (!HeapTupleIsValid(attrtup))
 		goto done;
 	attrStruct = (Form_pg_attribute) GETSTRUCT(attrtup);
 
-	typcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_type "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(attrStruct->atttypid)));
-
-	typetup = caql_getnext(typcqCtx);
-
+	typetup = SearchSysCache(TYPEOID,
+							 ObjectIdGetDatum(attrStruct->atttypid),
+							 0, 0, 0);
 	if (!HeapTupleIsValid(typetup))
 		elog(ERROR, "cache lookup failed for type %u", attrStruct->atttypid);
 
@@ -1469,12 +1410,12 @@ plpgsql_parse_tripwordtype(char *word)
 	result = T_DTYPE;
 
 done:
-	if (relcqCtx)
-		caql_endscan(relcqCtx);
-	if (attcqCtx)
-		caql_endscan(attcqCtx);
-	if (typcqCtx)
-		caql_endscan(typcqCtx);
+	if (HeapTupleIsValid(classtup))
+		ReleaseSysCache(classtup);
+	if (HeapTupleIsValid(attrtup))
+		ReleaseSysCache(attrtup);
+	if (HeapTupleIsValid(typetup))
+		ReleaseSysCache(typetup);
 
 	MemoryContextSwitchTo(oldCxt);
 	return result;
@@ -1834,22 +1775,16 @@ plpgsql_build_datatype(Oid typeOid, int32 typmod)
 {
 	HeapTuple	typeTup;
 	PLpgSQL_type *typ;
-	cqContext	*pcqCtx;
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_type "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(typeOid)));
-
-	typeTup = caql_getnext(pcqCtx);
-
+	typeTup = SearchSysCache(TYPEOID,
+							 ObjectIdGetDatum(typeOid),
+							 0, 0, 0);
 	if (!HeapTupleIsValid(typeTup))
 		elog(ERROR, "cache lookup failed for type %u", typeOid);
 
 	typ = build_datatype(typeTup, typmod);
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(typeTup);
 
 	return typ;
 }
@@ -1875,15 +1810,15 @@ build_datatype(HeapTuple typeTup, int32 typmod)
 	typ->typoid = HeapTupleGetOid(typeTup);
 	switch (typeStruct->typtype)
 	{
-		case TYPTYPE_BASE:				/* base type */
-		case TYPTYPE_DOMAIN:			/* domain */
+		case 'b':				/* base type */
+		case 'd':				/* domain */
 			typ->ttype = PLPGSQL_TTYPE_SCALAR;
 			break;
-		case TYPTYPE_COMPOSITE:			/* composite, ie, rowtype */
+		case 'c':				/* composite, ie, rowtype */
 			Assert(OidIsValid(typeStruct->typrelid));
 			typ->ttype = PLPGSQL_TTYPE_ROW;
 			break;
-		case TYPTYPE_PSEUDO:			/* pseudo */
+		case 'p':				/* pseudo */
 			if (typ->typoid == RECORDOID)
 				typ->ttype = PLPGSQL_TTYPE_REC;
 			else

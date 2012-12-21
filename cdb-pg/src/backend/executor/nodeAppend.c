@@ -329,7 +329,6 @@ ExecAppend(AppendState *node)
 
 		if (!TupIsNull(result))
 		{
-			Gpmon_M_Incr(GpmonPktFromAppendState(node), GPMON_QEXEC_M_ROWSIN);
 
 			if(node->ps.ps_ProjInfo != NULL)
 			{

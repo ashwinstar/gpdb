@@ -59,17 +59,13 @@ typedef enum NodeTag
 	T_Result,
 	T_Plan_Start = T_Result,
 	T_Append,
-	T_Sequence,
 	T_BitmapAnd,
 	T_BitmapOr,
 	T_SeqScan,
 	T_ExternalScan,
 	T_AppendOnlyScan,
 	T_AOCSScan,
-	T_TableScan,
-	T_DynamicTableScan,
 	T_IndexScan,
-	T_IndexOnlyScan,
 	T_BitmapIndexScan,
 	T_BitmapHeapScan,
 	T_BitmapAppendOnlyScan,
@@ -92,10 +88,6 @@ typedef enum NodeTag
 	T_ShareInputScan,
 	T_Window,
 	T_Repeat,
-	T_DML,
-	T_SplitUpdate,
-	T_RowTriggerOp,
-	T_AssertOp,
 	T_Plan_End,
 	/* this one isn't a subclass of Plan: */
 	T_PlanInvalItem,
@@ -115,17 +107,13 @@ typedef enum NodeTag
 	T_ResultState,
 	T_PlanState_Start = T_ResultState,
 	T_AppendState,
-	T_SequenceState,
 	T_BitmapAndState,
 	T_BitmapOrState,
 	T_SeqScanState,
 	T_AppendOnlyScanState,
 	T_AOCSScanState,
-	T_TableScanState,
-	T_DynamicTableScanState,
 	T_ExternalScanState,
 	T_IndexScanState,
-	T_IndexOnlyScanState,
 	T_BitmapIndexScanState,
 	T_BitmapHeapScanState,
 	T_BitmapAppendOnlyScanState,
@@ -148,10 +136,6 @@ typedef enum NodeTag
 	T_ShareInputScanState,
 	T_WindowState,
 	T_RepeatState,
-	T_DMLState,
-	T_SplitUpdateState,
-	T_RowTriggerOpState,
-	T_AssertOpState,
 	T_PlanState_End,
 
 	/*
@@ -167,7 +151,6 @@ typedef enum NodeTag
 	T_WindowRef,
 	T_ArrayRef,
 	T_FuncExpr,
-	T_NamedArgExpr,
 	T_OpExpr,
 	T_DistinctExpr,
 	T_ScalarArrayOpExpr,
@@ -192,7 +175,6 @@ typedef enum NodeTag
 	T_CoerceToDomain,
 	T_CoerceToDomainValue,
 	T_SetToDefault,
-	T_CurrentOfExpr,
 	T_TargetEntry,
 	T_RangeTblRef,
 	T_JoinExpr,
@@ -205,8 +187,6 @@ typedef enum NodeTag
 	T_GroupId,
 	T_IntoClause,
     T_AggOrder,
-	T_PercentileExpr,
-	T_DMLActionExpr,
 
 	/*
 	 * TAGS FOR EXPRESSION STATE NODES (execnodes.h)
@@ -237,7 +217,6 @@ typedef enum NodeTag
 	T_DomainConstraintState,
 	T_WindowRefExprState,
 	T_GroupingFuncExprState,
-	T_PercentileExprState,
 
 	/*
 	 * TAGS FOR PLANNER NODES (relation.h)
@@ -417,9 +396,6 @@ typedef enum NodeTag
 	T_DenyLoginInterval,
 	T_DenyLoginPoint,
 	T_AlterTypeStmt,
-	T_SequenceDefn,
-	T_SequenceSpec,
-	T_SeqWindowSpec,
 
 	/**/
 	
@@ -458,7 +434,6 @@ typedef enum NodeTag
 	T_WithClause,
 	T_CommonTableExpr,
 	T_ColumnReferenceStorageDirective,
-	T_ScatterClause,
 
 	/*
 	 * TAGS FOR RANDOM OTHER STUFF
@@ -478,7 +453,6 @@ typedef enum NodeTag
 	
     /* CDB: tags for random other stuff */
     T_CdbExplain_StatHdr = 950,             /* in cdb/cdbexplain.c */
-    T_CdbQEStatementStats,
 } NodeTag;
 
 /*
@@ -492,7 +466,7 @@ typedef struct Node
 	NodeTag		type;
 } Node;
 
-#define nodeTag(nodeptr)		(((const Node*)(nodeptr))->type)
+#define nodeTag(nodeptr)		(((Node*)(nodeptr))->type)
 
 /*
  * newNode -
@@ -548,7 +522,7 @@ extern PGDLLIMPORT Node *newNodeMacroHolder;
 /*
  * nodes/{outfuncs.c,print.c}
  */
-extern char *nodeToString(const void *obj);
+extern char *nodeToString(void *obj);
 
 /*
  * nodes/outfast.c. This special version of nodeToString is only used by serializeNode.
@@ -565,12 +539,12 @@ extern void *stringToNode(char *str);
 /*
  * nodes/copyfuncs.c
  */
-extern void *copyObject(const void *obj);
+extern void *copyObject(void *obj);
 
 /*
  * nodes/equalfuncs.c
  */
-extern bool equal(const void *a, const void *b);
+extern bool equal(void *a, void *b);
 
 
 /*

@@ -50,7 +50,7 @@ and runs the following performance tests:
   then it can cause the CPU to spend significant amounts of time 
   waiting for data to arrive from system memory.
 
-* Network Performance Test (gpnetbench) - To test network performance 
+* Network Performance Test (gpnetbench*) — To test network performance 
  (and thereby the performance of the Greenplum Database interconnect), 
   the utility runs a network benchmark program that transfers a 5 
   second stream of data from the current host to each remote host 

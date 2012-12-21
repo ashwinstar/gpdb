@@ -10,18 +10,11 @@ endif
 ifeq "$(BLD_ARCH)" "osx106_x86"
 export BLD_ARCH=osx105_x86
 endif
-ifeq "$(BLD_ARCH)" "osx107_x86"
-export BLD_ARCH=osx105_x86
-endif
 
 # map builds on OpenSUSE to look like SUSE enterprise 10, for now
 ifeq "$(BLD_ARCH)" "suse11.4_x86_64"
 export BLD_ARCH=suse10_x86_64
 endif
-ifeq "$(BLD_ARCH)" "suse12.1_x86_64"
-export BLD_ARCH=suse10_x86_64
-endif
-
 
 # include thirdparty infrastructure which depends on WHERE_THE...
 BLD_WHERE_THE_LIBRARY_THINGS_ARE=LD_LIBRARY_PATH
@@ -34,7 +27,6 @@ BLD_WHERE_THE_LIBRARY_THINGS_ARE=$($(BLD_ARCH)_WHERE_THE_LIBRARY_THINGS_ARE)
 endif
 
 include $(BLD_TOP)/Makefile.thirdparty
-include $(BLD_TOP)/releng/releng.mk
 
 # get current working directory with symlinks maintained
 HERE:=$(shell pwd -L)
@@ -55,17 +47,12 @@ endif
 BLD_CC=gcc
 osx106_x86_CC=gcc
 osx105_x86_CC=gcc
-
+osx104_x86_CC=gcc-4.0
 ifneq "$($(BLD_ARCH)_CC)" ""
 BLD_CC=$($(BLD_ARCH)_CC)
 export CC=$(BLD_CC)
 export CPP=$(subst gcc,cpp,$(BLD_CC))
 export CXX=$(subst gcc,g++,$(BLD_CC))
-endif
-
-sol10_x86_64_CXX=g++ -m64
-ifneq "$($(BLD_ARCH)_CXX)" ""
-export CXX=$($(BLD_ARCH)_CXX)
 endif
 
 # take over the path
@@ -113,7 +100,6 @@ rhel4_x86_32_PYTHON=/opt/python-2.5.1
 rhel4_x86_64_PYTHON=/opt/python-2.5.1
 rhel5_x86_32_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
 rhel5_x86_64_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
-rhel6_x86_64_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
 sol10_x86_64_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
 sol10_x86_32_PYTHON=/opt/python32-2.5.1
 sol10_sparc_64_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
@@ -133,7 +119,6 @@ rhel4_x86_32_PYTHON_PERFMON=/opt/python-2.5.1
 rhel4_x86_64_PYTHON_PERFMON=/opt/python-2.5.1
 rhel5_x86_32_PYTHON_PERFMON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
 rhel5_x86_64_PYTHON_PERFMON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
-rhel6_x86_64_PYTHON_PERFMON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
 sol10_x86_64_PYTHON_PERFMON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
 sol10_x86_32_PYTHON_PERFMON=/opt/python32-2.5.1
 sol10_sparc_64_PYTHON_PERFMON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
@@ -183,7 +168,6 @@ export NO_M64=1
 # 32-bit/64-bit compiler/linker flag settings
 rhel4_x86_64_BLD_CFLAGS=-m64
 rhel4_x86_32_BLD_CFLAGS=-m32
-rhel6_x86_64_BLD_CFLAGS=-m64
 rhel5_x86_64_BLD_CFLAGS=-m64
 rhel5_x86_32_BLD_CFLAGS=-m32
 sol10_sparc_64_BLD_CFLAGS=-m64 -mcpu=v9

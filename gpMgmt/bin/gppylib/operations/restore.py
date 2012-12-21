@@ -32,7 +32,6 @@ DBDUMP_PREFIX = 'gp_dump_'
 MASTER_DBDUMP_PREFIX = 'gp_dump_1_1_'
 GLOBAL_PREFIX = 'gp_global_1_1_'
 CREATEDB_PREFIX = 'gp_cdatabase_1_1_'
-POST_DATA_SUFFIX = '_post_data'
 
 # TODO: use CLI-agnostic custom exceptions instead of ExceptionNoStackTraceNeeded
 
@@ -58,7 +57,7 @@ class RestoreDatabase(Operation):
 
         restore_line = self._build_restore_line(restore_timestamp, restore_db, compress, self.master_port, self.ddboost)
         logger.info(restore_line)
-        Command('Invoking gp_restore', restore_line).run(validateAfter=True)
+        Command('Invoking gp_restore', restore_line).run()
 
         if not self.no_analyze:
             self._analyze(restore_db, self.master_port)
@@ -155,7 +154,7 @@ class ValidateTimestamp(Operation):
             compressed_file = os.path.join(path, "%s%s.gz" % (MASTER_DBDUMP_PREFIX, self.candidate_timestamp))
             compress = CheckFile(compressed_file).run()
         else:
-            compressed_file = os.path.join(path, "%s%s%s.gz" % (MASTER_DBDUMP_PREFIX, self.candidate_timestamp, POST_DATA_SUFFIX))
+            compressed_file = os.path.join(path, "%s%s_post_data.gz" % (MASTER_DBDUMP_PREFIX, self.candidate_timestamp))
             compress = CheckFile(compressed_file).run()	
         return (self.candidate_timestamp, restore_db, compress)
 
@@ -346,9 +345,6 @@ class BuildDDBoostTableDumps(Operation):
                 'gpddboost --copyFromDDBoost --from-file=%s --to-file=%s' 
                 % (real_createdb, fake_createdb)).run(validateAfter = True)
 
-        # Build master _post_data file:
-        CopyPostData(self.restore_timestamp, fake_timestamp, self.compress, self.master_datadir).run()
-        
         return fake_timestamp
 
 
@@ -392,9 +388,6 @@ class BuildAllTableDumps(Operation):
         fake_createdb = os.path.join(self.master_datadir, DUMP_DIR, fake_timestamp[0:8], "%s%s" % (CREATEDB_PREFIX, fake_timestamp))
         shutil.copy(real_createdb, fake_createdb)
 
-        # Build master _post_data file:
-        CopyPostData(self.restore_timestamp, fake_timestamp, self.compress, self.master_datadir).run()
-       
         return fake_timestamp
 
 
@@ -427,23 +420,7 @@ class PickDumpTimestamp(Operation):
             raise ExceptionNoStackTraceNeeded("Could not construct table dump")
         return fake_timestamp
 
-class CopyPostData(Operation):
-    ''' Copy _post_data when using fake timestamp. 
-        The same operation can be done with/without ddboost, because
-        the _post_data file is always kept on the master, not on the dd server '''
-    def __init__(self, restore_timestamp, fake_timestamp, compress, master_datadir):
-        self.restore_timestamp = restore_timestamp
-        self.fake_timestamp = fake_timestamp
-        self.compress = compress
-        self.master_datadir = master_datadir
-    def execute(self):
-         # Build master _post_data file:
-        real_post_data = os.path.join(self.master_datadir, DUMP_DIR, self.restore_timestamp[0:8], "%s%s%s" % (MASTER_DBDUMP_PREFIX, self.restore_timestamp, POST_DATA_SUFFIX))
-        fake_post_data = os.path.join(self.master_datadir, DUMP_DIR, self.fake_timestamp[0:8], "%s%s%s" % (MASTER_DBDUMP_PREFIX, self.fake_timestamp, POST_DATA_SUFFIX))
-        if (self.compress):
-            real_post_data = real_post_data + ".gz"
-            fake_post_data = fake_post_data + ".gz"
-        shutil.copy(real_post_data, fake_post_data)
+
         
 class BuildMasterTableDump(Operation):
     def __init__(self, restore_timestamp, fake_timestamp, compress, master_datadir):
@@ -546,7 +523,7 @@ class BuildDDBoostMasterTableDump(Operation):
             # 18 COMMENT ON SCHEMA public IS 'Standard public schema';
             # 19 
             # 20 
-            for lineno, line in enumerate(line_list):
+            for line in line_list:
                 if line.startswith("SET"):
                     fake_file.write(line)
                 if lineno > 20:
@@ -584,15 +561,6 @@ class ClearAllTableDumps(Operation):
 
         # Remove master cdatabase file
         path = os.path.join(self.master_datadir, DUMP_DIR, self.fake_timestamp[0:8], "%s%s" % (CREATEDB_PREFIX, self.fake_timestamp))
-        try:
-            RemoveFile(path).run()
-        except OSError, e:
-            logger.warn('Failed to remove %s on master' % path)
-
-        # Remove master _post_data file
-        path = os.path.join(self.master_datadir, DUMP_DIR, self.fake_timestamp[0:8], "%s%s%s" % (MASTER_DBDUMP_PREFIX, self.fake_timestamp, POST_DATA_SUFFIX))
-        if self.compress:
-            path += '.gz'
         try:
             RemoveFile(path).run()
         except OSError, e:
@@ -775,13 +743,6 @@ class RecoverRemoteDumps(Operation):
                             srcHost=from_host,
                             srcFile=os.path.join(from_path, createdb_file),
                             dstFile=os.path.join(to_path, createdb_file)))
-        post_data_file = "%s%s%s" % (MASTER_DBDUMP_PREFIX, self.restore_timestamp, POST_DATA_SUFFIX)
-        if self.compress:
-            post_data_file += ".gz"
-        pool.addCommand(Scp('Copying post data schema dump',
-                            srcHost=from_host,
-                            srcFile=os.path.join(from_path, post_data_file),
-                            dstFile=os.path.join(to_path, post_data_file)))
         if self.restore_global:
             global_file = "%s%s" % (GLOBAL_PREFIX, self.restore_timestamp)
             pool.addCommand(Scp("Copying global dump",
@@ -845,18 +806,8 @@ class GetDumpTables(Operation):
                             table = table[: table.index(" (")]
                     else:
                         table = table[: table.index(" FROM stdin;")]
-                    table = table.rstrip() 
-                    # is_external = false
-                    ret.append( (False , schema, table, owner) )
-                # get external table from dump line:
-                # -- Name: tablename; Type: EXTERNAL TABLE; Schema: public; Owner: ownername; Tablespace:
-                elif line.startswith("-- Name: ") and line.find("Type: EXTERNAL TABLE;") != -1:
-                    table = line[line.index("Name: ") + 6 : line.index("; Type")]
-                    table = table.rstrip()
-                    owner = line[line.index("Owner: ") + 7 : line.index("; Tablespace")]
-                    owner = owner.rstrip()
-                    ret.append( (True, schema, table, owner) )
-                    
+                    table = table.rstrip()  
+                    ret.append( (schema, table, owner) )
             return ret
         else: 
             f = None
@@ -891,16 +842,7 @@ class GetDumpTables(Operation):
                         else:
                             table = table[: table.index(" FROM stdin;")]
                         table = table.rstrip()
-                        # is_external = false
-                        ret.append( (False, schema, table, owner) )
-                    # get external table from dump line:
-                    # -- Name: tablename; Type: EXTERNAL TABLE; Schema: public; Owner: ownername; Tablespace:
-                    elif line.startswith("-- Name: ") and line.find("Type: EXTERNAL TABLE;") != -1:
-                        table = line[line.index("Name: ") + 6 : line.index("; Type")]
-                        table = table.rstrip()
-                        owner = line[line.index("Owner: ") + 7 : line.index("; Tablespace")]
-                        owner = owner.rstrip()
-                        ret.append( (True, schema, table, owner) )
+                        ret.append( (schema, table, owner) )
             finally:
                 if f is not None:
                     f.close()

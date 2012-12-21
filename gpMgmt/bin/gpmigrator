@@ -46,6 +46,7 @@ PARALLELISM   = 16
 __version__ = '$Revision$'
 
 
+
 #============================================================
 def makeCommand(oldHome, newHome, oldVersion, newVersion,
                  command, pid, dataDirectories, filespaces, option1,
@@ -333,13 +334,14 @@ class GPUpgrade(GPUpgradeBase):
                 sys.exit(0)
 
             if len(args) != 2:
+                usage()
                 msg = "incorrect number of arguments"
                 if len(args) > 0:
                     msg += ": %s" % str(args)
                 parser.error(msg)
 
         except Exception, e:
-            usage(EXECNAME)
+            usage()
             raise UpgradeError('Error parsing input: ' + str(e))
 
         if options.revert:
@@ -720,6 +722,14 @@ class GPUpgrade(GPUpgradeBase):
         logger.info('Removing upgrade user')
         self.Update('DROP USER IF EXISTS ' + MIGRATIONUSER)
         self.Shutdown()
+
+        # Cleanup anything leftover from gpupgrademirror
+        # + Should occur when the database is STOPPED
+        # + This forces a full remirroring of the system again, we
+        #   should avoid this whenever possible.
+        logger.info('Performing Mirror rollback')
+        cmd = '%s/sbin/gpupgrademirror.py --rollback' % self.newhome
+        self.RunCmd(cmd, env=self.newenv)
 
         # done
         logger.info('Revert Successful')
@@ -1430,11 +1440,10 @@ class GPUpgrade(GPUpgradeBase):
                                 % (self.user, self.user))
 
                 for addr in ip:
-                    cidr_suffix = '/128' if ':' in addr else '/32'  # MPP-15889
-                    file.write('host all %s %s%s trust\n'
-                               % (MIGRATIONUSER, addr, cidr_suffix))
-                    file.write('host all %s %s%s trust\n'
-                               % (self.user, addr, cidr_suffix))
+                    file.write('host all %s %s/32 trust\n'
+                               % (MIGRATIONUSER, addr))
+                    file.write('host all %s %s/32 trust\n'
+                               % (self.user, addr))
 
                 file.close()
 
@@ -2442,8 +2451,7 @@ class GPUpgrade(GPUpgradeBase):
                     "3.2": "200808253",
                     "3.3": "200905011",
                     "4.0": "201005134",
-                    "4.1": "201101130",
-                    "4.2": "201109210"}
+                    "4.1": "201101130"}
         
         self.CheckDown()
 

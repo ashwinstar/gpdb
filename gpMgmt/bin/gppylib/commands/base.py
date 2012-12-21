@@ -308,19 +308,8 @@ class CommandResult():
     def __str__(self):
         return self.printResult()
         
-    def split_stdout(self, how=':'):
-        """ 
-        TODO: AK: This doesn't belong here if it pertains only to pg_controldata.
+    
 
-        MPP-16318: Skip over discrepancies in the pg_controldata stdout, as it's
-        not this code's responsibility to judge the pg_controldata stdout. This is
-        especially true for 'immediate' shutdown, in which case, we won't even
-        care for WARNINGs or other pg_controldata discrepancies.
-        """
-        for line in self.stdout.split('\n'):
-            ret = line.split(how, 1)
-            if len(ret) == 2:
-                yield ret
 
 
 class ExecutionError(Exception): 
@@ -702,12 +691,6 @@ class Command:
     def get_results(self):
         return self.results
     
-    def get_stdout_lines(self):
-        return self.results.stdout.splitlines()
-
-    def get_stderr_lines(self):
-        return self.results.stderr.splitlines()
-
     
     def cancel(self):
         self.exec_context.cancel(self)    
@@ -755,15 +738,4 @@ class SQLCommand(Command):
             DB(self.cancel_conn).cancel()
     
     
-def run_remote_commands(name, commands):
-    """
-    """
-    cmds = {}
-    pool = WorkerPool()
-    for host, cmdStr in commands.items():
-        cmd = Command(name=name, cmdStr=cmdStr, ctxt=REMOTE, remoteHost=host)
-        pool.addCommand(cmd)
-        cmds[host] = cmd
-    pool.join()
-    pool.check_results()
-    return cmds
+    

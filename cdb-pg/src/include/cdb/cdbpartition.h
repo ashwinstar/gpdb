@@ -64,41 +64,9 @@ typedef struct PartitionHashState
 /* part rule update */
 typedef struct part_rule_cxt
 {
-	Oid old_oid;
-	Oid new_oid;
+	Oid old;
+	Oid new;
 } part_rule_cxt;
-
-
-/* 
- * partsIndexInfo encapsulates the parts index info returned by
- * getPartsIndexInfo 
- * It is also used as input to getPartsIndexInfoRelid to lookup
- * the index relid. 
- * 
- * PARTS_INDEX_INFO_NCOLS should be kept in sync with partsIndexInfo.
- */
-#define PARTS_INDEX_INFO_NCOLS  5
-
-typedef struct partsIndexInfo
-{
-	/* pointer to an array of index keys */
-	int2vector      *indKey;
-
-	/* index predicate for partial indexes */
-	text            *indPred;
-
-	/* index exprs for indexes defined on expressions */
-	text            *indExprs;
-
-	/* unique index */
-	bool            indIsUnique;
-
-	/* concatenated list of check constraints of each partition 
-	 * on which this index is defined 
-	 * This field maybe NULL when used to lookup index relid
-	 */
-	text            *partCons;
-} partsIndexInfo;
 
 
 #define parkindIsHash(c)   ((c) == 'h')
@@ -107,8 +75,6 @@ typedef struct partsIndexInfo
 
 
 extern bool rel_is_partitioned(Oid relid);
-
-extern List *rel_partition_key_attrs(Oid relid);
 
 extern bool rel_is_child_partition(Oid relid);
 
@@ -197,11 +163,11 @@ extern Oid  rel_partition_get_master(Oid relid);
 
 extern char *
 ChoosePartitionName(const char *tablename, int partDepth,
-					const char *partname, Oid nameSpace);
+					const char *partname, Oid namespace);
 
 extern Oid selectPartition(PartitionNode *partnode, Datum *values,
 						   bool *isnull, TupleDesc tupdesc,
-						   PartitionAccessMethods *accessMethods);
+						   PartitionState *pstate);
 
 extern Node *atpxPartAddList(Relation rel, 
 							 AlterPartitionCmd *pc,
@@ -244,7 +210,7 @@ basic_AT_oids(Relation rel, AlterTableCmd *cmd);
 
 extern AlterTableCmd *basic_AT_cmd(AlterTableCmd *cmd);
 extern bool can_implement_dist_on_part(Relation rel, List *dist_cnames);
-extern bool is_exchangeable(Relation rel, Relation oldrel, Relation newrel, bool dothrow);
+extern bool is_exchangeable(Relation rel, Relation oldrel, Relation newrel, bool throw);
 
 extern char *
 ChooseConstraintNameForPartitionEarly(Relation rel, ConstrType contype, Node *expr);
@@ -257,15 +223,12 @@ checkUniqueConstraintVsPartitioning(Relation rel, AttrNumber *indattr, int nidxa
 
 extern List *
 selectPartitionMulti(PartitionNode *partnode, Datum *values, bool *isnull,
-				 TupleDesc tupdesc, PartitionAccessMethods *accessMethods);
+				 TupleDesc tupdesc, PartitionState *pstate);
 
 extern void AddPartitionEncoding(Oid relid, Oid paroid, AttrNumber attnum,
 								 bool deflt, List *encoding);
 extern void RemovePartitionEncodingByRelid(Oid relid);
 extern void RemovePartitionEncodingByRelidAttribute(Oid relid, AttrNumber attnum);
 extern Datum *get_partition_encoding_attoptions(Relation rel, Oid paroid);
-
-extern partsIndexInfo **getPartsIndexInfo(Oid relid, int *num_rows);
-extern Oid getPartsIndexInfoRelid(partsIndexInfo *iInfo, Oid rootOid, Oid partOid);
 
 #endif   /* CDBPARTITION_H */

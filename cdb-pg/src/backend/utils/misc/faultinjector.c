@@ -24,20 +24,15 @@
 
 #include <signal.h>
 
-#include "access/xact.h"
 #include "cdb/cdbfilerep.h"
 #include "cdb/cdbfilerepservice.h"
 #include "cdb/cdbresynchronizechangetracking.h"
-#include "postmaster/service.h"
 #include "storage/spin.h"
 #include "storage/shmem.h"
 #include "utils/faultinjector.h"
 #include "utils/hsearch.h"
-#include "utils/inval.h"
-
 
 #ifdef FAULT_INJECTOR
-
 
 /*
  * gettext() can't be used in a static initializer... This breaks nls builds.
@@ -93,9 +88,6 @@ FaultInjectorTypeEnumToString[] = {
 	_("memory_full"),
 	_("reset"),
 	_("status"),
-	_("panic_suppress"),
-	_("segv"),
-	_("set_guc"),
 	_("not recognized"),
 };
 
@@ -113,14 +105,6 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault when files in pg_xlog directory are written */
 	_("start_prepare"),
 		/* inject fault during start prepare */
-	_("fault_before_pending_delete_relation_entry"),
-		/* inject fault after adding entry to persistent relation table in CP state but before adding to Pending delete list */
-	_("fault_before_pending_delete_database_entry"),
-		/* inject fault after adding entry to persistent database table in CP state but before adding to Pending delete list */
-	_("fault_before_pending_delete_tablespace_entry"),
-		/* inject fault after adding entry to persistent tablespace table in CP state but before adding to Pending delete list */
-	_("fault_before_pending_delete_filespace_entry"),
-		/* inject fault after adding entry to persistent filespace table in CP state but before adding to Pending delete list */
 	_("filerep_consumer"),
 		/* 
 		 * inject fault before data are processed
@@ -224,46 +208,12 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault after abort broadcast */
 	_("dtm_xlog_distributed_commit"),
 		/* inject fault after distributed commit was inserted in xlog */
-	_("dtm_init"),
-		/* inject fault before initializing dtm */
         _("end_prepare_two_phase_sleep"),
 	        /* inject sleep after creation of two phase file */
 	_("segment_transition_request"),
     	/* inject fault after segment receives state transition request */
 	_("segment_probe_response"),
 		/* inject fault after segment is probed by FTS */
-	_("SubtransactionFlushToFile"),
-		/* inject fault while writing subxids to file */
-	_("SubtransactionReadFromFile"),
-		/* inject fault while reading subxids from file */
-	_("SubtransactionRelease"),
-		/* inject fault before sub-transaction commit is recorded in xlog */
-	_("SubtransactionRollback"),
-		/* inject fault before sub-transaction abort is recorded in xlog */
-	_("sync_persistent_table"),
-		/* inject fault to sync persistent table to disk */
-	_("xlog_insert"),
-		/* inject fault to skip insert record into xlog  */
-	_("local_tm_record_transaction_commit"),
-		/* inject fault after recording transaction commit for local transaction  */
-	_("datumstream_malloc_failure"),
-		/* inject fault to simulate memory allocation failure during datumstream read */
-	_("transaction_abort_failure"),
-		/* inject fault to simulate transaction abort failure  */
-	_("ntuplestore_create_accessor"),
-		/* inject fault at beginning of ntuplestore_create_accessor  */
-	_("update_committed_eof_in_persistent_table"),
-		/* inject fault before committed EOF is updated in gp_persistent_relation_node for Append Only segment files */
-		/* inject fault to before insertion of btree parent and after release of child buffers */
-	_("set_gp_test_system_cache_flush_force_plain"),
-	  /* set the GUC  gp_test_system_cache_flush_force to plain */
-	_("set_gp_test_system_cache_flush_force_off"),
-	  /* set the GUC  gp_test_system_cache_flush_force to off */
-		_("update_persistent_serial_number_for_new_table"),
-		/* Inject fault to sleep after a new persistent serial number has been assigned during CREATE TABLE */
-        	_("check_btree_for_uniqueness_violation"),
-          	/* Inject fault to sleep after checking that CREATE TABLE does not cause a unique index violation while updating pg_type_typname_nsp_index */
-
 	_("not recognized"),
 };
 
@@ -675,58 +625,6 @@ FaultInjector_InjectFaultIfSet(
 		case FaultInjectorTypeResume:
 			break;
 			
-		case FaultInjectorTypePanicSuppress:
-		{
-			DECLARE_SAVE_SUPPRESS_PANIC();
-			
-			entryLocal->faultInjectorState = FaultInjectorStateCompleted;
-			
-			FaultInjector_UpdateHashEntry(entryLocal);	
-			
-			SUPPRESS_PANIC();
-			
-			ereport(FATAL, 
-					(errmsg("fault triggered, fault name:'%s' fault type:'%s' ",
-							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],
-							FaultInjectorTypeEnumToString[entryLocal->faultInjectorType])));	
-			
-			break;
-		}
-
-		case FaultInjectorTypeSegv:
-		{
-			*(int *) 0 = 1234;
-			break;
-		}
-
-		case FaultInjectorTypeSetGuc:
-		{
-			switch (entryLocal->faultInjectorIdentifier)
-			{
-				case SetGpTestSystemCacheFlushForcePlain:
-				{
-					gp_test_system_cache_flush_force = SysCacheFlushForce_NonRecursive;
-					break;
-				}
-				case SetGpTestSystemCacheFlushForceOff:
-				{
-					gp_test_system_cache_flush_force = SysCacheFlushForce_Off;
-					break;
-				}
-				default:
-				{
-					ereport(LOG,
-							(errmsg("unexpected error, fault triggered, fault name:'%s' fault type:'%s' ",
-									FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],
-									FaultInjectorTypeEnumToString[entryLocal->faultInjectorType])));
-
-					Assert(0);
-					break;
-				}
-			}
-			break;
-		}
-
 		default:
 			
 			ereport(LOG, 
@@ -894,9 +792,6 @@ FaultInjector_NewHashEntry(
 				
 			case FinishPreparedTransactionAbortPass1AbortingCreateNeeded:
 			case FinishPreparedTransactionAbortPass2AbortingCreateNeeded:
-
-			case SyncPersistentTable:
-			case XLOGInsert:
 			
 				break;
 			default:
@@ -936,6 +831,7 @@ FaultInjector_NewHashEntry(
 		case FileRepTransitionToInSyncMarkCompleted:
 		case FileRepTransitionToInSyncBeforeCheckpoint:
 		case FileRepTransitionToChangeTracking:
+		case Checkpoint:
 		case TransactionCommitPass1FromCreatePendingToCreated:
 		case TransactionCommitPass1FromDropInMemoryToDropPending:
 		case TransactionCommitPass1FromAbortingCreateNeededToAbortingCreate:
@@ -962,15 +858,8 @@ FaultInjector_NewHashEntry(
 		case FinishPreparedTransactionAbortPass2AbortingCreateNeeded:
 		case TwoPhaseTransactionCommitPrepared:
 		case TwoPhaseTransactionAbortPrepared:
-		case NtuplestoreCreateAccessor:
-		
-//		case SubtransactionFlushToFile:
-//		case SubtransactionReadFromFile:
-//		case SubtransactionRelease:
-//		case SubtransactionRollback:
 		/* Ashwin */
 		case FileRepChangeTrackingCompacting:
-		case DatumStreamMallocFailure:
 			
 			if (fileRepRole != FileRepPrimaryRole)
 			{
@@ -987,11 +876,7 @@ FaultInjector_NewHashEntry(
 				goto exit;
 			}			
 			break;
-		
-		case FaultBeforePendingDeleteRelationEntry:
-		case FaultBeforePendingDeleteDatabaseEntry:
-		case FaultBeforePendingDeleteTablespaceEntry:
-		case FaultBeforePendingDeleteFilespaceEntry:	
+			
 		case FileRepConsumer:
 		case FileRepSender:
 		case FileRepReceiver:
@@ -1037,31 +922,6 @@ FaultInjector_NewHashEntry(
 								FaultInjectorTypeEnumToString[entry->faultInjectorType])));
 				snprintf(entry->bufOutput, sizeof(entry->bufOutput), 
 						 "could not insert fault injection, segment not in master role");
-				
-				goto exit;
-			}			
-			break;
-			
-		case LocalTmRecordTransactionCommit:
-		case Checkpoint:
-		case AbortTransactionFail:
-		case UpdateCommittedEofInPersistentTable:
-		case SetGpTestSystemCacheFlushForcePlain:
-		case SetGpTestSystemCacheFlushForceOff:
-		case UpdatePersistentSerialNumberForNewTable:
-		case CheckBtreeForUniquenessViolation:
-			if (fileRepRole != FileRepNoRoleConfigured && fileRepRole != FileRepPrimaryRole)
-			{
-				LockRelease();
-				status = STATUS_ERROR;
-				ereport(WARNING,
-						(errmsg("could not insert fault injection entry into table, "
-								"segment not in primary or master role, "
-								"fault name:'%s' fault type:'%s' ",
-								FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier],
-								FaultInjectorTypeEnumToString[entry->faultInjectorType])));
-				snprintf(entry->bufOutput, sizeof(entry->bufOutput), 
-						 "could not insert fault injection, segment not in primary or master role");
 				
 				goto exit;
 			}			

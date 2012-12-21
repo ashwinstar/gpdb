@@ -78,7 +78,6 @@ typedef struct FormatterData
 #define FORMATTER_GET_NUM_ARGS(fcinfo)	      (list_length(FORMATTER_GET_ARG_LIST(fcinfo)))
 #define FORMATTER_GET_NTH_ARG_KEY(fcinfo, n)  (((DefElem *)(list_nth(FORMATTER_GET_ARG_LIST(fcinfo),(n - 1))))->defname)
 #define FORMATTER_GET_NTH_ARG_VAL(fcinfo, n)  (((Value *)((DefElem *)(list_nth(FORMATTER_GET_ARG_LIST(fcinfo),(n - 1))))->arg)->val.str)
-#define FORMATTER_GET_EXTENCODING(fcinfo)     (((FormatterData*) fcinfo->context)->fmt_external_encoding)
 
 #define FORMATTER_SET_USER_CTX(fcinfo, p) \
 	(((FormatterData*) fcinfo->context)->fmt_user_ctx = p)
@@ -110,21 +109,22 @@ typedef struct FormatterData
 		PG_RETURN_NULL(); \
 	} while (0)
 
-#define FORMATTER_ENCODE_STRING(fcinfo, p, n, cvt, is_import) \
+#define FORMATTER_ENCODE_OUTPUT(fcinfo, p, n) \
 	do { \
 		if (((FormatterData*) fcinfo->context)->fmt_needs_transcoding) \
-		{\
-			if(is_import) \
-				cvt = pg_custom_to_server(p, \
-										n, \
-										((FormatterData*) fcinfo->context)->fmt_external_encoding, \
-										((FormatterData*) fcinfo->context)->fmt_conversion_proc); \
-			else \
-				cvt = pg_server_to_custom(p, \
-										n, \
-										((FormatterData*) fcinfo->context)->fmt_external_encoding, \
-										((FormatterData*) fcinfo->context)->fmt_conversion_proc); \
-		}\
+			p = pg_server_to_custom(p, \
+								    n, \
+									((FormatterData*) fcinfo->context)->fmt_external_encoding, \
+									((FormatterData*) fcinfo->context)->fmt_conversion_proc); \
+	} while (0)
+
+#define FORMATTER_ENCODE_INPUT(fcinfo, p, n) \
+	do { \
+		if (((FormatterData*) fcinfo->context)->fmt_needs_transcoding) \
+			p = pg_custom_to_server(p, \
+								    n, \
+									((FormatterData*) fcinfo->context)->fmt_external_encoding, \
+									((FormatterData*) fcinfo->context)->fmt_conversion_proc); \
 	} while (0)
 
 

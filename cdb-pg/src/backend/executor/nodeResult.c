@@ -55,8 +55,6 @@
 
 #include "cdb/cdbhash.h"
 #include "cdb/cdbvars.h"
-#include "cdb/memquota.h"
-#include "executor/spi.h"
 
 static TupleTableSlot *NextInputSlot(ResultState *node);
 static bool TupleMatchesHashFilter(Result *resultNode, TupleTableSlot *resultSlot);
@@ -83,8 +81,6 @@ static TupleTableSlot *NextInputSlot(ResultState *node)
 			 */
 			break;
 		}
-
-		Gpmon_M_Incr(GpmonPktFromResultState(node), GPMON_QEXEC_M_ROWSIN);
 
 		ExprContext *econtext = node->ps.ps_ExprContext;
 
@@ -424,12 +420,6 @@ ExecInitResult(Result *node, EState *estate, int eflags)
 	ExecAssignResultTypeFromTL(&resstate->ps);
 	ExecAssignProjectionInfo(&resstate->ps, NULL);
 
-	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE
-			&& IsResultMemoryIntesive(node))
-	{
-		SPI_ReserveMemory(((Plan *)node)->operatorMemKB * 1024L);
-	}
-
 	initGpmonPktForResult((Plan *)node, &resstate->ps.gpmon_pkt, estate);
 
 	return resstate;
@@ -466,7 +456,6 @@ ExecEndResult(ResultState *node)
 	ExecEndNode(outerPlanState(node));
 
 	EndPlanStateGpmonPkt(&node->ps);
-
 }
 
 void

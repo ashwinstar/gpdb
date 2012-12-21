@@ -368,7 +368,6 @@ identifier		{ident_start}{ident_cont}*
 typecast		"::"
 dot_dot			\.\.
 colon_equals	":="
-equal_arrow		"=>"
 
 /*
  * "self" is the set of chars that should be returned as single-character
@@ -1555,9 +1554,8 @@ psql_scan_slash_option(PsqlScanState state,
 					error = true;
 				}
 
-				if (PQExpBufferDataBroken(output))
+				if (PQExpBufferBroken(&output))
 				{
-				
 					psql_error("%s: out of memory\n", cmd);
 					error = true;
 				}

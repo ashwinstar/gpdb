@@ -37,7 +37,7 @@ APR_DECLARE(int) gpdb_get_gpmon_port(void);
  *  @param hostvec return array of hostnames.
  *  @param pool where to allocate hostvec and its contents.
  */
-APR_DECLARE(void) gpdb_get_hostlist(int* hostcnt, host_t** host_table, apr_pool_t* global_pool, mmon_options_t* opt);
+APR_DECLARE(void) gpdb_get_hostlist(int* hostcnt, host_t** host_table, apr_pool_t* global_pool);
 
 /**
  *  Get the master data directory in the GPDB.
@@ -80,8 +80,6 @@ APR_DECLARE (apr_status_t) gpdb_truncate_tail_files(apr_pool_t* pool);
 APR_DECLARE (apr_status_t) gpdb_harvest_one(const char* table);
 
 APR_DECLARE (apr_status_t) gpdb_harvest_healthdata();
-
-APR_DECLARE (apr_status_t) remove_segid_constraint(void);
 
 
 #endif /* GPMONDB_H */

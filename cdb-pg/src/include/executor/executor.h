@@ -206,9 +206,6 @@ extern AttrNumber attrMap(AttrMap *map, AttrNumber anum);
 extern List *attrMapIntList(AttrMap *map, List *attrs);
 extern Node *attrMapExpr(AttrMap *map, Node *expr);
 extern bool map_part_attrs(Relation base, Relation part, AttrMap **map_ptr, bool throwerror);
-extern PartitionState *createPartitionState(PartitionNode *partsAndRules, int resultPartSize);
-extern TupleTableSlot *reconstructMatchingTupleSlot(TupleTableSlot *slot,
-													ResultRelInfo *resultRelInfo);
 
 /*
  * prototypes from functions in execProcnode.c
@@ -262,7 +259,6 @@ extern int	ExecTargetListLength(List *targetlist);
 extern int	ExecCleanTargetListLength(List *targetlist);
 extern TupleTableSlot *ExecProject(ProjectionInfo *projInfo,
 			ExprDoneCond *isDone);
-extern Datum ExecEvalFunctionArgToConst(FuncExpr *fexpr, int argno, bool *isnull);
 extern void GetNeededColumnsForScan(Node *expr, bool *mask, int n);
 
 /*
@@ -272,44 +268,6 @@ typedef TupleTableSlot *(*ExecScanAccessMtd) (ScanState *node);
 
 extern TupleTableSlot *ExecScan(ScanState *node, ExecScanAccessMtd accessMtd);
 extern void ExecAssignScanProjectionInfo(ScanState *node);
-extern void InitScanStateInternal(ScanState *scanState, Plan *plan, EState *estate, int eflags);
-extern void FreeScanRelationInternal(ScanState *scanState);
-extern Relation OpenScanRelationByOid(Oid relid);
-extern void CloseScanRelation(Relation rel);
-extern int getTableType(Relation rel);
-extern TupleTableSlot *ExecTableScanRelation(ScanState *scanState);
-extern void BeginTableScanRelation(ScanState *scanState);
-extern void EndTableScanRelation(ScanState *scanState);
-extern void ReScanRelation(ScanState *scanState);
-extern void MarkPosScanRelation(ScanState *scanState);
-extern void RestrPosScanRelation(ScanState *scanState);
-extern void MarkRestrNotAllowed(ScanState *scanState);
-
-/*
- * prototypes from functions in execHeapScan.c
- */
-extern TupleTableSlot *HeapScanNext(ScanState *scanState);
-extern void BeginScanHeapRelation(ScanState *scanState);
-extern void EndScanHeapRelation(ScanState *scanState);
-extern void ReScanHeapRelation(ScanState *scanState);
-extern void MarkPosHeapRelation(ScanState *scanState);
-extern void RestrPosHeapRelation(ScanState *scanState);
-
-/*
- * prototypes from functions in execAppendOnlyScan.c
- */
-extern TupleTableSlot *AppendOnlyScanNext(ScanState *scanState);
-extern void BeginScanAppendOnlyRelation(ScanState *scanState);
-extern void EndScanAppendOnlyRelation(ScanState *scanState);
-extern void ReScanAppendOnlyRelation(ScanState *scanState);
-
-/*
- * prototypes from functions in execAOCSScan.c
- */
-extern TupleTableSlot *AOCSScanNext(ScanState *scanState);
-extern void BeginScanAOCSRelation(ScanState *scanState);
-extern void EndScanAOCSRelation(ScanState *scanState);
-extern void ReScanAOCSRelation(ScanState *scanState);
 
 /*
  * prototypes from functions in execTuples.c
@@ -335,7 +293,7 @@ typedef struct TupOutputState
 extern TupOutputState *begin_tup_output_tupdesc(DestReceiver *dest,
 						 TupleDesc tupdesc);
 extern void do_tup_output(TupOutputState *tstate, char **values);
-extern void do_text_output_multiline(TupOutputState *tstate, char *output_text);
+extern void do_text_output_multiline(TupOutputState *tstate, char *text);
 extern void end_tup_output(TupOutputState *tstate);
 
 /*
@@ -430,8 +388,8 @@ extern void mppExecutorCleanup(QueryDesc *queryDesc);
 
 
 /* prototypes defined in nodeAgg.c for rollup-aware Agg/Group nodes. */
-extern int64 tuple_grouping(TupleTableSlot *outerslot,
-							int input_grouping,
+extern int64 tuple_grouping(TupleTableSlot *outerslot, int numGroupCols,
+							int input_grouping, bool input_has_grouping,
 							int grpingIdx);
 extern uint64 get_grouping_groupid(TupleTableSlot *slot,
 								   int grping_idx);

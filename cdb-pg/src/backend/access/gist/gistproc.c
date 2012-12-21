@@ -232,8 +232,6 @@ chooseLR(GIST_SPLITVEC *v,
 			gistentryinit(addon, BoxPGetDatum(union2), NULL, NULL, InvalidOffsetNumber, FALSE);
 			DirectFunctionCall3(gist_box_penalty, PointerGetDatum(&oldUnion), PointerGetDatum(&union2), PointerGetDatum(&p2));
 
-			(void)addon; /* calculated but not used... Is this correct? */
-
 			if ((v->spl_ldatum_exists && p1 > p2) || (v->spl_rdatum_exists && p1 < p2))
 				firstToLeft = false;
 		}

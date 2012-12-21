@@ -102,57 +102,6 @@ def check_pid(pid):
     else:
         return True
 
-
-def logandkill(pid, sig):
-    msgs = {
-        signal.SIGCONT: "Sending SIGSCONT to %d",
-        signal.SIGTERM: "Sending SIGTERM to %d (smart shutdown)",
-        signal.SIGINT:  "Sending SIGINT to %d (fast shutdown)",
-        signal.SIGQUIT: "Sending SIGQUIT to %d (immediate shutdown)",
-        signal.SIGABRT: "Sending SIGABRT to %d"
-    }
-    logger.info(msgs[sig] % pid)
-    os.kill(pid, sig)
-
-
-def kill_sequence(pid):
-    if not check_pid(pid): return
-
-    # first send SIGCONT in case the process is stopped
-    logandkill(pid, signal.SIGCONT)
-
-    # next try SIGTERM (smart shutdown)
-    logandkill(pid, signal.SIGTERM)
-
-    # give process a few seconds to exit
-    for i in range(0,3):
-        time.sleep(1)
-        if not check_pid(pid): 
-            return
-
-    # next try SIGINT (fast shutdown)
-    logandkill(pid, signal.SIGINT)
-
-    # give process a few more seconds to exit
-    for i in range(0,3):
-        time.sleep(1)
-        if not check_pid(pid): 
-            return
-
-    # next try SIGQUIT (immediate shutdown)
-    logandkill(pid, signal.SIGQUIT)
-
-    # give process a final few seconds to exit
-    for i in range(0,5):
-        time.sleep(1)
-        if not check_pid(pid): 
-            return
-
-    # all else failed - try SIGABRT
-    logandkill(pid, signal.SIGABRT)
-
-
-
 #---------------Platform Framework--------------------
 
 """ The following platform framework is used to handle any differences between
@@ -438,13 +387,9 @@ class DiskFree(Command):
 #-------------mkdir------------------
 class MakeDirectory(Command):
     
-    def __init__(self, name, directory, mode=None, ctxt=LOCAL, remoteHost=None):        
+    def __init__(self,name,directory,ctxt=LOCAL,remoteHost=None):        
         self.directory=directory
-        if (mode != None):
-            modeOption = " -m " + str(mode) + " "
-        else:
-            modeOption = ''
-        cmdStr="%s -p %s %s" % (findCmdInPath('mkdir'), modeOption, directory)
+        cmdStr="%s -p %s" % (findCmdInPath('mkdir'),directory)
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
     
     @staticmethod
@@ -484,7 +429,7 @@ class InlinePerlReplace(Command):
 #-------------rmdir------------------
 class RemoveDirectory(Command):
     
-    def __init__(self,name,directory, ctxt=LOCAL,remoteHost=None):
+    def __init__(self,name,directory,ctxt=LOCAL,remoteHost=None):
         self.directory=directory
         cmdStr="%s %s" % (findCmdInPath('rmdir'),directory)
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
@@ -505,13 +450,9 @@ class RemoveDirectory(Command):
 #-------------rm -rf ------------------
 class RemoveFiles(Command):
     
-    def __init__(self, name, directory, force=True, ctxt=LOCAL, remoteHost=None):        
+    def __init__(self,name,directory,ctxt=LOCAL,remoteHost=None):        
         self.directory=directory
-        if (force == True):
-            forceOption = 'f'
-        else:
-            forceOption = ''
-        cmdStr="%s -r%s %s" % (findCmdInPath('rm'), forceOption, directory)
+        cmdStr="%s -rf %s" % (findCmdInPath('rm'),directory)
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
     
     @staticmethod
@@ -907,58 +848,7 @@ class FileGetOwnerUid(Command):
 
     def file_uid(self):
         return int(self.results.stdout.strip().upper())
-   
-#-------------- get file list in directory ----------------------
-class FilesInDir(Command):
-    """ This class gets a list of files in a directory """
-
-    def __init__(self, name, filePattern, ctxt=LOCAL, remoteHost=None, remoteTempFile=None):
-        self.filePattern = filePattern
-        self.remoteHost = remoteHost
-        self.remoteTempFile = remoteTempFile
-        if remoteTempFile != None:
-           remoteTempFilePart = " > %s" % remoteTempFile
-        else:
-           remoteTempFilePart = ""
-        find  = findCmdInPath('find')
-        cmdStr= "%s %s -type f %s" % (find, filePattern, remoteTempFilePart)
-        self.cmdStr = cmdStr
-        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
     
-    
-    def get_result_list(self, localTempFile = None):
-        retList = []
-
-        if localTempFile != None:
-           rcCmd = CopyToLocal( name = "gpupgrademirror get result list copy: %s:%s to %s" % (self.remoteHost, self.remoteTempFile, localTempFile)
-                           , srcHost = self.remoteHost
-                           , srcDirectory = self.remoteTempFile
-                           , dstDirectory = localTempFile
-                           )
-           rcCmd.run(validateAfter = True)
-           rmCmd = RemoveFiles( name = 'gpupgrademirror remove remote temp file: %s:%s' % (self.remoteHost, self.remoteTempFile)
-                              , directory = self.remoteTempFile
-                              , ctxt = REMOTE
-                              , remoteHost = self.remoteHost
-                              )
-           rmCmd.run(validateAfter = True)
-
-           fd = open(localTempFile, "r")
-           fd.seek(0)
-           fileList = []
-           for line in fd:
-               line = line.rstrip('\n')
-               fileList.append(line)
-           fd.close()
-        else:
-           fileList = self.results.stdout.split('\n')
-
-        if fileList != None and len(fileList) > 0 and fileList[-1] == '':
-           ''' Remove any trailing empty string '''
-           fileList.pop()
-        retList = fileList
- 
-        return retList  
     
 #--------------get list of desecendant processes -------------------
 

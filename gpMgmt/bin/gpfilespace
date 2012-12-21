@@ -17,12 +17,6 @@ Connection Options:
 Execution Options:
   -c | --config FILE         configuration file
   -o | --output DIRECTORY    output directory for config file
-
-Move Options:
-  --movetransfilespace FILESPACE | default move filespace used by transaction files to FILESPACE
-  --movetempfilespace  FILESPACE | default move filespace used by temporary files to FILESPACE
-  --showtransfilespace           show the filespace used by transaction files
-  --showtempfilespace            show the filespace used by temporary files  
 '''
 # ============================================================================
 __version__ = '$Revision$'
@@ -60,7 +54,6 @@ try:
     from getpass import getpass
     from gppylib.parseutils import line_reader, parse_fspacename, parse_gpfilespace_line, \
         canonicalize_address
-    from gppylib.operations.filespace import MoveFilespace, MoveFilespaceError, GetCurrentFilespaceEntries, FileType, CheckFilespaceConsistency, CheckSuperUser, PG_SYSTEM_FILESPACE
 
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
@@ -122,14 +115,14 @@ def ParseOptions():
 
     # Setup Options Parser
     parser = optparse.OptionParser(usage=cli_help(), add_help_option=False)
-    parser.add_option('--version', default=False,
+    parser.add_option('-v', '--version', default=False,
+                      action='store_true', help=optparse.SUPPRESS_HELP)
+    parser.add_option('-?', '--help', default=False,
                       action='store_true', help=optparse.SUPPRESS_HELP)
     parser.add_option('-l', '--logdir', default=logdir,
                       help=optparse.SUPPRESS_HELP)
     parser.add_option('-h', '--host', default=pghost,
                       help=optparse.SUPPRESS_HELP)
-    parser.add_option('-?', '--help', default=False,
-                      action='store_true', help=optparse.SUPPRESS_HELP)
     parser.add_option('-p', '--port', default=pgport,
                       help=optparse.SUPPRESS_HELP)
     parser.add_option('-U', '--username', default=pguser,
@@ -140,21 +133,7 @@ def ParseOptions():
                       help=optparse.SUPPRESS_HELP)
     parser.add_option('-o', '--output', default=output,
                       help=optparse.SUPPRESS_HELP)
-    parser.add_option('-v', '--verbose',
-                      action='store_true', help=optparse.SUPPRESS_HELP)
-    parser.add_option('-a', dest='interactive',
-                      action='store_false', help=optparse.SUPPRESS_HELP)
-    parser.add_option('-q', '--quiet',
-                      action='store_true', help=optparse.SUPPRESS_HELP)
-    parser.add_option('--movetransfilespace', 
-                      help=optparse.SUPPRESS_HELP)
-    parser.add_option('--movetempfilespace',
-                      help=optparse.SUPPRESS_HELP)
-    parser.add_option('--showtransfilespace', default=False,
-                      action='store_true', help=optparse.SUPPRESS_HELP)
-    parser.add_option('--showtempfilespace', default=False,
-                      action='store_true', help=optparse.SUPPRESS_HELP)
-
+    
     (options, args) = parser.parse_args()
 
     # Print version and exit
@@ -635,7 +614,11 @@ class GPFilespace:
             logger.debug('halting threads')
             self.pool.haltWork()
             self.pool = None
-        self.close_conn()
+        if self.db:
+            logger.debug('closing database connection')
+            self.db.close()
+            self.db = None
+
         
     # --------------------------------------------------------------------
     def connect(self):
@@ -679,19 +662,12 @@ class GPFilespace:
             raise GPDatabaseError(str(e))
 
         if not is_super:
-            error = "gpfilespace requires database superuser privileges"
+            error = "gpfilespace requires database superuser privledges"
             raise GPPrivilegeError(error)
 
         self.dburl = dburl
         self.db    = conn
 
-
-    # --------------------------------------------------------------------
-    def close_conn(self):
-        if self.db:
-            logger.debug('closing database connection')
-            self.db.close()
-            self.db = None
 
     # --------------------------------------------------------------------
     def get_configuration(self):
@@ -833,31 +809,6 @@ class GPFilespace:
 
 
     # --------------------------------------------------------------------
-    def do_showfilespace(self, file_type, user, pswd):
-        """
-            Displays the filespace that is currently being used by 
-            transactions and temporary files.
-        
-            @param file_type: FileType.TRANSACTION_FILES or FileType.TEMPORARY_FILES 
-            @return: None
-        """
-        logger.info('Getting filespace information for %s' % FileType.lookup[file_type])
-     
-        if not CheckSuperUser(dbconn.DbURL(username=user, password=pswd)).run():
-            raise MoveFilespaceError('gpfilespace requires database superuser privileges')
- 
-        gparray = GpArray.initFromCatalog(dbconn.DbURL()) if self.array is None else self.array
-
-        if not CheckFilespaceConsistency(gparray, file_type).run():
-            raise MoveFilespaceError('Filespace is inconsistent')
-
-        filespace_entries = GetCurrentFilespaceEntries(gparray, file_type).run() 
-        filespace_name = gparray.getFileSpaceName(int(filespace_entries[0][0]))
-        logger.info('Current Filespace for %s is %s' % (FileType.lookup[file_type], filespace_name))
-        for entry in filespace_entries:
-            logger.info(str(entry[1]) + '    ' + entry[2])
-
-    # --------------------------------------------------------------------
     def generate_config(self):
         '''
         generate_config()
@@ -971,7 +922,7 @@ class GPFilespace:
 
         # Write out the information to a configuration file
         logger.debug("Creating Config File: %s" % filename)
-        logger.info("Creating configuration file...")
+        print "Creating configuration file...",
 
         f = open(filename, 'w')
         f.write('filespace:%s\n' % fspacename)
@@ -1007,11 +958,11 @@ class GPFilespace:
                     writeseg(mirrors[i], config.mdest[i])
 
         f.close()
-        logger.info("[created]")
-        logger.info("""
+        print "[created]"
+        print """
 To add this filespace to the database please run the command:
    gpfilespace --config %s
-""" % filename)
+""" % filename
         
         return None
 
@@ -1085,7 +1036,7 @@ To add this filespace to the database please run the command:
 
 
         # Progress indicator: 
-        logger.info("Performing validation on paths")
+        print "Performing validation on paths"
         progress = 0
         done     = 0.0
         each     = 78.0 / len(self.hosts)
@@ -1117,9 +1068,9 @@ To add this filespace to the database please run the command:
         # the end paren instead
         q = q[0:-2] + "\n);"
 
-        logger.debug(q);
+        logger.info(q);
 
-        logger.info("Connecting to database")
+        print "Connecting to database"
         self.connect()
         try:
             cursor = dbconn.execSQL(self.db, q)
@@ -1127,7 +1078,7 @@ To add this filespace to the database please run the command:
         except Exception, e:
             raise GPDatabaseError(str(e))
         
-        logger.info('Filespace "%s" successfully created' % fspacename)
+        print 'Filespace "%s" successfully created' % fspacename
         sys.stdout.flush()
 
 
@@ -1141,57 +1092,33 @@ if __name__ == '__main__':
     coverage.start()
     
     opt = ParseOptions()
-
-    if opt.verbose:       
-        enable_verbose_logging() 
-    if opt.quiet:
-        quiet_stdout_logging()
-
-    if opt.password:
-        opt.password = getpass('Password: ')
-    else:
-        opt.password = None
-
     logger = setup_tool_logging(EXECNAME, opt.host, opt.username, opt.logdir)
+    enable_verbose_logging()
+    quiet_stdout_logging()
+    
     try:
-        logger.debug("Start, config=" + str(opt.config))
-        logger.info("""
+        logger.info("Start, config=" + str(opt.config))
+        print """
 A tablespace requires a file system location to store its database
 files. A filespace is a collection of file system locations for all components
 in a Greenplum system (primary segment, mirror segment and master instances).
 Once a filespace is created, it can be used by one or more tablespaces.
 
-""")
-        if opt.movetransfilespace:
-            if opt.movetransfilespace == 'default':
-                opt.movetransfilespace = PG_SYSTEM_FILESPACE
-            MoveFilespace(opt.movetransfilespace, FileType.TRANSACTION_FILES, opt.username, opt.password).run() 
-        elif opt.movetempfilespace:
-            if opt.movetempfilespace == 'default':
-                opt.movetempfilespace = PG_SYSTEM_FILESPACE
-            MoveFilespace(opt.movetempfilespace, FileType.TEMPORARY_FILES, opt.username, opt.password).run()
-        else:
-            gpf = GPFilespace(opt)
-            if opt.showtransfilespace:
-                gpf.do_showfilespace(FileType.TRANSACTION_FILES, opt.username, opt.password)
-            elif opt.showtempfilespace:
-                gpf.do_showfilespace(FileType.TEMPORARY_FILES, opt.username, opt.password)
-            else:
-                try:
-                    gpf.Setup()
-                    if opt.config == None:
-                        gpf.generate_config()
-                    else:
-                        gpf.execute_config()
-                finally:
-                    gpf.cleanup()
+""",
 
-        logger.debug("Done")
+        gpf = GPFilespace(opt)
+        try:
+            gpf.Setup()
+            if opt.config == None:
+                gpf.generate_config()
+            else:
+                gpf.execute_config()
+        finally:
+            gpf.cleanup()
+
+        logger.info("Done")
         sys.exit(0)
-       
-    except MoveFilespaceError, e:
-        logger.error(e)
-        sys.exit(1) 
+        
     # An expected error
     except GPError, e:
         try:
@@ -1200,7 +1127,7 @@ Once a filespace is created, it can be used by one or more tablespaces.
             #    logger.error("퀙퀠퀩퀘ㄲㄸㅉㅃ12ㅁavb")  => UnicodeDecodeError
             err = unicode(str(e), 'UTF-8')
             logger.error(err)
-            logger.debug("exit(1)")
+            logger.info("exit(1)")
         except BaseException, e:
             sys.stderr.write("[Error] %s\n" % str(e))
             sys.stderr.write(traceback.format_exc())
@@ -1210,7 +1137,8 @@ Once a filespace is created, it can be used by one or more tablespaces.
     # User cancelation 
     except KeyboardInterrupt, e:
         try:
-            logger.info('[Cancelled]')
+            logger.info("cancelled")
+            print '[Cancelled]'
         except BaseException, e:
             sys.stderr.write("error %s\n" % str(e))
         sys.exit(1)
@@ -1218,7 +1146,7 @@ Once a filespace is created, it can be used by one or more tablespaces.
     # Let SystemExit exceptions through
     except SystemExit, e:
         try:
-            logger.debug('exit(%s)' % str(e))
+            logger.info("exit(%s)" % str(e))
         except BaseException, e:
             sys.stderr.write("error %s\n" % str(e))
         raise e
@@ -1228,8 +1156,8 @@ Once a filespace is created, it can be used by one or more tablespaces.
         try:
             err = '[%s]: "%s"' % (type(e).__name__,  unicode(str(e), 'UTF-8'))
             logger.error(err)
-            logger.debug(traceback.format_exc())
-            logger.debug("exit(1)")
+            logger.info(traceback.format_exc())
+            logger.info("exit(1)")
 
             sys.stderr.write('[Error] See "%s" for details\n' % get_logfile())
         except BaseException, e:

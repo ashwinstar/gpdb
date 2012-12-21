@@ -34,12 +34,6 @@ typedef struct DirectDispatchInfo
     List *contentIds;
 } DirectDispatchInfo;
 
-typedef enum PlanGenerator
-{
-	PLANGEN_PLANNER,			/* plan produced by the planner*/
-	PLANGEN_OPTIMIZER,			/* plan produced by the optimizer*/
-} PlanGenerator;
-
 /* ----------------------------------------------------------------
  *						node definitions
  * ----------------------------------------------------------------
@@ -58,8 +52,6 @@ typedef struct PlannedStmt
 		
 		CmdType		commandType;	/* select|insert|update|delete */
 		
-		PlanGenerator	planGen;		/* optimizer generation */
-	
 		bool		canSetTag;		/* do I set the command result tag? */
 		
 		bool		transientPlan;	/* redo plan when TransactionXmin changes? */
@@ -109,15 +101,8 @@ typedef struct PlannedStmt
 		 * exact set of child tables at parse time. This field used to be in Query.
 		 */
 		struct PartitionNode *result_partitions;
-
-		List	   *result_aosegnos; /* AO file 'seg' numbers for resultRels to use */
 		
-		/*
-		 * Relation oids and partitioning metadata for all partitions
-		 * that are involved in a query.
-		 */
-		List *queryPartOids;
-		List *queryPartsMetadata;
+		List	   *result_aosegnos; /* AO file 'seg' numbers for resultRels to use */
 		
 		List	   *rowMarks;		/* a list of RowMarkClause's */
 		
@@ -156,8 +141,6 @@ typedef struct PlannedStmt
 		/* What is the memory reserved for this query's execution? */
 		uint64		query_mem;
 
-		/* Parallel random seed and query id */
-		uint32		query_random_seed;
 } PlannedStmt;
 
 
@@ -379,17 +362,6 @@ typedef struct Append
 	bool 		hasXslice;
 } Append;
 
-/*
- * Sequence node
- *   Execute a list of subplans in the order of left-to-right, and return
- * the results of the last subplan.
- */
-typedef struct Sequence
-{
-	Plan plan;
-	List *subplans;
-} Sequence;
-
 /* ----------------
  *	 BitmapAnd node -
  *		Generate the intersection of the results of sub-plans.
@@ -435,12 +407,6 @@ typedef struct Scan
  */
 typedef Scan SeqScan;
 
-/*
- * TableScan
- *   Scan node that captures different table types.
- */
-typedef Scan TableScan;
-
 /* ----------------
  *		index scan node
  *
@@ -474,11 +440,6 @@ typedef struct IndexScan
 	List	   *indexsubtype;	/* OID list of strategy subtypes */
 	ScanDirection indexorderdir;	/* forward or backward or don't care */
 } IndexScan;
-
-/*
- * IndexOnlyScan node, which has the same content as IndexScan node.
- */
-typedef IndexScan IndexOnlyScan;
 
 /* ----------------
  *		bitmap index scan node
@@ -536,24 +497,6 @@ typedef struct BitmapAppendOnlyScan
 	List	   *bitmapqualorig; /* index quals, in standard expr form */
 	bool       isAORow; /* If this is for AO Row tables */
 } BitmapAppendOnlyScan;
-
-/*
- * DynamicTableScan
- *   Scan a list of tables that will be determined at run time.
- */
-typedef struct DynamicTableScan
-{
-	Scan scan;
-
-	/*
-	 * The index to an internal array structure, in which each element
-	 * maintains unique identifiers to the tables that are involved in
-	 * a dynamic table scan.
-	 *
-	 * This internal array structure is maintained in EState.
-	 */
-	int partIndex;
-} DynamicTableScan;
 
 /* ----------------
  *		tid scan node
@@ -870,7 +813,7 @@ typedef struct Agg
 	 *   Agg(a,b,c) ==> Agg(a,b) ==> Agg(a) ==> Agg()
 	 *
 	 * The GROUPING value of input tuples for Agg(a,b,c) is 0, and the values
-	 * for Agg(a,b), Agg(a), Agg() are 1, 3, 7, respectively.
+	 * for Agg(a,b), Agg(a), Agg() are 0, 1, 3, respectively.
 	 *
 	 * We also use the value "-1" to indicate an Agg node is the final
 	 * one that brings back all rollup results from different segments. This final
@@ -947,25 +890,6 @@ typedef struct Agg
  * For example, the ordering key for the WindowKey in position 2 of
  * the windowKeys list is the concatenation of the partial keys found
  * in positions 0 through 2. *
- *
- * Some window nodes actually implement sequences as indicated by 
- * sequence.  The rules for sequences (specified by a SEQUENCE 
- * clause in the query) are more restrictive that those for ordinary 
- * windows.
- * 
- * Some window nodes are planned as part of a sequence operation.
- * They lack a sequence definition, but peer groups should use
- * sequence rules, i.e., breaks occur on only the first item in
- * ordering key.  (This will be the system generated sequence index, 
- * known to increase monotonically within a partition.  Additional 
- * ordering keys are recorded and may provide a more complete order,
- * though inputs with duplicate ordering keys are, at best, partially
- * ordered.)  The semantics field determines how peer group breaks
- * are determined.
- *
- * Currently the only possibilities for sequence are NULL (not a 
- * sequence query) and SequenceDefn* (a generated sequence).  In
- * the future, there may be others (e.g., a subquery).
  * ---------------
  */
 typedef struct Window
@@ -975,8 +899,6 @@ typedef struct Window
 	AttrNumber	   *partColIdx;		/* their indexes in the target list
 									   of the window's outer plan.  */
 	List	       *windowKeys;		/* list of WindowKey nodes */
-	Node		   *sequence;		/* sequence definition or NULL */
-	WindowSemantics semantics;		/* WINDOW_SEMANTICS_STD or _SEQ. */
 } Window;
 
 
@@ -1078,62 +1000,6 @@ typedef struct Motion
 	Oid			*sortOperators;		/* OID of operators to sort them by */
 } Motion;
 
-/*
- * DML Node
- */
-typedef struct DML
-{
-	
-	Plan		plan;				
-	Index		scanrelid;		/* index into the range table */
-	AttrNumber	oidColIdx;		/* index of table oid into the target list */
-	AttrNumber	actionColIdx;	/* index of action column into the target list */
-	AttrNumber	ctidColIdx;		/* index of ctid column into the target list */
-
-} DML;
-
-/*
- * SplitUpdate Node
- *
- */
-typedef struct SplitUpdate
-{
-	
-	Plan		plan;				
-	AttrNumber	actionColIdx;		/* index of action column into the target list */
-	AttrNumber	ctidColIdx;		/* index of ctid column into the target list */
-	List		*insertColIdx;		/* list of columns to INSERT into the target list */
-	List		*deleteColIdx;		/* list of columns to DELETE into the target list */
-
-} SplitUpdate;
-
-/*
- * AssertOp Node
- *
- */
-typedef struct AssertOp
-{
-	
-	Plan 			plan;
-	int				errcode;		/* SQL error code */
-	char 			*errmessage;	/* error message */
-
-} AssertOp;
-
-/*
- * RowTriggerOp Node
- *
- */
-typedef struct RowTriggerOp
-{
-
-	Plan		plan;
-	Oid			relid;				/* OID of target relation */
-	int 		eventFlags;			/* TriggerEvent bit flags (see trigger.h).*/
-	List		*oldValuesColIdx;	/* list of old columns */
-	List		*newValuesColIdx;	/* list of new columns */
-
-} RowTriggerOp;
 
 /*
  * Plan invalidation info
@@ -1156,21 +1022,6 @@ typedef struct PlanInvalItem
  * TODO: Consider moving these structs to a separate header
  */
 	
-
-
-typedef struct CdbQEStatementStats
-{
-	NodeTag		type;
-	int32		segindex;
-	int32		sliceIndex;
-	int32		pad;
-	long utime_msec;
-	long stime_msec;
-	long blocksread;
-	long blockswritten;
-} CdbQEStatementStats;
-
-
 
 #endif   /* PLANNODES_H */
 

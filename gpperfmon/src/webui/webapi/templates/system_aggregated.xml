@@ -1,0 +1,15 @@
+$def with (stime, etime, interval, tkeys, ckeys, tab)
+<?xml version="1.0"?>
+<system start="$stime" end="$etime" interval="$interval" aggregated="yes">
+  $for c in ckeys:
+     <$c> \
+        $for t in tkeys:
+	    $ v = tab[t]
+	    $if not v: v = {}
+	    $ v = v.get(c, '#')
+            $if c == 'sample_time':
+	        ${loop.index != 1 and '|' or ''} ${v} \
+            $else:
+                ${loop.index != 1 and '|' or ''} ${'%s%s%.3s' % ('%s' % v).partition('.')} \
+     </$c>
+</system>

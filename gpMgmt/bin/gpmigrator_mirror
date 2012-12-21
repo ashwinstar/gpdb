@@ -68,7 +68,7 @@ def makeCommand(oldHome, newHome,
 def logGenericErrorMessage():
     logger.fatal('Upgrade Failed..!!!')
     logger.fatal('...Database might be in an unusable state')
-    logger.fatal('...Please check the logs, resolve the issue, and re-run gpmigrator_mirror.')
+    logger.fatal('...Please check the logs, resolve the issue an re-run gpmigrator_mirror')
 
 
 #============================================================
@@ -229,13 +229,13 @@ class GPUpgrade(GPUpgradeBase):
                 sys.exit(0)
 
             if len(args) != 2:
+                usage(EXECNAME)
                 msg = "incorrect number of arguments"
                 if len(args) > 0:
                     msg += ": %s" % str(args)
                 parser.error(msg)
-
         except Exception, e:
-            usage(EXECNAME)
+            usage()
             raise UpgradeError('Error parsing input: ' + str(e))
 
         if options.directory:
@@ -997,7 +997,6 @@ class GPUpgrade(GPUpgradeBase):
         self.ForceShutDown()
         self.Startup(self.oldenv, True)
         self.Update("""begin;
-            set allow_system_table_mods='dml';
             update gp_segment_configuration set mode='c', role='p' where preferred_role='m';
             update gp_segment_configuration set mode='s', role='m', status='d' where preferred_role='p' and content >=0;
             commit;
@@ -1058,7 +1057,6 @@ class GPUpgrade(GPUpgradeBase):
             raise UpgradeError("Mirror or Segments are down or out of sync")
 
         self.Update("""begin;
-            set allow_system_table_mods='dml';
             update gp_segment_configuration set mode='c' where preferred_role='p' and content >=0;
             update gp_segment_configuration set status='d' where preferred_role='m';
             commit;

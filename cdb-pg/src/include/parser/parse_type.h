@@ -19,8 +19,6 @@
 
 typedef HeapTuple Type;
 
-#define ReleaseType(fmw) ReleaseSysCache((fmw))
-
 extern Oid	LookupTypeName(ParseState *pstate, const TypeName *typname);
 extern char *TypeNameToString(const TypeName *typname);
 extern char *TypeNameListToString(List *typenames);

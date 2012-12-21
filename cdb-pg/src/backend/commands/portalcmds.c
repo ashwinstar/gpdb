@@ -36,7 +36,6 @@
 #include "cdb/cdbgang.h"
 #include "cdb/cdbtm.h"
 #include "cdb/cdbvars.h"
-#include "postmaster/backoff.h"
 
 extern char *savedSeqServerHost;
 extern int savedSeqServerPort;
@@ -117,15 +116,7 @@ PerformCursorOpen(PlannedStmt *stmt, ParamListInfo params,
 					  list_make1(stmt),
 					  PortalGetHeapMemory(portal));
 	
-	portal->is_extended_query = true; /* cursors run in extended query mode */
-
-	/* 
-	 * DeclareCursorStmt is a hybrid utility/select statement. Above, we've nullified
-	 * the utilityStmt within PlannedStmt so this appears like plain SELECT. As a consequence,
-	 * we lose access to the DeclareCursorStmt. To cope, we simply cover over the 
-	 * is_simply_updatable calculation for consumption by CURRENT OF constant folding.
-	 */
-	portal->is_simply_updatable = cstmt->is_simply_updatable;
+	portal->is_cursor = true; /* mark this portal as a cursor */
 
 	/*
 	 * Also copy the outer portal's parameter list into the inner portal's
@@ -316,8 +307,8 @@ PortalCleanup(Portal portal)
 		if (cleanupstate < 1 && Gp_role == GP_ROLE_DISPATCH)
 		{
 			cleanupstate = 1;
-			deallocatePortalGangs((char *)portal->name);
-			AtPortalDrop_CleanupIdleGangs(portal);
+			freeGangsForPortal((char *)portal->name);
+			cleanupPortalGangs(portal);
 		}
 
 		/* Sorry, can't dismiss this error. */
@@ -370,7 +361,7 @@ PortalCleanupHelper(Portal portal, volatile int *cleanupstate)
 	if (*cleanupstate < 1 && Gp_role == GP_ROLE_DISPATCH)
 	{
 		*cleanupstate = 1;
-		AtPortalDrop_CleanupIdleGangs(portal);
+		cleanupPortalGangs(portal);
 	}
 
 	/* 
@@ -381,17 +372,6 @@ PortalCleanupHelper(Portal portal, volatile int *cleanupstate)
 		portal->releaseResLock = false;
         ResUnLockPortal(portal);
 	}
-
-	/**
-	 * Clean up backend's backoff entry
-	 */
-	if (gp_enable_resqueue_priority
-			&& Gp_role == GP_ROLE_DISPATCH
-			&& gp_session_id > -1)
-	{
-		BackoffBackendEntryExit();
-	}
-
 }                               /* PortalCleanupHelper */
 
 

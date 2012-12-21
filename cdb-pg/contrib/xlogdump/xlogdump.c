@@ -190,7 +190,7 @@ RecordIsValid(XLogRecord *record, XLogRecPtr recptr)
 	char	   *blk;
 
 	/* First the rmgr data */
-	crc = crc32c(crc32cInit(), XLogRecGetData(record), len);
+	crc = crc32cSlicingBy8(crc32cInit(), XLogRecGetData(record), len);
 
 	/* Add in the backup blocks, if any */
 	blk = (char *) XLogRecGetData(record) + len;
@@ -209,7 +209,7 @@ RecordIsValid(XLogRecord *record, XLogRecPtr recptr)
 			return false;
 		}
 		blen = sizeof(BkpBlock) + BLCKSZ - bkpb.hole_length;
-		crc = crc32c(crc, blk, blen);
+		crc = crc32cSlicingBy8(crc, blk, blen);
 		blk += blen;
 	}
 
@@ -227,7 +227,7 @@ RecordIsValid(XLogRecord *record, XLogRecPtr recptr)
 	}
 
 	/* Finally include the record header */
-	crc = crc32c(crc, (char *) record + sizeof(pg_crc32),
+	crc = crc32cSlicingBy8(crc, (char *) record + sizeof(pg_crc32),
 			   SizeOfXLogRecord - sizeof(pg_crc32));
 	crc32cFinish(crc);
 
@@ -1672,9 +1672,9 @@ help(void)
 	printf("Usage:\n");
 	printf("  xlogdump [OPTION]... [segment file]\n");
 	printf("\nOptions controlling the output content:\n");
-	printf("  -r, --rmname=OPERATION    Outputs only the transaction log records\n"); 
+	printf("  -r, --rmname=OPERATION    Outuputs only the transaction log records\n"); 
 	printf("                            containing the specified operation\n");
-	printf("  -t, --transactions        Outputs only transaction info: the xid,\n");
+	printf("  -t, --transactions        Outuputs only transaction info: the xid,\n");
 	printf("                            total length and status of each transaction\n");
 	printf("  -s, --statements          Tries to build fake statements that produce the\n");
 	printf("                            physical changes found within the xlog segments\n");
@@ -1682,6 +1682,7 @@ help(void)
 	printf("  -h, --host=HOST           database server host or socket directory\n");
 	printf("  -p, --port=PORT           database server port number\n");
 	printf("  -U, --username=NAME       connect as specified database user\n\n");
+	printf("Report bugs to <diogob@gmail.com>.\n");
 	exit(0);
 }
 
@@ -1694,7 +1695,7 @@ main(int argc, char** argv)
 		{"transactions", no_argument, NULL, 't'},
 		{"statements", no_argument, NULL, 's'},
 		{"hide-timestamps", no_argument, NULL, 'T'},	
-		{"rmname", required_argument, NULL, 'r'},
+		{"rmid", required_argument, NULL, 'r'},
 		{"host", required_argument, NULL, 'h'},
 		{"port", required_argument, NULL, 'p'},
 		{"username", required_argument, NULL, 'U'},

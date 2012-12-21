@@ -43,7 +43,7 @@
    amproc         regproc
    );
 
-   create unique index on pg_amproc(amopclaid, amprocsubtype, amprocnum) with (indexid=2655, CamelCase=AccessMethodProcedure, syscacheid=AMPROCNUM, syscache_nbuckets=64);
+   create unique index on pg_amproc(amopclaid, amprocsubtype, amprocnum) with (indexid=2655, CamelCase=AccessMethodProcedure);
 
    alter table pg_amproc add fk amopclaid on pg_opclass(oid);
    alter table pg_amproc add fk amprocsubtype on pg_type(oid);
@@ -141,7 +141,6 @@ DATA(insert (	2233	0 1  380 ));
 DATA(insert (	2234	0 1  381 ));
 DATA(insert (	2789	0 1 2794 ));
 DATA(insert (	2904	0 1 2905 ));
-DATA(insert (	3075 	0 1 2960 ));
 
 
 /* hash */
@@ -179,7 +178,6 @@ DATA(insert (	2230	0 1 456 ));
 DATA(insert (	2231	0 1 456 ));
 DATA(insert (	2232	0 1 455 ));
 DATA(insert (	2235	0 1 329 ));
-DATA(insert (	3076 	0 1 2963 ));
 
 
 /* gist */

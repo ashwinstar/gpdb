@@ -41,17 +41,16 @@ extern void DefineIndex(RangeVar *heapRelation,
 extern void RemoveIndex(RangeVar *relation, DropBehavior behavior);
 extern void ReindexIndex(ReindexStmt *stmt);
 extern void ReindexTable(ReindexStmt *stmt);
-extern void ReindexDatabaseNew(ReindexStmt *stmt);
 extern void ReindexDatabase(ReindexStmt *stmt);
 extern char *makeObjectName(const char *name1, const char *name2,
 			   const char *label);
 extern char *ChooseRelationName(const char *name1, const char *name2,
-								const char *label, Oid nameSpace,
+								const char *label, Oid namespace, 
 								struct HTAB *cache);
 extern Oid	GetDefaultOpClass(Oid type_id, Oid am_id);
 
 /* commands/functioncmds.c */
-extern void CreateFunction(CreateFunctionStmt *stmt, const char *queryString);
+extern void CreateFunction(CreateFunctionStmt *stmt);
 extern void RemoveFunction(RemoveFuncStmt *stmt);
 extern void RemoveFunctionById(Oid funcOid);
 extern void SetFunctionReturnType(Oid funcOid, Oid newRetType);

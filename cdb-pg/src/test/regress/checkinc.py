@@ -32,6 +32,7 @@ fileset = {
     'curl/curl.h':       [],
     'direct.h':          [],
     'err.h':             [],
+    'emcconnect/api.h':  [],
     'float.h':           [],
     'getopt.h':          [],
     'gssapi.h':	       	 [],

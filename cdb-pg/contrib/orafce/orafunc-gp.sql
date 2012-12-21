@@ -12,6 +12,277 @@ RETURNS anyelement
 AS 'MODULE_PATHNAME','ora_nvl'
 LANGUAGE C IMMUTABLE;
 
+-- DECODE
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, text)
+RETURNS text
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, text, text)
+RETURNS text
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, text, anyelement, text)
+RETURNS text
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, text, anyelement, text, text)
+RETURNS text
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, text, anyelement, text, anyelement, text)
+RETURNS text
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, text, anyelement, text, anyelement, text, text)
+RETURNS text
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, bpchar)
+RETURNS bpchar
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, bpchar, bpchar)
+RETURNS bpchar
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, bpchar, anyelement, bpchar)
+RETURNS bpchar
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, bpchar, anyelement, bpchar, bpchar)
+RETURNS bpchar
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, bpchar, anyelement, bpchar, anyelement, bpchar)
+RETURNS bpchar
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, bpchar, anyelement, bpchar, anyelement, bpchar, bpchar)
+RETURNS bpchar
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, integer)
+RETURNS integer
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, integer, integer)
+RETURNS integer
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, integer, anyelement, integer)
+RETURNS integer
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, integer, anyelement, integer, integer)
+RETURNS integer
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, integer, anyelement, integer, anyelement, integer)
+RETURNS integer
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, integer, anyelement, integer, anyelement, integer, integer)
+RETURNS integer
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, bigint)
+RETURNS bigint
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, bigint, bigint)
+RETURNS bigint
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, bigint, anyelement, bigint)
+RETURNS bigint
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, bigint, anyelement, bigint, bigint)
+RETURNS bigint
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, bigint, anyelement, bigint, anyelement, bigint)
+RETURNS bigint
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, bigint, anyelement, bigint, anyelement, bigint, bigint)
+RETURNS bigint
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, numeric)
+RETURNS numeric
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, numeric, numeric)
+RETURNS numeric
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, numeric, anyelement, numeric)
+RETURNS numeric
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, numeric, anyelement, numeric, numeric)
+RETURNS numeric
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, numeric, anyelement, numeric, anyelement, numeric)
+RETURNS numeric
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, numeric, anyelement, numeric, anyelement, numeric, numeric)
+RETURNS numeric
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, date)
+RETURNS date
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, date, date)
+RETURNS date
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, date, anyelement, date)
+RETURNS date
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, date, anyelement, date, date)
+RETURNS date
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, date, anyelement, date, anyelement, date)
+RETURNS date
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, date, anyelement, date, anyelement, date, date)
+RETURNS date
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, time)
+RETURNS time
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, time, time)
+RETURNS time
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, time, anyelement, time)
+RETURNS time
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, time, anyelement, time, time)
+RETURNS time
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, time, anyelement, time, anyelement, time)
+RETURNS time
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, time, anyelement, time, anyelement, time, time)
+RETURNS time
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, timestamp)
+RETURNS timestamp
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, timestamp, timestamp)
+RETURNS timestamp
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, timestamp, anyelement, timestamp)
+RETURNS timestamp
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, timestamp, anyelement, timestamp, timestamp)
+RETURNS timestamp
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, timestamp, anyelement, timestamp, anyelement, timestamp)
+RETURNS timestamp
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, timestamp, anyelement, timestamp, anyelement, timestamp, timestamp)
+RETURNS timestamp
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, timestamptz)
+RETURNS timestamptz
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, timestamptz, timestamptz)
+RETURNS timestamptz
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, timestamptz, anyelement, timestamptz)
+RETURNS timestamptz
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, timestamptz, anyelement, timestamptz, timestamptz)
+RETURNS timestamptz
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, timestamptz, anyelement, timestamptz, anyelement, timestamptz)
+RETURNS timestamptz
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, timestamptz, anyelement, timestamptz, anyelement, timestamptz, timestamptz)
+RETURNS timestamptz
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
 -- ADD_MONTHS
 CREATE OR REPLACE FUNCTION add_months(day date, value int)
 RETURNS date
@@ -42,20 +313,20 @@ AS 'MODULE_PATHNAME'
 LANGUAGE 'C' IMMUTABLE STRICT;
 
 -- TRUNC
-CREATE OR REPLACE FUNCTION trunc(value timestamp with time zone, fmt text)
-RETURNS timestamp with time zone
-AS 'MODULE_PATHNAME', 'ora_timestamptz_trunc'
-LANGUAGE 'C' IMMUTABLE STRICT;
-
-CREATE OR REPLACE FUNCTION trunc(value timestamp with time zone)
-RETURNS timestamp with time zone
-AS $$ SELECT trunc($1, 'DDD'); $$
-LANGUAGE 'SQL' IMMUTABLE STRICT;
-
 CREATE OR REPLACE FUNCTION trunc(value date, fmt text)
 RETURNS date
-AS 'MODULE_PATHNAME', 'ora_date_trunc'
+AS 'MODULE_PATHNAME','ora_date_trunc'
 LANGUAGE 'C' IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION trunc(value timestamp with time zone, fmt text)
+RETURNS date
+AS $$ SELECT trunc($1::date, $2); $$
+LANGUAGE 'SQL' IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION trunc(value timestamp with time zone)
+RETURNS date
+AS $$ SELECT trunc($1::date, 'DDD'); $$
+LANGUAGE 'SQL' IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION trunc(value date)
 RETURNS date
@@ -63,20 +334,20 @@ AS $$ SELECT $1; $$
 LANGUAGE 'SQL' IMMUTABLE STRICT;
 
 -- ROUND
-CREATE OR REPLACE FUNCTION round(value timestamp with time zone, fmt text)
-RETURNS timestamp with time zone
-AS 'MODULE_PATHNAME', 'ora_timestamptz_round'
-LANGUAGE 'C' IMMUTABLE STRICT;
-
-CREATE OR REPLACE FUNCTION round(value timestamp with time zone)
-RETURNS timestamp with time zone
-AS $$ SELECT round($1, 'DDD'); $$
-LANGUAGE 'SQL' IMMUTABLE STRICT;
-
 CREATE OR REPLACE FUNCTION round(value date, fmt text)
 RETURNS date
 AS 'MODULE_PATHNAME','ora_date_round'
 LANGUAGE 'C' IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION round(value timestamp with time zone, fmt text)
+RETURNS date
+AS $$ SELECT round($1::date, $2); $$
+LANGUAGE 'SQL' IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION round(value timestamp with time zone)
+RETURNS date
+AS $$ SELECT round($1, 'DDD'); $$
+LANGUAGE 'SQL' IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION round(value date)
 RETURNS date
@@ -220,41 +491,5 @@ CREATE OR REPLACE FUNCTION substr(str text, start int, len int)
 RETURNS text
 AS 'MODULE_PATHNAME','oracle_substr3'
 LANGUAGE C IMMUTABLE STRICT;
-
--- Oracle's VARCHAR2
-CREATE FUNCTION varchar2in(cstring) 
-RETURNS varchar2
-AS 'varcharin'
-LANGUAGE internal IMMUTABLE STRICT;
-
-CREATE FUNCTION varchar2out(varchar2)
-RETURNS cstring
-AS 'varcharout'
-LANGUAGE internal IMMUTABLE STRICT;
-
-CREATE FUNCTION varchar2recv(internal)
-RETURNS varchar2
-AS 'varcharrecv'
-LANGUAGE internal STABLE STRICT;
-
-CREATE FUNCTION varchar2send(varchar2)
-RETURNS bytea
-AS 'varcharsend'
-LANGUAGE internal STABLE STRICT;
-
-CREATE TYPE varchar2(
-	INPUT = varchar2in,
-	OUTPUT = varchar2out,
-	RECEIVE = varchar2recv,
-	SEND = varchar2send,
-	INTERNALLENGTH = variable,
-	ALIGNMENT = int4,
-	STORAGE = extended);
-
--- create supporting casts
-CREATE CAST (varchar2 as varchar) WITHOUT FUNCTION AS IMPLICIT;
-CREATE CAST (varchar as varchar2) WITHOUT FUNCTION AS IMPLICIT;
-CREATE CAST (varchar2 as text) WITHOUT FUNCTION AS IMPLICIT;
-CREATE CAST (text as varchar2) WITHOUT FUNCTION AS IMPLICIT;
 
 COMMIT;

@@ -48,6 +48,7 @@ extern bool LogicalTapeSeek(LogicalTapeSet *lts, LogicalTape *lt, LogicalTapePos
 extern void LogicalTapeTell(LogicalTapeSet *lts, LogicalTape *lt, LogicalTapePos *pos);
 
 extern long LogicalTapeSetBlocks(LogicalTapeSet *lts);
+extern void LogicalTapeSetForgetFreeSpace(LogicalTapeSet *lts);
 
 extern LogicalTape *LogicalTapeSetGetTape(LogicalTapeSet *lts, int tapenum);
 extern LogicalTape *LogicalTapeSetDuplicateTape(LogicalTapeSet *lts, LogicalTape *lt);

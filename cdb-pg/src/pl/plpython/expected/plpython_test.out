@@ -104,12 +104,12 @@ select spi_prepared_plan_test_nested('smith');
 
 -- quick peek at the table
 --
-SELECT * FROM users order by userid;
+SELECT * FROM users;
  fname  | lname | username | userid 
 --------+-------+----------+--------
  jane   | doe   | j_doe    |      1
- john   | doe   | johnd    |      2
  willem | doe   | w_doe    |      3
+ john   | doe   | johnd    |      2
  rick   | smith | slash    |      4
 (4 rows)
 
@@ -120,14 +120,14 @@ UPDATE users SET fname = 'william' WHERE fname = 'willem';
 --
 INSERT INTO users (fname, lname) VALUES ('william', 'smith');
 INSERT INTO users (fname, lname, username) VALUES ('charles', 'darwin', 'beagle');
-SELECT * FROM users order by userid;
+SELECT * FROM users;
   fname  | lname  | username | userid 
 ---------+--------+----------+--------
  jane    | doe    | j_doe    |      1
- john    | doe    | johnd    |      2
  willem  | doe    | w_doe    |      3
- rick    | smith  | slash    |      4
  willem  | smith  | w_smith  |      5
+ john    | doe    | johnd    |      2
+ rick    | smith  | slash    |      4
  charles | darwin | beagle   |      6
 (6 rows)
 
@@ -182,7 +182,7 @@ NOTICE:  notice
 CONTEXT:  PL/Python function "elog_test"
 WARNING:  warning
 CONTEXT:  PL/Python function "elog_test"
-ERROR:  plpy.Error: error (plpython.c:4652)
+ERROR:  plpy.Error: error (plpython.c:4647)
 CONTEXT:  Traceback (most recent call last):
   PL/Python function "elog_test", line 10, in <module>
     plpy.error('error')

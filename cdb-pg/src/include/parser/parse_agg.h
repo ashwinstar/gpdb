@@ -23,7 +23,6 @@ extern void parseCheckAggregates(ParseState *pstate, Query *qry);
 extern void parseProcessWindFuncs(ParseState *pstate, Query *qry);
 extern void transformWindowSpec(ParseState *pstate, WindowSpec *spec);
 extern void transformWindowSpecExprs(ParseState *pstate);
-extern List *transformTargetListSequenced(ParseState *pstate, List **targetlist);
 
 extern void build_aggregate_fnexprs(Oid *agg_input_types,
 						int agg_num_inputs,

@@ -257,7 +257,7 @@ CreatePortal(const char *name, bool allowDup, bool dupSilent)
 		portal->portalId = ResCreatePortalId(name);
 		portal->queueId = GetResQueueId();
 	}
-	portal->is_extended_query = false; /* default value */	
+	portal->is_cursor = false; /* default value */	
 
 	/* put portal in table (sets portal->name) */
 	PortalHashTableInsert(portal, name);

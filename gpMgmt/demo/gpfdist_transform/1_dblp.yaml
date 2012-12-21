@@ -6,7 +6,7 @@ GPLOAD:
   INPUT:
   - SOURCE:
       LOCAL_HOSTNAME: [ 127.0.0.1 ] # <---- replace as appropriate
-      PORT:             8080
+      PORT_RANGE:     [ 8080 ]
       FILE:           [ data/dblp.xml ]
 
   - FORMAT:           text

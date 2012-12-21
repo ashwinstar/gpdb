@@ -6,7 +6,6 @@
 #endif
 #endif
 
-#include <sys/stat.h>       /* S_IRUSR, S_IWUSR */
 #include <apr_getopt.h>
 #include <apr_env.h>
 #include <apr_file_info.h>
@@ -25,15 +24,13 @@
 #include <regex.h>
 #include <gpfxdist.h>
 #endif
-
-#include "fstream/fstream.h"
+#include <fstream/fstream.h>
 
 #ifndef WIN32
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>
-#include <arpa/inet.h>
 #define SOCKET int
 #ifndef closesocket
 #define closesocket(x)   close(x)
@@ -52,10 +49,6 @@
 #endif
 
 #endif
-
-#include <openssl/ssl.h>
-#include <openssl/rand.h>
-#include <openssl/err.h>
 
 /*  A data block */
 typedef struct blockhdr_t blockhdr_t;
@@ -78,29 +71,9 @@ struct block_t
 
 #define FLINE		__FILE__":"APR_STRINGIFY(__LINE__)
 
-/* This is the default file permissions for WET file created by the gpfdist (if WET is used) */
-#define DEFAULT_WET_FILE_PERMISSIONS	(S_IRUSR | S_IWUSR)
-#define WET_FILE_PERMISSIONS_MAX_VALUE	(777)
-#define WET_FILE_PERMISSIONS_LENGTH		(3)
-#define MAXIMAL_OCTAL_CHAR				('7')
-#define MINIMAL_OCTAL_CHAR				('0')
-
-
 int gprint(const char* fmt, ...);
 void gfatal(const char* fline, const char* fmt, ...);
 int gwarning(const char* fline, const char* fmt, ...);
-
-static void base16_decode(char* data);
-
-/* SSL additions */
-#define SSL_RENEGOTIATE_TIMEOUT_SEC	(600) /* 10 minutes */
-const char* const CertificateFilename = "server.crt";
-const char* const PrivateKeyFilename = "server.key";
-const char* const TrustedCaFilename = "root.crt";
-static SSL_CTX *initialize_ctx(void);
-static void handle_ssl_error(SOCKET sock, BIO *sbio, SSL *ssl);
-static void flush_ssl_buffer(int fd, short event, void* arg);
-/* SSL end */
 
 /**************
 
@@ -140,15 +113,13 @@ struct gnet_request_t
 static gnet_request_t* gnet_parse_request(const char* buf, int* len,
 										  apr_pool_t* pool);
 static char* gstring_trim(char* s);
+static void percent_encoding_to_char(char* p, char* pp, char* path);
 
-#ifndef GPFDIST_VERSION
-#define GPFDIST_VERSION unknown
+#ifndef GP_VERSION
+#define GP_VERSION unknown
 #endif
 
-#define GP_VERSIONX APR_STRINGIFY(GPFDIST_VERSION)
-
-/* this macro must be the same as EMPTY_DELIM_STR in fileam.c */
-#define EMPTY_DELIM_STR "empty"
+#define GP_VERSIONX APR_STRINGIFY(GP_VERSION)
 
 /* CR-2723 */
 #define GPFDIST_MAX_LINE_LOWER_LIMIT (32*1024)
@@ -173,16 +144,13 @@ static struct
 	const char*	f; /* forced filename */
 	int			g; /* gp_proto (0 or 1) (internal, not documented) */
 	int			t; /* timeout in seconds */
-	const char *b; /* IP address to bind (internal, not documented) */
+	const char *b;
 	int			m; /* max data line len */
 	int			S; /* use O_SYNC when opening files for write  */
-	int			z; /* listen queue size (hidden option currently for debugging) */
+	int			z; /* listen queue size (hidden option currently for debuging) */
 	const char* c; /* config file */
 	struct transform* trlist; /* transforms from config file */
-	const char* ssl; 		/* path to certificates in case we use gpfdist with ssl */
-	int 		sslclean; 	/* Defines the time to wait [sec] until cleanup the SSL resources (internal, not documented) */
-	int			fp;			/* The file permissions of the created file. Applicable to Writable External Table only	*/
-} opt = { 8080, 8080, 0, 0, ".", 0, 0, -1, 5, 0, 32768, 0, 256, 0, 0, 0, 5, DEFAULT_WET_FILE_PERMISSIONS};
+} opt = { 8080, 8080, 0, 0, ".", 0,0, -1, 5, 0, 32768, 0, 256, 0, 0 };
 
 #if APR_IS_BIGENDIAN
 #define local_htonll(n)  (n)
@@ -221,7 +189,7 @@ static void block_fill_header(block_t* b,
 	p += 4;
 	memcpy(p, fos->fname, fname_len);
 	p += fname_len;
-	TR(("F %u %s\n", (unsigned int)ntohl(len), fos->fname));
+	TR(("F %d %s\n", (int)ntohl(len), fos->fname));
 
 	/* OFFSET: 'O' + len + foff */
 	*p++ = 'O';
@@ -231,7 +199,7 @@ static void block_fill_header(block_t* b,
 	p += 4;
 	memcpy(p, &len8, 8);
 	p += 8;
-	TR(("O %llu\n",(unsigned long long) local_ntohll(len8)));
+	TR(("O %d\n", (int)local_ntohll(len8)));
 
 	/* LINENUMBER: 'L' + len + linenumber */
 	*p++ = 'L';
@@ -240,14 +208,14 @@ static void block_fill_header(block_t* b,
 	p += 4;
 	memcpy(p, &len8, 8);
 	p += 8;
-	TR(("L %llu\n", (unsigned long long)local_ntohll(len8)));
+	TR(("L %d\n", (int)local_ntohll(len8)));
 
 	/* DATA: 'D' + len */
 	*p++ = 'D';
 	len = htonl(b->top-b->bot);
 	memcpy(p, &len, 4);
 	p += 4;
-	TR(("D %u\n", (unsigned int)ntohl(len)));
+	TR(("D %d\n", (int)ntohl(len)));
 	h->htop = p - h->hbyte;
 	if (h->htop > sizeof(h->hbyte))
 		gfatal(FLINE, "assert failed, h->htop = %d, max = %d\n", h->htop,
@@ -270,8 +238,6 @@ static struct
 	apr_int64_t 	read_bytes;
 	apr_int64_t 	total_bytes;
 	int 			total_sessions;
-	BIO 			*bio_err;	/* for SSL */
-	SSL_CTX 		*server_ctx;/* for SSL */
 } gcb;
 
 /*  A session */
@@ -336,15 +302,7 @@ struct request_t
 		int 	dbufmax; 	/* size of dbuf[] */
 	} in;
 
-	block_t	outblock;	/* next block to send out */
-	char*           line_delim_str;
-	int             line_delim_length;
-	
-	/* SSL related */
-	BIO			*io;		/* for the i.o. */
-	BIO			*sbio;		/* for the accept */
-	BIO			*ssl_bio;
-	SSL			*ssl;
+	block_t outblock; /* next block to send out */
 };
 
 /* send gp-proto==1 ctl info */
@@ -370,18 +328,6 @@ static int request_set_transform(request_t *r);
 #endif
 static void handle_post_request(request_t *r, int header_end);
 static void handle_get_request(request_t *r);
-static int validate_file_permissions(const char *arg);
-
-static int gpfdist_socket_send(const request_t *r, const void *buf, const size_t buflen);
-static int gpfdist_SSL_send(const request_t *r, const void *buf, const size_t buflen);
-static int (*gpfdist_send)(const request_t *r, const void *buf, const size_t buflen); /* function pointer */
-static int gpfdist_socket_receive(const request_t *r, void *buf, const size_t buflen);
-static int gpfdist_SSL_receive(const request_t *r, void *buf, const size_t buflen);
-static int (*gpfdist_receive)(const request_t *r, void *buf, const size_t buflen); /* function pointer */
-static void free_SSL_resources(const request_t *r);
-static void setup_flush_ssl_buffer(request_t* r);
-static void request_cleanup(request_t *r);
-static void request_cleanup_and_free_SSL_resources(int fd, short event, void* arg);
 
 /* Print usage */
 static void usage_error(const char* msg, int print_usage)
@@ -413,7 +359,7 @@ static void usage_error(const char* msg, int print_usage)
 		{
 			fprintf(stderr,
 					"gpfdist -- file distribution web server\n\n"
-						"usage: gpfdist [--ssl <certificates_directory>] [-d <directory>] [-p <http(s)_port>] [-l <log_file>] [-t <timeout>] [-v | -V] [-m <maxlen>] [--fp <WET_file_permissions>] "
+						"usage: gpfdist [-d <directory>] [-p <http_port>] [-l <log_file>] [-t <timeout>] [-v | -V] [-m <maxlen>]"
 #ifdef GPFXDIST
 					    "[-c file]"
 #endif
@@ -422,13 +368,11 @@ static void usage_error(const char* msg, int print_usage)
 						"        -?, --help : print this screen\n"
 						"        -v         : verbose mode\n"
 						"        -V         : more verbose\n"
-						"        -p port    : port to serve HTTP(S), default is 8080\n"
+						"        -p port    : port to serve HTTP, default is 8080\n"
 						"        -d dir     : serve files under the specified directory,  default is '.'\n"
 						"        -l logfn   : log filename\n"
-						"        -t tm      : timeout in seconds \n"
+					    "        -t tm      : timeout in seconds \n"
 						"        -m maxlen  : max data row length expected, in bytes. default is 32768\n"
-						"        --ssl dir  : start HTTPS server. Use the certificates from the specified directory\n"
-						"        --fp mode  : specifies the file permissions for the Writable External Table file created by the gpfdist (if WET is used). default is 600\n"
 #ifdef GPFXDIST
 					    "        -c file    : configuration file for transformations\n"
 #endif
@@ -466,16 +410,13 @@ static void parse_command_line(int argc, const char* const argv[],
 	int 			ch;
 	int 			e;
 
-	char* current_directory = NULL;
-
 	static const apr_getopt_option_t option[] =
 	{
-	/* long-option, short-option, has-arg flag, description */
 	{ "help", '?', 0, "print help screen" },
 	{ NULL, 'V', 0, "very verbose" },
 	{ NULL, 'v', 0, "verbose mode" },
-	{ NULL, 'p', 1, "which port to serve HTTP(S)" },
-	{ NULL, 'P', 1, "last port of range of ports to serve HTTP(S)" },
+	{ NULL, 'p', 1, "which port to serve HTTP" },
+	{ NULL, 'P', 1, "last port of range of ports to serve HTTP" },
 	{ NULL, 'd', 1, "serve files under this directory" },
 	{ NULL, 'f', 1, "internal - force file to be given file name" },
 	{ NULL, 'b', 1, "internal - bind to ip4 address" },
@@ -488,9 +429,6 @@ static void parse_command_line(int argc, const char* const argv[],
 	{ NULL, 'm', 1, "max data row length expected" },
 	{ NULL, 'S', 0, "use O_SYNC when opening files for write" },
 	{ NULL, 'z', 1, "internal - queue size for listen call" },
-	{ "ssl", 257, 1, "ssl - certificates files under this directory" },
-	{ "sslclean", 258, 1, "Defines the time to wait [sec] until cleanup the SSL resources" },
-	{ "fp", 259, 1, "The file permissions of the created file. Applicable to Writable External Table only"},
 #ifdef GPFXDIST
 	{ NULL, 'c', 1, "transform configuration file" },
 #endif
@@ -561,23 +499,6 @@ static void parse_command_line(int argc, const char* const argv[],
 		case 'c':
 			opt.c = arg;
 			break;
-		case 257:
-			opt.ssl = arg;
-			break;
-		case 258:
-			opt.sslclean = atoi(arg);
-			break;
-		case 259:
-			/* The specified file permissions are represented as decimal, whereas we actually need it as octal number 	*/
-			/* We must verify the input here, since after the strtoul(,,8), we won't be able to verify the input.		*/
-			/* e.g. arg = "888" => strtoul("888", NULL, 8) = 0. which are a legal file permissions						*/
-			if (validate_file_permissions(arg) != 0 )
-			{
-				usage_error(apr_psprintf(pool,"Error: --fp should be between 000 and %d. The valid digits are %c through %c (default value is %o)",
-											   WET_FILE_PERMISSIONS_MAX_VALUE, MINIMAL_OCTAL_CHAR, MAXIMAL_OCTAL_CHAR, DEFAULT_WET_FILE_PERMISSIONS), 0);
-			}
-			opt.fp = (int)strtoul(arg, NULL, 8);
-			break;
 		case 256:
 			print_version();
 			break;
@@ -597,7 +518,7 @@ static void parse_command_line(int argc, const char* const argv[],
 	}
 
 	if (! ((2 <= opt.t && opt.t <= 30) || opt.t == 0))
-		usage_error("Error: -t timeout must be between 2 and 30, or 0 for no timeout", 0);
+		usage_error("Error:-t timeout must be between 2 and 30, or 0 for no timeout", 0);
 
 	/* validate max row length */
     if (! ((GPFDIST_MAX_LINE_LOWER_LIMIT <= opt.m) && (opt.m <= GPFDIST_MAX_LINE_UPPER_LIMIT)))
@@ -605,11 +526,6 @@ static void parse_command_line(int argc, const char* const argv[],
 
     if (! (16 <= opt.z && opt.t <= 512) )
 		usage_error("Error: -z listen queue size must be between 16 and 512 (default is 256)", 0);
-
-    /* get current directory, for ssl directory validation */
-    if (0 != apr_filepath_get(&current_directory, APR_FILEPATH_NATIVE, pool))
-		usage_error(apr_psprintf(pool, "Error: cannot access directory '.'\n"
-									   "Please run gpfdist from a different location"), 0);
 
 	/* validate opt.d */
 	{
@@ -621,8 +537,7 @@ static void parse_command_line(int argc, const char* const argv[],
 
 		/* disallow / */
 		if (0 == strcmp(p, "/"))
-			usage_error("Security Error:  You cannot specify the root"
-						" directory (/) as the source files directory.", 0);
+			usage_error("Security Error: cannot run under root (/) directory", 0);
 
 		/* strip ending / */
 		while (p[0] && p[strlen(p) - 1] == '/')
@@ -656,8 +571,8 @@ static void parse_command_line(int argc, const char* const argv[],
 
 		/* disallow / */
 		if (0 == strcmp(p, "/"))
-			usage_error("Security Error: You cannot specify the root"
-						" directory (/) as the log file directory.", 0);
+			usage_error("Security Error: cannot run under root (/) directory",
+						0);
 
 		/* strip ending / */
 		while (p[0] && p[strlen(p) - 1] == '/')
@@ -678,40 +593,6 @@ static void parse_command_line(int argc, const char* const argv[],
 		fclose(f);
 
 	}
-
-	/* validate opt.ssl */
-	if (opt.ssl)
-	{
-		char* p = gstring_trim(apr_pstrdup(pool, opt.ssl));
-
-		/* collapse // */
-		while (p[0] == '/' && p[1] == '/')
-			p++;
-
-		/* disallow / */
-		if (0 == strcmp(p, "/"))
-			usage_error("Security Error: You cannot specify the root" 
-						" directory (/) as the certificates directory", 0);
-
-		/* strip ending / */
-		while (p[0] && p[strlen(p) - 1] == '/')
-			p[strlen(p) - 1] = 0;
-		opt.ssl = p;
-
-		/* change current directory to original one (after -d changed it) */
-		if (0 != apr_filepath_set(current_directory, pool))
-				usage_error(apr_psprintf(pool, "Error: cannot access directory '%s'\n"
-											   "Please run gpfdist from a different location", current_directory), 0);
-		/* check that the dir exists */
-		if ( (0 != apr_filepath_set(opt.ssl, pool)) || (0 != apr_filepath_get(&p, APR_FILEPATH_NATIVE, pool)) )
-			usage_error(apr_psprintf(pool, "Error: cannot access directory '%s'\n"
-				"Please specify a valid directory for --ssl switch", opt.ssl), 0);
-		opt.ssl = p;
-	}
-
-	/* Validate opt.sslclean */
-	if ( (opt.sslclean < 0) || (opt.sslclean > 300) )
-		usage_error("Error: --sslclean timeout must be between 0 and 300 [sec] (default is 5[sec])", 0);
 
 #ifdef GPFXDIST
     /* validate opt.c */
@@ -750,7 +631,7 @@ static void http_error(request_t* r, int code, const char* msg)
 		"Cache-Control: no-cache\r\n"
 		"Connection: close\r\n\r\n", code, msg);
 
-	gpfdist_send(r, buf, n);
+	send(r->sock, buf, n, 0);
 }
 
 /* send an empty response */
@@ -764,7 +645,7 @@ static void http_empty(request_t* r)
 		"Cache-Control: no-cache\r\n"
 		"Connection: close\r\n\r\n";
 	gprint("%s %s %s - OK\n", r->peer, r->in.req->argv[0], r->in.req->argv[1]);
-	gpfdist_send(r, buf, sizeof buf -1);
+	send(r->sock, buf, sizeof buf - 1, 0);
 }
 
 /* send a Continue response */
@@ -774,7 +655,7 @@ static void http_continue(request_t* r)
 
 	gprint("%s %s %s - Continue\n", r->peer, r->in.req->argv[0], r->in.req->argv[1]);
 
-	gpfdist_send(r, buf, sizeof buf -1);
+	send(r->sock, buf, sizeof buf - 1, 0);
 }
 
 
@@ -795,7 +676,7 @@ static apr_status_t http_ok(request_t* r)
 	if (n >= sizeof(buf) - 1)
 		gfatal(FLINE, "internal error - buffer overflow during http_ok");
 
-	m = gpfdist_send(r, buf, n);
+	m = send(r->sock, buf, n, 0);
 	if (m != n)
 	{
 		gprint("%s - socket error\n", r->peer);
@@ -835,7 +716,7 @@ static apr_status_t send_gpfdist_status(request_t* r)
 	if (n >= sizeof buf - 1)
 		gfatal(FLINE, "internal error - buffer overflow during send_gpfdist_status");
 
-	m = gpfdist_send(r, buf, n);
+	m = send(r->sock, buf, n, 0);
 
 	if (m != n)
 	{
@@ -913,20 +794,16 @@ static void request_end(request_t* r, int error, const char* errmsg)
 		session_detach(r);
 	}
 
-	/* If we still have data in the buffer - flush it */
-	if ( opt.ssl )
-	{
-		flush_ssl_buffer(r->sock, 0, r);
-	}
-	else
-	{
-		request_cleanup(r);
-	}
+	event_del(&r->ev);
+	shutdown(r->sock, SHUT_WR | SHUT_RD);
+	closesocket(r->sock);
+	r->sock = -1;
+	apr_pool_destroy(r->pool);
 }
 
-static int local_send(request_t *r, const char* buf, int buflen)
+static int local_send(int fd, const char* buf, int buflen)
 {
-	int n = gpfdist_send(r, buf, buflen);
+	int n = send(fd, buf, buflen, 0);
 
 	if (n < 0)
 	{
@@ -937,23 +814,19 @@ static int local_send(request_t *r, const char* buf, int buflen)
 		int e = errno;
 		int ok = (e == EINTR || e == EAGAIN);
 #endif
-		if ( e == EPIPE )
-		{
-			gprint(FLINE,"gpfdist_send failed - the connection was terminated by the client (%d)\n",e);
-		}
 		return ok ? 0 : -1;
 	}
 
 	return n;
 }
 
-static int local_sendall(request_t* r, const char* buf, int buflen)
+static int local_sendall(int fd, const char* buf, int buflen)
 {
 	int oldlen = buflen;
 
 	while (buflen)
 	{
-		int i = local_send(r, buf, buflen);
+		int i = local_send(fd, buf, buflen);
 
 		if (i < 0)
 			return i;
@@ -977,8 +850,7 @@ static int local_sendall(request_t* r, const char* buf, int buflen)
  * this function creates and sends the meta info according to the passed in
  * arguments. It does not send the block itself (bytes 5-X).
  */
-static int
-gp1_send_header(request_t*r, char letter, int length)
+static int gp1_send_header(request_t*r, char letter, int length)
 {
 	char 		hdr[5];
 	const char*	p = hdr;
@@ -988,15 +860,14 @@ gp1_send_header(request_t*r, char letter, int length)
 
 	memcpy(hdr + 1, &length, 4);
 
-	return local_sendall(r, p, 5) < 0 ? -1 : 0;
+	return local_sendall(r->sock, p, 5) < 0 ? -1 : 0;
 }
 
 /*
  * Send a message to the client to indicate EOF - no more data. This is done
  * by sending a 'D' message type (Data) with length 0.
  */
-static void
-gp1_send_eof(request_t* r)
+static void gp1_send_eof(request_t* r)
 {
 	if (!gp1_send_header(r, 'D', 0))
 		TR(("[%d] sent EOF\n", r->sock));
@@ -1005,12 +876,11 @@ gp1_send_eof(request_t* r)
 /*
  * Send an error message to the client, using the 'E' message type.
  */
-static void 
-gp1_send_errmsg(request_t* r, const char* errmsg)
+static void gp1_send_errmsg(request_t* r, const char* errmsg)
 {
 	apr_int32_t len = strlen(errmsg);
 	if (!gp1_send_header(r, 'E', len))
-		local_sendall(r, errmsg, len);
+		local_sendall(r->sock, errmsg, len);
 }
 
 #ifdef GPFXDIST
@@ -1027,9 +897,9 @@ static void gp1_send_errfile(request_t* r, apr_file_t* errfile)
 	{
 		if (nbytes > 0)
 		{
-			if (! gp1_send_header(r, 'E', nbytes))
+			if (! gp1_send_header(r, 'E', nbytes)) 
 			{
-				local_sendall(r, buf, nbytes);
+				local_sendall(r->sock, buf, nbytes);
 				TR(("[%d] request sent %"APR_SIZE_T_FMT" stderr bytes to server\n", r->sock, nbytes));
 			}
 		}
@@ -1044,7 +914,7 @@ static void gp1_send_errfile(request_t* r, apr_file_t* errfile)
  * header (metadata for client such as filename, etc) and the data itself.
  */
 static const char*
-session_get_block(session_t* session, block_t* retblock, char* line_delim_str, int line_delim_length)
+session_get_block(session_t* session, block_t* retblock)
 {
 	int 		size;
 	const int 	whole_rows = 1; /* gpfdist must not read data with partial rows */
@@ -1061,7 +931,7 @@ session_get_block(session_t* session, block_t* retblock, char* line_delim_str, i
 	gcb.read_bytes -= fstream_get_compressed_position(session->fstream);
 
 	/* read data from our filestream as a chunk with whole data rows */
-	size = fstream_read(session->fstream, retblock->data, opt.m, &fos, whole_rows, line_delim_str, line_delim_length);
+	size = fstream_read(session->fstream, retblock->data, opt.m, &fos, whole_rows);
 
 	if (size == 0)
 	{
@@ -1262,7 +1132,6 @@ static int session_attach(request_t* r)
 		memset(&fstream_options, 0, sizeof fstream_options);
 		fstream_options.verbose = opt.v;
 		fstream_options.bufsize = opt.m;
-		fstream_options.file_permissions = opt.fp;
 
 		{
 			int quote = 0;
@@ -1281,7 +1150,6 @@ static int session_attach(request_t* r)
 		{
 			fstream_options.forwrite = 1; /* PUT request */
 			fstream_options.usesync = opt.S;
-			gprint("File permissions are: %o\n", opt.fp);
 		}
 
 #ifdef GPFXDIST
@@ -1464,7 +1332,7 @@ static void do_write(int fd, short event, void* arg)
 		/* get a block (or find a remaining block) */
 		if (r->outblock.top == r->outblock.bot)
 		{
-			const char* ferror = session_get_block(r->session, &r->outblock, r->line_delim_str, r->line_delim_length);
+			const char* ferror = session_get_block(r->session, &r->outblock);
 
 			if (ferror)
 			{
@@ -1490,7 +1358,7 @@ static void do_write(int fd, short event, void* arg)
 
 			if (n > 0)
 			{
-				n = local_send(r, datablock->hdr.hbyte + datablock->hdr.hbot, n);
+				n = local_send(fd, datablock->hdr.hbyte + datablock->hdr.hbot, n);
 				if (n < 0)
 				{
 					if (errno == EPIPE || errno == ECONNRESET)
@@ -1513,7 +1381,7 @@ static void do_write(int fd, short event, void* arg)
 		 * write out the block data
 		 */
 		n = datablock->top - datablock->bot;
-		n = local_send(r, datablock->data + datablock->bot, n);
+		n = local_send(fd, datablock->data + datablock->bot, n);
 		if (n < 0)
 		{
 			/*
@@ -1570,20 +1438,6 @@ static void do_read_request(int fd, short event, void* arg)
 		return;
 	}
 
-	/* Execute only once */
-	if (opt.ssl && !r->io && !r->ssl_bio)
-	{
-		r->io = BIO_new(BIO_f_buffer());
-		r->ssl_bio = BIO_new(BIO_f_ssl());
-		BIO_set_ssl(r->ssl_bio, r->ssl, BIO_CLOSE);
-		BIO_push(r->io, r->ssl_bio);
-
-		/* Set the renegotiate timeout in seconds. 	*/
-		/* When the renegotiate timeout elapses the */
-		/* session is automatically renegotiated	*/
-		BIO_set_ssl_renegotiate_timeout(r->ssl_bio, SSL_RENEGOTIATE_TIMEOUT_SEC);
-	}
-
 	/* how many bytes left in the header buf */
 	n = r->in.hbufmax - r->in.hbuftop;
 	if (n <= 0)
@@ -1594,7 +1448,7 @@ static void do_read_request(int fd, short event, void* arg)
 	}
 
 	/* read into header buf */
-	n = gpfdist_receive(r, r->in.hbuf + r->in.hbuftop, n);
+	n = recv(r->sock, r->in.hbuf + r->in.hbuftop, n, 0);
 
 	if (n < 0)
 	{
@@ -1678,6 +1532,9 @@ static void do_read_request(int fd, short event, void* arg)
 	/* make a copy of the path */
 	path = apr_pstrdup(r->pool, r->in.req->argv[1]);
 
+	/* decode %xx to char */
+	percent_encoding_to_char(p, pp, path);
+
 	/*
 	 * This is a debug hook. We'll get here By creating an external table with
 	 * name(a text) location('gpfdist://<host>:<port>/gpfdist/status').
@@ -1741,9 +1598,6 @@ static void do_accept(int fd, short event, void* arg)
 	apr_pool_t* 		pool;
 	int 				on = 1;
 	struct linger		linger;
-	BIO 				*sbio = NULL;	/* only for SSL */
-	SSL 				*ssl = NULL;	/* only for SSL */
-	int 				rd;				/* only for SSL */
 
 	/* do the accept */
 	if ((sock = accept(fd, (struct sockaddr*) &a, &len)) < 0)
@@ -1751,23 +1605,7 @@ static void do_accept(int fd, short event, void* arg)
 		gwarning(FLINE, "accept failed");
 		goto failure;
 	}
-	if (opt.ssl)
-	{
-		sbio = BIO_new_socket(sock, BIO_NOCLOSE);
-		ssl = SSL_new(gcb.server_ctx);
-		SSL_set_bio(ssl, sbio, sbio);
-		if ( (rd = SSL_accept(ssl) <= 0) )
-		{
-			handle_ssl_error(sock, sbio, ssl);
-			/* Close the socket that was allocated by accept 			*/
-			/* We also must perform this, in case that a user 			*/
-			/* accidentaly connected via gpfdist, instead of gpfdits	*/
-			closesocket(sock);
-			return;
-		}
 
-		gprint("[%d] Using SSL\n", (int)sock);
-	}
 	/* set to non-blocking, and close-on-exec */
 #ifdef WIN32
 	{
@@ -1778,20 +1616,12 @@ static void do_accept(int fd, short event, void* arg)
 	if (fcntl(sock, F_SETFL, O_NONBLOCK) == -1)
 	{
 		gwarning(FLINE, "fcntl(F_SETFL, O_NONBLOCK) failed");
-		if ( opt.ssl )
-		{
-			handle_ssl_error(sock, sbio, ssl);
-		}
 		closesocket(sock);
 		goto failure;
 	}
 	if (fcntl(sock, F_SETFD, 1) == -1)
 	{
 		gwarning(FLINE, "fcntl(F_SETFD) failed");
-		if ( opt.ssl )
-		{
-			handle_ssl_error(sock, sbio, ssl);
-		}
 		closesocket(sock);
 		goto failure;
 	}
@@ -1815,15 +1645,9 @@ static void do_accept(int fd, short event, void* arg)
 
     r->outblock.data = apr_palloc(pool, opt.m); /* use the block size specified by -m option */
 
-	/* initialize EOL params with default values */
-	r->line_delim_str = "\n";
-	r->line_delim_length = 1;
-	
 	r->in.hbufmax = 1024 * 4; /* 4K for reading the headers */
 	r->in.hbuf = apr_palloc(pool, r->in.hbufmax);
 	r->is_final = 0;	/* initialize */
-	r->ssl = ssl;
-	r->sbio = sbio;
 
 	{
 		char host[128];
@@ -1834,7 +1658,6 @@ static void do_accept(int fd, short event, void* arg)
 				);
 		r->peer = apr_psprintf(r->pool, "%s", host);
 	}
-
 
 	/* set up for callback when socket ready for reading the http request */
 	if (setup_read(r))
@@ -1898,98 +1721,45 @@ static int setup_read(request_t* r)
 	}
 }
 
-static void
-print_listening_address(struct addrinfo *rp)
-{
-    char full_address[220] = {0};
-	
-	if (rp->ai_family == AF_INET)
-	{
-#ifndef WIN32
-		struct sockaddr_in *ain = (struct sockaddr_in*)rp->ai_addr;
-		char stradd[200] = {0};
-		inet_ntop(AF_INET, (const void*)&ain->sin_addr, stradd, 100);
-		sprintf(full_address, "IPV4 socket: %s:%d", stradd, opt.p);
-#else
-		/*
-		 * there is no alternative for inet_ntop in windows that works for all Win platforms
-		 * and for IPV6. inet_ntop transform the integer representation of the IP addr. into a string 
-	     */
-		sprintf(full_address, "IPV4 socket: IPv4:%d", opt.p);
-#endif
-
-	}
-	else if (rp->ai_family == AF_INET6)
-	{
-#ifndef WIN32
-		struct sockaddr_in6 *ain = (struct sockaddr_in6*)rp->ai_addr;
-		char stradd[200] = {0};
-		inet_ntop(AF_INET6, (const void*)&ain->sin6_addr, stradd, 100);
-		sprintf(full_address, "IPV6 socket: [%s]:%d", stradd, opt.p);
-#else
-		sprintf(full_address, "IPV6 socket: [IPV6]:%d", opt.p);
-#endif
-
-	}
-	else 
-	{
-		sprintf(full_address, "unknown protocol - %d", rp->ai_family);
-	}
-	
-	gprint("%s\n", full_address);
-}
-
 /*
  * Search linked list (head) for first element with family (first_family).
  * Moves first matching element to head of the list.
  */
-static struct
-addrinfo* rearrange_addrs(struct addrinfo *head, int first_family)
+static struct addrinfo* rearrange_addrs(struct addrinfo *head, int first_family)
 {
-	struct addrinfo* iter;
+	struct addrinfo* iter; 
 	struct addrinfo* new_head = head;
 	struct addrinfo* holder = NULL;
-
+	
 	if (head->ai_family == first_family)
 		return head;
-
+	
 	for (iter = head; iter != NULL && iter->ai_next != NULL; iter = iter->ai_next)
 	{
 		if ( iter->ai_next->ai_family == first_family )
 		{
 			holder = iter->ai_next;
-			iter->ai_next = iter->ai_next->ai_next;
-			/*
-			 * we don't break here since if there are more addrinfo structure that belong to first_family
+			iter->ai_next = iter->ai_next->ai_next; 
+			/* 
+			 * we don't break here since if there are more addrinfo structure that belong to first_family 
 			 * in the list, we want to remove them all and keep only one in the holder.
 			 * and then we will put the holder in the front
 			 */
 		}
 	}
-
+	
 	if ( holder != NULL )
 	{
 		holder->ai_next = new_head;
 		new_head = holder;
 	}
-
+	
 	return new_head;
-}
-
-
-static void
-print_addrinfo_list(struct addrinfo *head)
-{
-	struct addrinfo *iter;
-	for (iter = head; iter != NULL; iter = iter->ai_next)
-	{ 
-		print_listening_address(iter);
-	}
+	
 }
 
 /* Create HTTP port and start to receive request */
-static void
-http_setup(void)
+static void http_setup(void)
 {
 	SOCKET f;
 	int on = 1;
@@ -2001,20 +1771,6 @@ http_setup(void)
 
 	char service[32];
 	const char *hostaddr = NULL;
-
-	if (opt.ssl)
-	{
-		/* Build our SSL context*/
-		gcb.server_ctx 	= initialize_ctx();
-		gpfdist_send 	= gpfdist_SSL_send;
-		gpfdist_receive = gpfdist_SSL_receive;
-	}
-	else
-	{
-		gcb.server_ctx 	= NULL;
-		gpfdist_send 	= gpfdist_socket_send;
-		gpfdist_receive = gpfdist_socket_receive;
-	}
 
 	gcb.listen_sock_count = 0;
 	if (opt.b != NULL && strlen(opt.b) > 1)
@@ -2034,7 +1790,7 @@ http_setup(void)
 		hints.ai_socktype = SOCK_STREAM; /* tcp socket */
 		hints.ai_flags = AI_PASSIVE;	/* For wildcard IP address */
 		hints.ai_protocol = 0;			/* Any protocol */
-
+		
 		s = getaddrinfo(hostaddr, service, &hints, &addrs);
 		if (s != 0)
 #if (!defined(WIN32)) || defined(gai_strerror)
@@ -2043,11 +1799,8 @@ http_setup(void)
 			/* Broken mingw header file from old version of mingw doesn't have gai_strerror */
 			gfatal(FLINE,"getaddrinfo says %d",s);
 #endif
-
+		
 		addrs = rearrange_addrs(addrs, AF_INET6);
-
-		gprint("Before opening listening sockets - following listening sockets are available:\n");
-		print_addrinfo_list(addrs);
 		
 		/*
 		 * getaddrinfo() returns a list of address structures,
@@ -2061,21 +1814,14 @@ http_setup(void)
 		 */
 		for (rp = addrs; rp != NULL; rp = rp->ai_next)
 		{
-			gprint("Trying to open listening socket:\n");
-			print_listening_address(rp);
-			
 			/*
 			 * getaddrinfo gives us all the parameters for the socket() call
 			 * as well as the parameters for the bind() call.
 			 */
-			f = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
-
+			f = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);			
 			if (f == -1)
-			{
-				gwarning(FLINE, "Creating the socket failed\n");
 				continue;
-			}
-			
+
 #ifndef WIN32
 			if (fcntl(f, F_SETFD, 1) == -1)
 				gfatal(FLINE, "cannot create socket - fcntl(F_SETFD) failed");
@@ -2103,28 +1849,6 @@ http_setup(void)
 
 			if (bind(f, rp->ai_addr, rp->ai_addrlen) != 0)
 			{
-				/*
-				 * EADDRINUSE warning appears only if the -v or -V option is on,
-				 * All the other warnings will appear anyway
-				 * EADDRINUSE is not defined in win32, so all the warnings will always appear.
-				 */
-#ifdef WIN32
-				if ( 1 )
-#else
-				if ( errno == EADDRINUSE )
-#endif
-				{
-					if ( opt.v )
-					{
-						gwarning(FLINE, "%s (errno = %d), port: %d",
-					               		strerror(errno), errno, opt.p);
-					}
-				}
-				else
-			    {
-					gwarning(FLINE, "%s (errno=%d), port: %d",strerror(errno), errno, opt.p);
-				}
-
 				/* failed on bind, maybe this address family isn't supported */
 				close(f);
 				continue;
@@ -2144,8 +1868,13 @@ http_setup(void)
 				continue;
 			}
 			gcb.listen_socks[gcb.listen_sock_count++] = f;
+			
+			/*
+			 * if we got here, it means that for this given socket we succeeded to do bind and listen
+			 * and since we can only bind to one listening socket on a given port - it's time to live this iteration
+			 */
+			break;
 
-			gprint("Opening listening socket succeeded\n");
 		}
 
 		/* When we get here, we have either succeeded, or tried all address families for this port */
@@ -2164,9 +1893,8 @@ http_setup(void)
 						  "(last port is %d)", opt.p, opt.last_port);
 
 		opt.p++;
-		if (opt.v)
-			putchar('\n'); /* this is just to beautify the print outs */
 	}
+
 
 	for (i = 0; i < gcb.listen_sock_count; i++)
 	{
@@ -2183,10 +1911,10 @@ http_setup(void)
 			gfatal(FLINE, "cannot set up event on listen socket: %s",
 						   strerror(errno));
 	}
+
 }
 
-void
-process_signal(int sig)
+void process_signal(int sig)
 {
 	if (sig == SIGINT || sig == SIGTERM)
 	{
@@ -2202,8 +1930,8 @@ process_signal(int sig)
 }
 
 
-static gnet_request_t*
-gnet_parse_request(const char* buf, int* len, apr_pool_t* pool)
+static gnet_request_t *gnet_parse_request(const char* buf, int* len,
+										  apr_pool_t* pool)
 {
 	int n = *len;
 	int empty, completed;
@@ -2272,7 +2000,7 @@ gnet_parse_request(const char* buf, int* len, apr_pool_t* pool)
 
 			/* add to previous hvalue */
 			req->hvalue[req->hc - 1] = gstring_trim(apr_pstrcat(pool,
-					req->hvalue[req->hc - 1], " ", line, NULL));
+					req->hvalue[req->hc - 1], " ", line, 0));
 			continue;
 		}
 		/* find a colon, and break the line in two */
@@ -2384,6 +2112,55 @@ void gfile_free(void *a)
 	free(a);
 }
 
+/*
+ * percent_encoding_to_char
+ *
+ * decode any percent encoded characters that may be included in the http
+ * request into normal characters ascii characters.
+ */
+void percent_encoding_to_char(char* p, char* pp, char* path)
+{
+	/*   - decode %xx to char */
+	for (p = pp = path; *pp; p++, pp++)
+	{
+		if ('%' == (*p = *pp))
+		{
+			if (pp[1] && pp[2])
+			{
+				int x = pp[1];
+				int y = pp[2];
+
+				if ('0' <= x && x <= '9')
+					x -= '0';
+				else if ('a' <= x && x <= 'f')
+					x = x - 'a' + 10;
+				else if ('A' <= x && x <= 'F')
+					x = x - 'A' + 10;
+				else
+					x = -1;
+
+				if ('0' <= y && y <= '9')
+					y -= '0';
+				else if ('a' <= y && y <= 'f')
+					y = y - 'a' + 10;
+				else if ('A' <= y && y <= 'F')
+					y = y - 'A' + 10;
+				else
+					y = -1;
+
+				if (x >= 0 && y >= 0)
+				{
+					x = (x << 4) + y;
+					*p = (char) x;
+					pp++, pp++;
+				}
+			}
+		}
+	}
+
+	*p = 0;
+}
+
 static void handle_get_request(request_t *r)
 {
 	/* setup to receive EV_WRITE events to write to socket */
@@ -2442,6 +2219,7 @@ static void handle_post_request(request_t *r, int header_end)
 
 	/* if some data come along with the request, copy it first */
 	data_start = strstr(r->in.hbuf, "\r\n\r\n");
+
 	if(data_start)
 	{
 		data_start += 4;
@@ -2457,7 +2235,7 @@ static void handle_post_request(request_t *r, int header_end)
 
 		/* only write it out if no more data is expected */
 		if(r->in.davailable == 0)
-			wrote = fstream_write(r->session->fstream, r->in.dbuf, data_bytes_in_req, 1, r->line_delim_str, r->line_delim_length);
+			wrote = fstream_write(r->session->fstream, r->in.dbuf, data_bytes_in_req, 1);
 	}
 
 	/*
@@ -2476,7 +2254,7 @@ static void handle_post_request(request_t *r, int header_end)
 			want = r->in.davailable;
 
 		/* read from socket into data buf */
-		n = gpfdist_receive(r, r->in.dbuf + r->in.dbuftop, want);
+		n = recv(r->sock, r->in.dbuf + r->in.dbuftop, want, 0);
 
 		if (n < 0)
 		{
@@ -2510,7 +2288,7 @@ static void handle_post_request(request_t *r, int header_end)
 			if (r->in.dbufmax == r->in.dbuftop || r->in.davailable == 0)
 			{
 				/* only write up to end of last row */
-				wrote = fstream_write(r->session->fstream, r->in.dbuf, r->in.dbuftop, 1, r->line_delim_str, r->line_delim_length);
+				wrote = fstream_write(r->session->fstream, r->in.dbuf, r->in.dbuftop, 1);
 				gprint("wrote %d bytes to file\n", wrote);
 
 				if(wrote == -1)
@@ -2641,32 +2419,6 @@ static int request_validate(request_t *r)
 }
 
 /*
- * Inplace decode 'data' from base 16.
- */
-static void base16_decode(char *data)
-{	
-	int i = 0;
-	char *encoded_bytes = data;
-
-	char buf[3];
-	buf[2] = '\0';
-	
-	/* assert that data != NULL */
-	if(!data)
-		return;
-
-	for(; encoded_bytes[0]; i++)
-	{
-		buf[0] = encoded_bytes[0];
-		buf[1] = encoded_bytes[1];
-
-        data[i] = strtoul(buf, NULL, 16);
-        encoded_bytes += 2;
-     }
-     data[i] = '\0';
-}
-
-/*
  * request_parse_gp_headers
  *
  * Extract all X-GP-* variables from the HTTP headers.
@@ -2701,36 +2453,12 @@ static int request_parse_gp_headers(request_t *r, int opt_g)
 			r->totalsegs = atoi(r->in.req->hvalue[i]);
 		else if (0 == strcmp("X-GP-SEGMENT-ID", r->in.req->hname[i]))
 			r->segid = atoi(r->in.req->hvalue[i]);
-		else if (0 == strcmp("X-GP-LINE-DELIM-STR", r->in.req->hname[i]))
-		{
-			/* if the delimiter is not empty, its len should be even */
-			if (NULL == r->in.req->hvalue[i] ||
-			   (strcmp(r->in.req->hvalue[i], EMPTY_DELIM_STR) != 0 && ((int)strlen(r->in.req->hvalue[i])) % 2 == 1))
-			{
-				gwarning(FLINE, "reject invalid request from %s, invalid EOL encoding: %s", r->peer, r->in.req->hvalue[i]);
-				http_error(r, FDIST_BAD_REQUEST, "invalid EOL encoding");
-				request_end(r, 1, 0);
-			}
-
-			if (strcmp(r->in.req->hvalue[i], EMPTY_DELIM_STR) != 0)
-			{
-				/* the delimiter length must be calculated before the decoding */
-				r->line_delim_length = strlen(r->in.req->hvalue[i]) / 2;
-				base16_decode(r->in.req->hvalue[i]);
-			}
-			else /* empty delimiter */
-			{
-				r->in.req->hvalue[i] = "";
-				r->line_delim_length = 0;				
-			}
-
-			r->line_delim_str = r->in.req->hvalue[i];
-		}
 #ifdef GPFXDIST
 		else if (0 == strcmp("X-GP-TRANSFORM", r->in.req->hname[i]))
 			r->trans.name = r->in.req->hvalue[i];
 #endif
 	}
+
 	r->gp_proto = strtol(gp_proto, 0, 0);
 
 	if (r->gp_proto != 0 && r->gp_proto != 1)
@@ -2870,7 +2598,7 @@ static int request_set_transform(request_t *r)
 	 * we prepare a temporary file to hold it.	when the request is
 	 * done we'll forward the output as error messages.
 	 */
-	if (transform_stderr_server(tr))
+	if (transform_stderr_server(tr)) 
 	{
 		apr_pool_t*	 mp = r->pool;
 		apr_file_t*	 f = NULL;
@@ -2952,11 +2680,7 @@ int gpfdist_init(int argc, const char* const argv[])
 	event_init();
 	http_setup();
 
-	if (opt.ssl)
-		printf("Serving HTTPS on port %d, directory %s\n", opt.p, opt.d);
-	else
-		printf("Serving HTTP on port %d, directory %s\n", opt.p, opt.d);
-
+	printf("Serving HTTP on port %d, directory %s\n", opt.p, opt.d);
 	fflush(stdout);
 
 	/* redirect stderr and stdout to log */
@@ -3269,337 +2993,3 @@ void ControlHandler(DWORD request)
 	do_set_srv_status(SERVICE_RUNNING, 0);
 }
 #endif
-
-#define find_max(a,b) ((a) >= (b) ? (a) : (b))
-
-static SSL_CTX *initialize_ctx(void)
-{
-	int			stringSize;
-	char 		*fileName, slash;
-	SSL_CTX 	*ctx;
-
-	if (!gcb.bio_err){
-		/* Global system initialization*/
-		SSL_library_init();
-		SSL_load_error_strings();
-		/* An error write context */
-		gcb.bio_err=BIO_new_fp(stderr, BIO_NOCLOSE);
-	}
-
-	/* Create our context*/
-	ctx = SSL_CTX_new( TLSv1_server_method() );
-
-	/* Generate random seed */
-	if ( RAND_poll() == 0 )
-		gfatal(FLINE,"Can't generate random seed for SSL");
-
-	/* The size of the string will consist of the path and the filename (the longest one) */
-	// +1 for the '/' charachter (/filename)
-	// +1 for the \0,
-	stringSize = find_max( strlen(CertificateFilename), find_max(strlen(PrivateKeyFilename),strlen(TrustedCaFilename)) ) + strlen(opt.ssl) + 2;
-	/* Allocate the memory for the file name */
-	fileName = (char *) calloc( (stringSize), sizeof(char) );
-	if ( fileName == NULL )
-	{
-		gfatal (FLINE,"Unable to allocate memory for SSL initialization");
-	}
-
-#ifdef WIN32
-	slash = '\\';
-#else
-	slash = '/';
-#endif
-
-	/* Copy the path + the filename */
-	snprintf(fileName,stringSize,"%s%c%s",opt.ssl,slash,CertificateFilename);
-
-	/* Load our keys and certificates*/
-	if (!(SSL_CTX_use_certificate_chain_file(ctx,fileName)))
-	{
-		gfatal(FLINE,"Unable to load the certificate from file: \"%s\"", fileName);
-	}
-	else
-	{
-		if ( opt.v )
-		{
-			gprint("The certificate was successfully loaded from \"%s\"\n",fileName);
-		}
-	}
-
-	/* Copy the path + the filename */
-	snprintf(fileName,stringSize,"%s%c%s",opt.ssl,slash,PrivateKeyFilename);
-
-	if (!(SSL_CTX_use_PrivateKey_file(ctx,fileName,SSL_FILETYPE_PEM)))
-	{
-		gfatal (FLINE,"Unable to load the private key from file: \"%s\"", fileName);
-	}
-	else
-	{
-		if ( opt.v )
-		{
-			gprint("The private key was successfully loaded from \"%s\"\n",fileName);
-		}
-	}
-
-	/* Copy the path + the filename */
-	snprintf(fileName,stringSize,"%s%c%s",opt.ssl,slash,TrustedCaFilename);
-
-	/* Load the CAs we trust*/
-	if (!(SSL_CTX_load_verify_locations(ctx, fileName,0)))
-	{
-		gfatal (FLINE,"Unable to to load CA from file: \"%s\"", fileName);
-	}
-	else
-	{
-		if ( opt.v )
-		{
-			gprint("The CA file successfully loaded from \"%s\"\n",fileName);
-		}
-	}
-
-	/* Set the verification flags for ctx 	*/
-	/* We always require client certificate	*/
-	SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, 0);
-
-	/* Consider using these - experinments on Mac showed no improvement,
-	 * but perhaps it will on other platforms, or when opt.m is very big
-	 */
-	//SSL_CTX_set_mode(ctx, SSL_MODE_AUTO_RETRY | SSL_MODE_ENABLE_PARTIAL_WRITE);
-
-	free(fileName);
-	return ctx;
-}
-
-
-/*
- * gpfdist_socket_send
- *
- * Sends the requested buf, of size buflen to the network
- * via appropriate socket
- */
-static int gpfdist_socket_send(const request_t *r, const void *buf, const size_t buflen)
-{
-	return send(r->sock, buf, buflen, 0);
-}
-
-
-/*
- * gpfdist_SSL_send
- *
- * Sends the requested buf, of size len to the network via SSL
- */
-static int gpfdist_SSL_send(const request_t *r, const void *buf, const size_t buflen)
-{
-
-	/* Write the data to socket */
-	int n = BIO_write(r->io, buf, buflen);
-	/* Try to flush */
-	(void)BIO_flush(r->io);
-
-	/* If we could not write to BIO */
-	if ( n < 0)
-	{
-		/* If BIO indicates retry => we should retry later, this is not an error */
-		if ( BIO_should_retry(r->io) > 1 )
-		{
-			/* Do not indicate error */
-			n = 0;
-		}
-		else
-		{
-			/* If errno == 0 => this is not a real error */
-			if ( errno == 0 )
-			{
-				/* Do not indicate error */
-				n = 0;
-			}
-			else
-			{
-				/* If errno == EPIPE, it means that the client has closed the connection   	*/
-				/* This error will be handled in the calling function, do not print it here	*/
-				if (errno != EPIPE)
-				{
-					gwarning(FLINE, "Error during SSL gpfdist_send (Error = %d. errno = %d)", SSL_get_error(r->ssl,n), (int)errno);
-					ERR_print_errors(gcb.bio_err);
-				}
-			}
-		}
-	}
-
-	return n;
-}
-
-
-/*
- * gpfdist_socket_receive
- *
- * read from a socket
- */
-static int gpfdist_socket_receive(const request_t *r, void *buf, const size_t buflen)
-{
-	return ( recv(r->sock, buf, buflen, 0) );
-}
-
-
-/*
- * gpfdist_SSL_receive
- *
- * read from an SSL socket
- */
-static int gpfdist_SSL_receive(const request_t *r, void *buf, const size_t buflen)
-{
-	return ( BIO_read(r->io, buf, buflen) );
-	/* todo: add error checks here */
-}
-
-
-/*
- * free_SSL_resources
- *
- * Frees all SSL resources that were allocated per request r
- */
-static void free_SSL_resources(const request_t *r)
-{
-	BIO_ssl_shutdown(r->sbio);
-	BIO_vfree(r->io);
-	BIO_vfree(r->sbio);
-	//BIO_vfree(r->ssl_bio);
-	SSL_free(r->ssl);
-
-}
-
-
-/*
- * handle_ssl_error
- *
- * Frees SSL resources that were allocated during do_accept
- */
-static void handle_ssl_error(SOCKET sock, BIO *sbio, SSL *ssl)
-{
-	gwarning(FLINE, "SSL accept failed");
-	if (opt.v)
-	{
-		ERR_print_errors(gcb.bio_err);
-	}
-
-	BIO_ssl_shutdown(sbio);
-	SSL_free(ssl);
-}
-
-/*
- * flush_ssl_buffer
- *
- * Flush all the data that is still pending in the current buffer
- */
-static void flush_ssl_buffer(int fd, short event, void* arg)
-{
-	request_t* r = (request_t*)arg;
-
-	(void)BIO_flush(r->io);
-
-	if ( event & EV_TIMEOUT )
-	{
-		gwarning(FLINE,"Buffer flush timeout");
-	}
-
-	if ( BIO_wpending(r->io) )
-	{
-		setup_flush_ssl_buffer(r);
-	}
-	else
-	{
-		// Prepare and start a 5 seconds timer.
-		// While working with BIO_SSL, we are working with 3 buffers:
-		// [1] BIO layer buffer [2] SSL buffer [3] Socket buffer
-		// Sometimes we have a delay somewhere between these buffers (MPP-16402)
-		// So, even if the BIO_wpending() shows that there is no more pending data in the BIO_SSL buffer,
-		// we might still have data in the socket's buffer that wasn't sent yet.
-
-		TR(("[%s] [%d] SSL cleanup started\n", datetime(), r->sock));
-
-		event_del(&r->ev);
-		evtimer_set(&r->ev, request_cleanup_and_free_SSL_resources, r);
-		r->tm.tv_sec  = opt.sslclean;
-		r->tm.tv_usec = 0;
-		(void)evtimer_add(&r->ev, &r->tm);
-	}
-}
-
-
-/*
- * setup_flush_ssl_buffer
- *
- * Create event that will call to 'flush_ssl_buffer', with 5 seconds timeout
- */
-static void setup_flush_ssl_buffer(request_t* r)
-{
-	event_del(&r->ev);
-	event_set(&r->ev, r->sock, EV_WRITE, flush_ssl_buffer, r);
-	r->tm.tv_sec  = 5;
-	r->tm.tv_usec = 0;
-	(void)event_add(&r->ev, &r->tm);
-}
-
-
-/*
- * request_cleanup
- *
- * Cleanup request related resources
- */
-static void request_cleanup(request_t *r)
-{
-	event_del(&r->ev);
-	shutdown(r->sock, SHUT_WR | SHUT_RD);
-	closesocket(r->sock);
-	r->sock = -1;
-	apr_pool_destroy(r->pool);
-}
-
-
-/*
- * request_cleanup_and_free_SSL_resources
- *
- */
-static void request_cleanup_and_free_SSL_resources(int fd, short event, void* arg)
-{
-	request_t *r = (request_t *)arg;
-
-	TR(("[%s] [%d] SSL cleanup ended\n", datetime(), r->sock));
-
-	/* Clean up request resources */
-	request_cleanup(r);
-
-	/* Release SSL related memory */
-	free_SSL_resources(r);
-}
-
-
-/*
- * validate_file_permissions
- *
- * The file permission should be between 0 and 777 (octal)
- * Each digit should be between 0 and 7
- */
-static int validate_file_permissions(const char *arg)
-{
-	int i;
-	int len = strlen(arg);
-
-	/* validate the boundaries */
-	if (len > WET_FILE_PERMISSIONS_LENGTH)
-	{
-		return -1;
-	}
-
-	/* validate that each digit is less than 7 */
-	for(i=0; i<len; i++ )
-	{
-		if ((arg[i] > MAXIMAL_OCTAL_CHAR) ||
-			(arg[i] < MINIMAL_OCTAL_CHAR))
-		{
-			return -1;
-		}
-	}
-
-	return 0;
-}

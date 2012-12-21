@@ -2029,13 +2029,6 @@ static void MirroredAppendOnly_DoDrop(
 		{
 			*primaryError = errno;
 		}
-		
-		if (Debug_unlink_print)
-		{
-			ereport(LOG,
-					(errmsg("dropping file '%s' ",
-							path)));
-		}		
 
 		pfree(dbPath);
 		pfree(path);

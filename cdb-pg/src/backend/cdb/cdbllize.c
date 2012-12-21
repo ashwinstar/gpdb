@@ -145,6 +145,7 @@ cdbparallelize(PlannerInfo *root,
 	switch ( Gp_role )
 	{
 	case GP_ROLE_DISPATCH:
+	case GP_ROLE_DISPATCHAGENT:
 		break;
 	case GP_ROLE_UTILITY:
 		return plan;
@@ -1397,48 +1398,3 @@ motion_sanity_check(PlannerInfo *root, Plan *plan)
 		elog(ERROR, "Post-planning sanity check detected motion deadlock.");
 }
 
-
-/*
- * Change the sort specification of the Flow to one specified by the list
- * of sort clauses under the given target list.  Leaves motion-related
- * parts of the Flow unmodified.  Use this function to declare an existing
- * sort order (or none), not to request that one be enforced.
- */
-void update_flow_from_sortclauses(Flow *flow, List *sortclauses, List *tlist)
-{
-	ListCell *lc;
-	unsigned n;
-	unsigned i;
-	
-	if ( flow->numSortCols > 0 )
-	{
-		Insist(flow->sortColIdx && flow->sortOperators);
-		pfree(flow->sortColIdx);
-		pfree(flow->sortOperators);
-		flow->numSortCols = 0;
-		flow->sortColIdx = NULL;
-		flow->sortOperators = NULL;
-	}
-	
-	i = 0;
-	n = list_length(sortclauses);
-	
-	if (n == 0)
-		return;
-	
-	flow->sortColIdx = palloc0(n*sizeof(flow->sortColIdx[0]));
-	flow->sortOperators = palloc0(n*sizeof(flow->sortOperators[0]));
-	
-	foreach( lc, sortclauses )
-	{
-		SortClause *sc = (SortClause *) lfirst(lc);
-		TargetEntry *tle = get_sortgroupclause_tle(sc, tlist);
-	    
-	    Insist(tle);
-	    
-	    flow->sortColIdx[i] = tle->resno; /* same as attribute number at level this is called */
-	    flow->sortOperators[i] = sc->sortop;
-	    i++;
-	}
-	flow->numSortCols = n;
-}

@@ -4,7 +4,7 @@
  *	  Utility routines for on-disk bitmap index access method.
  *
  * Copyright (c) 2006-2008, PostgreSQL Global Development Group
- *
+ * 
  * IDENTIFICATION
  *	  $PostgreSQL$
  *
@@ -32,7 +32,10 @@ static uint8 _bitmap_find_bitset(BM_HRL_WORD word, uint8 lastPos);
 BMLOVItem
 _bitmap_formitem(uint64 currTidNumber)
 {
+	int			nbytes_bmitem;
 	BMLOVItem	bmitem;
+
+	nbytes_bmitem = sizeof(BMLOVItemData);
 
 	bmitem = (BMLOVItem)palloc(sizeof(BMLOVItemData));
 
@@ -58,7 +61,7 @@ _bitmap_formitem(uint64 currTidNumber)
 
 		numOfTotalFillWords = (currTidNumber-1)/BM_HRL_WORD_SIZE;
 
-		numOfFillWords = (numOfTotalFillWords >= MAX_FILL_LENGTH) ?
+		numOfFillWords = (numOfTotalFillWords >= MAX_FILL_LENGTH) ? 
 			MAX_FILL_LENGTH : numOfTotalFillWords;
 
 		bmitem->bm_last_compword = BM_MAKE_FILL_WORD(0, numOfFillWords);
@@ -81,7 +84,7 @@ _bitmap_get_metapage_data(Relation rel, Buffer metabuf)
 {
 	Page page;
 	BMMetaPage metapage;
-
+	
 	page = BufferGetPage(metabuf);
 	metapage = (BMMetaPage)PageGetContents(page);
 
@@ -196,7 +199,7 @@ _bitmap_cleanup_scanpos(BMVector bmScanPos, uint32 numBitmapVectors)
 
 	if (numBitmapVectors == 0)
 		return;
-
+		
 	for (keyNo=0; keyNo<numBitmapVectors; keyNo++)
 	{
 		if (BufferIsValid((bmScanPos[keyNo]).bm_lovBuffer))
@@ -266,7 +269,7 @@ _bitmap_findnexttids(BMBatchWords *words, BMIterateResult *result,
 
 		/* new word, zero filled */
 		if (oldScanPos == 0 &&
-			((IS_FILL_WORD(words->hwords, result->lastScanWordNo) &&
+			((IS_FILL_WORD(words->hwords, result->lastScanWordNo) && 
 			  GET_FILL_BIT(word) == 0) || word == 0))
 		{
 			BM_HRL_WORD	fillLength;
@@ -414,7 +417,7 @@ _bitmap_intersect(BMBatchWords **batches, uint32 numBatches,
 			if (CUR_WORD_IS_FILL(bch) && (GET_FILL_BIT(word) == 0))
 			{
 				uint32		n;
-
+				
 				bch->nwordsread += FILL_LENGTH(word);
 
 				n = bch->nwordsread - nextReadNo + 1;
@@ -537,9 +540,9 @@ fast_forward(uint32 nbatches, BMBatchWords **batches, BMBatchWords *result)
 	if (fast_forward_words)
 	{
 		uint32 offset;
-
+		
 		for (i = 0; i < nbatches; i++)
-			batches[i]->nextread = batches[i]->nwordsread +
+			batches[i]->nextread = batches[i]->nwordsread + 
 				fast_forward_words + 1;
 
 		/*
@@ -577,7 +580,7 @@ _bitmap_union(BMBatchWords **batches, uint32 numBatches, BMBatchWords *result)
 	/* save batch->startNo for each input bitmap vector */
 	prevstarts = (uint32 *)palloc0(numBatches * sizeof(uint32));
 
-	/*
+	/* 
 	 * Compute the next read offset. We fast forward compressed
 	 * zero words when possible.
 	 */
@@ -690,7 +693,7 @@ _bitmap_union(BMBatchWords **batches, uint32 numBatches, BMBatchWords *result)
 static void
 _bitmap_findnextword(BMBatchWords *words, uint64 nextReadNo)
 {
-	/*
+	/* 
      * 'words->nwordsread' defines how many un-compressed words
      * have been read in this bitmap. We read from
      * position 'startNo', and increment 'words->nwordsread'
@@ -753,7 +756,7 @@ _bitmap_resetWord(BMBatchWords *words, uint32 prevStartNo)
 
 
 /*
- * _bitmap_find_bitset() -- find the rightmost set bit (bit=1) in the
+ * _bitmap_find_bitset() -- find the rightmost set bit (bit=1) in the 
  * 		given word since 'lastPos', not including 'lastPos'.
  *
  * The rightmost bit in the given word is considered the position 1, and
@@ -828,7 +831,7 @@ _bitmap_log_newpage(Relation rel, uint8 info, Buffer buf)
 	rdata[0].data = (char *)&xlNewPage;
 	rdata[0].len = sizeof(xl_bm_newpage);
 	rdata[0].next = NULL;
-
+			
 	recptr = XLogInsert(RM_BITMAP_ID, info, rdata);
 
 	PageSetLSN(page, recptr);
@@ -863,7 +866,7 @@ _bitmap_log_metapage(Relation rel, Page page)
 	rdata[0].data = (char*)xlMeta;
 	rdata[0].len = MAXALIGN(sizeof(xl_bm_metapage));
 	rdata[0].next = NULL;
-
+			
 	recptr = XLogInsert(RM_BITMAP_ID, XLOG_BITMAP_INSERT_META, rdata);
 
 	PageSetLSN(page, recptr);
@@ -875,7 +878,7 @@ _bitmap_log_metapage(Relation rel, Page page)
  * _bitmap_log_bitmap_lastwords() -- log the last two words in a bitmap.
  */
 void
-_bitmap_log_bitmap_lastwords(Relation rel, Buffer lovBuffer,
+_bitmap_log_bitmap_lastwords(Relation rel, Buffer lovBuffer, 
 							 OffsetNumber lovOffset, BMLOVItem lovItem)
 {
 	xl_bm_bitmap_lastwords	xlLastwords;
@@ -901,7 +904,7 @@ _bitmap_log_bitmap_lastwords(Relation rel, Buffer lovBuffer,
 	rdata[0].len = sizeof(xl_bm_bitmap_lastwords);
 	rdata[0].next = NULL;
 
-	recptr = XLogInsert(RM_BITMAP_ID, XLOG_BITMAP_INSERT_BITMAP_LASTWORDS,
+	recptr = XLogInsert(RM_BITMAP_ID, XLOG_BITMAP_INSERT_BITMAP_LASTWORDS, 
 						rdata);
 
 	PageSetLSN(BufferGetPage(lovBuffer), recptr);
@@ -939,7 +942,7 @@ _bitmap_log_lovitem(Relation rel, Buffer lovBuffer, OffsetNumber offset,
 	rdata[0].len = sizeof(xl_bm_lovitem);
 	rdata[0].next = NULL;
 
-	recptr = XLogInsert(RM_BITMAP_ID,
+	recptr = XLogInsert(RM_BITMAP_ID, 
 						XLOG_BITMAP_INSERT_LOVITEM, rdata);
 
 	if (is_new_lov_blkno)
@@ -1086,7 +1089,7 @@ _bitmap_log_updateword(Relation rel, Buffer bitmapBuffer, int word_no)
 	PageSetLSN(bitmapPage, recptr);
 	PageSetTLI(bitmapPage, ThisTimeLineID);
 }
-
+						
 
 /*
  * _bitmap_log_updatewords() -- log updating bitmap words in one or

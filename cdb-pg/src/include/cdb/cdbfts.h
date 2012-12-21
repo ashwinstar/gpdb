@@ -54,7 +54,7 @@ struct FtsQDMirrorInfo
 	QDMIRRORState 	state;
 
 	QDMIRRORUpdateMask	updateMask;
-
+	
 	QDMIRRORDisabledReason	disabledReason;
 
 	struct timeval lastLogTimeVal;
@@ -63,7 +63,7 @@ struct FtsQDMirrorInfo
 
 	bool			haveNewCheckpointLocation;
 	XLogRecPtr		newCheckpointLocation;
-
+	
 	/* stored copies of QD parameters, required so that WalSendServer
 	 * process knows how to connect */
 	char			name[256];
@@ -74,11 +74,6 @@ struct FtsQDMirrorInfo
 	 */
 	int2			dbid;
 	bool			valid;
-
-	/*
-	 * Indicates if an alert message has been sent for failure in master mirroring synchronization.
-	 */
-	bool QDMirroringNotSynchronizedWarningGiven;
 };
 
 
@@ -146,11 +141,11 @@ extern void FtsShmemInit(void);
 
 extern bool FtsTestConnection(CdbComponentDatabaseInfo *db_to_test, bool full_scan);
 extern void FtsReConfigureMPP(bool create_new_gangs);
-extern void FtsHandleNetFailure(SegmentDatabaseDescriptor **segDB, int numOfFailed);
-extern bool FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor *segdbDesc, int size);
+extern void FtsHandleNetFailure(SegmentDatabaseDescriptor **, int);
+extern bool FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor *, int);
 
 extern bool verifyFtsSyncCount(void);
-extern void FtsCondSetTxnReadOnly(bool *XactFlag);
+extern void FtsCondSetTxnReadOnly(bool *);
 extern void ftsLock(void);
 extern void ftsUnlock(void);
 

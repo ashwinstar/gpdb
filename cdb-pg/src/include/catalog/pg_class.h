@@ -32,7 +32,7 @@
 /* TIDYCAT_BEGINFAKEDEF
 
    CREATE TABLE pg_class
-   with (camelcase=Relation, bootstrap=true, relid=1259)
+   with (bootstrap=true, relid=1259)
    (
    relname         name      ,
    relnamespace    oid       ,
@@ -66,9 +66,8 @@
    reloptions      text[]    
    );
 
-   create unique index on pg_class(oid) with (indexid=2662, CamelCase=ClassOid, syscacheid=RELOID, syscache_nbuckets=1024);
-
-   create unique index on pg_class(relname, relnamespace) with (indexid=2663, CamelCase=ClassNameNsp, syscacheid=RELNAMENSP, syscache_nbuckets=1024);
+   create unique index on pg_class(oid) with (indexid=2662, CamelCase=ClassOid);
+   create unique index on pg_class(relname, relnamespace) with (indexid=2663, CamelCase=ClassNameNsp);
 
    alter table pg_class add fk relnamespace on pg_namespace(oid);
    alter table pg_class add fk reltype on pg_type(oid);
@@ -199,7 +198,7 @@ DATA(insert OID = 1247 (  pg_type		PGNSP 71 PGUID 0 1247 0 0 0 0 0 0 0 f f r h 2
 DESCR("");
 DATA(insert OID = 1249 (  pg_attribute	PGNSP 75 PGUID 0 1249 0 0 0 0 0 0 0 f f r h 17 0 0 0 0 0 f f f f 3 _null_ _null_ ));
 DESCR("");
-DATA(insert OID = 1255 (  pg_proc		PGNSP 81 PGUID 0 1255 0 0 0 0 0 0 0 f f r h 23 0 0 0 0 0 t f f f 3 _null_ _null_ ));
+DATA(insert OID = 1255 (  pg_proc		PGNSP 81 PGUID 0 1255 0 0 0 0 0 0 0 f f r h 19 0 0 0 0 0 t f f f 3 _null_ _null_ ));
 DESCR("");
 DATA(insert OID = 1259 (  pg_class		PGNSP 83 PGUID 0 1259 0 0 0 0 0 0 0 f f r h 30 0 0 0 0 0 t f f f 3 _null_ _null_ ));
 DESCR("");

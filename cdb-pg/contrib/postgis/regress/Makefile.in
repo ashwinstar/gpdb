@@ -51,23 +51,22 @@ TESTS = \
 	affine \
 	wkt \
 	measures \
+	long_xact \
 	ctors \
 	sql-mm-serialize \
+	sql-mm-circularstring \
+	sql-mm-compoundcurve \
+	sql-mm-curvepoly \
 	sql-mm-general \
 	sql-mm-multicurve \
 	sql-mm-multisurface \
+	geojson \
+	gml \
+	svg \
+	kml \
 	regress_ogc \
 	regress_bdpoly \
 	regress_proj
-#	long_xact
-#	sql-mm-circularstring
-#	sql-mm-compoundcurve
-#	sql-mm-curvepoly
-#	geojson
-#	gml
-#	svg
-#	kml
-# TODO: MPP-15724 reenable tests
 
 # Covers/CoveredBy only if GEOS >= 3.0
 ifeq ($(shell expr $(POSTGIS_GEOS_VERSION) ">=" 30),1)

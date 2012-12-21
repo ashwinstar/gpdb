@@ -10,7 +10,6 @@
 #include "utils/memutils.h"		/* For MemoryContext stuff */
 #include "cdb/cdbvars.h"
 #include "executor/execWorkfile.h"
-#include "postmaster/primary_mirror_mode.h"
 
 typedef pg_crc32 BFZ_CHECKSUM_TYPE;
 
@@ -24,8 +23,6 @@ typedef pg_crc32 BFZ_CHECKSUM_TYPE;
  * to be checksummed are defined by gp_workfile_bytes_to_checksum.
  */
 #define BFZ_CHECKSUM_SECTOR_SIZE WORKFILE_SAFEWRITE_SIZE
-
-#define BFZ_MKTEMP_MASK  "XXXXXXXXXX"
 
 static const struct{
     const char*name[6];
@@ -255,29 +252,9 @@ bfz_create_internal(bfz_t * thiz, const char *filePrefix, int compress)
 
 	thiz->filename = palloc0(MAXPGPATH);
 	
-	if (snprintf(thiz->filename, MAXPGPATH, "%s/" PG_TEMP_FILES_DIR, getCurrentTempFilePath) > MAXPGPATH)
-	{
-		ereport(ERROR, (errmsg("cannot generate path %s/PG_TEMP_FILES_DIR", getCurrentTempFilePath)));
-	}
-
+	snprintf(thiz->filename, MAXPGPATH, "%s/" PG_TEMP_FILES_DIR, DatabasePath);
 	mkdir(thiz->filename, 0777);
-
-	char tempfileprefix[MAXPGPATH];
-
-	int len = GetTempFilePrefix(tempfileprefix, MAXPGPATH, filePrefix);
-	insist_log(len <= MAXPGPATH - 1, "could not generate temporary file name");
-
-	if (snprintf(thiz->filename, MAXPGPATH, "%s/%s.%s",
-			getCurrentTempFilePath,
-			tempfileprefix,
-			BFZ_MKTEMP_MASK) > MAXPGPATH)
-	{
-		ereport(ERROR, (errmsg("cannot generate path %s/%s.%s",
-                        getCurrentTempFilePath,
-                        tempfileprefix,
-                        BFZ_MKTEMP_MASK)));
-	}
-
+	snprintf(thiz->filename, MAXPGPATH, "%s/" PG_TEMP_FILES_DIR "/%sXXXXXX", DatabasePath, filePrefix);
 #ifdef WIN32
 	{
 		char	   *tempFileName = tempnam(thiz->filename, filePrefix);
@@ -291,7 +268,7 @@ bfz_create_internal(bfz_t * thiz, const char *filePrefix, int compress)
 	if (thiz->fd == -1)
 		ereport(ERROR,
 				(errcode(ERRCODE_IO_ERROR),
-				errmsg("could not create temporary file %s: %m", thiz->filename)));
+				errmsg("could not create temporary file: %m")));
 
 	RegisterXactCallbackOnce(bfz_close_callback, thiz);
 
@@ -324,9 +301,12 @@ bfz_close(bfz_t * thiz, bool unreg)
 		UnregisterXactCallbackOnce(bfz_close_callback, thiz);
 
 	if (thiz->freeable_stuff)
-	{
 		thiz->freeable_stuff->close_ex(thiz);
-		Assert(thiz->fd == -1);
+
+	if (thiz->fd != -1)
+	{
+		gp_retry_close(thiz->fd);
+		thiz->fd = -1;
 	}
 
 	if (thiz->filename != NULL)
@@ -342,12 +322,6 @@ bfz_close(bfz_t * thiz, bool unreg)
 	pfree(thiz);
 }
 
-/*
- * bfz_append_end
- *  Flushes data to a bfz file and then closes the file.
- *  It also makes a duplicate of the file descriptor so we can re-open it
- *  for reading using bfz_scan_begin at a later time.
- */
 void
 bfz_append_end(bfz_t * thiz)
 {
@@ -359,6 +333,7 @@ bfz_append_end(bfz_t * thiz)
 
 	write_bfz_buffer(thiz, true);
 	tot_bytes = fs->tot_bytes;
+	fs->close_ex(thiz);
 
 	if ((tot_compressed = lseek(thiz->fd, 0, SEEK_END)) == -1)
 		ereport(ERROR,
@@ -369,15 +344,6 @@ bfz_append_end(bfz_t * thiz)
 		 (long long) tot_bytes, (long long) tot_compressed,
 		 tot_bytes == 0 ? 0 : (int) ((tot_bytes - tot_compressed) * 100 / tot_bytes));
 
-	/*
-	 * Duplicate file descriptor, since close_ex closes the file,
-	 * but we'll need to re-open this file for reading
-	 */
-	int saved_fd = dup(thiz->fd);
-	fs->close_ex(thiz);
-	Assert(thiz->fd == -1);
-
-	thiz->fd = saved_fd;
 	thiz->mode = BFZ_MODE_FREED;
 }
 
@@ -387,8 +353,6 @@ bfz_scan_begin(bfz_t * thiz)
 	struct bfz_freeable_stuff *fs;
 
 	Assert(thiz->mode == BFZ_MODE_FREED);
-	Assert(thiz->fd != -1);
-
 	if (lseek(thiz->fd, 0, SEEK_SET) == -1)
 		ereport(ERROR,
 				(errcode(ERRCODE_IO_ERROR),
@@ -442,7 +406,6 @@ bfz_read_ex(bfz_t * thiz, char *buffer, int size)
 	int			orig_size = size;
 
 	Assert(thiz->mode == BFZ_MODE_SCAN);
-	Assert(size >= 0);
 
 	while (size)
 	{
@@ -456,23 +419,13 @@ bfz_read_ex(bfz_t * thiz, char *buffer, int size)
 		fs->buffer_pointer += sizeForRead;
 		buffer += sizeForRead;
 		size -= sizeForRead;
-		Assert(size >= 0);
-		Assert(fs->buffer_end >= fs->buffer_pointer);
-		if (size > 0 && fs->buffer_pointer == fs->buffer_end)
+		if (fs->buffer_pointer == fs->buffer_end)
 		{
-			/*
-			 * If the requested size is greater than or equal to a block size
-			 * of data (including the checksum), read and copy the
-			 * data directly to the given buffer. We can't do that
-			 * when the requested size is smaller than a block size, since
-			 * the given buffer does not have space for the checksum.
-			 */
-			while (size >= sizeof(fs->buffer))
+			while (size >= sizeof(fs->buffer) - BFZ_CHECKSUM_SIZE(thiz->has_checksum))
 			{
 				sizeForRead = read_bfz_buffer(thiz, buffer);
 				buffer += sizeForRead;
 				size -= sizeForRead;
-				Assert(size >= 0);
 				if (sizeForRead == 0)
 					break;
 			}

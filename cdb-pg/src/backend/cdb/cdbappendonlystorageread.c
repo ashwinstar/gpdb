@@ -57,14 +57,6 @@ void AppendOnlyStorageRead_Init(
 				 * Name of the relation to use in system
 				 * logging and error messages.
 				 */
-
-	char							*title,
-				/*
-				 * A phrase that better describes the purpose of the this open.
-				 *
-				 * The caller manages the storage for this.
-				 */
-
 	AppendOnlyStorageAttributes		*storageAttributes)
 				/*
 				 * The Append-Only Storage Attributes
@@ -105,10 +97,8 @@ void AppendOnlyStorageRead_Init(
 	storageRead->relationName = (char *) palloc(relationNameLen + 1);
 	memcpy(storageRead->relationName, relationName, relationNameLen + 1);
 
-	storageRead->title = title;
-
 	storageRead->minimumHeaderLen =
-		AppendOnlyStorageFormat_RegularHeaderLenNeeded(
+		AppendOnlyStorageFormat_HeaderLenNeeded(
 									storageRead->storageAttributes.checksum);
 
 	/*
@@ -679,27 +669,6 @@ AppendOnlyStorageRead_PositionToNextBlock(
 }
 
 
-char *
-AppendOnlyStorageRead_ContextStr(AppendOnlyStorageRead *storageRead)
-{
-	StringInfoData buf;
-	
-	int64	headerOffsetInFile;
-
-	headerOffsetInFile = BufferedReadCurrentPosition(&storageRead->bufferedRead);
-
-	initStringInfo(&buf);
-	appendStringInfo(
-				&buf, 
-				 "%s. Append-Only segment file '%s', block header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT,
-				 storageRead->title,
-				 storageRead->segmentFileName,
-				 headerOffsetInFile,
-				 storageRead->bufferCount);
-
-	return buf.data;
-}
-
 /*
  * errcontext_appendonly_read_storage_block
  *
@@ -709,70 +678,77 @@ AppendOnlyStorageRead_ContextStr(AppendOnlyStorageRead *storageRead)
 int
 errcontext_appendonly_read_storage_block(AppendOnlyStorageRead *storageRead)
 {
-	char *str;
+	int64	headerOffsetInFile;
 
-	str = AppendOnlyStorageRead_ContextStr(storageRead);
+	headerOffsetInFile = BufferedReadCurrentPosition(&storageRead->bufferedRead);
 
-	errcontext("%s", str);
-
-	pfree(str);
+	errcontext(
+		 "Append-Only table '%s', segment file '%s', block header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")",
+		 storageRead->relationName,
+		 storageRead->segmentFileName,
+		 headerOffsetInFile,
+		 storageRead->bufferCount);
 
 	return 0;
 }
 
-char *
-AppendOnlyStorageRead_StorageContentHeaderStr(AppendOnlyStorageRead *storageRead)
-{
-	uint8	*header;
-
-	header = BufferedReadGetCurrentBuffer(&storageRead->bufferedRead);
-
-	return AppendOnlyStorageFormat_BlockHeaderStr(
-												header, 
-												storageRead->storageAttributes.checksum, 
-												storageRead->storageAttributes.version);
-}
-
 /*
- * errdetail_appendonly_read_storage_content_header
+ * errdetail_appendonly_read_storage_block_header
  *
  * Add an errdetail() line showing the Append-Only Storage header being read.
  */
 int
-errdetail_appendonly_read_storage_content_header(AppendOnlyStorageRead *storageRead)
+errdetail_appendonly_read_storage_block_header(AppendOnlyStorageRead *storageRead)
 {
-	char *str;
+	uint8	*header;
 
-	str = AppendOnlyStorageRead_StorageContentHeaderStr(storageRead);
+	bool 	checksum;
 
-	errdetail("%s", str);
+	header = BufferedReadGetCurrentBuffer(&storageRead->bufferedRead);
 
-	pfree(str);
+	checksum = storageRead->storageAttributes.checksum;
 
-	return 0;
+	return errdetail_appendonly_storage_block_header(header, checksum, storageRead->storageAttributes.version);
 }
 
-static void AppendOnlyStorageRead_LogBlockHeader(
-	AppendOnlyStorageRead		*storageRead,
-	uint8						*header)
+/*
+ * errdetail_appendonly_read_smallcontent_header
+ *
+ * Add an errdetail() line showing the Append-Only Storage header of type SmallContent
+ * being read.
+ */
+static int
+errdetail_appendonly_read_smallcontent_header(AppendOnlyStorageRead *storageRead)
 {
-	char *contextStr;
-	char *blockHeaderStr;
+	uint8	*header;
 
-	contextStr = AppendOnlyStorageRead_ContextStr(storageRead);
+	bool 	checksum;
 
-	blockHeaderStr = 
-			AppendOnlyStorageFormat_SmallContentHeaderStr(
-													header, 
-													storageRead->storageAttributes.checksum, 
-													storageRead->storageAttributes.version);
-	ereport(LOG,
-			(errmsg("%s. %s",
-					contextStr,
-					blockHeaderStr)));
+	header = BufferedReadGetCurrentBuffer(&storageRead->bufferedRead);
 
-	pfree(contextStr);
-	pfree(blockHeaderStr);
+	checksum = storageRead->storageAttributes.checksum;
+
+	return errdetail_appendonly_storage_smallcontent_header(header, checksum);
+}
+
+/*
+ * errdetail_appendonly_read_largecontent_header
+ *
+ * Add an errdetail() line showing the Append-Only Storage header of type LargeContentMetadata
+ * being read.
+ */
+static int
+errdetail_appendonly_read_largecontent_header(AppendOnlyStorageRead *storageRead)
+{
+	uint8	*header;
+
+	bool 	checksum;
+
+	header = BufferedReadGetCurrentBuffer(&storageRead->bufferedRead);
+
+	checksum = storageRead->storageAttributes.checksum;
+
+	return errdetail_appendonly_storage_largecontent_header(header, checksum);
 }
 
 /*
@@ -812,9 +788,6 @@ static bool AppendOnlyStorageRead_InternalGetBlockInfo(
 //	storageRead->current.isCompressed = false;
 //	storageRead->current.compressedLen = 0;
 
-	if(Debug_appendonly_print_datumstream)
-		elog(LOG, "before AppendOnlyStorageRead_PositionToNextBlock, storageRead->current.headerOffsetInFile is" INT64_FORMAT "storageRead->current.overallBlockLen is %d", storageRead->current.headerOffsetInFile, storageRead->current.overallBlockLen); 
-
 	if (!AppendOnlyStorageRead_PositionToNextBlock(
 											storageRead,
 											&storageRead->current.headerOffsetInFile,
@@ -824,9 +797,6 @@ static bool AppendOnlyStorageRead_InternalGetBlockInfo(
 		/* Done reading the file */
 		return false;
 	}
-
-	if(Debug_appendonly_print_datumstream)
-		elog(LOG, "after AppendOnlyStorageRead_PositionToNextBlock, storageRead->current.headerOffsetInFile is" INT64_FORMAT "storageRead->current.overallBlockLen is %d", storageRead->current.headerOffsetInFile, storageRead->current.overallBlockLen); 
 
 	/*
 	 * Proceed very carefully:
@@ -845,7 +815,7 @@ static bool AppendOnlyStorageRead_InternalGetBlockInfo(
 			        (errmsg("Header checksum does not match.  Expected 0x%X and found 0x%X ",
 			     		    storedChecksum,
 			        		computedChecksum),
-			         errdetail_appendonly_read_storage_content_header(storageRead),
+			         errdetail_appendonly_read_storage_block_header(storageRead),
 			         errcontext_appendonly_read_storage_block(storageRead)));
 	}
 
@@ -862,7 +832,7 @@ static bool AppendOnlyStorageRead_InternalGetBlockInfo(
 		 		(errmsg("Bad append-only storage header.  Header check error %d, detail '%s'",
 						(int)checkError,
 						AppendOnlyStorageFormat_GetHeaderCheckErrorStr()),
-				 errdetail_appendonly_read_storage_content_header(storageRead),
+				 errdetail_appendonly_read_storage_block_header(storageRead),
 				 errcontext_appendonly_read_storage_block(storageRead)));
 
 	/*
@@ -917,10 +887,10 @@ static bool AppendOnlyStorageRead_InternalGetBlockInfo(
 								&storageRead->current.compressedLen);
 		if (checkError != AOHeaderCheckOk)
 			ereport(ERROR,
-					(errmsg("Bad append-only storage header of type small content. Header check error %d, detail '%s'",
+					(errmsg("Bad append-only storage header of type Block. Header check error %d, detail '%s'",
 							(int)checkError,
 							AppendOnlyStorageFormat_GetHeaderCheckErrorStr()),
-					 errdetail_appendonly_read_storage_content_header(storageRead),
+					 errdetail_appendonly_read_smallcontent_header(storageRead),
 					 errcontext_appendonly_read_storage_block(storageRead)));
 		break;
 
@@ -939,80 +909,27 @@ static bool AppendOnlyStorageRead_InternalGetBlockInfo(
 								&storageRead->current.rowCount);
 		if (checkError != AOHeaderCheckOk)
 			ereport(ERROR,
-					(errmsg("Bad append-only storage header of type large content. Header check error %d, detail '%s'",
+					(errmsg("Bad append-only storage header of type LargeContentMetadata. Header check error %d, detail '%s'",
 							(int)checkError,
 							AppendOnlyStorageFormat_GetHeaderCheckErrorStr()),
-					 errdetail_appendonly_read_storage_content_header(storageRead),
+					 errdetail_appendonly_read_largecontent_header(storageRead),
 					 errcontext_appendonly_read_storage_block(storageRead)));
 		storageRead->current.isLarge = true;
 		break;
 
-	case AoHeaderKind_NonBulkDenseContent:
-		/*
-		 * Check the NonBulkDense header information.
-		 */
-		checkError =
-			AppendOnlyStorageFormat_GetNonBulkDenseContentHeaderInfo(
-								header,
-								storageRead->current.actualHeaderLen,
-								storageRead->storageAttributes.checksum,
-								blockLimitLen,
-								&storageRead->current.overallBlockLen,
-								&storageRead->current.contentOffset,
-								&storageRead->current.uncompressedLen,
-								&storageRead->current.executorBlockKind,
-								&storageRead->current.hasFirstRowNum,
-								storageRead->storageAttributes.version,
-								&storageRead->current.firstRowNum,
-								&storageRead->current.rowCount);
-		if (checkError != AOHeaderCheckOk)
-			ereport(ERROR,
-					(errmsg("Bad append-only storage header of type non-bulk dense content. Header check error %d, detail '%s'",
-							(int)checkError,
-							AppendOnlyStorageFormat_GetHeaderCheckErrorStr()),
-					 errdetail_appendonly_read_storage_content_header(storageRead),
-					 errcontext_appendonly_read_storage_block(storageRead)));
-		break;
-	
-	case AoHeaderKind_BulkDenseContent:
-		/*
-		 * Check the BulkDenseContent header information.
-		 */
-		checkError =
-			AppendOnlyStorageFormat_GetBulkDenseContentHeaderInfo(
-								header,
-								storageRead->current.actualHeaderLen,
-								storageRead->storageAttributes.checksum,
-								blockLimitLen,
-								&storageRead->current.overallBlockLen,
-								&storageRead->current.contentOffset,
-								&storageRead->current.uncompressedLen,
-								&storageRead->current.executorBlockKind,
-								&storageRead->current.hasFirstRowNum,
-								storageRead->storageAttributes.version,
-								&storageRead->current.firstRowNum,
-								&storageRead->current.rowCount,
-								&storageRead->current.isCompressed,
-								&storageRead->current.compressedLen);
-		if (checkError != AOHeaderCheckOk)
-			ereport(ERROR,
-					(errmsg("Bad append-only storage header of type bulk dense content. Header check error %d, detail '%s'",
-							(int)checkError,
-							AppendOnlyStorageFormat_GetHeaderCheckErrorStr()),
-					 errdetail_appendonly_read_storage_content_header(storageRead),
-					 errcontext_appendonly_read_storage_block(storageRead)));
-		break;
-
 	default:
-		elog(ERROR, "Unexpected Append-Only header kind %d", 
-			 storageRead->current.headerKind);
+		// UNDONE:
 		break;
 	}
 
 	if (Debug_appendonly_print_storage_headers)
-	{
-		AppendOnlyStorageRead_LogBlockHeader(storageRead, header);
-	}
+		AppendOnlyStorageFormat_LogBlockHeader(
+							storageRead->relationName,
+							storageRead->segmentFileName,
+							storageRead->current.headerOffsetInFile,
+							header,
+							storageRead->storageAttributes.checksum,
+							storageRead->storageAttributes.version);
 
 	if (storageRead->current.hasFirstRowNum)
 	{
@@ -1157,9 +1074,7 @@ static void AppendOnlyStorageRead_InternalGetBuffer(
 	/*
 	 * Verify next block is type Block.
 	 */
-	Assert(storageRead->current.headerKind == AoHeaderKind_SmallContent ||
-		   storageRead->current.headerKind == AoHeaderKind_NonBulkDenseContent ||
-		   storageRead->current.headerKind == AoHeaderKind_BulkDenseContent);
+	Assert(storageRead->current.headerKind == AoHeaderKind_SmallContent);
 
 	/*
 	 * Grow the buffer to the full block length to avoid any
@@ -1180,7 +1095,7 @@ static void AppendOnlyStorageRead_InternalGetBuffer(
 				 errmsg("Wrong buffer length.  Expected %d byte length buffer and got %d ",
 						storageRead->current.overallBlockLen,
 						availableLen),
-				 errdetail_appendonly_read_storage_content_header(storageRead),
+				 errdetail_appendonly_read_smallcontent_header(storageRead),
 				 errcontext_appendonly_read_storage_block(storageRead)));
 
 	if (storageRead->storageAttributes.checksum &&
@@ -1199,7 +1114,7 @@ static void AppendOnlyStorageRead_InternalGetBuffer(
 			     	(errmsg("Block checksum does not match.  Expected 0x%X and found 0x%X",
 						     storedChecksum,
 						     computedChecksum),
-					 errdetail_appendonly_read_storage_content_header(storageRead),
+					 errdetail_appendonly_read_smallcontent_header(storageRead),
 					 errcontext_appendonly_read_storage_block(storageRead)));
 	}
 
@@ -1225,9 +1140,7 @@ uint8 *AppendOnlyStorageRead_GetBuffer(
 	/*
 	 * Verify next block is a "small" non-compressed block.
 	 */
-	Assert(storageRead->current.headerKind == AoHeaderKind_SmallContent ||
-		   storageRead->current.headerKind == AoHeaderKind_NonBulkDenseContent ||
-		   storageRead->current.headerKind == AoHeaderKind_BulkDenseContent);
+	Assert(storageRead->current.headerKind == AoHeaderKind_SmallContent);
 	Assert(!storageRead->current.isLarge);
 	Assert(!storageRead->current.isCompressed);
 
@@ -1243,7 +1156,7 @@ uint8 *AppendOnlyStorageRead_GetBuffer(
 }
 
 /*
- * Copy the large and/or decompressed content out.
+ * Copy the �large� and/or decompressed content out.
  *
  * The contentOutLen parameter value must match the contentLen
  * from the AppendOnlyStorageReadGetBlockInfo call.
@@ -1424,8 +1337,8 @@ void AppendOnlyStorageRead_Content(
 		   * Compressed.
 		   */
 
-		  PGFunction	  decompressor;
-		  PGFunction	 *cfns = storageRead->compression_functions;
+			PGFunction      decompressor;
+			PGFunction     *cfns = storageRead->compression_functions;
 
 			if (cfns == NULL)
 				decompressor = NULL;

@@ -13,7 +13,6 @@
  */
 #include "postgres.h"
 
-#include "access/catquery.h"
 #include "access/heapam.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_proc.h"
@@ -300,17 +299,11 @@ internal_get_result_type(Oid funcid,
 	Form_pg_proc procform;
 	Oid			rettype;
 	TupleDesc	tupdesc;
-	cqContext  *pcqCtx;
 
 	/* First fetch the function's pg_proc row to inspect its rettype */
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_proc "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(funcid)));
-
-	tp = caql_getnext(pcqCtx);
-
+	tp = SearchSysCache(PROCOID,
+						ObjectIdGetDatum(funcid),
+						0, 0, 0);
 	if (!HeapTupleIsValid(tp))
 		elog(ERROR, "cache lookup failed for function %u", funcid);
 	procform = (Form_pg_proc) GETSTRUCT(tp);
@@ -347,7 +340,7 @@ internal_get_result_type(Oid funcid,
 			result = TYPEFUNC_RECORD;
 		}
 
-		caql_endscan(pcqCtx);
+		ReleaseSysCache(tp);
 
 		return result;
 	}
@@ -359,7 +352,7 @@ internal_get_result_type(Oid funcid,
 	{
 		Oid			newrettype = exprType(call_expr);
 
-		if (!OidIsValid(newrettype))	/* this probably should not happen */
+		if (newrettype == InvalidOid)	/* this probably should not happen */
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
 					 errmsg("could not determine actual result type for function \"%s\" declared to return type %s",
@@ -399,7 +392,7 @@ internal_get_result_type(Oid funcid,
 			break;
 	}
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(tp);
 
 	return result;
 }
@@ -748,92 +741,6 @@ get_func_arg_info(HeapTuple procTup,
 
 
 /*
- * get_func_input_arg_names
- *
- * Extract the names of input arguments only, given a function's
- * proargnames and proargmodes entries in Datum form.
- *
- * Returns the number of input arguments, which is the length of the
- * palloc'd array returned to *arg_names.  Entries for unnamed args
- * are set to NULL.  You don't get anything if proargnames is NULL.
- */
-int
-get_func_input_arg_names(Datum proargnames, Datum proargmodes,
-						 char ***arg_names)
-{
-	ArrayType  *arr;
-	int         numargs;
-	Datum      *argnames;
-	char       *argmodes;
-	char      **inargnames;
-	int         numinargs;
-	int         i;
-
-	/* Do nothing if null proargnames */
-	if (proargnames == PointerGetDatum(NULL))
-	{
-		*arg_names = NULL;
-		return 0;
-	}
-
-	/*
-	 * We expect the arrays to be 1-D arrays of the right types; verify that.
-	 * For proargmodes, we don't need to use deconstruct_array()
-	 * since the array data is just going to look like a C array of values.
-	 */
-	arr = DatumGetArrayTypeP(proargnames);      /* ensure not toasted */
-	if (ARR_NDIM(arr) != 1 ||
-		ARR_HASNULL(arr) ||
-		ARR_ELEMTYPE(arr) != TEXTOID)
-		elog(ERROR, "proargnames is not a 1-D text array");
-	deconstruct_array(arr, TEXTOID, -1, false, 'i', &argnames, NULL, &numargs);
-
-	if (proargmodes != PointerGetDatum(NULL))
-	{
-		arr = DatumGetArrayTypeP(proargmodes);  /* ensure not toasted */
-		if (ARR_NDIM(arr) != 1 ||
-			ARR_DIMS(arr)[0] != numargs ||
-			ARR_HASNULL(arr) ||
-			ARR_ELEMTYPE(arr) != CHAROID)
-			elog(ERROR, "proargmodes is not a 1-D char array");
-		argmodes = (char *) ARR_DATA_PTR(arr);
-	}
-	else
-		argmodes = NULL;
-
-	/* zero elements probably shouldn't happen, but handle it gracefully */
-	if (numargs <= 0)
-	{
-		*arg_names = NULL;
-		return 0;
-	}
-
-	/* extract input-argument names */
-	inargnames = (char **) palloc(numargs * sizeof(char *));
-	numinargs = 0;
-	for (i = 0; i < numargs; i++)
-	{
-		if (argmodes == NULL ||
-			argmodes[i] == PROARGMODE_IN ||
-			argmodes[i] == PROARGMODE_INOUT ||
-			argmodes[i] == PROARGMODE_VARIADIC)
-		{
-			char       *pname = TextDatumGetCString(argnames[i]);
-
-			if (pname[0] != '\0')
-				inargnames[numinargs] = pname;
-			else
-				inargnames[numinargs] = NULL;
-			numinargs++;
-		}
-	}
-
-	*arg_names = inargnames;
-	return numinargs;
-}
-
-
-/*
  * get_func_result_name
  *
  * If the function has exactly one output parameter, and that parameter
@@ -857,17 +764,11 @@ get_func_result_name(Oid functionId)
 	int			numoutargs;
 	int			nargnames;
 	int			i;
-	cqContext  *pcqCtx;
 
 	/* First fetch the function's pg_proc row */
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_proc "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(functionId)));
-
-	procTuple = caql_getnext(pcqCtx);
-
+	procTuple = SearchSysCache(PROCOID,
+							   ObjectIdGetDatum(functionId),
+							   0, 0, 0);
 	if (!HeapTupleIsValid(procTuple))
 		elog(ERROR, "cache lookup failed for function %u", functionId);
 
@@ -878,13 +779,13 @@ get_func_result_name(Oid functionId)
 	else
 	{
 		/* Get the data out of the tuple */
-		proargmodes = caql_getattr(pcqCtx,
-								   Anum_pg_proc_proargmodes,
-								   &isnull);
+		proargmodes = SysCacheGetAttr(PROCOID, procTuple,
+									  Anum_pg_proc_proargmodes,
+									  &isnull);
 		Assert(!isnull);
-		proargnames = caql_getattr(pcqCtx,
-								   Anum_pg_proc_proargnames,
-								   &isnull);
+		proargnames = SysCacheGetAttr(PROCOID, procTuple,
+									  Anum_pg_proc_proargnames,
+									  &isnull);
 		Assert(!isnull);
 
 		/*
@@ -939,7 +840,7 @@ get_func_result_name(Oid functionId)
 		}
 	}
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(procTuple);
 
 	return result;
 }

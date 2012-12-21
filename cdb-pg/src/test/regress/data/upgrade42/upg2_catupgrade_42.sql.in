@@ -15,7 +15,7 @@
 --
 -- The first DML will populate the master catalog and the second DML will
 -- update the catalog in all the segments.
-set default_tablespace = '';
+
 
 --
 -- New Tables in 4.2
@@ -198,13 +198,9 @@ begin
 end;
 $$ language 'plpgsql';
 
-select @gpupgradeschemaname@.grant_gphdfs() where current_database() != 'template0';
+select @gpupgradeschemaname@.grant_gphdfs();
 drop function @gpupgradeschemaname@.grant_gphdfs();
 
--- fixedwidth functions
-CREATE FUNCTION @gpupgradeschemaname@.fixedwidth_in() RETURNS record LANGUAGE c STABLE AS '$libdir/fixedwidth.so', 'fixedwidth_in';
-CREATE FUNCTION @gpupgradeschemaname@.fixedwidth_out(record) RETURNS bytea LANGUAGE c STABLE AS '$libdir/fixedwidth.so', 'fixedwidth_out'; 
- 
 -- Column compression functions
 
 CREATE FUNCTION @gpupgradeschemaname@.gp_quicklz_constructor(internal, internal, bool) RETURNS internal LANGUAGE internal VOLATILE AS 'quicklz_constructor' WITH (OID=5076, DESCRIPTION="quicklz constructor");
@@ -448,7 +444,7 @@ INSERT INTO @gpupgradeschemaname@.pg_attribute_encoding
 			''blocksize='' || blocksize::text END AS blocksize,
 		CASE WHEN compresstype IS NULL THEN ''compresstype=none'' ELSE
 			''compresstype='' || compresstype END AS compresstype,
-		CASE WHEN compresstype IS NULL THEN ''compresslevel=0'' ELSE
+		CASE WHEN compresstype IS NULL THEN null ELSE
 			''compresslevel='' || compresslevel::text END AS compresslevel
 		FROM pg_appendonly
 		WHERE columnstore=''t'') a,

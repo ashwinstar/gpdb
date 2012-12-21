@@ -4,7 +4,7 @@
  *	  Routines to handle window nodes.
  *
  *
- * Copyright (c) 2007-2012, Greenplum inc *
+ * Copyright (c) 2007-2008, Greenplum inc *
  *
  *-------------------------------------------------------------------------
  */
@@ -13,7 +13,6 @@
 #include "miscadmin.h"
 
 /* XXX include list is speculative -- bhagenbuch */
-#include "access/catquery.h"
 #include "access/heapam.h"
 #include "catalog/pg_aggregate.h"
 #include "catalog/pg_namespace.h"
@@ -26,14 +25,11 @@
 #include "executor/nodeAgg.h"
 #include "executor/nodeWindow.h"
 #include "optimizer/clauses.h"
-#include "parser/gramparse.h" /* for SystemFuncName */
 #include "nodes/makefuncs.h"
 #include "parser/parse_agg.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_expr.h"
-#include "parser/parse_func.h"
 #include "parser/parse_oper.h"
-#include "parser/parse_type.h"
 #include "utils/acl.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
@@ -49,94 +45,14 @@
 /* The initial size (in bytes) for an entry in the frame buffer. */
 #define FRAMEBUFFER_ENTRY_SIZE 1024
 
-#define IS_AGG_DERIVED(funcstate) \
-	((funcstate)->isAgg)
-
-#define IS_PURE_WINDOW(funcstate) \
-    (!(funcstate)->isAgg)
-
-#define HAS_TRANSFN(funcstate) \
-	OidIsValid((funcstate)->transfn_oid)
-
-#define HAS_PRELIMFN(funcstate) \
-	OidIsValid((funcstate)->prelimfn_oid)
-
-#define HAS_INVPRELIMFN(funcstate) \
-	OidIsValid((funcstate)->invprelimfn_oid)
-
 /* Check for aggregate functions that have only transition functions,
  * but not inverse preliminary functions or preliminary functions.
  */
 #define HAS_ONLY_TRANS_FUNC(funcstate) \
-    ( \
-		IS_AGG_DERIVED(funcstate) && \
-		!HAS_INVPRELIMFN(funcstate) && \
-		!HAS_PRELIMFN(funcstate) && \
-		HAS_TRANSFN(funcstate) \
-	 )
-
-#define IS_DEFAULT_ROW_FRAME(frame) \
-	( \
-		(frame) && 	\
-		(frame)->is_rows && \
-		(frame)->trail->kind == WINDOW_UNBOUND_PRECEDING && \
-		(frame)->lead->kind == WINDOW_CURRENT_ROW && \
-		(frame)->exclude == WINDOW_EXCLUSION_NULL \
-	) 
-
-#define IS_DEFAULT_RANGE_FRAME(frame) \
-	( \
-		(frame) && \
-		!(frame)->is_rows && \
-		(frame)->trail->kind == WINDOW_UNBOUND_PRECEDING && \
-		(frame)->lead->kind == WINDOW_CURRENT_ROW && \
-		(frame)->exclude == WINDOW_EXCLUSION_NULL \
-	)
-
-/*
- * Should we save information about the argument types in the wrxstate for
- * the given function?  Ultimately we'd like to retire macros that test for
- * a kind of function and move to macros that test for a needed capability.
- * 
- * The macro includes the special winkind values for LEAD, LAG, FIRST_VALUE,
- * and LAST_VALUE for backward compability.  It also tests for the new value
- * WINKIND_LOOKAHEAD which is supposed to be a generic marker for functions
- * 
- */
-#define MAY_USE_ARG_TYPES(funcstate) \
-    ( \
-    	funcstate->allowframe || \
-    	funcstate->wrxstate->winkind == WINKIND_LEAD || \
-    	funcstate->wrxstate->winkind == WINKIND_LAG || \
-    	funcstate->wrxstate->winkind == WINKIND_FIRST_VALUE || \
-    	funcstate->wrxstate->winkind == WINKIND_LAST_VALUE || \
-    	funcstate->wrxstate->winkind == WINKIND_BUFFER_ARGS \
-    )
-
-/* Determine whether the supplied function needs to scan multiple entries 
- * in the frame buffer to compute it's result.  The use is to avoid scanning
- * the frame buffer, when it is known to be unnecessary.
- */
-#define NEEDS_BUFFER_SCAN(funcstate) \
-	(! ( \
-		(funcstate)->trivial_frame || \
-		(funcstate)->winpeercount || \
-		( IS_AGG_DERIVED(funcstate) && HAS_INVPRELIMFN(funcstate) ) || \
-		IS_PURE_WINDOW(funcstate) ) \
-	)
-
-
-/* Macro to determine whether to use sequence semantics when determining
- * peer group boundaries.  We don't want to use sequence semantics in a
- * window node that implements a sequence -- these should use standard 
- * semantics.  Use sequence semantics in windows that operate on sequenced 
- * windows as their input.  The legacy planner marks all sequence related 
- * nodes as using sequence semantics.  This macro corrects that.
- */
-#define Use_Sequence_Semantics(wstate) \
-	( ((Window*) ((wstate)->ps.plan))->semantics == WINDOW_SEMANTICS_SEQ && \
-	   ((Window*) ((wstate)->ps.plan))->sequence == NULL )
-
+    (funcstate->isAgg && \
+     !OidIsValid(funcstate->invprelimfn_oid) && \
+	 !OidIsValid(funcstate->prelimfn_oid) && \
+     OidIsValid(funcstate->transfn_oid))
 
 /* 
  * A struct to hold all the data relevant to a value, used for
@@ -197,9 +113,6 @@ typedef struct WindowStatePerLevelData
 	int64		dense_rank;
 	int64		prior_rank;
 	int64		prior_dense_rank;
-	bool		sequence_key_datum_defined;
-	Datum		sequence_key_datum;
-	int64		sequence_index;
 
 	/* List of functions in this key level */
 	List	   *level_funcs;
@@ -248,9 +161,10 @@ typedef struct WindowStatePerLevelData
 	 */
 	bool	empty_frame;
 
+	/* XXX: merge the following 4 fields into 2 */
 	/* state for rows frame is simple (for now) */
-	int64 trail_rows;
-	int64 lead_rows;
+	long int trail_rows;
+	long int lead_rows;
 
 	/* state for range frame is more complex */
 	Datum trail_range;
@@ -262,8 +176,8 @@ typedef struct WindowStatePerLevelData
 	 *
 	 * For preceding edges, these numbers are 0 or negative.
 	 */
-	int64 num_trail_rows;
-	int64 num_lead_rows;
+	long int num_trail_rows;
+	long int num_lead_rows;
 
 	/* state for frame edges (for both ROWS and RANGE frames) */
 	ExprState *trail_expr;
@@ -276,20 +190,6 @@ typedef struct WindowStatePerLevelData
 	/* RANGE frame only; see comments on init_bound_frame_edge_expr */
 	ExprState *trail_range_eq_expr;
 	ExprState *lead_range_eq_expr;
-
-	/*
-	 * The function oid of the ordering operator for a RANGE frame
-	 * edge value
-	 *
-	 * This is used, together with range_edge_zero, to check whether
-	 * a delayed RANGE frame edge is negative.
-	 */
-	Oid range_edge_ordering_oper;
-
-	/*
-	 * The datum to represent the RANGE edge value "0"
-	 */
-	Datum range_edge_zero;
 
 	/* The frame buffer to buffer the intermediate results for
 	 * the functions in this level key.
@@ -347,13 +247,6 @@ typedef struct WindowStatePerFunctionData
 	bool				win_value_is_null;
 	Oid					windowfn_oid;
 	FmgrInfo			windowfn;
-	/* Pointer to storage managed by pure window function implementation. 
-	 * The storage at win_pure_private (if any) is allocated in the
-	 * ExecutorContext.  Any extra storage used by the implementation is
-	 * allocated in win_pure_fn_context.
-	 */
-	void			   *win_pure_private;
-	MemoryContext		win_pure_fn_context;
 	
 	/* Aggregate-derived window function */
 	Oid					transfn_oid;
@@ -409,6 +302,11 @@ typedef struct WindowStatePerFunctionData
 	uint64              numNotNulls;
 } WindowStatePerFunctionData;
 
+#define FRAME_TRAIL_ROWS 	0
+#define FRAME_TRAIL_RANGE	1
+#define FRAME_LEAD_ROWS		2
+#define FRAME_LEAD_RANGE	3
+
 #define EDGE_IS_BOUND(e) \
 	(e->kind == WINDOW_BOUND_PRECEDING || \
 	 e->kind == WINDOW_BOUND_FOLLOWING || \
@@ -440,66 +338,6 @@ typedef struct WindowStatePerFunctionData
 			  (((level_state)->is_rows && (level_state)->lead_rows == 0) || \
 			   (!(level_state)->is_rows && exec_eq_exprstate((wstate), \
 															 (level_state)->lead_range_eq_expr)))))))
-
-/****************************************************
- * GeneratedSequence and its APIs
- ***************************************************/
-
-/* 
- * A GeneratedSequenceState describes the execution state of the "generated"
- * type of dense sequence used in the windowing implementation.  This is
- * referenced by WindowStatePerLevelData which is private here.
- *
- * In comments below
- *   OK is the type of the sequence ordering key  
- *   IT is the type of the sequence step
- *   SK is the type of the sequence key 
- *
- * These types aren't manifest in the structure.  They're indirectly specified
- * by the referenced Expr and FmgrInfo structures.  When data type information
- * is needed, it can be found indirectly in the parent WindowState.
- */
-typedef struct GeneratedSequenceState
-{ 
-	WindowState *wstate; /* parent window state */
-	
-	Datum low; /* minimum low bound (SK) */
-	Datum high; /* maximum high bound (SK) */
-	Datum step; /* interval width (IT) */
-	
-	/* Facts about the interval */
-	Oid step_type;
-	int16 step_typlen;
-	bool step_typbyval;	
-	
-	Datum current; /* current low bound (SK) */
-	Datum offset; /* offset (IT) from low to next */
-	Datum next; /* current high bound, next low bound (SK) */
-	
-	bool in_progress;
-	bool finished;	
-	
-	FmgrInfo   *leq_call; /* SK <= SK -> bool */
-	FmgrInfo   *inc_call; /* IT + IT -> IT */
-	FmgrInfo   *adv_call; /* SK + IT -> SK */
-} GeneratedSequenceState;
-
-
-static GeneratedSequenceState* gs_new(WindowState *wstate,
-									  Datum low, 
-									  Datum high, 
-									  Datum step, 
-									  Oid step_type,
-									  int16 step_typlen,
-									  bool step_typbyval,
-									  FmgrInfo    *leq_call,
-									  FmgrInfo    *inc_call,
-									  FmgrInfo    *adv_call
-									  );
-static void gs_reset(GeneratedSequenceState* gs_state);
-
-static bool gs_next(GeneratedSequenceState* gs_state, Datum* pdatum);
-
 
 /****************************************************
  * Window Input Buffer and its APIs
@@ -574,14 +412,14 @@ typedef struct WindowFrameBufferData
 	 * Currently, these two counters do not be modified after a trim
 	 * operation.
 	 */
-	int64 num_rows_before;
-	int64 num_rows_after;
+	long int num_rows_before;
+	long int num_rows_after;
 
 	/* The trailing and leading number of rows from current_row if
 	 * this frame is a ROW frame.
 	 */
-	int64 trail_rows;
-	int64 lead_rows;
+	long int trail_rows;
+	long int lead_rows;
 
 	/* The trailing and leading range from current_row if this frame
 	 * is a RANGE frame.
@@ -607,8 +445,8 @@ typedef WindowFrameBufferData *WindowFrameBuffer;
 static WindowFrameBuffer createRangeFrameBuffer(Datum trail_range,
 												Datum lead_range,
 												int bytes);
-static WindowFrameBuffer createRowsFrameBuffer(int64 trail_rows,
-											   int64 lead_rows,
+static WindowFrameBuffer createRowsFrameBuffer(long int trail_rows,
+											   long int lead_rows,
 											   int bytes);
 static WindowFrameBuffer resetFrameBuffer(WindowFrameBuffer buffer);
 static void appendToFrameBuffer(WindowStatePerLevel level_state,
@@ -624,8 +462,8 @@ static bool hasEnoughDataInRange(WindowFrameBuffer buffer,
 static bool hasEnoughDataInRows(WindowFrameBuffer buffer,
 								WindowStatePerLevel level_state,
 								WindowState *wstate,
-								int64 trail_rows,
-								int64 lead_rows);
+								long int trail_rows,
+								long int lead_rows);
 static void computeFrameValue(WindowStatePerLevel level_state,
 							  WindowState *wstate,
 							  NTupleStoreAccessor *trail_reader,
@@ -638,43 +476,15 @@ static void resetTransValues(WindowStatePerLevel level_state,
 static void freeFrameBuffer(WindowFrameBuffer buffer);
 static void freeFrameBuffers(WindowState *wstate);
 
-/*
- * WindowBufferCursor
- * This is an abstract cursor to scan the frame buffer.  The tricky part is that
- * the underlying tuplestore may or may not have rows while in some circumstances
- * we should look at the input buffer as the last row, which is called "last_agg."
- * The usage of these APIs is straightforward; BeginScan, Next, EndScan.  Don't
- * open multiple cursors at one time on the same window level, as the cursor
- * has a transient tuplestore reader, so you have to make sure the scan on
- * the same window level should happen once at a time.
- */
-typedef struct WindowBufferCursorData
-{
-	WindowFuncContext	wcontext;
-	NTupleStoreAccessor *reader;			/* reader to scan rows */
-	NTupleStorePos		orig_pos;			/* original position of the reader */
-	bool				use_last_agg;		/* should scan "last_agg"? */
-	bool				reader_eof;			/* is reader at end of scan? */
-	bool				has_tuples;			/* does frame has tuples? */
-	bool				forward;			/* scan direction */
-	bool				first;				/* is first fetch of tupstore? */
-	List			   *func_values;		/* values on the scanning row */
-} WindowBufferCursorData;
-
-static List *windowBufferNextTupleStore(WindowBufferCursor cursor);
-static List *windowBufferNextLastAgg(WindowBufferCursor cursor);
-
 /* the functions for the Window node */
 static WindowState *makeWindowState(Window *window, EState *estate);
 static void initializePartition(WindowState *wstate);
 static bool checkOutputReady(WindowState *wstate);
+static TupleTableSlot *fetchTupleSlotThroughBuf(WindowState *wstate);
 static int initFcinfo(WindowRefExprState *wrxstate, FunctionCallInfoData *fcinfo,
 					  WindowStatePerFunction funcstate, ExprContext *econtext,
 					  bool check_nulls);
 static void adjustEdges(WindowFrameBuffer buffer, WindowState *wstate);
-static inline bool is_sequence(Window *window);
-static TupleTableSlot *next_input_row(WindowState *wstate);
-static TupleTableSlot *synthesize_input_row(WindowState *wstate);
 static TupleTableSlot *fetchCurrentRow(WindowState *wstate);
 static TupleTableSlot *fetchTupleSlotThroughBuf(WindowState *wstate);
 static void processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer);
@@ -694,14 +504,8 @@ static void add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *ws
 							   ExprContext *econtext, bool check_nulls);
 static bool hasTuplesInFrame(WindowStatePerLevel level_state,
 							 WindowState *wstate);
-static Datum first_last_value_internal(PG_FUNCTION_ARGS,
-									   bool *isnull, bool isfirstvalue);
-
-static MemoryContext win_get_private_context(WindowStatePerFunction wspf);
-static void win_clear_private_context(WindowStatePerFunction wspf);
-static void win_alloc_private(WindowStatePerFunction wspf, size_t sz);
-static void win_free_private(WindowStatePerFunction wspf);
-
+static Datum last_value_internal(WindowRefExprState *wrxstate, bool *isnull);
+static Datum first_value_internal(WindowRefExprState *wrxstate, bool *isnull);
 static FrameBufferEntry *createFrameBufferEntry(WindowStatePerLevel level_state);
 static void freeFrameBufferEntry(FrameBufferEntry *entry);
 static void advanceEdgeForRange(WindowStatePerLevel level_state,
@@ -730,18 +534,6 @@ static ExprState *make_eq_exprstate(WindowState *wstate,
 static bool exec_eq_exprstate(WindowState *wstate, ExprState *eq_exprstate);
 static void setEmptyFrame(WindowStatePerLevel level_state,
 						  WindowState *wstate);
-static FmgrInfo *
-get_fmgrinfo_for_compatible_oper(WindowState *wstate,
-								 const char *oprname,
-								 Oid ltype, Oid rtype);
-
-static Datum  evaluate_const_expr(Expr *expr, ExprContext *ec);
-static void seq_init_wstate(WindowState *wstate);
-static bool seq_next_matches_part(WindowState *wstate);
-static void seq_set_partkey_in_synthslot(WindowState *wstate);
-static int seq_compare(WindowState* wstate);
-static Datum seq_extrapolate(WindowState* wstate);
-static void set_sequence_key(WindowState *wstate, Datum key_datum);
 
 /*
  * initFrameBuffer -- initialize the frame buffer.
@@ -787,7 +579,7 @@ createRangeFrameBuffer(Datum trail_range, Datum lead_range, int bytes)
  * createRowsFrameBuffer -- create a new WindowFrameBuffer of the ROWS type.
  */
 static WindowFrameBuffer
-createRowsFrameBuffer(int64 trail_rows, int64 lead_rows, int bytes)
+createRowsFrameBuffer(long int trail_rows, long int lead_rows, int bytes)
 {
 	WindowFrameBuffer buffer =
 		(WindowFrameBuffer) palloc0(sizeof(WindowFrameBufferData));
@@ -921,10 +713,7 @@ freeFrameBuffer(WindowFrameBuffer buffer)
 	ntuplestore_destroy_accessor(buffer->reader);
 	ntuplestore_destroy_accessor(buffer->current_row_reader);
 
-	if (buffer->tuplestore)
-	{
-		ntuplestore_destroy(buffer->tuplestore);
-	}
+	ntuplestore_destroy(buffer->tuplestore);
 
 	pfree(buffer);
 }
@@ -997,10 +786,10 @@ serializeValue(Datum value, bool isnull,
 	char *written_pos = (*p_serial_entry) + start_pos;
 	
 	written_pos = ensureSpace(p_serial_entry, p_max_size,
-							  written_pos, sizeof(bool));
+							  written_pos, TYPEALIGN(TUPLE_CHUNK_ALIGN,sizeof(bool)));
 
 	memcpy(written_pos, &isnull, sizeof(bool));
-	written_pos += sizeof(bool); /* isnull col */
+	written_pos += TYPEALIGN(TUPLE_CHUNK_ALIGN,sizeof(bool)); /* isnull col */
 
 	if (!isnull)
 	{
@@ -1015,24 +804,15 @@ serializeValue(Datum value, bool isnull,
 		else
 		{
 			Size real_size = datumGetSize(value, byvalue, typelen);
-
-			/*
-			 * The pointer needs to be properly aligned since
-			 * the deserializer will not make a copy for this Datum, but
-			 * simply convert this pointer address to a Datum.
-			 */
-			Size alignmentBytes = ((char *)MAXALIGN(written_pos)) - written_pos;
 					
 			written_pos = ensureSpace(p_serial_entry, p_max_size,
-									  written_pos, real_size + alignmentBytes);
-			written_pos += alignmentBytes;
-			
+									  written_pos, TYPEALIGN(TUPLE_CHUNK_ALIGN,real_size));
 			Assert(DatumGetPointer(value) != NULL);
 			memcpy(written_pos,
 				   DatumGetPointer(value),
 				   real_size);
 			
-			written_pos += real_size;
+			written_pos += TYPEALIGN(TUPLE_CHUNK_ALIGN,real_size);
 		}
 	}
 
@@ -1052,32 +832,20 @@ serializeFuncs(WindowStatePerLevel level_state,
 	ListCell *lc;
 	char *written_pos = (*p_serial_entry) + start_pos;
 	int serial_index = -1;
-	int index_delta = 1;
 
-	/* 
-	 * For each function at this level, do the appropriate kind of buffering. 
-	 */
+	/* the value for each function. */
 	foreach (lc, level_state->level_funcs)
 	{
 		WindowStatePerFunction funcstate = (WindowStatePerFunction) lfirst(lc);
 
 		if (funcstate->trivial_frame)
 		{
-			/* 
-			 * Trivial case: No buffering required. 
-			 */
-			index_delta = 0; /* added no attributes, not needed but tidy */
-  			continue;
+			/* ignore trivial window functions */
+			continue;
 		}
-		
 		else if (funcstate->winpeercount)
 		{
-			/* 
-			 * CUME_DIST case: Buffer win_value which is the row_number at the end of
-			 * the peer group. Currently, the only examples are functions that require 
-			 * peer counts.  (These may be obtained by subtracting the previous value
-			 * for the current.
-			 */
+			/* functions that require peer counts. */
 			int16 typelen;
 			bool byvalue;
 			get_typlenbyval(CUME_DIST_PRELIM_TYPE,
@@ -1089,16 +857,10 @@ serializeFuncs(WindowStatePerLevel level_state,
 							   byvalue, typelen,
 							   p_serial_entry, p_max_size,
 							   p_len, (written_pos - *p_serial_entry));
-			index_delta = 1; /* added one attribute */
 		}
-		
 		else if (IS_LEAD_LAG(funcstate->wrxstate->winkind) ||
 				 IS_FIRST_LAST(funcstate->wrxstate->winkind))
 		{
-			/* 
-			 * Window Transition Value case: Buffer aggTransValue (though this isn't
-			 * actually in service of an aggregate-derived window function).
-			 */
 			WindowRefExprState *wrxstate;
 			int nargs;
 			int argno = 1;
@@ -1113,17 +875,18 @@ serializeFuncs(WindowStatePerLevel level_state,
 							   wrxstate->argtyplen[argno],
 							   p_serial_entry, p_max_size,
 							   p_len, (written_pos - *p_serial_entry));
-			index_delta = 1; /* added one attribute */
 		}
-		
-		else if ( HAS_PRELIMFN(funcstate) || HAS_INVPRELIMFN(funcstate) )
+		/* the function which has an inverse preliminary function or
+		 * preliminary function.
+		 */
+		else if (OidIsValid(funcstate->invprelimfn_oid) ||
+				 OidIsValid(funcstate->prelimfn_oid))
 		{
 			/*
-			 * Aggregate-derived Window Transition Value case:  Buffer aggTransvalue.
-			 * If the function also has inverse preliminary function, also store the
-			 * number of not NULLS.
+			 * Store number of not NULLS when the function has a 
+			 * inverse preliminary function.
 			 */
-			if (HAS_INVPRELIMFN(funcstate))
+			if (OidIsValid(funcstate->invprelimfn_oid))
 			{
 				written_pos = ensureSpace(p_serial_entry, p_max_size,
 										  written_pos, sizeof(uint64));
@@ -1138,14 +901,10 @@ serializeFuncs(WindowStatePerLevel level_state,
 							   funcstate->aggTranstypeLen,
 							   p_serial_entry, p_max_size,
 							   p_len, (written_pos - *p_serial_entry));
-			index_delta = 1; /* added one attribute */
 		}
-
 		else
 		{
-			/* 
-			 * General Case: Store the values of the function arguments. 
-			 */
+			/* the general case */
 			WindowRefExprState *winref_state = funcstate->wrxstate;
 			ListCell *ref_lc;
 			Oid typid;
@@ -1153,7 +912,6 @@ serializeFuncs(WindowStatePerLevel level_state,
 			int16 arglen;
 			
 			/* Store the input arguments */
-			index_delta = 0; /* count attributes added. */
 			foreach (ref_lc, winref_state->args)
 			{
 				ExprState *argstate = (ExprState *)lfirst(ref_lc);
@@ -1173,12 +931,11 @@ serializeFuncs(WindowStatePerLevel level_state,
 								   byval, arglen,
 								   p_serial_entry, p_max_size,
 								   p_len, (written_pos - *p_serial_entry));
-				index_delta++; /* added another attribute. */
 			}
 		}
 
-		funcstate->serial_index = serial_index + 1;
-		serial_index += index_delta;
+		serial_index++;
+		funcstate->serial_index = serial_index;
 	}
 
 	*p_len = written_pos - *p_serial_entry;
@@ -1204,7 +961,7 @@ deserializeValue(char *read_pos, WindowValue *value,
 				 bool byvalue, int16 typelen)
 {
 	memcpy(&(value->valueIsNull), read_pos, sizeof(bool));
-	read_pos += sizeof(bool);
+	read_pos += TYPEALIGN(TUPLE_CHUNK_ALIGN,sizeof(bool));
 
 	if (!value->valueIsNull)
 	{
@@ -1215,15 +972,10 @@ deserializeValue(char *read_pos, WindowValue *value,
 		}
 		else
 		{
-			/*
-			 * Make read_pos properly aligned, since it is the start
-			 * address of a Datum that is passed by reference.
-			 */
-			read_pos = (char *)MAXALIGN(read_pos);
-			
 			value->value = PointerGetDatum(read_pos);
-			Size valueLen = datumGetSize(value->value, byvalue, typelen);
-			read_pos += valueLen;
+			read_pos += TYPEALIGN(TUPLE_CHUNK_ALIGN,datumGetSize(value->value,
+									 byvalue,
+									 typelen));
 		}
 	}
 	else
@@ -1239,32 +991,27 @@ deserializeValue(char *read_pos, WindowValue *value,
 static List *
 deserializeFuncs(WindowStatePerLevel level_state,
 				 FrameBufferEntry *entry_buf,
-				 char *start_pos,
+				 char *serial_entry,
 				 Size len)
 {
 	List *func_values = entry_buf->func_values;
 
 	ListCell *lc;
-	char *read_pos = start_pos;
+	char *read_pos = serial_entry;
 
-	/* For each function at this level, reconstitute the buffered values. */
+	/* the value for each function. */
 	foreach (lc, level_state->level_funcs)
 	{
 		WindowStatePerFunction funcstate = (WindowStatePerFunction) lfirst(lc);
 		WindowValue *value;
 
+		/* skip window functions with trivial frames */
 		if (funcstate->trivial_frame)
-		/* 
-		 * Trivial case: Nothing in buffer. 
-		 */
 			continue;
 
+		/* functions that require peer counts. */
 		else if (funcstate->winpeercount)
 		{
-			/* 
-			 * CUME_DIST case: Buffered value is the row_number at the end of this row's
-			 * the peer group.
-			 */
 			int16 typelen;
 			bool byvalue;
 			get_typlenbyval(CUME_DIST_PRELIM_TYPE,
@@ -1272,13 +1019,9 @@ deserializeFuncs(WindowStatePerLevel level_state,
 			value =	list_nth(func_values, funcstate->serial_index);
 			read_pos = deserializeValue(read_pos, value, byvalue, typelen);
 		}
-
 		else if (IS_LEAD_LAG(funcstate->wrxstate->winkind) ||
 				 IS_FIRST_LAST(funcstate->wrxstate->winkind))
 		{
-			/* 
-			 * Window Transition Value case: Value was aggTransValue.
-			 */
 			WindowRefExprState *wrxstate;
 			int nargs;
 			int argno = 1;
@@ -1291,20 +1034,18 @@ deserializeFuncs(WindowStatePerLevel level_state,
 										wrxstate->argtypbyval[argno],
 										wrxstate->argtyplen[argno]);
 		}
-		
-		else if ( HAS_INVPRELIMFN(funcstate) || HAS_PRELIMFN(funcstate) )
+		else if (OidIsValid(funcstate->invprelimfn_oid) ||
+				 OidIsValid(funcstate->prelimfn_oid))
 		{
-			/*
-			 * Aggregate-derived Window Transition Value case:  Value is aggTransvalue.
-			 * If the function also has inverse preliminary function, the value is 
-			 * preceded by the number of not NULLS.
+			/* 
+			 * The function which has an inverse preliminary function.
 			 */
 			value =	list_nth(func_values, funcstate->serial_index);
 
 			/* Read number of not nulls if this function has a preliminary
 			 * function.
 			 */
-			if (HAS_INVPRELIMFN(funcstate))
+			if (OidIsValid(funcstate->invprelimfn_oid))
 			{
 				memcpy(&(value->numNotNulls), read_pos, sizeof(uint64));
 				read_pos += sizeof(uint64);
@@ -1316,9 +1057,7 @@ deserializeFuncs(WindowStatePerLevel level_state,
 		}
 		else
 		{
-			/* 
-			 * General Case: Values are the values of the function arguments.
-			 */
+			/* the general case */
 			WindowRefExprState *winref_state = funcstate->wrxstate;
 			ListCell *ref_lc;
 			Oid typid;
@@ -1341,7 +1080,7 @@ deserializeFuncs(WindowStatePerLevel level_state,
 		}
 	}
 
-	Assert((read_pos - start_pos) == len);
+	Assert((read_pos - serial_entry) == len);
 
 	return func_values;
 }
@@ -1367,9 +1106,6 @@ serializeEntry(WindowStatePerLevel level_state,
 
 	*p_len = 0;
 	Assert(*p_serial_entry != NULL);
-
-	/* We rely on the address of the char array is maxaligned. */
-	Assert(*p_serial_entry == (char *)MAXALIGN(*p_serial_entry));
 	
 	written_pos = *p_serial_entry;
 	
@@ -1381,41 +1117,31 @@ serializeEntry(WindowStatePerLevel level_state,
 			AttrNumber attnum = level_state->sortColIdx[key_no];
 			Datum key;
 			bool isnull;
+			Size keylen = 0;
 
 			key = slot_getattr(slot, attnum, &isnull);
 
 			written_pos = ensureSpace(p_serial_entry, p_max_size, written_pos,
 									  sizeof(bool));
 			memcpy(written_pos, &(isnull), sizeof(bool));
-			written_pos += sizeof(bool);
+			written_pos += TYPEALIGN(TUPLE_CHUNK_ALIGN,sizeof(bool));
 
 			if (!isnull)
 			{
-				Size keylen = 0;
-				Size alignmentBytes = 0;
-				
 				if (level_state->col_typbyvals[key_no])
-				{
-					keylen = sizeof(Datum);
-				}
-				
+					keylen += sizeof(Datum);
 				else
-				{
-					alignmentBytes = ((char *)MAXALIGN(written_pos)) - written_pos;
-					keylen = datumGetSize(key, level_state->col_typbyvals[key_no],
-										  level_state->col_typlens[key_no]);
-				}
+					keylen += datumGetSize(key, level_state->col_typbyvals[key_no],
+										   level_state->col_typlens[key_no]);
 	
 				written_pos = ensureSpace(p_serial_entry, p_max_size, written_pos,
-										  keylen + alignmentBytes);
-
-				written_pos += alignmentBytes;
+										  TYPEALIGN(TUPLE_CHUNK_ALIGN,keylen));
 
 				if (level_state->col_typbyvals[key_no])
-					memcpy(written_pos, &(key), keylen);
+					memcpy(written_pos, &(key), sizeof(Datum));
 				else
 					memcpy(written_pos, DatumGetPointer(key), keylen);
-				written_pos += keylen;
+				written_pos += TYPEALIGN(TUPLE_CHUNK_ALIGN,keylen);
 			}
 		}
 	}
@@ -1442,9 +1168,6 @@ deserializeEntry(WindowStatePerLevel level_state,
 	Size keylen = 0;
 	int key_no;
 
-	/* We rely on the address of serial_entry is maxaligned. */
-	Assert(serial_entry == (char *)MAXALIGN(serial_entry));
-
 	if (!level_state->is_rows)
 	{
 		for (key_no=0; key_no < level_state->numSortCols; key_no++)
@@ -1452,8 +1175,7 @@ deserializeEntry(WindowStatePerLevel level_state,
 			Size curr_keylen = 0;
 
 			memcpy(&(entry->nulls[key_no]), read_pos, sizeof(bool));
-			read_pos += sizeof(bool);
-			keylen += sizeof(bool);
+			read_pos += TYPEALIGN(TUPLE_CHUNK_ALIGN,sizeof(bool));
 
 			if (!entry->nulls[key_no])
 			{
@@ -1465,24 +1187,22 @@ deserializeEntry(WindowStatePerLevel level_state,
 			
 				else
 				{
-					Size alignmentBytes = ((char *)MAXALIGN(read_pos)) - read_pos;
-					read_pos += alignmentBytes;
-					keylen += alignmentBytes;
-
 					curr_keylen = datumGetSize(PointerGetDatum(read_pos),
 											   level_state->col_typbyvals[key_no],
 											   level_state->col_typlens[key_no]);
 					entry->keys[key_no] = PointerGetDatum(read_pos);
 				}
-				read_pos += curr_keylen;
-				keylen += curr_keylen;
+				read_pos += TYPEALIGN(TUPLE_CHUNK_ALIGN,curr_keylen);
+				keylen += TYPEALIGN(TUPLE_CHUNK_ALIGN,curr_keylen);
 			}
+		
+			keylen += TYPEALIGN(TUPLE_CHUNK_ALIGN,sizeof(bool));
 		}
 	}
 
 	/* deserial function values */
-	entry->func_values = deserializeFuncs(level_state, entry_buf,
-										  read_pos, len - keylen);
+	entry->func_values = deserializeFuncs(level_state, entry_buf, read_pos,
+										  len - keylen);
 
 	return entry;
 }
@@ -1779,7 +1499,7 @@ static bool
 hasEnoughDataInRows(WindowFrameBuffer buffer,
 					WindowStatePerLevel level_state,
 					WindowState *wstate,
-					int64 trail_rows, int64 lead_rows)
+					long int trail_rows, long int lead_rows)
 {
 	if (level_state->empty_frame)
 		return true;
@@ -1825,8 +1545,8 @@ createFrameBufferEntry(WindowStatePerLevel level_state)
 		else if (funcstate->winpeercount ||
 				 (IS_LEAD_LAG(funcstate->wrxstate->winkind) ||
 				  IS_FIRST_LAST(funcstate->wrxstate->winkind)) ||
-				  ( HAS_INVPRELIMFN(funcstate) || HAS_PRELIMFN(funcstate) )
-				 )
+				 (OidIsValid(funcstate->invprelimfn_oid) ||
+				  OidIsValid(funcstate->prelimfn_oid)))
 		{
 			value =	(WindowValue *)palloc0(sizeof(WindowValue));
 			entry->func_values = lappend(entry->func_values, value);
@@ -2042,39 +1762,25 @@ hasTuplesInFrame(WindowStatePerLevel level_state,
 }
 
 /*
- * Similar to datumFree (which it calls) but also clears the variables that
- * hold the Datum and null mark.
+ * freeTransValue -- release the space allocated for the given transition value.
  */
 static void
-datumClear(Datum *value, bool *isnull, bool typbyval)
+freeTransValue(Datum *transValue,
+			   bool transTypeByVal,
+			   bool *transValueIsNull,
+			   bool *noTransValue,
+			   bool shouldFree)
 {
-	if ( *value && !*isnull )
-	    datumFree(*value, typbyval, 0);
-	
-	*value = 0;
-	*isnull = true;
-}
-
-/* 
- * Previously called freeTransValue, but uses are more general.  Clears a
- * value (based on the given typbyval) provided the value is set (!*notset)
- * and marked to be freed.  Clears *notset, if appropriate. 
- */
-static void
-freeValue(Datum *value,
-		  bool typbyval,
-		  bool *isnull,
-		  bool *notset,
-		   bool shouldfree)
-{
-	Assert(PointerIsValid(notset));
-	
-	if (!shouldfree)
+	if (!shouldFree)
 		return;
 	
-	if ( !*notset) 
-		datumClear(value, isnull, typbyval);
-		*notset = true;
+	if (!transTypeByVal && !(*noTransValue) && !(*transValueIsNull) &&
+		DatumGetPointer(*transValue) != NULL)
+		pfree(DatumGetPointer(*transValue));
+	
+	*transValue = 0;
+	*transValueIsNull = true;
+	*noTransValue = true;
 }
 
 /*
@@ -2127,10 +1833,13 @@ computeTransValuesThroughScan(WindowStatePerLevel level_state,
 		/* Ignore those functions that do not require scanning
 		 * multiple entries in the frame buffer.
 		 */
-		if ( !NEEDS_BUFFER_SCAN(funcstate) )
+		if (funcstate->trivial_frame ||
+			funcstate->winpeercount ||
+			(funcstate->isAgg && OidIsValid(funcstate->invprelimfn_oid)) ||
+			!funcstate->isAgg)
 			continue;
 		
-		freeValue(&funcstate->final_aggTransValue,
+		freeTransValue(&funcstate->final_aggTransValue,
 					   funcstate->aggTranstypeByVal,
 					   &funcstate->final_aggTransValueIsNull,
 					   &funcstate->final_aggNoTransValue,
@@ -2171,10 +1880,14 @@ computeTransValuesThroughScan(WindowStatePerLevel level_state,
 				/* Ignore those functions that do not require scanning
 				 * multiple entries in the frame buffer.
 				 */
-				if ( !NEEDS_BUFFER_SCAN(funcstate) )
+				if (funcstate->trivial_frame ||
+					funcstate->winpeercount ||
+					(funcstate->isAgg && 
+					 OidIsValid(funcstate->invprelimfn_oid)) ||
+					!funcstate->isAgg)
 					continue;
 					
-				if ( HAS_PRELIMFN(funcstate) )
+				if (OidIsValid(funcstate->prelimfn_oid))
 				{
 					curr_value = 
 						(WindowValue *)list_nth(curr_entry->func_values,
@@ -2243,10 +1956,13 @@ computeTransValuesThroughScan(WindowStatePerLevel level_state,
 				/* Ignore those functions that do not require scanning
 				 * multiple entries in the frame buffer.
 				 */
-				if ( !NEEDS_BUFFER_SCAN(funcstate) )
+				if (funcstate->trivial_frame ||
+					funcstate->winpeercount ||
+					(funcstate->isAgg && OidIsValid(funcstate->invprelimfn_oid)) ||
+					!funcstate->isAgg)
 					continue;
 
-				if (HAS_PRELIMFN(funcstate))
+				if (OidIsValid(funcstate->prelimfn_oid))
 				{
 					fcinfo.arg[1] = funcstate->aggTransValue;
 					fcinfo.argnull[1] = funcstate->aggTransValueIsNull;
@@ -2374,7 +2090,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 		}
 
 		/* Aggregate functions with inverse preliminary functions. */
-		else if (IS_AGG_DERIVED(funcstate) && HAS_INVPRELIMFN(funcstate))
+		else if (funcstate->isAgg && OidIsValid(funcstate->invprelimfn_oid))
 		{
 			uint64 trail_num_not_nulls = 0;
 			uint64 lead_num_not_nulls = 0;
@@ -2386,7 +2102,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 				if (level_state->is_rows)
 				{
 					if (!EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) ||
-						level_state->num_lead_rows >= level_state->num_trail_rows)
+						level_state->num_lead_rows >= level_state->trail_rows)
 					{
 						has_trail_entry =
 							getCurrentValue(level_state->trail_reader,
@@ -2449,7 +2165,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 				trail_num_not_nulls = 0;
 			}
 
-			freeValue(&funcstate->final_aggTransValue,
+			freeTransValue(&funcstate->final_aggTransValue,
 						   funcstate->aggTranstypeByVal,
 						   &funcstate->final_aggTransValueIsNull,
 						   &funcstate->final_aggNoTransValue,
@@ -2457,7 +2173,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 
 			if (lead_value != NULL || trail_value != NULL)
 			{
-				bool has_tuples = hasTuplesInFrame(level_state, wstate);
+				bool has_tuples = true;
 
 				if (lead_value != NULL)
 				{
@@ -2475,6 +2191,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 				}
 				else
 				{
+					has_tuples = hasTuplesInFrame(level_state, wstate);
 					funcstate->final_aggTransValue = 
 						datumCopyWithMemManager(0, funcstate->aggTransValue,
 												funcstate->aggTranstypeByVal,
@@ -2550,7 +2267,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 				}
 			}
 		}
-		else if (IS_AGG_DERIVED(funcstate) && HAS_PRELIMFN(funcstate))
+		else if (funcstate->isAgg && OidIsValid(funcstate->prelimfn_oid))
 		{
 			require_scanning = true;
 		}
@@ -2563,7 +2280,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 			 * functions, we pass the frame buffer to its function handler 
 			 * to generate the output.
 			 */
-			if (IS_PURE_WINDOW(funcstate))
+			if (!funcstate->isAgg)
 			{
 				int argno;
 				FunctionCallInfoData fcinfo;
@@ -2631,7 +2348,6 @@ initWindowFuncState(WindowState *wstate, Window *node)
 					isWin,
 					isSet;
 		AclResult	aclresult;
-		cqContext  *pcqCtx;
 
 		refno++; /* First one is 0 */
 
@@ -2711,14 +2427,9 @@ initWindowFuncState(WindowState *wstate, Window *node)
 						   get_func_name(winref->winfnoid));
 
 		/* Collect information about the window function's pg_proc entry. */
-		pcqCtx = caql_beginscan(
-				NULL,
-				cql("SELECT * FROM pg_proc "
-					" WHERE oid = :1 ",
-					ObjectIdGetDatum(winref->winfnoid)));
-
-		heap_tuple = caql_getnext(pcqCtx);
-
+		heap_tuple = SearchSysCache(PROCOID,
+								  ObjectIdGetDatum(winref->winfnoid),
+								  0, 0, 0);
 		insist_log(HeapTupleIsValid(heap_tuple),
 			"cache lookup failed for window function proc %u",
 			winref->winfnoid);
@@ -2730,7 +2441,7 @@ initWindowFuncState(WindowState *wstate, Window *node)
 		winResType = proform->prorettype;
 		winOwner = proform->proowner;
 		
-		caql_endscan(pcqCtx);
+		ReleaseSysCache(heap_tuple);
 		
 		Assert( isAgg != isWin );
 		Assert( !isSet );
@@ -2766,18 +2477,12 @@ initWindowFuncState(WindowState *wstate, Window *node)
 				 *invprelimfnexpr,
 				 *prelimfnexpr;
 			Datum textInitVal;
-			cqContext	*aggcqCtx;
 			
 			Insist(winref->winlevel < wstate->numlevels);
 
-			aggcqCtx = caql_beginscan(
-					NULL,
-					cql("SELECT * FROM pg_aggregate "
-						" WHERE aggfnoid = :1 ",
-						ObjectIdGetDatum(winref->winfnoid)));
-
-			agg_tuple = caql_getnext(aggcqCtx);
-
+			agg_tuple = SearchSysCache(AGGFNOID,
+									   ObjectIdGetDatum(winref->winfnoid),
+									   0, 0, 0);
 			insist_log(HeapTupleIsValid(agg_tuple), "cache lookup failed for aggregate %u",
 					 winref->winfnoid);
 			aggform = (Form_pg_aggregate) GETSTRUCT(agg_tuple);
@@ -2836,12 +2541,12 @@ initWindowFuncState(WindowState *wstate, Window *node)
 				fmgr_info(funcstate->invtransfn_oid, &funcstate->invtransfn);
 				funcstate->invtransfn.fn_expr = (Node *) invtransfnexpr;
 			}
-			if (HAS_PRELIMFN(funcstate))
+			if (OidIsValid(funcstate->prelimfn_oid))
 			{
 				fmgr_info(funcstate->prelimfn_oid, &funcstate->prelimfn);
 				funcstate->prelimfn.fn_expr = (Node *) prelimfnexpr;
 			}
-			if (HAS_INVPRELIMFN(funcstate))
+			if (OidIsValid(funcstate->invprelimfn_oid))
 			{
 				fmgr_info(funcstate->invprelimfn_oid, &funcstate->invprelimfn);
 				funcstate->invprelimfn.fn_expr = (Node *) invprelimfnexpr;
@@ -2856,11 +2561,11 @@ initWindowFuncState(WindowState *wstate, Window *node)
 
 			/*
 			 * initval is potentially null, so don't try to access it as a 
-			 * struct field. Must do it the hard way with caql_getattr
+			 * struct field. Must do it the hard way with SysCacheGetAttr.
 		 	*/
-			textInitVal = caql_getattr(aggcqCtx,
-									   Anum_pg_aggregate_agginitval,
-									   &funcstate->aggInitValueIsNull);
+			textInitVal = SysCacheGetAttr(AGGFNOID, agg_tuple,
+										  Anum_pg_aggregate_agginitval,
+										  &funcstate->aggInitValueIsNull);
 
 			if (funcstate->aggInitValueIsNull)
 				funcstate->aggInitValue = (Datum) 0;
@@ -2885,7 +2590,7 @@ initWindowFuncState(WindowState *wstate, Window *node)
 									"input type and transition type",
 									winref->winfnoid)));
 			}
-			caql_endscan(aggcqCtx);
+			ReleaseSysCache(agg_tuple);
 			
 			wrxstate->winkind = WINKIND_AGGREGATE;
 		}
@@ -2896,16 +2601,10 @@ initWindowFuncState(WindowState *wstate, Window *node)
 			Oid windowfn_oid = InvalidOid;
 			Const *refptr;
 			ExprState *xtrastate;
-			cqContext *wincqCtx;
-
-			wincqCtx = caql_beginscan(
-					NULL,
-					cql("SELECT * FROM pg_window "
-						" WHERE winfnoid = :1 ",
-						ObjectIdGetDatum(winref->winfnoid)));
-
-			win_tuple = caql_getnext(wincqCtx);
-
+			
+			win_tuple = SearchSysCache(WINFNOID,
+									   ObjectIdGetDatum(winref->winfnoid),
+									   0, 0, 0);
 			if (!HeapTupleIsValid(win_tuple))
 				elog(ERROR, "cache lookup failed for window function %u",
 					 winref->winfnoid);
@@ -2960,13 +2659,12 @@ initWindowFuncState(WindowState *wstate, Window *node)
 			fmgr_info(funcstate->windowfn_oid, &funcstate->windowfn);			
 
 			/* 
-			 * Initialize per-argument byval and typlen for functions that might 
-			 * need these.  Err on the side of caution here.  We also create an 
-			 * entry for the internal window (refptr) argument to keep the indexes
-			 * into the arrays and argument list consistent, though we don't really 
-			 * need to use it.
+			 * Initialize byval and typlen for framed funcs. Of course we're
+			 * creating an entry here for the inserted refptr but we do so
+			 * for consistency.
 			 */
-			if ( MAY_USE_ARG_TYPES(funcstate) )
+			if (funcstate->allowframe || IS_LEAD_LAG(wrxstate->winkind) ||
+				IS_FIRST_LAST(wrxstate->winkind))
 			{
 				ListCell *lc;
 				int numargs = list_length(wrxstate->args);
@@ -3013,8 +2711,7 @@ initWindowFuncState(WindowState *wstate, Window *node)
 			funcstate->win_value = 0;
 			funcstate->win_value_is_null = true;
 
-			caql_endscan(wincqCtx);
-
+			ReleaseSysCache(win_tuple);
 		}
 		else
 		{
@@ -3183,8 +2880,6 @@ makeWindowState(Window *window, EState *estate)
 		wstate->level_state = NULL;
 	wstate->numlevels = numlevels;
 	
-	wstate->win_context = CurrentMemoryContext;
-	
 	wstate->transcontext = AllocSetContextCreate(CurrentMemoryContext,
 												 "TransContext",
 												 ALLOCSET_DEFAULT_MINSIZE,
@@ -3212,7 +2907,6 @@ static void
 initializePartition(WindowState *wstate)
 {
 	int level;
-	int funcno;
 	
 	/* Reset partition primitive values. Note row_index is -1 to flag 
 	 * "before first row of partition" and so that it increments to 0.
@@ -3233,17 +2927,6 @@ initializePartition(WindowState *wstate)
 		level_state->dense_rank = 1;
 		level_state->prior_rank = 1;
 		level_state->prior_dense_rank = 1;
-	}
-	
-	for ( funcno = 0; funcno < wstate->numfuncs; funcno++ )
-	{
-		WindowStatePerFunction func_state = &wstate->func_state[funcno];
-		
-		if ( func_state->win_pure_private != NULL )
-		{
-			win_free_private(func_state);
-			Assert( func_state->win_pure_private == NULL );
-		}
 	}
 	
 	/* Per-partition input buffer management reinitialzation. */
@@ -3355,10 +3038,7 @@ freeInputBuffer(WindowState *wstate)
 {
 	ntuplestore_destroy_accessor(wstate->input_buffer->writer);
 	ntuplestore_destroy_accessor(wstate->input_buffer->current_row_reader);
-	if (wstate->input_buffer->tuplestore)
-	{
-		ntuplestore_destroy(wstate->input_buffer->tuplestore);
-	}
+	ntuplestore_destroy(wstate->input_buffer->tuplestore);
 
 	pfree(wstate->input_buffer);
 	wstate->input_buffer = NULL;
@@ -3438,7 +3118,7 @@ initFcinfo(WindowRefExprState *wrxstate, FunctionCallInfoData *fcinfo,
 	MemoryContext oldctx;
 			
 	/* If this is an agg, the first arg will be the trans value */
-	if (IS_AGG_DERIVED(funcstate))
+	if (funcstate->isAgg)
 		argno = 1;
 	else
 		argno = 0;
@@ -3473,7 +3153,7 @@ add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *wstate,
 	/* Evaluate function arguments, save in fcinfo. */
 	argno = initFcinfo(funcstate->wrxstate, &fcinfo, funcstate, econtext, check_nulls);
 
-	if (IS_AGG_DERIVED(funcstate))
+	if (funcstate->isAgg)
 	{
 		funcstate->aggTransValue =
 			invoke_agg_trans_func(&(funcstate->transfn),
@@ -3489,21 +3169,16 @@ add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *wstate,
 	}
 	else /* ordinary window function */
 	{
-		Assert(IS_PURE_WINDOW(funcstate));
-			
 		InitFunctionCallInfoData(fcinfo, 
 								 &funcstate->windowfn,
 								 argno,
 								 (void *) funcstate->wrxstate, 
 								 NULL);
-		
 		if (IS_LEAD_LAG(funcstate->wrxstate->winkind) ||
 			IS_LAST_VALUE(funcstate->wrxstate->winkind) ||
 			(IS_FIRST_VALUE(funcstate->wrxstate->winkind) &&
 			 funcstate->aggNoTransValue))
 		{
-			/* Buffer value of argument 1 (first supplied argument). */
-			
 			int argno = 1;
 			
 			funcstate->aggTransValue = 
@@ -3514,13 +3189,9 @@ add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *wstate,
 			funcstate->aggTransValueIsNull = fcinfo.argnull[argno];
 			funcstate->aggNoTransValue = false;
 		}
-		else if ( funcstate->wrxstate->winkind == 'x' )
-		{}
 
 		else
 		{
-			/* Buffer value of function result. */
-			
 			MemoryContext oldctx;
 			oldctx = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 			funcstate->win_value = FunctionCallInvoke(&fcinfo);
@@ -3547,7 +3218,7 @@ invokeTrivialFuncs(WindowState *wstate, bool *found)
 			econtext->ecxt_scantuple = wstate->curslot;
 			add_tuple_to_trans(funcstate, wstate, econtext, false);
 
-			if (IS_AGG_DERIVED(funcstate))
+			if (funcstate->isAgg)
 			{
 				funcstate->final_aggTransValue = funcstate->aggTransValue;
 				funcstate->final_aggTransValueIsNull = funcstate->aggTransValueIsNull;
@@ -3564,7 +3235,7 @@ invokeTrivialFuncs(WindowState *wstate, bool *found)
 			frame_buffer = level_state->frame_buffer;
 			Assert(frame_buffer != NULL);
 
-			freeValue(&funcstate->final_aggTransValue,
+			freeTransValue(&funcstate->final_aggTransValue,
 						   funcstate->aggTranstypeByVal,
 						   &funcstate->final_aggTransValueIsNull,
 						   &funcstate->final_aggNoTransValue,
@@ -3967,22 +3638,16 @@ adjustEdgesForRange(WindowFrameBuffer buffer,
 					WindowState *wstate)
 {
 	WindowStatePerLevel level_state = buffer->level_state;
+	bool found = false;
 
 	if (!(level_state->empty_frame &&
 		  EDGE_IS_DELAYED(level_state->frame->trail)))
 	{
 		if	(EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->trail, false))
 		{
-			NTupleStorePos pos;
-			if (ntuplestore_acc_tell(buffer->current_row_reader, &pos))
-			{
-				ntuplestore_acc_seek(level_state->trail_reader, &pos);
-				ntuplestore_acc_advance(level_state->trail_reader, -1);
-			}
-			else
-			{
-				ntuplestore_acc_seek_last(level_state->trail_reader);
-			}
+			found = ntuplestore_acc_advance(level_state->trail_reader, 1);
+			if (!found)
+				ntuplestore_acc_seek_first(level_state->trail_reader);
 		}
 
 		else if (EDGE_IS_BOUND(level_state->frame->trail))
@@ -4087,7 +3752,7 @@ finaliseFuncs(WindowState *wstate)
 			
 		/* Evaluate function arguments, save in fcinfo. */
 	
-		if (IS_AGG_DERIVED(funcstate))
+		if (funcstate->isAgg)
 		{
 			Datum *vals = econtext->ecxt_aggvalues;
 			bool *isnulls = econtext->ecxt_aggnulls;
@@ -4174,11 +3839,26 @@ invokeWindowFuncs(WindowState *wstate)
 }
 
 /*
+ * range_is_negative -- return true if the range expression
+ * is negative.
+ */
+static bool
+range_is_negative(ExprState *edge_expr,
+				  Datum value)
+{
+	/*
+	 * XXX Most likely not good enough to just compare the value
+	 * with 0 here.
+	 */
+	if (value < 0)
+		return true;
+	
+	return false;
+}
+
+/*
  * get_delay_edge -- evaluate the expression from the current row,
- * and return the value for the given DELAY_BOUND edge, for both
- * rows and range frames.
- *
- * This function also errors out when the edge value is NULL.
+ * and return the value for the given DELAY_BOUND edge.
  */
 static Datum
 get_delay_edge(WindowFrameEdge *edge,
@@ -4195,12 +3875,10 @@ get_delay_edge(WindowFrameEdge *edge,
 
 	econtext->ecxt_scantuple = wstate->curslot;
 	if (TupIsNull(wstate->curslot))
-	{
 		ereport(ERROR,
 				(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
 				 errmsg("%s parameter cannot be NULL",
 						(is_rows ? "ROWS" : "RANGE"))));
-	}
 	
 	oldctx = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 
@@ -4211,80 +3889,32 @@ get_delay_edge(WindowFrameEdge *edge,
 	MemoryContextSwitchTo(oldctx);
 
 	if (isnull)
-	{
 		ereport(ERROR,
 				(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
 				 errmsg("%s parameter cannot be NULL",
 						(is_rows ? "ROWS" : "RANGE"))));
-	}
+
+	if (is_rows && edge_param < 0)
+		ereport(ERROR,
+				(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
+				 errmsg("%s parameter cannot be negative",
+						(is_rows ? "ROWS" : "RANGE")),
+								   errOmitLocation(true)));
+
+	/* Check if the range expression is negative. */
+	if (!is_rows)
+		if (range_is_negative(edge_expr, edge_param))
+			ereport(ERROR,
+					(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
+					 errmsg("%s parameter cannot be negative",
+							(is_rows ? "ROWS" : "RANGE")),
+									   errOmitLocation(true)));
+
+	if (is_rows && EDGE_IS_BOUND_PRECEDING(edge))
+		edge_param = 0 - edge_param;
 
 	return edge_param;
 }
-
-/*
- * get_delay_row_edge -- evaluate the expression from the current row,
- * and return the value for the given DELAY_BOUND edge for a rows frame.
- *
- * This function also errors out when the edge value is not valid for
- * a row frame: NULL or negative.
- */
-static int64
-get_delay_row_edge(WindowFrameEdge *edge,
-				   ExprState *edge_expr,
-				   WindowState *wstate)
-{
-	Assert(EDGE_IS_DELAYED(edge));
-	
-	Datum edge_value_datum = get_delay_edge(edge, edge_expr, true /* is_rows */, wstate);
-	int64 edge_value = DatumGetInt64(edge_value_datum);
-	
-	if (edge_value < 0)
-	{
-		ereport(ERROR,
-				(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
-				 errmsg("ROWS parameter cannot be negative")));
-	}
-
-	if (EDGE_IS_BOUND_PRECEDING(edge))
-	{
-		edge_value = 0 - edge_value;
-	}
-	
-	return edge_value;
-}
-
-/*
- * get_delay_range_edge -- evaluate the expression from the current row,
- * and return the value for the given DELAY_BOUND edge for a range frame.
- *
- * This function also errors out when the edge value is not valid for
- * a range frame: NULL or negative.
- */
-static Datum
-get_delay_range_edge(WindowFrameEdge *edge,
-					 ExprState *edge_expr,
-					 Oid edge_ordering_oper,
-					 Datum edge_zero,
-					 WindowState *wstate)
-{
-	Assert(EDGE_IS_DELAYED(edge));
-	
-	Datum edge_value_datum = get_delay_edge(edge, edge_expr, false /* is_rows */, wstate);
-	
-	/* Check whether the range edge value is negative. */
-	Assert(OidIsValid(edge_ordering_oper));
-	Datum result = OidFunctionCall2(edge_ordering_oper, edge_value_datum, edge_zero);
-	if (DatumGetBool(result))
-	{
-		ereport(ERROR,
-				(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
-				 errmsg("RANGE parameter cannot be negative")));
-		
-	}
-	
-	return edge_value_datum;
-}
-
 
 /*
  * checkLastRowForEdge -- check if the last row in the current partition
@@ -4362,6 +3992,8 @@ checkLastRowForEdge(WindowStatePerLevel level_state,
 	else
 		is_equal = false;
 	
+	level_state->lead_ready = false;
+
 	if (is_equal)
 		return true;
 	
@@ -4369,9 +4001,9 @@ checkLastRowForEdge(WindowStatePerLevel level_state,
 	{
 		if ((EDGE_IS_BOUND_FOLLOWING(edge) && is_less) ||
 			(EDGE_IS_BOUND_PRECEDING(edge) && is_less))
-		{
 			return true;
-		}
+
+		level_state->lead_ready = true;
 	}
 	else
 	{
@@ -4595,8 +4227,6 @@ adjustDelayBoundEdgeForRange(WindowStatePerLevel level_state,
 							 Datum *p_request_value,
 							 bool is_lead_edge)
 {
-	Oid edge_ordering_oper = level_state->range_edge_ordering_oper;
-	Datum edge_zero = level_state->range_edge_zero;
 	WindowFrameBuffer frame_buffer = level_state->frame_buffer;
 	NTupleStorePos pos;
 	bool found;
@@ -4607,8 +4237,7 @@ adjustDelayBoundEdgeForRange(WindowStatePerLevel level_state,
 
 	/* Compute the new edge value */
 	*p_request_value = 
-		get_delay_range_edge(edge, edge_expr, edge_ordering_oper,
-							 edge_zero, wstate);
+		get_delay_edge(edge, edge_expr, level_state->is_rows, wstate);
 
 	/* Set the edge to current_row */
 	found = ntuplestore_acc_tell(frame_buffer->current_row_reader, &pos);
@@ -4620,6 +4249,18 @@ adjustDelayBoundEdgeForRange(WindowStatePerLevel level_state,
 	else
 	{
 		ntuplestore_acc_set_invalid(edge_reader);
+
+		/*
+		 * If the edge is of FOLLOWING type or CURRENT ROW type,
+		 * we are done.
+		 */
+		if (EDGE_IS_BOUND_FOLLOWING(edge) ||
+			EDGE_EQ_CURRENT_ROW(level_state, wstate, edge, is_lead_edge))
+		{
+			if (is_lead_edge)
+				level_state->lead_ready = false;
+			return;
+		}
 	}
 
 	advanceEdgeForRange(level_state, wstate,
@@ -4638,8 +4279,8 @@ adjustDelayBoundEdgeForRows(WindowStatePerLevel level_state,
 							WindowFrameEdge *edge,
 							ExprState *edge_expr,
 							NTupleStoreAccessor *edge_reader,
-							int64 *p_request_num_rows,
-							int64 *p_num_rows,
+							long int *p_request_num_rows,
+							long int *p_num_rows,
 							bool is_lead_edge)
 {
 	WindowFrameBuffer frame_buffer = level_state->frame_buffer;
@@ -4650,7 +4291,7 @@ adjustDelayBoundEdgeForRows(WindowStatePerLevel level_state,
 	Assert(list_length(level_state->level_funcs) >= 1);
 
 	*p_request_num_rows = 
-		get_delay_row_edge(edge, edge_expr, wstate);
+		get_delay_edge(edge, edge_expr, level_state->is_rows, wstate);
 
 	*p_num_rows = 0;
 
@@ -4759,355 +4400,6 @@ adjustDelayBoundEdgeForRows(WindowStatePerLevel level_state,
 }
 
 /*
- * next_input_row -- get the next input row.
- *
- * This is an alternative to ExecProcNode.  In the ordinary case it just calls
- * ExecProcNode, but in the sequence case it may also introduce interpolated and 
- * extrapolated rows based on the window's associated sequence.
- *
- * The outer process is similar to (should be nearly identical to) a partitioned 
- * full outer join of the input to the given sequence keys (1-tuples) on inclusion 
- * of the ordering key in the interval represented by the sequence key.  However,
- * it produces a "windowed query" and so may have window functions in its target 
- * list, and  it generates a matching sequence key for rows that  fall outside the 
- * intervals specified by the sequence.
- *
- * So the trick here is to generate input rows that cause the outer process to
- * behave correctly.  (Arguably, this function would be better realized as an
- * executor node inserted below the Window node, but that has some challenges,
- * too, e.g., where does the sequence key value go?
- * 
- * So this function may generate three kinds of rows.  In each case it places
- * the associated sequence key in the window state to be used when the output
- * row is projected by the outer process.
- *
- * - Matched rows are returned rows of the input query that lie in the current 
- *   partition and interval.  In this case the sequence key is just the current
- *   value of the sequence.
- *
- * - Sythesized (or interpolated) rows are returned rows generated for unmatched 
- *   sequence intervals. They are null except for the partition key.  In this case 
- *   the sequence key is just the current value of the sequence.
- *
- * - Extrapolated rows are returned rows of the input query that lie outside
- *   the given interval sequence.  (They may come before or after the sequence.)
- *   In this case, the sequence key is extrapolated from the value of the 
- *   ordering key in the input.
- */
-static TupleTableSlot *
-next_input_row(WindowState *wstate)
-{
-	TupleTableSlot *result = NULL;
-	
-	/* The normal windowed case just reads the outer plan.  Exit early. */
-	
-	if ( wstate->seq_state == NULL )
-	{
-		return ExecProcNode(outerPlanState(wstate));
-	}
-	
-//#define CDB_SEQUENCE_DISPLAY 1
-#ifdef CDB_SEQUENCE_DISPLAY
-	elog(NOTICE, "--------------------------------");
-	elog(NOTICE, "Sequence: redirect window input");
-#endif
-	
-	/* The sequenced (gap-filling) case interleaves interpolated rows with the
-	 * ones read from the outer plan. */
-	
-	while ( true ) /* State machine */
-	{
-		if ( wstate->seq_output_done )
-		{
-			/* Terminal state.  No more output. */
-#ifdef CDB_SEQUENCE_DISPLAY
-			elog(NOTICE, "Sequence: early exit");
-#endif
-			result = NULL;
-			break;
-		}
-		
-		/* Assure input query look ahead: We need to know, if there is another input 
-		 * row and whether it falls in the current part (under any PARTITION BY). We 
-		 * may or may not emit a row based on it this time through the loop so there
-		 * may or may not be a row staged from a previous entry to the loop.
-		 */
-		if ( ! wstate->seq_input_done ) 
-		{
-			if ( wstate->seq_input_next == NULL )
-			{
-#ifdef CDB_SEQUENCE_DISPLAY
-				elog(NOTICE, "Sequence: read input tuple");
-#endif
-				TupleTableSlot* slot = ExecProcNode(outerPlanState(wstate));
-				wstate->seq_input_next = (TupIsNull(slot)? NULL: slot);
-			}
-			
-			if ( wstate->seq_input_next == NULL )
-			{
-				/* No input rows left. */
-				wstate->seq_input_done = true;
-				wstate->seq_input_in_part = false;
-				if ( !wstate->seq_input_some )
-				{
-					/* Exit early when there are no input rows. */
-					wstate->seq_output_done = true;
-					continue;
-				}
-			}
-			else 
-			{
-				/* We read an input row or found one we haven't used yet. */
-				wstate->seq_input_some = true;
-#ifdef CDB_SEQUENCE_DISPLAY
-				elog(NOTICE, "Sequence: have input tuple");
-#endif
-				
-				if ( wstate->seq_input_synth == NULL )
-				{
-					/* This is the first row, so it defines the current partition. */
-					wstate->seq_input_synth = wstate->synthslot;
-					seq_set_partkey_in_synthslot(wstate);
-					wstate->seq_input_in_part = true;
-#ifdef CDB_SEQUENCE_DISPLAY
-					elog(NOTICE, "Sequence: input defines current part");
-#endif
-				}
-				else 
-				{
-					/* Compare current partkey to one in input */					
-					wstate->seq_input_in_part = seq_next_matches_part(wstate);
-#ifdef CDB_SEQUENCE_DISPLAY
-					if (!wstate->seq_input_in_part)
-						elog(NOTICE, "Sequence: input for next part");
-					else
-						elog(NOTICE, "Sequence: input for current part");
-#endif
-				}
-			}
-		}
-		
-		/* Assure sequence look ahead: If there is another sequence key value,
-		 * we need to know that.
-		 */
-		if ( wstate->seq_seq_done )
-		{
-			/* Sequence exhausted or never started. Restart. */
-			if (wstate->seq_seq_next_exists )
-			{
-				datumFree(wstate->seq_seq_next, 
-						  wstate->seq_key_typbyval, 
-						  wstate->seq_key_typlen);
-#ifdef CDB_SEQUENCE_DISPLAY
-				elog(NOTICE, "Sequence: SHOULD gs_reset?");
-#endif
-			}
-			wstate->seq_seq_next_exists = false;
-			wstate->seq_seq_next = (Datum)0;
-		}
-		else 
-		{
-			/* Sequence in progress, try to advance. */
-			if ( ! wstate->seq_seq_next_exists )
-			{
-#ifdef CDB_SEQUENCE_DISPLAY
-				elog(NOTICE, "Sequence: advance sequence");
-#endif
-				wstate->seq_seq_next_exists = gs_next(wstate->seq_state, 
-													   &wstate->seq_seq_next);
-				wstate->seq_seq_item_used = false;
-			}
-			
-			if ( ! wstate->seq_seq_next_exists )
-				wstate->seq_seq_done = true;
-		}
-#ifdef CDB_SEQUENCE_DISPLAY
-		if ( wstate->seq_seq_next_exists )
-			elog(NOTICE, "Sequence: have sequence item");
-		else 
-			elog(NOTICE, "Sequence: sequence exhausted");
-#endif		
-		
-		/* Now decide what to do.
-		 */
-		if ( wstate->seq_input_done && wstate->seq_seq_done )
-		{
-			/* Input and sequence are exhausted, we are done. */		
-			wstate->seq_output_done = true;
-			continue;
-		}
-		
-		if ( wstate->seq_input_in_part && wstate->seq_seq_next_exists )
-		{
-			/* Input and sequence item are both staged.  Compare the input
-			 * ordering key to the implied sequence interval to decide
-			 * what to do.
-			 */
-			int c = seq_compare(wstate);
-
-			if ( c < 0 )
-			{
-				/* Input row precedes the current interval (thus the whole
-				 * sequence).  Extrapolate a sequence key for it.
-				 */
-				Datum sequence_key = seq_extrapolate(wstate);
-				set_sequence_key(wstate, sequence_key);
-				
-				/* Count real row. */
-				wstate->level_state[0].sequence_index++;
-				
-				result = wstate->seq_input_next;
-#ifdef CDB_SEQUENCE_DISPLAY
-				elog(NOTICE, "Sequence: input row precedes next sequence item, extrapolate");
-#endif
-				wstate->seq_input_next = NULL;
-				break;
-			}
-			else if ( c == 0 )
-			{
-				/* Input row is in the current interval.  This is an
-				 * ordinary match.  Use the current interval low bound
-				 * as the sequence key.  Note that the next input row
-				 * may match too, so don't discard the current item
-				 * just yet.
-				 */
-				Datum sequence_key = wstate->seq_seq_next;
-				set_sequence_key(wstate, sequence_key);
-				wstate->seq_seq_item_used = true;
-				
-				/* Count real row. */
-				wstate->level_state[0].sequence_index++;
-				
-				result = wstate->seq_input_next;
-#ifdef CDB_SEQUENCE_DISPLAY
-				elog(NOTICE, "Sequence: input row matches current sequence item, emit");
-#endif
-				wstate->seq_input_next = NULL;
-				break;
-			}
-			else /* c > 0 */
-			{
-				/* Input row follows the current interval. */
-				if ( wstate->seq_seq_item_used )
-				{
-					/* We already matched this sequence value to an input
-					 * row, so don't use it in an interpolated row, just
-					 * consume it and reenter the state machine.
-					 */
-					datumFree(wstate->seq_seq_next, 
-							  wstate->seq_key_typbyval, 
-							  wstate->seq_key_typlen);
-					wstate->seq_seq_next_exists = false;
-					wstate->seq_seq_next = (Datum)0; /* tidy */
-#ifdef CDB_SEQUENCE_DISPLAY
-					elog(NOTICE, "Sequence: input row follows used current sequence item");
-#endif
-					continue;
-				}
-				else 
-				{
-					set_sequence_key(wstate, wstate->seq_seq_next);
-					
-					result = synthesize_input_row(wstate);
-					
-					/* Done with the sequence item, so consume it, but
-					 * fall through to emit the synthesized row.
-					 */
-					datumFree(wstate->seq_seq_next, 
-							  wstate->seq_key_typbyval, 
-							  wstate->seq_key_typlen);
-					wstate->seq_seq_next_exists = false;
-					wstate->seq_seq_next = (Datum)0;					
-#ifdef CDB_SEQUENCE_DISPLAY
-					elog(NOTICE, "Sequence: input row follows unused current sequence item, synthesize");
-#endif
-					break;
-				}
-			}
-		}
-		else if ( wstate->seq_input_in_part ) /* but sequence exhausted */
-		{
-			Datum sequence_key = seq_extrapolate(wstate);
-			set_sequence_key(wstate, sequence_key);
-			
-			/* Count real row. */
-			wstate->level_state[0].sequence_index++;
-			
-			result = wstate->seq_input_next;
-			wstate->seq_input_next = NULL;
-#ifdef CDB_SEQUENCE_DISPLAY
-			elog(NOTICE, "Sequence: input row follows entire sequence, extrapolate");
-#endif
-			break;
-		}
-		else if ( wstate->seq_seq_next_exists ) /* but query done in this part */
-		{
-			if ( wstate->seq_seq_item_used )
-			{
-				datumFree(wstate->seq_seq_next, 
-						  wstate->seq_key_typbyval, 
-						  wstate->seq_key_typlen);
-				wstate->seq_seq_next_exists = false;
-				wstate->seq_seq_next = (Datum)0;
-			}
-			else 
-			{
-				set_sequence_key(wstate, wstate->seq_seq_next);
-				result = synthesize_input_row(wstate);
-				datumFree(wstate->seq_seq_next, 
-						  wstate->seq_key_typbyval, 
-						  wstate->seq_key_typlen);
-				wstate->seq_seq_next_exists = false;
-				wstate->seq_seq_next = (Datum)0;
-#ifdef CDB_SEQUENCE_DISPLAY
-				elog(NOTICE, "Sequence: current sequence item but no input, interpolate");
-#endif
-				break;
-			}
-
-		}
-		else /* no more input for current partition and no more sequence */
-		{
-#ifdef CDB_SEQUENCE_DISPLAY
-			elog(NOTICE, "Sequence: end of part, reset");
-#endif
-			seq_set_partkey_in_synthslot(wstate);
-			gs_reset(wstate->seq_state);
-			wstate->level_state[0].sequence_index = 0;
-			wstate->seq_seq_done = false;
-			wstate->seq_seq_item_used = false;
-			if ( wstate->seq_seq_next_exists )
-			{
-				datumFree(wstate->seq_seq_next, 
-						  wstate->seq_key_typbyval, 
-						  wstate->seq_key_typlen);	
-			}
-			wstate->seq_seq_next_exists = false;
-			wstate->seq_seq_next = (Datum)0;
-		}
-
-	} /* while */
-	
-	return result;
-}
-
-/* Return an input row of null except for the partition key.
- * It might seem like we should place the sequence key as well, 
- * but that is done when the window's output tuple is projected
- * through an execution of the sequence_key function.
- */
-TupleTableSlot *
-synthesize_input_row(WindowState *wstate)
-{
-	Assert( wstate->seq_state != NULL );
-	Assert( wstate->seq_seq_next_exists );
-	Assert( !wstate->seq_seq_item_used );
-	Assert( wstate->seq_input_synth != NULL );
-		
-	return wstate->seq_input_synth; 
-}
-
-/*
  * fetchCurrentRow -- retrieve the current_row from the input buffer.
  * 
  * The current_row_reader always points to the previous current_row
@@ -5139,7 +4431,7 @@ fetchCurrentRow(WindowState *wstate)
 	else
 	{
 		/* Fetch the first tuple from the outer plan */
-		TupleTableSlot *slot = next_input_row(wstate);
+		TupleTableSlot *slot = ExecProcNode(outerPlanState(wstate));
 
 		if (TupIsNull(slot))
 			return NULL;
@@ -5212,15 +4504,9 @@ fetchCurrentRow(WindowState *wstate)
 			for (level=0; level<wstate->numlevels; level++)
 			{
 				WindowStatePerLevel lvl = &wstate->level_state[level];
-				int matchcols = lvl->numSortCols;
-				if ( Use_Sequence_Semantics(wstate) )
-				{
-					Assert(lvl->numSortCols > 0);
-					matchcols = 1;
-				}
 
 				match = execTuplesMatch(wstate->curslot, wstate->priorslot, 
-										matchcols, 
+										lvl->numSortCols, 
 										lvl->sortColIdx,
 										lvl->eqfunctions,
 										econtext->ecxt_per_tuple_memory);
@@ -5374,7 +4660,7 @@ fetchTupleSlotThroughBuf(WindowState *wstate)
 	
 	if (!found)
 	{
-		TupleTableSlot *slot = next_input_row(wstate);
+		TupleTableSlot *slot = ExecProcNode(outerPlanState(wstate));
 
 		if (TupIsNull(slot))
 			return NULL;
@@ -5418,15 +4704,9 @@ fetchTupleSlotThroughBuf(WindowState *wstate)
 			for (level=0; level<wstate->numlevels; level++)
 			{
 				WindowStatePerLevel lvl = &wstate->level_state[level];
-				int matchcols = lvl->numSortCols;
-				if ( Use_Sequence_Semantics(wstate) )
-				{
-					Assert(lvl->numSortCols > 0);
-					matchcols = 1;
-				}
-				
+
 				match = execTuplesMatch(wstate->spare, wstate->priorslot, 
-										matchcols, 
+										lvl->numSortCols, 
 										lvl->sortColIdx,
 										lvl->eqfunctions,
 										econtext->ecxt_per_tuple_memory);
@@ -5556,9 +4836,9 @@ static void
 resetTransValue(WindowStatePerFunction funcstate,
 				WindowState *wstate)
 {
-	if (IS_AGG_DERIVED(funcstate))
+	if (funcstate->isAgg)
 	{
-		freeValue(&funcstate->aggTransValue,
+		freeTransValue(&funcstate->aggTransValue,
 					   funcstate->aggTranstypeByVal,
 					   &funcstate->aggTransValueIsNull,
 					   &funcstate->aggNoTransValue,
@@ -5586,11 +4866,9 @@ resetTransValue(WindowStatePerFunction funcstate,
 	{
 		int argno = 1;
 		WindowRefExprState *wrxstate = funcstate->wrxstate;
-		
-		Insist( IS_PURE_WINDOW(funcstate) );
-		
+
 		if (wrxstate->argtypbyval)
-			freeValue(&funcstate->aggTransValue,
+			freeTransValue(&funcstate->aggTransValue,
 						   wrxstate->argtypbyval[argno],
 						   &funcstate->aggTransValueIsNull,
 						   &funcstate->aggNoTransValue,
@@ -5701,10 +4979,10 @@ processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer)
 				foreach (lc, level_state->level_funcs)
 				{
 					WindowStatePerFunction funcstate = (WindowStatePerFunction) lfirst(lc);
-					if (IS_AGG_DERIVED(funcstate) &&
+					if (funcstate->isAgg &&
 						!funcstate->cumul_frame &&
-						HAS_PRELIMFN(funcstate) && !HAS_INVPRELIMFN(funcstate)
-						)
+						!OidIsValid(funcstate->invprelimfn_oid) &&
+						OidIsValid(funcstate->prelimfn_oid))
 					{
 						resetTransValue(funcstate, wstate);
 					}
@@ -5854,87 +5132,128 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 						   WindowStatePerLevel level_state,
 						   WindowState *wstate)
 {
-	ExprState *exprstate;
+	ExprState *n;
 	Expr *expr;
 	Expr *varexpr;
 	Oid exprrestype;
 	Oid ltype, rtype;
+	HeapTuple tup;
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
 	bool isNull;
-	Operator tup;
+	char *oprname;
 	Form_pg_operator opr;
 	int32 vartypmod = desc->attrs[attnum - 1]->atttypmod;
-	List *names;
-
+	
 	Insist(EDGE_IS_BOUND(edge));
 
 	ltype = desc->attrs[attnum - 1]->atttypid;
 	rtype = exprType(edge->val);
-
+	
 	varexpr = (Expr *)makeVar(0, attnum, ltype, vartypmod, 0);
 
 	expr = (Expr *)edge->val;
 
 	/*
-	 * Set trailing or leading expression state.
+	 * Set trailing or leading expression state. If one of such expression
+	 * exist, we coerce the other one to the same type.
 	 */
 	if (is_trail)
 	{
-		exprstate = ExecInitExpr(expr, (PlanState *) wstate);
+		if (level_state->lead_expr != NULL)
+ 		{
+  			expr = coerceType(expr, exprType((Node *)(level_state->lead_expr->expr)));
+ 			if ( expr == NULL )
+ 				ereport(ERROR,
+ 						(errcode(ERRCODE_DATA_EXCEPTION),
+ 						 errmsg("can't coerce trailing frame bound to type of leading frame bound"),
+ 						 errhint("specify the leading and trailing frame bounds as the same type"),
+ 								   errOmitLocation(true)));
+ 		}
 
-		level_state->trail_expr = exprstate;
+		n = ExecInitExpr(expr, (PlanState *) wstate);
+		
+		level_state->trail_expr = n;
 		if (!EDGE_IS_DELAYED(edge))
-			level_state->trail_range = ExecEvalExpr(exprstate, econtext,
-													&isNull, NULL);
+			level_state->trail_range = ExecEvalExpr(n, econtext, &isNull, NULL);
 	}
+	
 	else
 	{
-		exprstate = ExecInitExpr((Expr *)expr, (PlanState *) wstate);
+		if (level_state->trail_expr != NULL)
+ 		{
+  			expr = coerceType(expr, exprType((Node *)(level_state->trail_expr->expr)));
+ 			if ( expr == NULL )
+ 				ereport(ERROR,
+ 						(errcode(ERRCODE_DATA_EXCEPTION),
+ 						 errmsg("can't coerce leading frame bound to type of trailing frame bound"),
+ 						 errhint("specify the leading and trailing frame bounds as the same type"),
+ 								   errOmitLocation(true)));
+ 		}
 
-		level_state->lead_expr = exprstate;
+		n = ExecInitExpr((Expr *)expr, (PlanState *) wstate);
+
+		level_state->lead_expr = n;
 		if (!EDGE_IS_DELAYED(edge))
-			level_state->lead_range = ExecEvalExpr(exprstate, econtext,
-												   &isNull, NULL);
+			level_state->lead_range = ExecEvalExpr(n, econtext, &isNull, NULL);
 	}
-
+	
 	if ((EDGE_IS_BOUND_PRECEDING(edge) && 
 		 level_state->col_sort_asc[0]) ||
 		(EDGE_IS_BOUND_FOLLOWING(edge) &&
 		 !level_state->col_sort_asc[0]))
 	{
-		names = list_make1(makeString("-"));
+		oprname = "-";
 	}
 	else
 	{
-		names = list_make1(makeString("+"));
+		oprname = "+";
 	}
 
-	/*
-	 * Find the operator to calculate the bound.  If ORDER BY type is
-	 * not the type the oprator desires, coerce it here.  We don't do it
-	 * in the parser because it changes the semantics of ORDER BY.  On the
-	 * other hand, the edge type should have been coerced to the right type
-	 * in the parser.
-	 */
-	tup = oper(NULL, names, ltype, rtype, false, -1);
-	opr = ((Form_pg_operator) GETSTRUCT(tup));
+		
+	tup = SearchSysCache(OPERNAMENSP,
+						 CStringGetDatum(oprname),
+						 ObjectIdGetDatum(ltype),
+						 ObjectIdGetDatum(rtype),
+						 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
 
-	varexpr = (Expr *)
-		coerce_to_target_type(NULL, (Node *) varexpr,
-							  ltype, opr->oprleft, vartypmod,
-							  COERCION_EXPLICIT,
-							  COERCE_IMPLICIT_CAST,
-							  -1);
-	/* Should not happen */
-	if (opr->oprright != exprType(edge->val))
-		elog(ERROR, "frame edge is not the right type");
+	/*
+	 * If we didn't find an operator, it's probably because the user has
+	 * specified a RANGE parameter which does not have an implicit cast
+	 * to the sorting column. So, see what operator the parser found
+	 * via oper() and arrange for the LHS to be cast to that for the purpose
+	 * of the expression evaluation.
+	 */
+	if (!HeapTupleIsValid(tup))
+	{
+		List *oprlist = lappend(NIL, makeString(oprname));
+
+		tup = oper(NULL, oprlist, ltype, rtype, true, -1);
+
+		list_free_deep(oprlist);
+
+		/* We have to find it now */
+		Insist(HeapTupleIsValid(tup));
+		
+		opr = (Form_pg_operator) GETSTRUCT(tup);
+
+		/* this is why we're here */
+		Insist(ltype != opr->oprleft);
+		
+		varexpr = (Expr *)coerce_to_target_type(NULL, (Node *)varexpr, 
+												ltype, opr->oprleft, vartypmod,
+												COERCION_EXPLICIT,
+												COERCE_IMPLICIT_CAST,
+												-1);
+	}
+	else
+		opr = ((Form_pg_operator) GETSTRUCT(tup));
+
 	exprrestype = opr->oprresult;
 	expr = make_opclause(HeapTupleGetOid(tup), exprrestype,
-						 false, varexpr,
-						 (Expr *) edge->val);
-	((OpExpr *) expr)->opfuncid = opr->oprcode;
-	list_free_deep(names);
-	ReleaseOperator(tup);
+						 false, varexpr, 
+						 (Expr *)edge->val);
+	((OpExpr *)expr)->opfuncid = opr->oprcode;
+	ReleaseSysCache(tup);
 
 	/*
 	 * If the frame edge operation returns a different type
@@ -5954,12 +5273,12 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 
 	Insist(PointerIsValid(expr));
 
-	exprstate = ExecInitExpr(expr, (PlanState *) wstate);
-
+	n = ExecInitExpr(expr, (PlanState *) wstate);
+	
 	if (is_trail)
-		level_state->trail_range_expr = exprstate;
+		level_state->trail_range_expr = n;
 	else
-		level_state->lead_range_expr = exprstate;
+		level_state->lead_range_expr = n;
 
 	/*
 	 * Construct immediate clause like:
@@ -5971,38 +5290,11 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 	 * The created expression is used to determine if the frame
 	 * edge is on the current row or not. 
 	 */
-	exprstate = make_eq_exprstate(wstate, expr, varexpr);
+	n = make_eq_exprstate(wstate, expr, varexpr);
 	if (is_trail)
-		level_state->trail_range_eq_expr = exprstate;
+		level_state->trail_range_eq_expr = n;
 	else
-		level_state->lead_range_eq_expr = exprstate;
-
-	/*
-	 * Find the function oid of the ordering operator for
-	 * the RANGE edge, and create the datum that represents
-	 * the "0" value.  These are necessary only for delayed edges.
-	 */
-	if (EDGE_IS_DELAYED(edge))
-	{
-		Operator	edge_ordering;
-		Type		edge_type;
-		Datum		edge_zero;
-
-		edge_ordering = ordering_oper(rtype, false /* noError */);
-		level_state->range_edge_ordering_oper = oprfuncid(edge_ordering);
-
-		/*
-		 * Constructing "zero" value from string "0" is not nice, but
-		 * we don't have notion of "zero" in our catalog system yet.
-		 * See also the parser, and it works for the built-in types so far.
-		 */
-		edge_type = typeidType(rtype);
-		edge_zero = stringTypeDatum(edge_type, "0", exprTypmod(edge->val));
-		level_state->range_edge_zero = edge_zero;
-
-		ReleaseOperator(edge_ordering);
-		ReleaseType(edge_type);
-	}
+		level_state->lead_range_eq_expr = n;
 }
 
 /*
@@ -6038,7 +5330,7 @@ make_eq_exprstate(WindowState *wstate, Expr *expr1, Expr *expr2)
 	eq_opid = oprid(eq_optup);
 	eq_expr = make_opclause(eq_opid, BOOLOID, false, expr1, expr2);
 	((OpExpr *) eq_expr)->opfuncid = oprfuncid(eq_optup);
-	ReleaseOperator(eq_optup);
+	ReleaseSysCache(eq_optup);
 
 	return ExecInitExpr(eq_expr, (PlanState *) wstate);
 }
@@ -6085,12 +5377,10 @@ setEmptyFrame(WindowStatePerLevel level_state,
 			  (EDGE_IS_BOUND_FOLLOWING(frame->trail) &&
 			   EDGE_IS_BOUND_PRECEDING(frame->lead))));
 
-	if (!EDGE_IS_DELAYED_BOUND(frame->trail) &&
-		!EDGE_IS_DELAYED_BOUND(frame->lead) &&
-		((EDGE_IS_BOUND_PRECEDING(frame->trail) &&
-		  EDGE_IS_BOUND_PRECEDING(frame->lead)) ||
-		 (EDGE_IS_BOUND_FOLLOWING(frame->trail) &&
-		  EDGE_IS_BOUND_FOLLOWING(frame->lead))))
+	if ((EDGE_IS_BOUND_PRECEDING(frame->trail) &&
+			  EDGE_IS_BOUND_PRECEDING(frame->lead)) ||
+			 (EDGE_IS_BOUND_FOLLOWING(frame->trail) &&
+			  EDGE_IS_BOUND_FOLLOWING(frame->lead)))
 	{
 		bool is_pre = 
 			(EDGE_IS_BOUND_PRECEDING(frame->trail) &&
@@ -6115,13 +5405,13 @@ setEmptyFrame(WindowStatePerLevel level_state,
 			ineq_optup = ordering_oper(exprType((Node *)level_state->trail_expr->expr),
 									   false);
 			ineq_ordfuncid = oprfuncid(ineq_optup); 
-			ReleaseOperator(ineq_optup);
+			ReleaseSysCache(ineq_optup);
 			fmgr_info(ineq_ordfuncid, &ineq_fcinfo);
 			
 			eq_optup = equality_oper(exprType((Node *)level_state->trail_expr->expr),
 									 false);
 			eq_ordfuncid = oprfuncid(eq_optup); 
-			ReleaseOperator(eq_optup);
+			ReleaseSysCache(eq_optup);
 			fmgr_info(eq_ordfuncid, &eq_fcinfo);
 			
 			/* is trail less than or equal to lead */
@@ -6167,8 +5457,8 @@ init_frames(WindowState *wstate)
 			WindowStatePerFunction funcstate =
 				(WindowStatePerFunction)lfirst(lc);
 
-			if (!frame || (IS_PURE_WINDOW(funcstate) && !funcstate->allowframe &&
-						   !IS_BUFFERED(funcstate->wrxstate->winkind) &&
+			if (!frame || (!funcstate->isAgg && !funcstate->allowframe &&
+						   !IS_LEAD_LAG(funcstate->wrxstate->winkind) &&
 						   !funcstate->winpeercount))
 			{
 				funcstate->trivial_frame = true;
@@ -6180,11 +5470,17 @@ init_frames(WindowState *wstate)
 			 * as ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW with no
 			 * exclusion clause OR it is a window function without a frame.
 			 */
-			if (IS_AGG_DERIVED(funcstate) && IS_DEFAULT_ROW_FRAME(frame) )
+			if (funcstate->isAgg && frame && frame->is_rows &&
+				frame->trail->kind == WINDOW_UNBOUND_PRECEDING && 
+				frame->lead->kind == WINDOW_CURRENT_ROW &&
+				frame->exclude == WINDOW_EXCLUSION_NULL)
 			{
 				funcstate->trivial_frame = true;
 			}
-			else if (IS_AGG_DERIVED(funcstate) && IS_DEFAULT_RANGE_FRAME(frame))
+			else if (funcstate->isAgg && frame && !frame->is_rows &&
+					 frame->trail->kind == WINDOW_UNBOUND_PRECEDING && 
+				frame->lead->kind == WINDOW_CURRENT_ROW &&
+				frame->exclude == WINDOW_EXCLUSION_NULL)
 			{
 				funcstate->cumul_frame = true;
 			}
@@ -6193,26 +5489,20 @@ init_frames(WindowState *wstate)
 		/* what sort order did the user specify for each key? */
 		for (col_no = 0; col_no < ncols; col_no++)
 		{
-			Oid			 sortop = level_state->sortOperators[col_no];
-			char		*oprname;
-			int			 fetchCount;
+			Oid sortop = level_state->sortOperators[col_no];
+			Form_pg_operator op;
+			HeapTuple optup = SearchSysCache(OPEROID,
+							   				 ObjectIdGetDatum(sortop),
+							   				 0, 0, 0);
+			Insist(HeapTupleIsValid(optup));
+			op = (Form_pg_operator)GETSTRUCT(optup);
 
-			oprname = caql_getcstring_plus(
-					NULL,
-					&fetchCount,
-					NULL,
-					cql("SELECT oprname FROM pg_operator "
-						" WHERE oid = :1 ",
-						ObjectIdGetDatum(sortop)));
-
-			Insist(fetchCount);
-
-			if (strcmp(oprname, "<") == 0)
+			if (strcmp(NameStr(op->oprname), "<") == 0)
 				level_state->col_sort_asc[col_no] = true;
 			else
 				level_state->col_sort_asc[col_no] = false;
 
-			pfree(oprname);
+			ReleaseSysCache(optup);
 		}
 
 		/* now, initialize the actual frame */
@@ -6225,10 +5515,10 @@ init_frames(WindowState *wstate)
 				if (EDGE_IS_BOUND(frame->trail) &&
 					level_state->frame->trail->val != NULL)
 				{
-					int64 rows_param = 0;
+					long int rows_param = 0;
 					bool isnull = true;
 					Expr *expr = (Expr *)level_state->frame->trail->val;
-					expr = coerceType(expr, INT8OID);
+					expr = coerceType(expr, INT4OID);
 					
 					level_state->trail_expr =
 						ExecInitExpr((Expr *)expr, 
@@ -6256,10 +5546,10 @@ init_frames(WindowState *wstate)
 				if (EDGE_IS_BOUND(frame->lead) &&
 					level_state->frame->lead->val != NULL)
 				{
-					int64 rows_param = 0;
+					long int rows_param = 0;
 					bool isnull = true;
 					Expr *expr = (Expr *)level_state->frame->lead->val;
-					expr = coerceType(expr, INT8OID);
+					expr = coerceType(expr, INT4OID);
 
 					level_state->lead_expr = 
 						ExecInitExpr((Expr *)expr, 
@@ -6281,23 +5571,12 @@ init_frames(WindowState *wstate)
 					level_state->lead_rows = rows_param;
 				}
 				else
-					level_state->lead_rows = 0;
+					level_state->lead_rows = 0L;
 			}
-			
 			else
 			{
-				TupleDesc desc = ExecGetResultType(wstate->ps.lefttree);
-
-				/*
-				 * If both edges are specified, their types should have been
-				 * coerced to the common type in the parser.  But just in
-				 * case, double-check if we are safe.
-				 */
-				if (EDGE_IS_BOUND(frame->trail) &&
-					EDGE_IS_BOUND(frame->lead) &&
-					exprType(frame->trail->val) != exprType(frame->lead->val))
-					elog(ERROR, "frame edge types mismatch");
-
+				TupleDesc desc = ExecGetResultType(wstate->ps.lefttree); 
+				
 				/* we only need the subtraction function for bound frames */
 				if (EDGE_IS_BOUND(frame->trail))
 				{
@@ -6430,306 +5709,10 @@ get_ltfuncs(TupleDesc tupdesc, int numCols, AttrNumber *matchColIdx)
 		optup = ordering_oper(typid, false);
 		lt_function = oprfuncid(optup);
 		fmgr_info(lt_function, &ltfunctions[i]);
-		ReleaseOperator(optup);
+		ReleaseSysCache(optup);
 	}
 
 	return ltfunctions;
-}
-
-/*
- * This is the API to start with in a typical window function.
- */
-WindowFuncContext
-windowGetContext(PG_FUNCTION_ARGS)
-{
-	WindowFuncContext	wcontext = (WindowFuncContext) PG_GETARG_POINTER(0);
-
-	Assert(IsA(wcontext, WindowRefExprState));
-
-	return wcontext;
-}
-
-/*
- * Returns the row number of the current row.
- */
-int64
-windowGetRowIndex(WindowFuncContext wcontext)
-{
-	WindowState	   *wstate = wcontext->windowstate;
-
-	return wstate->row_index;
-}
-
-/*
- * Open a buffer cursor on this window level.  The forward parameter
- * indicates if this cursor starts at the beginning and scans
- * forward, or if it starts at the end of frame and scans backward.
- */
-WindowBufferCursor
-windowBufferBeginScan(WindowFuncContext wcontext, bool forward)
-{
-	WindowBufferCursor	cursor;
-	bool				include_last_agg = false;
-	WindowState		   *wstate = wcontext->windowstate;
-	WindowStatePerFunction funcstate = &wstate->func_state[wcontext->funcno];
-	WindowStatePerLevel level_state = funcstate->wlevel;
-
-	cursor = (WindowBufferCursor) palloc0(sizeof(WindowBufferCursorData));
-	/*
-	 * Because it is a short-term use, we don't allocate a new accessor but
-	 * use the existing one to scan the tuplestore.  The other side of reader
-	 * should remain so that detection of frame end can work correctly (i.e.
-	 * if both reader intersects, it means the end of frame.)
-	 *
-	 * Remember the original position of accessor so later we can restore it.
-	 */
-	if (forward)
-	{
-		(void) ntuplestore_acc_tell(level_state->trail_reader,
-									&cursor->orig_pos);
-		cursor->reader = level_state->trail_reader;
-	}
-	else
-	{
-		(void) ntuplestore_acc_tell(level_state->lead_reader,
-									&cursor->orig_pos);
-		cursor->reader = level_state->lead_reader;
-	}
-
-	/*
-	 * This is a little complicated condition to tell if the last_agg row should
-	 * be looked at.  After setting use_last_agg, we'll return last_agg
-	 * just after finishing to return all the rows in the tuplestore.
-	 */
-	if (EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->trail, false))
-		include_last_agg = true;
-	if (!EDGE_IS_BOUND(level_state->frame->lead) ||
-		EDGE_IS_BOUND_FOLLOWING(level_state->frame->lead) ||
-		EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->lead, true))
-		include_last_agg = true;
-	cursor->use_last_agg = (!ntuplestore_acc_tell(level_state->lead_reader, NULL) &&
-							level_state->agg_filled && include_last_agg);
-
-	/*
-	 * Also we check if this frame has tuples.  If this is false, entire frame
-	 * is empty and nothing should be returned.
-	 */
-	cursor->has_tuples = hasTuplesInFrame(level_state, wstate);
-
-	if (forward)
-	{
-		/*
-		 * Since the trail_reader points to the value before the trailing
-		 * edge, we advance the trail_reader by one.
-		 */
-		if (ntuplestore_acc_tell(cursor->reader, NULL))
-			ntuplestore_acc_advance(cursor->reader, 1);
-		else
-			ntuplestore_acc_seek_first(cursor->reader);
-	}
-	else
-	{
-		/*
-		 * In backward, make sure the reader is on the last.
-		 */
-		if (!ntuplestore_acc_tell(cursor->reader, NULL))
-			ntuplestore_acc_seek_last(cursor->reader);
-	}
-
-	cursor->first = true;
-	cursor->wcontext = wcontext;
-	cursor->forward = forward;
-
-	return cursor;
-}
-
-/*
- * A helper of windowBufferNext.  Scans and advances in the tuplestore.
- * If it has reached to the end, sets reader_eof to true and returns NULL.
- * Otherwise returns a valid List containing serialized WindowValues.
- */
-static List *
-windowBufferNextTupleStore(WindowBufferCursor cursor)
-{
-	WindowFuncContext	wcontext = cursor->wcontext;
-	WindowState		   *wstate = wcontext->windowstate;
-	WindowStatePerFunction funcstate = &wstate->func_state[wcontext->funcno];
-	WindowStatePerLevel	level_state = funcstate->wlevel;
-	FrameBufferEntry   *entry = level_state->curr_entry_buf;
-	bool				found;
-
-	/*
-	 * Fast pass check.
-	 */
-	if (cursor->reader_eof)
-		return NULL;
-
-	if (!cursor->first)
-		ntuplestore_acc_advance(cursor->reader, cursor->forward ? 1 : -1);
-	cursor->first = false;
-	if (!ntuplestore_acc_tell(cursor->reader, NULL))
-		cursor->reader_eof = true;
-	else
-	{
-		/*
-		 * If the reader intersects the other side, it means the end of frame.
-		 */
-		if (cursor->forward)
-		{
-			if (ntuplestore_acc_tell(level_state->lead_reader, NULL) &&
-				 ntuplestore_acc_is_before(level_state->lead_reader,
-										   cursor->reader))
-			cursor->reader_eof = true;
-		}
-		else
-		{
-			if (ntuplestore_acc_tell(level_state->trail_reader, NULL) &&
-				ntuplestore_acc_is_before(cursor->reader,
-										  level_state->trail_reader))
-			cursor->reader_eof = true;
-		}
-	}
-
-	/*
-	 * Check it again, and if it's now eof, nothing is returned.
-	 */
-	if (cursor->reader_eof)
-		return NULL;
-
-	found = getCurrentValue(cursor->reader, level_state, entry);
-	/*
-	 * As we are sure the reader is at a valid position, the entry must be found.
-	 */
-	Assert(found);
-
-	return  entry->func_values;
-}
-
-/*
- * A helper of windowBufferNext.  Scans "last_agg" if we should, and converts the
- * input buffer to a List of WindowValues.  Since last_agg is the last row of
- * the frame if any, we set the use_last_agg to false after scanning and will never
- * get the values again.
- */
-static List *
-windowBufferNextLastAgg(WindowBufferCursor cursor)
-{
-	if (cursor->use_last_agg)
-	{
-		WindowFuncContext	wcontext = cursor->wcontext;
-		WindowState		   *wstate = wcontext->windowstate;
-		WindowStatePerFunction funcstate = &wstate->func_state[wcontext->funcno];
-		WindowStatePerLevel	level_state = funcstate->wlevel;
-		FrameBufferEntry   *entry = level_state->curr_entry_buf;
-		bool				found;
-		ExprContext		   *econtext = wstate->ps.ps_ExprContext;
-		TupleTableSlot	   *slot = econtext->ecxt_scantuple;
-		Size				len;
-
-		found = ntuplestore_acc_current_tupleslot(wstate->input_buffer->writer,
-												  wstate->spare);
-		Assert(found);
-
-		/*
-		 * Serialize and deserialize the input buffer.  This seems a little redundant,
-		 * but the format of input buffer and WindowValue is different, and as
-		 * we want the same format values from the buffer cursor, we do this here.
-		 * It is actually not so bad, as it's done in memory.
-		 */
-		econtext->ecxt_scantuple = wstate->spare;
-		MemSet(wstate->serial_array, 0, wstate->max_size);
-		serializeEntry(level_state, econtext,
-					   &(wstate->serial_array), &(wstate->max_size), &len);
-		entry = deserializeEntry(level_state, entry, wstate->serial_array, len);
-		/* Get back the slot. */
-		econtext->ecxt_scantuple = slot;
-		/* We never use this again as it's the logical last row. */
-		cursor->use_last_agg = false;
-
-		return entry->func_values;
-	}
-
-	return NULL;
-}
-
-/*
- * Scans the frame buffer and returns true if fetched the current value.
- * It advances the cursor 1 forward or backward.  If the scan is finished,
- * it returns false.  The function values are stored in the cursor, so
- * windowBufferGetArg() later will return the value.
- */
-bool
-windowBufferNext(WindowBufferCursor cursor)
-{
-	List	   *func_values;
-
-	if (!cursor->has_tuples)
-		return false;
-
-	if (cursor->forward)
-	{
-		/*
-		 * In forward, start from tuplestore and use last_agg after that.
-		 */
-		func_values = windowBufferNextTupleStore(cursor);
-		if (!func_values)
-			func_values = windowBufferNextLastAgg(cursor);
-	}
-	else
-	{
-		/*
-		 * In backward, start from last_agg and use tuplestore after that.
-		 */
-		func_values = windowBufferNextLastAgg(cursor);
-		if (!func_values)
-			func_values = windowBufferNextTupleStore(cursor);
-	}
-
-	cursor->func_values = func_values;
-
-	return func_values != NIL;
-}
-
-/*
- * Fetch the arg value at the row this cursor is pointing.
- */
-Datum
-windowBufferGetArg(WindowBufferCursor cursor, int argno, bool *isnull)
-{
-	WindowFuncContext	wcontext = cursor->wcontext;
-	WindowState		   *wstate = wcontext->windowstate;
-	WindowStatePerFunction funcstate = &wstate->func_state[wcontext->funcno];
-	WindowValue		   *winvalue;
-
-	if (!cursor->func_values)
-	{
-		*isnull = true;
-		return (Datum) 0;
-	}
-
-	winvalue = (WindowValue *)
-		list_nth(cursor->func_values, funcstate->serial_index + argno);
-
-	if (!winvalue)
-	{
-		*isnull = true;
-		return (Datum) 0;
-	}
-
-	*isnull = winvalue->valueIsNull;
-
-	return winvalue->value;
-}
-
-/*
- * Ends the cursor.  The cursor will be freed.  The reader will be ok to use again.
- */
-void
-windowBufferEndScan(WindowBufferCursor cursor)
-{
-	if(!ntuplestore_acc_seek(cursor->reader, &cursor->orig_pos))
-		ntuplestore_acc_set_invalid(cursor->reader);
-	pfree(cursor);
 }
 
 /* -----------------
@@ -6753,26 +5736,18 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 
 	/* Create state structure. */
 	wstate = makeWindowState(node, estate);
-	
-	/* If we're implementing a sequence, we'll need to generate one. */
-	if ( is_sequence(node) )
-	{
-		seq_init_wstate(wstate);
-	}	
 
 	/* Create expression context. */
 	ExecAssignExprContext(estate, &wstate->ps);
 
-	/* Could get away with 4, if not a sequence, but that's too finicky. */
-#define WINDOW_NSLOTS 5
+	/* XXX: temporarily high for debugging purposes */
+#define WINDOW_NSLOTS 4
 
 	/* Initialize tuple table. */
 	ExecInitResultTupleSlot(estate, &wstate->ps);
 	wstate->curslot = ExecInitExtraTupleSlot(estate);
 	wstate->priorslot = ExecInitExtraTupleSlot(estate);
 	wstate->spare = ExecInitExtraTupleSlot(estate);
-	wstate->synthslot = NULL; /* Child result type not set yet. */
-
 
 	/* Initialize child expressions.
 	 *
@@ -6792,12 +5767,6 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 	/* Initialize result tuple type and projection info. */
 	ExecAssignResultTypeFromTL(&wstate->ps);
 	ExecAssignProjectionInfo(&wstate->ps, NULL);
-	
-	/* Reset now that we know the child (input) type. */
-	wstate->synthslot = 
-	ExecInitNullTupleSlot(estate,
-						  ExecGetResultType(outerPlanState(wstate)));
-	
 
 	desc = ExecGetResultType(wstate->ps.lefttree);
 
@@ -7021,128 +5990,6 @@ dense_rank_immed(PG_FUNCTION_ARGS)
 	
 	PG_RETURN_INT64(result);
 }
-
-
-/*
- * Window Functions receive an initial internal argument which is actually 
- * a pointer to a WindowRefExprState.  This is a private structure in
- * nodeWindow.c because it is managed by the windowing framework.  The 
- * following are accessors that return values for certain "immediate" window 
- * functions derived from the internal argument.
- */
-
-int64 internal_row_number(void *datum_pointer)
-{
-	WindowRefExprState *ref_state = NULL;
-	
-	if ( !PointerIsValid(datum_pointer) ||
-		!IsA(datum_pointer, WindowRefExprState) 
-		)
-	{
-		elog(ERROR, "invalid pointer in internal_row_number");
-	}
-	
-	ref_state = (WindowRefExprState *)datum_pointer;
-	return 1 + ref_state->windowstate->row_index;
-}
-
-int64 internal_rank(void *datum_pointer)
-{
-	WindowRefExprState *ref_state = NULL;
-	WindowState *window_state = NULL;
-	WindowRef *ref = NULL;
-	WindowStatePerLevel level_state = NULL;
-	
-	if ( !PointerIsValid(datum_pointer) ||
-		!IsA(datum_pointer, WindowRefExprState) 
-		)
-	{
-		elog(ERROR, "invalid pointer in internal_rank");
-	}
-	
-	ref_state = (WindowRefExprState *)datum_pointer;
-	window_state = ref_state->windowstate;
-	ref = (WindowRef *)ref_state->xprstate.expr;
-	level_state = &window_state->level_state[ref->winlevel];
-	return level_state->rank;
-}	  
-
-int64 internal_dense_rank(void *datum_pointer)
-{
-	WindowRefExprState *ref_state = NULL;
-	WindowState *window_state = NULL;
-	WindowRef *ref = NULL;
-	WindowStatePerLevel level_state = NULL;
-	
-	if ( !PointerIsValid(datum_pointer) ||
-		!IsA(datum_pointer, WindowRefExprState) 
-		)
-	{
-		elog(ERROR, "invalid pointer in internal_dense_rank");
-	}
-	
-	ref_state = (WindowRefExprState *)datum_pointer;
-	window_state = ref_state->windowstate;
-	ref = (WindowRef *)ref_state->xprstate.expr;
-	level_state = &window_state->level_state[ref->winlevel];
-	return level_state->dense_rank;
-}
-
-
-/* Returns a pointer to the Datum representing the current sequence key
- * value of the WindowRefExprState* supplied as an internal type
- * parameter.  May be NULL (unset).  Caller must know the sequence key
- * type in order to interpret the referenced Datum.
- *
- * Used by implementations of the sequence_key window function.
- */
-DatumPtr internal_seqkey_ptr(void *datum_pointer)
-{
-	WindowRefExprState *ref_state = NULL;
-	WindowState *window_state = NULL;
-	WindowRef *ref = NULL;
-	WindowStatePerLevel level_state = NULL;
-	
-	if ( !PointerIsValid(datum_pointer) ||
-		!IsA(datum_pointer, WindowRefExprState) 
-		)
-	{
-		elog(ERROR, "invalid pointer passed to internal_seqkey_ptr");
-	}
-	
-	ref_state = (WindowRefExprState *)datum_pointer;
-	window_state = ref_state->windowstate;
-	ref = (WindowRef *)ref_state->xprstate.expr;
-	level_state = &window_state->level_state[ref->winlevel];
-	
-	if ( level_state->sequence_key_datum_defined )
-	{
-		return &level_state->sequence_key_datum;
-	}
-	return NULL;
-}	  
-
-
-/* 
- * SEQUENCE_INDEX() OVER (... ORDER BY q) -- INT8
- *
- * The current sequence key index of the WindowRefExprState* 
- * supplied as an internal type parameter.  Always non-null int64 type.
- */
-Datum sequence_index_immed(PG_FUNCTION_ARGS)
-{
-	WindowRefExprState *ref_state = (WindowRefExprState *) PG_GETARG_POINTER(0);
-	WindowState *window_state = NULL;
-	WindowRef *ref = NULL;
-	WindowStatePerLevel level_state = NULL;
-	
-	window_state = ref_state->windowstate;
-	ref = (WindowRef *)ref_state->xprstate.expr;
-	level_state = &window_state->level_state[ref->winlevel];
-	
-	PG_RETURN_INT64(level_state->sequence_index);
-}	  
-
 
 
 /*
@@ -7374,26 +6221,32 @@ ntile_final(PG_FUNCTION_ARGS)
 	PG_RETURN_INT64(result);
 }
 
-/*
- * The common code for lead and lag.
- */
 static Datum
 lead_lag_internal(PG_FUNCTION_ARGS, bool is_lead, bool *isnull)
 {
-	WindowFuncContext	wcontext = windowGetContext(fcinfo);
-	WindowBufferCursor	cursor;
-	Datum				winvalue;
+	int64 offset = 0;
+	Datum val_expr = 0;
+	bool val_expr_null = true;
+	WindowRefExprState *wrxstate =
+		(WindowRefExprState *)PG_GETARG_POINTER(0);
+	WindowState *wstate = wrxstate->windowstate;
+	ExprContext *econtext = wstate->ps.ps_ExprContext;
+	WindowStatePerFunction funcstate = &wstate->func_state[wrxstate->funcno];
+	WindowStatePerLevel level_state = funcstate->wlevel;
+	FrameBufferEntry *lead_entry = level_state->lead_entry_buf;
+	bool has_lead_entry = false;
+	WindowValue *lead_value = NULL;
 
 	Insist(PG_NARGS() >= 2);
-
-	/*
-	 * Check the offset argument if given.  It is actually not used to
-	 * retrieve the value, as the frame is tracking the offset.
-	 */
+	
+	if (PG_NARGS() > 3)
+	{
+		val_expr = PG_GETARG_DATUM(3);
+		val_expr_null = PG_ARGISNULL(3);
+	}
+	
 	if (PG_NARGS() > 2)
 	{
-		int64				offset = 1;
-
 		if (PG_ARGISNULL(2))
 		{
 			if (is_lead)
@@ -7403,46 +6256,83 @@ lead_lag_internal(PG_FUNCTION_ARGS, bool is_lead, bool *isnull)
 		}
 
 		offset = PG_GETARG_INT64(2);
-		if (offset < 0)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("%s offset cannot be negative",
-							is_lead ? "LEAD" : "LAG"),
-									   errOmitLocation(true)));
-
 	}
-
-	/*
-	 * The direction doesn't matter, as the frame has only one row.
-	 */
-	cursor = windowBufferBeginScan(wcontext, true);
-	/*
-	 * If this is out of frame, return the default value argument,
-	 * or NULL if not given.
-	 */
-	if (!windowBufferNext(cursor))
+	
+	if (PG_NARGS() == 2)
 	{
-		if (PG_NARGS() > 3)
-		{
-			*isnull = PG_ARGISNULL(3);
-			if (!*isnull)
-				winvalue = PG_GETARG_DATUM(3);
-			else
-				winvalue = (Datum) 0;
-		}
-		else
-		{
-			winvalue = (Datum) 0;
-			*isnull = true;
-		}
+	 	offset = 1; /* default */
 	}
+
+	if (offset < 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("%s offset cannot be negative",
+						is_lead ? "LEAD" : "LAG"),
+								   errOmitLocation(true)));
+
+	Assert(level_state->is_rows);
+	if (!EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) ||
+		level_state->num_lead_rows >= level_state->trail_rows)
+		has_lead_entry = getCurrentValue(level_state->lead_reader,
+										 level_state, lead_entry);
+			
+	if (has_lead_entry)
+	{
+		lead_value = (WindowValue *)list_nth(lead_entry->func_values,
+											 funcstate->serial_index);
+
+		funcstate->win_value = lead_value->value;
+		funcstate->win_value_is_null = lead_value->valueIsNull;
+	}
+
+	/* The value could be stored in aggTransValue. */
+	else if (level_state->agg_filled &&
+			 (EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->lead, true) ||
+			 (EDGE_IS_BOUND_FOLLOWING(level_state->frame->lead) &&
+			  level_state->num_lead_rows >= level_state->trail_rows)))
+	{
+		funcstate->win_value = funcstate->aggTransValue;
+		funcstate->win_value_is_null = funcstate->aggTransValueIsNull;
+	}
+	
 	else
 	{
-		winvalue = windowBufferGetArg(cursor, 0, isnull);
-	}
-	windowBufferEndScan(cursor);
+		WindowRefExprState *wrxstate = funcstate->wrxstate;
+		ExprState *argstate;
+		int nargs = list_length(wrxstate->args);
+		FunctionCallInfoData fcinfo;
+		int argno = 3;
 
-	return winvalue;
+		Assert(nargs <= 4);
+
+		if (level_state->lead_rows < 0 ||
+			level_state->num_lead_rows < level_state->lead_rows)
+		{
+			/* Use the default value if any. */
+			if (nargs == 4)
+			{
+				argstate = (ExprState *)list_nth(wrxstate->args, argno);
+				funcstate->win_value = ExecEvalExpr(argstate, econtext,
+														fcinfo.argnull + argno, NULL);
+				funcstate->win_value_is_null = fcinfo.argnull[argno];
+			}
+			
+			else
+			{
+				funcstate->win_value = 0;
+				funcstate->win_value_is_null = true;
+			}
+		}
+
+		else
+		{
+			funcstate->win_value = 0;
+			funcstate->win_value_is_null = true;
+		}
+	}
+
+	*isnull = funcstate->win_value_is_null;
+	return funcstate->win_value;
 }
 
 /*
@@ -7476,59 +6366,93 @@ lag_generic(PG_FUNCTION_ARGS)
     PG_RETURN_DATUM(d);
 }
 
-/*
- * The common code for first_value and last_value.  The isfirstvalue
- * is true if this is for first_value.  The two functions are only
- * different in the scanning direction.
- */
 static Datum
-first_last_value_internal(PG_FUNCTION_ARGS, bool *isnull, bool isfirstvalue)
+last_value_internal(WindowRefExprState *wrxstate, bool *isnull)
 {
-	WindowFuncContext	wcontext = windowGetContext(fcinfo);
-	/* XXX: These are only to take out WindowRef */
-	WindowRefExprState *wrxstate = (WindowRefExprState *) wcontext;
 	WindowState *wstate = wrxstate->windowstate;
 	WindowStatePerFunction funcstate = &wstate->func_state[wrxstate->funcno];
-	/* XXX: Need cleaner API for NULL_TREATMENT */
-	WindowRef		   *wref = funcstate->wref;
-	WindowBufferCursor	cursor;
-	Datum				winvalue;
+	WindowStatePerLevel level_state = funcstate->wlevel;
+	FrameBufferEntry *lead_entry = level_state->lead_entry_buf;
+	bool has_lead_entry = false;
+	WindowValue *lead_value = NULL;
+	bool lead_valid = true;
+	bool has_tuples = true;
+	bool include_last_agg = false;
 
-	/*
-	 * Start a buffer cursor.  If it's first_value, the direction
-	 * is forward.
-	 */
-	cursor = windowBufferBeginScan(wcontext, isfirstvalue);
-	do
+	has_tuples = hasTuplesInFrame(level_state, wstate);
+		
+	if (has_tuples)
 	{
-		winvalue = (Datum) 0;
-		*isnull = true;
-		/*
-		 * If this is out of frame, stop here.
-		 */
-		if (!windowBufferNext(cursor))
-			break;
-		/*
-		 * Fetch the argument value.
-		 */
-		winvalue = windowBufferGetArg(cursor, 0, isnull);
-	} while(wref->null_treatment == NULL_TREATMENT_IGNORE && *isnull);
-	windowBufferEndScan(cursor);
+		if (EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->trail, false))
+			include_last_agg = true;
 
-	return winvalue;
+		if (!EDGE_IS_BOUND(level_state->frame->lead) ||
+			EDGE_IS_BOUND_FOLLOWING(level_state->frame->lead)  ||
+			EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->lead, true))
+			include_last_agg = true;
+
+		if (!level_state->agg_filled &&
+			!ntuplestore_acc_tell(level_state->lead_reader, NULL))
+		{
+			lead_valid = false;
+			ntuplestore_acc_seek_last(level_state->lead_reader);
+		}
+
+		if (level_state->is_rows)
+		{
+			if (!EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) ||
+				level_state->num_lead_rows >= level_state->trail_rows)
+				has_lead_entry = getCurrentValue(level_state->lead_reader,
+												 level_state, lead_entry);
+		}
+		else
+		{
+			has_lead_entry = getCurrentValue(level_state->lead_reader,
+											 level_state, lead_entry);
+		}
+
+		if (has_lead_entry)
+			lead_value = (WindowValue *)list_nth(lead_entry->func_values,
+												 funcstate->serial_index);
+	}
+
+	if (lead_value != NULL)
+	{
+		funcstate->win_value = lead_value->value;
+		funcstate->win_value_is_null = lead_value->valueIsNull;
+	}
+
+	else
+	{
+		if (has_tuples && include_last_agg && level_state->agg_filled)
+		{
+			funcstate->win_value = funcstate->aggTransValue;
+			funcstate->win_value_is_null = funcstate->aggTransValueIsNull;
+		}
+
+		else
+		{
+			funcstate->win_value = 0;
+			funcstate->win_value_is_null = true;
+		}
+	}
+
+	*isnull = funcstate->win_value_is_null;
+
+	if (!lead_valid)
+		ntuplestore_acc_set_invalid(level_state->lead_reader);
+
+	return funcstate->win_value;
 }
 
-/*
- * last_value returns the last value of the argument within the frame.
- * If IGNORE NULLS is specified, scan up to a non-NULL value.
- */
 Datum
 last_value_generic(PG_FUNCTION_ARGS)
 {
 	Datum d;
 	bool isnull = false;
 	
-	d = first_last_value_internal(fcinfo, &isnull, false);
+	d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+							&isnull);
 	
 	if (isnull)
 	   PG_RETURN_NULL();
@@ -7536,473 +6460,115 @@ last_value_generic(PG_FUNCTION_ARGS)
 	return d;
 }
 
-/*
- * first_value returns the first value of the argument within the frame.
- * If IGNORE NULLS is specified, scan down to a non-NULL value.
- */
+static Datum
+first_value_internal(WindowRefExprState *wrxstate, bool *isnull)
+{
+	WindowState *wstate = wrxstate->windowstate;
+	WindowStatePerFunction funcstate = &wstate->func_state[wrxstate->funcno];
+	WindowStatePerLevel level_state = funcstate->wlevel;
+	FrameBufferEntry *trail_entry = level_state->trail_entry_buf;
+	bool has_trail_entry = false;
+	WindowValue *trail_value = NULL;
+	NTupleStorePos orig_pos;
+	bool trail_valid;
+	bool has_tuples = true;
+
+	has_tuples = hasTuplesInFrame(level_state, wstate);
+
+	if (!has_tuples)
+	{
+		funcstate->win_value = 0;
+		funcstate->win_value_is_null = true;
+
+		*isnull = true;
+		return funcstate->win_value;
+	}
+	
+	/* Save the position for the trail_reader */
+	trail_valid = ntuplestore_acc_tell(level_state->trail_reader, &orig_pos);
+
+	/* Since the trail_reader points to the value that is right before
+	 * the trailing edge, we advance the trail_reader by one.
+	 */
+	if (trail_valid)
+		ntuplestore_acc_advance(level_state->trail_reader, 1);
+	else
+	{
+		if (!EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) ||
+			EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->trail, false))
+			ntuplestore_acc_seek_first(level_state->trail_reader);
+	}
+
+	if (level_state->is_rows)
+	{
+		if (!EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) ||
+			level_state->num_lead_rows >= level_state->trail_rows)
+			has_trail_entry = getCurrentValue(level_state->trail_reader,
+											  level_state, trail_entry);
+	}
+	else
+	{
+		has_trail_entry = getCurrentValue(level_state->trail_reader,
+										  level_state, trail_entry);
+	}
+
+	if (has_trail_entry)
+		trail_value = (WindowValue *)list_nth(trail_entry->func_values,
+											  funcstate->serial_index);
+
+	if (trail_value != NULL)
+	{
+		funcstate->win_value = trail_value->value;
+		funcstate->win_value_is_null = trail_value->valueIsNull;
+	}
+
+	else
+	{
+		bool include_last_agg = false;
+		
+		if (EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->trail, false))
+			include_last_agg = true;
+
+		if (EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->lead, true))
+			include_last_agg = true;
+
+		if ((has_tuples || include_last_agg || trail_valid) &&
+			level_state->agg_filled)
+		{
+			funcstate->win_value = funcstate->aggTransValue;
+			funcstate->win_value_is_null = funcstate->aggTransValueIsNull;
+		}
+		
+		else
+		{
+			funcstate->win_value = 0;
+			funcstate->win_value_is_null = true;
+		}
+	}
+
+	/* Reset the trail_reader to its original position. */
+	if (!ntuplestore_acc_seek(level_state->trail_reader, &orig_pos))
+		ntuplestore_acc_set_invalid(level_state->trail_reader);
+
+	*isnull = funcstate->win_value_is_null;
+
+	return funcstate->win_value;
+}
+
 Datum
 first_value_generic(PG_FUNCTION_ARGS)
 {
     Datum d;
     bool isnull = false;
 
-    d = first_last_value_internal(fcinfo, &isnull, true);
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
 
     if (isnull)
        PG_RETURN_NULL();
 
     return d;
 }
-
-/*
- * a helper function for lead and lag to make frame.
- */
-Datum
-lead_lag_frame_maker(PG_FUNCTION_ARGS)
-{
-	WindowRef	   *wref = (WindowRef *) PG_GETARG_POINTER(0);
-	WindowFrame	   *frame = makeNode(WindowFrame);
-	Node		   *offset;
-	Oid				fnoid;
-	HeapTuple		tuple;
-	Form_pg_window	winform;
-	char			winkind;
-	cqContext	   *pcqCtx;
-
-	if (list_length(wref->args) > 1)
-		offset = (Node *) list_nth(wref->args, 1);
-	else
-	{
-		offset = (Node *) makeConst(INT8OID,
-									-1,
-									8,
-									Int64GetDatum(1),
-									false,
-									true);
-	}
-
-	frame->system_generated = true;
-	frame->is_between = true;
-	frame->is_rows = true;
-	frame->trail = makeNode(WindowFrameEdge);
-	frame->lead = makeNode(WindowFrameEdge);
-
-	fnoid = wref->winfnoid;
-
-	/* XXX: select winkind from pg_window */
-
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_window "
-				" WHERE winfnoid = :1 ",
-				ObjectIdGetDatum(fnoid)));
-	
-	tuple = caql_getnext(pcqCtx);
-
-	if (!HeapTupleIsValid(tuple))
-		elog(ERROR, "cache lookup failed for window function %u", fnoid);
-	winform = (Form_pg_window) GETSTRUCT(tuple);
-	winkind = winform->winkind;
-	
-	caql_endscan(pcqCtx);
-
-	switch (winkind)
-	{
-	case WINKIND_LAG:
-		if (IsA(offset, Const))
-			frame->trail->kind = frame->lead->kind =
-				WINDOW_BOUND_PRECEDING;
-		else
-			frame->trail->kind = frame->lead->kind =
-				WINDOW_DELAYED_BOUND_PRECEDING;
-		break;
-	case WINKIND_LEAD:
-		if (IsA(offset, Const))
-			frame->trail->kind = frame->lead->kind =
-				WINDOW_BOUND_FOLLOWING;
-		else
-			frame->trail->kind = frame->lead->kind =
-				WINDOW_DELAYED_BOUND_FOLLOWING;
-		break;
-	default:
-		elog(ERROR, "internal window framing error");
-	}
-
-	frame->trail->val = frame->lead->val = offset;
-
-	PG_RETURN_POINTER(frame);
-}
-
-/*
- * A frame maker function for weighted moving functions.  This requires the
- * second argument to be a const array and the third as a const int.
- */
-Datum
-wm_frame_maker(PG_FUNCTION_ARGS)
-{
-	WindowRef	   *wref = (WindowRef *) PG_GETARG_POINTER(0);
-	WindowFrame	   *frame = makeNode(WindowFrame);
-	Const		   *weights_expr, *offset_expr;
-	ArrayType	   *weights;
-	int32			width, offset;
-	int64			start, end;
-
-	frame->system_generated = true;
-	frame->is_between = true;
-	frame->is_rows = true;
-	frame->trail = makeNode(WindowFrameEdge);
-	frame->lead = makeNode(WindowFrameEdge);
-
-	weights_expr = (Const *) list_nth(wref->args, 1);
-	offset_expr = (Const *) list_nth(wref->args, 2);
-
-	if (!IsA(weights_expr, Const))
-		ereport(ERROR,
-				(errmsg("weight vector argument must be a constant")));
-	weights = DatumGetArrayTypeP(weights_expr->constvalue);
-	width = ArrayGetNItems(ARR_NDIM(weights), ARR_DIMS(weights));
-
-	/*
-	 * WM window function family requires a stable value for the weight vector
-	 * and offset value.  Up to now, the planner have hopefully reduced the
-	 * argument expressions into simple Consts.  Things that were not able to
-	 * become a Const cannot be handled by those functions.
-	 */
-	if (!IsA(offset_expr, Const))
-		ereport(ERROR,
-				(errmsg("offset argument must be a constant")));
-	offset = DatumGetInt32(offset_expr->constvalue);
-
-	start = -width + 1 + offset;
-	if (start < 0)
-		frame->trail->kind = WINDOW_BOUND_PRECEDING;
-	else if (start == 0)
-		frame->trail->kind = WINDOW_CURRENT_ROW;
-	else
-		frame->trail->kind = WINDOW_BOUND_FOLLOWING;
-	frame->trail->val = (Node *) makeConst(INT8OID,
-										   -1,
-										   8,
-										   Int64GetDatum(Abs(start)),
-										   false,
-										   true);
-
-	end = offset;
-	if (end < 0)
-		frame->lead->kind = WINDOW_BOUND_PRECEDING;
-	else if (end == 0)
-		frame->lead->kind = WINDOW_CURRENT_ROW;
-	else
-		frame->lead->kind = WINDOW_BOUND_FOLLOWING;
-	frame->lead->val = (Node *) makeConst(INT8OID,
-										  -1,
-										  8,
-										  Int64GetDatum(Abs(end)),
-										  false,
-										  true);
-
-	PG_RETURN_POINTER(frame);
-}
-
-/*
- * Generic last_known
- *
- * If the current argument pair is non-null, return the first argument
- * and update our records to show it as the current value.  Else, 
- * return the saved current value (initialy null).  In effect this 
- * does "constant interpolation" of the first argument but insists 
- * that both are non-null.
- */
-
-/* Private state (cleared per partition) for last_known_generic(). */
-typedef struct last_known_private
-{
-	bool isnull;
-	Datum value;
-	int16 typlen;
-	bool typbyval;
-} last_known_private;
-
-/* The actual implementation of the various type-specific declarations. */
-Datum
-last_known_generic(PG_FUNCTION_ARGS)
-{
-	WindowFuncContext	wcontext = windowGetContext(fcinfo);
-	WindowRefExprState *wrxstate = (WindowRefExprState *) wcontext;
-	WindowState *wstate = wrxstate->windowstate;
-	WindowStatePerFunction funcstate = &wstate->func_state[wrxstate->funcno];
-	last_known_private *private = NULL;
-	Datum				value;
-	bool				isnull;
-	
-	Insist(PG_NARGS() == 3); /* context, x, y */
-	
-	/* If no private memory (first time thru or top of partition) allocate some. 
-	 * Also, note data type of first argument (same as datatype of result) this
-	 * time (just to avoid doing it every time).
-	 */
-	if ( funcstate->win_pure_private == NULL )
-	{
-		Oid restypid;
-		
-		win_alloc_private(funcstate, sizeof(last_known_private));
-		private = funcstate->win_pure_private;
-		Assert( private != NULL );
-		private->isnull = true;
-		private->value = 0;
-		
-		restypid = exprType((Node*)((ExprState*)list_nth(wrxstate->args, 1))->expr);
-		get_typlenbyval(restypid, &private->typlen, &private->typbyval);
-	}
-	else 
-	{
-		private = funcstate->win_pure_private;
-	}
-
-	
-	if ( !PG_ARGISNULL(1) && !PG_ARGISNULL(2) )
-	{
-		MemoryContext pcxt = win_get_private_context(funcstate);
-		MemoryContext oldcxt = MemoryContextSwitchTo(pcxt);
-		
-		/* We have a new result value. */
-		value = PG_GETARG_DATUM(1);
-		isnull = false;
-		
-		/* Copy the value into private storage in case we need it again. */
-		datumClear(&private->value, &private->isnull, private->typbyval);
-		private->isnull = isnull; /* false */
-		private->value = datumCopy(value, private->typbyval, private->typlen);
-		
-		MemoryContextSwitchTo(oldcxt);
-	}
-	else
-	{
-		/* Copy the private value into current context. */
-	    isnull = private->isnull;
-		if (isnull)
-			value = 0;
-		else
-			value = datumCopy(private->value, private->typbyval, private->typlen);
-	}
-	
-	if ( isnull )
-		PG_RETURN_NULL();
-	
-	PG_RETURN_DATUM(value);
-}
-
-
-/*
- * Generic next_known
- *
- * If the current argument pair is non-null, return the first argument and
- * update our records to show its offset and value.  This is the last place
- * we found a non-null pair.  (We'll never reuse the value, so we don't
- * actually need to remember it, but the fields have more consistent 
- * descriptions, if we do so.  Else, if the remembered offset exceeds the 
- * offset of the current row, use the last remembered value.  Otherwise, 
- * loop forward looking for the next non-null pair.  If one is found, 
- * remember it and its offset and use it as the.  If not, record a null.
- */
-
-/* Private state (cleared per partition) for next_known_generic(). */
-typedef struct next_known_private
-{
-	int64 row_index;
-	int64 lead_index;
-	bool isnull;
-	Datum value;
-	int16 typlen;
-	bool typbyval;
-} next_known_private;
-
-/*
- * Helper function to make a WindowFrame for next_known.  Called at
- * plan time.  To establish the system-generated framing information
- * for next_known_generic.
- */
-Datum
-next_known_frame_maker(PG_FUNCTION_ARGS)
-{
-	WindowFrame	   *frame = makeNode(WindowFrame);
-	
-	frame->system_generated = true;
-	frame->is_between = true;
-	frame->is_rows = true;
-	frame->trail = makeNode(WindowFrameEdge);
-	frame->lead = makeNode(WindowFrameEdge);
-	
-	/* No look behind, unlimited look ahead. */
-	frame->trail->kind = WINDOW_CURRENT_ROW;
-	frame->lead->kind = WINDOW_UNBOUND_FOLLOWING;
-	
-	frame->trail->val = frame->lead->val = NULL;
-	
-	PG_RETURN_POINTER(frame);
-}
-/* The actual implementation of the various type-specific declarations. */
-Datum
-next_known_generic(PG_FUNCTION_ARGS)
-{
-	WindowFuncContext	wcontext = windowGetContext(fcinfo);
-	WindowRefExprState *wrxstate = (WindowRefExprState *) wcontext;
-	WindowState *wstate = wrxstate->windowstate;
-	WindowStatePerFunction funcstate = &wstate->func_state[wrxstate->funcno];
-	next_known_private *private = NULL;
-	Datum value = (Datum)0;
-	Datum aux = (Datum)0;
-	bool isnull = true;
-	
-	Insist(PG_NARGS() == 3); /* context, x, y */
-	
-	/* If no private memory (first time thru or top of partition) allocate some. 
-	 * Also, note data type of first argument (same as datatype of result) this
-	 * time (just to avoid doing it every time).
-	 */
-	if ( funcstate->win_pure_private == NULL )
-	{
-		Oid restypid;
-		
-		win_alloc_private(funcstate, sizeof(next_known_private));
-		private = (next_known_private*)funcstate->win_pure_private;
-		Assert( private != NULL );
-		private->row_index = 0;
-		private->lead_index = -1;
-		private->isnull = true;
-		private->value = 0;
-		
-		restypid = exprType((Node*)((ExprState*)list_nth(wrxstate->args, 1))->expr);
-		get_typlenbyval(restypid, &private->typlen, &private->typbyval);
-	}
-	else
-	{
-		private = funcstate->win_pure_private;
-		private->row_index++;
-	}
-	
-	if ( private->lead_index > private->row_index  )
-	{
-	    /* We already searched far enough.  Use what we found previously by 
-		 * copying the private value into current context. 
-		 */
-	    isnull = private->isnull;
-		value = datumCopy(private->value, private->typbyval, private->typlen);
-	}	
-	else
-	{
-		/* Start a buffer cursor. */
-		WindowBufferCursor cursor = windowBufferBeginScan(wcontext, true);;
-	    int64 i = -1;
-		do
-		{
-			value = (Datum) 0;
-			isnull = true;
-			/* Don't search past frame. */
-			if (!windowBufferNext(cursor))
-				break;
-			i++;
-			/* If the auxiliary value is null, keep looking. */
-			aux = windowBufferGetArg(cursor, 2, &isnull);
-			if ( ! isnull )
-				value = windowBufferGetArg(cursor, 1, &isnull);
-		} while( isnull );
-		windowBufferEndScan(cursor);
-		
-		/* Copy the new value to private memory. Clean out old value, if any. */
-		datumClear(&private->value, &private->isnull, private->typbyval);
-		private->lead_index = private->row_index + i;
-		private->isnull = isnull;
-		private->value = datumCopy(value, private->typbyval, private->typlen);
-	}
-	
-	if ( isnull )
-		PG_RETURN_NULL();
-	
-	PG_RETURN_DATUM(value);
-}
-
-/* --- Helpers for pure window functions that need private data. --- */
-
-/* Get the private memory context for use by the window function call
- * represented by the argument.  If necessary, allocate a new context
- * with the owning window state's memory context as its parent.
- *
- * The idea is to get a relatively long-lived context to contain the
- * private data for a pure (non-aggregate) window function call.  The
- * function implementation manages the store as it sees fit, e.g.,
- * by clearing it periodically (and zeroing pointers into it)  via
- * win_clear_private_context.
- */
-static MemoryContext
-win_get_private_context(WindowStatePerFunction wspf)
-{
-    MemoryContext wcxt = wspf->wrxstate->windowstate->win_context;
-    
-	if ( wspf->win_pure_fn_context == NULL )
-	{
-		wspf->win_pure_fn_context =
-		AllocSetContextCreate(wcxt,
-							  "WindowFunctionContext",
-							  ALLOCSET_DEFAULT_MINSIZE,
-							  ALLOCSET_DEFAULT_INITSIZE,
-							  ALLOCSET_DEFAULT_MAXSIZE);
-	}
-	return wspf->win_pure_fn_context;
-}
-
-
-/* Clear all the memory allocated in the window function call's
- * context.  The caller is responsible for reseting pointers
- * into the space.  (These are presumed to be in the window
- * functions private memory at wspf->win_pure_private which is
- * the private property of the function implementation.)
- */
-static void
-win_clear_private_context(WindowStatePerFunction wspf)
-{	
-	if ( wspf->win_pure_fn_context )
-	{
-		MemoryContextReset(wspf->win_pure_fn_context);
-	}
-}
-
-
-/* Allocate the window function call's private storage block to the
- * given size and store a pointer to the block at win_pure_private.
- * This field should be NULL on entry, i.e., the caller is supposed
- * to manage memory so we don't reallocate here.  The private block
- * goes in the same MemoryContext as the block it belongs to.
- */
-static void
-win_alloc_private(WindowStatePerFunction wspf, size_t sz)
-{
-    MemoryContext wcxt = wspf->wrxstate->windowstate->win_context;
-    MemoryContext oldcxt = MemoryContextSwitchTo(wcxt);
-    
-	Assert( wspf->win_pure_private == NULL );
-	
-	wspf->win_pure_private = palloc0(sz);
-	MemoryContextSwitchTo(oldcxt);
-}
-
-
-/* Deallocate the window function's private storage block at
- * win_pure_private.  Also, clear, but leave any previously
- * allocated memory context intact for possible reuse.
- */
-static void
-win_free_private(WindowStatePerFunction wspf)
-{
-	if ( wspf->win_pure_private )
-	{
-	    pfree(wspf->win_pure_private);
-	    wspf->win_pure_private = NULL;
-	}
-	win_clear_private_context(wspf);
-}
-
-/* --- */
 
 void
 initGpmonPktForWindow(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
@@ -8026,659 +6592,3 @@ ExecEagerFreeWindow(WindowState *node)
 	
 	freeFrameBuffers(node);
 }
-
-/* Make an FmgrInfo for the given function in the current context.
- */
-static FmgrInfo *
-new_fmgrinfo(Oid funcid)
-{
-	FmgrInfo *finfo = (FmgrInfo*)palloc0(sizeof(FmgrInfo));
-	fmgr_info(funcid, finfo);
-	return finfo;
-}
-
-/* Make an FmgrInfo to evaluate the named binary operator without any
- * type coercion.  This is only used for sequences and only for operators
- * expected to exist.  May issue an unexpected (internal) error.
- */
-static FmgrInfo *
-get_fmgrinfo_for_compatible_oper(WindowState *wstate,
-								 const char *oprname,
-								 Oid ltype, Oid rtype)
-{
-	List *oname = list_make1(makeString(oprname));
-	Operator op = compatible_oper(NULL, oname, ltype, rtype, true, -1);
-	Oid funcid;
-	
-	if ( op == NULL )
-	{
-		elog(ERROR, "no compatible '%s' operator for sequence", oprname);
-	}
-	
-	funcid = oprfuncid(op);
-	ReleaseOperator(op);
-	
-	return new_fmgrinfo(funcid);
-}
-
-
-
-/* ----- Begin Sequence implementation ----- */
-
-static inline bool
-is_sequence(Window *window)
-{
-	return window->sequence != NULL && list_length(window->windowKeys) > 0;
-}
-
-
-/* Evaluate the given expression (known to be constant, i.e., without ANY
- * external references) and non-null and return its value as a Datum.
- */
-Datum
-evaluate_const_expr(Expr *expr, ExprContext *ec)
-{
-    bool null_mark;
-	ExprState *es = ExecInitExpr(expr, NULL);
-	Datum datum = ExecEvalExpr(es, ec, &null_mark, NULL);
-	if ( null_mark )
-	{
-		elog(ERROR,"invalid call to evaluate_const_expr (non-constant)");
-	}
-	ReScanExprContext(ec);	
-	return datum;
-}
-
-
-/*
- * Add sequence-related information to the given WindowState.  This function
- * should only be called for Window nodes that implement a sequence.
- *
- * The WindowState field seq_state is NULL for normal windows, but here is
- * set to point to a sequence state.
- */
-static void
-seq_init_wstate(WindowState *wstate)
-{
-	MemoryContext oldcontext;
-	Oid ok_type = InvalidOid; /* ordering key type -- ok */
-	bool ok_typbyval = false;
-	int16 ok_typlen = 0;
-	Expr *ok_expr = NULL;
-
-	Oid it_type = InvalidOid; /* span (interval or step) type -- it */
-	bool it_typbyval = false;
-	int16 it_typlen = 0;
-	Expr *it_expr = NULL;
-
-	Oid sk_type = InvalidOid; /* sequence key type -- sk */
-	bool sk_typbyval = false;
-	int16 sk_typlen = 0;
-	Expr *low_expr = NULL;
-	Expr *high_expr = NULL;
-
-	Datum low_datum; /* type sk  */
-	Datum high_datum; /* type sk */
-	Datum it_datum; /* type it */
-	
-	Expr *ib_expr = NULL;
-	FmgrInfo *ok_to_sk = NULL;
-	FmgrInfo *sk_le_sk = NULL;
-	FmgrInfo *sk_lt_sk = NULL;
-	FmgrInfo *it_pl_it = NULL;
-	FmgrInfo *sk_pl_it = NULL;
-	
-	Window *window = (Window*)wstate->ps.plan;
-	SequenceDefn *seqdef = (SequenceDefn*)window->sequence;
-	Assert( seqdef != NULL && IsA(seqdef, SequenceDefn) );
-	
-	/* Make a memory context to hold all the sequence-related artifacts.
-	 * This will cleared at end of query (under the parent ExecutorState
-	 * context) but seems easier and cleaner to manage separately.
-	 */
-	oldcontext = CurrentMemoryContext;
-	wstate->seq_context = AllocSetContextCreate(oldcontext,
-												"SequenceContext",
-												ALLOCSET_SMALL_MINSIZE,
-												ALLOCSET_SMALL_INITSIZE,
-												ALLOCSET_SMALL_MAXSIZE);
-	
-	MemoryContextSwitchTo(wstate->seq_context);
-	
-	/* Get type information about the attributes of the partition key
-	 * (if any) for Datum management.  The partition attributes in the
-	 * Window node refer to the outer plan's result, which is exactly
-	 * what we need.
-	 */
-	if ( window->numPartCols > 0 )
-	{
-		Index i;
-		
-		Plan *input_plan = outerPlan(window);
-			   
-		wstate->seq_partkey_type = palloc(window->numPartCols * sizeof(Oid));
-		wstate->seq_partkey_typlen = palloc(window->numPartCols * sizeof(int16));
-		wstate->seq_partkey_typbyval = palloc(window->numPartCols * sizeof(bool));
-		
-		for ( i = 0; i < window->numPartCols; i++ )
-		{			
-			AttrNumber attnum = window->partColIdx[i];
-			TargetEntry *tle;
-			Node *expr;
-			
-			tle = (TargetEntry*) list_nth(input_plan->targetlist, attnum - 1);
-			Assert( IsA(tle, TargetEntry) );
-			expr = (Node*)tle->expr;
-						
-			wstate->seq_partkey_type[i] = exprType((Node*)expr); 
-			get_typlenbyval(wstate->seq_partkey_type[i], 
-							&wstate->seq_partkey_typlen[i], 
-							&wstate->seq_partkey_typbyval[i]);
-		}
-	}
-	else 
-	{
-		wstate->seq_partkey_type = NULL;
-		wstate->seq_partkey_typlen = NULL;
-		wstate->seq_partkey_typbyval = NULL;
-	}
-	
-	
-	/* Get ordering key expression (and type).  Local results will be
-	 *
-	 *	ok_expr -- expression on input query for ordering key
-	 *			   (also low-order sort key of Window).
-	 *	ok_type, ok_typlen, ok_typbyval -- ordering key pg_type OID 
-	 *			   and extras
-	 */
-	{
-		WindowKey *wk;
-		TargetEntry *target;
-		Index ordkey_attr;
-		Assert( list_length(window->windowKeys) > 0 );
-		wk = linitial(window->windowKeys);
-		Assert( IsA(wk, WindowKey) && wk->numSortCols == 1 );
-		ordkey_attr = wk->sortColIdx[0];
-		target = list_nth(window->plan.lefttree->targetlist, ordkey_attr-1);
-		ok_expr = target->expr;
-		ok_type = exprType((Node*)ok_expr);
-		get_typlenbyval(ok_type, &ok_typlen, &ok_typbyval);
-	}
-	
-	/* Get specific interval_bound expression with datatype casts as needed
-	 * and harvest the sequence key and span datatypes and expressions. 
-	 * After parsing, the interval_bound arguments will be
-	 *
-	 *		0: order key recast as interval_bound first argument
-	 *		1: span (numeric step or interval)
-	 *		2: integer 0
-	 *		3: registration bound (use sequence low bound). 
-	 *
-	 * The order key is an expression on the input plan from above.  The span
-	 * and registration bound (lowest low bound) are constant but may include
-	 * type casts.  We rewrite these as Const nodes and retain them as Datum
-	 * values to speed evaluation in the loop.
-	 * 
-	 * Note that here we are trusting our detailed knowledge of how function 
-	 * ParseFuncOrColumn will bind arguments to the interval_bound function.
-	 * This function is intimately tied to gap-filling, however, one might 
-	 * wish for a better way.  (TODO?)
-	 * 
-	 * Local results will be
-	 *
-	 *	ib_expr -- the interval bound function call expression.
-	 *	it_expr, it_type, it_typlen, it_typbyval
-	 *	low_expr -- expression returning the lowest lower bound of the sequence.
-	 *  sk_type, sk_typlen, sk_typbyval -- sequence key type and extras.
-	 *	ok_to_sk -- FmgrInfo* for conversion or null, if none required.
-	 */
-	{
-		FuncExpr *fx;
-		Node *ok_cast;
-		Node *ok_arg;
-		Oid ok_coerce_fn = InvalidOid;
-		List *funcname = SystemFuncName("interval_bound");
-		List *fargs = list_make4(ok_expr,
-								 seqdef->span,
-								 makeConst(INT4OID, -1, sizeof(int32), 
-										   (Datum)0, false, true),
-								 seqdef->seqlow);
-	
-		ib_expr = (Expr*)ParseFuncOrColumn(NULL, funcname, fargs,
-										   NIL, false, false, false, false,
-										   NULL, -1, NULL);
-		
-		/* Peer into the bound function call to learn useful facts. */
-		fx = (FuncExpr*)ib_expr;
-		if ( ib_expr == NULL || !IsA(fx, FuncExpr) || list_length(fx->args) != 4 )
-			elog(ERROR, "failed to bind interval_bound call correctly");
-	
-		ok_cast = list_nth(fx->args, 0);
-		it_expr = (Expr*)list_nth(fx->args, 1);
-		it_type = exprType((Node*)it_expr); 
-		get_typlenbyval(it_type, &it_typlen, &it_typbyval);
-		
-		low_expr = (Expr*)list_nth(fx->args,3);
-		sk_type = exprType((Node*)low_expr);
-		get_typlenbyval(sk_type, &sk_typlen, &sk_typbyval);
-		
-		Assert( sk_type == exprType((Node*)ib_expr) );
-		
-		if ( IsA(ok_cast, FuncExpr) )
-		{
-			FuncExpr *ok_castfunc = (FuncExpr *)ok_cast;
-			Assert( list_length(ok_castfunc->args) == 1 );
-			Assert( ok_castfunc->funcresulttype == sk_type );
-			ok_coerce_fn = ok_castfunc->funcid;
-			ok_arg = list_nth(ok_castfunc->args, 0);
-			ok_to_sk = new_fmgrinfo(ok_coerce_fn);
-		}		
-		else 
-		{
-			ok_arg = ok_cast;
-			ok_to_sk = NULL;
-		}
-		Assert( equal(ok_expr, ok_arg) );
-	}
-	
-	/* The local results of the following block are
-	 *
-	 *	it_datum
-	 *	low_datum
-	 *	high_datum
-	 */
-
-	{
-		Oid typeid = InvalidOid;
-		ExprContext *econtext = CreateStandaloneExprContext();
-
-		
-		low_datum = evaluate_const_expr(low_expr, econtext); 
-		
-		it_datum = evaluate_const_expr(it_expr, econtext);
-		
-		high_expr = copyObject(seqdef->seqlim);
-		typeid = exprType((Node*)high_expr);
-		if ( sk_type != typeid )
-		{
-			high_expr = (Expr*)coerce_type(NULL, 
-										   (Node*)high_expr, typeid, 
-										   sk_type, -1, 
-										   COERCION_IMPLICIT, COERCE_IMPLICIT_CAST,
-										   -1);
-		}
-		high_datum = evaluate_const_expr(high_expr, econtext);
-	}
-		
-	/* Determine the comparison functions to use based on the datatypes.
-	 * Note that the input ordering here is ALWAYS ascending on the
-	 * order key. The comparisions are for testing interval containment
-	 * on the sequence key, not sort order on the ordering key.  However,
-	 * there must be agreement between the two.
-	 *
-	 *	sk_lt_sk - does the input ordering key coerced to the type of the 
-	 *             sequence key come before a given interval start?
-	 *	sk_le_sk - does the sequence key fall after a given interval end?
-	 *	it_pl_it - advance the offset interval.
-	 *	sk_pl_it - add the offset interval to the base sequence key.
-	 */
-	sk_lt_sk = get_fmgrinfo_for_compatible_oper(wstate, "<", sk_type, sk_type);
-	sk_le_sk = get_fmgrinfo_for_compatible_oper(wstate, "<=", sk_type, sk_type);
-	it_pl_it = get_fmgrinfo_for_compatible_oper(wstate, "+", it_type, it_type);
-	sk_pl_it = get_fmgrinfo_for_compatible_oper(wstate, "+", sk_type, it_type);
-
-	wstate->seq_coerce_fn = ok_to_sk;
-	wstate->seq_compare_fn = sk_lt_sk;
-	wstate->seq_extrapolate_estate = ExecInitExpr(ib_expr, (PlanState*)wstate);
-	wstate->seq_key_type = sk_type;
-	wstate->seq_key_typlen = sk_typlen;
-	wstate->seq_key_typbyval = sk_typbyval;
-	
-	/* Last to provide gs_new with values in wstate! */
-	wstate->seq_state = gs_new(wstate,
-							   datumCopy(low_datum, sk_typbyval, sk_typlen), 
-							   datumCopy(high_datum, sk_typbyval, sk_typlen), 
-							   datumCopy(it_datum, it_typbyval, it_typlen),
-							   it_type, it_typlen, it_typbyval,
-							   sk_le_sk, it_pl_it, sk_pl_it);
-	
-	MemoryContextSwitchTo(oldcontext);
-}
-
-/*
- * Look into the next input tuple to find out whether it will cause 
- * the partition key of the window (sequence, actually) to break.
- */
-static bool
-seq_next_matches_part(WindowState *wstate)
-{
-	Window *window = NULL;
-	ExprContext *econtext = wstate->ps.ps_ExprContext;
-	bool part_match = false;
-	Assert( wstate->seq_state );
-	
-	if ( wstate->seq_input_done )
-		return false;
-	
-	window = (Window*)wstate->ps.plan;
-	if ( window->numPartCols == 0 )
-		return true;
-	
-	if ( wstate->seq_input_synth == NULL )
-	{
-		part_match = true;
-	}
-	else
-	{
-		part_match = execTuplesMatch(wstate->seq_input_synth,
-									 wstate->seq_input_next,
-									window->numPartCols, 
-									window->partColIdx,
-									wstate->eqfunctions,
-									econtext->ecxt_per_tuple_memory);
-	}
-	return part_match;
-}
-	
-/*
-* Update the mostly null tuple in seq_input_synth by copying the partition
-* key value from the next input tuple into it.
-*  
-* The synthetic slot is a virtual tuple because it was initialized with
-* ExecInitNullTupleSlot. Therefore we can just manipulate its attribute
-* arrays.  (This breaks modularity a bit, but should be okay.)
-*/
-static void
-seq_set_partkey_in_synthslot(WindowState *wstate)
-{
-	Window *window = (Window*)wstate->ps.plan;
-	bool free_first = false;
-	Datum *values;
-	bool *isnull;
-	Datum v = (Datum)0;
-	bool nv = true;
-	int i;
-	MemoryContext oldcontext;
-
-	
-	if ( wstate->seq_input_synth == NULL )
-	{
-		wstate->seq_input_synth = wstate->synthslot;
-		free_first = false;
-	}
-	else 
-	{
-		free_first = true;
-	}
-	
-	Assert(TupHasVirtualTuple(wstate->seq_input_synth));
-	values = slot_get_values(wstate->seq_input_synth);
-	isnull = slot_get_isnull(wstate->seq_input_synth);
-	
-	/* Assign new partitioning key attributes. */
-	for ( i = 0; i < window->numPartCols; i++ )
-	{
-		AttrNumber attrno = window->partColIdx[i];
-		int idx = attrno - 1;
-		
-		/* Free preexisting non-null attribute, if any. */
-		if (free_first && !isnull[idx]) 
-		{
-			datumFree(values[idx], 
-					  wstate->seq_partkey_typbyval[i], 
-					  (int)wstate->seq_partkey_typlen[i]);
-			isnull[idx] = true;
-		}
-		
-		v = slot_getattr(wstate->seq_input_next, attrno, &nv);
-		if ( nv )
-		{
-			values[idx] = (Datum)0;
-			isnull[idx] = true;
-		}
-		else 
-		{
-			oldcontext = MemoryContextSwitchTo(wstate->seq_context);
-			
-			values[idx] = datumCopy(v, 
-								  wstate->seq_partkey_typbyval[i], 
-								  wstate->seq_partkey_typlen[i]);
-			MemoryContextSwitchTo(oldcontext);
-			isnull[idx] = false;
-		}
-	}
-}
-
-/*
- *
- */
-void set_sequence_key(WindowState *wstate, Datum key_datum)
-{
-	WindowStatePerLevel lvl;
-	MemoryContext oldcontext;
-	
-	Assert( is_sequence((Window*)wstate->ps.plan) );
-	Assert( wstate->numlevels == 1 );
-	
-	lvl = &wstate->level_state[0];
-	
-	if ( lvl->sequence_key_datum_defined )
-	{
-		datumFree(lvl->sequence_key_datum, 
-				  wstate->seq_key_typbyval, 
-				  wstate->seq_key_typlen);
-	}
-	
-	oldcontext = MemoryContextSwitchTo(wstate->seq_context);
-	
-	lvl->sequence_key_datum = datumCopy(key_datum, 
-										wstate->seq_key_typbyval, 
-										wstate->seq_key_typlen);
-	MemoryContextSwitchTo(oldcontext);
-	
-	lvl->sequence_key_datum_defined = true;
-}
-
-	
-/* Compare the current ordering key with the next-up sequence interval.
- *
- * Return -1, 0, or 1 as the ordering key is before, in, or after the
- * interval.  Use the expression initialized by seq_init_wstate.
- *
- * The idea is to return
- *         -1 if order_key_var < low, 
- *     else 0 if order_key_var < high, 
- *     else 1
- */
-static int 
-seq_compare(WindowState* wstate)
-{
-	Datum ok_datum;
-	Assert(wstate != NULL);
-	GeneratedSequenceState *gs_state = wstate->seq_state;
-	AttrNumber ok_attr = -1;
-	bool is_null = true;
-	
-	/* Get input ordering key, may not be null. */
-	Assert( wstate->numlevels == 1 && wstate->level_state[0].numSortCols == 1);
-	ok_attr = wstate->level_state[0].sortColIdx[0];
-	
-	ok_datum = slot_getattr(wstate->seq_input_next, ok_attr, &is_null);
-	
-	if (is_null)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_DATA_EXCEPTION),
-				 errmsg("null value not allowed in sequence ordering key"),
-				 errhint("consider using coalese to assign a non-null value to the key"),
-				 errOmitLocation(true)));
-	}
-	
-	
-	if ( wstate->seq_coerce_fn )
-	{
-		ok_datum = FunctionCall1(wstate->seq_coerce_fn, ok_datum);
-	}
-
-	/* sk_lt_sk(order_key, gs_state->current) */
-	if ( FunctionCall2(wstate->seq_compare_fn, ok_datum, gs_state->current ) )
-		return -1; /* key below current interval */
-	
-	/* sk_lt_sk(order_key, gs_state->next */
-	if ( FunctionCall2(wstate->seq_compare_fn, ok_datum, gs_state->next ) )
-		return 0; /* key in current interval */
-	
-	return 1; /* key above current interval */
-}
-
-/* Extrapolate a sequence key value for the current ordering key value.
- *
- * Use the expression initialized by seq_init_wstate.
- * 
- * The idea is execute interval_bound(order_key_var, step, 0, low) on
- * the input plan.
- */
-Datum
-seq_extrapolate(WindowState* wstate)
-{
-	Datum value;
-	bool isnull = true;
-	ExprContext *econtext = wstate->ps.ps_ExprContext;
-	TupleTableSlot *hold_outertuple = econtext->ecxt_outertuple;
-	
-	econtext->ecxt_outertuple = wstate->seq_input_next;
-	
-	value = ExecEvalExpr(wstate->seq_extrapolate_estate,
-						 econtext,
-						 &isnull,
-						 NULL);
-	
-	econtext->ecxt_outertuple = hold_outertuple;
-	
-	if (isnull)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_DATA_EXCEPTION),
-				 errmsg("null value not allowed in sequence ordering key"),
-				 errhint("consider using coalese to assign a non-null value to the key"),
-				 errOmitLocation(true)));
-	}
-	
-	return value;
-}
-
-/* ----- End Sequence implementation ----- */
-
-/* ----- Begin GeneratedSequence implementation ----- */
-
-
-/* Allocate and initialize a generated sequence given its definition
- * (derived from the SEQUENCE clause).
- */
-GeneratedSequenceState* 
-gs_new(WindowState *wstate,
-	   Datum		low, 
-	   Datum		high,
-	   Datum		step,
-	   Oid			step_type,
-	   int16		step_typlen,
-	   bool			step_typbyval,
-	   FmgrInfo    *leq_call,
-	   FmgrInfo    *inc_call,
-	   FmgrInfo    *adv_call
-	   )
-{
-	GeneratedSequenceState *gs_state = NULL;
-	
-	gs_state = palloc0(sizeof(GeneratedSequenceState));
-	gs_state->wstate = wstate;
-	gs_state->low = low;
-	gs_state->high = high;
-	gs_state->step = step;
-	gs_state->step_type = step_type;
-	gs_state->step_typlen = step_typlen;
-	gs_state->step_typbyval = step_typbyval;
-	gs_state->in_progress = false;
-	gs_state->finished = false;
-	
-	gs_state->leq_call = leq_call;
-	gs_state->inc_call = inc_call;
-	gs_state->adv_call = adv_call;
-	
-	gs_reset(gs_state);
-	
-	return gs_state;
-}
-
-/* Reset the generated sequence so it will start from 
- * the beginning again.
- */
-void
-gs_reset(GeneratedSequenceState* gs_state)
-{
-	gs_state->current = datumCopy(gs_state->low, 
-								  gs_state->wstate->seq_key_typbyval,
-								  gs_state->wstate->seq_key_typlen);
-	gs_state->offset = datumCopy(gs_state->step,
-								 gs_state->step_typbyval,
-								 gs_state->step_typlen);
-	gs_state->next = FunctionCall2(gs_state->adv_call, 
-								   gs_state->current, 
-								   gs_state->offset);
-	gs_state->in_progress = false;
-	gs_state->finished = false;
-}
-
-/* Try to get the next value from a generated sequence.
- * If there is one, return it implicitly at the given
- * pointer and return true.  Otherwise return false.
- *
- * See also gs_reset for how to restart a generated
- * sequence (e.g., for the next partition).
- */
-bool
-gs_next(GeneratedSequenceState* gs_state, Datum* pdatum)
-{
-	if (gs_state->finished)
-		return false;
-	
-	if (gs_state->in_progress)
-	{
-		/* Continue returning values of the sequence.
-		 * Note the curious two-step advance (offset += step;
-		 * answer = low + offset).  This is specifically so 
-		 * that interval semantics is retained for timestamp
-		 * sequences: (timestamp+interval)+interval may differ
-		 * from timestamp+(interval+interval).  Here we choose
-		 * the latter.
-		 *
-		 * XXX Is this the correct choice?  It differs from 
-		 *     generate_series() in PG (and, for now, GPDB).
-		 */
-		gs_state->current = gs_state->next;
-		gs_state->offset = FunctionCall2(gs_state->inc_call, 
-											   gs_state->offset, 
-											   gs_state->step);
-		gs_state->next = FunctionCall2(gs_state->adv_call,
-											 gs_state->low, 
-											 gs_state->offset);
-	}
-	
-	gs_state->in_progress = true;
-	
-	if ( FunctionCall2(gs_state->leq_call, 
-							 gs_state->current, 
-							 gs_state->high) )
-	{
-		*pdatum = gs_state->current;
-		return true;
-	}
-	else 
-	{
-		gs_state->finished = true;
-		return false;
-	}
-}
-
-/* ----- End GeneratedSequence implementation ----- */
-

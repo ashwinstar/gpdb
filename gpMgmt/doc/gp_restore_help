@@ -81,11 +81,7 @@ ON THE SEGMENT HOSTS
 Note that the 14 digit timestamp is the number that uniquely identifies 
 the backup job to be restored, and is part of the filename for each 
 dump file created by a gp_dump operation. This timestamp must be passed 
-to the gp_restore utility when restoring a Greenplum Database.
-
-Note: The restore status files are stored under the db_dumps/<date> directory.
-
-After the data in the tables is restored, check the report status files to verify that there are no errors.
+to the gp_restore utility when restoring a Greenplum Database database.
 
 
 

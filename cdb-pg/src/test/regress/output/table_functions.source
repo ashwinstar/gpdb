@@ -100,10 +100,6 @@ ERROR:  functions cannot accept set arguments
 CREATE FUNCTION error() RETURNS TABLE(a setof example) 
     AS $$ SELECT * FROM example $$ LANGUAGE SQL;
 ERROR:  functions cannot accept set arguments
-/* ERROR: anytable cannot have default value */
-CREATE FUNCTION error(a anytable DEFAULT TABLE(select 1,'test')) RETURNS TABLE(a int, b text) 
-    AS '@abs_srcdir@/regress.so', 'multiset_example' LANGUAGE C;
-ERROR:  anytable parameter cannot have default value
 /* Negative test cases around the "anytable" type */
 CREATE TABLE fail(x anytable);
 NOTICE:  Table doesn't have 'distributed by' clause, and no column type is suitable for a distribution key. Creating a NULL policy entry.
@@ -152,33 +148,33 @@ ORDER BY p.proname;
 
 /* Observe how psql reports them */
 \df (scalar_*|multiset_*)
-                                                   List of functions
-     Schema     |           Name            |     Result data type     |          Argument data types          |  Type
-----------------+---------------------------+--------------------------+---------------------------------------+--------
- table_function | multiset_1                | TABLE(a integer, b text) | a anytable                            | normal
- table_function | multiset_2                | TABLE(a integer, b text) | a anytable                            | normal
- table_function | multiset_3                | SETOF record             | a anytable, OUT a integer, OUT b text | normal
- table_function | multiset_4                | SETOF record             | a anytable                            | normal
- table_function | multiset_5                | SETOF example            | a anytable                            | normal
- table_function | multiset_6                | SETOF record             | a anytable                            | normal
- table_function | multiset_materialize_bad  | TABLE(a integer, b text) | anytable                              | normal
- table_function | multiset_materialize_good | TABLE(a integer, b text) | anytable                              | normal
- table_function | multiset_scalar_null      | integer                  | anytable                              | normal
- table_function | multiset_scalar_tuple     | example                  | anytable                              | normal
- table_function | multiset_scalar_value     | integer                  | anytable                              | normal
- table_function | multiset_setof_null       | SETOF integer            | anytable                              | normal
- table_function | multiset_setof_value      | SETOF integer            | anytable                              | normal
- table_function | scalar_1                  | integer                  | integer                               | normal
- table_function | scalar_2                  | integer                  | integer                               | normal
- table_function | scalar_3                  | integer                  | a integer, OUT b integer              | normal
- table_function | scalar_4                  | integer                  | INOUT x integer                       | normal
- table_function | scalar_5                  | anyelement               | anyelement                            | normal
- table_function | scalar_tf_1               | TABLE(a integer, b text) | integer                               | normal
- table_function | scalar_tf_2               | TABLE(a integer, b text) | integer                               | normal
- table_function | scalar_tf_3               | TABLE(a integer, b text) | a integer                             | normal
- table_function | scalar_tf_4               | SETOF record             | a integer, OUT a integer, OUT b text  | normal
- table_function | scalar_tf_5               | SETOF record             | a integer                             | normal
- table_function | scalar_tf_6               | SETOF example            | a anyelement                          | normal
+                                               List of functions
+     Schema     |           Name            | Result data type |          Argument data types          |  Type  
+----------------+---------------------------+------------------+---------------------------------------+--------
+ table_function | multiset_1                | SETOF record     | a anytable                            | normal
+ table_function | multiset_2                | SETOF record     | a anytable                            | normal
+ table_function | multiset_3                | SETOF record     | a anytable, OUT a integer, OUT b text | normal
+ table_function | multiset_4                | SETOF record     | a anytable                            | normal
+ table_function | multiset_5                | SETOF example    | a anytable                            | normal
+ table_function | multiset_6                | SETOF record     | a anytable                            | normal
+ table_function | multiset_materialize_bad  | SETOF record     | anytable                              | normal
+ table_function | multiset_materialize_good | SETOF record     | anytable                              | normal
+ table_function | multiset_scalar_null      | integer          | anytable                              | normal
+ table_function | multiset_scalar_tuple     | example          | anytable                              | normal
+ table_function | multiset_scalar_value     | integer          | anytable                              | normal
+ table_function | multiset_setof_null       | SETOF integer    | anytable                              | normal
+ table_function | multiset_setof_value      | SETOF integer    | anytable                              | normal
+ table_function | scalar_1                  | integer          | integer                               | normal
+ table_function | scalar_2                  | integer          | integer                               | normal
+ table_function | scalar_3                  | integer          | a integer, OUT b integer              | normal
+ table_function | scalar_4                  | integer          | INOUT x integer                       | normal
+ table_function | scalar_5                  | anyelement       | anyelement                            | normal
+ table_function | scalar_tf_1               | SETOF record     | integer                               | normal
+ table_function | scalar_tf_2               | SETOF record     | integer                               | normal
+ table_function | scalar_tf_3               | SETOF record     | a integer                             | normal
+ table_function | scalar_tf_4               | SETOF record     | a integer, OUT a integer, OUT b text  | normal
+ table_function | scalar_tf_5               | SETOF record     | a integer                             | normal
+ table_function | scalar_tf_6               | SETOF example    | a anyelement                          | normal
 (24 rows)
 
 -- Normal function use:
@@ -1935,7 +1931,7 @@ explain WITH cte AS (SELECT * FROM example) SELECT x.* FROM multiset_5( TABLE ( 
          ->  Nested Loop  (cost=2.43..6.26 rows=5 width=36)
                ->  Table Function Scan on multiset_5 x  (cost=0.00..2.23 rows=5 width=36)
                      ->  Seq Scan on example  (cost=0.00..2.10 rows=5 width=16)
-               ->  Materialize  (cost=2.43..2.51 rows=4 width=0)
+               ->  Materialize for deadlock safety  (cost=2.43..2.51 rows=4 width=0)
                      ->  Broadcast Motion 1:2  (slice2; segments: 1)  (cost=2.24..2.42 rows=8 width=0)
                            ->  Subquery Scan y  (cost=2.24..2.26 rows=8 width=0)
                                  ->  Aggregate  (cost=2.24..2.25 rows=1 width=8)
@@ -2003,7 +1999,7 @@ explain SELECT x.* FROM multiset_5( TABLE ( SELECT 1 ) ) x right join (SELECT 1)
 ------------------------------------------------------------------------------------
  Nested Loop Left Join  (cost=0.03..1.33 rows=27 width=36)
    ->  Result  (cost=0.00..0.01 rows=1 width=0)
-   ->  Materialize  (cost=0.03..0.11 rows=4 width=36)
+   ->  Materialize for deadlock safety  (cost=0.03..0.11 rows=4 width=36)
          ->  Table Function Scan on multiset_5 x  (cost=0.00..0.02 rows=8 width=36)
                ->  Result  (cost=0.00..0.01 rows=1 width=0)
  Settings:  gp_segments_for_planner=8
@@ -2075,7 +2071,7 @@ HINT:  expected (integer, text)
 SELECT TABLE( SELECT * from example );
 ERROR:  invalid use of TABLE value expression
 SELECT ARRAY( TABLE( SELECT * from example) );
-ERROR:  syntax error at or near "("
+ERROR:  syntax error at or near "TABLE"
 LINE 1: SELECT ARRAY( TABLE( SELECT * from example) );
                       ^
 SELECT * FROM TABLE( SELECT * from example) );
@@ -2855,28 +2851,6 @@ SELECT extract(day from "time") FROM project( TABLE( SELECT * FROM history ), 2)
         22
 (18 rows)
 
-SELECT * FROM project( TABLE( SELECT * FROM pg_am ),
-  CASE 1 WHEN 2 THEN 1 ELSE GREATEST(1, COALESCE(1+1)) END);
- amstrategies 
---------------
-            5
-            1
-          100
-          100
-            5
-(5 rows)
-
-SELECT * FROM project( TABLE( SELECT * FROM pg_am ),
-  CASE WHEN 3 IS NOT NULL AND 1 IN (1, 2) THEN floor(NULLIF(2, 3))::int END);
- amstrategies 
---------------
-            5
-            1
-          100
-          100
-            5
-(5 rows)
-
 -- ERROR: invalid operations demonstrating different return types
 SELECT extract(day from id) FROM project( TABLE( SELECT * FROM history ), 1);
 ERROR:  function pg_catalog.date_part(unknown, integer) does not exist
@@ -2899,151 +2873,25 @@ LINE 1: SELECT "time" FROM project( TABLE( SELECT * FROM history ), ...
                ^
 /* Invalid projection position */
 SELECT * FROM project( TABLE( SELECT * FROM pg_am ), NULL);
-ERROR:  unable to resolve type for function (regress.c:2172)
+ERROR:  unable to resolve type for function (regress.c:2191)
 LINE 2: SELECT * FROM project( TABLE( SELECT * FROM pg_am ), NULL);
                       ^
+SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 1+1);  /* not a ConstExpr */
+ERROR:  unable to resolve type for function (regress.c:2180)
+LINE 1: SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 1+1);
+                      ^
 SELECT * FROM project( TABLE( SELECT * FROM pg_am ), -1);
-ERROR:  invalid column position -1 (regress.c:2175)
-LINE 1: SELECT * FROM project( TABLE( SELECT * FROM pg_am ), -1);
+ERROR:  invalid column position -1 (regress.c:2197)
+LINE 2: SELECT * FROM project( TABLE( SELECT * FROM pg_am ), -1);
                       ^
 SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 0);
-ERROR:  invalid column position 0 (regress.c:2175)
+ERROR:  invalid column position 0 (regress.c:2197)
 LINE 1: SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 0);
                       ^
-SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 26);
-ERROR:  invalid column position 26 (regress.c:2175)
-LINE 1: SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 26);
+SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 25);
+ERROR:  invalid column position 25 (regress.c:2197)
+LINE 1: SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 25);
                       ^
-SELECT * FROM project( TABLE( SELECT * FROM pg_am ), (ARRAY[2,3])[1]);
-ERROR:  unable to resolve function argument (execQual.c:5348)
-LINE 1: SELECT * FROM project( TABLE( SELECT * FROM pg_am ), (ARRAY[...
-                      ^
-SELECT * FROM project( TABLE( SELECT * FROM pg_am ), (ROW(1, '')::example_r).a);
-ERROR:  unable to resolve function argument (execQual.c:5348)
-LINE 1: SELECT * FROM project( TABLE( SELECT * FROM pg_am ), (ROW(1,...
-                      ^
-SELECT * FROM project( TABLE( SELECT * FROM pg_am ),
-   CASE (SELECT count(*) FROM pg_class) WHEN 0 THEN 0 ELSE 1 END);
-ERROR:  unable to resolve function argument (execQual.c:5348)
-LINE 1: SELECT * FROM project( TABLE( SELECT * FROM pg_am ),
-                      ^
--- ========================
--- User data exmaple
--- ========================
-CREATE FUNCTION ud_describe(internal) RETURNS internal
-  AS '@abs_builddir@/regress@DLSUFFIX@', 'userdata_describe'
-  LANGUAGE C;
-CREATE FUNCTION ud_project(anytable) RETURNS setof RECORD
-  AS '@abs_builddir@/regress@DLSUFFIX@', 'userdata_project'
-  LANGUAGE C
-  WITH (describe = ud_describe);
-SELECT * FROM ud_project( TABLE( SELECT * FROM history ) );
-              message               
-------------------------------------
- copied data from describe function
- copied data from describe function
- copied data from describe function
- copied data from describe function
- copied data from describe function
- copied data from describe function
- copied data from describe function
- copied data from describe function
- copied data from describe function
- copied data from describe function
- copied data from describe function
- copied data from describe function
- copied data from describe function
- copied data from describe function
- copied data from describe function
- copied data from describe function
- copied data from describe function
- copied data from describe function
-(18 rows)
-
--- ========================
--- Passing input without modification
--- ========================
-CREATE FUNCTION noop_project(anytable) RETURNS setof RECORD
-  AS '@abs_builddir@/regress@DLSUFFIX@'
-  LANGUAGE C;
-SELECT * FROM noop_project( TABLE( SELECT * FROM history ) ) AS s (id integer, time timestamp);
- id |           time           
-----+--------------------------
-  1 | Mon Aug 22 10:15:04 2011
-  1 | Mon Aug 22 10:16:10 2011
-  1 | Sun Aug 21 10:15:02 2011
-  1 | Sun Aug 21 10:15:30 2011
-  2 | Sun Aug 21 10:15:02 2011
-  2 | Sun Aug 21 10:16:02 2011
-  2 | Sun Aug 21 22:15:02 2011
-  2 | Sun Aug 21 22:16:02 2011
-  3 | Fri Aug 19 19:05:13 2011
-  3 | Fri Aug 19 19:06:50 2011
-  3 | Fri Aug 19 19:07:35 2011
-  3 | Fri Aug 19 19:08:18 2011
-  3 | Fri Aug 19 19:09:07 2011
-  3 | Sat Aug 20 10:07:10 2011
-  3 | Sat Aug 20 10:07:35 2011
-  3 | Sat Aug 20 10:11:29 2011
-  3 | Sat Aug 20 10:17:10 2011
-  3 | Sat Aug 20 10:17:42 2011
-(18 rows)
-
--- SCATTER BY vs MEDIAN
-SELECT * FROM noop_project( TABLE( SELECT median(id) FROM history SCATTER BY median(id) ) ) AS s (med float);
- med 
------
-   3
-(1 row)
-
-SELECT * FROM noop_project( TABLE( SELECT median(id) FROM history SCATTER BY count(*) ) ) AS s (med float);
- med 
------
-   3
-(1 row)
-
-SELECT * FROM noop_project( TABLE( SELECT count(*) FROM history SCATTER BY median(id) ) ) AS s (cnt bigint);
- cnt 
------
-  18
-(1 row)
-
-SELECT * FROM noop_project( TABLE( SELECT count(*) FROM history GROUP BY time SCATTER BY median(id) ) ) AS s (cnt bigint);
- cnt 
------
-   1
-   1
-   1
-   1
-   1
-   1
-   1
-   1
-   1
-   1
-   1
-   1
-   1
-   1
-   1
-   1
-   2
-(17 rows)
-
--- SCATTER BY vs aggregate
-SELECT * FROM noop_project( TABLE( SELECT count(*) FROM history SCATTER BY sum(id) ) ) AS s(cnt bigint);
- cnt 
------
-  18
-(1 row)
-
--- SCATTER BY vs window function
-SELECT * FROM noop_project( TABLE( SELECT count(*) FROM history SCATTER BY count(*) OVER () ) ) s (cnt bigint);
- cnt 
------
-  18
-(1 row)
-
 -- ========================
 -- More negative test cases
 -- ========================
@@ -3091,7 +2939,6 @@ EXECUTE p1;
  4 |  value4.1/1
 (10 rows)
 
-DEALLOCATE p1;
 -- FAIL: can't pass anytable as prepare argument
 PREPARE p2 AS SELECT * FROM multiset_2( $1 ) order by a, b;
 ERROR:  function multiset_2(unknown) does not exist
@@ -3102,45 +2949,20 @@ PREPARE p3(anytable) AS SELECT * FROM multiset_5( $1 ) order by a, b;
 ERROR:  type "anytable" is not a valid parameter for PREPARE
 -- FAIL: $1 is not a constant
 PREPARE p4 AS SELECT * FROM project( TABLE( SELECT * FROM pg_am ), $1);
-ERROR:  unable to resolve function argument (execQual.c:5348)
+ERROR:  unable to resolve type for function (regress.c:2180)
 LINE 1: PREPARE p4 AS SELECT * FROM project( TABLE( SELECT * FROM pg...
                                     ^
 PREPARE p5(integer) AS SELECT * FROM project( TABLE( SELECT * FROM pg_am ), $1);
-ERROR:  unable to resolve function argument (execQual.c:5348)
+ERROR:  unable to resolve type for function (regress.c:2180)
 LINE 1: PREPARE p5(integer) AS SELECT * FROM project( TABLE( SELECT ...
                                              ^
--- PASS: We allow table functions with describe to be prepared.  This can
--- theoretically require need for reparse/replan, but that requires more
--- general support of prepared statements in conjunction with a plan cache.
-PREPARE p6 AS SELECT * FROM project( TABLE( SELECT * FROM example_r ), 2) ORDER BY 1;
-EXECUTE p6;
-      b      
--------------
-  value1.1/4
-  value1.2/4
-  value1.3/4
-  value1.4/4
-  value2.1/3
-  value2.2/3
-  value2.3/3
-  value3.1/2
-  value3.2/2
-  value4.1/1
-(10 rows)
-
--- FAIL: MPP-16640: when underlying table has changed prepared statements 
--- will fail.  If this issue is ever fixed then this should pass as well.
-ALTER TABLE example_r ALTER COLUMN a TYPE numeric;
-EXECUTE p6;
-ERROR:  attribute 1 has wrong type (execQual.c:642)  (seg1 slice1 maple.local:50001 pid=64248) (cdbdisp.c:1462)
-DETAIL:  Table has type numeric, but query expects integer.
-DEALLOCATE p6;
+-- FAIL: can't prepare with a dynamic result set (same reason as no view support)
+PREPARE p6 AS SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 1);
+ERROR:  PREPARE statements cannot include calls to dynamically typed function
 -- =======
 -- Cleanup
 -- =======
 DROP SCHEMA table_function CASCADE;
-NOTICE:  drop cascades to function ud_project(anytable)
-NOTICE:  drop cascades to function ud_describe(internal)
 NOTICE:  drop cascades to function project(anytable,integer)
 NOTICE:  drop cascades to function project_describe(internal)
 NOTICE:  drop cascades to function sessionize_dynamic(anytable,interval)

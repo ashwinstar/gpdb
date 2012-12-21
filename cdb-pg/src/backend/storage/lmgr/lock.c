@@ -586,7 +586,7 @@ LockAcquire(const LOCKTAG *locktag,
 	
 	if (lockmethodid == DEFAULT_LOCKMETHOD && locktag->locktag_type != LOCKTAG_TRANSACTION)
 	{
-		if (Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer)
+		if (Gp_role == GP_ROLE_EXECUTE && (gp_is_callback || !Gp_is_writer))
 		{	
 			if (lockHolderProcPtr == NULL || lockHolderProcPtr == MyProc)
 			{
@@ -702,7 +702,7 @@ LockAcquire(const LOCKTAG *locktag,
 				
 				if (MyProc != proclock->tag.myProc && proclock->tag.myProc != 0 && proclock->tag.myLock == lock)
 				{
-					PGPROC		*otherProc = proclock->tag.myProc;
+					PGPROC		*otherProc = proclocktag.myProc;
 
 					if (otherProc->mppSessionId == gp_session_id)
 					{
@@ -779,7 +779,10 @@ LockAcquire(const LOCKTAG *locktag,
 							}
 							
 							LWLockRelease(partitionLock);
-							elog(ERROR,"Session has deadlocked itself");
+							if (gp_is_callback)
+								elog(ERROR,"Session has deadlocked itself due to function callback");
+							else
+								elog(ERROR,"Session has deadlocked itself");
 						}
 					}
 				}
@@ -1053,148 +1056,13 @@ LockAcquire(const LOCKTAG *locktag,
 void
 RemoveLocalLock(LOCALLOCK *locallock)
 {
-	if (locallock->lockOwners != NULL)
-	{
-		pfree(locallock->lockOwners);
-		locallock->lockOwners = NULL;
-	}
+	pfree(locallock->lockOwners);
+	locallock->lockOwners = NULL;
 	if (!hash_search(LockMethodLocalHash,
 					 (void *) &(locallock->tag),
 					 HASH_REMOVE, NULL))
 		elog(WARNING, "locallock table corrupted");
 }
-
-/*
- * LockGetGrantMask -- return the grantmask of the lock if it exists
- *
- * Inputs:
- *	locktag: unique identifier for the lockable object
- *	sessionLock: if true, acquire lock for session not current transaction
- *	comment: logging message (NULL ptr ok)
- *
- * Returns:
- *  grantmask if lock exists, else zero (equivalent of no locks granted)
- *  NOTE: for "fake" locks, returns a grantmask equivalent to highest
- *        locallock.
- *
- */
-LOCKMASK
-LockGetGrantMask(const LOCKTAG *locktag,
-				 bool sessionLock,
-				 char *comment)
-{
-	/* start with AccessShareLock */
-	LOCKMODE			 lockmode	  = AccessShareLock;
-	LOCKMETHODID		 lockmethodid = locktag->locktag_lockmethodid;
-	LockMethod			 lockMethodTable;
-	LOCALLOCKTAG		 localtag;
-	LOCALLOCK			*locallock	  = NULL;
-	LOCK				*lock;
-	bool				 found;
-	uint32				 hashcode;
-	int					 partition;
-	LWLockId			 partitionLock;
-	LOCKMASK			 grantmask	  = 0;
-
-	if (lockmethodid <= 0 || lockmethodid >= lengthof(LockMethods))
-		elog(ERROR, "unrecognized lock method: %d", lockmethodid);
-	lockMethodTable = LockMethods[lockmethodid];
-	if (lockmode <= 0 || lockmode > lockMethodTable->numLockModes)
-		elog(ERROR, "unrecognized lock mode: %d", lockmode);
-
-	/*
-	 * Find a LOCALLOCK entry for this lock and lockmode
-	 */
-	MemSet(&localtag, 0, sizeof(localtag));		/* must clear padding */
-	localtag.lock = *locktag;
-
-	/* usually have an AccessShare (lockmode=1), so start there and go up */
-	while (lockmode <= lockMethodTable->numLockModes)
-	{
-		localtag.mode = lockmode;
-
-		locallock = (LOCALLOCK *) hash_search(LockMethodLocalHash,
-											  (void *) &localtag,
-											  HASH_FIND, &found);
-
-		if (found)
-			break;
-
-		lockmode++;
-	}
-
-	if (!found)
-		return 0;
-
-	if (locallock->isFake)
-	{
-		/*
-		 * For the case of a "fake" lock, find the *highest* local
-		 * lockmode, not the first, and synthesize a grantmask for it.
-		 */
-		for (lockmode = lockMethodTable->numLockModes;
-			 lockmode > 0; lockmode--)
-		{
-			localtag.mode = lockmode;
-
-			locallock = (LOCALLOCK *) hash_search(LockMethodLocalHash,
-												  (void *) &localtag,
-												  HASH_FIND, &found);
-
-			if (found)
-				break;
-		}
-		 /* we found a local lock once, so it should still be there !!  */
-		Assert(found);
-
-		grantmask = LOCKBIT_ON(lockmode);
-
-		return grantmask;
-	}
-
-	/*
-	 * Use the local lock to find the shared lock
-	 */
-	hashcode = locallock->hashcode;
-	partition = LockHashPartition(hashcode);
-	partitionLock = LockHashPartitionLock(hashcode);
-
-	LWLockAcquire(partitionLock, LW_EXCLUSIVE);
-
-	/*
-	 * Find a lock with this tag.
-	 *
-	 * Note: if the locallock object already existed, it might have a pointer
-	 * to the lock already ... but we probably should not assume that that
-	 * pointer is valid, since a lock object with no locks can go away
-	 * anytime.
-	 */
-	lock = (LOCK *) hash_search_with_hash_value(LockMethodLockHash,
-												(void *) locktag,
-												hashcode,
-												HASH_FIND,
-												&found);
-	if (found)
-		grantmask = lock->grantMask;
-
-	LWLockRelease(partitionLock);
-
-	if (!found)
-	{
-		/* this is bad -- local lock, but no shared lock */
-
-		if (comment)
-			elog(LOG, "found local but no shared lock for mode: %d - %s",
-				 lockmode, comment);
-		else
-			elog(LOG, "found local but no shared lock for mode: %d",
-				 lockmode);
-
-		grantmask = 0;
-	}
-
-	return grantmask;
-} /* end LockGetGrantMask */
 
 /*
  * LockCheckConflicts -- test whether requested lock conflicts
@@ -2595,7 +2463,17 @@ GetLockStatusData(void)
 
 /* This must match enum LockTagType! */
 static const char *const LockTagTypeNames[] = {
-LOCKTAGTYPENAMES
+	"relation",
+	"extend",
+	"page",
+	"tuple",
+	"transactionid",
+	"resynchronize",
+	"append-only segment file",
+	"object",
+	"resource queue",
+	"userlock",
+	"advisory"
 };
 
 int  LockStatStuff(LockStatStd *lf, int ii, 	LockData   *lockData)
@@ -2713,9 +2591,6 @@ int  LockStatStuff(LockStatStd *lf, int ii, 	LockData   *lockData)
 			case LOCKTAG_RESOURCE_QUEUE:
 				lf->lf_database = (proc->databaseId);
 				lf->lf_objid = (lock->tag.locktag_field1);
-				break;
-			case LOCKTAG_DATABASE_MAINTENANCE:
-				lf->lf_database = (lock->tag.locktag_field1);
 				break;
 			case LOCKTAG_OBJECT:
 			case LOCKTAG_USERLOCK:

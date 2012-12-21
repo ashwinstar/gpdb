@@ -11,7 +11,6 @@
 
 #include "postgres.h"
 
-extern void *load_gpla(void);
 extern float8 pinv(long int /* rows */, long int /* columns */,
     float8 * /* A */, float8 * /* Aplus */);
 

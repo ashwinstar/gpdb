@@ -671,8 +671,7 @@ px_crypt_des(const char *key, const char *setting)
 	q = (uint8 *) keybuf;
 	while (q - (uint8 *) keybuf - 8)
 	{
-		*q++ = *key << 1;
-		if (*key != '\0')
+		if ((*q++ = *key << 1))
 			key++;
 	}
 	if (des_setkey((char *) keybuf))

@@ -23,7 +23,7 @@
 #include "cdb/cdbvars.h"  /*Gp_is_primary*/
 #include "miscadmin.h"
 #include "utils/inval.h"
-#include "utils/faultinjector.h"
+
 
 typedef struct
 {
@@ -91,10 +91,10 @@ _bt_doinsert(Relation rel, IndexTuple itup,
 	/* we need an insertion scan key to do our search, so build one */
 	itup_scankey = _bt_mkscankey(rel, itup);
 	
-top:
 	// -------- MirroredLock ----------
 	MIRROREDLOCK_BUFMGR_LOCK;
 	
+top:
 	/* find the first page containing this key */
 	stack = _bt_search(rel, natts, itup_scankey, false, &buf, BT_WRITE);
 
@@ -138,26 +138,12 @@ top:
 		{
 			/* Have to wait for the other guy ... */
 			_bt_relbuf(rel, buf);
-			/*
-			 * We have to unlock it to resume interrupts.  In case we wait for
-			 * the lock in XactLockTableWait and a cancellation is requested,
-			 * we should be able to respond it.
-			 */
-			MIRROREDLOCK_BUFMGR_UNLOCK;
 			XactLockTableWait(xwait);
 			/* start over... */
 			_bt_freestack(stack);
 			goto top;
 		}
 	}
-
-#ifdef FAULT_INJECTOR
-	if (FaultInjector_InjectFaultIfSet(     CheckBtreeForUniquenessViolation,
-						DDLNotSpecified,
-						"" /* databaseName */,
-						"" /* tableName */))
-			;
-#endif
 
 	/* do the insertion */
 	_bt_insertonpg(rel, buf, stack, natts, itup_scankey, itup, 0, false);
@@ -406,8 +392,8 @@ _bt_check_unique(Relation rel, IndexTuple itup, Relation heapRel,
 						 * btgettuple.
 						 */
 						LockBuffer(hbuffer, BUFFER_LOCK_SHARE);
-						if (HeapTupleSatisfiesVacuum(heapRel, &htup.t_self, htup.t_data, RecentGlobalXmin,
-													 hbuffer, true, "_bt_check_unique") == HEAPTUPLE_DEAD)
+						if (HeapTupleSatisfiesVacuum(htup.t_data, RecentGlobalXmin,
+													 hbuffer, true) == HEAPTUPLE_DEAD)
 						{
 							curitemid->lp_flags |= LP_DELETE;
 							opaque->btpo_flags |= BTP_HAS_GARBAGE;

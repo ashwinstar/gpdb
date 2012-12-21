@@ -117,7 +117,7 @@ create_aoblkdir_table(Relation rel, Oid aoblkdirOid,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("shared tables cannot have block directory after initdb")));
 
-	GetAppendOnlyEntryAuxOids(relOid, SnapshotNow, NULL,NULL, &aoblkdir_relid, &aoblkdir_idxid);
+	GetAppendOnlyEntryAuxOids(relOid, NULL,NULL, &aoblkdir_relid, &aoblkdir_idxid);
 
 	/*
 	 * Does it have a block directory?

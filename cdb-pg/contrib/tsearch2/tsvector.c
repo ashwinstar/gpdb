@@ -826,7 +826,7 @@ findFunc(char *fname)
 	Oid			funcid = InvalidOid;
 	List	   *names = list_make1(makeString(fname));
 
-	ptr = clist = FuncnameGetCandidates(names, 1, NIL, false, false);
+	ptr = clist = FuncnameGetCandidates(names, 1);
 	list_free(names);
 
 	if (!ptr)

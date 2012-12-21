@@ -31,7 +31,7 @@
  *	  print contents of Node to stdout
  */
 void
-print(const void *obj)
+print(void *obj)
 {
 	char	   *s;
 	char	   *f;
@@ -50,7 +50,7 @@ print(const void *obj)
  *	  pretty-print contents of Node to stdout
  */
 void
-pprint(const void *obj)
+pprint(void *obj)
 {
 	char	   *s;
 	char	   *f;
@@ -69,7 +69,7 @@ pprint(const void *obj)
  *	  send pretty-printed contents of Node to postmaster log
  */
 void
-elog_node_display(int lev, const char *title, const void *obj, bool pretty)
+elog_node_display(int lev, const char *title, void *obj, bool pretty)
 {
 	char	   *s;
 	char	   *f;
@@ -251,7 +251,7 @@ pretty_format_node_dump(const char *dump)
  *	  print contents of range table
  */
 void
-print_rt(const List *rtable)
+print_rt(List *rtable)
 {
 	ListCell   *l;
 	int			i = 1;
@@ -320,7 +320,7 @@ print_rt(const List *rtable)
  *	  print an expression
  */
 void
-print_expr(const Node *expr, const List *rtable)
+print_expr(Node *expr, List *rtable)
 {
 	if (expr == NULL)
 	{
@@ -422,7 +422,7 @@ print_expr(const Node *expr, const List *rtable)
  *	  pathkeys list of list of PathKeyItems
  */
 void
-print_pathkeys(const List *pathkeys, const List *rtable)
+print_pathkeys(List *pathkeys, List *rtable)
 {
 	ListCell   *i;
 
@@ -453,7 +453,7 @@ print_pathkeys(const List *pathkeys, const List *rtable)
  *	  print targetlist in a more legible way.
  */
 void
-print_tl(const List *tlist, const List *rtable)
+print_tl(List *tlist, List *rtable)
 {
 	ListCell   *tl;
 
@@ -561,8 +561,6 @@ char * plannode_type(Plan *p)
 			return "HASH";
 		case T_Motion:
 			return "MOTION";
-		case T_Repeat:
-			return "REPEAT";
 		default:
 			return "UNKNOWN";
 	}
