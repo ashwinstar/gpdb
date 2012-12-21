@@ -2007,8 +2007,8 @@ GppcOid GppcTupleDescAttrType(GppcTupleDesc tupdesc, int16_t attno);
  *
  * \sa GppcTupleDescAttrTypmod()
  *
- * Returns the byte length of the data type from the tuple descriptor or -1 if
- * the type is variable length.
+ * Returns the byte length of the data type from the tuple descriptor, -1 if
+ * the type is variable length, or -2 if the type is a null-terminated C string.
  */
 int16_t GppcTupleDescAttrLen(GppcTupleDesc tupdesc, int16_t attno);
 
