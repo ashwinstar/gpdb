@@ -942,6 +942,19 @@ fetchFromCurrentBlock(AOCSFetchDesc aocsFetchDesc,
 
 	Assert(rowNumInBlock >= 0);
 
+	/*
+	 * MPP-17061: gotContents could be false in the case of aborted rows.
+	 * As described in the repro in MPP-17061, if aocs_fetch is trying to
+	 * fetch an invisible/aborted row, it could set the block header metadata
+	 * of currentBlock to the next CO block, but without actually reading in
+	 * next CO block's content.
+	 */
+	if (datumStreamFetchDesc->currentBlock.gotContents == false)
+	{	
+		datumstreamread_block_content(datumStream);
+		datumStreamFetchDesc->currentBlock.gotContents = true;
+	}
+
 	datumstreamread_find(datumStream, rowNumInBlock);
 
 	if (slot != NULL)
@@ -1209,14 +1222,24 @@ aocs_fetch(AOCSFetchDesc aocsFetchDesc,
 		/* If this column does not need to be fetched, skip it. */
 		if (datumStreamFetchDesc == NULL)
 			continue;
-
+		
+		if (Debug_appendonly_print_datumstream)
+			elog(LOG, 
+				 "aocs_fetch filePathName %s segno %u rowNum  " INT64_FORMAT " firstRowNum " INT64_FORMAT " lastRowNum " INT64_FORMAT " ",
+				 datumStreamFetchDesc->datumStream->ao_read.bufferedRead.filePathName,
+				 datumStreamFetchDesc->currentSegmentFile.num,
+				 rowNum,
+				 datumStreamFetchDesc->currentBlock.firstRowNum,
+				 datumStreamFetchDesc->currentBlock.lastRowNum);				
+		
 		/*
 		 * If the current block has the requested tuple, read it.
 		 */
 		if (datumStreamFetchDesc->currentSegmentFile.isOpen &&
 			datumStreamFetchDesc->currentSegmentFile.num == segmentFileNum &&
+			aocsFetchDesc->blockDirectory.currentSegmentFileNum == segmentFileNum &&
 			datumStreamFetchDesc->currentBlock.have)
-		{
+		{			
 			if (rowNum >= datumStreamFetchDesc->currentBlock.firstRowNum &&
 				rowNum <= datumStreamFetchDesc->currentBlock.lastRowNum)
 			{
@@ -1302,8 +1325,8 @@ aocs_fetch(AOCSFetchDesc aocsFetchDesc,
 				colno,
 				&datumStreamFetchDesc->currentBlock.blockDirectoryEntry))
 		{
-			found = false;	// Row not represented in Block Directory.
-				   			// Must be aborted or deleted and reclaimed.
+			found = false;	/* Row not represented in Block Directory. */
+				   			/* Must be aborted or deleted and reclaimed. */
 			break;
 		}
 

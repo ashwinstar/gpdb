@@ -312,22 +312,25 @@ set_directoryentry_range(
 	if (next_entry != NULL)
 	{
 		directoryEntry->range.afterFileOffset = next_entry->fileOffset;
-		directoryEntry->range.lastRowNum = entry->firstRowNum + entry->rowCount - 1;
 	}
 	else
 	{
 		if (!blockDirectory->isAOCol)
 		{
 			directoryEntry->range.afterFileOffset = fsInfo->eof;
-			directoryEntry->range.lastRowNum = (~(((int64)1) << 63)); /* set to the maximal value */
 		}
 		
 		else
 		{
 			directoryEntry->range.afterFileOffset =
 				aocsFsInfo->vpinfo.entry[columnGroupNo].eof;
-			directoryEntry->range.lastRowNum = (~(((int64)1) << 63)); /* set to the maximal value */
 		}
+	}
+
+	directoryEntry->range.lastRowNum = entry->firstRowNum + entry->rowCount - 1;
+	if (next_entry == NULL && gp_blockdirectory_entry_min_range != 0)
+	{
+		directoryEntry->range.lastRowNum = (~(((int64)1) << 63)); /* set to the maximal value */
 	}
 
 	/*
@@ -468,8 +471,6 @@ AppendOnlyBlockDirectory_GetEntry(
 		}
 	}
 
-	blockDirectory->currentSegmentFileNum = segmentFileNum;
-
 	for (i = 0; i < blockDirectory->totalSegfiles; i++)
 	{
 		fsInfo = blockDirectory->segmentFileInfo[i];
@@ -482,7 +483,6 @@ AppendOnlyBlockDirectory_GetEntry(
 	}
 
 	Assert(fsInfo != NULL);
-	blockDirectory->currentSegmentFileInfo = fsInfo;
 
 	/*
 	 * Search the btree index to find the minipage that contains
@@ -510,6 +510,18 @@ AppendOnlyBlockDirectory_GetEntry(
 
 		if (tuple != NULL)
 		{
+			/*
+			 * MPP-17061: we need to update currentSegmentFileNum
+			 * & currentSegmentFileInfo at the same time when we 
+			 * load the minipage for the block directory entry we
+			 * found, otherwise we would risk having inconsistency
+			 * between currentSegmentFileNum/currentSegmentFileInfo
+			 * and minipage contents, which would cause wrong block
+			 * header offset being returned in following block 
+			 * directory entry look up.
+			 */
+			blockDirectory->currentSegmentFileNum = segmentFileNum;
+			blockDirectory->currentSegmentFileInfo = fsInfo;
 			MinipagePerColumnGroup *minipageInfo;
 			
 			minipageInfo = &blockDirectory->minipages[tmpGroupNo];
@@ -518,6 +530,12 @@ AppendOnlyBlockDirectory_GetEntry(
 							 heapTupleDesc,
 							 tmpGroupNo);
 		}
+		else
+		{
+			/* MPP-17061: index look up failed, row is invisible */
+			index_endscan(idxScanDesc);
+			return false;
+		}	
 
 		index_endscan(idxScanDesc);
 	}

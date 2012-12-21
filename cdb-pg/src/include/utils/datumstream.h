@@ -277,5 +277,9 @@ extern void datumstreamread_rewind_block(DatumStreamRead *datumStream);
 extern bool datumstreamread_find_block(DatumStreamRead *datumStream,
 								   DatumStreamFetchDesc datumStreamFetchDesc,
 								   int64 rowNum);
-
+/*
+ * MPP-17061: make sure datumstream_read_block_info was called first for the CO block
+ * before calling datumstreamread_block_content.
+ */
+extern void datumstreamread_block_content(DatumStreamRead *acc);
 #endif /* DATUM_STREAM_H */

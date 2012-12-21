@@ -812,6 +812,9 @@ static bool AppendOnlyStorageRead_InternalGetBlockInfo(
 //	storageRead->current.isCompressed = false;
 //	storageRead->current.compressedLen = 0;
 
+	if(Debug_appendonly_print_datumstream)
+		elog(LOG, "before AppendOnlyStorageRead_PositionToNextBlock, storageRead->current.headerOffsetInFile is" INT64_FORMAT "storageRead->current.overallBlockLen is %d", storageRead->current.headerOffsetInFile, storageRead->current.overallBlockLen); 
+
 	if (!AppendOnlyStorageRead_PositionToNextBlock(
 											storageRead,
 											&storageRead->current.headerOffsetInFile,
@@ -821,6 +824,9 @@ static bool AppendOnlyStorageRead_InternalGetBlockInfo(
 		/* Done reading the file */
 		return false;
 	}
+
+	if(Debug_appendonly_print_datumstream)
+		elog(LOG, "after AppendOnlyStorageRead_PositionToNextBlock, storageRead->current.headerOffsetInFile is" INT64_FORMAT "storageRead->current.overallBlockLen is %d", storageRead->current.headerOffsetInFile, storageRead->current.overallBlockLen); 
 
 	/*
 	 * Proceed very carefully:

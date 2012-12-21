@@ -89,7 +89,15 @@ static int
 datumstreamread_context_callback(void *arg)
 {
 	DatumStreamRead *acc = (DatumStreamRead*) arg;
-
+	
+	if (Debug_appendonly_print_datumstream)
+		elog(LOG, 
+			 "datumstream_advance filePathName %s nth %u ndatum %u datump %p ",
+			 acc->ao_read.bufferedRead.filePathName,
+			 acc->blockRead.nth,
+			 acc->blockRead.logical_row_count,
+			 acc->blockRead.datump);				
+	
 	/*
 	 * Append-Only Storage Read's context.
 	 */
@@ -1056,7 +1064,7 @@ datumstreamread_block_get_ready(DatumStreamRead *acc)
 	}
 }
 
-static void
+void
 datumstreamread_block_content(DatumStreamRead *acc)
 {
     Assert(acc);
@@ -1112,6 +1120,16 @@ datumstreamread_block_content(DatumStreamRead *acc)
             acc->buffer_beginp = AppendOnlyStorageRead_GetBuffer(&acc->ao_read);
 		}
 
+		
+		if (Debug_appendonly_print_datumstream)
+			elog(LOG, 
+				 "datumstream_read_block_content filePathName %s firstRowNum " INT64_FORMAT " rowCnt %u "
+				 "ndatum %u contentLen %d datump %p",
+				 acc->ao_read.bufferedRead.filePathName,
+				 acc->getBlockInfo.firstRow,
+				 acc->getBlockInfo.rowCnt,
+				 acc->blockRead.logical_row_count,
+				 acc->getBlockInfo.contentLen, acc->blockRead.datump);				
 
     }
     else if (acc->getBlockInfo.execBlockKind == AOCSBK_BLOB)
@@ -1187,6 +1205,16 @@ int datumstreamread_block(DatumStreamRead *acc)
     if (!readOK)
         return -1;
 
+	if (Debug_appendonly_print_datumstream)
+		elog(LOG, 
+			 "datumstream_read_block filePathName %s ndatum %u datump %p "
+			 "firstRow " INT64_FORMAT " rowCnt %u contentLen %u ",
+			 acc->ao_read.bufferedRead.filePathName,
+			 acc->blockRead.logical_row_count,
+			 acc->blockRead.datump,
+			 acc->getBlockInfo.firstRow,
+			 acc->getBlockInfo.rowCnt,
+			 acc->getBlockInfo.contentLen);			
 	/*
 	 * Pre-4.0 blocks do not store firstRowNum, so the returned value
 	 * for firstRow is -1. In this case, acc->blockFirstRowNum keeps
@@ -1257,7 +1285,20 @@ datumstreamread_find(DatumStreamRead *datumStream,
 		int status;
 
 		status = datumstreamread_advance(datumStream);
-		Assert(status != 0);
+		if (status == 0)
+		{
+			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+					errmsg("Unexpected internal error,"
+					" could not find the right row in block." 
+					" rowCnt is %d"
+					" largeObjectState is %d"
+					" rowNumInBlock is %d"
+					" DatumStreamBlockRead_Nth is %d",
+					datumStream->blockRead.logical_row_count,
+					datumStream->largeObjectState,
+					rowNumInBlock,
+					DatumStreamBlockRead_Nth(&datumStream->blockRead))));
+		}
 	}
 
 	Assert(rowNumInBlock == DatumStreamBlockRead_Nth(&datumStream->blockRead));
@@ -1312,7 +1353,18 @@ datumstreamread_find_block(DatumStreamRead *datumStream,
 		datumStreamFetchDesc->currentBlock.isCompressed =
 			datumStream->getBlockInfo.isCompressed;
 		datumStreamFetchDesc->currentBlock.isLargeContent = datumStream->getBlockInfo.isLarge;
-
+		datumStreamFetchDesc->currentBlock.gotContents = false;
+		
+		if (Debug_appendonly_print_datumstream)
+			elog(LOG, 
+				 "datumstream_find_block filePathName %s fileOffset " INT64_FORMAT " firstRowNum " INT64_FORMAT "  "
+				 "rowCnt %u lastRowNum " INT64_FORMAT " ",
+				 datumStream->ao_read.bufferedRead.filePathName,
+				 datumStreamFetchDesc->currentBlock.fileOffset,
+				 datumStreamFetchDesc->currentBlock.firstRowNum,
+				 datumStream->getBlockInfo.rowCnt,
+				 datumStreamFetchDesc->currentBlock.lastRowNum);
+		
 		if (rowNum < datumStreamFetchDesc->currentBlock.firstRowNum)
 		{
 			/*
@@ -1334,6 +1386,11 @@ datumstreamread_find_block(DatumStreamRead *datumStream,
 			return false;
 		}
 
+		/*
+		 * the fix for MPP-17061 does not need to be applied for pre-4.0 blocks,
+		 * since index could only be created after upgrading to 4.x.
+		 * As a result pre-4.0 blocks has no invisible rows.
+		 */
 		if (isOldBlockFormat)
 		{
 			int32 rowCnt;
@@ -1348,6 +1405,16 @@ datumstreamread_find_block(DatumStreamRead *datumStream,
 			datumStreamFetchDesc->currentBlock.lastRowNum =
 				datumStreamFetchDesc->currentBlock.firstRowNum + rowCnt - 1;
 		}
+		
+		if (Debug_appendonly_print_datumstream)
+			elog(LOG, 
+				 "datumstream_find_block filePathName %s fileOffset " INT64_FORMAT " firstRowNum " INT64_FORMAT " "
+				 "rowCnt %u lastRowNum " INT64_FORMAT " ",
+				 datumStream->ao_read.bufferedRead.filePathName,
+				 datumStreamFetchDesc->currentBlock.fileOffset,
+				 datumStreamFetchDesc->currentBlock.firstRowNum,
+				 datumStream->getBlockInfo.rowCnt,
+				 datumStreamFetchDesc->currentBlock.lastRowNum);		
 
 		if (rowNum <= datumStreamFetchDesc->currentBlock.lastRowNum)
 		{
@@ -1357,10 +1424,51 @@ datumstreamread_find_block(DatumStreamRead *datumStream,
 			 */
 			if (!isOldBlockFormat)
 			{
+				if (datumStreamFetchDesc->currentBlock.gotContents)
+				{
+					ereport(ERROR,
+							(errmsg("Unexpected internal error,"
+							" block content was already read." 
+							" datumstream_find_block filePathName %s"
+							" fileOffset " INT64_FORMAT 
+							" firstRowNum " INT64_FORMAT 
+							" rowCnt %u lastRowNum " INT64_FORMAT 
+							" ndatum %u contentLen %d gotContents true",
+							datumStream->ao_read.bufferedRead.filePathName,
+							datumStreamFetchDesc->currentBlock.fileOffset,
+							datumStream->getBlockInfo.firstRow,
+							datumStream->getBlockInfo.rowCnt,
+							datumStreamFetchDesc->currentBlock.lastRowNum,
+							datumStream->blockRead.logical_row_count,
+							datumStream->getBlockInfo.contentLen
+							)));
+				}
+				if (Debug_appendonly_print_datumstream)
+					elog(LOG, 
+						 "datumstream_find_block filePathName %s fileOffset " INT64_FORMAT " firstRowNum " INT64_FORMAT " "
+						 "rowCnt %u lastRowNum " INT64_FORMAT " "
+						 "ndatum %u contentLen %d ",
+						 datumStream->ao_read.bufferedRead.filePathName,
+						 datumStreamFetchDesc->currentBlock.fileOffset,
+						 datumStream->getBlockInfo.firstRow,
+						 datumStream->getBlockInfo.rowCnt,
+						 datumStreamFetchDesc->currentBlock.lastRowNum,
+						 datumStream->blockRead.logical_row_count,
+						 datumStream->getBlockInfo.contentLen);		
+
 				datumstreamread_block_content(datumStream);
+				datumStreamFetchDesc->currentBlock.gotContents = true;
 			}
 			break;
 		}
+
+		Assert(!datumStreamFetchDesc->currentBlock.gotContents);
+		
+		/* MPP-17061: reach the end of range covered by block directory entry */
+		if ((datumStreamFetchDesc->currentBlock.fileOffset + 
+			datumStreamFetchDesc->currentBlock.overallBlockLen) >= 
+			datumStreamFetchDesc->scanAfterFileOffset)
+			return false;
 
 		AppendOnlyStorageRead_SkipCurrentBlock(&datumStream->ao_read);
 	}

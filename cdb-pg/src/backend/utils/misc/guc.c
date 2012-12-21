@@ -276,6 +276,8 @@ bool 		Debug_appendonly_print_blockdirectory = false;
 bool 		Debug_appendonly_print_read_block = false;
 bool 		Debug_appendonly_print_append_block = false;
 bool 		Debug_appendonly_print_segfile_choice = false;
+int			Debug_appendonly_bad_header_print_level = ERROR;
+bool		Debug_appendonly_print_datumstream = false;
 bool 		Debug_gp_relation_node_fetch_wait_for_debugging = false;
 bool        gp_crash_recovery_abort_suppress_fatal = false;
 bool		gp_persistent_statechange_suppress_error = false;
@@ -2476,7 +2478,17 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 	},
 
-	
+
+	{
+		{"debug_appendonly_print_datumstream", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print log messages for append-only datum stream content."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_appendonly_print_datumstream,
+		false, NULL, NULL
+	},
+
 	{
 		{"debug_gp_relation_node_fetch_wait_for_debugging", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Wait for debugger attach for MPP-16395 RelationFetchGpRelationNodeForXLog issue."),

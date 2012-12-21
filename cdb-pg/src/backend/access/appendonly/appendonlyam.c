@@ -1876,6 +1876,15 @@ scanToFetchTuple(
 		 * Update information to get next block.
 		 */
 		Assert(!aoFetchDesc->currentBlock.gotContents);
+		
+		/* MPP-17061: reach the end of range covered by block directory entry */
+		if ((aoFetchDesc->currentBlock.fileOffset +
+			aoFetchDesc->currentBlock.overallBlockLen) >=
+			aoFetchDesc->scanAfterFileOffset)
+		{
+			return false;
+		}
+			
 		AppendOnlyExecutionReadBlock_FinishedScanBlock(
 									&aoFetchDesc->executorReadBlock);
 
@@ -2045,7 +2054,8 @@ appendonly_fetch(
 	 */
 	if (aoFetchDesc->currentBlock.have)
 	{
-		if (segmentFileNum == aoFetchDesc->currentSegmentFile.num)
+		if (segmentFileNum == aoFetchDesc->currentSegmentFile.num &&
+			segmentFileNum == aoFetchDesc->blockDirectory.currentSegmentFileNum)
 		{
 			if (rowNum >= aoFetchDesc->currentBlock.firstRowNum &&
 				rowNum <= aoFetchDesc->currentBlock.lastRowNum)
@@ -2152,9 +2162,11 @@ appendonly_fetch(
 									&aoFetchDesc->currentBlock.blockDirectoryEntry))
 	{
 		if (slot != NULL)
+		{
 			ExecClearTuple(slot);
-		return false;	// Row not represented in Block Directory.
-						// Must be aborted or deleted and reclaimed.
+		}
+		return false;	/* Row not represented in Block Directory. */
+						/* Must be aborted or deleted and reclaimed. */
 	}
 
 	/*
