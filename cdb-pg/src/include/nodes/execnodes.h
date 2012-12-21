@@ -1722,7 +1722,6 @@ typedef struct AggState
 {
         ScanState        ss;                                /* its first field is NodeTag */
         List           *aggs;                        /* all Aggref nodes in targetlist & quals */
-	List	   *percs;			/* all PercentileExpr nodes in targetlist & quals */
         int                        numaggs;                /* length of list (could be zero!) */
         FmgrInfo   *eqfunctions;        /* per-grouping-field equality fns */
         FmgrInfo   *hashfunctions;        /* per-grouping-field hash fns */
@@ -1758,6 +1757,7 @@ typedef struct AggState
         Datum *replValues;
         bool *replIsnull;
         bool *doReplace;
+	List	   *percs;			/* all PercentileExpr nodes in targetlist & quals */
 } AggState;
 
 
