@@ -117,13 +117,31 @@ PROCESS_QE () {
 	MIRROR_ONLY_INITDB_OPTION=-m
     fi
 
-	$TRUSTED_SHELL ${GP_HOSTADDRESS} "$EXPORT_LIB_PATH;$INITDB $MIRROR_ONLY_INITDB_OPTION -E $ENCODING -D $GP_DIR --locale=$LOCALE_SETTING $LC_ALL_SETTINGS --max_connections=$QE_MAX_CONNECT --shared_buffers=$QE_SHARED_BUFFERS --is_filerep_mirrored=$IS_FILEREP_MIRRORED_OPTION" >> $LOG_FILE 2>&1
-	RETVAL=$?
-	BACKOUT_COMMAND "$TRUSTED_SHELL ${GP_HOSTADDRESS} \"$RM -rf $GP_DIR > /dev/null 2>&1\""
-	BACKOUT_COMMAND "$ECHO \"removing directory $GP_DIR on $GP_HOSTADDRESS\""
-	PARA_EXIT $RETVAL "to start segment instance database $GP_HOSTADDRESS $GP_DIR"
+    # build initdb command, capturing output in ${GP_DIR}.initdb
+    cmd="$EXPORT_LIB_PATH;$INITDB"
+    cmd="$cmd $MIRROR_ONLY_INITDB_OPTION"
+    cmd="$cmd -E $ENCODING"
+    cmd="$cmd -D $GP_DIR"
+    cmd="$cmd --locale=$LOCALE_SETTING"
+    cmd="$cmd $LC_ALL_SETTINGS"
+    cmd="$cmd --max_connections=$QE_MAX_CONNECT"
+    cmd="$cmd --shared_buffers=$QE_SHARED_BUFFERS"
+    cmd="$cmd --is_filerep_mirrored=$IS_FILEREP_MIRRORED_OPTION"
+    cmd="$cmd --backend_output=$GP_DIR.initdb"
 
-	# on mirror, copy data from primary
+    $TRUSTED_SHELL ${GP_HOSTADDRESS} $cmd >> $LOG_FILE 2>&1
+    RETVAL=$?
+
+    # if there was an error, copy ${GP_DIR}.initdb to the log before cleaning it up
+    if [ $RETVAL -ne 0 ]; then
+	$TRUSTED_SHELL ${GP_HOSTADDRESS} "cat $GP_DIR.initdb" >> $LOG_FILE 2>&1
+    fi
+    $TRUSTED_SHELL ${GP_HOSTADDRESS} "rm -f $GP_DIR.initdb" >> $LOG_FILE 2>&1
+    BACKOUT_COMMAND "$TRUSTED_SHELL ${GP_HOSTADDRESS} \"$RM -rf $GP_DIR > /dev/null 2>&1\""
+    BACKOUT_COMMAND "$ECHO \"removing directory $GP_DIR on $GP_HOSTADDRESS\""
+    PARA_EXIT $RETVAL "to start segment instance database $GP_HOSTADDRESS $GP_DIR"
+
+    # on mirror, copy data from primary
     if [ x"" != x"$COPY_FROM_PRIMARY_HOSTADDRESS" ]; then
         LOG_MSG "[INFO]:-Copying data for mirror on ${GP_HOSTADDRESS} using remote copy from primary ${COPY_FROM_PRIMARY_HOSTADDRESS} ..." 1
         RUN_COMMAND_REMOTE ${COPY_FROM_PRIMARY_HOSTADDRESS} "${EXPORT_GPHOME}; . ${GPHOME}/greenplum_path.sh; ${GPHOME}/bin/lib/pysync.py -x pg_log -x postgresql.conf -x postmaster.pid ${COPY_FROM_PRIMARY_DIR} \[${GP_HOSTADDRESS}\]:${GP_DIR}"

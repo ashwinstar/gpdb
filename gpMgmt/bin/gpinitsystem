@@ -1209,7 +1209,31 @@ CREATE_QD_DB () {
 		
 		LC_ALL_SETTINGS=" $LC_COLLATE_SETTING $LC_CTYPE_SETTING $LC_MESSAGES_SETTING $LC_MONETARY_SETTING $LC_NUMERIC_SETTING $LC_TIME_SETTING"
 
-		RUN_COMMAND "$INITDB -E $ENCODING -D $GP_DIR --locale=$LOCALE_SETTING $LC_ALL_SETTINGS --max_connections=$MASTER_MAX_CONNECT --shared_buffers=$MASTER_SHARED_BUFFERS --is_filerep_mirrored=no"
+
+		# build initdb command, capturing output in ${GP_DIR}.initdb
+		cmd="$INITDB"
+		cmd="$cmd -E $ENCODING"
+		cmd="$cmd -D $GP_DIR"
+		cmd="$cmd --locale=$LOCALE_SETTING"
+		cmd="$cmd $LC_ALL_SETTINGS"
+		cmd="$cmd --max_connections=$MASTER_MAX_CONNECT"
+		cmd="$cmd --shared_buffers=$MASTER_SHARED_BUFFERS"
+		cmd="$cmd --is_filerep_mirrored=no"
+		cmd="$cmd --backend_output=$GP_DIR.initdb"
+
+		LOG_MSG "[INFO]:-Commencing local $cmd"
+		$cmd >> $LOG_FILE 2>&1
+		RETVAL=$?
+
+		# if there was an error, copy ${GP_DIR}.initdb to the log
+		if [ $RETVAL -ne 0 ]; then
+		    $CAT ${GP_DIR}.initdb >> $LOG_FILE
+		fi    
+		$RM -f ${GP_DIR}.initdb
+		if [ $RETVAL -ne 0 ]; then
+		    ERROR_EXIT "[FATAL]:- Command $cmd failed with error status $RETVAL, see log file $LOG_FILE for more detail" 2
+		fi
+
 		BACKOUT_COMMAND "if [ -d $GP_DIR ]; then $RM -Rf $GP_DIR; fi"
 		BACKOUT_COMMAND "$ECHO Removing Master data directory files"
 		LOG_MSG "[INFO]:-Completed Master instance initialization"
