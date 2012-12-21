@@ -1947,5 +1947,5 @@ select * from x, yy;
  2 | 10
  2 | 20
 (4 rows)
--- End of MPP-17848
 
+-- End of MPP-17848
