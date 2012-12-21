@@ -5342,8 +5342,7 @@ make_deduplicate_plan(PlannerInfo *root,
 		groupClause = lappend(groupClause, sc);
 	}
 
-	groupColIdx = get_sortgrouplist_colidx(groupClause, sub_tlist, NULL);
-	numGroupCols = list_length(groupClause);
+	groupColIdx = get_grouplist_colidx(groupClause, sub_tlist, &numGroupCols);
 
 	/*
 	 * Make target list derived from sub_tlist.  Note that we filter out
@@ -5750,8 +5749,8 @@ within_agg_construct_inner(PlannerInfo *root,
 	Query			   *parse;
 	const Index			Inner = 2;
 
-	numGroupCols = list_length(root->parse->groupClause);
-	grpColIdx = (AttrNumber *) palloc(sizeof(AttrNumber) * numGroupCols);
+	grpColIdx = get_grouplist_colidx(root->parse->groupClause,
+									 inner_plan->targetlist, &numGroupCols);
 	/* build grouping key columns */
 	tlist = NIL;
 	foreach_with_count (l, root->parse->groupClause, idx)
@@ -5763,7 +5762,6 @@ within_agg_construct_inner(PlannerInfo *root,
 		newtle = flatCopyTargetEntry(tle);
 		newtle->resno = (AttrNumber) idx + 1;
 		tlist = lappend(tlist, newtle);
-		grpColIdx[idx] = tle->resno;
 	}
 	/*
 	 * Sum up the peer count to count the total number of rows per group.
@@ -5998,8 +5996,8 @@ within_agg_join_plans(PlannerInfo *root,
 	{
 		AttrNumber	   *grpColIdx;
 
-		grpColIdx = get_sortgrouplist_colidx(root->parse->groupClause,
-											 inner_plan->targetlist, NULL);
+		grpColIdx = get_grouplist_colidx(root->parse->groupClause,
+										 inner_plan->targetlist, NULL);
 		inner_plan = (Plan *)
 			make_sort_from_groupcols(root,
 									 root->parse->groupClause,
@@ -6096,9 +6094,8 @@ within_agg_final_agg(PlannerInfo *root,
 	 * Prepare GROUP BY clause for the final aggregate.
 	 * Make sure the column indices point to the topmost target list.
 	 */
-	numGroupCols = list_length(root->parse->groupClause);
-	grpColIdx = get_sortgrouplist_colidx(root->parse->groupClause,
-										 result_plan->targetlist, NULL);
+	grpColIdx = get_grouplist_colidx(root->parse->groupClause,
+									 result_plan->targetlist, &numGroupCols);
 	aggstrategy = root->parse->groupClause ? AGG_SORTED : AGG_PLAIN;
 	result_plan = (Plan *) make_agg(root,
 									root->parse->targetList,
@@ -6205,6 +6202,10 @@ plan_within_agg_persort(PlannerInfo *root,
 		Node		   *gcexpr;
 		Oid				gctype;
 
+		/*
+		 * We assume only flattened grouping expressions here.
+		 */
+		Assert(IsA(gc, GroupClause));
 		gcexpr = get_sortgroupclause_expr(gc, group_context->sub_tlist);
 		gctype = exprType(gcexpr);
 		gc->sortop = ordering_oper_opid(gctype);
@@ -6340,8 +6341,20 @@ within_agg_planner(PlannerInfo *root,
 	sub_tlist = group_context->sub_tlist;
 	next_resno = list_length(sub_tlist) + 1;
 
-	numGroupCols = list_length(root->parse->groupClause);
-	grpColIdx = get_sortgrouplist_colidx(root->parse->groupClause, sub_tlist, NULL);
+	/*
+	 * WITHIN aggregates are not supported in the grouping extensions.
+	 * However, parse->groupClause may have non-flattened GroupClause list.
+	 * We simply flatten it by reconstruct_group_clause under the assumption
+	 * that we have denied grouping extension cases.
+	 */
+	Assert(!is_grouping_extension(group_context->canonical_grpsets));
+	grpColIdx = get_grouplist_colidx(
+			root->parse->groupClause, sub_tlist, &numGroupCols);
+	root->parse->groupClause =
+		reconstruct_group_clause(root->parse->groupClause,
+								 sub_tlist,
+								 grpColIdx,
+								 numGroupCols);
 	numDistinctCols = agg_counts->numDistinctAggs;
 	distinctColIdx = (AttrNumber *) palloc(sizeof(AttrNumber) * numDistinctCols);
 	numDistinctCols = 0; /* Use this as a counter */
