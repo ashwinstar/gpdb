@@ -2376,3 +2376,11 @@ bool SPI_IsMemoryReserved(void)
 	Assert(gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE);
 	return (SPIMemReserved == 0);
 }
+
+/**
+  * Are we in SPI context 
+  */
+extern bool SPI_context(void) 
+{ 
+	return (_SPI_connected != -1); 
+}
