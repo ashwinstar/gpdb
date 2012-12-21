@@ -3325,6 +3325,13 @@ insert_ordered_unique_oid(List *list, Oid datum)
 	return list;
 }
 
+/*
+ * setNewRelfilenodeCommon
+ *
+ * Replaces relfilenode and updates pg_class / gp_relation_node.
+ * If the updating relation is gp_relation_node's index, the caller
+ * should rebuild the index by index_build().
+ */
 static void
 setNewRelfilenodeCommon(Relation relation, Oid newrelfilenode)
 {
@@ -3334,13 +3341,13 @@ setNewRelfilenodeCommon(Relation relation, Oid newrelfilenode)
 	Form_pg_class rd_rel;
 	bool		isAppendOnly;
 	Relation	gp_relation_node;
+	bool		is_gp_relation_node_index;
 
 	/*
 	 * Find the pg_class tuple for the given relation.	This is not used
 	 * during bootstrap, so okay to use heap_update always.
 	 */
 	pg_class = heap_open(RelationRelationId, RowExclusiveLock);
-	gp_relation_node = heap_open(GpRelationNodeRelationId, RowExclusiveLock);
 
 	tuple = SearchSysCacheCopy(RELOID,
 							   ObjectIdGetDatum(RelationGetRelid(relation)),
@@ -3382,7 +3389,7 @@ setNewRelfilenodeCommon(Relation relation, Oid newrelfilenode)
 											srel,
 											relBufpoolKind,
 											relation->rd_isLocalBuf,
-											relation->rd_rel->relname.data,
+											NameStr(relation->rd_rel->relname),
 											/* doJustInTimeDirCreate */ true,
 											/* bufferPoolBulkLoad */ false,
 											&relation->rd_segfile0_relationnodeinfo.persistentTid,
@@ -3394,7 +3401,7 @@ setNewRelfilenodeCommon(Relation relation, Oid newrelfilenode)
 		MirroredFileSysObj_TransactionCreateAppendOnlyFile(
 											&newrnode,
 											/* segmentFileNum */ 0,
-											relation->rd_rel->relname.data,
+											NameStr(relation->rd_rel->relname),
 											/* doJustInTimeDirCreate */ true,
 											&relation->rd_segfile0_relationnodeinfo.persistentTid,
 											&relation->rd_segfile0_relationnodeinfo.persistentSerialNum);
@@ -3415,16 +3422,6 @@ setNewRelfilenodeCommon(Relation relation, Oid newrelfilenode)
 	rd_rel->relpages = 0;		/* it's empty until further notice */
 	rd_rel->reltuples = 0;
 
-	InsertGpRelationNodeTuple(
-						gp_relation_node,
-						relation->rd_id,
-						relation->rd_rel->relname.data,
-						newrelfilenode,
-						/* segmentFileNum */ 0,
-						/* updateIndex */ true,
-						&relation->rd_segfile0_relationnodeinfo.persistentTid,
-						relation->rd_segfile0_relationnodeinfo.persistentSerialNum);
-
 	simple_heap_update(pg_class, &tuple->t_self, tuple);
 
 	CatalogUpdateIndexes(pg_class, tuple);
@@ -3433,6 +3430,25 @@ setNewRelfilenodeCommon(Relation relation, Oid newrelfilenode)
 
 	heap_close(pg_class, RowExclusiveLock);
 
+	/*
+	 * If the swapping relation is an index of gp_relation_node,
+	 * updating itself is bogus; if gp_relation_node has old indexlist,
+	 * CatalogUpdateIndexes updates old index file, and is crash-unsafe.
+	 * Hence, here we skip it and count on later index_build.
+	 * (Or should we add index_build() call after CCI beflow in this case?)
+	 */
+	is_gp_relation_node_index = relation->rd_index &&
+								relation->rd_index->indrelid == GpRelationNodeRelationId;
+	gp_relation_node = heap_open(GpRelationNodeRelationId, RowExclusiveLock);
+	InsertGpRelationNodeTuple(
+						gp_relation_node,
+						relation->rd_id,
+						NameStr(relation->rd_rel->relname),
+						newrelfilenode,
+						/* segmentFileNum */ 0,
+						/* updateIndex */ !is_gp_relation_node_index,
+						&relation->rd_segfile0_relationnodeinfo.persistentTid,
+						relation->rd_segfile0_relationnodeinfo.persistentSerialNum);
 	heap_close(gp_relation_node, RowExclusiveLock);
 
 	/* Make sure the relfilenode change is visible */
