@@ -91,6 +91,7 @@ FaultInjectorTypeEnumToString[] = {
 	_("reset"),
 	_("status"),
 	_("panic_suppress"),
+	_("segv"),
 	_("not recognized"),
 };
 
@@ -665,6 +666,13 @@ FaultInjector_InjectFaultIfSet(
 			
 			break;
 		}
+
+		case FaultInjectorTypeSegv:
+		{
+			*(int *) 0 = 1234;
+			break;
+		}
+		
 		default:
 			
 			ereport(LOG, 

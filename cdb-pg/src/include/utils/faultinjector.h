@@ -194,6 +194,8 @@ typedef enum FaultInjectorType_e {
 	FaultInjectorTypeStatus,
 	
 	FaultInjectorTypePanicSuppress,
+
+	FaultInjectorTypeSegv,
 	
 	/* INSERT has to be done before that line */
 	FaultInjectorTypeMax,
