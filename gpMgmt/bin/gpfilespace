@@ -60,7 +60,7 @@ try:
     from getpass import getpass
     from gppylib.parseutils import line_reader, parse_fspacename, parse_gpfilespace_line, \
         canonicalize_address
-    from gppylib.operations.filespace import MoveFilespace, MoveFilespaceError, GetCurrentFilespaceEntries, FileType, CheckFilespaceConsistency, PG_SYSTEM_FILESPACE
+    from gppylib.operations.filespace import MoveFilespace, MoveFilespaceError, GetCurrentFilespaceEntries, FileType, CheckFilespaceConsistency, CheckSuperUser, PG_SYSTEM_FILESPACE
 
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
@@ -833,7 +833,7 @@ class GPFilespace:
 
 
     # --------------------------------------------------------------------
-    def do_showfilespace(self, file_type):
+    def do_showfilespace(self, file_type, user, pswd):
         """
             Displays the filespace that is currently being used by 
             transactions and temporary files.
@@ -842,7 +842,10 @@ class GPFilespace:
             @return: None
         """
         logger.info('Getting filespace information for %s' % FileType.lookup[file_type])
-        
+     
+        if not CheckSuperUser(dbconn.DbURL(username=user, password=pswd)).run():
+            raise MoveFilespaceError('gpfilespace requires database superuser privileges')
+ 
         gparray = GpArray.initFromCatalog(dbconn.DbURL()) if self.array is None else self.array
 
         if not CheckFilespaceConsistency(gparray, file_type).run():
@@ -1144,6 +1147,11 @@ if __name__ == '__main__':
     if opt.quiet:
         quiet_stdout_logging()
 
+    if opt.password:
+        opt.password = getpass('Password: ')
+    else:
+        opt.password = None
+
     logger = setup_tool_logging(EXECNAME, opt.host, opt.username, opt.logdir)
     try:
         logger.debug("Start, config=" + str(opt.config))
@@ -1157,17 +1165,17 @@ Once a filespace is created, it can be used by one or more tablespaces.
         if opt.movetransfilespace:
             if opt.movetransfilespace == 'default':
                 opt.movetransfilespace = PG_SYSTEM_FILESPACE
-            MoveFilespace(opt.movetransfilespace, FileType.TRANSACTION_FILES).run() 
+            MoveFilespace(opt.movetransfilespace, FileType.TRANSACTION_FILES, opt.username, opt.password).run() 
         elif opt.movetempfilespace:
             if opt.movetempfilespace == 'default':
                 opt.movetempfilespace = PG_SYSTEM_FILESPACE
-            MoveFilespace(opt.movetempfilespace, FileType.TEMPORARY_FILES).run()
+            MoveFilespace(opt.movetempfilespace, FileType.TEMPORARY_FILES, opt.username, opt.password).run()
         else:
             gpf = GPFilespace(opt)
             if opt.showtransfilespace:
-                gpf.do_showfilespace(FileType.TRANSACTION_FILES)
+                gpf.do_showfilespace(FileType.TRANSACTION_FILES, opt.username, opt.password)
             elif opt.showtempfilespace:
-                gpf.do_showfilespace(FileType.TEMPORARY_FILES)
+                gpf.do_showfilespace(FileType.TEMPORARY_FILES, opt.username, opt.password)
             else:
                 try:
                     gpf.Setup()
