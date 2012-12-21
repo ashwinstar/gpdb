@@ -1449,6 +1449,7 @@ GPPKG_SOURCES = \
 	cdb-pg/src/pl/plperl \
 	cdb-pg/src/pl/pljava \
 	cdb-pg/src/bin/gphdfs \
+	cdb-pg/src/bin/pg_dump/cdb/ddboost \
 	$(NULL)
 endif
 
@@ -1476,6 +1477,7 @@ INSTALLCHECK_GPPKG_SOURCES = \
 	cdb-pg/contrib/pgcrypto \
 	cdb-pg/contrib/postgis \
 	cdb-pg/src/pl/plperl \
+	cdb-pg/src/bin/pg_dump/cdb/ddboost \
 	$(NULL)
 
 installcheck-gppkg:
