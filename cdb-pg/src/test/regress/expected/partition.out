@@ -5987,8 +5987,8 @@ NOTICE:  CREATE TABLE will create partition "foo_p_1_prt_p10_20" for table "foo_
 NOTICE:  CREATE TABLE will create partition "foo_p_1_prt_def" for table "foo_p"
 select reloptions from pg_class where relname = 'foo_p_1_prt_p10_20';
                                      reloptions                                      
--------------------------------------------------------------------------------------
- {appendonly=true,blocksize=32768,compresslevel=5,compresstype=zlib,orientation=row}
+-----------------------------------
+ {appendonly=true,compresslevel=5}
 (1 row)
 
 select count(distinct k) from foo_p;
@@ -6028,8 +6028,8 @@ select reloptions from pg_class where relname = 'foo_p_1_prt_p10_20';
 
 select reloptions from pg_class where relname = 'foo_p_1_prt_def';
                     reloptions                     
----------------------------------------------------
- {appendonly=true,blocksize=32768,orientation=row}
+-------------------
+ {appendonly=true}
 (1 row)
 
 select count(distinct k) from foo_p;

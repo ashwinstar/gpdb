@@ -93,6 +93,7 @@
 #include "tcop/utility.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
+#include "utils/datum.h"
 #include "utils/fmgroids.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
@@ -11756,75 +11757,31 @@ ATExecDropInherit(Relation rel, RangeVar *parent, bool is_partition)
 
 }
 
-static StdRdOptions *
-relopts_for_ctas(Relation rel)
-{
-	/*
-	 * AO table so go get the options out of pg_appendonly. The
-	 * class reloptions isn't to be trusted.
-	 */
-	StdRdOptions *out = palloc0(sizeof(StdRdOptions));
-	if (RelationIsAoRows(rel) || RelationIsAoCols(rel))
-	{
-		AppendOnlyEntry *opts = GetAppendOnlyEntry(RelationGetRelid(rel), SnapshotNow);
-
-		out->appendonly = true;
-		out->blocksize = opts->blocksize;
-		out->compresslevel = opts->compresslevel;
-		out->checksum = opts->checksum;
-		out->compresstype = opts->compresstype ? pstrdup(opts->compresstype) : NULL;
-        out->columnstore = opts->columnstore;
-	}
-	else
-	{
-		if (rel->rd_options)
-			memcpy(out, rel->rd_options, sizeof(StdRdOptions));
-	}
-	return out;
-}
-
+/*
+ * deparse pg_class.reloptions into a list.
+ */
 static List *
-stdoptions_to_list(Relation rel, StdRdOptions *opts)
+reloptions_list(Oid relid)
 {
-	List *wo = NIL;
+	Datum reloptions;
+    HeapTuple tuple;
+	bool isNull = true;
+	List *opts = NIL;
+   
+	tuple = SearchSysCache(RELOID,
+						   ObjectIdGetDatum(relid),
+						   0, 0, 0);
+	if (!HeapTupleIsValid(tuple))
+        elog(ERROR, "cache lookup failed for relation %u", relid);
 
-	/* WITH options */
-	if (rel->rd_rel->relhasoids)
-		wo = lappend(wo, defWithOids(true));
-	if (opts)
-	{
-		if (!opts->appendonly)
-		{
-			if (opts->fillfactor)
-					wo = lappend(wo, makeDefElem("fillfactor",
-												 (Node *)makeInteger(opts->fillfactor)));
+    reloptions = SysCacheGetAttr(RELOID, tuple, Anum_pg_class_reloptions,
+                                 &isNull);
+    if (!isNull)
+		opts = untransformRelOptions(reloptions);
 
-		}
-		else
-		{
-			wo = lappend(wo, makeDefElem("appendonly",
-										 (Node *)makeString("true")));
-			if (opts->blocksize)
-				wo = lappend(wo, makeDefElem("blocksize",
-											 (Node *)makeInteger(opts->blocksize)));
-			if (opts->compresslevel)
-				wo = lappend(wo, makeDefElem("compresslevel",
-											 (Node *)makeInteger(opts->compresslevel)));
-			if (opts->compresstype)
-				wo = lappend(wo, makeDefElem("compresstype",
-											 (Node *)makeString(pstrdup(opts->compresstype))));
+	ReleaseSysCache(tuple);
 
-			if (opts->checksum)
-				wo = lappend(wo, makeDefElem("checksum",
-											 (Node *)makeString("true")));
-
-            if (opts->columnstore)
-                wo = lappend(wo, makeDefElem("orientation", (Node *) makeString("column")));
-            else
-                wo = lappend(wo, makeDefElem("orientation", (Node *) makeString("row")));
-		}
-	}
-	return wo;
+	return opts;
 }
 
 /*
@@ -11835,7 +11792,7 @@ stdoptions_to_list(Relation rel, StdRdOptions *opts)
  */
 static QueryDesc *
 build_ctas_with_dist(Relation rel, List *dist_clause,
-					 StdRdOptions *newopts, RangeVar **tmprv, List **hidden_types)
+					 List *storage_opts, RangeVar **tmprv, List **hidden_types)
 {
 	Query *q;
 	SelectStmt *s = makeNode(SelectStmt);
@@ -11846,9 +11803,6 @@ build_ctas_with_dist(Relation rel, List *dist_clause,
 	PlannedStmt *stmt;
 	DestReceiver *dest;
 	QueryDesc *queryDesc;
-	List *wo = NIL;
-	StdRdOptions *opts = newopts ? newopts :
-			(StdRdOptions *)relopts_for_ctas(rel);
 	RangeVar *tmprel = make_temp_table_name(rel, MyBackendId);
 	bool pre_built;
 
@@ -11869,10 +11823,15 @@ build_ctas_with_dist(Relation rel, List *dist_clause,
 								* tables is added to the parent!
 								*/
 	s->fromClause = list_make1(from_tbl);
-	wo = stdoptions_to_list(rel, opts);
+
+	/* Handle tables with OIDS */
+	if (rel->rd_rel->relhasoids)
+		storage_opts = lappend(storage_opts, defWithOids(true));
 
 	pre_built = prebuild_temp_table(rel, tmprel, dist_clause,
-									wo, hidden_types, opts->appendonly);
+									storage_opts, hidden_types,
+									(RelationIsAoRows(rel) ||
+									 RelationIsAoCols(rel)));
 	if (pre_built)
 	{
 		InsertStmt *i = makeNode(InsertStmt);
@@ -11887,7 +11846,7 @@ build_ctas_with_dist(Relation rel, List *dist_clause,
 
 		s->intoClause = makeNode(IntoClause);
 		s->intoClause->rel = tmprel;
-		s->intoClause->options = wo;
+		s->intoClause->options = storage_opts;
 		s->intoClause->tableSpaceName = get_tablespace_name(tblspc);
 		s->distributedBy = dist_clause;
 		n = (Node *)s;
@@ -11932,13 +11891,11 @@ static Datum
 new_rel_opts(Relation rel, List *lwith)
 {
 	Datum newOptions = PointerGetDatum(NULL);
+	bool make_heap = false;
 
 	if (lwith && list_length(lwith))
 	{
-		Relation pg_class = heap_open(RelationRelationId, RowExclusiveLock);
-		bool make_heap = false;
 		ListCell *lc;
-		bool new_opts = false;
 
 		/*
 		 * See if user has specified appendonly = false. If so, we
@@ -11955,35 +11912,32 @@ new_rel_opts(Relation rel, List *lwith)
 				break;
 			}
 		}
-
-		if (!make_heap)
-		{
-			/* Get the old reloptions */
-			bool isnull;
-			Oid relid = RelationGetRelid(rel);
-			HeapTuple optsTuple = SearchSysCache(RELOID,
-									   ObjectIdGetDatum(relid),
-									   0, 0, 0);
-			if (!HeapTupleIsValid(optsTuple))
-					elog(ERROR, "cache lookup failed for relation %u", relid);
-
-			newOptions = SysCacheGetAttr(RELOID, optsTuple,
-										 Anum_pg_class_reloptions, &isnull);
-			new_opts = true && !isnull;
-			ReleaseSysCache(optsTuple);
-		}
-
-		/* Generate new proposed reloptions (text array) */
-		newOptions = transformRelOptions(new_opts ? newOptions : (Datum) 0,
-										 lwith, false, false);
-
-		heap_close(pg_class, RowExclusiveLock);
 	}
-	else
+
+	if (!make_heap)
 	{
-		/* just do the current options */
+		/* Get the old reloptions */
+		bool isnull;
+		Oid relid = RelationGetRelid(rel);
+		HeapTuple optsTuple = SearchSysCache(RELOID,
+								   ObjectIdGetDatum(relid),
+								   0, 0, 0);
+		if (!HeapTupleIsValid(optsTuple))
+				elog(ERROR, "cache lookup failed for relation %u", relid);
 
+		newOptions = SysCacheGetAttr(RELOID, optsTuple,
+									 Anum_pg_class_reloptions, &isnull);
+
+		/* take a copy since we're using it after ReleaseSysCache() */
+		if (!isnull)
+			newOptions = datumCopy(newOptions, false, -1);
+
+		ReleaseSysCache(optsTuple);
 	}
+
+	/* Generate new proposed reloptions (text array) */
+	newOptions = transformRelOptions(newOptions, lwith, false, false);
+
 	return newOptions;
 }
 
@@ -12590,7 +12544,6 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 	List	   *qe_data = NIL; /* data to pass to QEs */
 	bool        rand_pol = false;
 	bool        force_reorg = false;
-	StdRdOptions *newopts = NULL;
 	Datum		newOptions = PointerGetDatum(NULL);
 	bool		change_policy = false;
 	bool		is_ao = false;
@@ -12752,11 +12705,13 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 										   errOmitLocation(true)));
 
 			newOptions = new_rel_opts(rel, lwith);
+			
+			/* ensure that the options parse */
 			if (newOptions)
-				newopts =
-					(StdRdOptions *) heap_reloptions(rel->rd_rel->relkind,
-													 newOptions, true);
+				(void)heap_reloptions(rel->rd_rel->relkind, newOptions, true);
 		}
+		else
+			newOptions = new_rel_opts(rel, NIL);
 
 		if (ldistro)
 			change_policy = true;
@@ -12792,7 +12747,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 			GpPolicyReplace(RelationGetRelid(rel), policy);
 
 			/* only need to rebuild if have new storage options */
-			if (!(newopts || force_reorg))
+			if (!(DatumGetPointer(newOptions) || force_reorg))
 			{
 				/*
 				 * caller expects ATExecSetDistributedBy() to close rel
@@ -12881,7 +12836,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 				 * remember, we still might have to rebuild if there are new
 				 * storage options.
 				 */
-				if (!newopts && !force_reorg &&
+				if (!DatumGetPointer(newOptions) && !force_reorg &&
 					(policy->nattrs == rel->rd_cdbpolicy->nattrs))
 				{
 					int i;
@@ -12937,7 +12892,9 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 			ldistro = make_dist_clause(rel);
 
 		/* Step (b) - build CTAS */
-		queryDesc = build_ctas_with_dist(rel, ldistro, newopts, &tmprv,
+		queryDesc = build_ctas_with_dist(rel, ldistro,
+										 untransformRelOptions(newOptions),
+										 &tmprv,
 										 &hidden_types);
 
 		PG_TRY();
@@ -15310,7 +15267,6 @@ ATPExecPartSplit(Relation rel,
 		AlterPartitionId *aapid = NULL; /* just for alter partition pids */
 		Relation existrel;
 		List *existstorage_opts;
-		StdRdOptions *existopts;
 		ListCell *lc;
 		char *defparname = NULL; /* name of default partition (if specified) */
 		List *distro = NIL;
@@ -15528,8 +15484,7 @@ ATPExecPartSplit(Relation rel,
 		}
 
 		existrel = heap_open(prule->topRule->parchildrelid, NoLock);
-		existopts = relopts_for_ctas(existrel);
-		existstorage_opts = stdoptions_to_list(existrel, existopts);
+		existstorage_opts = reloptions_list(RelationGetRelid(existrel));
 		distro = make_dist_clause(existrel);
 		colencs = rel_get_column_encodings(existrel);
 
@@ -15735,15 +15690,13 @@ ATPExecPartSplit(Relation rel,
 			Oid newchildrelid = InvalidOid;
 			AlterPartitionCmd *storenode = NULL;
 			List *intostorage_opts;
-			StdRdOptions *intoopts;
 
 			/* use storage options for existing rel */
 			if (into_exists == i)
 				intostorage_opts = existstorage_opts;
 			else
 			{
-				intoopts = relopts_for_ctas(rel);
-				intostorage_opts = stdoptions_to_list(rel, intoopts);
+				intostorage_opts = reloptions_list(RelationGetRelid(rel));
 			}
 
 			if (intostorage_opts)

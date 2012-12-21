@@ -6049,6 +6049,45 @@ flatten_reloptions(Oid relid)
 	return result;
 }
 
+/*
+ * Build a string for use within the partition level WITH () clause.
+ *
+ * The reason this is not just flatten_reloptions() is that for the AOCO case,
+ * we do not want to emit options stored in pg_class.reloptions, other than
+ * appendonly=true, orientation=column. All the other values are just
+ * default values. The real values, where they different from the default, are
+ * stored in pg_attribute_storage.attoptions. This is handled by
+ * column_encodings_to_string().
+ */
+static char *
+get_partition_reloptions(Oid relid)
+{
+	char	   *result = NULL;
+	HeapTuple	tuple;
+	Datum		reloptions;
+	bool		isnull;
+
+	tuple = SearchSysCache(RELOID,
+						   ObjectIdGetDatum(relid),
+						   0, 0, 0);
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "cache lookup failed for relation %u", relid);
+
+	reloptions = SysCacheGetAttr(RELOID, tuple,
+								 Anum_pg_class_reloptions, &isnull);
+	if (!isnull)
+	{
+		if (((Form_pg_class)GETSTRUCT(tuple))->relstorage == RELSTORAGE_AOCOLS)
+			result = pstrdup("orientation=column, appendonly=true");
+		else
+			result = reloptions_to_string(reloptions);
+	}
+	ReleaseSysCache(tuple);
+
+	return result;
+
+}
+
 static void
 deparse_part_param(deparse_context *c, List *dat)
 {
@@ -6295,7 +6334,7 @@ partition_rule_def_worker(PartitionRule *rule, Node *start,
 			}
 		}
 
-		reloptions = flatten_reloptions(rule->parchildrelid);
+		reloptions = get_partition_reloptions(rule->parchildrelid);
 
 		if (bLeafTablename) /* MPP-6297: dump by tablename */	
 		{
