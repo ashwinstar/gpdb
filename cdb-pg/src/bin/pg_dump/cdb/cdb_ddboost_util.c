@@ -117,7 +117,7 @@ static char * addPassThroughLongParm(const char *Parm, const char *pszValue, cha
 static char * shellEscape(const char *shellArg, PQExpBuffer escapeBuf);
 static int dd_boost_enabled = 1;
 
-static ddp_client_info_t cl_info = {DDP_CL_DDP, "Test DD Client"};
+static ddp_client_info_t cl_info = {DDP_CL_DDP, "Greenplum Database 4.2"};
 
 static int readFileFromDDBoost(struct ddboost_options *dd_options);
 static int copyFileFromDDBoost(struct ddboost_options *dd_options);
