@@ -166,3 +166,4 @@ test: column_compression
 test: role
 test: rle
 test: portals_updatable
+test: plpgsql_cache
