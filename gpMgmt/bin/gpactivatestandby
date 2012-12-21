@@ -57,7 +57,7 @@ def parseargs():
     
     parser = OptParser(option_class=OptChecker,
                        description=' '.join(_description.split()),
-                       version='%prog version 4.2.2.0 build 3')
+                       version='%prog version $Revision$')
     parser.setHelp([])
     parser.remove_option('-h')
     
