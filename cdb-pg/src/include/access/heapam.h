@@ -129,7 +129,7 @@ extern void RelationFetchGpRelationNodeForXLog_Index(Relation relation);
 inline static void RelationFetchGpRelationNodeForXLog(
 	Relation		relation)
 {
-	if (!relation->rd_segfile0_relationnodeinfo.isPresent &&
+	if (!InRecovery && !relation->rd_segfile0_relationnodeinfo.isPresent &&
 		!GpPersistent_SkipXLogInfo(relation->rd_id))
 	{
 	
