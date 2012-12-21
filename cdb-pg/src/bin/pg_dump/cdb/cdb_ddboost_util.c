@@ -79,26 +79,32 @@ struct schemaTableList
 
 struct ddboost_options
 {
-	char *timestamp;
-	char *directory;	
-	char *from_file;
-	char *to_file;
-	char *deleteDir;
-	char *deleteFile;
-    char *listDirFull;
-	struct schemaTableList *tableList;
-	char *database;
-	char *syncFilesFromTimestamp;
-	bool listDir;
-	bool copyFromDDBoost;	
-	bool copyToDDBoost;
-        bool copy;
-	bool readFile;	
-	bool getFreePercent;
-	bool getLatestTimestamp;
-	bool syncFiles;
-	bool writeToDDFileFromInput;
-        bool rename;
+  char *timestamp;
+  char *directory;	
+  char *from_file;
+  char *to_file;
+  char *deleteDir;
+  char *deleteFile;
+  char *hostname;
+  char *user;
+  char *password;
+  char *log_level;
+  char *log_size;
+  char *listDirFull;
+  struct schemaTableList *tableList;
+  char *database;
+  char *syncFilesFromTimestamp;
+  bool listDir;
+  bool copyFromDDBoost;	
+  bool copyToDDBoost;
+  bool copy;
+  bool readFile;	
+  bool getFreePercent;
+  bool getLatestTimestamp;
+  bool syncFiles;
+  bool writeToDDFileFromInput;
+  bool rename;
+  bool setCredential;
 };
 
 static struct ddboost_options *dd_options = NULL;
