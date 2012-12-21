@@ -441,6 +441,7 @@ SPI_execute(const char *src, bool read_only, long tcount)
 	plan.query = src;
 	plan.nargs = 0;
 	plan.argtypes = NULL;
+	plan.use_count = 0;
 
 	_SPI_prepare_plan(src, &plan);
 
@@ -555,6 +556,7 @@ SPI_prepare(const char *src, int nargs, Oid *argtypes)
 	plan.query = src;
 	plan.nargs = nargs;
 	plan.argtypes = argtypes;
+	plan.use_count = 0;
 
 	_SPI_prepare_plan(src, &plan);
 
@@ -1641,6 +1643,9 @@ _SPI_execute_plan(_SPI_plan * plan, Datum *Values, const char *Nulls,
 		spierrcontext.previous = error_context_stack;
 		error_context_stack = &spierrcontext;
 
+		/* indicate plan is being used */
+		plan->use_count++;
+
 		foreach(query_list_list_item, query_list_list)
 		{
 			List	   *query_list = lfirst(query_list_list_item);
@@ -1822,6 +1827,9 @@ fail:
 
 		/* Restore global vars and propagate error */
 		ActiveSnapshot = saveActiveSnapshot;
+
+		/* decrement plan use_count */
+		plan->use_count--;
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -1839,6 +1847,9 @@ fail:
 
 	/* tuptable now is caller's responsibility, not SPI's */
 	_SPI_current->tuptable = NULL;
+
+	/* plan execution is done */
+	plan->use_count--;
 
 	/*
 	 * If none of the queries had canSetTag, we return the last query's result
@@ -2306,6 +2317,7 @@ _SPI_copy_plan(SPIPlanPtr plan, int location)
 		newplan->argtypes = NULL;
 
 	newplan->run_via_callback_to_qd = plan->run_via_callback_to_qd;
+	newplan->use_count = plan->use_count;
 
 	MemoryContextSwitchTo(oldcxt);
 
