@@ -2590,6 +2590,89 @@ ExecSelect(TupleTableSlot *slot,
 	(estate->es_processed)++;
 }
 
+/*
+ * reconstructTupleValues
+ *   Re-construct tuple values based on the pre-defined mapping.
+ */
+static void
+reconstructTupleValues(AttrMap *map,
+					Datum *oldValues, bool *oldIsnull, int oldNumAttrs,
+					Datum *newValues, bool *newIsnull, int newNumAttrs)
+{
+	for (int oldAttNo = 1; oldAttNo <= oldNumAttrs; oldAttNo++)
+	{
+		int newAttNo = attrMap(map, oldAttNo);
+		if (newAttNo == 0)
+		{
+			continue;
+		}
+
+		Assert(newAttNo <= newNumAttrs);
+		newValues[newAttNo - 1] = oldValues[oldAttNo - 1];
+		newIsnull[newAttNo - 1] = oldIsnull[oldAttNo - 1];
+	}
+}
+
+/*
+ * createMatchingAOTuple
+ *    Create a matching AO tuple for the input tuple stored in 'slot' based on
+ * the result relation information.
+ */
+static MemTuple
+createMatchingAOTuple(TupleTableSlot *slot, ResultRelInfo* resultRelInfo, bool *needFree)
+{
+	*needFree = false;
+	
+	Relation resultRelationDesc = resultRelInfo->ri_RelationDesc;
+	MemTuple tuple = NULL;
+	TupleDesc inputTupDesc = slot->tts_tupleDescriptor;
+	TupleDesc resultTupDesc = resultRelationDesc->rd_att;
+
+	if (resultRelInfo->tupdesc_match == 0)
+	{
+		/* We do a deep compare of the attrs */
+		if (equalTupleDescs(inputTupDesc, resultTupDesc, false))
+		{
+			resultRelInfo->tupdesc_match = 1;
+		}
+		else
+		{
+			resultRelInfo->mt_bind = create_memtuple_binding(resultTupDesc);
+			resultRelInfo->tupdesc_match = -1;
+		}
+	}
+	
+	if (resultRelInfo->tupdesc_match == 1)
+	{
+		Assert(resultRelInfo->mt_bind == NULL);
+		tuple = (MemTuple) ExecFetchSlotMemTuple(slot, false);
+	}
+	else
+	{
+		Assert(resultRelInfo->tupdesc_match == -1);
+		Assert(resultRelInfo->mt_bind);
+		slot_getallattrs(slot);
+		
+		Datum *datum = slot_get_values(slot);
+		bool *isnull = slot_get_isnull(slot);
+
+		Datum *newDatum = palloc0(resultTupDesc->natts * sizeof(Datum));
+		bool *newIsnull = palloc0(resultTupDesc->natts * sizeof(bool));
+
+		reconstructTupleValues(resultRelInfo->ri_partInsertMap,
+							   datum, isnull, inputTupDesc->natts,
+							   newDatum, newIsnull, resultTupDesc->natts);
+		tuple = memtuple_form_to(resultRelInfo->mt_bind, newDatum, newIsnull, NULL, NULL, false);
+		
+		pfree(newDatum);
+		pfree(newIsnull);
+		
+		*needFree = true;
+	}
+
+	return tuple;
+}
+
 /* ----------------------------------------------------------------
  *		ExecInsert
  *
@@ -2654,42 +2737,12 @@ ExecInsert(TupleTableSlot *slot,
 	 */
 	if (rel_is_aorows)
     {
-        TupleDesc dslot = slot->tts_tupleDescriptor;
-        TupleDesc drel = resultRelationDesc->rd_att;
-
-        if (resultRelInfo->tupdesc_match == 0)
-        {
-            /* We do a deep compare of the attrs */
-
-            if (!equalTupleDescs(dslot, drel, false))
-            {
-                resultRelInfo->mt_bind = create_memtuple_binding(drel);
-                resultRelInfo->tupdesc_match = -1;
-            }
-            else
-                resultRelInfo->tupdesc_match = 1;
-        }
-
-        if (resultRelInfo->tupdesc_match == 1)
-        {
-            Assert(resultRelInfo->mt_bind == NULL);
-            tuple = (MemTuple) ExecFetchSlotMemTuple(slot, false);
-        }
-        else
-        {
-            Datum *d;
-            bool *n;
-
-            Assert(resultRelInfo->tupdesc_match == -1);
-            Assert(resultRelInfo->mt_bind);
-            slot_getallattrs(slot);
-
-            d = slot_get_values(slot);
-            n = slot_get_isnull(slot);
-
-            tuple = memtuple_form_to(resultRelInfo->mt_bind, d, n, NULL, NULL, false);
-            tofree = tuple;
-        }
+		bool needFree = false;
+		tuple = createMatchingAOTuple(slot, resultRelInfo, &needFree);
+		if (needFree)
+		{
+			tofree = tuple;
+		}
     }
 	else if(rel_is_aocols)
 	{
@@ -5050,7 +5103,6 @@ map_part_attrs(Relation base, Relation part, AttrMap **map_ptr, bool throw)
 static TupleTableSlot *
 CompressedHeapTupleSlot(TupleTableSlot *slot, ResultRelInfo *resultRelInfo)
 {
-	int i, j;
 	int natts;
 	Datum *values;
 	bool *isnull;
@@ -5084,16 +5136,8 @@ CompressedHeapTupleSlot(TupleTableSlot *slot, ResultRelInfo *resultRelInfo)
 	 * attribute numbers corresponding to dropped attributes will be 
 	 * missing.
 	 */
-	for ( i = 1; i <= natts; i++ )
-	{
-		j = attrMap(map, i);
-		if ( j == 0 )
-			continue;
-		
-		partvalues[j-1] = values[i-1];
-		partisnull[j-1] = isnull[i-1];
-	}
-	
+	reconstructTupleValues(map, values, isnull, natts,
+						partvalues, partisnull, partslot->tts_tupleDescriptor->natts);
 	partslot = ExecStoreVirtualTuple(partslot);
 	
 	return partslot;
