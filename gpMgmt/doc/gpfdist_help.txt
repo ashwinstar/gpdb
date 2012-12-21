@@ -78,7 +78,7 @@ Opens the file for synchronous I/O with the O_SYNC flag. Any writes to the resul
 
 --ssl certificate_path
 
-Adds SSL encryption to data transferred with gpfdist. After executing gpfdist with the -ssl <certificate_path> option, the only way to load data from this file server is with the gpfdists protocol. The location specified in certificate_path must contain the following files:
+Adds SSL encryption to data transferred with gpfdist. After executing gpfdist with the -ssl  certificate_path option, the only way to load data from this file server is with the gpfdists protocol. The location specified in certificate_path must contain the following files:
 
 - The server certificate file, server.crt
 - The server private key file, server.key
