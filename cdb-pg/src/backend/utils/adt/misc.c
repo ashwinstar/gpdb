@@ -140,7 +140,7 @@ pg_terminate_backend(PG_FUNCTION_ARGS)
 
 /*
  * gp_cancel_query_internal
- *    Cancel the query this is identified by (sessionId, commandId) pair.
+ *    Cancel the query that is identified by (sessionId, commandId) pair.
  *
  * This function errors out if this is called by non-super user.
  * This function prints a warning and returns false when (sessionId, commandId) does not
@@ -182,14 +182,14 @@ gp_cancel_query_internal(int sessionId, int commandId)
 }
 
 /*
- * gp_cancel_query_external
- *    The wrapper for creating a user-defined C function for gp_cancel_query_internal.
+ * gp_cancel_query
+ *    Cancel the query that is identified by (sessionId, commandId) pair.
  */
-bool
-gp_cancel_query_external(Datum sessionId, Datum commandId)
+Datum
+gp_cancel_query(PG_FUNCTION_ARGS)
 {
-	return gp_cancel_query_internal(DatumGetInt32(sessionId),
-									DatumGetInt32(commandId));
+	PG_RETURN_BOOL(gp_cancel_query_internal(PG_GETARG_INT32(0),
+											PG_GETARG_INT32(1)));
 }
 
 Datum
