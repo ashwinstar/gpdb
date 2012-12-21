@@ -5410,10 +5410,12 @@ setEmptyFrame(WindowStatePerLevel level_state,
 			  (EDGE_IS_BOUND_FOLLOWING(frame->trail) &&
 			   EDGE_IS_BOUND_PRECEDING(frame->lead))));
 
-	if ((EDGE_IS_BOUND_PRECEDING(frame->trail) &&
-			  EDGE_IS_BOUND_PRECEDING(frame->lead)) ||
-			 (EDGE_IS_BOUND_FOLLOWING(frame->trail) &&
-			  EDGE_IS_BOUND_FOLLOWING(frame->lead)))
+	if (!EDGE_IS_DELAYED_BOUND(frame->trail) &&
+		!EDGE_IS_DELAYED_BOUND(frame->lead) &&
+		((EDGE_IS_BOUND_PRECEDING(frame->trail) &&
+		  EDGE_IS_BOUND_PRECEDING(frame->lead)) ||
+		 (EDGE_IS_BOUND_FOLLOWING(frame->trail) &&
+		  EDGE_IS_BOUND_FOLLOWING(frame->lead))))
 	{
 		bool is_pre = 
 			(EDGE_IS_BOUND_PRECEDING(frame->trail) &&
