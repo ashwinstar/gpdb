@@ -195,10 +195,12 @@ class GpCronDump(Operation):
             else:
                 raise ExceptionNoStackTraceNeeded('The options --ddboost-host and --ddboost-user are standalone. They are NOT used in conjunction with any other gocrondump options.')
 
+        # The ddboost_config_remove actually configures the ddboost with dummy values
         if self.ddboost_config_remove:
             if self.ddboost_config_remove and self.only_ddboost_options():
                 hostset = self.getHostSet(self.getGpArray())
-                self.sshToHosts(hostset, '','','')
+                # The username and the password must be at least 2 characters long, so we just use 2 spaces for each
+                self.sshToHosts(hostset, '','  ','  ')
                 return 0;
             else:
                 raise ExceptionNoStackTraceNeeded('The option --ddboost-config-remove is standalone. It is NOT used in conjunction with any other gocrondump options.')
