@@ -22,7 +22,8 @@ GPFDIST_INCLUDES=-I$(GPCC)/src/gpfdist/include
 GPFDIST_LIBS=-L$(CURDIR)/../cdb-pg/src/port -lpgport -lws2_32 -lgdi32
 EXT_EXE=.exe
 else
-GPFDISTFILES=fstream.c gfile.c gpfdist.c transform.c
+# memmem is needed here by fstream.c
+GPFDISTFILES=memmem.c fstream.c gfile.c gpfdist.c transform.c
 GPFDISTOBJSFILES=$(subst .c,.o,$(GPFDISTFILES))
 # link with static libyaml so gpfdist won't need LD_LIBRARY_PATH
 ifneq "$(findstring $(BLD_ARCH),aix5_ppc_64 aix5_ppc_32 osx104_x86)" ""
@@ -44,7 +45,7 @@ OPENSSL_LIBS=-L $(GPCC)/ext/$(OPENSSL) -lssl -lcrypto
 else
 OPENSSL_LIBS=-lssl -lcrypto
 endif
-GP_VERSION:=$(shell cat $(GPCC)/../VERSION)
+GPFDIST_VERSION:=$(shell cat $(GPCC)/../VERSION)
 
 # flag to include/exclude gpfdist transformation support
 GPFXDIST=-DGPFXDIST
@@ -58,9 +59,9 @@ INCLUDES=-I$(BLD_THIRDPARTY_INCLUDE_DIR) -I$(GPCC)/ext/include $$($(BLD_THIRDPAR
 CFLAGS=$(OPT) $$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --cflags) -Wall $(GPFXDIST)
 APRLIBS=$$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --link-ld --libs) 
 APULIBS= $$($(BLD_THIRDPARTY_BIN_DIR)/apu-1-config --link-ld --libs)
-CPPFLAGS=$$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --cppflags) -DGP_VERSION="$(GP_VERSION)"
+CPPFLAGS=$$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --cppflags) -DGPFDIST_VERSION="$(GPFDIST_VERSION)"
 ifeq "$(BLD_ARCH)" "win32"
-GPFDIST_CPPFLAGS=$$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --cppflags) -DGP_VERSION="$(GP_VERSION)"
+GPFDIST_CPPFLAGS=$$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --cppflags) -DGPFDIST_VERSION="$(GPFDIST_VERSION)"
 GPFDIST_CPPFLAGS_EXTRA=$$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --cppflags)
 else
 sol10_sparc_32_CPPFLAGS=-D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64
@@ -68,7 +69,7 @@ sol9_sparc_32_CPPFLAGS=-D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64
 sol8_sparc_32_CPPFLAGS=-D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64
 rhel4_x86_32_CPPFLAGS=-D_LARGEFILE_SOURCE=1 -D_FILE_OFFSET_BITS=64
 rhel5_x86_32_CPPFLAGS=-D_LARGEFILE_SOURCE=1 -D_FILE_OFFSET_BITS=64
-GPFDIST_CPPFLAGS=$$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --cppflags) -DGP_VERSION="$(GP_VERSION)" $($(BLD_ARCH)_CPPFLAGS)
+GPFDIST_CPPFLAGS=$$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --cppflags) -DGPFDIST_VERSION="$(GPFDIST_VERSION)" $($(BLD_ARCH)_CPPFLAGS)
 endif
 
 osx105_x86_GPFDIST_LDFLAGS=-Wl,-search_paths_first
@@ -90,7 +91,8 @@ mkpaxos: mkdir
 mkgpfdist: mkext
 	@echo --- gpfdist --------------------------------------------------
 	cd src/gpfdist/ && \
-	  ln -sf ../../../cdb-pg/src/backend/utils/misc/fstream/*.c .
+	  ln -sf ../../../cdb-pg/src/backend/utils/misc/fstream/*.c . && \
+	  ln -sf ../../../cdb-pg/src/port/memmem.c .
 	mkdir -p src/gpfdist/include
 	perl -p -i -e 's,^prefix=.*$$,prefix="$(BLD_THIRDPARTY_DIR)",' $(BLD_THIRDPARTY_DIR)/bin/apr-1-config
 ifeq "$(BLD_ARCH)" "win32"

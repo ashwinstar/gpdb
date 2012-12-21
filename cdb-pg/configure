@@ -11102,6 +11102,7 @@ fi
 cat >>confdefs.h <<_ACEOF
 #define HAVE_DECL_STRLCAT $ac_have_decl
 _ACEOF
+
 ac_fn_c_check_decl "$LINENO" "strlcpy" "ac_cv_have_decl_strlcpy" "$ac_includes_default"
 if test "x$ac_cv_have_decl_strlcpy" = xyes; then :
   ac_have_decl=1
@@ -11111,6 +11112,17 @@ fi
 
 cat >>confdefs.h <<_ACEOF
 #define HAVE_DECL_STRLCPY $ac_have_decl
+_ACEOF
+
+ac_fn_c_check_decl "$LINENO" "memmem" "ac_cv_have_decl_memmem" "$ac_includes_default"
+if test "x$ac_cv_have_decl_memmem" = xyes; then :
+  ac_have_decl=1
+else
+  ac_have_decl=0
+fi
+
+cat >>confdefs.h <<_ACEOF
+#define HAVE_DECL_MEMMEM $ac_have_decl
 _ACEOF
 
 # This is probably only present on Darwin, but may as well check always
@@ -11479,6 +11491,19 @@ else
   case " $LIBOBJS " in
   *" strlcpy.$ac_objext "* ) ;;
   *) LIBOBJS="$LIBOBJS strlcpy.$ac_objext"
+ ;;
+esac
+
+fi
+
+ac_fn_c_check_func "$LINENO" "memmem" "ac_cv_func_memmem"
+if test "x$ac_cv_func_memmem" = xyes; then :
+  $as_echo "#define HAVE_MEMMEM 1" >>confdefs.h
+
+else
+  case " $LIBOBJS " in
+  *" memmem.$ac_objext "* ) ;;
+  *) LIBOBJS="$LIBOBJS memmem.$ac_objext"
  ;;
 esac
 
