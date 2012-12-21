@@ -805,6 +805,15 @@
 /* Define to select Win32-style semaphores. */
 #undef USE_WIN32_SEMAPHORES
 
+/* Define to build with RSA BSAFE (cryptocme) */
+#undef HAVE_LIBCCME_CORE
+
+/* Define to build with RSA BSAFE FIPS (cryptocme) */
+#undef HAVE_LIBCCME_FIPSPROV
+
+/* Define to 1 if you have FIPS 140-2 RSA BSAFE. */
+#undef HAVE_RSA_BSAFE_FIPS
+
 /* Define to select Win32-style shared memory. */
 #undef USE_WIN32_SHARED_MEMORY
 

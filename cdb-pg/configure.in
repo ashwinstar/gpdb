@@ -539,7 +539,7 @@ AC_SUBST(enable_connectemc)
 #
 PGAC_ARG_BOOL(enable, ddboost, no,  [  --enable-ddboost     enable connect emc support],
               [AC_DEFINE([USE_DDBOOST], 1,
-                         [Define to 1 to build with connect emc alert capabilities. (--enable-ddboost)])])
+                         [Define to 1 to build with DD Boost capabilities. (--enable-ddboost)])])
 AC_MSG_RESULT([$enable_ddboost])
 AC_SUBST(enable_ddboost)
 
@@ -1010,6 +1010,16 @@ if test "$enable_email" = yes ; then
 		AC_MSG_ERROR([--enable-email requires --with-openssl])
 	fi
 	AC_CHECK_LIB(esmtp,  smtp_start_session,  [], [AC_MSG_ERROR([library 'libesmtp' is required for email alert support])])
+fi
+
+# RSA BSAFE crypto-C ME library
+AC_CHECK_LIB(ccme_core, R_LIB_CTX_new)
+AC_CHECK_LIB(ccme_fipsprov, R_PROV_FIPS140_self_tests_full)
+
+if test "$ac_cv_lib_ccme_core_R_LIB_CTX_new" = yes ; then
+	if test "$ac_cv_lib_ccme_fipsprov_R_PROV_FIPS140_self_tests_full" = yes ; then
+		AC_DEFINE(HAVE_RSA_BSAFE_FIPS, 1, [Define to 1 if you have FIPS 140-2 RSA BSAFE.])
+	fi
 fi
 
 ##

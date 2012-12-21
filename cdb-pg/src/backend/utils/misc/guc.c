@@ -48,6 +48,7 @@
 #include "executor/execWorkfile.h"
 #include "funcapi.h"
 #include "libpq/auth.h"
+#include "libpq/password_hash.h"
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
 #include "optimizer/cost.h"
@@ -235,6 +236,8 @@ extern const char *gpvars_assign_gp_resqueue_priority_default_value(const char *
 		bool doit,
 		GucSource source __attribute__((unused)) );
 
+static const char *assign_password_hash_algorithm(const char *newval,
+												  bool doit, GucSource source);
 /*
  * GUC option variables that are exported from this module
  */
@@ -564,6 +567,10 @@ char  *gp_hadoop_home;
 
 /* Time based authentication GUC */
 char  *gp_auth_time_override_str = NULL;
+
+/* Password hashing */
+char  *password_hash_algorithm_str = "MD5";
+PasswdHashAlg password_hash_algorithm = PASSWORD_HASH_MD5;
 
 /* system cache invalidation mode*/
 int gp_test_system_cache_flush_force = SysCacheFlushForce_Off;
@@ -6055,6 +6062,17 @@ static struct config_string ConfigureNamesString[] =
 		"", NULL, NULL
 	},
 
+	{
+		{"password_hash_algorithm", PGC_SUSET, CONN_AUTH_SECURITY,
+			gettext_noop("The cryptograph hash algorithm to apply to passwords before storing them."),
+			gettext_noop("Valid values are MD5, SHA-256 or SHA-256-FIPS (for a FIPS compliant implementation)."),
+			GUC_SUPERUSER_ONLY
+		},
+		&password_hash_algorithm_str,
+		"MD5", assign_password_hash_algorithm, NULL
+	},
+
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, NULL, NULL, NULL
@@ -10485,6 +10503,30 @@ assign_system_cache_flush_force(const char *newval, bool doit, GucSource source)
 	{
 		return NULL;
 	}
+
+	return newval;
+}
+
+static const char *
+assign_password_hash_algorithm(const char *newval, bool doit, GucSource source)
+{
+	if (pg_strcasecmp(newval, "MD5") == 0)
+	{
+		if (doit)
+			password_hash_algorithm = PASSWORD_HASH_MD5;
+	}
+	else if (pg_strcasecmp(newval, "SHA-256") == 0)
+	{
+		if (doit)
+			password_hash_algorithm = PASSWORD_HASH_SHA_256;
+	}
+	else if (pg_strcasecmp(newval, "SHA-256-FIPS") == 0)
+	{
+		if (doit)
+			password_hash_algorithm = PASSWORD_HASH_SHA_256_FIPS;
+	}
+	else
+		return NULL;
 
 	return newval;
 }

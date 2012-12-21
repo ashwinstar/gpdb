@@ -806,7 +806,7 @@ recv_password_packet(Port *port)
 
 
 /*----------------------------------------------------------------
- * MD5 authentication
+ * hashed password (MD5, SHA-256) authentication
  *----------------------------------------------------------------
  */
 
@@ -825,7 +825,7 @@ recv_and_check_password_packet(Port *port)
 	if (passwd == NULL)
 		return STATUS_EOF;		/* client wouldn't send password */
 
-	result = md5_crypt_verify(port, port->user_name, passwd);
+	result = hashed_passwd_verify(port, port->user_name, passwd);
 
 	pfree(passwd);
 
