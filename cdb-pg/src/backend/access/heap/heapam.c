@@ -49,6 +49,7 @@
 #include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/gp_policy.h"
+#include "catalog/gp_fastsequence.h"
 #include "catalog/namespace.h"
 #include "miscadmin.h"
 #include "pgstat.h"
@@ -60,6 +61,7 @@
 #include "storage/freespace.h"
 #include "utils/guc.h"
 #include "cdb/cdbfilerepprimary.h"
+#include "cdb/cdbpersistentrecovery.h"
 
 static XLogRecPtr log_heap_update(Relation reln, Buffer oldbuf,
 		   ItemPointerData from, Buffer newbuf, HeapTuple newtup, bool move);
@@ -3886,6 +3888,7 @@ heap_inplace_frozen_delete_internal(Relation relation, HeapTuple tuple, Transact
 
 	htup->t_infomask &= 0;
 	htup->t_infomask |= HEAP_XMIN_INVALID;
+	HeapTupleHeaderSetXmin(htup, 0);
 
 	memcpy((char *) htup + htup->t_hoff,
 		   (char *) tuple->t_data + tuple->t_data->t_hoff,
@@ -4819,6 +4822,41 @@ heap_xlog_insert(XLogRecPtr lsn, XLogRecord *record)
 	HeapTupleHeaderSetXmin(htup, record->xl_xid);
 	HeapTupleHeaderSetCmin(htup, FirstCommandId);
 	htup->t_ctid = xlrec->target.tid;
+
+	/* MPP-16881: if GPDB crashed when CTAS for AO/CO is running, we should "frozen"
+	 * delete left-over entries in gp_fastsequence catalog table when replaying XLOG
+	 * during Pass3 crash recovery.
+	 */
+	if (xlrec->target.node.relNode == FastSequenceRelationId)
+	{
+		Form_gp_fastsequence redo_entry = 
+							(Form_gp_fastsequence) ((char *) htup + htup->t_hoff);
+		HASH_SEQ_STATUS iterateStatus;
+		hash_seq_init(&iterateStatus, pass2RecoveryHashShmem->hash);
+	
+		while (true)
+		{
+			Pass2RecoveryHashEntry_s *entry = 
+									(Pass2RecoveryHashEntry_s *)
+									hash_seq_search(&iterateStatus);
+			
+			if (entry == NULL)
+				break;
+			
+			if (entry->objid == redo_entry->objid)
+			{
+				htup->t_infomask &= 0;
+				htup->t_infomask |= HEAP_XMIN_INVALID;
+				HeapTupleHeaderSetXmin(htup, 0);
+				hash_seq_term(&iterateStatus); 
+				if (Debug_persistent_print)
+					elog(LOG, "frozen deleting gp_fastsequence entry"
+						 "for aborted AO insert transaction on objid %d",
+						 redo_entry->objid);
+				break;
+			}
+		}
+	}
 
 	offnum = PageAddItem(page, (Item) htup, newlen, offnum,
 						 LP_USED | OverwritePageMode);
