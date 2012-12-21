@@ -227,6 +227,10 @@ void AppendOnlyStorageWrite_FinishSession(
 	{
 		callCompressionDestructor(storageWrite->compression_functions[COMPRESSION_DESTRUCTOR], storageWrite->compressionState);
 		pfree(storageWrite->compressionState);
+		if (storageWrite->verifyWriteCompressionState != NULL)
+		{
+			callCompressionDestructor(storageWrite->compression_functions[COMPRESSION_DESTRUCTOR], storageWrite->verifyWriteCompressionState);
+		}
 	}
 
 	/* Deallocation is done.	  Go back to caller memory-context. */

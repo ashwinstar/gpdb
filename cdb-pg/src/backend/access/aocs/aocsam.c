@@ -198,6 +198,7 @@ open_ds(Relation rel,
 		{
 			/* This is a writer. */
 			CompressionState *cs = NULL;
+			CompressionState *verifyCs = NULL;
 			if (fns != NULL)
 			{
 				TupleDesc td = CreateTupleDesc(1, false, &attr);
@@ -208,12 +209,17 @@ open_ds(Relation rel,
 				sa.blocksize = blksz;
 
 				cs = callCompressionConstructor(fns[COMPRESSION_CONSTRUCTOR], td, &sa, true /* compress */);
+				if (gp_appendonly_verify_write_block == true)
+				{
+					verifyCs = callCompressionConstructor(fns[COMPRESSION_CONSTRUCTOR], td, &sa, false /* decompress */);
+				}
 				desiredCompressionSize = cs->desired_sz;
 			}
 
 			ds[i] = create_datumstream(ct, clvl, blksz, desiredCompressionSize, version, attr,
 									RelationGetRelationName(rel), false);
 			ds[i]->ao_write->compressionState = cs;
+			ds[i]->ao_write->verifyWriteCompressionState = verifyCs;
 			ds[i]->ao_write->compression_functions = fns;
 		}
 	}
@@ -741,14 +747,14 @@ Oid aocs_insert_values(AOCSInsertDesc idesc, Datum *d, bool * null, AOTupleId *a
             {
                 Assert(!null[i]);
 				/*
-				 * rle_type is running on a block stream, if an object spans multiple 
-				 * blocks than data will not be compressed (if rle_type is set). 
+				 * rle_type is running on a block stream, if an object spans multiple
+				 * blocks than data will not be compressed (if rle_type is set).
 				 */
 				if ((idesc->compType != NULL) && (pg_strcasecmp(idesc->compType, "rle_type") == 0))
 				{
 					idesc->ds[i]->ao_write->storageAttributes.compress = FALSE;
 				}
-				
+
                 err = datumstream_write_lob(idesc->ds[i], d[i]);
                 Assert(err >= 0);
 

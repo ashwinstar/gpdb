@@ -2298,6 +2298,7 @@ appendonly_insert_init(Relation rel, int segno)
 	fns = RelationGetRelationCompressionFuncs(rel);
 
 	CompressionState *cs = NULL;
+	CompressionState *verifyCs = NULL;
 	if (fns)
 	{
 		PGFunction cons = fns[COMPRESSION_CONSTRUCTOR];
@@ -2310,6 +2311,12 @@ appendonly_insert_init(Relation rel, int segno)
 		cs = callCompressionConstructor(cons, RelationGetDescr(rel),
 										&sa,
 										true /* compress */);
+		if (gp_appendonly_verify_write_block == true)
+		{
+			verifyCs = callCompressionConstructor(cons, RelationGetDescr(rel),
+											&sa,
+											false /* decompress */);
+		}
 
 		desiredCompressionSize = cs->desired_sz;
 		if (desiredCompressionSize != NULL)
@@ -2336,6 +2343,7 @@ appendonly_insert_init(Relation rel, int segno)
 
 	aoInsertDesc->storageWrite.compression_functions = fns;
 	aoInsertDesc->storageWrite.compressionState = cs;
+	aoInsertDesc->storageWrite.verifyWriteCompressionState = verifyCs;
 
 	if (Debug_appendonly_print_insert)
 		elog(LOG,"Append-only insert initialize for table '%s' segment file %u "
