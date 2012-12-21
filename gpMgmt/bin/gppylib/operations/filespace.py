@@ -911,8 +911,8 @@ class GetMoveOperationList(Operation):
 
 class MoveFilespace(Operation):
     """
-        Main class which moves the Filespace to a new
-        location for temporary/transaction files
+        Main class which configures the database to use a custom filespace 
+        for temporary and transaction files.
     """  
 
     def __init__(self, new_filespace_name, file_type, user, pswd):
@@ -972,6 +972,10 @@ class MoveFilespace(Operation):
             #StopGPDB - Check for GPDB connections first and fail if connections exist
             if not self.check_database_stopped():
                 self.stop_database()
+
+            #Restart the system
+            self.start_database()
+            self.stop_database()
 
             #StartGPDB in Master only mode
             self.start_master_only()
