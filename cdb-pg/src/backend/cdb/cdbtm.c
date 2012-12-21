@@ -329,6 +329,24 @@ getDtxLogInfo(TMGXACT_LOG *gxact_log)
 	gxact_log->gxid = currentGxact->gxid;
 }
 
+bool
+notifyCommittedDtxTransactionIsNeeded(void)
+{
+	if (DistributedTransactionContext != DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE)
+	{
+	    elog(DTM_DEBUG5, "notifyCommittedDtxTransaction nothing to do (DistributedTransactionContext = '%s')",
+			 DtxContextToString(DistributedTransactionContext));
+		return false;
+	}
+
+	if (currentGxact == NULL)
+	{
+	    elog(DTM_DEBUG5, "notifyCommittedDtxTransaction nothing to do (currentGxact == NULL)");
+		return false;
+	}
+
+	return true;
+}
 
 /*
  * Notify commited a global transaction, called by user commit
@@ -337,21 +355,11 @@ getDtxLogInfo(TMGXACT_LOG *gxact_log)
 void
 notifyCommittedDtxTransaction(void)
 {
-	if (DistributedTransactionContext != DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE)
-	{
-	    elog(DTM_DEBUG5, "notifyCommittedDtxTransaction nothing to do (DistributedTransactionContext = '%s')",
-			 DtxContextToString(DistributedTransactionContext));
-		return;
-	}
+	Assert (DistributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE);
 
-	if (currentGxact == NULL)
-	{
-	    elog(DTM_DEBUG5, "notifyCommittedDtxTransaction nothing to do (currentGxact == NULL)");
-		return;
-	}
+	Assert (currentGxact != NULL);
 
 	doNotifyingCommitPrepared();
-	return;
 }
 
 static inline void
@@ -664,6 +672,13 @@ doInsertForgetCommitted(void)
 
 	setCurrentGxactState( DTX_STATE_INSERTED_FORGET_COMMITTED );
 
+	/*
+	 * These two actions must be performed for a distributed transaction under the same
+	 * locking of ProceArrayLock so the visibility of the transaction changes for local
+	 * master readers (e.g. those using  SnapshotNow for reading) the same as for
+	 * distributed transactions.
+	 */
+	ClearTransactionFromPgProc_UnderLock();
 	releaseGxact_UnderLocks();
 
 	elog(DTM_DEBUG5, "doInsertForgetCommitted called releaseGxact");
