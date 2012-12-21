@@ -2,22 +2,47 @@
 '''
 gphostcachelookup.py -- look up the hostname for a list of interfaces
 
-Usage: gphostcachelookup.py -i inputFile
+Usage: gphostcachelookup.py interface-name
+Input is taken from stdin. Each line from stdin is considered as interface name.
+Output is the hostname, gets printed to stdout.
 
 '''
 
-#
-# THIS IMPORT MUST COME FIRST
-# import mainUtils FIRST to get python version check
-#
-from gppylib.mainUtils import *
-
-# now reset of imports
-from gppylib.programs.clsHostCacheLookup import *
+import sys
+from gppylib.gphostcache import GpInterfaceToHostNameCache
+from gppylib.commands import base
 
 #-------------------------------------------------------------------------
 if __name__ == '__main__':
-    mainOptions = {}
-    mainOptions['forceQuietOutput'] = True
-    simple_main( GpHostCacheLookup.createParser, GpHostCacheLookup.createProgram, mainOptions)
+
+    pool = base.WorkerPool(1)
+    retCode = 0
+
+    try:
+        interfaces = []
+        hostNames = []
+        for line in sys.stdin:
+            interfaces.append(line.strip())
+            hostNames.append(None)
+
+        lookup = GpInterfaceToHostNameCache(pool, interfaces, hostNames)
+
+        for interface in interfaces:
+            hostname = lookup.getHostName(interface)
+            if hostname is None:
+                sys.stdout.write("__lookup_of_hostname_failed__\n")
+            else:
+                sys.stdout.write(hostname)
+                sys.stdout.write("\n")
+    except Exception, e:
+        sys.stderr.write("Exception converting hostname from cache: %s" % e.__str__())
+        sys.stderr.write("\n")
+        retCode = 1
+    except:
+        sys.stderr.write("Exception found converting interface to hostname")
+        sys.stderr.write("\n")
+        retCode = 1
+    finally:
+        sys.exit(retCode)
+
 
