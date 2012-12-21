@@ -398,6 +398,7 @@ static bool choose_deduplicate(PlannerInfo *root, List *sortExprs,
 							Plan *input_plan, double *numGroups);
 static Plan *wrap_plan_index(PlannerInfo *root, Plan *plan, Query *query,
 			List **p_pathkeys, Index varno, const char *alias_name, Query **query_p);
+static void rebuild_simple_rel_and_rte(PlannerInfo *root);
 static Plan *make_parallel_or_sequential_agg(PlannerInfo *root,
 			AggClauseCounts *agg_count, GroupContext *group_context,
 			List **current_pathkeys_p);
@@ -5044,6 +5045,37 @@ wrap_plan_index(PlannerInfo *root, Plan *plan, Query *query,
 }
 
 /*
+ * rebuilt_simple_rel_and_rte
+ *
+ * Rebuild arrays for RelOptInfo and RangeTblEntry for the PlannerInfo when
+ * the underlying range tables are transformed.  They can be rebuilt from
+ * parse->rtable, and will be used in later than here by processes like
+ * distinctClause planning.  We never pfree the original array, since
+ * it's potentially used by other PlannerInfo which this is copied from.
+ */
+static void
+rebuild_simple_rel_and_rte(PlannerInfo *root)
+{
+	int				i;
+	int				array_size;
+	ListCell	   *l;
+
+	array_size = list_length(root->parse->rtable) + 1;
+	root->simple_rel_array_size = array_size;
+	root->simple_rel_array =
+		(RelOptInfo **) palloc0(sizeof(RelOptInfo *) * array_size);
+	root->simple_rte_array =
+		(RangeTblEntry **) palloc0(sizeof(RangeTblEntry *) * array_size);
+	i = 1;
+	foreach (l, root->parse->rtable)
+	{
+		(void) build_simple_rel(root, i, RELOPT_BASEREL);
+		root->simple_rte_array[i] = lfirst(l);
+		i++;
+	}
+}
+
+/*
  * make_parallel_or_sequential_agg
  *
  * This is the common pattern to create multi-phase aggregate by cdb_grouping_planner
@@ -6302,6 +6334,7 @@ if (true)
 
 	root->parse->targetList = copyObject(result_plan->targetlist);
 	root->parse->rtable = wag_context.rtable;
+	rebuild_simple_rel_and_rte(root);
 
 	return result_plan;
 }
@@ -6693,6 +6726,7 @@ within_agg_planner(PlannerInfo *root,
 		/* Need to adjust root->parse for upper plan. */
 		root->parse->rtable = rtable;
 		root->parse->targetList = copyObject(result_plan->targetlist);
+		rebuild_simple_rel_and_rte(root);
 	}
 
 	/* Tell the upper planner that we changed the node */

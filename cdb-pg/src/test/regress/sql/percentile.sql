@@ -68,6 +68,7 @@ select median(a - (select min(a) from percts)) from percts;
 select median(a), b from perct group by b order by b desc;
 select count(*) from(select median(a) from perct group by ())s;
 select median(a) from perct group by grouping sets((b)) order by b;
+select distinct median(a), count(*) from perct;
 -- view
 select * from percv;
 
@@ -126,6 +127,7 @@ select median(a - (select min(a) from percts)) from percts;
 select median(a), b from perct group by b order by b desc;
 select count(*) from(select median(a) from perct group by ())s;
 select median(a) from perct group by grouping sets((b)) order by b;
+select distinct median(a), count(*) from perct;
 -- view
 select * from percv;
 
