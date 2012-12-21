@@ -107,3 +107,16 @@ EOF
 cat <<EOF
 export OPENSSL_CONF
 EOF
+
+cat <<EOF
+# MPP-15405
+export HISTTIMEFORMAT='%F %T '
+_kill ()
+{ 
+    \$GPHOME/bin/gpkill -q --check \$*
+    if [ \$? -eq 0 ]; then
+        \\kill \$*
+    fi
+}
+alias kill=_kill
+EOF
