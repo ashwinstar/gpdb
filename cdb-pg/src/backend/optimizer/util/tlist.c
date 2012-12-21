@@ -134,9 +134,9 @@ add_to_flat_tlist(List *tlist, List *exprs, bool resjunk)
 
 	foreach(v, exprs)
 	{
-		Node		   *expr = (Node *) lfirst(v);
+		Expr		   *expr = (Expr *) lfirst(v);
 
-		if (!tlist_member(expr, tlist))
+		if (!tlist_member_ignoring_RelabelType(expr, tlist))
 		{
 			TargetEntry *tle;
 
