@@ -174,7 +174,7 @@ main(int argc, char *argv[])
 	}
 
 	/* Check the CRC. */
-	crc = crc32cSlicingBy8(crc32cInit(), &ControlFile, offsetof(ControlFileData, crc));
+	crc = crc32c(crc32cInit(), &ControlFile, offsetof(ControlFileData, crc));
 	crc32cFinish(crc);
 
 	if (!EQ_CRC32(crc, ControlFile.crc))
@@ -224,7 +224,7 @@ main(int argc, char *argv[])
 		ControlFile.catalog_version_no = tover;
 
 		/* recalcualte the CRC. */
-		crc = crc32cSlicingBy8(crc32cInit(), &ControlFile, offsetof(ControlFileData, crc));
+		crc = crc32c(crc32cInit(), &ControlFile, offsetof(ControlFileData, crc));
 		crc32cFinish(crc);
 		/*
 		INIT_CRC32(crc);

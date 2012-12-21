@@ -43,4 +43,4 @@ uninstall:
 	rm -f '$(DESTDIR)$(bindir)/pg_controldata$(X)'
 
 clean distclean maintainer-clean:
-	rm -f pg_controldata$(X) $(OBJS) pg_crc.c
+	rm -f pg_controldata$(X) $(OBJS) pg_crc.c crc32c.c

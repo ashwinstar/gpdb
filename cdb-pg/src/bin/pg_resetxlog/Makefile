@@ -44,4 +44,4 @@ uninstall:
 	rm -f '$(DESTDIR)$(bindir)/pg_resetxlog$(X)'
 
 clean distclean maintainer-clean:
-	rm -f pg_resetxlog$(X) $(OBJS) pg_crc.c
+	rm -f pg_resetxlog$(X) $(OBJS) pg_crc.c crc32c.c

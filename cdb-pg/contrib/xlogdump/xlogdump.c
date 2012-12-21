@@ -190,7 +190,7 @@ RecordIsValid(XLogRecord *record, XLogRecPtr recptr)
 	char	   *blk;
 
 	/* First the rmgr data */
-	crc = crc32cSlicingBy8(crc32cInit(), XLogRecGetData(record), len);
+	crc = crc32c(crc32cInit(), XLogRecGetData(record), len);
 
 	/* Add in the backup blocks, if any */
 	blk = (char *) XLogRecGetData(record) + len;
@@ -209,7 +209,7 @@ RecordIsValid(XLogRecord *record, XLogRecPtr recptr)
 			return false;
 		}
 		blen = sizeof(BkpBlock) + BLCKSZ - bkpb.hole_length;
-		crc = crc32cSlicingBy8(crc, blk, blen);
+		crc = crc32c(crc, blk, blen);
 		blk += blen;
 	}
 
@@ -227,7 +227,7 @@ RecordIsValid(XLogRecord *record, XLogRecPtr recptr)
 	}
 
 	/* Finally include the record header */
-	crc = crc32cSlicingBy8(crc, (char *) record + sizeof(pg_crc32),
+	crc = crc32c(crc, (char *) record + sizeof(pg_crc32),
 			   SizeOfXLogRecord - sizeof(pg_crc32));
 	crc32cFinish(crc);
 
