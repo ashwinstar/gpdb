@@ -71,7 +71,7 @@ installation steps and installation of any dependencies.
 Migrates packages from a separate $GPHOME. Carries over 
 packages from one version of Greenplum Database to another.
 For example: 
-  gppkg —migrate /usr/local/greenplum-db-4.2.0.1 
+  gppkg --migrate /usr/local/greenplum-db-4.2.0.1 
   /usr/local/greenplum-db-4.2.1.0
 
 This option is automatically invoked by the installer 
@@ -89,19 +89,19 @@ gppkg is being run.
 Provides information specified by query_option about the 
 installed packages. Only one query_option can be specified 
 at a time. The following table lists the possible values 
-for query_option.<package_file> is the name of a package.
+for query_option. <package_file> is the name of a package.
 
-query_option	        Returns
+query_option              Returns
 ------------              -------
 
-<package_file>	        Whether the specified package is installed.
+<package_file>            Whether the specified package is installed.
 
 --info <package_file>     The name, version, and other information 
                           about the specified package.
 
---list <package_file>	  The file contents of the specified package.
+--list <package_file>     The file contents of the specified package.
 
---all	                    List of all installed packages.
+--all                     List of all installed packages.
 
 
 -r <name>-<version> | --remove=<name>-<version>
