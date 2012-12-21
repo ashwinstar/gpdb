@@ -245,7 +245,9 @@ FaultInjectorIdentifierEnumToString[] = {
 	_("malloc_failure"),
 		/* inject fault to simulate memory allocation failure */
 	_("transaction_abort_failure"),
-		/* inject fault to simulate transaction abort failure */
+		/* inject fault to simulate transaction abort failure  */
+	_("update_committed_eof_in_persistent_table"),
+		/* inject fault before committed EOF is updated in gp_persistent_relation_node for Append Only segment files */
 	_("not recognized"),
 };
 
@@ -997,6 +999,7 @@ FaultInjector_NewHashEntry(
 		case LocalTmRecordTransactionCommit:
 		case Checkpoint:
 		case AbortTransactionFail:
+		case UpdateCommittedEofInPersistentTable:
 			
 			if (fileRepRole != FileRepNoRoleConfigured && fileRepRole != FileRepPrimaryRole)
 			{

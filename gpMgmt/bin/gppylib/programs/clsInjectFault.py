@@ -375,7 +375,8 @@ class GpInjectFaultProgram:
 			      "xlog_insert (inject fault to skip insert record into xlog), " \
 			      "local_tm_record_transaction_commit (inject fault for local transactions after transaction commit is recorded and flushed in xlog ), " \
 			      "malloc_failure (inject fault to simulate memory allocation failure), " \
-                  "transaction_abort_failure (inject fault to simulate transaction abort failure), " \
+			      "transaction_abort_failure (inject fault to simulate transaction abort failure), " \
+			      "update_committed_eof_in_persistent_table (inject fault before committed EOF is updated in gp_persistent_relation_node for Append Only segment files), " \
 			      "all (affects all faults injected, used for 'status' and 'reset'), ") 
         addTo.add_option("-c", "--ddl_statement", dest="ddlStatement", type="string",
                          metavar="ddlStatement",
