@@ -2155,7 +2155,7 @@ void mppExecutorCleanup(QueryDesc *queryDesc)
 	 */
 	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
 	{
-		SPIInitMemoryReservedStack();
+		SPI_InitMemoryReservation();
 	}
 }
 

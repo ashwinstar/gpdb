@@ -422,9 +422,10 @@ ExecInitResult(Result *node, EState *estate, int eflags)
 	ExecAssignResultTypeFromTL(&resstate->ps);
 	ExecAssignProjectionInfo(&resstate->ps, NULL);
 
-	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
+	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE
+			&& IsResultMemoryIntesive(node))
 	{
-		SPIPushMemoryReserved(((Plan *)node)->operatorMemKB * 1024L);
+		SPI_ReserveMemory(((Plan *)node)->operatorMemKB * 1024L);
 	}
 
 	initGpmonPktForResult((Plan *)node, &resstate->ps.gpmon_pkt, estate);
@@ -464,10 +465,6 @@ ExecEndResult(ResultState *node)
 
 	EndPlanStateGpmonPkt(&node->ps);
 
-	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
-	{
-		SPIPopMemoryReserved();
-	}
 }
 
 void

@@ -479,9 +479,9 @@ postquel_start(execution_state *es, SQLFunctionCachePtr fcache)
 		
 		
     	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE
-    			&& !SPIIsEmptyMemoryReserved())
+    			&& SPI_IsMemoryReserved())
     	{
-    		es->qd->plannedstmt->query_mem = SPICurrentMemoryReserved();                		
+    		es->qd->plannedstmt->query_mem = SPI_GetMemoryReservation();                		
     	}
 
     	ExecutorStart(es->qd, 0);
