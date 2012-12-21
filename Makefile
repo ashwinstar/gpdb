@@ -422,14 +422,11 @@ define BUILD_STEPS
 	cp -p $(GPMGMT)/bin/gpload.py $(INSTLOC)/bin/gpload.py
 	$(MAKE) copylibs INSTLOC=$(INSTLOC)
 	$(MAKE) clients INSTLOC=$(INSTLOC) CLIENTINSTLOC=$(CLIENTINSTLOC)
-	@$(MAKE) set_scripts_version INSTLOC=$(CLIENTINSTLOC)
 	$(MAKE) connectivity INSTLOC=$(INSTLOC) CONNECTIVITYINSTLOC=$(CONNECTIVITYINSTLOC)
-	@$(MAKE) set_scripts_version INSTLOC=$(CONNECTIVITYINSTLOC)
 	if [ "$(findstring win,$(BLD_ARCH))" != "win" ]; then \
 	  cd $(GPMGMT)/bin && $(MAKE) pygresql INSTLOC=$(INSTLOC) ; \
 	fi
 	$(MAKE) loaders INSTLOC=$(INSTLOC) LOADERSINSTLOC=$(LOADERSINSTLOC)
-	@$(MAKE) set_scripts_version INSTLOC=$(LOADERSINSTLOC)
 	touch installcheck-good_SKIP
 endef
 endif
@@ -786,6 +783,9 @@ endif
 	# ---- create the installer ----
 	$(warn MPP_ARCH=$(MPP_ARCH))
 
+	# ---- updating the version in required packages ----
+	@$(MAKE) set_scripts_version INSTLOC=$(CONNECTIVITYINSTLOC)
+
 ifneq "$(findstring win,$(BLD_ARCH))" "win"
 	cd client/install/src/unix/ && \
 	  $(MAKE) TAR=$(TAR) PRODUCT=Connectivity PACKAGE=greenplum-connectivity README=GPConnectUnix VERSION=$(VERSION) INSTALL_SRC=$(CONNECTIVITYINSTLOC) INSTALL_DIR=../../../..
@@ -853,6 +853,9 @@ endif
 
 	# ---- create the installer ----
 	$(warn MPP_ARCH=$(MPP_ARCH))
+
+	# ---- Updating the version in required packages ----
+	@$(MAKE) set_scripts_version INSTLOC=$(CLIENTINSTLOC)
 
 ifneq "$(findstring win,$(BLD_ARCH))" "win"
 	cd client/install/src/unix/ && \
@@ -934,6 +937,10 @@ endif
 	fi
 
 	# ---- create the installer ----
+
+	# ---- updating the version in required packages ----
+	@$(MAKE) set_scripts_version INSTLOC=$(LOADERSINSTLOC)
+
 ifneq "$(findstring win,$(BLD_ARCH))" "win"
 	cd client/install/src/unix/ && \
 	  $(MAKE) TAR=$(TAR) PRODUCT=Loaders PACKAGE=greenplum-loaders README=GPLoadToolsUnix VERSION=`perl -pe 's, ,-,g' ../../../../VERSION` INSTALL_SRC=$(LOADERSINSTLOC) INSTALL_DIR=../../../..
