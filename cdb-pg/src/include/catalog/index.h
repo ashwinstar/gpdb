@@ -127,4 +127,6 @@ extern Oid reindex_index(Oid indexId, Oid newrelfilenode, List **extra_oids);
 extern bool reindex_relation(Oid relid, bool toast_too, bool aoseg_too, bool aoblkdir_too,
 							 List **oidmap, bool build_map);
 
+extern Oid IndexGetRelation(Oid indexId);
+
 #endif   /* INDEX_H */

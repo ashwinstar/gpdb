@@ -1415,6 +1415,7 @@ RemoveIndex(RangeVar *relation, DropBehavior behavior)
 	char		relkind;
 	ObjectAddress object;
 	HeapTuple tuple;
+	PartStatus pstat;
 
 	indOid = RangeVarGetRelid(relation, false);
 
@@ -1443,10 +1444,19 @@ RemoveIndex(RangeVar *relation, DropBehavior behavior)
 	object.classId = RelationRelationId;
 	object.objectId = indOid;
 	object.objectSubId = 0;
+	
+	pstat = rel_part_status(IndexGetRelation(indOid));
 
 	ReleaseSysCache(tuple);
 
 	performDeletion(&object, behavior);
+	
+	if ( pstat == PART_STATUS_ROOT || pstat == PART_STATUS_INTERIOR )
+	{
+		ereport(WARNING,
+				(errmsg("Only dropped the index \"%s\"", relation->relname),
+				 errhint("To drop other indexes on child parts, drop each one explicitly.")));
+	}
 }
 
 /*
