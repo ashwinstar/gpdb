@@ -199,7 +199,7 @@ static void get_pid_metrics(apr_int32_t pid, apr_int32_t tmid, apr_int32_t ssid,
 	sigar_proc_cpu_t cpu;
 	sigar_proc_mem_t mem;
 	sigar_proc_fd_t fd;
-	int newrec = 0;
+	/*int newrec = 0;*/
 	pidrec_t* rec;
 	apr_pool_t* pool = apr_hash_pool_get(gx.pidtab);
 
@@ -219,7 +219,7 @@ static void get_pid_metrics(apr_int32_t pid, apr_int32_t tmid, apr_int32_t ssid,
 	{
 		sigar_proc_exe_t exe;
 
-		newrec = 1;
+		/*newrec = 1;*/
 
 		rec = apr_palloc(pool, sizeof(*rec));
 		CHECKMEM(rec);
@@ -330,6 +330,24 @@ static void send_fsinfo(SOCKET sock)
 		}
 	}
 }
+#if !(defined (sun))
+// Helper function to calculate the metric differences
+static apr_uint64_t metric_diff_calc( sigar_uint64_t newval, apr_uint64_t oldval, const char *name_for_log, const char* value_name_for_log ){
+	apr_uint64_t diff;
+
+	if (newval < oldval) // assume that the value was reset and we are starting over
+	{
+		TR0(("metric_diff_calc: new value %" APR_UINT64_T_FMT " is less than old value %" APR_UINT64_T_FMT " for %s metric %s; assume the value was reset and set diff to new value.\n",
+				newval, oldval, name_for_log, value_name_for_log));
+		diff = newval;
+	}
+	else
+	{
+		diff = newval - oldval;
+	}
+	return diff;
+}
+#endif
 
 static void send_machine_metrics(SOCKET sock)
 {
@@ -596,31 +614,19 @@ static void send_machine_metrics(SOCKET sock)
 			write_bytes = disk->write_bytes;
 
 			// DISK READS
-			if (fsusage.disk.reads < disk->reads) // new < old
-				reads = (GPSMON_METRIC_MAX - disk->reads) + fsusage.disk.reads; // diff = MAX - OLD + new
-			else
-				reads = fsusage.disk.reads - disk->reads; // diff = new - old
+			reads = metric_diff_calc(fsusage.disk.reads, disk->reads, disk->name, "disk reads");
 			disk->reads = fsusage.disk.reads; // old = new
 
 			// DISK WRITES
-			if (fsusage.disk.writes < disk->writes) // new < old
-				writes = (GPSMON_METRIC_MAX - disk->writes) + fsusage.disk.writes; // diff = MAX - old + new
-			else
-				writes = fsusage.disk.writes - disk->writes; // diff = new - old
+			writes = metric_diff_calc(fsusage.disk.writes, disk->writes, disk->name, "disk writes");
 			disk->writes = fsusage.disk.writes; // old = new
 
 			// WRITE BYTES
-			if (fsusage.disk.write_bytes < disk->write_bytes) // new < old
-				write_bytes = (GPSMON_METRIC_MAX - disk->write_bytes) + fsusage.disk.write_bytes; // diff = MAX - old + new
-			else
-				write_bytes = fsusage.disk.write_bytes - disk->write_bytes; // diff = new - old
+			write_bytes = metric_diff_calc(fsusage.disk.write_bytes, disk->write_bytes, disk->name, "disk write bytes");
 			disk->write_bytes = fsusage.disk.write_bytes; // old = new
 
 			// READ BYTES
-			if (fsusage.disk.read_bytes < disk->read_bytes) // new < old
-				read_bytes = (GPSMON_METRIC_MAX - disk->read_bytes) + fsusage.disk.read_bytes; // diff = MAX - old + new
-			else
-				read_bytes = fsusage.disk.read_bytes - disk->read_bytes; // diff = new - old
+			read_bytes = metric_diff_calc(fsusage.disk.read_bytes, disk->read_bytes, disk->name, "disk read bytes");
 			disk->read_bytes = fsusage.disk.read_bytes; // old = new
 
 			tdisk.reads += reads;
@@ -653,34 +659,19 @@ static void send_machine_metrics(SOCKET sock)
 			}
 
 			//////// RECEIVE PACKEtS
-			if (netstat.rx_packets < nic->rx_packets) // new < old
-				rx_packets = (GPSMON_METRIC_MAX - nic->rx_packets) + netstat.rx_packets; // diff  = max - old + new
-			else
-				rx_packets = netstat.rx_packets - nic->rx_packets; // diff = new - old
+			rx_packets = metric_diff_calc(netstat.rx_packets, nic->rx_packets, nic->name, "rx packets");
 			nic->rx_packets = netstat.rx_packets; // old = new
 
-
 			//////// RECEIVE BYTES
-			if (netstat.rx_bytes < nic->rx_bytes) // new < old
-				rx_bytes = (GPSMON_METRIC_MAX - nic->rx_bytes) + netstat.rx_bytes; // diff  = max - old + new
-			else
-				rx_bytes = netstat.rx_bytes - nic->rx_bytes; // diff = new - old
+			rx_bytes = metric_diff_calc(netstat.rx_bytes, nic->rx_bytes, nic->name, "rx bytes");
 			nic->rx_bytes = netstat.rx_bytes; // old = new
 
-
 			//////// SEND PACKETS
-			if (netstat.tx_packets < nic->tx_packets) // new < old
-				tx_packets = (GPSMON_METRIC_MAX - nic->tx_packets) + netstat.tx_packets; // diff  = max - old + new
-			else
-				tx_packets = netstat.tx_packets - nic->tx_packets; // diff = new - old
+			tx_packets = metric_diff_calc(netstat.tx_packets, nic->tx_packets, nic->name, "tx packets");
 			nic->tx_packets = netstat.tx_packets; // old = new
 
-
 			//////// SEND BYTES
-			if (netstat.tx_bytes < nic->tx_bytes) // new < old
-				tx_bytes = (GPSMON_METRIC_MAX - nic->tx_bytes) + netstat.tx_bytes; // diff = max - old + new
-			else
-				tx_bytes = netstat.tx_bytes - nic->tx_bytes; // diff = new - old
+			tx_bytes = metric_diff_calc(netstat.tx_bytes, nic->tx_bytes, nic->name, "tx bytes");
 			nic->tx_bytes = netstat.tx_bytes; // old = new
 
 			tnet.rx_packets += rx_packets;
@@ -1403,7 +1394,7 @@ static void gx_recvfrom(SOCKET sock, short event, void* arg)
 
 static void setup_tcp(void)
 {
-	SOCKET sock;
+	SOCKET sock = 0;
 
     struct addrinfo hints;
 	struct addrinfo *addrs, *rp;
@@ -1519,7 +1510,7 @@ static void setup_tcp(void)
 
 static void setup_udp()
 {
-	SOCKET sock;
+	SOCKET sock = 0;
 
     struct addrinfo hints;
 	struct addrinfo *addrs, *rp;
