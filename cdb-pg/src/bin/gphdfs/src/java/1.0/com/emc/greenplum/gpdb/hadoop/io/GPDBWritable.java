@@ -237,8 +237,7 @@ public class GPDBWritable implements Writable {
 		int[]     colLength = new int[numCol];
 		byte[]    enumType  = new byte[numCol];
 		int[]     padLength = new int[numCol];
-		int       maxpad    = 0;
-		byte[]    padbytes  = null;
+		byte[]    padbytes   = new byte[8];
 		
 		/**
 		 * Compute the total payload and header length
@@ -289,7 +288,6 @@ public class GPDBWritable implements Writable {
 				 * For variable length type, we added a 4 byte length header.
 				 */
 				padLength[i] = roundUpAlignment(datlen, coldbtype.getAlignment()) - datlen;
-				maxpad = padLength[i]>maxpad? padLength[i]:maxpad;
 				datlen += padLength[i];
 				if (coldbtype.isVarLength())
 					datlen += 4;
@@ -301,12 +299,8 @@ public class GPDBWritable implements Writable {
 		 * Add the final alignment padding for the next record
 		 */
 		int endpadding = roundUpAlignment(datlen, 8) - datlen;
-		maxpad = endpadding > maxpad? endpadding:maxpad;
 		datlen += endpadding;
 		
-		if (maxpad > 0)
-			padbytes = new byte[maxpad];
-
 		/* Construct the packet header */
 		out.writeInt(datlen);
 		out.writeShort(VERSION);

@@ -4,7 +4,7 @@ include $(top_builddir)/src/Makefile.global
 ANT=/opt/releng/apache-ant/bin/ant
 gphdver = gphd-xnet-1.1.0.0
 gpmrver = gpmr-xnet-1.0.0.1
-gpcdh3u2ver = gpcdh3u2-xnet-1.1.0.0
+gpcdh3u2ver = cdh3u2-xnet-1.1.0.0
 
 all: gphdfs protocol_formatter
 
