@@ -33,6 +33,16 @@ select nvl(NULL::text, NULL);
 select nvl(1, 2);
 select nvl(NULL, 2);
 
+select decode(1, 1, 100, 2, 200);
+select decode(2, 1, 100, 2, 200);
+select decode(3, 1, 100, 2, 200);
+select decode(3, 1, 100, 2, 200, 300);
+select decode(NULL, 1, 100, NULL, 200, 300);
+select decode('1'::text, '1', 100, '2', 200);
+select decode(2, 1, 'ABC', 2, 'DEF');
+select decode('2009-02-05'::date, '2009-02-05', 'ok');
+select decode('2009-02-05 01:02:03'::timestamp, '2009-02-05 01:02:03', 'ok');
+
 SELECT add_months ('2003-08-01', 3);
 SELECT add_months ('2003-08-01', -3);
 SELECT add_months ('2003-08-21', -3);
