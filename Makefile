@@ -1045,6 +1045,7 @@ SET_VERSION_SCRIPTS = \
 	lib/python/gppylib/programs/clsRecoverSegment.py \
 	lib/python/gppylib/programs/clsSystemState.py \
 	lib/python/gppylib/programs/gppkg.py \
+	lib/python/gppylib/mainUtils.py \
 	$(NULL)
 
 set_scripts_version : 
