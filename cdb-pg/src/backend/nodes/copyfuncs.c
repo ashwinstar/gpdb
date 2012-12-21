@@ -3684,6 +3684,7 @@ _copyReindexStmt(ReindexStmt *from)
 	COPY_STRING_FIELD(name);
 	COPY_SCALAR_FIELD(do_system);
 	COPY_SCALAR_FIELD(do_user);
+	COPY_SCALAR_FIELD(missing_ok);
 	COPY_NODE_FIELD(new_ind_oids);
 
 	return newnode;

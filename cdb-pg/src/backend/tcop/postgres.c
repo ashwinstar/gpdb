@@ -1449,6 +1449,191 @@ CheckDebugDtmActionSqlCommandTag(const char *sqlCommandTag)
 	return result;
 }
 
+void 
+LockForCatalogMaintenance(Node *parsetree)
+{
+	LOCKMODE lockmode;
+
+	switch (nodeTag(parsetree))
+	{
+		case T_Query:
+		case T_InsertStmt:
+		case T_DeleteStmt:
+		case T_UpdateStmt:
+		case T_SelectStmt:
+		case T_DeclareCursorStmt:
+		case T_TransactionStmt:
+		case T_PlannedStmt:
+		case T_ClosePortalStmt:
+		case T_FetchStmt:
+		case T_CopyStmt:
+		case T_PrepareStmt:
+		case T_ExecuteStmt:
+		case T_DeallocateStmt:
+		case T_LockStmt:
+			/*
+			 * DML commands.
+			 */
+			lockmode = AccessShareLock;
+			break;
+	
+		case T_CommentStmt:
+		case T_NotifyStmt:
+		case T_ListenStmt:
+		case T_UnlistenStmt:
+		case T_VariableSetStmt:
+		case T_VariableShowStmt:
+		case T_VariableResetStmt:
+			/*
+			 * Non-DML and Non-DDL commands.
+			 */
+			lockmode = NoLock;
+			break;
+	
+		case T_CreateSchemaStmt:
+		case T_CreateStmt:
+		case T_CreateExternalStmt:
+		case T_CreateForeignStmt:
+		case T_CreateFileSpaceStmt:
+		case T_CreateTableSpaceStmt:
+		case T_CreateFdwStmt:
+		case T_AlterFdwStmt:
+		case T_DropFdwStmt:
+		case T_CreateForeignServerStmt:
+		case T_AlterForeignServerStmt:
+		case T_DropForeignServerStmt:
+		case T_CreateUserMappingStmt:
+		case T_AlterUserMappingStmt:
+		case T_DropUserMappingStmt:
+		case T_DropStmt:
+		case T_TruncateStmt:
+		case T_RenameStmt:
+		case T_AlterObjectSchemaStmt:
+		case T_AlterOwnerStmt:
+		case T_AlterTableStmt:
+		case T_AlterDomainStmt:
+		case T_GrantStmt:
+		case T_GrantRoleStmt:
+		case T_DefineStmt:
+		case T_CompositeTypeStmt:
+		case T_ViewStmt:
+		case T_CreateFunctionStmt:
+		case T_AlterFunctionStmt:
+		case T_IndexStmt:
+		case T_RuleStmt:
+		case T_CreateSeqStmt:
+		case T_AlterSeqStmt:
+		case T_RemoveFuncStmt:
+		case T_CreatedbStmt:
+		case T_AlterDatabaseStmt:
+		case T_AlterDatabaseSetStmt:
+		case T_DropdbStmt:
+		case T_LoadStmt:
+		case T_ClusterStmt:
+		case T_VacuumStmt:
+		case T_ExplainStmt:
+		case T_CreateTrigStmt:
+		case T_DropPropertyStmt:
+		case T_CreatePLangStmt:
+		case T_DropPLangStmt:
+		case T_CreateDomainStmt:
+		case T_CreateQueueStmt:
+		case T_AlterQueueStmt:
+		case T_DropQueueStmt:
+		case T_CreateRoleStmt:
+		case T_AlterRoleStmt:
+		case T_AlterRoleSetStmt:
+		case T_DropRoleStmt:
+		case T_DropOwnedStmt:
+		case T_ReassignOwnedStmt:
+		case T_ConstraintsSetStmt:
+		case T_CheckPointStmt:
+		case T_CreateConversionStmt:
+		case T_CreateCastStmt:
+		case T_DropCastStmt:
+		case T_CreateOpClassStmt:
+		case T_RemoveOpClassStmt:
+		case T_AlterTypeStmt:
+			/*
+			 * DDL commands except REINDEX.
+			 */
+			lockmode = AccessShareLock;
+			break;
+	
+	
+		case T_ReindexStmt:
+			{
+				ReindexStmt *stmt = (ReindexStmt *) parsetree;
+	
+				switch (stmt->kind)
+				{
+					case OBJECT_INDEX:
+					case OBJECT_TABLE:
+						if ((strncmp(stmt->relation->relname, "pg_", 3) == 0) ||
+						    (strncmp(stmt->relation->relname, "gp_", 3) == 0))	
+						{
+							/*
+							 * For system catalog tables, only allow one REINDEX TABLE at a time.
+							 */
+							lockmode = AccessExclusiveLock;
+						}
+						else
+						{
+							lockmode = AccessShareLock;
+						}
+						break;
+
+					case OBJECT_DATABASE:
+						/*
+						 * This command issues REINDEX {INDEX|TABLE} commands which
+						 * will do their own locking, so don't lock here.
+						 */
+						lockmode = NoLock;
+						break;
+
+					default:
+						elog(ERROR, "unrecognized object type: %d",
+							 (int) stmt->kind);
+						lockmode = NoLock;	// Quiet the compiler.
+						break;
+				}
+			}
+			break;
+	
+	
+		default:
+			Assert(false);
+			elog(ERROR, "unrecognized node type: %d",
+				 (int) nodeTag(parsetree));
+			
+			lockmode = NoLock;	// Quiet the compiler.
+			break;
+	}
+
+//	elog(LOG, "Choice for parsetree node type %d is lockmode %s",
+//		 (int) nodeTag(parsetree),
+//		 LockModeName(lockmode));
+
+	switch (lockmode)
+	{
+		case NoLock:
+			break;
+
+		case AccessShareLock:
+			LockDatabaseMaintenance(MyDatabaseId, AccessShareLock);
+			break;
+
+		case AccessExclusiveLock:
+			LockDatabaseMaintenance(MyDatabaseId, AccessExclusiveLock);
+			break;
+
+		default:
+			Assert(false);
+			elog(ERROR, "unrecognized lock mode: %d",
+				 lockmode);
+			break;
+	}
+}
 
 /*
  * exec_simple_query
@@ -1626,6 +1811,8 @@ exec_simple_query(const char *query_string, const char *seqServerHost, int seqSe
 		/* If we got a cancel signal in parsing or prior command, quit */
 		CHECK_FOR_INTERRUPTS();
 		
+		LockForCatalogMaintenance(parsetree);
+
 		/*
 		 * Set up a snapshot if parse analysis/planning will need one.
 		 */

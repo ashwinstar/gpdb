@@ -77,4 +77,6 @@ extern bool set_plan_disabling_options(const char *arg,
 						   GucContext context, GucSource source);
 extern const char *get_stats_option_name(const char *arg);
 
+extern void LockForCatalogMaintenance(Node *parsetree);
+
 #endif   /* TCOPPROT_H */

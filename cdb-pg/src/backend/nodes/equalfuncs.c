@@ -1823,6 +1823,7 @@ _equalReindexStmt(ReindexStmt *a, ReindexStmt *b)
 	COMPARE_STRING_FIELD(name);
 	COMPARE_SCALAR_FIELD(do_system);
 	COMPARE_SCALAR_FIELD(do_user);
+	COMPARE_SCALAR_FIELD(missing_ok);
 	COMPARE_NODE_FIELD(new_ind_oids);
 
 	return true;

@@ -81,4 +81,9 @@ extern void UnlockSharedObject(Oid classid, Oid objid, uint16 objsubid,
 /* Knowledge about which locktags describe temp objects */
 extern bool LockTagIsTemp(const LOCKTAG *tag);
 
+/* Lock a database for maintenance */
+extern void LockDatabaseMaintenance(Oid dbid, LOCKMODE lockmode);
+extern void UnlockDatabaseMaintenance(Oid dbid, LOCKMODE lockmode);
+
+
 #endif   /* LMGR_H */

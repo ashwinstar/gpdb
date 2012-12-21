@@ -910,6 +910,11 @@ DescribeLockTag(StringInfo buf, const LOCKTAG *lock)
 							 lock->locktag_field3,
 							 lock->locktag_field4);
 			break;
+		case LOCKTAG_DATABASE_MAINTENANCE:
+			appendStringInfo(buf,
+							 _("database %u"),
+							 lock->locktag_field1);
+			break;
 		default:
 			appendStringInfo(buf,
 							 _("unrecognized locktag type %d"),
