@@ -161,14 +161,15 @@ static struct
 	const char*	f; /* forced filename */
 	int			g; /* gp_proto (0 or 1) (internal, not documented) */
 	int			t; /* timeout in seconds */
-	const char *b;
+	const char *b; /* IP address to bind (internal, not documented) */
 	int			m; /* max data line len */
 	int			S; /* use O_SYNC when opening files for write  */
 	int			z; /* listen queue size (hidden option currently for debuging) */
 	const char* c; /* config file */
 	struct transform* trlist; /* transforms from config file */
 	const char* ssl; /* path to certificates in case we use gpfdist with ssl */
-} opt = { 8080, 8080, 0, 0, ".", 0, 0, -1, 5, 0, 32768, 0, 256, 0, 0, 0 };
+	int 		sslclean; /* Defines the time to wait [sec] untill cleanup the SSL resources (internal, not documented) */
+} opt = { 8080, 8080, 0, 0, ".", 0, 0, -1, 5, 0, 32768, 0, 256, 0, 0, 0, 5 };
 
 #if APR_IS_BIGENDIAN
 #define local_htonll(n)  (n)
@@ -207,7 +208,7 @@ static void block_fill_header(block_t* b,
 	p += 4;
 	memcpy(p, fos->fname, fname_len);
 	p += fname_len;
-	TR(("F %d %s\n", (int)ntohl(len), fos->fname));
+	TR(("F %u %s\n", (unsigned int)ntohl(len), fos->fname));
 
 	/* OFFSET: 'O' + len + foff */
 	*p++ = 'O';
@@ -217,7 +218,7 @@ static void block_fill_header(block_t* b,
 	p += 4;
 	memcpy(p, &len8, 8);
 	p += 8;
-	TR(("O %d\n", (int)local_ntohll(len8)));
+	TR(("O %llu\n",(unsigned long long) local_ntohll(len8)));
 
 	/* LINENUMBER: 'L' + len + linenumber */
 	*p++ = 'L';
@@ -226,14 +227,14 @@ static void block_fill_header(block_t* b,
 	p += 4;
 	memcpy(p, &len8, 8);
 	p += 8;
-	TR(("L %d\n", (int)local_ntohll(len8)));
+	TR(("L %llu\n", (unsigned long long)local_ntohll(len8)));
 
 	/* DATA: 'D' + len */
 	*p++ = 'D';
 	len = htonl(b->top-b->bot);
 	memcpy(p, &len, 4);
 	p += 4;
-	TR(("D %d\n", (int)ntohl(len)));
+	TR(("D %u\n", (unsigned int)ntohl(len)));
 	h->htop = p - h->hbyte;
 	if (h->htop > sizeof(h->hbyte))
 		gfatal(FLINE, "assert failed, h->htop = %d, max = %d\n", h->htop,
@@ -366,6 +367,7 @@ static int (*gpfdist_receive)(const request_t *r, void *buf, const size_t buflen
 static void free_SSL_resources(const request_t *r);
 static void setup_flush_ssl_buffer(request_t* r);
 static void request_cleanup(request_t *r);
+static void request_cleanup_and_free_SSL_resources(int fd, short event, void* arg);
 
 /* Print usage */
 static void usage_error(const char* msg, int print_usage)
@@ -472,6 +474,7 @@ static void parse_command_line(int argc, const char* const argv[],
 	{ NULL, 'S', 0, "use O_SYNC when opening files for write" },
 	{ NULL, 'z', 1, "internal - queue size for listen call" },
 	{ "ssl", 257, 1, "ssl - certificates files under this directory" },
+	{ "sslclean", 258, 1, "Defines the time to wait [sec] untill cleanup the SSL resources" },
 #ifdef GPFXDIST
 	{ NULL, 'c', 1, "transform configuration file" },
 #endif
@@ -545,6 +548,9 @@ static void parse_command_line(int argc, const char* const argv[],
 		case 257:
 			opt.ssl = arg;
 			break;
+		case 258:
+			opt.sslclean = atoi(arg);
+			break;
 		case 256:
 			print_version();
 			break;
@@ -564,7 +570,7 @@ static void parse_command_line(int argc, const char* const argv[],
 	}
 
 	if (! ((2 <= opt.t && opt.t <= 30) || opt.t == 0))
-		usage_error("Error:-t timeout must be between 2 and 30, or 0 for no timeout", 0);
+		usage_error("Error: -t timeout must be between 2 and 30, or 0 for no timeout", 0);
 
 	/* validate max row length */
     if (! ((GPFDIST_MAX_LINE_LOWER_LIMIT <= opt.m) && (opt.m <= GPFDIST_MAX_LINE_UPPER_LIMIT)))
@@ -675,6 +681,10 @@ static void parse_command_line(int argc, const char* const argv[],
 				"Please specify a valid directory for --ssl switch", opt.ssl), 0);
 		opt.ssl = p;
 	}
+
+	/* Validate opt.sslclean*/
+	if ( (opt.sslclean < 0) || (opt.sslclean > 300) )
+		usage_error("Error: -sslclean timeout must be between 0 and 300 [sec] (default is 5[sec])", 0);
 
 #ifdef GPFXDIST
     /* validate opt.c */
@@ -3478,7 +3488,6 @@ static void flush_ssl_buffer(int fd, short event, void* arg)
 	if ( event & EV_TIMEOUT )
 	{
 		gwarning(FLINE,"Buffer flush timeout");
-		return;
 	}
 
 	if ( BIO_wpending(r->io) )
@@ -3487,11 +3496,20 @@ static void flush_ssl_buffer(int fd, short event, void* arg)
 	}
 	else
 	{
-		/* Clean up request resources */
-		request_cleanup(r);
+		// Prepare and start a 5 seconds timer.
+		// While working with BIO_SSL, we are working with 3 buffers:
+		// [1] BIO layer buffer [2] SSL buffer [3] Socket buffer
+		// Sometimes we have a delay somewhere between these buffers (MPP-16402)
+		// So, even if the BIO_wpending() shows that there is no more pending data in the BIO_SSL buffer,
+		// we might still have data in the socket's buffer that wasn't sent yet.
 
-		/* Release SSL related memory */
-		free_SSL_resources(r);
+		TR(("[%s] [%d] SSL cleanup started\n", datetime(), r->sock));
+
+		event_del(&r->ev);
+		evtimer_set(&r->ev, request_cleanup_and_free_SSL_resources, r);
+		r->tm.tv_sec  = opt.sslclean;
+		r->tm.tv_usec = 0;
+		(void)evtimer_add(&r->ev, &r->tm);
 	}
 }
 
@@ -3523,4 +3541,22 @@ static void request_cleanup(request_t *r)
 	closesocket(r->sock);
 	r->sock = -1;
 	apr_pool_destroy(r->pool);
+}
+
+
+/*
+ * request_cleanup_and_free_SSL_resources
+ *
+ */
+static void request_cleanup_and_free_SSL_resources(int fd, short event, void* arg)
+{
+	request_t *r = (request_t *)arg;
+
+	TR(("[%s] [%d] SSL cleanup ended\n", datetime(), r->sock));
+
+	/* Clean up request resources */
+	request_cleanup(r);
+
+	/* Release SSL related memory */
+	free_SSL_resources(r);
 }
