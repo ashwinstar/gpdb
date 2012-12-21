@@ -44,7 +44,7 @@
 #include "storage/pmsignal.h"
 #include "utils/guc.h"
 #include "utils/ps_status.h"
-
+#include "postmaster/primary_mirror_mode.h"
 
 /* ----------
  * Timer definitions.
@@ -415,8 +415,13 @@ pgarch_archiveXlog(char *xlog)
 	char	   *endp;
 	const char *sp;
 	int			rc;
+	char		*xlogDir = makeRelativeToTxnFilespace(XLOGDIR);
 
-	snprintf(pathname, MAXPGPATH, XLOGDIR "/%s", xlog);
+	if (snprintf(pathname, MAXPGPATH, "%s/%s", xlogDir, xlog) > MAXPGPATH)
+	{
+		ereport(ERROR, (errmsg("cannot generate path %s/%s", xlogDir, xlog)));
+	}
+	pfree(xlogDir);
 
 	/*
 	 * construct the command to be executed
@@ -530,8 +535,15 @@ pgarch_readyXlog(char *xlog)
 	DIR		   *rldir;
 	struct dirent *rlde;
 	bool		found = false;
+	char		*xlogDir = NULL;
 
-	snprintf(XLogArchiveStatusDir, MAXPGPATH, XLOGDIR "/archive_status");
+	xlogDir = makeRelativeToTxnFilespace(XLOGDIR);
+	if (snprintf(XLogArchiveStatusDir, MAXPGPATH, "%s/archive_status", xlogDir) > MAXPGPATH)
+	{
+		ereport(ERROR, (errmsg("cannot generate path %s/archive_status", xlogDir)));
+	}
+	pfree(xlogDir);
+
 	rldir = AllocateDir(XLogArchiveStatusDir);
 	if (rldir == NULL)
 		ereport(ERROR,

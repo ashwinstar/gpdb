@@ -22,7 +22,7 @@
 #include "fmgr.h"
 #include "storage/block.h"
 #include "storage/relfilenode.h"
-
+#include "postmaster/primary_mirror_mode.h"
 
 /*
  * Header info for a backup block appended to an XLOG record.
@@ -206,22 +206,45 @@ typedef XLogLongPageHeaderData *XLogLongPageHeader;
 	snprintf(fname, MAXFNAMELEN, "%08X%08X%08X", tli, log, seg)
 
 #define XLogFilePath(path, tli, log, seg)	\
-	snprintf(path, MAXPGPATH, XLOGDIR "/%08X%08X%08X", tli, log, seg)
+	do										\
+	{										\
+		char *XLogDir = makeRelativeToTxnFilespace(XLOGDIR);		\
+		snprintf(path, MAXPGPATH, "%s/%08X%08X%08X", XLogDir, tli, log, seg);	\
+		pfree(XLogDir);								\
+	}while(0)
+
+#define XLogFilePath2(path, tli, log, seg)	\
+		snprintf(path, MAXPGPATH, "%s/%08X%08X%08X", XLOGDIR, tli, log, seg);	
 
 #define TLHistoryFileName(fname, tli)	\
 	snprintf(fname, MAXFNAMELEN, "%08X.history", tli)
 
 #define TLHistoryFilePath(path, tli)	\
-	snprintf(path, MAXPGPATH, XLOGDIR "/%08X.history", tli)
+	do										\
+	{										\
+		char *XLogDir = makeRelativeToTxnFilespace(XLOGDIR);		\
+		snprintf(path, MAXPGPATH, "%s/%08X.history", XLogDir, tli);			\
+		pfree(XLogDir);								\
+	}while(0)
 
 #define StatusFilePath(path, xlog, suffix)	\
-	snprintf(path, MAXPGPATH, XLOGDIR "/archive_status/%s%s", xlog, suffix)
+	do										\
+	{										\
+		char *XLogDir = makeRelativeToTxnFilespace(XLOGDIR);		\
+		snprintf(path, MAXPGPATH, "%s/archive_status/%s%s", XLogDir, xlog, suffix);	\
+		pfree(XLogDir);								\
+	}while(0)
 
 #define BackupHistoryFileName(fname, tli, log, seg, offset) \
 	snprintf(fname, MAXFNAMELEN, "%08X%08X%08X.%08X.backup", tli, log, seg, offset)
 
 #define BackupHistoryFilePath(path, tli, log, seg, offset)	\
-	snprintf(path, MAXPGPATH, XLOGDIR "/%08X%08X%08X.%08X.backup", tli, log, seg, offset)
+	do										\
+	{										\
+		char *XLogDir = makeRelativeToTxnFilespace(XLOGDIR);		\
+		snprintf(path, MAXPGPATH, "%s/%08X%08X%08X.%08X.backup", XLogDir, tli, log, seg, offset);	\
+		pfree(XLogDir);								\
+	}while(0)
 
 
 /*

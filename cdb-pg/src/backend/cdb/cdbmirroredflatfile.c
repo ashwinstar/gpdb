@@ -57,6 +57,8 @@ int MirroredFlatFile_Open(
 {
 	int save_errno = 0;
 	
+	char *dir = NULL, *mirrorDir = NULL;
+	
 	Assert(open != NULL);
 
 	/* If the user wants an atomic write, they better be creating a file */
@@ -85,18 +87,39 @@ int MirroredFlatFile_Open(
 		open->simpleFileName = MemoryContextStrdup(TopMemoryContext, simpleFileName);
 	}
 
-
 	open->isMirrorRecovery = isMirrorRecovery;
 	open->usingDbDirNode = false;
-	open->subDirectory = MemoryContextStrdup(TopMemoryContext, subDirectory);
-	open->path = MemoryContextAlloc(TopMemoryContext, strlen(subDirectory) + 1 +
+
+	/* 
+	 * Now that the transaction filespace is configurable, the subdirectory is not always
+	 * relative to the data directory. If we have configured the transaction files to be on
+	 * the non-default filespace, then we need the absolute path for the sub directory 
+         */
+	if (isTxnDir(subDirectory))
+	{
+		dir = makeRelativeToTxnFilespace(subDirectory);
+		mirrorDir = makeRelativeToPeerTxnFilespace(subDirectory);
+		open->subDirectory = MemoryContextStrdup(TopMemoryContext, mirrorDir);
+	}
+	else
+	{
+		/* Default case */
+		dir = MemoryContextStrdup(TopMemoryContext, subDirectory);
+		open->subDirectory = MemoryContextStrdup(TopMemoryContext, subDirectory);
+	}
+
+	open->path = MemoryContextAlloc(TopMemoryContext, strlen(dir) + 1 +
 									strlen(open->simpleFileName) + 1);
 
-	sprintf(open->path, "%s/%s", subDirectory, open->simpleFileName);
 	
+	if (snprintf(open->path, MAXPGPATH, "%s/%s", dir, open->simpleFileName) > MAXPGPATH)
+	{
+		ereport(ERROR, (errmsg("cannot generate path %s/%s", dir, open->simpleFileName)));
+	}
+
 	if (FileRepPrimary_MirrorOpen(
 				  FileRep_GetFlatFileIdentifier(
-								subDirectory, 
+								open->subDirectory, 
 								open->simpleFileName),
 				  FileRepRelationTypeFlatFile,
 				  FILEREP_OFFSET_UNDEFINED,
@@ -131,7 +154,7 @@ int MirroredFlatFile_Open(
 			
 			pfree(open->path);
 			open->path = NULL;
-			
+		
 			open->isActive = false;
 						
 		}
@@ -146,6 +169,13 @@ int MirroredFlatFile_Open(
 	{
 		open->isActive = true;
 	}
+
+	if (dir)	
+		pfree(dir);
+
+	if (mirrorDir)
+		pfree(mirrorDir);
+
 	return save_errno;
 }
 
@@ -434,11 +464,30 @@ int MirroredFlatFile_Rename(
 	int	 save_errno = 0;
 	struct stat buf;
 
+	char *dir = NULL, *mirrorDir = NULL;
+
 	oldPath = (char*)palloc(MAXPGPATH + 1);
 	newPath = (char*)palloc(MAXPGPATH + 1);
-	
-	sprintf(oldPath, "%s/%s", subDirectory, oldSimpleFileName);
-	sprintf(newPath, "%s/%s", subDirectory, newSimpleFileName);
+
+	if (isTxnDir(subDirectory))
+	{
+		dir = makeRelativeToTxnFilespace(subDirectory);
+		mirrorDir = makeRelativeToPeerTxnFilespace(subDirectory);
+	}	
+	else
+	{
+		dir = MemoryContextStrdup(TopMemoryContext, subDirectory);
+		mirrorDir = MemoryContextStrdup(TopMemoryContext, subDirectory);
+	}
+
+	if (snprintf(oldPath, MAXPGPATH, "%s/%s", dir, oldSimpleFileName) > MAXPGPATH)
+	{
+		ereport(ERROR, (errmsg("cannot generate path %s/%s", dir, oldSimpleFileName)));
+	}
+	if (snprintf(newPath, MAXPGPATH, "%s/%s", dir, newSimpleFileName) > MAXPGPATH)
+	{
+		ereport(ERROR, (errmsg("cannot generate path %s/%s", dir, newSimpleFileName)));
+	}
 	
 	if (!new_can_exist)
 	{
@@ -450,10 +499,10 @@ int MirroredFlatFile_Rename(
 
 	if (FileRepPrimary_MirrorRename(
 								   FileRep_GetFlatFileIdentifier(
-												subDirectory, 
+												mirrorDir, 
 												oldSimpleFileName),
 									FileRep_GetFlatFileIdentifier(
-											  subDirectory, 
+											  mirrorDir, 
 											  newSimpleFileName),
 									FileRepRelationTypeFlatFile) != 0) {
 		
@@ -478,7 +527,7 @@ int MirroredFlatFile_Rename(
 	if (mirrorRename)
 	{
 		if (FileRepPrimary_IsOperationCompleted(
-							FileRep_GetFlatFileIdentifier(subDirectory, 
+							FileRep_GetFlatFileIdentifier(mirrorDir, 
 														  oldSimpleFileName),	
 							FileRepRelationTypeFlatFile) == FALSE)	
 			ereport(LOG,
@@ -488,6 +537,9 @@ int MirroredFlatFile_Rename(
 
 	pfree(oldPath);
 	pfree(newPath);
+
+	pfree(dir);
+	pfree(mirrorDir);
 
 	return save_errno;
 }
@@ -808,14 +860,29 @@ int MirroredFlatFile_Drop(
 	char *path;
 	bool mirrorDrop = TRUE;
 	int	 save_errno = 0;
+	char *dir = NULL, *mirrorDir = NULL;
+	
+	if (isTxnDir(subDirectory))
+	{
+		dir = makeRelativeToTxnFilespace(subDirectory);
+		mirrorDir = makeRelativeToPeerTxnFilespace(subDirectory);
+	}
+	else
+	{
+		dir = MemoryContextStrdup(TopMemoryContext, subDirectory);
+		mirrorDir = MemoryContextStrdup(TopMemoryContext, subDirectory);
+	}
 
 	path = (char*)palloc(MAXPGPATH + 1);
 	
-	sprintf(path, "%s/%s", subDirectory, simpleFileName);
+	if (snprintf(path, MAXPGPATH, "%s/%s", dir, simpleFileName) > MAXPGPATH)
+	{
+		ereport(ERROR, (errmsg("cannot generate path %s/%s", dir, simpleFileName)));
+	}	
 	
 	if (FileRepPrimary_MirrorDrop(
 				   FileRep_GetFlatFileIdentifier(
-							 subDirectory, 
+							 mirrorDir, 
 							 simpleFileName),
 				   FileRepRelationTypeFlatFile) != 0) {
 		
@@ -836,7 +903,7 @@ int MirroredFlatFile_Drop(
 	if (mirrorDrop) {
 		if (FileRepPrimary_IsOperationCompleted(
 					   FileRep_GetFlatFileIdentifier(
-								 subDirectory, 
+								 mirrorDir, 
 								 simpleFileName),									
 					   FileRepRelationTypeFlatFile) == FALSE)	
 			ereport(LOG,
@@ -844,6 +911,8 @@ int MirroredFlatFile_Drop(
 	}
 
 	pfree(path);
+	pfree(dir);
+	pfree(mirrorDir);
 
 	return save_errno;
 }
@@ -918,14 +987,26 @@ MirrorFlatFile(
 	int32					startOffset = 0;
 	int32					bufferLen = 0;
 	int						retval = 0;
+	char 			*dir = NULL, *mirrorDir = NULL;
 	
 	errno = 0;
+
+	if (isTxnDir(subDirectory))
+	{
+		dir = makeRelativeToTxnFilespace(subDirectory);
+		mirrorDir = makeRelativeToPeerTxnFilespace(subDirectory);	
+	}
+	else
+	{
+		dir = MemoryContextStrdup(TopMemoryContext, subDirectory);
+		mirrorDir = MemoryContextStrdup(TopMemoryContext, subDirectory);
+	}
 	
 	while (1) {
 		
 		retval = MirroredFlatFile_OpenPrimary(
 											  &primaryOpen,
-											  subDirectory,
+											  dir,
 											  simpleFileName,
 											  O_RDONLY | PG_BINARY,
 											  S_IRUSR | S_IWUSR,
@@ -1030,45 +1111,65 @@ MirrorFlatFile(
 	if (MirroredFlatFile_IsActive(&primaryOpen)) {
 		MirroredFlatFile_ClosePrimary(&primaryOpen);
 	}
-	
+
+	if (dir)
+		pfree(dir);
+	if (mirrorDir)
+		pfree(mirrorDir);	
+
 	return retval;
 }
 
 void
 MirroredFlatFile_DropFilesFromDir(void)
 {
-
+	char *mirrorXLogDir = makeRelativeToPeerTxnFilespace(XLOGDIR);
+	char *mirrorCLogDir = makeRelativeToPeerTxnFilespace(CLOG_DIR);
+	char *mirrorDistributedLogDir = makeRelativeToPeerTxnFilespace(DISTRIBUTEDLOG_DIR);
+	char *mirrorDistributedXidMapDir = makeRelativeToPeerTxnFilespace(DISTRIBUTEDXIDMAP_DIR);
+	char *mirrorMultiXactMemberDir = makeRelativeToPeerTxnFilespace(MULTIXACT_MEMBERS_DIR);
+	char *mirrorMultiXactOffsetDir = makeRelativeToPeerTxnFilespace(MULTIXACT_OFFSETS_DIR);
+	char *mirrorSubxactDir = makeRelativeToPeerTxnFilespace(SUBTRANS_DIR);
+		
 	FileRepPrimary_MirrorDropFilesFromDir(
 										 FileRep_GetFlatFileIdentifier(TWOPHASE_DIR, ""),	
 										 FileRepRelationTypeFlatFile);
 	
 	FileRepPrimary_MirrorDropFilesFromDir(
-										 FileRep_GetFlatFileIdentifier(CLOG_DIR, ""),	
+										 FileRep_GetFlatFileIdentifier(mirrorCLogDir, ""),	
 										 FileRepRelationTypeFlatFile);
 	
 	FileRepPrimary_MirrorDropFilesFromDir(
-										 FileRep_GetFlatFileIdentifier(DISTRIBUTEDLOG_DIR, ""),	
+										 FileRep_GetFlatFileIdentifier(mirrorDistributedLogDir, ""),	
 										 FileRepRelationTypeFlatFile);
 	
 	FileRepPrimary_MirrorDropFilesFromDir(
-										 FileRep_GetFlatFileIdentifier(DISTRIBUTEDXIDMAP_DIR, ""),	
+										 FileRep_GetFlatFileIdentifier(mirrorDistributedXidMapDir, ""),	
 										 FileRepRelationTypeFlatFile);
 	
 	FileRepPrimary_MirrorDropFilesFromDir(
-										 FileRep_GetFlatFileIdentifier(MULTIXACT_MEMBERS_DIR, ""),	
+										 FileRep_GetFlatFileIdentifier(mirrorMultiXactMemberDir, ""),	
 										 FileRepRelationTypeFlatFile);
 	
 	FileRepPrimary_MirrorDropFilesFromDir(
-										 FileRep_GetFlatFileIdentifier(MULTIXACT_OFFSETS_DIR, ""),	
+										 FileRep_GetFlatFileIdentifier(mirrorMultiXactOffsetDir, ""),	
 										 FileRepRelationTypeFlatFile);
 	
 	FileRepPrimary_MirrorDropFilesFromDir(
-										 FileRep_GetFlatFileIdentifier(SUBTRANS_DIR, ""),	
+										 FileRep_GetFlatFileIdentifier(mirrorSubxactDir, ""),	
 										 FileRepRelationTypeFlatFile);
 	
 	FileRepPrimary_MirrorDropFilesFromDir(
-										 FileRep_GetFlatFileIdentifier(XLOGDIR, ""),	
+										 FileRep_GetFlatFileIdentifier(mirrorXLogDir, ""),	
 										 FileRepRelationTypeFlatFile);
+
+	pfree(mirrorSubxactDir);
+	pfree(mirrorMultiXactOffsetDir);
+	pfree(mirrorMultiXactMemberDir);
+	pfree(mirrorDistributedXidMapDir);
+	pfree(mirrorDistributedLogDir);
+	pfree(mirrorCLogDir);
+	pfree(mirrorXLogDir);
 	
 }
 

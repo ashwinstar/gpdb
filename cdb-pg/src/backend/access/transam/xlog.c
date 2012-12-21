@@ -81,7 +81,8 @@
 #include "cdb/cdbresynchronizechangetracking.h"
 #include "cdb/cdbpersistentfilesysobj.h"
 #include "cdb/cdbfilerep.h"
-
+#include "postmaster/primary_mirror_mode.h"
+#include "utils/elog.h"
 
 // Avoid trying to pull in cdbfts.h
 extern bool isQDMirroringPendingCatchup(void);
@@ -1853,6 +1854,7 @@ XLogCatchupQDSegment(uint32 logId, uint32 seg, uint32 offset, uint32 end, struct
 	int			readLen;
 	char 		cmd[MAXFNAMELEN + 30];
 	bool		successful;
+	char		*xlogDir = NULL;
 
 	elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "catch-up segment logId %u, seg %u, offset 0x%X, end 0x%X",
 		 logId, seg, offset, end);
@@ -1861,10 +1863,13 @@ XLogCatchupQDSegment(uint32 logId, uint32 seg, uint32 offset, uint32 end, struct
 	XLogFileName(fname, ThisTimeLineID, logId, seg);
 	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"formed '%s' for time-line %u, log %u, seg %u",
 		 fname, ThisTimeLineID, logId, seg);
-    if (snprintf(path, MAXPGPATH, "%s/%s", XLOGDIR, fname) >= MAXPGPATH)
+
+	xlogDir = makeRelativeToTxnFilespace(XLOGDIR);
+    	if (snprintf(path, MAXPGPATH, "%s/%s", xlogDir, fname) >= MAXPGPATH)
 	{
-		elog(ERROR, "QDSYNC: could not generate xlog filename (%s/%s)", XLOGDIR, fname);
+		ereport(ERROR, (errmsg("could not generate xlog filename (%s/%s)", xlogDir, fname)));
 	}
+	pfree(xlogDir);
 
 	fd = BasicOpenFile(path, O_RDONLY | PG_BINARY, 0);
 	if (fd < 0)
@@ -2784,6 +2789,7 @@ XLogFileInit(
 	uint32		installed_seg;
 	int			max_advance;
 	int			nbytes;
+	char			*xlogDir = NULL;
 
 	XLogFileName(simpleFileName, ThisTimeLineID, log, seg);
 
@@ -2822,8 +2828,18 @@ XLogFileInit(
 	 * pre-creating an extra log segment.  That seems OK, and better than
 	 * holding the lock throughout this lengthy process.
 	 */
-	snprintf(tmpsimple, MAXPGPATH, "xlogtemp.%d", (int) getpid());
-	snprintf(tmppath, MAXPGPATH, XLOGDIR "/%s", tmpsimple);
+	xlogDir = makeRelativeToTxnFilespace(XLOGDIR);
+		
+	if (snprintf(tmpsimple, MAXPGPATH, "xlogtemp.%d", (int) getpid()) > MAXPGPATH)
+	{
+		ereport(ERROR, (errmsg("could not generate filename xlogtemp.%d", (int)getpid())));
+        }
+
+	if (snprintf(tmppath, MAXPGPATH, "%s/%s", xlogDir, tmpsimple) > MAXPGPATH)
+	{
+		ereport(ERROR, (errmsg("could not generate filename %s/%s", xlogDir, tmpsimple)));
+        }
+
 
 	MirroredFlatFile_Drop(
 						  XLOGDIR,
@@ -2923,6 +2939,8 @@ XLogFileInit(
 					    /* suppressError */ false,
 						/* atomic operation */ false,
 						/*isMirrorRecovery */ false);
+
+	pfree(xlogDir);
 }
 
 /*
@@ -2947,6 +2965,7 @@ XLogFileCopy(uint32 log, uint32 seg,
 	int			srcfd;
 	int			fd;
 	int			nbytes;
+	char		*xlogDir = NULL;
 
 	/*
 	 * Open the source file
@@ -2961,8 +2980,12 @@ XLogFileCopy(uint32 log, uint32 seg,
 	/*
 	 * Copy into a temp file name.
 	 */
-	snprintf(tmppath, MAXPGPATH, XLOGDIR "/xlogtemp.%d", (int) getpid());
-
+	xlogDir = makeRelativeToTxnFilespace(XLOGDIR);
+	if (snprintf(tmppath, MAXPGPATH, "%s/xlogtemp.%d", xlogDir, (int) getpid()))
+	{
+		ereport(ERROR, (errmsg("could not generate filename %s/xlogtemp.%d", xlogDir, (int) getpid())));
+        }
+	pfree(xlogDir);	
 	unlink(tmppath);
 
 	elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "Master Mirroring: copying xlog file '%s' to '%s'",
@@ -3263,7 +3286,7 @@ XLogFileRead(uint32 log, uint32 seg, int emode)
 			XLogFilePath(path, tli, log, seg);
 
 		elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"opening \"%s\" for reading (log %u, seg %u)",
-			 path, log, seg);
+                         path, log, seg);
 		fd = BasicOpenFile(path, O_RDONLY | PG_BINARY, 0);
 		if (fd >= 0)
 		{
@@ -3359,6 +3382,7 @@ RestoreArchivedFile(char *path, const char *xlogfname,
 	int			rc;
 	bool		signaled;
 	struct stat stat_buf;
+	char		*xlogDir = NULL;
 
 	ereport((Debug_print_qd_mirroring ? LOG : DEBUG3),
 			(errmsg_internal("restore archived file path = \"%s\", xlogfname = \"%s\", recovername = \"%s\", expectedSize %d",
@@ -3386,7 +3410,11 @@ RestoreArchivedFile(char *path, const char *xlogfname,
 	 * copy-from-archive filename is always the same, ensuring that we don't
 	 * run out of disk space on long recoveries.
 	 */
-	snprintf(xlogpath, MAXPGPATH, XLOGDIR "/%s", recovername);
+	xlogDir = makeRelativeToTxnFilespace(XLOGDIR);
+	if (snprintf(xlogpath, MAXPGPATH, "%s/%s", xlogDir, recovername) > MAXPGPATH)
+	{
+		ereport(ERROR, (errmsg("cannot generate filename %s/%s", xlogDir, recovername)));
+	}
 
 	/*
 	 * Make sure there is no existing file named recovername.
@@ -3536,7 +3564,11 @@ RestoreArchivedFile(char *path, const char *xlogfname,
 	 * In many recovery scenarios we expect this to fail also, but if so that
 	 * just means we've reached the end of WAL.
 	 */
-	snprintf(path, MAXPGPATH, XLOGDIR "/%s", xlogfname);
+	if (snprintf(path, MAXPGPATH, "%s/%s", xlogDir, xlogfname) > MAXPGPATH)
+	{
+		ereport(ERROR, (errmsg("cannot generate filename %s/%s", xlogDir, xlogfname)));
+	}
+	pfree(xlogDir);
 	return false;
 }
 
@@ -3588,6 +3620,7 @@ MoveOfflineLogs(uint32 log, uint32 seg, XLogRecPtr endptr,
 	struct dirent *xlde;
 	char		lastoff[MAXFNAMELEN];
 	char		path[MAXPGPATH];
+	char		*xlogDir = NULL;
 
 	*nsegsremoved = 0;
 	*nsegsrecycled = 0;
@@ -3599,16 +3632,17 @@ MoveOfflineLogs(uint32 log, uint32 seg, XLogRecPtr endptr,
 	XLByteToPrevSeg(endptr, endlogId, endlogSeg);
 	max_advance = XLOGfileslop;
 
-	xldir = AllocateDir(XLOGDIR);
+	xlogDir = makeRelativeToTxnFilespace(XLOGDIR);
+	xldir = AllocateDir(xlogDir);
 	if (xldir == NULL)
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not open transaction log directory \"%s\": %m",
-						XLOGDIR)));
+						xlogDir)));
 
 	XLogFileName(lastoff, ThisTimeLineID, log, seg);
 
-	while ((xlde = ReadDir(xldir, XLOGDIR)) != NULL)
+	while ((xlde = ReadDir(xldir, xlogDir)) != NULL)
 	{
 		/*
 		 * We ignore the timeline part of the XLOG segment identifiers in
@@ -3627,7 +3661,10 @@ MoveOfflineLogs(uint32 log, uint32 seg, XLogRecPtr endptr,
 		{
 			if (XLogArchiveCheckDone(xlde->d_name))
 			{
-				snprintf(path, MAXPGPATH, XLOGDIR "/%s", xlde->d_name);
+				if (snprintf(path, MAXPGPATH, "%s/%s", xlogDir, xlde->d_name) > MAXPGPATH)
+				{
+					ereport(ERROR, (errmsg("cannot generate filename %s/%s", xlogDir, xlde->d_name)));
+				}
 
 				/*
 				 * Before deleting the file, see if it can be recycled as a
@@ -3670,6 +3707,7 @@ MoveOfflineLogs(uint32 log, uint32 seg, XLogRecPtr endptr,
 	}
 
 	FreeDir(xldir);
+	pfree(xlogDir);
 }
 
 /*
@@ -3685,21 +3723,23 @@ XLogRemoveStandbyLogs(uint32 log, uint32 seg, int *nsegsremoved)
 	struct dirent *xlde;
 	char		lastoff[MAXFNAMELEN];
 	char		path[MAXPGPATH];
+	char		*xlogDir = NULL;	
 
 	Assert(nsegsremoved != NULL);
 
 	*nsegsremoved = 0;
 
-	xldir = AllocateDir(XLOGDIR);
+	xlogDir = makeRelativeToTxnFilespace(XLOGDIR);
+	xldir = AllocateDir(xlogDir);
 	if (xldir == NULL)
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("QDSYNC: could not open standby transaction log directory \"%s\": %m",
-						XLOGDIR)));
+						xlogDir)));
 
 	XLogFileName(lastoff, ThisTimeLineID, log, seg);
 
-	while ((xlde = ReadDir(xldir, XLOGDIR)) != NULL)
+	while ((xlde = ReadDir(xldir, xlogDir)) != NULL)
 	{
 		/*
 		 * We ignore the timeline part of the XLOG segment identifiers in
@@ -3716,7 +3756,10 @@ XLogRemoveStandbyLogs(uint32 log, uint32 seg, int *nsegsremoved)
 			strspn(xlde->d_name, "0123456789ABCDEF") == 24 &&
 			strcmp(xlde->d_name + 8, lastoff + 8) <= 0)
 		{
-			snprintf(path, MAXPGPATH, XLOGDIR "/%s", xlde->d_name);
+			if (snprintf(path, MAXPGPATH, "%s/%s", xlogDir, xlde->d_name) > MAXPGPATH)
+			{
+				ereport(ERROR, (errmsg("cannot generate filename %s/%s", xlogDir, xlde->d_name)));
+			}
 
 			if (unlink(path) < 0)
 			{
@@ -3737,6 +3780,7 @@ XLogRemoveStandbyLogs(uint32 log, uint32 seg, int *nsegsremoved)
 	}
 
 	FreeDir(xldir);
+	pfree(xlogDir);
 }
 
 
@@ -3750,15 +3794,17 @@ XLogPrintLogNames(void)
 	DIR		   *xldir;
 	struct dirent *xlde;
 	int count = 0;
+	char *xlogDir = NULL;
 
-	xldir = AllocateDir(XLOGDIR);
+	xlogDir = makeRelativeToTxnFilespace(XLOGDIR);
+	xldir = AllocateDir(xlogDir);
 	if (xldir == NULL)
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not open transaction log directory \"%s\": %m",
-						XLOGDIR)));
+						xlogDir)));
 
-	while ((xlde = ReadDir(xldir, XLOGDIR)) != NULL)
+	while ((xlde = ReadDir(xldir, xlogDir)) != NULL)
 	{
 		if (strlen(xlde->d_name) == 24 &&
 			strspn(xlde->d_name, "0123456789ABCDEF") == 24)
@@ -3770,6 +3816,7 @@ XLogPrintLogNames(void)
 	}
 
 	FreeDir(xldir);
+	pfree(xlogDir);
 
 	elog(LOG,"%d files found", count);
 }
@@ -3785,15 +3832,17 @@ CleanupBackupHistory(void)
 	DIR		   *xldir;
 	struct dirent *xlde;
 	char		path[MAXPGPATH];
+	char	*xlogDir = NULL;
 
-	xldir = AllocateDir(XLOGDIR);
+	xlogDir = makeRelativeToTxnFilespace(XLOGDIR);
+	xldir = AllocateDir(xlogDir);
 	if (xldir == NULL)
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not open transaction log directory \"%s\": %m",
-						XLOGDIR)));
+						xlogDir)));
 
-	while ((xlde = ReadDir(xldir, XLOGDIR)) != NULL)
+	while ((xlde = ReadDir(xldir, xlogDir)) != NULL)
 	{
 		if (strlen(xlde->d_name) > 24 &&
 			strspn(xlde->d_name, "0123456789ABCDEF") == 24 &&
@@ -3805,13 +3854,17 @@ CleanupBackupHistory(void)
 				ereport(DEBUG2,
 				(errmsg("removing transaction log backup history file \"%s\"",
 						xlde->d_name)));
-				snprintf(path, MAXPGPATH, XLOGDIR "/%s", xlde->d_name);
+				if (snprintf(path, MAXPGPATH, "%s/%s", xlogDir, xlde->d_name) > MAXPGPATH)
+				{
+					elog(LOG, "CleanupBackupHistory: Cannot generate filename %s/%s", xlogDir, xlde->d_name);
+				}
 				unlink(path);
 				XLogArchiveCleanup(xlde->d_name);
 			}
 		}
 	}
 
+	pfree(xlogDir);
 	FreeDir(xldir);
 }
 
@@ -4716,14 +4769,19 @@ writeTimeLineHistory(TimeLineID newTLI, TimeLineID parentTLI,
 	int			srcfd;
 	int			fd;
 	int			nbytes;
-
+	char		*xlogDir = NULL;
+	
 	Assert(newTLI > parentTLI); /* else bad selection of newTLI */
 
 	/*
 	 * Write into a temp file name.
 	 */
-	snprintf(tmppath, MAXPGPATH, XLOGDIR "/xlogtemp.%d", (int) getpid());
-
+	xlogDir = makeRelativeToTxnFilespace(XLOGDIR);
+	if (snprintf(tmppath, MAXPGPATH, "%s/xlogtemp.%d", xlogDir, (int) getpid()) > MAXPGPATH)
+	{
+		ereport(ERROR, (errmsg("cannot generate filename %s/xlogtemp.%d", xlogDir, (int) getpid())));
+	}	
+	pfree(xlogDir);
 	unlink(tmppath);
 
 	/* do not use XLOG_SYNC_BIT here --- want to fsync only at end of fill */
@@ -4864,6 +4922,7 @@ writeTimeLineHistory(TimeLineID newTLI, TimeLineID parentTLI,
 	/* The history file can be archived immediately. */
 	TLHistoryFileName(histfname, newTLI);
 	XLogArchiveNotify(histfname);
+	pfree(xlogDir);
 }
 
 static void
@@ -5864,6 +5923,7 @@ exitArchiveRecovery(TimeLineID endTLI, uint32 endLogId, uint32 endLogSeg)
 {
 	char		recoveryPath[MAXPGPATH];
 	char		xlogpath[MAXPGPATH];
+	char		*xlogDir = NULL;
 
 	/*
 	 * We are no longer in archive recovery state.
@@ -5896,7 +5956,11 @@ exitArchiveRecovery(TimeLineID endTLI, uint32 endLogId, uint32 endLogSeg)
 	 * of overwriting any existing file.  (This is, in fact, always the case
 	 * at present.)
 	 */
-	snprintf(recoveryPath, MAXPGPATH, XLOGDIR "/RECOVERYXLOG");
+	xlogDir = makeRelativeToTxnFilespace(XLOGDIR);
+	if (snprintf(recoveryPath, MAXPGPATH, "%s/RECOVERYXLOG", xlogDir) > MAXPGPATH)
+	{
+		ereport(ERROR, (errmsg("cannot generate path %s/RECOVERYXLOG", xlogDir)));	
+	}
 	XLogFilePath(xlogpath, ThisTimeLineID, endLogId, endLogSeg);
 
 	if (restoredFromArchive)
@@ -5938,7 +6002,10 @@ exitArchiveRecovery(TimeLineID endTLI, uint32 endLogId, uint32 endLogSeg)
 	XLogArchiveCleanup(xlogpath);
 
 	/* Get rid of any remaining recovered timeline-history file, too */
-	snprintf(recoveryPath, MAXPGPATH, XLOGDIR "/RECOVERYHISTORY");
+	if (snprintf(recoveryPath, MAXPGPATH, "%s/RECOVERYHISTORY", xlogDir) > MAXPGPATH)
+	{
+		ereport(ERROR, (errmsg("cannot generate path %s/RECOVERYHISTORY", xlogDir)));
+	}
 	unlink(recoveryPath);		/* ignore any error */
 
 	/*
@@ -5954,6 +6021,7 @@ exitArchiveRecovery(TimeLineID endTLI, uint32 endLogId, uint32 endLogSeg)
 
 	ereport(LOG,
 			(errmsg("archive recovery complete")));
+	pfree(xlogDir);
 }
 
 /*
@@ -7028,7 +7096,12 @@ bool XLogStartupIntegrityCheckNeeded(void)
 static void
 GetRedoRelationFileName(char *path)
 {
-	strcpy(path, XLOGDIR "/RedoRelationFile");
+	char *xlogDir = makeRelativeToTxnFilespace(XLOGDIR);
+	if (snprintf(path, MAXPGPATH, "%s/RedoRelationFile", xlogDir) > MAXPGPATH)
+	{
+		ereport(ERROR, (errmsg("cannot generate pathname %s/RedoRelationFile", xlogDir)));
+	}
+	pfree(xlogDir);
 }
 
 static int
@@ -7352,6 +7425,8 @@ StartupXLOG_Pass4(void)
 		     "Entering StartupXLOG_Pass4");
 
 	PersistentFileSysObj_StartupIntegrityCheck();
+
+	Insist(isFilespaceInfoConsistent());
 
 	ereport(LOG,
 			(errmsg("Finished startup integrity checking")));
@@ -10551,6 +10626,7 @@ int XLogFillZero(
 	Size		writeLen = 0;
 
 	int			status = STATUS_OK;
+	char		*xlogDir = NULL;
 
 	Assert(startOffset < endOffset);
 
@@ -10558,13 +10634,15 @@ int XLogFillZero(
 
 	XLogFileName(fname, ThisTimeLineID, logId, seg);
 
-	if (snprintf(path, MAXPGPATH, "%s/%s", XLOGDIR, fname) >= MAXPGPATH) {
+	xlogDir = makeRelativeToTxnFilespace(XLOGDIR);
+	if (snprintf(path, MAXPGPATH, "%s/%s", xlogDir, fname) >= MAXPGPATH) {
 		ereport(WARNING,
 				(errcode_for_file_access(),
 				 errmsg("could not allocate path, path too long \"%s/%s\"",
-						XLOGDIR, fname)));
+						xlogDir, fname)));
 		return STATUS_ERROR;
 	}
+	pfree(xlogDir);
 
 	fd = open(path, O_RDWR, 0);
 	if (fd < 0) {
@@ -11047,9 +11125,10 @@ XLogRecoverMirror(void)
   DIR                *cldir;
   struct dirent     *clde;
   int                retval = 0;
+	char            *xlogDir = makeRelativeToTxnFilespace(XLOGDIR);
 
-  cldir = AllocateDir(XLOGDIR);
-  while ((clde = ReadDir(cldir, XLOGDIR)) != NULL) {
+  cldir = AllocateDir(xlogDir);
+  while ((clde = ReadDir(cldir, xlogDir)) != NULL) {
     if (strlen(clde->d_name) == 24 &&
 	strspn(clde->d_name, "0123456789ABCDEF") == 24) {
 
@@ -11061,6 +11140,7 @@ XLogRecoverMirror(void)
     }
   }
   FreeDir(cldir);
+	pfree(xlogDir);
 
   return retval;
 }
