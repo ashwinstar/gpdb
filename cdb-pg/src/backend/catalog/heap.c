@@ -3087,9 +3087,12 @@ heap_truncate(List *relids)
 			relations = lappend(relations, trel);
 		}
 
+		/*
+		 * CONCERN: Not clear this EVER makes sense for Append-Only.
+		 */
 		if (RelationIsAoRows(rel) || RelationIsAoCols(rel))
 		{
-			aoEntry = GetAppendOnlyEntry(rid);
+			aoEntry = GetAppendOnlyEntry(rid, SnapshotNow);
 
 			/* If there is an aoseg table, add it to the list too */
 			aosegrelid = aoEntry->segrelid;

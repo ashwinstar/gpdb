@@ -131,6 +131,7 @@ InsertAppendOnlyEntry(Oid relid,
  */
 void
 GetAppendOnlyEntryAuxOids(Oid relid,
+						  Snapshot appendOnlyMetaDataSnapshot,
 						  Oid *segrelid,
 						  Oid *segidxid,
 						  Oid *blkdirrelid,
@@ -160,7 +161,7 @@ GetAppendOnlyEntryAuxOids(Oid relid,
     aoscan = systable_beginscan(pg_appendonly_rel, 
 								AppendOnlyRelidIndexId, 
 								true,
-								SnapshotNow, 
+								appendOnlyMetaDataSnapshot, 
 								1, 
 								&key);
 	
@@ -241,7 +242,7 @@ GetAppendOnlyEntryAuxOids(Oid relid,
  * Get the catalog entry for an appendonly relation
  */
 AppendOnlyEntry *
-GetAppendOnlyEntry(Oid relid)
+GetAppendOnlyEntry(Oid relid, Snapshot appendOnlyMetaDataSnapshot)
 {
 	
 	Relation	pg_appendonly_rel;
@@ -270,7 +271,7 @@ GetAppendOnlyEntry(Oid relid)
     aoscan = systable_beginscan(pg_appendonly_rel, 
 								AppendOnlyRelidIndexId, 
 								true,
-								SnapshotNow, 
+								appendOnlyMetaDataSnapshot, 
 								1, 
 								&key);
 	

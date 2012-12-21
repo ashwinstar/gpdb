@@ -11,6 +11,7 @@
 
 #include "catalog/genbki.h"
 #include "utils/relcache.h"
+#include "utils/tqual.h"
 
 /*
  * pg_appendonly definition.
@@ -197,7 +198,7 @@ InsertAppendOnlyEntry(Oid relid,
 					  Oid blkdiridxid);
 
 extern AppendOnlyEntry *
-GetAppendOnlyEntry(Oid relid);
+GetAppendOnlyEntry(Oid relid, Snapshot appendOnlyMetaDataSnapshot);
 
 extern AppendOnlyEntry *
 GetAppendOnlyEntryFromTuple(
@@ -215,6 +216,7 @@ GetAppendOnlyEntryFromTuple(
  */
 void
 GetAppendOnlyEntryAuxOids(Oid relid,
+						  Snapshot appendOnlyMetaDataSnapshot,
 						  Oid *segrelid,
 						  Oid *segidxid,
 						  Oid *blkdirrelid,

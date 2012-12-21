@@ -973,7 +973,7 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 					relname)));
 
 	/* get statistics from the pg_aoseg table */
-	fstotal = GetSegFilesTotals(aorel);
+	fstotal = GetSegFilesTotals(aorel, SnapshotNow);
 
 	/* calculate the values we care about */
 	eof = (double)fstotal->totalbytes;
@@ -1027,7 +1027,7 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 		FileSegInfo **segfile_array = NULL;	/* array of all segfiles information */
 		int total_segfiles;
 		int i;
-		AppendOnlyEntry *aoEntry = GetAppendOnlyEntry(RelationGetRelid(aorel));
+		AppendOnlyEntry *aoEntry = GetAppendOnlyEntry(RelationGetRelid(aorel), SnapshotNow);
 
 		/* Get information about all the file segments we need to scan */
 		segfile_array = GetAllFileSegInfo(aorel, aoEntry, SnapshotNow, &total_segfiles);
@@ -1177,7 +1177,7 @@ vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 					get_namespace_name(RelationGetNamespace(aorel)),
 					relname)));
 
-	aoEntry = GetAppendOnlyEntry(RelationGetRelid(aorel));
+	aoEntry = GetAppendOnlyEntry(RelationGetRelid(aorel), SnapshotNow);
 
 	allseg = GetAllAOCSFileSegInfo(aorel, aoEntry, SnapshotNow, &totalseg);
 	if (Debug_persistent_print)

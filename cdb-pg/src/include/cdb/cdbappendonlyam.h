@@ -54,6 +54,7 @@
 typedef struct AppendOnlyInsertDescData
 {
 	Relation		aoi_rel;
+	Snapshot		appendOnlyMetaDataSnapshot;
 	MemTupleBinding *mt_bind;
 	File			appendFile;
 	int				appendFilePathNameMaxLen;
@@ -141,6 +142,8 @@ typedef struct AppendOnlyScanDescData
 {
 	/* scan parameters */
 	Relation	aos_rd;				/* target relation descriptor */
+	Snapshot	appendOnlyMetaDataSnapshot;
+
 	Index       aos_scanrelid;
 	int			aos_nkeys;			/* number of scan keys */
 	ScanKey		aos_key;			/* array of scan key descriptors */
@@ -225,6 +228,7 @@ typedef struct AppendOnlyFetchDetail
 typedef struct AppendOnlyFetchDescData
 {
 	Relation		relation;
+	Snapshot		appendOnlyMetaDataSnapshot;
 
 	MemoryContext	initContext;
 
@@ -267,7 +271,7 @@ typedef AppendOnlyFetchDescData *AppendOnlyFetchDesc;
  */
 
 extern AppendOnlyScanDesc appendonly_beginscan(Relation relation,
-											   Snapshot snapshot,
+											   Snapshot appendOnlyMetaDataSnapshot,
 											   int nkeys, 
 											   ScanKey key);
 extern void appendonly_rescan(AppendOnlyScanDesc scan, ScanKey key);
@@ -277,7 +281,7 @@ extern MemTuple appendonly_getnext(AppendOnlyScanDesc scan,
 									TupleTableSlot *slot);
 extern AppendOnlyFetchDesc appendonly_fetch_init(
 	Relation 	relation,
-	Snapshot 	snapshot);
+	Snapshot 	appendOnlyMetaDataSnapshot);
 extern bool appendonly_fetch(
 	AppendOnlyFetchDesc aoFetchDesc,
 	AOTupleId *aoTid,

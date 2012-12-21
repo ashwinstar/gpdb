@@ -176,7 +176,12 @@ AORelCreateHashEntry(Oid relid)
 	 * in this hash entry.
 	 */
 	aorel = heap_open(relid, RowExclusiveLock);
-	aoEntry = GetAppendOnlyEntry(relid);
+
+	/*
+	 * Use SnapshotNow since we have an exclusive lock on the relation.
+	 */
+	aoEntry = GetAppendOnlyEntry(relid, SnapshotNow);
+
 	allfsinfo = GetAllFileSegInfo(aorel, aoEntry, SnapshotNow, &total_segfiles);
 	pfree(aoEntry);
 	heap_close(aorel, RowExclusiveLock);
@@ -480,7 +485,15 @@ usedByConcurrentTransaction(AOSegfileStatus *segfilestat, int segno)
 	 * If latestWriteXid is invalid, simple return false.
 	 */
 	if (!TransactionIdIsValid(latestWriteXid))
+	{
+		if (Debug_appendonly_print_segfile_choice)
+		{
+			ereport(LOG, (errmsg("usedByConcurrentTransaction: latestWriterXid %u of segno %d not in use, so it is NOT considered concurrent",
+								 latestWriteXid,
+								 segno)));
+		}
 		return false;
+	}
 	
 	/*
 	 * If the current transaction is started earlier than latestWriteXid,
@@ -489,7 +502,16 @@ usedByConcurrentTransaction(AOSegfileStatus *segfilestat, int segno)
 	 */
 	if (TransactionIdPrecedes(getDistributedTransactionId(),
 							  latestWriteXid))
+	{
+		if (Debug_appendonly_print_segfile_choice)
+		{
+			ereport(LOG, (errmsg("usedByConcurrentTransaction: current distributed transaction id %u preceeds latestWriterXid %x of segno %d, so it is considered concurrent",
+								 getDistributedTransactionId(),
+								 latestWriteXid,
+								 segno)));
+		}
 		return true;
+	}
 	
 	/*
 	 * Obtain the snapshot that is taken at the beginning of the
@@ -514,22 +536,37 @@ usedByConcurrentTransaction(AOSegfileStatus *segfilestat, int segno)
 
 	if (Debug_appendonly_print_segfile_choice)
 	{
-		elog(LOG, "usedByConcurrentTransaction: current distributed transaction id=%d, latestWriteXid that uses segno %d=%d",
+		elog(LOG, "usedByConcurrentTransaction: current distributed transaction id = %x, latestWriteXid that uses segno %d is %x",
 			 getDistributedTransactionId(), segno, latestWriteXid);
-		if (SerializableSnapshot->haveDistribSnapshot)
+		if (SerializableSnapshot != NULL && SerializableSnapshot->haveDistribSnapshot)
 			LogDistributedSnapshotInfo(SerializableSnapshot, "SerializableSnapshot: ");
-		if (LatestSnapshot->haveDistribSnapshot)
+		if (LatestSnapshot != NULL && LatestSnapshot->haveDistribSnapshot)
 			LogDistributedSnapshotInfo(LatestSnapshot, "LatestSnapshot: ");
 		if (snapshot->haveDistribSnapshot)
 			LogDistributedSnapshotInfo(snapshot, "Used snapshot: ");
 	}
 	
 	if (!snapshot->haveDistribSnapshot)
+	{
+		if (Debug_appendonly_print_segfile_choice)
+		{
+			ereport(LOG, (errmsg("usedByConcurrentTransaction: snapshot is not distributed, so it is NOT considered concurrent")));
+		}
 		return false;
+	}
 
 	/* If latestWriterXid is invisible to me, return true. */
 	if (latestWriteXid >= snapshot->distribSnapshotWithLocalMapping.header.xmax)
+	{
+		if (Debug_appendonly_print_segfile_choice)
+		{
+			ereport(LOG, (errmsg("usedByConcurrentTransaction: latestWriterXid %x of segno %d is >= distributed snapshot xmax %u, so it is considered concurrent",
+								 latestWriteXid,
+								 segno,
+								 snapshot->distribSnapshotWithLocalMapping.header.xmax)));
+		}
 		return true;
+	}
 
 	/*
 	 * If latestWriteXid is in in-progress, return true.
@@ -540,9 +577,23 @@ usedByConcurrentTransaction(AOSegfileStatus *segfilestat, int segno)
 	{
 		if (latestWriteXid ==
 			snapshot->distribSnapshotWithLocalMapping.inProgressEntryArray[inProgressNo].distribXid)
+		{
+			if (Debug_appendonly_print_segfile_choice)
+			{
+				ereport(LOG, (errmsg("usedByConcurrentTransaction: latestWriterXid %x of segno %d is equal to distributed snapshot in-flight %u, so it is considered concurrent",
+									 latestWriteXid,
+									 segno,
+									 snapshot->distribSnapshotWithLocalMapping.inProgressEntryArray[inProgressNo].distribXid)));
+			}
 			return true;
+		}
 	}
 	
+	if (Debug_appendonly_print_segfile_choice)
+	{
+		ereport(LOG, (errmsg("usedByConcurrentTransaction: snapshot can see latestWriteXid %u as committed, so it is NOT considered concurrent",
+							 latestWriteXid)));
+	}
 	return false;
 }
 
@@ -814,7 +865,7 @@ void UpdateMasterAosegTotals(Relation parentrel, int segno, uint64 tupcount)
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("int64 out of range (" INT64_FORMAT ")", (int64) tupcount)));
 
-	aoEntry = GetAppendOnlyEntry(RelationGetRelid(parentrel));
+	aoEntry = GetAppendOnlyEntry(RelationGetRelid(parentrel), SnapshotNow);
 	Assert(aoEntry != NULL);
 
 	// CONSIDER: We should probably get this lock even sooner.
@@ -830,7 +881,10 @@ void UpdateMasterAosegTotals(Relation parentrel, int segno, uint64 tupcount)
 
 		/* get the information for the file segment we inserted into */
 
-        fsinfo = GetFileSegInfo(parentrel, aoEntry, ActiveSnapshot, segno);
+		/*
+		 * Since we have an exclusive lock on the segment-file entry, we can use SnapshotNow.
+		 */
+        fsinfo = GetFileSegInfo(parentrel, aoEntry, SnapshotNow, segno);
 		if (fsinfo == NULL)
 		{
 			InsertInitialSegnoEntry(aoEntry, segno);
@@ -855,7 +909,7 @@ void UpdateMasterAosegTotals(Relation parentrel, int segno, uint64 tupcount)
 		seginfo = GetAOCSFileSegInfo(
 							parentrel, 
 							aoEntry, 
-							ActiveSnapshot, 
+							SnapshotNow, 
 							segno);
 		if (seginfo == NULL)
 		{
@@ -1129,5 +1183,8 @@ AtEOXact_AppendOnly(void)
 
 }
 
-
-
+void ValidateAppendOnlyMetaDataSnapshot(
+	Snapshot *appendOnlyMetaDataSnapshot)
+{
+	// Placeholder.
+}

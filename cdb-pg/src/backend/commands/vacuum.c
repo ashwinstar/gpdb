@@ -1280,7 +1280,8 @@ vacuum_rel(Relation onerel, VacuumStmt *vacstmt, LOCKMODE lmode, List *updated_s
 	toast_relid = onerel->rd_rel->reltoastrelid;
 	if (RelationIsAoRows(onerel) ||
 		RelationIsAoCols(onerel))
-		GetAppendOnlyEntryAuxOids(RelationGetRelid(onerel), &aoseg_relid, NULL,
+		GetAppendOnlyEntryAuxOids(RelationGetRelid(onerel), SnapshotNow,
+								  &aoseg_relid, NULL,
 								  &aoblkdir_relid, NULL);
 
 	/*

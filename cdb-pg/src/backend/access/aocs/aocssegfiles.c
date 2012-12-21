@@ -108,7 +108,7 @@ AOCSFileSegInfo *
 GetAOCSFileSegInfo(
 	Relation 			prel,
 	AppendOnlyEntry 	*aoEntry,
-	Snapshot 			snapshot,
+	Snapshot 			appendOnlyMetaDataSnapshot,
 	int32 				segno)
 {
     int32 nvp = prel->rd_att->natts;
@@ -128,7 +128,7 @@ GetAOCSFileSegInfo(
 
     ScanKeyInit(&scankey, 1, BTEqualStrategyNumber, F_OIDEQ, Int32GetDatum(segno));
 
-    scan = index_beginscan(segrel, segidx, snapshot, 1, &scankey);
+    scan = index_beginscan(segrel, segidx, appendOnlyMetaDataSnapshot, 1, &scankey);
 
     segtup = index_getnext(scan, ForwardScanDirection);
 
@@ -189,7 +189,7 @@ GetAOCSFileSegInfo(
 
 AOCSFileSegInfo **GetAllAOCSFileSegInfo(Relation prel,
 										AppendOnlyEntry *aoEntry,
-										Snapshot snapshot,
+										Snapshot appendOnlyMetaDataSnapshot,
 										int32 *totalseg)
 {
     Relation 			pg_aocsseg_rel;
@@ -203,7 +203,7 @@ AOCSFileSegInfo **GetAllAOCSFileSegInfo(Relation prel,
 											NameStr(prel->rd_rel->relname),
 											aoEntry,
 											pg_aocsseg_rel,
-											snapshot,
+											appendOnlyMetaDataSnapshot,
 											totalseg);
 
     heap_close(pg_aocsseg_rel, AccessShareLock);
@@ -333,7 +333,7 @@ AOCSFileSegInfo **GetAllAOCSFileSegInfo_pg_aocsseg_rel(
  *
  * Get the total bytes for a specific AOCS table from the pg_aocsseg table on this local segdb.
  */
-int64 GetAOCSTotalBytes(Relation parentrel)
+int64 GetAOCSTotalBytes(Relation parentrel, Snapshot appendOnlyMetaDataSnapshot)
 {
 	AOCSFileSegInfo **allseg;
 	int totalseg;
@@ -342,11 +342,11 @@ int64 GetAOCSTotalBytes(Relation parentrel)
 	AOCSVPInfo *vpinfo;
 	AppendOnlyEntry *aoEntry = NULL;
 
-	aoEntry = GetAppendOnlyEntry(RelationGetRelid(parentrel));
+	aoEntry = GetAppendOnlyEntry(RelationGetRelid(parentrel), appendOnlyMetaDataSnapshot);
 	Assert(aoEntry != NULL);
 
 	result = 0;
-	allseg = GetAllAOCSFileSegInfo(parentrel, aoEntry, GetTransactionSnapshot(), &totalseg);
+	allseg = GetAllAOCSFileSegInfo(parentrel, aoEntry, appendOnlyMetaDataSnapshot, &totalseg);
 	for (s = 0; s < totalseg; s++)
 	{
 		int32 nEntry;
@@ -368,6 +368,8 @@ int64 GetAOCSTotalBytes(Relation parentrel)
 
 void UpdateAOCSFileSegInfo(AOCSInsertDesc idesc)
 {
+	LockAcquireResult acquireResult;
+	
     Relation prel = idesc->aoi_rel;
     Relation segrel;
     Relation segidx;
@@ -387,8 +389,29 @@ void UpdateAOCSFileSegInfo(AOCSInsertDesc idesc)
     AOCSVPInfo *vpinfo = create_aocs_vpinfo(nvp);
 	AppendOnlyEntry *aoEntry = idesc->aoEntry;
 
-    Snapshot usesnapshot = SnapshotDirty;
+
+
+	/*
+	 * Since we have the segment-file entry under lock (with LockRelationAppendOnlySegmentFile)
+	 * we can use SnapshotNow.
+	 */
+    Snapshot usesnapshot = SnapshotNow;
+
 	Assert(aoEntry != NULL);
+
+	/*
+	 * Verify we already have the write-lock!
+	 */
+	acquireResult = LockRelationAppendOnlySegmentFile(
+												&prel->rd_node,
+												idesc->cur_segno,
+												AccessExclusiveLock,
+												/* dontWait */ false);
+	if (acquireResult != LOCKACQUIRE_ALREADY_HELD)
+	{
+		elog(ERROR, "Should already have the (transaction-scope) write-lock on Append-Only segment file #%d, "
+					 "relation %s", idesc->cur_segno, prel->rd_rel->relname.data);
+	}
 
     segrel = heap_open(aoEntry->segrelid, RowExclusiveLock);
     segidx = index_open(aoEntry->segidxid, RowExclusiveLock);
@@ -463,7 +486,12 @@ void AOCSFileSegInfoAddCount(Relation prel, AppendOnlyEntry *aoEntry, int32 segn
 
     TupleDesc tupdesc; 
 
-    Snapshot usesnapshot = SnapshotDirty;
+	/*
+	 * Since we have the segment-file entry under lock (with LockRelationAppendOnlySegmentFile)
+	 * we can use SnapshotNow.
+	 */
+    Snapshot usesnapshot = SnapshotNow;
+
 
 	Assert(aoEntry != NULL);
 
@@ -639,7 +667,7 @@ gp_aocsseg(PG_FUNCTION_ARGS)
 		// Remember the number of columns.
 		context->relnatts = aocsRel->rd_rel->relnatts;
 
-		aoEntry = GetAppendOnlyEntry(aocsRelOid);
+		aoEntry = GetAppendOnlyEntry(aocsRelOid, SnapshotNow);
 		
 		pg_aocsseg_rel = heap_open(aoEntry->segrelid, NoLock);
 		
@@ -833,7 +861,7 @@ gp_aocsseg_history(PG_FUNCTION_ARGS)
 		// Remember the number of columns.
 		context->relnatts = aocsRel->rd_rel->relnatts;
 
-		aoEntry = GetAppendOnlyEntry(aocsRelOid);
+		aoEntry = GetAppendOnlyEntry(aocsRelOid, SnapshotNow);
 		
 		pg_aocsseg_rel = heap_open(aoEntry->segrelid, NoLock);
 		
@@ -928,7 +956,7 @@ gp_aocsseg_history(PG_FUNCTION_ARGS)
 }
 
 Datum
-gp_update_aocol_master_stats_internal(Relation parentrel)
+gp_update_aocol_master_stats_internal(Relation parentrel, Snapshot appendOnlyMetaDataSnapshot)
 {
 	StringInfoData 	sqlstmt;
 	Relation		aosegrel;
@@ -939,7 +967,7 @@ gp_update_aocol_master_stats_internal(Relation parentrel)
 	float8			total_count = 0;
 	MemoryContext 	oldcontext = CurrentMemoryContext;
     int32 			nvp = parentrel->rd_att->natts;
-	AppendOnlyEntry *aoEntry = GetAppendOnlyEntry(RelationGetRelid(parentrel));
+	AppendOnlyEntry *aoEntry = GetAppendOnlyEntry(RelationGetRelid(parentrel), appendOnlyMetaDataSnapshot);
 
 	Assert(aoEntry != NULL);
 	
@@ -1032,7 +1060,7 @@ gp_update_aocol_master_stats_internal(Relation parentrel)
 												AccessExclusiveLock,
 												/* dontWait */ false);
 					
-				aocsfsinfo = GetAOCSFileSegInfo(parentrel, aoEntry, ActiveSnapshot, qe_segno);
+				aocsfsinfo = GetAOCSFileSegInfo(parentrel, aoEntry, appendOnlyMetaDataSnapshot, qe_segno);
 				if (aocsfsinfo == NULL)
 				{
 					InsertInitialAOCSFileSegInfo(aoEntry->segrelid, qe_segno, nvp);
@@ -1119,7 +1147,7 @@ aocol_compression_ratio_internal(Relation parentrel)
 	MemoryContext 	oldcontext = CurrentMemoryContext;
 	Oid segrelid = InvalidOid;
 
-	GetAppendOnlyEntryAuxOids(RelationGetRelid(parentrel),
+	GetAppendOnlyEntryAuxOids(RelationGetRelid(parentrel), SnapshotNow,
 							  &segrelid, NULL, NULL, NULL);
 	Assert(OidIsValid(segrelid));
 

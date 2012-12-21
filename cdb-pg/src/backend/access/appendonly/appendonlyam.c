@@ -51,6 +51,7 @@
 #include "access/tuptoaster.h"
 #include "access/valid.h"
 #include "access/xact.h"
+#include "access/appendonlywriter.h"
 #include "access/aosegfiles.h"
 #include "catalog/catalog.h"
 #include "catalog/pg_appendonly.h"
@@ -265,6 +266,7 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 
 				AppendOnlyBlockDirectory_Init_forInsert(scan->blockDirectory,
 														scan->aoEntry,
+														scan->appendOnlyMetaDataSnapshot,
 														fsinfo,
 														0, /* lastSequence */
 														scan->aos_rd,
@@ -315,11 +317,17 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 
 
 	if (Debug_appendonly_print_scan)
-		elog(LOG,"Append-only scan initialize for table '%s' segment file %u (compression = %s, usable blocksize %d)",
+		elog(LOG,"Append-only scan initialize for table '%s', %u/%u/%u, segment file %u, EOF " INT64_FORMAT ", "
+			 "(compression = %s, usable blocksize %d)",
 			 NameStr(scan->aos_rd->rd_rel->relname),
+			 scan->aos_rd->rd_node.spcNode,
+			 scan->aos_rd->rd_node.dbNode,
+			 scan->aos_rd->rd_node.relNode,
 			 segno,
+			 eof,
 			 (scan->storageAttributes.compress ? "true" : "false"),
 		     scan->usableBlockSize);
+
 
 	return true;
 }
@@ -428,7 +436,7 @@ SetCurrentFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
 	aoInsertDesc->fsInfo = GetFileSegInfo(
 									aoInsertDesc->aoi_rel,
 									aoInsertDesc->aoEntry,
-									ActiveSnapshot,
+									aoInsertDesc->appendOnlyMetaDataSnapshot,
 									aoInsertDesc->cur_segno);
 	if (aoInsertDesc->fsInfo == NULL)
 	{
@@ -1406,7 +1414,7 @@ finishWriteBlock(AppendOnlyInsertDesc aoInsertDesc)
  * ----------------
  */
 AppendOnlyScanDesc
-appendonly_beginscan(Relation relation, Snapshot snapshot, int nkeys, ScanKey key)
+appendonly_beginscan(Relation relation, Snapshot appendOnlyMetaDataSnapshot, int nkeys, ScanKey key)
 {
 	AppendOnlyScanDesc	scan;
 	AppendOnlyEntry		*aoentry;
@@ -1415,6 +1423,10 @@ appendonly_beginscan(Relation relation, Snapshot snapshot, int nkeys, ScanKey ke
 
 	AppendOnlyStorageAttributes *attr;
 
+	
+
+	ValidateAppendOnlyMetaDataSnapshot(&appendOnlyMetaDataSnapshot);
+	
 	/*
 	 * increment relation ref count while scanning relation
 	 *
@@ -1432,7 +1444,7 @@ appendonly_beginscan(Relation relation, Snapshot snapshot, int nkeys, ScanKey ke
 	/*
 	 * Get the pg_appendonly information for this table
 	 */
-	aoentry = GetAppendOnlyEntry(RelationGetRelid(relation));
+	aoentry = GetAppendOnlyEntry(RelationGetRelid(relation), appendOnlyMetaDataSnapshot);
 	scan->aoEntry = aoentry;
 	complevel = aoentry->compresslevel;
 	comptype = aoentry->compresstype;
@@ -1446,6 +1458,7 @@ appendonly_beginscan(Relation relation, Snapshot snapshot, int nkeys, ScanKey ke
 	scan->aos_filenamepath[0] = '\0';
 	scan->usableBlockSize = AppendOnlyStorage_GetUsableBlockSize(aoentry->blocksize);
 	scan->aos_rd = relation;
+	scan->appendOnlyMetaDataSnapshot = appendOnlyMetaDataSnapshot;
 	scan->aos_nkeys = nkeys;
 	scan->aoScanInitContext = CurrentMemoryContext;
 
@@ -1493,7 +1506,7 @@ appendonly_beginscan(Relation relation, Snapshot snapshot, int nkeys, ScanKey ke
 	/*
 	 * Get information about all the file segments we need to scan
 	 */
-	scan->aos_segfile_arr = GetAllFileSegInfo(relation, aoentry, snapshot, &scan->aos_total_segfiles);
+	scan->aos_segfile_arr = GetAllFileSegInfo(relation, aoentry, appendOnlyMetaDataSnapshot, &scan->aos_total_segfiles);
 
 	/*
 	 * we do this here instead of in initscan() because appendonly_rescan also calls
@@ -1866,12 +1879,14 @@ scanToFetchTuple(
 AppendOnlyFetchDesc
 appendonly_fetch_init(
 	Relation 	relation,
-	Snapshot 	snapshot)
+	Snapshot 	appendOnlyMetaDataSnapshot)
 {
 	AppendOnlyFetchDesc	aoFetchDesc;
 	AppendOnlyEntry		*aoentry;
 
 	AppendOnlyStorageAttributes *attr;
+
+	ValidateAppendOnlyMetaDataSnapshot(&appendOnlyMetaDataSnapshot);
 	PGFunction *fns = NULL;
 
 	/*
@@ -1889,6 +1904,7 @@ appendonly_fetch_init(
 	aoFetchDesc = (AppendOnlyFetchDesc) palloc0(sizeof(AppendOnlyFetchDescData));
 
 	aoFetchDesc->relation = relation;
+	aoFetchDesc->appendOnlyMetaDataSnapshot = appendOnlyMetaDataSnapshot;
 
 	aoFetchDesc->initContext = CurrentMemoryContext;
 
@@ -1900,7 +1916,8 @@ appendonly_fetch_init(
 	/*
 	 * Get the pg_appendonly information for this table
 	 */
-	aoentry = GetAppendOnlyEntry(RelationGetRelid(relation));
+	aoentry = GetAppendOnlyEntry(RelationGetRelid(relation), appendOnlyMetaDataSnapshot);
+
 	aoFetchDesc->aoEntry = aoentry;
 
 	/*
@@ -1937,7 +1954,7 @@ appendonly_fetch_init(
 						GetAllFileSegInfo(
 									relation,
 									aoentry,
-									snapshot,
+									appendOnlyMetaDataSnapshot, 
 									&aoFetchDesc->totalSegfiles);
 
 	AppendOnlyStorageRead_Init(
@@ -1978,6 +1995,7 @@ appendonly_fetch_init(
 	AppendOnlyBlockDirectory_Init_forSearch(
 						&aoFetchDesc->blockDirectory,
 						aoentry,
+						appendOnlyMetaDataSnapshot,
 						aoFetchDesc->segmentFileInfo,
 						aoFetchDesc->totalSegfiles,
 						aoFetchDesc->relation,
@@ -2215,7 +2233,7 @@ appendonly_insert_init(Relation rel, int segno)
 	/*
 	 * Get the pg_appendonly information for this table
 	 */
-	aoentry = GetAppendOnlyEntry(RelationGetRelid(rel));
+	aoentry = GetAppendOnlyEntry(RelationGetRelid(rel), SnapshotNow);
 	Assert(aoentry->majorversion == 1 && aoentry->minorversion == 0);
 
 	/*
@@ -2224,6 +2242,10 @@ appendonly_insert_init(Relation rel, int segno)
 	aoInsertDesc  = (AppendOnlyInsertDesc) palloc0(sizeof(AppendOnlyInsertDescData));
 
 	aoInsertDesc->aoi_rel = rel;
+	aoInsertDesc->appendOnlyMetaDataSnapshot = SnapshotNow;		
+								// Writers uses this since they have exclusive access to the lock acquired with
+								// LockRelationAppendOnlySegmentFile for the segment-file.
+
 	aoInsertDesc->mt_bind = create_memtuple_binding(RelationGetDescr(rel));
 
 	aoInsertDesc->appendFile = -1;
@@ -2375,7 +2397,10 @@ appendonly_insert_init(Relation rel, int segno)
 
 	/* Initialize the block directory. */
 	AppendOnlyBlockDirectory_Init_forInsert(
-		&(aoInsertDesc->blockDirectory), aoentry, aoInsertDesc->fsInfo, aoInsertDesc->lastSequence,
+		&(aoInsertDesc->blockDirectory), 
+		aoentry, 
+		aoInsertDesc->appendOnlyMetaDataSnapshot,		// CONCERN: Safe to assume all block directory entries for segment are "covered" by same exclusive lock.
+		aoInsertDesc->fsInfo, aoInsertDesc->lastSequence,
 		rel, segno, 1, false);
 
 	return aoInsertDesc;

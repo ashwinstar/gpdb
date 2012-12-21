@@ -2505,7 +2505,7 @@ static void gp_statistics_estimate_reltuples_relpages_ao_cs(Relation rel, float4
 	*relpages = 0.0;
 	
     /* get table level statistics from the pg_aoseg table */
-	aoEntry = GetAppendOnlyEntry(RelationGetRelid(rel));
+	aoEntry = GetAppendOnlyEntry(RelationGetRelid(rel), SnapshotNow);
     aocsInfo = GetAllAOCSFileSegInfo(rel, aoEntry, SnapshotNow, &nsegs);
     if (aocsInfo)
     {
@@ -2556,7 +2556,7 @@ static void gp_statistics_estimate_reltuples_relpages_ao_rows(Relation rel, floa
 	Assert(rel->rd_rel->relkind == RELKIND_RELATION);
 	Assert(RelationIsAoRows(rel));
 	
-	fstotal = GetSegFilesTotals(rel);
+	fstotal = GetSegFilesTotals(rel, SnapshotNow);
 	Assert(fstotal);
 	/**
 	 * The planner doesn't understand AO's blocks, so need this method to try to fudge up a number for

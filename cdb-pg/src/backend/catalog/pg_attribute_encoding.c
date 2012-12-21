@@ -251,7 +251,7 @@ RelationGetRelationBlocksize(Relation rel)
 
   AppendOnlyEntry *aoentry;
 
-  aoentry = GetAppendOnlyEntry(RelationGetRelid(rel));
+  aoentry = GetAppendOnlyEntry(RelationGetRelid(rel), SnapshotNow);
 
   return aoentry->blocksize;
 
@@ -270,7 +270,7 @@ RelationGetRelationCompressionFuncs(Relation rel)
 	char *comptype;
 	PGFunction *compFuncs;
 
-	aoentry = GetAppendOnlyEntry(RelationGetRelid(rel));
+	aoentry = GetAppendOnlyEntry(RelationGetRelid(rel), SnapshotNow);
 	comptype = aoentry->compresstype;
 
 	compFuncs =	get_funcs_for_compression(comptype);

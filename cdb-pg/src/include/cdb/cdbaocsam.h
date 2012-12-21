@@ -38,7 +38,8 @@ struct AOCSFileSegInfo;
 
 typedef struct AOCSInsertDescData
 {
-	Relation 				 aoi_rel;
+	Relation	aoi_rel;
+	Snapshot	appendOnlyMetaDataSnapshot;
 	AOCSFileSegInfo *fsInfo;
 	int64		insertCount;
 	int64		varblockCount;
@@ -66,6 +67,7 @@ typedef struct AOCSScanDescData
 {
 	/* scan parameters */
 	Relation	aos_rel;			/* target relation descriptor */
+	Snapshot	appendOnlyMetaDataSnapshot;
 	TupleDesc   relationTupleDesc;	/* tuple descriptor of table to scan.
 									 *  Code should use this rather than aos_rel->rd_att,
 									 *  as THEY MAY BE DIFFERENT.
@@ -112,6 +114,7 @@ typedef AOCSScanDescData *AOCSScanDesc;
 typedef struct AOCSFetchDescData
 {
 	Relation		relation;
+	Snapshot		appendOnlyMetaDataSnapshot;
 
 	MemoryContext	initContext;
 
@@ -143,7 +146,7 @@ typedef AOCSFetchDescData *AOCSFetchDesc;
  * ----------------
  */
 
-extern AOCSScanDesc aocs_beginscan(Relation relation, Snapshot snapshot, TupleDesc relationTupleDesc, bool *proj);
+extern AOCSScanDesc aocs_beginscan(Relation relation, Snapshot appendOnlyMetaDataSnapshot, TupleDesc relationTupleDesc, bool *proj);
 extern void aocs_rescan(AOCSScanDesc scan);
 extern void aocs_endscan(AOCSScanDesc scan);
 extern void aocs_getnext(AOCSScanDesc scan, ScanDirection direction, TupleTableSlot *slot);
