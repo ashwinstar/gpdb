@@ -133,23 +133,6 @@ typedef struct AggHashEntryData
 	AggStatePerGroupData pergroup[1];	/* VARIABLE LENGTH ARRAY */
 } AggHashEntryData;				/* VARIABLE LENGTH STRUCT */
 
-/*
- * Information for percentile functions.
- * The prev_value is only for percentile_cont, where we need to remember the
- * prior value to interpolate two values.  The target position is the
- * row position we want given the total row count and percentage.
- * The ceiled and floored target positions are rounded target positions.
- * The row number tracks the current logical row position.
- */
-typedef struct
-{
-	Datum		prev_value;		/* the target value at the prior row */
-	float8		tp;				/* target position */
-	float8		ctp;			/* ceiled target position */
-	float8		ftp;			/* floored target position */
-	int64		rn;				/* current row number */
-} PercentileInfo;
-
 static void advance_transition_function(AggState *aggstate,
 										AggStatePerAgg peraggstate,
 										AggStatePerGroup pergroupstate,
@@ -172,8 +155,6 @@ static TupleTableSlot *agg_retrieve_hash_table(AggState *aggstate);
 static void ExecAggExplainEnd(PlanState *planstate, struct StringInfoData *buf);
 static int count_extra_agg_slots(Node *node);
 static bool count_extra_agg_slots_walker(Node *node, int *count);
-static Datum percentile_cont_trans(PG_FUNCTION_ARGS);
-static Datum percentile_disc_trans(PG_FUNCTION_ARGS);
 
 
 Datum
@@ -2238,6 +2219,9 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 		FmgrInfo		   *transfn;
 		int					numArguments;
 		int					i;
+		Oid					trans_argtypes[FUNC_MAX_ARGS];
+		ListCell		   *lc;
+		Expr			   *dummy_expr;
 
 		/* Look for a previous duplicate aggregate */
 		for (i = 0; i <= aggno; i++)
@@ -2291,7 +2275,47 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 		transfn->fn_addr = perc->perckind == PERC_DISC ?
 			percentile_disc_trans : percentile_cont_trans;
 		transfn->fn_oid = InvalidOid;
-		transfn->fn_expr = (Node *) perc;
+
+		/*
+		 * trans type is the same as result type, as they don't have final func.
+		 */
+		trans_argtypes[0] = perc->perctype;
+		i = 1;
+		/*
+		 * Literal arguments.
+		 */
+		foreach (lc, perc->args)
+		{
+			Node	   *arg = lfirst(lc);
+			trans_argtypes[i++] = exprType(arg);
+		}
+		/*
+		 * ORDER BY arguments.
+		 */
+		foreach (lc, perc->sortTargets)
+		{
+			TargetEntry	   *tle = lfirst(lc);
+			trans_argtypes[i++] = exprType((Node *) tle->expr);
+		}
+		/*
+		 * Peer count and total count.
+		 */
+		trans_argtypes[i++] = INT8OID;
+		trans_argtypes[i++] = INT8OID;
+		/*
+		 * Build FuncExpr for the transition function.
+		 */
+		build_aggregate_fnexprs(trans_argtypes,
+								i,
+								perc->perctype,
+								perc->perctype,
+								InvalidOid,
+								InvalidOid,
+								InvalidOid,
+								InvalidOid,
+								InvalidOid,
+								(Expr **) &transfn->fn_expr,
+								&dummy_expr, NULL, NULL, NULL);
 
 		get_typlenbyval(perc->perctype,
 						&peraggstate->resulttypeLen,
@@ -2839,189 +2863,4 @@ ExecEagerFreeAgg(AggState *node)
 		pfree(node->grp_firstTuple);
 		node->grp_firstTuple = NULL;
 	}
-}
-
-/*
- * transition function for percentile_cont().
- *
- * The actual arguments are:
- *		(state_value, percentage, target_value, peer_count, total_count)
- *
- * The result of percentile_cont() is the interpolated value from
- * value expressions at consecutive rows that are indicated by the
- * argument, in the order specified by the WITHIN GROUP.
- *
- * We compute these values at the first stage of this transition:
- *
- *	tp = (total_count - 1) * percentage + 1
- *	ftp = floor(tp)
- *	ctp = ceil(tp)
- *	rn0 = (current logical row position)
- *	rn1 = rn0 + peer_count
- *	tv = (target value)
- *
- * And the result is calculated as:
- *
- *	result = SUM(
- *		CASE
- *			WHEN rn0 <= ftp AND rn1 > ctp THEN tv
- *			WHEN rn0 <= ftp AND rn1 > ftp THEN tv * (ctp - tp)
- *			WHEN rn0 >= ctp THEN tv * (tp - ftp)
- *		END
- *	)
- *
- * Note that we use FmgrInfo's fn_extra to store the per-group information.
- * fn_extra is not initialized by the executor in the group boundaries,
- * so we clean it when the value is found.  That said, we assume we
- * always found the required value in each group, and if not, something
- * is wrong.
- */
-static Datum
-percentile_cont_trans(PG_FUNCTION_ARGS)
-{
-	int64				pc = PG_GETARG_INT64(3);
-	int64				rn0, rn1;
-	PercentileInfo	   *info;
-
-	if (!PG_ARGISNULL(0))
-		PG_RETURN_DATUM(PG_GETARG_DATUM(0));
-
-	/* Ignore NULL inputs for percentage and target value */
-	if (PG_ARGISNULL(1) || PG_ARGISNULL(2))
-		PG_RETURN_NULL();
-
-	if (!fcinfo->flinfo->fn_extra)
-	{
-		float8				percentage = PG_GETARG_FLOAT8(1);
-		int64				tc = PG_GETARG_INT64(4);
-
-		if (percentage < 0.0 || percentage > 1.0)
-			ereport(ERROR,
-					(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-					 errmsg("input is out of range"),
-					 errhint("Argument to percentile function must be between 0.0 and 1.0.")));
-		info = (PercentileInfo *) MemoryContextAllocZero(
-				fcinfo->flinfo->fn_mcxt, sizeof(PercentileInfo));
-		info->tp = (tc - 1) * percentage + 1;
-		info->ftp = floor(info->tp);
-		info->ctp = ceil(info->tp);
-		info->rn = 1;
-		fcinfo->flinfo->fn_extra = info;
-	}
-	else
-		info = (PercentileInfo *) fcinfo->flinfo->fn_extra;
-
-	rn0 = info->rn;
-	rn1 = rn0 + pc;
-	info->rn += pc;
-	if (rn0 <= info->ftp && rn1 > info->ctp)
-	{
-		/* Clean up, so the next group can see NULL for fn_extra */
-		pfree(info);
-		fcinfo->flinfo->fn_extra = NULL;
-
-		PG_RETURN_DATUM(PG_GETARG_DATUM(2));
-	}
-	else if (rn0 <= info->ftp && rn1 > info->ftp)
-	{
-		info->prev_value = PG_GETARG_DATUM(2);
-	}
-	else if (rn0 >= info->ctp)
-	{
-		float8		prev = DatumGetFloat8(info->prev_value);
-		float8		tv = PG_GETARG_FLOAT8(2);
-		float8		tp = info->tp;
-		float8		ctp = info->ctp;
-		float8		ftp = info->ftp;
-
-		/* Clean up, so the next group can see NULL for fn_extra */
-		pfree(info);
-		fcinfo->flinfo->fn_extra = NULL;
-
-		PG_RETURN_FLOAT8(prev * (ctp - tp) + tv * (tp - ftp));
-	}
-
-	PG_RETURN_NULL();
-}
-
-/*
- * transition function for percentile_disc().
- *
- * The actual arguments are:
- *		(state_value, percentage, target_value, peer_count, total_count)
- *
- * The result of percentile_disc() is the the first value whose position
- * in the cumulative distribution of values, specified by the WITHIN GROUP
- * clause, is equal to or greater than the percentage specified.  And
- * the definition of the cumulative distribution, i.e. CUME_DIST(), is
- * following.
- *
- *	count(*) OVER (ORDER BY tv) / count(*) OVER ()
- *
- * Let accum_count be the numerator and total_count be the denominator.
- * Let p be the percentage given as the argument.  Now, the result of
- * percentile_disc() is at the first row position that satisfies
- *
- *	p >= accum_count / total_count
- *
- * Converting this to
- *
- *	p * total_count >= accum_count
- *
- * and because the left hand side is fraction row position, we take ceil
- *
- *	ceil(p * total_count)
- *
- * This is the row position where the result is at.
- */
-static Datum
-percentile_disc_trans(PG_FUNCTION_ARGS)
-{
-	int64				pc = PG_GETARG_INT64(3);
-	int64				rn0, rn1;
-	PercentileInfo	   *info;
-
-	if (!PG_ARGISNULL(0))
-		PG_RETURN_DATUM(PG_GETARG_DATUM(0));
-
-	/* Ignore NULL inputs for percentage and target value */
-	if (PG_ARGISNULL(1) || PG_ARGISNULL(2))
-		PG_RETURN_NULL();
-
-	if (!fcinfo->flinfo->fn_extra)
-	{
-		float8				percentage = PG_GETARG_FLOAT8(1);
-		int64				tc = PG_GETARG_INT64(4);
-
-		if (percentage < 0.0 || percentage > 1.0)
-			ereport(ERROR,
-					(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-					 errmsg("input is out of range"),
-					 errhint("Argument to percentile function must be between 0.0 and 1.0.")));
-		info = (PercentileInfo *) MemoryContextAllocZero(
-				fcinfo->flinfo->fn_mcxt, sizeof(PercentileInfo));
-		if (percentage == 0.0)
-			info->tp = 1.0;
-		else
-			info->tp = ceil(tc * percentage);
-		info->ctp = info->ftp = info->tp;
-		info->rn = 1;
-		fcinfo->flinfo->fn_extra = info;
-	}
-	else
-		info = (PercentileInfo *) fcinfo->flinfo->fn_extra;
-
-	rn0 = info->rn;
-	rn1 = rn0 + pc;
-	info->rn += pc;
-	if (rn0 <= info->tp && rn1 > info->tp)
-	{
-		/* Clean up, so the next group can see NULL for fn_extra */
-		pfree(info);
-		fcinfo->flinfo->fn_extra = NULL;
-
-		PG_RETURN_DATUM(PG_GETARG_DATUM(2));
-	}
-
-	PG_RETURN_NULL();
 }

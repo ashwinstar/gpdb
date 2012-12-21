@@ -3,6 +3,10 @@ create table perct2 as select a, a / 10 as b from generate_series(1, 100)a, gene
 create table perct3 as select a, b from perct, generate_series(1, 10)i where a % 7 < i;
 create table perct4 as select case when a % 10 = 5 then null else a end as a,
 	b, null::float as c from perct;
+create table percts as select '2012-01-01 00:00:00'::timestamp + interval '1day' * i as a,
+	i / 10 as b, i as c from generate_series(1, 100)i;
+create table perctsz as select '2012-01-01 00:00:00 UTC'::timestamptz + interval '1day' * i as a,
+	i / 10 as b, i as c from generate_series(1, 100)i;
 create view percv as select percentile_cont(0.4) within group (order by a / 10),
 	median(a), percentile_disc(0.51) within group (order by a desc) from perct group by b order by b;
 create view percv2 as select median(a) as m1, median(a::float) as m2 from perct;
@@ -47,6 +51,19 @@ select sum((select median(a) from perct)) from perct;
 select percentile_cont(null) within group (order by a) from perct;
 select percentile_cont(null) within group (order by a),
 	percentile_disc(null) within group (order by a desc) from perct group by b;
+select median(a), percentile_cont(0.5) within group (order by a),
+	percentile_disc(0.5) within group(order by a),
+	(select min(a) from percts) - interval '1day' + interval '1day' * median(c),
+	(select min(a) from percts) - interval '1day' + interval '1day' *
+		percentile_disc(0.5) within group (order by c)
+	from percts group by b order by b;
+select percentile_cont(1.0/86400) within group (order by a) from percts
+	where c between 1 and 2;
+select percentile_cont(0.1) within group (order by a),
+	percentile_cont(0.9) within group (order by a desc) from percts;
+select percentile_cont(0.1) within group (order by a),
+	percentile_cont(0.2) within group (order by a) from perctsz;
+select median(a - (select min(a) from percts)) from percts;
 -- view
 select * from percv;
 
@@ -88,6 +105,19 @@ select sum((select median(a) from perct)) from perct;
 select percentile_cont(null) within group (order by a) from perct;
 select percentile_cont(null) within group (order by a),
 	percentile_disc(null) within group (order by a desc) from perct group by b;
+select median(a), percentile_cont(0.5) within group (order by a),
+	percentile_disc(0.5) within group(order by a),
+	(select min(a) from percts) - interval '1day' + interval '1day' * median(c),
+	(select min(a) from percts) - interval '1day' + interval '1day' *
+		percentile_disc(0.5) within group (order by c)
+	from percts group by b order by b;
+select percentile_cont(1.0/86400) within group (order by a) from percts
+	where c between 1 and 2;
+select percentile_cont(0.1) within group (order by a),
+	percentile_cont(0.9) within group (order by a desc) from percts;
+select percentile_cont(0.1) within group (order by a),
+	percentile_cont(0.2) within group (order by a) from perctsz;
+select median(a - (select min(a) from percts)) from percts;
 -- view
 select * from percv;
 
@@ -134,7 +164,8 @@ select generate_series(1, 2), median(a) from perct;
 select median(a) from perct group by grouping sets((), (b));
 -- wrong type in ORDER BY
 select median('text') from perct;
-select median(now()) from perct;
+select percentile_cont(now()) within group (order by a) from percts;
+select percentile_cont(0.5) within group (order by point(0,0)) from perct;
 -- outer reference is not allowed for now
 select (select a from perct where median(t.a) = 5) from perct t;
 
@@ -144,3 +175,5 @@ drop table perct;
 drop table perct2;
 drop table perct3;
 drop table perct4;
+drop table percts;
+drop table perctsz;
