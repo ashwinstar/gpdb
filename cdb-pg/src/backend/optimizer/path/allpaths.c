@@ -1294,6 +1294,10 @@ subquery_is_pushdown_safe(Query *subquery, Query *topquery,
 	if ( contain_window_functions((Node*)subquery->targetList) )
 		return false;
 
+	/* Targetlist must not contain SRF */
+	if ( expression_returns_set((Node *) subquery->targetList))
+		return false;
+
 	/* See point 5. */
 	if (subquery->groupClause != NULL &&
 		contain_extended_grouping(subquery->groupClause))
