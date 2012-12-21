@@ -59,12 +59,12 @@ typedef enum SegmentState_e {
     /*
      * FileRep, Change Tracking and Resync initialization and recovery.
      */
-	
+
 	SegmentStateInChangeTrackingTransition,
 	/*
 	 * Transition from InSync to InChangeTracking
 	 */
-	
+
     SegmentStateInResyncTransition,
     /*
      * Transition from Change Tracking or from no mirroring into Resync.
@@ -128,22 +128,22 @@ typedef enum FileRepRole_e {
 typedef enum FaultType_e {
     FaultTypeNotInitialized=0,
 		/* Fault type has not been set */
-	
+
     FaultTypeIO,
 		/* IO related Fault   */
-	
+
     FaultTypeDB,
 		/* Database related Fault */
-	
+
 	FaultTypeMirror,
 		/* Mirroring, filerep related Fault between primary and mirror, failover can happen to primary */
-	
+
 	FaultTypeNet,
 		/* Network, one of the NICs used to communicate with remote segments is down */
 
 	/* The number of elements in this enumeration */
 	FaultType__EnumerationCount
-	
+
 } FaultType_e;
 
 /**
@@ -274,8 +274,8 @@ extern bool doesPrimaryMirrorModeRequireFilerepProcess(bool checkTargetModeAsWel
  *   Note that any of the arguments may be NULL in which case that piece of information is not returned.
  */
 extern void getFileRepRoleAndState(
-								   FileRepRole_e *fileRepRole, 
-								   SegmentState_e *segmentState, 
+								   FileRepRole_e *fileRepRole,
+								   SegmentState_e *segmentState,
 								   DataState_e *dataState,
                                    bool *isInFilerepTransitionOut,
                                    DataState_e *transitionTargetDataStateOut);
@@ -307,9 +307,9 @@ extern bool primaryMirrorIsIOSuspended(void);
 
 extern const char * getTransitionResultLabel(PrimaryMirrorModeTransitionResult res);
 extern void getPrimaryMirrorModeStatus( char *bufOut, int bufSize);
-extern void getPrimaryMirrorStatusCodes(PrimaryMirrorMode *pm_mode, 
-										SegmentState_e *s_state, 
-										DataState_e *d_state, 
+extern void getPrimaryMirrorStatusCodes(PrimaryMirrorMode *pm_mode,
+										SegmentState_e *s_state,
+										DataState_e *d_state,
 										FaultType_e *f_type);
 
 extern const char *getDataStateLabel(DataState_e state);
@@ -366,6 +366,7 @@ extern void primaryMirrorPopulateFilespaceInfo(void);
 extern bool isTxnDir(char *path);
 extern bool isFilespaceUsedForTempFiles(Oid fsoid);
 extern bool isFilespaceUsedForTxnFiles(Oid fsoid);
+extern void primaryMirrorModeResetSpinLocks(void);
 
 #define getCurrentTempFilePath                                 \
         primaryMirrorIsUsingDefaultFilespaceForTempFiles()?    \
