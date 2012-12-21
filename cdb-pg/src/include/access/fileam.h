@@ -69,7 +69,6 @@ extern ExternalInsertDesc external_insert_init(Relation rel);
 extern Oid external_insert(ExternalInsertDesc extInsertDesc, HeapTuple instup);
 extern void external_insert_finish(ExternalInsertDesc extInsertDesc);
 extern void external_set_env_vars(extvar_t *extvar, char* uri, bool csv, char* escape, char* quote, bool header, uint32 scancounter);
-extern void external_set_env_vars_ext(extvar_t *extvar, char* uri, bool csv, char* escape, char* quote, bool header, uint32 scancounter, char* line_delim_str , char* buffer_delim_length);
 extern void AtAbort_ExtTables(void);
 char*	linenumber_atoi(char buffer[20],int64 linenumber);
 
