@@ -361,6 +361,23 @@ _readWindowFrameEdge(const char ** str)
 	READ_DONE();
 }
 
+static PercentileExpr *
+_readPercentileExpr(const char ** str)
+{
+	READ_LOCALS(PercentileExpr);
+
+	READ_OID_FIELD(perctype);
+	READ_NODE_FIELD(args);
+	READ_ENUM_FIELD(perckind, PercKind);
+	READ_NODE_FIELD(sortClause);
+	READ_NODE_FIELD(sortTargets);
+	READ_NODE_FIELD(pcExpr);
+	READ_NODE_FIELD(tcExpr);
+	READ_INT_FIELD(location);
+
+	READ_DONE();
+}
+
 /*
  * _readRowMarkClause
  */
@@ -4201,6 +4218,9 @@ readNodeBinary(const char ** str)
 				break;
 			case T_WindowFrameEdge:
 				return_value = _readWindowFrameEdge(str);
+				break;
+			case T_PercentileExpr:
+				return_value = _readPercentileExpr(str);
 				break;
 			case T_RowMarkClause:
 				return_value = _readRowMarkClause(str);

@@ -182,6 +182,8 @@ static const char *assign_deadlock_hazard_report_level(const char *newval, bool 
 						   GucSource source);
 static const char *assign_system_cache_flush_force(const char *newval, bool doit,
 						   GucSource source);
+static const char *assign_gp_idf_deduplicate(const char *newval, bool doit,
+						   GucSource source);
 static const char *assign_msglvl(int *var, const char *newval, bool doit,
 			  GucSource source);
 static const char *assign_IntervalStyle(const char *newval, bool doit,
@@ -613,6 +615,8 @@ bool        gp_enable_groupext_distinct_gather = true;
 bool		gp_dynamic_partition_pruning = true;
 bool		gp_log_dynamic_partition_pruning = false;
 bool		gp_cte_sharing = false;
+
+char	   *gp_idf_deduplicate_str;
 
 /*
  * Displayable names for context types (enum GucContext)
@@ -6116,6 +6120,14 @@ static struct config_string ConfigureNamesString[] =
 		"MD5", assign_password_hash_algorithm, NULL
 	},
 
+	{
+		{"gp_idf_deduplicate", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Sets the mode to control inverse distribution function's de-duplicate strategy."),
+			gettext_noop("Valid values are AUTO, NONE, and FORCE.")
+		},
+		&gp_idf_deduplicate_str,
+		"auto", assign_gp_idf_deduplicate, NULL
+	},
 
 	/* End-of-list marker */
 	{
@@ -10575,6 +10587,17 @@ assign_password_hash_algorithm(const char *newval, bool doit, GucSource source)
 	return newval;
 }
 
+static const char *
+assign_gp_idf_deduplicate(const char *newval, bool doit, GucSource source)
+{
+	if (pg_strcasecmp(newval, "auto") == 0 ||
+		pg_strcasecmp(newval, "none") == 0 ||
+		pg_strcasecmp(newval, "force") == 0)
+	{
+		return newval;
+	}
+	return NULL;
+}
 
 static const char *
 assign_IntervalStyle(const char *newval, bool doit, GucSource source)

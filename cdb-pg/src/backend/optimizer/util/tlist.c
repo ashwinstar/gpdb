@@ -277,6 +277,43 @@ get_sortgrouplist_exprs(List *sortClauses, List *targetList)
 }
 
 /*
+ * get_sortgrouplist_colidx
+ *		Given a list of SortClauses (or GroupClauses), build an array
+ *		of the referenced targetlist resno.  If ops is not NULL,
+ *		it is filled by the sortop Oid.  Results are allocated by palloc.
+ */
+AttrNumber *
+get_sortgrouplist_colidx(List *sortClauses, List *targetList, Oid **ops)
+{
+	AttrNumber	   *result;
+	ListCell	   *l;
+	int				i, len;
+
+	len = list_length(sortClauses);
+	if (len == 0)
+	{
+		if (ops)
+			*ops = NULL;
+		return NULL;
+	}
+	result = (AttrNumber *) palloc(sizeof(AttrNumber) * len);
+	if (ops)
+		*ops = (Oid *) palloc(sizeof(Oid) * len);
+	foreach_with_count (l, sortClauses, i)
+	{
+		SortClause	   *sortcl = lfirst(l);
+		TargetEntry	   *tle;
+
+		tle = get_sortgroupclause_tle(sortcl, targetList);
+		result[i] = tle->resno;
+		if (ops)
+			(*ops)[i] = sortcl->sortop;
+	}
+
+	return result;
+}
+
+/*
  * get_grouplist_exprs
  *     Find a list of unique referenced targetlist expressions used in a given
  *     list of GroupClauses or a GroupingClauses.

@@ -348,6 +348,11 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
     estate->showstatctx = queryDesc->showstatctx;
 
 	/*
+	 * Shared input info is needed when ROLE_EXECUTE or sequential plan
+	 */
+	estate->es_sharenode = (List **) palloc0(sizeof(List *));
+
+	/*
 	 * Initialize the motion layer for this query.
 	 *
 	 * NOTE: need to be in estate->es_query_cxt before the call.
@@ -451,7 +456,6 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	}
 	else if (Gp_role == GP_ROLE_EXECUTE)
 	{
-		estate->es_sharenode = (List **) palloc0(sizeof(List *));
 
         /* qDisp should have sent us a slice table via MPPEXEC */
 		if (queryDesc->plannedstmt != NULL && queryDesc->plannedstmt->sliceTable != NULL)

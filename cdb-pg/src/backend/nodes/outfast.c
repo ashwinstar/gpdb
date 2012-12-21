@@ -2890,6 +2890,21 @@ _outWindowFrameEdge(StringInfo str, WindowFrameEdge *node)
 }
 
 static void
+_outPercentileExpr(StringInfo str, PercentileExpr *node)
+{
+	WRITE_NODE_TYPE("PERCENTILEEXPR");
+
+	WRITE_OID_FIELD(perctype);
+	WRITE_NODE_FIELD(args);
+	WRITE_ENUM_FIELD(perckind, PercKind);
+	WRITE_NODE_FIELD(sortClause);
+	WRITE_NODE_FIELD(sortTargets);
+	WRITE_NODE_FIELD(pcExpr);
+	WRITE_NODE_FIELD(tcExpr);
+	WRITE_INT_FIELD(location);
+}
+
+static void
 _outRowMarkClause(StringInfo str, RowMarkClause *node)
 {
 	WRITE_NODE_TYPE("ROWMARKCLAUSE");
@@ -4047,6 +4062,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_WindowFrameEdge:
 				_outWindowFrameEdge(str, obj);
+				break;
+			case T_PercentileExpr:
+				_outPercentileExpr(str, obj);
 				break;
 			case T_RowMarkClause:
 				_outRowMarkClause(str, obj);

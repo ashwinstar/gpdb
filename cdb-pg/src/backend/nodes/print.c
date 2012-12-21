@@ -561,6 +561,8 @@ char * plannode_type(Plan *p)
 			return "HASH";
 		case T_Motion:
 			return "MOTION";
+		case T_Repeat:
+			return "REPEAT";
 		default:
 			return "UNKNOWN";
 	}

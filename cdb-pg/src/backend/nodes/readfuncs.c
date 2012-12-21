@@ -614,6 +614,22 @@ _readWindowFrameEdge(const char ** str)
 	READ_DONE();
 }
 
+static PercentileExpr *
+_readPercentileExpr(const char ** str)
+{
+	READ_LOCALS(PercentileExpr);
+
+	READ_OID_FIELD(perctype);
+	READ_NODE_FIELD(args);
+	READ_ENUM_FIELD(perckind, PercKind);
+	READ_NODE_FIELD(sortClause);
+	READ_NODE_FIELD(sortTargets);
+	READ_NODE_FIELD(pcExpr);
+	READ_NODE_FIELD(tcExpr);
+	READ_INT_FIELD(location);
+
+	READ_DONE();
+}
 /*
  * _readRowMarkClause
  */
@@ -3072,6 +3088,7 @@ static ParseNodeInfo infoAr[] =
 	{"PARTITIONNODE", (ReadFn)_readPartitionNode},
 	{"PGPARTRULE", (ReadFn)_readPgPartRule},
 	{"PARTITIONRULE", (ReadFn)_readPartitionRule},
+	{"PERCENTILEEXPR", (ReadFn)_readPercentileExpr},
 	{"PRIVGRANTEE", (ReadFn)_readPrivGrantee},
 	{"QUERY", (ReadFn)_readQuery},
 	{"RANGETBLREF", (ReadFn)_readRangeTblRef},

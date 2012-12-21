@@ -25,16 +25,23 @@
 #include "optimizer/var.h"
 #include "parser/analyze.h"
 #include "parser/gramparse.h"
+#include "parser/parse_agg.h"
 #include "parser/parse_coerce.h"
+#include "parser/parse_clause.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_func.h"
 #include "parser/parse_oper.h"
 #include "parser/parse_relation.h"
 #include "parser/parse_target.h"
 #include "parser/parse_type.h"
+#include "rewrite/rewriteManip.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 
+#define PercentileFuncName(p) (p->perckind == PERC_MEDIAN ? \
+		"median" : p->perckind == PERC_CONT ? \
+		"percentile_cont" : p->perckind == PERC_DISC ? \
+		"percentile_disc" : "unknown")
 
 bool		Transform_null_equals = false;
 
@@ -64,6 +71,7 @@ static Node *transformBooleanTest(ParseState *pstate, BooleanTest *b);
 static Node *transformIndirection(ParseState *pstate, Node *basenode,
 					 List *indirection);
 static Node *transformGroupingFunc(ParseState *pstate, GroupingFunc *gf);
+static Node *transformPercentileExpr(ParseState *pstate, PercentileExpr *p);
 static Node *typecast_expression(ParseState *pstate, Node *expr,
 					TypeName *typname);
 static Node *make_row_comparison_op(ParseState *pstate, List *opname,
@@ -344,6 +352,10 @@ transformExpr(ParseState *pstate, Node *expr)
 			}
 			break;
 
+		case T_PercentileExpr:
+			result = transformPercentileExpr(pstate, (PercentileExpr *) expr);
+			break;
+
 			/*********************************************
 			 * Quietly accept node types that may be presented when we are
 			 * called on an already-transformed tree.
@@ -557,6 +569,10 @@ parse_expr_location(Expr *expr)
         case T_WindowSpec:
             loc = ((WindowSpec *)expr)->location;
             break;
+
+		case T_PercentileExpr:
+			loc = ((PercentileExpr *) expr)->location;
+			break;
 
         default:
             loc = -1;
@@ -1972,6 +1988,189 @@ transformGroupingFunc(ParseState *pstate, GroupingFunc *gf)
 }
 
 /*
+ * transformPercentileExpr
+ *
+ * Its argument expression and ORDER BY clause are transformed.
+ * Various syntax checks are also done here.
+ */
+static Node *
+transformPercentileExpr(ParseState *pstate, PercentileExpr *p)
+{
+	Node	   *arg;
+	Oid			argtype;
+	AttrNumber	save_next_resno;
+
+	/* args should be one for the moment, but can be extended later. */
+	Assert(list_length(p->args) == 1);
+
+	arg = transformExpr(pstate, linitial(p->args));
+	argtype = exprType(arg);
+	if (!IsBinaryCoercible(argtype, FLOAT8OID))
+	{
+		arg = coerce_to_target_type(pstate, arg, argtype,
+									FLOAT8OID, -1, COERCION_EXPLICIT,
+									COERCE_EXPLICIT_CALL, p->location);
+
+		/*
+		 * The argument cannot be cast to the desired type.
+		 */
+		if (!arg)
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_FUNCTION),
+					 errmsg("function \"%s\" does not exist",
+							func_signature_string(list_make1(makeString(PercentileFuncName(p))),
+												  1, &argtype)),
+					 errhint("No function matches the given name and argument types."
+							 "You may need to add explicit type casts.")));
+	}
+	argtype = FLOAT8OID;
+
+	/* For now, percentile result type is only float8 */
+	p->perctype = FLOAT8OID;
+
+	/*
+	 * The argument check is almost same as LIMIT clause.
+	 */
+	if (contain_vars_of_level(arg, 0))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
+				 errmsg("argument of percentile function must not contain variables")));
+	if (checkExprHasAggs(arg))
+		ereport(ERROR,
+				(errcode(ERRCODE_GROUPING_ERROR),
+				 errmsg("argument of percentile function must not contain aggregate")));
+	if (checkExprHasWindFuncs(arg))
+		ereport(ERROR,
+				(errcode(ERRCODE_GROUPING_ERROR),
+				 errmsg("argument of percentile function must not contain window function")));
+	if (checkExprHasGroupExtFuncs(arg))
+		ereport(ERROR,
+				(errcode(ERRCODE_GROUPING_ERROR),
+				 errmsg("argument of percentile function must not contain grouping(), or group_id()")));
+	/*
+	 * The argument should be stable within a group.  We don't know what is the
+	 * right behavior for the volatile argument.  Simply erroring out for now.
+	 */
+	if (contain_volatile_functions(arg))
+		ereport(ERROR,
+				(errcode(ERRCODE_GROUPING_ERROR),
+				 errmsg("argument of percentile function must not contain volatile functions")));
+	/*
+	 * It might be possible to support SubLink in the argument, but the limitation
+	 * here is as LIMIT clause.  Erroring out for now.
+	 */
+	if (checkExprHasSubLink(arg))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("argument of percentile function must not congtain subqueries")));
+	/*
+	 * Percentile functions support only one sort key.
+	 */
+	if (list_length(p->sortClause) != 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("function \"%s\" cannot accept more than one expression in ORDER BY",
+					 func_signature_string(
+						 list_make1(makeString(PercentileFuncName(p))), 1, &argtype))));
+
+
+	p->args = list_make1(arg);
+
+	/*
+	 * sortClause should not be transformed twice, and !sortTargets is
+	 * not a good test to know if it's done, but it's ok for now.
+	 */
+	if (!p->sortTargets)
+	{
+		List		   *tlist = NIL, *sortlist = NIL;
+		ListCell	   *l;
+		int				min_varlevel;
+
+		/*
+		 * This part is similar to transformSortClause(), but there is a reason
+		 * we are not able to use it;  each expression should be coerced to
+		 * the type this function desires, as the argument expressions are treated.
+		 * It may be possible to change transformSortClause to cast each
+		 * transformed expression to a desired type, but error handling would be
+		 * very complicated.  Just duplicate some code from there for now.
+		 *
+		 * Save resno and start from 1 for only this part of transformation.
+		 */
+		save_next_resno = pstate->p_next_resno;
+		pstate->p_next_resno = 1;
+
+		foreach (l, p->sortClause)
+		{
+			SortBy		   *sortby = lfirst(l);
+			Node		   *expr;
+			TargetEntry	   *tle;
+			Oid				sorttype;
+
+			expr = transformExpr(pstate, sortby->node);
+			tle = transformTargetEntry(pstate, sortby->node, expr, NULL, true);
+
+			sorttype = exprType((Node *) tle->expr);
+
+			if (!IsBinaryCoercible(sorttype, FLOAT8OID))
+			{
+				tle->expr = (Expr *) coerce_to_target_type(pstate,
+														   (Node *) tle->expr,
+														   sorttype,
+														   FLOAT8OID,
+														   -1,
+														   COERCION_EXPLICIT,
+														   COERCE_EXPLICIT_CALL,
+														   p->location);
+				/*
+				 * The ordering clause cannot be cast to the desired type.
+				 */
+				if (!tle->expr)
+					ereport(ERROR,
+							(errcode(ERRCODE_UNDEFINED_FUNCTION),
+							 errmsg("function \"%s\" WITHIN GROUP (ORDER BY %s) does not exist",
+									func_signature_string(list_make1(makeString(PercentileFuncName(p))),
+														  1, &argtype),
+									format_type_be(sorttype)),
+							 errhint("No function matches the given name and argument types."
+									 "You may need to add explicit type casts.")));
+			}
+
+			tlist = lappend(tlist, tle);
+			sortlist = addTargetToSortList(pstate, tle,
+										   sortlist, tlist,
+										   sortby->sortby_kind,
+										   sortby->useOp,
+										   true);
+		}
+		p->sortClause = sortlist;
+		p->sortTargets = tlist;
+		/*
+		 * Restore back the saved resno.
+		 */
+		pstate->p_next_resno = save_next_resno;
+
+		/*
+		 * Although its argument is not allowed to refer to any Var,
+		 * ORDER BY is allowed.  Since PercentileExpr is semantically Aggref,
+		 * when it refers to outer vars, the whole expression should be
+		 * treated as an outer var.  However, it is too invasive to do it
+		 * for PercentileExpr, and as we plan to integrate it Aggref, we
+		 * just disallow such cases for now.  Revisit later.
+		 */
+		min_varlevel = find_minimum_var_level((Node *) p->sortTargets);
+		if (min_varlevel > 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("percentile functions cannot reference columns from outer query")));
+	}
+
+	/* Percentiles are actually aggregates. */
+	pstate->p_hasAggs = true;
+
+	return (Node *) p;
+}
+
+/*
  *	exprType -
  *	  returns the Oid of the type of the expression. (Used for typechecking.)
  */
@@ -2152,6 +2351,9 @@ exprType(Node *expr)
 			break;
 		case T_GroupId:
 			type = INT4OID;
+			break;
+		case T_PercentileExpr:
+			type = ((PercentileExpr *) expr)->perctype;
 			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(expr));

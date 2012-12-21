@@ -1344,9 +1344,7 @@ ShareNodeEntry *
 ExecGetShareNodeEntry(EState* estate, int shareidx, bool fCreate)
 {
 	Assert(shareidx >= 0);
-
-	if(estate->es_sharenode == NULL)
-		estate->es_sharenode = (List **) palloc0(sizeof(List *));
+	Assert(estate->es_sharenode != NULL);
 
 	if(!fCreate)
 	{

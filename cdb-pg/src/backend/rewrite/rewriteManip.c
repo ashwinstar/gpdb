@@ -73,6 +73,14 @@ checkExprHasAggs_walker(Node *node, checkExprHasAggs_context *context)
 			return true;		/* abort the tree traversal and return true */
 		/* else fall through to examine argument */
 	}
+
+	if (IsA(node, PercentileExpr))
+	{
+		/* PercentileExpr is always levelsup == 0 */
+		if (context->sublevels_up == 0)
+			return true;
+	}
+
 	if (IsA(node, Query))
 	{
 		/* Recurse into subselects */

@@ -1183,6 +1183,12 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 	else if ( parse->windowClause && parse->targetList &&
 			  contain_windowref((Node *)parse->targetList, NULL) )
 	{
+		if (extract_nodes(NULL, (Node *) tlist, T_PercentileExpr) != NIL)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("window function with WITHIN GROUP aggregate is not supported")));
+		}
 		/*
 		 * Calculate pathkeys that represent ordering requirements. Stash
 		 * them in PlannerInfo so that query_planner can canonicalize them.
@@ -1216,6 +1222,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		int			numGroupCols;
 		bool		use_hashed_grouping = false;
 		bool        grpext = false;
+		bool		has_within = false;
 		CanonicalGroupingSets *canonical_grpsets;
 
 		/* Preprocess targetlist */
@@ -1236,6 +1243,12 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		}
 
 		grpext = is_grouping_extension(canonical_grpsets);
+		has_within = extract_nodes(NULL, (Node *) tlist, T_PercentileExpr) != NIL;
+
+		if (grpext && has_within)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("WITHIN GROUP aggregate cannot be used in GROUPING SETS query")));
 
 		/*
 		 * Will need actual number of aggregates for estimating costs.
@@ -1352,13 +1365,14 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		if ( Gp_role == GP_ROLE_DISPATCH )
 		{
 			bool querynode_changed = false;
+			bool pass_subtlist = false;
 			GroupContext group_context;
 
+			pass_subtlist = (agg_counts.aggOrder != NIL || has_within);
 			group_context.best_path = best_path;
 			group_context.cheapest_path = cheapest_path;
 			group_context.subplan = NULL;
-			group_context.sub_tlist = (agg_counts.aggOrder != NIL) ? 
-				sub_tlist : NIL;
+			group_context.sub_tlist = pass_subtlist ? sub_tlist : NIL;
 			group_context.tlist = tlist;
 			group_context.use_hashed_grouping = use_hashed_grouping;
 			group_context.tuple_fraction = tuple_fraction;
@@ -1372,9 +1386,15 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 			group_context.pcurrent_pathkeys = &current_pathkeys;
 			group_context.querynode_changed = &querynode_changed;
 
-			result_plan = cdb_grouping_planner(root,
-											   &agg_counts,
-											   &group_context);
+			/* within_agg_planner calls cdb_grouping_planner */
+			if (has_within)
+				result_plan = within_agg_planner(root,
+												 &agg_counts,
+												 &group_context);
+			else
+				result_plan = cdb_grouping_planner(root,
+												   &agg_counts,
+												   &group_context);
 
 			/* Add the Repeat node if needed. */
 			if (result_plan != NULL &&

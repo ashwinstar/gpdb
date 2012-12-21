@@ -368,6 +368,9 @@ contain_agg_clause_walker(Node *node, void *context)
 	if (IsA(node, GroupId) || IsA(node, GroupingFunc))
 		return true;
 
+	if (IsA(node, PercentileExpr))
+		return true;
+
 	Assert(!IsA(node, SubLink));
 	return expression_tree_walker(node, contain_agg_clause_walker, context);
 }
@@ -3234,7 +3237,6 @@ evaluate_expr(Expr *expr, Oid result_type)
 }
 
 
-
 /*--------------------
  * expression_tree_mutator() is designed to support routines that make a
  * modified copy of an expression tree, with some nodes being added,
@@ -3442,6 +3444,21 @@ expression_tree_mutator(Node *node,
 
 				return (Node *) newnode;
 
+			}
+		case T_PercentileExpr:
+			{
+				PercentileExpr *perc = (PercentileExpr *) node;
+				PercentileExpr *newnode;
+
+				FLATCOPY(newnode, perc, PercentileExpr);
+
+				MUTATE(newnode->args, perc->args, List *);
+				MUTATE(newnode->sortClause, perc->sortClause, List *);
+				MUTATE(newnode->sortTargets, perc->sortTargets, List *);
+				MUTATE(newnode->pcExpr, perc->pcExpr, Expr *);
+				MUTATE(newnode->tcExpr, perc->tcExpr, Expr *);
+
+				return (Node *) newnode;
 			}
 		case T_SortClause:
 			{

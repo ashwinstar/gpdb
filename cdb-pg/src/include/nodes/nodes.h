@@ -188,6 +188,7 @@ typedef enum NodeTag
 	T_GroupId,
 	T_IntoClause,
     T_AggOrder,
+	T_PercentileExpr,
 
 	/*
 	 * TAGS FOR EXPRESSION STATE NODES (execnodes.h)
@@ -218,6 +219,7 @@ typedef enum NodeTag
 	T_DomainConstraintState,
 	T_WindowRefExprState,
 	T_GroupingFuncExprState,
+	T_PercentileExprState,
 
 	/*
 	 * TAGS FOR PLANNER NODES (relation.h)
