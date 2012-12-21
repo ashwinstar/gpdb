@@ -14,4 +14,4 @@ fi
 GPKILL=CONFIRM
 export GPKILL
 
-gpload.py $*
+exec gpload.py $*

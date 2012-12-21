@@ -11,6 +11,7 @@ else
 fi
 
 # MPP-15405
-export GPKILL=CONFIRM
+GPKILL=CONFIRM
+export GPKILL
 
-gpcrondump.py $*
+exec gpcrondump.py $*
