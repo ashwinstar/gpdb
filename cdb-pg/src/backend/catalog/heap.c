@@ -2368,6 +2368,35 @@ StoreAttrDefault(Relation rel, AttrNumber attnum, char *adbin)
 
 	adrel = heap_open(AttrDefaultRelationId, RowExclusiveLock);
 
+	if (Debug_check_for_invalid_persistent_tid)
+	{	
+		elog(LOG, 
+			 "StoreAttrDefault[1] relation %u/%u/%u '%s', isPresent %s, serial number " INT64_FORMAT ", TID %s",
+			 adrel->rd_node.spcNode,
+			 adrel->rd_node.dbNode,
+			 adrel->rd_node.relNode,
+			 NameStr(adrel->rd_rel->relname),
+			 (adrel->rd_segfile0_relationnodeinfo.isPresent ? "true" : "false"),
+			 adrel->rd_segfile0_relationnodeinfo.persistentSerialNum,
+			 ItemPointerToString(&adrel->rd_segfile0_relationnodeinfo.persistentTid));
+	}
+
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(adrel);
+
+	if (Debug_check_for_invalid_persistent_tid)
+	{	
+		elog(LOG, 
+			 "StoreAttrDefault[2] relation %u/%u/%u '%s', isPresent %s, serial number " INT64_FORMAT ", TID %s",
+			 adrel->rd_node.spcNode,
+			 adrel->rd_node.dbNode,
+			 adrel->rd_node.relNode,
+			 NameStr(adrel->rd_rel->relname),
+			 (adrel->rd_segfile0_relationnodeinfo.isPresent ? "true" : "false"),
+			 adrel->rd_segfile0_relationnodeinfo.persistentSerialNum,
+			 ItemPointerToString(&adrel->rd_segfile0_relationnodeinfo.persistentTid));
+	}
+
 	tuple = heap_form_tuple(adrel->rd_att, values, nulls);
 	attrdefOid = simple_heap_insert(adrel, tuple);
 
