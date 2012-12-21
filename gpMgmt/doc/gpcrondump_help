@@ -17,10 +17,13 @@ gpcrondump -x <database_name>
        [--no-owner | --use-set-session-authorization] 
        [--no-privileges] [--rsyncable] [--ddboost] }
      
+gpcrondump --ddboost-host <ddboost_hostname> --ddboost-user <ddboost_user>
 
-gpcrondump -? 
+gpcrondump --ddboost-config-remove
 
 gpcrondump -o
+
+gpcrondump -? 
 
 gpcrondump --version
 
@@ -37,6 +40,10 @@ by default using gzip.
 gpcrondump allows you to schedule routine backups of a Greenplum database 
 using cron (a scheduling utility for UNIX operating systems). Cron jobs 
 that call gpcrondump should be scheduled on the master host.
+
+gpcrondump is used to schedule Data Domain Boost backup and restore 
+operations. gpcrondump is also used to set or remove one-time 
+credentials for Data Domain Boost.
 
 **********************
 Return Codes
@@ -107,8 +114,10 @@ OPTIONS
  set for $MASTER_DATA_DIRECTORY will be used.
 
 --ddboost
- Use Data Domain DD Boost for this backup. Before using DD Boost 
- make sure the one-time DD Boost credential setup is completed.
+
+ Use Data Domain Boost for this backup. Before using 
+ Data Domain Boost, set up the Data Domain Boost credential, 
+ as described in the next option below. 
 
  The following options are recommended if --ddboost is specified.
 
@@ -133,6 +142,41 @@ OPTIONS
 
   To maximize Data Domain deduplication benefits, retain at 
   least 30 days of backups.
+
+--ddboost-host <ddboost_hostname> --ddboost-user <ddboost_user>
+
+Sets the Data Domain Boost credentials. Do not combine this options 
+with any other gpcrondump options. Do not enter just part of this option. 
+
+<ddboost_hostname> is the IP address of the host. There is a 30-character limit.
+
+<ddboost_user> is the Data Domain Boost user name. There is a 30-character limit.
+
+Example:
+gpcrondump --ddboost-host 172.28.8.230 --ddboost-user ddboostusername
+
+After running gpcrondump with these options, the system verfies the limits 
+on the host and user names and prompts for the Data Domain Boost password. 
+Enter the password when prompted; the password is not echoed on the screen. 
+There is a 40-character limit on the password that can include lowercase 
+letters (a-z), uppercase letters (A-Z), numbers (0-9), and special 
+characters ($, %, #, +, etc.).
+
+The system verifies the password. After the password is verified, 
+the system creates a file .ddconfig and copies it to all segments.
+
+Note: If there is more than one operating system user using Data Domain Boost 
+for backup and restore operations, repeat this configuration process for 
+each of those users.
+
+Important: Set up the Data Domain Boost credential before running any 
+Data Domain Boost backups with the --ddboost option, described above.
+
+--ddboost-config-remove
+
+Removes all Data Domain Boost credentials from the master and all 
+segments on the system. Do not enter this option with any other 
+gpcrondump option.
 
 -E encoding
 
