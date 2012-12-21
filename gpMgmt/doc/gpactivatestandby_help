@@ -98,11 +98,9 @@ gpinitstandby at a later time to configure a new standby master host.
 
 -f (force activation)
 
-Use this option to force activation of the backup master host when the 
-synchronization process (gpsyncmaster) is not running. Only use this 
-option if you are sure that the backup and primary master hosts are 
-consistent, and you know the gpsyncmaster process is not running on 
-the backup master host. This option may be useful if you have just 
+Use this option to force activation of the backup master host. 
+Only use this option if you are sure that the backup and primary master 
+hosts are consistent. This option may be useful if you have just 
 initialized a new backup master using gpinitstandby, and want to 
 activate it immediately.
 
