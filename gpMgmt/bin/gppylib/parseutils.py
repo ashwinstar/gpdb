@@ -252,17 +252,20 @@ class LineParser:
             raise ExceptionNoStackTraceNeeded("%s:%s:%s LINE >>%s\n%s" % (self.filename, self.lineno, self.caller, self.line, msg))
         self.rest = self.rest[len(expected):]
 
-    def handle_field(self, name, dst=None, delimiter=':'):
+    def handle_field(self, name, dst=None, delimiter=':', stripchars=None):
         """
         Attempts to read the next field up to a given delimiter.
         Names starting with '[' indicate that the field should use the bracketed parsing logic.
         If dst is not none, also assigns the value to dst[name].  
+        If stripchars is not none, value is first stripped of leading and trailing stripchars.
         """
         if name[0] == '[':
             name = name.strip('[]')
             value = self.read_delimited_field(delimiter, name, read_to_possibly_bracketed)
         else:
             value = self.read_delimited_field(delimiter, name)
+        if stripchars is not None:
+            value = value.strip(stripchars)
         if dst is not None:
             dst[name] = value
         return value
@@ -453,8 +456,8 @@ def parse_gpmovemirrors_line(filename, lineno, line, fslist):
     p = LineParser(caller(), filename, lineno, line)
     p.handle_field('[oldAddress]', fixed) # [oldAddress] indicates possible IPv6 address
     p.handle_field('oldPort', fixed)
-    p.handle_field('oldDataDirectory', fixed, delimiter=' ')
-    p.handle_field('[newAddress]', fixed) # [newAddress] indicates possible IPv6 address
+    p.handle_field('oldDataDirectory', fixed, delimiter=' ', stripchars=' \t') # MPP-15675 note stripchars here and next line
+    p.handle_field('[newAddress]', fixed, stripchars=' \t') # [newAddress] indicates possible IPv6 address
     p.handle_field('newPort', fixed)
     p.handle_field('newReplicationPort', fixed)
     p.handle_field('newDataDirectory', fixed)
@@ -511,8 +514,8 @@ def parse_gprecoverseg_line(filename, lineno, line, fslist):
     if groups == 1:
         p.handle_field('failedDataDirectory', fixed)
     else:
-        p.handle_field('failedDataDirectory', fixed, delimiter=' ')
-        p.handle_field('[newAddress]', fixed) # [newAddress] indicates possible IPv6 address
+        p.handle_field('failedDataDirectory', fixed, delimiter=' ', stripchars=' \t') # MPP-15675 note stripchars here and next line
+        p.handle_field('[newAddress]', fixed, stripchars=' \t') # [newAddress] indicates possible IPv6 address
         p.handle_field('newPort', fixed)
         p.handle_field('newReplicationPort', fixed)
         p.handle_field('newDataDirectory', fixed)
