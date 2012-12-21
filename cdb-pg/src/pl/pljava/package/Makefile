@@ -21,6 +21,7 @@ PLJAVA_RPM_FLAGS="--define 'pljava_dir $(PLJAVA_DIR)' --define 'pljava_ver $(PLJ
 PLJAVA_RPM=pljava-$(PLJAVA_VER)-$(PLJAVA_REL).$(ARCH).rpm
 PLJAVA_GPPKG=pljava-$(PLJAVA_VER)-$(OS)-$(ARCH).gppkg
 
+TARGET_GPPKG=$(PLJAVA_GPPKG)
 EXTRA_CLEAN+=$(JRE_RPM) $(PLJAVA_RPM) $(PLJAVA_GPPKG)
 
 #

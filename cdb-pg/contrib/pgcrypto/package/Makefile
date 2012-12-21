@@ -14,7 +14,8 @@ PGCRYPTO_RPM_FLAGS="--define 'pgcrypto_dir $(PGCRYPTO_DIR)' --define 'pgcrypto_v
 PGCRYPTO_RPM=pgcrypto-$(PGCRYPTO_VER)-$(PGCRYPTO_REL).$(ARCH).rpm
 PGCRYPTO_GPPKG=pgcrypto-$(PGCRYPTO_VER)-$(OS)-$(ARCH).gppkg
 
-EXTRA_CLEAN+=$(PGCRYTPO_RPM) $(PGCRYPTO_GPPKG)
+TARGET_GPPKG=$(PGCRYPTO_GPPKG)
+EXTRA_CLEAN+=$(PGCRYPTO_RPM) $(PGCRYPTO_GPPKG)
 
 #
 # Generic rules to build gppkgs included here

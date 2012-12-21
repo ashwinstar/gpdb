@@ -22,6 +22,7 @@ PLR_RPM_FLAGS="--define 'plr_dir $(PLR_DIR)' --define 'plr_ver $(PLR_VER)' --def
 PLR_RPM=plr-$(PLR_VER)-$(PLR_REL).$(ARCH).rpm
 PLR_GPPKG=plr-$(PLR_VER)-$(OS)-$(ARCH).gppkg
 
+TARGET_GPPKG=$(PLR_GPPKG)
 EXTRA_CLEAN+=$(R_RPM) $(PLR_RPM) $(PLR_GPPKG)
 
 #
