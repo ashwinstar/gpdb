@@ -378,6 +378,8 @@ main(int argc, char **argv)
 		/* mpp additions */
 		{"gp-k", required_argument, NULL, 1},
 		{"gp-d", required_argument, NULL, 2},
+		{"table-file", required_argument, NULL, 3},
+		{"exclude-table-file", required_argument, NULL, 4},
 		/* end mpp additions */
 
 		/*
@@ -603,6 +605,27 @@ main(int argc, char **argv)
 				g_pszCDBOutputDirectory = strdup(optarg);
 				break;
 
+			case 3: 			/*	--table-file */
+				if (!open_file_and_append_to_list(optarg, &table_include_patterns, "include tables list"))
+				{
+					fprintf(stderr,
+							_("%s: invalid --table-file option -- can't open file %s\n"),
+							progname, optarg);
+					exit(1);
+				}
+				include_everything = false;
+				break;
+
+			case 4: 			/*	--exclude-table-file */
+				if (!open_file_and_append_to_list(optarg, &table_exclude_patterns, "exclude tables list"))
+				{
+					fprintf(stderr,
+							_("%s: invalid --exclude-table-file option -- can't open file %s\n"),
+							progname, optarg);
+					exit(1);
+				}
+				break;
+
 #ifdef USE_DDBOOST
 			case 6:
 				g_pszDDBoostFile = strdup(optarg);
@@ -666,7 +689,7 @@ main(int argc, char **argv)
 
 	if (dump_inserts && oids)
 	{
-		write_msg(NULL, "ptions --inserts/--column-inserts (-d, -D) and OID (-o) options cannot be used together\n");
+		write_msg(NULL, "options --inserts/--column-inserts (-d, -D) and OID (-o) options cannot be used together\n");
 		write_msg(NULL, "(The INSERT command cannot set OIDs.)\n");
 		exit(1);
 	}

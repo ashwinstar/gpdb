@@ -45,6 +45,8 @@ static void decrementFinishedLaunchCount(void);
 static void decrementFinishedLockingCount(void);
 static bool startTransactionAndLock(PGconn *pConn);
 static bool execCommit(PGconn *pConn);
+static char* getRelativeFileName(char* longFileName);
+static void addFileNameParam(const char* flag, char* file_name, InputOptions* pInputOpts);
 static bool fillInputOptions(int argc, char **argv, InputOptions * pInputOpts);
 static void freeThreadParmArray(ThreadParmArray * pParmAr);
 static void help(const char *progname);
@@ -57,6 +59,7 @@ static void spinOffThreads(PGconn *pConn, InputOptions * pInputOpts, const Segme
 static void *threadProc(void *arg);
 static bool testPartitioningSupport(void);
 static bool transformPassThroughParms(InputOptions * pInputOpts);
+static bool copyFilesToSegments(InputOptions * pInputOpts, SegmentDatabaseArray *segDBAr);
 static int	getRemoteVersion(void);
 
 
@@ -74,6 +77,9 @@ static bool dataOnly;
 static bool aclsSkip;
 static char *selectTableName = NULL;	/* name of a single table to dump */
 static char *selectSchemaName = NULL;	/* name of a single schema to dump */
+
+static char *tableFileName = NULL;	/* file name with tables to dump (--table-file)	*/
+static char *excludeTableFileName = NULL; /* file name with tables to exclude (--exclude-table-file) */
 
 char		g_comment_start[10];
 char		g_comment_end[10];
@@ -164,7 +170,6 @@ main(int argc, char **argv)
 	 * Process the schema and table include/exclude lists and determine the
 	 * OIDs of the tables to be dumped.
 	 */
-
 	convert_patterns_to_oids();
 
 	/*
@@ -172,6 +177,15 @@ main(int argc, char **argv)
 	 * shipping options to the agents
 	 */
 	if (!transformPassThroughParms(&inputOpts))
+		goto cleanup;
+
+	/*
+	 * Copy necessary files to segments (from --table-file / -- exclude-table-file options)
+	 * Files will be copied to the same location on all segments: /tmp/filename
+	 * If a file with the same name exists on a segment, it will be overridden.
+	 *
+	 */
+	if (!copyFilesToSegments(&inputOpts, &segDBAr))
 		goto cleanup;
 
 	/* Start a transaction (to be released in spinOffThreads)  */
@@ -404,6 +418,70 @@ transformPassThroughParms(InputOptions *pInputOpts)
 
 		addChildrenToPassThrough(pInputOpts, 't', table_include_oids);
 		addChildrenToPassThrough(pInputOpts, 'T', table_exclude_oids);
+	}
+
+	return true;
+}
+
+/*
+ * Copy --table-file and --exclude-table-file files
+ * to all segments.
+ *
+ * returns 'false' if error was reported. 'true' otherwise.
+ */
+static bool
+copyFilesToSegments(InputOptions *pInputOpts, SegmentDatabaseArray *segDBAr)
+{
+
+
+	if ((tableFileName == NULL) && (excludeTableFileName == NULL))
+		return true; /* nothing to do */
+
+	/* get destination list */
+	const char *hostfile_name = "/tmp/gp_dump_hostfilelist.txt";
+
+	FILE* hostfile = fopen(hostfile_name, "w");
+	if (hostfile == NULL)
+	{
+		mpp_err_msg_cache(logError, progname, "Can't open hostfile file %s",
+				  	  	  hostfile_name);
+		return false;
+	}
+
+	for (int i = 0; i < segDBAr->count; ++i)
+	{
+		mpp_msg(logInfo, progname, "Writing to hostfile: line #%d, segment %s@%s:%d\n",
+				i,
+				segDBAr->pData[i].pszDBUser,
+				segDBAr->pData[i].pszHost,
+				segDBAr->pData[i].port);
+		fprintf(hostfile, "%s\n", segDBAr->pData[i].pszHost);
+
+	}
+	fclose(hostfile);
+
+	/* run gpscp to copy file(s) to all segments */
+	char *cmdLine = MakeString("gpscp -f %s %s %s =:/tmp/.",
+							   hostfile_name,
+							   StringNotNull(tableFileName, ""),
+							   StringNotNull(excludeTableFileName, ""));
+
+
+	mpp_msg(logInfo, progname,  "Copying table lists files with gpscp cmd: %s\n", cmdLine);
+	/* This execs a shell that runs the gpscp program */
+	int result = system(cmdLine);
+
+	mpp_msg(logInfo, progname, "Finished running gpscp cmd");
+
+	/* delete hostfile name */
+	unlink(hostfile_name);
+	free(cmdLine);
+
+	if (result == -1)
+	{
+		mpp_err_msg_cache(logError, progname, "failed to send table files to segments (%d, %d)",
+						  result, errno);
+		return false;
 	}
 
 	return true;
@@ -659,6 +737,38 @@ cleanup:
 	return bRtn;
 }
 
+
+char* getRelativeFileName(char* longFileName)
+{
+
+	char *slash = strrchr(longFileName, '/');
+	if (slash == NULL)
+		return longFileName;
+
+	/* return file name from after last '/' */
+	return slash + 1;
+
+}
+
+/*
+ * extract file name without path from original file_name,
+ * append to a directory_name,
+ * and add to to passed params with given flag option.
+ */
+void addFileNameParam(const char* flag, char* file_name, InputOptions* pInputOpts)
+{
+	static char* short_file_name = NULL;
+	static char* tmp_name = NULL;
+	static char* directory_name = "/tmp/";
+
+	short_file_name = getRelativeFileName(file_name);
+	tmp_name = MakeString("%s%s", directory_name, short_file_name);
+	pInputOpts->pszPassThroughParms =
+			addPassThroughLongParm("table-file", tmp_name, pInputOpts->pszPassThroughParms);
+	tableFileName = Safe_strdup(file_name);
+	free(tmp_name);
+}
+
 /*
  * fillInputOptions: This function gets the command line options, and
  * stores the values in the InputOptions structure. Much of this code
@@ -741,10 +851,12 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		{"gp-s", required_argument, NULL, 5},
 		{"rsyncable", no_argument, &rsyncable, 1},
 
-
 #ifdef USE_DDBOOST
 		{"ddboost", no_argument, NULL, 6},
 #endif
+		{"table-file", required_argument, NULL, 7},
+		{"exclude-table-file", required_argument, NULL, 8},
+
 		{NULL, 0, NULL, 0}
 	};
 
@@ -1059,6 +1171,46 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 				dd_boost_enabled = 1;
 				break;
 #endif
+			case 7:
+				/* table-file option */
+				if (tableFileName != NULL)
+				{
+					mpp_err_msg_cache(logError, progname, "Can't use --table-file option more than once\n");
+					goto cleanup;
+				}
+
+				if (!open_file_and_append_to_list(optarg, &table_include_patterns, "include tables list"))
+				{
+					mpp_err_msg_cache(logError, progname, "can't open file %s. Invalid --table-file parameter\n",
+							          optarg);
+					goto cleanup;
+				}
+
+				/* extract file name without path, and add it to passed params */
+				addFileNameParam("table-file", optarg, pInputOpts);
+				include_everything = false;
+				break;
+
+			case 8:
+				/* exclude-table-file option */
+				if (excludeTableFileName != NULL)
+				{
+					mpp_err_msg_cache(logError, progname, "Can't use --exclude-table-file option more than once\n");
+					goto cleanup;
+				}
+
+				if (!open_file_and_append_to_list(optarg, &table_exclude_patterns, "exclude tables list"))
+				{
+					mpp_err_msg_cache(logError, progname, "can't open file %s. Invalid --exclude-table-file parameter\n",
+							          optarg);
+					goto cleanup;
+				}
+
+				/* extract file name without path, and add it to passed params */
+				addFileNameParam("exclude-table-file", optarg, pInputOpts);
+
+				break;
+
 			default:
 				mpp_err_msg_cache(logError, progname, "Try \"%s --help\" for more information.\n", progname);
 				goto cleanup;
@@ -1182,6 +1334,8 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 
 
 	bRtn = true;
+
+	mpp_msg(logInfo, progname, "Read params: %s\n", pInputOpts->pszPassThroughParms);
 
 	cleanup:
 
@@ -1723,7 +1877,7 @@ spinOffThreads(PGconn *pConn,
 /* threadProc: This function is used to connect to one database that needs to be backed up,
  * make a gp_backup_launch call to cause the backup process to begin on the instance hosting the
  * database.  Then it waits for notifications from the process.  It receives a notification
- * wnenever the gp_dump_agent process writes a row into the gp_backup_status table.  This happens
+ * whenever the gp_dump_agent process writes a row into the gp_backup_status table.  This happens
  * when the process starts, when it attains the SET_SERIALIZABLE state, and when it finishes.
  */
 void *
@@ -1810,6 +1964,7 @@ threadProc(void *arg)
 					  StringNotNull(pInputOpts->pszPassThroughParms, ""),
 					  StringNotNull(pszPassThroughCredentials, "")
 		);
+
 
 	if (pszPassThroughCredentials != NULL)
 		free(pszPassThroughCredentials);

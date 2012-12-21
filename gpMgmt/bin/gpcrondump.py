@@ -71,7 +71,9 @@ class GpCronDump(Operation):
         self.clear_catalog_dumps = options.clear_catalog_dumps
         self.batch_default = options.batch_default
         self.include_dump_tables = options.include_dump_tables
-        self.exclude_dump_tables = options.exclude_dump_tables    
+        self.exclude_dump_tables = options.exclude_dump_tables   
+        self.include_dump_tables_file = options.include_dump_tables_file
+        self.exclude_dump_tables_file = options.exclude_dump_tables_file 
         self.backup_dir = options.backup_dir
         self.report_dir = options.report_dir
         self.encoding = options.encoding
@@ -233,6 +235,8 @@ class GpCronDump(Operation):
                                         free_space_percent = self.free_space_percent,  
                                         clear_catalog_dumps = self.clear_catalog_dumps,
                                         backup_dir = self.backup_dir,
+                                        include_dump_tables_file = self.include_dump_tables_file,
+                                        exclude_dump_tables_file = self.exclude_dump_tables_file,
                                         report_dir = self.report_dir,
                                         encoding = self.encoding,
                                         output_options = self.output_options,
@@ -336,22 +340,30 @@ class GpCronDump(Operation):
         logger.info("---------------------------------------------------")
         logger.info("Master Greenplum Instance dump parameters")
         logger.info("---------------------------------------------------")
-        if len(self.include_dump_tables) > 0:
+        if len(self.include_dump_tables) > 0 or self.include_dump_tables_file is not None:
             logger.info("Dump type                            = Single database, specific table")
             logger.info("---------------------------------------------------")
-            logger.info("Table inclusion list ")
-            logger.info("---------------------------------------------------")
-            for table in self.include_dump_tables:
-                logger.info("Table name                           = %s" % table)
-            logger.info("---------------------------------------------------")
-        elif len(self.exclude_dump_tables) > 0:  
+            if len(self.include_dump_tables) > 0:
+                logger.info("Table inclusion list ")
+                logger.info("---------------------------------------------------")
+                for table in self.include_dump_tables:
+                    logger.info("Table name                             = %s" % table)
+                logger.info("---------------------------------------------------")
+            if self.include_dump_tables_file is not None:
+                logger.info("Table file name                      = %s" % self.include_dump_tables_file)
+                logger.info("---------------------------------------------------")
+        elif len(self.exclude_dump_tables) > 0 or self.exclude_dump_tables_file is not None:  
             logger.info("Dump type                            = Single database, exclude table")
             logger.info("---------------------------------------------------")
-            logger.info("Table exclusion list ")
-            logger.info("---------------------------------------------------")
-            for table in self.exclude_dump_tables:
-                logger.info("Table name                           = %s" % table)
-            logger.info("---------------------------------------------------")
+            if len(self.exclude_dump_tables) > 0:
+                logger.info("Table exclusion list ")
+                logger.info("---------------------------------------------------")
+                for table in self.exclude_dump_tables:
+                    logger.info("Table name                               = %s" % table)
+                logger.info("---------------------------------------------------")
+            if self.exclude_dump_tables_file is not None:
+                logger.info("Table file name         s" % self.exclude_dump_tables_file)
+                logger.info("---------------------------------------------------")
         else:
             logger.info("Dump type                            = Single database")
         logger.info("Database to be dumped                = %s" % dump_database)
@@ -452,9 +464,9 @@ class GpCronDump(Operation):
          if len(self.dump_databases) > 1:
             if self.dump_schema is not None:
                 raise ExceptionNoStackTraceNeeded("Cannot supply schema name if multiple database dumps are requested")
-            if len(self.include_dump_tables) > 0:
+            if len(self.include_dump_tables) > 0 or self.include_dump_tables_file is not None:
                 raise ExceptionNoStackTraceNeeded("Cannot supply a table dump list if multiple database dumps are requested")
-            if len(self.exclude_dump_tables) > 0:
+            if len(self.exclude_dump_tables) > 0 or self.exclude_dump_tables_file is not None:
                 raise ExceptionNoStackTraceNeeded("Cannot exclude specific tables if multiple database dumps are requested")
             logger.info("Configuring for multiple database dump")
             
@@ -560,6 +572,11 @@ def create_parser():
     addTo.add_option('--rsyncable', const='--rsyncable', action='append_const', dest='output_options',
                      help="Pass the --rsyncable option to gzip, if compression is being used.")
     
+    addTo.add_option('--table-file', dest='include_dump_tables_file', metavar="<filename>",
+                     help="Dump the tables named in this file for the specified database. Option can be used only once.")
+    addTo.add_option('--exclude-table-file', dest='exclude_dump_tables_file', metavar="<filename>",
+                     help="Exclude the tables named in this file from the dump. Option can be used only once.")
+
     # TODO: Dead options. Remove eventually.
     addTo.add_option('-i', action='store_true', dest='bypass_cluster_check', default=False, help="No longer supported.")
     addTo.add_option('-p', action='store_true', dest='dump_primaries', default=True, help="No longer supported.")  
