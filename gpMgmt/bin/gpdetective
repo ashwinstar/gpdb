@@ -49,6 +49,7 @@ Usage: gpdetective <option> [dbname]
 #============================================================
 import sys, os, tempfile, subprocess, re, getopt, types, traceback, datetime
 from gppylib.gpcoverage import GpCoverage
+from gppylib.operations.filespace import GP_TRANSACTION_FILES_FILESPACE, GP_TEMPORARY_FILES_FILESPACE
 
 libdir = sys.path[0] + '/lib'
 try: 
@@ -947,6 +948,55 @@ class GPDetective:
                             '%s/pg_changetracking_%s_mirror/FILEREP_LOG' % m.group(1,3)])
 
     #------------------------------------------------------------
+    def filespaceFlatFiles(self):
+        """
+        Copy the flat files for temporary/transaction filespaces
+        from all the segments, master and standby.
+        """
+
+        #Copy files from primaries
+        host_rx = re.compile('(.*)\:(.*)/([^/]*)')
+        for seg in self.segments:
+            m = host_rx.search(seg[1])
+            tempStr = self.runCmd(['scp', '-qr',
+                                   '%s/%s' % (seg[1], GP_TRANSACTION_FILES_FILESPACE), 
+                                   '%s/pg_changetracking_%s/%s' % (m.group(1), m.group(3), GP_TRANSACTION_FILES_FILESPACE)])
+
+            tempStr = self.runCmd(['scp', '-qr',
+                                   '%s/%s' % (seg[1], GP_TEMPORARY_FILES_FILESPACE), 
+                                   '%s/pg_changetracking_%s/%s' % (m.group(1), m.group(3), GP_TEMPORARY_FILES_FILESPACE)])
+
+        #Copy files from mirrors
+        for seg in self.mirrors: 
+            m = host_rx.search(seg[1])
+            tempStr = self.runCmd(['scp', '-qr',
+                                   '%s/%s' % (seg[1], GP_TRANSACTION_FILES_FILESPACE), 
+                                   '%s/pg_changetracking_%s_mirror/%s' % (m.group(1), m.group(3), GP_TRANSACTION_FILES_FILESPACE)])
+
+            tempStr = self.runCmd(['scp', '-qr',
+                                   '%s/%s' % (seg[1], GP_TEMPORARY_FILES_FILESPACE), 
+                                   '%s/pg_changetracking_%s_mirror/%s' % (m.group(1), m.group(3), GP_TEMPORARY_FILES_FILESPACE)])
+        
+        #Copy files from backupmaster
+        host_rx = re.compile('(.*)/([^/]*)')
+        if self.backupmasterhostdir is not None and self.backupmasterhostname is not None:
+            m = host_rx.search(self.backupmasterhostdir)
+            tempStr = self.runCmd(['scp', '-q',
+                                   '%s/%s' % (self.backupmasterhostname + ':' + self.backupmasterhostdir, 
+                                              GP_TRANSACTION_FILES_FILESPACE),
+                                   '%s/%s' % (m.group(1), GP_TRANSACTION_FILES_FILESPACE)])
+            tempStr = self.runCmd(['scp', '-q',
+                                   '%s/%s' % (self.backupmasterhostname + ':' + self.backupmasterhostdir, 
+                                              GP_TEMPORARY_FILES_FILESPACE),
+                                   '%s/%s' % (m.group(1), GP_TEMPORARY_FILES_FILESPACE)])
+        
+        #Copy files from the master
+        tempStr = self.runCmd(['cp', '%s/%s' % (self.masterdir, GP_TRANSACTION_FILES_FILESPACE), 
+                                     'master/%s' % (GP_TRANSACTION_FILES_FILESPACE)])
+        tempStr = self.runCmd(['cp', '%s/%s' % (self.masterdir, GP_TEMPORARY_FILES_FILESPACE), 
+                                     'master/%s' % (GP_TEMPORARY_FILES_FILESPACE)])
+ 
+    #------------------------------------------------------------
     def systemInfo(self):
         '''
         1. Run gpstate
@@ -1213,6 +1263,7 @@ try:
     d = GPDetective()
     try:    
         d.copyLogs()
+        d.filespaceFlatFiles()
         d.systemInfo()
         if d.runconnected == True:
            d.checkCatalog()

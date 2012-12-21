@@ -17,6 +17,8 @@ from gppylib import gphostcache
 from gppylib.testold.testUtils import *
 from gppylib.operations import startSegments
 from gppylib.gp_era import read_era
+from gppylib.operations.utils import ParallelOperation
+from gppylib.operations.filespace import PG_SYSTEM_FILESPACE, GP_TRANSACTION_FILES_FILESPACE, GP_TEMPORARY_FILES_FILESPACE, GetMoveOperationList, GetFilespaceEntriesDict, GetFilespaceEntries, GetCurrentFilespaceEntries, RollBackFilespaceChanges, UpdateFlatFiles, FileType, MoveFilespaceError
     
 logger = get_default_logger()
 
@@ -180,6 +182,84 @@ class GpMirrorListToBuild:
         """
         return self.__additionalWarnings
 
+    def __moveFilespaces(self, gparray, target_segment):
+        """
+            Moves filespaces for temporary and transaction files to a particular location.
+        """
+        master_seg = gparray.master
+        default_filespace_dir = master_seg.getSegmentDataDirectory()
+
+        cur_filespace_entries = GetFilespaceEntriesDict(GetFilespaceEntries(gparray,
+                                                                            PG_SYSTEM_FILESPACE).run()).run()
+        pg_system_filespace_entries = GetFilespaceEntriesDict(GetFilespaceEntries(gparray,
+                                                                                  PG_SYSTEM_FILESPACE).run()).run()
+        cur_filespace_name = gparray.getFileSpaceName(int(cur_filespace_entries[1][0]))
+        segments = [target_segment] 
+        
+        logger.info('Starting file move procedure for %s' % target_segment)
+
+        if os.path.exists(os.path.join(default_filespace_dir, GP_TRANSACTION_FILES_FILESPACE)):
+            #On the expansion segments, the current filespace used by existing nodes will be the 
+            #new filespace to which we want to move the transaction and temp files.
+            #The filespace directories which have to be moved will be the default pg_system directories. 
+            new_filespace_entries = GetFilespaceEntriesDict(GetCurrentFilespaceEntries(gparray,
+                                                                                FileType.TRANSACTION_FILES).run()).run()
+            logger.info('getting filespace information')
+            new_filespace_name = gparray.getFileSpaceName(int(new_filespace_entries[1][0]))
+            logger.info('getting move operations list for filespace %s' % new_filespace_name)
+            operation_list = GetMoveOperationList(segments,
+                                                  FileType.TRANSACTION_FILES,
+                                                  new_filespace_name,
+                                                  new_filespace_entries,
+                                                  cur_filespace_entries,
+                                                  pg_system_filespace_entries).run()
+            logger.info('Starting transaction files move')
+            ParallelOperation(operation_list).run()
+
+            logger.debug('Checking transaction files move')
+            try:
+                for operation in operation_list:
+                    operation.get_ret()
+                    pass
+            except Exception, e:
+                logger.info('Failed to move transaction filespace. Rolling back changes ...')
+                RollBackFilespaceChanges(gparray.getExpansionSegDbList(),
+                                        FileType.TRANSACTION_FILES,
+                                        cur_filespace_name,
+                                        cur_filespace_entries,
+                                        new_filespace_entries,
+                                        pg_system_filespace_entries,
+                                        rollback=True).run() 
+                raise
+
+        if os.path.exists(os.path.join(default_filespace_dir, GP_TEMPORARY_FILES_FILESPACE)):
+            new_filespace_entries = GetFilespaceEntriesDict(GetCurrentFilespaceEntries(gparray,
+                                                                                       FileType.TEMPORARY_FILES).run()).run()
+            new_filespace_name = gparray.getFileSpaceName(int(new_filespace_entries[1][0]))
+            operation_list = GetMoveOperationList(segments,
+                                                  FileType.TEMPORARY_FILES,
+                                                  new_filespace_name,
+                                                  new_filespace_entries,
+                                                  cur_filespace_entries,
+                                                  pg_system_filespace_entries).run()
+            logger.info('Starting temporary files move')
+            ParallelOperation(operation_list).run() 
+
+            logger.debug('Checking temporary files move')
+            try:
+                for operation in operation_list:
+                    operation.get_ret()
+                    pass
+            except Exception, e:
+                logger.info('Failed to move temporary filespace. Rolling back changes ...')
+                RollBackFilespaceChanges(gparray.getExpansionDbList(),
+                                        FileType.TRANSACTION_FILES,
+                                        cur_filespace_name,
+                                        cur_filespace_entries,
+                                        new_filespace_entries,
+                                        pg_system_filespace_entries).run() 
+                raise
+        
     def buildMirrors(self, actionName, gpEnv, gpArray):
         """
         Build the mirrors.
@@ -237,7 +317,27 @@ class GpMirrorListToBuild:
         self.__ensureMarkedDown(gpEnv, toEnsureMarkedDown)
         self.__cleanUpSegmentDirectories(cleanupDirectives)
         self.__copySegmentDirectories(gpEnv, gpArray, copyDirectives)
+        
+        #Move the filespace for transaction and temporary files
+        for toRecover in self.__mirrorsToBuild:
+            target_segment = None
 
+            if toRecover.getFailoverSegment() is not None:
+                target_segment = toRecover.getFailoverSegment()
+            elif toRecover.isFullSynchronization():
+                target_segment = toRecover.getFailedSegment() 
+
+            if target_segment is not None:
+                self.__moveFilespaces(gpArray, target_segment)
+
+        #If we are adding mirrors, we need to update the flat files on the primaries as well
+        if actionName == "add":
+            try:
+                UpdateFlatFiles(gpArray, primaries=True).run()
+            except MoveFilespaceError, e:
+                logger.error(str(e))
+                raise
+            
         # update and save metadata in memory
         for toRecover in self.__mirrorsToBuild:
 
@@ -293,7 +393,7 @@ class GpMirrorListToBuild:
             )
             
             MPP_12038_fault_injection()
-            
+          
             logger.info("Updating mirrors")
             self.__updateGpIdFile(gpEnv, gpArray, mirrorsToStart)
 
@@ -326,7 +426,7 @@ class GpMirrorListToBuild:
         finally:
             # Reenable Ctrl-C
             signal.signal(signal.SIGINT,signal.default_int_handler)
-
+        
     def __verifyGpArrayContents(self, gpArray):
         """
         Run some simple assertions against gpArray contents
