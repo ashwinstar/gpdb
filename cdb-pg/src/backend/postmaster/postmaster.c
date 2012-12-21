@@ -3659,7 +3659,6 @@ processPrimaryMirrorTransitionRequest(Port *port, void *pkt)
 			 * make sure that the mirror starts using the logs at the right location 
 			 */
 			primaryMirrorPopulateFilespaceInfo();
-			Insist(isFilespaceInfoConsistent());
         }
 		else
 		{

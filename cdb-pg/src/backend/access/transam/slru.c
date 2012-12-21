@@ -1151,7 +1151,7 @@ SlruScanDirectory(SlruCtl ctl, int cutoffPage, bool doDeletions)
 	if (isTxnDir(ctl->Dir))
 	{
 		dir = makeRelativeToTxnFilespace(ctl->Dir);
-		mirrorDir = makeRelativeToTxnFilespace(ctl->Dir);
+		mirrorDir = makeRelativeToPeerTxnFilespace(ctl->Dir);
 	}
 	else
 	{
@@ -1183,7 +1183,7 @@ SlruScanDirectory(SlruCtl ctl, int cutoffPage, bool doDeletions)
 
 					// UNDONE: Old code ignored errors...
 					MirroredFlatFile_Drop(
-									mirrorDir,
+									ctl->Dir,
 									clde->d_name,
 									/* suppressError */ true,
 									/*isMirrorRecovery */ false);
@@ -1286,7 +1286,7 @@ SlruRecoverMirrorDir(char *slru_dir)
 	if (isTxnDir(slru_dir))
         {
                 dir = makeRelativeToTxnFilespace(slru_dir);
-                mirrorDir = makeRelativeToTxnFilespace(slru_dir);
+                mirrorDir = makeRelativeToPeerTxnFilespace(slru_dir);
         }
         else
         {
@@ -1301,7 +1301,7 @@ SlruRecoverMirrorDir(char *slru_dir)
 		if (strlen(clde->d_name) == 4 &&
 			strspn(clde->d_name, "0123456789ABCDEF") == 4) {
 			
-			retval = MirrorFlatFile(mirrorDir, clde->d_name);
+			retval = MirrorFlatFile(slru_dir, clde->d_name);
 			
 			if (retval != 0)
 				break;
