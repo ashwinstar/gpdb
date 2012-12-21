@@ -444,6 +444,7 @@ DefineRelation_int(CreateStmt *stmt,
 	Datum		reloptions;
 	ListCell   *listptr;
 	AttrNumber	attnum;
+	bool		isPartitioned;
 
 	ItemPointerData	persistentTid;
 	int64			persistentSerialNum;
@@ -584,8 +585,9 @@ DefineRelation_int(CreateStmt *stmt,
 	 * inherited attributes. Update the offsets of the distribution attributes
 	 * in GpPolicy if necessary.
 	 */
+	isPartitioned = stmt->partitionBy ? true : false;
 	schema = MergeAttributes(schema, stmt->inhRelations,
-							 stmt->relation->istemp,
+							 stmt->relation->istemp, isPartitioned,
 							 &inheritOids, &old_constraints, &parentOidCount, stmt->policy);
 
 	/*
@@ -2167,7 +2169,7 @@ truncate_check_rel(Relation rel)
  *----------
  */
 List *
-MergeAttributes(List *schema, List *supers, bool istemp,
+MergeAttributes(List *schema, List *supers, bool istemp, bool isPartitioned,
 				List **supOids, List **supconstr, int *supOidCount, GpPolicy *policy)
 {
 	ListCell   *entry;
@@ -2252,6 +2254,13 @@ MergeAttributes(List *schema, List *supers, bool istemp,
 							parent->relname),
 									   errOmitLocation(true)));
 
+		/* Reject if parent is CO for non-partitioned table */
+		if (RelationIsAoCols(relation) && !isPartitioned)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("cannot inherit relation \"%s\" as it is column oriented",
+							parent->relname),
+									   errOmitLocation(true)));
 		/*
 		 * We should have an UNDER permission flag for this, but for now,
 		 * demand that creator of a child table own the parent.

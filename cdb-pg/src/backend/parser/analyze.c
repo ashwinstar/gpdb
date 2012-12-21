@@ -1925,11 +1925,6 @@ transformAttributeEncoding(List *stenc, CreateStmt *stmt, CreateStmtContext cxt)
 
 	validateColumnStorageEncodingClauses(newenc, stmt);
 
-	if (stmt->inhRelations && found_enc)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("INHERITS clause cannot be used with column encoding")));
-
 	return newenc;
 }
 
@@ -1978,6 +1973,14 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("cannot mix inheritance with partitioning")));
+	}
+
+	/* Disallow inheritance for CO table */
+	if (stmt->inhRelations && is_aocs(stmt->options))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("INHERITS clause cannot be used with column oriented tables")));
 	}
 
 	/* Only on top-most partitioned tables. */
