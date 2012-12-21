@@ -481,15 +481,43 @@ static void PersistentStore_DoInitScan(
 
 	globalSequenceNum = GlobalSequence_Current(storeData->gpGlobalSequence);
 
-	// UNDONE: I think the InRecovery test only applies to physical Master Mirroring on Standby.
-	/* Only test this outside of recovery scenarios */
-	if (!InRecovery && globalSequenceNum < storeSharedData->maxInUseSerialNum)
-		elog(ERROR, "Global sequence number " INT64_FORMAT " less than maximum value " INT64_FORMAT " found in scan ('%s')",
-		     globalSequenceNum,
-		     storeSharedData->maxInUseSerialNum,
-		     storeData->tableName);
+	/*
+	 * Note: Originally the below IF STMT was guarded with a InRecovery flag check.
+	 * However, this routine should not be called during recovery since the entries are
+	 * not consistent...
+	 */
+	Assert(!InRecovery);
+	
+	if (globalSequenceNum < storeSharedData->maxInUseSerialNum)
+	{
+		/*
+		 * We seem to have a corruption problem.
+		 *
+		 * Use the gp_persistent_repair_global_sequence GUC to get the system up.
+		 */
 
-	storeSharedData->maxInUseSerialNum = globalSequenceNum;
+		if (gp_persistent_repair_global_sequence)
+		{
+			GlobalSequence_Set(storeData->gpGlobalSequence, storeSharedData->maxInUseSerialNum);
+
+			elog(LOG, "Repaired global sequence number " INT64_FORMAT " so use scanned maximum value " INT64_FORMAT " ('%s')",
+				 globalSequenceNum,
+				 storeSharedData->maxInUseSerialNum,
+				 storeData->tableName);
+		}
+		else
+		{
+			elog(ERROR, "Global sequence number " INT64_FORMAT " less than maximum value " INT64_FORMAT " found in scan ('%s')",
+				 globalSequenceNum,
+				 storeSharedData->maxInUseSerialNum,
+				 storeData->tableName);
+		}
+		
+	}
+	else
+	{
+		storeSharedData->maxInUseSerialNum = globalSequenceNum;
+	}
 	
 	if (Debug_persistent_recovery_print)
 		elog(PersistentRecovery_DebugPrintLevel(), 
