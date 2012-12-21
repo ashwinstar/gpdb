@@ -3832,6 +3832,107 @@ heap_inplace_update_internal(Relation relation, HeapTuple tuple, TransactionId x
 		CacheInvalidateHeapTuple(relation, tuple);
 }
 
+/*
+ * heap_inplace_frozen_delete_internal - frozen delete a tuple "in place" 
+ * by modifying its MVCC header. Overwriting MVCC header violates both MVCC
+ * and transactional safety, so the uses of this function in Postgres are 
+ * extremely limited. Nonetheless we find some places to use it.
+ *
+ * Modified from heap_inplace_update_internal.
+ */
+static void
+heap_inplace_frozen_delete_internal(Relation relation, HeapTuple tuple, TransactionId xid)
+{
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
+	bool		isFrozen = (xid == FrozenTransactionId);
+	Buffer		buffer;
+	Page		page;
+	OffsetNumber offnum;
+	ItemId		lp = NULL;
+	HeapTupleHeader htup;
+	uint32		oldlen;
+	uint32		newlen;
+
+	/* 
+	 * Fetch gp_persistent_relation_node information that will be added
+	 * to XLOG record.
+	 */
+	RelationFetchGpRelationNodeForXLog(relation);
+	
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
+	
+	buffer = ReadBuffer(relation, ItemPointerGetBlockNumber(&(tuple->t_self)));
+	LockBuffer(buffer, BUFFER_LOCK_EXCLUSIVE);
+	page = (Page) BufferGetPage(buffer);
+
+	offnum = ItemPointerGetOffsetNumber(&(tuple->t_self));
+	if (PageGetMaxOffsetNumber(page) >= offnum)
+		lp = PageGetItemId(page, offnum);
+
+	if (PageGetMaxOffsetNumber(page) < offnum || !ItemIdIsUsed(lp))
+		elog(ERROR, "heap_inplace_frozen_delete_internal: invalid lp");
+
+	htup = (HeapTupleHeader) PageGetItem(page, lp);
+
+	oldlen = ItemIdGetLength(lp) - htup->t_hoff;
+	newlen = tuple->t_len - tuple->t_data->t_hoff;
+	if (oldlen != newlen || htup->t_hoff != tuple->t_data->t_hoff)
+		elog(ERROR, "heap_inplace_frozen_delete_internal: wrong tuple length");
+
+	/* NO EREPORT(ERROR) from here till changes are logged */
+	START_CRIT_SECTION();
+
+	htup->t_infomask &= 0;
+	htup->t_infomask |= HEAP_XMIN_INVALID;
+
+	memcpy((char *) htup + htup->t_hoff,
+		   (char *) tuple->t_data + tuple->t_data->t_hoff,
+		   newlen);
+
+	MarkBufferDirty(buffer);
+
+	/* XLOG stuff */
+	if (!relation->rd_istemp)
+	{
+		xl_heap_inplace xlrec;
+		XLogRecPtr	recptr;
+		XLogRecData rdata[2];
+
+		xl_heaptid_set(&xlrec.target, relation, &tuple->t_self);
+
+		rdata[0].data = (char *) &xlrec;
+		rdata[0].len = SizeOfHeapInplace;
+		rdata[0].buffer = InvalidBuffer;
+		rdata[0].next = &(rdata[1]);
+
+		rdata[1].data = (char *) htup + htup->t_hoff;
+		rdata[1].len = newlen;
+		rdata[1].buffer = buffer;
+		rdata[1].buffer_std = true;
+		rdata[1].next = NULL;
+
+		if (!isFrozen)
+			recptr = XLogInsert(RM_HEAP_ID, XLOG_HEAP_INPLACE, rdata);
+		else
+			recptr = XLogInsert_OverrideXid(RM_HEAP_ID, XLOG_HEAP_INPLACE, rdata, FrozenTransactionId);
+
+		PageSetLSN(page, recptr);
+		PageSetTLI(page, ThisTimeLineID);
+	}
+
+	END_CRIT_SECTION();
+
+	UnlockReleaseBuffer(buffer);
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
+	/* Send out shared cache inval if necessary */
+	if (!IsBootstrapProcessingMode())
+		CacheInvalidateHeapTuple(relation, tuple);
+}
 
 void
 frozen_heap_inplace_update(Relation relation, HeapTuple tuple)
@@ -3841,6 +3942,18 @@ frozen_heap_inplace_update(Relation relation, HeapTuple tuple)
 	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_ENTER;
 
 	heap_inplace_update_internal(relation, tuple, FrozenTransactionId);
+
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_EXIT;
+}
+
+void
+frozen_heap_inplace_delete(Relation relation, HeapTuple tuple)
+{
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_DECLARE;
+
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_ENTER;
+
+	heap_inplace_frozen_delete_internal(relation, tuple, FrozenTransactionId);
 
 	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_EXIT;
 }
