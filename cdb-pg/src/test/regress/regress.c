@@ -59,6 +59,7 @@ extern Datum project_describe(PG_FUNCTION_ARGS);
 
 extern Datum userdata_describe(PG_FUNCTION_ARGS);
 extern Datum userdata_project(PG_FUNCTION_ARGS);
+extern Datum noop_project(PG_FUNCTION_ARGS);
 
 
 #ifdef PG_MODULE_MAGIC
@@ -2276,6 +2277,33 @@ userdata_describe(PG_FUNCTION_ARGS)
 	TF_SET_USERDATA(userdata);
 
 	PG_RETURN_POINTER(tupdesc);
+}
+
+/*
+ * This is do-nothing table function that passes the input relation
+ * to the output relation without any modification.
+ */
+PG_FUNCTION_INFO_V1(noop_project);
+Datum
+noop_project(PG_FUNCTION_ARGS)
+{
+	AnyTable			scan;
+	FuncCallContext	   *fctx;
+	ReturnSetInfo	   *rsi;
+	HeapTuple			tuple;
+
+	scan = PG_GETARG_ANYTABLE(0);
+	if (SRF_IS_FIRSTCALL())
+	{
+		fctx = SRF_FIRSTCALL_INIT();
+	}
+	fctx = SRF_PERCALL_SETUP();
+	rsi = (ReturnSetInfo *) fcinfo->resultinfo;
+	tuple = AnyTable_GetNextTuple(scan);
+	if (!tuple)
+		SRF_RETURN_DONE(fctx);
+
+	SRF_RETURN_NEXT(fctx, HeapTupleGetDatum(tuple));
 }
 
 /*

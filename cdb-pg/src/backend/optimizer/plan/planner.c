@@ -510,7 +510,10 @@ subquery_planner(PlannerGlobal *glob,
 
 	parse->havingQual = preprocess_expression(root, parse->havingQual,
 											  EXPRKIND_QUAL);
-	
+
+	parse->scatterClause = (List *)
+		preprocess_expression(root, (Node *) parse->scatterClause,
+							  EXPRKIND_TARGET);
 	/* 
 	 * Do expression preprocessing on other expressions.
 	 */	 

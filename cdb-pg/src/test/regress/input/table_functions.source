@@ -935,6 +935,20 @@ CREATE FUNCTION ud_project(anytable) RETURNS setof RECORD
 SELECT * FROM ud_project( TABLE( SELECT * FROM history ) );
 
 -- ========================
+-- Passing input without modification
+-- ========================
+CREATE FUNCTION noop_project(anytable) RETURNS setof RECORD
+  AS '@abs_builddir@/regress@DLSUFFIX@'
+  LANGUAGE C;
+
+SELECT * FROM noop_project( TABLE( SELECT * FROM history ) ) AS s (id integer, time timestamp);
+-- SCATTER BY vs MEDIAN
+SELECT * FROM noop_project( TABLE( SELECT median(id) FROM history SCATTER BY median(id) ) ) AS s (med float);
+SELECT * FROM noop_project( TABLE( SELECT median(id) FROM history SCATTER BY count(*) ) ) AS s (med float);
+SELECT * FROM noop_project( TABLE( SELECT count(*) FROM history SCATTER BY median(id) ) ) AS s (cnt bigint);
+SELECT * FROM noop_project( TABLE( SELECT count(*) FROM history GROUP BY time SCATTER BY median(id) ) ) AS s (cnt bigint);
+
+-- ========================
 -- More negative test cases
 -- ========================
 
