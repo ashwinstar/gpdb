@@ -176,3 +176,7 @@ select 'b'::information_schema.sql_identifier)a;
      union
      (select 1 union select distinct null)
   )s2);
+
+CREATE TABLE union_ctas (a, b) AS SELECT 1, 2 UNION SELECT 1, 1 UNION SELECT 1, 1;
+SELECT * FROM union_ctas;
+DROP TABLE union_ctas;

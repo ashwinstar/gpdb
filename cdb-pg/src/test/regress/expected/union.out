@@ -490,3 +490,12 @@ select 'b'::information_schema.sql_identifier)a;
  1
 (2 rows)
 
+CREATE TABLE union_ctas (a, b) AS SELECT 1, 2 UNION SELECT 1, 1 UNION SELECT 1, 1;
+SELECT * FROM union_ctas;
+ a | b 
+---+---
+ 1 | 1
+ 1 | 2
+(2 rows)
+
+DROP TABLE union_ctas;

@@ -10243,8 +10243,7 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 	if (leftmostSelect->intoClause)
 	{
 		qry->intoClause = leftmostSelect->intoClause;
-		if (leftmostSelect->intoClause->colNames)
-			applyColumnNames(qry->targetList, leftmostSelect->intoClause->colNames);
+		intoColNames = leftmostSelect->intoClause->colNames;
 	}
 
 	/* clear this to prevent complaints in transformSetOperationTree() */
