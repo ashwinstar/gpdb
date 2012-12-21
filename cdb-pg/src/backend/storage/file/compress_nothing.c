@@ -5,15 +5,25 @@
 #include "c.h"
 #include <unistd.h>
 #include <storage/bfz.h>
+#include <storage/fd.h>
 
 /*
  * This file implements bfz compression algorithm "nothing".
  * We don't compress at all.
  */
 
+/*
+ * bfz_nothing_close_ex
+ *  Close a file and freeing up descriptor, buffers etc.
+ *
+ *  This is also called from an xact end callback, hence it should
+ *  not contain any elog(ERROR) calls.
+ */
 static void
 bfz_nothing_close_ex(bfz_t * thiz)
 {
+	gp_retry_close(thiz->fd);
+	thiz->fd = -1;
 	free(thiz->freeable_stuff);
 	thiz->freeable_stuff = NULL;
 }

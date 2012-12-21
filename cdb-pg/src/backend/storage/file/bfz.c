@@ -324,12 +324,9 @@ bfz_close(bfz_t * thiz, bool unreg)
 		UnregisterXactCallbackOnce(bfz_close_callback, thiz);
 
 	if (thiz->freeable_stuff)
-		thiz->freeable_stuff->close_ex(thiz);
-
-	if (thiz->fd != -1)
 	{
-		gp_retry_close(thiz->fd);
-		thiz->fd = -1;
+		thiz->freeable_stuff->close_ex(thiz);
+		Assert(thiz->fd == -1);
 	}
 
 	if (thiz->filename != NULL)
@@ -345,6 +342,12 @@ bfz_close(bfz_t * thiz, bool unreg)
 	pfree(thiz);
 }
 
+/*
+ * bfz_append_end
+ *  Flushes data to a bfz file and then closes the file.
+ *  It also makes a duplicate of the file descriptor so we can re-open it
+ *  for reading using bfz_scan_begin at a later time.
+ */
 void
 bfz_append_end(bfz_t * thiz)
 {
@@ -356,7 +359,6 @@ bfz_append_end(bfz_t * thiz)
 
 	write_bfz_buffer(thiz, true);
 	tot_bytes = fs->tot_bytes;
-	fs->close_ex(thiz);
 
 	if ((tot_compressed = lseek(thiz->fd, 0, SEEK_END)) == -1)
 		ereport(ERROR,
@@ -367,6 +369,15 @@ bfz_append_end(bfz_t * thiz)
 		 (long long) tot_bytes, (long long) tot_compressed,
 		 tot_bytes == 0 ? 0 : (int) ((tot_bytes - tot_compressed) * 100 / tot_bytes));
 
+	/*
+	 * Duplicate file descriptor, since close_ex closes the file,
+	 * but we'll need to re-open this file for reading
+	 */
+	int saved_fd = dup(thiz->fd);
+	fs->close_ex(thiz);
+	Assert(thiz->fd == -1);
+
+	thiz->fd = saved_fd;
 	thiz->mode = BFZ_MODE_FREED;
 }
 
@@ -376,6 +387,8 @@ bfz_scan_begin(bfz_t * thiz)
 	struct bfz_freeable_stuff *fs;
 
 	Assert(thiz->mode == BFZ_MODE_FREED);
+	Assert(thiz->fd != -1);
+
 	if (lseek(thiz->fd, 0, SEEK_SET) == -1)
 		ereport(ERROR,
 				(errcode(ERRCODE_IO_ERROR),
