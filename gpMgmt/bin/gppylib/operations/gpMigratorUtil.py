@@ -679,11 +679,25 @@ class GPUpgradeBase(object):
     #------------------------------------------------------------
     def PreUpgradeCheck(self):
         '''
-        Check free space
-        Check catalog
+        Check GUC, free space, catalog
         '''
+        self.CheckGUCs()
         self.CheckFreeSpace()
         self.CheckCatalog()
+
+    #------------------------------------------------------------
+    def CheckGUCs(self):
+        '''
+        Validate that the GUCs are set properly
+        - gp_external_enable_exec must be set to true
+        '''
+        disable_exec_ext = self.Select("select current_setting('gp_external_enable_exec')");
+        if (disable_exec_ext[0] == 'off'):
+            logger.fatal('***************************************')
+            logger.fatal("gp_external_enable_exec is set to 'false'.")
+            logger.fatal("Please set gp_external_enable_exec to 'true'.")
+            logger.fatal('***************************************')
+            raise UpgradeError('Invalid GUC value')
 
     #------------------------------------------------------------
     def CheckFreeSpace(self):
