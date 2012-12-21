@@ -829,11 +829,9 @@ order by 1;
                                                                                                                  stmt                                                                                                                 
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  CREATE AGGREGATE pg_catalog.pg_partition_oid(pg_catalog.oid, pg_catalog.record) (   SFUNC     = pg_partition_oid_transfn,   STYPE     = pg_catalog.internal,   FINALFUNC = pg_partition_oid_finalfn );
- CREATE FUNCTION pg_catalog.fixedwidth_in() RETURNS pg_catalog.record LANGUAGE c STABLE AS '$libdir/fixedwidth.so', 'fixedwidth_in';
- CREATE FUNCTION pg_catalog.fixedwidth_out(pg_catalog.record) RETURNS pg_catalog.bytea LANGUAGE c STABLE AS '$libdir/fixedwidth.so', 'fixedwidth_out';
  CREATE TYPE pg_catalog.anytable(   INPUT = pg_catalog.anytable_in,   OUTPUT = pg_catalog.anytable_out,   INTERNALLENGTH = VARIABLE,   STORAGE = extended,   DELIMITER = ',',   ALIGNMENT = double ); DROP TYPE pg_catalog._anytable;
  CREATE UNIQUE INDEX pg_compression_oid_index ON pg_catalog.pg_compression USING btree(oid);
  CREATE UNIQUE INDEX pg_extprotocol_oid_index ON pg_catalog.pg_extprotocol USING btree(oid);
  CREATE UNIQUE INDEX pg_language_lanname_index ON pg_catalog.pg_language USING btree(lanname);
-(7 rows)
+(5 rows)
 
