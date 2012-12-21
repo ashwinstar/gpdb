@@ -154,6 +154,8 @@ typedef enum FaultInjectorIdentifier_e {
 
 	MallocFailure,
 	
+	AbortTransactionFail,
+
 	/* INSERT has to be done before that line */
 	FaultInjectorIdMax,
 	

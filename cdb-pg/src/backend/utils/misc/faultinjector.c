@@ -235,6 +235,8 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault after recording transaction commit for local transaction  */
 	_("malloc_failure"),
 		/* inject fault to simulate memory allocation failure */
+	_("transaction_abort_failure"),
+		/* inject fault to simulate transaction abort failure */
 	_("not recognized"),
 };
 
@@ -974,6 +976,7 @@ FaultInjector_NewHashEntry(
 			
 		case LocalTmRecordTransactionCommit:
 		case Checkpoint:
+		case AbortTransactionFail:
 			
 			if (fileRepRole != FileRepNoRoleConfigured && fileRepRole != FileRepPrimaryRole)
 			{

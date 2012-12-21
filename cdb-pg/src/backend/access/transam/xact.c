@@ -3855,6 +3855,14 @@ AbortTransaction(void)
 	bool needDistribAborted = false;
 	bool willHaveObjectsFromSmgr;
 
+#ifdef FAULT_INJECTOR
+	FaultInjector_InjectFaultIfSet(
+			AbortTransactionFail,
+			DDLNotSpecified,
+			"",  // databaseName
+			""); // tableName
+#endif
+
 	LocalDistribXactRef_Init(&localDistribXactRef);
 
 	/* Prevent cancel/die interrupt while cleaning up */
