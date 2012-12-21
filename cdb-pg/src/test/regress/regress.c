@@ -2112,9 +2112,8 @@ project_describe(PG_FUNCTION_ARGS)
 	Query				*qexpr;
 	TupleDesc			 tdesc;
 	TupleDesc			 odesc;
-	Expr				*aexpr;
 	int					 avalue;
-	Datum				 d;
+	bool				 isnull;
 	int					 i;
 
 	/* Fetch and validate input */
@@ -2168,33 +2167,9 @@ project_describe(PG_FUNCTION_ARGS)
 	 *
 	 * Try to evaluate that argument to a constant value.
 	 */
-	{
-		bool			 isNull;
-		ExprDoneCond	 isDone;
-		ExprState		*estate;
-
-		aexpr  = (Expr*) lsecond(fargs);
-		
-		/*
-		 * Might be able to relax this a little, the real goal is limiting to
-		 * expressions we can safely evaluate without an executor context 
-		 */
-		if (!IsA(aexpr, Const))
-			elog(ERROR, "unable to resolve type for function"); /* improve this error */
-
-		estate = ExecInitExpr(aexpr, NULL);
-		d = ExecEvalExpr(estate, NULL, &isNull, &isDone);
-
-		/* Single scalar values only please */
-		if (isDone != ExprSingleResult)
-			elog(ERROR, "unable to resolve type for function"); /* improve this error */
-
-		/* Non null values only */
-		if (isNull)
-			elog(ERROR, "unable to resolve type for function"); /* improve this error */
-
-		avalue = DatumGetInt32(d);
-	}
+	avalue = DatumGetInt32(ExecEvalFunctionArgToConst(fexpr, 1, &isnull));
+	if (isnull)
+		elog(ERROR, "unable to resolve type for function");
 
 	if (avalue < 1 || avalue > tdesc->natts)
 		elog(ERROR, "invalid column position %d", avalue);

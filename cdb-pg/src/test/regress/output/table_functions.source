@@ -2851,6 +2851,28 @@ SELECT extract(day from "time") FROM project( TABLE( SELECT * FROM history ), 2)
         22
 (18 rows)
 
+SELECT * FROM project( TABLE( SELECT * FROM pg_am ),
+  CASE 1 WHEN 2 THEN 1 ELSE GREATEST(1, COALESCE(1+1)) END);
+ amstrategies 
+--------------
+            5
+            1
+          100
+          100
+            5
+(5 rows)
+
+SELECT * FROM project( TABLE( SELECT * FROM pg_am ),
+  CASE WHEN 3 IS NOT NULL AND 1 IN (1, 2) THEN floor(NULLIF(2, 3))::int END);
+ amstrategies 
+--------------
+            5
+            1
+          100
+          100
+            5
+(5 rows)
+
 -- ERROR: invalid operations demonstrating different return types
 SELECT extract(day from id) FROM project( TABLE( SELECT * FROM history ), 1);
 ERROR:  function pg_catalog.date_part(unknown, integer) does not exist
@@ -2873,24 +2895,28 @@ LINE 1: SELECT "time" FROM project( TABLE( SELECT * FROM history ), ...
                ^
 /* Invalid projection position */
 SELECT * FROM project( TABLE( SELECT * FROM pg_am ), NULL);
-ERROR:  unable to resolve type for function (regress.c:2191)
+ERROR:  unable to resolve type for function (regress.c:2172)
 LINE 2: SELECT * FROM project( TABLE( SELECT * FROM pg_am ), NULL);
                       ^
-SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 1+1);  /* not a ConstExpr */
-ERROR:  unable to resolve type for function (regress.c:2180)
-LINE 1: SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 1+1);
-                      ^
 SELECT * FROM project( TABLE( SELECT * FROM pg_am ), -1);
-ERROR:  invalid column position -1 (regress.c:2197)
-LINE 2: SELECT * FROM project( TABLE( SELECT * FROM pg_am ), -1);
+ERROR:  invalid column position -1 (regress.c:2175)
+LINE 1: SELECT * FROM project( TABLE( SELECT * FROM pg_am ), -1);
                       ^
 SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 0);
-ERROR:  invalid column position 0 (regress.c:2197)
+ERROR:  invalid column position 0 (regress.c:2175)
 LINE 1: SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 0);
                       ^
 SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 25);
-ERROR:  invalid column position 25 (regress.c:2197)
+ERROR:  invalid column position 25 (regress.c:2175)
 LINE 1: SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 25);
+                      ^
+SELECT * FROM project( TABLE( SELECT * FROM pg_am ), (ARRAY[2,3])[1]);
+ERROR:  unable to resolve function argument (execQual.c:5348)
+LINE 1: SELECT * FROM project( TABLE( SELECT * FROM pg_am ), (ARRAY[...
+                      ^
+SELECT * FROM project( TABLE( SELECT * FROM pg_am ), (ROW(1, '')::example_r).a);
+ERROR:  unable to resolve function argument (execQual.c:5348)
+LINE 1: SELECT * FROM project( TABLE( SELECT * FROM pg_am ), (ROW(1,...
                       ^
 -- ========================
 -- User data exmaple
@@ -2982,11 +3008,11 @@ PREPARE p3(anytable) AS SELECT * FROM multiset_5( $1 ) order by a, b;
 ERROR:  type "anytable" is not a valid parameter for PREPARE
 -- FAIL: $1 is not a constant
 PREPARE p4 AS SELECT * FROM project( TABLE( SELECT * FROM pg_am ), $1);
-ERROR:  unable to resolve type for function (regress.c:2180)
+ERROR:  unable to resolve function argument (execQual.c:5348)
 LINE 1: PREPARE p4 AS SELECT * FROM project( TABLE( SELECT * FROM pg...
                                     ^
 PREPARE p5(integer) AS SELECT * FROM project( TABLE( SELECT * FROM pg_am ), $1);
-ERROR:  unable to resolve type for function (regress.c:2180)
+ERROR:  unable to resolve function argument (execQual.c:5348)
 LINE 1: PREPARE p5(integer) AS SELECT * FROM project( TABLE( SELECT ...
                                              ^
 -- FAIL: can't prepare with a dynamic result set (same reason as no view support)
@@ -2996,6 +3022,8 @@ ERROR:  PREPARE statements cannot include calls to dynamically typed function
 -- Cleanup
 -- =======
 DROP SCHEMA table_function CASCADE;
+NOTICE:  drop cascades to function ud_project(anytable)
+NOTICE:  drop cascades to function ud_describe(internal)
 NOTICE:  drop cascades to function project(anytable,integer)
 NOTICE:  drop cascades to function project_describe(internal)
 NOTICE:  drop cascades to function sessionize_dynamic(anytable,interval)

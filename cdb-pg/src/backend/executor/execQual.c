@@ -47,6 +47,7 @@
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
+#include "optimizer/clauses.h"
 #include "optimizer/planmain.h"
 #include "parser/parse_expr.h"
 #include "utils/acl.h"
@@ -168,6 +169,8 @@ static Datum ExecEvalFieldStore(FieldStoreState *fstate,
 static Datum ExecEvalRelabelType(GenericExprState *exprstate,
 					ExprContext *econtext,
 					bool *isNull, ExprDoneCond *isDone);
+static bool ExecIsExprUnsafeToConst_walker(Node *node, void *context);
+static bool ExecIsExprUnsafeToConst(Node *node);
 
 
 /* ----------------------------------------------------------------
@@ -5259,6 +5262,95 @@ ExecProject(ProjectionInfo *projInfo, ExprDoneCond *isDone)
 	}
 
 	return slot;
+}
+
+/*
+ * ExecIsExprUnsafeToConst_walker
+ *
+ * Almost all of the expressions are not allowed without the executor.
+ * Returns true as soon as possible we find such unsafe nodes.
+ */
+static bool
+ExecIsExprUnsafeToConst_walker(Node *node, void *context)
+{
+	switch(nodeTag(node))
+	{
+		/*
+		 * Param can be a Const in some situation, but the demanded use case
+		 * so far doesn't want it.
+		 */
+		case T_Const:
+		case T_CaseTestExpr:
+		case T_FuncExpr:
+		case T_OpExpr:
+		case T_DistinctExpr:
+		case T_ScalarArrayOpExpr:
+		case T_BoolExpr:
+		case T_CaseExpr:
+		case T_CoalesceExpr:
+		case T_MinMaxExpr:
+		case T_NullIfExpr:
+		case T_NullTest:
+		case T_BooleanTest:
+		case T_List:
+		case T_TypeCast:
+			return false;
+
+		default:
+			return true;
+	}
+}
+
+/*
+ * ExecIsExprUnsafeToConst
+ *
+ * Returns true if the expression cannot be evaluated to a const value.
+ */
+static bool
+ExecIsExprUnsafeToConst(Node *node)
+{
+	Assert(node != NULL);
+	return ExecIsExprUnsafeToConst_walker(node, NULL);
+}
+
+/*
+ * ExecEvalFunctionArgToConst
+ *
+ * Evaluates an argument of function expression and returns the result.
+ * This is assumed to be used in the parser stage, where
+ * dynamic evaluation such like Var is not available, though we put it
+ * here so that we can extend it to be useful in other places later.
+ */
+Datum
+ExecEvalFunctionArgToConst(FuncExpr *fexpr, int argno, bool *isnull)
+{
+	Expr		   *aexpr;
+	Oid				argtype;
+	Const		   *result;
+
+	/* argument number sanity check */
+	if (argno < 0 || list_length(fexpr->args) <= argno)
+		elog(ERROR, "invalid argument number found during evaluating function argument");
+
+	aexpr = (Expr *) list_nth(fexpr->args, argno);
+	/*
+	 * Check if the expression can be evaluated in the Const fasion.
+	 */
+	if (ExecIsExprUnsafeToConst((Node *) aexpr))
+		elog(ERROR, "unable to resolve function argument");
+
+	argtype = exprType((Node *) aexpr);
+	if (!OidIsValid(argtype))
+		elog(ERROR, "unable to resolve function argument type");
+
+	result = (Const *) evaluate_expr(aexpr, argtype);
+	/* evaluate_expr always returns Const */
+	Assert(IsA(result, Const));
+
+	if (isnull)
+		*isnull = result->constisnull;
+
+	return result->constvalue;
 }
 
 typedef struct neededColumnContext
