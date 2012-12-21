@@ -9,6 +9,7 @@ SYNOPSIS
 
 gpcrondump -x <database_name> 
      [-s <schema> | -t <schema>.<table> | -T <schema>.<table>] 
+     [--table-file="<filename>" | --exclude-table-file="<filename>"] 
      [-u <backup_directory>] [-R <post_dump_script>] 
      [-c] [-z] [-r] [-f <free_space_percent>] [-b] [-h] [-j | -k] 
      [-g] [-G] [-C] [-d <master_data_directory>] [-B <parallel_processes>] 
@@ -317,6 +318,17 @@ gpcrondump option.
  A table name to exclude from the database dump. 
  The -T option can be specified multiple times.
 
+--exclude-table-file="<filename>"
+
+  Exclude all tabes listed in <filename> from the 
+  database dump. The file <filename> contains any 
+  number of tables, listed one per line.
+
+--table-file="<filename>"
+
+  Dump only the tables listed in <filename>.
+  The file <filename> contains any 
+  number of tables, listed one per line.
 
 -u <backup_directory>
 
