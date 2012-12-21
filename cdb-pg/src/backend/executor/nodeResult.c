@@ -423,7 +423,7 @@ ExecInitResult(Result *node, EState *estate, int eflags)
 	ExecAssignProjectionInfo(&resstate->ps, NULL);
 
 	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE
-			&& IsMemoryIntesive((Plan *) node))
+			&& IsResultMemoryIntesive(node))
 	{
 		SPI_ReserveMemory(((Plan *)node)->operatorMemKB * 1024L);
 	}

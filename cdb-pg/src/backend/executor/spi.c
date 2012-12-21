@@ -2343,7 +2343,8 @@ void SPI_InitMemoryReservation(void)
 /**
  * Push memory reserved for next SPI call. It is possible for an operator to (after several levels of nesting),
  * result in execution of SQL statements via SPI e.g. a pl/pgsql function that issues queries. These queries must be sandboxed into
- * the memory limits of the operator.
+ * the memory limits of the operator. This stack represents the nesting of these operators and each
+ * operator will push its own limit.
  */
 void SPI_ReserveMemory(uint64 mem_reserved)
 {
@@ -2371,12 +2372,12 @@ uint64 SPI_GetMemoryReservation(void)
 }
 
 /**
- * Is memory reserved?
+ * Is memory reserved stack empty?
  */
 bool SPI_IsMemoryReserved(void)
 {
 	Assert(gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE);
-	return (SPIMemReserved > 0);
+	return (SPIMemReserved == 0);
 }
 
 /**

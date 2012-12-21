@@ -211,13 +211,12 @@ IsBlockingOperator(Node *node)
 }
 
 /**
- * A node is considered memory intensive if its targetlist contains a funcexpr.
+ * Is a result node memory intensive? It is if it contains function calls.
  */
-bool IsMemoryIntesive(Plan *res)
+bool IsResultMemoryIntesive(Result *res)
 {
-	return contains_node_type(NULL, (Node *) res->targetlist, T_FuncExpr);
+	return contains_node_type(NULL, (Node *) ((Plan *) res)->targetlist, T_FuncExpr);
 }
-
 
 /**
  * Is an operator memory intensive?
@@ -242,11 +241,10 @@ static bool IsMemoryIntensiveOperator(Node *node)
 				return IsAggMemoryIntensive(agg);
 			}
 		case T_Result:
-		case T_ValuesScan:
 			{
-				return IsMemoryIntesive((Plan *) node);
+				Result *res = (Result *) node;
+				return IsResultMemoryIntesive(res);
 			}
-
 		default:
 			return false;
 	}
@@ -281,8 +279,7 @@ static bool PolicyAutoPrelimWalker(Node *node, PolicyAutoContext *context)
 	}
 	
 	Assert(node);
-	Assert(context);
-
+	Assert(context);	
 	if (is_plan_node(node))
 	{
 		if (IsMemoryIntensiveOperator(node))
@@ -558,6 +555,90 @@ FindOperatorGroupForOperator(Node *node,
 	return groupNode;
 }
 
+#if 0
+/*
+ * FindOperatorGroupForNode
+ *    find the operator group for a given node.
+ *
+ * If this is during prelim walker phase, this function creates such a group
+ * if it does not exist. Otherwise, this function finds such a group in
+ * the group tree.
+ *
+ * This function also returns the parentGroupNode pointer, and a boolean
+ * indicating if the given node is the first node in the group.
+ */
+static OperatorGroupNode *
+FindOperatorGroupForNode(Node *node,
+						 PolicyEagerFreeContext *context,
+						 bool isPrelimWalker,
+						 OperatorGroupNode **parentGroupNodeP,
+						 bool *isFirstInGroupP)
+{
+	Assert(is_plan_node(node));
+
+	OperatorGroupNode *groupNode = context->groupNode;
+	
+	if (context->groupNode == NULL)
+	{
+		if (isPrelimWalker)
+		{
+			Assert(context->groupTree == NULL);
+			context->groupTree = CreateOperatorGroupNode(context->nextGroupId, NULL);
+			groupNode = context->groupTree;
+
+			/* The memory limit for the first group is the query memory limit. */
+			groupNode->groupMemKB = context->queryMemKB;
+		}
+		else
+		{
+			Assert(context->groupTree != NULL);
+			groupNode = context->groupTree;
+			Assert(groupNode->groupMemKB > 0);
+		}
+
+		context->nextGroupId++;
+		*isFirstInGroupP = true;
+	}
+
+	/*
+	 * If this node is a blocking operator and this node does not contain an extParam,
+	 * it means that the current group ends, and a new group starts.
+	 */
+	if (!*isFirstInGroupP &&
+		IsRootOperatorInGroup(node))
+	{
+		Assert(context->groupNode != NULL);
+		if (isPrelimWalker)
+		{
+			groupNode = CreateOperatorGroupNode(context->nextGroupId, context->groupNode);
+			context->groupNode->childGroups = lappend(context->groupNode->childGroups, groupNode);
+		}
+		else
+		{
+			ListCell *lc = NULL;
+			OperatorGroupNode *childGroup = NULL;
+			foreach(lc, context->groupNode->childGroups)
+			{
+				childGroup = (OperatorGroupNode *)lfirst(lc);
+				if (childGroup->groupId == context->nextGroupId)
+				{
+					break;
+				}
+			}
+
+			Assert(childGroup != NULL);
+			groupNode = childGroup;
+		}
+
+		context->nextGroupId++;
+		*isFirstInGroupP = true;
+		*parentGroupNodeP = context->groupNode;
+	}
+
+	return groupNode;
+}
+#endif
+
 /*
  * ComputeAvgMemKBForMemIntenseOp
  *    Compute the average memory limit for each memory-intensive operators
@@ -645,7 +726,7 @@ ComputeMemLimitForChildGroups(OperatorGroupNode *parentGroupNode)
 					  Max(childGroup->maxNumConcNonMemIntenseOps, childGroup->numNonMemIntenseOps))) /
 			((double)parentGroupNode->groupMemKB);
 		
-		childGroup->groupMemKB = (uint64) (ceil(parentGroupNode->groupMemKB * scaleFactor));
+		childGroup->groupMemKB = (uint64) (parentGroupNode->groupMemKB * scaleFactor);
 	}
 }
 
@@ -666,13 +747,6 @@ PolicyEagerFreePrelimWalker(Node *node, PolicyEagerFreeContext *context)
 	
 	Assert(node);
 	Assert(context);
-
-	/* Initplans can reuse all the memory. Do not walk into them now. */
-	if (IsA(node, SubPlan)
-			&& ((SubPlan *) node)->is_initplan)
-	{
-		return false;
-	}
 
 	OperatorGroupNode *parentGroupNode = NULL;
 	bool isTopPlanNode = false;
@@ -753,13 +827,6 @@ PolicyEagerFreeAssignWalker(Node *node, PolicyEagerFreeContext *context)
 	Assert(node);
 	Assert(context);
 	
-	/* Initplans can reuse all the memory. Do not walk into them now. */
-	if (IsA(node, SubPlan)
-			&& ((SubPlan *) node)->is_initplan)
-	{
-		return false;
-	}
-
 	const uint64 nonMemIntenseOpMemKB = (uint64)gp_resqueue_memory_policy_auto_fixed_mem;
 
 	if (is_plan_node(node))
@@ -790,6 +857,8 @@ PolicyEagerFreeAssignWalker(Node *node, PolicyEagerFreeContext *context)
 			 * operators.
 			 */
 			uint64 memKB = ComputeAvgMemKBForMemIntenseOp(context->groupNode);
+
+			Assert(planNode->operatorMemKB == 0);
 
 			planNode->operatorMemKB = memKB;
 
@@ -829,43 +898,6 @@ PolicyEagerFreeAssignWalker(Node *node, PolicyEagerFreeContext *context)
 }
 
 /*
- * PolicyEagerFreeAssignOperatorMemoryKBPlan
- * 	This is the workhorse for PolicyEagerFreeAssignOperatorMemoryKB. It iterates
- * 	over a plan and decorates it with memory reservations
- */
-static void
-PolicyEagerFreeAssignOperatorMemoryKBPlan(PlannedStmt *stmt, Plan *plan, uint64 memAvailableBytes)
-{
-	PolicyEagerFreeContext ctx;
-	exec_init_plan_tree_base(&ctx.base, stmt);
-	ctx.groupTree = NULL;
-	ctx.groupNode = NULL;
-	ctx.nextGroupId = 0;
-	ctx.queryMemKB = memAvailableBytes / 1024;
-
-#ifdef USE_ASSERT_CHECKING
-	bool result =
-#endif
-		PolicyEagerFreePrelimWalker((Node *) plan, &ctx);
-
-	Assert(!result);
-
-	/*
-	 * Reset groupNode and nextGroupId so that we can start from the
-	 * beginning of the group tree.
-	 */
-	ctx.groupNode = NULL;
-	ctx.nextGroupId = 0;
-
-#ifdef USE_ASSERT_CHECKING
-	result =
-#endif
-		PolicyEagerFreeAssignWalker((Node *) plan, &ctx);
-
-	Assert(!result);
-}
-
-/*
  * PolicyEagerFreeAssignOperatorMemoryKB
  *    Main entry point for memory quota OPTIMIZE. This function distributes the memory
  * among all operators in a more optimized way than the AUTO policy.
@@ -876,26 +908,33 @@ PolicyEagerFreeAssignOperatorMemoryKBPlan(PlannedStmt *stmt, Plan *plan, uint64 
 void
 PolicyEagerFreeAssignOperatorMemoryKB(PlannedStmt *stmt, uint64 memAvailableBytes)
 {
+	PolicyEagerFreeContext ctx;
+	exec_init_plan_tree_base(&ctx.base, stmt);
+	ctx.groupTree = NULL;
+	ctx.groupNode = NULL;
+	ctx.nextGroupId = 0;
+	ctx.queryMemKB = memAvailableBytes / 1024;
 
-	/* Decorate top level plan tree with reservations */
-	PolicyEagerFreeAssignOperatorMemoryKBPlan(stmt, stmt->planTree, memAvailableBytes);
-
-	/* Identify all subplan nodes in statement */
-	List *listSubPlans = extract_nodes_plan(stmt->planTree, T_SubPlan, true /* descendIntoSubqueries */);
-
-	/**
-	 * Identify initplans and reserve memory.
+#ifdef USE_ASSERT_CHECKING
+	bool result = 
+#endif
+		PolicyEagerFreePrelimWalker((Node *) stmt->planTree, &ctx);
+	 
+	Assert(!result);
+	
+	/*
+	 * Reset groupNode and nextGroupId so that we can start from the
+	 * beginning of the group tree.
 	 */
-	ListCell *lp = NULL;
-	foreach(lp, listSubPlans)
-	{
-		SubPlan		*subplan = (SubPlan *) lfirst(lp);
-		if (subplan->is_initplan)
-		{
-			Plan *subplanPlan = exec_subplan_get_plan(stmt, subplan);
-			PolicyEagerFreeAssignOperatorMemoryKBPlan(stmt, subplanPlan, memAvailableBytes);
-		}
-	}
+	ctx.groupNode = NULL;
+	ctx.nextGroupId = 0;
+
+#ifdef USE_ASSERT_CHECKING
+	result = 
+#endif			 
+		PolicyEagerFreeAssignWalker((Node *) stmt->planTree, &ctx);
+	 
+	Assert(!result);
 }
 
  /**
