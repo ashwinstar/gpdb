@@ -153,6 +153,7 @@ static int createDbdumpsDir(char *filePath);
 static int listDirectoryFull(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn);
 static int syncFilesFromDDBoostTimestamp(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn, char *dirPath);
 static int renameFile(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn);
+static int setCredential(struct ddboost_options *dd_options);
 static int copyWithinDDboost(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn);
 
 /* Helper routines for handling multiple -T options using a linked list */
@@ -220,7 +221,7 @@ void cleanupTableList(struct ddboost_options **dd_options)
 		prev = cur;
 	}
 }
-	
+
 int
 main(int argc, char **argv)
 {
@@ -240,6 +241,12 @@ main(int argc, char **argv)
 	{
 		failCount = 1;
 		mpp_err_msg(logError, progname, "Error in InputOptions.\n");
+		goto cleanup;
+	}
+	
+	if (dd_options->setCredential)
+	{
+		failCount = setCredential(dd_options);
 		goto cleanup;
 	}
 
@@ -400,6 +407,11 @@ usage(void)
     printf("  --table=<schemaName.tableName>  --from-file=<ddboost_full_path_name>  --to-file=<local_disk_full_path_name>\n");
     printf("  To create a fake backup file containing only the data for the specified table. \n");
     printf("  The destination directory should exist on the local disk.\n\n\n");        
+    printf("  --setCredential  --hostname <DD_host>  --user=<DD_user>"); 
+    printf("                   [--password=<DD_password>  --logLevel=<INFO,WARN,DEBUG,ERROR,NONE> --logSize=<2-50 (MB)>]\n");  
+    printf("  Set the ddboost login credentials. Hostname and user are required.\n");
+    printf("  If the password option is not specified, it will be interactivly requested.\n");
+    printf("  If the log options are not specified, the default values will be used (level will be INFO and size 50 MB).\n\n\n");
     printf("  --sync	--dir=<local_disk_full_path_name>\n");
     printf("  To copy over the config, global dump, post_data and cdatabase files from DDBoost to GPDB\n"); 
     printf("  Generally we specify the master data directory as the destination.\n\n\n");		
@@ -445,9 +457,17 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		{"write-file-from-stdin", no_argument, NULL, 16},
 		{"dd_boost_buf_size", required_argument, NULL, 18},
 		{"ls", required_argument, NULL, 19},
-        {"syncTimestamp", required_argument, NULL, 20},
-        {"rename", no_argument, NULL, 21},
-        {"copy", no_argument, NULL, 22},
+		{"syncTimestamp", required_argument, NULL, 20},
+		{"rename", no_argument, NULL, 21},
+		{"copy", no_argument, NULL, 22},
+
+		{"setCredential", no_argument, NULL, 23},
+		{"hostname", required_argument, NULL, 24},
+		{"user", required_argument, NULL, 25},
+		{"password", required_argument, NULL, 26},
+		{"logLevel", required_argument, NULL, 27},
+		{"logSize", required_argument, NULL, 28},
+		
 		{NULL, 0, NULL, 0}
 	};
 
@@ -597,12 +617,54 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
             case 22:
                 dd_options->copy = true;
                 break;
+		
+	    case 23:
+	      dd_options->setCredential = true;
+	      break;
+	    case 24:
+	      dd_options->hostname = Safe_strdup(optarg);
+	      break;
+	    case 25:
+	      dd_options->user = Safe_strdup(optarg);
+	      break;
+	    case 26:
+	      dd_options->password = Safe_strdup(optarg);
+	      break;
+	    case 27:
+	      dd_options->log_level = Safe_strdup(optarg);
+	      break;
+	    case 28:
+	      dd_options->log_size = Safe_strdup(optarg);
+	      break;
 			default:
 				mpp_err_msg_cache(logError, progname, "Try \"%s --help\" for more information.\n", progname);
 				return false;
 		}
 	}
 
+	/* Check switches combinations and conflicts */
+	if (dd_options->setCredential && !(dd_options->hostname && dd_options->user))
+	{
+	    mpp_err_msg_cache(logError, progname, "When specifying the option --setCredential, the options --hostname and --user are required.\n", progname);
+	    return false;	
+	}
+	else if (!dd_options->setCredential && (dd_options->hostname || dd_options->user || dd_options->password || 
+	                                        dd_options->log_level || dd_options->log_size))
+	{
+	    mpp_err_msg_cache(logError, progname, "The options --hostname and --user must follow the --setCredential option.\n", progname);	
+	    return false;
+	}
+	else if (dd_options->setCredential && (dd_options->timestamp || dd_options->directory || dd_options->from_file || dd_options->to_file || 
+																				 dd_options->deleteDir || dd_options->deleteFile || dd_options->database || dd_options->syncFilesFromTimestamp ||
+	                                       dd_options->listDir || dd_options->listDirFull || dd_options->copyFromDDBoost || dd_options->copyToDDBoost ||
+	                                       dd_options->copy || dd_options->readFile || dd_options->getFreePercent || dd_options->getLatestTimestamp ||
+	                                       dd_options->syncFiles || dd_options->writeToDDFileFromInput || dd_options->rename))
+	{
+	    mpp_err_msg_cache(logError, progname, "The option --setCredential and its corresponding options are standalone."
+	                                          "They shouldn't be used in conjunction with any other gpddboost option.\n");
+	    return false;
+	}
+	
 	return true;
 }
 
@@ -2877,6 +2939,22 @@ cleanup:
     if (ddboostPath)
         free(ddboostPath);
 	return err;
+}
+
+static int
+setCredential(struct ddboost_options *dd_options)
+{
+  /* take password - getpass works only on linux */ 
+  if (!dd_options->password)
+  {
+    dd_options->password = getpass("Password: ");
+  }
+  
+  if (setDDBoostCredential(dd_options->hostname, dd_options->user, dd_options->password,
+		                       dd_options->log_level, dd_options->log_size) < 0)
+		return -1;
+
+  return 0;
 }
 
 int 

@@ -25,6 +25,7 @@ LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses -lcurl -lssl
 
 ifeq ($(enable_ddboost), yes)
 DDBOOSTLIB += -lDDBoost
+override CFLAGS += -I$(top_builddir)/../ext/$(BLD_ARCH)/include/rsa_csp -I$(top_builddir)/../ext/$(BLD_ARCH)/include/rsa_csp/lb
 endif
 
 PGDUMP_SRCDIR= $(top_srcdir)/src/bin/pg_dump
@@ -79,4 +80,4 @@ uninstall:
 
 clean distclean maintainer-clean:
 	rm -f cdb_dump$(X) cdb_restore$(X) cdb_dump_agent$(X) cdb_restore_agent$(X) cdbheadsync$(X) cdbheadmakeactive$(X) $(OBJS) $(OBJS) cdb_dump.o cdb_restore.o cdb_dump_agent.o cdb_restore_agent.o $(PGDUMP_DIR)/common.o cdb_backup_status.o \
-	cdb_dump_include.o cdb_seginst.o cdb_backup_state.o cdb_table.o cdb_dump_util.o cdb_backup_archiver.o cdbheadsync.o cdbheadmakeactive.o kwlookup.c gpddboost.o $(KEYWRDOBJS)
+	cdb_dump_include.o cdb_seginst.o cdb_backup_state.o cdb_table.o cdb_dump_util.o cdb_backup_archiver.o cdbheadsync.o cdbheadmakeactive.o kwlookup.c cdb_ddboost_util.o $(KEYWRDOBJS)
