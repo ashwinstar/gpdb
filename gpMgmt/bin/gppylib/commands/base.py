@@ -309,8 +309,18 @@ class CommandResult():
         return self.printResult()
         
     def split_stdout(self, how=':'):
+        """ 
+        TODO: AK: This doesn't belong here if it pertains only to pg_controldata.
+
+        MPP-16318: Skip over discrepancies in the pg_controldata stdout, as it's
+        not this code's responsibility to judge the pg_controldata stdout. This is
+        especially true for 'immediate' shutdown, in which case, we won't even
+        care for WARNINGs or other pg_controldata discrepancies.
+        """
         for line in self.stdout.split('\n'):
-            yield line.split(how, 1)
+            ret = line.split(how, 1)
+            if len(ret) == 2:
+                yield ret
 
 
 class ExecutionError(Exception): 
