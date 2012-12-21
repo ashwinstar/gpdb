@@ -99,7 +99,7 @@ OPTIONS
  still written to the log file.
 
 
--check-only
+--check-only
 
  Runs pre-migrate checks to verify that your database is healthy.
  Checks include: 
