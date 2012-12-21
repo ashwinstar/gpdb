@@ -44,6 +44,8 @@ logger = gplog.get_default_logger()
 
 class GpCronDump(Operation):
     def __init__(self, options, args):
+        if args:
+            logger.warn("please note that some of the arguments (%s) aren't valid and will be ignored.", args)
         if options.masterDataDirectory is None:
             options.masterDataDirectory = gp.get_masterdatadir()
         self.interactive = options.interactive
@@ -115,24 +117,42 @@ class GpCronDump(Operation):
         return hostset
 
 
+    # check if one of gpcrondump option was specified, except of ddboost options
+    def only_ddboost_options(self):
+        return ((self.dump_databases is None) and (self.dump_schema is None) and (self.report_dir is None)
+                and (self.backup_dir is None)
+                and not (self.include_dump_tables or self.output_options or self.clear_dumps_only or self.pre_vacuum
+					     or self.clear_dumps_only or self.dump_global or self.rollback or self.exclude_dump_tables
+					     or self.dump_config or self.clear_dumps_only or self.clear_dumps or self.post_vacuum or self.history))
+
+    def validateUserName(self, userName):
+        if not re.search(r'^[a-zA-Z0-9-_]{1,30}$', userName):
+            legal_username_str = """
+			The username length must be between 1 to 30 characters.
+			
+			The following characters are allowed:
+                1) Lowercase letters (a-z)
+				2) Uppercase letters (A-Z) 
+                3) Numbers (0-9)
+                4) Special characters (- and _)
+				
+		    Note: whitespace characters are not allowed.
+			"""
+            raise ExceptionNoStackTraceNeeded(legal_username_str)
+
+
     def validatePassword(self, password):
-        if (not re.search(r'^[a-zA-Z0-9!@#$%^&+=\*\\/\(\)-_~;:\'\"<>\{\}|\?\.\,`"]{,40}$', password)):
+        if not re.search(r'^[a-zA-Z0-9!@#$%^&+=\*\\/\(\)-_~;:\'\"<>\{\}\[\]|\?\.\,`"]{1,40}$', password):
             legal_password_str = """
-            The maximum length of the password is 40 characters.
-            The following password characters are allowed
-            
+            The password length must be between 1 to 40 characters.
+			
+            The following characters are allowed:
                 1) Lowercase letters (a-z) 
                 2) Uppercase letters (A-Z) 
                 3) Numbers (0-9)
-                4) Special characters ($, %, #, + and so on). 
+                4) Special characters (! @ # $ % ^ & + = * \ / - _ ~ ; : ' " { [ ( < > ) ] } | ? . and ,). 
             """
             raise ExceptionNoStackTraceNeeded(legal_password_str)
-
-
-    def validateUserName(self, userName):
-        if (not re.search(r'^.{,30}$', userName)):
-            legal_username_str = """The maximum length of username is 30 characters  """
-            raise ExceptionNoStackTraceNeeded(legal_username_str)
 
 
     def writeToFile(self, content, filePathName):
@@ -153,8 +173,13 @@ class GpCronDump(Operation):
                 logger.warn("cmd: %s " % cmdline)
 
     def execute(self):
-        if (bool(self.ddboost_host) or bool(self.ddboost_user)):
-            if (bool(self.ddboost_host) and bool(self.ddboost_user) and (self.dump_databases is None) and (not self.clear_dumps_only)):
+        if bool(self.ddboost_host) or bool(self.ddboost_user):
+            # check that both options are specified
+            if not (bool(self.ddboost_host) and bool(self.ddboost_user)):
+                raise ExceptionNoStackTraceNeeded('For DDBoost config, both options are required --ddboost-host <ddboost_hostname> --ddboost-user <ddboost_user>.')
+
+            # check that no other gpcrondump option was specified
+            if self.only_ddboost_options() and not self.ddboost_config_remove:
                 self.validateUserName(userName = self.ddboost_user)
                 hostset = self.getHostSet(self.getGpArray())
                 p = getpass()
@@ -162,13 +187,11 @@ class GpCronDump(Operation):
                 credentials = self.ddboost_host + "\n"  + self.ddboost_user + "\n" + p + "\n"
                 self.scpToHosts(hostset, credentials)
                 return 0;
-            elif (bool(self.ddboost_host) and bool(self.ddboost_user)):
-                raise ExceptionNoStackTraceNeeded('The options --ddboost-host and --ddboost-user are standalone. They are NOT used in conjunction with any other gocrondump options.')
             else:
-                raise ExceptionNoStackTraceNeeded('For DDBoost config, both options are required --ddboost-host <ddboost_hostname> --ddboost-user <ddboost_user>.')
-        
-        if (self.ddboost_config_remove):
-            if (self.ddboost_config_remove and (self.dump_databases is None) and (not self.clear_dumps_only)):
+                raise ExceptionNoStackTraceNeeded('The options --ddboost-host and --ddboost-user are standalone. They are NOT used in conjunction with any other gocrondump options.')
+
+        if self.ddboost_config_remove:
+            if self.ddboost_config_remove and self.only_ddboost_options():
                 hostset = self.getHostSet(self.getGpArray())
                 self.scpToHosts(hostset, '')
                 return 0;
@@ -548,9 +571,13 @@ def create_parser():
    
     #DDBoostConfig options
     ddConfigOpt = OptionGroup(parser, "DDBoostConfig")
-    ddConfigOpt.add_option('--ddboost-host', dest='ddboost_host', help="Configuration of ddboost hostname.", action='store', default=None)
-    ddConfigOpt.add_option('--ddboost-user', dest='ddboost_user', help="Configuration of ddboost user.", action="store", default=None)
-    ddConfigOpt.add_option('--ddboost-config-remove', dest='ddboost_config_remove', help="Remove ~/.ddconfig file.", action="store_true", default=False)
+    ddConfigOpt.add_option('--ddboost-host', dest='ddboost_host', action='store', default=None,
+                           help="Configuration of ddboost hostname.")
+    ddConfigOpt.add_option('--ddboost-user', dest='ddboost_user', action='store', default=None, 
+                           help="Configuration of ddboost user.")
+    ddConfigOpt.add_option('--ddboost-config-remove', dest='ddboost_config_remove', action='store_true', default=False,
+                           help="Remove ~/.ddconfig file.")
+
     parser.add_option_group(ddConfigOpt)
     
     
