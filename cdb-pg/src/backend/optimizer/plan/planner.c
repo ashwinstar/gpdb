@@ -1244,6 +1244,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 
 		grpext = is_grouping_extension(canonical_grpsets);
 		has_within = extract_nodes(NULL, (Node *) tlist, T_PercentileExpr) != NIL;
+		has_within |= extract_nodes(NULL, parse->havingQual, T_PercentileExpr) != NIL;
 
 		if (grpext && has_within)
 			ereport(ERROR,
