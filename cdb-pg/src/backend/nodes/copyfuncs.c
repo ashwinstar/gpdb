@@ -2241,6 +2241,7 @@ _copyColumnDef(ColumnDef *from)
 	COPY_SCALAR_FIELD(is_local);
 	COPY_SCALAR_FIELD(is_not_null);
 	COPY_NODE_FIELD(raw_default);
+	COPY_SCALAR_FIELD(default_is_null);
 	COPY_STRING_FIELD(cooked_default);
 	COPY_NODE_FIELD(constraints);
 	COPY_NODE_FIELD(encoding);

@@ -1107,6 +1107,109 @@ select alter2.plus1(41);
 -- clean up
 drop schema alter2 cascade;
 
+--
+-- Test ALTER TABLE ADD COLUMN WITH NULL DEFAULT on AO TABLES
+--
+---
+--- basic support for alter add column with NULL default to AO tables
+--- 
+drop table if exists ao1;
+create table ao1(col1 varchar(2), col2 int) WITH (APPENDONLY=TRUE) distributed randomly;
+
+insert into ao1 values('aa', 1);
+insert into ao1 values('bb', 2);
+
+-- following should be OK.
+alter table ao1 add column col3 char(1) default 5;
+
+-- the following should be supported now
+alter table ao1 add column col4 char(1) default NULL;
+
+select * from ao1;
+insert into ao1 values('cc', 3);
+select * from ao1;
+
+alter table ao1 alter column col4 drop default; 
+select * from ao1;
+insert into ao1 values('dd', 4);
+select * from ao1;
+
+---
+--- check catalog contents after alter table on AO tables 
+---
+drop table if exists ao1;
+create table ao1(col1 varchar(2), col2 int) WITH (APPENDONLY=TRUE) distributed randomly;
+
+-- relnatts is 2
+select relname, relnatts from pg_class where relname = 'ao1';
+
+alter table ao1 add column col3 char(1) default NULL;
+
+-- relnatts in pg_class should be 3
+select relname, relnatts from pg_class where relname = 'ao1';
+
+-- check col details in pg_attribute
+select  pg_class.relname, attname, typname from pg_attribute, pg_class, pg_type where attrelid = pg_class.oid and pg_class.relname = 'ao1' and atttypid = pg_type.oid and attname = 'col3';
+
+-- no explicit entry in pg_attrdef for NULL default
+select relname, attname, adsrc from pg_class, pg_attribute, pg_attrdef where attrelid = pg_class.oid and adrelid = pg_class.oid and adnum = pg_attribute.attnum and pg_class.relname = 'ao1';
+
+
+--- 
+--- check with IS NOT NULL constraint
+--- 
+drop table if exists ao1;
+create table ao1(col1 varchar(2), col2 int) WITH (APPENDONLY=TRUE) distributed randomly;
+
+insert into ao1 values('a', 1); 
+
+-- should fail
+alter table ao1 add column col3 char(1) not null default NULL; 
+
+drop table if exists ao1;
+create table ao1(col1 varchar(2), col2 int) WITH (APPENDONLY=TRUE) distributed randomly;
+
+-- should pass
+alter table ao1 add column col3 char(1) not null default NULL; 
+
+-- this should fail (same behavior as heap tables)
+insert into ao1(col1, col2) values('a', 10);
+---
+--- alter add with no default should continue to fail
+---
+drop table if exists ao1;
+create table ao1(col1 varchar(1)) with (APPENDONLY=TRUE) distributed randomly;
+
+insert into ao1 values('1');
+insert into ao1 values('1');
+insert into ao1 values('1');
+insert into ao1 values('1');
+
+alter table ao1 add column col2 char(1);
+select * from ao1;
+
+---
+--- new column with a domain type
+---
+drop table if exists ao1;
+create table ao1(col1 varchar(5)) with (APPENDONLY=TRUE) distributed randomly;
+
+insert into ao1 values('abcde');
+
+drop domain zipcode;
+create domain zipcode as text
+constraint c1 not null;
+
+-- following should fail
+alter table ao1 add column col2 zipcode;
+
+alter table ao1 add column col2 zipcode default NULL;
+
+select * from ao1;
+
+-- cleanup
+drop table ao1;
+drop domain zipcode;
 drop schema if exists mpp17582 cascade;
 create schema mpp17582;
 set search_path=mpp17582;
