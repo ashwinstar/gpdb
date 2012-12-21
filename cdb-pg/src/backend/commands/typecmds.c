@@ -592,6 +592,11 @@ RemoveType(List *names, DropBehavior behavior, bool missing_ok)
 	ReleaseSysCache(tup);
 
 	/*
+	 * Remove any storage encoding
+	 */
+	remove_type_encoding(typeoid);
+
+	/*
 	 * Do the deletion
 	 */
 	object.classId = TypeRelationId;
@@ -600,11 +605,6 @@ RemoveType(List *names, DropBehavior behavior, bool missing_ok)
 
 	performDeletion(&object, behavior);
 
-
-	/*
-	 * Remove any storage encoding
-	 */
-	remove_type_encoding(typeoid);
 }
 
 
