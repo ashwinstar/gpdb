@@ -1788,13 +1788,13 @@ describeOneTableDetails(const char *schemaname,
 				{
 					format = "custom";
 				}
-				break;					
+				break;
 				default:
 				{
 					format = "";
 					fprintf(stderr, _("Unknown fmttype value: %c\n"), fmttype[0]);
 				}
-				break;	
+				break;
 			};
 			printfPQExpBuffer(&tmpbuf, _("Format type: %s"), format);
 			printTableAddFooter(&cont, tmpbuf.data);
@@ -1914,8 +1914,7 @@ describeOneTableDetails(const char *schemaname,
 		/* print append only table information */
 		if (tableinfo.relstorage == 'a' || tableinfo.relstorage == 'c')
 		{
-		  /* KAS: The following getenv is to be removed before shipping. It is here just to facilitate QA. */
-		  if (tableinfo.relstorage == 'a' || (tableinfo.relstorage == 'c' && getenv("PRE42_FOOTER") != NULL))
+		  if (tableinfo.relstorage == 'a')
 			{
 				printfPQExpBuffer(&buf, _("Compression Type: %s"), tableinfo.compressionType);
 				printTableAddFooter(&cont, buf.data);
