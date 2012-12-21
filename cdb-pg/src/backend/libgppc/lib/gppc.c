@@ -755,10 +755,17 @@ GppcTmGetTime(GppcTm *tm)
 void
 GppcTimeTzGetTm(GppcTimeTz x, GppcTm *tm)
 {
+	TimeADT			t;
 	Timestamp		ts;
 
-	ts = DatumGetTimestamp(DirectFunctionCall2(datetimetz_timestamptz,
-			DateADTGetDatum(POSTGRES_EPOCH_JDATE), TimeTzADTPGetDatum((TimeTzADT *) x)));
+	/*
+	 * Drop time zone, as we adjust it below.  We do this because we don't have
+	 * timestamptz2tm and always convert via timestamp.
+	 */
+	t = DatumGetTimeADT(
+			DirectFunctionCall1(timetz_time, TimeTzADTPGetDatum((TimeTzADT *) x)));
+	ts = DatumGetTimestamp(DirectFunctionCall2(datetime_timestamp,
+			DateADTGetDatum(POSTGRES_EPOCH_JDATE), TimeADTGetDatum(t)));
 
 	timestamp2gppctm(ts, tm);
 	/* adjust time zone. gmtoff is in sec */
@@ -770,11 +777,13 @@ GppcTimeTz
 GppcTmGetTimeTz(GppcTm *tm)
 {
 	Timestamp		ts;
+	TimeADT			t;
 	TimeTzADT	   *result;
 
 	ts = gppctm2timestamp(tm);
 
-	result = DatumGetTimeTzADTP(DirectFunctionCall1(timestamptz_timetz, TimestampGetDatum(ts)));
+	t = DatumGetTimeADT(DirectFunctionCall1(timestamp_time, TimestampGetDatum(ts)));
+	result = DatumGetTimeTzADTP(DirectFunctionCall1(time_timetz, TimeADTGetDatum(t)));
 	/* adjust time zone. gmtoff is in sec */
 	result->zone = tm->tm_gmtoff;
 	return (GppcTimeTz) result;

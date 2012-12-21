@@ -82,9 +82,11 @@ extern int no_such_variable
 /**
  * \ingroup TimestampOps
  * \brief Temporal data type information extended from C standard tm structure.
- * The head of this structure is equivalent to tm, so you can call memcpy from it.
- * \a tm_isdst is 0 when \a tm_gmtoff is valid as offset seconds from UTC.
- * \a tm_zone may contain time zone string.  \a tm_fsec is the fraction second.
+ * The fields of this structure are equivalent to the ones of tm, though there are
+ * a few modifications.  \a tm_year is an exact number of year, not 1900-based.
+ * \a tm_mon starts from 1, not 0.  \a tm_isdst is 0 when \a tm_gmtoff is valid
+ * as offset seconds from UTC.  \a tm_zone may contain time zone string.
+ * \a tm_fsec is the fraction second.
  *
  *\sa GppcDateGetTm(), GppcTimeGetTm(), GppcTimeTzGetTm(), GppcTimestampGetTm(),
  *    GppcTimestampTzGetTm(), GppcTmGetDate(), GppcTmGetTime(), GppcTmGetTimeTz(),
