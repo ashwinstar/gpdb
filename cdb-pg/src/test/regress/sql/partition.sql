@@ -4527,3 +4527,51 @@ alter table s_heap exchange partition abc with table s_heap_ex_abc;
 alter table s_heap exchange partition abc with table s_heap_ex_abc;
 drop table s_heap, s_heap_ex_abc;
 -- MPP-18441 end
+
+-- MPP-18443
+create table s_heap (i1 int, t1 text, i2 int , i3 int, n1 numeric,b1 bool)
+partition by list (t1)
+    (partition def values('def0', 'def1', 'def2', 'def3', 'def4', 'def5', 'def6', 'def7', 'def8', 'def9'));
+insert into s_heap(t1, i1, i2, i3, n1, b1)
+    select 'def0', 1, 1, 1, 2.3 , true from generate_series(1, 5);
+alter table s_heap drop column i3;
+create index s_heap_index on s_heap (i2);
+alter table s_heap split partition def
+    at ('def0', 'def1', 'def2', 'def3', 'def4') into (partition def5, partition def0);
+select * from s_heap_1_prt_def0;
+drop table s_heap;
+-- MPP-18443 end
+
+-- MPP-18445
+create table s_heap_ao ( i1 int, t1 text, i2 int , i3 int, n1 numeric,b1 bool)
+partition by list (t1)
+    (partition def values('def0', 'def1', 'def2', 'def3', 'def4', 'def5', 'def6', 'def7', 'def8', 'def9')
+        with (appendonly=true, orientation=row));
+insert into s_heap_ao(t1, i1, i2, i3, n1, b1)
+    select 'def4', 1, 1, 1, 2.3, true from generate_series(1, 2);
+insert into s_heap_ao(t1, i1, i2, i3, n1, b1)
+    select 'def5', 1, 1, 1, 2.3, true from generate_series(1, 2);
+alter table s_heap_ao drop column i3;
+create index s_heap_ao_index on s_heap_ao (i2);
+alter table s_heap_ao split partition def
+    at ('def0', 'def1', 'def2', 'def3', 'def4') into (partition def5, partition def0);
+select * from s_heap_ao_1_prt_def0;
+drop table s_heap_ao;
+-- MPP-18445 end
+
+-- MPP-18456
+create table s_heap_co (i1 int, t1 text, i2 int, i3 int, n1 numeric, b1 bool)
+partition by list (t1)
+    (partition def values('def0', 'def1', 'def2', 'def3', 'def4', 'def5', 'def6', 'def7', 'def8', 'def9')
+        with (appendonly=true, orientation=column));
+insert into s_heap_co(t1, i1, i2, i3, n1, b1)
+    select 'def4', 1,1, 1, 2.3, true from generate_series(1, 2);
+insert into s_heap_co(t1, i1, i2, i3, n1, b1)
+    select 'def5', 1,1, 1, 2.3, true from generate_series(1, 2);
+alter table s_heap_co drop column i3;
+create index s_heap_co_index on s_heap_co (i2);
+alter table s_heap_co split partition def
+    at ('def0', 'def1', 'def2', 'def3', 'def4') into (partition def5, partition def0);
+select * from s_heap_co_1_prt_def0;
+drop table s_heap_co;
+-- MPP-18456 end

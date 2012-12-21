@@ -14980,13 +14980,22 @@ destroy_split_resultrel(ResultRelInfo *rri)
 
 }
 
+/*
+ * Scan tuples from the temprel (origin, T) and route them to split parts (A, B)
+ * based on the constraints.  It is important that the origin may have dropped
+ * columns while the new relations will not.
+ *
+ * This also covers index tuple population.  Note this doesn't handle row OID
+ * as it's not allowed in partition.
+ */
 static void
 split_rows(Relation intoa, Relation intob, Relation temprel)
 {
 	ResultRelInfo *rria = make_split_resultrel(intoa);
 	ResultRelInfo *rrib = make_split_resultrel(intob);
 	EState *estate = CreateExecutorState();
-	TupleTableSlot *tts = MakeSingleTupleTableSlot(temprel->rd_att);
+	TupleDesc		tupdescT = temprel->rd_att;
+	TupleTableSlot *slotT = MakeSingleTupleTableSlot(tupdescT);
 	HeapScanDesc heapscan = NULL;
 	AppendOnlyScanDesc aoscan = NULL;
     AOCSScanDesc aocsscan = NULL;
@@ -14998,6 +15007,16 @@ split_rows(Relation intoa, Relation intob, Relation temprel)
     AOCSInsertDesc aocsinsertdesc_b = NULL;
 	ExprState *achk = NULL;
 	ExprState *bchk = NULL;
+
+	/*
+	 * Set up for reconstructMatchingTupleSlot.  In split operation,
+	 * slot/tupdesc should look same between A and B, but here we don't
+	 * assume so just in case, to be safe.
+	 */
+	rria->ri_partSlot = MakeSingleTupleTableSlot(RelationGetDescr(intoa));
+	rrib->ri_partSlot = MakeSingleTupleTableSlot(RelationGetDescr(intob));
+	map_part_attrs(temprel, intoa, &rria->ri_partInsertMap, true);
+	map_part_attrs(temprel, intob, &rrib->ri_partInsertMap, true);
 
 	/* constr might not be defined if this is a default partition */
 	if (intoa->rd_att->constr && intoa->rd_att->constr->num_check)
@@ -15030,6 +15049,11 @@ split_rows(Relation intoa, Relation intob, Relation temprel)
 
 		aocsscan = aocs_beginscan(temprel, SnapshotNow, NULL /* relationTupleDesc */, aocsproj);
 	}
+	else
+	{
+		Assert(false);
+	}
+
 	oldCxt = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 
 	while (true)
@@ -15039,8 +15063,10 @@ split_rows(Relation intoa, Relation intob, Relation temprel)
 		Relation targetRelation;
 		AppendOnlyInsertDesc *targetAODescPtr;
 		AOCSInsertDesc *targetAOCSDescPtr;
-		ItemPointer tid;
-		ResultRelInfo *currri = NULL;
+		TupleTableSlot	   *targetSlot;
+		ItemPointer			tid;
+		ResultRelInfo	   *targetRelInfo = NULL;
+		AOTupleId			aoTupleId;
 
 		/* read next tuple from temprel */
 		if (RelationIsHeap(temprel))
@@ -15052,26 +15078,27 @@ split_rows(Relation intoa, Relation intob, Relation temprel)
 				break;
 
 			tuple = heap_copytuple(tuple);
-			ExecStoreHeapTuple(tuple, tts, InvalidBuffer, false);
+			ExecStoreHeapTuple(tuple, slotT, InvalidBuffer, false);
 		}
 		else if (RelationIsAoRows(temprel))
 		{
 			MemTuple mtuple;
 
-			mtuple = appendonly_getnext(aoscan, ForwardScanDirection, tts);
+			mtuple = appendonly_getnext(aoscan, ForwardScanDirection, slotT);
 			if (!PointerIsValid(mtuple))
 				break;
 
-			TupClearShouldFree(tts);
+			TupClearShouldFree(slotT);
 		}
 		else if (RelationIsAoCols(temprel))
 		{
-			aocs_getnext(aocsscan, ForwardScanDirection, tts);
-			if (TupIsNull(tts))
+			aocs_getnext(aocsscan, ForwardScanDirection, slotT);
+			if (TupIsNull(slotT))
 				break;
 		}
 
-		econtext->ecxt_scantuple = tts;
+		/* prepare for ExecQual */
+		econtext->ecxt_scantuple = slotT;
 
 		/* determine if we are inserting into a or b */
 		if (achk)
@@ -15082,7 +15109,7 @@ split_rows(Relation intoa, Relation intob, Relation temprel)
 		{
 			Assert(PointerIsValid(bchk));
 
-			targetIsA = ! ExecQual((List *)bchk, econtext, false);
+			targetIsA = !ExecQual((List *)bchk, econtext, false);
 		}
 
 		/* load variables for the specific target */
@@ -15091,23 +15118,37 @@ split_rows(Relation intoa, Relation intob, Relation temprel)
 			targetRelation = intoa;
 			targetAODescPtr = &aoinsertdesc_a;
 			targetAOCSDescPtr = &aocsinsertdesc_a;
-			currri = rria;
+			targetRelInfo = rria;
 		}
 		else
 		{
 			targetRelation = intob;
 			targetAODescPtr = &aoinsertdesc_b;
 			targetAOCSDescPtr = &aocsinsertdesc_b;
-			currri = rrib;
+			targetRelInfo = rrib;
 		}
 
-		/* insert into the target table */
+		/*
+		 * Map attributes from origin to target.  We should consider dropped
+		 * columns in the origin.
+		 */
+		targetSlot = reconstructMatchingTupleSlot(slotT, targetRelInfo);
 
-		if (RelationIsAoRows(targetRelation))
+		/* insert into the target table */
+		if (RelationIsHeap(targetRelation))
 		{
-			MemTuple mtuple = ExecFetchSlotMemTuple(tts, false);
-			Oid 		tupleOid;
-			AOTupleId	aoTupleId;
+			HeapTuple tuple;
+
+			tuple = ExecFetchSlotHeapTuple(targetSlot);
+			simple_heap_insert(targetRelation, tuple);
+
+			/* cache TID for later updating of indexes */
+			tid = &(((HeapTuple) tuple)->t_self);
+		}
+		else if (RelationIsAoRows(targetRelation))
+		{
+			MemTuple	mtuple;
+			Oid			tupleOid;
 
 			if (!(*targetAODescPtr))
 			{
@@ -15117,15 +15158,14 @@ split_rows(Relation intoa, Relation intob, Relation temprel)
 				MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 			}
 
+			mtuple = ExecFetchSlotMemTuple(targetSlot, false);
 			appendonly_insert(*targetAODescPtr, mtuple, &tupleOid, &aoTupleId);
 
 			/* cache TID for later updating of indexes */
-			tid = (ItemPointer)&aoTupleId;
+			tid = (ItemPointer) &aoTupleId;
 		}
 		else if (RelationIsAoCols(targetRelation))
 		{
-			AOTupleId	aoTupleId;
-
 			if (!*targetAOCSDescPtr)
 			{
 				MemoryContextSwitchTo(oldCxt);
@@ -15134,32 +15174,24 @@ split_rows(Relation intoa, Relation intob, Relation temprel)
 				MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 			}
 
-			aocs_insert(*targetAOCSDescPtr, tts);
-			aoTupleId = *((AOTupleId*)slot_get_ctid(tts));
+			aocs_insert(*targetAOCSDescPtr, targetSlot);
 
 			/* cache TID for later updating of indexes */
-			tid = (ItemPointer)&aoTupleId;
+			tid = slot_get_ctid(targetSlot);
 		}
 		else
 		{
-			HeapTuple tuple;
-
-			/* Better be a heap table ... */
-			Assert(RelationIsHeap(targetRelation));
-
-			/* guaranteed to be a copy, see above */
-			tuple = ExecFetchSlotHeapTuple(tts);
-			simple_heap_insert(targetRelation, tuple);
-
-			/* cache TID for later updating of indexes */
-			tid = &(((HeapTuple)tuple)->t_self);
-			setLastTid(tid);
+			Assert(false);
 		}
 
-		if (currri->ri_NumIndices > 0)
+		/*
+		 * Insert index for this tuple.
+		 * TODO: for performance reason, should we call index_build() instead?
+		 */
+		if (targetRelInfo->ri_NumIndices > 0)
 		{
-			estate->es_result_relation_info = currri;
-			ExecInsertIndexTuples(tts, tid, estate, false);
+			estate->es_result_relation_info = targetRelInfo;
+			ExecInsertIndexTuples(targetSlot, tid, estate, false);
 			estate->es_result_relation_info = NULL;
 		}
 
@@ -15177,7 +15209,14 @@ split_rows(Relation intoa, Relation intob, Relation temprel)
 		aocs_insert_finish(aocsinsertdesc_b);
 
 	MemoryContextSwitchTo(oldCxt);
-	ExecDropSingleTupleTableSlot(tts);
+	ExecDropSingleTupleTableSlot(slotT);
+	ExecDropSingleTupleTableSlot(rria->ri_partSlot);
+	ExecDropSingleTupleTableSlot(rrib->ri_partSlot);
+
+	if (rria->ri_partInsertMap)
+		pfree(rria->ri_partInsertMap);
+	if (rrib->ri_partInsertMap)
+		pfree(rrib->ri_partInsertMap);
 
 	if (RelationIsHeap(temprel))
 		heap_endscan(heapscan);

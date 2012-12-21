@@ -152,7 +152,6 @@ static void intorel_startup(DestReceiver *self, int operation, TupleDesc typeinf
 static void intorel_receive(TupleTableSlot *slot, DestReceiver *self);
 static void intorel_shutdown(DestReceiver *self);
 static void intorel_destroy(DestReceiver *self);
-static TupleTableSlot * reconstructMatchingTupleSlot(TupleTableSlot *slot, ResultRelInfo *resultRelInfo);
 static void ClearPartitionState(EState *estate);
 
 /*
@@ -5018,7 +5017,7 @@ map_part_attrs(Relation base, Relation part, AttrMap **map_ptr, bool throw)
  * it is the slot from the argument result info updated to hold the 
  * restructured tuple.
  */
-static TupleTableSlot *
+TupleTableSlot *
 reconstructMatchingTupleSlot(TupleTableSlot *slot, ResultRelInfo *resultRelInfo)
 {
 	int natts;
