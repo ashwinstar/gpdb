@@ -3162,6 +3162,9 @@ def missingEntryQuery(max_content, catname, pkey, castedPkey):
     #     If the non-nulls are <= 1/2 the result report those segments as "extra"
 
     qry = """
+          -- disribute catalog table from master, so that we can avoid to gather
+          CREATE TEMPORARY TABLE _tmp_master ON COMMIT DROP AS
+              SELECT gp_segment_id segid, {primary_key} FROM {catalog};
           SELECT {oidcasted_pk}, exists, array_agg(segid order by segid) as segids
           FROM
           (
@@ -3170,13 +3173,13 @@ def missingEntryQuery(max_content, catname, pkey, castedPkey):
                    count(*) over (partition by {primary_key}, actual.segid is null) as subcount
             FROM (
                  SELECT segid, {primary_key}
-                 FROM ( SELECT distinct {primary_key} FROM {catalog}
+                 FROM(  SELECT distinct {primary_key} FROM _tmp_master
                         UNION 
                         SELECT distinct {primary_key} FROM gp_dist_random('{catalog}') ) all_pks,
                       ( SELECT distinct content as segid from gp_segment_configuration) all_segs
                ) ideal
                LEFT OUTER JOIN
-               ( SELECT gp_segment_id as segid, {primary_key} FROM {catalog}
+               ( SELECT segid, {primary_key} FROM _tmp_master
                  UNION ALL
                  SELECT gp_segment_id as segid, {primary_key} FROM gp_dist_random('{catalog}')
                ) actual USING (segid, {primary_key})
@@ -3190,6 +3193,21 @@ def missingEntryQuery(max_content, catname, pkey, castedPkey):
 
     return qry
 
+def transformTextArrayCols(catname, columns, colnames, coltypes):
+    # Distributing by hash(text[]) is potentially dangerous,
+    # so if the table has text[] column, then we need array_to_string
+    #
+    # We should fix the text[] hash expression issue, but
+    # for this script, this seems like a reasonable workaround.
+
+    transformed = []
+    for i in range(len(columns)):
+        if coltypes[colnames[i]] == '_text':
+            transformed.append("array_to_string(" + columns[i] + ", ',')")
+        else:
+            transformed.append(columns[i])
+
+    return transformed
 
 #-------------------------------------------------------------------------------
 def checkInconsistentEntry():
@@ -3235,12 +3253,15 @@ def checkTableInconsistentEntry(cat):
 
     castedPkey = cat.getPrimaryKey()
     castedPkey = [ c+autoCast.get(coltypes[c],'') for c in castedPkey ]
-    columns = [ c+autoCast.get(coltypes[c],'') for c in columns ]
+    castcols = [ c+autoCast.get(coltypes[c],'') for c in columns ]
 
+    # transform text[] cols for sure. See comments on transformTextArrayCols
+    castcols = transformTextArrayCols(catname, castcols, columns, cat.getTableColtypes())
+    castcols = [castcols[i] + ' AS ' + columns[i] for i in range(len(columns))]
     if cat.tableHasConsistentOids():
-        qry = inconsistentEntryQuery(GV.max_content, catname, ['oid'], columns)
+        qry = inconsistentEntryQuery(GV.max_content, catname, ['oid'], columns, castcols)
     else:
-        qry = inconsistentEntryQuery(GV.max_content, catname, castedPkey, columns)
+        qry = inconsistentEntryQuery(GV.max_content, catname, castedPkey, columns, castcols)
 
     # Execute the query
     try:
@@ -3271,9 +3292,8 @@ def checkTableInconsistentEntry(cat):
         myprint('  Execution error: ' + str(e))
         myprint(qry)
 
-
 #-------------------------------------------------------------------------------
-def inconsistentEntryQuery(max_content, catname, pkey, columns):
+def inconsistentEntryQuery(max_content, catname, pkey, columns, castcols):
 
         #-- ==============
         #--  Inconsistent
@@ -3297,6 +3317,9 @@ def inconsistentEntryQuery(max_content, catname, pkey, columns):
         qry = """
               SET gp_enable_mk_sort=off; 
 
+              -- disribute catalog table from master, so that we can avoid to gather
+              CREATE TEMPORARY TABLE _tmp_master ON COMMIT DROP AS
+                  SELECT gp_segment_id segid, {columns} FROM {catalog};
               SELECT {columns}, array_agg(gp_segment_id order by gp_segment_id) as segids
               FROM
               (
@@ -3308,10 +3331,9 @@ def inconsistentEntryQuery(max_content, catname, pkey, columns):
                           count(*) over (partition by {pkey}) as pcount,
                           gp_segment_id, {columns}
                    from (
-                     select gp_segment_id, {columns}
-                     from   {catalog}
+                     select segid gp_segment_id, {castcols} from _tmp_master
                      union all
-                     select gp_segment_id, {columns}
+                     select gp_segment_id, {castcols}
                      from   gp_dist_random('{catalog}')
                    ) all_segments
                  ) counted_segments
@@ -3323,6 +3345,7 @@ def inconsistentEntryQuery(max_content, catname, pkey, columns):
               """.format(pkey        = ','.join(pkey),
                          catalog     = catname,
                          columns     = ','.join(columns),
+                         castcols    = ','.join(castcols),
                          max_content = max_content)
 
         return qry
@@ -3410,16 +3433,19 @@ def duplicateEntryQuery(catname, pkey):
     #--
 
     qry = """
+          -- disribute catalog table from master, so that we can avoid to gather
+          CREATE TEMPORARY TABLE _tmp_master ON COMMIT DROP AS
+              SELECT gp_segment_id segid, {pkey} FROM {catalog};
           SELECT {pkey}, total, array_agg(segid order by segid) as segids
           FROM (
-               SELECT segid, {pkey}, count(*) as total
-               FROM (
-                    select gp_segment_id as segid, {pkey} FROM {catalog}
-                    union all
-                    select gp_segment_id as segid, {pkey} FROM gp_dist_random('{catalog}')
-               ) all_segments
-               GROUP BY segid, {pkey}
-               HAVING count(*) > 1
+              SELECT segid, {pkey}, count(*) as total
+              FROM (
+                   select segid, {pkey} FROM _tmp_master
+                   union all
+                   select gp_segment_id as segid, {pkey} FROM gp_dist_random('{catalog}')
+              ) all_segments
+              GROUP BY segid, {pkey}
+              HAVING count(*) > 1
           ) rowresult
           GROUP BY {pkey}, total
           """.format(catalog = catname,
