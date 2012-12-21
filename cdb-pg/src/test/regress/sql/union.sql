@@ -177,6 +177,10 @@ select 'b'::information_schema.sql_identifier)a;
      (select 1 union select distinct null)
   )s2);
 
+-- Yet, we keep behaviors on text-like columns
+create view union_textlike as select 'text' as textlike UNION select rsqname from pg_resqueue;
+select pg_typeof(textlike) from union_textlike;
+
 CREATE TABLE union_ctas (a, b) AS SELECT 1, 2 UNION SELECT 1, 1 UNION SELECT 1, 1;
 SELECT * FROM union_ctas;
 DROP TABLE union_ctas;
