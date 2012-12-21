@@ -500,7 +500,7 @@ class SendFilerepVerifyMessage(Command):
         'pg_ident.conf', 'pg_fsm.cache', 'gp_dbid', 'gp_pmtransitions_args', 
         'gp_dump', 'postgresql.conf', 'postmaster.log', 'postmaster.opts', 
         'postmaser.pids', 'postgresql.conf.bak', 'core',  'wet_execute.tbl',
-        'recovery.done']
+        'recovery.done', 'gp_temporary_files_filespace', 'gp_transaction_files_filespace']
 
     DEFAULT_IGNORE_DIRS = [
         'pgsql_tmp', 'pg_xlog', 'pg_log', 'pg_stat_tmp', 'pg_changetracking', 'pg_verify', 'db_dumps', 'pg_utilitymodedtmredo', 'gpperfmon'

@@ -499,6 +499,8 @@ sub ignore_list
 		gp_dbid
 		core
 		db_dumps
+		gp_temporary_files_filespace
+		gp_transaction_files_filespace
 		);
 
 	# add any other expressions (eg user-supplied)
