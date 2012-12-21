@@ -30,6 +30,7 @@ aix5_ppc_64_BLD_BITS=64
 aix5_ppc_32_BLD_BITS=32
 rhel4_x86_64_BLD_BITS=64
 rhel4_x86_32_BLD_BITS=32
+rhel6_x86_64_BLD_BITS=64
 rhel5_x86_64_BLD_BITS=64
 rhel5_x86_32_BLD_BITS=32
 sol8_sparc_BLD_BITS=32

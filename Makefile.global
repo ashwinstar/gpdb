@@ -100,6 +100,7 @@ rhel4_x86_32_PYTHON=/opt/python-2.5.1
 rhel4_x86_64_PYTHON=/opt/python-2.5.1
 rhel5_x86_32_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
 rhel5_x86_64_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
+rhel6_x86_64_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
 sol10_x86_64_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
 sol10_x86_32_PYTHON=/opt/python32-2.5.1
 sol10_sparc_64_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
@@ -119,6 +120,7 @@ rhel4_x86_32_PYTHON_PERFMON=/opt/python-2.5.1
 rhel4_x86_64_PYTHON_PERFMON=/opt/python-2.5.1
 rhel5_x86_32_PYTHON_PERFMON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
 rhel5_x86_64_PYTHON_PERFMON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
+rhel6_x86_64_PYTHON_PERFMON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
 sol10_x86_64_PYTHON_PERFMON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
 sol10_x86_32_PYTHON_PERFMON=/opt/python32-2.5.1
 sol10_sparc_64_PYTHON_PERFMON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
@@ -168,6 +170,7 @@ export NO_M64=1
 # 32-bit/64-bit compiler/linker flag settings
 rhel4_x86_64_BLD_CFLAGS=-m64
 rhel4_x86_32_BLD_CFLAGS=-m32
+rhel6_x86_64_BLD_CFLAGS=-m64
 rhel5_x86_64_BLD_CFLAGS=-m64
 rhel5_x86_32_BLD_CFLAGS=-m32
 sol10_sparc_64_BLD_CFLAGS=-m64 -mcpu=v9

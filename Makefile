@@ -136,7 +136,7 @@ ISCONFIG=cdb-pg/GNUmakefile
 ## Support gppkg platforms
 ##
 
-GPPKG_PLATFORMS=rhel5_x86_64 suse10_x86_64
+GPPKG_PLATFORMS=rhel5_x86_64 rhel6_x86_64 suse10_x86_64
 
 #---------------------------------------------------------------------
 # Compiler options
@@ -174,6 +174,7 @@ DEBUGFLAGS="$(strip $(CFLAGS_INLINE) $(CFLAGS_OPT) $(DEBUG_CFLAGS_OPT) $(TRACE_G
 DEFPORT=5432
 rhel5_x86_32_CONFIGFLAGS=--host=i686-pc-linux-gnu --enable-email --enable-snmp --enable-ddboost
 rhel5_x86_64_CONFIGFLAGS=--enable-email --enable-snmp --enable-connectemc --enable-ddboost
+rhel6_x86_64_CONFIGFLAGS=--enable-email --enable-snmp --enable-connectemc --enable-ddboost
 sol10_x86_64_CONFIGFLAGS=--enable-email --enable-snmp
 sol_x86_64_CONFIGFLAGS=--enable-email
 suse10_x86_64_CONFIGFLAGS=--enable-email --enable-snmp --enable-ddboost
@@ -230,6 +231,7 @@ endif
 # the same way it does on our rhel build servers so we also set LDFLAGS
 rhel5_x86_32_LIBXML2=LIBS="-lxml2"
 rhel5_x86_64_LIBXML2=LIBS="-lxml2"
+rhel6_x86_64_LIBXML2=LIBS="-lxml2"
 sol10_x86_64_LIBXML2=LIBS="-lxml2"
 sol10_sparc_64_LIBXML2=LIBS="-lxml2"
 suse10_x86_64_LIBXML2=LDFLAGS="-L$(BLD_THIRDPARTY_LIB_DIR)" LIBS="-lxml2"
@@ -712,6 +714,7 @@ sol8_sparc_32_MPP_ARCH=SOL8-sparc_32
 rhel4_x86_32_MPP_ARCH=RHEL4-i386
 rhel4_x86_64_MPP_ARCH=RHEL4-x86_64
 rhel5_x86_64_MPP_ARCH=RHEL5-x86_64
+rhel6_x86_64_MPP_ARCH=RHEL6-x86_64
 osx10_x86_MPP_ARCH=OSX-i386
 osx105_x86_MPP_ARCH=OSX-i386
 ifneq "$($(BLD_ARCH)_MPP_ARCH)" ""
@@ -1425,8 +1428,13 @@ pygres: GPROOTDEP
 authlibs:
 	@echo "# authlibs are now provided in the ext/ directory on this platform" > authlib_libpath_setup.sh
 
+## ----------------------------------------------------------------------
 
-
+ifeq "$(BLD_ARCH)" "rhel6_x86_64"
+GPPKG_SOURCES = \
+	cdb-pg/src/pl/plperl \
+	$(NULL)
+else
 GPPKG_SOURCES = \
 	cdb-pg/contrib/pgcrypto \
 	cdb-pg/contrib/postgis \
@@ -1435,6 +1443,7 @@ GPPKG_SOURCES = \
 	cdb-pg/src/pl/pljava \
 	cdb-pg/src/bin/gphdfs \
 	$(NULL)
+endif
 
 ## ----------------------------------------------------------------------
 
