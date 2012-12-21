@@ -338,7 +338,7 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 %type <boolean> copy_from opt_hold
 
 %type <ival>	opt_column event cursor_options
-%type <objtype> drop_type comment_type
+%type <objtype>	reindex_type drop_type comment_type
 
 %type <node>	fetch_direction select_limit_value select_offset_value
 				select_offset_value2 opt_select_fetch_first_value
@@ -7198,40 +7198,18 @@ opt_if_exists: IF_P EXISTS						{ $$ = true; }
  *
  *		QUERY:
  *
- *		REINDEX TABLE [IF EXISTS] <name> [FORCE]
- *      REINDEX INDEX <name> [FORCE]
- *      REINDEX SYSTEM <name> [FORCE]
- *      REINDEX DATABASE <name> [FORCE]
+ *		REINDEX type <name> [FORCE]
  *
  * FORCE no longer does anything, but we accept it for backwards compatibility
  *****************************************************************************/
 
 ReindexStmt:
-			REINDEX TABLE qualified_name opt_force
+			REINDEX reindex_type qualified_name opt_force
 				{
 					ReindexStmt *n = makeNode(ReindexStmt);
-					n->kind = OBJECT_TABLE;
+					n->kind = $2;
 					n->relation = $3;
 					n->name = NULL;
-					n->missing_ok = false;
-					$$ = (Node *)n;
-				}
-			| REINDEX TABLE IF_P EXISTS qualified_name opt_force
-				{
-					ReindexStmt *n = makeNode(ReindexStmt);
-					n->kind = OBJECT_TABLE;
-					n->relation = $5;
-					n->name = NULL;
-					n->missing_ok = true;
-					$$ = (Node *)n;
-				}
-			| REINDEX INDEX qualified_name opt_force
-				{
-					ReindexStmt *n = makeNode(ReindexStmt);
-					n->kind = OBJECT_INDEX;
-					n->relation = $3;
-					n->name = NULL;
-					n->missing_ok = false;
 					$$ = (Node *)n;
 				}
 			| REINDEX SYSTEM_P name opt_force
@@ -7242,7 +7220,6 @@ ReindexStmt:
 					n->relation = NULL;
 					n->do_system = true;
 					n->do_user = false;
-					n->missing_ok = false;
 					$$ = (Node *)n;
 				}
 			| REINDEX DATABASE name opt_force
@@ -7253,9 +7230,13 @@ ReindexStmt:
 					n->relation = NULL;
 					n->do_system = true;
 					n->do_user = true;
-					n->missing_ok = false;
 					$$ = (Node *)n;
 				}
+		;
+
+reindex_type:
+			INDEX									{ $$ = OBJECT_INDEX; }
+			| TABLE									{ $$ = OBJECT_TABLE; }
 		;
 
 opt_force:	FORCE									{  $$ = TRUE; }

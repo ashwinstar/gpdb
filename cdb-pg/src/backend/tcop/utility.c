@@ -1593,10 +1593,6 @@ ProcessUtility(Node *parsetree,
 						ReindexTable(stmt);
 						break;
 					case OBJECT_DATABASE:
-						/*
-						 * REINDEX DATABASE will execute/dispatch REINDEX TABLE on
-						 * each table found in pg_class.
-						 */
 						ReindexDatabase(stmt);
 						break;
 					default:
@@ -1605,10 +1601,30 @@ ProcessUtility(Node *parsetree,
 						break;
 				}
 
-				if (stmt->kind != OBJECT_DATABASE &&
-					Gp_role == GP_ROLE_DISPATCH)
+				if (Gp_role == GP_ROLE_DISPATCH)
 				{
-					CdbDispatchUtilityStatement((Node *) stmt, "ProcessUtility");
+					if (stmt->kind != OBJECT_DATABASE)
+						CdbDispatchUtilityStatement((Node *) stmt, "ProcessUtility");
+					else
+					{
+						/*
+						 * REINDEX DATABASE must be dispatched different, because it can't
+						 * be in a user transaction
+						 */
+						StringInfoData buffer;
+
+						initStringInfo(&buffer);
+
+						/* MPP-1832: REINDEX SYSTEM generates sets
+						 * kind to OBJECT_DATABASE, but sets do_user
+						 * to false */
+						if (!stmt->do_user)
+							appendStringInfo(&buffer, "REINDEX SYSTEM \"%s\"", stmt->name);
+						else
+							appendStringInfo(&buffer, "REINDEX DATABASE \"%s\"", stmt->name);
+
+						CdbDoCommand(buffer.data, false, /*no txn*/ false);
+					}
 				}
 			}
 			break;

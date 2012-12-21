@@ -636,7 +636,6 @@ _readReindexStmt(const char ** str)
 	READ_STRING_FIELD(name);
 	READ_BOOL_FIELD(do_system);
 	READ_BOOL_FIELD(do_user);
-	READ_BOOL_FIELD(missing_ok);
 	READ_NODE_FIELD(new_ind_oids);
 
 	READ_DONE();

@@ -62,9 +62,6 @@
 #include "cdb/cdbrelsize.h"
 #include "cdb/cdboidsync.h"
 
-#include "executor/spi.h"
-
-
 /* non-export function prototypes */
 static void CheckPredicate(Expr *predicate);
 static void ComputeIndexAttrs(IndexInfo *indexInfo, Oid *classOidP,
@@ -1475,14 +1472,7 @@ ReindexIndex(ReindexStmt *stmt)
 	Oid			mapoid = InvalidOid;
 	List        *extra_oids = NIL;
 
-	indOid = RangeVarGetRelid(stmt->relation, stmt->missing_ok);
-	if (!OidIsValid(indOid))
-	{
-		/*
-		 * Silently ignore.
-		 */
-		return;
-	}
+	indOid = RangeVarGetRelid(stmt->relation, false);
 	tuple = SearchSysCache(RELOID,
 						   ObjectIdGetDatum(indOid),
 						   0, 0, 0);
@@ -1554,19 +1544,7 @@ ReindexTable(ReindexStmt *stmt)
 	Oid			heapOid;
 	HeapTuple	tuple;
 
-	Assert(stmt != NULL);
-	Assert(stmt->relation != NULL);
-	Assert(stmt->relation->relname != NULL);
-
-	heapOid = RangeVarGetRelid(stmt->relation, stmt->missing_ok);
-	if (!OidIsValid(heapOid))
-	{
-		/*
-		 * Silently ignore.
-		 */
-		return;
-	}
-	
+	heapOid = RangeVarGetRelid(stmt->relation, false);
 	tuple = SearchSysCache(RELOID,
 						   ObjectIdGetDatum(heapOid),
 						   0, 0, 0);
@@ -1595,98 +1573,13 @@ ReindexTable(ReindexStmt *stmt)
 	ReleaseSysCache(tuple);
 
 	if (!reindex_relation(heapOid, true, true, true, &stmt->new_ind_oids,
-						  Gp_role == GP_ROLE_DISPATCH, stmt->missing_ok))
+						  Gp_role == GP_ROLE_DISPATCH))
 	{
 		if (Gp_role != GP_ROLE_EXECUTE)
 			ereport(NOTICE,
 				(errmsg("table \"%s\" has no indexes",
 						stmt->relation->relname)));
 	}
-}
-
-/*
- * generate_relation_name - copied from dblink.c
- *		Compute the name to display for a relation specified by OID
- *
- * The result includes all necessary quoting and schema-prefixing.
- */
-static char *
-generate_relation_name(Oid relid)
-{
-	HeapTuple	tp;
-	Form_pg_class reltup;
-	char	   *nspname;
-	char	   *result;
-
-	tp = SearchSysCache(RELOID,
-						ObjectIdGetDatum(relid),
-						0, 0, 0);
-	if (!HeapTupleIsValid(tp))
-		elog(ERROR, "cache lookup failed for relation %u", relid);
-
-	reltup = (Form_pg_class) GETSTRUCT(tp);
-
-	/* Qualify the name if not visible in search path */
-	if (RelationIsVisible(relid))
-		nspname = NULL;
-	else
-		nspname = get_namespace_name(reltup->relnamespace);
-
-	result = quote_qualified_identifier(nspname, NameStr(reltup->relname));
-
-	ReleaseSysCache(tp);
-
-	return result;
-}
-
-void static
-ExecuteSpiReindexTable(char *displayRelName)
-{
-	StringInfoData sqlstmt;
-	int			ret;
-	bool		connected = false;
-
-	initStringInfo(&sqlstmt);
-
-	/*
-	 * Connect to SPI manager
-	 */
-	PG_TRY();
-	{
-
-		if (SPI_OK_CONNECT != SPI_connect())
-		{
-			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-							errmsg("Unable to reindex table."),
-							errdetail("SPI_connect failed for REINDEX TABLE")));
-		}
-		connected = true;
-
-		/*
-		 * Build sql statement to reindex the table.
-		 */
-		appendStringInfo(&sqlstmt, "REINDEX TABLE IF EXISTS %s", displayRelName);
-
-		/*
-		 * Execute the command.
-		 */
-		ret = SPI_execute(sqlstmt.data, false, 0);
-
-		SPI_finish();
-	}
-
-	/* Clean up in case of error. */
-	PG_CATCH();
-	{
-		if (connected)
-		{
-			SPI_finish();
-		}
-    	PG_RE_THROW();
-	}
-	PG_END_TRY();
-
-	pfree(sqlstmt.data);
 }
 
 /*
@@ -1704,12 +1597,11 @@ ReindexDatabase(ReindexStmt *stmt)
 	HeapTuple	tuple;
 	MemoryContext private_context;
 	MemoryContext old;
-	List	   *displayRelNames = NIL;
+	List	   *relids = NIL;
 	ListCell   *l;
 	bool do_system = stmt->do_system;
 	bool do_user = stmt->do_user;
 	const char *databaseName = stmt->name;
-	char *displayRelName;
 
 	AssertArg(databaseName);
 
@@ -1750,8 +1642,7 @@ ReindexDatabase(ReindexStmt *stmt)
 	if (do_system)
 	{
 		old = MemoryContextSwitchTo(private_context);
-		displayRelName = generate_relation_name(RelationRelationId);
-		displayRelNames = lappend(displayRelNames, displayRelName);
+		relids = lappend_oid(relids, RelationRelationId);
 		MemoryContextSwitchTo(old);
 	}
 
@@ -1796,32 +1687,27 @@ ReindexDatabase(ReindexStmt *stmt)
 			continue;			/* got it already */
 
 		old = MemoryContextSwitchTo(private_context);
-		displayRelName = generate_relation_name(HeapTupleGetOid(tuple));
-		displayRelNames = lappend(displayRelNames, displayRelName);
+		relids = lappend_oid(relids, HeapTupleGetOid(tuple));
 		MemoryContextSwitchTo(old);
 	}
 	heap_endscan(scan);
 	heap_close(relationRelation, AccessShareLock);
 
-	/*
-	 * Now reindex each rel in a separate distibuted transaction so the OIDs
-	 * chosen in the master are used for the new index objects on each segment.
-	 */
+	/* Now reindex each rel in a separate transaction */
 	CommitTransactionCommand();
-	foreach(l, displayRelNames)
+	foreach(l, relids)
 	{
-		displayRelName = lfirst(l);
+		Oid			relid = lfirst_oid(l);
 
-		setupRegularDtxContext();
 		StartTransactionCommand();
 		/* functions in indexes may want a snapshot set */
 		ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
-
-		ExecuteSpiReindexTable(displayRelName);
-
+		if (reindex_relation(relid, true, true, true, NULL, false))
+			ereport(NOTICE,
+					(errmsg("table \"%s\" was reindexed",
+							get_rel_name(relid))));
 		CommitTransactionCommand();
 	}
-	setupRegularDtxContext();
 	StartTransactionCommand();
 
 	MemoryContextDelete(private_context);

@@ -1522,11 +1522,6 @@ _SPI_prepare_plan(const char *src, SPIPlanPtr plan)
 		Node	   *parsetree = (Node *) lfirst(list_item);
 		List	   *query_list;
 
-		/*
-		 * Lock before we do major access to the system catalog (e.g. analyze).
-		 */
-		LockForCatalogMaintenance(parsetree);
-
 		query_list = pg_analyze_and_rewrite(parsetree, src, argtypes, nargs);
 
 		ListCell *lc = NULL;

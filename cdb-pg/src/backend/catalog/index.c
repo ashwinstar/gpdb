@@ -2729,7 +2729,7 @@ reindex_index(Oid indexId, Oid newrelfilenode, List **extra_oids)
  */
 bool
 reindex_relation(Oid relid, bool toast_too, bool aoseg_too, bool aoblkdir_too,
-				 List **oidmap, bool build_map, bool ignoreNonExistent)
+				 List **oidmap, bool build_map)
 {
 	Relation	rel;
 	Oid			toast_relid;
@@ -2746,18 +2746,7 @@ reindex_relation(Oid relid, bool toast_too, bool aoseg_too, bool aoblkdir_too,
 	 * Open and lock the relation.	ShareLock is sufficient since we only need
 	 * to prevent schema and data changes in it.
 	 */
-	if (ignoreNonExistent)
-	{
-		rel = try_heap_open(relid, ShareLock, /* noWait */ false);
-		if (rel == NULL)
-		{
-			return false;
-		}
-	}
-	else
-	{
-		rel = heap_open(relid, ShareLock);
-	}
+	rel = heap_open(relid, ShareLock);
 
 	relIsAO = (RelationIsAoRows(rel) || RelationIsAoCols(rel));
 
@@ -2870,15 +2859,11 @@ reindex_relation(Oid relid, bool toast_too, bool aoseg_too, bool aoblkdir_too,
 	result = (indexIds != NIL);
 
 	/*
-	 * NOTE: We don't pass ignoreNonExistent down since it will mess up the oidmap.
-	 */
-
-	/*
 	 * If the relation has a secondary toast rel, reindex that too while we
 	 * still hold the lock on the master table.
 	 */
 	if (toast_too && OidIsValid(toast_relid))
-		result |= reindex_relation(toast_relid, false, false, false, oidmap, build_map, /* ignoreNonExistent */ false);
+		result |= reindex_relation(toast_relid, false, false, false, oidmap, build_map);
 
 	/* Obtain the aoseg_relid and aoblkdir_relid if the relation is an AO table. */
 	if ((aoseg_too || aoblkdir_too) && relIsAO)
@@ -2890,14 +2875,14 @@ reindex_relation(Oid relid, bool toast_too, bool aoseg_too, bool aoblkdir_too,
 	 * still hold the lock on the master table.
 	 */
 	if (aoseg_too && OidIsValid(aoseg_relid))
-		result |= reindex_relation(aoseg_relid, false, false, false, oidmap, build_map, /* ignoreNonExistent */ false);
+		result |= reindex_relation(aoseg_relid, false, false, false, oidmap, build_map);
 
 	/*
 	 * If an AO rel has a secondary block directory rel, reindex that too while we
 	 * still hold the lock on the master table.
 	 */
 	if (aoblkdir_too && OidIsValid(aoblkdir_relid))
-		result |= reindex_relation(aoblkdir_relid, false, false, false, oidmap, build_map, /* ignoreNonExistent */ false);
+		result |= reindex_relation(aoblkdir_relid, false, false, false, oidmap, build_map);
 
 	return result;
 }
