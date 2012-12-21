@@ -429,7 +429,7 @@ update_tablespaces(int16 pridbid, seginfo *i, bool add)
 		return;
 	}
 
-	if (!must_update_persistent(pridbid, i))
+	if (pridbid == MASTER_DBID || !must_update_persistent(pridbid, i))
 		return;
 
 	/*
@@ -446,7 +446,7 @@ update_tablespaces(int16 pridbid, seginfo *i, bool add)
 static void
 update_databases(int16 pridbid, seginfo *i, bool add)
 {
-	if (!must_update_persistent(pridbid, i))
+	if (pridbid == MASTER_DBID || !must_update_persistent(pridbid, i))
 		return;
 
 	/*
@@ -463,7 +463,7 @@ update_databases(int16 pridbid, seginfo *i, bool add)
 static void
 update_relations(int16 pridbid, seginfo *i, bool add)
 {
-	if (!must_update_persistent(pridbid, i))
+	if (pridbid == MASTER_DBID || !must_update_persistent(pridbid, i))
 		return;
 
 	/*
