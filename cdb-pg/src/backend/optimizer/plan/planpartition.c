@@ -415,6 +415,66 @@ static bool ContainsSubplan(Plan *p)
 }
 
 /**
+ * Collects a bitmapset of all varnos referred to in a plan.
+ */
+typedef struct CollectVarnoContext
+{
+	plan_tree_base_prefix base;
+	Bitmapset	*varnos;
+} CollectVarnoContext;
+
+/**
+ * Walker method to adjust varnos by offset.
+ */
+static bool
+CollectVarnoWalker(Node *node, CollectVarnoContext *ctx)
+{
+	Assert(ctx);
+
+	if (node == NULL)
+	{
+		return false;
+	}
+	else if (IsA(node, Var))
+	{
+		Var		   *var = (Var *) node;
+		ctx->varnos = bms_add_member(ctx->varnos, var->varno);
+		return false;
+
+	}
+	return plan_tree_walker(node, CollectVarnoWalker, ctx);
+}
+
+/**
+ * Inner plan and outer plan refer to a common varno. This is possible in a plan that involves a NL-Index Scan.
+ * In this case, DPE cannot be applied
+ */
+static bool ContainsCrossReference(Plan *join, PartitionJoinMutatorContext *ctx)
+{
+	CollectVarnoContext vctx;
+	vctx.base.node = (Node *) ctx->root;
+	vctx.varnos = NULL;
+
+	CollectVarnoWalker((Node *) join->lefttree, &vctx);
+
+	/**
+	 * Save varnos referred to in the left child.
+	 */
+	Bitmapset *lbms = vctx.varnos;
+
+	vctx.varnos = NULL;
+	CollectVarnoWalker((Node *) join->righttree, &vctx);
+
+	/**
+	 * Save varnos referred to in the right child.
+	 */
+	Bitmapset *rbms = vctx.varnos;
+
+	return (bms_num_members(bms_intersect(lbms, rbms)) > 0);
+}
+
+
+/**
  * Match join condition.
  */
 static void MatchJoinPattern(Plan *join, PartitionJoinMutatorContext *ctx)
@@ -428,7 +488,8 @@ static void MatchJoinPattern(Plan *join, PartitionJoinMutatorContext *ctx)
 
 	if (!(joinNode->jointype == JOIN_INNER
 			|| joinNode->jointype == JOIN_IN)
-			|| ContainsSubplan(join->righttree))
+			|| ContainsSubplan(join->righttree)
+			|| ContainsCrossReference(join, ctx))
 	{
 		ctx->safeToConvert = false;
 		return;
