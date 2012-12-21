@@ -22,6 +22,7 @@ OBJS = createplan.o \
 	   planwindow.o \
 	   setrefs.o \
 	   subselect.o \
-	   planpartition.o
+	   planpartition.o \
+	   transform.o
 
 include $(top_srcdir)/src/backend/common.mk

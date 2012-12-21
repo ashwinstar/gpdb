@@ -34,6 +34,7 @@
 #include "optimizer/prep.h"
 #include "optimizer/subselect.h"
 #include "optimizer/planpartition.h"
+#include "optimizer/transform.h"
 #include "optimizer/tlist.h"
 #include "optimizer/var.h"
 #ifdef OPTIMIZER_DEBUG
@@ -117,11 +118,7 @@ static CanonicalGroupingSets *make_canonical_groupingsets(List *groupClause);
 static int gs_compare(const void *a, const void*b);
 static void sort_canonical_gs_list(List *gs, int *p_nsets, Bitmapset ***p_sets);
 
-static Node* normalize_query_jointree(Node *expr);
-static Node *normalize_query_jointree_mutator(Node *expr, void *context);
-
 static Plan *pushdown_preliminary_limit(Plan *plan, Node *limitCount, int64 count_est, Node *limitOffset, int64 offset_est);
-
 bool is_dummy_plan(Plan *plan);
 
 
@@ -230,7 +227,7 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		tuple_fraction = 0.0;
 	}
 	
-	parse = (Query *) normalize_query_jointree_mutator((Node *) parse, NULL);
+	parse = normalize_query(parse);
 
 	PlannerConfig *config = DefaultPlannerConfig();
 
@@ -345,132 +342,6 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	}
 
 	return result;
-}
-
-
-/**
- * This method takes a join tree that contains from expr and translates them to
- * explicit join expressions.
- * For example:
- * select * from t1, t2, t3 where pred(t1.a,t2.b,t3.c);
- * is translated to
- * select * from t1 cross join t2 cross join t3 where pred(t1.a,t2.b,t3.c)
- * 
- * Note that this does not use the generic expression mutator framework because 
- * the recursion is highly specialized.
- */
-Node* normalize_query_jointree(Node *expr)
-{
-	Node *result = NULL;
-	
-	if (!expr)
-		return NULL;
-
-#ifdef USE_ASSERT_CHECKING
-	Node *exprCopy = copyObject(expr);
-#endif
-	
-	switch(nodeTag(expr))
-	{
-		case T_FromExpr:
-			{
-				FromExpr *oldFrom = (FromExpr *) expr;
-				FromExpr *from = (FromExpr *) copyObject(oldFrom);		
-				if (oldFrom->fromlist)
-				{
-					Node *newFromExprEntry = (Node *) normalize_query_jointree((Node *) oldFrom->fromlist);
-					from->fromlist = list_make1(newFromExprEntry);
-				}
-				Assert(equal(from->quals, oldFrom->quals));
-				result = (Node *) from;
-				break;
-			}
-		case T_List:
-			{
-				List *crossJoinList = (List *) copyObject(expr);
-				if (list_length(crossJoinList) == 1)
-				{
-					Node *entry = lfirst(list_head(crossJoinList));
-					result = normalize_query_jointree(entry);
-				}
-				else
-				{
-					Node *larg = lfirst(list_head(crossJoinList));
-					Assert(larg);
-					larg = normalize_query_jointree(larg);
-					List *rest = list_delete_first(crossJoinList);
-					Node *rarg = normalize_query_jointree((Node *) rest);
-					JoinExpr *join = makeNode(JoinExpr);
-					join->jointype = JOIN_INNER;
-					join->isNatural = false;
-					join->larg = larg;
-					join->rarg = rarg;
-					join->quals = NULL; /* Cross product */
-					join->rtindex = 0;
-					join->subqfromlist = NIL;
-					join->usingClause = NIL; 
-					result = (Node *) join;
-				}
-				break;
-			}
-		case T_JoinExpr:
-			{
-				JoinExpr *join = (JoinExpr *) copyObject(expr);
-				join->larg = normalize_query_jointree(join->larg);
-				join->rarg = normalize_query_jointree(join->rarg);
-				result = (Node *) join;
-				break;
-			}
-		case T_RangeTblRef:
-			{
-				result = (Node *) expr;
-				break;
-			}
-		default:
-			Assert(false && "Unrecognized entry in jointree");
-			break;
-	}
-	
-	Assert(result);
-	
-	/* Assert that the input is unmodified */
-#ifdef USE_ASSERT_CHECKING
-	Assert(equal(expr, exprCopy));
-#endif
-	
-	return result;
-}
-
-/**
- * This method walks through a query tree, finds the join tree and normalizes them.
- * It also walks sublinks and subqueries and normalizes their jointrees as well.
- * E.g. a query of the form SELECT x, y FROM t1, t2, t3 where x = y and y = z is transformed to:
- * SELECT x,y FROM (t1 INNER JOIN (t2 INNER JOIN t3)) where x = y
- * 
- */
-Node *normalize_query_jointree_mutator(Node *expr, void *context)
-{
-	Assert(context == NULL);
-	
-	if (!expr)
-	{
-		return NULL;
-	}
-
-	switch(nodeTag(expr))
-	{
-		case T_Query:
-			{
-				Query *newQuery = (Query *) copyObject(expr);
-				newQuery->jointree = (FromExpr*) normalize_query_jointree((Node *) newQuery->jointree);
-				newQuery = (Query *) query_tree_mutator(newQuery, normalize_query_jointree_mutator, context, 0);
-				return (Node *) newQuery;
-			}
-		default:
-			break;
-	}
-	
-	return expression_tree_mutator(expr, normalize_query_jointree_mutator, context);
 }
 
 /*--------------------
@@ -2804,7 +2675,6 @@ Node *register_ordered_aggs_mutator(Node *node,
 			register_AggOrder( aggref->aggorder, context );
 		}
 	}
-	Assert(!IsA(node, SubLink));
 	return expression_tree_mutator(node, 
 								   register_ordered_aggs_mutator, 
 								   (void *)context );

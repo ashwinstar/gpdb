@@ -128,6 +128,7 @@ test: olap_window_seq
 test: tpch500GB
 test: partition
 test: dpe
+test: sirv_functions
 test: appendonly
 test: aocs
 test: gp_hashagg
