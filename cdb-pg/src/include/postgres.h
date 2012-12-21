@@ -508,7 +508,6 @@ extern int ExceptionalCondition(const char *conditionName,
 					 const char *fileName, int lineNumber);
 					 
 extern int SyncAgentMain(int, char **, const char *);
-extern void StandardHandlerForSigillSigsegvSigbus_OnMainThread(char * processName, SIGNAL_ARGS);
 extern void gp_set_thread_sigmasks(void);
 
 

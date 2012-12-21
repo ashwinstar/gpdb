@@ -53,6 +53,12 @@
 #define PIPE_CHUNK_SIZE  512
 #endif
 
+/*
+ * This is used to fake the thread id to be used inside the SEGV/BUS/ILL
+ * handler.
+ */
+#define FIXED_THREAD_ID  123456
+
 typedef struct 
 {
 	int32           zero;                   /* leading zero */
@@ -63,12 +69,13 @@ typedef struct
 	int32           chunk_no;               /* chunk number */
 	char		    is_last;                /* last chunk of message? 't' or 'f' */
 	char            log_format;             /* 'c' for csv, 't' for text */
+	char            is_segv_msg;            /* indicate whether this is a message sent in SEGV/BUS/ILL handler */
 	int64           log_line_number;        /* indicate the order of the message */
 	int64           next;                   /* next chained chunk.  also force an 8 bytes align */
 } PipeProtoHeader;
 
-#define PIPE_HEADER_SIZE  sizeof(PipeProtoHeader)
-#define PIPE_MAX_PAYLOAD  ((int) (PIPE_CHUNK_SIZE - PIPE_HEADER_SIZE))
+#define PIPE_HEADER_UNALIGNED_SIZE  sizeof(PipeProtoHeader)
+#define PIPE_MAX_PAYLOAD  ((int) (PIPE_CHUNK_SIZE - MAXALIGN(PIPE_HEADER_UNALIGNED_SIZE)))
 
 #define CHUNK_SLOTS 20
 
@@ -77,6 +84,8 @@ typedef struct
 	PipeProtoHeader hdr; 
 	char		data[PIPE_MAX_PAYLOAD];
 } PipeProtoChunk;
+
+#define PIPE_HEADER_SIZE offsetof(PipeProtoChunk, data)
 
 typedef struct CSVChunkStr
 {
@@ -131,6 +140,29 @@ typedef struct
 	const char *error_filename;
 	char *stacktrace;
 } GpErrorData;
+
+/*
+ * The format of GPDB segv/bus/ill error data.
+ *
+ * This structure contains minimal but essential information when a SEGV/BUS/ILL
+ * signal is received. Note that the stack addresses are not stored here, but when
+ * in use, they usually are stored right after this structure.
+ *
+ * No other data with variable-length are stored here currently, since we want to
+ * minimize the work inside a signal handler.
+ */
+typedef struct
+{
+	pg_time_t session_start_time;
+	int32 gp_session_id;
+	int32 gp_command_count;
+	int32 gp_segment_id;
+	int32 slice_id;
+	int32 signal_num;
+
+	/* The depth of stack frame addresses that are stored after this structure */
+	int32 frame_depth;
+} GpSegvErrorData;
 
 /* GUC options */
 extern bool Redirect_stderr;

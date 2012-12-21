@@ -62,11 +62,13 @@
 #include "access/xact.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
+#include "libpq/pqsignal.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "postmaster/postmaster.h"
 #include "postmaster/syslogger.h"
 #include "storage/ipc.h"
+#include "storage/proc.h"
 #include "tcop/tcopprot.h"
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
@@ -2540,7 +2542,7 @@ unpack_sql_state(int sql_state)
  * Send the data through the pipe.
  */
 static inline void
-gp_write_pipe_chunk(const char *buffer, int len)
+gp_write_pipe_chunk(const char *buffer, int len, bool check_interrupts)
 {
     int retval = -1;
     fd_set wfds;
@@ -2549,7 +2551,7 @@ gp_write_pipe_chunk(const char *buffer, int len)
 
 	while (retry_no < NUM_RETRIES)
 	{
-		if (pthread_equal(main_tid, pthread_self()))
+		if (check_interrupts && pthread_equal(main_tid, pthread_self()))
 		{
 			CHECK_FOR_INTERRUPTS();
 		}
@@ -2650,7 +2652,7 @@ append_string_to_pipe_chunk(PipeProtoChunk *buffer, const char* input)
 		Assert(bytes + buffer->hdr.len == PIPE_MAX_PAYLOAD);
 		buffer->hdr.len = PIPE_MAX_PAYLOAD;
 		
-		gp_write_pipe_chunk((char *)buffer, PIPE_CHUNK_SIZE);
+		gp_write_pipe_chunk((char *)buffer, PIPE_CHUNK_SIZE, true);
 
 		buffer->hdr.len = 0;
 		buffer->hdr.chunk_no++;
@@ -3086,6 +3088,7 @@ write_message_to_server_log(int elevel,
     buffer.hdr.is_last = 'f';
     buffer.hdr.log_format = 'c';
     buffer.hdr.log_line_number = log_line_number++;
+	buffer.hdr.is_segv_msg = 'f';
     buffer.hdr.next = -1;
 
 
@@ -3191,7 +3194,7 @@ write_message_to_server_log(int elevel,
 
     /* Send the last chunk */
     buffer.hdr.is_last = 't';
-    gp_write_pipe_chunk((char *)&buffer, buffer.hdr.len + PIPE_HEADER_SIZE);
+    gp_write_pipe_chunk((char *)&buffer, buffer.hdr.len + PIPE_HEADER_SIZE, true);
 }
 
 /*
@@ -3483,11 +3486,12 @@ write_pipe_chunks(char *data, int len)
 
     p.hdr.zero = 0;
     p.hdr.pid = MyProcPid;
-        p.hdr.thid = mythread();
-        p.hdr.main_thid = mainthread();
-        p.hdr.chunk_no = 0;
-        p.hdr.log_format = 't';
-        p.hdr.next = -1;
+	p.hdr.thid = mythread();
+	p.hdr.main_thid = mainthread();
+	p.hdr.chunk_no = 0;
+	p.hdr.log_format = 't';
+	p.hdr.is_segv_msg = 'f';
+	p.hdr.next = -1;
 
     /* write all but the last chunk */
     while (len > PIPE_MAX_PAYLOAD)
@@ -3505,7 +3509,7 @@ write_pipe_chunks(char *data, int len)
         data += PIPE_MAX_PAYLOAD;
         len -= PIPE_MAX_PAYLOAD;
 
-                ++p.hdr.chunk_no;
+		++p.hdr.chunk_no;
     }
 
     /* write the last chunk */
@@ -4297,23 +4301,217 @@ uint32 gp_backtrace(void **stackAddresses, uint32 maxStackDepth)
  */
 char *gp_stacktrace(void **stackAddresses, uint32 stackDepth)
 {
-	StringInfo append = makeStringInfo();	/* palloc'd */
+	StringInfoData append;
+	initStringInfo(&append);
 
 #ifdef WIN32
-	appendStringInfoString(append, "stack trace is not available for this platform");
+	appendStringInfoString(&append, "stack trace is not available for this platform");
 #else
-	append_stacktrace(NULL /*PipeProtoChunk*/, append, stackAddresses, stackDepth,
+	append_stacktrace(NULL /*PipeProtoChunk*/, &append, stackAddresses, stackDepth,
 	                 false/*amsyslogger*/);
 #endif
 
 	/* we may fail to retrieve stack on opt build */
-	if (0 == append->len)
+	if (0 == append.len)
 	{
-		appendStringInfoString(append, "failed to retrieve stack");
+		appendStringInfoString(&append, "failed to retrieve stack");
 	}
 
-	return append->data;
+	return append.data;
 }
 
+/*
+ * SignalName
+ *   Convert a SEGV/BUS/ILL to name.
+ */
+const char *
+SegvBusIllName(int signal)
+{
+	Assert(signal == SIGILL ||
+		   signal == SIGSEGV ||
+		   signal == SIGBUS);
+	
+    switch (signal)
+    {
+#ifdef SIGILL
+        case SIGILL:
+            return "SIGILL";
+#endif
+#ifdef SIGSEGV
+        case SIGSEGV:
+            return "SIGSEGV";
+#endif
+#ifdef SIGBUS
+        case SIGBUS:
+            return "SIGBUS";
+#endif
+	}
+
+	return NULL;
+}
+
+/*
+ * SafeHandlerForSegvBusIll
+ *   Async-safe signal handler for SEGV/BUS/ILL.
+ *
+ * This function simple collects the stack addresses and some process information
+ * and write them to the pipe.
+ */
+static void
+SafeHandlerForSegvBusIll(char *processName, SIGNAL_ARGS)
+{
+	PG_SETMASK(&BlockSig);
+
+	/* Unblock SEGV/BUS/ILL signals, and set them to their default settings. */
+#ifdef SIGILL
+	pqsignal(SIGILL, SIG_DFL);
+#endif
+#ifdef SIGSEGV
+	pqsignal(SIGSEGV, SIG_DFL);
+#endif
+#ifdef SIGBUS
+	pqsignal(SIGBUS, SIG_DFL);
+#endif
+
+	PipeProtoChunk buffer;
+	
+	buffer.hdr.zero = 0;
+	buffer.hdr.len = 0;
+	buffer.hdr.pid = MyProcPid;
+
+	/*
+	 * mythread() are not really async-safe, but syslogger requires this value
+	 * to be set as part of an identifier of a chunk. We create a fake value here to
+	 * satisfy the condition of a valid chunk. But in the syslogger, we reset its
+	 * value to 0.
+	 */
+	buffer.hdr.thid = FIXED_THREAD_ID;
+	buffer.hdr.main_thid = mainthread();
+    buffer.hdr.chunk_no = 0;
+    buffer.hdr.is_last = 't';
+    buffer.hdr.log_format = 'c';
+	buffer.hdr.is_segv_msg = 't';
+    buffer.hdr.log_line_number = 0;
+    buffer.hdr.next = -1;
+
+	char *data = buffer.data;
+	GpSegvErrorData *errorData = (GpSegvErrorData *)data;
+	
+    errorData->session_start_time = 0;
+	if (MyProcPort)
+	{
+        errorData->session_start_time = (pg_time_t)timestamptz_to_time_t(MyProcPort->SessionStartTime);
+	}
+	
+	errorData->gp_session_id = gp_session_id;
+	errorData->gp_command_count = gp_command_count;
+	errorData->gp_segment_id = Gp_segment;
+	errorData->slice_id = currentSliceId;
+	errorData->signal_num = (int32)postgres_signal_arg;
+	errorData->frame_depth = 0;
+	
+	/*
+	 * Compute how many frame addresses we are able to send in a single chunk. The total space
+	 * that is available for frame addresses is (PIPE_MAX_PAYLOAD - MAXALIGN(sizeof(GpSegvErrorData))).
+	 */
+	int frameDepth = (PIPE_MAX_PAYLOAD - MAXALIGN(sizeof(GpSegvErrorData))) / sizeof(void *);
+	Assert(frameDepth > 0);
+
+	void *stackAddressArray = data + MAXALIGN(sizeof(GpSegvErrorData));
+	void **stackAddresses = stackAddressArray;
+	errorData->frame_depth = gp_backtrace(stackAddresses, frameDepth);
+
+	buffer.hdr.len =
+		MAXALIGN(sizeof(GpSegvErrorData)) +
+		errorData->frame_depth * sizeof(void *);
+
+	gp_write_pipe_chunk((char *)&buffer, buffer.hdr.len + PIPE_HEADER_SIZE, false);
+
+	/* re-raise the signal to OS */
+	raise(postgres_signal_arg);
+}
+
+/**
+ * Unsafe handler that can be called from a specific processes handler for
+ *   SIGILL, SIGSEGV, and SIGBUS
+ *
+ * This handler logs the error and, if gp_reraise_signal is set, reraises
+ *   the signal so the operating system can create a core file.
+ *
+ * Control will never return from this signal handler
+ *
+ * MUST be called from the main thread, if this process uses threads.
+ */
+static void
+UnsafeHandlerForSegvBusIll(char *processName, SIGNAL_ARGS)
+{
+    int			save_errno = errno;
+
+    PG_SETMASK(&BlockSig);
+#ifdef SIGILL
+    pqsignal(SIGILL, SIG_DFL);
+#endif
+#ifdef SIGSEGV
+    pqsignal(SIGSEGV, SIG_DFL);
+#endif
+#ifdef SIGBUS
+    pqsignal(SIGBUS, SIG_DFL);
+#endif
+
+    write_stderr("\nUnexpected internal error: %s %d received signal %s\n"
+				 "(interrupt holdoff count %d, critical section count %d)\n",
+                 processName, MyProcPid, SegvBusIllName(postgres_signal_arg),
+				 InterruptHoldoffCount, CritSectionCount);
+
+    errno = save_errno;
+
+    ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR),
+                    errFatalReturn(gp_reraise_signal),
+                    errOmitLocation(true),
+                    errmsg("Unexpected internal error: %s received signal %s",
+                           processName, SegvBusIllName(postgres_signal_arg)),
+					errdetail("(interrupt holdoff count %d, critical section count %d)",
+			  				  InterruptHoldoffCount, CritSectionCount)));
+
+    /**
+     * We reach this point only if gp_reraise_signal is on.
+     */
+    Assert(gp_reraise_signal);
+
+	if (CritSectionCount == 0)
+	{
+		/* Some filerep processes may not set MyProc. */
+		if (MyProc != NULL)
+		{
+			MyProc->postmasterResetRequired = false;
+		}
+
+		/* Clean up shared memory by calling callback functions. Do not exit, though. We need to raise signal to get a core. */
+		proc_exit_prepare(0);
+		AssertImply(MyProc != NULL, !MyProc->postmasterResetRequired && "postmaster reset required flag changed unexpectedly");
+	}
+
+
+    /* CDB: Control returns here only if gp_reraise_signal is true. */
+    raise(postgres_signal_arg);
+    abort();                    /* not reached */
+}                               /* CdbProgramErrorHandler */
+
+/*
+ * StandardHandlerForSigillSigsegvSigbus_OnMainThread
+ *    Signal handlers for SEGV/BUS/ILL.
+ */
+void
+StandardHandlerForSigillSigsegvSigbus_OnMainThread(char * processName, SIGNAL_ARGS)
+{
+	if (gp_crash_handler_async)
+	{
+		SafeHandlerForSegvBusIll(processName, postgres_signal_arg);
+	}
+	else
+	{
+		UnsafeHandlerForSegvBusIll(processName, postgres_signal_arg);
+	}
+}
 
 /* EOF */

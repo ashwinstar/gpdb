@@ -509,4 +509,7 @@ extern char *stack_base_ptr;
 /* GUCs */
 extern bool gp_log_stack_trace_lines;   /* session GUC, controls line info in stack traces */
 
+extern const char *SegvBusIllName(int signal);
+extern void StandardHandlerForSigillSigsegvSigbus_OnMainThread(char * processName, SIGNAL_ARGS);
+
 #endif   /* ELOG_H */
