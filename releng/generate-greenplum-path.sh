@@ -108,6 +108,7 @@ cat <<EOF
 export OPENSSL_CONF
 EOF
 
+if [ "${PLAT}" != "SunOS" ] ; then
 cat <<EOF
 # MPP-15405 - A new GPKILL utility
 HISTTIMEFORMAT='%F %T '
@@ -121,3 +122,4 @@ _kill ()
 }
 alias kill=_kill
 EOF
+fi
