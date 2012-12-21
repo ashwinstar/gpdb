@@ -581,26 +581,24 @@ def copyOverSoftware():
     failures = set()
 
     filename = installation_info.install_binary_path + ".tar.gz"
-    nakedExecutionInfo = NakedExecutionInfo(passwordMap, NakedExecutionInfo.SFTP_PUT, filename, filename)
     try:
         for k in uniqueseghosts.keys():
             uh = uniqueseghosts[k]
-            cmd = Command(uh.address, None, NAKED, uh.address, nakedExecutionInfo=nakedExecutionInfo)
+            cmdStr = "scp %s %s:%s" % (filename, uh.address, installation_info.install_binary_dir_location)
+            cmd = Command(uh.address, cmdStr)
             pool.addCommand(cmd)
         pool.join()
         items = pool.getCompletedItems()
         for i in items:
             if i.results.rc:
-                logger.error("%s: %s" % (i.remoteHost, i.results.stderr))
-                failures.add(i.remoteHost)
+                logger.error("command failed: '%s': %s" % (i.cmdStr, i.results.stderr.strip()))
+                failures.add(i.name)
                 
     except Exception, e:
         logger.error("%s" % e.__str__())
         return True
 
     if len(failures):
-        for h in failures:
-            logger.error("failed to copy file %s to host %s" % (filename, h))
         return True
 
 
