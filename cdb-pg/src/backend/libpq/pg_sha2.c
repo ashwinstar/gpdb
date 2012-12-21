@@ -88,7 +88,7 @@ pg_sha256_encrypt(const char *pass, char *salt, size_t salt_len,
 	}
 
 	SHA256_Init(&ctx);
-	SHA256_Update(&ctx, (uint8 *)pass, passwd_len);
+	SHA256_Update(&ctx, (uint8 *)target, passwd_len + salt_len);
 	SHA256_Final(digest, &ctx);
 
 #endif /* !HAVE_RSA_BSAFE_FIPS */
