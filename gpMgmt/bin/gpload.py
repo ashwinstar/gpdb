@@ -1126,7 +1126,7 @@ class gpload:
         # Create Temp and External table names. However external table name could 
         # get overwritten with another name later on (see create_external_table_name). 
         self.unique_suffix = '%s_%d'%(datetime.datetime.today().strftime('%Y%m%d_%H%M%S'),os.getpid())
-        self.staging_table_name = 'temp_staging_gpload' + self.unique_suffix
+        self.staging_table_name = 'temp_staging_gpload_' + self.unique_suffix
         self.extTableName  = 'ext_gpload' + self.unique_suffix
 
         # SQL to run in order to undo our temporary work
@@ -2291,9 +2291,9 @@ class gpload:
             cols = filter(lambda a:a[3] == False, cols)
 
         sql = 'INSERT INTO %s' % dest
-        sql += ' (%s)'%','.join(map(lambda a:a[0], cols))
-        sql += ' SELECT %s '%','.join(map(lambda a:a[2], cols))
-        sql += ' FROM %s'%self.extTableName
+        sql += ' (%s)' % ','.join(map(lambda a:a[0], cols))
+        sql += ' SELECT %s' % ','.join(map(lambda a:a[2], cols))
+        sql += ' FROM %s' % self.extTableName
 
         # cktan: progress thread is not reliable. revisit later.
         #progress = Progress(self,self.ports)
@@ -2303,7 +2303,6 @@ class gpload:
         if not self.options.D:
             try:
                 self.rowsInserted = self.db.query(sql.encode('utf-8'))
-
             except Exception, e:
                 # We need to be a bit careful about the error since it may contain non-unicode characters
                 strE = unicode(str(e), errors = 'ignore')
@@ -2394,8 +2393,11 @@ class gpload:
             try:
                 self.rowsUpdated = self.db.query(sql.encode('utf-8'))
             except Exception, e:
-                self.log(self.ERROR, 'error encountered executing SQL "%s": %s' % (sql, str(e)))
-    
+                # We need to be a bit careful about the error since it may contain non-unicode characters
+                strE = unicode(str(e), errors = 'ignore')
+                strF = unicode(str(sql), errors = 'ignore')
+                self.log(self.ERROR, strE + ' encountered while running ' + strF)
+				
     def get_qualified_tablename(self):
     
         tblname = "%s.%s" % (self.schema, self.table)        
@@ -2490,7 +2492,7 @@ class gpload:
         match = self.map_stuff('gpload:output:match_columns',lambda x,y:'into_table.%s=from_table.%s'%(x,y),0)
         matchColumns = self.getconfig('gpload:output:match_columns',list)
 		
-        cols = filter(lambda a:a[2]!=None, self.into_columns)				
+        cols = filter(lambda a:a[2] != None, self.into_columns)				
         sql = 'INSERT INTO %s ' % self.get_qualified_tablename()
         sql += '(%s) ' % ','.join(map(lambda a:a[0], cols))
         sql += '(SELECT %s ' % ','.join(map(lambda a:'from_table.%s' % a[0], cols))
@@ -2504,8 +2506,14 @@ class gpload:
 
         self.log(self.LOG, sql)
         if not self.options.D:
-            self.rowsInserted = self.db.query(sql.encode('utf-8'))
-			
+            try:
+                self.rowsInserted = self.db.query(sql.encode('utf-8'))
+            except Exception, e:
+                # We need to be a bit careful about the error since it may contain non-unicode characters
+                strE = unicode(str(e), errors = 'ignore')
+                strF = unicode(str(sql), errors = 'ignore')
+                self.log(self.ERROR, strE + ' encountered while running ' + strF)
+				
 
     def do_truncate(self, tblname):
         self.log(self.LOG, "Truncate table %s" %(tblname))
