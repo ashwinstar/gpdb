@@ -29,6 +29,7 @@
 #include <unistd.h>
 #include <stddef.h>
 
+#include "cdb/cdbvars.h"
 #include "libpq/auth.h"
 #include "libpq/crypt.h"
 #include "libpq/ip.h"
@@ -311,6 +312,70 @@ auth_failed(Port *port, int status)
 	/* doesn't return */
 }
 
+/*
+ * Special client authentication for QD to QE connections. This is run at the
+ * QE. This is non-trivial because a QE some times runs at the master (i.e., an
+ * entry-DB for things like master only tables).
+ */
+static void
+internal_client_authentication(Port *port)
+{
+	if (GpIdentity.dbid == MASTER_DBID)
+	{
+		/* 
+		 * The entry-DB (or QE at the master) case.
+		 *
+		 * The goal here is to block network connection from out of
+		 * master to master db with magic bit packet.
+		 * So, only when it comes from the same host, the connection
+		 * is authenticated, if this connection is TCP/UDP. We
+		 * don't assume the connection is via unix domain socket,
+		 * but if it comes, just authenticate it. We'll need to
+		 * verify user on UDS case, but for now we don't do too much
+		 * for the goal described above.
+		 */
+		if(port->raddr.addr.ss_family == AF_INET
+#ifdef HAVE_IPV6
+				|| port->raddr.addr.ss_family == AF_INET6
+#endif   /* HAVE_IPV6 */
+			   )
+		{
+			if (check_same_host_or_net(&port->raddr, ipCmpSameHost))
+				FakeClientAuthentication(port);
+			else
+				auth_failed(port, STATUS_ERROR);
+			return;
+		}
+		else if (port->raddr.addr.ss_family == AF_UNIX)
+		{
+			/*
+			 * We assume the connection uses non-UDS, but if it comes,
+			 * just authenticate it. We'll need to verify user,
+			 * but for now blocking from remote server is the requirement.
+			 */
+			FakeClientAuthentication(port);
+			return;
+		}
+		else
+			Insist(false);
+	}
+
+	/* We're on an actual segment host */	
+	FakeClientAuthentication(port);
+}
+
+static bool
+is_internal_gpdb_conn(Port *port)
+{
+	/* 
+	 * This is an internal connection if major version is three and we've set
+	 * the upper bits to 7.
+	 */
+	if (PG_PROTOCOL_MAJOR(port->proto) == 3 && port->proto >> 28 == 7)
+		return true;
+	else
+		return false;
+}
 
 /*
  * Client authentication starts here.  If there is an error, this
@@ -320,6 +385,16 @@ void
 ClientAuthentication(Port *port)
 {
 	int			status = STATUS_ERROR;
+
+	/*
+	 * If this is a QD to QE connection, we might be able to short circuit
+	 * client authentication.
+	 */
+	if (is_internal_gpdb_conn(port))
+	{
+		internal_client_authentication(port);
+		return;
+	}
 
 	/*
 	 * Get the authentication method to use for this frontend/database
@@ -611,9 +686,8 @@ ClientAuthentication(Port *port)
 	ImmediateInterruptOK = false;
 }
 
-/* GPDB only -- ignore client auth for qd to qe */
 void
-FakeClientAuthentication(Port * port)
+FakeClientAuthentication(Port *port)
 {
 	sendAuthRequest(port, AUTH_REQ_OK);
 }
