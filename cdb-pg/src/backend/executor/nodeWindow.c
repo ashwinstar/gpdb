@@ -2135,7 +2135,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 				if (level_state->is_rows)
 				{
 					if (!EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) ||
-						level_state->num_lead_rows >= level_state->trail_rows)
+						level_state->num_lead_rows >= level_state->num_trail_rows)
 					{
 						has_trail_entry =
 							getCurrentValue(level_state->trail_reader,
@@ -2206,7 +2206,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 
 			if (lead_value != NULL || trail_value != NULL)
 			{
-				bool has_tuples = true;
+				bool has_tuples = hasTuplesInFrame(level_state, wstate);
 
 				if (lead_value != NULL)
 				{
@@ -2224,7 +2224,6 @@ computeFrameValue(WindowStatePerLevel level_state,
 				}
 				else
 				{
-					has_tuples = hasTuplesInFrame(level_state, wstate);
 					funcstate->final_aggTransValue = 
 						datumCopyWithMemManager(0, funcstate->aggTransValue,
 												funcstate->aggTranstypeByVal,
@@ -3671,16 +3670,22 @@ adjustEdgesForRange(WindowFrameBuffer buffer,
 					WindowState *wstate)
 {
 	WindowStatePerLevel level_state = buffer->level_state;
-	bool found = false;
 
 	if (!(level_state->empty_frame &&
 		  EDGE_IS_DELAYED(level_state->frame->trail)))
 	{
 		if	(EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->trail, false))
 		{
-			found = ntuplestore_acc_advance(level_state->trail_reader, 1);
-			if (!found)
-				ntuplestore_acc_seek_first(level_state->trail_reader);
+			NTupleStorePos pos;
+			if (ntuplestore_acc_tell(buffer->current_row_reader, &pos))
+			{
+				ntuplestore_acc_seek(level_state->trail_reader, &pos);
+				ntuplestore_acc_advance(level_state->trail_reader, -1);
+			}
+			else
+			{
+				ntuplestore_acc_seek_last(level_state->trail_reader);
+			}
 		}
 
 		else if (EDGE_IS_BOUND(level_state->frame->trail))
@@ -4025,8 +4030,6 @@ checkLastRowForEdge(WindowStatePerLevel level_state,
 	else
 		is_equal = false;
 	
-	level_state->lead_ready = false;
-
 	if (is_equal)
 		return true;
 	
@@ -4034,9 +4037,9 @@ checkLastRowForEdge(WindowStatePerLevel level_state,
 	{
 		if ((EDGE_IS_BOUND_FOLLOWING(edge) && is_less) ||
 			(EDGE_IS_BOUND_PRECEDING(edge) && is_less))
+		{
 			return true;
-
-		level_state->lead_ready = true;
+		}
 	}
 	else
 	{
@@ -4282,18 +4285,6 @@ adjustDelayBoundEdgeForRange(WindowStatePerLevel level_state,
 	else
 	{
 		ntuplestore_acc_set_invalid(edge_reader);
-
-		/*
-		 * If the edge is of FOLLOWING type or CURRENT ROW type,
-		 * we are done.
-		 */
-		if (EDGE_IS_BOUND_FOLLOWING(edge) ||
-			EDGE_EQ_CURRENT_ROW(level_state, wstate, edge, is_lead_edge))
-		{
-			if (is_lead_edge)
-				level_state->lead_ready = false;
-			return;
-		}
 	}
 
 	advanceEdgeForRange(level_state, wstate,
