@@ -16,7 +16,7 @@ try:
     from gppylib.gpversion import GpVersion
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.mainUtils import addMasterDirectoryOptionForSingleClusterProgram, addStandardLoggingAndHelpOptions, ExceptionNoStackTraceNeeded
-    from gppylib.operations.package import MigratePackages, InstallPackage, UnInstallGppkg, QueryGppkg, BuildGppkg, UpdateGppkg, CleanGppkg, Gppkg, GPPKG_EXTENSION, GPPKG_ARCHIVE_PATH
+    from gppylib.operations.package import MigratePackages, InstallPackage, UninstallPackage, QueryGppkg, BuildGppkg, UpdateGppkg, CleanGppkg, Gppkg, GPPKG_EXTENSION, GPPKG_ARCHIVE_PATH
     from gppylib.operations.unix import ListFilesByPattern
 
     import yaml
@@ -217,7 +217,7 @@ class GpPkgProgram:
             assert len(pkg_file_list) == 1
             pkg_file = pkg_file_list[0]
             pkg = Gppkg.from_package_path(os.path.join(GPPKG_ARCHIVE_PATH, pkg_file))
-            UnInstallGppkg(pkg, self.master_host, self.standby_host, self.segment_host_list).run()
+            UninstallPackage(pkg, self.master_host, self.standby_host, self.segment_host_list).run()
         elif self.update:
             pkg = Gppkg.from_package_path(self.update)
             UpdateGppkg(pkg, self.master_host, self.standby_host, self.segment_host_list).run()

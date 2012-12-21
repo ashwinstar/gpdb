@@ -18,7 +18,7 @@ try:
     from gppylib.mainUtils import ExceptionNoStackTraceNeeded
     from gppylib.operations import Operation
     from gppylib.operations.utils import RemoteOperation, ParallelOperation
-    from gppylib.operations.unix import CheckDir, MakeDir, RemoveRemoteTree, RemoveRemoteFile, CheckRemoteDir, MakeRemoteDir, CheckRemoteFile, ListRemoteFilesByPattern, ListFilesByPattern
+    from gppylib.operations.unix import CheckDir, MakeDir, RemoveFile, RemoveRemoteTree, RemoveRemoteFile, CheckRemoteDir, MakeRemoteDir, CheckRemoteFile, ListRemoteFilesByPattern, ListFilesByPattern
 
     import yaml   
     from yaml.scanner import ScannerError
@@ -109,7 +109,7 @@ class Gppkg:
     def __init__(self, pkg, pkgname, main_rpm, version, architecture, os, gpdbversion, description, abspath, preinstall, postinstall, preuninstall, postuninstall, dependencies, file_list):
         ''' 
             The constructor takes the following arguments
-            pkg             The complete package name e.g pgcrypto-1.0-Darwin-i386.gppkg
+            pkg             The complete package name e.g pgcrypto-1.0-Darwin-i386.gppkg        TODO: AK: This is an awful variable name. Change to "package_filename".
             pkgname         The name of the package as specified in the spec file
             main_rpm        The name of the main rpm. e.g PL/R, PostGIS etc
             version         The version of the gppkg
@@ -534,7 +534,7 @@ class RemovePackageFromArchive(Operation):
 class ValidateInstallRpms(Operation):
     """
     Ensure that the given rpms can be installed safely. This is accomplished mainly
-    through use of rpm --test. This command will have one of a few outcomes:
+    through use of rpm --test, which will have one of a few outcomes:
     1) A return code of 0, indicating the installation should proceed smoothly
     2) A non-zero return code, and stderr indicating some of the rpms are already installed.
        We simply omit such rpms from the returned list of rpms, indicating to the caller
@@ -598,7 +598,7 @@ class ValidateInstallRpms(Operation):
 class ValidateUninstallRpms(Operation):
     """
     Ensure that the given rpms can be uninstalled safely. This is accomplished mainly
-    through use of rpm --test. This command will have one of a few outcomes:
+    through use of rpm --test, which will have one of a few outcomes:
     1) A return code of 0, indicating the uninstallation should proceed smoothly
     2) A non-zero return code, and stderr indicating some of the rpms are already uninstalled.
        We simply omit such rpms from the returned list of rpms, indicating to the caller
@@ -733,36 +733,29 @@ class InstallPackageLocally(Operation):
 
 
 
-class UnInstallSegGppkg(Operation):
+class UninstallPackageLocally(Operation):
     '''
         This Operation is invoked as a RemoteOperation. 
         It uninstalls the gppkg on the remote host.
     '''
-    def __init__(self, pkg_name):
-        self.pkg_name = pkg_name
+    def __init__(self, package_name):
+        self.package_name = package_name
 
     def execute(self): 
-        rpm_uninstallation_command = 'rpm -e %s --dbpath %s ' 
-
-        gppkg = Gppkg.from_package_path(os.path.join(GPPKG_ARCHIVE_PATH, self.pkg_name))
-
-        #If RPM has not been installed then just return 
-        if not IsRpmInstalled(gppkg.main_rpm).run():
-            return 
-
-        #Extract the package contents on the host
-        ExtractPackage(gppkg).run()
+        current_package_location = os.path.join(GPPKG_ARCHIVE_PATH, self.package_name)
+        gppkg = Gppkg.from_package_path(current_package_location)
 
         rpm_set = ValidateUninstallRpms(gppkg).run()
         if not rpm_set:
             raise NotInstalledError(gppkg.pkg)
-        rpm_uninstall_string = " ".join(rpm_set)
+        rpm_uninstall_command = 'rpm -e %s --dbpath %s' % (" ".join(rpm_set), RPM_DATABASE)
+        cmd = Command('Uninstalling rpms', rpm_uninstall_command)
+        logger.info(cmd)
+        cmd.run(validateAfter = True)
 
-        cmd_str = rpm_uninstallation_command % (rpm_uninstall_string, RPM_DATABASE)
-
-        #run rpm -e on the host
-        LocalCommand(cmd_str).run()        
-
+        MakeDir(GPPKG_ARCHIVE_PATH).run()
+        RemoveFile(current_package_location).run()
+        logger.info("Completed local uninstallation of %s." % self.package_name)
 
 
 class SyncPackages(Operation):
@@ -803,9 +796,9 @@ class SyncPackages(Operation):
         if uninstall_package_set:
             logger.info('The following packages will be uninstalled on %s: %s' % (self.host, ', '.join(uninstall_package_set)))
             for package in uninstall_package_set:
-                RemoteOperation(UnInstallSegGppkg(package), self.host).run()
-                # TODO: AK: Unarchival should be the result of a succesful, local uninstallation! The UnArchive... should not be here.
-                UnArchivePackageOnHost(self.host, package).run()
+                RemoteOperation(UninstallPackageLocally(package), self.host).run()
+
+
 
 class InstallPackage(Operation):
     def __init__(self, gppkg, master_host, standby_host, segment_host_list):
@@ -921,149 +914,49 @@ class PerformHooks(Operation):
             elif key_str.lower() == 'segment':
                 RemoteCommand(hook[key_str], self.segment_host_list).run()
 
-#TODO: Try to make this operation idempotent
-class UnInstallGppkg(Operation):
-    '''
-        Uninstall a given gppkg
-    '''
 
-    def __init__(self, gppkg, master_host, standby_host, segment_host_list, cleanup_gppkg = False):
+
+class UninstallPackage(Operation):
+    def __init__(self, gppkg, master_host, standby_host, segment_host_list):
         self.gppkg = gppkg
         self.master_host = master_host
         self.standby_host = standby_host
         self.segment_host_list = segment_host_list
-        self.cleanup_gppkg = cleanup_gppkg
 
     def execute(self):
-        gppkg = self.gppkg
+        logger.info('Uninstalling package %s' % self.gppkg.pkg)
 
-        #Test to see if the main rpm has been installed or not
-        #Since the DB on the master will be identical to the 
-        #ones on the segment, it is sufficient to check only that
-        #RPM database
-        if not self.cleanup_gppkg:
-            if not IsRpmInstalled(gppkg.main_rpm).run():
-                raise NotInstalledError(gppkg.pkg)
+        # perform any pre-uninstallation steps 
+        PerformHooks(hooks = self.gppkg.preuninstall,
+                     master_host = self.master_host,
+                     standby_host = self.standby_host,
+                     segment_host_list = self.segment_host_list).run()
 
-        #unpack the package so that we can read the uninstall hooks if any
-        #clean up tmp extraction folder
-        if os.path.exists(TEMP_EXTRACTION_PATH) and not CleanupDir(TEMP_EXTRACTION_PATH).run():
-            logger.error('Could not clean temp folder')
-            raise IOError
+        # uninstall on segments
+        self.uninstall_on_segments()
 
-        #untar the package into tmp folder
-        with closing(tarfile.open(gppkg.abspath)) as tarinfo:
-            tarinfo.extractall(TEMP_EXTRACTION_PATH)
- 
-        #Transfer the package contents
-        TransferPackageContents(self.master_host, self.standby_host, self.segment_host_list).run()
+        if self.standby_host:
+            RemoteOperation(UninstallPackageLocally(self.gppkg.pkg), self.standby_host).run()
 
-        #Pre uninstall hooks
-        self._perform_pre_uninstall(gppkg)
+        UninstallPackageLocally(self.gppkg.pkg).run()
 
-        rpm_set = ValidateUninstallRpms(gppkg).run()
-        if not rpm_set:
-            raise NotInstalledError(gppkg.pkg)
-        rpm_uninstall_string = " ".join(rpm_set)
+        # perform any pre-installation steps 
+        PerformHooks(hooks = self.gppkg.postuninstall,
+                     master_host = self.master_host,
+                     standby_host = self.standby_host,
+                     segment_host_list = self.segment_host_list).run()
 
-        cmd_str = 'rpm -e %s --dbpath %s' % (rpm_uninstall_string, RPM_DATABASE)
-
-        try:
-            #First uninstall on the segment hosts
-            RemoteCommand(cmd_str, self.segment_host_list).run()
-        except ExecutionError, ex:
-            if self.cleanup_gppkg:
-                results =  ex.cmd.get_results().stderr.strip().split('\n')
-                for result in results:
-                    if not 'cannot create' in result.lower():                       #This is for the repackaging feature of rpm. TODO: Probably there is a way to turn this feature off
-                        raise ExceptionNoStackTraceNeeded('Error %s' % str(ex))
-
-        try:
-            #Next uninstall on the standby host
-            if self.standby_host:
-                RemoteCommand(cmd_str, [self.standby_host]).run()
-        except ExecutionError, ex:
-            if self.cleanup_gppkg:
-                results =  ex.cmd.get_results().stderr.strip().split('\n')
-                for result in results:
-                    if not 'cannot create' in result.lower():
-                        raise ExceptionNoStackTraceNeeded('Error %s' % str(ex))
-
-        try:
-            #Last Uninstall on the master host
-            LocalCommand(cmd_str).run()
-        except ExecutionError, ex:
-            if not self.cleanup_gppkg:
-                results =  ex.cmd.get_results().stderr.strip().split('\n')
-                for result in results:
-                    if not 'cannot create' in result.lower():
-                        raise ExceptionNoStackTraceNeeded('Error %s' % str(ex))
-
-        #Post uninstall hooks
-        self._perform_post_uninstall(gppkg)
-
-        #Remove package from $GPHOME/addons/archive
-        RemovePackageFromArchive(gppkg.pkg, self.standby_host).run()
-
-        #UnArchive packages from hosts
+        logger.info('%s succesfully uninstalled.' % self.gppkg.pkg)
+    def uninstall_on_segments(self):
+        operations = []
         for host in self.segment_host_list:
-            UnArchivePackageOnHost(host, gppkg.pkg).run()
-        
-        logger.info('%s has been uninstalled.' % (gppkg.pkg))
+            operations.append(RemoteOperation(UninstallPackageLocally(self.gppkg.pkg), host))
+        ParallelOperation(operations).run()
+        for operation in operations:
+            operation.get_ret()
 
-    def _perform_pre_uninstall(self, gppkg):
-        """
-        Perform pre uninstall steps that have been specified in yml file
 
-        TODO: AK: A packager may have added commands to their hooks, with the 
-        assumption that the current working directory would be that which contains
-        the spec file, rpms, and other artifacts (external scripts, perhaps.) To support
-        this, these commands should be prefixed with a "cd".
-        """
-        logger.debug('_perform_pre_uninstall')
 
-        if gppkg.preuninstall is None:
-            logger.info('No preuninstall hooks')
-            return 
-
-        for preuninst in gppkg.preuninstall:
-            key = preuninst.keys()
-            if key is None:
-                return
-            key_str = key[0]
-            if key_str.lower() == 'master':
-                if self.standby_host:
-                    RemoteCommand(preuninst[key_str], [self.standby_host]).run()
-                LocalCommand(preuninst[key_str], True).run()
-            elif key_str.lower() == 'segment':
-                RemoteCommand(preuninst[key_str], self.segment_host_list).run()
-            
-    def _perform_post_uninstall(self, gppkg):
-        """
-        Perform post uninstall steps that have been specified in yml file
-        
-        TODO: AK: A packager may have added commands to their hooks, with the 
-        assumption that the current working directory would be that which contains
-        the spec file, rpms, and other artifacts. (external scripts, perhaps.) To support
-        this, these commands should be prefixed with a "cd".
-        """
-        logger.debug('_perform_post_uninstall')
-
-        if gppkg.postuninstall is None:
-            logger.info('No postuninstall hooks')
-            return 
-
-        for postuninst in gppkg.postuninstall:
-            key = postuninst.keys()
-            if key is None:
-                return
-            key_str = key[0]
-            if key_str.lower() == 'master':
-                if self.standby_host:
-                    RemoteCommand(postuninst[key_str], [self.standby_host]).run()
-                LocalCommand(postuninst[key_str], True).run()
-            elif key_str.lower() == 'segment':
-                RemoteCommand(postuninst[key_str], self.segment_host_list).run()
 
 class QueryGppkg(Operation):
     '''
