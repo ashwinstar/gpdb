@@ -130,7 +130,7 @@ static void doNegateFloat(Value *v);
 static List *mergeTableFuncParameters(List *func_args, List *columns);
 static TypeName *TableFuncTypeName(List *columns);
 static void setWindowExclude(WindowFrame *wframe, WindowExclusion exclude);
-
+static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 
 %}
 
@@ -370,8 +370,10 @@ static void setWindowExclude(WindowFrame *wframe, WindowExclusion exclude);
 %type <str>		opt_window_name window_name
 
 %type <list>	row type_list array_expr_list
-%type <node>	case_expr case_arg when_clause case_default
+%type <node>	case_expr case_arg when_clause when_operand case_default
 %type <list>	when_clause_list
+%type <node>	decode_expr search_result decode_default
+%type <list>	search_result_list
 %type <ival>	sub_type
 %type <list>	OptCreateAs CreateAsList
 %type <node>	CreateAsElement ctext_expr
@@ -489,7 +491,7 @@ static void setWindowExclude(WindowFrame *wframe, WindowExclusion exclude);
 	CREATEROLE CREATEUSER CROSS CSV CUBE CURRENT CURRENT_CATALOG CURRENT_DATE CURRENT_ROLE CURRENT_SCHEMA
 	CURRENT_TIME CURRENT_TIMESTAMP CURRENT_USER CURSOR CYCLE
 
-	DATA_P DATABASE DAY_P DEALLOCATE DEC DECIMAL_P DECLARE DEFAULT DEFAULTS
+	DATA_P DATABASE DAY_P DEALLOCATE DEC DECIMAL_P DECLARE DECODE DEFAULT DEFAULTS
 	DEFERRABLE DEFERRED DEFINER DELETE_P DELIMITER DELIMITERS DENY
 	DESC DISABLE_P DISTINCT DISTRIBUTED DO DOMAIN_P DOUBLE_P DROP
 
@@ -10846,6 +10848,8 @@ c_expr:		columnref								{ $$ = $1; }
 				}
 			| case_expr
 				{ $$ = $1; }
+			| decode_expr
+				{ $$ = $1; }
 			| func_expr
 				{ $$ = $1; }
 			| select_with_parens			%prec UMINUS
@@ -11770,13 +11774,18 @@ when_clause_list:
 		;
 
 when_clause:
-			WHEN a_expr THEN a_expr
+			WHEN when_operand THEN a_expr
 				{
 					CaseWhen *w = makeNode(CaseWhen);
 					w->expr = (Expr *) $2;
 					w->result = (Expr *) $4;
-					$$ = (Node *)w;
+					$$ = (Node *) w;
 				}
+			;
+			
+when_operand:
+			a_expr							{ $$ = $1; }
+			| IS NOT DISTINCT FROM a_expr	{ $$ = makeIsNotDistinctFromNode($5,@2); }
 		;
 
 case_default:
@@ -11787,6 +11796,50 @@ case_default:
 case_arg:	a_expr									{ $$ = $1; }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
+
+
+/*
+ * Oracle-compatible DECODE function:
+ * DECODE(lhs, rhs, res [, rhs2, res2 ]... [, def_res]): 
+ * 		returns resX if lhs = rhsX, or def_res if no match found
+ * It is transformed into: 
+ *		CASE lhs WHEN IS NOT DISTINCT FROM rhs THEN res
+ *				[WHEN IS NOT DISTINCT FROM rhs2 THEN res2] ... 
+ *			ELSE def_res END
+ */
+decode_expr:	
+			DECODE '(' a_expr search_result_list decode_default ')'
+				{
+					CaseExpr *c = makeNode(CaseExpr);
+					c->casetype = InvalidOid; /* not analyzed yet */
+					c->arg = (Expr *) $3;
+					c->args = $4;
+					c->defresult = (Expr *) $5;
+					$$ = (Node *) c;
+				}
+		;
+			
+search_result_list: 
+			search_result							{ $$ = list_make1($1); }
+			| search_result_list search_result		{ $$ = lappend($1, $2); }
+		;
+
+search_result:
+			',' a_expr ',' a_expr
+				{
+					Node *n = makeIsNotDistinctFromNode($2,@2);
+					CaseWhen *w = makeNode(CaseWhen);
+					w->expr = (Expr *) n;
+					w->result = (Expr *) $4;
+					$$ = (Node *) w;
+				}
+		;
+				
+decode_default: 	
+			',' a_expr	 					{ $$ = $2; }
+			| /*EMPTY*/						{ $$ = NULL; }
+		;
+
 
 /*
  * columnref starts with relation_name not ColId, so that OLD and NEW
@@ -12911,6 +12964,7 @@ reserved_keyword:
 			| CURRENT_TIME
 			| CURRENT_TIMESTAMP
 			| CURRENT_USER
+			| DECODE
 			| DEFAULT
 			| DEFERRABLE
 			| DESC
@@ -13582,6 +13636,18 @@ setWindowExclude(WindowFrame *wframe, WindowExclusion exclude)
 	}
 }
 
+/*
+ * Create the IS_NOT_DISTINCT_FROM expression node
+ *     used by CASE x WHEN IS NOT DISTINCT FROM and DECODE()
+ */
+static Node*
+makeIsNotDistinctFromNode(Node *expr, int position)
+{
+	Node *n = (Node *) makeA_Expr(AEXPR_NOT, NIL, NULL,
+								(Node *) makeSimpleA_Expr(AEXPR_DISTINCT, 
+	 													"=", NULL, expr, position), position);
+	return n;
+}
 
 /*
  * Must undefine base_yylex before including scan.c, since we want it
