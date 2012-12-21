@@ -9,6 +9,11 @@
 #include "apr_hash.h"
 #include "time.h"
 
+#define GPMON_HOSTTTYPE_HDW 1
+#define GPMON_HOSTTTYPE_HDM 2
+#define GPMON_HOSTTTYPE_ETL 3
+#define GPMON_HOSTTTYPE_HBW 4
+
 #define GPDB_CONNECTION_STRING "dbname='" GPMON_DB "' user='" GPMON_DBUSER "' connect_timeout='30'"
 
 #ifdef USE_CONNECTEMC
@@ -181,6 +186,7 @@ struct hostinfo_holder_t
 	int is_master;
 	int is_hdm;
 	int is_hdw;
+	int is_hbw;
 	int is_etl;
 };
 
@@ -208,9 +214,6 @@ void initializeHostInfoDataWithAddress(struct hostinfo_holder_t* holder, char* a
 	}
 }
 
-// hostType 1 == hdw
-// hostType 2 == hdm
-// hostType 3 == etl
 void initializeHostInfoDataFromDevicesEntry(apr_pool_t* tmp_pool, struct hostinfo_holder_t* holder, char* primary_hostname, char* hostEntry, int hostType)
 {
 	holder->hostname = apr_pstrdup(tmp_pool, primary_hostname);
@@ -220,14 +223,17 @@ void initializeHostInfoDataFromDevicesEntry(apr_pool_t* tmp_pool, struct hostinf
 	CHECKMEM(holder->datadir);
 
  	switch(hostType){
-		case 1:
+		case GPMON_HOSTTTYPE_HDW:
 			holder->is_hdw = 1;
 		break;
-		case 2:
+		case GPMON_HOSTTTYPE_HDM:
 			holder->is_hdm = 1;
 		break;
-		case 3:
+		case GPMON_HOSTTTYPE_ETL:
 			holder->is_etl = 1;
+		break;
+		case GPMON_HOSTTTYPE_HBW:
+			holder->is_hbw = 1;
 		break;
 	}
 
@@ -298,19 +304,25 @@ void process_line_in_devices_cnf(apr_pool_t* tmp_pool, apr_hash_t* htab, char* l
 	if (strcmp(device, "Spidey0001") == 0)
 	{
 		monitored_device = 1;
-		hostType = 1;
+		hostType = GPMON_HOSTTTYPE_HDW;
 	}
 
 	if (strcmp(device, "Spidey0002") == 0)
 	{
 		monitored_device = 1;
-		hostType = 2;
+		hostType = GPMON_HOSTTTYPE_HDM;
+	}
+
+	if (strcmp(device, "Spidey0003") == 0)
+	{
+		monitored_device = 1;
+		hostType = GPMON_HOSTTTYPE_HBW;
 	}
 
 	if (strcmp(device, "EtlHost") == 0) 
 	{
 		monitored_device = 1;
-		hostType = 3;
+		hostType = GPMON_HOSTTTYPE_ETL;
 	}
 
 	// segment host, switch, etc ... we are only adding additional hosts required for performance monitoring
@@ -505,6 +517,9 @@ void gpdb_get_hostlist(int* hostcnt, host_t** host_table, apr_pool_t* global_poo
 
 			if (hostinfo_holder->is_etl)
 				hosts[hostcounter].is_etl = 1;
+
+			if (hostinfo_holder->is_hbw)
+				hosts[hostcounter].is_hbw = 1;
 
 			apr_thread_mutex_create(&hosts[hostcounter].mutex, APR_THREAD_MUTEX_UNNESTED, global_pool); // use the global pool so the mutexes last beyond this function
 

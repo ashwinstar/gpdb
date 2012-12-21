@@ -137,6 +137,7 @@ struct host_t
 	unsigned char is_master; /* 1 if host is the same host where the master runs */ 
 	unsigned char is_hdm; 
 	unsigned char is_hdw; 
+	unsigned char is_hbw; 
 	unsigned char is_etl; 
 	char ever_connected; /* set to non-zero after first connection attempt */
 };
