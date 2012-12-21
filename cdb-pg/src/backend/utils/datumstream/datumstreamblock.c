@@ -3306,13 +3306,14 @@ static bool DatumStreamBlockWrite_OrigHasSpace(
 	{
 		ereport(LOG,
 				(errmsg("Datum stream block write checking Original new item space for "
-						 "(nth %d, item size %d, item begin %p, item offset " INT64_FORMAT ", physical datum count %d, "
+						 "(nth %d, item size %d, configured datum length %d, item begin %p, item offset " INT64_FORMAT ", physical datum count %d, "
 						 "headerSize %d, nullSize %d, current dataSize %d, "
 						 "new total size %d, "
 						 "maxdatasz %d, "
 						 "result %s)",
 						 dsw->nth,
 						 sz,
+						 dsw->typeInfo->datumlen,
 						 dsw->datump,
 						 (int64)(dsw->datump - dsw->datum_buffer),
 						 dsw->physical_datum_count,
@@ -3699,7 +3700,8 @@ static bool DatumStreamBlockWrite_DenseHasSpaceNull(
 	int32	nullSize;
 	int32	rleSize;
 	int32	alignedHeaderSize;
-	int32	dataSize;
+	int32	currentDataSize;
+	int32	newTotalSize;
 	bool	result;
 
     if(dsw->nth + 1 >= dsw->maxDatumPerBlock)
@@ -3745,12 +3747,13 @@ static bool DatumStreamBlockWrite_DenseHasSpaceNull(
 	/*
 	 * Data.
 	 */
-	dataSize = (dsw->datump - dsw->datum_buffer);
+	currentDataSize = (dsw->datump - dsw->datum_buffer);
 
 	/*
 	 * Total.
 	 */
-    result = (alignedHeaderSize + dataSize <= dsw->maxDataBlockSize);
+	newTotalSize = (alignedHeaderSize + currentDataSize);
+    result = (alignedHeaderSize <= dsw->maxDataBlockSize);
 
 	if (Debug_appendonly_print_insert_tuple)
 	{
@@ -3771,9 +3774,9 @@ static bool DatumStreamBlockWrite_DenseHasSpaceNull(
 						 headerSize,
 						 nullSize,
 						 rleSize,
-						 dataSize,
+						 currentDataSize,
 						 alignedHeaderSize,
-						 alignedHeaderSize + dataSize,
+						 newTotalSize,
 						 dsw->maxDataBlockSize,
 						 (result ? "true" : "false")),
 				 errOmitLocation(true),
@@ -3796,7 +3799,8 @@ static bool DatumStreamBlockWrite_DenseHasSpaceRepeat(
 	int32	nullSize;
 	int32	rleSize;
 	int32	alignedHeaderSize;
-	int32	dataSize;
+	int32	currentDataSize;
+	int32	newTotalSize;
 	bool	result;
 
     if(dsw->nth + 1 >= dsw->maxDatumPerBlock)
@@ -3850,12 +3854,13 @@ static bool DatumStreamBlockWrite_DenseHasSpaceRepeat(
 	/*
 	 * Data.
 	 */
-	dataSize = (dsw->datump - dsw->datum_buffer);
+	currentDataSize = (dsw->datump - dsw->datum_buffer);
 
 	/*
 	 * Total.
 	 */
-    result = (alignedHeaderSize + dataSize <= dsw->maxDataBlockSize);
+	newTotalSize = (alignedHeaderSize + currentDataSize);
+    result = (newTotalSize <= dsw->maxDataBlockSize);
 
 	if (Debug_appendonly_print_insert_tuple)
 	{
@@ -3877,9 +3882,9 @@ static bool DatumStreamBlockWrite_DenseHasSpaceRepeat(
 						 headerSize,
 						 nullSize,
 						 rleSize,
-						 dataSize,
+						 currentDataSize,
 						 alignedHeaderSize,
-						 alignedHeaderSize + dataSize,
+						 newTotalSize,
 						 dsw->maxDataBlockSize,
 						 (result ? "true" : "false")),
 				 errOmitLocation(true),
@@ -3901,7 +3906,8 @@ static bool DatumStreamBlockWrite_DenseHasSpaceItem(
 	int32	nullSize;
 	int32	rleSize;
 	int32	alignedHeaderSize;
-	int32	dataSize;
+	int32	currentDataSize;
+	int32	newTotalSize;
 	bool	result;
 
     if(dsw->nth + 1 >= dsw->maxDatumPerBlock)
@@ -3954,25 +3960,27 @@ static bool DatumStreamBlockWrite_DenseHasSpaceItem(
 	/*
 	 * Data.
 	 */
-	dataSize = (dsw->datump - dsw->datum_buffer) + sz;
+	currentDataSize = (dsw->datump - dsw->datum_buffer);
 
 	/*
 	 * Total.
 	 */
-    result = (alignedHeaderSize + dataSize <= dsw->maxDataBlockSize);
+	newTotalSize = (alignedHeaderSize + currentDataSize + sz);
+    result = (newTotalSize <= dsw->maxDataBlockSize);
 
 	if (Debug_appendonly_print_insert_tuple)
 	{
 		ereport(LOG,
 				(errmsg("Datum stream block write checking Dense new item space for "
-						 "(nth %d, item size %d, item begin %p, item offset " INT64_FORMAT ", physical datum count %d, "
+						 "(nth %d, item size %d, configured datum length %d, item begin %p, item offset " INT64_FORMAT ", physical datum count %d, "
 						 "has RLE_TYPE compression %s, "
-						 "headerSize %d, nullSize %d, rleSize %d, dataSize %d, "
+						 "headerSize %d, nullSize %d, rleSize %d, current dataSize %d, "
 						 "aligned header size %d, new total size %d, "
 						 "maxdatasz %d, "
 						 "result %s)",
 						 dsw->nth,
 						 sz,
+						 dsw->typeInfo->datumlen,
 						 dsw->datump,
 						 (int64)(dsw->datump - dsw->datum_buffer),
 						 dsw->physical_datum_count,
@@ -3980,9 +3988,9 @@ static bool DatumStreamBlockWrite_DenseHasSpaceItem(
 						 headerSize,
 						 nullSize,
 						 rleSize,
-						 dataSize,
+						 currentDataSize,
 						 alignedHeaderSize,
-						 alignedHeaderSize + dataSize,
+						 newTotalSize,
 						 dsw->maxDataBlockSize,
 						 (result ? "true" : "false")),
 				 errOmitLocation(true),
@@ -4526,7 +4534,6 @@ static int DatumStreamBlockWrite_PutDense(
 			{
 				case 1:
 					isEqual = (*(dsw->rle_last_item) == DatumGetChar(d));
-					++dsw->datump;
 					break;
 				case 2:
 					Assert(IsAligned(dsw->datump, 2));
@@ -4859,6 +4866,9 @@ static int64 DatumStreamBlockWrite_BlockDense(
     uint8 *p = NULL;
     DatumStreamBlock_Dense dense;
     DatumStreamBlock_Rle_Extension rle_extension;
+	int32 headerSize;
+	int32 nullSize;
+	int32 rleSize;
 	int32 metadataSize;
 	int32 metadataMaxAlignSize;
 	int32 nullPadSize;
@@ -4893,7 +4903,7 @@ static int64 DatumStreamBlockWrite_BlockDense(
 	dense.physical_datum_count = dsw->physical_datum_count;
     dense.physical_data_size = dsw->datump - dsw->datum_buffer;
 
-	metadataSize = sizeof(DatumStreamBlock_Dense);
+	headerSize = sizeof(DatumStreamBlock_Dense);
 
 	/*
 	 * Add in NULL bit-map, extra DatumStreamBlock_Rle struct, compress bit-map, repeated counts...
@@ -4901,19 +4911,20 @@ static int64 DatumStreamBlockWrite_BlockDense(
 
     if (dsw->has_null)
 	{
-        metadataSize += 
-				DatumStreamBitMapWrite_Size(&dsw->null_bitmap);
+        nullSize = DatumStreamBitMapWrite_Size(&dsw->null_bitmap);
+	}
+	else
+	{
+		nullSize = 0;
 	}
 
 	if (dsw->rle_has_compression)
 	{
-		int32 nonCompressMetadataSize = metadataSize;
-
 		/*
 		 * Add in compress bitmap and repeat counts byte lengths,
 		 * if we have done compression in this block.
 		 */
-		metadataSize += sizeof(DatumStreamBlock_Rle_Extension);
+		headerSize += sizeof(DatumStreamBlock_Rle_Extension);
 
 		if (dsw->has_null)
 		{
@@ -4928,8 +4939,7 @@ static int64 DatumStreamBlockWrite_BlockDense(
 		/*
 		 * Compress bit-map byte size since we don't add bits when NULL;
 		 */
-		metadataSize += 
-				DatumStreamBitMapWrite_Size(&dsw->rle_compress_bitmap);
+		rleSize = DatumStreamBitMapWrite_Size(&dsw->rle_compress_bitmap);
 
 		rle_extension.compress_bitmap_count= 
 			DatumStreamBitMapWrite_Count(&dsw->rle_compress_bitmap);
@@ -4937,7 +4947,7 @@ static int64 DatumStreamBlockWrite_BlockDense(
 		/*
 		 * Repeat counts count and size.
 		 */
-		metadataSize += dsw->rle_repeatcounts_current_size;
+		rleSize += dsw->rle_repeatcounts_current_size;
 
 		rle_extension.repeatcounts_count = dsw->rle_repeatcounts_count;
 		rle_extension.repeatcounts_size = dsw->rle_repeatcounts_current_size;
@@ -4945,12 +4955,17 @@ static int64 DatumStreamBlockWrite_BlockDense(
 		/*
 		 * We charge the compression metadata size against the RLE_TYPE savings.
 		 */
-		dsw->savings -= (metadataSize - nonCompressMetadataSize);
+		dsw->savings -= (sizeof(DatumStreamBlock_Rle_Extension) + rleSize);
+	}
+	else
+	{
+		rleSize = 0;
 	}
 
 	/*
 	 * Align headers and meta-data (e.g. NULL bit-maps, etc).
 	 */
+	metadataSize = headerSize + nullSize + rleSize;
 	metadataMaxAlignSize = MAXALIGN(metadataSize);
 
     memcpy(p, &dense, sizeof(DatumStreamBlock_Dense));
@@ -5024,10 +5039,15 @@ static int64 DatumStreamBlockWrite_BlockDense(
 	if (metadataMaxAlignSize + dense.physical_data_size > dsw->maxDataBlockSize)
 	{
 		ereport(ERROR,
-				(errmsg("Formatted datum stream MAXALIGN metadata size %d + physical datum size %d (total %d) would exceed maximum data blocksize %d)",
+				(errmsg("Formatted datum stream MAXALIGN metadata size %d + physical datum size %d "
+						 "(total %d, metadata size %d, header size %d, null size %d, RLE_TYPE size %d) would exceed maximum data blocksize %d)",
 						 metadataMaxAlignSize,
 						 dense.physical_data_size,
 						 metadataMaxAlignSize + dense.physical_data_size,
+						 metadataSize,
+						 headerSize,
+						 nullSize,
+						 rleSize,
 						 dsw->maxDataBlockSize),
 				 errOmitLocation(false),
 				 errdetail_datumstreamblockwrite(dsw),
@@ -5050,13 +5070,16 @@ static int64 DatumStreamBlockWrite_BlockDense(
 				ereport(LOG,
 						(errmsg("Datum stream write Dense block formatted with NO NULLs "
 								 "(maximum length %d, total length = %d, logical row count and physical datum count %d, "
-								 "metadata size %d, metadata size MAXALIGN %d, "
+								 "metadata size %d, metadata size MAXALIGN %d, header size %d, null size %d, RLE_TYPE size %d, "
 								 "physical data size %d)",
 								 dsw->maxDataBlockSize,
 								 (int32)writesz,
 								 rowCount,
 								 metadataSize,
 								 metadataMaxAlignSize,
+								 headerSize,
+								 nullSize,
+								 rleSize,
 								 dense.physical_data_size),
 						 errOmitLocation(true),
 						 errdetail_datumstreamblockwrite(dsw),
@@ -5068,7 +5091,7 @@ static int64 DatumStreamBlockWrite_BlockDense(
 						(errmsg("Datum stream write Dense block formatted with NULLs "
 								 "(maximum length %d, total length = %d, logical row count %d, physical datum count %d, "
 								 "null bit-map count %d, null bit-map ON count %d, null bit-map size %d, "
-								 "metadata size %d, metadata size MAXALIGN %d, "
+								 "metadata size %d, metadata size MAXALIGN %d, header size %d, null size %d, RLE_TYPE size %d, "
 								 "physical data size %d)",
 								 dsw->maxDataBlockSize,
 								 (int32)writesz,
@@ -5079,6 +5102,9 @@ static int64 DatumStreamBlockWrite_BlockDense(
 								 DatumStreamBitMapWrite_Size(&dsw->null_bitmap),
 								 metadataSize,
 								 metadataMaxAlignSize,
+								 headerSize,
+								 nullSize,
+								 rleSize,
 								 dense.physical_data_size),
 						 errOmitLocation(true),
 						 errdetail_datumstreamblockwrite(dsw),
