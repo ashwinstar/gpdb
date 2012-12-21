@@ -7622,6 +7622,8 @@ int FileRepPrimary_CompareDirectoryListing(
 				mirrorDirectoryName,
 				-1, -1, -1, -1, -1,
 				NULL); /* Not applicable for directories */
+		
+			gFileRepVerifyShmem->request.isFailed = true;
 
 		}
 
