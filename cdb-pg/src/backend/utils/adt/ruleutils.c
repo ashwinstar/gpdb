@@ -4058,7 +4058,6 @@ get_rule_expr(Node *node, deparse_context *context,
 								Insist(IsA(arg, DistinctExpr));
 								dexpr = (DistinctExpr *) arg;
 
-								Insist(IsA(linitial(dexpr->args), CaseTestExpr));
 								appendStringInfo(buf, "IS NOT DISTINCT FROM ");
 								rhs = (Node *) lsecond(dexpr->args);
 								get_rule_expr(rhs, context, false);
