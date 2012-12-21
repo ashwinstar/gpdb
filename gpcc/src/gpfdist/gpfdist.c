@@ -1874,37 +1874,43 @@ static int setup_read(request_t* r)
 
 static void
 print_listening_address(struct addrinfo *rp)
-{	
-	char stradd[200] = {0};	
+{
+    char full_address[220] = {0};
 	
 	if (rp->ai_family == AF_INET)
 	{
 #ifndef WIN32
 		struct sockaddr_in *ain = (struct sockaddr_in*)rp->ai_addr;
+		char stradd[200] = {0};
 		inet_ntop(AF_INET, (const void*)&ain->sin_addr, stradd, 100);
+		sprintf(full_address, "IPV4 socket: %s:%d", stradd, opt.p);
 #else
 		/*
 		 * there is no alternative for inet_ntop in windows that works for all Win platforms
 		 * and for IPV6. inet_ntop transform the integer representation of the IP addr. into a string 
-		 */
-		sprintf(stradd, "IPV4 listening socket");
+	     */
+		sprintf(full_address, "IPV4 socket: IPv4:%d", opt.p);
 #endif
+
 	}
 	else if (rp->ai_family == AF_INET6)
 	{
 #ifndef WIN32
 		struct sockaddr_in6 *ain = (struct sockaddr_in6*)rp->ai_addr;
-		inet_ntop(AF_INET6, (const void*)&ain->sin6_addr, stradd, 100);	
+		char stradd[200] = {0};
+		inet_ntop(AF_INET6, (const void*)&ain->sin6_addr, stradd, 100);
+		sprintf(full_address, "IPV6 socket: [%s]:%d", stradd, opt.p);
 #else
-		sprintf(stradd, "IPV6 listening socket");
+		sprintf(full_address, "IPV6 socket: [IPV6]:%d", opt.p);
 #endif
+
 	}
 	else 
 	{
-		sprintf(stradd, "unknown protocol - %d", rp->ai_family);
+		sprintf(full_address, "unknown protocol - %d", rp->ai_family);
 	}
 	
-	gprint("address: %s\n", stradd);
+	gprint("%s\n", full_address);
 }
 
 /*
@@ -2071,8 +2077,28 @@ http_setup(void)
 
 			if (bind(f, rp->ai_addr, rp->ai_addrlen) != 0)
 			{
-				gwarning(FLINE, "bind function failed\n");
-			
+				/*
+				 * EADDRINUSE warning appears only if the -v or -V option is on,
+				 * All the other warnings will appear anyway
+				 * EADDRINUSE is not defined in win32, so all the warnings will always appear.
+				 */
+#ifdef WIN32
+				if ( 1 )
+#else
+				if ( errno == EADDRINUSE )
+#endif
+				{
+					if ( opt.v )
+					{
+						gwarning(FLINE, "%s (errno = %d), port: %d",
+					               		strerror(errno), errno, opt.p);
+					}
+				}
+				else
+			    {
+					gwarning(FLINE, "%s (errno=%d), port: %d",strerror(errno), errno, opt.p);
+				}
+
 				/* failed on bind, maybe this address family isn't supported */
 				close(f);
 				continue;
@@ -2112,6 +2138,8 @@ http_setup(void)
 						  "(last port is %d)", opt.p, opt.last_port);
 
 		opt.p++;
+		if (opt.v)
+			putchar('\n'); /* this is just to beautify the print outs */
 	}
 
 	for (i = 0; i < gcb.listen_sock_count; i++)
