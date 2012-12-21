@@ -2148,22 +2148,31 @@ static struct config_bool ConfigureNamesBool[] =
     	true, NULL, NULL
     },
 
-	{
-		{"gp_external_enable_exec", PGC_POSTMASTER, EXTERNAL_TABLES,
-			gettext_noop("Enable selecting from an external table with an EXECUTE clause."),
-			NULL
-		},
-		&gp_external_enable_exec,
-		true, NULL, NULL
+    {
+        {"gp_backup_directIO", PGC_USERSET, DEVELOPER_OPTIONS,
+                gettext_noop("Enable direct IO dump"),
+                NULL
+        },
+        &gp_backup_directIO,
+        false, NULL, NULL
     },
 
-	{
-		{"gp_enable_fast_sri", PGC_USERSET, QUERY_TUNING_OTHER,
-			gettext_noop("Enable single-slice single-row inserts."),
-			NULL
-		},
-		&gp_enable_fast_sri,
-		true, NULL, NULL
+    {
+        {"gp_external_enable_exec", PGC_POSTMASTER, EXTERNAL_TABLES,
+                gettext_noop("Enable selecting from an external table with an EXECUTE clause."),
+                NULL
+        },
+        &gp_external_enable_exec,
+        true, NULL, NULL
+    },
+
+    {
+        {"gp_enable_fast_sri", PGC_USERSET, QUERY_TUNING_OTHER,
+                gettext_noop("Enable single-slice single-row inserts."),
+                NULL
+        },
+        &gp_enable_fast_sri,
+        true, NULL, NULL
     },
 
 	{
@@ -4949,6 +4958,15 @@ static struct config_int ConfigureNamesInt[] =
 		&gp_resqueue_memory_policy_auto_fixed_mem,
 		100, 50, INT_MAX, NULL, NULL
 	},
+
+        {
+            {"gp_backup_directIO_read_chunk_mb", PGC_USERSET, DEVELOPER_OPTIONS,
+                    gettext_noop("Size of read Chunk buffer in directIO dump (in MB)"),
+                    NULL,
+            },
+            &gp_backup_directIO_read_chunk_mb,
+            20, 1, 200, NULL, NULL
+        },
 
 #if USE_EMAIL
 	{

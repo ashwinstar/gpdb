@@ -296,6 +296,22 @@ extern bool Debug_print_dispatch_plan;
 extern bool Debug_print_plannedstmt;
 
 /*
+ * gp_backup_directIO
+ *
+ * when set to 'true' the dump with direct I\O is enabled
+ */
+extern bool gp_backup_directIO;
+
+
+/*
+ * gp_backup_directIO_readChunk
+ *
+ *  This parameter controls the readChunk that is used during directI\O backup
+ *  The value of this parameter is in megabyte
+ */
+extern int gp_backup_directIO_read_chunk_mb;
+
+/*
  * gp_external_enable_exec
  *
  * when set to 'true' external tables that were defined with an EXECUTE
