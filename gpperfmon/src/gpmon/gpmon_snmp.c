@@ -2140,6 +2140,8 @@ int snmp_report(host_t* tab, int tabsz)
 			continue;
 		if (tab[i].is_hbw)
 			continue;
+		if (tab[i].is_hdc)
+			continue;
 		if (tab[i].is_hdm)
 			continue;
 		if (tab[i].is_etl)
