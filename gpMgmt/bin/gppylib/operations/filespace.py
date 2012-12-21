@@ -4,6 +4,7 @@
 import os
 import shutil
 import hashlib
+import signal
 
 from gppylib.db import dbconn
 from gppylib.db.dbconn import UnexpectedRowsError
@@ -557,7 +558,7 @@ class GetFilespaceEntries(Operation):
         self.gparray = gparray
 
     def execute(self):
-        logger.info('Obtaining filespace information for filespace %s' % self.filespace_name)
+        logger.debug('Obtaining filespace information for filespace %s' % self.filespace_name)
         filespace_entries = []
 
         filespaces = self.gparray.getFilespaces(includeSystemFilespace=True)
@@ -795,9 +796,8 @@ class MoveFilespace(Operation):
             logger.error('Failed to stop Greenplum Database in master only mode.')
             cmd.validate()
 
-        logger.info('Moving filespace ...')
         #7 MoveTemp/Trans files
-        
+
         try:
             operations = GetMoveOperationList(segments,
                                               self.file_type,
@@ -809,18 +809,25 @@ class MoveFilespace(Operation):
         except Exception, e:
             raise MoveFilespaceError('Failed to create operations list. %s' % str(e))
 
-        logger.info('Starting parallel operations ...')
-        ParallelOperation(operations).run()
+        logger.info('Moving %s filespace from %s to %s ...' % (FileType.lookup[self.file_type], cur_filespace_name, self.new_filespace_name))
+        try:
+            #Disable Ctrl+C
+            signal.signal(signal.SIGINT,signal.SIG_IGN)
 
-        for operation in operations:
-            try:
-                operation.get_ret()
-            except Exception, e:
-                logger.error('Failed to move files on remote host. %s.', e)
+            ParallelOperation(operations).run()
+
+            for operation in operations:
                 try:
-                    RollBackFilespaceChanges(segments, self.file_type, cur_filespace_name, cur_filespace_entries, new_filespace_entries, pg_system_filespace_entries).run()
+                    operation.get_ret()
                 except Exception, e:
-                    raise MoveFilespaceError('Rollback Failed !')
+                    logger.error('Failed to move files on remote host. %s.', e)
+                    try:
+                        RollBackFilespaceChanges(segments, self.file_type, cur_filespace_name, cur_filespace_entries, new_filespace_entries, pg_system_filespace_entries).run()
+                    except Exception, e:
+                        raise MoveFilespaceError('Rollback Failed !')
+        finally:
+            #Enable Ctrl+C
+            signal.signal(signal.SIGINT,signal.default_int_handler)
 
         #9 Bring GPDB online in normal mode
         logger.info('Starting Greenplum Database')
