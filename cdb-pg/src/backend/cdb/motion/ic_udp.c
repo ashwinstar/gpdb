@@ -376,6 +376,8 @@ static void *ic_rx_thread_func(void *arg);
 static void rx_handle_mismatch(struct icpkthdr *pkt, struct sockaddr_storage *peer, int peer_len);
 static void aggregateStatistics(ChunkTransportStateEntry *pEntry);
 
+static void handleShortRead(uint32 shortPacketCount, int readCount);
+
 static void
 setupUDPListeningSocket(int *listenerSocketFd, uint16 *listenerPort)
 {
@@ -1616,6 +1618,29 @@ setupOutgoingUDPConnection(ChunkTransportState *transportStates, ChunkTransportS
 	return;
 }								/* setupOutgoingUDPConnection */
 
+/*
+ * handleShortRead
+ *		handle short read cases. If the number of short reads exceeds IC_SHORT_PACKET_LIMIT,
+ *		report error. Otherwise, caller should retry.
+ */
+static void
+handleShortRead(uint32 shortPacketCount, int readCount)
+{
+	/* MPP-10351: could make this a guc, but leave it as a macro for now. macro is defined in ml_ipc.h */
+	if (shortPacketCount < IC_SHORT_PACKET_LIMIT)
+	{
+		elog(LOG, "Interconnect error waiting for peer ack, short read during recvfrom() %d", readCount);
+	}
+	else
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+				 errmsg("Interconnect error waiting for peer ack"),
+				 errdetail("short read during recvfrom() call. (%d)\n", readCount)));
+		/* not reached */
+	}
+}
+
 void
 SetupUDPInterconnect(EState *estate)
 {
@@ -1678,7 +1703,7 @@ SetupUDPInterconnect(EState *estate)
 
 #ifdef USE_ASSERT_CHECKING
 	if (gp_udpic_dropseg != UNDEF_SEGMENT ||
-		gp_udpic_dropacks_percent != 0 || gp_udpic_dropxmit_percent != 0)
+		gp_udpic_dropacks_percent != 0 || gp_udpic_dropxmit_percent != 0 || gp_udpic_fault_inject_percent != 0)
 		udp_testmode = true;
 	else
 		udp_testmode = false;
@@ -1926,6 +1951,7 @@ SetupUDPInterconnect(EState *estate)
 		}
 		if (n == 1 && (nfd.events & POLLIN))
 		{
+			uint32 short_packet_count = 0;
 			for (;;)
 			{
 				/* read ack */
@@ -1951,10 +1977,16 @@ SetupUDPInterconnect(EState *estate)
 									errmsg("Interconnect error: %m%s", "recvfrom")));
 				}
 
-				if (read_count < sizeof(pkt))
-					ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-									errmsg("Interconnect error: %m%s short ack receive!", "recvfrom")));
+#ifdef USE_ASSERT_CHECKING
+				if (testmode_drop(gp_udpic_fault_inject_percent))
+					read_count = 0;
+#endif
 
+				if (read_count < sizeof(pkt))
+				{
+					handleShortRead(++short_packet_count, read_count);
+					continue;
+				}
 				/*
 				 * NOTE: we don't have a connection here, yet.
 				 */
@@ -2833,6 +2865,11 @@ handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 		n = recvfrom(pEntry->txfd, (char *)&pkt, sizeof(pkt), 0,
 					 (struct sockaddr *)&peer, &peerlen);
 
+#ifdef USE_ASSERT_CHECKING
+		if (testmode_drop(gp_udpic_fault_inject_percent))
+			n = 0;
+#endif
+
 		if (n < 0)
 		{
 			if (errno == EWOULDBLOCK) /* had nothing to read. */
@@ -2852,19 +2889,8 @@ handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 		}
 		else if (n < sizeof(pkt))
 		{
-			/* MPP-10351: could make this a guc, but leave it as a macro for now. macro is defined in ml_ipc.h */
-			if (short_packet_count++ > IC_SHORT_PACKET_LIMIT)
-			{
-				elog(LOG, "Interconnect error waiting for peer ack, short read during recvfrom() %d", n);
-				continue;
-			}
-			else
-			{
-				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-								errmsg("Interconnect error waiting for peer ack"),
-								errdetail("short read during recvfrom() call. (%d)\n", n)));
-				/* not reached */
-			}
+			handleShortRead(++short_packet_count, n);
+			continue;
 		}
 
 		/* read packet, is this the ack we want ? */

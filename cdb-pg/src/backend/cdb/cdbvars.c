@@ -228,6 +228,7 @@ int			Gp_udp_bufsize_k; /* UPD recv buf size, in KB */
 int gp_udpic_dropseg = UNDEF_SEGMENT;
 int gp_udpic_dropxmit_percent = 0;
 int gp_udpic_dropacks_percent = 0;
+int gp_udpic_fault_inject_percent = 0;
 #endif
 
 /*

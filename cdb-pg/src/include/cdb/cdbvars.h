@@ -565,6 +565,7 @@ extern int gp_udpic_dropseg; /* specifies which segments to apply the
 							  * them. */
 extern int gp_udpic_dropxmit_percent;
 extern int gp_udpic_dropacks_percent;
+extern int gp_udpic_fault_inject_percent;
 #endif
 
 /*

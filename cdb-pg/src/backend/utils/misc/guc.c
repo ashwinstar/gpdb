@@ -4352,6 +4352,17 @@ static struct config_int ConfigureNamesInt[] =
         &gp_udpic_dropxmit_percent,
         0, 0, 100, NULL, NULL
 	},
+
+	{
+		{"gp_udpic_fault_inject_percent", PGC_USERSET, GP_ARRAY_TUNING,
+			gettext_noop("Sets the percentage of fault injected into system calls, for testing. (affected by gp_udpic_dropseg)"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&gp_udpic_fault_inject_percent,
+		0, 0, 100, NULL, NULL
+	},
+
 #endif
 	{
 		{"gp_interconnect_hash_multiplier", PGC_SUSET, GP_ARRAY_TUNING,

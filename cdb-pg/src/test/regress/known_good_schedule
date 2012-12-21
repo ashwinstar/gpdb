@@ -149,6 +149,7 @@ test: mapred
 test: gpparams
 test: tidycat
 test: tidycat2
+ignore: icudp_full
 test: upgrade
 ignore: upg2
 test: alter_distribution_policy
