@@ -15,7 +15,8 @@ SYNOPSIS
 
 gpmigrator_mirror <old_GPHOME_path> <new_GPHOME_path>
                   [-d <master_data_directory>] 
-                  [-l <logfile_directory>] [-q] [--debug]
+                  [-l <logfile_directory>] [-q] 
+                  [--check-only] [--debug]
 
 gpmigrator_mirror  --version | -v
 
@@ -97,25 +98,28 @@ OPTIONS
  Run in quiet mode. Command output is not displayed on the screen, but is 
  still written to the log file.
 
---check-only
+
+-check-only
 
  Runs pre-migrate checks to verify that your database is healthy.
- Checks include: Check catalog health
- Check that the Greenplum Database binaries on each segment match those on 
- the master
- Check for a minium amount of free disk space
+ Checks include: 
+  * Check catalog health
+  * Check that the Greenplum Database binaries on each segment match 
+    those on the master
+  * Check for a minium amount of free disk space
+
 
 --help | -h
 
- Displays the online help.
+Displays the online help.
 
 
 --debug
- Sets logging level to debug.
+Sets logging level to debug.
 
 
 --version | -v
- Displays the version of this utility. 
+Displays the version of this utility. 
 
 
 *****************************************************
