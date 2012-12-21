@@ -30,6 +30,8 @@
 #include "optimizer/var.h"              /* CDB: contain_var_reference() */
 #include "parser/parsetree.h"
 #include "utils/memutils.h"
+#include "cdb/memquota.h"
+#include "executor/spi.h"
 
 
 static TupleTableSlot *ValuesNext(ValuesScanState *node);
@@ -282,6 +284,12 @@ ExecInitValuesScan(ValuesScan *node, EState *estate, int eflags)
 	 */
 	ExecAssignResultTypeFromTL(&scanstate->ss.ps);
 	ExecAssignScanProjectionInfo(&scanstate->ss);
+
+	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE
+			&& IsMemoryIntesive((Plan *) node))
+	{
+		SPI_ReserveMemory(((Plan *)node)->operatorMemKB * 1024L);
+	}
 
 	initGpmonPktForValuesScan((Plan *)node, &scanstate->ss.ps.gpmon_pkt, estate);
 	
