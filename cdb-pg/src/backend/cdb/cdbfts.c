@@ -290,12 +290,19 @@ initPQConnectionBuffer(CdbComponentDatabaseInfo *q, char *username, char *dbName
 		appendPQExpBuffer(buffer,
 						  "options='-c gp_session_role=UTILITY -c allow_system_table_mods=dml' ");
 
-	if (q->hostname == NULL)
-		appendPQExpBufferStr(buffer, "host='' ");
-	else if (isdigit(q->hostname[0]))
-		appendPQExpBuffer(buffer, "hostaddr=%s ", q->hostname);
-	else
-		appendPQExpBuffer(buffer, "host=%s ", q->hostname);
+	/*
+	 * Use domain sockets on the master since we must do authentication
+	 * of this connection.
+	 */
+	if (q->dbid != MASTER_DBID)
+	{
+		if (q->hostname == NULL)
+			appendPQExpBufferStr(buffer, "host='' ");
+		else if (isdigit(q->hostname[0]))
+			appendPQExpBuffer(buffer, "hostaddr=%s ", q->hostname);
+		else
+			appendPQExpBuffer(buffer, "host=%s ", q->hostname);
+	}
 
 	appendPQExpBuffer(buffer, "port=%u ", q->port);
 	appendPQExpBuffer(buffer, "dbname=%s ", dbName);

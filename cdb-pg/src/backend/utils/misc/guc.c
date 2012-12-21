@@ -622,6 +622,9 @@ bool		gp_cte_sharing = false;
 
 char	   *gp_idf_deduplicate_str;
 
+/* Security */
+bool		gp_reject_internal_tcp_conn = true;
+
 /*
  * Displayable names for context types (enum GucContext)
  *
@@ -3267,6 +3270,17 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&gp_ignore_window_exclude,
 		false, NULL, NULL
+	},
+
+	{
+		{"gp_reject_internal_tcp_connection", PGC_POSTMASTER,
+			DEVELOPER_OPTIONS,
+			gettext_noop("Permit internal TCP connections to the master."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_reject_internal_tcp_conn,
+		true, NULL, NULL
 	},
 
 	/* End-of-list marker */

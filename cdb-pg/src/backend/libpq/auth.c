@@ -38,12 +38,15 @@
 #include "libpq/md5.h"
 #include "miscadmin.h"
 #include "pgtime.h"
+#include "postmaster/postmaster.h"
 #include "utils/builtins.h"
 #include "utils/datetime.h"
 #include "utils/guc.h"
 #include "utils/timestamp.h"
 /*#include "replication/walsender.h"*/
 #include "storage/ipc.h"
+
+extern bool gp_reject_internal_tcp_conn;
 
 #if defined(_AIX)
 int     getpeereid(int, uid_t *__restrict__, gid_t *__restrict__);
@@ -70,6 +73,7 @@ static int	recv_and_check_password_packet(Port *port);
 #define IDENT_PORT 113
 
 static int	authident(hbaPort *port);
+static bool ident_unix(int sock, char *ident_user);
 
 
 /*----------------------------------------------------------------
@@ -262,48 +266,57 @@ auth_failed(Port *port, int status)
 	if (status == STATUS_EOF)
 		proc_exit(0);
 
-	switch (port->hba->auth_method)
+	/* internal communication failure */
+	if (!port->hba)
 	{
-		case uaReject:
-		case uaImplicitReject:
-			errstr = gettext_noop("authentication failed for user \"%s\": host rejected");
-			break;
-		case uaKrb5:
-			errstr = gettext_noop("Kerberos 5 authentication failed for user \"%s\"");
-			break;
-		case uaTrust:
-			errstr = gettext_noop("\"trust\" authentication failed for user \"%s\"");
-			break;
-		case uaIdent:
-			errstr = gettext_noop("Ident authentication failed for user \"%s\"");
-			break;
-		case uaPassword:
-		case uaMD5:
-			errstr = gettext_noop("password authentication failed for user \"%s\"");
-			/* We use it to indicate if a .pgpass password failed. */
-			errcode_return = ERRCODE_INVALID_PASSWORD;
-			break;
-		case uaGSS:
-			errstr = gettext_noop("GSSAPI authentication failed for user \"%s\"");
-			break;
-		case uaSSPI:
-			errstr = gettext_noop("SSPI authentication failed for user \"%s\"");
-			break;
-		case uaPAM:
-			errstr = gettext_noop("PAM authentication failed for user \"%s\"");
-			break;
-		case uaLDAP:
-			errstr = gettext_noop("LDAP authentication failed for user \"%s\"");
-			break;
-		case uaCert:
-			errstr = gettext_noop("certificate authentication failed for user \"%s\"");
-			break;
-		case uaRADIUS:
-			errstr = gettext_noop("RADIUS authentication failed for user \"%s\"");
-			break;
-		default:
-			errstr = gettext_noop("authentication failed for user \"%s\": invalid authentication method");
-			break;
+		errstr = gettext_noop("authentication failed for user \"%s\": "
+							  "invalid authentication method");
+	}
+	else
+	{
+		switch (port->hba->auth_method)
+		{
+			case uaReject:
+			case uaImplicitReject:
+				errstr = gettext_noop("authentication failed for user \"%s\": host rejected");
+				break;
+			case uaKrb5:
+				errstr = gettext_noop("Kerberos 5 authentication failed for user \"%s\"");
+				break;
+			case uaTrust:
+				errstr = gettext_noop("\"trust\" authentication failed for user \"%s\"");
+				break;
+			case uaIdent:
+				errstr = gettext_noop("Ident authentication failed for user \"%s\"");
+				break;
+			case uaPassword:
+			case uaMD5:
+				errstr = gettext_noop("password authentication failed for user \"%s\"");
+				/* We use it to indicate if a .pgpass password failed. */
+				errcode_return = ERRCODE_INVALID_PASSWORD;
+				break;
+			case uaGSS:
+				errstr = gettext_noop("GSSAPI authentication failed for user \"%s\"");
+				break;
+			case uaSSPI:
+				errstr = gettext_noop("SSPI authentication failed for user \"%s\"");
+				break;
+			case uaPAM:
+				errstr = gettext_noop("PAM authentication failed for user \"%s\"");
+				break;
+			case uaLDAP:
+				errstr = gettext_noop("LDAP authentication failed for user \"%s\"");
+				break;
+			case uaCert:
+				errstr = gettext_noop("certificate authentication failed for user \"%s\"");
+				break;
+			case uaRADIUS:
+				errstr = gettext_noop("RADIUS authentication failed for user \"%s\"");
+				break;
+			default:
+				errstr = gettext_noop("authentication failed for user \"%s\": invalid authentication method");
+				break;
+		}
 	}
 
 	ereport(FATAL,
@@ -320,7 +333,7 @@ auth_failed(Port *port, int status)
 static void
 internal_client_authentication(Port *port)
 {
-	if (GpIdentity.dbid == MASTER_DBID)
+	if (GpIdentity.dbid == MASTER_DBID && !GPStandby())
 	{
 		/* 
 		 * The entry-DB (or QE at the master) case.
@@ -340,28 +353,60 @@ internal_client_authentication(Port *port)
 #endif   /* HAVE_IPV6 */
 			   )
 		{
-			if (check_same_host_or_net(&port->raddr, ipCmpSameHost))
+			if (check_same_host_or_net(&port->raddr, ipCmpSameHost) &&
+				!gp_reject_internal_tcp_conn)
+			{
+				elog(DEBUG1, "received same host internal TCP connection");
 				FakeClientAuthentication(port);
+			}
 			else
+			{
+				/* Security violation? */
+				elog(LOG, "rejecting TCP connection to master using internal"
+					 "connection protocol");
 				auth_failed(port, STATUS_ERROR);
+			}
 			return;
 		}
 		else if (port->raddr.addr.ss_family == AF_UNIX)
 		{
-			/*
-			 * We assume the connection uses non-UDS, but if it comes,
-			 * just authenticate it. We'll need to verify user,
-			 * but for now blocking from remote server is the requirement.
+			/* 
+			 * Internal connection via a domain socket -- use ident
 			 */
-			FakeClientAuthentication(port);
+			char *local_name;
+			char remote_name[IDENT_USERNAME_MAX + 1];
+			struct passwd *pw;
+
+			pw = getpwuid(geteuid());
+			local_name = pw->pw_name;
+
+			remote_name[0] = '\0';
+
+			if (!ident_unix(port->sock, remote_name) ||
+				!strlen(remote_name) ||
+				strcmp(local_name, remote_name) != 0)
+			{
+				auth_failed(port, STATUS_ERROR);
+			}
+			else
+			{
+				FakeClientAuthentication(port);
+			}
 			return;
 		}
 		else
-			Insist(false);
+		{
+			/* Security violation? */
+			elog(LOG, "rejecting TCP connection to master using internal"
+				 "connection protocol");
+			auth_failed(port, STATUS_ERROR);
+		}
 	}
-
-	/* We're on an actual segment host */	
-	FakeClientAuthentication(port);
+	else
+	{
+		/* We're on an actual segment host */	
+		FakeClientAuthentication(port);
+	}
 }
 
 static bool

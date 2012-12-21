@@ -290,37 +290,44 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
     }
 
 	/*
-	 * First we pick the cached hostip if we have it.
-	 *
-	 * If we don't have a cached hostip, we use the host->address,
-	 * if we don't have that we fallback to host->hostname.
+	 * On the master, we must use UNIX domain sockets for security -- as it can
+	 * be authenticated. See MPP-15802.
 	 */
-	if (q->hostip != NULL)
+	if (!(q->dbid == MASTER_DBID && GpIdentity.dbid == MASTER_DBID))
 	{
-        appendPQExpBuffer(&buffer, "hostaddr=%s ", q->hostip);
-	}
-	else if (q->address != NULL)
-	{
-		if (isdigit(q->address[0]))
+		/*
+		 * First we pick the cached hostip if we have it.
+		 *
+		 * If we don't have a cached hostip, we use the host->address,
+		 * if we don't have that we fallback to host->hostname.
+		 */
+		if (q->hostip != NULL)
 		{
-			appendPQExpBuffer(&buffer, "hostaddr=%s ", q->address);
+	        appendPQExpBuffer(&buffer, "hostaddr=%s ", q->hostip);
 		}
-		else
+		else if (q->address != NULL)
 		{
-			appendPQExpBuffer(&buffer, "host=%s ", q->address);
+			if (isdigit(q->address[0]))
+			{
+				appendPQExpBuffer(&buffer, "hostaddr=%s ", q->address);
+			}
+			else
+			{
+				appendPQExpBuffer(&buffer, "host=%s ", q->address);
+			}
 		}
-	}
-    else if (q->hostname == NULL)
-	{
-        appendPQExpBufferStr(&buffer, "host='' " );
-	}
-    else if (isdigit(q->hostname[0]))
-	{
-        appendPQExpBuffer(&buffer, "hostaddr=%s ", q->hostname);
-	}
-    else
-	{
-        appendPQExpBuffer(&buffer, "host=%s ", q->hostname);
+	    else if (q->hostname == NULL)
+		{
+	        appendPQExpBufferStr(&buffer, "host='' " );
+		}
+	    else if (isdigit(q->hostname[0]))
+		{
+	        appendPQExpBuffer(&buffer, "hostaddr=%s ", q->hostname);
+		}
+	    else
+		{
+	        appendPQExpBuffer(&buffer, "host=%s ", q->hostname);
+		}
 	}
 
     appendPQExpBuffer(&buffer, "port=%u ", q->port);

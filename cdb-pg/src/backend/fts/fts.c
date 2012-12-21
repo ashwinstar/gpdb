@@ -1262,6 +1262,10 @@ openSelfConn(CdbComponentDatabaseInfo *entryDB)
 	/*
 	 * Do not need to set host, since FTS is running on the same host
 	 * as the master node.
+	 *
+	 * NOTE: do not be tempted to add a host and force TCP: we use ident
+	 * authentication to test that this is the master connecting back to itself
+	 * and we cannot do that via TCP. See MPP-15802.
 	 */
 	appendPQExpBuffer(entryBuffer, "port=%u ", entryDB->port);
 	appendPQExpBuffer(entryBuffer, "dbname=%s ", probeDatabase);
