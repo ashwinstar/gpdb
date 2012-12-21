@@ -16,7 +16,7 @@ static inline void DatumStreamBitMapRead_Init(
 	uint8					*buffer,
 	int32					bitCount);
 
-static inline bool DatumStreamBitMapRead_Exhausted(
+static inline bool DatumStreamBitMapRead_IsExhausted(
 	DatumStreamBitMapRead 	*bmr);
 
 static inline void DatumStreamBitMapRead_Next(
@@ -49,7 +49,7 @@ static inline int32 DatumStreamBitMap_CountOn(
 	/*
 	 * Scan the whole bit-map.
 	 */
-	while (!DatumStreamBitMapRead_Exhausted(&bmr))
+	while (!DatumStreamBitMapRead_IsExhausted(&bmr))
 	{
 		DatumStreamBitMapRead_Next(&bmr);
 	}
@@ -253,10 +253,16 @@ static inline void DatumStreamBitMapRead_Init(
 	bmr->readBitOnCount = 0;
 }
 
-static inline bool DatumStreamBitMapRead_Exhausted(
+static inline bool DatumStreamBitMapRead_IsExhausted(
 	DatumStreamBitMapRead 	*bmr)
 {
 	return (bmr->bitPosition >= bmr->bitCount - 1);
+}
+
+static inline bool DatumStreamBitMapRead_InRange(
+	DatumStreamBitMapRead 	*bmr)
+{
+	return (bmr->bitPosition < bmr->bitCount);
 }
 
 static inline bool DatumStreamBitMapRead_CurrentIsOn(
@@ -264,7 +270,9 @@ static inline bool DatumStreamBitMapRead_CurrentIsOn(
 {
 	if (bmr->bitPosition >= bmr->bitCount)
 	{
-		elog(ERROR, "Past end of bitmap");
+		elog(ERROR, "Past end of bitmap (bit position %d, total bit count %d)",
+			 bmr->bitPosition,
+			 bmr->bitCount);
 	}
 	return (((*bmr->bytePointer) & bmr->byteBit) != 0);
 }
@@ -280,7 +288,9 @@ static inline void DatumStreamBitMapRead_Next(
 {
 	if (bmr->bitPosition >= bmr->bitCount)
 	{
-		elog(ERROR, "Moving past end of bitmap");
+		elog(ERROR, "Moving past end of bitmap (bit position %d, total bit count %d)",
+			 bmr->bitPosition,
+			 bmr->bitCount);
 	}
 
 	if (bmr->bitPosition == -1)
@@ -1713,6 +1723,7 @@ static int DatumStreamBlockRead_AdvanceOrig(DatumStreamBlockRead *dsr)
     if(dsr->has_null)
     {
 		DatumStreamBitMapRead_Next(&dsr->null_bitmap);
+		Assert(!DatumStreamBitMapRead_InRange(&dsr->null_bitmap));
 
         if (DatumStreamBitMapRead_CurrentIsOn(&dsr->null_bitmap))
 		{
@@ -1862,6 +1873,7 @@ static int DatumStreamBlockRead_AdvanceDense(DatumStreamBlockRead *dsr)
 		if(dsr->has_null)
 		{
 			DatumStreamBitMapRead_Next(&dsr->null_bitmap);
+			Assert(!DatumStreamBitMapRead_InRange(&dsr->null_bitmap));
 		
 			if (DatumStreamBitMapRead_CurrentIsOn(&dsr->null_bitmap))
 			{
@@ -1882,9 +1894,60 @@ static int DatumStreamBlockRead_AdvanceDense(DatumStreamBlockRead *dsr)
 		if (dsr->rle_in_repeated_item)
 		{
 			Assert(dsr->rle_repeated_item_count > 0);
-			Assert(!dsr->has_null ||
-				   !DatumStreamBitMapRead_CurrentIsOn(&dsr->null_bitmap));
-			Assert(DatumStreamBitMapRead_CurrentIsOn(&dsr->rle_compress_bitmap));
+#ifdef USE_ASSERT_CHECKING
+			if (dsr->has_null)
+			{
+				if (!DatumStreamBitMapRead_InRange(&dsr->null_bitmap))
+				{
+					ereport(ERROR,
+							(errmsg("Datum stream block read advance NULL bit-map out-of-range "
+									"(nth %d, logical row count %d, NULL bit-map count %d)",
+									dsr->nth,
+									dsr->logical_row_count,
+									DatumStreamBitMapRead_Count(&dsr->null_bitmap)),
+							 errOmitLocation(true),
+							 errdetail_datumstreamblockread(dsr),
+							 errcontext_datumstreamblockread(dsr)));
+				}
+				if (DatumStreamBitMapRead_CurrentIsOn(&dsr->null_bitmap))
+				{
+					ereport(ERROR,
+							(errmsg("Datum stream block read advance NULL bit-map ON for repeated item "
+									"(nth %d, logical row count %d, NULL bit-map count %d)",
+									dsr->nth,
+									dsr->logical_row_count,
+									DatumStreamBitMapRead_Count(&dsr->null_bitmap)),
+							 errOmitLocation(true),
+							 errdetail_datumstreamblockread(dsr),
+							 errcontext_datumstreamblockread(dsr)));
+				}
+			}
+
+			if (!DatumStreamBitMapRead_InRange(&dsr->rle_compress_bitmap))
+			{
+				ereport(ERROR,
+						(errmsg("Datum stream block read advance COMPRESS bit-map out-of-range "
+								"(nth %d, logical row count %d, COMPRESS bit-map count %d)",
+								dsr->nth,
+								dsr->logical_row_count,
+								DatumStreamBitMapRead_Count(&dsr->rle_compress_bitmap)),
+						 errOmitLocation(true),
+						 errdetail_datumstreamblockread(dsr),
+						 errcontext_datumstreamblockread(dsr)));
+			}
+			if (!DatumStreamBitMapRead_CurrentIsOn(&dsr->rle_compress_bitmap))
+			{
+				ereport(ERROR,
+						(errmsg("Datum stream block read advance COMPRESS bit-map OFF for repeated item "
+								"(nth %d, logical row count %d, COMPRESS bit-map count %d)",
+								dsr->nth,
+								dsr->logical_row_count,
+								DatumStreamBitMapRead_Count(&dsr->rle_compress_bitmap)),
+						 errOmitLocation(true),
+						 errdetail_datumstreamblockread(dsr),
+						 errcontext_datumstreamblockread(dsr)));
+			}
+#endif
 
 			dsr->rle_repeated_item_count--;
 			if (dsr->rle_repeated_item_count <= 0)
@@ -1914,6 +1977,20 @@ static int DatumStreamBlockRead_AdvanceDense(DatumStreamBlockRead *dsr)
 		if(dsr->has_null)
 		{
 			DatumStreamBitMapRead_Next(&dsr->null_bitmap);
+#ifdef USE_ASSERT_CHECKING
+			if (!DatumStreamBitMapRead_InRange(&dsr->null_bitmap))
+			{
+				ereport(ERROR,
+						(errmsg("Datum stream block read advance NULL bit-map out-of-range "
+								"(nth %d, logical row count %d, NULL bit-map count %d)",
+								dsr->nth,
+								dsr->logical_row_count,
+								DatumStreamBitMapRead_Count(&dsr->null_bitmap)),
+						 errOmitLocation(true),
+						 errdetail_datumstreamblockread(dsr),
+						 errcontext_datumstreamblockread(dsr)));
+			}
+#endif
 		
 			if (DatumStreamBitMapRead_CurrentIsOn(&dsr->null_bitmap))
 			{
@@ -1928,6 +2005,20 @@ static int DatumStreamBlockRead_AdvanceDense(DatumStreamBlockRead *dsr)
 		 * Now that we have an item that is not NULL, see if it is repeated.
 		 */
 		DatumStreamBitMapRead_Next(&dsr->rle_compress_bitmap);
+#ifdef USE_ASSERT_CHECKING
+		if (!DatumStreamBitMapRead_InRange(&dsr->rle_compress_bitmap))
+		{
+			ereport(ERROR,
+					(errmsg("Datum stream block read advance COMPRESS bit-map out-of-range "
+							"(nth %d, logical row count %d, COMPRESS bit-map count %d)",
+							dsr->nth,
+							dsr->logical_row_count,
+							DatumStreamBitMapRead_Count(&dsr->rle_compress_bitmap)),
+					 errOmitLocation(true),
+					 errdetail_datumstreamblockread(dsr),
+					 errcontext_datumstreamblockread(dsr)));
+		}
+#endif
 		if (DatumStreamBitMapRead_CurrentIsOn(&dsr->rle_compress_bitmap))
 		{
 			int32 repeatCount;
