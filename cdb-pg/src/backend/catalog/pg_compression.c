@@ -792,6 +792,21 @@ compresstype_is_valid(char *comptype)
 	systable_endscan(scan);
 	heap_close(pgcomp, AccessShareLock);
 
+	/*
+	 * In 4.2.0 RLE_TYPE compression type is not allowed. Reasons:
+	 *		a) RLE_TYPE block compression (implemented in 4.2.0) is deprecated.
+	 *		   However code was not removed.
+	 *		b) RLE_TYPE stream compression will be available in 4.2.1. If backup 
+	 *		   with CO table with RLE_TYPE compression is done in 4.2.1, followed 
+	 *		   by GPDB binary switch to 4.2.0, followed by restore then   
+	 *		   restore would be successful, CO table would be restored 
+	 *		   with RLE_TYPE block compression.
+	 */
+	if (found && (pg_strcasecmp(comptype, "rle_type") == 0))
+	{
+		found = false;
+	}
+		
 	return found;
 }
 
