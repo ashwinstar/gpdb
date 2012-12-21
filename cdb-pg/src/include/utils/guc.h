@@ -234,6 +234,8 @@ extern int	num_temp_buffers;
 
 extern int ddboost_buf_size;
 
+extern bool gp_cancel_query_print_log;
+
 /* Debug DTM Action */
 typedef enum
 {

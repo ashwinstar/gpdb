@@ -1124,3 +1124,17 @@ gpvars_assign_statement_mem(int newval, bool doit, GucSource source __attribute_
 
 	return true;
 }
+
+/*
+ * increment_command_count
+ *    Increment gp_command_count. If the new command count is 0 or a negative number, reset it to 1.
+ */
+void
+increment_command_count()
+{
+	gp_command_count++;
+	if (gp_command_count <= 0)
+	{
+		gp_command_count = 1;
+	}
+}

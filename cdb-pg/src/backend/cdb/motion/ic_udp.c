@@ -2555,6 +2555,8 @@ receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry
 	/* we didn't have any data, so we've got to read it from the network. */
 	for (;;)
 	{
+		ML_CHECK_FOR_INTERRUPTS(inTeardown);
+		
 		/* 1. Do we have data ready */
 		if (directed && conn->pBuff)
 		{

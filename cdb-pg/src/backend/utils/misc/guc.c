@@ -525,6 +525,9 @@ bool gp_test_deadlock_hazard;
 int gp_test_deadlock_hazard_report_level = ERROR;
 static char *gp_test_deadlock_hazard_report_level_str;
 
+/* query cancellation GUC */
+bool gp_cancel_query_print_log;
+
 /* Upgrade & maintenance GUCs */
 bool gp_upgrade_mode;
 bool gp_maintenance_mode;
@@ -3041,6 +3044,16 @@ static struct config_bool ConfigureNamesBool[] =
 		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
 		},
 		&gp_test_deadlock_hazard,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_cancel_query_print_log", PGC_USERSET, DEVELOPER_OPTIONS,
+		 gettext_noop("Print out debugging info for a canceled query"),
+		 NULL,
+		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&gp_cancel_query_print_log,
 		false, NULL, NULL
 	},
 
