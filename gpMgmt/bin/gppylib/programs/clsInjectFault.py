@@ -363,7 +363,11 @@ class GpInjectFaultProgram:
 			      "dtm_broadcast_commit_prepared (inject fault after commit broadcast), " \
 			      "dtm_broadcast_abort_prepared (inject fault after abort broadcast), " \
 			      "dtm_xlog_distributed_commit (inject fault after distributed commit was inserted in xlog), " \
-			      "dtm_init (inject fault before initializing dtm), "\
+			      "fault_before_pending_delete_relation_entry (inject fault before putting pending delete relation entry, " \
+			      "fault_before_pending_delete_database_entry (inject fault before putting pending delete database entry, " \
+			      "fault_before_pending_delete_tablespace_entry (inject fault before putting pending delete tablespace entry, " \
+			      "fault_before_pending_delete_filespace_entry (inject fault before putting pending delete filespace entry, " \
+			      "dtm_init (inject fault before initializing dtm), " \
                               "end_prepare_two_phase_sleep (inject sleep after two phase file creation), " \
                               "segment_transition_request (inject fault after segment receives state transition request), " \
                               "segment_probe_response (inject fault after segment is probed by FTS), " \
