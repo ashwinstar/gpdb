@@ -1519,6 +1519,8 @@ static void do_read_request(int fd, short event, void* arg)
 		/* When the renegotiate timeout elapses the */
 		/* session is automatically renegotiated	*/
 		BIO_set_ssl_renegotiate_timeout(r->ssl_bio, SSL_RENEGOTIATE_TIMEOUT_SEC);
+
+		gprint("Using SSL\n");
 	}
 
 	/* how many bytes left in the header buf */
@@ -3180,8 +3182,7 @@ void ControlHandler(DWORD request)
 }
 #endif
 
-
-#define max(a,b) ((a) >= (b) ? (a) : (b))
+#define find_max(a,b) ((a) >= (b) ? (a) : (b))
 
 static SSL_CTX *initialize_ctx(void)
 {
@@ -3207,7 +3208,7 @@ static SSL_CTX *initialize_ctx(void)
 	/* The size of the string will consist of the path and the filename (the longest one) */
 	// +1 for the '/' charachter (/filename)
 	// +1 for the \0,
-	stringSize = max( strlen(CertificateFilename), strlen(PrivateKeyFilename) ) + strlen(opt.ssl) + 2;
+	stringSize = find_max( strlen(CertificateFilename), find_max(strlen(PrivateKeyFilename),strlen(TrustedCaFilename)) ) + strlen(opt.ssl) + 2;
 	/* Allocate the memory for the file name */
 	fileName = (char *) calloc( (stringSize), sizeof(char) );
 	if ( fileName == NULL )

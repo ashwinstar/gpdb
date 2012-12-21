@@ -39,7 +39,11 @@ SHELL=bash
 OPT=-g -O3
 LIBEVENT=libevent-1.4.3-stable
 OPENSSL=openssl-0.9.8r
+ifeq "$(BLD_ARCH)" "win32"
+OPENSSL_LIBS=-leay32 $(BLD_THIRDPARTY_LIB_DIR)/ssleay32.a
+else
 OPENSSL_LIBS=-lssl -lcrypto
+endif
 GP_VERSION:=$(shell cat $(GPCC)/../VERSION)
 
 # flag to include/exclude gpfdist transformation support
