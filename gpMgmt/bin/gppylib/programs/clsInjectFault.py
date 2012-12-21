@@ -361,6 +361,7 @@ class GpInjectFaultProgram:
 			      "dtm_broadcast_commit_prepared (inject fault after commit broadcast), " \
 			      "dtm_broadcast_abort_prepared (inject fault after abort broadcast), " \
 			      "dtm_xlog_distributed_commit (inject fault after distributed commit was inserted in xlog), " \
+			      "dtm_init (inject fault before initializing dtm), "\
                               "end_prepare_two_phase_sleep (inject sleep after two phase file creation), " \
                               "segment_transition_request (inject fault after segment receives state transition request), " \
                               "segment_probe_response (inject fault after segment is probed by FTS), " \
