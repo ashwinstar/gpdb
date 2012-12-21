@@ -243,7 +243,7 @@ main(int argc, char **argv)
 		goto cleanup;
 	}
 
-	ret = initDDSystem(&ddp_inst, &ddp_conn, &cl_info, &DDP_SU_NAME);
+	ret = initDDSystem(&ddp_inst, &ddp_conn, &cl_info, &DDP_SU_NAME, false);
 	
 	if (ret)
 	{
