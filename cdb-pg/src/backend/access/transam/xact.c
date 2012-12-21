@@ -148,9 +148,15 @@ typedef struct TransactionStateData
 	bool		prevXactReadOnly;		/* entry-time xact r/o state */
 	bool		executorSaysXactDoesWrites;	/* GP executor says xact does writes */
 	struct TransactionStateData *parent;		/* back link to parent */
+
+	struct TransactionStateData *fastLink;        /* back link to jump to parent for efficient search */
 } TransactionStateData;
 
 typedef TransactionStateData *TransactionState;
+
+#define NUM_NODES_TO_SKIP_FOR_FAST_SEARCH 100 
+static int fastNodeCount;
+static TransactionState previousFastLink;
 
 /*
  * CurrentTransactionState always points to the current transaction state
@@ -174,7 +180,8 @@ static TransactionStateData TopTransactionStateData = {
 	false,						/* previous SecurityDefinerContext setting */
 	false,						/* entry-time xact r/o state */
 	false,						/* executorSaysXactDoesWrites */
-	NULL						/* link to parent state block */
+	NULL,						/* link to parent state block */
+	NULL
 };
 
 static TransactionState CurrentTransactionState = &TopTransactionStateData;
@@ -452,6 +459,8 @@ AssignSubTransactionId(TransactionState s)
 	s->transactionId = GetNewTransactionId(true, true);
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "AssignSubTransactionId(): assigned xid %u", s->transactionId);
 
+	Assert(TransactionIdPrecedes(s->parent->transactionId, s->transactionId));
+
 	SubTransSetParent(s->transactionId, s->parent->transactionId);
 
 	/*
@@ -588,11 +597,112 @@ GetCurrentTransactionNestLevel(void)
 	return s->nestingLevel;
 }
 
-static char WatchCurrentTransactionBuffer[2000];
+#ifdef WATCH_VISIBILITY_IN_ACTION
+#define MAX_WATCH_TRANSACTION_BUFFER 2000
+static int WatchBufferOffset = 0;
+static char WatchCurrentTransactionBuffer[MAX_WATCH_TRANSACTION_BUFFER];
 
 char* WatchCurrentTransactionString(void)
 {
 	return WatchCurrentTransactionBuffer;
+}
+#endif
+
+/*
+ * We will return true for the Xid of the current subtransaction, any of
+ * its subcommitted children, any of its parents, or any of their
+ * previously subcommitted children.  However, a transaction being aborted
+ * is no longer "current", even though it may still have an entry on the
+ * state stack.
+ *
+ * The parent list and childXIDs list within it are in sorted decreasing order.
+ * Taking advantage of this fact simple optimizations are added instead of linear traversal to fasten the search 
+ *  1] Added fastLink/skipLink pointers to skip nodes in list and scan fast across, instead of visiting all nodes in list 
+ *  2] Break-out as soon as XID to search is greater than the current node in (parent / child) list
+*/
+static bool
+TransactionIdIsCurrentTransactionIdInternal(TransactionId xid)
+{
+	TransactionState s = CurrentTransactionState;
+
+	while (s != NULL)
+	{
+		ListCell   *cell;
+
+		if ((s->state != TRANS_ABORT) &&
+				(TransactionIdIsValid(s->transactionId)))
+		{
+			if (TransactionIdEquals(xid, s->transactionId))
+			{
+#ifdef WATCH_VISIBILITY_IN_ACTION
+				if (s == &TopTransactionStateData)
+					WatchBufferOffset += snprintf(&WatchCurrentTransactionBuffer[WatchBufferOffset],
+										MAX_WATCH_TRANSACTION_BUFFER-WatchBufferOffset,
+										" is parent,");
+				else
+					WatchBufferOffset += snprintf(&WatchCurrentTransactionBuffer[WatchBufferOffset],
+										MAX_WATCH_TRANSACTION_BUFFER-WatchBufferOffset,
+										" is subtransaction,");
+#endif
+				return true;
+			}
+			foreach(cell, s->childXids)
+			{
+				if (TransactionIdEquals(xid, lfirst_xid(cell)))
+					return true;
+				/* 
+				 * childXid list is maintained in decreasing order.
+				 * hence, can safely breakout if XID follows currentListNode XID.
+				 */
+				if (TransactionIdFollows(xid, lfirst_xid(cell)))
+				{
+#ifdef WATCH_VISIBILITY_IN_ACTION
+					WatchBufferOffset += snprintf(&WatchCurrentTransactionBuffer[WatchBufferOffset],
+										MAX_WATCH_TRANSACTION_BUFFER-WatchBufferOffset,
+										" subxid %u reached not checking ahead(childlist),", 
+										lfirst_xid(cell));
+#endif
+					break;
+				}
+			}
+
+			/*
+			 * If not found in childXID list and greater than s->transactionId
+			 * it cannot be on stack below this node, 
+			 * as stack is in decreasing order of XIDs
+			 * So, can safely breakout.
+			 */
+			 if (TransactionIdFollows(xid, s->transactionId))
+			 {
+#ifdef WATCH_VISIBILITY_IN_ACTION
+				WatchBufferOffset += snprintf(&WatchCurrentTransactionBuffer[WatchBufferOffset],
+									MAX_WATCH_TRANSACTION_BUFFER-WatchBufferOffset,
+									" subxid %u reached not checking ahead(parent),", 
+									s->transactionId);
+#endif
+				break;
+			 }
+		}
+
+		if (s->fastLink)
+		{
+			if (TransactionIdPrecedesOrEquals(xid, s->fastLink->transactionId))
+			{
+#ifdef WATCH_VISIBILITY_IN_ACTION
+				WatchBufferOffset += snprintf(&WatchCurrentTransactionBuffer[WatchBufferOffset],
+									MAX_WATCH_TRANSACTION_BUFFER-WatchBufferOffset,
+									" fast tracking search to subxid %u parent,", 
+									s->fastLink->transactionId);
+#endif
+				s = s->fastLink;
+				continue;
+			}
+		}
+
+		s = s->parent;
+	}
+
+	return false;
 }
 
 /*
@@ -601,14 +711,16 @@ char* WatchCurrentTransactionString(void)
 bool
 TransactionIdIsCurrentTransactionId(TransactionId xid)
 {
-	TransactionState s;
 	bool isCurrentTransactionId = false;
 	int32 index = 0;
 	uint32 cnt = 0;
 #ifdef WATCH_VISIBILITY_IN_ACTION
-	int count = 0;
+	WatchBufferOffset = 0;
 
-	count += sprintf(&WatchCurrentTransactionBuffer[count],"TransactionIdIsCurrentTransactionId xid %u", xid);
+	WatchBufferOffset += snprintf(&WatchCurrentTransactionBuffer[WatchBufferOffset],
+						MAX_WATCH_TRANSACTION_BUFFER-WatchBufferOffset,
+						"TransactionIdIsCurrentTransactionId xid %u", 
+						xid);
 #endif
     /*
 	 * We always say that BootstrapTransactionId is "not my transaction ID"
@@ -626,7 +738,9 @@ TransactionIdIsCurrentTransactionId(TransactionId xid)
 	if (!TransactionIdIsNormal(xid))
 	{
 #ifdef WATCH_VISIBILITY_IN_ACTION
-		count += sprintf(&WatchCurrentTransactionBuffer[count]," not normal");
+		WatchBufferOffset += snprintf(&WatchCurrentTransactionBuffer[WatchBufferOffset],
+							MAX_WATCH_TRANSACTION_BUFFER-WatchBufferOffset,
+							" not normal");
 #endif
 		return false;
 	}
@@ -635,13 +749,17 @@ TransactionIdIsCurrentTransactionId(TransactionId xid)
 		 DistributedTransactionContext == DTX_CONTEXT_QE_ENTRY_DB_SINGLETON))
 	{
 #ifdef WATCH_VISIBILITY_IN_ACTION
-		count += sprintf(&WatchCurrentTransactionBuffer[count]," Segment Reader or Segment Entry DB singleton");
+		WatchBufferOffset += snprintf(&WatchCurrentTransactionBuffer[WatchBufferOffset],
+							MAX_WATCH_TRANSACTION_BUFFER-WatchBufferOffset,
+							" Segment Reader or Segment Entry DB singleton");
 #endif
 
 		if (TransactionIdEquals(xid, TopTransactionStateData.transactionId))
 		{
 #ifdef WATCH_VISIBILITY_IN_ACTION
-			count += sprintf(&WatchCurrentTransactionBuffer[count]," is parent");
+			WatchBufferOffset += snprintf(&WatchCurrentTransactionBuffer[WatchBufferOffset],
+											MAX_WATCH_TRANSACTION_BUFFER-WatchBufferOffset,
+											" is parent");
 #endif
 			elog((Debug_print_full_dtm ? LOG : DEBUG5),"qExec Reader CheckSharedSnapshotForSubtransaction(xid = %u) = true -- TOP", xid);
 			return true;
@@ -659,22 +777,27 @@ TransactionIdIsCurrentTransactionId(TransactionId xid)
 		 */		
 		isCurrentTransactionId = false;		/* Assume. */
 #ifdef WATCH_VISIBILITY_IN_ACTION
-		count += sprintf(&WatchCurrentTransactionBuffer[count]," subcnt %d", 
-						 SharedLocalSnapshotSlot->total_subcnt);
+		WatchBufferOffset += snprintf(&WatchCurrentTransactionBuffer[WatchBufferOffset],
+										MAX_WATCH_TRANSACTION_BUFFER-WatchBufferOffset,
+										" subcnt %d", 
+										 SharedLocalSnapshotSlot->total_subcnt);
 #endif
 		isCurrentTransactionId = FindXidInXidBuffer(&subxbuf, xid, &cnt, &index);
 		if (isCurrentTransactionId)
 		{
 #ifdef WATCH_VISIBILITY_IN_ACTION
-			count += sprintf(&WatchCurrentTransactionBuffer[count],
-					 " subxid matched at page: %d, index: %d",
-					 cnt, index);
+			WatchBufferOffset += snprintf(&WatchCurrentTransactionBuffer[WatchBufferOffset],
+								 MAX_WATCH_TRANSACTION_BUFFER-WatchBufferOffset,
+								 " subxid matched at page: %d, index: %d",
+								 cnt, index);
 #endif
 		}
 		else
 		{
 #ifdef WATCH_VISIBILITY_IN_ACTION
-			count += sprintf(&WatchCurrentTransactionBuffer[count]," subxid did not match");
+			WatchBufferOffset += snprintf(&WatchCurrentTransactionBuffer[WatchBufferOffset],
+								MAX_WATCH_TRANSACTION_BUFFER-WatchBufferOffset,
+								" subxid did not match");
 #endif
 		}
 		elog((Debug_print_full_dtm ? LOG : DEBUG5),
@@ -689,47 +812,14 @@ TransactionIdIsCurrentTransactionId(TransactionId xid)
 	Assert(DistributedTransactionContext != DTX_CONTEXT_QE_ENTRY_DB_SINGLETON);
 
 #ifdef WATCH_VISIBILITY_IN_ACTION
-	count += sprintf(&WatchCurrentTransactionBuffer[count]," normal check");
+	WatchBufferOffset += snprintf(&WatchCurrentTransactionBuffer[WatchBufferOffset],
+						MAX_WATCH_TRANSACTION_BUFFER-WatchBufferOffset,
+						" normal check");
 #endif
 
-	/*
-	 * We will return true for the Xid of the current subtransaction, any of
-	 * its subcommitted children, any of its parents, or any of their
-	 * previously subcommitted children.  However, a transaction being aborted
-	 * is no longer "current", even though it may still have an entry on the
-	 * state stack.
-	 */
-	for (s = CurrentTransactionState; s != NULL; s = s->parent)
-	{
-		ListCell   *cell;
-
-		if (s->state == TRANS_ABORT)
-			continue;
-		if (!TransactionIdIsValid(s->transactionId))
-			continue;			/* it can't have any child XIDs either */
-		if (TransactionIdEquals(xid, s->transactionId))
-		{
-#ifdef WATCH_VISIBILITY_IN_ACTION
-			if (s == &TopTransactionStateData)
-				count += sprintf(&WatchCurrentTransactionBuffer[count]," is parent");
-			else
-				count += sprintf(&WatchCurrentTransactionBuffer[count]," is subtransaction");
-#endif
-			return true;
-		}
-		foreach(cell, s->childXids)
-		{
-			if (TransactionIdEquals(xid, lfirst_xid(cell)))
-				return true;
-#ifdef WATCH_VISIBILITY_IN_ACTION
-			count += sprintf(&WatchCurrentTransactionBuffer[count]," subxid %u did not match", lfirst_xid(cell));
-#endif
-		}
-	}
-
-	return false;
+	bool flag = TransactionIdIsCurrentTransactionIdInternal(xid);
+	return flag;
 }
-
 
 /*
  *	CommandCounterIncrement
@@ -1346,11 +1436,20 @@ AtSubCommit_childXids(void)
 	 * for efficiency. See GetAddedSubtransactionsFromTree().
 	 * parent->childXids, if not NULL, has xids that precede s->childXids.
 	 */
+
+#ifdef USE_ASSERT_CHECKING
+	if (s->childXids && list_length(s->childXids))
+	{
+		Assert(TransactionIdPrecedes(s->transactionId, llast_oid(s->childXids)));
+	}
+#endif
 	List *new_childXids = lappend_xid(s->childXids,
                                 s->transactionId);
 
 	if (s->parent->childXids != NIL)
 	{
+		Assert(TransactionIdPrecedes(linitial_oid(s->parent->childXids), llast_oid(new_childXids)));
+
 		new_childXids = list_concat(new_childXids,
 				  s->parent->childXids);
 
@@ -2826,6 +2925,9 @@ StartTransaction(void)
 	currentSubTransactionId = TopSubTransactionId;
 	currentCommandId = FirstCommandId;
 	currentSavepointTotal = 0;
+
+	fastNodeCount = 0;
+	previousFastLink = NULL;
 
 	/*
 	 * must initialize resource-management stuff first
@@ -6393,6 +6495,14 @@ PushTransaction(void)
 	s->prevXactReadOnly = XactReadOnly;
 	s->executorSaysXactDoesWrites = false;
 
+	fastNodeCount++;
+	if (fastNodeCount == NUM_NODES_TO_SKIP_FOR_FAST_SEARCH)
+	{
+		fastNodeCount = 0;
+		s->fastLink = previousFastLink;
+		previousFastLink = s;
+	}
+
 	CurrentTransactionState = s;
 
 	/*
@@ -6431,6 +6541,21 @@ PopTransaction(void)
 	/* Ditto for ResourceOwner links */
 	CurTransactionResourceOwner = s->parent->curTransactionOwner;
 	CurrentResourceOwner = s->parent->curTransactionOwner;
+
+	if (fastNodeCount)
+	{
+		fastNodeCount--;
+	}
+
+	/*
+	 * Deleting node where last fastLink is stored
+	 * hence retrive the fastLink to update in node to be added next
+	 */
+	if (previousFastLink == s)
+	{
+		fastNodeCount = NUM_NODES_TO_SKIP_FOR_FAST_SEARCH - 1;
+		previousFastLink = s->fastLink;
+	}
 
 	/* Free the old child structure */
 	if (s->name)
