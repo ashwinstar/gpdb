@@ -3023,124 +3023,138 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 		if (!(distributedBy->length == 1 && linitial(distributedBy) == NULL))
 		{
 			foreach(keys, distributedBy)
-		{
-			char	   *key = strVal(lfirst(keys));
-			bool		found = false;
-			ColumnDef  *column = NULL;
-			ListCell   *columns;
-
-			colindex = 0;
-
-			if (cxt->inhRelations)
 			{
-				/* try inherited tables */
-				ListCell   *inher;
+				char	   *key = strVal(lfirst(keys));
+				bool		found = false;
+				ColumnDef  *column = NULL;
+				ListCell   *columns;
 
-				foreach(inher, cxt->inhRelations)
+				colindex = 0;
+
+				if (cxt->inhRelations)
 				{
-					RangeVar   *inh = (RangeVar *) lfirst(inher);
-					Relation	rel;
-					int			count;
+					/* try inherited tables */
+					ListCell   *inher;
 
-					Assert(IsA(inh, RangeVar));
-					rel = heap_openrv(inh, AccessShareLock);
-					if (rel->rd_rel->relkind != RELKIND_RELATION)
-						ereport(ERROR,
-								(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-						   errmsg("inherited relation \"%s\" is not a table",
-								  inh->relname)));
-					for (count = 0; count < rel->rd_att->natts; count++)
+					foreach(inher, cxt->inhRelations)
 					{
-						Form_pg_attribute inhattr = rel->rd_att->attrs[count];
-						char	   *inhname = NameStr(inhattr->attname);
+						RangeVar   *inh = (RangeVar *) lfirst(inher);
+						Relation	rel;
+						int			count;
 
-						if (inhattr->attisdropped)
-							continue;
-						colindex++;
-						if (strcmp(key, inhname) == 0)
+						Assert(IsA(inh, RangeVar));
+						rel = heap_openrv(inh, AccessShareLock);
+						if (rel->rd_rel->relkind != RELKIND_RELATION)
+							ereport(ERROR,
+									(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+							   errmsg("inherited relation \"%s\" is not a table",
+									  inh->relname)));
+						for (count = 0; count < rel->rd_att->natts; count++)
 						{
-							found = true;
+							Form_pg_attribute inhattr = rel->rd_att->attrs[count];
+							char	   *inhname = NameStr(inhattr->attname);
 
+							if (inhattr->attisdropped)
+								continue;
+							colindex++;
+							if (strcmp(key, inhname) == 0)
+							{
+								found = true;
+
+								break;
+							}
+						}
+						heap_close(rel, NoLock);
+						if (found)
+							elog(DEBUG1, "DISTRIBUTED BY clause refers to columns of inherited table");
+
+						if (found)
+							break;
+					}
+				}
+
+				if (!found)
+				{
+					foreach(columns, cxt->columns)
+					{
+						column = (ColumnDef *) lfirst(columns);
+						Assert(IsA(column, ColumnDef));
+						colindex++;
+
+						if (strcmp(column->colname, key) == 0)
+						{
+							Oid typeOid = typenameTypeId(NULL, column->typname);
+
+							/*
+							 * To be a part of a distribution key, this type must
+							 * be supported for hashing internally in Greenplum
+							 * Database. We check if the base type is supported
+							 * for hashing or if it is an array type (we support
+							 * hashing on all array types).
+							 */
+							if (!isGreenplumDbHashable(typeOid))
+							{
+								ereport(ERROR,
+										(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
+										 errmsg("type \"%s\" can't be a part of a "
+												"distribution key",
+												format_type_be(typeOid))));
+							}
+
+							found = true;
 							break;
 						}
 					}
-					heap_close(rel, NoLock);
-					if (found)
-						elog(DEBUG1, "DISTRIBUTED BY clause refers to columns of inherited table");
-
-					if (found)
-						break;
 				}
-			}
 
-			if (!found)
-			{
-				foreach(columns, cxt->columns)
+				if (found)
 				{
-					column = (ColumnDef *) lfirst(columns);
-					Assert(IsA(column, ColumnDef));
-					colindex++;
-
-					if (strcmp(column->colname, key) == 0)
-					{
-						Oid typeOid = typenameTypeId(NULL, column->typname);
-
-						/*
-						 * To be a part of a distribution key, this type must
-						 * be supported for hashing internally in Greenplum
-						 * Database. We check if the base type is supported
-						 * for hashing or if it is an array type (we support
-						 * hashing on all array types).
-						 */
-						if (!isGreenplumDbHashable(typeOid))
-						{
-							ereport(ERROR,
-									(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
-									 errmsg("type \"%s\" can't be a part of a "
-											"distribution key",
-											format_type_be(typeOid))));
-						}
-
-						found = true;
-						break;
-					}
+					/* good, the columns exists */
 				}
-				}
-
-			if (found)
-			{
-				/* good, the columns exists */
-			}
 #if 0
-			else if (SystemAttributeByName(key, cxt->hasoids) != NULL)
-			{
-				/*
-				* column will be a system column in the new table, so
-				* accept it.
-				*/
-				found = true;
-			}
+				else if (SystemAttributeByName(key, cxt->hasoids) != NULL)
+				{
+					/*
+					* column will be a system column in the new table, so
+					* accept it.
+					*/
+					found = true;
+				}
 #endif
 
 
-			/*
-			* In the ALTER TABLE case, don't complain about index keys
-			* not created in the command; they may well exist already.
-			* DefineIndex will complain about them if not, and will also
-			* take care of marking them NOT NULL.
-			*/
-			if (!found && !cxt->isalter)
-				ereport(ERROR,
-						(errcode(ERRCODE_UNDEFINED_COLUMN),
-						 errmsg("column \"%s\" named in 'DISTRIBUTED BY' clause does not exist",
-								key),
-						 errOmitLocation(true)));
+				/*
+				* In the ALTER TABLE case, don't complain about index keys
+				* not created in the command; they may well exist already.
+				* DefineIndex will complain about them if not, and will also
+				* take care of marking them NOT NULL.
+				*/
+				if (!found && !cxt->isalter)
+					ereport(ERROR,
+							(errcode(ERRCODE_UNDEFINED_COLUMN),
+							 errmsg("column \"%s\" named in 'DISTRIBUTED BY' clause does not exist",
+									key),
+							 errOmitLocation(true)));
 
-			policy->attrs[policy->nattrs++] = colindex;
+				policy->attrs[policy->nattrs++] = colindex;
 
+			}
 
-			/* we should check for duplicate column usage */
-		}
+			/* MPP-14770: we should check for duplicate column usage */
+			foreach(keys, distributedBy)
+			{
+				char *key = strVal(lfirst(keys));
+
+				ListCell *lkeys = NULL;
+				for_each_cell (lkeys, keys->next)
+				{
+					char *lkey = strVal(lfirst(lkeys));
+					if (strcmp(key,lkey) == 0)
+						ereport(ERROR,
+								(errcode(ERRCODE_DUPLICATE_COLUMN),
+								 errmsg("duplicate column \"%s\" in DISTRIBUTED BY clause", key)));
+				}
+			}
 		}
 
 	}
