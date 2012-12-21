@@ -132,6 +132,7 @@ define tmpBLD_THIRDPARTY_LIBS_BASE
 	curl/7.21.7
 	emcconnect/1.1
 	json-c/0.6
+	gimli/1.1.54
 	krb5/1.6.2
 	libedit/3.0
 	libesmtp/1.0.4
