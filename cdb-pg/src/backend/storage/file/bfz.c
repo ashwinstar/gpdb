@@ -24,6 +24,8 @@ typedef pg_crc32 BFZ_CHECKSUM_TYPE;
  */
 #define BFZ_CHECKSUM_SECTOR_SIZE WORKFILE_SAFEWRITE_SIZE
 
+#define BFZ_MKTEMP_MASK  "XXXXXXXXXX"
+
 static const struct{
     const char*name[6];
     void(*init)(bfz_t*thiz);
@@ -254,7 +256,17 @@ bfz_create_internal(bfz_t * thiz, const char *filePrefix, int compress)
 	
 	snprintf(thiz->filename, MAXPGPATH, "%s/" PG_TEMP_FILES_DIR, DatabasePath);
 	mkdir(thiz->filename, 0777);
-	snprintf(thiz->filename, MAXPGPATH, "%s/" PG_TEMP_FILES_DIR "/%sXXXXXX", DatabasePath, filePrefix);
+
+	char tempfileprefix[MAXPGPATH];
+
+	int len = GetTempFilePrefix(tempfileprefix, MAXPGPATH, filePrefix);
+	insist_log(len <= MAXPGPATH - 1, "could not generate temporary file name");
+
+	snprintf(thiz->filename, MAXPGPATH, "%s/%s.%s",
+			DatabasePath,
+			tempfileprefix,
+			BFZ_MKTEMP_MASK);
+
 #ifdef WIN32
 	{
 		char	   *tempFileName = tempnam(thiz->filename, filePrefix);

@@ -239,6 +239,7 @@ static char *make_database_relative(const char *filename);
 static void AtProcExit_Files(int code, Datum arg);
 static void CleanupTempFiles(bool isProcExit);
 static void RemovePgTempFilesInDir(const char *tmpdirname);
+static bool HasTempFilePrefix(char * fileName);
 
 
 /*
@@ -944,6 +945,11 @@ OpenTemporaryFile(const char   *fileName,
     if (create)
         fileFlags |= O_TRUNC | O_CREAT;
 
+    char tempfileprefix[MAXPGPATH];
+
+    int len = GetTempFilePrefix(tempfileprefix, MAXPGPATH, fileName);
+    insist_log(len <= MAXPGPATH - 1, "could not generate temporary file name");
+
     if (makenameunique)
 	{
 		/*
@@ -951,10 +957,8 @@ OpenTemporaryFile(const char   *fileName,
 		 * database instance.
 		 */
 		snprintf(tempfilepath, sizeof(tempfilepath),
-				 "%s/%s_%s_%d_%04d.%ld",
-                 PG_TEMP_FILES_DIR,
-				 PG_TEMP_FILE_PREFIX,
-				 fileName,
+				 "%s_%d_%04d.%ld",
+				 tempfileprefix,
 				 MyProcPid,
                  extentseqnum,
                  tempFileCounter++);
@@ -962,11 +966,9 @@ OpenTemporaryFile(const char   *fileName,
 	else
 	{
         snprintf(tempfilepath, sizeof(tempfilepath),
-				 "%s/%s_%s.%04d",
-                 PG_TEMP_FILES_DIR,
-				 PG_TEMP_FILE_PREFIX,
-                 fileName,
-                 extentseqnum);
+				 "%s.%04d",
+				 tempfileprefix,
+				 extentseqnum);
 	}
 
 	file = FileNameOpenFile(tempfilepath, fileFlags, 0600);
@@ -1910,44 +1912,54 @@ RemovePgTempFilesInDir(const char *tmpdirname)
 		snprintf(rm_path, sizeof(rm_path), "%s/%s",
 				 tmpdirname, temp_de->d_name);
 
-		if (strncmp(temp_de->d_name,
-					PG_TEMP_FILE_PREFIX,
-					strlen(PG_TEMP_FILE_PREFIX)) == 0)
+		if (HasTempFilePrefix(temp_de->d_name))
+		{
 			unlink(rm_path);	/* note we ignore any error */
+		}
 		else
+		{
 			elog(LOG,
 				 "unexpected file found in temporary-files directory: \"%s\"",
 				 rm_path);
+		}
 	}
 
 	FreeDir(temp_dir);
 }
 
-size_t MakeTempFileName(char *buf, size_t buflen, char *relativepath)
+/*
+ * Generate the prefix for a new temp file name. This will be checked
+ * before cleaning up, to make sure we only delete what we created.
+ * Caller is responsible for allocating the input buffer large enough
+ * for the fileName and prefix.
+ * Returns needlen > buflen if buffer is not large enough to store prefix.
+ */
+size_t
+GetTempFilePrefix(char * buf, size_t buflen, const char * fileName)
 {
-	extern int Gp_segment;
-	extern int gp_session_id;
-	extern int gp_command_count;
-	extern int currentSliceId;
+	size_t needlen = strlen(PG_TEMP_FILES_DIR)
+			+ strlen(PG_TEMP_FILE_PREFIX)
+			+ strlen(fileName)
+			+ 2; /* enough for a slash and a _ */
 
-	size_t needlen = strlen(DatabasePath) 
-		+ strlen(PG_TEMP_FILES_DIR) 
-		+ strlen(relativepath)
-		+ 60; /* enough for two slash, four _%d, and eos */
-
-	if(buflen < needlen)
+	if (buflen < needlen)
 		return needlen;
-
-	snprintf(buf, buflen, "%s/%s/%s_%d_%d_%d_%d",
-			DatabasePath, 
+	
+	snprintf(buf, buflen, "%s/%s_%s",
 			PG_TEMP_FILES_DIR,
-			relativepath,
-			Gp_segment,
-			gp_session_id,
-			gp_command_count,
-			currentSliceId
-		);
+			PG_TEMP_FILE_PREFIX,
+			fileName);
 
 	return needlen;
 }
-	
+
+/*
+ * Check if a temporary file matches the expected prefix. This
+ * is done before deleting it as a sanity check.
+ */
+static bool HasTempFilePrefix(char * fileName)
+{
+	return (strncmp(fileName,
+						PG_TEMP_FILE_PREFIX,
+						strlen(PG_TEMP_FILE_PREFIX)) == 0);
+}
