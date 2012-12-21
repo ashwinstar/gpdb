@@ -4497,10 +4497,6 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_PartSplit:				/* Split */
 		{
 			AlterPartitionCmd	*pc    	= (AlterPartitionCmd *) cmd->def;
-			PgPartRule			*prule1	= NULL;
-			PgPartRule			*prule2	= NULL;
-			PgPartRule			*prule3	= NULL;
-			Relation			 target = NULL;
 
 			ATPartitionCheck(cmd->subtype, rel, false, recursing);
 
@@ -4510,6 +4506,12 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
  						 errmsg("SPLIT is not supported in utility mode")));
 			else if (Gp_role == GP_ROLE_DISPATCH)
 			{
+				PgPartRule			*prule1	= NULL;
+				PgPartRule			*prule2	= NULL;
+				PgPartRule			*prule3	= NULL;
+				PgPartRule			*prule_specified	= NULL;
+				Relation			 target = NULL;
+				
 				AlterPartitionId *pid = (AlterPartitionId *) pc->partid;
 				AlterPartitionCmd *cmd2;
 				Node *at;
@@ -4525,7 +4527,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 				 * 1) The usual permissions checks
 				 * 2) Not called on HASH
 				 * 3) AT () parameter falls into constraint specified
-				 * 4) INTO partitions don't exist
+				 * 4) INTO partitions don't exist except for the one being split
 				 */
 
 				/* We'll error out if it doesn't exist */
@@ -4926,6 +4928,51 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 
 					}
 				}
+				
+				/* MPP-18395 begs for a last minute check that we aren't about to
+				 * split into an existing partition.  The case that prompts the check
+				 * has to do with specifying an existing partition by name, but it
+				 * may (someday) be possible to specify one by rank or constraint,
+				 * so lets just refuse to use an existing partition that isn't the
+				 * one we're splitting.  (We're going to drop this one, so it's okay
+				 * recycle it.)
+				 *
+				 * Examples: 
+				 *    t is target part to split, 
+				 *    n, m are new parts,
+				 *    x, y are existing parts != t
+				 *
+				 * t -> t, n -- ok
+				 * t -> n, t -- ok
+				 * t -> n, m -- ok
+				 * t -> n, x -- no
+				 * t -> x, n -- no
+				 * t -> x, y -- no (unexpected)
+				 *
+				 * By the way, at this point
+				 *   prule1 refers to the part to split
+				 *   prule2 refers to the first INTO part
+				 *   prule3 refers to the seconde INTO part
+				 */
+				Insist( prule2 == NULL || prule3 == NULL );
+				
+				if ( prule2 != NULL )
+				    prule_specified = prule2;
+				else if ( prule3 != NULL )
+					prule_specified = prule3;
+				else
+					prule_specified = NULL;
+					
+				if ( prule_specified &&
+					 prule_specified->topRule->parruleid != prule1->topRule->parruleid 
+					 )
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_DUPLICATE_OBJECT),
+							 errmsg("cannot split into an existing partition"),
+							 errOmitLocation(true)));
+				}
+				
 				ATSimplePermissions(target, false);
 				heap_close(target, NoLock);
 			}

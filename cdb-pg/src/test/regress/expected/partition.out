@@ -9297,3 +9297,287 @@ explain select foo_p.b, foo_p.t from foo_p left outer join bar on foo_p.a = bar.
 drop table if exists foo_p;
 drop table if exists bar;
 -- MPP-18457, MPP-18415 end
+-- MPP-18359
+drop view if exists redundantly_named_part cascade;
+NOTICE:  view "redundantly_named_part" does not exist, skipping
+create view redundantly_named_part(tableid, partid, partname) as
+	with 
+		dups(paroid, partname) as 
+		(
+			select paroid, parname
+			from pg_partition_rule 
+			where parname is not null 
+			group by paroid, parname 
+			having count(*) > 1
+		),
+		parts(tableid, partid, paroid, partname) as
+		(
+			select p.parrelid, r.parchildrelid, r.paroid, r.parname
+			from pg_partition p, pg_partition_rule r
+			where not p.paristemplate and
+				p.oid = r.paroid
+		)
+	select p.tableid::regclass, p.partid::regclass, p.partname
+	from parts p, dups d
+	where 
+		p.paroid = d.paroid and
+		p.partname = d.partname;
+drop table if exists pnx;
+NOTICE:  table "pnx" does not exist, skipping
+create table pnx 
+    (x int , y text)
+    distributed randomly
+    partition by list (y)
+        ( 
+            partition a values ('x1', 'x2'),
+            partition c values ('x3', 'x4')
+        );
+NOTICE:  CREATE TABLE will create partition "pnx_1_prt_a" for table "pnx"
+NOTICE:  CREATE TABLE will create partition "pnx_1_prt_c" for table "pnx"
+insert into pnx values
+    (1,'x1'),
+    (2,'x2'),
+    (3,'x3'), 
+    (4,'x4');
+select tableoid::regclass, * 
+from pnx;
+  tableoid   | x | y  
+-------------+---+----
+ pnx_1_prt_a | 2 | x2
+ pnx_1_prt_c | 4 | x4
+ pnx_1_prt_a | 1 | x1
+ pnx_1_prt_c | 3 | x3
+(4 rows)
+
+alter table pnx
+    split partition a at ('x1')
+    into (partition b, partition c);
+ERROR:  cannot split into an existing partition
+select * 
+from redundantly_named_part;
+ tableid |   partid   | partname 
+---------+------------+----------
+ at      | at_1_prt_2 | 
+ at      | at_1_prt_3 | 
+(2 rows)
+
+select tableoid::regclass, * 
+from pnx;
+  tableoid   | x | y  
+-------------+---+----
+ pnx_1_prt_a | 2 | x2
+ pnx_1_prt_c | 4 | x4
+ pnx_1_prt_a | 1 | x1
+ pnx_1_prt_c | 3 | x3
+(4 rows)
+
+select tableoid::regclass, *
+from pnx
+where y = 'x1';
+  tableoid   | x | y  
+-------------+---+----
+ pnx_1_prt_a | 1 | x1
+(1 row)
+
+select tableoid::regclass, *
+from pnx
+where x = 1;
+  tableoid   | x | y  
+-------------+---+----
+ pnx_1_prt_a | 1 | x1
+(1 row)
+
+drop table if exists pxn;
+NOTICE:  table "pxn" does not exist, skipping
+create table pxn 
+    (x int , y text)
+    distributed randomly
+    partition by list (y)
+        ( 
+            partition a values ('x1', 'x2'),
+            partition c values ('x3', 'x4')
+        );
+NOTICE:  CREATE TABLE will create partition "pxn_1_prt_a" for table "pxn"
+NOTICE:  CREATE TABLE will create partition "pxn_1_prt_c" for table "pxn"
+insert into pxn values
+    (1,'x1'),
+    (2,'x2'),
+    (3,'x3'), 
+    (4,'x4');
+select tableoid::regclass, * 
+from pxn;
+  tableoid   | x | y  
+-------------+---+----
+ pxn_1_prt_a | 2 | x2
+ pxn_1_prt_c | 4 | x4
+ pxn_1_prt_a | 1 | x1
+ pxn_1_prt_c | 3 | x3
+(4 rows)
+
+alter table pxn
+    split partition a at ('x1')
+    into (partition c, partition b);
+ERROR:  cannot split into an existing partition
+select * 
+from redundantly_named_part;
+ tableid |   partid   | partname 
+---------+------------+----------
+ at      | at_1_prt_2 | 
+ at      | at_1_prt_3 | 
+(2 rows)
+
+select tableoid::regclass, * 
+from pxn;
+  tableoid   | x | y  
+-------------+---+----
+ pxn_1_prt_a | 1 | x1
+ pxn_1_prt_c | 3 | x3
+ pxn_1_prt_a | 2 | x2
+ pxn_1_prt_c | 4 | x4
+(4 rows)
+
+select tableoid::regclass, *
+from pxn
+where y = 'x2';
+  tableoid   | x | y  
+-------------+---+----
+ pxn_1_prt_a | 2 | x2
+(1 row)
+
+select tableoid::regclass, *
+from pxn
+where x = 2;
+  tableoid   | x | y  
+-------------+---+----
+ pxn_1_prt_a | 2 | x2
+(1 row)
+
+drop table if exists pxn;
+create table pxn 
+    (x int , y int)
+    distributed randomly
+    partition by range (y)
+        ( 
+            partition a start (0) end (10),
+            partition c start (11) end (20)
+        );
+NOTICE:  CREATE TABLE will create partition "pxn_1_prt_a" for table "pxn"
+NOTICE:  CREATE TABLE will create partition "pxn_1_prt_c" for table "pxn"
+insert into pxn values
+    (4,4),
+    (9,9),
+    (14,14), 
+    (19,19);
+select tableoid::regclass, * 
+from pxn;
+  tableoid   | x  | y  
+-------------+----+----
+ pxn_1_prt_a |  4 |  4
+ pxn_1_prt_c | 14 | 14
+ pxn_1_prt_a |  9 |  9
+ pxn_1_prt_c | 19 | 19
+(4 rows)
+
+alter table pxn
+    split partition a at (5)
+    into (partition b, partition c);
+ERROR:  cannot split into an existing partition
+select * 
+from redundantly_named_part;
+ tableid |   partid   | partname 
+---------+------------+----------
+ at      | at_1_prt_2 | 
+ at      | at_1_prt_3 | 
+(2 rows)
+
+select tableoid::regclass, * 
+from pxn;
+  tableoid   | x  | y  
+-------------+----+----
+ pxn_1_prt_a |  9 |  9
+ pxn_1_prt_c | 19 | 19
+ pxn_1_prt_a |  4 |  4
+ pxn_1_prt_c | 14 | 14
+(4 rows)
+
+select tableoid::regclass, *
+from pxn
+where y = 4;
+  tableoid   | x | y 
+-------------+---+---
+ pxn_1_prt_a | 4 | 4
+(1 row)
+
+select tableoid::regclass, *
+from pxn
+where x = 4;
+  tableoid   | x | y 
+-------------+---+---
+ pxn_1_prt_a | 4 | 4
+(1 row)
+
+drop table if exists pxn;
+create table pxn 
+    (x int , y int)
+    distributed randomly
+    partition by range (y)
+        ( 
+            partition a start (0) end (10),
+            partition c start (11) end (20)
+        );
+NOTICE:  CREATE TABLE will create partition "pxn_1_prt_a" for table "pxn"
+NOTICE:  CREATE TABLE will create partition "pxn_1_prt_c" for table "pxn"
+insert into pxn values
+    (4,4),
+    (9,9),
+    (14,14), 
+    (19,19);
+select tableoid::regclass, * 
+from pxn;
+  tableoid   | x  | y  
+-------------+----+----
+ pxn_1_prt_a |  4 |  4
+ pxn_1_prt_c | 14 | 14
+ pxn_1_prt_a |  9 |  9
+ pxn_1_prt_c | 19 | 19
+(4 rows)
+
+alter table pxn
+    split partition a at (5)
+    into (partition c, partition b);
+ERROR:  cannot split into an existing partition
+select * 
+from redundantly_named_part;
+ tableid |   partid   | partname 
+---------+------------+----------
+ at      | at_1_prt_2 | 
+ at      | at_1_prt_3 | 
+(2 rows)
+
+select tableoid::regclass, * 
+from pxn;
+  tableoid   | x  | y  
+-------------+----+----
+ pxn_1_prt_a |  9 |  9
+ pxn_1_prt_c | 19 | 19
+ pxn_1_prt_a |  4 |  4
+ pxn_1_prt_c | 14 | 14
+(4 rows)
+
+select tableoid::regclass, *
+from pxn
+where y = 9;
+  tableoid   | x | y 
+-------------+---+---
+ pxn_1_prt_a | 9 | 9
+(1 row)
+
+select tableoid::regclass, *
+from pxn
+where x = 9;
+  tableoid   | x | y 
+-------------+---+---
+ pxn_1_prt_a | 9 | 9
+(1 row)
+
+-- MPP-18359 end
