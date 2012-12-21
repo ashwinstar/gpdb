@@ -778,7 +778,6 @@ WriteEmptyXLOG(void)
 	XLogRecord *record;
 	pg_crc32	crc;
 	char		path[MAXPGPATH];
-	char 		newPath[MAXPGPATH];
 	int			fd;
 	int			nbytes;
 	FILE		*fp = NULL;
@@ -845,17 +844,17 @@ WriteEmptyXLOG(void)
                         buf[strlen(buf)-1]='\0';
                         pch = strtok(buf, " ");	/* The first part is DBID. Skip it */
                         pch = strtok(NULL, " ");
-                        sprintf(newPath,"%s/%s", pch, XLOGDIR);
+                        sprintf(path,"%s/%s", pch, XLOGDIR);
                 }
 	}
 	else
 	{
 		/* No flat file. Use the default pg_system filespace */
-		sprintf(newPath, "%s", XLOGDIR);
+		sprintf(path, "%s", XLOGDIR);
 	}
 
 	/* Write the first page */
-	XLogFilePath2(newPath, ControlFile.checkPointCopy.ThisTimeLineID,
+	XLogFilePath2(path, ControlFile.checkPointCopy.ThisTimeLineID,
 				 newXlogId, newXlogSeg);
 
 	unlink(path);
