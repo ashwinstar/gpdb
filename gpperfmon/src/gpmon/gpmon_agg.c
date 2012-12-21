@@ -914,6 +914,15 @@ static apr_uint32_t write_filerepinfo(agg_t* agg, char* nowstr)
 		apr_hash_this(hi, 0, 0, (void**) &valptr);
 		sp = (gpmon_filrep_holder_t*) valptr;
 
+		if (sp->elapsedTime_secs_primary <= 0)
+		{
+			/* this prevents NaN when dividing by elapsedTime_secs_primary - 
+			   elapsedTime_secs_primary should always be >0 when it comes from the 
+			   the backed, but we are writing more often than it is sent from the
+			   backend 
+			*/
+			continue;
+		}
 		snprintf(line, line_size, "%s|%u|%u|%s|%d|%s|%d|" // through mirror_port
 					  "%d|%d|%d|%d|%.2f|" // primary write syscall
 					  "%d|%d|%.2f|" // primary fsync syscall
