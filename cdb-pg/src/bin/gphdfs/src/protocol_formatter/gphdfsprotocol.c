@@ -293,7 +293,7 @@ gphdfsprotocol_import(PG_FUNCTION_ARGS)
 	{
 		int ret = 0;
 		if (myData != NULL && !myData->importDone)
-			ret = url_fclose(myData->importFile, true, "gphdfs protocol");
+			ret = url_fclose(myData->importFile, false, "gphdfs protocol");
 		PG_RETURN_INT32(ret);
 	}
 
