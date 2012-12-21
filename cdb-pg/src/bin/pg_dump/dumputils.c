@@ -1052,36 +1052,58 @@ escape_fmtopts_string(const char *src)
 	result[j] = '\0';
 	return result;
 }
+
 /*
- * tokenize an fmtopts string (for use with 'custom' formatters)
+ * Tokenize a fmtopts string (for use with 'custom' formatters)
  * i.e. convert it to: a = b, format.
+ * (e.g.:  formatter E'fixedwidth_in null E' ' preserve_blanks E'on')
  */
 char *
 custom_fmtopts_string(const char *src)
 {
 		int			len = src ? strlen(src) : 0;
-		int			count=0;
-		int 		last=0;
 		char	   *result = malloc(len * 2 + 1);
 		char	   *srcdup = src ? strdup(src) : NULL;
-		char	   *token = NULL;
+		char	   *srcdup_start = srcdup;
+		char       *find_res = NULL;
+		int        last = 0;
 
 		if(!src || !srcdup || !result)
 			return NULL;
 
 		memset(result,0,sizeof(result));
 
-		token = strtok(srcdup, " ");
-		while (token) {
-		   count++;
-		   if(strlen(token)>2 && token[0] == 'E' && token[1] == '\'') /* remove E' */
-			   token[0] = ' ';
-		   strncat(result,token,len * 2 - strlen(result));
-		   if(count%2) /* add = */
-			   strncat(result," = ",len * 2 - strlen(result));
-		   else /* add , */
-			   strncat(result,",",len * 2 - strlen(result));
-		   token = strtok(NULL, " ");
+		while (srcdup)
+		{
+			/* find first word (a) */
+			find_res = strchr(srcdup, ' ');
+			if (!find_res)
+				break;
+			strncat(result, srcdup, (find_res - srcdup));
+			/* skip space */
+			srcdup = find_res + 1;
+			/* remove E if E' */
+			if((strlen(srcdup) > 2) && (srcdup[0] == 'E') && (srcdup[1] == '\''))
+				srcdup++;
+			/* add " = " */
+			strncat(result, " = ", 3);
+			/* find second word (b) until second '
+			   find \' combinations and ignore them */
+			find_res = strchr(srcdup + 1, '\'');
+			while (find_res && (*(find_res - 1) == '\\') /* ignore \' */)
+			{
+				find_res = strchr(find_res + 1, '\'');
+			}
+			if (!find_res)
+				break;
+			strncat(result, srcdup, (find_res - srcdup + 1));
+			srcdup = find_res + 1;
+			/* skip space and add ',' */
+			if (srcdup && srcdup[0] == ' ')
+			{
+				srcdup++;
+				strncat(result, ",", 1);
+			}
 		}
 
 		/* fix string - remove trailing ',' or '=' */
@@ -1089,6 +1111,6 @@ custom_fmtopts_string(const char *src)
 		if(result[last] == ',' || result[last] == '=')
 			result[last]='\0';
 
-		free(srcdup);
+		free(srcdup_start);
 		return result;
 }
