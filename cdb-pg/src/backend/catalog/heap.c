@@ -3371,6 +3371,7 @@ setNewRelfilenodeCommon(Relation relation, Oid newrelfilenode)
 	 * during bootstrap, so okay to use heap_update always.
 	 */
 	pg_class = heap_open(RelationRelationId, RowExclusiveLock);
+	gp_relation_node = heap_open(GpRelationNodeRelationId, RowExclusiveLock);
 
 	tuple = SearchSysCacheCopy(RELOID,
 							   ObjectIdGetDatum(RelationGetRelid(relation)),
@@ -3445,14 +3446,6 @@ setNewRelfilenodeCommon(Relation relation, Oid newrelfilenode)
 	rd_rel->relpages = 0;		/* it's empty until further notice */
 	rd_rel->reltuples = 0;
 
-	simple_heap_update(pg_class, &tuple->t_self, tuple);
-
-	CatalogUpdateIndexes(pg_class, tuple);
-
-	heap_freetuple(tuple);
-
-	heap_close(pg_class, RowExclusiveLock);
-
 	/*
 	 * If the swapping relation is an index of gp_relation_node,
 	 * updating itself is bogus; if gp_relation_node has old indexlist,
@@ -3462,7 +3455,6 @@ setNewRelfilenodeCommon(Relation relation, Oid newrelfilenode)
 	 */
 	is_gp_relation_node_index = relation->rd_index &&
 								relation->rd_index->indrelid == GpRelationNodeRelationId;
-	gp_relation_node = heap_open(GpRelationNodeRelationId, RowExclusiveLock);
 	InsertGpRelationNodeTuple(
 						gp_relation_node,
 						relation->rd_id,
@@ -3472,6 +3464,15 @@ setNewRelfilenodeCommon(Relation relation, Oid newrelfilenode)
 						/* updateIndex */ !is_gp_relation_node_index,
 						&relation->rd_segfile0_relationnodeinfo.persistentTid,
 						relation->rd_segfile0_relationnodeinfo.persistentSerialNum);
+
+	simple_heap_update(pg_class, &tuple->t_self, tuple);
+
+	CatalogUpdateIndexes(pg_class, tuple);
+
+	heap_freetuple(tuple);
+
+	heap_close(pg_class, RowExclusiveLock);
+
 	heap_close(gp_relation_node, RowExclusiveLock);
 
 	/* Make sure the relfilenode change is visible */
