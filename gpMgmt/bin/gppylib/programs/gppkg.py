@@ -16,7 +16,7 @@ try:
     from gppylib.gpversion import GpVersion
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.mainUtils import addMasterDirectoryOptionForSingleClusterProgram, addStandardLoggingAndHelpOptions, ExceptionNoStackTraceNeeded
-    from gppylib.operations.package import MigratePackages, InstallPackage, UninstallPackage, QueryGppkg, BuildGppkg, UpdatePackage, CleanGppkg, Gppkg, GPPKG_EXTENSION, GPPKG_ARCHIVE_PATH
+    from gppylib.operations.package import MigratePackages, InstallPackage, UninstallPackage, QueryPackage, BuildGppkg, UpdatePackage, CleanGppkg, Gppkg, GPPKG_EXTENSION, GPPKG_ARCHIVE_PATH
     from gppylib.operations.unix import ListFilesByPattern
 
     import yaml
@@ -28,12 +28,6 @@ logger = gplog.get_default_logger()
 class GpPkgProgram:
     """ This is the CLI entry point to package management code.  """
     def __init__(self, options, args):
-        # TODO: AK: There are no validation checks here. 
-        # e.g. no options and no args should error out, but that's currently not the case.
-
-        # TODO: AK: There should be no need to hold onto self.__args
-        # Whatever's needed from args should be pulled out here to adhere with convention
-        self.__args = args
         self.master_datadir = options.masterDataDirectory 
 
         # TODO: AK: Program logic should not be dictating master, standby, and segment information
@@ -48,9 +42,31 @@ class GpPkgProgram:
         self.remove = options.remove
         self.update = options.update
         self.clean = options.clean
+        self.migrate = options.migrate
 
-        self.migrate = None
-        if options.migrate:
+        # only one of the following may be provided: --install, --remove, --update, --query, --build, --clean, --migrate
+        count = sum([1 for opt in ['install', 'remove', 'update', 'query', 'build', 'clean', 'migrate'] if getattr(self, opt)])
+        if count != 1:
+            raise ExceptionNoStackTraceNeeded('Exactly one of the following must be provided: --install, --remove, -update, --query, --clean, --migrate')
+
+        if self.query:
+            # gppkg -q can be supplemented with --info, --list, --all
+            count = sum([1 for opt in ['info', 'list', 'all'] if options.__dict__[opt]])
+            if count > 1:
+                raise ExceptionNoStackTraceNeeded('For --query, at most one of the following can be provided: --info, --list, --all') 
+            # for all query options other than --all, a package path must be provided
+            if not options.all and len(args) != 1:
+                raise ExceptionNoStackTraceNeeded('A package must be specified for -q, -q --info, and -q --list.')
+
+            if options.info:
+                self.query = (QueryPackage.INFO, args[0])
+            elif options.list:
+                self.query = (QueryPackage.LIST, args[0])
+            elif options.all:
+                self.query = (QueryPackage.ALL, None)
+            else:
+                self.query = (None, args[0])   
+        elif self.migrate:
             if len(args) != 2:
                 raise ExceptionNoStackTraceNeeded('Invalid syntax, expecting "gppkg --migrate <from_gphome> <to_gphome>".')
             self.migrate = (args[0], args[1])
@@ -72,20 +88,21 @@ class GpPkgProgram:
 
         addMasterDirectoryOptionForSingleClusterProgram(add_to)
 
-        add_to.add_option('-c', '--clean', help='clean the cluster of the given gppkg', metavar='<package>', action='store_true')
+        # TODO: AK: Eventually, these options may need to be flexible enough to accept mutiple packages
+        # in one invocation. If so, the structure of this parser may need to change.
         add_to.add_option('-i', '--install', help='install the given gppkg', metavar='<package>')
         add_to.add_option('-u', '--update', help='update the given gppkg', metavar='<package>')
         add_to.add_option('-r', '--remove', help='remove the given gppkg', metavar='<name>-<version>')
+        add_to.add_option('-q', '--query', help='query the gppkg database or a particular gppkg', action='store_true')
         add_to.add_option('-b', '--build', help='build a gppkg', metavar='<directory>')
-        add_to.add_option('-q', '--query', help='query the given gppkg', metavar='<package>')
+        add_to.add_option('-c', '--clean', help='clean the cluster of the given gppkg', action='store_true')
         add_to.add_option('--migrate', help='migrate gppkgs from a separate $GPHOME', metavar='<from_gphome> <to_gphome>', action='store_true', default=False)
 
         add_to = OptionGroup(parser, 'Query Options')
         parser.add_option_group(add_to)
-        add_to.add_option('-I', '--info', help='print information about the gppkg including name, version, description')
-        add_to.add_option('-R', '--requires', help='print the dependencies of the gppkg')
-        add_to.add_option('-l', '--list', help='print all the files present in the gppkg')
-        add_to.add_option('--all', help='print all the gppkgs installed by gppkg')
+        add_to.add_option('--info', action='store_true', help='print information about the gppkg including name, version, description')
+        add_to.add_option('--list', action='store_true', help='print all the files present in the gppkg')
+        add_to.add_option('--all', action='store_true', help='print all the gppkgs installed by gppkg')
 
         return parser
             
@@ -190,24 +207,8 @@ class GpPkgProgram:
             pkg = Gppkg.from_package_path(self.install)
             InstallPackage(pkg, self.master_host, self.standby_host, self.segment_host_list).run() 
         elif self.query:
-            try:
-                if len(self.__args) == 0:
-                    if self.query not in ['all', '--all']:
-                        pkg = Gppkg.from_package_path(self.query)
-                    else:
-                        pkg = None
-                else:
-                    pkg = Gppkg.from_package_path(self.__args[0])
-            except KeyError, ex:                    
-                # TODO: AK: This is not an appropriate place or approach to catching this exception. 
-                print 'Missing key %s' % str(ex)
-
-            if self.query in ['I', 'info', 'R', 'requires', 'l', 'list', '--info', '--list', '--requires', '-I', '-R', '-l', 'all', '--all']:
-                QueryGppkg(pkg, self.query).run()
-            elif os.path.isfile(self.query):
-                QueryGppkg(pkg, self.query).run()
-            else:
-                logger.error('Invalid option %s' % self.query)
+            query_type, package_path = self.query
+            QueryPackage(query_type, package_path).run()
         elif self.remove:
             if self.remove.count('-') != 1:
                 raise ExceptionNoStackTraceNeeded('Please specify the correct <name>-<version>.')
