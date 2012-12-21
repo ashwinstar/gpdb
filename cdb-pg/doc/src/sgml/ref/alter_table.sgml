@@ -132,6 +132,7 @@ where storage_directive is:
 
 Where column_reference_storage_directive is:
 COLUMN column_name ENCODING ( storage_directive [, ... ] ), ...  |
+column_name data_type ENCODING ( storage_directive [, ... ] ), ...  |
 DEFAULT COLUMN ENCODING ( storage_directive [, ... ] )
 
 </synopsis>
@@ -463,6 +464,14 @@ DEFAULT COLUMN ENCODING ( storage_directive [, ... ] )
    is possible to add several columns and/or alter the type of several
    columns in a single command.  This is particularly useful with large
    tables, since only one pass over the table need be made.
+  </para>
+
+  <para>
+   Note: If you add a partition to a table that 
+   has subpartition encodings, the new partition 
+   inherits the storage directives for the subpartitions. 
+   For more information, search for "Precedence of Compression Settings" 
+   in the Greenplum Database Administrator Guide.
   </para>
 
   <para>

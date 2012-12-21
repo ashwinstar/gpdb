@@ -26,11 +26,8 @@ PostgreSQL documentation
   <synopsis>
 ALTER TYPE <replaceable class="PARAMETER">name</replaceable> 
    SET DEFAULT ENCODING ( storage_directive )
-   OWNER TO <replaceable class="PARAMETER">new_owner</replaceable> 
-
-ALTER TYPE <replaceable class="PARAMETER">name</replaceable> 
-   SET DEFAULT ENCODING ( storage_directive )
-   SET SCHEMA <replaceable class="PARAMETER">new_schema</replaceable>
+     OWNER TO <replaceable class="PARAMETER">new_owner</replaceable> 
+   | SET SCHEMA <replaceable class="PARAMETER">new_schema</replaceable>
   </synopsis>
  </refsynopsisdiv>
 

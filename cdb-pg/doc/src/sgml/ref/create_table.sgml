@@ -134,6 +134,7 @@ and subpartition_element is:
      END ([datatype] 'end_value') [INCLUSIVE | EXCLUSIVE]
      [ EVERY ([datatype] [number | INTERVAL] 'interval_value') ]
 [ WITH ( partition_storage_parameter=value [, ... ] ) ]
+[column_reference_storage_directive [, ...] ]
 [ TABLESPACE tablespace ]
 
 where storage_directive is:
@@ -142,7 +143,9 @@ where storage_directive is:
  | BLOCKSIZE={8192-2097152}
 
 Where column_reference_storage_directive is:
+
 COLUMN column_name ENCODING ( storage_directive [, ... ] ), ...  |
+column_name data_type ENCODING ( storage_directive [, ... ] ), ...  |
 DEFAULT COLUMN ENCODING ( storage_directive [, ... ] )
 </synopsis>
 
@@ -232,9 +235,19 @@ DEFAULT COLUMN ENCODING ( storage_directive [, ... ] )
 
    a column constraint is only a notational convenience for use when the
 
-   constraint only affects one column.
+   constraint only affects one column.    For more information, search for 
+   
+   "Column-level Compression" in the Greenplum Database Administrator Guide.
 
   </para>
+
+  <para>
+
+   Note: You cannot create a table with both column encodings
+ 
+   and compression parameters in a WITH clause.
+
+  </para?
 
  </refsect1>
 
