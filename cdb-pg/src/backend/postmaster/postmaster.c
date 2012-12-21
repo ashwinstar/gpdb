@@ -2895,6 +2895,7 @@ processTransitionRequest_beginPostmasterReset(void)
  	int counterToReturn;
 
  	PrimaryMirrorModeTransitionArguments args = primaryMirrorGetArgumentsFromLocalMemory();
+ 	bool resetRequired = false;
 
 	if (args.mode == PMModeMaster)
 	{
@@ -2931,8 +2932,8 @@ processTransitionRequest_beginPostmasterReset(void)
 		else
 		{
 			elog(LOG, "postmaster reset request received from primary");
-			SendPostmasterSignal(PMSIGNAL_POSTMASTER_RESET_BY_PEER);
 			counterToReturn = pmResetCounter + 1;
+			resetRequired = true;
 		}
 
 		/* report success along with target reset counter value */
@@ -2940,6 +2941,11 @@ processTransitionRequest_beginPostmasterReset(void)
 	}
 
 	sendPrimaryMirrorTransitionResult(statusBuf);
+
+	if (resetRequired)
+	{
+		SendPostmasterSignal(PMSIGNAL_POSTMASTER_RESET_BY_PEER);
+	}
 }
 
 static void
