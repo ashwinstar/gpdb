@@ -1603,7 +1603,7 @@ deallocate ccddlcheck;
 -----------------------------------------------------------------------
 -- RLE_TYPE is not supported 
 create table ccddl (i int) with(appendonly = true, compresstype = rle_type);
-ERROR:  unknown compresstype "rle_type"
+ERROR:  rle_type cannot be used with Append Only relations row orientation
 -----------------------------------------------------------------------
 -- MPP-14381 cdbfast regression: Dropping and adding a column to AO partitioned tables fails with SIGSEGV
 -- Expect: success

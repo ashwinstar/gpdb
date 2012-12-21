@@ -63,7 +63,7 @@ add_attribute_encoding_entry(Oid relid, AttrNumber attnum, Datum attoptions)
  * Intercept requests for "none", since that is not a real compression
  * implementation but a fake one to indicate no compression desired.
  */
-static PGFunction *
+PGFunction *
 get_funcs_for_compression(char *compresstype)
 {
 	PGFunction *func = NULL;

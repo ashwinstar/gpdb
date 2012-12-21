@@ -164,5 +164,6 @@ test: xml
 test: auth_constraint
 test: column_compression
 test: role
+test: rle
 
 

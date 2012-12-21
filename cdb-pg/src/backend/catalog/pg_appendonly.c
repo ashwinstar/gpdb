@@ -54,7 +54,7 @@ InsertAppendOnlyEntry(Oid relid,
 	/* these are hardcoded for now. in the future should get passed in */
 	const int	majorversion = 1;
 	const int	minorversion = 0;
-	
+
     /*
      * Open and lock the pg_appendonly catalog.
      */
@@ -100,7 +100,6 @@ InsertAppendOnlyEntry(Oid relid,
 		Assert(compresslevel == 0);
 		nulls[Anum_pg_appendonly_compresstype - 1] = true;
 	}
-	
 	
 	/*
 	 * form the tuple and insert it

@@ -53,7 +53,7 @@ typedef struct AOCSInsertDescData
 	int32 compLevel;
 	int32 blocksz;
 
-	struct DatumStream **ds;
+	struct DatumStreamWrite **ds;
 
 	AppendOnlyBlockDirectory blockDirectory;
 } AOCSInsertDescData;
@@ -84,7 +84,7 @@ typedef struct AOCSScanDescData
 	int32 blocksz;
 
 	struct AOCSFileSegInfo **seginfo;
-	struct DatumStream **ds;
+	struct DatumStreamRead **ds;
 	bool *proj;
 
 	/* synthetic system attributes */
@@ -125,9 +125,6 @@ typedef struct AOCSFetchDescData
 	char			*segmentFileName;
 	int				segmentFileNameMaxLen;
 	char            *basepath;
-
-	AppendOnlyStorageAttributes storageAttributes;
-	int32 blockSize;
 
 	AppendOnlyBlockDirectory	blockDirectory;
 
