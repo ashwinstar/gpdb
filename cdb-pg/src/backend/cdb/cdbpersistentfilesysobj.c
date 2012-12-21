@@ -4205,6 +4205,40 @@ static void PersistentFileSysObj_UpdateTupleMarkBufPoolRelationForScanIncrementa
 								flushToXLog);
 }
 
+static void PersistentFileSysObj_UpdateTupleScanIncrementalAndResetFlag(
+	PersistentFileSysObjData 		*fileSysObjData,
+
+	PersistentFileSysObjSharedData 	*fileSysObjSharedData,
+
+	HeapTuple					tuple,
+
+	ItemPointer 				persistentTid,
+
+	int64						persistentSerialNum,
+
+	bool						flushToXLog)
+{
+	Datum newValues[Natts_gp_persistent_relation_node];
+	bool replaces[Natts_gp_persistent_relation_node];
+
+	MemSet(newValues, 0, Natts_gp_persistent_relation_node * sizeof(Datum));
+	MemSet(replaces, false, Natts_gp_persistent_relation_node * sizeof(bool));
+
+	replaces[Anum_gp_persistent_relation_node_mirror_data_synchronization_state - 1] = true;
+	newValues[Anum_gp_persistent_relation_node_mirror_data_synchronization_state - 1] = Int16GetDatum(MirroredRelDataSynchronizationState_BufferPoolScanIncremental);
+
+	replaces[Anum_gp_persistent_relation_node_mirror_bufpool_marked_for_scan_incremental_resync - 1] = true;
+	newValues[Anum_gp_persistent_relation_node_mirror_bufpool_marked_for_scan_incremental_resync - 1] = BoolGetDatum(false);
+
+	PersistentFileSysObj_ReplaceTuple(
+								PersistentFsObjType_RelationFile,
+								persistentTid,
+								tuple,
+								newValues,
+								replaces,
+								flushToXLog);
+}
+
 static void PersistentFileSysObj_UpdateTuplePageIncremental(
 	PersistentFileSysObjData 		*fileSysObjData,
 
@@ -5571,21 +5605,12 @@ void PersistentFileSysObj_MarkSpecialScanIncremental(void)
 
 			tupleCopy = PersistentStore_GetScanTupleCopy(&storeScan);
 
-			PersistentFileSysObj_UpdateTupleRelDataSynchronizationState(
+			PersistentFileSysObj_UpdateTupleScanIncrementalAndResetFlag(
 													fileSysObjData,
 													fileSysObjSharedData,
 													tupleCopy,
 													&persistentTid,
 													persistentSerialNum,
-													MirroredRelDataSynchronizationState_BufferPoolScanIncremental,
-													/* flushToXLog */ false);
-			PersistentFileSysObj_UpdateTupleMarkBufPoolRelationForScanIncrementalResync(
-													fileSysObjData,
-													fileSysObjSharedData,
-													tupleCopy,
-													&persistentTid,
-													persistentSerialNum,
-													/* newMirrorBufpoolMarkedForScanIncrementalResync */ false,
 													/* flushToXLog */ false);
 
 			heap_freetuple(tupleCopy);
