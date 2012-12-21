@@ -60,6 +60,7 @@ typedef struct {
 	StringInfoData one_val;
 	StringInfoData one_field;
 	int            lineno;
+	bool		   convert; 	/* true - perform conversion on column value. false - don't */
 } format_t;
 
 static void 
@@ -70,6 +71,7 @@ init_format_t(format_t** data, int ncolumns, FunctionCallInfo fcinfo)
 	(*data)->values  = palloc(sizeof(Datum) * ncolumns);
 	(*data)->nulls   = palloc(sizeof(bool) * ncolumns);
 	(*data)->lineno  = 1;
+	(*data)->convert = false;
 	initStringInfo( &((*data)->one_val) );
 	initStringInfo( &((*data)->one_field) );
 	
@@ -77,6 +79,14 @@ init_format_t(format_t** data, int ncolumns, FunctionCallInfo fcinfo)
 	
 }
 
+/*
+ * extract_field
+ *
+ * extract a field value from a character string 'data_cursor'. If we
+ * preserve blanks, then the entire field_total_length is extracted.
+ * Otherwise, we extract all bytes except the trailing blanks. The field
+ * value is then stored inside 'output'.
+ */
 static void
 extract_field(char *data_cursor, int field_total_length, bool preserve_blanks, StringInfo output)
 {
@@ -98,9 +108,9 @@ extract_field(char *data_cursor, int field_total_length, bool preserve_blanks, S
 		char *tail = data_cursor + field_total_length - 1;
 		actual_length = 0;
 		
-		while ( tail != data_cursor)
+		while (tail != data_cursor)
 		{
-			if ( *tail != ' ' )
+			if (*tail != ' ')
 			{
 				actual_length = tail - data_cursor + 1;
 				break;
@@ -114,6 +124,7 @@ extract_field(char *data_cursor, int field_total_length, bool preserve_blanks, S
 		}
 	}
 	
+	/* store the extracted field value */
 	appendBinaryStringInfo(output, data_cursor, actual_length);
 }
 
@@ -131,7 +142,14 @@ reset_format_in_config(FormatConfig *format_config)
 	format_config->fields_tot_size = 0;
 }
 
-
+/*
+ * load_format_config
+ *
+ * parse the user specified fixed width keywords. Currently supported
+ * keywords are: 'preserve_blanks', 'line_delim' and 'null'. any other
+ * unrecognized keyword is treated as a column name (and later on gets
+ * verified as a valid column).
+ */
 static void
 load_format_config(FormatConfig *format_config, FunctionCallInfo fcinfo)
 {
@@ -142,11 +160,10 @@ load_format_config(FormatConfig *format_config, FunctionCallInfo fcinfo)
 	
 	reset_format_in_config(format_config);
 	
-	for ( i=1; i<=args_num; i++)
+	for (i = 1; i <= args_num; i++)
 	{
 		key = FORMATTER_GET_NTH_ARG_KEY(fcinfo, i);
 		val = FORMATTER_GET_NTH_ARG_VAL(fcinfo, i);
-		
 		
 		if ( strcasecmp("preserve_blanks", key) == 0)
 		{
@@ -173,6 +190,54 @@ load_format_config(FormatConfig *format_config, FunctionCallInfo fcinfo)
 		}		
 	}
 }
+
+/*
+ * encoding_check_str
+ *
+ * for a given string 'str' of length 'len', check if performing
+ * an encoding conversion will modify the original string or not
+ * and return the answer. The input string remains *unmodified*.
+ * While at it, the encoding converter also verifies that the
+ * input string is valid in the clinet (external table) encoding.
+ */
+static bool
+encoding_check_str(FunctionCallInfo fcinfo, char *str, int len, bool is_import)
+{
+	char	*cvt;
+
+	FORMATTER_ENCODE_STRING(fcinfo, str, len, cvt, is_import);
+
+	if (cvt != str)
+	{
+		pfree(cvt);
+		return true;
+	}
+
+	return false;
+}
+
+/*
+ * encoding_encode_strinfo
+ *
+ * convert a given stringinfo 'strinfo' to the appropriate (pre-defined)
+ * encoding (encoding will only be done if really needed).
+ */
+static void
+encoding_encode_strinfo(FunctionCallInfo fcinfo, StringInfo strinfo, bool is_import)
+{
+	char	*cvt;
+
+	FORMATTER_ENCODE_STRING(fcinfo, strinfo->data, strinfo->len, cvt, is_import);
+
+	if (cvt != strinfo->data)
+	{
+		/* transfer converted data back to strinfo */
+		resetStringInfo(strinfo);
+		appendBinaryStringInfo(strinfo, cvt, strlen(cvt));
+		pfree(cvt);
+	}
+}
+
 
 static char*
 make_null_val_with_blanks(char *value, int field_size)
@@ -202,7 +267,8 @@ make_null_val_with_blanks(char *value, int field_size)
  * make_val_with_blanks
  *
  * Pad one string value with blanks, so the size will corespond to the fixedwidth 
- * required by the format
+ * required by the format. Make sure to encode the string into external table
+ * encoding before writing it out (if conversion is needed).
  *
  * Arguments:
  *  value           - the field value in string format 
@@ -214,21 +280,19 @@ make_null_val_with_blanks(char *value, int field_size)
  *  value
  */
 static char*
-make_val_with_blanks(char *value, int field_size, StringInfo buf)
+make_val_with_blanks(FunctionCallInfo fcinfo, char *value, int field_size, StringInfo buf)
 {
-	int   sz;
+	int   	sz;
 	
-	if (NULL != value )
+	if (value)
 	{
 		sz = strlen(value);
 		
-		if ( sz > field_size)
-		{
+		if (sz > field_size)
 			ereport(ERROR,
 					(errcode(ERRCODE_STRING_DATA_LENGTH_MISMATCH),
 					 errmsg("The size of the value cannot be bigger than the field size value: %s, size: %d, field_size %d",
 							value, sz, field_size)));			
-		} 
 		
 		appendBinaryStringInfo(buf, value, sz);
 		appendStringInfoFill(buf, field_size - sz, ' ');
@@ -238,6 +302,42 @@ make_val_with_blanks(char *value, int field_size, StringInfo buf)
 		appendStringInfoFill(buf, field_size, ' ');
 	}
 	
+	/* assert */
+	if(buf->len != field_size)
+		ereport(ERROR,
+				(errcode(ERRCODE_GP_INTERNAL_ERROR),
+				 errmsg("Internal error in fixed width formatter. size mismatch in field export")));
+
+	/*
+	 * convert value from server encoding to external table encoding. Since
+	 * it is possible that the encoded string will vary in size from the
+	 * original string we must re-adjust if necessary
+	 */
+	encoding_encode_strinfo(fcinfo, buf, false /* export */);
+
+	if(buf->len != field_size)
+	{
+		/* encoded string width was changed. fix it */
+		if(buf->len < field_size)
+		{
+			/* pad missing bytes with blanks */
+			appendStringInfoFill(buf, field_size - buf->len, ' ');
+		}
+		else
+		{
+			/* truncate extra bytes */
+			if (buf->data[field_size - 1] != ' ') /* oh oh... we are truncating user data. don't allow */
+				ereport(ERROR,
+						(errcode(ERRCODE_STRING_DATA_LENGTH_MISMATCH),
+						 errmsg("The size of the value after conversion to external table encoding became bigger than the field size value: %s, size: %d, field_size %d",
+								value, sz, field_size),
+						 errhint("Set the width of this column to a larger value")));
+
+
+			truncateStringInfo(buf, field_size);
+		}
+	}
+
 	return buf->data;
 }
 
@@ -475,6 +575,7 @@ get_actual_line_size(FormatConfig *format_in_config, char *line_start, int cur_s
 	return row_size;
 }
 
+
 Datum 
 fixedwidth_out(PG_FUNCTION_ARGS)
 {
@@ -504,8 +605,6 @@ fixedwidth_out(PG_FUNCTION_ARGS)
 	tupdesc = FORMATTER_GET_TUPDESC(fcinfo);
 	get_tuple_info(tupdesc, &ncolumns, &myData, &data, fcinfo, &format_out_config);
 	
-	
-	
 	/* =======================================================================
 	 *                            MAIN FORMATTING CODE
 	 * ======================================================================= */
@@ -523,12 +622,12 @@ fixedwidth_out(PG_FUNCTION_ARGS)
 		
 		if ( isnull )
 		{
-			mapped_val_with_blanks = make_val_with_blanks(format_out_config.null_value, field_size, &(myData->one_field));
+			mapped_val_with_blanks = make_val_with_blanks(fcinfo, format_out_config.null_value, field_size, &(myData->one_field));
 		}
 		else 
 		{
 			mapped_val = OutputFunctionCall(&format_out_config.conv_functions[idx], value);
-			mapped_val_with_blanks = make_val_with_blanks(mapped_val, field_size, &(myData->one_field));
+			mapped_val_with_blanks = make_val_with_blanks(fcinfo, mapped_val, field_size, &(myData->one_field));
 		}
 
 		memcpy(&data[datlen], mapped_val_with_blanks, field_size);
@@ -561,12 +660,14 @@ fixedwidth_in(PG_FUNCTION_ARGS)
 	int                 ncolumns = 0;
 	int			  		data_cur;
 	int                 data_len;
-	bool                saw_eof;	
+	bool                saw_eof;
+	bool				eof_is_lf;
 	ListCell           *curIdx; 
 	ListCell           *curSize;
 	ListCell           *cur_null_with_blanks = NULL;	
 	int		            remaining;
 	int                 field_size;
+	int   				row_size;
 	char               *nullval;
 	int			        idx;
 	char               *null_val_with_blanks;
@@ -599,7 +700,9 @@ fixedwidth_in(PG_FUNCTION_ARGS)
 	data_len = FORMATTER_GET_DATALEN(fcinfo); 
 	data_cur = FORMATTER_GET_DATACURSOR(fcinfo);
 	saw_eof  = FORMATTER_GET_SAW_EOF(fcinfo);
-		
+
+	eof_is_lf = (format_in_config.line_delimiter[0] == '\n' ? true : false);
+
 	/* =======================================================================
 	 *                            MAIN FORMATTING CODE
 	 * ======================================================================= */	
@@ -622,9 +725,9 @@ fixedwidth_in(PG_FUNCTION_ARGS)
 		 * myData->lineno represents the line number in the datafile, when the file was opened
 		 * with a conventional editor, so we increase the lineno only when the delimiter is LF
 		 */
-		if ( strcmp(format_in_config.line_delimiter, "\n") == 0 )
+		if (eof_is_lf)
 			myData->lineno++;	
-		int   row_size = get_actual_line_size(&format_in_config, data_buf + data_cur, data_cur, data_len, fcinfo);
+		row_size = get_actual_line_size(&format_in_config, data_buf + data_cur, data_cur, data_len, fcinfo);
 
 		FORMATTER_SET_BAD_ROW_DATA(fcinfo, data_buf + data_cur, row_size);
 		FORMATTER_SET_BYTE_NUMBER(fcinfo, row_size);
@@ -635,14 +738,31 @@ fixedwidth_in(PG_FUNCTION_ARGS)
 		 * This line is not finish. Next buffer will bring the remaining of the line.
 		 * So the line number shpuld not grow.
 		 */
-		if ( strcmp(format_in_config.line_delimiter, "\n") == 0 )
+		if (eof_is_lf)
 			myData->lineno--;			
 		
 		MemoryContextSwitchTo(oldcontext);
 		FORMATTER_RETURN_NOTIFICATION(fcinfo, FMT_NEED_MORE_DATA);				
 	}
 	
-		
+	/*
+	 * Encoding of client data to server encoding.
+	 *
+	 * Ideally we would run a conversion over a line of data and be done.
+	 * However, this may change the byte offsets and mess up with the fixed
+	 * width of the input data.
+	 *
+	 * As we want to avoid encoding conversion when necessary (for performance)
+	 * We first run a test on a whole line and see if it passes input encoding
+	 * validation. if not, an error is emitted. if yes, we make a note whether
+	 * the input string was actually modified or not and take note of it in the
+	 * convert boolean. In most cases 'convert' will remain false and we're done.
+	 * In cases where it is true we postpone the actual conversion of values to
+	 * a later stage (per attribute) in order to keep the formatter clean.
+	 */
+	myData->convert = encoding_check_str(fcinfo, data_buf + data_cur, row_size, true);
+
+
 	if (format_in_config.null_value != NULL)
 		cur_null_with_blanks = list_head(format_in_config.fldNullsWithBlanks);
 	
@@ -661,7 +781,7 @@ fixedwidth_in(PG_FUNCTION_ARGS)
 			 * in function  get_actual_line_size which is called above.
 			 */
 			
-			if (  saw_eof && (remaining > 1) )
+			if (saw_eof && (remaining > 1))
 			{
 				data_cur += remaining;
 				FORMATTER_SET_DATACURSOR(fcinfo, data_cur);
@@ -670,7 +790,7 @@ fixedwidth_in(PG_FUNCTION_ARGS)
 						 errmsg("Last line in the file contains an incomplete tuple")));
 				
 			}
-			else if ( saw_eof && (1 == remaining) )
+			else if (saw_eof && (remaining == 1))
 			{
 				/* we are in a case of no line delimiter, but the end of the file contains one EOL */
 				data_cur += remaining;
@@ -685,7 +805,7 @@ fixedwidth_in(PG_FUNCTION_ARGS)
 				 * This line is not finish. Next buffer will bring the remaining of the line.
 				 * So the line number shpuld not grow.
 				 */
-				if ( strcmp(format_in_config.line_delimiter, "\n") == 0 )
+				if (eof_is_lf)
 					myData->lineno--;			
 				
 				MemoryContextSwitchTo(oldcontext);
@@ -698,22 +818,25 @@ fixedwidth_in(PG_FUNCTION_ARGS)
 		
 		idx  = lfirst_int(curIdx) - 1;
 		
-		if ( 0 == format_in_config.preserve_blanks )
-		/*
-		 * trailing blanks are removed from the field value
-		 */
+		if (format_in_config.preserve_blanks == 0)
 		{
+			/* extract field value while ignoring blanks */
 			extract_field(data_buf + data_cur, field_size, false, &(myData->one_val));
+
 			/*
 			 * there are two (2) cases when we set value to null:
 			 * a. there is a null value defined in the formatter arguments, and this value was found in the field
 			 * b. there is no null value defined and the field contained only blanks
 			 */ 
 			if ( !( (nullval != NULL) && (strcmp(myData->one_val.data, nullval) == 0) )  &&
-				 /* we are not in case 1 */
-				 !( (nullval == NULL) && (strcmp(myData->one_val.data, "\0") == 0) ) )
-				 /* and also not in case 2 */
+				 /* we are not in case a */
+				 !( (nullval == NULL) && (myData->one_val.data[0] == '\0') ) )
+				 /* and also not in case b */
 			{			
+				/* perform encoding conversion on field value if needed */
+				if(myData->convert)
+					encoding_encode_strinfo(fcinfo, &(myData->one_val), true);
+
 				myData->values[idx] = InputFunctionCall(&format_in_config.conv_functions[idx],
 											  myData->one_val.data,
 											  format_in_config.typioparams[idx],
@@ -722,25 +845,25 @@ fixedwidth_in(PG_FUNCTION_ARGS)
 			}
 		}
 		else 
-		/*
-		 * trailing blanks are are kept in the field value
-		 */			
 		{
 			if (nullval == NULL || cur_null_with_blanks == NULL)
-			{
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("A null_value was not defined. When preserve_blanks is on, a null_value \
 								 must be defined in the formatter arguments string")));
-			}
 			
+			/* extract field value while treating blanks as data */
 			extract_field(data_buf + data_cur, field_size, true, &(myData->one_val));
-			
+
 			null_val_with_blanks = strVal(lfirst(cur_null_with_blanks));
 			cur_null_with_blanks = lnext(cur_null_with_blanks);
 			
 			if (strcmp(myData->one_val.data, null_val_with_blanks) != 0)
 			{
+				/* perform encoding conversion on field value if needed */
+				if(myData->convert)
+					encoding_encode_strinfo(fcinfo, &(myData->one_val), true);
+
 				myData->values[idx] = InputFunctionCall(&format_in_config.conv_functions[idx],
 													  myData->one_val.data,
 													  format_in_config.typioparams[idx],
@@ -755,11 +878,11 @@ fixedwidth_in(PG_FUNCTION_ARGS)
 	 * go over the line delimiter
 	 */
 	remaining = data_len - data_cur;
-	if ( remaining > 1 )
+	if (remaining > 1)
 	{
 		data_cur += format_in_config.line_delimiter_length;
 	}
-	else if ( 1 == remaining )
+	else if (remaining == 1)
 	{
 		data_cur += 1;
 	}
@@ -771,11 +894,7 @@ fixedwidth_in(PG_FUNCTION_ARGS)
 	/* ======================================================================= */
 	
 	FORMATTER_SET_DATACURSOR(fcinfo, data_cur);
-
 	tuple = heap_form_tuple(tupdesc, myData->values, myData->nulls);
-
-	/* hack... pass tuple here. don't free prev tuple - the executor does it  */
-	((FormatterData*) fcinfo->context)->fmt_tuple = tuple;
-	
+	FORMATTER_SET_TUPLE(fcinfo, tuple);
 	FORMATTER_RETURN_TUPLE(tuple);
 }
