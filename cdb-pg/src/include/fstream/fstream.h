@@ -33,11 +33,15 @@ struct fstream_filename_and_offset{
 // If read_whole_lines, then size must be at least the value of -m (blocksize). */
 int fstream_read(fstream_t* fs, void* buffer, int size,
 				 struct fstream_filename_and_offset* fo,
-				 const int read_whole_lines);
+				 const int read_whole_lines,
+				 const char *line_delim_str,
+				 const int line_delim_length);
 int fstream_write(fstream_t *fs,
 				  void *buf,
 				  int size,
-				  const int write_whole_lines);
+				  const int write_whole_lines,
+				  const char *line_delim_str,
+				  const int line_delim_length);
 int fstream_eof(fstream_t* fs);
 int64_t fstream_get_compressed_size(fstream_t* fs);
 int64_t fstream_get_compressed_position(fstream_t* fs);

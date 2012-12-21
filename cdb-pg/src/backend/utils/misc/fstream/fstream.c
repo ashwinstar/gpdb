@@ -48,6 +48,52 @@ struct fstream_t
 };
 
 /*
+ * Returns a pointer to the end of the last delimiter occurrence,
+ * or the start pointer if delimiter doesn't appear.
+ *
+ * delimiter_length MUST be > 0
+ */
+static char *find_last_eol_delim (const char *start, const int size,
+								  const char *delimiter, const int delimiter_length)
+{
+	char* p;
+
+	if (size <= delimiter_length)
+		return (char*)start - 1;
+
+	for (p = (char*)start + size - delimiter_length; start <= p; p--)
+	{
+		if (memcmp(p, delimiter, delimiter_length) == 0)
+		{
+			return (char*)p + delimiter_length - 1;
+		}
+	}
+	return (char*)start - 1;
+}
+
+/*
+ * Returns a pointer to the end of the first delimiter occurrence,
+ * or the end pointer if delimiter doesn't appear.
+ *
+ * delimiter_length MUST be > 0
+ */
+static char *find_first_eol_delim (char *start, char *end,
+								   const char *delimiter, const int delimiter_length)
+{
+	char *search_limit = (char*)end - delimiter_length;
+	if (end - start <= delimiter_length)
+		return end;
+
+	for (; start <= search_limit; start++)
+	{
+		if (memcmp(start, delimiter, delimiter_length) == 0)
+			return (char*)start + delimiter_length - 1;
+	}
+
+	return end;
+}
+
+/*
  * glob_and_copy
  *
  * Given a pattern, glob it and populate pglob with the results that match it.
@@ -609,7 +655,9 @@ int fstream_read(fstream_t *fs,
 				 void *dest,
 				 int size,
 				 struct fstream_filename_and_offset *fo,
-				 const int read_whole_lines)
+				 const int read_whole_lines,
+				 const char *line_delim_str,
+				 const int line_delim_length)
 {
 	int buffer_capacity = fs->options.bufsize;
 	static char err_buf[FILE_ERROR_SZ] = {0};
@@ -660,10 +708,20 @@ int fstream_read(fstream_t *fs,
 			}
 			else
 			{
-				/* text header */
-				for (; p < q && *p != '\n'; p++)
-					;
-				p = (p < q ? p + 1 : 0);
+				if (line_delim_length > 0)
+				{
+					/* text header with defined EOL */
+					p = find_first_eol_delim (p, q, line_delim_str, line_delim_length);
+
+				}
+				else
+				{
+					/* text header with \n as delimiter (by default) */
+					for (; p < q && *p != '\n'; p++)
+						;
+				}
+
+				p = (p < q) ? p + 1 : 0;
 				fs->line_number++;
 			}
 
@@ -766,11 +824,20 @@ int fstream_read(fstream_t *fs,
 			else
 			{
 				/*
-				 * TEXT: go fast, scan for \n for record boundary
-				 * find the last \n from the back
+				 * TEXT: go fast, scan for end of line delimiter (\n by default) for
+				 * record boundary.
+				 * find the last end of line delimiter from the back
 				 */
-				for (p = (char*)dest + size; (char*)dest <= --p && *p != '\n';)
-					;
+				if (line_delim_length > 0)
+				{
+					p = find_last_eol_delim((char*)dest, size, line_delim_str, line_delim_length);
+				}
+				else
+				{
+					for (p = (char*)dest + size; (char*)dest <= --p && *p != '\n';)
+						;
+				}
+
 				p = (char*)dest <= p ? p + 1 : 0;
 				fs->line_number = 0;
 			}
@@ -846,7 +913,9 @@ int fstream_read(fstream_t *fs,
 int fstream_write(fstream_t *fs,
 				  void *buf,
 				  int size,
-				  const int write_whole_lines)
+				  const int write_whole_lines,
+				  const char* line_delim_str,
+				  const int line_delim_length)
 {
 	int byteswritten = 0;
 	
@@ -862,17 +931,24 @@ int fstream_write(fstream_t *fs,
 	 */	
 	if (write_whole_lines)
 	{
-		char* last_lf;
+		char* last_delim;
 
-		/*
-		 * scan for \n for record boundary
-		 * find the last \n from the back
-		 */
-		for (last_lf = (char*)buf + size; (char*)buf <= --last_lf && *last_lf != '\n';)
-			;
-		last_lf = (char*)buf <= last_lf ? last_lf + 1 : 0;
-	 	
-		if (last_lf == 0)
+	   /*
+		* scan for EOL Delimiter (\n by default) for record boundary
+		* find the last EOL Delimiter from the back
+		*/
+		if (line_delim_length > 0)
+		{
+			last_delim = find_last_eol_delim(buf, size, line_delim_str, line_delim_length);
+		}
+		else
+		{
+			for (last_delim = (char*)buf + size; (char*)buf <= --last_delim && *last_delim != '\n';)
+				;
+		}
+		last_delim = (char*)buf <= last_delim ? last_delim + 1 : 0;
+
+		if (last_delim == 0)
 		{
 			fs->ferror = "no complete data row found for writing";
 			return -1;
@@ -881,7 +957,7 @@ int fstream_write(fstream_t *fs,
 		/* TODO: need to do this more carefully for CSV, like in the read case */
 		
 		/* write data to destination file */
-		byteswritten = (int)gfile_write(&fs->fd, (char*) buf, last_lf - (char *)buf);
+		byteswritten = (int)gfile_write(&fs->fd, (char*) buf, last_delim - (char *)buf);
 		
 		/* caller should move leftover data to start of buffer */
 	}
