@@ -307,7 +307,8 @@ generate_union_plan(SetOperationStmt *op, PlannerInfo *root,
 		optype = choose_setop_type(planlist);
 		adjust_setop_arguments(planlist, optype);
 	}
-	else if ( Gp_role == GP_ROLE_UTILITY ) /* MPP-2928 */
+	else if (Gp_role == GP_ROLE_UTILITY ||
+			 Gp_role == GP_ROLE_EXECUTE) /* MPP-2928 */
 	{
 		optype = PSETOP_SEQUENTIAL_QD;
 	}
