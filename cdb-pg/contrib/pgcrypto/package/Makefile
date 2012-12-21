@@ -8,7 +8,7 @@ OS=$(word 1,$(subst _, ,$(BLD_ARCH)))
 ARCH=$(shell uname -p)
 
 PGCRYPTO_DIR=`cd .. && pwd`
-PGCRYPTO_VER=1.0
+PGCRYPTO_VER=1.1
 PGCRYPTO_REL=1
 PGCRYPTO_RPM_FLAGS="--define 'pgcrypto_dir $(PGCRYPTO_DIR)' --define 'pgcrypto_ver $(PGCRYPTO_VER)' --define 'pgcrypto_rel $(PGCRYPTO_REL)'"
 PGCRYPTO_RPM=pgcrypto-$(PGCRYPTO_VER)-$(PGCRYPTO_REL).$(ARCH).rpm
