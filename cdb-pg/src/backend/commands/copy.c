@@ -1236,12 +1236,13 @@ DoCopy(const CopyStmt *stmt, const char *queryString)
 	elog(DEBUG1,"DoCopy starting");
 	if (stmt->relation)
 	{
+		LOCKMODE lockmode = (is_from ? RowExclusiveLock : AccessShareLock);
+
 		Assert(!stmt->query);
 		cstate->queryDesc = NULL;
 
 		/* Open and lock the relation, using the appropriate lock type. */
-		cstate->rel = heap_openrv(stmt->relation, NoLock);
-			LockRelation(cstate->rel, (is_from ? RowExclusiveLock : AccessShareLock));
+		cstate->rel = heap_openrv(stmt->relation, lockmode);
 
 		/* save relation oid for auto-stats call later */
 		relationOid = RelationGetRelid(cstate->rel);
