@@ -91,10 +91,10 @@ _bt_doinsert(Relation rel, IndexTuple itup,
 	/* we need an insertion scan key to do our search, so build one */
 	itup_scankey = _bt_mkscankey(rel, itup);
 	
+top:
 	// -------- MirroredLock ----------
 	MIRROREDLOCK_BUFMGR_LOCK;
 	
-top:
 	/* find the first page containing this key */
 	stack = _bt_search(rel, natts, itup_scankey, false, &buf, BT_WRITE);
 
@@ -138,6 +138,12 @@ top:
 		{
 			/* Have to wait for the other guy ... */
 			_bt_relbuf(rel, buf);
+			/*
+			 * We have to unlock it to resume interrupts.  In case we wait for
+			 * the lock in XactLockTableWait and a cancellation is requested,
+			 * we should be able to respond it.
+			 */
+			MIRROREDLOCK_BUFMGR_UNLOCK;
 			XactLockTableWait(xwait);
 			/* start over... */
 			_bt_freestack(stack);
