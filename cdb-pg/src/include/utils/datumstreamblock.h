@@ -826,7 +826,7 @@ extern void DatumStreamBlockRead_CheckDenseGetInvariant(
 #endif
 
 /* Stream access method */
-inline static int DatumStreamBlockRead_Get(DatumStreamBlockRead *dsr, Datum *datum, bool *null)
+inline static void DatumStreamBlockRead_Get(DatumStreamBlockRead *dsr, Datum *datum, bool *null)
 {
 	// PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG builds...
 #ifdef USE_ASSERT_CHECKING
@@ -859,7 +859,7 @@ inline static int DatumStreamBlockRead_Get(DatumStreamBlockRead *dsr, Datum *dat
 #endif
 
 		*null = true;
-		return 0;
+		return;
 	}
 	else
 		*null = false;
@@ -1013,8 +1013,6 @@ inline static int DatumStreamBlockRead_Get(DatumStreamBlockRead *dsr, Datum *dat
 #endif
 		
 	}
-
-	return 0;
 }
 
 inline static int DatumStreamBlockRead_AdvanceOrig(DatumStreamBlockRead *dsr)

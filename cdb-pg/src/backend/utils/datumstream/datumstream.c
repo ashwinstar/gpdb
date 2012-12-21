@@ -155,14 +155,14 @@ datumstreamwrite_context_callback(void *arg)
 	return 0;
 }
 
-int datumstreamread_getlarge(DatumStreamRead *acc, Datum *datum, bool *null)
+void datumstreamread_getlarge(DatumStreamRead *acc, Datum *datum, bool *null)
 {
 	switch (acc->largeObjectState)
 	{
 	case DatumStreamLargeObjectState_HaveAoContent:
 		ereport(ERROR,
 				(errmsg("Advance not called on large datum stream object")));
-		return 0;	// Never gets here.
+		return;
 		
 	case DatumStreamLargeObjectState_PositionAdvanced:
 		acc->largeObjectState = DatumStreamLargeObjectState_Consumed;
@@ -198,24 +198,25 @@ int datumstreamread_getlarge(DatumStreamRead *acc, Datum *datum, bool *null)
 
 			*datum = PointerGetDatum(acc->buffer_beginp);
 			*null = false;
-			return len;
+			return;
 		}
 
 	case DatumStreamLargeObjectState_Exhausted:
 		ereport(ERROR,
 				(errmsg("Get called after large datum stream object already consumed")));
-		return 0;	// Never gets here.
+		return;
 		
 	default:
 		ereport(FATAL,
 				(errmsg("Unexpected large datum stream state %d", 
 			 			acc->largeObjectState)));
-		return 0;	// Never reaches here.
+		return;
 	}
 }
 
 int datumstreamread_advancelarge(DatumStreamRead *acc)
 {
+	acc->blockRead.nth++;
 	switch (acc->largeObjectState)
 	{
 	case DatumStreamLargeObjectState_HaveAoContent:
