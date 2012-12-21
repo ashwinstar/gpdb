@@ -1594,10 +1594,21 @@ validateColumnStorageEncodingClauses(List *stenc, CreateStmt *stmt)
 			ce = hash_search(ht, colname, HASH_ENTER, &found);
 
 			/*
-			 * XXX: might be that we have very long column names. Shouldn't that
-			 * have been taken care of already?
+			 * The user specified a duplicate column name. We check duplicate
+			 * column names VERY late (under MergeAttributes(), which is called
+			 * by DefineRelation(). For the specific case here, it is safe to
+			 * call out that this is a duplicate. We don't need to delay until
+			 * we look at inheritance.
 			 */
-			Insist(found == false);
+			if (found)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_DUPLICATE_COLUMN),
+						 errmsg("column \"%s\" duplicated",
+								colname),
+						 errOmitLocation(true)));
+				
+			}
 			ce->count = 0;
 		}
 	}
