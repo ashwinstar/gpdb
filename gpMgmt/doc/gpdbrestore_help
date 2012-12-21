@@ -13,7 +13,8 @@ gpdbrestore { -t <timestamp_key> [-L]
               | -R <hostname>:<path_to_dumpset> 
               | -s <database_name> } 
      [-T <schema>.<table> [,...]] [-e] [-G] [-B <parallel_processes>] 
-     [-d <master_data_directory>] [-a] [-q] [-l <logfile_directory>] [-v]
+     [-d <master_data_directory>] [-a] [-q] [-l <logfile_directory>] 
+     [-v] [-ddboost]
 
 gpdbrestore -? 
 
@@ -83,6 +84,9 @@ OPTIONS
  Looks for dump files in the segment data directories on the 
  Greenplum Database array of hosts in db_dumps/YYYYMMDD.
 
+ If --ddboost is specified, the system looks for dump 
+ files on the DD Boost host. 
+
 
 -B <parallel_processes>
 
@@ -96,6 +100,11 @@ OPTIONS
 
  Optional. The master host data directory. If not specified, the 
  value set for $MASTER_DATA_DIRECTORY will be used.
+
+--ddboost
+ Use Data Domain DD Boost for this restore, if the --ddboost 
+ option was passed when the data was dumped. Before make sure 
+ the one-time DD Boost credential setup is completed.
 
 
 -e (drop target database before restore)
