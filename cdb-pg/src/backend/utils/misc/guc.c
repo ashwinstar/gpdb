@@ -3092,7 +3092,7 @@ static struct config_bool ConfigureNamesBool[] =
 	/* for pljava */
 	{
 		{"pljava_release_lingering_savepoints", PGC_SUSET, CUSTOM_OPTIONS,
-			gettext_noop("If true, lingering savepoints will be releaseed on function exit; if false, they will be rolled back"),
+			gettext_noop("If true, lingering savepoints will be released on function exit; if false, they will be rolled back"),
 			NULL,
 		 GUC_GPDB_ADDOPT | GUC_NOT_IN_SAMPLE | GUC_SUPERUSER_ONLY
 		},
