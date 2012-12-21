@@ -2096,6 +2096,7 @@ typedef struct DeclareCursorStmt
 	char	   *portalname;		/* name of the portal (cursor) */
 	int			options;		/* bitmask of options (see above) */
 	Node	   *query;			/* the raw SELECT query */
+	bool		is_simply_updatable;
 } DeclareCursorStmt;
 
 /* ----------------------

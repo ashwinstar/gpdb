@@ -195,6 +195,7 @@ static Node *transformSetOperationTree(ParseState *pstate, SelectStmt *stmt);
 static Query *transformUpdateStmt(ParseState *pstate, UpdateStmt *stmt);
 static Query *transformDeclareCursorStmt(ParseState *pstate,
 						   DeclareCursorStmt *stmt);
+static bool isSimplyUpdatableQuery(Query *query);
 static Query *transformPrepareStmt(ParseState *pstate, PrepareStmt *stmt);
 static Query *transformExecuteStmt(ParseState *pstate, ExecuteStmt *stmt);
 static Query *transformCreateExternalStmt(ParseState *pstate, CreateExternalStmt *stmt,
@@ -11620,11 +11621,43 @@ transformDeclareCursorStmt(ParseState *pstate, DeclareCursorStmt *stmt)
 	/* We won't need the raw querytree any more */
 	stmt->query = NULL;
 
+	stmt->is_simply_updatable = isSimplyUpdatableQuery(result);
+
 	result->utilityStmt = (Node *) stmt;
 
 	return result;
 }
 
+/*
+ * isSimplyUpdatableQuery -
+ *  determine whether a query is a simply updatable scan of a relation
+ *
+ * A query is simply updatable if, and only if, it...
+ * - has no window clauses
+ * - has no sort clauses
+ * - has no grouping, having, distinct clauses, or simple aggregates
+ * - references only one range table (i.e. no joins, self-joins)
+ *   - this range table must itself be updatable
+ *	
+ */
+static bool
+isSimplyUpdatableQuery(Query *query)
+{
+	Assert(query->commandType == CMD_SELECT);
+	if (query->windowClause == NIL &&
+		query->sortClause == NIL &&
+		query->groupClause == NIL &&
+		query->havingQual == NULL &&
+		!query->hasAggs &&
+		query->distinctClause == NIL &&
+		list_length(query->rtable) == 1)
+	{
+		RangeTblEntry *rte = (RangeTblEntry *)linitial(query->rtable);
+		if (isSimplyUpdatableRelation(rte->relid))
+			return true;
+	}
+	return false;
+}
 
 static Query *
 transformPrepareStmt(ParseState *pstate, PrepareStmt *stmt)

@@ -1477,6 +1477,72 @@ getLockingClause(ParseState *pstate, char *refname)
 }
 
 /*
+ * isSimplyUpdatableRelation
+ *
+ * The oid must reference a normal, heap relation. This disallows
+ * AO, AO/CO, external tables, views, etc.
+ */
+bool
+isSimplyUpdatableRelation(Oid relid)
+{
+	if (OidIsValid(relid))
+	{
+		HeapTuple tuple = SearchSysCache(RELOID,
+			                             ObjectIdGetDatum(relid),
+            			                 0, 0, 0);
+		if (!HeapTupleIsValid(tuple))
+			elog(ERROR, "cache lookup failed for relation %u", relid);
+		Form_pg_class rel = (Form_pg_class) GETSTRUCT(tuple);
+		bool is_heap_tuple = rel->relkind == RELKIND_RELATION &&
+							 rel->relstorage == RELSTORAGE_HEAP;
+		ReleaseSysCache(tuple);
+		return is_heap_tuple;
+	}
+	return false;
+}
+
+/*
+ * extractSimplyUpdatableRTEIndex
+ *  given a range table associated with a simply updatable range table,
+ *    return the desired RangeTblEntry
+ *
+ * NOTE: The range table *MUST* belong to a simply updatable query.
+ * 
+ * The semantics of a simply updatable query demand a range table consisting
+ * of exactly one logical table. Thus, for the simple case of a one-element
+ * range table, we quickly return the index for the lone RTE.
+ * However, we must also cope with inheritance, where an RTE requesting 
+ * inheritance may have been expanded out into its child relations. In this
+ * case, we seek to return the parent RTE.
+ */
+Index
+extractSimplyUpdatableRTEIndex(List *rtable) 
+{
+	Assert(list_length(rtable) > 0);
+	if (list_length(rtable) == 1)
+		return 1;
+
+	/* 
+	 * This better be an inheritance case. 
+	 * Find the RTE with inh = true. 
+	 * Furthermore, we Insist that no other RTEs have inh = true. 
+	 */
+	Index 			temp, ret = 0;
+	ListCell        *lc;
+	foreach_with_count (lc, rtable, temp)
+	{
+		RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc);
+		if (rte->inh)
+		{
+			Insist(ret == 0);	/* to be simply updatable, there cannot be more than 1 parent table */
+			ret = temp + 1;		/* the temp counter is zero indexed */
+		}
+	}
+	Insist(ret != 0);
+	return ret;
+}
+
+/*
  * Add the given RTE as a top-level entry in the pstate's join list
  * and/or name space lists.  (We assume caller has checked for any
  * namespace conflicts.)

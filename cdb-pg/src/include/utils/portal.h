@@ -196,6 +196,7 @@ typedef struct PortalData
 	
 	/* MPP: is this portal a CURSOR, or protocol level portal? */	
 	bool		is_cursor;
+	bool		is_simply_updatable;
 } PortalData;
 
 extern PortalStatus PortalGetStatus(PortalData *p);

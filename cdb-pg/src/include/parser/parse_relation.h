@@ -82,6 +82,8 @@ extern RangeTblEntry *addRangeTableEntryForCTE(ParseState *pstate,
 											   Index levelsup,
 											   RangeVar *rangeVar,
 											   bool inFromCl);
+extern bool isSimplyUpdatableRelation(Oid relid);
+extern Index extractSimplyUpdatableRTEIndex(List *rtable);
 extern void addRTEtoQuery(ParseState *pstate, RangeTblEntry *rte,
 			  bool addToJoinList,
 			  bool addToRelNameSpace, bool addToVarNameSpace);

@@ -3332,6 +3332,7 @@ expression_tree_mutator(Node *node,
 		case T_Const:
 		case T_Param:
 		case T_CoerceToDomainValue:
+		case T_CurrentOfExpr:
 		case T_CaseTestExpr:
 		case T_SetToDefault:
 		case T_RangeTblRef:

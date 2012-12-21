@@ -1210,6 +1210,14 @@ adjust_appendrel_attrs_mutator(Node *node, AppendRelInfoContext *ctx)
 		}
 		return (Node *) var;
 	}
+	if (IsA(node, CurrentOfExpr))
+	{
+		CurrentOfExpr *cexpr = (CurrentOfExpr *) copyObject(node);
+
+		if (cexpr->cvarno == appinfo->parent_relid)
+			cexpr->cvarno = appinfo->child_relid;
+		return (Node *) cexpr;
+	}
 	if (IsA(node, RangeTblRef))
 	{
 		RangeTblRef *rtr = (RangeTblRef *) copyObject(node);

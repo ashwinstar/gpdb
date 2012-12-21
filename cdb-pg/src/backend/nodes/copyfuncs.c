@@ -1551,6 +1551,23 @@ _copySetToDefault(SetToDefault *from)
 }
 
 /*
+ * _copyCurrentOfExpr
+ */
+static CurrentOfExpr *
+_copyCurrentOfExpr(CurrentOfExpr *from)
+{
+	CurrentOfExpr *newnode = makeNode(CurrentOfExpr);
+
+	COPY_STRING_FIELD(cursor_name);
+	COPY_SCALAR_FIELD(cvarno);
+	COPY_SCALAR_FIELD(gp_segment_id);
+	COPY_BINARY_FIELD(ctid, sizeof(ItemPointerData));
+	COPY_SCALAR_FIELD(tableoid);
+
+	return newnode;
+}
+
+/*
  * _copyTargetEntry
  */
 static TargetEntry *
@@ -2526,6 +2543,7 @@ _copyDeclareCursorStmt(DeclareCursorStmt *from)
 	COPY_STRING_FIELD(portalname);
 	COPY_SCALAR_FIELD(options);
 	COPY_NODE_FIELD(query);
+	COPY_SCALAR_FIELD(is_simply_updatable);
 
 	return newnode;
 }
@@ -4172,6 +4190,9 @@ copyObject(void *from)
 			break;
 		case T_SetToDefault:
 			retval = _copySetToDefault(from);
+			break;
+		case T_CurrentOfExpr:
+			retval = _copyCurrentOfExpr(from);
 			break;
 		case T_TargetEntry:
 			retval = _copyTargetEntry(from);

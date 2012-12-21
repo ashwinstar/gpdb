@@ -2406,6 +2406,12 @@ lnext:	;
 					LockTupleMode lockmode;
 					HTSU_Result test;
 
+					/* CDB: CTIDs were not fetched for distributed relation. */
+					Relation relation = erm->relation;
+					if (relation->rd_cdbpolicy &&
+						relation->rd_cdbpolicy->ptype == POLICYTYPE_PARTITIONED)
+						continue;
+
 					if (!ExecGetJunkAttribute(junkfilter,
 											  slot,
 											  erm->resname,

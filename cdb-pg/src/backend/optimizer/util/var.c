@@ -68,10 +68,11 @@ static Relids alias_relid_set(PlannerInfo *root, Relids relids);
  */
 typedef struct Cdb_walk_vars_context
 {
-    Cdb_walk_vars_callback_Var      callback_var;
-    Cdb_walk_vars_callback_Aggref   callback_aggref;
-    void                           *context;
-    int                             sublevelsup;
+    Cdb_walk_vars_callback_Var      	callback_var;
+    Cdb_walk_vars_callback_Aggref   	callback_aggref;
+    Cdb_walk_vars_callback_CurrentOf    callback_currentof;
+    void                           	   *context;
+    int                             	sublevelsup;
 } Cdb_walk_vars_context;
 
 static bool
@@ -90,6 +91,10 @@ cdb_walk_vars_walker(Node *node, void *wvwcontext)
         ctx->callback_aggref != NULL)
         return ctx->callback_aggref((Aggref *)node, ctx->context, ctx->sublevelsup);
 
+    if (IsA(node, CurrentOfExpr) &&
+        ctx->callback_currentof != NULL)
+        return ctx->callback_currentof((CurrentOfExpr *)node, ctx->context, ctx->sublevelsup);
+
     if (IsA(node, Query))
 	{
 		bool    b;
@@ -107,6 +112,7 @@ bool
 cdb_walk_vars(Node                         *node,
               Cdb_walk_vars_callback_Var    callback_var,
               Cdb_walk_vars_callback_Aggref callback_aggref,
+              Cdb_walk_vars_callback_CurrentOf callback_currentof,
               void                         *context,
               int                           levelsup)
 {
@@ -114,6 +120,7 @@ cdb_walk_vars(Node                         *node,
 
     ctx.callback_var = callback_var;
     ctx.callback_aggref = callback_aggref;
+    ctx.callback_currentof = callback_currentof;
     ctx.context = context;
     ctx.sublevelsup = levelsup;
 
@@ -145,13 +152,22 @@ pull_varnos_cbVar(Var *var, void *context, int sublevelsup)
 	return false;
 }
 
+static bool
+pull_varnos_cbCurrentOf(CurrentOfExpr *expr, void *context, int sublevelsup)
+{
+	Assert(sublevelsup == 0);
+	pull_varnos_context *ctx = (pull_varnos_context *)context;
+	ctx->varnos = bms_add_member(ctx->varnos, expr->cvarno);
+	return false;
+}
+
 static inline Relids
 pull_varnos_of_level(Node *node, int levelsup)      /*CDB*/
 {
 	pull_varnos_context context;
 
 	context.varnos = NULL;
-    cdb_walk_vars(node, pull_varnos_cbVar, NULL, &context, levelsup);
+    cdb_walk_vars(node, pull_varnos_cbVar, NULL, pull_varnos_cbCurrentOf, &context, levelsup);
 	return context.varnos;
 }                               /* pull_varnos_of_level */
 
@@ -195,7 +211,7 @@ contain_var_reference(Node *node, int varno, int varattno, int levelsup)
 	context.varno = varno;
 	context.varattno = varattno;
 
-	return cdb_walk_vars(node, contain_var_reference_cbVar, NULL, &context, levelsup);
+	return cdb_walk_vars(node, contain_var_reference_cbVar, NULL, NULL, &context, levelsup);
 }
 
 
@@ -257,6 +273,7 @@ contain_vars_of_level_cbAggref(Aggref *aggref, void *unused, int sublevelsup)
                          contain_vars_of_level_cbVar,
                          contain_vars_of_level_cbAggref,
                          NULL,
+                         NULL,
                          sublevelsup);
 }
 
@@ -266,6 +283,7 @@ contain_vars_of_level(Node *node, int levelsup)
 	return cdb_walk_vars(node,
                          contain_vars_of_level_cbVar,
                          contain_vars_of_level_cbAggref,
+                         NULL,
                          NULL,
                          levelsup);
 }
@@ -299,6 +317,7 @@ contain_vars_of_level_or_above_cbAggref(Aggref *aggref, void *unused, int sublev
                          contain_vars_of_level_or_above_cbVar,
                          contain_vars_of_level_or_above_cbAggref,
                          NULL,
+                         NULL,
                          sublevelsup);
 }
 
@@ -308,6 +327,7 @@ contain_vars_of_level_or_above(Node *node, int levelsup)
 	return cdb_walk_vars(node,
                          contain_vars_of_level_or_above_cbVar,
                          contain_vars_of_level_or_above_cbAggref,
+                         NULL,
                          NULL,
                          levelsup);
 }
@@ -391,6 +411,7 @@ find_minimum_var_level_cbAggref(Aggref *aggref,
 	return cdb_walk_vars((Node *)aggref->args,
                          find_minimum_var_level_cbVar,
                          find_minimum_var_level_cbAggref,
+                         NULL,
                          ctx,
                          sublevelsup);
 }
@@ -405,6 +426,7 @@ find_minimum_var_level(Node *node)
 	cdb_walk_vars(node,
                   find_minimum_var_level_cbVar,
                   find_minimum_var_level_cbAggref,
+                  NULL,
                   &context,
                   0);
 

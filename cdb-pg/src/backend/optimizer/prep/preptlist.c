@@ -28,6 +28,7 @@
 #include "catalog/gp_policy.h"     /* CDB: POLICYTYPE_PARTITIONED */
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
+#include "optimizer/plancat.h"
 #include "optimizer/prep.h"
 #include "optimizer/subselect.h"
 #include "optimizer/tlist.h"
@@ -35,11 +36,14 @@
 #include "parser/analyze.h"
 #include "parser/parsetree.h"
 #include "parser/parse_coerce.h"
+#include "parser/parse_relation.h"
 #include "utils/lsyscache.h"
 
 static List *expand_targetlist(List *tlist, int command_type,
 				  Index result_relation, List *range_table);
-
+static List * supplement_simply_updatable_targetlist(DeclareCursorStmt *stmt,
+													 List *range_table,
+													 List *tlist);
 
 /*
  * preprocess_targetlist
@@ -132,6 +136,17 @@ preprocess_targetlist(PlannerInfo *root, List *tlist)
 
 		tlist = lappend(tlist, tleCtid);
 		tlist = lappend(tlist, tleSegid);
+	} 
+
+	/* simply updatable cursors */
+	if (command_type == CMD_SELECT && 
+		parse->utilityStmt &&
+		IsA(parse->utilityStmt, DeclareCursorStmt) &&
+		((DeclareCursorStmt *) parse->utilityStmt)->is_simply_updatable)
+	{
+		tlist = supplement_simply_updatable_targetlist((DeclareCursorStmt *) parse->utilityStmt, 
+													   range_table,
+													   tlist);
 	}
 
 	/*
@@ -411,4 +426,72 @@ expand_targetlist(List *tlist, int command_type,
 	heap_close(rel, NoLock);
 
 	return new_tlist;
+}
+
+
+/*
+ * supplement_simply_updatable_targetlist
+ * 
+ * For a simply updatable cursor, we supplement the targetlist with junk metadata for
+ * gp_segment_id, ctid, and tableoid. The handling of a CURRENT OF invocation will rely
+ * on this junk information during its constant folding. Thus, in a nutshell, it is the 
+ * responsibility of this routine to ensure whatever information needed to uniquely
+ * identify the currently positioned tuple is available in the tuple itself.
+ */
+static List *
+supplement_simply_updatable_targetlist(DeclareCursorStmt *stmt, List *range_table, List *tlist) 
+{
+	Assert(stmt->is_simply_updatable);
+	Index varno = extractSimplyUpdatableRTEIndex(range_table);
+
+	/* ctid */
+	Var         *varCtid = makeVar(varno,
+								   SelfItemPointerAttributeNumber,
+								   TIDOID,
+								   -1,
+								   0);
+	TargetEntry *tleCtid = makeTargetEntry((Expr *) varCtid,
+										   list_length(tlist) + 1,   /* resno */
+										   pstrdup("ctid"),          /* resname */
+										   true);                    /* resjunk */
+	tlist = lappend(tlist, tleCtid);
+
+	/* gp_segment_id */
+	Oid         reloid 		= InvalidOid,
+				vartypeid 	= InvalidOid;
+	int32       type_mod 	= -1;
+	reloid = getrelid(varno, range_table);
+	get_atttypetypmod(reloid, GpSegmentIdAttributeNumber, &vartypeid, &type_mod);
+	Var         *varSegid = makeVar(varno,
+									GpSegmentIdAttributeNumber,
+									vartypeid,
+									type_mod,
+									0);
+	TargetEntry *tleSegid = makeTargetEntry((Expr *) varSegid,
+											list_length(tlist) + 1,   /* resno */
+											pstrdup("gp_segment_id"), /* resname */
+											true);                    /* resjunk */
+
+	tlist = lappend(tlist, tleSegid);
+
+	/*
+	 * tableoid is only needed in the case of inheritance, in order to supplement 
+	 * our ability to uniquely identify a tuple. Without inheritance, we omit tableoid
+	 * to avoid the overhead of carrying tableoid for each tuple in the result set.
+	 */
+	if (find_inheritance_children(reloid) != NIL)
+	{
+		Var         *varTableoid = makeVar(varno,
+										   TableOidAttributeNumber,
+										   OIDOID,
+										   -1,
+										   0);
+		TargetEntry *tleTableoid = makeTargetEntry((Expr *) varTableoid,
+												   list_length(tlist) + 1,  /* resno */
+												   pstrdup("tableoid"),     /* resname */
+												   true);                   /* resjunk */
+		tlist = lappend(tlist, tleTableoid);
+	}
+	
+	return tlist;
 }

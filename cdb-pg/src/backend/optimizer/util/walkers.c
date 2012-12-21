@@ -134,6 +134,7 @@ expression_tree_walker(Node *node,
 		case T_Param:
 		case T_CoerceToDomainValue:
 		case T_CaseTestExpr:
+		case T_CurrentOfExpr:
 		case T_SetToDefault:
 		case T_RangeTblRef:
 		case T_OuterJoinInfo:

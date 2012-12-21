@@ -251,6 +251,30 @@ transformExpr(ParseState *pstate, Node *expr)
 			result = transformBooleanTest(pstate, (BooleanTest *) expr);
 			break;
 
+		case T_CurrentOfExpr:
+			{
+				/*
+				 * The target RTE must be simply updatable. If not, we error out
+				 * early here to avoid having to deal with error cases later:
+				 * rewriting/planning against views, for example.
+				 */
+				Assert(pstate->p_target_rangetblentry != NULL);
+				if (!isSimplyUpdatableRelation(pstate->p_target_rangetblentry->relid))
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("\"%s\" is not simply updatable",
+									pstate->p_target_relation->rd_rel->relname.data)));
+
+				CurrentOfExpr *c = (CurrentOfExpr *) expr;
+				int sublevels_up;
+				c->cvarno = RTERangeTablePosn(pstate,
+											  pstate->p_target_rangetblentry,
+											  &sublevels_up);
+				Assert(sublevels_up == 0);
+				result = expr;
+				break;
+			}
+
 		case T_GroupingFunc:
 			{
 				GroupingFunc *gf = (GroupingFunc *)expr;
@@ -2116,6 +2140,9 @@ exprType(Node *expr)
 			break;
 		case T_SetToDefault:
 			type = ((SetToDefault *) expr)->typeId;
+			break;
+		case T_CurrentOfExpr:
+			type = BOOLOID;
 			break;
 		case T_GroupingFunc:
 			type = INT8OID;

@@ -597,6 +597,17 @@ _equalSetToDefault(SetToDefault *a, SetToDefault *b)
 }
 
 static bool
+_equalCurrentOfExpr(CurrentOfExpr *a, CurrentOfExpr *b)
+{
+	COMPARE_STRING_FIELD(cursor_name);
+	COMPARE_SCALAR_FIELD(cvarno);
+
+	/* some attributes omitted as they're bound only just before executor dispatch */
+
+	return true;
+}
+
+static bool
 _equalTargetEntry(TargetEntry *a, TargetEntry *b)
 {
 	COMPARE_NODE_FIELD(expr);
@@ -969,6 +980,7 @@ _equalDeclareCursorStmt(DeclareCursorStmt *a, DeclareCursorStmt *b)
 	COMPARE_STRING_FIELD(portalname);
 	COMPARE_SCALAR_FIELD(options);
 	COMPARE_NODE_FIELD(query);
+	COMPARE_SCALAR_FIELD(is_simply_updatable);
 
 	return true;
 }
@@ -2525,6 +2537,9 @@ equal(void *a, void *b)
 			break;
 		case T_SetToDefault:
 			retval = _equalSetToDefault(a, b);
+			break;
+		case T_CurrentOfExpr:
+			retval = _equalCurrentOfExpr(a, b);
 			break;
 		case T_TargetEntry:
 			retval = _equalTargetEntry(a, b);

@@ -175,6 +175,12 @@ TidQualFromExpr(Node *expr, int varno)
 		if (IsTidEqualAnyClause((ScalarArrayOpExpr *) expr, varno))
 			rlst = list_make1(expr);
 	}
+	else if (expr && IsA(expr, CurrentOfExpr))
+	{
+		/* another base case: check for CURRENT OF on this rel */
+		Insist(((CurrentOfExpr *) expr)->cvarno == varno);
+		rlst = list_make1(expr);
+	}
 	else if (and_clause(expr))
 	{
 		foreach(l, ((BoolExpr *) expr)->args)

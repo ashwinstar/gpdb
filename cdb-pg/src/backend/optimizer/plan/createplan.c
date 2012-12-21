@@ -2405,11 +2405,20 @@ create_tidscan_plan(CreatePlanContext *ctx, TidPath *best_path,
 	/*
 	 * Remove any clauses that are TID quals.  This is a bit tricky since the
 	 * tidquals list has implicit OR semantics.
+	 *
+	 * In the case of CURRENT OF, however, we do want the CurrentOfExpr to 
+	 * reside in both the tidlist and the qual, as CurrentOfExpr is effectively
+	 * a ctid, gp_segment_id, and tableoid qual. Constant folding will
+	 * finish up this qual rewriting to ensure what we dispatch is a sane interpretation
+	 * of CURRENT OF behavior.
 	 */
-	ortidquals = best_path->tidquals;
-	if (list_length(ortidquals) > 1)
-		ortidquals = list_make1(make_orclause(ortidquals));
-	scan_clauses = list_difference(scan_clauses, ortidquals);
+	if (!(list_length(scan_clauses) == 1 && IsA(linitial(scan_clauses), CurrentOfExpr)))
+	{
+		ortidquals = best_path->tidquals;
+		if (list_length(ortidquals) > 1)
+			ortidquals = list_make1(make_orclause(ortidquals));
+		scan_clauses = list_difference(scan_clauses, ortidquals);
+	}
 
 	/* Sort clauses into best execution order */
 	scan_clauses = order_qual_clauses(ctx->root, scan_clauses);
