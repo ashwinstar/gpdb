@@ -179,6 +179,7 @@ typedef struct PLpgSQL_expr
 	/* fields for "simple expression" fast-path execution: */
 	Expr	   *expr_simple_expr;		/* NULL means not a simple expr */
 	Oid			expr_simple_type;
+	TransactionId	transaction_id;	/* used for clearing cached plan */
 
 	/*
 	 * if expr is simple AND prepared in current eval_estate,

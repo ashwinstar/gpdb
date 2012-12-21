@@ -458,6 +458,14 @@ drop table cache_temp;
 -- ************************************************************
 --
 
+-- start_matchsubs
+--
+-- m|ERROR:\s+relation with OID \d+ does not exist|
+-- s|ERROR:\s+relation with OID \d+ does not exist|ERROR: relation with OID DUMMY does not exist|
+--
+-- end_matchsubs
+
+
 create table cache_tab(c1 int, c2 int) distributed randomly; 
 
 drop function if exists cache_test(count int); 
@@ -496,8 +504,111 @@ begin
 end; 
 $$ language plpgsql;
 
+-- this will fail
+select cache_test(5);
+
+set gp_plpgsql_clear_cache_always = on;
+
+-- this will pass
 select cache_test(5);
 
 drop table if exists cache_tab;
 
 drop function cache_test(count int) cascade;
+
+--
+-- ************************************************************
+-- * testing guc
+-- ************************************************************
+--
+
+drop table if exists cache_tab cascade;
+
+drop function if exists cache_test();
+
+create function cache_test() returns void as
+$$
+begin
+	drop table if exists cache_tab;
+	create table cache_tab (id int) distributed randomly;
+	insert into cache_tab values (1);
+end;
+$$ language plpgsql;
+
+
+BEGIN;
+
+select cache_test();
+
+-- this will fail
+select cache_test();
+
+COMMIT; 
+
+set gp_plpgsql_clear_cache_always = on;
+
+select cache_test();
+
+
+drop table cache_tab;
+
+drop function cache_test();
+
+--
+-- ************************************************************
+-- * testing guc
+-- ************************************************************
+--
+drop table if exists cache_tab cascade;
+
+drop function if exists cache_test(); 
+
+set gp_plpgsql_clear_cache_always = off;
+create function cache_test() returns void as
+$$
+declare count int; 
+begin
+	count := 3;
+	while count > 0 
+	loop
+		drop table if exists cache_tab;
+		create table cache_tab (id int) distributed randomly;
+		insert into cache_tab values (1);
+		count := count - 1;
+	end loop;
+end;
+$$ language plpgsql;
+
+-- this will fail
+select cache_test();
+
+set gp_plpgsql_clear_cache_always = on;
+
+-- this will pass
+select cache_test();
+
+set gp_plpgsql_clear_cache_always = off;
+
+drop function cache_test();
+
+create function cache_test() returns void as
+$$
+declare count int; 
+begin
+	count := 3;
+	while count > 0 
+	loop
+		set gp_plpgsql_clear_cache_always = on;
+		drop table if exists cache_tab;
+		create table cache_tab (id int) distributed randomly;
+		insert into cache_tab values (1);
+		count := count - 1;
+	end loop;
+end;
+$$ language plpgsql;
+
+select cache_test();
+
+drop table cache_tab;
+
+drop function cache_test();

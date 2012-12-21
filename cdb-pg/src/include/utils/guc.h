@@ -244,6 +244,7 @@ extern int gp_cancel_query_delay_time;
 
 extern bool gp_temporary_files_filespace_repair;
 extern bool gp_perfmon_print_packet_info;
+extern bool gp_plpgsql_clear_cache_always;
 
 /* Debug DTM Action */
 typedef enum
