@@ -1923,3 +1923,29 @@ explain with t as (select * from with_test1) select * from t where i = 10;
          Filter: i = 10
 (3 rows)
 
+-- MPP-17848
+drop table x;
+ERROR:  table "x" does not exist
+CREATE TABLE x(a int);
+insert into x values(1), (2);
+drop TABLE y;
+ERROR:  table "y" does not exist
+CREATE TABLE y (m integer NOT NULL, n smallint);
+insert into y values(10, 1);
+insert into y values(20, 1);
+with yy as (
+   select m
+   from y,
+        (select 1 as p) iv
+   where n = iv.p
+)
+select * from x, yy;
+ a | m  
+---+----
+ 1 | 10
+ 1 | 20
+ 2 | 10
+ 2 | 20
+(4 rows)
+-- End of MPP-17848
+
