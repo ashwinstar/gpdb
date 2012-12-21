@@ -519,6 +519,37 @@ extern BlockNumber mdtruncate(SMgrRelation reln, BlockNumber nblocks,
 extern bool mdimmedsync(SMgrRelation reln);
 extern bool mdsync(void);
 
+/*
+ * MPP-18228 - to make addition to pending delete list atomic with adding
+ * a 'Create Pending' entry in persistent tables.
+ * Wrapper around the static PendingDelete_AddCreatePendingEntry() for relations
+ */
+extern void PendingDelete_AddCreatePendingRelationEntry(
+		PersistentFileSysObjName *fsObjName,
+
+		ItemPointer 			persistentTid,
+
+		int64					*persistentSerialNum,
+
+		PersistentFileSysRelStorageMgr relStorageMgr,
+
+		char				*relationName,
+
+		bool				isLocalBuf,
+
+		bool				bufferPoolBulkLoad);
+
+/*
+ * MPP-18228 - Wrapper around PendingDelete_AddCreatePendingEntry() for
+ * database, tablespace and filespace
+ */
+extern void PendingDelete_AddCreatePendingEntryWrapper(
+	PersistentFileSysObjName *fsObjName,
+
+	ItemPointer 			persistentTid,
+
+	int64					persistentSerialNum);
+
 extern void RememberFsyncRequest(RelFileNode rnode, BlockNumber segno);
 extern void ForgetRelationFsyncRequests(RelFileNode rnode);
 extern void ForgetDatabaseFsyncRequests(Oid tblspc, Oid dbid);

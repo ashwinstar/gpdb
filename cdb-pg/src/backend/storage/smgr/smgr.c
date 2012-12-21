@@ -159,6 +159,53 @@ static PendingDelete *PendingDelete_AddCreatePendingEntry(
 							/* dropForCommit */ false);
 }
 
+void PendingDelete_AddCreatePendingRelationEntry(
+	PersistentFileSysObjName *fsObjName,
+
+	ItemPointer 			persistentTid,
+
+	int64					*persistentSerialNum,
+
+	PersistentFileSysRelStorageMgr relStorageMgr,
+
+	char				*relationName,
+
+	bool				isLocalBuf,
+
+	bool				bufferPoolBulkLoad)
+{
+
+	PendingDelete *pending = NULL;
+
+	pending = PendingDelete_AddCreatePendingEntry(
+						fsObjName,
+						persistentTid,
+						*persistentSerialNum);
+
+	pending->relStorageMgr = relStorageMgr;
+	pending->relationName = MemoryContextStrdup(TopMemoryContext, relationName);
+	pending->isLocalBuf = isLocalBuf;	/*CDB*/
+	pending->bufferPoolBulkLoad = bufferPoolBulkLoad;
+
+}
+
+/*
+ * MPP-18228
+ * Wrapper to call above function from cdb files
+ */
+void PendingDelete_AddCreatePendingEntryWrapper(
+	PersistentFileSysObjName *fsObjName,
+
+	ItemPointer 			persistentTid,
+
+	int64					persistentSerialNum)
+{
+	PendingDelete_AddCreatePendingEntry(
+									fsObjName,
+									persistentTid,
+									persistentSerialNum);
+}
+
 static PendingDelete *PendingDelete_AddDropEntry(
 	PersistentFileSysObjName *fsObjName,
 
@@ -510,12 +557,6 @@ smgrcreatefilespacedirpending(
 
 	bool							flushToXLog)
 {
-	PersistentFileSysObjName fsObjName;
-
-	PersistentFileSysObjName_SetFilespaceDir(
-										&fsObjName,
-										filespaceOid);
-
 	PersistentFilespace_MarkCreatePending(
 								filespaceOid,
 								primaryDbId,
@@ -526,19 +567,6 @@ smgrcreatefilespacedirpending(
 								persistentTid,
 								persistentSerialNum,
 								flushToXLog);
-
-	#ifdef FAULT_INJECTOR
-			FaultInjector_InjectFaultIfSet(
-										   FaultBeforePendingDeleteFilespaceEntry,
-										   DDLNotSpecified,
-										   "",  // databaseName
-										   ""); // tableName
-	#endif
-
-	PendingDelete_AddCreatePendingEntry(
-								&fsObjName,
-								persistentTid,
-								*persistentSerialNum);
 }
 
 /*
@@ -591,12 +619,6 @@ smgrcreatetablespacedirpending(
 
 	bool							flushToXLog)
 {
-	PersistentFileSysObjName fsObjName;
-
-	PersistentFileSysObjName_SetTablespaceDir(
-								&fsObjName,
-								tablespaceDirNode->tablespace);
-
 	PersistentTablespace_MarkCreatePending(
 								tablespaceDirNode->filespace,
 								tablespaceDirNode->tablespace,
@@ -605,18 +627,6 @@ smgrcreatetablespacedirpending(
 								persistentSerialNum,
 								flushToXLog);
 
-	#ifdef FAULT_INJECTOR
-			FaultInjector_InjectFaultIfSet(
-										   FaultBeforePendingDeleteTablespaceEntry,
-										   DDLNotSpecified,
-										   "",  // databaseName
-										   ""); // tableName
-	#endif
-
-	PendingDelete_AddCreatePendingEntry(
-						&fsObjName,
-						persistentTid,
-						*persistentSerialNum);
 }
 
 /*
@@ -659,35 +669,12 @@ smgrcreatedbdirpending(
 
 	bool							flushToXLog)
 {
-	PersistentFileSysObjName fsObjName;
-
-	Oid tablespace = dbDirNode->tablespace;
-	Oid database = dbDirNode->database;
-
-	PersistentFileSysObjName_SetDatabaseDir(
-									&fsObjName,
-									tablespace,
-									database);
-
 	PersistentDatabase_MarkCreatePending(
 								dbDirNode,
 								mirrorExistenceState,
 								persistentTid,
 								persistentSerialNum,
 								flushToXLog);
-
-	#ifdef FAULT_INJECTOR
-			FaultInjector_InjectFaultIfSet(
-										   FaultBeforePendingDeleteDatabaseEntry,
-										   DDLNotSpecified,
-										   "",  // databaseName
-										   ""); // tableName
-	#endif
-
-	PendingDelete_AddCreatePendingEntry(
-						&fsObjName,
-						persistentTid,
-						*persistentSerialNum);
 }
 
 /*
@@ -787,15 +774,6 @@ void smgrcreatepending(
 
 	bool							flushToXLog)
 {
-	PersistentFileSysObjName fsObjName;
-
-	PendingDelete *pending;
-
-	PersistentFileSysObjName_SetRelationFile(
-										&fsObjName,
-										relFileNode,
-										segmentFileNum);
-
 	PersistentRelation_AddCreatePending(
 								relFileNode,
 								segmentFileNum,
@@ -807,25 +785,8 @@ void smgrcreatepending(
 								relationName,
 								persistentTid,
 								persistentSerialNum,
-								flushToXLog);
-
-	#ifdef FAULT_INJECTOR
-			FaultInjector_InjectFaultIfSet(
-										   FaultBeforePendingDeleteRelationEntry,
-										   DDLNotSpecified,
-										   "",  // databaseName
-										   ""); // tableName
-	#endif
-
-	pending = PendingDelete_AddCreatePendingEntry(
-								&fsObjName,
-								persistentTid,
-								*persistentSerialNum);
-
-	pending->relStorageMgr = relStorageMgr;
-	pending->relationName = MemoryContextStrdup(TopMemoryContext, relationName);
-	pending->isLocalBuf = isLocalBuf;	/*CDB*/
-	pending->bufferPoolBulkLoad = bufferPoolBulkLoad;
+								flushToXLog,
+								isLocalBuf);
 }
 
 /*

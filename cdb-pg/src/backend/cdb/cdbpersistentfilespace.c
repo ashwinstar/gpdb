@@ -35,6 +35,7 @@
 #include "utils/guc.h"
 #include "utils/hsearch.h"
 #include "utils/builtins.h"
+#include "utils/faultinjector.h"
 
 #include "cdb/cdbvars.h"
 #include "cdb/cdbsharedoidsearch.h"
@@ -897,6 +898,25 @@ void PersistentFilespace_MarkCreatePending(
 #ifdef MASTER_MIRROR_SYNC
 	mmxlog_log_create_filespace(filespaceOid);
 #endif
+
+
+	#ifdef FAULT_INJECTOR
+			FaultInjector_InjectFaultIfSet(
+										   FaultBeforePendingDeleteFilespaceEntry,
+										   DDLNotSpecified,
+										   "",  // databaseName
+										   ""); // tableName
+	#endif
+
+	/*
+	 * MPP-18228
+	 * To make adding 'Create Pending' entry to persistent table and adding
+	 * to the PendingDelete list atomic
+	 */
+	PendingDelete_AddCreatePendingEntryWrapper(
+								&fsObjName,
+								persistentTid,
+								*persistentSerialNum);
 
 	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
