@@ -25,6 +25,7 @@ import time
 import getopt
 
 try:
+    from gppylib.db import dbconn
     from gppylib.gplog import *
     from gppylib.gpcatalog import *
     from gppylib.commands.unix import *
@@ -3493,6 +3494,80 @@ def duplicateEntryQuery(catname, pkey):
     return qry
 
 
+#-------------------------------------------------------------------------------
+def checkDuplicatePersistentEntry():
+
+    """
+    MPP-18178: check duplicate entries in gp_persistent_relation_node
+    	have the same: tablespace_oid, database_oid, relfilenode_oid, segment_file_num
+    	except mirror_existence_state != 6 (MIRROR DROP PENDING)
+    """
+
+    catname = 'gp_persistent_relation_node'
+    fields = ['tablespace_oid', 'database_oid', 'relfilenode_oid', 'segment_file_num']
+    excol = 'mirror_existence_state'
+    state = 6 
+
+    qry = duplicatePersistentEntryQuery(catname, fields, excol, state)
+
+    try:
+        db = connect2(GV.cfg[1], utilityMode=False)
+        curs  = db.query(qry)
+        nrows = curs.ntuples()
+
+        if nrows == 0:
+            logger.info('[OK] Checking for duplicate persistent entries for ' + catname)
+        else:
+            GV.testStatus = False
+            setError(ERROR_NOREPAIR)
+            logger.error('[FAIL] Checking for duplicate persistent entries for ' + catname)
+            logger.error('  %s has %d issue(s)' % (catname, nrows))
+
+            fields = curs.listfields()
+            log_literal(logger, logging.ERROR, "    " + " | ".join(fields))
+            for row in curs.getresult():
+                log_literal(logger, logging.ERROR, "    " + " | ".join(map(str, row)))
+            processMissingDuplicateEntryResult(catname, fields, curs.getresult(), "duplicate")
+
+    except Exception, e:
+        setError(ERROR_NOREPAIR)
+        myprint('[ERROR] Executing: duplicate persistent entries check for ' + catname)
+        myprint('  Execution error: ' + str(e))
+        myprint(qry)
+
+
+def duplicatePersistentEntryQuery(catname, pkey, excol, state):
+    
+    """
+    Check for duplicate persistent table entries:
+    	the query is similar to the duplicate catalog entries query, except an extra condition 
+    	and the check is limited to the connected database for reporting purposes
+    """
+    
+    qry = """
+          CREATE TEMPORARY TABLE _tmp_master ON COMMIT DROP AS
+              SELECT gp_segment_id segid, {pkey}, {excol} FROM {catalog};
+
+          SELECT {pkey}, total, array_agg(segid order by segid) as segids
+          FROM (
+              SELECT segid, {pkey}, count(*) as total
+              FROM (
+                   select segid, {pkey} from _tmp_master
+                   where {excol} != {state}
+                   union all
+                   select gp_segment_id as segid, {pkey} from gp_dist_random('{catalog}') 
+                   where {excol} != {state}
+              ) all_segments 
+                LEFT OUTER JOIN pg_database d ON (all_segments.database_oid = d.oid)
+              WHERE d.datname = '{dbname}'
+              GROUP BY segid, {pkey}
+              HAVING count(*) > 1
+          ) rowresult 
+          GROUP BY {pkey}, total
+          """.format(catalog=catname, pkey=','.join(pkey), excol=excol, state=state, dbname=GV.dbname)
+    return qry
+
+
 
 ############################################################################
 # version = X.X : run this test as part of running all tests on gpdb <= X.X  
@@ -3605,6 +3680,14 @@ name_test = {
          "version": 'main',
          "order": 14,
          "online": True
+    },
+    "duplicate_persistent":
+    {
+        "description": "Check for duplicate gp_persistent_relation_node entries",
+        "fn": lambda: checkDuplicatePersistentEntry(),
+        "version": 'main',
+        "order": 16,
+        "online": True
     }
 }
 
@@ -3949,6 +4032,9 @@ TableMainColumn['pg_constraint']  = ['conrelid','pg_class']
 TableMainColumn['pg_trigger']     = ['tgrelid','pg_class']
 TableMainColumn['pg_rewrite']     = ['ev_class','pg_class']
 
+# Persistent table
+TableMainColumn['gp_persistent_relation_node'] = ['relfilenode_oid', 'pg_class']
+
 # Cast OID alias type to OID since our graph of objects is based on OID
 # int2vector is also casted to int2[] due to the lack of an <(int2vector, int2vector) operator
 autoCast = {
@@ -4016,6 +4102,8 @@ def getOidFromPK(catname, pkeys):
 
 
 #-------------------------------------------------------------------------------
+# TODO: use execSQLForSingletonRow
+#-------------------------------------------------------------------------------
 def getClassOidForType(oid):
     # For FK check: pg_type entry is missing, so we need to use pg_class
     qry = """ 
@@ -4033,6 +4121,19 @@ def getClassOidForType(oid):
         curs = db.query(qry)
         if len(curs.dictresult()) == 0: return 0
         return curs.dictresult().pop()['oid']
+    except Exception, e:
+        setError(ERROR_NOREPAIR)
+        myprint('  Execution error: ' + str(e))
+
+
+#-------------------------------------------------------------------------------
+def getClassOidForRelfilenode(relfilenode):
+    qry = "SELECT oid FROM pg_class WHERE relfilenode = %d;" % (relfilenode)
+    try:
+        dburl = dbconn.DbURL(hostname=GV.opt['-h'], port=GV.opt['-p'], dbname=GV.dbname)
+        conn = dbconn.connect(dburl)
+        oid = dbconn.execSQLForSingletonRow(conn, qry)[0]
+        return oid
     except Exception, e:
         setError(ERROR_NOREPAIR)
         myprint('  Execution error: ' + str(e))
@@ -4113,6 +4214,10 @@ def processMissingDuplicateEntryResult(catname, colname, allValues, type):
             if typrelid != 0: 
                 oid = typrelid
                 rowObjName = 'pg_class'
+        # Special case: persistent table
+        if catname == 'gp_persistent_relation_node':
+            relfilenode = oid
+            oid = getClassOidForRelfilenode(relfilenode) 
 
         gpObj = getGPObject(oid, rowObjName)
 
@@ -4714,7 +4819,7 @@ def checkcatReport():
             reportAllIssuesRecursive(child, graph)
 
     buildGraph()
-    reportedTest = ['duplicate','missing_extraneous','inconsistent','foreign_key','acl'] 
+    reportedTest = ['duplicate','missing_extraneous','inconsistent','foreign_key','acl', 'duplicate_persistent'] 
     myprint('')
     myprint('SUMMARY REPORT')
     myprint('===================================================================')
