@@ -17,38 +17,53 @@ DESCRIPTION
 *****************************************************
 
 
-gpfdist is a utility that serves external table files to all 
-Greenplum Database segments in parallel. The benefit of using 
-gpfdist over other file protocols is that you are guaranteed maximum 
-parallelism while reading from external tables, thereby offering the 
-best performance as well as easier administration of external tables.
+gpfdist is Greenplum’s parallel file distribution program. 
+It is used by readable external tables and gpload to serve 
+external table files to all Greenplum Database segments in 
+parallel. It is used by writable external tables to accept 
+output streams from Greenplum Database segments in parallel 
+and write them out to a file.
 
-If files are compressed using gzip (have a .gz file extension), gpfdist 
-will uncompress the files automatically provided that gunzip is in 
-your path.
+In order for gpfdist to be used by an external table, the 
+LOCATION clause of the external table definition (as defined by
+CREATE EXTERNAL TABLE) must specify the external table data 
+using the gpfdist:// protocol 
 
-In order for gpfdist to be used to serve external table files, the 
-external table definition (as defined by CREATE EXTERNAL TABLE) must 
-specify the directory name that contains the external table data 
-using the gpfdist:// protocol. 
-
-Note: If the --ssl option is specified to enable SSL security, 
+NOTE: If the --ssl option is specified to enable SSL security, 
 create the external table with the gpfdists:// protocol.
 
-When Greenplum Database users select from an external table, gpfdist 
-parses and serves the data files evenly to all the segment instances in 
-the Greenplum Database system.
+The benefit of using gpfdist is that you are guaranteed maximum 
+parallelism while reading from or writing to external tables, 
+thereby offering the best performance as well as easier 
+administration of external tables.
 
-Most likely, you will want to run gpfdist on your ETL machines rather 
-than the hosts where Greenplum Database is installed. To install gpfidist 
-on another host, simply copy the utility over to that host and add gpfdist 
-to your $PATH.
+For readable external tables, gpfdist parses and serves data 
+files evenly to all the segment instances in the Greenplum Database 
+system when users SELECT from the external table. For writable 
+external tables, gpfdist accepts parallel output streams from 
+the segments when users INSERT into the external table, and 
+writes to an output file.
 
-Note: When using IPv6, always enclose the numeric IP address in brackets.
+
+For readable external tables, if load files are compressed using 
+gzip or bzip2 (have a .gz or .bz2 file extension), gpfdist 
+uncompresses the files automatically before loading provided 
+that gunzip or bunzip2 is in your path. 
+
+NOTE: Currently, readable external tables do not support 
+compression on Windows platforms, and writable external 
+tables do not support compression on any platforms.
+
+Most likely, you will want to run gpfdist on your ETL machines 
+rather than the hosts where Greenplum Database is installed. 
+To install gpfdist on another host, simply copy the utility 
+over to that host and add gpfdist to your $PATH.
+
+NOTE: When using IPv6, always enclose the numeric IP address 
+in brackets.
 
 You can also run gpfdist as a Windows Service. See below for
 details.
-
 
 *****************************************************
 OPTIONS
@@ -84,7 +99,8 @@ systems with a lot of network traffic.
 Sets the maximum allowed data row length in bytes. Default is 32768.
 Should be used when user data includes very wide rows, i.e when
 "line too long" error message is receieved. Should not be used otherwise
-as it increases resource allocation. Valid range is 32K to 1MB.
+as it increases resource allocation. 
+Valid range is 32K to 256MB. (The upper limit is 1MB on Windows systems.)
 
 
 -S (use O_SYNC)
