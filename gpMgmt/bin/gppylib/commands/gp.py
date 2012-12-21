@@ -250,7 +250,7 @@ class PgCtlStartArgs(CmdArgs):
 
     >>> a = PgCtlStartArgs("/data1/master/gpseg-1", str(PgCtlBackendOptions(5432, 1, 2)), 123, None, None, True, 600)
     >>> str(a).split(' ') #doctest: +NORMALIZE_WHITESPACE
-    ['env', 'GPKILL=NEVER', 'GPERA=123', '$GPHOME/bin/pg_ctl', '-D', '/data1/master/gpseg-1', '-l', 
+    ['env', GPERA=123', '$GPHOME/bin/pg_ctl', '-D', '/data1/master/gpseg-1', '-l', 
      '/data1/master/gpseg-1/pg_log/startup.log', '-w', '-t', '600', 
      '-o', '"', '-p', '5432', '-b', '1', '-z', '2', '--silent-mode=true', '"', 'start']
     """
@@ -269,7 +269,6 @@ class PgCtlStartArgs(CmdArgs):
         CmdArgs.__init__(self, [
             "env",			# variables examined by gpkill/gpdebug/etc
             "GPSESSID=0000000000", 	# <- overwritten with gp_session_id to help identify orphans
-            "GPKILL=NEVER",		# <- indicates gpkill should not allow kill for this process
             "GPERA=%s" % str(era),	# <- master era used to help identify orphans
             "$GPHOME/bin/pg_ctl",
             "-D", str(datadir),
