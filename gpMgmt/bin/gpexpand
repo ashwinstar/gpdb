@@ -2390,6 +2390,7 @@ class ExpandTable():
                 sql = 'ANALYZE "%s"."%s"' % (schema_name, table_name)
                 logger.info('Analyzing %s.%s' % (schema_name.decode('utf-8'), table_name.decode('utf-8')))
                 dbconn.execSQL(table_conn, sql)
+                table_conn.commit()
 
 
     def mark_finished(self,status_conn,table_conn,finish_time):
