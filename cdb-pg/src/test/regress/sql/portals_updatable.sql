@@ -352,6 +352,16 @@ DECLARE c CURSOR FOR SELECT DISTINCT f1, f2 FROM uctest;
 DELETE FROM uctest WHERE CURRENT OF c;
 ROLLBACK;
 
+-- Negative: cursor with limit/offset
+BEGIN;
+DECLARE c CURSOR FOR SELECT * FROM uctest LIMIT 1;
+DELETE FROM uctest WHERE CURRENT OF c;
+ROLLBACK;
+BEGIN;
+DECLARE c CURSOR FOR SELECT * FROM uctest OFFSET 1;
+DELETE FROM uctest WHERE CURRENT OF c;
+ROLLBACK;
+
 -- Negative: cursor with set operations
 -- MPP-16559 - DECLARE CURSOR with set operations will hit assertion
 -- BEGIN;
