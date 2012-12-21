@@ -483,14 +483,14 @@ PL/Python function "test_return_text"
 SELECT test_return_text(
     E'1; exec("class Foo:\\n  def __str__(self): return None"); y = Foo()'
 );
-ERROR:  could not create string representation of Python object (plpython.c:4644)
+ERROR:  could not create string representation of Python object (plpython.c:4699)
 DETAIL:  TypeError: __str__ returned non-string (type NoneType)
 CONTEXT:  while creating return value
 PL/Python function "test_return_text"
 SELECT * FROM test_return_text(
     E'1; exec("class Foo:\\n  def __str__(self): return None"); y = Foo()'
 );
-ERROR:  could not create string representation of Python object (plpython.c:4644)
+ERROR:  could not create string representation of Python object (plpython.c:4699)
 DETAIL:  TypeError: __str__ returned non-string (type NoneType)
 CONTEXT:  while creating return value
 PL/Python function "test_return_text"
@@ -710,21 +710,21 @@ FROM gp_single_row;
 SELECT test_return_bytea(
     E'1; exec("class Foo:\\n  def __str__(self): return None"); y = Foo()'
 );
-ERROR:  could not create bytes representation of Python object (plpython.c:4644)
+ERROR:  could not create bytes representation of Python object (plpython.c:4699)
 DETAIL:  TypeError: __str__ returned non-string (type NoneType)
 CONTEXT:  while creating return value
 PL/Python function "test_return_bytea"
 SELECT * FROM test_return_bytea(
     E'1; exec("class Foo:\\n  def __str__(self): return None"); y = Foo()'
 );
-ERROR:  could not create bytes representation of Python object (plpython.c:4644)
+ERROR:  could not create bytes representation of Python object (plpython.c:4699)
 DETAIL:  TypeError: __str__ returned non-string (type NoneType)
 CONTEXT:  while creating return value
 PL/Python function "test_return_bytea"
 SELECT test_return_bytea(
     E'1; exec("class Foo:\\n  def __str__(self): return None"); y = Foo()'
 ) FROM gp_single_row;
-ERROR:  could not create bytes representation of Python object (plpython.c:4644)  (seg0 slice1 gavinmac:40000 pid=12458) (cdbdisp.c:1457)
+ERROR:  could not create bytes representation of Python object (plpython.c:4699)  (seg0 slice1 gxymac.local:40000 pid=35336) (cdbdisp.c:1462)
 DETAIL:  
 	 TypeError: __str__ returned non-string (type NoneType)
 	 while creating return value
@@ -2050,7 +2050,7 @@ SELECT test_return_table_record('{"first": "value", "second": 4, "third": "ignor
 (1 row)
 
 SELECT * FROM test_return_table_record('{"first": "value", "second": 4}, "third": "ignored"}');
-ERROR:  SyntaxError: invalid syntax (<string>, line 1) (plpython.c:4644)
+ERROR:  SyntaxError: invalid syntax (<string>, line 1) (plpython.c:4699)
 CONTEXT:  Traceback (most recent call last):
   PL/Python function "test_return_table_record", line 2, in <module>
     exec('y = ' + s)
@@ -2078,7 +2078,7 @@ CONTEXT:  while creating return value
 PL/Python function "test_return_setof_type_record"
 SELECT test_return_setof_type_record('[]')
 FROM gp_single_row;
-ERROR:  length of returned sequence did not match number of columns in row  (seg0 slice1 gavinmac:40000 pid=12458)
+ERROR:  length of returned sequence did not match number of columns in row  (seg0 slice1 gxymac.local:40000 pid=35336)
 DETAIL:  
 	 while creating return value
 PL/Python function "test_return_setof_type_record"
@@ -2088,7 +2088,7 @@ CONTEXT:  while creating return value
 PL/Python function "test_return_setof_type_record"
 SELECT (test_return_setof_type_record('[]')).*
 FROM gp_single_row;
-ERROR:  length of returned sequence did not match number of columns in row  (seg0 slice1 gavinmac:40000 pid=12458)
+ERROR:  length of returned sequence did not match number of columns in row  (seg0 slice1 gxymac.local:40000 pid=35336)
 DETAIL:  
 	 while creating return value
 PL/Python function "test_return_setof_type_record"
@@ -2103,7 +2103,7 @@ CONTEXT:  while creating return value
 PL/Python function "test_return_setof_type_record"
 SELECT test_return_setof_type_record('[ ("value", 4), {"first": "test", "second": 2} ]')
 FROM gp_single_row;
-ERROR:  invalid input syntax for integer: "{'second': 2, 'first': 'test'}"  (seg0 slice1 gavinmac:40000 pid=12458)
+ERROR:  invalid input syntax for integer: "{'second': 2, 'first': 'test'}"  (seg0 slice1 gxymac.local:40000 pid=35336)
 DETAIL:  
 	 while creating return value
 PL/Python function "test_return_setof_type_record"
@@ -2113,7 +2113,7 @@ CONTEXT:  while creating return value
 PL/Python function "test_return_setof_type_record"
 SELECT (test_return_setof_type_record('[ ("value", 4), {"first": "test", "second": 2} ]')).*
 FROM gp_single_row;
-ERROR:  invalid input syntax for integer: "{'second': 2, 'first': 'test'}"  (seg0 slice1 gavinmac:40000 pid=12458)
+ERROR:  invalid input syntax for integer: "{'second': 2, 'first': 'test'}"  (seg0 slice1 gxymac.local:40000 pid=35336)
 DETAIL:  
 	 while creating return value
 PL/Python function "test_return_setof_type_record"
@@ -2236,7 +2236,7 @@ ERROR:  length of returned sequence did not match number of columns in row
 CONTEXT:  while creating return value
 PL/Python function "test_return_setof_type_record"
 SELECT * FROM test_return_setof_type_record('[{"first": "value", "second": 4}, "third": "ignored"}]');
-ERROR:  SyntaxError: invalid syntax (<string>, line 1) (plpython.c:4644)
+ERROR:  SyntaxError: invalid syntax (<string>, line 1) (plpython.c:4699)
 CONTEXT:  Traceback (most recent call last):
   PL/Python function "test_return_setof_type_record", line 2, in <module>
     exec('y = ' + s)
@@ -2255,7 +2255,7 @@ CONTEXT:  while creating return value
 PL/Python function "test_return_setof_table_record"
 SELECT test_return_setof_table_record('[]')
 FROM gp_single_row;
-ERROR:  length of returned sequence did not match number of columns in row  (seg0 slice1 gavinmac:40000 pid=12458)
+ERROR:  length of returned sequence did not match number of columns in row  (seg0 slice1 gxymac.local:40000 pid=35336)
 DETAIL:  
 	 while creating return value
 PL/Python function "test_return_setof_table_record"
@@ -2265,7 +2265,7 @@ CONTEXT:  while creating return value
 PL/Python function "test_return_setof_table_record"
 SELECT (test_return_setof_table_record('[]')).*
 FROM gp_single_row;
-ERROR:  length of returned sequence did not match number of columns in row  (seg0 slice1 gavinmac:40000 pid=12458)
+ERROR:  length of returned sequence did not match number of columns in row  (seg0 slice1 gxymac.local:40000 pid=35336)
 DETAIL:  
 	 while creating return value
 PL/Python function "test_return_setof_table_record"
@@ -2280,7 +2280,7 @@ CONTEXT:  while creating return value
 PL/Python function "test_return_setof_table_record"
 SELECT test_return_setof_table_record('[ None, ("value", 4), {"first": "test", "second": 2} ]')
 FROM gp_single_row;
-ERROR:  length of returned sequence did not match number of columns in row  (seg0 slice1 gavinmac:40000 pid=12458)
+ERROR:  length of returned sequence did not match number of columns in row  (seg0 slice1 gxymac.local:40000 pid=35336)
 DETAIL:  
 	 while creating return value
 PL/Python function "test_return_setof_table_record"
@@ -2290,7 +2290,7 @@ CONTEXT:  while creating return value
 PL/Python function "test_return_setof_table_record"
 SELECT (test_return_setof_table_record('[ None, ("value", 4), {"first": "test", "second": 2} ]')).*
 FROM gp_single_row;
-ERROR:  length of returned sequence did not match number of columns in row  (seg0 slice1 gavinmac:40000 pid=12458)
+ERROR:  length of returned sequence did not match number of columns in row  (seg0 slice1 gxymac.local:40000 pid=35336)
 DETAIL:  
 	 while creating return value
 PL/Python function "test_return_setof_table_record"
@@ -2413,7 +2413,7 @@ ERROR:  length of returned sequence did not match number of columns in row
 CONTEXT:  while creating return value
 PL/Python function "test_return_setof_table_record"
 SELECT * FROM test_return_setof_table_record('[{"first": "value", "second": 4}, "third": "ignored"}]');
-ERROR:  SyntaxError: invalid syntax (<string>, line 1) (plpython.c:4644)
+ERROR:  SyntaxError: invalid syntax (<string>, line 1) (plpython.c:4699)
 CONTEXT:  Traceback (most recent call last):
   PL/Python function "test_return_setof_table_record", line 2, in <module>
     exec('y = ' + s)
@@ -2626,14 +2626,14 @@ PL/Python function "test_return_out_text"
 SELECT test_return_out_text(
     E'1; exec("class Foo:\\n  def __str__(self): return None"); y = Foo()'
 );
-ERROR:  could not create string representation of Python object (plpython.c:4644)
+ERROR:  could not create string representation of Python object (plpython.c:4699)
 DETAIL:  TypeError: __str__ returned non-string (type NoneType)
 CONTEXT:  while creating return value
 PL/Python function "test_return_out_text"
 SELECT * FROM test_return_out_text(
     E'1; exec("class Foo:\\n  def __str__(self): return None"); y = Foo()'
 );
-ERROR:  could not create string representation of Python object (plpython.c:4644)
+ERROR:  could not create string representation of Python object (plpython.c:4699)
 DETAIL:  TypeError: __str__ returned non-string (type NoneType)
 CONTEXT:  while creating return value
 PL/Python function "test_return_out_text"
@@ -3159,7 +3159,7 @@ SELECT test_return_out_setof_record('[{"first": "value", "second": 4, "third": "
 (1 row)
 
 SELECT * FROM test_return_out_setof_record('[{"first": "value", "second": 4}, "third": "ignored"}]');
-ERROR:  SyntaxError: invalid syntax (<string>, line 1) (plpython.c:4644)
+ERROR:  SyntaxError: invalid syntax (<string>, line 1) (plpython.c:4699)
 CONTEXT:  Traceback (most recent call last):
   PL/Python function "test_return_out_setof_record", line 2, in <module>
     exec('y = ' + s)
