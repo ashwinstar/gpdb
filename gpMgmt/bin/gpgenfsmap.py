@@ -13,7 +13,7 @@ Options:
     -q, --quiet      Disable most log messages.  This mode is on by default.
 '''
 
-import os, sys
+import os, sys, subprocess
 try:
     from optparse import Option, OptionParser 
     from gppylib.gpparseopts import OptParser, OptChecker
@@ -53,12 +53,6 @@ class FSMap:
     def addFilespace(self, filespace):
         self.filespaces.append(filespace)
     
-    def toXML(self):
-        print "<fsmap>"
-        for svr in self.servers:
-            svr.toXML()
-        print "</fsmap>"
-        
     def toString(self):
         mapStr = ""
         for svr in self.servers:
@@ -76,6 +70,7 @@ class Server:
         newFs = Filesystem(name)
         self.filesystems.append(newFs)
         return newFs
+
          
     def getFilesystem(self, name):
         for filesystem in self.filesystems:
@@ -83,12 +78,6 @@ class Server:
                 return filesystem
         return None
     
-    def toXML(self):
-        print "<server name=%s>" % self.name
-        for fs in self.filesystems:
-            fs.toXML()
-        print "</server>"
-        
     def toString(self):
         svrStr = ""
         for fs in self.filesystems:
@@ -97,32 +86,12 @@ class Server:
                 svrStr += "%s:%s:%s\n" %(self.name, fs.name, fsStr)
         return svrStr
 
-class Filesystem:
-    def __init__(self, name):
-        self.name = name
-        self.dirs = []
-
-    def addDir(self, path, filespace):
-        self.dirs.append((path, filespace))
-        
-    def toXML(self):
-        print "<filesystem name=%s>" % self.name
-        for dir in self.dirs:
-            print "<dir filespace=%s datadir=%s />" %(dir[1], dir[0])
-        print "</filesystem>"
-        
-    def toString(self):
-        dirStrList = []
-        for dir in self.dirs:
-            dirStr = "%s:%s" %(dir[0], dir[1])
-            dirStrList.append(dirStr)
-        return dirStrList
-            
-
 #Global Variables
 systemFSMap  = None
 #Keyed on servername, each value is a list of devices & directories
 serverFSDict = None
+serverFSMap = dict()
+fsDetailsMap = dict()
 dbConn       = None
 logger       = None
     
@@ -213,47 +182,55 @@ def parseargs(args):
 
     return options
             
-#Grabs the mtab or mnttab from every server and loads it into a dictionary of lists keyed by hostname
-def genServerFSDict():
-    global systemFSMap
-    global serverFSDict
-    serverFSDict = dict()
-    result = os.uname()
-    pool   = WorkerPool()
-    
-    if result[0] == 'Linux':
-        filename = "/etc/mtab"
-    elif result[0] == 'SunOS':
-        filename = "/etc/mnttab"
-    else:
-        logger.error("OS not supported.  Exiting")
+def findFsDetails():
+    global serverFSMap
+    try:
+        #find the mount points in parallel
+        pool = WorkerPool()
+
+        for hname in serverFSMap.keys():
+            hname.strip()
+            subCmd = "df -P %s" %(serverFSMap[hname])
+            cmdStr = 'ssh -o PasswordAuthentication=no %s "%s"' % (hname, subCmd)
+            pool.addCommand( Command(hname, cmdStr, REMOTE, hname) )
+        pool.join()
+        items = pool.getCompletedItems()
+        for i in items:
+            if i.results.rc == 0:
+                df_with_header = i.results.stdout.strip()
+                df_list = df_with_header.splitlines() 
+                df_list.pop(0)
+                fsList = serverFSMap[i.remoteHost].split()
+                if len(df_list) != len(fsList):
+                    print "Mismatch"
+                    continue  
+                for df_vals in df_list:
+                    df_val = df_vals.split()
+                    fsDetailsMap[fsList.pop(0).strip()] = [i.remoteHost, df_val[0], df_val[5]] 
+            else:
+                print("Failure in talking to host %s" %(i.remoteHost))
+
+        pool.join()
+        pool.haltWork()
+        pool.joinWorkers()
+
+    except Exception, e:
+        print e.__str__()
+        pool.join()
+        pool.haltWork()
+        pool.joinWorkers()
+    except KeyboardInterrupt:
+        pool.join()
+        pool.haltWork()
+        pool.joinWorkers()
         sys.exit(1)
-    #Get list of servers
-    serverList = systemFSMap.getAllServers()
-    cmd = "cat " + filename
-    for server in serverList:
-        servername = server.name
-        try:
-            output = runPoolCommand(servername, cmd, pool)
-        except Exception, e:
-            logger.info("Failed to get filesystem list from server: %s Error: %s" %(servername, e.__str__() ))
-        else:
-            outputLines = output.splitlines()
-            mounted_fs_list = []
-            for line in outputLines:
-                logger.info ("From: " + servername + " Got: " + line)
-                mounted_fs_list.append(line.split())
-                serverFSDict[servername] = mounted_fs_list
-            
-    pool.join()
-    pool.haltWork()
-    pool.joinWorkers()
-    logger.debug("serverFSDict: " + str(serverFSDict) )
+    except:
+        pool.join()
+        pool.haltWork()
+        pool.joinWorkers()
 
 def genFSMap():
-    global systemFSMap
-    global serverFSDict
-    results = runQuery("SELECT fsname as filespc, fsedbid as seg_dbid, fselocation as datadir, hostname \
+    results = runQuery("SELECT pgfs.oid as oid, fsedbid as seg_dbid, fselocation as datadir, hostname \
                         FROM pg_filespace pgfs, pg_filespace_entry pgfse,  gp_segment_configuration gpsec \
                         WHERE pgfse.fsefsoid=pgfs.oid AND pgfse.fsedbid=gpsec.dbid  ORDER BY seg_dbid;")
     if len(results) == 0:
@@ -262,64 +239,24 @@ def genFSMap():
     logger.debug( "Results from query:" + str(results) )
     #result columns will be: [0] filespace name, [1] dbid, [2] datadir, [3] hostname
     for result in results:
-        filespaceName= result[0]
-        #dbid=result[1]
-        datadir=result[2]
+        filespaceOid= result[0]
+        datadir=result[2].strip()
         hostname=result[3]
-        fsname = resolveFilesystemName(hostname, datadir)
-        if fsname == None:
-            logger.info( "Filesystem not found for  " + hostname + ":" + datadir )
-            continue
-        svr = systemFSMap.getServer(hostname)
-        if svr == None:
-            logger.info( "Error Server not found: " + hostname )
-            continue
-        fs = svr.getFilesystem(fsname)
-        if fs == None:
-            fs = svr.addFilesystem(fsname)
-        fs.addDir(datadir, filespaceName)
-        
+
+        if fsDetailsMap.has_key(datadir): 
+            print fsDetailsMap[datadir][0], fsDetailsMap[datadir][2], filespaceOid
     
-def genServerList():
-    global systemFSMap
-    serverList = []
-    results = runQuery("select distinct hostname from  gp_segment_configuration")
-    
+def genServerFsList():
+    results = runQuery("select hostname, array_to_string(array_agg(fselocation), ' ') as fs from pg_filespace_entry a , gp_segment_configuration b where a.fsedbid = b.dbid group by hostname")
+
     if len(results) == 0:
         logger.error( "Error: gp_segment_configuration empty" )
         sys.exit(1)
-        
-    for item in results:
-        if len(item) > 0:
-            systemFSMap.addServer(item[0])
-    logger.debug( "serverList set to: %s" % str(systemFSMap.getAllServers())  )
 
-def resolveFilesystemName(server, directory):
-    global serverFSDict
-    if serverFSDict == None:
-        logger.info( "serverFSDict not loaded... Exiting")
-        sys.exit(1)
-    if server == None or directory == None:
-        logger.info( "Failed to resolve Filsystem Name: Bad parameters")
-        return None
-    
-    try:
-        fsData = serverFSDict[server]
-    except:
-        logger.info( "No FS data for server: " + server )
-        return None
-    
-    bestMatch = None
-    for entry in fsData:
-        mountPoint = entry[1]
-        if directory.startswith(mountPoint):
-            if bestMatch == None:
-                bestMatch = entry
-            elif len(mountPoint) > len(bestMatch[1]):
-                bestMatch = entry
-    if bestMatch != None:
-        return bestMatch[0]
-    
+    for item in results:
+        if len(item) == 2:
+            serverFSMap[item[0]] = item[1]
+
 def main (argv):
     global systemFSMap
     global logger
@@ -328,13 +265,13 @@ def main (argv):
     
     options = parseargs(argv)
     dbConnect(options)
-    systemFSMap = FSMap()
-    genServerList()
-    genServerFSDict()
+    genServerFsList() 
+    findFsDetails()
     genFSMap()
+    sys.exit(0)
     
-    print systemFSMap.toString()
     
 if __name__ == '__main__':
     sys.exit(main(sys.argv[1:]))
+
 
