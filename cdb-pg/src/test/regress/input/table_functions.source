@@ -969,6 +969,7 @@ CREATE FUNCTION x(OUT id integer, OUT "time" timestamp, OUT sessionnum integer)
 -- PASS: completely defined at prepare time
 PREPARE p1 AS SELECT * FROM multiset_2( TABLE(SELECT * FROM example_r) ) order by a, b;
 EXECUTE p1;
+DEALLOCATE p1;
 
 -- FAIL: can't pass anytable as prepare argument
 PREPARE p2 AS SELECT * FROM multiset_2( $1 ) order by a, b;
@@ -978,9 +979,17 @@ PREPARE p3(anytable) AS SELECT * FROM multiset_5( $1 ) order by a, b;
 PREPARE p4 AS SELECT * FROM project( TABLE( SELECT * FROM pg_am ), $1);
 PREPARE p5(integer) AS SELECT * FROM project( TABLE( SELECT * FROM pg_am ), $1);
 
--- FAIL: can't prepare with a dynamic result set (same reason as no view support)
-PREPARE p6 AS SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 1);
+-- PASS: We allow table functions with describe to be prepared.  This can
+-- theoretically require need for reparse/replan, but that requires more
+-- general support of prepared statements in conjunction with a plan cache.
+PREPARE p6 AS SELECT * FROM project( TABLE( SELECT * FROM example_r ), 2) ORDER BY 1;
+EXECUTE p6;
 
+-- FAIL: MPP-16640: when underlying table has changed prepared statements 
+-- will fail.  If this issue is ever fixed then this should pass as well.
+ALTER TABLE example_r ALTER COLUMN a TYPE numeric;
+EXECUTE p6;
+DEALLOCATE p6;
 
 -- =======
 -- Cleanup
