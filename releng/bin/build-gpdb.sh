@@ -55,7 +55,7 @@ fi
 
 WORKDIR=`pwd`
 PRODUCT="GPDB"
-ARCHIVE_HOST="intranet"
+ARCHIVE_HOST="build-prod"
 GPDB="greenplum-db"
 DEVPATH=
 BUILD_INFO="buildInfo.txt"
@@ -165,19 +165,19 @@ generateBuildInfo() {
     echo "=================================="
     echo ""
 
-    echo "Copy build.out to intranet..."
+    echo "Copy build.out to build-prod..."
     BUILD_NUMBER=`cat ${WORKDIR}/BUILD_NUMBER`
     ARCHIVE_PATH="/var/www/html/reports/${BUILD_NUMBER}/compile/${BRANCH}_${BUILD_TYPE}/${MPP_ARCH}/${HOST}/"
 
     echo 'ssh build@${ARCHIVE_HOST} "mkdir -p ${ARCHIVE_PATH}"'
     ssh build@${ARCHIVE_HOST} "mkdir -p ${ARCHIVE_PATH}"
     if [ $? -ne 0 ] ; then
-        echo "Error creating directory for build.out on intranet"
+        echo "Error creating directory for build.out on build-prod"
     fi
     echo "scp -pq ${WORKDIR}/build.out ${ARCHIVE_HOST}:${ARCHIVE_PATH}"
     scp -pq ${WORKDIR}/build.out ${ARCHIVE_HOST}:${ARCHIVE_PATH}
     if [ $? -ne 0 ] ; then
-        echo "Error copying build.out to intranet"
+        echo "Error copying build.out to build-prod"
     fi
 }
 
@@ -247,7 +247,7 @@ getBuildId() {
     generateBuildIDInfo
 
     #Get the buildID
-    ./buildDB.py -p 5432 -h intranet -d cdbunit -u postgres addBuild buildIdInfo.txt > ${BUILD_ID} 2>&1
+    ./buildDB.py -p 5432 -h build-prod -d cdbunit -u postgres addBuild buildIdInfo.txt > ${BUILD_ID} 2>&1
     if [ $? -ne 0 ] ; then
         echo "Error running buildDB"
         exit 1
@@ -466,7 +466,7 @@ compilePGTest() {
 }
 
 mailMakeError() {
-    mailTo="eng@intranet.greenplum.com"
+    mailTo="eng@build-prod.sanmateo.greenplum.com"
     mailSubject="Build Failure: ${BRANCH} ${BUILD_TYPE} : `date +%Y%m%d%H%M`"
     mailLine=50
     `${TAIL_CMD} -n ${mailLine} ${WORKDIR}/build.out > errorBuild.txt`
@@ -517,7 +517,7 @@ buildTestUpdate() {
     ## testing
     exit 1
 
-    BUILD_DB_OPTS="-p 5432 -h intranet -d cdbunit -u postgres"
+    BUILD_DB_OPTS="-p 5432 -h build-prod -d cdbunit -u postgres"
 
     echo "./buildDB.py ${BUILD_DB_OPTS} build ${BUILD_INFO}"
     ./buildDB.py ${BUILD_DB_OPTS} build ${BUILD_INFO}
