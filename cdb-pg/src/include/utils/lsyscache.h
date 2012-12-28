@@ -61,6 +61,7 @@ extern Oid	get_negator(Oid opno);
 extern RegProcedure get_oprrest(Oid opno);
 extern RegProcedure get_oprjoin(Oid opno);
 extern char *get_func_name(Oid funcid);
+extern Oid	get_func_namespace(Oid funcid);
 extern Oid	get_func_rettype(Oid funcid);
 extern int	get_func_nargs(Oid funcid);
 extern Oid	get_func_signature(Oid funcid, Oid **argtypes, int *nargs);
@@ -118,6 +119,7 @@ extern char *get_namespace_name(Oid nspid);
 extern Oid	get_roleid(const char *rolname);
 extern Oid	get_roleid_checked(const char *rolname);
 
+extern bool attname_exists(Oid relid, const char *attname);
 #define is_array_type(typid)  (get_element_type(typid) != InvalidOid)
 
 #define TypeIsToastable(typid)	(get_typstorage(typid) != 'p')

@@ -159,7 +159,6 @@ test: foreign_data
 test: gp_toolkit
 test: filespace
 test: orafunk
-test: gpcheckmirrorseg
 test: trig
 test: xml
 test: auth_constraint
@@ -171,3 +170,8 @@ test: plpgsql_cache
 test: percentile
 test: resource_queue_function
 test: co_nestloop_idxscan
+#
+# gpcheckmirrorseg should be last to check mirror integrity
+#
+test: gpcheckmirrorseg
+# end of tests

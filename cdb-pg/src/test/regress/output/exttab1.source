@@ -674,6 +674,8 @@ ERROR:  function nosuchfunc() does not exist
 CREATE TRUSTED PROTOCOL demoprot (readfunc = 'boolin'); -- should fail
 ERROR:  function boolin() does not exist
 CREATE TRUSTED PROTOCOL demoprot (readfunc = 'read_from_file', writefunc = 'write_to_file'); -- should succeed
+ALTER PROTOCOL demoprot_untrusted RENAME TO demoprot_untrusted2;
+ALTER PROTOCOL demoprot_untrusted2 RENAME TO demoprot_untrusted;
 CREATE PROTOCOL demoprot_untrusted (readfunc = 'read_from_file', writefunc = 'write_to_file'); -- should succeed
 CREATE ROLE extprotu NOSUPERUSER;
 NOTICE:  resource queue required -- using default resource queue "pg_default"

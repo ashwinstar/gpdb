@@ -26,6 +26,7 @@
 #include <math.h>
 
 #include "access/heapam.h"
+#include "access/catquery.h"
 #include "catalog/heap.h"
 #include "access/transam.h"
 #include "access/tuptoaster.h"
@@ -596,10 +597,14 @@ static List*	buildExplicitAttributeNames(Oid relationOid, VacuumStmt *stmt)
 	foreach (le, stmt->va_cols)
 	{
 		HeapTuple	attributeTuple;
+		cqContext  *pcqCtx;
 		char *attributeName = strVal(lfirst(le));
 		Assert(attributeName);
 
-		attributeTuple = SearchSysCacheAttName(relationOid, attributeName);
+		pcqCtx = caql_getattname_scan(NULL, relationOid, attributeName);
+
+		attributeTuple = caql_get_current(pcqCtx);
+
 		/* Ensure that we can actually analyze the attribute. */
 		if (HeapTupleIsValid(attributeTuple))
 		{
@@ -617,8 +622,6 @@ static List*	buildExplicitAttributeNames(Oid relationOid, VacuumStmt *stmt)
 			{
 				lExplicitAttNames = lappend(lExplicitAttNames, attributeName);
 			}
-			
-			ReleaseSysCache(attributeTuple);
 		}
 		else
 		{
@@ -628,6 +631,9 @@ static List*	buildExplicitAttributeNames(Oid relationOid, VacuumStmt *stmt)
 							errmsg("Relation %s does not have an attribute named %s.", 
 									get_rel_name(relationOid),attributeName)));
 		}
+
+		caql_endscan(pcqCtx);
+
 	}
 	return lExplicitAttNames;
 }
@@ -658,21 +664,16 @@ static bool analyzePermitted(Oid relationOid)
 static List* analyzableRelations(void)
 {
 	List	   		*lRelOids = NIL;
-	Relation		pgclass = NULL;
-	HeapScanDesc 	scan = NULL;
+	cqContext		*pcqCtx;
 	HeapTuple		tuple = NULL;
-	ScanKeyData 	key;
 
-	ScanKeyInit(&key,
-			Anum_pg_class_relkind,
-			BTEqualStrategyNumber, F_CHAREQ,
-			CharGetDatum(RELKIND_RELATION));
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_class "
+				" WHERE relkind = :1 ",
+				CharGetDatum(RELKIND_RELATION)));
 
-	pgclass = heap_open(RelationRelationId, AccessShareLock);
-
-	scan = heap_beginscan(pgclass, SnapshotNow, 1 /* key length */, &key);
-
-	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
 	{
 		Oid candidateOid = HeapTupleGetOid(tuple);
 		if (analyzePermitted(candidateOid)
@@ -682,8 +683,8 @@ static List* analyzableRelations(void)
 		}
 	}
 
-	heap_endscan(scan);
-	heap_close(pgclass, AccessShareLock);
+	caql_endscan(pcqCtx);
+
 	return lRelOids;
 }
 
@@ -914,12 +915,17 @@ static int4 numberOfMCVEntries(Oid relationOid, const char *attributeName)
 	HeapTuple			attributeTuple = NULL;
 	Form_pg_attribute 	attribute = NULL;
 	int4	 			nMCVEntries = 0;
-	
-	attributeTuple = SearchSysCacheAttName(relationOid, attributeName);
+	cqContext		   *pcqCtx;
+
+	pcqCtx = caql_getattname_scan(NULL, relationOid, attributeName);
+
+	attributeTuple = caql_get_current(pcqCtx);
 	Assert(HeapTupleIsValid(attributeTuple));
 	attribute = (Form_pg_attribute) GETSTRUCT(attributeTuple);
 	nMCVEntries = attribute->attstattarget;
-	ReleaseSysCache(attributeTuple);
+
+	caql_endscan(pcqCtx);
+
 	if (nMCVEntries < 0)
 		nMCVEntries = (int4) default_statistics_target;
 	return nMCVEntries;
@@ -1364,6 +1370,8 @@ static void updateReltuplesRelpagesInCatalog(Oid relationOid, float4 relTuples, 
 	HeapTuple	tuple = NULL;
 	Form_pg_class pgcform = NULL;
 	bool		dirty = false;
+	cqContext	cqc;
+	cqContext  *pcqCtx;
 
 	Assert(relationOid != InvalidOid);
 	Assert(relTuples > -1.0);
@@ -1386,10 +1394,16 @@ static void updateReltuplesRelpagesInCatalog(Oid relationOid, float4 relTuples, 
 	 */
 	pgclass = heap_open(RelationRelationId, RowExclusiveLock);
 
+	pcqCtx = caql_addrel(cqclr(&cqc), pgclass);
+
 	/* Fetch a copy of the tuple to scribble on */
-	tuple = SearchSysCacheCopy(RELOID,
-							  ObjectIdGetDatum(relationOid),
-							  0, 0, 0);
+	tuple = caql_getfirst(
+			pcqCtx,
+			cql("SELECT * FROM pg_class "
+				" WHERE oid = :1 "
+				" FOR UPDATE ",
+				ObjectIdGetDatum(relationOid)));
+
 	/* We have locked the relation. We should not have trouble finding pg_class tuple */
 	Assert(HeapTupleIsValid(tuple));
 	pgcform = (Form_pg_class) GETSTRUCT(tuple);
@@ -1438,8 +1452,12 @@ static bool isOrderedAndHashable(Oid relationOid, const char *attributeName)
 	Operator	equalityOperator = NULL;
 	Operator	ltOperator = NULL;
 	bool		result = true;
+	cqContext  *pcqCtx;
 	
-	attributeTuple = SearchSysCacheAttName(relationOid, attributeName);
+	pcqCtx = caql_getattname_scan(NULL, relationOid, attributeName);
+
+	attributeTuple = caql_get_current(pcqCtx);
+
 	Assert(HeapTupleIsValid(attributeTuple));	
 	attribute = (Form_pg_attribute) GETSTRUCT(attributeTuple);	
 
@@ -1448,20 +1466,20 @@ static bool isOrderedAndHashable(Oid relationOid, const char *attributeName)
 	if (!equalityOperator)
 		result = false;
 	else
-		ReleaseSysCache(equalityOperator);
+		ReleaseOperator(equalityOperator);
 
 	/* Does type have "<" operator */
 	ltOperator = ordering_oper(attribute->atttypid, true);
 	if (!ltOperator)
 		result = false;
 	else
-		ReleaseSysCache(ltOperator);
+		ReleaseOperator(ltOperator);
 	
 	/* Is the attribute hashable?*/
 	if (!isGreenplumDbHashable(attribute->atttypid))
 		result = false;
 	
-	ReleaseSysCache(attributeTuple);
+	caql_endscan(pcqCtx);
 	
 	return result;
 }
@@ -1481,8 +1499,12 @@ static bool hasMaxDefined(Oid relationOid, const char *attributeName)
 	Oid			maxAggregateFunction = InvalidOid;
 	bool		result = true;
 	List		*funcNames = NIL;
-	
-	attributeTuple = SearchSysCacheAttName(relationOid, attributeName);
+	cqContext	*pcqCtx;
+
+	pcqCtx = caql_getattname_scan(NULL, relationOid, attributeName);
+
+	attributeTuple = caql_get_current(pcqCtx);
+
 	Assert(HeapTupleIsValid(attributeTuple));	
 	attribute = (Form_pg_attribute) GETSTRUCT(attributeTuple);	
 	
@@ -1490,12 +1512,10 @@ static bool hasMaxDefined(Oid relationOid, const char *attributeName)
 	funcNames = list_make1(makeString("max"));
 	maxAggregateFunction = LookupFuncName(funcNames, 1 /* nargs to function */, 
 										&attribute->atttypid, true);
-	if (maxAggregateFunction == InvalidOid)
-	{
+	if (!OidIsValid(maxAggregateFunction))
 		result = false;
-	}
 	
-	ReleaseSysCache(attributeTuple);	
+	caql_endscan(pcqCtx);
 	return result;
 }
 
@@ -1513,12 +1533,17 @@ static bool isBoolType(Oid relationOid, const char *attributeName)
 	HeapTuple	attributeTuple = NULL;
 	Form_pg_attribute attribute = NULL;
 	bool		isBool = false;
-	
-	attributeTuple = SearchSysCacheAttName(relationOid, attributeName);
+	cqContext  *pcqCtx;
+
+	pcqCtx = caql_getattname_scan(NULL, relationOid, attributeName);
+
+	attributeTuple = caql_get_current(pcqCtx);
+
 	Assert(HeapTupleIsValid(attributeTuple));
 	attribute = (Form_pg_attribute) GETSTRUCT(attributeTuple);
 	isBool = (attribute->atttypid == BOOLOID);
-	ReleaseSysCache(attributeTuple);
+
+	caql_endscan(pcqCtx);
 	return isBool;
 }
 
@@ -1688,16 +1713,19 @@ static bool isNotNull(Oid relationOid, const char *attributeName)
 	HeapTuple	attributeTuple = NULL;
 	Form_pg_attribute attribute = NULL;
 	bool		nonNull = false;
+	cqContext  *pcqCtx;
+
+	pcqCtx = caql_getattname_scan(NULL, relationOid, attributeName);
+
+	attributeTuple = caql_get_current(pcqCtx);
 	
-	attributeTuple = SearchSysCacheAttName(relationOid, attributeName);
 	Assert(HeapTupleIsValid(attributeTuple));
 	attribute = (Form_pg_attribute) GETSTRUCT(attributeTuple);
 	nonNull = attribute->attnotnull;
-	ReleaseSysCache(attributeTuple);
-	if (nonNull)
-		return true;
-	else
-		return false;
+
+	caql_endscan(pcqCtx);
+
+	return (nonNull);
 }
 
 /**
@@ -1749,13 +1777,19 @@ static bool	isFixedWidth(Oid relationOid, const char *attributeName, float4 *wid
 	HeapTuple	attributeTuple = NULL;
 	Form_pg_attribute attribute = NULL;
 	float4	avgwidth = 0.0;
+	cqContext	*pcqCtx;
+
 	Assert(width);
 	
-	attributeTuple = SearchSysCacheAttName(relationOid, attributeName);
+	pcqCtx = caql_getattname_scan(NULL, relationOid, attributeName);
+
+	attributeTuple = caql_get_current(pcqCtx);
+
 	Assert(HeapTupleIsValid(attributeTuple));
 	attribute = (Form_pg_attribute) GETSTRUCT(attributeTuple);
 	avgwidth = get_typlen(attribute->atttypid);
-	ReleaseSysCache(attributeTuple);
+
+	caql_endscan(pcqCtx);
 	
 	if (avgwidth > 0)
 	{
@@ -2172,8 +2206,12 @@ static void updateAttributeStatisticsInCatalog(Oid relationOid, const char *attr
 		Form_pg_attribute attribute;
 		Operator	equalityOperator;
 		Operator	ltOperator;
+		cqContext  *pcqCtx;
 
-		attributeTuple = SearchSysCacheAttName(relationOid, attributeName);
+		pcqCtx = caql_getattname_scan(NULL, relationOid, attributeName);
+		
+		attributeTuple = caql_get_current(pcqCtx);
+
 		Assert(HeapTupleIsValid(attributeTuple));
 		attribute = (Form_pg_attribute) GETSTRUCT(attributeTuple);
 		attNum = attribute->attnum;
@@ -2182,7 +2220,7 @@ static void updateAttributeStatisticsInCatalog(Oid relationOid, const char *attr
 		if (equalityOperator)
 		{
 			equalityOid = oprid(equalityOperator);
-			ReleaseSysCache(equalityOperator);
+			ReleaseOperator(equalityOperator);
 		}
 		
 		ltOperator = ordering_oper(attribute->atttypid, true);
@@ -2190,9 +2228,9 @@ static void updateAttributeStatisticsInCatalog(Oid relationOid, const char *attr
 		if (ltOperator)
 		{
 			ltOid = oprid(ltOperator);
-			ReleaseSysCache(ltOperator);
+			ReleaseOperator(ltOperator);
 		}
-		ReleaseSysCache(attributeTuple);
+		caql_endscan(pcqCtx);
 	}
 
 	for (i = 0; i < Natts_pg_statistic; ++i)
@@ -2305,39 +2343,48 @@ static void updateAttributeStatisticsInCatalog(Oid relationOid, const char *attr
 
 	/* Now work on pg_statistic */
 	{
-		HeapTuple oldStatisticsTuple;
-		Relation	pgstatisticRel;
+		HeapTuple	oldStatisticsTuple;
+		cqContext  *pcqCtx;
 
-		pgstatisticRel = heap_open(StatisticRelationId, RowExclusiveLock);
-		oldStatisticsTuple = SearchSysCache(STATRELATT, 
-											ObjectIdGetDatum(relationOid),
-											Int16GetDatum(attNum),
-											0,0);
+		pcqCtx = caql_beginscan(
+				NULL,
+				cql("SELECT * FROM pg_statistic "
+					" WHERE starelid = :1 "
+					" AND staattnum = :2 "
+					" FOR UPDATE ",
+					ObjectIdGetDatum(relationOid),
+					Int16GetDatum(attNum)));
+
+		oldStatisticsTuple = caql_getnext(pcqCtx);
 
 		if (HeapTupleIsValid(oldStatisticsTuple))
 		{
 			/* pg_statistic tuple exists. */
-			HeapTuple stup = heap_modify_tuple(oldStatisticsTuple,
-					RelationGetDescr(pgstatisticRel),
+			HeapTuple stup = caql_modify_current(pcqCtx,
 					values,
 					nulls,
 					replaces);
-			ReleaseSysCache(oldStatisticsTuple);
-			simple_heap_update(pgstatisticRel, &stup->t_self, stup);
-			CatalogUpdateIndexes(pgstatisticRel, stup);
+
+			caql_update_current(pcqCtx, stup);
+			/* and Update indexes (implicit) */
+
 			heap_freetuple(stup);
 		}
 		else
 		{
-			/* insert new tuple into pg_statistic. we are guaranteed no-one else
-			 * will overwrite this row because of ShareUpdateExclusiveLock on the relation. */
-			HeapTuple stup = heap_form_tuple(RelationGetDescr(pgstatisticRel), values, nulls);
-			simple_heap_insert(pgstatisticRel, stup);
-			CatalogUpdateIndexes(pgstatisticRel, stup);
+			/* insert new tuple into pg_statistic. we are guaranteed
+			 * no-one else will overwrite this row because of
+			 * ShareUpdateExclusiveLock on the relation. 
+			 */
+
+			HeapTuple stup = caql_form_tuple(pcqCtx, values, nulls);
+
+			caql_insert(pcqCtx, stup);
+			/* and Update indexes (implicit) */
+
 			heap_freetuple(stup);
 		}
-
-		heap_close(pgstatisticRel, RowExclusiveLock);	
+		caql_endscan(pcqCtx);
 	}
 
 }
@@ -2644,5 +2691,3 @@ gp_statistics_estimate_reltuples_relpages_oid(PG_FUNCTION_ARGS)
 
 	PG_RETURN_ARRAYTYPE_P(result);
 }
-
-
