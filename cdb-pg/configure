@@ -4662,7 +4662,7 @@ _ACEOF
 
 
 if `echo "$GP_VERSION" | grep "main build" > /dev/null 2>&1` ; then
-   GP_VERSION="4.2.0"
+   GP_VERSION="4.3.0"
 fi
 
 GP_MAJORVERSION=`expr "$GP_VERSION" : '\([0-9][0-9]*\.[0-9][0-9]*\)'`

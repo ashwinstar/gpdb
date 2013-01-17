@@ -997,6 +997,7 @@ class GPUpgrade(GPUpgradeBase):
         self.ForceShutDown()
         self.Startup(self.oldenv, True)
         self.Update("""begin;
+            set allow_system_table_mods='dml';
             update gp_segment_configuration set mode='c', role='p' where preferred_role='m';
             update gp_segment_configuration set mode='s', role='m', status='d' where preferred_role='p' and content >=0;
             commit;
@@ -1057,6 +1058,7 @@ class GPUpgrade(GPUpgradeBase):
             raise UpgradeError("Mirror or Segments are down or out of sync")
 
         self.Update("""begin;
+            set allow_system_table_mods='dml';
             update gp_segment_configuration set mode='c' where preferred_role='p' and content >=0;
             update gp_segment_configuration set status='d' where preferred_role='m';
             commit;

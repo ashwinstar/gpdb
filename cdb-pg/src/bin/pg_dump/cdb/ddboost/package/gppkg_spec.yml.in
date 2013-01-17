@@ -2,7 +2,7 @@ Pkgname: ddboostlib
 Architecture: #arch
 Version: 2.4.1
 OS: #os
-GPDBVersion: 4.2
+GPDBVersion: 4.3
 Description: The DDBoostlib package updates the Data Domain services for the Greenplum database.
 PreInstall:- Master: "if [ -f $GPHOME/lib/libDDBoost.so ]; then \
                mkdir -p $GPHOME/share/packages/archive/DDBoostlib-2.4.1_remove_data; \

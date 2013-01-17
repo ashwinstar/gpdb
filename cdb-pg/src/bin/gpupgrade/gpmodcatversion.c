@@ -27,7 +27,7 @@ struct verarray
 
 static struct verarray versions[] =
 {
-	{"4.2", CATALOG_VERSION_NO},
+	{"4.3", CATALOG_VERSION_NO},
 	{NULL, 0}
 };
 

@@ -767,22 +767,22 @@ end;
 $$ language 'plpgsql';
 
 
-select catdump.dump_to_table('4.2', 'pg_catalog');
+select catdump.dump_to_table('4.3', 'pg_catalog');
 
 
 
 --
--- Now, load the 4.1 catalog into catdump.ddl
+-- Now, load the 4.2 catalog into catdump.ddl
 --
-drop external table cat41;
-create external table cat41(stmt text) location('file://@hostname@@abs_srcdir@/data/upgrade42/catalog41/4_1_dump.txt')
+drop external table cat42;
+create external table cat42(stmt text) location('file://@hostname@@abs_srcdir@/data/upgrade43/catalog42/4_2_dump.txt')
 format 'TEXT' (delimiter 'OFF');
 
-insert into catdump.ddl SELECT distinct '4.1u', stmt from cat41;
-drop external table cat41;
+insert into catdump.ddl SELECT distinct '4.2u', stmt from cat42;
+drop external table cat42;
 
 --
--- Create the upgrade schema and fill that schema with 4.1 cat
+-- Create the upgrade schema and fill that schema with 4.2 cat
 -- then execute the upgrade script
 --
 drop schema upg_catalog cascade;
@@ -791,7 +791,7 @@ SET SEARCH_PATH to upg_catalog;
 
 drop external table execCmd;
 create external web table execCmd(a text)
-execute 'psql -p $GP_MASTER_PORT -f @abs_builddir@/data/upg_catupgrade_42.sql $GP_DATABASE $GP_USER >@abs_builddir@/data/upgrade_exec.log 2>@abs_builddir@/data/upgrade_err.log;'
+execute 'psql -p $GP_MASTER_PORT -f @abs_builddir@/data/upg_catupgrade_43.sql $GP_DATABASE $GP_USER >@abs_builddir@/data/upgrade_exec.log 2>@abs_builddir@/data/upgrade_err.log;'
 on master format 'text';
 
 select * from execCmd; 
@@ -799,7 +799,7 @@ select * from execCmd;
 --
 -- Dump the upgraded upg_catalog to catdump
 --
-select catdump.dump_to_table('4.1u', 'upg_catalog');
+select catdump.dump_to_table('4.2u', 'upg_catalog');
 
 
 --
@@ -807,13 +807,13 @@ select catdump.dump_to_table('4.1u', 'upg_catalog');
 --
 update catdump.DDL set stmt = regexp_replace(ltrim(rtrim(stmt)), 'upg_catalog', 'pg_catalog', 'ig');
 
-select stmt from catdump.DDL where ver = '4.1u'
+select stmt from catdump.DDL where ver = '4.2u'
 except
-select stmt from catdump.DDL where ver = '4.2'
+select stmt from catdump.DDL where ver = '4.3'
 order by 1;
 
-select stmt from catdump.DDL where ver = '4.2'
+select stmt from catdump.DDL where ver = '4.3'
 except
-select stmt from catdump.DDL where ver = '4.1u'
+select stmt from catdump.DDL where ver = '4.2u'
 order by 1;
 

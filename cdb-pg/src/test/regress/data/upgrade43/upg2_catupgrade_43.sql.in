@@ -1,0 +1,15 @@
+--
+-- Catalog Upgrade Script (from 4.2 to 4.3)
+--
+-- All catalog changes should be placed here.
+-- Most operations can be declared as DDL, such as ALTER TABLE, CREATE TABLE
+-- Creating catalog objects must specific its oid. For example,
+--   Create function f1(int) ... with (oid = <newoid>)
+--   Create aggregate agg1(int) (..., oid = <newoid>)
+--
+-- Some operations can't be declared as DDL, such as populating a new catalog column,
+-- or replacing the on-disk representation of views. These must be done as DML.
+-- For example:
+--   update @gpupgradeschemaname@.pg_aggregate set dummy = 123;
+--   select catDML('update pg_catalog.pg_aggregate set dummy = 123') from gp_dist_random('gp_id');
+--

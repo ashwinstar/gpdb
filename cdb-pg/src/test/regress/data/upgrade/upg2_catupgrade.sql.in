@@ -67,7 +67,7 @@ $$ language 'plpgsql';
 -------------------------------------
 -- Execute the main upgrade script
 -------------------------------------
-\set upg2script `echo $GPHOME/share/postgresql/upgrade/upg2_catupgrade_42.sql`
+\set upg2script `echo $GPHOME/share/postgresql/upgrade/upg2_catupgrade_43.sql`
 \i :upg2script
 
 -------------------------------------

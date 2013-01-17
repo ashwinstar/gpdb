@@ -19,7 +19,7 @@ if sys.version_info < (2, 5, 0) or sys.version_info >= (3, 0, 0):
     sys.exit(1)
 
 
-MAIN_VERSION = [4,2,99,99]    # version number for main
+MAIN_VERSION = [4,3,99,99]    # version number for main
 
 
 #============================================================
@@ -105,7 +105,7 @@ class GpVersion:
                     raise StandardError("too many tokens in version")
                 
                 # We should now just have "<VERSION>"
-                if v == 'main':
+                if v == 'main' or v.endswith('_MAIN'):
                     self.version = MAIN_VERSION
                     if not self.build:
                         self.build = 'dev'
