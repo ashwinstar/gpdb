@@ -170,6 +170,7 @@ test: plpgsql_cache
 test: percentile
 test: resource_queue_function
 test: co_nestloop_idxscan
+test: partindex_test
 #
 # gpcheckmirrorseg should be last to check mirror integrity
 #
