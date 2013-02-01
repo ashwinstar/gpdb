@@ -466,14 +466,23 @@ extern int	Gp_max_packet_size;	/* GUC var */
  * Support for multiple "types" of interconnect
  */
 
-#define INTERCONNECT_TYPE_TCP (0)
-#define INTERCONNECT_TYPE_UDP (1)
-#define INTERCONNECT_TYPE_NIL (2)
+#define INTERCONNECT_TYPE_TCP    (0)
+#define INTERCONNECT_TYPE_UDP    (1)
+#define INTERCONNECT_TYPE_UDPIFC (2)
+#define INTERCONNECT_TYPE_NIL    (3)
 
 extern int Gp_interconnect_type;
 
 extern const char *gpvars_assign_gp_interconnect_type(const char *newval, bool doit, GucSource source __attribute__((unused)) );
 extern const char *gpvars_show_gp_interconnect_type(void);
+
+#define INTERCONNECT_FC_METHOD_CAPACITY (0)
+#define INTERCONNECT_FC_METHOD_LOSS     (2)
+
+extern int Gp_interconnect_fc_method;
+
+extern const char *gpvars_assign_gp_interconnect_fc_method(const char *newval, bool doit, GucSource source __attribute__((unused)) );
+extern const char *gpvars_show_gp_interconnect_fc_method(void);
 
 /*
  * Parameter Gp_interconnect_queue_depth
@@ -486,6 +495,23 @@ extern const char *gpvars_show_gp_interconnect_type(void);
  *
  */
 extern int	Gp_interconnect_queue_depth;
+
+/*
+ * Parameter Gp_interconnect_snd_queue_depth
+ *
+ * The run-time parameter Gp_interconnect_snd_queue_depth controls the
+ * average number of outstanding messages on the sender side
+ *
+ * This guc is specific to the UDP-interconnect.
+ *
+ */
+extern int	Gp_interconnect_snd_queue_depth;
+extern int	Gp_interconnect_timer_period;
+extern int	Gp_interconnect_timer_checking_period;
+extern int	Gp_interconnect_default_rtt;
+extern int	Gp_interconnect_min_rto;
+extern int  Gp_interconnect_transmit_timeout;
+extern int	Gp_interconnect_min_retries_before_timeout;
 
 /* UDP recv buf size in KB.  For testing */
 extern int 	Gp_udp_bufsize_k;
@@ -531,6 +557,8 @@ extern bool gp_interconnect_elide_setup;
  */
 extern bool gp_interconnect_log_stats;
 
+extern bool gp_interconnect_cache_future_packets;
+
 /*
  * Parameter gp_segment
  *
@@ -566,6 +594,8 @@ extern int gp_udpic_dropseg; /* specifies which segments to apply the
 extern int gp_udpic_dropxmit_percent;
 extern int gp_udpic_dropacks_percent;
 extern int gp_udpic_fault_inject_percent;
+extern int gp_udpic_fault_inject_bitmap;
+extern int gp_udpic_network_disable_ipv6;
 #endif
 
 /*

@@ -202,6 +202,14 @@ int			Gp_max_packet_size;	/* max Interconnect packet size */
 int			Gp_interconnect_queue_depth=4;	/* max number of messages
 											 * waiting in rx-queue
 											 * before we drop.*/
+int			Gp_interconnect_snd_queue_depth=2;
+int			Gp_interconnect_timer_period=5;
+int			Gp_interconnect_timer_checking_period=20;
+int			Gp_interconnect_default_rtt=20;
+int			Gp_interconnect_min_rto=20;
+int			Gp_interconnect_fc_method=INTERCONNECT_FC_METHOD_LOSS;
+int			Gp_interconnect_transmit_timeout=3600;
+int			Gp_interconnect_min_retries_before_timeout=100;
 
 int			Gp_interconnect_hash_multiplier=2;	/* sets the size of the hash table used by the UDP-IC */
 
@@ -217,6 +225,8 @@ bool gp_interconnect_elide_setup=true; /* under some conditions we can eliminate
 
 bool gp_interconnect_log_stats=false; /* emit stats at log-level */
 
+bool gp_interconnect_cache_future_packets=true;
+
 int			Gp_udp_bufsize_k; /* UPD recv buf size, in KB */
 
 #ifdef USE_ASSERT_CHECKING
@@ -229,6 +239,8 @@ int gp_udpic_dropseg = UNDEF_SEGMENT;
 int gp_udpic_dropxmit_percent = 0;
 int gp_udpic_dropacks_percent = 0;
 int gp_udpic_fault_inject_percent = 0;
+int gp_udpic_fault_inject_bitmap = 0;
+int gp_udpic_network_disable_ipv6 = 0;
 #endif
 
 /*
@@ -881,6 +893,8 @@ gpvars_assign_gp_interconnect_type(const char *newval, bool doit, GucSource sour
 		newtype = INTERCONNECT_TYPE_TCP;
 	else if (!pg_strcasecmp("udp", newval))
 		newtype = INTERCONNECT_TYPE_UDP;
+	else if (!pg_strcasecmp("udpifc", newval))
+		newtype = INTERCONNECT_TYPE_UDPIFC;
 	else if (!pg_strcasecmp("nil", newval))
 		newtype = INTERCONNECT_TYPE_NIL;
 	else
@@ -917,6 +931,8 @@ gpvars_show_gp_interconnect_type(void)
 	{
 		case INTERCONNECT_TYPE_UDP:
 			return "UDP";
+		case INTERCONNECT_TYPE_UDPIFC:
+			return "UDPIFC";
 		case INTERCONNECT_TYPE_NIL:
 			return "NIL";
 		case INTERCONNECT_TYPE_TCP:
@@ -925,6 +941,44 @@ gpvars_show_gp_interconnect_type(void)
 	}
 }                               /* gpvars_show_gp_log_interconnect */
 
+/*
+ * gpvars_assign_gp_interconnect_fc_method
+ * gpvars_show_gp_interconnect_fc_method
+ */
+const char *
+gpvars_assign_gp_interconnect_fc_method(const char *newval, bool doit, GucSource source __attribute__((unused)) )
+{
+	int newmethod = 0;
+
+	if (newval == NULL || newval[0] == 0 ||
+		!pg_strcasecmp("capacity", newval))
+		newmethod = INTERCONNECT_FC_METHOD_CAPACITY;
+	else if (!pg_strcasecmp("loss", newval))
+		newmethod = INTERCONNECT_FC_METHOD_LOSS;
+	else
+		elog(ERROR, "Unknown interconnect flow control method. (current method is '%s')", gpvars_show_gp_interconnect_fc_method());
+
+	if (doit)
+	{
+		Gp_interconnect_fc_method = newmethod;
+	}
+
+	return newval;
+}                               /* gpvars_assign_gp_interconnect_fc_method */
+
+const char *
+gpvars_show_gp_interconnect_fc_method(void)
+{
+	switch(Gp_interconnect_fc_method)
+	{
+		case INTERCONNECT_FC_METHOD_CAPACITY:
+			return "CAPACITY";
+		case INTERCONNECT_FC_METHOD_LOSS:
+			return "LOSS";
+		default:
+			return "CAPACITY";
+	}
+}                               /* gpvars_show_gp_interconnect_fc_method */
 
 /*
  * Parse the string value of gp_autostats_mode and gp_autostats_mode_in_functions

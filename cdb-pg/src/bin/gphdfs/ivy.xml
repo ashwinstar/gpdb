@@ -13,6 +13,7 @@
       <conf name="master" description="contains the artifact but no dependencies"/>
       <conf name="compile" description="contains the artifact but no dependencies"/>
       <conf name="runtime" description="runtime but not the artifact"/>
+      <conf name="hadoop2" description="hadoop2.0 build configuration"/>
       <!-- Private configurations -->
       <conf name="checkstyle" visibility="private"/>
     </configurations>
@@ -22,5 +23,14 @@
                   conf="compile->master"/>
       <dependency org="checkstyle" name="checkstyle" rev="${checkstyle.version}"
                   conf="checkstyle->default"/>
+
+   <dependency org="org.apache.hadoop" name="hadoop-annotations"
+	   rev="${hadoop-common.revision}" conf="hadoop2->master"/>
+   <dependency org="org.apache.hadoop" name="hadoop-core"
+	   rev="${revision}" conf="hadoop2->master"/>
+   <dependency org="org.apache.hadoop" name="hadoop-mapreduce-client-core"
+	   rev="${hadoop-common.revision}" conf="hadoop2->master"/>
+   <dependency org="org.apache.hadoop" name="hadoop-mapreduce-client-common"
+	   rev="${hadoop-common.revision}" conf="hadoop2->master"/>
     </dependencies>
 </ivy-module>

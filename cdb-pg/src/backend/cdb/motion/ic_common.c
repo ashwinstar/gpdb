@@ -306,7 +306,10 @@ InitMotionLayerIPC(void)
 	savedSeqServerFd = -1;
 
 	InitMotionTCP(&TCP_listenerFd, &tcp_listener);
-	InitMotionUDP(&UDP_listenerFd, &udp_listener);
+	if (Gp_interconnect_type == INTERCONNECT_TYPE_UDPIFC)
+		InitMotionUDPIFC(&UDP_listenerFd, &udp_listener);
+	else if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
+		InitMotionUDP(&UDP_listenerFd, &udp_listener);
 
 	Gp_listener_port = (udp_listener<<16) | tcp_listener;
 
@@ -321,7 +324,10 @@ CleanUpMotionLayerIPC(void)
     	elog(DEBUG3, "Cleaning Up Motion Layer IPC...");
 
 	CleanupMotionTCP();
-	CleanupMotionUDP();
+	if (Gp_interconnect_type == INTERCONNECT_TYPE_UDPIFC)
+		CleanupMotionUDPIFC();
+	else if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
+		CleanupMotionUDP();
 
 	/* close down the Interconnect listener socket. */
     if (TCP_listenerFd >= 0)
@@ -554,7 +560,14 @@ DeregisterReadInterest(ChunkTransportState *transportStates,
              reason);
     }
 
-	if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
+	if (Gp_interconnect_type == INTERCONNECT_TYPE_UDPIFC)
+	{
+#ifdef AMS_VERBOSE_LOGGING
+		elog(LOG, "deregisterReadInterest set stillactive = false for node %d route %d (%s)", motNodeID, srcRoute, reason);
+#endif
+		markUDPConnInactiveIFC(conn);
+	}
+	else if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
 	{
 #ifdef AMS_VERBOSE_LOGGING
 		elog(LOG, "deregisterReadInterest set stillactive = false for node %d route %d (%s)", motNodeID, srcRoute, reason);
@@ -724,7 +737,9 @@ setupSeqServerConnection(char *seqServerHost, uint16 seqServerPort)
 void
 SetupInterconnect(EState *estate)
 {
-	if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
+	if (Gp_interconnect_type == INTERCONNECT_TYPE_UDPIFC)
+		SetupUDPIFCInterconnect(estate);
+	else if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
 		SetupUDPInterconnect(estate);
 	else if (Gp_interconnect_type == INTERCONNECT_TYPE_TCP)
 		SetupTCPInterconnect(estate);
@@ -798,7 +813,12 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 					 MotionLayerState *mlStates,
 					 bool forceEOS)
 {
-	if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
+	if (Gp_interconnect_type == INTERCONNECT_TYPE_UDPIFC)
+	{
+		TeardownUDPIFCInterconnect(transportStates, mlStates, forceEOS);
+		return;
+	}
+	else if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
 	{
 		TeardownUDPInterconnect(transportStates, mlStates, forceEOS);
 		return;

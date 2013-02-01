@@ -33,6 +33,7 @@
     <include name="hadoop-${hadoop.version}/*.jar" />
   </patternset>
 
+  <property name="gpgnet.configuration" value="compile"/>
   <!-- Project Libraries -->
   
   <path id="pig.classpath">
@@ -108,8 +109,8 @@
   <target name="ivy-retrieve-hadoop" depends="ivy-init"
           description="--> Retrieve Ivy-managed artifacts for the compile configurations">
     <ivy:settings id="basic.settings" file="ivysettings.xml"/>
-    <ivy:retrieve settingsRef="basic.settings" pattern="${build.ivy.lib.dir}/${ivy.artifact.retrieve.pattern}" sync="true" conf="compile"/>
-    <ivy:cachepath pathid="ivy-classpath" conf="compile"/>
+	<ivy:retrieve settingsRef="basic.settings" pattern="${build.ivy.lib.dir}/${ivy.artifact.retrieve.pattern}" sync="true" conf="${gpgnet.configuration}"/>
+	<ivy:cachepath pathid="ivy-classpath" conf="${gpgnet.configuration}"/>
   </target>
 
   <target name="ivy-retrieve-checkstyle"

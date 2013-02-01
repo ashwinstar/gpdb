@@ -10,9 +10,15 @@ SET search_path = ic_udp_test;
 -- Create a table
 CREATE TABLE small_table(dkey INT, jkey INT, rval REAL, tval TEXT default 'abcdefghijklmnopqrstuvwxyz') DISTRIBUTED BY (dkey);
 
-SET gp_udpic_fault_inject_percent = 20;
-SET gp_interconnect_full_crc = true;
+-- Issue a query to make later queries elide ic setup while injecting faults  
+SELECT count(*) from small_table;
 
+-- Makesure these codes are triggered to improve the code coverage during test.
+SET gp_udpic_dropacks_percent = 20;
+SET gp_udpic_dropxmit_percent = 20;
+SET gp_udpic_fault_inject_percent = 40;
+SET gp_interconnect_full_crc = true;
+SET gp_udpic_fault_inject_bitmap = 50790655;
 -- SET gp_log_interconnect TO 'DEBUG';
 -- SET gp_interconnect_log_stats = true;
 -- SET log_min_messages TO 'DEBUG5';
@@ -153,25 +159,221 @@ CLOSE c4;
 
 END;
 
-CREATE OR REPLACE FUNCTION icudp_test() RETURNS void LANGUAGE plpgsql AS $$
+-- Redistribute all tuples with normal settings
+SET gp_interconnect_snd_queue_depth TO 8;
+SET gp_interconnect_queue_depth TO 8;
+SELECT SUM(length(long_tval)) AS sum_len_tval
+  FROM (SELECT jkey, repeat(tval, 20000) AS long_tval
+          FROM small_table ORDER BY dkey LIMIT 20) foo
+            JOIN (SELECT * FROM small_table ORDER BY dkey LIMIT 100) bar USING(jkey);
+
+-- Redistribute all tuples with minimize settings
+SET gp_interconnect_snd_queue_depth TO 1;
+SET gp_interconnect_queue_depth TO 1;
+SELECT SUM(length(long_tval)) AS sum_len_tval
+  FROM (SELECT jkey, repeat(tval, 20000) AS long_tval
+          FROM small_table ORDER BY dkey LIMIT 20) foo
+            JOIN (SELECT * FROM small_table ORDER BY dkey LIMIT 100) bar USING(jkey);
+
+-- Redistribute all tuples
+SET gp_interconnect_snd_queue_depth TO 4096;
+SET gp_interconnect_queue_depth TO 1;
+SELECT SUM(length(long_tval)) AS sum_len_tval
+  FROM (SELECT jkey, repeat(tval, 20000) AS long_tval
+          FROM small_table ORDER BY dkey LIMIT 20) foo
+            JOIN (SELECT * FROM small_table ORDER BY dkey LIMIT 100) bar USING(jkey);
+
+-- Redistribute all tuples
+SET gp_interconnect_snd_queue_depth TO 1;
+SET gp_interconnect_queue_depth TO 4096;
+SELECT SUM(length(long_tval)) AS sum_len_tval
+  FROM (SELECT jkey, repeat(tval, 20000) AS long_tval
+          FROM small_table ORDER BY dkey LIMIT 20) foo
+            JOIN (SELECT * FROM small_table ORDER BY dkey LIMIT 100) bar USING(jkey);
+
+-- Redistribute all tuples
+SET gp_interconnect_snd_queue_depth TO 1024;
+SET gp_interconnect_queue_depth TO 1024;
+SELECT SUM(length(long_tval)) AS sum_len_tval
+  FROM (SELECT jkey, repeat(tval, 20000) AS long_tval
+          FROM small_table ORDER BY dkey LIMIT 20) foo
+            JOIN (SELECT * FROM small_table ORDER BY dkey LIMIT 100) bar USING(jkey);
+
+-- Paramter range
+SET gp_interconnect_snd_queue_depth TO -1; -- ERROR
+SET gp_interconnect_snd_queue_depth TO 0; -- ERROR
+SET gp_interconnect_snd_queue_depth TO 4097; -- ERROR
+SET gp_interconnect_queue_depth TO -1; -- ERROR
+SET gp_interconnect_queue_depth TO 0; -- ERROR
+SET gp_interconnect_queue_depth TO 4097; -- ERROR
+
+-- Reset parameters
+RESET gp_interconnect_snd_queue_depth;
+RESET gp_interconnect_queue_depth;
+
+-- Lots of connections
+CREATE FUNCTION icudp_history_test() RETURNS void LANGUAGE plpgsql AS $$
+DECLARE
+    local_jkey INT;
+    local_val  INT;
 BEGIN
-	INSERT INTO small_table VALUES(generate_series(1, 5000), generate_series(5001, 10000), sqrt(generate_series(5001, 10000)));
-EXCEPTION
-    WHEN others THEN
-    	RAISE NOTICE 'caught interconnect short read error';
-END;
+    FOR k IN 1 .. 1000
+    LOOP
+        SELECT jkey INTO local_jkey FROM small_table WHERE dkey = k;
+    END LOOP;
+
+    FOR k IN 1 .. 30
+    LOOP
+        SELECT ROUND(foo.rval * foo.rval)::INT % 30 AS rval2 INTO local_val
+          FROM (SELECT 5001 AS jkey, rval, tval FROM small_table dkey LIMIT 3000) foo
+            JOIN small_table USING(jkey)
+        GROUP BY rval2
+        ORDER BY rval2;
+    END LOOP;
+END
 $$;
 
-BEGIN;
-SET gp_udpic_fault_inject_percent = 100;
-select icudp_test();
-ROLLBACK;
+SELECT icudp_history_test();
+DROP FUNCTION icudp_history_test();
+
+-- lots of functions
+SELECT COUNT(tval) AS count_tval
+  FROM (SELECT (SELECT tval FROM small_table bar WHERE bar.dkey + 5000 = foo.jkey) AS tval
+        FROM (SELECT * FROM small_table ORDER BY jkey LIMIT 2000) foo) bar;
+
+-- system call fault injection tests
+CREATE FUNCTION system_call_fault_injection_test() RETURNS void LANGUAGE plpgsql AS $$
+DECLARE
+    local_jkey INT;
+    local_val  INT;
+BEGIN
+    FOR k IN 1 .. 50
+    LOOP
+        BEGIN
+            SELECT jkey INTO local_jkey FROM small_table WHERE dkey = k;
+        EXCEPTION
+            WHEN others THEN
+                CONTINUE;
+        END;
+    END LOOP;
+
+    FOR k IN 1 .. 30
+    LOOP
+        BEGIN
+            SELECT ROUND(foo.rval * foo.rval)::INT % 30 AS rval2 INTO local_val
+              FROM (SELECT 5001 AS jkey, rval, tval FROM small_table LIMIT 3000) foo
+                JOIN small_table USING(jkey)
+            GROUP BY rval2
+            ORDER BY rval2;
+        EXCEPTION
+            WHEN others THEN
+                CONTINUE;
+        END;
+    END LOOP;
+END
+$$;
+
+-- inject faults (FINC_OS_CREATE_THREAD) to pthread_create (this tests introduce a lot fatal errors)
+SET gp_udpic_fault_inject_bitmap = 2097152;
+SELECT system_call_fault_injection_test();
+
+-- inject faluts FINC_OS_MEM_INTERFACE
+SET gp_udpic_fault_inject_bitmap = 524288;
+SELECT system_call_fault_injection_test();
+
+-- disable ipv6 may increase the code coverage.
+SET gp_udpic_network_disable_ipv6 = 1;
+SELECT system_call_fault_injection_test();
+
+-- inject faults into malloc() will coverage more error process codes.
+SET gp_udpic_fault_inject_bitmap = 1048576;
+SELECT system_call_fault_injection_test();
+
+-- inject faults to receiver buffers
+SET gp_udpic_fault_inject_bitmap = 536870912;
+SELECT system_call_fault_injection_test();
+
+DROP FUNCTION system_call_fault_injection_test();
+
+-- Improve code coverage by disable fault injection
+SET gp_udpic_fault_inject_percent = 40;
+SET gp_udpic_fault_inject_bitmap = 0;
+SELECT ROUND(foo.rval * foo.rval)::INT % 30 AS rval2, COUNT(*) AS count, SUM(length(foo.tval)) AS sum_len_tval
+  FROM (SELECT 5001 AS jkey, rval, tval FROM small_table ORDER BY dkey LIMIT 3000) foo
+    JOIN small_table USING(jkey)
+  GROUP BY rval2
+  ORDER BY rval2;
+
+-- connection hash table rehash
+SET gp_interconnect_hash_multiplier = 64;
+SELECT ROUND(foo.rval * foo.rval)::INT % 30 AS rval2, COUNT(*) AS count, SUM(length(foo.tval)) AS sum_len_tval
+  FROM (SELECT 5001 AS jkey, rval, tval FROM small_table ORDER BY dkey LIMIT 3000) foo
+    JOIN small_table USING(jkey)
+  GROUP BY rval2
+  ORDER BY rval2;
+
+SET gp_interconnect_hash_multiplier = 2;
+SELECT ROUND(foo.rval * foo.rval)::INT % 30 AS rval2, COUNT(*) AS count, SUM(length(foo.tval)) AS sum_len_tval
+  FROM (SELECT 5001 AS jkey, rval, tval FROM small_table ORDER BY dkey LIMIT 3000) foo
+    JOIN small_table USING(jkey)
+  GROUP BY rval2
+  ORDER BY rval2;
+
+-- Inject query cancel interrupt faults
+SET gp_udpic_fault_inject_percent = 15;
+SET gp_udpic_fault_inject_bitmap = 4096; -- Query cancel
+
+CREATE FUNCTION query_cancel_fault_injection_test() RETURNS void LANGUAGE plpgsql AS $$
+DECLARE
+    local_val  BIGINT;
+BEGIN
+    FOR k IN 1 .. 90
+    LOOP
+        BEGIN
+            SELECT SUM(length(long_tval)) AS sum_len_tval INTO local_val
+              FROM (SELECT jkey, repeat(tval, 50000) AS long_tval
+                      FROM small_table ORDER BY dkey LIMIT 20) foo
+                        JOIN (SELECT * FROM small_table ORDER BY dkey LIMIT 100) bar USING(jkey);
+        EXCEPTION
+            WHEN query_canceled THEN
+                CONTINUE;
+        END;
+    END LOOP;
+END
+$$;
+
+SELECT query_cancel_fault_injection_test();
+DROP FUNCTION query_cancel_fault_injection_test();
+
+RESET gp_udpic_dropseg;
+RESET gp_udpic_dropxmit_percent;
+RESET gp_udpic_fault_inject_percent;
+RESET gp_interconnect_elide_setup;
+
+/*
+ * Inject proc die interrupt faults
+ * This test always failed the regression test.
+SET gp_udpic_fault_inject_percent = 15;
+SET gp_udpic_fault_inject_bitmap = 8192; -- Proc die
+SELECT SUM(length(long_tval)) AS sum_len_tval
+  FROM (SELECT jkey, repeat(tval, 50000) AS long_tval
+          FROM small_table ORDER BY dkey LIMIT 20) foo
+            JOIN (SELECT * FROM small_table ORDER BY dkey LIMIT 100) bar USING(jkey);
+
+-- Make sure we are still under this schema
+SET search_path = ic_udp_test;
+*/
 
 -- Cleanup
 DROP TABLE small_table;
 
+RESET gp_udpic_dropacks_percent;
+RESET gp_udpic_dropxmit_percent;
 RESET gp_udpic_fault_inject_percent;
 RESET gp_interconnect_full_crc;
+RESET gp_udpic_fault_inject_bitmap;
+RESET gp_log_interconnect;
+RESET log_min_messages;
 
 RESET search_path;
 DROP SCHEMA ic_udp_test CASCADE;

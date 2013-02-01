@@ -1834,7 +1834,7 @@ getCdbProcessList(Gang *gang, int sliceIndex, DirectDispatchInfo *directDispatch
 
 			process->listenerAddr = pstrdup(qeinfo->hostip);
 
-			if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
+			if (Gp_interconnect_type == INTERCONNECT_TYPE_UDPIFC || Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
 				process->listenerPort = (segdbDesc->motionListener >> 16) & 0x0ffff;
 			else
 				process->listenerPort = (segdbDesc->motionListener & 0x0ffff);
@@ -1915,7 +1915,7 @@ getCdbProcessesForQD(int isPrimary)
 	 * interconnect connection.
 	 */
 	proc->listenerAddr = NULL;
-	if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
+	if (Gp_interconnect_type == INTERCONNECT_TYPE_UDPIFC || Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
 		proc->listenerPort = (Gp_listener_port >> 16) & 0x0ffff;
 	else
 		proc->listenerPort = (Gp_listener_port & 0x0ffff);

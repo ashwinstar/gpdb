@@ -32,13 +32,26 @@ gphdfs:
                 -Drevision=0.20.2 \
                 -Dgphdgnet.version=gpmr-1.2-gnet-1.0.0.1 \
                 -Dgpgnet.src=1.0
-
 	$(ANT) clean
 	$(ANT) dist -Dorg=org.apache.hadoop \
                 -Dname=hadoop-core \
                 -Drevision=0.20.2-cdh3u2 \
                 -Dgphdgnet.version=cdh3u2-gnet-1.1.0.0 \
                 -Dgpgnet.src=1.1
+	$(ANT) clean
+	$(ANT) dist -Dorg=org.apache.hadoop \
+                -Dname=hadoop-core \
+                -Drevision=1.0.3-gphd-1.2.0.0 \
+                -Dgphdgnet.version=gphd-1.2-gnet-1.1.0.0 \
+                -Dgpgnet.src=1.1
+	$(ANT) clean
+	$(ANT) dist -Dorg=org.apache.hadoop \
+                -Dname=hadoop-core \
+                -Drevision=2.0.0-mr1-cdh4.1.2 \
+                -Dhadoop-common.revision=2.0.0-cdh4.1.2 \
+                -Dgphdgnet.version=cdh4.1-gnet-1.2.0.0 \
+                -Dgpgnet.src=1.2 \
+                -Dgpgnet.configuration=hadoop2
 
 gphdfsdoc:
 	$(ANT) javadoc -Dorg=emc \

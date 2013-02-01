@@ -39,6 +39,7 @@
 #include "cdb/ml_ipc.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbdisp.h"
+#include "cdb/cdbicudpfaultinjection.h"
 
 #include <fcntl.h>
 #include <limits.h>
@@ -113,10 +114,6 @@ WSAPoll(
 #undef select
 #endif
 
-#ifdef USE_ASSERT_CHECKING
-static bool udp_testmode = false;
-#endif
-
 #define MAX_TRY (11)
 int
 timeouts[] =
@@ -155,6 +152,7 @@ timeouts[] =
 
 static pthread_t ic_rx_thread;
 static pthread_mutex_t	rx_thread_mutex = PTHREAD_MUTEX_INITIALIZER;
+static bool ic_rx_thread_created = true;
 
 static volatile bool rx_thread_shutdown = false;
 static volatile bool rx_thread_shutdown_complete = false;
@@ -570,6 +568,10 @@ InitMotionUDP(int *listenerSocketFd, uint16 *listenerPort)
 	/* attributes of the thread we're creating */
 	pthread_attr_t t_atts;
 
+#ifdef USE_ASSERT_CHECKING
+	set_test_mode();
+#endif
+
 	memset(cursor_ic_history_table, 0, sizeof(cursor_ic_history_table));
 
 	setupUDPListeningSocket(listenerSocketFd, listenerPort);
@@ -609,13 +611,13 @@ InitMotionUDP(int *listenerSocketFd, uint16 *listenerPort)
 	pthread_attr_destroy(&t_atts);
 	if (pthread_err != 0)
 	{
-		pthread_join(ic_rx_thread, NULL);
-
+		ic_rx_thread_created = false;
 		ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR),
 						errmsg("InitMotionLayerIPC: failed to create thread"),
 						errdetail("pthread_create() failed with err %d", pthread_err)));
 	}
 
+	ic_rx_thread_created = true;
 	return;
 }
 
@@ -629,7 +631,9 @@ CleanupMotionUDP(void)
 	rx_thread_shutdown = true;
 
 	pthread_mutex_unlock(&rx_thread_mutex);
-	pthread_join(ic_rx_thread, NULL);
+
+	if(ic_rx_thread_created)
+		pthread_join(ic_rx_thread, NULL);
 
 	elog(DEBUG2, "udp-ic: receiver thread shutdown.");
 
@@ -1012,7 +1016,7 @@ put_rx_buffer(volatile MotionConn *conn)
  * structure, but has enough info to fully specify it.
  */
 void
-ml_put_rx_buffer(ChunkTransportState *transportStates, int motNodeID, int route)
+MlPutRxBuffer(ChunkTransportState *transportStates, int motNodeID, int route)
 {
 	ChunkTransportStateEntry	*pEntry = NULL;
 	volatile MotionConn			*conn=NULL;
@@ -1702,11 +1706,7 @@ SetupUDPInterconnect(EState *estate)
 		   mySlice->sliceIndex == LocallyExecutingSliceIndex(estate));
 
 #ifdef USE_ASSERT_CHECKING
-	if (gp_udpic_dropseg != UNDEF_SEGMENT ||
-		gp_udpic_dropacks_percent != 0 || gp_udpic_dropxmit_percent != 0 || gp_udpic_fault_inject_percent != 0)
-		udp_testmode = true;
-	else
-		udp_testmode = false;
+	set_test_mode();
 #endif
 
 	gp_interconnect_id = estate->interconnect_context->sliceTable->ic_instance_id;

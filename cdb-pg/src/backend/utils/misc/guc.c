@@ -515,6 +515,7 @@ static char *gp_log_gang_str;
 static char *gp_log_fts_str;
 static char *gp_log_interconnect_str;
 static char *gp_interconnect_type_str;
+static char *gp_interconnect_fc_method_str;
 
 /* should be static, but commands/variable.c needs to get at these */
 char	   *role_string;
@@ -2198,7 +2199,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"gp_interconnect_elide_setup", PGC_USERSET, QUERY_TUNING_OTHER,
+		{"gp_interconnect_elide_setup", PGC_USERSET, DEPRECATED_OPTIONS,
 			gettext_noop("Avoid performing full startup handshake for every statement."),
 			NULL,
             GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
@@ -2215,6 +2216,15 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&gp_interconnect_log_stats,
 		false, NULL, NULL
+	},
+
+	{
+		{"gp_interconnect_cache_future_packets", PGC_USERSET, GP_ARRAY_TUNING,
+            gettext_noop("Control whether future packets are cached."),
+			NULL,
+        },
+        &gp_interconnect_cache_future_packets,
+		true, NULL, NULL
 	},
 
 	{
@@ -4335,13 +4345,83 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"gp_udp_bufsize_k", PGC_SUSET, GP_ARRAY_TUNING,
+		{"gp_interconnect_snd_queue_depth", PGC_USERSET, GP_ARRAY_TUNING,
+            gettext_noop("Sets the maximum size of the send queue for each connection in the UDP interconnect"),
+            NULL,
+			GUC_GPDB_ADDOPT
+        },
+        &Gp_interconnect_snd_queue_depth,
+        2, 1, 4096, NULL, NULL
+	},
+
+	{
+		{"gp_interconnect_timer_period", PGC_USERSET, GP_ARRAY_TUNING,
+            gettext_noop("Sets the timer period (in ms) for UDP interconnect"),
+            NULL,
+            GUC_UNIT_MS | GUC_GPDB_ADDOPT
+        },
+        &Gp_interconnect_timer_period,
+        5, 1, 100, NULL, NULL
+	},
+
+	{
+		{"gp_interconnect_timer_checking_period", PGC_USERSET, GP_ARRAY_TUNING,
+            gettext_noop("Sets the timer checking period (in ms) for UDP interconnect"),
+            NULL,
+            GUC_UNIT_MS | GUC_GPDB_ADDOPT
+        },
+        &Gp_interconnect_timer_checking_period,
+        20, 1, 100, NULL, NULL
+	},
+
+	{
+		{"gp_interconnect_default_rtt", PGC_USERSET, GP_ARRAY_TUNING,
+            gettext_noop("Sets the default rtt (in ms) for UDP interconnect"),
+            NULL,
+            GUC_UNIT_MS | GUC_GPDB_ADDOPT
+        },
+        &Gp_interconnect_default_rtt,
+        20, 1, 1000, NULL, NULL
+	},
+
+	{
+		{"gp_interconnect_min_rto", PGC_USERSET, GP_ARRAY_TUNING,
+            gettext_noop("Sets the min rto (in ms) for UDP interconnect"),
+            NULL,
+            GUC_UNIT_MS | GUC_GPDB_ADDOPT
+        },
+        &Gp_interconnect_min_rto,
+        20, 1, 1000, NULL, NULL
+	},
+
+	{
+		{"gp_interconnect_transmit_timeout", PGC_USERSET, GP_ARRAY_TUNING,
+			gettext_noop("Timeout (in seconds) on interconnect to transmit a packet"),
+			gettext_noop("Used by Interconnect to timeout packet transmission."),
+			GUC_UNIT_S | GUC_GPDB_ADDOPT
+		},
+		&Gp_interconnect_transmit_timeout,
+		3600, 1, 7200, NULL, NULL
+	},
+
+	{
+		{"gp_interconnect_min_retries_before_timeout", PGC_USERSET, GP_ARRAY_TUNING,
+            gettext_noop("Sets the min retries before reporting a transmit timeout in the interconnect."),
+            NULL,
+			GUC_GPDB_ADDOPT
+        },
+        &Gp_interconnect_min_retries_before_timeout,
+        100, 1, 4096, NULL, NULL
+	},
+
+	{
+		{"gp_udp_bufsize_k", PGC_BACKEND, GP_ARRAY_TUNING,
             gettext_noop("Sets recv buf size of UDP interconnect, for testing."),
             NULL,
-            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+            GUC_GPDB_ADDOPT
         },
         &Gp_udp_bufsize_k,
-        0, 0, 256, NULL, NULL
+        0, 0, 32768, NULL, NULL
 	},
 
 #ifdef USE_ASSERT_CHECKING
@@ -4383,6 +4463,26 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&gp_udpic_fault_inject_percent,
 		0, 0, 100, NULL, NULL
+	},
+
+	{
+		{"gp_udpic_fault_inject_bitmap", PGC_USERSET, GP_ARRAY_TUNING,
+			gettext_noop("Sets the bitmap for faults injection, for testing. (affected by gp_udpic_dropseg)"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&gp_udpic_fault_inject_bitmap,
+		0, 0, INT_MAX, NULL, NULL
+	},
+
+	{
+		{"gp_udpic_network_disable_ipv6", PGC_USERSET, GP_ARRAY_TUNING,
+			gettext_noop("Sets the address info hint to disable the ipv6, for testing. (affected by gp_udpic_dropseg)"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&gp_udpic_network_disable_ipv6,
+		0, 0, 1, NULL, NULL
 	},
 
 #endif
@@ -4498,7 +4598,7 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"gp_interconnect_setup_timeout", PGC_USERSET, DEPRECATED_OPTIONS,
+		{"gp_interconnect_setup_timeout", PGC_USERSET, GP_ARRAY_TUNING,
 			gettext_noop("Timeout (in seconds) on interconnect setup that occurs at query start"),
 			gettext_noop("Used by Interconnect to timeout the setup of the communication fabric."),
 			GUC_UNIT_S | GUC_GPDB_ADDOPT
@@ -5997,13 +6097,23 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 	{
-		{"gp_interconnect_type", PGC_USERSET, GP_ARRAY_TUNING,
+		{"gp_interconnect_type", PGC_BACKEND, GP_ARRAY_TUNING,
 		 gettext_noop("Sets the protocol used for inter-node communication."),
-		 gettext_noop("Valid values are \"tcp\" and \"udp\"."),
+		 gettext_noop("Valid values are \"tcp\", \"udp\" and \"udpifc\"."),
 		 GUC_GPDB_ADDOPT
 		},
 		&gp_interconnect_type_str,
-		"tcp", gpvars_assign_gp_interconnect_type, gpvars_show_gp_interconnect_type
+		"udpifc", gpvars_assign_gp_interconnect_type, gpvars_show_gp_interconnect_type
+	},
+
+	{
+		{"gp_interconnect_fc_method", PGC_USERSET, GP_ARRAY_TUNING,
+		 gettext_noop("Sets the flow control method used for UDP interconnect."),
+		 gettext_noop("Valid values are \"capacity\" and \"loss\"."),
+		 GUC_GPDB_ADDOPT
+		},
+		&gp_interconnect_fc_method_str,
+		"loss", gpvars_assign_gp_interconnect_fc_method, gpvars_show_gp_interconnect_fc_method
 	},
 
 	{
