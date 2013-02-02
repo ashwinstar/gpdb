@@ -67,8 +67,8 @@ static char *shellprog = SHELLPROG;
 
 /* currently we can use the same diff switches on all platforms */
 /* MPP:  Add stuff to ignore all the extra NOTICE messages we give */
-const char *basic_diff_opts = "-w -I NOTICE: -I HINT: -I CONTEXT: -I GP_IGNORE:";
-const char *pretty_diff_opts = "-w -I NOTICE: -I HINT: -I CONTEXT: -I GP_IGNORE: -C3";
+const char *basic_diff_opts = "--gpd_init init_file -w -I NOTICE: -I HINT: -I CONTEXT: -I GP_IGNORE:";
+const char *pretty_diff_opts = "--gpd_init init_file -w -I NOTICE: -I HINT: -I CONTEXT: -I GP_IGNORE: -C3";
 
 /* options settable from command line */
 _stringlist *dblist = NULL;

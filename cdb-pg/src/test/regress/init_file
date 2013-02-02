@@ -1,0 +1,6 @@
+-- start_matchignore
+# match ignore the gpmon WARNING message
+m/^WARNING:  gpmon:.*Connection refused.*/
+s/^WARNING:  gpmon:.*Connection refused.*//
+-- end_matchignore
+

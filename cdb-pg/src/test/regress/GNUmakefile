@@ -86,16 +86,15 @@ all: all-lib
 # Test input and expected files.  These are created by pg_regress itself, so we
 # don't have a rule to create them.  We do need rules to clean them however.
 ifile_list := $(subst .source,, $(notdir $(wildcard $(top_srcdir)/$(subdir)/input/*.source)))
-input_files  := $(foreach file, $(ifile_list), sql/$(file).sql)
+input_files  := $(foreach file, $(ifile_list), sql/$(file).sql, bugbuster/sql/$(file).sql)
 ofile_list := $(subst .source,, $(notdir $(wildcard $(top_srcdir)/$(subdir)/output/*.source)))
-output_files := $(foreach file, $(ofile_list), expected/$(file).out)
+output_files := $(foreach file, $(ofile_list), expected/$(file).out,bugbuster/expected/$(file).out)
 
 ifneq ($(PORTNAME),win32)
 abs_srcdir := $(shell cd $(srcdir) && pwd)
 abs_builddir := $(shell pwd)
 else
 abs_srcdir := $(shell cd $(srcdir) && pwd -W)
-abs_builddir := $(shell pwd -W)
 endif
 
 # When doing a VPATH build, copy over the remaining .sql and .out
@@ -141,6 +140,7 @@ includecheck:
 ## To load a procedural language use "--load-language=..."
 
 pg_regress_call = ./pg_regress --inputdir=$(srcdir) --multibyte=$(MULTIBYTE) $(MAXCONNOPT) $(NOLOCALE)
+pg_regress_call_bb = ./pg_regress --inputdir=$(srcdir)/bugbuster --outputdir=$(srcdir)/bugbuster --multibyte=$(MULTIBYTE) $(MAXCONNOPT) $(NOLOCALE)
 
 check: all upg2-setup ugpart-setup
 	$(pg_regress_call) --temp-install=./tmp_check --top-builddir=$(top_builddir) --srcdir=$(abs_srcdir) --temp-port=$(TEMP_PORT) --schedule=$(srcdir)/parallel_schedule 
@@ -154,14 +154,35 @@ installcheck-parallel: all upg2-setup ugpart-setup
 installcheck-good: all ./current_good_schedule upg2-setup ugpart-setup
 	$(pg_regress_call)  --psqldir=$(PSQLDIR) --schedule=./current_good_schedule --srcdir=$(abs_srcdir)
 
+installcheck-bugbuster: all ./bugbuster/current_good_schedule
+	@echo "================================"
+	@echo "BugBuster starting ... " 
+	@echo "ALL YOUR BUGS ARE BELONG TO US FROM REGRESS!"
+	@echo "================================"
+	@grep memory_quota ./bugbuster/current_good_schedule > /dev/null; \
+	if [ $$? = 0 ]; then bugbuster/bugbuster_setup.sh; fi
+	echo $(abs_srcdir)
+	$(pg_regress_call_bb)  --psqldir=$(PSQLDIR) --schedule=./bugbuster/current_good_schedule --srcdir=$(abs_srcdir)/bugbuster
+	@grep memory_quota ./bugbuster/current_good_schedule > /dev/null; \
+	if [ $$? = 0 ]; then bugbuster/bugbuster_cleanup.sh; fi
+
 .PHONY: ./current_good_schedule
 ./current_good_schedule: $(srcdir)/known_good_schedule
 ifneq ($(origin TT), undefined)
 	cd $(srcdir) && ./maketestschedule.py "$(TT)" > $(abs_builddir)/current_good_schedule
 else
+	echo $(srcdir)
 	cd $(srcdir) && ./makeschedule ./known_good_schedule $(abs_builddir)/current_good_schedule
 endif
 
+.PHONY: ./bugbuster/current_good_schedule
+./bugbuster/current_good_schedule: $(srcdir)/bugbuster/known_good_schedule
+ifneq ($(origin TT), undefined)
+	cd $(srcdir)/bugbuster && ../maketestschedule.py "$(TT)" $(abs_srcdir) > $(abs_builddir)/bugbuster/current_good_schedule
+else
+	echo $(abs_srcdir)
+	cd $(srcdir)/bugbuster && ../makeschedule ./known_good_schedule ./current_good_schedule $(abs_srcdir)
+endif
 # Copy and transform all of the upgrade related data files
 # For upgrade installcheck-good test, we need to get rid of
 # 1. WITH clause (because create table doesn't like tidycat definition)
@@ -215,12 +236,17 @@ clean distclean maintainer-clean: clean-lib
 	rm -f $(output_files) $(input_files) pg_regress_main.o pg_regress.o pg_regress$(X)
 # things created by dynamic configs
 	rm -f ./current_good_schedule
+	rm -f ./bugbuster/current_good_schedule
 	find sql -type l | xargs rm -f
+	find bugbuster/sql -type l | xargs rm -f
 	find expected -type l | xargs rm -f
+	find bugbuster/expected -type l | xargs rm -f 
 # things created by various check targets
 	rm -rf testtablespace
 	rm -rf results tmp_check log
+	rm -rf bugbuster/results
 	rm -f regression.diffs regression.out regress.out run_check.out
+	rm -f bugbuster/regression.diffs bugbuster/regression.out
 	rm -f data/pg_class32.data
 	rm -f input/loadcat33.source
 	rm -f input/loadcat34.source

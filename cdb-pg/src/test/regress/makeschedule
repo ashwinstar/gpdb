@@ -137,7 +137,13 @@ sub processTests
 
 
 &readSchedule(@ARGV[0]);
-my $arch = &getArch(&readArchConf("arch_config"));
+
+my $srcdir = @ARGV[2];
+if ($srcdir eq '') {
+    $srcdir = '.';
+}
+my $arch = &getArch(&readArchConf($srcdir."/arch_config"));
+
 &processTests("sql", "input", "expected", $arch);
 &writeSchedule(@ARGV[1]);
 

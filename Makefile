@@ -26,7 +26,7 @@ all : devel
 .PHONY : check installcheck installcheck-parallel
 
 # Targets for running regression tests
-.PHONY : installcheck-good installcheck-olaptest
+.PHONY : installcheck-good installcheck-olaptest installcheck-bugbuster
 
 # The pvk target builds a subset of the GPDB package that includes just the
 # tools used to verify the configuration of a set of GPDB servers.
@@ -394,6 +394,7 @@ endif
 ifeq "$(BLD_GPDB_BUILDSET)" "partial"
 define BUILD_STEPS
 	rm -f installcheck-good_SKIP
+	rm -f installcheck-bugbuster_SKIP
 	rm -rf $(INSTLOC)
 	@if [ "$(findstring win,$(BLD_ARCH))" = "win" ]; then \
 	    echo "Modifying timezone Makefile for crosscompile."; \
@@ -432,6 +433,7 @@ define BUILD_STEPS
 	fi
 	$(MAKE) loaders INSTLOC=$(INSTLOC) LOADERSINSTLOC=$(LOADERSINSTLOC)
 	touch installcheck-good_SKIP
+	touch installcheck-bugbuster_SKIP
 endef
 endif
 
@@ -1389,6 +1391,10 @@ installcheck-parallel :
 installcheck-olaptest :
 	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, cannot check"; exit 1; fi
 	@cd $(BUILDDIR)/src/test/regress && $(MAKE) installcheck-olaptest
+
+installcheck-bugbuster :
+	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, cannot check"; exit 1; fi
+	@cd $(BUILDDIR)/src/test/regress && $(MAKE) installcheck-bugbuster
 
 #---------------------------------------------------------------------
 # More internal functions

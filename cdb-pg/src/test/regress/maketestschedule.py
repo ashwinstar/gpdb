@@ -293,7 +293,7 @@ class ArchitectureSpecificTemplateManager:
         archLabel = archString[index+1:].strip()
 
         confLineMatcher = re.compile("([^ ]+)\s*:\s*'(.*)'\s*")
-        for archLine in readAllLinesFromFile("arch_config", stripLines=True, skipEmptyLines=True):
+        for archLine in readAllLinesFromFile(os.path.dirname(sys.argv[0]) + "/arch_config", stripLines=True, skipEmptyLines=True):
             match = confLineMatcher.match(archLine)
             if match is not None:
                 (arch, regExString) = match.group(1,2)
