@@ -6942,7 +6942,7 @@ lead_lag_frame_maker(PG_FUNCTION_ARGS)
 		elog(ERROR, "cache lookup failed for window function %u", fnoid);
 	winform = (Form_pg_window) GETSTRUCT(tuple);
 	winkind = winform->winkind;
-	ReleaseSysCache(tuple);
+	caql_endscan(pcqCtx);
 
 	switch (winkind)
 	{
