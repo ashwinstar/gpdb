@@ -13,3 +13,23 @@
 --   update @gpupgradeschemaname@.pg_aggregate set dummy = 123;
 --   select catDML('update pg_catalog.pg_aggregate set dummy = 123') from gp_dist_random('gp_id');
 --
+
+-- window frame maker for lead/lag
+CREATE FUNCTION @gpupgradeschemaname@.lead_lag_frame_maker(internal) RETURNS internal LANGUAGE internal VOLATILE STRICT
+	AS 'lead_lag_frame_maker' WITH (OID=5081);
+
+-- MPP-17860 add pg_window.winframemakerfunc
+ALTER TABLE @gpupgradeschemaname@.pg_window
+    ADD COLUMN winframemakerfunc regproc;
+SELECT catDML(
+'UPDATE @gpupgradeschemaname@.pg_window SET winframemakerfunc = 5081
+ FROM pg_proc WHERE pg_proc.oid = pg_window.winfnoid AND
+      (pg_proc.proname = ''lead'' OR pg_proc.proname = ''lag'')
+      AND pg_proc.oid < 10000'
+);
+SELECT catDML(
+'UPDATE @gpupgradeschemaname@.pg_window SET winframemakerfunc = 0
+ WHERE winframemakerfunc IS NULL'
+);
+ALTER TABLE @gpupgradeschemaname@.pg_window
+    ALTER COLUMN winframemakerfunc SET NOT NULL;

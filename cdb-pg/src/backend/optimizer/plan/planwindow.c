@@ -128,6 +128,8 @@ typedef struct RefInfo
 	
 	Expr	   *resultexpr; /* Result expression for upper target list in parallel target list */
 	AttrNumber	resno; /* Attribute number of result in sequential target list */
+
+	Oid			framemakerfunc; /* frame maker function */
 } RefInfo;
 
 /* Macros to determine what kind of window function a RefInfo represents
@@ -831,7 +833,7 @@ static void inventory_window_specs(List *window_specs, WindowContext *context)
 	foreach ( lcr, context->refinfos )
 	{
 		RefInfo *rinfo = (RefInfo *)lfirst(lcr);
-		if ( rinfo->winkind == WINKIND_LEAD || rinfo->winkind == WINKIND_LAG )
+		if (OidIsValid(rinfo->framemakerfunc))
 			nextra++;
 	}
 	
@@ -904,76 +906,21 @@ static void inventory_window_specs(List *window_specs, WindowContext *context)
 		WindowRef *ref = rinfo->ref;
 		int sindex = ref->winspec;
 		SpecInfo *sinfo = &specinfos[sindex];
-		
+
 		/* If Special Framing ... */
-		if ( rinfo->winkind == WINKIND_LEAD || rinfo->winkind == WINKIND_LAG )
-		{ 
-			Node *offset = NULL;
-			WindowFrame * frame = NULL;
-			SpecInfo *xinfo = sinfo;
-			
-			/* Add a new "extra" SpecInfo for the specially framed window
-			 * reference.  Note that we could be better by recognizing a
-			 * previously added "extra" that meets our needs, but we
-			 * don't do that yet.
-			 */
+		if (OidIsValid(rinfo->framemakerfunc))
+		{
+			SpecInfo	   *xinfo = sinfo;
+
 			sindex = nspec++;
 			sinfo = &specinfos[sindex];
 			memcpy(sinfo, xinfo, sizeof(SpecInfo));
 			sinfo->specindex = sindex;
-			sinfo->refset = NULL; /* MPP-4836 */
-			
-			Assert( sinfo->frame == NULL );
-			
-			/* At the moment, the only special framing requirements are for
-			 * LEAD and LAG.  These carry an offset as their second argument
-			 * and, by now, the offset has be resolved to a Const node, if
-			 * possible.
-			 */	
-			if ( list_length(ref->args) > 1 )
-			{
-				offset = (Node*)list_nth(ref->args,1);
-			}
-			else
-			{
-				Const *c = (Const*)makeNode(Const);
-				c->consttype = INT8OID;
-				c->constlen = 8;
-				c->constvalue = 1;
-				c->constisnull = false;
-				c->constbyval = true;
-				offset = (Node*)c;
-			}
-			
-			frame = makeNode(WindowFrame);
-			frame->system_generated = true;
-			frame->is_between = true;
-			frame->is_rows = true;
-			frame->trail = makeNode(WindowFrameEdge);
-			frame->lead = makeNode(WindowFrameEdge);
+			sinfo->refset = NULL;
 
-			switch ( rinfo->winkind )
-			{
-			case WINKIND_LAG:
-				if ( IsA(offset,Const) )
-					frame->trail->kind = frame->lead->kind = WINDOW_BOUND_PRECEDING;
-				else
-					frame->trail->kind = frame->lead->kind = WINDOW_DELAYED_BOUND_PRECEDING;
-				break;
-				
-			case WINKIND_LEAD:
-				if ( IsA(offset,Const) )
-					frame->trail->kind = frame->lead->kind = WINDOW_BOUND_FOLLOWING;
-				else
-					frame->trail->kind = frame->lead->kind = WINDOW_DELAYED_BOUND_FOLLOWING;
-				break;
-				
-			default:
-				elog(ERROR, "internal window framing error");
-			}
-			
-			frame->trail->val = frame->lead->val = offset;
-			sinfo->frame = frame;
+			Assert(sinfo->frame == NULL);
+			sinfo->frame = (WindowFrame *) DatumGetPointer(
+				OidFunctionCall1(rinfo->framemakerfunc, PointerGetDatum(ref)));
 		}
 		else if ( sinfo->frame != NULL )
 		{
@@ -1780,6 +1727,7 @@ lookup_window_function(RefInfo *rinfo)
 		rinfo->needcount = winform->wincount;
 		rinfo->winpretype = winform->winpretype;
 		rinfo->winfinfunc = winform->winfinfunc;		
+		rinfo->framemakerfunc = winform->winframemakerfunc;
 
 		caql_endscan(wincqCtx);
 	}
