@@ -26,10 +26,9 @@ endif
 
 $(srcdir)/scan.c: scan.l
 ifdef FLEX
-	$(FLEX) $(FLEXFLAGS) -o'$@.tmp' $<
+	$(FLEX) $(FLEXFLAGS) -o'$@' $<
 	# This is due to flex bug around unused variable yyg in <= 2.5.35
-	sed -e 's/^.* depending upon options\. \*\/$$//' $@.tmp > $@
-	@rm -f $@.tmp
+	$(PERL) -pi'' -e 's/^.* depending upon options\. \*\/$$//' $@
 else
 	@$(missing) flex $< $@
 endif
