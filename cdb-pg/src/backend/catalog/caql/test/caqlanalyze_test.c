@@ -11,13 +11,18 @@
 #define AllocSetContextCreate __AllocSetContextCreate
 #define MemoryContextDeleteImpl __MemoryContextDeleteImpl
 
+/*
+ * In some cases, we hit segumentation fault around elog(ERROR, ...).  To
+ * avoid any possibilities, let it do the minimum work.
+ */
+#define elog_finish __elog_finish
+
 #include "postgres.h"
 #include "access/tupdesc.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_proc.h"
 #include "utils/fmgroids.h"
 #include "../caqlanalyze.c"
-
 
 #define expect_value_or_any(func, arg) do{ \
 	if (use_##arg) \
@@ -50,6 +55,18 @@ MemoryContextDeleteImpl(MemoryContext context,
 						int sline)
 {
 	/* no-op */
+}
+
+/*
+ * Currently the only needs for elog is for ERROR to call siglongjump().
+ * If you need more information such like ErrorData, you'll have to add
+ * code to set it up.
+ */
+void
+__elog_finish(int elevel, const char *fmt, ...)
+{
+	if (elevel == ERROR)
+		PG_RE_THROW();
 }
 
 /*
