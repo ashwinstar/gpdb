@@ -85,6 +85,7 @@ where ordinal_position = 20;
  pg_catalog         | pg_type       | typtypmod          |               20
  pg_catalog         | pg_class      | reltriggers        |               20
  pg_catalog         | pg_am         | ambuild            |               20
-(11 rows)
+ pg_catalog         | pg_proc       | prodataaccess      |               20
+(12 rows)
 
 drop table r;

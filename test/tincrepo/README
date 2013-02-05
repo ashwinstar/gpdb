@@ -1,0 +1,6 @@
+To run backup test:
+- source greenplum_path.sh
+- source your //tinc/main/tinc_env.sh
+- source tincrepo_env.sh
+- cd $TINCREPOHOME
+- tinc.py backup.test_funcprop
