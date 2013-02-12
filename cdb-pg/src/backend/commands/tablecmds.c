@@ -1972,6 +1972,11 @@ ExecuteTruncate(TruncateStmt *stmt)
 								   a_relid,
 								   GetUserId(),
 								   "VACUUM", "TRUNCATE");
+
+				MetaTrackUpdObject(RelationRelationId,
+								   a_relid,
+								   GetUserId(),
+								   "TRUNCATE", "");
 			}
 
 		}

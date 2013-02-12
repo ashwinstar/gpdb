@@ -160,6 +160,9 @@ select 1 a, NULL b, NULL c UNION SELECT 2, 3, NULL UNION SELECT 3, NULL, 4;
 
 select ARRAY[1, 2, 3] union select distinct null;
 
+select 1 intersect (select 1, 2 union all select 3, 4);
+select 1 a, row_number() over (partition by 'a') union all (select 1 a , 2 b);
+
 -- This can preserve domain types, but we keep compatibility for now
 -- See MPP-7509
 select pg_typeof(a) from (select 'a'::information_schema.sql_identifier a union all

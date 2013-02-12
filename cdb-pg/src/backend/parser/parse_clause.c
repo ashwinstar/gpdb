@@ -3066,7 +3066,11 @@ addTargetToSortList(ParseState *pstate, TargetEntry *tle,
 			Oid		tobe_type = InvalidOid;
 			int32	tobe_typmod;
 
-			if (pstate->p_setopTypes)
+			/*
+			 * The setop type-deduction is only for non-junk columns.
+			 * If the column is junk, fall back to the old way.
+			 */
+			if (pstate->p_setopTypes && !tle->resjunk)
 			{
 				/* UNION, etc. case. */
 				int		idx = tle->resno - 1;

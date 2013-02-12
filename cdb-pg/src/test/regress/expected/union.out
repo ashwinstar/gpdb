@@ -463,6 +463,15 @@ select ARRAY[1, 2, 3] union select distinct null;
  {1,2,3}
 (2 rows)
 
+select 1 intersect (select 1, 2 union all select 3, 4);
+ERROR:  each INTERSECT query must have the same number of columns
+select 1 a, row_number() over (partition by 'a') union all (select 1 a , 2 b);
+ a | row_number 
+---+------------
+ 1 |          1
+ 1 |          2
+(2 rows)
+
 -- This can preserve domain types, but we keep compatibility for now
 -- See MPP-7509
 select pg_typeof(a) from (select 'a'::information_schema.sql_identifier a union all

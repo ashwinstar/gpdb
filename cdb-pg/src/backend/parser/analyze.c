@@ -232,8 +232,8 @@ static void transformFKConstraints(ParseState *pstate,
 					   bool isAddConstraint);
 static void applyColumnNames(List *dst, List *src);
 static bool isSetopLeaf(SelectStmt *stmt);
-static void collectSetopTypes(ParseState *pstate, SelectStmt *stmt,
-							  List **types, List **typmods);
+static int collectSetopTypes(ParseState *pstate, SelectStmt *stmt,
+							 List **types, List **typmods);
 static void getSetColTypes(ParseState *pstate, Node *node,
 			   List **colTypes, List **colTypmods);
 static void transformLockingClause(Query *qry, LockingClause *lc);
@@ -10645,12 +10645,7 @@ transformSetOperationTree(ParseState *pstate, SelectStmt *stmt)
 		 */
 		getSetColTypes(pstate, op->larg, &lcoltypes, &lcoltypmods);
 		getSetColTypes(pstate, op->rarg, &rcoltypes, &rcoltypmods);
-		if (list_length(lcoltypes) != list_length(rcoltypes))
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("each %s query must have the same number of columns",
-						context),
-								 errOmitLocation(true)));
+		Assert(list_length(lcoltypes) == list_length(rcoltypes));
 		Assert(list_length(lcoltypes) == list_length(lcoltypmods));
 		Assert(list_length(rcoltypes) == list_length(rcoltypmods));
 
@@ -10744,8 +10739,9 @@ isSetopLeaf(SelectStmt *stmt)
  * types and typmods are output parameter, and the returned values
  * are List of List which contain column number of elements as the
  * first dimension, and leaf number of elements as the second dimension.
+ * Returns the number of non-junk columns.
  */
-static void
+static int
 collectSetopTypes(ParseState *pstate, SelectStmt *stmt,
 				  List **types, List **typmods)
 {
@@ -10753,8 +10749,9 @@ collectSetopTypes(ParseState *pstate, SelectStmt *stmt,
 	{
 		ParseState	   *parentstate = pstate;
 		SelectStmt	   *select_stmt = stmt;
-		List		   *tlist;
+		List		   *tlist, *temp_tlist;
 		ListCell	   *lc, *lct, *lcm;
+		int				tlist_length;
 
 		/* Copy them just in case */
 		pstate = make_parsestate(parentstate);
@@ -10772,6 +10769,19 @@ collectSetopTypes(ParseState *pstate, SelectStmt *stmt,
 			tlist = transformTargetList(pstate, stmt->targetList);
 		}
 
+		/* Filter out junk columns. */
+		temp_tlist = NIL;
+		foreach (lc, tlist)
+		{
+			TargetEntry	   *tle = (TargetEntry *) lfirst(lc);
+
+			if (tle->resjunk)
+				continue;
+			temp_tlist = lappend(temp_tlist, tle);
+		}
+		tlist = temp_tlist;
+		tlist_length = list_length(tlist);
+
 		if (*types == NIL)
 		{
 			Assert(*typmods == NIL);
@@ -10782,7 +10792,7 @@ collectSetopTypes(ParseState *pstate, SelectStmt *stmt,
 				*typmods = lappend(*typmods, NIL);
 			}
 		}
-		else if (list_length(*types) != list_length(tlist))
+		else if (list_length(*types) != tlist_length)
 		{
 			/*
 			 * Must be an error in later process.
@@ -10790,7 +10800,7 @@ collectSetopTypes(ParseState *pstate, SelectStmt *stmt,
 			 */
 			free_parsestate(&pstate);
 			pfree(stmt);
-			return;
+			return tlist_length;
 		}
 		lct = list_head(*types);
 		lcm = list_head(*typmods);
@@ -10810,12 +10820,33 @@ collectSetopTypes(ParseState *pstate, SelectStmt *stmt,
 		/* They're not needed anymore */
 		free_parsestate(&pstate);
 		pfree(stmt);
+
+		return tlist_length;
 	}
 	else
 	{
+		int			lnum, rnum;
+		const char *context;
+
 		/* just recurse to the leaf */
-		collectSetopTypes(pstate, stmt->larg, types, typmods);
-		collectSetopTypes(pstate, stmt->rarg, types, typmods);
+		lnum = collectSetopTypes(pstate, stmt->larg, types, typmods);
+		rnum = collectSetopTypes(pstate, stmt->rarg, types, typmods);
+
+		context = (stmt->op == SETOP_UNION ? "UNION" :
+				   (stmt->op == SETOP_INTERSECT ? "INTERSECT" :
+					"EXCEPT"));
+		/*
+		 * We need to report error here before doing anything with the
+		 * collected result.
+		 */
+		if (lnum != rnum)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("each %s query must have the same number of columns",
+							context),
+					 errOmitLocation(true)));
+
+		return lnum;
 	}
 }
 
