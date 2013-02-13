@@ -438,7 +438,7 @@ InitializeSessionUserId(const char *rolename)
 			NULL,
 			cql("SELECT * FROM pg_authid "
 				" WHERE rolname = :1 ",
-				PointerGetDatum((char *) rolename)));
+				CStringGetDatum((char *) rolename)));
 
 	roleTup = caql_getnext(pcqCtx);
 
@@ -981,7 +981,7 @@ CreateLockFile(const char *filename, bool amPostmaster,
 		 if(!tmpptr)
 			 ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
 			 		errmsg("Create lock file failed: out of memory")));
-		 on_proc_exit(UnlinkLockFile, PointerGetDatum(tmpptr)); 
+		 on_proc_exit(UnlinkLockFile, CStringGetDatum(tmpptr)); 
 	 }
 }
 

@@ -229,6 +229,11 @@ void caql_logquery(const char *funcname, const char *filename, int lineno,
 /* ifdef gnuc ! */
 #define cql(x, ...) cql1(x, __FILE__, __LINE__, __VA_ARGS__)
 
+/* MPP-18975: wrapper to assuage type checker (only CString currently). 
+   See calico.pl/check_datum_type() for details.
+ */
+#define cqlIsDatumForCString(d) (d)
+
 /* caqlanalyze.c */
 struct caql_hash_cookie * cq_lookup(const char *str, unsigned int len, cq_list *pcql);
 cqContext *caql_switch(struct caql_hash_cookie *pchn, cqContext *pCtx, cq_list *pcql);

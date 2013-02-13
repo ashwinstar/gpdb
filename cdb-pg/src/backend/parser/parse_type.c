@@ -134,7 +134,7 @@ LookupTypeName(ParseState *pstate, const TypeName *typname)
 					cql("SELECT oid FROM pg_type "
 						" WHERE typname = :1 "
 						" AND typnamespace = :2 ",
-						PointerGetDatum(tname),
+						CStringGetDatum(tname),
 						ObjectIdGetDatum(namespaceId)));
 		}
 		else

@@ -683,7 +683,7 @@ renametrig(Oid relid,
 					" WHERE tgrelid = :1 "
 					" AND tgname = :2 ",
 					ObjectIdGetDatum(relid),
-					PointerGetDatum((char *) newname))))
+					CStringGetDatum((char *) newname))))
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),
@@ -702,7 +702,7 @@ renametrig(Oid relid,
 				" AND tgname = :2 "
 				" FOR UPDATE ",
 				ObjectIdGetDatum(relid),
-				PointerGetDatum((char *) oldname)));
+				CStringGetDatum((char *) oldname)));
 
 	if (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
 	{
@@ -3076,7 +3076,7 @@ AfterTriggerSetState(ConstraintsSetStmt *stmt)
 						caql_addrel(cqclr(&cqc), tgrel),
 						cql("SELECT * FROM pg_trigger "
 							" WHERE tgconstrname = :1 ",
-							PointerGetDatum(constraint->relname)));
+							CStringGetDatum(constraint->relname)));
 
 				/*
 				 * ... and search for the constraint trigger row

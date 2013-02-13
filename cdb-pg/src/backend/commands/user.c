@@ -409,7 +409,7 @@ CreateRole(CreateRoleStmt *stmt)
 				caql_addrel(cqclr(&cqc2), pg_authid_rel),
 				cql("SELECT COUNT(*) FROM pg_authid "
 					" WHERE rolname = :1 ",
-					PointerGetDatum(stmt->role))))
+					CStringGetDatum(stmt->role))))
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),
 				 errmsg("role \"%s\" already exists",
@@ -861,7 +861,7 @@ AlterRole(AlterRoleStmt *stmt)
 			cql("SELECT * FROM pg_authid "
 				" WHERE rolname = :1 "
 				" FOR UPDATE ",
-				PointerGetDatum(stmt->role)));
+				CStringGetDatum(stmt->role)));
 
 	tuple = caql_getnext(pcqCtx);
 
@@ -1219,7 +1219,7 @@ AlterRoleSet(AlterRoleSetStmt *stmt)
 			cql("SELECT * FROM pg_authid "
 				" WHERE rolname = :1 "
 				" FOR UPDATE ",
-				PointerGetDatum(stmt->role)));
+				CStringGetDatum(stmt->role)));
 
 	oldtuple = caql_getnext(pcqCtx);
 
@@ -1369,7 +1369,7 @@ DropRole(DropRoleStmt *stmt)
 				cql("SELECT * FROM pg_authid "
 					" WHERE rolname = :1 "
 					" FOR UPDATE ",
-					PointerGetDatum((char *) role)));
+					CStringGetDatum((char *) role)));
 
 		tuple = caql_getnext(pcqCtx);
 

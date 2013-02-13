@@ -105,7 +105,7 @@ InsertRule(char *rulname,
 				" AND rulename = :2 "
 				" FOR UPDATE ",
 				ObjectIdGetDatum(eventrel_oid),
-				PointerGetDatum(rulname)));
+				CStringGetDatum(rulname)));
 	
 	oldtup = caql_getnext(pcqCtx);
 
@@ -708,7 +708,7 @@ RenameRewriteRule(Oid owningRel, const char *oldName,
 				" AND rulename = :2 "
 				" FOR UPDATE ",
 				ObjectIdGetDatum(owningRel),
-				PointerGetDatum(oldName)));
+				CStringGetDatum(oldName)));
 
 	if (!HeapTupleIsValid(ruletup))
 		ereport(ERROR,

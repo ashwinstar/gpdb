@@ -463,7 +463,7 @@ TypenameGetTypid(const char *typname)
 				cql("SELECT oid FROM pg_type "
 					" WHERE typname = :1 "
 					" AND typnamespace = :2 ",
-					PointerGetDatum((char *) typname),
+					CStringGetDatum((char *) typname),
 					ObjectIdGetDatum(namespaceId)));
 
 		if (OidIsValid(typid))
@@ -539,7 +539,7 @@ TypeIsVisible(Oid typid)
 						cql("SELECT COUNT(*) FROM pg_type "
 							" WHERE typname = :1 "
 							" AND typnamespace = :2 ",
-							PointerGetDatum((char *) typname),
+							CStringGetDatum((char *) typname),
 							ObjectIdGetDatum(namespaceId))))
 			{
 				/* Found something else first in path */
@@ -1149,7 +1149,7 @@ OpclassnameGetOpcid(Oid amid, const char *opcname)
 					" AND opcname = :2 "
 					" AND opcnamespace = :3 ",
 					ObjectIdGetDatum(amid),
-					PointerGetDatum((char *) opcname),
+					CStringGetDatum((char *) opcname),
 					ObjectIdGetDatum(namespaceId)));
 
 		if (OidIsValid(opcid))
@@ -1243,7 +1243,7 @@ ConversionGetConid(const char *conname)
 				cql("SELECT oid FROM pg_conversion "
 					" WHERE conname = :1 "
 					" AND connamespace = :2 ",
-					PointerGetDatum((char *) conname),
+					CStringGetDatum((char *) conname),
 					ObjectIdGetDatum(namespaceId)));
 
 		if (OidIsValid(conid))

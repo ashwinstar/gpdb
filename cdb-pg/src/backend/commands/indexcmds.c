@@ -336,7 +336,7 @@ DefineIndex(RangeVar *heapRelation,
 			NULL,
 			cql("SELECT * FROM pg_am "
 				" WHERE amname = :1 ",
-				PointerGetDatum(accessMethodName)));
+				CStringGetDatum(accessMethodName)));
 	
 	tuple = caql_getnext(amcqCtx);
 
@@ -358,7 +358,7 @@ DefineIndex(RangeVar *heapRelation,
 					NULL,
 					cql("SELECT * FROM pg_am "
 						" WHERE amname = :1 ",
-						PointerGetDatum(accessMethodName)));
+						CStringGetDatum(accessMethodName)));
 	
 			tuple = caql_getnext(amcqCtx);
 		}
@@ -1100,7 +1100,7 @@ GetIndexOpClass(List *opclass, Oid attrType,
 					" AND opcname = :2 "
 					" AND opcnamespace = :3 ",
 					ObjectIdGetDatum(accessMethodId),
-					PointerGetDatum(opcname),
+					CStringGetDatum(opcname),
 					ObjectIdGetDatum(namespaceId)));
 	}
 	else

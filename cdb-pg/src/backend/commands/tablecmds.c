@@ -3063,7 +3063,7 @@ renameatt(Oid myrelid,
 					" WHERE attrelid = :1 "
 					" AND attname = :2 ",
 					ObjectIdGetDatum(myrelid),
-					PointerGetDatum((char *) newattname))))
+					CStringGetDatum((char *) newattname))))
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_COLUMN),
@@ -6789,7 +6789,7 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 						" WHERE attrelid = :1 "
 						" AND attname = :2 ",
 						ObjectIdGetDatum(myrelid),
-						PointerGetDatum(colDef->colname))))
+						CStringGetDatum(colDef->colname))))
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_DUPLICATE_COLUMN),
@@ -16349,7 +16349,7 @@ ATPExecPartSplit(Relation rel,
 							" AND parname = :3 ",
 							ObjectIdGetDatum(prule->topRule->paroid),
 							ObjectIdGetDatum(prule->topRule->parparentoid),
-							d));
+							cqlIsDatumForCString(d)));
 
 				Insist(fetchCount);
 

@@ -765,7 +765,7 @@ assign_session_authorization(const char *value, bool doit, GucSource source)
 				NULL,
 				cql("SELECT * FROM pg_authid "
 					" WHERE rolname = :1 ",
-					PointerGetDatum((char *) value)));
+					CStringGetDatum((char *) value)));
 
 		roleTup = caql_getnext(pcqCtx);
 		if (!HeapTupleIsValid(roleTup))
@@ -905,7 +905,7 @@ assign_role(const char *value, bool doit, GucSource source)
 				NULL,
 				cql("SELECT * FROM pg_authid "
 					" WHERE rolname = :1 ",
-					PointerGetDatum((char *) value)));
+					CStringGetDatum((char *) value)));
 
 		roleTup = caql_getnext(pcqCtx);
 		if (!HeapTupleIsValid(roleTup))

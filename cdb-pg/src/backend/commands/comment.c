@@ -784,7 +784,7 @@ CommentRule(List *qualname, char *comment)
 				&bOnly,
 				cql("SELECT * FROM pg_rewrite "
 					" WHERE rulename = :1 ",
-					PointerGetDatum(rulename)));
+					CStringGetDatum(rulename)));
 
 		if (HeapTupleIsValid(tuple))
 		{
@@ -833,7 +833,7 @@ CommentRule(List *qualname, char *comment)
 					" WHERE ev_class = :1 "
 					" AND rulename = :2 ",
 					ObjectIdGetDatum(reloid),
-					PointerGetDatum(rulename)));
+					CStringGetDatum(rulename)));
 
 		tuple = caql_getnext(pcqCtx);
 
@@ -1262,7 +1262,7 @@ CommentOpClass(List *qualname, List *arguments, char *comment)
 					" AND opcname = :2 "
 					" AND opcnamespace = :3 ",
 					ObjectIdGetDatum(amID),
-					PointerGetDatum(opcname),
+					CStringGetDatum(opcname),
 					ObjectIdGetDatum(namespaceId)));
 	}
 	else

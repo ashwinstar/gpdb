@@ -58,7 +58,7 @@ NamespaceCreate(const char *nspName, Oid ownerId, Oid forceOid)
 				caql_addrel(cqclr(&cqc2), nspdesc),
 				cql("SELECT COUNT(*) FROM pg_namespace "
 					" WHERE nspname = :1 ",
-					PointerGetDatum((char *) nspName))))
+					CStringGetDatum((char *) nspName))))
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_SCHEMA),

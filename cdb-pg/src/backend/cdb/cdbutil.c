@@ -1274,7 +1274,7 @@ my_mirror_dbid(void)
 			cql("SELECT dbid FROM gp_segment_configuration "
 				" WHERE content = :1 "
 				" AND role = :2 ",
-				ObjectIdGetDatum(contentid),
+				Int16GetDatum(contentid),
 				CharGetDatum('m')));
 
 	if (HeapTupleIsValid(tup))

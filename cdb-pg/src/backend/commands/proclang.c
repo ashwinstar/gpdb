@@ -82,7 +82,7 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 				NULL,
 				cql("SELECT COUNT(*) FROM pg_language "
 					" WHERE lanname = :1 ",
-					PointerGetDatum(languageName))))
+					CStringGetDatum(languageName))))
 	{
 		/*
 		 * MPP-7563: special case plpgsql to omit a notice if it already exists

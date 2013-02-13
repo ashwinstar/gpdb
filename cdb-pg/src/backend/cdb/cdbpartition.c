@@ -1199,7 +1199,7 @@ get_part_oid(Oid rootrelid, int16 parlevel, bool istemplate)
 				" AND paristemplate = :3",
 				ObjectIdGetDatum(rootrelid),
 				Int16GetDatum(parlevel),
-				Int16GetDatum(istemplate)));
+				BoolGetDatum(istemplate)));
 	
 	/* pg_partition and  pg_partition_rule are populated only on the 
 	 * entry database, so our result is only meaningful there. */
@@ -1232,7 +1232,7 @@ del_part_template(Oid rootrelid, int16 parlevel, Oid parent)
 				" FOR UPDATE ",
 				ObjectIdGetDatum(rootrelid),
 				Int16GetDatum(parlevel),
-				Int16GetDatum(istemplate))
+				BoolGetDatum(istemplate))
 			);
 
 	if (0 == fetchCount)
@@ -1261,7 +1261,7 @@ del_part_template(Oid rootrelid, int16 parlevel, Oid parent)
 				" AND paristemplate = :3 ",
 				ObjectIdGetDatum(rootrelid),
 				Int16GetDatum(parlevel),
-				Int16GetDatum(istemplate))
+				BoolGetDatum(istemplate))
 			);
 			
 	/* make visible */

@@ -546,7 +546,7 @@ compute_attributes_sql_style(List *options,
 	*languageOid = caql_getoid(NULL,
 			cql("SELECT * FROM pg_language "
 				" WHERE lanname = :1 ",
-				PointerGetDatum(*languageName)));
+				CStringGetDatum(*languageName)));
 
 	if (!OidIsValid(*languageOid))
 		ereport(ERROR,

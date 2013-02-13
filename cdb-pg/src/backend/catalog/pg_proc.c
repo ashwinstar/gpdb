@@ -279,7 +279,7 @@ ProcedureCreate(const char *procedureName,
 				" AND proargtypes = :2 "
 				" AND pronamespace = :3 "
 				" FOR UPDATE ",
-				PointerGetDatum((char *) procedureName),
+				CStringGetDatum((char *) procedureName),
 				PointerGetDatum(parameterTypes),
 				ObjectIdGetDatum(procNamespace)));
 

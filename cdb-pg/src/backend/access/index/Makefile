@@ -144,8 +144,7 @@ catquery.c: caql.files $(top_srcdir)/src/include/catalog/calico.pl
 		-filemap caqlfilemap.json \
 		-uniqdef uniqdef.json \
 		-basedef basedef.json \
-		-gperf gperf.init -infiles caql.files | \
-		sed -e 's/^#line [0-9]* "gperf.init"//' > catquery.c 
+		-gperf gperf.init -infiles caql.files > catquery.c 
 	# track the cql source files
 	cat caql.files | xargs openssl dgst -md5 -hex | cat > caql.md5 
 

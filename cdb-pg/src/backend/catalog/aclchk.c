@@ -602,7 +602,7 @@ objectNamesToOids(GrantObjectType objtype, List *objnames)
 						NULL,
 						cql("SELECT oid FROM pg_language "
 							" WHERE lanname = :1 ",
-							PointerGetDatum(langname)));
+							CStringGetDatum(langname)));
 
 				if (0 == fetchCount)
 					ereport(ERROR,

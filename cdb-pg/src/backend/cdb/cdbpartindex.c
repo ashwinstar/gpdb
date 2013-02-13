@@ -321,7 +321,7 @@ getPartitionIndexNode(Oid rootOid,
 				" AND paristemplate = :3",
 				ObjectIdGetDatum(rootOid),
 				Int16GetDatum(level),
-				Int16GetDatum(inctemplate)));
+				BoolGetDatum(inctemplate)));
 
 	if (HeapTupleIsValid(tuple))
 	{
