@@ -67,8 +67,8 @@ static char *shellprog = SHELLPROG;
 
 /* currently we can use the same diff switches on all platforms */
 /* MPP:  Add stuff to ignore all the extra NOTICE messages we give */
-const char *basic_diff_opts = "--gpd_init init_file -w -I NOTICE: -I HINT: -I CONTEXT: -I GP_IGNORE:";
-const char *pretty_diff_opts = "--gpd_init init_file -w -I NOTICE: -I HINT: -I CONTEXT: -I GP_IGNORE: -C3";
+const char *basic_diff_opts = "-w -I NOTICE: -I HINT: -I CONTEXT: -I GP_IGNORE:";
+const char *pretty_diff_opts = "-w -I NOTICE: -I HINT: -I CONTEXT: -I GP_IGNORE: -C3";
 
 /* options settable from command line */
 _stringlist *dblist = NULL;
@@ -90,6 +90,7 @@ static int	port = -1;
 static char *user = NULL;
 static char *srcdir = NULL;
 static _stringlist *extraroles = NULL;
+static char *initfile = NULL;
 
 /* internal variables */
 static const char *progname;
@@ -1252,6 +1253,8 @@ results_differ(const char *testname, const char *resultsfile, const char *defaul
 	char		diff[MAXPGPATH];
 	char		cmd[MAXPGPATH * 3];
 	char		best_expect_file[MAXPGPATH];
+    char        diff_opts[MAXPGPATH];
+    char        m_pretty_diff_opts[MAXPGPATH];
 	FILE	   *difffile;
 	int			best_line_count;
 	int			i;
@@ -1279,11 +1282,29 @@ results_differ(const char *testname, const char *resultsfile, const char *defaul
 
 	/* Name to use for temporary diff file */
 	snprintf(diff, sizeof(diff), "%s.diff", resultsfile);
+    
+	/* Add init file arguments if provided via commandline */
+	if (initfile)
+	{
+	  snprintf(diff_opts, sizeof(diff_opts),
+			   "%s --gpd_init %s", basic_diff_opts, initfile);
+
+	  snprintf(m_pretty_diff_opts, sizeof(m_pretty_diff_opts),
+			   "%s --gpd_init %s", pretty_diff_opts, initfile);
+	}
+	else
+	{
+		snprintf(diff_opts, sizeof(diff_opts),
+			   "%s", basic_diff_opts);
+
+		snprintf(m_pretty_diff_opts, sizeof(m_pretty_diff_opts),
+                 "%s", pretty_diff_opts);
+	}
 
 	/* OK, run the diff */
 	snprintf(cmd, sizeof(cmd),
 			 SYSTEMQUOTE "gpdiff.pl %s \"%s\" \"%s\" > \"%s\"" SYSTEMQUOTE,
-			 basic_diff_opts, expectfile, resultsfile, diff);
+			 diff_opts, expectfile, resultsfile, diff);
 
 	/* Is the diff file empty? */
 	if (run_diff(cmd, diff) == 0)
@@ -1306,7 +1327,7 @@ results_differ(const char *testname, const char *resultsfile, const char *defaul
 
 		snprintf(cmd, sizeof(cmd),
 				 SYSTEMQUOTE "gpdiff.pl %s \"%s\" \"%s\" > \"%s\"" SYSTEMQUOTE,
-				 basic_diff_opts, alt_expectfile, resultsfile, diff);
+				 diff_opts, alt_expectfile, resultsfile, diff);
 
 		if (run_diff(cmd, diff) == 0)
 		{
@@ -1333,7 +1354,7 @@ results_differ(const char *testname, const char *resultsfile, const char *defaul
 	{
 		snprintf(cmd, sizeof(cmd),
 				 SYSTEMQUOTE "gpdiff.pl %s \"%s\" \"%s\" > \"%s\"" SYSTEMQUOTE,
-				 basic_diff_opts, default_expectfile, resultsfile, diff);
+				 diff_opts, default_expectfile, resultsfile, diff);
 
 		if (run_diff(cmd, diff) == 0)
 		{
@@ -1357,7 +1378,7 @@ results_differ(const char *testname, const char *resultsfile, const char *defaul
 	 */
 	snprintf(cmd, sizeof(cmd),
 			 SYSTEMQUOTE "gpdiff.pl %s \"%s\" \"%s\" >> \"%s\"" SYSTEMQUOTE,
-			 pretty_diff_opts, best_expect_file, resultsfile, difffilename);
+			 m_pretty_diff_opts, best_expect_file, resultsfile, difffilename);
 	run_diff(cmd, difffilename);
 
 	/* And append a separator */
@@ -1952,6 +1973,7 @@ help(void)
 	printf(_("                            (can be used multiple times to concatenate)\n"));
 	printf(_("  --srcdir=DIR              absolute path to source directory (for VPATH builds)\n"));
 	printf(_("  --temp-install=DIR        create a temporary installation in DIR\n"));
+    printf(_(" --init-file=GPD_INIT_FILE  init file to be used for gpdiff\n"));
 	printf(_("\n"));
 	printf(_("Options for \"temp-install\" mode:\n"));
 	printf(_("  --no-locale               use C locale\n"));
@@ -2000,6 +2022,7 @@ regression_main(int argc, char *argv[], init_function ifunc, test_function tfunc
 		{"psqldir", required_argument, NULL, 16},
 		{"srcdir", required_argument, NULL, 17},
 		{"create-role", required_argument, NULL, 18},
+        {"init-file", required_argument, NULL, 19},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -2095,7 +2118,10 @@ regression_main(int argc, char *argv[], init_function ifunc, test_function tfunc
 			case 18:
 				split_to_stringlist(strdup(optarg), ", ", &extraroles);
 				break;
-			default:
+            case 19:
+                initfile = strdup(optarg);
+                break;
+            default:
 				/* getopt_long already emitted a complaint */
 				fprintf(stderr, _("\nTry \"%s -h\" for more information.\n"),
 						progname);

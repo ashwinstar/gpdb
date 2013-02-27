@@ -44,16 +44,16 @@ set enable_seqscan=off;
 set enable_indexscan=off;
 set enable_bitmapscan=on;
 
-\echo -- start_ignore
+-- start_ignore
 select * from test where a<10;
-\echo -- end_ignore
+-- end_ignore
 
 -- returnning one or more tuples
 select * from test where a<10;
 
-\echo -- start_ignore
+-- start_ignore
 select * from test where a>100;
-\echo -- end_ignore
+-- end_ignore
 
 -- returninig no tuples
 select * from test where a>100;
@@ -71,22 +71,22 @@ set enable_seqscan=off;
 set enable_indexscan=off;
 set enable_bitmapscan=on;
 
-\echo -- start_ignore
+-- start_ignore
 select * from test where a<100 or b>10;
-\echo -- end_ignore
+-- end_ignore
 
 select * from test where a<100 or b>10;
 
-\echo -- start_ignore
+-- start_ignore
 select * from test where a<100 or b>30;
-\echo -- end_ignore
+-- end_ignore
 
 -- Returnning no tuples from one branch
 select * from test where a<100 or b>30;
 
-\echo -- start_ignore
+-- start_ignore
 select * from test where a<1 or b>30;
-\echo -- end_ignore
+-- end_ignore
 
 -- Returnning no tuples from both branch
 select * from test where a<1 or b>30;
@@ -97,22 +97,22 @@ drop index test_b;
 create index test_bm_a on test using bitmap(a);
 create index test_bm_b on test using bitmap(b);
 
-\echo -- start_ignore
+-- start_ignore
 select * from test where a<100 or b>10;
-\echo -- end_ignore
+-- end_ignore
 
 select * from test where a<100 or b>10;
 
-\echo -- start_ignore
+-- start_ignore
 select * from test where a<100 or b>30;
-\echo -- end_ignore
+-- end_ignore
 
 -- Returnning no tuples from one branch
 select * from test where a<100 or b>30;
 
-\echo -- start_ignore
+-- start_ignore
 select * from test where a<1 or b>30;
-\echo -- end_ignore
+-- end_ignore
 
 -- Returnning no tuples from both branch
 select * from test where a<1 or b>30;
@@ -123,22 +123,22 @@ drop index test_bm_b;
 create index test_a on test (a);
 create index test_bm_b on test using bitmap(b);
 
-\echo -- start_ignore
+-- start_ignore
 select * from test where a<100 or b>10;
-\echo -- end_ignore
+-- end_ignore
 
 select * from test where a<100 or b>10;
 
-\echo -- start_ignore
+-- start_ignore
 select * from test where a<100 or b>30;
-\echo -- end_ignore
+-- end_ignore
 
 -- Returnning no tuples from one branch
 select * from test where a<100 or b>30;
 
-\echo -- start_ignore
+-- start_ignore
 select * from test where a<1 or b>30;
-\echo -- end_ignore
+-- end_ignore
 
 -- Returnning no tuples from both branch
 select * from test where a<1 or b>30;
@@ -151,8 +151,8 @@ set enable_seqscan=off;
 set enable_indexscan=off;
 set enable_bitmapscan=on;
 
-\echo -- start_ignore
+-- start_ignore
 select * from test where a in (1,3,5);
-\echo -- end_ignore
+-- end_ignore
 
 select * from test where a in (1,3,5);
