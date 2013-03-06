@@ -17,8 +17,8 @@
 #include "postgres.h"
 
 #include "access/hash.h"
-#include "access/catquery.h"
 #include "bootstrap/bootstrap.h"
+#include "catalog/catquery.h"
 #include "catalog/heap.h"                   /* SystemAttributeDefinition() */    
 #include "catalog/pg_amop.h"
 #include "catalog/pg_amproc.h"

@@ -19,7 +19,7 @@
 #include <math.h>
 
 #include "access/genam.h"
-#include "access/catquery.h"
+#include "catalog/catquery.h"
 #include "access/heapam.h"
 #include "access/aocssegfiles.h"
 #include "catalog/gp_policy.h"

@@ -26,8 +26,8 @@ B<calico.pl> - CaQL catalog query code generation
 
 =head1 VERSION
 
- This document describes version 70 of calico.pl, released
- Mon Feb  4 14:51:41 2013.
+ This document describes version 71 of calico.pl, released
+ Mon Feb 25 14:53:57 2013.
 
 =head1 SYNOPSIS
 
@@ -347,12 +347,12 @@ BEGIN {
 	
 	# version and properties from json definition
 	$glob_glob->{_sleazy_properties} = {};
-	$glob_glob->{_sleazy_properties}->{version} = '70';
+	$glob_glob->{_sleazy_properties}->{version} = '71';
 	$glob_glob->{_sleazy_properties}->{AUTHORNAME} = 'Jeffrey I Cohen';
 	$glob_glob->{_sleazy_properties}->{BUGEMAIL} = 'Address bug reports and comments to: jcohen@greenplum.com';
 	$glob_glob->{_sleazy_properties}->{COPYDATES} = '2011, 2012, 2013';
 	$glob_glob->{_sleazy_properties}->{COPYHOLDER} = 'Greenplum';
-	$glob_glob->{_sleazy_properties}->{slzy_date} = '1360018301';
+	$glob_glob->{_sleazy_properties}->{slzy_date} = '1361832837';
 	$glob_glob->{_sleazy_properties}->{slzy_argv_str} = $slzy_argv_str;
 	
 	    die ("missing required argument for 'metadata'")
@@ -526,10 +526,10 @@ if (0)
       "BUGEMAIL" : "Address bug reports and comments to: jcohen@greenplum.com",
       "COPYDATES" : "2011, 2012, 2013",
       "COPYHOLDER" : "Greenplum",
-      "slzy_date" : 1360018301
+      "slzy_date" : 1361832837
    },
    "short" : "CaQL catalog query code generation",
-   "version" : "70"
+   "version" : 71
 }
 
 EOF_bigstr
@@ -3663,7 +3663,6 @@ sub more_header
 #include <string.h>
 #include <unistd.h>
 
-#include "access/catquery.h"
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/relscan.h"
@@ -3671,6 +3670,7 @@ sub more_header
 
 #include "catalog/caqlparse.h"
 #include "catalog/catalog.h"
+#include "catalog/catquery.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_aggregate.h"
 #include "catalog/pg_amop.h"

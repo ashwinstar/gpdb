@@ -18,7 +18,7 @@
 #include "utils/relcache.h"
 #include "utils/fmgroids.h"
 #include "access/genam.h"
-#include "access/catquery.h"
+#include "catalog/catquery.h"
 #include "access/htup.h"
 #include "access/heapam.h"
 

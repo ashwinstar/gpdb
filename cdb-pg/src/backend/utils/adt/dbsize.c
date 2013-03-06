@@ -19,10 +19,10 @@
 #include "lib/stringinfo.h"
 
 #include "access/heapam.h"
-#include "access/catquery.h"
 #include "access/appendonlywriter.h"
 #include "access/aocssegfiles.h"
 #include "catalog/catalog.h"
+#include "catalog/catquery.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_tablespace.h"
 #include "commands/dbcommands.h"

@@ -26,7 +26,7 @@
 #include <math.h>
 
 #include "access/heapam.h"
-#include "access/catquery.h"
+#include "catalog/catquery.h"
 #include "catalog/heap.h"
 #include "access/transam.h"
 #include "access/tuptoaster.h"

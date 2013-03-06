@@ -21,8 +21,8 @@
 #include "fmgr.h"
 #include "funcapi.h"
 
-#include "access/catquery.h"
 #include "access/formatter.h"
+#include "catalog/catquery.h"
 #include "catalog/pg_proc.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"

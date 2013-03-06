@@ -13,7 +13,7 @@
 #include <pthread.h>
 #include <limits.h>
 
-#include "access/catquery.h"
+#include "catalog/catquery.h"
 #include "executor/execdesc.h"	/* QueryDesc */
 #include "storage/ipc.h"		/* For proc_exit_inprogress  */
 #include "miscadmin.h"
