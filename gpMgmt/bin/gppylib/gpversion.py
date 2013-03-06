@@ -37,6 +37,19 @@ class GpVersion:
       x.isrelease('3.2')       => Major version comparison
     '''
 
+    """
+    Past major versions of GPDB. Used for shift arithmetic
+    and reasoning about separation between versions.
+    """
+    history = [
+                '3.2',
+                '3.3',
+                '4.0',
+                '4.1',
+                '4.2',
+                '4.3'
+              ]
+
     #------------------------------------------------------------
     def __init__(self, version):
         '''
@@ -194,6 +207,13 @@ class GpVersion:
             return "%s build %s" % (v, self.build)
         else:
             return v
+   
+    def __lshift__(self, num):
+        i = self.history.index(self.getVersionRelease())
+        i -= num
+        if i < 0 or num < 0:
+            raise StandardError('invalid version shift')
+        return GpVersion(self.history[i] + ".0.0")
 
     #------------------------------------------------------------
     def getVersionBuild(self):

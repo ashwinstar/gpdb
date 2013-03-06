@@ -106,18 +106,17 @@ def is_supported_version(version, upgrade=True):
             "Greenplum Version '%s' is not supported for %s"
             % (str(version), upstr))            
 
-    if version >= "4.1.0.0" and version <= 'main':
-        return True
-
-    if version < "4.1.0.0":
-        raise UpgradeError(
-            "Greenplum Version '%s' is not supported for %s"
-            % (str(version), upstr))
-    else:
+    main = GpVersion('main')
+    if version > main:
         raise UpgradeError(
             "To %s Greenplum Version '%s' use the %s tool "
             "shipped with that release" 
             % (upstr, str(version), upstr))
+    if version < (main << 1):
+        raise UpgradeError(
+            "Greenplum Version '%s' is not supported for %s"
+            % (str(version), upstr))
+    return True
         
 
 #============================================================
