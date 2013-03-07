@@ -14,6 +14,9 @@ class test_upgrade(UpgradeTestCase):
     DEFAULT_BUILD_PROJECT = 'GPDB-main-opt-l1'
     DEFAULT_PROJECT_VERSION = 'dev'
 
+    def tearDown(self):
+        self.cleanup_upgrade()
+
     def construct_pulse_link(self):
         """Construct download link from pulse for the new binary.
         The values are overloaded by environment variables.
