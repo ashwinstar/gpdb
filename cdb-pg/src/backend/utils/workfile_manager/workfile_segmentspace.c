@@ -146,7 +146,10 @@ WorkfileSegspace_Commit(int64 commit_bytes, int64 reserved_bytes)
 	Assert(NULL != used_segspace);
 	Assert(reserved_bytes >= commit_bytes);
 
-	int64 total = gp_atomic_add_64(used_segspace, (commit_bytes - reserved_bytes));
+#if USE_ASSERT_CHECKING
+	int64 total = 
+#endif
+	gp_atomic_add_64(used_segspace, (commit_bytes - reserved_bytes));
 	Assert(total >= (int64) 0);
 }
 
