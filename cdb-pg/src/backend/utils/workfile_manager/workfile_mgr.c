@@ -45,7 +45,7 @@ static bool workfile_mgr_compare_plan(workfile_set *work_set, workfile_set_plan 
 static void workfile_mgr_cleanup_set(const void *resource);
 static void workfile_mgr_delete_set_directory(char *workset_path);
 static void workfile_mgr_unlink_directory(const char *dirpath);
-static char * get_name_from_nodeType(const NodeTag node_type);
+static StringInfo get_name_from_nodeType(const NodeTag node_type);
 
 /* Workfile manager cache is stored here, once attached to */
 Cache *workfile_mgr_cache = NULL;
@@ -141,27 +141,27 @@ workfile_mgr_create_file(workfile_set *work_set, char *workfile_name, uint32 wor
  * Retrieves the operator name.
  * Result is palloc-ed in the current memory context.
  */
-static char *
+static StringInfo
 get_name_from_nodeType(const NodeTag node_type)
 {
-	char *operator_name = (char *) palloc(MAXPGPATH);
+	StringInfo operator_name = makeStringInfo();
 
 	switch ( node_type )
 	{
 		case T_AggState:
-			snprintf(operator_name, MAXPGPATH,"Agg");
+			appendStringInfoString(operator_name,"Agg");
 			break;
 		case T_HashJoinState:
-			snprintf(operator_name, MAXPGPATH,"HashJoin");
+			appendStringInfoString(operator_name,"HashJoin");
 			break;
 		case T_MaterialState:
-			snprintf(operator_name, MAXPGPATH,"Material");
+			appendStringInfoString(operator_name,"Material");
 			break;
 		case T_SortState:
-			snprintf(operator_name, MAXPGPATH,"Sort");
+			appendStringInfoString(operator_name,"Sort");
 			break;
 		default:
-			Assert(false && "Operator not implemented");
+			Assert(false && "Operator not supported by the workfile manager");
 	}
 
 	return operator_name;
@@ -233,39 +233,49 @@ workfile_mgr_create_set(enum ExecWorkFileType type, bool can_be_reused, PlanStat
 	work_set->can_be_reused = gp_workfile_caching && can_be_reused && workfile_mgr_is_reusable(ps);
 
 	/* Create base directory here. We need database relative path */
-	char *tmp_dirpath = (char*)palloc(MAXPGPATH);
-	if (snprintf(tmp_dirpath, MAXPGPATH, "%s/%s", getCurrentTempFilePath, PG_TEMP_FILES_DIR) > MAXPGPATH)
+	StringInfo tmp_dirpath = makeStringInfo();
+
+	appendStringInfo(tmp_dirpath,
+					"%s/%s",
+					getCurrentTempFilePath,
+					PG_TEMP_FILES_DIR);
+
+	if (tmp_dirpath->len > MAXPGPATH)
 	{
 		ereport(ERROR, (errmsg("cannot generate path %s/%s",
 				getCurrentTempFilePath,
 				PG_TEMP_FILES_DIR)));
 	}
-	mkdir(tmp_dirpath, S_IRWXU);
+
+	mkdir(tmp_dirpath->data, S_IRWXU);
+	pfree(tmp_dirpath->data);
 	pfree(tmp_dirpath);
 
 	/* Create workset directory here */
-	char *workset_path_masked = (char *) palloc(MAXPGPATH);
-	char *operator_name = get_name_from_nodeType(work_set->node_type);
+	StringInfo operator_name = get_name_from_nodeType(work_set->node_type);
+ 	StringInfo workset_path_masked = makeStringInfo();
 
-	if (snprintf(workset_path_masked, MAXPGPATH,
+	appendStringInfo(workset_path_masked,
 			"%s/%s/%s_%s_Slice%d.%s",
-			getCurrentTempFilePath,
-			PG_TEMP_FILES_DIR,
-			WORKFILE_SET_PREFIX,
-			operator_name,
-			work_set->slice_id,
-			WORKFILE_SET_MASK) > MAXPGPATH)
+			 getCurrentTempFilePath,
+			 PG_TEMP_FILES_DIR,
+			 WORKFILE_SET_PREFIX,
+			 operator_name->data,
+			 work_set->slice_id,
+			 WORKFILE_SET_MASK);
+
+	if (workset_path_masked->len > MAXPGPATH)
 	{
 		ereport(ERROR, (errmsg("cannot generate path %s/%s/%s_%s_Slice%d.%s",
 			getCurrentTempFilePath,
 			PG_TEMP_FILES_DIR,
 			WORKFILE_SET_PREFIX,
-			operator_name,
+			operator_name->data,
 			work_set->slice_id,
 			WORKFILE_SET_MASK)));
 	}
 
-	char *workset_path_unmasked = mkdtemp(workset_path_masked);
+	char *workset_path_unmasked = mkdtemp(workset_path_masked->data);
 	if (workset_path_unmasked == NULL)
 	{
 		ereport(ERROR,
@@ -278,10 +288,19 @@ workfile_mgr_create_set(enum ExecWorkFileType type, bool can_be_reused, PlanStat
 			workset_path_unmasked + strlen(getCurrentTempFilePath) + 1,
 			MAXPGPATH);
 
+	if ( strlen(workset_path_unmasked + strlen(getCurrentTempFilePath) + 1)
+			> MAXPGPATH )
+	{
+			ereport(ERROR, (errmsg("cannot generate path %s",
+					workset_path_unmasked + strlen(getCurrentTempFilePath) + 1)));
+	}
+
 	/* Path is now valid. Mark this work_set as physical now */
 	work_set->on_disk = true;
 
+	pfree(workset_path_masked->data);
 	pfree(workset_path_masked);
+	pfree(operator_name->data);
 	pfree(operator_name);
 
 	if (work_set->can_be_reused)
