@@ -154,7 +154,7 @@ def get_dirty_partition_tables(table_type, curr_state_partition_list, master_dat
 def get_last_state(table_type, master_datadir, backup_dir, full_timestamp):
     last_ts = get_last_dump_timestamp(master_datadir, backup_dir, full_timestamp)
     last_state_filename = get_filename_from_filetype(table_type, master_datadir, backup_dir, last_ts.strip())
-    if not os.path.exists(last_state_filename):
+    if not os.path.isfile(last_state_filename):
         raise Exception('%s state file does not exist: %s' % (table_type, last_state_filename))
     return get_lines_from_file(last_state_filename)
 
@@ -180,7 +180,7 @@ def get_pgstatlastoperations_dict(last_operations):
  
 def get_last_dump_timestamp(master_datadir, backup_dir, full_timestamp):
     increments_filename = generate_increments_filename(master_datadir, backup_dir, full_timestamp)
-    if not os.path.exists(increments_filename):
+    if not os.path.isfile(increments_filename):
         return full_timestamp
 
     lines = get_lines_from_file(increments_filename)
@@ -252,7 +252,7 @@ def get_dirty_heap_tables(master_port, dbname):
     qresult = get_heap_partition_list(master_port, dbname)
     for row in qresult:
         if len(row) != 3:
-            raise Exception("Bad return from get_heap_partition_list %d entries in row" % len(row))
+            raise Exception("Heap tables query returned rows with unexpected number of columns %d" % len(row))
         tname = '%s.%s' % (row[1], row[2])
         dirty_tables.add(tname)
     return dirty_tables
@@ -496,14 +496,13 @@ class CreateIncrementsFile(Operation):
                 continue
             fn = generate_report_filename(master_data_dir, backup_dir, ts)
             ts_in_rpt = None
-            es = ""
             try:
-                ts_in_rpt = gppylib.operations.backup_utils.get_incremental_ts_from_report_file(dump_database, fn)
+                ts_in_rpt = get_incremental_ts_from_report_file(dump_database, fn)
             except Exception as e:
-                es = ": %s" % e.__str__()
+                logger.error(str(e))
 
             if not ts_in_rpt:
-                raise Exception("'%s' from file '%s' is not a valid increment%s" % (ts, fn, es))
+                raise Exception("Timestamp '%s' from increments file '%s' is not a valid increment" % (ts, inc_file_name))
 
 class PostDumpDatabase(Operation):
     def __init__(self, timestamp_start, compress, backup_dir, batch_default, master_datadir, master_port, ddboost, incremental=False):

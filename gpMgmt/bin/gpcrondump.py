@@ -73,7 +73,7 @@ class GpCronDump(Operation):
         self.rollback = options.rollback
 
         self.compress = options.compress
-        self.free_space_percent = int(options.free_space_percent)
+        self.free_space_percent = options.free_space_percent
         self.clear_dumps = options.clear_dumps
         self.dump_schema = options.dump_schema
         self.dump_databases = options.dump_databases
@@ -101,6 +101,12 @@ class GpCronDump(Operation):
         if self.output_options is None: self.output_options = []
         if self.ddboost_hosts is None: self.ddboost_hosts = []
 
+        if self.incremental and len(self.dump_databases.split(',')) > 1:
+            raise ExceptionNoStackTraceNeeded('multi-database backup is not supported with incremental backup: %s databases selected' % len(self.dump_databases))
+
+        if self.clear_dumps_only and self.incremental:
+            raise Exception('-o option cannot be selected with incremental backup')
+
         if not (self.clear_dumps_only or bool(self.ddboost_hosts) or bool(self.ddboost_user) or self.ddboost_config_remove):
             if self.dump_databases is not None:
                 self.dump_databases = self.dump_databases.split(",")
@@ -115,6 +121,9 @@ class GpCronDump(Operation):
                     self.ddboost_verify_and_exit = True
                 else:
                     raise ExceptionNoStackTraceNeeded("Must supply -x <database name> because $PGDATABASE is not set")
+
+        if self.free_space_percent and self.incremental:
+            raise Exception('-f option cannot be selected with incremental backup')
 
         if options.bypass_disk_check:
             self.free_space_percent = None
@@ -131,9 +140,6 @@ class GpCronDump(Operation):
 
         if self.incremental and (self.ddboost or bool(self.ddboost_verify) or bool(self.ddboost_hosts) or bool(self.ddboost_user) or bool(self.ddboost_config_remove)):
             raise Exception('ddboost can not be selected with incremental backup')
-
-        if self.incremental and len(self.dump_databases) > 1:
-                raise ExceptionNoStackTraceNeeded('multi-database backup is not supported with incremental backup: %s databases selected' % len(self.dump_databases))
 
         if self.include_dump_tables and self.incremental:
             raise Exception('include table list can not be selected with incremental backup')
@@ -156,12 +162,16 @@ class GpCronDump(Operation):
         if ('--inserts' in self.output_options or '--oids' in self.output_options or '--column-inserts' in self.output_options) and self.incremental:
             raise Exception('--inserts, --column-inserts, --oids cannot be selected with incremental backup')
 
+        if self.free_space_percent: 
+            self.free_space_percent = int(self.free_space_percent)    
+        else:
+            self.free_space_percent = FREE_SPACE_PERCENT
+
         if self.incremental:
             self.free_space_percent = None
             logger.info('Bypassing disk space checks for incremental backup')
             self.full_dump_timestamp = gppylib.operations.backup_utils.get_latest_full_dump_timestamp(self.dump_databases[0], self.getBackupDirectoryRoot())
         
-
     def getBackupDirectoryRoot(self):
         if self.backup_dir:
             return self.backup_dir
@@ -382,7 +392,7 @@ class GpCronDump(Operation):
                                                  incremental = self.incremental).run()
             
             if self.incremental:
-                if os.path.exists(dirty_file):
+                if os.path.isfile(dirty_file):
                     os.remove(dirty_file)
                 write_dirty_file(self.master_datadir, dirty_partitions, self.backup_dir)
 
@@ -700,7 +710,7 @@ def create_parser():
                      help="Run vacuum after dump has completed successfully.")
     addTo.add_option('-z', action='store_false', dest='compress', default=True,
                      help="Do not use compression [default: use compression]")
-    addTo.add_option('-f', dest='free_space_percent', metavar="<0-99>", default=FREE_SPACE_PERCENT,
+    addTo.add_option('-f', dest='free_space_percent', metavar="<0-99>",
                      help="Percentage of disk space to ensure is reserved after dump.")
     addTo.add_option('-c', action='store_true', dest='clear_dumps', default=False,
                      help="Clear old dump directories [default: do not clear]. Will remove the oldest dump directory other than the current dump directory.")

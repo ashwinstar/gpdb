@@ -531,6 +531,11 @@ def impl(context):
     command = 'gpdbrestore -e -t %s -a' % context.backup_timestamp
     run_gpcommand(context, command)
 
+@when('the user runs gpdbrestore with the stored timestamp to print the backup set with options "{options}"')
+def impl(context, options):
+    command = 'gpdbrestore -t %s %s --list-backup' % (context.backup_timestamp, options)
+    run_gpcommand(context, command)
+
 @then('the user runs gpdbrestore with the stored timestamp and options "{options}"')
 @when('the user runs gpdbrestore with the stored timestamp and options "{options}"')
 def impl(context, options):
@@ -694,6 +699,11 @@ def impl(context, schema_list, dbname):
         drop_schema_if_exists(context, s.strip(), dbname)
         create_schema(context, s.strip(), dbname)
 
+@then('the temporary file "{filename}" is removed')
+def impl(context, filename):
+    if os.path.exists(context.filename):
+        os.remove(context.filename)
+
 def create_table_file_locally(context, filename, table_list, location=os.getcwd()):
     tables = [t.strip() for t in table_list.split(',')] 
     file_path = os.path.join(location, filename)
@@ -705,11 +715,6 @@ def create_table_file_locally(context, filename, table_list, location=os.getcwd(
 @given('there is a file "{filename}" with tables "{table_list}"')
 def impl(context, filename, table_list):
     create_table_file_locally(context, filename, table_list)
-
-@given('there is a file on all hosts "{filename}" with tables "{table_list}"')
-def impl(context, filename, table_list):
-    create_table_file_locally(context, filename, table_list, '/tmp')
-    copy_file_to_all_db_hosts(context, context.filename)
 
 @given('there is a fake pg_aoseg table named "{table}" in "{dbname}"')
 def impl(context, table, dbname):
@@ -895,6 +900,28 @@ def impl(context, ts, numtables):
     if ts not in context.restore_plan:
         raise Exception("Timestamp label '%s' not found in restore plan" % ts)
 
+@then('"{filetype}" file is removed under "{dir}"')
+def impl(context, filetype, dir):
+    if not hasattr(context, 'backup_timestamp'):
+        raise Exception('Backup timestamp has not been stored')
+
+    if filetype == "dirty_list":
+        filename = 'gp_dump_%s_dirty_list' % context.backup_timestamp
+    elif filetype == "plan":
+        filename = 'gp_restore_%s_plan' % context.backup_timestamp
+    elif filetype == "global":
+        filename = 'gp_global_1_1_%s' % context.backup_timestamp
+    elif filetype == "report":
+        filename = 'gp_dump_%s.rpt' % context.backup_timestamp
+    else:
+        raise Exception("Unknown filetype '%s' specified" % filetype)
+
+    dump_dir = dir if len(dir.strip()) != 0 else master_data_dir
+    file_path = os.path.join(dump_dir, 'db_dumps', context.backup_timestamp[0:8], filename)
+
+    if os.path.exists(file_path):
+        os.remove(file_path)
+ 
 
 @when('"{filetype}" file should be created under "{dir}"')
 @then('"{filetype}" file should be created under "{dir}"')
@@ -1461,7 +1488,20 @@ def impl(context, dbname, tables):
     for t in tables:
         validate_no_aoco_stats(context, dbname, t.strip())
 
-    
+@when('the performance timer is started')
+def impl(context):
+    context.performance_timer = time.time()
+
+@then('the performance timer should be less then "{num_seconds}" seconds')
+def impl(context, num_seconds):
+    max_seconds = float(num_seconds)
+    current_time = time.time()
+    elapsed = current_time - context.performance_timer
+    if elapsed > max_seconds:
+        raise Exception("Performance timer ran for %.1f seconds but had a max limit of %.1f seconds" % (elapsed, max_seconds))
+    print "Elapsed time was %.1f seconds" % elapsed
+
+
 
 
 

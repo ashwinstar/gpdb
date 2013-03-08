@@ -1,6 +1,5 @@
 import os
 import gzip
-import gppylib
 import getpass
 import shutil
 import socket
@@ -57,18 +56,14 @@ def update_ao_statistics(master_port, dbname):
     counter = 1
     try:
         results  = execute_sql(qry, master_port, dbname)
-        dburl = dbconn.DbURL(port=master_port, dbname=dbname)
-        conn = dbconn.connect(dburl)
-        for (tbl, sch) in results:
-            update_ao_stat_func(conn, sch, tbl, counter, batch_size=1000)
-            counter = counter + 1
-        conn.commit()
+        with dbconn.connect(dbconn.DbURL(port=master_port, dbname=dbname)) as conn:
+            for (tbl, sch) in results:
+                update_ao_stat_func(conn, sch, tbl, counter, batch_size=1000)
+                counter = counter + 1
+            conn.commit()
     except Exception as e:
         logger.info("Error updating ao statistics after restore")
         raise e
-    finally:
-        if conn is not None:
-            conn.close()
 
 def get_restore_dir(data_dir, backup_dir):
     if backup_dir is not None:
@@ -77,7 +72,7 @@ def get_restore_dir(data_dir, backup_dir):
         return data_dir
 
 def get_restore_tables_from_table_file(table_file):
-    if not os.path.exists(table_file):
+    if not os.path.isfile(table_file):
         raise Exception('Table file does not exist "%s"' % table_file)
 
     return get_lines_from_file(table_file)
@@ -113,8 +108,8 @@ def create_plan_file_contents(master_datadir, backup_dir, table_set_from_metadat
                 table_set_from_metadata_file.remove(dt)
                 restore_set[ts].append(dt)
 
+    restore_set[full_timestamp] = []
     if len(table_set_from_metadata_file) != 0:
-        restore_set[full_timestamp] = []
         for table in table_set_from_metadata_file:
             restore_set[full_timestamp].append(table)
 
@@ -145,7 +140,7 @@ def create_restore_plan(master_datadir, backup_dir, db_timestamp, dbname, ddboos
 
     full_timestamp = get_full_timestamp_for_incremental(dbname, get_restore_dir(master_datadir, backup_dir), db_timestamp)
     if not full_timestamp:
-        raise Exception("Could not locate fullbackup associated with ts '%s'" % db_timestamp)
+        raise Exception("Could not locate fullbackup associated with ts '%s'. Either increments file or fullback is missing." % db_timestamp)
 
     incremental_restore_timestamps = get_incremental_restore_timestamps(master_datadir, backup_dir, full_timestamp, db_timestamp)
 
@@ -160,7 +155,7 @@ def create_restore_plan(master_datadir, backup_dir, db_timestamp, dbname, ddboos
 def is_incremental_restore(master_datadir, backup_dir, timestamp):
 
     filename = generate_report_filename(master_datadir, backup_dir, timestamp)
-    if not os.path.exists(filename):
+    if not os.path.isfile(filename):
         logger.warn('Report file %s does not exist for restore timestamp %s' % (filename, timestamp))
         return False
 
@@ -179,7 +174,7 @@ def is_begin_incremental_run(master_datadir, backup_dir, timestamp, noplan):
 def get_plan_file_contents(master_datadir, backup_dir, timestamp):
     plan_file_items = []
     plan_file = generate_plan_filename(master_datadir, backup_dir, timestamp)
-    if not os.path.exists(plan_file):
+    if not os.path.isfile(plan_file):
         raise Exception('Plan file %s does not exist' % plan_file) 
     plan_file_lines = get_lines_from_file(plan_file)
     if len(plan_file_lines) <= 0:
@@ -227,6 +222,7 @@ def restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore
     restore_data = False
     plan_file_items = get_plan_file_contents(master_datadir, backup_dir, timestamp)
     table_file = None
+    table_files = []
 
     validate_restore_tables_list(plan_file_items, restore_tables)
  
@@ -241,12 +237,14 @@ def restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore
                 cmd += " -u %s" % backup_dir
             logger.info('Invoking commandline: %s: ' % cmd)
             Command('Invoking gpdbrestore', cmd).run(validateAfter=True) 
+            table_files.append(table_file)
 
     if not restore_data:
         raise Exception('There were no tables to restore. Check the plan file contents for restore timestamp %s' % timestamp)
 
-    if table_file is not None: 
-        os.remove(table_file)
+    for table_file in table_files:
+        if table_file: 
+            os.remove(table_file)
 
     return True
 
@@ -312,6 +310,9 @@ class RestoreDatabase(Operation):
                                                                             backup_dir = self.backup_dir,
                                                                             master_port = self.master_port,
                                                                             ddboost = self.ddboost).run()
+        if not self.no_plan:
+            self.restore_tables = expand_partition_tables(restore_db, self.restore_tables)
+
         if self.drop_db:
             self._multitry_createdb(restore_timestamp, 
                                     restore_db, 
@@ -334,7 +335,6 @@ class RestoreDatabase(Operation):
             Command('Invoking gp_restore', restore_line).run(validateAfter=True)
 
             logger.info("Running data restore")
-            self.restore_tables = expand_partition_tables(restore_db, self.restore_tables)
             restore_incremental_data_only(self.master_datadir, 
                                           self.backup_dir, 
                                           self.restore_timestamp, 

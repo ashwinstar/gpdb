@@ -26,7 +26,7 @@ try:
     from gppylib import gplog
 
     from gppylib.operations import Operation
-    from gppylib.operations.backup_utils import check_backup_type, get_lines_from_file
+    from gppylib.operations.backup_utils import check_backup_type, get_lines_from_file, generate_report_filename
     from gppylib.operations.unix import CheckFile, CheckRemoteFile, ListFilesByPattern, ListRemoteFilesByPattern
     from gppylib.operations.utils import DEFAULT_NUM_WORKERS
     from gppylib.operations.restore import RestoreDatabase, RecoverRemoteDumps, ValidateTimestamp, GetDumpTables, \
@@ -59,6 +59,9 @@ class GpdbRestore(Operation):
 
         if options.list_backup and options.db_timestamp is None:
             raise ProgramArgumentValidationException("Need to supply -t <timestamp> for --list-backup option")
+
+        if options.list_backup and options.drop_db:
+            raise ProgramArgumentValidationException("Cannot specify --list-backup and -e together")
 
         if options.masterDataDirectory is None:
             options.masterDataDirectory = gp.get_masterdatadir()
@@ -100,7 +103,12 @@ class GpdbRestore(Operation):
             else:
                 self.db_host_path = self.db_host_path.split(':')
 
-        self.interactive = options.interactive
+        # force non-interactive if list_backup
+        if options.list_backup:
+            self.interactive = False
+        else:
+            self.interactive = options.interactive
+
         self.master_datadir = options.masterDataDirectory
         self.master_port = self._get_master_port(self.master_datadir)
 
@@ -306,6 +314,10 @@ class GpdbRestore(Operation):
         table_counts = []
         if self.restore_tables is not None :
             validate_tablenames(self.restore_tables)
+
+        report_filename = generate_report_filename(self.master_datadir, self.backup_dir, restore_timestamp)
+        if not os.path.isfile(report_filename):
+            raise ExceptionNoStackTraceNeeded("Report file does not exist for the given restore timestamp %s: '%s'" % (restore_timestamp, report_filename))
 
         return {'fault_action': fault_action,
                 'fail_count': fail_count,

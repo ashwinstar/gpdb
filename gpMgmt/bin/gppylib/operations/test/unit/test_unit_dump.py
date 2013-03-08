@@ -35,7 +35,7 @@ class DumpTestCase(unittest.TestCase):
                                 output_options=[],
                                 batch_default=None,
                                 master_datadir='/data/master/p1',
-                                master_port=5432,
+                                master_port=0,
                                 ddboost=False)
 
     def create_backup_dirs(self, top_dir=os.getcwd(), dump_dirs=[]):
@@ -44,9 +44,9 @@ class DumpTestCase(unittest.TestCase):
 
         for dump_dir in dump_dirs:
             backup_dir = os.path.join(top_dir, 'db_dumps', dump_dir)
-            if not os.path.exists(backup_dir):
+            if not os.path.isdir(backup_dir):
                 os.makedirs(backup_dir)
-                if not os.path.exists(backup_dir):
+                if not os.path.isdir(backup_dir):
                     raise Exception('Failed to create directory %s' % backup_dir)
    
     def remove_backup_dirs(self, top_dir=os.getcwd(), dump_dirs=[]):
@@ -56,12 +56,12 @@ class DumpTestCase(unittest.TestCase):
         for dump_dir in dump_dirs:
             backup_dir = os.path.join(top_dir, 'db_dumps', dump_dir)
             shutil.rmtree(backup_dir)
-            if os.path.exists(backup_dir):
+            if os.path.isdir(backup_dir):
                 raise Exception('Failed to remove directory %s' % backup_dir)
 
     def test00_create_dump_line_without_incremental(self):
         output = self.dumper.create_dump_string('dcddev', '20121212', '01234567891234')
-        expected_output = """gp_dump -p 5432 -U dcddev --gp-d=/data/master/p1/db_dumps/20121212 --gp-r=/data/master/p1/db_dumps/20121212 --gp-s=p --gp-k=01234567891234 --gp-c -n "\\"testschema\\"" testdb --table-file=/tmp/table_list.txt"""
+        expected_output = """gp_dump -p 0 -U dcddev --gp-d=/data/master/p1/db_dumps/20121212 --gp-r=/data/master/p1/db_dumps/20121212 --gp-s=p --gp-k=01234567891234 --gp-c -n "\\"testschema\\"" testdb --table-file=/tmp/table_list.txt"""
         self.assertEquals(output, expected_output)
 
     @patch('gppylib.operations.dump.get_heap_partition_list', return_value=[['123', 'public', 't4'], ['123', 'public', 't5'], ['123', 'pepper', 't6']])
@@ -72,22 +72,22 @@ class DumpTestCase(unittest.TestCase):
 
     @patch('gppylib.operations.dump.get_heap_partition_list', return_value=[[], ['123', 'public', 't5'], ['123', 'public', 't6']])
     def test02_get_dirty_heap_tables(self, mock1):
-        with self.assertRaisesRegexp(Exception, 'Bad return from'):
+        with self.assertRaisesRegexp(Exception, 'Heap tables query returned rows with unexpected number of columns 0'):
             dirty_table_list = get_dirty_heap_tables(1234, 'testdb')
 
     def test02_write_dirty_file(self):
         dirty_tables = ['t1', 't2', 't3']
         backup_dir = None 
         timestamp_key = '20121212010101'
-        self.create_backup_dirs(top_dir=os.environ.get('MASTER_DATA_DIRECTORY'), dump_dirs=['20121212'])
-        tmpfilename = write_dirty_file(os.environ.get('MASTER_DATA_DIRECTORY'), dirty_tables, backup_dir, timestamp_key)
+        self.create_backup_dirs(dump_dirs=['20121212'])
+        tmpfilename = write_dirty_file(os.getcwd(), dirty_tables, backup_dir, timestamp_key)
         with open(tmpfilename) as tmpfile:
             output = tmpfile.readlines() 
 
         output = map(lambda x: x.strip(), output)
         self.assertEqual(dirty_tables, output)
         os.remove(tmpfilename)
-        self.remove_backup_dirs(top_dir=os.environ.get('MASTER_DATA_DIRECTORY'), dump_dirs=['20121212'])
+        self.remove_backup_dirs(dump_dirs=['20121212'])
 
     def test02a_write_dirty_file(self):
         dirty_tables = ['t1', 't2', 't3']
@@ -107,10 +107,10 @@ class DumpTestCase(unittest.TestCase):
         dirty_tables = None
         timestamp_key = '20121212010101'
         backup_dir = None
-        self.create_backup_dirs(top_dir=os.environ.get('MASTER_DATA_DIRECTORY'), dump_dirs=['20121212'])
+        self.create_backup_dirs(dump_dirs=['20121212'])
         tmpfilename = write_dirty_file(dirty_tables, backup_dir, timestamp_key)
         self.assertEqual(tmpfilename, None)
-        self.remove_backup_dirs(top_dir=os.environ.get('MASTER_DATA_DIRECTORY'), dump_dirs=['20121212'])
+        self.remove_backup_dirs(dump_dirs=['20121212'])
 
     def test03a_write_dirty_file(self):
         dirty_tables = None
@@ -125,22 +125,22 @@ class DumpTestCase(unittest.TestCase):
         dirty_tables = []
         timestamp_key = '20121212010101'
         backup_dir = None
-        self.create_backup_dirs(top_dir=os.environ.get('MASTER_DATA_DIRECTORY'), dump_dirs=['20121212'])
-        tmpfilename = write_dirty_file(os.environ.get('MASTER_DATA_DIRECTORY'), dirty_tables, backup_dir, timestamp_key)
+        self.create_backup_dirs(dump_dirs=['20121212'])
+        tmpfilename = write_dirty_file(os.getcwd(), dirty_tables, backup_dir, timestamp_key)
         with open(tmpfilename) as tmpfile:
             output = tmpfile.readlines()
     
         output = map(lambda x: x.strip(), output)
         self.assertEqual(dirty_tables, output)
         os.remove(tmpfilename)
-        self.remove_backup_dirs(top_dir=os.environ.get('MASTER_DATA_DIRECTORY'), dump_dirs=['20121212'])
+        self.remove_backup_dirs(dump_dirs=['20121212'])
 
     def test04a_write_dirty(self):
         dirty_tables = []
         timestamp_key = '20121212010101'
         backup_dir = '/tmp'
         self.create_backup_dirs(top_dir=backup_dir, dump_dirs=['20121212'])
-        tmpfilename = write_dirty_file(os.environ.get('MASTER_DATA_DIRECTORY'), dirty_tables, backup_dir, timestamp_key)
+        tmpfilename = write_dirty_file(os.getcwd(), dirty_tables, backup_dir, timestamp_key)
         with open(tmpfilename) as tmpfile:
             output = tmpfile.readlines()
     
@@ -150,23 +150,23 @@ class DumpTestCase(unittest.TestCase):
         self.remove_backup_dirs(top_dir=backup_dir, dump_dirs=['20121212'])
 
     @patch('gppylib.operations.backup_utils.get_lines_from_file', return_value=['20120330120102', '20120330120103'])
-    @patch('gppylib.operations.backup_utils.get_incremental_ts_from_report_file', return_value='20120330120102')
+    @patch('gppylib.operations.dump.get_incremental_ts_from_report_file', return_value='20120330120102')
     def test05_validate_increments_file(self, mock1, mock2):
         # expect no exception to die out of this
         CreateIncrementsFile.validate_increments_file('testdb', '/tmp/fn', '/data', None)
 
     @patch('gppylib.operations.backup_utils.get_lines_from_file', return_value=['20120330120102', '20120330120103'])
-    @patch('gppylib.operations.backup_utils.get_incremental_ts_from_report_file', side_effect=Exception('invalid timestamp'))
+    @patch('gppylib.operations.dump.get_incremental_ts_from_report_file', side_effect=Exception('invalid timestamp'))
     def test06_validate_increments_file(self, mock1, mock2):
 
-        with self.assertRaisesRegexp(Exception, 'is not a valid increment'):
+        with self.assertRaisesRegexp(Exception, "Timestamp '20120330120102' from increments file '/tmp/fn' is not a valid increment"):
             CreateIncrementsFile.validate_increments_file('testdb', '/tmp/fn', '/data', None)
 
     @patch('gppylib.operations.backup_utils.get_lines_from_file', return_value=['20120330120102', '20120330120103'])
-    @patch('gppylib.operations.backup_utils.get_incremental_ts_from_report_file', return_value=None)
+    @patch('gppylib.operations.dump.get_incremental_ts_from_report_file', return_value=None)
     def test07_validate_increments_file(self, mock1, mock2):
 
-        with self.assertRaisesRegexp(Exception, 'is not a valid increment'):
+        with self.assertRaisesRegexp(Exception, "Timestamp '20120330120102' from increments file '/tmp/fn' is not a valid increment"):
             CreateIncrementsFile.validate_increments_file('testdb', '/tmp/fn', '/data', None)
 
     def test08_CreateIncrementsFile_init(self):
@@ -187,7 +187,7 @@ class DumpTestCase(unittest.TestCase):
         obj.increments_filename = os.path.join(os.getcwd(), 'test.increments')
         with open(obj.increments_filename, 'w') as fd:
             fd.write('20121225100000')
-        with self.assertRaisesRegexp(Exception, 'is not a valid increment'):
+        with self.assertRaisesRegexp(Exception, ".* is not a valid increment"):
             obj.execute()
         os.remove(obj.increments_filename)
 
@@ -234,14 +234,14 @@ class DumpTestCase(unittest.TestCase):
     @patch('gppylib.operations.dump.get_partition_list', return_value=[[123, 'myschema', 't1'], [4444, 'otherschema', 't2'], [992313, 'public', 't3']])
     @patch('gppylib.operations.dump.generate_partition_list_filename', return_value=os.path.join(os.getcwd(), 'test'))
     def test_write_partition_list_file_00(self, mock1, mock2):
-        master_datadir = os.environ.get('MASTER_DATA_DIRECTORY')
+        master_datadir = 'foo' 
         backup_dir = None
         timestamp_key = '01234567891234'
         dbname = 'bkdb'
         port = '5432'
         partition_list_file = os.path.join(os.getcwd(), 'test')
         write_partition_list_file(master_datadir, backup_dir, timestamp_key, port, dbname)
-        if not os.path.exists(partition_list_file):
+        if not os.path.isfile(partition_list_file):
             raise Exception('Partition list file %s not created' % partition_list_file)
         with open(partition_list_file) as fd:
             partition_list_file_contents = fd.read()
@@ -252,14 +252,14 @@ class DumpTestCase(unittest.TestCase):
     @patch('gppylib.operations.dump.get_partition_list', return_value=[])
     @patch('gppylib.operations.dump.generate_partition_list_filename', return_value=os.path.join(os.getcwd(), 'test'))
     def test_write_partition_list_file_01(self, mock1, mock2):
-        master_datadir = os.environ.get('MASTER_DATA_DIRECTORY')
+        master_datadir = 'foo' 
         backup_dir = None
         timestamp_key = '01234567891234'
         dbname = 'bkdb'
         port = '5432'
         partition_list_file = os.path.join(os.getcwd(), 'test')
         write_partition_list_file(master_datadir, backup_dir, timestamp_key, port, dbname)
-        if not os.path.exists(partition_list_file):
+        if not os.path.isfile(partition_list_file):
             raise Exception('Partition list file %s not created' % partition_list_file)
         with open(partition_list_file) as fd:
             partition_list_file_contents = fd.read()
@@ -270,7 +270,7 @@ class DumpTestCase(unittest.TestCase):
     @patch('gppylib.operations.dump.get_partition_list', return_value=[['t1'], ['t2'], ['t3']])
     @patch('gppylib.operations.dump.generate_partition_list_filename', return_value=os.path.join(os.getcwd(), 'test'))
     def test_write_partition_list_file_02(self, mock1, mock2):
-        master_datadir = os.environ.get('MASTER_DATA_DIRECTORY')
+        master_datadir = 'foo' 
         backup_dir = None
         timestamp_key = '01234567891234'
         dbname = 'bkdb'
@@ -282,7 +282,7 @@ class DumpTestCase(unittest.TestCase):
     @patch('gppylib.operations.dump.get_partition_list', return_value=[['t1', 'foo', 'koo'], ['public', 't2'], ['public', 't3']])
     @patch('gppylib.operations.dump.generate_partition_list_filename', return_value=os.path.join(os.getcwd(), 'test'))
     def test_write_partition_list_file_03(self, mock1, mock2):
-        master_datadir = os.environ.get('MASTER_DATA_DIRECTORY')
+        master_datadir =  'foo'
         backup_dir = None
         timestamp_key = '01234567891234'
         dbname = 'bkdb'
@@ -295,7 +295,7 @@ class DumpTestCase(unittest.TestCase):
         dirty_tables = ['public.t1', 'public.t2', 'pepper.t3']
         dirty_file = write_dirty_file_to_temp(dirty_tables)
         self.assertTrue(os.path.basename(dirty_file).startswith('dirty_backup_list'))
-        self.assertTrue(os.path.exists(dirty_file))
+        self.assertTrue(os.path.isfile(dirty_file))
         content = get_lines_from_file(dirty_file) 
         self.assertEqual(dirty_tables, content)
         os.remove(dirty_file)
@@ -304,7 +304,7 @@ class DumpTestCase(unittest.TestCase):
         dirty_tables = ['']
         dirty_file = write_dirty_file_to_temp(dirty_tables)
         self.assertTrue(os.path.basename(dirty_file).startswith('dirty_backup_list'))
-        self.assertTrue(os.path.exists(dirty_file))
+        self.assertTrue(os.path.isfile(dirty_file))
         content = get_lines_from_file(dirty_file) 
         self.assertEqual(dirty_tables, content)
         os.remove(dirty_file)
@@ -313,7 +313,7 @@ class DumpTestCase(unittest.TestCase):
         dirty_tables = ['']
         dirty_file = write_dirty_file_to_temp(dirty_tables)
         self.assertTrue(os.path.basename(dirty_file).startswith('dirty_backup_list'))
-        self.assertTrue(os.path.exists(dirty_file))
+        self.assertTrue(os.path.isfile(dirty_file))
         content = get_lines_from_file(dirty_file) 
         self.assertEqual(dirty_tables, content)
         os.remove(dirty_file)
@@ -392,25 +392,25 @@ class DumpTestCase(unittest.TestCase):
         
     def test_get_filename_from_filetype_00(self):
         table_type = 'ao'
-        master_datadir = os.environ.get('MASTER_DATA_DIRECTORY')
+        master_datadir = 'foo'
         backup_dir = None
         timestamp_key = '20121212010101'
-        self.create_backup_dirs(top_dir=os.environ.get('MASTER_DATA_DIRECTORY'), dump_dirs=['20121212'])
+        self.create_backup_dirs(dump_dirs=['20121212'])
         expected_output = '%s/db_dumps/20121212/gp_dump_%s_ao_state_file' % (master_datadir, timestamp_key) 
         result = get_filename_from_filetype(table_type, master_datadir, backup_dir, timestamp_key)
         self.assertEqual(result, expected_output)
-        self.remove_backup_dirs(top_dir=os.environ.get('MASTER_DATA_DIRECTORY'), dump_dirs=['20121212'])
+        self.remove_backup_dirs(dump_dirs=['20121212'])
  
     def test_get_filename_from_filetype_01(self):
         table_type = 'co'
-        master_datadir = os.environ.get('MASTER_DATA_DIRECTORY')
+        master_datadir = 'foo' 
         backup_dir = None
         timestamp_key = '20121212010101'
-        self.create_backup_dirs(top_dir=os.environ.get('MASTER_DATA_DIRECTORY'), dump_dirs=['20121212'])
+        self.create_backup_dirs(dump_dirs=['20121212'])
         expected_output = '%s/db_dumps/20121212/gp_dump_%s_co_state_file' % (master_datadir, timestamp_key) 
         result = get_filename_from_filetype(table_type, master_datadir, backup_dir, timestamp_key)
         self.assertEqual(result, expected_output)
-        self.remove_backup_dirs(top_dir=os.environ.get('MASTER_DATA_DIRECTORY'), dump_dirs=['20121212'])
+        self.remove_backup_dirs(dump_dirs=['20121212'])
  
     def test_get_filename_from_filetype_02(self):
         table_type = 'foo'
@@ -432,13 +432,13 @@ class DumpTestCase(unittest.TestCase):
     @patch('gppylib.operations.dump.get_filename_from_filetype', return_value='/tmp/db_dumps/20121212/gp_dump_20121212010101_ao_state_file')
     def test_write_state_file_01(self, mock1):
         table_type = 'ao'
-        master_datadir = os.environ.get('MASTER_DATA_DIRECTORY')
+        master_datadir = 'foo' 
         backup_dir = None
         timestamp_key = '20121212010101'
         partition_list = ['pepper, t1, 100', 'pepper, t2, 100']
         self.create_backup_dirs(top_dir='/tmp', dump_dirs=['20121212'])
         write_state_file(table_type, master_datadir, backup_dir, partition_list)
-        if not os.path.exists('/tmp/db_dumps/20121212/gp_dump_20121212010101_ao_state_file'):
+        if not os.path.isfile('/tmp/db_dumps/20121212/gp_dump_20121212010101_ao_state_file'):
             raise Exception('AO state file was not created successfully')
         self.remove_backup_dirs(top_dir='/tmp', dump_dirs=['20121212'])
 
@@ -460,11 +460,11 @@ class DumpTestCase(unittest.TestCase):
             get_last_operation_data(1, 'foodb')
 
     @patch('gppylib.operations.dump.get_last_dump_timestamp', return_value='20121212121212')
-    @patch('gppylib.operations.dump.os.path.exists', return_value=True)
+    @patch('gppylib.operations.dump.os.path.isfile', return_value=True)
     @patch('gppylib.operations.dump.get_lines_from_file', return_value=['pepper, t1, 100', 'pepper, t2, 100'])
     def test_get_last_state_00(self, mock1, mock2, mock3):
         table_type = 'ao'
-        master_datadir = os.environ.get('MASTER_DATA_DIRECTORY')
+        master_datadir = 'foo' 
         backup_dir = None
         full_timestamp = '20121212010101'
         expected_output = ['pepper, t1, 100', 'pepper, t2, 100']
@@ -472,7 +472,7 @@ class DumpTestCase(unittest.TestCase):
         self.assertEqual(output, expected_output)
 
     @patch('gppylib.operations.dump.get_last_dump_timestamp', return_value='20121212121212')
-    @patch('gppylib.operations.dump.os.path.exists', return_value=False)
+    @patch('gppylib.operations.dump.os.path.isfile', return_value=False)
     @patch('gppylib.operations.dump.generate_ao_state_filename', return_value='foo')
     def test_get_last_state_01(self, mock1, mock2, mock3):
         table_type = 'ao'
@@ -483,11 +483,11 @@ class DumpTestCase(unittest.TestCase):
             get_last_state(table_type, master_datadir, backup_dir, full_timestamp)
 
     @patch('gppylib.operations.dump.get_last_dump_timestamp', return_value='20121212121212')
-    @patch('gppylib.operations.dump.os.path.exists', return_value=True)
+    @patch('gppylib.operations.dump.os.path.isfile', return_value=True)
     @patch('gppylib.operations.dump.get_lines_from_file', return_value=[])
     def test_get_last_state_02(self, mock1, mock2, mock3):
         table_type = 'ao'
-        master_datadir = os.environ.get('MASTER_DATA_DIRECTORY')
+        master_datadir = 'foo' 
         backup_dir = None
         full_timestamp = '20121212010101'
         expected_output = []
@@ -540,8 +540,9 @@ class DumpTestCase(unittest.TestCase):
             create_partition_dict(partition_list)
 
     @patch('gppylib.operations.dump.generate_increments_filename')
-    @patch('gppylib.operations.dump.os.path.exists', return_value=False)
-    def test_get_last_dump_timestamp_00(self, mock1, mock2):
+    @patch('gppylib.operations.dump.os.path.isdir', return_value=False)
+    @patch('gppylib.operations.dump.os.path.isfile', return_value=False)
+    def test_get_last_dump_timestamp_00(self, mock1, mock2, mock3):
         master_datadir = '/foo'
         backup_dir = None
         full_timestamp = '20121212010101'
@@ -550,9 +551,10 @@ class DumpTestCase(unittest.TestCase):
 
     @patch('gppylib.operations.dump.get_lines_from_file', return_value=['20121212121210', '20121212121211'])
     @patch('gppylib.operations.dump.generate_increments_filename')
-    @patch('gppylib.operations.dump.os.path.exists', return_value=True)
-    def test_get_last_dump_timestamp_01(self, mock1, mock2, mock3):
-        master_datadir = os.environ.get('MASTER_DATA_DIRECTORY')
+    @patch('gppylib.operations.dump.os.path.isdir', return_value=True)
+    @patch('gppylib.operations.dump.os.path.isfile', return_value=True)
+    def test_get_last_dump_timestamp_01(self, mock1, mock2, mock3, mock4):
+        master_datadir = 'foo' 
         backup_dir = None
         full_timestamp = '20121212010101'
         expected_output = '20121212121211'
@@ -560,9 +562,10 @@ class DumpTestCase(unittest.TestCase):
         self.assertEqual(result, expected_output) 
 
     @patch('gppylib.operations.dump.generate_increments_filename')
-    @patch('gppylib.operations.dump.os.path.exists', return_value=True)
+    @patch('gppylib.operations.dump.os.path.isdir', return_value=True)
+    @patch('gppylib.operations.dump.os.path.isfile', return_value=True)
     @patch('gppylib.operations.dump.get_lines_from_file', return_value = ['2012093009300q'])
-    def test_get_last_dump_timestamp_02(self, mock1, mock2, mock3):
+    def test_get_last_dump_timestamp_02(self, mock1, mock2, mock3, mock4):
         master_datadir = 'foo'
         backup_dir = None
         full_timestamp = '20121212010101'
@@ -571,9 +574,10 @@ class DumpTestCase(unittest.TestCase):
             get_last_dump_timestamp(master_datadir, backup_dir, full_timestamp)
 
     @patch('gppylib.operations.dump.generate_increments_filename')
-    @patch('gppylib.operations.dump.os.path.exists', return_value=True)
+    @patch('gppylib.operations.dump.os.path.isdir', return_value=True)
+    @patch('gppylib.operations.dump.os.path.isfile', return_value=True)
     @patch('gppylib.operations.dump.get_lines_from_file', return_value = [' 20120930093000 \n  \n  '])
-    def test_get_last_dump_timestamp_03(self, mock1, mock2, mock3):
+    def test_get_last_dump_timestamp_03(self, mock1, mock2, mock3, mock4):
         master_datadir = 'foo'
         backup_dir = None
         full_timestamp = '20121212010101'
@@ -706,7 +710,7 @@ class DumpTestCase(unittest.TestCase):
 
     @patch('gppylib.operations.dump.get_last_state', return_value=['pepper, t1, 100', 'pepper, t2, 200'])
     def test_get_dirty_partition_tables_00(self, mock1):
-        master_datadir = os.environ.get('MASTER_DATA_DIRECTORY')
+        master_datadir = 'foo' 
         backup_dir = None
         full_timestamp = '20121212010101'
         table_type = 'ao'

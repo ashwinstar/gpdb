@@ -111,7 +111,6 @@ def check_backup_type(report_file_contents, backup_type):
 
 def get_lines_from_file(fname):
     content = ''
-    lines = []
     with open(fname) as fd:
         content = fd.read()
     return content.splitlines()
@@ -187,29 +186,7 @@ def generate_co_state_filename(master_data_dir, backup_dir, timestamp):
 def get_dump_dirs(dump_dir):
     dump_path = os.path.join(dump_dir, DUMP_DIR)
 
-    if not os.path.exists(dump_path):
-        raise Exception('No full database dumps exist')
-
-    initial_list = os.listdir(dump_path)
-    initial_list = fnmatch.filter(initial_list, '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]')
-
-    dirnames = []
-    for d in initial_list:
-        pth = os.path.join(dump_path, d)
-        if os.path.isdir(pth):
-            dirnames.append(pth)
-
-    if len(dirnames) == 0:
-        raise Exception('No valid dump directories found')
-    dirnames = sorted(dirnames, key=lambda x: int(os.path.basename(x)), reverse=True)
-    return dirnames
-
-
- 
-def get_dump_dirs(dump_dir):
-    dump_path = os.path.join(dump_dir, DUMP_DIR)
-
-    if not os.path.exists(dump_path):
+    if not os.path.isdir(dump_path):
         return []
 
     initial_list = os.listdir(dump_path)

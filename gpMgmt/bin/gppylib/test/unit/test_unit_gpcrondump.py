@@ -25,7 +25,7 @@ class GpCronDumpTestCase(unittest.TestCase):
             self.post_vacuum = False
             self.rollback = False
             self.compress = True
-            self.free_space_percent = FREE_SPACE_PERCENT
+            self.free_space_percent = None
             self.clear_dumps = False
             self.dump_schema = False
             self.dump_databases = 'testdb'
