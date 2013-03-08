@@ -17,6 +17,7 @@
 #include "executor/execWorkfile.h"
 #include "miscadmin.h"
 #include "cdb/cdbvars.h"
+#include "utils/workfile_mgr.h"
 
 /*
  * Number of temporary files opened during the current session;
@@ -189,7 +190,8 @@ ExecWorkFile_Write(ExecWorkFile *workfile,
 	if (!success)
 	{
 		/* Failed to reserve additional disk space, notify caller */
-		return false;
+		ereport(ERROR, (errcode_for_file_access(),
+								errmsg("could not write to temporary file")));
 	}
 
 	switch(workfile->fileType)
@@ -223,7 +225,11 @@ ExecWorkFile_Write(ExecWorkFile *workfile,
 			WorkfileDiskspace_Commit( (new_size - current_size), size);
 
 			if (bytes != size)
-				return false;
+			{
+				ereport(ERROR, (errcode_for_file_access(),
+										errmsg("could not write to temporary file")));
+			}
+
 			break;
 		case BFZ:
 
@@ -233,7 +239,7 @@ ExecWorkFile_Write(ExecWorkFile *workfile,
 			}
 			PG_CATCH();
 			{
-				Assert(gp_workfile_diskfull);
+				Assert(WorkfileDiskspace_IsFull());
 				elog(gp_workfile_caching_loglevel, "Caught exception from EWF_Write from bfz_append. Subtracting " INT64_FORMAT " bytes from diskspace usage", size);
 				WorkfileDiskspace_Commit(0, size);
 
@@ -620,7 +626,7 @@ ExecWorkFile_AdjustBFZSize(ExecWorkFile *workfile, int64 file_size)
 		 * - file on disk is compressed
 		 * - we hit out of disk space
 		 */
-		Assert(bfz_file->compression_index > 0 || gp_workfile_diskfull);
+		Assert(bfz_file->compression_index > 0 || WorkfileDiskspace_IsFull());
 		WorkfileDiskspace_Commit(file_size, workfile->size);
 	}
 	else
@@ -637,6 +643,7 @@ ExecWorkFile_AdjustBFZSize(ExecWorkFile *workfile, int64 file_size)
 #endif
 		WorkfileDiskspace_Reserve(extra_bytes);
 
+		/* FIXME If this fails, we should try to evict and retry, or error out */
 		Assert(result);
 
 		WorkfileDiskspace_Commit(extra_bytes, extra_bytes);

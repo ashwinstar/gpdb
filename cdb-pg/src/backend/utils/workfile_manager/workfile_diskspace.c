@@ -13,6 +13,7 @@
 #include "utils/atomic.h"
 #include "cdb/cdbvars.h"
 #include "utils/workfile_mgr.h"
+#include "miscadmin.h"
 
 /* Name to identify the WorkfileDiskspace shared memory area by */
 #define WORKFILE_DISKSPACE_SHMEM_NAME "WorkfileDiskspace"
@@ -24,7 +25,7 @@ static int64 *used_diskspace = NULL;
  * This is set when a backend fails to write to a workfile,
  * presumably because of an out-of-diskspace error
  */
-bool gp_workfile_diskfull = false;
+static bool workfile_diskfull = false;
 
 /*
  * Initialize shared memory area for the WorkfileDiskspace module
@@ -39,11 +40,9 @@ WorkfileDiskspace_Init(void)
 			&attach);
 
 	used_diskspace = (int64 *)shmem_base;
-
 	Assert(0 == *used_diskspace);
 
-	/* Reset diskfull flag */
-	gp_workfile_diskfull = false;
+	WorkfileDiskspace_SetFull(false /* isFull*/);
 }
 
 /*
@@ -63,60 +62,82 @@ WorkfileDiskspace_ShMemSize(void)
  *   Otherwise, returns false
  */
 bool
-WorkfileDiskspace_Reserve(int64 bytes)
+WorkfileDiskspace_Reserve(int64 bytes_to_reserve)
 {
 	Assert(NULL != used_diskspace);
 
-	int64 total = gp_atomic_add_64(used_diskspace, bytes);
+	int64 total = gp_atomic_add_64(used_diskspace, bytes_to_reserve);
 	Assert(total >= (int64) 0);
 
-	if (gp_workfile_max_diskspace_kb == 0)
+	if (gp_workfile_limit_per_segment == 0)
 	{
 		/* not enforced */
 		return true;
 	}
 
-	int64 max_allowed_diskspace = (int64) (gp_workfile_max_diskspace_kb * 1024);
+	int64 max_allowed_diskspace = (int64) (gp_workfile_limit_per_segment * 1024);
 	if (total <= max_allowed_diskspace)
 	{
 		return true;
 	}
 	else
 	{
-		while (1)
-		{
-			/* Revert */
-			(void) gp_atomic_add_64(used_diskspace, - bytes);
+		/* We exceeded the logical limit. Revert and try to evict */
 
-			/* Evict */
-			int64 min_evict = 2 << 20; /* Evict 1MB minimum */
-			int64 requested_evict = Max(min_evict, bytes);
+		int crt_attempt = 0;
+		while (crt_attempt < MAX_EVICT_ATTEMPTS)
+		{
+
+			/* Revert the reserved space */
+			(void) gp_atomic_add_64(used_diskspace, - bytes_to_reserve);
+
+			CHECK_FOR_INTERRUPTS();
+
+			int64 requested_evict = Max(MIN_EVICT_SIZE, bytes_to_reserve);
 			int64 size_evicted = workfile_mgr_evict(requested_evict);
 
-			/* If evict fails, fail */
-			if (size_evicted < requested_evict)
+			if (size_evicted < bytes_to_reserve)
 			{
+				/*
+				 * We couldn't evict as much as we need to write. Reservation
+				 * failed, notify caller.
+				 */
 				elog(gp_workfile_caching_loglevel,
-						"Failed to reserved size %lld. Reverted back to total %lld",
-						(long long) bytes, (long long) *used_diskspace);
+						"Failed to reserved size " INT64_FORMAT ". Reverted back to total " INT64_FORMAT,
+						bytes_to_reserve, *used_diskspace);
+
+				/* Set diskfull to true to stop any further attempts to write more data */
+				WorkfileDiskspace_SetFull(true /* isFull */);
+
 				return false;
 			}
 
-			/* add */
-			total = gp_atomic_add_64(used_diskspace, bytes);
+			/* Try to reserve again */
+			total = gp_atomic_add_64(used_diskspace, bytes_to_reserve);
 			Assert(total >= (int64) 0);
 
-			/* compare */
 			if (total <= max_allowed_diskspace)
 			{
-				/* if successful, return true */
+				/* Reservation successful, we're done */
 				return true;
 			}
 
-			/* else loop from Revert */
+			/*
+			 * Someone else snatched the space after we evicted it.
+			 * Loop around and try to evict again
+			 */
+			crt_attempt++;
 		}
 	}
-	/* Not reached */
+
+
+	/*
+	 * We exceeded max_eviction_attempts and did not manage to reserve.
+	 * Set diskfull to true to stop any further attempts to write more data
+	 * and notify the caller.
+	 */
+	WorkfileDiskspace_SetFull(true /* isFull */);
+	return false;
 }
 
 /*
@@ -138,11 +159,34 @@ WorkfileDiskspace_Commit(int64 commit_bytes, int64 reserved_bytes)
 	return total;
 }
 
+/*
+ * Returns the amount of disk space used for workfiles on this segment
+ */
 int64
 WorkfileDiskspace_GetSize()
 {
 	Assert(NULL != used_diskspace);
 	return *used_diskspace;
+}
+
+/*
+ * Sets the flag that marks if on a segment we reached the allowed amount of
+ * diskspace to use for workfiles (physical or logical).
+ */
+void
+WorkfileDiskspace_SetFull(bool isFull)
+{
+	workfile_diskfull = isFull;
+}
+
+/*
+ * Returns true if we hit the amount of diskspace allowed for workfiles on this
+ * segment (physical or logical)
+ */
+bool
+WorkfileDiskspace_IsFull(void)
+{
+	return workfile_diskfull;
 }
 
 /* EOF */

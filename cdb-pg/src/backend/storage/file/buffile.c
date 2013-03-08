@@ -35,6 +35,7 @@
 #include "storage/buffile.h"
 #include "miscadmin.h"
 #include "cdb/cdbvars.h"
+#include "utils/workfile_mgr.h"
 
 /*
  * This data structure represents a buffered file that consists of one
@@ -235,7 +236,7 @@ BufFileClose(BufFile *file)
 {
 	MemoryContext oldcontext = MemoryContextSwitchTo(file->context);
 
-	if (file->isWorkfile && gp_workfile_diskfull)
+	if (file->isWorkfile && WorkfileDiskspace_IsFull())
 	{
 		elog(gp_workfile_caching_loglevel, "closing workfile while workfile diskspace full, skipping flush");
 	}
@@ -395,8 +396,8 @@ static void BufFileDumpBuffer(BufFile *file, const void* buffer, Size nbytes)
 			if (file->isWorkfile)
 			{
 				elog(gp_workfile_caching_loglevel, "FileWrite failed while writing to a workfile. Marking IO Error flag");
-				Assert(!gp_workfile_diskfull);
-				gp_workfile_diskfull = true;
+				Assert(!WorkfileDiskspace_IsFull());
+				WorkfileDiskspace_SetFull(true /* isFull */);
 			}
 			elog(ERROR, "could not write %d bytes to temporary file: %m", (int)bytestowrite);
 		}

@@ -10,7 +10,7 @@
 
 #include "utils/memutils.h"		/* For MemoryContext stuff */
 #include "cdb/cdbvars.h"
-#include "executor/execWorkfile.h"
+#include "utils/workfile_mgr.h"
 #include "storage/fd.h"
 #include "postmaster/primary_mirror_mode.h"
 
@@ -138,9 +138,9 @@ write_bfz_buffer(bfz_t *bfz, bool isLast)
 	}
 	PG_CATCH();
 	{
-		Assert(!gp_workfile_diskfull);
+		Assert(!WorkfileDiskspace_IsFull());
 		elog(gp_workfile_caching_loglevel, "BFZ write buffer failed, presumably because of OODS, seting flag");
-		gp_workfile_diskfull = true;
+		WorkfileDiskspace_SetFull(true /* isFull */);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -470,7 +470,7 @@ bfz_append_end(bfz_t * thiz)
 
 	Assert(thiz->mode == BFZ_MODE_APPEND);
 
-	if (gp_workfile_diskfull)
+	if (WorkfileDiskspace_IsFull())
 	{
 		elog(gp_workfile_caching_loglevel, "closing workfile while workfile diskspace full, skipping flush");
 	}

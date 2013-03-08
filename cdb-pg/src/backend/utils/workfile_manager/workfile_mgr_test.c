@@ -9,6 +9,7 @@
  */
 
 #include <postgres.h>
+#include <unistd.h>
 #include "cdb/cdbgang.h"
 #include "cdb/cdbvars.h"
 #include "executor/execWorkfile.h"
@@ -1155,13 +1156,48 @@ create_text_stringinfo(int64 n_chars)
 }
 
 /*
+ * Removes a physical file. Updates the WorkfileDiskspace accounting
+ *  to reflect the deletion if requested.
+ * Used as part of the unit test cleanup to remove artifacts.
+ *
+ * path includes the pgsql_tmp path but not the filespace.
+ *
+ * Returns true for successful deletion, false otherwise.
+ */
+static bool
+remove_tmp_file(char *path, int64 size, bool update_diskspace)
+{
+	Assert(NULL != path);
+
+	/* Create path to file by adding crt temp path */
+	StringInfo full_filepath = makeStringInfo();
+	appendStringInfo(full_filepath, "%s/%s",
+			getCurrentTempFilePath, path);
+
+	/* Remove file from disk */
+	int res = unlink(full_filepath->data);
+
+	if (update_diskspace)
+	{
+		/* Reverting the used diskspace to reflect the deletion */
+		WorkfileDiskspace_Commit(0, size);
+	}
+
+	pfree(full_filepath->data);
+	pfree(full_filepath);
+
+	return (res == 0);
+}
+
+/*
  * Unit tests for new ExecWorkfile and WorkfileDiskspace functionality
  *  with underlying Buffile files
  */
 static bool
 execworkfile_buffile_test(void)
 {
-	bool result = false;
+	int64 result = 0;
+	bool success = false;
 	int64 expected_size = 0;
 	int64 final_size = 0;
 	int64 current_size = 0;
@@ -1199,35 +1235,35 @@ execworkfile_buffile_test(void)
 
 	elog(LOG, "Running sub-test: Writing small amount data to EWF/Buffile and checking size");
 
-	result = ExecWorkFile_Write(ewf, text->data, 20);
+	success = ExecWorkFile_Write(ewf, text->data, 20);
 	expected_size += 20;
 
-	unit_test_result(result && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
+	unit_test_result(success && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
 
 
 	elog(LOG, "Running sub-test: Writing larger amount data (%d bytes) to EWF/Buffile and checking size", nchars);
-	result = ExecWorkFile_Write(ewf, text->data, nchars);
+	success = ExecWorkFile_Write(ewf, text->data, nchars);
 	expected_size += nchars;
 
-	unit_test_result(result && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
+	unit_test_result(success && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
 
 	elog(LOG, "Running sub-test: Writing to the middle of a EWF/Buffile and checking size");
 	result = ExecWorkFile_Seek(ewf, ExecWorkFile_GetSize(ewf) / 2, SEEK_SET);
 	Assert(result == 0);
 	/* This write should not add to the size */
-	result = ExecWorkFile_Write(ewf, text->data, ExecWorkFile_GetSize(ewf) / 10);
+	success = ExecWorkFile_Write(ewf, text->data, ExecWorkFile_GetSize(ewf) / 10);
 
-	unit_test_result(result && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
+	unit_test_result(success && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
 
 	elog(LOG, "Running sub-test: Seeking past end and writing data to EWF/Buffile and checking size");
 	int past_end_offset = 100;
 	int past_end_write = 200;
 	result = ExecWorkFile_Seek(ewf, ExecWorkFile_GetSize(ewf) + past_end_offset, SEEK_SET);
 	Assert(result == 0);
-	result = ExecWorkFile_Write(ewf, text->data, past_end_write);
+	success = ExecWorkFile_Write(ewf, text->data, past_end_write);
 	expected_size += past_end_offset + past_end_write;
 
-	unit_test_result(result && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
+	unit_test_result(success && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
 
 	elog(LOG, "Running sub-test: Closing EWF/Buffile");
 	final_size = ExecWorkFile_Close(ewf);
@@ -1237,7 +1273,7 @@ execworkfile_buffile_test(void)
 
 	ewf = ExecWorkFile_Open(test_filepath->data,
 				BUFFILE,
-				true, /* delOnClose */
+				false, /* delOnClose */
 				0 /* compressionType */);
 
 	current_size = ExecWorkFile_GetSize(ewf);
@@ -1257,8 +1293,13 @@ execworkfile_buffile_test(void)
 
 	unit_test_result(final_size == current_size);
 
+	elog(LOG, "Running sub-test: Removing physical file from disk");
+	success = remove_tmp_file(test_filepath->data, final_size, true /* update_diskspace */);
 
+	unit_test_result(success);
 
+	pfree(test_filepath->data);
+	pfree(test_filepath);
 	pfree(text->data);
 	pfree(text);
 
@@ -1272,7 +1313,8 @@ execworkfile_buffile_test(void)
 static bool
 execworkfile_bfz_zlib_test(void)
 {
-	bool result = false;
+	bool success = false;
+	int64 result = 0;
 	int64 expected_size = 0;
 	int64 current_size = 0;
 	int64 final_size = 0;
@@ -1310,17 +1352,17 @@ execworkfile_bfz_zlib_test(void)
 
 	elog(LOG, "Running sub-test: Writing small amount data to EWF/BFZ and checking size");
 
-	result = ExecWorkFile_Write(ewf, text->data, 20);
+	success = ExecWorkFile_Write(ewf, text->data, 20);
 	expected_size += 20;
 
-	unit_test_result(result && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
+	unit_test_result(success && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
 
 
 	elog(LOG, "Running sub-test: Writing larger amount data (%d bytes) to EWF/BFZ and checking size", nchars);
-	result = ExecWorkFile_Write(ewf, text->data, nchars);
+	success = ExecWorkFile_Write(ewf, text->data, nchars);
 	expected_size += nchars;
 
-	unit_test_result(result && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
+	unit_test_result(success && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
 
 	elog(LOG, "Running sub-test: Suspending EWF/BFZ and checking for size");
 	final_size = ExecWorkFile_Suspend(ewf);
@@ -1339,7 +1381,7 @@ execworkfile_bfz_zlib_test(void)
 
 	ewf = ExecWorkFile_Open(test_filepath->data,
 			BFZ,
-			true, /* delOnClose */
+			false, /* delOnClose */
 			1 /* compressionType */);
 	current_size = ExecWorkFile_GetSize(ewf);
 	unit_test_result(current_size == final_size);
@@ -1358,6 +1400,13 @@ execworkfile_bfz_zlib_test(void)
 
 	unit_test_result(final_size == current_size);
 
+	elog(LOG, "Running sub-test: Removing physical file from disk");
+	success = remove_tmp_file(test_filepath->data, final_size, true /* update_diskspace */);
+
+	unit_test_result(success);
+
+	pfree(test_filepath->data);
+	pfree(test_filepath);
 	pfree(text->data);
 	pfree(text);
 
@@ -1372,7 +1421,8 @@ execworkfile_bfz_zlib_test(void)
 static bool
 execworkfile_bfz_uncompressed_test(void)
 {
-	bool result = false;
+	bool success = false;
+	int64 result = 0;
 	int64 expected_size = 0;
 	int64 current_size = 0;
 	int64 final_size = 0;
@@ -1410,17 +1460,17 @@ execworkfile_bfz_uncompressed_test(void)
 
 	elog(LOG, "Running sub-test: Writing small amount data to EWF/BFZ and checking size");
 
-	result = ExecWorkFile_Write(ewf, text->data, 20);
+	success = ExecWorkFile_Write(ewf, text->data, 20);
 	expected_size += 20;
 
-	unit_test_result(result && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
+	unit_test_result(success && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
 
 
 	elog(LOG, "Running sub-test: Writing larger amount data (%d bytes) to EWF/BFZ and checking size", nchars);
-	result = ExecWorkFile_Write(ewf, text->data, nchars);
+	success = ExecWorkFile_Write(ewf, text->data, nchars);
 	expected_size += nchars;
 
-	unit_test_result(result && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
+	unit_test_result(success && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
 
 	elog(LOG, "Running sub-test: Suspending EWF/BFZ and checking for size");
 	final_size = ExecWorkFile_Suspend(ewf);
@@ -1441,7 +1491,7 @@ execworkfile_bfz_uncompressed_test(void)
 
 	ewf = ExecWorkFile_Open(test_filepath->data,
 			BFZ,
-			true, /* delOnClose */
+			false, /* delOnClose */
 			0 /* compressionType */);
 	current_size = ExecWorkFile_GetSize(ewf);
 	unit_test_result(current_size == final_size);
@@ -1460,6 +1510,13 @@ execworkfile_bfz_uncompressed_test(void)
 
 	unit_test_result(final_size == current_size);
 
+	elog(LOG, "Running sub-test: Removing physical file from disk");
+	success = remove_tmp_file(test_filepath->data, final_size, true /* update_diskspace */);
+
+	unit_test_result(success);
+
+	pfree(test_filepath->data);
+	pfree(test_filepath);
 	pfree(text->data);
 	pfree(text);
 

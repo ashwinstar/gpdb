@@ -134,14 +134,6 @@ void ExecWorkFile_Flush(ExecWorkFile *workfile);
 int64 ExecWorkFile_GetSize(ExecWorkFile *workfile);
 int64 ExecWorkFile_Suspend(ExecWorkFile *workfile);
 void ExecWorkFile_Restart(ExecWorkFile *workfile);
-
-void WorkfileDiskspace_Init(void);
-Size WorkfileDiskspace_ShMemSize(void);
-bool WorkfileDiskspace_Reserve(int64 bytes);
-int64 WorkfileDiskspace_Commit(int64 commit_bytes, int64 reserved_bytes);
-int64 WorkfileDiskspace_GetSize(void);
-
-
 char * ExecWorkFile_GetFileName(ExecWorkFile *workfile);
 
 #endif /* EXECWORKFILE_H */

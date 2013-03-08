@@ -25,7 +25,6 @@
 #include "utils/builtins.h"
 #include "utils/workfile_mgr.h"
 #include "utils/sharedcache.h"
-#include "executor/execWorkfile.h"
 #include "miscadmin.h"
 
 /* The number of columns as defined in gp_workfile_mgr_cache_stats view */

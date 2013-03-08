@@ -1031,7 +1031,7 @@ extern int gp_hashagg_compress_spill_files;
 extern int gp_workfile_compress_algorithm;
 extern bool gp_workfile_checksumming;
 extern bool gp_workfile_caching;
-extern double gp_workfile_max_diskspace_kb;
+extern double gp_workfile_limit_per_segment;
 extern int gp_workfile_caching_loglevel;
 extern bool gp_workfile_faultinject;
 extern int gp_workfile_bytes_to_checksum;

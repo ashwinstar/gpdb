@@ -138,11 +138,22 @@ Cache *workfile_mgr_get_cache(void);
 int32 workfile_mgr_clear_cache(void);
 int64 workfile_mgr_evict(int64 size_requested);
 
+/* Workfile File operations */
 ExecWorkFile *workfile_mgr_create_file(workfile_set *work_set);
 ExecWorkFile *workfile_mgr_create_fileno(workfile_set *work_set, uint32 file_no);
 ExecWorkFile *workfile_mgr_open_fileno(workfile_set *work_set, uint32 file_no);
 ExecWorkFile *workfile_mgr_open_filename(workfile_set *work_set, const char *file_name);
 int64 workfile_mgr_close_file(workfile_set *work_set, ExecWorkFile *file);
+
+/* Workfile diskspace operations */
+void WorkfileDiskspace_Init(void);
+Size WorkfileDiskspace_ShMemSize(void);
+bool WorkfileDiskspace_Reserve(int64 bytes);
+int64 WorkfileDiskspace_Commit(int64 commit_bytes, int64 reserved_bytes);
+int64 WorkfileDiskspace_GetSize(void);
+void WorkfileDiskspace_SetFull(bool isFull);
+bool WorkfileDiskspace_IsFull(void);
+
 
 /* Serialization functions */
 void outfuncs_workfile_mgr_init(List *rtable);

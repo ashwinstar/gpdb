@@ -2265,6 +2265,15 @@ static void
 agg_hash_save_spillfile_info(ExecWorkFile *state_file, SpillFile *spill_file)
 {
 
+	if (WorkfileDiskspace_IsFull())
+	{
+		/*
+		 * We exceeded the amount of diskspace for spilling. Don't try to
+		 * write anything anymore, as we're in the cleanup stage.
+		 */
+		return;
+	}
+
 	agg_hash_write_string(state_file,
 			spill_file->file_info->wfile->fileName,
 			strlen(spill_file->file_info->wfile->fileName));

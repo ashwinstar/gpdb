@@ -69,6 +69,7 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
+#include "utils/workfile_mgr.h"
 
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_class.h"
@@ -359,7 +360,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	initMotionLayerStructs((MotionLayerState **)&estate->motionlayer_context);
 
 	/* Reset workfile disk full flag */
-	gp_workfile_diskfull = false;
+	WorkfileDiskspace_SetFull(false /* isFull */);
 
 	/*
 	 * Handling of the Slice table depends on context.
