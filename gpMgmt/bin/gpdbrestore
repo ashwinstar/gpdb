@@ -315,9 +315,10 @@ class GpdbRestore(Operation):
         if self.restore_tables is not None :
             validate_tablenames(self.restore_tables)
 
-        report_filename = generate_report_filename(self.master_datadir, self.backup_dir, restore_timestamp)
-        if not os.path.isfile(report_filename):
-            raise ExceptionNoStackTraceNeeded("Report file does not exist for the given restore timestamp %s: '%s'" % (restore_timestamp, report_filename))
+        if not self.db_host_path:
+            report_filename = generate_report_filename(self.master_datadir, self.backup_dir, restore_timestamp)
+            if not os.path.isfile(report_filename):
+                raise ExceptionNoStackTraceNeeded("Report file does not exist for the given restore timestamp %s: '%s'" % (restore_timestamp, report_filename))
 
         return {'fault_action': fault_action,
                 'fail_count': fail_count,
