@@ -791,7 +791,19 @@ gp_mkdtemp(char *template_path)
 	suffix = &template_path[len - 6];
 
 	/* Get some more or less random data.  */
+#if defined WIN32
+	 union {
+	    int64 ns100; /*time since 1 Jan 1601 in 100ns units */
+	    FILETIME ft;
+	  } now;
+
+	  GetSystemTimeAsFileTime (&now.ft);
+	  tv->tv_usec = (long) ((now.ns100 / 10LL) % 1000000LL);
+	  tv->tv_sec = (long) ((now.ns100 - 116444736000000000LL) / 10000000LL);
+#else
 	gettimeofday (&tv, NULL);
+#endif
+
 	random_time_bits = ((int64) tv.tv_usec << 16) ^ tv.tv_sec;
 	value += random_time_bits ^ getpid();
 
@@ -831,6 +843,7 @@ gp_mkdtemp(char *template_path)
 	return NULL;
 
 #else
+
 	return mkdtemp(template_path);
 #endif
 }
