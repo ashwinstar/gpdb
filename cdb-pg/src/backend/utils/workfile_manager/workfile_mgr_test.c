@@ -16,6 +16,7 @@
 #include "miscadmin.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbgang.h"
+#include "storage/bfz.h"
 
 #define TEST_NAME_LENGTH 50
 #define TEST_HT_NUM_ELEMENTS 8192
@@ -60,6 +61,9 @@ static void unit_test_result(bool result);
 static void unit_test_reset(void);
 static bool unit_test_summary(void);
 
+/* Unit test BFZ files */
+static bool bfz_test_reopen(void);
+
 #define GET_STR(textp) DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(textp)))
 
 typedef bool (*gp_workfile_mgr_test)(void);
@@ -81,6 +85,7 @@ static test_def test_defns[] = {
 		{"cache_test_concurrency", cache_test_concurrency},
 		{"cache_test_evict", cache_test_evict},
 		{"cache_test_evict_stress", cache_test_evict_stress},
+		{"bfz_test_reopen", bfz_test_reopen},
 
 		{NULL, NULL}, /* This has to be the last element of the array */
 };
@@ -926,6 +931,53 @@ syncrefhashtable_test_full_table(void)
 	}
 
 	unit_test_result(!testFailed);
+
+	return unit_test_summary();
+}
+
+static bool
+bfz_test_reopen(void)
+{
+	unit_test_reset();
+
+	elog(INFO, "Running test: bfz_test_reopen");
+
+	StringInfo filename = makeStringInfo();
+
+	appendStringInfo(filename,
+						"%s/%s",
+						PG_TEMP_FILES_DIR,
+						"Test_bfz.dat");
+
+	StringInfo text = makeStringInfo();
+	appendStringInfo(text,"Small amount of data to test.");
+
+	elog(INFO, "Running sub-test: Creating file %s", filename->data);
+
+	/*Write data to file.*/
+	bfz_t * fileWrite = bfz_create(filename->data, false, TRUE);
+	fileWrite->del_on_close=false;
+	bfz_append(fileWrite, text->data, text->len);
+	/*Flush data*/
+	bfz_append_end(fileWrite);
+
+	/*Read data back from file.*/
+	char result[TEST_NAME_LENGTH];
+	int result_size = 0;
+
+	elog(INFO, "Running sub-test: Reading file %s", filename->data);
+	bfz_t * fileRead = bfz_open(filename->data, true, TRUE);
+	/*Seek 0*/
+	bfz_scan_begin(fileRead);
+	result_size = bfz_scan_next(fileRead,result,text->len);
+
+	unit_test_result(	(result_size == text->len) &&
+						(strncmp(text->data, result, text->len) == 0));
+
+	pfree(filename->data);
+	pfree(text->data);
+	pfree(filename);
+	pfree(text);
 
 	return unit_test_summary();
 }

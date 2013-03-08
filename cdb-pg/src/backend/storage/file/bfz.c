@@ -269,7 +269,6 @@ bfz_open(const char *fileName, bool delOnClose, int compress)
 {
 	bfz_t	   *new_bfz;
 	MemoryContext oldcxt;
-	struct bfz_freeable_stuff *fs;
 
 	/*
 	 * Create bfz_t in the TopMemoryContext since this memory context
@@ -291,8 +290,6 @@ bfz_open(const char *fileName, bool delOnClose, int compress)
 
 	/* Since we are opening an existing file for reading,
 	 * prepare the state for scan_begin.  */
-	fs = new_bfz->freeable_stuff;
-	fs->close_ex(new_bfz);
 	new_bfz->mode = BFZ_MODE_FREED;
 
 	MemoryContextSwitchTo(oldcxt);
