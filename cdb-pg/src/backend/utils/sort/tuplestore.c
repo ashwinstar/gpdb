@@ -75,9 +75,7 @@ struct TuplestorePos
 	 */
 	bool		eof_reached;	/* read reached EOF (always valid) */
 	int			current;		/* next array index (valid if INMEM) */
-	int			readpos_file;	/* file# (valid if WRITEFILE and not eof) */
 	long		readpos_offset; /* offset (valid if WRITEFILE and not eof) */
-	int			writepos_file;	/* file# (valid if READFILE) */
 	long		writepos_offset;	/* offset (valid if READFILE) */
 
 	/* markpos_xxx holds marked position for mark and restore */
@@ -359,12 +357,6 @@ tuplestore_begin_heap_file_readerwriter(const char* fileName, bool isWriter)
 	return state;
 }
 
-int tuplestore_readerwriter_filebuf_getnumfile(Tuplestorestate* state)
-{
-	Assert(state->myfile);
-	return BufFileNumFiles(state->myfile);
-}
-
 /*
  * tuplestore_set_instrument
  *
@@ -568,9 +560,9 @@ tuplestore_puttuple_common(Tuplestorestate *state, TuplestorePos *pos, void *tup
 			 */
 			if (!pos->eof_reached)
 				BufFileTell(state->myfile,
-							&pos->readpos_file, &pos->readpos_offset);
+							&pos->readpos_offset);
 			if (BufFileSeek(state->myfile,
-							pos->writepos_file, pos->writepos_offset,
+							pos->writepos_offset,
 							SEEK_SET) != 0)
 				elog(ERROR, "seek to EOF failed");
 			state->status = TSS_WRITEFILE;
@@ -642,10 +634,10 @@ tuplestore_gettuple(Tuplestorestate *state, TuplestorePos *pos, bool forward,
 			 * Switch from writing to reading.
 			 */
 			BufFileTell(state->myfile,
-						&pos->writepos_file, &pos->writepos_offset);
+						&pos->writepos_offset);
 			if (!pos->eof_reached)
 				if (BufFileSeek(state->myfile,
-								pos->readpos_file, pos->readpos_offset,
+								pos->readpos_offset,
 								SEEK_SET) != 0)
 					elog(ERROR, "seek failed");
 			state->status = TSS_READFILE;
@@ -688,7 +680,7 @@ tuplestore_gettuple(Tuplestorestate *state, TuplestorePos *pos, bool forward,
 			 * Back up to fetch previously-returned tuple's ending length
 			 * word. If seek fails, assume we are at start of file.
 			 */
-			if (BufFileSeek(state->myfile, 0, -(long) sizeof(uint32),
+			if (BufFileSeek(state->myfile, -(long) sizeof(uint32) /* offset */,
 							SEEK_CUR) != 0)
 				return NULL;
 			tuplen = getlen(state, pos, false);
@@ -703,8 +695,8 @@ tuplestore_gettuple(Tuplestorestate *state, TuplestorePos *pos, bool forward,
 				/*
 				 * Back up to get ending length word of tuple before it.
 				 */
-				if (BufFileSeek(state->myfile, 0,
-								-(long) (tuplen + 2 * sizeof(uint32)),
+				if (BufFileSeek(state->myfile,
+								-(long) (tuplen + 2 * sizeof(uint32)) /* offset */,
 								SEEK_CUR) != 0)
 				{
 					/*
@@ -713,8 +705,8 @@ tuplestore_gettuple(Tuplestorestate *state, TuplestorePos *pos, bool forward,
 					 * in forward direction (not obviously right, but that is
 					 * what in-memory case does).
 					 */
-					if (BufFileSeek(state->myfile, 0,
-									-(long) (tuplen + sizeof(uint32)),
+					if (BufFileSeek(state->myfile,
+									-(long) (tuplen + sizeof(uint32)) /* offset */,
 									SEEK_CUR) != 0)
 						elog(ERROR, "bogus tuple length in backward scan");
 					return NULL;
@@ -727,8 +719,8 @@ tuplestore_gettuple(Tuplestorestate *state, TuplestorePos *pos, bool forward,
 			 * Note: READTUP expects we are positioned after the initial
 			 * length word of the tuple, so back up to that point.
 			 */
-			if (BufFileSeek(state->myfile, 0,
-							-(long) tuplen,
+			if (BufFileSeek(state->myfile,
+							-(long) tuplen /* offset */,
 							SEEK_CUR) != 0)
 				elog(ERROR, "bogus tuple length in backward scan");
 			tup = READTUP(state, pos, tuplen);
@@ -819,10 +811,10 @@ dumptuples(Tuplestorestate *state, TuplestorePos *pos)
 	{
 		if (i == pos->current)
 			BufFileTell(state->myfile,
-						&pos->readpos_file, &pos->readpos_offset);
+						&pos->readpos_offset);
 		if (i == pos->markpos_current)
 			BufFileTell(state->myfile,
-						&pos->markpos_file, &pos->markpos_offset);
+						&pos->markpos_offset);
 		if (i >= state->memtupcount)
 			break;
 		WRITETUP(state, pos, state->memtuples[i]);
@@ -852,12 +844,11 @@ tuplestore_rescan_pos(Tuplestorestate *state, TuplestorePos *pos)
 			break;
 		case TSS_WRITEFILE:
 			pos->eof_reached = false;
-			pos->readpos_file = 0;
 			pos->readpos_offset = 0L;
 			break;
 		case TSS_READFILE:
 			pos->eof_reached = false;
-			if (BufFileSeek(state->myfile, 0, 0L, SEEK_SET) != 0)
+			if (BufFileSeek(state->myfile, 0L /* offset */, SEEK_SET) != 0)
 				elog(ERROR, "seek to start failed");
 			break;
 		default:
@@ -887,18 +878,15 @@ tuplestore_markpos_pos(Tuplestorestate *state, TuplestorePos *pos)
 			{
 				/* Need to record the implicit read position */
 				BufFileTell(state->myfile,
-							&pos->markpos_file,
 							&pos->markpos_offset);
 			}
 			else
 			{
-				pos->markpos_file = pos->readpos_file;
 				pos->markpos_offset = pos->readpos_offset;
 			}
 			break;
 		case TSS_READFILE:
 			BufFileTell(state->myfile,
-						&pos->markpos_file,
 						&pos->markpos_offset);
 			break;
 		default:
@@ -927,13 +915,11 @@ tuplestore_restorepos_pos(Tuplestorestate *state, TuplestorePos *pos)
 			break;
 		case TSS_WRITEFILE:
 			pos->eof_reached = false;
-			pos->readpos_file = pos->markpos_file;
 			pos->readpos_offset = pos->markpos_offset;
 			break;
 		case TSS_READFILE:
 			pos->eof_reached = false;
 			if (BufFileSeek(state->myfile,
-							pos->markpos_file,
 							pos->markpos_offset,
 							SEEK_SET) != 0)
 				elog(ERROR, "tuplestore_restorepos failed");

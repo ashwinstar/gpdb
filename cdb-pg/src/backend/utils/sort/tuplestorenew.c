@@ -984,13 +984,11 @@ static long ntuplestore_put_lob(NTupleStore *nts, char* data, NTupleStoreLobRef 
 
 static long ntuplestore_get_lob(NTupleStore *nts, void *data, NTupleStoreLobRef *lobref)
 {
-	long fileno = lobref->start / (RELSEG_SIZE * BLCKSZ);
 	long offset = lobref->start % (RELSEG_SIZE * BLCKSZ);
 	long ret;
 	
-	Assert(fileno >= 0);
 	Assert(offset >= 0 && offset < (RELSEG_SIZE * BLCKSZ));
-	ret = BufFileSeek(nts->plobfile, fileno, offset, SEEK_SET);
+	ret = BufFileSeek(nts->plobfile, offset, SEEK_SET);
 	Assert(ret == 0);
 
 	ret = BufFileRead(nts->plobfile, data, lobref->size);

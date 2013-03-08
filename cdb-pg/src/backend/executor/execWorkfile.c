@@ -194,7 +194,7 @@ ExecWorkFile_Rewind(ExecWorkFile *workfile)
 	switch(workfile->fileType)
 	{
 		case BUFFILE:
-			ret = BufFileSeek((BufFile *)workfile->file, 0, 0L, SEEK_SET);
+			ret = BufFileSeek((BufFile *)workfile->file, 0L  /* offset */, SEEK_SET);
 			/* BufFileSeek returns 0 if everything went OK */
 			return 0 == ret;
 		case BFZ:

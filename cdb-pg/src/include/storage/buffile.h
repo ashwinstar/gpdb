@@ -45,17 +45,11 @@ extern void *BufFileSetBuf(BufFile *file, void *buf, Size bufsize);
 extern Size BufFileRead(BufFile *file, void *ptr, Size size);
 extern Size BufFileWrite(BufFile *file, const void *ptr, Size size);
 
-extern int	BufFileSeek(BufFile *file, int fileno, long offset, int whence);
-extern void BufFileTell(BufFile *file, int *fileno, long *offset);
+extern int BufFileSeek(BufFile *file, long offset, int whence);
+extern void BufFileTell(BufFile *file, long *offset);
 extern int  BufFileSeek64(BufFile *file, uint64 offset);
 extern uint64 BufFileTell64(BufFile *file);
 extern int	BufFileSeekBlock(BufFile *file, long blknum);
 extern void BufFileFlush(BufFile *file);
 
-extern char* BufFilePeek(BufFile *file, int size);
-
-
-extern size_t sizeBufFile(BufFile * file); /* MPP */
-
-extern int BufFileNumFiles(BufFile *file); 
 #endif   /* BUFFILE_H */
