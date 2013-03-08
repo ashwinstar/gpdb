@@ -86,17 +86,6 @@ Feature: Validate command line arguments
         And verify that storage_types of the partition table "part_mixed_1" are as expected in "bkdb"
 
     @smoke
-    Scenario: Negative test for Backup with --report_dir option
-        Given the database is running
-        And there are no backup files
-        When the user runs "gpcrondump -a -x bkdb -y /tmp"
-        Then gpcrondump should return a return code of 2
-        And gpcrondump should print no such option: -y error message
-        When the user runs "gpcrondump -a --incremental -x bkdb -y /tmp"
-        Then gpcrondump should return a return code of 2
-        And gpcrondump should print no such option: -y error message
-
-    @smoke
     Scenario: Negative test for Incremental Backup
         Given the database is running
         And partition "1" of partition table "ao_part_table, co_part_table_comp" is assumed to be in dirty state in "bkdb" in schema "public"
@@ -379,6 +368,22 @@ Feature: Validate command line arguments
         When the user runs "gpcrondump -a -x fullbkdb"
         Then gpcrondump should return a return code of 0
         And the timestamp from gpcrondump is stored 
+        And verify that the report file in " " dir contains "Backup Type: Full"
+        And the user runs gpdbrestore with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "heap_table" in "fullbkdb" with data
+        And verify that there is a "ao" table "ao_part_table" in "fullbkdb" with data
+
+    @fire
+    Scenario: Full Backup and Restore with -y
+        Given the database is running
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a backupfile of tables "heap_table, ao_part_table" in "fullbkdb" exists for validation
+        When the user runs "gpcrondump -a -y /tmp -x fullbkdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And gpcrondump should print -y is a deprecacted option.  Report files are always generated with the backup set. to stdout
         And verify that the report file in " " dir contains "Backup Type: Full"
         And the user runs gpdbrestore with the stored timestamp
         And gpdbrestore should return a return code of 0
