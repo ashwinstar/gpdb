@@ -47,9 +47,8 @@ extern Size BufFileWrite(BufFile *file, const void *ptr, Size size);
 
 extern int BufFileSeek(BufFile *file, long offset, int whence);
 extern void BufFileTell(BufFile *file, long *offset);
-extern int  BufFileSeek64(BufFile *file, uint64 offset);
-extern uint64 BufFileTell64(BufFile *file);
 extern int	BufFileSeekBlock(BufFile *file, long blknum);
 extern void BufFileFlush(BufFile *file);
+extern int64 BufFileGetSize(BufFile *buffile);
 
 #endif   /* BUFFILE_H */

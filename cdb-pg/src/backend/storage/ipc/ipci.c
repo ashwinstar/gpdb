@@ -290,7 +290,6 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
     FtsShmemInit();
     tmShmemInit();
 	InitBufferPool();
-	workfile_mgr_cache_init();
 
 	/*
 	 * Set up lock manager
@@ -393,6 +392,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	 * Set up other modules that need some shared memory space
 	 */
 	BTreeShmemInit();
+	workfile_mgr_cache_init();
 
 #ifdef EXEC_BACKEND
 

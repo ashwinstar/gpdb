@@ -1324,6 +1324,28 @@ FileSync(File file)
 	return returnCode;
 }
 
+/*
+ * Get the size of a physical file by using fstat()
+ *
+ * Returns size in bytes if successful, < 0 otherwise
+ */
+int64
+FileDiskSize(File file)
+{
+	int returnCode = 0;
+
+	returnCode = FileAccess(file);
+	if (returnCode < 0)
+		return returnCode;
+
+	struct stat buf;
+	returnCode = fstat(VfdCache[file].fd, &buf);
+	if (returnCode < 0)
+		return returnCode;
+
+	return (int64) buf.st_size;
+}
+
 int64
 FileSeek(File file, int64 offset, int whence)
 {

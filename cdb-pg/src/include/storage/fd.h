@@ -86,6 +86,7 @@ extern int	FileSync(File file);
 extern int64 FileSeek(File file, int64 offset, int whence);
 extern int64 FileNonVirtualCurSeek(File file);
 extern int	FileTruncate(File file, int64 offset);
+extern int64 FileDiskSize(File file);
 
 /* Operations that allow use of regular stdio --- USE WITH CAUTION */
 extern FILE *AllocateFile(const char *name, const char *mode);

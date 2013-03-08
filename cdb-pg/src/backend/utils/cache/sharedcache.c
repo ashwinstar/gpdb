@@ -214,7 +214,6 @@ Cache_SharedMemSize(uint32 nEntries, uint32 entryPayloadSize)
 	Size entrySize = add_size(CACHE_ENTRY_HEADER_SIZE, MAXALIGN(entryPayloadSize));
 	size = add_size(size, mul_size(nEntries, entrySize));
 
-	elog(LOG, "Shared memory size of workfile cache: %d", (uint32) size);
 	return size;
 }
 
@@ -412,18 +411,36 @@ Cache_ReleaseAcquired(Cache *cache, CacheEntry *entry, bool unregisterCleanup)
 	Assert(NULL != entry);
 	Assert(CACHE_ENTRY_ACQUIRED == entry->state);
 
+	/* Unregister entry from the cleanup list if requested */
+	if (unregisterCleanup)
+	{
+		Cache_UnregisterCleanup(cache, entry);
+	}
+
+	PG_TRY();
+	{
+		/* Call client-specific cleanup function before removing entry from cache */
+		cache->cleanupEntry(CACHE_ENTRY_PAYLOAD(entry));
+	}
+	PG_CATCH();
+	{
+
+#ifdef USE_ASSERT_CHECKING
+		Cache_MemsetPayload(cache, entry);
+#endif
+
+		/* Link entry back in the freelist */
+		Cache_AddToFreelist(cache, entry);
+
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 
 #ifdef USE_ASSERT_CHECKING
 	Cache_MemsetPayload(cache, entry);
 #endif
 
 	Cache_AddToFreelist(cache, entry);
-
-	/* Unregister entry from the cleanup list if requested */
-	if (unregisterCleanup)
-	{
-		Cache_UnregisterCleanup(cache, entry);
-	}
 
 	Cache_UpdatePerfCounter(&cache->cacheHdr->cacheStats.noAcquiredEntries, -1 /* delta */ );
 }
@@ -710,8 +727,7 @@ Cache_UnlinkEntry(Cache *cache, CacheAnchor *anchor, CacheEntry *entry)
  *    If the pincount is 0 and entry is marked to be deleted, remove the entry
  *    from the cache. If entry is removed, then client clean-up is performed
  *
- * For acquired entries, return entry to the freelist. Caller is responsible
- *    for cleaning up any client-specific resources
+ * For acquired entries, perform client-cleanup and return entry to the freelist
  */
 void
 Cache_Release(Cache *cache, CacheEntry *entry)

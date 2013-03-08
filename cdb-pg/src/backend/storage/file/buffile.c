@@ -43,13 +43,13 @@ struct BufFile {
 	File file; /* palloc'd file*/
 
 	bool isTemp; /* can only add files if this is TRUE */
-	bool closeAtEOXact; /* CDB: true => close at end of transaction */
 	bool pfreeAtClose; /* CDB: true => buffer is ours, we pfree it */
 	bool dirty; /* does buffer need to be written? */
 
 	int offset; /* offset part of current pos */
 	int pos; /* next read/write position in buffer */
 	int nbytes; /* total # of valid bytes in buffer */
+	int maxoffset; /* maximum offset that this file has reached, for disk usage */
 
 	Size bufsize; /* CDB: size of buffer (bytes) */
 	char *buffer; /* CDB: -> buffer */
@@ -75,6 +75,7 @@ struct BufFile {
 };
 
 static BufFile *makeBufFile(File firstfile);
+static void BufFileUpdateSize(BufFile *buffile);
 
 /*
  * Create a BufFile given the first underlying physical file.
@@ -97,6 +98,7 @@ makeBufFile(File firstfile)
 	file->offset = 0L;
 	file->pos = 0;
 	file->nbytes = 0;
+	file->maxoffset = 0L;
 	file->bufsize = BLCKSZ;
 	file->buffer = NULL;
 	file->context = CurrentMemoryContext;
@@ -133,7 +135,6 @@ BufFileCreateTemp(const char * filePrefix, bool interXact)
 
 	file = makeBufFile(pfile);
 	file->isTemp = true;
-	file->closeAtEOXact = closeAtEOXact;
 	file->is_rwfile = false;
 	file->file_prefix = pstrdup(filePrefix);
 
@@ -170,9 +171,13 @@ BufFileOpenFile(const char * fileName, bool create, bool delOnClose, bool interX
 
 	BufFile *file = makeBufFile(pfile);
 	file->isTemp = delOnClose;
-	file->closeAtEOXact = closeAtEOXact;
-	file->is_rwfile = false;
+	file->is_rwfile = create;
 	file->file_prefix = pstrdup(fileName);
+	if (!create)
+	{
+		/* Open existing file, initialize its size */
+		file->maxoffset = FileDiskSize(file->file);
+	}
 
 	return file;
 
@@ -193,7 +198,6 @@ BufFileCreateTemp_ReaderWriter(const char* filePrefix, bool isWriter)
 
 	BufFile *file = makeBufFile(pfile);
 	file->isTemp = true;
-	file->closeAtEOXact = false;
 	file->is_rwfile = true;
 	file->rwfile_iswriter = isWriter;
 	file->file_prefix = pstrdup(filePrefix);
@@ -506,6 +510,8 @@ BufFileWrite(BufFile *file, const void *ptr, Size size)
 			size -= nthistime;
 			nwritten += nthistime;
 
+			BufFileUpdateSize(file);
+
 			if (size == 0)
 			{
 				return nwritten;
@@ -536,6 +542,7 @@ BufFileWrite(BufFile *file, const void *ptr, Size size)
 		nwritten += nthistime;
 	}
 
+	BufFileUpdateSize(file);
 	return nwritten;
 }
 
@@ -561,6 +568,7 @@ BufFileFlush(BufFile *file)
 		 * (as could happen due to a small backwards seek in a dirty buffer!)
 		 */
 		file->offset -= (nbytes - pos);
+		BufFileUpdateSize(file);
 	}
 }
 
@@ -582,11 +590,13 @@ BufFileSeek(BufFile *file, long offset, int whence)
 	switch (whence)
 	{
 		case SEEK_SET:
-				newOffset = offset;
+			newOffset = offset;
 			break;
 
 		case SEEK_CUR:
-				newOffset = (file->offset + file->pos) + offset;
+			newOffset = (file->offset + file->pos) + offset;
+			break;
+
 		default:
 			elog(LOG, "invalid whence: %d", whence);
 			Assert(false);
@@ -609,6 +619,7 @@ BufFileSeek(BufFile *file, long offset, int whence)
 		 * writing.
 		 */
 		file->pos = (int) (newOffset - file->offset);
+		BufFileUpdateSize(file);
 		return 0;
 	}
 	/* Otherwise, must reposition buffer, so flush any dirty data */
@@ -618,6 +629,7 @@ BufFileSeek(BufFile *file, long offset, int whence)
 	file->offset = newOffset;
 	file->pos = 0;
 	file->nbytes = 0;
+	BufFileUpdateSize(file);
 	return 0;
 }
 
@@ -625,32 +637,6 @@ void BufFileTell(BufFile *file, long *offset)
 {
 	*offset = file->offset + file->pos;
 }
-
-/*
- * BufFileSeek64
- *
- * Set position within virtual file, using 64-bit offset.
- *
- * Result is 0 if OK, EOF if not.  Logical position is not moved if an
- * impossible seek is attempted.
- */
-int
-BufFileSeek64(BufFile *file, uint64 offset)
-{
-	/* offset should fit in a long type */
-	Assert((long)offset >= 0);
-
-	return BufFileSeek(file, (long)offset, SEEK_SET);
-} /* BufFileSeek64 */
-
-/*
- * BufFileTell64 --- return current 64-bit offset from beginning of virtual file
- */
-uint64
-BufFileTell64(BufFile *file)
-{
-	return file->offset + file->pos;
-} /* BufFileTell64 */
 
 /*
  * BufFileSeekBlock --- block-oriented seek
@@ -667,4 +653,30 @@ int
 BufFileSeekBlock(BufFile *file, long blknum)
 {
 	return BufFileSeek(file, blknum * BLCKSZ, SEEK_SET);
+}
+
+/*
+ * BufFileUpdateSize
+ *
+ * Updates the total disk size of a BufFile after a write
+ *
+ * Some of the data might still be in the buffer and not on disk, but we count
+ * it here regardless
+ */
+static void
+BufFileUpdateSize(BufFile *buffile)
+{
+	Assert(NULL != buffile);
+
+	if (buffile->offset + buffile->pos > buffile->maxoffset)
+	{
+		buffile->maxoffset = buffile->offset + buffile->pos;
+	}
+}
+
+int64
+BufFileGetSize(BufFile *buffile)
+{
+	Assert(NULL != buffile);
+	return buffile->maxoffset;
 }

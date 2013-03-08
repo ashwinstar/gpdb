@@ -1077,13 +1077,12 @@ getSpillFile(workfile_set *work_set, SpillSet *set, int file_no, int *p_alloc_si
 	if (spill_file->file_info == NULL)
 	{
 		char tmpprefix[MAXPGPATH];
-		bool delOnClose = true;
 		workfile_mgr_create_file(work_set, tmpprefix, MAXPGPATH);
-		delOnClose = !gp_workfile_caching;
 
 		spill_file->file_info = (BatchFileInfo *)palloc(sizeof(BatchFileInfo));
 		spill_file->file_info->total_bytes = 0;
 		spill_file->file_info->ntuples = 0;
+		bool delOnClose = !gp_workfile_caching;
 		spill_file->file_info->bfz =
 			bfz_create(tmpprefix, delOnClose, gp_hashagg_compress_spill_files > 0 ?
 					   gp_hashagg_compress_spill_files : work_set->metadata.bfz_compress_type);

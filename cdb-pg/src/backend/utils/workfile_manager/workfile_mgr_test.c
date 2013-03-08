@@ -17,6 +17,10 @@
 #include "cdb/cdbvars.h"
 #include "cdb/cdbgang.h"
 #include "storage/bfz.h"
+#include "storage/buffile.h"
+#include "executor/execWorkfile.h"
+#include "postmaster/primary_mirror_mode.h"
+#include "utils/atomic.h"
 
 #define TEST_NAME_LENGTH 50
 #define TEST_HT_NUM_ELEMENTS 8192
@@ -52,6 +56,15 @@ static bool cache_test_concurrency(void);
 static bool cache_test_evict(void);
 static bool cache_test_evict_stress(void);
 
+static bool bfz_test_reopen(void);
+static bool execworkfile_buffile_test(void);
+static bool execworkfile_bfz_zlib_test(void);
+static bool execworkfile_bfz_uncompressed_test(void);
+static bool fd_tests(void);
+static bool buffile_size_test(void);
+
+static bool atomic_test(void);
+
 /* Local helpers */
 static SyncHT *syncrefhastable_test_create(void);
 static Cache *cache_test_create();
@@ -61,8 +74,6 @@ static void unit_test_result(bool result);
 static void unit_test_reset(void);
 static bool unit_test_summary(void);
 
-/* Unit test BFZ files */
-static bool bfz_test_reopen(void);
 
 #define GET_STR(textp) DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(textp)))
 
@@ -86,6 +97,12 @@ static test_def test_defns[] = {
 		{"cache_test_evict", cache_test_evict},
 		{"cache_test_evict_stress", cache_test_evict_stress},
 		{"bfz_test_reopen", bfz_test_reopen},
+		{"execworkfile_buffile_test", execworkfile_buffile_test},
+		{"execworkfile_bfz_zlib_test", execworkfile_bfz_zlib_test},
+		{"execworkfile_bfz_uncompressed_test", execworkfile_bfz_uncompressed_test},
+		{"atomic_test", atomic_test},
+		{"fd_tests", fd_tests},
+		{"buffile_size_test", buffile_size_test},
 
 		{NULL, NULL}, /* This has to be the last element of the array */
 };
@@ -935,6 +952,9 @@ syncrefhashtable_test_full_table(void)
 	return unit_test_summary();
 }
 
+/*
+ * Unit test for bfz reopen operation
+ */
 static bool
 bfz_test_reopen(void)
 {
@@ -978,6 +998,543 @@ bfz_test_reopen(void)
 	pfree(text->data);
 	pfree(filename);
 	pfree(text);
+
+	return unit_test_summary();
+}
+
+/*
+ * Creates a StringInfo object holding n_chars characters.
+ */
+static StringInfo
+create_text_stringinfo(int64 n_chars)
+{
+	StringInfo strInfo = makeStringInfo();
+	char *text = "0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789";
+
+	int64 to_write = n_chars;
+	while (to_write >= (int64) strlen(text))
+	{
+		appendStringInfo(strInfo, "%s", text);
+		to_write -= (int64) strlen(text);
+	}
+	Assert(to_write >= 0 && to_write < (int64) strlen(text));
+
+	/* Pad end */
+	while (to_write > 0)
+	{
+		appendStringInfoChar(strInfo, 'P');
+		to_write--;
+	}
+
+	return strInfo;
+}
+
+/*
+ * Unit tests for new ExecWorkfile and WorkfileDiskspace functionality
+ *  with underlying Buffile files
+ */
+static bool
+execworkfile_buffile_test(void)
+{
+	bool result = false;
+	int64 expected_size = 0;
+	int64 initial_diskspace = WorkfileDiskspace_GetSize();
+
+	unit_test_reset();
+	elog(INFO, "Running test: execworkfile_buffile_test");
+
+	/* Create file name */
+	char *file_name = "test_execworkfile_buffile.dat";
+	StringInfo test_filepath = makeStringInfo();
+	appendStringInfo(test_filepath,
+					"%s/%s",
+					PG_TEMP_FILES_DIR,
+					file_name);
+
+	if (test_filepath->len > MAXPGPATH)
+	{
+		ereport(ERROR, (errmsg("cannot generate path: %s/%s",
+					PG_TEMP_FILES_DIR,
+					file_name)));
+	}
+
+	elog(INFO, "Running sub-test: Creating EWF/Buffile");
+
+	ExecWorkFile *ewf = ExecWorkFile_Create(test_filepath->data,
+			BUFFILE,
+			false, /* delOnClose */
+			0 /* compressionType */);
+
+	unit_test_result(ewf != NULL);
+
+	int nchars = 100000;
+	StringInfo text = create_text_stringinfo(nchars);
+
+	elog(INFO, "Running sub-test: Writing small amount data to EWF/Buffile and checking size");
+
+	result = ExecWorkFile_Write(ewf, text->data, 20);
+	expected_size += 20;
+
+	unit_test_result(result && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
+
+
+	elog(INFO, "Running sub-test: Writing larger amount data (%d bytes) to EWF/Buffile and checking size", nchars);
+	result = ExecWorkFile_Write(ewf, text->data, nchars);
+	expected_size += nchars;
+
+	unit_test_result(result && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
+
+	elog(INFO, "Running sub-test: Writing to the middle of a EWF/Buffile and checking size");
+	result = ExecWorkFile_Seek(ewf, ExecWorkfile_GetSize(ewf) / 2, SEEK_SET);
+	Assert(result == 0);
+	/* This write should not add to the size */
+	result = ExecWorkFile_Write(ewf, text->data, ExecWorkfile_GetSize(ewf) / 10);
+
+	unit_test_result(result && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
+
+	elog(INFO, "Running sub-test: Seeking past end and writing data to EWF/Buffile and checking size");
+	int past_end_offset = 100;
+	int past_end_write = 200;
+	result = ExecWorkFile_Seek(ewf, ExecWorkfile_GetSize(ewf) + past_end_offset, SEEK_SET);
+	Assert(result == 0);
+	result = ExecWorkFile_Write(ewf, text->data, past_end_write);
+	expected_size += past_end_offset + past_end_write;
+
+	unit_test_result(result && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
+
+	elog(INFO, "Running sub-test: Closing EWF/Buffile");
+	ExecWorkFile_Close(ewf);
+	unit_test_result(true);
+
+	pfree(text->data);
+	pfree(text);
+
+	return unit_test_summary();
+}
+
+/*
+ * Unit tests for new ExecWorkfile and WorkfileDiskspace functionality
+ *  with underlying compressed bfz files
+ */
+static bool
+execworkfile_bfz_zlib_test(void)
+{
+	bool result = false;
+	int64 expected_size = 0;
+	int64 current_size = 0;
+	int64 final_size = 0;
+	int64 initial_diskspace = WorkfileDiskspace_GetSize();
+
+	unit_test_reset();
+	elog(INFO, "Running test: execworkfile_bfz_zlib_test");
+
+	/* Create file name */
+	char *file_name = "test_execworkfile_bfz_zlib.dat";
+	StringInfo test_filepath = makeStringInfo();
+	appendStringInfo(test_filepath,
+					"%s/%s",
+					PG_TEMP_FILES_DIR,
+					file_name);
+
+	if (test_filepath->len > MAXPGPATH)
+	{
+		ereport(ERROR, (errmsg("cannot generate path: %s/%s",
+					PG_TEMP_FILES_DIR,
+					file_name)));
+	}
+
+	elog(INFO, "Running sub-test: Creating EWF/Buffile");
+
+	ExecWorkFile *ewf = ExecWorkFile_Create(test_filepath->data,
+			BFZ,
+			false, /* delOnClose */
+			1 /* compressionType */);
+
+	unit_test_result(ewf != NULL);
+
+	int nchars = 100000;
+	StringInfo text = create_text_stringinfo(nchars);
+
+	elog(INFO, "Running sub-test: Writing small amount data to EWF/BFZ and checking size");
+
+	result = ExecWorkFile_Write(ewf, text->data, 20);
+	expected_size += 20;
+
+	unit_test_result(result && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
+
+
+	elog(INFO, "Running sub-test: Writing larger amount data (%d bytes) to EWF/BFZ and checking size", nchars);
+	result = ExecWorkFile_Write(ewf, text->data, nchars);
+	expected_size += nchars;
+
+	unit_test_result(result && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
+
+	elog(INFO, "Running sub-test: Suspending EWF/BFZ and checking for size");
+	final_size = ExecWorkfile_Suspend(ewf);
+	unit_test_result(final_size < expected_size);
+
+	elog(INFO, "Running sub-test: Restarting EWF/BFZ");
+	ExecWorkfile_Restart(ewf);
+	unit_test_result(true);
+
+	elog(INFO, "Running sub-test: Closing EWF/BFZ");
+	final_size = ExecWorkFile_Close(ewf);
+
+	unit_test_result(final_size < expected_size);
+
+
+	elog(INFO, "Running sub-test: Opening existing EWF/BFZ and checking size");
+
+	ewf = ExecWorkFile_Open(test_filepath->data,
+			BFZ,
+			true, /* delOnClose */
+			1 /* compressionType */);
+	current_size = ExecWorkfile_GetSize(ewf);
+	unit_test_result(current_size == final_size);
+
+	elog(INFO, "Running sub-test: Closing EWF/BFZ");
+	final_size = ExecWorkFile_Close(ewf);
+
+	unit_test_result(final_size == current_size);
+
+	pfree(text->data);
+	pfree(text);
+
+	return unit_test_summary();
+
+}
+
+/*
+ * Unit tests for new ExecWorkfile and WorkfileDiskspace functionality
+ *  with underlying uncompressed bfz files
+ */
+static bool
+execworkfile_bfz_uncompressed_test(void)
+{
+	bool result = false;
+	int64 expected_size = 0;
+	int64 current_size = 0;
+	int64 final_size = 0;
+	int64 initial_diskspace = WorkfileDiskspace_GetSize();
+
+	unit_test_reset();
+	elog(INFO, "Running test: execworkfile_bfz_uncompressed_test");
+
+	/* Create file name */
+	char *file_name = "test_execworkfile_bfz_uncomp.dat";
+	StringInfo test_filepath = makeStringInfo();
+	appendStringInfo(test_filepath,
+					"%s/%s",
+					PG_TEMP_FILES_DIR,
+					file_name);
+
+	if (test_filepath->len > MAXPGPATH)
+	{
+		ereport(ERROR, (errmsg("cannot generate path: %s/%s",
+					PG_TEMP_FILES_DIR,
+					file_name)));
+	}
+
+	elog(INFO, "Running sub-test: Creating EWF/Buffile");
+
+	ExecWorkFile *ewf = ExecWorkFile_Create(test_filepath->data,
+			BFZ,
+			false, /* delOnClose */
+			0 /* compressionType */);
+
+	unit_test_result(ewf != NULL);
+
+	int nchars = 100000;
+	StringInfo text = create_text_stringinfo(nchars);
+
+	elog(INFO, "Running sub-test: Writing small amount data to EWF/BFZ and checking size");
+
+	result = ExecWorkFile_Write(ewf, text->data, 20);
+	expected_size += 20;
+
+	unit_test_result(result && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
+
+
+	elog(INFO, "Running sub-test: Writing larger amount data (%d bytes) to EWF/BFZ and checking size", nchars);
+	result = ExecWorkFile_Write(ewf, text->data, nchars);
+	expected_size += nchars;
+
+	unit_test_result(result && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
+
+	elog(INFO, "Running sub-test: Suspending EWF/BFZ and checking for size");
+	final_size = ExecWorkfile_Suspend(ewf);
+	unit_test_result(final_size >= expected_size);
+
+	elog(INFO, "Running sub-test: Restarting EWF/BFZ");
+	ExecWorkfile_Restart(ewf);
+	unit_test_result(true);
+
+	elog(INFO, "Running sub-test: Closing EWF/BFZ");
+	final_size = ExecWorkFile_Close(ewf);
+
+	/* For uncompressed files, final file may contain checksums, which makes it
+	 * larger than expected */
+	unit_test_result(final_size >= expected_size);
+
+	elog(INFO, "Running sub-test: Opening existing EWF/BFZ and checking size");
+
+	ewf = ExecWorkFile_Open(test_filepath->data,
+			BFZ,
+			true, /* delOnClose */
+			0 /* compressionType */);
+	current_size = ExecWorkfile_GetSize(ewf);
+	unit_test_result(current_size == final_size);
+
+	elog(INFO, "Running sub-test: Closing EWF/BFZ");
+	final_size = ExecWorkFile_Close(ewf);
+
+	unit_test_result(final_size == current_size);
+
+	pfree(text->data);
+	pfree(text);
+
+	return unit_test_summary();
+
+}
+
+/*
+ * Unit test for testing the fd.c FileDiskSize and other new capabilities
+ */
+static bool
+fd_tests(void)
+{
+	unit_test_reset();
+	elog(INFO, "Running test: fd_tests");
+
+	elog(INFO, "Running sub-test: Creating fd file");
+
+	/* Create file name */
+	char *file_name = "test_fd.dat";
+	StringInfo test_filepath = makeStringInfo();
+	appendStringInfo(test_filepath,
+					"%s/%s",
+					PG_TEMP_FILES_DIR,
+					file_name);
+
+	if (test_filepath->len > MAXPGPATH)
+	{
+		ereport(ERROR, (errmsg("cannot generate path: %s/%s",
+					PG_TEMP_FILES_DIR,
+					file_name)));
+	}
+
+	File testFd = OpenNamedFile(test_filepath->data,
+			true /* create */,
+			false /* delOnClose */,
+			true /* closeAtEOXact */);
+
+	unit_test_result(testFd > 0);
+
+	elog(INFO, "Running sub-test: Reading size of open empty file");
+	int64 fd_size = FileDiskSize(testFd);
+	unit_test_result(fd_size == 0L);
+
+	elog(INFO, "Running sub-test: Closing file");
+	FileClose(testFd);
+	unit_test_result(true);
+
+	elog(INFO, "Running sub-test: Opening existing empty file and reading size");
+	testFd = OpenNamedFile(test_filepath->data,
+			false /* create */,
+			false /* delOnClose */,
+			true /* closeAtEOXact */);
+
+	fd_size = FileDiskSize(testFd);
+	unit_test_result(fd_size == 0L);
+
+	elog(INFO, "Running sub-test: Writing to existing open file, sync and read size");
+	int nchars = 10000;
+	StringInfo text = create_text_stringinfo(nchars);
+	int len_to_write = 5000;
+	Assert(len_to_write <= text->len);
+
+	FileWrite(testFd, text->data, len_to_write);
+	FileSync(testFd);
+
+	fd_size = FileDiskSize(testFd);
+	unit_test_result(fd_size == len_to_write);
+
+	elog(INFO, "Running sub-test: Closing file");
+	FileClose(testFd);
+	unit_test_result(true);
+
+	pfree(text->data);
+	pfree(text);
+
+	return unit_test_summary();
+}
+
+/*
+ * Unit tests for the buffile size functionality
+ */
+static bool
+buffile_size_test(void)
+{
+	unit_test_reset();
+	elog(INFO, "Running test: buffile_size_test");
+
+	elog(INFO, "Running sub-test: Creating buffile");
+
+	/* Create file name */
+	char *file_name = "test_buffile.dat";
+	StringInfo test_filepath = makeStringInfo();
+	appendStringInfo(test_filepath,
+					"%s/%s",
+					PG_TEMP_FILES_DIR,
+					file_name);
+
+	if (test_filepath->len > MAXPGPATH)
+	{
+		ereport(ERROR, (errmsg("cannot generate path: %s/%s",
+					PG_TEMP_FILES_DIR,
+					file_name)));
+	}
+
+	BufFile *testBf = BufFileCreateFile(test_filepath->data,
+			false /* delOnClose */, false /* interXact */);
+
+	unit_test_result(NULL != testBf);
+
+	elog(INFO, "Running sub-test: Size of newly created buffile");
+	int64 test_size = BufFileGetSize(testBf);
+	unit_test_result(test_size == 0);
+
+	elog(INFO, "Running sub-test: Writing to new buffile and reading size < bufsize");
+	int nchars = 10000;
+	int expected_size = nchars;
+	StringInfo text = create_text_stringinfo(nchars);
+	BufFileWrite(testBf, text->data, nchars);
+	pfree(text->data);
+	pfree(text);
+	test_size = BufFileGetSize(testBf);
+
+	unit_test_result(test_size == expected_size);
+
+	elog(INFO, "Running sub-test: Writing to new buffile and reading size > bufsize");
+	nchars = 1000000;
+	expected_size += nchars;
+	text = create_text_stringinfo(nchars);
+	BufFileWrite(testBf, text->data, nchars);
+	test_size = BufFileGetSize(testBf);
+
+	unit_test_result(test_size == expected_size);
+
+	elog(INFO, "Running sub-test: seeking back and writing then testing size");
+	BufFileSeek(testBf, expected_size/2, SEEK_SET);
+	/* This write should not add to the size */
+	BufFileWrite(testBf, text->data, expected_size / 10);
+	test_size = BufFileGetSize(testBf);
+
+	unit_test_result(test_size == expected_size);
+
+	elog(INFO, "Running sub-test: Closing buffile");
+	BufFileClose(testBf);
+	unit_test_result(true);
+
+	elog(INFO, "Running sub-test: Opening existing and testing size");
+	testBf = BufFileOpenFile(test_filepath->data,
+			false /* create */,
+			false /*delOnClose */,
+			false /*interXact */
+			);
+	test_size = BufFileGetSize(testBf);
+
+	unit_test_result(test_size == expected_size);
+
+	elog(INFO, "Running sub-test: Seek past end, appending and testing size");
+	int past_end_offset = 100;
+	int past_end_write = 200;
+	BufFileSeek(testBf, expected_size + past_end_offset, SEEK_SET);
+	BufFileWrite(testBf, text->data, past_end_write);
+	expected_size += past_end_offset + past_end_write;
+	test_size = BufFileGetSize(testBf);
+
+	unit_test_result(test_size == expected_size);
+
+	elog(INFO, "Running sub-test: Closing buffile");
+	BufFileClose(testBf);
+	unit_test_result(true);
+
+
+	pfree(text->data);
+	pfree(text);
+
+	return unit_test_summary();
+
+}
+
+/*
+ * Unit test for the atomic functions
+ *
+ * These are functional tests, they only test for correctness with no concurrency
+ *
+ */
+static bool
+atomic_test(void)
+{
+	unit_test_reset();
+	elog(INFO, "Running test: atomic_test");
+
+	{
+		elog(INFO, "Running sub-test: compare_and_swap_64");
+		uint64 dest = 5;
+		uint64 old = 5;
+		uint64 new = 6;
+
+		elog(INFO, "Before: dest=%d, old=%d, new=%d", (uint32) dest, (uint32) old, (uint32) new);
+		int32 result = compare_and_swap_64(&dest, old, new);
+		elog(INFO, "After: dest=%d, old=%d, new=%d, result=%d", (uint32) dest, (uint32) old, (uint32) new, (uint32) result);
+		unit_test_result(dest == new);
+	}
+
+	{
+		elog(INFO, "Running sub-test: gp_atomic_add_64 small addition");
+
+		int64 base = 25;
+		int64 inc = 3;
+		int64 result = 0;
+		int64 expected_result = base + inc;
+		elog(DEBUG1, "Before: base=%lld, inc=%lld, result=%lld", (long long int) base, (long long int) inc, (long long int) result);
+		result = gp_atomic_add_64(&base, inc);
+		elog(DEBUG1, "After: base=%lld, inc=%lld, result=%lld", (long long int) base, (long long int) inc, (long long int) result);
+		unit_test_result(result == expected_result && base == expected_result);
+
+		elog(INFO, "Running sub-test: gp_atomic_add_64 small subtraction");
+
+		inc = -4;
+		result = 0;
+		expected_result = base + inc;
+		elog(DEBUG1, "Before: base=%lld, inc=%lld, result=%lld", (long long int) base, (long long int) inc, (long long int) result);
+		result = gp_atomic_add_64(&base, inc);
+		elog(DEBUG1, "After: base=%lld, inc=%lld, result=%lld", (long long int) base, (long long int) inc, (long long int) result);
+		unit_test_result(result == expected_result && base == expected_result);
+
+		elog(INFO, "Running sub-test: gp_atomic_add_64 huge addition");
+		base = 37421634719307;
+		inc  = 738246483234;
+		result = 0;
+		expected_result = base + inc;
+		elog(DEBUG1, "Before: base=%lld, inc=%lld, result=%lld", (long long int) base, (long long int) inc, (long long int) result);
+		result = gp_atomic_add_64(&base, inc);
+		elog(DEBUG1, "After: base=%lld, inc=%lld, result=%lld", (long long int) base, (long long int) inc, (long long int) result);
+		unit_test_result(result == expected_result && base == expected_result);
+
+
+		elog(INFO, "Running sub-test: gp_atomic_add_64 huge subtraction");
+		inc  = -32738246483234;
+		result = 0;
+		expected_result = base + inc;
+		elog(DEBUG1, "Before: base=%lld, inc=%lld, result=%lld", (long long int) base, (long long int) inc, (long long int) result);
+		result = gp_atomic_add_64(&base, inc);
+		elog(DEBUG1, "After: base=%lld, inc=%lld, result=%lld", (long long int) base, (long long int) inc, (long long int) result);
+		unit_test_result(result == expected_result && base == expected_result);
+	}
+
 
 	return unit_test_summary();
 }

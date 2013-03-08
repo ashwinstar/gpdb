@@ -369,7 +369,7 @@ bfz_create_internal(bfz_t *bfz_handle, const char *fileName, bool open_existing,
 
 	bfz_handle->mode = BFZ_MODE_APPEND;
 	bfz_handle->compression_index = compress;
-	bfz_handle->del_on_close = !gp_workfile_caching;
+	bfz_handle->del_on_close = delOnClose;
 
 	compression_algorithms[compress].init(bfz_handle);
 
@@ -437,8 +437,10 @@ bfz_close(bfz_t * thiz, bool unreg)
  *  Flushes data to a bfz file and then closes the file.
  *  It also makes a duplicate of the file descriptor so we can re-open it
  *  for reading using bfz_scan_begin at a later time.
+ *
+ *  It returns the actual size of the file on disk
  */
-void
+int64
 bfz_append_end(bfz_t * thiz)
 {
 	struct bfz_freeable_stuff *fs = thiz->freeable_stuff;
@@ -450,14 +452,6 @@ bfz_append_end(bfz_t * thiz)
 	write_bfz_buffer(thiz, true);
 	tot_bytes = fs->tot_bytes;
 
-	if ((tot_compressed = lseek(thiz->fd, 0, SEEK_END)) == -1)
-		ereport(ERROR,
-				(errcode(ERRCODE_IO_ERROR),
-				errmsg("could not seek in temporary file: %m")));
-
-	elog(DEBUG1, "bfz file size uncompressed %lld, compressed %lld, savings %d%%", 
-		 (long long) tot_bytes, (long long) tot_compressed,
-		 tot_bytes == 0 ? 0 : (int) ((tot_bytes - tot_compressed) * 100 / tot_bytes));
 
 	/*
 	 * Duplicate file descriptor, since close_ex closes the file,
@@ -469,6 +463,17 @@ bfz_append_end(bfz_t * thiz)
 
 	thiz->fd = saved_fd;
 	thiz->mode = BFZ_MODE_FREED;
+
+	if ((tot_compressed = lseek(thiz->fd, 0, SEEK_END)) == -1)
+		ereport(ERROR,
+				(errcode(ERRCODE_IO_ERROR),
+				errmsg("could not seek in temporary file: %m")));
+
+	elog(DEBUG1, "bfz file size uncompressed %lld, compressed %lld, savings %d%%",
+		 (long long) tot_bytes, (long long) tot_compressed,
+		 tot_bytes == 0 ? 0 : (int) ((tot_bytes - tot_compressed) * 100 / tot_bytes));
+
+	return tot_compressed;
 }
 
 void

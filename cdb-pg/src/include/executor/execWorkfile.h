@@ -10,6 +10,8 @@
 #ifndef EXECWORKFILE_H
 #define EXECWORKFILE_H
 
+#include "utils/guc.h"
+
 typedef enum ExecWorkFileType
 {
 	BUFFILE = 0,
@@ -22,6 +24,14 @@ typedef enum ExecWorkFileType
  */ 
 #define WORKFILE_SAFEWRITE_SIZE 512
 
+/* Flags that describe capabilities of a workfile */
+
+/* File supports random-access (seek) capabilities */
+#define EXEC_WORKFILE_RANDOM_ACCESS 0x1
+
+/* File supports suspend/restart capabilities */
+#define EXEC_WORKFILE_SUSPENDABLE 0x2
+
 /* 
  * ExecWorkFile structure.
  */
@@ -29,7 +39,10 @@ typedef struct ExecWorkFile
 {
 	ExecWorkFileType fileType;
 	int compressType;
+	int64 size;
 	
+	int flags;
+
 	void *file;
 	char *fileName;
 } ExecWorkFile;
@@ -98,8 +111,21 @@ ExecWorkFile_Tell64(ExecWorkFile *workfile);
  * ExecWorkFile_Close
  *    close the work file, and release the space.
  */
-void
+int64
 ExecWorkFile_Close(ExecWorkFile *workfile);
+
+int ExecWorkFile_Seek(ExecWorkFile *workfile, uint64 offset, int whence);
+void ExecWorkfile_Flush(ExecWorkFile *workfile);
+int64 ExecWorkfile_GetSize(ExecWorkFile *workfile);
+int64 ExecWorkfile_Suspend(ExecWorkFile *workfile);
+void ExecWorkfile_Restart(ExecWorkFile *workfile);
+
+void WorkfileDiskspace_Init(void);
+Size WorkfileDiskspace_ShMemSize(void);
+bool WorkfileDiskspace_Reserve(int64 bytes);
+int64 WorkfileDiskspace_Commit(int64 commit_bytes, int64 reserved_bytes);
+int64 WorkfileDiskspace_GetSize(void);
+
 
 char * ExecWorkFile_GetFileName(ExecWorkFile *workfile);
 

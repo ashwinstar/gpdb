@@ -12,6 +12,6 @@ subdir = src/backend/utils/workfile_manager
 top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
-OBJS = workfile_mgr.o workfile_mgr_test.o
+OBJS = workfile_mgr.o workfile_diskspace.o workfile_mgr_test.o
 
 include $(top_srcdir)/src/backend/common.mk

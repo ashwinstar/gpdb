@@ -77,6 +77,8 @@ workfile_mgr_cache_init(void)
 
 	workfile_mgr_cache = Cache_Create(&cacheCtl);
 	Assert(NULL != workfile_mgr_cache);
+	/* Initialize the WorkfileDiskspace API to track disk space usage */
+	WorkfileDiskspace_Init();
 }
 
 /*
@@ -95,7 +97,8 @@ workfile_mgr_get_cache(void)
 Size
 workfile_mgr_shmem_size(void)
 {
-	return Cache_SharedMemSize(WORKFILE_CACHE_MAX_SIZE, sizeof(workfile_set));
+	return Cache_SharedMemSize(WORKFILE_CACHE_MAX_SIZE, sizeof(workfile_set)) +
+			WorkfileDiskspace_ShMemSize();
 }
 
 
