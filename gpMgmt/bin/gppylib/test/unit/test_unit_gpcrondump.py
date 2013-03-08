@@ -47,6 +47,7 @@ class GpCronDumpTestCase(unittest.TestCase):
             self.ddboost_user = None
             self.ddboost_config_remove = False
             self.ddboost_verify = False
+            self.report_dir = None
  
     @patch('gpcrondump.GpCronDump._get_master_port')
     @patch('gpcrondump.validate_current_timestamp')
