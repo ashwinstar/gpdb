@@ -16,6 +16,7 @@
 #include "storage/bfz.h"
 #include "executor/execWorkfile.h"
 #include "miscadmin.h"
+#include "cdb/cdbvars.h"
 
 /*
  * Number of temporary files opened during the current session;
@@ -24,8 +25,8 @@
 static uint64 temp_file_counter = 0;
 
 
-static void ExecWorkfile_SetFlags(ExecWorkFile *workfile);
-static void ExecWorkfile_AdjustBFZSize(ExecWorkFile *workfile, int64 file_size);
+static void ExecWorkFile_SetFlags(ExecWorkFile *workfile, bool delOnClose, bool created);
+static void ExecWorkFile_AdjustBFZSize(ExecWorkFile *workfile, int64 file_size);
 
 /*
  * ExecWorkFile_Create
@@ -65,9 +66,28 @@ ExecWorkFile_Create(const char *fileName,
 	workfile->file = file;
 	workfile->fileName = pstrdup(fileName);
 	workfile->size = 0;
-	ExecWorkfile_SetFlags(workfile);
+	ExecWorkFile_SetFlags(workfile, delOnClose, true /* created */);
 
 	return workfile;
+}
+
+/*
+ * ExecWorkfile_AddUniqueSuffix
+ *   Adds a suffix to a filename to make it unique, within and across queries
+ *
+ *   The returned StringInfo and data are palloc-ed in the current memory context.
+ */
+StringInfo
+ExecWorkFile_AddUniqueSuffix(const char *filename)
+{
+	StringInfo uniquename = makeStringInfo();
+	appendStringInfo(uniquename, "%s_%d_" UINT64_FORMAT,
+			filename,
+			MyProcPid,
+			temp_file_counter++);
+
+	Assert(uniquename->len <= MAXPGPATH - 1 && "could not generate temporary file name");
+	return uniquename;
 }
 
 /*
@@ -82,14 +102,7 @@ ExecWorkFile_CreateUnique(const char *filename,
 		int compressType)
 {
 
-	StringInfo uniquename = makeStringInfo();
-	appendStringInfo(uniquename, "%s_%d_" UINT64_FORMAT,
-			filename,
-			MyProcPid,
-			temp_file_counter++);
-
-	Assert(uniquename->len <= MAXPGPATH && "could not generate temporary file name");
-
+	StringInfo uniquename = ExecWorkFile_AddUniqueSuffix(filename);
 	ExecWorkFile *ewf = ExecWorkFile_Create(uniquename->data, fileType, delOnClose, compressType);
 	pfree(uniquename->data);
 	pfree(uniquename);
@@ -146,7 +159,7 @@ ExecWorkFile_Open(const char *fileName,
 	workfile->file = file;
 	workfile->fileName = pstrdup(fileName);
 	workfile->size = file_size;
-	ExecWorkfile_SetFlags(workfile);
+	ExecWorkFile_SetFlags(workfile, delOnClose, false /* created */);
 
 	return workfile;
 }
@@ -318,7 +331,7 @@ ExecWorkFile_Close(ExecWorkFile *workfile)
 				/* Flush data out to disk if we were writing */
 				int64 file_size = bfz_append_end(bfz_file);
 				/* Adjust the size with WorkfileDiskspace to our actual size */
-				ExecWorkfile_AdjustBFZSize(workfile, file_size);
+				ExecWorkFile_AdjustBFZSize(workfile, file_size);
 			}
 
 			bfz_close(bfz_file, true);
@@ -327,7 +340,9 @@ ExecWorkFile_Close(ExecWorkFile *workfile)
 			insist_log(false, "invalid work file type: %d", workfile->fileType);
 	}
 
-	int64 size = ExecWorkfile_GetSize(workfile);
+	int64 size = ExecWorkFile_GetSize(workfile);
+
+	pfree(workfile->fileName);
 	pfree(workfile);
 
 	return size;
@@ -359,7 +374,7 @@ ExecWorkFile_Seek(ExecWorkFile *workfile, uint64 offset, int whence)
 	Assert((workfile->flags & EXEC_WORKFILE_RANDOM_ACCESS) != 0);
 	int result = 0;
 
-	/* Determine if this seeks beyond EOF and adds disk size */
+	/* Determine if this seeks beyond EOF */
 	int64 additional_size = 0;
 	switch (whence)
 	{
@@ -386,7 +401,18 @@ ExecWorkFile_Seek(ExecWorkFile *workfile, uint64 offset, int whence)
 	/* Reserve disk space if needed */
 	if (additional_size > 0)
 	{
-		WorkfileDiskspace_Reserve(additional_size);
+		/*
+		 * We only allow seeking beyond EOF for files opened for writing
+		 *  (i.e. files we created)
+		 */
+		if (workfile->flags & EXEC_WORKFILE_CREATED)
+		{
+			WorkfileDiskspace_Reserve(additional_size);
+		}
+		else
+		{
+			return EOF;
+		}
 	}
 
 	/* Do the actual seek */
@@ -413,7 +439,7 @@ ExecWorkFile_Seek(ExecWorkFile *workfile, uint64 offset, int whence)
 }
 
 void
-ExecWorkfile_Flush(ExecWorkFile *workfile)
+ExecWorkFile_Flush(ExecWorkFile *workfile)
 {
 	Assert(workfile != NULL);
 	switch(workfile->fileType)
@@ -434,7 +460,7 @@ ExecWorkfile_Flush(ExecWorkFile *workfile)
  * Returns the actual size of the file on disk
  */
 int64
-ExecWorkfile_Suspend(ExecWorkFile *workfile)
+ExecWorkFile_Suspend(ExecWorkFile *workfile)
 {
 	Assert(workfile != NULL);
 	Assert((workfile->flags & EXEC_WORKFILE_SUSPENDABLE) != 0);
@@ -444,7 +470,7 @@ ExecWorkfile_Suspend(ExecWorkFile *workfile)
 	{
 	case BFZ:
 		size = bfz_append_end((bfz_t *) workfile->file);
-		ExecWorkfile_AdjustBFZSize(workfile, size);
+		ExecWorkFile_AdjustBFZSize(workfile, size);
 		break;
 	default:
 		insist_log(false, "invalid work file type: %d", workfile->fileType);
@@ -457,7 +483,7 @@ ExecWorkfile_Suspend(ExecWorkFile *workfile)
  * buffers and data structures to restart reading from the file
  */
 void
-ExecWorkfile_Restart(ExecWorkFile *workfile)
+ExecWorkFile_Restart(ExecWorkFile *workfile)
 {
 	Assert(workfile != NULL);
 	Assert((workfile->flags & EXEC_WORKFILE_SUSPENDABLE) != 0);
@@ -476,19 +502,21 @@ ExecWorkfile_Restart(ExecWorkFile *workfile)
  * Returns the size of the underlying file, as tracked by this API
  */
 int64
-ExecWorkfile_GetSize(ExecWorkFile *workfile)
+ExecWorkFile_GetSize(ExecWorkFile *workfile)
 {
 	return workfile->size;
 }
 
 /*
  * For a new workfile, sets the capabilities flags according to
- * the known underlying file type capabilities.
+ * the known underlying file type capabilities and the method the file was created
  */
 static void
-ExecWorkfile_SetFlags(ExecWorkFile *workfile)
+ExecWorkFile_SetFlags(ExecWorkFile *workfile, bool delOnClose, bool created)
 {
 	Assert(workfile != NULL);
+	/* Assert that only the creator of a file can delete it on close */
+	AssertImply(delOnClose, created);
 
 	switch(workfile->fileType)
 	{
@@ -502,6 +530,25 @@ ExecWorkfile_SetFlags(ExecWorkFile *workfile)
 	default:
 		insist_log(false, "invalid work file type: %d", workfile->fileType);
 	}
+
+	if (delOnClose)
+	{
+		workfile->flags |= EXEC_WORKFILE_DEL_ON_CLOSE;
+	}
+
+	if (created)
+	{
+		workfile->flags |= EXEC_WORKFILE_CREATED;
+		elog(gp_workfile_caching_loglevel, "Created workfile %s, delOnClose = %d",
+				ExecWorkFile_GetFileName(workfile), delOnClose);
+	}
+	else
+	{
+		elog(gp_workfile_caching_loglevel, "Opened existing workfile %s, delOnClose = %d",
+				ExecWorkFile_GetFileName(workfile), delOnClose);
+	}
+
+
 }
 
 /*
@@ -515,7 +562,7 @@ ExecWorkfile_SetFlags(ExecWorkFile *workfile)
  *  Make the necessary correction here.
  */
 static void
-ExecWorkfile_AdjustBFZSize(ExecWorkFile *workfile, int64 file_size)
+ExecWorkFile_AdjustBFZSize(ExecWorkFile *workfile, int64 file_size)
 {
 	Assert(workfile != NULL);
 
@@ -532,9 +579,12 @@ ExecWorkfile_AdjustBFZSize(ExecWorkFile *workfile, int64 file_size)
 	else
 	{
 		int64 extra_bytes = file_size - workfile->size;
-		/* Actual file on disk is bigger than expected. It must be because of checksumming uncompressed file */
+		/* Actual file on disk is bigger than expected. This can happen when:
+		 *  - added checksums to an uncompressed file
+		 *  - closing empty or very small compressed file (zlib header overhead larger than saved space)
+		 */
 		Assert(bfz_file->has_checksum);
-		Assert(bfz_file->compression_index == 0);
+		Assert( (bfz_file->compression_index == 0) || (bfz_file->compression_index > 0 && workfile->size < BFZ_BUFFER_SIZE));
 		/*
 		 * We under-reserved disk space in this case. Let's assert that it's only from checksumming.
 		 * We add one word of checksum for every BFZ_BUFFER_SIZE bytes.

@@ -16,6 +16,8 @@
 #ifndef LOGTAPE_H
 #define LOGTAPE_H
 
+#include "utils/workfile_mgr.h"
+
 typedef struct LogicalTapePos
 {
 	int64 blkNum;
@@ -33,10 +35,10 @@ typedef struct LogicalTapeSet LogicalTapeSet;
 
 extern LogicalTape *LogicalTapeCreate(LogicalTapeSet *lts, LogicalTape *lt); 
 extern LogicalTapeSet *LogicalTapeSetCreate(int ntapes, bool del_on_close);
-extern LogicalTapeSet *LogicalTapeSetCreate_Named(const char * set_prefix, int ntapes, bool del_on_close);
-extern LogicalTapeSet *LoadLogicalTapeSetState(ExecWorkFile *pfile, const char* rwfile_prefix);
+extern LogicalTapeSet *LogicalTapeSetCreate_File(ExecWorkFile *ewfile, int ntapes);
+extern LogicalTapeSet *LoadLogicalTapeSetState(ExecWorkFile *pfile, ExecWorkFile *tapefile);
 
-extern void LogicalTapeSetClose(LogicalTapeSet *lts);
+extern void LogicalTapeSetClose(LogicalTapeSet *lts, workfile_set *workset);
 extern void LogicalTapeSetForgetFreeSpace(LogicalTapeSet *lts);
 
 extern size_t LogicalTapeRead(LogicalTapeSet *lts, LogicalTape *lt, void *ptr, size_t size);

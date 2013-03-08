@@ -33,7 +33,6 @@ extern void ExecEagerFreeHashJoin(HashJoinState *node);
 
 extern void ExecHashJoinSaveFirstInnerBatch(HashJoinTable hashtable);
 extern bool ExecHashJoinLoadBucketsBatches(HashJoinTable hashtable);
-extern void ExecHashJoinSaveState(HashJoinTable hashtable);
 
 enum 
 {

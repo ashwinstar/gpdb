@@ -48,6 +48,7 @@ ExecHashTableExplainBatches(HashJoinTable   hashtable,
                             int             ibatch_begin,
                             int             ibatch_end,
                             const char     *title);
+static void ExecHashTableReallocBatchData(HashJoinTable hashtable, int new_nbatch);
 
 
 #define BLOOMVAL(hk)  (((uint64)1) << (((hk) >> 13) & 0x3f))
@@ -543,23 +544,21 @@ ExecHashTableDestroy(HashJoinTable hashtable)
 	Assert(!hashtable->eagerlyReleased);
 	
 	/*
-	 * Make sure all the temp files are closed.  We skip batch 0, since it
-	 * can't have any temp files.
+	 * Make sure all the temp files are closed.
 	 */
-	/* SFR: No longer skipping batch 0. It now has temp files. */
 	for (i = 0; i < hashtable->nbatch; i++)
 	{
 		HashJoinBatchData  *batch = hashtable->batches[i];
 
 		if (batch->innerside.workfile != NULL)
 		{
-			ExecWorkFile_Close(batch->innerside.workfile); 
+			workfile_mgr_close_file(hashtable->work_set, batch->innerside.workfile);
 			batch->innerside.workfile = NULL;
 		}
 
 		if (batch->outerside.workfile != NULL)
 		{
-			ExecWorkFile_Close(batch->outerside.workfile); 
+			workfile_mgr_close_file(hashtable->work_set, batch->outerside.workfile);
 			batch->outerside.workfile = NULL;
 		}
 	}
@@ -567,7 +566,7 @@ ExecHashTableDestroy(HashJoinTable hashtable)
 	/* Close state file as well */
 	if (hashtable->state_file != NULL)
 	{
-		ExecWorkFile_Close(hashtable->state_file);
+		workfile_mgr_close_file(hashtable->work_set, hashtable->state_file);
 		hashtable->state_file = NULL;
 	}
 
@@ -610,6 +609,10 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 
 	nbatch = oldnbatch * 2;
 	Assert(nbatch > 1);
+
+#ifdef HJDEBUG
+	elog(LOG, "Increasing number of batches from %d to %d", oldnbatch, nbatch);
+#endif
 
 	{
 		/* Print a warning for the extreme bad cases. */
@@ -741,7 +744,7 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 /*
  * Re-allocate the batch data array when the number of batches increases
  */
-void
+static void
 ExecHashTableReallocBatchData(HashJoinTable hashtable, int new_nbatch)
 {
 
@@ -761,16 +764,16 @@ ExecHashTableReallocBatchData(HashJoinTable hashtable, int new_nbatch)
 
 	/* one BatchData entry per additional batch */
 	for (i = old_nbatch; i < new_nbatch; i++)
+	{
 		hashtable->batches[i] =
 			(HashJoinBatchData *)palloc0(sizeof(HashJoinBatchData));
+	}
 
 	/* EXPLAIN ANALYZE batch statistics */
 	HashJoinTableStats *stats = hashtable->stats;
-	if (stats &&
-			stats->nbatchstats < new_nbatch)
+	if (stats && stats->nbatchstats < new_nbatch)
 	{
-		Size sz;
-		sz = new_nbatch * sizeof(stats->batchstats[0]);
+		Size sz = new_nbatch * sizeof(stats->batchstats[0]);
 		stats->batchstats =
 			(HashJoinBatchStats *)repalloc(stats->batchstats, sz);
 		sz = (new_nbatch - stats->nbatchstats) * sizeof(stats->batchstats[0]);

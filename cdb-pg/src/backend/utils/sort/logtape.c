@@ -111,6 +111,7 @@ static void ltsWriteBlock(LogicalTapeSet *lts, int64 blocknum, void *buffer);
 static void ltsReadBlock(LogicalTapeSet *lts, int64 blocknum, void *buffer);
 static long ltsGetFreeBlock(LogicalTapeSet *lts);
 static void ltsReleaseBlock(LogicalTapeSet *lts, int64 blocknum);
+static LogicalTapeSet *LogicalTapeSetCreate_Named(const char *set_prefix, int ntapes, bool del_on_close);
 
 /*
  * Writes state of a LogicalTapeSet to a state file
@@ -129,31 +130,21 @@ static void DumpLogicalTapeSetState(ExecWorkFile *statefile, LogicalTapeSet *lts
 /*
  * Loads the state of a LogicaTapeSet from a BufFile
  *
- *   statefile is an open BufFile containing the state of the LogicalTapeSet
- *   rwfile_prefix is the path to the tape file with the data. The pgsql_tmp/
- *    directory prefix must be part of the rwfile_prefix
+ *   statefile is an open ExecWorkFile containing the state of the LogicalTapeSet
+ *   tapefile is an open ExecWorkfile containing the tapeset
  */
-LogicalTapeSet *LoadLogicalTapeSetState(ExecWorkFile *statefile, const char* rwfile_prefix)
+LogicalTapeSet *
+LoadLogicalTapeSetState(ExecWorkFile *statefile, ExecWorkFile *tapefile)
 {
-	Assert(statefile != NULL);
+	Assert(NULL != statefile);
+	Assert(NULL != tapefile);
 
 	LogicalTapeSet *lts;
 	LogicalTape *lt;
 	size_t readSize;
 
 	lts = (LogicalTapeSet *) palloc(sizeof(LogicalTapeSet));
-
-	lts->pfile = ExecWorkFile_Open(rwfile_prefix,
-			BUFFILE,
-			false /* delOnClose */,
-			0 /* compressType */);
-
-
-	if (lts->pfile == NULL)
-	{
-		elog(ERROR, "could not open temporary file for reading \"%s\": %m", rwfile_prefix);
-	}
-
+	lts->pfile = tapefile;
 	lts->nTapes = 1;
 	lt = &lts->tapes[0];
 
@@ -373,14 +364,18 @@ LogicalTapeSetCreate_Internal(int ntapes)
 LogicalTapeSet *LogicalTapeSetCreate(int ntapes, bool del_on_close)
 {
 	char tmpprefix[MAXPGPATH];
-	/* FIXME Make sure this is unique */
-
 	int len = snprintf(tmpprefix, MAXPGPATH, "%s/slice%d_sort",
 			PG_TEMP_FILES_DIR,
 			currentSliceId);
 	insist_log(len <= MAXPGPATH - 1, "could not generate temporary file name");
+	StringInfo uniquename = ExecWorkFile_AddUniqueSuffix(tmpprefix);
 
-	return LogicalTapeSetCreate_Named(tmpprefix, ntapes, del_on_close);
+	LogicalTapeSet *lts = LogicalTapeSetCreate_Named(uniquename->data, ntapes, del_on_close);
+
+	pfree(uniquename->data);
+	pfree(uniquename);
+
+	return lts;
 }
 
 /*
@@ -388,7 +383,8 @@ LogicalTapeSet *LogicalTapeSetCreate(int ntapes, bool del_on_close)
  *
  * Note: Requires the pgsql_tmp/ directory to be part of the prefix
  */
-LogicalTapeSet *LogicalTapeSetCreate_Named(const char *set_prefix, int ntapes, bool del_on_close)
+static LogicalTapeSet *
+LogicalTapeSetCreate_Named(const char *set_prefix, int ntapes, bool del_on_close)
 {
 	LogicalTapeSet *lts = LogicalTapeSetCreate_Internal(ntapes);
 	lts->pfile = ExecWorkFile_Create(set_prefix, BUFFILE, del_on_close, 0 /* compressType */);
@@ -396,13 +392,23 @@ LogicalTapeSet *LogicalTapeSetCreate_Named(const char *set_prefix, int ntapes, b
 }
 
 /*
+ * Creates a LogicalTapeSet with a given underlying file
+ */
+LogicalTapeSet *LogicalTapeSetCreate_File(ExecWorkFile *ewfile, int ntapes)
+{
+	LogicalTapeSet *lts = LogicalTapeSetCreate_Internal(ntapes);
+	lts->pfile = ewfile;
+	return lts;
+}
+
+/*
  * Close a logical tape set and release all resources.
  */
 void
-LogicalTapeSetClose(LogicalTapeSet *lts)
+LogicalTapeSetClose(LogicalTapeSet *lts, workfile_set *workset)
 {
 	Assert(lts != NULL);
-	ExecWorkFile_Close(lts->pfile);
+	workfile_mgr_close_file(workset, lts->pfile);
 	if(lts->freeBlocks)
 		pfree(lts->freeBlocks);
 	pfree(lts);
@@ -621,7 +627,7 @@ LogicalTapeFlush(LogicalTapeSet *lts, LogicalTape *lt, ExecWorkFile *pstatefile)
 	Assert(lts && lts->pfile);
 	Assert(lt->frozen);
 
-	ExecWorkfile_Flush(lts->pfile);
+	ExecWorkFile_Flush(lts->pfile);
 	DumpLogicalTapeSetState(pstatefile, lts, lt);
 }
 

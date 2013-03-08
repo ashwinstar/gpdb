@@ -773,7 +773,12 @@ tuplesort_begin_heap_file_readerwriter(
 				false /* delOnClose */,
 				0 /* compressType */);
 
-		state->tapeset = LoadLogicalTapeSetState(state->pfile_rwfile_state, full_prefix);
+		ExecWorkFile *tapefile = ExecWorkFile_Open(full_prefix,
+				BUFFILE,
+				false /* delOnClose */,
+				0 /* compressType */);
+
+		state->tapeset = LoadLogicalTapeSetState(state->pfile_rwfile_state, tapefile);
 		state->currentRun = 0;
 		state->result_tape = LogicalTapeSetGetTape(state->tapeset, 0);
 
@@ -891,11 +896,11 @@ tuplesort_end(Tuplesortstate *state)
 	 */
 	if (state->tapeset)
 	{
-		LogicalTapeSetClose(state->tapeset);
+		LogicalTapeSetClose(state->tapeset, NULL /* workset */);
 
 		if (state->pfile_rwfile_state)
         {
-        	ExecWorkFile_Close(state->pfile_rwfile_state);
+			workfile_mgr_close_file(NULL /* workset */, state->pfile_rwfile_state);
         }
 	}
 
@@ -1317,7 +1322,7 @@ void tuplesort_flush(Tuplesortstate *state)
 	Assert(state->tapeset && state->pfile_rwfile_state);
 	Assert(state->pos.cur_work_tape == NULL);
 	LogicalTapeFlush(state->tapeset, state->result_tape, state->pfile_rwfile_state);
-	ExecWorkfile_Flush(state->pfile_rwfile_state);
+	ExecWorkFile_Flush(state->pfile_rwfile_state);
 }
 
 /*
@@ -1657,14 +1662,17 @@ inittapes(Tuplesortstate *state, const char* rwfile_prefix)
 	 * Create the tape set and allocate the per-tape data arrays.
 	 */
 	if(!rwfile_prefix){
-		bool del_on_close = true;
-		state->tapeset = LogicalTapeSetCreate(maxTapes, del_on_close);
+		state->tapeset = LogicalTapeSetCreate(maxTapes, true /* del_on_close */);
 	}
 	else
 	{
-		state->tapeset = LogicalTapeSetCreate_Named(rwfile_prefix,
-				maxTapes,
-				true /* del_on_close */);
+		/* We are shared XSLICE, use given prefix to create files so that consumers can find them */
+    	ExecWorkFile *tape_file = ExecWorkFile_Create(rwfile_prefix,
+    			BUFFILE,
+    			true /* delOnClose */,
+    			0 /* compressType */);
+
+		state->tapeset = LogicalTapeSetCreate_File(tape_file, maxTapes);
 	}
 
 	state->mergeactive = (bool *) palloc0(maxTapes * sizeof(bool));

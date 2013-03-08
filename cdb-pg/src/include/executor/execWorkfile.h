@@ -32,6 +32,12 @@ typedef enum ExecWorkFileType
 /* File supports suspend/restart capabilities */
 #define EXEC_WORKFILE_SUSPENDABLE 0x2
 
+/* File is marked for automatic deletion upon close */
+#define EXEC_WORKFILE_DEL_ON_CLOSE 0x4
+
+/* File was created by us */
+#define EXEC_WORKFILE_CREATED 0x8
+
 /* 
  * ExecWorkFile structure.
  */
@@ -64,6 +70,9 @@ ExecWorkFile_CreateUnique(const char *filename,
 		ExecWorkFileType fileType,
 		bool delOnClose,
 		int compressType);
+
+StringInfo
+ExecWorkFile_AddUniqueSuffix(const char *filename);
 
 ExecWorkFile *
 ExecWorkFile_Open(const char *fileName,
@@ -121,10 +130,10 @@ int64
 ExecWorkFile_Close(ExecWorkFile *workfile);
 
 int ExecWorkFile_Seek(ExecWorkFile *workfile, uint64 offset, int whence);
-void ExecWorkfile_Flush(ExecWorkFile *workfile);
-int64 ExecWorkfile_GetSize(ExecWorkFile *workfile);
-int64 ExecWorkfile_Suspend(ExecWorkFile *workfile);
-void ExecWorkfile_Restart(ExecWorkFile *workfile);
+void ExecWorkFile_Flush(ExecWorkFile *workfile);
+int64 ExecWorkFile_GetSize(ExecWorkFile *workfile);
+int64 ExecWorkFile_Suspend(ExecWorkFile *workfile);
+void ExecWorkFile_Restart(ExecWorkFile *workfile);
 
 void WorkfileDiskspace_Init(void);
 Size WorkfileDiskspace_ShMemSize(void);

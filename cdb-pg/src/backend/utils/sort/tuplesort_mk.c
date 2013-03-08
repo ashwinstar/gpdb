@@ -359,9 +359,12 @@ struct Tuplesortstate_mk
 	long arraySizeBeforeSpill; /* the value for entry_allocsize at the time of spilling */
 
     /* 
-     * File for dump/load logical tape set state.  Used by sharing sort across slice
+     * File for dump/load logical tape set.  Used by sharing sort across slice
      */
-    char    *tapeset_state_file_prefix;
+    char    *tapeset_file_prefix;
+    /*
+     * State file used to load a logical tape set. Used by sharing sort across slice
+     */
     ExecWorkFile *tapeset_state_file;
 
     /* Gpmon */
@@ -791,7 +794,7 @@ tuplesort_begin_heap_file_readerwriter_mk(ScanState *ss,
          */
         state = tuplesort_begin_heap_mk(ss, tupDesc, nkeys, sortOperators, attNums, workMem, randomAccess);
 
-        state->tapeset_state_file_prefix = MemoryContextStrdup(state->sortcontext, full_prefix);
+        state->tapeset_file_prefix = MemoryContextStrdup(state->sortcontext, full_prefix);
 
 		state->tapeset_state_file = ExecWorkFile_Create(statedump,
 				BUFFILE,
@@ -819,15 +822,18 @@ tuplesort_begin_heap_file_readerwriter_mk(ScanState *ss,
 
         oldctxt = MemoryContextSwitchTo(state->sortcontext);
 
-        state->tapeset_state_file_prefix = MemoryContextStrdup(state->sortcontext, full_prefix);
-        /* TODO Make sure the names are unique, since we don't use CreateTemp anymore */
+        state->tapeset_file_prefix = MemoryContextStrdup(state->sortcontext, full_prefix);
 
         state->tapeset_state_file = ExecWorkFile_Open(statedump,
        				BUFFILE,
        				false /* delOnClose */,
        				0 /* compressType */);
+        ExecWorkFile *tapefile = ExecWorkFile_Open(full_prefix,
+        		BUFFILE,
+        		false /* delOnClose */,
+        		0 /* compressType */);
 
-        state->tapeset = LoadLogicalTapeSetState(state->tapeset_state_file, full_prefix);
+        state->tapeset = LoadLogicalTapeSetState(state->tapeset_state_file, tapefile);
         state->currentRun = 0;
         state->result_tape = LogicalTapeSetGetTape(state->tapeset, 0);
 
@@ -952,12 +958,12 @@ tuplesort_end_mk(Tuplesortstate_mk *state)
      */
     if (state->tapeset)
     {
-        LogicalTapeSetClose(state->tapeset);
+        LogicalTapeSetClose(state->tapeset, state->work_set);
         state->tapeset = NULL;
 
         if (state->tapeset_state_file)
         {
-        	ExecWorkFile_Close(state->tapeset_state_file);
+        	workfile_mgr_close_file(state->work_set, state->tapeset_state_file);
         }
     }
 
@@ -1222,7 +1228,7 @@ puttuple_common(Tuplesortstate_mk *state, MKEntry *e)
             		Assert(state->entry_count > 0);
             		state->arraySizeBeforeSpill = state->entry_allocsize;
             		state->memUsedBeforeSpill = MemoryContextGetPeakSpace(state->sortcontext);
-            		inittapes_mk(state, is_sortstate_rwfile(state) ? state->tapeset_state_file_prefix : NULL);
+            		inittapes_mk(state, is_sortstate_rwfile(state) ? state->tapeset_file_prefix : NULL);
             		Assert(state->status == TSS_BUILDRUNS);
             	}
 
@@ -1282,7 +1288,7 @@ tuplesort_performsort_mk(Tuplesortstate_mk *state)
                 break;
 
             /* Shareinput sort, need to put this stuff onto disk */
-            inittapes_mk(state, state->tapeset_state_file_prefix);
+            inittapes_mk(state, state->tapeset_file_prefix);
             /* Fall through */
         case TSS_BUILDRUNS:
 
@@ -1334,7 +1340,7 @@ void tuplesort_flush_mk(Tuplesortstate_mk *state)
     Assert(state->pos.cur_work_tape == NULL);
     elog(gp_workfile_caching_loglevel, "tuplesort_mk: writing logical tape state to file");
     LogicalTapeFlush(state->tapeset, state->result_tape, state->tapeset_state_file);
-    ExecWorkfile_Flush(state->tapeset_state_file);
+    ExecWorkFile_Flush(state->tapeset_state_file);
 }
 
 /*
@@ -1707,11 +1713,6 @@ inittapes_mk(Tuplesortstate_mk *state, const char* rwfile_prefix)
     	ps = &state->ss->ps;
     	can_be_reused = true;
     }
-    else
-    {
-    	ps = NULL;
-    	can_be_reused = false;
-    }
 
     /*
      * Create the tape set and allocate the per-tape data arrays.
@@ -1719,32 +1720,20 @@ inittapes_mk(Tuplesortstate_mk *state, const char* rwfile_prefix)
     if(!rwfile_prefix)
     {
         state->work_set = workfile_mgr_create_set(BUFFILE, can_be_reused, ps, NULL_SNAPSHOT);
+        state->tapeset_state_file = workfile_mgr_create_fileno(state->work_set, WORKFILE_NUM_MKSORT_METADATA);
 
-    	char metadata_file_name[MAXPGPATH];
-    	workfile_mgr_retrieve_file_no(state->work_set, WORKFILE_NUM_MKSORT_METADATA,
-    			metadata_file_name, sizeof(metadata_file_name));
-    	bool del_on_close = !gp_workfile_caching;
-    	state->tapeset_state_file = ExecWorkFile_Create(metadata_file_name,
-    			BUFFILE,
-    			del_on_close,
-    			0 /* compressType */);
-
-    	char tape_file_name[MAXPGPATH];
-    	workfile_mgr_retrieve_file_no(state->work_set, WORKFILE_NUM_MKSORT_TAPESET,
-    			tape_file_name, sizeof(tape_file_name));
-        state->tapeset = LogicalTapeSetCreate_Named(tape_file_name, maxTapes, del_on_close);
+        ExecWorkFile *tape_file = workfile_mgr_create_fileno(state->work_set, WORKFILE_NUM_MKSORT_TAPESET);
+        state->tapeset = LogicalTapeSetCreate_File(tape_file, maxTapes);
     }
     else
     {
-    	/*
-    	 * TODO Make sure the name coming in rwfile_prefix is unique, because
-    	 * we don't add a random suffix anymore in Buffile
-    	 */
+    	/* We are shared XSLICE, use given prefix to create files so that consumers can find them */
+    	ExecWorkFile *tape_file = ExecWorkFile_Create(rwfile_prefix,
+    			BUFFILE,
+    			true /* delOnClose */,
+    			0 /* compressType */);
 
-    	state->tapeset = LogicalTapeSetCreate_Named(rwfile_prefix,
-    			maxTapes,
-    			true /* del_on_close */
-    			);
+    	state->tapeset = LogicalTapeSetCreate_File(tape_file, maxTapes);
     }
 
     state->mergeactive = (bool *) palloc0(maxTapes * sizeof(bool));
@@ -1896,8 +1885,8 @@ mergeruns(Tuplesortstate_mk *state)
          * tape, we can stop at this point and do the final merge on-the-fly.
          */
 
-    	/* For now, if workfile caching is enabled, always do the final merging
-    	 * and store the sorted result on disk, instead of stoping before the
+    	/* If workfile caching is enabled, always do the final merging
+    	 * and store the sorted result on disk, instead of stopping before the
     	 * last merge iteration.
     	 * This can cause some slowdown compared to no workfile caching, but
     	 * it enables us to re-use the mechanism to dump and restore logical
@@ -3541,29 +3530,18 @@ void tuplesort_read_spill_metadata_mk(Tuplesortstate_mk *state)
 	MemoryContext oldctxt = MemoryContextSwitchTo(state->sortcontext);
 
     state->status = TSS_SORTEDONTAPE;
-
-    /* TODO This should be set to the same value as when we wrote the set (maybe add to metadata?) -- or force to true when caching is enabled. */
-    /* state->randomAccess = true; */
     state->readtup = readtup_heap;
 
 	/* Open saved spill file set and metadata.
 	 * Initialize logical tape set to point to the right blocks.  */
-	char metadata_file_name[MAXPGPATH];
-	workfile_mgr_retrieve_file_no(state->work_set, WORKFILE_NUM_MKSORT_METADATA, metadata_file_name, MAXPGPATH);
+    state->tapeset_state_file = workfile_mgr_open_fileno(state->work_set, WORKFILE_NUM_MKSORT_METADATA);
+	ExecWorkFile *tape_file = workfile_mgr_open_fileno(state->work_set, WORKFILE_NUM_MKSORT_TAPESET);
 
-	state->tapeset_state_file = ExecWorkFile_Open(metadata_file_name,
-			BUFFILE,
-			false, /* delOnClose */
-			0 /* compressType */);
-
-	char tape_file_name[MAXPGPATH];
-	workfile_mgr_retrieve_file_no(state->work_set, WORKFILE_NUM_MKSORT_TAPESET, tape_file_name, MAXPGPATH);
-
-    state->tapeset = LoadLogicalTapeSetState(state->tapeset_state_file, tape_file_name);
+	state->tapeset = LoadLogicalTapeSetState(state->tapeset_state_file, tape_file);
     state->currentRun = 0;
     state->result_tape = LogicalTapeSetGetTape(state->tapeset, 0);
 
-    state->pos.eof_reached =false;
+    state->pos.eof_reached = false;
     state->pos.markpos.tapepos.blkNum = 0;
     state->pos.markpos.tapepos.offset = 0;
     state->pos.markpos.mempos = 0;

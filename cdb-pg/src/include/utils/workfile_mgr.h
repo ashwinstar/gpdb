@@ -18,7 +18,7 @@
 #include "nodes/execnodes.h"
 #include "utils/timestamp.h"
 
-#define	WORKFILE_SET_PREFIX "spillfile_set"
+#define	WORKFILE_SET_PREFIX "workfile_set"
 
 /* Fixed workfile numbers common for all operators */
 #define WORKFILE_NUM_ALL_PLAN 0
@@ -80,6 +80,9 @@ typedef struct workfile_set
 	/* Number of files in set */
 	uint32 no_files;
 
+	/* Size in bytes of the files in this workfile set */
+	int64 size;
+
 	/* Prefix of files in the workfile set */
 	char path[MAXPGPATH];
 
@@ -119,11 +122,6 @@ typedef struct workfile_set
 	/* Set to true during operator execution once set is complete */
 	bool complete;
 
-	/*
-	 * Pointer to the next workfile_set in the list of active workfile_sets
-	 * registered for cleanup. Unused when the set is in shared memory.
-	 */
-	struct workfile_set *next;
 } workfile_set;
 
 /* Workfile Set operations */
@@ -131,9 +129,6 @@ workfile_set *workfile_mgr_create_set(enum ExecWorkFileType type, bool can_be_re
 		PlanState *ps, workfile_set_snapshot snapshot);
 workfile_set *workfile_mgr_find_set(PlanState *ps);
 void workfile_mgr_close_set(workfile_set *work_set);
-void workfile_mgr_create_file(workfile_set *work_set, char * sf_name, uint32 sf_name_len);
-void workfile_mgr_retrieve_file_no(workfile_set *work_set, uint32 file_no, char *workfile_name, uint32 workfile_name_len);
-void workfile_mgr_cleanup_files(const char *tmpdirname);
 void workfile_mgr_cleanup(void);
 bool workfile_mgr_can_reuse(workfile_set *work_set, PlanState *ps);
 Size workfile_mgr_shmem_size(void);
@@ -141,6 +136,12 @@ void workfile_mgr_cache_init(void);
 void workfile_mgr_mark_complete(workfile_set *work_set);
 Cache *workfile_mgr_get_cache(void);
 int32 workfile_mgr_clear_cache(void);
+
+ExecWorkFile *workfile_mgr_create_file(workfile_set *work_set);
+ExecWorkFile *workfile_mgr_create_fileno(workfile_set *work_set, uint32 file_no);
+ExecWorkFile *workfile_mgr_open_fileno(workfile_set *work_set, uint32 file_no);
+ExecWorkFile *workfile_mgr_open_filename(workfile_set *work_set, const char *file_name);
+void workfile_mgr_close_file(workfile_set *work_set, ExecWorkFile *file);
 
 /* Serialization functions */
 void outfuncs_workfile_mgr_init(List *rtable);

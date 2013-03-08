@@ -20,6 +20,7 @@
 #include "utils/memutils.h"
 #include "postmaster/primary_mirror_mode.h"
 #include "libpq/libpq.h"
+#include "utils/debugbreak.h"
 
 #include "utils/lsyscache.h"
 #include "catalog/pg_proc.h"
@@ -102,43 +103,6 @@ workfile_mgr_shmem_size(void)
 }
 
 
-/*
- *  Retrieves the name of the file_no file in the workset. If the file was not
- * 	already in the work_set, it is added.
- * 	This can create gaps in the work_set if file_no > work_set->no_files.
- *
- *  workfile_name is allocated by the caller. It will contain the name for
- *  the new file.
- */
-void
-workfile_mgr_retrieve_file_no(workfile_set *work_set, uint32 file_no, char *workfile_name, uint32 workfile_name_len)
-{
-	Assert(work_set);
-	Assert(workfile_name);
-
-	if (file_no >= work_set->no_files)
-	{
-		/* Retrieving file beyond the end of the set. Adjusting the size of the set */
-		work_set->no_files = file_no + 1;
-
-	}
-	snprintf(workfile_name, workfile_name_len,
-			"%s/spillfile_f%u", work_set->path, file_no);
-}
-
-/*
- *   Creates a new file in a spill file set.
- *   workfile_name is allocated by the caller. It will contain the name for
- *   the new file.
- */
-void
-workfile_mgr_create_file(workfile_set *work_set, char *workfile_name, uint32 workfile_name_len)
-{
-	Assert(work_set);
-	Assert(workfile_name);
-	work_set->no_files++;
-	workfile_mgr_retrieve_file_no(work_set, work_set->no_files - 1, workfile_name, workfile_name_len);
-}
 
 /*
  * Retrieves the operator name.
@@ -200,7 +164,7 @@ workfile_mgr_create_set(enum ExecWorkFileType type, bool can_be_reused, PlanStat
 
 	work_set->complete = false;
 	work_set->no_files = 0;
-	work_set->next = NULL;
+	work_set->size = 0L;
 	work_set->metadata.type = type;
 	work_set->metadata.bfz_compress_type = gp_workfile_compress_algorithm;
 	work_set->metadata.snapshot = snapshot;
@@ -591,9 +555,13 @@ workfile_mgr_cleanup_set(const void *resource)
 
 	if (work_set->on_disk)
 	{
-		elog(gp_workfile_caching_loglevel, "workfile mgr cleanup deleting set: key=0x%0xd path=%s", work_set->key, work_set->path);
+		elog(gp_workfile_caching_loglevel, "workfile mgr cleanup deleting set: key=0x%0xd, size=" INT64_FORMAT " path=%s",
+				work_set->key, work_set->size, work_set->path);
 		Assert(NULL == work_set->set_plan);
 		workfile_mgr_delete_set_directory(work_set->path);
+
+		elog(gp_workfile_caching_loglevel, "Subtracting " INT64_FORMAT " from workfile diskspace", work_set->size);
+		WorkfileDiskspace_Commit(0, work_set->size);
 	}
 	else
 	{
@@ -615,8 +583,8 @@ workfile_mgr_close_set(workfile_set *work_set)
 {
 	Assert(work_set!=NULL);
 
-	elog(gp_workfile_caching_loglevel, "closing workfile set: can_be_reused=%d complete=%d location: %s",
-		 work_set->can_be_reused, work_set->complete, work_set->path);
+	elog(gp_workfile_caching_loglevel, "closing workfile set: can_be_reused=%d complete=%d location: %s, size=" INT64_FORMAT,
+		 work_set->can_be_reused, work_set->complete, work_set->path, work_set->size);
 
 	CacheEntry *cache_entry = CACHE_ENTRY_HEADER(work_set);
 
@@ -629,6 +597,9 @@ workfile_mgr_close_set(workfile_set *work_set)
 
 	if (work_set->complete && work_set->can_be_reused)
 	{
+		/* Updated cache entry size to the size of the set in MB */
+		cache_entry->size = work_set->size >> 20;
+
 		/* We want to keep this one around. Insert into cache */
 		Cache_Insert(workfile_mgr_cache, cache_entry);
 		Cache_Release(workfile_mgr_cache, cache_entry);
@@ -636,13 +607,11 @@ workfile_mgr_close_set(workfile_set *work_set)
 	}
 
 
-	Assert(!work_set->complete || !work_set->can_be_reused);
 	/*
-	 * Fall-through case:
-	 * We need to delete this work_set, as it's not reusable. Leave it registered and
-	 * don't do anything here. We don't know if the files are all closed, so wait
-	 * until EOXact to actually remove the files part of clean-up.
+	 * Fall-through case: We need to delete this work_set, as it's not reusable.
 	 */
+	Assert(!work_set->complete || !work_set->can_be_reused);
+	Cache_Release(workfile_mgr_cache, cache_entry);
 }
 
 /*
@@ -660,44 +629,6 @@ void workfile_mgr_mark_complete(workfile_set *work_set)
 	Assert(!work_set->complete);
 
 	work_set->complete = true;
-}
-
-/*
- * Deletes all directories containing workfile sets under tmpdirname
- */
-void
-workfile_mgr_cleanup_files(const char *tmpdirname)
-{
-	DIR	*temp_dir = AllocateDir(tmpdirname);
-	if (temp_dir == NULL)
-	{
-		/* anything except ENOENT is fishy */
-		if (errno != ENOENT)
-			elog(LOG,
-				 "could not open temporary-files directory \"%s\": %m",
-				 tmpdirname);
-		return;
-	}
-
-	struct dirent *temp_de;
-	while ((temp_de = ReadDir(temp_dir, tmpdirname)) != NULL)
-	{
-
-		if (strcmp(temp_de->d_name, ".") == 0 ||
-			strcmp(temp_de->d_name, "..") == 0)
-		{
-			continue;
-		}
-
-		if (strncmp(temp_de->d_name, WORKFILE_SET_PREFIX, strlen(WORKFILE_SET_PREFIX)) == 0)
-		{
-			char dirbuf[MAXPGPATH];
-			snprintf(dirbuf, MAXPGPATH, "%s/%s", tmpdirname, temp_de->d_name);
-			workfile_mgr_unlink_directory(dirbuf);
-		}
-	}
-
-	FreeDir(temp_dir);
 }
 
 /*
@@ -781,23 +712,17 @@ workfile_mgr_save_plan(workfile_set *work_set, workfile_set_plan *sf_plan)
 	Assert(work_set);
 	Assert(sf_plan);
 
-	char filename[MAXPGPATH];
-	workfile_mgr_retrieve_file_no(work_set, WORKFILE_NUM_ALL_PLAN,
-			filename, sizeof(filename));
+	ExecWorkFile *plan_file = workfile_mgr_create_fileno(work_set, WORKFILE_NUM_ALL_PLAN);
+	insist_log(plan_file != NULL, "Could not create temporary work file: %m");
 
-	elog(gp_workfile_caching_loglevel, "Saving query plan to file %s", filename);
+	elog(gp_workfile_caching_loglevel, "Saving query plan to file %s", ExecWorkFile_GetFileName(plan_file));
 
-	ExecWorkFile *plan_file = ExecWorkFile_Create(filename,
-			WORKFILE_PLAN_FILE_TYPE,
-			false /* delOnClose */,
-			work_set->metadata.bfz_compress_type);
-	insist_log(plan_file != NULL, "Could not write to temporary work file: %m");
 
 	bool res = ExecWorkFile_Write(plan_file, sf_plan->serialized_plan,
 			sf_plan->serialized_plan_len);
 	insist_log(res, "Could not write to temporary work file: %m");
 
-	ExecWorkFile_Close(plan_file);
+	workfile_mgr_close_file(work_set, plan_file);
 }
 
 /*
@@ -836,15 +761,9 @@ workfile_mgr_compare_plan(workfile_set *work_set, workfile_set_plan *sf_plan)
 	Assert(NULL != work_set);
 	Assert(NULL != sf_plan);
 
-	char filename[MAXPGPATH];
-	workfile_mgr_retrieve_file_no(work_set, WORKFILE_NUM_ALL_PLAN, filename, sizeof(filename));
-
-	elog(gp_workfile_caching_loglevel, "Loading and comparing query plan from file %s", filename);
-
-	ExecWorkFile *plan_file = ExecWorkFile_Open(filename,
-			WORKFILE_PLAN_FILE_TYPE,
-			false /*delOnClose */,
-			work_set->metadata.bfz_compress_type);
+	ExecWorkFile *plan_file = workfile_mgr_open_fileno(work_set, WORKFILE_NUM_ALL_PLAN);
+	elog(gp_workfile_caching_loglevel, "Loading and comparing query plan from file %s",
+			ExecWorkFile_GetFileName(plan_file));
 
 	if (plan_file == NULL)
 	{
@@ -890,7 +809,7 @@ workfile_mgr_compare_plan(workfile_set *work_set, workfile_set_plan *sf_plan)
 		plan_offset += size_read;
 	}
 
-	ExecWorkFile_Close(plan_file);
+	workfile_mgr_close_file(work_set, plan_file);
 	return match;
 }
 

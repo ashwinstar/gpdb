@@ -41,6 +41,8 @@ static bool ExecHashJoinLoadBatchFiles(HashJoinTable hashtable);
 
 static void ReleaseHashTable(HashJoinState *node);
 static void ExecHashJoinResetWorkfileState(HashJoinState *node);
+static void ExecHashJoinSaveState(HashJoinTable hashtable);
+
 
 /* ----------------------------------------------------------------
  *		ExecHashJoin
@@ -890,7 +892,9 @@ start_over:
 		{
 			batch = hashtable->batches[curbatch];
 			if (batch->outerside.workfile != NULL)
-				ExecWorkFile_Close(batch->outerside.workfile);
+			{
+				workfile_mgr_close_file(hashtable->work_set, batch->outerside.workfile);
+			}
 			batch->outerside.workfile = NULL;
 		}
 	}
@@ -932,13 +936,13 @@ start_over:
 		/* Release associated temp files right away. */
 		if (batch->innerside.workfile != NULL)
 		{
-			ExecWorkFile_Close(batch->innerside.workfile);
+			workfile_mgr_close_file(hashtable->work_set, batch->innerside.workfile);
 		}
 		batch->innerside.workfile = NULL;
 		
 		if (batch->outerside.workfile != NULL)
 		{
-			ExecWorkFile_Close(batch->outerside.workfile);
+			workfile_mgr_close_file(hashtable->work_set, batch->outerside.workfile);
 		}
 		batch->outerside.workfile = NULL;
 
@@ -1009,7 +1013,7 @@ start_over:
 				hashtable->stats->batchstats[curbatch].innerfilesize =
 						ExecWorkFile_Tell64(hashtable->batches[curbatch]->innerside.workfile);
 			}
-			ExecWorkFile_Close(batch->innerside.workfile);
+			workfile_mgr_close_file(hashtable->work_set, batch->innerside.workfile);
 			batch->innerside.workfile = NULL;
 		}
     }
@@ -1069,41 +1073,25 @@ ExecHashJoinSaveTuple(PlanState *ps, MemTuple tuple, uint32 hashvalue,
 				&hashtable->hjstate->js.ps,
 				NULL_SNAPSHOT);
 
-		/* First time spilling. Before creating any spill files, create a
-		 * metadata file, so it gets the first name.
-		 */
+		/* First time spilling. Before creating any spill files, create a metadata file */
+		hashtable->state_file = workfile_mgr_create_fileno(hashtable->work_set, WORKFILE_NUM_HASHJOIN_METADATA);
+		elog(gp_workfile_caching_loglevel, "created state file %s", ExecWorkFile_GetFileName(hashtable->state_file));
 
-		char file_name[MAXPGPATH];
-		workfile_mgr_retrieve_file_no(hashtable->work_set, WORKFILE_NUM_HASHJOIN_METADATA, file_name, sizeof(file_name));
-
-		bool del_on_close = !gp_workfile_caching;
-		hashtable->state_file = ExecWorkFile_Create(file_name,
-				hashtable->work_set->metadata.type,
-				del_on_close,
-				hashtable->work_set->metadata.bfz_compress_type);
-		elog(gp_workfile_caching_loglevel, "created state file %s", file_name);
 		MemoryContextSwitchTo(oldcxt);
 	}
 
 	if (batchside->workfile == NULL)
 	{
-		char file_name[MAXPGPATH];
 		MemoryContext   oldcxt;
-		/* First write to this batch file, so open it. */
 		oldcxt = MemoryContextSwitchTo(bfCxt);
-		bool del_on_close = !gp_workfile_caching;
 
+		/* First write to this batch file, so create it */
 		Assert(hashtable->work_set != NULL);
-		workfile_mgr_create_file(hashtable->work_set, file_name, sizeof(file_name));
+		batchside->workfile = workfile_mgr_create_file(hashtable->work_set);
 		
-		/* Allow clients to select BUFFILE
-		 * instead of BFZ using GUC gp_workfile_type_hashjoin */
-		batchside->workfile = ExecWorkFile_Create(file_name,
-				hashtable->work_set->metadata.type,
-				del_on_close,
-				hashtable->work_set->metadata.bfz_compress_type);
 		elog(gp_workfile_caching_loglevel, "create batch file %s with gp_workfile_compress_algorithm=%d",
-			 file_name, hashtable->work_set->metadata.bfz_compress_type);
+			 ExecWorkFile_GetFileName(batchside->workfile),
+			 hashtable->work_set->metadata.bfz_compress_type);
 
 		MemoryContextSwitchTo(oldcxt);
 	}
@@ -1415,13 +1403,14 @@ ExecHashJoinSaveFirstInnerBatch(HashJoinTable hashtable)
 	}
 }
 
+/* Writing a string to a Workfile.
+ * Format: [length|string]
+ * This must be the same format used in ExecHashJoinReadStringStateFile.
+ * Terminating null character is not written to disk
+ */
 static bool
-ExecHashJoinWriteStringWorkFile(ExecWorkFile *workfile, const char *str)
+WriteStringWorkFile(ExecWorkFile *workfile, const char *str)
 {
-	/* Writing a string to a Workfile.
-	 * Format: [length|string]
-	 * This must be the same format used in ExecHashJoinReadStringStateFile.
-	 */
 	bool res = false;
 	size_t slen = strlen(str);
 
@@ -1431,32 +1420,21 @@ ExecHashJoinWriteStringWorkFile(ExecWorkFile *workfile, const char *str)
 		return false;
 	}
 
-	/* Terminating null character is not written to disk */
-	res = ExecWorkFile_Write(workfile, (void *) str, slen);
-	if (res == false)
-	{
-		return false;
-	}
-
-	return true;
+	return(ExecWorkFile_Write(workfile, (void *) str, slen));
 }
 
 /*
  * Reads a string from a workfile.
+ *  Format: [length|string]
+ *  This must be the same format used in ExecHashJoinWriteStringStateFile.
  *  Returns the palloc-ed string in the current context, NULL if error occurs.
  */
 static char *
-ExecHashJoinReadStringWorkFile(ExecWorkFile *workfile)
+ReadStringWorkFile(ExecWorkFile *workfile)
 {
-	/* Reading a string from a Workfile.
-	 * Format: [length|string]
-	 * This must be the same format used in ExecHashJoinWriteStringStateFile.
-	 */
 
-	bool res = false;
 	size_t slen = 0;
-
-	res = ExecWorkFile_Read(workfile, & slen, sizeof(slen));
+	bool res = ExecWorkFile_Read(workfile, & slen, sizeof(slen));
 	if (res == false)
 	{
 		return NULL;
@@ -1480,17 +1458,25 @@ ExecHashJoinReadStringWorkFile(ExecWorkFile *workfile)
  *   Save the batch file name to the state file, and close the batch file.
  */
 static void
-SaveBatchFileNameAndClose(ExecWorkFile *state_file, ExecWorkFile *workfile)
+SaveBatchFileNameAndClose(HashJoinTable hashtable, ExecWorkFile *workfile)
 {
+
 	char *batch_file_name = EMPTY_WORKFILE_NAME;
+	bool free_name = false;
 	if (workfile != NULL)
 	{
-		batch_file_name = ExecWorkFile_GetFileName(workfile);
-		ExecWorkFile_Close(workfile);
+		batch_file_name = pstrdup(ExecWorkFile_GetFileName(workfile));
+		free_name = true;
+		workfile_mgr_close_file(hashtable->work_set, workfile);
 	}
 
-	bool res = ExecHashJoinWriteStringWorkFile(state_file, batch_file_name);
+	bool res = WriteStringWorkFile(hashtable->state_file, batch_file_name);
 	insist_log(res, "Could not write to temporary work file: %m");
+
+	if (free_name)
+	{
+		pfree(batch_file_name);
+	}
 }
 
 
@@ -1499,7 +1485,7 @@ SaveBatchFileNameAndClose(ExecWorkFile *state_file, ExecWorkFile *workfile)
  * all inner and outer relation tuples. This can be used to re-load the spill file set
  * at a later time.
  */
-void
+static void
 ExecHashJoinSaveState(HashJoinTable hashtable)
 {
 	/* What do we need to save:
@@ -1544,19 +1530,19 @@ ExecHashJoinSaveState(HashJoinTable hashtable)
 	int i;
 	for (i=0; i < hashtable->nbatch; i++)
 	{
-		SaveBatchFileNameAndClose(hashtable->state_file,
+		SaveBatchFileNameAndClose(hashtable,
 								  hashtable->batches[i]->innerside.workfile);
 		hashtable->batches[i]->innerside.workfile = NULL;
 
 		elog(gp_workfile_caching_loglevel, "HashJoin inner batch %d: innerspace=%d, spaceAllowed=%d, innertuples=%d",
 			 i, (int)hashtable->batches[i]->innerspace, (int)hashtable->spaceAllowed, hashtable->batches[i]->innertuples);
 
-		SaveBatchFileNameAndClose(hashtable->state_file,
+		SaveBatchFileNameAndClose(hashtable,
 								  hashtable->batches[i]->outerside.workfile);
 		hashtable->batches[i]->outerside.workfile = NULL;
 	}
 
-	ExecWorkFile_Close(hashtable->state_file);
+	workfile_mgr_close_file(hashtable->work_set, hashtable->state_file);
 	hashtable->state_file = NULL;
 }
 
@@ -1584,16 +1570,11 @@ ExecHashJoinLoadBucketsBatches(HashJoinTable hashtable)
 	MemoryContext   oldcxt;
 	oldcxt = MemoryContextSwitchTo(hashtable->bfCxt);
 
-	char state_file_name[MAXPGPATH];
-	workfile_mgr_retrieve_file_no(hashtable->work_set, WORKFILE_NUM_HASHJOIN_METADATA, state_file_name, MAXPGPATH);
+	hashtable->state_file = workfile_mgr_open_fileno(hashtable->work_set,
+			WORKFILE_NUM_HASHJOIN_METADATA);
 
 	elog(gp_workfile_caching_loglevel, "Loading HashJoin spill state from disk file %s",
-			state_file_name);
-
-	hashtable->state_file = ExecWorkFile_Open(state_file_name,
-			hashtable->work_set->metadata.type,
-			false,
-			hashtable->work_set->metadata.bfz_compress_type);
+			ExecWorkFile_GetFileName(hashtable->state_file));
 
 	Assert(NULL != hashtable->state_file);
 
@@ -1639,14 +1620,14 @@ OpenBatchFile(HashJoinTable hashtable, int batch_no)
 	MemoryContext   oldcxt;
 	oldcxt = MemoryContextSwitchTo(hashtable->bfCxt);
 
-	char * batch_file_name = ExecHashJoinReadStringWorkFile(hashtable->state_file);
+	char * batch_file_name = ReadStringWorkFile(hashtable->state_file);
 	insist_log(batch_file_name != NULL, "Could not read from temporary work file: %m");
 
 	if (strncmp(batch_file_name, EMPTY_WORKFILE_NAME, sizeof(EMPTY_WORKFILE_NAME)) != 0)
 	{
 		workfile = ExecWorkFile_Open(batch_file_name,
 									 hashtable->work_set->metadata.type,
-									 false,
+									 false /* delOnClose */,
 									 hashtable->work_set->metadata.bfz_compress_type);
 		Assert(NULL != workfile);
 

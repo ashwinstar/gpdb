@@ -1876,11 +1876,8 @@ CleanupTempFiles(bool isProcExit)
  * This should be called during postmaster startup.  It will forcibly
  * remove any leftover files created by OpenTemporaryFile.
  *
- * NOTE: we could, but don't, call this during a post-backend-crash restart
- * cycle.  The argument for not doing it is that someone might want to examine
- * the temp files for debugging purposes.  This does however mean that
- * OpenTemporaryFile had better allow for collision with an existing temp
- * file name.
+ * We also call this during the post-backend-crash restart cycle
+ * (postmaster reset).
  */
 void
 RemovePgTempFiles(void)
@@ -1888,6 +1885,9 @@ RemovePgTempFiles(void)
 	char		temp_path[MAXPGPATH];
 	DIR		   *db_dir;
 	struct dirent *db_de;
+
+	ereport(LOG,
+			(errmsg("removing all temporary files")));
 
 	/*
 	 * Cycle through pgsql_tmp directories for all databases and remove old
@@ -1947,7 +1947,12 @@ RemovePgTempFilesInDir(const char *tmpdirname)
 
 		if (HasTempFilePrefix(temp_de->d_name))
 		{
-			unlink(rm_path);	/* note we ignore any error */
+			/*
+			 * It can be a file or a directory, so try to delete both ways
+			 * We ignore errors.
+			 */
+			unlink(rm_path);
+			rmtree(rm_path,true);
 		}
 		else
 		{
@@ -1955,9 +1960,6 @@ RemovePgTempFilesInDir(const char *tmpdirname)
 				 "unexpected file found in temporary-files directory: \"%s\"",
 				 rm_path);
 		}
-
-		workfile_mgr_cleanup_files(tmpdirname);
-
 	}
 
 	FreeDir(temp_dir);
@@ -2004,12 +2006,23 @@ GetTempFilePrefix(char * buf, size_t buflen, const char * fileName)
 }
 
 /*
- * Check if a temporary file matches the expected prefix. This
- * is done before deleting it as a sanity check.
+ * Check if a temporary file or directory matches the expected prefix. This
+ * is done before deleting it, as a sanity check.
  */
 static bool HasTempFilePrefix(char * fileName)
 {
-	return (strncmp(fileName,
+
+	bool matching_file = (strncmp(fileName,
 						PG_TEMP_FILE_PREFIX,
 						strlen(PG_TEMP_FILE_PREFIX)) == 0);
+	if (matching_file)
+	{
+		return true;
+	}
+
+	bool matching_dir = (strncmp(fileName,
+						WORKFILE_SET_PREFIX,
+						strlen(WORKFILE_SET_PREFIX)) == 0);
+
+	return matching_dir;
 }

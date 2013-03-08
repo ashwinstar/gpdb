@@ -1091,17 +1091,17 @@ execworkfile_buffile_test(void)
 	unit_test_result(result && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
 
 	elog(INFO, "Running sub-test: Writing to the middle of a EWF/Buffile and checking size");
-	result = ExecWorkFile_Seek(ewf, ExecWorkfile_GetSize(ewf) / 2, SEEK_SET);
+	result = ExecWorkFile_Seek(ewf, ExecWorkFile_GetSize(ewf) / 2, SEEK_SET);
 	Assert(result == 0);
 	/* This write should not add to the size */
-	result = ExecWorkFile_Write(ewf, text->data, ExecWorkfile_GetSize(ewf) / 10);
+	result = ExecWorkFile_Write(ewf, text->data, ExecWorkFile_GetSize(ewf) / 10);
 
 	unit_test_result(result && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
 
 	elog(INFO, "Running sub-test: Seeking past end and writing data to EWF/Buffile and checking size");
 	int past_end_offset = 100;
 	int past_end_write = 200;
-	result = ExecWorkFile_Seek(ewf, ExecWorkfile_GetSize(ewf) + past_end_offset, SEEK_SET);
+	result = ExecWorkFile_Seek(ewf, ExecWorkFile_GetSize(ewf) + past_end_offset, SEEK_SET);
 	Assert(result == 0);
 	result = ExecWorkFile_Write(ewf, text->data, past_end_write);
 	expected_size += past_end_offset + past_end_write;
@@ -1119,7 +1119,7 @@ execworkfile_buffile_test(void)
 				true, /* delOnClose */
 				0 /* compressionType */);
 
-	current_size = ExecWorkfile_GetSize(ewf);
+	current_size = ExecWorkFile_GetSize(ewf);
 	unit_test_result(current_size == final_size);
 
 	elog(INFO, "Running sub-test: Reading from reopened EWF/Buffile file");
@@ -1202,11 +1202,11 @@ execworkfile_bfz_zlib_test(void)
 	unit_test_result(result && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
 
 	elog(INFO, "Running sub-test: Suspending EWF/BFZ and checking for size");
-	final_size = ExecWorkfile_Suspend(ewf);
+	final_size = ExecWorkFile_Suspend(ewf);
 	unit_test_result(final_size < expected_size);
 
 	elog(INFO, "Running sub-test: Restarting EWF/BFZ");
-	ExecWorkfile_Restart(ewf);
+	ExecWorkFile_Restart(ewf);
 	unit_test_result(true);
 
 	elog(INFO, "Running sub-test: Closing EWF/BFZ");
@@ -1220,7 +1220,7 @@ execworkfile_bfz_zlib_test(void)
 			BFZ,
 			true, /* delOnClose */
 			1 /* compressionType */);
-	current_size = ExecWorkfile_GetSize(ewf);
+	current_size = ExecWorkFile_GetSize(ewf);
 	unit_test_result(current_size == final_size);
 
 	elog(INFO, "Running sub-test: Reading from reopened EWF/BFZ file");
@@ -1302,11 +1302,11 @@ execworkfile_bfz_uncompressed_test(void)
 	unit_test_result(result && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
 
 	elog(INFO, "Running sub-test: Suspending EWF/BFZ and checking for size");
-	final_size = ExecWorkfile_Suspend(ewf);
+	final_size = ExecWorkFile_Suspend(ewf);
 	unit_test_result(final_size >= expected_size);
 
 	elog(INFO, "Running sub-test: Restarting EWF/BFZ");
-	ExecWorkfile_Restart(ewf);
+	ExecWorkFile_Restart(ewf);
 	unit_test_result(true);
 
 	elog(INFO, "Running sub-test: Closing EWF/BFZ");
@@ -1322,7 +1322,7 @@ execworkfile_bfz_uncompressed_test(void)
 			BFZ,
 			true, /* delOnClose */
 			0 /* compressionType */);
-	current_size = ExecWorkfile_GetSize(ewf);
+	current_size = ExecWorkFile_GetSize(ewf);
 	unit_test_result(current_size == final_size);
 
 	elog(INFO, "Running sub-test: Reading from reopened EWF/BFZ file");
@@ -1739,7 +1739,7 @@ logicaltape_test(void)
 	elog(INFO, "Running sub-test: Reading from LogicalTape");
 	LogicalTapeRead(tape_set, work_tape, buffer, (size_t)(nchars*sizeof(char)));
 
-	LogicalTapeSetClose(tape_set);
+	LogicalTapeSetClose(tape_set, NULL /* work_set */);
 
 	unit_test_result (strncmp(test_string->data, buffer, test_string->len) == 0);
 

@@ -1076,21 +1076,14 @@ getSpillFile(workfile_set *work_set, SpillSet *set, int file_no, int *p_alloc_si
 
 	if (spill_file->file_info == NULL)
 	{
-		char tmpprefix[MAXPGPATH];
-		workfile_mgr_create_file(work_set, tmpprefix, MAXPGPATH);
 
 		spill_file->file_info = (BatchFileInfo *)palloc(sizeof(BatchFileInfo));
 		spill_file->file_info->total_bytes = 0;
 		spill_file->file_info->ntuples = 0;
-		bool delOnClose = !gp_workfile_caching;
-
-		spill_file->file_info->wfile =
-			ExecWorkFile_Create(tmpprefix, BFZ, delOnClose,
-					work_set->metadata.bfz_compress_type);
+		spill_file->file_info->wfile = workfile_mgr_create_file(work_set);
 
 		elog(HHA_MSG_LVL, "HashAgg: create %d level batch file %d with compression %d",
-			 set->level, file_no, gp_hashagg_compress_spill_files > 0 ?
-			 gp_hashagg_compress_spill_files : work_set->metadata.bfz_compress_type);
+			 set->level, file_no, work_set->metadata.bfz_compress_type);
 
 		*p_alloc_size = BATCHFILE_METADATA;
 	}
@@ -1119,7 +1112,7 @@ suspendSpillFiles(SpillSet *spill_set)
 		if (spill_file->file_info &&
 			spill_file->file_info->wfile != NULL)
 		{
-			ExecWorkfile_Suspend(spill_file->file_info->wfile);
+			ExecWorkFile_Suspend(spill_file->file_info->wfile);
 
 			freed_size += FREEABLE_BATCHFILE_METADATA;
 
@@ -1167,7 +1160,7 @@ closeSpillFile(AggState *aggstate, SpillSet *spill_set, int file_no)
 	if (spill_file->file_info &&
 		spill_file->file_info->wfile != NULL)
 	{
-		ExecWorkFile_Close(spill_file->file_info->wfile);
+		workfile_mgr_close_file(hashtable->work_set, spill_file->file_info->wfile);
 		spill_file->file_info->wfile = NULL;
 		freedspace += (BATCHFILE_METADATA - sizeof(BatchFileInfo));
 		
@@ -1297,13 +1290,7 @@ read_spill_set(AggState *aggstate)
 	 * Format of state file:
 	 *  - [name_of_leaf_workfile | batch_hash_bit] x N
 	 */
-	char tmp_filename[MAXPGPATH];
-	workfile_mgr_retrieve_file_no(work_set, WORKFILE_NUM_HASHAGG_METADATA, tmp_filename, MAXPGPATH);
-
-	hashtable->state_file =
-			ExecWorkFile_Open(tmp_filename, BFZ, false /* delOnClose */,
-					work_set->metadata.bfz_compress_type);
-
+	hashtable->state_file = workfile_mgr_open_fileno(work_set, WORKFILE_NUM_HASHAGG_METADATA);
 	Assert(hashtable->state_file != NULL);
 
 	/*
@@ -1340,13 +1327,12 @@ read_spill_set(AggState *aggstate)
 		Assert(batch_filename != NULL);
 		pfree(batch_filename);
 
-		spill_file->file_info->total_bytes = ExecWorkfile_GetSize(spill_file->file_info->wfile);
+		spill_file->file_info->total_bytes = ExecWorkFile_GetSize(spill_file->file_info->wfile);
 		/* Made up values for this since we don't know it at this point */
 		spill_file->file_info->ntuples = 1;
 
 		elog(HHA_MSG_LVL, "HashAgg: OPEN %d level batch file %d with compression %d",
-			 spill_set->level, no_filenames_read, gp_hashagg_compress_spill_files > 0 ?
-			 gp_hashagg_compress_spill_files : work_set->metadata.bfz_compress_type);
+			 spill_set->level, no_filenames_read, work_set->metadata.bfz_compress_type);
 		/*
 		 * bfz_open automatically frees up the freeable_stuff structure.
 		 * Subtract that from the allocated size here.
@@ -1407,7 +1393,6 @@ spill_hash_table(AggState *aggstate)
 	{
 		hashtable->work_set = workfile_mgr_create_set(BFZ, true /* can_be_reused */, &aggstate->ss.ps, NULL_SNAPSHOT);
 		hashtable->work_set->metadata.buckets = hashtable->nbuckets;
-		hashtable->work_set->metadata.bfz_compress_type = gp_hashagg_compress_spill_files;
 		if (gp_workfile_caching)
 		{
 			create_state_file(hashtable);
@@ -1497,16 +1482,8 @@ spill_hash_table(AggState *aggstate)
 static void
 create_state_file(HashAggTable *hashtable)
 {
-	/* First time spilling. Before creating any spill files, create a
-	 * metadata file, so it gets the first name.
-	 */
-	char file_prefix[MAXPGPATH];
-	workfile_mgr_retrieve_file_no(hashtable->work_set, WORKFILE_NUM_HASHAGG_METADATA, file_prefix, sizeof(file_prefix));
-	bool delOnClose = !gp_workfile_caching;
-
-	hashtable->state_file =
-		ExecWorkFile_Create(file_prefix, BFZ, delOnClose,
-				hashtable->work_set->metadata.bfz_compress_type);
+	Assert(hashtable != NULL);
+	hashtable->state_file = workfile_mgr_create_fileno(hashtable->work_set, WORKFILE_NUM_HASHAGG_METADATA);
 	Assert(hashtable->state_file != NULL);
 }
 
@@ -1518,7 +1495,7 @@ agg_hash_close_state_file(HashAggTable *hashtable)
 {
 	if (hashtable->state_file != NULL)
 	{
-		ExecWorkFile_Close(hashtable->state_file);
+		workfile_mgr_close_file(hashtable->work_set, hashtable->state_file);
 		hashtable->state_file = NULL;
 	}
 }
@@ -1789,7 +1766,7 @@ agg_hash_reload(AggState *aggstate)
 	if (spill_file->file_info != NULL &&
 		spill_file->file_info->wfile != NULL)
 	{
-		ExecWorkfile_Restart(spill_file->file_info->wfile);
+		ExecWorkFile_Restart(spill_file->file_info->wfile);
 		hashtable->mem_for_metadata  += FREEABLE_BATCHFILE_METADATA;
 	}
 

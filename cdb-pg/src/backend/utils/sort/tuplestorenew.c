@@ -204,7 +204,7 @@ struct NTupleStoreAccessor
 	NTupleStorePos  pos;
 };
 
-static void ntuplestore_init_reader(NTupleStore *store, int maxBytes, const char *spill_filename, const char *spill_lob_filename);
+static void ntuplestore_init_reader(NTupleStore *store, int maxBytes);
 static void ntuplestore_create_spill_files(NTupleStore *nts);
 
 void ntuplestore_setinstrument(NTupleStore *st, struct Instrumentation *instr)
@@ -413,7 +413,7 @@ static NTupleStorePage *nts_get_free_page(NTupleStore *nts)
 			else
 			{
 				char tmpprefix[MAXPGPATH];
-				snprintf(tmpprefix, MAXPGPATH, "slice%d_ntuplestore", currentSliceId);
+				snprintf(tmpprefix, MAXPGPATH, "%s/slice%d_ntuplestore", PG_TEMP_FILES_DIR, currentSliceId);
 				nts->pfile = ExecWorkFile_CreateUnique(tmpprefix, BUFFILE, true /* delOnClose */, 0 /* compressType */ );
 			}
 
@@ -629,18 +629,15 @@ static void ntuplestore_cleanup(NTupleStore *ts, bool fNormal)
 		p = pnext;
 	}
 
-	if(fNormal && ts->rwflag == NTS_NOT_READERWRITER)
+	if(ts->pfile)
 	{
-		if(ts->pfile)
-		{
-			ExecWorkFile_Close(ts->pfile);
-			ts->pfile = NULL;
-		}
-		if(ts->plobfile)
-		{
-			ExecWorkFile_Close(ts->plobfile);
-			ts->plobfile = NULL;
-		}
+		workfile_mgr_close_file(ts->work_set, ts->pfile);
+		ts->pfile = NULL;
+	}
+	if(ts->plobfile)
+	{
+		workfile_mgr_close_file(ts->work_set, ts->plobfile);
+		ts->plobfile = NULL;
 	}
 
 	if (ts->work_set != NULL)
@@ -702,6 +699,12 @@ ntuplestore_create(int maxBytes)
 	return store;
 }
 
+/*
+ * Initialize a ntuplestore that is shared across slice through a ShareInputScan node
+ *
+ *   filename must be a unique name that identifies the share.
+ *   filename does not include the pgsql_tmp/ prefix
+ */
 NTupleStore *
 ntuplestore_create_readerwriter(const char *filename, int maxBytes, bool isWriter)
 {
@@ -732,7 +735,15 @@ ntuplestore_create_readerwriter(const char *filename, int maxBytes, bool isWrite
 		store->cached_workfiles_loaded = false;
 		store->workfiles_created = false;
 
-		ntuplestore_init_reader(store, maxBytes, filenameprefix, filenamelob);
+		store->pfile = ExecWorkFile_Open(filenameprefix, BUFFILE,
+				false /* delOnClose */,
+				0 /* compressType */);
+
+		store->plobfile = ExecWorkFile_Open(filenamelob, BUFFILE,
+				false /* delOnClose */,
+				0 /* compressType */);
+
+		ntuplestore_init_reader(store, maxBytes);
 		RegisterXactCallbackOnce(XCallBack_NTS, (void *) store);
 	}
 	return store;
@@ -744,18 +755,12 @@ ntuplestore_create_readerwriter(const char *filename, int maxBytes, bool isWrite
  * spill_filename and spill_lob_filename are required to have pgsql_tmp/ part of the name
  */
 static void
-ntuplestore_init_reader(NTupleStore *store, int maxBytes, const char *spill_filename, const char *spill_lob_filename)
+ntuplestore_init_reader(NTupleStore *store, int maxBytes)
 {
-	Assert(store != NULL);
+	Assert(NULL != store);
+	Assert(NULL != store->pfile);
+	Assert(NULL != store->plobfile);
 	
-	store->pfile = ExecWorkFile_Open(spill_filename, BUFFILE,
-			false /* delOnClose */,
-			0 /* compressType */);
-
-	store->plobfile = ExecWorkFile_Open(spill_lob_filename, BUFFILE,
-			false /* delOnClose */,
-			0 /* compressType */);
-
 	store->first_ondisk_blockn = 0;
 	store->rwflag = NTS_IS_READER;
 	store->lobbytes = 0;
@@ -813,19 +818,15 @@ ntuplestore_create_workset(workfile_set *workSet, bool cachedWorkfilesFound, int
 		MemoryContext   oldcxt;
 		oldcxt = MemoryContextSwitchTo(TopMemoryContext);
 
-		char filename[MAXPGPATH];
-		workfile_mgr_retrieve_file_no(store->work_set, WORKFILE_NUM_TUPLESTORE_DATA, filename, MAXPGPATH);
-
-		char filename_lob[MAXPGPATH];
-		workfile_mgr_retrieve_file_no(store->work_set, WORKFILE_NUM_TUPLESTORE_LOB, filename_lob, MAXPGPATH);
+		store->pfile = workfile_mgr_open_fileno(store->work_set, WORKFILE_NUM_TUPLESTORE_DATA);
+		store->plobfile = workfile_mgr_open_fileno(store->work_set, WORKFILE_NUM_TUPLESTORE_LOB);
 
 		MemoryContextSwitchTo(oldcxt);
 
-		ntuplestore_init_reader(store, maxBytes, filename, filename_lob);
+		ntuplestore_init_reader(store, maxBytes);
 		store->cached_workfiles_loaded = true;
 	}
-
-	if (gp_workfile_caching && !store->cached_workfiles_found)
+	else
 	{
 		/* Creating new workset */
 		store->rwflag = NTS_IS_WRITER;
@@ -896,10 +897,10 @@ ntuplestore_flush(NTupleStore *ts)
 		p = nts_page_next(p);
 	}
 	
-	ExecWorkfile_Flush(ts->pfile);
+	ExecWorkFile_Flush(ts->pfile);
 	if (ts->plobfile != NULL)
 	{
-		ExecWorkfile_Flush(ts->plobfile);
+		ExecWorkFile_Flush(ts->plobfile);
 	}
 }
 
@@ -1575,18 +1576,9 @@ ntuplestore_create_spill_files(NTupleStore *nts)
 
 	MemoryContext   oldcxt;
 	oldcxt = MemoryContextSwitchTo(TopMemoryContext);
-	bool del_on_close = !gp_workfile_caching;
 
-
-	char filename[MAXPGPATH];
-	workfile_mgr_retrieve_file_no(nts->work_set, WORKFILE_NUM_TUPLESTORE_DATA,
-			filename, sizeof(filename));
-	nts->pfile = ExecWorkFile_Create(filename, BUFFILE, del_on_close, 0 /* compressType */);
-
-	char filename_lob[MAXPGPATH];
-	workfile_mgr_retrieve_file_no(nts->work_set, WORKFILE_NUM_TUPLESTORE_LOB,
-			filename_lob, sizeof(filename_lob));
-	nts->plobfile = ExecWorkFile_Create(filename_lob, BUFFILE, del_on_close, 0 /* compressType */);
+	nts->pfile = workfile_mgr_create_fileno(nts->work_set, WORKFILE_NUM_TUPLESTORE_DATA);
+	nts->plobfile = workfile_mgr_create_fileno(nts->work_set, WORKFILE_NUM_TUPLESTORE_LOB);
 
 	MemoryContextSwitchTo(oldcxt);
 }

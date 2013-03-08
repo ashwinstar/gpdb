@@ -257,7 +257,7 @@ ExecSort(SortState *node)
 	/*
 	 * Before reading any tuples from below, check if we can re-use
 	 * existing spill files.
-	 * For now, only mk_sort supports spill file caching.
+	 * Only mk_sort supports spill file caching.
 	 */
 	if (!node->sort_Done && gp_enable_mk_sort && gp_workfile_caching)
 	{

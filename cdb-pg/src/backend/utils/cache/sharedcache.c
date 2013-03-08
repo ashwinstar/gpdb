@@ -259,8 +259,11 @@ Cache_SurrenderClientEntries(Cache *cache)
 		DLFreeElem(elt);
 	}
 
-	elog(gp_workfile_caching_loglevel, "Cleanup released %u acquired and %u cached entries from client",
+	if (nAcquiredEntries > 0 || nCachedEntries > 0)
+	{
+		elog(gp_workfile_caching_loglevel, "Cleanup released %u acquired and %u cached entries from client",
 			nAcquiredEntries, nCachedEntries);
+	}
 }
 
 /*
