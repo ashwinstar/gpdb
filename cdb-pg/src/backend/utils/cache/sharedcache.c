@@ -380,6 +380,11 @@ Cache_AcquireEntry(Cache *cache)
 	Assert(NULL != cache);
 
 	CacheEntry *newEntry = Cache_GetFreeElement(cache);
+	if (NULL == newEntry)
+	{
+		return NULL;
+	}
+
 	CACHE_ASSERT_WIPED(newEntry);
 
 	Cache_RegisterCleanup(cache, newEntry, false /* isCachedEntry */ );

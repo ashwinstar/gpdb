@@ -108,7 +108,7 @@ ExecMaterial(MaterialState *node)
 			{
 				work_set = workfile_mgr_find_set( &node->ss.ps);
 
-				if (work_set != NULL)
+				if (NULL != work_set)
 				{
 					/* Reusing cached workfiles. Tell subplan we won't be needing any tuples */
 					elog(gp_workfile_caching_loglevel, "Materialize reusing cached workfiles, initiating Squelch walker");
@@ -123,26 +123,27 @@ ExecMaterial(MaterialState *node)
 						node->ss.ps.instrument->workfileReused = true;
 					}
 				}
-				else
-				{
-					/* Creating new empty workset */
-					work_set = workfile_mgr_create_set(BUFFILE, true /* can_reuse */, &node->ss.ps, NULL_SNAPSHOT);
-					isWriter = true;
-				}
-
-				Assert(work_set != NULL);
-				ts = ntuplestore_create_workset(work_set, node->cached_workfiles_found,
-						PlanStateOperatorMemKB((PlanState *) node) * 1024);
-
 			}
-			else
+
+			if (NULL == work_set)
 			{
-				ts = ntuplestore_create(PlanStateOperatorMemKB((PlanState *) node) * 1024);
+				/*
+				 * No work_set found, this is because:
+				 *  a. workfile caching is enabled but we didn't find any reusable set
+				 *  b. workfile caching is disabled
+				 * Creating new empty workset
+				 */
+				Assert(!node->cached_workfiles_found);
+				work_set = workfile_mgr_create_set(BUFFILE, true /* can_reuse */, &node->ss.ps, NULL_SNAPSHOT);
 				isWriter = true;
 			}
 
-			tsa = ntuplestore_create_accessor(ts, isWriter);
+			Assert(NULL != work_set);
+			AssertEquivalent(node->cached_workfiles_found, !isWriter);
 
+			ts = ntuplestore_create_workset(work_set, node->cached_workfiles_found,
+					PlanStateOperatorMemKB((PlanState *) node) * 1024);
+			tsa = ntuplestore_create_accessor(ts, isWriter);
 		}
 		
 		Assert(ts && tsa);

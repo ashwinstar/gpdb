@@ -28,6 +28,8 @@
 /* Number of attempts to evict before we give up */
 #define MAX_EVICT_ATTEMPTS 100
 
+/* Maximum number of workfile sets that can be managed (cached plus in-flight) */
+#define WORKFILE_CACHE_MAX_SIZE 8192
 
 /* Other constants */
 
@@ -42,6 +44,7 @@
 #define WORKFILE_NUM_MKSORT_TAPESET 2
 #define WORKFILE_NUM_TUPLESTORE_DATA 1
 #define WORKFILE_NUM_TUPLESTORE_LOB 2
+
 
 /* Placeholder snapshot type */
 typedef uint32 workfile_set_snapshot;

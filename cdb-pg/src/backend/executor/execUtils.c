@@ -2154,6 +2154,7 @@ void mppExecutorCleanup(QueryDesc *queryDesc)
 		queryDesc->gpmon_pkt = NULL;
 	}
 
+	/* Workfile manager per-query resource accounting */
 	WorkfileQueryspace_ReleaseEntry(estate->querySpace);
 	estate->querySpace = NULL;
 

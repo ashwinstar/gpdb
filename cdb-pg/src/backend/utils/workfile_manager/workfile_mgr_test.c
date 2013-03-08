@@ -70,6 +70,7 @@ static bool logicaltape_test(void);
 static bool fd_large_file_test(void);
 static bool execworkfile_create_one_MB_file(void);
 static bool workfile_queryspace(void);
+static bool workfile_fill_sharedcache(void);
 
 static bool atomic_test(void);
 
@@ -117,6 +118,7 @@ static test_def test_defns[] = {
 		{"fd_large_file_test",fd_large_file_test},
 		{"execworkfile_create_one_MB_file",execworkfile_create_one_MB_file},
 		{"workfile_queryspace", workfile_queryspace},
+		{"workfile_fill_sharedcache", workfile_fill_sharedcache},
 		{NULL, NULL}, /* This has to be the last element of the array */
 };
 
@@ -2079,6 +2081,46 @@ workfile_queryspace(void)
 
 
 	return unit_test_summary();
+}
+
+/*
+ * Unit test that inserts many entries in the workfile mgr shared cache
+ */
+static bool
+workfile_fill_sharedcache(void)
+{
+	bool success = true;
+
+	unit_test_reset();
+	elog(LOG, "Running test: workfile_fill_sharedcache");
+
+	int n_entries = WORKFILE_CACHE_MAX_SIZE + 1;
+
+	elog(LOG, "Running sub-test: Creating %d empty workfile sets", n_entries);
+
+	int crt_entry = 0;
+	for (crt_entry = 0; crt_entry < n_entries; crt_entry++)
+	{
+		workfile_set *work_set = workfile_mgr_create_set(BUFFILE,
+				false /* can_be_reused */, NULL /* PlanState */, NULL_SNAPSHOT);
+		if (NULL == work_set)
+		{
+			success = false;
+			break;
+		}
+		if (crt_entry >= WORKFILE_CACHE_MAX_SIZE - 2)
+		{
+			/* Pause between adding extra ones so we can test from other sessions */
+			elog(LOG, "Added %d entries out of %d, pausing for 30 seconds before proceeding", crt_entry + 1, n_entries);
+			sleep(30);
+		}
+
+	}
+
+	unit_test_result(success);
+
+	return unit_test_summary();
+
 }
 
 static bool

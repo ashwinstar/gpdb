@@ -30,9 +30,6 @@
 /* Type of temp file to use for storing the plan */
 #define WORKFILE_PLAN_FILE_TYPE BUFFILE
 
-/* Maximum number of workfile sets in the cache */
-#define WORKFILE_CACHE_MAX_SIZE 8192
-
 /* Forward declarations */
 static workfile_set *workfile_mgr_lookup_set(PlanState *ps);
 static bool workfile_mgr_is_reusable(PlanState *ps);
@@ -170,7 +167,12 @@ workfile_mgr_create_set(enum ExecWorkFileType type, bool can_be_reused, PlanStat
 	AssertImply(can_be_reused, plan != NULL);
 
 	CacheEntry *newEntry = Cache_AcquireEntry(workfile_mgr_cache);
-	Assert(NULL != newEntry);
+	if (NULL == newEntry)
+	{
+		/* Could not add another entry to the cache - we filled it up */
+		elog(ERROR, "could not create workfile manager entry: too many running queries");
+	}
+
 	workfile_set *work_set = CACHE_ENTRY_PAYLOAD(newEntry);
 	Assert(work_set != NULL);
 
@@ -478,6 +480,7 @@ workfile_mgr_lookup_set(PlanState *ps)
 	local_work_set->on_disk = false;
 	local_work_set->set_plan = s_plan;
 	local_work_set->key = workfile_mgr_hash_key(s_plan);
+	local_work_set->metadata.operator_work_mem = get_operator_work_mem(ps);
 
 	CacheEntry *cachedEntry = Cache_Lookup(workfile_mgr_cache, localEntry);
 
@@ -503,20 +506,9 @@ workfile_mgr_can_reuse(workfile_set *work_set, PlanState *ps)
 	Assert(NULL != work_set);
 	Assert(NULL != ps);
 
-	uint64 operatorMemKB = 0;
-
-	if (IsA(ps, HashJoinState))
-	{
-		/* For HashJoin, we need to look at the HashNode operator_work_mem, because that's the memory intensive operator */
-		Assert(IsA(ps->righttree, HashState));
-		operatorMemKB = ps->righttree->plan->operatorMemKB;
-	}
-	else
-	{
-		operatorMemKB = ps->plan->operatorMemKB;
-	}
-
+	uint64 operatorMemKB = get_operator_work_mem(ps);
 	Assert(operatorMemKB > 0);
+
 	if (operatorMemKB < work_set->metadata.operator_work_mem)
 	{
 		return false;
@@ -782,6 +774,15 @@ workfile_set_equivalent(const void *virtual_resource, const void *physical_resou
 
 	if (virtual_workset->key != physical_workset->key)
 	{
+		return false;
+	}
+
+	if (virtual_workset->metadata.operator_work_mem < physical_workset->metadata.operator_work_mem)
+	{
+		/*
+		 * Found a potential match, but the work_mem with which it was spilled
+		 * is too high, so we cannot load it with our current work_mem. Skip it.
+		 */
 		return false;
 	}
 

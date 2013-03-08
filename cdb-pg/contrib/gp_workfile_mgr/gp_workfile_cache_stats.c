@@ -283,6 +283,11 @@ gp_workfile_operator_name(NodeTag node_type)
 		case T_MaterialState:
 			ret = "Materialize";
 			break;
+		case T_Invalid:
+			/* Spilling from a builtin function, we don't have a valid node type */
+			ret = "BuiltinFunction";
+			break;
+
 		default:
 			Assert(false && "Invalid operator type");
 	}

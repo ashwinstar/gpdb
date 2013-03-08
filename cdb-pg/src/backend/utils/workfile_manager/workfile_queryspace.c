@@ -231,7 +231,7 @@ void
 WorkfileQueryspace_ReleaseEntry(QueryspaceDesc *queryEntry)
 {
 
-	if (queryEntry == NULL)
+	if (NULL == queryEntry)
 	{
 		/* Already released, nothing to do */
 		return;

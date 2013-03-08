@@ -631,6 +631,8 @@ ExecWorkFile_AdjustBFZSize(ExecWorkFile *workfile, int64 file_size)
 		 */
 		Assert(bfz_file->compression_index > 0 || WorkfileDiskspace_IsFull());
 		WorkfileDiskspace_Commit(file_size, workfile->size, true /* update_query_size */);
+		workfile->size = file_size;
+
 	}
 	else
 	{
@@ -641,16 +643,29 @@ ExecWorkFile_AdjustBFZSize(ExecWorkFile *workfile, int64 file_size)
 		 */
 		Assert( (bfz_file->has_checksum && bfz_file->compression_index == 0) || (bfz_file->compression_index > 0 && workfile->size < BFZ_BUFFER_SIZE));
 
-#if USE_ASSERT_CHECKING
-		bool result =
-#endif
-		WorkfileDiskspace_Reserve(extra_bytes);
+		/*
+		 * If we're already under disk full, don't try to reserve, as it will
+		 * fail anyway. We're in cleanup code in that case, and the file
+		 * will be deleted soon.
+		 */
+		if (!WorkfileDiskspace_IsFull())
+		{
+			bool reserved = WorkfileDiskspace_Reserve(extra_bytes);
 
-		/* FIXME: caragg 02/06/2013; If this fails, we should try to evict and retry, or error out */
-		Assert(result);
+			if (!reserved)
+			{
+				elog(gp_workfile_caching_loglevel, "Could not reserve " INT64_FORMAT " additional bytes while adjusting for BFZ addtional size",
+						extra_bytes);
+				Assert(!WorkfileDiskspace_IsFull());
+				WorkfileDiskspace_SetFull(true /* isFull */);
+				ereport(ERROR,
+						(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
+						errmsg("could not write to temporary file")));
+			}
 
-		WorkfileDiskspace_Commit(extra_bytes, extra_bytes, true /* update_query_size */);
+			WorkfileDiskspace_Commit(extra_bytes, extra_bytes, true /* update_query_size */);
+			workfile->size = file_size;
+		}
 	}
-	workfile->size = file_size;
 }
 /* EOF */
