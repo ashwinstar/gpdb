@@ -71,11 +71,26 @@ debug_break()
     }
 }
 
+static bool hit_once = false;
+
+/*
+ * debug_break_timed
+ *
+ * debug_break_timed inserts a sec seconds break in the execution code.
+ * If singleton is true, it will only fire up once, the first time it is
+ * encoutered, otherwise it will break every time.
+ */
 void
-debug_break_timed(int sec)
+debug_break_timed(int sec, bool singleton)
 {
 	volatile int debug_break_loop;
 
+	if (singleton && hit_once)
+	{
+		return;
+	}
+
+	hit_once = true;
 	debug_break_loop = 0;
 
 	++debug_break_loop;

@@ -318,7 +318,7 @@ ExecHashTableCreate(HashJoinState *hjstate, Hash *node, List *hashOperators, uin
 		hashtable->work_set = workfile_set;
 		ExecHashJoinLoadBucketsBatches(hashtable);
 		Assert(hjstate->nbatch_loaded_state == -1);
-		Assert(hashtable->hjstate->cached_workfiles_batches_buckets_loaded);
+		Assert(hjstate->cached_workfiles_batches_buckets_loaded);
 
 		hjstate->nbatch_loaded_state = hashtable->nbatch;
 	}

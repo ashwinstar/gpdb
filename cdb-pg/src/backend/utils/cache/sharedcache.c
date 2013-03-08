@@ -130,7 +130,7 @@ Cache_InitCacheEntry(Cache *cache, CacheEntry *entry)
 	entry->size = 0;
 	entry->utility = 0;
 
-#if USE_ASSERT_CHECKING
+#ifdef USE_ASSERT_CHECKING
 			Cache_MemsetPayload(cache, entry);
 			MemSet(&entry->hashvalue, CACHE_MEMSET_BYTE_PATTERN, sizeof(entry->hashvalue));
 #endif
@@ -385,7 +385,7 @@ Cache_AcquireEntry(Cache *cache)
 }
 
 
-#if USE_ASSERT_CHECKING
+#ifdef USE_ASSERT_CHECKING
 /*
  * MemSet the payload of an entry with a pattern to prevent a client from
  * accidentally using a surrendered entry's payload.
@@ -425,7 +425,7 @@ Cache_ReleaseAcquired(Cache *cache, CacheEntry *entry, bool unregisterCleanup)
 		Cache_UnregisterCleanup(cache, entry);
 	}
 
-	Cache_UpdatePerfCounter(&cache->cacheHdr->cacheStats.noAcquiredEntries, -1);
+	Cache_UpdatePerfCounter(&cache->cacheHdr->cacheStats.noAcquiredEntries, -1 /* delta */ );
 }
 
 /*
@@ -450,7 +450,7 @@ Cache_GetFreeElement(Cache *cache)
 	CacheEntry *newEntry = cacheHdr->freeList;
 	Assert(newEntry->state == CACHE_ENTRY_FREE);
 
-#if USE_ASSERT_CHECKING
+#ifdef USE_ASSERT_CHECKING
 	int32 casResult =
 #endif
 	compare_and_swap_32(&newEntry->state, CACHE_ENTRY_FREE, CACHE_ENTRY_ACQUIRED);
@@ -458,8 +458,8 @@ Cache_GetFreeElement(Cache *cache)
 
 	cacheHdr->freeList = cacheHdr->freeList->nextEntry;
 
-	Cache_UpdatePerfCounter(&cacheHdr->cacheStats.noFreeEntries, -1);
-	Cache_UpdatePerfCounter(&cacheHdr->cacheStats.noAcquiredEntries, 1);
+	Cache_UpdatePerfCounter(&cacheHdr->cacheStats.noFreeEntries, -1 /* delta */ );
+	Cache_UpdatePerfCounter(&cacheHdr->cacheStats.noAcquiredEntries, 1 /* delta */);
 
 	SpinLockRelease(&cacheHdr->spinlock);
 
@@ -485,7 +485,7 @@ Cache_AddToFreelist(Cache *cache, CacheEntry *entry)
 	entry->nextEntry = cacheHdr->freeList;
 	entry->state = CACHE_ENTRY_FREE;
 	cacheHdr->freeList = entry;
-	Cache_UpdatePerfCounter(&cacheHdr->cacheStats.noFreeEntries, 1);
+	Cache_UpdatePerfCounter(&cacheHdr->cacheStats.noFreeEntries, 1 /* delta */);
 
 	SpinLockRelease(&cacheHdr->spinlock);
 }
@@ -518,9 +518,9 @@ Cache_Insert(Cache *cache, CacheEntry *entry)
 
 	Cache_Stats *cacheStats = &cache->cacheHdr->cacheStats;
 	Cache_TimedOperationStart();
-	Cache_UpdatePerfCounter(&cacheStats->noInserts, 1);
-	Cache_UpdatePerfCounter(&cacheStats->noCachedEntries, 1);
-	Cache_UpdatePerfCounter(&cacheStats->noAcquiredEntries, -1);
+	Cache_UpdatePerfCounter(&cacheStats->noInserts, 1 /* delta */);
+	Cache_UpdatePerfCounter(&cacheStats->noCachedEntries, 1 /* delta */);
+	Cache_UpdatePerfCounter(&cacheStats->noAcquiredEntries, -1 /* delta */);
 	Cache_UpdatePerfCounter(&cacheStats->totalEntrySize, entry->size);
 
 	Cache_ComputeEntryHashcode(cache, entry);
@@ -548,7 +548,7 @@ Cache_Insert(Cache *cache, CacheEntry *entry)
 
 	Cache_EntryAddRef(cache, entry);
 
-#if USE_ASSERT_CHECKING
+#ifdef USE_ASSERT_CHECKING
 	int32 casResult =
 #endif
 
@@ -558,7 +558,7 @@ Cache_Insert(Cache *cache, CacheEntry *entry)
 
 	SpinLockRelease(&anchor->spinlock);
 
-#if USE_ASSERT_CHECKING
+#ifdef USE_ASSERT_CHECKING
 	bool deleted = 
 #endif
 	SyncHTRelease(cache->syncHashtable, (void *) anchor);
@@ -580,7 +580,7 @@ Cache_Lookup(Cache *cache, CacheEntry *entry)
 	Assert(NULL != entry);
 
 	Cache_TimedOperationStart();
-	Cache_UpdatePerfCounter(&cache->cacheHdr->cacheStats.noLookups, 1);
+	Cache_UpdatePerfCounter(&cache->cacheHdr->cacheStats.noLookups, 1 /* delta */);
 
 	/* Advance the clock for the replacement policy */
 	Cache_AdvanceClock(cache);
@@ -627,14 +627,14 @@ Cache_Lookup(Cache *cache, CacheEntry *entry)
 
 		SpinLockRelease(&anchor->spinlock);
 
-		Cache_UpdatePerfCounter(&cache->cacheHdr->cacheStats.noCompares, 1);
+		Cache_UpdatePerfCounter(&cache->cacheHdr->cacheStats.noCompares, 1 /* delta */);
 
 		if(cache->equivalentEntries(CACHE_ENTRY_PAYLOAD(entry),
 				CACHE_ENTRY_PAYLOAD(crtEntry)))
 		{
 			/* Found the match, we're done */
 			Cache_TouchEntry(cache, crtEntry);
-			Cache_UpdatePerfCounter(&cache->cacheHdr->cacheStats.noCacheHits, 1);
+			Cache_UpdatePerfCounter(&cache->cacheHdr->cacheStats.noCacheHits, 1 /* delta */);
 			break;
 		}
 
@@ -761,7 +761,7 @@ Cache_ReleaseCached(Cache *cache, CacheEntry *entry, bool unregisterCleanup)
 		Cache_UnlinkEntry(cache, (CacheAnchor *) anchor, entry);
 		deleteEntry = true;
 
-		Cache_UpdatePerfCounter(&cache->cacheHdr->cacheStats.noDeletedEntries, -1);
+		Cache_UpdatePerfCounter(&cache->cacheHdr->cacheStats.noDeletedEntries, -1 /* delta */);
 	}
 
 	SpinLockRelease(&anchor->spinlock);
@@ -789,7 +789,7 @@ Cache_ReleaseCached(Cache *cache, CacheEntry *entry, bool unregisterCleanup)
 		PG_CATCH();
 		{
 
-#if USE_ASSERT_CHECKING
+#ifdef USE_ASSERT_CHECKING
 			Cache_MemsetPayload(cache, entry);
 #endif
 
@@ -800,7 +800,7 @@ Cache_ReleaseCached(Cache *cache, CacheEntry *entry, bool unregisterCleanup)
 		}
 		PG_END_TRY();
 
-#if USE_ASSERT_CHECKING
+#ifdef USE_ASSERT_CHECKING
 		Cache_MemsetPayload(cache, entry);
 #endif
 
@@ -824,14 +824,14 @@ Cache_Remove(Cache *cache, CacheEntry *entry)
 {
 	Assert(NULL != entry);
 
-#if USE_ASSERT_CHECKING
+#ifdef USE_ASSERT_CHECKING
 	int32 casResult =
 #endif
 	compare_and_swap_32(&entry->state, CACHE_ENTRY_CACHED, CACHE_ENTRY_DELETED);
 	Assert(casResult == 1);
 
-	Cache_UpdatePerfCounter(&cache->cacheHdr->cacheStats.noCachedEntries, -1);
-	Cache_UpdatePerfCounter(&cache->cacheHdr->cacheStats.noDeletedEntries, 1);
+	Cache_UpdatePerfCounter(&cache->cacheHdr->cacheStats.noCachedEntries, -1 /* delta */);
+	Cache_UpdatePerfCounter(&cache->cacheHdr->cacheStats.noDeletedEntries, 1 /* delta */);
 }
 
 /*
@@ -861,7 +861,7 @@ Cache_EntryAddRef(Cache *cache, CacheEntry *entry)
 
 	if (1 == entry->pinCount)
 	{
-		Cache_UpdatePerfCounter(&cache->cacheHdr->cacheStats.noPinnedEntries, 1);
+		Cache_UpdatePerfCounter(&cache->cacheHdr->cacheStats.noPinnedEntries, 1 /* delta */);
 	}
 
 	return entry->pinCount;
@@ -883,7 +883,7 @@ Cache_EntryDecRef(Cache *cache, CacheEntry *entry)
 
 	if (0 == entry->pinCount)
 	{
-		Cache_UpdatePerfCounter(&cache->cacheHdr->cacheStats.noPinnedEntries, -1);
+		Cache_UpdatePerfCounter(&cache->cacheHdr->cacheStats.noPinnedEntries, -1 /* delta */);
 	}
 
 	return entry->pinCount;
@@ -949,7 +949,7 @@ Cache_TimedOperationRecord(instr_time *totalTime, instr_time *maxTime)
 		INSTR_TIME_ASSIGN(*maxTime, elapsedTime);
 	}
 
-#if USE_ASSERT_CHECKING
+#ifdef USE_ASSERT_CHECKING
 	INSTR_TIME_SET_ZERO(timedOpStart);
 #endif
 

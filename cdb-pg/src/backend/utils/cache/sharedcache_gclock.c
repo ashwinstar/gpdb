@@ -103,13 +103,13 @@ Cache_Evict(Cache *cache, uint32 evictRequestSize)
 		int32 entryIdx = Cache_NextClockHand(cache, &wraparound);
 		Assert(entryIdx < cache->cacheHdr->nEntries);
 
-		Cache_UpdatePerfCounter(&cacheStats->noEntriesScanned,1);
+		Cache_UpdatePerfCounter(&cacheStats->noEntriesScanned,1 /* delta */);
 
 		if (wraparound)
 		{
 			unsuccessfulLoops++;
 
-			Cache_UpdatePerfCounter(&cacheStats->noWraparound, 1);
+			Cache_UpdatePerfCounter(&cacheStats->noWraparound, 1 /* delta */);
 
 			if (!foundVictim)
 			{
@@ -202,7 +202,7 @@ Cache_Evict(Cache *cache, uint32 evictRequestSize)
 		evictedSize += crtEntry->size;
 
 		/* Don't update noFreeEntries yet. It will be done in Cache_AddToFreelist */
-		Cache_UpdatePerfCounter(&cacheStats->noCachedEntries, -1);
+		Cache_UpdatePerfCounter(&cacheStats->noCachedEntries, -1 /* delta */);
 
 		/* Call client-side cleanup for entry */
 		cache->cleanupEntry(CACHE_ENTRY_PAYLOAD(crtEntry));
@@ -218,7 +218,7 @@ Cache_Evict(Cache *cache, uint32 evictRequestSize)
 		Cache_AddToFreelist(cache, crtEntry);
 		SyncHTRelease(cache->syncHashtable, (void *) anchor);
 
-		Cache_UpdatePerfCounter(&cacheStats->noEvicts, 1);
+		Cache_UpdatePerfCounter(&cacheStats->noEvicts, 1 /* delta */);
 		Cache_TimedOperationRecord(&cacheStats->timeEvictions, &cacheStats->maxTimeEvict);
 
 		if (evictedSize >= evictRequestSize)

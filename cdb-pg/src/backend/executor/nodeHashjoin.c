@@ -40,6 +40,7 @@ static bool ExecHashJoinLoadBatchFiles(HashJoinTable hashtable);
 
 
 static void ReleaseHashTable(HashJoinState *node);
+static void ExecHashJoinResetWorkfileState(HashJoinState *node);
 
 /* ----------------------------------------------------------------
  *		ExecHashJoin
@@ -167,12 +168,18 @@ ExecHashJoin(HashJoinState *node)
 
 		workfile_set *work_set = NULL;
 
-		if (gp_workfile_caching && node->cached_workfiles_found)
+		if (gp_workfile_caching)
 		{
-			work_set = workfile_mgr_find_set( &node->js.ps);
-			Assert(work_set != NULL);
 			Assert(!node->cached_workfiles_batches_buckets_loaded);
 			Assert(!node->cached_workfiles_loaded);
+
+			/* Look for cached workfiles. Mark here if found */
+			work_set = workfile_mgr_find_set(&node->js.ps);
+			if (work_set != NULL)
+			{
+				elog(gp_workfile_caching_loglevel, "HashJoin found matching existing spill file set");
+				node->cached_workfiles_found = true;
+			}
 		}
 
 		/*
@@ -655,23 +662,7 @@ ExecInitHashJoin(HashJoin *node, EState *estate, int eflags)
 	hjstate->hj_MatchedOuter = false;
 	hjstate->hj_OuterNotEmpty = false;
 
-	hjstate->cached_workfiles_found = false;
-	hjstate->cached_workfiles_loaded = false;
-	hjstate->cached_workfiles_batches_buckets_loaded = false;
-	hjstate->workfiles_created = false;
-	hjstate->nbatch_loaded_state = -1;
-
-	if (gp_workfile_caching)
-	{
-		/* Look up SFR for existing spill set. Mark here if found */
-		workfile_set *work_set = workfile_mgr_find_set( &hjstate->js.ps);
-		if (work_set != NULL)
-		{
-			/* Found existing SFS with matching hash value */
-			elog(gp_workfile_caching_loglevel, "HashJoin found matching existing spill file set");
-			hjstate->cached_workfiles_found = true;
-		}
-	}
+	ExecHashJoinResetWorkfileState(hjstate);
 
 	initGpmonPktForHashJoin((Plan *)node, &hjstate->js.ps.gpmon_pkt, estate);
 	
@@ -1281,6 +1272,20 @@ static void ReleaseHashTable(HashJoinState *node)
 	node->hj_NeedNewOuter = true;
 	node->hj_MatchedOuter = false;
 	node->hj_FirstOuterTupleSlot = NULL;	
+
+	ExecHashJoinResetWorkfileState(node);
+}
+
+/*
+ * Reset workfile caching state
+ */
+static void ExecHashJoinResetWorkfileState(HashJoinState *node)
+{
+	node->cached_workfiles_batches_buckets_loaded = false;
+	node->cached_workfiles_loaded = false;
+	node->cached_workfiles_found = false;
+	node->workfiles_created = false;
+	node->nbatch_loaded_state = -1;
 }
 
 /* Is this an IS-NOT-DISTINCT-join qual list (as opposed the an equijoin)?

@@ -1695,9 +1695,7 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	aggstate->pergroup = NULL;
 	aggstate->grp_firstTuple = NULL;
 	aggstate->hashtable = NULL;
-	aggstate->cached_workfiles_found = false;
-	aggstate->cached_workfiles_loaded = false;
-	aggstate->workfiles_created = false;
+	agg_hash_reset_workfile_state(aggstate);
 
 	/*
 	 * Create expression contexts.	We need two, one for per-input-tuple
@@ -2403,19 +2401,6 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	aggstate->mem_manager.manager = aggstate->aggcontext;
 	aggstate->mem_manager.realloc_ratio = 1;
 
-
-	if (gp_workfile_caching && node->aggstrategy == AGG_HASHED)
-	{
-		/* Look up SFR for existing spill set. Mark here if found */
-		workfile_set *work_set = workfile_mgr_find_set(&aggstate->ss.ps);
-
-		if (work_set != NULL)
-		{
-			aggstate->cached_workfiles_found = true;
-			elog(gp_workfile_caching_loglevel, "HashAgg found existing workfile matching subplan, will reuse");
-		}
-
-	}
 	initGpmonPktForAgg((Plan *)node, &aggstate->ss.ps.gpmon_pkt, estate);
 	
 	return aggstate;

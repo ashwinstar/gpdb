@@ -1299,7 +1299,7 @@ read_spill_set(AggState *aggstate)
 	char tmp_filename[MAXPGPATH];
 	workfile_mgr_retrieve_file_no(work_set, WORKFILE_NUM_HASHAGG_METADATA, tmp_filename, MAXPGPATH);
 	hashtable->state_file =
-			bfz_open(tmp_filename, false, gp_hashagg_compress_spill_files > 0 ?
+			bfz_open(tmp_filename, false /* delOnClose */ , gp_hashagg_compress_spill_files > 0 ?
 					   gp_hashagg_compress_spill_files : work_set->metadata.bfz_compress_type);
 	Assert(hashtable->state_file != NULL);
 	bfz_scan_begin(hashtable->state_file);
@@ -2233,18 +2233,31 @@ void destroy_agg_hash_table(AggState *aggstate)
 
 		closeSpillFiles(aggstate, aggstate->hhashtable->spill_set);
 
-		if (aggstate->workfiles_created)
+		if (NULL != aggstate->hhashtable->work_set)
 		{
-			Assert(aggstate->hhashtable->work_set);
+			Assert(aggstate->workfiles_created || aggstate->cached_workfiles_loaded );
 			agg_hash_close_state_file(aggstate->hhashtable);
 			workfile_mgr_close_set(aggstate->hhashtable->work_set);
 		}
+
+		agg_hash_reset_workfile_state(aggstate);
 
 		mpool_delete(aggstate->hhashtable->group_buf);
 
 		pfree(aggstate->hhashtable);
 		aggstate->hhashtable = NULL;
 	}
+}
+
+/*
+ * Reset workfile caching state
+ */
+void
+agg_hash_reset_workfile_state(AggState *aggstate)
+{
+	aggstate->workfiles_created = false;
+	aggstate->cached_workfiles_found = false;
+	aggstate->cached_workfiles_loaded = false;
 }
 
 void
