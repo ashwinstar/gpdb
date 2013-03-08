@@ -50,5 +50,6 @@ extern void BufFileTell(BufFile *file, int64 *offset);
 extern int	BufFileSeekBlock(BufFile *file, int64 blknum);
 extern void BufFileFlush(BufFile *file);
 extern int64 BufFileGetSize(BufFile *buffile);
+extern void BufFileSetWorkfile(BufFile *buffile);
 
 #endif   /* BUFFILE_H */

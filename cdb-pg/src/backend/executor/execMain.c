@@ -358,6 +358,9 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	 */
 	initMotionLayerStructs((MotionLayerState **)&estate->motionlayer_context);
 
+	/* Reset workfile disk full flag */
+	gp_workfile_diskfull = false;
+
 	/*
 	 * Handling of the Slice table depends on context.
 	 */

@@ -132,7 +132,19 @@ write_bfz_buffer(bfz_t *bfz, bool isLast)
 		fs->buffer_pointer += sizeof(BFZ_CHECKSUM_TYPE);
 	}
 	
-	fs->write_ex(bfz, fs->buffer, fs->buffer_pointer - fs->buffer);
+	PG_TRY();
+	{
+		fs->write_ex(bfz, fs->buffer, fs->buffer_pointer - fs->buffer);
+	}
+	PG_CATCH();
+	{
+		Assert(!gp_workfile_diskfull);
+		elog(gp_workfile_caching_loglevel, "BFZ write buffer failed, presumably because of OODS, seting flag");
+		gp_workfile_diskfull = true;
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
 	bfz->numBlocks ++;
 }
 
@@ -418,6 +430,15 @@ bfz_close(bfz_t * thiz, bool unreg)
 		thiz->freeable_stuff->close_ex(thiz);
 		Assert(thiz->fd == -1);
 	}
+	else
+	{
+		if (thiz->fd > 0)
+		{
+			/* We already called bfz_append_end() on this file, so the fd we have is a duplicate */
+			gp_retry_close(thiz->fd);
+			thiz->fd = -1;
+		}
+	}
 
 	if (thiz->del_on_close && thiz->filename != NULL)
 	{
@@ -449,7 +470,15 @@ bfz_append_end(bfz_t * thiz)
 
 	Assert(thiz->mode == BFZ_MODE_APPEND);
 
-	write_bfz_buffer(thiz, true);
+	if (gp_workfile_diskfull)
+	{
+		elog(gp_workfile_caching_loglevel, "closing workfile while workfile diskspace full, skipping flush");
+	}
+	else
+	{
+		write_bfz_buffer(thiz, true);
+	}
+
 	tot_bytes = fs->tot_bytes;
 
 

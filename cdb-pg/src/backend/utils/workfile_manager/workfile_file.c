@@ -15,6 +15,7 @@
 #include "cdb/cdbvars.h"
 
 static void retrieve_file_no(workfile_set *work_set, uint32 file_no, char *workfile_name, uint32 workfile_name_len);
+static void update_workset_size(workfile_set *work_set, bool delOnClose, bool created, int64 size);
 static void adjust_size_temp_file_new(workfile_set *work_set, int64 size);
 static void adjust_size_persistent_file_new(workfile_set *work_set, int64 size);
 static void adjust_size_temp_file_existing(workfile_set *work_set, int64 size);
@@ -101,10 +102,40 @@ workfile_mgr_close_file(workfile_set *work_set, ExecWorkFile *file)
 
 	bool delOnClose = file->flags & EXEC_WORKFILE_DEL_ON_CLOSE;
 	bool created = file->flags & EXEC_WORKFILE_CREATED;
-
 	elog(gp_workfile_caching_loglevel, "closing file %s, delOnClose=%d", ExecWorkFile_GetFileName(file), delOnClose);
 
-	int64 size = ExecWorkFile_Close(file);
+	int64 size = 0;
+	PG_TRY();
+	{
+		size = ExecWorkFile_Close(file);
+	}
+	PG_CATCH();
+	{
+		elog(gp_workfile_caching_loglevel, "Caught exception, file=%s, returned size=" INT64_FORMAT " actual size before adjustment=" INT64_FORMAT,
+				file->fileName, size, ExecWorkFile_GetSize(file));
+
+		update_workset_size(work_set, delOnClose, created, ExecWorkFile_GetSize(file));
+
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+
+	update_workset_size(work_set, delOnClose, created, size);
+}
+
+/*
+ * Update the size of a workset after closing a member file
+ *  work_set is the parent workset of the file
+ *  delOnClose is set if the file is to be deleted upon closing (temporary)
+ *  created is set if the file was created by this backend
+ *  size is the final size of the file at the time of the close
+ *
+ */
+static void
+update_workset_size(workfile_set *work_set, bool delOnClose, bool created, int64 size)
+{
+
 	if (delOnClose)
 	{
 		if (created)

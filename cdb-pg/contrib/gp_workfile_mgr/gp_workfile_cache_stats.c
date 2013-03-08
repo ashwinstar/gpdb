@@ -82,7 +82,7 @@ gp_workfile_mgr_cache_stats(PG_FUNCTION_ARGS)
 	values[9] = UInt32GetDatum(cacheStats->noDeletedEntries);
 	values[10] = UInt32GetDatum(cacheStats->noAcquiredEntries);
 	values[11] = UInt32GetDatum(cacheStats->noFreeEntries);
-	values[12] = UInt32GetDatum(cacheStats->totalEntrySize);
+	values[12] = Int64GetDatum(cacheStats->totalEntrySize);
 	values[13] = UInt32GetDatum(cacheStats->noEntriesScanned);
 	values[14] = UInt32GetDatum(cacheStats->maxEntriesScanned);
 	values[15] = UInt32GetDatum(cacheStats->noWraparound);
@@ -139,7 +139,7 @@ gp_workfile_mgr_cache_entries(PG_FUNCTION_ARGS)
 		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "hash",
 				INT4OID, -1 /* typmod */, 0 /* attdim */);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 4, "size",
-				INT4OID, -1 /* typmod */, 0 /* attdim */);
+				INT8OID, -1 /* typmod */, 0 /* attdim */);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 5, "utility",
 				INT4OID, -1 /* typmod */, 0 /* attdim */);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 6, "state",
@@ -208,7 +208,7 @@ gp_workfile_mgr_cache_entries(PG_FUNCTION_ARGS)
 	values[1] = CStringGetTextDatum(work_set_path);
 
 	values[2] = UInt32GetDatum(crtEntry->hashvalue);
-	values[3] = UInt32GetDatum(crtEntry->size);
+	values[3] = Int64GetDatum(crtEntry->size);
 	values[4] = UInt32GetDatum(crtEntry->utility);
 	values[5] = UInt32GetDatum(crtEntry->state);
 	values[6] = UInt32GetDatum(work_set->metadata.operator_work_mem);

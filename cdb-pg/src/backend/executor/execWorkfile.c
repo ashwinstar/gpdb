@@ -47,7 +47,8 @@ ExecWorkFile_Create(const char *fileName,
 	switch(fileType)
 	{
 		case BUFFILE:
-			file = (void *)BufFileCreateFile(fileName, delOnClose, false /* interXact */ );
+			file = (void *) BufFileCreateFile(fileName, delOnClose, false /* interXact */ );
+			BufFileSetWorkfile(file);
 			break;
 		case BFZ:
 			file = (void *)bfz_create(fileName, delOnClose, compressType);
@@ -132,8 +133,10 @@ ExecWorkFile_Open(const char *fileName,
 			file = (void *)BufFileOpenFile(fileName,
 					false, /* Create */
 					delOnClose,
-					true  /* interXact */ ); /* FIXME WHat should this be? */
+					true  /* interXact */ );
+			BufFileSetWorkfile(file);
 			file_size = BufFileGetSize(file);
+
 			break;
 		case BFZ:
 			file = (void *)bfz_open(fileName, delOnClose, compressType);
@@ -182,7 +185,12 @@ ExecWorkFile_Write(ExecWorkFile *workfile,
 	if (data == NULL || size == 0)
 		return false;
 	
-	WorkfileDiskspace_Reserve(size);
+	bool success = WorkfileDiskspace_Reserve(size);
+	if (!success)
+	{
+		/* Failed to reserve additional disk space, notify caller */
+		return false;
+	}
 
 	switch(workfile->fileType)
 	{
@@ -191,8 +199,25 @@ ExecWorkFile_Write(ExecWorkFile *workfile,
 			BufFile *buffile = (BufFile *)workfile->file;
 
 			int64 current_size = BufFileGetSize(buffile);
-			bytes = BufFileWrite(buffile, data, size);
-			int64 new_size = BufFileGetSize(buffile);
+			int64 new_size = 0;
+
+			PG_TRY();
+			{
+				bytes = BufFileWrite(buffile, data, size);
+			}
+			PG_CATCH();
+			{
+				new_size = BufFileGetSize(buffile);
+				workfile->size = new_size;
+				WorkfileDiskspace_Commit( (new_size - current_size), size);
+				/* XXX Here's where we can intercept and try to evict */
+				elog(gp_workfile_caching_loglevel, "Intercepted exception from Buffile, adjusted file size to " INT64_FORMAT, new_size);
+
+				PG_RE_THROW();
+			}
+			PG_END_TRY();
+
+			new_size = BufFileGetSize(buffile);
 			workfile->size = new_size;
 
 			WorkfileDiskspace_Commit( (new_size - current_size), size);
@@ -201,7 +226,20 @@ ExecWorkFile_Write(ExecWorkFile *workfile,
 				return false;
 			break;
 		case BFZ:
-			bfz_append((bfz_t *)workfile->file, data, size);
+
+			PG_TRY();
+			{
+				bfz_append((bfz_t *)workfile->file, data, size);
+			}
+			PG_CATCH();
+			{
+				Assert(gp_workfile_diskfull);
+				elog(gp_workfile_caching_loglevel, "Caught exception from EWF_Write from bfz_append. Subtracting " INT64_FORMAT " bytes from diskspace usage", size);
+				WorkfileDiskspace_Commit(0, size);
+
+				PG_RE_THROW();
+			}
+			PG_END_TRY();
 
 			/* bfz_append always adds to the file size */
 			workfile->size += size;
@@ -407,7 +445,12 @@ ExecWorkFile_Seek(ExecWorkFile *workfile, uint64 offset, int whence)
 		 */
 		if (workfile->flags & EXEC_WORKFILE_CREATED)
 		{
-			WorkfileDiskspace_Reserve(additional_size);
+			bool success = WorkfileDiskspace_Reserve(additional_size);
+			if (!success)
+			{
+				/* Failed to reserve additional disk space, notify caller */
+				return EOF;
+			}
 		}
 		else
 		{
@@ -572,8 +615,12 @@ ExecWorkFile_AdjustBFZSize(ExecWorkFile *workfile, int64 file_size)
 
 	if (file_size <= workfile->size)
 	{
-		/* Actual size on disk is smaller than expected, it must be because it's compressed */
-		Assert(bfz_file->compression_index > 0);
+		/*
+		 * Actual size on disk is smaller than expected. This can happen in two cases:
+		 * - file on disk is compressed
+		 * - we hit out of disk space
+		 */
+		Assert(bfz_file->compression_index > 0 || gp_workfile_diskfull);
 		WorkfileDiskspace_Commit(file_size, workfile->size);
 	}
 	else
@@ -583,16 +630,15 @@ ExecWorkFile_AdjustBFZSize(ExecWorkFile *workfile, int64 file_size)
 		 *  - added checksums to an uncompressed file
 		 *  - closing empty or very small compressed file (zlib header overhead larger than saved space)
 		 */
-		Assert(bfz_file->has_checksum);
-		Assert( (bfz_file->compression_index == 0) || (bfz_file->compression_index > 0 && workfile->size < BFZ_BUFFER_SIZE));
-		/*
-		 * We under-reserved disk space in this case. Let's assert that it's only from checksumming.
-		 * We add one word of checksum for every BFZ_BUFFER_SIZE bytes.
-		 * This assert doesn't hold for all files, disable it for now.
-		 */
-		/* Assert(extra_bytes <= ((workfile->size / BFZ_BUFFER_SIZE) + 1) * sizeof(int)); */
+		Assert( (bfz_file->has_checksum && bfz_file->compression_index == 0) || (bfz_file->compression_index > 0 && workfile->size < BFZ_BUFFER_SIZE));
 
+#if USE_ASSERT_CHECKING
+		bool result =
+#endif
 		WorkfileDiskspace_Reserve(extra_bytes);
+
+		Assert(result);
+
 		WorkfileDiskspace_Commit(extra_bytes, extra_bytes);
 	}
 	workfile->size = file_size;

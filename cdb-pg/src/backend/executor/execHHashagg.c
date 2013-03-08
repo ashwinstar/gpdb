@@ -2210,7 +2210,6 @@ void destroy_agg_hash_table(AggState *aggstate)
 
 		if (NULL != aggstate->hhashtable->work_set)
 		{
-			Assert(aggstate->workfiles_created || aggstate->cached_workfiles_loaded );
 			agg_hash_close_state_file(aggstate->hhashtable);
 			workfile_mgr_close_set(aggstate->hhashtable->work_set);
 		}

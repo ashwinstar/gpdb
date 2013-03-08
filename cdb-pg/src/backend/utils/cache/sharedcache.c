@@ -127,7 +127,7 @@ Cache_InitCacheEntry(Cache *cache, CacheEntry *entry)
 {
 	entry->state = CACHE_ENTRY_FREE;
 	entry->pinCount = 0;
-	entry->size = 0;
+	entry->size = 0L;
 	entry->utility = 0;
 
 #ifdef USE_ASSERT_CHECKING
@@ -541,7 +541,7 @@ Cache_Insert(Cache *cache, CacheEntry *entry)
 	Cache_UpdatePerfCounter(&cacheStats->noInserts, 1 /* delta */);
 	Cache_UpdatePerfCounter(&cacheStats->noCachedEntries, 1 /* delta */);
 	Cache_UpdatePerfCounter(&cacheStats->noAcquiredEntries, -1 /* delta */);
-	Cache_UpdatePerfCounter(&cacheStats->totalEntrySize, entry->size);
+	Cache_UpdatePerfCounter64(&cacheStats->totalEntrySize, entry->size);
 
 	Cache_ComputeEntryHashcode(cache, entry);
 
@@ -689,7 +689,7 @@ Cache_UnlinkEntry(Cache *cache, CacheAnchor *anchor, CacheEntry *entry)
 	Assert(NULL != anchor);
 	Assert(NULL != anchor->firstEntry);
 
-	Cache_UpdatePerfCounter(&cache->cacheHdr->cacheStats.totalEntrySize, -entry->size);
+	Cache_UpdatePerfCounter64(&cache->cacheHdr->cacheStats.totalEntrySize, -entry->size);
 
 	/* Easy case: Remove first element */
 	if (anchor->firstEntry == entry)
@@ -928,6 +928,13 @@ Cache_UpdatePerfCounter(uint32 *counter, int delta)
 {
 	Assert(counter + delta >= 0);
 	gp_atomic_add_32((int32 *) counter, delta);
+}
+
+void
+Cache_UpdatePerfCounter64(int64 *counter, int64 delta)
+{
+	Assert(counter + delta >= 0);
+	gp_atomic_add_64(counter, delta);
 }
 
 /*

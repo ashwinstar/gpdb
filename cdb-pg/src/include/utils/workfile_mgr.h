@@ -136,6 +136,7 @@ void workfile_mgr_cache_init(void);
 void workfile_mgr_mark_complete(workfile_set *work_set);
 Cache *workfile_mgr_get_cache(void);
 int32 workfile_mgr_clear_cache(void);
+int64 workfile_mgr_evict(int64 size_requested);
 
 ExecWorkFile *workfile_mgr_create_file(workfile_set *work_set);
 ExecWorkFile *workfile_mgr_create_fileno(workfile_set *work_set, uint32 file_no);

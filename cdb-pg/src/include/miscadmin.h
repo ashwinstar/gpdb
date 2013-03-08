@@ -302,6 +302,8 @@ extern bool VacuumCostActive;
 extern int gp_vmem_protect_limit;
 extern int gp_vmem_protect_gang_cache_limit;
 
+extern bool gp_workfile_diskfull;
+
 /* in tcop/postgres.c */
 extern void check_stack_depth(void);
 

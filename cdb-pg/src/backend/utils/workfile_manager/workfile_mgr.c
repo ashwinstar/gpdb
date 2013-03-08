@@ -242,7 +242,7 @@ workfile_mgr_create_set(enum ExecWorkFileType type, bool can_be_reused, PlanStat
 			WORKFILE_SET_MASK)));
 	}
 
-	char *workset_path_unmasked = mkdtemp(workset_path_masked->data);
+	char *workset_path_unmasked = gp_mkdtemp(workset_path_masked->data);
 	if (workset_path_unmasked == NULL)
 	{
 		ereport(ERROR,
@@ -597,8 +597,7 @@ workfile_mgr_close_set(workfile_set *work_set)
 
 	if (work_set->complete && work_set->can_be_reused)
 	{
-		/* Updated cache entry size to the size of the set in MB */
-		cache_entry->size = work_set->size >> 20;
+		cache_entry->size = work_set->size;
 
 		/* We want to keep this one around. Insert into cache */
 		Cache_Insert(workfile_mgr_cache, cache_entry);
@@ -813,5 +812,24 @@ workfile_mgr_compare_plan(workfile_set *work_set, workfile_set_plan *sf_plan)
 	return match;
 }
 
+/*
+ * Runs the eviction algorithm to identify victims and evicts them. It attempts
+ * to evict victims with cumulative size >= desiredSize
+ *
+ * Returns the actual cumulative size of all the sets evicted
+ */
+int64
+workfile_mgr_evict(int64 size_requested)
+{
+	Assert(size_requested > 0);
+	Assert(NULL != workfile_mgr_cache);
+
+	int64 size_evicted = Cache_Evict(workfile_mgr_cache, size_requested);
+
+	elog(gp_workfile_caching_loglevel, "Eviction: requested=" INT64_FORMAT " evicted=" INT64_FORMAT,
+			size_requested, size_evicted);
+
+	return size_evicted;
+}
 
 /* EOF */

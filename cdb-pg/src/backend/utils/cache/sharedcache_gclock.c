@@ -82,15 +82,15 @@ Cache_AdvanceClock(Cache *cache)
  * It will try to evict enough entries to add up to evictSize. Returns the
  * actual accumulated size of the entries evicted
  */
-uint32
-Cache_Evict(Cache *cache, uint32 evictRequestSize)
+int64
+Cache_Evict(Cache *cache, int64 evictRequestSize)
 {
 	Assert(NULL != cache);
 	Assert(evictRequestSize > 0);
 
 	Cache_TimedOperationStart();
 
-	uint32 evictedSize = 0;
+	int64 evictedSize = 0;
 	uint32 unsuccessfulLoops = 0;
 	bool foundVictim = false;
 	uint32 decAmount = cache->cacheHdr->policyContext.utilityDecrement;

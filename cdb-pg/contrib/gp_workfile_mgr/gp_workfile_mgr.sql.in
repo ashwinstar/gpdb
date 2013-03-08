@@ -26,7 +26,7 @@ create view gp_workfile_mgr_cache_stats AS
        acquiredentries int, 
        freeentries int, 
        
-       totalsize int,
+       totalsize bigint,
        
        entriesscanned int, 
        maxentriesscanned int, 
@@ -59,7 +59,7 @@ create view gp_workfile_mgr_cache_stats AS
        acquiredentries int, 
        freeentries int, 
        
-       totalsize int,
+       totalsize bigint,
        
        entriesscanned int, 
        maxentriesscanned int, 
@@ -86,7 +86,7 @@ CREATE VIEW gp_workfile_mgr_cache_entries AS
             segid int, 
             path text, 
             hash int, 
-            size int, 
+            size bigint, 
             utility int, 
             state int, 
             workmem int,
@@ -104,7 +104,7 @@ CREATE VIEW gp_workfile_mgr_cache_entries AS
             segid int, 
             path text, 
             hash int, 
-            size int, 
+            size bigint, 
             utility int, 
             state int, 
             workmem int,

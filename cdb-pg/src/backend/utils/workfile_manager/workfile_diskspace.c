@@ -9,17 +9,22 @@
  */
 
 #include <postgres.h>
-#include "miscadmin.h"
 #include "storage/shmem.h"
-#include "executor/execWorkfile.h"
 #include "utils/atomic.h"
 #include "cdb/cdbvars.h"
+#include "utils/workfile_mgr.h"
 
 /* Name to identify the WorkfileDiskspace shared memory area by */
 #define WORKFILE_DISKSPACE_SHMEM_NAME "WorkfileDiskspace"
 
 /* Pointer to the shared memory counter with the total used diskspace across segment */
 static int64 *used_diskspace = NULL;
+
+/*
+ * This is set when a backend fails to write to a workfile,
+ * presumably because of an out-of-diskspace error
+ */
+bool gp_workfile_diskfull = false;
 
 /*
  * Initialize shared memory area for the WorkfileDiskspace module
@@ -37,6 +42,8 @@ WorkfileDiskspace_Init(void)
 
 	Assert(0 == *used_diskspace);
 
+	/* Reset diskfull flag */
+	gp_workfile_diskfull = false;
 }
 
 /*
@@ -76,11 +83,38 @@ WorkfileDiskspace_Reserve(int64 bytes)
 	}
 	else
 	{
-		(void) gp_atomic_add_64(used_diskspace, - bytes);
-		elog(gp_workfile_caching_loglevel,
-				"Failed to reserved size %lld. Reverted back to total %lld",
-				(long long) bytes, (long long) *used_diskspace);
-		return false;
+		while (1)
+		{
+			/* Revert */
+			(void) gp_atomic_add_64(used_diskspace, - bytes);
+
+			/* Evict */
+			int64 min_evict = 2 << 20; /* Evict 1MB minimum */
+			int64 requested_evict = Max(min_evict, bytes);
+			int64 size_evicted = workfile_mgr_evict(requested_evict);
+
+			/* If evict fails, fail */
+			if (size_evicted < requested_evict)
+			{
+				elog(gp_workfile_caching_loglevel,
+						"Failed to reserved size %lld. Reverted back to total %lld",
+						(long long) bytes, (long long) *used_diskspace);
+				return false;
+			}
+
+			/* add */
+			total = gp_atomic_add_64(used_diskspace, bytes);
+			Assert(total >= (int64) 0);
+
+			/* compare */
+			if (total <= max_allowed_diskspace)
+			{
+				/* if successful, return true */
+				return true;
+			}
+
+			/* else loop from Revert */
+		}
 	}
 	/* Not reached */
 }

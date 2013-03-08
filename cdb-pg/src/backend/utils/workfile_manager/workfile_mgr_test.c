@@ -540,8 +540,8 @@ cache_test_evict(void)
 	/* Evicting elements */
 	elog(LOG, "Running sub-test: Succesful eviction");
 
-	uint32 evictRequest = (noTestEntries * entryWeight) / 2 + 1; 	/* Half of the entries + 1 */
-	uint32 evictActual = Cache_Evict(cache, evictRequest);
+	int64 evictRequest = (noTestEntries * entryWeight) / 2 + 1; 	/* Half of the entries + 1 */
+	int64 evictActual = Cache_Evict(cache, evictRequest);
 
 	/* Expected result: Evicted half plus one entries */
 	unit_test_result(evictActual == evictRequest - 1 + entryWeight);
@@ -646,8 +646,8 @@ cache_test_evict_stress(void)
 		}
 
 		/* Evict noTestEntries x weight from cache */
-		uint32 evictRequest = noTestEntries * entryWeight;
-		uint32 evictSize = Cache_Evict(cache, evictRequest);
+		int64 evictRequest = noTestEntries * entryWeight;
+		int64 evictSize = Cache_Evict(cache, evictRequest);
 
 		/* XXX Under high concurrency, this test can actually legally fail.
 		 * If someone else just evicted everything we added, and we have to
@@ -657,7 +657,7 @@ cache_test_evict_stress(void)
 
 		if (evictSize != evictRequest)
 		{
-			elog(LOG, "Could not satisfy evict. Requested=%u, evicted=%u", evictRequest, evictSize);
+			elog(LOG, "Could not satisfy evict. Requested= " INT64_FORMAT " evicted=" INT64_FORMAT, evictRequest, evictSize);
 			testFailed = true;
 			break;
 		}

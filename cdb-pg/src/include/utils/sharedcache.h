@@ -98,7 +98,7 @@ typedef struct CacheEntry
 	Cache_EntryState state;
 
 	/* Abstract size of this cache entry */
-	uint32 size;
+	int64 size;
 
 	/* Utility of this entry (in replacement policy terms) */
 	uint32 utility;
@@ -176,7 +176,7 @@ typedef struct Cache_StatsRec
 	uint32 noFreeEntries;
 
 	/* Total size of entries in the cache */
-	uint32 totalEntrySize;
+	int64 totalEntrySize;
 
 	/* Eviction policy accounting */
 	uint32 noEntriesScanned;
@@ -307,13 +307,14 @@ void Cache_MemsetPayload(Cache *cache, CacheEntry *entry);
 #endif
 
 /* Cache replacement policy */
-uint32 Cache_Evict(Cache *cache, uint32 evictSize);
+int64 Cache_Evict(Cache *cache, int64 evictSize);
 void Cache_AdvanceClock(Cache *cache);
 void Cache_InitReplacementPolicy(Cache *cache);
 void Cache_TouchEntry(Cache *cache, CacheEntry *entry);
 
 /* Statistics related functions */
 void Cache_UpdatePerfCounter(uint32 *counter, int delta);
+void Cache_UpdatePerfCounter64(int64 *counter, int64 delta);
 void Cache_TimedOperationStart(void);
 void Cache_TimedOperationRecord(instr_time *totalTime, instr_time *maxTime);
 

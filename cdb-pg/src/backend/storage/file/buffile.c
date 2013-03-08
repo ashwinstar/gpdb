@@ -33,6 +33,8 @@
 
 #include "storage/fd.h"
 #include "storage/buffile.h"
+#include "miscadmin.h"
+#include "cdb/cdbvars.h"
 
 /*
  * This data structure represents a buffered file that consists of one
@@ -43,6 +45,7 @@ struct BufFile {
 	File file; /* palloc'd file*/
 
 	bool isTemp; /* can only add files if this is TRUE */
+	bool isWorkfile; /* true is file is managed by the workfile manager */
 	bool pfreeAtClose; /* CDB: true => buffer is ours, we pfree it */
 	bool dirty; /* does buffer need to be written? */
 
@@ -87,6 +90,7 @@ makeBufFile(File firstfile)
 	file->file = firstfile;
 
 	file->isTemp = false;
+	file->isWorkfile = false;
 	file->pfreeAtClose = false;
 	file->dirty = false;
 	/*
@@ -231,11 +235,20 @@ BufFileClose(BufFile *file)
 {
 	MemoryContext oldcontext = MemoryContextSwitchTo(file->context);
 
-	/* flush any unwritten data */
-	if (!file->isTemp)
+	if (file->isWorkfile && gp_workfile_diskfull)
 	{
-		BufFileFlush(file);
+		elog(gp_workfile_caching_loglevel, "closing workfile while workfile diskspace full, skipping flush");
 	}
+	else
+	{
+		/* flush any unwritten data */
+		if (!file->isTemp)
+		{
+			/* This can thrown an exception */
+			BufFileFlush(file);
+		}
+	}
+
 
 	FileClose(file->file);
 
@@ -375,11 +388,18 @@ static void BufFileDumpBuffer(BufFile *file, const void* buffer, Size nbytes)
 		}
 
 		wrote = FileWrite(file->file, (char *)buffer + wpos, (int)bytestowrite);
+		/* We account for everything we write, even if write failed */
+		file->offset += wrote;
 		if (wrote != bytestowrite)
 		{
+			if (file->isWorkfile)
+			{
+				elog(gp_workfile_caching_loglevel, "FileWrite failed while writing to a workfile. Marking IO Error flag");
+				Assert(!gp_workfile_diskfull);
+				gp_workfile_diskfull = true;
+			}
 			elog(ERROR, "could not write %d bytes to temporary file: %m", (int)bytestowrite);
 		}
-		file->offset += wrote;
 		wpos += wrote;
 	}
 	file->dirty = false;
@@ -497,6 +517,7 @@ BufFileWrite(BufFile *file, const void *ptr, Size size)
 			/* Buffer full, dump it out */
 			if (file->dirty)
 			{
+				/* This can throw an exception, but it correctly updates the size when that happens */
 				BufFileDumpBuffer(file, file->buffer, file->nbytes);
 			}
 			else
@@ -520,6 +541,7 @@ BufFileWrite(BufFile *file, const void *ptr, Size size)
 				nthistime -= nthistime % file->bufsize;
 			}
 
+			/* This can throw an exception, but it correctly updates the size when that happens */
 			BufFileDumpBuffer(file, ptr, nthistime);
 
 			ptr = (void *) ((char *) ptr + nthistime);
@@ -690,9 +712,24 @@ BufFileUpdateSize(BufFile *buffile)
 	}
 }
 
+/*
+ * Returns the size of this file according to current accounting
+ */
 int64
 BufFileGetSize(BufFile *buffile)
 {
 	Assert(NULL != buffile);
+
+	BufFileUpdateSize(buffile);
 	return buffile->maxoffset;
+}
+
+/*
+ * Mark this file as being managed by the workfile manager
+ */
+void
+BufFileSetWorkfile(BufFile *buffile)
+{
+	Assert(NULL != buffile);
+	buffile->isWorkfile = true;
 }
