@@ -1966,7 +1966,7 @@ execworkfile_create_one_MB_file(void)
 
 	elog(LOG, "Running sub-test: Closing file %s", filename->data);
 
-	int64 final_size = ExecWorkFile_Close(ewf);
+	int64 final_size = workfile_mgr_close_file(NULL /* work_set */, ewf);
 
 	/* Verify correct size of the created file */
 	unit_test_result (final_size == (int64)nchars*sizeof(char) );

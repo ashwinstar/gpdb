@@ -94,8 +94,10 @@ workfile_mgr_open_filename(workfile_set *work_set, const char *file_name)
  *
  *  work_set can be NULL for workfile that were created outside of the workfile manager,
  *  e.g. for ShareInputScan workfiles or window functions
+ *
+ *  Returns the actual size of the file on disk in bytes upon closing
  */
-void
+int64
 workfile_mgr_close_file(workfile_set *work_set, ExecWorkFile *file)
 {
 	Assert(NULL != file);
@@ -120,8 +122,8 @@ workfile_mgr_close_file(workfile_set *work_set, ExecWorkFile *file)
 	}
 	PG_END_TRY();
 
-
 	update_workset_size(work_set, delOnClose, created, size);
+	return size;
 }
 
 /*
