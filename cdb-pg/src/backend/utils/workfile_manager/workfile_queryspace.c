@@ -175,7 +175,10 @@ WorkfileQueryspace_Commit(int session_id, int command_count,
 	QueryspaceDesc *queryEntry = SyncHTLookup(queryspace_Hashtable, &queryKey);
 	Assert(NULL != queryEntry);
 
-	int64 total = gp_atomic_add_64(&queryEntry->queryDiskspace, (commit_bytes - reserved_bytes));
+#if USE_ASSERT_CHECKING
+	int64 total = 
+#endif
+	gp_atomic_add_64(&queryEntry->queryDiskspace, (commit_bytes - reserved_bytes));
 	Assert(total >= (int64) 0);
 
 	SyncHTRelease(queryspace_Hashtable, queryEntry);
