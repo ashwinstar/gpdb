@@ -37,13 +37,6 @@ struct bfz_freeable_stuff
 	char buffer[BFZ_BUFFER_SIZE];
 };
 
-struct bfz_threaded_freeable_stuff
-{
-	struct bfz_freeable_stuff super;
-	pthread_t	thread;
-	pipe_t		pipe;
-};
-
 typedef struct bfz
 {
 	struct bfz_freeable_stuff *freeable_stuff;
@@ -51,6 +44,7 @@ typedef struct bfz
 	char        *filename;
 	unsigned char mode;
 	unsigned char compression_index;
+	bool del_on_close;
 
 	/* Indicate if this bfz file stores block checksums. */
 	bool has_checksum;
@@ -70,12 +64,8 @@ typedef struct bfz
 
 /* These functions are internal to bfz. */
 extern void bfz_nothing_init(bfz_t * thiz);
-extern void bfz_threaded_nothing_init(bfz_t * thiz);
 extern void bfz_zlib_init(bfz_t * thiz);
-extern void bfz_threaded_zlib_init(bfz_t * thiz);
 extern void bfz_lzop_init(bfz_t * thiz);
-extern void bfz_threaded_lzop_init(bfz_t * thiz);
-extern void bfz_threaded_init(bfz_t * thiz, void *(*compress) (void *), void *(*uncompress) (void *));
 extern void bfz_write_ex(bfz_t * thiz, const char *buffer, int size);
 extern int	bfz_read_ex(bfz_t * thiz, char *buffer, int size);
 
@@ -83,7 +73,8 @@ extern int	bfz_read_ex(bfz_t * thiz, char *buffer, int size);
 extern const char *bfz_compression_to_string(int compress);
 extern int	bfz_string_to_compression(const char *string);
 
-extern bfz_t *bfz_create(const char *filePrefix, int compress);
+extern bfz_t *bfz_create(const char *filePrefix, bool delOnClose, int compress);
+extern bfz_t *bfz_open(const char *fileName, bool delOnClose, int compress);
 extern void bfz_append_end(bfz_t * thiz);
 extern void bfz_scan_begin(bfz_t * thiz);
 extern void bfz_close(bfz_t * thiz, bool unreg);

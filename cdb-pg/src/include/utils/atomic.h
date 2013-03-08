@@ -10,3 +10,7 @@ extern int32 compare_and_swap_ulong(unsigned long *dest,
 									unsigned long oldval,
 									unsigned long newval);
 extern int32 gp_atomic_add_32(volatile int32 *ptr, int32 inc);
+
+extern int32 gp_atomic_incmod_32(volatile int32 *loc, int32 mod);
+extern uint32 gp_atomic_dec_positive_32(volatile uint32 *loc, uint32 dec);
+extern uint32 gp_atomic_inc_ceiling_32(volatile uint32 *loc, uint32 inc, uint32 ceil);

@@ -22,6 +22,8 @@
 #include "miscadmin.h"
 #include "utils/tuplesort.h"
 #include "cdb/cdbvars.h" /* CDB *//* gp_sort_flags */
+#include "utils/workfile_mgr.h"
+#include "executor/instrument.h"
 
 static void ExecSortExplainEnd(PlanState *planstate, struct StringInfoData *buf);
 
@@ -46,8 +48,10 @@ ExecSort(SortState *node)
 	ScanDirection dir;
 	Tuplesortstate *tuplesortstate = NULL;
 	Tuplesortstate_mk *tuplesortstate_mk = NULL;
-	TupleTableSlot *slot;
-	Sort 		*plannode;
+	TupleTableSlot *slot = NULL;
+	Sort 		*plannode = NULL;
+	PlanState  *outerNode = NULL;
+	TupleDesc	tupDesc = NULL;
 
 	/*
 	 * get state info from node
@@ -78,15 +82,13 @@ ExecSort(SortState *node)
 
 	plannode = (Sort *) node->ss.ps.plan;
 
+
 	/*
-	 * If first time through, read all tuples from outer plan and pass them to
-	 * tuplesort.c. Subsequent calls just fetch tuples from tuplesort.
+	 * If called for the first time, initialize tuplesort_state
 	 */
 
 	if (!node->sort_Done)
 	{
-		PlanState  *outerNode;
-		TupleDesc	tupDesc;
 
 		SO1_printf("ExecSort: %s\n",
 				   "sorting subplan");
@@ -120,6 +122,7 @@ ExecSort(SortState *node)
 
 			if(gp_enable_mk_sort)
 				tuplesortstate_mk = tuplesort_begin_heap_file_readerwriter_mk(
+					& node->ss,
 					rwfile_prefix, true,
 					tupDesc,
 					plannode->numCols,
@@ -142,7 +145,8 @@ ExecSort(SortState *node)
 		else
 		{
 			if(gp_enable_mk_sort)
-				tuplesortstate_mk = tuplesort_begin_heap_mk(tupDesc,
+				tuplesortstate_mk = tuplesort_begin_heap_mk(& node->ss,
+						tupDesc,
 						plannode->numCols,
 						plannode->sortOperators,
 						plannode->sortColIdx,
@@ -235,6 +239,57 @@ ExecSort(SortState *node)
 		}
 
 
+	}
+
+	/*
+	 * Before reading any tuples from below, check if we can re-use
+	 * existing spill files.
+	 * For now, only mk_sort supports spill file caching.
+	 */
+	if (gp_enable_mk_sort && gp_workfile_caching)
+	{
+		Assert(tuplesortstate_mk != NULL);
+
+		if (node->cached_workfiles_found && !node->cached_workfiles_loaded)
+		{
+			elog(gp_workfile_caching_loglevel, "nodeSort: loading cached workfile metadata");
+
+			/* Look up SFR for existing spill set. Mark here if found */
+			workfile_set *work_set = workfile_mgr_find_set(&node->ss.ps);
+			Assert(work_set != NULL);
+
+			tuplesort_set_spillfile_set_mk(tuplesortstate_mk, work_set);
+			tuplesort_read_spill_metadata_mk(tuplesortstate_mk);
+			node->cached_workfiles_loaded = true;
+
+			if (node->ss.ps.instrument)
+			{
+				node->ss.ps.instrument->workfileReused = true;
+			}
+
+			/* Loaded sorted data from cached workfile, therefore
+			 * no need to sort anymore!
+			 */
+			Assert(!node->sort_Done);
+			node->sort_Done = true;
+
+			elog(gp_workfile_caching_loglevel, "Sort reusing cached workfiles, initiating Squelch walker");
+			ExecSquelchNode(outerNode);
+		}
+	}
+
+
+
+	/*
+	 * If first time through and no cached workfiles can be used,
+	 * read all tuples from outer plan and pass them to
+	 * tuplesort.c. Subsequent calls just fetch tuples from tuplesort.
+	 */
+	if (!node->sort_Done)
+	{
+
+		Assert(outerNode != NULL);
+
 		/*
 		 * Scan the subplan and feed all the tuples to tuplesort.
 		 */
@@ -292,7 +347,8 @@ ExecSort(SortState *node)
 
 			return NULL;
 		}
-	}
+
+	} /* if (!node->sort_Done) */
 
 	if(plannode->share_type != SHARE_NOTSHARED)
 		return NULL;
@@ -360,6 +416,8 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 	sortstate->sort_Done = false;
 	sortstate->tuplesortstate = NULL;
 	sortstate->share_lk_ctxt = NULL;
+	sortstate->cached_workfiles_found = false;
+	sortstate->cached_workfiles_loaded = false;
 
 	/* CDB */
 
@@ -451,6 +509,21 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 
 	SO1_printf("ExecInitSort: %s\n",
 			   "sort node initialized");
+
+	if (gp_workfile_caching)
+	{
+		/* Look up SFR for existing spill set. Mark here if found */
+		workfile_set *work_set = NULL;
+		work_set = workfile_mgr_find_set(&sortstate->ss.ps);
+		if (work_set != NULL)
+		{
+			/* Found existing SFS with matching hash value */
+			elog(gp_workfile_caching_loglevel, "Sort found matching existing SFS!");
+			sortstate->cached_workfiles_found = true;
+		}
+
+	}
+
 
 	initGpmonPktForSort((Plan *)node, &sortstate->ss.ps.gpmon_pkt, estate);
 

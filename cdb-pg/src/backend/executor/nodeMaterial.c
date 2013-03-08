@@ -24,6 +24,7 @@
 
 #include "executor/executor.h"
 #include "executor/nodeMaterial.h"
+#include "executor/instrument.h"        /* Instrumentation */
 #include "utils/tuplestorenew.h"
 
 #include "miscadmin.h"
@@ -98,8 +99,46 @@ ExecMaterial(MaterialState *node)
 		}
 		else
 		{
-			ts = ntuplestore_create(PlanStateOperatorMemKB((PlanState *) node) * 1024);
-			tsa = ntuplestore_create_accessor(ts, true);
+			/* Non-shared Materialize node */
+			bool isWriter = true;
+
+			if (gp_workfile_caching)
+			{
+				workfile_set *work_set = NULL;
+
+				if (node->cached_workfiles_found)
+				{
+					work_set = workfile_mgr_find_set( &node->ss.ps);
+					isWriter = false;
+
+					if (node->ss.ps.instrument)
+					{
+						node->ss.ps.instrument->workfileReused = true;
+					}
+
+					/* Reusing cached workfiles. Tell subplan we won't be needing any tuples */
+					elog(gp_workfile_caching_loglevel, "Materialize reusing cached workfiles, initiating Squelch walker");
+					ExecSquelchNode(outerPlanState(node));
+				}
+				else
+				{
+					work_set = workfile_mgr_create_set(BUFFILE, true /* can_reuse */, &node->ss.ps, NULL_SNAPSHOT);
+					isWriter = true;
+				}
+
+				Assert(work_set != NULL);
+				ts = ntuplestore_create_workset(work_set, node->cached_workfiles_found,
+						PlanStateOperatorMemKB((PlanState *) node) * 1024);
+
+			}
+			else
+			{
+				ts = ntuplestore_create(PlanStateOperatorMemKB((PlanState *) node) * 1024);
+				isWriter = true;
+			}
+
+			tsa = ntuplestore_create_accessor(ts, isWriter);
+
 		}
 		
 		Assert(ts && tsa);
@@ -126,9 +165,17 @@ ExecMaterial(MaterialState *node)
 		 * is used to share input, we will need to fetch all rows and put
 		 * them in tuple store
 		 */
-		while (((Material *) node->ss.ps.plan)->cdb_strict 
+		while (((Material *) node->ss.ps.plan)->cdb_strict
 				|| ma->share_type != SHARE_NOTSHARED)
 		{
+			/*
+			 * When reusing cached workfiles, we already have all the tuples,
+			 * and we don't need to read anything from subplan.
+			 */
+			if (node->cached_workfiles_found)
+			{
+				break;
+			}
 			TupleTableSlot *outerslot = ExecProcNode(outerPlanState(node));
 
 			if (TupIsNull(outerslot))
@@ -202,8 +249,9 @@ ExecMaterial(MaterialState *node)
 	 * subplan calls.  It's not optional, unfortunately, because some plan
 	 * node types are not robust about being called again when they've already
 	 * returned NULL.
+	 * If reusing cached workfiles, there is no need to execute subplan at all.
 	 */
-	if (eof_tuplestore && !node->eof_underlying)
+	if (eof_tuplestore && !node->eof_underlying && !node->cached_workfiles_found)
 	{
 		PlanState  *outerNode;
 		TupleTableSlot *outerslot;
@@ -217,6 +265,11 @@ ExecMaterial(MaterialState *node)
 		if (TupIsNull(outerslot))
 		{
 			node->eof_underlying = true;
+			if (ntuplestore_created_reusable_workfiles(ts))
+			{
+				ntuplestore_flush(ts);
+				ntuplestore_mark_workset_complete(ts);
+			}
 
 			if (!node->ss.ps.delayEagerFree)
 			{
@@ -347,6 +400,18 @@ ExecInitMaterial(Material *node, EState *estate, int eflags)
 		ShareNodeEntry *snEntry = ExecGetShareNodeEntry(estate, node->share_id, true); 
 		snEntry->sharePlan = (Node *) node;
 		snEntry->shareState = (Node *) matstate;
+	}
+
+	if (gp_workfile_caching)
+	{
+		/* Look up SFR for existing spill set. Mark here if found */
+		workfile_set *work_set = workfile_mgr_find_set( &matstate->ss.ps);
+		if (work_set != NULL)
+		{
+			/* Found existing SFS with matching hash value */
+			elog(gp_workfile_caching_loglevel, "Materialize found matching existing spill file set");
+			matstate->cached_workfiles_found = true;
+		}
 	}
 
 	initGpmonPktForMaterial((Plan *)node, &matstate->ss.ps.gpmon_pkt, estate);

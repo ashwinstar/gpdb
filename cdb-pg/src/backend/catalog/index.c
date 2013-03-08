@@ -2166,7 +2166,8 @@ validate_index(Oid heapId, Oid indexId, Snapshot snapshot)
 	ivinfo.extra_oids = NIL;
 
 	if(gp_enable_mk_sort)
-		state.tuplesort = tuplesort_begin_datum_mk(TIDOID,
+		state.tuplesort = tuplesort_begin_datum_mk(NULL,
+				TIDOID,
 				TIDLessOperator,
 				maintenance_work_mem,
 				false);

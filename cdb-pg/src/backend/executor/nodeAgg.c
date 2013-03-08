@@ -244,10 +244,12 @@ initialize_aggregates(AggState *aggstate,
 				 */
 				peraggstate->sortstate =
 					(peraggstate->numInputs == 1) ?
-					tuplesort_begin_datum_mk(peraggstate->evaldesc->attrs[0]->atttypid,
+					tuplesort_begin_datum_mk(& aggstate->ss,
+											 peraggstate->evaldesc->attrs[0]->atttypid,
 											 peraggstate->sortOperators[0],
 											 PlanStateOperatorMemKB((PlanState *) aggstate), false) :
-					tuplesort_begin_heap_mk(peraggstate->evaldesc,
+					tuplesort_begin_heap_mk(& aggstate->ss,
+											peraggstate->evaldesc,
 											peraggstate->numSortCols,
 											peraggstate->sortOperators,
 											peraggstate->sortColIdx,
@@ -1062,6 +1064,18 @@ ExecAgg(AggState *node)
 
 				case HASHAGG_END_OF_PASSES:
 					node->agg_done = true;
+					if (gp_workfile_caching && node->workfiles_created)
+					{
+						/*
+						 * HashAgg closes each spill file after it is done with
+						 * them. Since we got here on the regular path, all
+						 * files should be closed.
+						 */
+						Assert(node->hhashtable->work_set);
+						Assert(node->hhashtable->spill_set == NULL);
+						agg_hash_close_state_file(node->hhashtable);
+						agg_hash_mark_spillset_complete(node);
+					}
 					ExecEagerFreeAgg(node);
 					return NULL;
 
@@ -1681,6 +1695,9 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	aggstate->pergroup = NULL;
 	aggstate->grp_firstTuple = NULL;
 	aggstate->hashtable = NULL;
+	aggstate->cached_workfiles_found = false;
+	aggstate->cached_workfiles_loaded = false;
+	aggstate->workfiles_created = false;
 
 	/*
 	 * Create expression contexts.	We need two, one for per-input-tuple
@@ -2386,6 +2403,19 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	aggstate->mem_manager.manager = aggstate->aggcontext;
 	aggstate->mem_manager.realloc_ratio = 1;
 
+
+	if (gp_workfile_caching && node->aggstrategy == AGG_HASHED)
+	{
+		/* Look up SFR for existing spill set. Mark here if found */
+		workfile_set *work_set = workfile_mgr_find_set(&aggstate->ss.ps);
+
+		if (work_set != NULL)
+		{
+			aggstate->cached_workfiles_found = true;
+			elog(gp_workfile_caching_loglevel, "HashAgg found existing workfile matching subplan, will reuse");
+		}
+
+	}
 	initGpmonPktForAgg((Plan *)node, &aggstate->ss.ps.gpmon_pkt, estate);
 	
 	return aggstate;

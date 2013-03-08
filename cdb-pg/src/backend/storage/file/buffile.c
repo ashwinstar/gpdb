@@ -199,13 +199,13 @@ extendBufFile(BufFile *file)
  * memory context that will survive across transaction boundaries.
  */
 BufFile *
-BufFileCreateTemp(const char * fileName, bool interXact)
+BufFileCreateTemp(const char * filePrefix, bool interXact)
 {
 	BufFile *file;
 	File pfile;
 	bool closeAtEOXact = !interXact;
 
-	pfile = OpenTemporaryFile(fileName, 1, /* extentseqnum */
+	pfile = OpenTemporaryFile(filePrefix, 1, /* extentseqnum */
 							  true, /* makenameunique */
 							  true, /* create */
 							  true, /* delOnClose */
@@ -216,33 +216,68 @@ BufFileCreateTemp(const char * fileName, bool interXact)
 	file->isTemp = true;
 	file->closeAtEOXact = closeAtEOXact;
 	file->is_rwfile = false;
-	file->file_prefix = pstrdup(fileName);
+	file->file_prefix = pstrdup(filePrefix);
 
 	return file;
 }
 
 BufFile *
-BufFileCreateTemp_ReaderWriter(const char* fileName, bool isWriter)
+BufFileCreateFile(const char * fileName, bool delOnClose, bool interXact)
 {
-	BufFile *file;
-	File pfile;
+	return BufFileOpenFile(fileName,
+			true, /* create */
+			delOnClose,
+			interXact);
+}
 
-	pfile = OpenTemporaryFile(fileName, 1, /* extentseqnum */
+BufFile *
+BufFileOpenFile(const char * fileName, bool create, bool delOnClose, bool interXact)
+{
+	bool closeAtEOXact = !interXact;
+	File pfile = OpenNamedFile(fileName,
+							  create,
+							  delOnClose,
+							  closeAtEOXact); /* closeAtEOXact */
+	/*
+	 * If we are trying to open an existing file and it failed,
+	 * signal this to the caller.
+	 */
+	if (!create && pfile <= 0)
+	{
+		return NULL;
+	}
+
+	Assert(pfile >= 0);
+
+	BufFile *file = makeBufFile(pfile);
+	file->isTemp = delOnClose;
+	file->closeAtEOXact = closeAtEOXact;
+	file->is_rwfile = false;
+	file->file_prefix = pstrdup(fileName);
+
+	return file;
+
+}
+
+BufFile *
+BufFileCreateTemp_ReaderWriter(const char* filePrefix, bool isWriter)
+{
+	File pfile = OpenTemporaryFile(filePrefix, 1, /* extentseqnum */
 							  false, /* makenameunique */
 							  isWriter, /* create */
 							  isWriter, /* delOnClose */
 							  false); /* closeAtEOXact */
 	if (pfile < 0)
 	{
-		elog(ERROR, "could not open temporary file \"%s\": %m", fileName);
+		elog(ERROR, "could not open temporary file \"%s\": %m", filePrefix);
 	}
 
-	file = makeBufFile(pfile);
+	BufFile *file = makeBufFile(pfile);
 	file->isTemp = true;
 	file->closeAtEOXact = false;
 	file->is_rwfile = true;
 	file->rwfile_iswriter = isWriter;
-	file->file_prefix = pstrdup(fileName);
+	file->file_prefix = pstrdup(filePrefix);
 
 	if(!isWriter)
 	{

@@ -52,8 +52,8 @@
 #include "cdb/cdbfilerep.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
+#include "utils/workfile_mgr.h"
 
-#include "utils/debugbreak.h"
 /* Debug_filerep_print guc temporaly added for troubleshooting */
 #include "utils/guc.h"
 #include "utils/faultinjector.h"
@@ -810,7 +810,6 @@ PathNameOpenFile(FileName fileName, int fileFlags, int fileMode)
 
 	DO_DB(elog(LOG, "PathNameOpenFile: %s %x %o",
 			   fileName, fileFlags, fileMode));
-
 	/*
 	 * We need a malloc'd copy of the file name; fail cleanly if no room.
 	 */
@@ -920,20 +919,12 @@ OpenTemporaryFile(const char   *fileName,
                   bool          delOnClose,
                   bool          closeAtEOXact)
 {
-	File    file;
-    int     fileFlags;
+
 	char	tempfilepath[MAXPGPATH];
 
 	Assert(fileName);
     AssertImply(makenameunique, create && delOnClose);
 
-	/*
-	 * File flags when open the file.  Note: we don't use O_EXCL, in case there is an orphaned
-	 * temp file that can be reused.
-	 */
-	fileFlags = O_RDWR | PG_BINARY;
-    if (create)
-        fileFlags |= O_TRUNC | O_CREAT;
 
     char tempfileprefix[MAXPGPATH];
 
@@ -961,7 +952,34 @@ OpenTemporaryFile(const char   *fileName,
 				 extentseqnum);
 	}
 
-	file = FileNameOpenFile(tempfilepath, fileFlags, 0600);
+    return OpenNamedFile(tempfilepath, create, delOnClose, closeAtEOXact);
+}    /* OpenTemporaryFile */
+
+/*
+ * Open an arbitrary file that will (optionally) disappear when we close it.
+ * This is similar to OpenTemporaryFile, except the exact name specified in
+ * fileName is used.
+ */
+File
+OpenNamedFile(const char   *fileName,
+                  bool          create,
+                  bool          delOnClose,
+                  bool          closeAtEOXact)
+{
+	char	tempfilepath[MAXPGPATH];
+	strncpy(tempfilepath, fileName, sizeof(tempfilepath));
+
+	/*
+	 * File flags when open the file.  Note: we don't use O_EXCL, in case there is an orphaned
+	 * temp file that can be reused.
+	 */
+	int fileFlags = O_RDWR | PG_BINARY;
+	if (create)
+	{
+		fileFlags |= O_TRUNC | O_CREAT;
+	}
+
+	File file = FileNameOpenFile(tempfilepath, fileFlags, 0600);
 
 	if (file <= 0)
 	{
@@ -1001,7 +1019,7 @@ OpenTemporaryFile(const char   *fileName,
 	}
 
 	return file;
-}                               /* OpenTemporaryFile */
+}                             /* OpenNamedFile */
 
 
 /*
@@ -1823,6 +1841,8 @@ CleanupTempFiles(bool isProcExit)
 		}
 	}
 
+	workfile_mgr_cleanup();
+
 	while (numAllocatedDescs > 0)
 		FreeDesc(&allocatedDescs[0]);
 }
@@ -1913,6 +1933,9 @@ RemovePgTempFilesInDir(const char *tmpdirname)
 				 "unexpected file found in temporary-files directory: \"%s\"",
 				 rm_path);
 		}
+
+		workfile_mgr_cleanup_files(tmpdirname);
+
 	}
 
 	FreeDir(temp_dir);
@@ -1928,13 +1951,27 @@ RemovePgTempFilesInDir(const char *tmpdirname)
 size_t
 GetTempFilePrefix(char * buf, size_t buflen, const char * fileName)
 {
+	Assert(buf);
+	/*
+	 * If the file name was generated using the workfile
+	 * manager, it already contains the temp directory prefix.
+	 * Leave the filename alone in this case.
+	 */
+	if (strstr(fileName, WORKFILE_SET_PREFIX))
+	{
+		memcpy(buf, fileName, buflen);
+		return strlen(fileName);
+	}
+
 	size_t needlen = strlen(PG_TEMP_FILES_DIR)
 			+ strlen(PG_TEMP_FILE_PREFIX)
 			+ strlen(fileName)
 			+ 2; /* enough for a slash and a _ */
 
 	if (buflen < needlen)
+	{
 		return needlen;
+	}
 	
 	snprintf(buf, buflen, "%s/%s_%s",
 			PG_TEMP_FILES_DIR,

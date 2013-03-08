@@ -1030,6 +1030,8 @@ extern int gp_gpperfmon_send_interval;
 extern int gp_hashagg_compress_spill_files;
 extern int gp_workfile_compress_algorithm;
 extern bool gp_workfile_checksumming;
+extern bool gp_workfile_caching;
+extern int gp_workfile_caching_loglevel;
 extern bool gp_workfile_faultinject;
 extern int gp_workfile_bytes_to_checksum;
 /* The type of work files that HashJoin should use */

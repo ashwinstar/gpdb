@@ -71,6 +71,25 @@ debug_break()
     }
 }
 
+void
+debug_break_timed(int sec)
+{
+	volatile int debug_break_loop;
+
+	debug_break_loop = 0;
+
+	++debug_break_loop;
+
+	if(debug_break_loop == 1)
+		elog(LOG, "Debug break timed");
+
+	while(debug_break_loop++ < sec )
+    {
+        CHECK_FOR_INTERRUPTS();
+		sleep(1);
+    }
+}
+
 #define DEBUG_BREAK_N_MAX (sizeof(int) * 8)
 
 /* by default, only enable debug_break_point 1, (Assert) */

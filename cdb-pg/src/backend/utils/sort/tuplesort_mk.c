@@ -211,6 +211,11 @@ struct Tuplesortstate_mk
     MemoryContext 	sortcontext;	/* memory context holding all sort data */
     LogicalTapeSet 	*tapeset;	/* logtape.c object for tapes in a temp file */
 
+    ScanState *ss;
+
+	/* Representation of all spill file names, for spill file reuse */
+	workfile_set *work_set;
+
     /*
      * MUST be set
      *
@@ -356,8 +361,8 @@ struct Tuplesortstate_mk
     /* 
      * File fo dump/load logical tape set state.  Used by sharing sort across slice 
      */
-    char    *pfile_rwfile_prefix;
-    BufFile *pfile_rwfile_state;
+    char    *tapeset_state_file_prefix;
+    BufFile *tapeset_state_file;
 
     /* Gpmon */
     gpmon_packet_t *gpmon_pkt;
@@ -366,7 +371,7 @@ struct Tuplesortstate_mk
 
 static bool is_sortstate_rwfile(Tuplesortstate_mk *state)
 {
-    return state->pfile_rwfile_state != NULL;
+    return state->tapeset_state_file != NULL;
 }
 #ifdef USE_ASSERT_CHECKING
 static bool is_under_sort_ctxt(Tuplesortstate_mk *state)
@@ -444,7 +449,7 @@ static inline bool LACKMEM_WITH_ESTIMATE(Tuplesortstate_mk *state)
  * a lot better than what we were doing before 7.3.
  */
 
-static Tuplesortstate_mk *tuplesort_begin_common(int workMem, bool randomAccess, bool allocmemtuple);
+static Tuplesortstate_mk *tuplesort_begin_common(ScanState * ss, int workMem, bool randomAccess, bool allocmemtuple);
 static void puttuple_common(Tuplesortstate_mk *state, MKEntry *e); 
 static void selectnewtape_mk(Tuplesortstate_mk *state);
 static void mergeruns(Tuplesortstate_mk *state);
@@ -518,7 +523,7 @@ extern void mkheap_verify_heap(MKHeap *heap, int top);
  */
 
 static Tuplesortstate_mk *
-tuplesort_begin_common(int workMem, bool randomAccess, bool allocmemtuple)
+tuplesort_begin_common(ScanState * ss, int workMem, bool randomAccess, bool allocmemtuple)
 {
     Tuplesortstate_mk *state;
     MemoryContext sortcontext;
@@ -549,6 +554,9 @@ tuplesort_begin_common(int workMem, bool randomAccess, bool allocmemtuple)
     state->status = TSS_INITIAL;
     state->randomAccess = randomAccess;
     state->memAllowed = workMem * 1024L;
+
+    state->work_set = NULL;
+    state->ss = ss;
 
     state->sortcontext = sortcontext;
 
@@ -710,12 +718,14 @@ create_mksort_context(
 }
 
 Tuplesortstate_mk *
-tuplesort_begin_heap_mk(TupleDesc tupDesc,
+tuplesort_begin_heap_mk(ScanState *ss,
+		TupleDesc tupDesc,
         int nkeys,
         Oid *sortOperators, AttrNumber *attNums,
         int workMem, bool randomAccess)
 {
-    Tuplesortstate_mk *state = tuplesort_begin_common(workMem, randomAccess, true);
+
+    Tuplesortstate_mk *state = tuplesort_begin_common(ss, workMem, randomAccess, true);
     MemoryContext oldcontext;
 
     oldcontext = MemoryContextSwitchTo(state->sortcontext);
@@ -749,7 +759,7 @@ tuplesort_begin_heap_mk(TupleDesc tupDesc,
 }
 
 Tuplesortstate_mk *
-tuplesort_begin_heap_file_readerwriter_mk(
+tuplesort_begin_heap_file_readerwriter_mk(ScanState *ss,
         const char *rwfile_prefix, bool isWriter,
         TupleDesc tupDesc,
         int nkeys,
@@ -769,10 +779,14 @@ tuplesort_begin_heap_file_readerwriter_mk(
          * Writer is a oridinary tuplesort, except the underlying buf file are named by
          * rwfile_prefix.
          */
-        state = tuplesort_begin_heap_mk(tupDesc, nkeys, sortOperators, attNums, workMem, randomAccess);
+        state = tuplesort_begin_heap_mk(ss, tupDesc, nkeys, sortOperators, attNums, workMem, randomAccess);
 
-        state->pfile_rwfile_prefix = MemoryContextStrdup(state->sortcontext, rwfile_prefix);
-        state->pfile_rwfile_state = BufFileCreateTemp_ReaderWriter(statedump, true);
+        state->tapeset_state_file_prefix = MemoryContextStrdup(state->sortcontext, rwfile_prefix);
+        /* TODO Make sure the names are unique, since we don't use CreateTemp anymore */
+        state->tapeset_state_file = BufFileCreateFile(statedump,
+        		true,  /* delOnClose */
+        		true  /* interXact */
+        		);
         return state;
     }
     else
@@ -785,7 +799,7 @@ tuplesort_begin_heap_file_readerwriter_mk(
          * it.
          */
         MemoryContext oldctxt;
-        state = tuplesort_begin_common(workMem, randomAccess, false);
+        state = tuplesort_begin_common(ss, workMem, randomAccess, false);
         state->status = TSS_SORTEDONTAPE;
         state->randomAccess = true;
 
@@ -793,10 +807,15 @@ tuplesort_begin_heap_file_readerwriter_mk(
 
         oldctxt = MemoryContextSwitchTo(state->sortcontext);
 
-        state->pfile_rwfile_prefix = MemoryContextStrdup(state->sortcontext, rwfile_prefix);
-        state->pfile_rwfile_state = BufFileCreateTemp_ReaderWriter(statedump, false);
+        state->tapeset_state_file_prefix = MemoryContextStrdup(state->sortcontext, rwfile_prefix);
+        /* TODO Make sure the names are unique, since we don't use CreateTemp anymore */
+        state->tapeset_state_file = BufFileOpenFile(statedump,
+        		false, /* create */
+        		true, /* delOnClose */
+        		true /* interXact */
+        		);
 
-        state->tapeset = LoadLogicalTapeSetState(state->pfile_rwfile_state, rwfile_prefix);
+        state->tapeset = LoadLogicalTapeSetState(state->tapeset_state_file, rwfile_prefix);
         state->currentRun = 0;
         state->result_tape = LogicalTapeSetGetTape(state->tapeset, 0);
 
@@ -817,7 +836,7 @@ tuplesort_begin_index_mk(Relation indexRel,
         bool enforceUnique,
         int workMem, bool randomAccess)
 {
-    Tuplesortstate_mk *state = tuplesort_begin_common(workMem, randomAccess, true);
+    Tuplesortstate_mk *state = tuplesort_begin_common(NULL, workMem, randomAccess, true);
     MemoryContext oldcontext;
     TupleDesc tupdesc;
 
@@ -851,11 +870,12 @@ tuplesort_begin_index_mk(Relation indexRel,
 }
 
 Tuplesortstate_mk *
-tuplesort_begin_datum_mk(Oid datumType,
+tuplesort_begin_datum_mk(ScanState * ss,
+		Oid datumType,
         Oid sortOperator,
         int workMem, bool randomAccess)
 {
-    Tuplesortstate_mk *state = tuplesort_begin_common(workMem, randomAccess, true);
+    Tuplesortstate_mk *state = tuplesort_begin_common(ss, workMem, randomAccess, true);
     MemoryContext oldcontext;
     int16		typlen;
     bool		typbyval;
@@ -922,6 +942,17 @@ tuplesort_end_mk(Tuplesortstate_mk *state)
     {
         LogicalTapeSetClose(state->tapeset);
         state->tapeset = NULL;
+
+        if (state->tapeset_state_file)
+        {
+        	BufFileClose(state->tapeset_state_file);
+        }
+    }
+
+
+    if (state->work_set)
+    {
+    	workfile_mgr_close_set(state->work_set);
     }
 
 	tuplesort_finalize_stats_mk(state);
@@ -1179,9 +1210,14 @@ puttuple_common(Tuplesortstate_mk *state, MKEntry *e)
             		Assert(state->entry_count > 0);
             		state->arraySizeBeforeSpill = state->entry_allocsize;
             		state->memUsedBeforeSpill = MemoryContextGetPeakSpace(state->sortcontext);
-            		inittapes_mk(state, is_sortstate_rwfile(state) ? state->pfile_rwfile_prefix : NULL);
+            		inittapes_mk(state, is_sortstate_rwfile(state) ? state->tapeset_state_file_prefix : NULL);
             		Assert(state->status == TSS_BUILDRUNS);
             	}
+
+				if (state->instrument)
+				{
+					state->instrument->workfileCreated = true;
+				}
             }
 
             break;
@@ -1234,7 +1270,7 @@ tuplesort_performsort_mk(Tuplesortstate_mk *state)
                 break;
 
             /* Shareinput sort, need to put this stuff onto disk */
-            inittapes_mk(state, state->pfile_rwfile_prefix);
+            inittapes_mk(state, state->tapeset_state_file_prefix);
             /* Fall through */
         case TSS_BUILDRUNS:
 
@@ -1254,6 +1290,22 @@ tuplesort_performsort_mk(Tuplesortstate_mk *state)
             state->pos.markpos.tapepos.blkNum = 0;
             state->pos.markpos.tapepos.offset = 0;
             state->pos.markpos_eof = false;
+
+    		/*
+    		 * If we're planning to reuse the spill files from this sort,
+    		 * save metadata here and mark work_set complete.
+    		 */
+    		if (gp_workfile_caching)
+    		{
+    			tuplesort_write_spill_metadata_mk(state);
+
+    			/* We don't know how to handle TSS_FINALMERGE yet */
+    			Assert(state->status == TSS_SORTEDONTAPE);
+    			Assert(state->work_set);
+
+    			workfile_mgr_mark_complete(state->work_set);
+    		}
+
             break;
 
         default:
@@ -1266,10 +1318,11 @@ tuplesort_performsort_mk(Tuplesortstate_mk *state)
 void tuplesort_flush_mk(Tuplesortstate_mk *state)
 {
     Assert(state->status == TSS_SORTEDONTAPE);
-    Assert(state->tapeset && state->pfile_rwfile_state);
+    Assert(state->tapeset && state->tapeset_state_file);
     Assert(state->pos.cur_work_tape == NULL);
-    LogicalTapeFlush(state->tapeset, state->result_tape, state->pfile_rwfile_state);
-    BufFileFlush(state->pfile_rwfile_state);
+    elog(gp_workfile_caching_loglevel, "tuplesort_mk: writing logical tape state to file");
+    LogicalTapeFlush(state->tapeset, state->result_tape, state->tapeset_state_file);
+    BufFileFlush(state->tapeset_state_file);
 }
 
 /*
@@ -1634,13 +1687,51 @@ inittapes_mk(Tuplesortstate_mk *state, const char* rwfile_prefix)
      */
     tapeSpace = maxTapes * TAPE_BUFFER_OVERHEAD;
 
+    Assert(state->work_set == NULL);
+    PlanState *ps = NULL;
+    bool can_be_reused = false;
+    if (state->ss != NULL)
+    {
+    	ps = &state->ss->ps;
+    	can_be_reused = true;
+    }
+    else
+    {
+    	ps = NULL;
+    	can_be_reused = false;
+    }
+    state->work_set = workfile_mgr_create_set(BUFFILE, can_be_reused, ps, NULL_SNAPSHOT);
+
     /*
      * Create the tape set and allocate the per-tape data arrays.
      */
     if(!rwfile_prefix)
-        state->tapeset = LogicalTapeSetCreate(maxTapes);
+    {
+
+    	char metadata_file_name[MAXPGPATH];
+    	workfile_mgr_retrieve_file_no(state->work_set, WORKFILE_NUM_MKSORT_METADATA,
+    			metadata_file_name, sizeof(metadata_file_name));
+    	bool del_on_close = !gp_workfile_caching;
+    	bool interXact = false;
+    	state->tapeset_state_file = BufFileCreateFile(metadata_file_name,
+    			del_on_close,
+    			interXact);
+
+    	char tape_file_name[MAXPGPATH];
+    	workfile_mgr_retrieve_file_no(state->work_set, WORKFILE_NUM_MKSORT_TAPESET,
+    			tape_file_name, sizeof(tape_file_name));
+        state->tapeset = LogicalTapeSetCreate_Named(tape_file_name, maxTapes, del_on_close);
+    }
     else
-        state->tapeset = LogicalTapeSetCreate_ReaderWriter(rwfile_prefix, maxTapes);
+    {
+    	/* TODO Make sure the name coming in rwfile_prefix is unique, because
+    	 * we don't add a random suffix anymore in Buffile
+    	 */
+    	state->tapeset = LogicalTapeSetCreate_Named(rwfile_prefix,
+    			maxTapes,
+    			true /* del_on_close */
+    			);
+    }
 
     state->mergeactive = (bool *) palloc0(maxTapes * sizeof(bool));
     state->mergenext = (int *) palloc0(maxTapes * sizeof(int));
@@ -1790,7 +1881,15 @@ mergeruns(Tuplesortstate_mk *state)
          * pass remains.  If we don't have to produce a materialized sorted
          * tape, we can stop at this point and do the final merge on-the-fly.
          */
-        if (!state->randomAccess)
+
+    	/* For now, if workfile caching is enabled, always do the final merging
+    	 * and store the sorted result on disk, instead of stoping before the
+    	 * last merge iteration.
+    	 * This can cause some slowdown compared to no workfile caching, but
+    	 * it enables us to re-use the mechanism to dump and restore logical
+    	 * tape set information as-is.
+    	 */
+        if (!state->randomAccess && !gp_workfile_caching)
         {
             bool		allOneRun = true;
 
@@ -3396,4 +3495,69 @@ tuplesort_set_gpmon_mk(Tuplesortstate_mk *state, gpmon_packet_t *gpmon_pkt, int 
     state->gpmon_sort_tick = gpmon_tick;
 }
 
+/*
+ * Write the metadata of a workfile set to disk
+ */
+void
+tuplesort_write_spill_metadata_mk(Tuplesortstate_mk *state)
+{
 
+	if (state->status == TSS_SORTEDINMEM)
+	{
+		/* No spill files, nothing to save */
+		return;
+	}
+
+	/* We don't know how to handle TSS_FINALMERGE yet */
+	Assert(state->status == TSS_SORTEDONTAPE);
+
+	tuplesort_flush_mk(state);
+}
+
+void tuplesort_set_spillfile_set_mk(Tuplesortstate_mk * state, workfile_set * sfs)
+{
+	state->work_set = sfs;
+}
+
+void tuplesort_read_spill_metadata_mk(Tuplesortstate_mk *state)
+{
+
+	Assert(state->work_set != NULL);
+
+	MemoryContext oldctxt = MemoryContextSwitchTo(state->sortcontext);
+
+    state->status = TSS_SORTEDONTAPE;
+
+    /* TODO This should be set to the same value as when we wrote the set (maybe add to metadata?) -- or force to true when caching is enabled. */
+    /* state->randomAccess = true; */
+    state->readtup = readtup_heap;
+
+	/* Open saved spill file set and metadata.
+	 * Initialize logical tape set to point to the right blocks.  */
+	char metadata_file_name[MAXPGPATH];
+	workfile_mgr_retrieve_file_no(state->work_set, WORKFILE_NUM_MKSORT_METADATA, metadata_file_name, MAXPGPATH);
+
+	state->tapeset_state_file = BufFileOpenFile(metadata_file_name,
+			false, /* create */
+			false, /* delOnClose */
+			true  /* interXact */
+			);
+
+	char tape_file_name[MAXPGPATH];
+	workfile_mgr_retrieve_file_no(state->work_set, WORKFILE_NUM_MKSORT_TAPESET, tape_file_name, MAXPGPATH);
+
+    state->tapeset = LoadLogicalTapeSetState(state->tapeset_state_file, tape_file_name);
+    state->currentRun = 0;
+    state->result_tape = LogicalTapeSetGetTape(state->tapeset, 0);
+
+    state->pos.eof_reached =false;
+    state->pos.markpos.tapepos.blkNum = 0;
+    state->pos.markpos.tapepos.offset = 0;
+    state->pos.markpos.mempos = 0;
+    state->pos.markpos_eof = false;
+    state->pos.cur_work_tape = NULL;
+
+    MemoryContextSwitchTo(oldctxt);
+}
+
+/* EOF */

@@ -132,7 +132,11 @@ LogicalTapeSet *LoadLogicalTapeSetState(BufFile *pfile, const char* rwfile_prefi
 
 	lts = (LogicalTapeSet *) palloc(sizeof(LogicalTapeSet));
 
-	lts->pfile = BufFileCreateTemp_ReaderWriter(rwfile_prefix, false);
+	lts->pfile = BufFileOpenFile(rwfile_prefix,
+			false, /* create */
+			false, /* delOnClose */
+			true /* interXact */
+			);
 	lts->nTapes = 1;
 	lt = &lts->tapes[0];
 
@@ -340,13 +344,17 @@ LogicalTapeSetCreate_Internal(int ntapes)
 	return lts;
 }
 
-LogicalTapeSet *LogicalTapeSetCreate(int ntapes)
+LogicalTapeSet *LogicalTapeSetCreate(int ntapes, bool del_on_close)
+{
+	char tmpprefix[50];
+	snprintf(tmpprefix, 50, "slice%d_sort", currentSliceId);
+	return LogicalTapeSetCreate_Named(tmpprefix, ntapes, del_on_close);
+}
+
+LogicalTapeSet *LogicalTapeSetCreate_Named(const char * set_prefix, int ntapes, bool del_on_close)
 {
 	LogicalTapeSet *lts = LogicalTapeSetCreate_Internal(ntapes);
-	char tmpprefix[50];
-
-	snprintf(tmpprefix, 50, "slice%d_sort", currentSliceId);
-	lts->pfile = BufFileCreateTemp(tmpprefix, false);
+	lts->pfile = BufFileCreateFile(set_prefix, del_on_close, false);
 	return lts;
 }
 

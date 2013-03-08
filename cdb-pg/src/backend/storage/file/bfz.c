@@ -2,6 +2,7 @@
 #include "postgres.h"
 #include <sys/stat.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include "storage/bfz.h"
 #include "storage/fd.h"
 #include "miscadmin.h"
@@ -10,6 +11,7 @@
 #include "utils/memutils.h"		/* For MemoryContext stuff */
 #include "cdb/cdbvars.h"
 #include "executor/execWorkfile.h"
+#include "storage/fd.h"
 #include "postmaster/primary_mirror_mode.h"
 
 typedef pg_crc32 BFZ_CHECKSUM_TYPE;
@@ -37,7 +39,7 @@ static const struct{
     {{0}}
 };
 
-static bfz_t *bfz_create_internal(bfz_t * thiz, const char *filePrefix, int compress);
+static bfz_t *bfz_create_internal(bfz_t * bfz_handle, const char *fileName, bool open_existing, bool delOnClose, int compress);
 
 const char *
 bfz_compression_to_string(int compress)
@@ -227,7 +229,7 @@ read_bfz_buffer(bfz_t *bfz, char *buffer)
 }
 
 bfz_t *
-bfz_create(const char *filePrefix, int compress)
+bfz_create(const char *fileName, bool delOnClose, int compress)
 {
 	bfz_t	   *thiz;
 	MemoryContext oldcxt;
@@ -240,81 +242,172 @@ bfz_create(const char *filePrefix, int compress)
 	oldcxt = MemoryContextSwitchTo(TopMemoryContext);
 	thiz = palloc0(sizeof(bfz_t));
 
-	bfz_create_internal(thiz, filePrefix, compress);
+#if USE_ASSERT_CHECKING
+	bfz_t *ret_bfz =
+#endif
+	bfz_create_internal(thiz, fileName,
+			false, /* open_existing */
+			delOnClose, compress);
+
+	/*
+	 * Create_internal does not return if it fails for creating new files,
+	 * so it should never return NULL here
+	 */
+	Assert(ret_bfz == thiz);
+
 	MemoryContextSwitchTo(oldcxt);
 
 	return thiz;
 }
 
+/*
+ * Open an existing bfz file. Returns NULL if it fails
+ * e.g. if the file/path does not exist
+ */
+bfz_t *
+bfz_open(const char *fileName, bool delOnClose, int compress)
+{
+	bfz_t	   *new_bfz;
+	MemoryContext oldcxt;
+	struct bfz_freeable_stuff *fs;
+
+	/*
+	 * Create bfz_t in the TopMemoryContext since this memory context
+	 * is still available when calling the transaction callback at the
+	 * time when the transaction aborts.
+	 */
+	oldcxt = MemoryContextSwitchTo(TopMemoryContext);
+	new_bfz = palloc0(sizeof(bfz_t));
+	bfz_t *ret_bfz = bfz_create_internal(new_bfz, fileName,
+			true, /* open_existing */
+			delOnClose, compress);
+
+	/* Failed to open existing file. Inform the caller */
+	if (NULL == ret_bfz)
+	{
+		pfree(new_bfz);
+		return NULL;
+	}
+
+	/* Since we are opening an existing file for reading,
+	 * prepare the state for scan_begin.  */
+	fs = new_bfz->freeable_stuff;
+	fs->close_ex(new_bfz);
+	new_bfz->mode = BFZ_MODE_FREED;
+
+	MemoryContextSwitchTo(oldcxt);
+	return new_bfz;
+}
+
+/* Create a BFZ file. The exact file name in filePath is used */
 static bfz_t *
-bfz_create_internal(bfz_t * thiz, const char *filePrefix, int compress)
+bfz_open_filepath(bfz_t *bfz_handle, const char *filePath, bool open_existing)
+{
+
+	/* FIXME Create PG_TEMP_FILES_DIR (i.e. pgsql_tmp) if it doesn't exist.
+	 * Use the right prefix. */
+
+	/* Add filespace prefix to path */
+	bfz_handle->filename = palloc0(MAXPGPATH);
+
+	if (snprintf(bfz_handle->filename, MAXPGPATH, "%s/%s",
+			getCurrentTempFilePath,
+			filePath) > MAXPGPATH)
+	{
+		ereport(ERROR, (errmsg("cannot generate path %s/%s",
+				getCurrentTempFilePath,
+				filePath)));
+	}
+
+	uint32 flags = 0x0;
+
+	flags = O_RDWR;
+
+	if (!open_existing)
+	{
+		/* Creating temp file */
+		flags |= O_CREAT | O_EXCL;
+	}
+
+	bfz_handle->fd = open(bfz_handle->filename, flags, S_IRUSR | S_IWUSR);
+
+	return bfz_handle;
+}
+
+/*
+ * Open or create a bfz file.
+ *
+ * Returns the bfz handle filled in with the file descriptor if successful,
+ * NULL if could not open existing file.
+ */
+static bfz_t *
+bfz_create_internal(bfz_t *bfz_handle, const char *fileName, bool open_existing,
+		bool delOnClose, int compress)
 {
 	struct bfz_freeable_stuff *fs;
 
-	memset(thiz, 0, sizeof *thiz);
+	memset(bfz_handle, 0, sizeof(*bfz_handle));
 
-	thiz->filename = palloc0(MAXPGPATH);
-	
-	if (snprintf(thiz->filename, MAXPGPATH, "%s/" PG_TEMP_FILES_DIR, getCurrentTempFilePath) > MAXPGPATH)
+	bfz_open_filepath(bfz_handle, fileName, open_existing);
+
+	if (bfz_handle->fd == -1)
 	{
-		ereport(ERROR, (errmsg("cannot generate path %s/PG_TEMP_FILES_DIR", getCurrentTempFilePath)));
+		if (open_existing)
+		{
+			/*
+			 * If we failed during opening an existing file, notify the caller
+			 * instead of erroring out.
+			 */
+			return NULL;
+		}
+		else
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_IO_ERROR),
+							errmsg("could not create temporary file %s:%m", bfz_handle->filename)));
+		}
 	}
 
-	mkdir(thiz->filename, 0777);
+	RegisterXactCallbackOnce(bfz_close_callback, bfz_handle);
 
-	char tempfileprefix[MAXPGPATH];
+	bfz_handle->mode = BFZ_MODE_APPEND;
+	bfz_handle->compression_index = compress;
+	bfz_handle->del_on_close = !gp_workfile_caching;
 
-	int len = GetTempFilePrefix(tempfileprefix, MAXPGPATH, filePrefix);
-	insist_log(len <= MAXPGPATH - 1, "could not generate temporary file name");
+	compression_algorithms[compress].init(bfz_handle);
 
-	if (snprintf(thiz->filename, MAXPGPATH, "%s/%s.%s",
-			getCurrentTempFilePath,
-			tempfileprefix,
-			BFZ_MKTEMP_MASK) > MAXPGPATH)
-	{
-		ereport(ERROR, (errmsg("cannot generate path %s/%s.%s",
-                        getCurrentTempFilePath,
-                        tempfileprefix,
-                        BFZ_MKTEMP_MASK)));
-	}
-
-#ifdef WIN32
-	{
-		char	   *tempFileName = tempnam(thiz->filename, filePrefix);
-
-		thiz->fd = open(tempFileName, O_RDWR | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
-	}
-#else
-	thiz->fd = mkstemp(thiz->filename);
-#endif
-
-	if (thiz->fd == -1)
-		ereport(ERROR,
-				(errcode(ERRCODE_IO_ERROR),
-				errmsg("could not create temporary file %s: %m", thiz->filename)));
-
-	RegisterXactCallbackOnce(bfz_close_callback, thiz);
-
-	thiz->mode = BFZ_MODE_APPEND;
-	thiz->compression_index = compress;
-
-	compression_algorithms[compress].init(thiz);
-
-	thiz->has_checksum = gp_workfile_checksumming;
+	bfz_handle->has_checksum = gp_workfile_checksumming;
 
 	if (gp_workfile_checksumming || gp_workfile_faultinject)
 	{
 		srandom((unsigned int) time(NULL));
 	}
 
-	thiz->numBlocks = thiz->blockNo = thiz->chosenBlockNo = 0;
+	bfz_handle->numBlocks = bfz_handle->blockNo = bfz_handle->chosenBlockNo = 0;
 	
-	fs = thiz->freeable_stuff;
+	fs = bfz_handle->freeable_stuff;
 	fs->tot_bytes = 0;
-	fs->buffer_pointer = fs->buffer;
-	fs->buffer_end = fs->buffer + sizeof(fs->buffer) - BFZ_CHECKSUM_SIZE(thiz->has_checksum);
 
-	return thiz;
+	if (open_existing)
+	{
+		/* We might have opened an existing files. Set the correct number
+		 * of bytes in here.
+		 */
+		struct stat sbuf;
+		int ret = stat(bfz_handle->filename, & sbuf);
+		if (ret != 0)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_IO_ERROR),
+							errmsg("could not stat temporary file: %m")));
+		}
+		fs->tot_bytes = sbuf.st_size;
+	}
+
+	fs->buffer_pointer = fs->buffer;
+	fs->buffer_end = fs->buffer + sizeof(fs->buffer) - BFZ_CHECKSUM_SIZE(bfz_handle->has_checksum);
+
+	return bfz_handle;
 }
 
 void
@@ -329,7 +422,7 @@ bfz_close(bfz_t * thiz, bool unreg)
 		Assert(thiz->fd == -1);
 	}
 
-	if (thiz->filename != NULL)
+	if (thiz->del_on_close && thiz->filename != NULL)
 	{
 		if (unlink(thiz->filename))
 			ereport(ERROR,
@@ -470,6 +563,7 @@ bfz_read_ex(bfz_t * thiz, char *buffer, int size)
 			while (size >= sizeof(fs->buffer))
 			{
 				sizeForRead = read_bfz_buffer(thiz, buffer);
+				fs->tot_bytes += sizeForRead;
 				buffer += sizeForRead;
 				size -= sizeForRead;
 				Assert(size >= 0);
@@ -477,6 +571,7 @@ bfz_read_ex(bfz_t * thiz, char *buffer, int size)
 					break;
 			}
 			sizeForRead = read_bfz_buffer(thiz, fs->buffer);
+			fs->tot_bytes += sizeForRead;
 			fs->buffer_pointer = fs->buffer;
 			fs->buffer_end = fs->buffer + sizeForRead;
 			if (sizeForRead == 0)

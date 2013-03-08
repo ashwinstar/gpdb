@@ -1,0 +1,161 @@
+-- Adjust this setting to control where the objects get created.
+SET search_path = public;
+
+
+-- Register the functions.
+CREATE OR REPLACE FUNCTION gp_workfile_mgr_cache_stats()
+RETURNS SETOF RECORD
+AS 'MODULE_PATHNAME', 'gp_workfile_mgr_cache_stats'
+LANGUAGE C IMMUTABLE;
+
+create view gp_workfile_mgr_cache_stats AS
+    select C.* from gp_toolkit.__gp_localid, gp_workfile_mgr_cache_stats() as C (
+       cachename text,
+       segno int,
+       
+       lookups int, 
+       inserts int, 
+       evicts int, 
+    
+       hits int, 
+       compares int, 
+       
+       pinnedentries int, 
+       cachedentries int, 
+       deletedentries int, 
+       acquiredentries int, 
+       freeentries int, 
+       
+       totalsize int,
+       
+       entriesscanned int, 
+       maxentriesscanned int, 
+       wraparound int, 
+       maxwraparound int, 
+       
+       timeinserts bigint, 
+       timelookups bigint, 
+       timeevicts bigint, 
+       maxtimeinsert bigint,
+       maxtimelookup bigint, 
+       maxtimeevict bigint 
+    )
+    
+    UNION ALL
+     select C.* from gp_toolkit.__gp_masterid, gp_workfile_mgr_cache_stats() as C (
+       cachename text,
+       segno int,
+       
+       lookups int, 
+       inserts int, 
+       evicts int, 
+    
+       hits int, 
+       compares int, 
+       
+       pinnedentries int, 
+       cachedentries int, 
+       deletedentries int, 
+       acquiredentries int, 
+       freeentries int, 
+       
+       totalsize int,
+       
+       entriesscanned int, 
+       maxentriesscanned int, 
+       wraparound int, 
+       maxwraparound int, 
+       
+       timeinserts bigint, 
+       timelookups bigint, 
+       timeevicts bigint, 
+       maxtimeinsert bigint,
+       maxtimelookup bigint, 
+       maxtimeevict bigint 
+    );
+        
+
+CREATE OR REPLACE FUNCTION gp_workfile_mgr_cache_entries()
+RETURNS SETOF record
+AS 'MODULE_PATHNAME', 'gp_workfile_mgr_cache_entries'
+LANGUAGE C IMMUTABLE;
+
+CREATE VIEW gp_workfile_mgr_cache_entries AS
+    SELECT C.*
+          FROM gp_toolkit.__gp_localid, gp_workfile_mgr_cache_entries() AS C (
+            segid int, 
+            path text, 
+            hash int, 
+            size int, 
+            utility int, 
+            state int, 
+            workmem int,
+            optype text, 
+            slice int,
+            sessionid int, 
+            commandid int,
+            dbname text, 
+            username text, 
+            sessionstart timestamptz
+          )
+    UNION ALL
+    SELECT C.*
+          FROM gp_toolkit.__gp_masterid, gp_workfile_mgr_cache_entries() AS C (
+            segid int, 
+            path text, 
+            hash int, 
+            size int, 
+            utility int, 
+            state int, 
+            workmem int,
+            optype text, 
+            slice int,
+            sessionid int, 
+            commandid int,
+            dbname text, 
+            username text,
+            sessionstart timestamptz  
+          );
+
+
+CREATE OR REPLACE FUNCTION gp_workfile_mgr_clear()
+    RETURNS setof bool
+AS '$libdir/gp_workfile_mgr.so', 'gp_workfile_manager_clear_cache_wrapper' LANGUAGE C IMMUTABLE;
+
+CREATE FUNCTION gp_workfile_mgr_clear_allsegs()
+RETURNS SETOF BOOL
+AS
+$$
+ SELECT C.* FROM gp_toolkit.__gp_localid, gp_workfile_mgr_clear() as C
+ UNION ALL
+ SELECT C.* FROM gp_toolkit.__gp_masterid, gp_workfile_mgr_clear() as C;
+$$
+LANGUAGE SQL;
+
+
+CREATE OR REPLACE FUNCTION gp_workfile_mgr_test()
+RETURNS setof bool
+AS 'MODULE_PATHNAME', 'gp_workfile_manager_test_harness_wrapper' LANGUAGE C IMMUTABLE;
+
+CREATE FUNCTION gp_workfile_mgr_test_allsegs()
+RETURNS SETOF BOOL
+AS
+$$
+ SELECT C.* FROM gp_toolkit.__gp_localid, gp_workfile_mgr_test() as C
+ UNION ALL
+ SELECT C.* FROM gp_toolkit.__gp_masterid, gp_workfile_mgr_test() as C;
+$$
+LANGUAGE SQL;
+
+
+
+    
+-- Don't want these to be available to public.
+--REVOKE ALL ON FUNCTION gp_shared_cache_stats(
+--    IN cachename text,
+--    OUT cachename text,
+--    OUT segno int, 
+--    OUT hitrate real, 
+--    OUT totalsize int
+--) FROM PUBLIC;
+--REVOKE ALL ON gp_test_cache_stats FROM PUBLIC;

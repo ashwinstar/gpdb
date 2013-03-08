@@ -1191,4 +1191,10 @@ extern Datum test_quicklz_compression(PG_FUNCTION_ARGS);
 extern Datum percentile_cont_trans(PG_FUNCTION_ARGS);
 extern Datum percentile_disc_trans(PG_FUNCTION_ARGS);
 
+/* utils/workfile_manager/workfile_manager.c */
+extern Datum gp_workfile_manager_clear_cache(PG_FUNCTION_ARGS);
+
+/* utils/workfile_manager/workfile_mgr_test.c */
+extern Datum gp_workfile_manager_test_harness(PG_FUNCTION_ARGS);
+
 #endif   /* BUILTINS_H */

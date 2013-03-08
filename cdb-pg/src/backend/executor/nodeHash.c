@@ -116,7 +116,6 @@ MultiExecHash(HashState *node)
 		if (ExecHashGetHashValue(hashtable, econtext, hashkeys, node->hs_keepnull, &hashvalue, &hashkeys_null))
 		{
 			ExecHashTableInsert(&node->ps, hashtable, slot, hashvalue);
-			hashtable->totalTuples += 1;
 		}
 
 		if (hashkeys_null)
@@ -253,7 +252,7 @@ ExecEndHash(HashState *node)
  * ----------------------------------------------------------------
  */
 HashJoinTable
-ExecHashTableCreate(Hash *node, List *hashOperators, uint64 operatorMemKB)
+ExecHashTableCreate(HashJoinState *hjstate, Hash *node, List *hashOperators, uint64 operatorMemKB, workfile_set * workfile_set)
 {
 	HashJoinTable hashtable;
 	Plan	   *outerNode;
@@ -271,13 +270,6 @@ ExecHashTableCreate(Hash *node, List *hashOperators, uint64 operatorMemKB)
 	 */
 	outerNode = outerPlan(node);
 
-	ExecChooseHashTableSize(outerNode->plan_rows, outerNode->plan_width,
-							&nbuckets, &nbatch, operatorMemKB);
-
-#ifdef HJDEBUG
-    elog(DEBUG4, "HJ: nbatch = %d, nbuckets = %d\n", nbatch, nbuckets);
-#endif
-
 	/*
 	 * Initialize the hash table control block.
 	 *
@@ -285,40 +277,18 @@ ExecHashTableCreate(Hash *node, List *hashOperators, uint64 operatorMemKB)
 	 * per-query memory context.
 	 */
 	hashtable = (HashJoinTable)palloc0(sizeof(HashJoinTableData));
-	hashtable->nbuckets = nbuckets;
 	hashtable->buckets = NULL;
 	hashtable->bloom = NULL;
-	hashtable->nbatch = nbatch;
 	hashtable->curbatch = 0;
-	hashtable->nbatch_original = nbatch;
-	hashtable->nbatch_outstart = nbatch;
 	hashtable->growEnabled = true;
 	hashtable->totalTuples = 0;
 	hashtable->batches = NULL;
+	hashtable->work_set = NULL;
+	hashtable->state_file = NULL;
 	hashtable->spaceAllowed = operatorMemKB * 1024L;
-    hashtable->stats = NULL;
-    hashtable->eagerlyReleased = false;
-	/*
-	 * Get info about the hash functions to be used for each hash key.
-	 * Also remember whether the join operators are strict.
-	 */
-	nkeys = list_length(hashOperators);
-	hashtable->hashfunctions = (FmgrInfo *) palloc(nkeys * sizeof(FmgrInfo));
-	hashtable->hashStrict = (bool *) palloc(nkeys * sizeof(bool));
-	i = 0;
-	foreach(ho, hashOperators)
-	{
-		Oid			hashop = lfirst_oid(ho);
-		Oid			hashfn;
-
-		hashfn = get_op_hash_function(hashop);
-		if (!OidIsValid(hashfn))
-			elog(ERROR, "could not find hash function for hash operator %u",
-				 hashop);
-		fmgr_info(hashfn, &hashtable->hashfunctions[i]);
-		hashtable->hashStrict[i] = op_strict(hashop);
-		i++;
-	}
+	hashtable->stats = NULL;
+	hashtable->eagerlyReleased = false;
+	hashtable->hjstate = hjstate;
 
 	/*
 	 * Create temporary memory contexts in which to keep the hashtable working
@@ -342,6 +312,54 @@ ExecHashTableCreate(Hash *node, List *hashOperators, uint64 operatorMemKB)
 											 ALLOCSET_DEFAULT_MINSIZE,
 											 ALLOCSET_DEFAULT_INITSIZE,
 											 ALLOCSET_DEFAULT_MAXSIZE);
+
+	if (workfile_set != NULL)
+	{
+		hashtable->work_set = workfile_set;
+		ExecHashJoinLoadBucketsBatches(hashtable);
+		Assert(hjstate->nbatch_loaded_state == -1);
+		Assert(hashtable->hjstate->cached_workfiles_batches_buckets_loaded);
+
+		hjstate->nbatch_loaded_state = hashtable->nbatch;
+	}
+	else
+	{
+		ExecChooseHashTableSize(outerNode->plan_rows, outerNode->plan_width,
+				&hashtable->nbuckets, &hashtable->nbatch, operatorMemKB);
+	}
+
+	nbuckets = hashtable->nbuckets;
+	nbatch = hashtable->nbatch;
+	hashtable->nbatch_original = nbatch;
+	hashtable->nbatch_outstart = nbatch;
+
+
+#ifdef HJDEBUG
+    elog(LOG, "HJ: nbatch = %d, nbuckets = %d\n", nbatch, nbuckets);
+#endif
+
+
+    /*
+	 * Get info about the hash functions to be used for each hash key.
+	 * Also remember whether the join operators are strict.
+	 */
+	nkeys = list_length(hashOperators);
+	hashtable->hashfunctions = (FmgrInfo *) palloc(nkeys * sizeof(FmgrInfo));
+	hashtable->hashStrict = (bool *) palloc(nkeys * sizeof(bool));
+	i = 0;
+	foreach(ho, hashOperators)
+	{
+		Oid			hashop = lfirst_oid(ho);
+		Oid			hashfn;
+
+		hashfn = get_op_hash_function(hashop);
+		if (!OidIsValid(hashfn))
+			elog(ERROR, "could not find hash function for hash operator %u",
+				 hashop);
+		fmgr_info(hashfn, &hashtable->hashfunctions[i]);
+		hashtable->hashStrict[i] = op_strict(hashop);
+		i++;
+	}
 
 	/*
      * Allocate data that will live for the life of the hashjoin
@@ -528,7 +546,8 @@ ExecHashTableDestroy(HashJoinTable hashtable)
 	 * Make sure all the temp files are closed.  We skip batch 0, since it
 	 * can't have any temp files.
 	 */
-	for (i = 1; i < hashtable->nbatch; i++)
+	/* SFR: No longer skipping batch 0. It now has temp files. */
+	for (i = 0; i < hashtable->nbatch; i++)
 	{
 		HashJoinBatchData  *batch = hashtable->batches[i];
 
@@ -545,6 +564,19 @@ ExecHashTableDestroy(HashJoinTable hashtable)
 		}
 	}
 
+	/* Close state file as well */
+	if (hashtable->state_file != NULL)
+	{
+		ExecWorkFile_Close(hashtable->state_file);
+		hashtable->state_file = NULL;
+	}
+
+	if (hashtable->work_set != NULL)
+	{
+		workfile_mgr_close_set(hashtable->work_set);
+		hashtable->work_set = NULL;
+	}
+
 	/* Release working memory (batchCxt is a child, so it goes away too) */
 	MemoryContextDelete(hashtable->hashCxt);
 	hashtable->batches = NULL;
@@ -558,17 +590,15 @@ ExecHashTableDestroy(HashJoinTable hashtable)
 static void
 ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 {
-	HashJoinTableStats *stats = hashtable->stats;
 	HashJoinBatchData  *fullbatch = hashtable->batches[hashtable->curbatch];
 	int			oldnbatch = hashtable->nbatch;
 	int			curbatch = hashtable->curbatch;
 	int			nbatch;
 	int			i;
-	MemoryContext oldcxt;
 	long		ninmemory;
 	long		nfreed;
 	Size        spaceFreed = 0;
-	Size        sz;
+	HashJoinTableStats *stats = hashtable->stats;
 
 	/* do nothing if we've decided to shut off growth */
 	if (!hashtable->growEnabled)
@@ -580,8 +610,6 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 
 	nbatch = oldnbatch * 2;
 	Assert(nbatch > 1);
-
-	oldcxt = MemoryContextSwitchTo(hashtable->hashCxt);
 
 	{
 		/* Print a warning for the extreme bad cases. */
@@ -600,35 +628,8 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 			elog(LOG, "Extreme skew in the innerside of Hashjoin, nbatch %d, mintuples %u, maxtuples %u", oldnbatch, mintup, maxtup);
 	}
 
-
-	/*
-	 * enlarge arrays and zero out added entries
-	 */
-
-	/* array of BatchData ptrs */
-	hashtable->batches = (HashJoinBatchData **)
-		repalloc(hashtable->batches, nbatch * sizeof(hashtable->batches[0]));
-
-	/* one BatchData entry per additional batch */
-	for (i = oldnbatch; i < nbatch; i++)
-		hashtable->batches[i] =
-			(HashJoinBatchData *)palloc0(sizeof(HashJoinBatchData));
-
-	/* EXPLAIN ANALYZE batch statistics */
-	if (stats &&
-			stats->nbatchstats < nbatch)
-	{
-		sz = nbatch * sizeof(stats->batchstats[0]);
-		stats->batchstats =
-			(HashJoinBatchStats *)repalloc(stats->batchstats, sz);
-		sz = (nbatch - stats->nbatchstats) * sizeof(stats->batchstats[0]);
-		memset(stats->batchstats + stats->nbatchstats, 0, sz);
-		stats->nbatchstats = nbatch;
-	}
-
-	MemoryContextSwitchTo(oldcxt);
-
-	hashtable->nbatch = nbatch;
+	ExecHashTableReallocBatchData(hashtable, nbatch);
+	Assert(hashtable->nbatch == nbatch);
 
 	/*
 	 * Scan through the existing hash table entries and dump out any that are
@@ -668,8 +669,10 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 
 				/* dump it out */
 				Assert(batchno > curbatch);
+				Assert(batchno >= hashtable->hjstate->nbatch_loaded_state);
 				ExecHashJoinSaveTuple(NULL, HJTUPLE_MINTUPLE(tuple),
 						tuple->hashvalue,
+						hashtable,
 						&hashtable->batches[batchno]->innerside,
 						hashtable->bfCxt);
 				/* and remove from hash table */
@@ -678,6 +681,8 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 				else
 					hashtable->buckets[i] = nexttuple;
 				/* prevtuple doesn't change */
+
+				hashtable->totalTuples--;
 
 				spaceTuple = HJTUPLE_OVERHEAD + memtuple_get_size(HJTUPLE_MINTUPLE(tuple), NULL); 
 				spaceFreed += spaceTuple;
@@ -696,7 +701,7 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 	}
 
 #ifdef HJDEBUG
-	elog(DEBUG3, "HJ batch %d: Freed %ld of %ld tuples, %lu of %lu bytes, space now %lu",
+	elog(gp_workfile_caching_loglevel, "HJ batch %d: Freed %ld of %ld tuples, %lu of %lu bytes, space now %lu",
 			curbatch,
 			nfreed,
 			ninmemory,
@@ -728,10 +733,54 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 	if (nfreed == 0 || nfreed == ninmemory)
 	{
 		hashtable->growEnabled = false;
-#ifdef HJDEBUG
-		elog(DEBUG3, "HJ: Disabling further increase of nbatch");
-#endif
+		elog(LOG, "HJ: Disabling further increase of nbatch");
 	}
+
+}
+
+/*
+ * Re-allocate the batch data array when the number of batches increases
+ */
+void
+ExecHashTableReallocBatchData(HashJoinTable hashtable, int new_nbatch)
+{
+
+	MemoryContext oldcxt;
+	oldcxt = MemoryContextSwitchTo(hashtable->hashCxt);
+
+	/*
+	 * enlarge arrays and zero out added entries
+	 */
+
+	/* array of BatchData ptrs */
+	hashtable->batches = (HashJoinBatchData **)
+		repalloc(hashtable->batches, new_nbatch * sizeof(hashtable->batches[0]));
+
+	int	old_nbatch = hashtable->nbatch;
+	int	i;
+
+	/* one BatchData entry per additional batch */
+	for (i = old_nbatch; i < new_nbatch; i++)
+		hashtable->batches[i] =
+			(HashJoinBatchData *)palloc0(sizeof(HashJoinBatchData));
+
+	/* EXPLAIN ANALYZE batch statistics */
+	HashJoinTableStats *stats = hashtable->stats;
+	if (stats &&
+			stats->nbatchstats < new_nbatch)
+	{
+		Size sz;
+		sz = new_nbatch * sizeof(stats->batchstats[0]);
+		stats->batchstats =
+			(HashJoinBatchStats *)repalloc(stats->batchstats, sz);
+		sz = (new_nbatch - stats->nbatchstats) * sizeof(stats->batchstats[0]);
+		memset(stats->batchstats + stats->nbatchstats, 0, sz);
+		stats->nbatchstats = new_nbatch;
+	}
+
+	MemoryContextSwitchTo(oldcxt);
+
+	hashtable->nbatch = new_nbatch;
 
 }
 
@@ -783,6 +832,7 @@ ExecHashTableInsert(PlanState *ps, HashJoinTable hashtable,
 		memcpy(HJTUPLE_MINTUPLE(hashTuple), tuple, memtuple_get_size(tuple, NULL)); 
 		hashTuple->next = hashtable->buckets[bucketno];
 		hashtable->buckets[bucketno] = hashTuple;
+		hashtable->totalTuples += 1;
 
 		if(gp_hashjoin_bloomfilter!=0)
 			hashtable->bloom[bucketno] |= BLOOMVAL(hashvalue);
@@ -792,6 +842,11 @@ ExecHashTableInsert(PlanState *ps, HashJoinTable hashtable,
 			batch->innertuples > UINT_MAX/2)
 		{
 			ExecHashIncreaseNumBatches(hashtable);
+
+			if (ps && ps->instrument)
+			{
+				ps->instrument->workfileCreated = true;
+			}
 
 			/* Gpmon stuff */
 			if(ps)
@@ -804,10 +859,14 @@ ExecHashTableInsert(PlanState *ps, HashJoinTable hashtable,
 	else
 	{
 		/*
-		 * put the tuple into a temp file for later batches
+		 * put the tuple into a temp file for later batches, only when the cached
+		 * workfile is not used.
 		 */
-		Assert(batchno > hashtable->curbatch);
-		ExecHashJoinSaveTuple(ps, tuple, hashvalue, &batch->innerside, hashtable->bfCxt);
+		if (!hashtable->hjstate->cached_workfiles_found)
+		{
+			Assert(batchno > hashtable->curbatch);
+			ExecHashJoinSaveTuple(ps, tuple, hashvalue, hashtable, &batch->innerside, hashtable->bfCxt);
+		}
 	}
 }
 
@@ -1041,6 +1100,7 @@ ExecHashTableReset(HashJoinTable hashtable)
 
 	hashtable->batches[hashtable->curbatch]->innerspace = 0;
 	hashtable->batches[hashtable->curbatch]->innertuples = 0;
+	hashtable->totalTuples = 0;
 
 	MemoryContextSwitchTo(oldcxt);
 }
@@ -1176,22 +1236,29 @@ ExecHashTableExplainEnd(PlanState *planstate, struct StringInfoData *buf)
     /* Report workfile I/O statistics. */
     if (hashtable->nbatch > 1)
     {
-        ExecHashTableExplainBatches(hashtable, buf, 0, 1, "Initial");
-        ExecHashTableExplainBatches(hashtable,
-                                    buf,
-                                    1,
-                                    hashtable->nbatch_original,
-                                    "Initial");
-        ExecHashTableExplainBatches(hashtable,
-                                    buf,
-                                    hashtable->nbatch_original,
-                                    hashtable->nbatch_outstart,
-                                    "Overflow");
-        ExecHashTableExplainBatches(hashtable,
-                                    buf,
-                                    hashtable->nbatch_outstart,
-                                    hashtable->nbatch,
-                                    "Secondary Overflow");
+		if (!hjstate->cached_workfiles_loaded)
+		{
+			ExecHashTableExplainBatches(hashtable, buf, 0, 1, "Initial");
+			ExecHashTableExplainBatches(hashtable,
+										buf,
+										1,
+										hashtable->nbatch_original,
+										"Initial");
+			ExecHashTableExplainBatches(hashtable,
+										buf,
+										hashtable->nbatch_original,
+										hashtable->nbatch_outstart,
+										"Overflow");
+			ExecHashTableExplainBatches(hashtable,
+										buf,
+										hashtable->nbatch_outstart,
+										hashtable->nbatch,
+										"Secondary Overflow");
+		}
+		else
+		{
+			ExecHashTableExplainBatches(hashtable, buf, 0, hashtable->nbatch, "Reuse");
+		}
     }
 
     /* Report hash chain statistics. */
@@ -1381,36 +1448,41 @@ ExecHashTableExplainBatchEnd(HashJoinTable hashtable)
         batchstats->irdbytes = batchstats->innerfilesize;
 
         /* How much was read from outer workfiles for current batch? */
-        if (curbatch > 0 &&
-			hashtable->batches[curbatch]->outerside.workfile != NULL)
+		if (hashtable->batches[curbatch]->outerside.workfile != NULL)
             batchstats->ordbytes =
 				ExecWorkFile_Tell64(hashtable->batches[curbatch]->outerside.workfile);
 
-        /* How much was written to workfiles for the remaining batches? */
-        for (i = curbatch + 1; i < hashtable->nbatch; i++)
-        {
-            HashJoinBatchData  *batch = hashtable->batches[i];
-            HashJoinBatchStats *bs = &stats->batchstats[i];
-            uint64              filebytes = 0;
-
-            if (batch->outerside.workfile != NULL)
-                filebytes = ExecWorkFile_Tell64(batch->outerside.workfile); 
-
-            Assert(filebytes >= bs->outerfilesize);
-            owrbytes += filebytes - bs->outerfilesize;
-            bs->outerfilesize = filebytes;
-
-            filebytes = 0;
-
-            if (batch->innerside.workfile)
-                filebytes = ExecWorkFile_Tell64(batch->innerside.workfile);
-
-            Assert(filebytes >= bs->innerfilesize);
-            iwrbytes += filebytes - bs->innerfilesize;
-            bs->innerfilesize = filebytes;
-        }
-        batchstats->owrbytes = owrbytes;
-        batchstats->iwrbytes = iwrbytes;
+        /*
+		 * How much was written to workfiles for the remaining batches?
+		 * In workfile caching, there is no need to write to the remaining batches.
+		 */
+		if (!hashtable->hjstate->cached_workfiles_loaded)
+		{
+			for (i = curbatch + 1; i < hashtable->nbatch; i++)
+			{
+				HashJoinBatchData  *batch = hashtable->batches[i];
+				HashJoinBatchStats *bs = &stats->batchstats[i];
+				uint64              filebytes = 0;
+				
+				if (batch->outerside.workfile != NULL)
+					filebytes = ExecWorkFile_Tell64(batch->outerside.workfile); 
+				
+				Assert(filebytes >= bs->outerfilesize);
+				owrbytes += filebytes - bs->outerfilesize;
+				bs->outerfilesize = filebytes;
+				
+				filebytes = 0;
+				
+				if (batch->innerside.workfile)
+					filebytes = ExecWorkFile_Tell64(batch->innerside.workfile);
+				
+				Assert(filebytes >= bs->innerfilesize);
+				iwrbytes += filebytes - bs->innerfilesize;
+				bs->innerfilesize = filebytes;
+			}
+			batchstats->owrbytes = owrbytes;
+			batchstats->iwrbytes = iwrbytes;
+		}
     }                           /* give workfile I/O statistics */
 
     /* Collect hash chain statistics. */

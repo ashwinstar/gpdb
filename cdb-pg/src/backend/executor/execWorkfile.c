@@ -29,6 +29,7 @@
 ExecWorkFile *
 ExecWorkFile_Create(const char *fileName,
 					ExecWorkFileType fileType,
+					bool delOnClose,
 					int compressType)
 {
 	ExecWorkFile *workfile = NULL;
@@ -37,10 +38,10 @@ ExecWorkFile_Create(const char *fileName,
 	switch(fileType)
 	{
 		case BUFFILE:
-			file = (void *)BufFileCreateTemp(fileName, false);
+			file = (void *)BufFileCreateFile(fileName, delOnClose, false);
 			break;
 		case BFZ:
-			file = (void *)bfz_create(fileName, compressType);
+			file = (void *)bfz_create(fileName, delOnClose, compressType);
 			break;
 		default:
 			ereport(LOG,
@@ -54,9 +55,61 @@ ExecWorkFile_Create(const char *fileName,
 	workfile->fileType = fileType;
 	workfile->compressType = compressType;
 	workfile->file = file;
+	workfile->fileName = pstrdup(fileName);
 	
 	return workfile;
 }
+
+/*
+ * Opens an existing work file with the specified name, the file type,
+ * and the compression type.
+ *
+ * If this fails, NULL is returned.
+ */
+ExecWorkFile *
+ExecWorkFile_Open(const char *fileName,
+					ExecWorkFileType fileType,
+					bool delOnClose,
+					int compressType)
+{
+	ExecWorkFile *workfile = NULL;
+	void *file = NULL;
+
+	switch(fileType)
+	{
+		case BUFFILE:
+			file = (void *)BufFileOpenFile(fileName,
+					false, /* Create */
+					delOnClose,
+					true  /* interXact */ ); /* FIXME WHat should this be? */
+			break;
+		case BFZ:
+			file = (void *)bfz_open(fileName, delOnClose, compressType);
+			bfz_scan_begin(file);
+			break;
+		default:
+			ereport(LOG,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("invalid work file type: %d", fileType)));
+			Assert(false);
+	}
+
+	/* Failed opening existing workfile. Inform the caller */
+	if (NULL == file)
+	{
+		return NULL;
+	}
+
+	workfile = palloc0(sizeof(ExecWorkFile));
+
+	workfile->fileType = fileType;
+	workfile->compressType = compressType;
+	workfile->file = file;
+	workfile->fileName = pstrdup(fileName);
+
+	return workfile;
+}
+
 
 /*
  * ExecWorkFile_Write
@@ -189,6 +242,7 @@ void
 ExecWorkFile_Close(ExecWorkFile *workfile)
 {
 	Assert(workfile != NULL);
+	bfz_t *bfz_file = NULL;
 
 	switch(workfile->fileType)
 	{
@@ -197,11 +251,32 @@ ExecWorkFile_Close(ExecWorkFile *workfile)
 			break;
 			
 		case BFZ:
-			bfz_close((bfz_t *)workfile->file, true);
+			bfz_file = (bfz_t *)workfile->file;
+			Assert(bfz_file != NULL);
+			/* Flush data out to disk if we were writing */
+			if (bfz_file->mode == BFZ_MODE_APPEND)
+			{
+				bfz_append_end(bfz_file);
+			}
+			bfz_close(bfz_file, true);
 			break;
 		default:
 			insist_log(false, "invalid work file type: %d", workfile->fileType);
 	}
 
 	pfree(workfile);
+}
+
+/*
+ * Return the file name for the given workfile.
+ * Note that this might have a different meaning, depending on the underlying
+ * implementation.
+ * For example, BufFile can span over several physical files, and thus this
+ * is just a prefix.
+ */
+char *
+ExecWorkFile_GetFileName(ExecWorkFile *workfile)
+{
+	Assert(workfile != NULL);
+	return workfile->fileName;
 }

@@ -30,12 +30,15 @@
 #include "utils/lsyscache.h"
 #include "utils/elog.h"
 #include "cdb/memquota.h"
+#include "utils/workfile_mgr.h"
 
 #include "access/hash.h"
 
 #include "cdb/cdbcellbuf.h"
 #include "cdb/cdbexplain.h"
 #include "cdb/cdbvars.h"
+#include "postmaster/primary_mirror_mode.h"
+
 
 #define HHA_MSG_LVL DEBUG2
 
@@ -51,6 +54,11 @@ struct BatchFileInfo
 #define BATCHFILE_METADATA \
     (sizeof(BatchFileInfo) + sizeof(bfz_t) + sizeof(struct bfz_freeable_stuff))
 #define FREEABLE_BATCHFILE_METADATA (sizeof(struct bfz_freeable_stuff))
+/*
+ * Number of batchfile metadata to reserve during spilling in order to have
+ * enough memory to open them at reuse.
+ */
+#define NO_RESERVED_BATCHFILE_METADATA 256
 
 /* Used for padding */
 static char padding_dummy[MAXIMUM_ALIGNOF];
@@ -87,9 +95,10 @@ typedef enum InputRecordType
    (GET_TOTAL_USED_SIZE(hashtable) < (hashtable)->max_mem)
 
 /* Methods that handle batch files */
-static SpillSet *newSpillSet(unsigned branching_factor, unsigned parent_hash_bit);
-static int closeSpillFile(SpillSet *spill_set, int file_no);
-static int closeSpillFiles(SpillSet *spill_set);
+static SpillSet *createSpillSet(unsigned branching_factor, unsigned parent_hash_bit);
+static SpillSet *read_spill_set(AggState *aggstate);
+static int closeSpillFile(AggState *aggstate, SpillSet *spill_set, int file_no);
+static int closeSpillFiles(AggState *aggstate, SpillSet *spill_set);
 static int suspendSpillFiles(SpillSet *spill_set);
 static int32 writeHashEntry(AggState *aggstate,
 							BatchFileInfo *file_info,
@@ -110,6 +119,13 @@ static void agg_hash_table_stat_upd(HashAggTable *ht);
 static void reset_agg_hash_table(AggState *aggstate);
 static bool agg_hash_reload(AggState *aggstate);
 static inline void *mpool_cxt_alloc(void *manager, Size len);
+
+/* Methods for state file */
+static void create_state_file(HashAggTable *hashtable);
+static void agg_hash_save_spillfile_info(bfz_t *state_file, SpillFile *spill_file);
+static bool agg_hash_load_spillfile_info(bfz_t *state_file, char **spill_file_name, unsigned *batch_hash_bit);
+static void agg_hash_write_string_bfz(bfz_t *bfz, const char *str, size_t len);
+static char *agg_hash_read_string_bfz(bfz_t *bfz);
 
 static inline void *mpool_cxt_alloc(void *manager, Size len)
 {
@@ -392,6 +408,8 @@ lookup_agg_hash_entry(AggState *aggstate,
 	unsigned int bucket_idx;
 	uint64 bloomval;			/* bloom filter value */
    
+	Assert(mt_bind != NULL);
+
 	if (p_isnew != NULL)
 		*p_isnew = false;
 
@@ -545,7 +563,7 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 		 */
 		if (memquota < (nbatches + 1) * batchfile_buffer_size)
 		{
-			elog(HHA_MSG_LVL, "HashAgg: no enough memory for the overhead of batch files.");
+			elog(HHA_MSG_LVL, "HashAgg: not enough memory for the overhead of batch files.");
 			return false;
 		}
 	}   
@@ -675,7 +693,31 @@ create_agg_hash_table(AggState *aggstate)
 												 ALLOCSET_DEFAULT_MINSIZE,
 												 ALLOCSET_DEFAULT_INITSIZE,
 												 ALLOCSET_DEFAULT_MAXSIZE);
-	if (!calcHashAggTableSizes(1024.0 * (double) PlanStateOperatorMemKB( (PlanState *) aggstate),
+
+	bool can_reuse_workfiles = false;
+	workfile_set *work_set = NULL;
+	if (gp_workfile_caching)
+	{
+		/* Look up SFR for existing spill set. Mark here if found */
+		work_set = workfile_mgr_find_set(&aggstate->ss.ps);
+		/*
+		 * Workaround for case when reusing an existing spill set would
+		 * use too much metadata memory and might cause respilling:
+		 * don't allow reusing for these sets for now.
+		 */
+		can_reuse_workfiles = (work_set != NULL) &&
+				work_set->metadata.num_leaf_files <= NO_RESERVED_BATCHFILE_METADATA;
+	}
+
+	uint64 operatorMemKB = PlanStateOperatorMemKB( (PlanState *) aggstate);
+	if (gp_workfile_caching && ! can_reuse_workfiles)
+	{
+		uint64 reservedMem = NO_RESERVED_BATCHFILE_METADATA * (BATCHFILE_METADATA - FREEABLE_BATCHFILE_METADATA);
+		operatorMemKB = operatorMemKB - reservedMem / 1024;
+		elog(gp_workfile_caching_loglevel, "HashAgg: reserved " INT64_FORMAT "KB for spilling", reservedMem / 1024);
+	}
+
+	if (!calcHashAggTableSizes(1024.0 * (double) operatorMemKB,
 							   (double)agg->numGroups,
 							   aggstate->numaggs,
 							   Min(est_hash_tuple_size(aggstate->ss.ss_ScanTupleSlot,
@@ -688,13 +730,21 @@ create_agg_hash_table(AggState *aggstate)
 		elog(ERROR, ERRMSG_GP_INSUFFICIENT_STATEMENT_MEMORY);
 	}
 
+	if (can_reuse_workfiles)
+	{
+		aggstate->cached_workfiles_found = true;
+		hashtable->work_set = work_set;
+		/* Initialize hashtable parameters from the cached workfile */
+		hashtable->hats.nbatches = work_set->metadata.num_leaf_files;
+		hashtable->hats.nbuckets = work_set->metadata.buckets;
+		hashtable->num_batches = work_set->metadata.num_leaf_files;
+	}
+
 	/* Initialize the hash buckets */
 	hashtable->nbuckets = hashtable->hats.nbuckets;
 	hashtable->total_buckets = hashtable->nbuckets;
 	hashtable->buckets = (HashAggEntry **)palloc0(hashtable->nbuckets * sizeof(HashAggEntry *));
 	hashtable->bloom = (uint64 *)palloc0(hashtable->nbuckets * sizeof(uint64));
-
-	hashtable->num_batches = 0;
 
 	MemoryContextSwitchTo(hashtable->entry_cxt);
 	
@@ -712,7 +762,7 @@ create_agg_hash_table(AggState *aggstate)
 
 	MemoryContextSwitchTo(oldcxt);
 
-	hashtable->max_mem = 1024.0 * (double) PlanStateOperatorMemKB((PlanState *) aggstate);
+	hashtable->max_mem = 1024.0 * operatorMemKB;
 	hashtable->mem_for_metadata = sizeof(HashAggTable)
 		+ hashtable->nbuckets * sizeof(HashAggEntry *)
 		+ hashtable->nbuckets * sizeof(uint64)
@@ -757,6 +807,38 @@ agg_hash_initial_pass(AggState *aggstate)
 	AssertImply(!streaming, hashtable->state == HASHAGG_BEFORE_FIRST_PASS);
 	elog(HHA_MSG_LVL,
 		 "HashAgg: initial pass -- beginning to load hash table");
+
+	/* If we found cached workfiles, initialize and load the batch data here */
+	if (gp_workfile_caching && aggstate->cached_workfiles_found)
+	{
+		elog(HHA_MSG_LVL, "Found existing SFS, reloading data from %s", hashtable->work_set->path);
+		/* Initialize all structures as if we just spilled everything */
+		hashtable->spill_set = read_spill_set(aggstate);
+		aggstate->hhashtable->is_spilling = true;
+		aggstate->cached_workfiles_loaded = true;
+
+		elog(gp_workfile_caching_loglevel, "HashAgg reusing cached workfiles, initiating Squelch walker");
+		PlanState *outerNode = outerPlanState(aggstate);
+		ExecSquelchNode(outerNode);
+
+		/* tuple table initialization */
+		ScanState *scanstate = & aggstate->ss;
+		PlanState  *outerPlan = outerPlanState(scanstate);
+		TupleDesc tupDesc = ExecGetResultType(outerPlan);
+
+		if (aggstate->ss.ps.instrument)
+		{
+				aggstate->ss.ps.instrument->workfileReused = true;
+		}
+
+		/* Initialize hashslot by cloning input slot. */
+		ExecSetSlotDescriptor(aggstate->hashslot, tupDesc);
+		ExecStoreAllNullTuple(aggstate->hashslot);
+		mt_bind = aggstate->hashslot->tts_mt_bind;
+
+
+		return tuple_remaining;
+	}
 
 	/*
 	 * Check if an input tuple has been read, but not processed
@@ -895,6 +977,11 @@ agg_hash_initial_pass(AggState *aggstate)
 		spill_hash_table(aggstate);
         freed_size = suspendSpillFiles(hashtable->spill_set);
         hashtable->mem_for_metadata -= freed_size;
+
+		if (aggstate->ss.ps.instrument)
+		{
+			aggstate->ss.ps.instrument->workfileCreated = true;
+		}
 	}
 
     /* CDB: Report statistics for EXPLAIN ANALYZE. */
@@ -918,7 +1005,7 @@ agg_hash_initial_pass(AggState *aggstate)
  * chosen to distribute hash key values evenly across the given range.
  */
 static SpillSet *
-newSpillSet(unsigned branching_factor, unsigned parent_hash_bit)
+createSpillSet(unsigned branching_factor, unsigned parent_hash_bit)
 {
 	int i;
 	SpillSet *spill_set;
@@ -927,7 +1014,6 @@ newSpillSet(unsigned branching_factor, unsigned parent_hash_bit)
 	spill_set = palloc(sizeof(SpillSet) + (branching_factor-1) * sizeof (SpillFile));
 	spill_set->parent_spill_file = NULL;
 	spill_set->level = 0;
-	spill_set->parent_hash_bit = parent_hash_bit;
 	spill_set->num_spill_files = branching_factor;
 	
 	/* Allocate and initialize its SpillFiles. */
@@ -939,10 +1025,12 @@ newSpillSet(unsigned branching_factor, unsigned parent_hash_bit)
 		spill_file->spill_set = NULL;
 		spill_file->parent_spill_set = spill_set;
 		spill_file->index_in_parent = i;
+		spill_file->respilled = false;
+		spill_file->batch_hash_bit = parent_hash_bit;
 	}
 
-	elog(HHA_MSG_LVL, "HashAgg: creat a new spill set with parent_hash_bit=%u, num_spill_files=%u",
-	     spill_set->parent_hash_bit, branching_factor);
+	elog(HHA_MSG_LVL, "HashAgg: created a new spill set with batch_hash_bit=%u, num_spill_files=%u",
+	     parent_hash_bit, branching_factor);
 
 	return spill_set;
 }
@@ -955,8 +1043,12 @@ freeSpillSet(SpillSet *spill_set)
 {
 	int freedspace = 0;
 	if (spill_set == NULL)
+	{
 		return freedspace;
+	}
 	
+	elog(gp_workfile_caching_loglevel, "freeing up SpillSet with %d files", spill_set->num_spill_files);
+
 	freedspace += sizeof(SpillSet) + (spill_set->num_spill_files - 1) * sizeof (SpillFile);
 	pfree(spill_set);
 
@@ -972,7 +1064,7 @@ freeSpillSet(SpillSet *spill_set)
  * this temporary file is returned through 'p_alloc_size'.
  */
 static SpillFile *
-getSpillFile(SpillSet *set, int file_no, int *p_alloc_size)
+getSpillFile(workfile_set *work_set, SpillSet *set, int file_no, int *p_alloc_size)
 {
 	SpillFile *spill_file;
 
@@ -984,21 +1076,21 @@ getSpillFile(SpillSet *set, int file_no, int *p_alloc_size)
 
 	if (spill_file->file_info == NULL)
 	{
-		char tmpprefix[100];
-		
-		snprintf(tmpprefix, 100, "HashAgg_Slice%d_Batch_l%d_f%d",
-				 currentSliceId, set->level, file_no);
-		
+		char tmpprefix[MAXPGPATH];
+		bool delOnClose = true;
+		workfile_mgr_create_file(work_set, tmpprefix, MAXPGPATH);
+		delOnClose = !gp_workfile_caching;
+
 		spill_file->file_info = (BatchFileInfo *)palloc(sizeof(BatchFileInfo));
 		spill_file->file_info->total_bytes = 0;
 		spill_file->file_info->ntuples = 0;
 		spill_file->file_info->bfz =
-			bfz_create(tmpprefix, gp_hashagg_compress_spill_files > 0 ? 
-					   gp_hashagg_compress_spill_files : gp_workfile_compress_algorithm);
+			bfz_create(tmpprefix, delOnClose, gp_hashagg_compress_spill_files > 0 ?
+					   gp_hashagg_compress_spill_files : work_set->metadata.bfz_compress_type);
 
 		elog(HHA_MSG_LVL, "HashAgg: create %d level batch file %d with compression %d",
 			 set->level, file_no, gp_hashagg_compress_spill_files > 0 ?
-			 gp_hashagg_compress_spill_files : gp_workfile_compress_algorithm);
+			 gp_hashagg_compress_spill_files : work_set->metadata.bfz_compress_type);
 		*p_alloc_size = BATCHFILE_METADATA;
 	}
 
@@ -1030,9 +1122,9 @@ suspendSpillFiles(SpillSet *spill_set)
 
 			freed_size += FREEABLE_BATCHFILE_METADATA;
 
-			elog(HHA_MSG_LVL, "HashAgg: HashAgg_Slice%d_Batch_l%d_f%d contains " INT64_FORMAT " entries ("
+			elog(HHA_MSG_LVL, "HashAgg: %s contains " INT64_FORMAT " entries ("
 				 INT64_FORMAT " bytes)",
-				 currentSliceId, spill_set->level, file_no,
+				 spill_file->file_info->bfz->filename,
 				 spill_file->file_info->ntuples, spill_file->file_info->total_bytes);
 		}
 	}
@@ -1045,18 +1137,30 @@ suspendSpillFiles(SpillSet *spill_set)
  * space. All files under its spill_set are also closed.
  */
 static int
-closeSpillFile(SpillSet *spill_set, int file_no)
+closeSpillFile(AggState *aggstate, SpillSet *spill_set, int file_no)
 {
 	int freedspace = 0;
 	SpillFile *spill_file;
+	HashAggTable *hashtable = aggstate->hhashtable;
 	
 	Assert(spill_set != NULL && file_no < spill_set->num_spill_files);
 
 	spill_file = &spill_set->spill_files[file_no];
 
+	if (spill_file->file_info &&
+			gp_workfile_caching &&
+			aggstate->workfiles_created &&
+			!spill_file->respilled)
+	{
+		Assert(hashtable->state_file);
+		/* closing "leaf" spill file; save it's name to the state file for re-using */
+		agg_hash_save_spillfile_info(hashtable->state_file, spill_file);
+		hashtable->work_set->metadata.num_leaf_files++;
+	}
+
 	if (spill_file->spill_set != NULL)
 	{
-		freedspace += closeSpillFiles(spill_file->spill_set);
+		freedspace += closeSpillFiles(aggstate, spill_file->spill_set);
 	}
 	
 	if (spill_file->file_info &&
@@ -1082,7 +1186,7 @@ closeSpillFile(SpillSet *spill_set, int file_no)
  * save the buffer space, and return how much space freed.
  */
 static int
-closeSpillFiles(SpillSet *spill_set)
+closeSpillFiles(AggState *aggstate, SpillSet *spill_set)
 {
 	int file_no;
 	int freedspace = 0;
@@ -1093,7 +1197,7 @@ closeSpillFiles(SpillSet *spill_set)
 
 	for (file_no = 0; file_no < spill_set->num_spill_files; file_no++)
 	{
-		freedspace += closeSpillFile(spill_set, file_no);
+		freedspace += closeSpillFile(aggstate, spill_set, file_no);
 	}
 
 	return freedspace;
@@ -1110,7 +1214,7 @@ static SpillSet *
 obtain_spill_set(HashAggTable *hashtable)
 {
 	SpillSet **p_spill_set;
-	unsigned parent_hash_bit = 0;
+	unsigned set_hash_bit = 0;
 	
 	if (hashtable->curr_spill_file != NULL)
 	  {
@@ -1118,7 +1222,8 @@ obtain_spill_set(HashAggTable *hashtable)
 		p_spill_set = &(hashtable->curr_spill_file->spill_set);
 		parent_spill_set = hashtable->curr_spill_file->parent_spill_set;
 		Assert(parent_spill_set != NULL);
-		parent_hash_bit = parent_spill_set->parent_hash_bit +
+		unsigned parent_hash_bit = hashtable->curr_spill_file->batch_hash_bit;
+		set_hash_bit = parent_hash_bit +
 		  (unsigned)ceil(log(parent_spill_set->num_spill_files)/log(2));
 	  }
 	else
@@ -1136,7 +1241,7 @@ obtain_spill_set(HashAggTable *hashtable)
 			hashtable->hats.nbatches = gp_hashagg_default_nbatches;
 		}
 
-		*p_spill_set = newSpillSet(hashtable->hats.nbatches, parent_hash_bit);
+		*p_spill_set = createSpillSet(hashtable->hats.nbatches, set_hash_bit);
 
 		hashtable->num_overflows++;
 		hashtable->mem_for_metadata +=
@@ -1156,6 +1261,120 @@ obtain_spill_set(HashAggTable *hashtable)
 	}
 
 	return *p_spill_set;
+}
+
+/*
+ * read_spill_set
+ *   Read a previously written spill file set.
+ *
+ * The statistics in the hashtable is also updated.
+ */
+static SpillSet *
+read_spill_set(AggState *aggstate)
+{
+	Assert(aggstate != NULL);
+	Assert(aggstate->hhashtable != NULL);
+	Assert(aggstate->hhashtable->spill_set == NULL);
+	Assert(aggstate->hhashtable->curr_spill_file == NULL);
+	Assert(aggstate->hhashtable->work_set);
+	Assert(aggstate->hhashtable->work_set->metadata.num_leaf_files == aggstate->hhashtable->num_batches);
+	Assert(aggstate->hhashtable->work_set->metadata.buckets == aggstate->hhashtable->nbuckets);
+
+	workfile_set *work_set = aggstate->hhashtable->work_set;
+	uint32 alloc_size = 0;
+	HashAggTable *hashtable = aggstate->hhashtable;
+
+	/*
+	 * Create spill set. Initialize each batch hash bit with 0. We'll set them to the right
+	 * value individually below.
+	 */
+	int default_hash_bit = 0;
+	SpillSet *spill_set = createSpillSet(work_set->metadata.num_leaf_files, default_hash_bit);
+
+	/*
+	 * Read metadata file to determine number and name of work files in the set
+	 * Format of state file:
+	 *  - [name_of_leaf_workfile | batch_hash_bit] x N
+	 */
+	char tmp_filename[MAXPGPATH];
+	workfile_mgr_retrieve_file_no(work_set, WORKFILE_NUM_HASHAGG_METADATA, tmp_filename, MAXPGPATH);
+	hashtable->state_file =
+			bfz_open(tmp_filename, false, gp_hashagg_compress_spill_files > 0 ?
+					   gp_hashagg_compress_spill_files : work_set->metadata.bfz_compress_type);
+	Assert(hashtable->state_file != NULL);
+	bfz_scan_begin(hashtable->state_file);
+
+
+	/*
+	 * Read, allocate and open all spill files.
+	 * The spill files are opened in reverse order when saving tuples,
+	 * so re-open them in the same order.
+	 */
+	uint32 no_filenames_read = 0;
+	while(true)
+	{
+
+		char *batch_filename = NULL;
+		unsigned read_batch_hashbit;
+		bool more_spillfiles = agg_hash_load_spillfile_info(hashtable->state_file, &batch_filename, &read_batch_hashbit);
+		if (!more_spillfiles)
+		{
+			break;
+		}
+
+		uint32 current_spill_file_no = work_set->metadata.num_leaf_files - no_filenames_read - 1;
+		Assert(current_spill_file_no >= 0);
+
+		SpillFile *spill_file = &spill_set->spill_files[current_spill_file_no];
+		Assert(spill_file->index_in_parent == current_spill_file_no);
+		spill_file->batch_hash_bit = read_batch_hashbit;
+
+		spill_file->file_info = (BatchFileInfo *)palloc(sizeof(BatchFileInfo));
+
+		spill_file->file_info->bfz =
+			bfz_open(batch_filename, false /* delOnClose */ , gp_hashagg_compress_spill_files > 0 ?
+					   gp_hashagg_compress_spill_files : work_set->metadata.bfz_compress_type);
+
+		Assert(spill_file->file_info->bfz != NULL);
+		Assert(batch_filename != NULL);
+		pfree(batch_filename);
+
+		/* Bogus values for these since we don't know them at this point */
+		spill_file->file_info->total_bytes = 1;
+		spill_file->file_info->ntuples = 1;
+
+		elog(HHA_MSG_LVL, "HashAgg: OPEN %d level batch file %d with compression %d",
+			 spill_set->level, no_filenames_read, gp_hashagg_compress_spill_files > 0 ?
+			 gp_hashagg_compress_spill_files : work_set->metadata.bfz_compress_type);
+		/*
+		 * bfz_open automatically frees up the freeable_stuff structure.
+		 * Subtract that from the allocated size here.
+		 */
+		alloc_size += BATCHFILE_METADATA - FREEABLE_BATCHFILE_METADATA;
+
+		no_filenames_read++;
+	}
+
+	Assert(work_set->metadata.num_leaf_files == no_filenames_read);
+
+	/* Update statistics */
+	hashtable->num_overflows++;
+	hashtable->mem_for_metadata +=
+		sizeof(SpillSet) +
+		(hashtable->hats.nbatches - 1) * sizeof(SpillFile);
+#ifdef USE_ASSERT_CHECKING
+	SANITY_CHECK_METADATA_SIZE(hashtable);
+#endif
+
+	hashtable->mem_for_metadata += alloc_size;
+	if (alloc_size > 0)
+	{
+		Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_AGG_SPILLBATCH);
+		CheckSendPlanStateGpmonPkt(&aggstate->ss.ps);
+	}
+
+
+	return spill_set;
 }
 
 /* Spill all entries from the hash table to file in order to make room
@@ -1179,9 +1398,21 @@ spill_hash_table(AggState *aggstate)
 	uint64 old_num_spill_groups = hashtable->num_spill_groups;
 
 	spill_set = obtain_spill_set(hashtable);
-	
+
 	oldcxt = MemoryContextSwitchTo(hashtable->entry_cxt);
 
+	/* Spill set does not have a workfile_set. Use existing or create new one as needed */
+	if (hashtable->work_set == NULL)
+	{
+		hashtable->work_set = workfile_mgr_create_set(BFZ, true /* can_be_reused */, &aggstate->ss.ps, NULL_SNAPSHOT);
+		hashtable->work_set->metadata.buckets = hashtable->nbuckets;
+		if (gp_workfile_caching)
+		{
+			create_state_file(hashtable);
+		}
+		aggstate->workfiles_created = true;
+	}
+	
 	/* Book keeping. */
 	hashtable->is_spilling = true;
 
@@ -1195,7 +1426,7 @@ spill_hash_table(AggState *aggstate)
 	{
 		int alloc_size = 0;
 
-		spill_file = getSpillFile(spill_set, file_no, &alloc_size);
+		spill_file = getSpillFile(hashtable->work_set, spill_set, file_no, &alloc_size);
 		Assert(spill_file != NULL);
 			
 		hashtable->mem_for_metadata += alloc_size;
@@ -1256,6 +1487,42 @@ spill_hash_table(AggState *aggstate)
 		 hashtable->num_spill_groups - old_num_spill_groups);
 
 	MemoryContextSwitchTo(oldcxt);
+}
+
+/*
+ * Create and open state file holding metadata. Used for workfile re-using.
+ */
+static void
+create_state_file(HashAggTable *hashtable)
+{
+	/* First time spilling. Before creating any spill files, create a
+	 * metadata file, so it gets the first name.
+	 */
+	char file_prefix[MAXPGPATH];
+	workfile_mgr_retrieve_file_no(hashtable->work_set, WORKFILE_NUM_HASHAGG_METADATA, file_prefix, sizeof(file_prefix));
+	bool delOnClose = !gp_workfile_caching;
+
+	hashtable->state_file =
+		bfz_create(file_prefix, delOnClose, gp_hashagg_compress_spill_files > 0 ?
+				   gp_hashagg_compress_spill_files : hashtable->work_set->metadata.bfz_compress_type);
+
+}
+
+/*
+ * Close state file holding spill set metadata. Used for workfile re-using.
+ */
+void
+agg_hash_close_state_file(HashAggTable *hashtable)
+{
+	if (hashtable->state_file != NULL)
+	{
+		if (hashtable->state_file->mode == BFZ_MODE_APPEND)
+		{
+			bfz_append_end(hashtable->state_file);
+		}
+		bfz_close(hashtable->state_file, true);
+		hashtable->state_file = NULL;
+	}
 }
 
 /*
@@ -1501,7 +1768,7 @@ agg_hash_reload(AggState *aggstate)
 	ExprContext *tmpcontext = aggstate->tmpcontext; /* per input tuple context */
 	bool has_tuples = false;
 	SpillFile *spill_file = hashtable->curr_spill_file;
-	int parent_hash_bit;
+	int reloaded_hash_bit;
 
 	/*
 	 * Record the start value for mem_for_metadata, since its value
@@ -1517,7 +1784,7 @@ agg_hash_reload(AggState *aggstate)
 	hashtable->num_reloads++;
 	hashtable->total_buckets += hashtable->nbuckets;
 
-	parent_hash_bit = spill_file->parent_spill_set->parent_hash_bit +
+	reloaded_hash_bit = spill_file->batch_hash_bit +
 		(unsigned)ceil(log(spill_file->parent_spill_set->num_spill_files)/log(2));
 
 
@@ -1541,7 +1808,11 @@ agg_hash_reload(AggState *aggstate)
 		{
 			spill_file->file_info->ntuples--;
 			Assert(spill_file->parent_spill_set != NULL);
-			Assert((hashkey >> spill_file->parent_spill_set->parent_hash_bit) %
+			/* The following asserts the mapping between a hashkey bucket and the index in parent.
+			 * This assertion does not hold for reloaded workfiles, since there the index in
+			 * parent is different. */
+			AssertImply(!aggstate->cached_workfiles_loaded,
+					(hashkey >> spill_file->batch_hash_bit) %
 				   spill_file->parent_spill_set->num_spill_files == 
 				   spill_file->index_in_parent);
 
@@ -1551,7 +1822,8 @@ agg_hash_reload(AggState *aggstate)
 
 		else
 		{
-			Assert(spill_file->file_info->ntuples == 0);
+			/* Check we processed all tuples, only when not reading from disk */
+			AssertImply(!aggstate->cached_workfiles_loaded, spill_file->file_info->ntuples == 0);
 			break;
 		}
 
@@ -1561,10 +1833,11 @@ agg_hash_reload(AggState *aggstate)
 		tmpcontext->ecxt_scantuple = aggstate->hashslot;
 
 		entry = lookup_agg_hash_entry(aggstate, input, INPUT_RECORD_GROUP_AND_AGGS, input_size,
-									  hashkey, parent_hash_bit, &isNew);
+									  hashkey, reloaded_hash_bit, &isNew);
 		
 		if (entry == NULL)
 		{
+			Assert(!aggstate->cached_workfiles_loaded && "no re-spilling allowed when re-using cached workfiles");
 			Assert(hashtable->curr_spill_file != NULL);
 			Assert(hashtable->curr_spill_file->parent_spill_set != NULL);
 			
@@ -1580,10 +1853,12 @@ agg_hash_reload(AggState *aggstate)
 			if (!hashtable->is_spilling && aggstate->ss.ps.instrument)
 				agg_hash_table_stat_upd(hashtable);
 
+			elog(gp_workfile_caching_loglevel, "HashAgg: respill occurring in agg_hash_reload while loading batch data");
+
 			spill_hash_table(aggstate);
 
 			entry = lookup_agg_hash_entry(aggstate, input, INPUT_RECORD_GROUP_AND_AGGS, input_size,
-										  hashkey, parent_hash_bit, &isNew);
+										  hashkey, reloaded_hash_bit, &isNew);
 		}
 
 		if (!isNew)
@@ -1643,6 +1918,9 @@ agg_hash_reload(AggState *aggstate)
 		spill_hash_table(aggstate);
         freed_size = suspendSpillFiles(hashtable->curr_spill_file->spill_set);
         hashtable->mem_for_metadata -= freed_size;
+        elog(gp_workfile_caching_loglevel, "loaded hashtable from file %s and then respilled. we should delete file from work_set now",
+        		hashtable->curr_spill_file->file_info->bfz->filename);
+        hashtable->curr_spill_file->respilled = true;
 	}
 
 	else
@@ -1683,7 +1961,6 @@ reCalcNumberBatches(HashAggTable *hashtable, SpillFile *spill_file)
 	uint64 total_bytes;
 	
 	Assert(spill_file->file_info != NULL);
-	Assert(spill_file->file_info->total_bytes > 1);
 	Assert(hashtable->max_mem > hashtable->mem_for_metadata);
 		
 	total_bytes = spill_file->file_info->total_bytes +
@@ -1767,7 +2044,7 @@ agg_hash_next_pass(AggState *aggstate)
 		 * Close the current spill file since it is finished, and its buffer space
 		 * can be freed to use.
 		 */
-		hashtable->mem_for_metadata -= closeSpillFile(spill_set, file_no);
+		hashtable->mem_for_metadata -= closeSpillFile(aggstate, spill_set, file_no);
 		file_no++;
 	}
 
@@ -1777,9 +2054,36 @@ agg_hash_next_pass(AggState *aggstate)
 		SpillFile *parent_spillfile;
 		int freespace = 0;
 		
-		while (file_no < spill_set->num_spill_files &&
-			   spill_set->spill_files[file_no].file_info == NULL)
-			file_no++;
+		while (file_no < spill_set->num_spill_files)
+		{
+			if (spill_set->spill_files[file_no].file_info == NULL)
+			{
+				/* Gap in spill_files array, skip it */
+				file_no++;
+				continue;
+			}
+
+			Assert(spill_set->spill_files[file_no].file_info != NULL);
+			if (spill_set->spill_files[file_no].file_info->ntuples == 0)
+			{
+				/* Batch file with no tuples in it, close it and skip it */
+				Assert(spill_set->spill_files[file_no].file_info->total_bytes == 0);
+				elog(HHA_MSG_LVL, "Skipping and closing empty batch file HashAgg_Slice%d_Batch_l%d_f%d",
+										 currentSliceId,
+										 spill_set->level, file_no);
+				/*
+				 * Close this spill file since it is empty, and its buffer space
+				 * can be freed to use.
+				 */
+				hashtable->mem_for_metadata -= closeSpillFile(aggstate, spill_set, file_no);
+
+				file_no++;
+				continue;
+			}
+
+			/* Valid spill file, we're done */
+			break;
+		}
 
 		if (file_no < spill_set->num_spill_files)
 			break;
@@ -1803,7 +2107,7 @@ agg_hash_next_pass(AggState *aggstate)
 		file_no = parent_spillfile->index_in_parent + 1;
 
 		/* Close parent_spillfile */
-		hashtable->mem_for_metadata -= closeSpillFile(spill_set,
+		hashtable->mem_for_metadata -= closeSpillFile(aggstate, spill_set,
 													  parent_spillfile->index_in_parent);
 	}
 	
@@ -1841,13 +2145,20 @@ agg_hash_next_pass(AggState *aggstate)
 		instr->workmemused = hashtable->mem_used;
 
 		appendStringInfo(hbuf,
-						 INT64_FORMAT " groups total in %d batches"
-						 "; %d overflows"
-						 "; " INT64_FORMAT " spill groups.\n",
+						 INT64_FORMAT " groups total in %d batches",
 						 hashtable->num_output_groups,
-						 hashtable->num_batches,
+						 hashtable->num_batches);
+		
+		if (!aggstate->cached_workfiles_loaded)
+		{
+			appendStringInfo(hbuf,
+						 "; %d overflows"
+						 "; " INT64_FORMAT " spill groups",
 						 hashtable->num_overflows,
 						 hashtable->num_spill_groups);
+		}
+
+		appendStringInfo(hbuf, ".\n");
 
         /* Hash chain statistics */
         if (hashtable->chainlength.vcnt > 0)
@@ -1920,7 +2231,14 @@ void destroy_agg_hash_table(AggState *aggstate)
 		if (aggstate->hhashtable->hashkey_buf)
 			pfree(aggstate->hhashtable->hashkey_buf);
 
-		closeSpillFiles(aggstate->hhashtable->spill_set);
+		closeSpillFiles(aggstate, aggstate->hhashtable->spill_set);
+
+		if (aggstate->workfiles_created)
+		{
+			Assert(aggstate->hhashtable->work_set);
+			agg_hash_close_state_file(aggstate->hhashtable);
+			workfile_mgr_close_set(aggstate->hhashtable->work_set);
+		}
 
 		mpool_delete(aggstate->hhashtable->group_buf);
 
@@ -1928,3 +2246,120 @@ void destroy_agg_hash_table(AggState *aggstate)
 		aggstate->hhashtable = NULL;
 	}
 }
+
+void
+agg_hash_mark_spillset_complete(AggState *aggstate)
+{
+
+	Assert(aggstate != NULL);
+	Assert(aggstate->hhashtable != NULL);
+	Assert(aggstate->hhashtable->work_set != NULL);
+
+	workfile_set *work_set = aggstate->hhashtable->work_set;
+	bool workset_metadata_too_big = work_set->metadata.num_leaf_files > NO_RESERVED_BATCHFILE_METADATA;
+
+	if (workset_metadata_too_big)
+	{
+		work_set->can_be_reused = false;
+		elog(gp_workfile_caching_loglevel, "HashAgg: spill set contains too many files: %d. Not caching",
+				work_set->metadata.num_leaf_files);
+	}
+
+	workfile_mgr_mark_complete(work_set);
+
+}
+
+/*
+ * Save a spill file information to the state file.
+ * Format is: [name_length|name|hash_bit].
+ * The same format must be expected in agg_hash_load_spillfile_info
+ */
+static void
+agg_hash_save_spillfile_info(bfz_t *state_file, SpillFile *spill_file)
+{
+
+	/*
+	 * We need to strip the database prefix from the bfz filename,
+	 * as bfz expects it without the prefix.
+	 */
+	agg_hash_write_string_bfz(state_file,
+			spill_file->file_info->bfz->filename + strlen(getCurrentTempFilePath) + 1,
+			strlen(spill_file->file_info->bfz->filename) - strlen(getCurrentTempFilePath) - 1);
+	bfz_append(state_file,
+			(char *) &spill_file->batch_hash_bit,
+			sizeof(spill_file->batch_hash_bit));
+}
+
+/*
+ * Load a spill file information to the state file.
+ * Format is: [name_length|name|hash_bit].
+ * The same format must be written in agg_hash_save_spillfile_info
+ * Sets spill_file_name to point to the read file name, which is palloc-ed in
+ * the current context.
+ * Return FALSE at EOF, TRUE otherwise.
+ */
+static bool
+agg_hash_load_spillfile_info(bfz_t *state_file, char **spill_file_name, unsigned *batch_hash_bit)
+{
+	*spill_file_name = agg_hash_read_string_bfz(state_file);
+	if (*spill_file_name == NULL)
+	{
+		/* EOF. No more file names to read. */
+		return false;
+	}
+	unsigned read_hash_bit;
+#ifdef USE_ASSERT_CHECKING
+	int res =
+#endif
+	bfz_scan_next(state_file, (char *) &read_hash_bit, sizeof(read_hash_bit));
+
+	Assert(res == sizeof(read_hash_bit));
+
+	*batch_hash_bit = read_hash_bit;
+	return true;
+}
+
+/* Writing string to a bfz file
+ * Format: [length|data]
+ * This must be the same format used in agg_hash_read_string_bfz
+ */
+static void
+agg_hash_write_string_bfz(bfz_t *bfz, const char *str, size_t len)
+{
+	Assert(bfz != NULL);
+	bfz_append(bfz, (char *) &len, sizeof(len));
+
+	/* Terminating null character is not written to disk */
+	bfz_append(bfz, str, len);
+}
+
+/* Reading a string from a bfz file
+ * Format: [length|string]
+ * This must be the same format used in agg_hash_write_string_bfz
+ * Returns the palloc-ed string in the current context, NULL if error occurs.
+ */
+static char *
+agg_hash_read_string_bfz(bfz_t *bfz)
+{
+	Assert(bfz != NULL);
+	size_t slen = 0;
+
+	int res = bfz_scan_next(bfz, (char *) &slen, sizeof(slen));
+	if (res != sizeof(slen))
+	{
+		return NULL;
+	}
+
+	char *read_string = palloc(slen+1);
+	res = bfz_scan_next(bfz, read_string, slen);
+	if (res < slen)
+	{
+		pfree(read_string);
+		return NULL;
+	}
+
+	read_string[slen]='\0';
+	return read_string;
+}
+
+/* EOF */

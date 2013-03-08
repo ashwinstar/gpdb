@@ -1634,8 +1634,10 @@ inittapes(Tuplesortstate *state, const char* rwfile_prefix)
 	/*
 	 * Create the tape set and allocate the per-tape data arrays.
 	 */
-	if(!rwfile_prefix)
-		state->tapeset = LogicalTapeSetCreate(maxTapes);
+	if(!rwfile_prefix){
+		bool del_on_close = true;
+		state->tapeset = LogicalTapeSetCreate(maxTapes, del_on_close);
+	}
 	else
 		state->tapeset = LogicalTapeSetCreate_ReaderWriter(rwfile_prefix, maxTapes);
 

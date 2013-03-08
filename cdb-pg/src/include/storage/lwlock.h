@@ -18,6 +18,7 @@
  * It's a bit odd to declare NUM_BUFFER_PARTITIONS and NUM_LOCK_PARTITIONS
  * here, but we need them to set up enum LWLockId correctly, and having
  * this file include lock.h or bufmgr.h would be backwards.
+ * This also applies for WORKFILE_HASHSTABLE_NUM_PARTITIONS.
  */
 
 /* Number of partitions of the shared buffer mapping hashtable */
@@ -26,6 +27,9 @@
 /* Number of partitions the shared lock tables are divided into */
 #define LOG2_NUM_LOCK_PARTITIONS  4
 #define NUM_LOCK_PARTITIONS  (1 << LOG2_NUM_LOCK_PARTITIONS)
+
+/* Number of partitions of the workfile manager hashtable */
+#define NUM_WORKFILEMGR_PARTITIONS 32
 
 /*
  * We have a number of predefined LWLocks, plus a bunch of LWLocks that are
@@ -83,7 +87,8 @@ typedef enum LWLockId
 	MirroredLock,
 	ResQueueLock,
 	FileRepAppendOnlyCommitCountLock,
-	FirstBufMappingLock,
+	FirstWorkfileMgrLock,
+	FirstBufMappingLock = FirstWorkfileMgrLock + NUM_WORKFILEMGR_PARTITIONS,
 	FirstLockMgrLock = FirstBufMappingLock + NUM_BUFFER_PARTITIONS,
 	
 	/* must be last except for MaxDynamicLWLock: */

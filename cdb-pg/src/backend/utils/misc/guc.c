@@ -176,6 +176,8 @@ static const char *assign_client_min_messages(const char *newval,
 						   bool doit, GucSource source);
 static const char *assign_min_error_statement(const char *newval, bool doit,
 						   GucSource source);
+static const char *assign_gp_workfile_caching_loglevel(const char *newval,
+						   bool doit, GucSource source);
 static const char *assign_time_slice_report_level(const char *newval, bool doit,
 						   GucSource source);
 static const char *assign_deadlock_hazard_report_level(const char *newval, bool doit,
@@ -482,6 +484,7 @@ static char *log_statement_str;
 static char *log_min_error_statement_str;
 static char *log_destination_string;
 static char *gp_log_format_string;
+static char *gp_workfile_caching_loglevel_str;
 
 #ifdef HAVE_SYSLOG
 static char *syslog_facility_str;
@@ -1017,6 +1020,16 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&gp_workfile_checksumming,
 		true, NULL, NULL
+	},
+	{
+		{"gp_workfile_caching", PGC_SUSET, QUERY_TUNING_OTHER,
+			gettext_noop("Enable work file caching"),
+			gettext_noop("When enabled, work files are persistent "
+					     "and their contents can be reused."),
+			GUC_SUPERUSER_ONLY | GUC_GPDB_ADDOPT
+		},
+		&gp_workfile_caching,
+		false, NULL, NULL
 	},
 	{
 		{"gp_workfile_faultinject", PGC_SUSET, DEVELOPER_OPTIONS,
@@ -2022,7 +2035,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&gp_heap_require_relhasoids_match,
 		true, NULL, NULL
 	},
-
+	
 	{
 		{"debug_appendonly_rezero_quicklz_compress_scratch", PGC_USERSET, DEVELOPER_OPTIONS,
 		 gettext_noop("Zero the QuickLZ scratch buffer before each append-only block that is being compressed."),
@@ -5492,6 +5505,18 @@ static struct config_string ConfigureNamesString[] =
 		},
 		&log_min_messages_str,
 		"warning", assign_log_min_messages, NULL
+	},
+	{
+		{"gp_workfile_caching_loglevel", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Sets the logging level for workfile caching debugging messages"),
+			gettext_noop("Valid values are DEBUG5, DEBUG4, DEBUG3, DEBUG2, "
+						 "DEBUG1, LOG, NOTICE, WARNING, and ERROR. Each level includes all the "
+						 "levels that follow it. The later the level, the fewer messages are "
+						 "sent."),
+			GUC_GPDB_ADDOPT
+		},
+		&gp_workfile_caching_loglevel_str,
+		"log", assign_gp_workfile_caching_loglevel, NULL
 	},
 
 	{
@@ -10810,6 +10835,13 @@ static const char *
 assign_client_min_messages(const char *newval, bool doit, GucSource source)
 {
 	return (assign_msglvl(&client_min_messages, newval, doit, source));
+}
+
+static const char *
+assign_gp_workfile_caching_loglevel(const char *newval,
+						bool doit, GucSource source)
+{
+	return (assign_msglvl(&gp_workfile_caching_loglevel, newval, doit, source));
 }
 
 static const char *

@@ -31,8 +31,9 @@ typedef struct LogicalTapeSet LogicalTapeSet;
  */
 
 extern LogicalTape *LogicalTapeCreate(LogicalTapeSet *lts, LogicalTape *lt); 
-extern LogicalTapeSet *LogicalTapeSetCreate(int ntapes);
+extern LogicalTapeSet *LogicalTapeSetCreate(int ntapes, bool del_on_close);
 extern LogicalTapeSet *LogicalTapeSetCreate_ReaderWriter(const char* rwfile_prefix, int ntapes); 
+extern LogicalTapeSet *LogicalTapeSetCreate_Named(const char * set_prefix, int ntapes, bool del_on_close);
 extern LogicalTapeSet *LoadLogicalTapeSetState(BufFile *pfile, const char* rwfile_prefix);
 
 extern void LogicalTapeSetClose(LogicalTapeSet *lts);

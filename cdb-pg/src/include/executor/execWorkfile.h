@@ -31,6 +31,7 @@ typedef struct ExecWorkFile
 	int compressType;
 	
 	void *file;
+	char *fileName;
 } ExecWorkFile;
 
 /*
@@ -43,6 +44,12 @@ typedef struct ExecWorkFile
 ExecWorkFile *
 ExecWorkFile_Create(const char *fileName,
 					ExecWorkFileType fileType,
+					bool delOnClose,
+					int compressType);
+ExecWorkFile *
+ExecWorkFile_Open(const char *fileName,
+					ExecWorkFileType fileType,
+					bool delOnClose,
 					int compressType);
 
 /*
@@ -93,5 +100,7 @@ ExecWorkFile_Tell64(ExecWorkFile *workfile);
  */
 void
 ExecWorkFile_Close(ExecWorkFile *workfile);
+
+char * ExecWorkFile_GetFileName(ExecWorkFile *workfile);
 
 #endif /* EXECWORKFILE_H */
