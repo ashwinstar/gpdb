@@ -33,7 +33,6 @@
 
 #include "pg_config_paths.h"
 
-
 #ifndef WIN32
 #define IS_DIR_SEP(ch)	((ch) == '/')
 #else
@@ -47,11 +46,12 @@
 #endif
 
 /*
- * These declarations are for gp_mkdtemp on Solaris
+ * These declarations are for gp_mkdtemp on Solaris and Win32
  *
- * On Solaris, there is no mkdtemp function, so we added our own implementation.
+ * On Solaris and Win32, there is no mkdtemp function, so we added our
+ * own implementation.
  */
-#ifdef pg_on_solaris
+#if defined pg_on_solaris || defined WIN32
 
 /*
  * A lower bound on the number of temporary files to attempt to
@@ -753,15 +753,15 @@ trim_trailing_separator(char *path)
 }
 
 /*
- * Generate a unique temporary file name from TEMPLATE_PATH.
+ * Generate a unique temporary directory name from TEMPLATE_PATH.
  * The last six characters of TEMPLATE_PATH must be "XXXXXX";
- * they are replaced with a string that makes the file name unique.
- * Then open the file and return the template or NULL.
+ * they are replaced with a string that makes the directory name unique.
+ * Then create the directory and return the template or NULL.
  */
 char *
 gp_mkdtemp(char *template_path)
 {
-#ifdef pg_on_solaris
+#if defined pg_on_solaris || defined WIN32
 	int len;
 	char *suffix;
 	static int64 value;
