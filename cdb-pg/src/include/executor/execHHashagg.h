@@ -19,7 +19,7 @@
 #include "executor/nodeAgg.h" /* Must see AggStatePerGroupData. */
 #include "cdb/cdbpublic.h"    /* CdbExplain_Agg / CdbCellBuf */
 #include "utils/memutils.h"
-#include "storage/bfz.h"
+#include "executor/execWorkfile.h"
 #include "utils/workfile_mgr.h"
 
 typedef uint32 HashKey;
@@ -171,7 +171,7 @@ typedef struct HashAggTable
 	workfile_set *work_set;
 	/* Metadata file containing information required to restore the state
 	 * from a cached workfile for reuse */
-	bfz_t *state_file;
+	ExecWorkFile *state_file;
 
 	/* The batch file is currently being processed. */
 	SpillFile *curr_spill_file;

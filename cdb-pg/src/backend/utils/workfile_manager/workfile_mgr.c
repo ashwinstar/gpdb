@@ -35,7 +35,7 @@
 /* Forward declarations */
 static workfile_set *workfile_mgr_lookup_set(PlanState *ps);
 static bool workfile_mgr_is_reusable(PlanState *ps);
-static bool workfile_mgr_is_volatile_plan(PlanState *ps);
+static bool workfile_mgr_is_cacheable_plan(PlanState *ps);
 static workfile_set_hashkey_t workfile_mgr_hash_key(workfile_set_plan *plan);
 static workfile_set_plan *workfile_mgr_serialize_plan(PlanState *ps);
 static void workfile_mgr_free_plan(workfile_set_plan *splan);
@@ -377,10 +377,10 @@ workfile_mgr_is_reusable(PlanState *ps)
 		return false;
 	}
 
-	bool volatile_fns = workfile_mgr_is_volatile_plan(ps);
-	if (volatile_fns)
+	bool cacheable_plan = workfile_mgr_is_cacheable_plan(ps);
+	if (!cacheable_plan)
 	{
-		elog(gp_workfile_caching_loglevel, "Plan using volatile functions not considered for workfile caching");
+		elog(gp_workfile_caching_loglevel, "Plan not considered for workfile caching");
 		return false;
 	}
 
@@ -388,13 +388,16 @@ workfile_mgr_is_reusable(PlanState *ps)
 }
 
 /*
- * Walker function to test if a plan node uses volatile function or external
- * table scan
+ * Walker function to test if a subplan contains any operators that cannot
+ * be cached:
+ *  - node uses volatile function
+ *  - external table scan
+ *  - share input scan (because of synchronization issues)
  *
  * Returns CdbVisit_Failure if it finds an offending node
  */
 static CdbVisitOpt
-checkVolatileNodeWalker(PlanState *ps,
+checkNoncacheableNodeWalker(PlanState *ps,
 				  void *context)
 {
 	if (IsA(ps, FunctionScanState))
@@ -430,7 +433,7 @@ checkVolatileNodeWalker(PlanState *ps,
 
 	}
 
-	if (IsA(ps, ExternalScanState))
+	if (IsA(ps, ExternalScanState) || IsA(ps,ShareInputScanState))
 	{
 		return CdbVisit_Failure;
 	}
@@ -440,17 +443,19 @@ checkVolatileNodeWalker(PlanState *ps,
 }
 
 /*
- * Check if a plan contains any volatile functions or external table scans
+ * Check if a plan contains any operators that cannot be cached
+ *
+ * Returns true if subplan can be cached, false otherwise
  */
 static bool
-workfile_mgr_is_volatile_plan(PlanState *ps)
+workfile_mgr_is_cacheable_plan(PlanState *ps)
 {
 	Assert(NULL != ps);
 
-	CdbVisitOpt status = planstate_walk_node(ps, checkVolatileNodeWalker, NULL);
+	CdbVisitOpt status = planstate_walk_node(ps, checkNoncacheableNodeWalker, NULL);
 
 	/* status == CdbVisit_Failure means we found a volatile node */
-	return (status == CdbVisit_Failure);
+	return (status != CdbVisit_Failure);
 }
 
 /*
@@ -523,10 +528,12 @@ workfile_mgr_can_reuse(workfile_set *work_set, PlanState *ps)
 }
 
 /*
- * Clears entire workfile cache.
+ * Clears entire contents of workfile cache
+ *
+ *   Returns the number of entries removed
  */
-Datum
-gp_workfile_mgr_clear_cache(PG_FUNCTION_ARGS)
+int32
+workfile_mgr_clear_cache(void)
 {
 	Assert(false && "Clear cache not implemented");
 	PG_RETURN_BOOL(true);

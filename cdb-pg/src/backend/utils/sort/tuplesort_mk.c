@@ -110,7 +110,7 @@
 #include "executor/nodeSort.h" 		/* gpmon */
 #include "miscadmin.h"
 #include "utils/datum.h"
-#include "storage/buffile.h"
+#include "executor/execWorkfile.h"
 #include "utils/logtape.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -359,10 +359,10 @@ struct Tuplesortstate_mk
 	long arraySizeBeforeSpill; /* the value for entry_allocsize at the time of spilling */
 
     /* 
-     * File fo dump/load logical tape set state.  Used by sharing sort across slice 
+     * File for dump/load logical tape set state.  Used by sharing sort across slice
      */
     char    *tapeset_state_file_prefix;
-    BufFile *tapeset_state_file;
+    ExecWorkFile *tapeset_state_file;
 
     /* Gpmon */
     gpmon_packet_t *gpmon_pkt;
@@ -768,25 +768,37 @@ tuplesort_begin_heap_file_readerwriter_mk(ScanState *ss,
 {
     Tuplesortstate_mk *state;
     char statedump[MAXPGPATH];
+    char full_prefix[MAXPGPATH];
 
     Assert(randomAccess);
 
-    snprintf(statedump, sizeof(statedump), "%s_sortstate", rwfile_prefix);
+    int len = snprintf(statedump, sizeof(statedump), "%s/%s_sortstate",
+			PG_TEMP_FILES_DIR,
+    		rwfile_prefix);
+	insist_log(len <= MAXPGPATH - 1, "could not generate temporary file name");
+
+	len = snprintf(full_prefix, sizeof(full_prefix), "%s/%s",
+			PG_TEMP_FILES_DIR,
+			rwfile_prefix);
+	insist_log(len <= MAXPGPATH - 1, "could not generate temporary file name");
+
 
     if(isWriter)
     {
         /*
-         * Writer is a oridinary tuplesort, except the underlying buf file are named by
+         * Writer is a ordinary tuplesort, except the underlying buf file are named by
          * rwfile_prefix.
          */
         state = tuplesort_begin_heap_mk(ss, tupDesc, nkeys, sortOperators, attNums, workMem, randomAccess);
 
-        state->tapeset_state_file_prefix = MemoryContextStrdup(state->sortcontext, rwfile_prefix);
-        /* TODO Make sure the names are unique, since we don't use CreateTemp anymore */
-        state->tapeset_state_file = BufFileCreateFile(statedump,
-        		true,  /* delOnClose */
-        		true  /* interXact */
-        		);
+        state->tapeset_state_file_prefix = MemoryContextStrdup(state->sortcontext, full_prefix);
+
+		state->tapeset_state_file = ExecWorkFile_Create(statedump,
+				BUFFILE,
+				true /* delOnClose */ ,
+				0 /* compressType */ );
+		Assert(state->tapeset_state_file != NULL);
+
         return state;
     }
     else
@@ -807,15 +819,15 @@ tuplesort_begin_heap_file_readerwriter_mk(ScanState *ss,
 
         oldctxt = MemoryContextSwitchTo(state->sortcontext);
 
-        state->tapeset_state_file_prefix = MemoryContextStrdup(state->sortcontext, rwfile_prefix);
+        state->tapeset_state_file_prefix = MemoryContextStrdup(state->sortcontext, full_prefix);
         /* TODO Make sure the names are unique, since we don't use CreateTemp anymore */
-        state->tapeset_state_file = BufFileOpenFile(statedump,
-        		false, /* create */
-        		true, /* delOnClose */
-        		true /* interXact */
-        		);
 
-        state->tapeset = LoadLogicalTapeSetState(state->tapeset_state_file, rwfile_prefix);
+        state->tapeset_state_file = ExecWorkFile_Open(statedump,
+       				BUFFILE,
+       				false /* delOnClose */,
+       				0 /* compressType */);
+
+        state->tapeset = LoadLogicalTapeSetState(state->tapeset_state_file, full_prefix);
         state->currentRun = 0;
         state->result_tape = LogicalTapeSetGetTape(state->tapeset, 0);
 
@@ -945,7 +957,7 @@ tuplesort_end_mk(Tuplesortstate_mk *state)
 
         if (state->tapeset_state_file)
         {
-        	BufFileClose(state->tapeset_state_file);
+        	ExecWorkFile_Close(state->tapeset_state_file);
         }
     }
 
@@ -1295,7 +1307,7 @@ tuplesort_performsort_mk(Tuplesortstate_mk *state)
     		 * If we're planning to reuse the spill files from this sort,
     		 * save metadata here and mark work_set complete.
     		 */
-    		if (gp_workfile_caching)
+    		if (gp_workfile_caching && state->work_set)
     		{
     			tuplesort_write_spill_metadata_mk(state);
 
@@ -1322,7 +1334,7 @@ void tuplesort_flush_mk(Tuplesortstate_mk *state)
     Assert(state->pos.cur_work_tape == NULL);
     elog(gp_workfile_caching_loglevel, "tuplesort_mk: writing logical tape state to file");
     LogicalTapeFlush(state->tapeset, state->result_tape, state->tapeset_state_file);
-    BufFileFlush(state->tapeset_state_file);
+    ExecWorkfile_Flush(state->tapeset_state_file);
 }
 
 /*
@@ -1700,22 +1712,22 @@ inittapes_mk(Tuplesortstate_mk *state, const char* rwfile_prefix)
     	ps = NULL;
     	can_be_reused = false;
     }
-    state->work_set = workfile_mgr_create_set(BUFFILE, can_be_reused, ps, NULL_SNAPSHOT);
 
     /*
      * Create the tape set and allocate the per-tape data arrays.
      */
     if(!rwfile_prefix)
     {
+        state->work_set = workfile_mgr_create_set(BUFFILE, can_be_reused, ps, NULL_SNAPSHOT);
 
     	char metadata_file_name[MAXPGPATH];
     	workfile_mgr_retrieve_file_no(state->work_set, WORKFILE_NUM_MKSORT_METADATA,
     			metadata_file_name, sizeof(metadata_file_name));
     	bool del_on_close = !gp_workfile_caching;
-    	bool interXact = false;
-    	state->tapeset_state_file = BufFileCreateFile(metadata_file_name,
+    	state->tapeset_state_file = ExecWorkFile_Create(metadata_file_name,
+    			BUFFILE,
     			del_on_close,
-    			interXact);
+    			0 /* compressType */);
 
     	char tape_file_name[MAXPGPATH];
     	workfile_mgr_retrieve_file_no(state->work_set, WORKFILE_NUM_MKSORT_TAPESET,
@@ -1724,9 +1736,11 @@ inittapes_mk(Tuplesortstate_mk *state, const char* rwfile_prefix)
     }
     else
     {
-    	/* TODO Make sure the name coming in rwfile_prefix is unique, because
+    	/*
+    	 * TODO Make sure the name coming in rwfile_prefix is unique, because
     	 * we don't add a random suffix anymore in Buffile
     	 */
+
     	state->tapeset = LogicalTapeSetCreate_Named(rwfile_prefix,
     			maxTapes,
     			true /* del_on_close */
@@ -3537,11 +3551,10 @@ void tuplesort_read_spill_metadata_mk(Tuplesortstate_mk *state)
 	char metadata_file_name[MAXPGPATH];
 	workfile_mgr_retrieve_file_no(state->work_set, WORKFILE_NUM_MKSORT_METADATA, metadata_file_name, MAXPGPATH);
 
-	state->tapeset_state_file = BufFileOpenFile(metadata_file_name,
-			false, /* create */
+	state->tapeset_state_file = ExecWorkFile_Open(metadata_file_name,
+			BUFFILE,
 			false, /* delOnClose */
-			true  /* interXact */
-			);
+			0 /* compressType */);
 
 	char tape_file_name[MAXPGPATH];
 	workfile_mgr_retrieve_file_no(state->work_set, WORKFILE_NUM_MKSORT_TAPESET, tape_file_name, MAXPGPATH);

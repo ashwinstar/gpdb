@@ -35,7 +35,7 @@
 
 #include "postgres.h"
 
-#include "storage/buffile.h"
+#include "executor/execWorkfile.h"
 #include "utils/logtape.h"
 
 #include "cdb/cdbvars.h"                /* currentSliceId */
@@ -77,7 +77,7 @@ struct LogicalTape
  */
 struct LogicalTapeSet
 {
-	BufFile    *pfile;			/* underlying file for whole tape set */
+	ExecWorkFile    *pfile;			/* underlying file for whole tape set */
 	long		nFileBlocks;	/* # of blocks used in underlying file */
 
 	/*
@@ -112,35 +112,52 @@ static void ltsReadBlock(LogicalTapeSet *lts, long blocknum, void *buffer);
 static long ltsGetFreeBlock(LogicalTapeSet *lts);
 static void ltsReleaseBlock(LogicalTapeSet *lts, long blocknum);
 
-static void DumpLogicalTapeSetState(BufFile *pfile, LogicalTapeSet *lts, LogicalTape *lt)
+/*
+ * Writes state of a LogicalTapeSet to a state file
+ */
+static void DumpLogicalTapeSetState(ExecWorkFile *statefile, LogicalTapeSet *lts, LogicalTape *lt)
 {
-	Size wlen;
-
 	Assert(lts && lt && lt->frozen);
-	wlen = BufFileWrite(pfile, &(lts->nFileBlocks), sizeof(lts->nFileBlocks));
-	Assert(wlen == sizeof(lts->nFileBlocks));
 
-	wlen = BufFileWrite(pfile, &(lt->firstBlkNum), sizeof(lt->firstBlkNum));
-	Assert(wlen == sizeof(lt->firstBlkNum));
+	bool res = ExecWorkFile_Write(statefile, &(lts->nFileBlocks), sizeof(lts->nFileBlocks));
+	Assert(res);
+
+	res = ExecWorkFile_Write(statefile, &(lt->firstBlkNum), sizeof(lt->firstBlkNum));
+	Assert(res);
 }
 
-LogicalTapeSet *LoadLogicalTapeSetState(BufFile *pfile, const char* rwfile_prefix)
+/*
+ * Loads the state of a LogicaTapeSet from a BufFile
+ *
+ *   statefile is an open BufFile containing the state of the LogicalTapeSet
+ *   rwfile_prefix is the path to the tape file with the data. The pgsql_tmp/
+ *    directory prefix must be part of the rwfile_prefix
+ */
+LogicalTapeSet *LoadLogicalTapeSetState(ExecWorkFile *statefile, const char* rwfile_prefix)
 {
+	Assert(statefile != NULL);
+
 	LogicalTapeSet *lts;
 	LogicalTape *lt;
 	size_t readSize;
 
 	lts = (LogicalTapeSet *) palloc(sizeof(LogicalTapeSet));
 
-	lts->pfile = BufFileOpenFile(rwfile_prefix,
-			false, /* create */
-			false, /* delOnClose */
-			true /* interXact */
-			);
+	lts->pfile = ExecWorkFile_Open(rwfile_prefix,
+			BUFFILE,
+			false /* delOnClose */,
+			0 /* compressType */);
+
+
+	if (lts->pfile == NULL)
+	{
+		elog(ERROR, "could not open temporary file for reading \"%s\": %m", rwfile_prefix);
+	}
+
 	lts->nTapes = 1;
 	lt = &lts->tapes[0];
 
-	readSize = BufFileRead(pfile, &(lts->nFileBlocks), sizeof(lts->nFileBlocks));
+	readSize = ExecWorkFile_Read(statefile, &(lts->nFileBlocks), sizeof(lts->nFileBlocks));
 	if(readSize != sizeof(lts->nFileBlocks))
 		elog(ERROR, "Load logicaltapeset failed to read nFileBlocks");
 
@@ -154,7 +171,7 @@ LogicalTapeSet *LoadLogicalTapeSetState(BufFile *pfile, const char* rwfile_prefi
 	lt->writing = false;
 	lt->frozen = true;
 
-	readSize = BufFileRead(pfile, &(lt->firstBlkNum), sizeof(lt->firstBlkNum));
+	readSize = ExecWorkFile_Read(statefile, &(lt->firstBlkNum), sizeof(lt->firstBlkNum));
 	if(readSize != sizeof(lt->firstBlkNum))
 		elog(ERROR, "Load logicaltapeset failed to read tape firstBlkNum");
 
@@ -179,14 +196,17 @@ LogicalTapeSet *LoadLogicalTapeSetState(BufFile *pfile, const char* rwfile_prefi
 static void
 ltsWriteBlock(LogicalTapeSet *lts, long blocknum, void *buffer)
 {
-	if (BufFileSeekBlock(lts->pfile, blocknum) != 0 ||
-		BufFileWrite(lts->pfile, buffer, BLCKSZ) != BLCKSZ)
+	Assert(lts != NULL);
+	if (ExecWorkFile_Seek(lts->pfile, blocknum * BLCKSZ, SEEK_SET) != 0 ||
+			!ExecWorkFile_Write(lts->pfile, buffer, BLCKSZ))
+	{
 		ereport(ERROR,
 		/* XXX is it okay to assume errno is correct? */
 				(errcode_for_file_access(),
 				 errmsg("could not write block %ld of temporary file: %m",
 						blocknum),
 				 errhint("Perhaps out of disk space?")));
+	}
 }
 
 /*
@@ -198,13 +218,16 @@ ltsWriteBlock(LogicalTapeSet *lts, long blocknum, void *buffer)
 static void
 ltsReadBlock(LogicalTapeSet *lts, long blocknum, void *buffer)
 {
-	if (BufFileSeekBlock(lts->pfile, blocknum) != 0 ||
-		BufFileRead(lts->pfile, buffer, BLCKSZ) != BLCKSZ)
+	Assert(lts != NULL);
+	if (ExecWorkFile_Seek(lts->pfile, blocknum * BLCKSZ, SEEK_SET) != 0 ||
+			ExecWorkFile_Read(lts->pfile, buffer, BLCKSZ) != BLCKSZ)
+	{
 		ereport(ERROR,
 		/* XXX is it okay to assume errno is correct? */
 				(errcode_for_file_access(),
 				 errmsg("could not read block %ld of temporary file: %m",
 						blocknum)));
+	}
 }
 
 /*
@@ -344,24 +367,31 @@ LogicalTapeSetCreate_Internal(int ntapes)
 	return lts;
 }
 
+/*
+ * Creates a LogicalTapeSet with a generated file name.
+ */
 LogicalTapeSet *LogicalTapeSetCreate(int ntapes, bool del_on_close)
 {
-	char tmpprefix[50];
-	snprintf(tmpprefix, 50, "slice%d_sort", currentSliceId);
+	char tmpprefix[MAXPGPATH];
+	/* FIXME Make sure this is unique */
+
+	int len = snprintf(tmpprefix, MAXPGPATH, "%s/slice%d_sort",
+			PG_TEMP_FILES_DIR,
+			currentSliceId);
+	insist_log(len <= MAXPGPATH - 1, "could not generate temporary file name");
+
 	return LogicalTapeSetCreate_Named(tmpprefix, ntapes, del_on_close);
 }
 
-LogicalTapeSet *LogicalTapeSetCreate_Named(const char * set_prefix, int ntapes, bool del_on_close)
+/*
+ * Creates a LogicalTapeSet with a given name.
+ *
+ * Note: Requires the pgsql_tmp/ directory to be part of the prefix
+ */
+LogicalTapeSet *LogicalTapeSetCreate_Named(const char *set_prefix, int ntapes, bool del_on_close)
 {
 	LogicalTapeSet *lts = LogicalTapeSetCreate_Internal(ntapes);
-	lts->pfile = BufFileCreateFile(set_prefix, del_on_close, false);
-	return lts;
-}
-
-LogicalTapeSet *LogicalTapeSetCreate_ReaderWriter(const char* rwfile_prefix, int ntapes)
-{
-	LogicalTapeSet *lts = LogicalTapeSetCreate_Internal(ntapes);
-	lts->pfile = BufFileCreateTemp_ReaderWriter(rwfile_prefix, true);
+	lts->pfile = ExecWorkFile_Create(set_prefix, BUFFILE, del_on_close, 0 /* compressType */);
 	return lts;
 }
 
@@ -371,7 +401,8 @@ LogicalTapeSet *LogicalTapeSetCreate_ReaderWriter(const char* rwfile_prefix, int
 void
 LogicalTapeSetClose(LogicalTapeSet *lts)
 {
-	BufFileClose(lts->pfile);
+	Assert(lts != NULL);
+	ExecWorkFile_Close(lts->pfile);
 	if(lts->freeBlocks)
 		pfree(lts->freeBlocks);
 	pfree(lts);
@@ -584,12 +615,13 @@ LogicalTapeFreeze(LogicalTapeSet *lts, LogicalTape *lt)
 /* Flush the destination tape so the logtapeset can be used by shareinput.
  * We assume the tape has been frozen before this call 
  */
-void LogicalTapeFlush(LogicalTapeSet *lts, LogicalTape *lt, BufFile *pstatefile)
+void
+LogicalTapeFlush(LogicalTapeSet *lts, LogicalTape *lt, ExecWorkFile *pstatefile)
 {
 	Assert(lts && lts->pfile);
 	Assert(lt->frozen);
 
-	BufFileFlush(lts->pfile);
+	ExecWorkfile_Flush(lts->pfile);
 	DumpLogicalTapeSetState(pstatefile, lts, lt);
 }
 

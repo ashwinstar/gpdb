@@ -140,6 +140,7 @@ Size workfile_mgr_shmem_size(void);
 void workfile_mgr_cache_init(void);
 void workfile_mgr_mark_complete(workfile_set *work_set);
 Cache *workfile_mgr_get_cache(void);
+int32 workfile_mgr_clear_cache(void);
 
 /* Serialization functions */
 void outfuncs_workfile_mgr_init(List *rtable);

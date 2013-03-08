@@ -25,15 +25,23 @@
 #include "utils/builtins.h"
 #include "utils/workfile_mgr.h"
 #include "utils/sharedcache.h"
+#include "executor/execWorkfile.h"
 #include "miscadmin.h"
 
+/* The number of columns as defined in gp_workfile_mgr_cache_stats view */
 #define NUM_CACHE_STATS_ELEM 23
+
+/* The number of columns as defined in gp_workfile_mgr_cache_entries view */
 #define NUM_CACHE_ENTRIES_ELEM 14
+
+/* The number of columns as defined in gp_workfile_mgr_diskspace view */
+#define NUM_USED_DISKSPACE_ELEM 2
 
 static char *gp_workfile_operator_name(NodeTag node_type);
 
 Datum gp_workfile_mgr_cache_stats(PG_FUNCTION_ARGS);
 Datum gp_workfile_mgr_cache_entries(PG_FUNCTION_ARGS);
+Datum gp_workfile_mgr_used_diskspace(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(gp_workfile_mgr_cache_stats);
 
@@ -218,6 +226,42 @@ gp_workfile_mgr_cache_entries(PG_FUNCTION_ARGS)
 	SRF_RETURN_NEXT(funcctx, result);
 }
 
+PG_FUNCTION_INFO_V1(gp_workfile_mgr_used_diskspace);
+
+/*
+ * Returns the number of bytes used for workfiles on a segment
+ * according to WorkfileDiskspace
+ */
+Datum
+gp_workfile_mgr_used_diskspace(PG_FUNCTION_ARGS)
+{
+	/*
+	 * Build a tuple descriptor for our result type
+	 * The number and type of attributes have to match the definition of the
+	 * view gp_workfile_mgr_diskspace
+	 */
+	TupleDesc tupdesc = CreateTemplateTupleDesc(NUM_USED_DISKSPACE_ELEM, false);
+
+	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "segid",
+			INT4OID, -1 /* typmod */, 0 /* attdim */);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "bytes",
+			INT8OID, -1 /* typmod */, 0 /* attdim */);
+
+	tupdesc =  BlessTupleDesc(tupdesc);
+
+	Datum		values[NUM_USED_DISKSPACE_ELEM];
+	bool		nulls[NUM_USED_DISKSPACE_ELEM];
+	MemSet(nulls, 0, sizeof(nulls));
+
+	values[0] = Int32GetDatum(Gp_segment);
+	values[1] = Int64GetDatum(WorkfileDiskspace_GetSize());
+
+	HeapTuple tuple = heap_form_tuple(tupdesc, values, nulls);
+	Datum result = HeapTupleGetDatum(tuple);
+
+	PG_RETURN_DATUM(result);
+}
+
 /*
  * Converts from a NodeTag id to an operator name. Only for operators
  * supported by the workfile manager.
@@ -245,3 +289,4 @@ gp_workfile_operator_name(NodeTag node_type)
 	}
 	return ret;
 }
+

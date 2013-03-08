@@ -48,7 +48,7 @@ struct BatchFileInfo
 {
 	int64 total_bytes;
 	int64 ntuples;
-	bfz_t *bfz;
+	ExecWorkFile *wfile;
 };
 
 #define BATCHFILE_METADATA \
@@ -122,10 +122,10 @@ static inline void *mpool_cxt_alloc(void *manager, Size len);
 
 /* Methods for state file */
 static void create_state_file(HashAggTable *hashtable);
-static void agg_hash_save_spillfile_info(bfz_t *state_file, SpillFile *spill_file);
-static bool agg_hash_load_spillfile_info(bfz_t *state_file, char **spill_file_name, unsigned *batch_hash_bit);
-static void agg_hash_write_string_bfz(bfz_t *bfz, const char *str, size_t len);
-static char *agg_hash_read_string_bfz(bfz_t *bfz);
+static void agg_hash_save_spillfile_info(ExecWorkFile *state_file, SpillFile *spill_file);
+static bool agg_hash_load_spillfile_info(ExecWorkFile *state_file, char **spill_file_name, unsigned *batch_hash_bit);
+static void agg_hash_write_string(ExecWorkFile *ewf, const char *str, size_t len);
+static char *agg_hash_read_string(ExecWorkFile *ewf);
 
 static inline void *mpool_cxt_alloc(void *manager, Size len)
 {
@@ -1083,13 +1083,15 @@ getSpillFile(workfile_set *work_set, SpillSet *set, int file_no, int *p_alloc_si
 		spill_file->file_info->total_bytes = 0;
 		spill_file->file_info->ntuples = 0;
 		bool delOnClose = !gp_workfile_caching;
-		spill_file->file_info->bfz =
-			bfz_create(tmpprefix, delOnClose, gp_hashagg_compress_spill_files > 0 ?
-					   gp_hashagg_compress_spill_files : work_set->metadata.bfz_compress_type);
+
+		spill_file->file_info->wfile =
+			ExecWorkFile_Create(tmpprefix, BFZ, delOnClose,
+					work_set->metadata.bfz_compress_type);
 
 		elog(HHA_MSG_LVL, "HashAgg: create %d level batch file %d with compression %d",
 			 set->level, file_no, gp_hashagg_compress_spill_files > 0 ?
 			 gp_hashagg_compress_spill_files : work_set->metadata.bfz_compress_type);
+
 		*p_alloc_size = BATCHFILE_METADATA;
 	}
 
@@ -1115,15 +1117,15 @@ suspendSpillFiles(SpillSet *spill_set)
 		SpillFile *spill_file = &spill_set->spill_files[file_no];
 	
 		if (spill_file->file_info &&
-			spill_file->file_info->bfz != NULL)
+			spill_file->file_info->wfile != NULL)
 		{
-			bfz_append_end(spill_file->file_info->bfz);
+			ExecWorkfile_Suspend(spill_file->file_info->wfile);
 
 			freed_size += FREEABLE_BATCHFILE_METADATA;
 
 			elog(HHA_MSG_LVL, "HashAgg: %s contains " INT64_FORMAT " entries ("
 				 INT64_FORMAT " bytes)",
-				 spill_file->file_info->bfz->filename,
+				 spill_file->file_info->wfile->fileName,
 				 spill_file->file_info->ntuples, spill_file->file_info->total_bytes);
 		}
 	}
@@ -1163,10 +1165,10 @@ closeSpillFile(AggState *aggstate, SpillSet *spill_set, int file_no)
 	}
 	
 	if (spill_file->file_info &&
-		spill_file->file_info->bfz != NULL)
+		spill_file->file_info->wfile != NULL)
 	{
-		bfz_close(spill_file->file_info->bfz, true);
-		spill_file->file_info->bfz = NULL;
+		ExecWorkFile_Close(spill_file->file_info->wfile);
+		spill_file->file_info->wfile = NULL;
 		freedspace += (BATCHFILE_METADATA - sizeof(BatchFileInfo));
 		
 	}
@@ -1297,12 +1299,12 @@ read_spill_set(AggState *aggstate)
 	 */
 	char tmp_filename[MAXPGPATH];
 	workfile_mgr_retrieve_file_no(work_set, WORKFILE_NUM_HASHAGG_METADATA, tmp_filename, MAXPGPATH);
-	hashtable->state_file =
-			bfz_open(tmp_filename, false /* delOnClose */ , gp_hashagg_compress_spill_files > 0 ?
-					   gp_hashagg_compress_spill_files : work_set->metadata.bfz_compress_type);
-	Assert(hashtable->state_file != NULL);
-	bfz_scan_begin(hashtable->state_file);
 
+	hashtable->state_file =
+			ExecWorkFile_Open(tmp_filename, BFZ, false /* delOnClose */,
+					work_set->metadata.bfz_compress_type);
+
+	Assert(hashtable->state_file != NULL);
 
 	/*
 	 * Read, allocate and open all spill files.
@@ -1330,16 +1332,16 @@ read_spill_set(AggState *aggstate)
 
 		spill_file->file_info = (BatchFileInfo *)palloc(sizeof(BatchFileInfo));
 
-		spill_file->file_info->bfz =
-			bfz_open(batch_filename, false /* delOnClose */ , gp_hashagg_compress_spill_files > 0 ?
-					   gp_hashagg_compress_spill_files : work_set->metadata.bfz_compress_type);
+		spill_file->file_info->wfile =
+			ExecWorkFile_Open(batch_filename, BFZ, false /* delOnClose */,
+					work_set->metadata.bfz_compress_type);
 
-		Assert(spill_file->file_info->bfz != NULL);
+		Assert(spill_file->file_info->wfile != NULL);
 		Assert(batch_filename != NULL);
 		pfree(batch_filename);
 
-		/* Bogus values for these since we don't know them at this point */
-		spill_file->file_info->total_bytes = 1;
+		spill_file->file_info->total_bytes = ExecWorkfile_GetSize(spill_file->file_info->wfile);
+		/* Made up values for this since we don't know it at this point */
 		spill_file->file_info->ntuples = 1;
 
 		elog(HHA_MSG_LVL, "HashAgg: OPEN %d level batch file %d with compression %d",
@@ -1405,6 +1407,7 @@ spill_hash_table(AggState *aggstate)
 	{
 		hashtable->work_set = workfile_mgr_create_set(BFZ, true /* can_be_reused */, &aggstate->ss.ps, NULL_SNAPSHOT);
 		hashtable->work_set->metadata.buckets = hashtable->nbuckets;
+		hashtable->work_set->metadata.bfz_compress_type = gp_hashagg_compress_spill_files;
 		if (gp_workfile_caching)
 		{
 			create_state_file(hashtable);
@@ -1502,9 +1505,9 @@ create_state_file(HashAggTable *hashtable)
 	bool delOnClose = !gp_workfile_caching;
 
 	hashtable->state_file =
-		bfz_create(file_prefix, delOnClose, gp_hashagg_compress_spill_files > 0 ?
-				   gp_hashagg_compress_spill_files : hashtable->work_set->metadata.bfz_compress_type);
-
+		ExecWorkFile_Create(file_prefix, BFZ, delOnClose,
+				hashtable->work_set->metadata.bfz_compress_type);
+	Assert(hashtable->state_file != NULL);
 }
 
 /*
@@ -1515,11 +1518,7 @@ agg_hash_close_state_file(HashAggTable *hashtable)
 {
 	if (hashtable->state_file != NULL)
 	{
-		if (hashtable->state_file->mode == BFZ_MODE_APPEND)
-		{
-			bfz_append_end(hashtable->state_file);
-		}
-		bfz_close(hashtable->state_file, true);
+		ExecWorkFile_Close(hashtable->state_file);
 		hashtable->state_file = NULL;
 	}
 }
@@ -1545,10 +1544,9 @@ writeHashEntry(AggState *aggstate, BatchFileInfo *file_info,
 	AggStatePerAgg peragg = aggstate->peragg;
 
 	Assert(file_info != NULL);
-	Assert(file_info->bfz != NULL);
-	Assert(file_info->bfz->freeable_stuff != NULL);
+	Assert(file_info->wfile != NULL);
 
-	bfz_append(file_info->bfz, (void *)(&(entry->hashvalue)), sizeof(entry->hashvalue));
+	ExecWorkFile_Write(file_info->wfile, (void *)(&(entry->hashvalue)), sizeof(entry->hashvalue));
 
 	tuple_agg_size = memtuple_get_size((MemTuple)entry->tuple_and_aggs, mt_bind);
 	pergroup = (AggStatePerGroup) ((char *)entry->tuple_and_aggs + MAXALIGN(tuple_agg_size));
@@ -1571,11 +1569,13 @@ writeHashEntry(AggState *aggstate, BatchFileInfo *file_info,
 		}
 	}
 
-	bfz_append(file_info->bfz, (char *)&total_size, sizeof(total_size));
-	bfz_append(file_info->bfz, entry->tuple_and_aggs, tuple_agg_size);
+	ExecWorkFile_Write(file_info->wfile, (char *)&total_size, sizeof(total_size));
+	ExecWorkFile_Write(file_info->wfile, entry->tuple_and_aggs, tuple_agg_size);
 	Assert(MAXALIGN(tuple_agg_size) - tuple_agg_size <= MAXIMUM_ALIGNOF);
 	if (MAXALIGN(tuple_agg_size) - tuple_agg_size > 0)
-		bfz_append(file_info->bfz, padding_dummy, MAXALIGN(tuple_agg_size) - tuple_agg_size);
+	{
+		ExecWorkFile_Write(file_info->wfile, padding_dummy, MAXALIGN(tuple_agg_size) - tuple_agg_size);
+	}
 
 	for (aggno = 0; aggno < aggstate->numaggs; aggno++)
 	{
@@ -1588,11 +1588,14 @@ writeHashEntry(AggState *aggstate, BatchFileInfo *file_info,
 			Size datum_size = datumGetSize(pergroupstate->transValue,
 										   peraggstate->transtypeByVal,
 										   peraggstate->transtypeLen);
-			bfz_append(file_info->bfz,
-					   DatumGetPointer(pergroupstate->transValue), datum_size);
+			ExecWorkFile_Write(file_info->wfile,
+						DatumGetPointer(pergroupstate->transValue), datum_size);
 			Assert(MAXALIGN(datum_size) - datum_size <= MAXIMUM_ALIGNOF);
 			if (MAXALIGN(datum_size) - datum_size > 0)
-				bfz_append(file_info->bfz, padding_dummy, MAXALIGN(datum_size) - datum_size);
+			{
+				ExecWorkFile_Write(file_info->wfile,
+						padding_dummy, MAXALIGN(datum_size) - datum_size);
+			}
 		}
 	}
 
@@ -1688,9 +1691,7 @@ agg_hash_iter(AggState *aggstate)
  * The complete format can be found at writeHashEntry(). The size
  * of the byte array is also returned.
  *
- * This function tries to point the byte array to the file buffer when
- * possible. When it is not possible, the byte array is allocated
- * inside the per-tuple memory context.
+ * The byte array is allocated inside the per-tuple memory context.
  */
 static void *
 readHashEntry(AggState *aggstate, BatchFileInfo *file_info,
@@ -1699,33 +1700,31 @@ readHashEntry(AggState *aggstate, BatchFileInfo *file_info,
 	void *tuple_and_aggs = NULL;
 	MemoryContext oldcxt;
 
-	Assert(file_info != NULL && file_info->bfz != NULL);
+	Assert(file_info != NULL && file_info->wfile != NULL);
 
 	*p_input_size = 0;
 
-	if (bfz_scan_next(file_info->bfz, (char *)p_hashkey, sizeof(HashKey)) != sizeof(HashKey))
+	if (ExecWorkFile_Read(file_info->wfile, (char *)p_hashkey, sizeof(HashKey)) != sizeof(HashKey))
+	{
 		return NULL;
+	}
 	
-	if (bfz_scan_next(file_info->bfz, (char *)p_input_size, sizeof(int32)) !=
-		sizeof(int32))
+	if (ExecWorkFile_Read(file_info->wfile, (char *)p_input_size, sizeof(int32)) !=
+			sizeof(int32))
+	{
 		ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
 						errmsg("could not read from temporary file: %m")));
-
-	tuple_and_aggs = bfz_scan_peek(file_info->bfz, *p_input_size);
-	if (tuple_and_aggs == NULL)
-	{
-		int32 read_size;
-		
-		oldcxt = MemoryContextSwitchTo(aggstate->tmpcontext->ecxt_per_tuple_memory);
-		tuple_and_aggs = palloc(*p_input_size);
-		read_size = bfz_scan_next(file_info->bfz, tuple_and_aggs, *p_input_size);
-		if (read_size != *p_input_size)
-			ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
-							errmsg("could not read from temporary file, requesting %d bytes, read %d bytes: %m",
-								   *p_input_size, read_size)));
-		MemoryContextSwitchTo(oldcxt);
 	}
-		
+
+	oldcxt = MemoryContextSwitchTo(aggstate->tmpcontext->ecxt_per_tuple_memory);
+	tuple_and_aggs = palloc(*p_input_size);
+	int32 read_size = ExecWorkFile_Read(file_info->wfile, tuple_and_aggs, *p_input_size);
+	if (read_size != *p_input_size)
+		ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
+				errmsg("could not read from temporary file, requesting %d bytes, read %d bytes: %m",
+						*p_input_size, read_size)));
+	MemoryContextSwitchTo(oldcxt);
+
 	return tuple_and_aggs;
 }
 
@@ -1788,9 +1787,9 @@ agg_hash_reload(AggState *aggstate)
 
 
 	if (spill_file->file_info != NULL &&
-		spill_file->file_info->bfz != NULL)
+		spill_file->file_info->wfile != NULL)
 	{
-		bfz_scan_begin(spill_file->file_info->bfz);
+		ExecWorkfile_Restart(spill_file->file_info->wfile);
 		hashtable->mem_for_metadata  += FREEABLE_BATCHFILE_METADATA;
 	}
 
@@ -1918,7 +1917,7 @@ agg_hash_reload(AggState *aggstate)
         freed_size = suspendSpillFiles(hashtable->curr_spill_file->spill_set);
         hashtable->mem_for_metadata -= freed_size;
         elog(gp_workfile_caching_loglevel, "loaded hashtable from file %s and then respilled. we should delete file from work_set now",
-        		hashtable->curr_spill_file->file_info->bfz->filename);
+        		hashtable->curr_spill_file->file_info->wfile->fileName);
         hashtable->curr_spill_file->respilled = true;
 	}
 
@@ -2287,17 +2286,13 @@ agg_hash_mark_spillset_complete(AggState *aggstate)
  * The same format must be expected in agg_hash_load_spillfile_info
  */
 static void
-agg_hash_save_spillfile_info(bfz_t *state_file, SpillFile *spill_file)
+agg_hash_save_spillfile_info(ExecWorkFile *state_file, SpillFile *spill_file)
 {
 
-	/*
-	 * We need to strip the database prefix from the bfz filename,
-	 * as bfz expects it without the prefix.
-	 */
-	agg_hash_write_string_bfz(state_file,
-			spill_file->file_info->bfz->filename + strlen(getCurrentTempFilePath) + 1,
-			strlen(spill_file->file_info->bfz->filename) - strlen(getCurrentTempFilePath) - 1);
-	bfz_append(state_file,
+	agg_hash_write_string(state_file,
+			spill_file->file_info->wfile->fileName,
+			strlen(spill_file->file_info->wfile->fileName));
+	ExecWorkFile_Write(state_file,
 			(char *) &spill_file->batch_hash_bit,
 			sizeof(spill_file->batch_hash_bit));
 }
@@ -2311,9 +2306,9 @@ agg_hash_save_spillfile_info(bfz_t *state_file, SpillFile *spill_file)
  * Return FALSE at EOF, TRUE otherwise.
  */
 static bool
-agg_hash_load_spillfile_info(bfz_t *state_file, char **spill_file_name, unsigned *batch_hash_bit)
+agg_hash_load_spillfile_info(ExecWorkFile *state_file, char **spill_file_name, unsigned *batch_hash_bit)
 {
-	*spill_file_name = agg_hash_read_string_bfz(state_file);
+	*spill_file_name = agg_hash_read_string(state_file);
 	if (*spill_file_name == NULL)
 	{
 		/* EOF. No more file names to read. */
@@ -2323,7 +2318,7 @@ agg_hash_load_spillfile_info(bfz_t *state_file, char **spill_file_name, unsigned
 #ifdef USE_ASSERT_CHECKING
 	int res =
 #endif
-	bfz_scan_next(state_file, (char *) &read_hash_bit, sizeof(read_hash_bit));
+	ExecWorkFile_Read(state_file, (char *) &read_hash_bit, sizeof(read_hash_bit));
 
 	Assert(res == sizeof(read_hash_bit));
 
@@ -2336,13 +2331,13 @@ agg_hash_load_spillfile_info(bfz_t *state_file, char **spill_file_name, unsigned
  * This must be the same format used in agg_hash_read_string_bfz
  */
 static void
-agg_hash_write_string_bfz(bfz_t *bfz, const char *str, size_t len)
+agg_hash_write_string(ExecWorkFile *ewf, const char *str, size_t len)
 {
-	Assert(bfz != NULL);
-	bfz_append(bfz, (char *) &len, sizeof(len));
+	Assert(ewf != NULL);
+	ExecWorkFile_Write(ewf, (char *) &len, sizeof(len));
 
 	/* Terminating null character is not written to disk */
-	bfz_append(bfz, str, len);
+	ExecWorkFile_Write(ewf, (char *) str, len);
 }
 
 /* Reading a string from a bfz file
@@ -2351,19 +2346,19 @@ agg_hash_write_string_bfz(bfz_t *bfz, const char *str, size_t len)
  * Returns the palloc-ed string in the current context, NULL if error occurs.
  */
 static char *
-agg_hash_read_string_bfz(bfz_t *bfz)
+agg_hash_read_string(ExecWorkFile *ewf)
 {
-	Assert(bfz != NULL);
+	Assert(ewf != NULL);
 	size_t slen = 0;
 
-	int res = bfz_scan_next(bfz, (char *) &slen, sizeof(slen));
+	int res = ExecWorkFile_Read(ewf, (char *) &slen, sizeof(slen));
 	if (res != sizeof(slen))
 	{
 		return NULL;
 	}
 
 	char *read_string = palloc(slen+1);
-	res = bfz_scan_next(bfz, read_string, slen);
+	res = ExecWorkFile_Read(ewf, read_string, slen);
 	if (res < slen)
 	{
 		pfree(read_string);

@@ -72,9 +72,6 @@ WorkfileDiskspace_Reserve(int64 bytes)
 	int64 max_allowed_diskspace = (int64) (gp_workfile_max_diskspace_kb * 1024);
 	if (total <= max_allowed_diskspace)
 	{
-		elog(gp_workfile_caching_loglevel,
-				"Reserved size %lld. Total size now %lld",
-				(long long) bytes, (long long) *used_diskspace);
 		return true;
 	}
 	else
@@ -104,11 +101,6 @@ WorkfileDiskspace_Commit(int64 commit_bytes, int64 reserved_bytes)
 
 	int64 total = gp_atomic_add_64(used_diskspace, (commit_bytes - reserved_bytes));
 	Assert(total >= (int64) 0);
-
-	elog(gp_workfile_caching_loglevel,
-			"Committed size %lld. Total size now %lld",
-			(long long) (commit_bytes - reserved_bytes),
-			(long long) *used_diskspace);
 	return total;
 }
 

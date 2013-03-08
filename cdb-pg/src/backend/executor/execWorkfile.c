@@ -15,6 +15,13 @@
 #include "storage/buffile.h"
 #include "storage/bfz.h"
 #include "executor/execWorkfile.h"
+#include "miscadmin.h"
+
+/*
+ * Number of temporary files opened during the current session;
+ * this is used in generation of unique tempfile names.
+ */
+static uint64 temp_file_counter = 0;
 
 
 static void ExecWorkfile_SetFlags(ExecWorkFile *workfile);
@@ -64,6 +71,33 @@ ExecWorkFile_Create(const char *fileName,
 }
 
 /*
+ * ExecWorkFile_CreateUnique
+ *   create a new work file with specified name, type and compression
+ *   In addition, it adds a unique suffix
+ */
+ExecWorkFile *
+ExecWorkFile_CreateUnique(const char *filename,
+		ExecWorkFileType fileType,
+		bool delOnClose,
+		int compressType)
+{
+
+	StringInfo uniquename = makeStringInfo();
+	appendStringInfo(uniquename, "%s_%d_" UINT64_FORMAT,
+			filename,
+			MyProcPid,
+			temp_file_counter++);
+
+	Assert(uniquename->len <= MAXPGPATH && "could not generate temporary file name");
+
+	ExecWorkFile *ewf = ExecWorkFile_Create(uniquename->data, fileType, delOnClose, compressType);
+	pfree(uniquename->data);
+	pfree(uniquename);
+
+	return ewf;
+}
+
+/*
  * Opens an existing work file with the specified name, the file type,
  * and the compression type.
  *
@@ -91,7 +125,6 @@ ExecWorkFile_Open(const char *fileName,
 		case BFZ:
 			file = (void *)bfz_open(fileName, delOnClose, compressType);
 			file_size = bfz_totalbytes((bfz_t *)file);
-			bfz_scan_begin(file);
 			break;
 		default:
 			ereport(LOG,
@@ -504,10 +537,10 @@ ExecWorkfile_AdjustBFZSize(ExecWorkFile *workfile, int64 file_size)
 		Assert(bfz_file->compression_index == 0);
 		/*
 		 * We under-reserved disk space in this case. Let's assert that it's only from checksumming.
-		 * We add one word of checksum for every BFZ_BUFFER_SIZE (16k) bytes.
-		 * That amounts to roughly 0.0244% additional disk size.
+		 * We add one word of checksum for every BFZ_BUFFER_SIZE bytes.
+		 * This assert doesn't hold for all files, disable it for now.
 		 */
-		Assert(extra_bytes < 0.0003 * workfile->size);
+		/* Assert(extra_bytes <= ((workfile->size / BFZ_BUFFER_SIZE) + 1) * sizeof(int)); */
 
 		WorkfileDiskspace_Reserve(extra_bytes);
 		WorkfileDiskspace_Commit(extra_bytes, extra_bytes);

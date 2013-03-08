@@ -119,11 +119,11 @@ CREATE VIEW gp_workfile_mgr_cache_entries AS
 
 
 CREATE OR REPLACE FUNCTION gp_workfile_mgr_clear()
-    RETURNS setof bool
-AS '$libdir/gp_workfile_mgr.so', 'gp_workfile_mgr_clear_cache_wrapper' LANGUAGE C IMMUTABLE;
+    RETURNS int
+AS 'MODULE_PATHNAME', 'gp_workfile_mgr_clear_cache' LANGUAGE C IMMUTABLE;
 
 CREATE FUNCTION gp_workfile_mgr_clear_allsegs()
-RETURNS SETOF BOOL
+RETURNS SETOF int
 AS
 $$
  SELECT C.* FROM gp_toolkit.__gp_localid, gp_workfile_mgr_clear() as C
@@ -148,6 +148,14 @@ $$
 LANGUAGE SQL;
 
 
+CREATE OR REPLACE FUNCTION gp_workfile_mgr_used_diskspace()
+    RETURNS record
+AS 'MODULE_PATHNAME', 'gp_workfile_mgr_used_diskspace' LANGUAGE C IMMUTABLE;
+
+CREATE VIEW gp_workfile_mgr_diskspace AS
+ SELECT C.* FROM gp_toolkit.__gp_localid as id, gp_workfile_mgr_used_diskspace() as C (segid int, bytes bigint)
+ UNION ALL
+ SELECT C.* FROM gp_toolkit.__gp_masterid as id, gp_workfile_mgr_used_diskspace() as C  (segid int, bytes bigint);
 
     
 -- Don't want these to be available to public.

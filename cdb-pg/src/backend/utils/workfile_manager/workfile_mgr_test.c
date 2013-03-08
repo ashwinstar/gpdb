@@ -1038,6 +1038,8 @@ execworkfile_buffile_test(void)
 {
 	bool result = false;
 	int64 expected_size = 0;
+	int64 final_size = 0;
+	int64 current_size = 0;
 	int64 initial_diskspace = WorkfileDiskspace_GetSize();
 
 	unit_test_reset();
@@ -1103,8 +1105,34 @@ execworkfile_buffile_test(void)
 	unit_test_result(result && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
 
 	elog(INFO, "Running sub-test: Closing EWF/Buffile");
-	ExecWorkFile_Close(ewf);
-	unit_test_result(true);
+	final_size = ExecWorkFile_Close(ewf);
+	unit_test_result(final_size == expected_size);
+
+	elog(INFO, "Running sub-test: Opening existing EWF/Buffile and checking size");
+
+	ewf = ExecWorkFile_Open(test_filepath->data,
+				BUFFILE,
+				true, /* delOnClose */
+				0 /* compressionType */);
+
+	current_size = ExecWorkfile_GetSize(ewf);
+	unit_test_result(current_size == final_size);
+
+	elog(INFO, "Running sub-test: Reading from reopened EWF/Buffile file");
+
+	int buf_size = 100;
+	char *buf = (char *) palloc(buf_size);
+
+	result = ExecWorkFile_Read(ewf, buf, buf_size);
+	unit_test_result(result == buf_size);
+	pfree(buf);
+
+	elog(INFO, "Running sub-test: Closing EWF/Buffile");
+	final_size = ExecWorkFile_Close(ewf);
+
+	unit_test_result(final_size == current_size);
+
+
 
 	pfree(text->data);
 	pfree(text);
@@ -1182,7 +1210,6 @@ execworkfile_bfz_zlib_test(void)
 
 	unit_test_result(final_size < expected_size);
 
-
 	elog(INFO, "Running sub-test: Opening existing EWF/BFZ and checking size");
 
 	ewf = ExecWorkFile_Open(test_filepath->data,
@@ -1191,6 +1218,15 @@ execworkfile_bfz_zlib_test(void)
 			1 /* compressionType */);
 	current_size = ExecWorkfile_GetSize(ewf);
 	unit_test_result(current_size == final_size);
+
+	elog(INFO, "Running sub-test: Reading from reopened EWF/BFZ file");
+
+	int buf_size = 100;
+	char *buf = (char *) palloc(buf_size);
+
+	result = ExecWorkFile_Read(ewf, buf, buf_size);
+	unit_test_result(result == buf_size);
+	pfree(buf);
 
 	elog(INFO, "Running sub-test: Closing EWF/BFZ");
 	final_size = ExecWorkFile_Close(ewf);
@@ -1284,6 +1320,15 @@ execworkfile_bfz_uncompressed_test(void)
 			0 /* compressionType */);
 	current_size = ExecWorkfile_GetSize(ewf);
 	unit_test_result(current_size == final_size);
+
+	elog(INFO, "Running sub-test: Reading from reopened EWF/BFZ file");
+
+	int buf_size = 100;
+	char *buf = (char *) palloc(buf_size);
+
+	result = ExecWorkFile_Read(ewf, buf, buf_size);
+	unit_test_result(result == buf_size);
+	pfree(buf);
 
 	elog(INFO, "Running sub-test: Closing EWF/BFZ");
 	final_size = ExecWorkFile_Close(ewf);

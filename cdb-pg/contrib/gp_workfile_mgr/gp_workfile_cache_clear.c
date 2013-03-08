@@ -29,28 +29,24 @@
  */
 
 #include "postgres.h"
-#include <string.h>
-#include "fmgr.h"
-#include "funcapi.h"
-#include "utils/builtins.h"
+#include "utils/workfile_mgr.h"
+
+Datum gp_workfile_mgr_clear_cache(PG_FUNCTION_ARGS);
 
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
 #endif
 
-extern Datum gp_workfile_mgr_clear_cache(PG_FUNCTION_ARGS);
-
-PG_FUNCTION_INFO_V1(gp_workfile_mgr_clear_cache_wrapper);
-
-extern Datum gp_workfile_mgr_clear_cache_wrapper(PG_FUNCTION_ARGS);
+PG_FUNCTION_INFO_V1(gp_workfile_mgr_clear_cache);
 
 /*
- * gp_workfile_manager_clear_cache_wrapper
- *    The wrapper for creating a user-defined C function for gp_workfile_manager_clear_cache.
+ * gp_workfile_manager_clear_cache
+ *    The wrapper for a user-defined C function to clear the workfile cache
  */
 Datum
-gp_workfile_mgr_clear_cache_wrapper(PG_FUNCTION_ARGS)
+gp_workfile_mgr_clear_cache(PG_FUNCTION_ARGS)
 {
-	return gp_workfile_mgr_clear_cache(fcinfo);
+	int32 n_removed = workfile_mgr_clear_cache();
+	return Int32GetDatum(n_removed);
 }
 

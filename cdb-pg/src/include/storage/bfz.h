@@ -124,11 +124,19 @@ bfz_scan_peek(bfz_t * thiz, int size)
 static inline int
 bfz_scan_next(bfz_t * thiz, char *buffer, int size)
 {
-	struct bfz_freeable_stuff *fs = thiz->freeable_stuff;
 
 	Assert(size >= 0);
+	Assert(thiz->mode == BFZ_MODE_SCAN || thiz->mode == BFZ_MODE_FREED);
+
+	/* First time we're reading from file, open it for reading */
+	if (thiz->mode == BFZ_MODE_FREED)
+	{
+		bfz_scan_begin(thiz);
+	}
+
+	struct bfz_freeable_stuff *fs = thiz->freeable_stuff;
 	Assert(fs != NULL);
-	Assert(thiz->mode == BFZ_MODE_SCAN);
+
 	if (fs->buffer_pointer + size <= fs->buffer_end)
 	{
 		memcpy(buffer, fs->buffer_pointer, size);

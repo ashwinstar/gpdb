@@ -32,16 +32,15 @@ typedef struct LogicalTapeSet LogicalTapeSet;
 
 extern LogicalTape *LogicalTapeCreate(LogicalTapeSet *lts, LogicalTape *lt); 
 extern LogicalTapeSet *LogicalTapeSetCreate(int ntapes, bool del_on_close);
-extern LogicalTapeSet *LogicalTapeSetCreate_ReaderWriter(const char* rwfile_prefix, int ntapes); 
 extern LogicalTapeSet *LogicalTapeSetCreate_Named(const char * set_prefix, int ntapes, bool del_on_close);
-extern LogicalTapeSet *LoadLogicalTapeSetState(BufFile *pfile, const char* rwfile_prefix);
+extern LogicalTapeSet *LoadLogicalTapeSetState(ExecWorkFile *pfile, const char* rwfile_prefix);
 
 extern void LogicalTapeSetClose(LogicalTapeSet *lts);
 extern void LogicalTapeSetForgetFreeSpace(LogicalTapeSet *lts);
 
 extern size_t LogicalTapeRead(LogicalTapeSet *lts, LogicalTape *lt, void *ptr, size_t size);
 extern void LogicalTapeWrite(LogicalTapeSet *lts, LogicalTape *lt, void *ptr, size_t size);
-extern void LogicalTapeFlush(LogicalTapeSet *lts, LogicalTape *lt, BufFile *pstatefile);
+extern void LogicalTapeFlush(LogicalTapeSet *lts, LogicalTape *lt, ExecWorkFile *pstatefile);
 extern void LogicalTapeRewind(LogicalTapeSet *lts, LogicalTape *lt, bool forWrite);
 extern void LogicalTapeFreeze(LogicalTapeSet *lts, LogicalTape *lt);
 extern bool LogicalTapeBackspace(LogicalTapeSet *lts, LogicalTape *lt, size_t size);

@@ -60,6 +60,12 @@ ExecWorkFile_Create(const char *fileName,
 					bool delOnClose,
 					int compressType);
 ExecWorkFile *
+ExecWorkFile_CreateUnique(const char *filename,
+		ExecWorkFileType fileType,
+		bool delOnClose,
+		int compressType);
+
+ExecWorkFile *
 ExecWorkFile_Open(const char *fileName,
 					ExecWorkFileType fileType,
 					bool delOnClose,

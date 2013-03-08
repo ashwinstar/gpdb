@@ -69,8 +69,6 @@ struct BufFile {
 	 * "common" prefix.  Used by shareinput reader/writer
 	 * It takes form SIRW_%d_%d_%d, pid, address, fileSeqNum.
 	 */
-	bool is_rwfile;
-	bool rwfile_iswriter;
 	char *file_prefix;
 };
 
@@ -116,6 +114,8 @@ makeBufFile(File firstfile)
 /*
  * Create a BufFile for a new temporary file.
  *
+ * Adds the pgsql_tmp/ prefix to the file path before creating.
+ *
  * Note: if interXact is true, the caller had better be calling us in a
  * memory context that will survive across transaction boundaries.
  */
@@ -135,12 +135,17 @@ BufFileCreateTemp(const char * filePrefix, bool interXact)
 
 	file = makeBufFile(pfile);
 	file->isTemp = true;
-	file->is_rwfile = false;
 	file->file_prefix = pstrdup(filePrefix);
 
 	return file;
 }
 
+/*
+ * Create a BufFile for a new file.
+ *
+ * Does not add the pgsql_tmp/ prefix to the file path before creating.
+ *
+ */
 BufFile *
 BufFileCreateFile(const char * fileName, bool delOnClose, bool interXact)
 {
@@ -150,6 +155,14 @@ BufFileCreateFile(const char * fileName, bool delOnClose, bool interXact)
 			interXact);
 }
 
+/*
+ * Opens an existing file as BufFile
+ *
+ * If create is true, the file is created if it doesn't exist.
+ *
+ * Does not add the pgsql_tmp/ prefix to the file path before opening.
+ *
+ */
 BufFile *
 BufFileOpenFile(const char * fileName, bool create, bool delOnClose, bool interXact)
 {
@@ -171,7 +184,6 @@ BufFileOpenFile(const char * fileName, bool create, bool delOnClose, bool interX
 
 	BufFile *file = makeBufFile(pfile);
 	file->isTemp = delOnClose;
-	file->is_rwfile = create;
 	file->file_prefix = pstrdup(fileName);
 	if (!create)
 	{
@@ -183,6 +195,12 @@ BufFileOpenFile(const char * fileName, bool create, bool delOnClose, bool interX
 
 }
 
+/*
+ * Create a BufFile for a new temporary file used for producer-consumer operators
+ *
+ * Adds the pgsql_tmp/ prefix to the file path before creating.
+ *
+ */
 BufFile *
 BufFileCreateTemp_ReaderWriter(const char* filePrefix, bool isWriter)
 {
@@ -198,8 +216,6 @@ BufFileCreateTemp_ReaderWriter(const char* filePrefix, bool isWriter)
 
 	BufFile *file = makeBufFile(pfile);
 	file->isTemp = true;
-	file->is_rwfile = true;
-	file->rwfile_iswriter = isWriter;
 	file->file_prefix = pstrdup(filePrefix);
 
 	return file;
