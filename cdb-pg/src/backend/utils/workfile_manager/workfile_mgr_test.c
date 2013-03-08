@@ -69,6 +69,7 @@ static bool buffile_large_file_test(void);
 static bool logicaltape_test(void);
 static bool fd_large_file_test(void);
 static bool execworkfile_create_one_MB_file(void);
+static bool workfile_queryspace(void);
 
 static bool atomic_test(void);
 
@@ -115,6 +116,7 @@ static test_def test_defns[] = {
 		{"logicaltape_test", logicaltape_test},
 		{"fd_large_file_test",fd_large_file_test},
 		{"execworkfile_create_one_MB_file",execworkfile_create_one_MB_file},
+		{"workfile_queryspace", workfile_queryspace},
 		{NULL, NULL}, /* This has to be the last element of the array */
 };
 
@@ -1156,7 +1158,7 @@ create_text_stringinfo(int64 n_chars)
 }
 
 /*
- * Removes a physical file. Updates the WorkfileDiskspace accounting
+ * Removes a physical file. Updates the WorkfileSegspace accounting
  *  to reflect the deletion if requested.
  * Used as part of the unit test cleanup to remove artifacts.
  *
@@ -1180,7 +1182,7 @@ remove_tmp_file(char *path, int64 size, bool update_diskspace)
 	if (update_diskspace)
 	{
 		/* Reverting the used diskspace to reflect the deletion */
-		WorkfileDiskspace_Commit(0, size);
+		WorkfileSegspace_Commit(0, size);
 	}
 
 	pfree(full_filepath->data);
@@ -1190,7 +1192,7 @@ remove_tmp_file(char *path, int64 size, bool update_diskspace)
 }
 
 /*
- * Unit tests for new ExecWorkfile and WorkfileDiskspace functionality
+ * Unit tests for new ExecWorkfile and WorkfileSegspace functionality
  *  with underlying Buffile files
  */
 static bool
@@ -1201,7 +1203,7 @@ execworkfile_buffile_test(void)
 	int64 expected_size = 0;
 	int64 final_size = 0;
 	int64 current_size = 0;
-	int64 initial_diskspace = WorkfileDiskspace_GetSize();
+	int64 initial_diskspace = WorkfileSegspace_GetSize();
 
 	unit_test_reset();
 	elog(LOG, "Running test: execworkfile_buffile_test");
@@ -1238,14 +1240,14 @@ execworkfile_buffile_test(void)
 	success = ExecWorkFile_Write(ewf, text->data, 20);
 	expected_size += 20;
 
-	unit_test_result(success && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
+	unit_test_result(success && expected_size == WorkfileSegspace_GetSize() - initial_diskspace);
 
 
 	elog(LOG, "Running sub-test: Writing larger amount data (%d bytes) to EWF/Buffile and checking size", nchars);
 	success = ExecWorkFile_Write(ewf, text->data, nchars);
 	expected_size += nchars;
 
-	unit_test_result(success && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
+	unit_test_result(success && expected_size == WorkfileSegspace_GetSize() - initial_diskspace);
 
 	elog(LOG, "Running sub-test: Writing to the middle of a EWF/Buffile and checking size");
 	result = ExecWorkFile_Seek(ewf, ExecWorkFile_GetSize(ewf) / 2, SEEK_SET);
@@ -1253,7 +1255,7 @@ execworkfile_buffile_test(void)
 	/* This write should not add to the size */
 	success = ExecWorkFile_Write(ewf, text->data, ExecWorkFile_GetSize(ewf) / 10);
 
-	unit_test_result(success && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
+	unit_test_result(success && expected_size == WorkfileSegspace_GetSize() - initial_diskspace);
 
 	elog(LOG, "Running sub-test: Seeking past end and writing data to EWF/Buffile and checking size");
 	int past_end_offset = 100;
@@ -1263,7 +1265,7 @@ execworkfile_buffile_test(void)
 	success = ExecWorkFile_Write(ewf, text->data, past_end_write);
 	expected_size += past_end_offset + past_end_write;
 
-	unit_test_result(success && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
+	unit_test_result(success && expected_size == WorkfileSegspace_GetSize() - initial_diskspace);
 
 	elog(LOG, "Running sub-test: Closing EWF/Buffile");
 	final_size = ExecWorkFile_Close(ewf);
@@ -1307,7 +1309,7 @@ execworkfile_buffile_test(void)
 }
 
 /*
- * Unit tests for new ExecWorkfile and WorkfileDiskspace functionality
+ * Unit tests for new ExecWorkfile and WorkfileSegspace functionality
  *  with underlying compressed bfz files
  */
 static bool
@@ -1318,7 +1320,7 @@ execworkfile_bfz_zlib_test(void)
 	int64 expected_size = 0;
 	int64 current_size = 0;
 	int64 final_size = 0;
-	int64 initial_diskspace = WorkfileDiskspace_GetSize();
+	int64 initial_diskspace = WorkfileSegspace_GetSize();
 
 	unit_test_reset();
 	elog(LOG, "Running test: execworkfile_bfz_zlib_test");
@@ -1355,14 +1357,14 @@ execworkfile_bfz_zlib_test(void)
 	success = ExecWorkFile_Write(ewf, text->data, 20);
 	expected_size += 20;
 
-	unit_test_result(success && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
+	unit_test_result(success && expected_size == WorkfileSegspace_GetSize() - initial_diskspace);
 
 
 	elog(LOG, "Running sub-test: Writing larger amount data (%d bytes) to EWF/BFZ and checking size", nchars);
 	success = ExecWorkFile_Write(ewf, text->data, nchars);
 	expected_size += nchars;
 
-	unit_test_result(success && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
+	unit_test_result(success && expected_size == WorkfileSegspace_GetSize() - initial_diskspace);
 
 	elog(LOG, "Running sub-test: Suspending EWF/BFZ and checking for size");
 	final_size = ExecWorkFile_Suspend(ewf);
@@ -1415,7 +1417,7 @@ execworkfile_bfz_zlib_test(void)
 }
 
 /*
- * Unit tests for new ExecWorkfile and WorkfileDiskspace functionality
+ * Unit tests for new ExecWorkfile and WorkfileSegspace functionality
  *  with underlying uncompressed bfz files
  */
 static bool
@@ -1426,7 +1428,7 @@ execworkfile_bfz_uncompressed_test(void)
 	int64 expected_size = 0;
 	int64 current_size = 0;
 	int64 final_size = 0;
-	int64 initial_diskspace = WorkfileDiskspace_GetSize();
+	int64 initial_diskspace = WorkfileSegspace_GetSize();
 
 	unit_test_reset();
 	elog(LOG, "Running test: execworkfile_bfz_uncompressed_test");
@@ -1463,14 +1465,14 @@ execworkfile_bfz_uncompressed_test(void)
 	success = ExecWorkFile_Write(ewf, text->data, 20);
 	expected_size += 20;
 
-	unit_test_result(success && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
+	unit_test_result(success && expected_size == WorkfileSegspace_GetSize() - initial_diskspace);
 
 
 	elog(LOG, "Running sub-test: Writing larger amount data (%d bytes) to EWF/BFZ and checking size", nchars);
 	success = ExecWorkFile_Write(ewf, text->data, nchars);
 	expected_size += nchars;
 
-	unit_test_result(success && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
+	unit_test_result(success && expected_size == WorkfileSegspace_GetSize() - initial_diskspace);
 
 	elog(LOG, "Running sub-test: Suspending EWF/BFZ and checking for size");
 	final_size = ExecWorkFile_Suspend(ewf);
@@ -2033,6 +2035,50 @@ execworkfile_create_one_MB_file(void)
 
 	return unit_test_summary();
 
+}
+
+/*
+ * Unit test for tracking per-query disk space
+ */
+static bool
+workfile_queryspace(void)
+{
+
+	int64 current_size = 0;
+	bool success = false;
+
+	unit_test_reset();
+	elog(LOG, "Running test: workfile_queryspace");
+
+	elog(LOG, "Running sub-test: Reading initial workfile_queryspace");
+
+	current_size = WorkfileQueryspace_GetSize(gp_session_id, gp_command_count);
+
+	unit_test_result(current_size == 0);
+
+	elog(LOG, "Running sub-test: Reading bogus workfile_queryspace");
+
+	current_size = WorkfileQueryspace_GetSize(gp_session_id, gp_command_count+1);
+
+	unit_test_result(current_size == -1);
+
+	elog(LOG, "Running sub-test: Reserving workfile queryspace");
+
+	int64 bytes_reserved = 12345;
+	success = WorkfileQueryspace_Reserve(gp_session_id, gp_command_count, bytes_reserved);
+	current_size = WorkfileQueryspace_GetSize(gp_session_id, gp_command_count);
+
+	unit_test_result(success && current_size == bytes_reserved);
+
+	elog(LOG, "Running sub-test: Committing workfile queryspace");
+	int64 bytes_committed = 1234;
+	WorkfileQueryspace_Commit(gp_session_id, gp_command_count, bytes_committed, bytes_reserved);
+	current_size = WorkfileQueryspace_GetSize(gp_session_id, gp_command_count);
+
+	unit_test_result(current_size == bytes_committed);
+
+
+	return unit_test_summary();
 }
 
 static bool

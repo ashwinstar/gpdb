@@ -253,7 +253,7 @@ gp_workfile_mgr_used_diskspace(PG_FUNCTION_ARGS)
 	MemSet(nulls, 0, sizeof(nulls));
 
 	values[0] = Int32GetDatum(Gp_segment);
-	values[1] = Int64GetDatum(WorkfileDiskspace_GetSize());
+	values[1] = Int64GetDatum(WorkfileSegspace_GetSize());
 
 	HeapTuple tuple = heap_form_tuple(tupdesc, values, nulls);
 	Datum result = HeapTupleGetDatum(tuple);

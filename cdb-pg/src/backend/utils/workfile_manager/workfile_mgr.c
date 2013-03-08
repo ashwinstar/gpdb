@@ -78,8 +78,13 @@ workfile_mgr_cache_init(void)
 
 	workfile_mgr_cache = Cache_Create(&cacheCtl);
 	Assert(NULL != workfile_mgr_cache);
-	/* Initialize the WorkfileDiskspace API to track disk space usage */
+
+	/*
+	 * Initialize the WorkfileDiskspace and WorkfileQueryspace APIs
+	 * to track disk space usage
+	 */
 	WorkfileDiskspace_Init();
+	WorkfileQueryspace_Init();
 }
 
 /*
@@ -99,7 +104,7 @@ Size
 workfile_mgr_shmem_size(void)
 {
 	return Cache_SharedMemSize(WORKFILE_CACHE_MAX_SIZE, sizeof(workfile_set)) +
-			WorkfileDiskspace_ShMemSize();
+			WorkfileDiskspace_ShMemSize() + WorkfileQueryspace_ShMemSize();
 }
 
 
@@ -562,7 +567,16 @@ workfile_mgr_cleanup_set(const void *resource)
 		workfile_mgr_delete_set_directory(work_set->path);
 
 		elog(gp_workfile_caching_loglevel, "Subtracting " INT64_FORMAT " from workfile diskspace", work_set->size);
-		WorkfileDiskspace_Commit(0, work_set->size);
+
+		/*
+		 * When subtracting the size of this workset from our accounting,
+		 * only update the per-query counter if we created the workset.
+		 * In that case, the state is ACQUIRED, otherwise is CACHED or DELETED
+		 */
+		CacheEntry *cacheEntry = CACHE_ENTRY_HEADER(resource);
+		bool update_query_space = (cacheEntry->state == CACHE_ENTRY_ACQUIRED);
+
+		WorkfileDiskspace_Commit(0, work_set->size, update_query_space);
 	}
 	else
 	{

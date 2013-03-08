@@ -52,6 +52,7 @@
 #include "parser/parsetree.h"
 #include "utils/memutils.h"
 #include "utils/relcache.h"
+#include "utils/workfile_mgr.h"
 
 #include "cdb/cdbvars.h"
 #include "nodes/primnodes.h"
@@ -2152,6 +2153,9 @@ void mppExecutorCleanup(QueryDesc *queryDesc)
 		pfree(queryDesc->gpmon_pkt);
 		queryDesc->gpmon_pkt = NULL;
 	}
+
+	WorkfileQueryspace_ReleaseEntry(estate->querySpace);
+	estate->querySpace = NULL;
 
 	/**
 	 * Since there was an error, clean up the function scan stack.

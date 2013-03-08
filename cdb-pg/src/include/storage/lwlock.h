@@ -31,6 +31,9 @@
 /* Number of partitions of the workfile manager hashtable */
 #define NUM_WORKFILEMGR_PARTITIONS 32
 
+/* Number of partitions of the workfile query diskspace hashtable */
+#define NUM_WORKFILE_QUERYSPACE_PARTITIONS 128
+
 /*
  * We have a number of predefined LWLocks, plus a bunch of LWLocks that are
  * dynamically assigned (e.g., for shared buffers).  The LWLock structures
@@ -88,7 +91,8 @@ typedef enum LWLockId
 	ResQueueLock,
 	FileRepAppendOnlyCommitCountLock,
 	FirstWorkfileMgrLock,
-	FirstBufMappingLock = FirstWorkfileMgrLock + NUM_WORKFILEMGR_PARTITIONS,
+	FirstWorkfileQuerySpaceLock = FirstWorkfileMgrLock + NUM_WORKFILEMGR_PARTITIONS,
+	FirstBufMappingLock = FirstWorkfileQuerySpaceLock + NUM_WORKFILE_QUERYSPACE_PARTITIONS,
 	FirstLockMgrLock = FirstBufMappingLock + NUM_BUFFER_PARTITIONS,
 	
 	/* must be last except for MaxDynamicLWLock: */

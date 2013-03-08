@@ -5336,6 +5336,16 @@ static struct config_real ConfigureNamesReal[] =
 	},
 
 	{
+		{"gp_workfile_limit_per_query", PGC_USERSET, RESOURCES,
+			gettext_noop("Maximum disk space (in KB) used for workfiles per query per segment."),
+			gettext_noop("0 for no limit. Current query is terminated when limit is exceeded."),
+			GUC_UNIT_KB
+		},
+		&gp_workfile_limit_per_query,
+		0, 0, SIZE_MAX/1024, NULL, NULL,
+	},
+
+	{
 		{"gp_motion_cost_per_row", PGC_USERSET, QUERY_TUNING_COST,
 			gettext_noop("Sets the planner's estimate of the cost of "
 						 "moving a row between worker processes."),

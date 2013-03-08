@@ -433,6 +433,8 @@ typedef struct EState
 
 	struct PlanState *planstate;        /* plan's state tree */
 
+	struct QueryspaceDesc *querySpace;  /* Per-query resources used descriptor */
+
 } EState;
 
 struct PlanState;

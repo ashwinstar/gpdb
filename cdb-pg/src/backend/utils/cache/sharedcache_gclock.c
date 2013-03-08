@@ -14,9 +14,17 @@
 #include "utils/atomic.h"
 
 /* Replacement policy default parameters */
+
+/* Number of clock loops before giving up on finding a victim */
 #define CACHE_DEFAULT_CLOCK_MAX_LOOPS 100
+
+/* Number of entries to advance clock on look-up */
 #define CACHE_DEFAULT_ENTRIES_ADVANCE 50
+
+/* Amount to decrement utility of an entry at clock advance */
 #define CACHE_DEFAULT_UTILITY_DECREMENT 7
+
+/* Amount to increment utility of an entry when used */
 #define CACHE_DEFAULT_UTILITY_INCREMENT 500
 
 /*

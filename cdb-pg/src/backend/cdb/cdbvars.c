@@ -335,6 +335,8 @@ bool gp_workfile_caching = false;
 int gp_workfile_caching_loglevel = DEBUG1;
 /* Maximum disk space to use for workfiles on a segment, in kilobytes */
 double gp_workfile_limit_per_segment = 0;
+/* Maximum disk space to use for workfiles per query on a segment, in kilobytes */
+double gp_workfile_limit_per_query = 0;
 bool gp_workfile_faultinject = false;
 int gp_workfile_bytes_to_checksum = 16;
 

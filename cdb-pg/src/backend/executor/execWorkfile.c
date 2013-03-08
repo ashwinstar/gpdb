@@ -184,8 +184,11 @@ ExecWorkFile_Write(ExecWorkFile *workfile,
 	uint64 bytes;
 
 	if (data == NULL || size == 0)
+	{
 		return false;
-	
+	}
+
+	/* Test the per-query and per-segment limit */
 	bool success = WorkfileDiskspace_Reserve(size);
 	if (!success)
 	{
@@ -211,7 +214,7 @@ ExecWorkFile_Write(ExecWorkFile *workfile,
 			{
 				new_size = BufFileGetSize(buffile);
 				workfile->size = new_size;
-				WorkfileDiskspace_Commit( (new_size - current_size), size);
+				WorkfileDiskspace_Commit( (new_size - current_size), size, true /* update_query_size */);
 				/* XXX Here's where we can intercept and try to evict */
 				elog(gp_workfile_caching_loglevel, "Intercepted exception from Buffile, adjusted file size to " INT64_FORMAT, new_size);
 
@@ -222,7 +225,7 @@ ExecWorkFile_Write(ExecWorkFile *workfile,
 			new_size = BufFileGetSize(buffile);
 			workfile->size = new_size;
 
-			WorkfileDiskspace_Commit( (new_size - current_size), size);
+			WorkfileDiskspace_Commit( (new_size - current_size), size, true /* update_query_size */);
 
 			if (bytes != size)
 			{
@@ -241,7 +244,7 @@ ExecWorkFile_Write(ExecWorkFile *workfile,
 			{
 				Assert(WorkfileDiskspace_IsFull());
 				elog(gp_workfile_caching_loglevel, "Caught exception from EWF_Write from bfz_append. Subtracting " INT64_FORMAT " bytes from diskspace usage", size);
-				WorkfileDiskspace_Commit(0, size);
+				WorkfileDiskspace_Commit(0, size, true /* update_query_size */);
 
 				PG_RE_THROW();
 			}
@@ -249,7 +252,7 @@ ExecWorkFile_Write(ExecWorkFile *workfile,
 
 			/* bfz_append always adds to the file size */
 			workfile->size += size;
-			WorkfileDiskspace_Commit(size, size);
+			WorkfileDiskspace_Commit(size, size, true /* update_query_size */);
 
 			break;
 		default:
@@ -480,7 +483,7 @@ ExecWorkFile_Seek(ExecWorkFile *workfile, uint64 offset, int whence)
 
 	if (additional_size > 0)
 	{
-		WorkfileDiskspace_Commit(additional_size, additional_size);
+		WorkfileDiskspace_Commit(additional_size, additional_size, true /* update_query_size */);
 	}
 
 
@@ -627,7 +630,7 @@ ExecWorkFile_AdjustBFZSize(ExecWorkFile *workfile, int64 file_size)
 		 * - we hit out of disk space
 		 */
 		Assert(bfz_file->compression_index > 0 || WorkfileDiskspace_IsFull());
-		WorkfileDiskspace_Commit(file_size, workfile->size);
+		WorkfileDiskspace_Commit(file_size, workfile->size, true /* update_query_size */);
 	}
 	else
 	{
@@ -643,10 +646,10 @@ ExecWorkFile_AdjustBFZSize(ExecWorkFile *workfile, int64 file_size)
 #endif
 		WorkfileDiskspace_Reserve(extra_bytes);
 
-		/* FIXME If this fails, we should try to evict and retry, or error out */
+		/* FIXME: caragg 02/06/2013; If this fails, we should try to evict and retry, or error out */
 		Assert(result);
 
-		WorkfileDiskspace_Commit(extra_bytes, extra_bytes);
+		WorkfileDiskspace_Commit(extra_bytes, extra_bytes, true /* update_query_size */);
 	}
 	workfile->size = file_size;
 }

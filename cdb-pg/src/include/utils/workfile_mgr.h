@@ -18,6 +18,19 @@
 #include "nodes/execnodes.h"
 #include "utils/timestamp.h"
 
+/*
+ * Workfile management default parameters
+ */
+
+/* Minimum size requested for an eviction (in bytes) */
+#define MIN_EVICT_SIZE 1 << 20
+
+/* Number of attempts to evict before we give up */
+#define MAX_EVICT_ATTEMPTS 100
+
+
+/* Other constants */
+
 #define	WORKFILE_SET_PREFIX "workfile_set"
 
 /* Fixed workfile numbers common for all operators */
@@ -124,6 +137,28 @@ typedef struct workfile_set
 
 } workfile_set;
 
+/* The key for an entry stored in the Queryspace Hashtable */
+typedef struct Queryspace_HashKey
+{
+	int session_id;
+	int command_count;
+} Queryspace_HashKey;
+
+/*
+ * (key, value) structure that is stored in the Queryspace Hashtable
+ *
+ * The value contains measurements of all per-query resources tracked
+ */
+typedef struct QueryspaceDesc
+{
+	Queryspace_HashKey key;
+	int32 pinCount;
+
+	/* Total disk space used for workfiles for this query */
+	int64 queryDiskspace;
+
+} QueryspaceDesc;
+
 /* Workfile Set operations */
 workfile_set *workfile_mgr_create_set(enum ExecWorkFileType type, bool can_be_reused,
 		PlanState *ps, workfile_set_snapshot snapshot);
@@ -149,11 +184,26 @@ int64 workfile_mgr_close_file(workfile_set *work_set, ExecWorkFile *file);
 void WorkfileDiskspace_Init(void);
 Size WorkfileDiskspace_ShMemSize(void);
 bool WorkfileDiskspace_Reserve(int64 bytes);
-int64 WorkfileDiskspace_Commit(int64 commit_bytes, int64 reserved_bytes);
-int64 WorkfileDiskspace_GetSize(void);
+void WorkfileDiskspace_Commit(int64 commit_bytes, int64 reserved_bytes, bool update_query_space);
 void WorkfileDiskspace_SetFull(bool isFull);
 bool WorkfileDiskspace_IsFull(void);
 
+/* Workfile segspace operations */
+void WorkfileSegspace_Init(void);
+Size WorkfileSegspace_ShMemSize(void);
+bool WorkfileSegspace_Reserve(int64 bytes);
+void WorkfileSegspace_Commit(int64 commit_bytes, int64 reserved_bytes);
+int64 WorkfileSegspace_GetSize(void);
+
+
+/* Workfile queryspace operations */
+void WorkfileQueryspace_Init(void);
+Size WorkfileQueryspace_ShMemSize(void);
+int64 WorkfileQueryspace_GetSize(int session_id, int command_count);
+bool WorkfileQueryspace_Reserve(int session_id, int command_count, int64 bytes_to_reserve);
+void WorkfileQueryspace_Commit(int session_id, int command_count, int64 commit_bytes, int64 reserved_bytes);
+QueryspaceDesc *WorkfileQueryspace_InitEntry(int session_id, int command_count);
+void WorkfileQueryspace_ReleaseEntry(QueryspaceDesc *queryEntry);
 
 /* Serialization functions */
 void outfuncs_workfile_mgr_init(List *rtable);
