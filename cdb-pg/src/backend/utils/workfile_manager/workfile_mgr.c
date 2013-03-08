@@ -476,7 +476,7 @@ workfile_mgr_lookup_set(PlanState *ps)
 	CacheEntry *cachedEntry = Cache_Lookup(workfile_mgr_cache, localEntry);
 
 	/* Release local entry and free up plan memory. We don't need it anymore */
-	Cache_SurrenderEntry(workfile_mgr_cache, localEntry);
+	Cache_Release(workfile_mgr_cache, localEntry);
 
 	workfile_set *work_set = NULL;
 	if (NULL != cachedEntry)

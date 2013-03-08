@@ -211,7 +211,7 @@ cache_test_acquire(void)
 	elt->data = 4567;
 
 	elog(INFO, "Running sub-test: CacheSurrenderEntry");
-	Cache_SurrenderEntry(cache, entry);
+	Cache_Release(cache, entry);
 	unit_test_result(true);
 
 	return unit_test_summary();
@@ -267,7 +267,7 @@ cache_test_insert()
 	lookedUpEntry = Cache_Lookup(cache, localEntry);
 	unit_test_result(lookedUpEntry == NULL);
 
-	Cache_SurrenderEntry(cache, localEntry);
+	Cache_Release(cache, localEntry);
 	return unit_test_summary();
 
 }
@@ -330,7 +330,7 @@ cache_test_remove(void)
 	lookedUpEntry = Cache_Lookup(cache, localEntry);
 	unit_test_result(lookedUpEntry != NULL);
 
-	Cache_SurrenderEntry(cache, localEntry);
+	Cache_Release(cache, localEntry);
 	Cache_Release(cache, lookedUpEntry);
 
 	return unit_test_summary();
@@ -417,7 +417,7 @@ cache_test_concurrency(void)
 				break;
 			}
 
-			Cache_SurrenderEntry(cache, localEntry);
+			Cache_Release(cache, localEntry);
 		}
 
 		if (testFailed)
@@ -458,7 +458,7 @@ cache_test_concurrency(void)
 				break;
 			}
 
-			Cache_SurrenderEntry(cache, localEntry);
+			Cache_Release(cache, localEntry);
 		}
 
 		CHECK_FOR_INTERRUPTS();
@@ -607,7 +607,7 @@ cache_test_evict_stress(void)
 				Cache_Release(cache, entries[i]);
 			}
 
-			Cache_SurrenderEntry(cache, localEntry);
+			Cache_Release(cache, localEntry);
 		}
 
 		if (testFailed)

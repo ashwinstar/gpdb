@@ -37,11 +37,13 @@
 /* Max allowed utility value for an entry. Set to int32 / 2 to avoid overflows */
 #define CACHE_MAX_UTILITY 0x3FFFFFFF
 
-#define CACHE_ENTRY_FREE 		1
-#define CACHE_ENTRY_ACQUIRED 	2
-#define CACHE_ENTRY_CACHED 		3
-#define CACHE_ENTRY_DELETED		4
-
+typedef enum Cache_EntryState
+{
+	CACHE_ENTRY_FREE = 0,
+	CACHE_ENTRY_ACQUIRED,
+	CACHE_ENTRY_CACHED,
+	CACHE_ENTRY_DELETED
+} Cache_EntryState;
 
 /* Signature for function to test if two cache entries are equivalent */
 typedef bool (*Cache_EquivalenceFunc) (const void *resource1, const void *resource2);
@@ -93,7 +95,7 @@ typedef struct CacheEntry
 	 *   CACHE_ENTRY_DELETED
 	 * Use atomic operations (test&set) to change this.
 	 */
-	uint32 state;
+	Cache_EntryState state;
 
 	/* Abstract size of this cache entry */
 	uint32 size;
@@ -260,11 +262,8 @@ typedef struct Cache
 	/* Client cleanup function */
 	Cache_ClientCleanupFunc cleanupEntry;
 
-	/* List of entries owned by client acquired but not cached. Used for cleanup */
-	Dllist *emptyEntries;
-
-	/* List of entries owned by client that are cached. Used for cleanup */
-	Dllist *cachedEntries;
+	/* List of entries owned by client. Used for cleanup */
+	Dllist *ownedEntries;
 
 } Cache;
 
@@ -295,7 +294,6 @@ CacheEntry *Cache_Lookup(Cache *cache, CacheEntry *entry);
 void Cache_Remove(Cache *cache, CacheEntry *entry);
 void Cache_Release(Cache *cache, CacheEntry *entry);
 CacheEntry *Cache_AcquireEntry(Cache *cache);
-void Cache_SurrenderEntry(Cache *cache, CacheEntry *entry);
 bool Cache_IsCached(CacheEntry *entry);
 void Cache_SurrenderClientEntries(Cache *cache);
 

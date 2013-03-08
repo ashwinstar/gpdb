@@ -20,9 +20,9 @@
 
 static uint32 Cache_EntryAddRef(Cache *cache, CacheEntry *entry);
 static uint32 Cache_EntryDecRef(Cache *cache, CacheEntry *entry);
-static void Cache_MoveToCachedCleanupList(Cache *cache, CacheEntry *entry);
 static CacheEntry *Cache_GetFreeElement(Cache *cache);
-static void Cache_ReleaseInternal(Cache *cache, CacheEntry *entry, bool unregisterCleanup);
+static void Cache_ReleaseAcquired(Cache *cache, CacheEntry *entry, bool unregisterCleanup);
+static void Cache_ReleaseCached(Cache *cache, CacheEntry *entry, bool unregisterCleanup);
 
 /*
  * Global timestamp used for timing cache operations
@@ -232,110 +232,68 @@ Cache_SurrenderClientEntries(Cache *cache)
 {
 	Assert(NULL != cache);
 
-	uint32 nEmptyEntries = 0;
+	uint32 nAcquiredEntries = 0;
 	uint32 nCachedEntries = 0;
 	Dlelem *elt = NULL;
 
-	/* FIXME A lot of this code is duplicated with SurrenderEntry */
-
-	/* Surrender all owned entries that got acquired but not cached */
-	while (NULL != (elt = DLRemHead(cache->emptyEntries)))
+	/* Surrender all owned entries */
+	while (NULL != (elt = DLRemHead(cache->ownedEntries)))
 	{
-		/* Get to the entry and link it back in the freelist it */
 		CacheEntry *entry = DLE_VAL(elt);
 
-		PG_TRY();
+		switch(entry->state)
 		{
-			/* Call client-specific cleanup function before removing entry from cache */
-			cache->cleanupEntry(CACHE_ENTRY_PAYLOAD(entry));
+			case CACHE_ENTRY_ACQUIRED:
+				Cache_ReleaseAcquired(cache, entry, false /* unregisterCleanup */);
+				nAcquiredEntries++;
+				break;
+			case CACHE_ENTRY_CACHED:
+			case CACHE_ENTRY_DELETED:
+				Cache_ReleaseCached(cache, entry, false /* unregisterCleanup */);
+				nCachedEntries++;
+				break;
+			default:
+				Assert(false && "unexpected cache entry state");
 		}
-		PG_CATCH();
-		{
 
-#if USE_ASSERT_CHECKING
-			Cache_MemsetPayload(cache, entry);
-#endif
-
-			/* Link entry back in the freelist */
-			Cache_AddToFreelist(cache, entry);
-
-			PG_RE_THROW();
-		}
-		PG_END_TRY();
-
-#if USE_ASSERT_CHECKING
-		Cache_MemsetPayload(cache, entry);
-#endif
-
-		Cache_AddToFreelist(cache, entry);
 		/* Free linked list element */
 		DLFreeElem(elt);
-		nEmptyEntries++;
-
-		Cache_UpdatePerfCounter(&cache->cacheHdr->cacheStats.noAcquiredEntries, -1);
-
 	}
 
-	/* Release all owned entries that are cached */
-	while (NULL != (elt = DLRemHead(cache->cachedEntries)))
-	{
-		/* Get to the entry and release it */
-		CacheEntry *entry = DLE_VAL(elt);
-		Cache_ReleaseInternal(cache, entry, false /* unregisterCleanup */);
-		/* Free linked list element */
-		DLFreeElem(elt);
-		nCachedEntries++;
-	}
-
-
-	elog(gp_workfile_caching_loglevel, "Cleanup released %u empty and %u cached entries from client",
-			nEmptyEntries, nCachedEntries);
+	elog(gp_workfile_caching_loglevel, "Cleanup released %u acquired and %u cached entries from client",
+			nAcquiredEntries, nCachedEntries);
 }
 
 /*
- * Register entry with the appropriate cleanup list of the cache. When the
- * clients ends, all the entries still in either of the two cleanup lists
- * is released to the cache.
+ * Register entry for cleanup. When the clients ends, all the entries still
+ * in the lists are released to the cache
  *
  * This is done to ensure all entries are released to the cache even if the
- * client throws an exception.
+ * client throws an exception
  *
- * If isCachedEntry is set, register it in the cachedEntries, otherwise
- * add it to the emptyEntries.
  */
 static void
 Cache_RegisterCleanup(Cache *cache, CacheEntry *entry, bool isCachedEntry)
 {
-	Dllist *cleanupList = cache->emptyEntries;
-	if (isCachedEntry)
-	{
-		cleanupList = cache->cachedEntries;
-	}
+	Assert(NULL != cache);
+	Assert(NULL != entry);
 
 	MemoryContext oldcxt = MemoryContextSwitchTo(TopMemoryContext);
-	DLAddHead(cleanupList, DLNewElem(entry));
+	DLAddHead(cache->ownedEntries, DLNewElem(entry));
 	MemoryContextSwitchTo(oldcxt);
 }
 
 /*
- * Unregister entry from the appropriate cleanup list of the cache
+ * Unregister entry from cleanup list of the cache
  *
- * If isCachedEntry is set, look in the cachedEntries, otherwise
- * in the emptyEntries.
  */
 static void
-Cache_UnregisterCleanup(Cache *cache, CacheEntry *entry, bool isCachedEntry)
+Cache_UnregisterCleanup(Cache *cache, CacheEntry *entry)
 {
 	Assert(NULL != cache);
 	Assert(NULL != entry);
 
-	Dllist *cleanupList = cache->emptyEntries;
-	if (isCachedEntry)
-	{
-		cleanupList = cache->cachedEntries;
-	}
-
-	Dlelem *crtElem = DLGetHead(cleanupList);
+	Dlelem *crtElem = DLGetHead(cache->ownedEntries);
 	while (NULL != crtElem && DLE_VAL(crtElem) != entry)
 	{
 		crtElem = DLGetSucc(crtElem);
@@ -347,31 +305,6 @@ Cache_UnregisterCleanup(Cache *cache, CacheEntry *entry, bool isCachedEntry)
 	DLRemove(crtElem);
 	DLFreeElem(crtElem);
 
-}
-
-/*
- * Switch an entry from the emptyEntries cleanup list to the cachedEntries
- * cleanup list
- *
- * Happens when we insert into cache a previously acquired entry
- */
-static void
-Cache_MoveToCachedCleanupList(Cache *cache, CacheEntry *entry)
-{
-	Assert(NULL != cache);
-	Assert(NULL != entry);
-
-	/* First, remove entry from emptyEntries list */
-	Cache_UnregisterCleanup(cache, entry, false /* isCachedEntry */ );
-
-	/*
-	 * Second, add entry to the cachedEntries list. Linked list
-	 * elements go in the top memory context so they are available during
-	 * transaction abort callbacks
-	 */
-	MemoryContext oldcxt = MemoryContextSwitchTo(TopMemoryContext);
-	DLAddHead(cache->cachedEntries, DLNewElem(entry));
-	MemoryContextSwitchTo(oldcxt);
 }
 
 /*
@@ -410,8 +343,7 @@ Cache_Create(CacheCtl *cacheCtl)
 	cache->equivalentEntries = cacheCtl->equivalentEntries;
 	cache->cleanupEntry = cacheCtl->cleanupEntry;
 	/* Create new linked lists in top memory context for cleanup */
-	cache->emptyEntries = DLNewList();
-	cache->cachedEntries = DLNewList();
+	cache->ownedEntries = DLNewList();
 	cache->cacheName = pstrdup(cacheCtl->cacheName);
 	Cache_InitHashtable(cacheCtl, cache);
 	Cache_InitSharedMem(cacheCtl, cache);
@@ -467,36 +399,18 @@ Cache_MemsetPayload(Cache *cache, CacheEntry *entry)
 #endif
 
 /*
- * Surrender a previously acquired entry to the cache freelist.
- * Calls client-defined cleanup for entry before surrendering
+ * Return a previously acquired entry to the cache freelist.
+ * Does not call client clean-up, because we don't know if the entry contains
+ * anything meaningful at this point.
  *
- * The entry is not inserted in the cache.
+ * Unregisters the entry from the cleanup list if requested.
  */
-void
-Cache_SurrenderEntry(Cache *cache, CacheEntry *entry)
+static void
+Cache_ReleaseAcquired(Cache *cache, CacheEntry *entry, bool unregisterCleanup)
 {
 	Assert(NULL != cache);
 	Assert(NULL != entry);
 	Assert(CACHE_ENTRY_ACQUIRED == entry->state);
-
-	PG_TRY();
-	{
-		/* Call client-specific cleanup function before removing entry from cache */
-		cache->cleanupEntry(CACHE_ENTRY_PAYLOAD(entry));
-	}
-	PG_CATCH();
-	{
-
-#if USE_ASSERT_CHECKING
-		Cache_MemsetPayload(cache, entry);
-#endif
-
-		/* Link entry back in the freelist */
-		Cache_AddToFreelist(cache, entry);
-
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
 
 
 #ifdef USE_ASSERT_CHECKING
@@ -504,8 +418,12 @@ Cache_SurrenderEntry(Cache *cache, CacheEntry *entry)
 #endif
 
 	Cache_AddToFreelist(cache, entry);
-	/* Unregister entry from the cleanup list */
-	Cache_UnregisterCleanup(cache, entry, false /* isCachedEntry */);
+
+	/* Unregister entry from the cleanup list if requested */
+	if (unregisterCleanup)
+	{
+		Cache_UnregisterCleanup(cache, entry);
+	}
 
 	Cache_UpdatePerfCounter(&cache->cacheHdr->cacheStats.noAcquiredEntries, -1);
 }
@@ -640,9 +558,6 @@ Cache_Insert(Cache *cache, CacheEntry *entry)
 
 	SpinLockRelease(&anchor->spinlock);
 
-	/* Move entry from emtpyEntries cleanup list to the cachedEntries one */
-	Cache_MoveToCachedCleanupList(cache, entry);
-
 #if USE_ASSERT_CHECKING
 	bool deleted = 
 #endif
@@ -724,7 +639,7 @@ Cache_Lookup(Cache *cache, CacheEntry *entry)
 		}
 
 		/* Unregister it from cleanup since it wasn't the one */
-		Cache_UnregisterCleanup(cache, crtEntry, true /* isCachedEntry */);
+		Cache_UnregisterCleanup(cache, crtEntry);
 
 		SpinLockAcquire(&anchor->spinlock);
 
@@ -789,15 +704,33 @@ Cache_UnlinkEntry(Cache *cache, CacheAnchor *anchor, CacheEntry *entry)
 }
 
 /*
- * Indicates that a client does not use the entry anymore. The pin-count
- * of the entry is decremented.
- * If the pincount is 0 and entry is marked to be deleted, remove the entry
- * from the cache.
+ * Indicates that a client does not use the entry anymore
+ *
+ * For cached entries, the pin-count of the entry is decremented.
+ *    If the pincount is 0 and entry is marked to be deleted, remove the entry
+ *    from the cache. If entry is removed, then client clean-up is performed
+ *
+ * For acquired entries, return entry to the freelist. Caller is responsible
+ *    for cleaning up any client-specific resources
  */
 void
 Cache_Release(Cache *cache, CacheEntry *entry)
 {
-	Cache_ReleaseInternal(cache, entry, true /* unregisterCleanup */ );
+	Assert(NULL != cache);
+	Assert(NULL != entry);
+
+	switch(entry->state)
+	{
+		case CACHE_ENTRY_ACQUIRED:
+			Cache_ReleaseAcquired(cache, entry, true /* unregisterCleanup */ );
+			break;
+		case CACHE_ENTRY_CACHED:
+		case CACHE_ENTRY_DELETED:
+			Cache_ReleaseCached(cache, entry, true /* unregisterCleanup */ );
+			break;
+		default:
+			Assert(false && "unexpected cache entry state");
+	}
 }
 
 /*
@@ -806,7 +739,7 @@ Cache_Release(Cache *cache, CacheEntry *entry)
  * Unregisters the entry from the cleanup list if requested.
  */
 static void
-Cache_ReleaseInternal(Cache *cache, CacheEntry *entry, bool unregisterCleanup)
+Cache_ReleaseCached(Cache *cache, CacheEntry *entry, bool unregisterCleanup)
 {
 	Assert(NULL != cache);
 	Assert(NULL != entry);
@@ -842,7 +775,7 @@ Cache_ReleaseInternal(Cache *cache, CacheEntry *entry, bool unregisterCleanup)
 	/* If requested, unregister entry from the cleanup list */
 	if (unregisterCleanup)
 	{
-		Cache_UnregisterCleanup(cache, entry, true /* isCachedEntry */);
+		Cache_UnregisterCleanup(cache, entry);
 	}
 
 	if (deleteEntry)
