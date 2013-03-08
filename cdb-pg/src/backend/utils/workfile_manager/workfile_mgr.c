@@ -45,7 +45,7 @@ static bool workfile_mgr_compare_plan(workfile_set *work_set, workfile_set_plan 
 static void workfile_mgr_cleanup_set(const void *resource);
 static void workfile_mgr_delete_set_directory(char *workset_path);
 static void workfile_mgr_unlink_directory(const char *dirpath);
-
+static char * get_name_from_nodeType(const NodeTag node_type);
 
 /* Workfile manager cache is stored here, once attached to */
 Cache *workfile_mgr_cache = NULL;
@@ -138,6 +138,37 @@ workfile_mgr_create_file(workfile_set *work_set, char *workfile_name, uint32 wor
 }
 
 /*
+ * Retrieves the operator name.
+ * Result is palloc-ed in the current memory context.
+ */
+static char *
+get_name_from_nodeType(const NodeTag node_type)
+{
+	char *operator_name = (char *) palloc(MAXPGPATH);
+
+	switch ( node_type )
+	{
+		case T_AggState:
+			snprintf(operator_name, MAXPGPATH,"Agg");
+			break;
+		case T_HashJoinState:
+			snprintf(operator_name, MAXPGPATH,"HashJoin");
+			break;
+		case T_MaterialState:
+			snprintf(operator_name, MAXPGPATH,"Material");
+			break;
+		case T_SortState:
+			snprintf(operator_name, MAXPGPATH,"Sort");
+			break;
+		default:
+			Assert(false && "Operator not implemented");
+	}
+
+	return operator_name;
+}
+
+
+/*
  * Create a new file set
  *   type is the WorkFileType for the files: BUFFILE or BFZ
  *   can_be_reused: if set to false, then we don't insert this set into the cache,
@@ -214,17 +245,23 @@ workfile_mgr_create_set(enum ExecWorkFileType type, bool can_be_reused, PlanStat
 
 	/* Create workset directory here */
 	char *workset_path_masked = (char *) palloc(MAXPGPATH);
+	char *operator_name = get_name_from_nodeType(work_set->node_type);
+
 	if (snprintf(workset_path_masked, MAXPGPATH,
-			"%s/%s/%s.%s",
+			"%s/%s/%s_%s_Slice%d.%s",
 			getCurrentTempFilePath,
 			PG_TEMP_FILES_DIR,
 			WORKFILE_SET_PREFIX,
+			operator_name,
+			work_set->slice_id,
 			WORKFILE_SET_MASK) > MAXPGPATH)
 	{
-		ereport(ERROR, (errmsg("cannot generate path %s/%s/%s.%s",
+		ereport(ERROR, (errmsg("cannot generate path %s/%s/%s_%s_Slice%d.%s",
 			getCurrentTempFilePath,
 			PG_TEMP_FILES_DIR,
 			WORKFILE_SET_PREFIX,
+			operator_name,
+			work_set->slice_id,
 			WORKFILE_SET_MASK)));
 	}
 
@@ -245,6 +282,7 @@ workfile_mgr_create_set(enum ExecWorkFileType type, bool can_be_reused, PlanStat
 	work_set->on_disk = true;
 
 	pfree(workset_path_masked);
+	pfree(operator_name);
 
 	if (work_set->can_be_reused)
 	{
