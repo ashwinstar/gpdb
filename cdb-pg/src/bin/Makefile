@@ -11,11 +11,18 @@
 
 subdir = src/bin
 top_builddir = ../..
+SUBDIRS = pg_dump pg_dump/cdb
 include $(top_builddir)/src/Makefile.global
+
+unittest-check:
+ifdef SUBDIRS
+	@for dir in $(SUBDIRS); do if [ -d $$dir/test ]; then $(MAKE) -C $$dir/test check; fi; done
+endif
 
 DIRS = initdb ipcclean pg_ctl pg_dump \
 	psql scripts pg_config pg_controldata pg_resetxlog \
 	gpmapreduce gpmirrortransition gpupgrade gphdfs/src/protocol_formatter
+
 
 ifeq ($(enable_gphdfs),yes)
 DIRS+=gphdfs

@@ -111,6 +111,7 @@ PGconn	   *g_conn_status = NULL;		/* the status connection between main
 bool		schemaOnly;
 bool		dataOnly;
 bool		aclsSkip;
+bool        incrementalBackup;
 
 /* MPP additions start */
 static char *selectSchemaName = NULL;	/* name of a single schema to dump */
@@ -383,6 +384,7 @@ main(int argc, char **argv)
 		{"format", required_argument, NULL, 'F'},
 		{"host", required_argument, NULL, 'h'},
 		{"ignore-version", no_argument, NULL, 'i'},
+		{"incremental", no_argument, NULL, 'I'},
 		{"no-reconnect", no_argument, NULL, 'R'},
 		{"oids", no_argument, NULL, 'o'},
 		{"no-owner", no_argument, NULL, 'O'},
@@ -450,6 +452,7 @@ main(int argc, char **argv)
 
 	dataOnly = schemaOnly = dump_inserts = column_inserts = false;
 	preDataSchemaOnly = postDataSchemaOnly = false;
+	incrementalBackup = false;
 
 	progname = get_progname(argv[0]);
 
@@ -476,7 +479,7 @@ main(int argc, char **argv)
 #endif
 
 
-	while ((c = getopt_long(argc, argv, "abcCdDE:f:F:h:in:N:oOp:RsS:t:T:uU:vwWxX:Z:",
+	while ((c = getopt_long(argc, argv, "abcCdDE:f:F:h:iIn:N:oOp:RsS:t:T:uU:vwWxX:Z:",
 							long_options, &optindex)) != -1)
 	{
 		switch (c)
@@ -527,6 +530,10 @@ main(int argc, char **argv)
 
 			case 'i':
 				/* ignored, deprecated option */
+				break;
+
+			case 'I':
+				incrementalBackup = true;
 				break;
 
 			case 'n':			/* include schema(s) */
@@ -1112,7 +1119,8 @@ dumpMain(bool oids, const char *dumpencoding, int outputBlobs, int plainText, Re
 	 * Process the schema and table include/exclude lists and develop a list
 	 * of table oids to be included in the dump.
 	 */
-	convert_patterns_to_oids();
+	if (isFilteringAllowedNow(g_role, incrementalBackup))
+	    convert_patterns_to_oids();
 
 	/*
 	 * Now scan the database and create DumpableObject structs for all the

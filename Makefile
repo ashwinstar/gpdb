@@ -1530,3 +1530,4 @@ endif
 .PHONY : unittest-check
 unittest-check:
 	$(MAKE) -C cdb-pg/src/backend unittest-check
+	$(MAKE) -C cdb-pg/src/bin unittest-check

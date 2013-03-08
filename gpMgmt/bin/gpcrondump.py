@@ -18,13 +18,23 @@ import re
 import stat
 
 try:
+    import gppylib
+    from datetime import datetime
     from gppylib import gplog
     from gppylib import pgconf
     from gppylib import userinput
     from gppylib.commands.base import Command
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.operations import Operation
-    from gppylib.operations.dump import ValidateDatabaseExists, ValidateSchemaExists, DeleteCurrentDump, DeleteOldestDumps, DumpDatabase, DumpConfig, DumpGlobal, MailDumpEvent, PostDumpDatabase, UpdateHistoryTable, VacuumDatabase
+    from gppylib.operations.dump import CreateIncrementsFile, DeleteCurrentDump, DeleteOldestDumps,\
+                                        DumpDatabase, DumpConfig, DumpGlobal, MailDumpEvent,\
+                                        PostDumpDatabase, UpdateHistoryTable, VacuumDatabase,\
+                                        ValidateDatabaseExists, ValidateSchemaExists,\
+                                        get_ao_partition_state, get_co_partition_state, get_dirty_tables,\
+                                        write_dirty_file, write_dirty_file_to_temp, write_last_operation_file,\
+                                        write_partition_list_file, write_state_file, get_last_operation_data, \
+                                        validate_current_timestamp, generate_dump_timestamp, get_dirty_heap_tables 
+    from gppylib.operations.backup_utils import get_latest_full_dump_timestamp, check_funny_chars_in_tablenames
     from gppylib.operations.utils import DEFAULT_NUM_WORKERS
     from gppylib.gparray import GpArray
     from gppylib.db import dbconn
@@ -75,9 +85,9 @@ class GpCronDump(Operation):
         self.include_dump_tables_file = options.include_dump_tables_file
         self.exclude_dump_tables_file = options.exclude_dump_tables_file 
         self.backup_dir = options.backup_dir
-        self.report_dir = options.report_dir
         self.encoding = options.encoding
         self.output_options = options.output_options
+        self.incremental = options.incremental
         self.ddboost_hosts = options.ddboost_hosts
         self.ddboost_user = options.ddboost_user
         self.ddboost_config_remove = options.ddboost_config_remove
@@ -118,7 +128,46 @@ class GpCronDump(Operation):
             logger.info('Bypassing disk space checks due to DDBoost parameters')
             if self.backup_dir is not None:
                 raise ExceptionNoStackTraceNeeded('-u cannot be used with DDBoost parameters.')
+
+        if self.incremental and (self.ddboost or bool(self.ddboost_verify) or bool(self.ddboost_hosts) or bool(self.ddboost_user) or bool(self.ddboost_config_remove)):
+            raise Exception('ddboost can not be selected with incremental backup')
+
+        if self.incremental and len(self.dump_databases) > 1:
+                raise ExceptionNoStackTraceNeeded('multi-database backup is not supported with incremental backup: %s databases selected' % len(self.dump_databases))
+
+        if self.include_dump_tables and self.incremental:
+            raise Exception('include table list can not be selected with incremental backup')
+            
+        if self.exclude_dump_tables and self.incremental:
+            raise Exception('exclude table list can not be selected with incremental backup')
+
+        if self.include_dump_tables_file and self.incremental:
+            raise Exception('include table file can not be selected with incremental backup')
+    
+        if self.exclude_dump_tables_file and self.incremental:
+            raise Exception('exclude table file can not be selected with incremental backup')
+
+        if self.dump_schema and self.incremental:
+            raise Exception('-s option can not be selected with incremental backup')
+
+        if self.clear_dumps and self.incremental:
+            raise Exception('-c option can not be selected with incremental backup')
+
+        if ('--inserts' in self.output_options or '--oids' in self.output_options or '--column-inserts' in self.output_options) and self.incremental:
+            raise Exception('--inserts, --column-inserts, --oids cannot be selected with incremental backup')
+
+        if self.incremental:
+            self.free_space_percent = None
+            logger.info('Bypassing disk space checks for incremental backup')
+            self.full_dump_timestamp = gppylib.operations.backup_utils.get_latest_full_dump_timestamp(self.dump_databases[0], self.getBackupDirectoryRoot())
         
+
+    def getBackupDirectoryRoot(self):
+        if self.backup_dir:
+            return self.backup_dir
+        else:
+            return self.master_datadir
+
     def getGpArray(self):
         return GpArray.initFromCatalog(dbconn.DbURL(port=self.master_port), utility=True)
     
@@ -131,7 +180,7 @@ class GpCronDump(Operation):
 
     # check if one of gpcrondump option was specified, except of ddboost options
     def only_ddboost_options(self):
-        return ((self.dump_databases is None) and (self.dump_schema is None) and (self.report_dir is None)
+        return ((self.dump_databases is None) and (self.dump_schema is None)
                 and (self.backup_dir is None)
                 and not (self.include_dump_tables or self.output_options or self.clear_dumps_only or self.pre_vacuum
 					     or self.clear_dumps_only or self.dump_global or self.rollback or self.exclude_dump_tables
@@ -207,7 +256,16 @@ class GpCronDump(Operation):
         else:
             raise ExceptionNoStackTraceNeeded('Failed to connect to DD_host with DD_user and the DD_password')
 
-        
+    def get_include_exclude_for_dump_database(self, dirty_file):
+        if self.incremental:
+            include_file = dirty_file
+            exclude_file = None
+        else:
+            include_file = self.include_dump_tables_file
+            exclude_file = self.exclude_dump_tables_file
+
+        return (include_file, exclude_file)
+
     def execute(self):    
         if bool(self.ddboost_hosts) or bool(self.ddboost_user):
             # check that both options are specified
@@ -248,8 +306,9 @@ class GpCronDump(Operation):
                 return 0;
             else:
                 raise ExceptionNoStackTraceNeeded('The option --ddboost-config-remove is standalone. It is NOT used in conjunction with any other gocrondump options.')
-            
+           
         if self.clear_dumps_only:
+            generate_dump_timestamp(datetime.now())
             DeleteOldestDumps(master_datadir = self.master_datadir,
                               master_port = self.master_port,
                               ddboost = self.ddboost).run()
@@ -259,12 +318,15 @@ class GpCronDump(Operation):
             self._validate_run_program()
 
         self._validate_dump_target()
+
         
         # final_exit_status := numeric outcome of this python program
         # current_exit_status := numeric outcome of one particular dump,
         #                        in this loop over the -x arguments
         final_exit_status = current_exit_status = 0
         for dump_database in self.dump_databases:
+            generate_dump_timestamp(datetime.now())
+            validate_current_timestamp(self.getBackupDirectoryRoot())
             if self.interactive:
                 self._prompt_continue(dump_database)
 
@@ -272,6 +334,25 @@ class GpCronDump(Operation):
                 logger.info('Commencing pre-dump vacuum')
                 VacuumDatabase(database = dump_database, 
                                master_port = self.master_port).run()
+        
+            ao_partition_list = get_ao_partition_state(self.master_port, dump_database)
+            co_partition_list = get_co_partition_state(self.master_port, dump_database)
+            heap_partitions = get_dirty_heap_tables(self.master_port, dump_database)
+            last_operation_list = get_last_operation_data(self.master_port, dump_database)
+            
+            self._verify_tablenames(ao_partition_list, co_partition_list, heap_partitions)
+
+            dirty_partitions = None
+            dirty_file = None
+            if self.incremental:
+                dirty_partitions = get_dirty_tables(self.master_port, dump_database,
+                                                    self.master_datadir, self.backup_dir,
+                                                    self.full_dump_timestamp, ao_partition_list,
+                                                    co_partition_list, last_operation_list)
+
+                dirty_file = write_dirty_file_to_temp(dirty_partitions)
+
+            (include_file, exclude_file) = self.get_include_exclude_for_dump_database(dirty_file)
 
             dump_outcome = DumpDatabase(dump_database = dump_database,
                                         dump_schema = self.dump_schema,
@@ -281,27 +362,48 @@ class GpCronDump(Operation):
                                         free_space_percent = self.free_space_percent,  
                                         clear_catalog_dumps = self.clear_catalog_dumps,
                                         backup_dir = self.backup_dir,
-                                        include_dump_tables_file = self.include_dump_tables_file,
-                                        exclude_dump_tables_file = self.exclude_dump_tables_file,
-                                        report_dir = self.report_dir,
+                                        include_dump_tables_file = include_file,
+                                        exclude_dump_tables_file = exclude_file,
                                         encoding = self.encoding,
                                         output_options = self.output_options,
                                         batch_default = self.batch_default,
                                         master_datadir = self.master_datadir,
                                         master_port = self.master_port,
-                                        ddboost = self.ddboost).run()
+                                        ddboost = self.ddboost,
+                                        incremental = self.incremental).run()
 
             post_dump_outcome = PostDumpDatabase(timestamp_start = dump_outcome['timestamp_start'],
                                                  compress = self.compress,
                                                  backup_dir = self.backup_dir,
-                                                 report_dir = self.report_dir,
                                                  batch_default = self.batch_default,
                                                  master_datadir = self.master_datadir,
                                                  master_port = self.master_port,
-                                                 ddboost = self.ddboost).run()
+                                                 ddboost = self.ddboost,
+                                                 incremental = self.incremental).run()
             
+            if self.incremental:
+                if os.path.exists(dirty_file):
+                    os.remove(dirty_file)
+                write_dirty_file(self.master_datadir, dirty_partitions, self.backup_dir)
+
+            write_state_file('ao', self.master_datadir, self.backup_dir, ao_partition_list)
+            write_state_file('co', self.master_datadir, self.backup_dir, co_partition_list)
+            write_last_operation_file(self.master_datadir, self.backup_dir, last_operation_list)
+
             current_exit_status = max(dump_outcome['exit_status'], post_dump_outcome['exit_status'])
             final_exit_status = max(final_exit_status, current_exit_status)
+
+            if self.incremental:
+                if final_exit_status:
+                    logger.info('non-zero exit status from gp_dump, skipping generation of increments file')
+                else:
+                    # if this fails, it raises an exception and bombs out RC and to the screen
+                    CreateIncrementsFile(   dump_database = dump_database,
+                                            full_timestamp = self.full_dump_timestamp,
+                                            timestamp = post_dump_outcome['timestamp'],
+                                            master_datadir = self.master_datadir,
+                                            backup_dir = self.backup_dir ).run()
+                    write_partition_list_file(self.master_datadir, self.backup_dir, post_dump_outcome['timestamp'], self.master_port, dump_database)
 
             if self.history:
                 # This certainly does not belong under DumpDatabase, due to CLI assumptions. Note the use of options_list.
@@ -380,7 +482,31 @@ class GpCronDump(Operation):
         if self.post_script is not None:
             self._run_program()
 
+        if final_exit_status == 0:
+            os._exit(0)
+
         return final_exit_status
+
+    def _get_table_names_from_partition_list(self, partition_list):
+        tablenames = [] 
+        for part in partition_list:
+            fields = part.split(',')
+            if len(fields) != 3:
+                raise Exception('Invalid partition entry "%s"' % part)
+            tname = '%s.%s' % (fields[0].strip(), fields[1].strip())
+            tablenames.append(tname)
+        return tablenames
+
+    def _verify_tablenames(self, ao_partition_list, co_partition_list, heap_partitions):
+        tablenames = []
+
+        tablenames.extend(self._get_table_names_from_partition_list(ao_partition_list))
+        tablenames.extend(self._get_table_names_from_partition_list(co_partition_list))
+        tablenames.extend(heap_partitions)
+
+        tablenames = set(tablenames)  
+
+        check_funny_chars_in_tablenames(tablenames)
 
     def _prompt_continue(self, dump_database):
         logger.info("---------------------------------------------------")
@@ -411,14 +537,15 @@ class GpCronDump(Operation):
                 logger.info("Table file name                      = %s" % self.exclude_dump_tables_file)
                 logger.info("---------------------------------------------------")
         else:
-            logger.info("Dump type                            = Single database")
+            if self.incremental:
+                logger.info("Dump type                            = Incremental")
+            else:
+                logger.info("Dump type                            = Full database")
         logger.info("Database to be dumped                = %s" % dump_database)
         if self.dump_schema is not None:
             logger.info("Schema to be dumped                  = %s" % self.dump_schema) 
         if self.backup_dir is not None:
             logger.info("Dump directory                       = %s" % self.backup_dir)
-        if self.report_dir is not None:
-            logger.info("Dump report directory                = %s" % self.report_dir)
         logger.info("Master port                          = %s" % self.master_port)
         logger.info("Master data directory                = %s" % self.master_datadir)
         if self.post_script is not None:
@@ -469,6 +596,10 @@ class GpCronDump(Operation):
         logger.info("---------------------------------------------------")
         logger.info("Target database                          = %s" % dump_database)
         logger.info("Dump subdirectory                        = %s" % timestamp[0:8])
+        if self.incremental:
+            logger.info("Dump type                                = Incremental")
+        else:
+            logger.info("Dump type                                = Full database")
         if self.clear_dumps:
             logger.info("Clear old dump directories               = On")
             logger.info("Backup set deleted                       = %s" % deleted_dump_set)
@@ -593,6 +724,7 @@ def create_parser():
                      help="Dump the named table(s) for the specified database. -t can be provided multiple times to include multiple tables.")
     addTo.add_option('-T', action='append', dest='exclude_dump_tables', metavar="<schema.tableN>",
                      help="Exclude the named table(s) from the dump. -T can be provided multiple times to exclude multiple tables.")
+    addTo.add_option('--incremental', action='store_true', dest='incremental', default=False, help='Dump incremental backup.')
 
     # TODO: HACK to remove existing -h
     help = parser.get_option('-h')
@@ -604,8 +736,6 @@ def create_parser():
 
     addTo.add_option('-u', dest='backup_dir', metavar="<BACKUPFILEDIR>",
                      help="Directory where backup files are placed [default: data directories]")
-    addTo.add_option('-y', dest='report_dir', metavar="<REPORTFILEDIR>",
-                     help="Directory where report file is placed [default: master data directory]")
     addTo.add_option('-E', dest='encoding', metavar="<encoding>", help="Dump the data under the given encoding")
 
     addTo.add_option('--clean', const='--clean', action='append_const', dest='output_options',

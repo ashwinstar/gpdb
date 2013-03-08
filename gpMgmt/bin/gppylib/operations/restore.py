@@ -1,11 +1,12 @@
 import os
 import gzip
+import gppylib
 import getpass
 import shutil
 import socket
+import time
 from contextlib import closing
 
-# TODO: trim down the wildcard imports to only what's necessary
 from gppylib import gplog
 from gppylib.db import dbconn
 from gppylib.db.dbconn import execSQL, execSQLForSingleton
@@ -15,6 +16,10 @@ from gppylib.commands.base import WorkerPool, Command, REMOTE
 from gppylib.commands.gp import Psql
 from gppylib.commands.unix import Scp
 from gppylib.operations import Operation
+from gppylib.operations.backup_utils import check_backup_type, generate_dirtytable_filename, generate_partition_list_filename, generate_plan_filename,\
+                                            generate_metadata_filename, get_full_timestamp_for_incremental, get_lines_from_file, write_lines_to_file, \
+                                            verify_lines_in_file, generate_increments_filename, generate_report_filename, create_temp_file_with_tables, \
+                                            get_all_segment_addresses, scp_file_to_hosts, run_pool_command, execute_sql
 from gppylib.operations.utils import RemoteOperation, ParallelOperation
 from gppylib.operations.unix import CheckFile, CheckRemoteFile, CheckRemoteDir, MakeRemoteDir, RemoveFile, RemoveRemoteFile
 
@@ -36,32 +41,323 @@ POST_DATA_SUFFIX = '_post_data'
 
 # TODO: use CLI-agnostic custom exceptions instead of ExceptionNoStackTraceNeeded
 
+def update_ao_stat_func(conn, schema, table, counter, batch_size):
+    qry = "SELECT * FROM gp_update_ao_master_stats('%s.%s')" % (schema, table)
+    rows = execSQLForSingleton(conn, qry)
+    if counter % batch_size == 0:
+        conn.commit()
+
+def update_ao_statistics(master_port, dbname):
+    qry = """SELECT c.relname,n.nspname 
+                      FROM pg_class c, pg_namespace n 
+                      WHERE c.relnamespace=n.oid 
+                      AND (c.relstorage='a' OR c.relstorage='c')"""
+
+    conn = None
+    counter = 1
+    try:
+        results  = execute_sql(qry, master_port, dbname)
+        dburl = dbconn.DbURL(port=master_port, dbname=dbname)
+        conn = dbconn.connect(dburl)
+        for (tbl, sch) in results:
+            update_ao_stat_func(conn, sch, tbl, counter, batch_size=1000)
+            counter = counter + 1
+        conn.commit()
+    except Exception as e:
+        logger.info("Error updating ao statistics after restore")
+        raise e
+    finally:
+        if conn is not None:
+            conn.close()
+
+def get_restore_dir(data_dir, backup_dir):
+    if backup_dir is not None:
+        return backup_dir
+    else:
+        return data_dir
+
+def get_restore_tables_from_table_file(table_file):
+    if not os.path.exists(table_file):
+        raise Exception('Table file does not exist "%s"' % table_file)
+
+    return get_lines_from_file(table_file)
+
+def get_incremental_restore_timestamps(master_datadir, backup_dir, full_timestamp, inc_timestamp):
+    inc_file = generate_increments_filename(master_datadir, backup_dir, full_timestamp)
+    timestamps = get_lines_from_file(inc_file)
+    sorted_timestamps = sorted(timestamps, key=lambda x: int(x), reverse=True)
+    incremental_restore_timestamps = []
+    try:
+        incremental_restore_timestamps = sorted_timestamps[sorted_timestamps.index(inc_timestamp):]
+    except ValueError as e:
+        pass
+    return incremental_restore_timestamps 
+
+def get_partition_list(master_datadir, backup_dir, timestamp_key):
+    partition_list_file = generate_partition_list_filename(master_datadir, backup_dir, timestamp_key)
+    partition_list = get_lines_from_file(partition_list_file)
+    partition_list = [(p.split('.')[0].strip(), p.split('.')[1].strip()) for p in partition_list] 
+    return partition_list
+
+def get_dirty_table_file_contents(master_datadir, backup_dir, timestamp_key):
+    dirty_list_file = generate_dirtytable_filename(master_datadir, backup_dir, timestamp_key)
+    return get_lines_from_file(dirty_list_file)
+
+def create_plan_file_contents(master_datadir, backup_dir, table_set_from_metadata_file, incremental_restore_timestamps, full_timestamp):
+    restore_set = {}
+    for ts in incremental_restore_timestamps:
+        restore_set[ts] = []
+        dirty_tables = get_dirty_table_file_contents(master_datadir, backup_dir, ts)
+        for dt in dirty_tables:
+            if dt in table_set_from_metadata_file:
+                table_set_from_metadata_file.remove(dt)
+                restore_set[ts].append(dt)
+
+    if len(table_set_from_metadata_file) != 0:
+        restore_set[full_timestamp] = []
+        for table in table_set_from_metadata_file:
+            restore_set[full_timestamp].append(table)
+
+    return restore_set
+
+def write_to_plan_file(plan_file_contents, plan_file):
+    if plan_file is None or not plan_file:
+        raise Exception('Invalid plan file %s' % str(plan_file)) 
+
+    sorted_plan_file_contents = sorted(plan_file_contents, key=lambda x: int(x), reverse=True)
+  
+    lines_to_write = [] 
+    for ts in sorted_plan_file_contents:
+        tables_str = ','.join(plan_file_contents[ts])
+        lines_to_write.append(ts + ':' + tables_str)
+  
+    write_lines_to_file(plan_file, lines_to_write)
+    verify_lines_in_file(plan_file, lines_to_write)
+
+    return lines_to_write
+    
+def create_restore_plan(master_datadir, backup_dir, db_timestamp, dbname, ddboost):
+    dump_tables = get_partition_list(master_datadir=master_datadir,
+                                     backup_dir=backup_dir,
+                                     timestamp_key=db_timestamp) 
+
+    table_set_from_metadata_file = [schema + '.' + table for schema, table in dump_tables]
+
+    full_timestamp = get_full_timestamp_for_incremental(dbname, get_restore_dir(master_datadir, backup_dir), db_timestamp)
+    if not full_timestamp:
+        raise Exception("Could not locate fullbackup associated with ts '%s'" % db_timestamp)
+
+    incremental_restore_timestamps = get_incremental_restore_timestamps(master_datadir, backup_dir, full_timestamp, db_timestamp)
+
+    plan_file_contents = create_plan_file_contents(master_datadir, backup_dir, table_set_from_metadata_file, incremental_restore_timestamps, full_timestamp)
+
+    plan_file = generate_plan_filename(master_datadir, backup_dir, db_timestamp)  
+
+    write_to_plan_file(plan_file_contents, plan_file)
+
+    return plan_file
+
+def is_incremental_restore(master_datadir, backup_dir, timestamp):
+
+    filename = generate_report_filename(master_datadir, backup_dir, timestamp)
+    if not os.path.exists(filename):
+        logger.warn('Report file %s does not exist for restore timestamp %s' % (filename, timestamp))
+        return False
+
+    report_file_contents = get_lines_from_file(filename)
+    if check_backup_type(report_file_contents, 'Incremental'):
+        return True
+
+    return False 
+
+def is_begin_incremental_run(master_datadir, backup_dir, timestamp, noplan):
+    if is_incremental_restore(master_datadir, backup_dir, timestamp) and not noplan:
+        return True
+    else:
+        return False
+
+def get_plan_file_contents(master_datadir, backup_dir, timestamp):
+    plan_file_items = []
+    plan_file = generate_plan_filename(master_datadir, backup_dir, timestamp)
+    if not os.path.exists(plan_file):
+        raise Exception('Plan file %s does not exist' % plan_file) 
+    plan_file_lines = get_lines_from_file(plan_file)
+    if len(plan_file_lines) <= 0:
+        raise Exception('Plan file %s has no contents' % plan_file)
+
+    for line in plan_file_lines:
+        if ':' not in line:
+            raise Exception('Invalid plan file format')
+        parts = line.split(':')
+        plan_file_items.append((parts[0].strip(), parts[1].strip()))
+    return plan_file_items
+
+def get_restore_table_list(table_list, restore_tables):
+    restore_list = []
+
+    if restore_tables is None:
+        restore_list = table_list
+    else:
+        for table in table_list:
+            if table.strip() in restore_tables:
+                restore_list.append(table.strip())
+
+    if restore_list == []:  
+        return None
+
+    return create_temp_file_with_tables(restore_list)
+
+def validate_restore_tables_list(plan_file_contents, restore_tables):
+    if restore_tables is None:
+        return
+
+    table_list = [] 
+    for ts, table in plan_file_contents:
+            table_list.extend(table.split(','))
+
+    invalid_tables = []
+    for table in restore_tables:
+        if table not in table_list: 
+            invalid_tables.append(table)
+    
+    if invalid_tables != []:
+        raise Exception('Invalid tables for -T option: The following tables were not found in plan file : "%s"' % (invalid_tables))
+
+def restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables):
+    restore_data = False
+    plan_file_items = get_plan_file_contents(master_datadir, backup_dir, timestamp)
+    table_file = None
+
+    validate_restore_tables_list(plan_file_items, restore_tables)
+ 
+    for (ts, table_list) in plan_file_items:
+        if table_list:
+            restore_data = True
+            table_file = get_restore_table_list(table_list.split(','), restore_tables)
+            if table_file is None:
+                continue
+            cmd = 'gpdbrestore -t %s --table-file %s -a -v --noplan --noanalyze --noaostats' % (ts, table_file) 
+            if backup_dir is not None:
+                cmd += " -u %s" % backup_dir
+            logger.info('Invoking commandline: %s: ' % cmd)
+            Command('Invoking gpdbrestore', cmd).run(validateAfter=True) 
+
+    if not restore_data:
+        raise Exception('There were no tables to restore. Check the plan file contents for restore timestamp %s' % timestamp)
+
+    if table_file is not None: 
+        os.remove(table_file)
+
+    return True
+
+def populate_restore_tables(table, rows, non_partition_tables, partition_leaves):
+    if not rows:
+        non_partition_tables.append(table)
+    else:
+        for (schema_name, partition_leaf_name) in rows:
+            partition_leaf = schema_name.strip() + '.' + partition_leaf_name.strip()
+            partition_leaves.append(partition_leaf)
+    return (non_partition_tables, partition_leaves)
+                    
+def expand_partition_tables(dbname, restore_tables):
+    partition_leaves_sql = """
+                           SELECT x.schemaname, x.partitiontablename 
+                           FROM (
+                                SELECT distinct schemaname, tablename, partitiontablename, partitionlevel 
+                                FROM pg_partitions 
+                                WHERE tablename = '%s' and schemaname = '%s'
+                                ) as X, 
+                           (SELECT schemaname, tablename maxtable, max(partitionlevel) maxlevel 
+                            FROM pg_partitions 
+                            group by (tablename, schemaname)
+                           ) as Y
+                           WHERE x.schemaname = y.schemaname and x.tablename = Y.maxtable and x.partitionlevel = Y.maxlevel;
+"""
+
+    if restore_tables is None:
+        return
+
+    non_partition_tables = []
+    partition_leaves = []
+
+    with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
+        for table in restore_tables:
+            (schemaname, tablename) = table.split('.')
+            partition_sql = partition_leaves_sql % (tablename, schemaname)
+            curs = dbconn.execSQL(conn, partition_sql)
+            rows = curs.fetchall()
+            (non_partition_tables, partition_leaves) =  \
+                    populate_restore_tables(table, rows, non_partition_tables, partition_leaves)
+    return non_partition_tables + partition_leaves 
+
 class RestoreDatabase(Operation):
-    def __init__(self, restore_timestamp, no_analyze, drop_db, restore_global, master_datadir, master_port, ddboost): 
+    def __init__(self, restore_timestamp, no_analyze, drop_db, restore_global, master_datadir, backup_dir, 
+                master_port, ddboost, no_plan, restore_tables, batch_default, no_ao_stats): 
         self.restore_timestamp = restore_timestamp
         self.no_analyze = no_analyze
         self.drop_db = drop_db
         self.restore_global = restore_global
         self.master_datadir = master_datadir
+        self.backup_dir = backup_dir
         self.master_port = master_port
         self.ddboost = ddboost
+        self.no_plan = no_plan
+        self.restore_tables = restore_tables
+        self.batch_default = batch_default
+        self.no_ao_stats = no_ao_stats
+
     def execute(self): 
         (restore_timestamp, restore_db, compress) = ValidateRestoreDatabase(restore_timestamp = self.restore_timestamp,
                                                                             master_datadir = self.master_datadir,
+                                                                            backup_dir = self.backup_dir,
                                                                             master_port = self.master_port,
                                                                             ddboost = self.ddboost).run()
         if self.drop_db:
-            self._process_createdb(restore_timestamp, restore_db, self.master_datadir, self.master_port)
+            self._multitry_createdb(restore_timestamp, 
+                                    restore_db, 
+                                    self.master_datadir, 
+                                    self.backup_dir, 
+                                    self.master_port)
         
         if self.restore_global:
-            self._restore_global(restore_timestamp, self.master_datadir)
+            self._restore_global(restore_timestamp, self.master_datadir, self.backup_dir)
+       
+        if is_begin_incremental_run(self.master_datadir, self.backup_dir, self.restore_timestamp, self.no_plan):
+            metadata_file = generate_metadata_filename(self.master_datadir, self.backup_dir, self.restore_timestamp)
+            restore_line = self._build_schema_only_restore_line(restore_timestamp, 
+                                                                restore_db, 
+                                                                compress, 
+                                                                self.master_port, 
+                                                                metadata_file)
+            logger.info("Running metadata restore")
+            logger.info("Invoking commandline: %s" % restore_line) 
+            Command('Invoking gp_restore', restore_line).run(validateAfter=True)
 
-        restore_line = self._build_restore_line(restore_timestamp, restore_db, compress, self.master_port, self.ddboost)
-        logger.info(restore_line)
-        Command('Invoking gp_restore', restore_line).run(validateAfter=True)
+            logger.info("Running data restore")
+            self.restore_tables = expand_partition_tables(restore_db, self.restore_tables)
+            restore_incremental_data_only(self.master_datadir, 
+                                          self.backup_dir, 
+                                          self.restore_timestamp, 
+                                          self.restore_tables)
+
+            logger.info("Updating AO/CO statistics on master")
+            update_ao_statistics(self.master_port, restore_db)
+        else:
+            table_filter_file = self.create_filter_file() # returns None if nothing to filter
+
+            restore_line = self._build_restore_line(restore_timestamp, 
+                                                    restore_db, compress, 
+                                                    self.master_port, self.ddboost, 
+                                                    self.no_plan, table_filter_file, self.no_ao_stats)
+            logger.info('gp_restore commandline: %s: ' % restore_line)
+            Command('Invoking gp_restore', restore_line).run(validateAfter=True)
+
+            if table_filter_file: 
+                self.remove_filter_file(table_filter_file)
 
         if not self.no_analyze:
             self._analyze(restore_db, self.master_port)
+
     def _analyze(self, restore_db, master_port):
         conn = None
         logger.info('Commencing analyze of %s database, please wait' % restore_db)
@@ -77,14 +373,47 @@ class RestoreDatabase(Operation):
         finally:
             if conn is not None:
                 conn.close()
-    def _restore_global(self, restore_timestamp, master_datadir): 
+    
+    def create_filter_file(self):
+        if self.restore_tables is None:
+            return None
+
+        table_filter_file = create_temp_file_with_tables(self.restore_tables)
+
+        addresses = get_all_segment_addresses(self.master_port)
+
+        scp_file_to_hosts(addresses, table_filter_file, self.batch_default)
+
+        return table_filter_file
+
+    def remove_filter_file(self, filename):
+        addresses = get_all_segment_addresses(self.master_port)
+
+        try:
+            cmd = 'rm -f %s' % filename
+            run_pool_command(addresses, cmd, self.batch_default, check_results=False)
+        except Exception as e:
+            logger.info("cleaning up filter table list file failed: %s" % e.__str__())
+
+    def _restore_global(self, restore_timestamp, master_datadir, backup_dir): 
         logger.info('Commencing restore of global objects')
-        global_file = os.path.join(master_datadir, DUMP_DIR, restore_timestamp[0:8], "%s%s" % (GLOBAL_PREFIX, restore_timestamp))
+        global_file = os.path.join(get_restore_dir(master_datadir, backup_dir), DUMP_DIR, restore_timestamp[0:8], "%s%s" % (GLOBAL_PREFIX, restore_timestamp))
         if not CheckFile(global_file).run():
-            logger.warn('Unable to locate %s%s file in dump set' % (GLOBAL_PREFIX, restore_timestamp))
-            return
+            raise Exception('Unable to locate global file %s%s in dump set' % (GLOBAL_PREFIX, restore_timestamp))
         Psql('Invoking global dump', filename=global_file).run(validateAfter=True)
-    def _process_createdb(self, restore_timestamp, restore_db, master_datadir, master_port): 
+
+    def _multitry_createdb(self, restore_timestamp, restore_db, master_datadir, backup_dir, master_port):
+        no_of_trys = 15 
+        for i in range(no_of_trys):
+            try:
+                self._process_createdb(restore_timestamp, restore_db, master_datadir, backup_dir, master_port)
+            except ExceptionNoStackTraceNeeded, e:
+                time.sleep(1)
+            else:
+                return
+        raise ExceptionNoStackTraceNeeded('Failed to drop database %s' % restore_db)
+
+    def _process_createdb(self, restore_timestamp, restore_db, master_datadir, backup_dir, master_port): 
         conn = None
         try:
             dburl = dbconn.DbURL(port=master_port)
@@ -107,46 +436,68 @@ class RestoreDatabase(Operation):
             if conn is not None:
                 conn.close()
 
-        createdb_file = os.path.join(master_datadir, DUMP_DIR, restore_timestamp[0:8], "%s%s" % (CREATEDB_PREFIX, restore_timestamp))
-        logger.info('Invoking %s' % createdb_file)
+        createdb_file = os.path.join(get_restore_dir(master_datadir, backup_dir), DUMP_DIR, restore_timestamp[0:8], "%s%s" % (CREATEDB_PREFIX, restore_timestamp))
+        logger.info('Invoking sql file: %s' % createdb_file)
         Psql('Invoking schema dump', filename=createdb_file).run(validateAfter=True)
-    def _build_restore_line(self, restore_timestamp, restore_db, compress, master_port, ddboost): 
+
+    def _build_restore_line(self, restore_timestamp, restore_db, compress, master_port, ddboost, no_plan, table_filter_file, no_stats): 
         user = getpass.getuser()
         hostname = socket.gethostname()    # TODO: can this just be localhost? bash was using `hostname`
         path = os.path.join(DUMP_DIR, restore_timestamp[0:8])
+        if self.backup_dir is not None:
+            path = os.path.join(self.backup_dir, path)
         restore_line = "gp_restore -i -h %s -p %s -U %s --gp-d=%s --gp-i" % (hostname, master_port, user, path)
         restore_line += " --gp-k=%s --gp-r=%s --gp-l=p" % (restore_timestamp, path)
+        if table_filter_file:
+            restore_line += " --gp-f=%s" % table_filter_file
         if compress:
             restore_line += " --gp-c"
         restore_line += " -d %s" % restore_db
         if ddboost:
             restore_line += " --ddboost"
+        if no_plan:
+            restore_line += " -a"
+        if no_stats:
+            restore_line += " --gp-nostats"
         return restore_line
 
-
+    def _build_schema_only_restore_line(self, restore_timestamp, restore_db, compress, master_port, metadata_filename):
+        user = getpass.getuser()
+        hostname = socket.gethostname()    # TODO: can this just be localhost? bash was using `hostname`
+        path = os.path.join(DUMP_DIR, restore_timestamp[0:8])
+        if self.backup_dir is not None:
+            path = os.path.join(self.backup_dir, path)
+        restore_line = "gp_restore -i -h %s -p %s -U %s --gp-d=%s --gp-i" % (hostname, master_port, user, path)
+        restore_line += " --gp-k=%s --gp-r=%s --gp-l=p -s %s" % (restore_timestamp, path, metadata_filename)
+        if compress:
+            restore_line += " --gp-c"
+        restore_line += " -d %s" % restore_db
+        return restore_line
 
 class ValidateRestoreDatabase(Operation):
     """ TODO: add other checks. check for _process_createdb? """
-    def __init__(self, restore_timestamp, master_datadir, master_port, ddboost):
+    def __init__(self, restore_timestamp, master_datadir, backup_dir, master_port, ddboost):
         self.restore_timestamp = restore_timestamp
         self.master_datadir = master_datadir
         self.master_port = master_port
         self.ddboost = ddboost
+        self.backup_dir = backup_dir
     def execute(self):
-        (restore_timestamp, restore_db, compress) = ValidateTimestamp(self.restore_timestamp, self.master_datadir, self.ddboost).run()   
+        (restore_timestamp, restore_db, compress) = ValidateTimestamp(self.restore_timestamp, self.master_datadir, self.backup_dir, self.ddboost).run() 
         if not self.ddboost:
-            ValidateSegments(restore_timestamp, compress, self.master_port).run()
+            ValidateSegments(restore_timestamp, compress, self.master_port, self.backup_dir).run()
         return (restore_timestamp, restore_db, compress)
 
 
 
 class ValidateTimestamp(Operation):
-    def __init__(self, candidate_timestamp, master_datadir, ddboost = False):
+    def __init__(self, candidate_timestamp, master_datadir, backup_dir, ddboost = False):
         self.master_datadir = master_datadir
+        self.backup_dir = backup_dir
         self.candidate_timestamp = candidate_timestamp
         self.ddboost = ddboost
     def execute(self):
-        path = os.path.join(self.master_datadir, DUMP_DIR, self.candidate_timestamp[0:8])
+        path = os.path.join(get_restore_dir(self.master_datadir, self.backup_dir), DUMP_DIR, self.candidate_timestamp[0:8])
         createdb_file = os.path.join(path, "%s%s" % (CREATEDB_PREFIX, self.candidate_timestamp))
         if not CheckFile(createdb_file).run():
             raise ExceptionNoStackTraceNeeded("Dump file %s%s does not exist on Master" % (CREATEDB_PREFIX, self.candidate_timestamp))
@@ -156,16 +507,17 @@ class ValidateTimestamp(Operation):
             compress = CheckFile(compressed_file).run()
         else:
             compressed_file = os.path.join(path, "%s%s%s.gz" % (MASTER_DBDUMP_PREFIX, self.candidate_timestamp, POST_DATA_SUFFIX))
-            compress = CheckFile(compressed_file).run()	
+            compress = CheckFile(compressed_file).run() 
         return (self.candidate_timestamp, restore_db, compress)
 
 
 
 class ValidateSegments(Operation):
-    def __init__(self, restore_timestamp, compress, master_port):
+    def __init__(self, restore_timestamp, compress, master_port, backup_dir):
         self.restore_timestamp = restore_timestamp
         self.compress = compress
         self.master_port = master_port
+        self.backup_dir = backup_dir
     def execute(self): 
         """ TODO: Improve with grouping by host and ParallelOperation dispatch. """
         gparray = GpArray.initFromCatalog(dbconn.DbURL(port=self.master_port), utility=True)   
@@ -176,7 +528,7 @@ class ValidateSegments(Operation):
                 """ Why must every Segment function have the word Segment in it ?! """
                 raise ExceptionNoStackTraceNeeded("Host %s dir %s dbid %d marked as invalid" % (seg.getSegmentHostName(), seg.getSegmentDataDirectory(), seg.getSegmentDbId()))
 
-            path = os.path.join(seg.getSegmentDataDirectory(), DUMP_DIR, self.restore_timestamp[0:8])
+            path = os.path.join(get_restore_dir(seg.getSegmentDataDirectory(), self.backup_dir), DUMP_DIR, self.restore_timestamp[0:8])
             host = seg.getSegmentHostName()
             path = os.path.join(path, "%s0_%d_%s" % (DBDUMP_PREFIX, seg.getSegmentDbId(), self.restore_timestamp))
             if self.compress:
@@ -185,79 +537,10 @@ class ValidateSegments(Operation):
             if not exists:
                 raise ExceptionNoStackTraceNeeded("No dump file on %s at %s" % (seg.getSegmentHostName(), path))
 
-
-
-class RestoreTables(Operation):
-    """ If this seems like a hacky composition of RestoreDatabase, you're absolutely correct. """
-    def __init__(self, restore_timestamp, restore_tables, no_analyze, keep_dump_files, batch_default, master_datadir, master_port, ddboost): 
-        self.restore_timestamp = restore_timestamp
-        self.restore_tables = restore_tables
-        self.batch_default = batch_default
-        self.master_datadir = master_datadir
-        self.master_port = master_port
-        self.no_analyze = no_analyze
-        self.keep_dump_files = keep_dump_files
-        self.ddboost = ddboost
-    def execute(self):
-        (restore_timestamp, restore_db, compress) = ValidateTimestamp(candidate_timestamp = self.restore_timestamp,
-                                                                      master_datadir = self.master_datadir,
-                                                                      ddboost = self.ddboost).run()
-        ValidateRestoreTables(restore_tables = self.restore_tables,
-                              restore_db = restore_db,
-                              master_port = self.master_port).run()
-
-        if self.ddboost:
-            fake_timestamp = BuildDDBoostTableDumps(restore_timestamp = self.restore_timestamp,
-                                                    compress = compress,
-                                                    restore_tables = self.restore_tables,
-                                                    batch_default = self.batch_default,
-                                                    master_datadir = self.master_datadir,   
-                                                    master_port = self.master_port,
-                                                    ddboost = self.ddboost).run()
-        else:
-            fake_timestamp = BuildAllTableDumps(restore_timestamp = self.restore_timestamp,
-                                                compress = compress,
-                                                restore_tables = self.restore_tables,
-                                                batch_default = self.batch_default,
-                                                master_datadir = self.master_datadir,
-                                                master_port = self.master_port).run()
-
-        # Dump files reside on segments now, so there's no need for gp_dump to go out
-        # to the DDBoost storage unit. Thus, ddboost = None here.
-        RestoreDatabase(restore_timestamp = fake_timestamp,
-                        no_analyze = True,
-                        drop_db = False,
-                        restore_global = False,
-                        master_datadir = self.master_datadir,
-                        master_port = self.master_port,
-                        ddboost = None).run()                             
-        if not self.keep_dump_files:
-            ClearAllTableDumps(fake_timestamp = fake_timestamp,
-                               compress = compress,
-                               batch_default = self.batch_default,
-                               master_datadir = self.master_datadir,
-                               master_port = self.master_port).run()
-        if not self.no_analyze:
-            self._analyze(restore_db, self.restore_tables, self.master_port)
-    def _analyze(self, restore_db, restore_tables, master_port):
-        conn = None
-        try:
-            dburl = dbconn.DbURL(port=master_port, dbname=restore_db)
-            conn = dbconn.connect(dburl)
-            for table in restore_tables:
-                logger.info('Commencing analyze of %s in %s database, please wait...' % (table, restore_db))
-                try:
-                    execSQL(conn, 'analyze %s' % table)
-                    conn.commit()
-                except Exception, e:
-                    logger.warn('Issue with analyze of %s table, check log file for details' % table)
-                else:
-                    logger.info('Analyze of %s table completed without error' % table)
-        finally:
-            if conn is not None:
-                conn.close()
-
-
+def validate_tablenames(table_list):
+    for restore_table in table_list:
+        if '.' not in restore_table:
+            raise Exception("No schema name supplied for %s, removing from list of tables to restore" % restore_table)
 
 class ValidateRestoreTables(Operation):
     def __init__(self, restore_tables, restore_db, master_port): 
@@ -272,10 +555,6 @@ class ValidateRestoreTables(Operation):
             dburl = dbconn.DbURL(port=self.master_port, dbname=self.restore_db)
             conn = dbconn.connect(dburl)
             for restore_table in self.restore_tables:
-                if '.' not in restore_table:
-                    logger.warn("No schema name supplied for %s, removing from list of tables to restore" % restore_table)
-                    continue
-
                 schema, table = restore_table.split('.')
                 count = execSQLForSingleton(conn, "select count(*) from pg_class, pg_namespace where pg_class.relname = '%s' and pg_class.relnamespace = pg_namespace.oid and pg_namespace.nspname = '%s'" % (table, schema))
                 if count == 0:
@@ -299,414 +578,26 @@ class ValidateRestoreTables(Operation):
 
 
 
-class BuildDDBoostTableDumps(Operation):
-    def __init__(self, restore_timestamp, compress, restore_tables, batch_default, master_datadir, master_port, ddboost):
-        self.restore_timestamp = restore_timestamp
-        self.compress = compress
-        self.restore_tables = restore_tables
-        self.batch_default = batch_default
-        self.master_datadir = master_datadir
-        self.master_port = master_port
-        self.ddboost = ddboost
-    def execute(self):
-        fake_timestamp = PickDumpTimestamp(restore_timestamp = self.restore_timestamp,
-                                           compress = self.compress,
-                                           master_datadir = self.master_datadir).run()
-
-        gparray = GpArray.initFromCatalog(dbconn.DbURL(port=self.master_port), utility=True)  
-        primaries = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary(current_role=True)]
-        pool = WorkerPool(numWorkers = min(primaries, self.batch_default))
-        for seg in primaries:
-            real_filename = os.path.join(DUMP_DIR, self.restore_timestamp[0:8], "%s0_%d_%s" % (DBDUMP_PREFIX, seg.getSegmentDbId(), self.restore_timestamp))
-            fake_filename = os.path.join(seg.getSegmentDataDirectory(), DUMP_DIR, fake_timestamp[0:8], "%s0_%d_%s" % (DBDUMP_PREFIX, seg.getSegmentDbId(), fake_timestamp))
-            
-            if self.compress:
-                real_filename += '.gz'
-                fake_filename += '.gz'
-  
-            table_str = ' '.join(['--table=%s' % table for table in self.restore_tables])
-            # TODO: Escaping. Low priority due to MPP-12880, et al
-            cmd = Command('DDBoost building dump file for dbid %s' % seg.getSegmentDbId(),
-                          'gpddboost --from-file=%s --to-file=%s %s' % (real_filename, fake_filename, table_str),
-                          ctxt=REMOTE,
-                          remoteHost = seg.getSegmentHostName())
-            pool.addCommand(cmd)
-        pool.join()
-        pool.check_results()
-
-        BuildDDBoostMasterTableDump(restore_timestamp = self.restore_timestamp,
-                             fake_timestamp = fake_timestamp,
-                             compress = self.compress,
-                             master_datadir = self.master_datadir).run()
-
-        # Build master cdatabase file
-        real_createdb = os.path.join(DUMP_DIR, self.restore_timestamp[0:8], "%s%s" % (CREATEDB_PREFIX, self.restore_timestamp))
-        fake_createdb = os.path.join(self.master_datadir, DUMP_DIR, fake_timestamp[0:8], "%s%s" % (CREATEDB_PREFIX, fake_timestamp))
-        Command('Copying cdatabase file from DDBoost',
-                'gpddboost --copyFromDDBoost --from-file=%s --to-file=%s' 
-                % (real_createdb, fake_createdb)).run(validateAfter = True)
-
-        # Build master _post_data file:
-        CopyPostData(self.restore_timestamp, fake_timestamp, self.compress, self.master_datadir).run()
-        
-        return fake_timestamp
-
-
-
-class BuildAllTableDumps(Operation):
-    def __init__(self, restore_timestamp, compress, restore_tables, batch_default, master_datadir, master_port): 
-        self.restore_timestamp = restore_timestamp
-        self.compress = compress
-        self.restore_tables = restore_tables
-        self.batch_default = batch_default
-        self.master_datadir = master_datadir
-        self.master_port = master_port
-    def execute(self): 
-        fake_timestamp = PickDumpTimestamp(restore_timestamp = self.restore_timestamp,
-                                           compress = self.compress,
-                                           master_datadir = self.master_datadir).run()
-
-        gparray = GpArray.initFromCatalog(dbconn.DbURL(port=self.master_port), utility=True)  
-        primaries = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary(current_role=True)]
-        operations = []
-        for seg in primaries:
-            real_filename = os.path.join(seg.getSegmentDataDirectory(), DUMP_DIR, self.restore_timestamp[0:8], "%s0_%d_%s" % (DBDUMP_PREFIX, seg.getSegmentDbId(), self.restore_timestamp))
-            fake_filename = os.path.join(seg.getSegmentDataDirectory(), DUMP_DIR, fake_timestamp[0:8], "%s0_%d_%s" % (DBDUMP_PREFIX, seg.getSegmentDbId(), fake_timestamp))
-            operations.append( BuildRemoteTableDump(self.restore_tables, real_filename, fake_filename, self.compress, seg.getSegmentHostName()) )
-
-        ParallelOperation(operations, self.batch_default).run()
-        for operation in operations:
-            try:
-                operation.get_ret()
-            except Exception, e:
-                logger.exception('Parallel table dump file build failed.')
-                raise ExceptionNoStackTraceNeeded('Parallel table dump file build failed, review log file for details')
-
-        BuildMasterTableDump(restore_timestamp = self.restore_timestamp,
-                             fake_timestamp = fake_timestamp,
-                             compress = self.compress,
-                             master_datadir = self.master_datadir).run()
-
-        # Build master cdatabase file
-        real_createdb = os.path.join(self.master_datadir, DUMP_DIR, self.restore_timestamp[0:8], "%s%s" % (CREATEDB_PREFIX, self.restore_timestamp))
-        fake_createdb = os.path.join(self.master_datadir, DUMP_DIR, fake_timestamp[0:8], "%s%s" % (CREATEDB_PREFIX, fake_timestamp))
-        shutil.copy(real_createdb, fake_createdb)
-
-        # Build master _post_data file:
-        CopyPostData(self.restore_timestamp, fake_timestamp, self.compress, self.master_datadir).run()
-       
-        return fake_timestamp
-
-
-
-class PickDumpTimestamp(Operation):
-    """ 
-    Picks an unused timestamp to be used for a fake dump file. 
-
-    Considerations:
-    1. The timestamp cannot merely be the one provided as an argument, as we'd like
-    the original and fake dumps to be distinguishable by filename alone.
-    2. The timestamp must adhere to gp_dump's expectations, i.e. YYYYMMDDHHMMSS. The
-    reason for this timestamp, and the ensuing fake filename, is to fool gp_restore into
-    believing the given dump file had been generated by gp_dump, when in fact, it is being
-    thrown together on the fly by RestoreTables.
-    """
-    def __init__(self, restore_timestamp, compress, master_datadir):
-        self.restore_timestamp = restore_timestamp
-        self.compress = compress
-        self.master_datadir = master_datadir
-    def execute(self):
-        for fake_time in range(0, 1000000):
-            fake_timestamp = "%s%06d" % (self.restore_timestamp[0:8], fake_time)
-            path = os.path.join(self.master_datadir, DUMP_DIR, fake_timestamp[0:8], "%s%s" % (MASTER_DBDUMP_PREFIX, fake_timestamp))
-            if self.compress:
-                path += '.gz'
-            if not CheckFile(path).run():
-                break
-        else:   
-            raise ExceptionNoStackTraceNeeded("Could not construct table dump")
-        return fake_timestamp
-
 class CopyPostData(Operation):
     ''' Copy _post_data when using fake timestamp. 
         The same operation can be done with/without ddboost, because
         the _post_data file is always kept on the master, not on the dd server '''
-    def __init__(self, restore_timestamp, fake_timestamp, compress, master_datadir):
+    def __init__(self, restore_timestamp, fake_timestamp, compress, master_datadir, backup_dir):
         self.restore_timestamp = restore_timestamp
         self.fake_timestamp = fake_timestamp
         self.compress = compress
         self.master_datadir = master_datadir
+        self.backup_dir = backup_dir
     def execute(self):
          # Build master _post_data file:
-        real_post_data = os.path.join(self.master_datadir, DUMP_DIR, self.restore_timestamp[0:8], "%s%s%s" % (MASTER_DBDUMP_PREFIX, self.restore_timestamp, POST_DATA_SUFFIX))
-        fake_post_data = os.path.join(self.master_datadir, DUMP_DIR, self.fake_timestamp[0:8], "%s%s%s" % (MASTER_DBDUMP_PREFIX, self.fake_timestamp, POST_DATA_SUFFIX))
+        restore_dir = get_restore_dir(self.master_datadir, self.backup_dir)
+        real_post_data = os.path.join(restore_dir, DUMP_DIR, self.restore_timestamp[0:8], "%s%s%s" % (MASTER_DBDUMP_PREFIX, self.restore_timestamp, POST_DATA_SUFFIX))
+        fake_post_data = os.path.join(restore_dir, DUMP_DIR, self.fake_timestamp[0:8], "%s%s%s" % (MASTER_DBDUMP_PREFIX, self.fake_timestamp, POST_DATA_SUFFIX))
         if (self.compress):
             real_post_data = real_post_data + ".gz"
             fake_post_data = fake_post_data + ".gz"
         shutil.copy(real_post_data, fake_post_data)
         
-class BuildMasterTableDump(Operation):
-    def __init__(self, restore_timestamp, fake_timestamp, compress, master_datadir):
-        self.restore_timestamp = restore_timestamp
-        self.fake_timestamp = fake_timestamp
-        self.compress = compress
-        self.master_datadir = master_datadir
-    def execute(self):
-        real_filename = os.path.join(self.master_datadir, DUMP_DIR, self.restore_timestamp[0:8], "%s%s" % (MASTER_DBDUMP_PREFIX, self.restore_timestamp))
-        fake_filename = os.path.join(self.master_datadir, DUMP_DIR, self.fake_timestamp[0:8], "%s%s" % (MASTER_DBDUMP_PREFIX, self.fake_timestamp))
-        real_file, fake_file = None, None
-        try:
-            if self.compress:
-                real_file = gzip.open(real_filename + '.gz', 'r')
-                fake_file = gzip.open(fake_filename + '.gz', 'w')
-            else:
-                real_file = open(real_filename, 'r')
-                fake_file = open(fake_filename, 'w')
-
- 
-            # TODO: copy over data among the first 20 lines that begin with 'SET'. Why 20? See gpdbrestore.sh:1025.
-            # e.g.
-            #  1 --
-            #  2 -- Greenplum Database database dump
-            #  3 --
-            #  4 
-            #  5 SET statement_timeout = 0;
-            #  6 SET client_encoding = 'UTF8';
-            #  7 SET standard_conforming_strings = off;
-            #  8 SET check_function_bodies = false;
-            #  9 SET client_min_messages = warning;
-            # 10 SET escape_string_warning = off;
-            # 11 
-            # 12 SET default_with_oids = false;
-            # 13 
-            # 14 --
-            # 15 -- Name: SCHEMA public; Type: COMMENT; Schema: -; Owner: ashwin
-            # 16 --
-            # 17 
-            # 18 COMMENT ON SCHEMA public IS 'Standard public schema';
-            # 19 
-            # 20 
-            for lineno, line in enumerate(real_file):
-                if line.startswith("SET"):
-                    fake_file.write(line)
-                if lineno > 20:
-                    break
-        except Exception, e:
-            logger.exception('Master dump file build failed.')
-            raise ExceptionNoStackTraceNeeded('Master dump file build failed, review log file for details')
-        finally:
-            if real_file is not None:
-                real_file.close()
-            if fake_file is not None:
-                fake_file.close()
-   
-
-class BuildDDBoostMasterTableDump(Operation):
-    def __init__(self, restore_timestamp, fake_timestamp, compress, master_datadir):
-        self.restore_timestamp = restore_timestamp
-        self.fake_timestamp = fake_timestamp
-        self.compress = compress
-        self.master_datadir = master_datadir
-    def execute(self):
-        real_filename = os.path.join(self.master_datadir, DUMP_DIR, self.restore_timestamp[0:8], "%s%s" % (MASTER_DBDUMP_PREFIX, self.restore_timestamp))
-        fake_filename = os.path.join(self.master_datadir, DUMP_DIR, self.fake_timestamp[0:8], "%s%s" % (MASTER_DBDUMP_PREFIX, self.fake_timestamp))
-        real_file, fake_file = None, None
-        try:
-            if self.compress:
-                real_filename += '.gz'
-                fake_file = gzip.open(fake_filename + '.gz', 'w')
-            else:
-                fake_file = open(fake_filename, 'w')
-                
-            cmd = Command('Copying master dump file from DDBoost',
-                'gpddboost --readFile --from-file=%s | head -n 20'
-                % (real_filename))
-
-            cmd.run(validateAfter = True)
-            line_list = cmd.get_results().stdout.splitlines()
-            # TODO: copy over data among the first 20 lines that begin with 'SET'. Why 20? See gpdbrestore.sh:1025.
-            # e.g.
-            #  1 --
-            #  2 -- Greenplum Database database dump
-            #  3 --
-            #  4 
-            #  5 SET statement_timeout = 0;
-            #  6 SET client_encoding = 'UTF8';
-            #  7 SET standard_conforming_strings = off;
-            #  8 SET check_function_bodies = false;
-            #  9 SET client_min_messages = warning;
-            # 10 SET escape_string_warning = off;
-            # 11 
-            # 12 SET default_with_oids = false;
-            # 13 
-            # 14 --
-            # 15 -- Name: SCHEMA public; Type: COMMENT; Schema: -; Owner: ashwin
-            # 16 --
-            # 17 
-            # 18 COMMENT ON SCHEMA public IS 'Standard public schema';
-            # 19 
-            # 20 
-            for lineno, line in enumerate(line_list):
-                if line.startswith("SET"):
-                    fake_file.write(line)
-                if lineno > 20:
-                    break
-        except Exception, e:
-            logger.exception('Master dump file build failed.')
-            raise ExceptionNoStackTraceNeeded('Master dump file build failed, review log file for details')
-        finally:
-            if real_file is not None:
-                real_file.close()
-            if fake_file is not None:
-                fake_file.close()
-   
-
-
-class ClearAllTableDumps(Operation):
-    """ TODO: This could be construed as the undo/rollback of BuildAllTable Dumps. """
-    def __init__(self, fake_timestamp, compress, batch_default, master_datadir, master_port): 
-        self.fake_timestamp = fake_timestamp
-        self.compress = compress
-        self.batch_default = batch_default
-        self.master_datadir = master_datadir
-        self.master_port = master_port
-    def execute(self): 
-        logger.info('Commencing deletion of temporary table dump files')
-
-        # Remove master dump file
-        path = os.path.join(self.master_datadir, DUMP_DIR, self.fake_timestamp[0:8], "%s%s" % (MASTER_DBDUMP_PREFIX, self.fake_timestamp))
-        if self.compress:
-            path += '.gz'
-        try:
-            RemoveFile(path).run()
-        except OSError, e:
-            logger.warn('Failed to remove %s on master' % path)
-
-        # Remove master cdatabase file
-        path = os.path.join(self.master_datadir, DUMP_DIR, self.fake_timestamp[0:8], "%s%s" % (CREATEDB_PREFIX, self.fake_timestamp))
-        try:
-            RemoveFile(path).run()
-        except OSError, e:
-            logger.warn('Failed to remove %s on master' % path)
-
-        # Remove master _post_data file
-        path = os.path.join(self.master_datadir, DUMP_DIR, self.fake_timestamp[0:8], "%s%s%s" % (MASTER_DBDUMP_PREFIX, self.fake_timestamp, POST_DATA_SUFFIX))
-        if self.compress:
-            path += '.gz'
-        try:
-            RemoveFile(path).run()
-        except OSError, e:
-            logger.warn('Failed to remove %s on master' % path)
-
-        # Remove segment dump files
-        operations = []
-        gparray = GpArray.initFromCatalog(dbconn.DbURL(port=self.master_port), utility=True)
-        primaries = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary(current_role=True)]
-        for seg in primaries:
-            path = os.path.join(seg.getSegmentDataDirectory(), DUMP_DIR, self.fake_timestamp[0:8], "%s0_%d_%s" % (DBDUMP_PREFIX, seg.getSegmentDbId(), self.fake_timestamp))
-            if self.compress:
-                path += '.gz'
-            host = seg.getSegmentHostName()
-            operations.append(RemoveRemoteFile(path, host))
-
-        ParallelOperation(operations, self.batch_default).run()
-        for operation in operations:
-            try:    
-                operation.get_ret()
-            except OSError, e:
-                logger.warn('Failed to remove %s on %s' % (path, host))
-
-
-
-def BuildRemoteTableDump(restore_tables, real_filename, fake_filename, compress, host):
-    return RemoteOperation(BuildTableDump(restore_tables, real_filename, fake_filename, compress), host)
-
-
-
-class BuildTableDump(Operation):
-    """
-    Builds "fake" dump file for segment from a given, original dump file where
-    the newly created dump file contains data pertaining only to the desired tables
-
-    Sample of expected dump file:
-# --
-# -- Greenplum Database database dump
-# --
-#
-# SET client_encoding = 'UTF8';
-# SET standard_conforming_strings = off;
-# SET check_function_bodies = false;
-# SET client_min_messages = warning;
-# SET escape_string_warning = off;
-#
-# SET search_path = public, pg_catalog;
-#
-# --
-# -- Data for Name: a1; Type: TABLE DATA; Schema: public; Owner: kumara64
-# --
-# 
-# COPY a1 (x) FROM stdin;
-# 1
-# 2
-# 3
-# \.
-    """
-    def __init__(self, restore_tables, real_filename, fake_filename, compress):
-        self.restore_tables = restore_tables
-        self.real_filename = real_filename
-        self.fake_filename = fake_filename
-        self.compress = compress
-    def execute(self):
-        logger.info('Building dump file header')
-        dump_schemas = set()
-        dump_tables = set()
-        for restore_table in self.restore_tables:
-            schema, table = restore_table.split('.')
-            dump_schemas.add(schema)
-            dump_tables.add((schema, table))
-
-        search_path_expr = "SET search_path = "
-        len_search_path_expr = len(search_path_expr)
-        copy_expr = "COPY " 
-        len_copy_expr = len(copy_expr)
-        copy_end_expr = "\\."
-
-        real_file, fake_file = None, None
-        schema, table = None, None
-        output = False
-        myopen = open
-        if self.compress:
-            self.real_filename += '.gz'
-            self.fake_filename += '.gz'
-            myopen = lambda filename, mode: closing(gzip.open(filename, mode))
-
-        with myopen(self.fake_filename, 'w') as fake_file:
-            with myopen(self.real_filename, 'r') as real_file:
-                for line in real_file:
-                    if line.startswith(search_path_expr):
-                        temp = line[len_search_path_expr:]
-                        idx = temp.find(",")
-                        if idx == -1:
-                            continue
-                        schema = temp[:idx]
-                        if schema in dump_schemas:
-                            fake_file.write(line)
-                    elif line.startswith(copy_expr):
-                        temp = line[len_copy_expr:]
-                        idx = temp.index(" ")
-                        table = temp[:idx]
-                        if (schema, table) in dump_tables:
-                            output = True
-                    elif output and line.startswith(copy_end_expr):
-                        dump_tables.remove((schema, table))
-                        table = None
-                        output = False
-                        fake_file.write(line)
-
-                    if output:
-                        fake_file.write(line)
-
-
 
 class GetDbName(Operation):
     def __init__(self, createdb_file):
@@ -775,6 +666,13 @@ class RecoverRemoteDumps(Operation):
                             srcHost=from_host,
                             srcFile=os.path.join(from_path, createdb_file),
                             dstFile=os.path.join(to_path, createdb_file)))
+
+        report_file = "%s%s.rpt" % (DBDUMP_PREFIX, self.restore_timestamp)
+        pool.addCommand(Scp('Copying report file',
+                            srcHost=from_host,
+                            srcFile=os.path.join(from_path, report_file),
+                            dstFile=os.path.join(to_path, report_file)))
+
         post_data_file = "%s%s%s" % (MASTER_DBDUMP_PREFIX, self.restore_timestamp, POST_DATA_SUFFIX)
         if self.compress:
             post_data_file += ".gz"
@@ -794,15 +692,17 @@ class RecoverRemoteDumps(Operation):
 
 
 class GetDumpTables(Operation):
-    def __init__(self, restore_timestamp, master_datadir, ddboost): 
+    def __init__(self, restore_timestamp, master_datadir, backup_dir, ddboost): 
         self.master_datadir = master_datadir
         self.restore_timestamp = restore_timestamp
         self.ddboost = ddboost
+        self.backup_dir = backup_dir
     def execute(self): 
         (restore_timestamp, restore_db, compress) = ValidateTimestamp(master_datadir = self.master_datadir,
+                                                                      backup_dir = self.backup_dir, 
                                                                       candidate_timestamp = self.restore_timestamp,
                                                                       ddboost = self.ddboost).run()
-        dump_file = os.path.join(self.master_datadir, DUMP_DIR, restore_timestamp[0:8], "%s%s" % (MASTER_DBDUMP_PREFIX, restore_timestamp))
+        dump_file = os.path.join(get_restore_dir(self.master_datadir, self.backup_dir), DUMP_DIR, restore_timestamp[0:8], "%s%s" % (MASTER_DBDUMP_PREFIX, restore_timestamp))
         if compress:
             dump_file += '.gz'
 

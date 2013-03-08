@@ -152,6 +152,31 @@ GetMatchString(regmatch_t *pMatch, char *pszInput)
 }
 
 /*
+ * isFilteringAllowed: This method checks if we should filter out tables based on 
+ *                     whether we are using incremental mode for backup and if 
+ *                     we are on the master
+ *  Arguments:
+ *           role - The role of the segment E.g ROLE_MASTER, NON_MASTER etc
+ *           incremental - a bool which is true if we are in incremental backup mode
+ *                                         false otherwise
+ *
+ *   Returns: true if filtering is allowed in this context and false otherwise
+ *
+ */
+bool
+isFilteringAllowedNow(int role, bool incrementalBackup) 
+{
+	if (!incrementalBackup)
+		return true;
+
+	if (role != ROLE_MASTER)
+		return true;
+
+	return false;
+}
+
+
+/*
  * GetTimeNow: This function formats a string with the current local time
  *	formatted as YYYYMMDD:HH:MM:SS.
  *
@@ -741,6 +766,19 @@ Base64ToData(char *pszIn, unsigned int *pOutLen)
 }
 
 char *
+GetTimestampKey(char* timestamp_key)
+{
+	/* User has not provided timestamp, so we generate one */
+	if (!timestamp_key){
+		mpp_err_msg("INFO", "GetTimestampKey", "Timestamp key is generated as it is not provided by the user.\n");
+		return GenerateTimestampKey();
+	} 
+
+	/* User has provided a valid timestamp, we simply use that */
+	return strdup(timestamp_key);
+}
+
+char *
 GenerateTimestampKey(void)
 {
 	struct tm	pNow;
@@ -757,6 +795,34 @@ GenerateTimestampKey(void)
 			pNow.tm_min,
 			pNow.tm_sec);
 	return strdup(sNow);
+}
+
+bool
+ValidateTimestampKey(char* key)
+{
+	const int max_gp_key_size = 14;
+	int i = 0;
+
+	if (!key){
+		return false;
+	}
+
+	for (i = 0; i < max_gp_key_size; ++i)
+	{
+		// early null-terminator
+		if (!key[i])
+			return false;
+
+		// non key character
+		if (!isdigit(key[i]))
+			return false;
+	}
+
+	// expect null-terminator at end of key
+	if (key[max_gp_key_size])
+		return false;
+	else
+		return true;
 }
 
 /*
@@ -844,6 +910,62 @@ parseDbidSet(int *dbidset, char *dump_set)
 
 	return count;
 }
+
+const char* 
+getBackupTypeString(bool incremental)
+{
+	if (incremental)
+	{
+		return "Backup Type: Incremental";
+	}
+	else
+	{
+		return "Backup Type: Full";
+	}
+}
+
+char* 
+formCompressionProgramString(char* compPg)
+{
+	char extra[] = " -c ";
+	char* retVal = realloc(compPg, strlen(compPg) + sizeof(extra) + 2);
+	if (retVal)
+	{
+		strcat(retVal, extra);	/* decompress to stdout */
+	}
+	return retVal;
+}
+
+void 
+formSegmentPsqlCommandLine(char** retVal, const char* inputFileSpec, bool compUsed, const char* compProg,
+							const char* filter_script, const char* table_filter_file, 
+							int role, const char* psqlPg, const char* catPg)
+{
+	char* pszCmdLine = *retVal;
+	if (compUsed)
+	{
+		strcpy(pszCmdLine, compProg);
+		strcat(pszCmdLine, inputFileSpec);
+	}
+	else
+	{
+		strcpy(pszCmdLine, catPg);
+		strcat(pszCmdLine, " ");
+		strcat(pszCmdLine, inputFileSpec);
+	}
+
+	if (table_filter_file && (role == ROLE_SEGDB))
+	{
+		strcat(pszCmdLine, " | ");
+		strcat(pszCmdLine, filter_script);
+		strcat(pszCmdLine, " -t ");
+		strcat(pszCmdLine, table_filter_file);
+	}
+
+    strcat(pszCmdLine, " | ");
+    strcat(pszCmdLine, psqlPg);
+}
+	
 
 #ifdef USE_DDBOOST
 #include <dlfcn.h>
@@ -1441,4 +1563,46 @@ initDDSystem(ddp_inst_desc_t *ddp_inst, ddp_conn_desc_t *ddp_conn, ddp_client_in
 
 	return 0;
 }
+
+				
+
+void
+formDDBoostPsqlCommandLine(char** retVal, bool compUsed, const char* ddboostPg, const char* compProg, 
+							const char* ddp_file_name, const char* dd_boost_buf_size,
+							const char* filter_script, const char* table_filter_file, 
+							int role, const char* psqlPg)
+{
+	char* pszCmdLine = *retVal;
+
+	strcpy(pszCmdLine, ddboostPg);
+	strcat(pszCmdLine, " --readFile");
+	strcat(pszCmdLine, " --from-file=");
+	strcat(pszCmdLine, ddp_file_name);
+	
+	if(compUsed)
+	{
+		strcat(pszCmdLine, ".gz");
+	}
+
+	strcat(pszCmdLine, " --dd_boost_buf_size=");
+	strcat(pszCmdLine, dd_boost_buf_size);
+	strcat(pszCmdLine, " | ");
+
+	if(compUsed)
+	{
+		strcat(pszCmdLine, compProg);
+		strcat(pszCmdLine, "| ");
+	}
+
+	if (table_filter_file && (role == ROLE_SEGDB))
+	{
+		strcat(pszCmdLine, filter_script);
+		strcat(pszCmdLine, " -t ");
+		strcat(pszCmdLine, table_filter_file);
+		strcat(pszCmdLine, " | ");
+	}
+	strcat(pszCmdLine, psqlPg);
+}
+
+
 #endif

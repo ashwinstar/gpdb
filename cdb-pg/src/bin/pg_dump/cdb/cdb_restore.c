@@ -55,6 +55,7 @@ static bool dataOnly = false;
 static bool schemaOnly = false;
 static bool bForcePassword = false;
 static bool bIgnoreVersion = false;
+static bool bAoStats = true;
 static const char *pszAgent = "gp_restore_agent";
 
 static const char *logInfo = "INFO";
@@ -62,10 +63,10 @@ static const char *logWarn = "WARN";
 static const char *logError = "ERROR";
 static const char *logFatal = "FATAL";
 const char *progname;
-
-#ifdef USE_DDBOOST
 static char * addPassThroughLongParm(const char *Parm, const char *pszValue, char *pszPassThroughParmString);
 static char * shellEscape(const char *shellArg, PQExpBuffer escapeBuf);
+
+#ifdef USE_DDBOOST
 static int dd_boost_enabled = 0;
 #endif
 
@@ -187,7 +188,8 @@ main(int argc, char **argv)
 		/*
 		 * If any AO table data was restored, update the master AO statistics
 		 */
-		updateAppendOnlyStats(pConn);
+		if (bAoStats)
+			updateAppendOnlyStats(pConn);
 	}
 
 	/*
@@ -247,10 +249,7 @@ usage(void)
 
 	printf(("\nGeneral options:\n"));
 	printf(("  -d, --dbname=NAME        output database name\n"));
-	/* printf(("  -f, --file=FILENAME      output file name\n")); */
-	/* printf(("  -F, --format=c|t         specify backup file format\n")); */
 	printf(("  -i, --ignore-version     proceed even when server version mismatches\n"));
-	//printf(("  -l, --list               print summarized TOC of the archive\n"));
 	printf(("  -v, --verbose            verbose mode. adds verbose information to the\n"
 			"                           per segment status files\n"));
 	printf(("  --help                   show this help, then exit\n"));
@@ -258,25 +257,7 @@ usage(void)
 
 	printf(("\nOptions controlling the output content:\n"));
 	printf(("  -a, --data-only          restore only the data, no schema\n"));
-	//printf(("  -c, --clean              clean (drop) schema prior to create\n"));
-	//printf(("  -C, --create             issue commands to create the database\n"));
-	//printf(("  -I, --index=NAME         restore named index\n"));
-	//printf(("  -L, --use-list=FILENAME  use specified table of contents for ordering\n"
-	//		 "                           output from this file\n"));
-	//printf(("  -N, --orig-order         restore in original dump order\n"));
-	//printf(("  -o, --oid-order          restore in OID order\n"));
-	//printf(("  -O, --no-owner           do not output commands to set object ownership\n"));
-	//printf(("  -P, --function=NAME(args)\n"
-	//		 "                           restore named function\n"));
-	//printf(("  -r, --rearrange          rearrange output to put indexes etc. at end\n"));
 	printf(("  -s, --schema-only        restore only the schema, no data\n"));
-	//printf(("  -S, --superuser=NAME     specify the superuser user name to use for\n"
-	//		 "                           disabling triggers\n"));
-	//printf(("  -t, --table=NAME         restore named table\n"));
-	//printf(("  -T, --trigger=NAME       restore named trigger\n"));
-	//printf(("  -x, --no-privileges      skip restoration of access privileges (grant/revoke)\n"));
-	//printf(("  -X disable-triggers, --disable-triggers\n"
-	//		 "                           disable triggers during data-only restore\n"));
 
 	printf(("\nConnection options:\n"));
 	printf(("  -h, --host=HOSTNAME      database server host or socket directory\n"));
@@ -293,9 +274,7 @@ usage(void)
 	printf(("  --gp-l=FILELOCATIONS    backup files are on (p)rimaries only (default)\n"));
 	printf(("                          or (i)ndividual segdb (must be followed with a list of dbid's\n"));
 	printf(("                          where backups are located. For example: --gp-l=i[10,12,15]\n"));
-
-	//printf(("\nIf no input file name is supplied, then standard input is used.\n\n"));
-	//printf(("Report bugs to <pgsql-bugs@postgresql.org>.\n"));
+	printf(("  --gp-f=FILE             FILE, present on all machines, with tables to include in restore\n"));
 }
 
 bool
@@ -366,6 +345,8 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
                 {"ddboost", no_argument, NULL, 10},
 #endif
 
+		{"gp-f", required_argument, NULL, 11},
+		{"gp-nostats", no_argument, NULL, 12},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -714,7 +695,13 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 				dd_boost_enabled = 1;
 				break;
 #endif
+			case 11:
+				pInputOpts->pszPassThroughParms = addPassThroughLongParm("gp-f", optarg, pInputOpts->pszPassThroughParms);
+				break;
 
+			case 12:
+				bAoStats = false;
+				break;
 
 			default:
 				mpp_err_msg_cache(logError, progname, "Try \"%s --help\" for more information.\n", progname);
@@ -1782,7 +1769,6 @@ reportMasterError(InputOptions inputopts, const ThreadParm * pMasterParm, const 
 	return failCount;
 }
 
-#ifdef USE_DDBOOST
 /*
  * addPassThroughLongParm: this function adds a long option to the string of pass-through parameters.
  * These get sent to each backend and get passed to the gp_dump_agent program.
@@ -1866,5 +1852,4 @@ shellEscape(const char *shellArg, PQExpBuffer escapeBuf)
 
         return escapeBuf->data;
 }
-#endif
 

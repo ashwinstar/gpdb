@@ -73,6 +73,7 @@ static int dump_inserts;		/* dump data using proper insert strings */
 static int column_inserts;			/* put attr names into insert strings */
 static char *dumpencoding = NULL;
 static bool schemaOnly;
+static bool incremental_backup;
 static bool dataOnly;
 static bool aclsSkip;
 static char *selectTableName = NULL;	/* name of a single table to dump */
@@ -170,7 +171,8 @@ main(int argc, char **argv)
 	 * Process the schema and table include/exclude lists and determine the
 	 * OIDs of the tables to be dumped.
 	 */
-	convert_patterns_to_oids();
+	if (!incremental_backup)
+		convert_patterns_to_oids();
 
 	/*
 	 * make changes and verifications (if any) needed to be made before
@@ -856,6 +858,8 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 #endif
 		{"table-file", required_argument, NULL, 7},
 		{"exclude-table-file", required_argument, NULL, 8},
+		{"incremental", no_argument, NULL, 9},
+		{"gp-k", required_argument, NULL, 10},
 
 		{NULL, 0, NULL, 0}
 	};
@@ -873,7 +877,7 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 	g_comment_end[0] = '\0';
 
 
-	dataOnly = schemaOnly = dump_inserts = column_inserts = false;
+	dataOnly = schemaOnly = incremental_backup = dump_inserts = column_inserts = false;
 
 	progname = (char *) get_progname(argv[0]);
 
@@ -1211,6 +1215,19 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 
 				break;
 
+			case 9:
+				pInputOpts->pszPassThroughParms = addPassThroughLongParm("incremental", NULL, pInputOpts->pszPassThroughParms);
+				incremental_backup = true;
+				break;
+
+			case 10:
+				pInputOpts->pszTimestampKey = Safe_strdup(optarg);
+				if (!ValidateTimestampKey(pInputOpts->pszTimestampKey)) {
+					mpp_err_msg_cache(logError, progname, "Invalid timestamp key provided\n");
+					goto cleanup;
+				}
+				break;
+
 			default:
 				mpp_err_msg_cache(logError, progname, "Try \"%s --help\" for more information.\n", progname);
 				goto cleanup;
@@ -1401,7 +1418,7 @@ help(const char *progname)
 	//printf(("  -C, --create             include commands to create database in dump\n"));
 	printf(("  -d, --inserts            dump data as INSERT, rather than COPY, commands\n"));
 	printf(("  -D, --column-inserts     dump data as INSERT commands with column names\n"));
-	printf(_("  -E, --encoding=ENCODING     dump the data in encoding ENCODING\n"));
+	printf(_("  -E, --encoding=ENCODING  dump the data in encoding ENCODING\n"));
 	printf(("  -n, --schema=SCHEMA      dump the named schema only\n"));
 	printf(_("  -N, --exclude-schema=SCHEMA do NOT dump the named schema(s)\n"));
 	printf(("  -o, --oids               include OIDs in dump\n"));
@@ -1413,10 +1430,11 @@ help(const char *progname)
 	printf(("  -t, --table=TABLE        dump only matching table(s) (or views or sequences)\n"));
 	printf(_("  -T, --exclude-table=TABLE   do NOT dump matching table(s) (or views or sequences)\n"));
 	printf(("  -x, --no-privileges      do not dump privileges (grant/revoke)\n"));
-	printf(_("  --disable-triggers          disable triggers during data-only restore\n"));
+	printf(_("  --disable-triggers       disable triggers during data-only restore\n"));
+	printf(("  --incremental            dump only modified patitions\n"));
 	printf(_("  --use-set-session-authorization\n"
 			 "                              use SESSION AUTHORIZATION commands instead of\n"
-	"                              ALTER OWNER commands to set ownership\n"));
+	         "                              ALTER OWNER commands to set ownership\n"));
 
 	printf(("\nConnection options:\n"));
 	printf(("  -h, --host=HOSTNAME      database server host or socket directory\n"));
@@ -1427,6 +1445,7 @@ help(const char *progname)
 	printf(("\nGreenplum Database specific options:\n"));
 	printf(("  --gp-c                  use gzip for in-line compression\n"));
 	printf(("  --gp-d=BACKUPFILEDIR    directory where backup files are placed\n"));
+	printf(("  --gp-k=TIMESTAMP        timestamp key to be used for the dump files\n"));
 	printf(("  --gp-r=REPORTFILEDIR    directory where report file is placed\n"));
 	printf(("  --gp-s=BACKUPSET        backup set indicator - (p)rimaries only (default)\n"));
 	printf(("                          or (i)ndividual segdb (must be followed with a list of dbids\n"));
@@ -1593,7 +1612,7 @@ reportBackupResults(InputOptions inputopts, ThreadParmArray *pParmAr)
 
 		p->thread = 0;
 		p->pOptionsData = &inputopts;
-		p->pOptionsData->pszKey = GenerateTimestampKey();
+		p->pOptionsData->pszKey = GetTimestampKey(inputopts.pszTimestampKey);
 		p->bSuccess = false;
 		p->pszErrorMsg = NULL;
 		p->pszRemoteBackupPath = NULL;
@@ -1667,6 +1686,9 @@ reportBackupResults(InputOptions inputopts, ThreadParmArray *pParmAr)
 
 	appendPQExpBuffer(reportBuf, "Compression Program: %s\n",
 		 StringNotNull(pParm0->pOptionsData->pszCompressionProgram, "None"));
+
+	appendPQExpBuffer(reportBuf, "%s", getBackupTypeString(incremental_backup));
+	appendPQExpBuffer(reportBuf, "\n");
 
 	appendPQExpBuffer(reportBuf, "\n");
 	appendPQExpBuffer(reportBuf, "Individual Results\n");
@@ -1781,7 +1803,7 @@ spinOffThreads(PGconn *pConn,
 	pthread_cond_init(&MyCondVar2, NULL);
 	pthread_mutex_init(&MyMutex2, NULL);
 
-	pInputOpts->pszKey = GenerateTimestampKey();
+	pInputOpts->pszKey = GetTimestampKey(pInputOpts->pszTimestampKey);
 
 	/*
 	 * Create a thread and have it work on executing the dump on the

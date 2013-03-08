@@ -85,12 +85,12 @@ char *log_message_path = NULL;
 static int dd_boost_enabled = 0;
 static char *dd_boost_buf_size = NULL;
 static char *ddboostPg = NULL;
+#endif
 
 #ifndef PATH_NAME_MAX
 #define PATH_NAME_MAX 1024
 #endif
 
-#endif
 
 static void usage(const char *progname);
 
@@ -136,6 +136,8 @@ char	   *g_LastMsg = NULL;
 
 int			g_role = ROLE_MASTER;		/* would change to ROLE_MASTER when
 										 * necessary */
+static const unsigned long MAX_COMMANDLINE_LEN = 1000000;
+static char * table_filter_file = NULL;
 /* end cdb additions */
 /*	end cdb specific stuff */
 
@@ -156,7 +158,6 @@ main(int argc, char **argv)
 	struct sigaction act;
 	pid_t		newpid;
 	char	   *pszOnErrorStop = "-v ON_ERROR_STOP=";
-	int			len;			/* psql */
 
 	/* int i; */
 	char	   *pszCmdLine;
@@ -217,13 +218,11 @@ main(int argc, char **argv)
 		{"target-host", required_argument, NULL, 6},
 		{"target-port", required_argument, NULL, 7},
 		{"post-data-schema-only", no_argument, &postDataSchemaOnly, 1},
-
-#ifdef USE_DDBOOST      
-        {"dd_boost_file", required_argument, NULL, 8},
-        {"dd_boost_enabled", no_argument, NULL, 9},
+		{"dd_boost_file", required_argument, NULL, 8},
+		{"dd_boost_enabled", no_argument, NULL, 9},
 		{"dd_boost_dir", required_argument, NULL, 10},
 		{"dd_boost_buf_size", required_argument, NULL, 11},
-#endif 
+		{"gp-f", required_argument, NULL, 12},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -420,7 +419,9 @@ main(int argc, char **argv)
 				dd_boost_buf_size = strdup(optarg);
 				break;
 #endif
-
+			case 12:
+				table_filter_file = strdup(optarg);
+				break;
 			default:
 				fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
 				exit(1);
@@ -684,6 +685,8 @@ main(int argc, char **argv)
 		else if (newpid == 0)
 		{
 			char	   *psqlPg = NULL;
+			char	   *filterScript = NULL;
+			char	   *catPg = NULL;
 
 			pszOnErrorStop = "-v ON_ERROR_STOP=";
 
@@ -694,15 +697,29 @@ main(int argc, char **argv)
 			if ((psqlPg = testProgramExists("psql")) == NULL)
 			{
 				mpp_err_msg(logError, progname, "psql not found in path");
+				exit(1);
 			}
 
-			len = strlen(psqlPg);		/* psql */
+			if ((filterScript = testProgramExists("gprestore_filter.py")) == NULL)
+			{
+				mpp_err_msg(logError, progname, "Restore filter script not found in path");
+				exit(1);
+			}
+
+			if ((catPg = testProgramExists("cat")) == NULL)
+			{
+				mpp_err_msg(logError, progname, "cat program not found in path");
+				exit(1);
+			}
 
 			if (bCompUsed)
 			{
-				strcat(g_compPg, " -c ");		/* decompress to stdout */
-				len += strlen(g_compPg);
-				len += strlen(" | ");	/* de-comp pipe into psql */
+				g_compPg = formCompressionProgramString(g_compPg);
+				if (!g_compPg)
+				{
+					mpp_err_msg(logError, progname, "Could not allocate memory %s:%d", __FILE__, __LINE__);
+					exit(1);
+				}
 			}
 
 #ifdef USE_DDBOOST
@@ -711,116 +728,33 @@ main(int argc, char **argv)
 			{
 				mpp_err_msg(logError, progname, "gpddboost not found in path\n");
 			}
-
-			if (!postDataSchemaOnly)
-			{
-				if (dd_boost_enabled)
-				{
-					len += strlen("gpddboost ");
-					len += strlen("--readFile ");
-					len += strlen("--from-file=");
-					len += strlen(" --dd_boost_buf_size= ");
-
-					if (ddp_file_name)
-						len += strlen(ddp_file_name);
-					if (dd_boost_buf_size)
-						len += strlen(dd_boost_buf_size);
-				}
-						
-			}
 #endif
 
-			len += strlen(inputFileSpec) + 4;
-			len += strlen(psqlPg) + 4;
-
-			if (g_bOnErrorStop)
-				len += strlen(pszOnErrorStop) + 1;
-
-			len += 4;			/* " -a" */
-			len += 4;			/* -h */
-			len += strlen(g_targetHost);		/* host */
-			len += 4;			/* " -p " */
-			len += 5;			/* port */
-			len += 4;			/* " -U " */
-			len += strlen(SegDB.pszDBUser);
-			len += 4;			/* " -d " */
-			len += strlen(SegDB.pszDBName);
-			
-			
 			/* add all the psql args to the command string */
-			pszCmdLine = (char *) calloc(len + 1, 1);
+			/* Its too error prone to pre-calc the exact command line length
+			   just allocate a chunk of memory that is not likely to be exceeded. */
+			pszCmdLine = (char *) calloc(MAX_COMMANDLINE_LEN, 1);
 
-#ifndef USE_DDBOOST
-			/*
-			 * If decompression is used start our command as such:
-			 * "/pathto/gunzip -c filename | /pathto/psql" else just
-			 * "/pathto/psql"
-			 */
-			if (bCompUsed)
-			{
-				strcpy(pszCmdLine, g_compPg);
-				strcat(pszCmdLine, inputFileSpec);
-				strcat(pszCmdLine, " | ");
-				strcat(pszCmdLine, psqlPg);
-			}
-			else
-                                strcpy(pszCmdLine, psqlPg);
-
-                        /*
-                         * we use an input file only if no compression is used. if
-                         * compression is used, input is coming from stdin
-                         */
-                        if (!bCompUsed)
-                        {
-                                strcat(pszCmdLine, " -f ");
-                                strcat(pszCmdLine, inputFileSpec);
-                        }
-#endif
-
-#ifdef USE_DDBOOST
 			if (!postDataSchemaOnly)
 			{
+#ifdef USE_DDBOOST
 				if (dd_boost_enabled)
 				{
-					strcpy(pszCmdLine, ddboostPg);
-					strcat(pszCmdLine, " --readFile");
-					strcat(pszCmdLine, " --from-file=");
-
-					strcat(pszCmdLine, ddp_file_name);
-	
-					if(bCompUsed)
-						strcat(pszCmdLine, ".gz");
-
-					strcat(pszCmdLine, " --dd_boost_buf_size=");
-					strcat(pszCmdLine, dd_boost_buf_size);
-					strcat(pszCmdLine, " | ");
-
-					if(bCompUsed)
-					{
-						strcat(pszCmdLine, g_compPg);
-						strcat(pszCmdLine, " | ");
-					}
-
-					strcat(pszCmdLine, psqlPg);
+					formDDBoostPsqlCommandLine(&pszCmdLine, bCompUsed, ddboostPg, g_compPg, 
+							ddp_file_name, dd_boost_buf_size,
+							filterScript, table_filter_file, 
+							g_role, psqlPg);
 				}
 				else 
 				{
+#endif
 					/* Non ddboost restore */
-					if (bCompUsed)
-					{
-						
-                                		strcpy(pszCmdLine, g_compPg);
-                                		strcat(pszCmdLine, inputFileSpec);
-                                		strcat(pszCmdLine, " | ");
-                                		strcat(pszCmdLine, psqlPg);
-					}
-					else
-					{
-						strcat(pszCmdLine, psqlPg);
-						strcat(pszCmdLine, " -f ");
-						strcat(pszCmdLine, inputFileSpec);
-					}
+					formSegmentPsqlCommandLine(&pszCmdLine, inputFileSpec, bCompUsed, g_compPg,
+							filterScript, table_filter_file, 
+							g_role, psqlPg, catPg);
+#ifdef USE_DDBOOST
 				}
+#endif
 			}
 			else if (postDataSchemaOnly)
 			{
@@ -839,7 +773,7 @@ main(int argc, char **argv)
 					strcat(pszCmdLine, inputFileSpec);
 				}
 			}
-#endif
+
 			strcat(pszCmdLine, " -h ");
 			strcat(pszCmdLine, g_targetHost);
 			strcat(pszCmdLine, " -p ");
@@ -1082,6 +1016,7 @@ usage(const char *progname)
 
 	printf(("\nGreenplum Database specific options:\n"));
 	printf(("   --gp-k=BACKUPKEY        key for Greenplum Database Backup\n"));
+	printf(("   --gp-f=TABLEFILTERFILE  schema.tables to be restored are added to this file\n"));
 	printf(("   --post-data-schema-only restore schema only from special post-data file\n"));
 
 	printf(_("\nIf no input file name is supplied, then standard input is used.\n\n"));
@@ -1590,5 +1525,4 @@ static char *formDDBoostFileName(char *pszBackupKey, bool isPostData, char *dd_b
 
         return pszBackupFileName;
 }
-
 #endif

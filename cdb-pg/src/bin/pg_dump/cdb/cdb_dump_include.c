@@ -28,6 +28,10 @@ static void expand_schema_name_patterns(SimpleStringList *patterns,
 static void expand_table_name_patterns(SimpleStringList *patterns,
 						   SimpleOidList *oids);
 
+static void expand_table_name_patterns_long(SimpleStringList *patterns,
+							SimpleOidList *oids, unsigned int tables_per_query);
+const int TABLE_COUNT_PER_ITERATION = 100;
+
 
 /*
  * Subquery used to convert user ID (eg, datdba) to user name. The default
@@ -91,6 +95,7 @@ SimpleStringList table_include_patterns = {NULL, NULL};
 SimpleOidList table_include_oids = {NULL, NULL};
 SimpleStringList table_exclude_patterns = {NULL, NULL};
 SimpleOidList table_exclude_oids = {NULL, NULL};
+
 
 
 /* these are to avoid passing around info for findNamespace() */
@@ -486,6 +491,45 @@ expand_schema_name_patterns(SimpleStringList *patterns, SimpleOidList *oids)
 	destroyPQExpBuffer(query);
 }
 
+/* 
+ * Loop the table input list in batches
+ * convert the table names to oids.
+ *
+ */
+static void
+expand_table_name_patterns_long(SimpleStringList *patterns, SimpleOidList *oids, unsigned int tables_per_query)
+{
+
+	SimpleStringListCell *tmp_cell = NULL;
+	SimpleStringListCell *iterator = NULL;
+	SimpleStringList partial_list = {0};
+
+	int i = 0;
+    
+	if (!patterns)
+		return; /* nothing to do */
+
+	iterator = patterns->head;
+
+	while(iterator)
+	{
+		partial_list.head = iterator;
+		for(i = 0; i < tables_per_query; i++)
+		{
+			if (!iterator->next)
+				break;
+			iterator = iterator->next;
+		}
+
+		tmp_cell = iterator->next;
+		iterator->next = NULL;
+		partial_list.tail = iterator;
+		expand_table_name_patterns(&partial_list, oids);
+		iterator->next = tmp_cell;
+		iterator = iterator->next;
+	}
+}
+
 
 /*
  * Find the OIDs of all tables matching the given list of patterns,
@@ -562,8 +606,8 @@ convert_patterns_to_oids(void)
 	/* Expand table selection patterns into OID lists */
 	if (table_include_patterns.head != NULL)
 	{
-		expand_table_name_patterns(&table_include_patterns,
-								   &table_include_oids);
+		expand_table_name_patterns_long(&table_include_patterns,
+								   &table_include_oids, TABLE_COUNT_PER_ITERATION);
 		if (table_include_oids.head == NULL)
 		{
 			mpp_err_msg(logError, progname, "No matching tables were found\n");

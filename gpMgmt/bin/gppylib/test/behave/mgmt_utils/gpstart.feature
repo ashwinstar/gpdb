@@ -10,8 +10,9 @@ Feature: Validate command line arguments
         Given the database is not running
         When the user runs "gpstart -a"
         Then gpstart should return a return code of 0
-        And database health check should pass
+        And database "testdb" health check should pass on table "t1"
 
+    @dca
     Scenario: gpstart with 1 host down
         Given we have determined the first segment hostname
         And the database is not running
@@ -19,7 +20,7 @@ Feature: Validate command line arguments
         And eth3 on the first segment host is down
         When the user runs "gpstart -a"
         Then gpstart should return a return code of 1
-        And database health check should pass
+        And database "testdb" health check should pass on table "t1"
         And eth2 on the first segment host is up
         And eth3 on the first segment host is up
         And the user runs "gprecoverseg -a"

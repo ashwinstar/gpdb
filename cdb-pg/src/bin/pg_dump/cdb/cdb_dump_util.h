@@ -63,6 +63,7 @@ typedef struct input_options
 	char	   *pszKey;
 	char	   *pszMasterDBName;
 	char	   *pszRawDumpSet;
+	char	   *pszTimestampKey;
 	ActorSet	actors;
 	BackupLoc	backupLocation;
 	bool		bOnErrorStop;
@@ -76,11 +77,20 @@ extern void DoCancelNotifyListen(PGconn *pConn, bool bListen,
 					 int target_db_id,
 					 const char *pszSuffix);
 
+/* Checks if we should filter out tables when using incremental mode */
+extern bool isFilteringAllowedNow(int role, bool incrementalBackup); 
+ 
 /* frees data allocated inside an InputOptions struct */
 extern void FreeInputOptions(InputOptions * pInputOpts);
 
 /* Generates a 14 digit timestamp key */
 extern char *GenerateTimestampKey(void);
+
+/* Returns the 14 digit timestamp key if provided using gp-k or generates it using GenerateTimestampKey method */
+extern char *GetTimestampKey(char*);
+
+/* Validates a 14 digit timestamp key */
+extern bool ValidateTimestampKey(char*);
 
 /* gets an int from a regex match */
 extern int	GetMatchInt(regmatch_t *pMatch, char *pszInput);
@@ -130,6 +140,10 @@ extern void mpp_msg(const char *loglevel, const char *prog, const char *fmt,...)
 
 extern char *get_early_error(void);
 
+/* return report text for type of backup */
+extern const char* getBackupTypeString(bool incremental);
+
+
 /* Base64 Encoding and Decoding Routines */
 /* Base64 Data is assumed to be in a NULL terminated string */
 /* Data is just assumed to be an array of chars, with a length */
@@ -137,5 +151,13 @@ extern char *DataToBase64(char *pszIn, unsigned int InLen);
 extern char *Base64ToData(char *pszIn, unsigned int *pOutLen);
 extern char *nextToken(register char **stringp, register const char *delim);
 extern int	parseDbidSet(int *dbidset, char *dump_set);
+extern char* formCompressionProgramString(char* compPg);
+extern void formDDBoostPsqlCommandLine(char** retVal, bool compUsed, const char* ddboostPg, const char* compProg, 
+							const char* ddp_file_name, const char* dd_boost_buf_size,
+							const char* filter_script, const char* table_filter_file, 
+							int role, const char* psqlPg);
+extern void formSegmentPsqlCommandLine(char** retVal, const char* inputFileSpec, 
+						bool compUsed, const char* compProg, const char* filter_script, 
+						const char* table_filter_file, int role, const char* psqlPg, const char* catPg);
 
 #endif   /* CDB_DUMP_UTIL_H */

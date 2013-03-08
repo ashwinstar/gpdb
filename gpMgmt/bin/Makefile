@@ -159,6 +159,19 @@ LOGILAB_COMMON_DIR=logilab-common-$(LOGILAB_COMMON_VERSION)
 PYLINT_PYTHONPATH=$(PYLIB_DIR):$(PYLIB_SRC)/$(PYLINT_DIR)/build/lib/
 MOCK_VERSION=1.0.1
 MOCK_DIR=mock-$(MOCK_VERSION)
+BEHAVE_VERSION=1.2.2
+SETUP_TOOLS_VERSION=0.6c11
+PARSE_VERSION=1.5.3
+ARG_PARSE_VERSION=1.2.1
+BEHAVE_DIR=behave-$(BEHAVE_VERSION)
+SETUP_TOOLS_DIR=setuptools-$(SETUP_TOOLS_VERSION)
+PARSE_DIR=parse-$(PARSE_VERSION)
+ARG_PARSE_DIR=argparse-$(ARG_PARSE_VERSION)
+PYTHONSRC_INSTALL=$(PYLIB_SRC)/install
+PYTHONSRC_INSTALL_SITE=$(PYLIB_SRC)/install/lib/python2.6/site-packages
+PYTHONSRC_INSTALL_PYTHON_PATH=$(PYTHONPATH):$(PYTHONSRC_INSTALL_SITE)
+BEHAVE_BIN=$(PYTHONSRC_INSTALL)/bin/behave
+MOCK_BIN=$(PYTHONSRC_INSTALL)/lib/python2.6/site-packages/mock-1.0.1-py2.6.egg
 
 pylint:
 	@echo "--- pylint"
@@ -173,7 +186,7 @@ pylint:
 	@touch $(PYLIB_SRC)/$(PYLINT_DIR)/build/lib/__init__.py
 	@touch $(PYLIB_SRC)/$(PYLINT_DIR)/build/lib/logilab/__init__.py
 
-mock: 
+$(MOCK_BIN):
 	@echo "--- mock"
 	@mkdir -p $(PYTHONSRC_INSTALL_SITE)
 	@cd $(PYLIB_SRC)/ && $(TAR) xzf $(MOCK_DIR).tar.gz
@@ -182,19 +195,6 @@ mock:
 #
 # BEHAVE 
 #
-
-BEHAVE_VERSION=1.2.2
-SETUP_TOOLS_VERSION=0.6c11
-PARSE_VERSION=1.5.3
-ARG_PARSE_VERSION=1.2.1
-BEHAVE_DIR=behave-$(BEHAVE_VERSION)
-SETUP_TOOLS_DIR=setuptools-$(SETUP_TOOLS_VERSION)
-PARSE_DIR=parse-$(PARSE_VERSION)
-ARG_PARSE_DIR=argparse-$(ARG_PARSE_VERSION)
-PYTHONSRC_INSTALL=$(PYLIB_SRC)/install
-PYTHONSRC_INSTALL_SITE=$(PYLIB_SRC)/install/lib/python2.6/site-packages
-PYTHONSRC_INSTALL_PYTHON_PATH=$(PYTHONPATH):$(PYTHONSRC_INSTALL_SITE)
-BEHAVE_BIN=$(PYTHONSRC_INSTALL)/bin/behave
 
 $(BEHAVE_BIN):
 	@echo "--- build $(BEHAVE_BIN)"
@@ -242,7 +242,7 @@ check-regress:
 	@PYTHONPATH=$(SRC):$(SRC)/ext:$(PYTHONPATH) \
 	gppylib/gpunit discover --verbose -s gppylib -p "test_regress*.py" 2> $(SRC)/../gpMgmt_testregress_results.log 1> $(SRC)/../gpMgmt_testregress_output.log
 
-check: mock
+check: $(MOCK_BIN)
 	@echo "Running unit tests..."
 	@PYTHONPATH=$(SRC):$(SRC)/ext:$(PYTHONPATH):$(PYTHONSRC_INSTALL_PYTHON_PATH) \
 	gppylib/gpunit discover --verbose -s gppylib -p "test_unit*.py" 2> $(SRC)/../gpMgmt_testunit_results.log 1> $(SRC)/../gpMgmt_testunit_output.log

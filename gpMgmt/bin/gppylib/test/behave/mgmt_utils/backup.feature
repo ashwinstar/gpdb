@@ -1,0 +1,2289 @@
+@backup
+Feature: Validate command line arguments
+
+    Scenario: Entering an invalid argument
+        When the user runs "gpcrondump -X"
+        Then gpcrondump should print no such option: -X error message
+        And gpcrondump should return a return code of 2
+
+    Scenario: Incremental Backup With Table filters
+        Given the database is running
+        When the user runs "gpcrondump -a --incremental -t public.bkdb -x bkdb"
+        Then gpcrondump should print include table list can not be selected with incremental backup to stdout
+        And gpcrondump should return a return code of 2
+        And the user runs "gpcrondump -a --incremental -T public.bkdb -x bkdb"
+        And gpcrondump should print exclude table list can not be selected with incremental backup to stdout
+        And gpcrondump should return a return code of 2
+        And the user runs "gpcrondump -a --incremental --exclude-table-file /tmp/foo -x bkdb"
+        And gpcrondump should print exclude table file can not be selected with incremental backup to stdout
+        And gpcrondump should return a return code of 2
+        And the user runs "gpcrondump -a --incremental --table-file /tmp/foo -x bkdb"
+        And gpcrondump should print include table file can not be selected with incremental backup to stdout
+        And gpcrondump should return a return code of 2
+        And the user runs "gpcrondump -a --incremental -s foo -x bkdb"
+        And gpcrondump should print -s option can not be selected with incremental backup to stdout
+        And gpcrondump should return a return code of 2
+        And the user runs "gpcrondump -a --incremental -c -x bkdb"
+        And gpcrondump should print -c option can not be selected with incremental backup to stdout
+        And gpcrondump should return a return code of 2
+
+    ### 
+    ### Any tests that require this data set should come after
+    ###
+    @smoke
+    @dataset
+    Scenario Outline: partition table test with data on all segments, with/without compression
+        Given there is a "<tabletype>" partition table "<tablename>" with compression "<compressiontype>" in "<dbname>" with data
+        Then data for partition table "<tablename>" with partition level "<partlevel>" is distributed across all segments on "<dbname>"
+        And verify that partitioned tables "<tablename>" in "bkdb" have 6 partitions
+        Examples:
+        | tabletype | tablename           | compressiontype | dbname | partlevel |
+        | ao        | ao_part_table       | None            | bkdb   | 1         |
+        | co        | co_part_table       | None            | bkdb   | 1         |
+        | heap      | heap_part_table     | None            | bkdb   | 1         |
+        | ao        | ao_part_table_comp  | quicklz         | bkdb   | 1         |
+        | co        | co_part_table_comp  | zlib            | bkdb   | 1         |
+
+    @smoke
+    @dataset
+    Scenario Outline: regular table test with data on all segments, with/without compression
+        Given there is a "<tabletype>" table "<tablename>" with compression "<compressiontype>" in "<dbname>" with data
+        Then data for table "<tablename>" is distributed across all segments on "<dbname>"
+        Examples:
+        | tabletype | tablename      | compressiontype | dbname |
+        | ao        | ao_table       | None            | bkdb |
+        | co        | co_table       | None            | bkdb |
+        | heap      | heap_table     | None            | bkdb |
+        | ao        | ao_table_comp  | quicklz         | bkdb |
+        | co        | co_table_comp  | zlib            | bkdb |
+
+    @smoke
+    @dataset
+    Scenario Outline: regular table test with data on all segments, with/without compression and with indexes
+        Given there is a "<tabletype>" table "<tablename>" with index "<indexname>" compression "<compressiontype>" in "<dbname>" with data
+        Then data for table "<tablename>" is distributed across all segments on "<dbname>"
+        Examples:
+        | tabletype | tablename            | compressiontype | dbname | indexname      |
+        | ao        | ao_index_table       | None            | bkdb   | ao_in          |
+        | co        | co_index_table       | None            | bkdb   | co_in          |
+        | heap      | heap_index_table     | None            | bkdb   | heap_in        |
+        | ao        | ao_index_table_comp  | quicklz         | bkdb   | ao_comp_in     |
+        | co        | co_index_table_comp  | zlib            | bkdb   | co_comp_in     |
+
+    @smoke
+    @dataset
+    Scenario: Partition tables with mixed storage types
+        Given there is a mixed storage partition table "part_mixed_1" in "bkdb" with data
+        Then data for partition table "part_mixed_1" with partition level "1" is distributed across all segments on "bkdb"
+        And verify that storage_types of the partition table "part_mixed_1" are as expected in "bkdb"
+
+    Scenario: Negative test for Backup with --report_dir option
+        Given the database is running
+        And there are no backup files
+        When the user runs "gpcrondump -a -x bkdb -y /tmp"
+        Then gpcrondump should return a return code of 2
+        And gpcrondump should print no such option: -y error message
+        When the user runs "gpcrondump -a --incremental -x bkdb -y /tmp"
+        Then gpcrondump should return a return code of 2
+        And gpcrondump should print no such option: -y error message
+
+    @smoke
+    Scenario: Negative test for Incremental Backup
+        Given the database is running
+        And partition "1" of partition table "ao_part_table, co_part_table_comp" is assumed to be in dirty state in "bkdb" in schema "public"
+        And table "public.ao_index_table" is assumed to be in dirty state in "bkdb"
+        And there are no backup files
+        When the user runs "gpcrondump -a --incremental -x bkdb"
+        Then gpcrondump should return a return code of 2
+        And gpcrondump should print No full backup found for incremental to stdout 
+
+    Scenario: Negative test for MultiDB Incremental Backup
+        Given the database is running
+        When the user runs "gpcrondump -a --incremental -x bkdb,fulldb"
+        Then gpcrondump should return a return code of 2
+        And gpcrondump should print multi-database backup is not supported with incremental backup to stdout
+
+    Scenario: Negative test for Incremental Backup - Incremental with -u after a full backup to default directory
+        Given the database is running
+        And partition "1" of partition table "ao_part_table, co_part_table_comp" is assumed to be in dirty state in "bkdb" in schema "public"
+        And table "public.ao_index_table" is assumed to be in dirty state in "bkdb"
+        And there are no backup files
+        And there are no backup files in "/tmp"
+        When the user runs "gpcrondump -a -x bkdb"
+        And the user runs "gpcrondump -a --incremental -x bkdb -u /tmp"
+        Then gpcrondump should return a return code of 2
+        And gpcrondump should print No full backup found for incremental to stdout 
+
+    Scenario: Negative test for Incremental Backup - Incremental to default directory after a full backup with -u option
+        Given the database is running
+        And partition "1" of partition table "ao_part_table, co_part_table_comp" is assumed to be in dirty state in "bkdb" in schema "public"
+        And table "public.ao_index_table" is assumed to be in dirty state in "bkdb"
+        And there are no backup files
+        And there are no backup files in "/tmp"
+        When the user runs "gpcrondump -a -x bkdb -u /tmp"
+        And the user runs "gpcrondump -a --incremental -x bkdb"
+        Then gpcrondump should return a return code of 2
+        And gpcrondump should print No full backup found for incremental to stdout 
+
+    Scenario: Negative test for Incremental Backup - Incremental after a full backup of different database
+        Given the database is running
+        And there is a "heap" table "heap_table2" with compression "None" in "fullbkdb" with data
+        And partition "1" of partition table "ao_part_table, co_part_table_comp" is assumed to be in dirty state in "bkdb" in schema "public"
+        And table "public.ao_index_table" is assumed to be in dirty state in "bkdb"
+        And there are no backup files
+        When the user runs "gpcrondump -a -x fullbkdb"
+        And the user runs "gpcrondump -a --incremental -x bkdb"
+        Then gpcrondump should return a return code of 2
+        And gpcrondump should print No full backup found for incremental to stdout
+    
+    Scenario: Dirty table list check on recreating a table with same data and contents
+        Given the database is running
+        And there is a "ao" table "ao_table" with compression "None" in "testdb" with data
+        And there are no backup files
+        When the user runs "gpcrondump -a -x testdb"
+        Then gpcrondump should return a return code of 0
+        When the "public.ao_table" is recreated with same data in "testdb"
+        And the user runs "gpcrondump -a --incremental -x testdb"
+        And the timestamp from gpcrondump is stored 
+        Then gpcrondump should return a return code of 0
+        And "public.ao_table" is marked as dirty in dirty_list file
+        When the user runs gpdbrestore with the stored timestamp
+        Then gpdbrestore should return a return code of 0
+        And verify that plan file has latest timestamp for "public.ao_table"
+        
+    Scenario: Negative test for missing state file 
+        Given the database is running
+        And there are no backup files
+        When the user runs "gpcrondump -a -x bkdb"
+        Then gpcrondump should return a return code of 0
+        And the full backup timestamp from gpcrondump is stored
+        And the state files are generated under " " for stored "full" timestamp
+        And the "ao" state file under " " is saved for the "full" timestamp
+        And the saved state file is deleted
+        When the user runs "gpcrondump -a --incremental -x bkdb"
+        Then gpcrondump should return a return code of 2
+        And gpcrondump should print state file does not exist to stdout
+
+    Scenario: Negative test for invalid state file format
+        Given the database is running
+        And there are no backup files
+        When the user runs "gpcrondump -a -x bkdb"
+        Then gpcrondump should return a return code of 0
+        And the full backup timestamp from gpcrondump is stored
+        And the state files are generated under " " for stored "full" timestamp
+        And the "ao" state file under " " is saved for the "full" timestamp
+        And the saved state file is corrupted
+        When the user runs "gpcrondump -a --incremental -x bkdb"
+        Then gpcrondump should return a return code of 2
+        And gpcrondump should print Invalid state file format to stdout
+
+    @smoke
+    Scenario: Simple Incremental Backup
+        Given the database is running
+        And there are no backup files
+        When the user runs "gpcrondump -a -x bkdb"
+        Then gpcrondump should return a return code of 0
+        And gpcrondump should print Validating disk space to stdout 
+        And the full backup timestamp from gpcrondump is stored
+        And the state files are generated under " " for stored "full" timestamp
+        And the "last_operation" files are generated under " " for stored "full" timestamp
+        When partition "1" of partition table "ao_part_table, co_part_table_comp, part_mixed_1" is assumed to be in dirty state in "bkdb" in schema "public"
+        And table "public.ao_index_table" is assumed to be in dirty state in "bkdb"
+        And the user runs "gpcrondump -a --incremental -x bkdb"
+        Then gpcrondump should return a return code of 0
+        And gpcrondump should not print Validating disk space to stdout 
+        And the timestamp from gpcrondump is stored 
+        And the state files are generated under " " for stored "incr" timestamp 
+        And the "last_operation" files are generated under " " for stored "incr" timestamp 
+        And the subdir from gpcrondump is stored 
+        And verify that the report file in " " dir contains "Backup Type: Incremental"
+        And "dirty_list" file should be created under " "
+        And all the data from "bkdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp and options "-L" 
+        Then gpdbrestore should return a return code of 0
+        And gpdbrestore should print Table public.ao_index_table to stdout 
+        And gpdbrestore should print Table public.ao_index_table_comp to stdout 
+        And gpdbrestore should print Table public.ao_part_table to stdout 
+        And gpdbrestore should print Table public.ao_part_table_comp to stdout 
+        And gpdbrestore should print Table public.ao_table to stdout 
+        And gpdbrestore should print Table public.ao_table_comp to stdout 
+        And gpdbrestore should print Table public.co_index_table to stdout 
+        And gpdbrestore should print Table public.co_index_table_comp to stdout 
+        And gpdbrestore should print Table public.co_part_table to stdout 
+        And gpdbrestore should print Table public.co_part_table_comp to stdout 
+        And gpdbrestore should print Table public.co_table to stdout 
+        And gpdbrestore should print Table public.co_table_comp to stdout 
+        And gpdbrestore should print Table public.heap_index_table to stdout 
+        And gpdbrestore should print Table public.heap_part_table to stdout 
+        And gpdbrestore should print Table public.heap_table to stdout 
+        And gpdbrestore should print Table public.part_mixed_1 to stdout 
+        And the database "bkdb" does not exist
+        And database "bkdb" exists
+        And the user runs gp_restore with the the stored timestamp and subdir in "bkdb"
+        And gp_restore should return a return code of 0
+        And verify that partitioned tables "ao_part_table, co_part_table, heap_part_table" in "bkdb" have 6 partitions
+        And verify that partitioned tables "ao_part_table_comp, co_part_table_comp" in "bkdb" have 6 partitions
+        And verify that partitioned tables "ao_part_table, co_part_table_comp" in "bkdb" has 5 empty partitions
+        And verify that partitioned tables "co_part_table, ao_part_table_comp" in "bkdb" has 6 empty partitions
+        And verify that partitioned tables "heap_part_table" in "bkdb" has 0 empty partitions
+        And verify that there is a "heap" table "heap_table" in "bkdb"
+        And verify that there is a "heap" table "heap_index_table" in "bkdb"
+        And verify that there is partition "1" of "ao" partition table "ao_part_table" in "bkdb" in "public"
+        And verify that there is partition "1" of "co" partition table "co_part_table_comp" in "bkdb" in "public"
+        And verify that there is partition "1" of "heap" partition table "heap_part_table" in "bkdb" in "public"
+        And verify that there is partition "2" of "heap" partition table "heap_part_table" in "bkdb" in "public"
+        And verify that there is partition "3" of "heap" partition table "heap_part_table" in "bkdb" in "public"
+        And verify that there is partition "1" of mixed partition table "part_mixed_1" with storage_type "c"  in "bkdb" in "public"
+        And verify that tables "public.ao_table, public.co_table, public.ao_table_comp, public.co_table_comp" in "bkdb" has no rows
+        And verify that tables "public.co_index_table, public.ao_index_table_comp, public.co_index_table_comp" in "bkdb" has no rows
+        And verify that the data of the dirty tables under " " in "bkdb" is validated after restore
+        And verify that the distribution policy of all the tables in "bkdb" are validated after restore
+        And verify that the incremental file has the stored timestamp
+        And verify that the tuple count of all appendonly tables are consistent in "bkdb"
+
+    Scenario: Increments File Check With Complicated Scenario
+        Given the database is running
+        And partition "1" of partition table "ao_part_table" is assumed to be in dirty state in "bkdb" in schema "public"
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there are no backup files
+        And there is a list to store the incremental backup timestamps
+        When the user runs "gpcrondump -a -x bkdb"
+        Then gpcrondump should return a return code of 0
+        And the full backup timestamp from gpcrondump is stored 
+        When the user runs "gpcrondump -a -x fullbkdb"
+        Then gpcrondump should return a return code of 0
+        And the user runs "gpcrondump -a --incremental -x bkdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored in a list
+        And "dirty_list" file should be created under " "
+        And the user runs "gpcrondump -a --incremental -x bkdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored in a list
+        And "dirty_list" file should be created under " "
+        And the user runs "gpcrondump -a --incremental -x bkdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored in a list
+        And "dirty_list" file should be created under " "
+        And verify that the incremental file has all the stored timestamps
+
+    Scenario: Incremental File Check With Different Directory
+        Given the database is running
+        And partition "1" of partition table "ao_part_table" is assumed to be in dirty state in "bkdb" in schema "public"
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there are no backup files
+        And there is a list to store the incremental backup timestamps
+        When the user runs "gpcrondump -a -x bkdb -u /tmp"
+        Then gpcrondump should return a return code of 0
+        And the full backup timestamp from gpcrondump is stored 
+        When the user runs "gpcrondump -a -x bkdb"
+        Then gpcrondump should return a return code of 0
+        And the user runs "gpcrondump -a --incremental -x bkdb -u /tmp"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored in a list
+        And "dirty_list" file should be created under "/tmp"
+        And the user runs "gpcrondump -a --incremental -x bkdb -u /tmp"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored in a list
+        And "dirty_list" file should be created under "/tmp"
+        And verify that the incremental file in "/tmp" has all the stored timestamps
+
+    @smoke
+    Scenario: Simple Incremental Backup with -u option
+        Given the database is running
+        And there are no backup files
+        And there are no backup files in "/tmp"
+        When the user runs "gpcrondump -a -x bkdb -u /tmp"
+        And partition "1" of partition table "ao_part_table, co_part_table_comp" is assumed to be in dirty state in "bkdb" in schema "public"
+        And table "public.ao_index_table" is assumed to be in dirty state in "bkdb"
+        And the user runs "gpcrondump -a --incremental -x bkdb -u /tmp"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And verify that the report file in "/tmp" dir contains "Backup Type: Incremental"
+        And "dirty_list" file should be created under "/tmp"
+        And the subdir from gpcrondump is stored 
+        And all the data from "bkdb" is saved for verification
+        And the database "bkdb" does not exist
+        And database "bkdb" exists
+        And the user runs gp_restore with the stored timestamp and subdir in "bkdb" and backup_dir "/tmp"
+        And gp_restore should return a return code of 0
+        And verify that partitioned tables "ao_part_table, co_part_table, heap_part_table" in "bkdb" have 6 partitions
+        And verify that partitioned tables "ao_part_table_comp, co_part_table_comp" in "bkdb" have 6 partitions
+        And verify that partitioned tables "ao_part_table, co_part_table_comp" in "bkdb" has 5 empty partitions
+        And verify that partitioned tables "co_part_table, ao_part_table_comp" in "bkdb" has 6 empty partitions
+        And verify that partitioned tables "heap_part_table" in "bkdb" has 0 empty partitions
+        And verify that there is a "heap" table "heap_table" in "bkdb"
+        And verify that there is a "heap" table "heap_index_table" in "bkdb"
+        And verify that there is partition "1" of "ao" partition table "ao_part_table" in "bkdb" in "public"
+        And verify that there is partition "1" of "co" partition table "co_part_table_comp" in "bkdb" in "public"
+        And verify that there is partition "1" of "heap" partition table "heap_part_table" in "bkdb" in "public"
+        And verify that there is partition "2" of "heap" partition table "heap_part_table" in "bkdb" in "public"
+        And verify that there is partition "3" of "heap" partition table "heap_part_table" in "bkdb" in "public"
+        And verify that tables "public.ao_table, public.co_table, public.ao_table_comp, public.co_table_comp" in "bkdb" has no rows
+        And verify that tables "public.co_index_table, public.ao_index_table_comp, public.co_index_table_comp" in "bkdb" has no rows
+        And verify that the data of the dirty tables under "/tmp" in "bkdb" is validated after restore
+        And verify that the distribution policy of all the tables in "bkdb" are validated after restore
+
+    Scenario: gpdbrestore with -R for full dump
+        Given the database is running
+        And there are no backup files        
+        And there are no backup files in "/tmp"
+        When the user runs "gpcrondump -a -x bkdb -u /tmp"
+        Then gpcrondump should return a return code of 0
+        And the full backup timestamp from gpcrondump is stored 
+        And all the data from "bkdb" is saved for verification
+        And the subdir from gpcrondump is stored 
+        And the database "bkdb" does not exist
+        And database "bkdb" exists
+        And all the data from the remote segments in "bkdb" are stored in path "/tmp" for "full"
+        And the user runs gpdbrestore with "-R" option in path "/tmp"
+        And gpdbrestore should return a return code of 0
+        And verify that the data of "68" tables in "bkdb" is validated after restore 
+        And verify that the tuple count of all appendonly tables are consistent in "bkdb"
+
+    Scenario: gpdbrestore with -R for incremental dump
+        Given the database is running
+        And there are no backup files        
+        And there are no backup files in "/tmp"
+        When the user runs "gpcrondump -a -x bkdb -u /tmp"
+        Then gpcrondump should return a return code of 0
+        And the subdir from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored 
+        When table "public.ao_index_table" is assumed to be in dirty state in "bkdb"
+        And the user runs "gpcrondump -a --incremental -x bkdb -u /tmp"
+        And the timestamp from gpcrondump is stored 
+        Then gpcrondump should return a return code of 0
+        And all files for full backup have been removed in path "/tmp"
+        And all the data from the remote segments in "bkdb" are stored in path "/tmp" for "inc"
+        And the user runs gpdbrestore with "-R" option in path "/tmp"
+        And gpdbrestore should print -R is not supported for restore with incremental timestamp to stdout
+
+    @smoke
+    Scenario: Full Backup and Restore
+        Given the database is running
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a backupfile of tables "heap_table, ao_part_table" in "fullbkdb" exists for validation
+        When the user runs "gpcrondump -a -x fullbkdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And verify that the report file in " " dir contains "Backup Type: Full"
+        And the user runs gpdbrestore with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "heap_table" in "fullbkdb" with data
+        And verify that there is a "ao" table "ao_part_table" in "fullbkdb" with data
+
+    Scenario: Full Backup and Restore using gp_dump
+        Given the database is running
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a backupfile of tables "heap_table, ao_part_table" in "fullbkdb" exists for validation
+        When the user runs "gpcrondump -a -x fullbkdb"
+        Then gpcrondump should return a return code of 0
+        When the user runs "gp_dump --gp-d=db_dumps --gp-s=p --gp-c fullbkdb"
+        Then gp_dump should return a return code of 0
+        And the timestamp from gp_dump is stored and subdir is " " 
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And the user runs gp_restore with the the stored timestamp and subdir in "fullbkdb"
+        And gp_restore should return a return code of 0
+        And verify that there is a "heap" table "heap_table" in "fullbkdb" with data
+        And verify that there is a "ao" table "ao_part_table" in "fullbkdb" with data
+        And there are no report files in the master data directory
+
+    Scenario: gpdbrestore -L with Full Backup
+        Given the database is running
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a backupfile of tables "heap_table, ao_part_table" in "fullbkdb" exists for validation
+        When the user runs "gpcrondump -a -x fullbkdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And verify that the report file in " " dir contains "Backup Type: Full"
+        When the user runs gpdbrestore with the stored timestamp and options "-L" 
+        Then gpdbrestore should return a return code of 0
+        And gpdbrestore should print Table public.ao_part_table to stdout 
+        And gpdbrestore should print Table public.heap_table to stdout 
+
+    Scenario: gpcrondump -b with Full and Incremental backup
+        Given the database is running
+        And there are no backup files
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        When the user runs "gpcrondump -a -x fullbkdb -b"
+        Then gpcrondump should return a return code of 0
+        And table "public.ao_index_table" is assumed to be in dirty state in "fullbkdb"
+        When the user runs "gpcrondump -a -x fullbkdb -b --incremental"
+        Then gpcrondump should return a return code of 0
+
+    Scenario: gpdbrestore -b with Full timestamp
+        Given the database is running
+        And there are no backup files
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        When the user runs "gpcrondump -a -x fullbkdb"
+        Then gpcrondump should return a return code of 0
+        And the subdir from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored 
+        And the timestamp from gpcrondump is stored
+        And the user runs gpdbrestore with the stored timestamp and options "-b"
+        Then gpdbrestore should return a return code of 0
+
+    Scenario: Output info gpdbrestore 
+        Given the database is running
+        And there are no backup files
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        When the user runs "gpcrondump -a -x fullbkdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        When the user runs gpdbrestore with the stored timestamp
+        Then gpdbrestore should return a return code of 0
+        And gpdbrestore should print Restore type               = Full Database to stdout
+        When the user runs "gpdbrestore -T public.ao_index_table -a" with the stored timestamp
+        Then gpdbrestore should return a return code of 0
+        And gpdbrestore should print Restore type               = Table Restore to stdout
+        And table "public.ao_index_table" is assumed to be in dirty state in "fullbkdb"
+        When the user runs "gpcrondump -a -x fullbkdb --incremental"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        When the user runs gpdbrestore with the stored timestamp
+        Then gpdbrestore should return a return code of 0
+        And gpdbrestore should print Restore type               = Incremental Restore to stdout
+        When the user runs "gpdbrestore -T public.ao_index_table -a" with the stored timestamp
+        Then gpdbrestore should return a return code of 0
+        And gpdbrestore should print Restore type               = Incremental Table Restore to stdout
+
+    Scenario: Output info gpcrondump
+        Given the database is running
+        And there are no backup files
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        When the user runs "gpcrondump -a -x fullbkdb"
+        Then gpcrondump should return a return code of 0
+        And gpcrondump should print Dump type                                = Full to stdout 
+        And table "public.ao_index_table" is assumed to be in dirty state in "fullbkdb"
+        When the user runs "gpcrondump -a -x fullbkdb --incremental"
+        Then gpcrondump should return a return code of 0
+        And gpcrondump should print Dump type                                = Incremental to stdout 
+
+    Scenario: gpcrondump -G with Full timestamp
+        Given the database is running
+        And there are no backup files
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        When the user runs "gpcrondump -a -x fullbkdb -G"
+        And the timestamp from gpcrondump is stored
+        Then gpcrondump should return a return code of 0
+        And "global" file should be created under " "
+        And table "public.ao_index_table" is assumed to be in dirty state in "fullbkdb"
+        When the user runs "gpcrondump -a -x fullbkdb -G --incremental"
+        And the timestamp from gpcrondump is stored
+        Then gpcrondump should return a return code of 0
+        And "global" file should be created under " "
+
+    @valgrind
+    Scenario: Valgrind test of gp_dump incremental
+        Given the database is running
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a backupfile of tables "heap_table, ao_part_table" in "fullbkdb" exists for validation
+        When the user runs "gpcrondump -x fullbkdb -a"
+        Then gpcrondump should return a return code of 0
+        And the user runs valgrind with "gp_dump --gp-d=db_dumps --gp-s=p --gp-c --incremental fullbkdb" and options " "
+
+    @valgrind
+    Scenario: Valgrind test of gp_dump incremental with table file
+        Given the database is running
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" table "ao_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "None" in "fullbkdb" with data
+        And there is a backupfile of tables "heap_table, ao_table, ao_part_table" in "fullbkdb" exists for validation
+        And the tables "public.ao_table" are in dirty hack file "/tmp/dirty_hack.txt"
+        And partition "1" of partition tables "ao_part_table" in "fullbkdb" in schema "public" are in dirty hack file "/tmp/dirty_hack.txt"
+        When the user runs "gpcrondump -x fullbkdb -a"
+        Then gpcrondump should return a return code of 0
+        And the user runs valgrind with "gp_dump --gp-d=db_dumps --gp-s=p --gp-c --incremental fullbkdb --table-file=/tmp/dirty_hack.txt" and options " "
+
+    @valgrind
+    Scenario: Valgrind test of gp_dump full with table file
+        Given the database is running
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" table "ao_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "None" in "fullbkdb" with data
+        And there is a backupfile of tables "heap_table, ao_table, ao_part_table" in "fullbkdb" exists for validation
+        And the tables "public.ao_table" are in dirty hack file "/tmp/dirty_hack.txt"
+        And partition "1" of partition tables "ao_part_table" in "fullbkdb" in schema "public" are in dirty hack file "/tmp/dirty_hack.txt"
+        When the user runs "gpcrondump -x fullbkdb -a"
+        Then gpcrondump should return a return code of 0
+        And the user runs valgrind with "gp_dump --gp-d=db_dumps --gp-s=p --gp-c fullbkdb --table-file=/tmp/dirty_hack.txt" and options " "
+
+    @valgrind
+    Scenario: Valgrind test of gp_dump_agent incremental with table file
+        Given the database is running
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" table "ao_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "None" in "fullbkdb" with data
+        And there is a backupfile of tables "heap_table, ao_table, ao_part_table" in "fullbkdb" exists for validation
+        And the tables "public.ao_table" are in dirty hack file "/tmp/dirty_hack.txt"
+        And partition "1" of partition tables "ao_part_table" in "fullbkdb" in schema "public" are in dirty hack file "/tmp/dirty_hack.txt"
+        When the user runs "gpcrondump -x fullbkdb -a"
+        Then gpcrondump should return a return code of 0
+        And the user runs valgrind with "gp_dump_agent --gp-k 11111111111111_1_1_ --gp-d /tmp --pre-data-schema-only fullbkdb --incremental --table-file=/tmp/dirty_hack.txt" and options " "
+
+    @valgrind
+    Scenario: Valgrind test of gp_dump_agent full with table file
+        Given the database is running
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" table "ao_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "None" in "fullbkdb" with data
+        And there is a backupfile of tables "heap_table, ao_table, ao_part_table" in "fullbkdb" exists for validation
+        And the tables "public.ao_table" are in dirty hack file "/tmp/dirty_hack.txt"
+        And partition "1" of partition tables "ao_part_table" in "fullbkdb" in schema "public" are in dirty hack file "/tmp/dirty_hack.txt"
+        When the user runs "gpcrondump -x fullbkdb -a"
+        Then gpcrondump should return a return code of 0
+        And the user runs valgrind with "gp_dump_agent --gp-k 11111111111111_1_1_ --gp-d /tmp --pre-data-schema-only fullbkdb --table-file=/tmp/dirty_hack.txt" and options " "
+
+    @valgrind
+    Scenario: Valgrind test of gp_dump_agent incremental
+        Given the database is running
+        And there are no backup files in "/tmp"
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a backupfile of tables "heap_table, ao_part_table" in "fullbkdb" exists for validation
+        When the user runs "gpcrondump -x fullbkdb -a"
+        Then gpcrondump should return a return code of 0
+        And the user runs valgrind with "gp_dump_agent --gp-k 11111111111111_1_1_ --gp-d /tmp --pre-data-schema-only fullbkdb --incremental" and options " " 
+
+    @valgrind
+    Scenario: Valgrind test of gp_restore for incremental backup
+        Given the database is running
+        And there are no backup files
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" table "ao_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a backupfile of tables "heap_table, ao_table" in "fullbkdb" exists for validation
+        When the user runs "gpcrondump -a -x fullbkdb"
+        And gpcrondump should return a return code of 0
+        And table "public.ao_table" is assumed to be in dirty state in "fullbkdb"
+        And the user runs "gpcrondump -a -x fullbkdb --incremental"
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And the user runs valgrind with "gp_restore" and options "-i --gp-i --gp-l=p -d fullbkdb --gp-c"
+
+    @valgrind
+    Scenario: Valgrind test of gp_restore_agent for incremental backup
+        Given the database is running
+        And there are no backup files
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" table "ao_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a backupfile of tables "heap_table, ao_table" in "fullbkdb" exists for validation
+        When the user runs "gpcrondump -a -x fullbkdb"
+        And gpcrondump should return a return code of 0
+        And table "public.ao_table" is assumed to be in dirty state in "fullbkdb"
+        And the user runs "gpcrondump -a -x fullbkdb --incremental"
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And the user runs valgrind with "gp_restore_agent" and options "--gp-c /bin/gunzip -s --post-data-schema-only --target-dbid 1 -d fullbkdb"
+
+    Scenario: gp_dump timestamp test
+        Given the database is running
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a backupfile of tables "heap_table, ao_part_table" in "fullbkdb" exists for validation
+        When the user runs "gpcrondump -a -x fullbkdb"
+        Then gpcrondump should return a return code of 0
+        When the user runs "gp_dump --gp-d=db_dumps --gp-k=20121228111527 --gp-s=p --gp-c fullbkdb"
+        Then gp_dump should return a return code of 0
+        And the timestamp from gp_dump is stored and subdir is " " 
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And the user runs "gp_restore -i --gp-k 20121228111527 --gp-d db_dumps --gp-i --gp-r db_dumps --gp-l=p -d fullbkdb --gp-c" 
+        And gp_restore should return a return code of 0
+        And verify that there is a "heap" table "heap_table" in "fullbkdb" with data
+        And verify that there is a "ao" table "ao_part_table" in "fullbkdb" with data
+
+    Scenario: gp_dump with invalid timestamp
+        Given the database is running
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a backupfile of tables "heap_table, ao_part_table" in "fullbkdb" exists for validation
+        When the user runs "gpcrondump -a -x fullbkdb"
+        Then gpcrondump should return a return code of 0
+        When the user runs "gp_dump --gp-d=db_dumps --gp-k=aa121228111527 --gp-s=p --gp-c fullbkdb"
+        Then gp_dump should return a return code of 1 
+        And gp_dump should print Invalid timestamp key provided error message
+    
+    Scenario: Full Backup with option -t and Restore
+        Given the database is running
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a backupfile of tables "heap_table, ao_part_table" in "fullbkdb" exists for validation
+        When the user runs "gpcrondump -a -x fullbkdb -t public.heap_table"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And verify that the report file in " " dir contains "Backup Type: Full"
+        And the user runs gpdbrestore with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "heap_table" in "fullbkdb" with data
+        And verify that there is no table "ao_part_table" in "fullbkdb"
+
+    Scenario: Full Backup with option -T and Restore
+        Given the database is running
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a backupfile of tables "heap_table, ao_part_table" in "fullbkdb" exists for validation
+        When the user runs "gpcrondump -a -x fullbkdb -T public.heap_table"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And the user runs gpdbrestore with the stored timestamp
+        And verify that the report file in " " dir contains "Backup Type: Full"
+        And gpdbrestore should return a return code of 0
+        And verify that there is a "ao" table "ao_part_table" in "fullbkdb" with data
+        And verify that there is no table "heap_table" in "fullbkdb"
+
+    Scenario: Full Backup with option -s and Restore
+        Given the database is running
+        And there is schema "schema_heap, schema_ao" exists in "fullbkdb"
+        And there is a "heap" table "schema_heap.heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "schema_ao.ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a backupfile of tables "schema_heap.heap_table, schema_ao.ao_part_table" in "fullbkdb" exists for validation
+        When the user runs "gpcrondump -a -x fullbkdb -s schema_heap"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And verify that the report file in " " dir contains "Backup Type: Full"
+        And the user runs gpdbrestore with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "schema_heap.heap_table" in "fullbkdb" with data
+        And verify that there is no table "schema_ao.ao_part_table" in "fullbkdb"
+
+    Scenario: Full Backup with option --exclude-table-file and Restore
+        Given the database is running
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a "co" partition table "co_part_table" with compression "None" in "fullbkdb" with data
+        And there is a backupfile of tables "co_part_table" in "fullbkdb" exists for validation
+        And there is a file "exclude_file" with tables "public.heap_table, public.ao_part_table" 
+        When the user runs "gpcrondump -a -x fullbkdb --exclude-table-file exclude_file"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And verify that the report file in " " dir contains "Backup Type: Full"
+        And the user runs gpdbrestore with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And verify that there is a "co" table "co_part_table" in "fullbkdb" with data
+        And verify that there is no table "ao_part_table" in "fullbkdb"
+        And verify that there is no table "heap_table" in "fullbkdb"
+
+    Scenario: Full Backup with option --table-file and Restore
+        Given the database is running
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a "co" partition table "co_part_table" with compression "None" in "fullbkdb" with data
+        And there is a backupfile of tables "co_part_table" in "fullbkdb" exists for validation
+        And there is a file "include_file" with tables "public.heap_table, public.ao_part_table" 
+        When the user runs "gpcrondump -a -x fullbkdb --table-file include_file"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And verify that the report file in " " dir contains "Backup Type: Full"
+        And the user runs gpdbrestore with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And verify that there is a "ao" table "ao_part_table" in "fullbkdb" with data
+        And verify that there is a "heap" table "heap_table" in "fullbkdb" with data
+        And verify that there is no table "co_part_table" in "fullbkdb"
+
+    @smoke
+    Scenario: Negative test for incremental with ddboost option
+        Given the database is running
+        And there is a "heap" table "heap_table" with compression "None" in "bkdb" with data
+        When the user runs "gpcrondump -a -x bkdb --ddboost --incremental"
+        Then gpcrondump should return a return code of 2
+        And gpcrondump should print ddboost can not be selected with incremental backup to stdout 
+
+    Scenario: gpcrondump should generate a timestamp and pass it to gp_dump
+        Given the database is running
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        When the user runs "gpcrondump -a -x fullbkdb"
+        And the timestamp key is stored
+        Then gpcrondump should print --gp-k to stdout
+        And gpcrondump should return a return code of 0
+        And the timestamp in the report file should be same as timestamp key
+        And there should be dump files with filename having timestamp key in "fullbkdb"
+
+    Scenario: plan file creation in directory
+        Given the database is running  
+        And there are no backup files
+        And partition "1" of partition table "ao_part_table, co_part_table_comp" is assumed to be in dirty state in "bkdb" in schema "public"
+        And table "public.ao_index_table" is assumed to be in dirty state in "bkdb"
+        When the user runs "gpcrondump -a -x bkdb"
+        And gpcrondump should return a return code of 0
+        And the user runs "gpcrondump -a -x bkdb --incremental"
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the user runs gpdbrestore with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        Then "plan" file should be created under " "
+
+    Scenario: Simple Plan File Test
+        Given the database is running  
+        And there is a "heap" table "heap_table" with compression "None" in "smalldb" with data
+        And there is a "heap" table "heap2_table" with compression "None" in "smalldb" with data
+        And there is a "ao" table "ao_table" with compression "quicklz" in "smalldb" with data
+        And there is a "ao" table "ao2_table" with compression "quicklz" in "smalldb" with data
+        And there is a "co" table "co_table" with compression "None" in "smalldb" with data
+        And there is a "co" table "co2_table" with compression "None" in "smalldb" with data
+        And there are no backup files
+        When the user runs "gpcrondump -a -x smalldb"
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts0"
+        And the user runs "gpcrondump -a -x smalldb --incremental"
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp is labeled "ts1"
+        And "dirty_list" file should be created under " "
+        And table "public.co_table" is assumed to be in dirty state in "smalldb"
+        And the user runs "gpcrondump -a -x smalldb --incremental"
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp is labeled "ts2"
+        And "dirty_list" file should be created under " "
+        And the user runs gpdbrestore with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        Then "plan" file should be created under " "
+        And the plan file is validated against "data/plan1"
+
+    Scenario: Simple Plan File Test With Partitions
+        Given the database is running  
+        And there are no backup files
+        When the user runs "gpcrondump -a -x bkdb"
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts0"
+        And partition "1" of partition table "ao_part_table" is assumed to be in dirty state in "bkdb" in schema "public"
+        And table "public.ao_index_table" is assumed to be in dirty state in "bkdb"
+        And the user runs "gpcrondump -a -x bkdb --incremental"
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp is labeled "ts1"
+        And "dirty_list" file should be created under " "
+        And partition "1" of partition table "co_part_table_comp" is assumed to be in dirty state in "bkdb" in schema "public"
+        And the user runs "gpcrondump -a -x bkdb --incremental"
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp is labeled "ts2"
+        And "dirty_list" file should be created under " "
+        And the user runs gpdbrestore with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        Then "plan" file should be created under " "
+        And the plan file is validated against "data/plan2"
+
+    Scenario: No plan file generated
+        Given the database is running  
+        And there are no backup files
+        And partition "1" of partition table "ao_part_table, co_part_table_comp" is assumed to be in dirty state in "bkdb" in schema "public"
+        And table "public.ao_index_table" is assumed to be in dirty state in "bkdb"
+        When the user runs "gpcrondump -a -x bkdb"
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the user runs gpdbrestore with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        Then "plan" file should not be created under " "
+
+    Scenario: Incremental backup of Non-public schema
+        Given the database is running
+        And there are no "dirty_backup_list" tempfiles
+        And database "schematestdb" is created if not exists
+        And there is schema "pepper" exists in "schematestdb"
+        And there is a "heap" table "pepper.heap_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "pepper.ao_table" with compression "None" in "schematestdb" with data
+        And there is a "co" table "pepper.co_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" partition table "pepper.ao_part_table" with compression "quicklz" in "schematestdb" with data
+        And there is a "co" partition table "pepper.co_part_table" with compression "quicklz" in "schematestdb" with data
+        And there is a "ao" table "pepper.ao_index_table" with index "ao_index" compression "None" in "schematestdb" with data
+        And there is a "co" table "pepper.co_index_table" with index "co_index" compression "None" in "schematestdb" with data
+        And there are no backup files
+        When the user runs "gpcrondump -a -x schematestdb"
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts0"
+        And partition "1" of partition table "ao_part_table" is assumed to be in dirty state in "schematestdb" in schema "pepper"
+        And table "pepper.ao_index_table" is assumed to be in dirty state in "schematestdb"
+        And the user runs "gpcrondump -a -x schematestdb --incremental"
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp is labeled "ts1"
+        And "dirty_list" file should be created under " "
+        And partition "1" of partition table "co_part_table" is assumed to be in dirty state in "schematestdb" in schema "pepper"
+        And the user runs "gpcrondump -a -x schematestdb --incremental"
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp is labeled "ts2"
+        And "dirty_list" file should be created under " "
+        And the user runs gpdbrestore with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        Then "plan" file should be created under " "
+        And the plan file is validated against "data/plan3"
+        And verify there are no "dirty_backup_list" tempfiles
+
+    Scenario: Schema only restore of incremental backup
+        Given the database is running  
+        And there are no backup files
+        When the user runs "gpcrondump -a -x bkdb"
+        And gpcrondump should return a return code of 0
+        And partition "1" of partition table "ao_part_table" is assumed to be in dirty state in "bkdb" in schema "public"
+        And table "public.ao_index_table" is assumed to be in dirty state in "bkdb"
+        And the user runs "gpcrondump -a -x bkdb --incremental"
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the table names in "bkdb" is stored
+        And the user runs gpdbrestore with the stored timestamp
+        Then gpdbrestore should return a return code of 0
+        And tables names should be identical to stored table names in "bkdb"
+
+    Scenario: Multiple - Incremental backup and restore
+        Given the database is running
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is schema "pepper" exists in "schematestdb"
+        And there is a "heap" table "pepper.heap_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "pepper.ao_table" with compression "None" in "schematestdb" with data
+        And there is a "co" partition table "pepper.co_part_table" with compression "quicklz" in "schematestdb" with data
+        And there are no backup files
+        And there is a list to store the incremental backup timestamps
+        When the user runs "gpcrondump -a -x schematestdb"
+        And the full backup timestamp from gpcrondump is stored        
+        And gpcrondump should return a return code of 0
+        And table "pepper.ao_table" is assumed to be in dirty state in "schematestdb"
+        And the user runs "gpcrondump -a -x schematestdb --incremental"
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored in a list
+        And partition "1" of partition table "co_part_table" is assumed to be in dirty state in "schematestdb" in schema "pepper"
+        And table "pepper.heap_table" is deleted in "schematestdb"
+        And the user runs "gpcrondump -a -x schematestdb --incremental"
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored in a list
+        And table "pepper.ao_table" is assumed to be in dirty state in "schematestdb"
+        And the user runs "gpcrondump -a -x schematestdb --incremental"
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And all the data from "schematestdb" is saved for verification
+        Then the user runs gpdbrestore with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And verify that there is no table "pepper.heap_table" in "schematestdb"
+        And verify that the data of "10" tables in "schematestdb" is validated after restore 
+        And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
+        And verify that the plan file is created for the latest timestamp 
+
+    @smoke
+    Scenario: Simple Incremental Backup for Multiple Schemas with common tablenames
+        Given the database is running
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is schema "pepper" exists in "schematestdb"
+        And there is a "heap" table "pepper.heap_table" with compression "None" in "schematestdb" with data
+        And there is a "heap" table "heap_table" with compression "None" in "schematestdb" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "schematestdb" with data
+        And there is a "heap" partition table "pepper.heap_part_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "pepper.ao_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "pepper.ao_table2" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "ao_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "ao_table2" with compression "None" in "schematestdb" with data
+        And there is a "co" partition table "pepper.co_part_table" with compression "quicklz" in "schematestdb" with data
+        And there is a "co" partition table "co_part_table" with compression "quicklz" in "schematestdb" with data
+        And there is a list to store the incremental backup timestamps
+        And there are no backup files
+        When the user runs "gpcrondump -a -x schematestdb"
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts0"
+        And the full backup timestamp from gpcrondump is stored 
+        And table "public.ao_table" is assumed to be in dirty state in "schematestdb"
+        And table "pepper.ao_table2" is assumed to be in dirty state in "schematestdb"
+        And partition "1" of partition table "co_part_table" is assumed to be in dirty state in "schematestdb" in schema "pepper"
+        And partition "2" of partition table "co_part_table" is assumed to be in dirty state in "schematestdb" in schema "public"
+        And partition "3" of partition table "co_part_table" is assumed to be in dirty state in "schematestdb" in schema "pepper"
+        And partition "3" of partition table "co_part_table" is assumed to be in dirty state in "schematestdb" in schema "public"
+        And table "public.heap_table2" is deleted in "schematestdb"
+        And the user runs "gpcrondump -a --incremental -x schematestdb"
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts1"
+        Then the timestamp from gpcrondump is stored 
+        And verify that the report file in " " dir contains "Backup Type: Incremental"
+        And "dirty_list" file should be created under " "
+        And all the data from "schematestdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And the plan file is validated against "data/plan4"
+        And verify that the data of "33" tables in "schematestdb" is validated after restore 
+        And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
+
+    Scenario: pg_stat_last_operation registers truncate for regular tables 
+        Given the database is running
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is a "ao" table "ao_table" with compression "None" in "schematestdb" with data
+        And there is a "co" table "co_table" with compression "None" in "schematestdb" with data
+        When the user truncates "ao_table, co_table" tables in "schematestdb"
+        Then pg_stat_last_operation registers the truncate for tables "ao_table, co_table" in "schematestdb" in schema "public"
+
+    Scenario: pg_stat_last_operation registers truncate for partition tables 
+        Given the database is running
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is schema "pepper" exists in "schematestdb"
+        And there is a "ao" partition table "pepper.ao_part_table" with compression "quicklz" in "schematestdb" with data
+        And there is a "co" partition table "pepper.co_part_table" with compression "quicklz" in "schematestdb" with data
+        When the user truncates "pepper.ao_part_table" tables in "schematestdb"
+        When the user truncates "pepper.co_part_table_1_prt_p1_2_prt_2" tables in "schematestdb"
+        Then pg_stat_last_operation registers the truncate for tables "ao_part_table_1_prt_p1_2_prt_1" in "schematestdb" in schema "pepper"
+        Then pg_stat_last_operation registers the truncate for tables "ao_part_table_1_prt_p1_2_prt_2" in "schematestdb" in schema "pepper"
+        Then pg_stat_last_operation registers the truncate for tables "ao_part_table_1_prt_p1_2_prt_3" in "schematestdb" in schema "pepper"
+        Then pg_stat_last_operation registers the truncate for tables "ao_part_table_1_prt_p2_2_prt_1" in "schematestdb" in schema "pepper"
+        Then pg_stat_last_operation registers the truncate for tables "ao_part_table_1_prt_p2_2_prt_2" in "schematestdb" in schema "pepper"
+        Then pg_stat_last_operation registers the truncate for tables "ao_part_table_1_prt_p2_2_prt_3" in "schematestdb" in schema "pepper"
+        Then pg_stat_last_operation does not register the truncate for tables "co_part_table_1_prt_p1_2_prt_1" in "schematestdb" in schema "pepper"
+        Then pg_stat_last_operation registers the truncate for tables "co_part_table_1_prt_p1_2_prt_2" in "schematestdb" in schema "pepper"
+        Then pg_stat_last_operation does not register the truncate for tables "co_part_table_1_prt_p1_2_prt_3" in "schematestdb" in schema "pepper"
+        Then pg_stat_last_operation does not register the truncate for tables "co_part_table_1_prt_p2_2_prt_1" in "schematestdb" in schema "pepper"
+        Then pg_stat_last_operation does not register the truncate for tables "co_part_table_1_prt_p2_2_prt_2" in "schematestdb" in schema "pepper"
+        Then pg_stat_last_operation does not register the truncate for tables "co_part_table_1_prt_p2_2_prt_3" in "schematestdb" in schema "pepper"
+
+    Scenario: Simple Incremental Backup to test TRUNCATE
+        Given the database is running
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is schema "pepper" exists in "schematestdb"
+        And there is a "ao" table "pepper.ao_table" with compression "None" in "schematestdb" with data
+        And there is a "co" table "pepper.co_table" with compression "None" in "schematestdb" with data
+        And there is a list to store the incremental backup timestamps
+        And there are no backup files
+        When the user truncates "pepper.ao_table" tables in "schematestdb"
+        And the user truncates "pepper.co_table" tables in "schematestdb"
+        And the numbers "1" to "10000" are inserted into "pepper.ao_table" tables in "schematestdb"
+        And the numbers "1" to "10000" are inserted into "pepper.co_table" tables in "schematestdb"
+        And the user runs "gpcrondump -a -x schematestdb"
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts0"
+        And the full backup timestamp from gpcrondump is stored 
+        And the user truncates "pepper.co_table" tables in "schematestdb"
+        And the numbers "1" to "10000" are inserted into "pepper.co_table" tables in "schematestdb"
+        And table "pepper.co_table" is assumed to be in dirty state in "schematestdb"
+        And the user runs "gpcrondump -a --incremental -x schematestdb"
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts1"
+        Then the timestamp from gpcrondump is stored 
+        And verify that the report file in " " dir contains "Backup Type: Incremental"
+        And "dirty_list" file should be created under " "
+        And all the data from "schematestdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And the plan file is validated against "data/plan5"
+        And verify that the data of "2" tables in "schematestdb" is validated after restore 
+        And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
+
+    Scenario: IB TRUNCATE partitioned table 
+        Given the database is running
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is schema "pepper" exists in "schematestdb"
+        And there is a "ao" partition table "pepper.ao_part_table" with compression "quicklz" in "schematestdb" with data
+        And there is a "co" partition table "pepper.co_part_table" with compression "quicklz" in "schematestdb" with data
+        And there is a list to store the incremental backup timestamps
+        And there are no backup files
+        When the user runs "gpcrondump -a -x schematestdb"
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts0"
+        And the full backup timestamp from gpcrondump is stored 
+        And the user truncates "pepper.ao_part_table" tables in "schematestdb"
+        And the partition table "pepper.ao_part_table" in "schematestdb" is populated with similar data
+        And the user runs "gpcrondump -a --incremental -x schematestdb"
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts1"
+        Then the timestamp from gpcrondump is stored 
+        And all the data from "schematestdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And the plan file is validated against "data/plan6"
+        And verify that the data of "18" tables in "schematestdb" is validated after restore 
+        And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
+
+    @smoke
+    Scenario: IB TRUNCATE partitioned table 2 times
+    # verify that TRUNCATE timestamp is a new timestamp
+        Given the database is running
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is schema "pepper" exists in "schematestdb"
+        And there is a "ao" partition table "pepper.ao_part_table" with compression "quicklz" in "schematestdb" with data
+        And there is a "co" partition table "pepper.co_part_table" with compression "quicklz" in "schematestdb" with data
+        And the user truncates "pepper.ao_part_table" tables in "schematestdb"
+        And the partition table "pepper.ao_part_table" in "schematestdb" is populated with same data
+        And there is a list to store the incremental backup timestamps
+        And there are no backup files
+        When the user runs "gpcrondump -a -x schematestdb"
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts0"
+        And the full backup timestamp from gpcrondump is stored 
+        And the user truncates "pepper.ao_part_table" tables in "schematestdb"
+        And the partition table "pepper.ao_part_table" in "schematestdb" is populated with similar data
+        And the user runs "gpcrondump -a --incremental -x schematestdb"
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts1"
+        Then the timestamp from gpcrondump is stored 
+        And all the data from "schematestdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And the plan file is validated against "data/plan6"
+        And verify that the data of "18" tables in "schematestdb" is validated after restore 
+        And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
+
+    Scenario: Simple Incremental Backup to test ADD COLUMN
+        Given the database is running
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is schema "pepper" exists in "schematestdb"
+        And there is a "ao" table "pepper.ao_table" with compression "None" in "schematestdb" with data
+        And there is a "co" table "pepper.co_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "pepper.ao_table2" with compression "None" in "schematestdb" with data
+        And there is a "co" table "pepper.co_table2" with compression "None" in "schematestdb" with data
+        And there is a list to store the incremental backup timestamps
+        And there are no backup files
+        When the user runs "gpcrondump -a -x schematestdb"
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts0"
+        And the full backup timestamp from gpcrondump is stored 
+        And the user adds column "foo" with type "int" and default "0" to "pepper.ao_table" table in "schematestdb"
+        And the user adds column "foo" with type "int" and default "0" to "pepper.co_table" table in "schematestdb"
+        And the user runs "gpcrondump -a --incremental -x schematestdb"
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts1"
+        Then the timestamp from gpcrondump is stored 
+        And verify that the report file in " " dir contains "Backup Type: Incremental"
+        And all the data from "schematestdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And the plan file is validated against "data/plan7"
+        And verify that the data of "4" tables in "schematestdb" is validated after restore 
+        And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
+
+    @smoke
+    Scenario: Incremental Backup to test ADD COLUMN with partitions
+        Given the database is running
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is schema "pepper" exists in "schematestdb"
+        And there is a "ao" table "pepper.ao_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" partition table "pepper.ao_part_table" with compression "quicklz" in "schematestdb" with data
+        And there is a "co" partition table "pepper.co_part_table" with compression "quicklz" in "schematestdb" with data
+        And there is a list to store the incremental backup timestamps
+        And there are no backup files
+        When the user runs "gpcrondump -a -x schematestdb -v"
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts0"
+        And the full backup timestamp from gpcrondump is stored 
+        And the user adds column "foo" with type "int" and default "0" to "pepper.ao_part_table" table in "schematestdb"
+        And the user adds column "foo" with type "int" and default "0" to "pepper.co_part_table" table in "schematestdb"
+        And the user runs "gpcrondump -a --incremental -x schematestdb"
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts1"
+        Then the timestamp from gpcrondump is stored 
+        And all the data from "schematestdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And the plan file is validated against "data/plan8"
+        And verify that the data of "19" tables in "schematestdb" is validated after restore 
+        And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
+
+    Scenario: Non compressed incremental backup 
+        Given the database is running
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is schema "pepper" exists in "schematestdb"
+        And there is a "heap" table "pepper.heap_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "pepper.ao_table" with compression "None" in "schematestdb" with data
+        And there is a "co" partition table "pepper.co_part_table" with compression "quicklz" in "schematestdb" with data
+        And there are no backup files
+        And there is a list to store the incremental backup timestamps
+        When the user runs "gpcrondump -a -x schematestdb -z"
+        And the full backup timestamp from gpcrondump is stored        
+        And gpcrondump should return a return code of 0
+        And table "pepper.ao_table" is assumed to be in dirty state in "schematestdb"
+        And the user runs "gpcrondump -a -x schematestdb --incremental -z"
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored in a list
+        And partition "1" of partition table "co_part_table" is assumed to be in dirty state in "schematestdb" in schema "pepper"
+        And table "pepper.heap_table" is deleted in "schematestdb"
+        And the user runs "gpcrondump -a -x schematestdb --incremental -z"
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored in a list
+        And table "pepper.ao_table" is assumed to be in dirty state in "schematestdb"
+        And the user runs "gpcrondump -a -x schematestdb --incremental -z"
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And all the data from "schematestdb" is saved for verification
+        Then the user runs gpdbrestore with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And verify that there is no table "pepper.heap_table" in "schematestdb"
+        And verify that the data of "10" tables in "schematestdb" is validated after restore 
+        And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
+        And verify that the plan file is created for the latest timestamp 
+
+    Scenario: Rollback Insert
+        Given the database is running
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is schema "pepper" exists in "schematestdb"
+        And there is a "ao" table "pepper.ao_table" with compression "None" in "schematestdb" with data
+        And there is a "co" table "pepper.co_table" with compression "None" in "schematestdb" with data
+        And there is a list to store the incremental backup timestamps
+        And there are no backup files
+        When the user runs "gpcrondump -a -x schematestdb"
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts0"
+        And the full backup timestamp from gpcrondump is stored 
+        And an insert on "pepper.ao_table" in "schematestdb" is rolled back  
+        And table "pepper.co_table" is assumed to be in dirty state in "schematestdb"
+        And the user runs "gpcrondump -a --incremental -x schematestdb"
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts1"
+        Then the timestamp from gpcrondump is stored 
+        And verify that the report file in " " dir contains "Backup Type: Incremental"
+        And "dirty_list" file should be created under " "
+        And all the data from "schematestdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And the plan file is validated against "data/plan9"
+        And verify that the data of "2" tables in "schematestdb" is validated after restore 
+        And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
+
+    Scenario: Rollback Truncate Table
+        Given the database is running
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is schema "pepper" exists in "schematestdb"
+        And there is a "ao" table "pepper.ao_table" with compression "None" in "schematestdb" with data
+        And there is a "co" table "pepper.co_table" with compression "None" in "schematestdb" with data
+        And there is a list to store the incremental backup timestamps
+        And there are no backup files
+        When the user runs "gpcrondump -a -x schematestdb"
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts0"
+        And the full backup timestamp from gpcrondump is stored 
+        And a truncate on "pepper.ao_table" in "schematestdb" is rolled back  
+        And table "pepper.co_table" is assumed to be in dirty state in "schematestdb"
+        And the user runs "gpcrondump -a --incremental -x schematestdb"
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts1"
+        Then the timestamp from gpcrondump is stored 
+        And verify that the report file in " " dir contains "Backup Type: Incremental"
+        And "dirty_list" file should be created under " "
+        And all the data from "schematestdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And the plan file is validated against "data/plan9"
+        And verify that the data of "2" tables in "schematestdb" is validated after restore 
+        And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
+
+    Scenario: Rollback Alter table
+        Given the database is running
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is schema "pepper" exists in "schematestdb"
+        And there is a "ao" table "pepper.ao_table" with compression "None" in "schematestdb" with data
+        And there is a "co" table "pepper.co_table" with compression "None" in "schematestdb" with data
+        And there is a list to store the incremental backup timestamps
+        And there are no backup files
+        When the user runs "gpcrondump -a -x schematestdb"
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts0"
+        And the full backup timestamp from gpcrondump is stored 
+        And an alter on "pepper.ao_table" in "schematestdb" is rolled back  
+        And table "pepper.co_table" is assumed to be in dirty state in "schematestdb"
+        And the user runs "gpcrondump -a --incremental -x schematestdb"
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts1"
+        Then the timestamp from gpcrondump is stored 
+        And verify that the report file in " " dir contains "Backup Type: Incremental"
+        And "dirty_list" file should be created under " "
+        And all the data from "schematestdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And the plan file is validated against "data/plan9"
+        And verify that the data of "2" tables in "schematestdb" is validated after restore 
+        And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
+
+    Scenario: Out of Sync timestamp
+        Given the database is running
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is a "ao" table "ao_table" with compression "None" in "schematestdb" with data
+        And there is a "co" table "co_table" with compression "None" in "schematestdb" with data
+        And there is a list to store the incremental backup timestamps
+        And there are no backup files
+        # this test will break after 2021 year
+        And there is a fake timestamp for "20210130093000"
+        When the user runs "gpcrondump -a -x schematestdb"
+        Then gpcrondump should return a return code of 2
+        And gpcrondump should print There is a future dated backup on the system preventing new backups to stdout
+
+    Scenario: Test for a quadrillion rows
+        Given the database is running 
+        And the database "tempdb" does not exist
+        And database "tempdb" exists
+        And there is a fake pg_aoseg table named "public.tuple_count_table" in "tempdb"
+        And the row "1, 0, 1000000000000000, 0, 0" is inserted into "public.tuple_count_table" in "tempdb"
+        When the method get_partition_state is executed on table "public.tuple_count_table" in "tempdb" for ao table "pepper.t1" 
+        Then an exception should be raised with "Exceeded backup max tuple count of 1 quadrillion rows per table for:" 
+
+    Scenario: Test for a quadrillion rows in 2 files
+        Given the database is running 
+        And the database "tempdb" does not exist
+        And database "tempdb" exists
+        And there is a fake pg_aoseg table named "public.tuple_count_table" in "tempdb"
+        And the row "1, 0, 999999999999999, 0, 0" is inserted into "public.tuple_count_table" in "tempdb"
+        And the row "2, 0, 1, 0, 0" is inserted into "public.tuple_count_table" in "tempdb"
+        When the method get_partition_state is executed on table "public.tuple_count_table" in "tempdb" for ao table "pepper.t1"
+        Then an exception should be raised with "Exceeded backup max tuple count of 1 quadrillion rows per table for:" 
+
+    Scenario: Test for less than a quadrillion rows in 2 files
+        Given the database is running 
+        And the database "tempdb" does not exist
+        And database "tempdb" exists
+        And there is a fake pg_aoseg table named "public.tuple_count_table" in "tempdb"
+        And the row "1, 0, 999999999999998, 0, 0" is inserted into "public.tuple_count_table" in "tempdb"
+        And the row "2, 0, 1, 0, 0" is inserted into "public.tuple_count_table" in "tempdb"
+        When the method get_partition_state is executed on table "public.tuple_count_table" in "tempdb" for ao table "pepper.t1"
+        Then the get_partition_state result should contain "pepper, t1, 999999999999999"
+
+    Scenario: Verify the gpcrondump -o option is not broken
+        Given the database is running
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is schema "pepper" exists in "schematestdb"
+        And there is a "ao" table "pepper.ao_table" with compression "None" in "schematestdb" with data
+        And there is a "co" table "pepper.co_table" with compression "None" in "schematestdb" with data
+        And there are no backup files
+        And the user runs "gpcrondump -a -x schematestdb"
+        And the full backup timestamp from gpcrondump is stored
+        And gpcrondump should return a return code of 0
+        And older backup directories "20130101" exists
+        When the user runs "gpcrondump -o" 
+        Then gpcrondump should return a return code of 0
+        And the dump directories "20130101" should not exist
+        And the dump directory for the stored timestamp should exist 
+
+    Scenario: Verify the gpcrondump -c  option is not broken
+        Given the database is running
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is schema "pepper" exists in "schematestdb"
+        And there is a "ao" table "pepper.ao_table" with compression "None" in "schematestdb" with data
+        And there is a "co" table "pepper.co_table" with compression "None" in "schematestdb" with data
+        And there are no backup files
+        And the user runs "gpcrondump -a -x schematestdb"
+        And the full backup timestamp from gpcrondump is stored
+        And gpcrondump should return a return code of 0
+        And older backup directories "20130101" exists
+        When the user runs "gpcrondump -c -x schematestdb -a" 
+        Then gpcrondump should return a return code of 0
+        And the dump directories "20130101" should not exist
+        And the dump directory for the stored timestamp should exist 
+
+    Scenario: Verify the gpcrondump -g option is not broken
+        Given the database is running
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there are no backup files
+        When the user runs "gpcrondump -a -x schematestdb -g"
+        And the timestamp from gpcrondump is stored
+        Then gpcrondump should return a return code of 0
+        And config files should be backed up on all segments
+
+    Scenario: Verify the gpcrondump -g option with incremental is not broken
+        Given the database is running
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there are no backup files
+        When the user runs "gpcrondump -a -x schematestdb"
+        Then gpcrondump should return a return code of 0
+        When the user runs "gpcrondump -a -x schematestdb -g --incremental"
+        And the timestamp from gpcrondump is stored
+        Then gpcrondump should return a return code of 0
+        And config files should be backed up on all segments
+
+    Scenario: Verify the gpcrondump -h option works with full and incremental backups
+        Given the database is running
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is schema "pepper" exists in "schematestdb"
+        And there is a "ao" table "pepper.ao_table" with compression "None" in "schematestdb" with data
+        And there is a "co" table "pepper.co_table" with compression "None" in "schematestdb" with data
+        And there are no backup files
+        When the user runs "gpcrondump -a -x schematestdb -h"
+        And the timestamp from gpcrondump is stored
+        Then gpcrondump should return a return code of 0
+        And verify that there is a "heap" table "gpcrondump_history" in "schematestdb"
+        And verify that the table "gpcrondump_history" in "schematestdb" has dump info for the stored timestamp
+        When the user runs "gpcrondump -a -x schematestdb -h --incremental" 
+        And the timestamp from gpcrondump is stored
+        Then gpcrondump should return a return code of 0
+        And verify that there is a "heap" table "gpcrondump_history" in "schematestdb"
+        And verify that the table "gpcrondump_history" in "schematestdb" has dump info for the stored timestamp
+
+     Scenario: Verify gpdbrestore -s option with full backup
+         Given the database is running
+         And the database "testdb1" does not exist
+         And the database "testdb2" does not exist
+         And database "testdb1" exists
+         And database "testdb2" exists
+         And there is a "ao" table "ao_table1" with compression "None" in "testdb1" with data
+         And there is a "co" table "co_table1" with compression "None" in "testdb1" with data
+         And there is schema "pepper2" exists in "testdb2"
+         And there is a "ao" table "ao_table2" with compression "None" in "testdb2" with data
+         And there is a "co" table "co_table2" with compression "None" in "testdb2" with data
+         And there are no backup files
+         When the user runs "gpcrondump -a -x testdb1"
+         And gpcrondump should return a return code of 0
+         And all the data from "testdb1" is saved for verification
+         And the user runs "gpcrondump -a -x testdb2"
+         And gpcrondump should return a return code of 0
+         And the database "testdb2" does not exist
+         And the user runs "gpdbrestore  -e -s testdb1 -a"
+         And gpdbrestore should return a return code of 0
+         Then verify that the data of "2" tables in "testdb1" is validated after restore
+         And verify that the tuple count of all appendonly tables are consistent in "testdb1"
+         And verify that database "testdb2" does not exist
+
+     Scenario: Verify gpdbrestore -s option with incremental backup 
+         Given the database is running
+         And the database "testdb1" does not exist
+         And the database "testdb2" does not exist
+         And database "testdb1" exists
+         And database "testdb2" exists
+         And there is a "ao" table "ao_table1" with compression "None" in "testdb1" with data
+         And there is a "co" table "co_table1" with compression "None" in "testdb1" with data
+         And there is a "ao" table "ao_table2" with compression "None" in "testdb2" with data
+         And there is a "co" table "co_table2" with compression "None" in "testdb2" with data
+         And there are no backup files
+         When the user runs "gpcrondump -a -x testdb1"
+         And gpcrondump should return a return code of 0
+         And the user runs "gpcrondump -a -x testdb2"
+         And gpcrondump should return a return code of 0
+         And table "public.ao_table1" is assumed to be in dirty state in "testdb1"
+         And the user runs "gpcrondump -a -x testdb1 --incremental"
+         And gpcrondump should return a return code of 0
+         And the user runs "gpcrondump -a -x testdb2 --incremental"
+         And gpcrondump should return a return code of 0
+         And all the data from "testdb1" is saved for verification
+         And the database "testdb2" does not exist
+         And the user runs "gpdbrestore -e -s testdb1 -a" 
+         Then gpdbrestore should return a return code of 0
+         And verify that the data of "2" tables in "testdb1" is validated after restore
+         And verify that the tuple count of all appendonly tables are consistent in "testdb1"
+         And verify that database "testdb2" does not exist
+
+    Scenario: gpdbrestore -u option with full backup timestamp
+         Given the database is running
+         And the database "testdb" does not exist
+         And database "testdb" exists
+         And there is a "ao" table "ao_table" with compression "None" in "testdb" with data
+         And there is a "co" table "co_table" with compression "None" in "testdb" with data
+         And there are no backup files
+         When the user runs "gpcrondump -a -x testdb -u /tmp"
+         And gpcrondump should return a return code of 0
+         And the timestamp from gpcrondump is stored
+         And all the data from "testdb" is saved for verification
+         And there are no backup files
+         And the user runs gpdbrestore with the stored timestamp and options "-u /tmp --verbose" 
+         And gpdbrestore should return a return code of 0
+         Then verify that the data of "2" tables in "testdb" is validated after restore
+         And verify that the tuple count of all appendonly tables are consistent in "testdb"
+        
+    @smoke
+    Scenario: gpdbrestore -u option with incremental backup timestamp
+         Given the database is running
+         And the database "testdb" does not exist
+         And database "testdb" exists
+         And there is a "ao" table "ao_table" with compression "None" in "testdb" with data
+         And there is a "co" table "co_table" with compression "None" in "testdb" with data
+         And there are no backup files
+         When the user runs "gpcrondump -a -x testdb -u /tmp"
+         And gpcrondump should return a return code of 0
+         And table "public.ao_table" is assumed to be in dirty state in "testdb"
+         When the user runs "gpcrondump -a -x testdb -u /tmp --incremental"
+         And gpcrondump should return a return code of 0
+         And the timestamp from gpcrondump is stored
+         And all the data from "testdb" is saved for verification
+         And there are no backup files
+         And the user runs gpdbrestore with the stored timestamp and options "-u /tmp --verbose" 
+         And gpdbrestore should return a return code of 0
+         Then verify that the data of "2" tables in "testdb" is validated after restore
+         And verify that the tuple count of all appendonly tables are consistent in "testdb"
+        
+    Scenario: gpcrondump -x with multiple databases
+         Given the database is running
+         And the database "testdb1" does not exist
+         And the database "testdb2" does not exist
+         And database "testdb1" exists
+         And database "testdb2" exists
+         And there is a "ao" table "ao_table1" with compression "None" in "testdb1" with data
+         And there is a "co" table "co_table1" with compression "None" in "testdb1" with data
+         And there is a "ao" table "ao_table2" with compression "None" in "testdb2" with data
+         And there is a "co" table "co_table2" with compression "None" in "testdb2" with data
+         And there are no backup files
+         When the user runs "gpcrondump -a -x testdb1,testdb2"
+         And the timestamp for database dumps "testdb1, testdb2" are stored
+         And gpcrondump should return a return code of 0
+         And all the data from "testdb1" is saved for verification
+         And all the data from "testdb2" is saved for verification
+         And the user runs "gpdbrestore -e -s testdb1 -a" 
+         And gpdbrestore should return a return code of 0
+         And the user runs "gpdbrestore -e -s testdb2 -a" 
+         And gpdbrestore should return a return code of 0
+         Then verify that the data of "2" tables in "testdb1" is validated after restore 
+         And verify that the data of "2" tables in "testdb2" is validated after restore 
+         And the dump timestamp for "testdb1, testdb2" are different
+         And verify that the tuple count of all appendonly tables are consistent in "testdb1"
+         And verify that the tuple count of all appendonly tables are consistent in "testdb2"
+
+    Scenario: Test restore for large number of tables
+         Given the database is running
+         And the database "large_table_db" does not exist
+         And database "large_table_db" exists
+         And there is a "ao" table "ao_table_for_large_database_01" in "large_table_db" having large number of partitions
+         And the length of partition names of table "ao_table_for_large_database_01" in "large_table_db" exceeds the command line maximum limit
+         And there are no backup files
+         When the user runs "gpcrondump -a -x large_table_db"
+         And gpcrondump should return a return code of 0
+         And the user runs "gpcrondump -a -x large_table_db --incremental"
+         And gpcrondump should return a return code of 0
+         And the timestamp from gpcrondump is stored 
+         And all the data from "large_table_db" is saved for verification
+         And the user runs gpdbrestore with the stored timestamp 
+         Then gpdbrestore should return a return code of 0
+         And verify that the data of "5551" tables in "large_table_db" is validated after restore 
+         And verify that the tuple count of all appendonly tables are consistent in "large_table_db"
+
+    Scenario: gpdbrestore with -T and --table-file should fail
+         Given the database is running
+         And the database "testdb1" does not exist
+         And database "testdb1" exists
+         And there is a "ao" table "ao_table" with compression "None" in "testdb1" with data
+         And there is a "co" table "co_table" with compression "None" in "testdb1" with data
+         And there are no backup files
+         When the user runs "gpcrondump -a -x testdb1"
+         And gpcrondump should return a return code of 0
+         And the timestamp from gpcrondump is stored 
+         And the user runs gpdbrestore with the stored timestamp and options "-T public.ao_table --table-file foo"
+         Then gpdbrestore should return a return code of 2
+         And gpdbrestore should print Cannot specify -T and --table-file together to stdout 
+
+    Scenario: gpdbrestore with --table-file option
+         Given the database is running
+         And the database "testdb1" does not exist
+         And database "testdb1" exists
+         And there is a "ao" table "ao_table" with compression "None" in "testdb1" with data
+         And there is a "co" table "co_table" with compression "None" in "testdb1" with data
+         And there are no backup files
+         And there is a table-file "/tmp/table_file_foo" with tables "public.ao_table, public.co_table"
+         When the user runs "gpcrondump -a -x testdb1"
+         And gpcrondump should return a return code of 0
+         And the timestamp from gpcrondump is stored 
+         And all the data from "testdb1" is saved for verification
+         And the user runs gpdbrestore with the stored timestamp and options "--table-file /tmp/table_file_foo"
+         Then gpdbrestore should return a return code of 0
+         And verify that the data of "2" tables in "testdb1" is validated after restore
+         And verify that the tuple count of all appendonly tables are consistent in "testdb1"
+
+    @smoke
+    Scenario: Restore Scenarios
+        Given the database is running
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is schema "pepper" exists in "schematestdb"
+        And there is a "heap" table "pepper.heap_table" with compression "None" in "schematestdb" with data
+        And there is a "heap" table "heap_table" with compression "None" in "schematestdb" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "schematestdb" with data
+        And there is a "heap" partition table "pepper.heap_part_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "pepper.ao_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "pepper.ao_table2" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "ao_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "ao_table2" with compression "None" in "schematestdb" with data
+        And there is a "co" partition table "pepper.co_part_table" with compression "quicklz" in "schematestdb" with data
+        And there is a "co" partition table "co_part_table" with compression "quicklz" in "schematestdb" with data
+        And there are no backup files
+        When the user runs "gpcrondump -a -x schematestdb"
+        And gpcrondump should return a return code of 0
+        And table "pepper.ao_table2" is assumed to be in dirty state in "schematestdb"
+        And partition "1" of partition table "co_part_table" is assumed to be in dirty state in "schematestdb" in schema "pepper"
+        And partition "2" of partition table "co_part_table" is assumed to be in dirty state in "schematestdb" in schema "public"
+        And the user runs "gpcrondump -a --incremental -x schematestdb"
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And all the data from "schematestdb" is saved for verification
+        And the numbers "1" to "100" are inserted into "pepper.ao_table" tables in "schematestdb"
+        When the user runs "gpcrondump -a -x schematestdb"
+        And gpcrondump should return a return code of 0
+        And the user runs gpdbrestore with the stored timestamp
+        Then gpdbrestore should return a return code of 0
+        And verify that the data of "34" tables in "schematestdb" is validated after restore
+        And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
+
+
+    Scenario: gpcrondump should not track external tables
+         Given the database is running
+         And the database "testdb1" does not exist
+         And database "testdb1" exists
+         And there is a "ao" table "ao_table" with compression "None" in "testdb1" with data
+         And there is a "co" table "co_table" with compression "None" in "testdb1" with data
+         And there is an external table "ext_tab" in "testdb1" with data for file "/tmp/ext_tab"
+         And there are no backup files
+         When the user runs "gpcrondump -a -x testdb1"
+         And gpcrondump should return a return code of 0
+         When the user runs "gpcrondump -a -x testdb1 --incremental"
+         And gpcrondump should return a return code of 0
+         And the timestamp from gpcrondump is stored 
+         And all the data from "testdb1" is saved for verification
+         And the user runs gpdbrestore with the stored timestamp
+         Then gpdbrestore should return a return code of 0
+         And verify that the data of "3" tables in "testdb1" is validated after restore
+         And verify that the tuple count of all appendonly tables are consistent in "testdb1"
+         And verify that there is no "public.ext_tab" in the "dirty_list" file in " "
+         And verify that there is no "public.ext_tab" in the "table_list" file in " "
+
+    Scenario: Full backup -T test 1 
+        Given the database is running
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data 
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data 
+        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data 
+        When the user runs "gpcrondump -a -x fullbkdb"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored 
+        And all the data from "fullbkdb" is saved for verification
+        And the database "fullbkdb" does not exist
+        When the user runs "gpdbrestore -e -T public.ao_index_table -a" with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And verify that partitioned tables "ao_part_table" in "fullbkdb" has 6 empty partitions
+        Then verify that tables "public.heap_table" in "fullbkdb" has no rows
+        And verify that there is a "ao" table "public.ao_index_table" in "fullbkdb" with data
+
+    Scenario: Full backup -T test 2 
+        Given the database is running
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data 
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data 
+        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data 
+        When the user runs "gpcrondump -a -x fullbkdb"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored 
+        And all the data from "fullbkdb" is saved for verification
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        When the user runs "gpdbrestore -T public.ao_index_table -a" with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And verify that partitioned tables "ao_part_table" in "fullbkdb" has 6 empty partitions
+        Then verify that tables "public.heap_table" in "fullbkdb" has no rows
+        And verify that there is a "ao" table "public.ao_index_table" in "fullbkdb" with data
+
+    Scenario: Full backup -T test 3
+        Given the database is running
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data 
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data 
+        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data 
+        When the user runs "gpcrondump -a -x fullbkdb"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored 
+        And all the data from "fullbkdb" is saved for verification
+        When the user truncates "public.ao_index_table" tables in "fullbkdb"
+        And the user runs "gpdbrestore -T public.ao_index_table -a" with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And verify that there is a "ao" table "public.ao_index_table" in "fullbkdb" with data
+
+    Scenario: Full backup -T test 4 
+        Given the database is running
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data 
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data 
+        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data 
+        When the user runs "gpcrondump -a -x fullbkdb"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored 
+        And all the data from "fullbkdb" is saved for verification
+        When table "public.ao_index_table" is deleted in "fullbkdb"
+        And the user runs "gpdbrestore -T public.ao_index_table -a" with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And verify that there is a "ao" table "public.ao_index_table" in "fullbkdb" with data
+
+    Scenario: Full backup -T test 5
+        Given the database is running
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data 
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data 
+        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data 
+        When the user runs "gpcrondump -a -x fullbkdb"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored 
+        And all the data from "fullbkdb" is saved for verification
+        When the user truncates "public.ao_part_table_1_prt_p2_2_prt_3" tables in "fullbkdb"
+        And the user runs "gpdbrestore -T public.ao_part_table_1_prt_p2_2_prt_3 -a" with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And verify that there is a "ao" table "public.ao_part_table_1_prt_p2_2_prt_3" in "fullbkdb" with data
+
+    Scenario: Full backup -T test 6
+        Given the database is running
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data 
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data 
+        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data 
+        When the user runs "gpcrondump -a -x fullbkdb"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored 
+        When the user truncates "public.ao_part_table_1_prt_p2_2_prt_3" tables in "fullbkdb"
+        And the user runs "gpdbrestore -T ao_part_table_1_prt_p2_2_prt_3 -a" with the stored timestamp
+        And gpdbrestore should return a return code of 2
+        Then gpdbrestore should print No schema name supplied to stdout
+
+    Scenario: Incremental restore with table filter
+        Given the database is running
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "ao_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "ao_table2" with compression "None" in "schematestdb" with data
+        And there is a "co" table "co_table" with compression "None" in "schematestdb" with data
+        And there are no backup files
+        When the user runs "gpcrondump -a -x schematestdb"
+        And gpcrondump should return a return code of 0
+        And table "ao_table2" is assumed to be in dirty state in "schematestdb"
+        And table "co_table" is assumed to be in dirty state in "schematestdb"
+        And the user runs "gpcrondump -a --incremental -x schematestdb"
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And all the data from "schematestdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp and options "-T public.ao_table2,public.co_table"
+        Then gpdbrestore should return a return code of 0
+        And verify that exactly "2" tables in "schematestdb" have been restored 
+
+    Scenario: Incremental restore with invalid table filter
+        Given the database is running
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "ao_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "ao_table2" with compression "None" in "schematestdb" with data
+        And there is a "co" table "co_table" with compression "None" in "schematestdb" with data
+        And there are no backup files
+        When the user runs "gpcrondump -a -x schematestdb"
+        And gpcrondump should return a return code of 0
+        And table "ao_table2" is assumed to be in dirty state in "schematestdb"
+        And table "co_table" is assumed to be in dirty state in "schematestdb"
+        And the user runs "gpcrondump -a --incremental -x schematestdb"
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And all the data from "schematestdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp and options "-T public.ao_table2,public.invalid"
+        Then gpdbrestore should return a return code of 2
+        And gpdbrestore should print Invalid tables for -T option: The following tables were not found in plan file to stdout
+
+    Scenario: Incremental backup -T test 1 
+        Given the database is running
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data 
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data 
+        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data 
+        When the user runs "gpcrondump -a -x fullbkdb"
+        Then gpcrondump should return a return code of 0 
+        And table "ao_index_table" is assumed to be in dirty state in "fullbkdb"
+        When the user runs "gpcrondump -a -x fullbkdb --incremental"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored 
+        And all the data from "fullbkdb" is saved for verification
+        And the database "fullbkdb" does not exist
+        When the user runs "gpdbrestore -e -T public.ao_index_table -a" with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And verify that partitioned tables "ao_part_table" in "fullbkdb" has 6 empty partitions
+        Then verify that tables "public.heap_table" in "fullbkdb" has no rows
+        And verify that there is a "ao" table "public.ao_index_table" in "fullbkdb" with data
+
+    Scenario: Incremental backup -T test 2 
+        Given the database is running
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data 
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data 
+        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data 
+        When the user runs "gpcrondump -a -x fullbkdb"
+        Then gpcrondump should return a return code of 0 
+        And table "ao_index_table" is assumed to be in dirty state in "fullbkdb"
+        When the user runs "gpcrondump -a -x fullbkdb --incremental"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored 
+        And all the data from "fullbkdb" is saved for verification
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        When the user runs "gpdbrestore -T public.ao_index_table -a" with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And verify that partitioned tables "ao_part_table" in "fullbkdb" has 6 empty partitions
+        Then verify that tables "public.heap_table" in "fullbkdb" has no rows
+        And verify that there is a "ao" table "public.ao_index_table" in "fullbkdb" with data
+
+    Scenario: Incremental backup -T test 3
+        Given the database is running
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data 
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data 
+        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data 
+        When the user runs "gpcrondump -a -x fullbkdb"
+        Then gpcrondump should return a return code of 0 
+        And table "ao_index_table" is assumed to be in dirty state in "fullbkdb"
+        When the user runs "gpcrondump -a -x fullbkdb --incremental"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored 
+        And all the data from "fullbkdb" is saved for verification
+        When the user truncates "public.ao_index_table" tables in "fullbkdb"
+        And the user runs "gpdbrestore -T public.ao_index_table -a" with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And verify that there is a "ao" table "public.ao_index_table" in "fullbkdb" with data
+
+    Scenario: Incremental backup -T test 4 
+        Given the database is running
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data 
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data 
+        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data 
+        When the user runs "gpcrondump -a -x fullbkdb"
+        Then gpcrondump should return a return code of 0 
+        And table "ao_index_table" is assumed to be in dirty state in "fullbkdb"
+        When the user runs "gpcrondump -a -x fullbkdb --incremental"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored 
+        And all the data from "fullbkdb" is saved for verification
+        When table "public.ao_index_table" is deleted in "fullbkdb"
+        And the user runs "gpdbrestore -T public.ao_index_table -a" with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And verify that there is a "ao" table "public.ao_index_table" in "fullbkdb" with data
+
+    Scenario: Incremental backup -T test 5
+        Given the database is running
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data 
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data 
+        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data 
+        When the user runs "gpcrondump -a -x fullbkdb"
+        Then gpcrondump should return a return code of 0 
+        And table "public.ao_part_table_1_prt_p2_2_prt_3" is assumed to be in dirty state in "fullbkdb"
+        When the user runs "gpcrondump -a -x fullbkdb --incremental"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored 
+        And all the data from "fullbkdb" is saved for verification
+        When the user truncates "public.ao_part_table_1_prt_p2_2_prt_3" tables in "fullbkdb"
+        And the user runs "gpdbrestore -T public.ao_part_table_1_prt_p2_2_prt_3 -a" with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And verify that there is a "ao" table "public.ao_part_table_1_prt_p2_2_prt_3" in "fullbkdb" with data
+
+    Scenario: Incremental backup -T test 6
+        Given the database is running
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data 
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data 
+        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data 
+        When the user runs "gpcrondump -a -x fullbkdb"
+        Then gpcrondump should return a return code of 0 
+        And table "public.ao_part_table_1_prt_p2_2_prt_3" is assumed to be in dirty state in "fullbkdb"
+        When the user runs "gpcrondump -a -x fullbkdb --incremental"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored 
+        When the user truncates "public.ao_part_table_1_prt_p2_2_prt_3" tables in "fullbkdb"
+        And the user runs "gpdbrestore -T ao_part_table_1_prt_p2_2_prt_3 -a" with the stored timestamp
+        And gpdbrestore should return a return code of 2
+        Then gpdbrestore should print No schema name supplied to stdout
+
+    Scenario: gpdbrestore -L with -u option
+        Given the database is running
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a backupfile of tables "heap_table, ao_part_table" in "fullbkdb" exists for validation
+        When the user runs "gpcrondump -a -x fullbkdb -u /tmp"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And verify that the report file in "/tmp" dir contains "Backup Type: Full"
+        When the user runs gpdbrestore with the stored timestamp and options "-L -u /tmp" 
+        Then gpdbrestore should return a return code of 0
+        And gpdbrestore should print Table public.ao_part_table to stdout 
+        And gpdbrestore should print Table public.heap_table to stdout 
+
+    Scenario: gpdbrestore -b with -u option for Full timestamp
+        Given the database is running
+        And there are no backup files
+        And there are no backup files in "/tmp"
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "schematestdb" with data
+        When the user runs "gpcrondump -a -x schematestdb -u /tmp"
+        Then gpcrondump should return a return code of 0
+        And the subdir from gpcrondump is stored
+        And the timestamp from gpcrondump is stored
+        And all the data from "schematestdb" is saved for verification
+        And the user runs gpdbrestore on dump date directory with options "-u /tmp"
+        And gpdbrestore should return a return code of 0
+        And verify that the data of "11" tables in "schematestdb" is validated after restore
+        And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
+
+    Scenario: gpdbrestore should not support -u and ddboost parameters together
+        Given the database is running
+        When the user runs "gpdbrestore -u /tmp --ddboost -s testdb1" 
+        Then gpdbrestore should return a return code of 2
+        And gpdbrestore should print -u cannot be used with DDBoost parameters to stdout
+
+    Scenario: gpdbrestore with -s and -u options for full backup
+        Given the database is running
+        And there are no backup files
+        And there are no backup files in "/tmp"
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "schematestdb" with data
+        When the user runs "gpcrondump -a -x schematestdb -u /tmp"
+        Then gpcrondump should return a return code of 0
+        And all the data from "schematestdb" is saved for verification
+        And the user runs "gpdbrestore -e -s schematestdb -u /tmp -a"
+        And gpdbrestore should return a return code of 0
+        And verify that the data of "11" tables in "schematestdb" is validated after restore
+        And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
+        
+    Scenario: gpdbrestore with -s and -u options for incremental backup
+        Given the database is running
+        And there are no backup files
+        And there are no backup files in "/tmp"
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "schematestdb" with data
+        When the user runs "gpcrondump -a -x schematestdb -u /tmp"
+        Then gpcrondump should return a return code of 0
+        And table "public.ao_index_table" is assumed to be in dirty state in "schematestdb"
+        When the user runs "gpcrondump -a -x schematestdb -u /tmp --incremental"
+        Then gpcrondump should return a return code of 0
+        And all the data from "schematestdb" is saved for verification
+        And the user runs "gpdbrestore -e -s schematestdb -u /tmp -a"
+        And gpdbrestore should return a return code of 0
+        And verify that the data of "11" tables in "schematestdb" is validated after restore
+        And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
+
+    Scenario: gpdbrestore -b option should display the timestamps in sorted order
+        Given the database is running
+        And there are no backup files
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "schematestdb" with data
+        When the user runs "gpcrondump -a -x schematestdb"
+        And gpcrondump should return a return code of 0
+        And table "ao_index_table" is assumed to be in dirty state in "schematestdb" 
+        And the user runs "gpcrondump -x schematestdb --incremental -a"
+        And gpcrondump should return a return code of 0
+        And table "ao_index_table" is assumed to be in dirty state in "schematestdb" 
+        And the user runs "gpcrondump -x schematestdb --incremental -a"
+        And gpcrondump should return a return code of 0
+        And table "ao_index_table" is assumed to be in dirty state in "schematestdb" 
+        And the user runs "gpcrondump -x schematestdb --incremental -a"
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And all the data from "schematestdb" is saved for verification
+        Then the user runs gpdbrestore with the stored timestamp and options "-b"
+        And the timestamps should be printed in sorted order
+
+    Scenario: gpdbrestore -R option should display the timestamps in sorted order
+        Given the database is running
+        And there are no backup files
+        And there are no backup files in "/tmp"
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "schematestdb" with data
+        When the user runs "gpcrondump -a -x schematestdb -u /tmp"
+        And gpcrondump should return a return code of 0
+        And table "ao_index_table" is assumed to be in dirty state in "schematestdb" 
+        And the user runs "gpcrondump -x schematestdb -u /tmp -a"
+        And gpcrondump should return a return code of 0
+        And table "ao_index_table" is assumed to be in dirty state in "schematestdb" 
+        And the user runs "gpcrondump -x schematestdb -u /tmp -a"
+        And gpcrondump should return a return code of 0
+        And table "ao_index_table" is assumed to be in dirty state in "schematestdb" 
+        And the user runs "gpcrondump -x schematestdb -u /tmp -a"
+        And the subdir from gpcrondump is stored 
+        And gpcrondump should return a return code of 0
+        And all the data from "schematestdb" is saved for verification
+        Then the user runs gpdbrestore with "-R" option in path "/tmp"
+        And the timestamps should be printed in sorted order
+
+    Scenario Outline: Dirty File Scale Test
+        Given the database is running
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+		And there are "<tablecount>" "heap" tables "public.heap_table" with data in "testdb"
+		And there are "10" "ao" tables "public.ao_table" with data in "testdb"
+        When the user runs "gpcrondump -a -x testdb"
+        Then gpcrondump should return a return code of 0
+        When table "public.ao_table_1" is assumed to be in dirty state in "testdb"
+        And table "public.ao_table_2" is assumed to be in dirty state in "testdb"
+        And table "public.ao_table_3" is assumed to be in dirty state in "testdb"
+        And table "public.ao_table_4" is assumed to be in dirty state in "testdb"
+        And all the data from "testdb" is saved for verification
+        And the user runs "gpcrondump -a --incremental -x testdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And the subdir from gpcrondump is stored 
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        When the user runs gp_restore with the the stored timestamp and subdir for metadata only in "testdb"
+        Then gp_restore should return a return code of 0
+        When the user runs gpdbrestore with the stored timestamp and options "--noplan" without -e option
+        Then gpdbrestore should return a return code of 0
+        And verify that tables "public.ao_table_5, public.ao_table_6, public.ao_table_7" in "testdb" has no rows
+        And verify that tables "public.ao_table_8, public.ao_table_9, public.ao_table_10" in "testdb" has no rows
+        And verify that the data of the dirty tables under " " in "testdb" is validated after restore
+        Examples:
+        | tablecount | 
+        | 95         | 
+        | 96         | 
+        | 97         | 
+        | 195        | 
+        | 196        | 
+        | 197        | 
+
+    Scenario Outline: Dirty File Scale Test for partitions
+        Given the database is running
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+		And there are "<tablecount>" "heap" tables "public.heap_table" with data in "testdb"
+        And there is a "ao" partition table "ao_table" with compression "None" in "testdb" with data
+        Then data for partition table "ao_table" with partition level "1" is distributed across all segments on "testdb"
+        And verify that partitioned tables "ao_table" in "testdb" have 6 partitions
+        When the user runs "gpcrondump -a -x testdb"
+        Then gpcrondump should return a return code of 0
+        When table "public.ao_table_1_prt_p1_2_prt_1" is assumed to be in dirty state in "testdb"
+        And table "public.ao_table_1_prt_p1_2_prt_2" is assumed to be in dirty state in "testdb"
+        And table "public.ao_table_1_prt_p2_2_prt_1" is assumed to be in dirty state in "testdb"
+        And table "public.ao_table_1_prt_p2_2_prt_2" is assumed to be in dirty state in "testdb"
+        And all the data from "testdb" is saved for verification
+        And the user runs "gpcrondump -a --incremental -x testdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And the subdir from gpcrondump is stored 
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        When the user runs gp_restore with the the stored timestamp and subdir for metadata only in "testdb"
+        Then gp_restore should return a return code of 0
+        When the user runs gpdbrestore with the stored timestamp and options "--noplan" without -e option
+        Then gpdbrestore should return a return code of 0
+        And verify that tables "public.ao_table_1_prt_p1_2_prt_3, public.ao_table_1_prt_p2_2_prt_3" in "testdb" has no rows
+        And verify that the data of the dirty tables under " " in "testdb" is validated after restore
+        Examples:
+        | tablecount | 
+        | 95         | 
+        | 96         | 
+        | 97         | 
+        | 195        | 
+        | 196        | 
+        | 197        | 
+
+    Scenario: Config files have the same timestamp as the backup set
+        Given the database is running
+        And there are no backup files
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a backupfile of tables "heap_table, ao_part_table" in "fullbkdb" exists for validation
+        When the user runs "gpcrondump -a -x fullbkdb -g"
+        And the timestamp from gpcrondump is stored
+        Then gpcrondump should return a return code of 0
+        And verify that the config files are backed up with the stored timestamp
+
+    Scenario Outline: Incremental Backup With column-inserts, inserts and oids options 
+        Given the database is running
+        When the user runs "gpcrondump -a --incremental -x bkdb <options>"
+        Then gpcrondump should print --inserts, --column-inserts, --oids cannot be selected with incremental backup to stdout
+        And gpcrondump should return a return code of 2
+        Examples:
+        | options          |
+        | --inserts        |
+        | --oids           |
+        | --column-inserts |
+
+    Scenario: Test gpcrondump and gpdbrestore verbose option
+        Given the database is running
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there are no backup files
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" table "ao_table" with compression "quicklz" in "fullbkdb" with data
+        When the user runs "gpcrondump -a -x fullbkdb --verbose"
+        And gpcrondump should return a return code of 0
+        And table "public.ao_table" is assumed to be in dirty state in "fullbkdb"
+        And the user runs "gpcrondump -a -x fullbkdb --incremental --verbose"
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And all the data from "fullbkdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp and options "--verbose"
+        Then gpdbrestore should return a return code of 0
+        And verify that the data of "2" tables in "fullbkdb" is validated after restore 
+        And verify that the tuple count of all appendonly tables are consistent in "fullbkdb"
+    
+    Scenario: Incremental table filter gpdbrestore
+        Given the database is running
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+		And there are "2" "heap" tables "public.heap_table" with data in "testdb"
+        And there is a "ao" partition table "ao_part_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table1" with compression "None" in "testdb" with data
+        Then data for partition table "ao_part_table" with partition level "1" is distributed across all segments on "testdb"
+        Then data for partition table "ao_part_table1" with partition level "1" is distributed across all segments on "testdb"
+        And verify that partitioned tables "ao_part_table" in "testdb" have 6 partitions
+        And verify that partitioned tables "ao_part_table1" in "testdb" have 6 partitions
+        When the user runs "gpcrondump -a -x testdb"
+        Then gpcrondump should return a return code of 0
+        When table "public.ao_part_table_1_prt_p1_2_prt_1" is assumed to be in dirty state in "testdb"
+        And table "public.ao_part_table_1_prt_p1_2_prt_2" is assumed to be in dirty state in "testdb"
+        And table "public.ao_part_table_1_prt_p2_2_prt_1" is assumed to be in dirty state in "testdb"
+        And table "public.ao_part_table_1_prt_p2_2_prt_2" is assumed to be in dirty state in "testdb"
+        And all the data from "testdb" is saved for verification
+        And the user runs "gpcrondump -a --incremental -x testdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        When the user runs "gpdbrestore -e -T public.ao_part_table -a" with the stored timestamp
+        Then gpdbrestore should return a return code of 0
+        And verify that tables "public.ao_part_table1_1_prt_p1_2_prt_3, public.ao_part_table1_1_prt_p2_2_prt_3" in "testdb" has no rows
+        And verify that tables "public.ao_part_table1_1_prt_p1_2_prt_2, public.ao_part_table1_1_prt_p2_2_prt_2" in "testdb" has no rows
+        And verify that tables "public.ao_part_table1_1_prt_p1_2_prt_1, public.ao_part_table1_1_prt_p2_2_prt_1" in "testdb" has no rows
+        And verify that tables "public.heap_table_1, public.heap_table_2" in "testdb" has no rows
+
+    Scenario: Incremental table filter gpdbrestore with different schema for same tablenames
+        Given the database is running
+        And there are no backup files
+        And database "schematestdb" is created if not exists
+        And there is schema "pepper" exists in "schematestdb"
+		And there are "2" "heap" tables "public.heap_table" with data in "schematestdb"
+        And there is a "ao" partition table "ao_part_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" partition table "ao_part_table1" with compression "None" in "schematestdb" with data
+        And there is a "ao" partition table "pepper.ao_part_table1" with compression "None" in "schematestdb" with data
+        Then data for partition table "ao_part_table" with partition level "1" is distributed across all segments on "schematestdb"
+        Then data for partition table "ao_part_table1" with partition level "1" is distributed across all segments on "schematestdb"
+        Then data for partition table "pepper.ao_part_table1" with partition level "1" is distributed across all segments on "schematestdb"
+        When the user runs "gpcrondump -a -x schematestdb"
+        Then gpcrondump should return a return code of 0
+        When table "public.ao_part_table1_1_prt_p1_2_prt_1" is assumed to be in dirty state in "schematestdb"
+        And table "public.ao_part_table1_1_prt_p1_2_prt_2" is assumed to be in dirty state in "schematestdb"
+        And table "public.ao_part_table1_1_prt_p2_2_prt_1" is assumed to be in dirty state in "schematestdb"
+        And table "public.ao_part_table1_1_prt_p2_2_prt_2" is assumed to be in dirty state in "schematestdb"
+        And all the data from "schematestdb" is saved for verification
+        And the user runs "gpcrondump -a --incremental -x schematestdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        When the user runs "gpdbrestore -e -T public.ao_part_table1 -a" with the stored timestamp
+        Then gpdbrestore should return a return code of 0
+        And verify that tables "public.ao_part_table_1_prt_p1_2_prt_3, public.ao_part_table_1_prt_p2_2_prt_3" in "schematestdb" has no rows
+        And verify that tables "public.ao_part_table_1_prt_p1_2_prt_2, public.ao_part_table_1_prt_p2_2_prt_2" in "schematestdb" has no rows
+        And verify that tables "public.ao_part_table_1_prt_p1_2_prt_1, public.ao_part_table_1_prt_p2_2_prt_1" in "schematestdb" has no rows
+        And verify that tables "pepper.ao_part_table1_1_prt_p1_2_prt_3, pepper.ao_part_table1_1_prt_p2_2_prt_3" in "schematestdb" has no rows
+        And verify that tables "pepper.ao_part_table1_1_prt_p1_2_prt_2, pepper.ao_part_table1_1_prt_p2_2_prt_2" in "schematestdb" has no rows
+        And verify that tables "pepper.ao_part_table1_1_prt_p1_2_prt_1, pepper.ao_part_table1_1_prt_p2_2_prt_1" in "schematestdb" has no rows
+        And verify that tables "public.heap_table_1, public.heap_table_2" in "schematestdb" has no rows
+
+    Scenario: Incremental table filter gpdbrestore with noplan option
+        Given the database is running
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+		And there are "2" "heap" tables "public.heap_table" with data in "testdb"
+        And there is a "ao" partition table "ao_part_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table1" with compression "None" in "testdb" with data
+        Then data for partition table "ao_part_table" with partition level "1" is distributed across all segments on "testdb"
+        Then data for partition table "ao_part_table1" with partition level "1" is distributed across all segments on "testdb"
+        And verify that partitioned tables "ao_part_table" in "testdb" have 6 partitions
+        And verify that partitioned tables "ao_part_table1" in "testdb" have 6 partitions
+        When the user runs "gpcrondump -a -x testdb"
+        Then gpcrondump should return a return code of 0
+        When all the data from "testdb" is saved for verification
+        And the user runs "gpcrondump -a --incremental -x testdb"
+        Then gpcrondump should return a return code of 0
+        And the subdir from gpcrondump is stored
+        And the timestamp from gpcrondump is stored 
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        When the user runs gp_restore with the the stored timestamp and subdir for metadata only in "testdb"
+        Then gp_restore should return a return code of 0
+        And the user runs "gpdbrestore -T public.ao_part_table,public.heap_table_1 -a --noplan" with the stored timestamp
+        Then gpdbrestore should return a return code of 0
+        And verify that tables "public.ao_part_table_1_prt_p1_2_prt_3, public.ao_part_table_1_prt_p2_2_prt_3" in "testdb" has no rows
+        And verify that tables "public.ao_part_table_1_prt_p1_2_prt_2, public.ao_part_table_1_prt_p2_2_prt_2" in "testdb" has no rows
+        And verify that tables "public.ao_part_table_1_prt_p1_2_prt_1, public.ao_part_table_1_prt_p2_2_prt_1" in "testdb" has no rows
+        And verify that tables "public.ao_part_table1_1_prt_p1_2_prt_3, public.ao_part_table1_1_prt_p2_2_prt_3" in "testdb" has no rows
+        And verify that tables "public.ao_part_table1_1_prt_p1_2_prt_2, public.ao_part_table1_1_prt_p2_2_prt_2" in "testdb" has no rows
+        And verify that tables "public.ao_part_table1_1_prt_p1_2_prt_1, public.ao_part_table1_1_prt_p2_2_prt_1" in "testdb" has no rows
+        And verify that there is a "heap" table "public.heap_table_1" in "testdb" with data
+   
+    Scenario: gpdbrestore list_backup option
+        Given the database is running
+        And the database "bkdb" does not exist
+        And database "bkdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "bkdb" with data
+        And there is a "ao" table "ao_table" with compression "None" in "bkdb" with data
+        And there is a "co" table "co_table" with compression "None" in "bkdb" with data
+        And there are no backup files
+        And there is a list to store the incremental backup timestamps
+        When the user runs "gpcrondump -a -x bkdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored in a list
+        When the user runs "gpcrondump -a --incremental -x bkdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored in a list
+        When the user runs "gpcrondump -a --incremental -x bkdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored in a list
+        When the user runs "gpcrondump -a --incremental -x bkdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored in a list
+        When the user runs "gpcrondump -a --incremental -x bkdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        When the user runs gpdbrestore with the stored timestamp and options "--list-backup"
+        Then gpdbrestore should return a return code of 0
+        And verify that the list of stored timestamps is printed to stdout
+
+    Scenario: gpdbrestore list_backup option with -T table filter
+        Given the database is running
+        And the database "bkdb" does not exist
+        And database "bkdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "bkdb" with data
+        When the user runs "gpcrondump -a -x bkdb"
+        Then gpcrondump should return a return code of 0
+        When the user runs "gpcrondump -a --incremental -x bkdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        When the user runs gpdbrestore with the stored timestamp and options "-T public.heap_table --list-backup" 
+        Then gpdbrestore should return a return code of 2
+        And gpdbrestore should print Cannot specify -T and --list-backup together to stdout
+
+    Scenario: gpdbrestore list_backup option with full timestamp
+        Given the database is running
+        And the database "bkdb" does not exist
+        And database "bkdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "bkdb" with data
+        When the user runs "gpcrondump -a -x bkdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        When the user runs gpdbrestore with the stored timestamp and options "--list-backup" 
+        Then gpdbrestore should return a return code of 2
+        And gpdbrestore should print --list-backup is not supported for restore with full timestamps to stdout
+
+     Scenario: Full Backup with option -t and non-existant table
+         Given the database is running
+         And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+         And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+         And there is a backupfile of tables "heap_table, ao_part_table" in "fullbkdb" exists for validation
+         When the user runs "gpcrondump -a -x fullbkdb -t cool.dude -t public.heap_table"
+         Then gpcrondump should return a return code of 2
+         And gpcrondump should print does not exist in to stdout
+ 
+     Scenario: Full Backup with option -T and non-existant table
+         Given the database is running
+         And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+         And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+         And there is a backupfile of tables "heap_table, ao_part_table" in "fullbkdb" exists for validation
+         When the user runs "gpcrondump -a -x fullbkdb -T public.heap_table -T cool.dude"
+         Then gpcrondump should return a return code of 0
+         And gpcrondump should print does not exist in to stdout
+         And the timestamp from gpcrondump is stored 
+         And the user runs gpdbrestore with the stored timestamp
+         And verify that the report file in " " dir contains "Backup Type: Full"
+         And gpdbrestore should return a return code of 0
+         And verify that there is a "ao" table "ao_part_table" in "fullbkdb" with data
+         And verify that there is no table "heap_table" in "fullbkdb"
+
+    Scenario: Funny character table names
+        Given the database is running
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a "ao" table "ao_table" with compression "None" in "testdb" with data
+        And there is a "ao" table "public.ao_table" with funny characters in "testdb"
+        And there is a "co" table "public.co_table" with funny characters in "testdb"
+        And there are no backup files
+        When the user runs "gpcrondump -a -x testdb"
+        Then gpcrondump should return a return code of 2
+        And gpcrondump should print Tablename has an invalid character "\n", ":", "," : to stdout
+
+    Scenario: Negative test gpdbrestore -G with incremental timestamp
+        Given the database is running
+        And there are no backup files
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        When the user runs "gpcrondump -a -x fullbkdb "
+        Then gpcrondump should return a return code of 0
+        When the user runs "gpcrondump -a -x fullbkdb --incremental -G"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And "global" file should be created under " "
+        And table "public.ao_part_table_1_prt_p2_2_prt_2" is assumed to be in dirty state in "fullbkdb"
+        When the user runs "gpcrondump -a -x fullbkdb --incremental"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        When the user runs gpdbrestore with the stored timestamp and options "-G" 
+        Then gpdbrestore should return a return code of 2
+        And gpdbrestore should print Unable to locate global file to stdout 
+
+    @smoke
+    Scenario: gp_restore with no ao stats
+        Given the database is running
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a "co" partition table "co_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a backupfile of tables "heap_table, ao_part_table, co_part_table" in "fullbkdb" exists for validation
+        When the user runs "gpcrondump -a -x fullbkdb"
+        Then gpcrondump should return a return code of 0
+        When the user runs "gp_dump --gp-d=db_dumps --gp-s=p --gp-c fullbkdb"
+        Then gp_dump should return a return code of 0
+        And the timestamp from gp_dump is stored and subdir is " " 
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And the user runs gp_restore with the the stored timestamp and subdir in "fullbkdb" and bypasses ao stats
+        And gp_restore should return a return code of 0
+        And verify that there is a "heap" table "heap_table" in "fullbkdb" with data
+        And verify that there is a "ao" table "ao_part_table" in "fullbkdb" with data
+        And verify that there is a "co" table "co_part_table" in "fullbkdb" with data
+        And verify that there are no aoco stats in "fullbkdb" for table "ao_part_table_1_prt_p1_2_prt_1, ao_part_table_1_prt_p1_2_prt_2, ao_part_table_1_prt_p1_2_prt_3"
+        And verify that there are no aoco stats in "fullbkdb" for table "ao_part_table_1_prt_p2_2_prt_1, ao_part_table_1_prt_p2_2_prt_2, ao_part_table_1_prt_p2_2_prt_3"
+        And verify that there are no aoco stats in "fullbkdb" for table "co_part_table_1_prt_p1_2_prt_1, co_part_table_1_prt_p1_2_prt_2, co_part_table_1_prt_p1_2_prt_3"
+        And verify that there are no aoco stats in "fullbkdb" for table "co_part_table_1_prt_p2_2_prt_1, co_part_table_1_prt_p2_2_prt_2, co_part_table_1_prt_p2_2_prt_3"
+
+    @smoke
+    Scenario: cleanup for backup feature
+        Given there are no backup files in "/tmp"
+
+
