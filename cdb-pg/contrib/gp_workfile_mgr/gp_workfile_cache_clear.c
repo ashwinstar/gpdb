@@ -38,19 +38,19 @@
 PG_MODULE_MAGIC;
 #endif
 
-extern Datum gp_workfile_manager_clear_cache(PG_FUNCTION_ARGS);
+extern Datum gp_workfile_mgr_clear_cache(PG_FUNCTION_ARGS);
 
-PG_FUNCTION_INFO_V1(gp_workfile_manager_clear_cache_wrapper);
+PG_FUNCTION_INFO_V1(gp_workfile_mgr_clear_cache_wrapper);
 
-extern Datum gp_workfile_manager_clear_cache_wrapper(PG_FUNCTION_ARGS);
+extern Datum gp_workfile_mgr_clear_cache_wrapper(PG_FUNCTION_ARGS);
 
 /*
  * gp_workfile_manager_clear_cache_wrapper
  *    The wrapper for creating a user-defined C function for gp_workfile_manager_clear_cache.
  */
 Datum
-gp_workfile_manager_clear_cache_wrapper(PG_FUNCTION_ARGS)
+gp_workfile_mgr_clear_cache_wrapper(PG_FUNCTION_ARGS)
 {
-	return gp_workfile_manager_clear_cache(fcinfo);
+	return gp_workfile_mgr_clear_cache(fcinfo);
 }
 

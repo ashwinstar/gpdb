@@ -10,5 +10,5 @@ DROP FUNCTION gp_workfile_mgr_cache_entries();
 DROP FUNCTION gp_workfile_mgr_clear_allsegs();
 DROP FUNCTION gp_workfile_mgr_clear();
 
-DROP FUNCTION gp_workfile_mgr_test_allsegs();
-DROP FUNCTION gp_workfile_mgr_test();
+DROP FUNCTION gp_workfile_mgr_test_allsegs(text);
+DROP FUNCTION gp_workfile_mgr_test(text);

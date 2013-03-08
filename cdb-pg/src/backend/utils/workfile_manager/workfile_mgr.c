@@ -523,7 +523,7 @@ workfile_mgr_can_reuse(workfile_set *work_set, PlanState *ps)
  * Clears entire workfile cache.
  */
 Datum
-gp_workfile_manager_clear_cache(PG_FUNCTION_ARGS)
+gp_workfile_mgr_clear_cache(PG_FUNCTION_ARGS)
 {
 	Assert(false && "Clear cache not implemented");
 	PG_RETURN_BOOL(true);

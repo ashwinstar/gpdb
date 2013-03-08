@@ -39,18 +39,17 @@ int tests_failed;
 int tests_total;
 
 /* Test definitions */
-static bool syncrefhashtable_test_basics(bool enabled);
-static bool syncrefhashtable_test_concurrency_non_overlap(bool enabled);
-static bool syncrefhashtable_test_error_cases(bool enabled);
-static bool syncrefhashtable_test_full_table(bool enabled);
+static bool syncrefhashtable_test_basics(void);
+static bool syncrefhashtable_test_concurrency_non_overlap(void);
+static bool syncrefhashtable_test_error_cases(void);
+static bool syncrefhashtable_test_full_table(void);
 
-static bool cache_test_acquire(bool enabled);
-static bool cache_test_insert(bool enabled);
-static bool cache_test_remove(bool enabled);
-static bool cache_test_concurrency(bool enabled);
-static bool cache_test_evict(bool enabled);
-static bool cache_test_evict_stress(bool enabled);
-static bool cache_test_evict_threaded(bool enabled);
+static bool cache_test_acquire(void);
+static bool cache_test_insert(void);
+static bool cache_test_remove(void);
+static bool cache_test_concurrency(void);
+static bool cache_test_evict(void);
+static bool cache_test_evict_stress(void);
 
 /* Local helpers */
 static SyncHT *syncrefhastable_test_create(void);
@@ -61,27 +60,60 @@ static void unit_test_result(bool result);
 static void unit_test_reset(void);
 static bool unit_test_summary(void);
 
+#define GET_STR(textp) DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(textp)))
+
+typedef bool (*gp_workfile_mgr_test)(void);
+
+typedef struct test_def
+{
+	char *test_name;
+	gp_workfile_mgr_test test_func;
+} test_def;
+
+static test_def test_defns[] = {
+		{"syncrefhashtable_test_basics", syncrefhashtable_test_basics},
+		{"syncrefhashtable_test_concurrency_non_overlap", syncrefhashtable_test_concurrency_non_overlap},
+		{"syncrefhashtable_test_error_cases", syncrefhashtable_test_error_cases},
+		{"syncrefhashtable_test_full_table", syncrefhashtable_test_full_table},
+		{"cache_test_aquire", cache_test_acquire},
+		{"cache_test_insert", cache_test_insert},
+		{"cache_test_remove", cache_test_remove},
+		{"cache_test_concurrency", cache_test_concurrency},
+		{"cache_test_evict", cache_test_evict},
+		{"cache_test_evict_stress", cache_test_evict_stress},
+
+		{NULL, NULL}, /* This has to be the last element of the array */
+};
+
+
 Datum
-gp_workfile_manager_test_harness(PG_FUNCTION_ARGS)
+gp_workfile_mgr_test_harness(PG_FUNCTION_ARGS)
 {
 	bool result = true;
 
-	/* SyncRefHashtable tests */
-	result = syncrefhashtable_test_basics(false /* enabled */) && result;
-	result = syncrefhashtable_test_concurrency_non_overlap(false /* enabled */) && result;
-	result = syncrefhashtable_test_error_cases(false /* enabled */) && result;
-	result = syncrefhashtable_test_full_table(false /* enabled */) && result;
+	Assert(PG_NARGS() == 1);
 
-	/* Cache tests */
-	result = cache_test_acquire(false /* enabled */) && result;
-	result = cache_test_insert(false /* enabled */) && result;
-	result = cache_test_remove(false /* enabled */) && result;
-	result = cache_test_concurrency(false /* enabled */) && result;
-	result = cache_test_evict(false /* enabled */) && result;
-	result = cache_test_evict_stress(true /* enabled */) && result;
-	result = cache_test_evict_threaded(false /* enabled */) && result;
+	char *test_name = GET_STR(PG_GETARG_TEXT_P(0));
+	bool run_all_tests = strcasecmp(test_name, "all") == 0;
+	bool ran_any_tests = false;
 
-	PG_RETURN_BOOL(result);
+	int crt_test = 0;
+	while (NULL != test_defns[crt_test].test_name)
+	{
+		if (run_all_tests || (strcasecmp(test_name, test_defns[crt_test].test_name) == 0))
+		{
+			result = result && test_defns[crt_test].test_func();
+			ran_any_tests = true;
+		}
+		crt_test++;
+	}
+
+	if (!ran_any_tests)
+	{
+		elog(INFO, "No tests match given name: %s", test_name);
+	}
+
+	PG_RETURN_BOOL(ran_any_tests && result);
 }
 
 /*
@@ -159,13 +191,8 @@ cache_test_create()
 }
 
 static bool
-cache_test_acquire(bool enabled)
+cache_test_acquire(void)
 {
-	if (!enabled)
-	{
-		return true;
-	}
-
 	unit_test_reset();
 
 	elog(INFO, "Running test: cache_test_acquire");
@@ -191,13 +218,8 @@ cache_test_acquire(bool enabled)
 }
 
 static bool
-cache_test_insert(bool enabled)
+cache_test_insert()
 {
-	if (!enabled)
-	{
-		return true;
-	}
-
 	unit_test_reset();
 
 	elog(INFO, "Running test: cache_test_insert");
@@ -251,13 +273,8 @@ cache_test_insert(bool enabled)
 }
 
 static bool
-cache_test_remove(bool enabled)
+cache_test_remove(void)
 {
-	if (!enabled)
-	{
-		return true;
-	}
-
 	unit_test_reset();
 
 	elog(INFO, "Running test: cache_test_remove");
@@ -320,13 +337,8 @@ cache_test_remove(bool enabled)
 }
 
 static bool
-cache_test_concurrency(bool enabled)
+cache_test_concurrency(void)
 {
-	if (!enabled)
-	{
-		return true;
-	}
-
 	unit_test_reset();
 
 	elog(INFO, "Running test: cache_test_concurrency");
@@ -457,13 +469,8 @@ cache_test_concurrency(bool enabled)
 }
 
 static bool
-cache_test_evict(bool enabled)
+cache_test_evict(void)
 {
-	if (!enabled)
-	{
-		return true;
-	}
-
 	unit_test_reset();
 
 	elog(INFO, "Running test: cache_test_evict");
@@ -519,13 +526,8 @@ cache_test_evict(bool enabled)
 }
 
 static bool
-cache_test_evict_stress(bool enabled)
+cache_test_evict_stress(void)
 {
-	if (!enabled)
-	{
-		return true;
-	}
-
 	unit_test_reset();
 
 	elog(INFO, "Running test: cache_test_evict_stress");
@@ -637,90 +639,6 @@ cache_test_evict_stress(bool enabled)
 	return unit_test_summary();
 }
 
-typedef struct Cache_TestThreadParam
-{
-	/*
-	 * The pthread_t thread handle.
-	 */
-	pthread_t	thread;
-	bool		thread_valid;
-	uint32 threadno;
-} Cache_TestThreadParam;
-
-
-/*
- * thread_DispatchCommand is the thread proc used to dispatch the command to one or more of the qExecs.
- *
- * NOTE: This function MUST NOT contain elog or ereport statements. (or most any other backend code)
- *		 elog is NOT thread-safe.  Developers should instead use something like:
- *
- *	if (DEBUG3 >= log_min_messages)
- *			write_log("my brilliant log statement here.");
- *
- * NOTE: In threads, we cannot use palloc, because it's not thread safe.
- */
-static void *
-thread_test_evict(void *arg)
-{
-
-	gp_set_thread_sigmasks();
-
-	Cache_TestThreadParam *pParam = (Cache_TestThreadParam *) arg;
-	write_log("my brilliant log statement has arrived from thread %d", pParam->threadno);
-
-	return NULL;
-}
-
-static bool
-cache_test_evict_threaded(bool enabled)
-{
-	if (!enabled)
-	{
-		return true;
-	}
-
-	unit_test_reset();
-
-	elog(INFO, "Running test: cache_test_evict_threaded");
-
-	elog(INFO, "Running sub-test: CacheCreate");
-	Cache *cache = cache_test_create();
-	unit_test_result(cache != NULL);
-
-	int noThreads = 5;
-
-	Cache_TestThreadParam *pParmsArr =
-			(Cache_TestThreadParam *) palloc(noThreads * sizeof(Cache_TestThreadParam));
-
-	int i = 0;
-	int pthread_err = 0;
-
-	/* Start threads */
-	for (i=0;i<noThreads; i++)
-	{
-		Cache_TestThreadParam *pParms = &pParmsArr[i];
-		pParms->threadno = i;
-		pthread_err = gp_pthread_create(&pParms->thread, thread_test_evict, pParms, "thread_test_evict");
-		Assert(0 == pthread_err);
-
-	}
-
-	/* Wait for threads to finish */
-	for (i=0;i<noThreads; i++)
-	{
-		Cache_TestThreadParam *pParms = &pParmsArr[i];
-		if (pParms->thread_valid)
-		{
-			int			pthread_err = 0;
-			pthread_err = pthread_join(pParms->thread, NULL);
-			Assert(0 == pthread_err);
-		}
-
-	}
-
-	return unit_test_summary();
-}
-
 /*
  * Callback function to test if an entry in the hashtable is "empty"
  */
@@ -743,13 +661,8 @@ initTestElt(void *entry)
 }
 
 static bool
-syncrefhashtable_test_basics(bool enabled)
+syncrefhashtable_test_basics(void)
 {
-	if (!enabled)
-	{
-		return true;
-	}
-
 	unit_test_reset();
 
 	elog(INFO, "Running test: syncrefhashtable_test_basics");
@@ -802,13 +715,8 @@ syncrefhashtable_test_basics(bool enabled)
 }
 
 static bool
-syncrefhashtable_test_concurrency_non_overlap(bool enabled)
+syncrefhashtable_test_concurrency_non_overlap(void)
 {
-	if (!enabled)
-	{
-		return true;
-	}
-
 	unit_test_reset();
 
 	elog(INFO, "Running test: syncrefhashtable_test_concurrency_non_overlap");
@@ -911,13 +819,8 @@ syncrefhashtable_test_concurrency_non_overlap(bool enabled)
 }
 
 static bool
-syncrefhashtable_test_error_cases(bool enabled)
+syncrefhashtable_test_error_cases(void)
 {
-	if (!enabled)
-	{
-		return true;
-	}
-
 	unit_test_reset();
 
 	elog(INFO, "Running test: syncrefhashtable_test_error_cases");
@@ -955,13 +858,8 @@ syncrefhashtable_test_error_cases(bool enabled)
 }
 
 static bool
-syncrefhashtable_test_full_table(bool enabled)
+syncrefhashtable_test_full_table(void)
 {
-	if (!enabled)
-	{
-		return true;
-	}
-
 	unit_test_reset();
 
 	elog(INFO, "Running test: syncrefhashtable_test_error_cases");
