@@ -798,8 +798,8 @@ gp_mkdtemp(char *template_path)
 	  } now;
 
 	  GetSystemTimeAsFileTime (&now.ft);
-	  tv->tv_usec = (long) ((now.ns100 / 10LL) % 1000000LL);
-	  tv->tv_sec = (long) ((now.ns100 - 116444736000000000LL) / 10000000LL);
+	  tv.tv_usec = (long) ((now.ns100 / 10LL) % 1000000LL);
+	  tv.tv_sec = (long) ((now.ns100 - 116444736000000000LL) / 10000000LL);
 #else
 	gettimeofday (&tv, NULL);
 #endif
