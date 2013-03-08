@@ -184,7 +184,7 @@ explain analyze select a.* from gpd1 as a, gpd1 as b where b.c1 in (select max(c
    Memory used: 128000K bytes
  Settings:  gp_cost_hashjoin_chainwalk=on; gp_segments_for_planner=4
  Total runtime: 123.456 ms
-(45 rows)
+(43 rows)
 
 explain select a.* from gpd1 as a, gpd1 as b where b.c1 in (select max(c1) from gpd1);
                                                       QUERY PLAN                                                      

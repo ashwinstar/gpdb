@@ -1171,7 +1171,7 @@ explain analyze select * from t, pt where tid = ptid;
    Memory used: 128000K bytes
  Settings:  enable_bitmapscan=off; enable_hashjoin=on; enable_indexscan=off; enable_mergejoin=off; enable_nestloop=off; enable_seqscan=on; gp_segments_for_planner=2
  Total runtime: 26.627 ms
-(64 rows)
+(63 rows)
 
 --
 -- Partitioned table on both sides of the join. This will create a result node as Append node is

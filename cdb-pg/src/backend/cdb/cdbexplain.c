@@ -1396,18 +1396,31 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
         cdbexplain_formatMemory(maxbuf, sizeof(maxbuf), ns->workmemused.vmax);
         if (ns->workmemused.vcnt == 1)
             appendStringInfo(str,
-                             "Work_mem used:  %s.\n",
+                             "Work_mem used:  %s.",
                              maxbuf);
         else
         {
             cdbexplain_formatSeg(segbuf, sizeof(segbuf), ns->workmemused.imax, ns->ninst);
             cdbexplain_formatMemory(avgbuf, sizeof(avgbuf), cdbexplain_agg_avg(&ns->workmemused));
             appendStringInfo(str,
-                             "Work_mem used:  %s avg, %s max%s.\n",
+                             "Work_mem used:  %s avg, %s max%s.",
                              avgbuf,
                              maxbuf,
                              segbuf);
         }
+    	/*
+    	 * Total number of segments in which this node reuses cached or creates workfiles.
+    	 */
+    	if (nodeSupportWorkfileCaching(planstate))
+    	{
+    		appendStringInfo(str,
+    						 " Workfile: (%d spilling, %d reused)",
+    						 ns->totalWorkfileCreated.vcnt,
+    						 ns->totalWorkfileReused.vcnt);
+    	}
+
+    	appendStringInfo(str,"\n");
+
     }
 
     /*
@@ -1434,18 +1447,6 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
                              ns->workmemwanted.vcnt);
         }
     }
-
-	/*
-	 * Total number of segments in which this node reuses cached or creates workfiles.
-	 */
-	if (nodeSupportWorkfileCaching(planstate))
-	{
-		appendStringInfoFill(str, 2*indent, ' ');
-		appendStringInfo(str,
-						 "Workfile: (%d spilling, %d reused)\n",
-						 ns->totalWorkfileCreated.vcnt,
-						 ns->totalWorkfileReused.vcnt);
-	}
 	
     /*
      * Extra message text.
