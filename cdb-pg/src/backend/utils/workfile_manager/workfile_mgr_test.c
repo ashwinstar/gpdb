@@ -65,6 +65,8 @@ static bool fd_tests(void);
 static bool buffile_size_test(void);
 static bool buffile_large_file_test(void);
 static bool logicaltape_test(void);
+static bool fd_large_file_test(void);
+static bool execworkfile_create_one_MB_file(void);
 
 static bool atomic_test(void);
 
@@ -108,6 +110,8 @@ static test_def test_defns[] = {
 		{"buffile_size_test", buffile_size_test},
 		{"buffile_large_file_test", buffile_large_file_test},
 		{"logicaltape_test", logicaltape_test},
+		{"fd_large_file_test",fd_large_file_test},
+		{"execworkfile_create_one_MB_file",execworkfile_create_one_MB_file},
 		{NULL, NULL}, /* This has to be the last element of the array */
 };
 
@@ -136,7 +140,7 @@ gp_workfile_mgr_test_harness(PG_FUNCTION_ARGS)
 
 	if (!ran_any_tests)
 	{
-		elog(INFO, "No tests match given name: %s", test_name);
+		elog(LOG, "No tests match given name: %s", test_name);
 	}
 
 	PG_RETURN_BOOL(ran_any_tests && result);
@@ -221,13 +225,13 @@ cache_test_acquire(void)
 {
 	unit_test_reset();
 
-	elog(INFO, "Running test: cache_test_acquire");
+	elog(LOG, "Running test: cache_test_acquire");
 
-	elog(INFO, "Running sub-test: CacheCreate");
+	elog(LOG, "Running sub-test: CacheCreate");
 	Cache *cache = cache_test_create();
 	unit_test_result(cache != NULL);
 
-	elog(INFO, "Running sub-test: CacheAcquireEntry");
+	elog(LOG, "Running sub-test: CacheAcquireEntry");
 	CacheEntry *entry = Cache_AcquireEntry(cache);
 	unit_test_result(entry != NULL);
 
@@ -236,7 +240,7 @@ cache_test_acquire(void)
 	strncpy(elt->key, "Test Key 1", TEST_NAME_LENGTH);
 	elt->data = 4567;
 
-	elog(INFO, "Running sub-test: CacheSurrenderEntry");
+	elog(LOG, "Running sub-test: CacheSurrenderEntry");
 	Cache_Release(cache, entry);
 	unit_test_result(true);
 
@@ -248,17 +252,17 @@ cache_test_insert()
 {
 	unit_test_reset();
 
-	elog(INFO, "Running test: cache_test_insert");
+	elog(LOG, "Running test: cache_test_insert");
 
-	elog(INFO, "Running sub-test: CacheCreate");
+	elog(LOG, "Running sub-test: CacheCreate");
 	Cache *cache = cache_test_create();
 	unit_test_result(cache != NULL);
 
-	elog(INFO, "Running sub-test: CacheAcquireEntry");
+	elog(LOG, "Running sub-test: CacheAcquireEntry");
 	CacheEntry *entry = Cache_AcquireEntry(cache);
 	unit_test_result(entry != NULL);
 
-	elog(INFO, "Running sub-test: CacheInsert");
+	elog(LOG, "Running sub-test: CacheInsert");
 	TestCacheElt *elt = CACHE_ENTRY_PAYLOAD(entry);
 	strncpy(elt->key, "Test Key 2", TEST_NAME_LENGTH);
 	elt->data = 1111;
@@ -268,7 +272,7 @@ cache_test_insert()
 	unit_test_result(true);
 
 	/* Look-up test */
-	elog(INFO, "Running sub-test: CacheLookup");
+	elog(LOG, "Running sub-test: CacheLookup");
 	CacheEntry *localEntry = Cache_AcquireEntry(cache);
 	elt = CACHE_ENTRY_PAYLOAD(localEntry);
 	strncpy(elt->key, "Test Key 2", TEST_NAME_LENGTH);
@@ -279,14 +283,14 @@ cache_test_insert()
 
 	Cache_Release(cache, lookedUpEntry);
 
-	elog(INFO, "Running sub-test: CacheLookup equal key, no match on value");
+	elog(LOG, "Running sub-test: CacheLookup equal key, no match on value");
 	elt = CACHE_ENTRY_PAYLOAD(localEntry);
 	strncpy(elt->key, "Test Key 2", TEST_NAME_LENGTH);
 	elt->data = 1234;
 	lookedUpEntry = Cache_Lookup(cache, localEntry);
 	unit_test_result(lookedUpEntry == NULL);
 
-	elog(INFO, "Running sub-test: CacheLookup different key, no match");
+	elog(LOG, "Running sub-test: CacheLookup different key, no match");
 	elt = CACHE_ENTRY_PAYLOAD(localEntry);
 	strncpy(elt->key, "Test Key bogus", TEST_NAME_LENGTH);
 	elt->data = 1111;
@@ -303,9 +307,9 @@ cache_test_remove(void)
 {
 	unit_test_reset();
 
-	elog(INFO, "Running test: cache_test_remove");
+	elog(LOG, "Running test: cache_test_remove");
 
-	elog(INFO, "Running sub-test: CacheCreate");
+	elog(LOG, "Running sub-test: CacheCreate");
 	Cache *cache = cache_test_create();
 	unit_test_result(cache != NULL);
 
@@ -333,23 +337,23 @@ cache_test_remove(void)
 	strncpy(elt3->key, testKey, TEST_NAME_LENGTH);
 	elt3->data = 2222;
 
-	elog(INFO, "Running sub-test: Look-up inserted element");
+	elog(LOG, "Running sub-test: Look-up inserted element");
 	CacheEntry *lookedUpEntry = Cache_Lookup(cache, localEntry);
 	unit_test_result(lookedUpEntry != NULL);
 
-	elog(INFO, "Running sub-test: Remove looked-up element");
+	elog(LOG, "Running sub-test: Remove looked-up element");
 	Cache_Remove(cache, lookedUpEntry);
 	Cache_Release(cache, lookedUpEntry);
 	unit_test_result(true);
 
-	elog(INFO, "Running sub-test: Look up removed element");
+	elog(LOG, "Running sub-test: Look up removed element");
 	elt3 = CACHE_ENTRY_PAYLOAD(localEntry);
 	strncpy(elt3->key, testKey, TEST_NAME_LENGTH);
 	elt3->data = 2222;
 	lookedUpEntry = Cache_Lookup(cache, localEntry);
 	unit_test_result(lookedUpEntry == NULL);
 
-	elog(INFO, "Running sub-test: Look up existing element");
+	elog(LOG, "Running sub-test: Look up existing element");
 	elt3 = CACHE_ENTRY_PAYLOAD(localEntry);
 	strncpy(elt3->key, testKey, TEST_NAME_LENGTH);
 	elt3->data = 1111;
@@ -367,9 +371,9 @@ cache_test_concurrency(void)
 {
 	unit_test_reset();
 
-	elog(INFO, "Running test: cache_test_concurrency");
+	elog(LOG, "Running test: cache_test_concurrency");
 
-	elog(INFO, "Running sub-test: CacheCreate");
+	elog(LOG, "Running sub-test: CacheCreate");
 	Cache *cache = cache_test_create();
 	unit_test_result(cache != NULL);
 
@@ -378,7 +382,7 @@ cache_test_concurrency(void)
 	CacheEntry *entries[noTestEntries];
 	char key[TEST_NAME_LENGTH];
 
-	elog(INFO, "Running sub-test: Cache insert/lookup/delete many elements");
+	elog(LOG, "Running sub-test: Cache insert/lookup/delete many elements");
 	int noTestIterations = 5000;
 	int i = 0;
 	int iterNo = 0;
@@ -402,7 +406,7 @@ cache_test_concurrency(void)
 
 			if (entries[i] == NULL)
 			{
-				elog(INFO, "Could not acquire entry");
+				elog(LOG, "Could not acquire entry");
 				testFailed = true;
 				break;
 			}
@@ -425,7 +429,7 @@ cache_test_concurrency(void)
 			CacheEntry *localEntry = Cache_AcquireEntry(cache);
 			if (localEntry == NULL)
 			{
-				elog(INFO, "Could not acquire entry");
+				elog(LOG, "Could not acquire entry");
 				testFailed = true;
 				break;
 			}
@@ -438,7 +442,7 @@ cache_test_concurrency(void)
 			entries[i] = Cache_Lookup(cache, localEntry);
 			if (entries[i] == NULL)
 			{
-				elog(INFO, "Could not find inserted entry");
+				elog(LOG, "Could not find inserted entry");
 				testFailed = true;
 				break;
 			}
@@ -466,7 +470,7 @@ cache_test_concurrency(void)
 			CacheEntry *localEntry = Cache_AcquireEntry(cache);
 			if (localEntry == NULL)
 			{
-				elog(INFO, "Could not acquire entry");
+				elog(LOG, "Could not acquire entry");
 				testFailed = true;
 				break;
 			}
@@ -479,7 +483,7 @@ cache_test_concurrency(void)
 			entries[i] = Cache_Lookup(cache, localEntry);
 			if (entries[i] != NULL)
 			{
-				elog(INFO, "Unexpected entry found in cache");
+				elog(LOG, "Unexpected entry found in cache");
 				testFailed = true;
 				break;
 			}
@@ -499,9 +503,9 @@ cache_test_evict(void)
 {
 	unit_test_reset();
 
-	elog(INFO, "Running test: cache_test_evict");
+	elog(LOG, "Running test: cache_test_evict");
 
-	elog(INFO, "Running sub-test: CacheCreate");
+	elog(LOG, "Running sub-test: CacheCreate");
 	Cache *cache = cache_test_create();
 	unit_test_result(cache != NULL);
 
@@ -513,7 +517,7 @@ cache_test_evict(void)
 
 
 	/* Inserting noTestEntries entries */
-	elog(INFO, "Running sub-test: Inserting elements");
+	elog(LOG, "Running sub-test: Inserting elements");
 	int i;
 	for (i=0;i<noTestEntries;i++)
 	{
@@ -534,7 +538,7 @@ cache_test_evict(void)
 	unit_test_result(true);
 
 	/* Evicting elements */
-	elog(INFO, "Running sub-test: Succesful eviction");
+	elog(LOG, "Running sub-test: Succesful eviction");
 
 	uint32 evictRequest = (noTestEntries * entryWeight) / 2 + 1; 	/* Half of the entries + 1 */
 	uint32 evictActual = Cache_Evict(cache, evictRequest);
@@ -542,7 +546,7 @@ cache_test_evict(void)
 	/* Expected result: Evicted half plus one entries */
 	unit_test_result(evictActual == evictRequest - 1 + entryWeight);
 
-	elog(INFO, "Running sub-test: Unsuccesful eviction");
+	elog(LOG, "Running sub-test: Unsuccesful eviction");
 	evictRequest = (noTestEntries * entryWeight) / 2; /* Half of the entries */
 	evictActual = Cache_Evict(cache, evictRequest);
 
@@ -556,9 +560,9 @@ cache_test_evict_stress(void)
 {
 	unit_test_reset();
 
-	elog(INFO, "Running test: cache_test_evict_stress");
+	elog(LOG, "Running test: cache_test_evict_stress");
 
-	elog(INFO, "Running sub-test: CacheCreate");
+	elog(LOG, "Running sub-test: CacheCreate");
 	Cache *cache = cache_test_create();
 	unit_test_result(cache != NULL);
 
@@ -571,7 +575,7 @@ cache_test_evict_stress(void)
 	const uint32 noTestIterations = 1000;
 	uint32 iterNo;
 
-	elog(INFO, "Running sub-test: Cache insert/lookup/evict many elements");
+	elog(LOG, "Running sub-test: Cache insert/lookup/evict many elements");
 	for (iterNo = 0; iterNo < noTestIterations ; iterNo ++)
 	{
 		if (testFailed)
@@ -611,7 +615,7 @@ cache_test_evict_stress(void)
 			CacheEntry *localEntry = Cache_AcquireEntry(cache);
 			if (localEntry == NULL)
 			{
-				elog(INFO, "Could not acquire entry");
+				elog(LOG, "Could not acquire entry");
 				testFailed = true;
 				break;
 			}
@@ -653,7 +657,7 @@ cache_test_evict_stress(void)
 
 		if (evictSize != evictRequest)
 		{
-			elog(INFO, "Could not satisfy evict. Requested=%u, evicted=%u", evictRequest, evictSize);
+			elog(LOG, "Could not satisfy evict. Requested=%u, evicted=%u", evictRequest, evictSize);
 			testFailed = true;
 			break;
 		}
@@ -691,16 +695,16 @@ syncrefhashtable_test_basics(void)
 {
 	unit_test_reset();
 
-	elog(INFO, "Running test: syncrefhashtable_test_basics");
+	elog(LOG, "Running test: syncrefhashtable_test_basics");
 
-	elog(INFO, "Running sub-test: SyncHTCreate");
+	elog(LOG, "Running sub-test: SyncHTCreate");
 	SyncHT *syncHT = syncrefhastable_test_create();
 	unit_test_result(syncHT != NULL);
 	Assert(syncHT);
 
 	char *keyText = "Key one";
 
-	elog(INFO, "Running sub-test: SyncHTInsert first element");
+	elog(LOG, "Running sub-test: SyncHTInsert first element");
 	bool existing = false;
 
 	/* Number of elements in the array to hold test entries */
@@ -712,18 +716,18 @@ syncrefhashtable_test_basics(void)
 	elements[0] = (TestSyncHTElt *) SyncHTInsert(syncHT, (void *) keyText, &existing);
 	unit_test_result(elements[0] != NULL && !existing);
 
-	elog(INFO, "Running sub-test: SyncHTInsert duplicate element");
+	elog(LOG, "Running sub-test: SyncHTInsert duplicate element");
 	existing = false;
 	elements[1] = (TestSyncHTElt *) SyncHTInsert(syncHT, (void *) keyText, &existing);
 	unit_test_result(elements[1] != NULL && existing);
 
-	elog(INFO, "Running sub-test: SyncHTInsert unique element");
+	elog(LOG, "Running sub-test: SyncHTInsert unique element");
 	keyText = "Key two";
 	existing = false;
 	elements[2] = (TestSyncHTElt *) SyncHTInsert(syncHT, (void *) keyText, &existing);
 	unit_test_result(elements[2] != NULL && !existing);
 
-	elog(INFO, "Running sub-test: SyncHTRelease");
+	elog(LOG, "Running sub-test: SyncHTRelease");
 	bool deleted[noTestEntries];
 	deleted[0] = SyncHTRelease(syncHT, elements[0]);
 	deleted[1] = SyncHTRelease(syncHT, elements[1]);
@@ -733,7 +737,7 @@ syncrefhashtable_test_basics(void)
 	unit_test_result(numEntries == 0 && !deleted[0] && deleted[1] && deleted[2]);
 
 
-	elog(INFO, "Running sub-test: SyncHTDestroy");
+	elog(LOG, "Running sub-test: SyncHTDestroy");
 	SyncHTDestroy(syncHT);
 	unit_test_result(true);
 
@@ -745,9 +749,9 @@ syncrefhashtable_test_concurrency_non_overlap(void)
 {
 	unit_test_reset();
 
-	elog(INFO, "Running test: syncrefhashtable_test_concurrency_non_overlap");
+	elog(LOG, "Running test: syncrefhashtable_test_concurrency_non_overlap");
 
-	elog(INFO, "Running sub-test: SyncHTCreate");
+	elog(LOG, "Running sub-test: SyncHTCreate");
 	SyncHT *syncHT = syncrefhastable_test_create();
 	unit_test_result(syncHT != NULL);
 	Assert(syncHT);
@@ -759,7 +763,7 @@ syncrefhashtable_test_concurrency_non_overlap(void)
 
 	char key[TEST_NAME_LENGTH];
 
-	elog(INFO, "Running sub-test: SyncHTInsert many elements");
+	elog(LOG, "Running sub-test: SyncHTInsert many elements");
 	int noTestIterations = 5000;
 	int i = 0;
 	int iterNo = 0;
@@ -837,7 +841,7 @@ syncrefhashtable_test_concurrency_non_overlap(void)
 
 	unit_test_result(!testFailed);
 
-	elog(INFO, "Running sub-test: SyncHTDestroy");
+	elog(LOG, "Running sub-test: SyncHTDestroy");
 	SyncHTDestroy(syncHT);
 	unit_test_result(true);
 
@@ -849,14 +853,14 @@ syncrefhashtable_test_error_cases(void)
 {
 	unit_test_reset();
 
-	elog(INFO, "Running test: syncrefhashtable_test_error_cases");
+	elog(LOG, "Running test: syncrefhashtable_test_error_cases");
 
-	elog(INFO, "Running sub-test: SyncHTCreate");
+	elog(LOG, "Running sub-test: SyncHTCreate");
 	SyncHT *syncHT = syncrefhastable_test_create();
 	unit_test_result(syncHT != NULL);
 	Assert(syncHT);
 
-	elog(INFO, "Running sub-test: SyncHTInsert double remove");
+	elog(LOG, "Running sub-test: SyncHTInsert double remove");
 
 	TestSyncHTElt *element;
 	char *keyText = "Key one";
@@ -888,14 +892,14 @@ syncrefhashtable_test_full_table(void)
 {
 	unit_test_reset();
 
-	elog(INFO, "Running test: syncrefhashtable_test_error_cases");
+	elog(LOG, "Running test: syncrefhashtable_test_error_cases");
 
-	elog(INFO, "Running sub-test: SyncHTCreate");
+	elog(LOG, "Running sub-test: SyncHTCreate");
 	SyncHT *syncHT = syncrefhastable_test_create();
 	unit_test_result(syncHT != NULL);
 	Assert(syncHT);
 
-	elog(INFO, "Running sub-test: SyncHTInsert into full hashtable");
+	elog(LOG, "Running sub-test: SyncHTInsert into full hashtable");
 
 	/* Number of elements in the array to hold test entries */
 	TestSyncHTElt *elements[10 * TEST_HT_NUM_ELEMENTS + 1];
@@ -912,14 +916,14 @@ syncrefhashtable_test_full_table(void)
 		elements[i] = SyncHTInsert(syncHT, key, &existing);
 		if (existing || !elements[i])
 		{
-			elog(INFO, "Filling up the hashtable failed after %d inserts", i + 1);
+			elog(LOG, "Filling up the hashtable failed after %d inserts", i + 1);
 			testFailed = true;
 			break;
 		}
 	}
 
 	int numEntries = SyncHTNumEntries(syncHT); /* XXX This does not hold for concurrency */
-	elog(INFO, "Hashtable says it hash %d entries", numEntries);
+	elog(LOG, "Hashtable says it hash %d entries", numEntries);
 
 	unit_test_result(!testFailed && numEntries == TEST_HT_NUM_ELEMENTS);
 
@@ -964,7 +968,7 @@ bfz_test_reopen(void)
 {
 	unit_test_reset();
 
-	elog(INFO, "Running test: bfz_test_reopen");
+	elog(LOG, "Running test: bfz_test_reopen");
 
 	StringInfo filename = makeStringInfo();
 
@@ -976,7 +980,7 @@ bfz_test_reopen(void)
 	StringInfo text = makeStringInfo();
 	appendStringInfo(text,"Small amount of data to test.");
 
-	elog(INFO, "Running sub-test: Creating file %s", filename->data);
+	elog(LOG, "Running sub-test: Creating file %s", filename->data);
 
 	/*Write data to file.*/
 	bfz_t * fileWrite = bfz_create(filename->data, false, TRUE);
@@ -989,7 +993,7 @@ bfz_test_reopen(void)
 	char result[TEST_NAME_LENGTH];
 	int result_size = 0;
 
-	elog(INFO, "Running sub-test: Reading file %s", filename->data);
+	elog(LOG, "Running sub-test: Reading file %s", filename->data);
 	bfz_t * fileRead = bfz_open(filename->data, true, TRUE);
 	/*Seek 0*/
 	bfz_scan_begin(fileRead);
@@ -1047,7 +1051,7 @@ execworkfile_buffile_test(void)
 	int64 initial_diskspace = WorkfileDiskspace_GetSize();
 
 	unit_test_reset();
-	elog(INFO, "Running test: execworkfile_buffile_test");
+	elog(LOG, "Running test: execworkfile_buffile_test");
 
 	/* Create file name */
 	char *file_name = "test_execworkfile_buffile.dat";
@@ -1064,7 +1068,7 @@ execworkfile_buffile_test(void)
 					file_name)));
 	}
 
-	elog(INFO, "Running sub-test: Creating EWF/Buffile");
+	elog(LOG, "Running sub-test: Creating EWF/Buffile");
 
 	ExecWorkFile *ewf = ExecWorkFile_Create(test_filepath->data,
 			BUFFILE,
@@ -1076,7 +1080,7 @@ execworkfile_buffile_test(void)
 	int nchars = 100000;
 	StringInfo text = create_text_stringinfo(nchars);
 
-	elog(INFO, "Running sub-test: Writing small amount data to EWF/Buffile and checking size");
+	elog(LOG, "Running sub-test: Writing small amount data to EWF/Buffile and checking size");
 
 	result = ExecWorkFile_Write(ewf, text->data, 20);
 	expected_size += 20;
@@ -1084,13 +1088,13 @@ execworkfile_buffile_test(void)
 	unit_test_result(result && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
 
 
-	elog(INFO, "Running sub-test: Writing larger amount data (%d bytes) to EWF/Buffile and checking size", nchars);
+	elog(LOG, "Running sub-test: Writing larger amount data (%d bytes) to EWF/Buffile and checking size", nchars);
 	result = ExecWorkFile_Write(ewf, text->data, nchars);
 	expected_size += nchars;
 
 	unit_test_result(result && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
 
-	elog(INFO, "Running sub-test: Writing to the middle of a EWF/Buffile and checking size");
+	elog(LOG, "Running sub-test: Writing to the middle of a EWF/Buffile and checking size");
 	result = ExecWorkFile_Seek(ewf, ExecWorkFile_GetSize(ewf) / 2, SEEK_SET);
 	Assert(result == 0);
 	/* This write should not add to the size */
@@ -1098,7 +1102,7 @@ execworkfile_buffile_test(void)
 
 	unit_test_result(result && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
 
-	elog(INFO, "Running sub-test: Seeking past end and writing data to EWF/Buffile and checking size");
+	elog(LOG, "Running sub-test: Seeking past end and writing data to EWF/Buffile and checking size");
 	int past_end_offset = 100;
 	int past_end_write = 200;
 	result = ExecWorkFile_Seek(ewf, ExecWorkFile_GetSize(ewf) + past_end_offset, SEEK_SET);
@@ -1108,11 +1112,11 @@ execworkfile_buffile_test(void)
 
 	unit_test_result(result && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
 
-	elog(INFO, "Running sub-test: Closing EWF/Buffile");
+	elog(LOG, "Running sub-test: Closing EWF/Buffile");
 	final_size = ExecWorkFile_Close(ewf);
 	unit_test_result(final_size == expected_size);
 
-	elog(INFO, "Running sub-test: Opening existing EWF/Buffile and checking size");
+	elog(LOG, "Running sub-test: Opening existing EWF/Buffile and checking size");
 
 	ewf = ExecWorkFile_Open(test_filepath->data,
 				BUFFILE,
@@ -1122,7 +1126,7 @@ execworkfile_buffile_test(void)
 	current_size = ExecWorkFile_GetSize(ewf);
 	unit_test_result(current_size == final_size);
 
-	elog(INFO, "Running sub-test: Reading from reopened EWF/Buffile file");
+	elog(LOG, "Running sub-test: Reading from reopened EWF/Buffile file");
 
 	int buf_size = 100;
 	char *buf = (char *) palloc(buf_size);
@@ -1131,7 +1135,7 @@ execworkfile_buffile_test(void)
 	unit_test_result(result == buf_size);
 	pfree(buf);
 
-	elog(INFO, "Running sub-test: Closing EWF/Buffile");
+	elog(LOG, "Running sub-test: Closing EWF/Buffile");
 	final_size = ExecWorkFile_Close(ewf);
 
 	unit_test_result(final_size == current_size);
@@ -1158,7 +1162,7 @@ execworkfile_bfz_zlib_test(void)
 	int64 initial_diskspace = WorkfileDiskspace_GetSize();
 
 	unit_test_reset();
-	elog(INFO, "Running test: execworkfile_bfz_zlib_test");
+	elog(LOG, "Running test: execworkfile_bfz_zlib_test");
 
 	/* Create file name */
 	char *file_name = "test_execworkfile_bfz_zlib.dat";
@@ -1175,7 +1179,7 @@ execworkfile_bfz_zlib_test(void)
 					file_name)));
 	}
 
-	elog(INFO, "Running sub-test: Creating EWF/Buffile");
+	elog(LOG, "Running sub-test: Creating EWF/Buffile");
 
 	ExecWorkFile *ewf = ExecWorkFile_Create(test_filepath->data,
 			BFZ,
@@ -1187,7 +1191,7 @@ execworkfile_bfz_zlib_test(void)
 	int nchars = 100000;
 	StringInfo text = create_text_stringinfo(nchars);
 
-	elog(INFO, "Running sub-test: Writing small amount data to EWF/BFZ and checking size");
+	elog(LOG, "Running sub-test: Writing small amount data to EWF/BFZ and checking size");
 
 	result = ExecWorkFile_Write(ewf, text->data, 20);
 	expected_size += 20;
@@ -1195,26 +1199,26 @@ execworkfile_bfz_zlib_test(void)
 	unit_test_result(result && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
 
 
-	elog(INFO, "Running sub-test: Writing larger amount data (%d bytes) to EWF/BFZ and checking size", nchars);
+	elog(LOG, "Running sub-test: Writing larger amount data (%d bytes) to EWF/BFZ and checking size", nchars);
 	result = ExecWorkFile_Write(ewf, text->data, nchars);
 	expected_size += nchars;
 
 	unit_test_result(result && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
 
-	elog(INFO, "Running sub-test: Suspending EWF/BFZ and checking for size");
+	elog(LOG, "Running sub-test: Suspending EWF/BFZ and checking for size");
 	final_size = ExecWorkFile_Suspend(ewf);
 	unit_test_result(final_size < expected_size);
 
-	elog(INFO, "Running sub-test: Restarting EWF/BFZ");
+	elog(LOG, "Running sub-test: Restarting EWF/BFZ");
 	ExecWorkFile_Restart(ewf);
 	unit_test_result(true);
 
-	elog(INFO, "Running sub-test: Closing EWF/BFZ");
+	elog(LOG, "Running sub-test: Closing EWF/BFZ");
 	final_size = ExecWorkFile_Close(ewf);
 
 	unit_test_result(final_size < expected_size);
 
-	elog(INFO, "Running sub-test: Opening existing EWF/BFZ and checking size");
+	elog(LOG, "Running sub-test: Opening existing EWF/BFZ and checking size");
 
 	ewf = ExecWorkFile_Open(test_filepath->data,
 			BFZ,
@@ -1223,7 +1227,7 @@ execworkfile_bfz_zlib_test(void)
 	current_size = ExecWorkFile_GetSize(ewf);
 	unit_test_result(current_size == final_size);
 
-	elog(INFO, "Running sub-test: Reading from reopened EWF/BFZ file");
+	elog(LOG, "Running sub-test: Reading from reopened EWF/BFZ file");
 
 	int buf_size = 100;
 	char *buf = (char *) palloc(buf_size);
@@ -1232,7 +1236,7 @@ execworkfile_bfz_zlib_test(void)
 	unit_test_result(result == buf_size);
 	pfree(buf);
 
-	elog(INFO, "Running sub-test: Closing EWF/BFZ");
+	elog(LOG, "Running sub-test: Closing EWF/BFZ");
 	final_size = ExecWorkFile_Close(ewf);
 
 	unit_test_result(final_size == current_size);
@@ -1258,7 +1262,7 @@ execworkfile_bfz_uncompressed_test(void)
 	int64 initial_diskspace = WorkfileDiskspace_GetSize();
 
 	unit_test_reset();
-	elog(INFO, "Running test: execworkfile_bfz_uncompressed_test");
+	elog(LOG, "Running test: execworkfile_bfz_uncompressed_test");
 
 	/* Create file name */
 	char *file_name = "test_execworkfile_bfz_uncomp.dat";
@@ -1275,7 +1279,7 @@ execworkfile_bfz_uncompressed_test(void)
 					file_name)));
 	}
 
-	elog(INFO, "Running sub-test: Creating EWF/Buffile");
+	elog(LOG, "Running sub-test: Creating EWF/Buffile");
 
 	ExecWorkFile *ewf = ExecWorkFile_Create(test_filepath->data,
 			BFZ,
@@ -1287,7 +1291,7 @@ execworkfile_bfz_uncompressed_test(void)
 	int nchars = 100000;
 	StringInfo text = create_text_stringinfo(nchars);
 
-	elog(INFO, "Running sub-test: Writing small amount data to EWF/BFZ and checking size");
+	elog(LOG, "Running sub-test: Writing small amount data to EWF/BFZ and checking size");
 
 	result = ExecWorkFile_Write(ewf, text->data, 20);
 	expected_size += 20;
@@ -1295,28 +1299,28 @@ execworkfile_bfz_uncompressed_test(void)
 	unit_test_result(result && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
 
 
-	elog(INFO, "Running sub-test: Writing larger amount data (%d bytes) to EWF/BFZ and checking size", nchars);
+	elog(LOG, "Running sub-test: Writing larger amount data (%d bytes) to EWF/BFZ and checking size", nchars);
 	result = ExecWorkFile_Write(ewf, text->data, nchars);
 	expected_size += nchars;
 
 	unit_test_result(result && expected_size == WorkfileDiskspace_GetSize() - initial_diskspace);
 
-	elog(INFO, "Running sub-test: Suspending EWF/BFZ and checking for size");
+	elog(LOG, "Running sub-test: Suspending EWF/BFZ and checking for size");
 	final_size = ExecWorkFile_Suspend(ewf);
 	unit_test_result(final_size >= expected_size);
 
-	elog(INFO, "Running sub-test: Restarting EWF/BFZ");
+	elog(LOG, "Running sub-test: Restarting EWF/BFZ");
 	ExecWorkFile_Restart(ewf);
 	unit_test_result(true);
 
-	elog(INFO, "Running sub-test: Closing EWF/BFZ");
+	elog(LOG, "Running sub-test: Closing EWF/BFZ");
 	final_size = ExecWorkFile_Close(ewf);
 
 	/* For uncompressed files, final file may contain checksums, which makes it
 	 * larger than expected */
 	unit_test_result(final_size >= expected_size);
 
-	elog(INFO, "Running sub-test: Opening existing EWF/BFZ and checking size");
+	elog(LOG, "Running sub-test: Opening existing EWF/BFZ and checking size");
 
 	ewf = ExecWorkFile_Open(test_filepath->data,
 			BFZ,
@@ -1325,7 +1329,7 @@ execworkfile_bfz_uncompressed_test(void)
 	current_size = ExecWorkFile_GetSize(ewf);
 	unit_test_result(current_size == final_size);
 
-	elog(INFO, "Running sub-test: Reading from reopened EWF/BFZ file");
+	elog(LOG, "Running sub-test: Reading from reopened EWF/BFZ file");
 
 	int buf_size = 100;
 	char *buf = (char *) palloc(buf_size);
@@ -1334,7 +1338,7 @@ execworkfile_bfz_uncompressed_test(void)
 	unit_test_result(result == buf_size);
 	pfree(buf);
 
-	elog(INFO, "Running sub-test: Closing EWF/BFZ");
+	elog(LOG, "Running sub-test: Closing EWF/BFZ");
 	final_size = ExecWorkFile_Close(ewf);
 
 	unit_test_result(final_size == current_size);
@@ -1353,9 +1357,9 @@ static bool
 fd_tests(void)
 {
 	unit_test_reset();
-	elog(INFO, "Running test: fd_tests");
+	elog(LOG, "Running test: fd_tests");
 
-	elog(INFO, "Running sub-test: Creating fd file");
+	elog(LOG, "Running sub-test: Creating fd file");
 
 	/* Create file name */
 	char *file_name = "test_fd.dat";
@@ -1379,15 +1383,15 @@ fd_tests(void)
 
 	unit_test_result(testFd > 0);
 
-	elog(INFO, "Running sub-test: Reading size of open empty file");
+	elog(LOG, "Running sub-test: Reading size of open empty file");
 	int64 fd_size = FileDiskSize(testFd);
 	unit_test_result(fd_size == 0L);
 
-	elog(INFO, "Running sub-test: Closing file");
+	elog(LOG, "Running sub-test: Closing file");
 	FileClose(testFd);
 	unit_test_result(true);
 
-	elog(INFO, "Running sub-test: Opening existing empty file and reading size");
+	elog(LOG, "Running sub-test: Opening existing empty file and reading size");
 	testFd = OpenNamedFile(test_filepath->data,
 			false /* create */,
 			false /* delOnClose */,
@@ -1396,7 +1400,7 @@ fd_tests(void)
 	fd_size = FileDiskSize(testFd);
 	unit_test_result(fd_size == 0L);
 
-	elog(INFO, "Running sub-test: Writing to existing open file, sync and read size");
+	elog(LOG, "Running sub-test: Writing to existing open file, sync and read size");
 	int nchars = 10000;
 	StringInfo text = create_text_stringinfo(nchars);
 	int len_to_write = 5000;
@@ -1408,7 +1412,7 @@ fd_tests(void)
 	fd_size = FileDiskSize(testFd);
 	unit_test_result(fd_size == len_to_write);
 
-	elog(INFO, "Running sub-test: Closing file");
+	elog(LOG, "Running sub-test: Closing file");
 	FileClose(testFd);
 	unit_test_result(true);
 
@@ -1425,9 +1429,9 @@ static bool
 buffile_size_test(void)
 {
 	unit_test_reset();
-	elog(INFO, "Running test: buffile_size_test");
+	elog(LOG, "Running test: buffile_size_test");
 
-	elog(INFO, "Running sub-test: Creating buffile");
+	elog(LOG, "Running sub-test: Creating buffile");
 
 	/* Create file name */
 	char *file_name = "test_buffile.dat";
@@ -1449,11 +1453,11 @@ buffile_size_test(void)
 
 	unit_test_result(NULL != testBf);
 
-	elog(INFO, "Running sub-test: Size of newly created buffile");
+	elog(LOG, "Running sub-test: Size of newly created buffile");
 	int64 test_size = BufFileGetSize(testBf);
 	unit_test_result(test_size == 0);
 
-	elog(INFO, "Running sub-test: Writing to new buffile and reading size < bufsize");
+	elog(LOG, "Running sub-test: Writing to new buffile and reading size < bufsize");
 	int nchars = 10000;
 	int expected_size = nchars;
 	StringInfo text = create_text_stringinfo(nchars);
@@ -1464,7 +1468,7 @@ buffile_size_test(void)
 
 	unit_test_result(test_size == expected_size);
 
-	elog(INFO, "Running sub-test: Writing to new buffile and reading size > bufsize");
+	elog(LOG, "Running sub-test: Writing to new buffile and reading size > bufsize");
 	nchars = 1000000;
 	expected_size += nchars;
 	text = create_text_stringinfo(nchars);
@@ -1473,7 +1477,7 @@ buffile_size_test(void)
 
 	unit_test_result(test_size == expected_size);
 
-	elog(INFO, "Running sub-test: seeking back and writing then testing size");
+	elog(LOG, "Running sub-test: seeking back and writing then testing size");
 	BufFileSeek(testBf, expected_size/2, SEEK_SET);
 	/* This write should not add to the size */
 	BufFileWrite(testBf, text->data, expected_size / 10);
@@ -1481,11 +1485,11 @@ buffile_size_test(void)
 
 	unit_test_result(test_size == expected_size);
 
-	elog(INFO, "Running sub-test: Closing buffile");
+	elog(LOG, "Running sub-test: Closing buffile");
 	BufFileClose(testBf);
 	unit_test_result(true);
 
-	elog(INFO, "Running sub-test: Opening existing and testing size");
+	elog(LOG, "Running sub-test: Opening existing and testing size");
 	testBf = BufFileOpenFile(test_filepath->data,
 			false /* create */,
 			false /*delOnClose */,
@@ -1495,7 +1499,7 @@ buffile_size_test(void)
 
 	unit_test_result(test_size == expected_size);
 
-	elog(INFO, "Running sub-test: Seek past end, appending and testing size");
+	elog(LOG, "Running sub-test: Seek past end, appending and testing size");
 	int past_end_offset = 100;
 	int past_end_write = 200;
 	BufFileSeek(testBf, expected_size + past_end_offset, SEEK_SET);
@@ -1505,7 +1509,7 @@ buffile_size_test(void)
 
 	unit_test_result(test_size == expected_size);
 
-	elog(INFO, "Running sub-test: Closing buffile");
+	elog(LOG, "Running sub-test: Closing buffile");
 	BufFileClose(testBf);
 	unit_test_result(true);
 
@@ -1527,22 +1531,22 @@ static bool
 atomic_test(void)
 {
 	unit_test_reset();
-	elog(INFO, "Running test: atomic_test");
+	elog(LOG, "Running test: atomic_test");
 
 	{
-		elog(INFO, "Running sub-test: compare_and_swap_64");
+		elog(LOG, "Running sub-test: compare_and_swap_64");
 		uint64 dest = 5;
 		uint64 old = 5;
 		uint64 new = 6;
 
-		elog(INFO, "Before: dest=%d, old=%d, new=%d", (uint32) dest, (uint32) old, (uint32) new);
+		elog(LOG, "Before: dest=%d, old=%d, new=%d", (uint32) dest, (uint32) old, (uint32) new);
 		int32 result = compare_and_swap_64(&dest, old, new);
-		elog(INFO, "After: dest=%d, old=%d, new=%d, result=%d", (uint32) dest, (uint32) old, (uint32) new, (uint32) result);
+		elog(LOG, "After: dest=%d, old=%d, new=%d, result=%d", (uint32) dest, (uint32) old, (uint32) new, (uint32) result);
 		unit_test_result(dest == new);
 	}
 
 	{
-		elog(INFO, "Running sub-test: gp_atomic_add_64 small addition");
+		elog(LOG, "Running sub-test: gp_atomic_add_64 small addition");
 
 		int64 base = 25;
 		int64 inc = 3;
@@ -1553,7 +1557,7 @@ atomic_test(void)
 		elog(DEBUG1, "After: base=%lld, inc=%lld, result=%lld", (long long int) base, (long long int) inc, (long long int) result);
 		unit_test_result(result == expected_result && base == expected_result);
 
-		elog(INFO, "Running sub-test: gp_atomic_add_64 small subtraction");
+		elog(LOG, "Running sub-test: gp_atomic_add_64 small subtraction");
 
 		inc = -4;
 		result = 0;
@@ -1563,7 +1567,7 @@ atomic_test(void)
 		elog(DEBUG1, "After: base=%lld, inc=%lld, result=%lld", (long long int) base, (long long int) inc, (long long int) result);
 		unit_test_result(result == expected_result && base == expected_result);
 
-		elog(INFO, "Running sub-test: gp_atomic_add_64 huge addition");
+		elog(LOG, "Running sub-test: gp_atomic_add_64 huge addition");
 		base = 37421634719307;
 		inc  = 738246483234;
 		result = 0;
@@ -1574,7 +1578,7 @@ atomic_test(void)
 		unit_test_result(result == expected_result && base == expected_result);
 
 
-		elog(INFO, "Running sub-test: gp_atomic_add_64 huge subtraction");
+		elog(LOG, "Running sub-test: gp_atomic_add_64 huge subtraction");
 		inc  = -32738246483234;
 		result = 0;
 		expected_result = base + inc;
@@ -1596,7 +1600,7 @@ static bool
 buffile_large_file_test(void)
 {
 	unit_test_reset();
-	elog(INFO, "Running test: buffile_large_file_test");
+	elog(LOG, "Running test: buffile_large_file_test");
 
 	StringInfo filename = makeStringInfo();
 
@@ -1615,7 +1619,7 @@ buffile_large_file_test(void)
 
 	StringInfo test_string = create_text_stringinfo(nchars);
 
-	elog(INFO, "Running sub-test: Creating file %s", filename->data);
+	elog(LOG, "Running sub-test: Creating file %s", filename->data);
 
 	for (int i = 0; i < total_entries; i++)
 	{
@@ -1633,7 +1637,7 @@ buffile_large_file_test(void)
 			pfree(text);
 		}
 	}
-	elog(INFO, "Running sub-test: Reading record %s", filename->data);
+	elog(LOG, "Running sub-test: Reading record %s", filename->data);
 
 	char *buffer= buffer = palloc(nchars * sizeof(char));
 
@@ -1663,7 +1667,7 @@ static bool
 logicaltape_test(void)
 {
 	unit_test_reset();
-	elog(INFO, "Running test: logicaltape_test");
+	elog(LOG, "Running test: logicaltape_test");
 
 	int max_tapes = 10;
 	int nchars = 100000;
@@ -1681,7 +1685,7 @@ logicaltape_test(void)
 
 	StringInfo test_string = create_text_stringinfo(nchars);
 
-	elog(INFO, "Running sub-test: Creating LogicalTape");
+	elog(LOG, "Running sub-test: Creating LogicalTape");
 
 	/* Fill LogicalTapeSet */
 	for (int i = 0; i < max_tapes; i++)
@@ -1691,7 +1695,7 @@ logicaltape_test(void)
 		/* Create large SpillFile for LogicalTape */
 		if (test_tape == i)
 		{
-			elog(INFO, "Running sub-test: Fill LogicalTape");
+			elog(LOG, "Running sub-test: Fill LogicalTape");
 			for (int j = 0; j < max_entries; j++)
 			{
 				if ( j == test_entry)
@@ -1730,13 +1734,13 @@ logicaltape_test(void)
 	work_tape = LogicalTapeSetGetTape(tape_set, test_tape);
 	char *buffer= buffer = palloc(nchars * sizeof(char));
 
-	elog(INFO, "Running sub-test: Freeze LogicalTape");
+	elog(LOG, "Running sub-test: Freeze LogicalTape");
 	LogicalTapeFreeze(tape_set, work_tape);
 
-	elog(INFO, "Running sub-test: Seek in LogicalTape");
+	elog(LOG, "Running sub-test: Seek in LogicalTape");
 	LogicalTapeSeek(tape_set, work_tape, &entryPos);
 
-	elog(INFO, "Running sub-test: Reading from LogicalTape");
+	elog(LOG, "Running sub-test: Reading from LogicalTape");
 	LogicalTapeRead(tape_set, work_tape, buffer, (size_t)(nchars*sizeof(char)));
 
 	LogicalTapeSetClose(tape_set, NULL /* work_set */);
@@ -1746,10 +1750,121 @@ logicaltape_test(void)
 	return unit_test_summary();
 }
 
+/*
+ * Unit test for testing large fd file.
+ * This unit test verifies that the file's size on disk is as expected.
+ */
+static bool
+fd_large_file_test(void)
+{
+	unit_test_reset();
+	elog(LOG, "Running test: fd_large_file_test");
+
+	elog(LOG, "Running sub-test: Creating fd file");
+
+	/* Create file name */
+	char *file_name = "test_large_fd.dat";
+	StringInfo test_filepath = makeStringInfo();
+	appendStringInfo(test_filepath,
+					"%s/%s",
+					PG_TEMP_FILES_DIR,
+					file_name);
+
+	if (test_filepath->len > MAXPGPATH)
+	{
+		ereport(ERROR, (errmsg("cannot generate path: %s/%s",
+					PG_TEMP_FILES_DIR,
+					file_name)));
+	}
+
+	File testFd = OpenNamedFile(test_filepath->data,
+			true /* create */,
+			true /* delOnClose */,
+			true /* closeAtEOXact */);
+
+	unit_test_result(testFd > 0);
+
+	elog(LOG, "Running sub-test: Writing to existing open file, sync and read size");
+	int nchars = 100000;
+	/* 4.5 GBs */
+	int total_entries = 48319;
+
+	StringInfo text = create_text_stringinfo(nchars);
+
+	for (int i = 0; i < total_entries; i++)
+	{
+		FileWrite(testFd, text->data, strlen(text->data));
+		FileSync(testFd);
+	}
+
+	pfree(text->data);
+	pfree(text);
+
+	int64 fd_size = FileDiskSize(testFd);
+	unit_test_result(fd_size == (int64) nchars * sizeof(char) * (int64) total_entries);
+
+	elog(LOG, "Running sub-test: Closing file");
+	FileClose(testFd);
+	unit_test_result(true);
+
+	pfree(test_filepath->data);
+	pfree(test_filepath);
+
+	return unit_test_summary();
+}
+
+/*
+ * Unit test for writing a one MB execworkfile.
+ *
+ */
+static bool
+execworkfile_create_one_MB_file(void)
+{
+	unit_test_reset();
+	elog(LOG, "Running test: execworkfile_one_MB_file_test");
+
+	StringInfo filename = makeStringInfo();
+
+	appendStringInfo(filename,
+					 "%s/%s",
+					 PG_TEMP_FILES_DIR,
+					 "Test_buffile_one_MB_file_test.dat");
+
+	ExecWorkFile *ewf = ExecWorkFile_Create(filename->data,
+				BUFFILE,
+				false, /* delOnClose */
+				0 /* compressionType */);
+
+	/* Number of characters in a MB */
+	int nchars = (int)((1<<20)/sizeof(char));
+
+	elog(LOG, "Running sub-test: Creating file %s", filename->data);
+
+	StringInfo text = create_text_stringinfo(nchars);
+
+	ExecWorkFile_Write(ewf, text->data, nchars*sizeof(char));
+
+	pfree(text->data);
+	pfree(text);
+
+	elog(LOG, "Running sub-test: Closing file %s", filename->data);
+
+	int64 final_size = ExecWorkFile_Close(ewf);
+
+	/* Verify correct size of the created file */
+	unit_test_result (final_size == (int64)nchars*sizeof(char) );
+
+	pfree(filename->data);
+	pfree(filename);
+
+	return unit_test_summary();
+
+}
+
 static bool
 unit_test_summary(void)
 {
-	elog(INFO, "Unit tests summary: PASSED: %d/%d, FAILED: %d/%d",
+	elog(LOG, "Unit tests summary: PASSED: %d/%d, FAILED: %d/%d",
 			tests_passed, tests_total,
 			tests_failed, tests_total);
 	return tests_failed == 0;
@@ -1769,12 +1884,12 @@ unit_test_result(bool result)
 	if (result)
 	{
 		tests_passed++;
-		elog(INFO, "====== PASS ======");
+		elog(LOG, "====== PASS ======");
 	}
 	else
 	{
 		tests_failed++;
-		elog(INFO, "!!!!!! FAIL !!!!!!");
+		elog(LOG, "!!!!!! FAIL !!!!!!");
 	}
 }
 
