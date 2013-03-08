@@ -5516,7 +5516,7 @@ static struct config_string ConfigureNamesString[] =
 			GUC_GPDB_ADDOPT
 		},
 		&gp_workfile_caching_loglevel_str,
-		"log", assign_gp_workfile_caching_loglevel, NULL
+		"debug1", assign_gp_workfile_caching_loglevel, NULL
 	},
 
 	{

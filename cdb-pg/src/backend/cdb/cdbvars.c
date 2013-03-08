@@ -332,7 +332,7 @@ int		gp_hashagg_compress_spill_files = 0;
 int gp_workfile_compress_algorithm = 0;
 bool gp_workfile_checksumming = false;
 bool gp_workfile_caching = false;
-int gp_workfile_caching_loglevel = DEBUG3;
+int gp_workfile_caching_loglevel = DEBUG1;
 bool gp_workfile_faultinject = false;
 int gp_workfile_bytes_to_checksum = 16;
 

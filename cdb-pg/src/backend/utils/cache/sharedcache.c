@@ -15,8 +15,6 @@
 #include "utils/memutils.h"
 #include "utils/atomic.h"
 
-#define SHCACHE_LOG_LEVEL LOG
-
 /* Suffix used to generate shared memory hashtable name from cache name */
 #define CACHE_HASHTABLE_SUFFIX "_HASHTABLE"
 
@@ -290,7 +288,7 @@ Cache_SurrenderClientEntries(Cache *cache)
 	}
 
 
-	elog(SHCACHE_LOG_LEVEL, "Cleanup released %u empty and %u cached entries from client",
+	elog(gp_workfile_caching_loglevel, "Cleanup released %u empty and %u cached entries from client",
 			nEmptyEntries, nCachedEntries);
 }
 
