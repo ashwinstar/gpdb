@@ -1694,23 +1694,6 @@ Feature: Validate command line arguments
         And gpdbrestore should return a return code of 2
         Then gpdbrestore should print No schema name supplied to stdout
 
-    Scenario: Full backup -T test 7
-        Given the database is running
-        And the database "fullbkdb" does not exist
-        And database "fullbkdb" exists
-        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data 
-        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data 
-        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data 
-        When the user runs "gpcrondump -a -x fullbkdb"
-        Then gpcrondump should return a return code of 0 
-        And all the data from "fullbkdb" is saved for verification
-        And the timestamp from gpcrondump is stored 
-        And the user runs "gpdbrestore -T public.ao_part_table -a -e" with the stored timestamp
-        And gpdbrestore should return a return code of 0 
-        Then verify that tables "public.heap_table" in "fullbkdb" has no rows 
-        Then verify that tables "public.ao_index_table" in "fullbkdb" has no rows 
-        And verify that there is a "ao" table "public.ao_part_table" in "fullbkdb" with data 
-
     @fire
     Scenario: Incremental restore with table filter
         Given the database is running

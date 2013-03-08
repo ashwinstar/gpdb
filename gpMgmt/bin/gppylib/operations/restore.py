@@ -310,8 +310,6 @@ class RestoreDatabase(Operation):
                                                                             backup_dir = self.backup_dir,
                                                                             master_port = self.master_port,
                                                                             ddboost = self.ddboost).run()
-        if not self.no_plan:
-            self.restore_tables = expand_partition_tables(restore_db, self.restore_tables)
 
         if self.drop_db:
             self._multitry_createdb(restore_timestamp, 
@@ -334,6 +332,8 @@ class RestoreDatabase(Operation):
             logger.info("Invoking commandline: %s" % restore_line) 
             Command('Invoking gp_restore', restore_line).run(validateAfter=True)
 
+            logger.info("Expanding parent partitions in table filter")
+            self.restore_tables = expand_partition_tables(restore_db, self.restore_tables)
             logger.info("Running data restore")
             restore_incremental_data_only(self.master_datadir, 
                                           self.backup_dir, 
