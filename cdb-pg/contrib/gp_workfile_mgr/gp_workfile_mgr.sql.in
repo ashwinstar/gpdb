@@ -119,7 +119,7 @@ CREATE VIEW gp_workfile_mgr_cache_entries AS
 
 
 CREATE OR REPLACE FUNCTION gp_workfile_mgr_clear()
-    RETURNS int
+    RETURNS SETOF int
 AS 'MODULE_PATHNAME', 'gp_workfile_mgr_clear_cache' LANGUAGE C IMMUTABLE;
 
 CREATE FUNCTION gp_workfile_mgr_clear_allsegs()

@@ -499,8 +499,9 @@ workfile_mgr_can_reuse(workfile_set *work_set, PlanState *ps)
 int32
 workfile_mgr_clear_cache(void)
 {
-	Assert(false && "Clear cache not implemented");
-	PG_RETURN_BOOL(true);
+	Cache *cache = workfile_mgr_get_cache();
+	elog(gp_workfile_caching_loglevel, "Running workfile_mgr_clear_cache");
+	return Cache_Clear(cache);
 }
 
 /*

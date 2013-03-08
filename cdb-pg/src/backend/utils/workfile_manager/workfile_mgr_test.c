@@ -56,6 +56,7 @@ static bool cache_test_remove(void);
 static bool cache_test_concurrency(void);
 static bool cache_test_evict(void);
 static bool cache_test_evict_stress(void);
+static bool cache_test_clear(void);
 
 static bool bfz_test_reopen(void);
 static bool execworkfile_buffile_test(void);
@@ -101,6 +102,7 @@ static test_def test_defns[] = {
 		{"cache_test_concurrency", cache_test_concurrency},
 		{"cache_test_evict", cache_test_evict},
 		{"cache_test_evict_stress", cache_test_evict_stress},
+		{"cache_test_clear", cache_test_clear},
 		{"bfz_test_reopen", bfz_test_reopen},
 		{"execworkfile_buffile_test", execworkfile_buffile_test},
 		{"execworkfile_bfz_zlib_test", execworkfile_bfz_zlib_test},
@@ -159,12 +161,22 @@ cacheEltEquivalent(const void *resource1, const void *resource2)
 			strncmp(elt1->key, elt2->key, TEST_NAME_LENGTH) == 0;
 }
 
+/*
+ * Callback function to do the client-side cleanup for an entry that is being
+ * removed from the cache.
+ *
+ * Resource is the payload of the entry.
+ */
 static void
 cacheEltCleanup(const void *resource)
 {
 	TestCacheElt *elt = (TestCacheElt *) resource;
 
-	CACHE_ASSERT_VALID(elt);
+	CACHE_ASSERT_VALID(CACHE_ENTRY_HEADER(elt));
+
+	elog(gp_workfile_caching_loglevel, "deleting TestCacheElt. [key=""%s"", data=%d]",
+			elt->key, elt->data);
+
 	elt->data = -1;
 }
 
@@ -396,7 +408,7 @@ cache_test_concurrency(void)
 		}
 
 		/* Insert noTestEntries elements */
-		for (i=0;i<noTestEntries;i++)
+		for (i=0; i < noTestEntries; i++)
 		{
 			/* If we include Pid in the key, we get short chains */
 			/* snprintf(key, TEST_NAME_LENGTH, "PID=%d cache key no. %d", MyProcPid, i); */
@@ -424,7 +436,7 @@ cache_test_concurrency(void)
 		}
 
 		/* Look up noTestEntries */
-		for (i=0; i<noTestEntries; i++)
+		for (i=0; i < noTestEntries; i++)
 		{
 			CacheEntry *localEntry = Cache_AcquireEntry(cache);
 			if (localEntry == NULL)
@@ -456,7 +468,7 @@ cache_test_concurrency(void)
 		}
 
 		/* Delete and release noTestEntries */
-		for (i=0; i<noTestEntries; i++)
+		for (i=0; i < noTestEntries; i++)
 		{
 			Cache_Remove(cache, entries[i]);
 			Cache_Release(cache, entries[i]);
@@ -465,7 +477,7 @@ cache_test_concurrency(void)
 		CHECK_FOR_INTERRUPTS();
 
 		/* Look up no TestEntries again, should not be found */
-		for (i=0; i<noTestEntries; i++)
+		for (i=0; i < noTestEntries; i++)
 		{
 			CacheEntry *localEntry = Cache_AcquireEntry(cache);
 			if (localEntry == NULL)
@@ -519,7 +531,7 @@ cache_test_evict(void)
 	/* Inserting noTestEntries entries */
 	elog(LOG, "Running sub-test: Inserting elements");
 	int i;
-	for (i=0;i<noTestEntries;i++)
+	for (i=0; i < noTestEntries; i++)
 	{
 		snprintf(key, TEST_NAME_LENGTH, "PID=%d cache key no. %d", MyProcPid, i);
 		entries[i] = Cache_AcquireEntry(cache);
@@ -585,7 +597,7 @@ cache_test_evict_stress(void)
 
 		/* Inserting noTestEntries entries */
 		int i;
-		for (i=0;i<noTestEntries;i++)
+		for (i=0; i < noTestEntries; i++)
 		{
 			/* If we include Pid in the key, we get short chains */
 			/* snprintf(key, TEST_NAME_LENGTH, "PID=%d cache key no. %d", MyProcPid, i); */
@@ -610,7 +622,7 @@ cache_test_evict_stress(void)
 		}
 
 		/* Look up noTestEntries */
-		for (i=0; i<noTestEntries; i++)
+		for (i=0; i < noTestEntries; i++)
 		{
 			CacheEntry *localEntry = Cache_AcquireEntry(cache);
 			if (localEntry == NULL)
@@ -668,6 +680,111 @@ cache_test_evict_stress(void)
 	unit_test_result(!testFailed);
 	return unit_test_summary();
 }
+
+static bool
+cache_test_clear(void)
+{
+	int32 noDeleted = 0;
+
+	unit_test_reset();
+
+	elog(LOG, "Running test: cache_test_evict_clear");
+
+	elog(LOG, "Running sub-test: CacheCreate");
+	Cache *cache = cache_test_create();
+	unit_test_result(cache != NULL);
+
+	elog(LOG, "Running sub-test: Cache_Clear on empty");
+	noDeleted = Cache_Clear(cache);
+	unit_test_result(noDeleted == 0);
+
+	/* Number of elements in the array to hold test entries */
+	const int noTestEntries = 20;
+	const int entryWeight = 3;
+	CacheEntry *entries[noTestEntries];
+	char key[TEST_NAME_LENGTH];
+
+
+	/* Inserting noTestEntries entries */
+	elog(LOG, "Running sub-test: Cache_Clear with %d inserted elements", noTestEntries);
+	int i;
+	for (i=0; i < noTestEntries; i++)
+	{
+		snprintf(key, TEST_NAME_LENGTH, "PID=%d cache key no. %d", MyProcPid, i);
+		entries[i] = Cache_AcquireEntry(cache);
+		Assert(NULL != entries[i]);
+
+		TestCacheElt *elt = CACHE_ENTRY_PAYLOAD(entries[i]);
+		strncpy(elt->key, key, TEST_NAME_LENGTH);
+		elt->data = MyProcPid;
+
+		entries[i]->size = entryWeight;
+		entries[i]->utility = random() % 100;
+
+		Cache_Insert(cache, entries[i]);
+		Cache_Release(cache, entries[i]);
+	}
+
+	/* Clear should clear all of them */
+	noDeleted = Cache_Clear(cache);
+	unit_test_result(noDeleted == noTestEntries);
+
+
+	elog(LOG, "Running sub-test: Looking up %d elements after they got cleared", noTestEntries);
+
+	bool testFailed = false;
+	CacheEntry *localEntry = Cache_AcquireEntry(cache);
+	TestCacheElt *localElt = CACHE_ENTRY_PAYLOAD(localEntry);
+	localElt->data = MyProcPid;
+	for (i=0; i < noTestEntries; i++)
+	{
+		snprintf(localElt->key, TEST_NAME_LENGTH, "PID=%d cache key no. %d", MyProcPid, i);
+		CacheEntry *foundEntry = Cache_Lookup(cache, localEntry);
+		if (foundEntry != NULL)
+		{
+			/* Found an entry that was supposed to be cleared out, error out! */
+			testFailed = true;
+			Cache_Release(cache, foundEntry);
+			break;
+		}
+	}
+
+	Cache_Release(cache, localEntry);
+	unit_test_result(!testFailed);
+
+	/* Acquiring but not inserting noTestEntries entries */
+	elog(LOG, "Running sub-test: Cache_Clear with %d acquired elements", noTestEntries);
+	for (i=0; i < noTestEntries; i++)
+	{
+		entries[i] = Cache_AcquireEntry(cache);
+		Assert(NULL != entries[i]);
+
+		/* Put some payload in the entry */
+		TestCacheElt *elt = CACHE_ENTRY_PAYLOAD(entries[i]);
+		snprintf(key, TEST_NAME_LENGTH, "PID=%d cache key no. %d", MyProcPid, i);
+		strncpy(elt->key, key, TEST_NAME_LENGTH);
+		elt->data = MyProcPid;
+
+	}
+
+	/* Clear should clear none of them */
+	noDeleted = Cache_Clear(cache);
+	unit_test_result(noDeleted == 0);
+
+	elog(LOG, "Running sub-test: Cache_Clear after releasing all acquired elements");
+	for (i=0; i < noTestEntries; i++)
+	{
+		Cache_Release(cache, entries[i]);
+	}
+
+	/* Clear should clear none of them */
+	noDeleted = Cache_Clear(cache);
+	unit_test_result(noDeleted == 0);
+
+
+	return unit_test_summary();
+}
+
 
 /*
  * Callback function to test if an entry in the hashtable is "empty"
@@ -777,7 +894,7 @@ syncrefhashtable_test_concurrency_non_overlap(void)
 		}
 
 		/* Insert noTestEntries elements */
-		for (i=0;i<noTestEntries;i++)
+		for (i=0; i < noTestEntries; i++)
 		{
 			snprintf(key, TEST_NAME_LENGTH, "PID=%d key no. %d", MyProcPid, i);
 
@@ -810,7 +927,7 @@ syncrefhashtable_test_concurrency_non_overlap(void)
 
 
 		/* Look-up noTestEntries elements. Empty them and release them, they should get deleted */
-		for (i=0;i<noTestEntries;i++)
+		for (i=0; i < noTestEntries; i++)
 		{
 			snprintf(key, TEST_NAME_LENGTH, "PID=%d key no. %d", MyProcPid, i);
 			TestSyncHTElt *foundElt = (TestSyncHTElt *) SyncHTLookup(syncHT, key);
@@ -909,7 +1026,7 @@ syncrefhashtable_test_full_table(void)
 	int i;
 
 	/* Fill up the hashtable */
-	for (i=0;i<2 * TEST_HT_NUM_ELEMENTS;i++)
+	for (i=0; i < 2 * TEST_HT_NUM_ELEMENTS; i++)
 	{
 		snprintf(key, TEST_NAME_LENGTH, "PID=%d key no. %d", MyProcPid, i);
 
@@ -936,7 +1053,7 @@ syncrefhashtable_test_full_table(void)
 
 
 	/* Look-up noTestEntries elements. Release them, they should get deleted */
-	for (i=0;i<TEST_HT_NUM_ELEMENTS;i++)
+	for (i=0; i < TEST_HT_NUM_ELEMENTS; i++)
 	{
 		snprintf(key, TEST_NAME_LENGTH, "PID=%d key no. %d", MyProcPid, i);
 		TestSyncHTElt *foundElt = (TestSyncHTElt *) SyncHTLookup(syncHT, key);
