@@ -156,7 +156,6 @@ workfile_set *
 workfile_mgr_create_set(enum ExecWorkFileType type, bool can_be_reused, PlanState *ps, workfile_set_snapshot snapshot)
 {
 	Assert(NULL != workfile_mgr_cache);
-	Assert(NULL != MyProcPort);
 
 	Plan *plan = NULL;
 	if (ps != NULL)
@@ -193,12 +192,6 @@ workfile_mgr_create_set(enum ExecWorkFileType type, bool can_be_reused, PlanStat
 	work_set->slice_id = currentSliceId;
 	work_set->session_id = gp_session_id;
 	work_set->command_count = gp_command_count;
-	work_set->session_start_time = GetCurrentTimestamp();
-	memcpy(work_set->database_name, MyProcPort->database_name, NAMEDATALEN-1);
-	work_set->database_name[NAMEDATALEN-1]='\0';
-	memcpy(work_set->user_name, MyProcPort->user_name, NAMEDATALEN-1);
-	work_set->user_name[NAMEDATALEN-1]='\0';
-
 
 	work_set->metadata.operator_work_mem = get_operator_work_mem(ps);
 

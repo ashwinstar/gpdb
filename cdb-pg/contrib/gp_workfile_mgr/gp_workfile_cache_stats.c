@@ -31,7 +31,7 @@
 #define NUM_CACHE_STATS_ELEM 23
 
 /* The number of columns as defined in gp_workfile_mgr_cache_entries view */
-#define NUM_CACHE_ENTRIES_ELEM 14
+#define NUM_CACHE_ENTRIES_ELEM 11
 
 /* The number of columns as defined in gp_workfile_mgr_diskspace view */
 #define NUM_USED_DISKSPACE_ELEM 2
@@ -153,15 +153,8 @@ gp_workfile_mgr_cache_entries(PG_FUNCTION_ARGS)
 				INT4OID, -1 /* typmod */, 0 /* attdim */);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 11, "commandid",
 				INT4OID, -1 /* typmod */, 0 /* attdim */);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 12, "dbname",
-				TEXTOID, -1 /* typmod */, 0 /* attdim */);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 13, "username",
-				TEXTOID, -1 /* typmod */, 0 /* attdim */);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 14, "sessionstart",
-				TIMESTAMPTZOID, -1 /* typmod */, 0 /* attdim */);
 
-
-		Assert(NUM_CACHE_ENTRIES_ELEM == 14);
+		Assert(NUM_CACHE_ENTRIES_ELEM == 11);
 
 		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
 
@@ -216,9 +209,6 @@ gp_workfile_mgr_cache_entries(PG_FUNCTION_ARGS)
 	values[8] = UInt32GetDatum(work_set->slice_id);
 	values[9] = UInt32GetDatum(work_set->session_id);
 	values[10] = UInt32GetDatum(work_set->command_count);
-	values[11] = CStringGetTextDatum(work_set->database_name);
-	values[12] = CStringGetTextDatum(work_set->user_name);
-	values[13] = TimestampTzGetDatum(work_set->session_start_time);
 
 	HeapTuple tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
 	Datum result = HeapTupleGetDatum(tuple);

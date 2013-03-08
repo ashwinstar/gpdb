@@ -102,12 +102,6 @@ typedef struct workfile_set
 	/* Prefix of files in the workfile set */
 	char path[MAXPGPATH];
 
-	/* Name of database for workfile set */
-	char database_name[NAMEDATALEN];
-
-	/* Name of user that created the workfile set */
-	char user_name[NAMEDATALEN];
-
 	/* Type of operator creating the workfile set */
 	NodeTag node_type;
 

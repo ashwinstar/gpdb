@@ -93,10 +93,7 @@ CREATE VIEW gp_workfile_mgr_cache_entries AS
             optype text, 
             slice int,
             sessionid int, 
-            commandid int,
-            dbname text, 
-            username text, 
-            sessionstart timestamptz
+            commandid int
           )
     UNION ALL
     SELECT C.*
@@ -111,10 +108,7 @@ CREATE VIEW gp_workfile_mgr_cache_entries AS
             optype text, 
             slice int,
             sessionid int, 
-            commandid int,
-            dbname text, 
-            username text,
-            sessionstart timestamptz  
+            commandid int
           );
 
 
