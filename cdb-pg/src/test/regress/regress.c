@@ -11,6 +11,7 @@
 
 #include "access/transam.h"
 #include "access/xact.h"
+#include "catalog/pg_language.h"
 #include "catalog/pg_type.h"
 #include "cdb/memquota.h"
 #include "commands/sequence.h"
@@ -66,6 +67,8 @@ extern Datum noop_project(PG_FUNCTION_ARGS);
 
 /* resource queue support */
 extern Datum checkResourceQueueMemoryLimits(PG_FUNCTION_ARGS);
+
+extern Datum checkRelationAfterInvalidation(PG_FUNCTION_ARGS);
 
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
@@ -2369,4 +2372,33 @@ checkResourceQueueMemoryLimits(PG_FUNCTION_ARGS)
 	v2 = ceil((double) ResourceQueueGetMemoryLimitInCatalog(queueId));
 
 	PG_RETURN_BOOL(v1 == v2);
+}
+
+/*
+ * Check if Relation has the valid information after cache invalidation.
+ */
+PG_FUNCTION_INFO_V1(checkRelationAfterInvalidation);
+Datum
+checkRelationAfterInvalidation(PG_FUNCTION_ARGS)
+{
+	Relation relation;
+	struct RelationNodeInfo nodeinfo;
+
+	/* The relation is arbitrary.  Any "unnailed" relation is ok */
+	relation = relation_open(LanguageRelationId, AccessShareLock);
+	RelationFetchGpRelationNodeForXLog(relation);
+	memcpy(&nodeinfo,
+		   &relation->rd_segfile0_relationnodeinfo,
+		   sizeof(struct RelationNodeInfo));
+
+	/* Invalidation messages should not blow persistent table info */
+	RelationCacheInvalidate();
+	if (memcmp(&nodeinfo,
+			   &relation->rd_segfile0_relationnodeinfo,
+			   sizeof(struct RelationNodeInfo) != 0))
+		elog(ERROR, "node info does not match");
+
+	relation_close(relation, AccessShareLock);
+
+	PG_RETURN_BOOL(true);
 }

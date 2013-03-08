@@ -2275,6 +2275,9 @@ RelationClearRelation(Relation relation, bool rebuild)
 		/* preserve rd_cdbpolicy, as there are probably pointers to it */
 		SWAPFIELD(struct GpPolicy *, rd_cdbpolicy);
 
+		/* preserve persistent table information for the relation  */
+		SWAPFIELD(struct RelationNodeInfo, rd_segfile0_relationnodeinfo);
+
 #undef SWAPFIELD
 
 		/* And now we can throw away the temporary entry */
