@@ -389,18 +389,20 @@ static void BufFileDumpBuffer(BufFile *file, const void* buffer, Size nbytes)
 		}
 
 		wrote = FileWrite(file->file, (char *)buffer + wpos, (int)bytestowrite);
-		/* We account for everything we write, even if write failed */
-		file->offset += wrote;
 		if (wrote != bytestowrite)
 		{
 			if (file->isWorkfile)
 			{
-				elog(gp_workfile_caching_loglevel, "FileWrite failed while writing to a workfile. Marking IO Error flag");
+				elog(gp_workfile_caching_loglevel, "FileWrite failed while writing to a workfile. Marking IO Error flag."
+				     " offset=" INT64_FORMAT " pos=" INT64_FORMAT " maxoffset=" INT64_FORMAT " wpos=%d", 
+				     file->offset, file->pos, file->maxoffset, (int) wpos);
+
 				Assert(!WorkfileDiskspace_IsFull());
 				WorkfileDiskspace_SetFull(true /* isFull */);
 			}
 			elog(ERROR, "could not write %d bytes to temporary file: %m", (int)bytestowrite);
 		}
+		file->offset += wrote; 
 		wpos += wrote;
 	}
 	file->dirty = false;
