@@ -204,6 +204,8 @@ CreateSubExecutorState(EState *parent_estate)
     EState *es = InternalCreateExecutorState(parent_estate->es_query_cxt, true);
 
     es->showstatctx = parent_estate->showstatctx;                   /*CDB*/
+
+	es->subplanLevel = parent_estate->subplanLevel + 1;
     return es;
 }
 
@@ -286,6 +288,7 @@ InternalCreateExecutorState(MemoryContext qcontext, bool is_subquery)
 
 	estate->currentSliceIdInPlan = 0;
 	estate->currentExecutingSliceId = 0;
+	estate->subplanLevel = 0;
 	estate->rootSliceId = 0;
 
 	/*
