@@ -70,7 +70,7 @@ explain analyze select d, count(*) from smallt group by d;
  Statement statistics:
    Memory used: 128000K bytes
  Total runtime: 38.161 ms
-(22 rows)
+(24 rows)
 
 set statement_mem=2560;
 select count(*) from (select i, t, d, count(*) from bigt group by i, t, d) tmp;
@@ -107,7 +107,7 @@ explain analyze select count(*) from (select i, t, d, count(*) from bigt group b
    Memory used: 2560K bytes
    Memory wanted: 6246K bytes
  Total runtime: 1153.781 ms
-(25 rows)
+(26 rows)
 
 set statement_mem=128000;
 -- DQA
@@ -248,7 +248,7 @@ where t1.d = t2.d;
    Memory used: 128000K bytes
  Settings:  enable_hashjoin=off; enable_nestloop=on; gp_enable_agg_distinct=on
  Total runtime: 27.318 ms
-(42 rows)
+(47 rows)
 
 set enable_nestloop=off;
 set enable_hashjoin=on;
@@ -303,7 +303,7 @@ where t1.i = t2.i;
    Memory used: 128000K bytes
  Settings:  enable_hashjoin=off; enable_nestloop=on; gp_enable_agg_distinct=on
  Total runtime: 12.074 ms
-(26 rows)
+(29 rows)
 
 set enable_nestloop=off;
 set enable_hashjoin=on;
@@ -348,7 +348,7 @@ explain analyze select d, count(*) from smallt group by d limit 5;
    Memory used: 128000K bytes
  Settings:  enable_hashjoin=on; enable_nestloop=off; gp_enable_agg_distinct=on
  Total runtime: 33.871 ms
-(27 rows)
+(29 rows)
 
 -- HashJoin
 select t1.* from smallt as t1, smallt as t2 where t1.i = t2.i;
@@ -1380,7 +1380,7 @@ explain analyze select t1.* from smallt as t1, smallt as t2 where t1.i = t2.i;
    Memory used: 128000K bytes
  Settings:  enable_hashjoin=on; enable_nestloop=off; gp_enable_agg_distinct=on
  Total runtime: 34.050 ms
-(21 rows)
+(22 rows)
 
 -- Rescan on HashJoin
 --select t1.* from (select t11.* from smallt as t11, smallt as t22 where t11.i = t22.i and t11.i < 2) as t1,
@@ -1751,7 +1751,7 @@ explain analyze select * from smallt_part where i < any (select count(*) from sm
    Memory used: 128000K bytes
  Settings:  enable_hashjoin=on; enable_nestloop=off; gp_enable_agg_distinct=on
  Total runtime: 385.153 ms
-(219 rows)
+(239 rows)
 
 -- Sort in MergeJoin
 set enable_hashjoin=off;
@@ -1992,7 +1992,7 @@ explain analyze select t1.* from smallt as t1, smallt as t2 where t1.i = t2.i an
    Memory used: 128000K bytes
  Settings:  enable_hashjoin=off; enable_mergejoin=on; enable_nestloop=off; gp_enable_agg_distinct=on
  Total runtime: 2.108 ms
-(28 rows)
+(30 rows)
 
 select t1.* from smallt as t1, smallt as t2 where t1.d = t2.d and t1.i < 2;
  i |    t    |     d      
@@ -2202,7 +2202,7 @@ and smallt.d = '2011-01-04'::date;
    Memory used: 128000K bytes
  Settings:  enable_bitmapscan=off; enable_hashjoin=off; enable_mergejoin=off; enable_nestloop=on; enable_seqscan=off; gp_enable_agg_distinct=on
  Total runtime: 3.411 ms
-(20 rows)
+(21 rows)
 
 -- BitmapScan
 set enable_indexscan=off;
@@ -2265,7 +2265,7 @@ and smallt.d = '2011-01-04'::date;
    Memory used: 128000K bytes
  Settings:  enable_bitmapscan=on; enable_hashjoin=off; enable_indexscan=off; enable_mergejoin=off; enable_nestloop=on; enable_seqscan=off; gp_enable_agg_distinct=on
  Total runtime: 3.042 ms
-(28 rows)
+(29 rows)
 
 set enable_hashjoin=on;
 set enable_nestloop=off;
