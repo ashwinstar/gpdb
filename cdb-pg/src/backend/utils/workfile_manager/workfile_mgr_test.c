@@ -9,18 +9,19 @@
  */
 
 #include <postgres.h>
-#include "utils/memutils.h"
-#include "utils/builtins.h"
-#include "utils/sharedcache.h"
-#include "utils/syncrefhashtable.h"
-#include "miscadmin.h"
-#include "cdb/cdbvars.h"
 #include "cdb/cdbgang.h"
+#include "cdb/cdbvars.h"
+#include "executor/execWorkfile.h"
+#include "miscadmin.h"
+#include "postmaster/primary_mirror_mode.h"
 #include "storage/bfz.h"
 #include "storage/buffile.h"
-#include "executor/execWorkfile.h"
-#include "postmaster/primary_mirror_mode.h"
 #include "utils/atomic.h"
+#include "utils/builtins.h"
+#include "utils/logtape.h"
+#include "utils/memutils.h"
+#include "utils/sharedcache.h"
+#include "utils/syncrefhashtable.h"
 
 #define TEST_NAME_LENGTH 50
 #define TEST_HT_NUM_ELEMENTS 8192
@@ -62,6 +63,8 @@ static bool execworkfile_bfz_zlib_test(void);
 static bool execworkfile_bfz_uncompressed_test(void);
 static bool fd_tests(void);
 static bool buffile_size_test(void);
+static bool buffile_large_file_test(void);
+static bool logicaltape_test(void);
 
 static bool atomic_test(void);
 
@@ -103,7 +106,8 @@ static test_def test_defns[] = {
 		{"atomic_test", atomic_test},
 		{"fd_tests", fd_tests},
 		{"buffile_size_test", buffile_size_test},
-
+		{"buffile_large_file_test", buffile_large_file_test},
+		{"logicaltape_test", logicaltape_test},
 		{NULL, NULL}, /* This has to be the last element of the array */
 };
 
@@ -1580,6 +1584,164 @@ atomic_test(void)
 		unit_test_result(result == expected_result && base == expected_result);
 	}
 
+
+	return unit_test_summary();
+}
+
+/*
+ * Unit test for BufFile support of large files (greater than 4 GB).
+ *
+ */
+static bool
+buffile_large_file_test(void)
+{
+	unit_test_reset();
+	elog(INFO, "Running test: buffile_large_file_test");
+
+	StringInfo filename = makeStringInfo();
+
+	appendStringInfo(filename,
+					 "%s/%s",
+					 PG_TEMP_FILES_DIR,
+					 "Test_large_buff.dat");
+
+	BufFile *bfile = BufFileCreateFile(filename->data, true /* delOnClose */, true /* interXact */);
+
+	int nchars = 100000;
+	/* 4.5 GBs */
+	int total_entries = 48319;
+	/* Entry that requires an int64 seek */
+	int test_entry = 45000;
+
+	StringInfo test_string = create_text_stringinfo(nchars);
+
+	elog(INFO, "Running sub-test: Creating file %s", filename->data);
+
+	for (int i = 0; i < total_entries; i++)
+	{
+		if (test_entry == i)
+		{
+			BufFileWrite(bfile, test_string->data , nchars*sizeof(char));
+		}
+		else
+		{
+			StringInfo text = create_text_stringinfo(nchars);
+
+			BufFileWrite(bfile, text->data , nchars*sizeof(char));
+
+			pfree(text->data);
+			pfree(text);
+		}
+	}
+	elog(INFO, "Running sub-test: Reading record %s", filename->data);
+
+	char *buffer= buffer = palloc(nchars * sizeof(char));
+
+	BufFileSeek(bfile,  (int64) ((int64)test_entry * (int64) nchars), SEEK_SET);
+
+	int nread = BufFileRead(bfile, buffer, nchars*sizeof(char));
+
+	BufFileClose(bfile);
+
+	/* Verify correct size of the inserted record and content */
+	unit_test_result (nread == nchars &&
+					 (strncmp(test_string->data, buffer, test_string->len) == 0));
+
+	pfree(filename->data);
+	pfree(test_string->data);
+	pfree(filename);
+	pfree(test_string);
+
+	return unit_test_summary();
+
+}
+
+/*
+ * Unit test for logical tape's support for large spill files.
+ * */
+static bool
+logicaltape_test(void)
+{
+	unit_test_reset();
+	elog(INFO, "Running test: logicaltape_test");
+
+	int max_tapes = 10;
+	int nchars = 100000;
+	/* 4.5 GBs */
+	int max_entries = 48319;
+
+	/* Target record values */
+	int test_tape = 5;
+	int test_entry = 45000;
+	LogicalTapePos entryPos;
+
+	LogicalTapeSet *tape_set = LogicalTapeSetCreate(max_tapes, true /*delOnclose */);
+
+	LogicalTape *work_tape = NULL;
+
+	StringInfo test_string = create_text_stringinfo(nchars);
+
+	elog(INFO, "Running sub-test: Creating LogicalTape");
+
+	/* Fill LogicalTapeSet */
+	for (int i = 0; i < max_tapes; i++)
+	{
+		work_tape = LogicalTapeSetGetTape(tape_set, i);
+
+		/* Create large SpillFile for LogicalTape */
+		if (test_tape == i)
+		{
+			elog(INFO, "Running sub-test: Fill LogicalTape");
+			for (int j = 0; j < max_entries; j++)
+			{
+				if ( j == test_entry)
+				{
+					/* Keep record position of target record in LogicalTape */
+					LogicalTapeUnfrozenTell(tape_set, work_tape, &entryPos);
+
+					LogicalTapeWrite(tape_set, work_tape, test_string->data, (size_t)test_string->len);
+				}
+				else
+				{
+					/* Add additional records */
+					StringInfo text = create_text_stringinfo(nchars);
+
+					LogicalTapeWrite(tape_set, work_tape, text->data, (size_t)text->len);
+
+					pfree(text->data);
+					pfree(text);
+				}
+			}
+		}
+		else
+		{
+			/* Add additional records */
+			StringInfo text = create_text_stringinfo(nchars);
+
+			LogicalTapeWrite(tape_set, work_tape, text->data, (size_t)text->len);
+
+			pfree(text->data);
+			pfree(text);
+		}
+
+	}
+
+	/* Set target LogicalTape */
+	work_tape = LogicalTapeSetGetTape(tape_set, test_tape);
+	char *buffer= buffer = palloc(nchars * sizeof(char));
+
+	elog(INFO, "Running sub-test: Freeze LogicalTape");
+	LogicalTapeFreeze(tape_set, work_tape);
+
+	elog(INFO, "Running sub-test: Seek in LogicalTape");
+	LogicalTapeSeek(tape_set, work_tape, &entryPos);
+
+	elog(INFO, "Running sub-test: Reading from LogicalTape");
+	LogicalTapeRead(tape_set, work_tape, buffer, (size_t)(nchars*sizeof(char)));
+
+	LogicalTapeSetClose(tape_set);
+
+	unit_test_result (strncmp(test_string->data, buffer, test_string->len) == 0);
 
 	return unit_test_summary();
 }

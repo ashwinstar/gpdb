@@ -75,13 +75,13 @@ struct TuplestorePos
 	 */
 	bool		eof_reached;	/* read reached EOF (always valid) */
 	int			current;		/* next array index (valid if INMEM) */
-	long		readpos_offset; /* offset (valid if WRITEFILE and not eof) */
-	long		writepos_offset;	/* offset (valid if READFILE) */
+	int64		readpos_offset; /* offset (valid if WRITEFILE and not eof) */
+	int64		writepos_offset;	/* offset (valid if READFILE) */
 
 	/* markpos_xxx holds marked position for mark and restore */
-	int			markpos_current;	/* saved "current" */
-	int			markpos_file;	/* saved "readpos_file" */
-	long		markpos_offset; /* saved "readpos_offset" */
+	int64			markpos_current;	/* saved "current" */
+	int64			markpos_file;	/* saved "readpos_file" */
+	int64		markpos_offset; /* saved "readpos_offset" */
 };
 
 /*
@@ -166,15 +166,13 @@ struct Tuplestorestate
 	 */
 	bool		eof_reached;	/* read reached EOF (always valid) */
 	int			current;		/* next array index (valid if INMEM) */
-	int			readpos_file;	/* file# (valid if WRITEFILE and not eof) */
-	long		readpos_offset; /* offset (valid if WRITEFILE and not eof) */
-	int			writepos_file;	/* file# (valid if READFILE) */
-	long		writepos_offset;	/* offset (valid if READFILE) */
+	int64		readpos_offset; /* offset (valid if WRITEFILE and not eof) */
+	int64		writepos_offset;	/* offset (valid if READFILE) */
 
 	/* markpos_xxx holds marked position for mark and restore */
-	int			markpos_current;	/* saved "current" */
-	int			markpos_file;	/* saved "readpos_file" */
-	long		markpos_offset; /* saved "readpos_offset" */
+	int64			markpos_current;	/* saved "current" */
+	int64			markpos_file;	/* saved "readpos_file" */
+	int64		markpos_offset; /* saved "readpos_offset" */
 
     /*
      * CDB: EXPLAIN ANALYZE reporting interface and statistics.

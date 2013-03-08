@@ -46,10 +46,10 @@ struct BufFile {
 	bool pfreeAtClose; /* CDB: true => buffer is ours, we pfree it */
 	bool dirty; /* does buffer need to be written? */
 
-	int offset; /* offset part of current pos */
-	int pos; /* next read/write position in buffer */
+	int64 offset; /* offset part of current pos */
+	int64 pos; /* next read/write position in buffer */
 	int nbytes; /* total # of valid bytes in buffer */
-	int maxoffset; /* maximum offset that this file has reached, for disk usage */
+	int64 maxoffset; /* maximum offset that this file has reached, for disk usage */
 
 	Size bufsize; /* CDB: size of buffer (bytes) */
 	char *buffer; /* CDB: -> buffer */
@@ -599,9 +599,9 @@ BufFileFlush(BufFile *file)
  * impossible seek is attempted.
  */
 int
-BufFileSeek(BufFile *file, long offset, int whence)
+BufFileSeek(BufFile *file, int64 offset, int whence)
 {
-	long newOffset;
+	int64 newOffset;
 
 	switch (whence)
 	{
@@ -634,7 +634,7 @@ BufFileSeek(BufFile *file, long offset, int whence)
 		 * whether reading or writing, but buffer remains dirty if we were
 		 * writing.
 		 */
-		file->pos = (int) (newOffset - file->offset);
+		file->pos = (newOffset - file->offset);
 		BufFileUpdateSize(file);
 		return 0;
 	}
@@ -649,7 +649,7 @@ BufFileSeek(BufFile *file, long offset, int whence)
 	return 0;
 }
 
-void BufFileTell(BufFile *file, long *offset)
+void BufFileTell(BufFile *file, int64 *offset)
 {
 	*offset = file->offset + file->pos;
 }
@@ -666,7 +666,7 @@ void BufFileTell(BufFile *file, long *offset)
  * impossible seek is attempted.
  */
 int
-BufFileSeekBlock(BufFile *file, long blknum)
+BufFileSeekBlock(BufFile *file, int64 blknum)
 {
 	return BufFileSeek(file, blknum * BLCKSZ, SEEK_SET);
 }

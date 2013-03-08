@@ -18,8 +18,9 @@
 
 typedef struct LogicalTapePos
 {
-	long blkNum; 
-	int  offset;
+	int64 blkNum;
+	int64 offset;
+
 } LogicalTapePos;
 
 /* LogicalTapeSet and LogicalTape are opaque types whose details are not known outside logtape.c. */
@@ -46,6 +47,7 @@ extern void LogicalTapeFreeze(LogicalTapeSet *lts, LogicalTape *lt);
 extern bool LogicalTapeBackspace(LogicalTapeSet *lts, LogicalTape *lt, size_t size);
 extern bool LogicalTapeSeek(LogicalTapeSet *lts, LogicalTape *lt, LogicalTapePos *pos); 
 extern void LogicalTapeTell(LogicalTapeSet *lts, LogicalTape *lt, LogicalTapePos *pos);
+extern void LogicalTapeUnfrozenTell(LogicalTapeSet *lts, LogicalTape *lt, LogicalTapePos *pos);
 
 extern long LogicalTapeSetBlocks(LogicalTapeSet *lts);
 extern void LogicalTapeSetForgetFreeSpace(LogicalTapeSet *lts);

@@ -65,7 +65,7 @@ struct LogicalTape
 	bool		writing;		/* T while in write phase */
 	bool		frozen;			/* T if blocks should not be freed when read */
 
-	long 		firstBlkNum;  /* First block block number */
+	int64 		firstBlkNum;  /* First block block number */
 	LogicalTapePos   currPos;         /* current postion */
 };
 
@@ -107,10 +107,10 @@ struct LogicalTapeSet
 	LogicalTape tapes[1];		/* must be last in struct! */
 };
 
-static void ltsWriteBlock(LogicalTapeSet *lts, long blocknum, void *buffer);
-static void ltsReadBlock(LogicalTapeSet *lts, long blocknum, void *buffer);
+static void ltsWriteBlock(LogicalTapeSet *lts, int64 blocknum, void *buffer);
+static void ltsReadBlock(LogicalTapeSet *lts, int64 blocknum, void *buffer);
 static long ltsGetFreeBlock(LogicalTapeSet *lts);
-static void ltsReleaseBlock(LogicalTapeSet *lts, long blocknum);
+static void ltsReleaseBlock(LogicalTapeSet *lts, int64 blocknum);
 
 /*
  * Writes state of a LogicalTapeSet to a state file
@@ -194,7 +194,7 @@ LogicalTapeSet *LoadLogicalTapeSetState(ExecWorkFile *statefile, const char* rwf
  * No need for an error return convention; we ereport() on any error.
  */
 static void
-ltsWriteBlock(LogicalTapeSet *lts, long blocknum, void *buffer)
+ltsWriteBlock(LogicalTapeSet *lts, int64 blocknum, void *buffer)
 {
 	Assert(lts != NULL);
 	if (ExecWorkFile_Seek(lts->pfile, blocknum * BLCKSZ, SEEK_SET) != 0 ||
@@ -203,7 +203,7 @@ ltsWriteBlock(LogicalTapeSet *lts, long blocknum, void *buffer)
 		ereport(ERROR,
 		/* XXX is it okay to assume errno is correct? */
 				(errcode_for_file_access(),
-				 errmsg("could not write block %ld of temporary file: %m",
+				 errmsg("could not write block " INT64_FORMAT  " of temporary file: %m",
 						blocknum),
 				 errhint("Perhaps out of disk space?")));
 	}
@@ -216,7 +216,7 @@ ltsWriteBlock(LogicalTapeSet *lts, long blocknum, void *buffer)
  * module should never attempt to read a block it doesn't know is there.
  */
 static void
-ltsReadBlock(LogicalTapeSet *lts, long blocknum, void *buffer)
+ltsReadBlock(LogicalTapeSet *lts, int64 blocknum, void *buffer)
 {
 	Assert(lts != NULL);
 	if (ExecWorkFile_Seek(lts->pfile, blocknum * BLCKSZ, SEEK_SET) != 0 ||
@@ -225,7 +225,7 @@ ltsReadBlock(LogicalTapeSet *lts, long blocknum, void *buffer)
 		ereport(ERROR,
 		/* XXX is it okay to assume errno is correct? */
 				(errcode_for_file_access(),
-				 errmsg("could not read block %ld of temporary file: %m",
+				 errmsg("could not read block " INT64_FORMAT  " of temporary file: %m",
 						blocknum)));
 	}
 }
@@ -279,7 +279,7 @@ ltsGetFreeBlock(LogicalTapeSet *lts)
  * Return a block# to the freelist.
  */
 static void
-ltsReleaseBlock(LogicalTapeSet *lts, long blocknum)
+ltsReleaseBlock(LogicalTapeSet *lts, int64 blocknum)
 {
 	long		ndx;
 
@@ -700,6 +700,16 @@ void
 LogicalTapeTell(LogicalTapeSet *lts, LogicalTape *lt, LogicalTapePos *pos)
 {
 	Assert(lt->frozen);
+	pos->blkNum = lt->currPos.blkNum;
+	pos->offset = lt->currPos.offset;
+}
+
+/*
+ * Obtain current position from an unfrozen tape.
+ */
+void
+LogicalTapeUnfrozenTell(LogicalTapeSet *lts, LogicalTape *lt, LogicalTapePos *pos)
+{
 	pos->blkNum = lt->currPos.blkNum;
 	pos->offset = lt->currPos.offset;
 }

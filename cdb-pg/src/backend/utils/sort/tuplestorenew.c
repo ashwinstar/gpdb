@@ -44,7 +44,7 @@ typedef struct NTupleStorePage
 typedef struct NTupleStoreLobRef
 {
 	int64 start;
-	int64 size;
+	Size size;
 } NTupleStoreLobRef;
 
 /* some convinient macro/inline functions */
@@ -999,11 +999,8 @@ static long ntuplestore_put_lob(NTupleStore *nts, char* data, NTupleStoreLobRef 
 
 static long ntuplestore_get_lob(NTupleStore *nts, void *data, NTupleStoreLobRef *lobref)
 {
-	long offset = lobref->start % (RELSEG_SIZE * BLCKSZ);
-	uint64 ret;
-	
-	Assert(offset >= 0 && offset < (RELSEG_SIZE * BLCKSZ));
-	ret = ExecWorkFile_Seek(nts->plobfile, offset, SEEK_SET);
+	Assert(lobref->start >= 0);
+	long ret = ExecWorkFile_Seek(nts->plobfile, lobref->start, SEEK_SET);
 	Assert(ret == 0);
 
 	ret = ExecWorkFile_Read(nts->plobfile, data, lobref->size);

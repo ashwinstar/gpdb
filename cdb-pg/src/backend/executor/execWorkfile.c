@@ -274,11 +274,11 @@ ExecWorkFile_Tell64(ExecWorkFile *workfile)
 {
 	Assert(workfile != NULL);
 	uint64 bytes = 0;
-	
+
 	switch(workfile->fileType)
 	{
 		case BUFFILE:
-			BufFileTell((BufFile *)workfile->file, (long *) &bytes);
+			BufFileTell((BufFile *)workfile->file, (int64 *) &bytes);
 			break;
 			
 		case BFZ:
