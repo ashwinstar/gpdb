@@ -152,6 +152,7 @@ bindCurrentOfParams(char *cursor_name,
 					int *gp_segment_id, 
 					Oid *tableoid);
 
+
 #define BEGIN_STR "BEGIN "
 #define PREPARE_STR "PREPARE "
 #define COMMIT_STR "COMMIT "
@@ -3702,6 +3703,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		*sparams;
 
 	int 	splan_len,
+		splan_len_uncompressed,
 		ssliceinfo_len,
 		sparams_len;
 
@@ -3817,7 +3819,21 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	 * slice tree (corresponding to an initPlan or the main plan), so the
 	 * parameters are fixed and we can include them in the prefix.
 	 */
-	splan = serializeNode((Node *) queryDesc->plannedstmt, &splan_len);
+	splan = serializeNode((Node *) queryDesc->plannedstmt, &splan_len, &splan_len_uncompressed);
+
+	/* compute the total uncompressed size of the query plan for all slices */
+	int num_slices = queryDesc->plannedstmt->planTree->nMotionNodes + 1;
+	int plan_size_in_kb = (splan_len_uncompressed * num_slices) / 1024;
+	
+	elog(LOG, "Query plan size to dispatch: %dKB", plan_size_in_kb);
+	
+	if (0 < gp_max_plan_size && plan_size_in_kb > gp_max_plan_size)
+	{
+		ereport(ERROR,
+		        (errcode(ERRCODE_STATEMENT_TOO_COMPLEX),
+		                (errmsg("Query plan size limit exceeded, current size: %dKB, max allowed size: %dKB", plan_size_in_kb, gp_max_plan_size),
+		                 errhint("Size controlled by gp_max_plan_size"))));
+	}
 
 	Assert(splan != NULL && splan_len > 0);
 
@@ -3890,7 +3906,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		sparams_len = 0;
 	}
 
-	ssliceinfo = serializeNode((Node *) sliceTbl, &ssliceinfo_len);
+	ssliceinfo = serializeNode((Node *) sliceTbl, &ssliceinfo_len, NULL /*uncompressed_size*/);
 	
 	MemSet(&queryParms, 0, sizeof(queryParms));
 	queryParms.strCommand = queryDesc->sourceText;
@@ -3931,6 +3947,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 
 	sliceTbl->localSlice = oldLocalSlice;
 }	/* cdbdisp_dispatchPlan */
+
 
 
 /*
@@ -4120,7 +4137,7 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 	/*
 	 * serialized the stmt tree, and create the sql statement: mppexec ....
 	 */
-	serializedQuerytree = serializeNode((Node *) q, &serializedQuerytree_len);
+	serializedQuerytree = serializeNode((Node *) q, &serializedQuerytree_len, NULL /*uncompressed_size*/);
 
 	Assert(serializedQuerytree != NULL);
 

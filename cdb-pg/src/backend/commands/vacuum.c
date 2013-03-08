@@ -3929,7 +3929,7 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 	q->querySource = QSRC_ORIGINAL;
 	q->canSetTag = true;	/* ? */
 
-	pszVacuum = serializeNode((Node *) q, &pszVacuum_len);
+	pszVacuum = serializeNode((Node *) q, &pszVacuum_len, NULL /*uncompressed_size*/);
 	Assert(pszVacuum);
 
 	/*

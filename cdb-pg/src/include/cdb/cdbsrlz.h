@@ -16,7 +16,7 @@
 #include "lib/stringinfo.h"
 #include "nodes/pg_list.h"
 
-extern char *serializeNode(Node *node, int *size);
+extern char *serializeNode(Node *node, int *size, int *uncompressed_size);
 extern Node *deserializeNode(const char *strNode, int size);
 
 
