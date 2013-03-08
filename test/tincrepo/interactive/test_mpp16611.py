@@ -156,7 +156,7 @@ class mpp16611(GPDBTestCase):
         # There still could be possibilities that a checkpoint
         # happens by checkpoint process, in which case this test
         # doesn't show the bug, but it's quite unlikely.
-        subprocess.check_call(r'gpstop -air', shell=True)
+        subprocess.check_call(r'source $GPHOME/greenplum_path.sh; gpstop -air', shell=True)
 
         out_file = local_path('mpp16611.2.out')
         PSQL.run_sql_file(sql_file=sql_file,
