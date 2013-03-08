@@ -2,6 +2,11 @@ COMMAND NAME: gp_restore
 
 Restores Greenplum Database databases that were backed up using gp_dump.
 
+The gp_dump utility is deprecated and will be removed in a future 
+release. Use gpcrondump and gpdbrestore to backup and restore 
+Greenplum databases. 
+
+
 *****************************************************
 SYNOPSIS
 *****************************************************
