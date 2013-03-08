@@ -1949,7 +1949,7 @@ execworkfile_create_one_MB_file(void)
 
 	ExecWorkFile *ewf = ExecWorkFile_Create(filename->data,
 				BUFFILE,
-				false, /* delOnClose */
+				true, /* delOnClose */
 				0 /* compressionType */);
 
 	/* Number of characters in a MB */
