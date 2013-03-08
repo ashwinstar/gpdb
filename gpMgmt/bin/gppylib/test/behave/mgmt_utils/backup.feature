@@ -1591,6 +1591,7 @@ Feature: Validate command line arguments
          And verify that the tuple count of all appendonly tables are consistent in "testdb1"
          And verify that there is no "public.ext_tab" in the "dirty_list" file in " "
          And verify that there is no "public.ext_tab" in the "table_list" file in " "
+         Then the file "/tmp/ext_tab" is removed from the system
 
     @fire
     Scenario: Full backup -T test 1 

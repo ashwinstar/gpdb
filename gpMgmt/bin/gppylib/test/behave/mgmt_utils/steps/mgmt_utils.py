@@ -1502,6 +1502,12 @@ def impl(context, num_seconds):
     print "Elapsed time was %.1f seconds" % elapsed
 
 
+@then('the file "{filename}" is removed from the system')
+def impl(context, filename): 
+    os.remove(filename)
+
+
+
 
 
 
