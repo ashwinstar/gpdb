@@ -47,6 +47,7 @@ static void workfile_mgr_cleanup_set(const void *resource);
 static void workfile_mgr_delete_set_directory(char *workset_path);
 static void workfile_mgr_unlink_directory(const char *dirpath);
 static StringInfo get_name_from_nodeType(const NodeTag node_type);
+static uint64 get_operator_work_mem(PlanState *ps);
 
 /* Workfile manager cache is stored here, once attached to */
 Cache *workfile_mgr_cache = NULL;
@@ -132,6 +133,10 @@ get_name_from_nodeType(const NodeTag node_type)
 		case T_SortState:
 			appendStringInfoString(operator_name,"Sort");
 			break;
+		case T_Invalid:
+			/* When spilling from a builtin function, we don't have a valid node type */
+			appendStringInfoString(operator_name,"BuiltinFunction");
+			break;
 		default:
 			Assert(false && "Operator not supported by the workfile manager");
 	}
@@ -146,19 +151,21 @@ get_name_from_nodeType(const NodeTag node_type)
  *   can_be_reused: if set to false, then we don't insert this set into the cache,
  *     since the caller is telling us there is no point. This can happen for
  *     example when spilling during index creation.
- *   plan is the subplan for the operator
+ *   ps is the PlanState for the subtree rooted at the operator
  *   snapshot contains snapshot information for the current transaction
  *
  */
 workfile_set *
 workfile_mgr_create_set(enum ExecWorkFileType type, bool can_be_reused, PlanState *ps, workfile_set_snapshot snapshot)
 {
-	Assert(NULL != ps);
 	Assert(NULL != workfile_mgr_cache);
 	Assert(NULL != MyProcPort);
 
-	workfile_set_plan *s_plan = NULL;
-	Plan *plan = ps->plan;
+	Plan *plan = NULL;
+	if (ps != NULL)
+	{
+		plan = ps->plan;
+	}
 
 	AssertImply(can_be_reused, plan != NULL);
 
@@ -176,7 +183,11 @@ workfile_mgr_create_set(enum ExecWorkFileType type, bool can_be_reused, PlanStat
 	work_set->metadata.num_leaf_files = 0;
 	work_set->on_disk = false;
 	work_set->set_plan = NULL;
-	work_set->node_type = ps->type;
+	work_set->node_type = T_Invalid;
+	if (ps != NULL)
+	{
+		work_set->node_type = ps->type;
+	}
 	work_set->slice_id = currentSliceId;
 	work_set->session_id = gp_session_id;
 	work_set->command_count = gp_command_count;
@@ -187,19 +198,8 @@ workfile_mgr_create_set(enum ExecWorkFileType type, bool can_be_reused, PlanStat
 	work_set->user_name[NAMEDATALEN-1]='\0';
 
 
-	/*
-	 * Determine operatorMemKB for this operator.
-	 * For HashJoin, this is given by the right child, for everyone else it is the actual node.
-	 */
-	if ((IsA(ps, HashJoinState)))
-	{
-		Assert(IsA(ps->righttree, HashState));
-		work_set->metadata.operator_work_mem = ps->righttree->plan->operatorMemKB;
-	}
-	else
-	{
-		work_set->metadata.operator_work_mem = plan->operatorMemKB;
-	}
+	work_set->metadata.operator_work_mem = get_operator_work_mem(ps);
+
 
 	/* If workfile caching is disabled, nothing should be re-used, so override whatever the caller says */
 	work_set->can_be_reused = gp_workfile_caching && can_be_reused && workfile_mgr_is_reusable(ps);
@@ -280,7 +280,7 @@ workfile_mgr_create_set(enum ExecWorkFileType type, bool can_be_reused, PlanStat
 		Assert(plan != NULL);
 		Assert(nodeTag(plan) >= T_Plan && nodeTag(plan) < T_PlanInvalItem);
 
-		s_plan = workfile_mgr_serialize_plan(ps);
+		workfile_set_plan *s_plan = workfile_mgr_serialize_plan(ps);
 		work_set->key = workfile_mgr_hash_key(s_plan);
 		workfile_mgr_save_plan(work_set, s_plan);
 		workfile_mgr_free_plan(s_plan);
@@ -290,6 +290,35 @@ workfile_mgr_create_set(enum ExecWorkFileType type, bool can_be_reused, PlanStat
 			work_set->key, work_set->can_be_reused, work_set->path, work_set->metadata.operator_work_mem);
 
 	return work_set;
+}
+
+/*
+ * Determine operatorMemKB for this operator.
+ * For HashJoin, this is given by the right child, for everyone else it is the actual node.
+ *
+ * If PlanState is NULL (e.g. when spilling from a built-in function), return 0.
+ */
+static uint64
+get_operator_work_mem(PlanState *ps)
+{
+	if (NULL == ps)
+	{
+		return 0;
+	}
+
+	uint64 operatorMemKB = 0;
+	if ((IsA(ps, HashJoinState)))
+	{
+		Assert(IsA(ps->righttree, HashState));
+		operatorMemKB = ps->righttree->plan->operatorMemKB;
+	}
+	else
+	{
+		Assert(NULL != ps->plan);
+		operatorMemKB = ps->plan->operatorMemKB;
+	}
+
+	return operatorMemKB;
 }
 
 /*

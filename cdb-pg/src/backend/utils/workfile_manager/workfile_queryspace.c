@@ -121,7 +121,15 @@ WorkfileQueryspace_Reserve(int session_id, int command_count, int64 bytes_to_res
 	queryKey.command_count = command_count;
 
 	QueryspaceDesc *queryEntry = SyncHTLookup(queryspace_Hashtable, &queryKey);
-	Assert(NULL != queryEntry);
+
+	if (NULL == queryEntry)
+	{
+		/*
+		 * Did not find entry for this query, it must be a utility query
+		 * that is spilling. No enforcing of per-query disk limit for these.
+		 */
+		return true;
+	}
 
 	int64 total = gp_atomic_add_64(&queryEntry->queryDiskspace, bytes_to_reserve);
 	Assert(total >= (int64) 0);
@@ -173,15 +181,21 @@ WorkfileQueryspace_Commit(int session_id, int command_count,
 	queryKey.command_count = command_count;
 
 	QueryspaceDesc *queryEntry = SyncHTLookup(queryspace_Hashtable, &queryKey);
-	Assert(NULL != queryEntry);
-
+	/*
+	 * Query might not have an entry in the queryspace hashtable if it is a
+	 * utility query that is spilling.
+	 * No enforcing of per-query disk limit for these.
+	 */
+	if (NULL != queryEntry)
+	{
 #if USE_ASSERT_CHECKING
-	int64 total = 
+		int64 total =
 #endif
-	gp_atomic_add_64(&queryEntry->queryDiskspace, (commit_bytes - reserved_bytes));
-	Assert(total >= (int64) 0);
+		gp_atomic_add_64(&queryEntry->queryDiskspace, (commit_bytes - reserved_bytes));
+		Assert(total >= (int64) 0);
 
-	SyncHTRelease(queryspace_Hashtable, queryEntry);
+		SyncHTRelease(queryspace_Hashtable, queryEntry);
+	}
 }
 
 /*
