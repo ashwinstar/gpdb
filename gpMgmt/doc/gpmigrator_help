@@ -113,6 +113,10 @@ OPTIONS
     those on the master
   * Check for a minium amount of free disk space
 
+ Note: Performing a pre-migration check of your database should done 
+ during a database maintenance period. If the utility detects catalog 
+ errors, the utility stops the database.
+
 
 --help | -h
 Displays the online help.
