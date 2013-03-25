@@ -21,7 +21,7 @@ OBJS = acl.o array_userfuncs.o arrayfuncs.o arrayutils.o ascii.o \
 	bool.o cash.o char.o date.o datetime.o datum.o dbsize.o \
 	domains.o encode.o float.o format_type.o formatting.o genfile.o \
 	geo_ops.o geo_selfuncs.o inet_net_ntop.o inet_net_pton.o int.o \
-	int8.o like.o lockfuncs.o mac.o matrix.o misc.o nabstime.o name.o \
+	int8.o interpolate.o like.o lockfuncs.o mac.o matrix.o misc.o nabstime.o name.o \
 	network.o not_in.o numeric.o numutils.o oid.o oracle_compat.o \
 	percentile.o pg_locale.o pg_lzcompress.o pgstatfuncs.o pivot.o \
 	pseudotypes.o quote.o regexp.o regproc.o ri_triggers.o rowtypes.o \

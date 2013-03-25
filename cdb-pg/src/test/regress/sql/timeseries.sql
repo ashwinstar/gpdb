@@ -161,3 +161,880 @@ from ( values
         (timestamptz '1999-10-30 13:01:01', null::interval, timestamptz '1970-04-05 12:00:00', 1),
         (timestamptz '1999-10-30 13:01:01', interval '1 day', null, 1)
     ) r(v,w,r,s);
+
+-- Test limits
+select linear_interpolate(3, 0, 0::bigint, 1, (2^62)::bigint);
+select linear_interpolate(3, 0, 0::bigint, 1, (-2^62)::bigint);
+select linear_interpolate(3, 0, 0::integer, 1, (2^30)::integer);
+select linear_interpolate(3, 0, 0::integer, 1, (-2^30)::integer);
+select linear_interpolate(3, 0, 0::smallint, 1, (2^14)::smallint);
+select linear_interpolate(3, 0, 0::smallint, 1, (-2^14)::smallint);
+select linear_interpolate(null, 0, 0::smallint, 1, (-2^14)::smallint);
+select linear_interpolate(null::bigint, null::bigint, null::bigint, null::bigint, null::bigint);
+select linear_interpolate(200::float8, 100::float8, 'infinity'::float8, 100::float8, '-infinity'::float8);
+select linear_interpolate(200::float8, 'nan'::float8, 'infinity'::float8, 'nan'::float8, '-infinity'::float8);
+
+-- A "generic" unsupported type.
+
+select linear_interpolate('x'::text, 'x0'::text, 0, 'x1'::text, 1000);
+select linear_interpolate(5, 0, 'y0'::text, 100, 'y1'::text);
+
+
+-- Check that  "divide by zero" returns null
+select linear_interpolate('2010-01-03T02:00:00'::timestamp, '2010-01-02T09:20:00'::timestamp, 2000::int4, '2010-01-02T09:20:00'::timestamp, 2250::int4);
+select linear_interpolate(200::numeric, 100::numeric, 2000::int4, 100::numeric, 2250::int4);
+select linear_interpolate(200::int4, 100::int4, 2000::int4, 100::int4, 2250::int4);
+select linear_interpolate(200::float8, 100::float8, 2000::int4, 100::float8, 2250::int4);
+select linear_interpolate(200::int2, 100::int2, 2000::int4, 100::int2, 2250::int4);
+select linear_interpolate('2001-01-21'::date, '2001-01-11'::date, 2000::int4, '2001-01-11'::date, 2250::int4);
+select linear_interpolate(200::int8, 100::int8, 2000::int4, 100::int8, 2250::int4);
+select linear_interpolate('85 minutes'::interval, '65 minutes'::interval, 2000::int4, '65 minutes'::interval, 2250::int4);
+select linear_interpolate('2010-01-03T02:00:00'::timestamptz, '2010-01-02T09:20:00'::timestamptz, 2000::int4, '2010-01-02T09:20:00'::timestamptz, 2250::int4);
+select linear_interpolate('10:25:00'::time, '10:20:00'::time, 2000::int4, '10:20:00'::time, 2250::int4);
+select linear_interpolate(200::float4, 100::float4, 2000::int4, 100::float4, 2250::int4);
+select linear_interpolate(200::int8, 100::int8, 2000::int8, 100::int8, 2250::int8);
+select linear_interpolate(200::int2, 100::int2, 300::int2, 100::int2, 400::int2);
+select linear_interpolate(200::float8, 100::float8, 2000::float8, 100::float8, 2250::float8);
+select linear_interpolate('2001-01-21'::date, '2001-01-11'::date, '2001-01-25'::date, '2001-01-11'::date, '2001-01-26'::date);
+select linear_interpolate('2010-01-03T02:00:00'::timestamp, '2010-01-02T09:20:00'::timestamp, '2010-01-02T06:20:00'::timestamp, '2010-01-02T09:20:00'::timestamp, '2010-01-02T08:20:00'::timestamp);
+select linear_interpolate('2010-01-03T02:00:00'::timestamptz, '2010-01-02T09:20:00'::timestamptz, '2010-01-02T05:20:00'::timestamptz, '2010-01-02T09:20:00'::timestamptz, '2010-01-02T08:20:00'::timestamptz);
+select linear_interpolate('85 minutes'::interval, '65 minutes'::interval, '75 minutes'::interval, '65 minutes'::interval, '95 minutes'::interval);
+select linear_interpolate('10:25:00'::time, '10:20:00'::time, '11:20:00'::time, '10:20:00'::time, '09:20:00'::time);
+select linear_interpolate(200::numeric, 100::numeric, 2000::numeric, 100::numeric, 2250::numeric);
+select linear_interpolate(200::float4, 100::float4, 2000::float4, 100::float4, 2250::float4);
+
+-- Abscissa: timestamp, Ordinate: int4
+-- Check correctness - all results should have match = t
+
+select 
+    linear_interpolate('2010-01-03T02:00:00'::timestamp, '2010-01-02T09:20:00'::timestamp, 2000::int4, '2010-01-05T20:40:00'::timestamp, 2250::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate('2010-01-03T02:00:00'::timestamp, '2010-01-02T09:20:00'::timestamp, 2000::int4, '2010-01-05T20:40:00'::timestamp, 2250::int4) as match ;
+
+select 
+    linear_interpolate('2010-01-03T02:00:00'::timestamp, '2010-01-05T20:40:00'::timestamp, 2250::int4, '2010-01-02T09:20:00'::timestamp, 2000::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate('2010-01-03T02:00:00'::timestamp, '2010-01-05T20:40:00'::timestamp, 2250::int4, '2010-01-02T09:20:00'::timestamp, 2000::int4) as match ;
+
+select 
+    linear_interpolate('2010-01-02T09:20:00'::timestamp, '2010-01-03T02:00:00'::timestamp, 2050::int4, '2010-01-05T20:40:00'::timestamp, 2250::int4),
+     2000::int4 as answer,
+     2000::int4 = linear_interpolate('2010-01-02T09:20:00'::timestamp, '2010-01-03T02:00:00'::timestamp, 2050::int4, '2010-01-05T20:40:00'::timestamp, 2250::int4) as match ;
+
+select 
+    linear_interpolate('2010-01-02T09:20:00'::timestamp, '2010-01-05T20:40:00'::timestamp, 2250::int4, '2010-01-03T02:00:00'::timestamp, 2050::int4),
+     2000::int4 as answer,
+     2000::int4 = linear_interpolate('2010-01-02T09:20:00'::timestamp, '2010-01-05T20:40:00'::timestamp, 2250::int4, '2010-01-03T02:00:00'::timestamp, 2050::int4) as match ;
+
+select 
+    linear_interpolate('2010-01-05T20:40:00'::timestamp, '2010-01-03T02:00:00'::timestamp, 2050::int4, '2010-01-02T09:20:00'::timestamp, 2000::int4),
+     2250::int4 as answer,
+     2250::int4 = linear_interpolate('2010-01-05T20:40:00'::timestamp, '2010-01-03T02:00:00'::timestamp, 2050::int4, '2010-01-02T09:20:00'::timestamp, 2000::int4) as match ;
+
+select 
+    linear_interpolate('2010-01-05T20:40:00'::timestamp, '2010-01-02T09:20:00'::timestamp, 2000::int4, '2010-01-03T02:00:00'::timestamp, 2050::int4),
+     2250::int4 as answer,
+     2250::int4 = linear_interpolate('2010-01-05T20:40:00'::timestamp, '2010-01-02T09:20:00'::timestamp, 2000::int4, '2010-01-03T02:00:00'::timestamp, 2050::int4) as match ;
+
+select 
+    linear_interpolate('2010-01-03T02:00:00'::timestamp, '2010-01-03T02:00:00'::timestamp, 2050::int4, '2010-01-03T02:00:00'::timestamp, 2050::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate('2010-01-03T02:00:00'::timestamp, '2010-01-03T02:00:00'::timestamp, 2050::int4, '2010-01-03T02:00:00'::timestamp, 2050::int4) as match ;
+
+-- Abscissa: numeric, Ordinate: int4
+-- Check correctness - all results should have match = t
+
+select 
+    linear_interpolate(200::numeric, 100::numeric, 2000::int4, 600::numeric, 2250::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate(200::numeric, 100::numeric, 2000::int4, 600::numeric, 2250::int4) as match ;
+
+select 
+    linear_interpolate(200::numeric, 600::numeric, 2250::int4, 100::numeric, 2000::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate(200::numeric, 600::numeric, 2250::int4, 100::numeric, 2000::int4) as match ;
+
+select 
+    linear_interpolate(100::numeric, 200::numeric, 2050::int4, 600::numeric, 2250::int4),
+     2000::int4 as answer,
+     2000::int4 = linear_interpolate(100::numeric, 200::numeric, 2050::int4, 600::numeric, 2250::int4) as match ;
+
+select 
+    linear_interpolate(100::numeric, 600::numeric, 2250::int4, 200::numeric, 2050::int4),
+     2000::int4 as answer,
+     2000::int4 = linear_interpolate(100::numeric, 600::numeric, 2250::int4, 200::numeric, 2050::int4) as match ;
+
+select 
+    linear_interpolate(600::numeric, 200::numeric, 2050::int4, 100::numeric, 2000::int4),
+     2250::int4 as answer,
+     2250::int4 = linear_interpolate(600::numeric, 200::numeric, 2050::int4, 100::numeric, 2000::int4) as match ;
+
+select 
+    linear_interpolate(600::numeric, 100::numeric, 2000::int4, 200::numeric, 2050::int4),
+     2250::int4 as answer,
+     2250::int4 = linear_interpolate(600::numeric, 100::numeric, 2000::int4, 200::numeric, 2050::int4) as match ;
+
+select 
+    linear_interpolate(200::numeric, 200::numeric, 2050::int4, 200::numeric, 2050::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate(200::numeric, 200::numeric, 2050::int4, 200::numeric, 2050::int4) as match ;
+
+-- Abscissa: int4, Ordinate: int4
+-- Check correctness - all results should have match = t
+
+select 
+    linear_interpolate(200::int4, 100::int4, 2000::int4, 600::int4, 2250::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate(200::int4, 100::int4, 2000::int4, 600::int4, 2250::int4) as match ;
+
+select 
+    linear_interpolate(200::int4, 600::int4, 2250::int4, 100::int4, 2000::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate(200::int4, 600::int4, 2250::int4, 100::int4, 2000::int4) as match ;
+
+select 
+    linear_interpolate(100::int4, 200::int4, 2050::int4, 600::int4, 2250::int4),
+     2000::int4 as answer,
+     2000::int4 = linear_interpolate(100::int4, 200::int4, 2050::int4, 600::int4, 2250::int4) as match ;
+
+select 
+    linear_interpolate(100::int4, 600::int4, 2250::int4, 200::int4, 2050::int4),
+     2000::int4 as answer,
+     2000::int4 = linear_interpolate(100::int4, 600::int4, 2250::int4, 200::int4, 2050::int4) as match ;
+
+select 
+    linear_interpolate(600::int4, 200::int4, 2050::int4, 100::int4, 2000::int4),
+     2250::int4 as answer,
+     2250::int4 = linear_interpolate(600::int4, 200::int4, 2050::int4, 100::int4, 2000::int4) as match ;
+
+select 
+    linear_interpolate(600::int4, 100::int4, 2000::int4, 200::int4, 2050::int4),
+     2250::int4 as answer,
+     2250::int4 = linear_interpolate(600::int4, 100::int4, 2000::int4, 200::int4, 2050::int4) as match ;
+
+select 
+    linear_interpolate(200::int4, 200::int4, 2050::int4, 200::int4, 2050::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate(200::int4, 200::int4, 2050::int4, 200::int4, 2050::int4) as match ;
+
+-- Abscissa: float8, Ordinate: int4
+-- Check correctness - all results should have match = t
+
+select 
+    linear_interpolate(200::float8, 100::float8, 2000::int4, 600::float8, 2250::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate(200::float8, 100::float8, 2000::int4, 600::float8, 2250::int4) as match ;
+
+select 
+    linear_interpolate(200::float8, 600::float8, 2250::int4, 100::float8, 2000::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate(200::float8, 600::float8, 2250::int4, 100::float8, 2000::int4) as match ;
+
+select 
+    linear_interpolate(100::float8, 200::float8, 2050::int4, 600::float8, 2250::int4),
+     2000::int4 as answer,
+     2000::int4 = linear_interpolate(100::float8, 200::float8, 2050::int4, 600::float8, 2250::int4) as match ;
+
+select 
+    linear_interpolate(100::float8, 600::float8, 2250::int4, 200::float8, 2050::int4),
+     2000::int4 as answer,
+     2000::int4 = linear_interpolate(100::float8, 600::float8, 2250::int4, 200::float8, 2050::int4) as match ;
+
+select 
+    linear_interpolate(600::float8, 200::float8, 2050::int4, 100::float8, 2000::int4),
+     2250::int4 as answer,
+     2250::int4 = linear_interpolate(600::float8, 200::float8, 2050::int4, 100::float8, 2000::int4) as match ;
+
+select 
+    linear_interpolate(600::float8, 100::float8, 2000::int4, 200::float8, 2050::int4),
+     2250::int4 as answer,
+     2250::int4 = linear_interpolate(600::float8, 100::float8, 2000::int4, 200::float8, 2050::int4) as match ;
+
+select 
+    linear_interpolate(200::float8, 200::float8, 2050::int4, 200::float8, 2050::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate(200::float8, 200::float8, 2050::int4, 200::float8, 2050::int4) as match ;
+
+-- Abscissa: int2, Ordinate: int4
+-- Check correctness - all results should have match = t
+
+select 
+    linear_interpolate(200::int2, 100::int2, 2000::int4, 600::int2, 2250::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate(200::int2, 100::int2, 2000::int4, 600::int2, 2250::int4) as match ;
+
+select 
+    linear_interpolate(200::int2, 600::int2, 2250::int4, 100::int2, 2000::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate(200::int2, 600::int2, 2250::int4, 100::int2, 2000::int4) as match ;
+
+select 
+    linear_interpolate(100::int2, 200::int2, 2050::int4, 600::int2, 2250::int4),
+     2000::int4 as answer,
+     2000::int4 = linear_interpolate(100::int2, 200::int2, 2050::int4, 600::int2, 2250::int4) as match ;
+
+select 
+    linear_interpolate(100::int2, 600::int2, 2250::int4, 200::int2, 2050::int4),
+     2000::int4 as answer,
+     2000::int4 = linear_interpolate(100::int2, 600::int2, 2250::int4, 200::int2, 2050::int4) as match ;
+
+select 
+    linear_interpolate(600::int2, 200::int2, 2050::int4, 100::int2, 2000::int4),
+     2250::int4 as answer,
+     2250::int4 = linear_interpolate(600::int2, 200::int2, 2050::int4, 100::int2, 2000::int4) as match ;
+
+select 
+    linear_interpolate(600::int2, 100::int2, 2000::int4, 200::int2, 2050::int4),
+     2250::int4 as answer,
+     2250::int4 = linear_interpolate(600::int2, 100::int2, 2000::int4, 200::int2, 2050::int4) as match ;
+
+select 
+    linear_interpolate(200::int2, 200::int2, 2050::int4, 200::int2, 2050::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate(200::int2, 200::int2, 2050::int4, 200::int2, 2050::int4) as match ;
+
+-- Abscissa: date, Ordinate: int4
+-- Check correctness - all results should have match = t
+
+select 
+    linear_interpolate('2001-01-21'::date, '2001-01-11'::date, 2000::int4, '2001-03-02'::date, 2250::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate('2001-01-21'::date, '2001-01-11'::date, 2000::int4, '2001-03-02'::date, 2250::int4) as match ;
+
+select 
+    linear_interpolate('2001-01-21'::date, '2001-03-02'::date, 2250::int4, '2001-01-11'::date, 2000::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate('2001-01-21'::date, '2001-03-02'::date, 2250::int4, '2001-01-11'::date, 2000::int4) as match ;
+
+select 
+    linear_interpolate('2001-01-11'::date, '2001-01-21'::date, 2050::int4, '2001-03-02'::date, 2250::int4),
+     2000::int4 as answer,
+     2000::int4 = linear_interpolate('2001-01-11'::date, '2001-01-21'::date, 2050::int4, '2001-03-02'::date, 2250::int4) as match ;
+
+select 
+    linear_interpolate('2001-01-11'::date, '2001-03-02'::date, 2250::int4, '2001-01-21'::date, 2050::int4),
+     2000::int4 as answer,
+     2000::int4 = linear_interpolate('2001-01-11'::date, '2001-03-02'::date, 2250::int4, '2001-01-21'::date, 2050::int4) as match ;
+
+select 
+    linear_interpolate('2001-03-02'::date, '2001-01-21'::date, 2050::int4, '2001-01-11'::date, 2000::int4),
+     2250::int4 as answer,
+     2250::int4 = linear_interpolate('2001-03-02'::date, '2001-01-21'::date, 2050::int4, '2001-01-11'::date, 2000::int4) as match ;
+
+select 
+    linear_interpolate('2001-03-02'::date, '2001-01-11'::date, 2000::int4, '2001-01-21'::date, 2050::int4),
+     2250::int4 as answer,
+     2250::int4 = linear_interpolate('2001-03-02'::date, '2001-01-11'::date, 2000::int4, '2001-01-21'::date, 2050::int4) as match ;
+
+select 
+    linear_interpolate('2001-01-21'::date, '2001-01-21'::date, 2050::int4, '2001-01-21'::date, 2050::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate('2001-01-21'::date, '2001-01-21'::date, 2050::int4, '2001-01-21'::date, 2050::int4) as match ;
+
+-- Abscissa: int8, Ordinate: int4
+-- Check correctness - all results should have match = t
+
+select 
+    linear_interpolate(200::int8, 100::int8, 2000::int4, 600::int8, 2250::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate(200::int8, 100::int8, 2000::int4, 600::int8, 2250::int4) as match ;
+
+select 
+    linear_interpolate(200::int8, 600::int8, 2250::int4, 100::int8, 2000::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate(200::int8, 600::int8, 2250::int4, 100::int8, 2000::int4) as match ;
+
+select 
+    linear_interpolate(100::int8, 200::int8, 2050::int4, 600::int8, 2250::int4),
+     2000::int4 as answer,
+     2000::int4 = linear_interpolate(100::int8, 200::int8, 2050::int4, 600::int8, 2250::int4) as match ;
+
+select 
+    linear_interpolate(100::int8, 600::int8, 2250::int4, 200::int8, 2050::int4),
+     2000::int4 as answer,
+     2000::int4 = linear_interpolate(100::int8, 600::int8, 2250::int4, 200::int8, 2050::int4) as match ;
+
+select 
+    linear_interpolate(600::int8, 200::int8, 2050::int4, 100::int8, 2000::int4),
+     2250::int4 as answer,
+     2250::int4 = linear_interpolate(600::int8, 200::int8, 2050::int4, 100::int8, 2000::int4) as match ;
+
+select 
+    linear_interpolate(600::int8, 100::int8, 2000::int4, 200::int8, 2050::int4),
+     2250::int4 as answer,
+     2250::int4 = linear_interpolate(600::int8, 100::int8, 2000::int4, 200::int8, 2050::int4) as match ;
+
+select 
+    linear_interpolate(200::int8, 200::int8, 2050::int4, 200::int8, 2050::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate(200::int8, 200::int8, 2050::int4, 200::int8, 2050::int4) as match ;
+
+-- Abscissa: interval, Ordinate: int4
+-- Check correctness - all results should have match = t
+
+select 
+    linear_interpolate('85 minutes'::interval, '65 minutes'::interval, 2000::int4, '165 minutes'::interval, 2250::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate('85 minutes'::interval, '65 minutes'::interval, 2000::int4, '165 minutes'::interval, 2250::int4) as match ;
+
+select 
+    linear_interpolate('85 minutes'::interval, '165 minutes'::interval, 2250::int4, '65 minutes'::interval, 2000::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate('85 minutes'::interval, '165 minutes'::interval, 2250::int4, '65 minutes'::interval, 2000::int4) as match ;
+
+select 
+    linear_interpolate('65 minutes'::interval, '85 minutes'::interval, 2050::int4, '165 minutes'::interval, 2250::int4),
+     2000::int4 as answer,
+     2000::int4 = linear_interpolate('65 minutes'::interval, '85 minutes'::interval, 2050::int4, '165 minutes'::interval, 2250::int4) as match ;
+
+select 
+    linear_interpolate('65 minutes'::interval, '165 minutes'::interval, 2250::int4, '85 minutes'::interval, 2050::int4),
+     2000::int4 as answer,
+     2000::int4 = linear_interpolate('65 minutes'::interval, '165 minutes'::interval, 2250::int4, '85 minutes'::interval, 2050::int4) as match ;
+
+select 
+    linear_interpolate('165 minutes'::interval, '85 minutes'::interval, 2050::int4, '65 minutes'::interval, 2000::int4),
+     2250::int4 as answer,
+     2250::int4 = linear_interpolate('165 minutes'::interval, '85 minutes'::interval, 2050::int4, '65 minutes'::interval, 2000::int4) as match ;
+
+select 
+    linear_interpolate('165 minutes'::interval, '65 minutes'::interval, 2000::int4, '85 minutes'::interval, 2050::int4),
+     2250::int4 as answer,
+     2250::int4 = linear_interpolate('165 minutes'::interval, '65 minutes'::interval, 2000::int4, '85 minutes'::interval, 2050::int4) as match ;
+
+select 
+    linear_interpolate('85 minutes'::interval, '85 minutes'::interval, 2050::int4, '85 minutes'::interval, 2050::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate('85 minutes'::interval, '85 minutes'::interval, 2050::int4, '85 minutes'::interval, 2050::int4) as match ;
+
+-- Abscissa: timestamptz, Ordinate: int4
+-- Check correctness - all results should have match = t
+
+select 
+    linear_interpolate('2010-01-03T02:00:00'::timestamptz, '2010-01-02T09:20:00'::timestamptz, 2000::int4, '2010-01-05T20:40:00'::timestamptz, 2250::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate('2010-01-03T02:00:00'::timestamptz, '2010-01-02T09:20:00'::timestamptz, 2000::int4, '2010-01-05T20:40:00'::timestamptz, 2250::int4) as match ;
+
+select 
+    linear_interpolate('2010-01-03T02:00:00'::timestamptz, '2010-01-05T20:40:00'::timestamptz, 2250::int4, '2010-01-02T09:20:00'::timestamptz, 2000::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate('2010-01-03T02:00:00'::timestamptz, '2010-01-05T20:40:00'::timestamptz, 2250::int4, '2010-01-02T09:20:00'::timestamptz, 2000::int4) as match ;
+
+select 
+    linear_interpolate('2010-01-02T09:20:00'::timestamptz, '2010-01-03T02:00:00'::timestamptz, 2050::int4, '2010-01-05T20:40:00'::timestamptz, 2250::int4),
+     2000::int4 as answer,
+     2000::int4 = linear_interpolate('2010-01-02T09:20:00'::timestamptz, '2010-01-03T02:00:00'::timestamptz, 2050::int4, '2010-01-05T20:40:00'::timestamptz, 2250::int4) as match ;
+
+select 
+    linear_interpolate('2010-01-02T09:20:00'::timestamptz, '2010-01-05T20:40:00'::timestamptz, 2250::int4, '2010-01-03T02:00:00'::timestamptz, 2050::int4),
+     2000::int4 as answer,
+     2000::int4 = linear_interpolate('2010-01-02T09:20:00'::timestamptz, '2010-01-05T20:40:00'::timestamptz, 2250::int4, '2010-01-03T02:00:00'::timestamptz, 2050::int4) as match ;
+
+select 
+    linear_interpolate('2010-01-05T20:40:00'::timestamptz, '2010-01-03T02:00:00'::timestamptz, 2050::int4, '2010-01-02T09:20:00'::timestamptz, 2000::int4),
+     2250::int4 as answer,
+     2250::int4 = linear_interpolate('2010-01-05T20:40:00'::timestamptz, '2010-01-03T02:00:00'::timestamptz, 2050::int4, '2010-01-02T09:20:00'::timestamptz, 2000::int4) as match ;
+
+select 
+    linear_interpolate('2010-01-05T20:40:00'::timestamptz, '2010-01-02T09:20:00'::timestamptz, 2000::int4, '2010-01-03T02:00:00'::timestamptz, 2050::int4),
+     2250::int4 as answer,
+     2250::int4 = linear_interpolate('2010-01-05T20:40:00'::timestamptz, '2010-01-02T09:20:00'::timestamptz, 2000::int4, '2010-01-03T02:00:00'::timestamptz, 2050::int4) as match ;
+
+select 
+    linear_interpolate('2010-01-03T02:00:00'::timestamptz, '2010-01-03T02:00:00'::timestamptz, 2050::int4, '2010-01-03T02:00:00'::timestamptz, 2050::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate('2010-01-03T02:00:00'::timestamptz, '2010-01-03T02:00:00'::timestamptz, 2050::int4, '2010-01-03T02:00:00'::timestamptz, 2050::int4) as match ;
+
+-- Abscissa: time, Ordinate: int4
+-- Check correctness - all results should have match = t
+
+select 
+    linear_interpolate('10:25:00'::time, '10:20:00'::time, 2000::int4, '10:45:00'::time, 2250::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate('10:25:00'::time, '10:20:00'::time, 2000::int4, '10:45:00'::time, 2250::int4) as match ;
+
+select 
+    linear_interpolate('10:25:00'::time, '10:45:00'::time, 2250::int4, '10:20:00'::time, 2000::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate('10:25:00'::time, '10:45:00'::time, 2250::int4, '10:20:00'::time, 2000::int4) as match ;
+
+select 
+    linear_interpolate('10:20:00'::time, '10:25:00'::time, 2050::int4, '10:45:00'::time, 2250::int4),
+     2000::int4 as answer,
+     2000::int4 = linear_interpolate('10:20:00'::time, '10:25:00'::time, 2050::int4, '10:45:00'::time, 2250::int4) as match ;
+
+select 
+    linear_interpolate('10:20:00'::time, '10:45:00'::time, 2250::int4, '10:25:00'::time, 2050::int4),
+     2000::int4 as answer,
+     2000::int4 = linear_interpolate('10:20:00'::time, '10:45:00'::time, 2250::int4, '10:25:00'::time, 2050::int4) as match ;
+
+select 
+    linear_interpolate('10:45:00'::time, '10:25:00'::time, 2050::int4, '10:20:00'::time, 2000::int4),
+     2250::int4 as answer,
+     2250::int4 = linear_interpolate('10:45:00'::time, '10:25:00'::time, 2050::int4, '10:20:00'::time, 2000::int4) as match ;
+
+select 
+    linear_interpolate('10:45:00'::time, '10:20:00'::time, 2000::int4, '10:25:00'::time, 2050::int4),
+     2250::int4 as answer,
+     2250::int4 = linear_interpolate('10:45:00'::time, '10:20:00'::time, 2000::int4, '10:25:00'::time, 2050::int4) as match ;
+
+select 
+    linear_interpolate('10:25:00'::time, '10:25:00'::time, 2050::int4, '10:25:00'::time, 2050::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate('10:25:00'::time, '10:25:00'::time, 2050::int4, '10:25:00'::time, 2050::int4) as match ;
+
+-- Abscissa: float4, Ordinate: int4
+-- Check correctness - all results should have match = t
+
+select 
+    linear_interpolate(200::float4, 100::float4, 2000::int4, 600::float4, 2250::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate(200::float4, 100::float4, 2000::int4, 600::float4, 2250::int4) as match ;
+
+select 
+    linear_interpolate(200::float4, 600::float4, 2250::int4, 100::float4, 2000::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate(200::float4, 600::float4, 2250::int4, 100::float4, 2000::int4) as match ;
+
+select 
+    linear_interpolate(100::float4, 200::float4, 2050::int4, 600::float4, 2250::int4),
+     2000::int4 as answer,
+     2000::int4 = linear_interpolate(100::float4, 200::float4, 2050::int4, 600::float4, 2250::int4) as match ;
+
+select 
+    linear_interpolate(100::float4, 600::float4, 2250::int4, 200::float4, 2050::int4),
+     2000::int4 as answer,
+     2000::int4 = linear_interpolate(100::float4, 600::float4, 2250::int4, 200::float4, 2050::int4) as match ;
+
+select 
+    linear_interpolate(600::float4, 200::float4, 2050::int4, 100::float4, 2000::int4),
+     2250::int4 as answer,
+     2250::int4 = linear_interpolate(600::float4, 200::float4, 2050::int4, 100::float4, 2000::int4) as match ;
+
+select 
+    linear_interpolate(600::float4, 100::float4, 2000::int4, 200::float4, 2050::int4),
+     2250::int4 as answer,
+     2250::int4 = linear_interpolate(600::float4, 100::float4, 2000::int4, 200::float4, 2050::int4) as match ;
+
+select 
+    linear_interpolate(200::float4, 200::float4, 2050::int4, 200::float4, 2050::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate(200::float4, 200::float4, 2050::int4, 200::float4, 2050::int4) as match ;
+
+-- Abscissa: int4, Ordinate: timestamp
+-- Check correctness - all results should have match = t
+
+select 
+    linear_interpolate(200::int4, 100::int4, '2012-06-01T16:40:00'::timestamp, 600::int4, '2012-06-19T01:20:00'::timestamp),
+     '2012-06-05T04:00:00'::timestamp as answer,
+     '2012-06-05T04:00:00'::timestamp = linear_interpolate(200::int4, 100::int4, '2012-06-01T16:40:00'::timestamp, 600::int4, '2012-06-19T01:20:00'::timestamp) as match ;
+
+select 
+    linear_interpolate(200::int4, 600::int4, '2012-06-19T01:20:00'::timestamp, 100::int4, '2012-06-01T16:40:00'::timestamp),
+     '2012-06-05T04:00:00'::timestamp as answer,
+     '2012-06-05T04:00:00'::timestamp = linear_interpolate(200::int4, 600::int4, '2012-06-19T01:20:00'::timestamp, 100::int4, '2012-06-01T16:40:00'::timestamp) as match ;
+
+select 
+    linear_interpolate(100::int4, 200::int4, '2012-06-05T04:00:00'::timestamp, 600::int4, '2012-06-19T01:20:00'::timestamp),
+     '2012-06-01T16:40:00'::timestamp as answer,
+     '2012-06-01T16:40:00'::timestamp = linear_interpolate(100::int4, 200::int4, '2012-06-05T04:00:00'::timestamp, 600::int4, '2012-06-19T01:20:00'::timestamp) as match ;
+
+select 
+    linear_interpolate(100::int4, 600::int4, '2012-06-19T01:20:00'::timestamp, 200::int4, '2012-06-05T04:00:00'::timestamp),
+     '2012-06-01T16:40:00'::timestamp as answer,
+     '2012-06-01T16:40:00'::timestamp = linear_interpolate(100::int4, 600::int4, '2012-06-19T01:20:00'::timestamp, 200::int4, '2012-06-05T04:00:00'::timestamp) as match ;
+
+select 
+    linear_interpolate(600::int4, 200::int4, '2012-06-05T04:00:00'::timestamp, 100::int4, '2012-06-01T16:40:00'::timestamp),
+     '2012-06-19T01:20:00'::timestamp as answer,
+     '2012-06-19T01:20:00'::timestamp = linear_interpolate(600::int4, 200::int4, '2012-06-05T04:00:00'::timestamp, 100::int4, '2012-06-01T16:40:00'::timestamp) as match ;
+
+select 
+    linear_interpolate(600::int4, 100::int4, '2012-06-01T16:40:00'::timestamp, 200::int4, '2012-06-05T04:00:00'::timestamp),
+     '2012-06-19T01:20:00'::timestamp as answer,
+     '2012-06-19T01:20:00'::timestamp = linear_interpolate(600::int4, 100::int4, '2012-06-01T16:40:00'::timestamp, 200::int4, '2012-06-05T04:00:00'::timestamp) as match ;
+
+select 
+    linear_interpolate(200::int4, 200::int4, '2012-06-05T04:00:00'::timestamp, 200::int4, '2012-06-05T04:00:00'::timestamp),
+     '2012-06-05T04:00:00'::timestamp as answer,
+     '2012-06-05T04:00:00'::timestamp = linear_interpolate(200::int4, 200::int4, '2012-06-05T04:00:00'::timestamp, 200::int4, '2012-06-05T04:00:00'::timestamp) as match ;
+
+-- Abscissa: int4, Ordinate: numeric
+-- Check correctness - all results should have match = t
+
+select 
+    linear_interpolate(200::int4, 100::int4, 2000::numeric, 600::int4, 2250::numeric),
+     2050::numeric as answer,
+     2050::numeric = linear_interpolate(200::int4, 100::int4, 2000::numeric, 600::int4, 2250::numeric) as match ;
+
+select 
+    linear_interpolate(200::int4, 600::int4, 2250::numeric, 100::int4, 2000::numeric),
+     2050::numeric as answer,
+     2050::numeric = linear_interpolate(200::int4, 600::int4, 2250::numeric, 100::int4, 2000::numeric) as match ;
+
+select 
+    linear_interpolate(100::int4, 200::int4, 2050::numeric, 600::int4, 2250::numeric),
+     2000::numeric as answer,
+     2000::numeric = linear_interpolate(100::int4, 200::int4, 2050::numeric, 600::int4, 2250::numeric) as match ;
+
+select 
+    linear_interpolate(100::int4, 600::int4, 2250::numeric, 200::int4, 2050::numeric),
+     2000::numeric as answer,
+     2000::numeric = linear_interpolate(100::int4, 600::int4, 2250::numeric, 200::int4, 2050::numeric) as match ;
+
+select 
+    linear_interpolate(600::int4, 200::int4, 2050::numeric, 100::int4, 2000::numeric),
+     2250::numeric as answer,
+     2250::numeric = linear_interpolate(600::int4, 200::int4, 2050::numeric, 100::int4, 2000::numeric) as match ;
+
+select 
+    linear_interpolate(600::int4, 100::int4, 2000::numeric, 200::int4, 2050::numeric),
+     2250::numeric as answer,
+     2250::numeric = linear_interpolate(600::int4, 100::int4, 2000::numeric, 200::int4, 2050::numeric) as match ;
+
+select 
+    linear_interpolate(200::int4, 200::int4, 2050::numeric, 200::int4, 2050::numeric),
+     2050::numeric as answer,
+     2050::numeric = linear_interpolate(200::int4, 200::int4, 2050::numeric, 200::int4, 2050::numeric) as match ;
+
+-- Abscissa: int4, Ordinate: int4
+-- Check correctness - all results should have match = t
+
+select 
+    linear_interpolate(200::int4, 100::int4, 2000::int4, 600::int4, 2250::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate(200::int4, 100::int4, 2000::int4, 600::int4, 2250::int4) as match ;
+
+select 
+    linear_interpolate(200::int4, 600::int4, 2250::int4, 100::int4, 2000::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate(200::int4, 600::int4, 2250::int4, 100::int4, 2000::int4) as match ;
+
+select 
+    linear_interpolate(100::int4, 200::int4, 2050::int4, 600::int4, 2250::int4),
+     2000::int4 as answer,
+     2000::int4 = linear_interpolate(100::int4, 200::int4, 2050::int4, 600::int4, 2250::int4) as match ;
+
+select 
+    linear_interpolate(100::int4, 600::int4, 2250::int4, 200::int4, 2050::int4),
+     2000::int4 as answer,
+     2000::int4 = linear_interpolate(100::int4, 600::int4, 2250::int4, 200::int4, 2050::int4) as match ;
+
+select 
+    linear_interpolate(600::int4, 200::int4, 2050::int4, 100::int4, 2000::int4),
+     2250::int4 as answer,
+     2250::int4 = linear_interpolate(600::int4, 200::int4, 2050::int4, 100::int4, 2000::int4) as match ;
+
+select 
+    linear_interpolate(600::int4, 100::int4, 2000::int4, 200::int4, 2050::int4),
+     2250::int4 as answer,
+     2250::int4 = linear_interpolate(600::int4, 100::int4, 2000::int4, 200::int4, 2050::int4) as match ;
+
+select 
+    linear_interpolate(200::int4, 200::int4, 2050::int4, 200::int4, 2050::int4),
+     2050::int4 as answer,
+     2050::int4 = linear_interpolate(200::int4, 200::int4, 2050::int4, 200::int4, 2050::int4) as match ;
+
+-- Abscissa: int4, Ordinate: float8
+-- Check correctness - all results should have match = t
+
+select 
+    linear_interpolate(200::int4, 100::int4, 2000::float8, 600::int4, 2250::float8),
+     2050::float8 as answer,
+     2050::float8 = linear_interpolate(200::int4, 100::int4, 2000::float8, 600::int4, 2250::float8) as match ;
+
+select 
+    linear_interpolate(200::int4, 600::int4, 2250::float8, 100::int4, 2000::float8),
+     2050::float8 as answer,
+     2050::float8 = linear_interpolate(200::int4, 600::int4, 2250::float8, 100::int4, 2000::float8) as match ;
+
+select 
+    linear_interpolate(100::int4, 200::int4, 2050::float8, 600::int4, 2250::float8),
+     2000::float8 as answer,
+     2000::float8 = linear_interpolate(100::int4, 200::int4, 2050::float8, 600::int4, 2250::float8) as match ;
+
+select 
+    linear_interpolate(100::int4, 600::int4, 2250::float8, 200::int4, 2050::float8),
+     2000::float8 as answer,
+     2000::float8 = linear_interpolate(100::int4, 600::int4, 2250::float8, 200::int4, 2050::float8) as match ;
+
+select 
+    linear_interpolate(600::int4, 200::int4, 2050::float8, 100::int4, 2000::float8),
+     2250::float8 as answer,
+     2250::float8 = linear_interpolate(600::int4, 200::int4, 2050::float8, 100::int4, 2000::float8) as match ;
+
+select 
+    linear_interpolate(600::int4, 100::int4, 2000::float8, 200::int4, 2050::float8),
+     2250::float8 as answer,
+     2250::float8 = linear_interpolate(600::int4, 100::int4, 2000::float8, 200::int4, 2050::float8) as match ;
+
+select 
+    linear_interpolate(200::int4, 200::int4, 2050::float8, 200::int4, 2050::float8),
+     2050::float8 as answer,
+     2050::float8 = linear_interpolate(200::int4, 200::int4, 2050::float8, 200::int4, 2050::float8) as match ;
+
+-- Abscissa: int4, Ordinate: int2
+-- Check correctness - all results should have match = t
+
+select 
+    linear_interpolate(200::int4, 100::int4, 2000::int2, 600::int4, 2250::int2),
+     2050::int2 as answer,
+     2050::int2 = linear_interpolate(200::int4, 100::int4, 2000::int2, 600::int4, 2250::int2) as match ;
+
+select 
+    linear_interpolate(200::int4, 600::int4, 2250::int2, 100::int4, 2000::int2),
+     2050::int2 as answer,
+     2050::int2 = linear_interpolate(200::int4, 600::int4, 2250::int2, 100::int4, 2000::int2) as match ;
+
+select 
+    linear_interpolate(100::int4, 200::int4, 2050::int2, 600::int4, 2250::int2),
+     2000::int2 as answer,
+     2000::int2 = linear_interpolate(100::int4, 200::int4, 2050::int2, 600::int4, 2250::int2) as match ;
+
+select 
+    linear_interpolate(100::int4, 600::int4, 2250::int2, 200::int4, 2050::int2),
+     2000::int2 as answer,
+     2000::int2 = linear_interpolate(100::int4, 600::int4, 2250::int2, 200::int4, 2050::int2) as match ;
+
+select 
+    linear_interpolate(600::int4, 200::int4, 2050::int2, 100::int4, 2000::int2),
+     2250::int2 as answer,
+     2250::int2 = linear_interpolate(600::int4, 200::int4, 2050::int2, 100::int4, 2000::int2) as match ;
+
+select 
+    linear_interpolate(600::int4, 100::int4, 2000::int2, 200::int4, 2050::int2),
+     2250::int2 as answer,
+     2250::int2 = linear_interpolate(600::int4, 100::int4, 2000::int2, 200::int4, 2050::int2) as match ;
+
+select 
+    linear_interpolate(200::int4, 200::int4, 2050::int2, 200::int4, 2050::int2),
+     2050::int2 as answer,
+     2050::int2 = linear_interpolate(200::int4, 200::int4, 2050::int2, 200::int4, 2050::int2) as match ;
+
+-- Abscissa: int4, Ordinate: date
+-- Check correctness - all results should have match = t
+
+select 
+    linear_interpolate(200::int4, 100::int4, '2010-01-21'::date, 600::int4, '2010-03-12'::date),
+     '2010-01-31'::date as answer,
+     '2010-01-31'::date = linear_interpolate(200::int4, 100::int4, '2010-01-21'::date, 600::int4, '2010-03-12'::date) as match ;
+
+select 
+    linear_interpolate(200::int4, 600::int4, '2010-03-12'::date, 100::int4, '2010-01-21'::date),
+     '2010-01-31'::date as answer,
+     '2010-01-31'::date = linear_interpolate(200::int4, 600::int4, '2010-03-12'::date, 100::int4, '2010-01-21'::date) as match ;
+
+select 
+    linear_interpolate(100::int4, 200::int4, '2010-01-31'::date, 600::int4, '2010-03-12'::date),
+     '2010-01-21'::date as answer,
+     '2010-01-21'::date = linear_interpolate(100::int4, 200::int4, '2010-01-31'::date, 600::int4, '2010-03-12'::date) as match ;
+
+select 
+    linear_interpolate(100::int4, 600::int4, '2010-03-12'::date, 200::int4, '2010-01-31'::date),
+     '2010-01-21'::date as answer,
+     '2010-01-21'::date = linear_interpolate(100::int4, 600::int4, '2010-03-12'::date, 200::int4, '2010-01-31'::date) as match ;
+
+select 
+    linear_interpolate(600::int4, 200::int4, '2010-01-31'::date, 100::int4, '2010-01-21'::date),
+     '2010-03-12'::date as answer,
+     '2010-03-12'::date = linear_interpolate(600::int4, 200::int4, '2010-01-31'::date, 100::int4, '2010-01-21'::date) as match ;
+
+select 
+    linear_interpolate(600::int4, 100::int4, '2010-01-21'::date, 200::int4, '2010-01-31'::date),
+     '2010-03-12'::date as answer,
+     '2010-03-12'::date = linear_interpolate(600::int4, 100::int4, '2010-01-21'::date, 200::int4, '2010-01-31'::date) as match ;
+
+select 
+    linear_interpolate(200::int4, 200::int4, '2010-01-31'::date, 200::int4, '2010-01-31'::date),
+     '2010-01-31'::date as answer,
+     '2010-01-31'::date = linear_interpolate(200::int4, 200::int4, '2010-01-31'::date, 200::int4, '2010-01-31'::date) as match ;
+
+-- Abscissa: int4, Ordinate: int8
+-- Check correctness - all results should have match = t
+
+select 
+    linear_interpolate(200::int4, 100::int4, 2000::int8, 600::int4, 2250::int8),
+     2050::int8 as answer,
+     2050::int8 = linear_interpolate(200::int4, 100::int4, 2000::int8, 600::int4, 2250::int8) as match ;
+
+select 
+    linear_interpolate(200::int4, 600::int4, 2250::int8, 100::int4, 2000::int8),
+     2050::int8 as answer,
+     2050::int8 = linear_interpolate(200::int4, 600::int4, 2250::int8, 100::int4, 2000::int8) as match ;
+
+select 
+    linear_interpolate(100::int4, 200::int4, 2050::int8, 600::int4, 2250::int8),
+     2000::int8 as answer,
+     2000::int8 = linear_interpolate(100::int4, 200::int4, 2050::int8, 600::int4, 2250::int8) as match ;
+
+select 
+    linear_interpolate(100::int4, 600::int4, 2250::int8, 200::int4, 2050::int8),
+     2000::int8 as answer,
+     2000::int8 = linear_interpolate(100::int4, 600::int4, 2250::int8, 200::int4, 2050::int8) as match ;
+
+select 
+    linear_interpolate(600::int4, 200::int4, 2050::int8, 100::int4, 2000::int8),
+     2250::int8 as answer,
+     2250::int8 = linear_interpolate(600::int4, 200::int4, 2050::int8, 100::int4, 2000::int8) as match ;
+
+select 
+    linear_interpolate(600::int4, 100::int4, 2000::int8, 200::int4, 2050::int8),
+     2250::int8 as answer,
+     2250::int8 = linear_interpolate(600::int4, 100::int4, 2000::int8, 200::int4, 2050::int8) as match ;
+
+select 
+    linear_interpolate(200::int4, 200::int4, 2050::int8, 200::int4, 2050::int8),
+     2050::int8 as answer,
+     2050::int8 = linear_interpolate(200::int4, 200::int4, 2050::int8, 200::int4, 2050::int8) as match ;
+
+-- Abscissa: int4, Ordinate: interval
+-- Check correctness - all results should have match = t
+
+select 
+    linear_interpolate(200::int4, 100::int4, '50 minutes'::interval, 600::int4, '100 minutes'::interval),
+     '60 minutes'::interval as answer,
+     '60 minutes'::interval = linear_interpolate(200::int4, 100::int4, '50 minutes'::interval, 600::int4, '100 minutes'::interval) as match ;
+
+select 
+    linear_interpolate(200::int4, 600::int4, '100 minutes'::interval, 100::int4, '50 minutes'::interval),
+     '60 minutes'::interval as answer,
+     '60 minutes'::interval = linear_interpolate(200::int4, 600::int4, '100 minutes'::interval, 100::int4, '50 minutes'::interval) as match ;
+
+select 
+    linear_interpolate(100::int4, 200::int4, '60 minutes'::interval, 600::int4, '100 minutes'::interval),
+     '50 minutes'::interval as answer,
+     '50 minutes'::interval = linear_interpolate(100::int4, 200::int4, '60 minutes'::interval, 600::int4, '100 minutes'::interval) as match ;
+
+select 
+    linear_interpolate(100::int4, 600::int4, '100 minutes'::interval, 200::int4, '60 minutes'::interval),
+     '50 minutes'::interval as answer,
+     '50 minutes'::interval = linear_interpolate(100::int4, 600::int4, '100 minutes'::interval, 200::int4, '60 minutes'::interval) as match ;
+
+select 
+    linear_interpolate(600::int4, 200::int4, '60 minutes'::interval, 100::int4, '50 minutes'::interval),
+     '100 minutes'::interval as answer,
+     '100 minutes'::interval = linear_interpolate(600::int4, 200::int4, '60 minutes'::interval, 100::int4, '50 minutes'::interval) as match ;
+
+select 
+    linear_interpolate(600::int4, 100::int4, '50 minutes'::interval, 200::int4, '60 minutes'::interval),
+     '100 minutes'::interval as answer,
+     '100 minutes'::interval = linear_interpolate(600::int4, 100::int4, '50 minutes'::interval, 200::int4, '60 minutes'::interval) as match ;
+
+select 
+    linear_interpolate(200::int4, 200::int4, '60 minutes'::interval, 200::int4, '60 minutes'::interval),
+     '60 minutes'::interval as answer,
+     '60 minutes'::interval = linear_interpolate(200::int4, 200::int4, '60 minutes'::interval, 200::int4, '60 minutes'::interval) as match ;
+
+-- Abscissa: int4, Ordinate: timestamptz
+-- Check correctness - all results should have match = t
+
+select 
+    linear_interpolate(200::int4, 100::int4, '2012-06-01T16:40:00'::timestamptz, 600::int4, '2012-06-19T01:20:00'::timestamptz),
+     '2012-06-05T04:00:00'::timestamptz as answer,
+     '2012-06-05T04:00:00'::timestamptz = linear_interpolate(200::int4, 100::int4, '2012-06-01T16:40:00'::timestamptz, 600::int4, '2012-06-19T01:20:00'::timestamptz) as match ;
+
+select 
+    linear_interpolate(200::int4, 600::int4, '2012-06-19T01:20:00'::timestamptz, 100::int4, '2012-06-01T16:40:00'::timestamptz),
+     '2012-06-05T04:00:00'::timestamptz as answer,
+     '2012-06-05T04:00:00'::timestamptz = linear_interpolate(200::int4, 600::int4, '2012-06-19T01:20:00'::timestamptz, 100::int4, '2012-06-01T16:40:00'::timestamptz) as match ;
+
+select 
+    linear_interpolate(100::int4, 200::int4, '2012-06-05T04:00:00'::timestamptz, 600::int4, '2012-06-19T01:20:00'::timestamptz),
+     '2012-06-01T16:40:00'::timestamptz as answer,
+     '2012-06-01T16:40:00'::timestamptz = linear_interpolate(100::int4, 200::int4, '2012-06-05T04:00:00'::timestamptz, 600::int4, '2012-06-19T01:20:00'::timestamptz) as match ;
+
+select 
+    linear_interpolate(100::int4, 600::int4, '2012-06-19T01:20:00'::timestamptz, 200::int4, '2012-06-05T04:00:00'::timestamptz),
+     '2012-06-01T16:40:00'::timestamptz as answer,
+     '2012-06-01T16:40:00'::timestamptz = linear_interpolate(100::int4, 600::int4, '2012-06-19T01:20:00'::timestamptz, 200::int4, '2012-06-05T04:00:00'::timestamptz) as match ;
+
+select 
+    linear_interpolate(600::int4, 200::int4, '2012-06-05T04:00:00'::timestamptz, 100::int4, '2012-06-01T16:40:00'::timestamptz),
+     '2012-06-19T01:20:00'::timestamptz as answer,
+     '2012-06-19T01:20:00'::timestamptz = linear_interpolate(600::int4, 200::int4, '2012-06-05T04:00:00'::timestamptz, 100::int4, '2012-06-01T16:40:00'::timestamptz) as match ;
+
+select 
+    linear_interpolate(600::int4, 100::int4, '2012-06-01T16:40:00'::timestamptz, 200::int4, '2012-06-05T04:00:00'::timestamptz),
+     '2012-06-19T01:20:00'::timestamptz as answer,
+     '2012-06-19T01:20:00'::timestamptz = linear_interpolate(600::int4, 100::int4, '2012-06-01T16:40:00'::timestamptz, 200::int4, '2012-06-05T04:00:00'::timestamptz) as match ;
+
+select 
+    linear_interpolate(200::int4, 200::int4, '2012-06-05T04:00:00'::timestamptz, 200::int4, '2012-06-05T04:00:00'::timestamptz),
+     '2012-06-05T04:00:00'::timestamptz as answer,
+     '2012-06-05T04:00:00'::timestamptz = linear_interpolate(200::int4, 200::int4, '2012-06-05T04:00:00'::timestamptz, 200::int4, '2012-06-05T04:00:00'::timestamptz) as match ;
+
+-- Abscissa: int4, Ordinate: time
+-- Check correctness - all results should have match = t
+
+select 
+    linear_interpolate(200::int4, 100::int4, '15:00:00'::time, 600::int4, '15:50:00'::time),
+     '15:10:00'::time as answer,
+     '15:10:00'::time = linear_interpolate(200::int4, 100::int4, '15:00:00'::time, 600::int4, '15:50:00'::time) as match ;
+
+select 
+    linear_interpolate(200::int4, 600::int4, '15:50:00'::time, 100::int4, '15:00:00'::time),
+     '15:10:00'::time as answer,
+     '15:10:00'::time = linear_interpolate(200::int4, 600::int4, '15:50:00'::time, 100::int4, '15:00:00'::time) as match ;
+
+select 
+    linear_interpolate(100::int4, 200::int4, '15:10:00'::time, 600::int4, '15:50:00'::time),
+     '15:00:00'::time as answer,
+     '15:00:00'::time = linear_interpolate(100::int4, 200::int4, '15:10:00'::time, 600::int4, '15:50:00'::time) as match ;
+
+select 
+    linear_interpolate(100::int4, 600::int4, '15:50:00'::time, 200::int4, '15:10:00'::time),
+     '15:00:00'::time as answer,
+     '15:00:00'::time = linear_interpolate(100::int4, 600::int4, '15:50:00'::time, 200::int4, '15:10:00'::time) as match ;
+
+select 
+    linear_interpolate(600::int4, 200::int4, '15:10:00'::time, 100::int4, '15:00:00'::time),
+     '15:50:00'::time as answer,
+     '15:50:00'::time = linear_interpolate(600::int4, 200::int4, '15:10:00'::time, 100::int4, '15:00:00'::time) as match ;
+
+select 
+    linear_interpolate(600::int4, 100::int4, '15:00:00'::time, 200::int4, '15:10:00'::time),
+     '15:50:00'::time as answer,
+     '15:50:00'::time = linear_interpolate(600::int4, 100::int4, '15:00:00'::time, 200::int4, '15:10:00'::time) as match ;
+
+select 
+    linear_interpolate(200::int4, 200::int4, '15:10:00'::time, 200::int4, '15:10:00'::time),
+     '15:10:00'::time as answer,
+     '15:10:00'::time = linear_interpolate(200::int4, 200::int4, '15:10:00'::time, 200::int4, '15:10:00'::time) as match ;
+
+-- Abscissa: int4, Ordinate: float4
+-- Check correctness - all results should have match = t
+
+select 
+    linear_interpolate(200::int4, 100::int4, 2000::float4, 600::int4, 2250::float4),
+     2050::float4 as answer,
+     2050::float4 = linear_interpolate(200::int4, 100::int4, 2000::float4, 600::int4, 2250::float4) as match ;
+
+select 
+    linear_interpolate(200::int4, 600::int4, 2250::float4, 100::int4, 2000::float4),
+     2050::float4 as answer,
+     2050::float4 = linear_interpolate(200::int4, 600::int4, 2250::float4, 100::int4, 2000::float4) as match ;
+
+select 
+    linear_interpolate(100::int4, 200::int4, 2050::float4, 600::int4, 2250::float4),
+     2000::float4 as answer,
+     2000::float4 = linear_interpolate(100::int4, 200::int4, 2050::float4, 600::int4, 2250::float4) as match ;
+
+select 
+    linear_interpolate(100::int4, 600::int4, 2250::float4, 200::int4, 2050::float4),
+     2000::float4 as answer,
+     2000::float4 = linear_interpolate(100::int4, 600::int4, 2250::float4, 200::int4, 2050::float4) as match ;
+
+select 
+    linear_interpolate(600::int4, 200::int4, 2050::float4, 100::int4, 2000::float4),
+     2250::float4 as answer,
+     2250::float4 = linear_interpolate(600::int4, 200::int4, 2050::float4, 100::int4, 2000::float4) as match ;
+
+select 
+    linear_interpolate(600::int4, 100::int4, 2000::float4, 200::int4, 2050::float4),
+     2250::float4 as answer,
+     2250::float4 = linear_interpolate(600::int4, 100::int4, 2000::float4, 200::int4, 2050::float4) as match ;
+
+select 
+    linear_interpolate(200::int4, 200::int4, 2050::float4, 200::int4, 2050::float4),
+     2050::float4 as answer,
+     2050::float4 = linear_interpolate(200::int4, 200::int4, 2050::float4, 200::int4, 2050::float4) as match ;

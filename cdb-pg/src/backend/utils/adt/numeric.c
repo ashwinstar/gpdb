@@ -299,10 +299,8 @@ static int32 numericvar_to_int4(NumericVar *var);
 static void apply_typmod(NumericVar *var, int32 typmod);
 
 static void int8_to_numericvar(int64 val, NumericVar *var);
-static double numeric_to_double_no_overflow(Numeric num);
 static double numericvar_to_double_no_overflow(NumericVar *var);
 
-static int	cmp_numerics(Numeric num1, Numeric num2);
 static int	cmp_var(NumericVar *var1, NumericVar *var2);
 static int	cmp_var_common(const NumericDigit *var1digits, int var1ndigits,
 			   int var1weight, int var1sign,
@@ -1082,7 +1080,7 @@ numeric_le(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(result);
 }
 
-static int
+int
 cmp_numerics(Numeric num1, Numeric num2)
 {
 	int			result;
@@ -1897,6 +1895,109 @@ numeric_interval_bound_common(Numeric value, Numeric width,
 }
 
 /*
+ *
+ * What fraction of interval <x0, x1> does <x0, x> represent?
+ */
+float8
+numeric_li_fraction(Numeric x, Numeric x0, Numeric x1, 
+					bool *eq_bounds, bool *eq_abscissas)
+{
+	float8 result;
+	
+	Assert(eq_bounds && eq_abscissas);
+	*eq_bounds = false;
+	*eq_abscissas = false;
+	
+	if ( NUMERIC_IS_NAN(x) || NUMERIC_IS_NAN(x0) || NUMERIC_IS_NAN(x1) )
+	{
+		*eq_bounds = true; /* simulate divide by zero */
+		*eq_abscissas = false; /* no equality in this situation */
+		result = get_float8_nan();
+	}
+	else
+	{
+		NumericVar v;
+		NumericVar v0;
+		NumericVar v1;
+		int rscale;
+		
+		init_ro_var_from_num(x, &v);
+		init_ro_var_from_num(x0, &v0);
+		init_ro_var_from_num(x1, &v1);
+		
+		sub_var(&v, &v0, &v);
+		sub_var(&v1, &v0, &v1);
+		strip_var(&v1);
+		
+		/* Avoid "divide by zero" throw from div_var */
+		if ( cmp_var(&v1, &const_zero) == 0 )
+		{
+			*eq_bounds = true;
+			set_var_from_var(&const_zero, &v);
+		}
+		else 
+		{
+			rscale = select_div_scale(&v, &v1);
+			div_var(&v, &v1, &v, rscale, true);
+		}
+		
+		if ( *eq_bounds )
+		{
+			init_ro_var_from_num(x, &v);
+			*eq_abscissas = ( cmp_var(&v, &v0) == 0 );
+			set_var_from_var(&const_zero, &v);
+		}
+		
+		result = numericvar_to_double_no_overflow(&v);
+	}
+	
+	return result;
+}
+
+/*
+ * numeric_li_value
+ *
+ * What numeric value lies fraction <f> of the way into interval
+ * <y0, y1>? 
+ * 
+ * Note
+ *		li_value(0.0, y0, y1) --> y0
+ *		li_value(1.0, y0, y1) --> y1
+ */
+Numeric
+numeric_li_value(float8 f, Numeric y0, Numeric y1)
+{
+	Numeric y;
+	
+	if ( NUMERIC_IS_NAN(y0) || NUMERIC_IS_NAN(y1) || isnan(f) )
+	{
+		y = make_result(&const_nan);
+	}
+	else
+	{
+		NumericVar v0;
+		NumericVar v1;
+		NumericVar vf;
+		char buf[DBL_DIG + 100];
+		
+		init_ro_var_from_num(y0, &v0);
+		init_ro_var_from_num(y1, &v1);
+		sub_var(&v1, &v0, &v1);
+		
+		/* Make a numeric version of f */
+		sprintf(buf, "%.*g", DBL_DIG, f);
+		init_var_from_str(buf, &vf);
+		
+		mul_var(&vf, &v1, &v1, vf.dscale + v1.dscale);
+		add_var(&v0, &v1, &v1);  
+		
+		y = make_result(&v1);
+	}
+	
+	return y;
+}
+
+/*
  * interval_bound(numeric, numeric)
  *
  * shift and rbound are zero.
@@ -1959,7 +2060,6 @@ numeric_interval_bound_shift_rbound(PG_FUNCTION_ARGS)
 	PG_RETURN_NUMERIC(
 			numeric_interval_bound_common(value, width, shift, rbound));
 }
-
 
 /* ----------------------------------------------------------------------
  *
@@ -4203,7 +4303,7 @@ int8_to_numericvar(int64 val, NumericVar *var)
 /*
  * Convert numeric to float8; if out of range, return +/- HUGE_VAL
  */
-static double
+double
 numeric_to_double_no_overflow(Numeric num)
 {
 	char	   *tmp;

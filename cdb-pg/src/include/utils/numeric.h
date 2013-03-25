@@ -83,5 +83,10 @@ typedef NumericData *Numeric;
 #define PG_GETARG_NUMERIC(n)	  DatumGetNumeric(PG_GETARG_DATUM(n))
 #define PG_GETARG_NUMERIC_COPY(n) DatumGetNumericCopy(PG_GETARG_DATUM(n))
 #define PG_RETURN_NUMERIC(x)	  return NumericGetDatum(x)
+extern double numeric_to_double_no_overflow(Numeric num);
+extern int cmp_numerics(Numeric num1, Numeric num2);
+extern float8 numeric_li_fraction(Numeric x, Numeric x0, Numeric x1, 
+								  bool *eq_bounds, bool *eq_abscissas);
+extern Numeric numeric_li_value(float8 f, Numeric y0, Numeric y1);
 
 #endif   /* _PG_NUMERIC_H_ */
