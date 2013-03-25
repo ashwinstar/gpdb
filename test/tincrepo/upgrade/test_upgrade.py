@@ -134,3 +134,34 @@ class test_upgrade(UpgradeTestCase):
             raise Exception("gpdbrestore failed with rc:  (%d)" % (cmd.get_results().rc))
         self.validate_workload("bkup_dir")
         self.cleanup_upgrade()
+
+    def test_upgrade_42_43_catalog_no_workload(self):
+        """
+        Compare the catalog from the fresh install to the upgraded
+        @todo: Need generic GPDB installation, currently Upgrade is calling
+        its own gpinitsystem.
+        """
+        self.install_GPDB("4.3_MAIN latest continuous","4.3_MAIN latest continuous")
+        self.setup_upgrade() # Installs 4.3
+        self.run_workload("test_catalog", "validate_", True)
+        self.cleanup_upgrade() # Removes 4.3 fresh instance
+
+        self.install_GPDB("4.2.2.4 1 rc","4.3_MAIN latest continuous")
+        self.setup_upgrade() # Installs 4.2.2.4
+        self.run_migrator() # Run gpmigrator to 4.3
+        self.validate_upgrade_correctness()
+        self.validate_workload("test_catalog")
+        
+    @unittest.skipIf('BLDWRAP_TOP' in os.environ,
+                     'skip in pulse(BLDWRAP_TOP is set)')
+    def test_upgrade_42_43_existing_binaries_catalog_no_workload(self):
+        # path is relative to tincrepo/main
+        if os.path.exists(os.getcwd() + '/upgrade/gpdb_4.2.2.4') and os.path.exists(os.getcwd() + '/upgrade/gpdb_4.3_MAIN'):
+            self.setup_upgrade(old_gpdb_path='gpdb_4.3_MAIN', new_gpdb_path='gpdb_4.3_MAIN', old_version='4.3_MAIN', new_version='4.3_MAIN')
+            self.run_workload("test_catalog", "validate_", True)
+            self.cleanup_upgrade()
+
+            self.setup_upgrade(old_gpdb_path='gpdb_4.2.2.4', new_gpdb_path='gpdb_4.3_MAIN', old_version='4.2.2.4', new_version='4.3_MAIN')
+            self.run_migrator()
+            self.validate_upgrade_correctness()
+            self.validate_workload("test_catalog")

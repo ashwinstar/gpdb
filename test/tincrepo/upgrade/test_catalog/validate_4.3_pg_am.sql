@@ -1,0 +1,1 @@
+select oid, * from pg_am order by oid;

@@ -1,0 +1,1 @@
+select * from pg_attribute where attrelid<16000 order by attrelid, attnum;

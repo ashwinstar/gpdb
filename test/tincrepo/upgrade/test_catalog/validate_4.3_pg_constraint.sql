@@ -1,0 +1,1 @@
+select oid, * from pg_constraint order by oid;
