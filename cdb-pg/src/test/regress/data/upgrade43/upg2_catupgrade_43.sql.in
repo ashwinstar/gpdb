@@ -66,3 +66,42 @@ SELECT catDML(
 );
 ALTER TABLE @gpupgradeschemaname@.pg_window
     ALTER COLUMN winframemakerfunc SET NOT NULL;
+
+CREATE FUNCTION @gpupgradeschemaname@.generate_series("timestamp", "timestamp", "interval") RETURNS SETOF "timestamp" LANGUAGE internal VOLATILE STRICT AS 'generate_series_timestamp' WITH (OID=2916);
+COMMENT ON FUNCTION  @gpupgradeschemaname@.generate_series("timestamp", "timestamp", "interval") IS 'non-persistent series generator';
+
+CREATE FUNCTION @gpupgradeschemaname@.generate_series(timestamptz, timestamptz, "interval") RETURNS SETOF timestamptz LANGUAGE internal VOLATILE STRICT AS 'generate_series_timestamptz' WITH (OID=2917);
+COMMENT ON FUNCTION  @gpupgradeschemaname@.generate_series("timestamptz", "timestamptz", "interval") IS 'non-persistent series generator';
+
+CREATE FUNCTION @gpupgradeschemaname@.interval_bound("numeric", "numeric") RETURNS "numeric" LANGUAGE internal IMMUTABLE STRICT AS 'numeric_interval_bound' WITH (OID=2991);
+COMMENT ON FUNCTION  @gpupgradeschemaname@.interval_bound(numeric, numeric) IS 'boundary of the interval containing the given value';
+
+CREATE FUNCTION @gpupgradeschemaname@.interval_bound("numeric", "numeric", int4) RETURNS "numeric" LANGUAGE internal IMMUTABLE AS 'numeric_interval_bound_shift' WITH (OID=2992);
+COMMENT ON FUNCTION  @gpupgradeschemaname@.interval_bound(numeric, numeric, int4) IS 'boundary of the interval containing the given value';
+
+CREATE FUNCTION @gpupgradeschemaname@.interval_bound("numeric", "numeric", int4, "numeric") RETURNS "numeric" LANGUAGE internal IMMUTABLE AS 'numeric_interval_bound_shift_rbound' WITH (OID=2993);
+COMMENT ON FUNCTION  @gpupgradeschemaname@.interval_bound(numeric, numeric, int4, numeric) IS 'boundary of the interval containing the given value';
+
+CREATE FUNCTION @gpupgradeschemaname@.interval_bound("timestamp", "interval") RETURNS "timestamp" LANGUAGE internal IMMUTABLE STRICT AS 'timestamp_interval_bound' WITH (OID=2994);
+COMMENT ON FUNCTION  @gpupgradeschemaname@.interval_bound(timestamp, "interval") IS 'boundary of the interval containing the given value';
+
+CREATE FUNCTION @gpupgradeschemaname@.interval_bound("timestamp", "interval", int4) RETURNS "timestamp" LANGUAGE internal IMMUTABLE AS 'timestamp_interval_bound_shift' WITH (OID=2995);
+COMMENT ON FUNCTION  @gpupgradeschemaname@.interval_bound(timestamp, "interval", int4) IS 'boundary of the interval containing the given value';
+
+CREATE FUNCTION @gpupgradeschemaname@.interval_bound("timestamp", "interval", int4, "timestamp") RETURNS "timestamp" LANGUAGE internal IMMUTABLE AS 'timestamp_interval_bound_shift_reg' WITH (OID=2996);
+COMMENT ON FUNCTION  @gpupgradeschemaname@.interval_bound(timestamp, "interval", int4, timestamp) IS 'boundary of the interval containing the given value';
+
+CREATE FUNCTION @gpupgradeschemaname@.interval_bound(timestamptz, "interval") RETURNS timestamptz LANGUAGE internal IMMUTABLE STRICT AS 'timestamptz_interval_bound' WITH (OID=2997);
+COMMENT ON FUNCTION  @gpupgradeschemaname@.interval_bound(timestamptz, "interval") IS 'boundary of the interval containing the given value';
+
+CREATE FUNCTION @gpupgradeschemaname@.interval_bound(timestamptz, "interval", int4) RETURNS timestamptz LANGUAGE internal IMMUTABLE AS 'timestamptz_interval_bound_shift' WITH (OID=2998);
+COMMENT ON FUNCTION  @gpupgradeschemaname@.interval_bound(timestamptz, "interval", int4) IS 'boundary of the interval containing the given value';
+
+CREATE FUNCTION @gpupgradeschemaname@.interval_bound(timestamptz, "interval", int4, timestamptz) RETURNS timestamptz LANGUAGE internal IMMUTABLE AS 'timestamptz_interval_bound_shift_reg' WITH (OID=2999);
+COMMENT ON FUNCTION  @gpupgradeschemaname@.interval_bound(timestamptz, "interval", int4, timestamptz) IS 'boundary of the interval containing the given value';
+
+CREATE FUNCTION @gpupgradeschemaname@.interval_interval_div("interval", "interval") RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'interval_interval_div' WITH (OID=2918);
+COMMENT ON FUNCTION  @gpupgradeschemaname@.interval_interval_div("interval", "interval") IS 'divide';
+
+CREATE FUNCTION @gpupgradeschemaname@.interval_interval_mod("interval", "interval") RETURNS "interval" LANGUAGE internal IMMUTABLE STRICT AS 'interval_interval_mod' WITH (OID=2919);
+COMMENT ON FUNCTION  @gpupgradeschemaname@.interval_interval_mod("interval", "interval") IS 'remainder';

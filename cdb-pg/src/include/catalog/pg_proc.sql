@@ -1549,6 +1549,10 @@
 
  CREATE FUNCTION interval_div("interval", float8) RETURNS "interval" LANGUAGE internal IMMUTABLE STRICT AS 'interval_div' WITH (OID=1326, DESCRIPTION="divide");
 
+ CREATE FUNCTION interval_interval_div("interval", "interval") RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'interval_interval_div' WITH (OID=2918, DESCRIPTION="divide");
+
+ CREATE FUNCTION interval_interval_mod("interval", "interval") RETURNS "interval" LANGUAGE internal IMMUTABLE STRICT AS 'interval_interval_mod' WITH (OID=2919, DESCRIPTION="modulus");
+
  CREATE FUNCTION dlog10(float8) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'dlog10' WITH (OID=1339, DESCRIPTION="base 10 logarithm");
 
  CREATE FUNCTION "log"(float8) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'dlog10' WITH (OID=1340, DESCRIPTION="base 10 logarithm");
@@ -2491,6 +2495,26 @@
  CREATE FUNCTION nlikejoinsel(internal, oid, internal, int2) RETURNS float8 LANGUAGE internal STABLE STRICT AS 'nlikejoinsel' WITH (OID=1828, DESCRIPTION="join selectivity of NOT LIKE");
 
  CREATE FUNCTION icregexnejoinsel(internal, oid, internal, int2) RETURNS float8 LANGUAGE internal STABLE STRICT AS 'icregexnejoinsel' WITH (OID=1829, DESCRIPTION="join selectivity of case-insensitive regex non-match");
+
+-- Sequences and time series
+ CREATE FUNCTION interval_bound(numeric, numeric) RETURNS numeric LANGUAGE internal IMMUTABLE STRICT AS 'numeric_interval_bound' WITH (OID=2991, DESCRIPTION="boundary of the interval containing the given value");
+
+ CREATE FUNCTION interval_bound(numeric, numeric, int4) RETURNS numeric LANGUAGE internal IMMUTABLE AS 'numeric_interval_bound_shift' WITH (OID=2992, DESCRIPTION="boundary of the interval containing the given value");
+
+ CREATE FUNCTION interval_bound(numeric, numeric, int4, numeric) RETURNS numeric LANGUAGE internal IMMUTABLE AS 'numeric_interval_bound_shift_rbound' WITH (OID=2993, DESCRIPTION="boundary of the interval containing the given value");
+
+ CREATE FUNCTION interval_bound(timestamp, "interval") RETURNS timestamp LANGUAGE internal IMMUTABLE STRICT AS 'timestamp_interval_bound' WITH (OID=2994, DESCRIPTION="boundary of the interval containing the given value");
+
+ CREATE FUNCTION interval_bound(timestamp, "interval", int4) RETURNS timestamp LANGUAGE internal IMMUTABLE AS 'timestamp_interval_bound_shift' WITH (OID=2995, DESCRIPTION="boundary of the interval containing the given value");
+
+ CREATE FUNCTION interval_bound(timestamp, "interval", int4, timestamp) RETURNS timestamp LANGUAGE internal IMMUTABLE AS 'timestamp_interval_bound_shift_reg' WITH (OID=2996, DESCRIPTION="boundary of the interval containing the given value");
+
+ CREATE FUNCTION interval_bound(timestamptz, "interval") RETURNS timestamptz LANGUAGE internal IMMUTABLE STRICT AS 'timestamptz_interval_bound' WITH (OID=2997, DESCRIPTION="boundary of the interval containing the given value");
+
+ CREATE FUNCTION interval_bound(timestamptz, "interval", int4) RETURNS timestamptz LANGUAGE internal IMMUTABLE AS 'timestamptz_interval_bound_shift' WITH (OID=2998, DESCRIPTION="boundary of the interval containing the given value");
+
+ CREATE FUNCTION interval_bound(timestamptz, "interval", int4, timestamptz) RETURNS timestamptz LANGUAGE internal IMMUTABLE AS 'timestamptz_interval_bound_shift_reg' WITH (OID=2999, DESCRIPTION="boundary of the interval containing the given value");
+
 
 -- Aggregate-related functions 
  CREATE FUNCTION float8_avg(bytea) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'float8_avg' WITH (OID=1830, DESCRIPTION="AVG aggregate final function");
@@ -4367,6 +4391,10 @@
  CREATE FUNCTION generate_series(int8, int8, int8) RETURNS SETOF int8 LANGUAGE internal VOLATILE STRICT AS 'generate_series_step_int8' WITH (OID=1068, DESCRIPTION="non-persistent series generator");
 
  CREATE FUNCTION generate_series(int8, int8) RETURNS SETOF int8 LANGUAGE internal VOLATILE STRICT AS 'generate_series_int8' WITH (OID=1069, DESCRIPTION="non-persistent series generator");
+
+ CREATE FUNCTION generate_series("timestamp", "timestamp", "interval") RETURNS SETOF "timestamp" LANGUAGE internal VOLATILE STRICT AS 'generate_series_timestamp' WITH (OID=2916, DESCRIPTION="non-persistent series generator");
+
+ CREATE FUNCTION generate_series("timestamptz", "timestamptz", "interval") RETURNS SETOF "timestamptz" LANGUAGE internal VOLATILE STRICT AS 'generate_series_timestamptz' WITH (OID=2917, DESCRIPTION="non-persistent series generator");
 
 -- boolean aggregates
  CREATE FUNCTION booland_statefunc(bool, bool) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'booland_statefunc' WITH (OID=2515, DESCRIPTION="boolean-and aggregate transition function");

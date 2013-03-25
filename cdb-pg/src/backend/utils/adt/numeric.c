@@ -1826,6 +1826,140 @@ numeric_power(PG_FUNCTION_ARGS)
 	PG_RETURN_NUMERIC(res);
 }
 
+/*
+ * numeric_interval_bound()
+ *
+ * Implements
+ *     interval_bound(numeric, numeric, int, numeric)
+ *     returns numeric
+ */
+static Numeric
+numeric_interval_bound_common(Numeric value, Numeric width,
+							  int32 shift, Numeric rbound)
+{
+	NumericVar regvar;
+	NumericVar widvar;
+	NumericVar wrkvar;
+	NumericVar result;
+	int dscale;
+
+	/* NAN, if either of the first two non-NULL arguments is NAN. */
+	if (NUMERIC_IS_NAN(value) || NUMERIC_IS_NAN(width))
+		return make_result(&const_nan);
+
+	/* NAN, if rbound is NAN. */
+	if (rbound != NULL && NUMERIC_IS_NAN(rbound))
+		return make_result(&const_nan);
+
+	/* result = value */
+	init_var_from_num(value, &result);
+
+	/* result = result - rbound */
+	if (rbound != NULL)
+	{
+		init_ro_var_from_num(rbound, &regvar);
+		sub_var(&result, &regvar, &result);
+	}
+
+	/* result = floor(result / width) * width */
+	init_ro_var_from_num(width, &widvar);
+
+	if (cmp_var(&widvar, &const_zero) <= 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_INTERVAL_WIDTH),
+				 errmsg("width of numeric interval not positive"),
+				 errOmitLocation(true)));
+
+	quick_init_var(&wrkvar);
+	dscale = select_div_scale(&result, &widvar);
+	div_var(&result, &widvar, &wrkvar, dscale, true);
+	floor_var(&wrkvar, &result);
+	mul_var(&result, &widvar, &result, result.dscale + widvar.dscale);
+
+	/* result = result + shift * width */
+	if (shift != 0)
+	{
+		int8_to_numericvar((int64) shift, &wrkvar);
+		mul_var(&wrkvar, &widvar, &wrkvar, wrkvar.dscale + widvar.dscale);
+		add_var(&result, &wrkvar, &result);
+	}
+
+	/* result = result + rbound */
+	if (rbound != NULL)
+	{
+		add_var(&result, &regvar, &result);
+		free_var(&regvar);
+	}
+	free_var(&wrkvar);
+	free_var(&widvar);
+
+	return make_result(&result);
+}
+
+/*
+ * interval_bound(numeric, numeric)
+ *
+ * shift and rbound are zero.
+ */
+Datum
+numeric_interval_bound(PG_FUNCTION_ARGS)
+{
+	Numeric value = PG_GETARG_NUMERIC(0);
+	Numeric width = PG_GETARG_NUMERIC(1);
+
+	PG_RETURN_NUMERIC(
+			numeric_interval_bound_common(value, width, 0, NULL));
+}
+
+/*
+ * interval_bound(numeric, numeric, int)
+ *
+ * rbound is zero.
+ */
+Datum
+numeric_interval_bound_shift(PG_FUNCTION_ARGS)
+{
+	Numeric value;
+	Numeric width;
+	int32 shift = 0; /* default interval shift: 0 */
+
+	if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
+		PG_RETURN_NULL();
+
+	value = PG_GETARG_NUMERIC(0);
+	width = PG_GETARG_NUMERIC(1);
+	if (!PG_ARGISNULL(2))
+		shift = PG_GETARG_INT32(2);
+
+	PG_RETURN_NUMERIC(
+			numeric_interval_bound_common(value, width, shift, NULL));
+}
+
+/*
+ * interval_bound(numeric, numeric, int, numeric)
+ */
+Datum
+numeric_interval_bound_shift_rbound(PG_FUNCTION_ARGS)
+{
+	Numeric value;
+	Numeric width;
+	int32 shift = 0; /* default interval shift: 0 */
+	Numeric rbound = NULL; /* default registration bound: treat this as 0 */
+
+	if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
+		PG_RETURN_NULL();
+
+	value = PG_GETARG_NUMERIC(0);
+	width = PG_GETARG_NUMERIC(1);
+	if (!PG_ARGISNULL(2))
+		shift = PG_GETARG_INT32(2);
+	if (!PG_ARGISNULL(3))
+		rbound = PG_GETARG_NUMERIC(3);
+
+	PG_RETURN_NUMERIC(
+			numeric_interval_bound_common(value, width, shift, rbound));
+}
+
 
 /* ----------------------------------------------------------------------
  *

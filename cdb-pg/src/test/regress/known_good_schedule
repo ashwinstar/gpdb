@@ -169,6 +169,7 @@ test: rle
 test: portals_updatable
 test: plpgsql_cache
 test: percentile
+test: timeseries
 test: resource_queue_function
 test: co_nestloop_idxscan
 test: pg_stat_last_operation
