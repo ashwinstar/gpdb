@@ -4,26 +4,32 @@ set TimeZone to 'US/Pacific';
 -- Interval-Interval division and remainder and associated overloads
 select
     interval_interval_div(interval '365 days', interval '1 month') as "12 1/6",
-    interval_interval_mod(interval '365 days', interval '1 month') as "5*24";
-      12 1/6      |    5*24     
-------------------+-------------
- 12.1666666666667 | @ 120 hours
+    interval '365 days'/interval '1 month' as "12 1/6",
+    interval_interval_mod(interval '365 days', interval '1 month') as "5*24",
+    interval '365 days'%interval '1 month' as "5*24";
+      12 1/6      |      12 1/6      |    5*24     |    5*24     
+------------------+------------------+-------------+-------------
+ 12.1666666666667 | 12.1666666666667 | @ 120 hours | @ 120 hours
 (1 row)
 
 select
     interval_interval_div(interval '1 day', interval '8 hours') as "3",
-    interval_interval_mod(interval '1 day', interval '8 hours') as "0";
- 3 |  0  
----+-----
- 3 | @ 0
+    interval '1 day'/interval '8 hours' as "3",
+    interval_interval_mod(interval '1 day', interval '8 hours') as "0",
+    interval '1 day'%interval '8 hours' as "0";
+ 3 | 3 |  0  |  0  
+---+---+-----+-----
+ 3 | 3 | @ 0 | @ 0
 (1 row)
 
 select
     interval_interval_div(interval '2 hours', interval '-100 minutes') as "-1 1/5",
-    interval_interval_mod(interval '2 hours', interval '-100 minutes') as "20";
- -1 1/5 |    20     
---------+-----------
-   -1.2 | @ 20 mins
+    interval '2 hours'/interval '-100 minutes' as "-1 1/5",
+    interval_interval_mod(interval '2 hours', interval '-100 minutes') as "20",
+    interval '2 hours'%interval '-100 minutes' as "20";
+ -1 1/5 | -1 1/5 |    20     |    20     
+--------+--------+-----------+-----------
+   -1.2 |   -1.2 | @ 20 mins | @ 20 mins
 (1 row)
 
 -- generate_series with timestamp

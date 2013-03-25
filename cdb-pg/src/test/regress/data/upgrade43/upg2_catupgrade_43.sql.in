@@ -119,7 +119,7 @@ CREATE FUNCTION @gpupgradeschemaname@.linear_interpolate( anyelement, anyelement
 COMMENT ON FUNCTION @gpupgradeschemaname@.linear_interpolate( anyelement, anyelement, float8, anyelement, float8 ) IS 'linear interpolation: x, x0,y0, x1,y1';
 
 CREATE FUNCTION @gpupgradeschemaname@.linear_interpolate( anyelement, anyelement, float4, anyelement, float4 ) RETURNS float4 LANGUAGE internal IMMUTABLE STRICT AS 'linterp_float4' WITH (OID=6076);
-COMMENT ON FUNCTION @gpupgradeschemaname@.linear_interpolate( anyelement, anyelement, float8, anyelement, float8 ) IS 'linear interpolation: x, x0,y0, x1,y1';
+COMMENT ON FUNCTION @gpupgradeschemaname@.linear_interpolate( anyelement, anyelement, float4, anyelement, float4 ) IS 'linear interpolation: x, x0,y0, x1,y1';
 
 CREATE FUNCTION @gpupgradeschemaname@.linear_interpolate( anyelement, anyelement, date, anyelement, date ) RETURNS date LANGUAGE internal IMMUTABLE STRICT AS 'linterp_DateADT' WITH (OID=6077);
 COMMENT ON FUNCTION @gpupgradeschemaname@.linear_interpolate( anyelement, anyelement, date, anyelement, date ) IS 'linear interpolation: x, x0,y0, x1,y1';
@@ -138,3 +138,34 @@ COMMENT ON FUNCTION @gpupgradeschemaname@.linear_interpolate( anyelement, anyele
 
 CREATE FUNCTION @gpupgradeschemaname@.linear_interpolate( anyelement, anyelement, "numeric", anyelement, "numeric" ) RETURNS "numeric" LANGUAGE internal IMMUTABLE STRICT AS 'linterp_Numeric' WITH (OID=6082);
 COMMENT ON FUNCTION @gpupgradeschemaname@.linear_interpolate( anyelement, anyelement, "numeric", anyelement, "numeric" ) IS 'linear interpolation: x, x0,y0, x1,y1';
+
+-- add new operators
+
+-- psql expands this for us
+\set pgoperatordatafile `echo "'$GPHOME/share/postgresql/upgrade/pg_operator.data'"`
+
+-- Create a special schema for use by the pg_operator_load external table.
+-- We cannot use gpupgradeschemaname (pg_catalog), as that will see the external
+-- table executed on the master only.
+CREATE SCHEMA __@gpupgradeschemaname@_gpmigrator;
+
+-- Add entries to the master
+COPY @gpupgradeschemaname@.pg_operator FROM
+        :pgoperatordatafile WITH OIDS DELIMITER ',';
+
+CREATE EXTERNAL WEB TABLE
+		__@gpupgradeschemaname@_gpmigrator.pg_operator_load(database text,
+									port text,
+									status text)
+	execute ' PGOPTIONS=''-c gp_session_role=utility'' \\
+		psql -q --set ON_ERROR_STOP=ON -p $GP_SEG_PORT \\
+		--command "copy @gpupgradeschemaname@.pg_operator from \\
+		''$GPHOME/share/postgresql/upgrade/pg_operator.data'' \\
+		with oids csv" $GP_DATABASE $GP_USER && echo "$GP_DATABASE, $GP_SEG_PORT, done";'
+format 'csv';
+
+SELECT * FROM __@gpupgradeschemaname@_gpmigrator.pg_operator_load;
+
+DROP EXTERNAL WEB TABLE __@gpupgradeschemaname@_gpmigrator.pg_operator_load;
+
+DROP SCHEMA __@gpupgradeschemaname@_gpmigrator;

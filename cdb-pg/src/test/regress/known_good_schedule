@@ -151,7 +151,7 @@ test: tidycat
 test: tidycat2
 test: ic
 ignore: icudp_full
-test: upgrade
+ignore: upgrade
 ignore: upg2
 test: alter_distribution_policy
 ignore: gp_delete_as_trunc

@@ -7,15 +7,21 @@ set TimeZone to 'US/Pacific';
 
 select
     interval_interval_div(interval '365 days', interval '1 month') as "12 1/6",
-    interval_interval_mod(interval '365 days', interval '1 month') as "5*24";
+    interval '365 days'/interval '1 month' as "12 1/6",
+    interval_interval_mod(interval '365 days', interval '1 month') as "5*24",
+    interval '365 days'%interval '1 month' as "5*24";
 
 select
     interval_interval_div(interval '1 day', interval '8 hours') as "3",
-    interval_interval_mod(interval '1 day', interval '8 hours') as "0";
+    interval '1 day'/interval '8 hours' as "3",
+    interval_interval_mod(interval '1 day', interval '8 hours') as "0",
+    interval '1 day'%interval '8 hours' as "0";
 
 select
     interval_interval_div(interval '2 hours', interval '-100 minutes') as "-1 1/5",
-    interval_interval_mod(interval '2 hours', interval '-100 minutes') as "20";
+    interval '2 hours'/interval '-100 minutes' as "-1 1/5",
+    interval_interval_mod(interval '2 hours', interval '-100 minutes') as "20",
+    interval '2 hours'%interval '-100 minutes' as "20";
 
 -- generate_series with timestamp
 

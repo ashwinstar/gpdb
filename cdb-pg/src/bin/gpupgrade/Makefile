@@ -24,7 +24,7 @@ UPGRADEFILES = $(DATADIR)/upgrade/upg2_catupgrade.sql \
 			   $(DATADIR)/upgrade/upg2_catupgrade_check.sql \
 			   $(DATADIR)/upgrade43/upg2_catupgrade_43.sql
 
-DATAFILES =
+DATAFILES = $(DATADIR)/upgrade43/pg_operator.data
 
 # This sets things up to create a "contrib" module for upgrade extensions
 MODULE_big = gpupgrade

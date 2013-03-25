@@ -697,6 +697,8 @@ DATA(insert OID = 1578 (  "##"	  PGNSP PGUID b f  601	601  600	  0  0 0 0 0 0 cl
 DATA(insert OID = 1583 (  "*"	  PGNSP PGUID b f 1186	701 1186	1584 0 0 0 0 0 interval_mul - - ));
 DATA(insert OID = 1584 (  "*"	  PGNSP PGUID b f  701 1186 1186	1583 0 0 0 0 0 mul_d_interval - - ));
 DATA(insert OID = 1585 (  "/"	  PGNSP PGUID b f 1186	701 1186	  0  0 0 0 0 0 interval_div - - ));
+DATA(insert OID = 2920 (  "/"	  PGNSP PGUID b f 1186	1186 701	  0  0 0 0 0 0 interval_interval_div - - ));
+DATA(insert OID = 2921 (  "%"	  PGNSP PGUID b f 1186	1186 1186	  0  0 0 0 0 0 interval_interval_mod - - ));
 
 DATA(insert OID = 1586 (  "<>"	  PGNSP PGUID b f  601	601 16 1586 1535 0 0 0 0 lseg_ne neqsel neqjoinsel ));
 DATA(insert OID = 1587 (  "<"	  PGNSP PGUID b f  601	601 16 1589 1590 0 0 0 0 lseg_lt - - ));
