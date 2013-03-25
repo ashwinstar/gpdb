@@ -104,4 +104,4 @@ CREATE FUNCTION @gpupgradeschemaname@.interval_interval_div("interval", "interva
 COMMENT ON FUNCTION  @gpupgradeschemaname@.interval_interval_div("interval", "interval") IS 'divide';
 
 CREATE FUNCTION @gpupgradeschemaname@.interval_interval_mod("interval", "interval") RETURNS "interval" LANGUAGE internal IMMUTABLE STRICT AS 'interval_interval_mod' WITH (OID=2919);
-COMMENT ON FUNCTION  @gpupgradeschemaname@.interval_interval_mod("interval", "interval") IS 'remainder';
+COMMENT ON FUNCTION  @gpupgradeschemaname@.interval_interval_mod("interval", "interval") IS 'modulus';
