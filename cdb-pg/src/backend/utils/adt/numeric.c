@@ -1985,7 +1985,8 @@ numeric_li_value(float8 f, Numeric y0, Numeric y1)
 		sub_var(&v1, &v0, &v1);
 		
 		/* Make a numeric version of f */
-		sprintf(buf, "%.*g", DBL_DIG, f);
+		snprintf(buf, sizeof(buf), "%.*g", DBL_DIG, f);
+
 		init_var_from_str(buf, &vf);
 		
 		mul_var(&vf, &v1, &v1, vf.dscale + v1.dscale);
@@ -2247,7 +2248,7 @@ float8_numeric(PG_FUNCTION_ARGS)
 	if (isnan(val))
 		PG_RETURN_NUMERIC(make_result(&const_nan));
 
-	sprintf(buf, "%.*g", DBL_DIG, val);
+	snprintf(buf, sizeof(buf), "%.*g", DBL_DIG, val);
 
 	init_var_from_str(buf, &result);
 	res = make_result(&result);
@@ -2303,7 +2304,7 @@ float4_numeric(PG_FUNCTION_ARGS)
 	if (isnan(val))
 		PG_RETURN_NUMERIC(make_result(&const_nan));
 
-	sprintf(buf, "%.*g", FLT_DIG, val);
+	snprintf(buf, sizeof(buf), "%.*g", FLT_DIG, val);
 
 	init_var_from_str(buf, &result);
 	res = make_result(&result);
