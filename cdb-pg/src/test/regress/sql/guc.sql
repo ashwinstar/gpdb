@@ -124,6 +124,8 @@ RESET datestyle;
 SHOW datestyle;
 SELECT '2006-08-13 12:34:56'::timestamptz;
 
+SELECT min_val, max_val FROM pg_settings WHERE name = 'gp_resqueue_priority_cpucores_per_segment';
+
 --
 -- Test GUC - gp_disable_catalog_access_on_segment
 --
