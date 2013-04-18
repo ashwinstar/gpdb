@@ -169,7 +169,12 @@ typedef struct FileRepResyncShmem_s {
 		
 	bool			checkpointRequest;
 	
-	bool			reCreateRequest;
+	bool			reMirrorAllowed;
+		/*
+		 * This flag is used just to enable FILEREP proces to perform some operation
+		 * (like physical file drops/creates) on Mirror while InResyncTranstion phase.
+		 * The flag set/unset has no use/impact for non-filerep processes. 
+		 */
 	
 	int64			blocksSynchronized;
 		/* required to report number of blocks resynchronized */
@@ -318,15 +323,15 @@ FileRepResyncManager_SetEndResyncLSN(XLogRecPtr endResyncLSN)
 }
 
 void
-FileRepResync_ResetReCreateRequest(void)
+FileRepResync_ResetReMirrorAllowed(void)
 {
-	fileRepResyncShmem->reCreateRequest = FALSE;
+	fileRepResyncShmem->reMirrorAllowed = FALSE;
 }
 
 void
-FileRepResync_SetReCreateRequest(void)
+FileRepResync_SetReMirrorAllowed(void)
 {
-	fileRepResyncShmem->reCreateRequest = TRUE;
+	fileRepResyncShmem->reMirrorAllowed = TRUE;
 }
 
 bool 
@@ -338,10 +343,10 @@ FileRepResync_IsTransitionFromResyncToInSync(void)
 }
 
 bool
-FileRepResync_IsReCreate(void)
+FileRepResync_IsReMirrorAllowed(void)
 {
 	return((fileRepResyncShmem != NULL)?
-		   (fileRepResyncShmem->reCreateRequest == TRUE &&
+		   (fileRepResyncShmem->reMirrorAllowed == TRUE &&
 			fileRepProcessType == FileRepProcessTypeResyncManager):false);	
 }
 
@@ -474,7 +479,7 @@ FileRepResync_ShmemInit(void)
 	
 	fileRepResyncShmem->checkpointRequest = FALSE;
 	
-	fileRepResyncShmem->reCreateRequest = FALSE;	
+	fileRepResyncShmem->reMirrorAllowed = FALSE;	
 	
 	fileRepResyncShmem->totalBlocksToSynchronize = 0;
 	
@@ -542,7 +547,7 @@ FileRepResync_ShmemReInit(void)
 
 	fileRepResyncShmem->checkpointRequest = FALSE;
 	
-	fileRepResyncShmem->reCreateRequest = FALSE;	
+	fileRepResyncShmem->reMirrorAllowed = FALSE;	
 	
 	fileRepResyncShmem->totalBlocksToSynchronize = 0;
 	
@@ -864,7 +869,36 @@ FileRepResyncManager_InResyncTransition(void)
 	{
 		goto exit;
 	}		
-	
+
+	/*
+	 * It is important to keep order of dropping objects before creating objects since
+	 * it can happen that persistent table has two entries with the same object.
+	 * For example Append Only segment file was created and dropped since transaction
+	 * was aborted. Later the same Append Only segment file was created and
+	 * transaction was committed.
+	 * Note:
+	 * 	MirrorReDrop function drops the physical file plus also drops the entry from 
+	 *  the Persistent Table, if was able to successfully drop the file. This is slightly 
+	 *  different than how creates are coded. For create all the physical file creates happen 
+	 *  on Mirror, but the persistent table entries are not updated for them, only after transitioning 
+	 *  the system to READY state, we agains can through the PT and mark then CREATED.
+	 *  Since there is no reason we could figure out why it was done this way, we didn't make DROP
+	 *  semantics same as it but instead allowed drop to make PT entry update as soon as it perfomed the 
+	 *  operation, instaed of making an extra scan to do the same.
+	 */
+														   
+	FileRep_InsertConfigLogEntry("run resync manager, mirror redrop");
+	PersistentFileSysObj_MirrorReDrop();
+	FileRep_InsertConfigLogEntry("run resync manager, mirror redrop completed");
+
+	FileRepSubProcess_ProcessSignals();
+	if (! ((segmentState == SegmentStateInResyncTransition ||
+			segmentState == SegmentStateReady) &&
+		   dataState == DataStateInResync))
+	{
+		goto exit;
+	}		
+
 #ifdef FAULT_INJECTOR	
 	FaultInjector_InjectFaultIfSet(
 								   FileRepTransitionToInResyncMirrorReCreate, 
@@ -949,10 +983,6 @@ FileRepPrimary_RunResyncManager(void)
 	ResynchronizeScanToken		token;
 	
 	FileRep_InsertConfigLogEntry("run resync manager");
-
-	PersistentFileSysObj_MirrorReDrop();
-	
-	FileRep_InsertConfigLogEntry("run resync manager, redrop completed");
 
 	ResynchronizeScanToken_Init(&token);
 	

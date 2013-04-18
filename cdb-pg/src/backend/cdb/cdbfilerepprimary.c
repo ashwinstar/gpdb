@@ -95,7 +95,7 @@ FileRepPrimary_GetMirrorDataLossTrackingSessionNum(int64 *sessionNum)
 			return MirrorDataLossTrackingState_MirrorNotConfigured;
 			
 		case DataStateInResync:
-			if (! FileRepResync_IsReCreate() &&
+			if (! FileRepResync_IsReMirrorAllowed() &&
 				(segmentState == SegmentStateInitialization ||
 				 segmentState == SegmentStateInResyncTransition))
 				return MirrorDataLossTrackingState_MirrorDown;
@@ -200,7 +200,7 @@ FileRepPrimary_IsMirroringRequired(
 				break;
 				
 			case DataStateInResync:
-				if (! FileRepResync_IsReCreate())
+				if (! FileRepResync_IsReMirrorAllowed())
 				{
 					if (segmentState == SegmentStateInitialization ||
 						segmentState == SegmentStateInResyncTransition) 

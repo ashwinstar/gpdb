@@ -4994,7 +4994,7 @@ static void PersistentFileSysObj_ScanStateAction(
 				// Don't hold lock during physical file-system operation.
 				WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
-				FileRepResync_SetReCreateRequest();
+				FileRepResync_SetReMirrorAllowed();
 
 				// UNDONE: Pass this in from the resync worker?
 				mirrorDataLossTrackingState =
@@ -5010,7 +5010,7 @@ static void PersistentFileSysObj_ScanStateAction(
 										mirrorDataLossTrackingSessionNum,
 										&mirrorDataLossOccurred);
 
-				FileRepResync_ResetReCreateRequest();
+				FileRepResync_ResetReMirrorAllowed();
 
 				// UNDONE: Act on mirrorDataLossOccurred
 
@@ -5038,7 +5038,7 @@ static void PersistentFileSysObj_ScanStateAction(
 									DatumGetInt16(
 												  values[Anum_gp_persistent_relation_node_relation_storage_manager - 1]);
 
-					FileRepResync_SetReCreateRequest();
+					FileRepResync_SetReMirrorAllowed();
 
 					PersistentFileSysObj_DoMirrorValidation(
 															&fsObjName,
@@ -5046,7 +5046,7 @@ static void PersistentFileSysObj_ScanStateAction(
 															&persistentTid,
 															persistentSerialNum);
 
-					FileRepResync_ResetReCreateRequest();
+					FileRepResync_ResetReMirrorAllowed();
 				}
 			}
 			break;
@@ -5159,6 +5159,8 @@ static void PersistentFileSysObj_ScanStateAction(
 				// Don't hold lock during physical file-system operation.
 				WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
+				FileRepResync_SetReMirrorAllowed();
+
 				// UNDONE: Pass this in from the resync worker?
 				mirrorDataLossTrackingState =
 							FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
@@ -5173,6 +5175,7 @@ static void PersistentFileSysObj_ScanStateAction(
 										&mirrorDataLossOccurred);
 
 				// UNDONE: Act on mirrorDataLossOccurred
+				FileRepResync_ResetReMirrorAllowed();
 
 				WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 

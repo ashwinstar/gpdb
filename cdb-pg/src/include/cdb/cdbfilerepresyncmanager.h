@@ -87,11 +87,11 @@ extern int FileRepResync_GetAppendOnlyCommitCount(void);
 
 extern bool FileRepResync_IsTransitionFromResyncToInSync(void);
 
-extern bool FileRepResync_IsReCreate(void);
+extern bool FileRepResync_IsReMirrorAllowed(void);
 
-extern void FileRepResync_SetReCreateRequest(void);
+extern void FileRepResync_SetReMirrorAllowed(void);
 
-extern void FileRepResync_ResetReCreateRequest(void);
+extern void FileRepResync_ResetReMirrorAllowed(void);
 
 extern int64 FileRepResync_GetBlocksSynchronized(void);
 
