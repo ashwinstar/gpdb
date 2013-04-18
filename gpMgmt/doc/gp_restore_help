@@ -12,7 +12,7 @@ SYNOPSIS
 *****************************************************
 
 gp_restore --gp-k=<timestamp_key> -d <database_name> [-a | -s] [-i] 
-[-v] [-c] [-h <hostname>] [-p <port>] [-U <username>] [-W] 
+[-v] [-h <hostname>] [-p <port>] [-U <username>] [-W] 
 [--gp-c] [--gp-i] [--gp-d=<directoryname>] [--gp-r=<reportfile>] 
 [--gp-l=a|p]
 
@@ -127,12 +127,6 @@ Specifies verbose mode.
 --data-only
 
 Restore only the data, not the schema (data definitions).
-
-
--c
---clean
-
-Clean (drop) database objects before recreating them.
 
 
 -s
