@@ -4267,7 +4267,6 @@ outfast_workfile_mgr_init(List *rtable)
 void
 outfast_workfile_mgr_end()
 {
-	Assert(range_table != NULL);
 	Assert(!print_variable_fields);
 
 	print_variable_fields = true;

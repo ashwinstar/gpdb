@@ -134,7 +134,11 @@ ExecMaterial(MaterialState *node)
 				 * Creating new empty workset
 				 */
 				Assert(!node->cached_workfiles_found);
-				work_set = workfile_mgr_create_set(BUFFILE, true /* can_reuse */, &node->ss.ps, NULL_SNAPSHOT);
+
+				/* Don't try to cache when running under a ShareInputScan node */
+				bool can_reuse = (ma->share_type == SHARE_NOTSHARED);
+
+				work_set = workfile_mgr_create_set(BUFFILE, can_reuse, &node->ss.ps, NULL_SNAPSHOT);
 				isWriter = true;
 			}
 

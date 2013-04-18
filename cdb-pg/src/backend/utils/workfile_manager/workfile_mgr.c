@@ -22,7 +22,7 @@
 #include "libpq/libpq.h"
 #include "utils/debugbreak.h"
 #include "utils/atomic.h"
-
+#include "optimizer/walkers.h"
 #include "utils/lsyscache.h"
 #include "catalog/pg_proc.h"
 
@@ -46,6 +46,9 @@ static void workfile_mgr_delete_set_directory(char *workset_path);
 static void workfile_mgr_unlink_directory(const char *dirpath);
 static StringInfo get_name_from_nodeType(const NodeTag node_type);
 static uint64 get_operator_work_mem(PlanState *ps);
+static CdbVisitOpt PlanNonCacheableWalker(PlanState *ps, void *context);
+static bool ExprNonCacheableWalker(Node *expr, void *ctx);
+static bool isFuncCacheable(Oid fn_oid);
 static CacheEntry *acquire_entry_retry(Cache *cache);
 
 
@@ -85,7 +88,6 @@ workfile_mgr_cache_init(void)
 	 * to track disk space usage
 	 */
 	WorkfileDiskspace_Init();
-	WorkfileQueryspace_Init();
 }
 
 /*
@@ -301,19 +303,14 @@ get_operator_work_mem(PlanState *ps)
 		return 0;
 	}
 
-	uint64 operatorMemKB = 0;
-	if ((IsA(ps, HashJoinState)))
+	PlanState *psOp = ps;
+	if (IsA(ps,HashJoinState))
 	{
 		Assert(IsA(ps->righttree, HashState));
-		operatorMemKB = ps->righttree->plan->operatorMemKB;
-	}
-	else
-	{
-		Assert(NULL != ps->plan);
-		operatorMemKB = ps->plan->operatorMemKB;
+		psOp = ps->righttree;
 	}
 
-	return operatorMemKB;
+	return PlanStateOperatorMemKB(psOp);
 }
 
 /*
@@ -381,32 +378,31 @@ workfile_mgr_is_reusable(PlanState *ps)
 }
 
 /*
- * Walker function to test if a subplan contains any operators that cannot
+ * Walker function to test if a subtree plan contains any operators that cannot
  * be cached:
- *  - node uses volatile function
+ *  - node evaluates a non-immutable function
+ *  - node has an expression in the target or qual list that evaluates
+ *    a non-immutable function
  *  - external table scan
  *  - share input scan (because of synchronization issues)
  *
  * Returns CdbVisit_Failure if it finds an offending node
  */
 static CdbVisitOpt
-checkNoncacheableNodeWalker(PlanState *ps,
+PlanNonCacheableWalker(PlanState *ps,
 				  void *context)
 {
 	if (IsA(ps, FunctionScanState))
 	{
-
-		/* Get the Oid of the function */
 		Expr *fn_expr = ((FunctionScanState *) ps)->funcexpr->expr;
-		Assert(IsA(fn_expr, FuncExpr));
-		Oid fn_oid = ((FuncExpr *) fn_expr)->funcid;
-
-		/* Check provolatile column for function */
-		char fn_provolatile = func_volatile(fn_oid);
-
-		if (fn_provolatile != PROVOLATILE_IMMUTABLE)
+		/*
+		 * ExecMakeTableFunctionResult() says that the funcexpr associated
+		 * with this node can be either FuncExpr or a generic Expr.
+		 * Use the generic expression walker to look for non-cacheable
+		 * functions, as it supports both cases.
+		 */
+		if (ExprNonCacheableWalker((Node *) fn_expr, NULL /* ctx */))
 		{
-			Assert(fn_provolatile == PROVOLATILE_STABLE || fn_provolatile == PROVOLATILE_VOLATILE);
 			return CdbVisit_Failure;
 		}
 	}
@@ -414,16 +410,10 @@ checkNoncacheableNodeWalker(PlanState *ps,
 	if (IsA(ps, TableFunctionState))
 	{
 		Oid fn_oid = ((TableFunctionState *) ps)->fcache->func.fn_oid;
-
-		/* Check provolatile column for function */
-		char fn_provolatile = func_volatile(fn_oid);
-
-		if (fn_provolatile != PROVOLATILE_IMMUTABLE)
+		if (!isFuncCacheable(fn_oid))
 		{
-			Assert(fn_provolatile == PROVOLATILE_STABLE || fn_provolatile == PROVOLATILE_VOLATILE);
 			return CdbVisit_Failure;
 		}
-
 	}
 
 	if (IsA(ps, ExternalScanState) || IsA(ps,ShareInputScanState))
@@ -431,8 +421,59 @@ checkNoncacheableNodeWalker(PlanState *ps,
 		return CdbVisit_Failure;
 	}
 
+	/* Check qual and target list of the node for any non-cacheable functions */
+	List *qual = ps->plan->qual;
+	List *tlist = ps->plan->targetlist;
+	if (ExprNonCacheableWalker((Node *) tlist, NULL /* ctx */) ||
+			ExprNonCacheableWalker((Node *) qual, NULL /* ctx */))
+	{
+		return CdbVisit_Failure;
+	}
+
 	/* Continue walk */
 	return CdbVisit_Walk;
+}
+
+
+/*
+ * Walker function to check if an expression list can be cached.
+ * This is used for both the projection and qual lists.
+ *
+ * Returns true if any non-cacheable functions are found, false otherwise.
+ */
+static bool
+ExprNonCacheableWalker(Node *expr, void *ctx)
+{
+	Assert(ctx == NULL);
+
+	if (expr == NULL)
+	{
+		return false;
+	}
+	else if (IsA(expr, FuncExpr))
+	{
+		Oid fn_oid = ((FuncExpr *) expr)->funcid;
+		if (!isFuncCacheable(fn_oid))
+		{
+			/* Found expression using non-cacheable function. We're done, end walker */
+			return true;
+		}
+	}
+
+	return expression_tree_walker(expr, ExprNonCacheableWalker, ctx);
+}
+
+/*
+ * Checks if the results of a function can be cached.
+ * Only IMMUTABLE functions can be cached.
+ *
+ * Returns true if function results can be cached, false otherwise.
+ */
+static bool
+isFuncCacheable(Oid fn_oid)
+{
+	char fn_provolatile = func_volatile(fn_oid);
+	return (fn_provolatile == PROVOLATILE_IMMUTABLE);
 }
 
 /*
@@ -445,7 +486,7 @@ workfile_mgr_is_cacheable_plan(PlanState *ps)
 {
 	Assert(NULL != ps);
 
-	CdbVisitOpt status = planstate_walk_node(ps, checkNoncacheableNodeWalker, NULL);
+	CdbVisitOpt status = planstate_walk_node(ps, PlanNonCacheableWalker, NULL);
 
 	/* status == CdbVisit_Failure means we found a volatile node */
 	return (status != CdbVisit_Failure);

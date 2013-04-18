@@ -2230,6 +2230,7 @@ validate_index(Oid heapId, Oid indexId, Snapshot snapshot)
 			{
 				tuplesort_end((Tuplesortstate *) state.tuplesort);
 			}
+			state.tuplesort = NULL;
 		}
 		PG_RE_THROW();
 	}

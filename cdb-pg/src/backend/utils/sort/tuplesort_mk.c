@@ -1711,7 +1711,12 @@ inittapes_mk(Tuplesortstate_mk *state, const char* rwfile_prefix)
     if (state->ss != NULL)
     {
     	ps = &state->ss->ps;
-    	can_be_reused = true;
+    	Sort *node = (Sort *) ps->plan;
+    	if (node->share_type == SHARE_NOTSHARED)
+    	{
+    		/* Only attempt to cache when not shared under a ShareInputScan */
+    		can_be_reused = true;
+    	}
     }
 
     /*
