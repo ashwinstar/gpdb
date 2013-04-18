@@ -285,10 +285,9 @@ OPTIONS
  files are dumped in the master or segment data directory to 
  db_dumps/YYYYMMDD/config_files_<timestamp>.tar. 
 
- If --ddboost is specified, the file are located in the db_dumps 
- directory on the default storage unit. This option is not affected by 
- directory specified by --ddboost-backupdir. The file is always located 
- in the db_dumps directory. 
+ If --ddboost is specified, the backup is located on the default storage 
+ unit in the directory specified by --ddboost-backupdir when the Data 
+ Domain Boost credentials were set.
 
 
 -G (dump global objects) 
@@ -297,10 +296,9 @@ OPTIONS
  Global objects are dumped in the master data directory to 
  db_dumps/YYYYMMDD/gp_global_1_1_<timestamp>. 
  
- If --ddboost is specified, the backup is located in the db_dumps 
- directory on the default storage unit. This option is not affected by 
- directory specified by --ddboost-backupdir. The backup is always located 
- in the db_dumps directory. 
+ If --ddboost is specified, the backup is located on the default storage 
+ unit in the directory specified by --ddboost-backupdir when the Data 
+ Domain Boost credentials were set.
 
 
 -h (record dump details) 
