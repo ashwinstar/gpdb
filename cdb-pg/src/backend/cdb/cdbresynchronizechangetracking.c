@@ -2011,6 +2011,7 @@ static int ChangeTracking_WriteBuffer(File file, CTFType ftype)
 	int 	freespace;
 	int 	wrote = 0;
 	int64	restartpos;
+	int64 actualpos = 0;
 	
 	Assert(ftype != CTF_META);
 	Assert(ftype != CTF_LOG_TRANSIENT);
@@ -2058,9 +2059,17 @@ static int ChangeTracking_WriteBuffer(File file, CTFType ftype)
 	errno = 0;
 	wrote = FileWrite(file, buf, bufstat->maxbufsize);
 
-	/* was there a write error? */
-	if (wrote <= 0)
+	/* Verify if the number of bytes written is what we expected */
+	if (wrote != bufstat->maxbufsize)
+	{
+		/* The callers of this module should handle the error return value. But still adding an extra
+		 * elog message for debug purposes.*/
+		elog(WARNING, "Unable to write %d bytes to change tracking %s. Actual bytes written = %d."
+									,bufstat->maxbufsize
+									,ChangeTracking_FtypeToString(ftype)
+									,wrote);
 		return -1;
+	}
 	
 	/*
 	 * check if there's room for more records in this buffer. 
@@ -2075,6 +2084,20 @@ static int ChangeTracking_WriteBuffer(File file, CTFType ftype)
 			changeTrackingCompState->ctfull_bufs_added++;
 		else
 			changeTrackingCompState->ctcompact_bufs_added++;
+
+		/* This is an extra check to see if we can correctly seek to the end of file.
+		 * If the seek to the end of the file is broken, there is a chance that in
+		 * the next block writing cycle the system may start writing from a stale EOF
+		 * causing corruption. */
+		actualpos = FileSeek(file, 0, SEEK_END);
+		if (restartpos + bufstat->maxbufsize != actualpos)
+		{
+			 ereport(WARNING,(errmsg("FileSeek to the end looks broken."
+												" Expected EOF = " INT64_FORMAT
+												" but after FileSeek(SEEK_END) we get EOF = " INT64_FORMAT
+												,(restartpos + bufstat->maxbufsize)
+												,actualpos)));
+		}
 	}
 	else
 	{
@@ -2117,8 +2140,8 @@ static int ChangeTracking_WriteMeta(File file)
 	errno = 0;
 	wrote = FileWrite(file, metabuf, CHANGETRACKING_METABUFLEN);
 
-	/* was there a write error? */
-	if (wrote <= 0)
+	/* Verify if the number of bytes written are what we expected. */
+	if (wrote != CHANGETRACKING_METABUFLEN)
 		return -1;
 	
 	return 0;
@@ -2288,7 +2311,7 @@ void ChangeTracking_MarkIncrResync(void)
 	
 	file = ChangeTracking_OpenFile(ftype);	
 	
-	if(ChangeTracking_WriteMeta(file) > 0)
+	if(ChangeTracking_WriteMeta(file) < 0)
 		ChangeTracking_HandleWriteError(ftype);
 	
 	errno = 0;
@@ -2316,7 +2339,7 @@ ChangeTracking_MarkTransitionToResyncCompleted(void)
 	changeTrackingResyncMeta->resync_transition_completed = true;
 	file = ChangeTracking_OpenFile(ftype);	
 	
-	if(ChangeTracking_WriteMeta(file) > 0)
+	if(ChangeTracking_WriteMeta(file) < 0)
 		ChangeTracking_HandleWriteError(ftype);
 
 	errno = 0;
