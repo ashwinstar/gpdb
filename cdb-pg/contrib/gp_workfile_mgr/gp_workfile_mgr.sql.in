@@ -92,8 +92,8 @@ CREATE VIEW gp_workfile_usage_per_segment AS
  SELECT C.* FROM gp_toolkit.__gp_masterid as id, gp_workfile_usage_per_segment_f() as C  (segid int, bytes bigint);
 
 CREATE VIEW gp_workfile_usage_per_query AS
-SELECT dbname, username, sessionid, commandid, segid, sum(size) AS size 
+SELECT sessionid, commandid, segid, sum(size) AS size 
 FROM gp_workfile_entries 
-GROUP BY (sessionid, commandid, dbname, username, segid);
+GROUP BY (sessionid, commandid, segid);
 
 COMMIT;
