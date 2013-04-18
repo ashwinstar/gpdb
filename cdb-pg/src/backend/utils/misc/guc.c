@@ -1026,7 +1026,7 @@ static struct config_bool ConfigureNamesBool[] =
 			gettext_noop("Enable work file caching"),
 			gettext_noop("When enabled, work files are persistent "
 					     "and their contents can be reused."),
-			GUC_SUPERUSER_ONLY | GUC_GPDB_ADDOPT
+			GUC_GPDB_ADDOPT | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_workfile_caching,
 		false, NULL, NULL
@@ -5547,13 +5547,13 @@ static struct config_string ConfigureNamesString[] =
 		"warning", assign_log_min_messages, NULL
 	},
 	{
-		{"gp_workfile_caching_loglevel", PGC_USERSET, DEVELOPER_OPTIONS,
+		{"gp_workfile_caching_loglevel", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Sets the logging level for workfile caching debugging messages"),
 			gettext_noop("Valid values are DEBUG5, DEBUG4, DEBUG3, DEBUG2, "
 						 "DEBUG1, LOG, NOTICE, WARNING, and ERROR. Each level includes all the "
 						 "levels that follow it. The later the level, the fewer messages are "
 						 "sent."),
-			GUC_GPDB_ADDOPT
+			GUC_GPDB_ADDOPT | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_workfile_caching_loglevel_str,
 		"debug1", assign_gp_workfile_caching_loglevel, NULL
