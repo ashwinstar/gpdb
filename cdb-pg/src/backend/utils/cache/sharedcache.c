@@ -594,7 +594,11 @@ Cache_Insert(Cache *cache, CacheEntry *entry)
 	/* Look up or insert anchor element for this entry */
 	bool existing = false;
 	volatile CacheAnchor *anchor = SyncHTInsert(cache->syncHashtable, &entry->hashvalue, &existing);
-	Assert(NULL != anchor);
+	/*
+	 * This should never happen since the SyncHT has as many entries as the SharedCache,
+	 * and we'll run out of SharedCache entries before we fill up the SyncHT
+	 */
+	insist_log(NULL != anchor, "Could not insert in the cache: SyncHT full");
 
 	/* Acquire anchor lock to touch the chain */
 	SpinLockAcquire(&anchor->spinlock);
