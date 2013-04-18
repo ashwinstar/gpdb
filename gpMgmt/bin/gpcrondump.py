@@ -34,7 +34,7 @@ try:
                                         write_dirty_file, write_dirty_file_to_temp, write_last_operation_file,\
                                         write_partition_list_file, write_state_file, get_last_operation_data, \
                                         validate_current_timestamp, generate_dump_timestamp, get_dirty_heap_tables 
-    from gppylib.operations.backup_utils import get_latest_full_dump_timestamp, check_funny_chars_in_tablenames
+    from gppylib.operations.backup_utils import get_latest_full_dump_timestamp, check_funny_chars_in_tablenames, expand_partitions_and_populate_filter_file, get_lines_from_file
     from gppylib.operations.utils import DEFAULT_NUM_WORKERS
     from gppylib.gparray import GpArray
     from gppylib.db import dbconn
@@ -165,6 +165,24 @@ class GpCronDump(Operation):
         if self.clear_dumps and self.incremental:
             raise Exception('-c option can not be selected with incremental backup')
 
+        if self.include_dump_tables and self.include_dump_tables_file:
+            raise Exception('-t can not be selected with --table-file option')
+
+        if self.include_dump_tables and self.exclude_dump_tables_file:
+            raise Exception('-t can not be selected with --exclude-table-file option')
+
+        if self.exclude_dump_tables and self.exclude_dump_tables_file:
+            raise Exception('-T can not be selected with --exclude-table-file option')
+
+        if self.exclude_dump_tables and self.include_dump_tables_file:
+            raise Exception('-T can not be selected with --table-file option')
+
+        if self.include_dump_tables and self.exclude_dump_tables:
+            raise Exception('-t can not be selected with -T option')
+
+        if self.include_dump_tables_file and self.exclude_dump_tables_file:
+            raise Exception('--table-file can not be selected with --exclude-table-file option')
+
         if ('--inserts' in self.output_options or '--oids' in self.output_options or '--column-inserts' in self.output_options) and self.incremental:
             raise Exception('--inserts, --column-inserts, --oids cannot be selected with incremental backup')
 
@@ -272,13 +290,37 @@ class GpCronDump(Operation):
         else:
             raise ExceptionNoStackTraceNeeded('Failed to connect to DD_host with DD_user and the DD_password')
 
-    def get_include_exclude_for_dump_database(self, dirty_file):
+    def get_include_exclude_for_dump_database(self, dirty_file, dbname):
+        include_file = None
+        exclude_file = None
+
         if self.incremental:
             include_file = dirty_file
             exclude_file = None
         else:
-            include_file = self.include_dump_tables_file
-            exclude_file = self.exclude_dump_tables_file
+            if self.include_dump_tables:
+                include_file = expand_partitions_and_populate_filter_file(dbname,
+                                                                           self.include_dump_tables,
+                                                                          'include_dump_tables_file')
+                self.include_dump_tables = []
+
+            if self.exclude_dump_tables:
+                exclude_file = expand_partitions_and_populate_filter_file(dbname,
+                                                                          self.exclude_dump_tables,
+                                                                          'exclude_dump_tables_file')
+                self.exclude_dump_tables = []
+
+            if self.include_dump_tables_file:
+                include_tables = get_lines_from_file(self.include_dump_tables_file) 
+                include_file = expand_partitions_and_populate_filter_file(dbname,
+                                                                          include_tables,
+                                                                          'include_dump_tables_file')
+
+            if self.exclude_dump_tables_file:
+                exclude_tables = get_lines_from_file(self.exclude_dump_tables_file) 
+                exclude_file = expand_partitions_and_populate_filter_file(dbname,
+                                                                          exclude_tables,
+                                                                          'exclude_dump_tables_file')
 
         return (include_file, exclude_file)
 
@@ -368,7 +410,7 @@ class GpCronDump(Operation):
 
                 dirty_file = write_dirty_file_to_temp(dirty_partitions)
 
-            (include_file, exclude_file) = self.get_include_exclude_for_dump_database(dirty_file)
+            (include_file, exclude_file) = self.get_include_exclude_for_dump_database(dirty_file, dump_database)
 
             dump_outcome = DumpDatabase(dump_database = dump_database,
                                         dump_schema = self.dump_schema,
@@ -401,6 +443,11 @@ class GpCronDump(Operation):
                 if os.path.isfile(dirty_file):
                     os.remove(dirty_file)
                 write_dirty_file(self.master_datadir, dirty_partitions, self.backup_dir)
+
+            if include_file is not None and os.path.exists(include_file): 
+                os.remove(include_file)
+            if exclude_file is not None and os.path.exists(exclude_file):
+                os.remove(exclude_file)
 
             write_state_file('ao', self.master_datadir, self.backup_dir, ao_partition_list)
             write_state_file('co', self.master_datadir, self.backup_dir, co_partition_list)

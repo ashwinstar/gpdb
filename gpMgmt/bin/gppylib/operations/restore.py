@@ -18,7 +18,7 @@ from gppylib.operations import Operation
 from gppylib.operations.backup_utils import check_backup_type, generate_dirtytable_filename, generate_partition_list_filename, generate_plan_filename,\
                                             generate_metadata_filename, get_full_timestamp_for_incremental, get_lines_from_file, write_lines_to_file, \
                                             verify_lines_in_file, generate_increments_filename, generate_report_filename, create_temp_file_with_tables, \
-                                            get_all_segment_addresses, scp_file_to_hosts, run_pool_command, execute_sql
+                                            get_all_segment_addresses, scp_file_to_hosts, run_pool_command, execute_sql, expand_partition_tables
 from gppylib.operations.utils import RemoteOperation, ParallelOperation
 from gppylib.operations.unix import CheckFile, CheckRemoteFile, CheckRemoteDir, MakeRemoteDir, RemoveFile, RemoveRemoteFile
 
@@ -248,46 +248,6 @@ def restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore
 
     return True
 
-def populate_restore_tables(table, rows, non_partition_tables, partition_leaves):
-    if not rows:
-        non_partition_tables.append(table)
-    else:
-        for (schema_name, partition_leaf_name) in rows:
-            partition_leaf = schema_name.strip() + '.' + partition_leaf_name.strip()
-            partition_leaves.append(partition_leaf)
-    return (non_partition_tables, partition_leaves)
-                    
-def expand_partition_tables(dbname, restore_tables):
-    partition_leaves_sql = """
-                           SELECT x.schemaname, x.partitiontablename 
-                           FROM (
-                                SELECT distinct schemaname, tablename, partitiontablename, partitionlevel 
-                                FROM pg_partitions 
-                                WHERE tablename = '%s' and schemaname = '%s'
-                                ) as X, 
-                           (SELECT schemaname, tablename maxtable, max(partitionlevel) maxlevel 
-                            FROM pg_partitions 
-                            group by (tablename, schemaname)
-                           ) as Y
-                           WHERE x.schemaname = y.schemaname and x.tablename = Y.maxtable and x.partitionlevel = Y.maxlevel;
-"""
-
-    if restore_tables is None:
-        return
-
-    non_partition_tables = []
-    partition_leaves = []
-
-    with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
-        for table in restore_tables:
-            (schemaname, tablename) = table.split('.')
-            partition_sql = partition_leaves_sql % (tablename, schemaname)
-            curs = dbconn.execSQL(conn, partition_sql)
-            rows = curs.fetchall()
-            (non_partition_tables, partition_leaves) =  \
-                    populate_restore_tables(table, rows, non_partition_tables, partition_leaves)
-    return non_partition_tables + partition_leaves 
-
 class RestoreDatabase(Operation):
     def __init__(self, restore_timestamp, no_analyze, drop_db, restore_global, master_datadir, backup_dir, 
                 master_port, ddboost, no_plan, restore_tables, batch_default, no_ao_stats): 
@@ -403,7 +363,7 @@ class RestoreDatabase(Operation):
         Psql('Invoking global dump', filename=global_file).run(validateAfter=True)
 
     def _multitry_createdb(self, restore_timestamp, restore_db, master_datadir, backup_dir, master_port):
-        no_of_trys = 15 
+        no_of_trys = 600 
         for i in range(no_of_trys):
             try:
                 self._process_createdb(restore_timestamp, restore_db, master_datadir, backup_dir, master_port)

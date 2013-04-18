@@ -61,7 +61,7 @@ class DumpTestCase(unittest.TestCase):
 
     def test00_create_dump_line_without_incremental(self):
         output = self.dumper.create_dump_string('dcddev', '20121212', '01234567891234')
-        expected_output = """gp_dump -p 0 -U dcddev --gp-d=/data/master/p1/db_dumps/20121212 --gp-r=/data/master/p1/db_dumps/20121212 --gp-s=p --gp-k=01234567891234 --gp-c -n "\\"testschema\\"" testdb --table-file=/tmp/table_list.txt"""
+        expected_output = """gp_dump -p 0 -U dcddev --gp-d=/data/master/p1/db_dumps/20121212 --gp-r=/data/master/p1/db_dumps/20121212 --gp-s=p --gp-k=01234567891234 --gp-c --no-expand-children -n "\\"testschema\\"" testdb --table-file=/tmp/table_list.txt"""
         self.assertEquals(output, expected_output)
 
     @patch('gppylib.operations.dump.get_heap_partition_list', return_value=[['123', 'public', 't4'], ['123', 'public', 't5'], ['123', 'pepper', 't6']])

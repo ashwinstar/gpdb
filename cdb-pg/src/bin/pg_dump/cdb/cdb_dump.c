@@ -61,7 +61,7 @@ static bool testPartitioningSupport(void);
 static bool transformPassThroughParms(InputOptions * pInputOpts);
 static bool copyFilesToSegments(InputOptions * pInputOpts, SegmentDatabaseArray *segDBAr);
 static int	getRemoteVersion(void);
-
+static bool no_expand_children; /* Do not expand child partitions. This option is passed from gpcrondump.py */
 
 /*
  * static and extern global variables left over from pg_dump
@@ -411,7 +411,7 @@ transformPassThroughParms(InputOptions *pInputOpts)
 
 	g_gp_supportsPartitioning = testPartitioningSupport();
 
-	if (g_gp_supportsPartitioning)
+	if (shouldExpandChildren(g_gp_supportsPartitioning, no_expand_children))
 	{
 
 /*		if(!isChildSelected('t', table_include_oids) || */
@@ -860,6 +860,7 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		{"exclude-table-file", required_argument, NULL, 8},
 		{"incremental", no_argument, NULL, 9},
 		{"gp-k", required_argument, NULL, 10},
+        {"no-expand-children", no_argument, NULL, 11},
 
 		{NULL, 0, NULL, 0}
 	};
@@ -877,7 +878,7 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 	g_comment_end[0] = '\0';
 
 
-	dataOnly = schemaOnly = incremental_backup = dump_inserts = column_inserts = false;
+	dataOnly = schemaOnly = incremental_backup = dump_inserts = column_inserts = no_expand_children = false;
 
 	progname = (char *) get_progname(argv[0]);
 
@@ -1227,6 +1228,10 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 					goto cleanup;
 				}
 				break;
+        
+            case 11:
+                no_expand_children = true;
+                break;
 
 			default:
 				mpp_err_msg_cache(logError, progname, "Try \"%s --help\" for more information.\n", progname);

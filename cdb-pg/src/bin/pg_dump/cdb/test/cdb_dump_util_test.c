@@ -539,6 +539,38 @@ void test__formDDBoostPsqlCommandLine8(void **state)
 	free(cmdLine);
 }
 
+void test__shouldExpandChildren1(void **state)
+{
+    bool g_gp_supportsPartitioning = false;
+    bool no_expand_children = false;
+    bool result = shouldExpandChildren(g_gp_supportsPartitioning, no_expand_children);
+    assert_false(result);
+}
+
+void test__shouldExpandChildren2(void **state)
+{
+    bool g_gp_supportsPartitioning = true;
+    bool no_expand_children = false;
+    bool result = shouldExpandChildren(g_gp_supportsPartitioning, no_expand_children);
+    assert_true(result);
+}
+
+void test__shouldExpandChildren3(void **state)
+{
+    bool g_gp_supportsPartitioning = true;
+    bool no_expand_children = true;
+    bool result = shouldExpandChildren(g_gp_supportsPartitioning, no_expand_children);
+    assert_false(result);
+}
+
+void test__shouldExpandChildren4(void **state)
+{
+    bool g_gp_supportsPartitioning = false;
+    bool no_expand_children = true;
+    bool result = shouldExpandChildren(g_gp_supportsPartitioning, no_expand_children);
+    assert_false(result);
+}
+
 int 
 main(int argc, char* argv[]) 
 {
@@ -581,7 +613,11 @@ main(int argc, char* argv[])
 			unit_test(test__formDDBoostPsqlCommandLine5),
 			unit_test(test__formDDBoostPsqlCommandLine6),
 			unit_test(test__formDDBoostPsqlCommandLine7),
-			unit_test(test__formDDBoostPsqlCommandLine8)
+			unit_test(test__formDDBoostPsqlCommandLine8),
+			unit_test(test__shouldExpandChildren1),
+			unit_test(test__shouldExpandChildren2),
+			unit_test(test__shouldExpandChildren3),
+			unit_test(test__shouldExpandChildren4)
 	};
 	return run_tests(tests);
 }

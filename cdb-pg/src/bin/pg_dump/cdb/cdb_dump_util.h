@@ -92,6 +92,9 @@ extern char *GetTimestampKey(char*);
 /* Validates a 14 digit timestamp key */
 extern bool ValidateTimestampKey(char*);
 
+/* Determine if we should expand a parent partition to its children */
+extern bool shouldExpandChildren(bool, bool);
+
 /* gets an int from a regex match */
 extern int	GetMatchInt(regmatch_t *pMatch, char *pszInput);
 

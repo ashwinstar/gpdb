@@ -151,6 +151,12 @@ GetMatchString(regmatch_t *pMatch, char *pszInput)
 	return pszRtn;
 }
 
+bool
+shouldExpandChildren(bool g_gp_supportsPartitioning, bool no_expand_children)
+{
+    return (g_gp_supportsPartitioning && !no_expand_children);
+}
+
 /*
  * isFilteringAllowed: This method checks if we should filter out tables based on 
  *                     whether we are using incremental mode for backup and if 

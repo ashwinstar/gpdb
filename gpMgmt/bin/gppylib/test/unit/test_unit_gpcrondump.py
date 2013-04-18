@@ -231,35 +231,80 @@ class GpCronDumpTestCase(unittest.TestCase):
         options.masterDataDirectory = '/tmp/foobar'
         gpcd = GpCronDump(options, None)
         dirtyfile = '/tmp/dirty'
-        (inc, exc) = gpcd.get_include_exclude_for_dump_database(dirtyfile)
+        dbname = 'foo'
+        (inc, exc) = gpcd.get_include_exclude_for_dump_database(dirtyfile, dbname)
         self.assertEquals(inc, None)
         self.assertEquals(exc, None)
  
     @patch('gpcrondump.GpCronDump._get_master_port')
     @patch('gpcrondump.validate_current_timestamp')
-    def test_get_include_exclude_for_dump_database01(self, mock1, mock2):
+    @patch('gpcrondump.expand_partitions_and_populate_filter_file', return_value='/tmp/include_dump_tables_file')
+    @patch('gpcrondump.get_lines_from_file', return_value=['public.t1', 'public.t2'])
+    def test_get_include_exclude_for_dump_database01(self, mock1, mock2, mock3, mock4):
         options = GpCronDumpTestCase.Options()
         options.masterDataDirectory = '/tmp/foobar'
         options.include_dump_tables_file = '/mydir/incfile'
-        options.exclude_dump_tables_file = '/odir/exfile'
         gpcd = GpCronDump(options, None)
         dirtyfile = '/tmp/dirty'
-        (inc, exc) = gpcd.get_include_exclude_for_dump_database(dirtyfile)
-        self.assertEquals(inc, '/mydir/incfile')
-        self.assertEquals(exc, '/odir/exfile')
+        dbname = 'foo'
+        (inc, exc) = gpcd.get_include_exclude_for_dump_database(dirtyfile, dbname)
+        self.assertTrue(inc.startswith('/tmp/include_dump_tables_file'))
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    @patch('gpcrondump.expand_partitions_and_populate_filter_file', return_value='/tmp/include_dump_tables_file')
+    @patch('gpcrondump.get_lines_from_file')
+    def test_get_include_exclude_for_dump_database02(self, mock1, mock2, mock3, mock4):
+        options = GpCronDumpTestCase.Options()
+        options.masterDataDirectory = '/tmp/foobar'
+        options.include_dump_tables = ['public.t1', 'public.t2', 'public.t3']
+        gpcd = GpCronDump(options, None)
+        dirtyfile = '/tmp/dirty'
+        dbname = 'foo'
+        (inc, exc) = gpcd.get_include_exclude_for_dump_database(dirtyfile, dbname)
+        self.assertTrue(inc.startswith('/tmp/include_dump_tables_file'))
 
     @patch('gpcrondump.GpCronDump._get_master_port')
     @patch('gpcrondump.validate_current_timestamp')
     @patch('gppylib.operations.backup_utils.get_latest_full_dump_timestamp', return_value='20121225090000')
-    def test_get_include_exclude_for_dump_database02(self, mock1, mock2, mock3):
+    def test_get_include_exclude_for_dump_database03(self, mock1, mock2, mock3):
         options = GpCronDumpTestCase.Options()
         options.masterDataDirectory = '/tmp/foobar'
         options.incremental = True
         gpcd = GpCronDump(options, None)
         dirtyfile = '/tmp/dirty'
-        (inc, exc) = gpcd.get_include_exclude_for_dump_database(dirtyfile)
+        dbname = 'foo'
+        (inc, exc) = gpcd.get_include_exclude_for_dump_database(dirtyfile, dbname)
         self.assertEquals(inc, '/tmp/dirty')
         self.assertEquals(exc, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    @patch('gpcrondump.expand_partitions_and_populate_filter_file', return_value='/tmp/exclude_dump_tables_file')
+    @patch('gpcrondump.get_lines_from_file', return_value=['public.t1', 'public.t2'])
+    def test_get_include_exclude_for_dump_database04(self, mock1, mock2, mock3, mock4):
+        options = GpCronDumpTestCase.Options()
+        options.masterDataDirectory = '/tmp/foobar'
+        options.exclude_dump_tables_file = '/odir/exfile'
+        gpcd = GpCronDump(options, None)
+        dirtyfile = '/tmp/dirty'
+        dbname = 'foo'
+        (inc, exc) = gpcd.get_include_exclude_for_dump_database(dirtyfile, dbname)
+        self.assertTrue(exc.startswith('/tmp/exclude_dump_tables_file'))
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    @patch('gpcrondump.expand_partitions_and_populate_filter_file', return_value='/tmp/exclude_dump_tables_file')
+    @patch('gpcrondump.get_lines_from_file')
+    def test_get_include_exclude_for_dump_database06(self, mock1, mock2, mock3, mock4):
+        options = GpCronDumpTestCase.Options()
+        options.masterDataDirectory = '/tmp/foobar'
+        options.exclude_dump_tables = ['public.t4', 'public.t5', 'public.t6']
+        gpcd = GpCronDump(options, None)
+        dirtyfile = '/tmp/dirty'
+        dbname = 'foo'
+        (inc, exc) = gpcd.get_include_exclude_for_dump_database(dirtyfile, dbname)
+        self.assertTrue(exc.startswith('/tmp/exclude_dump_tables_file'))
 
     @patch('gpcrondump.GpCronDump._get_master_port')
     @patch('gpcrondump.validate_current_timestamp')
@@ -329,6 +374,60 @@ class GpCronDumpTestCase(unittest.TestCase):
         partition_list = ['public, aot1, 2190', 'public, aot2,aot, 3190']
         with self.assertRaisesRegexp(Exception, 'Invalid partition entry "public, aot2,aot, 3190"'):
             cron._get_table_names_from_partition_list(partition_list)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_table_filter1(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.include_dump_tables = 'foo'
+        options.include_dump_tables_file = 'foo'
+        with self.assertRaisesRegexp(Exception, '-t can not be selected with --table-file option'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_table_filter2(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.include_dump_tables = 'foo'
+        options.exclude_dump_tables_file = 'foo'
+        with self.assertRaisesRegexp(Exception, '-t can not be selected with --exclude-table-file option'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_table_filter3(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.exclude_dump_tables = 'foo'
+        options.exclude_dump_tables_file = 'foo'
+        with self.assertRaisesRegexp(Exception, '-T can not be selected with --exclude-table-file option'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_table_filter4(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.exclude_dump_tables = 'foo'
+        options.include_dump_tables_file = 'foo'
+        with self.assertRaisesRegexp(Exception, '-T can not be selected with --table-file option'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_table_filter5(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.include_dump_tables = 'foo'
+        options.exclude_dump_tables = 'foo'
+        with self.assertRaisesRegexp(Exception, '-t can not be selected with -T option'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_table_filter6(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.include_dump_tables_file = 'foo'
+        options.exclude_dump_tables_file = 'foo'
+        with self.assertRaisesRegexp(Exception, '--table-file can not be selected with --exclude-table-file option'):
+            cron = GpCronDump(options, None)
 
 #------------------------------- Mainline --------------------------------
 if __name__ == '__main__':

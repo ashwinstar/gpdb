@@ -2457,6 +2457,107 @@ Feature: Validate command line arguments
         Then gpdbrestore should return a return code of 2
         And gpdbrestore should print Report file does not exist for the given restore timestamp to stdout
 
+    @customer
+    Scenario: gpcrondump -t with parent partition for large partition tables
+        Given the database is running
+        And the database "large_table_db" does not exist
+        And database "large_table_db" exists
+        And there is a "ao" table "ao_table" with compression "None" in "large_table_db" with data
+        And there is a "ao" table "ao_table_for_large_database_01" in "large_table_db" having large number of partitions
+        And the length of partition names of table "ao_table_for_large_database_01" in "large_table_db" exceeds the command line maximum limit
+        And there are no backup files
+        When the user runs "gpcrondump -a -x large_table_db -t public.ao_table_for_large_database_01"
+        And gpcrondump should return a return code of 0
+        Then gpcrondump should print --table-file=/tmp/include_dump_tables_file to stdout
+        And gpcrondump should not print --table="public.ao_table_for_large_database_01" to stdout
+        And all the data from "large_table_db" is saved for verification
+        And the timestamp from gpcrondump is stored 
+        And the user runs gpdbrestore with the stored timestamp 
+        Then gpdbrestore should return a return code of 0
+        And verify that the data of "5551" tables in "large_table_db" is validated after restore 
+        
+    @customer
+    Scenario: gpcrondump --table-file with parent partition for large partition tables
+        Given the database is running
+        And the database "large_table_db" does not exist
+        And database "large_table_db" exists
+        And there is a "ao" table "ao_table" with compression "None" in "large_table_db" with data
+        And there is a "ao" table "ao_table_for_large_database_01" in "large_table_db" having large number of partitions
+        And the length of partition names of table "ao_table_for_large_database_01" in "large_table_db" exceeds the command line maximum limit
+        And there are no backup files
+        And there is a file "include_file" with tables "public.ao_table_for_large_database_01" 
+        When the user runs "gpcrondump -a -x large_table_db --table-file include_file"
+        And gpcrondump should return a return code of 0
+        Then gpcrondump should print --table-file=/tmp/include_dump_tables_file to stdout
+        And gpcrondump should not print --table="public.ao_table_for_large_database_01" to stdout
+        And the timestamp from gpcrondump is stored 
+        And all the data from "large_table_db" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp 
+        Then gpdbrestore should return a return code of 0
+        And verify that the data of "5551" tables in "large_table_db" is validated after restore 
+
+    @customer
+    Scenario: gpcrondump -T with parent partition for large partition tables
+        Given the database is running
+        And the database "large_table_db" does not exist
+        And database "large_table_db" exists
+        And there is a "ao" table "ao_table" with compression "None" in "large_table_db" with data
+        And there is a "ao" table "ao_table_for_large_database_01" in "large_table_db" having large number of partitions
+        And the length of partition names of table "ao_table_for_large_database_01" in "large_table_db" exceeds the command line maximum limit
+        And there are no backup files
+        When the user runs "gpcrondump -a -x large_table_db -T public.ao_table_for_large_database_01"
+        And gpcrondump should return a return code of 0
+        Then gpcrondump should print --exclude-table-file=/tmp/exclude_dump_tables_file to stdout
+        And gpcrondump should not print --exclude-table="public.ao_table_for_large_database_01" to stdout
+        And the timestamp from gpcrondump is stored 
+        And all the data from "large_table_db" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp 
+        Then gpdbrestore should return a return code of 0
+        And verify that the data of "1" tables in "large_table_db" is validated after restore 
+        And verify that the tuple count of all appendonly tables are consistent in "large_table_db"
+
+    @customer
+    Scenario: gpcrondump --exclude-table-file with parent partition for large partition tables
+        Given the database is running
+        And the database "large_table_db" does not exist
+        And database "large_table_db" exists
+        And there is a "ao" table "ao_table" with compression "None" in "large_table_db" with data
+        And there is a "ao" table "ao_table_for_large_database_01" in "large_table_db" having large number of partitions
+        And the length of partition names of table "ao_table_for_large_database_01" in "large_table_db" exceeds the command line maximum limit
+        And there are no backup files
+        And there is a file "exclude_file" with tables "public.ao_table_for_large_database_01" 
+        When the user runs "gpcrondump -a -x large_table_db --exclude-table-file exclude_file"
+        And gpcrondump should return a return code of 0
+        Then gpcrondump should print --exclude-table-file=/tmp/exclude_dump_tables_file to stdout
+        And gpcrondump should not print --exclude-table="public.ao_table_for_large_database_01" to stdout
+        And the timestamp from gpcrondump is stored 
+        And all the data from "large_table_db" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp 
+        Then gpdbrestore should return a return code of 0
+        And verify that the data of "1" tables in "large_table_db" is validated after restore 
+        And verify that the tuple count of all appendonly tables are consistent in "large_table_db"
+
+    Scenario: Negative tests for table filter options for gpcrondump
+        Given the database is running
+        When the user runs "gpcrondump -a -t public.table --table-file include_file -x schematestdb"
+        Then gpcrondump should print -t can not be selected with --table-file option to stdout
+        And gpcrondump should return a return code of 2
+        When the user runs "gpcrondump -a -t public.table --exclude-table-file exclude_file -x schematestdb"
+        Then gpcrondump should print -t can not be selected with --exclude-table-file option to stdout
+        And gpcrondump should return a return code of 2
+        When the user runs "gpcrondump -a -T public.table --exclude-table-file exclude_file -x schematestdb"
+        Then gpcrondump should print -T can not be selected with --exclude-table-file option to stdout
+        And gpcrondump should return a return code of 2
+        When the user runs "gpcrondump -a -T public.table --table-file include_file -x schematestdb"
+        Then gpcrondump should print -T can not be selected with --table-file option to stdout
+        And gpcrondump should return a return code of 2
+        When the user runs "gpcrondump -a -t public.table1 -T public.table2 -x schematestdb"
+        Then gpcrondump should print -t can not be selected with -T option to stdout
+        And gpcrondump should return a return code of 2
+        When the user runs "gpcrondump -a --table-file include_file --exclude-table-file exclude_file -x schematestdb"
+        Then gpcrondump should print --table-file can not be selected with --exclude-table-file option to stdout
+        And gpcrondump should return a return code of 2
+        
     # THIS SHOULD BE THE LAST TEST
     @fire
     Scenario: cleanup for backup feature

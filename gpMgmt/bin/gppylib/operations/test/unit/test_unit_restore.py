@@ -10,7 +10,7 @@ from gppylib.operations.restore import RestoreDatabase, create_restore_plan, get
         validate_tablenames, create_plan_file_contents, GetDbName, get_dirty_table_file_contents, \
         get_incremental_restore_timestamps, get_partition_list, get_restore_dir, is_begin_incremental_run, \
         is_incremental_restore, get_restore_table_list, validate_restore_tables_list, \
-        expand_partition_tables, populate_restore_tables, update_ao_stat_func, update_ao_statistics
+        update_ao_stat_func, update_ao_statistics
 
 
 from gppylib.commands.base import ExecutionError
@@ -710,45 +710,6 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         restore_tables = ['public.t5', 'public.t2']
         with self.assertRaisesRegexp(Exception, 'Invalid tables for -T option: The following tables were not found in plan file'):
             validate_restore_tables_list(plan_file_contents, restore_tables)
-
-    def test_populate_restore_tables_00(self):
-        table = 'public.t1'
-        rows = [['public', 't1'], ['public', 't2'], ['public', 't3']]
-        non_partition_tables = []
-        partition_leaves = []
-        self.assertEqual(populate_restore_tables(table, rows, non_partition_tables, partition_leaves),
-                            (([], ['public.t1', 'public.t2', 'public.t3'])))
-
-    def test_populate_restore_tables_01(self):
-        table = 'public.t1'
-        rows = []
-        non_partition_tables = []
-        partition_leaves = []
-        self.assertEqual(populate_restore_tables(table, rows, non_partition_tables, partition_leaves),
-                            ((['public.t1'], [])))
-
-    def test_expand_partition_tables_00(self):
-        self.assertEqual(expand_partition_tables('foo', None), None)
-
-    @patch('gppylib.operations.restore.dbconn.execSQL')
-    @patch('gppylib.operations.restore.dbconn.connect')
-    @patch('pygresql.pgdb.pgdbCursor.fetchall', return_value=[['public', 'tl1'], ['public', 'tl2']])
-    def test_expand_partition_tables_01(self, mock1, mock2, mock3):
-        dbname = 'foo'
-        restore_tables = ['public.t1', 'public.t2']
-        expected_output = ['public.tl1', 'public.tl2', 'public.t2']
-        result = expand_partition_tables(dbname, restore_tables)
-        self.assertEqual(result.sort(), expected_output.sort())
-
-    @patch('gppylib.operations.restore.dbconn.execSQL')
-    @patch('gppylib.operations.restore.dbconn.connect')
-    @patch('pygresql.pgdb.pgdbCursor.fetchall', return_value=[])
-    def test_expand_partition_tables_02(self, mock1, mock2, mock3):
-        dbname = 'foo'
-        restore_tables = ['public.t1', 'public.t2']
-        expected_output = ['public.t1', 'public.t2']
-        result = expand_partition_tables(dbname, restore_tables)
-        self.assertEqual(result.sort(), expected_output.sort())
 
     @patch('gppylib.operations.unix.CheckFile.run', return_value=False)
     def test_restore_global_00(self, mock):

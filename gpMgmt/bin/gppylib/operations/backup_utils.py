@@ -12,6 +12,51 @@ DUMP_DIR = 'db_dumps'
 
 logger = gplog.get_default_logger()
 
+def expand_partitions_and_populate_filter_file(dbname, partition_list, file_prefix):
+    expanded_partitions = expand_partition_tables(dbname, partition_list)
+    dump_partition_list = list(set(expanded_partitions + partition_list))
+    return create_temp_file_from_list(dump_partition_list, file_prefix)
+
+def populate_filter_tables(table, rows, non_partition_tables, partition_leaves):
+    if not rows:
+        non_partition_tables.append(table)
+    else:
+        for (schema_name, partition_leaf_name) in rows:
+            partition_leaf = schema_name.strip() + '.' + partition_leaf_name.strip()
+            partition_leaves.append(partition_leaf)
+    return (non_partition_tables, partition_leaves)
+                    
+def expand_partition_tables(dbname, filter_tables):
+    partition_leaves_sql = """
+                           SELECT x.schemaname, x.partitiontablename 
+                           FROM (
+                                SELECT distinct schemaname, tablename, partitiontablename, partitionlevel 
+                                FROM pg_partitions 
+                                WHERE tablename = '%s' and schemaname = '%s'
+                                ) as X, 
+                           (SELECT schemaname, tablename maxtable, max(partitionlevel) maxlevel 
+                            FROM pg_partitions 
+                            group by (tablename, schemaname)
+                           ) as Y
+                           WHERE x.schemaname = y.schemaname and x.tablename = Y.maxtable and x.partitionlevel = Y.maxlevel;
+"""
+
+    if filter_tables is None:
+        return
+
+    non_partition_tables = []
+    partition_leaves = []
+
+    with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
+        for table in filter_tables:
+            (schemaname, tablename) = table.split('.')
+            partition_sql = partition_leaves_sql % (tablename, schemaname)
+            curs = dbconn.execSQL(conn, partition_sql)
+            rows = curs.fetchall()
+            (non_partition_tables, partition_leaves) =  \
+                    populate_filter_tables(table, rows, non_partition_tables, partition_leaves)
+    return non_partition_tables + partition_leaves 
+
 def create_temp_file_from_list(entries, prefix):
 
     if entries is None:

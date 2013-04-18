@@ -260,6 +260,8 @@ def check_table_exists(context, dbname, table_name, table_type=None):
         original_table_type = 'co'
     elif table_row[2] == 'h':
         original_table_type = 'heap'
+    elif table_row[2] == 'x':
+        original_table_type = 'external'
     else:
         raise Exception('Unknown table type %s' % table_row[2]) 
 
@@ -268,9 +270,22 @@ def check_table_exists(context, dbname, table_name, table_type=None):
 
     return True
 
+def drop_external_table_if_exists(context, table_name, dbname):
+    if check_table_exists(context, table_name=table_name, dbname=dbname, table_type='external'):
+        drop_external_table(context, table_name=table_name, dbname=dbname)
+
 def drop_table_if_exists(context, table_name, dbname):
     if check_table_exists(context, table_name=table_name, dbname=dbname):
         drop_table(context, table_name=table_name, dbname=dbname)
+
+def drop_external_table(context, table_name, dbname):
+    SQL = 'drop external table %s' % table_name
+    with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
+        dbconn.execSQL(conn, SQL)
+        conn.commit()
+
+    if check_table_exists(context, table_name=table_name, dbname=dbname, table_type='external'):
+        raise Exception('Unable to successfully drop the table %s' % table_name) 
 
 def drop_table(context, table_name, dbname):
     SQL = 'drop table %s' % table_name
@@ -326,7 +341,6 @@ def get_partition_tablenames(tablename, dbname, part_level = 1):
     return rows
      
 def get_partition_names(schemaname, tablename, dbname, part_level, part_number):
-	    
     part_num_sql = "select partitiontablename from pg_partitions where schemaname='%s' and tablename='%s' and partitionlevel=%s and partitionposition=%s;" % (schemaname, tablename, part_level, part_number)
     rows = getRows(dbname, part_num_sql)
     return rows

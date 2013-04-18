@@ -425,6 +425,9 @@ class DumpDatabase(Operation):
             logger.info("Adding --incremental")
             dump_line += " --incremental"
 
+        logger.info('Adding --no-expand-children')
+        dump_line += " --no-expand-children"
+
         """
         AK: Some ridiculous escaping here. I apologize.
         These options get passed-through gp_dump to gp_dump_agent.

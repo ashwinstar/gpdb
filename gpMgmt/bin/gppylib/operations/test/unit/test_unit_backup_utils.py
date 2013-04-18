@@ -15,7 +15,7 @@ from gppylib.operations.backup_utils import generate_report_filename, validate_t
                                             check_backup_type, get_timestamp_val, get_dump_dirs, get_latest_full_dump_timestamp, \
                                             generate_pgstatlastoperation_filename, get_latest_report_timestamp, get_latest_report_in_dir, \
                                             create_temp_file_from_list, get_timestamp_from_increments_filename, get_full_timestamp_for_incremental,\
-                                            check_funny_chars_in_tablenames
+                                            check_funny_chars_in_tablenames, expand_partition_tables, populate_filter_tables, expand_partitions_and_populate_filter_file
 from mock import patch, MagicMock, Mock
 
 class BackupUtilsTestCase(unittest.TestCase):
@@ -841,3 +841,79 @@ class BackupUtilsTestCase(unittest.TestCase):
     def test_check_funny_chars_in_tablenames_03(self):
         tablenames = ['helloworld', 'propertablename']
         check_funny_chars_in_tablenames(tablenames) #should not raise an exception
+
+    def test_expand_partition_tables_00(self):
+        self.assertEqual(expand_partition_tables('foo', None), None)
+
+    @patch('gppylib.operations.backup_utils.dbconn.execSQL')
+    @patch('gppylib.operations.backup_utils.dbconn.connect')
+    @patch('pygresql.pgdb.pgdbCursor.fetchall', return_value=[['public', 'tl1'], ['public', 'tl2']])
+    def test_expand_partition_tables_01(self, mock1, mock2, mock3):
+        dbname = 'foo'
+        restore_tables = ['public.t1', 'public.t2']
+        expected_output = ['public.tl1', 'public.tl2', 'public.t2']
+        result = expand_partition_tables(dbname, restore_tables)
+        self.assertEqual(result.sort(), expected_output.sort())
+
+    @patch('gppylib.operations.backup_utils.dbconn.execSQL')
+    @patch('gppylib.operations.backup_utils.dbconn.connect')
+    @patch('pygresql.pgdb.pgdbCursor.fetchall', return_value=[])
+    def test_expand_partition_tables_02(self, mock1, mock2, mock3):
+        dbname = 'foo'
+        restore_tables = ['public.t1', 'public.t2']
+        expected_output = ['public.t1', 'public.t2']
+        result = expand_partition_tables(dbname, restore_tables)
+        self.assertEqual(result.sort(), expected_output.sort())
+
+    def test_populate_filter_tables_00(self):
+        table = 'public.t1'
+        rows = [['public', 't1'], ['public', 't2'], ['public', 't3']]
+        non_partition_tables = []
+        partition_leaves = []
+        self.assertEqual(populate_filter_tables(table, rows, non_partition_tables, partition_leaves),
+                            (([], ['public.t1', 'public.t2', 'public.t3'])))
+
+    def test_populate_filter_tables_01(self):
+        table = 'public.t1'
+        rows = []
+        non_partition_tables = []
+        partition_leaves = []
+        self.assertEqual(populate_filter_tables(table, rows, non_partition_tables, partition_leaves),
+                            ((['public.t1'], [])))
+
+    @patch('gppylib.operations.backup_utils.expand_partition_tables', return_value=['public.t1_p1', 'public.t1_p2', 'public.t1_p3', 'public.t2', 'public.t3'])
+    def test_expand_partitions_and_populate_filter_file01(self, mock):
+        dbname = 'testdb'
+        partition_list = ['public.t1', 'public.t2', 'public.t3']
+        file_prefix = 'include_dump_tables_file'
+        expected_output = ['public.t2', 'public.t3', 'public.t1', 'public.t1_p1', 'public.t1_p2', 'public.t1_p3']
+        result = expand_partitions_and_populate_filter_file(dbname, partition_list, file_prefix)
+        self.assertTrue(os.path.basename(result).startswith(file_prefix))
+        self.assertTrue(os.path.exists(result))
+        contents = get_lines_from_file(result)
+        self.assertEqual(contents.sort(), expected_output.sort())
+        os.remove(result)
+
+    @patch('gppylib.operations.backup_utils.expand_partition_tables', return_value=['public.t1', 'public.t2', 'public.t3'])
+    def test_expand_partitions_and_populate_filter_file02(self, mock):
+        dbname = 'testdb'
+        partition_list = ['public.t1', 'public.t2', 'public.t3']
+        file_prefix = 'exclude_dump_tables_file'
+        result = expand_partitions_and_populate_filter_file(dbname, partition_list, file_prefix)
+        self.assertTrue(os.path.basename(result).startswith(file_prefix))
+        self.assertTrue(os.path.exists(result))
+        contents = get_lines_from_file(result)
+        self.assertEqual(contents.sort(), partition_list.sort())
+        os.remove(result)
+
+    @patch('gppylib.operations.backup_utils.expand_partition_tables', return_value=[])
+    def test_expand_partitions_and_populate_filter_file03(self, mock):
+        dbname = 'testdb'
+        partition_list = []
+        file_prefix = 'exclude_dump_tables_file'
+        result = expand_partitions_and_populate_filter_file(dbname, partition_list, file_prefix)
+        self.assertTrue(os.path.basename(result).startswith(file_prefix))
+        self.assertTrue(os.path.exists(result))
+        contents = get_lines_from_file(result)
+        self.assertEqual(contents.sort(), partition_list.sort())
+        os.remove(result)
