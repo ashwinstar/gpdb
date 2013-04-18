@@ -1,24 +1,29 @@
-COMMAND NAME: gpcrondump
+﻿COMMAND NAME: gpcrondump
 
-A wrapper utility for gp_dump, which can be called directly or 
-from a crontab entry.
+Writes out a database to SQL script files. The script files can be used 
+to restore the database using the gpdbrestore utility. The gpcrondump 
+utility can be called directly or from a crontab entry. 
 
 *****************************************************
 SYNOPSIS
 *****************************************************
 
-gpcrondump -x <database_name> 
+gpcrondump -x database_name 
      [-s <schema> | -t <schema>.<table> | -T <schema>.<table>] 
      [--table-file="<filename>" | --exclude-table-file="<filename>"] 
-     [-u <backup_directory>] [-R <post_dump_script>] 
+     [-u backup_directory] [-R post_dump_script] [--incremental] 
      [-c] [-z] [-r] [-f <free_space_percent>] [-b] [-h] [-j | -k] 
      [-g] [-G] [-C] [-d <master_data_directory>] [-B <parallel_processes>] 
      [-a] [-q] [-y <reportfile>] [-l <logfile_directory>] [-v]
-     { [-E <encoding>] [--inserts | --column-inserts] [--oids] 
-       [--no-owner | --use-set-session-authorization] 
-       [--no-privileges] [--rsyncable] [--ddboost] }
-     
+     { [-E encoding] [--inserts | --column-inserts] [--oids]
+     [--no-owner | --use-set-session-authorization]
+     [--no-privileges] [--rsyncable] 
+     [--ddboost] [--replicate --max-streams <max_IO_streams> ] 
+     [--ddboost-skip-ping] ] }
+
 gpcrondump --ddboost-host <ddboost_hostname> --ddboost-user <ddboost_user>
+     [--ddboost-backupdir <backup_directory> ] 
+     [--ddboost-remote] [--ddboost-skip-ping]
 
 gpcrondump --ddboost-config-remove
 
@@ -33,18 +38,33 @@ gpcrondump --version
 DESCRIPTION
 *****************************************************
 
-gpcrondump is a wrapper utility for gp_dump. By default, dump files are 
-created in their respective master and segment data directories in a 
-directory named db_dumps/YYYYMMDD. The data dump files are compressed 
-by default using gzip.
+The gpcrondump utility dumps the contents of a database into SQL script 
+files, which can then be used to restore the database schema and user 
+data at a later time using gpdbrestore. During a dump operation, users 
+will still have full access to the database. 
 
-gpcrondump allows you to schedule routine backups of a Greenplum database 
-using cron (a scheduling utility for UNIX operating systems). Cron jobs 
-that call gpcrondump should be scheduled on the master host.
+By default, dump files are created in their respective master and 
+segment data directories in a directory named db_dumps/YYYYMMDD. The 
+data dump files are compressed by default using gzip. 
+
+gpcrondump allows you to schedule routine backups of a Greenplum 
+database using cron (a scheduling utility for UNIX operating systems). 
+Cron jobs that call gpcrondump should be scheduled on the master host. 
+
+WARNING: Backing up a database with gpcrondump while simultaneously 
+running ALTER TABLE might cause gpcrondump to fail. 
+
+**********************
+Data Domain Boost
+**********************
 
 gpcrondump is used to schedule Data Domain Boost backup and restore 
 operations. gpcrondump is also used to set or remove one-time 
-credentials for Data Domain Boost.
+credentials for Data Domain Boost. 
+
+IMPORTANT: Incremental backups are not supported with Data Domain Boost. 
+You cannot use Data Domain Boost with a full backup if you plan to 
+create incremental backups that use the full backup. 
 
 **********************
 Return Codes
@@ -58,329 +78,461 @@ The following is a list of the codes that gpcrondump returns.
 **********************
 EMAIL NOTIFICATIONS
 **********************
-To have gpcrondump send out status email notifications, you must place 
-a file named mail_contacts in the home directory of the Greenplum 
+To have gpcrondump send out status email notifications, you must place a 
+file named mail_contacts in the home directory of the Greenplum 
 superuser (gpadmin) or in the same directory as the gpcrondump utility 
 ($GPHOME/bin). This file should contain one email address per line. 
 gpcrondump will issue a warning if it cannot locate a mail_contacts file 
 in either location. If both locations have a mail_contacts file, then 
-the one in $HOME takes precedence.
+the one in $HOME takes precedence. 
 
 
 *****************************************************
 OPTIONS
 *****************************************************
 
--a (do not prompt)
+-a (do not prompt) 
 
- Do not prompt the user for confirmation.
-
-
--b (bypass disk space check)
-
- Bypass disk space check. The default is to check for available disk space.
-
- Note: Bypassing the disk space check generates a warning message. 
- With a warning message, the return code for gpcrondump is 1 if the 
- dump is successful. (If the dump fails, the return code is 2, in all cases.)
+ Do not prompt the user for confirmation. 
 
 
--B <parallel_processes>
+-b (bypass disk space check) 
 
- The number of segments to check in parallel for pre/post-dump validation. 
- If not specified, the utility will start up to 60 parallel processes 
- depending on how many segment instances it needs to dump.
+ Bypass disk space check. The default is to check for available disk 
+ space, unless --ddboost is specified. When using Data Domain Boost, this 
+ option is always enabled. 
+
+ Note: Bypassing the disk space check generates a warning message. With a 
+ warning message, the return code for gpcrondump is 1 if the dump is 
+ successful. (If the dump fails, the return code is 2, in all cases.) 
 
 
--c (clear old dump files first)
+-B <parallel_processes> 
+
+ The number of segments to check in parallel for pre/post-dump 
+ validation. If not specified, the utility will start up to 60 parallel 
+ processes depending on how many segment instances it needs to dump. 
+
+
+-c (clear old dump files first) 
 
  Clear out old dump files before doing the dump. The default is not to 
  clear out old dump files. This will remove all old dump directories in 
- the db_dumps directory, except for the dump directory of the current date.
+ the db_dumps directory, except for the dump directory of the current 
+ date. 
+
+ WARNING: Before using this option, ensure that incremental backups 
+ required to perform the restore are not deleted. The gpdbrestore utility 
+ option --list-backup lists the backup sets required to perform a backup. 
+
+ If --ddboost is specified, only the old files on Data Domain Boost are 
+ deleted. 
 
 
--C (clean old catalog dumps)
+-C (clean old catalog dumps) 
 
- Clean out old catalog schema dump files prior to create.
+ Clean out old catalog schema dump files prior to create. gpcrondump adds 
+ the DROP command to the SQL script files when creating the backup files. 
+
+ If --incremental is specified and the files are on NFS storage, the -C 
+ option is not supported. The files are not deleted if the -C option is 
+ specified.
 
 
---column-inserts
+--column-inserts 
+
+ Dump data as INSERT commands with column names. 
+
+ If --incremental is specified, this option is not supported. 
+
+
+-d <master_data_directory> 
+
+ The master host data directory. If not specified, the value set for 
+ $MASTER_DATA_DIRECTORY will be used. 
+
+
+--ddboost [--replicate --max-streams <max_IO_streams>] 
+  [--ddboost-skip-ping]] 
+
+ Use Data Domain Boost for this backup. Before using Data Domain Boost, 
+ set up the Data Domain Boost credential, as described in the next option 
+ below. 
+
+ The following option is recommended if --ddboost is specified. 
+
+ * -z option (uncompressed)
+    Backup compression (turned on by default) should be turned off
+    with the -z option. Data Domain Boost will deduplicate and 
+    compress the backup data before sending it to the Data Domain system. 
+
+ --replicate --max-streams <max_IO_streams> is optional. If you specify 
+ this option, gpcrondump replicates the backup on the remote Data Domain 
+ server after the backup is complete on the primary Data Domain server. 
+ <max_IO_streams> specifies the maximum number of Data Domain I/O streams 
+ that can be used when replicating the backup set on the Data Domain server 
+ from the primary Data Domain server. 
+
+ You can use gpmfr to replicate a backup if replicating a backup with 
+ gpcrondump takes a long time and prevents other backups from occurring. 
+ Only one instance of gpcrondump can be running at a time. While 
+ gpcrondump is being used to replicate a backup, it cannot be used to 
+ create a backup. 
+
+ You can run a mixed backup that writes to both a local disk and Data 
+ Domain. If you want to use a backup directory on your local disk other 
+ than the default, use the –u option. For more information about mixed 
+ backups and Data Domain Boost, see the Greenplum Database System 
+ Administrator Guide. 
+
+ If --incremental is specified, this option is not supported. 
+
+ IMPORTANT: Never use the Greenplum Database default backup options with 
+ Data Domain Boost. Also, incremental backups are not supported with Data 
+ Domain Boost. You cannot use the Data Domain Boost options with a full 
+ backup if you plan to perform incremental backups. 
+
+ To maximize Data Domain deduplication benefits, retain at least 30 days 
+ of backups. 
+
+ Note: The -b, -c, -f, -G, -g, -R, and -u options change if --ddboost is 
+ specified. See the options for details. 
+
+
+--ddboost-host ddboost_hostname --ddboost-user <ddboost_user> 
+  [--ddboost-backupdir <backup_directory>] [--ddboost-remote] 
+  [--ddboost-skip-ping] 
+
+ Sets the Data Domain Boost credentials. Do not combine this options with 
+ any other gpcrondump options. Do not enter just one part of this option. 
+
+ ddboost_hostname is the IP address of the host. There is a 30-character 
+ limit. 
+
+ ddboost_user is the Data Domain Boost user name. There is a 30-character 
+ limit. 
+
+ backup_directory is optional. The directory is the location for report 
+ and status files. The location for the files is 
+ $MASTER_DATA_DIR/backup_directory. If the option is not specified, the 
+ default is $MASTER_DATA_DIR/db_dumps. 
+
+ --ddboost-remote is optional. Indicates that the configuration 
+ parameters are for the remote Data Domain system that is used for backup 
+ replication Data Domain Boost managed file replication. 
+
+ Example: 
+   gpcrondump --ddboost-host 172.28.8.230 --ddboost-user 
+     ddboostusername --ddboost-backupdir gp_production 
+
+ After running gpcrondump with these options, the system verifies the 
+ limits on the host and user names and prompts for the Data Domain Boost 
+ password. Enter the password when prompted; the password is not echoed 
+ on the screen. There is a 40-character limit on the password that can 
+ include lowercase letters (a-z), uppercase letters (A-Z), numbers (0-9), 
+ and special characters ($, %, #, +, etc.). 
+
+ The system verifies the password. After the password is verified, the 
+ system creates a file .ddconfig and copies it to all segments. 
+
+ In the example, the --ddboost-backupdir option specified that the 
+ location of report and status files is $MASTER_DATA_DIR/gp_production. 
+
+ Note: If there is more than one operating system user using Data Domain 
+ Boost for backup and restore operations, repeat this configuration 
+ process for each of those users. 
+
+ IMPORTANT: Set up the Data Domain Boost credential before running any 
+ Data Domain Boost backups with the --ddboost option, described above. 
+
  
- Dump data as INSERT commands with column names.
+--ddboost-skip-ping 
+
+ Before writing the Data Domain Boost configuration information, ping is 
+ used to ensure that the Data Domain system is reachable. If the Data 
+ Domain host is configured to block ICMP ping probes, specify this option 
+ to skip the ping of the Data Domain system. 
 
 
--d <master_data_directory>
+--ddboost-config-remove 
 
- The master host data directory. If not specified, the value 
- set for $MASTER_DATA_DIRECTORY will be used.
-
---ddboost
-
- Use Data Domain Boost for this backup. Before using 
- Data Domain Boost, set up the Data Domain Boost credential, 
- as described in the next option below. 
-
- The following option is recommended if --ddboost is specified.
-
-    * -z option (uncompressed)
-      Backup compression (turned on by default) should be turned off
-      with the -z option. Data Domain Boost will deduplicate and 
-      compress the backup data before sending it to the Data
-      Domain System.            
-      
-  When running a mixed backup that backs up to both
-  a local disk and to Data Domain, use the -u option
-  to specify that the backup to the local disk does not
-  use the default directory. 
-  
-  The -f, -G, -g, -R, and -u options change if 
-  --ddboost is specified. See the options for details.
-
-  Important: Never use the Greenplum Database default backup 
-             options with Data Domain Boost.  
-
-  To maximize Data Domain deduplication benefits, retain at 
-  least 30 days of backups.
-
---ddboost-host <ddboost_hostname> --ddboost-user <ddboost_user>
-
-Sets the Data Domain Boost credentials. Do not combine this options 
-with any other gpcrondump options. Do not enter just part of this option. 
-
-<ddboost_hostname> is the IP address of the host. There is a 30-character limit.
-
-<ddboost_user> is the Data Domain Boost user name. There is a 30-character limit.
-
-Example:
-gpcrondump --ddboost-host 172.28.8.230 --ddboost-user ddboostusername
-
-After running gpcrondump with these options, the system verfies the limits 
-on the host and user names and prompts for the Data Domain Boost password. 
-Enter the password when prompted; the password is not echoed on the screen. 
-There is a 40-character limit on the password that can include lowercase 
-letters (a-z), uppercase letters (A-Z), numbers (0-9), and special 
-characters ($, %, #, +, etc.).
-
-The system verifies the password. After the password is verified, 
-the system creates a file .ddconfig and copies it to all segments.
-
-Note: If there is more than one operating system user using Data Domain Boost 
-for backup and restore operations, repeat this configuration process for 
-each of those users.
-
-Important: Set up the Data Domain Boost credential before running any 
-Data Domain Boost backups with the --ddboost option, described above.
-
---ddboost-config-remove
-
-Removes all Data Domain Boost credentials from the master and all 
-segments on the system. Do not enter this option with any other 
-gpcrondump option.
-
--E encoding
-
- Character set encoding of dumped data. Defaults to the encoding of 
- the database being dumped.
+ Removes all Data Domain Boost credentials from the master and all 
+ segments on the system. Do not enter this option with any other 
+ gpcrondump option. 
 
 
--f <free_space_percent>
+-E <encoding> 
 
- When doing the check to ensure that there is enough free disk space to 
- create the dump files, specifies a percentage of free disk space that 
- should remain after the dump completes. The default is 10 percent.
-
- -f is not supported if --ddboost is specified.
+ Character set encoding of dumped data. Defaults to the encoding of the 
+ database being dumped. See the Greenplum Database Reference Guide for 
+ the list of supported character sets. 
 
 
--g (copy config files)
+-f <free_space_percent> 
+
+ When checking that there is enough free disk space to create the dump 
+ files, specifies a percentage of free disk space that should remain 
+ after the dump completes. The default is 10 percent. 
+
+ Note: This is option is not supported if --ddboost or --incremental is 
+ specified. 
+
+
+-g (copy config files) 
 
  Secure a copy of the master and segment configuration files 
- postgresql.conf, pg_ident.conf, and pg_hba.conf. These 
- configuration files are dumped in the master or segment data 
- directory to db_dumps/YYYYMMDD/config_files_<timestamp>.tar
+ postgresql.conf, pg_ident.conf, and pg_hba.conf. These configuration 
+ files are dumped in the master or segment data directory to 
+ db_dumps/YYYYMMDD/config_files_<timestamp>.tar. 
 
- If --ddboost is specified, the files are located in the 
- db_dumps directory on the default storage unit. 
+ If --ddboost is specified, the file are located in the db_dumps 
+ directory on the default storage unit. This option is not affected by 
+ directory specified by --ddboost-backupdir. The file is always located 
+ in the db_dumps directory. 
 
 
--G (dump global objects)
+-G (dump global objects) 
 
  Use pg_dumpall to dump global objects such as roles and tablespaces. 
  Global objects are dumped in the master data directory to 
- db_dumps/YYYYMMDD/gp_global_1_1_<timestamp>.
-
- If --ddboost is specified, the files are located in the 
- db_dumps directory on the default storage unit. 
-
-
--h (record dump details)
-
-  Record details of database dump in database table
-  public.gpcrondump_history in database supplied via 
-  -x option. Utility will create table if it does not
-  currently exist.
+ db_dumps/YYYYMMDD/gp_global_1_1_<timestamp>. 
+ 
+ If --ddboost is specified, the backup is located in the db_dumps 
+ directory on the default storage unit. This option is not affected by 
+ directory specified by --ddboost-backupdir. The backup is always located 
+ in the db_dumps directory. 
 
 
---inserts
+-h (record dump details) 
 
- Dump data as INSERT, rather than COPY commands.
-
-
--j (vacuum before dump)
-
- Run VACUUM before the dump starts.
+ Record details of database dump in database table 
+ public.gpcrondump_history in database supplied via -x option. Utility 
+ will create table if it does not currently exist. 
 
 
--k (vacuum after dump)
+--incremental (backup changes to append-only tables) 
 
- Run VACUUM after the dump has completed successfully.
+ Adds an incremental backup to a backup set. When performing an 
+ incremental backup, the complete backup set created prior to the 
+ incremental backup must be available. The complete backup set includes 
+ the following backup files: 
+
+ * The last full backup before the current incremental backup 
+
+ * All incremental backups created between the time of the full backup 
+   the current incremental backup 
+
+ An incremental backup is similar to a full back up except for 
+ append-only tables, including column-oriented tables. An append-only 
+ table is backed up only if one of the following operations was performed 
+ on the table after the last backup. 
+   ALTER TABLE 
+   INSERT 
+   TRUNCATE
+   DROP and then re-create the table 
+
+ For a partitioned append-only tables, only the changed table partitions 
+ are backed up. 
+
+ The -u option must be used consistently within a backup set that 
+ includes a full and incremental backups. If you use the -u option with a 
+ full backup, you must use the -u option when you create incremental 
+ backups that are part of the backup set that includes the full backup. 
+
+ IMPORTANT: Incremental backup cannot be used with Data Domain Boost. You 
+ cannot use the Data Domain Boost options with a full backup if you plan 
+ to perform incremental backups. 
 
 
--l <logfile_directory>
+--inserts 
 
- The directory to write the log file. Defaults to ~/gpAdminLogs.
+ Dump data as INSERT, rather than COPY commands. 
 
-
---no-owner
-
- Do not output commands to set object ownership.
+ If --incremental is specified, this option is not supported. 
 
 
---no-privileges
+-j (vacuum before dump) 
 
- Do not output commands to set object privileges (GRANT/REVOKE commands).
+ Run VACUUM before the dump starts. 
 
 
--o (clear old dump files only)
+-k (vacuum after dump) 
+
+ Run VACUUM after the dump has completed successfully. 
+
+
+-l <logfile_directory> 
+
+ The directory to write the log file. Defaults to ~/gpAdminLogs. 
+
+
+--no-owner 
+
+ Do not output commands to set object ownership. 
+
+
+--no-privileges 
+
+ Do not output commands to set object privileges (GRANT/REVOKE commands). 
+
+
+-o (clear old dump files only) 
 
  Clear out old dump files only, but do not run a dump. This will remove 
- the oldest dump directory except the current date's dump directory. 
- All dump sets within that directory will be removed.
+ the oldest dump directory except the current date’s dump directory. 
+ All dump sets within that directory will be removed. 
 
- If --ddboost is specified, only the old files on DD Boost are deleted.
+ WARNING: Before using this option, ensure that incremental backups 
+ required to perform the restore are not deleted. The gpdbrestore utility 
+ option --list-backup lists the backup sets required to perform a backup. 
 
+ If --ddboost is specified, only the old files on Data Domain Boost are 
+ deleted. 
 
---oids
-
- Include object identifiers (oid) in dump data.
-
-
--q (no screen output)
-
- Run in quiet mode. Command output is not displayed on the screen, 
- but is still written to the log file.
+ If --incremental is specified, this option is not supported. 
 
 
--r (rollback on failure)
+--oids 
 
- Rollback the dump files (delete a partial dump) if a failure 
- is detected. The default is to not rollback.
+ Include object identifiers (oid) in dump data. 
 
- -r is not supported if --ddboost is specified.
+ If --incremental is specified, this option is not supported. 
 
 
--R <post_dump_script>
+ -q (no screen output) 
+
+ Run in quiet mode. Command output is not displayed on the screen, but is 
+ still written to the log file. 
+
+
+-r (rollback on failure) 
+
+ Rollback the dump files (delete a partial dump) if a failure is 
+ detected. The default is to not rollback. 
+
+ Note: This option is not supported if --ddboost is specified. 
+
+
+-R <post_dump_script> 
 
  The absolute path of a script to run after a successful dump operation. 
- For example, you might want a script that moves completed dump files 
- to a backup host. This script must reside in the same location on 
- the master and all segment hosts.
+ For example, you might want a script that moves completed dump files to 
+ a backup host. This script must reside in the same location on the 
+ master and all segment hosts. 
 
 
---rsyncable
+--rsyncable 
 
- Passes the --rsyncable flag to the gpzip utility to synchronize
- the output occasionally, based on the input during compression.
- This synchronization increases the file size by less than 1% in
- most cases. When this flag is passed, the rsync(1) program can
- synchronize compressed files much more efficiently. The gunzip
- utility cannot differentiate between a compressed file created
- with this option, and one created without it.  
-
- 
--s <schema_name>
-
- Dump only the named schema in the named database.
+ Passes the --rsyncable flag to the gzip utility to synchronize the 
+ output occasionally, based on the input during compression. This 
+ synchronization increases the file size by less than 1% in most cases. 
+ When this flag is passed, the rsync(1) program can synchronize 
+ compressed files much more efficiently. The gunzip utility cannot 
+ differentiate between a compressed file created with this option, and 
+ one created without it. 
 
 
--t <schema>.<table_name>
+-s <schema_name> 
 
- Dump only the named table in this database.
- The -t option can be specified multiple times.
+ Dump only the named schema in the named database. 
+
+ If --incremental is specified, this option is not supported. 
 
 
--T <schema>.<table_name>
+-t <schema>.<table>
 
- A table name to exclude from the database dump. 
- The -T option can be specified multiple times.
+ Dump only the named table in this database. The -t option can be 
+ specified multiple times. If you want to specify multiple tables, you 
+ can also use the --table-file="<filename>" option in order not to exceed the 
+ maximum token limit. 
+
+ If --incremental is specified, this option is not supported. 
+
+
+-T <schema>.<table>
+
+ A table name to exclude from the database dump. The -T option can be 
+ specified multiple times. If you want to specify multiple tables, you 
+ can also use the --exclude-table-file="<filename>" option in order not to 
+ exceed the maximum token limit. 
+
+ If --incremental is specified, this option is not supported. 
+
 
 --exclude-table-file="<filename>"
 
-  Exclude all tables listed in <filename> from the 
-  database dump. The file <filename> contains any 
-  number of tables, listed one per line.
+ Excludes all tables listed in the <filename> from the database dump. The 
+ file <filename> contains any number of tables, listed one per line. 
 
---table-file="<filename>"
-
-  Dump only the tables listed in <filename>.
-  The file <filename> contains any 
-  number of tables, listed one per line.
-
--u <backup_directory>
-
- Specifies the absolute path where the backup files will be 
- placed on each host. If the path does not exist, it will be 
- created, if possible. If not specified, defaults to the data 
- directory of each instance to be backed up. Using this option 
- may be desirable if each segment host has multiple segment 
- instances as it will create the dump files in a centralized 
- location rather than the segment data directories.
-
- -u is not supported if --ddboost is specified.
+ If --incremental is specified, this option is not supported. 
 
 
---use-set-session-authorization
+--table-file="<filename>" 
 
- Use SET SESSION AUTHORIZATION commands instead of ALTER OWNER 
- commands to set object ownership.
+ Dumps only the tables listed in the <filename>. The file <filename> contains 
+ any number of tables, listed one per line. 
 
-
--v | --verbose
-
- Specifies verbose mode.
+ If --incremental is specified, this option is not supported. 
 
 
---version (show utility version)
+-u <backup_directory> 
 
- Displays the version of this utility.
+ Specifies the absolute path where the backup files will be placed on 
+ each host. If the path does not exist, it will be created, if possible. 
+ If not specified, defaults to the data directory of each instance to be 
+ backed up. Using this option may be desirable if each segment host has 
+ multiple segment instances as it will create the dump files in a 
+ centralized location rather than the segment data directories. 
 
-
--x <database_name>
-
- Required. The name of the Greenplum database to dump.
- Multiple databases can be specified in a comma-separated list.
-
-
--y <reportfile>
-
- Specifies the full path name where the backup job log file will 
- be placed on the master host. If not specified, defaults to the 
- master data directory or if running remotely, the current working 
- directory.
+ Note: This option is not supported if --ddboost is specified. 
 
 
--z (no compression)
+--use-set-session-authorization 
 
- Do not use compression. Default is to compress the dump files 
- using gzip.
-
- We recommend using this option for NFS and Data Dommain 
- Boost backups.
+ Use SET SESSION AUTHORIZATION commands instead of ALTER OWNER commands 
+ to set object ownership. 
 
 
--? (help)
+-v | --verbose 
 
- Displays the online help.
+ Specifies verbose mode. 
+
+
+--version (show utility version) 
+
+ Displays the version of this utility. 
+
+
+-x <database_name> 
+
+ Required. The name of the Greenplum database to dump. Multiple databases 
+ can be specified in a comma-separated list. 
+
+
+-y <reportfile> 
+
+ This option is deprecated and will be removed in a future release. If 
+ specified, a warning message is returned stating that the -y option is 
+ deprecated. 
+
+ Specifies the full path name where a copy of the backup job log file is 
+ placed on the master host. The job log file is created in the master 
+ data directory or if running remotely, the current working directory. 
+
+
+-z (no compression) 
+
+ Do not use compression. Default is to compress the dump files using 
+ gzip. 
+
+ We recommend this option (-z) be used for NFS and Data Domain Boost 
+ backups. 
+
+
+-? (help) 
+
+ Displays the online help. 
+
 
 
 *****************************************************
@@ -391,24 +543,24 @@ Call gpcrondump directly and dump mydatabase (and global objects):
 
   gpcrondump -x mydatabase -c -g -G
 
-A crontab entry that runs a backup of the sales database 
-(and global objects) nightly at one past midnight:
+  
+A crontab entry that runs a backup of the sales database (and global 
+objects) nightly at one past midnight: 
 
   01 0 * * * /home/gpadmin/gpdump.sh >> gpdump.log
 
+  
 The content of dump script gpdump.sh is:
 
-  #!/bin/bash
+#!/bin/bash
   export GPHOME=/usr/local/greenplum-db
   export MASTER_DATA_DIRECTORY=/data/gpdb_p1/gp-1
   . $GPHOME/greenplum_path.sh  
   gpcrondump -x sales -c -g -G -a -q 
 
-
+  
 *****************************************************
 SEE ALSO
 *****************************************************
 
-gp_dump, gpdbrestore
-
-
+gpdbrestore
