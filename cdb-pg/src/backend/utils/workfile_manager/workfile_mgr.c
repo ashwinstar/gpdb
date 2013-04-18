@@ -339,6 +339,7 @@ workfile_mgr_populate_set(const void *resource, const void *param)
 	workset_info *set_info = (workset_info *) param;
 
 	work_set->metadata.operator_work_mem = set_info->operator_work_mem;
+	work_set->set_plan = NULL;
 
 	if (!set_info->on_disk)
 	{
@@ -358,7 +359,6 @@ workfile_mgr_populate_set(const void *resource, const void *param)
 		work_set->metadata.bfz_compress_type = gp_workfile_compress_algorithm;
 		work_set->metadata.snapshot = set_info->snapshot;
 		work_set->metadata.num_leaf_files = 0;
-		work_set->set_plan = NULL;
 		work_set->slice_id = currentSliceId;
 		work_set->session_id = gp_session_id;
 		work_set->command_count = gp_command_count;
@@ -599,8 +599,15 @@ workfile_mgr_lookup_set(PlanState *ps)
 
 	workfile_set *local_work_set = (workfile_set *) CACHE_ENTRY_PAYLOAD(localEntry);
 
-	/* Populate the rest of the entries needed for look-up */
+	/* Populate the rest of the entries needed for look-up
+	 * Allocate the serialized plan in the TopMemoryContext since this memory
+	 * context is still available when calling the transaction callback at the
+	 * time when the transaction aborts.
+	 */
+	MemoryContext oldcxt = MemoryContextSwitchTo(TopMemoryContext);
 	workfile_set_plan *s_plan = workfile_mgr_serialize_plan(ps);
+	MemoryContextSwitchTo(oldcxt);
+
 	Assert(s_plan != NULL);
 	local_work_set->set_plan = s_plan;
 	local_work_set->key = workfile_mgr_hash_key(s_plan);
@@ -769,9 +776,13 @@ workfile_mgr_cleanup_set(const void *resource)
 	else
 	{
 		/* Non-physical workfile set, we need to free up the plan memory */
-		if (NULL != work_set->set_plan)
+		if (NULL != work_set->set_plan->serialized_plan)
 		{
 			pfree(work_set->set_plan->serialized_plan);
+		}
+
+		if (NULL != work_set->set_plan)
+		{
 			pfree(work_set->set_plan);
 		}
 	}
@@ -856,6 +867,7 @@ workfile_mgr_hash_key(workfile_set_plan *plan)
 
 /*
  * Serializes a given plan node for hashing and matching.
+ * The serialized plan is palloc'd in the current memory context.
  */
 static workfile_set_plan *
 workfile_mgr_serialize_plan(PlanState *ps)
@@ -863,7 +875,7 @@ workfile_mgr_serialize_plan(PlanState *ps)
 	Assert(ps);
 	Plan *plan = ps->plan;
 	workfile_set_plan *splan = NULL;
-	splan = (workfile_set_plan *) palloc(sizeof(workfile_set_plan));
+	splan = (workfile_set_plan *) palloc0(sizeof(workfile_set_plan));
 
 	Assert(nodeTag(plan) >= T_Plan && nodeTag(plan) < T_PlanInvalItem);
 

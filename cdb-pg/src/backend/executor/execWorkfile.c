@@ -135,12 +135,20 @@ ExecWorkFile_Open(const char *fileName,
 					false, /* Create */
 					delOnClose,
 					true  /* interXact */ );
+			if (!file)
+			{
+				elog(ERROR, "could not open temporary file \"%s\": %m", fileName);
+			}
 			BufFileSetWorkfile(file);
 			file_size = BufFileGetSize(file);
 
 			break;
 		case BFZ:
 			file = (void *)bfz_open(fileName, delOnClose, compressType);
+			if (!file)
+			{
+				elog(ERROR, "could not open temporary file \"%s\": %m", fileName);
+			}
 			file_size = bfz_totalbytes((bfz_t *)file);
 			break;
 		default:
@@ -319,7 +327,7 @@ ExecWorkFile_Rewind(ExecWorkFile *workfile)
 		case BUFFILE:
 			ret = BufFileSeek((BufFile *)workfile->file, 0L  /* offset */, SEEK_SET);
 			/* BufFileSeek returns 0 if everything went OK */
-			return 0 == ret;
+			return (0 == ret);
 		case BFZ:
 			file_size = bfz_append_end((bfz_t *)workfile->file);
 			ExecWorkFile_AdjustBFZSize(workfile, file_size);

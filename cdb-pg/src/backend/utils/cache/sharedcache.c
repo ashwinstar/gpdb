@@ -1082,7 +1082,6 @@ Cache_UpdatePerfCounter64(int64 *counter, int64 delta)
 void
 Cache_TimedOperationStart(void)
 {
-	Assert(INSTR_TIME_IS_ZERO(timedOpStart));
 	INSTR_TIME_SET_CURRENT(timedOpStart);
 }
 
