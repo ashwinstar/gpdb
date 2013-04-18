@@ -190,9 +190,15 @@ gp_workfile_mgr_cache_entries(PG_FUNCTION_ARGS)
 		MemSet(nulls, 0, sizeof(nulls));
 
 		workfile_set *work_set = CACHE_ENTRY_PAYLOAD(crtEntry);
+		char work_set_path[MAXPGPATH] = "";
+		char *work_set_operator_name = NULL;
 
 
-		/* Lock entry in order to read its payload */
+		/*
+		 * Lock entry in order to read its payload
+		 * Don't call any functions that can get interrupted or
+		 * that palloc memory while holding this lock.
+		 */
 		Cache_LockEntry(cache, crtEntry);
 
 		if (!should_list_entry(crtEntry) || !work_set->on_disk)
@@ -202,13 +208,11 @@ gp_workfile_mgr_cache_entries(PG_FUNCTION_ARGS)
 		}
 
 		values[0] = Int32GetDatum(Gp_segment);
-		char work_set_path[MAXPGPATH] = "";
 		if (work_set->on_disk)
 		{
 			/* Only physical sets have a meaningful path */
 			strncpy(work_set_path, work_set->path, MAXPGPATH);
 		}
-		values[1] = CStringGetTextDatum(work_set_path);
 
 		values[2] = UInt32GetDatum(crtEntry->hashvalue);
 
@@ -228,7 +232,7 @@ gp_workfile_mgr_cache_entries(PG_FUNCTION_ARGS)
 		values[5] = UInt32GetDatum(crtEntry->state);
 		values[6] = UInt32GetDatum(work_set->metadata.operator_work_mem);
 
-		values[7] = CStringGetTextDatum(gp_workfile_operator_name(work_set->node_type));
+		work_set_operator_name = gp_workfile_operator_name(work_set->node_type);
 		values[8] = UInt32GetDatum(work_set->slice_id);
 		values[9] = UInt32GetDatum(work_set->session_id);
 		values[10] = UInt32GetDatum(work_set->command_count);
@@ -236,6 +240,17 @@ gp_workfile_mgr_cache_entries(PG_FUNCTION_ARGS)
 
 		/* Done reading from the payload of the entry, release lock */
 		Cache_UnlockEntry(cache, crtEntry);
+
+
+		/*
+		 * Fill in the rest of the entries of the tuple with data copied
+		 * from the descriptor.
+		 * CStringGetTextDatum calls palloc so we cannot do this while
+		 * holding the lock above.
+		 */
+		values[1] = CStringGetTextDatum(work_set_path);
+		values[7] = CStringGetTextDatum(work_set_operator_name);
+
 
 		HeapTuple tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
 		Datum result = HeapTupleGetDatum(tuple);

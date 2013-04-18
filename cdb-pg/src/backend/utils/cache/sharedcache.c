@@ -688,10 +688,10 @@ Cache_Lookup(Cache *cache, CacheEntry *entry)
 		/* Found a valid entry. AddRef it and test to see if it matches */
 		Cache_EntryAddRef(cache, crtEntry);
 
+		SpinLockRelease(&anchor->spinlock);
+
 		/* Register it for cleanup in case we get an error while testing for equality */
 		Cache_RegisterCleanup(cache, crtEntry, true /* isCachedEntry */);
-
-		SpinLockRelease(&anchor->spinlock);
 
 		Cache_UpdatePerfCounter(&cache->cacheHdr->cacheStats.noCompares, 1 /* delta */);
 
