@@ -46,7 +46,8 @@ PG_FUNCTION_INFO_V1(gp_workfile_mgr_clear_cache);
 Datum
 gp_workfile_mgr_clear_cache(PG_FUNCTION_ARGS)
 {
-	int32 n_removed = workfile_mgr_clear_cache();
+	int seg_id = PG_GETARG_INT32(0);
+	int32 n_removed = workfile_mgr_clear_cache(seg_id);
 	return Int32GetDatum(n_removed);
 }
 

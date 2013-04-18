@@ -215,8 +215,9 @@ ExecWorkFile_Write(ExecWorkFile *workfile,
 				new_size = BufFileGetSize(buffile);
 				workfile->size = new_size;
 				WorkfileDiskspace_Commit( (new_size - current_size), size, true /* update_query_size */);
-				/* XXX Here's where we can intercept and try to evict */
-				elog(gp_workfile_caching_loglevel, "Intercepted exception from Buffile, adjusted file size to " INT64_FORMAT, new_size);
+
+				int64 size_evicted = workfile_mgr_evict(MIN_EVICT_SIZE);
+				elog(gp_workfile_caching_loglevel, "Hit out of disk space, evicted " INT64_FORMAT " bytes", size_evicted);
 
 				PG_RE_THROW();
 			}
@@ -226,6 +227,7 @@ ExecWorkFile_Write(ExecWorkFile *workfile,
 			workfile->size = new_size;
 
 			WorkfileDiskspace_Commit( (new_size - current_size), size, true /* update_query_size */);
+			workfile_update_in_progress_size(workfile, new_size - current_size);
 
 			if (bytes != size)
 			{
@@ -243,8 +245,10 @@ ExecWorkFile_Write(ExecWorkFile *workfile,
 			PG_CATCH();
 			{
 				Assert(WorkfileDiskspace_IsFull());
-				elog(gp_workfile_caching_loglevel, "Caught exception from EWF_Write from bfz_append. Subtracting " INT64_FORMAT " bytes from diskspace usage", size);
 				WorkfileDiskspace_Commit(0, size, true /* update_query_size */);
+
+				int64 size_evicted = workfile_mgr_evict(MIN_EVICT_SIZE);
+				elog(gp_workfile_caching_loglevel, "Hit out of disk space, evicted " INT64_FORMAT " bytes", size_evicted);
 
 				PG_RE_THROW();
 			}
@@ -253,6 +257,7 @@ ExecWorkFile_Write(ExecWorkFile *workfile,
 			/* bfz_append always adds to the file size */
 			workfile->size += size;
 			WorkfileDiskspace_Commit(size, size, true /* update_query_size */);
+			workfile_update_in_progress_size(workfile, size);
 
 			break;
 		default:
@@ -484,8 +489,8 @@ ExecWorkFile_Seek(ExecWorkFile *workfile, uint64 offset, int whence)
 	if (additional_size > 0)
 	{
 		WorkfileDiskspace_Commit(additional_size, additional_size, true /* update_query_size */);
+		workfile_update_in_progress_size(workfile, additional_size);
 	}
-
 
 	return result;
 }
@@ -560,6 +565,19 @@ ExecWorkFile_GetSize(ExecWorkFile *workfile)
 }
 
 /*
+ * Sets the pointer to the parent workfile_set
+ */
+void
+ExecWorkfile_SetWorkset(ExecWorkFile *workfile, workfile_set *work_set)
+{
+	Assert(NULL != workfile);
+	Assert(NULL != work_set);
+	Assert(NULL == workfile->work_set);
+
+	workfile->work_set = work_set;
+}
+
+/*
  * For a new workfile, sets the capabilities flags according to
  * the known underlying file type capabilities and the method the file was created
  */
@@ -631,6 +649,7 @@ ExecWorkFile_AdjustBFZSize(ExecWorkFile *workfile, int64 file_size)
 		 */
 		Assert(bfz_file->compression_index > 0 || WorkfileDiskspace_IsFull());
 		WorkfileDiskspace_Commit(file_size, workfile->size, true /* update_query_size */);
+		workfile_update_in_progress_size(workfile, file_size - workfile->size);
 		workfile->size = file_size;
 
 	}
@@ -664,6 +683,7 @@ ExecWorkFile_AdjustBFZSize(ExecWorkFile *workfile, int64 file_size)
 			}
 
 			WorkfileDiskspace_Commit(extra_bytes, extra_bytes, true /* update_query_size */);
+			workfile_update_in_progress_size(workfile, extra_bytes);
 			workfile->size = file_size;
 		}
 	}

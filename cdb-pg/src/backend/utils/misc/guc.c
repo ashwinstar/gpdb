@@ -3853,6 +3853,16 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"gp_workfile_max_entries", PGC_POSTMASTER, RESOURCES,
+			gettext_noop("Sets the maximum number of entries that can be stored in the workfile directory"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_workfile_max_entries,
+		8192, 32, INT_MAX, NULL, NULL
+	},
+
+	{
 		{"max_files_per_process", PGC_POSTMASTER, RESOURCES_KERNEL,
 			gettext_noop("Sets the maximum number of simultaneously open files for each server process."),
 			NULL

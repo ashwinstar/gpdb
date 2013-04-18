@@ -21,6 +21,7 @@
 #include "postmaster/primary_mirror_mode.h"
 #include "libpq/libpq.h"
 #include "utils/debugbreak.h"
+#include "utils/atomic.h"
 
 #include "utils/lsyscache.h"
 #include "catalog/pg_proc.h"
@@ -45,6 +46,8 @@ static void workfile_mgr_delete_set_directory(char *workset_path);
 static void workfile_mgr_unlink_directory(const char *dirpath);
 static StringInfo get_name_from_nodeType(const NodeTag node_type);
 static uint64 get_operator_work_mem(PlanState *ps);
+static CacheEntry *acquire_entry_retry(Cache *cache);
+
 
 /* Workfile manager cache is stored here, once attached to */
 Cache *workfile_mgr_cache = NULL;
@@ -59,7 +62,7 @@ workfile_mgr_cache_init(void)
 	CacheCtl cacheCtl;
 	MemSet(&cacheCtl, 0, sizeof(CacheCtl));
 
-	cacheCtl.maxSize = WORKFILE_CACHE_MAX_SIZE;
+	cacheCtl.maxSize = gp_workfile_max_entries;
 	cacheCtl.cacheName = "Workfile Manager Cache";
 	cacheCtl.entrySize = sizeof(workfile_set);
 	cacheCtl.keySize = sizeof(((workfile_set *)0)->key);
@@ -101,7 +104,7 @@ workfile_mgr_get_cache(void)
 Size
 workfile_mgr_shmem_size(void)
 {
-	return Cache_SharedMemSize(WORKFILE_CACHE_MAX_SIZE, sizeof(workfile_set)) +
+	return Cache_SharedMemSize(gp_workfile_max_entries, sizeof(workfile_set)) +
 			WorkfileDiskspace_ShMemSize() + WorkfileQueryspace_ShMemSize();
 }
 
@@ -165,12 +168,8 @@ workfile_mgr_create_set(enum ExecWorkFileType type, bool can_be_reused, PlanStat
 
 	AssertImply(can_be_reused, plan != NULL);
 
-	CacheEntry *newEntry = Cache_AcquireEntry(workfile_mgr_cache);
-	if (NULL == newEntry)
-	{
-		/* Could not add another entry to the cache - we filled it up */
-		elog(ERROR, "could not create workfile manager entry: too many running queries");
-	}
+	CacheEntry *newEntry = acquire_entry_retry(workfile_mgr_cache);
+	Assert(NULL != newEntry);
 
 	workfile_set *work_set = CACHE_ENTRY_PAYLOAD(newEntry);
 	Assert(work_set != NULL);
@@ -178,6 +177,7 @@ workfile_mgr_create_set(enum ExecWorkFileType type, bool can_be_reused, PlanStat
 	work_set->complete = false;
 	work_set->no_files = 0;
 	work_set->size = 0L;
+	work_set->in_progress_size = 0L;
 	work_set->metadata.type = type;
 	work_set->metadata.bfz_compress_type = gp_workfile_compress_algorithm;
 	work_set->metadata.snapshot = snapshot;
@@ -466,7 +466,9 @@ workfile_mgr_lookup_set(PlanState *ps)
 	workfile_set_plan *s_plan = workfile_mgr_serialize_plan(ps);
 	Assert(s_plan != NULL);
 
-	CacheEntry *localEntry = Cache_AcquireEntry(workfile_mgr_cache);
+	CacheEntry *localEntry = acquire_entry_retry(workfile_mgr_cache);
+	Assert(localEntry != NULL);
+
 	workfile_set *local_work_set = (workfile_set *) CACHE_ENTRY_PAYLOAD(localEntry);
 
 	/* This is not a physical workset, it's only used for look-ups */
@@ -487,6 +489,39 @@ workfile_mgr_lookup_set(PlanState *ps)
 	}
 
 	return work_set;
+}
+
+/*
+ * Acquire an entry from the cache. If the cache is full (reached gp_workfile_max_entries),
+ * trigger evictions and try again.
+ * If the cache remains full after max_retries, give up and error out.
+ */
+static CacheEntry *
+acquire_entry_retry(Cache *cache)
+{
+	CacheEntry *localEntry = Cache_AcquireEntry(cache);
+
+	int crt_retry = 0;
+	while (NULL == localEntry && crt_retry < MAX_EVICT_ATTEMPTS)
+	{
+		/*
+		 * We reached maximum number of entries in the cache. Evict something
+		 * then try again.
+		 */
+		int64 size_evicted = workfile_mgr_evict(MIN_EVICT_SIZE);
+		elog(gp_workfile_caching_loglevel, "Hit cache entries full, evicted " INT64_FORMAT " bytes", size_evicted);
+
+		localEntry = Cache_AcquireEntry(cache);
+		crt_retry++;
+	}
+
+	if (NULL == localEntry)
+	{
+		/* Could not acquire another entry from the cache - we filled it up */
+		elog(ERROR, "could not create workfile manager entry: exceeded number of concurrent spilling queries");
+	}
+
+	return localEntry;
 }
 
 /*
@@ -513,14 +548,22 @@ workfile_mgr_can_reuse(workfile_set *work_set, PlanState *ps)
 /*
  * Clears entire contents of workfile cache
  *
- *   Returns the number of entries removed
+ *  If seg_id == UNDEF_SEGMENT run on all segments, otherwise run only
+ *  on segment seg_id.
+ *
+ *  Returns the number of entries removed
  */
 int32
-workfile_mgr_clear_cache(void)
+workfile_mgr_clear_cache(int seg_id)
 {
-	Cache *cache = workfile_mgr_get_cache();
-	elog(gp_workfile_caching_loglevel, "Running workfile_mgr_clear_cache");
-	return Cache_Clear(cache);
+	int no_cleared = 0;
+	if (seg_id == UNDEF_SEGMENT || Gp_segment == seg_id)
+	{
+		Cache *cache = workfile_mgr_get_cache();
+		no_cleared = Cache_Clear(cache);
+	}
+
+	return no_cleared;
 }
 
 /*
@@ -868,6 +911,23 @@ workfile_mgr_evict(int64 size_requested)
 			size_requested, size_evicted);
 
 	return size_evicted;
+}
+
+/*
+ * Updates the in-progress size of a workset while it is being created.
+ */
+void
+workfile_update_in_progress_size(ExecWorkFile *workfile, int64 size)
+{
+	if (NULL != workfile->work_set)
+	{
+#if USE_ASSERT_CHECKING
+		int64 newsize =
+#endif
+		gp_atomic_add_64(&workfile->work_set->in_progress_size, size);
+
+		Assert(newsize >= 0);
+	}
 }
 
 /* EOF */

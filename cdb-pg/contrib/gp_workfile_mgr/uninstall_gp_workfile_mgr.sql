@@ -1,17 +1,22 @@
--- Adjust this setting to control where the objects get dropped.
-SET search_path = public;
 
-DROP VIEW gp_workfile_mgr_cache_stats;
-DROP FUNCTION gp_workfile_mgr_cache_stats();
+\set WORKFILE_SCHEMA workfile
 
-DROP VIEW gp_workfile_mgr_cache_entries;
-DROP FUNCTION gp_workfile_mgr_cache_entries();
+SET search_path = :WORKFILE_SCHEMA;
+BEGIN;
 
-DROP FUNCTION gp_workfile_mgr_clear_allsegs();
-DROP FUNCTION gp_workfile_mgr_clear();
+DROP VIEW gp_workfile_usage_per_query;
+
+DROP VIEW gp_workfile_entries;
+DROP FUNCTION gp_workfile_entries();
+
+DROP FUNCTION gp_workfile_cache_clear();
+DROP FUNCTION gp_workfile_cache_clear_segment(content int);
+DROP FUNCTION gp_workfile_cache_clear_f(content int); 
 
 DROP FUNCTION gp_workfile_mgr_test_allsegs(text);
 DROP FUNCTION gp_workfile_mgr_test(text);
 
-DROP VIEW gp_workfile_mgr_diskspace;
-DROP FUNCTION gp_workfile_mgr_used_diskspace();
+DROP VIEW gp_workfile_usage_per_segment;
+DROP FUNCTION gp_workfile_usage_per_segment_f();
+
+COMMIT; 

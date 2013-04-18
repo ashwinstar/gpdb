@@ -49,11 +49,14 @@ workfile_mgr_create_fileno(workfile_set *work_set, uint32 file_no)
 	retrieve_file_no(work_set, file_no, file_name, sizeof(file_name));
 	bool del_on_close = !work_set->can_be_reused;
 
-	return ExecWorkFile_Create(file_name,
+	ExecWorkFile *ewfile = ExecWorkFile_Create(file_name,
 			work_set->metadata.type,
 			del_on_close,
 			work_set->metadata.bfz_compress_type);
 
+	ExecWorkfile_SetWorkset(ewfile, work_set);
+
+	return ewfile;
 }
 
 /*
@@ -71,10 +74,14 @@ workfile_mgr_open_fileno(workfile_set *work_set, uint32 file_no)
 	retrieve_file_no(work_set, file_no, file_name, sizeof(file_name));
 	bool del_on_close = !work_set->can_be_reused;
 
-	return ExecWorkFile_Open(file_name,
+	ExecWorkFile *ewfile = ExecWorkFile_Open(file_name,
 			work_set->metadata.type,
 			del_on_close,
 			work_set->metadata.bfz_compress_type);
+
+	ExecWorkfile_SetWorkset(ewfile, work_set);
+
+	return ewfile;
 }
 
 /*

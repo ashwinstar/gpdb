@@ -2094,7 +2094,7 @@ workfile_fill_sharedcache(void)
 	unit_test_reset();
 	elog(LOG, "Running test: workfile_fill_sharedcache");
 
-	int n_entries = WORKFILE_CACHE_MAX_SIZE + 1;
+	int n_entries = gp_workfile_max_entries + 1;
 
 	elog(LOG, "Running sub-test: Creating %d empty workfile sets", n_entries);
 
@@ -2108,7 +2108,7 @@ workfile_fill_sharedcache(void)
 			success = false;
 			break;
 		}
-		if (crt_entry >= WORKFILE_CACHE_MAX_SIZE - 2)
+		if (crt_entry >= gp_workfile_max_entries - 2)
 		{
 			/* Pause between adding extra ones so we can test from other sessions */
 			elog(LOG, "Added %d entries out of %d, pausing for 30 seconds before proceeding", crt_entry + 1, n_entries);

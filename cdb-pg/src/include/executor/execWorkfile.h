@@ -51,6 +51,9 @@ typedef struct ExecWorkFile
 
 	void *file;
 	char *fileName;
+
+	struct workfile_set *work_set;
+
 } ExecWorkFile;
 
 /*
@@ -135,5 +138,6 @@ int64 ExecWorkFile_GetSize(ExecWorkFile *workfile);
 int64 ExecWorkFile_Suspend(ExecWorkFile *workfile);
 void ExecWorkFile_Restart(ExecWorkFile *workfile);
 char * ExecWorkFile_GetFileName(ExecWorkFile *workfile);
+void ExecWorkfile_SetWorkset(ExecWorkFile *workfile, struct workfile_set *work_set);
 
 #endif /* EXECWORKFILE_H */

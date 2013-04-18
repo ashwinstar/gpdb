@@ -28,9 +28,6 @@
 /* Number of attempts to evict before we give up */
 #define MAX_EVICT_ATTEMPTS 100
 
-/* Maximum number of workfile sets that can be managed (cached plus in-flight) */
-#define WORKFILE_CACHE_MAX_SIZE 8192
-
 /* Other constants */
 
 #define	WORKFILE_SET_PREFIX "workfile_set"
@@ -98,6 +95,9 @@ typedef struct workfile_set
 
 	/* Size in bytes of the files in this workfile set */
 	int64 size;
+
+	/* Real-time size of the set as it is being created (for reporting only) */
+	int64 in_progress_size;
 
 	/* Prefix of files in the workfile set */
 	char path[MAXPGPATH];
@@ -167,8 +167,9 @@ Size workfile_mgr_shmem_size(void);
 void workfile_mgr_cache_init(void);
 void workfile_mgr_mark_complete(workfile_set *work_set);
 Cache *workfile_mgr_get_cache(void);
-int32 workfile_mgr_clear_cache(void);
+int32 workfile_mgr_clear_cache(int seg_id);
 int64 workfile_mgr_evict(int64 size_requested);
+void workfile_update_in_progress_size(ExecWorkFile *workfile, int64 size);
 
 /* Workfile File operations */
 ExecWorkFile *workfile_mgr_create_file(workfile_set *work_set);

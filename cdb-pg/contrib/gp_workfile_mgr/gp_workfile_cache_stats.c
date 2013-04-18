@@ -200,7 +200,19 @@ gp_workfile_mgr_cache_entries(PG_FUNCTION_ARGS)
 	values[1] = CStringGetTextDatum(work_set_path);
 
 	values[2] = UInt32GetDatum(crtEntry->hashvalue);
-	values[3] = Int64GetDatum(crtEntry->size);
+
+	int64 work_set_size = work_set->size;
+	if (crtEntry->state == CACHE_ENTRY_ACQUIRED)
+	{
+		/*
+		 * work_set->size is not updated until the entry is cached.
+		 * For in-progress queries, the up-to-date size is stored in
+		 * work_set->in_progress_size.
+		 */
+		work_set_size = work_set->in_progress_size;
+	}
+
+	values[3] = Int64GetDatum(work_set_size);
 	values[4] = UInt32GetDatum(crtEntry->utility);
 	values[5] = UInt32GetDatum(crtEntry->state);
 	values[6] = UInt32GetDatum(work_set->metadata.operator_work_mem);
