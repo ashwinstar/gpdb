@@ -31,6 +31,19 @@
 /* Type of temp file to use for storing the plan */
 #define WORKFILE_PLAN_FILE_TYPE BUFFILE
 
+/* Information needed to populate a new workfile_set structure */
+typedef struct workset_info
+{
+	ExecWorkFileType file_type;
+	workfile_set_snapshot snapshot;
+	NodeTag nodeType;
+	TimestampTz session_start_time;
+	uint64 operator_work_mem;
+	char *dir_path;
+	bool can_be_reused;
+	bool on_disk;
+} workset_info;
+
 /* Forward declarations */
 static workfile_set *workfile_mgr_lookup_set(PlanState *ps);
 static bool workfile_mgr_is_reusable(PlanState *ps);
@@ -41,6 +54,7 @@ static void workfile_mgr_free_plan(workfile_set_plan *splan);
 static void workfile_mgr_save_plan(workfile_set *work_set, workfile_set_plan *sf_plan);
 static bool workfile_set_equivalent(const void *virtual_resource, const void *physical_resource);
 static bool workfile_mgr_compare_plan(workfile_set *work_set, workfile_set_plan *sf_plan);
+static void workfile_mgr_populate_set(const void *resource, const void *param);
 static void workfile_mgr_cleanup_set(const void *resource);
 static void workfile_mgr_delete_set_directory(char *workset_path);
 static void workfile_mgr_unlink_directory(const char *dirpath);
@@ -49,7 +63,8 @@ static uint64 get_operator_work_mem(PlanState *ps);
 static CdbVisitOpt PlanNonCacheableWalker(PlanState *ps, void *context);
 static bool ExprNonCacheableWalker(Node *expr, void *ctx);
 static bool isFuncCacheable(Oid fn_oid);
-static CacheEntry *acquire_entry_retry(Cache *cache);
+static CacheEntry *acquire_entry_retry(Cache *cache, workset_info *populate_param);
+static char *create_workset_directory(NodeTag node_type, int slice_id);
 
 
 /* Workfile manager cache is stored here, once attached to */
@@ -76,6 +91,7 @@ workfile_mgr_cache_init(void)
 	cacheCtl.match = (HashCompareFunc) memcmp;
 	cacheCtl.equivalentEntries = workfile_set_equivalent;
 	cacheCtl.cleanupEntry = workfile_mgr_cleanup_set;
+	cacheCtl.populateEntry = workfile_mgr_populate_set;
 
 	cacheCtl.baseLWLockId = FirstWorkfileMgrLock;
 	cacheCtl.numPartitions = NUM_WORKFILEMGR_PARTITIONS;
@@ -146,7 +162,6 @@ get_name_from_nodeType(const NodeTag node_type)
 	return operator_name;
 }
 
-
 /*
  * Create a new file set
  *   type is the WorkFileType for the files: BUFFILE or BFZ
@@ -170,37 +185,73 @@ workfile_mgr_create_set(enum ExecWorkFileType type, bool can_be_reused, PlanStat
 
 	AssertImply(can_be_reused, plan != NULL);
 
-	CacheEntry *newEntry = acquire_entry_retry(workfile_mgr_cache);
-	Assert(NULL != newEntry);
-
-	workfile_set *work_set = CACHE_ENTRY_PAYLOAD(newEntry);
-	Assert(work_set != NULL);
-
-	work_set->complete = false;
-	work_set->no_files = 0;
-	work_set->size = 0L;
-	work_set->in_progress_size = 0L;
-	work_set->metadata.type = type;
-	work_set->metadata.bfz_compress_type = gp_workfile_compress_algorithm;
-	work_set->metadata.snapshot = snapshot;
-	work_set->metadata.num_leaf_files = 0;
-	work_set->on_disk = false;
-	work_set->set_plan = NULL;
-	work_set->node_type = T_Invalid;
+	NodeTag node_type = T_Invalid;
 	if (ps != NULL)
 	{
-		work_set->node_type = ps->type;
+		node_type = ps->type;
 	}
-	work_set->slice_id = currentSliceId;
-	work_set->session_id = gp_session_id;
-	work_set->command_count = gp_command_count;
+	char *dir_path = create_workset_directory(node_type, currentSliceId);
 
-	work_set->metadata.operator_work_mem = get_operator_work_mem(ps);
+	/* Create parameter info for the populate function */
+	workset_info set_info;
+	set_info.file_type = type;
+	set_info.snapshot = snapshot;
+	set_info.nodeType = node_type;
+	set_info.can_be_reused = can_be_reused && workfile_mgr_is_reusable(ps);
+	set_info.dir_path = dir_path;
+	set_info.session_start_time = GetCurrentTimestamp();
+	set_info.operator_work_mem = get_operator_work_mem(ps);
+	set_info.on_disk = true;
 
+	CacheEntry *newEntry = NULL;
 
-	/* If workfile caching is disabled, nothing should be re-used, so override whatever the caller says */
-	work_set->can_be_reused = gp_workfile_caching && can_be_reused && workfile_mgr_is_reusable(ps);
+	PG_TRY();
+	{
+		newEntry = acquire_entry_retry(workfile_mgr_cache, &set_info);
+	}
+	PG_CATCH();
+	{
+		/* Failed to acquire new entry, cache full. Clean up the directory we created. */
+		workfile_mgr_delete_set_directory(dir_path);
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 
+	/* Path has now been copied to the workfile_set. We can free it */
+	pfree(dir_path);
+
+	/* Complete initialization of the entry with post-acquire actions */
+	Assert(NULL != newEntry);
+	workfile_set *work_set = CACHE_ENTRY_PAYLOAD(newEntry);
+	Assert(work_set != NULL);
+	if (work_set->can_be_reused)
+	{
+		Assert(plan != NULL);
+		Assert(nodeTag(plan) >= T_Plan && nodeTag(plan) < T_PlanInvalItem);
+
+		workfile_set_plan *s_plan = workfile_mgr_serialize_plan(ps);
+		work_set->key = workfile_mgr_hash_key(s_plan);
+		workfile_mgr_save_plan(work_set, s_plan);
+		workfile_mgr_free_plan(s_plan);
+	}
+
+	elog(gp_workfile_caching_loglevel, "new spill file set. key=0x%x can_be_reused=%d prefix=%s opMemKB=" INT64_FORMAT,
+			work_set->key, work_set->can_be_reused, work_set->path, work_set->metadata.operator_work_mem);
+
+	return work_set;
+}
+
+/*
+ * Creates the workset directory and returns the path.
+ * Throws an error if path or directory cannot be created.
+ *
+ * Returns the name of the directory created.
+ * The name returned is palloc-ed in the current memory context.
+ *
+ */
+static char *
+create_workset_directory(NodeTag node_type, int slice_id)
+{
 	/* Create base directory here. We need database relative path */
 	StringInfo tmp_dirpath = makeStringInfo();
 
@@ -221,7 +272,7 @@ workfile_mgr_create_set(enum ExecWorkFileType type, bool can_be_reused, PlanStat
 	pfree(tmp_dirpath);
 
 	/* Create workset directory here */
-	StringInfo operator_name = get_name_from_nodeType(work_set->node_type);
+	StringInfo operator_name = get_name_from_nodeType(node_type);
  	StringInfo workset_path_masked = makeStringInfo();
 
 	appendStringInfo(workset_path_masked,
@@ -230,7 +281,7 @@ workfile_mgr_create_set(enum ExecWorkFileType type, bool can_be_reused, PlanStat
 			 PG_TEMP_FILES_DIR,
 			 WORKFILE_SET_PREFIX,
 			 operator_name->data,
-			 work_set->slice_id,
+			 slice_id,
 			 WORKFILE_SET_MASK);
 
 	if (workset_path_masked->len > MAXPGPATH)
@@ -240,7 +291,7 @@ workfile_mgr_create_set(enum ExecWorkFileType type, bool can_be_reused, PlanStat
 			PG_TEMP_FILES_DIR,
 			WORKFILE_SET_PREFIX,
 			operator_name->data,
-			work_set->slice_id,
+			slice_id,
 			WORKFILE_SET_MASK)));
 	}
 
@@ -252,8 +303,10 @@ workfile_mgr_create_set(enum ExecWorkFileType type, bool can_be_reused, PlanStat
 				errmsg("could not create spill file directory: %m")));
 	}
 
-	/* Initialize workset path. Strip prefix from path since bfz/fd add the getCurrentTempFilePath to it */
-	strncpy(work_set->path,
+	char *final_path = (char *) palloc0(MAXPGPATH);
+
+	/* Initialize result path. Strip prefix from path since bfz/fd add the getCurrentTempFilePath to it */
+	strncpy(final_path,
 			workset_path_unmasked + strlen(getCurrentTempFilePath) + 1,
 			MAXPGPATH);
 
@@ -264,29 +317,60 @@ workfile_mgr_create_set(enum ExecWorkFileType type, bool can_be_reused, PlanStat
 					workset_path_unmasked + strlen(getCurrentTempFilePath) + 1)));
 	}
 
-	/* Path is now valid. Mark this work_set as physical now */
-	work_set->on_disk = true;
-
 	pfree(workset_path_masked->data);
 	pfree(workset_path_masked);
 	pfree(operator_name->data);
 	pfree(operator_name);
 
-	if (work_set->can_be_reused)
+	return final_path;
+}
+
+/*
+ * SharedCache callback. Populates a newly acquired workfile_set before
+ * returning it to the caller.
+ */
+static void
+workfile_mgr_populate_set(const void *resource, const void *param)
+{
+	Assert(NULL != resource);
+	Assert(NULL != param);
+
+	workfile_set *work_set = (workfile_set *) resource;
+	workset_info *set_info = (workset_info *) param;
+
+	work_set->metadata.operator_work_mem = set_info->operator_work_mem;
+
+	if (!set_info->on_disk)
 	{
-		Assert(plan != NULL);
-		Assert(nodeTag(plan) >= T_Plan && nodeTag(plan) < T_PlanInvalItem);
-
-		workfile_set_plan *s_plan = workfile_mgr_serialize_plan(ps);
-		work_set->key = workfile_mgr_hash_key(s_plan);
-		workfile_mgr_save_plan(work_set, s_plan);
-		workfile_mgr_free_plan(s_plan);
+		/* This is for a "virtual" work_set, used for look-ups. No need to populate further */
+		Assert(NULL == set_info->dir_path);
+		work_set->on_disk = false;
 	}
+	else
+	{
 
-	elog(gp_workfile_caching_loglevel, "new spill file set. key=0x%x can_be_reused=%d prefix=%s opMemKB=" INT64_FORMAT,
-			work_set->key, work_set->can_be_reused, work_set->path, work_set->metadata.operator_work_mem);
+		work_set->complete = false;
+		work_set->no_files = 0;
+		work_set->size = 0L;
+		work_set->in_progress_size = 0L;
+		work_set->node_type = set_info->nodeType;
+		work_set->metadata.type = set_info->file_type;
+		work_set->metadata.bfz_compress_type = gp_workfile_compress_algorithm;
+		work_set->metadata.snapshot = set_info->snapshot;
+		work_set->metadata.num_leaf_files = 0;
+		work_set->set_plan = NULL;
+		work_set->slice_id = currentSliceId;
+		work_set->session_id = gp_session_id;
+		work_set->command_count = gp_command_count;
+		work_set->session_start_time = set_info->session_start_time;
 
-	return work_set;
+		/* If workfile caching is disabled, nothing should be re-used, so override whatever the caller says */
+		work_set->can_be_reused = gp_workfile_caching && set_info->can_be_reused;
+
+		Assert(strlen(set_info->dir_path) < MAXPGPATH);
+		strncpy(work_set->path, set_info->dir_path, MAXPGPATH);
+		work_set->on_disk = true;
+	}
 }
 
 /*
@@ -504,19 +588,22 @@ workfile_mgr_lookup_set(PlanState *ps)
 	Assert(NULL != ps->plan);
 	Assert(nodeTag(ps->plan) >= T_Plan && nodeTag(ps->plan) < T_PlanInvalItem);
 
-	workfile_set_plan *s_plan = workfile_mgr_serialize_plan(ps);
-	Assert(s_plan != NULL);
+	/* Create parameter info for the populate function */
+	workset_info set_info;
+	set_info.dir_path = NULL;
+	set_info.operator_work_mem = get_operator_work_mem(ps);
+	set_info.on_disk = false;
 
-	CacheEntry *localEntry = acquire_entry_retry(workfile_mgr_cache);
+	CacheEntry *localEntry = acquire_entry_retry(workfile_mgr_cache, &set_info);
 	Assert(localEntry != NULL);
 
 	workfile_set *local_work_set = (workfile_set *) CACHE_ENTRY_PAYLOAD(localEntry);
 
-	/* This is not a physical workset, it's only used for look-ups */
-	local_work_set->on_disk = false;
+	/* Populate the rest of the entries needed for look-up */
+	workfile_set_plan *s_plan = workfile_mgr_serialize_plan(ps);
+	Assert(s_plan != NULL);
 	local_work_set->set_plan = s_plan;
 	local_work_set->key = workfile_mgr_hash_key(s_plan);
-	local_work_set->metadata.operator_work_mem = get_operator_work_mem(ps);
 
 	CacheEntry *cachedEntry = Cache_Lookup(workfile_mgr_cache, localEntry);
 
@@ -536,11 +623,14 @@ workfile_mgr_lookup_set(PlanState *ps)
  * Acquire an entry from the cache. If the cache is full (reached gp_workfile_max_entries),
  * trigger evictions and try again.
  * If the cache remains full after max_retries, give up and error out.
+ *
+ * populate_param is the parameter to be passed to Cache_AcquireEntry. It
+ * will be used to populate the entry before being returned.
  */
 static CacheEntry *
-acquire_entry_retry(Cache *cache)
+acquire_entry_retry(Cache *cache, workset_info *populate_param)
 {
-	CacheEntry *localEntry = Cache_AcquireEntry(cache);
+	CacheEntry *localEntry = Cache_AcquireEntry(cache, populate_param);
 
 	int crt_retry = 0;
 	while (NULL == localEntry && crt_retry < MAX_EVICT_ATTEMPTS)
@@ -552,7 +642,7 @@ acquire_entry_retry(Cache *cache)
 		int64 size_evicted = workfile_mgr_evict(MIN_EVICT_SIZE);
 		elog(gp_workfile_caching_loglevel, "Hit cache entries full, evicted " INT64_FORMAT " bytes", size_evicted);
 
-		localEntry = Cache_AcquireEntry(cache);
+		localEntry = Cache_AcquireEntry(cache, populate_param);
 		crt_retry++;
 	}
 

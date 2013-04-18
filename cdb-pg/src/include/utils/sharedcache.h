@@ -39,10 +39,11 @@
 
 typedef enum Cache_EntryState
 {
-	CACHE_ENTRY_FREE = 0,
-	CACHE_ENTRY_ACQUIRED,
-	CACHE_ENTRY_CACHED,
-	CACHE_ENTRY_DELETED
+	CACHE_ENTRY_FREE = 0, /* Entry is in the freelist and not in use */
+	CACHE_ENTRY_ACQUIRED, /* Entry is owned by a client and populated, but not visible to other clients */
+	CACHE_ENTRY_CACHED,   /* Entry is in the cache, visible to all clients through lookups */
+	CACHE_ENTRY_DELETED,  /* Entry is in the cache and marked for deletion. Not visible to new clients through lookups */
+	CACHE_ENTRY_RESERVED  /* Entry is in the process of being acquired, but it is not populated yet */
 } Cache_EntryState;
 
 /* Signature for function to test if two cache entries are equivalent */
@@ -50,6 +51,9 @@ typedef bool (*Cache_EquivalenceFunc) (const void *resource1, const void *resour
 
 /* Signature for function to clean up a resource before removing from cache */
 typedef void (*Cache_ClientCleanupFunc) (const void *resource);
+
+/* Signature for a function to populate a new entry after acquiring */
+typedef void (*Cache_ClientPopulateFunc) (const void *resource, const void *param);
 
 /*
  * Context for the cache replacement policy. Lives in shared memory.
@@ -79,6 +83,9 @@ typedef struct Cache_PolicyContext
  */
 typedef struct CacheEntry
 {
+	/* Lock to synchronize changes to the payload of the CacheEntry */
+	slock_t	spinlock;
+
 	/* Hash function result for this entry */
 	uint32 hashvalue;
 
@@ -150,6 +157,9 @@ typedef struct CacheCtl
 
 	/* Client cleanup function */
 	Cache_ClientCleanupFunc cleanupEntry;
+
+	/* Client populate entry function */
+	Cache_ClientPopulateFunc populateEntry;
 
 } CacheCtl;
 
@@ -262,6 +272,9 @@ typedef struct Cache
 	/* Client cleanup function */
 	Cache_ClientCleanupFunc cleanupEntry;
 
+	/* Client populate entry function */
+	Cache_ClientPopulateFunc populateEntry;
+
 	/* List of entries owned by client. Used for cleanup */
 	Dllist *ownedEntries;
 
@@ -293,7 +306,7 @@ void Cache_Insert(Cache *cache, CacheEntry *entry);
 CacheEntry *Cache_Lookup(Cache *cache, CacheEntry *entry);
 void Cache_Remove(Cache *cache, CacheEntry *entry);
 void Cache_Release(Cache *cache, CacheEntry *entry);
-CacheEntry *Cache_AcquireEntry(Cache *cache);
+CacheEntry *Cache_AcquireEntry(Cache *cache, void *populate_param);
 bool Cache_IsCached(CacheEntry *entry);
 void Cache_SurrenderClientEntries(Cache *cache);
 int32 Cache_Clear(Cache *cache);
@@ -302,6 +315,9 @@ int32 Cache_Clear(Cache *cache);
 void Cache_UnlinkEntry(Cache *cache, CacheAnchor *anchor, CacheEntry *entry);
 void Cache_AddToFreelist(Cache *cache, CacheEntry *entry);
 CacheEntry *Cache_GetEntryByIndex(CacheHdr *cacheHdr, int32 idx);
+void Cache_LockEntry(Cache *cache, CacheEntry *entry);
+void Cache_UnlockEntry(Cache *cache, CacheEntry *entry);
+
 
 #if USE_ASSERT_CHECKING
 void Cache_MemsetPayload(Cache *cache, CacheEntry *entry);

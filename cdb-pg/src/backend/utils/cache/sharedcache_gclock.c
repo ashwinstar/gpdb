@@ -212,19 +212,28 @@ Cache_Evict(Cache *cache, int64 evictRequestSize)
 		/* Don't update noFreeEntries yet. It will be done in Cache_AddToFreelist */
 		Cache_UpdatePerfCounter(&cacheStats->noCachedEntries, -1 /* delta */);
 
-		/* Call client-side cleanup for entry */
-		cache->cleanupEntry(CACHE_ENTRY_PAYLOAD(crtEntry));
-
+		/* Unlink entry from the anchor chain */
 		SpinLockAcquire(&anchor->spinlock);
 		Cache_UnlinkEntry(cache, anchor, crtEntry);
 		SpinLockRelease(&anchor->spinlock);
+
+		SyncHTRelease(cache->syncHashtable, (void *) anchor);
+
+		/* Call client-side cleanup for entry */
+		cache->cleanupEntry(CACHE_ENTRY_PAYLOAD(crtEntry));
+
+		Cache_LockEntry(cache, crtEntry);
+
+		Assert(crtEntry->state == CACHE_ENTRY_DELETED);
+		crtEntry->state = CACHE_ENTRY_FREE;
 
 #if USE_ASSERT_CHECKING
 		Cache_MemsetPayload(cache, crtEntry);
 #endif
 
+		Cache_UnlockEntry(cache, crtEntry);
+
 		Cache_AddToFreelist(cache, crtEntry);
-		SyncHTRelease(cache->syncHashtable, (void *) anchor);
 
 		Cache_UpdatePerfCounter(&cacheStats->noEvicts, 1 /* delta */);
 		Cache_TimedOperationRecord(&cacheStats->timeEvictions, &cacheStats->maxTimeEvict);

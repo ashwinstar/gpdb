@@ -126,6 +126,7 @@ Cache_InitHashtable(CacheCtl *cacheCtl, Cache *cache)
 static void
 Cache_InitCacheEntry(Cache *cache, CacheEntry *entry)
 {
+	SpinLockInit(&entry->spinlock);
 	entry->state = CACHE_ENTRY_FREE;
 	entry->pinCount = 0;
 	entry->size = 0L;
@@ -345,6 +346,7 @@ Cache_Create(CacheCtl *cacheCtl)
 	cache->match = cacheCtl->match;
 	cache->equivalentEntries = cacheCtl->equivalentEntries;
 	cache->cleanupEntry = cacheCtl->cleanupEntry;
+	cache->populateEntry = cacheCtl->populateEntry;
 	/* Create new linked lists in top memory context for cleanup */
 	cache->ownedEntries = DLNewList();
 	cache->cacheName = pstrdup(cacheCtl->cacheName);
@@ -371,11 +373,16 @@ Cache_Free(Cache *cache)
  * Retrieve a new cache entry from the pre-allocated freelist.
  * The client has to either insert the entry in the cache or surrender it.
  *
+ * This function calls the populateEntry callback function to populate the
+ * entry before returning it to the client.
+ *
+ * populate_param is the opaque parameter to be passed to the populateEntry function.
+ *
  * Return NULL if freelist is empty.
  *
  */
 CacheEntry *
-Cache_AcquireEntry(Cache *cache)
+Cache_AcquireEntry(Cache *cache, void *populate_param)
 {
 	Assert(NULL != cache);
 
@@ -386,6 +393,29 @@ Cache_AcquireEntry(Cache *cache)
 	}
 
 	CACHE_ASSERT_WIPED(newEntry);
+
+
+#ifdef USE_ASSERT_CHECKING
+	int32 casResult =
+#endif
+	compare_and_swap_32(&newEntry->state, CACHE_ENTRY_FREE, CACHE_ENTRY_RESERVED);
+	Assert(1 == casResult);
+
+	/*
+	 * In RESERVED state nobody else will try to read this entry, not even
+	 * the views. No need to lock the entry while populating.
+	 */
+
+	if (cache->populateEntry)
+	{
+		cache->populateEntry(CACHE_ENTRY_PAYLOAD(newEntry), populate_param);
+	}
+
+#ifdef USE_ASSERT_CHECKING
+	casResult =
+#endif
+	compare_and_swap_32(&newEntry->state, CACHE_ENTRY_RESERVED, CACHE_ENTRY_ACQUIRED);
+	Assert(1 == casResult);
 
 	Cache_RegisterCleanup(cache, newEntry, false /* isCachedEntry */ );
 
@@ -408,8 +438,7 @@ Cache_MemsetPayload(Cache *cache, CacheEntry *entry)
 
 /*
  * Return a previously acquired entry to the cache freelist.
- * Does not call client clean-up, because we don't know if the entry contains
- * anything meaningful at this point.
+ * Calls the client-specific cleanup before returning to the freelist.
  *
  * Unregisters the entry from the cleanup list if requested.
  */
@@ -434,9 +463,17 @@ Cache_ReleaseAcquired(Cache *cache, CacheEntry *entry, bool unregisterCleanup)
 	PG_CATCH();
 	{
 
+		/* Grab entry lock to ensure exclusive access to it while we're touching it */
+		Cache_LockEntry(cache, entry);
+
+		/* No need for atomic operations as long as we hold the entry lock */
+		entry->state = CACHE_ENTRY_FREE;
+
 #ifdef USE_ASSERT_CHECKING
 		Cache_MemsetPayload(cache, entry);
 #endif
+
+		Cache_UnlockEntry(cache, entry);
 
 		/* Link entry back in the freelist */
 		Cache_AddToFreelist(cache, entry);
@@ -445,9 +482,17 @@ Cache_ReleaseAcquired(Cache *cache, CacheEntry *entry, bool unregisterCleanup)
 	}
 	PG_END_TRY();
 
+	/* Grab entry lock to ensure exclusive access to it while we're touching it */
+	Cache_LockEntry(cache, entry);
+
+	/* No need for atomic operations as long as we hold the entry lock */
+	entry->state = CACHE_ENTRY_FREE;
+
 #ifdef USE_ASSERT_CHECKING
 	Cache_MemsetPayload(cache, entry);
 #endif
+
+	Cache_UnlockEntry(cache, entry);
 
 	Cache_AddToFreelist(cache, entry);
 
@@ -476,12 +521,6 @@ Cache_GetFreeElement(Cache *cache)
 	CacheEntry *newEntry = cacheHdr->freeList;
 	Assert(newEntry->state == CACHE_ENTRY_FREE);
 
-#ifdef USE_ASSERT_CHECKING
-	int32 casResult =
-#endif
-	compare_and_swap_32(&newEntry->state, CACHE_ENTRY_FREE, CACHE_ENTRY_ACQUIRED);
-	Assert(1 == casResult);
-
 	cacheHdr->freeList = cacheHdr->freeList->nextEntry;
 
 	Cache_UpdatePerfCounter(&cacheHdr->cacheStats.noFreeEntries, -1 /* delta */ );
@@ -494,6 +533,8 @@ Cache_GetFreeElement(Cache *cache)
 
 /*
  * Link an entry back in the cache freelist
+ *
+ * The entry must be already marked as free by the caller.
  */
 void
 Cache_AddToFreelist(Cache *cache, CacheEntry *entry)
@@ -501,7 +542,7 @@ Cache_AddToFreelist(Cache *cache, CacheEntry *entry)
 	Assert(NULL != cache);
 	Assert(NULL != entry);
 	CACHE_ASSERT_WIPED(entry);
-	Assert(entry->state != CACHE_ENTRY_FREE);
+	Assert(entry->state == CACHE_ENTRY_FREE);
 
 	CacheHdr *cacheHdr = cache->cacheHdr;
 
@@ -509,7 +550,6 @@ Cache_AddToFreelist(Cache *cache, CacheEntry *entry)
 	SpinLockAcquire(&cacheHdr->spinlock);
 
 	entry->nextEntry = cacheHdr->freeList;
-	entry->state = CACHE_ENTRY_FREE;
 	cacheHdr->freeList = entry;
 	Cache_UpdatePerfCounter(&cacheHdr->cacheStats.noFreeEntries, 1 /* delta */);
 
@@ -814,9 +854,16 @@ Cache_ReleaseCached(Cache *cache, CacheEntry *entry, bool unregisterCleanup)
 		PG_CATCH();
 		{
 
+			/* Grab entry lock to ensure exclusive access to it while we're touching it */
+			Cache_LockEntry(cache, entry);
+
+			entry->state = CACHE_ENTRY_FREE;
+
 #ifdef USE_ASSERT_CHECKING
 			Cache_MemsetPayload(cache, entry);
 #endif
+
+			Cache_UnlockEntry(cache, entry);
 
 			/* Link entry back in the freelist */
 			Cache_AddToFreelist(cache, entry);
@@ -825,9 +872,16 @@ Cache_ReleaseCached(Cache *cache, CacheEntry *entry, bool unregisterCleanup)
 		}
 		PG_END_TRY();
 
+		/* Grab entry lock to ensure exclusive access to it while we're touching it */
+		Cache_LockEntry(cache, entry);
+
+		entry->state = CACHE_ENTRY_FREE;
+
 #ifdef USE_ASSERT_CHECKING
 		Cache_MemsetPayload(cache, entry);
 #endif
+
+		Cache_UnlockEntry(cache, entry);
 
 		/* Link entry back in the freelist */
 		Cache_AddToFreelist(cache, entry);
@@ -924,6 +978,25 @@ bool
 Cache_IsCached(CacheEntry *entry)
 {
 	return (entry->state == CACHE_ENTRY_CACHED || entry->state == CACHE_ENTRY_DELETED);
+}
+
+/*
+ * Acquire the lock protecting an entry. Required to do before touching
+ * the state of the entry or its payload
+ */
+void
+Cache_LockEntry(Cache *cache, CacheEntry *entry)
+{
+	SpinLockAcquire(&entry->spinlock);
+}
+
+/*
+ * Release the lock protecting an entry
+ */
+void
+Cache_UnlockEntry(Cache *cache, CacheEntry *entry)
+{
+	SpinLockRelease(&entry->spinlock);
 }
 
 /*

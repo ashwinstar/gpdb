@@ -26,7 +26,8 @@ WITH all_entries AS (
             optype text, 
             slice int,
             sessionid int, 
-            commandid int
+            commandid int,
+            query_start timestamptz
           )
     UNION ALL
     SELECT C.*
@@ -41,7 +42,8 @@ WITH all_entries AS (
             optype text, 
             slice int,
             sessionid int, 
-            commandid int
+            commandid int,
+            query_start timestamptz
           ))
 SELECT S.datname, 
        (CASE WHEN (C.state = 1) THEN S.procpid ELSE NULL END) AS procpid, 

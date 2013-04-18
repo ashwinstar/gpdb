@@ -31,7 +31,7 @@
 #define NUM_CACHE_STATS_ELEM 23
 
 /* The number of columns as defined in gp_workfile_mgr_cache_entries view */
-#define NUM_CACHE_ENTRIES_ELEM 11
+#define NUM_CACHE_ENTRIES_ELEM 12
 
 /* The number of columns as defined in gp_workfile_mgr_diskspace view */
 #define NUM_USED_DISKSPACE_ELEM 2
@@ -41,6 +41,10 @@ static char *gp_workfile_operator_name(NodeTag node_type);
 Datum gp_workfile_mgr_cache_stats(PG_FUNCTION_ARGS);
 Datum gp_workfile_mgr_cache_entries(PG_FUNCTION_ARGS);
 Datum gp_workfile_mgr_used_diskspace(PG_FUNCTION_ARGS);
+
+/* Helper functions */
+static CacheEntry *next_entry_to_list(Cache *cache, int32 *crtIndex);
+static bool should_list_entry(CacheEntry *entry);
 
 PG_FUNCTION_INFO_V1(gp_workfile_mgr_cache_stats);
 
@@ -114,7 +118,7 @@ gp_workfile_mgr_cache_entries(PG_FUNCTION_ARGS)
 {
 
 	FuncCallContext *funcctx;
-	uint32 *crtIndex;
+	int32 *crtIndexPtr;
 
 	if (SRF_IS_FIRSTCALL())
 	{
@@ -153,78 +157,127 @@ gp_workfile_mgr_cache_entries(PG_FUNCTION_ARGS)
 				INT4OID, -1 /* typmod */, 0 /* attdim */);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 11, "commandid",
 				INT4OID, -1 /* typmod */, 0 /* attdim */);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 12, "query_start",
+				TIMESTAMPTZOID, -1, 0);
 
-		Assert(NUM_CACHE_ENTRIES_ELEM == 11);
+		Assert(NUM_CACHE_ENTRIES_ELEM == 12);
 
 		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
 
-		crtIndex = (uint32 *) palloc(sizeof(*crtIndex));
-		*crtIndex = 0;
-		funcctx->user_fctx = crtIndex;
+		crtIndexPtr = (int32 *) palloc(sizeof(*crtIndexPtr));
+		*crtIndexPtr = 0;
+		funcctx->user_fctx = crtIndexPtr;
 		MemoryContextSwitchTo(oldcontext);
 	}
 
-	funcctx = SRF_PERCALL_SETUP();
-
 	Cache *cache = workfile_mgr_get_cache();
+	funcctx = SRF_PERCALL_SETUP();
+	crtIndexPtr = (int32 *) funcctx->user_fctx;
+
+	while (true)
+	{
+
+		CacheEntry *crtEntry = next_entry_to_list(cache, crtIndexPtr);
+
+		if (!crtEntry)
+		{
+			/* Reached the end of the entry array, we're done */
+			SRF_RETURN_DONE(funcctx);
+		}
+
+		Datum		values[NUM_CACHE_ENTRIES_ELEM];
+		bool		nulls[NUM_CACHE_ENTRIES_ELEM];
+		MemSet(nulls, 0, sizeof(nulls));
+
+		workfile_set *work_set = CACHE_ENTRY_PAYLOAD(crtEntry);
+
+
+		/* Lock entry in order to read its payload */
+		Cache_LockEntry(cache, crtEntry);
+
+		if (!should_list_entry(crtEntry) || !work_set->on_disk)
+		{
+			Cache_UnlockEntry(cache, crtEntry);
+			continue;
+		}
+
+		values[0] = Int32GetDatum(Gp_segment);
+		char work_set_path[MAXPGPATH] = "";
+		if (work_set->on_disk)
+		{
+			/* Only physical sets have a meaningful path */
+			strncpy(work_set_path, work_set->path, MAXPGPATH);
+		}
+		values[1] = CStringGetTextDatum(work_set_path);
+
+		values[2] = UInt32GetDatum(crtEntry->hashvalue);
+
+		int64 work_set_size = work_set->size;
+		if (crtEntry->state == CACHE_ENTRY_ACQUIRED)
+		{
+			/*
+			 * work_set->size is not updated until the entry is cached.
+			 * For in-progress queries, the up-to-date size is stored in
+			 * work_set->in_progress_size.
+			 */
+			work_set_size = work_set->in_progress_size;
+		}
+
+		values[3] = Int64GetDatum(work_set_size);
+		values[4] = UInt32GetDatum(crtEntry->utility);
+		values[5] = UInt32GetDatum(crtEntry->state);
+		values[6] = UInt32GetDatum(work_set->metadata.operator_work_mem);
+
+		values[7] = CStringGetTextDatum(gp_workfile_operator_name(work_set->node_type));
+		values[8] = UInt32GetDatum(work_set->slice_id);
+		values[9] = UInt32GetDatum(work_set->session_id);
+		values[10] = UInt32GetDatum(work_set->command_count);
+		values[11] = TimestampTzGetDatum(work_set->session_start_time);
+
+		/* Done reading from the payload of the entry, release lock */
+		Cache_UnlockEntry(cache, crtEntry);
+
+		HeapTuple tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
+		Datum result = HeapTupleGetDatum(tuple);
+		SRF_RETURN_NEXT(funcctx, result);
+	}
+}
+
+/*
+ * Traverses the list of cache entries and looks for the next interesting entry
+ * Returns an entry if found, NULL if we reached the end of the loop.
+ *
+ * crtIndex is a pointer to the current index in the list. It is updated to
+ * the index of the current entry while traversing.
+ */
+static CacheEntry *
+next_entry_to_list(Cache *cache, int32 *crtIndex)
+{
 	CacheHdr *cacheHdr = cache->cacheHdr;
 	CacheEntry *crtEntry = NULL;
-	bool emptyEntry = true;
 
-	/* Find next non-empty entry */
-	for (crtIndex = (uint32 *) funcctx->user_fctx ;  (*crtIndex) < cacheHdr->nEntries && emptyEntry ; (*crtIndex)++)
+	for ( ;  (*crtIndex) < cacheHdr->nEntries ; (*crtIndex)++)
 	{
 		crtEntry = Cache_GetEntryByIndex(cacheHdr, *crtIndex);
-		emptyEntry = (crtEntry->state == CACHE_ENTRY_FREE);
+		if (should_list_entry(crtEntry))
+		{
+			(*crtIndex)++;
+			return crtEntry;
+		}
 	}
 
-	if (emptyEntry)
-	{
-		/* Reached the end of the entry array, we're done */
-		SRF_RETURN_DONE(funcctx);
-	}
+	/* Finished the list and did not find any interesting entries */
+	return NULL;
+}
 
-	workfile_set *work_set = CACHE_ENTRY_PAYLOAD(crtEntry);
-
-	Datum		values[NUM_CACHE_ENTRIES_ELEM];
-	bool		nulls[NUM_CACHE_ENTRIES_ELEM];
-	MemSet(nulls, 0, sizeof(nulls));
-
-	values[0] = Int32GetDatum(Gp_segment);
-	char *work_set_path = "";
-	if (work_set->on_disk)
-	{
-		/* Only physical sets have a meaningful path */
-		work_set_path = work_set->path;
-	}
-	values[1] = CStringGetTextDatum(work_set_path);
-
-	values[2] = UInt32GetDatum(crtEntry->hashvalue);
-
-	int64 work_set_size = work_set->size;
-	if (crtEntry->state == CACHE_ENTRY_ACQUIRED)
-	{
-		/*
-		 * work_set->size is not updated until the entry is cached.
-		 * For in-progress queries, the up-to-date size is stored in
-		 * work_set->in_progress_size.
-		 */
-		work_set_size = work_set->in_progress_size;
-	}
-
-	values[3] = Int64GetDatum(work_set_size);
-	values[4] = UInt32GetDatum(crtEntry->utility);
-	values[5] = UInt32GetDatum(crtEntry->state);
-	values[6] = UInt32GetDatum(work_set->metadata.operator_work_mem);
-
-	values[7] = CStringGetTextDatum(gp_workfile_operator_name(work_set->node_type));
-	values[8] = UInt32GetDatum(work_set->slice_id);
-	values[9] = UInt32GetDatum(work_set->session_id);
-	values[10] = UInt32GetDatum(work_set->command_count);
-
-	HeapTuple tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
-	Datum result = HeapTupleGetDatum(tuple);
-	SRF_RETURN_NEXT(funcctx, result);
+/*
+ * Determines if an entry should be included in the output based on the state.
+ */
+static bool
+should_list_entry(CacheEntry *entry)
+{
+	return (entry->state == CACHE_ENTRY_ACQUIRED) || (entry->state == CACHE_ENTRY_CACHED)
+			|| (entry->state == CACHE_ENTRY_DELETED);
 }
 
 PG_FUNCTION_INFO_V1(gp_workfile_mgr_used_diskspace);

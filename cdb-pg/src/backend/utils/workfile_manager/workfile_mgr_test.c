@@ -41,6 +41,12 @@ typedef struct TestCacheElt
 	int data;
 } TestCacheElt;
 
+typedef struct TestPopParam
+{
+	char key[TEST_NAME_LENGTH];
+	int data;
+} TestPopParam;
+
 int tests_passed;
 int tests_failed;
 int tests_total;
@@ -185,6 +191,24 @@ cacheEltCleanup(const void *resource)
 	elt->data = -1;
 }
 
+static void
+cacheEltPopulate(const void *resource, const void *param)
+{
+	Assert(NULL != resource);
+
+	if (NULL == param)
+	{
+		elog(gp_workfile_caching_loglevel, "Returning uninitialized entry");
+		return;
+	}
+
+	TestCacheElt *elt = (TestCacheElt *) resource;
+	TestPopParam *eltInfo = (TestPopParam *) param;
+
+	strncpy(elt->key, eltInfo->key, TEST_NAME_LENGTH);
+	elt->data = eltInfo->data;
+}
+
 /*
  * Function to be called to cleanup in event of client error
  *
@@ -220,6 +244,7 @@ cache_test_create()
 
 	cacheCtl.equivalentEntries = cacheEltEquivalent;
 	cacheCtl.cleanupEntry = cacheEltCleanup;
+	cacheCtl.populateEntry = cacheEltPopulate;
 
 	cacheCtl.maxSize = TEST_HT_NUM_ELEMENTS;
 	cacheCtl.cacheName = "Test Cache";
@@ -249,13 +274,14 @@ cache_test_acquire(void)
 	unit_test_result(cache != NULL);
 
 	elog(LOG, "Running sub-test: CacheAcquireEntry");
-	CacheEntry *entry = Cache_AcquireEntry(cache);
+
+	TestPopParam param;
+	strncpy(param.key, "Test Key 1", TEST_NAME_LENGTH);
+	param.data = 4567;
+
+	CacheEntry *entry = Cache_AcquireEntry(cache, &param);
 	unit_test_result(entry != NULL);
 
-	TestCacheElt *elt = CACHE_ENTRY_PAYLOAD(entry);
-
-	strncpy(elt->key, "Test Key 1", TEST_NAME_LENGTH);
-	elt->data = 4567;
 
 	elog(LOG, "Running sub-test: CacheSurrenderEntry");
 	Cache_Release(cache, entry);
@@ -276,13 +302,15 @@ cache_test_insert()
 	unit_test_result(cache != NULL);
 
 	elog(LOG, "Running sub-test: CacheAcquireEntry");
-	CacheEntry *entry = Cache_AcquireEntry(cache);
+
+	TestPopParam param;
+	strncpy(param.key, "Test Key 2", TEST_NAME_LENGTH);
+	param.data = 1111;
+
+	CacheEntry *entry = Cache_AcquireEntry(cache, &param);
 	unit_test_result(entry != NULL);
 
 	elog(LOG, "Running sub-test: CacheInsert");
-	TestCacheElt *elt = CACHE_ENTRY_PAYLOAD(entry);
-	strncpy(elt->key, "Test Key 2", TEST_NAME_LENGTH);
-	elt->data = 1111;
 
 	Cache_Insert(cache, entry);
 	Cache_Release(cache, entry);
@@ -290,10 +318,10 @@ cache_test_insert()
 
 	/* Look-up test */
 	elog(LOG, "Running sub-test: CacheLookup");
-	CacheEntry *localEntry = Cache_AcquireEntry(cache);
-	elt = CACHE_ENTRY_PAYLOAD(localEntry);
-	strncpy(elt->key, "Test Key 2", TEST_NAME_LENGTH);
-	elt->data = 1111;
+
+	strncpy(param.key, "Test Key 2", TEST_NAME_LENGTH);
+	param.data = 1111;
+	CacheEntry *localEntry = Cache_AcquireEntry(cache, &param);
 
 	CacheEntry *lookedUpEntry = Cache_Lookup(cache, localEntry);
 	unit_test_result(lookedUpEntry != NULL);
@@ -301,7 +329,7 @@ cache_test_insert()
 	Cache_Release(cache, lookedUpEntry);
 
 	elog(LOG, "Running sub-test: CacheLookup equal key, no match on value");
-	elt = CACHE_ENTRY_PAYLOAD(localEntry);
+	TestCacheElt *elt = CACHE_ENTRY_PAYLOAD(localEntry);
 	strncpy(elt->key, "Test Key 2", TEST_NAME_LENGTH);
 	elt->data = 1234;
 	lookedUpEntry = Cache_Lookup(cache, localEntry);
@@ -333,26 +361,24 @@ cache_test_remove(void)
 	char *testKey = "Test Remove Key 2";
 
 	/* Insert one entry */
-	CacheEntry *entry1 = Cache_AcquireEntry(cache);
-	TestCacheElt *elt1 = CACHE_ENTRY_PAYLOAD(entry1);
-	strncpy(elt1->key, testKey, TEST_NAME_LENGTH);
-	elt1->data = 1111;
+	TestPopParam param;
+	strncpy(param.key, testKey, TEST_NAME_LENGTH);
+	param.data = 1111;
+	CacheEntry *entry1 = Cache_AcquireEntry(cache, &param);
 	Cache_Insert(cache, entry1);
 	Cache_Release(cache, entry1);
 
 	/* Insert another entry */
-	CacheEntry *entry2 = Cache_AcquireEntry(cache);
-	TestCacheElt *elt2 = CACHE_ENTRY_PAYLOAD(entry2);
-	strncpy(elt2->key, testKey, TEST_NAME_LENGTH);
-	elt2->data = 2222;
+	strncpy(param.key, testKey, TEST_NAME_LENGTH);
+	param.data = 2222;
+	CacheEntry *entry2 = Cache_AcquireEntry(cache, &param);
 	Cache_Insert(cache, entry2);
 	Cache_Release(cache, entry2);
 
 	/* Look-up and remove an entry */
-	CacheEntry *localEntry = Cache_AcquireEntry(cache);
-	TestCacheElt *elt3 = CACHE_ENTRY_PAYLOAD(localEntry);
-	strncpy(elt3->key, testKey, TEST_NAME_LENGTH);
-	elt3->data = 2222;
+	strncpy(param.key, testKey, TEST_NAME_LENGTH);
+	param.data = 2222;
+	CacheEntry *localEntry = Cache_AcquireEntry(cache, &param);
 
 	elog(LOG, "Running sub-test: Look-up inserted element");
 	CacheEntry *lookedUpEntry = Cache_Lookup(cache, localEntry);
@@ -364,7 +390,7 @@ cache_test_remove(void)
 	unit_test_result(true);
 
 	elog(LOG, "Running sub-test: Look up removed element");
-	elt3 = CACHE_ENTRY_PAYLOAD(localEntry);
+	TestCacheElt *elt3 = CACHE_ENTRY_PAYLOAD(localEntry);
 	strncpy(elt3->key, testKey, TEST_NAME_LENGTH);
 	elt3->data = 2222;
 	lookedUpEntry = Cache_Lookup(cache, localEntry);
@@ -405,6 +431,8 @@ cache_test_concurrency(void)
 	int iterNo = 0;
 	bool testFailed = false;
 
+	TestPopParam param;
+
 	for (iterNo = 0; iterNo < noTestIterations ; iterNo ++)
 	{
 		if (testFailed)
@@ -419,7 +447,10 @@ cache_test_concurrency(void)
 			/* snprintf(key, TEST_NAME_LENGTH, "PID=%d cache key no. %d", MyProcPid, i); */
 			snprintf(key, TEST_NAME_LENGTH, "cache key no. %d", i);
 
-			entries[i] = Cache_AcquireEntry(cache);
+			strncpy(param.key, key, TEST_NAME_LENGTH);
+			param.data = MyProcPid;
+
+			entries[i] = Cache_AcquireEntry(cache, &param);
 
 			if (entries[i] == NULL)
 			{
@@ -427,9 +458,6 @@ cache_test_concurrency(void)
 				testFailed = true;
 				break;
 			}
-			TestCacheElt *elt = CACHE_ENTRY_PAYLOAD(entries[i]);
-			strncpy(elt->key, key, TEST_NAME_LENGTH);
-			elt->data = MyProcPid;
 
 			Cache_Insert(cache, entries[i]);
 			Cache_Release(cache, entries[i]);
@@ -443,18 +471,18 @@ cache_test_concurrency(void)
 		/* Look up noTestEntries */
 		for (i=0; i < noTestEntries; i++)
 		{
-			CacheEntry *localEntry = Cache_AcquireEntry(cache);
+			//snprintf(key, TEST_NAME_LENGTH, "PID=%d cache key no. %d", MyProcPid, i);
+			snprintf(key, TEST_NAME_LENGTH, "cache key no. %d", i);
+			strncpy(param.key, key, TEST_NAME_LENGTH);
+			param.data = MyProcPid;
+
+			CacheEntry *localEntry = Cache_AcquireEntry(cache, &param);
 			if (localEntry == NULL)
 			{
 				elog(LOG, "Could not acquire entry");
 				testFailed = true;
 				break;
 			}
-			TestCacheElt *elt = CACHE_ENTRY_PAYLOAD(localEntry);
-			//snprintf(key, TEST_NAME_LENGTH, "PID=%d cache key no. %d", MyProcPid, i);
-			snprintf(key, TEST_NAME_LENGTH, "cache key no. %d", i);
-			strncpy(elt->key, key, TEST_NAME_LENGTH);
-			elt->data = MyProcPid;
 
 			entries[i] = Cache_Lookup(cache, localEntry);
 			if (entries[i] == NULL)
@@ -484,18 +512,18 @@ cache_test_concurrency(void)
 		/* Look up no TestEntries again, should not be found */
 		for (i=0; i < noTestEntries; i++)
 		{
-			CacheEntry *localEntry = Cache_AcquireEntry(cache);
+			//snprintf(key, TEST_NAME_LENGTH, "PID=%d cache key no. %d", MyProcPid, i);
+			snprintf(key, TEST_NAME_LENGTH, "cache key no. %d", i);
+			strncpy(param.key, key, TEST_NAME_LENGTH);
+			param.data = MyProcPid;
+
+			CacheEntry *localEntry = Cache_AcquireEntry(cache, &param);
 			if (localEntry == NULL)
 			{
 				elog(LOG, "Could not acquire entry");
 				testFailed = true;
 				break;
 			}
-			TestCacheElt *elt = CACHE_ENTRY_PAYLOAD(localEntry);
-			//snprintf(key, TEST_NAME_LENGTH, "PID=%d cache key no. %d", MyProcPid, i);
-			snprintf(key, TEST_NAME_LENGTH, "cache key no. %d", i);
-			strncpy(elt->key, key, TEST_NAME_LENGTH);
-			elt->data = MyProcPid;
 
 			entries[i] = Cache_Lookup(cache, localEntry);
 			if (entries[i] != NULL)
@@ -530,6 +558,7 @@ cache_test_evict(void)
 	const int noTestEntries = 20;
 	const int entryWeight = 3;
 	CacheEntry *entries[noTestEntries];
+	TestPopParam param;
 	char key[TEST_NAME_LENGTH];
 
 
@@ -539,12 +568,11 @@ cache_test_evict(void)
 	for (i=0; i < noTestEntries; i++)
 	{
 		snprintf(key, TEST_NAME_LENGTH, "PID=%d cache key no. %d", MyProcPid, i);
-		entries[i] = Cache_AcquireEntry(cache);
-		Assert(NULL != entries[i]);
+		strncpy(param.key, key, TEST_NAME_LENGTH);
+		param.data = MyProcPid;
 
-		TestCacheElt *elt = CACHE_ENTRY_PAYLOAD(entries[i]);
-		strncpy(elt->key, key, TEST_NAME_LENGTH);
-		elt->data = MyProcPid;
+		entries[i] = Cache_AcquireEntry(cache, &param);
+		Assert(NULL != entries[i]);
 
 		entries[i]->size = entryWeight;
 		entries[i]->utility = random() % 100;
@@ -591,6 +619,7 @@ cache_test_evict_stress(void)
 	bool testFailed = false;
 	const uint32 noTestIterations = 1000;
 	uint32 iterNo;
+	TestPopParam param;
 
 	elog(LOG, "Running sub-test: Cache insert/lookup/evict many elements");
 	for (iterNo = 0; iterNo < noTestIterations ; iterNo ++)
@@ -607,12 +636,12 @@ cache_test_evict_stress(void)
 			/* If we include Pid in the key, we get short chains */
 			/* snprintf(key, TEST_NAME_LENGTH, "PID=%d cache key no. %d", MyProcPid, i); */
 			snprintf(key, TEST_NAME_LENGTH, "cache key no. %d", i);
-			entries[i] = Cache_AcquireEntry(cache);
+			strncpy(param.key, key, TEST_NAME_LENGTH);
+			param.data = MyProcPid;
+
+			entries[i] = Cache_AcquireEntry(cache, &param);
 			Assert(NULL != entries[i]);
 
-			TestCacheElt *elt = CACHE_ENTRY_PAYLOAD(entries[i]);
-			strncpy(elt->key, key, TEST_NAME_LENGTH);
-			elt->data = MyProcPid;
 
 			entries[i]->size = entryWeight;
 			entries[i]->utility = random() % 100;
@@ -629,18 +658,18 @@ cache_test_evict_stress(void)
 		/* Look up noTestEntries */
 		for (i=0; i < noTestEntries; i++)
 		{
-			CacheEntry *localEntry = Cache_AcquireEntry(cache);
+			/* snprintf(key, TEST_NAME_LENGTH, "PID=%d cache key no. %d", MyProcPid, i); */
+			snprintf(key, TEST_NAME_LENGTH, "cache key no. %d", i);
+			strncpy(param.key, key, TEST_NAME_LENGTH);
+			param.data = MyProcPid;
+
+			CacheEntry *localEntry = Cache_AcquireEntry(cache, &param);
 			if (localEntry == NULL)
 			{
 				elog(LOG, "Could not acquire entry");
 				testFailed = true;
 				break;
 			}
-			TestCacheElt *elt = CACHE_ENTRY_PAYLOAD(localEntry);
-			/* snprintf(key, TEST_NAME_LENGTH, "PID=%d cache key no. %d", MyProcPid, i); */
-			snprintf(key, TEST_NAME_LENGTH, "cache key no. %d", i);
-			strncpy(elt->key, key, TEST_NAME_LENGTH);
-			elt->data = MyProcPid;
 
 			entries[i] = Cache_Lookup(cache, localEntry);
 			/*
@@ -708,6 +737,7 @@ cache_test_clear(void)
 	const int entryWeight = 3;
 	CacheEntry *entries[noTestEntries];
 	char key[TEST_NAME_LENGTH];
+	TestPopParam param;
 
 
 	/* Inserting noTestEntries entries */
@@ -715,13 +745,12 @@ cache_test_clear(void)
 	int i;
 	for (i=0; i < noTestEntries; i++)
 	{
-		snprintf(key, TEST_NAME_LENGTH, "PID=%d cache key no. %d", MyProcPid, i);
-		entries[i] = Cache_AcquireEntry(cache);
-		Assert(NULL != entries[i]);
+		strncpy(param.key, key, TEST_NAME_LENGTH);
+		param.data = MyProcPid;
 
-		TestCacheElt *elt = CACHE_ENTRY_PAYLOAD(entries[i]);
-		strncpy(elt->key, key, TEST_NAME_LENGTH);
-		elt->data = MyProcPid;
+		snprintf(key, TEST_NAME_LENGTH, "PID=%d cache key no. %d", MyProcPid, i);
+		entries[i] = Cache_AcquireEntry(cache, &param);
+		Assert(NULL != entries[i]);
 
 		entries[i]->size = entryWeight;
 		entries[i]->utility = random() % 100;
@@ -738,7 +767,7 @@ cache_test_clear(void)
 	elog(LOG, "Running sub-test: Looking up %d elements after they got cleared", noTestEntries);
 
 	bool testFailed = false;
-	CacheEntry *localEntry = Cache_AcquireEntry(cache);
+	CacheEntry *localEntry = Cache_AcquireEntry(cache, NULL);
 	TestCacheElt *localElt = CACHE_ENTRY_PAYLOAD(localEntry);
 	localElt->data = MyProcPid;
 	for (i=0; i < noTestEntries; i++)
@@ -761,15 +790,13 @@ cache_test_clear(void)
 	elog(LOG, "Running sub-test: Cache_Clear with %d acquired elements", noTestEntries);
 	for (i=0; i < noTestEntries; i++)
 	{
-		entries[i] = Cache_AcquireEntry(cache);
-		Assert(NULL != entries[i]);
-
 		/* Put some payload in the entry */
-		TestCacheElt *elt = CACHE_ENTRY_PAYLOAD(entries[i]);
 		snprintf(key, TEST_NAME_LENGTH, "PID=%d cache key no. %d", MyProcPid, i);
-		strncpy(elt->key, key, TEST_NAME_LENGTH);
-		elt->data = MyProcPid;
+		strncpy(param.key, key, TEST_NAME_LENGTH);
+		param.data = MyProcPid;
 
+		entries[i] = Cache_AcquireEntry(cache, &param);
+		Assert(NULL != entries[i]);
 	}
 
 	/* Clear should clear none of them */
