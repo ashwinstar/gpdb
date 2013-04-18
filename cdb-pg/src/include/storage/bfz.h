@@ -84,7 +84,13 @@ extern ssize_t writeAndRetry(int fd, const void *buffer, size_t size);
 static inline int64
 bfz_totalbytes(bfz_t * bfz)
 {
-	return bfz->freeable_stuff->tot_bytes;
+	Assert(NULL != bfz);
+	int64 size = 0;
+	if (NULL != bfz->freeable_stuff)
+	{
+		size = bfz->freeable_stuff->tot_bytes;
+	}
+	return size;
 }
 
 static inline void
