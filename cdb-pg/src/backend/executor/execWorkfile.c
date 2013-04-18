@@ -313,6 +313,7 @@ ExecWorkFile_Rewind(ExecWorkFile *workfile)
 	Assert(workfile != NULL);
 
 	long ret = 0;
+	int64 file_size = 0;
 	switch(workfile->fileType)
 	{
 		case BUFFILE:
@@ -320,7 +321,8 @@ ExecWorkFile_Rewind(ExecWorkFile *workfile)
 			/* BufFileSeek returns 0 if everything went OK */
 			return 0 == ret;
 		case BFZ:
-			bfz_append_end((bfz_t *)workfile->file);
+			file_size = bfz_append_end((bfz_t *)workfile->file);
+			ExecWorkFile_AdjustBFZSize(workfile, file_size);
 			bfz_scan_begin((bfz_t *)workfile->file);
 			break;
 		default:
