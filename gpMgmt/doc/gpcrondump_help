@@ -153,7 +153,7 @@ OPTIONS
 
 
 --ddboost [--replicate --max-streams <max_IO_streams>] 
-  [--ddboost-skip-ping]] 
+  [--ddboost-skip-ping] 
 
  Use Data Domain Boost for this backup. Before using Data Domain Boost, 
  set up the Data Domain Boost credential, as described in the next option 
@@ -170,8 +170,8 @@ OPTIONS
  this option, gpcrondump replicates the backup on the remote Data Domain 
  server after the backup is complete on the primary Data Domain server. 
  <max_IO_streams> specifies the maximum number of Data Domain I/O streams 
- that can be used when replicating the backup set on the Data Domain server 
- from the primary Data Domain server. 
+ that can be used when replicating the backup set on the remote Data 
+ Domain server from the primary Data Domain server. 
 
  You can use gpmfr to replicate a backup if replicating a backup with 
  gpcrondump takes a long time and prevents other backups from occurring. 
@@ -212,10 +212,10 @@ OPTIONS
  ddboost_user is the Data Domain Boost user name. There is a 30-character 
  limit. 
 
- backup_directory is optional. The directory is the location for report 
- and status files. The location for the files is 
- $MASTER_DATA_DIR/backup_directory. If the option is not specified, the 
- default is $MASTER_DATA_DIR/db_dumps. 
+ backup_directory is optional. The directory is the location for the 
+ backup files, configuration files, and global objects. The location for 
+ the files is $MASTER_DATA_DIR/backup_directory. If the option is not 
+ specified, the default is $MASTER_DATA_DIR/db_dumps. 
 
  --ddboost-remote is optional. Indicates that the configuration 
  parameters are for the remote Data Domain system that is used for backup 
@@ -233,10 +233,11 @@ OPTIONS
  and special characters ($, %, #, +, etc.). 
 
  The system verifies the password. After the password is verified, the 
- system creates a file .ddconfig and copies it to all segments. 
+ system creates encrypted DDBOOST_CONFIG files in the user’s home 
+ directory. 
 
- In the example, the --ddboost-backupdir option specified that the 
- location of report and status files is $MASTER_DATA_DIR/gp_production. 
+ In the example, the --ddboost-backupdir option specifies the backup 
+ directory gp_production in the Data Domain Storage Unit GPDB. 
 
  Note: If there is more than one operating system user using Data Domain 
  Boost for backup and restore operations, repeat this configuration 
@@ -248,10 +249,10 @@ OPTIONS
  
 --ddboost-skip-ping 
 
- Before writing the Data Domain Boost configuration information, ping is 
- used to ensure that the Data Domain system is reachable. If the Data 
- Domain host is configured to block ICMP ping probes, specify this option 
- to skip the ping of the Data Domain system. 
+ Specify this option to skip the ping of a Data Domain system. When the 
+ --ddboost option is specified, ping is used to ensure that the Data 
+ Domain system is reachable. If the Data Domain host is configured to 
+ block ICMP ping probes, specify this option. 
 
 
 --ddboost-config-remove 
@@ -382,7 +383,8 @@ OPTIONS
 
  WARNING: Before using this option, ensure that incremental backups 
  required to perform the restore are not deleted. The gpdbrestore utility 
- option --list-backup lists the backup sets required to perform a backup. 
+ option --list-backup lists the backup sets required to perform a 
+ restore. 
 
  If --ddboost is specified, only the old files on Data Domain Boost are 
  deleted. 

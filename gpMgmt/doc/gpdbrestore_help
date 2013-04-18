@@ -14,7 +14,7 @@ gpdbrestore { -t <timestamp_key> [-L]
      [-T <schema>.<table> [,...]] [--table-file file_name]
      [-e] [-G] [-B <parallel_processes>] 
      [-d <master_data_directory>] [-a] [-q] [-l <logfile_directory>] 
-     [-v] [-ddboost]
+     [-v] [-ddboost [--ddboost-skip-ping]]
 
 gpdbrestore -? 
 
@@ -124,6 +124,14 @@ OPTIONS
  with gpcrondump. 
 
 
+--ddboost-skip-ping 
+
+ Specify this option to skip the ping of a Data Domain system. When the 
+ --ddboost option is specified, ping is used to ensure that the Data 
+ Domain system is reachable. If the Data Domain host is configured to 
+ block ICMP ping probes, specify this option. 
+
+ 
 -e (drop target database before restore) 
 
  Drops the target database before doing the restore and then recreates 

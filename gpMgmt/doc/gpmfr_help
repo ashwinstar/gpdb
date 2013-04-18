@@ -116,9 +116,9 @@ OPTIONS
 
 --master-port=<master_port>
 
- Specify the Greenplum Database master port number. The utility retrieves 
- information from the Greenplum Database instance that uses the port 
- number to validate backup sets. If the option is not specified, the 
+ Specifies the Greenplum Database master port number. To validate backup 
+ sets, the utility retrieves information from the Greenplum Database 
+ instance that uses the port number. If the option is not specified, the 
  default value is 5432. 
 
  If gpmfr does not find a Greenplum Database, validation is skipped and a 
@@ -203,10 +203,10 @@ OPTIONS
  
 --skip-ping 
 
- Before performing an operation, ping is used to ensure that the Data 
- Domain system is reachable. If the Data Domain host is configured to 
- block ICMP ping probes, specify this option to skip the ping of the Data 
- Domain system. 
+ Specify this option to skip the ping of a Data Domain system. gpfmr uses 
+ ping to ensure that the Data Domain system is reachable. If the Data 
+ Domain host is configured to block ICMP ping probes, specify this option 
+ to skip the ping of the Data Domain system. 
 
 
 --verbose 
