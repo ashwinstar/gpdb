@@ -173,6 +173,10 @@ test: timeseries
 test: resource_queue_function
 test: co_nestloop_idxscan
 test: pg_stat_last_operation
+>>>> ORIGINAL //cdb2/Release-4_2-branch/cdb-pg/src/test/regress/known_good_schedule#13
+==== THEIRS //cdb2/Release-4_2-branch/cdb-pg/src/test/regress/known_good_schedule#14
+test: plan_size
+==== YOURS //admin-shahi1/cdb2/main/cdb-pg/src/test/regress/known_good_schedule
 test: partindex_test
 #
 # gpcheckmirrorseg should be last to check mirror integrity
