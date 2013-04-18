@@ -263,6 +263,7 @@ RemoveFirst()
 
 		if (myOffset == INVALID_OFFSET)
 		{
+			freeProc = NULL;
 			break;
 		}
 		
