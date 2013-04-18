@@ -1604,9 +1604,6 @@ ResProcSleep(LOCKMODE lockmode, LOCALLOCK *locallock, void *incrementSet)
 
 	MyProc->waitStatus = STATUS_ERROR;	/* initialize result for error */
 
-	/* Mark that we are waiting for a lock */
-	lockAwaited = locallock;
-
 	/* Now check the status of the self lock footgun. */
 	selflock = ResCheckSelfDeadLock(lock, proclock, incrementSet);
 	if (selflock)
@@ -1617,6 +1614,9 @@ ResProcSleep(LOCKMODE lockmode, LOCALLOCK *locallock, void *incrementSet)
 				 errmsg("deadlock detected, locking against self"),
 						   errOmitLocation(true)));
 	}
+
+	/* Mark that we are waiting for a lock */
+	lockAwaited = locallock;
 
 	/* Ok to wait.*/
 	LWLockRelease(partitionLock);
