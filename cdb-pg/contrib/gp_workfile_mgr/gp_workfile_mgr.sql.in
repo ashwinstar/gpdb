@@ -1,9 +1,8 @@
 -- Adjust this setting to control where the objects get created.
-\set WORKFILE_SCHEMA workfile
 
-CREATE SCHEMA :WORKFILE_SCHEMA;
+CREATE SCHEMA workfile;
+SET search_path = workfile;
 
-SET search_path = :WORKFILE_SCHEMA;
 BEGIN;
 
 -- Register the functions.
@@ -15,7 +14,7 @@ LANGUAGE C IMMUTABLE;
 
 CREATE VIEW gp_workfile_entries AS
     SELECT C.*
-          FROM gp_toolkit.__gp_localid, gp_workfile_entries() AS C (
+          FROM gp_toolkit.__gp_localid, workfile.gp_workfile_entries() AS C (
             segid int, 
             path text, 
             hash int, 
@@ -30,7 +29,7 @@ CREATE VIEW gp_workfile_entries AS
           )
     UNION ALL
     SELECT C.*
-          FROM gp_toolkit.__gp_masterid, gp_workfile_entries() AS C (
+          FROM gp_toolkit.__gp_masterid, workfile.gp_workfile_entries() AS C (
             segid int, 
             path text, 
             hash int, 
@@ -53,9 +52,9 @@ CREATE FUNCTION gp_workfile_cache_clear_segment(content int)
 RETURNS SETOF int
 AS
 $$
- SELECT C.* FROM gp_toolkit.__gp_localid, gp_workfile_cache_clear_f($1) as C
+ SELECT C.* FROM gp_toolkit.__gp_localid, workfile.gp_workfile_cache_clear_f($1) as C
  UNION ALL
- SELECT C.* FROM gp_toolkit.__gp_masterid, gp_workfile_cache_clear_f($1) as C;
+ SELECT C.* FROM gp_toolkit.__gp_masterid, workfile.gp_workfile_cache_clear_f($1) as C;
 $$
 LANGUAGE SQL;
 
@@ -63,7 +62,7 @@ CREATE FUNCTION gp_workfile_cache_clear()
 RETURNS SETOF int
 AS
 $$
-  SELECT * from gp_workfile_cache_clear_segment(-2)
+  SELECT * from workfile.gp_workfile_cache_clear_segment(-2)
 $$
 LANGUAGE SQL; 
 
@@ -75,9 +74,9 @@ CREATE FUNCTION gp_workfile_mgr_test_allsegs(testname text)
 RETURNS SETOF BOOL
 AS
 $$
- SELECT C.* FROM gp_toolkit.__gp_localid, gp_workfile_mgr_test($1) as C
+ SELECT C.* FROM gp_toolkit.__gp_localid, workfile.gp_workfile_mgr_test($1) as C
  UNION ALL
- SELECT C.* FROM gp_toolkit.__gp_masterid, gp_workfile_mgr_test($1) as C;
+ SELECT C.* FROM gp_toolkit.__gp_masterid, workfile.gp_workfile_mgr_test($1) as C;
 $$
 LANGUAGE SQL;
 
@@ -87,13 +86,13 @@ CREATE OR REPLACE FUNCTION gp_workfile_usage_per_segment_f()
 AS 'MODULE_PATHNAME', 'gp_workfile_mgr_used_diskspace' LANGUAGE C IMMUTABLE;
 
 CREATE VIEW gp_workfile_usage_per_segment AS
- SELECT C.* FROM gp_toolkit.__gp_localid as id, gp_workfile_usage_per_segment_f() as C (segid int, bytes bigint)
+ SELECT C.* FROM gp_toolkit.__gp_localid as id, workfile.gp_workfile_usage_per_segment_f() as C (segid int, bytes bigint)
  UNION ALL
- SELECT C.* FROM gp_toolkit.__gp_masterid as id, gp_workfile_usage_per_segment_f() as C  (segid int, bytes bigint);
+ SELECT C.* FROM gp_toolkit.__gp_masterid as id, workfile.gp_workfile_usage_per_segment_f() as C  (segid int, bytes bigint);
 
 CREATE VIEW gp_workfile_usage_per_query AS
 SELECT sessionid, commandid, segid, sum(size) AS size 
-FROM gp_workfile_entries 
+FROM workfile.gp_workfile_entries 
 GROUP BY (sessionid, commandid, segid);
 
 COMMIT;
