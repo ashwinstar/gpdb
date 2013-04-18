@@ -32,13 +32,15 @@ gpmfr --version
 PREREQUISITES
 *****************************************************
 
-The Data Domain systems that are used as local and remote backup 
+The Data Domain systems that are used as the local and remote backup 
 systems for managed file replication must have Data Domain Boost 
 enabled. 
 
 The Greenplum Database master segment must be able to connect to both 
-local Data Domain system and the remote Data Domain system. 
+the local Data Domain system and the remote Data Domain system. 
 
+Greenplum Database supports Data Domain Boost SDK version 2.4.1 with 
+DDOS 5.0.1.0, 5.1 and 5.2. 
 
 *****************************************************
 DESCRIPTION
@@ -122,6 +124,7 @@ OPTIONS
 
  If gpmfr does not find a Greenplum Database, validation is skipped and a 
  warning is displayed. 
+ 
 
 --max-streams <max_IO_streams>
 
@@ -159,6 +162,7 @@ OPTIONS
  Note: The backup set identified by <timestamp> must be completely backed 
  up to local Data Domain system before it can be replicated to the 
  remote Data Domain system. 
+
 
 --remote 
 

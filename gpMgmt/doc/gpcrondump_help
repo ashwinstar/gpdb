@@ -22,8 +22,8 @@ gpcrondump -x database_name
      [--ddboost-skip-ping] ] }
 
 gpcrondump --ddboost-host <ddboost_hostname> --ddboost-user <ddboost_user>
-     [--ddboost-backupdir <backup_directory> ] 
-     [--ddboost-remote] [--ddboost-skip-ping]
+     --ddboost-backupdir <backup_directory> [--ddboost-remote] 
+     [--ddboost-skip-ping]
 
 gpcrondump --ddboost-config-remove
 
@@ -200,8 +200,8 @@ OPTIONS
 
 
 --ddboost-host ddboost_hostname --ddboost-user <ddboost_user> 
-  [--ddboost-backupdir <backup_directory>] [--ddboost-remote] 
-  [--ddboost-skip-ping] 
+   --ddboost-backupdir <backup_directory> [--ddboost-remote] 
+   [--ddboost-skip-ping] 
 
  Sets the Data Domain Boost credentials. Do not combine this options with 
  any other gpcrondump options. Do not enter just one part of this option. 
@@ -212,8 +212,8 @@ OPTIONS
  ddboost_user is the Data Domain Boost user name. There is a 30-character 
  limit. 
 
- backup_directory is optional. The directory is the location for the 
- backup files, configuration files, and global objects. The location for 
+ <backup_directory> is the directory for the backup files, configuration 
+ files, and global objects on the Data Domain system. The location for 
  the files is $MASTER_DATA_DIR/backup_directory. If the option is not 
  specified, the default is $MASTER_DATA_DIR/db_dumps. 
 
