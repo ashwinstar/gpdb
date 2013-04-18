@@ -217,6 +217,15 @@ class GpCronDumpTestCase(unittest.TestCase):
  
     @patch('gpcrondump.GpCronDump._get_master_port')
     @patch('gpcrondump.validate_current_timestamp')
+    def test_options20(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.dump_databases = None
+        options.incremental = True
+        with self.assertRaisesRegexp(Exception, 'Must supply -x <database name> with incremental option'):
+            cron = GpCronDump(options, None)
+ 
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
     def test_get_include_exclude_for_dump_database00(self, mock1, mock2):
         options = GpCronDumpTestCase.Options()
         options.masterDataDirectory = '/tmp/foobar'

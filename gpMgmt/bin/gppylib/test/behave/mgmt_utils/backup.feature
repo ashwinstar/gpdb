@@ -34,6 +34,9 @@ Feature: Validate command line arguments
         And the user runs "gpcrondump -a --incremental -o -x bkdb"
         And gpcrondump should print -o option cannot be selected with incremental backup to stdout
         And gpcrondump should return a return code of 2
+        And the user runs "gpcrondump --incremental"
+        And gpcrondump should print Must supply -x <database name> with incremental option to stdout
+        And gpcrondump should return a return code of 2
 
     ### 
     ### Any tests that require this data set should come after

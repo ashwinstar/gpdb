@@ -104,6 +104,9 @@ class GpCronDump(Operation):
         if options.report_dir:
             logger.warn("-y is a deprecacted option.  Report files are always generated with the backup set.")
 
+        if self.incremental and not self.dump_databases:
+            raise ExceptionNoStackTraceNeeded("Must supply -x <database name> with incremental option")
+
         if self.incremental and len(self.dump_databases.split(',')) > 1:
             raise ExceptionNoStackTraceNeeded('multi-database backup is not supported with incremental backup: %s databases selected' % len(self.dump_databases))
 
