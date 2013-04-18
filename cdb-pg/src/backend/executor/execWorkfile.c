@@ -685,8 +685,6 @@ ExecWorkFile_AdjustBFZSize(ExecWorkFile *workfile, int64 file_size)
 			{
 				elog(gp_workfile_caching_loglevel, "Could not reserve " INT64_FORMAT " additional bytes while adjusting for BFZ addtional size",
 						extra_bytes);
-				Assert(!WorkfileDiskspace_IsFull());
-				WorkfileDiskspace_SetFull(true /* isFull */);
 				ereport(ERROR,
 						(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
 						errmsg("could not write to temporary file")));

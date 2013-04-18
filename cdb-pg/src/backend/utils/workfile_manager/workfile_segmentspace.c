@@ -51,7 +51,7 @@ WorkfileSegspace_ShMemSize(void)
  *   This should be called before actually writing to disk
  *
  *   If enough disk space is available, increments the global counter and returns true
- *   Otherwise, returns false
+ *   Otherwise, sets the workfile_diskfull flag to true and returns false
  */
 bool
 WorkfileSegspace_Reserve(int64 bytes_to_reserve)

@@ -48,6 +48,10 @@ WorkfileDiskspace_ShMemSize(void)
  *
  *   If enough disk space is available, increments the global counter and returns true
  *   Otherwise, returns false
+ *
+ *   When either the query limit or the segment limit are hit, the
+ *   workfile_diskfull flag is set to true by the respective subsystem to
+ *   prevent further writes.
  */
 bool
 WorkfileDiskspace_Reserve(int64 bytes_to_reserve)

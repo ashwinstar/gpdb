@@ -148,6 +148,8 @@ WorkfileQueryspace_Reserve(int session_id, int command_count, int64 bytes_to_res
 		{
 			/* Revert the reserved space */
 			gp_atomic_add_64(&queryEntry->queryDiskspace, - bytes_to_reserve);
+			/* Set diskfull to true to stop any further attempts to write more data */
+			WorkfileDiskspace_SetFull(true /* isFull */);
 		}
 	}
 
