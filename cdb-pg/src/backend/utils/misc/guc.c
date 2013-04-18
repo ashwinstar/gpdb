@@ -1029,7 +1029,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_SUPERUSER_ONLY | GUC_GPDB_ADDOPT
 		},
 		&gp_workfile_caching,
-		true, NULL, NULL
+		false, NULL, NULL
 	},
 	{
 		{"gp_workfile_faultinject", PGC_SUSET, DEVELOPER_OPTIONS,
