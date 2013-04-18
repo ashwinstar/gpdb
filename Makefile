@@ -1531,3 +1531,4 @@ endif
 unittest-check:
 	$(MAKE) -C cdb-pg/src/backend unittest-check
 	$(MAKE) -C cdb-pg/src/bin unittest-check
+	$(MAKE) -C gpcc/src/gpfdist/test check

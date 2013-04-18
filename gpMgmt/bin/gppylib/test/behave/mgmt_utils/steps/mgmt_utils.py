@@ -4,6 +4,8 @@ import os
 import re
 import time
 import filecmp
+import shutil
+import socket
 
 from gppylib.commands.base import Command, ExecutionError, REMOTE
 from gppylib.commands.unix import findCmdInPath
@@ -24,7 +26,7 @@ from gppylib.test.behave_utils.utils import bring_nic_down, bring_nic_up, get_ta
                                             get_table_oid, verify_truncate_in_pg_stat_last_operation, verify_truncate_not_in_pg_stat_last_operation, insert_numbers, \
                                             populate_partition_diff_data_same_eof, populate_partition_same_data, execute_sql, verify_integer_tuple_counts,  validate_no_aoco_stats, \
                                             check_string_not_present_stdout, clear_all_saved_data_verify_files, copy_file_to_all_db_hosts, validate_num_restored_tables, \
-                                            get_partition_list, verify_stats
+                                            get_partition_list, verify_stats, drop_external_table_if_exists
 
 from gppylib.operations.dump import get_partition_state
 
@@ -1506,8 +1508,136 @@ def impl(context, num_seconds):
 def impl(context, filename): 
     os.remove(filename)
 
+@given('the client program "{program_name}" is present under {parent_dir} in "{sub_dir}"')
+def impl(context, program_name, parent_dir, sub_dir):
+
+    if parent_dir == 'CWD':
+        parent_dir = os.getcwd()
+    program_path = '%s/%s/%s' % (parent_dir, sub_dir, program_name)
+
+    print program_path
+    if not os.path.isfile(program_path):
+        raise Exception('gpfdist client progream does not exist: %s' % (program_path))
+
+@when('the user runs client program "{program_name}" from "{subdir}" under {parent_dir}')
+def impl(context, program_name, subdir, parent_dir):
+    if parent_dir == 'CWD':
+        parent_dir = os.getcwd()
+
+    command_line = "python %s/%s/%s" % (parent_dir, subdir, program_name)
+    run_command(context, command_line)
+
+@then('the gpfdist should print {msg} to "{filename}" under {parent_dir}')
+def impl(context, msg, filename, parent_dir):
+    if parent_dir == 'CWD':
+        parent_dir = os.getcwd()
+    filepath = '%s/%s' % (parent_dir, filename)
+
+    with open(filepath, 'r') as fp:
+        for line in fp:
+            if msg in line:
+                return
+
+        raise Exception('Log file %s did not contain the message %s' % (filepath, msg))
+
+@given('the "{process_name}" process is killed')
+@then('the "{process_name}" process is killed')
+@when('the "{process_name}" process is killed')
+def impl(context, process_name):
+    run_command(context, 'pkill %s' % process_name)
+
+@then('the client program should print {msg} to stdout with value in range {min_val} to {max_val}')
+def impl(context, msg, min_val, max_val):
+    stdout = context.stdout_message
+
+    for line in stdout:
+        if msg in line:
+            val = re.finadall(r'\d+', line)
+            if not val:
+                raise Exception('Expected a numeric digit after message: %s' % msg) 
+            if len(val) > 1:
+                raise Exception('Expected one numeric digit after message: %s' % msg) 
+
+            if val[0] < min_val or val[0] > max_val:
+                raise Exception('Value not in acceptable range %s' % val[0]) 
+
+@given('the directory "{dirname}" exists in current working directory')
+def impl(context, dirname):
+    dirname = os.path.join(os.getcwd(), dirname)
+    if os.path.isdir(dirname):
+        shutil.rmtree(dirname, ignore_errors=True)
+        if os.path.isdir(dirname):
+            raise Exception("directory '%s' not removed" % dirname)
+    os.mkdir(dirname)
+    if not os.path.isdir(dirname):
+        raise Exception("directory '%s' not created" % dirname)
+
+@given('the directory "{dirname}" does not exist in current working directory')
+def impl(context, dirname):
+    dirname = os.path.join(os.getcwd(), dirname)
+    if os.path.isdir(dirname):
+        shutil.rmtree(dirname, ignore_errors=True)
+    if os.path.isdir(dirname):
+        raise Exception("directory '%s' not removed" % dirname)
+
+@when('the data line "{dataline}" is appened to "{fname}" in cwd')
+def impl(context, dataline, fname):
+    fname = os.path.join(os.getcwd(), fname)
+    with open(fname, 'a') as fd:
+        fd.write("%s\n" % dataline)
 
 
+@when('a "{readwrite}" external table "{tname}" is created on file "{fname}" in "{dbname}"')
+def impl(context, readwrite, tname, fname, dbname):
+
+    hostname = socket.gethostname()
+
+    sql = """CREATE %s EXTERNAL TABLE  
+            %s (name varchar(255), id int) 
+            LOCATION ('gpfdist://%s:8080/%s') 
+            FORMAT 'text'
+            (DELIMITER '|');
+            """ % (readwrite, tname, hostname, fname)
+
+    with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
+        dbconn.execSQL(conn, sql)
+        conn.commit()
+
+@given('the external table "{tname}" does not exist in "{dbname}"')
+def impl(context, tname, dbname):
+    drop_external_table_if_exists(context, table_name=tname, dbname=dbname)
 
 
+@when('all rows from table "{tname}" db "{dbname}" are stored in the context')
+def impl(context, tname, dbname):
+
+    context.stored_rows = []
+
+    with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
+        sql = "SELECT * FROM %s" % tname 
+        curs = dbconn.execSQL(conn, sql)
+        context.stored_rows = curs.fetchall()
+
+@then('validate that "{dataline}" "{formatter}" seperated by "{delim}" is in the stored rows')
+def impl(context, dataline, formatter, delim):
+    lookfor = dataline.split(delim)
+    formatter = formatter.split(delim)
+
+    for i in range(len(formatter)):
+        if formatter[i] == 'int':
+            lookfor[i] = int(lookfor[i])
+
+    if lookfor not in context.stored_rows:
+        print context.stored_rows
+        print lookfor
+        raise Exception("'%s' not found in stored rows" % dataline)
+
+@then('validate that stored rows has "{numlines}" lines of output')
+def impl(context, numlines):
+    num_found = len(context.stored_rows)
+    numlines = int(numlines)
+    if num_found != numlines:
+        raise Exception("Found %d of stored query result but expected %d records" % (num_found, numlines))
+
+ 
 

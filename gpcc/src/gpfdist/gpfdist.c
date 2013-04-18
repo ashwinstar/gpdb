@@ -54,6 +54,7 @@
 #include <openssl/ssl.h>
 #include <openssl/rand.h>
 #include <openssl/err.h>
+#include <gpfdist_helper.h>
 
 /*  A data block */
 typedef struct blockhdr_t blockhdr_t;
@@ -569,14 +570,14 @@ static void parse_command_line(int argc, const char* const argv[],
 			usage_error("Error: please specify 0 or 1 for -g switch (note: this is internal)", 0);
 	}
 
-	if (! ((2 <= opt.t && opt.t <= 30) || opt.t == 0))
-		usage_error("Error: -t timeout must be between 2 and 30, or 0 for no timeout", 0);
+	if (!is_valid_timeout(opt.t))
+		usage_error("Error: -t timeout must be between 2 and 600, or 0 for no timeout", 0);
 
 	/* validate max row length */
     if (! ((GPFDIST_MAX_LINE_LOWER_LIMIT <= opt.m) && (opt.m <= GPFDIST_MAX_LINE_UPPER_LIMIT)))
     	usage_error(GPFDIST_MAX_LINE_MESSAGE, 0);
 
-    if (! (16 <= opt.z && opt.t <= 512) )
+    if (!is_valid_listen_queue_size(opt.z))
 		usage_error("Error: -z listen queue size must be between 16 and 512 (default is 256)", 0);
 
     /* get current directory, for ssl directory validation */

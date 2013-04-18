@@ -26,7 +26,7 @@ GPFDIST_INCLUDES=-I$(GPCC)/src/gpfdist/include
 GPFDIST_LIBS=-L$(CURDIR)/../cdb-pg/src/port -lpgport -lws2_32 -lgdi32
 EXT_EXE=.exe
 else
-GPFDISTFILES=fstream.c gfile.c gpfdist.c transform.c
+GPFDISTFILES=fstream.c gfile.c gpfdist.c transform.c gpfdist_helper.c
 GPFDISTOBJSFILES=$(subst .c,.o,$(GPFDISTFILES))
 # link with static libyaml so gpfdist won't need LD_LIBRARY_PATH
 ifneq "$(findstring $(BLD_ARCH),aix5_ppc_64 aix5_ppc_32 osx104_x86)" ""
