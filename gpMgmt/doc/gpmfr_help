@@ -1,7 +1,7 @@
 ﻿COMMAND NAME: gpmfr
 
 Manages the Greenplum Database backup images that are stored on a 
-primary Data Domain system and a remote Data Domain system that is used 
+local Data Domain system and a remote Data Domain system that is used 
 for disaster recovery. Managed file replication is used for disaster 
 recovery by the Data Domain Boost software option to transfer a backup 
 image from one Data Domain system to another. 
@@ -14,15 +14,14 @@ SYNOPSIS
 gpmfr --delete {OLDEST | <timestamp>} [--remote] 
 [--master-port=<master_port>] [--skip-ping] 
 
-gpmfr {--replicate | --restore} {LATEST | <timestamp>} 
+gpmfr {--replicate | --recover} {LATEST | <timestamp>} 
 --max-streams <max_IO_streams> [--master-port=<master_port>] 
-[--verbose] [--skip-ping]
+[--skip-ping]
 
 gpmfr {--list | --list-files <timestamp>} [--remote]
 [--master-port=<master_port>] [--skip-ping] 
 
-gpmfr --show-streams [--remote] [--master-port=<master_port>] 
-[--skip-ping]
+gpmfr --show-streams [--skip-ping]
 
 gpmfr -h | --help
 
@@ -33,29 +32,29 @@ gpmfr --version
 PREREQUISITES
 *****************************************************
 
-The Data Domain systems that are used as primary and remote backup 
+The Data Domain systems that are used as local and remote backup 
 systems for managed file replication must have Data Domain Boost 
 enabled. 
 
 The Greenplum Database master segment must be able to connect to both 
-primary Data Domain system and the remote Data Domain system. 
+local Data Domain system and the remote Data Domain system. 
 
 
 *****************************************************
 DESCRIPTION
 *****************************************************
- The gpmfr utility to provides these capabilities: 
+ The gpmfr utility provides these capabilities: 
 
-* Lists the backup data sets that are on the primary or the remote
+* Lists the backup data sets that are on the local or the remote
   Data Domain system. 
 
-* Replicates a backup data set that is on the primary Data Domain
+* Replicates a backup data set that is on the local Data Domain
   system to the remote system. 
 
 * Recovers a backup data set that is on the remote Data Domain system
-  to the primary system. 
+  to the local system. 
 
-* Deletes a backup data set that is on the primary or the remote 
+* Deletes a backup data set that is on the local or the remote 
   Data Domain system.
 
 The Greenplum Database backup sets are identified by timestamps 
@@ -80,7 +79,7 @@ OPTIONS
 --delete OLDEST
 
  Deletes the oldest backup set (first in chronological order) from the 
- primary Data Domain system. 
+ local Data Domain system. 
 
  Specify the option --remote to delete the backup set from the remote 
  Data Domain system.
@@ -89,7 +88,7 @@ OPTIONS
 --delete <timestamp> 
 
  Deletes the Greenplum Database backup set identified by the <timestamp>
- from the primary Data Domain system. 
+ from the local Data Domain system. 
  
  Specify the option --remote to delete the backup set from the remote 
  Data Domain system. 
@@ -97,7 +96,7 @@ OPTIONS
 
 --list
 
- Lists the Greenplum Database backup sets that are on the primary Data 
+ Lists the Greenplum Database backup sets that are on the local Data 
  Domain system. The backup sets are identified by timestamps 
  (yyyymmddhhmmss). 
  
@@ -108,7 +107,7 @@ OPTIONS
 --list-files <timestamp>
 
  Lists the files in the Greenplum Database backup set specified by the 
- <timestamp> that is on the primary Data Domain system. 
+ <timestamp> that is on the local Data Domain system. 
 
  Specify the option --remote to list the files in the backup set that is
  on the remote Data Domain system. 
@@ -127,13 +126,13 @@ OPTIONS
 --max-streams <max_IO_streams>
 
  Specifies the maximum number of Data Domain I/O streams that can be used
- when copying the backup set between the primary and remote Data Domain 
+ when copying the backup set between the local and remote Data Domain 
  systems.
 
 
 --replicate LATEST
 
- Replicates the most recent available backup set that is on the primary 
+ Replicates the most recent available backup set that is on the local 
  Data Domain system to the remote system. 
 
  If a backup set with the same timestamp exists on remote Data Domain 
@@ -142,14 +141,14 @@ OPTIONS
  A progress bar indicating transfer status of the backup set is shown at 
  the output. 
 
- Note: A backup set must be completely backed up to primary Data Domain 
+ Note: A backup set must be completely backed up to local Data Domain 
  system before it can be replicated to the remote Data Domain system. 
 
 
 --replicate <timestamp>
 
  Replicates the Greenplum Database backup set that is specified by the 
- <timestamp> from the primary Data Domain system to the remote system. 
+ <timestamp> from the local Data Domain system to the remote system. 
 
  If a backup set with the same <timestamp> exists on remote Data Domain 
  system, the utility prompts you to confirm replacing the backup.
@@ -158,7 +157,7 @@ OPTIONS
  the output. 
 
  Note: The backup set identified by <timestamp> must be completely backed 
- up to primary Data Domain system before it can be replicated to the 
+ up to local Data Domain system before it can be replicated to the 
  remote Data Domain system. 
 
 --remote 
@@ -166,29 +165,29 @@ OPTIONS
  Perform the operation on the remote Data Domain system that is used for 
  disaster recovery. 
 
- For example, gpmfr --list lists the backup sets that are on the primary 
- Data Domain system that is use to back up Greenplum Database. 
+ For example, gpmfr --list lists the backup sets that are on the local 
+ Data Domain system that is used to back up Greenplum Database. 
  gpmfr --list --remote lists the backup sets that are on the remote system. 
  
 
---restore LATEST
+--recover LATEST
 
- Restores the latest Greenplum Database backup set that is available on 
- the remote Data Domain system to the primary system. 
+ Recovers the latest Greenplum Database backup set that is available on 
+ the remote Data Domain system to the local system. 
 
- If a backup set with the same <timestamp> exists on primary Data Domain 
+ If a backup set with the same <timestamp> exists on local Data Domain 
  system, the utility prompts you to confirm replacing the backup.
 
  A progress bar indicating transfer status of the backup set is shown on 
  shown at the output. 
 
 
---restore <timestamp>
+--recover <timestamp>
 
- Restores the Greenplum Database backup set that is identified by the 
- <timestamp> from the remote Data Domain system to the primary system. 
+ Recovers the Greenplum Database backup set that is identified by the 
+ <timestamp> from the remote Data Domain system to the local system. 
 
- If a backup set with the same <timestamp> exists on primary Data Domain 
+ If a backup set with the same <timestamp> exists on local Data Domain 
  system, the utility prompts you to confirm replacing the backup. 
  
  A progress bar indicating transfer status of the backup set is shown on 
@@ -209,18 +208,6 @@ OPTIONS
  to skip the ping of the Data Domain system. 
 
 
---verbose 
-
- When replicating or restoring a backup set, a progress bar for each file 
- in the backup set is shown. An estimated duration is displayed with each 
- progress bar. The estimate is based on the current rate of transfer. 
-
- When you run gpmfr with this option, the transfer status for each file 
- in the backup set is periodically written to a log file in the 
- gpAdminLogs directory. A directory is created with the with name 
- gpmfr_timestamp. In the gpmfr_timestamp directory, a log file 
- backupfilename_transfer.log is written for each backup file 
- 
  
 -h | --help
 
@@ -236,7 +223,7 @@ OPTIONS
 EXAMPLE
 *****************************************************
 
-The following example replicates the latest backup set on the primary 
+The following example replicates the latest backup set on the local 
 Data Domain sever to the remote server. During the replication, a 
 progress bar for each file in the backup set is shown. 
 
