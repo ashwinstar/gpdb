@@ -439,7 +439,10 @@ static NTupleStorePage *nts_get_free_page(NTupleStore *nts)
 				{
 					Assert(nts->rwflag != NTS_IS_READER);
 					if(!ntsWriteBlock(nts, page_next))
-						elog(ERROR, "NTupleStore shrink write page failed");
+					{
+						ereport(ERROR, (ERRCODE_DISK_FULL,
+								errmsg("could not write to temporary file")));
+					}
 				}
 
 				if(nts->page_cnt >= page_max)
@@ -888,11 +891,11 @@ ntuplestore_flush(NTupleStore *ts)
 	{
 		if(nts_page_is_dirty(p) && nts_page_slot_cnt(p) > 0)
 		{
-#ifdef USE_ASSERT_CHECKING
-			bool ok = 
-#endif
-				ntsWriteBlock(ts, p);
-			Assert(ok);
+			if (!ntsWriteBlock(ts, p))
+			{
+				ereport(ERROR, (ERRCODE_DISK_FULL,
+						errmsg("could not write to temporary file")));
+			}
 		}
 		p = nts_page_next(p);
 	}
@@ -1174,7 +1177,15 @@ void ntuplestore_trim(NTupleStore *ts, NTupleStorePos *pos)
 		if(nts_page_is_dirty(ts->first_page))
 		{
 			if(ts->pfile)
-				ntsWriteBlock(ts, ts->first_page);
+			{
+				if (!ntsWriteBlock(ts, ts->first_page))
+				{
+					ereport(ERROR, (ERRCODE_DISK_FULL,
+							errmsg("could not write to temporary file")));
+
+				}
+			}
+
 		}
 
 		ts->first_free_page = NTS_PREPEND_1(ts->first_free_page, ts->first_page); 
