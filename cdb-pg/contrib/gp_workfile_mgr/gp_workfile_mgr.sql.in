@@ -13,7 +13,8 @@ AS 'MODULE_PATHNAME', 'gp_workfile_mgr_cache_entries'
 LANGUAGE C IMMUTABLE;
 
 CREATE VIEW gp_workfile_entries AS
-    SELECT C.*
+WITH all_entries AS (
+   SELECT C.*
           FROM gp_toolkit.__gp_localid, workfile.gp_workfile_entries() AS C (
             segid int, 
             path text, 
@@ -41,7 +42,24 @@ CREATE VIEW gp_workfile_entries AS
             slice int,
             sessionid int, 
             commandid int
-          );
+          ))
+SELECT S.datname, 
+       (CASE WHEN (C.state = 1) THEN S.procpid ELSE NULL END) AS procpid, 
+       C.sessionid as sess_id, 
+       C.commandid as command_cnt,
+       S.usename, 
+       (CASE WHEN (C.state = 1) THEN S.current_query ELSE NULL END) as current_query, 
+       C.segid, 
+       C.slice, 
+       C.optype, 
+       C.workmem, 
+       C.size, 
+       C.path as directory, 
+       (CASE WHEN (C.state = 1) THEN 'RUNNING' WHEN (C.state = 2) THEN 'CACHED' WHEN (C.state = 3) THEN 'DELETING' ELSE 'UNKNOWN' END) as state, 
+       C.utility
+FROM all_entries C LEFT OUTER JOIN 
+pg_stat_activity as S
+ON C.sessionid = S.sess_id;
 
 
 CREATE OR REPLACE FUNCTION gp_workfile_cache_clear_f(content int)
@@ -91,8 +109,8 @@ CREATE VIEW gp_workfile_usage_per_segment AS
  SELECT C.* FROM gp_toolkit.__gp_masterid as id, workfile.gp_workfile_usage_per_segment_f() as C  (segid int, bytes bigint);
 
 CREATE VIEW gp_workfile_usage_per_query AS
-SELECT sessionid, commandid, segid, sum(size) AS size 
-FROM workfile.gp_workfile_entries 
-GROUP BY (sessionid, commandid, segid);
+SELECT datname, procpid, sess_id, command_cnt, usename, current_query, segid, state, sum(size) AS size 
+FROM workfile.gp_workfile_entries
+GROUP BY (datname, procpid, sess_id, command_cnt, usename, current_query, segid, state);
 
 COMMIT;
