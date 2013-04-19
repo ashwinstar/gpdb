@@ -14,7 +14,7 @@ gpdbrestore { -t <timestamp_key> [-L]
      [-T <schema>.<table> [,...]] [--table-file file_name]
      [-e] [-G] [-B <parallel_processes>] 
      [-d <master_data_directory>] [-a] [-q] [-l <logfile_directory>] 
-     [-v] [-ddboost ]
+     [-v] [--ddboost ]
 
 gpdbrestore -? 
 

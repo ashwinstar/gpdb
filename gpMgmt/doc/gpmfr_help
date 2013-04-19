@@ -12,16 +12,17 @@ SYNOPSIS
 *****************************************************
 
 gpmfr --delete {LATEST | OLDEST | <timestamp>} [--remote] 
-[--master-port=<master_port>] [--skip-ping] 
+  [--master-port=<master_port>] [--skip-ping] [-a] [-v | --verbose] 
 
 gpmfr {--replicate | --recover} {LATEST | OLDEST | <timestamp>} 
---max-streams <max_IO_streams> [--master-port=<master_port>] 
-[--skip-ping]
+  --max-streams <max_IO_streams> [--master-port=<master_port>] 
+  [--skip-ping] [-a] [-q | --quiet] [-v | --verbose]
 
 gpmfr {--list | --list-files {LATEST | OLDEST | <timestamp>} } 
-[--remote] [--master-port=<master_port>] [--skip-ping] 
+  [--remote] [--master-port=<master_port>] [--skip-ping] 
+  [-v | --verbose]
 
-gpmfr --show-streams [--skip-ping]
+gpmfr --show-streams [--skip-ping] [-v | --verbose]
 
 gpmfr -h | --help
 
@@ -77,6 +78,13 @@ Domain system.
 OPTIONS
 *****************************************************
 
+-a (do not prompt) 
+
+ Do not prompt the user for confirmation. Progress information is 
+ displayed on the output. Specify the option -q or --quiet to write 
+ progress information to the log file. 
+
+
 --delete {LATEST | OLDEST | <timestamp>}
 
  Deletes a Greenplum Database backup set from the local Data Domain 
@@ -118,6 +126,7 @@ OPTIONS
  <timestamp> specifies listing the file in the backup set identified by the 
  <timestamp>. 
 
+
 --master-port=<master_port>
 
  Specifies the Greenplum Database master port number. To validate backup 
@@ -134,6 +143,14 @@ OPTIONS
  Specifies the maximum number of Data Domain I/O streams that can be used
  when copying the backup set between the local and remote Data Domain 
  systems.
+
+
+-q | --quiet (no screen output) 
+
+ Runs in quiet mode. File transfer progress information is not displayed 
+ on the output, it is written to the log file. If this option is not 
+ specified, progress information is only displayed on screen, it is not 
+ written to the log file. 
 
 
 --recover {LATEST | OLDEST | <timestamp>} 
@@ -199,7 +216,7 @@ OPTIONS
  
 --skip-ping 
 
- Specify this option to skip the ping of a Data Domain system. gpfmr uses 
+ Specify this option to skip the ping of a Data Domain system. gpmfr uses 
  ping to ensure that the Data Domain system is reachable. If the Data 
  Domain host is configured to block ICMP ping probes, specify this option 
  to skip the ping of the Data Domain system. 
@@ -208,6 +225,12 @@ OPTIONS
 -h | --help
 
  Displays the online help. 
+
+ 
+-v | --verbose 
+
+ Specifies verbose logging mode. Additional log information is written to 
+ the log file during command execution. 
 
 
 --version 
@@ -223,7 +246,7 @@ The following example replicates the latest backup set on the local Data
 Domain sever to the remote server. The maximium number of I/O streams 
 that can be used for the replication is 30. 
 
-gpfmr --replicate LATEST --max-streams 30
+gpmfr --replicate LATEST --max-streams 30
 
 
 

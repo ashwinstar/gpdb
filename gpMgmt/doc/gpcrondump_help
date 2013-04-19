@@ -207,10 +207,10 @@ OPTIONS
  Sets the Data Domain Boost credentials. Do not combine this options with 
  any other gpcrondump options. Do not enter just one part of this option. 
 
- ddboost_hostname is the IP address of the host. There is a 30-character 
- limit. 
+ <ddboost_hostname> is the IP address (or hostname associated to the IP) 
+ of the host. There is a 30-character limit. 
 
- ddboost_user is the Data Domain Boost user name. There is a 30-character 
+ <ddboost_user> is the Data Domain Boost user name. There is a 30-character 
  limit. 
 
  <backup_directory> is the location for the backup files, configuration 
