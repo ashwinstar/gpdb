@@ -36,6 +36,9 @@
 /* The number of columns as defined in gp_workfile_mgr_diskspace view */
 #define NUM_USED_DISKSPACE_ELEM 2
 
+/* The minimum size of an entry to be listed, in bytes */
+#define MIN_LISTABLE_SIZE 20480
+
 static char *gp_workfile_operator_name(NodeTag node_type);
 
 Datum gp_workfile_mgr_cache_stats(PG_FUNCTION_ARGS);
@@ -286,13 +289,30 @@ next_entry_to_list(Cache *cache, int32 *crtIndex)
 }
 
 /*
- * Determines if an entry should be included in the output based on the state.
+ * Determines if an entry should be included in the output based on the state
+ * and size
  */
 static bool
 should_list_entry(CacheEntry *entry)
 {
-	return (entry->state == CACHE_ENTRY_ACQUIRED) || (entry->state == CACHE_ENTRY_CACHED)
+
+	bool listable_state = (entry->state == CACHE_ENTRY_ACQUIRED)
+			|| (entry->state == CACHE_ENTRY_CACHED)
 			|| (entry->state == CACHE_ENTRY_DELETED);
+	if (!listable_state)
+	{
+		return false;
+	}
+
+	workfile_set *work_set = CACHE_ENTRY_PAYLOAD(entry);
+	bool listable_size = (work_set->size >= MIN_LISTABLE_SIZE);
+
+	if (!listable_size)
+	{
+		return false;
+	}
+
+	return true;
 }
 
 PG_FUNCTION_INFO_V1(gp_workfile_mgr_used_diskspace);
