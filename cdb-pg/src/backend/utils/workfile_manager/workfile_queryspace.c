@@ -30,6 +30,12 @@ SyncHT *queryspace_Hashtable = NULL;
 QueryspaceDesc *queryEntry = NULL;
 
 /*
+ * Nesting level for executor invocations. Used to ensure we only
+ * initialize/release the queryEntry at the outer most nesting level
+ */
+int32 querySpaceNestingLevel = 0;
+
+/*
  * Initialize shared memory area for the WorkfileDiskspace module
  */
 void
@@ -186,7 +192,7 @@ WorkfileQueryspace_Commit(int64 commit_bytes, int64 reserved_bytes)
 }
 
 /*
- * Initializes and returns the Query space entry for this query.
+ * Initializes and returns the Queryspace entry for this query.
  *
  * If the entry already exists, it returns the existing one, otherwise
  * it inserts a new one in the hashtable.
@@ -194,16 +200,31 @@ WorkfileQueryspace_Commit(int64 commit_bytes, int64 reserved_bytes)
 QueryspaceDesc *
 WorkfileQueryspace_InitEntry(int session_id, int command_count)
 {
-	Queryspace_HashKey queryKey;
-	queryKey.session_id = session_id;
-	queryKey.command_count = command_count;
-	bool existing = false;
+	Assert(querySpaceNestingLevel >= 0);
 
 	if (gp_workfile_limit_per_query == 0)
 	{
 		/* Per-query limit not enforced, don't allocate hashtable entry */
 		return NULL;
 	}
+
+	querySpaceNestingLevel++;
+
+	if (querySpaceNestingLevel > 1)
+	{
+		/*
+		 * We are in a nested Executor invocation. Don't allocate a new
+		 * entry, used the stored one that was created by the top-level
+		 * invocation.
+		 */
+		return queryEntry;
+	}
+
+	Queryspace_HashKey queryKey;
+	queryKey.session_id = session_id;
+	queryKey.command_count = command_count;
+	bool existing = false;
+
 
 	Assert(NULL == queryEntry);
 	queryEntry = SyncHTInsert(queryspace_Hashtable, &queryKey, &existing);
@@ -228,6 +249,18 @@ WorkfileQueryspace_ReleaseEntry(void)
 	if (NULL == queryEntry)
 	{
 		/* Already released, nothing to do */
+		return;
+	}
+
+	querySpaceNestingLevel--;
+	Assert(querySpaceNestingLevel >= 0);
+
+	if (querySpaceNestingLevel > 0)
+	{
+		/*
+		 * We are in a nested Executor invocation. Don't release
+		 * the entry, the top-level invocation will take care of that.
+		 */
 		return;
 	}
 

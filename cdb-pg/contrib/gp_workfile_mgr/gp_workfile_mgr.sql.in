@@ -101,7 +101,14 @@ $$
 LANGUAGE SQL;
 
 CREATE VIEW gp_workfile_usage_per_segment AS
-SELECT segid, SUM(size) as size FROM workfile.gp_workfile_entries GROUP BY segid;
+SELECT gpseg.content AS segid, COALESCE(SUM(wfe.size),0) AS size 
+FROM (
+	SELECT content 
+	FROM gp_segment_configuration 
+	WHERE role = 'p') gpseg 
+LEFT JOIN workfile.gp_workfile_entries wfe 
+ON (gpseg.content = wfe.segid) 
+GROUP BY gpseg.content;
 
 CREATE VIEW gp_workfile_usage_per_query AS
 SELECT datname, procpid, sess_id, command_cnt, usename, current_query, segid, state, sum(size) AS size 
