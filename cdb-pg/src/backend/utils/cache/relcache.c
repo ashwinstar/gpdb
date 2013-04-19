@@ -2543,7 +2543,8 @@ AtEOXact_RelationCache(bool isCommit)
 		 * we are maintaining their relcache, we want to just clean
 		 * up (almost as if we had aborted). (MPP-3338)
 		 */
-		if (DistributedTransactionContext == DTX_CONTEXT_QE_READER)
+		if (DistributedTransactionContext == DTX_CONTEXT_QE_ENTRY_DB_SINGLETON ||
+			DistributedTransactionContext == DTX_CONTEXT_QE_READER)
 		{
 			RelationClearRelation(relation, false);
 			continue;
@@ -2615,16 +2616,12 @@ AtEOSubXact_RelationCache(bool isCommit, SubTransactionId mySubid,
 		Relation	relation = idhentry->reldesc;
 
 		/*
-		 * QE-readers aren't properly enrolled in transactions, they
-		 * just get the snapshot which corresponds -- so here, where
-		 * we are maintaining their relcache, we want to just clean
-		 * up (almost as if we had aborted). (MPP-3338)
+		 * As opposed to AtEOXact_RelationCache, subtransactions
+		 * in readers are only caused by internal commands, and
+		 * there shouldn't be interaction with global transactions,
+		 * (reader gangs commit their transaction independently)
+		 * we must not clear the relcache here.
 		 */
-		if (DistributedTransactionContext == DTX_CONTEXT_QE_READER)
-		{
-			RelationClearRelation(relation, false);
-			continue;
-		}
 
 		/*
 		 * Is it a relation created in the current subtransaction?
