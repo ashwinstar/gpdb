@@ -18,13 +18,14 @@ gpcrondump -x database_name
      { [-E encoding] [--inserts | --column-inserts] [--oids]
      [--no-owner | --use-set-session-authorization] 
      [--no-privileges] [--rsyncable] 
-     [--ddboost] [--replicate --max-streams <max_IO_streams> ] 
-     [--ddboost-skip-ping] }
-gpcrondump --ddboost-host <ddboost_hostname> --ddboost-user <ddboost_user> --ddboost-backupdir <backup_dir> [--ddboost-remote --ddboost-skip-ping]
-
+     [--ddboost [--replicate --max-streams <max_IO_streams> ] 
+     [--ddboost-skip-ping] ] }
+     
+gpcrondump --ddboost-host <ddboost_hostname> --ddboost-user <ddboost_user>
      --ddboost-backupdir <backup_directory> [--ddboost-remote] 
      [--ddboost-skip-ping]
-
+     
+     
 gpcrondump --ddboost-config-remove
 
 gpcrondump -o
@@ -141,7 +142,6 @@ OPTIONS
 
 --column-inserts 
 
-
  Dump data as INSERT commands with column names. 
 
  If --incremental is specified, this option is not supported. 
@@ -213,10 +213,9 @@ OPTIONS
  ddboost_user is the Data Domain Boost user name. There is a 30-character 
  limit. 
 
- <backup_directory> is the directory for the backup files, configuration 
- files, and global objects on the Data Domain system. The location for 
- the files is $MASTER_DATA_DIR/backup_directory. If the option is not 
- specified, the default is $MASTER_DATA_DIR/db_dumps. 
+ <backup_directory> is the location for the backup files, configuration 
+ files, and global objects on the Data Domain system. The location on the
+ system is GPDB/<backup_directory>. 
 
  --ddboost-remote is optional. Indicates that the configuration 
  parameters are for the remote Data Domain system that is used for backup 

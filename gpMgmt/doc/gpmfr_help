@@ -63,8 +63,10 @@ The Greenplum Database backup sets are identified by timestamps
 (yyyymmddhhmmss). 
 
 gpmfr attempts to schedule the replication task for the files in backup 
-data set, if no I/O stream is available, gpmfr retries the replication 
-until an I/O stream is available. 
+data set. It ensures that the limit on the maximum number of I/O streams 
+used for replication is never exceeded. The I/O streams limit is set 
+with the --max-streams option that accompanies the --replicate or 
+--recover option. 
 
 When cancelling a replication operation, gpmfr kills all active 
 replication processes and cleans up all the files on replication Data 
@@ -227,11 +229,12 @@ OPTIONS
 EXAMPLE
 *****************************************************
 
-The following example replicates the latest backup set on the local 
-Data Domain sever to the remote server. During the replication, a 
-progress bar for each file in the backup set is shown. 
+The following example replicates the latest backup set on the local Data 
+Domain sever to the remote server. The maximium number of I/O streams 
+that can be used for the replication is 30. 
 
--replicate LATEST --verbose
+gpfmr --replicate LATEST --max-streams 30
+
 
 
 *****************************************************
