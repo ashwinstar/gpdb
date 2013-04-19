@@ -53,6 +53,16 @@ gphdfs:
                 -Dgpgnet.src=1.2 \
                 -Dgpgnet.configuration=hadoop2
 
+	$(ANT) clean
+	$(ANT) dist -Dorg=org.apache.hadoop \
+                -Dname=hadoop-core \
+                -Drevision=2.0.2-alpha-gphd-2.0.1.0 \
+                -Dhadoop-common.revision=2.0.2-alpha-gphd-2.0.1.0 \
+                -Dgphdgnet.version=gphd-2.0.2-gnet-1.2.0.0 \
+                -Dgpgnet.src=1.2 \
+                -Dgpgnet.configuration=hadoop2
+
+
 gphdfsdoc:
 	$(ANT) javadoc -Dorg=emc \
                    -Dname=hadoop-core-0.20.205.0-gphd \

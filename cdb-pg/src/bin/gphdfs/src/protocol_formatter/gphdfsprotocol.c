@@ -56,6 +56,7 @@ static hadoop_vers_to_connector_ver hdVer_to_connVer[] =
 	{"gphd-1.0", "gphd-1.0-gnet-1.0.0.1"},
 	{"gphd-1.1", "gphd-1.1-gnet-1.1.0.0"},
 	{"gphd-1.2", "gphd-1.2-gnet-1.1.0.0"},
+	{"gphd-2.0", "gphd-2.0.2-gnet-1.2.0.0"},
 	{"gpmr-1.0", "gpmr-1.0-gnet-1.0.0.1"},
 	{"gpmr-1.2", "gpmr-1.2-gnet-1.0.0.1"},
 	{"cdh3u2",   "cdh3u2-gnet-1.1.0.0"},
@@ -81,7 +82,7 @@ getConnectorVersion()
 
 	ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
 					errmsg("target Hadoop version \"%s\" is not supported", gp_hadoop_target_version),
-					errhint("please use one of 'gphd-1.0', 'gphd-1.1', 'gpmr-1.0', 'gpmr-1.2', 'cdh3u2'"),
+					errhint("please use one of 'gphd-1.0', 'gphd-1.1', 'gphd-2.0', 'gpmr-1.0', 'gpmr-1.2', 'cdh3u2', 'cdh4.1'"),
 					errOmitLocation(true)));
 
 	return "N/A";

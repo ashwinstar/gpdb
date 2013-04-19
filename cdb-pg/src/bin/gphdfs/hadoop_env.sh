@@ -3,7 +3,7 @@ export PATH=$JAVA_HOME/bin:$PATH
 JAVA=$JAVA_HOME/bin/java
 CLASSPATH="$GPHOME"/"$GP_HADOOP_CONN_JARDIR"/$GP_HADOOP_CONN_VERSION.jar
 export HADOOP_COMMON_HOME="${HADOOP_HOME}"
-CLASSPATH=${HADOOP_HOME}/conf:${CLASSPATH}
+CLASSPATH=${HADOOP_HOME}/hadoop/etc/hadoop:${HADOOP_HOME}/conf:${CLASSPATH}
 
 # add libs to CLASSPATH
 for f in $HADOOP_COMMON_HOME/*.jar; do
@@ -11,6 +11,26 @@ for f in $HADOOP_COMMON_HOME/*.jar; do
 done
 
 for f in $HADOOP_COMMON_HOME/lib/*.jar; do
+  CLASSPATH=${CLASSPATH}:$f;
+done
+
+
+for f in $HADOOP_COMMON_HOME/hadoop/lib/*.jar; do
+  CLASSPATH=${CLASSPATH}:$f;
+done
+for f in $HADOOP_COMMON_HOME/hadoop/*.jar; do
+  CLASSPATH=${CLASSPATH}:$f;
+done
+
+for f in $HADOOP_COMMON_HOME/hadoop-hdfs/*.jar; do
+  CLASSPATH=${CLASSPATH}:$f;
+done
+
+for f in $HADOOP_COMMON_HOME/hadoop-mapreduce/*.jar; do
+  CLASSPATH=${CLASSPATH}:$f;
+done
+
+for f in $HADOOP_COMMON_HOME/hadoop-yarn/*.jar; do
   CLASSPATH=${CLASSPATH}:$f;
 done
 
