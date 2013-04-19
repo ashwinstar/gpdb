@@ -101,7 +101,7 @@ $$
 LANGUAGE SQL;
 
 CREATE VIEW gp_workfile_usage_per_segment AS
-SELECT segid,SUM(size) FROM workfile.gp_workfile_entries GROUP BY segid;
+SELECT segid, SUM(size) as size FROM workfile.gp_workfile_entries GROUP BY segid;
 
 CREATE VIEW gp_workfile_usage_per_query AS
 SELECT datname, procpid, sess_id, command_cnt, usename, current_query, segid, state, sum(size) AS size 
