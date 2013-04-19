@@ -2,7 +2,7 @@ This file provides high-level installation steps for Greenplum
 Database. For detailed installation, configuration and setup 
 information see the 'Greenplum Database Installation Guide'
 and the 'Greenplum Database Administration Guide'
-available from Powerlink (http://powerlink.emc.com)
+available from EMC Online Support site (http://support.emc.com)
 
 
 ***********************************************************
@@ -64,28 +64,6 @@ LINUX
 
 In /etc/sysctl.conf: 
 
-sysctl.kernel.shmmax = 500000000
-sysctl.kernel.shmmni = 4096
-sysctl.kernel.shmall = 4000000000
-sysctl.kernel.sem = 250 512000 100 2048
-sysctl.kernel.sysrq = 1
-sysctl.kernel.core_uses_pid = 1
-sysctl.kernel.msgmnb = 65536
-sysctl.kernel.msgmax = 65536
-sysctl.kernel.msgmni = 2048
-sysctl.net.ipv4.tcp_syncookies = 1
-sysctl.net.ipv4.ip_forward = 0
-sysctl.net.ipv4.conf.default.accept_source_route = 0
-sysctl.net.ipv4.tcp_tw_recycle = 1
-sysctl.net.ipv4.tcp_max_syn_backlog = 4096
-sysctl.net.ipv4.conf.all.arp_filter = 1
-sysctl.net.ipv4.ip_local_port_range = 1025 65535
-sysctl.net.core.netdev_max_backlog = 10000
-sysctl.vm.overcommit_memory = 2
-
-For RHEL version 6.x platforms, do not include the 
-sysctl. prefix in the above parameters, as follows:
-
 xfs_mount_options = rw,noatime,inode64,allocsize=16m
 kernel.shmmax = 500000000
 kernel.shmmni = 4096
@@ -104,6 +82,8 @@ net.ipv4.tcp_max_syn_backlog = 4096
 net.ipv4.conf.all.arp_filter = 1
 net.ipv4.ip_local_port_range = 1025 65535
 net.core.netdev_max_backlog = 10000
+net.core.rmem_max = 2097152
+net.core.wmem_max = 2097152
 vm.overcommit_memory = 2
 
 
@@ -177,8 +157,7 @@ POST INSTALLATION STEPS
 These are the high-level steps to configure and initialize a new 
 Greenplum Database instance. For detailed instructions, please 
 see the 'Greenplum Database Installation Guide' available for
-download from http://powerlink.emc.com
-
+download from http://support.emc.com
 
 1. Allocate a 'gpadmin' OS user to own and run your installation.
    This user must exist on all Greenplum hosts.
@@ -230,7 +209,7 @@ directories:
 * etc - Sample configuration file for OpenSSL.
 
 * ext - Bundled programs (such as Python) used by some 
-        Greenplum Database utilies.
+        Greenplum Database utilities.
 
 * include - Greenplum Database and PostgreSQL header files.
 
@@ -247,20 +226,46 @@ GREENPLUM DATABASE DOCUMENTATION
 ************************************************
 
 The following documentation is available for
-download from http://powerlink.emc.com:
+download from http://support.emc.com
 
-(All Greenplum Database Installations)
+* Greenplum Database <version> Release Notes 
+  Release notes for this version of Greenplum Database.
+  The release notes contains a list of the current Greenplum
+  Database documentation.
 
-* GPDB-<version>-README.pdf - Release notes for this version of 
-  Greenplum Database
+* Greenplum Database Installation Guide
 
-* GPInstallGuide.pdf - Greenplum Database Installation Guide
+* Greenplum Database Administrator Guide
 
-* GPAdminGuide.pdf - Greenplum Database Administrator Guide
+* Greenplum Database System Administrator Guide
 
-* GPPerfmonAdminGuide.pdf - Greenplum Performance Monitor Administrator 
-  Guide
+* Greenplum Database Reference Guide
 
+* Greenplum Database Utility Guide
+
+* Greenplum Database Installation Guide
+
+* Greenplum Database Database Administrator Guide
+
+* Greenplum Database System Administrator Guide
+
+* Greenplum Database Reference Guide
+
+* Greenplum Database Utility Guide
+
+* Greenplum Database Client Tools for UNIX
+
+* Greenplum Database Client Tools for Windows
+
+* Greenplum Database Connectivity Tools for UNIX
+
+* Greenplum Database Connectivity Tools for Windows
+
+* Greenplum Database Load Tools for UNIX
+
+* Greenplum Database Load Tools for Windows
+
+* Greenplum Command Center Administrator Guide
 
 
 
