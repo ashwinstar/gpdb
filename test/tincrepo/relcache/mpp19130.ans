@@ -3,7 +3,6 @@
 -- @created 2013-02-26 00:00:00
 -- @modified 2013-02-26 00:00:00
 -- @tags plpython transaction
--- @gpdb_version (4.2.5, main]
 -- start_ignore
 drop table if exists stran_foo, stran_tt;
 NOTICE:  table "stran_foo" does not exist, skipping

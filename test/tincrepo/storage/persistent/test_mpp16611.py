@@ -33,7 +33,6 @@ class mpp16611(GPDBTestCase):
         @created 2013-02-12 00:00:00
         @modified 2013-02-12 00:00:00
         @tags mpp16160
-        @gpdb_version [4.2.5, main]
 
         The issue of mpp16611 is that persistent table (PT) information
         in Relation cache is lost during heap_insert after fetching it

@@ -33,7 +33,6 @@ class mpp18234(GPDBTestCase):
         @created 2013-02-26 00:00:00
         @modified 2013-02-26 00:00:00
         @tags mpp18234
-        @gpdb_version [4.2.5, main]
 
         The main issue is, if a session that is waiting for resource queue
         lock is terminated, the awaitedLock information is not cleared out. If the session had persistent
