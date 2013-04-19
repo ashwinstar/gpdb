@@ -1064,12 +1064,8 @@ workfile_update_in_progress_size(ExecWorkFile *workfile, int64 size)
 {
 	if (NULL != workfile->work_set)
 	{
-#if USE_ASSERT_CHECKING
-		int64 newsize =
-#endif
-		gp_atomic_add_64(&workfile->work_set->in_progress_size, size);
-
-		Assert(newsize >= 0);
+		workfile->work_set->in_progress_size += size;
+		Assert(workfile->work_set->in_progress_size >= 0);
 	}
 }
 
