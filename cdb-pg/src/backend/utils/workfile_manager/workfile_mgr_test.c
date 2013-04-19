@@ -1187,7 +1187,7 @@ create_text_stringinfo(int64 n_chars)
 }
 
 /*
- * Removes a physical file. Updates the WorkfileSegspace accounting
+ * Removes a physical file. Updates the WorkfileDiskspace accounting
  *  to reflect the deletion if requested.
  * Used as part of the unit test cleanup to remove artifacts.
  *
@@ -1211,7 +1211,7 @@ remove_tmp_file(char *path, int64 size, bool update_diskspace)
 	if (update_diskspace)
 	{
 		/* Reverting the used diskspace to reflect the deletion */
-		WorkfileSegspace_Commit(0, size);
+		WorkfileDiskspace_Commit(0, size, true /* update_query_space */ );
 	}
 
 	pfree(full_filepath->data);
@@ -1223,6 +1223,10 @@ remove_tmp_file(char *path, int64 size, bool update_diskspace)
 /*
  * Unit tests for new ExecWorkfile and WorkfileSegspace functionality
  *  with underlying Buffile files
+ *
+ * This test is only run when the per-segment limit GUC is non-zero.
+ * If GUC is 0, then we don't keep track of the per-segment used size.
+ *
  */
 static bool
 execworkfile_buffile_test(void)
@@ -1236,6 +1240,12 @@ execworkfile_buffile_test(void)
 
 	unit_test_reset();
 	elog(LOG, "Running test: execworkfile_buffile_test");
+	if (0 == gp_workfile_limit_per_segment)
+	{
+		elog(LOG, "Skipping test because the gp_workfile_limit_per_segment is 0");
+		unit_test_result(true);
+		return unit_test_summary();
+	}
 
 	/* Create file name */
 	char *file_name = "test_execworkfile_buffile.dat";
@@ -1340,6 +1350,10 @@ execworkfile_buffile_test(void)
 /*
  * Unit tests for new ExecWorkfile and WorkfileSegspace functionality
  *  with underlying compressed bfz files
+ *
+ * This test is only run when the per-segment limit GUC is non-zero.
+ * If GUC is 0, then we don't keep track of the per-segment used size.
+ *
  */
 static bool
 execworkfile_bfz_zlib_test(void)
@@ -1353,6 +1367,13 @@ execworkfile_bfz_zlib_test(void)
 
 	unit_test_reset();
 	elog(LOG, "Running test: execworkfile_bfz_zlib_test");
+
+	if (0 == gp_workfile_limit_per_segment)
+	{
+		elog(LOG, "Skipping test because the gp_workfile_limit_per_segment is 0");
+		unit_test_result(true);
+		return unit_test_summary();
+	}
 
 	/* Create file name */
 	char *file_name = "test_execworkfile_bfz_zlib.dat";
@@ -1448,6 +1469,10 @@ execworkfile_bfz_zlib_test(void)
 /*
  * Unit tests for new ExecWorkfile and WorkfileSegspace functionality
  *  with underlying uncompressed bfz files
+ *
+ * This test is only run when the per-segment limit GUC is non-zero.
+ * If GUC is 0, then we don't keep track of the per-segment used size.
+ *
  */
 static bool
 execworkfile_bfz_uncompressed_test(void)
@@ -1461,6 +1486,13 @@ execworkfile_bfz_uncompressed_test(void)
 
 	unit_test_reset();
 	elog(LOG, "Running test: execworkfile_bfz_uncompressed_test");
+
+	if (0 == gp_workfile_limit_per_segment)
+	{
+		elog(LOG, "Skipping test because the gp_workfile_limit_per_segment is 0");
+		unit_test_result(true);
+		return unit_test_summary();
+	}
 
 	/* Create file name */
 	char *file_name = "test_execworkfile_bfz_uncomp.dat";
