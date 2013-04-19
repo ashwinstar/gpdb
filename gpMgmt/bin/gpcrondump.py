@@ -150,6 +150,8 @@ class GpCronDump(Operation):
 
         self.replicate = options.replicate
         self.max_streams = options.max_streams
+        self.quiet = options.quiet
+        self.verbose = options.verbose
         if self.ddboost:
             if (not self.replicate and self.max_streams is not None) or (self.replicate and self.max_streams is None):
                 raise ExceptionNoStackTraceNeeded("--max-streams must be specified along with --replicate")
@@ -714,6 +716,14 @@ class GpCronDump(Operation):
             for name, ts in self.dump_timestamps:
             	p = gpmfr.mfr_parser()
             	arglist = ["--replicate", ts, "--max-streams", self.max_streams, "--master-port", str(self.master_port)]
+            	if self.quiet:
+                	arglist.append("--quiet")
+            	if self.verbose:
+                	arglist.append("--verbose")
+            	if not self.interactive:
+                	arglist.append("-a")
+            	if not self.ddboost_ping:
+                	arglist.append("--skip-ping")
             	logger.info("Replicating %s to remote Data Domain. (gpmfr.py %s)" % (name, " ".join(arglist)))
             	mfropt, mfrargs = p.parse_args(arglist, None)
             	mfr = gpmfr.GpMfr(mfropt, mfrargs)

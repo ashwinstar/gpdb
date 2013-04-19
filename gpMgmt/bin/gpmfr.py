@@ -19,10 +19,10 @@ try:
     from gppylib.db import dbconn
     from gppylib.gparray import GpArray
     from gppylib.gpparseopts import OptChecker, OptionGroup, OptParser
-    from gppylib.mainUtils import ProgramArgumentValidationException, \
-        simple_main
+    from gppylib.mainUtils import (ProgramArgumentValidationException,
+                                   simple_main,
+                                   addStandardLoggingAndHelpOptions)
     from gppylib.operations import Operation
-    from gppylib.util import ssh_utils
 except ImportError, e:
     sys.exit("Cannot import modules. " +
              "Please check that you have sourced greenplum_path.sh. " +
@@ -32,8 +32,8 @@ GPMFR_EXEC = "gpmfr"
 DDBOOST_EXEC = os.environ["GPHOME"] + "/bin/gpddboost"
 # Existence of the these config files implies local/remote Data Domain is
 # configured correctly.
-LOCAL_DDBOOST_CONFIG= os.environ["HOME"] + "/DDBOOST_CONFIG"
-REMOTE_DDBOOST_CONFIG= os.environ["HOME"] + "/DDBOOST_MFR_CONFIG"
+LOCAL_DDBOOST_CONFIG = os.environ["HOME"] + "/DDBOOST_CONFIG"
+REMOTE_DDBOOST_CONFIG = os.environ["HOME"] + "/DDBOOST_MFR_CONFIG"
 
 logger = gplog.get_default_logger()
 
@@ -46,6 +46,7 @@ def mfr_parser():
                        description="Managed File Replication using DD Boost.")
     parser.set_usage("%prog OPERATION [--remote] [--master-port=NUMBER] " +
                      "[--skip-ping]")
+    addStandardLoggingAndHelpOptions(parser, includeNonInteractiveOption=True)
     ddOpt = OptionGroup(parser, "Operations", description="Valid formats for " +
                         "TIMESTAMP argument are 'YYYY-Month-DD HH:MM:SS' and " +
                         "YYYYMMDDHHMMSS.  Keywords 'OLDEST' and 'LATEST' may " +
@@ -528,7 +529,7 @@ class Scheduler(object):
     # Max number of concurrent DeleteWorkers to spawn.
     DELETE_BATCHSIZE = 50
 
-    def __init__(self, bset, sourceDD, targetDD=None):
+    def __init__(self, bset, sourceDD, targetDD=None, quiet=False):
         self.backupSet = bset
         self.sourceDD = sourceDD
         self.targetDD = targetDD
@@ -536,6 +537,7 @@ class Scheduler(object):
         self.replWorkers = []
         self.replCancelEv = Event()
         self.replAbortEv = Event()
+        self.quiet = quiet
 
     def _printProgress(self, current, total, msg=None):
         """
@@ -546,6 +548,9 @@ class Scheduler(object):
         if current > total:
             raise Exception(
                 "printProgress: invalid arguments: total < current.")
+        if self.quiet:
+            # No progress bars if --quiet is specified.
+            return
         if msg:
             # Show a message indicating progress instead of a progress bar.
             # E.g. "10 out of 50 tasks complete ...".
@@ -577,11 +582,11 @@ class Scheduler(object):
                      userStreamLimit)
         sourceLimit = self.sourceDD.replSourceSoftLimit()
         targetLimit = self.targetDD.replDestSoftLimit()
-	if userStreamLimit > sourceLimit:
+        if userStreamLimit > sourceLimit:
             raise MfrException(
                 "Stream limit specified is greater than soft limit on %s." %
                 self.sourceDD)
-	if userStreamLimit > targetLimit:
+        if userStreamLimit > targetLimit:
             raise MfrException(
                 "Stream limit specified is greater than soft limit on %s." %
                 self.targetDD)
@@ -629,6 +634,17 @@ class Scheduler(object):
             logger.debug("Starting ReplicateWorker: %s" % bf.name)
             w.start()
 
+    def _logPerFileProgress(self, logAll=False):
+        """
+        --quiet option supresses progress bars on stdout.  In that case, the
+        only option to convey replication progress is logs.
+        """
+        msg = ("Replication of file %s: %d out of %d bytes transferred.")
+        for w in self.replWorkers:
+            if logAll or not w.isFinished():
+                logger.info(msg % (w.backupFile.fullPath,
+                                   w.bytesSent, w.backupFile.size))
+
     def replicate(self, userStreamLimit):
         """
         Spawn one worker per backup file for transfer.  Periodically print
@@ -644,6 +660,9 @@ class Scheduler(object):
         self._validateUserStreamLimit(userStreamLimit)
         goal = self._totalKBytes()
         workDone = 0 # Number of KBytes transferred.
+        tenPercent = goal/10
+        # Log progress when workDown becomes larger than this logStep.
+        logStep = 0
         try:
             self._printProgress(workDone, goal)
             while workDone < goal:
@@ -674,12 +693,22 @@ class Scheduler(object):
                     raise MfrException("One or more file transfers failed.")
                 workDone = self._transferedKBytes()
                 logger.debug("workDone = %d" % workDone)
+                # Log progress when --quiet is specified only when at least 10
+                # percent of work is done.  Else we will end up bloating log
+                # files (MPP-19539).  If --verbose is specified, we anyway log
+                # the progress in ReplicateWorker.analyzeOutout().
+                if self.quiet and not gplog.logging_is_verbose():
+                    if workDone > logStep:
+                        self._logPerFileProgress()
+                        logStep = workDone + tenPercent
                 self._printProgress(workDone, goal)
                 time.sleep(0.5)
             if workDone != goal:
                 msg = "Internal Error: workDone: %d, goal: %d workDone != goal"
                 raise MfrException(msg % (workDone, goal))
             self._printProgress(workDone, goal)
+            if self.quiet and not gplog.logging_is_verbose():
+                self._logPerFileProgress(logAll=True)
         except KeyboardInterrupt:
             print "\nCancelling file transfers."
             self.replCancelEv.set()
@@ -745,9 +774,9 @@ class Scheduler(object):
                 if w.isFailed():
                     print
                     msg = "Failed to delete backup file: %s." % w.backupFile
-                    if w.ddboostError:
+                    if w.errorMessage:
                         logger.error(msg)
-                        ddSystem.printErrorAndAbort(w.ddboostError)
+                        ddSystem.printErrorAndAbort(w.errorMessage)
                     else:
                         raise Exception(msg)
                 workDone = workDone + 1
@@ -1011,6 +1040,7 @@ class DeleteWorker(Thread):
                 "Delete failed for backup file %s on Data Domain %s. " % \
                 (self.backupFile.fullPath, self.ddSystem)
             self.errorMessage += "Reason: %s" % e
+            logger.error(self.errorMessage)
 
     def isFailed(self):
         return self.errorMessage is not None
@@ -1380,16 +1410,17 @@ class GpMfr(Operation):
                     (bkptimestamp, self.ddSystem)
                 return
         bset.prettyPrint(printFiles=True)
-        print "Delete all the above files from %s Data Domain (y/n)?" % \
-            self.ddSystem
-        c = sys.stdin.readline().strip()[0]
-        if c == "y" or c == "Y":
-            scheduler = Scheduler(bset, self.ddSystem)
-            scheduler.delete()
-            print "Backup '%s' deleted from %s Data Domain." % \
-                  (bkptimestamp, self.ddSystem)
-        else:
-            print "Nothing deleted."
+        if self.options.interactive:
+            print "Delete all the above files from %s Data Domain (y/n)?" % \
+                self.ddSystem
+            c = sys.stdin.readline().strip()[0]
+            if c != "y" and c != "Y":
+                print "Nothing deleted."
+                return
+        scheduler = Scheduler(bset, self.ddSystem, quiet=self.options.quiet)
+        scheduler.delete()
+        print "Backup '%s' deleted from %s Data Domain." % \
+            (bset.bt, self.ddSystem)
 
     def replicateBackup(self, bkptimestamp, sourceDD, targetDD, maxStreams):
         """
@@ -1421,19 +1452,21 @@ class GpMfr(Operation):
         if targetBset is not None:
             deleteTarget = False
             if targetBset == sourceBset:
-                msg = "Backup %s already present on %s Data Domain." + \
-                      " Do you still want to proceed (y/n)?"
+                msg = "Backup %s already present on %s Data Domain."
             else:
                 deleteTarget = True
                 msg = "Backup %s with different set of files found on %s" + \
-                      " Data Domain. It will be overwritten." + \
-                      " Do you want to continue (y/n)?"
-            print msg % (targetBset.bt, targetDD)
-            c = sys.stdin.readline().strip()[0]
-            if c != "y" and c != "Y":
-                return
+                      " Data Domain. It will be overwritten."
+            if self.options.interactive:
+                print (msg + " Continue (y/n)?") % (targetBset.bt, targetDD)
+                c = sys.stdin.readline().strip()[0]
+                if c != "y" and c != "Y":
+                    return
+            else:
+                print msg % (targetBset.bt, targetDD)
             if deleteTarget:
-                scheduler = Scheduler(targetBset, targetDD)
+                scheduler = Scheduler(targetBset, targetDD,
+                                      quiet=self.options.quiet)
                 scheduler.delete()
         else:
             # Create "GPDB" storage unit on target Data Domain if one doesn't
@@ -1441,10 +1474,11 @@ class GpMfr(Operation):
             targetDD.verifyLogin()
         print "Using at the most %d I/O streams on each Data Domain." % \
             maxStreams
-        scheduler = Scheduler(sourceBset, sourceDD, targetDD)
+        scheduler = Scheduler(sourceBset, sourceDD, targetDD,
+                              self.options.quiet)
         scheduler.replicate(maxStreams)
 
 
 if __name__ == "__main__":
     sys.argv[0] = GPMFR_EXEC
-    simple_main(mfr_parser, GpMfr)
+    simple_main(mfr_parser, GpMfr, {"programNameOverride": GPMFR_EXEC})

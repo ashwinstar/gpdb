@@ -53,6 +53,8 @@ class GpCronDumpTestCase(unittest.TestCase):
             self.replicate = None
             self.max_streams = None
             self.report_dir = None
+            self.quiet = False
+            self.verbose = False
  
     @patch('gpcrondump.GpCronDump._get_master_port')
     @patch('gpcrondump.validate_current_timestamp')
