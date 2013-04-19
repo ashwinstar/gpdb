@@ -1188,6 +1188,114 @@ insert into ao1 values('1');
 alter table ao1 add column col2 char(1);
 select * from ao1;
 
+--
+-- MPP-19664 
+-- Test ALTER TABLE ADD COLUMN WITH NULL DEFAULT on AO/CO TABLES
+--
+--- 
+--- basic support for alter add column with NULL default to AO/CO tables
+--- 
+drop table if exists aoco1;
+create table aoco1(col1 varchar(2), col2 int)
+WITH (APPENDONLY=TRUE, ORIENTATION=column) distributed randomly;
+
+insert into aoco1 values('aa', 1);
+insert into aoco1 values('bb', 2);
+
+-- following should be OK.
+alter table aoco1 add column col3 char(1) default 5;
+
+-- the following should be supported now
+alter table aoco1 add column col4 char(1) default NULL;
+
+select * from aoco1;
+insert into aoco1 values('cc', 3);
+select * from aoco1;
+
+alter table aoco1 alter column col4 drop default; 
+select * from aoco1;
+insert into aoco1 values('dd', 4);
+select * from aoco1;
+
+---
+--- check catalog contents after alter table on AO/CO tables 
+---
+drop table if exists aoco1;
+create table aoco1(col1 varchar(2), col2 int)
+WITH (APPENDONLY=TRUE, ORIENTATION=column) distributed randomly;
+
+-- relnatts is 2
+select relname, relnatts from pg_class where relname = 'aoco1';
+
+alter table aoco1 add column col3 char(1) default NULL;
+
+-- relnatts in pg_class should be 3
+select relname, relnatts from pg_class where relname = 'aoco1';
+
+-- check col details in pg_attribute
+select  pg_class.relname, attname, typname from pg_attribute, pg_class, pg_type where attrelid = pg_class.oid and pg_class.relname = 'aoco1' and atttypid = pg_type.oid and attname = 'col3';
+
+-- no explicit entry in pg_attrdef for NULL default
+select relname, attname, adsrc from pg_class, pg_attribute, pg_attrdef where attrelid = pg_class.oid and adrelid = pg_class.oid and adnum = pg_attribute.attnum and pg_class.relname = 'aoco1';
+
+--- 
+--- check with IS NOT NULL constraint
+--- 
+drop table if exists aoco1;
+create table aoco1(col1 varchar(2), col2 int)
+WITH (APPENDONLY=TRUE, ORIENTATION=column) distributed randomly;
+
+insert into aoco1 values('a', 1); 
+
+-- should fail (rewrite needs to do null checking) 
+alter table aoco1 add column col3 char(1) not null default NULL; 
+alter table aoco1 add column c5 int check (c5 IS NOT NULL) default NULL;
+
+-- should fail (rewrite needs to do constraint checking) 
+insert into aoco1(col1, col2) values('a', NULL);
+alter table aoco1 alter column col2 set not null; 
+
+-- should pass (rewrite needs to do constraint checking) 
+alter table aoco1 alter column col2 type int; 
+
+drop table if exists aoco1;
+create table aoco1(col1 varchar(2), col2 int)
+WITH (APPENDONLY=TRUE, ORIENTATION=column) distributed randomly;
+
+-- should pass
+alter table aoco1 add column col3 char(1) not null default NULL; 
+
+-- this should fail (same behavior as heap tables)
+insert into aoco1 (col1, col2) values('a', 10);
+
+drop table if exists aoco1;
+create table aoco1(col1 varchar(2), col2 int not null)
+WITH (APPENDONLY=TRUE, ORIENTATION=column) distributed randomly;
+
+insert into aoco1 values('aa', 1);
+alter table aoco1 add column col3 char(1) default NULL;
+insert into aoco1 values('bb', 2);
+select * from aoco1;
+alter table aoco1 add column col4 char(1) not NULL default NULL;
+select * from aoco1;
+
+---
+--- alter add with no default should continue to fail
+---
+drop table if exists aoco1;
+create table aoco1(col1 varchar(1))
+WITH (APPENDONLY=TRUE, ORIENTATION=column) distributed randomly;
+
+insert into aoco1 values('1');
+insert into aoco1 values('1');
+insert into aoco1 values('1');
+insert into aoco1 values('1');
+
+alter table aoco1 add column col2 char(1);
+select * from aoco1;
+
+drop table aoco1;
+
 ---
 --- new column with a domain type
 ---
