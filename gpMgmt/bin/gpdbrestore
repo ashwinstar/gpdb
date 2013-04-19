@@ -8,12 +8,13 @@
 # import mainUtils FIRST to get python version check
 from gppylib.mainUtils import *
 
+import os, sys
 import fnmatch
 from optparse import Option, OptionGroup, OptionParser, OptionValueError
 
 try:
     from tempfile import mkstemp
-
+    import gpmfr
     from gppylib.gpparseopts import OptParser, OptChecker
 
     from gppylib import pgconf
@@ -33,6 +34,7 @@ try:
                                            GetDbName, create_restore_plan, is_incremental_restore, DUMP_DIR, DBDUMP_PREFIX, MASTER_DBDUMP_PREFIX,\
                                            GLOBAL_PREFIX, CREATEDB_PREFIX, is_begin_incremental_run, get_restore_tables_from_table_file,\
                                            validate_tablenames, get_restore_dir
+    import gppylib.operations.backup_utils
 
 except ImportError, e:
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
@@ -120,10 +122,17 @@ class GpdbRestore(Operation):
                 raise ExceptionNoStackTraceNeeded("-R cannot be used with DDBoost parameters.")
             elif self.backup_dir:
                 raise ExceptionNoStackTraceNeeded('-u cannot be used with DDBoost parameters.')
+            dd = gpmfr.DDSystem("local")
+            self.dump_dir = dd.defaultBackupDir
+            # Ugly hack to propagate backup directory different from "db_dumps".
+            gppylib.operations.backup_utils.DUMP_DIR = self.dump_dir
+        else:
+            self.dump_dir = DUMP_DIR
 
     def execute(self):
         if self.ddboost:
-            cmd = Command('DDBoost sync', 'gpddboost --sync --dir=%s' % self.master_datadir)
+            cmdline = 'gpddboost --sync --dir=%s' % self.master_datadir
+            cmd = Command('DDBoost sync', cmdline)
             cmd.run(validateAfter = True)
 
         self.gparray = GpArray.initFromCatalog(dbconn.DbURL(port = self.master_port), utility=True)
@@ -168,6 +177,7 @@ class GpdbRestore(Operation):
                         backup_dir = self.backup_dir,
                         master_port = self.master_port,
                         ddboost = self.ddboost,
+                        dump_dir = self.dump_dir,
                         no_plan = self.no_plan,
                         restore_tables = self.restore_tables,
                         batch_default = self.batch_default,
@@ -261,6 +271,7 @@ class GpdbRestore(Operation):
         dump_tables = GetDumpTables(master_datadir = self.master_datadir,
                                     backup_dir = self.backup_dir, 
                                     restore_timestamp = self.db_timestamp,
+                                    dump_dir = self.dump_dir,
                                     ddboost = self.ddboost).run()
 
         logger.info("--------------------------------------------------------------------")
@@ -295,7 +306,8 @@ class GpdbRestore(Operation):
         if self.db_timestamp is not None:
             (restore_timestamp, restore_db, compress) = ValidateTimestamp(master_datadir = self.master_datadir,
                                                                           backup_dir = self.backup_dir, 
-                                                                          candidate_timestamp = self.db_timestamp).run()
+                                                                          candidate_timestamp = self.db_timestamp,
+                                                                          dump_dir = self.dump_dir).run()
         elif self.db_date_dir is not None:
             (restore_timestamp, restore_db, compress) = self._validate_db_date_dir()
         elif self.db_host_path is not None:
@@ -315,7 +327,7 @@ class GpdbRestore(Operation):
         if self.restore_tables is not None :
             validate_tablenames(self.restore_tables)
 
-        if not self.db_host_path:
+        if not self.db_host_path and not self.ddboost:
             report_filename = generate_report_filename(self.master_datadir, self.backup_dir, restore_timestamp)
             if not os.path.isfile(report_filename):
                 raise ExceptionNoStackTraceNeeded("Report file does not exist for the given restore timestamp %s: '%s'" % (restore_timestamp, report_filename))
@@ -329,7 +341,7 @@ class GpdbRestore(Operation):
                  
 
     def _validate_db_date_dir(self):
-        root = os.path.join(get_restore_dir(self.master_datadir, self.backup_dir), DUMP_DIR, self.db_date_dir)
+        root = os.path.join(get_restore_dir(self.master_datadir, self.backup_dir), self.dump_dir, self.db_date_dir)
         if not os.path.isdir(root):
             raise ExceptionNoStackTraceNeeded("Directory %s does not exist" % root)
         matching = ListFilesByPattern(root, "%s*" % CREATEDB_PREFIX).run()
@@ -391,7 +403,7 @@ class GpdbRestore(Operation):
         
     def _search_for_latest(self):
         logger.info("Scanning Master host for latest dump file set for database %s" % self.search_for_dbname)
-        root = os.path.join(get_restore_dir(self.master_datadir, self.backup_dir), DUMP_DIR)
+        root = os.path.join(get_restore_dir(self.master_datadir, self.backup_dir), self.dump_dir)
         candidates, timestamps = [], []
         for path, dirs, files in os.walk(root):
             matching = fnmatch.filter(files, "%s*" % CREATEDB_PREFIX)
@@ -410,7 +422,7 @@ class GpdbRestore(Operation):
         restore_timestamp = str(max(timestamps)) 
         logger.info("Identified latest dump timestamp for %s as %s" %  (self.search_for_dbname, restore_timestamp))
         restore_db = self.search_for_dbname
-        compressed_file = os.path.join(get_restore_dir(self.master_datadir, self.backup_dir), DUMP_DIR, restore_timestamp[0:8], "%s%s.gz" % (MASTER_DBDUMP_PREFIX, restore_timestamp))
+        compressed_file = os.path.join(get_restore_dir(self.master_datadir, self.backup_dir), self.dump_dir, restore_timestamp[0:8], "%s%s.gz" % (MASTER_DBDUMP_PREFIX, restore_timestamp))
         compress = CheckFile(compressed_file).run()
         return (restore_timestamp, restore_db, compress)
         

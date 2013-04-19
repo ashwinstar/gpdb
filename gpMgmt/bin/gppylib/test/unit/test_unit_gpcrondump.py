@@ -47,6 +47,11 @@ class GpCronDumpTestCase(unittest.TestCase):
             self.ddboost_user = None
             self.ddboost_config_remove = False
             self.ddboost_verify = False
+            self.ddboost_remote = None
+            self.ddboost_ping = None
+            self.ddboost_backupdir = None
+            self.replicate = None
+            self.max_streams = None
             self.report_dir = None
  
     @patch('gpcrondump.GpCronDump._get_master_port')
@@ -214,6 +219,7 @@ class GpCronDumpTestCase(unittest.TestCase):
         options.incremental = True
         with self.assertRaisesRegexp(Exception, '-c option can not be selected with incremental backup'):
             cron = GpCronDump(options, None)
+
  
     @patch('gpcrondump.GpCronDump._get_master_port')
     @patch('gpcrondump.validate_current_timestamp')
@@ -224,6 +230,56 @@ class GpCronDumpTestCase(unittest.TestCase):
         with self.assertRaisesRegexp(Exception, 'Must supply -x <database name> with incremental option'):
             cron = GpCronDump(options, None)
  
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options21(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.ddboost = True
+        options.replicate = False
+        options.max_streams = 20
+        with self.assertRaisesRegexp(Exception, '--max-streams must be specified along with --replicate'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options22(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.ddboost = True
+        options.replicate = True
+        options.max_streams = None
+        with self.assertRaisesRegexp(Exception, '--max-streams must be specified along with --replicate'):
+            cron = GpCronDump(options, None)
+        
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options23(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.ddboost = True
+        options.replicate = True
+        options.max_streams = 0
+        with self.assertRaisesRegexp(Exception, '--max-streams must be a number greater than zero'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options24(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.ddboost = True
+        options.replicate = True
+        options.max_streams = "abc"
+        with self.assertRaisesRegexp(Exception, '--max-streams must be a number greater than zero'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options25(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.ddboost = False
+        options.replicate = False
+        options.max_streams = 20
+        with self.assertRaisesRegexp(Exception, '--replicate and --max-streams cannot be used without --ddboost'):
+            cron = GpCronDump(options, None)
+
     @patch('gpcrondump.GpCronDump._get_master_port')
     @patch('gpcrondump.validate_current_timestamp')
     def test_get_include_exclude_for_dump_database00(self, mock1, mock2):

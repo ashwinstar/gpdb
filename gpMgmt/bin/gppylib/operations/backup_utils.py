@@ -190,7 +190,7 @@ def get_backup_directory(master_data_dir, backup_dir, timestamp):
     if not validate_timestamp(timestamp):
         raise Exception ('Invalid timestamp: "%s"' % timestamp)
 
-    return ("%s/db_dumps/%s" % (use_dir, timestamp[0:8]))
+    return ("%s/%s/%s" % (use_dir, DUMP_DIR, timestamp[0:8]))
 
 def generate_report_filename(master_data_dir, backup_dir, timestamp):
     use_dir = get_backup_directory(master_data_dir, backup_dir, timestamp)

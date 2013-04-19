@@ -2,6 +2,7 @@ import os
 import tempfile
 import time
 from datetime import datetime
+import sys
 
 import gppylib
 from gppylib import gplog
@@ -341,7 +342,7 @@ def validate_current_timestamp(backup_dir, current=None):
 class DumpDatabase(Operation):
     # TODO: very verbose constructor = room for improvement. in the parent constructor, we could use kwargs
     # to automatically take in all arguments and perhaps do some data type validation.
-    def __init__(self, dump_database, dump_schema, include_dump_tables, exclude_dump_tables, include_dump_tables_file, exclude_dump_tables_file, backup_dir, free_space_percent, compress, clear_catalog_dumps, encoding, output_options, batch_default, master_datadir, master_port, ddboost, incremental=False):
+    def __init__(self, dump_database, dump_schema, include_dump_tables, exclude_dump_tables, include_dump_tables_file, exclude_dump_tables_file, backup_dir, free_space_percent, compress, clear_catalog_dumps, encoding, output_options, batch_default, master_datadir, master_port, dump_dir, ddboost, incremental=False):
         self.dump_database = dump_database
         self.dump_schema = dump_schema
         self.include_dump_tables = include_dump_tables
@@ -357,6 +358,7 @@ class DumpDatabase(Operation):
         self.batch_default = batch_default
         self.master_datadir = master_datadir
         self.master_port = master_port
+        self.dump_dir = dump_dir
         self.ddboost = ddboost
         self.incremental = incremental
 
@@ -373,6 +375,7 @@ class DumpDatabase(Operation):
                                                         batch_default = self.batch_default,
                                                         master_datadir = self.master_datadir,
                                                         master_port = self.master_port,
+                                                        dump_dir = self.dump_dir,
                                                         incremental = self.incremental).run()
 
         dump_line = self.create_dump_string(getUserName(), DUMP_DATE, TIMESTAMP_KEY)
@@ -401,8 +404,8 @@ class DumpDatabase(Operation):
         if self.backup_dir is not None:
             dump_path = report_path = os.path.join(self.backup_dir, DUMP_DIR, dump_date) 
         else:
-            dump_path = os.path.join(DUMP_DIR, dump_date)
-            report_path = os.path.join(self.master_datadir, DUMP_DIR, dump_date)
+            dump_path = os.path.join(self.dump_dir, dump_date)
+            report_path = os.path.join(self.master_datadir, self.dump_dir, dump_date)
 
         if self.incremental:
             if self.backup_dir:
@@ -508,19 +511,20 @@ class CreateIncrementsFile(Operation):
                 raise Exception("Timestamp '%s' from increments file '%s' is not a valid increment" % (ts, inc_file_name))
 
 class PostDumpDatabase(Operation):
-    def __init__(self, timestamp_start, compress, backup_dir, batch_default, master_datadir, master_port, ddboost, incremental=False):
+    def __init__(self, timestamp_start, compress, backup_dir, batch_default, master_datadir, master_port, dump_dir, ddboost, incremental=False):
         self.timestamp_start = timestamp_start
         self.compress = compress
         self.backup_dir = backup_dir
         self.batch_default = batch_default
         self.master_datadir = master_datadir
         self.master_port = master_port
+        self.dump_dir = dump_dir
         self.ddboost = ddboost
         self.incremental = incremental
 
     def get_report_dir(self, dump_date):
         path = self.backup_dir if self.backup_dir is not None else self.master_datadir
-        path = os.path.join(path, DUMP_DIR, dump_date)
+        path = os.path.join(path, self.dump_dir, dump_date)
         return path
 
     def execute(self):
@@ -544,7 +548,7 @@ class PostDumpDatabase(Operation):
 
         # Check master dumps
         path = self.backup_dir if self.backup_dir is not None else self.master_datadir
-        path = os.path.join(path, DUMP_DIR, DUMP_DATE)
+        path = os.path.join(path, self.dump_dir, DUMP_DATE)
         status_file = os.path.join(path, "%s%s" % (MASTER_STATUS_PREFIX, timestamp))
         dump_file = os.path.join(path, "%s%s" % (MASTER_DBDUMP_PREFIX, timestamp))
         if self.compress: dump_file += ".gz"
@@ -569,7 +573,7 @@ class PostDumpDatabase(Operation):
         segs = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary(current_role=True)]
         for seg in segs:
             path = self.backup_dir if self.backup_dir is not None else seg.getSegmentDataDirectory()
-            path = os.path.join(path, DUMP_DIR, DUMP_DATE)
+            path = os.path.join(path, self.dump_dir, DUMP_DATE)
             status_file = os.path.join(path, "%s%d_%s" % (SEG_STATUS_PREFIX, seg.getSegmentDbId(), timestamp))
             dump_file = os.path.join(path, "%s%d_%s" % (SEG_DBDUMP_PREFIX, seg.getSegmentDbId(), timestamp))   
             if self.compress: dump_file += ".gz"
@@ -635,7 +639,7 @@ class NoDumpFile(Exception): pass
 class ValidateDumpDatabase(Operation):
     def __init__(self, dump_database, dump_schema, include_dump_tables, exclude_dump_tables, 
                  include_dump_tables_file, exclude_dump_tables_file, backup_dir, 
-                 free_space_percent, compress, batch_default, master_datadir, master_port, incremental):
+                 free_space_percent, compress, batch_default, master_datadir, master_port, dump_dir, incremental):
         self.dump_database = dump_database
         self.dump_schema = dump_schema
         self.include_dump_tables = include_dump_tables
@@ -648,6 +652,7 @@ class ValidateDumpDatabase(Operation):
         self.batch_default = batch_default
         self.master_datadir = master_datadir
         self.master_port = master_port
+        self.dump_dir = dump_dir
         self.incremental = incremental
 
     def execute(self):
@@ -664,7 +669,8 @@ class ValidateDumpDatabase(Operation):
         ValidateAllDumpDirs(backup_dir = self.backup_dir,
                             batch_default = self.batch_default, 
                             master_datadir = self.master_datadir,
-                            master_port = self.master_port).run()
+                            master_port = self.master_port,
+                            dump_dir = self.dump_dir).run()
 
         if not self.incremental:
             self.exclude_dump_tables = ValidateDumpTargets(dump_database = self.dump_database,
@@ -795,11 +801,12 @@ class ValidateGpToolkit(Operation):
 
         
 class ValidateAllDumpDirs(Operation):
-    def __init__(self, backup_dir, batch_default, master_datadir, master_port):
+    def __init__(self, backup_dir, batch_default, master_datadir, master_port, dump_dir):
         self.backup_dir = backup_dir
         self.batch_default = batch_default
         self.master_datadir = master_datadir
         self.master_port = master_port
+        self.dump_dir = dump_dir
     def execute(self):
         if self.backup_dir is not None:
             master_dirs_to_check = [self.backup_dir, self.master_datadir]
@@ -808,7 +815,7 @@ class ValidateAllDumpDirs(Operation):
 
         for dir in master_dirs_to_check:
             try:
-                ValidateDumpDirs(dir).run()
+                ValidateDumpDirs(dir, self.dump_dir).run()
             except DumpDirCreateFailed, e:
                 raise ExceptionNoStackTraceNeeded('Could not create %s on master. Cannot continue.' % dir)
             except DumpDirNotWritable, e:
@@ -822,7 +829,7 @@ class ValidateAllDumpDirs(Operation):
         segs = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary(current_role=True)]
         for seg in segs:
             dir = self.backup_dir if self.backup_dir is not None else seg.getSegmentDataDirectory()
-            operations.append(RemoteOperation(ValidateDumpDirs(dir), seg.getSegmentHostName()))
+            operations.append(RemoteOperation(ValidateDumpDirs(dir, self.dump_dir), seg.getSegmentHostName()))
 
         ParallelOperation(operations, self.batch_default).run()
 
@@ -845,10 +852,11 @@ class ValidateAllDumpDirs(Operation):
 
 
 class ValidateDumpDirs(Operation):
-    def __init__(self, dir):
+    def __init__(self, dir, dump_dir):
         self.dir = dir
+        self.dump_dir = dump_dir
     def execute(self):
-        path = os.path.join(self.dir, DUMP_DIR, DUMP_DATE)
+        path = os.path.join(self.dir, self.dump_dir, DUMP_DATE)
         exists = CheckDir(path).run()
         if exists:
             logger.info("Directory %s exists" % path)
@@ -922,7 +930,7 @@ class ValidateIncludeTargets(Operation):
         if self.include_dump_tables_file is not None:
             include_file = open(self.include_dump_tables_file, 'rU')   
             if not include_file:
-                raise ExceptionNoStackTraceNeeded("Can't open file %s" % include_dump_tables_file);
+                raise ExceptionNoStackTraceNeeded("Can't open file %s" % self.include_dump_tables_file);
             for line in include_file:
                 dump_tables.append(line.strip('\n'));
             include_file.close()
@@ -960,7 +968,7 @@ class ValidateExcludeTargets(Operation):
         if self.exclude_dump_tables_file is not None:
             exclude_file = open(self.exclude_dump_tables_file, 'rU')   
             if not exclude_file:
-                raise ExceptionNoStackTraceNeeded("Can't open file %s" % exclude_dump_tables_file);
+                raise ExceptionNoStackTraceNeeded("Can't open file %s" % self.exclude_dump_tables_file);
             for line in exclude_file:
                 dump_tables.append(line.strip('\n'));
             exclude_file.close()
@@ -1110,22 +1118,23 @@ class UpdateHistoryTable(Operation):
 
 
 class DumpGlobal(Operation):
-    def __init__(self, timestamp, master_datadir, backup_dir, ddboost):
+    def __init__(self, timestamp, master_datadir, backup_dir, dump_dir, ddboost):
         self.timestamp = timestamp
         self.master_datadir = master_datadir
         self.backup_dir = backup_dir
+        self.dump_dir = dump_dir
         self.ddboost = ddboost
     def execute(self):
         logger.info("Commencing pg_catalog dump")
         if self.backup_dir is not None:
             global_file = os.path.join(self.backup_dir, DUMP_DIR, DUMP_DATE, "%s%s" % (GLOBAL_PREFIX, self.timestamp))
         else:
-            global_file = os.path.join(self.master_datadir, DUMP_DIR, DUMP_DATE, "%s%s" % (GLOBAL_PREFIX, self.timestamp))
+            global_file = os.path.join(self.master_datadir, self.dump_dir, DUMP_DATE, "%s%s" % (GLOBAL_PREFIX, self.timestamp))
         Command('Dump global objects', 
                 "pg_dumpall -g --gp-syntax > %s" % global_file).run(validateAfter=True)
-        if self.ddboost:       
+        if self.ddboost:
             abspath = global_file
-            relpath = os.path.join(DUMP_DIR, DUMP_DATE, "%s%s" % (GLOBAL_PREFIX, self.timestamp))
+            relpath = os.path.join(self.dump_dir, DUMP_DATE, "%s%s" % (GLOBAL_PREFIX, self.timestamp))
             logger.debug('Copying %s to DDBoost' % abspath)
             cmd = Command('DDBoost copy of %s' % abspath, 
                           'gpddboost --copyToDDBoost --from-file=%s --to-file=%s' % (abspath, relpath))
@@ -1136,10 +1145,11 @@ class DumpGlobal(Operation):
 class DumpConfig(Operation):
     # TODO: Should we really just give up if one of the tars fails? 
     # TODO: WorkerPool
-    def __init__(self, backup_dir, master_datadir, master_port, ddboost):
+    def __init__(self, backup_dir, master_datadir, master_port, dump_dir, ddboost):
         self.backup_dir = backup_dir
         self.master_datadir = master_datadir
         self.master_port = master_port
+        self.dump_dir = dump_dir
         self.ddboost = ddboost
     def execute(self):
         timestamp = TIMESTAMP_KEY
@@ -1147,17 +1157,21 @@ class DumpConfig(Operation):
         if self.backup_dir is not None:
             path = os.path.join(self.backup_dir, DUMP_DIR, DUMP_DATE, config_backup_file)
         else:
-            path = os.path.join(self.master_datadir, DUMP_DIR, DUMP_DATE, config_backup_file)
+            path = os.path.join(self.master_datadir, self.dump_dir, DUMP_DATE, config_backup_file)
         logger.info("Dumping master config files")
         Command("Dumping master configuration files",
                 "tar cf %s %s/*.conf" % (path, self.master_datadir)).run(validateAfter=True)
         if self.ddboost:
             abspath = path
-            relpath = os.path.join(DUMP_DIR, DUMP_DATE, config_backup_file)
+            relpath = os.path.join(self.dump_dir, DUMP_DATE, config_backup_file)
             logger.debug('Copying %s to DDBoost' % abspath)
             cmd = Command('DDBoost copy of %s' % abspath,
                           'gpddboost --copyToDDBoost --from-file=%s --to-file=%s' % (abspath, relpath))
             cmd.run(validateAfter = True)
+            res = cmd.get_results()
+            if res.rc != 0:
+                logger.error("DDBoost command to copy master config file failed. %s" % res.printResult())
+            rc = res.rc
 
         logger.info("Dumping segment config files")
         gparray = GpArray.initFromCatalog(dbconn.DbURL(port = self.master_port), utility=True)
@@ -1167,7 +1181,7 @@ class DumpConfig(Operation):
             if self.backup_dir is not None:
                 path = os.path.join(self.backup_dir, DUMP_DIR, DUMP_DATE, config_backup_file)
             else:
-                path = os.path.join(seg.getSegmentDataDirectory(), DUMP_DIR, DUMP_DATE, config_backup_file)
+                path = os.path.join(seg.getSegmentDataDirectory(), self.dump_dir, DUMP_DATE, config_backup_file)
             host = seg.getSegmentHostName()
             Command("Dumping segment config files",
                     "tar cf %s %s/*.conf" % (path, seg.getSegmentDataDirectory()),
@@ -1175,39 +1189,44 @@ class DumpConfig(Operation):
                     remoteHost=host).run(validateAfter=True)
             if self.ddboost:
                 abspath = path
-                relpath = os.path.join(DUMP_DIR, DUMP_DATE, config_backup_file)
+                relpath = os.path.join(self.dump_dir, DUMP_DATE, config_backup_file)
                 logger.debug('Copying %s to DDBoost' % abspath)
                 cmd = Command('DDBoost copy of %s' % abspath,
                               'gpddboost --copyToDDBoost --from-file=%s --to-file=%s' % (abspath, relpath),
                               ctxt=REMOTE,
                               remoteHost=host)
                 cmd.run(validateAfter = True)
-
-
+                res = cmd.get_results()
+                if res.rc != 0:
+                    logger.error("DDBoost command to copy segment config file failed. %s" % res.printResult())
+                rc = rc + res.rc
+        if self.ddboost:
+            return {"exit_status": rc, "timestamp": timestamp}
 
 
 class DeleteCurrentDump(Operation):
-    def __init__(self, timestamp, master_datadir, master_port, ddboost):
+    def __init__(self, timestamp, master_datadir, master_port, dump_dir, ddboost):
         self.timestamp = timestamp
         self.master_datadir = master_datadir
         self.master_port = master_port
+        self.dump_dir = dump_dir
         self.ddboost = ddboost
     def execute(self):
         try:
-            DeleteCurrentSegDump(self.timestamp, self.master_datadir).run()
+            DeleteCurrentSegDump(self.timestamp, self.master_datadir, self.dump_dir).run()
         except OSError, e:
             logger.warn("Error encountered during deletion of %s on master" % self.timestamp)
         gparray = GpArray.initFromCatalog(dbconn.DbURL(port = self.master_port), utility=True)
         segs = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary(current_role=True)]
         for seg in segs:
             try:
-                RemoteOperation(DeleteCurrentSegDump(self.timestamp, seg.getSegmentDataDirectory()), 
+                RemoteOperation(DeleteCurrentSegDump(self.timestamp, seg.getSegmentDataDirectory(), self.dump_dir),
                                 seg.getSegmentHostName()).run()
             except OSError, e:
                 logger.warn("Error encountered during deletion of %s on %s" % (self.timestamp, seg.getSegmentHostName()))
 
         if self.ddboost:
-            relpath = os.path.join(DUMP_DIR, DUMP_DATE)
+            relpath = os.path.join(self.dump_dir, DUMP_DATE)
             logger.debug('Listing %s on DDBoost to locate dump files with timestamp %s' % (relpath, self.timestamp))
             cmd = Command('DDBoost list dump files',
                           'gpddboost --listDirectory --dir=%s' % relpath)
@@ -1225,11 +1244,12 @@ class DeleteCurrentDump(Operation):
 
 class DeleteCurrentSegDump(Operation):
     """ TODO: Improve with grouping by host. """
-    def __init__(self, timestamp, datadir):
+    def __init__(self, timestamp, datadir, dump_dir):
         self.timestamp = timestamp
         self.datadir = datadir
+        self.dump_dir = dump_dir
     def execute(self):
-        path = os.path.join(self.datadir, DUMP_DIR, DUMP_DATE)
+        path = os.path.join(self.datadir, self.dump_dir, DUMP_DATE)
         filenames = ListFilesByPattern(path, "*%s*" % self.timestamp).run()
         for filename in filenames:
             RemoveFile(os.path.join(path, filename)).run()
@@ -1238,15 +1258,16 @@ class DeleteCurrentSegDump(Operation):
 
 class DeleteOldestDumps(Operation):
     # TODO: This Operation isn't consuming backup_dir. Should it? 
-    def __init__(self, master_datadir, master_port, ddboost):
+    def __init__(self, master_datadir, master_port, dump_dir, ddboost):
         self.master_datadir = master_datadir
         self.master_port = master_port
+        self.dump_dir = dump_dir
         self.ddboost = ddboost
     def execute(self):
         dburl = dbconn.DbURL(port=self.master_port)
         if self.ddboost:
             cmd = Command('List directories in DDBoost db_dumps dir',
-                'gpddboost --listDir --dir=db_dumps/ | grep ^[0-9]')
+                'gpddboost --listDir --dir=%s/ | grep ^[0-9]' % self.dump_dir)
             cmd.run(validateAfter=False)
             rc = cmd.get_results().rc
             if rc != 0:
@@ -1271,11 +1292,11 @@ class DeleteOldestDumps(Operation):
         if self.ddboost:
             logger.info("Preparing to remove dump %s from DDBoost" % old_date)
             cmd = Command('DDBoost cleanup',
-                          'gpddboost --del-dir=%s' % os.path.join(DUMP_DIR, old_date))
+                          'gpddboost --del-dir=%s' % os.path.join(self.dump_dir, old_date))
             cmd.run(validateAfter=False)
             rc = cmd.get_results().rc
             if rc != 0:
-                logger.info("Error encountered during deletion of %s on DDBoost" % os.path.join(DUMP_DIR, old_date))  
+                logger.info("Error encountered during deletion of %s on DDBoost" % os.path.join(self.dump_dir, old_date))
                 logger.debug(cmd.get_results().stdout)
                 logger.debug(cmd.get_results().stderr)
         else:

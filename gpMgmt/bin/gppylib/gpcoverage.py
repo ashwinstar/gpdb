@@ -86,7 +86,6 @@ class GpFigleafCoverage:
             randstring = ''.join(random.choice('0123456789') for x in range(20))
             self.filename = os.path.join(self.directory, self.main_pid, randstring, COVERAGE_FILENAME)
             self.running = False
-            logger.debug('Code coverage file name: %s' % self.filename)
         except Exception, e:
             logger.exception('Error initializing code coverage')
         

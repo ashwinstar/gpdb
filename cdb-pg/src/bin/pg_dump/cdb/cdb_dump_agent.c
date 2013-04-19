@@ -275,6 +275,7 @@ static ddp_conn_desc_t ddp_conn = DDP_INVALID_DESCRIPTOR;
 
 static ddp_path_t path1 = {0};
 static char *DDP_SU_NAME = NULL;
+static char *DEFAULT_BACKUP_DIRECTORY = NULL;
 
 char *log_message_path = NULL;
 
@@ -742,7 +743,16 @@ main(int argc, char **argv)
 	{
 		/* The storage unit is created by the gpcrondump.py, before all the agents are executed */
 		/* Hence it is always false here														*/
-		ret = initDDSystem(&ddp_inst, &ddp_conn, &dd_client_info, &DDP_SU_NAME, false);
+		/* remote is always false when doing backup to primary DDR */
+		int err = DD_ERR_NONE;
+		err = ddp_init("gp_dump");
+		if (err != DD_ERR_NONE)
+		{
+			mpp_err_msg("ERROR", "ddboost", "ddboost init failed. Err = %d\n", err);
+			exit(1);
+		}
+
+		ret = initDDSystem(&ddp_inst, &ddp_conn, &dd_client_info, &DDP_SU_NAME, false, &DEFAULT_BACKUP_DIRECTORY, false);
 		if (ret)
 		{
 			mpp_err_msg(logError, progname, "Error connecting to DDboost. Check parameters\n");

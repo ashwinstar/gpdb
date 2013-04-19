@@ -80,6 +80,7 @@ static ddp_inst_desc_t ddp_inst = DDP_INVALID_DESCRIPTOR;
 static ddp_conn_desc_t ddp_conn = DDP_INVALID_DESCRIPTOR;
 
 static char *DDP_SU_NAME = NULL;
+static char *DEFAULT_BACKUP_DIRECTORY = NULL;
 
 char *log_message_path = NULL;
 static int dd_boost_enabled = 0;
@@ -510,8 +511,16 @@ main(int argc, char **argv)
 #ifdef USE_DDBOOST
 	if (dd_boost_enabled)
 	{
+		/* remote is always false when restoring from primary DDR */
+		int err = DD_ERR_NONE;
+		err = ddp_init("gp_dump");
+		if (err != DD_ERR_NONE)
+		{
+			mpp_err_msg("ERROR", "ddboost", "ddboost init failed. Err = %d\n", err);
+			exit(1);
+		}
 
-		if (initDDSystem(&ddp_inst, &ddp_conn, &dd_client_info, &DDP_SU_NAME, false))
+		if (initDDSystem(&ddp_inst, &ddp_conn, &dd_client_info, &DDP_SU_NAME, false, &DEFAULT_BACKUP_DIRECTORY, false))
                	{
 			mpp_err_msg(logInfo, progname, "Initializing DD system failed\n");
 			exit(1);

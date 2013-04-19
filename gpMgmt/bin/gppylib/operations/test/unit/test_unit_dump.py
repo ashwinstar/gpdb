@@ -36,6 +36,7 @@ class DumpTestCase(unittest.TestCase):
                                 batch_default=None,
                                 master_datadir='/data/master/p1',
                                 master_port=0,
+                                dump_dir=None,
                                 ddboost=False)
 
     def create_backup_dirs(self, top_dir=os.getcwd(), dump_dirs=[]):
@@ -336,6 +337,7 @@ class DumpTestCase(unittest.TestCase):
                                 batch_default = None,
                                 master_datadir = '/master',
                                 master_port = None,
+                                dump_dir='db_dumps',
                                 ddboost = None,
                                 incremental = False)
         self.assertEquals(pdd.get_report_dir('20120930'), '/tmp/db_dumps/20120930')
@@ -347,6 +349,7 @@ class DumpTestCase(unittest.TestCase):
                                 batch_default = None,
                                 master_datadir = '/master',
                                 master_port = None,
+                                dump_dir='db_dumps',
                                 ddboost = None,
                                 incremental = False)
         self.assertEquals(pdd.get_report_dir('20120930'), '/master/db_dumps/20120930')

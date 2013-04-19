@@ -1002,8 +1002,8 @@ static int getItem(clbHandle* LB, char *key, char **value);
 static int setLBEnv(void);
 static int createLB(clbHandle* LB,char* name);
 static int openLB(clbHandle* LB,char* name);
-static int validateDDBoostCredential(char *hostname, char *user, char *password, char* log_level ,char* log_size);
-static int getDDBoostCredential(char** hostname, char** user, char** password, char** log_level ,char** log_size);
+static int validateDDBoostCredential(char *hostname, char *user, char *password, char* log_level ,char* log_size, char *default_backup_directory, bool remote);
+int getDDBoostCredential(char** hostname, char** user, char** password, char** log_level ,char** log_size, char **default_backup_directory, bool remote);
 
 /*
  * Set the environment variable LD_LIBRARY_PATH in order to dynamically load LB's libraries.
@@ -1209,20 +1209,34 @@ openLB(clbHandle* LB,char* name)
  * Returns 0 in case of success, and -1 otherwise.
  */
 int
-setDDBoostCredential(char *hostname, char *user, char *password, char* log_level ,char* log_size)
+setDDBoostCredential(char *hostname, char *user, char *password, char* log_level ,char* log_size, char *default_backup_directory, bool remote)
 {
-	if (validateDDBoostCredential(hostname, user, password, log_level , log_size))
+	/* TODO: validate default backup directory name if needed */
+	if (validateDDBoostCredential(hostname, user, password, log_level , log_size, default_backup_directory, remote))
 		return -1;
 
 	clbHandle LB;
-	if (createLB(&LB, "DDBOOST_CONFIG"))
-		return -1;
+	if (remote)
+	{
+		if (createLB(&LB, "DDBOOST_MFR_CONFIG"))
+			return -1;
+	}
+	else
+	{
+		if (createLB(&LB, "DDBOOST_CONFIG"))
+			return -1;
+	}
 	if (setItem(&LB , "hostname",hostname))
 		return -1;
 	if (setItem(&LB , "user",user))
 		return -1;
 	if (setItem(&LB , "password",password))
 		return -1;
+	if (!remote)
+	{
+		if (setItem(&LB , "default_backup_directory",default_backup_directory))
+			return -1;
+	}
 
 	if (log_level)
 	{
@@ -1231,7 +1245,7 @@ setDDBoostCredential(char *hostname, char *user, char *password, char* log_level
 	}
 	else
 	{
-		if (setItem(&LB , "log_level","DEBUG"))
+		if (setItem(&LB , "log_level","WARNING"))
 			return -1;
 	}
 
@@ -1252,18 +1266,31 @@ setDDBoostCredential(char *hostname, char *user, char *password, char* log_level
 }
 
 int
-getDDBoostCredential(char** hostname, char** user, char** password, char **log_level ,char** log_size)
+getDDBoostCredential(char** hostname, char** user, char** password, char **log_level ,char** log_size, char **default_backup_directory, bool remote)
 {
 	clbHandle LB;
-
-	if (openLB(&LB,"DDBOOST_CONFIG"))
-		return -1;
+	
+	if (remote)
+	{
+		if (openLB(&LB,"DDBOOST_MFR_CONFIG"))
+			return -1;
+	}
+	else
+	{
+		if (openLB(&LB,"DDBOOST_CONFIG"))
+			return -1;
+	}
 	if (getItem(&LB , "hostname",hostname))
 		return -1;
 	if (getItem(&LB , "user",user))
 		return -1;
 	if (getItem(&LB , "password",password))
 		return -1;
+	if (!remote)
+	{
+		if (getItem(&LB , "default_backup_directory",default_backup_directory))
+			return -1;
+	}
 	if (getItem(&LB , "log_level",log_level))
 		return -1;
 	if (getItem(&LB , "log_size",log_size))
@@ -1273,7 +1300,7 @@ getDDBoostCredential(char** hostname, char** user, char** password, char **log_l
 }
 
 int
-validateDDBoostCredential(char *hostname, char *user, char *password, char* log_level ,char* log_size)
+validateDDBoostCredential(char *hostname, char *user, char *password, char* log_level ,char* log_size, char * default_backup_directory, bool remote)
 {
 	if (!user)
 	{
@@ -1320,6 +1347,12 @@ validateDDBoostCredential(char *hostname, char *user, char *password, char* log_
 			mpp_err_msg("ERROR", "ddboost", "Illegal value for log size(MB): %s, please use size between 1 and 1000\n",log_size);
 			return -1;
 		}
+	}
+
+	if (!remote && !default_backup_directory)
+	{
+		mpp_err_msg("ERROR", "ddboost", "no default_backup_directory configured\n");
+		return -1;
 	}
 	return 0;
 }
@@ -1388,8 +1421,8 @@ parseDDBoostCredential(char *hostname, char *user, char *password, const char *p
 
 	if (!fgets(line, PATH_MAX, fp))
 	{
-		mpp_err_msg("INFO", progName, "end of DD Boost config file, using defaults log param (level = DEBUG, size = 50MB) \n");
-		ddboost_logs_info.logLevel = DDP_SEV_DEBUG;
+		mpp_err_msg("INFO", progName, "end of DD Boost config file, using defaults log param (level = WARN, size = 50MB) \n");
+		ddboost_logs_info.logLevel = DDP_SEV_WARN;
 		ddboost_logs_info.logsSize = 50*1024*1024;
 		return 0;
 	}
@@ -1492,7 +1525,7 @@ _ddp_test_log(const void *session_ptr, const ddp_char_t *log_msg, ddp_severity_t
 
 int 
 initDDSystem(ddp_inst_desc_t *ddp_inst, ddp_conn_desc_t *ddp_conn, ddp_client_info_t *cl_info, char **ddp_su_name,
-            bool createStorageUnit)
+            bool createStorageUnit, char **default_backup_directory, bool remote)
 {
 	int err = DD_ERR_NONE;
 	uint POOL_SIZE = DDBOOST_POOL_SIZE;
@@ -1507,7 +1540,9 @@ initDDSystem(ddp_inst_desc_t *ddp_inst, ddp_conn_desc_t *ddp_conn, ddp_client_in
 			&dd_boost_username,
 			&dd_boost_passwd ,
 			&log_level,
-			&log_size);
+			&log_size,
+			default_backup_directory,
+			remote);
 
 	if (err)
 	{
@@ -1523,25 +1558,23 @@ initDDSystem(ddp_inst_desc_t *ddp_inst, ddp_conn_desc_t *ddp_conn, ddp_client_in
 	}
 	sprintf(storage_unit_name, "%s", "GPDB");	
 	*ddp_su_name = storage_unit_name;
+	
+	if (*ddp_inst == DDP_INVALID_DESCRIPTOR)
+	{
+		err = ddp_instance_create(POOL_SIZE, cl_info, ddp_inst);
+		if (err)
+        	{
+                	mpp_err_msg("ERROR", "ddboost", "ddboost instance creation failed. Err = %d\n", err);
+                	return err;
+        	}
 
-	err = ddp_init("gp_dump");
-                if (err != DD_ERR_NONE) {
-                        mpp_err_msg("ERROR", "ddboost", "ddboost init failed. Err = %d\n", err);
-                        return err;
-        }
+		ddp_log_init(*ddp_inst, NULL, _ddp_test_log);
+	}
 
-	err = ddp_instance_create(POOL_SIZE, cl_info, ddp_inst);
-	if (err)
-        {
-                mpp_err_msg("ERROR", "ddboost", "ddboost instance creation failed. Err = %d\n", err);
-                return err;
-        }
-
-	ddp_log_init(*ddp_inst, NULL, _ddp_test_log);
 	
 	err = ddp_connect_with_user_pwd(*ddp_inst, dd_boost_hostname, NULL, dd_boost_username, dd_boost_passwd, ddp_conn);	
 	if (err != DD_ERR_NONE) {
-               mpp_err_msg("ERROR", "ddboost", "ddboost connect failed. Err = %d\n", err);
+               mpp_err_msg("ERROR", "ddboost", "ddboost connect failed. Err = %d, remote = %d\n", err, remote);
                return err;
         }
 

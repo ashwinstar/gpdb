@@ -7,7 +7,7 @@
 #
 # import mainUtils FIRST to get python version check
 from gppylib.mainUtils import *
-
+import gpmfr
 from datetime import datetime
 import sys
 import socket
@@ -33,12 +33,14 @@ try:
                                         get_ao_partition_state, get_co_partition_state, get_dirty_tables,\
                                         write_dirty_file, write_dirty_file_to_temp, write_last_operation_file,\
                                         write_partition_list_file, write_state_file, get_last_operation_data, \
-                                        validate_current_timestamp, generate_dump_timestamp, get_dirty_heap_tables 
+                                        validate_current_timestamp, generate_dump_timestamp, get_dirty_heap_tables, \
+                                        DUMP_DIR
     from gppylib.operations.backup_utils import get_latest_full_dump_timestamp, check_funny_chars_in_tablenames, expand_partitions_and_populate_filter_file, get_lines_from_file
     from gppylib.operations.utils import DEFAULT_NUM_WORKERS
     from gppylib.gparray import GpArray
     from gppylib.db import dbconn
     from getpass import getpass
+    import gppylib.operations.backup_utils
     
     
 except ImportError, e:
@@ -92,9 +94,12 @@ class GpCronDump(Operation):
         self.ddboost_user = options.ddboost_user
         self.ddboost_config_remove = options.ddboost_config_remove
         self.ddboost_verify = options.ddboost_verify
+        self.ddboost_remote = options.ddboost_remote
+        self.ddboost_ping = options.ddboost_ping
+        self.ddboost_backupdir = options.ddboost_backupdir
         # This variable indicates whether we need to exit after verifying the DDBoost credentials 
         self.ddboost_verify_and_exit = False
-    
+ 
         # TODO: if action is 'append', wouldn't you expect a lack of input to result in [], as opposed to None?
         if self.include_dump_tables is None: self.include_dump_tables = []
         if self.exclude_dump_tables is None: self.exclude_dump_tables = []  
@@ -107,8 +112,9 @@ class GpCronDump(Operation):
         if self.incremental and not self.dump_databases:
             raise ExceptionNoStackTraceNeeded("Must supply -x <database name> with incremental option")
 
-        if self.incremental and len(self.dump_databases.split(',')) > 1:
-            raise ExceptionNoStackTraceNeeded('multi-database backup is not supported with incremental backup: %s databases selected' % len(self.dump_databases))
+	if self.dump_databases is not None:
+        	if self.incremental and len(self.dump_databases.split(',')) > 1:
+            		raise ExceptionNoStackTraceNeeded('multi-database backup is not supported with incremental backup: %s databases selected' % len(self.dump_databases))
 
         if self.clear_dumps_only and self.incremental:
             raise Exception('-o option cannot be selected with incremental backup')
@@ -138,14 +144,36 @@ class GpCronDump(Operation):
             logger.info("-w is no longer supported, will continue with dump of primary segments.")
 
         self.ddboost = options.ddboost
+
+        if self.incremental and (self.ddboost or bool(self.ddboost_verify) or bool(self.ddboost_hosts) or bool(self.ddboost_user) or bool(self.ddboost_config_remove)):
+            raise Exception('ddboost can not be selected with incremental backup')
+
+        self.replicate = options.replicate
+        self.max_streams = options.max_streams
         if self.ddboost:
+            if (not self.replicate and self.max_streams is not None) or (self.replicate and self.max_streams is None):
+                raise ExceptionNoStackTraceNeeded("--max-streams must be specified along with --replicate")
+            if self.replicate:
+                try:
+                    if int(self.max_streams) <= 0:
+                        raise ValueError()
+                except ValueError:
+                    raise ExceptionNoStackTraceNeeded("--max-streams must be a number greater than zero")
+                # List of tuples (dbname, timestamp), to be replicated to remote
+                # Data Domain after they are backed up to local Data Domain.
+                self.dump_timestamps = []
             self.free_space_percent = None
             logger.info('Bypassing disk space checks due to DDBoost parameters')
             if self.backup_dir is not None:
                 raise ExceptionNoStackTraceNeeded('-u cannot be used with DDBoost parameters.')
-
-        if self.incremental and (self.ddboost or bool(self.ddboost_verify) or bool(self.ddboost_hosts) or bool(self.ddboost_user) or bool(self.ddboost_config_remove)):
-            raise Exception('ddboost can not be selected with incremental backup')
+            dd = gpmfr.DDSystem("local")
+            self.dump_dir = dd.defaultBackupDir
+            # Ugly hack to propagate backup directory different from "db_dumps".
+            gppylib.operations.backup_utils.DUMP_DIR = self.dump_dir
+        elif self.replicate or self.max_streams:
+            raise ExceptionNoStackTraceNeeded("--replicate and --max-streams cannot be used without --ddboost")
+        else:
+            self.dump_dir = DUMP_DIR
 
         if self.include_dump_tables and self.incremental:
             raise Exception('include table list can not be selected with incremental backup')
@@ -195,7 +223,6 @@ class GpCronDump(Operation):
             self.free_space_percent = None
             logger.info('Bypassing disk space checks for incremental backup')
             self.full_dump_timestamp = gppylib.operations.backup_utils.get_latest_full_dump_timestamp(self.dump_databases[0], self.getBackupDirectoryRoot())
-        
     def getBackupDirectoryRoot(self):
         if self.backup_dir:
             return self.backup_dir
@@ -256,28 +283,163 @@ class GpCronDump(Operation):
         f.close()
         os.chmod(filePathName, stat.S_IREAD | stat.S_IWRITE)
 
-    def sshToHosts(self, gpHostsSet, ddboostHostsSet, user, password):
+    def removeDDBoostConfig(self, gpHostsSet):
+        """
+        Remove DD Boost configuration (local and remote) from master and segment
+        servers.
+        """
+        for index, host in enumerate(gpHostsSet):
+            ddcmd = "rm -f $HOME/DDBOOST*CONFIG*"
+            logger.debug("Removing DD Boost config on host %s: %s" %
+                         (host, ddcmd))
+            cmdline = 'gpssh -h %s \'%s\'' % (host, ddcmd)
+            if not os.system(cmdline):
+                logger.info("config removed, host: %s " % host)
+            else:
+                logger.error("problem removing config, host: %s " % host)
+                return
+        logger.debug("DD Boost config removed from all GPDB servers.")
+
+    def createDDBoostConfig(self, gpHostsSet, ddboostHostsSet, user, password, backupDir):
+        """
+        Creates config file for local/remote Data Domain on master and all the
+        segment servers.  A brief outline of this function is as follows.
+
+           1. [Optional] Ping Data Domain host.  Abort if DD host not reachable
+           from master.
+
+           2. Enforce that local and remote DD systems are different hosts.
+           Block the user from configuring them as the same host.
+
+           3. If local DD is being configured and a config file for local DD
+           already exists on the master, show its content.  Prompt the user for
+           replacing the contents.  Only if 'y', go ahead.  Else abort.
+           Similarly for remote DD.
+
+           4. After configuration is written, run "gpddboost --verify".  This
+           may fail if username/password is incorrect.  It will also create a
+           storage unit named "GPDB" on the DD if it doesn't already exist.
+
+           5. The previous steps verify user-specified DD Boost config
+           parameters.  Upon successful verification, this step crates the DD
+           Boost config file on master and all segment hosts.
+
+           Gotcha: One case when local and remote Data Domains may be
+           misconfigured as the same host may go undetected in the current
+           algorithm.  We currently compare new hostname being set for remote
+           Data Domain with hostname of the local Data Domain that is already
+           configured on the master node.  If they match, we flag the error and
+           abort.  When a Data Domain has multiple NICs with different IP
+           addresses for load balancing, gpcrondump distributes these addresses
+           evenly within GPDB segment servers.  Consider the case when local
+           Data Domain with IPs IP1 and IP2 is already configured on GPDB and
+           the master node got IP1.  Now if the remote Data Domain is being
+           configured by mistake with IP2, we will not detect the fact that IP2
+           is the local Data Domain.  As a result, this misconfiguration will
+           succeed without error.  As of Q1, 2013, we leave this issue to future
+           releases.
+        """
         logger.debug("DDboost host(s): %s" % ddboostHostsSet)
         numberOfDdboostNics = len(ddboostHostsSet)
+        if self.ddboost_ping:
+            for dd in ddboostHostsSet:
+                cmd = Command("Ping DD Host", "ping -c 5 %s" % dd)
+                cmd.run()
+                if not cmd.was_successful():
+                    msg = "Data Domain host %s not reachable by ping. " % dd
+                    msg += "Use --ddboost-skip-ping option to skip this step."
+                    logger.error(msg)
+                    return
+            logger.debug("Connectivity to Data Domain host(s) verified.")
+        localDD = None
+        remoteDD = None
+        try:
+            localDD = gpmfr.DDSystem("local")
+            logger.debug(
+                "Found existing configuration for local Data Domain.")
+        except:
+            pass
+        try:
+            remoteDD = gpmfr.DDSystem("remote")
+            logger.debug(
+                "Found existing configuration for remote Data Domain.")
+        except:
+            pass
+        if self.ddboost_remote:
+            pairDD = localDD
+            selfDD = remoteDD
+        else:
+            pairDD = remoteDD
+            selfDD = localDD
+        if pairDD and pairDD.hostname in ddboostHostsSet:
+            msg = "%s Data Domain is already configured with hostname %s." +\
+                " Local and remote Data Domains must be different."
+            logger.error(msg % (pairDD.id, pairDD.hostname))
+            return
+        if selfDD:
+            logger.info("Found existing %s Data Domain configuration:" % \
+                            selfDD.id)
+            logger.info("\tHostname: %s" % selfDD.hostname)
+            logger.info("\tDefault Backup Directory: %s" % \
+                            selfDD.defaultBackupDir)
+            if not userinput.ask_yesno(None,
+                                       "\nDo you want to replace " +
+                                       "this configuration?",
+                                       'N'):
+                return
+        ddcmdTemplate = "source " + os.environ["GPHOME"] + \
+            "/greenplum_path.sh; " + os.environ["GPHOME"] + \
+            "/bin/gpddboost  --setCredential "+ \
+            "--hostname=%s --user=" + re.escape(user)
+        if self.ddboost_remote:
+            ddcmdTemplate += " --remote"
+        else:
+            ddcmdTemplate += " --defaultBackupDirectory=" + backupDir
+        # Create a DD Boost config on master for each DD Boost host.  Try
+        # logging into each DD Boost using the config.
+        for dd in ddboostHostsSet:
+            ddcmd = ddcmdTemplate % dd
+            logger.debug("Verifying configuration: "+ddcmd)
+            ddcmd += " --password=" + re.escape(password)
+            cmd = Command("Configuring DD Boost on localhost", ddcmd)
+            cmd.run()
+            if not cmd.was_successful():
+                r = cmd.get_results()
+                raise Exception("gpddboost failed to run on localhost. %s" % \
+                                    r.printResult())
+            if self.ddboost_remote:
+                selfDD = gpmfr.DDSystem("remote")
+            else:
+                selfDD = gpmfr.DDSystem("local")
+            # This step creates storage unit "GPDB" on the Data Domain if one
+            # doesn't exist.  It raises exception on failure.
+            logger.debug("Verifying connection to DD Host (%s)." % dd)
+            selfDD.verifyLogin()
+            logger.debug("Connection succeeded.")
 
-		# This for loops over all the segment hosts and executes appropriate 'gpddboost --setCredential' command
-        for index, host in enumerate(gpHostsSet):                          
-            # If more then one NIC is specified, we configure the GP hosts with these ddboost NICs in a round robin manner
-            currentDdboostHost = ddboostHostsSet[index % numberOfDdboostNics]            
-            ddcmd = 'source ' + os.environ['GPHOME'] + '/greenplum_path.sh; ' + os.environ['GPHOME'] + \
-					'/bin/gpddboost  --setCredential --hostname=' + currentDdboostHost + ' --user=' + re.escape(user)
-            logger.debug("running gpddboost on host %s: %s --password=*" % (host, ddcmd))
-
-            # Note: the password can't be printed to log/stdout and therefore was concatenated to ddcmd only after priniting it to log
+        # At this point, verification (steps 1-4) are complete and step 5
+        # starts.
+        logger.debug("Writing config files on GPDB servers.")
+        for index, host in enumerate(gpHostsSet):
+            # If more then one NIC is specified, we configure the GP hosts with
+            # these ddboost NICs in a round robin manner.  This is to address
+            # the case when a single Data Domain host has multiple IP addresses
+            # for load balancing.  We distribute segment servers evenly across
+            # the NICs.
+            currentDdboostHost = ddboostHostsSet[index % numberOfDdboostNics]
+            ddcmd = ddcmdTemplate % currentDdboostHost
+            logger.debug("Writing configuration on host %s: %s --password=*" %
+                         (host, ddcmd))
+            # Note: the password can't be printed to log/stdout and therefore
+            # was concatenated to ddcmd only after priniting it to log.
             ddcmd += " --password=" + re.escape(password)
             cmdline = 'gpssh -h %s \'%s\'' % (host, ddcmd)
-            # TODO: capture the output of the 'gpddboost' (e.g. with 'subprocess.Popen()' istead of 'os.system()')
-            if not os.system(cmdline):
-                logger.info("config delivered successfully to %s " % host)
+            if 0 == os.system(cmdline):
+                logger.info("config delivered successfully, host: %s " % host)
             else:
-                logger.warn("problem delivering the config to %s " % host)
-
-        logger.debug("done with sshToHosts. credentials were set on all servers")
+                logger.error("problem delivering config, host: %s " % host)
+                return
+        logger.debug("DD Boost configured on all GPDB servers.")
 
 
     # Verify the DDBoost credentials using the credentials that stored on the Master
@@ -324,7 +486,7 @@ class GpCronDump(Operation):
 
         return (include_file, exclude_file)
 
-    def execute(self):    
+    def execute(self):
         if bool(self.ddboost_hosts) or bool(self.ddboost_user):
             # check that both options are specified
             if not (bool(self.ddboost_hosts) and bool(self.ddboost_user)):
@@ -332,17 +494,14 @@ class GpCronDump(Operation):
 
             # check that no other gpcrondump option was specified
             if self.only_ddboost_options() and not self.ddboost_config_remove:
+                if not self.ddboost_remote and not self.ddboost_backupdir:
+                    raise ExceptionNoStackTraceNeeded("--ddboost-backupdir must be specified when configuring local Data Domain.")
                 self.validateUserName(userName = self.ddboost_user)
                 hostset = self.getHostSet(self.getGpArray())
                 p = getpass()
                 self.validatePassword(password = p)
-                self.sshToHosts(hostset, self.ddboost_hosts, self.ddboost_user, p)
-                # Since --ddboost-host and --ddboost-user are standalone - verify and then exit
-                if self.ddboost_verify is True:
-                    self.ddboost_verify_and_exit = True
-                else:
-                    # If no verification is needed - just exit
-                    return 0
+                self.createDDBoostConfig(hostset, self.ddboost_hosts, self.ddboost_user, p, self.ddboost_backupdir)
+                return 0
             else:
                 raise ExceptionNoStackTraceNeeded('The options --ddboost-host and --ddboost-user are standalone. They are NOT used in conjunction with any other gocrondump options (only with --ddboost-verify).')
 
@@ -355,12 +514,11 @@ class GpCronDump(Operation):
             if self.ddboost_verify_and_exit is True:
                 return 0
 
-        # The ddboost_config_remove actually configures the ddboost with dummy values
         if self.ddboost_config_remove:
-            if self.ddboost_config_remove and self.only_ddboost_options():
+            if self.only_ddboost_options():
                 hostset = self.getHostSet(self.getGpArray())
                 # The username and the password must be at least 2 characters long, so we just use 2 spaces for each
-                self.sshToHosts(hostset, [' '],'  ','  ')
+                self.removeDDBoostConfig(hostset)
                 return 0;
             else:
                 raise ExceptionNoStackTraceNeeded('The option --ddboost-config-remove is standalone. It is NOT used in conjunction with any other gocrondump options.')
@@ -369,6 +527,7 @@ class GpCronDump(Operation):
             generate_dump_timestamp(datetime.now())
             DeleteOldestDumps(master_datadir = self.master_datadir,
                               master_port = self.master_port,
+                              dump_dir = self.dump_dir,
                               ddboost = self.ddboost).run()
             return
         
@@ -427,6 +586,7 @@ class GpCronDump(Operation):
                                         batch_default = self.batch_default,
                                         master_datadir = self.master_datadir,
                                         master_port = self.master_port,
+                                        dump_dir = self.dump_dir,
                                         ddboost = self.ddboost,
                                         incremental = self.incremental).run()
 
@@ -436,6 +596,7 @@ class GpCronDump(Operation):
                                                  batch_default = self.batch_default,
                                                  master_datadir = self.master_datadir,
                                                  master_port = self.master_port,
+                                                 dump_dir = self.dump_dir,
                                                  ddboost = self.ddboost,
                                                  incremental = self.incremental).run()
             
@@ -454,6 +615,8 @@ class GpCronDump(Operation):
             write_last_operation_file(self.master_datadir, self.backup_dir, last_operation_list)
 
             current_exit_status = max(dump_outcome['exit_status'], post_dump_outcome['exit_status'])
+            if self.replicate and current_exit_status == 0:
+                self.dump_timestamps.append((dump_database, post_dump_outcome["timestamp"]))
             final_exit_status = max(final_exit_status, current_exit_status)
 
             if self.incremental:
@@ -484,6 +647,7 @@ class GpCronDump(Operation):
                     DumpGlobal(timestamp = post_dump_outcome['timestamp'],
                                master_datadir = self.master_datadir,
                                backup_dir = self.backup_dir,
+                               dump_dir = self.dump_dir,
                                ddboost = self.ddboost).run()
                 else:
                     logger.info("Skipping global dump due to issues during post-dump checks.")
@@ -504,6 +668,7 @@ class GpCronDump(Operation):
                     DeleteCurrentDump(timestamp = post_dump_outcome['timestamp'],
                                       master_datadir = self.master_datadir,
                                       master_port = self.master_port,
+                                      dump_dir = self.dump_dir,
                                       ddboost = self.ddboost).run()
                     MailDumpEvent("Report from gpcrondump on host %s [FAILED]" % self.cur_host,
                                   "Failed for database %s with return code %d dump files rolled back. [Start=%s End=%s] Options passed [%s]" 
@@ -519,6 +684,7 @@ class GpCronDump(Operation):
                 if self.clear_dumps:
                     deleted_dump_set = DeleteOldestDumps(master_datadir = self.master_datadir, 
                                                          master_port = self.master_port,
+                                                         dump_dir = self.dump_dir,
                                                          ddboost = self.ddboost).run()
 
             if self.post_vacuum:
@@ -537,11 +703,28 @@ class GpCronDump(Operation):
                           % (dump_database, current_exit_status, dump_outcome['time_start'], dump_outcome['time_end'], self.options_list)).run()
 
         if self.dump_config:
-            DumpConfig(backup_dir = self.backup_dir,
-                       master_datadir = self.master_datadir,
-                       master_port = self.master_port,
-                       ddboost = self.ddboost).run()
-        
+            config_outcome = DumpConfig(backup_dir = self.backup_dir,
+                                        master_datadir = self.master_datadir,
+                                        master_port = self.master_port,
+                                        dump_dir = self.dump_dir,
+                                        ddboost = self.ddboost).run()
+
+        if self.ddboost and self.replicate:
+            logger.info("Backup to local Data Domain successful.")
+            for name, ts in self.dump_timestamps:
+            	p = gpmfr.mfr_parser()
+            	arglist = ["--replicate", ts, "--max-streams", self.max_streams, "--master-port", str(self.master_port)]
+            	logger.info("Replicating %s to remote Data Domain. (gpmfr.py %s)" % (name, " ".join(arglist)))
+            	mfropt, mfrargs = p.parse_args(arglist, None)
+            	mfr = gpmfr.GpMfr(mfropt, mfrargs)
+            	try:
+                	mfr.execute()
+            	except Exception, e:
+                	logger.error(e)
+                	logger.error("Backup was successful but replication to remote Data Domain failed.")
+            	finally:
+                	mfr.restoreLogLevel()
+
         if self.post_script is not None:
             self._run_program()
 
@@ -819,7 +1002,6 @@ def create_parser():
                      help="Use SESSION AUTHORIZATION commands instead of ALTER OWNER commands.")
     addTo.add_option('--rsyncable', const='--rsyncable', action='append_const', dest='output_options',
                      help="Pass the --rsyncable option to gzip, if compression is being used.")
-    
     addTo.add_option('--table-file', dest='include_dump_tables_file', metavar="<filename>",
                      help="Dump the tables named in this file for the specified database. Option can be used only once.")
     addTo.add_option('--exclude-table-file', dest='exclude_dump_tables_file', metavar="<filename>",
@@ -829,12 +1011,14 @@ def create_parser():
     addTo.add_option('-i', action='store_true', dest='bypass_cluster_check', default=False, help="No longer supported.")
     addTo.add_option('-p', action='store_true', dest='dump_primaries', default=True, help="No longer supported.")  
     addTo.add_option('-w', dest='backup_set', help="No longer supported.")
-   
 
     parser.add_option_group(addTo)
 
     ddOpt = OptionGroup(parser, "DDBoost")
     ddOpt.add_option('--ddboost', dest='ddboost', help="Dump to DDBoost using ~/.ddconfig", action="store_true", default=False)
+    ddOpt.add_option('--replicate', dest='replicate', help="Post dump, replicate the backup to remote Data Domain system.", action="store_true", default=False)
+    ddOpt.add_option('--max-streams', dest='max_streams', action="store", default=None,
+                     help="Maximum number of Data Domain I/O streams to be used for replication.")
     parser.add_option_group(ddOpt)
    
     # DDBoostConfig options
@@ -842,16 +1026,20 @@ def create_parser():
     # ddboost-host may have more then one host
     ddConfigOpt.add_option('--ddboost-host', dest='ddboost_hosts', action='append', default=None,
                            help="Configuration of ddboost hostname.")
-    ddConfigOpt.add_option('--ddboost-user', dest='ddboost_user', action='store', default=None, 
+    ddConfigOpt.add_option('--ddboost-user', dest='ddboost_user', action='store', default=None,
                            help="Configuration of ddboost user.")
+    ddConfigOpt.add_option('--ddboost-backupdir', dest='ddboost_backupdir', action='store', default=None,
+                           help="Default backup directory on local Data Domain system.")
+    ddConfigOpt.add_option('--ddboost-remote', dest='ddboost_remote', action='store_true', default=False,
+                           help="Configuration parameters for remote Data Domain system.")
     ddConfigOpt.add_option('--ddboost-config-remove', dest='ddboost_config_remove', action='store_true', default=False,
                            help="Remove ~/.ddconfig file.")
-    ddConfigOpt.add_option('--ddboost-verify', dest='ddboost_verify', action='store_true', default=False, 
+    ddConfigOpt.add_option('--ddboost-verify', dest='ddboost_verify', action='store_true', default=False,
                            help="Verify DDBoost credentials on DDBoost host.")
-
+    ddConfigOpt.add_option('--ddboost-skip-ping', dest='ddboost_ping', action='store_false', default=True,
+                           help="Ping DDBoost host as a sanity check before writing configuration.")
     parser.add_option_group(ddConfigOpt)
-    
-    
+
     parser.setHelp([
     """
 Crontab entry (example):

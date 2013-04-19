@@ -16,12 +16,12 @@ gpcrondump -x database_name
      [-g] [-G] [-C] [-d <master_data_directory>] [-B <parallel_processes>] 
      [-a] [-q] [-y <reportfile>] [-l <logfile_directory>] [-v]
      { [-E encoding] [--inserts | --column-inserts] [--oids]
-     [--no-owner | --use-set-session-authorization]
+     [--no-owner | --use-set-session-authorization] 
      [--no-privileges] [--rsyncable] 
      [--ddboost] [--replicate --max-streams <max_IO_streams> ] 
-     [--ddboost-skip-ping] ] }
+     [--ddboost-skip-ping] }
+gpcrondump --ddboost-host <ddboost_hostname> --ddboost-user <ddboost_user> --ddboost-backupdir <backup_dir> [--ddboost-remote --ddboost-skip-ping]
 
-gpcrondump --ddboost-host <ddboost_hostname> --ddboost-user <ddboost_user>
      --ddboost-backupdir <backup_directory> [--ddboost-remote] 
      [--ddboost-skip-ping]
 
@@ -140,6 +140,7 @@ OPTIONS
 
 
 --column-inserts 
+
 
  Dump data as INSERT commands with column names. 
 
