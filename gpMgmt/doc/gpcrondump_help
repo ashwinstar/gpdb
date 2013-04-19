@@ -22,7 +22,8 @@ gpcrondump -x database_name
      [--ddboost-skip-ping] ] ] }
      
 gpcrondump --ddboost-host <ddboost_hostname> --ddboost-user <ddboost_user>
-     --ddboost-backupdir <backup_directory> [--ddboost-remote] 
+     --ddboost-backupdir <backup_directory> 
+     [--ddboost-remote [--ddboost-skip-ping] ] 
 
 gpcrondump --ddboost-config-remove
 
@@ -172,12 +173,6 @@ OPTIONS
  that can be used when replicating the backup set on the remote Data 
  Domain server from the primary Data Domain server. 
 
- --ddboost-skip-ping is optional when --replicate is specified. Specify 
- this option to skip the ping of a Data Domain system. When the 
- --replicate option is specified, ping is used to ensure that the Data 
- Domain system is reachable. If the Data Domain host is configured to 
- block ICMP ping probes, specify this option. 
-
  You can use gpmfr to replicate a backup if replicating a backup with 
  gpcrondump takes a long time and prevents other backups from occurring. 
  Only one instance of gpcrondump can be running at a time. While 
@@ -205,7 +200,8 @@ OPTIONS
 
 
 --ddboost-host ddboost_hostname --ddboost-user <ddboost_user> 
-   --ddboost-backupdir <backup_directory> [--ddboost-remote] 
+  --ddboost-backupdir <backup_directory> 
+  [--ddboost-remote [--ddboost-skip-ping] ]
 
  Sets the Data Domain Boost credentials. Do not combine this options with 
  any other gpcrondump options. Do not enter just one part of this option. 
@@ -256,7 +252,15 @@ OPTIONS
  segments on the system. Do not enter this option with any other 
  gpcrondump option. 
 
+ 
+--ddboost-skip-ping
 
+ Specify this option to skip the ping of a Data Domain system. When the 
+ working with a Data Domain system, ping is used to ensure that the Data 
+ Domain system is reachable. If the Data Domain system is configured to 
+ block ICMP ping probes, specify this option. 
+
+ 
 -E <encoding> 
 
  Character set encoding of dumped data. Defaults to the encoding of the 
@@ -373,7 +377,7 @@ OPTIONS
 -o (clear old dump files only) 
 
  Clear out old dump files only, but do not run a dump. This will remove 
- the oldest dump directory except the current date’s dump directory. 
+ the oldest dump directory except the current date's dump directory. 
  All dump sets within that directory will be removed. 
 
  WARNING: Before using this option, ensure that incremental backups 
