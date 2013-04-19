@@ -61,10 +61,21 @@ WorkfileDiskspace_Reserve(int64 bytes_to_reserve)
 		return true;
 	}
 
+	bool queryspace_reserved = true;
+	bool segspace_reserved = true;
+
 	/* Try the per-query limit first, then the per-segment */
-	bool success = WorkfileQueryspace_Reserve(gp_session_id, gp_command_count, bytes_to_reserve)
-			&& WorkfileSegspace_Reserve(bytes_to_reserve);
-	return success;
+	if (gp_workfile_limit_per_query > 0)
+	{
+		queryspace_reserved =  WorkfileQueryspace_Reserve(gp_session_id, gp_command_count, bytes_to_reserve);
+	}
+
+	if (queryspace_reserved && gp_workfile_limit_per_segment > 0)
+	{
+		segspace_reserved = WorkfileSegspace_Reserve(bytes_to_reserve);
+	}
+
+	return (queryspace_reserved && segspace_reserved);
 }
 
 /*
@@ -81,12 +92,21 @@ void
 WorkfileDiskspace_Commit(int64 commit_bytes, int64 reserved_bytes, bool update_query_space)
 {
 	Assert(reserved_bytes >= commit_bytes);
+	if (reserved_bytes == commit_bytes)
+	{
+		/* Nothing to do, save some work and just return */
+		return;
+	}
 
-	if (update_query_space)
+	if ((gp_workfile_limit_per_query > 0) && update_query_space)
 	{
 		WorkfileQueryspace_Commit(gp_session_id, gp_command_count, commit_bytes, reserved_bytes);
 	}
-	WorkfileSegspace_Commit(commit_bytes, reserved_bytes);
+
+	if (gp_workfile_limit_per_segment > 0)
+	{
+		WorkfileSegspace_Commit(commit_bytes, reserved_bytes);
+	}
 }
 
 /*

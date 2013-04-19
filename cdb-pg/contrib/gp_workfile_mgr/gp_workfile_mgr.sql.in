@@ -100,15 +100,8 @@ $$
 $$
 LANGUAGE SQL;
 
-
-CREATE OR REPLACE FUNCTION gp_workfile_usage_per_segment_f()
-    RETURNS record
-AS 'MODULE_PATHNAME', 'gp_workfile_mgr_used_diskspace' LANGUAGE C IMMUTABLE;
-
 CREATE VIEW gp_workfile_usage_per_segment AS
- SELECT C.* FROM gp_toolkit.__gp_localid as id, workfile.gp_workfile_usage_per_segment_f() as C (segid int, size bigint)
- UNION ALL
- SELECT C.* FROM gp_toolkit.__gp_masterid as id, workfile.gp_workfile_usage_per_segment_f() as C  (segid int, size bigint);
+SELECT segid,SUM(size) FROM workfile.gp_workfile_entries GROUP BY segid;
 
 CREATE VIEW gp_workfile_usage_per_query AS
 SELECT datname, procpid, sess_id, command_cnt, usename, current_query, segid, state, sum(size) AS size 

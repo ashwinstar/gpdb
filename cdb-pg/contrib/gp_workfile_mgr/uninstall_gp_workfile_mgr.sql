@@ -16,7 +16,6 @@ DROP FUNCTION gp_workfile_mgr_test_allsegs(text);
 DROP FUNCTION gp_workfile_mgr_test(text);
 
 DROP VIEW gp_workfile_usage_per_segment;
-DROP FUNCTION gp_workfile_usage_per_segment_f();
 
 DROP SCHEMA workfile;
 
