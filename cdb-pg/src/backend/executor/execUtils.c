@@ -2155,8 +2155,7 @@ void mppExecutorCleanup(QueryDesc *queryDesc)
 	}
 
 	/* Workfile manager per-query resource accounting */
-	WorkfileQueryspace_ReleaseEntry(estate->querySpace);
-	estate->querySpace = NULL;
+	WorkfileQueryspace_ReleaseEntry();
 
 	/**
 	 * Since there was an error, clean up the function scan stack.

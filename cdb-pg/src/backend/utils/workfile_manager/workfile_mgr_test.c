@@ -2094,14 +2094,14 @@ workfile_queryspace(void)
 	elog(LOG, "Running sub-test: Reserving workfile queryspace");
 
 	int64 bytes_reserved = 12345;
-	success = WorkfileQueryspace_Reserve(gp_session_id, gp_command_count, bytes_reserved);
+	success = WorkfileQueryspace_Reserve(bytes_reserved);
 	current_size = WorkfileQueryspace_GetSize(gp_session_id, gp_command_count);
 
 	unit_test_result(success && current_size == bytes_reserved);
 
 	elog(LOG, "Running sub-test: Committing workfile queryspace");
 	int64 bytes_committed = 1234;
-	WorkfileQueryspace_Commit(gp_session_id, gp_command_count, bytes_committed, bytes_reserved);
+	WorkfileQueryspace_Commit(bytes_committed, bytes_reserved);
 	current_size = WorkfileQueryspace_GetSize(gp_session_id, gp_command_count);
 
 	unit_test_result(current_size == bytes_committed);

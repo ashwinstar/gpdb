@@ -26,6 +26,9 @@ static void initQueryspaceElt(void *entry);
 /* Workfile queryspace hashtable is stored here, once attached to */
 SyncHT *queryspace_Hashtable = NULL;
 
+/* Per-query entry is stored here once initialized */
+QueryspaceDesc *queryEntry = NULL;
+
 /*
  * Initialize shared memory area for the WorkfileDiskspace module
  */
@@ -111,16 +114,9 @@ WorkfileQueryspace_GetSize(int session_id, int command_count)
  *   Otherwise, returns false
  */
 bool
-WorkfileQueryspace_Reserve(int session_id, int command_count, int64 bytes_to_reserve)
+WorkfileQueryspace_Reserve(int64 bytes_to_reserve)
 {
 	bool success = false;
-
-	/* Look up hashtable entry for this query */
-	Queryspace_HashKey queryKey;
-	queryKey.session_id = session_id;
-	queryKey.command_count = command_count;
-
-	QueryspaceDesc *queryEntry = SyncHTLookup(queryspace_Hashtable, &queryKey);
 
 	if (NULL == queryEntry)
 	{
@@ -153,8 +149,6 @@ WorkfileQueryspace_Reserve(int session_id, int command_count, int64 bytes_to_res
 		}
 	}
 
-	SyncHTRelease(queryspace_Hashtable, queryEntry);
-
 	return success;
 }
 
@@ -166,8 +160,7 @@ WorkfileQueryspace_Reserve(int session_id, int command_count, int64 bytes_to_res
  *
  */
 void
-WorkfileQueryspace_Commit(int session_id, int command_count,
-		int64 commit_bytes, int64 reserved_bytes)
+WorkfileQueryspace_Commit(int64 commit_bytes, int64 reserved_bytes)
 {
 	Assert(reserved_bytes >= commit_bytes);
 
@@ -177,12 +170,6 @@ WorkfileQueryspace_Commit(int session_id, int command_count,
 		return;
 	}
 
-	/* Look up hashtable entry for this query */
-	Queryspace_HashKey queryKey;
-	queryKey.session_id = session_id;
-	queryKey.command_count = command_count;
-
-	QueryspaceDesc *queryEntry = SyncHTLookup(queryspace_Hashtable, &queryKey);
 	/*
 	 * Query might not have an entry in the queryspace hashtable if it is a
 	 * utility query that is spilling.
@@ -195,8 +182,6 @@ WorkfileQueryspace_Commit(int session_id, int command_count,
 #endif
 		gp_atomic_add_64(&queryEntry->queryDiskspace, (commit_bytes - reserved_bytes));
 		Assert(total >= (int64) 0);
-
-		SyncHTRelease(queryspace_Hashtable, queryEntry);
 	}
 }
 
@@ -214,7 +199,14 @@ WorkfileQueryspace_InitEntry(int session_id, int command_count)
 	queryKey.command_count = command_count;
 	bool existing = false;
 
-	QueryspaceDesc *queryEntry = SyncHTInsert(queryspace_Hashtable, &queryKey, &existing);
+	if (gp_workfile_limit_per_query == 0)
+	{
+		/* Per-query limit not enforced, don't allocate hashtable entry */
+		return NULL;
+	}
+
+	Assert(NULL == queryEntry);
+	queryEntry = SyncHTInsert(queryspace_Hashtable, &queryKey, &existing);
 
 	if (!existing)
 	{
@@ -230,7 +222,7 @@ WorkfileQueryspace_InitEntry(int session_id, int command_count)
  *
  */
 void
-WorkfileQueryspace_ReleaseEntry(QueryspaceDesc *queryEntry)
+WorkfileQueryspace_ReleaseEntry(void)
 {
 
 	if (NULL == queryEntry)
@@ -246,6 +238,8 @@ WorkfileQueryspace_ReleaseEntry(QueryspaceDesc *queryEntry)
 		elog(gp_workfile_caching_loglevel, "Deleted entry for query (sessionid=%d, commandcnt=%d)",
 				queryEntry->key.session_id, queryEntry->key.command_count);
 	}
+
+	queryEntry = NULL;
 }
 
 /*

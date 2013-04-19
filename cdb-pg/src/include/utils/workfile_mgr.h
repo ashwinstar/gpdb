@@ -198,10 +198,10 @@ int64 WorkfileSegspace_GetSize(void);
 void WorkfileQueryspace_Init(void);
 Size WorkfileQueryspace_ShMemSize(void);
 int64 WorkfileQueryspace_GetSize(int session_id, int command_count);
-bool WorkfileQueryspace_Reserve(int session_id, int command_count, int64 bytes_to_reserve);
-void WorkfileQueryspace_Commit(int session_id, int command_count, int64 commit_bytes, int64 reserved_bytes);
+bool WorkfileQueryspace_Reserve(int64 bytes_to_reserve);
+void WorkfileQueryspace_Commit(int64 commit_bytes, int64 reserved_bytes);
 QueryspaceDesc *WorkfileQueryspace_InitEntry(int session_id, int command_count);
-void WorkfileQueryspace_ReleaseEntry(QueryspaceDesc *queryEntry);
+void WorkfileQueryspace_ReleaseEntry(void);
 
 /* Serialization functions */
 void outfuncs_workfile_mgr_init(List *rtable);

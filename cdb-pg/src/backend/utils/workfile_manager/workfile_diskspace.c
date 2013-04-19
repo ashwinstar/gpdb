@@ -67,7 +67,7 @@ WorkfileDiskspace_Reserve(int64 bytes_to_reserve)
 	/* Try the per-query limit first, then the per-segment */
 	if (gp_workfile_limit_per_query > 0)
 	{
-		queryspace_reserved =  WorkfileQueryspace_Reserve(gp_session_id, gp_command_count, bytes_to_reserve);
+		queryspace_reserved =  WorkfileQueryspace_Reserve(bytes_to_reserve);
 	}
 
 	if (queryspace_reserved && gp_workfile_limit_per_segment > 0)
@@ -100,7 +100,7 @@ WorkfileDiskspace_Commit(int64 commit_bytes, int64 reserved_bytes, bool update_q
 
 	if ((gp_workfile_limit_per_query > 0) && update_query_space)
 	{
-		WorkfileQueryspace_Commit(gp_session_id, gp_command_count, commit_bytes, reserved_bytes);
+		WorkfileQueryspace_Commit(commit_bytes, reserved_bytes);
 	}
 
 	if (gp_workfile_limit_per_segment > 0)

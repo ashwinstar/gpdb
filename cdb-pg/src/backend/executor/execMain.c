@@ -362,8 +362,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	/* Reset workfile disk full flag */
 	WorkfileDiskspace_SetFull(false /* isFull */);
 	/* Initialize per-query resource (diskspace) tracking */
-	Assert(NULL == estate->querySpace);
-	estate->querySpace = WorkfileQueryspace_InitEntry(gp_session_id, gp_command_count);
+	WorkfileQueryspace_InitEntry(gp_session_id, gp_command_count);
 
 	/*
 	 * Handling of the Slice table depends on context.
@@ -1018,8 +1017,7 @@ ExecutorEnd(QueryDesc *queryDesc)
      */
 	ExecEndPlan(queryDesc->planstate, estate);
 
-	WorkfileQueryspace_ReleaseEntry(estate->querySpace);
-	estate->querySpace = NULL;
+	WorkfileQueryspace_ReleaseEntry();
 
 	/*
 	 * Release any gangs we may have assigned.
