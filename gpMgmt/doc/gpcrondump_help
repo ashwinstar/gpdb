@@ -18,14 +18,12 @@ gpcrondump -x database_name
      { [-E encoding] [--inserts | --column-inserts] [--oids]
      [--no-owner | --use-set-session-authorization] 
      [--no-privileges] [--rsyncable] 
-     [--ddboost [--replicate --max-streams <max_IO_streams> ] 
-     [--ddboost-skip-ping] ] }
+     [--ddboost [--replicate --max-streams <max_IO_streams> 
+     [--ddboost-skip-ping] ] ] }
      
 gpcrondump --ddboost-host <ddboost_hostname> --ddboost-user <ddboost_user>
      --ddboost-backupdir <backup_directory> [--ddboost-remote] 
-     [--ddboost-skip-ping]
-     
-     
+
 gpcrondump --ddboost-config-remove
 
 gpcrondump -o
@@ -153,8 +151,8 @@ OPTIONS
  $MASTER_DATA_DIRECTORY will be used. 
 
 
---ddboost [--replicate --max-streams <max_IO_streams>] 
-  [--ddboost-skip-ping] 
+--ddboost [--replicate --max-streams <max_IO_streams> 
+  [--ddboost-skip-ping] ]
 
  Use Data Domain Boost for this backup. Before using Data Domain Boost, 
  set up the Data Domain Boost credential, as described in the next option 
@@ -173,6 +171,12 @@ OPTIONS
  <max_IO_streams> specifies the maximum number of Data Domain I/O streams 
  that can be used when replicating the backup set on the remote Data 
  Domain server from the primary Data Domain server. 
+
+ --ddboost-skip-ping is optional when --replicate is specified. Specify 
+ this option to skip the ping of a Data Domain system. When the 
+ --replicate option is specified, ping is used to ensure that the Data 
+ Domain system is reachable. If the Data Domain host is configured to 
+ block ICMP ping probes, specify this option. 
 
  You can use gpmfr to replicate a backup if replicating a backup with 
  gpcrondump takes a long time and prevents other backups from occurring. 
@@ -202,7 +206,6 @@ OPTIONS
 
 --ddboost-host ddboost_hostname --ddboost-user <ddboost_user> 
    --ddboost-backupdir <backup_directory> [--ddboost-remote] 
-   [--ddboost-skip-ping] 
 
  Sets the Data Domain Boost credentials. Do not combine this options with 
  any other gpcrondump options. Do not enter just one part of this option. 
@@ -245,14 +248,6 @@ OPTIONS
 
  IMPORTANT: Set up the Data Domain Boost credential before running any 
  Data Domain Boost backups with the --ddboost option, described above. 
-
- 
---ddboost-skip-ping 
-
- Specify this option to skip the ping of a Data Domain system. When the 
- --ddboost option is specified, ping is used to ensure that the Data 
- Domain system is reachable. If the Data Domain host is configured to 
- block ICMP ping probes, specify this option. 
 
 
 --ddboost-config-remove 
