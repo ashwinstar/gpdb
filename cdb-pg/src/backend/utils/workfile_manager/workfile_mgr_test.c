@@ -2110,6 +2110,12 @@ workfile_queryspace(void)
 
 	unit_test_reset();
 	elog(LOG, "Running test: workfile_queryspace");
+	if (0 == gp_workfile_limit_per_query)
+	{
+		elog(LOG, "Skipping test because the gp_workfile_limit_per_query is 0");
+		unit_test_result(true);
+		return unit_test_summary();
+	}
 
 	elog(LOG, "Running sub-test: Reading initial workfile_queryspace");
 
