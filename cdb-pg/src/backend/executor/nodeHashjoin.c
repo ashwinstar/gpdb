@@ -358,7 +358,7 @@ ExecHashJoin(HashJoinState *node)
 			 * Save outer tuples for the batch 0 to disk if workfile caching is
 			 * enabled. We do this only when there is spilling.
 			 */
-			if (batchno == 0 && hashtable->nbatch > 1 && !node->cached_workfiles_loaded)
+			if (gp_workfile_caching && batchno == 0 && hashtable->nbatch > 1 && !node->cached_workfiles_loaded)
 			{
 				Assert(batchno >= node->nbatch_loaded_state);
 				ExecHashJoinSaveTuple(&node->js.ps, ExecFetchSlotMemTuple(outerTupleSlot, false),
@@ -797,7 +797,10 @@ ExecHashJoinOuterGetTuple(PlanState *outerNode,
 		 * inner batch so that we can reuse it when the workfile caching is
 		 * enabled.
 		 */
-		ExecHashJoinSaveFirstInnerBatch(hashtable);
+		if (gp_workfile_caching) 
+		  {
+		    ExecHashJoinSaveFirstInnerBatch(hashtable);
+		  }
 
 		/*
 		 * We have just reached the end of the first pass. Try to switch to a
