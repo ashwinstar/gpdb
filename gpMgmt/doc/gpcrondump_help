@@ -23,7 +23,7 @@ gpcrondump -x database_name
      
 gpcrondump --ddboost-host <ddboost_hostname> --ddboost-user <ddboost_user>
      --ddboost-backupdir <backup_directory> 
-     [--ddboost-remote [--ddboost-skip-ping] ] 
+     [--ddboost-remote] [--ddboost-skip-ping]
 
 gpcrondump --ddboost-config-remove
 
@@ -201,7 +201,7 @@ OPTIONS
 
 --ddboost-host ddboost_hostname --ddboost-user <ddboost_user> 
   --ddboost-backupdir <backup_directory> 
-  [--ddboost-remote [--ddboost-skip-ping] ]
+  [--ddboost-remote] [--ddboost-skip-ping]
 
  Sets the Data Domain Boost credentials. Do not combine this options with 
  any other gpcrondump options. Do not enter just one part of this option. 
@@ -255,7 +255,7 @@ OPTIONS
  
 --ddboost-skip-ping
 
- Specify this option to skip the ping of a Data Domain system. When the 
+ Specify this option to skip the ping of a Data Domain system. When 
  working with a Data Domain system, ping is used to ensure that the Data 
  Domain system is reachable. If the Data Domain system is configured to 
  block ICMP ping probes, specify this option. 
