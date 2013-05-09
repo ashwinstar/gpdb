@@ -84,6 +84,7 @@ typedef VariableCacheData *VariableCache;
 extern VariableCache ShmemVariableCache;
 
 extern int xid_stop_limit;
+extern int xid_warn_limit;
 
 
 /*

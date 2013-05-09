@@ -38,17 +38,6 @@
 #include <sys/stat.h>
 #include "cdb/cdbpersistentstore.h"
 
-/*
- * The full binary representation of the distributed transaction id.
- * The DTM start time and the distributed xid.
- */
-typedef struct DistributedLogEntry
-{
-	DistributedTransactionTimeStamp	distribTimeStamp;
-	DistributedTransactionId		distribXid;
-
-} DistributedLogEntry;
-
 /* We need 8 bytes per xact */
 #define ENTRIES_PER_PAGE (BLCKSZ / sizeof(DistributedLogEntry))
 

@@ -26,10 +26,19 @@
 
 #include "access/xlog.h"
 
+/*
+ * The full binary representation of the distributed transaction id.
+ * The DTM start time and the distributed xid.
+ */
+typedef struct DistributedLogEntry
+{
+    DistributedTransactionTimeStamp distribTimeStamp;
+    DistributedTransactionId        distribXid;
+
+} DistributedLogEntry;
 
 /* Number of SLRU buffers to use for the distributed log */
 #define NUM_DISTRIBUTEDLOG_BUFFERS	8
-
 
 extern void DistributedLog_SetCommitted(
 	TransactionId 						localXid,

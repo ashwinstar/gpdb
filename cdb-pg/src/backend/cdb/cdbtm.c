@@ -2467,10 +2467,29 @@ createDtxSnapshot(
 	return true;
 }
 
+/*
+ * Introduced by MPP-9829.
+ *
+ * Fail safe in regards to the shmControlLock and ProcArrayLock.
+ *
+ * Generally speaking, we defer to LWLockReleaseAll to clean up our held_lwlocks. In
+ * the case of an ERROR, this results from AbortTransaction. And in the case of a FATAL,
+ * this results from a ProcKill towards the end of proc_exit.
+ *
+ * Unfortunately, two subtleties are dealt with here. In the case of an ERROR where this
+ * current process continues to exist, ControlLockCount must be reset to coincide with
+ * the cleanup of shmControlLock. Also, during a FATAL, we'd like to release the ProcArrayLock;
+ * otherwise, we'd PANIC when trying to reacquire the ProcArrayLock for the purposes
+ * of the ProcArrayRemove nearing the end of proc_exit.
+ */
 static void
 createDtxErrorCallback(int code, Datum arg)
 {
+	HOLD_INTERRUPTS();
+	ControlLockCount = 1;
 	releaseTmLock();
+
+	HOLD_INTERRUPTS();
 	LWLockRelease(ProcArrayLock);
 }
 

@@ -1342,7 +1342,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"autovacuum", PGC_SIGHUP, AUTOVACUUM,
+		{"autovacuum", PGC_SIGHUP, DEFUNCT_OPTIONS,
 			gettext_noop("Starts the autovacuum subprocess."),
 			NULL,
 			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
@@ -3933,7 +3933,16 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&xid_stop_limit,
-		20000000, 0, INT_MAX, NULL, NULL
+		1000000000, 10000000, INT_MAX, NULL, NULL
+	},
+	{
+		{"xid_warn_limit", PGC_POSTMASTER, WAL,
+			gettext_noop("Sets the number of XIDs before xid_stop_limit at which we will begin emitting warnings regarding XID wraparound."),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		},
+		&xid_warn_limit,
+		500000000, 10000000, INT_MAX, NULL, NULL
 	},
 	{
 		{"max_fsm_relations", PGC_POSTMASTER, RESOURCES_FSM,
