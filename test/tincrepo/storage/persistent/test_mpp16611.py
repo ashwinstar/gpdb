@@ -6,13 +6,15 @@ import sys
 import tempfile
 
 import pexpect
+import unittest2 as unittest
 from tinctest.models.gpdb import GPDBTestCase
 from tinctest.lib import Gpdiff, PSQL, local_path
+import tinctest.lib.gpplatform as gpplatform
+
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(sys.stdout))
 logger.setLevel(logging.DEBUG)
-
 
 def get_last_backend_pid():
     cmd = (r'psql -A -t -c '
@@ -24,9 +26,10 @@ def get_last_backend_pid():
                               stdout=subprocess.PIPE).communicate()[0]
     return int(output)
 
+@unittest.skipIf(gpplatform.get_info()=="SOL", "gdb is not installed on Solaris regression server")
 class mpp16611(GPDBTestCase):
 
-    def test_it(self):
+    def test_storage_persistent(self):
         """
         @author haradh1
         @description Test for the RelcacheInvalidate VS persistent table

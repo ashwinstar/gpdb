@@ -1,8 +1,10 @@
 from os.path import abspath, dirname
 import sys
+import unittest2 as unittest
 from tinctest import TINCTestCase, logger
 from tinctest.lib import Gpdiff, local_path, PSQL
 from tinctest.models.gpdb.sql.template import SQLTemplateTestCase
+import tinctest.lib.gpplatform as gpplatform
 from gppylib.commands.base import Command
 from gppylib.db import dbconn
 from gppylib.gparray import GpArray
@@ -17,6 +19,7 @@ def xid_sum(x, y):
         ret += FirstNormalTransactionId
     return ret
 
+@unittest.skipIf(gpplatform.get_info()=="SOL", "Skipping Solaris, cannot compile xidhelper.so")
 class AutovacuumTests(TINCTestCase):
     def setUp(self):
         Command('re-build regress.so', 

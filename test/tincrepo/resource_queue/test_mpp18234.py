@@ -6,6 +6,8 @@ import sys
 import tempfile
 
 import pexpect
+import unittest2 as unittest
+import tinctest.lib.gpplatform as gpplatform
 from tinctest.models.gpdb import GPDBTestCase
 from tinctest.lib import Gpdiff, PSQL, local_path
 
@@ -24,9 +26,10 @@ def get_last_backend_pid():
                               stdout=subprocess.PIPE).communicate()[0]
     return int(output)
 
+@unittest.skipIf(gpplatform.get_info()=="SOL", "gdb is not installed on Solaris regression server")
 class mpp18234(GPDBTestCase):
 
-    def test_it(self):
+    def test_resource_queue(self):
         """
         @author reddyr3
         @description Test for the proclock table corruption
