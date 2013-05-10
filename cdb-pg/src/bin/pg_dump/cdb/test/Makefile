@@ -32,8 +32,12 @@ cdb_dump_util_REAL_OBJS=\
 	$(top_srcdir)/src/timezone/localtime.o \
 	$(top_srcdir)/src/timezone/pgtz.o 
 	
-override CPPFLAGS+= -I$(top_srcdir)/src/interfaces/libpq -I$(top_srcdir)/../ext/rhel5_x86_64/include -I$(top_srcdir)/../ext/rhel5_x86_64/include/rsa_csp/lb
+include $(top_builddir)/src/Makefile.global
+
+override CPPFLAGS+= -I$(top_srcdir)/src/interfaces/libpq -I$(top_srcdir)/../ext/$(BLD_ARCH)/include -I$(top_srcdir)/../ext/$(BLD_ARCH)/include/rsa_csp/lb
 
 include ../../../../Makefile.mock
 
+ifeq ($(enable_ddboost), yes)
 override MOCK_LIBS += -lDDBoost 
+endif

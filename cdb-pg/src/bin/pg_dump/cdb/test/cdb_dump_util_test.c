@@ -7,13 +7,6 @@
 #include "../cdb_dump_util.c"
 
 void 
-test__GetTimeNow(void **state)
-{
-	char* result = GetTimeNow(NULL);
-	assert_true(result==NULL);
-}
-
-void 
 test__isFilteringAllowed1(void **state)
 {
 	int role = ROLE_MASTER;
@@ -352,7 +345,7 @@ void test__formSegmentPsqlCommandLine8(void **state)
 	free(cmdLine);
 }
 
-
+#ifdef USE_DDBOOST
 void test__formDDBoostPsqlCommandLine1(void **state)
 {
 	char *cmdLine = calloc(1000000, 1);
@@ -538,6 +531,7 @@ void test__formDDBoostPsqlCommandLine8(void **state)
 	assert_string_equal(cmdLine, e);
 	free(cmdLine);
 }
+#endif
 
 void test__shouldExpandChildren1(void **state)
 {
@@ -577,7 +571,6 @@ main(int argc, char* argv[])
 	cmockery_parse_arguments(argc, argv);
 
 	const UnitTest tests[] = {
-			unit_test(test__GetTimeNow),
 			unit_test(test__isFilteringAllowed1),
 			unit_test(test__isFilteringAllowed2),
 			unit_test(test__isFilteringAllowed3), 
@@ -606,6 +599,7 @@ main(int argc, char* argv[])
 			unit_test(test__formSegmentPsqlCommandLine6),
 			unit_test(test__formSegmentPsqlCommandLine7),
 			unit_test(test__formSegmentPsqlCommandLine8),
+            #ifdef USE_DDBOOST
 			unit_test(test__formDDBoostPsqlCommandLine1),
 			unit_test(test__formDDBoostPsqlCommandLine2),
 			unit_test(test__formDDBoostPsqlCommandLine3),
@@ -614,6 +608,7 @@ main(int argc, char* argv[])
 			unit_test(test__formDDBoostPsqlCommandLine6),
 			unit_test(test__formDDBoostPsqlCommandLine7),
 			unit_test(test__formDDBoostPsqlCommandLine8),
+            #endif
 			unit_test(test__shouldExpandChildren1),
 			unit_test(test__shouldExpandChildren2),
 			unit_test(test__shouldExpandChildren3),
