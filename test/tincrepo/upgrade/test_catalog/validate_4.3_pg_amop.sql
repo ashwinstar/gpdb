@@ -1,1 +1,0 @@
-select * from pg_amop order by amopclaid, amopopr;

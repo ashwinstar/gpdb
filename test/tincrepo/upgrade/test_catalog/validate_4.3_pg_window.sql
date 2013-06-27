@@ -1,1 +1,0 @@
-select * from pg_window order by winfnoid;

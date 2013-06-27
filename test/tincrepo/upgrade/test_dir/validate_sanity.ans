@@ -1,5 +1,0 @@
-select * from ggg;
- a | b | d 
----+---+---
-(0 rows)
-

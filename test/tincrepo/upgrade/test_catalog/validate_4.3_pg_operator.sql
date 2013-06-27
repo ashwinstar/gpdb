@@ -1,1 +1,0 @@
-select oid, * from pg_operator order by oid;

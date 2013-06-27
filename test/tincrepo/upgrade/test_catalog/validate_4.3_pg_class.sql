@@ -1,1 +1,0 @@
-select oid, relname, relnamespace, reltype, relowner, relam, relfilenode, reltablespace from pg_class where oid < 10000 order by oid;

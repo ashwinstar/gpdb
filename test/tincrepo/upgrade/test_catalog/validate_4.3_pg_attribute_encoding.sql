@@ -1,1 +1,0 @@
-select * from pg_attribute_encoding order by attrelid, attnum;

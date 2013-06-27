@@ -1,1 +1,0 @@
-select * from pg_aggregate order by aggfnoid;
