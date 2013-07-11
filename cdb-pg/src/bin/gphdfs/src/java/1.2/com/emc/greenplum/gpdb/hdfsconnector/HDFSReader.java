@@ -111,9 +111,7 @@ public class HDFSReader
 				byte[] bytes = val.getBytes();
 				System.out.write(bytes, 0, val.getLength());
 				System.out.println();
-				// checkError() flushes the stream and checks its error state.
-				if (System.out.checkError())
-					throw new IOException("Output stream was closed");
+				System.out.flush();
 			}
 		}
 		
