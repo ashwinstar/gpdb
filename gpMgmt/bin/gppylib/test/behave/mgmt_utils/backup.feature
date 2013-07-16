@@ -716,7 +716,7 @@ Feature: Validate command line arguments
         And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
         And there is a "co" partition table "co_part_table" with compression "None" in "fullbkdb" with data
         And there is a backupfile of tables "co_part_table" in "fullbkdb" exists for validation
-        And there is a file "exclude_file" with tables "public.heap_table, public.ao_part_table" 
+        And there is a file "exclude_file" with tables "public.heap_table,public.ao_part_table" 
         When the user runs "gpcrondump -a -x fullbkdb --exclude-table-file exclude_file"
         Then gpcrondump should return a return code of 0
         And the timestamp from gpcrondump is stored 
@@ -734,7 +734,7 @@ Feature: Validate command line arguments
         And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
         And there is a "co" partition table "co_part_table" with compression "None" in "fullbkdb" with data
         And there is a backupfile of tables "co_part_table" in "fullbkdb" exists for validation
-        And there is a file "include_file" with tables "public.heap_table, public.ao_part_table" 
+        And there is a file "include_file" with tables "public.heap_table,public.ao_part_table" 
         When the user runs "gpcrondump -a -x fullbkdb --table-file include_file"
         Then gpcrondump should return a return code of 0
         And the timestamp from gpcrondump is stored 
@@ -3538,6 +3538,24 @@ Feature: Validate command line arguments
         And verify that there is a "ao" table "public.ao_index_table" in "testdb" with data
         And verify that there is no table "public.ao_part_table" in "testdb"
         And verify that there is no table "public.heap_table2" in "testdb"
+
+    @backupsmoke
+    Scenario: Checking for abnormal whitespace
+        Given the database is running
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a "co" partition table "co_part_table" with compression "None" in "fullbkdb" with data
+        And there is a backupfile of tables "co_part_table" in "fullbkdb" exists for validation
+        And there is a file "include_file_with_whitespace" with tables "public.heap_table   ,public.ao_part_table" 
+        When the user runs "gpcrondump -a -x fullbkdb --table-file include_file_with_whitespace"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And verify that the "report" file in " " dir contains "Backup Type: Full"
+        And the user runs gpdbrestore with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And verify that there is a "ao" table "ao_part_table" in "fullbkdb" with data
+        And verify that there is a "heap" table "heap_table" in "fullbkdb" with data
+        And verify that there is no table "co_part_table" in "fullbkdb"
 
     # THIS SHOULD BE THE LAST TEST
     @backupfire

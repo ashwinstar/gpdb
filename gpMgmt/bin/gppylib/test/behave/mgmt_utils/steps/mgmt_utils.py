@@ -714,11 +714,11 @@ def impl(context, filename):
         os.remove(context.filename)
 
 def create_table_file_locally(context, filename, table_list, location=os.getcwd()):
-    tables = [t.strip() for t in table_list.split(',')] 
+    tables = table_list.split(',')
     file_path = os.path.join(location, filename)
     with open(file_path, 'w') as fp:
         for t in tables:
-            fp.write(t.strip() + '\n')
+            fp.write(t + '\n')
     context.filename = file_path
 
 @given('there is a file "{filename}" with tables "{table_list}"')

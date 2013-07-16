@@ -157,10 +157,11 @@ def check_backup_type(report_file_contents, backup_type):
     return False
 
 def get_lines_from_file(fname):
-    content = ''
+    content = []
     with open(fname) as fd:
-        content = fd.read()
-    return content.splitlines()
+        for line in fd:
+            content.append(line.rstrip())
+    return content
 
 def write_lines_to_file(filename, lines):
     with open(filename, 'w') as fp:
