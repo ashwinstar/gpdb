@@ -1745,6 +1745,14 @@ def impl(context):
     cmd = Command('run remote command', cmd, ctxt=REMOTE, remoteHost=context.standby_host)
     cmd.run(validateAfter=True)
 
+@then('the user runs the command "{cmd}" from standby')
+@when('the user runs the command "{cmd}" from standby')
+def impl(context, cmd):
+    port = os.environ.get('PGPORT')
+    cmd = 'PGPORT=%s MASTER_DATA_DIRECTORY=%s %s' % (port, master_data_dir, cmd) 
+    cmd = Command('run remote command', cmd, ctxt=REMOTE, remoteHost=context.standby_host)
+    cmd.run(validateAfter=True)
+
 @given('user kills a primary postmaster process')
 def impl(context):
     gparray=GpArray.initFromCatalog(dbconn.DbURL())
@@ -1778,14 +1786,6 @@ def impl(context, filename_prefix):
                 ctxt=REMOTE,
                 remoteHost=host)
         cmd.run(validateAfter=True)
-
-@then('the user runs the command "{cmd}" from standby')
-@when('the user runs the command "{cmd}" from standby')
-def impl(context, cmd, hostname):
-    port = os.environ.get('PGPORT')
-    cmd = 'PGPORT=%s MASTER_DATA_DIRECTORY=%s %s' % (port, master_data_dir, cmd) 
-    cmd = Command('run remote command', cmd, ctxt=REMOTE, remoteHost=context.standby_host)
-    cmd.run(validateAfter=True)
 
 @then('the standby is initialized if required')
 def impl(context):
