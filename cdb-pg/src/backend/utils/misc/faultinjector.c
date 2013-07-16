@@ -429,7 +429,22 @@ FaultInjector_InjectFaultIfSet(
 	char					databaseNameLocal[NAMEDATALEN];
 	char					tableNameLocal[NAMEDATALEN];
 	int						ii = 0;
-	
+
+	/*
+	 * Return immediately if no fault has been injected ever.  It is
+	 * important to not touch the spinlock, especially if this is the
+	 * postmaster process.  If one of the backend processes dies while
+	 * holding the spin lock, and postmaster comes here before resetting
+	 * the shared memory, it waits without holder process and eventually
+	 * goes into PANIC.  Also this saves a few cycles to acquire the spin
+	 * lock and look into the shared hash table.
+	 *
+	 * Although this is a race condition without lock, a false negative is
+	 * ok given this framework is purely for dev/testing.
+	 */
+	if (faultInjectorShmem->faultInjectorSlots == 0)
+		return FALSE;
+
 	getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
 			
 	LockAcquire();
