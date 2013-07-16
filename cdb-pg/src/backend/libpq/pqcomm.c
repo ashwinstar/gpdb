@@ -191,10 +191,10 @@ pq_close(int code, Datum arg)
 		OM_uint32	min_s;
 
 		/* Shutdown GSSAPI layer */
-		if (MyProcPort->gss->ctx != GSS_C_NO_CONTEXT)
+		if (MyProcPort->gss && (MyProcPort->gss->ctx != GSS_C_NO_CONTEXT))
 			gss_delete_sec_context(&min_s, &MyProcPort->gss->ctx, NULL);
 
-		if (MyProcPort->gss->cred != GSS_C_NO_CREDENTIAL)
+		if (MyProcPort->gss && (MyProcPort->gss->cred != GSS_C_NO_CREDENTIAL))
 			gss_release_cred(&min_s, &MyProcPort->gss->cred);
 #endif   /* ENABLE_GSS */
 		/* GSS and SSPI share the port->gss struct */

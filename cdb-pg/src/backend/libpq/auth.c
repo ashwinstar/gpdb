@@ -1186,12 +1186,12 @@ pg_GSS_recvauth(Port *port)
 	 * for example case sensitivity differently, while not really opening up
 	 * any vector of attack.
 	 */
-	port->gss->cred = GSS_C_NO_CREDENTIAL;
+    port->gss->cred = GSS_C_NO_CREDENTIAL;
 
 	/*
 	 * Initialize sequence with an empty context
 	 */
-	port->gss->ctx = GSS_C_NO_CONTEXT;
+    port->gss->ctx = GSS_C_NO_CONTEXT;
 
 	/*
 	 * Loop through GSSAPI message exchange. This exchange can consist of

@@ -1822,4 +1822,254 @@ def impl(context, cmd):
                     PYTHONHOME=%s 
                     PYTHONPATH=%s 
                     LD_LIBRARY_PATH=%s %s/bin/%s""" % (gphome, path, python_home, python_path, ld_library_path, gphome, cmd) 
-    run_command(context, cmd_str) 
+    run_command(context, cmd_str)
+
+def verify_num_files(results, expected_num_files, timestamp):
+    num_files = results.stdout.strip()
+    if num_files != expected_num_files:
+        raise Exception('Expected "%s" files with timestamp key "%s" but found "%s"' % (expected_num_files, timestamp,num_files))
+    
+    
+def verify_timestamps_on_master(timestamp, dump_type):
+    list_cmd = 'ls -l %s/db_dumps/%s/*%s* | wc -l' % (master_data_dir, timestamp[:8], timestamp) 
+    cmd = Command('verify timestamps on master', list_cmd)
+    cmd.run(validateAfter=True)
+    expected_num_files = '10' if dump_type == 'incremental' else '8'
+    verify_num_files(cmd.get_results(), expected_num_files, timestamp)
+
+def verify_timestamps_on_segments(timestamp):
+    gparray = GpArray.initFromCatalog(dbconn.DbURL()) 
+    primary_segs = [segdb for segdb in gparray.getDbList() if segdb.isSegmentPrimary()]
+
+    for seg in primary_segs:
+        db_dumps_dir = os.path.join(seg.getSegmentDataDirectory(), 
+                                    'db_dumps',
+                                    timestamp[:8])
+        list_cmd = 'ls -l %s/*%s* | wc -l' % (db_dumps_dir, timestamp) 
+        cmd = Command('get list of dump files', list_cmd, ctxt=REMOTE, remoteHost=seg.getSegmentHostName())
+        cmd.run(validateAfter=True)
+        verify_num_files(cmd.get_results(), '2', timestamp)
+        
+@then('verify that "{dump_type}" dump files have stored timestamp in their filename')
+def impl(context, dump_type):
+    if dump_type.strip().lower() != 'full' and dump_type.strip().lower() != 'incremental':
+        raise Exception('Invalid dump type "%s"' % dump_type)
+
+    verify_timestamps_on_master(context.backup_timestamp, dump_type.strip().lower())
+    verify_timestamps_on_segments(context.backup_timestamp)
+
+def validate_files(file_list, pattern_list, expected_file_count):
+    file_count = 0 
+    for pattern in pattern_list:
+        pat = re.compile(pattern)
+        pat_found = False
+        for f in file_list:
+            m = pat.search(f.strip())
+            if m is not None:
+                pat_found = True
+                file_count += 1
+
+        if not pat_found:
+            raise Exception('Expected file not found for pattern: "%s" in file list "%s"' % (pattern, file_list))
+
+    if file_count != expected_file_count:
+        raise Exception('Expected count of %d does not match actual count %d in file list "%s"' % (expected_file_count, file_count, file_list))
+     
+@then('the "{file_type}" file under "{directory}" with options "{options}" is validated after dump operation')
+def impl(context, file_type, directory, options):
+    backup_dir = directory if directory.strip() != '' else master_data_dir  
+    if len(options.split(',')) > 3:
+        raise Exception('Invalid options specified "%s"' % options) 
+    option_list = options.split(',')
+
+    pipe_file_count = 1 + get_num_segments(primary=True, mirror=False, master=True, standby=False)
+    reg_file_count = 6
+
+    pipes_pattern_list = ['gp_dump_.*_%s.*(?:\.gz)?' % context.backup_timestamp]
+    regular_pattern_list = ['gp_cdatabase_1_1_%s' % context.backup_timestamp, 'gp_dump_%s.*' % context.backup_timestamp, 'gp_dump_status_1_1_%s' % context.backup_timestamp]
+
+    if '-G' in option_list: 
+        pipe_file_count += 1
+        pipes_pattern_list += ['gp_global_1_1_%s' % context.backup_timestamp]
+    if '-g' in option_list:
+        pipe_file_count += get_num_segments(primary=True, mirror=False, master=True, standby=False) 
+        pipes_pattern_list += ['gp_master_config_files_%s.*' % context.backup_timestamp, 'gp_segment_config_files_.*_.*_%s.*' % context.backup_timestamp]
+    if '--incremental' in option_list:
+        regular_pattern_list += ['gp_dump_%s.*' % context.full_backup_timestamp]
+        reg_file_count += 1
+     
+    filename = '%s/db_dumps/%s/gp_dump_%s_%s' % (backup_dir, context.backup_timestamp[0:8], context.backup_timestamp, 
+file_type.strip())
+
+    with open(filename) as fp:
+        file_list = fp.readlines()
+
+    if file_type == 'pipes':
+        validate_files(file_list, pipes_pattern_list, pipe_file_count)
+    elif file_type == 'regular_files':
+        validate_files(file_list, regular_pattern_list, reg_file_count)
+        
+@then('the timestamp key "{timestamp_key}" for gpcrondump is stored')
+def impl(context, timestamp_key):
+    context.backup_timestamp = timestamp_key
+
+@then('there are no dump files created under "{dir}"')
+def impl(context, dir):
+    master_dump_dir = dir if len(dir.strip()) != 0 else master_data_dir
+    gparray = GpArray.initFromCatalog(dbconn.DbURL())
+    primary_segs = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary()]
+
+    unwanted_files = ['gp_dump_%s_pipes' % context.backup_timestamp, 'gp_dump_%s_regular_files' % context.backup_timestamp] 
+    for seg in primary_segs:
+        seg_dump_dir = seg.getSegmentDataDirectory()
+        segment_dump_dir =  dir if len(dir.strip()) != 0 else seg_dump_dir
+        cmd = Command('check dump files', 'ls %s/db_dumps/%s' % (segment_dump_dir, context.backup_timestamp[0:8]), ctxt=REMOTE, remoteHost=seg.getSegmentHostName())
+        cmd.run(validateAfter=False) #because we expect ls to fail
+        results = [r for r in cmd.get_results().stdout.strip().split() if r.strip() not in unwanted_files]
+        if len(results) != 0:
+            print 'results = ', results
+            raise Exception('Found extra dump files on the segment %s under %s/db_dumps/%s' % (seg.getSegmentDataDirectory(), segment_dump_dir, context.backup_timestamp[0:8]))
+    
+    
+    cmd = Command('check dump files', 'ls %s/db_dumps/%s' % (master_dump_dir, context.backup_timestamp[0:8]))
+    cmd.run(validateAfter=True)
+    results = cmd.get_results().stdout.strip().split('\n')
+    
+    if len(results) != 2:
+        raise Exception('Found extra dump files %s on the master under %s' % (results, master_dump_dir))
+
+    pipes_file = 'gp_dump_%s_pipes' % context.backup_timestamp
+    reg_file = 'gp_dump_%s_regular_files' % context.backup_timestamp
+    if not pipes_file in results or not  reg_file in results:
+        raise Exception('Found invalid files %s under dump dir %s' % (results, master_dump_dir))
+
+@then('the named pipes are created for the timestamp "{timestamp_key}" under "{dir}"')
+def impl(context, timestamp_key, dir):
+    dump_dir = dir if len(dir.strip()) != 0 else master_data_dir
+    pipes_filename = '%s/db_dumps/%s/gp_dump_%s_pipes' % (dump_dir, timestamp_key[0:8], timestamp_key)
+
+    with open(pipes_filename, 'r') as fp:
+        for f in fp:
+            (host, filename) = [t.strip() for t in f.split(':')]
+            cmd_str = 'mkdir -p %s' % os.path.dirname(filename)
+            cmd = Command('create named pipes directory', cmd_str, ctxt=REMOTE, remoteHost=host)
+            cmd.run(validateAfter=True)
+            results = cmd.get_results()
+            if int(results.rc) != 0:
+                raise Exception('Non zero return code during makedirs command')
+
+            cmd = Command('create named pipes', 'mkfifo %s' % filename, ctxt=REMOTE, remoteHost=host)
+            cmd.run(validateAfter=True)
+            results = cmd.get_results()
+            if int(results.rc) != 0:
+                raise Exception('Non zero return code during mkfifo command')
+
+@then('the named pipes are validated against the timestamp "{timestamp_key}" under "{dir}"')
+def impl(context, timestamp_key, dir):
+    dump_dir = dir if len(dir.strip()) != 0 else master_data_dir
+    pipes_filename = '%s/db_dumps/%s/gp_dump_%s_pipes' % (dump_dir, timestamp_key[0:8], timestamp_key)
+
+    with open(pipes_filename, 'r') as fp:
+        for f in fp:
+            (host, filename) = [t.strip() for t in f.split(':')]
+            cmd = Command('create named pipes', 'file %s' % filename, ctxt=REMOTE, remoteHost=host)
+            cmd.run(validateAfter=True)
+            results = cmd.get_results()
+            if int(results.rc) != 0:
+                raise Exception('Non zero return code during mkfifo command')
+            if not 'named pipe' in results.stdout:
+                raise Exception('Expected %s to be a named pipe' % filename)
+
+@then('the named pipe script for the "{operation}" is run for the files under "{dump_directory}"')
+def impl(context, operation, dump_directory):
+    dump_dir = dump_directory if len(dump_directory.strip()) != 0 else master_data_dir
+    if operation == 'restore' and hasattr(context, 'inc_backup_timestamps'):
+        if not hasattr(context, 'backup_timestamp'):
+            raise Exception('Backup timestamp not stored')
+        for ts in context.inc_backup_timestamps:
+            open_named_pipes(context, operation, ts, dump_dir) 
+    else:
+        open_named_pipes(context, operation, context.backup_timestamp, dump_dir)
+
+@then('close all opened pipes')
+def impl(context):
+    hosts = set(get_all_hostnames_as_list(context, 'template1'))
+    for h in hosts:
+        find_cmd = Command('get list of pipe processes',
+                      "ps -eaf | grep _pipe.py | grep -v grep | grep -v ssh",
+                      ctxt=REMOTE,
+                      remoteHost=h) 
+        find_cmd.run()
+        results = find_cmd.get_results().stdout.strip().split('\n')
+        for process in results:
+            if not process.strip():
+                continue
+            pid = process.split()[1].strip()
+            print 'pid = %s on host %s' % (pid, h) 
+            cmd = Command('Kill pipe process',
+                          "kill %s" % pid,
+                          ctxt=REMOTE,
+                          remoteHost=h)
+            cmd.run(validateAfter=True)
+      
+        find_cmd.run() # We expecte failure here
+
+        results = find_cmd.get_results().stdout.strip()
+        if results:
+            raise Exception('Unexpected pipe processes found "%s"' % results) 
+    
+
+def open_named_pipes(context, operation, timestamp, dump_dir):
+    sleeptime = 5
+    pipes_filename = '%s/db_dumps/%s/gp_dump_%s_pipes' % (dump_dir, timestamp[0:8], timestamp)
+
+
+    filename = os.path.join(os.getcwd(), './gppylib/test/data/%s_pipe.py' % operation)
+
+    segs = get_all_hostnames_as_list(context, 'template1')
+
+    for seg in segs:
+        cmdStr = "%s -o 'StrictHostKeyChecking no' %s %s:%s" % (findCmdInPath('scp'), filename, seg, '/tmp')
+        run_command(context, cmdStr)
+
+    with open(pipes_filename, 'r') as fp:
+        for f in fp:
+            (host, filename) = [t.strip() for t in f.split(':')]
+            cmd = Command('run pipe script', 'sh -c "python /tmp/%s_pipe.py %s" &>/dev/null &' % (operation, filename),
+                          ctxt=REMOTE, remoteHost=host)
+            cmd.run(validateAfter=True)
+            time.sleep(sleeptime)
+            results = cmd.get_results()
+
+@given('the core dump directory is stored')
+def impl(context):
+    with open('/etc/sysctl.conf', 'r') as fp:
+        for line in fp:
+            if 'kernel.core_pattern' in line:
+                context.core_dir = os.path.dirname(line.strip().split('=')[1])
+
+@given('the number of core files "{stage}" running "{utility}" is stored')
+@then('the number of core files "{stage}" running "{utility}" is stored')
+def impl(context, stage, utility):
+    core_files_count = 0
+    files_list = os.listdir(context.core_dir)
+    for f in files_list:
+        if f.startswith('core'):
+            core_files_count += 1 
+
+    if stage.strip() == 'before':
+        context.before_core_count = core_files_count 
+    elif stage.strip() == 'after':
+        context.after_core_count = core_files_count 
+    else:
+        raise Exception('Invalid stage entered: %s' % stage)
+
+@then('the number of core files is the same')
+def impl(context):
+    if not hasattr(context, 'before_core_count'):
+        raise Exception('Core file count not stored before operation') 
+    if not hasattr(context, 'after_core_count'):
+        raise Exception('Core file count not stored after operation')
+
+    if context.before_core_count != context.after_core_count:
+        raise Exception('Core files count before %s does not match after %s' % (context.before_core_count, context.after_core_count))
