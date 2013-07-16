@@ -28,9 +28,7 @@ extern int64 PersistentRelation_CurrentMaxSerialNum(void);
 
 extern void PersistentRelation_CheckTablespace(
 	Oid 			tablespace,
-
 	int32			*useCount,
-
 	RelFileNode 	*exampleRelFileNode);
 
 extern void PersistentRelation_FlushXLog(void);
@@ -50,27 +48,17 @@ extern void PersistentRelation_Reset(void);
 extern void PersistentRelation_AddCreatePending(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the create. */
-
 	int32				segmentFileNum,
-
 	PersistentFileSysRelStorageMgr relStorageMgr,
-
 	PersistentFileSysRelBufpoolKind relBufpoolKind,
-
 	bool				bufferPoolBulkLoad,
-
 	MirroredObjectExistenceState mirrorExistenceState,
-
 	MirroredRelDataSynchronizationState relDataSynchronizationState,
-
 	char				*relationName,
-
 	ItemPointer 		persistentTid,
 				/* Resulting TID of the gp_persistent_rel_files tuple for the relation. */
-
 	int64				*persistentSerialNum,
 				/* Resulting serial number for the relation.  Distinquishes the uses of the tuple. */
-
 	bool				flushToXLog,
 				/* When true, the XLOG record for this change will be flushed to disk. */
 	bool				isLocalBuf);
@@ -78,33 +66,21 @@ extern void PersistentRelation_AddCreatePending(
 extern void PersistentRelation_AddCreated(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the create. */
-				
 	int32				segmentFileNum,
-				
 	PersistentFileSysRelStorageMgr relStorageMgr,
-	
 	PersistentFileSysRelBufpoolKind relBufpoolKind,
-	
 	MirroredObjectExistenceState mirrorExistenceState,
-	
 	MirroredRelDataSynchronizationState relDataSynchronizationState,
-	
 	int64				mirrorAppendOnlyLossEof,
-	
 	int64				mirrorAppendOnlyNewEof,
-	
 	char				*relationName,
-	
 	ItemPointer 		persistentTid,
 				/* Resulting TID of the gp_persistent_rel_files tuple for the relation. */
-
 	int64				*persistentSerialNum,
 				/* Resulting serial number for the relation.  Distinquishes the uses of the tuple. */
-
 	bool				flushToXLog);
 				/* When true, the XLOG record for this change will be flushed to disk. */
 				
-
 // -----------------------------------------------------------------------------
 // Transaction End	
 // -----------------------------------------------------------------------------
@@ -112,10 +88,8 @@ extern void PersistentRelation_AddCreated(
 void PersistentRelation_FinishBufferPoolBulkLoad(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the created relation. */
-
 	ItemPointer 		persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the relation. */
-
 	int64				persistentSerialNum);
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 
@@ -125,15 +99,11 @@ void PersistentRelation_FinishBufferPoolBulkLoad(
 extern void PersistentRelation_Created(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the created relation. */
-	
 	int32				segmentFileNum,
-	
 	ItemPointer 		persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the relation. */
-
 	int64				persistentSerialNum,
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
-
 	bool				retryPossible);
 
 /*
@@ -149,15 +119,11 @@ extern void PersistentRelation_Created(
 extern PersistentFileSysObjStateChangeResult PersistentRelation_MarkDropPending(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the drop. */
-	
 	int32				segmentFileNum,
-	
 	ItemPointer 		persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the relation. */
-
 	int64				persistentSerialNum,
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
-
 	bool				retryPossible);
 					
 
@@ -169,15 +135,11 @@ extern PersistentFileSysObjStateChangeResult PersistentRelation_MarkDropPending(
 extern PersistentFileSysObjStateChangeResult PersistentRelation_MarkAbortingCreate(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the aborting create. */
-	
 	int32				segmentFileNum,
-	
 	ItemPointer 		persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the relation. */
-	
 	int64				persistentSerialNum,
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
-
 	bool				retryPossible);
 
 /*
@@ -186,22 +148,17 @@ extern PersistentFileSysObjStateChangeResult PersistentRelation_MarkAbortingCrea
 extern void PersistentRelation_Dropped(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the dropped relation. */
-	
 	int32				segmentFileNum,
-	
 	ItemPointer 		persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the relation. */
-	
 	int64				persistentSerialNum);
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 
 extern void PersistentRelation_MarkBufPoolRelationForScanIncrementalResync(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the created relation. */
-
 	ItemPointer 		persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the relation. */
-
 	int64				persistentSerialNum);
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 

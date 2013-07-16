@@ -7326,6 +7326,7 @@ StartupXLOG_Pass3(void)
 		elog(PersistentRecovery_DebugPrintLevel(),
 			 "StartupXLOG_Pass3: Begin re-scanning XLOG");
 
+
 	InRecovery = true;
 
 	/*

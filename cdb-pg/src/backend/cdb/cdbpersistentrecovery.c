@@ -252,7 +252,7 @@ FsObjEntryToBuffer(char *buffer, int maxBufferLen, FsObjEntry fsObjEntry)
 			snprintf(
 				buffer,
 				maxBufferLen,
-				"%s: state '%s' mirrorExistenceState '%s', transaction %u, relation storage manager '%s', persistent serial number " INT64_FORMAT ", TID %s",
+				"%s: PS:'%s' MES:'%s' Xact:%u RelSMgr:'%s' PSN:" INT64_FORMAT " TID:%s",
 				PersistentFileSysObjName_TypeAndObjectName(&fsObjEntry->fsObjName),
 				PersistentFileSysObjState_Name(fsObjEntry->state),
 				MirroredObjectExistenceState_Name(fsObjEntry->mirrorExistenceState),
@@ -265,7 +265,7 @@ FsObjEntryToBuffer(char *buffer, int maxBufferLen, FsObjEntry fsObjEntry)
 			snprintf(
 				buffer,
 				maxBufferLen,
-			    "Free entry as free number " INT64_FORMAT ", TID %s",
+			    "Free entry as PSN:" INT64_FORMAT ", TID:%s",
 				fsObjEntry->persistentSerialNum,
 				ItemPointerToString(&fsObjEntry->key.persistentTid));
 
@@ -444,8 +444,8 @@ static void PersistentRecovery_AddEndXactFsObj(
 
 	if (found)
 	{
-		if (Debug_persistent_recovery_print)
-			elog(PersistentRecovery_DebugPrintLevel(), 
+		if (! Disable_persistent_recovery_logging)
+			elog(LOG, 
 			     "%s Record (transaction %u): Overwritting %s with %s",
 				 XactInfoKind_Name(infoKind),
 				 xid,
@@ -496,7 +496,7 @@ AoMirrorResyncEofsEntryToBuffer(char *buffer, int maxBufferLen, AoMirrorResyncEo
 		snprintf(
 			buffer,
 			maxBufferLen,
-		    "Append-Only relation %u/%u/%u, segment file #%d, transaction %u, mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT ", persistent serial number " INT64_FORMAT ", TID %s, eofsEntry address %p",
+		    "AO rel %u/%u/%u segfile#:%d Xact:%u MlossEOF:" INT64_FORMAT " MnewEOF:" INT64_FORMAT " PSN:" INT64_FORMAT " TID:'%s' eofsEntAddr:%p",
 			eofsEntry->relFileNode.spcNode,
 			eofsEntry->relFileNode.dbNode,
 			eofsEntry->relFileNode.relNode,
@@ -587,8 +587,8 @@ static void PersistentRecovery_AddAppendOnlyMirrorResyncEofs(
 
 	if (found)
 	{
-		if (Debug_persistent_recovery_print)
-			elog(PersistentRecovery_DebugPrintLevel(), 
+		if (! Disable_persistent_recovery_logging)
+			elog(LOG, 
 			     "Commit REDO: Overwritting %s with %s",
 				 AoMirrorResyncEofsEntryToString(&prevEofsEntry),
 				 AoMirrorResyncEofsEntryToString2(eofsEntry));
@@ -997,7 +997,6 @@ PersistentRecovery_ShouldHandlePass3XLogRec(
 	return exists;
 }
 
-
 static void
 PersistentRecovery_PrintXactAndFsObjs(void)
 {
@@ -1005,29 +1004,22 @@ PersistentRecovery_PrintXactAndFsObjs(void)
 	XactEntry xactEntry;
 	FsObjEntry fsObjEntry;
 
-	elog(PersistentRecovery_DebugPrintLevel(), 
-	     "Entering PersistentRecovery_PrintXactAndFsObjs");
-
+	elog(LOG, "Entering PersistentRecovery_PrintXactAndFsObjs");
 	if (xactHashTable == NULL)
 	{
-		elog(PersistentRecovery_DebugPrintLevel(), 
+		elog(LOG, 
 			 "Entering PersistentRecovery_PrintXactAndFsObjs -- no entries");
 		return;
 	}
 	
 	hash_seq_init(&iterateStatus, xactHashTable);
-
 	while (true)
 	{
-		xactEntry = 
-				(XactEntry)
-						hash_seq_search(&iterateStatus);
+		xactEntry = (XactEntry) hash_seq_search(&iterateStatus);
 		if (xactEntry == NULL)
 			break;
 
-
-		elog(PersistentRecovery_DebugPrintLevel(), 
-		     "Summary REDO: Transaction %u (%s)",
+		elog(LOG, "Transaction: %u (%s)",
 			 xactEntry->xid,
 			 XactInfoKind_Name(xactEntry->infoKind));
 
@@ -1037,9 +1029,7 @@ PersistentRecovery_PrintXactAndFsObjs(void)
 									&xactEntry->fsObjEntryList);
 		while (fsObjEntry != NULL)
 		{
-			elog(PersistentRecovery_DebugPrintLevel(), 
-			     "Summary REDO: %s",
-				 FsObjEntryToString(fsObjEntry));
+			elog(LOG, "FsObj: %s", FsObjEntryToString(fsObjEntry));
 
 			fsObjEntry = 
 				(FsObjEntry) DoublyLinkedHead_Next(
@@ -1048,12 +1038,8 @@ PersistentRecovery_PrintXactAndFsObjs(void)
 										fsObjEntry);
 		}
 	}
-	
-	elog(PersistentRecovery_DebugPrintLevel(), 
-	     "Exiting PersistentRecovery_PrintXactAndFsObjs");
-
+	elog(LOG, "Exiting PersistentRecovery_PrintXactAndFsObjs");
 }
-
 
 static void
 PersistentRecovery_PrintAoMirrorResyncEofs(void)
@@ -1061,34 +1047,24 @@ PersistentRecovery_PrintAoMirrorResyncEofs(void)
 	HASH_SEQ_STATUS iterateStatus;
 	AoMirrorResyncEofsEntry eofsEntry;
 
-	elog(PersistentRecovery_DebugPrintLevel(), 
-	     "Entering PersistentRecovery_PrintAoMirrorResyncEofs");
-
+	elog(LOG, "Entering PersistentRecovery_PrintAoMirrorResyncEofs");
 	if (recoveryAppendOnlyMirrorResyncEofsTable == NULL)
 	{
-		elog(PersistentRecovery_DebugPrintLevel(), 
+		elog(LOG, 
 			 "Entering PersistentRecovery_PrintAoMirrorResyncEofs -- no entries");
 		return;
 	}
 	
 	hash_seq_init(&iterateStatus, recoveryAppendOnlyMirrorResyncEofsTable);
-
 	while (true)
 	{
-		eofsEntry = 
-			(AoMirrorResyncEofsEntry)
-						hash_seq_search(&iterateStatus);
+		eofsEntry = (AoMirrorResyncEofsEntry) hash_seq_search(&iterateStatus);
 		if (eofsEntry == NULL)
 			break;
 
-		elog(PersistentRecovery_DebugPrintLevel(), 
-		     "Summary REDO: %s",
-			 AoMirrorResyncEofsEntryToString(eofsEntry));
+		elog(LOG, "%s", AoMirrorResyncEofsEntryToString(eofsEntry));
 	}
-	
-	elog(PersistentRecovery_DebugPrintLevel(), 
-	     "Exiting PersistentRecovery_PrintAoMirrorResyncEofs");
-
+	elog(LOG, "Exiting PersistentRecovery_PrintAoMirrorResyncEofs");
 }
 
 // -----------------------------------------------------------------------------
@@ -1112,7 +1088,6 @@ PersistentRecovery_AddScanEntry(
 	
 	int64					persistentSerialNum)
 {
-
 	FsObjEntry fsObjEntry;
 	bool found;
 
@@ -1123,8 +1098,8 @@ PersistentRecovery_AddScanEntry(
 
 		if (found)
 		{
-			if (Debug_persistent_recovery_print)
-				elog(PersistentRecovery_DebugPrintLevel(), 
+			if (! Disable_persistent_recovery_logging)
+				elog(LOG, 
 				     "Scan REDO: Overwriting %s as free", 
 					 FsObjEntryToString(fsObjEntry));
 
@@ -1170,8 +1145,8 @@ PersistentRecovery_AddScanEntry(
 	{
 		if (fsObjEntry->state < state)
 		{
-			if (Debug_persistent_recovery_print)
-				elog(PersistentRecovery_DebugPrintLevel(), 
+			if (! Disable_persistent_recovery_logging)
+				elog(LOG, 
 				     "Scan REDO: Newer %s than %s state, transaction %u",
 					 FsObjEntryToString(fsObjEntry),
 					 PersistentFileSysObjState_Name(state),
@@ -1200,16 +1175,16 @@ PersistentRecovery_AddScanEntry(
 				* mirror existence state is MirrorDropRemains. It will be dropped during resync
 				*/
 				fsObjEntry->mirrorExistenceState = mirrorExistenceState;
-				if (Debug_persistent_recovery_print)
-					elog(PersistentRecovery_DebugPrintLevel(),
-						"State is same. Update the mirror existence state. Mirror existence state %s",
-						MirroredObjectExistenceState_Name(fsObjEntry->mirrorExistenceState));
+				if (! Disable_persistent_recovery_logging)
+					elog(LOG,
+						"Scan REDO: PT State is same. Updated the mirror existence state for %s",
+						FsObjEntryToString(fsObjEntry));
 		}
 	}
 	else if (fsObjEntry->persistentSerialNum < persistentSerialNum)
 	{
-		if (Debug_persistent_recovery_print)
-			elog(PersistentRecovery_DebugPrintLevel(), 
+		if (! Disable_persistent_recovery_logging)
+			elog(LOG, 
 			     "Scan REDO: Overwriting obsolete %s with '%s', relation storage manager '%s', state '%s', transaction %u, serial number " INT64_FORMAT,
 				 FsObjEntryToString(fsObjEntry),
 				 PersistentFileSysObjName_TypeAndObjectName(fsObjName),
@@ -1227,9 +1202,11 @@ PersistentRecovery_AddScanEntry(
 	}
 	else
 	{
-		if (Debug_persistent_recovery_print)
-			elog(PersistentRecovery_DebugPrintLevel(), 
-			     "Scan REDO: Wrong state %s", FsObjEntryToString(fsObjEntry));
+		if (! Disable_persistent_recovery_logging)
+			elog(LOG, 
+			     "Scan REDO: Wrong state %s, persistentSerialNum " INT64_FORMAT, 
+				 FsObjEntryToString(fsObjEntry),
+				 persistentSerialNum);
 	}
 }
 
@@ -1477,9 +1454,9 @@ PersistentRecovery_HandlePrepareBeforeCheckpoint(void)
 			{
 				xactEntry->infoKind = XACT_INFOKIND_PREPARE;
 
-				if (Debug_persistent_recovery_print)
+				if ( ! Disable_persistent_recovery_logging)
 				{
-					elog(PersistentRecovery_DebugPrintLevel(), 
+					elog(LOG, 
 						 "Prepare Before Checkpoint: Transaction %u (None) found and marked prepared (location %s)",
 						 xactEntry->xid,
 						 XLogLocationToString(&preparedLoc));
@@ -1548,10 +1525,9 @@ PersistentRecovery_CrashAbort(void)
 
 	PersistentRecovery_HandlePrepareBeforeCheckpoint();
 
-	if (Debug_persistent_recovery_print)
+	if (! Disable_persistent_recovery_logging)
 	{
 		PersistentRecovery_PrintXactAndFsObjs();
-
 		PersistentRecovery_PrintAoMirrorResyncEofs();
 	}
 
@@ -1622,8 +1598,8 @@ PersistentRecovery_CrashAbort(void)
 			{
 				needsAbort = true;
 				
-				if (Debug_persistent_recovery_print)
-					elog(PersistentRecovery_DebugPrintLevel(), 
+				if (! Disable_persistent_recovery_logging)
+					elog(LOG, 
  						 "Needs-Abort REDO: (New state 'Aborting Create') %s",
  						 FsObjEntryToString(fsObjEntry));
 
@@ -1709,7 +1685,9 @@ PersistentRecovery_CrashAbort(void)
 		errcontext.arg = (void *) &recordCrashTransactionAbortRecordErrContext;
 		errcontext.previous = error_context_stack;
 		error_context_stack = &errcontext;
-		
+
+		elog(LOG, "Recovery Aborting Transaction %u", xactEntry->xid);
+
 		abortSuccessfullyRecorded =
 			RecordCrashTransactionAbortRecord(
 									xactEntry->xid, 
@@ -1764,7 +1742,6 @@ PersistentRecovery_CrashAbort(void)
 					elog(WARNING, "Not setting the state of '%s' to 'Aborting Create'",
 						 FsObjEntryToString(fsObjEntry));
 				}
-				
 			}
 			else if (fsObjEntry->state != PersistentFileSysState_Free)
 				elog(ERROR, "Unexpected persistent file-system state: %d",
@@ -1814,12 +1791,13 @@ PersistentRecovery_UpdateType(
 		{
 			persistentRecoveryCount++;
 
-			if (Debug_persistent_recovery_print)
-				elog(PersistentRecovery_DebugPrintLevel(), 
-				     "End-Xact-Update-Needed REDO: %s", FsObjEntryToString(fsObjEntry));
+			if (! Disable_persistent_recovery_logging)
+			{
+				elog(LOG,
+				     "End-Xact-Update-Needed REDO [%d]: %s", persistentRecoveryCount, FsObjEntryToString(fsObjEntry));
+			}
 
 			state = fsObjEntry->state;
-
 			switch (state)
 			{
 				case PersistentFileSysState_Created:
@@ -1927,10 +1905,10 @@ PersistentRecovery_DropType(
 						 FsObjEntryToString(fsObjEntry),
 						 PersistentFileSysObjStateChangeResult_Name(fsObjEntry->stateChangeResult));
 				}
-				else if (Debug_persistent_recovery_print)
+				else if (! Disable_persistent_recovery_logging)
 				{
-					elog(PersistentRecovery_DebugPrintLevel(), 
-						 "Drop REDO: Skipping drop for %s with State-Change result '%s'", 
+					elog(LOG, 
+						 "Recovery Drop: Skipping drop for %s with State-Change result '%s'", 
 						 FsObjEntryToString(fsObjEntry),
 						 PersistentFileSysObjStateChangeResult_Name(fsObjEntry->stateChangeResult));
 				}
@@ -1948,9 +1926,8 @@ PersistentRecovery_DropType(
 
 			persistentRecoveryCount++;
 
-			if (Debug_persistent_recovery_print)
-				elog(PersistentRecovery_DebugPrintLevel(), 
-				     "Drop REDO: %s", FsObjEntryToString(fsObjEntry));
+			elog(LOG, "Recovery Drop [%d]: %s", 
+				persistentRecoveryCount, FsObjEntryToString(fsObjEntry));
 
 			if (fsObjType == PersistentFsObjType_RelationFile &&
 				!PersistentFileSysRelStorageMgr_IsValid(fsObjEntry->relStorageMgr))
@@ -1975,7 +1952,6 @@ PersistentRecovery_DropType(
 		     "Exiting PersistentRecovery_DropType %s, count %d",
 		     PersistentFileSysObjName_TypeName(fsObjType),
 		     persistentRecoveryCount);
-
 }
 
 void

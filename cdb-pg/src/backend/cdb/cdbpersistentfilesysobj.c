@@ -25,6 +25,7 @@
 #include "cdb/cdbpersistentfilesysobj.h"
 #include "cdb/cdbpersistentfilespace.h"
 #include "cdb/cdbpersistenttablespace.h"
+#include "cdb/cdbpersistentcheck.h"
 #include "cdb/cdbmirroredfilesysobj.h"
 #include "cdb/cdbdirectopen.h"
 #include "cdb/cdbfilerepservice.h"
@@ -53,11 +54,8 @@ typedef struct PersistentFileSysObjPrivateSharedMemory
 typedef struct ReadTupleForUpdateInfo
 {
 	PersistentFsObjType 		fsObjType;
-
 	PersistentFileSysObjName 	*fsObjName;
-
 	ItemPointerData				persistentTid;
-
 	int64						persistentSerialNum;
 } ReadTupleForUpdateInfo;
 
@@ -446,15 +444,10 @@ static void PersistentFileSysObj_PrintFilespaceDir(
 
 static void PersistentFileSysObj_InitOurs(
 	PersistentFileSysObjData 	*fileSysObjData,
-
 	PersistentFileSysObjSharedData 	*fileSysObjSharedData,
-
 	PersistentFsObjType			fsObjType,
-
 	int 						attNumPersistentState,
-
 	int 						attNumMirrorExistenceState,
-
 	int 						attNumParentXid)
 {
 	if (fsObjType < PersistentFsObjType_First ||
@@ -473,11 +466,8 @@ static void PersistentFileSysObj_InitOurs(
 
 void PersistentFileSysObj_Init(
 	PersistentFileSysObjData 			*fileSysObjData,
-
 	PersistentFileSysObjSharedData 		*fileSysObjSharedData,
-
 	PersistentFsObjType					fsObjType,
-
 	PersistentStoreScanTupleCallback	scanTupleCallback)
 {
 	PersistentStoreData *storeData = &fileSysObjData->storeData;
@@ -495,9 +485,12 @@ void PersistentFileSysObj_Init(
 						DirectOpen_GpPersistentRelationNodeClose,
 						scanTupleCallback,
 						PersistentFileSysObj_PrintRelationFile,
+						Persistent_RelationScanKeyInit,
+						Persistent_RelationAllowDuplicateEntry,
 						Natts_gp_persistent_relation_node,
 						Anum_gp_persistent_relation_node_persistent_serial_num,
 						Anum_gp_persistent_relation_node_previous_free_tid);
+
 		PersistentFileSysObj_InitOurs(
 						fileSysObjData,
 						fileSysObjSharedData,
@@ -516,9 +509,12 @@ void PersistentFileSysObj_Init(
 						DirectOpen_GpPersistentDatabaseNodeClose,
 						scanTupleCallback,
 						PersistentFileSysObj_PrintDatabaseDir,
+						Persistent_DatabaseScanKeyInit,
+						Persistent_DatabaseAllowDuplicateEntry,
 						Natts_gp_persistent_database_node,
 						Anum_gp_persistent_database_node_persistent_serial_num,
 						Anum_gp_persistent_database_node_previous_free_tid);
+		
 		PersistentFileSysObj_InitOurs(
 						fileSysObjData,
 						fileSysObjSharedData,
@@ -537,9 +533,12 @@ void PersistentFileSysObj_Init(
 						DirectOpen_GpPersistentTableSpaceNodeClose,
 						scanTupleCallback,
 						PersistentFileSysObj_PrintTablespaceDir,
+						Persistent_TablespaceScanKeyInit,
+						Persistent_TablespaceAllowDuplicateEntry,
 						Natts_gp_persistent_tablespace_node,
 						Anum_gp_persistent_tablespace_node_persistent_serial_num,
 						Anum_gp_persistent_tablespace_node_previous_free_tid);
+
 		PersistentFileSysObj_InitOurs(
 						fileSysObjData,
 						fileSysObjSharedData,
@@ -558,9 +557,12 @@ void PersistentFileSysObj_Init(
 						DirectOpen_GpPersistentFileSpaceNodeClose,
 						scanTupleCallback,
 						PersistentFileSysObj_PrintFilespaceDir,
+						Persistent_FilespaceScanKeyInit,
+						Persistent_FilespaceAllowDuplicateEntry,
 						Natts_gp_persistent_filespace_node,
 						Anum_gp_persistent_filespace_node_persistent_serial_num,
 						Anum_gp_persistent_filespace_node_previous_free_tid);
+		
 		PersistentFileSysObj_InitOurs(
 						fileSysObjData,
 						fileSysObjSharedData,
@@ -2108,7 +2110,6 @@ PersistentFileSysObj_AddMirror(PersistentFileSysObjName *fsObjName,
 
 void PersistentFileSysObj_RepairDelete(
 	PersistentFsObjType			fsObjType,
-
 	ItemPointer					persistentTid)
 {
 	PersistentFileSysObjData 		*fileSysObjData;
@@ -2170,11 +2171,8 @@ void PersistentFileSysObj_RepairDelete(
 static void
 PersistentFileSysObj_DoMirrorValidation(
 										PersistentFileSysObjName 	*fsObjName,
-
 										PersistentFileSysRelStorageMgr relStorageMgr,
-
 										ItemPointer					persistentTid,
-
 										int64						persistentSerialNum)
 {
 
@@ -2312,17 +2310,11 @@ PersistentFileSysObj_DoMirrorValidation(
 
 static void PersistentFileSysObj_DoMirrorReCreate(
 	PersistentFileSysObjName 	*fsObjName,
-
 	PersistentFileSysRelStorageMgr relStorageMgr,
-
 	ItemPointer					persistentTid,
-
 	int64						persistentSerialNum,
-
 	MirrorDataLossTrackingState mirrorDataLossTrackingState,
-
 	int64						mirrorDataLossTrackingSessionNum,
-
 	bool						*mirrorDataLossOccurred)
 {
 	StorageManagerMirrorMode mirrorMode = StorageManagerMirrorMode_MirrorOnly;
@@ -2427,11 +2419,8 @@ static void PersistentFileSysObj_DoMirrorReCreate(
 
 void PersistentFileSysObj_Created(
 	PersistentFileSysObjName 	*fsObjName,
-
 	ItemPointer				persistentTid,
-
 	int64					persistentSerialNum,
-
 	bool					retryPossible)
 {
 	if (!Persistent_BeforePersistenceWork())
@@ -2494,11 +2483,8 @@ void PersistentFileSysObj_Created(
 
 PersistentFileSysObjStateChangeResult PersistentFileSysObj_MarkAbortingCreate(
 	PersistentFileSysObjName 	*fsObjName,
-
 	ItemPointer				persistentTid,
-
 	int64					persistentSerialNum,
-
 	bool					retryPossible)
 {
 	PersistentFileSysObjStateChangeResult stateChangeResult;
@@ -2569,11 +2555,8 @@ PersistentFileSysObjStateChangeResult PersistentFileSysObj_MarkAbortingCreate(
 
 PersistentFileSysObjStateChangeResult PersistentFileSysObj_MarkDropPending(
 	PersistentFileSysObjName 	*fsObjName,
-
 	ItemPointer				persistentTid,
-
 	int64					persistentSerialNum,
-
 	bool					retryPossible)
 {
 	PersistentFileSysObjStateChangeResult stateChangeResult;
@@ -2657,20 +2640,13 @@ PersistentFileSysObj_DropObjectErrorCallback(void *arg)
 
 void PersistentFileSysObj_DropObject(
 	PersistentFileSysObjName 	*fsObjName,
-
 	PersistentFileSysRelStorageMgr relStorageMgr,
-
 	char						*relationName,
 					/* For tracing only.  Can be NULL in some execution paths. */
-
 	ItemPointer					persistentTid,
-
 	int64						persistentSerialNum,
-
 	bool 						ignoreNonExistence,
-
 	bool						debugPrint,
-
 	int							debugPrintLevel)
 {
 	READTUPLE_FOR_UPDATE_ERRCONTEXT_DECLARE;
@@ -2944,17 +2920,11 @@ void PersistentFileSysObj_DropObject(
 
 static void PersistentFileSysObj_DoMirrorReDrop(
 	PersistentFileSysObjName 	*fsObjName,
-
 	PersistentFileSysRelStorageMgr relStorageMgr,
-
 	ItemPointer					persistentTid,
-
 	int64						persistentSerialNum,
-
 	MirrorDataLossTrackingState mirrorDataLossTrackingState,
-
 	int64						mirrorDataLossTrackingSessionNum,
-
 	bool						*mirrorDataLossOccurred)
 {
 	*mirrorDataLossOccurred = false;
@@ -3091,16 +3061,11 @@ static void PersistentFileSysObj_DoMirrorReDrop(
 
 void PersistentFileSysObj_EndXactDrop(
 	PersistentFileSysObjName 	*fsObjName,
-
 	PersistentFileSysRelStorageMgr relStorageMgr,
-
 	char						*relationName,
 					/* For tracing only.  Can be NULL in some execution paths. */
-
 	ItemPointer				persistentTid,
-
 	int64					persistentSerialNum,
-
 	bool					ignoreNonExistence)
 {
 	// NOTE: The caller must already have the MirroredLock.
@@ -3135,19 +3100,12 @@ void PersistentFileSysObj_EndXactDrop(
 
 static void PersistentFileSysObj_UpdateTupleAppendOnlyMirrorResyncEofs(
 	PersistentFileSysObjData 		*fileSysObjData,
-
 	PersistentFileSysObjSharedData 	*fileSysObjSharedData,
-
 	HeapTuple					tuple,
-
 	ItemPointer 				persistentTid,
-
 	int64						persistentSerialNum,
-
 	int64						mirrorLossEof,
-
 	int64						mirrorNewEof,
-
 	bool						flushToXLog)
 {
 	Datum newValues[Natts_gp_persistent_relation_node];
@@ -3175,19 +3133,12 @@ static void PersistentFileSysObj_UpdateTupleAppendOnlyMirrorResyncEofs(
 
 void PersistentFileSysObj_UpdateAppendOnlyMirrorResyncEofs(
 	RelFileNode					*relFileNode,
-
 	int32						segmentFileNum,
-
 	ItemPointer 				persistentTid,
-
 	int64						persistentSerialNum,
-
 	bool						mirrorCatchupRequired,
-
 	int64						mirrorNewEof,
-
 	bool						recovery,
-
 	bool						flushToXLog)
 {
 	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
@@ -3409,13 +3360,9 @@ void PersistentFileSysObj_UpdateAppendOnlyMirrorResyncEofs(
 
 void PersistentFileSysObj_UpdateRelationBufpoolKind(
 	RelFileNode							*relFileNode,
-
 	int32								segmentFileNum,
-
 	ItemPointer 						persistentTid,
-
 	int64								persistentSerialNum,
-
 	PersistentFileSysRelBufpoolKind 	relBufpoolKind)
 {
 	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
@@ -3493,13 +3440,9 @@ void PersistentFileSysObj_UpdateRelationBufpoolKind(
 
 void PersistentFileSysObj_PreparedEndXactAction(
 	TransactionId 					preparedXid,
-
 	const char 						*gid,
-
 	PersistentEndXactRecObjects 	*persistentObjects,
-
 	bool							isCommit,
-
 	int								prepareAppendOnlyIntentCount)
 {
 	MIRRORED_LOCK_DECLARE;
@@ -4001,19 +3944,12 @@ jumpoverinjectfaultexit:
 
 static void PersistentFileSysObj_UpdateTupleMirrorExistenceState(
 	PersistentFileSysObjData 		*fileSysObjData,
-
 	PersistentFileSysObjSharedData 	*fileSysObjSharedData,
-
 	PersistentFsObjType				fsObjType,
-
 	HeapTuple					tuple,
-
 	ItemPointer 				persistentTid,
-
 	int64						persistentSerialNum,
-
 	MirroredObjectExistenceState mirrorExistenceState,
-
 	bool						flushToXLog)
 {
 	Datum *newValues;
@@ -4040,21 +3976,13 @@ static void PersistentFileSysObj_UpdateTupleMirrorExistenceState(
 
 static void PersistentFileSysObj_UpdateTupleMirrorState(
 	PersistentFileSysObjData 		*fileSysObjData,
-
 	PersistentFileSysObjSharedData 	*fileSysObjSharedData,
-
 	PersistentFsObjType				fsObjType,
-
 	HeapTuple					tuple,
-
 	ItemPointer 				persistentTid,
-
 	int64						persistentSerialNum,
-
 	MirroredObjectExistenceState mirrorExistenceState,
-
 	MirroredRelDataSynchronizationState relDataSynchronizationState,
-
 	bool						flushToXLog)
 {
 	Datum *newValues;
@@ -4086,17 +4014,11 @@ static void PersistentFileSysObj_UpdateTupleMirrorState(
 
 static void PersistentFileSysObj_UpdateTupleRelDataSynchronizationState(
 	PersistentFileSysObjData 		*fileSysObjData,
-
 	PersistentFileSysObjSharedData 	*fileSysObjSharedData,
-
 	HeapTuple					tuple,
-
 	ItemPointer 				persistentTid,
-
 	int64						persistentSerialNum,
-
 	MirroredRelDataSynchronizationState relDataSynchronizationState,
-
 	bool						flushToXLog)
 {
 	Datum *newValues;
@@ -4126,21 +4048,13 @@ static void PersistentFileSysObj_UpdateTupleRelDataSynchronizationState(
 
 static void PersistentFileSysObj_UpdateTupleMirrorReCreated(
 	PersistentFileSysObjData 		*fileSysObjData,
-
 	PersistentFileSysObjSharedData 	*fileSysObjSharedData,
-
 	PersistentFsObjType				fsObjType,
-
 	HeapTuple						tuple,
-
 	ItemPointer 					persistentTid,
-
 	int64							persistentSerialNum,
-
 	PersistentFileSysRelStorageMgr 	relStorageMgr,
-
 	MirroredObjectExistenceState 	newMirrorExistenceState,
-
 	bool							flushToXLog)
 {
 	Datum *newValues;
@@ -4181,17 +4095,11 @@ static void PersistentFileSysObj_UpdateTupleMirrorReCreated(
 
 static void PersistentFileSysObj_UpdateTupleMarkBufPoolRelationForScanIncrementalResync(
 	PersistentFileSysObjData 		*fileSysObjData,
-
 	PersistentFileSysObjSharedData 	*fileSysObjSharedData,
-
 	HeapTuple					tuple,
-
 	ItemPointer 				persistentTid,
-
 	int64						persistentSerialNum,
-
 	bool						newMirrorBufpoolMarkedForScanIncrementalResync,
-
 	bool						flushToXLog)
 {
 	Datum newValues[Natts_gp_persistent_relation_node];
@@ -4215,15 +4123,10 @@ static void PersistentFileSysObj_UpdateTupleMarkBufPoolRelationForScanIncrementa
 
 static void PersistentFileSysObj_UpdateTupleScanIncrementalAndResetFlag(
 	PersistentFileSysObjData 		*fileSysObjData,
-
 	PersistentFileSysObjSharedData 	*fileSysObjSharedData,
-
 	HeapTuple					tuple,
-
 	ItemPointer 				persistentTid,
-
 	int64						persistentSerialNum,
-
 	bool						flushToXLog)
 {
 	Datum newValues[Natts_gp_persistent_relation_node];
@@ -4249,17 +4152,11 @@ static void PersistentFileSysObj_UpdateTupleScanIncrementalAndResetFlag(
 
 static void PersistentFileSysObj_UpdateTuplePageIncremental(
 	PersistentFileSysObjData 		*fileSysObjData,
-
 	PersistentFileSysObjSharedData 	*fileSysObjSharedData,
-
 	HeapTuple					tuple,
-
 	ItemPointer 				persistentTid,
-
 	int64						persistentSerialNum,
-
 	int64						mirrorBufpoolResyncChangedPageCount,
-
 	bool						flushToXLog)
 {
 	Datum *newValues;
@@ -4290,15 +4187,10 @@ static void PersistentFileSysObj_UpdateTuplePageIncremental(
 
 void PersistentFileSysObj_ChangeMirrorState(
 	PersistentFsObjType				fsObjType,
-
 	ItemPointer 					persistentTid,
-
 	int64							persistentSerialNum,
-
 	MirroredObjectExistenceState 	mirrorExistenceState,
-
 	MirroredRelDataSynchronizationState relDataSynchronizationState,
-
 	bool							flushToXLog)
 {
 	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
@@ -4357,11 +4249,8 @@ void PersistentFileSysObj_ChangeMirrorState(
 
 void PersistentFileSysObj_MarkBufPoolRelationForScanIncrementalResync(
 	PersistentFileSysObjName 	*fsObjName,
-
 	ItemPointer					persistentTid,
-
 	int64						persistentSerialNum,
-
 	bool						flushToXLog)
 {
 	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
@@ -4472,13 +4361,9 @@ void PersistentFileSysObj_MarkBufPoolRelationForScanIncrementalResync(
 
 bool PersistentFileSysObj_CanAppendOnlyCatchupDuringResync(
 	RelFileNode					*relFileNode,
-
 	int32						segmentFileNum,
-
 	ItemPointer 				persistentTid,
-
 	int64						persistentSerialNum,
-
 	int64						*eof)
 {
 	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
@@ -4611,13 +4496,9 @@ bool PersistentFileSysObj_CanAppendOnlyCatchupDuringResync(
 
 void PersistentFileSysObj_GetAppendOnlyCatchupMirrorStartEof(
 	RelFileNode					*relFileNode,
-
 	int32						segmentFileNum,
-
 	ItemPointer 				persistentTid,
-
 	int64						persistentSerialNum,
-
 	int64						*startEof)
 {
 	READ_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
@@ -4762,7 +4643,6 @@ typedef enum StateAction
 
 static void PersistentFileSysObj_ScanStateAction(
 	StateAction				stateAction,
-
 	PersistentFsObjType		fsObjType)
 {
 	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
@@ -5834,9 +5714,7 @@ void PersistentFileSysObj_MarkAppendOnlyCatchup(void)
 
 static void PersistentFileSysObj_MarkPageIncremental(
 	ItemPointer			persistentTid,
-
 	int64				persistentSerialNum,
-
 	int64				newMirrorBufpoolResyncChangedPageCount)
 {
 	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
@@ -6075,27 +5953,16 @@ void PersistentFileSysObj_MarkPageIncrementalFromChangeLog(void)
 
 bool PersistentFileSysObj_ResynchronizeScan(
 	ResynchronizeScanToken			*resynchronizeScanToken,
-
 	RelFileNode						*relFileNode,
-
 	int32							*segmentFileNum,
-
 	PersistentFileSysRelStorageMgr 	*relStorageMgr,
-
 	MirroredRelDataSynchronizationState *mirrorDataSynchronizationState,
-
 	int64							*mirrorBufpoolResyncChangedPageCount,
-
 	XLogRecPtr						*mirrorBufpoolResyncCkptLoc,
-
 	BlockNumber 					*mirrorBufpoolResyncCkptBlockNum,
-
 	int64							*mirrorAppendOnlyLossEof,
-
 	int64							*mirrorAppendOnlyNewEof,
-
 	ItemPointer						persistentTid,
-
 	int64							*persistentSerialNum)
 {
 	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
@@ -6244,23 +6111,14 @@ void PersistentFileSysObj_ResynchronizeAbandonScan(
  */
 bool PersistentFileSysObj_ResynchronizeRefetch(
 	RelFileNode						*relFileNode,
-
 	int32							*segmentFileNum,
-
 	ItemPointer						persistentTid,
-
 	int64							persistentSerialNum,
-
 	PersistentFileSysRelStorageMgr 	*relStorageMgr,
-
 	MirroredRelDataSynchronizationState *mirrorDataSynchronizationState,
-
 	XLogRecPtr						*mirrorBufpoolResyncCkptLoc,
-
 	BlockNumber 					*mirrorBufpoolResyncCkptBlockNum,
-
 	int64							*mirrorAppendOnlyLossEof,
-
 	int64							*mirrorAppendOnlyNewEof)
 {
 	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
@@ -6351,13 +6209,9 @@ bool PersistentFileSysObj_ResynchronizeRefetch(
 
 void PersistentFileSysObj_ResynchronizeBufferPoolCkpt(
 	ItemPointer 					persistentTid,
-
 	int64							persistentSerialNum,
-
 	XLogRecPtr						mirrorBufpoolResyncCkptLoc,
-
 	BlockNumber 					mirrorBufpoolResyncCkptBlockNum,
-
 	bool							flushToXLog)
 {
 	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
@@ -6424,11 +6278,8 @@ void PersistentFileSysObj_ResynchronizeBufferPoolCkpt(
 
 void PersistentFileSysObj_ResynchronizeRelationComplete(
 	ItemPointer 					persistentTid,
-
 	int64							persistentSerialNum,
-
 	int64							mirrorLossEof,
-
 	bool							flushToXLog)
 {
 	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
@@ -6530,23 +6381,14 @@ void PersistentFileSysObj_ResynchronizeRelationComplete(
 
 bool PersistentFileSysObj_OnlineVerifyScan(
 	OnlineVerifyScanToken			*onlineVerifyScanToken,
-
 	RelFileNode						*relFileNode,
-
 	int32							*segmentFileNum,
-
 	PersistentFileSysRelStorageMgr 	*relStorageMgr,
-
 	MirroredRelDataSynchronizationState *mirrorDataSynchronizationState,
-
 	PersistentFileSysRelBufpoolKind *relBufpoolKind,
-
 	int64							*mirrorAppendOnlyLossEof,
-
 	int64							*mirrorAppendOnlyNewEof,
-
 	ItemPointer						persistentTid,
-
 	int64							*persistentSerialNum)
 {
 	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
@@ -6693,23 +6535,14 @@ void PersistentFileSysObj_OnlineVerifyAbandonScan(
 
 bool PersistentFileSysObj_FilespaceScan(
 	FilespaceScanToken				*filespaceScanToken,
-
 	Oid 							*filespaceOid,
-
 	int16							*dbId1,
-
 	char							locationBlankPadded1[FilespaceLocationBlankPaddedWithNullTermLen],
-
 	int16							*dbId2,
-
 	char							locationBlankPadded2[FilespaceLocationBlankPaddedWithNullTermLen],
-
 	PersistentFileSysState			*persistentState,
-
 	MirroredObjectExistenceState	*mirrorExistenceState,
-
 	ItemPointer						persistentTid,
-
 	int64							*persistentSerialNum)
 {
 	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;

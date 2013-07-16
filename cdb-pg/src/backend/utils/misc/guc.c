@@ -308,9 +308,13 @@ bool		Debug_persistent_print = false;
 int			Debug_persistent_print_level = LOG;
 bool		Debug_persistent_recovery_print = true;
 int			Debug_persistent_recovery_print_level = LOG;
+bool		Disable_persistent_recovery_logging = false;
 bool		Debug_persistent_store_print = false;
 int			Debug_persistent_store_print_level = LOG;
 bool		Debug_persistent_bootstrap_print = false;
+bool		persistent_integrity_checks = true;
+bool		disable_persistent_diagnostic_dump = false;
+bool		debug_print_persistent_checks = false;
 bool		Debug_bulk_load_bypass_wal = true;
 bool		Debug_persistent_appendonly_commit_count_print = false;
 bool		Debug_cancel_print = false;
@@ -2558,6 +2562,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"Disable_persistent_recovery_logging", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("By default important persistent recovery information is logged, setting this GUC allows to disable it if required"),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Disable_persistent_recovery_logging,
+		true, NULL, NULL
+	},
+
+	{
 		{"debug_persistent_store_print", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Print persistent file-system object store debugging information."),
 			NULL,
@@ -2574,6 +2588,36 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_persistent_bootstrap_print,
+		false, NULL, NULL
+	},
+	
+	{
+		{"persistent_integrity_checks", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("When set enables all set of integrity checks for persistent tables."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&persistent_integrity_checks,
+		false, NULL, NULL
+	},
+
+	{
+		{"disable_persistent_diagnostic_dump", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("When set disables printing full PT on erros."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&disable_persistent_diagnostic_dump,
+		true, NULL, NULL
+	},
+
+	{
+		{"debug_print_persistent_checks", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("When set enables printing of logs in integrity checks for persistent tables module."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&debug_print_persistent_checks,
 		false, NULL, NULL
 	},
 

@@ -49,19 +49,21 @@
 typedef struct PersistentStoreSharedData
 {
 	char	eyecatcher[PersistentStoreSharedDataEyecatcher_Len];
+	bool				needToScanIntoSharedMemory;
+	int64				maxInUseSerialNum;
+		/* Value of persistent serial number that was assigned to last tuple */
 
-	bool	needToScanIntoSharedMemory;
+	int64				inUseCount;
+		/* Current number of tuples in persistent table */
 
-	int64					maxInUseSerialNum;
+	int64 				maxFreeOrderNum;
+		/* Current number of free tuples in persistent table */
 
-	int64					inUseCount;
+	ItemPointerData		freeTid;
+		/* TID of last tuple freed */
 
-	int64 					maxFreeOrderNum;
-
-	ItemPointerData			freeTid;
-
-	ItemPointerData			maxTid;
-
+	ItemPointerData		maxTid;
+		/* Highest TID of tuple stored in persistent table */
 } PersistentStoreSharedData;
 
 inline static bool PersistentStoreSharedData_EyecatcherIsValid(
@@ -82,41 +84,38 @@ typedef void (*PersistentStorePrintTupleCallback) (
 								ItemPointer 			persistentTid,
 								Datum					*values);
 
+typedef ScanKey (*PersistentStoreScanKeyInitCallback) (
+								Datum 					*values,
+								int                     *nKeys);
+
+typedef bool (*PersistentStoreAllowDuplicateCallback) (
+								Datum 					*exist_values,
+								Datum 					*new_values);
+
 #define PersistentStoreData_StaticInit {NULL,0,NULL,NULL,NULL,NULL,0,0,0,0}
 
 typedef struct PersistentStoreData
 {
-	char						*tableName;
-
-	GpGlobalSequence			gpGlobalSequence;
-
-	PersistentStoreOpenRel		openRel;
-
-	PersistentStoreCloseRel		closeRel;
-
+	char								*tableName;
+	GpGlobalSequence					gpGlobalSequence;
+	PersistentStoreOpenRel				openRel;
+	PersistentStoreCloseRel				closeRel;
 	PersistentStoreScanTupleCallback	scanTupleCallback;
-
 	PersistentStorePrintTupleCallback	printTupleCallback;
-
+	PersistentStoreScanKeyInitCallback  scanKeyInitCallback;
+	PersistentStoreAllowDuplicateCallback allowDuplicateCallback;
 	int64			myHighestSerialNum;
-
 	int				numAttributes;
-
 	int				attNumPersistentSerialNum;
-
 	int				attNumPreviousFreeTid;
 } PersistentStoreData;
 
 typedef struct PersistentStoreScan
 {
 	PersistentStoreData 		*storeData;
-
 	PersistentStoreSharedData 	*storeSharedData;
-
 	Relation					persistentRel;
-
 	HeapScanDesc				scan;
-
 	HeapTuple					tuple;
 } PersistentStoreScan;
 
@@ -124,7 +123,6 @@ inline static bool PersistentStore_IsZeroTid(
 	ItemPointer		testTid)
 {
 	static ItemPointerData zeroTid = {{0,0},0};
-
 	return (ItemPointerCompare(testTid, &zeroTid) == 0);
 }
 
@@ -134,9 +132,7 @@ inline static bool PersistentStore_IsZeroTid(
 typedef struct MirroredLockLocalVars
 {
 	bool mirroredLockIsHeldByMe;
-
 	bool specialResyncManagerFlag;
-
 	bool mirroredVariablesSet;
 } MirroredLockLocalVars;
 
@@ -147,7 +143,6 @@ typedef struct MirroredLockLocalVars
 typedef struct MirroredLockLocalVars
 {
 	bool mirroredLockIsHeldByMe;
-
 	bool specialResyncManagerFlag;
 } MirroredLockLocalVars;
 
@@ -314,7 +309,6 @@ typedef struct MirroredLockLocalVars
 typedef struct CheckpointStartLockLocalVars
 {
 	bool checkpointStartLockIsHeldByMe;
-
 	bool checkpointStartVariablesSet;
 } CheckpointStartLockLocalVars;
 
@@ -514,56 +508,47 @@ extern void PersistentStore_InitShared(
 
 extern void PersistentStore_Init(
 	PersistentStoreData 		*storeData,
-
 	char						*tableName,
-
 	GpGlobalSequence			gpGlobalSequence,
-
 	PersistentStoreOpenRel		openRel,
-
 	PersistentStoreCloseRel		closeRel,
-
 	PersistentStoreScanTupleCallback	scanTupleCallback,
-
 	PersistentStorePrintTupleCallback	printTupleCallback,
-
+	PersistentStoreScanKeyInitCallback  scanKeyInitCallback,
+	PersistentStoreAllowDuplicateCallback allowDuplicateCallback,
 	int 						numAttributes,
-
 	int 						attNumPersistentSerialNum,
-
 	int 						attNumPreviousFreeTid);
 
 extern void PersistentStore_ResetFreeList(
 	PersistentStoreData 		*storeData,
-
 	PersistentStoreSharedData 	*storeSharedData);
 
 extern void PersistentStore_InitScanUnderLock(
 	PersistentStoreData 		*storeData,
-
 	PersistentStoreSharedData 	*storeSharedData);
 
 extern void PersistentStore_Scan(
 	PersistentStoreData 		*storeData,
-
 	PersistentStoreSharedData	*storeSharedData,
-
 	PersistentStoreScanTupleCallback	scanTupleCallback);
 
 extern void PersistentStore_BeginScan(
 	PersistentStoreData 		*storeData,
-
 	PersistentStoreSharedData	*storeSharedData,
-
 	PersistentStoreScan			*storeScan);
+
+extern void PersistentStore_DeformTuple(
+	PersistentStoreData 	*storeData,
+	TupleDesc				tupleDesc,			
+						/* tuple descriptor */
+    HeapTuple 				tuple,
+	Datum					*values);
 
 extern bool PersistentStore_GetNext(
 	PersistentStoreScan			*storeScan,
-
 	Datum						*values,
-
 	ItemPointer					persistentTid,
-
 	int64						*persistentSerialNum);
 
 extern HeapTuple PersistentStore_GetScanTupleCopy(
@@ -593,77 +578,52 @@ typedef enum PersistentTidIsKnownResult
 
 extern PersistentTidIsKnownResult PersistentStore_TidIsKnown(
 	PersistentStoreSharedData 	*storeSharedData,
-
 	ItemPointer 				persistentTid,
-
 	ItemPointer 				maxTid);
 
 extern void PersistentStore_UpdateTuple(
 	PersistentStoreData 		*storeData,
-
 	PersistentStoreSharedData	*storeSharedData,
-
 	ItemPointer 			persistentTid,
 				/* TID of the stored tuple. */
-
 	Datum					*values,
-
 	bool					flushToXLog);
 				/* When true, the XLOG record for this change will be flushed to disk. */
 
 extern void PersistentStore_ReplaceTuple(
 	PersistentStoreData 		*storeData,
-
 	PersistentStoreSharedData	*storeSharedData,
-
 	ItemPointer 			persistentTid,
 				/* TID of the stored tuple. */
-
 	HeapTuple				tuple,
-
 	Datum					*newValues,
-
 	bool					*replaces,
-
 	bool					flushToXLog);
 				/* When true, the XLOG record for this change will be flushed to disk. */
 
 extern void PersistentStore_ReadTuple(
 	PersistentStoreData 		*storeData,
-
 	PersistentStoreSharedData 	*storeSharedData,
-
 	ItemPointer					readTid,
-
 	Datum						*values,
-
 	HeapTuple					*tupleCopy);
 
 extern void PersistentStore_AddTuple(
 	PersistentStoreData 		*storeData,
-
 	PersistentStoreSharedData 	*storeSharedData,
-
 	Datum					*values,
-
 	bool					flushToXLog,
 				/* When true, the XLOG record for this change will be flushed to disk. */
-
 	ItemPointer 			persistentTid,
 				/* TID of the stored tuple. */
-
 	int64					*persistentSerialNum);
 
 extern void PersistentStore_FreeTuple(
 	PersistentStoreData 		*storeData,
-
 	PersistentStoreSharedData 	*storeSharedData,
-
 	ItemPointer 			persistentTid,
 				/* TID of the stored tuple. */
-
 	Datum					*freeValues,
-
 	bool					flushToXLog);
 				/* When true, the XLOG record for this change will be flushed to disk. */
 

@@ -12,6 +12,7 @@
 #include "utils/palloc.h"
 
 #include "cdb/cdbpersistentstore.h"
+#include "cdb/cdbpersistentcheck.h"
 
 #include "storage/itemptr.h"
 #include "access/genam.h"
@@ -28,31 +29,22 @@ void PersistentStore_InitShared(
 	PersistentStoreSharedData 	*storeSharedData)
 {
 	MemSet(storeSharedData, 0, sizeof(PersistentStoreSharedData));
-
 	strcpy(storeSharedData->eyecatcher, PersistentStoreSharedDataEyecatcher);
-
 	storeSharedData->needToScanIntoSharedMemory = true;	
 }
 
 void PersistentStore_Init(
 	PersistentStoreData 		*storeData,
-
 	char						*tableName,
-
 	GpGlobalSequence			gpGlobalSequence,
-	
 	PersistentStoreOpenRel		openRel,
-
 	PersistentStoreCloseRel		closeRel,
-
 	PersistentStoreScanTupleCallback	scanTupleCallback,
-
 	PersistentStorePrintTupleCallback	printTupleCallback,
-
+	PersistentStoreScanKeyInitCallback  scanKeyInitCallback,
+	PersistentStoreAllowDuplicateCallback allowDuplicateCallback,
 	int 						numAttributes,
-
 	int 						attNumPersistentSerialNum,
-
 	int 						attNumPreviousFreeTid)
 {
 	MemSet(storeData, 0, sizeof(PersistentStoreData));
@@ -63,6 +55,8 @@ void PersistentStore_Init(
 	storeData->closeRel = closeRel;
 	storeData->scanTupleCallback = scanTupleCallback;
 	storeData->printTupleCallback = printTupleCallback;
+	storeData->scanKeyInitCallback = scanKeyInitCallback;
+	storeData->allowDuplicateCallback = allowDuplicateCallback;
 	storeData->numAttributes = numAttributes;
 	storeData->attNumPersistentSerialNum = attNumPersistentSerialNum;
 	storeData->attNumPreviousFreeTid = attNumPreviousFreeTid;
@@ -70,7 +64,6 @@ void PersistentStore_Init(
 
 void PersistentStore_ResetFreeList(
 	PersistentStoreData 		*storeData,
-
 	PersistentStoreSharedData 	*storeSharedData)
 {
 	int64 persistentSerialNum;
@@ -86,22 +79,17 @@ void PersistentStore_ResetFreeList(
 	MemSet(&storeSharedData->maxTid, 0, sizeof(ItemPointerData));
 }
 
-static void PersistentStore_DeformTuple(
+void PersistentStore_DeformTuple(
 	PersistentStoreData 	*storeData,
-
 	TupleDesc				tupleDesc,			
 						/* tuple descriptor */
-
     HeapTuple 				tuple,
-
 	Datum					*values)
 {
 	bool	*nulls;
-
 	int i;
 
 	nulls = (bool*)palloc(storeData->numAttributes * sizeof(bool));
-
 	heap_deform_tuple(tuple, tupleDesc, values, nulls);
 
 	for (i = 1; i <= storeData->numAttributes; i++)
@@ -112,35 +100,25 @@ static void PersistentStore_DeformTuple(
 
 static void PersistentStore_ExtractOurTupleData(
 	PersistentStoreData 	*storeData,
-
 	Datum					*values,
-
 	int64					*persistentSerialNum,
-
 	ItemPointer				previousFreeTid)
 {
 	*persistentSerialNum = DatumGetInt64(values[storeData->attNumPersistentSerialNum - 1]);
-
 	*previousFreeTid = *((ItemPointer) DatumGetPointer(values[storeData->attNumPreviousFreeTid - 1]));
 }
 
 static void PersistentStore_FormTupleSetOurs(
 	PersistentStoreData 	*storeData,
-
 	TupleDesc				tupleDesc,
 				/* Tuple descriptor. */
-
 	Datum					*values,
-
 	int64					persistentSerialNum,
-
 	ItemPointerData			*previousFreeTid,
-
 	HeapTuple	*tuple)
 				/* The formed tuple. */
 {
 	int			natts = 0;
-
 	bool	*nulls;
 
 	natts = tupleDesc->natts;
@@ -172,16 +150,13 @@ static HTAB* freeEntryHashTable = NULL;
 typedef struct PersistentFreeEntryKey
 {
 	ItemPointerData	persistentTid;
-	
 } PersistentFreeEntryKey;
 
 typedef struct PersistentFreeEntry
 {
 	PersistentFreeEntryKey key;		
-
 	ItemPointerData previousFreeTid;
 	int64			freeOrderNum;
-
 } PersistentFreeEntry;
 
 static void
@@ -201,24 +176,122 @@ PersistentStore_FreeEntryHashTableInit(void)
 	freeEntryHashTable = hash_create("Persistent Free Entry", 10, &info, hash_flags);
 }
 
-static void PersistentStore_InitScanAddFreeEntry(
-	ItemPointer		persistentTid,
+static void PersistentStore_DiagnoseDumpTable(
+	PersistentStoreData 		*storeData,
+	PersistentStoreSharedData 	*storeSharedData)
+{
 
-	ItemPointer		previousFreeTid,
+	if (disable_persistent_diagnostic_dump)
+	{
+		return;
+	}
+
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
+	PersistentStoreScan storeScan;
+	ItemPointerData			persistentTid;
+	int64					persistentSerialNum;
+	Datum					*values;
+	BlockNumber				lastDisplayedBlockNum;
+	bool					displayedOne;
+	BlockNumber				currentBlockNum;
+
+	elog(LOG, 
+		 "Diagnostic dump of persistent table ('%s'): maximum in-use serial number " INT64_FORMAT ", maximum free order number " INT64_FORMAT ", free TID %s, maximum known TID %s",
+		 storeData->tableName,
+		 storeSharedData->maxInUseSerialNum, 
+		 storeSharedData->maxFreeOrderNum, 
+		 ItemPointerToString(&storeSharedData->freeTid),
+		 ItemPointerToString2(&storeSharedData->maxTid));
+
+	values = (Datum*)palloc(storeData->numAttributes * sizeof(Datum));
+
+	PersistentStore_BeginScan(
+						storeData,
+						storeSharedData,
+						&storeScan);
+
+	lastDisplayedBlockNum = 0;
+	displayedOne = false;
+	while (PersistentStore_GetNext(
+							&storeScan,
+							values,
+							&persistentTid,
+							&persistentSerialNum))
+	{
+		/*
+		 * Use the BlockIdGetBlockNumber routine because ItemPointerGetBlockNumber 
+		 * asserts for valid TID.
+		 */
+		currentBlockNum = BlockIdGetBlockNumber(&persistentTid.ip_blkid);
+		if (!displayedOne || currentBlockNum != lastDisplayedBlockNum)
+		{
+			Buffer		buffer;
+			PageHeader	page;
+			XLogRecPtr	lsn;
+
+			/*
+			 * Fetch the block and display the LSN.
+			 */
+			
+			// -------- MirroredLock ----------
+			MIRROREDLOCK_BUFMGR_LOCK;
+			
+			buffer = ReadBuffer(
+							storeScan.persistentRel,
+							currentBlockNum);
+
+			page = (PageHeader) BufferGetPage(buffer);
+			lsn = PageGetLSN(page);
+			ReleaseBuffer(buffer);
+
+			MIRROREDLOCK_BUFMGR_UNLOCK;
+			// -------- MirroredLock ----------
+
+			elog(LOG, "Diagnostic LSN %s of page %u",
+				 XLogLocationToString(&lsn),
+				 currentBlockNum);
+
+			lastDisplayedBlockNum = currentBlockNum;
+			displayedOne = true;
+		}
+
+		/*
+		 * Display the persistent tuple.
+		 */
+		(*storeData->printTupleCallback)(
+									LOG,
+									"DIAGNOSE",
+									&persistentTid,
+									values);
+	}
 	
+	PersistentStore_EndScan(&storeScan);
+
+	pfree(values);
+}
+
+static void PersistentStore_InitScanAddFreeEntry(
+	PersistentStoreData 		*storeData,
+	PersistentStoreSharedData 	*storeSharedData,
+	ItemPointer		persistentTid,
+	ItemPointer		previousFreeTid,
 	int64			freeOrderNum)
 {
 	PersistentFreeEntryKey key;
-
 	PersistentFreeEntry *entry;
-
 	bool found;
 
 	if (PersistentStore_IsZeroTid(persistentTid))
+	{
+		PersistentStore_DiagnoseDumpTable(storeData, storeSharedData);
 		elog(ERROR, "Expected persistent TID to not be (0,0)");
+	}
 
 	if (PersistentStore_IsZeroTid(previousFreeTid))
+	{
 		elog(ERROR, "Expected previous free TID to not be (0,0)");
+	}
 
 	if (freeEntryHashTable == NULL)
 		PersistentStore_FreeEntryHashTableInit();
@@ -234,8 +307,11 @@ static void PersistentStore_InitScanAddFreeEntry(
 									&found);
 
 	if (found)
+	{
+		PersistentStore_DiagnoseDumpTable(storeData, storeSharedData);
 		elog(ERROR, "Duplicate free persistent TID entry %s",
 			 ItemPointerToString(persistentTid));
+	}
 
 	entry->previousFreeTid = *previousFreeTid;
 	entry->freeOrderNum = freeOrderNum;
@@ -248,9 +324,7 @@ static void PersistentStore_InitScanVerifyFreeEntries(
 {
 	int64 freeOrderNum;
 	ItemPointerData freeTid;
-
 	PersistentFreeEntry *entry;
-
 	HASH_SEQ_STATUS iterateStatus;
 
 	freeOrderNum = storeSharedData->maxFreeOrderNum;
@@ -259,19 +333,24 @@ static void PersistentStore_InitScanVerifyFreeEntries(
 	if (freeOrderNum == 0)
 	{
 		if (!PersistentStore_IsZeroTid(&freeTid))
+		{
+			PersistentStore_DiagnoseDumpTable(storeData, storeSharedData);
 			elog(ERROR, "Expected free TID to be (0,0) when free order number is 0 in '%s'",
 				 storeData->tableName);
+		}
 	}
 	else
 	{
 		PersistentFreeEntryKey key;
-		
 		PersistentFreeEntry *removeEntry;
 		
 		if (freeEntryHashTable == NULL)
+		{
+			PersistentStore_DiagnoseDumpTable(storeData, storeSharedData);
 			elog(ERROR, "Looking for free order number " INT64_FORMAT " and the free entry hash table is empty for '%s'",
 				 freeOrderNum,
 				 storeData->tableName);
+		}
 		
 		while (true)
 		{
@@ -285,27 +364,36 @@ static void PersistentStore_InitScanVerifyFreeEntries(
 											HASH_FIND,
 											NULL);
 			if (entry == NULL)
+			{
+				PersistentStore_DiagnoseDumpTable(storeData, storeSharedData);
 				elog(ERROR, 
 					 "Did not find free entry for free TID %s (free order number " INT64_FORMAT ") for '%s'",
 					 ItemPointerToString(&freeTid),
 					 freeOrderNum,
 					 storeData->tableName);
+			}
 
 			if (PersistentStore_IsZeroTid(&entry->previousFreeTid))
+			{
+				PersistentStore_DiagnoseDumpTable(storeData, storeSharedData);
 				elog(ERROR, 
 					 "Previous free TID not expected to be (0,0) -- persistent Free Entry hashtable corrupted for '%s' "
 					 "(expected free order number " INT64_FORMAT ", entry free order number " INT64_FORMAT ")",
 				     storeData->tableName,
 				     freeOrderNum,
 				     entry->freeOrderNum);
+			}
 
 			if (freeOrderNum != entry->freeOrderNum)
+			{
+				PersistentStore_DiagnoseDumpTable(storeData, storeSharedData);
 				elog(ERROR, 
 					 "Free entry for free TID %s has wrong free order number (expected free order number " INT64_FORMAT ", found free order number " INT64_FORMAT ") for '%s'",
 					 ItemPointerToString(&freeTid),
 					 freeOrderNum,
 					 entry->freeOrderNum,
 					 storeData->tableName);
+			}
 			
 			if (Debug_persistent_recovery_print)
 				elog(PersistentRecovery_DebugPrintLevel(), 
@@ -326,6 +414,7 @@ static void PersistentStore_InitScanVerifyFreeEntries(
 									&entry->key.persistentTid,
 									&freeTid) != 0)
 				{
+					PersistentStore_DiagnoseDumpTable(storeData, storeSharedData);
 					elog(ERROR, "Expected previous_free_tid %s to match the persistent TID %s for the last free entry (free order number 1) for '%s'",
 						 ItemPointerToString(&freeTid),
 						 ItemPointerToString2(&entry->key.persistentTid),
@@ -340,8 +429,11 @@ static void PersistentStore_InitScanVerifyFreeEntries(
 								HASH_REMOVE, 
 								NULL);
 			if (removeEntry == NULL)
+			{
+				PersistentStore_DiagnoseDumpTable(storeData, storeSharedData);
 				elog(ERROR, "Persistent Free Entry hashtable corrupted for '%s'",
 				     storeData->tableName);
+			}
 			entry = NULL;
 
 			freeOrderNum--;
@@ -363,6 +455,7 @@ static void PersistentStore_InitScanVerifyFreeEntries(
 		 */
 		while ((entry = hash_seq_search(&iterateStatus)) != NULL)
 		{
+			PersistentStore_DiagnoseDumpTable(storeData, storeSharedData);
 			elog(ERROR, "Found at least one unaccounted for free entry for '%s'.  Example: free order number " INT64_FORMAT ", free TID %s, previous free TID %s",
 				storeData->tableName,
 				entry->freeOrderNum,
@@ -383,19 +476,15 @@ static void PersistentStore_InitScanVerifyFreeEntries(
 
 static void PersistentStore_DoInitScan(
 	PersistentStoreData 		*storeData,
-
 	PersistentStoreSharedData 	*storeSharedData)
 {
-	PersistentStoreScan storeScan;
-
+	PersistentStoreScan 	storeScan;
 	ItemPointerData			persistentTid;
 	int64					persistentSerialNum;
-
 	ItemPointerData			previousFreeTid;
-
 	Datum					*values;
-
-	int64			globalSequenceNum;
+	int64					globalSequenceNum;
+	int64					numFreeEntries = 0;
 
 	values = (Datum*)palloc(storeData->numAttributes * sizeof(Datum));
 
@@ -450,7 +539,10 @@ static void PersistentStore_DoInitScan(
 
 			if (!gp_persistent_skip_free_list)
 			{
+				numFreeEntries++;
 				PersistentStore_InitScanAddFreeEntry(
+												storeData,
+												storeSharedData,
 												&persistentTid,
 												&previousFreeTid,
 												/* freeOrderNum */ persistentSerialNum);
@@ -516,9 +608,9 @@ static void PersistentStore_DoInitScan(
 	{
 		storeSharedData->maxInUseSerialNum = globalSequenceNum;
 	}
-	
+
 	if (Debug_persistent_recovery_print)
-		elog(PersistentRecovery_DebugPrintLevel(), 
+		elog(PersistentRecovery_DebugPrintLevel(),
 			 "PersistentStore_DoInitScan ('%s'): maximum in-use serial number " INT64_FORMAT ", maximum free order number " INT64_FORMAT ", free TID %s, maximum known TID %s",
 			 storeData->tableName,
 			 storeSharedData->maxInUseSerialNum, 
@@ -528,6 +620,16 @@ static void PersistentStore_DoInitScan(
 
 	if (!gp_persistent_skip_free_list)
 	{
+		if (numFreeEntries != storeSharedData->maxFreeOrderNum)
+		{
+			PersistentStore_DiagnoseDumpTable(storeData, storeSharedData);
+			elog(ERROR, 
+					 "Number of freeTIDs " INT64_FORMAT ", do not match maximum free order number " INT64_FORMAT ", for '%s'",
+					 numFreeEntries,
+					 storeSharedData->maxFreeOrderNum,
+					 storeData->tableName);
+		}
+		
 		PersistentStore_InitScanVerifyFreeEntries(
 											storeData,
 											storeSharedData);
@@ -543,7 +645,6 @@ static void PersistentStore_DoInitScan(
 
 void PersistentStore_InitScanUnderLock(
 	PersistentStoreData 		*storeData,
-
 	PersistentStoreSharedData 	*storeSharedData)
 {
 	if (!storeSharedData->needToScanIntoSharedMemory)
@@ -560,18 +661,14 @@ void PersistentStore_InitScanUnderLock(
 
 void PersistentStore_Scan(
 	PersistentStoreData 		*storeData,
-
 	PersistentStoreSharedData 	*storeSharedData,
-
 	PersistentStoreScanTupleCallback	scanTupleCallback)
 {
 	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
-	PersistentStoreScan storeScan;
-
+	PersistentStoreScan 	storeScan;
 	ItemPointerData			persistentTid;
 	int64					persistentSerialNum = 0;
-
 	Datum					*values;
 
 	values = (Datum*)palloc(storeData->numAttributes * sizeof(Datum));
@@ -610,9 +707,7 @@ void PersistentStore_Scan(
 
 void PersistentStore_BeginScan(
 	PersistentStoreData 		*storeData,
-
 	PersistentStoreSharedData	*storeSharedData,
-
 	PersistentStoreScan			*storeScan)
 {
 	MemSet(storeScan, 0, sizeof(PersistentStoreScan));
@@ -633,11 +728,8 @@ void PersistentStore_BeginScan(
 
 bool PersistentStore_GetNext(
 	PersistentStoreScan			*storeScan,
-
 	Datum						*values,
-
 	ItemPointer					persistentTid,
-
 	int64						*persistentSerialNum)
 {
 	ItemPointerData			previousFreeTid;
@@ -711,9 +803,7 @@ int64 PersistentStore_CurrentMaxSerialNum(
 
 PersistentTidIsKnownResult PersistentStore_TidIsKnown(
 	PersistentStoreSharedData 	*storeSharedData,
-
 	ItemPointer 				persistentTid,
-	
 	ItemPointer 				maxTid)
 {
 	*maxTid = storeSharedData->maxTid;
@@ -741,20 +831,14 @@ PersistentTidIsKnownResult PersistentStore_TidIsKnown(
 
 static void PersistentStore_DoInsertTuple(
 	PersistentStoreData 		*storeData,
-
 	PersistentStoreSharedData 	*storeSharedData,
-
 	Relation				persistentRel,
 				/* The persistent table relation. */
-
 	Datum					*values,
-
 	bool					flushToXLog,
 				/* When true, the XLOG record for this change will be flushed to disk. */
-
 	ItemPointer 			persistentTid)
 				/* TID of the stored tuple. */
-
 {
 	bool 		*nulls;
 	HeapTuple	persistentTuple = NULL;
@@ -827,17 +911,12 @@ static void PersistentStore_DoInsertTuple(
 
 static void PersistentStore_InsertTuple(
 	PersistentStoreData 		*storeData,
-
 	PersistentStoreSharedData 	*storeSharedData,
-
 	Datum					*values,
-
 	bool					flushToXLog,
 				/* When true, the XLOG record for this change will be flushed to disk. */
-
 	ItemPointer 			persistentTid)
 				/* TID of the stored tuple. */
-
 {
 	Relation	persistentRel;
 
@@ -883,17 +962,12 @@ static void PersistentStore_InsertTuple(
 
 void PersistentStore_UpdateTuple(
 	PersistentStoreData 		*storeData,
-
 	PersistentStoreSharedData 	*storeSharedData,
-
 	ItemPointer 			persistentTid,
 				/* TID of the stored tuple. */
-
 	Datum					*values,
-
 	bool					flushToXLog)
 				/* When true, the XLOG record for this change will be flushed to disk. */
-
 {
 	Relation	persistentRel;
 	bool 		*nulls;
@@ -967,21 +1041,14 @@ void PersistentStore_UpdateTuple(
 
 void PersistentStore_ReplaceTuple(
 	PersistentStoreData 		*storeData,
-
 	PersistentStoreSharedData 	*storeSharedData,
-
 	ItemPointer 			persistentTid,
 				/* TID of the stored tuple. */
-
 	HeapTuple				tuple,
-
 	Datum					*newValues,
-	
 	bool					*replaces,
-
 	bool					flushToXLog)
 				/* When true, the XLOG record for this change will be flushed to disk. */
-
 {
 	Relation	persistentRel;
 	bool 		*nulls;
@@ -1085,13 +1152,9 @@ void PersistentStore_ReplaceTuple(
 
 void PersistentStore_ReadTuple(
 	PersistentStoreData 		*storeData,
-
 	PersistentStoreSharedData 	*storeSharedData,
-
 	ItemPointer					readTid,
-
 	Datum						*values,
-
 	HeapTuple					*tupleCopy)
 {
 	Relation	persistentRel;
@@ -1183,16 +1246,13 @@ void PersistentStore_ReadTuple(
 
 static bool PersistentStore_GetFreeTuple(
 	PersistentStoreData 		*storeData,
-
 	PersistentStoreSharedData 	*storeSharedData,
-
 	ItemPointer				freeTid)
 {
-	Datum			*values;
-	HeapTuple		tupleCopy;
-
-	int64					persistentSerialNum;
-	ItemPointerData			previousFreeTid;
+	Datum				*values;
+	HeapTuple			tupleCopy;
+	int64				persistentSerialNum;
+	ItemPointerData		previousFreeTid;
 
 	MemSet(freeTid, 0, sizeof(ItemPointerData));
 
@@ -1243,7 +1303,7 @@ static bool PersistentStore_GetFreeTuple(
 			 storeData->tableName);
 
 	if (storeSharedData->maxFreeOrderNum == 1)
-		Assert(ItemPointerCompare(&previousFreeTid, &storeSharedData->freeTid) == 0);
+		Insist(ItemPointerCompare(&previousFreeTid, &storeSharedData->freeTid) == 0);
 
 	if (persistentSerialNum != storeSharedData->maxFreeOrderNum)
 		elog(ERROR, "Expected persistent store tuple at %s to have order number " INT64_FORMAT " (found " INT64_FORMAT ", '%s')", 
@@ -1257,7 +1317,6 @@ static bool PersistentStore_GetFreeTuple(
 	storeSharedData->freeTid = previousFreeTid;
 
 	pfree(values);
-
 	heap_freetuple(tupleCopy);
 
 	if (Debug_persistent_store_print)
@@ -1267,31 +1326,68 @@ static bool PersistentStore_GetFreeTuple(
 			 ItemPointerToString(&storeSharedData->freeTid),
 			 storeData->tableName);
 
+
+	/* 
+	 * Lets validate and have sanity check to make sure the prevFreeTid is really free 
+	 */
+	if (persistent_integrity_checks && (storeSharedData->maxFreeOrderNum > 0))
+	{
+		ItemPointerData tmpPreviousFreeTid;
+
+		/*
+		 * Read the current last free tuple.
+		 */
+		values = (Datum*)palloc(storeData->numAttributes * sizeof(Datum));
+		PersistentStore_ReadTuple(
+						storeData,
+						storeSharedData,
+						&previousFreeTid,
+						values,
+						&tupleCopy);
+
+		PersistentStore_ExtractOurTupleData(
+									storeData,
+									values,
+									&persistentSerialNum,
+									&tmpPreviousFreeTid);
+
+		if (PersistentStore_IsZeroTid(&tmpPreviousFreeTid))
+			elog(ERROR, "PersistentStore_GetFreeTuple: Expected to have previous FreeTID at %s to be free ('%s')", 
+				 ItemPointerToString(&previousFreeTid),
+				 storeData->tableName);
+
+		if (persistentSerialNum != storeSharedData->maxFreeOrderNum)
+			elog(ERROR, "PersistentStore_GetFreeTuple: Expected persistent store tuple at %s to have order number " INT64_FORMAT " (found " INT64_FORMAT ", '%s')", 
+				 ItemPointerToString(&previousFreeTid),
+				 storeSharedData->maxFreeOrderNum,
+				 persistentSerialNum,
+				 storeData->tableName);
+
+		pfree(values);
+		heap_freetuple(tupleCopy);
+	}
+
 	return true;
 }
 
 void PersistentStore_AddTuple(
 	PersistentStoreData 		*storeData,
-
 	PersistentStoreSharedData 	*storeSharedData,
-
 	Datum					*values,
-
 	bool					flushToXLog,
 				/* When true, the XLOG record for this change will be flushed to disk. */
-
 	ItemPointer 			persistentTid,
 				/* TID of the stored tuple. */
-
 	int64					*persistentSerialNum)
-
 {
 #ifdef USE_ASSERT_CHECKING
 	if (storeSharedData == NULL ||
 		!PersistentStoreSharedData_EyecatcherIsValid(storeSharedData))
 		elog(ERROR, "Persistent store shared-memory not valid");
 #endif
-	
+
+	PTCheck_BeforeAddingEntry(storeData, values);
+
 	if (Debug_persistent_store_print)
 		elog(PersistentStore_DebugPrintLevel(), 
 			 "PersistentStore_AddTuple: Going to add tuple ('%s', shared data %p)",
@@ -1349,23 +1445,20 @@ void PersistentStore_AddTuple(
 
 void PersistentStore_FreeTuple(
 	PersistentStoreData 		*storeData,
-
 	PersistentStoreSharedData 	*storeSharedData,
-
 	ItemPointer 			persistentTid,
 				/* TID of the stored tuple. */
-
 	Datum					*freeValues,
-
 	bool					flushToXLog)
 				/* When true, the XLOG record for this change will be flushed to disk. */
-
 {
 	Relation	persistentRel;
 	HeapTuple	persistentTuple = NULL;
 	ItemPointerData prevFreeTid;
 	XLogRecPtr xlogEndLoc;
 				/* The end location of the UPDATE XLOG record. */
+
+	Assert( LWLockHeldByMe(PersistentObjLock) );
 				
 #ifdef USE_ASSERT_CHECKING
 	if (storeSharedData == NULL ||
@@ -1386,9 +1479,56 @@ void PersistentStore_FreeTuple(
 
 	storeSharedData->maxFreeOrderNum++;
 	if (storeSharedData->maxFreeOrderNum == 1)
+	{
 		prevFreeTid = *persistentTid;		// So non-zero PreviousFreeTid indicates free.
+	}
 	else
+	{
 		prevFreeTid = storeSharedData->freeTid;
+
+		/* 
+		 * Lets validate and have sanity check to make sure the prevFreeTid is really free
+		 */
+		if (persistent_integrity_checks)
+		{
+			ItemPointerData tmpPreviousFreeTid;
+			Datum				*values;
+			HeapTuple			tupleCopy;
+			int64				persistentSerialNum;
+
+			/*
+			 * Read the current last free tuple.
+			 */
+			values = (Datum*)palloc(storeData->numAttributes * sizeof(Datum));
+			PersistentStore_ReadTuple(
+							storeData,
+							storeSharedData,
+							&prevFreeTid,
+							values,
+							&tupleCopy);
+
+			PersistentStore_ExtractOurTupleData(
+										storeData,
+										values,
+										&persistentSerialNum,
+										&tmpPreviousFreeTid);
+
+			if (PersistentStore_IsZeroTid(&tmpPreviousFreeTid))
+				elog(ERROR, "PersistentStore_FreeTuple: Expected to have previous FreeTID at %s to be free ('%s')", 
+					 ItemPointerToString(&prevFreeTid),
+					 storeData->tableName);
+
+			if (persistentSerialNum != (storeSharedData->maxFreeOrderNum - 1))
+				elog(ERROR, "PersistentStore_FreeTuple: Expected persistent store tuple at %s to have order number " INT64_FORMAT " (found " INT64_FORMAT ", '%s')", 
+					 ItemPointerToString(&prevFreeTid),
+					 (storeSharedData->maxFreeOrderNum - 1),
+					 persistentSerialNum,
+					 storeData->tableName);
+
+			pfree(values);
+			heap_freetuple(tupleCopy);
+		}
+	}
 	storeSharedData->freeTid = *persistentTid;
 
 	PersistentStore_FormTupleSetOurs(

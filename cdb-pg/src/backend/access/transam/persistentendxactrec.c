@@ -44,6 +44,9 @@ char *EndXactRecKind_Name(
 	}
 }
 
+/*
+ * Need to comment on what's expected behavior for PREPARE or is this never called for the case
+ */
 bool EndXactRecKind_NeedsAction(
 	EndXactRecKind 					endXactRecKind,
 

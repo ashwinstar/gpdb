@@ -54,11 +54,8 @@ extern void PersistentDatabase_DirIterateInit(void);
 
 extern bool PersistentDatabase_DirIterateNext(
 	DbDirNode				*dbDirNode,
-
 	PersistentFileSysState	*state,
-
 	ItemPointer				persistentTid,
-
 	int64					*persistentSerialNum);
 
 extern void PersistentDatabase_DirIterateClose(void);
@@ -81,27 +78,19 @@ extern void PersistentDatabase_Reset(void);
 extern void PersistentDatabase_MarkCreatePending(
 	DbDirNode 		*dbDirNode,
 				/* The tablespace and database OIDs for the create. */
-
 	MirroredObjectExistenceState mirrorExistenceState,
-
 	ItemPointer		persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the rel file */
-				
 	int64			*persistentSerialNum,
-				
-
 	bool			flushToXLog);
 				/* When true, the XLOG record for this change will be flushed to disk. */
 
 extern void PersistentDatabase_AddCreated(
 	DbDirNode		*dbDirNode,
 				/* The tablespace and database OIDs for the create. */
-				
 	MirroredObjectExistenceState mirrorExistenceState,
-				
 	ItemPointer 	persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the rel file */
-
 	bool			flushToXLog);
 				/* When true, the XLOG record for this change will be flushed to disk. */
 					
@@ -115,13 +104,10 @@ extern void PersistentDatabase_AddCreated(
 extern void PersistentDatabase_Created(
 	DbDirNode		*dbDirNode,
 				/* The tablespace and database OIDs for the created relation. */
-				
 	ItemPointer 	persistentTid,
 				/* TID of the gp_persistent_database_node tuple for the rel file */
-				
 	int64			persistentSerialNum,
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
-
 	bool			retryPossible);
 					
 /*

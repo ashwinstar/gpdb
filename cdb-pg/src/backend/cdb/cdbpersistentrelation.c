@@ -223,39 +223,42 @@ void PersistentRelation_CheckTablespace(
 /*
  * Indicate we intend to create a relation file as part of the current transaction.
  *
- * An XLOG IntentToCreate record is generated that will guard the subsequent file-system
+ * This function adds an entry in 'gp_persistent_relation_node' for either a new table (segment file
+ * # 0) or a new segment file under AO table (segment file # > 0 for row/column-oriented AO) with a state
+ * 'Create Pending'. An XLOG IntentToCreate record is generated that will guard the subsequent file-system
  * create in case the transaction aborts.
  *
- * After 1 or more calls to this routine to mark intention about relation files that are going
- * to be created, call ~_DoPendingCreates to do the actual file-system creates.  (See its
- * note on XLOG flushing).
+ * Paramaters
+ * -----------
+ * relFileNode = The tablespace, database, and relation OIDs for the create
+ * segmentFileNum = As the name implies (   0 for heap
+ *                                       >= 0 for RO/CO AO as applicable)
+ * relStorageMgr = Persistent Relation storage Manager
+ * relBufpoolKind = Buffer pool type beneath corrosponding relation
+ * TODO bufferPollBulkLoad = ???
+ * TODO mirrorExistenceState = ???
+ * TODO relDataSynchronizationState = ???
+ * flushToXlog = If true, the XLOG record for this change will be flushed to disk.
+ * TODO isLocalBuf = ???
+ *
+ * Return
+ * ------
+ * relationName = Name of the relation used for either debugging or to store in PendingDelete LL.
+ * persistentTid = Resulting TID of the gp_persistent_rel_files tuple for the relation
+ * serialNum = Resulting serial number for the relation.  Distinquishes the uses of the tuple
  */
 void PersistentRelation_AddCreatePending(
 	RelFileNode 		*relFileNode,
-				/* The tablespace, database, and relation OIDs for the create. */
-
 	int32				segmentFileNum,
-
 	PersistentFileSysRelStorageMgr relStorageMgr,
-
 	PersistentFileSysRelBufpoolKind relBufpoolKind,
-
 	bool				bufferPoolBulkLoad,
-
 	MirroredObjectExistenceState mirrorExistenceState,
-
 	MirroredRelDataSynchronizationState relDataSynchronizationState,
-
 	char				*relationName,
-
 	ItemPointer			persistentTid,
-				/* Resulting TID of the gp_persistent_rel_files tuple for the relation. */
-
 	int64				*serialNum,
-				/* Resulting serial number for the relation.  Distinquishes the uses of the tuple. */
-
 	bool 				flushToXLog,
-				/* When true, the XLOG record for this change will be flushed to disk. */
 	bool				isLocalBuf)
 {
 	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
@@ -286,8 +289,10 @@ void PersistentRelation_AddCreatePending(
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
+	/* Verify if the needed shared mem data structures for persistent tables are setup and inited */
 	PersistentRelation_VerifyInitScan();
 
+	/* Setup the file system object name */
 	PersistentFileSysObjName_SetRelationFile(
 										&fsObjName, 
 										relFileNode,
@@ -295,6 +300,7 @@ void PersistentRelation_AddCreatePending(
 
 	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
+	/* Create a values array which will be used to create a 'gp_persistent_relation_node' tuple */
 	GpPersistentRelationNode_SetDatumValues(
 										values,
 										relFileNode->spcNode,
@@ -319,6 +325,8 @@ void PersistentRelation_AddCreatePending(
 										/* persistentSerialNum */ 0,	// This will be set by PersistentFileSysObj_AddTuple.
 										&previousFreeTid);
 
+	/* Add a new tuple to 'gp_persistent_relation_node' table for the new relation/segment file
+	 * we intend to create. This will also create and apply a new persistent serial number. */
 	PersistentFileSysObj_AddTuple(
 							PersistentFsObjType_RelationFile,
 							values,
@@ -345,11 +353,15 @@ void PersistentRelation_AddCreatePending(
 										   ""); // tableName
 	#endif
 
-	/*
-	 * MPP-18228
-	 * To make adding 'Create Pending' entry to persistent table and adding
-	 * to the PendingDelete list atomic
-	 */
+   /* We'll add an entry to the PendingDelete LinkedList (LL) to remeber what we
+    * created in this transaction (or sub-transaction). If the transaction
+    * aborts then we can search for all such entries in this LL and get rid of (delete)
+    * such relations or segment files on the disk.
+	*
+	* MPP-18228
+	* To make adding 'Create Pending' entry to persistent table and adding
+	* to the PendingDelete list atomic
+	*/
 	PendingDelete_AddCreatePendingRelationEntry(
 								&fsObjName,
 								persistentTid,
@@ -377,32 +389,20 @@ void PersistentRelation_AddCreatePending(
 void PersistentRelation_AddCreated(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the create. */
-
 	int32				segmentFileNum,
-
 	PersistentFileSysRelStorageMgr relStorageMgr,
-
 	PersistentFileSysRelBufpoolKind relBufpoolKind,
-
 	MirroredObjectExistenceState mirrorExistenceState,
-
 	MirroredRelDataSynchronizationState relDataSynchronizationState,
-
 	int64				mirrorAppendOnlyLossEof,
-
 	int64				mirrorAppendOnlyNewEof,
-
 	char				*relationName,
-
 	ItemPointer			persistentTid,
 				/* Resulting TID of the gp_persistent_rel_files tuple for the relation. */
-
 	int64				*persistentSerialNum,
 				/* Resulting serial number for the relation.  Distinquishes the uses of the tuple. */
-
 	bool 				flushToXLog)
 				/* When true, the XLOG record for this change will be flushed to disk. */
-
 {
 	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
@@ -485,13 +485,10 @@ void PersistentRelation_AddCreated(
 void PersistentRelation_FinishBufferPoolBulkLoad(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the created relation. */
-
 	ItemPointer			persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the relation. */
-
 	int64				persistentSerialNum)
 				/* Serial number for the relation.  Distinquishes the uses of the tuple. */
-
 {
 	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
@@ -558,17 +555,12 @@ void PersistentRelation_FinishBufferPoolBulkLoad(
 void PersistentRelation_Created(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the created relation. */
-
 	int32				segmentFileNum,
-
 	ItemPointer			persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the relation. */
-
 	int64				persistentSerialNum,
 				/* Serial number for the relation.  Distinquishes the uses of the tuple. */
-
 	bool				retryPossible)
-
 {
 	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
@@ -800,17 +792,12 @@ PersistentRelation_ActivateStandby(int16 oldmaster, int16 newmaster)
 PersistentFileSysObjStateChangeResult PersistentRelation_MarkDropPending(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the drop. */
-
 	int32				segmentFileNum,
-
 	ItemPointer			persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the relation. */
-
 	int64				persistentSerialNum,
 				/* Serial number for the relation.  Distinquishes the uses of the tuple. */
-
 	bool				retryPossible)
-
 {
 	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
@@ -884,17 +871,12 @@ PersistentFileSysObjStateChangeResult PersistentRelation_MarkDropPending(
 PersistentFileSysObjStateChangeResult PersistentRelation_MarkAbortingCreate(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the aborting create. */
-
 	int32				segmentFileNum,
-
 	ItemPointer			persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the relation. */
-
 	int64				persistentSerialNum,
 				/* Serial number for the relation.  Distinquishes the uses of the tuple. */
-
 	bool				retryPossible)
-
 {
 	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
@@ -1006,13 +988,10 @@ PersistentFileSysObjStateChangeResult PersistentRelation_MarkAbortingCreate(
 static void
 PersistentRelation_DroppedVerifiedActionCallback(
 	PersistentFileSysObjName 	*fsObjName,
-
 	ItemPointer 				persistentTid,
 			/* TID of the gp_persistent_rel_files tuple for the relation. */
-
 	int64						persistentSerialNum,
 			/* Serial number for the relation.	Distinquishes the uses of the tuple. */
-
 	PersistentFileSysObjVerifyExpectedResult verifyExpectedResult)
 {
 	RelFileNode *relFileNode = PersistentFileSysObjName_GetRelFileNodePtr(fsObjName);
@@ -1051,15 +1030,11 @@ PersistentRelation_DroppedVerifiedActionCallback(
 void PersistentRelation_Dropped(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the dropped relation. */
-
 	int32				segmentFileNum,
-
 	ItemPointer			persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the relation. */
-
 	int64				persistentSerialNum)
 				/* Serial number for the relation.  Distinquishes the uses of the tuple. */
-
 {
 	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
@@ -1126,13 +1101,10 @@ void PersistentRelation_Dropped(
 void PersistentRelation_MarkBufPoolRelationForScanIncrementalResync(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the created relation. */
-
 	ItemPointer			persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the relation. */
-
 	int64				persistentSerialNum)
 				/* Serial number for the relation.  Distinquishes the uses of the tuple. */
-
 {
 	PersistentFileSysObjName fsObjName;
 
