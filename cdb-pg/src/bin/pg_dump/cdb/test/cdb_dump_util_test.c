@@ -565,6 +565,44 @@ void test__shouldExpandChildren4(void **state)
     assert_false(result);
 }
 
+void test__checkFileEmpty1(void **state)
+{
+    char *filename_empty = "/tmp/foobarA";
+    FILE *fp = fopen(filename_empty, "w");
+    if (fp == NULL) {
+        fclose(fp);
+        fail();
+    }
+    fclose(fp);
+    
+    bool result = checkFileEmpty(filename_empty);
+    remove(filename_empty);
+    assert_true(result);
+}
+
+void test__checkFileEmpty2(void **state)
+{
+    char *filename_nonempty = "/tmp/foobarB";
+    FILE *fp = fopen(filename_nonempty, "w");
+    if (fp == NULL) {
+        fclose(fp);
+        fail();
+    }    
+    fprintf(fp, "test\n");
+    fclose(fp);
+    
+    bool result = checkFileEmpty(filename_nonempty);
+    remove(filename_nonempty);
+    assert_false(result);
+}
+
+void test__checkFileEmpty3(void **state)
+{
+    char *filename_null = NULL;
+    bool result = checkFileEmpty(filename_null);
+    assert_true(result);
+}
+
 void test__formPostDataSchemaOnlyPsqlCommandLine1(void **state)
 {
 	char *cmdLine = calloc(1000000, 1);
@@ -678,7 +716,10 @@ main(int argc, char* argv[])
 			unit_test(test__shouldExpandChildren3),
 			unit_test(test__shouldExpandChildren4),
 			unit_test(test__formPostDataSchemaOnlyPsqlCommandLine1),
-			unit_test(test__formPostDataSchemaOnlyPsqlCommandLine2)
+			unit_test(test__formPostDataSchemaOnlyPsqlCommandLine2),
+            unit_test(test__checkFileEmpty1),
+            unit_test(test__checkFileEmpty2),
+            unit_test(test__checkFileEmpty3),
             unit_test(test__shouldDumpSchemaOnly1),
             unit_test(test__shouldDumpSchemaOnly2),
             unit_test(test__shouldDumpSchemaOnly3),
