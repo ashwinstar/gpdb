@@ -2463,6 +2463,66 @@ Feature: Validate command line arguments
         Then gpcrondump should print --table-file can not be selected with --exclude-table-file option to stdout
         And gpcrondump should return a return code of 2
         
+    Scenario: Incremental Backup with no heap tables, backup at the end
+        Given the database is running
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a "ao" table "ao_table" with compression "None" in "testdb" with data
+        And there is a "co" partition table "co_part_table" with compression "quicklz" in "testdb" with data
+        And there are no backup files
+        And there is a list to store the incremental backup timestamps
+        When the user runs "gpcrondump -a -x testdb"
+        And the full backup timestamp from gpcrondump is stored        
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored in a list
+        And the timestamp is labeled "ts1"
+        When the user runs "gpcrondump -a -x testdb --incremental"
+        And the timestamp from gpcrondump is stored in a list
+        And the timestamp is labeled "ts2"
+        And gpcrondump should return a return code of 0
+        And all the data from "testdb" is saved for verification
+        Then the user runs gpdbrestore with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And verify that the data of "10" tables in "testdb" is validated after restore 
+        And verify that the tuple count of all appendonly tables are consistent in "testdb"
+        And the plan file is validated against "/data/plan11"
+
+    Scenario: Incremental Backup with no heap tables, backup in the middle
+        Given the database is running
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a "ao" table "ao_table_1" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_table_2" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_table_3" with compression "None" in "testdb" with data
+        And there is a "co" partition table "co_part_table" with compression "quicklz" in "testdb" with data
+        And there are no backup files
+        And there is a list to store the incremental backup timestamps
+        When the user runs "gpcrondump -a -x testdb"
+        And the full backup timestamp from gpcrondump is stored        
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored in a list
+        And the timestamp is labeled "ts1"
+        And table "public.ao_table_1" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb --incremental"
+        And the timestamp from gpcrondump is stored in a list
+        And the timestamp is labeled "ts2"
+        And gpcrondump should return a return code of 0
+        When the user runs "gpcrondump -a -x testdb --incremental"
+        And the timestamp from gpcrondump is stored in a list
+        And the timestamp is labeled "ts3"
+        And table "public.ao_table_3" is assumed to be in dirty state in "testdb"
+        And gpcrondump should return a return code of 0
+        When the user runs "gpcrondump -a -x testdb --incremental"
+        And the timestamp from gpcrondump is stored in a list
+        And the timestamp is labeled "ts4"
+        And gpcrondump should return a return code of 0
+        And all the data from "testdb" is saved for verification
+        Then the user runs gpdbrestore with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And verify that the data of "12" tables in "testdb" is validated after restore 
+        And verify that the tuple count of all appendonly tables are consistent in "testdb"
+        And the plan file is validated against "/data/plan12"
+
     # THIS SHOULD BE THE LAST TEST
     @backupfire
     Scenario: cleanup for backup feature

@@ -155,6 +155,7 @@ static pthread_t g_monitor_tid = (pthread_t) 0;
 static char *g_pszCDBOutputDirectory = NULL;
 static char *g_LastMsg = NULL;
 static StatusOpList *g_pStatusOpList = NULL;
+static char tableFileName[300];
 
 static const char *logInfo = "INFO";
 static const char *logWarn = "WARN";
@@ -650,6 +651,7 @@ main(int argc, char **argv)
 					exit(1);
 				}
 				include_everything = false;
+                strcpy(tableFileName, optarg);
 				break;
 
 			case 4: 			/*	--exclude-table-file */
@@ -1152,6 +1154,9 @@ dumpMain(bool oids, const char *dumpencoding, int outputBlobs, int plainText, Re
 	/* add status operator, to let the monitor thread see it */
 	AddToStatusOpList(g_pStatusOpList, pOp);
 
+    if (shouldDumpSchemaOnly(g_role, incrementalBackup, (void*)table_include_patterns.head))
+        goto skipalldata;
+
 	if (!schemaOnly)
 		getTableData(tblinfo, numTables, oids);
 
@@ -1216,6 +1221,7 @@ dumpMain(bool oids, const char *dumpencoding, int outputBlobs, int plainText, Re
 	for (i = 0; i < numObjs; i++)
 		dumpDumpableObject(g_fout, dobjs[i]);
 
+skipalldata:
 	/*
 	 * And finally we can do the actual output.
 	 */

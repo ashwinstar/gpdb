@@ -16,10 +16,23 @@
 #include <assert.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <unistd.h>
+#include <fcntl.h>
 #include "pqexpbuffer.h"
 #include "cdb_dump_util.h"
 
 static char predump_errmsg[1024];
+
+bool shouldDumpSchemaOnly(int g_role, bool incrementalBackup, void *list) {
+    if (g_role != ROLE_SEGDB || !incrementalBackup)
+        return false;    
+
+    if (list)
+        return false;
+    else
+        return true;
+}
+
 
 /*
  * DoCancelNotifyListen: This function executes a LISTEN or a NOTIFY command, with

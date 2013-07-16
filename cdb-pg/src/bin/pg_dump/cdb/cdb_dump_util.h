@@ -70,6 +70,8 @@ typedef struct input_options
 	bool		bOnErrorStop;
 }	InputOptions;
 
+extern bool shouldDumpSchemaOnly(int g_role, bool incrementalBackup, void *list);
+
 /* issues either a listen or notify command on connection pConn */
 extern void DoCancelNotifyListen(PGconn *pConn, bool bListen,
 					 const char *pszCDBDumpKey,

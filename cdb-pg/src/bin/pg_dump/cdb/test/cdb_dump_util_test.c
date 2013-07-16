@@ -565,6 +565,36 @@ void test__shouldExpandChildren4(void **state)
     assert_false(result);
 }
 
+void test__shouldDumpSchemaOnly1(void **state)
+{
+    int role = ROLE_SEGDB;
+    bool incrementalBackup = true;
+    void *list = NULL;   
+ 
+    bool result = shouldDumpSchemaOnly(role, incrementalBackup, list);
+    assert_true(result);
+}
+
+void test__shouldDumpSchemaOnly2(void **state)
+{
+    int role = ROLE_MASTER;
+    bool incrementalBackup = true;
+    void *list = NULL;   
+ 
+    bool result = shouldDumpSchemaOnly(role, incrementalBackup, list);
+    assert_false(result);
+}
+
+void test__shouldDumpSchemaOnly3(void **state)
+{
+    int role = ROLE_SEGDB;
+    bool incrementalBackup = true;
+    void *list = "test";
+ 
+    bool result = shouldDumpSchemaOnly(role, incrementalBackup, list);
+    assert_false(result);
+}
+
 int 
 main(int argc, char* argv[]) 
 {
@@ -612,7 +642,10 @@ main(int argc, char* argv[])
 			unit_test(test__shouldExpandChildren1),
 			unit_test(test__shouldExpandChildren2),
 			unit_test(test__shouldExpandChildren3),
-			unit_test(test__shouldExpandChildren4)
+			unit_test(test__shouldExpandChildren4),
+            unit_test(test__shouldDumpSchemaOnly1),
+            unit_test(test__shouldDumpSchemaOnly2),
+            unit_test(test__shouldDumpSchemaOnly3),
 	};
 	return run_tests(tests);
 }
