@@ -4865,8 +4865,8 @@ map_part_attrs(Relation base, Relation part, AttrMap **map_ptr, bool throw)
 		*map_ptr = NULL;
 	}
 	
-	bool identical = TRUE;
-	bool compatible = TRUE;
+	bool is_identical = TRUE;
+	bool is_compatible = TRUE;
 	
 	/* For each matched pair of attributes ... */
 	while ( i <= n && j <= m )
@@ -4901,7 +4901,7 @@ map_part_attrs(Relation base, Relation part, AttrMap **map_ptr, bool throw)
 								RelationGetRelationName(part),
 								RelationGetRelationName(base)),
 						 errOmitLocation(true)));
-			compatible = FALSE;
+			is_compatible = FALSE;
 			break;
 		}
 		
@@ -4914,7 +4914,7 @@ map_part_attrs(Relation base, Relation part, AttrMap **map_ptr, bool throw)
 						 errmsg("type mismatch for attribute \"%s\"",
 								NameStr((battr->attname))),
 						 errOmitLocation(true)));
-			compatible = FALSE;
+			is_compatible = FALSE;
 			break;
 		}
 		
@@ -4927,7 +4927,7 @@ map_part_attrs(Relation base, Relation part, AttrMap **map_ptr, bool throw)
 						 errmsg("alignment mismatch for attribute \"%s\"",
 								NameStr((battr->attname))),
 						 errOmitLocation(true)));
-			compatible = FALSE;
+			is_compatible = FALSE;
 			break;
 		}
 		
@@ -4942,7 +4942,7 @@ map_part_attrs(Relation base, Relation part, AttrMap **map_ptr, bool throw)
 		
 		/* Note any attribute number difference. */
 		if ( i != j )
-			identical = FALSE;
+			is_identical = FALSE;
 		
 		/* If we're building a map, update it. */
 		if ( v != NULL )
@@ -4952,7 +4952,7 @@ map_part_attrs(Relation base, Relation part, AttrMap **map_ptr, bool throw)
 		j++;
 	}
 	
-	if ( compatible )
+	if ( is_compatible )
 	{
 		/* Any excess attributes in parent better be marked dropped */
 		for ( ; i <= n; i++ )
@@ -4967,7 +4967,7 @@ map_part_attrs(Relation base, Relation part, AttrMap **map_ptr, bool throw)
 									RelationGetRelationName(part),
 									RelationGetRelationName(base)),
 							 errOmitLocation(true)));
-				compatible = FALSE;
+				is_compatible = FALSE;
 			}
 		}
 		
@@ -4984,12 +4984,18 @@ map_part_attrs(Relation base, Relation part, AttrMap **map_ptr, bool throw)
 									RelationGetRelationName(part),
 									RelationGetRelationName(base)),
 							 errOmitLocation(true)));
-				compatible = FALSE;
+				is_compatible = FALSE;
 			}
 		}
 	}
+
+	/* Identical tuple descriptors should have the same number of columns */
+	if (n != m)
+	{
+		is_identical = FALSE;
+	}
 	
-	if ( !compatible )
+	if ( !is_compatible )
 	{
 		Assert( !throw );
 		if ( v != NULL )
@@ -4998,7 +5004,7 @@ map_part_attrs(Relation base, Relation part, AttrMap **map_ptr, bool throw)
 	}
 	
 	/* If parent and part are the same, don't use a map */
-	if ( identical && v != NULL )
+	if ( is_identical && v != NULL )
 	{
 		pfree(v);
 		v = NULL;
