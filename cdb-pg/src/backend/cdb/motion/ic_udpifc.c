@@ -1832,7 +1832,7 @@ sendControlMessage(icpkthdr *pkt, int fd, struct sockaddr *addr, socklen_t peerL
 	 * handle that case
 	 */
 
-	if (n < sizeof(pkt->len))
+	if (n < pkt->len)
 		write_log("sendcontrolmessage: got error %d errno %d seq %d", n, errno, pkt->seq);
 }
 
@@ -3272,6 +3272,13 @@ handleCachedPackets(void)
 			}
 			bin = bin->next;
 			connDelHash(&ic_control_info.startupCacheHtab, cachedConn);
+
+			/* MPP-19981
+			 * free the cached connections; otherwise memory leak
+			 * would be introduced.
+			 */
+			free(cachedConn->pkt_q);
+			free(cachedConn);
 		}
 	}
 }
@@ -6696,6 +6703,13 @@ cleanupStartupCache()
 			}
 			bin = bin->next;
 			connDelHash(&ic_control_info.startupCacheHtab, cachedConn);
+
+			/* MPP-19981
+			 * free the cached connections; otherwise memory leak
+			 * would be introduced.
+			 */
+			free(cachedConn->pkt_q);
+			free(cachedConn);
 		}
 	}
 }
