@@ -867,6 +867,24 @@ def kill_process(pid, host=None, sig=signal.SIGTERM):
     else:
         os.kill(pid, sig)
 
+def get_num_segments(primary=True, mirror=True, master=True, standby=True):
+    gparray = GpArray.initFromCatalog(dbconn.DbURL())
+     
+    primary_segments = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary()] 
+    mirror_segments = [seg for seg in gparray.getDbList() if seg.isSegmentMirror()]
+
+    num_segments = 0
+    if primary:
+        num_segments += len(primary_segments)
+    if mirror:
+        num_segments += len(mirror_segments)
+    if master and gparray.master is not None:
+        num_segments += 1
+    if standby and gparray.standbyMaster is not None:
+        num_segments += 1  
+
+    return num_segments
+
 def check_user_permissions(file_name, access_mode):
     st = os.stat(file_name)
     if access_mode == 'write':
