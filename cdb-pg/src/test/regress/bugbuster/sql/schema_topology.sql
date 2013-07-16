@@ -144,6 +144,7 @@ DROP view if exists sch_srf_view1;
 DROP view if exists sch_fn_view2;
 DROP FUNCTION sch_multiply(integer,integer);
 \c template1
+select current_database();
 DROP DATABASE db_test_bed;
 DROP ROLE admin ;
 create database gptest;
@@ -157,6 +158,7 @@ drop table orders_hybrid_part;
 drop table lineitem_hybrid_part;
 drop table customer_hybrid_part;
 \c template1
+select current_database();
 drop database heap_table_drop_col3;
 
 --

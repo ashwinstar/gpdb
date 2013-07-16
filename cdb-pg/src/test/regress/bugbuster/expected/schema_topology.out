@@ -262,6 +262,11 @@ NOTICE:  view "sch_fn_view2" does not exist, skipping
 DROP FUNCTION sch_multiply(integer,integer);
 ERROR:  function sch_multiply(integer, integer) does not exist
 \c template1
+select current_database();
+ current_database 
+------------------
+ template1
+(1 row)
 DROP DATABASE db_test_bed;
 DROP ROLE admin ;
 ERROR:  role "admin" does not exist
@@ -284,6 +289,11 @@ ERROR:  table "lineitem_hybrid_part" does not exist
 drop table customer_hybrid_part;
 ERROR:  table "customer_hybrid_part" does not exist
 \c template1
+select current_database();
+ current_database 
+------------------
+ template1
+(1 row)
 drop database heap_table_drop_col3;
 ERROR:  database "heap_table_drop_col3" does not exist
 --
