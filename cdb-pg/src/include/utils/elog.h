@@ -239,6 +239,8 @@ extern int	errhidestmt(bool hide_stmt);
 extern int	errfunction(const char *funcname);
 extern int	errposition(int cursorpos);
 
+extern int	errprintstack(bool printstack);
+
 extern int	internalerrposition(int cursorpos);
 extern int	internalerrquery(const char *query);
 
@@ -377,6 +379,7 @@ typedef struct ErrorData
 	int			saved_errno;	/* errno at entry */
 	void	   *stacktracearray[30];
 	size_t		stacktracesize;
+	bool		printstack;		/* force output stack trace */
 } ErrorData;
 
 extern void EmitErrorReport(void);
@@ -498,7 +501,8 @@ extern void write_message_to_server_log(int elevel,
 										int stacktracesize,
 										bool omit_location,
 										bool send_alert,
-										void* const *stacktracearray);
+										void* const *stacktracearray,
+										bool printstack);
 
 extern void debug_backtrace(void);
 extern uint32 gp_backtrace(void **stackAddresses, uint32 maxStackDepth);

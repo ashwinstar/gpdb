@@ -705,7 +705,7 @@ FileRepSubProcess_Main()
 	 * The routine also register clean up at process exit
 	 */
 	InitAuxiliaryProcess();	
-	
+
 	InitBufferPoolBackend();
 	
 	FileRepSubProcess_ConfigureSignals();

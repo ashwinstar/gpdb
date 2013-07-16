@@ -131,7 +131,6 @@ static void FileRep_HandleCrash(SIGNAL_ARGS);
 
 static bool FileRep_IsAnyChildAlive(void);
 static bool FileRep_IsAnyBackendChildAlive(void);
-static void FileRep_SignalChildren(int signal, bool backendsOnly);
 static bool FileRep_ProcessSignals(void);
 static void FileRep_ConfigureSignals(void);
 static void FileRep_IpcSignalAllInternal(int ii);
@@ -158,7 +157,17 @@ typedef struct FileRepSubProc {
 
 } FileRepSubProc;
 
-static FileRepSubProc FileRepSubProcList[MaxFileRepSubProc] =
+/*
+ * FileRepSubProcList is in shared memory and keeps track of
+ * filerep subprocesses.  Normally their lifecycle is handled
+ * by filerep main process, hence this table is touched by only
+ * filerep main process.  However, in case the main process
+ * dies unexpectedly, postmaster will send immediate shutdown
+ * on behalf of the main process.  Nobody except those two
+ * should touch this table.  Also for this reason, we don't
+ * synchronize the access to this table.
+ */
+static FileRepSubProc FileRepSubProcListInitial[MaxFileRepSubProc] =
 {
 	{0, FileRepProcessTypeNotInitialized},
 	{0, FileRepProcessTypeMain},
@@ -178,7 +187,7 @@ static FileRepSubProc FileRepSubProcList[MaxFileRepSubProc] =
 	{0, FileRepProcessTypeResyncWorker4},
 	{0, FileRepProcessTypePrimaryVerification},
     {0, FileRepProcessTypeMirrorVerification},
-};
+}, *FileRepSubProcList;
 
 
 /*
@@ -655,6 +664,41 @@ FileRep_IpcSignalAll(void)
 				break;
 		}
 	}
+}
+
+/*
+ * FileRep_SubProcShmemSize()
+ *		Calculate size required for subprocess table.
+ *
+ */
+Size
+FileRep_SubProcShmemSize(void)
+{
+	Size	size;
+
+	size = sizeof(FileRepSubProcListInitial);
+
+	return MAXALIGN(size);
+}
+
+/*
+ * FileRep_SubProcShmemInit()
+ *			Allocate and initialize FileRep subprocess Shared Memory
+ *
+ */
+void
+FileRep_SubProcShmemInit(void)
+{
+	bool		found;
+
+	FileRepSubProcList = (FileRepSubProc *)
+							ShmemInitStruct("filerep subprocess list",
+									sizeof(FileRepSubProcListInitial),
+									&found);
+
+	if (!found)
+		memcpy(FileRepSubProcList, FileRepSubProcListInitial,
+				sizeof(FileRepSubProcListInitial));
 }
 
 static FileRepShmem_s *FileRep_ShmemInitOneBuffer(const char *bufferLabel, int shmemSize, int bufSize)
@@ -1838,10 +1882,16 @@ FileRep_HandleCrash(SIGNAL_ARGS)
  *
  * @param backendsOnly if true then only filerep processes that act as backends will be signalled.
  */
-static void
+void
 FileRep_SignalChildren(int signal, bool backendsOnly)
 {
 	int ii;
+
+	/*
+	 * Only postmaster or filerep main process can call this.
+	 * See also the comment on FileRepSubProcList.
+	 */
+	Assert(!IsUnderPostmaster || fileRepProcessType == FileRepProcessTypeMain);
 
 	for (ii=0; ii < MaxFileRepSubProc; ii++) {
 		FileRepSubProc *subProc = &FileRepSubProcList[ii];
@@ -3387,6 +3437,12 @@ void FileRep_Main(void)
 	}
 
 	Insist(dataState == DataStateInSync || dataState == DataStateInResync);
+
+	/*
+	 * Initialize subprocess list just before sawning them.
+	 */
+	memcpy(FileRepSubProcList,
+			FileRepSubProcListInitial, sizeof(FileRepSubProcListInitial));
 
 	switch (fileRepRole) {
 		case FileRepPrimaryRole:

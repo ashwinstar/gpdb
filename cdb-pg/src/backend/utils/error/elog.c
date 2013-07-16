@@ -1173,6 +1173,19 @@ errposition(int cursorpos)
 }
 
 /*
+ * errprintstack -- force print out stack trace
+ */
+int
+errprintstack(bool printstack)
+{
+	ErrorData  *edata = &errordata[errordata_stack_depth];
+
+	edata->printstack = printstack;
+
+	return 0;					/* return value does not matter */
+}
+
+/*
  * internalerrposition --- add internal cursor position to the current error
  */
 int
@@ -3024,8 +3037,9 @@ write_syslogger_in_csv(ErrorData *edata, bool amsyslogger)
 
     /* stack trace */
 
-    if (edata->elevel >= ERROR &&
-        (edata->elevel == PANIC || !edata->omit_location) &&
+    if ((edata->printstack ||
+			(edata->elevel >= ERROR &&
+			(edata->elevel == PANIC || !edata->omit_location))) &&
         edata->stacktracesize > 0 &&
         edata->stacktracearray != NULL)
     {
@@ -3068,7 +3082,8 @@ write_message_to_server_log(int elevel,
                             int stacktracesize,
                             bool omit_location,
                             bool send_alert,
-                            void* const *stacktracearray
+                            void* const *stacktracearray,
+							bool printstack
                 )
 {
     PipeProtoChunk buffer;
@@ -3179,8 +3194,9 @@ write_message_to_server_log(int elevel,
     append_string_to_pipe_chunk(&buffer, filename);
 
     /* stacktrace */
-    if (elevel >= ERROR &&
-        (elevel == PANIC || !omit_location) &&
+    if ((printstack ||
+			(elevel >= ERROR &&
+			(elevel == PANIC || !omit_location))) &&
         stacktracesize > 0 &&
         stacktracearray != NULL)
     {
@@ -3233,7 +3249,8 @@ send_message_to_server_log(ErrorData *edata)
                                                 edata->stacktracesize,
                                                 edata->omit_location,
                                                 edata->send_alert,
-                                                edata->stacktracearray);
+                                                edata->stacktracearray,
+												edata->printstack);
                 else
                     write_syslogger_in_csv(edata, true);
             }
@@ -3914,7 +3931,8 @@ write_stderr(const char *fmt,...)
                                         0,
                                         true,
                                         false,
-                                        NULL);
+                                        NULL,
+										false);
         }
         else
         {

@@ -178,6 +178,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		size = add_size(size, PersistentRelation_ShmemSize());
 		size = add_size(size, Pass2Recovery_ShmemSize());
 		if (GPAreFileReplicationStructuresRequired()) {
+			size = add_size(size, FileRep_SubProcShmemSize());
 			size = add_size(size, FileRep_ShmemSize());
 			size = add_size(size, FileRepAck_ShmemSize());
 			size = add_size(size, FileRepAckPrimary_ShmemSize());
@@ -365,6 +366,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 
 	if (GPAreFileReplicationStructuresRequired()) {
 	
+		FileRep_SubProcShmemInit();
 		FileRep_ShmemInit();
 		FileRepAck_ShmemInit();
 		FileRepAckPrimary_ShmemInit();

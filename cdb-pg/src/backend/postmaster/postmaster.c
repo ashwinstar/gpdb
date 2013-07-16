@@ -4931,8 +4931,24 @@ static void do_reaper()
 					pmdie(SIGQUIT);
 				}
 
-				/* filerep died, we mark a fault */
-				updateSegmentState(SegmentStateFault, FaultTypeMirror);
+				/*
+				 * If filerep main process dies unexpectedly, we should reset
+				 * the shared memory, otherwise filerep subprocesses cannot
+				 * revive.  Because they are still connected to shared memory
+				 * and can change segment status etc in case mirror starts
+				 * the peer reset, we should tell them to die immediately
+				 * before runnig reset.  Since this is an immediate shutdown
+				 * request, we don't have a way to wait for the completion.
+				 *
+				 * status 2 is not expected here as this is non-shutdown
+				 * path.  We should treat it as a crash, too.
+				 */
+				if (!EXIT_STATUS_0(exitstatus))
+				{
+					FileRep_SignalChildren(SIGQUIT, false);
+					HandleChildCrash(pid, exitstatus,
+									 _("filerep main process"));
+				}
 			}
 
 

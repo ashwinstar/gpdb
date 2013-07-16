@@ -280,6 +280,18 @@ extern void FileRep_IpcSignal(PGSemaphoreData sem, int* refCount);
  */
 extern void FileRep_IpcSignalAll(void);
 
+extern void FileRep_SignalChildren(int signal, bool backendsOnly);
+
+/*
+ * Return the required shared-memory size for subprocess list.
+ */
+extern Size FileRep_SubProcShmemSize(void);
+
+/*
+ * Initialize the shared-memory for subprocess list.
+ */
+extern void FileRep_SubProcShmemInit(void);
+
 /*
  * Return the required shared-memory size for this module.
  */

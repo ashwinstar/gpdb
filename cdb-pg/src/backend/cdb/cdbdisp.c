@@ -320,7 +320,8 @@ write_log(const char *fmt,...)
 									/* This is a real hack... We want to send alerts on these errors, but we aren't using ereport() */
 									strstr(errbuf, "Master unable to connect") != NULL ||
 									strstr(errbuf, "Found a fault with a segment") != NULL,
-									NULL);
+									NULL,
+									false);
 
 		va_end(ap);
 		return;
