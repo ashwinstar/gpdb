@@ -13,7 +13,7 @@ gpcrondump -x database_name
      [--table-file="<filename>" | --exclude-table-file="<filename>"] 
      [-u backup_directory] [-R post_dump_script] [--incremental] 
      [ -K <timestamp> [--list-backup-files] ] 
-     [--prefix <prefix_string> [--list-filter-file] ]
+     [--prefix <prefix_string> [--list-filter-tables] ]
      [-c] [-z] [-r] [-f <free_space_percent>] [-b] [-h] [-j | -k] 
      [-g] [-G] [-C] [-d <master_data_directory>] [-B <parallel_processes>] 
      [-a] [-q] [-y <reportfile>] [-l <logfile_directory>] [-v]
@@ -645,8 +645,8 @@ can be named pipes when you backup the Greenplum database mytestdb.
   gpcrondump -x mytestdb -K 20131030140000 --list-backup-files
 
 
-To use incremental backup with a set of database tables, you must create 
-a create a full backup of the set of tables and specify the --prefix 
+To use incremental backup with a set of database tables, you must 
+create a full backup of the set of tables and specify the --prefix 
 option to identify the backup set. The following example uses the 
 --table-file option to create a full backup of the set of files listed 
 in the file user-tables. The prefix user_backup identifies the backup 
@@ -666,7 +666,7 @@ incremental backup.
 This command lists the tables that were included or excluded for the 
 full backup. 
 
-  gpcrondump -x mydatabase --incremental --prefix user_backup --list-backup-tables
+  gpcrondump -x mydatabase --incremental --prefix user_backup --list-filter-tables
 
 
 *****************************************************
