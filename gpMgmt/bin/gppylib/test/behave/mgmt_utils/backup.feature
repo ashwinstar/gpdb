@@ -1,13 +1,13 @@
 @backup
 Feature: Validate command line arguments
 
-    @fire
+    @backupfire
     Scenario: Entering an invalid argument
         When the user runs "gpcrondump -X"
         Then gpcrondump should print no such option: -X error message
         And gpcrondump should return a return code of 2
 
-    @fire
+    @backupfire
     Scenario: Incremental Backup With Table filters
         Given the database is running
         When the user runs "gpcrondump -a --incremental -t public.bkdb -x bkdb"
@@ -41,7 +41,7 @@ Feature: Validate command line arguments
     ### 
     ### Any tests that require this data set should come after
     ###
-    @smoke
+    @backupsmoke
     @dataset
     Scenario Outline: partition table test with data on all segments, with/without compression
         Given there is a "<tabletype>" partition table "<tablename>" with compression "<compressiontype>" in "<dbname>" with data
@@ -55,7 +55,7 @@ Feature: Validate command line arguments
         | ao        | ao_part_table_comp  | quicklz         | bkdb   | 1         |
         | co        | co_part_table_comp  | zlib            | bkdb   | 1         |
 
-    @smoke
+    @backupsmoke
     @dataset
     Scenario Outline: regular table test with data on all segments, with/without compression
         Given there is a "<tabletype>" table "<tablename>" with compression "<compressiontype>" in "<dbname>" with data
@@ -68,7 +68,7 @@ Feature: Validate command line arguments
         | ao        | ao_table_comp  | quicklz         | bkdb |
         | co        | co_table_comp  | zlib            | bkdb |
 
-    @smoke
+    @backupsmoke
     @dataset
     Scenario Outline: regular table test with data on all segments, with/without compression and with indexes
         Given there is a "<tabletype>" table "<tablename>" with index "<indexname>" compression "<compressiontype>" in "<dbname>" with data
@@ -81,14 +81,14 @@ Feature: Validate command line arguments
         | ao        | ao_index_table_comp  | quicklz         | bkdb   | ao_comp_in     |
         | co        | co_index_table_comp  | zlib            | bkdb   | co_comp_in     |
 
-    @smoke
+    @backupsmoke
     @dataset
     Scenario: Partition tables with mixed storage types
         Given there is a mixed storage partition table "part_mixed_1" in "bkdb" with data
         Then data for partition table "part_mixed_1" with partition level "1" is distributed across all segments on "bkdb"
         And verify that storage_types of the partition table "part_mixed_1" are as expected in "bkdb"
 
-    @smoke
+    @backupsmoke
     Scenario: Negative test for Incremental Backup
         Given the database is running
         And partition "1" of partition table "ao_part_table, co_part_table_comp" is assumed to be in dirty state in "bkdb" in schema "public"
@@ -98,7 +98,7 @@ Feature: Validate command line arguments
         Then gpcrondump should return a return code of 2
         And gpcrondump should print No full backup found for incremental to stdout 
 
-    @smoke
+    @backupsmoke
     Scenario: Negative test for MultiDB Incremental Backup
         Given the database is running
         When the user runs "gpcrondump -a --incremental -x bkdb,fulldb"
@@ -182,7 +182,7 @@ Feature: Validate command line arguments
         Then gpcrondump should return a return code of 2
         And gpcrondump should print Invalid state file format to stdout
 
-    @smoke
+    @backupsmoke
     Scenario: Simple Incremental Backup
         Given the database is running
         And there are no backup files
@@ -294,7 +294,7 @@ Feature: Validate command line arguments
         And "dirty_list" file should be created under "/tmp"
         And verify that the incremental file in "/tmp" has all the stored timestamps
 
-    @smoke
+    @backupsmoke
     Scenario: Simple Incremental Backup with -u option
         Given the database is running
         And there are no backup files
@@ -364,7 +364,7 @@ Feature: Validate command line arguments
         And the user runs gpdbrestore with "-R" option in path "/tmp"
         And gpdbrestore should print -R is not supported for restore with incremental timestamp to stdout
 
-    @smoke
+    @backupsmoke
     Scenario: Full Backup and Restore
         Given the database is running
         And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
@@ -379,7 +379,7 @@ Feature: Validate command line arguments
         And verify that there is a "heap" table "heap_table" in "fullbkdb" with data
         And verify that there is a "ao" table "ao_part_table" in "fullbkdb" with data
 
-    @fire
+    @backupfire
     Scenario: Full Backup and Restore with -y
         Given the database is running
         And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
@@ -427,7 +427,7 @@ Feature: Validate command line arguments
         And gpdbrestore should print Table public.ao_part_table to stdout 
         And gpdbrestore should print Table public.heap_table to stdout 
 
-    @fire
+    @backupfire
     Scenario: gpcrondump -b with Full and Incremental backup
         Given the database is running
         And there are no backup files
@@ -440,7 +440,7 @@ Feature: Validate command line arguments
         When the user runs "gpcrondump -a -x fullbkdb -b --incremental"
         Then gpcrondump should return a return code of 0
 
-    @fire
+    @backupfire
     Scenario: gpdbrestore -b with Full timestamp
         Given the database is running
         And there are no backup files
@@ -614,7 +614,7 @@ Feature: Validate command line arguments
         And the timestamp from gpcrondump is stored 
         And the user runs valgrind with "gp_restore_agent" and options "--gp-c /bin/gunzip -s --post-data-schema-only --target-dbid 1 -d fullbkdb"
 
-    @fire
+    @backupfire
     Scenario: gp_dump timestamp test
         Given the database is running
         And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
@@ -632,7 +632,7 @@ Feature: Validate command line arguments
         And verify that there is a "heap" table "heap_table" in "fullbkdb" with data
         And verify that there is a "ao" table "ao_part_table" in "fullbkdb" with data
 
-    @fire
+    @backupfire
     Scenario: gp_dump with invalid timestamp
         Given the database is running
         And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
@@ -644,7 +644,7 @@ Feature: Validate command line arguments
         Then gp_dump should return a return code of 1 
         And gp_dump should print Invalid timestamp key provided error message
     
-    @fire
+    @backupfire
     Scenario: Full Backup with option -t and Restore
         Given the database is running
         And the database "fullbkdb" does not exist
@@ -663,7 +663,7 @@ Feature: Validate command line arguments
         And verify that there is a "heap" table "heap_table" in "fullbkdb" with data
         And verify that there is no table "ao_part_table" in "fullbkdb"
 
-    @fire
+    @backupfire
     Scenario: Full Backup with option -T and Restore
         Given the database is running
         And the database "fullbkdb" does not exist
@@ -682,7 +682,7 @@ Feature: Validate command line arguments
         And verify that there is a "ao" table "ao_part_table" in "fullbkdb" with data
         And verify that there is no table "heap_table" in "fullbkdb"
 
-    @fire
+    @backupfire
     Scenario: Full Backup with option -s and Restore
         Given the database is running
         And there is schema "schema_heap, schema_ao" exists in "fullbkdb"
@@ -698,7 +698,7 @@ Feature: Validate command line arguments
         And verify that there is a "heap" table "schema_heap.heap_table" in "fullbkdb" with data
         And verify that there is no table "schema_ao.ao_part_table" in "fullbkdb"
 
-    @fire
+    @backupfire
     Scenario: Full Backup with option --exclude-table-file and Restore
         Given the database is running
         And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
@@ -716,7 +716,7 @@ Feature: Validate command line arguments
         And verify that there is no table "ao_part_table" in "fullbkdb"
         And verify that there is no table "heap_table" in "fullbkdb"
 
-    @fire
+    @backupfire
     Scenario: Full Backup with option --table-file and Restore
         Given the database is running
         And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
@@ -734,7 +734,7 @@ Feature: Validate command line arguments
         And verify that there is a "heap" table "heap_table" in "fullbkdb" with data
         And verify that there is no table "co_part_table" in "fullbkdb"
 
-    @smoke
+    @backupsmoke
     Scenario: Negative test for incremental with ddboost option
         Given the database is running
         And there is a "heap" table "heap_table" with compression "None" in "bkdb" with data
@@ -830,7 +830,7 @@ Feature: Validate command line arguments
         And gpdbrestore should return a return code of 0
         Then "plan" file should not be created under " "
 
-    @fire
+    @backupfire
     Scenario: Incremental backup of Non-public schema
         Given the database is running
         And there are no "dirty_backup_list" tempfiles
@@ -881,7 +881,7 @@ Feature: Validate command line arguments
         Then gpdbrestore should return a return code of 0
         And tables names should be identical to stored table names in "bkdb"
 
-    @fire
+    @backupfire
     Scenario: Multiple - Incremental backup and restore
         Given the database is running
         And the database "schematestdb" does not exist
@@ -917,7 +917,7 @@ Feature: Validate command line arguments
         And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
         And verify that the plan file is created for the latest timestamp 
 
-    @smoke
+    @backupsmoke
     Scenario: Simple Incremental Backup for Multiple Schemas with common tablenames
         Given the database is running
         And the database "schematestdb" does not exist
@@ -959,7 +959,7 @@ Feature: Validate command line arguments
         And verify that the data of "33" tables in "schematestdb" is validated after restore 
         And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
 
-    @fire
+    @backupfire
     Scenario: pg_stat_last_operation registers truncate for regular tables 
         Given the database is running
         And the database "schematestdb" does not exist
@@ -969,7 +969,7 @@ Feature: Validate command line arguments
         When the user truncates "ao_table, co_table" tables in "schematestdb"
         Then pg_stat_last_operation registers the truncate for tables "ao_table, co_table" in "schematestdb" in schema "public"
 
-    @fire
+    @backupfire
     Scenario: pg_stat_last_operation registers truncate for partition tables 
         Given the database is running
         And the database "schematestdb" does not exist
@@ -1051,7 +1051,7 @@ Feature: Validate command line arguments
         And verify that the data of "18" tables in "schematestdb" is validated after restore 
         And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
 
-    @smoke
+    @backupsmoke
     Scenario: IB TRUNCATE partitioned table 2 times
         Given the database is running
         And the database "schematestdb" does not exist
@@ -1109,7 +1109,7 @@ Feature: Validate command line arguments
         And verify that the data of "4" tables in "schematestdb" is validated after restore 
         And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
 
-    @smoke
+    @backupsmoke
     Scenario: Incremental Backup to test ADD COLUMN with partitions
         Given the database is running
         And the database "schematestdb" does not exist
@@ -1137,7 +1137,7 @@ Feature: Validate command line arguments
         And verify that the data of "19" tables in "schematestdb" is validated after restore 
         And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
 
-    @fire
+    @backupfire
     Scenario: Non compressed incremental backup 
         Given the database is running
         And the database "schematestdb" does not exist
@@ -1257,7 +1257,7 @@ Feature: Validate command line arguments
         And verify that the data of "2" tables in "schematestdb" is validated after restore 
         And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
 
-    @smoke
+    @backupsmoke
     Scenario: Out of Sync timestamp
         Given the database is running
         And the database "schematestdb" does not exist
@@ -1301,7 +1301,7 @@ Feature: Validate command line arguments
         When the method get_partition_state is executed on table "public.tuple_count_table" in "tempdb" for ao table "pepper.t1"
         Then the get_partition_state result should contain "pepper, t1, 999999999999999"
 
-    @fire
+    @backupfire
     Scenario: Verify the gpcrondump -o option is not broken
         Given the database is running
         And the database "schematestdb" does not exist
@@ -1319,7 +1319,7 @@ Feature: Validate command line arguments
         And the dump directories "20130101" should not exist
         And the dump directory for the stored timestamp should exist 
 
-    @fire
+    @backupfire
     Scenario: Verify the gpcrondump -c  option is not broken
         Given the database is running
         And the database "schematestdb" does not exist
@@ -1347,7 +1347,7 @@ Feature: Validate command line arguments
         Then gpcrondump should return a return code of 0
         And config files should be backed up on all segments
 
-    @fire
+    @backupfire
     Scenario: Verify the gpcrondump -g option with incremental is not broken
         Given the database is running
         And the database "schematestdb" does not exist
@@ -1379,7 +1379,7 @@ Feature: Validate command line arguments
         And verify that there is a "heap" table "gpcrondump_history" in "schematestdb"
         And verify that the table "gpcrondump_history" in "schematestdb" has dump info for the stored timestamp
 
-     @fire
+     @backupfire
      Scenario: Verify gpdbrestore -s option with full backup
          Given the database is running
          And the database "testdb1" does not exist
@@ -1404,7 +1404,7 @@ Feature: Validate command line arguments
          And verify that the tuple count of all appendonly tables are consistent in "testdb1"
          And verify that database "testdb2" does not exist
 
-     @fire
+     @backupfire
      Scenario: Verify gpdbrestore -s option with incremental backup 
          Given the database is running
          And the database "testdb1" does not exist
@@ -1433,7 +1433,7 @@ Feature: Validate command line arguments
          And verify that the tuple count of all appendonly tables are consistent in "testdb1"
          And verify that database "testdb2" does not exist
 
-    @fire
+    @backupfire
     Scenario: gpdbrestore -u option with full backup timestamp
          Given the database is running
          And the database "testdb" does not exist
@@ -1451,7 +1451,7 @@ Feature: Validate command line arguments
          Then verify that the data of "2" tables in "testdb" is validated after restore
          And verify that the tuple count of all appendonly tables are consistent in "testdb"
         
-    @smoke
+    @backupsmoke
     Scenario: gpdbrestore -u option with incremental backup timestamp
          Given the database is running
          And the database "testdb" does not exist
@@ -1498,31 +1498,6 @@ Feature: Validate command line arguments
          And verify that the tuple count of all appendonly tables are consistent in "testdb1"
          And verify that the tuple count of all appendonly tables are consistent in "testdb2"
 
-    @dca
-    Scenario: Test restore for large number of tables
-         Given the database is running
-         And the database "large_table_db" does not exist
-         And database "large_table_db" exists
-         And there is a "ao" table "ao_table_for_large_database_01" in "large_table_db" having large number of partitions
-         And the length of partition names of table "ao_table_for_large_database_01" in "large_table_db" exceeds the command line maximum limit
-         And there are no backup files
-         When the performance timer is started
-         When the user runs "gpcrondump -a -x large_table_db"
-         Then the performance timer should be less then "120" seconds
-         And gpcrondump should return a return code of 0
-         When the performance timer is started
-         And the user runs "gpcrondump -a -x large_table_db --incremental"
-         Then the performance timer should be less then "140" seconds
-         And gpcrondump should return a return code of 0
-         And the timestamp from gpcrondump is stored 
-         And all the data from "large_table_db" is saved for verification
-         When the performance timer is started
-         And the user runs gpdbrestore with the stored timestamp 
-         Then the performance timer should be less then "1100" seconds
-         Then gpdbrestore should return a return code of 0
-         And verify that the data of "5551" tables in "large_table_db" is validated after restore 
-         And verify that the tuple count of all appendonly tables are consistent in "large_table_db"
-
     Scenario: gpdbrestore with -T and --table-file should fail
          Given the database is running
          And the database "testdb1" does not exist
@@ -1554,7 +1529,7 @@ Feature: Validate command line arguments
          And verify that the data of "2" tables in "testdb1" is validated after restore
          And verify that the tuple count of all appendonly tables are consistent in "testdb1"
 
-    @smoke
+    @backupsmoke
     Scenario: Restore Scenarios
         Given the database is running
         And the database "schematestdb" does not exist
@@ -1588,7 +1563,7 @@ Feature: Validate command line arguments
         And verify that the data of "34" tables in "schematestdb" is validated after restore
         And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
 
-    @fire
+    @backupfire
     Scenario: gpcrondump should not track external tables
          Given the database is running
          And the database "testdb1" does not exist
@@ -1611,7 +1586,7 @@ Feature: Validate command line arguments
          And verify that there is no "public.ext_tab" in the "table_list" file in " "
          Then the file "/tmp/ext_tab" is removed from the system
 
-    @fire
+    @backupfire
     Scenario: Full backup -T test 1 
         Given the database is running
         And the database "fullbkdb" does not exist
@@ -1629,7 +1604,7 @@ Feature: Validate command line arguments
         Then verify that tables "public.heap_table" in "fullbkdb" has no rows
         And verify that there is a "ao" table "public.ao_index_table" in "fullbkdb" with data
 
-    @fire
+    @backupfire
     Scenario: Full backup -T test 2 
         Given the database is running
         And the database "fullbkdb" does not exist
@@ -1649,7 +1624,7 @@ Feature: Validate command line arguments
         Then verify that tables "public.heap_table" in "fullbkdb" has no rows
         And verify that there is a "ao" table "public.ao_index_table" in "fullbkdb" with data
 
-    @fire
+    @backupfire
     Scenario: Full backup -T test 3
         Given the database is running
         And the database "fullbkdb" does not exist
@@ -1713,7 +1688,7 @@ Feature: Validate command line arguments
         And gpdbrestore should return a return code of 2
         Then gpdbrestore should print No schema name supplied to stdout
 
-    @fire
+    @backupfire
     Scenario: Incremental restore with table filter
         Given the database is running
         And the database "schematestdb" does not exist
@@ -1756,7 +1731,7 @@ Feature: Validate command line arguments
         Then gpdbrestore should return a return code of 2
         And gpdbrestore should print Invalid tables for -T option: The following tables were not found in plan file to stdout
 
-    @fire
+    @backupfire
     Scenario: Incremental backup -T test 1 
         Given the database is running
         And the database "fullbkdb" does not exist
@@ -1894,7 +1869,7 @@ Feature: Validate command line arguments
         Then verify that tables "public.ao_index_table" in "fullbkdb" has no rows
         And verify that there is a "ao" table "public.ao_part_table" in "fullbkdb" with data
 
-    @fire
+    @backupfire
     Scenario: gpdbrestore -L with -u option
         Given the database is running
         And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
@@ -1909,7 +1884,7 @@ Feature: Validate command line arguments
         And gpdbrestore should print Table public.ao_part_table to stdout 
         And gpdbrestore should print Table public.heap_table to stdout 
 
-    @fire
+    @backupfire
     Scenario: gpdbrestore -b with -u option for Full timestamp
         Given the database is running
         And there are no backup files
@@ -1929,14 +1904,14 @@ Feature: Validate command line arguments
         And verify that the data of "11" tables in "schematestdb" is validated after restore
         And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
 
-    @fire
+    @backupfire
     Scenario: gpdbrestore should not support -u and ddboost parameters together
         Given the database is running
         When the user runs "gpdbrestore -u /tmp --ddboost -s testdb1" 
         Then gpdbrestore should return a return code of 2
         And gpdbrestore should print -u cannot be used with DDBoost parameters to stdout
 
-    @fire
+    @backupfire
     Scenario: gpdbrestore with -s and -u options for full backup
         Given the database is running
         And there are no backup files
@@ -1954,7 +1929,7 @@ Feature: Validate command line arguments
         And verify that the data of "11" tables in "schematestdb" is validated after restore
         And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
         
-    @fire
+    @backupfire
     Scenario: gpdbrestore with -s and -u options for incremental backup
         Given the database is running
         And there are no backup files
@@ -2138,7 +2113,7 @@ Feature: Validate command line arguments
         And verify that the data of "2" tables in "fullbkdb" is validated after restore 
         And verify that the tuple count of all appendonly tables are consistent in "fullbkdb"
     
-    @fire
+    @backupfire
     Scenario: Incremental table filter gpdbrestore
         Given the database is running
         And there are no backup files
@@ -2168,7 +2143,7 @@ Feature: Validate command line arguments
         And verify that tables "public.ao_part_table1_1_prt_p1_2_prt_1, public.ao_part_table1_1_prt_p2_2_prt_1" in "testdb" has no rows
         And verify that tables "public.heap_table_1, public.heap_table_2" in "testdb" has no rows
 
-    @fire
+    @backupfire
     Scenario: Incremental table filter gpdbrestore with different schema for same tablenames
         Given the database is running
         And there are no backup files
@@ -2201,7 +2176,7 @@ Feature: Validate command line arguments
         And verify that tables "pepper.ao_part_table1_1_prt_p1_2_prt_1, pepper.ao_part_table1_1_prt_p2_2_prt_1" in "schematestdb" has no rows
         And verify that tables "public.heap_table_1, public.heap_table_2" in "schematestdb" has no rows
 
-    @fire
+    @backupfire
     Scenario: Incremental table filter gpdbrestore with noplan option
         Given the database is running
         And there are no backup files
@@ -2235,7 +2210,7 @@ Feature: Validate command line arguments
         And verify that tables "public.ao_part_table1_1_prt_p1_2_prt_1, public.ao_part_table1_1_prt_p2_2_prt_1" in "testdb" has no rows
         And verify that there is a "heap" table "public.heap_table_1" in "testdb" with data
    
-    @smoke
+    @backupsmoke
     Scenario: gpdbrestore list_backup option
         Given the database is running
         And the database "fullbkdb" does not exist
@@ -2274,7 +2249,7 @@ Feature: Validate command line arguments
         And verify that the list of stored timestamps is printed to stdout
 
         
-    @smoke
+    @backupsmoke
     Scenario: gpdbrestore list_backup option with -e
         Given the database is running
         When the user runs "gpdbrestore -a -e --list-backup -t 20130221093700"
@@ -2282,7 +2257,7 @@ Feature: Validate command line arguments
         And gpdbrestore should print Cannot specify --list-backup and -e together to stdout
 
 
-    @fire
+    @backupfire
     Scenario: gpdbrestore list_backup option with -T table filter
         Given the database is running
         And the database "bkdb" does not exist
@@ -2297,7 +2272,7 @@ Feature: Validate command line arguments
         Then gpdbrestore should return a return code of 2
         And gpdbrestore should print Cannot specify -T and --list-backup together to stdout
 
-    @fire
+    @backupfire
     Scenario: gpdbrestore list_backup option with full timestamp
         Given the database is running
         And the database "bkdb" does not exist
@@ -2334,7 +2309,7 @@ Feature: Validate command line arguments
          And verify that there is a "ao" table "ao_part_table" in "fullbkdb" with data
          And verify that there is no table "heap_table" in "fullbkdb"
 
-    @fire
+    @backupfire
     Scenario: Funny character table names
         Given the database is running
         And the database "testdb" does not exist
@@ -2367,7 +2342,7 @@ Feature: Validate command line arguments
         Then gpdbrestore should return a return code of 2
         And gpdbrestore should print Unable to locate global file to stdout 
 
-    @fire
+    @backupfire
     Scenario: gp_restore with no ao stats
         Given the database is running
         And the database "fullbkdb" does not exist
@@ -2466,87 +2441,7 @@ Feature: Validate command line arguments
         And the user runs gpdbrestore with the stored timestamp
         Then gpdbrestore should return a return code of 2
         And gpdbrestore should print Report file does not exist for the given restore timestamp to stdout
-
-    @customer
-    Scenario: gpcrondump -t with parent partition for large partition tables
-        Given the database is running
-        And the database "large_table_db" does not exist
-        And database "large_table_db" exists
-        And there is a "ao" table "ao_table" with compression "None" in "large_table_db" with data
-        And there is a "ao" table "ao_table_for_large_database_01" in "large_table_db" having large number of partitions
-        And the length of partition names of table "ao_table_for_large_database_01" in "large_table_db" exceeds the command line maximum limit
-        And there are no backup files
-        When the user runs "gpcrondump -a -x large_table_db -t public.ao_table_for_large_database_01"
-        And gpcrondump should return a return code of 0
-        Then gpcrondump should print --table-file=/tmp/include_dump_tables_file to stdout
-        And gpcrondump should not print --table="public.ao_table_for_large_database_01" to stdout
-        And all the data from "large_table_db" is saved for verification
-        And the timestamp from gpcrondump is stored 
-        And the user runs gpdbrestore with the stored timestamp 
-        Then gpdbrestore should return a return code of 0
-        And verify that the data of "5551" tables in "large_table_db" is validated after restore 
         
-    @customer
-    Scenario: gpcrondump --table-file with parent partition for large partition tables
-        Given the database is running
-        And the database "large_table_db" does not exist
-        And database "large_table_db" exists
-        And there is a "ao" table "ao_table" with compression "None" in "large_table_db" with data
-        And there is a "ao" table "ao_table_for_large_database_01" in "large_table_db" having large number of partitions
-        And the length of partition names of table "ao_table_for_large_database_01" in "large_table_db" exceeds the command line maximum limit
-        And there are no backup files
-        And there is a file "include_file" with tables "public.ao_table_for_large_database_01" 
-        When the user runs "gpcrondump -a -x large_table_db --table-file include_file"
-        And gpcrondump should return a return code of 0
-        Then gpcrondump should print --table-file=/tmp/include_dump_tables_file to stdout
-        And gpcrondump should not print --table="public.ao_table_for_large_database_01" to stdout
-        And the timestamp from gpcrondump is stored 
-        And all the data from "large_table_db" is saved for verification
-        And the user runs gpdbrestore with the stored timestamp 
-        Then gpdbrestore should return a return code of 0
-        And verify that the data of "5551" tables in "large_table_db" is validated after restore 
-
-    @customer
-    Scenario: gpcrondump -T with parent partition for large partition tables
-        Given the database is running
-        And the database "large_table_db" does not exist
-        And database "large_table_db" exists
-        And there is a "ao" table "ao_table" with compression "None" in "large_table_db" with data
-        And there is a "ao" table "ao_table_for_large_database_01" in "large_table_db" having large number of partitions
-        And the length of partition names of table "ao_table_for_large_database_01" in "large_table_db" exceeds the command line maximum limit
-        And there are no backup files
-        When the user runs "gpcrondump -a -x large_table_db -T public.ao_table_for_large_database_01"
-        And gpcrondump should return a return code of 0
-        Then gpcrondump should print --exclude-table-file=/tmp/exclude_dump_tables_file to stdout
-        And gpcrondump should not print --exclude-table="public.ao_table_for_large_database_01" to stdout
-        And the timestamp from gpcrondump is stored 
-        And all the data from "large_table_db" is saved for verification
-        And the user runs gpdbrestore with the stored timestamp 
-        Then gpdbrestore should return a return code of 0
-        And verify that the data of "1" tables in "large_table_db" is validated after restore 
-        And verify that the tuple count of all appendonly tables are consistent in "large_table_db"
-
-    @customer
-    Scenario: gpcrondump --exclude-table-file with parent partition for large partition tables
-        Given the database is running
-        And the database "large_table_db" does not exist
-        And database "large_table_db" exists
-        And there is a "ao" table "ao_table" with compression "None" in "large_table_db" with data
-        And there is a "ao" table "ao_table_for_large_database_01" in "large_table_db" having large number of partitions
-        And the length of partition names of table "ao_table_for_large_database_01" in "large_table_db" exceeds the command line maximum limit
-        And there are no backup files
-        And there is a file "exclude_file" with tables "public.ao_table_for_large_database_01" 
-        When the user runs "gpcrondump -a -x large_table_db --exclude-table-file exclude_file"
-        And gpcrondump should return a return code of 0
-        Then gpcrondump should print --exclude-table-file=/tmp/exclude_dump_tables_file to stdout
-        And gpcrondump should not print --exclude-table="public.ao_table_for_large_database_01" to stdout
-        And the timestamp from gpcrondump is stored 
-        And all the data from "large_table_db" is saved for verification
-        And the user runs gpdbrestore with the stored timestamp 
-        Then gpdbrestore should return a return code of 0
-        And verify that the data of "1" tables in "large_table_db" is validated after restore 
-        And verify that the tuple count of all appendonly tables are consistent in "large_table_db"
-
     Scenario: Negative tests for table filter options for gpcrondump
         Given the database is running
         When the user runs "gpcrondump -a -t public.table --table-file include_file -x schematestdb"
@@ -2569,7 +2464,7 @@ Feature: Validate command line arguments
         And gpcrondump should return a return code of 2
         
     # THIS SHOULD BE THE LAST TEST
-    @fire
+    @backupfire
     Scenario: cleanup for backup feature
         Given there are no backup files in "/tmp"
 

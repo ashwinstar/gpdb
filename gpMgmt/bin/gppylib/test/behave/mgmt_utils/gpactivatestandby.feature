@@ -1,6 +1,6 @@
 @gpactivatestandby
 Feature: gpactivatestandby stop segments
-
+    @wip
     Scenario: Validate gpactivatestandby stop's segments in fast mode
         Given the database is running
         And the database "gpstandbydb" does not exist
