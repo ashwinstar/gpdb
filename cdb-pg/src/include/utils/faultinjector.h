@@ -156,8 +156,6 @@ typedef enum FaultInjectorIdentifier_e {
 	SubtransactionReadFromFile,
 	SubtransactionRelease,
 	SubtransactionRollback,
-	SyncPersistentTable,
-	XLOGInsert,
 	LocalTmRecordTransactionCommit,
 	
 	MallocFailure,

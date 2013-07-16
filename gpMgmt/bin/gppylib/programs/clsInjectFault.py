@@ -371,8 +371,6 @@ class GpInjectFaultProgram:
                               "end_prepare_two_phase_sleep (inject sleep after two phase file creation), " \
                               "segment_transition_request (inject fault after segment receives state transition request), " \
                               "segment_probe_response (inject fault after segment is probed by FTS), " \
-			      "sync_persistent_table (inject fault to sync persistent table to disk), " \
-			      "xlog_insert (inject fault to skip insert record into xlog), " \
 			      "local_tm_record_transaction_commit (inject fault for local transactions after transaction commit is recorded and flushed in xlog ), " \
 			      "malloc_failure (inject fault to simulate memory allocation failure), " \
 			      "transaction_abort_failure (inject fault to simulate transaction abort failure), " \

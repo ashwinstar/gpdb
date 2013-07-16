@@ -46,8 +46,6 @@
 // Length includes 1 extra for NUL.
 #define PersistentStoreSharedDataEyecatcher_Len 26
 
-#define PersistentStoreSharedDataMaxCachedSerialNum 100
-
 typedef struct PersistentStoreSharedData
 {
 	char	eyecatcher[PersistentStoreSharedDataEyecatcher_Len];
@@ -55,8 +53,6 @@ typedef struct PersistentStoreSharedData
 	bool	needToScanIntoSharedMemory;
 
 	int64					maxInUseSerialNum;
-
-	int64					maxCachedSerialNum;
 
 	int64					inUseCount;
 

@@ -18,7 +18,6 @@
 #include "access/heapam.h"
 #include "access/transam.h"
 #include "utils/guc.h"
-#include "utils/faultinjector.h"
 #include "storage/smgr.h"
 #include "storage/ipc.h"
 #include "cdb/cdbglobalsequence.h"
@@ -515,7 +514,7 @@ static void PersistentStore_DoInitScan(
 	}
 	else
 	{
-		storeSharedData->maxCachedSerialNum = globalSequenceNum;
+		storeSharedData->maxInUseSerialNum = globalSequenceNum;
 	}
 	
 	if (Debug_persistent_recovery_print)
@@ -864,17 +863,6 @@ static void PersistentStore_InsertTuple(
 								flushToXLog,
 								persistentTid);
 
-#ifdef FAULT_INJECTOR
-    if (FaultInjector_InjectFaultIfSet(SyncPersistentTable,
-                                        DDLNotSpecified,
-                                        "" /* databaseName */,
-                                        "" /* tableName */)== FaultInjectorTypeSkip)
-    {
-        FlushRelationBuffers(persistentRel);
-        smgrimmedsync(persistentRel->rd_smgr);
-    }
-#endif
-
 	(*storeData->closeRel)(persistentRel);
 	
 	if (Debug_persistent_store_print)
@@ -951,17 +939,6 @@ void PersistentStore_UpdateTuple(
 	xlogUpdateEndLoc = XLogLastInsertEndLoc();
 
 	heap_freetuple(persistentTuple);
-
-#ifdef FAULT_INJECTOR
-	if (FaultInjector_InjectFaultIfSet(SyncPersistentTable,
-										DDLNotSpecified,
-										"" /* databaseName */,
-										"" /* tableName */)== FaultInjectorTypeSkip)
-	{
-		FlushRelationBuffers(persistentRel);
-		smgrimmedsync(persistentRel->rd_smgr);
-	}
-#endif
 
 	(*storeData->closeRel)(persistentRel);
 	
@@ -1320,18 +1297,13 @@ void PersistentStore_AddTuple(
 			 "PersistentStore_AddTuple: Going to add tuple ('%s', shared data %p)",
 			 storeData->tableName,
 			 storeSharedData);
-	/* allocate new sequence numbers if cached sequence numbers are exhausted */ 
-	if (storeSharedData->maxInUseSerialNum >= storeSharedData->maxCachedSerialNum)
-	{
-		storeSharedData->maxCachedSerialNum += 
-						PersistentStoreSharedDataMaxCachedSerialNum;
-		GlobalSequence_Set(
-							storeData->gpGlobalSequence, 
-							storeSharedData->maxCachedSerialNum);
-	}
 
 	*persistentSerialNum = ++storeSharedData->maxInUseSerialNum;
 	storeData->myHighestSerialNum = storeSharedData->maxInUseSerialNum;
+
+	GlobalSequence_Set(
+				storeData->gpGlobalSequence,
+				*persistentSerialNum);
 	
 	// Overwrite with the new serial number value.
 	values[storeData->attNumPersistentSerialNum - 1] = 
