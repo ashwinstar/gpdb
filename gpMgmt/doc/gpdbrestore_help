@@ -215,10 +215,11 @@ OPTIONS
 
 -u <backup_directory> 
 
- Specifies the absolute path to the backup files on each host. If not 
- specified, defaults to the data directory of each instance to be backed 
- up. Specify this option if you specified a backup directory with the 
- gpcrondump option -u when creating a backup set. 
+ Specifies the absolute path to the directory containing the db_dumps 
+ directory on each host. If not specified, defaults to the data directory 
+ of each instance to be backed up. Specify this option if you specified a 
+ backup directory with the gpcrondump option -u when creating a backup 
+ set. 
 
  Note: This option is not supported if --ddboost is specified. 
 
