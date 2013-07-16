@@ -12,7 +12,8 @@ gpcrondump -x database_name
      [-s <schema> | -t <schema>.<table> | -T <schema>.<table>] 
      [--table-file="<filename>" | --exclude-table-file="<filename>"] 
      [-u backup_directory] [-R post_dump_script] [--incremental] 
-     [ -K <timestamp> [--list-backup-files] ] [--prefix <prefix_string>]
+     [ -K <timestamp> [--list-backup-files] ] 
+     [--prefix <prefix_string> [--list-filter-file] ]
      [-c] [-z] [-r] [-f <free_space_percent>] [-b] [-h] [-j | -k] 
      [-g] [-G] [-C] [-d <master_data_directory>] [-B <parallel_processes>] 
      [-a] [-q] [-y <reportfile>] [-l <logfile_directory>] [-v]
@@ -239,7 +240,7 @@ OPTIONS
  and special characters ($, %, #, +, etc.). 
 
  The system verifies the password. After the password is verified, the 
- system creates encrypted DDBOOST_CONFIG files in the user’s home 
+ system creates encrypted DDBOOST_CONFIG files in the user's home 
  directory. 
 
  In the example, the --ddboost-backupdir option specifies the backup 
@@ -344,6 +345,22 @@ OPTIONS
  full backup, you must use the -u option when you create incremental 
  backups that are part of the backup set that includes the full backup. 
 
+ You can create an incremental backup for a full backup of set of 
+ database tables. When you create the full backup, specify the --prefix 
+ option to identify the backup. To include a set of tables in the full 
+ backup, use either the -t option or --table-file option. To exclude a 
+ set of tables, use either the -T option or the --exclude-table-file 
+ option. See the description of the option for more information on its 
+ use. 
+
+ To create an incremental backup based on the full backup of the set of 
+ tables, specify the option --incremental and the --prefix option with 
+ the string specified when creating the full backup. The incremental 
+ backup is limited to only the tables in the full backup. 
+
+ WARNING: gpcrondump does not check for available disk space prior to 
+ performing an incremental backup.
+
  IMPORTANT: Incremental backup cannot be used with Data Domain Boost. You 
  cannot use the Data Domain Boost options with a full backup if you plan 
  to perform incremental backups. 
@@ -376,7 +393,7 @@ OPTIONS
  --list-backup-files is optional. When you specify both this option and 
  the -K <timestamp> option, gpcrondump does not perform a backup. 
  gpcrondump creates two text files that contain the names of the files 
- that will be created when gpcondump backs up a Greenplum database. The 
+ that will be created when gpcrondump backs up a Greenplum database. The 
  text files are created in the same location as the backup files. 
 
  The file names use the timestamp specified by the -K <timestamp> option 
@@ -446,12 +463,19 @@ OPTIONS
  If --incremental is specified, this option is not supported. 
 
 
---prefix <prefix_string>
+--prefix <prefix_string> [--list-filter-tables ]
 
  Prepends <prefix_string> followed by an underscore character (_) to the 
  names of all the backup files created during a backup. 
 
- If --ddboost is specified, this option is not supported.
+ --list-filter-tables is optional. When you specify both options, 
+ gpcrondump does not perform a backup. For the full backup created by 
+ gpcrondump that is identified by the <prefix-string>, the tables that were 
+ included or excluded for the backup are listed. You must also specify 
+ the --incremental option if you specify the --list-filter-tables option. 
+
+ If --ddboost is specified, --prefix <prefix_string> [--list-filter-tables]
+ is not supported.
 
 
 -q (no screen output) 
@@ -618,7 +642,31 @@ This example creates two text files, one with the suffix _pipes and the
 other with _regular_files. The _pipes file contain the file names that 
 can be named pipes when you backup the Greenplum database mytestdb. 
 
-gpcrondump -x mytestdb -K 20131030140000 --list-backup-files
+  gpcrondump -x mytestdb -K 20131030140000 --list-backup-files
+
+
+To use incremental backup with a set of database tables, you must create 
+a create a full backup of the set of tables and specify the --prefix 
+option to identify the backup set. The following example uses the 
+--table-file option to create a full backup of the set of files listed 
+in the file user-tables. The prefix user_backup identifies the backup 
+set. 
+
+  gpcrondump -x mydatabase --table-file=user-tables --prefix user_backup
+
+
+To create an incremental backup for the full backup created in the 
+previous example, specify the --incremental option and the option 
+--prefix user_backup to identify backup set. This example creates an 
+incremental backup. 
+
+  gpcrondump -x mydatabase --incremental --prefix user_backup
+
+
+This command lists the tables that were included or excluded for the 
+full backup. 
+
+  gpcrondump -x mydatabase --incremental --prefix user_backup --list-backup-tables
 
 
 *****************************************************

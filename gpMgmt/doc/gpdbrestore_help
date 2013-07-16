@@ -184,6 +184,12 @@ OPTIONS
  the backup, you must specify this option with the <prefix_string> when 
  restoring the backup. 
 
+ If you created a full backup of a set of tables with gpcrondump and 
+ specified a prefix, you can use gpcrondump with the options 
+ --list-filter-tables and --prefix <prefix_string> to list the tables
+ that were included or excluded for the backup. 
+
+
 -q (no screen output) 
 
  Run in quiet mode. Command output is not displayed on the screen, but is 
