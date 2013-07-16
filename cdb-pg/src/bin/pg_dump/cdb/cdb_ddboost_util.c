@@ -471,7 +471,11 @@ cleanup:
 		free(opts);
 
 	if (ddp_conn != DDP_INVALID_DESCRIPTOR)
-		ddp_disconnect(ddp_conn);
+	{
+		err = ddp_disconnect(ddp_conn);
+		if (err)
+			mpp_err_msg(logError, progname, "ddp_disconnect failed with Err = %d\n", err);
+	}
 
 	if (ddp_inst != DDP_INVALID_DESCRIPTOR)
 		ddp_instance_destroy(ddp_inst);
@@ -1222,6 +1226,7 @@ ddBoostRmdir(char *dir_path, ddp_conn_desc_t ddp_conn, char *parent_dir)
 		mpp_err_msg(logError, progname, "Opening directory %s on ddboost failed. Err %d\n", dir_path, err);
 		return -1;
 	}
+	mpp_err_msg("DEBUG", progname, "ddp_open_dir(%s)\n", dir_path);
 
 	cur_path = (char*)malloc(MAX_PATH_NAME);
 	if (!cur_path)
@@ -1343,8 +1348,11 @@ cleanup:
 		free(cur_path);
 	if (full_path)
 		free(full_path);
-    if (dird != DDP_INVALID_DESCRIPTOR)
-        ddp_close_dir(dird);
+	if (dird != DDP_INVALID_DESCRIPTOR)
+	{
+		ddp_close_dir(dird);
+		mpp_err_msg("DEBUG", progname, "ddp_close_dir(%s)\n", dir_path);
+	}
 
 	return err;
 }
@@ -1719,6 +1727,7 @@ int listDirectory(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn)
         err = -1;
         goto cleanup;
     }
+	mpp_err_msg("DEBUG", progname, "ddp_open_dir(%s)\n", ddboostDir);
 
 	while (1)
     {
@@ -1760,10 +1769,13 @@ cleanup:
 	    free(storage_unit_name);
     if (full_path)
 	    free(full_path);
+    if (dird != DDP_INVALID_DESCRIPTOR)
+    {
+	    ddp_close_dir(dird); 
+	    mpp_err_msg("DEBUG", progname,  "ddp_close_dir(%s)\n", ddboostDir);
+    }
     if (ddboostDir)
         free(ddboostDir);
-    if (dird != DDP_INVALID_DESCRIPTOR)
-        ddp_close_dir(dird); 
 	return err;
 }
 
@@ -2112,6 +2124,7 @@ getLatestTimestamp(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn,
         err = -1;
         goto cleanup;
     }
+	mpp_err_msg("DEBUG", progname, "ddp_open_dir(%s)\n", ddboostDir);
 
 	recentTimestamp = (char*)malloc(MAX_PATH_NAME);
 	if (!recentTimestamp)
@@ -2198,9 +2211,13 @@ cleanup:
         free(full_path);
     if (filePath)
         free(filePath);
+    if (dird != DDP_INVALID_DESCRIPTOR)
+    {
+        ddp_close_dir(dird); 
+        mpp_err_msg("DEBUG", progname, "ddp_close_dir(%s)\n", ddboostDir);
+    }
     if (ddboostDir)
         free(ddboostDir);
-		
 	return err;
 }
 
@@ -2357,6 +2374,7 @@ syncFilesFromDDBoost(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_con
         err = -1;
 		goto cleanup;
     }
+	mpp_err_msg("DEBUG", progname, "ddp_open_dir(%s)\n", ddboostDir);
 
 	/* Create the user-configured Data Domain backup directory if it doesn't exist already */
 	dest_path = (char*)malloc(MAX_PATH_NAME);
@@ -2433,6 +2451,11 @@ cleanup:
     if (dest_dir)
 		free(dest_dir);
 
+    if (dird != DDP_INVALID_DESCRIPTOR)
+    {
+        ddp_close_dir(dird); 
+        mpp_err_msg("DEBUG", progname, "ddp_close_dir(%s)\n", ddboostDir);
+    }
 	return err;
 }
 
@@ -2496,6 +2519,7 @@ copyFilesFromDir(const char *fromDir, char *toDir, ddp_conn_desc_t ddp_conn)
 		err = -1;
 		goto cleanup;
     }
+	mpp_err_msg("DEBUG", progname, "ddp_open_dir(%s)\n", ddboostDir);
 
 	/* Create the directory on the destination if it doesn't exist */
 	err = mkdir(dest_path, S_IRWXU);
@@ -2563,10 +2587,15 @@ cleanup:
 		free(storage_unit_name);
     if (dest_path)
         free(dest_path);
-    if (ddboostDir)
-        free(ddboostDir);
     if (fp)
         fclose(fp);
+    if (dird != DDP_INVALID_DESCRIPTOR)
+    {
+        ddp_close_dir(dird); 
+	mpp_err_msg("DEBUG", progname, "ddp_close_dir(%s)\n", ddboostDir);
+    }
+    if (ddboostDir)
+        free(ddboostDir);
 	return err;
 }
 
@@ -2873,6 +2902,7 @@ int listDirectoryFull(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_co
         err = -1;
         goto cleanup;
     }
+	mpp_err_msg("DEBUG", progname, "ddp_open_dir(%s)\n", ddboostDir);
 
     temp_path = (char*)malloc(MAX_PATH_NAME);
     if (!temp_path)
@@ -2947,7 +2977,10 @@ int listDirectoryFull(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_co
 
 cleanup:
     if (dird != DDP_INVALID_DESCRIPTOR)
+    {
         ddp_close_dir(dird);
+	mpp_err_msg("DEBUG", progname, "ddp_close_dir(%s)\n", ddboostDir);
+    }
     if (temp_path)
         free(temp_path);
     if (storage_unit_name)
@@ -3017,6 +3050,7 @@ syncFilesFromDDBoostTimestamp(struct ddboost_options *dd_options, ddp_conn_desc_
         err = -1;
         goto cleanup;
     }
+	mpp_err_msg("DEBUG", progname, "ddp_open_dir(%s)\n", ddboostPath);
 
     /* Create the db_dumps directory if it doesn't exist already */
     gpdbPath = (char*)malloc(MAX_PATH_NAME);
@@ -3102,6 +3136,11 @@ cleanup:
 		free(storage_unit_name);
 	if (gpdbPath)
 		free(gpdbPath);
+    if (dird != DDP_INVALID_DESCRIPTOR)
+    {
+        ddp_close_dir(dird);
+	mpp_err_msg("DEBUG", progname, "ddp_close_dir(%s)\n", ddboostPath);
+    }
     if (ddboostPath)
         free(ddboostPath);
 	return err;
@@ -3447,7 +3486,11 @@ cleanup:
         ddp_close_file(dst_fh);
 
  	if (remote_ddp_conn != DDP_INVALID_DESCRIPTOR)
-		ddp_disconnect(remote_ddp_conn);
+	{
+		err = ddp_disconnect(remote_ddp_conn);
+		if (err)
+			mpp_err_msg(logError, progname, "ddp_disconnect failed with Err = %d\n", err);
+	}
        
     return err;
 }
