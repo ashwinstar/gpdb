@@ -1241,9 +1241,8 @@ obtain_spill_set(HashAggTable *hashtable)
 		hashtable->mem_for_metadata +=
 			sizeof(SpillSet) +
 			(hashtable->hats.nbatches - 1) * sizeof(SpillFile);
-#ifdef USE_ASSERT_CHECKING
+
 		SANITY_CHECK_METADATA_SIZE(hashtable);
-#endif
 
 		if (hashtable->curr_spill_file != NULL)
 		{
@@ -1349,9 +1348,8 @@ read_spill_set(AggState *aggstate)
 	hashtable->mem_for_metadata +=
 		sizeof(SpillSet) +
 		(hashtable->hats.nbatches - 1) * sizeof(SpillFile);
-#ifdef USE_ASSERT_CHECKING
+
 	SANITY_CHECK_METADATA_SIZE(hashtable);
-#endif
 
 	hashtable->mem_for_metadata += alloc_size;
 	if (alloc_size > 0)
@@ -1419,9 +1417,8 @@ spill_hash_table(AggState *aggstate)
 		hashtable->mem_for_metadata += alloc_size;
 		if (alloc_size > 0)
 		{
-#ifdef USE_ASSERT_CHECKING
 			SANITY_CHECK_METADATA_SIZE(hashtable);
-#endif
+            
 			hashtable->num_batches++;
 			
 			Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_AGG_SPILLBATCH);
