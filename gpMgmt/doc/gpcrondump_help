@@ -12,6 +12,7 @@ gpcrondump -x database_name
      [-s <schema> | -t <schema>.<table> | -T <schema>.<table>] 
      [--table-file="<filename>" | --exclude-table-file="<filename>"] 
      [-u backup_directory] [-R post_dump_script] [--incremental] 
+     [ -K <timestamp> [--list-backup-files] ] [--prefix <prefix_string>]
      [-c] [-z] [-r] [-f <free_space_percent>] [-b] [-h] [-j | -k] 
      [-g] [-G] [-C] [-d <master_data_directory>] [-B <parallel_processes>] 
      [-a] [-q] [-y <reportfile>] [-l <logfile_directory>] [-v]
@@ -21,7 +22,9 @@ gpcrondump -x database_name
      [--ddboost [--replicate --max-streams <max_IO_streams> 
      [--ddboost-skip-ping] ] ] }
      
-gpcrondump --ddboost-host <ddboost_hostname> --ddboost-user <ddboost_user>
+gpcrondump --ddboost-host <ddboost_hostname> 
+    [--ddboost-host ddboost_hostname ... ]
+     --ddboost-user <ddboost_user>
      --ddboost-backupdir <backup_directory> 
      [--ddboost-remote] [--ddboost-skip-ping]
 
@@ -199,7 +202,9 @@ OPTIONS
  specified. See the options for details. 
 
 
---ddboost-host ddboost_hostname --ddboost-user <ddboost_user> 
+--ddboost-host ddboost_hostname
+  [--ddboost-host ddboost_hostname ... ]
+  --ddboost-user <ddboost_user> 
   --ddboost-backupdir <backup_directory> 
   [--ddboost-remote] [--ddboost-skip-ping]
 
@@ -207,7 +212,9 @@ OPTIONS
  any other gpcrondump options. Do not enter just one part of this option. 
 
  <ddboost_hostname> is the IP address (or hostname associated to the IP) 
- of the host. There is a 30-character limit. 
+ of the host. There is a 30-character limit. If you use two or more 
+ network connections to connect to the Data Domain system, specify each 
+ connection with the --ddboost-host option. 
 
  <ddboost_user> is the Data Domain Boost user name. There is a 30-character 
  limit. 
@@ -353,6 +360,47 @@ OPTIONS
 
  Run VACUUM before the dump starts. 
 
+ 
+-K <timestamp> [--list-backup-files]
+
+ Specify the <timestamp> that is used when creating a backup. The 
+ <timestamp> is 14-digit string that specifies a date and time in the 
+ format yyyymmddhhmmss. The date is used for backup directory name. The 
+ date and time is used in the backup file names. If -K <timestamp> is not 
+ specified, a timestamp is generated based on the system time. 
+
+ When adding a backup to set of backups, gpcrondump returns an error if 
+ the <timestamp> does not specify a date and time that is more recent 
+ than all other backups in the set. 
+
+ --list-backup-files is optional. When you specify both this option and 
+ the -K <timestamp> option, gpcrondump does not perform a backup. 
+ gpcrondump creates two text files that contain the names of the files 
+ that will be created when gpcondump backs up a Greenplum database. The 
+ text files are created in the same location as the backup files. 
+
+ The file names use the timestamp specified by the -K <timestamp> option 
+ and have the suffix _pipes and _regular_files. For example: 
+
+  gp_dump_20130514093000_pipes 
+  gp_dump_20130514093000_regular_files 
+
+ The _pipes file contains a list of file names that be can be created as 
+ named pipes. When gpcrondump performs a backup, the backup files will 
+ generate into the named pipes. The _regular_files file contains a list 
+ of backup files that must remain regular files. gpcrondump and 
+ gpdbrestore use the information in the regular files during backup and 
+ restore operations. To backup a complete set of Greenplum Database 
+ backup files, the files listed in the _regular_files file must also be 
+ backed up after the completion of the backup job. 
+
+ To use named pipes for a backup, you need to create the named pipes on 
+ all the Greenplum Database and make them writeable before running 
+ gpcrondump. 
+
+ If --ddboost is specified, -K <timestamp> [--list-backup-files] is not 
+ supported. 
+
 
 -k (vacuum after dump) 
 
@@ -398,7 +446,15 @@ OPTIONS
  If --incremental is specified, this option is not supported. 
 
 
- -q (no screen output) 
+--prefix <prefix_string>
+
+ Prepends <prefix_string> followed by an underscore character (_) to the 
+ names of all the backup files created during a backup. 
+
+ If --ddboost is specified, this option is not supported.
+
+
+-q (no screen output) 
 
  Run in quiet mode. Command output is not displayed on the screen, but is 
  still written to the log file. 
@@ -558,6 +614,13 @@ The content of dump script gpdump.sh is:
   gpcrondump -x sales -c -g -G -a -q 
 
   
+This example creates two text files, one with the suffix _pipes and the 
+other with _regular_files. The _pipes file contain the file names that 
+can be named pipes when you backup the Greenplum database mytestdb. 
+
+gpcrondump -x mytestdb -K 20131030140000 --list-backup-files
+
+
 *****************************************************
 SEE ALSO
 *****************************************************
