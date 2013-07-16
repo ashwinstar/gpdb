@@ -59,7 +59,7 @@ OPTIONS
 -B <parallel_processes>
 
  The number of segments to stop in parallel. If not specified, 
- the utility will start up to 60 parallel processes depending 
+ the utility will start up to 64 parallel processes depending 
  on how many segment instances it needs to stop.
 
 
