@@ -95,6 +95,12 @@
 #include "utils/guc.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbfilerepservice.h"
+#include "utils/faultinjector.h"
+
+#ifdef FAULT_INJECTOR
+/* Number of invocations to internal_flush before we inject a fault (if requested) */
+#define INTERNAL_FLUSH_FAULT_ITERATIONS 500
+#endif
 
 /*
  * Configuration options
@@ -1265,6 +1271,18 @@ internal_flush(void)
 
 	char	   *bufptr = PqSendBuffer;
 	char	   *bufend = PqSendBuffer + PqSendPointer;
+
+#ifdef FAULT_INJECTOR
+	static int no_iterations = 0;
+	if (no_iterations++ == INTERNAL_FLUSH_FAULT_ITERATIONS)
+	{
+		FaultInjector_InjectFaultIfSet(
+				InternalFlushError,
+				DDLNotSpecified,
+				"",  // databaseName
+				""); // tableName
+	}
+#endif
 
 	while (bufptr < bufend)
 	{

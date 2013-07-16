@@ -163,6 +163,7 @@ typedef enum FaultInjectorIdentifier_e {
 
 	UpdateCommittedEofInPersistentTable,
 
+	InternalFlushError,
 	ExecSimpleQueryEndCommand,
 
 	/* INSERT has to be done before that line */

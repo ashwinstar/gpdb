@@ -375,6 +375,7 @@ class GpInjectFaultProgram:
 			      "malloc_failure (inject fault to simulate memory allocation failure), " \
 			      "transaction_abort_failure (inject fault to simulate transaction abort failure), " \
 			      "update_committed_eof_in_persistent_table (inject fault before committed EOF is updated in gp_persistent_relation_node for Append Only segment files), " \
+                             "internal_flush_error (inject an error during internal_flush), " \
 			      "exec_simple_query_end_command (inject fault before EndCommand in exec_simple_query), " \
 			      "all (affects all faults injected, used for 'status' and 'reset'), ") 
         addTo.add_option("-c", "--ddl_statement", dest="ddlStatement", type="string",

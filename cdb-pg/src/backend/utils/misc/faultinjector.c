@@ -244,6 +244,8 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault to simulate transaction abort failure  */
 	_("update_committed_eof_in_persistent_table"),
 		/* inject fault before committed EOF is updated in gp_persistent_relation_node for Append Only segment files */
+	_("internal_flush_error"),
+		/* inject an error during internal_flush */
 	_("exec_simple_query_end_command"),
 		/* inject fault before EndCommand in exec_simple_query */
 	_("not recognized"),
@@ -972,7 +974,8 @@ FaultInjector_NewHashEntry(
 		case DtmBroadcastPrepare:
 		case DtmBroadcastCommitPrepared:
 		case DtmBroadcastAbortPrepared:
-		case DtmXLogDistributedCommit:			
+		case DtmXLogDistributedCommit:
+		case InternalFlushError:
 			
 			if (fileRepRole != FileRepNoRoleConfigured)
 			{
