@@ -1605,4 +1605,21 @@ SELECT '' AS to_timestamp_16, to_timestamp('200401', 'YYYYWW');
                  | Thu Jan 01 00:00:00 2004 PST
 (1 row)
 
+-- MPP-18998
+create table dttm_com
+(id int primary key,
+t1 timestamp not null,
+t2 timestamp not null,
+d1 date not null,
+d2 date not null );
+NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "dttm_com_pkey" for table "dttm_com"
+insert into dttm_com values
+     (1, now(), current_timestamp, now(), current_date),
+     (2, current_timestamp, localtimestamp::date, current_date::date, date_in(date_out(current_date))),
+     (3, now(), current_timestamp, now(), current_date);
+select id from dttm_com where d1 <> current_date;
+ id 
+----
+(0 rows)
+
 SET DateStyle TO DEFAULT;

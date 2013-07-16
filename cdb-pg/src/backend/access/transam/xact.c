@@ -3006,6 +3006,14 @@ StartTransaction(void)
 		  	xactStartTimestamp = stmtStartTimestamp;
 		  	xactStopTimestamp = 0;
 			pgstat_report_xact_timestamp(xactStartTimestamp);
+			if (SharedLocalSnapshotSlot != NULL)
+			{
+				elog((Debug_print_full_dtm ? LOG : DEBUG5),
+					 "setting SharedLocalSnapshotSlot->startTimestamp = " INT64_FORMAT "[cur=" INT64_FORMAT "])", 
+					xactStartTimestamp, SharedLocalSnapshotSlot->startTimestamp);
+
+				SharedLocalSnapshotSlot->startTimestamp = xactStartTimestamp;
+			}
 		}
 		break;
 
@@ -3068,9 +3076,9 @@ StartTransaction(void)
 				if (SharedLocalSnapshotSlot != NULL)
 				{
 					elog((Debug_print_full_dtm ? LOG : DEBUG5),
-						 "qExec writer setting distributedXid: %d sharedQDxid %d (shared xid %u -> %u) ready %s", 
+						 "qExec writer setting distributedXid: %d sharedQDxid %d (shared xid %u -> %u) ready %s (shared timeStamp = " INT64_FORMAT " -> " INT64_FORMAT ")",
 						 QEDtxContextInfo.distributedXid, SharedLocalSnapshotSlot->QDxid, SharedLocalSnapshotSlot->xid, s->transactionId,
-						 SharedLocalSnapshotSlot->ready ? "true" : "false");
+						 SharedLocalSnapshotSlot->ready ? "true" : "false", SharedLocalSnapshotSlot->startTimestamp, xactStartTimestamp);
 
 					SharedLocalSnapshotSlot->xid = s->transactionId;
 					SharedLocalSnapshotSlot->startTimestamp = xactStartTimestamp;
@@ -3178,10 +3186,12 @@ StartTransaction(void)
 				if (QEDtxContextInfo.distributedXid == SharedLocalSnapshotSlot->QDxid)
 				{
 					elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),
-						 "qExec reader: shared-xid to xid %u (%u %u) (%u %u)",
+						 "qExec reader: shared-xid to xid %u (%u %u) (%u %u) xactStartTimestamp (" INT64_FORMAT " -> " INT64_FORMAT ")",
 						 SharedLocalSnapshotSlot->xid,
 						 QEDtxContextInfo.distributedXid, SharedLocalSnapshotSlot->QDxid,
-						 QEDtxContextInfo.segmateSync, SharedLocalSnapshotSlot->segmateSync);
+						 QEDtxContextInfo.segmateSync, SharedLocalSnapshotSlot->segmateSync,
+						 xactStartTimestamp,
+						 SharedLocalSnapshotSlot->startTimestamp);
 
 					s->transactionId = SharedLocalSnapshotSlot->xid;
 					xactStartTimestamp = SharedLocalSnapshotSlot->startTimestamp;
@@ -4344,7 +4354,7 @@ StartTransactionCommand(void)
 				 */
 				if (TransactionIdIsValid(s->transactionId))
 				{
-					elog((Debug_print_full_dtm ? LOG : DEBUG3), "qExec WRITER updating shared xid: %u -> %u (StartTransactionCommand)", SharedLocalSnapshotSlot->xid, s->transactionId);
+					elog((Debug_print_full_dtm ? LOG : DEBUG3), "qExec WRITER updating shared xid: %u -> %u (StartTransactionCommand) timestamp: " INT64_FORMAT " -> " INT64_FORMAT ")", SharedLocalSnapshotSlot->xid, s->transactionId, SharedLocalSnapshotSlot->startTimestamp, xactStartTimestamp);
 					SharedLocalSnapshotSlot->xid = s->transactionId;
 				}
 

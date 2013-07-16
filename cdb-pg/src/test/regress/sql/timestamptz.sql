@@ -261,4 +261,17 @@ SELECT '' AS to_timestamp_15, to_timestamp('200401', 'IYYYIW');
 SELECT '' AS to_timestamp_16, to_timestamp('200401', 'YYYYWW');
 
 
+-- MPP-18998
+create table dttm_com
+(id int primary key,
+t1 timestamp not null,
+t2 timestamp not null,
+d1 date not null,
+d2 date not null );
+insert into dttm_com values
+     (1, now(), current_timestamp, now(), current_date),
+     (2, current_timestamp, localtimestamp::date, current_date::date, date_in(date_out(current_date))),
+     (3, now(), current_timestamp, now(), current_date);
+select id from dttm_com where d1 <> current_date;
+
 SET DateStyle TO DEFAULT;
