@@ -2216,6 +2216,33 @@ def impl(context, directory, prefix):
     for file in results:
         if not file.startswith(prefix.strip()):
             raise Exception('Dump file %s on master under %s does not have required prefix %s' %(file, master_dump_dir, prefix))
+
+@given('the environment variable "{var}" is not set')
+def impl(context, var):
+    context.env_var = os.environ.get(var)
+    os.environ[var] = ''
+
+@then('the environment variable "{var}" is reset')
+def impl(context, var):
+    if hasattr(context, 'env_var'):
+        os.environ[var] = context.env_var
+    else:
+        raise Exception('Environment variable %s cannot be reset because its value was not saved.' % var)
+
+@given('the environment variable "{var}" is set to "{val}"')
+def impl(context, var, val):
+    context.env_var = os.environ.get(var)
+    os.environ[var] = val
+
+@given('the path "{path}" exists')
+def impl(context, path):
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+@then('the path "{path}" does not exist')
+def impl(context, path):
+    if os.path.exists(path):
+        shutil.rmtree(path)
    
 @given('below sql is executed in "{dbname}" db')
 @when('below sql is executed in "{dbname}" db')

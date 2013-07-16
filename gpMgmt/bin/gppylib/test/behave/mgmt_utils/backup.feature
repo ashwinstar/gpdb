@@ -3539,6 +3539,21 @@ Feature: Validate command line arguments
         And verify that there is no table "public.ao_part_table" in "testdb"
         And verify that there is no table "public.heap_table2" in "testdb"
 
+    Scenario: Gpcrondump with no PGPORT set
+        Given the database is running
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a backupfile of tables "heap_table, ao_part_table" in "fullbkdb" exists for validation
+        And the environment variable "PGPORT" is not set
+        When the user runs "gpcrondump -G -a -x fullbkdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the environment variable "PGPORT" is reset
+        And the user runs gpdbrestore with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "heap_table" in "fullbkdb" with data
+        And verify that there is a "ao" table "ao_part_table" in "fullbkdb" with data
+
     @backupsmoke
     Scenario: Checking for abnormal whitespace
         Given the database is running

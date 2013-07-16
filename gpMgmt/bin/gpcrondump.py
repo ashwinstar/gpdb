@@ -688,6 +688,7 @@ class GpCronDump(Operation):
                 if current_exit_status == 0:
                     DumpGlobal(timestamp = post_dump_outcome['timestamp'],
                                master_datadir = self.master_datadir,
+                               master_port = self.master_port,
                                backup_dir = self.backup_dir,
                                dump_dir = self.dump_dir,
                                ddboost = self.ddboost).run()

@@ -95,7 +95,8 @@ def check_string_not_present_stdout(context, msg):
 def check_err_msg(context, err_msg):
     if not hasattr(context, 'exception'):
         raise Exception('An exception was not raised and it was expected')
-    if err_msg not in context.error_message:
+    pat = re.compile(err_msg)
+    if not pat.search(context.error_message):
         err_str = "Expected error string '%s' and found: '%s'" % (err_msg, context.error_message)
         raise Exception(err_str)
 
@@ -653,7 +654,7 @@ def get_backup_dir_for_host(hostname, dbname='template1'):
     return getRows(dbname, get_backup_dir_sql)
    
 def cleanup_dir(context, host, location):
-    cleanup_cmd = "gpssh -h %s -e 'rm -rf %s/db_dumps'" % (host, location)
+    cleanup_cmd = "gpssh -h %s -e 'rm -rf %s/db_dumps %s/gpcrondump.pid'" % (host, location, location)
     run_command(context, cleanup_cmd)
     if context.exception:
         raise context.exception

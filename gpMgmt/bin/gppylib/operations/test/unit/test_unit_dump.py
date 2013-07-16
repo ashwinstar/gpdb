@@ -9,7 +9,8 @@ import time
 import unittest2 as unittest
 from datetime import datetime
 from gppylib.commands.base import CommandResult
-from gppylib.operations.dump import DumpDatabase, compare_dict, create_partition_dict, get_dirty_heap_tables, get_filename_from_filetype,\
+from gppylib.operations.dump import DumpDatabase, DumpGlobal, compare_dict, create_partition_dict, \
+                                    get_dirty_heap_tables, get_filename_from_filetype,\
                                     get_partition_list, get_partition_state, get_last_dump_timestamp, get_lines_from_file,\
                                     get_last_state, get_last_operation_data, get_dirty_partition_tables,\
                                     write_dirty_file, write_partition_list_file, write_dirty_file_to_temp, write_state_file,\

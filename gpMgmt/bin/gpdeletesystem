@@ -19,7 +19,8 @@ try:
     from gppylib.gpcoverage import GpCoverage
     from gppylib.commands import unix, gp, base
     from gppylib.db import dbconn
-    from gppylib import gparray
+    from gppylib import gparray, pgconf
+    from gppylib.operations.deletesystem import validate_pgport
     from gppylib.userinput import *
 except ImportError, e:
     sys.exit('ERROR: Cannot import modules.  Please check that you '
@@ -94,7 +95,7 @@ def parseargs():
     if not options.master_data_dir:
         logger.fatal('Required option --master-data-directory is missing.')
         parser.exit(2, None)
-        
+
     # We have to normalize this path for a later comparison
     options.master_data_dir = os.path.normpath(options.master_data_dir)
 
@@ -116,6 +117,8 @@ def parseargs():
     if options.logfile and not os.path.exists(options.logfile):
         logger.fatal('Log directory %s does not exist.' % options.logfile)
         parser.exit(2, None)
+
+    options.pgport = validate_pgport(options.master_data_dir)
 
     # Set log level
     if options.verbose:
@@ -202,7 +205,7 @@ def delete_cluster(options):
         
     # get gparray object
     logger.info('Getting segment information...')
-    dburl = dbconn.DbURL()
+    dburl = dbconn.DbURL(port=options.pgport)
     try:
         array = gparray.GpArray.initFromCatalog(dburl, True)
     except Exception, ex:

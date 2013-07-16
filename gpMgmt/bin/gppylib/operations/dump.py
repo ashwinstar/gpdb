@@ -1187,9 +1187,10 @@ class UpdateHistoryTable(Operation):
 
 
 class DumpGlobal(Operation):
-    def __init__(self, timestamp, master_datadir, backup_dir, dump_dir, ddboost):
+    def __init__(self, timestamp, master_datadir, master_port, backup_dir, dump_dir, ddboost):
         self.timestamp = timestamp
         self.master_datadir = master_datadir
+        self.master_port = master_port
         self.backup_dir = backup_dir
         self.dump_dir = dump_dir
         self.ddboost = ddboost
@@ -1200,7 +1201,7 @@ class DumpGlobal(Operation):
         else:
             global_file = os.path.join(self.master_datadir, self.dump_dir, DUMP_DATE, "%s%s" % (generate_global_prefix(), self.timestamp))
         Command('Dump global objects', 
-                "pg_dumpall -g --gp-syntax > %s" % global_file).run(validateAfter=True)
+                self.create_pgdump_command_line(self.master_port, global_file)).run(validateAfter=True)
         if self.ddboost:
             abspath = global_file
             relpath = os.path.join(self.dump_dir, DUMP_DATE, "%s%s" % (generate_global_prefix(), self.timestamp))
@@ -1208,6 +1209,9 @@ class DumpGlobal(Operation):
             cmd = Command('DDBoost copy of %s' % abspath, 
                           'gpddboost --copyToDDBoost --from-file=%s --to-file=%s' % (abspath, relpath))
             cmd.run(validateAfter = True)
+
+    def create_pgdump_command_line(self, master_port, global_file):
+        return "pg_dumpall -p %s -g --gp-syntax > %s" % (master_port, global_file)
 
 
 
