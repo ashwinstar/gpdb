@@ -1611,6 +1611,8 @@ Feature: Validate command line arguments
 
     @backupfire
     Scenario: Full backup -T test 2 
+
+
         Given the database is running
         And the database "fullbkdb" does not exist
         And database "fullbkdb" exists
@@ -2325,7 +2327,7 @@ Feature: Validate command line arguments
         And there are no backup files
         When the user runs "gpcrondump -a -x testdb"
         Then gpcrondump should return a return code of 2
-        And gpcrondump should print Tablename has an invalid character "\n", ":", "," : to stdout
+        And gpcrondump should print Tablename has an invalid character ".n", ":", "," : to stdout
 
     Scenario: Negative test gpdbrestore -G with incremental timestamp
         Given the database is running
@@ -2889,6 +2891,291 @@ Feature: Validate command line arguments
         And gpdbrestore should return a return code of 0 
         And verify that the data of "11" tables in "testdb" is validated after restore 
         And close all opened pipes
+
+    @backupsmoke
+    Scenario: Full Backup and Restore with --prefix option
+        Given the database is running
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        And there is a backupfile of tables "heap_table, ao_part_table" in "testdb" exists for validation
+        When the user runs "gpcrondump -a -x testdb --prefix=foo"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And the user runs gpdbrestore with the stored timestamp and options "--prefix=foo"
+        And gpdbrestore should return a return code of 0
+        And there should be dump files under " " with prefix "foo"
+        And verify that there is a "heap" table "heap_table" in "testdb" with data
+        And verify that there is a "ao" table "ao_part_table" in "testdb" with data
+
+    Scenario: Full Backup and Restore with --prefix option for multiple databases
+        Given the database is running
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb1" does not exist
+        And database "testdb1" exists
+        And the database "testdb2" does not exist
+        And database "testdb2" exists
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb1" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb1" with data
+        And there is a backupfile of tables "heap_table1, ao_part_table" in "testdb1" exists for validation
+        And there is a "heap" table "heap_table2" with compression "None" in "testdb2" with data
+        And there is a backupfile of tables "heap_table2" in "testdb2" exists for validation
+        When the user runs "gpcrondump -a -x testdb1,testdb2 --prefix=foo"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And the user runs gpdbrestore with the stored timestamp and options "--prefix=foo"
+        And gpdbrestore should return a return code of 0
+        And there should be dump files under " " with prefix "foo"
+        And verify that there is a "heap" table "heap_table1" in "testdb1" with data
+        And verify that there is a "ao" table "ao_part_table" in "testdb1" with data
+        And verify that there is a "heap" table "heap_table2" in "testdb2" with data
+
+    @backupsmoke
+    Scenario: Incremental Backup and Restore with --prefix option
+        Given the database is running
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb --prefix=foo"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored 
+        And there should be dump files under " " with prefix "foo"
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb --incremental --prefix=foo"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And there should be dump files under " " with prefix "foo"
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb --incremental --prefix=foo"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And there should be dump files under " " with prefix "foo"
+        And all the data from "testdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp and options "--prefix=foo" 
+        And gpdbrestore should return a return code of 0 
+        And verify that the data of "11" tables in "testdb" is validated after restore 
+
+    Scenario: Full Backup and Restore with -g and --prefix option
+        Given the database is running
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        And there is a backupfile of tables "heap_table, ao_part_table" in "testdb" exists for validation
+        When the user runs "gpcrondump -a -x testdb --prefix=foo -g"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And config files should be backed up on all segments
+        And there should be dump files under " " with prefix "foo"
+        And the user runs gpdbrestore with the stored timestamp and options "--prefix=foo"
+        And gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "heap_table" in "testdb" with data
+        And verify that there is a "ao" table "ao_part_table" in "testdb" with data
+
+    Scenario: Full Backup and Restore with -G and --prefix option
+        Given the database is running
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        And there is a backupfile of tables "heap_table, ao_part_table" in "testdb" exists for validation
+        When the user runs "gpcrondump -a -x testdb --prefix=foo -G"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And "global" file should be created under " "
+        And there should be dump files under " " with prefix "foo"
+        And the user runs gpdbrestore with the stored timestamp and options "--prefix=foo"
+        And gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "heap_table" in "testdb" with data
+        And verify that there is a "ao" table "ao_part_table" in "testdb" with data
+
+    Scenario: Full Backup and Restore with -u and --prefix option
+        Given the database is running
+        And the prefix "foo" is stored
+        And there are no backup files
+        And there are no backup files in "/tmp"
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        And there is a backupfile of tables "heap_table, ao_part_table" in "testdb" exists for validation
+        When the user runs "gpcrondump -a -x testdb --prefix=foo -u /tmp"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And the user runs gpdbrestore with the stored timestamp and options "-u /tmp --prefix=foo" 
+        And gpdbrestore should return a return code of 0
+        And there should be dump files under "/tmp" with prefix "foo"
+        And verify that there is a "heap" table "heap_table" in "testdb" with data
+        And verify that there is a "ao" table "ao_part_table" in "testdb" with data
+
+    Scenario: Full Backup with --list-backup-files and --prefix options
+        Given the database is running
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb -K 20130101010101 --list-backup-files --prefix=foo"
+        Then gpcrondump should return a return code of 0
+        And gpcrondump should print Added the list of pipe names to the file to stdout
+        And gpcrondump should print Added the list of file names to the file to stdout
+        And gpcrondump should print Successfully listed the names of backup files and pipes to stdout
+        And the timestamp key "20130101010101" for gpcrondump is stored 
+        Then "pipes" file should be created under " "
+        Then "regular_files" file should be created under " "
+        And the "pipes" file under " " with options "--prefix=foo" is validated after dump operation
+        And the "regular_files" file under " " with options "--prefix=foo" is validated after dump operation
+        And there are no dump files created under " "
+
+    Scenario: Full and incremental backups with mixed prefix
+        Given the database is running
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb --prefix=foo"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And there should be dump files under " " with prefix "foo"
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb --incremental"
+        Then gpcrondump should return a return code of 2 
+        And gpcrondump should print No full backup found for incremental to stdout
+
+    Scenario: Incremental with multiple full backups having different prefix
+        Given the database is running
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored 
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb --prefix=foo"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored 
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb --incremental"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And all the data from "testdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp 
+        And gpdbrestore should return a return code of 0 
+        And verify that the data of "11" tables in "testdb" is validated after restore 
+
+    Scenario: Incremental backup with prefix based off full backup without prefix
+        Given the database is running
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb --incremental"
+        Then gpcrondump should return a return code of 0 
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb --incremental --prefix=foo"
+        Then gpcrondump should return a return code of 2 
+        And gpcrondump should print No full backup found for incremental to stdout
+
+    Scenario: Restore database without prefix for a dump with prefix
+        Given the database is running
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb --prefix=foo"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        When the user runs gpdbrestore with the stored timestamp
+        Then gpdbrestore should return a return code of 2 
+        And gpdbrestore should print Dump file .* does not exist on Master to stdout
+
+    Scenario: Multiple full and incrementals with and without prefix
+        Given the database is running
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb"
+        Then gpcrondump should return a return code of 0
+        When the user runs "gpcrondump -a -x testdb --prefix=foo"
+        Then gpcrondump should return a return code of 0
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb --incremental"
+        Then gpcrondump should return a return code of 0
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb --incremental --prefix=foo"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And all the data from "testdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp and options "--prefix=foo" 
+        Then gpdbrestore should return a return code of 0 
+        And verify that the data of "11" tables in "testdb" is validated after restore 
+
+    Scenario: Incremental Backup and Restore with --prefix and -u options
+        Given the database is running
+        And the prefix "foo" is stored
+        And there are no backup files in "/tmp"
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb --prefix=foo -u /tmp"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored 
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb --incremental --prefix=foo -u /tmp"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And all the data from "testdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp and options "--prefix=foo -u /tmp" 
+        And gpdbrestore should return a return code of 0 
+        And verify that the data of "11" tables in "testdb" is validated after restore 
 
     # THIS SHOULD BE THE LAST TEST
     @backupfire

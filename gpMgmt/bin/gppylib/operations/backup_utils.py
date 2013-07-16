@@ -2,12 +2,14 @@ import os
 import fnmatch
 import tempfile
 import glob
+#from gppylib.operations.dump import dump_prefix
 from gppylib import gplog
 from gppylib.gparray import GpArray
 from gppylib.commands.base import WorkerPool, Command, REMOTE
 from gppylib.commands.unix import Scp
 from gppylib.db import dbconn
 from gppylib.db.dbconn import execSQL, execSQLForSingleton, UnexpectedRowsError
+dump_prefix = ''
 DUMP_DIR = 'db_dumps'
 
 logger = gplog.get_default_logger()
@@ -95,7 +97,7 @@ def check_successful_dump(dbname, report_file_contents):
 def convert_reportfilename_to_cdatabasefilename(report_file):
     (dirname, fname) = os.path.split(report_file)
     ts = fname[-18:-4]
-    return "%s/gp_cdatabase_1_1_%s" % (dirname, ts)
+    return "%s/%sgp_cdatabase_1_1_%s" % (dirname, dump_prefix, ts)
 
 def check_cdatabase_exists(dbname, report_file):
     try:
@@ -194,47 +196,78 @@ def get_backup_directory(master_data_dir, backup_dir, timestamp):
 
 def generate_report_filename(master_data_dir, backup_dir, timestamp):
     use_dir = get_backup_directory(master_data_dir, backup_dir, timestamp)
-    return "%s/gp_dump_%s.rpt" % (use_dir, timestamp)
+    return "%s/%sgp_dump_%s.rpt" % (use_dir, dump_prefix, timestamp)
 
 def generate_increments_filename(master_data_dir, backup_dir, timestamp):
     use_dir = get_backup_directory(master_data_dir, backup_dir, timestamp)
-    return "%s/gp_dump_%s_increments" % (use_dir, timestamp)
+    return "%s/%sgp_dump_%s_increments" % (use_dir, dump_prefix, timestamp)
 
 def generate_pgstatlastoperation_filename(master_data_dir, backup_dir, timestamp):
     use_dir = get_backup_directory(master_data_dir, backup_dir, timestamp)
-    return "%s/gp_dump_%s_last_operation" % (use_dir, timestamp)
+    return "%s/%sgp_dump_%s_last_operation" % (use_dir, dump_prefix, timestamp)
 
 def generate_dirtytable_filename(master_data_dir, backup_dir, timestamp):
     use_dir = get_backup_directory(master_data_dir, backup_dir, timestamp)
-    return "%s/gp_dump_%s_dirty_list" % (use_dir, timestamp)
+    return "%s/%sgp_dump_%s_dirty_list" % (use_dir, dump_prefix, timestamp)
 
 def generate_plan_filename(master_data_dir, backup_dir, timestamp):
     use_dir = get_backup_directory(master_data_dir, backup_dir, timestamp)
-    return "%s/gp_restore_%s_plan" % (use_dir, timestamp)
+    return "%s/%sgp_restore_%s_plan" % (use_dir, dump_prefix, timestamp)
 
 def generate_metadata_filename(master_data_dir, backup_dir, timestamp):
     use_dir = get_backup_directory(master_data_dir, backup_dir, timestamp)
-    return "%s/gp_dump_1_1_%s.gz" % (use_dir, timestamp)
+    return "%s/%sgp_dump_1_1_%s.gz" % (use_dir, dump_prefix, timestamp)
 
 def generate_partition_list_filename(master_data_dir, backup_dir, timestamp):
     use_dir = get_backup_directory(master_data_dir, backup_dir, timestamp)
-    return "%s/gp_dump_%s_table_list" % (use_dir, timestamp)
+    return "%s/%sgp_dump_%s_table_list" % (use_dir, dump_prefix, timestamp)
 
 def generate_ao_state_filename(master_data_dir, backup_dir, timestamp):
     use_dir = get_backup_directory(master_data_dir, backup_dir, timestamp)
-    return "%s/gp_dump_%s_ao_state_file" % (use_dir, timestamp)
+    return "%s/%sgp_dump_%s_ao_state_file" % (use_dir, dump_prefix, timestamp)
  
 def generate_co_state_filename(master_data_dir, backup_dir, timestamp):
     use_dir = get_backup_directory(master_data_dir, backup_dir, timestamp)
-    return "%s/gp_dump_%s_co_state_file" % (use_dir, timestamp)
+    return "%s/%sgp_dump_%s_co_state_file" % (use_dir, dump_prefix, timestamp)
 
 def generate_files_filename(master_data_dir, backup_dir, timestamp):
     use_dir = get_backup_directory(master_data_dir, backup_dir, timestamp)
-    return '%s/gp_dump_%s_regular_files' % (use_dir, timestamp) 
+    return '%s/%sgp_dump_%s_regular_files' % (use_dir, dump_prefix, timestamp) 
 
 def generate_pipes_filename(master_data_dir, backup_dir, timestamp):
     use_dir = get_backup_directory(master_data_dir, backup_dir, timestamp)
-    return '%s/gp_dump_%s_pipes' % (use_dir, timestamp) 
+    return '%s/%sgp_dump_%s_pipes' % (use_dir, dump_prefix, timestamp) 
+
+def generate_master_config_filename(timestamp):
+    return '%sgp_master_config_files_%s.tar' % (dump_prefix, timestamp)
+
+def generate_segment_config_filename(segId, timestamp):
+    return '%sgp_segment_config_files_0_%d_%s.tar' % (dump_prefix, segId, timestamp)
+
+def generate_global_prefix():
+    return '%sgp_global_1_1_' % (dump_prefix)
+
+def generate_master_dbdump_prefix():
+    return '%sgp_dump_1_1_' % (dump_prefix)
+
+def generate_master_status_prefix():
+    return '%sgp_dump_status_1_1_' % (dump_prefix)
+
+def generate_seg_dbdump_prefix():
+    return '%sgp_dump_0_' % (dump_prefix)
+
+def generate_seg_status_prefix():
+    return '%sgp_dump_status_0_' % (dump_prefix)
+
+def generate_dbdump_prefix():
+    return '%sgp_dump_' % (dump_prefix)
+
+def generate_createdb_prefix():
+    return '%sgp_cdatabase_1_1_' % (dump_prefix)
+
+def generate_createdb_filename(master_datadir, backup_dir, timestamp):
+    use_dir = get_backup_directory(master_datadir, backup_dir, timestamp)
+    return '%s/%s%s' % (use_dir, generate_createdb_prefix(), timestamp) 
 
 def get_dump_dirs(dump_dir):
     dump_path = os.path.join(dump_dir, DUMP_DIR)
@@ -273,7 +306,7 @@ def get_latest_report_in_dir(d):
     if len(files) == 0:
         return None
 
-    dump_report_files = fnmatch.filter(files, 'gp_dump_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9].rpt')
+    dump_report_files = fnmatch.filter(files, '%sgp_dump_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9].rpt' % dump_prefix)
 
     if len(dump_report_files) == 0:
         return None
@@ -284,12 +317,13 @@ def get_latest_report_in_dir(d):
 def get_timestamp_from_increments_filename(filename):
     fname = os.path.basename(filename)
     parts = fname.split('_')
-    if len(parts) != 4:
+    # Check for 4 underscores if there is no prefix, or more than 4 if there is a prefix
+    if not ((not dump_prefix and len(parts) == 4) or (dump_prefix and len(parts) > 4)):
         raise Exception("Invalid increments file '%s' passed to get_timestamp_from_increments_filename" % filename)
     return parts[-2].strip()
 
 def get_full_timestamp_for_incremental(dbname, backup_dir, incremental_timestamp):
-    pattern = '%s/db_dumps/[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]/gp_dump_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_increments' % backup_dir
+    pattern = '%s/db_dumps/[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]/%sgp_dump_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_increments' % (backup_dir, dump_prefix)
     increments_files = glob.glob(pattern)
 
     for increments_file in increments_files:
@@ -314,7 +348,7 @@ def get_latest_full_dump_timestamp(dbname, backup_dir):
             logger.warn('Dump directory %s is empty' % dump_dir)
             continue
 
-        dump_report_files = fnmatch.filter(files, 'gp_dump_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9].rpt')
+        dump_report_files = fnmatch.filter(files, '%sgp_dump_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9].rpt' % dump_prefix)
 
         if len(dump_report_files) == 0:
             logger.warn('No dump report files found in dump directory %s' % dump_dir)

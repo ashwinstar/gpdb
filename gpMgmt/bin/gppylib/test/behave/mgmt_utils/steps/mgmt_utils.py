@@ -939,6 +939,8 @@ def impl(context, filetype, dir):
 @when('"{filetype}" file should be created under "{dir}"')
 @then('"{filetype}" file should be created under "{dir}"')
 def impl(context, filetype, dir):
+    if not hasattr(context, "dump_prefix"):
+        context.dump_prefix = ''
     if not hasattr(context, 'backup_timestamp'):
         raise Exception('Backup timestamp has not been stored')
 
@@ -957,7 +959,7 @@ def impl(context, filetype, dir):
 
 
     dump_dir = dir if len(dir.strip()) != 0 else master_data_dir
-    file_path = os.path.join(dump_dir, 'db_dumps', context.backup_timestamp[0:8], filename)
+    file_path = os.path.join(dump_dir, 'db_dumps', context.backup_timestamp[0:8], '%s%s' % (context.dump_prefix, filename))
 
     if not os.path.exists(file_path):
         raise Exception("File path %s does not exist for filetype '%s'" % (file_path, filetype))
@@ -1210,23 +1212,26 @@ def impl(context):
     if not os.path.exists(dump_dir):
         raise Exception('Expected directory does not exist %s' % dump_dir)
 
-def validate_master_config_backup_files(backup_timestamp):
-    master_dump_dir = os.path.join(master_data_dir, 'db_dumps', backup_timestamp[0:8]) 
+def validate_master_config_backup_files(context):
+    if not hasattr(context, "dump_prefix"):
+        context.dump_prefix = ''
+    master_dump_dir = os.path.join(master_data_dir, 'db_dumps', context.backup_timestamp[0:8]) 
     dump_files = os.listdir(master_dump_dir)
     for df in dump_files:
-        if df.startswith('gp_master_config_files') and df.endswith('.tar'):
+        if df.startswith('%sgp_master_config_files' % context.dump_prefix) and df.endswith('.tar'):
             return
-    if not exists:
-        raise Exception('Config files not backed up on master "%s"' % master_config_file)
+    raise Exception('Config files not backed up on master "%s"' % master_config_file)
 
-def validate_segment_config_backup_files(backup_timestamp):
+def validate_segment_config_backup_files(context):
+    if not hasattr(context, "dump_prefix"):
+        context.dump_prefix = ''
     gparray = GpArray.initFromCatalog(dbconn.DbURL())
     primary_segs = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary()]
 
     for ps in primary_segs:
-        dump_dir = os.path.join(ps.getSegmentDataDirectory(), 'db_dumps', backup_timestamp[0:8])
+        dump_dir = os.path.join(ps.getSegmentDataDirectory(), 'db_dumps', context.backup_timestamp[0:8])
         dump_files = ListRemoteFilesByPattern(dump_dir, 
-                                              'gp_segment_config_files_*.tar',
+                                              '%sgp_segment_config_files_*.tar' % context.dump_prefix,
                                               ps.getSegmentHostName()).run()
         if len(dump_files) != 1:
             raise Exception('Error in finding config files "%s" for segment %s' % (dump_files, ps.getSegmentDataDirectory())) 
@@ -1236,8 +1241,8 @@ def impl(context):
     if not hasattr(context, 'backup_timestamp'):
         raise Exception('Backup timestamp needs to be stored')
     
-    validate_master_config_backup_files(context.backup_timestamp)
-    validate_segment_config_backup_files(context.backup_timestamp)
+    validate_master_config_backup_files(context)
+    validate_segment_config_backup_files(context)
 
 @then('verify that the table "{table_name}" in "{dbname}" has dump info for the stored timestamp')
 def impl(context, table_name, dbname):
@@ -1907,6 +1912,8 @@ def validate_files(file_list, pattern_list, expected_file_count):
      
 @then('the "{file_type}" file under "{directory}" with options "{options}" is validated after dump operation')
 def impl(context, file_type, directory, options):
+    if not hasattr(context, "dump_prefix"):
+        context.dump_prefix = ''
     backup_dir = directory if directory.strip() != '' else master_data_dir  
     if len(options.split(',')) > 3:
         raise Exception('Invalid options specified "%s"' % options) 
@@ -1958,9 +1965,14 @@ def impl(context, file_type, directory, options):
     if '--incremental' in option_list:
         regular_pattern_list += ['gp_dump_%s.*' % context.full_backup_timestamp]
         reg_file_count += 1
-     
-    filename = '%s/db_dumps/%s/gp_dump_%s_%s' % (backup_dir, context.backup_timestamp[0:8], context.backup_timestamp, 
-file_type.strip())
+
+    if hasattr(context, "dump_prefix"):
+        for id, p in enumerate(pipes_pattern_list):
+            pipes_pattern_list[id] = '%s%s' % (context.dump_prefix, p)
+        for id, p in enumerate(regular_pattern_list):
+            regular_pattern_list[id] = '%s%s' % (context.dump_prefix, p)
+
+    filename = '%s/db_dumps/%s/%sgp_dump_%s_%s' % (backup_dir, context.backup_timestamp[0:8], context.dump_prefix, context.backup_timestamp, file_type.strip())
 
     with open(filename) as fp:
         file_list = fp.readlines()
@@ -1974,19 +1986,31 @@ file_type.strip())
 def impl(context, timestamp_key):
     context.backup_timestamp = timestamp_key
 
-@then('there are no dump files created under "{dir}"')
-def impl(context, dir):
-    master_dump_dir = dir if len(dir.strip()) != 0 else master_data_dir
+@given('the prefix "{prefix}" is stored')
+def impl(context, prefix):
+    context.dump_prefix = prefix + '_'
+
+def get_segment_dump_files(context, dir):
+    results = [] 
     gparray = GpArray.initFromCatalog(dbconn.DbURL())
     primary_segs = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary()]
-    unwanted_files = ['gp_dump_%s_pipes' % context.backup_timestamp, 'gp_dump_%s_regular_files' % context.backup_timestamp] 
     for seg in primary_segs:
-        seg_dump_dir = seg.getSegmentDataDirectory()
-        segment_dump_dir =  dir if len(dir.strip()) != 0 else seg_dump_dir
+        segment_dump_dir =  dir if len(dir.strip()) != 0 else seg.getSegmentDataDirectory()
         cmd = Command('check dump files', 'ls %s/db_dumps/%s' % (segment_dump_dir, context.backup_timestamp[0:8]), ctxt=REMOTE, remoteHost=seg.getSegmentHostName())
         cmd.run(validateAfter=False) #because we expect ls to fail
-        results = [r for r in cmd.get_results().stdout.strip().split() if r.strip() not in unwanted_files]
-        if len(results) != 0:
+        results.append((seg, [r for r in cmd.get_results().stdout.strip().split()]))
+    return results
+    
+@then('there are no dump files created under "{dir}"')
+def impl(context, dir):
+    if not hasattr(context, "dump_prefix"):
+        context.dump_prefix = ''
+    master_dump_dir = dir if len(dir.strip()) != 0 else master_data_dir
+    segment_dump_files = get_segment_dump_files(context, dir)
+
+    for seg, dump_files in segment_dump_files:
+        segment_dump_dir =  dir if len(dir.strip()) != 0 else seg.getSegmentDataDirectory()
+        if len(dump_files) != 0:
             print 'results = ', results
             raise Exception('Found extra dump files on the segment %s under %s/db_dumps/%s' % (seg.getSegmentDataDirectory(), segment_dump_dir, context.backup_timestamp[0:8]))
     
@@ -1997,8 +2021,8 @@ def impl(context, dir):
     if len(results) != 2:
         raise Exception('Found extra dump files %s on the master under %s' % (results, master_dump_dir))
 
-    pipes_file = 'gp_dump_%s_pipes' % context.backup_timestamp
-    reg_file = 'gp_dump_%s_regular_files' % context.backup_timestamp
+    pipes_file = '%sgp_dump_%s_pipes' % (context.dump_prefix, context.backup_timestamp)
+    reg_file = '%sgp_dump_%s_regular_files' % (context.dump_prefix, context.backup_timestamp)
     if not pipes_file in results or not  reg_file in results:
         raise Exception('Found invalid files %s under dump dir %s' % (results, master_dump_dir))
 
@@ -2229,6 +2253,32 @@ def impl(context, file_path):
 
     run_command(context, 'rm -rf %s' % file_path)
 
+@then('there should be dump files under "{directory}" with prefix "{prefix}"')
+def impl(context, directory, prefix):
+    if not hasattr(context, "dump_prefix"):
+        context.dump_prefix = ''
+    dump_prefix = '%s_gp' % prefix.strip()
+    master_dump_dir = directory if len(directory.strip()) != 0 else master_data_dir
+    segment_dump_files = get_segment_dump_files(context, directory)
+
+    for seg, dump_files in segment_dump_files:
+        segment_dump_dir =  directory if len(directory.strip()) != 0 else seg.getSegmentDataDirectory()
+        if len(dump_files) == 0:
+            raise Exception('Failed to find dump files on the segment %s under %s/db_dumps/%s' % (seg.getSegmentDataDirectory(), segment_dump_dir, context.backup_timestamp[0:8]))
+  
+        for dump_file in dump_files:
+            if not dump_file.startswith(dump_prefix):
+                raise Exception('Dump file %s on the segment %s under %s/db_dumps/%s does not start with required prefix %s' % (dump_file, seg.getSegmentDataDirectory(), segment_dump_dir, context.backup_timestamp[0:8], prefix))
+ 
+    cmd = Command('check dump files', 'ls %s/db_dumps/%s' % (master_dump_dir, context.backup_timestamp[0:8]))
+    cmd.run(validateAfter=True)
+    results = cmd.get_results().stdout.strip().split('\n')
+    
+    if len(results) == 0:
+        raise Exception('Failed to find dump files %s on the master under %s' % (results, master_dump_dir))
+    for file in results:
+        if not file.startswith(prefix.strip()):
+            raise Exception('Dump file %s on master under %s does not have required prefix %s' %(file, master_dump_dir, prefix))
    
 @given('below sql is executed in "{dbname}" db')
 @when('below sql is executed in "{dbname}" db')

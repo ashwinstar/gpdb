@@ -836,5 +836,13 @@ class DumpTestCase(unittest.TestCase):
         self.assertEqual(ts_key, TIMESTAMP_KEY)
         self.assertEqual(ts_key[0:8], DUMP_DATE)
 
+    def test00_create_dump_line_with_prefix(self):
+        import gppylib.operations.backup_utils as backup_utils
+        backup_utils.dump_prefix = 'foo_'
+        output = self.dumper.create_dump_string('dcddev', '20121212', '01234567891234')
+        expected_output = """gp_dump -p 0 -U dcddev --gp-d=/data/master/p1/db_dumps/20121212 --gp-r=/data/master/p1/db_dumps/20121212 --gp-s=p --gp-k=01234567891234 --gp-c --prefix=foo_ --no-expand-children -n "\\"testschema\\"" testdb --table-file=/tmp/table_list.txt"""
+        backup_utils.dump_prefix = ''
+        self.assertEquals(output, expected_output)
+
 if __name__ == '__main__':
     unittest.main()

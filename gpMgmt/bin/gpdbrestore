@@ -27,14 +27,18 @@ try:
     from gppylib import gplog
 
     from gppylib.operations import Operation
-    from gppylib.operations.backup_utils import check_backup_type, get_lines_from_file, generate_report_filename
+    from gppylib.operations.backup_utils import check_backup_type, get_lines_from_file, generate_report_filename,\
+                                           generate_dbdump_prefix, generate_master_dbdump_prefix,\
+                                           generate_global_prefix, generate_createdb_prefix, \
+                                           generate_createdb_filename
     from gppylib.operations.unix import CheckFile, CheckRemoteFile, ListFilesByPattern, ListRemoteFilesByPattern
     from gppylib.operations.utils import DEFAULT_NUM_WORKERS
     from gppylib.operations.restore import RestoreDatabase, RecoverRemoteDumps, ValidateTimestamp, GetDumpTables, \
-                                           GetDbName, create_restore_plan, is_incremental_restore, DUMP_DIR, DBDUMP_PREFIX, MASTER_DBDUMP_PREFIX,\
-                                           GLOBAL_PREFIX, CREATEDB_PREFIX, is_begin_incremental_run, get_restore_tables_from_table_file,\
+                                           GetDbName, create_restore_plan, is_incremental_restore, DUMP_DIR, \
+                                           is_begin_incremental_run, get_restore_tables_from_table_file,\
                                            validate_tablenames, get_restore_dir
-    import gppylib.operations.backup_utils
+    import gppylib.operations.backup_utils as backup_utils
+    import gppylib.operations.restore as restore
 
 except ImportError, e:
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
@@ -84,6 +88,8 @@ class GpdbRestore(Operation):
         self.backup_dir = options.backup_dir
         self.table_file = options.table_file
         self.list_backup = options.list_backup
+        if options.local_dump_prefix: 
+            backup_utils.dump_prefix = options.local_dump_prefix + '_'
 
         if self.table_file and self.restore_tables:
             raise Exception('Cannot specify -T and --table-file together')
@@ -122,6 +128,8 @@ class GpdbRestore(Operation):
                 raise ExceptionNoStackTraceNeeded("-R cannot be used with DDBoost parameters.")
             elif self.backup_dir:
                 raise ExceptionNoStackTraceNeeded('-u cannot be used with DDBoost parameters.')
+            elif restore.dump_prefix:
+                raise ExceptionNoStackTraceNeeded('--prefix cannot be used with DDBoost parameters.')
             dd = gpmfr.DDSystem("local")
             self.dump_dir = dd.defaultBackupDir
             # Ugly hack to propagate backup directory different from "db_dumps".
@@ -344,23 +352,23 @@ class GpdbRestore(Operation):
         root = os.path.join(get_restore_dir(self.master_datadir, self.backup_dir), self.dump_dir, self.db_date_dir)
         if not os.path.isdir(root):
             raise ExceptionNoStackTraceNeeded("Directory %s does not exist" % root)
-        matching = ListFilesByPattern(root, "%s*" % CREATEDB_PREFIX).run()
+        matching = ListFilesByPattern(root, "%s*" % generate_createdb_prefix()).run()
         if len(matching) == 0:
             raise ExceptionNoStackTraceNeeded("Could not locate Master database dump files under %s" % root)
-        matching = sorted(matching, key=lambda x: int(x[len(CREATEDB_PREFIX):].strip()))
+        matching = sorted(matching, key=lambda x: int(x[len(generate_createdb_prefix()):].strip()))
         if len(matching) > 1:
             dates_and_times = []
             for match in matching:
-                temp = match[len(CREATEDB_PREFIX):]
+                temp = match[len(generate_createdb_prefix()):]
                 date, time = temp[0:8], temp[8:14]
                 dates_and_times.append((date, time))
             restore_timestamp = self._select_multi_file(dates_and_times)
         else:
             match = matching[0]
-            temp = match[len(CREATEDB_PREFIX):]
+            temp = match[len(generate_createdb_prefix()):]
             restore_timestamp = temp[0:14]
-        restore_db = GetDbName(os.path.join(root, "%s%s" % (CREATEDB_PREFIX, restore_timestamp))).run()
-        compressed_file = "%s%s.gz" % (MASTER_DBDUMP_PREFIX, restore_timestamp)
+        restore_db = GetDbName(os.path.join(root, "%s%s" % (generate_createdb_prefix(), restore_timestamp))).run()
+        compressed_file = "%s%s.gz" % (generate_master_dbdump_prefix(), restore_timestamp)
         compress = CheckFile(os.path.join(root, compressed_file)).run()
         return (restore_timestamp, restore_db, compress)
 
@@ -369,35 +377,35 @@ class GpdbRestore(Operation):
         if len(self.db_host_path) != 2:
             raise ProgramArgumentValidationException("The arguments of the -R flag are incorrect. The correct form should be as follows:\nIPv4_address:path_to_dumpset\n-OR-\n[IPv6_address]:path_to_dumpset\n", False)
         
-        host, path = self.db_host_path       
+        host, path = self.db_host_path 
         logger.debug("The host is %s" % host)
         logger.debug("The path is %s" % path)    
 
         Ping.local('Pinging %s' % host, host)
-        matching = ListRemoteFilesByPattern(path, "%s*" % CREATEDB_PREFIX, host).run()
+        matching = ListRemoteFilesByPattern(path, "%s*" % generate_createdb_prefix(), host).run()
         if len(matching) == 0:
             raise ExceptionNoStackTraceNeeded("Could not locate Master database dump files at %s:%s" % (host,path))
-        matching = sorted(matching, key=lambda x: int(x[len(CREATEDB_PREFIX):].strip()))
+        matching = sorted(matching, key=lambda x: int(x[len(generate_createdb_prefix()):].strip()))
         if len(matching) > 1:
             dates_and_times = []
             for match in matching:
-                temp = match[len(CREATEDB_PREFIX):]
+                temp = match[len(generate_createdb_prefix()):]
                 date, time = temp[0:8], temp[8:14]
                 dates_and_times.append((date, time))
             restore_timestamp = self._select_multi_file(dates_and_times)
         else:
             match = matching[0]
-            temp = match[len(CREATEDB_PREFIX):]
+            temp = match[len(generate_createdb_prefix()):]
             restore_timestamp = temp[0:14]
 
         # TODO: do a local GetDbName after Scp
         handle, filename = mkstemp() 
-        srcFile = os.path.join(path, "%s%s" % (CREATEDB_PREFIX, restore_timestamp))
+        srcFile = os.path.join(path, "%s%s" % (generate_createdb_prefix(), restore_timestamp))
         Scp('Copying cdatabase file', srcHost=host, srcFile=srcFile, dstFile=filename).run(validateAfter=True)
         restore_db = GetDbName(filename).run()
         os.remove(filename)
 
-        compressed_file = "%s%s.gz" % (MASTER_DBDUMP_PREFIX, restore_timestamp)
+        compressed_file = "%s%s.gz" % (generate_master_dbdump_prefix(), restore_timestamp)
         compress = CheckRemoteFile(os.path.join(path, compressed_file), host).run() 
         return (restore_timestamp, restore_db, compress)
         
@@ -406,23 +414,23 @@ class GpdbRestore(Operation):
         root = os.path.join(get_restore_dir(self.master_datadir, self.backup_dir), self.dump_dir)
         candidates, timestamps = [], []
         for path, dirs, files in os.walk(root):
-            matching = fnmatch.filter(files, "%s*" % CREATEDB_PREFIX)
+            matching = fnmatch.filter(files, "%s*" % generate_createdb_prefix())
             candidates.extend([(path, filename) for filename in matching])
         if len(candidates) == 0:
-            raise ExceptionNoStackTraceNeeded("No %s* files located" % CREATEDB_PREFIX)    
+            raise ExceptionNoStackTraceNeeded("No %s* files located" % generate_createdb_prefix())
         for path, filename in candidates:
             db_name = GetDbName(os.path.join(path, filename)).run()
             if self.search_for_dbname == db_name:
                 logger.info('Located dump file %s for database %s, adding to list' % (filename, self.search_for_dbname))
-                timestamps.append(int(filename[len(CREATEDB_PREFIX):]))
+                timestamps.append(int(filename[len(generate_createdb_prefix()):]))
             else:
                 logger.info("Dump file has incorrect database name of %s, skipping..." % db_name)
         if len(timestamps) == 0:
-            raise ExceptionNoStackTraceNeeded("No %s* files located with database %s" % (CREATEDB_PREFIX, self.search_for_dbname))
+            raise ExceptionNoStackTraceNeeded("No %s* files located with database %s" % (generate_createdb_prefix(), self.search_for_dbname))
         restore_timestamp = str(max(timestamps)) 
         logger.info("Identified latest dump timestamp for %s as %s" %  (self.search_for_dbname, restore_timestamp))
         restore_db = self.search_for_dbname
-        compressed_file = os.path.join(get_restore_dir(self.master_datadir, self.backup_dir), self.dump_dir, restore_timestamp[0:8], "%s%s.gz" % (MASTER_DBDUMP_PREFIX, restore_timestamp))
+        compressed_file = os.path.join(get_restore_dir(self.master_datadir, self.backup_dir), self.dump_dir, restore_timestamp[0:8], "%s%s.gz" % (generate_master_dbdump_prefix(), restore_timestamp))
         compress = CheckFile(compressed_file).run()
         return (restore_timestamp, restore_db, compress)
         
@@ -476,7 +484,7 @@ def create_parser():
     addTo.add_option('-B', dest='batch_default', type='int', default=DEFAULT_NUM_WORKERS, metavar="<number>",
                      help="Dispatches work to segment hosts in batches of specified size [default: %s]" % DEFAULT_NUM_WORKERS)
     addTo.add_option('-G', action='store_true', dest='restore_global', default=False,
-                     help="Restore global objects dump file if found in target dumpset. The global objects file is secured via the gpcrondump -G options, and has a filename of the form %s<timestamp>" % GLOBAL_PREFIX)
+                     help="Restore global objects dump file if found in target dumpset. The global objects file is secured via the gpcrondump -G options, and has a filename of the form %s<timestamp>" % generate_global_prefix())
     addTo.add_option('-T', dest='restore_tables', metavar='<schema.tablename>', 
                      help="Restore a single table from a backup set. For multiple tables, supply a comma separated list of schema.tablenames. Note, table schema must exist in target database.")
     addTo.add_option('-K', action='store_true', dest='keep_dump_files', default=False,
@@ -491,6 +499,8 @@ def create_parser():
                       help='Filename containing the names of tables to be restored')
     addTo.add_option('--list-backup', action='store_true', dest='list_backup', default=False,
                      help="List backup timestamps that are required to restore from the input timestamp. The input timestamp should be of an incremental backup")
+    addTo.add_option('--prefix', dest='local_dump_prefix', default='', metavar='<filename prefix>',
+                     help="Prefix of the dump files to be restored")
     parser.add_option_group(addTo)
 
     ddOpt = OptionGroup(parser, "DDBoost")

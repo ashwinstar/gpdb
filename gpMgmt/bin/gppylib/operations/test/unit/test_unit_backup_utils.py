@@ -6,6 +6,7 @@
 import os
 import shutil
 import unittest2 as unittest
+import gppylib.operations.backup_utils as backup_utils
 from gppylib.commands.base import CommandResult
 from gppylib.operations.backup_utils import generate_report_filename, validate_timestamp, generate_increments_filename,\
                                             check_cdatabase_exists, check_successful_dump, convert_reportfilename_to_cdatabasefilename,\
@@ -17,7 +18,11 @@ from gppylib.operations.backup_utils import generate_report_filename, validate_t
                                             generate_pgstatlastoperation_filename, get_latest_report_timestamp, get_latest_report_in_dir, \
                                             create_temp_file_from_list, get_timestamp_from_increments_filename, get_full_timestamp_for_incremental,\
                                             check_funny_chars_in_tablenames, expand_partition_tables, populate_filter_tables, expand_partitions_and_populate_filter_file, \
-                                            generate_files_filename, generate_pipes_filename
+                                            generate_files_filename, generate_pipes_filename, generate_master_config_filename, generate_segment_config_filename, \
+                                            generate_global_prefix, generate_master_dbdump_prefix, \
+                                            generate_master_status_prefix, generate_seg_dbdump_prefix, generate_seg_status_prefix, \
+                                            generate_dbdump_prefix, generate_createdb_filename
+
 from mock import patch, MagicMock, Mock
 
 class BackupUtilsTestCase(unittest.TestCase):
@@ -966,3 +971,265 @@ class BackupUtilsTestCase(unittest.TestCase):
         expected_output = '/data/db_dumps/20120731/gp_dump_20120731093030_pipes'
         output = generate_pipes_filename(master_data_dir, backup_dir, timestamp)
 
+    def test00_generate_report_filename_with_prefix(self):
+        master_data_dir = '/data'
+        backup_dir = None
+        timestamp = '20120731093030'
+        backup_utils.dump_prefix = 'foo_'
+        expected_output = '/data/db_dumps/20120731/%sgp_dump_20120731093030.rpt' % backup_utils.dump_prefix
+        output = generate_report_filename(master_data_dir, backup_dir, timestamp)
+        backup_utils.dump_prefix = ''
+        self.assertEquals(output, expected_output)
+ 
+    def test00_generate_ao_state_filename_with_prefix(self):
+        master_data_dir = '/data'
+        backup_dir = None
+        timestamp = '20120731093030'
+        backup_utils.dump_prefix = 'foo_'
+        expected_output = '%s/db_dumps/20120731/%sgp_dump_20120731093030_ao_state_file' % (master_data_dir, backup_utils.dump_prefix)
+        output = generate_ao_state_filename(master_data_dir, backup_dir, timestamp)
+        backup_utils.dump_prefix = ''
+        self.assertEquals(output, expected_output)
+        
+    def test00_generate_co_state_filename_with_prefix(self):
+        master_data_dir = os.environ.get('MASTER_DATA_DIRECTORY')
+        backup_dir = None
+        timestamp = '20120731093030'
+        backup_utils.dump_prefix = 'foo_'
+        expected_output = '%s/db_dumps/20120731/%sgp_dump_20120731093030_co_state_file' % (master_data_dir, backup_utils.dump_prefix)
+        output = generate_co_state_filename(master_data_dir, backup_dir, timestamp)
+        backup_utils.dump_prefix = ''
+        self.assertEqual(output, expected_output)
+
+    def test00_generate_increments_filename_with_prefix(self):
+        master_data_dir = '/data'
+        backup_dir = None
+        timestamp = '20120731093030'
+        backup_utils.dump_prefix = 'foo_'
+        expected_output = '/data/db_dumps/20120731/%sgp_dump_20120731093030_increments' % backup_utils.dump_prefix
+        output = generate_increments_filename(master_data_dir, backup_dir, timestamp)
+        backup_utils.dump_prefix = ''
+        self.assertEquals(output, expected_output)
+
+    def test00_generate_pgstatlastoperation_filename_with_prefix(self):
+        master_data_dir = '/data'
+        backup_dir = None
+        timestamp = '20120731093030'
+        backup_utils.dump_prefix = 'foo_'
+        expected_output = '/data/db_dumps/20120731/%sgp_dump_20120731093030_last_operation' % backup_utils.dump_prefix
+        output = generate_pgstatlastoperation_filename(master_data_dir, backup_dir, timestamp)
+        backup_utils.dump_prefix = ''
+        self.assertEquals(output, expected_output)
+
+    def test00_generate_dirtytable_filename_with_prefix(self):
+        mdd = '/data'
+        backup_dir = None
+        timestamp = '20121204090000'
+        backup_utils.dump_prefix = 'foo_'
+        expected = '/data/db_dumps/20121204/%sgp_dump_20121204090000_dirty_list' % backup_utils.dump_prefix
+        result = generate_dirtytable_filename(mdd, backup_dir, timestamp)
+        backup_utils.dump_prefix = ''
+        self.assertEquals(expected, result)
+
+    def test00_generate_plan_filename_with_prefix(self):
+        mdd = '/data'
+        timestamp = '20121204090000'
+        backup_utils.dump_prefix = 'foo_'
+        expected = '/data/db_dumps/20121204/%sgp_restore_20121204090000_plan' % backup_utils.dump_prefix
+        backup_dir = None
+        result = generate_plan_filename(mdd, backup_dir, timestamp)
+        backup_utils.dump_prefix = ''
+        self.assertEquals(expected, result)
+
+    def test00_generate_metadata_filename_with_prefix(self):
+        master_data_dir = '/data'
+        backup_dir = None
+        timestamp = '20120731093030'
+        backup_utils.dump_prefix = 'foo_'
+        expected_output = '/data/db_dumps/20120731/%sgp_dump_1_1_20120731093030.gz' % backup_utils.dump_prefix
+        output = generate_metadata_filename(master_data_dir, backup_dir, timestamp)
+        backup_utils.dump_prefix = ''
+        self.assertEquals(output, expected_output)
+
+    def test00_generate_partition_list_filename_with_prefix(self):
+        master_data_dir = '/data'
+        backup_dir = None
+        timestamp = '20120731093030'
+        backup_utils.dump_prefix = 'foo_'
+        expected_output = '/data/db_dumps/20120731/%sgp_dump_20120731093030_table_list' % backup_utils.dump_prefix
+        output = generate_partition_list_filename(master_data_dir, backup_dir, timestamp)
+        backup_utils.dump_prefix = ''
+        self.assertEquals(output, expected_output)
+
+    def test01_generate_files_filename_with_prefix(self):
+        master_data_dir = '/data'
+        backup_dir = '/backup'
+        timestamp = '20120731093030'
+        backup_utils.dump_prefix = 'foo_'
+        expected_output = '/backup/db_dumps/20120731/%sgp_dump_20120731093030_regular_files' % backup_utils.dump_prefix
+        output = generate_files_filename(master_data_dir, backup_dir, timestamp)
+        backup_utils.dump_prefix = ''
+        self.assertEquals(output, expected_output)
+
+    def test01_generate_pipes_filename_with_prefix(self):
+        master_data_dir = '/data'
+        backup_dir = '/backup'
+        timestamp = '20120731093030'
+        backup_utils.dump_prefix = 'foo_'
+        expected_output = '/backup/db_dumps/20120731/%sgp_dump_20120731093030_pipes' % backup_utils.dump_prefix
+        output = generate_pipes_filename(master_data_dir, backup_dir, timestamp)
+        backup_utils.dump_prefix = ''
+        self.assertEquals(output, expected_output)
+
+    @patch('os.listdir', return_value=['bar_gp_dump_20140125140013.rpt', 'foo_gp_dump_20130125140013.rpt'])
+    def test00_get_latest_report_in_dir_with_prefix(self, mock1):
+        bdir = '/foo'
+        backup_utils.dump_prefix = 'foo_'
+        result = get_latest_report_in_dir(bdir)
+        backup_utils.dump_prefix = ''
+        self.assertEquals(result, '20130125140013')
+    
+    @patch('os.listdir', return_value=['gp_dump_20130125140013.rpt'])
+    def test01_get_latest_report_in_dir_with_prefix(self, mock1):
+        bdir = '/foo'
+        backup_utils.dump_prefix = 'foo_'
+        result = get_latest_report_in_dir(bdir)
+        backup_utils.dump_prefix = ''
+        self.assertEquals(result, None)
+
+    @patch('glob.glob', return_value=[])
+    def test_get_full_timestamp_for_incremental_with_prefix_00(self, m1):
+        dbname = 'hulu'
+        backup_dir = 'home'
+        ts = '20130207133000' 
+        backup_utils.dump_prefix = 'foo_'
+        full_ts = get_full_timestamp_for_incremental(dbname, backup_dir, ts)
+        backup_utils.dump_prefix = ''
+        self.assertEquals(full_ts, None)
+
+
+    @patch('glob.glob', return_value=['foo'])
+    @patch('gppylib.operations.backup_utils.get_lines_from_file', return_value=[])
+    def test_get_full_timestamp_for_incremental_with_prefix_01(self, m1, m2):
+        dbname = 'hulu'
+        backup_dir = 'home'
+        ts = '20130207133000' 
+        backup_utils.dump_prefix = 'foo_'
+        full_ts = get_full_timestamp_for_incremental(dbname, backup_dir, ts)
+        backup_utils.dump_prefix = ''
+        self.assertEquals(full_ts, None)
+
+
+    @patch('glob.glob', return_value=['/tmp/db_dumps/20130207/foo_gp_dump_20130207093000_increments'])
+    @patch('gppylib.operations.backup_utils.get_lines_from_file', return_value=['20130207133001', '20130207133000'])
+    def test_get_full_timestamp_for_incremental_with_prefix_02(self, m1, m2):
+        dbname = 'hulu'
+        backup_dir = 'home'
+        ts = '20130207133000' 
+        backup_utils.dump_prefix = 'foo_'
+        full_ts = get_full_timestamp_for_incremental(dbname, backup_dir, ts)
+        backup_utils.dump_prefix = ''
+        self.assertEquals(full_ts, '20130207093000')
+
+    @patch('gppylib.operations.backup_utils.get_dump_dirs', return_value=['20121212', '20121213', '20121214'])
+    @patch('os.listdir', return_value=['foo_gp_cdatabase_1_1_20121212111111', 'foo_gp_dump_20121212000000.rpt', 'foo_gp_cdatabase_1_1_20121212000001'])
+    @patch('gppylib.operations.backup_utils.get_full_ts_from_report_file', return_value=['000000'])
+    def test00_get_latest_full_dump_timestamp_with_prefix(self, mock1, mock2, mock3):
+        expected_output = ['000000']
+        backup_utils.dump_prefix = 'foo_'
+        ts = get_latest_full_dump_timestamp('testdb', '/foo/db_dumps')
+        backup_utils.dump_prefix = ''
+        self.assertEqual(ts, expected_output)
+
+    @patch('gppylib.operations.backup_utils.get_dump_dirs', return_value=[])
+    def test01_get_latest_full_dump_timestamp_with_prefix(self, mock1):
+        backup_utils.dump_prefix = 'foo_'
+        with self.assertRaisesRegexp(Exception, 'No full backup found for incremental'):
+            get_latest_full_dump_timestamp('testdb', '/foo/db_dumps')
+        backup_utils.dump_prefix = ''
+
+    @patch('gppylib.operations.backup_utils.get_dump_dirs', return_value=['20121212', '20121213', '20121214'])
+    @patch('os.listdir', return_value=[])
+    def test02_get_latest_full_dump_timestamp_with_prefix(self, mock1, mock2):
+        backup_utils.dump_prefix = 'foo_'
+        with self.assertRaisesRegexp(Exception, 'Invalid None param to get_latest_full_dump_timestamp'):
+            get_latest_full_dump_timestamp('testdb', None)
+        backup_utils.dump_prefix = ''
+
+    def test00_convert_reportfilename_to_cdatabasefilename_with_prefix(self):
+        report_file = '/tmp/foo/foo/bar_gp_dump_20130104133924.rpt'
+        expected_output = '/tmp/foo/foo/bar_gp_cdatabase_1_1_20130104133924'
+        backup_utils.dump_prefix = 'bar_'
+        cdatabase_file = convert_reportfilename_to_cdatabasefilename(report_file)
+        backup_utils.dump_prefix = ''
+        self.assertEquals(expected_output, cdatabase_file)
+
+    def test00_generate_master_config_filename(self):
+        timestamp = '20120731093030'
+        backup_utils.dump_prefix = 'foo_'
+        expected_output = '%sgp_master_config_files_%s.tar' % (backup_utils.dump_prefix, timestamp)
+        output = generate_master_config_filename(timestamp)
+        backup_utils.dump_prefix = ''
+        self.assertEquals(output, expected_output)
+
+    def test00_generate_segment_config_filename(self):
+        timestamp = '20120731093030'
+        backup_utils.dump_prefix = 'foo_'
+        segId = 2
+        expected_output = '%sgp_segment_config_files_0_%d_%s.tar' % (backup_utils.dump_prefix, segId, timestamp)
+        output = generate_segment_config_filename(segId, timestamp)
+        backup_utils.dump_prefix = ''
+        self.assertEquals(output, expected_output)
+
+    def test00_generate_global_prefix(self):
+        backup_utils.dump_prefix = 'foo_'
+        expected_output = '%sgp_global_1_1_' % (backup_utils.dump_prefix)
+        output = generate_global_prefix()
+        backup_utils.dump_prefix = ''
+        self.assertEquals(output, expected_output)
+
+    def test00_generate_master_dbdump_prefix(self):
+        backup_utils.dump_prefix = 'foo_'
+        expected_output = '%sgp_dump_1_1_' % (backup_utils.dump_prefix)
+        output = generate_master_dbdump_prefix()
+        backup_utils.dump_prefix = ''
+        self.assertEquals(output, expected_output)
+
+    def test00_generate_master_status_prefix(self):
+        backup_utils.dump_prefix = 'foo_'
+        expected_output = '%sgp_dump_status_1_1_' % (backup_utils.dump_prefix)
+        output = generate_master_status_prefix()
+        backup_utils.dump_prefix = ''
+        self.assertEquals(output, expected_output)
+
+    def test00_generate_seg_status_prefix(self):
+        backup_utils.dump_prefix = 'foo_'
+        expected_output = '%sgp_dump_status_0_' % (backup_utils.dump_prefix)
+        output = generate_seg_status_prefix()
+        backup_utils.dump_prefix = ''
+        self.assertEquals(output, expected_output)
+
+    def test00_generate_seg_dbdump_prefix(self):
+        backup_utils.dump_prefix = 'foo_'
+        expected_output = '%sgp_dump_0_' % (backup_utils.dump_prefix)
+        output = generate_seg_dbdump_prefix()
+        backup_utils.dump_prefix = ''
+        self.assertEquals(output, expected_output)
+ 
+    def test00_generate_dbdump_prefix(self):
+        backup_utils.dump_prefix = 'foo_'
+        expected_output = '%sgp_dump_' % (backup_utils.dump_prefix)
+        output = generate_dbdump_prefix()
+        backup_utils.dump_prefix = ''
+        self.assertEquals(output, expected_output)
+ 
+    def test00_generate_createdb_filename(self):
+        backup_utils.dump_prefix = 'foo_'
+        master_datadir = '/data'
+        backup_dir = None
+        timestamp = '20120731093030'
+        expected_output = '/data/db_dumps/20120731/%sgp_cdatabase_1_1_%s' % (backup_utils.dump_prefix, timestamp)
+        output = generate_createdb_filename(master_datadir, None, timestamp)
+        backup_utils.dump_prefix = ''
+        self.assertEquals(output, expected_output)
+ 

@@ -19,6 +19,7 @@ import stat
 
 try:
     import gppylib
+    import gppylib.operations.backup_utils as backup_utils
     from datetime import datetime
     from gppylib import gplog
     from gppylib import pgconf
@@ -96,6 +97,8 @@ class GpCronDump(Operation):
         self.incremental = options.incremental
         self.timestamp_key = options.timestamp_key
         self.list_backup_files = options.list_backup_files
+        if options.local_dump_prefix:
+             backup_utils.dump_prefix = options.local_dump_prefix + "_"
         self.ddboost_hosts = options.ddboost_hosts
         self.ddboost_user = options.ddboost_user
         self.ddboost_config_remove = options.ddboost_config_remove
@@ -161,6 +164,8 @@ class GpCronDump(Operation):
         if self.incremental and (self.ddboost or bool(self.ddboost_verify) or bool(self.ddboost_hosts) or bool(self.ddboost_user) or bool(self.ddboost_config_remove)):
             raise Exception('ddboost can not be selected with incremental backup')
 
+        if backup_utils.dump_prefix and (self.ddboost or bool(self.ddboost_verify) or bool(self.ddboost_hosts) or bool(self.ddboost_user) or bool(self.ddboost_config_remove)):
+            raise Exception('ddboost can not be selected with prefix option')
         if self.list_backup_files and (self.ddboost or bool(self.ddboost_verify) or bool(self.ddboost_hosts) or bool(self.ddboost_user) or bool(self.ddboost_config_remove)):
             raise Exception('list backup files not supported with ddboost option')
 
@@ -773,14 +778,16 @@ class GpCronDump(Operation):
     def _get_files_file_list(self, master, segdbs, timestamp):
         file_list = []
         dump_dir = get_backup_directory(self.master_datadir, self.backup_dir, timestamp)
-        master_file_list = ['gp_cdatabase_1_1_%s', 'gp_dump_%s_ao_state_file', 'gp_dump_%s_co_state_file',
-                            'gp_dump_%s_last_operation', 'gp_dump_%s.rpt', 'gp_dump_status_1_1_%s']
+        master_file_list = ['%sgp_cdatabase_1_1_%s', '%sgp_dump_%s_ao_state_file', '%sgp_dump_%s_co_state_file',
+                            '%sgp_dump_%s_last_operation', '%sgp_dump_%s.rpt', '%sgp_dump_status_1_1_%s']
 
         if self.incremental:
-            file_list.append('%s:%s/gp_dump_%s_increments' % (master.getSegmentHostName(), dump_dir, self.full_dump_timestamp))
+            file_list.append('%s:%s/%sgp_dump_%s_increments' % (master.getSegmentHostName(), dump_dir,
+                              backup_utils.dump_prefix, self.full_dump_timestamp))
 
         for file in master_file_list:
-            file_list.append('%s:%s/%s' % (master.getSegmentHostName(), dump_dir, file % timestamp))
+            file_list.append('%s:%s/%s' % (master.getSegmentHostName(), dump_dir,
+                                           file % (backup_utils.dump_prefix, timestamp)))
 
         return file_list
 
@@ -788,31 +795,36 @@ class GpCronDump(Operation):
         pipe_list = []
 
         dump_dir = get_backup_directory(self.master_datadir, self.backup_dir, str(timestamp))
-        master_pipe_list = ['gp_dump_1_1_%s', 'gp_dump_1_1_%s_post_data']
-        seg_pipe = 'gp_dump_0_%s_%s'
-        config_pipe = 'gp_master_config_files_%s.tar'
-        seg_config = 'gp_segment_config_files_0_%s_%s.tar'
-        global_pipe = 'gp_global_1_1_%s'
+        master_pipe_list = ['%sgp_dump_1_1_%s', '%sgp_dump_1_1_%s_post_data']
+        seg_pipe = '%sgp_dump_0_%s_%s'
+        config_pipe = '%sgp_master_config_files_%s.tar'
+        seg_config = '%sgp_segment_config_files_0_%s_%s.tar'
+        global_pipe = '%sgp_global_1_1_%s'
 
         for segdb in segdbs:
             seg_dump_dir = get_backup_directory(segdb.getSegmentDataDirectory(), self.backup_dir, str(timestamp))
-            pipe_list.append('%s:%s/%s' % (segdb.getSegmentHostName(), seg_dump_dir, seg_pipe % (segdb.getSegmentDbId(), timestamp)))
+            pipe_list.append('%s:%s/%s' % (segdb.getSegmentHostName(), seg_dump_dir,
+                              seg_pipe % (backup_utils.dump_prefix, segdb.getSegmentDbId(), timestamp)))
             if self.compress:
                 pipe_list[-1] += '.gz'
 
         for file in master_pipe_list:
-            pipe_list.append('%s:%s/%s' % (master.getSegmentHostName(), dump_dir, file % timestamp))
+            pipe_list.append('%s:%s/%s' % (master.getSegmentHostName(), dump_dir,
+                                           file % (backup_utils.dump_prefix,timestamp)))
             if self.compress:
                 pipe_list[-1] += '.gz'
 
         if self.dump_global:
-            pipe_list.append('%s:%s/%s' % (master.getSegmentHostName(), dump_dir, global_pipe % timestamp))
+            pipe_list.append('%s:%s/%s' % (master.getSegmentHostName(), dump_dir,
+                                           global_pipe % (backup_utils.dump_prefix, timestamp)))
 
         if self.dump_config:
-            pipe_list.append('%s:%s/%s' % (master.getSegmentHostName(), dump_dir, config_pipe % timestamp))
+            pipe_list.append('%s:%s/%s' % (master.getSegmentHostName(), dump_dir,
+                                           config_pipe % (backup_utils.dump_prefix, timestamp)))
             for segdb in segdbs:
                 seg_dump_dir = get_backup_directory(segdb.getSegmentDataDirectory(), self.backup_dir, str(timestamp))
-                pipe_list.append('%s:%s/%s' % (segdb.getSegmentHostName(), seg_dump_dir, seg_config % (segdb.getSegmentDbId(), timestamp)))
+                pipe_list.append('%s:%s/%s' % (segdb.getSegmentHostName(), seg_dump_dir,
+                                  seg_config % (backup_utils.dump_prefix, segdb.getSegmentDbId(), timestamp)))
 
         return pipe_list
 
@@ -1099,6 +1111,8 @@ def create_parser():
 
     addTo.add_option('--list-backup-files', dest='list_backup_files', default=False, action='store_true',
                      help="Files created during the dump operation for a particular input timestamp")
+    addTo.add_option('--prefix', dest='local_dump_prefix', default='', metavar='<filename prefix>',
+                     help="Prefix to be added to all files created in the dump")
 
     # TODO: HACK to remove existing -h
     help = parser.get_option('-h')

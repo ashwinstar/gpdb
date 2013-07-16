@@ -31,6 +31,7 @@
 int			optreset;
 #endif
 
+#define DUMP_PREFIX (dump_prefix==NULL?"":dump_prefix)
 
 /* Forward decls */
 static void freeThreadParmArray(ThreadParmArray * pParmAr);
@@ -65,6 +66,7 @@ static const char *logFatal = "FATAL";
 const char *progname;
 static char * addPassThroughLongParm(const char *Parm, const char *pszValue, char *pszPassThroughParmString);
 static char * shellEscape(const char *shellArg, PQExpBuffer escapeBuf);
+static char *dump_prefix = NULL;
 
 #ifdef USE_DDBOOST
 static int dd_boost_enabled = 0;
@@ -275,6 +277,7 @@ usage(void)
 	printf(("                          or (i)ndividual segdb (must be followed with a list of dbid's\n"));
 	printf(("                          where backups are located. For example: --gp-l=i[10,12,15]\n"));
 	printf(("  --gp-f=FILE             FILE, present on all machines, with tables to include in restore\n"));
+	printf(("  --prefix=PREFIX         PREFIX of the dump files to be restored\n"));
 }
 
 bool
@@ -290,7 +293,6 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 	bool		bSawCDB_S_Option;
 	int			lenCmdLineParms;
 	int			i;
-
 
 	struct option cmdopts[] = {
 		/*{"clean", 0, NULL, 'c'}, */
@@ -347,6 +349,7 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 
 		{"gp-f", required_argument, NULL, 11},
 		{"gp-nostats", no_argument, NULL, 12},
+		{"prefix", required_argument, NULL, 13},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -701,6 +704,10 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 
 			case 12:
 				bAoStats = false;
+				break;
+			case 13:
+				dump_prefix = Safe_strdup(optarg);
+				pInputOpts->pszPassThroughParms = addPassThroughLongParm("prefix", DUMP_PREFIX, pInputOpts->pszPassThroughParms);
 				break;
 
 			default:
@@ -1542,11 +1549,11 @@ reportRestoreResults(const char *pszReportDirectory, const ThreadParm * pMasterP
 
 	/* See whether we can create the file in the report directory */
 	if (pszReportDirectory[strlen(pszReportDirectory) - 1] != '/')
-		pszFormat = "%s/gp_restore_%s.rpt";
+		pszFormat = "%s/%sgp_restore_%s.rpt";
 	else
-		pszFormat = "%sgp_restore_%s.rpt";
+		pszFormat = "%s%sgp_restore_%s.rpt";
 
-	pszReportPathName = MakeString(pszFormat, pszReportDirectory, pOptions->pszKey);
+	pszReportPathName = MakeString(pszFormat, pszReportDirectory, DUMP_PREFIX, pOptions->pszKey);
 
 	fRptFile = fopen(pszReportPathName, "w");
 	if (fRptFile == NULL)

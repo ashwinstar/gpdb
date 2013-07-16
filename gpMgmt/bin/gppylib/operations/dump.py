@@ -5,6 +5,7 @@ from datetime import datetime
 import sys
 
 import gppylib
+import gppylib.operations.backup_utils as backup_utils
 from gppylib import gplog
 from gppylib.db import dbconn
 from gppylib.db.dbconn import execSQL, execSQLForSingleton, UnexpectedRowsError
@@ -21,7 +22,10 @@ from gppylib.operations.backup_utils import write_lines_to_file, verify_lines_in
                                             generate_ao_state_filename, generate_co_state_filename, generate_report_filename,\
                                             generate_increments_filename, generate_dirtytable_filename, generate_partition_list_filename, \
                                             generate_pgstatlastoperation_filename, validate_timestamp, get_latest_report_timestamp, \
-                                            create_temp_file_from_list, execute_sql
+                                            create_temp_file_from_list, execute_sql, generate_master_config_filename, \
+                                            generate_segment_config_filename, generate_global_prefix, generate_master_dbdump_prefix, \
+                                            generate_master_status_prefix, generate_seg_dbdump_prefix, generate_seg_status_prefix, \
+                                            generate_dbdump_prefix, generate_createdb_filename
 
 logger = gplog.get_default_logger()
 
@@ -32,11 +36,6 @@ TIMESTAMP = datetime.now()
 TIMESTAMP_KEY = TIMESTAMP.strftime("%Y%m%d%H%M%S")
 DUMP_DATE = TIMESTAMP.strftime("%Y%m%d") 
 
-GLOBAL_PREFIX = 'gp_global_1_1_'
-MASTER_DBDUMP_PREFIX = 'gp_dump_1_1_'
-MASTER_STATUS_PREFIX = 'gp_dump_status_1_1_'
-SEG_DBDUMP_PREFIX = 'gp_dump_0_'
-SEG_STATUS_PREFIX = 'gp_dump_status_0_'
 COMPRESSION_FACTOR = 12                 # TODO: Where did 12 come from?
 
 INJECT_GP_DUMP_FAILURE = None
@@ -427,6 +426,9 @@ class DumpDatabase(Operation):
         if self.incremental:
             logger.info("Adding --incremental")
             dump_line += " --incremental"
+        if backup_utils.dump_prefix:
+            logger.info("Adding --prefix")
+            dump_line += " --prefix=%s" % backup_utils.dump_prefix
 
         logger.info('Adding --no-expand-children')
         dump_line += " --no-expand-children"
@@ -529,16 +531,16 @@ class PostDumpDatabase(Operation):
 
     def execute(self):
         report_dir = self.get_report_dir(DUMP_DATE)
-        reports = ListFilesByPattern(report_dir, "gp_dump_*.rpt").run()
+        reports = ListFilesByPattern(report_dir, "*gp_dump_*.rpt").run()
         if not reports:
             logger.error("Could not locate a report file on master.")
             return {'exit_status': 2, 'timestamp': 'n/a'}
-        reports.sort()
+        reports.sort(key=lambda x: int(x.split('_')[-1].split('.')[0]))
         reports.reverse()
         report = reports[0]
         timestamp = report[-18:-4]    # last 14 digits, just before .rpt
         if int(timestamp) < int(self.timestamp_start):
-            logger.error("Could not locate the newly generated report file on master.")
+            logger.error("Could not locate the newly generated report %s file on master, for timestamp %s (%s)." % (timestamp, self.timestamp_start, reports))
             return {'exit_status': 2, 'timestamp': 'n/a'}
         logger.info("Timestamp key = %s" % timestamp)
 
@@ -549,8 +551,8 @@ class PostDumpDatabase(Operation):
         # Check master dumps
         path = self.backup_dir if self.backup_dir is not None else self.master_datadir
         path = os.path.join(path, self.dump_dir, DUMP_DATE)
-        status_file = os.path.join(path, "%s%s" % (MASTER_STATUS_PREFIX, timestamp))
-        dump_file = os.path.join(path, "%s%s" % (MASTER_DBDUMP_PREFIX, timestamp))
+        status_file = os.path.join(path, "%s%s" % (generate_master_status_prefix(), timestamp))
+        dump_file = os.path.join(path, "%s%s" % (generate_master_dbdump_prefix(), timestamp))
         if self.compress: dump_file += ".gz"
         try:
             PostDumpSegment(status_file = status_file,
@@ -574,8 +576,8 @@ class PostDumpDatabase(Operation):
         for seg in segs:
             path = self.backup_dir if self.backup_dir is not None else seg.getSegmentDataDirectory()
             path = os.path.join(path, self.dump_dir, DUMP_DATE)
-            status_file = os.path.join(path, "%s%d_%s" % (SEG_STATUS_PREFIX, seg.getSegmentDbId(), timestamp))
-            dump_file = os.path.join(path, "%s%d_%s" % (SEG_DBDUMP_PREFIX, seg.getSegmentDbId(), timestamp))   
+            status_file = os.path.join(path, "%s%d_%s" % (generate_seg_status_prefix(), seg.getSegmentDbId(), timestamp))
+            dump_file = os.path.join(path, "%s%d_%s" % (generate_seg_dbdump_prefix(), seg.getSegmentDbId(), timestamp))   
             if self.compress: dump_file += ".gz"
             operations.append(RemoteOperation(PostDumpSegment(status_file = status_file,
                                                               dump_file = dump_file),
@@ -1127,14 +1129,14 @@ class DumpGlobal(Operation):
     def execute(self):
         logger.info("Commencing pg_catalog dump")
         if self.backup_dir is not None:
-            global_file = os.path.join(self.backup_dir, DUMP_DIR, DUMP_DATE, "%s%s" % (GLOBAL_PREFIX, self.timestamp))
+            global_file = os.path.join(self.backup_dir, DUMP_DIR, DUMP_DATE, "%s%s" % (generate_global_prefix(), self.timestamp))
         else:
-            global_file = os.path.join(self.master_datadir, self.dump_dir, DUMP_DATE, "%s%s" % (GLOBAL_PREFIX, self.timestamp))
+            global_file = os.path.join(self.master_datadir, self.dump_dir, DUMP_DATE, "%s%s" % (generate_global_prefix(), self.timestamp))
         Command('Dump global objects', 
                 "pg_dumpall -g --gp-syntax > %s" % global_file).run(validateAfter=True)
         if self.ddboost:
             abspath = global_file
-            relpath = os.path.join(self.dump_dir, DUMP_DATE, "%s%s" % (GLOBAL_PREFIX, self.timestamp))
+            relpath = os.path.join(self.dump_dir, DUMP_DATE, "%s%s" % (generate_global_prefix(), self.timestamp))
             logger.debug('Copying %s to DDBoost' % abspath)
             cmd = Command('DDBoost copy of %s' % abspath, 
                           'gpddboost --copyToDDBoost --from-file=%s --to-file=%s' % (abspath, relpath))
@@ -1153,7 +1155,7 @@ class DumpConfig(Operation):
         self.ddboost = ddboost
     def execute(self):
         timestamp = TIMESTAMP_KEY
-        config_backup_file = "gp_master_config_files_%s.tar" % timestamp
+        config_backup_file = generate_master_config_filename(timestamp)
         if self.backup_dir is not None:
             path = os.path.join(self.backup_dir, DUMP_DIR, DUMP_DATE, config_backup_file)
         else:
@@ -1177,7 +1179,7 @@ class DumpConfig(Operation):
         gparray = GpArray.initFromCatalog(dbconn.DbURL(port = self.master_port), utility=True)
         primaries = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary(current_role=True)]
         for seg in primaries:
-            config_backup_file = "gp_segment_config_files_0_%d_%s.tar" % (seg.getSegmentDbId(), timestamp)
+            config_backup_file = generate_segment_config_filename(seg.getSegmentDbId(), timestamp)
             if self.backup_dir is not None:
                 path = os.path.join(self.backup_dir, DUMP_DIR, DUMP_DATE, config_backup_file)
             else:

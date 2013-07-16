@@ -82,7 +82,8 @@ def run_gpcommand(context, command):
     context.error_message = result.stderr 
 
 def check_stdout_msg(context, msg):
-    if msg not in context.stdout_message:
+    pat = re.compile(msg)
+    if not pat.search(context.stdout_message):
         err_str = "Expected stdout string '%s' and found: '%s'" % (msg, context.stdout_message)
         raise Exception(err_str)
 

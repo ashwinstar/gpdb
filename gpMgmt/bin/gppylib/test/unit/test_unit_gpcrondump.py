@@ -8,6 +8,7 @@ from gpcrondump import GpCronDump, FREE_SPACE_PERCENT
 from gppylib.operations.utils import DEFAULT_NUM_WORKERS
 from mock import patch, Mock
 from gppylib.mainUtils import ExceptionNoStackTraceNeeded
+import gppylib.operations.backup_utils as backup_utils
 
 
 logger = gplog.get_unittest_logger()
@@ -58,7 +59,8 @@ class GpCronDumpTestCase(unittest.TestCase):
             self.list_backup_files = None
             self.quiet = False
             self.verbose = False
- 
+            self.local_dump_prefix = None
+
     @patch('gpcrondump.GpCronDump._get_master_port')
     @patch('gpcrondump.validate_current_timestamp')
     def test_options1(self, mock, mock2):
@@ -705,6 +707,24 @@ class GpCronDumpTestCase(unittest.TestCase):
                                'foo1:/bar/db_dumps/20130101/gp_dump_0_2_20130101010101.gz']
         self.assertEqual(sorted(pipes_file_list), sorted(expected_files_list))
     
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_gpcrondump_init0(self, mock1, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.timestamp_key = None
+        options.local_dump_prefix = 'foo'
+        options.ddboost = False
+        options.ddboost_verify = False
+        options.ddboost_config_remove = False
+        options.ddboost_user = False
+        options.ddboost_host = False
+        options.max_streams = None
+        options.list_backup_files = False
+        gpcd = GpCronDump(options, None)
+        prefix = backup_utils.dump_prefix
+        backup_utils.dump_prefix = ''
+        self.assertEqual(prefix, 'foo_')
+
 #------------------------------- Mainline --------------------------------
 if __name__ == '__main__':
     unittest.main()

@@ -30,6 +30,8 @@
 #include "utils/guc.h"
 #endif
 
+#define DUMP_PREFIX (dump_prefix==NULL?"":dump_prefix)
+
 /* general utility copied from cdblink.c */
 #define GET_STR(textp) DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(textp)))
 
@@ -44,6 +46,8 @@ static void testCmdsExist(char *pszCompressionProgram, char *pszBackupProgram);
 static char *testProgramExists(char *pszProgramName);
 static void validateBackupDirectory(char *pszBackupDirectory);
 static char *positionToError(char *source);
+static char* parse_prefix_from_params(char *params);
+
 
 #ifdef USE_DDBOOST
 
@@ -62,7 +66,9 @@ static char *gpDDBoostPg = NULL;
 #endif
 
 static char *compPg = NULL,
-		   *bkPg = NULL;
+			*bkPg = NULL,
+			*dump_prefix = NULL;
+
 typedef enum backup_file_type
 {
 	BFT_BACKUP = 0,
@@ -70,6 +76,24 @@ typedef enum backup_file_type
 	BFT_RESTORE_STATUS = 2
 } BackupFileType;
 
+char* parse_prefix_from_params(char *params)
+{
+	if (params == NULL)
+		return NULL;
+	char *temp = strdup(params);
+	if (temp == NULL)
+		ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), errmsg("out of memory")));
+	char *pch = strstr(temp, "--prefix");
+	if (pch)
+	{
+		pch = pch + strlen("--prefix");
+		char *ptr = strtok(pch," ");
+		if (ptr == NULL)
+			return NULL;
+		return ptr;
+	}
+	return NULL;
+}
 
 /*
  * gp_backup_launch__( TEXT, TEXT, TEXT, TEXT, TEXT ) returns TEXT
@@ -137,6 +161,8 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 
 	if (!PG_ARGISNULL(4))
 		pszPassThroughCredentials = GET_STR(PG_GETARG_TEXT_P(4));
+
+	dump_prefix = parse_prefix_from_params(pszPassThroughParameters);
 
 	/*
 	 * if BackupDirectory is relative, make it absolute based on the directory
@@ -736,6 +762,9 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 		bOnErrorStop = PG_GETARG_BOOL(7);
 
 	pszOnErrorStop = bOnErrorStop ? "--gp-e" : "";
+
+
+    dump_prefix = parse_prefix_from_params(pszPassThroughParameters);
 
 	/*
 	 * if BackupDirectory is relative, make it absolute based on the directory
@@ -1354,10 +1383,12 @@ findAcceptableBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, i
 
 	if (bFirstTime)
 	{
-		int			wmasklen,
-						masklen;
+		int base_len = 64;
+		int	wmasklen,
+			masklen,
+			regex_len = base_len + strlen(DUMP_PREFIX) + strlen(pszBackupKey);
 			pg_wchar   *mask;
-		pszRegex = (char *) palloc(34 + strlen(pszBackupKey) + 1);
+		pszRegex = (char *) palloc(regex_len);
 		if (pszRegex == NULL)
 		{
 			ereport(ERROR,
@@ -1366,7 +1397,7 @@ findAcceptableBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, i
 		}
 
 		/* dump file can start with gp_ and also mpp_ for 2.3 backward compatibility */
-		sprintf(pszRegex, "^(gp|mpp)_dump_[0-9]+_%d_%s(.gz)?$", segid, pszBackupKey);
+		snprintf(pszRegex, regex_len, "^%s(gp|mpp)_dump_[0-9]+_%d_%s(.gz)?$", DUMP_PREFIX, segid, pszBackupKey);
 
 		masklen = strlen(pszRegex);
 		mask = (pg_wchar *) palloc((masklen + 1) * sizeof(pg_wchar));
@@ -1409,6 +1440,7 @@ findAcceptableBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, i
 		pg_wchar   *data;
 		size_t		data_len;
 		int			newfile_len;
+		int         backup_file_path_len;
 		pszFileName = dirp->d_name;
 
 		/* Convert data string to wide characters */
@@ -1422,8 +1454,9 @@ findAcceptableBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, i
 			if (strlen(pszBackupDirectory) >= 1 && pszBackupDirectory[strlen(pszBackupDirectory) - 1] == '/')
 				pszSep = "";
 
-			pszBackupFilePathName = (char *) palloc(strlen(pszBackupDirectory) + strlen(pszFileName) + strlen(pszSep) + 1);
-			sprintf(pszBackupFilePathName, "%s%s%s", pszBackupDirectory, pszSep, pszFileName);
+			backup_file_path_len = strlen(pszBackupDirectory) + strlen(DUMP_PREFIX) + strlen(pszFileName) + strlen(pszSep) + 1;
+			pszBackupFilePathName = (char *) palloc(backup_file_path_len);
+			snprintf(pszBackupFilePathName, backup_file_path_len, "%s%s%s%s", pszBackupDirectory, pszSep, DUMP_PREFIX, pszFileName);
 
 			/* Make sure that this is a regular file */
 			if (0 == stat(pszBackupFilePathName, &info) && S_ISREG(info.st_mode))
@@ -1432,7 +1465,7 @@ findAcceptableBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, i
 			}
 		}
 	}
-
+	pfree(pszRegex);
 	closedir(dp);
 
 	return pszBackupFilePathName;
@@ -1461,7 +1494,7 @@ formBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool is_com
 	instid = (GpIdentity.segindex == -1) ? 1 : 0;		/* dispatch node */
 	segid = GpIdentity.dbid;
 
-	sprintf(szFileNamePrefix, "gp_dump_%d_%d_", instid, segid);
+	snprintf(szFileNamePrefix, 1 + PATH_MAX, "%sgp_dump_%d_%d_", DUMP_PREFIX, instid, segid);
 
 	/* Now add up the length of the pieces */
 	len = strlen(pszBackupDirectory);
@@ -1531,8 +1564,8 @@ formStatusFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool bIsBac
 	instid = (GpIdentity.segindex == -1) ? 1 : 0;		/* dispatch node */
 	segid = GpIdentity.dbid;
 
-	sprintf(szFileNamePrefix, "gp_%s_status_%d_%d_", (bIsBackup ? "dump" : "restore"),
-			instid, segid);
+	snprintf(szFileNamePrefix, 1 + PATH_MAX, "%sgp_%s_status_%d_%d_", DUMP_PREFIX, (bIsBackup ? "dump" : "restore"),
+		    	instid, segid);
 
 	/* Now add up the length of the pieces */
 	len = strlen(pszBackupDirectory);

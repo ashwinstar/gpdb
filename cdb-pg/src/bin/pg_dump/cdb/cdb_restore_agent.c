@@ -139,6 +139,7 @@ int			g_role = ROLE_MASTER;		/* would change to ROLE_MASTER when
 										 * necessary */
 static const unsigned long MAX_COMMANDLINE_LEN = 1000000;
 static char * table_filter_file = NULL;
+static char * dump_prefix = NULL;
 /* end cdb additions */
 /*	end cdb specific stuff */
 
@@ -224,6 +225,7 @@ main(int argc, char **argv)
 		{"dd_boost_dir", required_argument, NULL, 10},
 		{"dd_boost_buf_size", required_argument, NULL, 11},
 		{"gp-f", required_argument, NULL, 12},
+		{"prefix", required_argument, NULL, 13},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -423,6 +425,11 @@ main(int argc, char **argv)
 			case 12:
 				table_filter_file = strdup(optarg);
 				break;
+
+			case 13:
+				dump_prefix = strdup(optarg);
+				break;
+
 			default:
 				fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
 				exit(1);

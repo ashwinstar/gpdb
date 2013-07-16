@@ -82,6 +82,8 @@ int			optreset;
 #include <regex.h>
 #include <sys/wait.h>
 
+#define DUMP_PREFIX (dump_prefix==NULL?"":dump_prefix)
+
 extern char *optarg;
 extern int	optind,
 			opterr;
@@ -156,6 +158,7 @@ static char *g_pszCDBOutputDirectory = NULL;
 static char *g_LastMsg = NULL;
 static StatusOpList *g_pStatusOpList = NULL;
 static char tableFileName[300];
+static char *dump_prefix = NULL;
 
 static const char *logInfo = "INFO";
 static const char *logWarn = "WARN";
@@ -412,6 +415,7 @@ main(int argc, char **argv)
 		{"gp-d", required_argument, NULL, 2},
 		{"table-file", required_argument, NULL, 3},
 		{"exclude-table-file", required_argument, NULL, 4},
+		{"prefix", required_argument, NULL, 5},
 		/* end mpp additions */
 
 		/*
@@ -662,6 +666,9 @@ main(int argc, char **argv)
 							progname, optarg);
 					exit(1);
 				}
+				break;
+			case 5:
+				dump_prefix = strdup(optarg);
 				break;
 
 #ifdef USE_DDBOOST
@@ -7229,7 +7236,7 @@ formGenericFilePathName(char *keyword, char *pszBackupDirectory, char *pszBackup
 	int			len;
 	char	   *pszBackupFileName;
 
-	sprintf(szFileNamePrefix, "gp_%s_%d_%d_", keyword, pszInstID, pszSegID);
+	snprintf(szFileNamePrefix, 1 + PATH_MAX, "%sgp_%s_%d_%d_", DUMP_PREFIX, keyword, pszInstID, pszSegID);
 
 	/* Now add up the length of the pieces */
 	len = strlen(pszBackupDirectory);

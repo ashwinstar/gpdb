@@ -33,6 +33,7 @@
 int			optreset;
 #endif
 
+#define DUMP_PREFIX (dump_prefix==NULL?"":dump_prefix)
 
 /*
  * static helper functions.  See each function body for a description.
@@ -81,6 +82,7 @@ static char *selectSchemaName = NULL;	/* name of a single schema to dump */
 
 static char *tableFileName = NULL;	/* file name with tables to dump (--table-file)	*/
 static char *excludeTableFileName = NULL; /* file name with tables to exclude (--exclude-table-file) */
+static char *dump_prefix = NULL;
 
 char		g_comment_start[10];
 char		g_comment_end[10];
@@ -860,7 +862,8 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		{"exclude-table-file", required_argument, NULL, 8},
 		{"incremental", no_argument, NULL, 9},
 		{"gp-k", required_argument, NULL, 10},
-        {"no-expand-children", no_argument, NULL, 11},
+		{"no-expand-children", no_argument, NULL, 11},
+		{"prefix", required_argument, NULL, 12},
 
 		{NULL, 0, NULL, 0}
 	};
@@ -1232,6 +1235,11 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
             case 11:
                 no_expand_children = true;
                 break;
+            case 12:
+                dump_prefix = Safe_strdup(optarg);
+                pInputOpts->pszPassThroughParms = addPassThroughLongParm("prefix", DUMP_PREFIX, pInputOpts->pszPassThroughParms);
+                break; 
+
 
 			default:
 				mpp_err_msg_cache(logError, progname, "Try \"%s --help\" for more information.\n", progname);
@@ -1659,11 +1667,11 @@ reportBackupResults(InputOptions inputopts, ThreadParmArray *pParmAr)
 
 	/* See whether we can create the file in the report directory */
 	if (pszReportDirectory[strlen(pszReportDirectory) - 1] != '/')
-		pszFormat = "%s/gp_dump_%s.rpt";
+		pszFormat = "%s/%sgp_dump_%s.rpt";
 	else
-		pszFormat = "%sgp_dump_%s.rpt";
+		pszFormat = "%s%sgp_dump_%s.rpt";
 
-	pszReportPathName = MakeString(pszFormat, pszReportDirectory, pParmAr->pData[0].pOptionsData->pszKey);
+	pszReportPathName = MakeString(pszFormat, pszReportDirectory, DUMP_PREFIX, pParmAr->pData[0].pOptionsData->pszKey);
 
 	fRptFile = fopen(pszReportPathName, "w");
 	if (fRptFile == NULL)
