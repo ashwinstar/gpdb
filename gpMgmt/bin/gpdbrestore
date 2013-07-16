@@ -128,12 +128,12 @@ class GpdbRestore(Operation):
                 raise ExceptionNoStackTraceNeeded("-R cannot be used with DDBoost parameters.")
             elif self.backup_dir:
                 raise ExceptionNoStackTraceNeeded('-u cannot be used with DDBoost parameters.')
-            elif restore.dump_prefix:
+            elif backup_utils.dump_prefix:
                 raise ExceptionNoStackTraceNeeded('--prefix cannot be used with DDBoost parameters.')
             dd = gpmfr.DDSystem("local")
             self.dump_dir = dd.defaultBackupDir
             # Ugly hack to propagate backup directory different from "db_dumps".
-            gppylib.operations.backup_utils.DUMP_DIR = self.dump_dir
+            backup_utils.DUMP_DIR = self.dump_dir
         else:
             self.dump_dir = DUMP_DIR
 
