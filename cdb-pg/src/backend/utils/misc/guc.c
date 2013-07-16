@@ -3849,7 +3849,7 @@ static struct config_int ConfigureNamesInt[] =
             NULL
 		},
 		&max_prepared_xacts,
-		50, 0, 1000, NULL, NULL
+		50, 1, 1000, NULL, NULL
 	},
 
 	{
