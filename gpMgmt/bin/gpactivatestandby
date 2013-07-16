@@ -527,7 +527,7 @@ def stop_database():
     """Stops the database."""
     
     logger.info('Stopping database...')
-    gp.GpStop.local('Stopping database')
+    gp.GpStop.local('Stopping database', fast=True)
 
 
 

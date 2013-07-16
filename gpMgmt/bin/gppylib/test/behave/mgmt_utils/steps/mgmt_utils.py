@@ -2,6 +2,7 @@ import getpass
 import glob
 import os
 import re
+import thread
 import time
 import filecmp
 import shutil
@@ -64,12 +65,16 @@ def impl(context, dbname):
 def impl(context, dbname):
     drop_database_if_exists(context, dbname)
 
-@given('we have determined the first segment hostname')
-def impl(context):
+def get_segment_hostlist():
     gparray = GpArray.initFromCatalog(dbconn.DbURL())
     segment_hostlist = sorted(gparray.get_hostlist(includeMaster=False)) 
     if not segment_hostlist:
         raise Exception('segment_hostlist was empty')
+    return segment_hostlist
+
+@given('we have determined the first segment hostname')
+def impl(context):
+    segment_hostlist = get_segment_hostlist()    
     context.first_segment_hostname = segment_hostlist[0] 
 
 @given('{nic} on the first segment host is {nic_status}')
@@ -282,7 +287,7 @@ def impl(context, dbname, tablename):
     
     drop_database_if_exists(context, dbname)
     create_database(context, dbname)
-    create_int_table(context, tablename)
+    create_int_table(context, tablename, dbname=dbname)
     drop_database(context, dbname)
 
     
@@ -1640,6 +1645,15 @@ def impl(context, numlines):
     if num_found != numlines:
         raise Exception("Found %d of stored query result but expected %d records" % (num_found, numlines))
 
+def get_standby_host():
+    gparray = GpArray.initFromCatalog(dbconn.DbURL())
+    segments = gparray.getDbList() 
+    standby_master = [seg.getSegmentHostName() for seg in segments if seg.isSegmentStandby()]
+    if len(standby_master) > 0:
+        return standby_master[0]
+    else:
+        return []
+
 @given('user does not have ssh permissions') 
 def impl(context):
     user_home = os.environ.get('HOME')
@@ -1653,6 +1667,53 @@ def impl(context):
     authorized_keys_backup_file = '%s/.ssh/authorized_keys.bk' % user_home
     if os.path.exists(authorized_keys_backup_file):
         shutil.move(authorized_keys_backup_file, authorized_keys_backup_file[:-3])
+
+def delete_data_dir(host):
+    cmd = Command(name='remove data directories',
+           cmdStr='rm -rf %s' % master_data_dir,
+           ctxt=REMOTE,
+           remoteHost=host)
+    cmd.run(validateAfter=True)
+
+@when('the user initializes standby master on "{hostname}"') 
+def impl(context, hostname):
+    port = os.environ.get('PGPORT')
+    if hostname.strip() == 'mdw':
+        if not hasattr(context, 'master') or not hasattr(context, 'standby_host'):
+            raise Exception('Expected master to be saved but was not found')
+        delete_data_dir(context.master)
+        cmd = Command(name='gpinitstandby',
+                      cmdStr='PGPORT=%s MASTER_DATA_DIRECTORY=%s gpinitstandby -a -s %s' % (port, master_data_dir, context.master),
+                      ctxt=REMOTE,
+                      remoteHost=context.standby_host)
+        cmd.run(validateAfter=True)
+        return
+    elif hostname.strip() == 'smdw':
+        context.master = get_master_hostname('template1')[0][0]
+        context.ret_code = 0
+        context.stdout_message = ''
+        context.error_message = ''
+        segment_hostlist = get_segment_hostlist()    
+        segment_hosts = [seg for seg in segment_hostlist if seg != context.master] 
+        context.standby_host = segment_hosts[0]
+        context.standby_was_initialized = False
+        standby = get_standby_host()
+
+        if standby:
+            context.standby_was_initialized = True
+            context.standby_host = standby
+            return
+    
+        delete_data_dir(context.standby_host)
+        cmd = "gpinitstandby -a -s %s" % context.standby_host
+        run_gpcommand(context, cmd)
+    else:
+        raise Exception('Invalid host type specified "%s"' % hostname)
+
+@when('the user runs the query "{query}" on "{dbname}"')
+def impl(context, query, dbname):
+    thread.start_new_thread(getRows, (dbname, query))
+    time.sleep(30)
 
 @given('we have exchanged keys with the cluster')
 def impl(context):
@@ -1676,6 +1737,13 @@ def impl(context, filename_prefix):
         results = cmd.get_results()
         if int(results.stdout.strip()) > 0:
             raise Exception('Temp files with prefix %s are not cleaned up on host %s after gpcrondump' % (filename_prefix, host))
+
+@when('the user activates standby on the standbyhost')
+def impl(context):
+    port = os.environ.get('PGPORT')
+    cmd = 'PGPORT=%s MASTER_DATA_DIRECTORY=%s gpactivatestandby -d %s -fa' % (port, master_data_dir, master_data_dir) 
+    cmd = Command('run remote command', cmd, ctxt=REMOTE, remoteHost=context.standby_host)
+    cmd.run(validateAfter=True)
 
 @given('user kills a primary postmaster process')
 def impl(context):
@@ -1711,11 +1779,25 @@ def impl(context, filename_prefix):
                 remoteHost=host)
         cmd.run(validateAfter=True)
 
+@then('the user runs the command "{cmd}" from standby')
+@when('the user runs the command "{cmd}" from standby')
+def impl(context, cmd, hostname):
+    port = os.environ.get('PGPORT')
+    cmd = 'PGPORT=%s MASTER_DATA_DIRECTORY=%s %s' % (port, master_data_dir, cmd) 
+    cmd = Command('run remote command', cmd, ctxt=REMOTE, remoteHost=context.standby_host)
+    cmd.run(validateAfter=True)
+
+@then('the standby is initialized if required')
+def impl(context):
+    if context.standby_was_initialized: 
+        delete_data_dir(context.standby_host)
+        cmd = Command('create the standby', cmdStr='gpinitstandby -s %s -a' % context.standby_host)
+        cmd.run(validateAfter=True)
+
 @given('user can start transactions')
 def impl(context):
     num_retries = 50
     attempt = 0
-
     while attempt < num_retries:
         try:
             with dbconn.connect(dbconn.DbURL()) as conn:
