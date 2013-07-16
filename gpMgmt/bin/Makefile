@@ -244,7 +244,7 @@ check-regress:
 
 check: $(MOCK_BIN)
 	@echo "Running unit tests..."
-	@PYTHONPATH=$(SRC):$(SRC)/ext:$(PYTHONPATH):$(PYTHONSRC_INSTALL_PYTHON_PATH):$(LIB_DIR) \
+	@PYTHONPATH=$(SRC):$(SRC)/ext:$(PYTHONPATH):$(PYTHONSRC_INSTALL_PYTHON_PATH):$(SBIN_DIR):$(LIB_DIR) \
 	gppylib/gpunit discover --verbose -s gppylib -p "test_unit*.py" 2> $(SRC)/../gpMgmt_testunit_results.log 1> $(SRC)/../gpMgmt_testunit_output.log
 
 solarisTest:
