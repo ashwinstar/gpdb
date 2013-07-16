@@ -6,6 +6,7 @@
 import os
 import shutil
 import unittest2 as unittest
+from gppylib.commands.base import CommandResult
 from gppylib.operations.backup_utils import generate_report_filename, validate_timestamp, generate_increments_filename,\
                                             check_cdatabase_exists, check_successful_dump, convert_reportfilename_to_cdatabasefilename,\
                                             get_backup_directory, generate_ao_state_filename, generate_co_state_filename,\
@@ -15,7 +16,8 @@ from gppylib.operations.backup_utils import generate_report_filename, validate_t
                                             check_backup_type, get_timestamp_val, get_dump_dirs, get_latest_full_dump_timestamp, \
                                             generate_pgstatlastoperation_filename, get_latest_report_timestamp, get_latest_report_in_dir, \
                                             create_temp_file_from_list, get_timestamp_from_increments_filename, get_full_timestamp_for_incremental,\
-                                            check_funny_chars_in_tablenames, expand_partition_tables, populate_filter_tables, expand_partitions_and_populate_filter_file
+                                            check_funny_chars_in_tablenames, expand_partition_tables, populate_filter_tables, expand_partitions_and_populate_filter_file, \
+                                            generate_files_filename, generate_pipes_filename
 from mock import patch, MagicMock, Mock
 
 class BackupUtilsTestCase(unittest.TestCase):
@@ -630,13 +632,13 @@ class BackupUtilsTestCase(unittest.TestCase):
     @patch('gppylib.operations.backup_utils.get_dump_dirs', return_value=['20121212', '20121213', '20121214'])
     @patch('os.listdir', return_value=['gp_cdatabase_1_1_2012121211111', 'gp_cdatabase_1_1_201212120000010', 'gp_cdatabase_1_1_2012121a111111'])
     def test86_get_latest_full_dump_timestamp(self, mock1, mock2):
-        with self.assertRaisesRegexp(Exception, 'No dump report files found in dump directory'):
+        with self.assertRaisesRegexp(Exception, 'No full backup found for incremental'):
             ts = get_latest_full_dump_timestamp('testdb', '/tmp/foo')
 
     @patch('gppylib.operations.backup_utils.get_dump_dirs', return_value=['20121212', '20121213', '20121214'])
     @patch('os.listdir', return_value=['gp_cdatabase_1_1_20121212111111', 'gp_dump_20121212000000.rpt.bk', 'gp_cdatabase_1_1_20121212000001'])
     def test87_get_latest_full_dump_timestamp(self, mock1, mock2):
-        with self.assertRaisesRegexp(Exception, 'No dump report files found in dump directory'):
+        with self.assertRaisesRegexp(Exception, 'No full backup found for incremental'):
             ts = get_latest_full_dump_timestamp('testdb', '/tmp/foo')
 
     def test88_generate_pgstatlastoperation_filename(self):
@@ -917,3 +919,50 @@ class BackupUtilsTestCase(unittest.TestCase):
         contents = get_lines_from_file(result)
         self.assertEqual(contents.sort(), partition_list.sort())
         os.remove(result)
+
+    def test01_generate_files_filename(self):
+        master_data_dir = '/data'
+        backup_dir = '/backup'
+        timestamp = '20120731093030'
+        expected_output = '/backup/db_dumps/20120731/gp_dump_20120731093030_regular_files'
+        output = generate_files_filename(master_data_dir, backup_dir, timestamp)
+        self.assertEquals(output, expected_output)
+
+    def test02_generate_files_filename(self):
+        master_data_dir = None
+        backup_dir = '/backup'
+        timestamp = '20120731093030'
+        expected_output = '/backup/db_dumps/20120731/gp_dump_20120731093030_regular_files'
+        output = generate_files_filename(master_data_dir, backup_dir, timestamp)
+        self.assertEquals(output, expected_output)
+
+    def test03_generate_files_filename(self):
+        master_data_dir = '/data'
+        backup_dir = None
+        timestamp = '20120731093030'
+        expected_output = '/data/db_dumps/20120731/gp_dump_20120731093030_regular_files'
+        output = generate_files_filename(master_data_dir, backup_dir, timestamp)
+
+    def test01_generate_pipes_filename(self):
+        master_data_dir = '/data'
+        backup_dir = '/backup'
+        timestamp = '20120731093030'
+        expected_output = '/backup/db_dumps/20120731/gp_dump_20120731093030_pipes'
+        output = generate_pipes_filename(master_data_dir, backup_dir, timestamp)
+        self.assertEquals(output, expected_output)
+
+    def test02_generate_pipes_filename(self):
+        master_data_dir = None
+        backup_dir = '/backup'
+        timestamp = '20120731093030'
+        expected_output = '/backup/db_dumps/20120731/gp_dump_20120731093030_pipes'
+        output = generate_pipes_filename(master_data_dir, backup_dir, timestamp)
+        self.assertEquals(output, expected_output)
+
+    def test03_generate_pipes_filename(self):
+        master_data_dir = '/data'
+        backup_dir = None
+        timestamp = '20120731093030'
+        expected_output = '/data/db_dumps/20120731/gp_dump_20120731093030_pipes'
+        output = generate_pipes_filename(master_data_dir, backup_dir, timestamp)
+

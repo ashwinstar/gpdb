@@ -165,5 +165,7 @@ extern void formDDBoostPsqlCommandLine(char** retVal, bool compUsed, const char*
 extern void formSegmentPsqlCommandLine(char** retVal, const char* inputFileSpec, 
 						bool compUsed, const char* compProg, const char* filter_script, 
 						const char* table_filter_file, int role, const char* psqlPg, const char* catPg);
+extern void formPostDataSchemaOnlyPsqlCommandLine(char** retVal, const char* inputFileSpec, 
+						bool compUsed, const char* compProg, const char* psqlPg, const char* catPg);
 
 #endif   /* CDB_DUMP_UTIL_H */

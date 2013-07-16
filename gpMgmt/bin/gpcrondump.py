@@ -37,7 +37,9 @@ try:
                                         DUMP_DIR
     from gppylib.operations.backup_utils import get_latest_full_dump_timestamp, check_funny_chars_in_tablenames, \
                                                 expand_partitions_and_populate_filter_file, get_lines_from_file, \
-                                                remove_file_from_segments
+                                                remove_file_from_segments, validate_timestamp, write_lines_to_file, \
+                                                verify_lines_in_file, get_backup_directory, generate_pipes_filename, \
+                                                generate_files_filename
     from gppylib.operations.utils import DEFAULT_NUM_WORKERS
     from gppylib.gparray import GpArray
     from gppylib.db import dbconn
@@ -92,6 +94,8 @@ class GpCronDump(Operation):
         self.encoding = options.encoding
         self.output_options = options.output_options
         self.incremental = options.incremental
+        self.timestamp_key = options.timestamp_key
+        self.list_backup_files = options.list_backup_files
         self.ddboost_hosts = options.ddboost_hosts
         self.ddboost_user = options.ddboost_user
         self.ddboost_config_remove = options.ddboost_config_remove
@@ -114,12 +118,19 @@ class GpCronDump(Operation):
         if self.incremental and not self.dump_databases:
             raise ExceptionNoStackTraceNeeded("Must supply -x <database name> with incremental option")
 
-	if self.dump_databases is not None:
-        	if self.incremental and len(self.dump_databases.split(',')) > 1:
-            		raise ExceptionNoStackTraceNeeded('multi-database backup is not supported with incremental backup: %s databases selected' % len(self.dump_databases))
+        if self.dump_databases is not None:
+            if self.incremental and len(self.dump_databases.split(',')) > 1:
+                raise ExceptionNoStackTraceNeeded('multi-database backup is not supported with incremental backup: %s databases selected' % len(self.dump_databases))
 
         if self.clear_dumps_only and self.incremental:
             raise Exception('-o option cannot be selected with incremental backup')
+
+        if self.list_backup_files and not self.timestamp_key:
+            raise Exception('Must supply -K option when listing backup files')
+
+        if self.dump_databases is not None:
+            if self.timestamp_key and len(self.dump_databases.split(',')) > 1:
+                raise ExceptionNoStackTraceNeeded('multi-database backup is not supported with -K option')
 
         if not (self.clear_dumps_only or bool(self.ddboost_hosts) or bool(self.ddboost_user) or self.ddboost_config_remove):
             if self.dump_databases is not None:
@@ -149,6 +160,9 @@ class GpCronDump(Operation):
 
         if self.incremental and (self.ddboost or bool(self.ddboost_verify) or bool(self.ddboost_hosts) or bool(self.ddboost_user) or bool(self.ddboost_config_remove)):
             raise Exception('ddboost can not be selected with incremental backup')
+
+        if self.list_backup_files and (self.ddboost or bool(self.ddboost_verify) or bool(self.ddboost_hosts) or bool(self.ddboost_user) or bool(self.ddboost_config_remove)):
+            raise Exception('list backup files not supported with ddboost option')
 
         self.replicate = options.replicate
         self.max_streams = options.max_streams
@@ -226,7 +240,8 @@ class GpCronDump(Operation):
         if self.incremental:
             self.free_space_percent = None
             logger.info('Bypassing disk space checks for incremental backup')
-            self.full_dump_timestamp = gppylib.operations.backup_utils.get_latest_full_dump_timestamp(self.dump_databases[0], self.getBackupDirectoryRoot())
+            self.full_dump_timestamp = get_latest_full_dump_timestamp(self.dump_databases[0], self.getBackupDirectoryRoot())
+
     def getBackupDirectoryRoot(self):
         if self.backup_dir:
             return self.backup_dir
@@ -528,7 +543,7 @@ class GpCronDump(Operation):
                 raise ExceptionNoStackTraceNeeded('The option --ddboost-config-remove is standalone. It is NOT used in conjunction with any other gocrondump options.')
            
         if self.clear_dumps_only:
-            generate_dump_timestamp(datetime.now())
+            generate_dump_timestamp(self._get_timestamp_object(self.timestamp_key))
             DeleteOldestDumps(master_datadir = self.master_datadir,
                               master_port = self.master_port,
                               dump_dir = self.dump_dir,
@@ -546,7 +561,14 @@ class GpCronDump(Operation):
         #                        in this loop over the -x arguments
         final_exit_status = current_exit_status = 0
         for dump_database in self.dump_databases:
-            generate_dump_timestamp(datetime.now())
+            timestamp = self._get_timestamp_object(self.timestamp_key)
+            timestamp_str = timestamp.strftime('%Y%m%d%H%M%S')
+            generate_dump_timestamp(timestamp)
+            if self.list_backup_files:
+                self._list_backup_files(timestamp_str)
+                logger.info('Successfully listed the names of backup files and pipes')
+                return 0
+
             validate_current_timestamp(self.getBackupDirectoryRoot())
             if self.interactive:
                 self._prompt_continue(dump_database)
@@ -747,6 +769,92 @@ class GpCronDump(Operation):
             os._exit(0)
 
         return final_exit_status
+
+    def _get_files_file_list(self, master, segdbs, timestamp):
+        file_list = []
+        dump_dir = get_backup_directory(self.master_datadir, self.backup_dir, timestamp)
+        master_file_list = ['gp_cdatabase_1_1_%s', 'gp_dump_%s_ao_state_file', 'gp_dump_%s_co_state_file',
+                            'gp_dump_%s_last_operation', 'gp_dump_%s.rpt', 'gp_dump_status_1_1_%s']
+
+        if self.incremental:
+            file_list.append('%s:%s/gp_dump_%s_increments' % (master.getSegmentHostName(), dump_dir, self.full_dump_timestamp))
+
+        for file in master_file_list:
+            file_list.append('%s:%s/%s' % (master.getSegmentHostName(), dump_dir, file % timestamp))
+
+        return file_list
+
+    def _get_pipes_file_list(self, master, segdbs, timestamp):
+        pipe_list = []
+
+        dump_dir = get_backup_directory(self.master_datadir, self.backup_dir, str(timestamp))
+        master_pipe_list = ['gp_dump_1_1_%s', 'gp_dump_1_1_%s_post_data']
+        seg_pipe = 'gp_dump_0_%s_%s'
+        config_pipe = 'gp_master_config_files_%s.tar'
+        seg_config = 'gp_segment_config_files_0_%s_%s.tar'
+        global_pipe = 'gp_global_1_1_%s'
+
+        for segdb in segdbs:
+            seg_dump_dir = get_backup_directory(segdb.getSegmentDataDirectory(), self.backup_dir, str(timestamp))
+            pipe_list.append('%s:%s/%s' % (segdb.getSegmentHostName(), seg_dump_dir, seg_pipe % (segdb.getSegmentDbId(), timestamp)))
+            if self.compress:
+                pipe_list[-1] += '.gz'
+
+        for file in master_pipe_list:
+            pipe_list.append('%s:%s/%s' % (master.getSegmentHostName(), dump_dir, file % timestamp))
+            if self.compress:
+                pipe_list[-1] += '.gz'
+
+        if self.dump_global:
+            pipe_list.append('%s:%s/%s' % (master.getSegmentHostName(), dump_dir, global_pipe % timestamp))
+
+        if self.dump_config:
+            pipe_list.append('%s:%s/%s' % (master.getSegmentHostName(), dump_dir, config_pipe % timestamp))
+            for segdb in segdbs:
+                seg_dump_dir = get_backup_directory(segdb.getSegmentDataDirectory(), self.backup_dir, str(timestamp))
+                pipe_list.append('%s:%s/%s' % (segdb.getSegmentHostName(), seg_dump_dir, seg_config % (segdb.getSegmentDbId(), timestamp)))
+
+        return pipe_list
+
+    def _list_backup_files(self, timestamp):
+        pipe_list = []
+        file_list = []
+
+        gparray = self.getGpArray()
+        segdbs = [segdb for segdb in gparray.getDbList() if segdb.isSegmentPrimary()]
+
+        pipe_list = self._get_pipes_file_list(gparray.master, segdbs, timestamp)
+        file_list = self._get_files_file_list(gparray.master, segdbs, timestamp)
+
+        pipes_list_fname = generate_pipes_filename(self.master_datadir, self.backup_dir, timestamp)
+        files_list_fname = generate_files_filename(self.master_datadir, self.backup_dir, timestamp)
+
+        dirname = os.path.dirname(pipes_list_fname)
+        if not os.path.isdir(dirname):
+            os.makedirs(dirname)
+
+        write_lines_to_file(pipes_list_fname, pipe_list)
+        verify_lines_in_file(pipes_list_fname, pipe_list)
+        logger.info('Added the list of pipe names to the file: %s' % pipes_list_fname)
+
+        write_lines_to_file(files_list_fname, file_list)
+        verify_lines_in_file(files_list_fname, file_list)
+        logger.info('Added the list of file names to the file: %s' % files_list_fname)
+
+    def _get_timestamp_object(self, timestamp_key):
+        if timestamp_key is None:
+            return datetime.now()
+
+        if not validate_timestamp(timestamp_key):
+            raise Exception('Invalid timestamp key')
+
+        year = int(self.timestamp_key[:4])
+        month = int(self.timestamp_key[4:6])
+        day = int(self.timestamp_key[6:8])
+        hours = int(self.timestamp_key[8:10])
+        minutes = int(self.timestamp_key[10:12])
+        seconds = int(self.timestamp_key[12:14])
+        return datetime(year, month, day, hours, minutes, seconds)
 
     def _get_table_names_from_partition_list(self, partition_list):
         tablenames = [] 
@@ -986,6 +1094,11 @@ def create_parser():
     addTo.add_option('-T', action='append', dest='exclude_dump_tables', metavar="<schema.tableN>",
                      help="Exclude the named table(s) from the dump. -T can be provided multiple times to exclude multiple tables.")
     addTo.add_option('--incremental', action='store_true', dest='incremental', default=False, help='Dump incremental backup.')
+    addTo.add_option('-K', dest='timestamp_key', metavar="<YYYYMMDDHHMMSS>",
+                     help="Timestamp key for the dump.")
+
+    addTo.add_option('--list-backup-files', dest='list_backup_files', default=False, action='store_true',
+                     help="Files created during the dump operation for a particular input timestamp")
 
     # TODO: HACK to remove existing -h
     help = parser.get_option('-h')

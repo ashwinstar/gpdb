@@ -21,7 +21,7 @@ from gppylib.operations.backup_utils import check_backup_type, generate_dirtytab
                                             verify_lines_in_file, generate_increments_filename, generate_report_filename, create_temp_file_with_tables, \
                                             get_all_segment_addresses, scp_file_to_hosts, run_pool_command, execute_sql, expand_partition_tables
 from gppylib.operations.utils import RemoteOperation, ParallelOperation
-from gppylib.operations.unix import CheckFile, CheckRemoteFile, CheckRemoteDir, MakeRemoteDir, RemoveFile, RemoveRemoteFile
+from gppylib.operations.unix import CheckFile, CheckRemoteDir, MakeRemoteDir, CheckRemotePath
 
 """
 TODO: partial restore. In 4.x, dump will only occur on primaries. 
@@ -361,7 +361,7 @@ class RestoreDatabase(Operation):
     def _restore_global(self, restore_timestamp, master_datadir, backup_dir): 
         logger.info('Commencing restore of global objects')
         global_file = os.path.join(get_restore_dir(master_datadir, backup_dir), self.dump_dir, restore_timestamp[0:8], "%s%s" % (GLOBAL_PREFIX, restore_timestamp))
-        if not CheckFile(global_file).run():
+        if not os.path.exists(global_file):
             raise Exception('Unable to locate global file %s%s in dump set' % (GLOBAL_PREFIX, restore_timestamp))
         Psql('Invoking global dump', filename=global_file).run(validateAfter=True)
 
@@ -472,7 +472,7 @@ class ValidateTimestamp(Operation):
         restore_db = GetDbName(createdb_file).run()
         if not self.ddboost:
             compressed_file = os.path.join(path, "%s%s.gz" % (MASTER_DBDUMP_PREFIX, self.candidate_timestamp))
-            compress = CheckFile(compressed_file).run()
+            compress = os.path.exists(compressed_file)
         else:
             compressed_file = os.path.join(path, "%s%s%s.gz" % (MASTER_DBDUMP_PREFIX, self.candidate_timestamp, POST_DATA_SUFFIX))
             compress = CheckFile(compressed_file).run() 
@@ -502,7 +502,7 @@ class ValidateSegments(Operation):
             path = os.path.join(path, "%s0_%d_%s" % (DBDUMP_PREFIX, seg.getSegmentDbId(), self.restore_timestamp))
             if self.compress:
                 path += ".gz"
-            exists = CheckRemoteFile(path, host).run()
+            exists = CheckRemotePath(path, host).run()
             if not exists:
                 raise ExceptionNoStackTraceNeeded("No dump file on %s at %s" % (seg.getSegmentHostName(), path))
 

@@ -117,6 +117,13 @@ class CheckRemoteFile(RawRemoteOperation):
     def __str__(self):
         return "CheckRemoteFile(%s, %s)" % (self.path, self.host)
 
+class CheckRemotePath(RawRemoteOperation):
+    def __init__(self, path, host):
+        self.path, self.host = path, host
+        super(CheckRemotePath, self).__init__(""" python -c "import os, pickle; print pickle.dumps(os.path.exists('%s'))" """ % path, host)
+    def __str__(self):
+        return "CheckRemotePath(%s, %s)" % (self.path, self.host)
+
 class CheckFile(Operation):
     def __init__(self, path):
         self.path = path

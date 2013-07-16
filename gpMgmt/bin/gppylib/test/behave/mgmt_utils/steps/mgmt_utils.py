@@ -698,7 +698,7 @@ def impl(context, table_list, dbname):
 @then('verify that there is a "{table_type}" table "{tablename}" in "{dbname}" with data')
 def impl(context, table_type, tablename, dbname):
     if not check_table_exists(context, dbname=dbname, table_name=tablename, table_type=table_type):
-        raise Exception("Table '%s' still exists when it should not" % tablename)
+        raise Exception("Table '%s' does not exist when it should" % tablename)
     validate_restore_data(context, tablename, dbname) 
 
 @given('there is schema "{schema_list}" exists in "{dbname}"')
@@ -819,6 +819,10 @@ def impl(context, filetype, dir):
         filename = 'gp_dump_%s_dirty_list' % context.backup_timestamp
     elif filetype == "plan":
         filename = 'gp_restore_%s_plan' % context.backup_timestamp
+    elif filetype == 'pipes':
+        filename = 'gp_dump_%s_pipes' % context.backup_timestamp
+    elif filetype == 'regular_files':
+        filename = 'gp_dump_%s_regular_files' % context.backup_timestamp
     else:
         raise Exception("Unknown filetype '%s' specified" % filetype)
 
@@ -944,6 +948,10 @@ def impl(context, filetype, dir):
         filename = 'gp_restore_%s_plan' % context.backup_timestamp
     elif filetype == "global":
         filename = 'gp_global_1_1_%s' % context.backup_timestamp
+    elif filetype == 'pipes':
+        filename = 'gp_dump_%s_pipes' % context.backup_timestamp
+    elif filetype == 'regular_files':
+        filename = 'gp_dump_%s_regular_files' % context.backup_timestamp
     else:
         raise Exception("Unknown filetype '%s' specified" % filetype)
 
@@ -1911,6 +1919,37 @@ def impl(context, file_type, directory, options):
     regular_pattern_list = ['gp_cdatabase_1_1_%s' % context.backup_timestamp, 'gp_dump_%s.*' % context.backup_timestamp, 'gp_dump_status_1_1_%s' % context.backup_timestamp]
 
     if '-G' in option_list: 
+    if '-g' in option_list:
+        reg_file_count += get_num_segments(primary=True, mirror=False, master=True, standby=False) 
+        regular_pattern_list += ['gp_master_config_files_%s.*' % context.backup_timestamp, 'gp_segment_config_files_.*_.*_%s.*' % context.backup_timestamp]
+    if '--incremental' in option_list:
+        regular_pattern_list += ['gp_dump_%s.*' % context.full_backup_timestamp]
+        reg_file_count += 1
+     
+file_type.strip())
+
+    with open(filename) as fp:
+        file_list = fp.readlines()
+
+    if file_type == 'pipes':
+        validate_files(file_list, pipes_pattern_list, pipe_file_count)
+    elif file_type == 'regular_files':
+        validate_files(file_list, regular_pattern_list, reg_file_count)
+        
+@then('the "{file_type}" file under "{directory}" with options "{options}" is validated after dump operation')
+def impl(context, file_type, directory, options):
+    backup_dir = directory if directory.strip() != '' else master_data_dir  
+    if len(options.split(',')) > 3:
+        raise Exception('Invalid options specified "%s"' % options) 
+    option_list = options.split(',')
+
+    pipe_file_count = 1 + get_num_segments(primary=True, mirror=False, master=True, standby=False)
+    reg_file_count = 6
+
+    pipes_pattern_list = ['gp_dump_.*_%s.*(?:\.gz)?' % context.backup_timestamp]
+    regular_pattern_list = ['gp_cdatabase_1_1_%s' % context.backup_timestamp, 'gp_dump_%s.*' % context.backup_timestamp, 'gp_dump_status_1_1_%s' % context.backup_timestamp]
+
+    if '-G' in option_list: 
         pipe_file_count += 1
         pipes_pattern_list += ['gp_global_1_1_%s' % context.backup_timestamp]
     if '-g' in option_list:
@@ -1940,7 +1979,6 @@ def impl(context, dir):
     master_dump_dir = dir if len(dir.strip()) != 0 else master_data_dir
     gparray = GpArray.initFromCatalog(dbconn.DbURL())
     primary_segs = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary()]
-
     unwanted_files = ['gp_dump_%s_pipes' % context.backup_timestamp, 'gp_dump_%s_regular_files' % context.backup_timestamp] 
     for seg in primary_segs:
         seg_dump_dir = seg.getSegmentDataDirectory()
@@ -1951,7 +1989,6 @@ def impl(context, dir):
         if len(results) != 0:
             print 'results = ', results
             raise Exception('Found extra dump files on the segment %s under %s/db_dumps/%s' % (seg.getSegmentDataDirectory(), segment_dump_dir, context.backup_timestamp[0:8]))
-    
     
     cmd = Command('check dump files', 'ls %s/db_dumps/%s' % (master_dump_dir, context.backup_timestamp[0:8]))
     cmd.run(validateAfter=True)
@@ -2012,6 +2049,51 @@ def impl(context, operation, dump_directory):
             open_named_pipes(context, operation, ts, dump_dir) 
     else:
         open_named_pipes(context, operation, context.backup_timestamp, dump_dir)
+
+@then('close all opened pipes')
+def impl(context):
+    hosts = set(get_all_hostnames_as_list(context, 'template1'))
+    for h in hosts:
+        find_cmd = Command('get list of pipe processes',
+                      "ps -eaf | grep _pipe.py | grep -v grep | grep -v ssh",
+                      ctxt=REMOTE,
+                      remoteHost=h) 
+        results = find_cmd.get_results().stdout.strip().split('\n')
+        for process in results:
+            pid = process.split()[1].strip()
+            print 'pid = %s on host %s' % (pid, h) 
+            cmd = Command('Kill pipe process',
+                          "kill %s" % pid,
+                          ctxt=REMOTE,
+                          remoteHost=h)
+            cmd.run(validateAfter=True)
+      
+        find_cmd.run() # We expecte failure here
+
+        results = find_cmd.get_results().stdout.strip()
+        if results:
+            raise Exception('Unexpected pipe processes found "%s"' % results) 
+    
+
+def open_named_pipes(context, operation, timestamp, dump_dir):
+    sleeptime = 5
+    pipes_filename = '%s/db_dumps/%s/gp_dump_%s_pipes' % (dump_dir, timestamp[0:8], timestamp)
+
+
+    filename = os.path.join(os.getcwd(), './gppylib/test/data/%s_pipe.py' % operation)
+
+
+    for seg in segs:
+        cmdStr = "%s -o 'StrictHostKeyChecking no' %s %s:%s" % (findCmdInPath('scp'), filename, seg, '/tmp')
+        run_command(context, cmdStr)
+
+    with open(pipes_filename, 'r') as fp:
+        for f in fp:
+            (host, filename) = [t.strip() for t in f.split(':')]
+            cmd = Command('run pipe script', 'sh -c "python /tmp/%s_pipe.py %s" &>/dev/null &' % (operation, filename),
+                          ctxt=REMOTE, remoteHost=host)
+            cmd.run(validateAfter=True)
+            results = cmd.get_results()
 
 @then('close all opened pipes')
 def impl(context):

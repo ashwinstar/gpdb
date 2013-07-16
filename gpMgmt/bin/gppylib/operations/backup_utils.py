@@ -228,6 +228,14 @@ def generate_co_state_filename(master_data_dir, backup_dir, timestamp):
     use_dir = get_backup_directory(master_data_dir, backup_dir, timestamp)
     return "%s/gp_dump_%s_co_state_file" % (use_dir, timestamp)
 
+def generate_files_filename(master_data_dir, backup_dir, timestamp):
+    use_dir = get_backup_directory(master_data_dir, backup_dir, timestamp)
+    return '%s/gp_dump_%s_regular_files' % (use_dir, timestamp) 
+
+def generate_pipes_filename(master_data_dir, backup_dir, timestamp):
+    use_dir = get_backup_directory(master_data_dir, backup_dir, timestamp)
+    return '%s/gp_dump_%s_pipes' % (use_dir, timestamp) 
+
 def get_dump_dirs(dump_dir):
     dump_path = os.path.join(dump_dir, DUMP_DIR)
 
@@ -300,7 +308,7 @@ def get_latest_full_dump_timestamp(dbname, backup_dir):
     dump_dirs = get_dump_dirs(backup_dir)
 
     for dump_dir in dump_dirs:
-        files = os.listdir(dump_dir)
+        files = sorted(os.listdir(dump_dir))
 
         if len(files) == 0:
             logger.warn('Dump directory %s is empty' % dump_dir)
@@ -309,7 +317,8 @@ def get_latest_full_dump_timestamp(dbname, backup_dir):
         dump_report_files = fnmatch.filter(files, 'gp_dump_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9].rpt')
 
         if len(dump_report_files) == 0:
-            raise Exception('No dump report files found in dump directory %s' % dump_dir)
+            logger.warn('No dump report files found in dump directory %s' % dump_dir)
+            continue
 
         dump_report_files = sorted(dump_report_files, key=lambda x: int(x.split('_')[-1].split('.')[0]), reverse=True)
         for dump_report_file in dump_report_files:
@@ -358,4 +367,3 @@ def check_funny_chars_in_tablenames(tablenames):
     for tablename in tablenames:
         if '\n' in tablename or ',' in tablename or ':' in tablename:
             raise Exception('Tablename has an invalid character "\\n", ":", "," : "%s"' % tablename) 
-

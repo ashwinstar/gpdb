@@ -767,20 +767,9 @@ main(int argc, char **argv)
 			}
 			else if (postDataSchemaOnly)
 			{
-				/* Right now the postdata files will be synced to segment directories before restore */
-				if (bCompUsed)
-				{
-					strcpy(pszCmdLine, g_compPg);
-					strcat(pszCmdLine, inputFileSpec);
-					strcat(pszCmdLine, " | ");
-					strcat(pszCmdLine, psqlPg);
-				}
-				else
-				{
-					strcat(pszCmdLine, psqlPg);	
-					strcat(pszCmdLine, " -f ");
-					strcat(pszCmdLine, inputFileSpec);
-				}
+                /* Right now the postdata files will be synced to segment directories before restore */
+                formPostDataSchemaOnlyPsqlCommandLine(&pszCmdLine, inputFileSpec, bCompUsed, g_compPg,
+							psqlPg, catPg);
 			}
 
 			strcat(pszCmdLine, " -h ");

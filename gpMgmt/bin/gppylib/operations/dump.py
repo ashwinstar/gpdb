@@ -627,7 +627,7 @@ class PostDumpSegment(Operation):
                 logger.error("Status file contents dumped to log file")
                 raise StatusFileError()
         # Ensure that dump file exists
-        if not CheckFile(self.dump_file).run():
+        if not os.path.exists(self.dump_file):
             logger.error("Could not locate dump file: %s" % self.dump_file)
             raise NoDumpFile()
 class NoStatusFile(Exception): pass

@@ -190,7 +190,7 @@ void test__formSegmentPsqlCommandLine1(void **state)
 	char *cmdLine = calloc(1000000, 1);
 	char *inputFileSpec = "fileSpec";
 	bool compUsed = true;
-	const char* compProg = "gzip -c ";
+	const char* compProg = "gzip -c";
 	const char* filter_script = "filter.py"; 
 	const char* table_filter_file = "filter.conf";
 	int role = ROLE_SEGDB;
@@ -201,7 +201,7 @@ void test__formSegmentPsqlCommandLine1(void **state)
 							   filter_script, table_filter_file, role,
 							   psqlPg, catPg);
 
-	char *expected_output = "gzip -c fileSpec | filter.py -t filter.conf | psql";
+	char *expected_output = "cat fileSpec | gzip -c | filter.py -t filter.conf | psql";
 	assert_string_equal(cmdLine, expected_output);
 	free(cmdLine);
 }
@@ -211,7 +211,7 @@ void test__formSegmentPsqlCommandLine2(void **state)
 	char *cmdLine = calloc(1000000, 1);
 	char *inputFileSpec = "fileSpec";
 	bool compUsed = true;
-	const char* compProg = "gzip -c ";
+	const char* compProg = "gzip -c";
 	int role = ROLE_SEGDB;
 	const char* psqlPg = "psql"; 
 	const char* catPg = "cat";
@@ -220,7 +220,7 @@ void test__formSegmentPsqlCommandLine2(void **state)
 							   NULL, NULL, role,
 							   psqlPg, catPg);
 
-	char *expected_output = "gzip -c fileSpec | psql";
+	char *expected_output = "cat fileSpec | gzip -c | psql";
 	assert_string_equal(cmdLine, expected_output);
 	free(cmdLine);
 }
@@ -270,7 +270,7 @@ void test__formSegmentPsqlCommandLine5(void **state)
 	char *cmdLine = calloc(1000000, 1);
 	char *inputFileSpec = "fileSpec";
 	bool compUsed = true;
-	const char* compProg = "gzip -c ";
+	const char* compProg = "gzip -c";
 	const char* filter_script = "filter.py"; 
 	const char* table_filter_file = "filter.conf";
 	int role = ROLE_MASTER;
@@ -281,7 +281,7 @@ void test__formSegmentPsqlCommandLine5(void **state)
 							   filter_script, table_filter_file, role,
 							   psqlPg, catPg);
 
-	char *expected_output = "gzip -c fileSpec | psql";
+	char *expected_output = "cat fileSpec | gzip -c | psql";
 	assert_string_equal(cmdLine, expected_output);
 	free(cmdLine);
 }
@@ -291,7 +291,7 @@ void test__formSegmentPsqlCommandLine6(void **state)
 	char *cmdLine = calloc(1000000, 1);
 	char *inputFileSpec = "fileSpec";
 	bool compUsed = true;
-	const char* compProg = "gzip -c ";
+	const char* compProg = "gzip -c";
 	int role = ROLE_MASTER;
 	const char* psqlPg = "psql"; 
 	const char* catPg = "cat";
@@ -300,7 +300,7 @@ void test__formSegmentPsqlCommandLine6(void **state)
 							   NULL, NULL, role,
 							   psqlPg, catPg);
 
-	char *expected_output = "gzip -c fileSpec | psql";
+	char *expected_output = "cat fileSpec | gzip -c | psql";
 	assert_string_equal(cmdLine, expected_output);
 	free(cmdLine);
 }
@@ -565,6 +565,40 @@ void test__shouldExpandChildren4(void **state)
     assert_false(result);
 }
 
+void test__formPostDataSchemaOnlyPsqlCommandLine1(void **state)
+{
+	char *cmdLine = calloc(1000000, 1);
+	char *inputFileSpec = "fileSpec";
+	bool compUsed = true;
+	const char* compProg = "gzip -c";
+	const char* psqlPg = "psql"; 
+	const char* catPg = "cat";
+
+	formPostDataSchemaOnlyPsqlCommandLine(&cmdLine, inputFileSpec, compUsed, compProg, 
+							   psqlPg, catPg);
+
+	char *expected_output = "cat fileSpec | gzip -c | psql";
+	assert_string_equal(cmdLine, expected_output);
+	free(cmdLine);
+}
+
+void test__formPostDataSchemaOnlyPsqlCommandLine2(void **state)
+{
+	char *cmdLine = calloc(1000000, 1);
+	char *inputFileSpec = "fileSpec";
+	bool compUsed = false;
+	const char* compProg = "gzip -c";
+	const char* psqlPg = "psql"; 
+	const char* catPg = "cat";
+
+	formPostDataSchemaOnlyPsqlCommandLine(&cmdLine, inputFileSpec, compUsed, compProg, 
+							   psqlPg, catPg);
+
+	char *expected_output = "psql -f fileSpec";
+	assert_string_equal(cmdLine, expected_output);
+	free(cmdLine);
+}
+
 void test__shouldDumpSchemaOnly1(void **state)
 {
     int role = ROLE_SEGDB;
@@ -643,6 +677,8 @@ main(int argc, char* argv[])
 			unit_test(test__shouldExpandChildren2),
 			unit_test(test__shouldExpandChildren3),
 			unit_test(test__shouldExpandChildren4),
+			unit_test(test__formPostDataSchemaOnlyPsqlCommandLine1),
+			unit_test(test__formPostDataSchemaOnlyPsqlCommandLine2)
             unit_test(test__shouldDumpSchemaOnly1),
             unit_test(test__shouldDumpSchemaOnly2),
             unit_test(test__shouldDumpSchemaOnly3),

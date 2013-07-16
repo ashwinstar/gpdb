@@ -679,7 +679,7 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         with self.assertRaisesRegexp(Exception, 'Unable to locate global file gp_global_1_1_20121212121212 in dump set'):
             self.restore._restore_global(restore_timestamp, master_datadir, backup_dir)
 
-    @patch('gppylib.operations.unix.CheckFile.run', return_value=True)
+    @patch('os.path.exists', return_value=True)
     @patch('gppylib.commands.gp.Psql.run')
     def test_restore_global_01(self, mock1, mock2):
         restore_timestamp = '20121212121212' 

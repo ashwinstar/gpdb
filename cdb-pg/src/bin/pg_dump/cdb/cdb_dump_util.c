@@ -956,6 +956,29 @@ formCompressionProgramString(char* compPg)
 }
 
 void 
+formPostDataSchemaOnlyPsqlCommandLine(char** retVal, const char* inputFileSpec, bool compUsed, const char* compProg,
+							          const char* psqlPg, const char* catPg)
+{
+	char* pszCmdLine = *retVal;
+	if (compUsed)
+	{
+        strcpy(pszCmdLine, catPg);
+        strcat(pszCmdLine, " ");
+        strcat(pszCmdLine, inputFileSpec);
+        strcat(pszCmdLine, " | ");
+        strcat(pszCmdLine, compProg);
+        strcat(pszCmdLine, " | ");
+        strcat(pszCmdLine, psqlPg);
+    }    
+    else 
+    {    
+        strcat(pszCmdLine, psqlPg); 
+        strcat(pszCmdLine, " -f ");
+        strcat(pszCmdLine, inputFileSpec);
+    } 
+}
+
+void 
 formSegmentPsqlCommandLine(char** retVal, const char* inputFileSpec, bool compUsed, const char* compProg,
 							const char* filter_script, const char* table_filter_file, 
 							int role, const char* psqlPg, const char* catPg)
@@ -963,8 +986,11 @@ formSegmentPsqlCommandLine(char** retVal, const char* inputFileSpec, bool compUs
 	char* pszCmdLine = *retVal;
 	if (compUsed)
 	{
-		strcpy(pszCmdLine, compProg);
+		strcpy(pszCmdLine, catPg);
+		strcat(pszCmdLine, " ");
 		strcat(pszCmdLine, inputFileSpec);
+		strcat(pszCmdLine, " | ");
+		strcat(pszCmdLine, compProg);
 	}
 	else
 	{
