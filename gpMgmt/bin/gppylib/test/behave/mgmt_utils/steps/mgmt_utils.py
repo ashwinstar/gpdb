@@ -1639,6 +1639,27 @@ def impl(context, dataline, formatter, delim):
         print lookfor
         raise Exception("'%s' not found in stored rows" % dataline)
 
+@then('validate that following rows are in the stored rows')
+def impl(context):
+    for row in context.table:
+        found_match = False
+
+        for stored_row in context.stored_rows:
+            match_this_row = True
+            for i in range(len(stored_row)):
+                if row[i] != str(stored_row[i]):
+                    match_this_row = False
+                    break
+
+            if match_this_row:
+                found_match = True
+                break
+
+        if not found_match:
+            print context.stored_rows
+            raise Exception("'%s' not found in stored rows" % row)
+
+
 @then('validate that stored rows has "{numlines}" lines of output')
 def impl(context, numlines):
     num_found = len(context.stored_rows)
@@ -2125,3 +2146,50 @@ def impl(context, file_path):
         raise Exception('WildCard found in file path !!!!. Cannot delete')
 
     run_command(context, 'rm -rf %s' % file_path)
+
+   
+@given('below sql is executed in "{dbname}" db')
+@when('below sql is executed in "{dbname}" db')
+def impl(context, dbname):
+    sql = context.text
+    execute_sql(dbname, sql)
+
+@when('sql "{sql}" is executed in "{dbname}" db')
+def impl(context, sql, dbname):
+    execute_sql(dbname, sql)
+
+@when('execute following sql in db "{dbname}" and store result in the context')
+def impl(context, dbname):
+    context.stored_rows = []
+
+    with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
+        curs = dbconn.execSQL(conn, context.text)
+        context.stored_rows = curs.fetchall()
+
+
+@when('execute sql "{sql}" in db "{dbname}" and store result in the context')
+def impl(context, sql, dbname):
+    context.stored_rows = []
+
+    with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
+        curs = dbconn.execSQL(conn, sql)
+        context.stored_rows = curs.fetchall()
+
+@then('validate that "{message}" is in the stored rows')
+def impl(context, message):
+    for row in context.stored_rows:
+        for column in row:
+            if message in column:
+                return
+
+    print context.stored_rows
+    print message 
+    raise Exception("'%s' not found in stored rows" % message)
+
+@then('verify that file "{filename}" exists under "{path}"')
+def impl(context, filename, path):
+    fullpath = "%s/%s" % (path, filename)
+    fullpath = os.path.expandvars(fullpath)
+
+    if not os.path.exists(fullpath):
+        raise Exception('file "%s" is not exist' % fullpath)

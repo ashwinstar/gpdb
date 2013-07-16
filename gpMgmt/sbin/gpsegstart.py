@@ -12,7 +12,7 @@ Internal Use Function.
 # THIS IMPORT MUST COME FIRST
 from gppylib.mainUtils import simple_main, addStandardLoggingAndHelpOptions
 
-import os, pickle, base64
+import os, pickle, base64, time
 
 from gppylib.gpparseopts import OptParser, OptChecker
 from gppylib import gparray, gplog
@@ -167,23 +167,55 @@ class GpSegStart:
         self.logger                = logger
         self.overall_status        = None
 
+    def isQuiescent(self):
+        if self.mirroringMode == 'quiescent':
+            return True
+        else:
+            return False
 
-    def __checkPostmasters(self, must_be_running):
+    def getOverallStatusKeys(self):
+        return self.overall_status.dirmap.keys()
+
+    def waitForPostmasters(self, num_attempts=20, sleeptime=15):
+        success = False
+        for i in range(num_attempts):
+            success = self.checkPostmasters(must_be_running=False)
+            if success:
+                break
+            self.logger.info("Waiting %d seconds before checking for PIDs again" % sleeptime)
+            time.sleep(sleeptime)
+
+        if not success:
+            self.logger.info("Did not find PID for some postmasters after multiple attempts.")  
+        else:
+            self.logger.info("All postmasters have started and PID was found")
+
+        return success
+
+    # return True if all running
+    # return False if not all running
+    def checkPostmasters(self, must_be_running):
         """
         Check that segment postmasters have been started.
         @param must_be_running True if postmasters must be running by now.
         """
         self.logger.info("Checking segment postmasters... (must_be_running %s)" % must_be_running)
 
-        for datadir in self.overall_status.dirmap.keys():
+        all_running = True
+        for datadir in self.getOverallStatusKeys():
             pid     = gp.read_postmaster_pidfile(datadir)
             running = gp.check_pid(pid)
             msg     = "Postmaster %s %srunning (pid %d)" % (datadir, "is " if running else "NOT ", pid)
             self.logger.info(msg)
 
+            if not running:
+                all_running = False
+
             if must_be_running and not running:
                 reasoncode = gp.SEGSTART_ERROR_PG_CTL_FAILED
                 self.overall_status.mark_failed(datadir, msg, reasoncode)
+
+        return all_running
 
 
     def __validateDirectoriesAndSetupRecoveryStartup(self):
@@ -470,14 +502,17 @@ class GpSegStart:
         # Being paranoid, we frequently check for postmaster failures.
         # The postmasters should be running by now unless we're in quiescent mode
         #
-        must_be_running = (self.mirroringMode != 'quiescent')
-        self.__checkPostmasters(must_be_running)
+
+        if self.isQuiescent():
+            self.waitForPostmasters()
+        else:
+            self.checkPostmasters(must_be_running=True)
 
         self.__convertSegments()
-        self.__checkPostmasters(must_be_running=True)
+        self.checkPostmasters(must_be_running=True)
 
         self.__checkLocaleAndConnect()
-        self.__checkPostmasters(must_be_running=True)
+        self.checkPostmasters(must_be_running=True)
 
         # At this point any segments remaining in the mapping are assumed to
         # have successfully started.

@@ -140,6 +140,13 @@ def getRows(dbname, exec_sql):
         results = curs.fetchall()
     return results
 
+def getRow(dbname, exec_sql):
+    with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
+        curs = dbconn.execSQL(conn, exec_sql)
+        result = curs.fetchone()
+    return result
+
+
 def check_db_exists(dbname):
     LIST_DATABASE_SQL = 'select datname from pg_database'  
   
@@ -838,7 +845,7 @@ def get_all_hostnames_as_list(context, dbname):
         hosts.append(master[0].strip())
 
     return hosts
-    
+   
 def get_pid_for_segment(seg_data_dir, seg_host):
     cmd = Command(name='get list of postmaster processes',
                   cmdStr='ps -eaf | grep %s' % seg_data_dir,
@@ -856,6 +863,77 @@ def get_pid_for_segment(seg_data_dir, seg_host):
         return None
 
     return int(pid) 
+
+def install_gppkg(context):
+    if 'GPPKG_PATH' not in os.environ:
+        raise Exception('GPPKG_PATH needs to be set in the environment to install gppkg')
+    if 'GPPKG_NAME' not in os.environ:
+        raise Exception('GPPKG_NAME needs to be set in the environment to install gppkg')
+
+    gppkg_path = os.environ['GPPKG_PATH']
+    gppkg_name = os.environ['GPPKG_NAME']
+    command    = "gppkg --install %s/%s.gppkg" % (gppkg_path, gppkg_name)
+    run_command(context, command)
+
+def enable_postgis_and_load_test_data_for_postgis_1(context):
+    if 'GPHOME' not in os.environ:
+        raise Exception('GPHOME needs to be set in the environment')
+
+    install_gppkg(context)
+
+    gphome = os.environ['GPHOME']
+    path = "%s/share/postgresql/contrib" % gphome
+    command = "psql -d opengeo -f %s/postgis.sql" % path
+    run_command(context, command)
+
+    command = "psql -d opengeo -f %s/spatial_ref_sys.sql" % path
+    run_command(context, command)
+
+    current_path = os.path.realpath(__file__)
+    current_dir = os.path.dirname(current_path)
+    postgis_data_dir = "%s/../behave/mgmt_utils/steps/data/postgis" % current_dir
+
+    command = "psql -d opengeo -f %s/nyc_census_blocks_1.sql" % postgis_data_dir
+    run_command(context, command)
+    command = "psql -d opengeo -f %s/nyc_neighborhoods_1.sql" % postgis_data_dir
+    run_command(context, command)
+    command = "psql -d opengeo -f %s/nyc_subway_stations_1.sql" % postgis_data_dir
+    run_command(context, command)
+    command = "psql -d opengeo -f %s/nyc_census_sociodata.sql" % postgis_data_dir
+    run_command(context, command)
+    command = "psql -d opengeo -f %s/nyc_streets_1.sql" % postgis_data_dir
+    run_command(context, command)
+
+def enable_postgis_and_load_test_data(context):
+    if 'GPHOME' not in os.environ:
+        raise Exception('GPHOME needs to be set in the environment')
+
+    install_gppkg(context)
+
+    gphome = os.environ['GPHOME']
+    path = "%s/share/postgresql/contrib/postgis-2.0" % gphome
+
+    command = "psql -d opengeo -f %s/postgis.sql" % path
+    run_command(context, command)
+
+    command = "psql -d opengeo -f %s/spatial_ref_sys.sql" % path
+    run_command(context, command)
+
+    current_path = os.path.realpath(__file__)
+    current_dir = os.path.dirname(current_path)
+    postgis_data_dir = "%s/../behave/mgmt_utils/steps/data/postgis" % current_dir
+
+    command = "psql -d opengeo -f %s/nyc_census_blocks.sql" % postgis_data_dir
+    run_command(context, command)
+    command = "psql -d opengeo -f %s/nyc_neighborhoods.sql" % postgis_data_dir
+    run_command(context, command)
+    command = "psql -d opengeo -f %s/nyc_subway_stations.sql" % postgis_data_dir
+    run_command(context, command)
+    command = "psql -d opengeo -f %s/nyc_census_sociodata.sql" % postgis_data_dir
+    run_command(context, command)
+    command = "psql -d opengeo -f %s/nyc_streets.sql" % postgis_data_dir
+    run_command(context, command)
+
 
 def kill_process(pid, host=None, sig=signal.SIGTERM):
     if host is not None:
@@ -895,5 +973,3 @@ def check_user_permissions(file_name, access_mode):
         return bool(st.st_mode & stat.S_IXUSR)
     else:
         raise Exception('Invalid mode specified, should be read, write or execute only')
-        
-

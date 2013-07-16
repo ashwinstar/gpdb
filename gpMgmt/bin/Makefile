@@ -16,6 +16,7 @@ include $(BLD_TOP)/Makefile.thirdparty
 #
 SRC=$(CURDIR)
 PYLIB_SRC=$(SRC)/pythonSrc
+SBIN_DIR=$(SRC)/../sbin
 
 
 #

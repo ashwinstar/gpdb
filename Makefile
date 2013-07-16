@@ -1468,7 +1468,7 @@ GPPKG_SOURCES = \
 else
 GPPKG_SOURCES = \
 	cdb-pg/contrib/pgcrypto \
-	cdb-pg/contrib/postgis \
+	cdb-pg/contrib/postgis-2.0.3 \
 	cdb-pg/src/pl/plr \
 	cdb-pg/src/pl/plperl \
 	cdb-pg/src/pl/pljava \
@@ -1499,7 +1499,7 @@ endif
 
 INSTALLCHECK_GPPKG_SOURCES = \
 	cdb-pg/contrib/pgcrypto \
-	cdb-pg/contrib/postgis \
+	cdb-pg/contrib/postgis-2.0.3 \
 	cdb-pg/src/pl/plperl \
 	cdb-pg/src/bin/pg_dump/cdb/ddboost \
 	$(NULL)

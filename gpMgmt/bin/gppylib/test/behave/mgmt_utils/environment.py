@@ -1,12 +1,28 @@
 import os
 import shutil
-from gppylib.test.behave_utils.utils import drop_database_if_exists, start_database_if_not_started, run_command, check_user_permissions
+
+from gppylib.test.behave_utils.utils import drop_database_if_exists, start_database_if_not_started,\
+                                            create_database, enable_postgis_and_load_test_data,    \
+                                            enable_postgis_and_load_test_data_for_postgis_1,       \
+                                            run_command, check_user_permissions
 
 def before_feature(context, feature):
     drop_database_if_exists(context, 'testdb')
     drop_database_if_exists(context, 'bkdb')
     drop_database_if_exists(context, 'fullbkdb')
     drop_database_if_exists(context, 'schematestdb')
+
+    # enable postgis when running test cases for postgis
+    if 'postgis' in feature.tags:
+        drop_database_if_exists(context, 'opengeo')
+        create_database(context, 'opengeo')
+        enable_postgis_and_load_test_data(context)
+
+    if 'postgis_14' in feature.tags:
+        drop_database_if_exists(context, 'opengeo')
+        create_database(context, 'opengeo')
+        enable_postgis_and_load_test_data_for_postgis_1(context)
+
 
 def before_scenario(context, scenario):
     master_data_dir = os.environ.get('MASTER_DATA_DIRECTORY')
