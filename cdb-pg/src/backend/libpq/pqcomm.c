@@ -1217,7 +1217,19 @@ pq_putbytes(const char *s, size_t len)
 	/* Should only be called by old-style COPY OUT */
 	Assert(DoingCopyOut);
     pthread_mutex_lock(&send_mutex);
-	res = internal_putbytes(s, len);
+
+	/* The code below can throw an error. Make sure we release the send_mutex lock when that happens */
+    PG_TRY();
+    {
+    	res = internal_putbytes(s, len);
+    }
+    PG_CATCH();
+    {
+    	pthread_mutex_unlock(&send_mutex);
+    	PG_RE_THROW();
+    }
+    PG_END_TRY();
+
     pthread_mutex_unlock(&send_mutex);
 	return res;
 }
@@ -1257,10 +1269,29 @@ pq_flush(void)
 
 	/* No-op if reentrant call */
 	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && IsUnderPostmaster)
+	{
 		pthread_mutex_lock(&send_mutex);
-	res = internal_flush();
+	}
+
+	/* The code below can throw an error. Make sure we release the send_mutex lock when that happens */
+	PG_TRY();
+	{
+		res = internal_flush();
+	}
+	PG_CATCH();
+	{
+		if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && IsUnderPostmaster)
+		{
+			pthread_mutex_unlock(&send_mutex);
+		}
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
 	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && IsUnderPostmaster)
+	{
 		pthread_mutex_unlock(&send_mutex);
+	}
 	return res;
 }
 
@@ -1273,14 +1304,14 @@ internal_flush(void)
 	char	   *bufend = PqSendBuffer + PqSendPointer;
 
 #ifdef FAULT_INJECTOR
-	static int no_iterations = 0;
-	if (no_iterations++ == INTERNAL_FLUSH_FAULT_ITERATIONS)
+	static int internal_flush_iterations = 0;
+	if (internal_flush_iterations++ == INTERNAL_FLUSH_FAULT_ITERATIONS)
 	{
 		FaultInjector_InjectFaultIfSet(
 				InternalFlushError,
 				DDLNotSpecified,
-				"",  // databaseName
-				""); // tableName
+				"" /* databaseName */,
+				"" /* tableName */);
 	}
 #endif
 
@@ -1375,40 +1406,60 @@ pq_putmessage(char msgtype, const char *s, size_t len)
 {
     int ret = EOF;
 	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && IsUnderPostmaster)
-		pthread_mutex_lock(&send_mutex);
-
-    if (DoingCopyOut)
-    {
-        ret = 0;
-        goto fail;
-    }
-        
-	if (msgtype)
-    {
-		if (internal_putbytes(&msgtype, 1))
-			goto fail;
-    }
-
-	if (PG_PROTOCOL_MAJOR(FrontendProtocol) >= 3)
 	{
-		uint32		n32;
-
-		n32 = htonl((uint32) (len + 4));
-		if (internal_putbytes((char *) &n32, 4))
-			goto fail;
+		pthread_mutex_lock(&send_mutex);
 	}
 
-	if (internal_putbytes(s, len))
-		goto fail;
+	/* The code below can throw an error. Make sure we release the send_mutex lock when that happens */
+	PG_TRY();
+	{
+		if (DoingCopyOut)
+		{
+			ret = 0;
+			goto fail;
+		}
+
+		if (msgtype)
+		{
+			if (internal_putbytes(&msgtype, 1))
+				goto fail;
+		}
+
+		if (PG_PROTOCOL_MAJOR(FrontendProtocol) >= 3)
+		{
+			uint32		n32;
+
+			n32 = htonl((uint32) (len + 4));
+			if (internal_putbytes((char *) &n32, 4))
+				goto fail;
+		}
+
+		if (internal_putbytes(s, len))
+			goto fail;
+	}
+	PG_CATCH();
+	{
+		if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && IsUnderPostmaster)
+		{
+			pthread_mutex_unlock(&send_mutex);
+		}
+
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 
 	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && IsUnderPostmaster)
+	{
 		pthread_mutex_unlock(&send_mutex);
+	}
 
 	return 0;
 
 fail:
 	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && IsUnderPostmaster)
+	{
 		pthread_mutex_unlock(&send_mutex);
+	}
 	return EOF;
 }
 
