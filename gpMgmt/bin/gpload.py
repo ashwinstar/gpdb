@@ -1111,17 +1111,10 @@ class gpload:
         self.WARN = 2
         self.ERROR = 1
         self.options.qv = self.INFO
+        self.options.l = None
         
         seenv = False
         seenq = False
-
-        # default to gpAdminLogs for a log file, may be overwritten
-        self.options.l = os.path.join(os.environ.get('HOME', '.'),'gpAdminLogs')
-        if not os.path.isdir(self.options.l):
-            os.mkdir(self.options.l)
-
-        self.options.l = os.path.join(self.options.l, 'gpload_' + \
-                        datetime.date.today().strftime('%Y%m%d') + '.log')
 
         # Create Temp and External table names. However external table name could 
         # get overwritten with another name later on (see create_external_table_name). 
@@ -1197,6 +1190,14 @@ class gpload:
                 a = "s"
             usage('unrecognized argument%s: %s' % (a, ' '.join(argv)))
 
+        # default to gpAdminLogs for a log file, may be overwritten
+        if self.options.l is None:
+            self.options.l = os.path.join(os.environ.get('HOME', '.'),'gpAdminLogs')
+            if not os.path.isdir(self.options.l):
+                os.mkdir(self.options.l)
+
+            self.options.l = os.path.join(self.options.l, 'gpload_' + \
+                                          datetime.date.today().strftime('%Y%m%d') + '.log')
 
         try:
             self.logfile = open(self.options.l,'a')

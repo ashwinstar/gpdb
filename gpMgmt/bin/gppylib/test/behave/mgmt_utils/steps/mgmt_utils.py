@@ -28,7 +28,8 @@ from gppylib.test.behave_utils.utils import bring_nic_down, bring_nic_up, get_ta
                                             get_table_oid, verify_truncate_in_pg_stat_last_operation, verify_truncate_not_in_pg_stat_last_operation, insert_numbers, \
                                             populate_partition_diff_data_same_eof, populate_partition_same_data, execute_sql, verify_integer_tuple_counts,  validate_no_aoco_stats, \
                                             check_string_not_present_stdout, clear_all_saved_data_verify_files, copy_file_to_all_db_hosts, validate_num_restored_tables, \
-                                            get_partition_list, verify_stats, drop_external_table_if_exists, get_all_hostnames_as_list, get_pid_for_segment, kill_process
+                                            get_partition_list, verify_stats, drop_external_table_if_exists, get_all_hostnames_as_list, get_pid_for_segment, kill_process, get_num_segments, \
+                                            check_user_permissions
 
 from gppylib.operations.dump import get_partition_state
 
@@ -2073,3 +2074,54 @@ def impl(context):
 
     if context.before_core_count != context.after_core_count:
         raise Exception('Core files count before %s does not match after %s' % (context.before_core_count, context.after_core_count))
+
+
+@given('the gpAdminLogs directory has been backed up')
+def impl(context):
+    src = os.path.join(os.path.expanduser('~'), 'gpAdminLogs') 
+    dest = os.path.join(os.path.expanduser('~'), 'gpAdminLogs.bk') 
+    shutil.move(src, dest)
+
+@given('the user does not have "{access}" permission on the home directory')
+def impl(context, access):
+    home_dir = os.path.expanduser('~')
+    context.orig_write_permission = check_user_permissions(home_dir, 'write')
+    if access == 'write':
+        cmd = "sudo chmod u-w %s" % home_dir
+    run_command(context, cmd)
+
+    if check_user_permissions(home_dir, access):
+        raise Exception('Unable to change "%s" permissions for the directory "%s"' % (access, home_dir))
+    
+@then('the "{filetype}" path "{file_path}" should "{cond}" exist')
+def impl(context, filetype, file_path, cond):
+    cond = cond.strip()
+    if file_path[0] == '~':
+        file_path = os.path.join(os.path.expanduser('~'), file_path[2:])
+
+    if filetype == 'file':
+        existence_check_fn = os.path.isfile
+    elif filetype == 'directory':
+        existence_check_fn  = os.path.isdir
+    else:
+        raise Exception('File type should be either file or directory')
+
+    if cond == '' and not existence_check_fn(file_path):
+        raise Exception('The %s "%s" does not exist' % (filetype, file_path))
+    elif cond == 'not' and existence_check_fn(file_path):
+        raise Exception('The %s "%s" exist' % (filetype, file_path))
+
+@then('the directory "{file_path}" is removed')
+def impl(context, file_path):
+
+    if file_path[0] == '~':
+        file_path = os.path.join(os.path.expanduser('~'), file_path[2:]) 
+    backup_file_path = file_path + '.bk'
+
+    if not os.path.exists(backup_file_path):
+        raise Exception('Backup file "%s" must exist in order to delete the file "%s"' % (backup_file_path, file_path))
+
+    if '*' in file_path:
+        raise Exception('WildCard found in file path !!!!. Cannot delete')
+
+    run_command(context, 'rm -rf %s' % file_path)

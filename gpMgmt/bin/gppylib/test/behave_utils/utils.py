@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import re, os, signal, time, filecmp
+import re, os, signal, time, filecmp, stat
 
 from gppylib.commands.gp import GpStart, chk_local_db_running
 from gppylib.commands.base import Command, ExecutionError, REMOTE
@@ -866,3 +866,16 @@ def kill_process(pid, host=None, sig=signal.SIGTERM):
         cmd.run(validateAfter=True) 
     else:
         os.kill(pid, sig)
+
+def check_user_permissions(file_name, access_mode):
+    st = os.stat(file_name)
+    if access_mode == 'write':
+        return bool(st.st_mode & stat.S_IWUSR)
+    elif access_mode == 'read':
+        return bool(st.st_mode & stat.S_IRUSR)
+    elif access_mode == 'execute':
+        return bool(st.st_mode & stat.S_IXUSR)
+    else:
+        raise Exception('Invalid mode specified, should be read, write or execute only')
+        
+
