@@ -1785,11 +1785,9 @@ redoDtxCheckPoint(TMGXACT_CHECKPOINT *gxact_checkpoint)
 
 	int i;
 
-	if (Gp_role == GP_ROLE_UTILITY)
-	{
-		elog(DTM_DEBUG3, "DB in Utility mode.  Defer DTM recovery till later.");
-		return;
-	}
+	/*
+	 * For checkpoint same as REDO, lets add entries to file in utility and in-memory if Dispatch.
+	 */
 
 	committedCount = gxact_checkpoint->committedCount;
 	segmentCount = gxact_checkpoint->segmentCount;
@@ -2011,6 +2009,9 @@ redoDistributedCommitRecord(TMGXACT_LOG * gxact_log)
 	}
 
 	restoreGxact(gxact_log, DTX_STATE_CRASH_COMMITTED);
+
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),
+		"Crash recovery redo added committed distributed transaction gid = %s",currentGxact->gid);
 
 	elog((Debug_print_full_dtm ? INFO : DEBUG5),
 		 "Crash recovery redo added committed distributed transaction gid = %s",currentGxact->gid);
@@ -2780,6 +2781,15 @@ forcedDistributedCommitted(XLogRecPtr *recptr)
 
 /*
  * Get check point information
+ *
+ * Whether DTM started or not, we must always store DTM information in
+ * this checkpoint record.  A possible case to consider is we might have
+ * in-progress global transactions in shared memory after postmaster reset,
+ * and shutting down without performing DTM recovery.  The subsequent
+ * recovery after this shutdown will read this checkpoint, so we would
+ * lose the in-progress global transaction information if we didn't write it
+ * here.  Note we will certainly read this global transaction information
+ * even if this is a clean shutdown (i.e. not performing multi-pass recovery.)
  */
 void
 getDtxCheckPointInfoAndLock(char **result, int *result_size)
@@ -2792,30 +2802,6 @@ getDtxCheckPointInfoAndLock(char **result, int *result_size)
 	int				  	i;
 	int				  	actual;
 	TMGXACT_LOG       	*gxact_log;
-
-	if (shmDtmStarted == NULL || !*shmDtmStarted)
-	{
-		*result_size = TMGXACT_CHECKPOINT_BYTES(0);
-		gxact_checkpoint = palloc(*result_size);
-		gxact_checkpoint->committedCount = 0;
-		gxact_checkpoint->segmentCount = 0;
-		*result = (char*)gxact_checkpoint;
-
-		getTmLock();	/* Return withh lock held. */
-		elog(DTM_DEBUG5, "DTM not started so no DTM checkpoint information.");
-		if (Debug_persistent_recovery_print)
-		{
-			SUPPRESS_ERRCONTEXT_DECLARE;
-
-			SUPPRESS_ERRCONTEXT_PUSH();
-
-			elog(PersistentRecovery_DebugPrintLevel(),
-				 "getDtxCheckPointInfoAndLock: DTM not started so no DTM checkpoint information");
-
-			SUPPRESS_ERRCONTEXT_POP();
-		}
-		return;
-	}
 
 	getTmLock();	/* We will return with lock held below. */
 	n = *shmNumGxacts;

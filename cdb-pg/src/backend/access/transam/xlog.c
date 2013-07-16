@@ -6577,7 +6577,9 @@ StartupXLOG(void)
 					"StartupXLOG: Checkpoint record prepared transaction agg state count = %d",
 				       ptas->count);
 			}
+			UtilityModeFindOrCreateDtmRedoFile();
 			redoDtxCheckPoint(dtxCheckpoint);
+			UtilityModeCloseDtmRedoFile();
 
 			/*
 			 * Always ignore the Master Mirrroing information.	It is only used by
