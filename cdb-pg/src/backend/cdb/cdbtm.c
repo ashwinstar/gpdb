@@ -1305,12 +1305,38 @@ initTM_recover_as_needed(void)
 	{
 		getTmLock();
 
-		/* Still need to recover ?*/
+		/* Still need to recover? */
 		if (!*shmTmRecoverred)
 		{
+			volatile int savedInterruptHoldoffCount = InterruptHoldoffCount;
+			/*
+			 * We have to catch errors here, otherwise the silly TmLock will
+			 * stay in the backend process until this process goes away.
+			 */
+			PG_TRY();
+			{
 				recoverTM();
 				*shmTmRecoverred = true;
+			}
+			PG_CATCH();
+			{
+				/*
+				 * We can't simply use HOLD_INTERRUPTS as in LWLockRelease,
+				 * because at this point we don't know if other LWLocks have
+				 * been acquired by myself.  Also, we don't know if releaseTmLock
+				 * actually releases the lock, depending on ControlLockCount.
+				 * Instead, restore the previous value, which is reset to 0
+				 * in errfinish.
+				 */
+				InterruptHoldoffCount = savedInterruptHoldoffCount;
+				releaseTmLock();
+
+				/* Assuming we have a catcher above... */
+				PG_RE_THROW();
+			}
+			PG_END_TRY();
 		}
+
 		releaseTmLock();
 	}
 }
@@ -1426,6 +1452,8 @@ void
 initTM(void)
 {
 	char *olduser = NULL;
+	MemoryContext	oldcontext;
+	bool			succeeded, first;
 
 	Assert(shmTmRecoverred != NULL);
 
@@ -1447,47 +1475,72 @@ initTM(void)
 		"", //databaseName,
 		""); //tableName;
 #endif
-		/*
-		 * MPP-9894: during startup, we don't have a top-level
-		 * PG_TRY/PG_CATCH block yet, the dispatcher may throw errors:
-		 * we need to catch them.
-		 */
-		PG_TRY();
+
+		oldcontext = CurrentMemoryContext;
+		succeeded = false;
+		first = true;
+		while (true)
 		{
-			initTM_recover_as_needed();
-		}
-		PG_CATCH();
-		{
-			if (!elog_demote(WARNING))
-			{
-				elog(LOG, "Unable to demote error");
-				elog(FATAL, "DTM initialization: failure during startup/recovery, could not retry, check segment status");
-
-				/* not reached */
-				PG_RE_THROW();
-			}
-
-			elog(LOG, "DTM initialization, caught exception: looking for failed segments.");
-			detectFailedConnections();
-
+			/*
+			 * MPP-9894: during startup, we don't have a top-level
+			 * PG_TRY/PG_CATCH block yet, the dispatcher may throw errors:
+			 * we need to catch them.
+			 */
 			PG_TRY();
 			{
-				initTM_recover_as_needed();
+				/*
+				 * detectFailedConnections could throw ERROR, so
+				 * we should catch it if it happens.
+				 */
+				if (!first)
+					detectFailedConnections();
 
-				elog(LOG, "DTM initialization, completed.");
+				initTM_recover_as_needed();
+				succeeded = true;
 			}
 			PG_CATCH();
 			{
-				elog(LOG, "DTM initialization, failed on retry.");
+				ErrorData *edata;
 
-				elog(FATAL, "DTM initialization: failure during startup/recovery, retry failed, check segment status");
+				MemoryContextSwitchTo(oldcontext);
+				edata = CopyErrorData();
 
-				/* not reached */
-				PG_RE_THROW();
+				elog(LOG, "DTM initialization, caught exception: "
+						  "looking for failed segments.");
+				ereport(LOG,
+						(edata->message ? errmsg("%s", edata->message) : 0,
+						 edata->detail ? errdetail("%s", edata->detail) : 0,
+						 edata->hint ? errhint("%s", edata->hint) : 0));
+				FreeErrorData(edata);
+				FlushErrorState();
+
+				/*
+				 * Keep going outside of PG_TRY block even if we want to
+				 * retry; don't jumping out of this block without PG_END_TRY.
+				 */
 			}
 			PG_END_TRY();
+
+			if (!succeeded)
+			{
+				if (first)
+				{
+					first = false;
+					continue;
+				}
+				else
+				{
+					elog(LOG, "DTM initialization, failed on retry.");
+					elog(FATAL, "DTM initialization: failure during startup "
+								"recovery, retry failed, check segment status");
+				}
+			}
+
+			/*
+			 * We are done with the recovery.
+			 */
+			break;
 		}
-		PG_END_TRY();
 
 		RestoreToUser(olduser);
 

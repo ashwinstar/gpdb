@@ -163,6 +163,8 @@ typedef enum FaultInjectorIdentifier_e {
 
 	UpdateCommittedEofInPersistentTable,
 
+	ExecSimpleQueryEndCommand,
+
 	/* INSERT has to be done before that line */
 	FaultInjectorIdMax,
 	
@@ -313,6 +315,15 @@ extern int FaultInjector_SetFaultInjection(
 
 extern bool FaultInjector_IsFaultInjected(
 							FaultInjectorIdentifier_e identifier);
+
+
+#ifdef FAULT_INJECTOR
+#define SIMPLE_FAULT_INJECTOR(FaultName) \
+	FaultInjector_InjectFaultIfSet(FaultName, DDLNotSpecified, "", "")
+
+#else
+#define SIMPLE_FAULT_INJECTOR(FaultName)
+#endif
 
 #endif	/* FAULTINJECTOR_H */
 

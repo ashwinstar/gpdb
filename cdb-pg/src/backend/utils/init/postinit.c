@@ -673,15 +673,6 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 		}
 	}
 
-	/*
-	 * Set up process-exit callback to do pre-shutdown cleanup.  This
-	 * should be last because we want shmem_exit to call this routine
-	 * before the exit callbacks that are registered by buffer manager,
-	 * lock manager, etc. We need to run this code before we close down
-	 * database access!
-	 */
-	on_shmem_exit(ShutdownPostgres, 0);
-
 	/* close the transaction we started above */
 	if (!bootstrap)
 		CommitTransactionCommand();
