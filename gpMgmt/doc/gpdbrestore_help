@@ -10,8 +10,9 @@ gpdbrestore { -t <timestamp_key> [-L]
               | -b <YYYYMMDD> 
               | -R <hostname>:<path_to_dumpset> 
               | -s <database_name> } 
-     [--noplan] [-u backup_directory] [--list-backup]
-     [-T <schema>.<table> [,...]] [--table-file file_name]
+     [--noplan] [-u <backup_directory>] [--list-backup]
+     [--prefix <prefix_string> ]
+     [-T <schema>.<table> [,...]] [--table-file <file_name>]
      [-e] [-G] [-B <parallel_processes>] 
      [-d <master_data_directory>] [-a] [-q] [-l <logfile_directory>] 
      [-v] [--ddboost ]
@@ -71,6 +72,14 @@ The gpdbrestore utility provides the following functionality:
 * Allows you to drop the target database before a restore in a single 
  operation. 
 
+ 
+Restoring a Database with Named Pipes 
+
+If you used named pipes when you backed up a database with gpcrondump, 
+named pipes with the backup data must be available when restoring the 
+database from the backup. 
+
+ 
 Error Reporting 
 
 gpdbrestore does not report errors automatically. After the restore is 
@@ -169,6 +178,12 @@ OPTIONS
  incremental backup, an error is returned. 
 
 
+--prefix <prefix_string> 
+
+ If you specified the gpcrondump option --prefix <prefix_string> to create 
+ the backup, you must specify this option with the <prefix_string> when 
+ restoring the backup. 
+
 -q (no screen output) 
 
  Run in quiet mode. Command output is not displayed on the screen, but is 
@@ -207,10 +222,10 @@ OPTIONS
 
 
 --table-file <file_name> 
- 
- Specify a file <file_name> that contains a list of table names to 
- restore. The file contains any number of table names, listed one per 
- line. See the -T option for information about restoring specific tables. 
+
+ Specify a file <file_name> that contains a list of table names to restore. 
+ The file contains any number of table names, listed one per line. See 
+ the -T option for information about restoring specific tables. 
 
 
 -u <backup_directory> 
