@@ -53,10 +53,10 @@ Feature: gpfdist configure timeout value
     @fire
     Scenario: Validate timeout command line option - debug case 5
         When the user runs "gpfdist -p 8080 -V -t 5 -z 15" 
-        Then the client program should print Error: -z listen queue size must be between 16 and 512 (default is 256) error message
+        Then the client program should print Error: -z listen queue size must be between 16 and 512 \(default is 256\) error message
         And gpfdist should return a return code of 1 
         When the user runs "gpfdist -p 8080 -V -t 5 -z 513" 
-        Then the client program should print Error: -z listen queue size must be between 16 and 512 (default is 256) error message
+        Then the client program should print Error: -z listen queue size must be between 16 and 512 \(default is 256\) error message
         And gpfdist should return a return code of 1 
 
     @fire
