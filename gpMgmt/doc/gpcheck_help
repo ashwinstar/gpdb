@@ -1,4 +1,4 @@
-﻿COMMAND NAME: gpcheck
+COMMAND NAME: gpcheck
 
 Verifies and validates Greenplum Database platform settings.
 

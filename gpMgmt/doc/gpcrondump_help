@@ -1,4 +1,4 @@
-ï»¿COMMAND NAME: gpcrondump
+COMMAND NAME: gpcrondump
 
 Writes out a database to SQL script files. The script files can be used 
 to restore the database using the gpdbrestore utility. The gpcrondump 
@@ -181,7 +181,7 @@ OPTIONS
 
  You can run a mixed backup that writes to both a local disk and Data 
  Domain. If you want to use a backup directory on your local disk other 
- than the default, use the â€“u option. For more information about mixed 
+ than the default, use the –u option. For more information about mixed 
  backups and Data Domain Boost, see the Greenplum Database System 
  Administrator Guide. 
 
@@ -232,7 +232,7 @@ OPTIONS
  and special characters ($, %, #, +, etc.). 
 
  The system verifies the password. After the password is verified, the 
- system creates encrypted DDBOOST_CONFIG files in the userâ€™s home 
+ system creates encrypted DDBOOST_CONFIG files in the user’s home 
  directory. 
 
  In the example, the --ddboost-backupdir option specifies the backup 
