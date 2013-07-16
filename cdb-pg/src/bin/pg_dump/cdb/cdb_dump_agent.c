@@ -114,6 +114,7 @@ bool		schemaOnly;
 bool		dataOnly;
 bool		aclsSkip;
 bool        incrementalBackup;
+static char	*incrementalFilter = NULL;
 
 /* MPP additions start */
 static char *selectSchemaName = NULL;	/* name of a single schema to dump */
@@ -444,6 +445,7 @@ main(int argc, char **argv)
 		{"dd_boost_dir", required_argument, NULL, 8},
 		{"dd_boost_buf_size", required_argument, NULL, 9},
 #endif
+		{"incremental-filter", required_argument, NULL, 10},
 		{NULL, 0, NULL, 0}
 	};
 	int			optindex;
@@ -685,10 +687,27 @@ main(int argc, char **argv)
 				sscanf(optarg, "%d", &dd_boost_buf_size);
 				break;
 #endif
+			case 10:
+				incrementalFilter = strdup(optarg);
+				break;
 			default:
 				fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
 				exit(1);
 		}
+	}
+
+	if (g_role == ROLE_MASTER && incrementalFilter) {
+		table_include_patterns.head = NULL;
+		table_include_patterns.tail = NULL;
+		if (!open_file_and_append_to_list(incrementalFilter, &table_include_patterns, "include tables list"))
+		{
+			fprintf(stderr,
+					_("%s: invalid --incremental-filter option -- can't open file %s\n"),
+					progname, incrementalFilter);
+			exit(1);
+		}
+		include_everything = false;
+		strncpy(tableFileName, incrementalFilter, sizeof(tableFileName));
 	}
 
 	if (optind < (argc - 1))
@@ -1138,7 +1157,7 @@ dumpMain(bool oids, const char *dumpencoding, int outputBlobs, int plainText, Re
 	 * Process the schema and table include/exclude lists and develop a list
 	 * of table oids to be included in the dump.
 	 */
-	if (isFilteringAllowedNow(g_role, incrementalBackup))
+	if (isFilteringAllowedNow(g_role, incrementalBackup, incrementalFilter))
 	    convert_patterns_to_oids();
 
 	/*

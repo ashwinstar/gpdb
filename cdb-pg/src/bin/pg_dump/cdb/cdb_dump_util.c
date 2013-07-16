@@ -183,12 +183,15 @@ shouldExpandChildren(bool g_gp_supportsPartitioning, bool no_expand_children)
  *
  */
 bool
-isFilteringAllowedNow(int role, bool incrementalBackup) 
+isFilteringAllowedNow(int role, bool incrementalBackup, char *incrementalFilter) 
 {
 	if (!incrementalBackup)
 		return true;
 
 	if (role != ROLE_MASTER)
+		return true;
+
+	if (role == ROLE_MASTER && incrementalFilter != NULL)
 		return true;
 
 	return false;

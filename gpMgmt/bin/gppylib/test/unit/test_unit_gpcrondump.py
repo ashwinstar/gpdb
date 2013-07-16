@@ -60,6 +60,7 @@ class GpCronDumpTestCase(unittest.TestCase):
             self.quiet = False
             self.verbose = False
             self.local_dump_prefix = None
+            self.list_filter_tables = None
 
     @patch('gpcrondump.GpCronDump._get_master_port')
     @patch('gpcrondump.validate_current_timestamp')
@@ -144,8 +145,22 @@ class GpCronDumpTestCase(unittest.TestCase):
 
     @patch('gpcrondump.GpCronDump._get_master_port')
     @patch('gpcrondump.validate_current_timestamp')
+    def test_options10(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        backup_utils.dump_prefix = 'foo'
+        options.incremental = False 
+        options.list_filter_tables = True
+        try:
+            with self.assertRaisesRegexp(Exception, 'list filter tables option requires --prefix and --incremental'):
+                cron = GpCronDump(options, None)
+        finally:
+            backup_utils.dump_prefix = ''
+            options.list_filter_tables = False
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
     @patch('gpcrondump.get_latest_full_dump_timestamp', return_value='20121225090000')
-    def test_options10(self, mock, mock2, mock3):
+    def test_options11(self, mock, mock2, mock3):
         options = GpCronDumpTestCase.Options()
         options.incremental = True
         cron = GpCronDump(options, None)
@@ -618,6 +633,63 @@ class GpCronDumpTestCase(unittest.TestCase):
                                'foo1:%s/db_dumps/20130101/gp_dump_20130101000000_increments' % options.masterDataDirectory] 
         self.assertEqual(sorted(files_file_list), sorted(expected_files_list))
        
+    @patch('gpcrondump.validate_current_timestamp')
+    @patch('gpcrondump.get_latest_full_dump_timestamp', return_value='20130101000000')
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    def test_get_files_file_list_with_prefix(self, mock1, mock2, mock3):
+        options = GpCronDumpTestCase.Options()
+        options.timestamp_key = '20130101010101'
+        options.incremental = True
+        backup_utils.dump_prefix = 'metro_'
+        options.masterDataDirectory = '/data/foo'
+        gpcd = GpCronDump(options, None)
+        master = Mock()
+        master.getSegmentHostName.return_value = 'foo1'
+        mock_segs = [Mock(), Mock()]
+        for id, seg in enumerate(mock_segs):
+            seg.getSegmentHostName.return_value = 'foo1'
+            seg.getSegmentDbId.return_value = id + 1
+        timestamp = '20130101010101'
+        
+        files_file_list = gpcd._get_files_file_list(master, mock_segs, timestamp)
+        expected_files_list = ['foo1:%s/db_dumps/20130101/metro_gp_cdatabase_1_1_20130101010101' % options.masterDataDirectory,
+                               'foo1:%s/db_dumps/20130101/metro_gp_dump_20130101010101_ao_state_file' % options.masterDataDirectory,
+                               'foo1:%s/db_dumps/20130101/metro_gp_dump_20130101010101_co_state_file' % options.masterDataDirectory,
+                               'foo1:%s/db_dumps/20130101/metro_gp_dump_20130101010101_last_operation' % options.masterDataDirectory,
+                               'foo1:%s/db_dumps/20130101/metro_gp_dump_20130101010101.rpt' % options.masterDataDirectory,
+                               'foo1:%s/db_dumps/20130101/metro_gp_dump_status_1_1_20130101010101' % options.masterDataDirectory,
+                               'foo1:%s/db_dumps/20130101/metro_gp_dump_20130101000000_increments' % options.masterDataDirectory] 
+        backup_utils.dump_prefix = ''
+        self.assertEqual(sorted(files_file_list), sorted(expected_files_list))
+       
+    @patch('gpcrondump.validate_current_timestamp')
+    @patch('gpcrondump.get_latest_full_dump_timestamp', return_value='20130101000000')
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    def test_get_files_file_list_with_filter(self, mock1, mock2, mock3):
+        options = GpCronDumpTestCase.Options()
+        options.timestamp_key = '20130101010101'
+        backup_utils.dump_prefix = 'metro_'
+        options.include_dump_tables_file = 'bar'
+        options.masterDataDirectory = '/data/foo'
+        gpcd = GpCronDump(options, None)
+        master = Mock()
+        master.getSegmentHostName.return_value = 'foo1'
+        mock_segs = [Mock(), Mock()]
+        for id, seg in enumerate(mock_segs):
+            seg.getSegmentHostName.return_value = 'foo1'
+            seg.getSegmentDbId.return_value = id + 1
+        timestamp = '20130101010101'
+        
+        files_file_list = gpcd._get_files_file_list(master, mock_segs, timestamp)
+        expected_files_list = ['foo1:%s/db_dumps/20130101/metro_gp_cdatabase_1_1_20130101010101' % options.masterDataDirectory,
+                               'foo1:%s/db_dumps/20130101/metro_gp_dump_20130101010101_ao_state_file' % options.masterDataDirectory,
+                               'foo1:%s/db_dumps/20130101/metro_gp_dump_20130101010101_co_state_file' % options.masterDataDirectory,
+                               'foo1:%s/db_dumps/20130101/metro_gp_dump_20130101010101_last_operation' % options.masterDataDirectory,
+                               'foo1:%s/db_dumps/20130101/metro_gp_dump_20130101010101.rpt' % options.masterDataDirectory,
+                               'foo1:%s/db_dumps/20130101/metro_gp_dump_status_1_1_20130101010101' % options.masterDataDirectory,
+                               'foo1:%s/db_dumps/20130101/metro_gp_dump_20130101010101_filter' % options.masterDataDirectory] 
+        backup_utils.dump_prefix = ''
+        self.assertEqual(sorted(files_file_list), sorted(expected_files_list))
 
     @patch('gpcrondump.GpCronDump._get_master_port')
     @patch('gpcrondump.validate_current_timestamp')

@@ -35,7 +35,7 @@ try:
                                         write_dirty_file, write_dirty_file_to_temp, write_last_operation_file,\
                                         write_partition_list_file, write_state_file, get_last_operation_data, \
                                         validate_current_timestamp, generate_dump_timestamp, get_dirty_heap_tables, \
-                                        DUMP_DIR
+                                        DUMP_DIR, filter_dirty_tables, get_filter_file
     from gppylib.operations.backup_utils import get_latest_full_dump_timestamp, check_funny_chars_in_tablenames, \
                                                 expand_partitions_and_populate_filter_file, get_lines_from_file, \
                                                 remove_file_from_segments, validate_timestamp, write_lines_to_file, \
@@ -97,6 +97,7 @@ class GpCronDump(Operation):
         self.incremental = options.incremental
         self.timestamp_key = options.timestamp_key
         self.list_backup_files = options.list_backup_files
+        self.list_filter_tables = options.list_filter_tables
         if options.local_dump_prefix:
              backup_utils.dump_prefix = options.local_dump_prefix + "_"
         self.ddboost_hosts = options.ddboost_hosts
@@ -168,6 +169,9 @@ class GpCronDump(Operation):
             raise Exception('ddboost can not be selected with prefix option')
         if self.list_backup_files and (self.ddboost or bool(self.ddboost_verify) or bool(self.ddboost_hosts) or bool(self.ddboost_user) or bool(self.ddboost_config_remove)):
             raise Exception('list backup files not supported with ddboost option')
+
+        if self.list_filter_tables and (not backup_utils.dump_prefix or not self.incremental):
+            raise Exception('list filter tables option requires --prefix and --incremental')
 
         self.replicate = options.replicate
         self.max_streams = options.max_streams
@@ -573,6 +577,9 @@ class GpCronDump(Operation):
                 self._list_backup_files(timestamp_str)
                 logger.info('Successfully listed the names of backup files and pipes')
                 return 0
+            if self.list_filter_tables:
+                self._list_filter_tables()
+                return 0
 
             validate_current_timestamp(self.getBackupDirectoryRoot())
             if self.interactive:
@@ -597,7 +604,8 @@ class GpCronDump(Operation):
                                                     self.master_datadir, self.backup_dir,
                                                     self.full_dump_timestamp, ao_partition_list,
                                                     co_partition_list, last_operation_list)
-
+                dirty_partitions = filter_dirty_tables(dirty_partitions, dump_database, self.master_datadir,
+                                                       self.backup_dir)
                 dirty_file = write_dirty_file_to_temp(dirty_partitions)
 
             (include_file, exclude_file) = self.get_include_exclude_for_dump_database(dirty_file, dump_database)
@@ -781,6 +789,10 @@ class GpCronDump(Operation):
         master_file_list = ['%sgp_cdatabase_1_1_%s', '%sgp_dump_%s_ao_state_file', '%sgp_dump_%s_co_state_file',
                             '%sgp_dump_%s_last_operation', '%sgp_dump_%s.rpt', '%sgp_dump_status_1_1_%s']
 
+        if backup_utils.dump_prefix and (self.include_dump_tables_file or self.exclude_dump_tables_file or \
+                                         self.include_dump_tables or self.exclude_dump_tables):
+            master_file_list.append('%sgp_dump_%s_filter')
+
         if self.incremental:
             file_list.append('%s:%s/%sgp_dump_%s_increments' % (master.getSegmentHostName(), dump_dir,
                               backup_utils.dump_prefix, self.full_dump_timestamp))
@@ -853,6 +865,19 @@ class GpCronDump(Operation):
         verify_lines_in_file(files_list_fname, file_list)
         logger.info('Added the list of file names to the file: %s' % files_list_fname)
 
+    def _list_filter_tables(self):
+        db = self.dump_databases[0]
+        filter_filename = get_filter_file(db, self.master_datadir, self.backup_dir)
+        logger.info("---------------------------------------------------")
+        if not filter_filename:
+            logger.info('No filter file found for database %s and prefix %s.' % (db, backup_utils.dump_prefix[:-1]))
+            logger.info('All tables in %s will be included in the dump.' % db)
+            return
+        tables = get_lines_from_file(filter_filename)
+        logger.info('Filtering %s for the following tables:' % db)
+        for table in tables:
+            logger.info('%s' % table)
+
     def _get_timestamp_object(self, timestamp_key):
         if timestamp_key is None:
             return datetime.now()
@@ -920,6 +945,12 @@ class GpCronDump(Operation):
         else:
             if self.incremental:
                 logger.info("Dump type                            = Incremental")
+                filter_name = get_filter_file(dump_database, self.master_datadir, self.backup_dir)
+                if filter_name is not None:
+                    logger.info("Filtering tables using:")
+                    logger.info("\t Prefix                        = %s" % (backup_utils.dump_prefix[:-1]))
+                    logger.info("\t Full dump timestamp           = %s" % (self.full_dump_timestamp))
+                    logger.info("---------------------------------------------------")
             else:
                 logger.info("Dump type                            = Full database")
         logger.info("Database to be dumped                = %s" % dump_database)
@@ -1113,6 +1144,8 @@ def create_parser():
                      help="Files created during the dump operation for a particular input timestamp")
     addTo.add_option('--prefix', dest='local_dump_prefix', default='', metavar='<filename prefix>',
                      help="Prefix to be added to all files created in the dump")
+    addTo.add_option('--list-filter-tables', dest='list_filter_tables', default=False, action='store_true',
+                     help="List tables to be included in a dump based on the current filter.")
 
     # TODO: HACK to remove existing -h
     help = parser.get_option('-h')

@@ -15,7 +15,7 @@ from gppylib.operations.dump import DumpDatabase, compare_dict, create_partition
                                     write_dirty_file, write_partition_list_file, write_dirty_file_to_temp, write_state_file,\
                                     get_pgstatlastoperations_dict, get_tables_with_dirty_metadata, compare_metadata,\
                                     CreateIncrementsFile, PostDumpDatabase, get_dirty_tables, validate_current_timestamp,\
-                                    validate_tuple_count, generate_dump_timestamp
+                                    validate_tuple_count, generate_dump_timestamp, get_filter_file, filter_dirty_tables, get_backup_dir
 from mock import patch, MagicMock, Mock
 
 class DumpTestCase(unittest.TestCase):
@@ -234,7 +234,8 @@ class DumpTestCase(unittest.TestCase):
 
     @patch('gppylib.operations.dump.get_partition_list', return_value=[[123, 'myschema', 't1'], [4444, 'otherschema', 't2'], [992313, 'public', 't3']])
     @patch('gppylib.operations.dump.generate_partition_list_filename', return_value=os.path.join(os.getcwd(), 'test'))
-    def test_write_partition_list_file_00(self, mock1, mock2):
+    @patch('gppylib.operations.dump.get_filter_file', return_value=None)
+    def test_write_partition_list_file_00(self, mock1, mock2, mock3):
         master_datadir = 'foo' 
         backup_dir = None
         timestamp_key = '01234567891234'
@@ -252,7 +253,8 @@ class DumpTestCase(unittest.TestCase):
 
     @patch('gppylib.operations.dump.get_partition_list', return_value=[])
     @patch('gppylib.operations.dump.generate_partition_list_filename', return_value=os.path.join(os.getcwd(), 'test'))
-    def test_write_partition_list_file_01(self, mock1, mock2):
+    @patch('gppylib.operations.dump.get_filter_file', return_value=None)
+    def test_write_partition_list_file_01(self, mock1, mock2, mock3):
         master_datadir = 'foo' 
         backup_dir = None
         timestamp_key = '01234567891234'
@@ -270,7 +272,8 @@ class DumpTestCase(unittest.TestCase):
 
     @patch('gppylib.operations.dump.get_partition_list', return_value=[['t1'], ['t2'], ['t3']])
     @patch('gppylib.operations.dump.generate_partition_list_filename', return_value=os.path.join(os.getcwd(), 'test'))
-    def test_write_partition_list_file_02(self, mock1, mock2):
+    @patch('gppylib.operations.dump.get_filter_file', return_value=None)
+    def test_write_partition_list_file_02(self, mock1, mock2, mock3):
         master_datadir = 'foo' 
         backup_dir = None
         timestamp_key = '01234567891234'
@@ -282,7 +285,8 @@ class DumpTestCase(unittest.TestCase):
 
     @patch('gppylib.operations.dump.get_partition_list', return_value=[['t1', 'foo', 'koo'], ['public', 't2'], ['public', 't3']])
     @patch('gppylib.operations.dump.generate_partition_list_filename', return_value=os.path.join(os.getcwd(), 'test'))
-    def test_write_partition_list_file_03(self, mock1, mock2):
+    @patch('gppylib.operations.dump.get_filter_file', return_value=None)
+    def test_write_partition_list_file_03(self, mock1, mock2, mock3):
         master_datadir =  'foo'
         backup_dir = None
         timestamp_key = '01234567891234'
@@ -290,6 +294,22 @@ class DumpTestCase(unittest.TestCase):
         port = '5432'
         partition_list_file = os.path.join(os.getcwd(), 'test')
         with self.assertRaisesRegexp(Exception, 'Invalid results from query to get all tables'):
+            write_partition_list_file(master_datadir, backup_dir, timestamp_key, port, dbname)
+
+    @patch('gppylib.operations.dump.get_partition_list', return_value=[['t1', 'foo', 'koo'], ['public', 't2'], ['public', 't3']])
+    @patch('gppylib.operations.dump.generate_partition_list_filename', return_value=os.path.join(os.getcwd(), 'test'))
+    @patch('gppylib.operations.dump.get_filter_file', return_value='/foo')
+    @patch('gppylib.operations.dump.get_lines_from_file', return_value=['public.t1', 'public.t2'])
+    @patch('gppylib.operations.backup_utils.get_lines_from_file', return_value=['public.t3', 'public.t2'])
+    @patch('shutil.copyfile')
+    def test_write_partition_list_file_04(self, mock1, mock2, mock3, mock4, mock5, mock6):
+        master_datadir =  'foo'
+        backup_dir = None
+        timestamp_key = '01234567891234'
+        dbname = 'bkdb'
+        port = '5432'
+        partition_list_file = os.path.join(os.getcwd(), 'test')
+        with self.assertRaisesRegexp(Exception, 'After writing file .* contents not as expected, suspected IO error'):
             write_partition_list_file(master_datadir, backup_dir, timestamp_key, port, dbname)
 
     def test_dirty_file_to_temp_00(self):
@@ -357,7 +377,8 @@ class DumpTestCase(unittest.TestCase):
     @patch('gppylib.operations.dump.ValidateDumpDatabase.run')
     @patch('gppylib.operations.dump.Command.run')
     @patch('gppylib.operations.dump.Command.get_results', return_value=CommandResult(0, "", "", True, False))
-    def test_execute_00(self, mock1, mock2, mock3):
+    @patch('gppylib.operations.dump.DumpDatabase.create_filter_file')
+    def test_execute_00(self, mock1, mock2, mock3, mock4):
         self.dumper.execute()
         # should not raise any exceptions
 
@@ -842,6 +863,132 @@ class DumpTestCase(unittest.TestCase):
         output = self.dumper.create_dump_string('dcddev', '20121212', '01234567891234')
         expected_output = """gp_dump -p 0 -U dcddev --gp-d=/data/master/p1/db_dumps/20121212 --gp-r=/data/master/p1/db_dumps/20121212 --gp-s=p --gp-k=01234567891234 --gp-c --prefix=foo_ --no-expand-children -n "\\"testschema\\"" testdb --table-file=/tmp/table_list.txt"""
         backup_utils.dump_prefix = ''
+        self.assertEquals(output, expected_output)
+
+    def test_create_dump_line_with_include_file(self):
+        import gppylib.operations.backup_utils as backup_utils
+        backup_utils.dump_prefix = 'metro_'
+        self.dumper.include_dump_tables_file = ('bar')
+        output = self.dumper.create_dump_string('dcddev', '20121212', '01234567891234')
+        expected_output = """gp_dump -p 0 -U dcddev --gp-d=/data/master/p1/db_dumps/20121212 --gp-r=/data/master/p1/db_dumps/20121212 --gp-s=p --gp-k=01234567891234 --gp-c --prefix=metro_ --no-expand-children -n "\\"testschema\\"" testdb --table-file=%s""" % self.dumper.include_dump_tables_file
+        backup_utils.dump_prefix = ''
+        self.assertEquals(output, expected_output)
+
+    def test_create_dump_line_with_no_file_args(self):
+        import gppylib.operations.backup_utils as backup_utils
+        backup_utils.dump_prefix = 'metro_'
+        self.dumper.include_dump_tables_file = (None,)
+        output = self.dumper.create_dump_string('dcddev', '20121212', '01234567891234')
+        expected_output = """gp_dump -p 0 -U dcddev --gp-d=/data/master/p1/db_dumps/20121212 --gp-r=/data/master/p1/db_dumps/20121212 --gp-s=p --gp-k=01234567891234 --gp-c --prefix=metro_ --no-expand-children -n "\\"testschema\\"" testdb"""
+        backup_utils.dump_prefix = ''
+        self.assertEquals(output, expected_output)
+
+    def test_get_backup_dir_with_master_data_dir(self):
+        master_datadir = '/foo'
+        backup_dir = None
+        self.assertEquals('/foo', get_backup_dir(master_datadir, backup_dir))
+
+    def test_get_backup_dir_with_backup_dir(self):
+        master_datadir = 'foo'
+        backup_dir = '/bkup' 
+        self.assertEquals('/bkup', get_backup_dir(master_datadir, backup_dir))
+
+    @patch('gppylib.operations.dump.get_latest_full_dump_timestamp', return_value='20130101010101')
+    @patch('os.path.isfile', return_value=True)
+    def test_get_filter_file_file_exists(self, mock1, mock2):
+        import gppylib.operations.backup_utils as backup_utils
+        backup_utils.dump_prefix = 'metro_'
+        master_datadir = '/foo'
+        backup_dir = None
+        dump_database = 'testdb'
+        expected_output = '/foo/db_dumps/20130101/metro_gp_dump_20130101010101_filter'
+        try:
+            self.assertEquals(expected_output, get_filter_file(dump_database, master_datadir, backup_dir)) 
+        finally:
+            backup_utils.dump_prefix = ''
+        
+    @patch('gppylib.operations.dump.get_latest_full_dump_timestamp', return_value='20130101010101')
+    @patch('os.path.isfile', return_value=False)
+    def test_get_filter_file_file_does_not_exists(self, mock1, mock2):
+        import gppylib.operations.backup_utils as backup_utils
+        backup_utils.dump_prefix = 'metro_'
+        master_datadir = '/foo'
+        backup_dir = None
+        dump_database = 'testdb'
+        try:
+            self.assertEquals(None, get_filter_file(dump_database, master_datadir, backup_dir)) 
+        finally:
+            backup_utils.dump_prefix = ''
+
+    @patch('gppylib.operations.dump.get_lines_from_file', return_value=['public.t1', 'pepper.t2'])
+    @patch('gppylib.operations.dump.get_latest_full_dump_timestamp', return_value='20130101010101')
+    @patch('gppylib.operations.dump.get_filter_file', return_value='/foo/metro_gp_dump_20130101010101_filter')
+    def test_filter_dirty_tables_with_filter(self, mock1, mock2, mock3):
+        import gppylib.operations.backup_utils as backup_utils
+        backup_utils.dump_prefix = 'metro_'
+        master_datadir = '/foo'
+        backup_dir = None
+        dump_database = 'testdb'
+        dirty_tables = ['public.t1', 'public.t2', 'pepper.t1', 'pepper.t2']
+        expected_output = ['public.t1', 'pepper.t2']
+        try:
+            self.assertEquals(sorted(expected_output), sorted(filter_dirty_tables(dirty_tables, dump_database, master_datadir, backup_dir)))
+        finally:
+            backup_utils.dump_prefix = ''
+         
+    @patch('gppylib.operations.dump.get_lines_from_file', return_value=['public.t1', 'pepper.t2'])
+    @patch('gppylib.operations.dump.get_latest_full_dump_timestamp', return_value='20130101010101')
+    @patch('gppylib.operations.dump.get_filter_file', return_value=None)
+    def test_filter_dirty_tables_without_filter(self, mock1, mock2, mock3):
+        import gppylib.operations.backup_utils as backup_utils
+        backup_utils.dump_prefix = 'metro_'
+        master_datadir = '/foo'
+        backup_dir = None
+        dump_database = 'testdb'
+        dirty_tables = ['public.t1', 'public.t2', 'pepper.t1', 'pepper.t2']
+        try:
+            self.assertEquals(sorted(dirty_tables), sorted(filter_dirty_tables(dirty_tables, dump_database, master_datadir, backup_dir)))
+        finally:
+            backup_utils.dump_prefix = ''
+
+    @patch('gppylib.operations.dump.get_filter_file', return_value='/tmp/db_dumps/20121212/foo_gp_dump_01234567891234_filter')
+    def test_create_filtered_dump_string(self, mock1):
+        import gppylib.operations.backup_utils as backup_utils
+        backup_utils.dump_prefix = 'foo_'
+        output = self.dumper.create_filtered_dump_string('dcddev', '20121212', '01234567891234')
+        expected_output = """gp_dump -p 0 -U dcddev --gp-d=/data/master/p1/db_dumps/20121212 --gp-r=/data/master/p1/db_dumps/20121212 --gp-s=p --gp-k=01234567891234 --gp-c --prefix=foo_ --no-expand-children -n "\\"testschema\\"" testdb --table-file=/tmp/table_list.txt --incremental-filter=/tmp/db_dumps/20121212/foo_gp_dump_01234567891234_filter"""
+        backup_utils.dump_prefix = ''
+        self.assertEquals(output, expected_output)
+
+    @patch('gppylib.operations.dump.Command.get_results', return_value=CommandResult(0, "", "", True, False))
+    @patch('gppylib.operations.dump.Command.run')
+    def test_perform_dump_normal(self, mock1, mock2):
+        import gppylib.operations.backup_utils as backup_utils
+        backup_utils.dump_prefix = 'foo_'
+        title = 'Dump process'
+        dump_line = """gp_dump -p 0 -U dcddev --gp-d=/data/master/p1/db_dumps/20121212 --gp-r=/data/master/p1/db_dumps/20121212 --gp-s=p --gp-k=01234567891234 --gp-c --prefix=foo_ --no-expand-children -n "\\"testschema\\"" testdb --table-file=/tmp/table_list.txt"""
+        (start, end, rc) = self.dumper.perform_dump(title, dump_line)
+        backup_utils.dump_prefix = ''
+        self.assertNotEqual(start, None)
+        self.assertNotEqual(end, None)
+        self.assertEquals(rc, 0)
+
+class DumpGlobalTestCase(unittest.TestCase):
+
+    def setUp(self):
+        self.dumper = DumpGlobal(timestamp=None,
+                                master_datadir='/foo',
+                                master_port = 0,
+                                backup_dir='/foo',
+                                dump_dir=None,
+                                ddboost=False)
+
+    def test_create_pgdump_command_line(self):
+        master_port = 9000
+        global_file_name = '/foo/db_dumps/20120101/gp_global_1_1_20120101101010'
+        
+        expected_output = "pg_dumpall -p 9000 -g --gp-syntax > %s" % global_file_name 
+        output = self.dumper.create_pgdump_command_line(master_port, global_file_name)
         self.assertEquals(output, expected_output)
 
 if __name__ == '__main__':

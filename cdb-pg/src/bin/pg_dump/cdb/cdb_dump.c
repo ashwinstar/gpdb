@@ -75,6 +75,7 @@ static int column_inserts;			/* put attr names into insert strings */
 static char *dumpencoding = NULL;
 static bool schemaOnly;
 static bool incremental_backup;
+static char *incremental_filter = NULL;
 static bool dataOnly;
 static bool aclsSkip;
 static char *selectTableName = NULL;	/* name of a single table to dump */
@@ -864,6 +865,7 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		{"gp-k", required_argument, NULL, 10},
 		{"no-expand-children", no_argument, NULL, 11},
 		{"prefix", required_argument, NULL, 12},
+		{"incremental-filter", required_argument, NULL, 13},
 
 		{NULL, 0, NULL, 0}
 	};
@@ -1239,7 +1241,10 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
                 dump_prefix = Safe_strdup(optarg);
                 pInputOpts->pszPassThroughParms = addPassThroughLongParm("prefix", DUMP_PREFIX, pInputOpts->pszPassThroughParms);
                 break; 
-
+			case 13:
+				incremental_filter = Safe_strdup(optarg);
+				pInputOpts->pszPassThroughParms = addPassThroughLongParm("incremental-filter", incremental_filter, pInputOpts->pszPassThroughParms);
+				break;
 
 			default:
 				mpp_err_msg_cache(logError, progname, "Try \"%s --help\" for more information.\n", progname);

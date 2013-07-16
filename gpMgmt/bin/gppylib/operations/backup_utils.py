@@ -244,6 +244,10 @@ def generate_master_config_filename(timestamp):
 def generate_segment_config_filename(segId, timestamp):
     return '%sgp_segment_config_files_0_%d_%s.tar' % (dump_prefix, segId, timestamp)
 
+def generate_filter_filename(master_datadir, backup_dir, timestamp):
+    use_dir = get_backup_directory(master_datadir, backup_dir, timestamp)
+    return '%s/%s%s_filter' % (use_dir, generate_dbdump_prefix(), timestamp)
+
 def generate_global_prefix():
     return '%sgp_global_1_1_' % (dump_prefix)
 

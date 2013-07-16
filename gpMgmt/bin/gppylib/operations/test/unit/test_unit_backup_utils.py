@@ -21,7 +21,7 @@ from gppylib.operations.backup_utils import generate_report_filename, validate_t
                                             generate_files_filename, generate_pipes_filename, generate_master_config_filename, generate_segment_config_filename, \
                                             generate_global_prefix, generate_master_dbdump_prefix, \
                                             generate_master_status_prefix, generate_seg_dbdump_prefix, generate_seg_status_prefix, \
-                                            generate_dbdump_prefix, generate_createdb_filename
+                                            generate_dbdump_prefix, generate_createdb_filename, generate_filter_filename
 
 from mock import patch, MagicMock, Mock
 
@@ -1232,4 +1232,23 @@ class BackupUtilsTestCase(unittest.TestCase):
         output = generate_createdb_filename(master_datadir, None, timestamp)
         backup_utils.dump_prefix = ''
         self.assertEquals(output, expected_output)
- 
+
+    def test_generate_filter_filename(self):
+        backup_utils.dump_prefix='foo_'
+        master_datadir = '/data'
+        backup_dir = None
+        timestamp = '20120731093030'
+        expected_output = '/data/db_dumps/20120731/%sgp_dump_%s_filter' % (backup_utils.dump_prefix, timestamp)
+        output = generate_filter_filename(master_datadir, backup_dir, timestamp)
+        backup_utils.dump_prefix = ''
+        self.assertEquals(output, expected_output)
+    
+    def test_generate_filter_filename_with_backupdir(self):
+        backup_utils.dump_prefix='foo_'
+        master_datadir = '/data' 
+        backup_dir = '/bkup' 
+        timestamp = '20120731093030'
+        expected_output = '/bkup/db_dumps/20120731/%sgp_dump_%s_filter' % (backup_utils.dump_prefix, timestamp)
+        output = generate_filter_filename(master_datadir, backup_dir, timestamp)
+        backup_utils.dump_prefix = ''
+        self.assertEquals(output, expected_output)

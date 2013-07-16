@@ -81,7 +81,7 @@ extern void DoCancelNotifyListen(PGconn *pConn, bool bListen,
 					 const char *pszSuffix);
 
 /* Checks if we should filter out tables when using incremental mode */
-extern bool isFilteringAllowedNow(int role, bool incrementalBackup); 
+extern bool isFilteringAllowedNow(int role, bool incrementalBackup, char *incrementalFilter); 
  
 /* frees data allocated inside an InputOptions struct */
 extern void FreeInputOptions(InputOptions * pInputOpts);

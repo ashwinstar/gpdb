@@ -729,19 +729,24 @@ def impl(context, filename, table_list):
 def impl(context, table, dbname):
     create_fake_pg_aoseg_table(context, table, dbname)
 
-@then('verify that the report file in "{report_dir}" dir contains "{text_find}"')
-def impl(context, report_dir, text_find):
-    if len(report_dir.strip()) == 0:
-        report_dir = master_data_dir
+@then('verify that the "{file_type}" file in "{file_dir}" dir contains "{text_find}"')
+def impl(context, file_type, file_dir, text_find):
+    if len(file_dir.strip()) == 0:
+        file_dir = master_data_dir
+    if not hasattr(context, "dump_prefix"):
+        context.dump_prefix = ''
 
-    fn = 'gp_dump_%s.rpt' % context.backup_timestamp
+    if file_type == 'report':
+        fn = '%sgp_dump_%s.rpt' % (context.dump_prefix, context.backup_timestamp)
+    elif file_type == 'filter':
+        fn = '%sgp_dump_%s_filter' % (context.dump_prefix, context.backup_timestamp)
 
     subdirectory = context.backup_timestamp[0:8]
 
-    full_path = os.path.join(report_dir, 'db_dumps', subdirectory, fn)
+    full_path = os.path.join(file_dir, 'db_dumps', subdirectory, fn)
 
     if not os.path.isfile(full_path):
-        raise Exception ("Can not find report file: %s" % full_path)
+        raise Exception ("Can not find %s file: %s" % (file_type, full_path))
 
     contents = ""
     with open(full_path) as fd:
@@ -836,9 +841,13 @@ def get_plan_filename(context):
     filename = 'gp_restore_%s_plan' % context.backup_timestamp
     return os.path.join(master_data_dir, 'db_dumps', context.backup_timestamp[0:8], filename)
 
-def get_dirty_list_filename(context):
-    filename = 'gp_dump_%s_dirty_list' % context.backup_timestamp
-    return os.path.join(master_data_dir, 'db_dumps', context.backup_timestamp[0:8], filename)
+def get_dirty_list_filename(context, backup_dir=None):
+    if not backup_dir:
+        backup_dir = master_data_dir
+    if not hasattr(context, "dump_prefix"):
+        context.dump_prefix = ''
+    filename = '%sgp_dump_%s_dirty_list' % (context.dump_prefix, context.backup_timestamp)
+    return os.path.join(backup_dir, 'db_dumps', context.backup_timestamp[0:8], filename)
 
 @then('plan file should match "{filename}"')
 def impl(context, filename):
@@ -954,6 +963,8 @@ def impl(context, filetype, dir):
         filename = 'gp_dump_%s_pipes' % context.backup_timestamp
     elif filetype == 'regular_files':
         filename = 'gp_dump_%s_regular_files' % context.backup_timestamp
+    elif filetype == '_filter':
+        filename = 'gp_dump_%s_filter' % context.backup_timestamp
     else:
         raise Exception("Unknown filetype '%s' specified" % filetype)
 
@@ -1373,12 +1384,14 @@ def impl(context, tablename, dbname, file_location):
 @then('verify that there is no "{tablename}" in the "{file_type}" file in "{backup_dir}"')
 def impl(context, tablename, file_type, backup_dir):
     dump_dir = backup_dir if len(backup_dir.strip()) != 0 else master_data_dir
+    if not hasattr(context, "dump_prefix"):
+        context.dump_prefix = ''
 
-    filename = '%s/db_dumps/%s/gp_dump_%s_%s' % (dump_dir, context.backup_timestamp[0:8], context.backup_timestamp, file_type)
+    filename = '%s/db_dumps/%s/%sgp_dump_%s_%s' % (dump_dir, context.backup_timestamp[0:8], context.dump_prefix, context.backup_timestamp, file_type)
     with open(filename) as fd:
         for line in fd:
-            if tablename in line:
-                raise Exception('Found an external table in the file: "%s" in line: "%s"' %(filename, line))  
+            if tablename.strip() == line.strip():
+                raise Exception('Found an unwanted table in the file: "%s" in line: "%s"' %(filename, line))  
 
 @then('verify that exactly "{num_tables}" tables in "{dbname}" have been restored')
 def impl(context, num_tables, dbname):
@@ -1934,6 +1947,8 @@ def impl(context, file_type, directory, options):
         reg_file_count += 1
 
     if hasattr(context, "dump_prefix"):
+        if '-t' in option_list or '-T' in option_list:
+            reg_file_count += 1
         for id, p in enumerate(pipes_pattern_list):
             pipes_pattern_list[id] = '%s%s' % (context.dump_prefix, p)
         for id, p in enumerate(regular_pattern_list):

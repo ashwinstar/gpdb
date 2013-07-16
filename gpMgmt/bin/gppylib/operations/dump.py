@@ -2,6 +2,7 @@ import os
 import tempfile
 import time
 from datetime import datetime
+import shutil
 import sys
 
 import gppylib
@@ -25,7 +26,7 @@ from gppylib.operations.backup_utils import write_lines_to_file, verify_lines_in
                                             create_temp_file_from_list, execute_sql, generate_master_config_filename, \
                                             generate_segment_config_filename, generate_global_prefix, generate_master_dbdump_prefix, \
                                             generate_master_status_prefix, generate_seg_dbdump_prefix, generate_seg_status_prefix, \
-                                            generate_dbdump_prefix, generate_createdb_filename
+                                            generate_dbdump_prefix, generate_createdb_filename, generate_filter_filename, get_latest_full_dump_timestamp
 
 logger = gplog.get_default_logger()
 
@@ -308,17 +309,22 @@ def get_last_operation_data(master_port, dbname):
     return data
 
 def write_partition_list_file(master_datadir, backup_dir, timestamp_key, master_port, dbname):
-    lines_to_write = get_partition_list(master_port, dbname)
-    partition_list = []
-    for line in lines_to_write:
-        if len(line) != 3:
-            raise Exception('Invalid results from query to get all tables: [%s]' % (','.join(line)))
-        partition_list.append("%s.%s" % (line[1], line[2]))
-
+    filter_file = get_filter_file(dbname, master_datadir, backup_dir)
     partition_list_file_name = generate_partition_list_filename(master_datadir, backup_dir, timestamp_key)
-    write_lines_to_file(partition_list_file_name, partition_list)
 
-    verify_lines_in_file(partition_list_file_name, partition_list) 
+    if filter_file:
+        shutil.copyfile(filter_file, partition_list_file_name)
+        verify_lines_in_file(partition_list_file_name, get_lines_from_file(filter_file))
+    else:
+        lines_to_write = get_partition_list(master_port, dbname)
+        partition_list = []
+        for line in lines_to_write:
+            if len(line) != 3:
+                raise Exception('Invalid results from query to get all tables: [%s]' % (','.join(line)))
+            partition_list.append("%s.%s" % (line[1], line[2]))
+
+        write_lines_to_file(partition_list_file_name, partition_list)
+        verify_lines_in_file(partition_list_file_name, partition_list) 
 
 def write_last_operation_file(master_datadir, backup_dir, rows, timestamp_key=None):
     if timestamp_key is None:
@@ -337,6 +343,29 @@ def validate_current_timestamp(backup_dir, current=None):
         return
     if latest >= current:
         raise Exception('There is a future dated backup on the system preventing new backups')
+
+def get_backup_dir(master_datadir, backup_dir):
+    if backup_dir:
+        return backup_dir
+    return master_datadir
+
+def get_filter_file(dump_database, master_datadir, backup_dir):
+    timestamp = get_latest_full_dump_timestamp(dump_database, get_backup_dir(master_datadir, backup_dir))
+    filter_file = generate_filter_filename(master_datadir, backup_dir, timestamp)
+    if os.path.isfile(filter_file):
+        return filter_file
+    return None
+
+def filter_dirty_tables(dirty_tables, dump_database, master_datadir, backup_dir):
+    timestamp = get_latest_full_dump_timestamp(dump_database, get_backup_dir(master_datadir, backup_dir))
+    filter_file = get_filter_file(dump_database, master_datadir, backup_dir)
+    if filter_file:
+        tables_to_filter = get_lines_from_file(filter_file)
+        dirty_copy = dirty_tables[:]
+        for table in dirty_copy:
+            if table not in tables_to_filter:
+                dirty_tables.remove(table)
+    return dirty_tables
 
 class DumpDatabase(Operation):
     # TODO: very verbose constructor = room for improvement. in the parent constructor, we could use kwargs
@@ -377,21 +406,53 @@ class DumpDatabase(Operation):
                                                         dump_dir = self.dump_dir,
                                                         incremental = self.incremental).run()
 
+        if self.incremental and backup_utils.dump_prefix \
+                            and get_filter_file(self.dump_database, self.master_datadir, self.backup_dir):
+            filtered_dump_line = self.create_filtered_dump_string(getUserName(), DUMP_DATE, TIMESTAMP_KEY)
+            (start, end, rc) = self.perform_dump('Dump process', filtered_dump_line)
+            return self.create_dump_outcome(start, end, rc)
         dump_line = self.create_dump_string(getUserName(), DUMP_DATE, TIMESTAMP_KEY)
-        logger.info("Dump command line %s" % dump_line)
-        logger.info("Starting dump process")
-        start = TIMESTAMP 
+        (start, end, rc) = self.perform_dump('Dump process', dump_line)
+        if backup_utils.dump_prefix and self.include_dump_tables_file and not self.incremental:
+            self.create_filter_file()
+        return self.create_dump_outcome(start, end, rc)
+
+    def perform_dump(self, title, dump_line):
+        logger.info("%s command line %s" % (title, dump_line))
+        logger.info("Starting %s" % title)
+        start = TIMESTAMP
         cmd = Command('Invoking gp_dump', dump_line)
         cmd.run()   
         rc = cmd.get_results().rc
         if INJECT_GP_DUMP_FAILURE is not None:
             rc = INJECT_GP_DUMP_FAILURE
         if rc != 0:
-            logger.warn("Dump process returned exit code %d" % rc)
+            logger.warn("%s returned exit code %d" % (title, rc))
         else:
-            logger.info("Dump process returned exit code 0")        
+            logger.info("%s returned exit code 0" % title)
         end = datetime.now()
-        return self.create_dump_outcome(start, end, rc)
+        return (start, end, rc)
+
+    # If using -t, copy the filter file over the table list to be passed to the master
+    # If using -T, get the intersection of the filter and the table list
+    # In either case, the filter file contains the list of tables to include
+    def create_filter_file(self):
+        filter_name = generate_filter_filename(self.master_datadir, 
+                                               get_backup_dir(self.master_datadir, self.backup_dir),
+                                               TIMESTAMP_KEY)
+        if self.include_dump_tables_file[0]:
+            shutil.copyfile(self.include_dump_tables_file[0], filter_name)
+            verify_lines_in_file(filter_name, get_lines_from_file(self.include_dump_tables_file[0]))
+        elif self.exclude_dump_tables_file[0]:
+            filter = get_lines_from_file(self.exclude_dump_tables_file[0])
+            partitions = get_partition_list(self.master_port, self.dump_database)
+            tables = []
+            for p in partitions:
+                tablename = '%s.%s' % (p[1], p[2])
+                if tablename not in filter:
+                    tables.append(tablename)
+            write_lines_to_file(filter_name, tables)
+        logger.info('Creating filter file: %s' % filter_name)
 
     def create_dump_outcome(self, start, end, rc):
         return {'timestamp_start': start.strftime("%Y%m%d%H%M%S"),
@@ -399,7 +460,13 @@ class DumpDatabase(Operation):
                 'time_end': end.strftime("%H:%M:%S"),
                 'exit_status': rc}
 
-    def create_dump_string(self, user_name, dump_date, timestamp_key):
+    def create_filtered_dump_string(self, user_name, dump_date, timestamp_key):
+        filter_filename = get_filter_file(self.dump_database, self.master_datadir, self.backup_dir)
+        dump_string = self.create_dump_string(user_name, dump_date, timestamp_key, filter_filename)
+        dump_string += ' --incremental-filter=%s' % filter_filename
+        return dump_string
+
+    def create_dump_string(self, user_name, dump_date, timestamp_key, filter_filename=None):
         if self.backup_dir is not None:
             dump_path = report_path = os.path.join(self.backup_dir, DUMP_DIR, dump_date) 
         else:

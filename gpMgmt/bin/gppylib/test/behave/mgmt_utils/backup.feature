@@ -49,6 +49,12 @@ Feature: Validate command line arguments
         When the user runs "gpcrondump -a --list-backup-files -K 20130101010101 --ddboost -x bkdb"
         Then gpcrondump should return a return code of 2
         And gpcrondump should print list backup files not supported with ddboost option to stdout
+        When the user runs "gpcrondump -a --list-filter-tables -x bkdb"
+        Then gpcrondump should return a return code of 2
+        And gpcrondump should print list filter tables option requires --prefix and --incremental to stdout
+        When the user runs "gpcrondump -a --list-filter-tables -x bkdb --incremental"
+        Then gpcrondump should return a return code of 2
+        And gpcrondump should print list filter tables option requires --prefix and --incremental to stdout
 
     ### 
     ### Any tests that require this data set should come after
@@ -208,7 +214,7 @@ Feature: Validate command line arguments
         And the state files are generated under " " for stored "incr" timestamp 
         And the "last_operation" files are generated under " " for stored "incr" timestamp 
         And the subdir from gpcrondump is stored 
-        And verify that the report file in " " dir contains "Backup Type: Incremental"
+        And verify that the "report" file in " " dir contains "Backup Type: Incremental"
         And "dirty_list" file should be created under " "
         And all the data from "bkdb" is saved for verification
         When the user runs gpdbrestore with the stored timestamp and options "-L" 
@@ -310,7 +316,7 @@ Feature: Validate command line arguments
         And the user runs "gpcrondump -a --incremental -x bkdb -u /tmp"
         Then gpcrondump should return a return code of 0
         And the timestamp from gpcrondump is stored 
-        And verify that the report file in "/tmp" dir contains "Backup Type: Incremental"
+        And verify that the "report" file in "/tmp" dir contains "Backup Type: Incremental"
         And "dirty_list" file should be created under "/tmp"
         And the subdir from gpcrondump is stored 
         And all the data from "bkdb" is saved for verification
@@ -378,7 +384,7 @@ Feature: Validate command line arguments
         When the user runs "gpcrondump -a -x fullbkdb"
         Then gpcrondump should return a return code of 0
         And the timestamp from gpcrondump is stored 
-        And verify that the report file in " " dir contains "Backup Type: Full"
+        And verify that the "report" file in " " dir contains "Backup Type: Full"
         And the user runs gpdbrestore with the stored timestamp
         And gpdbrestore should return a return code of 0
         And verify that there is a "heap" table "heap_table" in "fullbkdb" with data
@@ -394,7 +400,7 @@ Feature: Validate command line arguments
         Then gpcrondump should return a return code of 0
         And the timestamp from gpcrondump is stored 
         And gpcrondump should print -y is a deprecacted option.  Report files are always generated with the backup set. to stdout
-        And verify that the report file in " " dir contains "Backup Type: Full"
+        And verify that the "report" file in " " dir contains "Backup Type: Full"
         And the user runs gpdbrestore with the stored timestamp
         And gpdbrestore should return a return code of 0
         And verify that there is a "heap" table "heap_table" in "fullbkdb" with data
@@ -426,7 +432,7 @@ Feature: Validate command line arguments
         When the user runs "gpcrondump -a -x fullbkdb"
         Then gpcrondump should return a return code of 0
         And the timestamp from gpcrondump is stored
-        And verify that the report file in " " dir contains "Backup Type: Full"
+        And verify that the "report" file in " " dir contains "Backup Type: Full"
         When the user runs gpdbrestore with the stored timestamp and options "-L" 
         Then gpdbrestore should return a return code of 0
         And gpdbrestore should print Table public.ao_part_table to stdout 
@@ -662,7 +668,7 @@ Feature: Validate command line arguments
         Then gpcrondump should return a return code of 0
         And the temp files "include_dump_tables" are not created in the system
         And the timestamp from gpcrondump is stored 
-        And verify that the report file in " " dir contains "Backup Type: Full"
+        And verify that the "report" file in " " dir contains "Backup Type: Full"
         And the user runs gpdbrestore with the stored timestamp
         And gpdbrestore should return a return code of 0
         And verify that there is a "heap" table "heap_table" in "fullbkdb" with data
@@ -682,7 +688,7 @@ Feature: Validate command line arguments
         And the temp files "exclude_dump_tables" are not created in the system
         And the timestamp from gpcrondump is stored 
         And the user runs gpdbrestore with the stored timestamp
-        And verify that the report file in " " dir contains "Backup Type: Full"
+        And verify that the "report" file in " " dir contains "Backup Type: Full"
         And gpdbrestore should return a return code of 0
         And verify that there is a "ao" table "ao_part_table" in "fullbkdb" with data
         And verify that there is no table "heap_table" in "fullbkdb"
@@ -697,7 +703,7 @@ Feature: Validate command line arguments
         When the user runs "gpcrondump -a -x fullbkdb -s schema_heap"
         Then gpcrondump should return a return code of 0
         And the timestamp from gpcrondump is stored 
-        And verify that the report file in " " dir contains "Backup Type: Full"
+        And verify that the "report" file in " " dir contains "Backup Type: Full"
         And the user runs gpdbrestore with the stored timestamp
         And gpdbrestore should return a return code of 0
         And verify that there is a "heap" table "schema_heap.heap_table" in "fullbkdb" with data
@@ -714,7 +720,7 @@ Feature: Validate command line arguments
         When the user runs "gpcrondump -a -x fullbkdb --exclude-table-file exclude_file"
         Then gpcrondump should return a return code of 0
         And the timestamp from gpcrondump is stored 
-        And verify that the report file in " " dir contains "Backup Type: Full"
+        And verify that the "report" file in " " dir contains "Backup Type: Full"
         And the user runs gpdbrestore with the stored timestamp
         And gpdbrestore should return a return code of 0
         And verify that there is a "co" table "co_part_table" in "fullbkdb" with data
@@ -732,7 +738,7 @@ Feature: Validate command line arguments
         When the user runs "gpcrondump -a -x fullbkdb --table-file include_file"
         Then gpcrondump should return a return code of 0
         And the timestamp from gpcrondump is stored 
-        And verify that the report file in " " dir contains "Backup Type: Full"
+        And verify that the "report" file in " " dir contains "Backup Type: Full"
         And the user runs gpdbrestore with the stored timestamp
         And gpdbrestore should return a return code of 0
         And verify that there is a "ao" table "ao_part_table" in "fullbkdb" with data
@@ -955,7 +961,7 @@ Feature: Validate command line arguments
         And gpcrondump should return a return code of 0
         And the timestamp is labeled "ts1"
         Then the timestamp from gpcrondump is stored 
-        And verify that the report file in " " dir contains "Backup Type: Incremental"
+        And verify that the "report" file in " " dir contains "Backup Type: Incremental"
         And "dirty_list" file should be created under " "
         And all the data from "schematestdb" is saved for verification
         And the user runs gpdbrestore with the stored timestamp
@@ -1021,7 +1027,7 @@ Feature: Validate command line arguments
         And gpcrondump should return a return code of 0
         And the timestamp is labeled "ts1"
         Then the timestamp from gpcrondump is stored 
-        And verify that the report file in " " dir contains "Backup Type: Incremental"
+        And verify that the "report" file in " " dir contains "Backup Type: Incremental"
         And "dirty_list" file should be created under " "
         And all the data from "schematestdb" is saved for verification
         And the user runs gpdbrestore with the stored timestamp
@@ -1106,7 +1112,7 @@ Feature: Validate command line arguments
         And gpcrondump should return a return code of 0
         And the timestamp is labeled "ts1"
         Then the timestamp from gpcrondump is stored 
-        And verify that the report file in " " dir contains "Backup Type: Incremental"
+        And verify that the "report" file in " " dir contains "Backup Type: Incremental"
         And all the data from "schematestdb" is saved for verification
         And the user runs gpdbrestore with the stored timestamp
         And gpdbrestore should return a return code of 0
@@ -1197,7 +1203,7 @@ Feature: Validate command line arguments
         And gpcrondump should return a return code of 0
         And the timestamp is labeled "ts1"
         Then the timestamp from gpcrondump is stored 
-        And verify that the report file in " " dir contains "Backup Type: Incremental"
+        And verify that the "report" file in " " dir contains "Backup Type: Incremental"
         And "dirty_list" file should be created under " "
         And all the data from "schematestdb" is saved for verification
         And the user runs gpdbrestore with the stored timestamp
@@ -1225,7 +1231,7 @@ Feature: Validate command line arguments
         And gpcrondump should return a return code of 0
         And the timestamp is labeled "ts1"
         Then the timestamp from gpcrondump is stored 
-        And verify that the report file in " " dir contains "Backup Type: Incremental"
+        And verify that the "report" file in " " dir contains "Backup Type: Incremental"
         And "dirty_list" file should be created under " "
         And all the data from "schematestdb" is saved for verification
         And the user runs gpdbrestore with the stored timestamp
@@ -1253,7 +1259,7 @@ Feature: Validate command line arguments
         And gpcrondump should return a return code of 0
         And the timestamp is labeled "ts1"
         Then the timestamp from gpcrondump is stored 
-        And verify that the report file in " " dir contains "Backup Type: Incremental"
+        And verify that the "report" file in " " dir contains "Backup Type: Incremental"
         And "dirty_list" file should be created under " "
         And all the data from "schematestdb" is saved for verification
         And the user runs gpdbrestore with the stored timestamp
@@ -1885,7 +1891,7 @@ Feature: Validate command line arguments
         When the user runs "gpcrondump -a -x fullbkdb -u /tmp"
         Then gpcrondump should return a return code of 0
         And the timestamp from gpcrondump is stored
-        And verify that the report file in "/tmp" dir contains "Backup Type: Full"
+        And verify that the "report" file in "/tmp" dir contains "Backup Type: Full"
         When the user runs gpdbrestore with the stored timestamp and options "-L -u /tmp" 
         Then gpdbrestore should return a return code of 0
         And gpdbrestore should print Table public.ao_part_table to stdout 
@@ -2311,7 +2317,7 @@ Feature: Validate command line arguments
          And gpcrondump should print does not exist in to stdout
          And the timestamp from gpcrondump is stored 
          And the user runs gpdbrestore with the stored timestamp
-         And verify that the report file in " " dir contains "Backup Type: Full"
+         And verify that the "report" file in " " dir contains "Backup Type: Full"
          And gpdbrestore should return a return code of 0
          And verify that there is a "ao" table "ao_part_table" in "fullbkdb" with data
          And verify that there is no table "heap_table" in "fullbkdb"
@@ -2629,6 +2635,29 @@ Feature: Validate command line arguments
         And the "pipes" file under " " with options "--incremental" is validated after dump operation
         And the "regular_files" file under " " with options "--incremental" is validated after dump operation
         And there are no dump files created under " " 
+
+    @backupsmoke
+    @filter
+    Scenario: --list-backup-files option for dump with --prefix and filtering
+        Given the database is running
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        And the prefix "foo" is stored
+        When the user runs "gpcrondump -a -x testdb -K 20130101010101 --list-backup-files --verbose --prefix=foo -t ao_index_table"
+        Then gpcrondump should return a return code of 0
+        And gpcrondump should print Added the list of pipe names to the file to stdout
+        And gpcrondump should print Added the list of file names to the file to stdout
+        And gpcrondump should print Successfully listed the names of backup files and pipes to stdout
+        And the timestamp key "20130101010101" for gpcrondump is stored 
+        Then "pipes" file should be created under " "
+        Then "regular_files" file should be created under " "
+        And the "pipes" file under " " with options "-t,--prefix=foo" is validated after dump operation
+        And the "regular_files" file under " " with options "-t,--prefix=foo" is validated after dump operation
+        And there are no dump files created under " "
 
     Scenario: Full Backup and Restore with named pipes
         Given the database is running
@@ -3176,6 +3205,339 @@ Feature: Validate command line arguments
         And the user runs gpdbrestore with the stored timestamp and options "--prefix=foo -u /tmp" 
         And gpdbrestore should return a return code of 0 
         And verify that the data of "11" tables in "testdb" is validated after restore 
+
+    @filter
+    @backupsmoke
+    Scenario: Incremental Backup and Restore with -t filter for Full
+        Given the database is running
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb --prefix=foo -t public.ao_index_table -t public.heap_table1"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored 
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "public.ao_index_table"
+        And verify that the "filter" file in " " dir contains "public.heap_table1"
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -x testdb --prefix=foo --incremental  < gppylib/test/behave/mgmt_utils/steps/data/yes.txt"
+        Then gpcrondump should return a return code of 0 
+        And gpcrondump should print Filtering tables using: to stdout
+        And gpcrondump should print Prefix                        = foo to stdout
+        And gpcrondump should print Full dump timestamp           = [0-9]{14} to stdout
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And the user runs "gpcrondump -x testdb --incremental --prefix=foo -a --list-filter-tables"
+        And gpcrondump should return a return code of 0
+        And gpcrondump should print Filtering testdb for the following tables: to stdout
+        And gpcrondump should print public.ao_index_table to stdout
+        And gpcrondump should print public.heap_table1 to stdout
+        And all the data from "testdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp and options "--prefix=foo" 
+        And gpdbrestore should return a return code of 0 
+        And verify that there is a "heap" table "public.heap_table1" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_index_table" in "testdb" with data
+        And verify that there is no table "public.ao_part_table" in "testdb"
+        And verify that there is no table "public.heap_table2" in "testdb"
+
+    @filter
+    Scenario: Incremental Backup and Restore with -T filter for Full
+        Given the database is running
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb --prefix=foo -T public.ao_part_table -T public.heap_table2"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored 
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "public.ao_index_table"
+        And verify that the "filter" file in " " dir contains "public.heap_table1"
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb --prefix=foo --incremental"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And the user runs "gpcrondump -x testdb --incremental --prefix=foo -a --list-filter-tables"
+        And gpcrondump should return a return code of 0
+        And gpcrondump should print Filtering testdb for the following tables: to stdout
+        And gpcrondump should print public.ao_index_table to stdout
+        And gpcrondump should print public.heap_table1 to stdout
+        And all the data from "testdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp and options "--prefix=foo" 
+        And gpdbrestore should return a return code of 0 
+        And verify that there is a "heap" table "public.heap_table1" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_index_table" in "testdb" with data
+        And verify that there is no table "public.ao_part_table" in "testdb"
+        And verify that there is no table "public.heap_table2" in "testdb"
+
+    @filter
+    Scenario: Incremental Backup and Restore with --table-file filter for Full
+        Given the database is running
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        And there is a table-file "/tmp/table_file_1" with tables "public.ao_index_table, public.heap_table1"
+        When the user runs "gpcrondump -a -x testdb --prefix=foo --table-file /tmp/table_file_1"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored 
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "public.ao_index_table"
+        And verify that the "filter" file in " " dir contains "public.heap_table1"
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        When the temp files "table_file_1" are removed from the system
+        And the user runs "gpcrondump -a -x testdb --prefix=foo --incremental"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And the user runs "gpcrondump -x testdb --incremental --prefix=foo -a --list-filter-tables"
+        And gpcrondump should return a return code of 0
+        And gpcrondump should print Filtering testdb for the following tables: to stdout
+        And gpcrondump should print public.ao_index_table to stdout
+        And gpcrondump should print public.heap_table1 to stdout
+        And all the data from "testdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp and options "--prefix=foo" 
+        And gpdbrestore should return a return code of 0 
+        And verify that there is a "heap" table "public.heap_table1" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_index_table" in "testdb" with data
+        And verify that there is no table "public.ao_part_table" in "testdb"
+        And verify that there is no table "public.heap_table2" in "testdb"
+
+    @filter
+    Scenario: Incremental Backup and Restore with --exclude-table-file filter for Full
+        Given the database is running
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        And there is a table-file "/tmp/exclude_table_file_1" with tables "public.ao_part_table, public.heap_table2"
+        When the user runs "gpcrondump -a -x testdb --prefix=foo --exclude-table-file /tmp/exclude_table_file_1"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored 
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "public.ao_index_table"
+        And verify that the "filter" file in " " dir contains "public.heap_table1"
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        When the temp files "exclude_table_file_1" are removed from the system
+        And the user runs "gpcrondump -a -x testdb --prefix=foo --incremental"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And the user runs "gpcrondump -x testdb --incremental --prefix=foo -a --list-filter-tables"
+        And gpcrondump should return a return code of 0
+        And gpcrondump should print Filtering testdb for the following tables: to stdout
+        And gpcrondump should print public.ao_index_table to stdout
+        And gpcrondump should print public.heap_table1 to stdout
+        And all the data from "testdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp and options "--prefix=foo" 
+        And gpdbrestore should return a return code of 0 
+        And verify that there is a "heap" table "public.heap_table1" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_index_table" in "testdb" with data
+        And verify that there is no table "public.ao_part_table" in "testdb"
+        And verify that there is no table "public.heap_table2" in "testdb"
+
+    @filter
+    Scenario: Multiple Incremental Backups and Restore with -t filter for Full
+        Given the database is running
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb --prefix=foo -t public.ao_index_table -t public.heap_table1 -t public.ao_part_table"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored 
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "public.ao_index_table"
+        And verify that the "filter" file in " " dir contains "public.heap_table1"
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb --prefix=foo --incremental"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored in a list
+        And table "public.ao_part_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb --prefix=foo --incremental"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored in a list
+        And table "public.heap_table1" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb --prefix=foo --incremental"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And the user runs "gpcrondump -x testdb --incremental --prefix=foo -a --list-filter-tables"
+        And gpcrondump should return a return code of 0
+        And gpcrondump should print Filtering testdb for the following tables: to stdout
+        And gpcrondump should print public.ao_index_table to stdout
+        And gpcrondump should print public.heap_table1 to stdout
+        And all the data from "testdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp and options "--prefix=foo" 
+        And gpdbrestore should return a return code of 0 
+        And verify that there is a "heap" table "public.heap_table1" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_index_table" in "testdb" with data
+        And verify that partitioned tables "ao_part_table" in "testdb" have 6 partitions
+        And verify that there is no table "public.heap_table2" in "testdb"
+
+    @filter
+    Scenario: Incremental Backup and Restore with Multiple Schemas and -t filter for Full
+        Given the database is running
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is schema "pepper" exists in "testdb"
+        And there is a "heap" table "pepper.heap_table1" with compression "None" in "testdb" with data
+        And there is a "heap" table "pepper.heap_table2" with compression "None" in "testdb" with data
+        And there is a "ao" table "pepper.ao_table" with compression "None" in "testdb" with data
+        And there is a "co" table "pepper.co_table" with compression "None" in "testdb" with data
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "co" table "co_index_table" with compression "None" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb -K 20120101010101 --prefix=foo -t public.ao_index_table -t public.heap_table1 -t pepper.ao_table -t pepper.heap_table1"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "public.ao_index_table"
+        And verify that the "filter" file in " " dir contains "public.heap_table1"
+        And verify that the "filter" file in " " dir contains "pepper.ao_table"
+        And verify that the "filter" file in " " dir contains "pepper.heap_table1"
+        And table "public.heap_table1" is assumed to be in dirty state in "testdb"
+        And table "pepper.heap_table1" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb -K 20130101010101 --prefix=foo --incremental"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp key "20130101010101" for gpcrondump is stored
+        And all the data from "testdb" is saved for verification
+        When the user truncates "public.ao_index_table, public.heap_table1" tables in "testdb"
+        And the user truncates "pepper.ao_table, pepper.heap_table1" tables in "testdb"
+        And the user runs "gpdbrestore -a -t 20130101010101 --prefix=foo"
+        Then gpdbrestore should return a return code of 0 
+        And verify that there is a "heap" table "public.heap_table1" in "testdb" with data
+        And verify that there is a "heap" table "public.heap_table2" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_index_table" in "testdb" with data
+        And verify that there is a "co" table "public.co_index_table" in "testdb" with data
+        And verify that there is a "heap" table "pepper.heap_table1" in "testdb" with data
+        And verify that there is a "heap" table "pepper.heap_table2" in "testdb" with data
+        And verify that there is a "ao" table "pepper.ao_table" in "testdb" with data
+        And verify that there is a "co" table "pepper.co_table" in "testdb" with data
+
+    @filter
+    Scenario: Multiple Full and Incremental Backups with -t filters for different prefixes in parallel
+        Given the database is running
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_table" with compression "None" in "testdb" with data
+        And there is a "co" table "co_table" with compression "None" in "testdb" with data
+        And the prefix "foo1" is stored
+        When the user runs "gpcrondump -a -x testdb -K 20120101010101 --prefix=foo1 -t public.ao_table -t public.heap_table1"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored 
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "public.ao_table"
+        And verify that the "filter" file in " " dir contains "public.heap_table1"
+        Given the prefix "foo2" is stored
+        When the user runs "gpcrondump -a -x testdb -K 20130101010101 --prefix=foo2 -t public.co_table -t public.heap_table2"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored 
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "public.co_table"
+        And verify that the "filter" file in " " dir contains "public.heap_table2"
+        And table "public.ao_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb -K 20120201010101 --prefix=foo1 --incremental"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And table "public.co_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb -K 20130201010101 --prefix=foo2 --incremental"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        When all the data from "testdb" is saved for verification
+        And the user runs "gpdbrestore -a -e -t 20120201010101 --prefix=foo1"
+        Then gpdbrestore should return a return code of 0 
+        And verify that there is a "heap" table "public.heap_table1" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_table" in "testdb" with data
+        And verify that there is no table "public.heap_table2" in "testdb"
+        And verify that there is no table "public.co_table" in "testdb"
+        When the user runs "gpdbrestore -a -e -t 20130201010101 --prefix=foo2"
+        Then gpdbrestore should return a return code of 0 
+        And verify that there is a "heap" table "public.heap_table2" in "testdb" with data
+        And verify that there is a "co" table "public.co_table" in "testdb" with data
+        And verify that there is no table "public.heap_table1" in "testdb"
+        And verify that there is no table "public.ao_table" in "testdb"
+
+    @filter
+    Scenario: Incremental Backup with table filter on Full Backup should update the tracker files  
+        Given the database is running
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb --prefix=foo -t public.ao_index_table -t public.heap_table1"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored 
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "public.ao_index_table"
+        And verify that the "filter" file in " " dir contains "public.heap_table1"
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb --prefix=foo --incremental"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And "public.ao_index_table" is marked as dirty in dirty_list file
+        And "public.heap_table1" is marked as dirty in dirty_list file
+        And verify that there is no "public.heap_table2" in the "dirty_list" file in " "
+        And verify that there is no "public.ao_part_table" in the "dirty_list" file in " "
+        And verify that there is no "public.heap_table2" in the "table_list" file in " "
+        And verify that there is no "public.ao_part_table" in the "table_list" file in " "
+        And all the data from "testdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp and options "--prefix=foo" 
+        And gpdbrestore should return a return code of 0 
+        And verify that there is a "heap" table "public.heap_table1" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_index_table" in "testdb" with data
+        And verify that there is no table "public.ao_part_table" in "testdb"
+        And verify that there is no table "public.heap_table2" in "testdb"
 
     # THIS SHOULD BE THE LAST TEST
     @backupfire

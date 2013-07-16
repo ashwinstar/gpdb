@@ -11,7 +11,8 @@ test__isFilteringAllowed1(void **state)
 {
 	int role = ROLE_MASTER;
 	bool incremental = true;
-	bool result = isFilteringAllowedNow(role, incremental);
+	char *filter = NULL;
+	bool result = isFilteringAllowedNow(role, incremental, filter);
 	assert_false(result);
 }
 
@@ -20,7 +21,8 @@ test__isFilteringAllowed2(void **state)
 {
 	int role = ROLE_MASTER;
 	bool incremental = false;
-	bool result = isFilteringAllowedNow(role, incremental);
+	char *filter = NULL;
+	bool result = isFilteringAllowedNow(role, incremental, filter);
 	assert_true(result);
 }
 
@@ -29,7 +31,8 @@ test__isFilteringAllowed3(void **state)
 {
 	int role = ROLE_SEGDB;
 	bool incremental = true;
-	bool result = isFilteringAllowedNow(role, incremental);
+	char *filter = NULL;
+	bool result = isFilteringAllowedNow(role, incremental, filter);
 	assert_true(result);
 }
 
@@ -38,7 +41,48 @@ test__isFilteringAllowed4(void **state)
 {
 	int role = ROLE_SEGDB;
 	bool incremental = false;
-	bool result = isFilteringAllowedNow(role, incremental);
+	char *filter = NULL;
+	bool result = isFilteringAllowedNow(role, incremental, filter);
+	assert_true(result);
+}
+
+void 
+test__isFilteringAllowed5(void **state)
+{
+	int role = ROLE_MASTER;
+	bool incremental = true;
+	char *filter = "Filename";
+	bool result = isFilteringAllowedNow(role, incremental, filter);
+	assert_true(result);
+}
+
+void 
+test__isFilteringAllowed6(void **state)
+{
+	int role = ROLE_MASTER;
+	bool incremental = false;
+	char *filter = "Filename";
+	bool result = isFilteringAllowedNow(role, incremental, filter);
+	assert_true(result);
+}
+
+void 
+test__isFilteringAllowed7(void **state)
+{
+	int role = ROLE_SEGDB;
+	bool incremental = true;
+	char *filter = "Filename";
+	bool result = isFilteringAllowedNow(role, incremental, filter);
+	assert_true(result);
+}
+
+void 
+test__isFilteringAllowed8(void **state)
+{
+	int role = ROLE_SEGDB;
+	bool incremental = false;
+	char *filter = "Filename";
+	bool result = isFilteringAllowedNow(role, incremental, filter);
 	assert_true(result);
 }
 
@@ -639,6 +683,10 @@ main(int argc, char* argv[])
 			unit_test(test__isFilteringAllowed2),
 			unit_test(test__isFilteringAllowed3), 
 			unit_test(test__isFilteringAllowed4), 
+			unit_test(test__isFilteringAllowed5),
+			unit_test(test__isFilteringAllowed6),
+			unit_test(test__isFilteringAllowed7), 
+			unit_test(test__isFilteringAllowed8), 
 			unit_test(test__backupTypeString5),
 			unit_test(test__backupTypeString6),
 			unit_test(test__validateTimeStamp7),
