@@ -207,10 +207,10 @@ OPTIONS
 
 
 --table-file <file_name> 
-
- Specify a file that contains a comma-separated list of table names to 
- restore. See the -T option for information about restoring specific 
- tables. 
+ 
+ Specify a file <file_name> that contains a list of table names to 
+ restore. The file contains any number of table names, listed one per 
+ line. See the -T option for information about restoring specific tables. 
 
 
 -u <backup_directory> 
