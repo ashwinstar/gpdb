@@ -7647,6 +7647,8 @@ cleanupDDSystem(void)
 		mpp_err_msg(logError, progname, "ddboost instance destroy failed. Err = %d\n", err);
 		return err;
 	}
+
+	ddp_shutdown();
 	return 0;
 }
 

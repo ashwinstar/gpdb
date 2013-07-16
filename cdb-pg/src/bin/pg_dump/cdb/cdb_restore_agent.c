@@ -73,6 +73,7 @@ int			optreset;
 #ifdef USE_DDBOOST
 #include "ddp_api.h"
 static char *formDDBoostFileName(char *pszBackupKey, bool isPostData, char *ddBoostDir);
+static int cleanupDDSystem(void);
 
 extern ddp_client_info_t dd_client_info;
 
@@ -951,6 +952,11 @@ main(int argc, char **argv)
 		CloseArchive(AH);
 	}
 
+#ifdef USE_DDBOOST
+	if(dd_boost_enabled)
+		cleanupDDSystem();
+#endif
+
 	makeSureMonitorThreadEnds(TASK_RC_SUCCESS, TASK_MSG_SUCCESS);
 
 	DestroyStatusOpList(g_pStatusOpList);
@@ -1530,4 +1536,29 @@ static char *formDDBoostFileName(char *pszBackupKey, bool isPostData, char *dd_b
 
         return pszBackupFileName;
 }
+
+int
+cleanupDDSystem(void)
+{
+	int err = DD_ERR_NONE;
+
+	/* Close the connection */
+	err = ddp_disconnect(ddp_conn);
+	if (err)
+	{
+		mpp_err_msg(logError, progname, "ddboost disconnect failed. Err = %d\n", err);
+		return err;
+	}
+
+	err = ddp_instance_destroy(ddp_inst);
+	if (err)
+	{
+		mpp_err_msg(logError, progname, "ddboost instance destroy failed. Err = %d\n", err);
+		return err;
+	}
+
+	ddp_shutdown();
+	return 0;
+}
+
 #endif
