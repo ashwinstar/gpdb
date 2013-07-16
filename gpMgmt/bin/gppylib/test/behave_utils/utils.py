@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import re, os, time, filecmp
+import re, os, signal, time, filecmp
 
 from gppylib.commands.gp import GpStart, chk_local_db_running
 from gppylib.commands.base import Command, ExecutionError, REMOTE
@@ -828,3 +828,30 @@ def validate_no_aoco_stats(context, dbname, table):
             raise Exception("%s has stats of %d rows in %s table and should be 0" % (table, int(rows[0][0]), tname))
  
 
+def get_pid_for_segment(seg_data_dir, seg_host):
+    cmd = Command(name='get list of postmaster processes',
+                  cmdStr='ps -eaf | grep %s' % seg_data_dir,
+                  ctxt=REMOTE,
+                  remoteHost=seg_host)
+    cmd.run(validateAfter=True)
+
+    pid = None 
+    results = cmd.get_results().stdout.strip().split('\n')
+    for res in results:
+        if 'grep' not in res: 
+            pid = res.split()[1]
+  
+    if pid is None:
+        return None
+
+    return int(pid) 
+
+def kill_process(pid, host=None, sig=signal.SIGTERM):
+    if host is not None:
+        cmd = Command('kill process on a given host',
+                      cmdStr='kill -%d %d' % (sig, pid),
+                      ctxt=REMOTE,
+                      remoteHost=host) 
+        cmd.run(validateAfter=True) 
+    else:
+        os.kill(pid, sig)

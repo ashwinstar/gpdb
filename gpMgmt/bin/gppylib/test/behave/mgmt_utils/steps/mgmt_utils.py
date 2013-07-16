@@ -5,6 +5,7 @@ import re
 import time
 import filecmp
 import shutil
+import signal
 import socket
 
 from gppylib.commands.base import Command, ExecutionError, REMOTE
@@ -26,7 +27,7 @@ from gppylib.test.behave_utils.utils import bring_nic_down, bring_nic_up, get_ta
                                             get_table_oid, verify_truncate_in_pg_stat_last_operation, verify_truncate_not_in_pg_stat_last_operation, insert_numbers, \
                                             populate_partition_diff_data_same_eof, populate_partition_same_data, execute_sql, verify_integer_tuple_counts,  validate_no_aoco_stats, \
                                             check_string_not_present_stdout, clear_all_saved_data_verify_files, copy_file_to_all_db_hosts, validate_num_restored_tables, \
-                                            get_partition_list, verify_stats, drop_external_table_if_exists
+                                            get_partition_list, verify_stats, drop_external_table_if_exists, get_all_hostnames_as_list, get_pid_for_segment, kill_process
 
 from gppylib.operations.dump import get_partition_state
 
@@ -1662,6 +1663,61 @@ def impl(context):
     cmd_str = 'gpssh-exkeys %s' % host_str
     run_gpcommand(context, cmd_str) 
 
+@then('the temp files "{filename_prefix}" are not created in the system')
+def impl(context, filename_prefix):
+    hostlist = get_all_hostnames_as_list(context, 'template1')
+    print hostlist
+    file_pattern = 'ls /tmp/%s* | wc -l' % filename_prefix
+    print file_pattern
+    for host in hostlist:
+        cmd = Command(name='check for temp files', 
+                      cmdStr=file_pattern, 
+                      ctxt=REMOTE, 
+                      remoteHost=host)
+        cmd.run(validateAfter=True)
+        results = cmd.get_results()
+        if int(results.stdout.strip()) > 0:
+            raise Exception('Temp files with prefix %s are not cleaned up on host %s after gpcrondump' % (filename_prefix, host))
+
+@given('user kills a primary postmaster process')
+def impl(context):
+    gparray=GpArray.initFromCatalog(dbconn.DbURL())
+
+    for seg in gparray.getDbList():
+        if seg.isSegmentPrimary():
+            seg_data_dir = seg.getSegmentDataDirectory()
+            seg_host = seg.getSegmentHostName()
+            break
+    
+    pid = get_pid_for_segment(seg_data_dir, seg_host) 
+    if pid is None:
+        raise Exception('Unable to locate segment "%s" on host "%s"' % (seg_data_dir, seg_host))
+
+    kill_process(int(pid), seg_host)
+
+    time.sleep(10)
+
+    pid = get_pid_for_segment(seg_data_dir, seg_host)
+    if pid is not None:
+        raise Exception('Unable to kill postmaster with pid "%d" datadir "%s"' % (pid, seg_data_dir)) 
+
+@given('user can start transactions')
+def impl(context):
+    num_retries = 50
+    attempt = 0
+
+    while attempt < num_retries:
+        try:
+            with dbconn.connect(dbconn.DbURL()) as conn:
+                break
+        except Exception as e:
+            attempt +=1 
+            pass
+        time.sleep(1)
+   
+    if attempt == num_retries:
+        raise Exception('Unable to establish a connection to database !!!') 
+    
 @when('user runs "{cmd}" with sudo access')
 def impl(context, cmd):
     gphome = os.environ.get('GPHOME')

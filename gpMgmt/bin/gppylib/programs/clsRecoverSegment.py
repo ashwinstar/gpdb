@@ -974,7 +974,7 @@ class GpRecoverSegmentProgram:
             self.logger.info("Use  gpstate -s  to check the resynchronization progress.")
             self.logger.info("******************************************************************")
 
-        return 0 # success -- exit code 0!
+        os._exit(0)
 
     def cleanup(self):
         if self.__pool:
