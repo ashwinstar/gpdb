@@ -827,7 +827,18 @@ def validate_no_aoco_stats(context, dbname, table):
         if len(rows) != 0:
             raise Exception("%s has stats of %d rows in %s table and should be 0" % (table, int(rows[0][0]), tname))
  
+def get_all_hostnames_as_list(context, dbname):
+    hosts = []
+    segs = get_segment_hostnames(context, dbname)
+    for seg in segs:
+        hosts.append(seg[0].strip())
 
+    masters = get_master_hostname(dbname)
+    for master in masters:
+        hosts.append(master[0].strip())
+
+    return hosts
+    
 def get_pid_for_segment(seg_data_dir, seg_host):
     cmd = Command(name='get list of postmaster processes',
                   cmdStr='ps -eaf | grep %s' % seg_data_dir,

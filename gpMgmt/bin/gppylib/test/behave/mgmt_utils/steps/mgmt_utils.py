@@ -1640,8 +1640,6 @@ def impl(context, numlines):
     if num_found != numlines:
         raise Exception("Found %d of stored query result but expected %d records" % (num_found, numlines))
 
- 
-
 @given('user does not have ssh permissions') 
 def impl(context):
     user_home = os.environ.get('HOME')
@@ -1700,6 +1698,18 @@ def impl(context):
     pid = get_pid_for_segment(seg_data_dir, seg_host)
     if pid is not None:
         raise Exception('Unable to kill postmaster with pid "%d" datadir "%s"' % (pid, seg_data_dir)) 
+
+@when('the temp files "{filename_prefix}" are removed from the system')
+@given('the temp files "{filename_prefix}" are removed from the system')
+def impl(context, filename_prefix):
+    hostlist = get_all_hostnames_as_list(context, 'template1')
+    print hostlist
+    for host in hostlist:
+        cmd = Command(name='remove data directories',
+                cmdStr='rm -rf /tmp/%s*' % filename_prefix,
+                ctxt=REMOTE,
+                remoteHost=host)
+        cmd.run(validateAfter=True)
 
 @given('user can start transactions')
 def impl(context):

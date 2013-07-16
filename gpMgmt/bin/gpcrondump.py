@@ -35,7 +35,9 @@ try:
                                         write_partition_list_file, write_state_file, get_last_operation_data, \
                                         validate_current_timestamp, generate_dump_timestamp, get_dirty_heap_tables, \
                                         DUMP_DIR
-    from gppylib.operations.backup_utils import get_latest_full_dump_timestamp, check_funny_chars_in_tablenames, expand_partitions_and_populate_filter_file, get_lines_from_file
+    from gppylib.operations.backup_utils import get_latest_full_dump_timestamp, check_funny_chars_in_tablenames, \
+                                                expand_partitions_and_populate_filter_file, get_lines_from_file, \
+                                                remove_file_from_segments
     from gppylib.operations.utils import DEFAULT_NUM_WORKERS
     from gppylib.gparray import GpArray
     from gppylib.db import dbconn
@@ -605,12 +607,15 @@ class GpCronDump(Operation):
             if self.incremental:
                 if os.path.isfile(dirty_file):
                     os.remove(dirty_file)
+                    remove_file_from_segments(self.master_port, dirty_file)
                 write_dirty_file(self.master_datadir, dirty_partitions, self.backup_dir)
 
             if include_file is not None and os.path.exists(include_file): 
                 os.remove(include_file)
+                remove_file_from_segments(self.master_port, include_file)
             if exclude_file is not None and os.path.exists(exclude_file):
                 os.remove(exclude_file)
+                remove_file_from_segments(self.master_port, exclude_file)
 
             write_state_file('ao', self.master_datadir, self.backup_dir, ao_partition_list)
             write_state_file('co', self.master_datadir, self.backup_dir, co_partition_list)

@@ -194,8 +194,10 @@ Feature: Validate command line arguments
         And the "last_operation" files are generated under " " for stored "full" timestamp
         When partition "1" of partition table "ao_part_table, co_part_table_comp, part_mixed_1" is assumed to be in dirty state in "bkdb" in schema "public"
         And table "public.ao_index_table" is assumed to be in dirty state in "bkdb"
+        And the temp files "dirty_backup_list" are removed from the system
         And the user runs "gpcrondump -a --incremental -x bkdb"
         Then gpcrondump should return a return code of 0
+        And the temp files "dirty_backup_list" are not created in the system
         And gpcrondump should not print Validating disk space to stdout 
         And the timestamp from gpcrondump is stored 
         And the state files are generated under " " for stored "incr" timestamp 
@@ -645,11 +647,15 @@ Feature: Validate command line arguments
     @fire
     Scenario: Full Backup with option -t and Restore
         Given the database is running
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
         And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
         And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
         And there is a backupfile of tables "heap_table, ao_part_table" in "fullbkdb" exists for validation
+        And the temp files "include_dump_tables" are removed from the system
         When the user runs "gpcrondump -a -x fullbkdb -t public.heap_table"
         Then gpcrondump should return a return code of 0
+        And the temp files "include_dump_tables" are not created in the system
         And the timestamp from gpcrondump is stored 
         And verify that the report file in " " dir contains "Backup Type: Full"
         And the user runs gpdbrestore with the stored timestamp
@@ -660,11 +666,15 @@ Feature: Validate command line arguments
     @fire
     Scenario: Full Backup with option -T and Restore
         Given the database is running
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
         And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
         And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
         And there is a backupfile of tables "heap_table, ao_part_table" in "fullbkdb" exists for validation
+        And the temp files "exclude_dump_tables" are removed from the system
         When the user runs "gpcrondump -a -x fullbkdb -T public.heap_table"
         Then gpcrondump should return a return code of 0
+        And the temp files "exclude_dump_tables" are not created in the system
         And the timestamp from gpcrondump is stored 
         And the user runs gpdbrestore with the stored timestamp
         And verify that the report file in " " dir contains "Backup Type: Full"
