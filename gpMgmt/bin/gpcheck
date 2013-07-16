@@ -11,6 +11,7 @@ try:
     from gppylib.commands.unix import getLocalHostname, getUserName, SYSTEM
     from gppylib.commands.base import WorkerPool, Command, REMOTE
     from gppylib.gpcheckutil import HostType, hosttype_str
+    from gppylib.operations.gpcheck import get_host_for_command, get_command, get_copy_command
 
 except ImportError, e:    
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
@@ -71,6 +72,7 @@ def parseargs():
     parser.add_option('-h', '--host',  type='string')
     parser.add_option('-m', '--master', type='string')
     parser.add_option('-s', '--standbymaster', type='string')
+    parser.add_option('--local', action='store_true')
     (options, args) = parser.parse_args()
 
     global gphome
@@ -84,12 +86,12 @@ def parseargs():
 
     GPCHECK_CONFIGFILE_GPHOME = "%s/etc/gpcheck.cnf" % gphome
 
-    if not options.file and not options.host and not options.zipin:
-        logger.error(" --file or --host or --zipin must be specified")
+    if not options.local and not options.file and not options.host and not options.zipin:
+        logger.error(" --local or --file or --host or --zipin must be specified")
         return True
 
-    if options.file and options.host:
-        logger.error(" Only 1 of --file or --host can be specified")
+    if (options.local and options.file) or (options.local and options.host) or (options.file and options.host):
+        logger.error(" Only 1 of --file or --host or --local can be specified")
         return True
 
     if options.stdout and options.zipout:
@@ -133,19 +135,23 @@ def createHostList():
             logger.error(e.__str__())
             return True
 
-    else:
+    elif options.host:
 
         hostlist.append(options.host)
+  
+    elif options.local:
+        hostlist.append(getLocalHostname())
 
     try:
         for hostname in hostlist:
-            cmd = Command(hostname, "hostname", REMOTE, hostname)
+            cmd_str = 'hostname'
+            cmd = get_command(options.local, cmd_str, hostname)
             pool.addCommand(cmd)
 
         pool.join()
         items = pool.getCompletedItems()
         for i in items:
-            address = i.remoteHost
+            address = get_host_for_command(options.local, i) 
             if i.results.rc or i.results.halt or not i.results.completed:
                 logger.error("error obtaining information from host %s" % address)
                 logger.error(i.results.stderr.strip())
@@ -198,20 +204,21 @@ def runCollectionOnServers():
 
             if options.verbose:
                 logger.info("check host: %s" % host)
-
-            cmdStr = "%s/sbin/gpcheck_hostdump %s" % (gphome, host_type_cl)
-            cmd = Command(host, cmdStr, REMOTE, host)
+        
+            cmd_str = '%s/sbin/gpcheck_hostdump %s' % (gphome, host_type_cl)
+            cmd = get_command(options.local, cmd_str, host)
             pool.addCommand(cmd)
 
         pool.join()
         items = pool.getCompletedItems()
         for i in items:
+            host = get_host_for_command(options.local, i)
             if i.results.rc or i.results.halt or not i.results.completed:
-                logger.error("error obtaining information from host %s" % i.remoteHost)
+                logger.error("error obtaining information from host %s" % host)
                 logger.error(i.results.stderr.strip())
                 return True
 
-            gpcheck_info.hosts[i.remoteHost].datafile = i.results.stdout.strip()
+            gpcheck_info.hosts[host].datafile = i.results.stdout.strip()
             
     except Exception, e:
         logger.error("Exception collecting data from servers")
@@ -229,8 +236,7 @@ def copyFilesLocally():
 
     try:
         for host in gpcheck_info.hosts.keys():
-            cmdStr = "scp %s:%s %s/%s.data" % (host, gpcheck_info.hosts[host].datafile, tmpdir, host)
-            cmd = Command(host, cmdStr)
+            cmd = get_copy_command(options.local, host, gpcheck_info.hosts[host].datafile, tmpdir)
             pool.addCommand(cmd)
 
         pool.join()
@@ -254,8 +260,8 @@ def deleteRemoteFiles():
 
     try:
         for host in gpcheck_info.hosts.keys():
-            cmdStr = "rm -f %s" % gpcheck_info.hosts[host].datafile
-            cmd = Command(host, cmdStr, REMOTE, host)
+            cmd_str = "rm -f %s" % gpcheck_info.hosts[host].datafile
+            cmd = get_command(options.local, cmd_str, host)
             pool.addCommand(cmd)
 
         pool.join()

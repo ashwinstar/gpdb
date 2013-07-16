@@ -1641,3 +1641,37 @@ def impl(context, numlines):
 
  
 
+@given('user does not have ssh permissions') 
+def impl(context):
+    user_home = os.environ.get('HOME')
+    authorized_keys_file = '%s/.ssh/authorized_keys' % user_home
+    if os.path.exists(os.path.abspath(authorized_keys_file)):
+       shutil.move(authorized_keys_file, '%s.bk' % authorized_keys_file) 
+
+@then('user has ssh permissions') 
+def impl(context):
+    user_home = os.environ.get('HOME')
+    authorized_keys_backup_file = '%s/.ssh/authorized_keys.bk' % user_home
+    if os.path.exists(authorized_keys_backup_file):
+        shutil.move(authorized_keys_backup_file, authorized_keys_backup_file[:-3])
+
+@given('we have exchanged keys with the cluster')
+def impl(context):
+    hostlist = get_all_hostnames_as_list(context, 'template1')
+    host_str = ' -h '.join(hostlist)
+    cmd_str = 'gpssh-exkeys %s' % host_str
+    run_gpcommand(context, cmd_str) 
+
+@when('user runs "{cmd}" with sudo access')
+def impl(context, cmd):
+    gphome = os.environ.get('GPHOME')
+    python_path = os.environ.get('PYTHONPATH')
+    python_home = os.environ.get('PYTHONHOME')
+    ld_library_path = os.environ.get('LD_LIBRARY_PATH')
+    path = os.environ.get('PATH')
+    cmd_str = """sudo GPHOME=%s 
+                    PATH=%s 
+                    PYTHONHOME=%s 
+                    PYTHONPATH=%s 
+                    LD_LIBRARY_PATH=%s %s/bin/%s""" % (gphome, path, python_home, python_path, ld_library_path, gphome, cmd) 
+    run_command(context, cmd_str) 
