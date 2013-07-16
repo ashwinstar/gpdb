@@ -2124,11 +2124,30 @@ FileRep_ProcessSignals()
 
 	if (immediateShutdownRequested)
 	{
-	    elog(FILEREP_PROCESS_LOG_LEVEL, "Filerep Immediate shutdown requested");
+	    SegmentState_e segState;
+
 		immediateShutdownRequested = false;
-		FileRep_SignalChildren(SIGQUIT, false);
-		processExit = true;
-		exitWithImmediateShutdown = true;
+	    elog(FILEREP_PROCESS_LOG_LEVEL, "Filerep Immediate shutdown requested");
+		getPrimaryMirrorStatusCodes(NULL, &segState, NULL, NULL);
+
+		/*
+		 * Someone told me to shutdown immediately, but if segment state
+		 * doesn't agree let's tell postmaster try so.  We must not send
+		 * SIGQUIT to children if this doesn't agree, because then mirror
+		 * will be confused and finally its postmaster will die.  The only
+		 * guy who can tell SIGQUIT correctly is postmaster, and he should
+		 * correctly set segment state.  See signal_filerep_to_shutdown().
+		 * If postmaster doesn't exist and we get this message, anyway the
+		 * next PostmasterIsAlive check will lead to the process exit.
+		 */
+		if (segState != SegmentStateImmediateShutdown)
+			FileRep_SetPostmasterReset();
+		else
+		{
+			FileRep_SignalChildren(SIGQUIT, false);
+			processExit = true;
+			exitWithImmediateShutdown = true;
+		}
 	}
 
 	/*
