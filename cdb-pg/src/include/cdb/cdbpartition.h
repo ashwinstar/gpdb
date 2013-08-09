@@ -64,22 +64,10 @@ typedef struct PartitionHashState
 /* part rule update */
 typedef struct part_rule_cxt
 {
-	Oid old;
-	Oid new;
+	Oid old_oid;
+	Oid new_oid;
 } part_rule_cxt;
 
-typedef struct LogicalIndexInfo
-{
-	Oid	logicalIndexOid;	/* OID of the logical index */
-	int	nColumns;		/* Number of columns in the index */
-	AttrNumber	*indexKeys;	/* column numbers of index keys */
-	List	*indPred;		/* predicate if partial index, or NIL */
-	List	*indExprs;		/* index on expressions */
-	bool	indIsUnique;		/* unique index */
-	Node	*partCons;		/* concatenated list of check constraints 
-					 * of each partition on which this index is defined */
-	List	*defaultLevels;		/* Used to identify a default partition */
-} LogicalIndexInfo;
 
 typedef struct LogicalIndexes
 {
@@ -147,6 +135,9 @@ partMakePartition(HeapTuple tuple,
 extern List *
 all_partition_relids(PartitionNode *pn);
 
+extern Node *
+get_relation_part_constraints(Oid rootOid, bool *fDefaultPartition);
+
 extern List *
 all_prule_relids(PartitionRule *prule);
 
@@ -183,12 +174,11 @@ get_parts(Oid relid, int2 level, Oid parent, bool inctemplate,
 extern Oid  rel_partition_get_master(Oid relid);
 
 extern char *
-ChoosePartitionName(const char *tablename, int partDepth,
-					const char *partname, Oid namespace);
+ChoosePartitionName(const char *tablename, int partDepth, const char *partname, Oid nspace);
 
 extern Oid selectPartition(PartitionNode *partnode, Datum *values,
 						   bool *isnull, TupleDesc tupdesc,
-						   PartitionState *pstate);
+						   PartitionAccessMethods *accessMethods);
 
 extern Node *atpxPartAddList(Relation rel, 
 							 AlterPartitionCmd *pc,
@@ -231,7 +221,7 @@ basic_AT_oids(Relation rel, AlterTableCmd *cmd);
 
 extern AlterTableCmd *basic_AT_cmd(AlterTableCmd *cmd);
 extern bool can_implement_dist_on_part(Relation rel, List *dist_cnames);
-extern bool is_exchangeable(Relation rel, Relation oldrel, Relation newrel, bool throw);
+extern bool is_exchangeable(Relation rel, Relation oldrel, Relation newrel, bool fthrow);
 
 extern char *
 ChooseConstraintNameForPartitionEarly(Relation rel, ConstrType contype, Node *expr);
@@ -244,7 +234,7 @@ checkUniqueConstraintVsPartitioning(Relation rel, AttrNumber *indattr, int nidxa
 
 extern List *
 selectPartitionMulti(PartitionNode *partnode, Datum *values, bool *isnull,
-				 TupleDesc tupdesc, PartitionState *pstate);
+				 TupleDesc tupdesc, PartitionAccessMethods *accessMethods);
 
 extern void AddPartitionEncoding(Oid relid, Oid paroid, AttrNumber attnum,
 								 bool deflt, List *encoding);
@@ -254,5 +244,9 @@ extern Datum *get_partition_encoding_attoptions(Relation rel, Oid paroid);
 
 extern LogicalIndexes * BuildLogicalIndexInfo(Oid relid);
 extern Oid getPhysicalIndexRelid(LogicalIndexInfo *iInfo, Oid rootOid, Oid partOid);
+extern Oid	exprType(Node *expr);
+extern Node *makeBoolConst(bool value, bool isnull);
+
+extern LogicalIndexInfo *logicalIndexInfoForIndexOid(Oid rootOid, Oid indexOid);
 
 #endif   /* CDBPARTITION_H */

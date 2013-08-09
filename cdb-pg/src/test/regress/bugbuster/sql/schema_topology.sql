@@ -275,7 +275,7 @@ create database create_objects_db;
 --Create Function
     
     CREATE FUNCTION add(integer,integer) RETURNS integer AS 'select $1 + $2;'
-    LANGUAGE SQL IMMUTABLE
+    LANGUAGE SQL IMMUTABLE CONTAINS SQL
     RETURNS NULL ON NULL INPUT;
     --DROP FUNCTION add(integer,integer);
     
@@ -863,7 +863,7 @@ create database create_objects_db;
 --Create Function
 
     CREATE FUNCTION add(integer,integer) RETURNS integer AS 'select $1 + $2;'
-    LANGUAGE SQL IMMUTABLE
+    LANGUAGE SQL IMMUTABLE CONTAINS SQL
     RETURNS NULL ON NULL INPUT;
     --DROP FUNCTION add(integer,integer);
 
@@ -1543,7 +1543,7 @@ create database alter_table_db;
           END IF;
           RETURN new;
           END
-          ' LANGUAGE plpgsql;
+          ' LANGUAGE plpgsql MODIFIES SQL DATA;
 
           --create a trigger on the table you wish to monitor:
 
@@ -2599,8 +2599,8 @@ ALTER DOMAIN domain_3 SET SCHEMA domain_schema;
 
 CREATE OR REPLACE FUNCTION add(integer, integer) RETURNS integer 
     AS 'select $1 + $2;' 
-    LANGUAGE SQL 
-    STABLE
+    LANGUAGE SQL CONTAINS SQL
+    STABLE 
     RETURNS NULL ON NULL INPUT; 
 \echo -- start_ignore
 CREATE LANGUAGE plpgsql;
@@ -2610,29 +2610,29 @@ integer AS $$
         BEGIN 
                 RETURN i + 1; 
         END; 
-$$ LANGUAGE plpgsql
+$$ LANGUAGE plpgsql NO SQL
 VOLATILE; 
 
 
 CREATE FUNCTION dup(in int, out f1 int, out f2 text) 
     AS $$ SELECT $1, CAST($1 AS text) || ' is text' $$ 
-    LANGUAGE SQL IMMUTABLE STRICT;
+    LANGUAGE SQL IMMUTABLE STRICT CONTAINS SQL;
 
 CREATE FUNCTION dup1(in int, out f1 int, out f2 text) 
     AS $$ SELECT $1, CAST($1 AS text) || ' is text' $$ 
-    LANGUAGE SQL IMMUTABLE CALLED ON NULL INPUT  EXTERNAL  SECURITY INVOKER  ;
+    LANGUAGE SQL IMMUTABLE CONTAINS SQL CALLED ON NULL INPUT  EXTERNAL  SECURITY INVOKER  ;
 
 CREATE FUNCTION dup2(in int, out f1 int, out f2 text) 
     AS $$ SELECT $1, CAST($1 AS text) || ' is text' $$ 
-    LANGUAGE SQL IMMUTABLE CALLED ON NULL INPUT  EXTERNAL  SECURITY DEFINER  ;
+    LANGUAGE SQL IMMUTABLE CONTAINS SQL CALLED ON NULL INPUT  EXTERNAL  SECURITY DEFINER  ;
 
 CREATE FUNCTION dup3(in int, out f1 int, out f2 text) 
     AS $$ SELECT $1, CAST($1 AS text) || ' is text' $$ 
-    LANGUAGE SQL IMMUTABLE CALLED ON NULL INPUT  SECURITY INVOKER  ;
+    LANGUAGE SQL IMMUTABLE CONTAINS SQL CALLED ON NULL INPUT  SECURITY INVOKER  ;
 
 CREATE FUNCTION dup4(in int, out f1 int, out f2 text) 
     AS $$ SELECT $1, CAST($1 AS text) || ' is text' $$ 
-    LANGUAGE SQL IMMUTABLE CALLED ON NULL INPUT  SECURITY DEFINER  ;
+    LANGUAGE SQL IMMUTABLE CONTAINS SQL CALLED ON NULL INPUT  SECURITY DEFINER  ;
 
 CREATE ROLE func_role;
 CREATE SCHEMA func_schema;
@@ -2652,14 +2652,14 @@ ALTER FUNCTION dup(in int, out f1 int, out f2 text) IMMUTABLE STRICT SECURITY DE
 CREATE FUNCTION scube_accum(numeric, numeric) RETURNS 
 numeric 
     AS 'select $1 + $2 * $2 * $2' 
-    LANGUAGE SQL 
+    LANGUAGE SQL CONTAINS SQL
     IMMUTABLE 
     RETURNS NULL ON NULL INPUT; 
 
 CREATE FUNCTION pre_accum(numeric, numeric) RETURNS 
 numeric 
     AS 'select $1 + $2 * $2 * $2 * $2' 
-    LANGUAGE SQL 
+    LANGUAGE SQL CONTAINS SQL
     IMMUTABLE 
     RETURNS NULL ON NULL INPUT; 
 
@@ -2667,7 +2667,7 @@ numeric
 CREATE FUNCTION final_accum(numeric) RETURNS 
 numeric 
     AS 'select $1 + $1 * $1' 
-    LANGUAGE SQL 
+    LANGUAGE SQL CONTAINS SQL
     IMMUTABLE 
     RETURNS NULL ON NULL INPUT; 
 
@@ -3012,7 +3012,7 @@ BEGIN
     RETURN $1*$2;
 END;
  
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql NO SQL;
 
 create view sch_fn_view2 as select  sch_multiply(4,5);
 
@@ -3025,7 +3025,7 @@ $BODY$
 SELECT CASE WHEN $1 THEN 1 ELSE 0 END;
 
 $BODY$
-  LANGUAGE 'sql' IMMUTABLE;
+  LANGUAGE 'sql' IMMUTABLE CONTAINS SQL;
 
 \echo -- start_ignore
 CREATE CAST (boolean AS int4) WITH FUNCTION int4(boolean) AS ASSIGNMENT;
@@ -3383,7 +3383,7 @@ CREATE INDEX st_GistIndex1 ON st_GistTable1 USING GiST (property);
 CREATE OR REPLACE FUNCTION st_TO_BOX(TEXT) RETURNS BOX AS
   $$
     SELECT box_in(textout($1))
-  $$ LANGUAGE SQL;
+  $$ LANGUAGE SQL CONTAINS SQL;
 
 CREATE OR REPLACE FUNCTION st_insertIntost_GistTable1 (seed INTEGER) RETURNS VOID
 AS
@@ -3399,8 +3399,7 @@ BEGIN
    INSERT INTO st_GistTable1(id, property) VALUES (seed, st_TO_BOX(CAST(str1 AS TEXT)) );
 END;
 $$
-LANGUAGE PLPGSQL
-;
+LANGUAGE PLPGSQL MODIFIES SQL DATA;
 
 CREATE OR REPLACE FUNCTION st_insertManyIntost_GistTable1 (startValue INTEGER, endValue INTEGER) RETURNS VOID
 AS
@@ -3415,8 +3414,7 @@ BEGIN
    END LOOP;
 END;
 $$
-LANGUAGE PLPGSQL
-;
+LANGUAGE PLPGSQL MODIFIES SQL DATA;
 
 -- Insert approximately 2000 records.
 SELECT st_insertManyIntost_GistTable1(3, 2000);
@@ -3651,12 +3649,12 @@ CREATE type int_type1;
 CREATE FUNCTION int_type1_in(cstring) 
  RETURNS int_type1
  AS 'int4in' 
- LANGUAGE internal IMMUTABLE STRICT; 
+ LANGUAGE internal IMMUTABLE STRICT NO SQL; 
 
 CREATE FUNCTION int_type1_out(int_type1) 
  RETURNS cstring
  AS 'int4out' 
- LANGUAGE internal IMMUTABLE STRICT; 
+ LANGUAGE internal IMMUTABLE STRICT NO SQL; 
 
 CREATE TYPE int_type1( 
  input = int_type1_in ,
@@ -3675,13 +3673,13 @@ CREATE TYPE int_type1(
 CREATE FUNCTION int_type1_in(cstring) 
  RETURNS int_type1
  AS 'int4in' 
- LANGUAGE internal IMMUTABLE STRICT; 
+ LANGUAGE internal IMMUTABLE STRICT NO SQL; 
 
 
 CREATE FUNCTION int_type1_out(int_type1) 
  RETURNS cstring
  AS 'int4out' 
- LANGUAGE internal IMMUTABLE STRICT; 
+ LANGUAGE internal IMMUTABLE STRICT NO SQL; 
 
 
 CREATE TYPE int_type1( 
@@ -3703,12 +3701,12 @@ CREATE type char_type1;
 CREATE FUNCTION char_type1_in(cstring) 
  RETURNS char_type1
  AS 'charin' 
- LANGUAGE internal IMMUTABLE STRICT; 
+ LANGUAGE internal IMMUTABLE STRICT NO SQL; 
 
 CREATE FUNCTION char_type1_out(char_type1) 
  RETURNS cstring
  AS 'charout' 
- LANGUAGE internal IMMUTABLE STRICT; 
+ LANGUAGE internal IMMUTABLE STRICT NO SQL; 
 
 CREATE TYPE char_type1( 
  input = char_type1_in ,
@@ -3727,13 +3725,13 @@ CREATE TYPE char_type1(
 CREATE FUNCTION char_type1_in(cstring) 
  RETURNS char_type1
  AS 'charin' 
- LANGUAGE internal IMMUTABLE STRICT; 
+ LANGUAGE internal IMMUTABLE STRICT NO SQL; 
 
 
 CREATE FUNCTION char_type1_out(char_type1) 
  RETURNS cstring
  AS 'charout' 
- LANGUAGE internal IMMUTABLE STRICT; 
+ LANGUAGE internal IMMUTABLE STRICT NO SQL; 
 
 
 CREATE TYPE char_type1( 
@@ -3755,12 +3753,12 @@ CREATE type text_type1;
 CREATE FUNCTION text_type1_in(cstring) 
  RETURNS text_type1
  AS 'textin' 
- LANGUAGE internal IMMUTABLE STRICT; 
+ LANGUAGE internal IMMUTABLE STRICT NO SQL; 
 
 CREATE FUNCTION text_type1_out(text_type1) 
  RETURNS cstring
  AS 'textout' 
- LANGUAGE internal IMMUTABLE STRICT; 
+ LANGUAGE internal IMMUTABLE STRICT NO SQL; 
 
 CREATE TYPE text_type1( 
  input = text_type1_in ,
@@ -3778,13 +3776,13 @@ CREATE TYPE text_type1(
 CREATE FUNCTION text_type1_in(cstring) 
  RETURNS text_type1
  AS 'textin' 
- LANGUAGE internal IMMUTABLE STRICT; 
+ LANGUAGE internal IMMUTABLE STRICT NO SQL; 
 
 
 CREATE FUNCTION text_type1_out(text_type1) 
  RETURNS cstring
  AS 'textout' 
- LANGUAGE internal IMMUTABLE STRICT; 
+ LANGUAGE internal IMMUTABLE STRICT NO SQL; 
 
 
 CREATE TYPE text_type1( 
@@ -3805,12 +3803,12 @@ CREATE type varchar_type1;
 CREATE FUNCTION varchar_type1_in(cstring) 
  RETURNS varchar_type1
  AS 'varcharin' 
- LANGUAGE internal IMMUTABLE STRICT; 
+ LANGUAGE internal IMMUTABLE STRICT NO SQL; 
 
 CREATE FUNCTION varchar_type1_out(varchar_type1) 
  RETURNS cstring
  AS 'varcharout' 
- LANGUAGE internal IMMUTABLE STRICT; 
+ LANGUAGE internal IMMUTABLE STRICT NO SQL; 
 
 CREATE TYPE varchar_type1( 
  input = varchar_type1_in ,
@@ -3828,13 +3826,13 @@ CREATE TYPE varchar_type1(
 CREATE FUNCTION varchar_type1_in(cstring) 
  RETURNS varchar_type1
  AS 'varcharin' 
- LANGUAGE internal IMMUTABLE STRICT; 
+ LANGUAGE internal IMMUTABLE STRICT NO SQL; 
 
 
 CREATE FUNCTION varchar_type1_out(varchar_type1) 
  RETURNS cstring
  AS 'varcharout' 
- LANGUAGE internal IMMUTABLE STRICT; 
+ LANGUAGE internal IMMUTABLE STRICT NO SQL; 
 
 
 CREATE TYPE varchar_type1( 
@@ -3855,12 +3853,12 @@ CREATE type date_type1;
 CREATE FUNCTION date_type1_in(cstring) 
  RETURNS date_type1
  AS 'date_in' 
- LANGUAGE internal IMMUTABLE STRICT; 
+ LANGUAGE internal IMMUTABLE STRICT NO SQL; 
 
 CREATE FUNCTION date_type1_out(date_type1) 
  RETURNS cstring
  AS 'date_out' 
- LANGUAGE internal IMMUTABLE STRICT; 
+ LANGUAGE internal IMMUTABLE STRICT NO SQL; 
 
 CREATE TYPE date_type1( 
  input = date_type1_in ,
@@ -3879,13 +3877,13 @@ CREATE TYPE date_type1(
 CREATE FUNCTION date_type1_in(cstring) 
  RETURNS date_type1
  AS 'date_in' 
- LANGUAGE internal IMMUTABLE STRICT; 
+ LANGUAGE internal IMMUTABLE STRICT NO SQL; 
 
 
 CREATE FUNCTION date_type1_out(date_type1) 
  RETURNS cstring
  AS 'date_out' 
- LANGUAGE internal IMMUTABLE STRICT; 
+ LANGUAGE internal IMMUTABLE STRICT NO SQL; 
 
 
 CREATE TYPE date_type1( 
@@ -3907,12 +3905,12 @@ CREATE type timestamp_type1;
 CREATE FUNCTION timestamp_type1_in(cstring) 
  RETURNS timestamp_type1
  AS 'timestamp_in' 
- LANGUAGE internal IMMUTABLE STRICT; 
+ LANGUAGE internal IMMUTABLE STRICT NO SQL; 
 
 CREATE FUNCTION timestamp_type1_out(timestamp_type1) 
  RETURNS cstring
  AS 'timestamp_out' 
- LANGUAGE internal IMMUTABLE STRICT; 
+ LANGUAGE internal IMMUTABLE STRICT NO SQL; 
 
 CREATE TYPE timestamp_type1( 
  input = timestamp_type1_in ,
@@ -3931,13 +3929,13 @@ CREATE TYPE timestamp_type1(
 CREATE FUNCTION timestamp_type1_in(cstring) 
  RETURNS timestamp_type1
  AS 'timestamp_in' 
- LANGUAGE internal IMMUTABLE STRICT; 
+ LANGUAGE internal IMMUTABLE STRICT NO SQL; 
 
 
 CREATE FUNCTION timestamp_type1_out(timestamp_type1) 
  RETURNS cstring
  AS 'timestamp_out' 
- LANGUAGE internal IMMUTABLE STRICT; 
+ LANGUAGE internal IMMUTABLE STRICT NO SQL;
 
 
 CREATE TYPE timestamp_type1( 

@@ -22,7 +22,7 @@ begin
 	create table cache_tab (id int) distributed randomly;
 	insert into cache_tab values (1);
 end;
-$$ language plpgsql;
+$$ language plpgsql MODIFIES SQL DATA;
 
 select cache_test();
 
@@ -59,7 +59,7 @@ begin
 	select c1 from cache_tab where c2 = id INTO v_int; 
 	return v_int;
 end;
-$$ language plpgsql;
+$$ language plpgsql READS SQL DATA;
 
 select * from cache_test(1);
 
@@ -99,7 +99,7 @@ begin
 	select name from cache_tab into v_name where id = var; 
 	return v_name;
 end;
-$$ language plpgsql;
+$$ language plpgsql READS SQL DATA;
 
 select * from cache_test(1);
 
@@ -142,7 +142,7 @@ begin
 	return $1;
 end;
 $$
-language plpgsql;
+language plpgsql READS SQL DATA;
 
 begin;
 select cache_test('refcursor');
@@ -199,7 +199,7 @@ begin
 	end loop;
 	return total_res;
 end;
-$$ language plpgsql;
+$$ language plpgsql READS SQL DATA;
 
 select cache_test(1); 
 
@@ -249,7 +249,7 @@ begin
 		return 0;
 	end if;
 end;
-$$ language plpgsql;
+$$ language plpgsql READS SQL DATA;
    
 select * from cache_tab where c1 = cache_test(); 
 
@@ -295,7 +295,7 @@ loop
 	end if;
 end loop;
 end;
-$$ language plpgsql; 
+$$ language plpgsql READS SQL DATA; 
 
 select cache_test(100); 
 
@@ -335,7 +335,7 @@ create function cache_test() returns void AS $$
 begin
 	perform c1 from cache_tab;
 end;
-$$ language plpgsql;
+$$ language plpgsql READS SQL DATA;
 
 select cache_test();
 
@@ -377,7 +377,7 @@ drop function if exists get_cache_tab();
 
 create function get_cache_tab() returns setof cache_tab as $$
 	select * from cache_tab where a = 1;
-$$ language sql;
+$$ language sql READS SQL DATA;
 
 create function cache_test() returns setof integer as
 $$
@@ -390,7 +390,7 @@ begin
 	end loop;
 	return;
 end
-$$ language plpgsql;
+$$ language plpgsql READS SQL DATA;
 
 select cache_test();
 
@@ -398,7 +398,7 @@ drop function if exists get_cache_tab();
 
 create function get_cache_tab() returns setof cache_tab as $$
   select * from cache_tab where a = 2;
-$$ language sql;
+$$ language sql READS SQL DATA;
 
 
 -- plan should not be cached, returns different results
@@ -428,7 +428,7 @@ begin
 	drop table if exists cache_temp;
 	create table cache_temp as select * from cache_tab distributed randomly;
 end
-$$ language plpgsql; 
+$$ language plpgsql MODIFIES SQL DATA; 
 
 select cache_test();
 
@@ -478,7 +478,7 @@ begin
   	end if; 
   	return cache_test($1-1);
 end; 
-$$ language plpgsql;
+$$ language plpgsql MODIFIES SQL DATA;
 
 select cache_test(5);
 
@@ -502,7 +502,7 @@ begin
   	end if; 
   	return cache_test($1-1);
 end; 
-$$ language plpgsql;
+$$ language plpgsql MODIFIES SQL DATA;
 
 -- this will fail
 select cache_test(5);
@@ -533,7 +533,7 @@ begin
 	create table cache_tab (id int) distributed randomly;
 	insert into cache_tab values (1);
 end;
-$$ language plpgsql;
+$$ language plpgsql MODIFIES SQL DATA;
 
 
 BEGIN;
@@ -577,7 +577,7 @@ begin
 		count := count - 1;
 	end loop;
 end;
-$$ language plpgsql;
+$$ language plpgsql MODIFIES SQL DATA;
 
 -- this will fail
 select cache_test();
@@ -605,7 +605,7 @@ begin
 		count := count - 1;
 	end loop;
 end;
-$$ language plpgsql;
+$$ language plpgsql MODIFIES SQL DATA;
 
 select cache_test();
 

@@ -1,8 +1,8 @@
 -- Unit tests for gpupgrade funcitonality
 
 -- Expose interface to 3.0 -> 3.1 serialised strange modifier
-create or replace function gp_str302node2str(text) returns text as '$libdir/libgpupgradefuncs.so', 'gp_str30_2node2str' language c strict volatile;
-create or replace function gp_str312node2str(text) returns text as '$libdir/libgpupgradefuncs.so', 'gp_str31_2node2str' language c strict volatile;
+create or replace function gp_str302node2str(text) returns text as '$libdir/libgpupgradefuncs.so', 'gp_str30_2node2str' language c strict volatile NO SQL;
+create or replace function gp_str312node2str(text) returns text as '$libdir/libgpupgradefuncs.so', 'gp_str31_2node2str' language c strict volatile NO SQL;
 
 -- Some sample strings we mustbe able to upgrade
 create table nodetest (testname text, oldnode text, newnode text);

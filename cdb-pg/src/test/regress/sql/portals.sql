@@ -194,7 +194,7 @@ BEGIN;
 CREATE FUNCTION declares_cursor(text)
    RETURNS void
    AS 'DECLARE c CURSOR FOR SELECT stringu1 FROM tenk1 WHERE stringu1 LIKE $1;'
-   LANGUAGE SQL;
+   LANGUAGE SQL READS SQL DATA;
 
 SELECT declares_cursor('AB%');
 
@@ -210,10 +210,10 @@ ROLLBACK;
 create temp table tt1(f1 int);
 
 create function count_tt1_v() returns int8 as
-'select count(*) from tt1' language sql volatile;
+'select count(*) from tt1' language sql volatile READS SQL DATA;
 
 create function count_tt1_s() returns int8 as
-'select count(*) from tt1' language sql stable;
+'select count(*) from tt1' language sql stable READS SQL DATA;
 
 begin;
 

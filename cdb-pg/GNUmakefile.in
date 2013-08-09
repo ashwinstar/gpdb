@@ -19,6 +19,7 @@ all:
 	$(MAKE) -C contrib/extprotocol all	
 	$(MAKE) -C contrib/gp_sparse_vector all
 	$(MAKE) -C contrib/orafce all
+	$(MAKE) -C contrib/gp_distribution_policy all
 	$(MAKE) -C contrib/gp_internal_tools all
 	$(MAKE) -C contrib/gp_cancel_query all
 	$(MAKE) -C contrib/gp_workfile_mgr all	
@@ -35,6 +36,7 @@ install:
 	$(MAKE) -C contrib/extprotocol $@
 	$(MAKE) -C contrib/gp_sparse_vector $@
 	$(MAKE) -C contrib/orafce $@
+	$(MAKE) -C contrib/gp_distribution_policy $@
 	$(MAKE) -C contrib/gp_internal_tools $@
 	$(MAKE) -C contrib/gp_cancel_query $@
 	$(MAKE) -C contrib/gp_workfile_mgr $@
@@ -51,6 +53,7 @@ installdirs uninstall:
 	$(MAKE) -C contrib/extprotocol $@
 	$(MAKE) -C contrib/gp_sparse_vector $@
 	$(MAKE) -C contrib/orafce $@
+	$(MAKE) -C contrib/gp_distribution_policy $@
 	$(MAKE) -C contrib/gp_internal_tools $@
 	$(MAKE) -C contrib/gp_cancel_query $@
 	$(MAKE) -C contrib/gp_workfile_mgr $@
@@ -75,6 +78,7 @@ clean:
 	$(MAKE) -C contrib/extprotocol $@
 	$(MAKE) -C contrib/gp_sparse_vector $@
 	$(MAKE) -C contrib/orafce $@
+	$(MAKE) -C contrib/gp_distribution_policy $@
 	$(MAKE) -C contrib/gp_internal_tools $@
 	$(MAKE) -C contrib/gp_cancel_query $@
 	$(MAKE) -C contrib/gp_workfile_mgr $@

@@ -175,12 +175,21 @@ ERROR:  Invalid parameter value "1024Kb" for resource type "MEMORY_LIMIT". Value
 alter resource queue test_rq with (memory_limit='2GB');
 alter resource queue test_rq without (memory_limit);
 drop resource queue test_rq;
+-- start_ignore
+drop table if exists tenk1;
+NOTICE:  table "tenk1" does not exist, skipping
+-- end_ignore
+create table tenk1 (unique1 int4,unique2 int4, two int4,four int4,ten int4,twenty int4,
+                                hundred int4,thousand int4,twothousand int4,fivethous int4,tenthous int4,
+                                odd int4,even int4,stringu1 name,stringu2 name,string4 name);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'unique1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+\copy tenk1 from 'bugbuster/data/tenk.data';
 -- SQL coverage of ROLE -> RESOURCE QUEUE
 CREATE RESOURCE QUEUE reg_activeq ACTIVE THRESHOLD 2;
 CREATE RESOURCE QUEUE reg_costq COST THRESHOLD 30000.00;
 CREATE USER reg_u1 RESOURCE QUEUE reg_costq;
 GRANT SELECT ON tenk1 TO reg_u1;
-ERROR:  relation "tenk1" does not exist
 SELECT u.rolname, u.rolsuper, r.rsqname FROM pg_roles as u, pg_resqueue as r WHERE u.rolresqueue=r.oid and rolname='reg_u1';
  rolname | rolsuper |  rsqname  
 ---------+----------+-----------
@@ -196,7 +205,6 @@ SELECT u.rolname, u.rolsuper, r.rsqname FROM pg_roles as u, pg_resqueue as r WHE
 
 CREATE USER reg_u2 RESOURCE QUEUE reg_activeq;
 GRANT SELECT ON tenk1 TO reg_u2;
-ERROR:  relation "tenk1" does not exist
 SELECT u.rolname, u.rolsuper, r.rsqname FROM pg_roles as u, pg_resqueue as r WHERE u.rolresqueue=r.oid and r.rsqname='reg_activeq';
  rolname | rolsuper |   rsqname   
 ---------+----------+-------------
@@ -219,32 +227,24 @@ SET SESSION AUTHORIZATION reg_u1;
 -- self deadlock (active queue threshold 2)
 BEGIN;
 DECLARE c1 CURSOR FOR SELECT 1 FROM tenk1;
-ERROR:  relation "tenk1" does not exist
-LINE 1: DECLARE c1 CURSOR FOR SELECT 1 FROM tenk1;
-                                            ^
 DECLARE c2 CURSOR FOR SELECT 2 FROM tenk1;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 DECLARE c3 CURSOR FOR SELECT 3 FROM tenk1; -- should detect deadlock
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ERROR:  deadlock detected, locking against self
 END;
 -- track cursor open/close count (should not deadlock)
 BEGIN;
 DECLARE c1 CURSOR FOR SELECT 1 FROM tenk1;
-ERROR:  relation "tenk1" does not exist
-LINE 1: DECLARE c1 CURSOR FOR SELECT 1 FROM tenk1;
-                                            ^
 CLOSE c1;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 DECLARE c2 CURSOR FOR SELECT 2 FROM tenk1;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 DECLARE c3 CURSOR FOR SELECT 3 FROM tenk1;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 CLOSE c3;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 DECLARE c4 CURSOR FOR SELECT 4 FROM tenk1;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 FETCH c4;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ ?column? 
+----------
+        4
+(1 row)
+
 END;
 -- switch to a cost-limited queue
 RESET SESSION AUTHORIZATION;
@@ -252,19 +252,21 @@ ALTER USER reg_u2 RESOURCE QUEUE reg_costq;
 SET SESSION AUTHORIZATION reg_u2;
 BEGIN;
 DECLARE c1 CURSOR FOR SELECT * FROM tenk1;
-ERROR:  relation "tenk1" does not exist
-LINE 1: DECLARE c1 CURSOR FOR SELECT * FROM tenk1;
-                                            ^
 SELECT rsqname, rsqholders FROM pg_resqueue_status WHERE rsqcostvalue > 0;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+  rsqname  | rsqholders 
+-----------+------------
+ reg_costq |          2
+(1 row)
+
 DECLARE c2 CURSOR FOR SELECT * FROM tenk1 a NATURAL JOIN tenk1 b;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 SELECT rsqname, rsqholders FROM pg_resqueue_status WHERE rsqcostvalue > 0;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+  rsqname  | rsqholders 
+-----------+------------
+ reg_costq |          3
+(1 row)
+
 CLOSE c1;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 CLOSE c2;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 END;
 -- rsqcostvalue should go back to 0 when queue is empty (MPP-3578)
 SELECT rsqname, rsqholders FROM pg_resqueue_status where rsqcostvalue != 0 or rsqcountvalue != 0 or rsqholders != 0;
@@ -279,17 +281,21 @@ SELECT rsqname, rsqholders FROM pg_resqueue_status where rsqcostvalue != 0 or rs
 -- queue, so rsqcostvalue should go back to 0.
 BEGIN;
 DECLARE c1 CURSOR FOR SELECT * FROM tenk1;
-ERROR:  relation "tenk1" does not exist
-LINE 1: DECLARE c1 CURSOR FOR SELECT * FROM tenk1;
-                                            ^
 SELECT rsqname, rsqcostlimit, rsqwaiters, rsqholders FROM pg_resqueue_status WHERE rsqcostvalue > 0;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+  rsqname  | rsqcostlimit | rsqwaiters | rsqholders 
+-----------+--------------+------------+------------
+ reg_costq |        30000 |          0 |          2
+(1 row)
+
 DECLARE c2 CURSOR FOR SELECT * FROM tenk1;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 SELECT rsqname, rsqcostlimit, rsqwaiters, rsqholders FROM pg_resqueue_status WHERE rsqcostvalue > 0;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+  rsqname  | rsqcostlimit | rsqwaiters | rsqholders 
+-----------+--------------+------------+------------
+ reg_costq |        30000 |          0 |          3
+(1 row)
+
 DECLARE c3 CURSOR FOR SELECT * FROM tenk1 a, tenk1 b;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ERROR:  statement requires more resources than resource queue allows
 SELECT rsqname, rsqcostlimit, rsqwaiters, rsqholders FROM pg_resqueue_status WHERE rsqcostvalue > 0;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 DECLARE c4 CURSOR FOR SELECT * FROM tenk1 a, tenk1 b, tenk1 c;
@@ -308,13 +314,8 @@ RESET SESSION AUTHORIZATION;
 -- reset session to super user. make sure no longer queued
 BEGIN;
 DECLARE c1 CURSOR FOR SELECT 1 FROM tenk1;
-ERROR:  relation "tenk1" does not exist
-LINE 1: DECLARE c1 CURSOR FOR SELECT 1 FROM tenk1;
-                                            ^
 DECLARE c2 CURSOR FOR SELECT 2 FROM tenk1;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 DECLARE c3 CURSOR FOR SELECT 3 FROM tenk1; -- should not deadlock, we are SU.
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 END;
 -- cleanup
 DROP OWNED BY reg_u1, reg_u2 CASCADE;

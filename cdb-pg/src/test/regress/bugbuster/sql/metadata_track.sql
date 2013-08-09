@@ -422,7 +422,7 @@ drop table mdt_table_set_storage_parameters2;
           END IF;
           RETURN new;
           END
-          ' LANGUAGE plpgsql;
+          ' LANGUAGE plpgsql MODIFIES SQL DATA;
 
           --create a trigger on the table you wish to monitor:
 
@@ -1170,7 +1170,7 @@ create group mdt_group1 with superuser;
           END IF;
           RETURN new;
           END
-          ' LANGUAGE plpgsql;
+          ' LANGUAGE plpgsql MODIFIES SQL DATA;
 
 grant execute on function mdt_insert_mdt_price_change1() to mdt_user1 with grant option;
 revoke grant option for execute on function mdt_insert_mdt_price_change1() from mdt_user1 cascade;
@@ -1196,7 +1196,7 @@ revoke grant option for execute on function mdt_insert_mdt_price_change1() from 
           END IF;
           RETURN new;
           END
-          ' LANGUAGE plpgsql;
+          ' LANGUAGE plpgsql MODIFIES SQL DATA;
 
 grant execute on function mdt_insert_mdt_price_change2() to group mdt_group1 with grant option;
 revoke execute on function mdt_insert_mdt_price_change2() from group mdt_group1 restrict;
@@ -1222,7 +1222,7 @@ revoke execute on function mdt_insert_mdt_price_change2() from group mdt_group1 
           END IF;
           RETURN new;
           END
-          ' LANGUAGE plpgsql;
+          ' LANGUAGE plpgsql MODIFIES SQL DATA;
 
 grant all on function mdt_insert_mdt_price_change3() to public;
 revoke all on function mdt_insert_mdt_price_change3() from public;
@@ -1247,7 +1247,7 @@ revoke all on function mdt_insert_mdt_price_change3() from public;
           END IF;
           RETURN new;
           END
-          ' LANGUAGE plpgsql;
+          ' LANGUAGE plpgsql MODIFIES SQL DATA;
 
 grant all privileges on function mdt_insert_mdt_price_change4() to public;
 revoke all privileges on function mdt_insert_mdt_price_change4() from public;
@@ -1264,7 +1264,9 @@ drop group mdt_group1;
 --
 create user mdt_user1 with superuser;
 create group mdt_group1 with superuser;
-
+-- start_ignore
+drop language if exists plperl cascade;
+-- end_ignore
 create language plperl;
 grant usage on language plperl to mdt_user1 with grant option;
 revoke grant option for usage on language plperl from mdt_user1;

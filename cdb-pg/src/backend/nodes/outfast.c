@@ -363,6 +363,7 @@ _outPlannedStmt(StringInfo str, PlannedStmt *node)
 	WRITE_NODE_TYPE("PLANNEDSTMT");
 	
 	WRITE_ENUM_FIELD(commandType, CmdType);
+	WRITE_ENUM_FIELD(planGen, PlanGenerator);
 	WRITE_BOOL_FIELD(canSetTag);
 	WRITE_BOOL_FIELD(transientPlan);
 	
@@ -379,6 +380,8 @@ _outPlannedStmt(StringInfo str, PlannedStmt *node)
 	
 	WRITE_NODE_FIELD(result_partitions);
 	WRITE_NODE_FIELD(result_aosegnos);
+	WRITE_NODE_FIELD(queryPartOids);
+	WRITE_NODE_FIELD(queryPartsMetadata);
 	WRITE_NODE_FIELD(rowMarks);
 	WRITE_NODE_FIELD(relationOids);
 	WRITE_NODE_FIELD(invalItems);
@@ -439,6 +442,14 @@ _outAppend(StringInfo str, Append *node)
 }
 
 static void
+_outSequence(StringInfo str, Sequence *node)
+{
+	WRITE_NODE_TYPE("SEQUENCE");
+	_outPlanInfo(str, (Plan *)node);
+	WRITE_NODE_FIELD(subplans);
+}
+
+static void
 _outBitmapAnd(StringInfo str, BitmapAnd *node)
 {
 	WRITE_NODE_TYPE("BITMAPAND");
@@ -491,6 +502,20 @@ _outAOCSScan(StringInfo str, AOCSScan *node)
 }
 
 static void
+_outTableScan(StringInfo str, TableScan *node)
+{
+	WRITE_NODE_TYPE("TABLESCAN");
+	_outScanInfo(str, (Scan *)node);
+}
+static void
+_outDynamicTableScan(StringInfo str, DynamicTableScan *node)
+{
+	WRITE_NODE_TYPE("DYNAMICTABLESCAN");
+	_outScanInfo(str, (Scan *)node);
+	WRITE_INT_FIELD(partIndex);
+}
+
+static void
 _outExternalScan(StringInfo str, ExternalScan *node)
 {
 	WRITE_NODE_TYPE("EXTERNALSCAN");
@@ -509,10 +534,8 @@ _outExternalScan(StringInfo str, ExternalScan *node)
 }
 
 static void
-_outIndexScan(StringInfo str, IndexScan *node)
+outIndexScanFields(StringInfo str, IndexScan *node)
 {
-	WRITE_NODE_TYPE("INDEXSCAN");
-
 	_outScanInfo(str, (Scan *) node);
 
 	WRITE_OID_FIELD(indexid);
@@ -521,6 +544,41 @@ _outIndexScan(StringInfo str, IndexScan *node)
 	WRITE_LIST_FIELD(indexstrategy);
 	WRITE_LIST_FIELD(indexsubtype);
 	WRITE_ENUM_FIELD(indexorderdir, ScanDirection);
+}
+
+static void
+outLogicalIndexInfo(StringInfo str, LogicalIndexInfo *node)
+{	
+	WRITE_NODE_TYPE("LOGICALINDEXINFO");
+
+	WRITE_OID_FIELD(logicalIndexOid);
+	WRITE_INT_FIELD(nColumns);
+	WRITE_INT_ARRAY(indexKeys, nColumns, int);
+	WRITE_LIST_FIELD(indPred);
+	WRITE_LIST_FIELD(indExprs);
+	WRITE_BOOL_FIELD(indIsUnique);
+	WRITE_NODE_FIELD(partCons);
+	WRITE_LIST_FIELD(defaultLevels);
+}
+
+static void
+_outIndexScan(StringInfo str, IndexScan *node)
+{
+	WRITE_NODE_TYPE("INDEXSCAN");
+
+	outIndexScanFields(str, node);
+}
+
+static void
+_outDynamicIndexScan(StringInfo str, DynamicIndexScan *node)
+{
+	WRITE_NODE_TYPE("DYNAMICINDEXSCAN");
+	/* DynamicIndexScan has the same content as IndexScan. */
+	outIndexScanFields(str, (IndexScan *) node);
+
+	WRITE_INT_FIELD(partIndex);
+	
+	outLogicalIndexInfo(str, node->logicalIndexInfo);
 }
 
 static void
@@ -827,6 +885,72 @@ _outMotion(StringInfo str, Motion *node)
 
 	_outPlanInfo(str, (Plan *) node);
 }
+
+/*
+ * _outDML
+ */
+static void
+_outDML(StringInfo str, DML *node)
+{
+	WRITE_NODE_TYPE("DML");
+
+	WRITE_UINT_FIELD(scanrelid);
+	WRITE_INT_FIELD(oidColIdx);
+	WRITE_INT_FIELD(actionColIdx);
+	WRITE_INT_FIELD(ctidColIdx);
+	WRITE_INT_FIELD(tupleoidColIdx);
+
+	_outPlanInfo(str, (Plan *) node);
+}
+
+
+/*
+ * _outSplitUpdate
+ */
+static void
+_outSplitUpdate(StringInfo str, SplitUpdate *node)
+{
+	WRITE_NODE_TYPE("SPLITUPDATE");
+
+	WRITE_INT_FIELD(actionColIdx);
+	WRITE_INT_FIELD(ctidColIdx);
+	WRITE_INT_FIELD(tupleoidColIdx);
+	WRITE_NODE_FIELD(insertColIdx);
+	WRITE_NODE_FIELD(deleteColIdx);
+
+	_outPlanInfo(str, (Plan *) node);
+}
+
+/*
+ * _outRowTrigger
+ */
+static void
+_outRowTrigger(StringInfo str, RowTrigger *node)
+{
+	WRITE_NODE_TYPE("ROWTRIGGER");
+
+	WRITE_INT_FIELD(relid);
+	WRITE_INT_FIELD(eventFlags);
+	WRITE_NODE_FIELD(oldValuesColIdx);
+	WRITE_NODE_FIELD(newValuesColIdx);
+
+	_outPlanInfo(str, (Plan *) node);
+}
+
+/*
+ * _outAssertOp
+ */
+static void
+_outAssertOp(StringInfo str, AssertOp *node)
+{
+	WRITE_NODE_TYPE("ASSERTOP");
+
+	WRITE_STRING_FIELD(errmessage);
+	WRITE_INT_FIELD(errcode);
+	
+	_outPlanInfo(str, (Plan *) node);
+}
+
 
 /*****************************************************************************
  *
@@ -2752,6 +2876,12 @@ _outLockingClause(StringInfo str, LockingClause *node)
 }
 
 static void
+_outDMLActionExpr(StringInfo str, DMLActionExpr *node)
+{
+	WRITE_NODE_TYPE("DMLACTIONEXPR");
+}
+
+static void
 _outColumnDef(StringInfo str, ColumnDef *node)
 {
 	WRITE_NODE_TYPE("COLUMNDEF");
@@ -3519,6 +3649,9 @@ _outNode(StringInfo str, void *obj)
 			case T_Append:
 				_outAppend(str, obj);
 				break;
+			case T_Sequence:
+				_outSequence(str, obj);
+				break;
 			case T_BitmapAnd:
 				_outBitmapAnd(str, obj);
 				break;
@@ -3537,11 +3670,20 @@ _outNode(StringInfo str, void *obj)
 			case T_AOCSScan:
 				_outAOCSScan(str, obj);
 				break;
+			case T_TableScan:
+				_outTableScan(str, obj);
+				break;
+			case T_DynamicTableScan:
+				_outDynamicTableScan(str, obj);
+				break;
 			case T_ExternalScan:
 				_outExternalScan(str, obj);
 				break;
 			case T_IndexScan:
 				_outIndexScan(str, obj);
+				break;
+			case T_DynamicIndexScan:
+				_outDynamicIndexScan(str, obj);
 				break;
 			case T_BitmapIndexScan:
 				_outBitmapIndexScan(str, obj);
@@ -3611,6 +3753,18 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_Motion:
 				_outMotion(str, obj);
+				break;
+			case T_DML:
+				_outDML(str, obj);
+				break;
+			case T_SplitUpdate:
+				_outSplitUpdate(str, obj);
+				break;
+			case T_RowTrigger:
+				_outRowTrigger(str, obj);
+				break;
+			case T_AssertOp:
+				_outAssertOp(str, obj);
 				break;
 			case T_Alias:
 				_outAlias(str, obj);
@@ -4191,6 +4345,10 @@ _outNode(StringInfo str, void *obj)
 
 			case T_LockingClause:
 				_outLockingClause(str, obj);
+				break;
+
+			case T_DMLActionExpr:
+				_outDMLActionExpr(str, obj);
 				break;
 
 			case T_CreateTrigStmt:

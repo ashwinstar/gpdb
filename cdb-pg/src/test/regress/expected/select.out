@@ -291,6 +291,8 @@ SELECT onek2.unique1, onek2.stringu1 FROM onek2
 SELECT two, stringu1, ten, string4
    INTO TABLE tmp
    FROM onek;
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'two' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 --
 -- awk '{print $1,$2;}' person.data |
 -- awk '{if(NF!=2){print $3,$2;}else{print;}}' - emp.data |
@@ -503,9 +505,9 @@ SELECT * FROM int8_tbl;
      column1      |      column2      
 ------------------+-------------------
                 1 |                 2
-                3 |                 8
                 7 |              77.7
                 4 |                57
+                3 |                 8
               123 |               456
               123 |  4567890123456789
  4567890123456789 |               123
@@ -515,6 +517,8 @@ SELECT * FROM int8_tbl;
 
 -- Test unsupported sorting operators
 CREATE TABLE nosort (i int);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 INSERT INTO nosort VALUES(1), (2);
 -- << is the bitwise shift left operator, it makes no sense to sort
 -- using this operator. This query should result in error.
@@ -529,7 +533,7 @@ create table select_t (k int, v int) distributed by (k);
 insert into select_t values (0, 1), (1, 2), (2, 4), (3, 8), (4, 16);
 create function select_i(int) returns int as $$
 	select v from select_t where k = $1;
-	$$ language sql;
+	$$ language sql READS SQL DATA;
 create function select_f(int) returns int as $$
 	begin
 		if $1 <= 0 then
@@ -537,7 +541,7 @@ create function select_f(int) returns int as $$
 		end if;
 		return select_f($1-1) + select_i($1);
 	end;
-	$$ language plpgsql;
+	$$ language plpgsql READS SQL DATA;
 	
 select x, select_f(x) from (values (0), (1), (2), (3), (4), (5), (6)) r(x);
  x | select_f 

@@ -38,35 +38,35 @@
 
 -- polymorphic single arg transfn
 CREATE FUNCTION stfp(anyarray) RETURNS anyarray AS
-'select $1' LANGUAGE SQL;
+'select $1' LANGUAGE SQL CONTAINS SQL;
 -- non-polymorphic single arg transfn
 CREATE FUNCTION stfnp(int[]) RETURNS int[] AS
-'select $1' LANGUAGE SQL;
+'select $1' LANGUAGE SQL CONTAINS SQL;
 
 -- dual polymorphic transfn
 CREATE FUNCTION tfp(anyarray,anyelement) RETURNS anyarray AS
-'select $1 || $2' LANGUAGE SQL;
+'select $1 || $2' LANGUAGE SQL CONTAINS SQL;
 -- dual non-polymorphic transfn
 CREATE FUNCTION tfnp(int[],int) RETURNS int[] AS
-'select $1 || $2' LANGUAGE SQL;
+'select $1 || $2' LANGUAGE SQL CONTAINS SQL;
 
 -- arg1 only polymorphic transfn
 CREATE FUNCTION tf1p(anyarray,int) RETURNS anyarray AS
-'select $1' LANGUAGE SQL;
+'select $1' LANGUAGE SQL CONTAINS SQL;
 -- arg2 only polymorphic transfn
 CREATE FUNCTION tf2p(int[],anyelement) RETURNS int[] AS
-'select $1' LANGUAGE SQL;
+'select $1' LANGUAGE SQL CONTAINS SQL;
 
 -- multi-arg polymorphic
 CREATE FUNCTION sum3(anyelement,anyelement,anyelement) returns anyelement AS
-'select $1+$2+$3' language sql strict;
+'select $1+$2+$3' language sql strict CONTAINS SQL;
 
 -- finalfn polymorphic
 CREATE FUNCTION ffp(anyarray) RETURNS anyarray AS
-'select $1' LANGUAGE SQL;
+'select $1' LANGUAGE SQL CONTAINS SQL;
 -- finalfn non-polymorphic
 CREATE FUNCTION ffnp(int[]) returns int[] as
-'select $1' LANGUAGE SQL;
+'select $1' LANGUAGE SQL CONTAINS SQL;
 
 -- Try to cover all the possible states:
 -- 
@@ -380,10 +380,10 @@ create function bleat(int) returns int as $$
 begin
   raise notice 'bleat %', $1;
   return $1;
-end$$ language plpgsql;
+end$$ language plpgsql NO SQL;
 
 create function sql_if(bool, anyelement, anyelement) returns anyelement as $$
-select case when $1 then $2 else $3 end $$ language sql;
+select case when $1 then $2 else $3 end $$ language sql CONTAINS SQL;
 
 -- Note this would fail with integer overflow, never mind wrong bleat() output,
 -- if the CASE expression were not successfully inlined

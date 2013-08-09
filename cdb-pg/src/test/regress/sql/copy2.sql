@@ -11,14 +11,14 @@ CREATE FUNCTION fn_x_before () RETURNS TRIGGER AS '
 		NEW.e := ''before trigger fired''::text;
 		return NEW;
 	END;
-' language plpgsql immutable;
+' language plpgsql immutable NO SQL;
 
 CREATE FUNCTION fn_x_after () RETURNS TRIGGER AS '
   BEGIN
 		UPDATE x set e=''after trigger fired'' where c=''stuff'';
 		return NULL;
 	END;
-' LANGUAGE plpgsql;
+' LANGUAGE plpgsql MODIFIES SQL DATA;
 
 CREATE TRIGGER trg_x_after AFTER INSERT ON x
 FOR EACH ROW EXECUTE PROCEDURE fn_x_after();

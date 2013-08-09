@@ -91,7 +91,6 @@ ExecSort(SortState *node)
 
 	if (!node->sort_Done)
 	{
-
 		SO1_printf("ExecSort: %s\n",
 				   "sorting subplan");
 
@@ -350,7 +349,8 @@ ExecSort(SortState *node)
 					else
 						tuplesort_flush(tuplesortstate);
 
-					node->share_lk_ctxt = shareinput_writer_notifyready(plannode->share_id, plannode->nsharer_xslice);
+					node->share_lk_ctxt = shareinput_writer_notifyready(plannode->share_id, plannode->nsharer_xslice,
+							estate->es_plannedstmt->planGen);
 				}
 			}
 

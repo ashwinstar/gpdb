@@ -5580,3 +5580,17 @@
  CREATE FUNCTION linear_interpolate( anyelement, anyelement, "numeric", anyelement, "numeric" ) RETURNS "numeric" LANGUAGE internal IMMUTABLE STRICT AS 'linterp_Numeric' WITH (OID=6082, DESCRIPTION="linear interpolation: x, x0,y0, x1,y1"); 
 
  CREATE FUNCTION lead_lag_frame_maker(internal) RETURNS internal LANGUAGE internal VOLATILE STRICT AS 'lead_lag_frame_maker' WITH (OID=5081);
+
+ CREATE FUNCTION gp_partition_propagation(int4, oid) RETURNS void  LANGUAGE internal VOLATILE STRICT AS 'gp_partition_propagation' WITH (OID=6083, DESCRIPTION="inserts a partition oid into specified pid-index");
+
+ CREATE FUNCTION gp_partition_selection(oid, anyelement) RETURNS oid LANGUAGE internal STABLE STRICT AS 'gp_partition_selection' WITH (OID=6084, DESCRIPTION="selects the child partition oid which satisfies a given partition key value");
+
+ CREATE FUNCTION gp_partition_expansion(oid) RETURNS setof oid LANGUAGE internal STABLE STRICT AS 'gp_partition_expansion' WITH (OID=6085, DESCRIPTION="finds all child partition oids for the given parent oid");
+
+ CREATE FUNCTION gp_partition_inverse(oid) RETURNS setof record LANGUAGE internal STABLE STRICT AS 'gp_partition_inverse' WITH (OID=6086, DESCRIPTION="returns all child partitition oids with their constraints for a given parent oid");
+
+ CREATE FUNCTION disable_xform(text) RETURNS text LANGUAGE internal IMMUTABLE STRICT AS 'disable_xform' WITH (OID=6087, DESCRIPTION="disables transformations in the optimizer");
+
+ CREATE FUNCTION enable_xform(text) RETURNS text LANGUAGE internal IMMUTABLE STRICT AS 'enable_xform' WITH (OID=6088, DESCRIPTION="enables transformations in the optimizer");
+
+ CREATE FUNCTION gp_opt_version() RETURNS text LANGUAGE internal IMMUTABLE STRICT AS 'gp_opt_version' WITH (OID=6089, DESCRIPTION="Returns the optimizer and gpos library versions");

@@ -70,6 +70,7 @@ CREATE TYPE text_w_default (
    default = 'zippo'
 );
 CREATE TABLE default_test (f1 text_w_default, f2 int42);
+NOTICE:  Table doesn't have 'distributed by' clause, and no column type is suitable for a distribution key. Creating a NULL policy entry.
 INSERT INTO default_test DEFAULT VALUES;
 SELECT * FROM default_test;
   f1   | f2 
@@ -81,7 +82,7 @@ SELECT * FROM default_test;
 CREATE TYPE default_test_row AS (f1 text_w_default, f2 int42);
 CREATE FUNCTION get_default_test() RETURNS SETOF default_test_row AS '
   SELECT * FROM default_test;
-' LANGUAGE SQL;
+' LANGUAGE SQL READS SQL DATA;
 SELECT * FROM get_default_test();
   f1   | f2 
 -------+----
@@ -101,6 +102,7 @@ NOTICE:  drop cascades to function get_default_test()
 DROP TABLE default_test;
 -- Create & Drop type as non-superuser
 CREATE USER user_bob;
+NOTICE:  resource queue required -- using default resource queue "pg_default"
 SET SESSION AUTHORIZATION user_bob;
 CREATE TYPE shell;
 DROP TYPE shell;

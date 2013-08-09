@@ -3265,14 +3265,14 @@ static RelOptInfo* largest_child_relation(PlannerInfo *root, RelOptInfo *rel)
 	double max_rows = -1.0;
 
 	Assert(IsA(rel->cheapest_total_path, AppendPath));
-	
+
 	append_path = (AppendPath *) rel->cheapest_total_path;
-	
+
 	foreach(subpath_lc, append_path->subpaths)
 	{
 		RelOptInfo *candidate_child = NULL;
 		Path *subpath = lfirst(subpath_lc);
-		
+
 		if (IsA(subpath, AppendPath))
 		{
 			candidate_child = largest_child_relation(root, subpath->parent);
@@ -3288,12 +3288,12 @@ static RelOptInfo* largest_child_relation(PlannerInfo *root, RelOptInfo *rel)
 			largest_child_in_subpath = candidate_child;
 		}
 	}
-	
+
 	return largest_child_in_subpath;
 }
 
 /*
- * The purpose of this method is to make the statistics (on a specific column) of a child partition 
+ * The purpose of this method is to make the statistics (on a specific column) of a child partition
  * representative of the parent relation. This entails the following assumptions:
  * 1.  if ndistinct<=-1.0 in child partition, the column is a unique column in the child partition. We
  * 	   expect the column to remain distinct in the master as well.
@@ -3303,18 +3303,18 @@ static RelOptInfo* largest_child_relation(PlannerInfo *root, RelOptInfo *rel)
  *     The method get_variable_numdistinct will multiply this by the number of tuples in the master relation.
  * 3.  if ndistinct is positive, it indicates a small absolute number of distinct values. We expect these
  * 	   values to be repeated in all partitions. Therefore, we expect no change in the ndistinct in the master.
- * 
- * Input: 
+ *
+ * Input:
  * 	   statsTuple, which is a heaptuple representing statistics on a child relation. It expects statstuple to be non-null.
- * 	   scalefactor, which is in the range (0.0,1.0] 
- * 
+ * 	   scalefactor, which is in the range (0.0,1.0]
+ *
  * Output:
- * 	   This method modifies the tuple passed to it. 
+ * 	   This method modifies the tuple passed to it.
  */
 static void inline adjust_partition_table_statistic_for_parent(HeapTuple statsTuple, double childtuples)
 {
 	Form_pg_statistic stats;
-	
+
 	Assert(HeapTupleIsValid(statsTuple));
 
 	stats = (Form_pg_statistic) GETSTRUCT(statsTuple);
@@ -3322,17 +3322,17 @@ static void inline adjust_partition_table_statistic_for_parent(HeapTuple statsTu
 	if (stats->stadistinct <= -1.0)
 	{
 		/*
-		 * Case 1 as described above. 
+		 * Case 1 as described above.
 		 */
 
 		return;
 	}
 	else if (stats->stadistinct < 0.0)
 	{
-		/* 
+		/*
 		 * Case 2 as described above.
 		 */
-		
+
 		stats->stadistinct = ((double) -1.0) * stats->stadistinct * childtuples;
 	}
 	else
@@ -3340,7 +3340,7 @@ static void inline adjust_partition_table_statistic_for_parent(HeapTuple statsTu
 		/**
 		 * Case 3 as described above.
 		 */
-		
+
 		return;
 	}
 }
@@ -3384,13 +3384,6 @@ examine_variable(PlannerInfo *root, Node *node, int varRelid,
 
 	/* Save the exposed type of the expression */
 	vardata->vartype = exprType(node);
-
-	/* 	 
-	 * By default, the stats tuple comes from the catalog. In the case of inherited/partitioned tables, 
-	 * Under certain circumstances, the stats tuple may have been 'generated'. We should set this flag
-	 * appropriately in such circumstances.
-	 */
-	vardata->statsTupleFromSysCache=true;
 
 	vardata->numdistinctFromPrimaryKey = -1.0; /* ignore by default*/
 
@@ -3468,39 +3461,31 @@ examine_variable(PlannerInfo *root, Node *node, int varRelid,
 
 				if (childrel)
 				{
-					HeapTuple statsTuple;
-	                	
 					RangeTblEntry *child_rte = NULL;
-	                    
+
 					child_rte = rt_fetch(childrel->relid, root->parse->rtable);
 
 					Assert(child_rte != NULL);
-	                    
+
 					/*
 					 * Get statistics from the child partition.
-					 * XXX: We need a copy of first tuple, but allocate
-					 * the context as well.  Setting cq_free to true
-					 * out side of catquery...
 					 */
-	                    
-					vardata->statscqCtx = palloc0(sizeof(cqContext));
-					vardata->statscqCtx->cq_free = true;
-					statsTuple = caql_getfirst(
-							vardata->statscqCtx,
-							cql("SELECT * FROM pg_statistic "
-								" WHERE starelid = :1 "
-								" AND staattnum = :2 ",
-								ObjectIdGetDatum(child_rte->relid),
-								Int16GetDatum(var->varattno)));
-					if (HeapTupleIsValid(statsTuple)) 
+					vardata->statscqCtx = caql_beginscan
+										(
+										NULL,
+										cql("SELECT * FROM pg_statistic "
+											" WHERE starelid = :1 "
+											" AND staattnum = :2 ",
+											ObjectIdGetDatum(child_rte->relid),
+											Int16GetDatum(var->varattno))
+										);
+
+					(void) caql_getnext(vardata->statscqCtx);
+
+					if (NULL != vardata->statscqCtx && NULL != vardata->statscqCtx->cq_lasttup)
 					{
-						/*
-						 * Duplicate this tuple, modify it per our assumptions then assign it
-						 * as this variable's statistics. 
-						 * XXX: tuple is already copied.
-						 */
-						adjust_partition_table_statistic_for_parent(statsTuple, childrel->tuples);
-					}	                    
+						adjust_partition_table_statistic_for_parent(vardata->statscqCtx->cq_lasttup, childrel->tuples);
+					}
 				}
 			}
 		}
@@ -3657,12 +3642,11 @@ examine_variable(PlannerInfo *root, Node *node, int varRelid,
 }
 
 /**
- * This method is called to free the stats tuple allocated by examine_variable.
  * Input: vardata. Must be non-NULL.
  */
 void ReleaseVariableStats(VariableStatData vardata)
 {
-	if (vardata.statscqCtx)
+ 	if (vardata.statscqCtx)
 		caql_endscan(vardata.statscqCtx);
 	vardata.statscqCtx = NULL;
 }

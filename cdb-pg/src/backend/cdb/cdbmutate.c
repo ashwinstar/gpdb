@@ -44,6 +44,9 @@
 
 #include "executor/executor.h"
 
+/* Enable the optimizer */
+extern bool		optimizer;
+
 /*
  * An ApplyMotionState holds state for the recursive apply_motion_mutator().
  * It is externalized here to make it shareable by helper code in other
@@ -699,9 +702,11 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 			if (targetPolicyType == POLICYTYPE_PARTITIONED)
 			{
 				/*
-				 * Make sure we are not updating any of the partitioning columns
+				 * The planner does not support updating any of the partitioning columns.
+				 * The optimizer supports updating partitioning columns.
 				 */
 				if (query->commandType == CMD_UPDATE &&
+					!optimizer &&
 					doesUpdateAffectPartitionCols(root, plan,query))
 				{
 					ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
@@ -1846,6 +1851,15 @@ static void shareinput_walker(SHAREINPUT_MUTATOR f, Node *node, ApplyShareInputC
 				shareinput_walker(f, (Node *)plan->lefttree, ctxt);
 			}
 		}
+		else if (IsA(node, Sequence))
+		{
+			ListCell *cell = NULL;
+			Sequence *sequence = (Sequence *) node;
+			foreach(cell, sequence->subplans)
+			{
+				shareinput_walker(f, (Node *)lfirst(cell), ctxt);
+			}
+		}
 		else
 		{
 			shareinput_walker(f, (Node *)plan->lefttree, ctxt);
@@ -2064,6 +2078,10 @@ static bool shareinput_mutator_xslice_1(Node* node, ApplyShareInputContext *ctxt
 			int  shareSliceId = 0;
 			
 			shareinput_find_sharenode(ctxt, sisc->share_id, &plan_slicemark);
+			if (!plan_slicemark.plan)
+			{
+				return false;
+			}
 			shareSliceId = get_plan_driver_slice(plan_slicemark.plan);
 
 			if(shareSliceId != motId)
@@ -2396,5 +2414,30 @@ Plan *zap_trivial_result(PlannerInfo *root, Plan *plan)
 	return plan;
 }
 			
-
+/* 
+ * Hash a const value with GPDB's hash function
+ */
+int32 
+cdbhash_const(Const *pconst, int iSegments)
+{
+	CdbHash *pcdbhash = makeCdbHash(iSegments, HASH_FNV_1);
+	cdbhashinit(pcdbhash);
+			
+	if (pconst->constisnull)
+	{
+		cdbhashnull(pcdbhash);
+	}
+	else
+	{
+		Assert(isGreenplumDbHashable(pconst->consttype));
+		Oid oidType = pconst->consttype;
+			
+		if (typeIsArrayType(oidType))
+		{
+			oidType = ANYARRAYOID;
+		}
+		cdbhash(pcdbhash, pconst->constvalue, oidType);
+	}		
+	return cdbhashreduce(pcdbhash);	
+}
 

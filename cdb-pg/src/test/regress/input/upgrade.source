@@ -764,7 +764,7 @@ end loop;
 
 return 1;
 end;
-$$ language 'plpgsql';
+$$ language 'plpgsql' MODIFIES SQL DATA;
 
 
 select catdump.dump_to_table('4.3', 'pg_catalog');

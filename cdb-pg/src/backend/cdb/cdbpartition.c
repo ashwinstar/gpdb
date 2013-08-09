@@ -119,7 +119,7 @@ static bool compare_partn_opfuncid(PartitionNode *partnode,
 								   TupleDesc tupdesc);
 static PartitionNode *
 selectListPartition(PartitionNode *partnode, Datum *values, bool *isnull,
-					TupleDesc tupdesc, PartitionState *pstate, Oid *found);
+					TupleDesc tupdesc, PartitionAccessMethods *accessMethods, Oid *found);
 static void
 get_range_oper(int keyno, PartitionRangeState *rs, Oid typid, bool is_lt);
 static int
@@ -127,14 +127,14 @@ range_test(Datum tupval, Oid typid, PartitionRangeState *rs, int keyno,
 		   PartitionRule *rule);
 static PartitionNode *
 selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
-					 TupleDesc tupdesc, PartitionState *pstate,
+					 TupleDesc tupdesc, PartitionAccessMethods *accessMethods,
 					 Oid *found, int *pSearch);
 static PartitionNode *
 selectHashPartition(PartitionNode *partnode, Datum *values, bool *isnull,
-					TupleDesc tupdesc, PartitionState *pstate, Oid *found);
+					TupleDesc tupdesc, PartitionAccessMethods *accessMethods, Oid *found);
 static Oid
 selectPartition1(PartitionNode *partnode, Datum *values, bool *isnull,
-				 TupleDesc tupdesc, PartitionState *pstate,
+				 TupleDesc tupdesc, PartitionAccessMethods *accessMethods,
 				 int *pSearch,
 				 PartitionNode **ppn_out);
 static int
@@ -253,6 +253,12 @@ rel_partition_key_attrs(Oid relid)
 	{
 		Index i;
 		Form_pg_partition p = (Form_pg_partition) GETSTRUCT(tuple);
+		
+		if (p->paristemplate)
+		{
+			tuple = systable_getnext(scan);
+			continue;
+		}
 		
 		for ( i = 0; i < p->parnatts; i++ )
 		{
@@ -2897,15 +2903,15 @@ static bool compare_partn_opfuncid(PartitionNode *partnode,
 
 static PartitionNode *
 selectListPartition(PartitionNode *partnode, Datum *values, bool *isnull,
-					TupleDesc tupdesc, PartitionState *pstate, Oid *found)
+					TupleDesc tupdesc, PartitionAccessMethods *accessMethods, Oid *found)
 {
 	ListCell *lc;
 	Partition *part = partnode->part;
 	MemoryContext oldcxt = NULL;
 	PartitionListState *ls;
 	
-	if (pstate && pstate->amstate[partnode->part->parlevel])
-		ls = (PartitionListState *)pstate->amstate[partnode->part->parlevel];
+	if (accessMethods && accessMethods->amstate[partnode->part->parlevel])
+		ls = (PartitionListState *)accessMethods->amstate[partnode->part->parlevel];
 	else
 	{
 		int natts = partnode->part->parnatts;
@@ -2915,12 +2921,12 @@ selectListPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 		ls->eqfuncs = palloc(sizeof(FmgrInfo) * natts);
 		ls->eqinit = palloc0(sizeof(bool) * natts);
 		
-		if (pstate)
-			pstate->amstate[partnode->part->parlevel] = (void *)ls;
+		if (accessMethods)
+			accessMethods->amstate[partnode->part->parlevel] = (void *)ls;
 	}
 	
-	if (pstate && pstate->part_cxt)
-		oldcxt = MemoryContextSwitchTo(pstate->part_cxt);
+	if (accessMethods && accessMethods->part_cxt)
+		oldcxt = MemoryContextSwitchTo(accessMethods->part_cxt);
 	
 	*found = InvalidOid;
 	
@@ -3132,7 +3138,7 @@ range_test(Datum tupval, Oid typid, PartitionRangeState *rs, int keyno,
  */
 static PartitionNode *
 selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
-					 TupleDesc tupdesc, PartitionState *pstate,
+					 TupleDesc tupdesc, PartitionAccessMethods *accessMethods,
 					 Oid *found, int *pSearch)
 {
 	List *rules = partnode->rules;
@@ -3148,8 +3154,8 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 	
 	Assert(partnode->part->parkind == 'r');
 	
-	if (pstate && pstate->amstate[partnode->part->parlevel])
-		rs = (PartitionRangeState *)pstate->amstate[partnode->part->parlevel];
+	if (accessMethods && accessMethods->amstate[partnode->part->parlevel])
+		rs = (PartitionRangeState *)accessMethods->amstate[partnode->part->parlevel];
 	else
 	{
 		int natts = partnode->part->parnatts;
@@ -3182,8 +3188,8 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 			rs->rules = NULL;
 	}
 	
-	if (pstate && pstate->part_cxt)
-		oldcxt = MemoryContextSwitchTo(pstate->part_cxt);
+	if (accessMethods && accessMethods->part_cxt)
+		oldcxt = MemoryContextSwitchTo(accessMethods->part_cxt);
 	
 	*found = InvalidOid;
 	
@@ -3375,8 +3381,8 @@ l_fin_range:
 	if (oldcxt)
 		MemoryContextSwitchTo(oldcxt);
 	
-	if (pstate)
-		pstate->amstate[partnode->part->parlevel] = (void *)rs;
+	if (accessMethods)
+		accessMethods->amstate[partnode->part->parlevel] = (void *)rs;
 	
 	return pNode;
 } /* end selectrangepartition */
@@ -3385,7 +3391,7 @@ l_fin_range:
 /* select partition via hash */
 static PartitionNode *
 selectHashPartition(PartitionNode *partnode, Datum *values, bool *isnull,
-					TupleDesc tupdesc, PartitionState *pstate, Oid *found)
+					TupleDesc tupdesc, PartitionAccessMethods *accessMethods, Oid *found)
 {
 	uint32 hash = 0;
 	int i;
@@ -3393,8 +3399,8 @@ selectHashPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 	PartitionRule *rule;
 	MemoryContext oldcxt = NULL;
 	
-	if (pstate && pstate->part_cxt)
-		oldcxt = MemoryContextSwitchTo(pstate->part_cxt);
+	if (accessMethods && accessMethods->part_cxt)
+		oldcxt = MemoryContextSwitchTo(accessMethods->part_cxt);
 	
 	for (i = 0; i < partnode->part->parnatts; i++)
 	{
@@ -3440,7 +3446,7 @@ selectHashPartition(PartitionNode *partnode, Datum *values, bool *isnull,
  */
 static Oid
 selectPartition1(PartitionNode *partnode, Datum *values, bool *isnull,
-				 TupleDesc tupdesc, PartitionState *pstate,
+				 TupleDesc tupdesc, PartitionAccessMethods *accessMethods,
 				 int *pSearch,
 				 PartitionNode **ppn_out)
 {
@@ -3456,15 +3462,15 @@ selectPartition1(PartitionNode *partnode, Datum *values, bool *isnull,
 	{
 		case 'r': /* range */
 			pn = selectRangePartition(partnode, values, isnull, tupdesc,
-									  pstate, &relid, pSearch);
+									  accessMethods, &relid, pSearch);
 			break;
 		case 'h': /* hash */
 			pn = selectHashPartition(partnode, values, isnull, tupdesc,
-									 pstate, &relid);
+									 accessMethods, &relid);
 			break;
 		case 'l': /* list */
 			pn = selectListPartition(partnode, values, isnull, tupdesc,
-									 pstate, &relid);
+									 accessMethods, &relid);
 			break;
 		default:
 			elog(ERROR, "unrecognized partitioning kind '%c'",
@@ -3479,7 +3485,7 @@ selectPartition1(PartitionNode *partnode, Datum *values, bool *isnull,
 			*ppn_out = pn;
 			return relid;
 		}
-		return selectPartition1(pn, values, isnull, tupdesc, pstate,
+		return selectPartition1(pn, values, isnull, tupdesc, accessMethods,
 								pSearch, ppn_out);
 	}
 	else
@@ -3499,7 +3505,7 @@ selectPartition1(PartitionNode *partnode, Datum *values, bool *isnull,
 					return partnode->default_part->parchildrelid;
 				}
 				return selectPartition1(partnode->default_part->children,
-										values, isnull, tupdesc, pstate,
+										values, isnull, tupdesc, accessMethods,
 										pSearch, ppn_out);
 			}
 			else
@@ -3512,9 +3518,9 @@ selectPartition1(PartitionNode *partnode, Datum *values, bool *isnull,
 
 Oid
 selectPartition(PartitionNode *partnode, Datum *values, bool *isnull,
-				TupleDesc tupdesc, PartitionState *pstate)
+				TupleDesc tupdesc, PartitionAccessMethods *accessMethods)
 {
-	return selectPartition1(partnode, values, isnull, tupdesc, pstate,
+	return selectPartition1(partnode, values, isnull, tupdesc, accessMethods,
 							NULL, NULL);
 }
 
@@ -7128,7 +7134,7 @@ is_exchangeable(Relation rel, Relation oldrel, Relation newrel, bool throw)
 	}
 	
 	/* The new part table must not be involved in inheritance. */
-	if ( congruent && has_subclass(RelationGetRelid(newrel)))
+	if ( congruent && has_subclass_fast(RelationGetRelid(newrel)))
 	{
 		congruent = FALSE;
 		if ( throw )
@@ -7957,7 +7963,7 @@ static List *PartitionChildren(PartitionNode *p)
  */
 List *
 selectPartitionMulti(PartitionNode *partnode, Datum *values, bool *isnull,
-				 TupleDesc tupdesc, PartitionState *pstate)
+				 TupleDesc tupdesc, PartitionAccessMethods *accessMethods)
 {
 	Assert(partnode);
 
@@ -8009,7 +8015,7 @@ selectPartitionMulti(PartitionNode *partnode, Datum *values, bool *isnull,
 			{
 				if (IsLeafPartitionNode(candidatePartNode))
 				{
-					Oid matchOid = selectPartition1(candidatePartNode, values, isnull, tupdesc, pstate, NULL, NULL);
+					Oid matchOid = selectPartition1(candidatePartNode, values, isnull, tupdesc, accessMethods, NULL, NULL);
 					if (matchOid != InvalidOid)
 					{
 						leafPartitionOids = lappend_oid(leafPartitionOids, matchOid);
@@ -8018,7 +8024,7 @@ selectPartitionMulti(PartitionNode *partnode, Datum *values, bool *isnull,
 				else
 				{
 					PartitionNode *childPartitionNode = NULL;
-					selectPartition1(candidatePartNode, values, isnull, tupdesc, pstate, NULL, &childPartitionNode);
+					selectPartition1(candidatePartNode, values, isnull, tupdesc, accessMethods, NULL, &childPartitionNode);
 					if (childPartitionNode)
 					{
 						levelOutput = lappend(levelOutput, childPartitionNode);

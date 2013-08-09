@@ -336,7 +336,7 @@ create language plpgsql;
 CREATE FUNCTION TO_BOX(TEXT) RETURNS BOX AS
   $$
     SELECT box_in(textout($1))
-  $$ LANGUAGE SQL;
+  $$ LANGUAGE SQL CONTAINS SQL;
 
 CREATE FUNCTION insertIntoGistTable13 (seed INTEGER) RETURNS VOID
 AS
@@ -352,7 +352,7 @@ BEGIN
    INSERT INTO GistTable13(id, property) VALUES (seed, TO_BOX(CAST(str1 AS TEXT)) );
 END;
 $$
-LANGUAGE PLPGSQL
+LANGUAGE PLPGSQL MODIFIES SQL DATA
 ;
 
 CREATE FUNCTION insertManyIntoGistTable13 (startValue INTEGER, endValue INTEGER) RETURNS VOID
@@ -368,7 +368,7 @@ BEGIN
    END LOOP;
 END;
 $$
-LANGUAGE PLPGSQL
+LANGUAGE PLPGSQL MODIFIES SQL DATA
 ;
 
 -- Add some rows before we create the index.

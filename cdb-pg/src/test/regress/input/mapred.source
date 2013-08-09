@@ -65,7 +65,7 @@ SELECT * FROM env WHERE var in (
 CREATE OR REPLACE FUNCTION python_version() returns text as $$
 import sys
 return sys.version_info
-$$ language plpythonu;
+$$ language plpythonu NO SQL;
 
 SELECT python_version() FROM env GROUP BY python_version;
 
@@ -76,7 +76,7 @@ SELECT python_version() FROM env GROUP BY python_version;
 --
 CREATE OR REPLACE FUNCTION perl_version() returns text as $$
 return "Perl $]"
-$$ language plperlu;
+$$ language plperlu NO SQL;
 
 -- ignore
 SELECT perl_version() FROM env GROUP BY perl_version;
@@ -91,13 +91,13 @@ SELECT perl_version() FROM env GROUP BY perl_version;
 CREATE OR REPLACE FUNCTION python_path() returns text as $$
 import sys
 return sys.path[0]
-$$ language plpythonu;
+$$ language plpythonu NO SQL;
 
 SELECT python_path() FROM env GROUP BY python_path;
 
 CREATE OR REPLACE FUNCTION perl_path() returns text as $$
 return join(':', @INC)
-$$ language plperlu;
+$$ language plperlu NO SQL;
 
 SELECT perl_path() FROM env GROUP BY perl_path;
 
@@ -113,7 +113,7 @@ p = subprocess.Popen(cmd, shell=True,
 r = p.communicate()
 header = "---------------------\n"
 return header + r[0]
-$$ LANGUAGE plpythonu;
+$$ LANGUAGE plpythonu NO SQL;
 
 --
 -- Create a harness to run mapreduce jobs on the correct host/port
@@ -135,7 +135,7 @@ header = "---------------------"
 err = '\nSTDERR> '.join(('STDERR> ' + r[1]).split('\n')).replace('\t', '   ')
 out = 'STDOUT>\n' + r[0].replace('\t', ', ')
 return [header, err, out]
-$$ LANGUAGE plpythonu;
+$$ LANGUAGE plpythonu READS SQL DATA;
 
 CREATE OR REPLACE FUNCTION mapreduce(file text, keys text) returns setof text as $$
 import subprocess
@@ -156,7 +156,7 @@ header = "---------------------"
 err = '\nSTDERR> '.join(('STDERR> ' + r[1]).split('\n')).replace('\t', '   ')
 out = 'STDOUT>\n' + r[0].replace('\t', ', ')
 return [header, err, out]
-$$ LANGUAGE plpythonu;
+$$ LANGUAGE plpythonu READS SQL DATA;
 
 --
 -- CHECK 1) make sure plperlu is really installed:

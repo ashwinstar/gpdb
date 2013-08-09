@@ -153,7 +153,7 @@ create table select_t (k int, v int) distributed by (k);
 insert into select_t values (0, 1), (1, 2), (2, 4), (3, 8), (4, 16);
 create function select_i(int) returns int as $$
 	select v from select_t where k = $1;
-	$$ language sql;
+	$$ language sql READS SQL DATA;
 create function select_f(int) returns int as $$
 	begin
 		if $1 <= 0 then
@@ -161,7 +161,7 @@ create function select_f(int) returns int as $$
 		end if;
 		return select_f($1-1) + select_i($1);
 	end;
-	$$ language plpgsql;
+	$$ language plpgsql READS SQL DATA;
 	
 select x, select_f(x) from (values (0), (1), (2), (3), (4), (5), (6)) r(x);
 
