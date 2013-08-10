@@ -17,7 +17,6 @@
 #include "nodes/parsenodes.h"
 #include "utils/rel.h"
 #include "storage/buf.h"
-#include "executor/instrument.h"
 
 /*
  * TriggerData is the node type that is passed as fmgr "context" info
@@ -187,13 +186,5 @@ extern bool RI_Initial_Check(FkConstraint *fkconstraint,
 #define RI_TRIGGER_NONE 0		/* is not an RI trigger function */
 
 extern int	RI_FKey_trigger_type(Oid tgfoid);
-
-extern HeapTuple ExecCallTriggerFunc(TriggerData *trigdata,
- 					int tgindx,
- 					FmgrInfo *finfo,
- 					Instrumentation *instr,
- 					MemoryContext per_tuple_context);
- 
-
 
 #endif   /* TRIGGER_H */

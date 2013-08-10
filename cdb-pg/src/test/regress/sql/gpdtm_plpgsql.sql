@@ -81,7 +81,7 @@ BEGIN
       END;
       close ref_1234_1;
 END;
-' LANGUAGE plpgsql MODIFIES SQL DATA;
+' LANGUAGE plpgsql;
 
 -- encourage reader-gangs to win races:
 SET gp_enable_slow_writer_testmode=on;
@@ -156,7 +156,7 @@ insert into dtm_plpg_baz select dtm_plpg_bar.b from dtm_plpg_bar where dtm_plpg_
 update dtm_plpg_foo set a = a + 3;
 insert into dtm_plpg_baz select dtm_plpg_bar.b from dtm_plpg_bar where dtm_plpg_bar.b >= (select max(a) from dtm_plpg_foo);
 END;
-' LANGUAGE plpgsql MODIFIES SQL DATA;
+' LANGUAGE plpgsql;
 
 create table dtm_plpg_foo (a int) distributed randomly;
 create table dtm_plpg_bar (b int) distributed randomly;

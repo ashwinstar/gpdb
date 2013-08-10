@@ -1799,9 +1799,6 @@ ExecInitMergeJoin(MergeJoin *node, EState *estate, int eflags)
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("FULL JOIN is only supported with merge-joinable join conditions")));
 			break;
-		case JOIN_LASJ_NOTIN:
-			insist_log(false, "join type not supported");
-			break;
 		default:
 			insist_log(false, "unrecognized join type: %d",
 				 (int) node->join.jointype);
@@ -1941,9 +1938,6 @@ initGpmonPktForMergeJoin(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *esta
 				break;
 			case JOIN_UNIQUE_INNER:
 				type = PMNT_MergeUniqueInnerJoin;
-				break;
-			case JOIN_LASJ_NOTIN:
-				insist_log(false, "Join type not supported");
 				break;
 		}
 

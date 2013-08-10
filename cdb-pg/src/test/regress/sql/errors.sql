@@ -394,7 +394,7 @@ NULL);
 -- Check that stack depth detection mechanism works and
 -- max_stack_depth is not set too high
 create function infinite_recurse() returns int as
-'select infinite_recurse()' language sql CONTAINS SQL;
+'select infinite_recurse()' language sql;
 \set VERBOSITY terse
 -- start_matchsubs
 -- # mpp-2756

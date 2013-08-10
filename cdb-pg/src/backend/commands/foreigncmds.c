@@ -1368,4 +1368,3 @@ RemoveForeignTableEntry(Oid relid)
 
 	heap_close(pg_foreigntable_rel, NoLock);
 }
-

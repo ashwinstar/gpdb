@@ -175,7 +175,7 @@ INSERT INTO mytable values 	(1,2,'t'),
 
 CREATE OR REPLACE FUNCTION negate(int) RETURNS int 
 AS 'SELECT $1 * (-1)'
-LANGUAGE sql CONTAINS SQL
+LANGUAGE sql
 IMMUTABLE
 RETURNS null ON null input;
 
@@ -212,7 +212,7 @@ DROP TABLE IF EXISTS calls_to_blip;
 
 CREATE TABLE calls_to_blip (n serial, v int) DISTRIBUTED RANDOMLY;
 CREATE OR REPLACE FUNCTION blip(int) RETURNS int
-LANGUAGE plpgsql MODIFIES SQL DATA
+LANGUAGE plpgsql
 VOLATILE
 AS $$
 DECLARE
@@ -274,7 +274,7 @@ select pg_get_viewdef('myview',true);
 -- User-defined DECODE function
 CREATE OR REPLACE FUNCTION "decode"(int, int, int) RETURNS int
 AS 'select $1 * $2 - $3;'
-LANGUAGE sql CONTAINS SQL
+LANGUAGE sql
 IMMUTABLE
 RETURNS null ON null input;
 

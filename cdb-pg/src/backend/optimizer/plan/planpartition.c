@@ -1082,7 +1082,12 @@ static void InitPMI(PartitionMatchInfo *pmi, Oid partitionOid, MemoryContext mct
 	pmi->partitionOid = partitionOid;
 	pmi->partitionInfo = RelationBuildPartitionDescByOid(pmi->partitionOid, false);
 
-	pmi->partitionState = createPartitionState(pmi->partitionInfo, 0);
+	pmi->partitionState = makeNode(PartitionState);
+	Size sz = num_partition_levels(pmi->partitionInfo) * sizeof(void *);
+	pmi->partitionState->amstate = palloc0(sz);
+	pmi->partitionState->max_partition_attr =
+			max_partition_attr(pmi->partitionInfo);
+	pmi->partitionState->result_partition_array_size = 0;
 
 	/**
 	 * Initialize hash table
@@ -1144,8 +1149,7 @@ static void AddRecordPMI(PartitionMatchInfo *pmi, HeapTupleHeader record)
 
 	heap_deform_tuple(&pmi->tuple, pmi->tupleDesc, pmi->values, pmi->nulls);
 
-	Assert(pmi->partitionState != NULL);
-	List *partIds = selectPartitionMulti(pmi->partitionInfo, pmi->values, pmi->nulls, pmi->tupleDesc, pmi->partitionState->accessMethods);
+	List *partIds = selectPartitionMulti(pmi->partitionInfo, pmi->values, pmi->nulls, pmi->tupleDesc, pmi->partitionState);
 
 	ListCell *lc = NULL;
 	foreach (lc, partIds)

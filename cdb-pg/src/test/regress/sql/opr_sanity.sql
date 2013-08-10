@@ -28,7 +28,7 @@ SELECT ($1 = $2) OR
  ($2 = 'pg_catalog.anyarray'::pg_catalog.regtype AND
   EXISTS(select 1 from pg_catalog.pg_type where
          oid = $1 and typelem != 0 and typlen = -1))
-$$ language sql strict stable READS SQL DATA;
+$$ language sql strict stable;
 
 -- This one ignores castcontext, so it considers only physical equivalence
 -- and not whether the coercion can be invoked implicitly.
@@ -40,7 +40,7 @@ SELECT ($1 = $2) OR
  ($2 = 'pg_catalog.anyarray'::pg_catalog.regtype AND
   EXISTS(select 1 from pg_catalog.pg_type where
          oid = $1 and typelem != 0 and typlen = -1))
-$$ language sql strict stable READS SQL DATA;
+$$ language sql strict stable;
 
 -- **************** pg_proc ****************
 

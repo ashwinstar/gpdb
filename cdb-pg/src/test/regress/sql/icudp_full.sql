@@ -212,7 +212,7 @@ RESET gp_interconnect_snd_queue_depth;
 RESET gp_interconnect_queue_depth;
 
 -- Lots of connections
-CREATE FUNCTION icudp_history_test() RETURNS void LANGUAGE plpgsql READS SQL DATA AS $$
+CREATE FUNCTION icudp_history_test() RETURNS void LANGUAGE plpgsql AS $$
 DECLARE
     local_jkey INT;
     local_val  INT;
@@ -242,7 +242,7 @@ SELECT COUNT(tval) AS count_tval
         FROM (SELECT * FROM small_table ORDER BY jkey LIMIT 2000) foo) bar;
 
 -- system call fault injection tests
-CREATE FUNCTION system_call_fault_injection_test() RETURNS void LANGUAGE plpgsql READS SQL DATA AS $$
+CREATE FUNCTION system_call_fault_injection_test() RETURNS void LANGUAGE plpgsql AS $$
 DECLARE
     local_jkey INT;
     local_val  INT;
@@ -323,7 +323,7 @@ SELECT ROUND(foo.rval * foo.rval)::INT % 30 AS rval2, COUNT(*) AS count, SUM(len
 SET gp_udpic_fault_inject_percent = 15;
 SET gp_udpic_fault_inject_bitmap = 4096; -- Query cancel
 
-CREATE FUNCTION query_cancel_fault_injection_test() RETURNS void LANGUAGE plpgsql READS SQL DATA AS $$
+CREATE FUNCTION query_cancel_fault_injection_test() RETURNS void LANGUAGE plpgsql AS $$
 DECLARE
     local_val  BIGINT;
 BEGIN

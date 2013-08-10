@@ -28,7 +28,7 @@ $$
   return_next {"fooid", $value, "f2", 11};
   return_next {"fooid", $value, "f2", 33};
   return ;
-$$ language plperlu NO SQL;
+$$ language plperlu;
 
 -- function in select clause
 select foost(1);
@@ -85,7 +85,7 @@ $$
   return_next {"fooid", $value, "f2", 11};
   return_next {"fooid", $value, "f2", 33};
   return ;
-$$ language plperlu NO SQL;
+$$ language plperlu;
 
 -- function in select clause
 --   Fails: plperl does not support SFRM_Materialize
@@ -158,7 +158,7 @@ $$
   return_next {"fooid", $value, "f2", 11};
   return_next {"fooid", $value, "f2", 33};
   return ;
-$$ language plperlu NO SQL;
+$$ language plperlu;
 
 -- function in select clause
 select fooro(1);
@@ -216,7 +216,7 @@ $$
   return_next {"fooid", $value, "f2", 11};
   return_next {"fooid", $value, "f2", 33};
   return ;
-$$ language plperlu NO SQL;
+$$ language plperlu;
 
 -- function in select clause
 select foot(1);
@@ -266,7 +266,7 @@ select z.fooid, z.f2 from foot(sin(pi()/2)::int) z ORDER BY 1,2;
 DROP FUNCTION foot;
 
 -- sql, proretset = f, prorettype = b
-CREATE FUNCTION getfoo(int) RETURNS int AS 'SELECT $1;' LANGUAGE SQL CONTAINS SQL;
+CREATE FUNCTION getfoo(int) RETURNS int AS 'SELECT $1;' LANGUAGE SQL;
 SELECT * FROM getfoo(1) AS t1;
 CREATE VIEW vw_getfoo AS SELECT * FROM getfoo(1);
 SELECT * FROM vw_getfoo;
@@ -274,7 +274,7 @@ SELECT * FROM vw_getfoo;
 -- sql, proretset = t, prorettype = b
 DROP VIEW vw_getfoo;
 DROP FUNCTION getfoo(int);
-CREATE FUNCTION getfoo(int) RETURNS setof int AS 'SELECT fooid FROM foo WHERE fooid = $1;' LANGUAGE SQL READS SQL DATA;
+CREATE FUNCTION getfoo(int) RETURNS setof int AS 'SELECT fooid FROM foo WHERE fooid = $1;' LANGUAGE SQL;
 SELECT * FROM getfoo(1) AS t1;
 CREATE VIEW vw_getfoo AS SELECT * FROM getfoo(1);
 SELECT * FROM vw_getfoo;
@@ -282,7 +282,7 @@ SELECT * FROM vw_getfoo;
 -- sql, proretset = t, prorettype = b
 DROP VIEW vw_getfoo;
 DROP FUNCTION getfoo(int);
-CREATE FUNCTION getfoo(int) RETURNS setof text AS 'SELECT fooname FROM foo WHERE fooid = $1;' LANGUAGE SQL READS SQL DATA;
+CREATE FUNCTION getfoo(int) RETURNS setof text AS 'SELECT fooname FROM foo WHERE fooid = $1;' LANGUAGE SQL;
 SELECT * FROM getfoo(1) AS t1;
 CREATE VIEW vw_getfoo AS SELECT * FROM getfoo(1);
 SELECT * FROM vw_getfoo;
@@ -290,7 +290,7 @@ SELECT * FROM vw_getfoo;
 -- sql, proretset = f, prorettype = c
 DROP VIEW vw_getfoo;
 DROP FUNCTION getfoo(int);
-CREATE FUNCTION getfoo(int) RETURNS foo AS 'SELECT * FROM foo WHERE fooid = $1 ORDER BY 1,2,3;' LANGUAGE SQL READS SQL DATA;
+CREATE FUNCTION getfoo(int) RETURNS foo AS 'SELECT * FROM foo WHERE fooid = $1 ORDER BY 1,2,3;' LANGUAGE SQL;
 SELECT * FROM getfoo(1) AS t1;
 CREATE VIEW vw_getfoo AS SELECT * FROM getfoo(1);
 SELECT * FROM vw_getfoo;
@@ -298,7 +298,7 @@ SELECT * FROM vw_getfoo;
 -- sql, proretset = t, prorettype = c
 DROP VIEW vw_getfoo;
 DROP FUNCTION getfoo(int);
-CREATE FUNCTION getfoo(int) RETURNS setof foo AS 'SELECT * FROM foo WHERE fooid = $1 ORDER BY 1,2,3;' LANGUAGE SQL READS SQL DATA;
+CREATE FUNCTION getfoo(int) RETURNS setof foo AS 'SELECT * FROM foo WHERE fooid = $1 ORDER BY 1,2,3;' LANGUAGE SQL;
 SELECT * FROM getfoo(1) AS t1;
 CREATE VIEW vw_getfoo AS SELECT * FROM getfoo(1);
 SELECT * FROM vw_getfoo;
@@ -306,7 +306,7 @@ SELECT * FROM vw_getfoo;
 -- sql, proretset = f, prorettype = record
 DROP VIEW vw_getfoo;
 DROP FUNCTION getfoo(int);
-CREATE FUNCTION getfoo(int) RETURNS RECORD AS 'SELECT * FROM foo WHERE fooid = $1 ORDER BY 1,2,3;' LANGUAGE SQL READS SQL DATA;
+CREATE FUNCTION getfoo(int) RETURNS RECORD AS 'SELECT * FROM foo WHERE fooid = $1 ORDER BY 1,2,3;' LANGUAGE SQL;
 SELECT * FROM getfoo(1) AS t1(fooid int, foosubid int, fooname text);
 CREATE VIEW vw_getfoo AS SELECT * FROM getfoo(1) AS 
 (fooid int, foosubid int, fooname text);
@@ -315,7 +315,7 @@ SELECT * FROM vw_getfoo;
 -- sql, proretset = t, prorettype = record
 DROP VIEW vw_getfoo;
 DROP FUNCTION getfoo(int);
-CREATE FUNCTION getfoo(int) RETURNS setof record AS 'SELECT * FROM foo WHERE fooid = $1 ORDER BY 1,2,3;' LANGUAGE SQL READS SQL DATA;
+CREATE FUNCTION getfoo(int) RETURNS setof record AS 'SELECT * FROM foo WHERE fooid = $1 ORDER BY 1,2,3;' LANGUAGE SQL;
 SELECT * FROM getfoo(1) AS t1(fooid int, foosubid int, fooname text);
 CREATE VIEW vw_getfoo AS SELECT * FROM getfoo(1) AS
 (fooid int, foosubid int, fooname text);
@@ -324,7 +324,7 @@ SELECT * FROM vw_getfoo;
 -- plpgsql, proretset = f, prorettype = b
 DROP VIEW vw_getfoo;
 DROP FUNCTION getfoo(int);
-CREATE FUNCTION getfoo(int) RETURNS int AS 'DECLARE fooint int; BEGIN SELECT fooid into fooint FROM foo WHERE fooid = $1; RETURN fooint; END;' LANGUAGE plpgsql READS SQL DATA;
+CREATE FUNCTION getfoo(int) RETURNS int AS 'DECLARE fooint int; BEGIN SELECT fooid into fooint FROM foo WHERE fooid = $1; RETURN fooint; END;' LANGUAGE plpgsql;
 SELECT * FROM getfoo(1) AS t1;
 CREATE VIEW vw_getfoo AS SELECT * FROM getfoo(1);
 SELECT * FROM vw_getfoo;
@@ -332,7 +332,7 @@ SELECT * FROM vw_getfoo;
 -- plpgsql, proretset = f, prorettype = c
 DROP VIEW vw_getfoo;
 DROP FUNCTION getfoo(int);
-CREATE FUNCTION getfoo(int) RETURNS foo AS 'DECLARE footup foo%ROWTYPE; BEGIN SELECT * into footup FROM foo WHERE fooid = $1 ORDER BY 1,2,3; RETURN footup; END;' LANGUAGE plpgsql READS SQL DATA;
+CREATE FUNCTION getfoo(int) RETURNS foo AS 'DECLARE footup foo%ROWTYPE; BEGIN SELECT * into footup FROM foo WHERE fooid = $1 ORDER BY 1,2,3; RETURN footup; END;' LANGUAGE plpgsql;
 SELECT * FROM getfoo(1) AS t1;
 CREATE VIEW vw_getfoo AS SELECT * FROM getfoo(1);
 SELECT * FROM vw_getfoo;
@@ -358,32 +358,32 @@ SELECT * FROM foo(42) AS p(x);
 
 -- explicit spec of return type is OK
 CREATE OR REPLACE FUNCTION foo(in f1 int, out f2 int) RETURNS int
-AS 'select $1+1' LANGUAGE sql CONTAINS SQL;
+AS 'select $1+1' LANGUAGE sql;
 
 -- error, wrong result type
 CREATE OR REPLACE FUNCTION foo(in f1 int, out f2 int) RETURNS float
-AS 'select $1+1' LANGUAGE sql CONTAINS SQL;
+AS 'select $1+1' LANGUAGE sql;
 
 -- Can switch from output parmeters to non-ouput parameters
 CREATE OR REPLACE FUNCTION foo(in f1 int) RETURNS int
-AS 'select $1+1' LANGUAGE sql CONTAINS SQL;
+AS 'select $1+1' LANGUAGE sql;
 
 -- Can't change the output type with CREATE OR REPLACE
 CREATE OR REPLACE FUNCTION foo(in f1 int) RETURNS record
-AS 'select $1+1' LANGUAGE sql CONTAINS SQL;
+AS 'select $1+1' LANGUAGE sql;
 
 -- with multiple OUT params you must get a RECORD result
 CREATE OR REPLACE FUNCTION foo(in f1 int, out f2 int, out f3 text) RETURNS int
-AS 'select $1+1' LANGUAGE sql CONTAINS SQL;
+AS 'select $1+1' LANGUAGE sql;
 
 DROP FUNCTION foo(int);
 CREATE OR REPLACE FUNCTION foo(in f1 int) RETURNS record
-AS 'select $1+1' LANGUAGE sql CONTAINS SQL;
+AS 'select $1+1' LANGUAGE sql;
 
 -- Can't change the result type, previously record now typed record
 CREATE OR REPLACE FUNCTION foo(in f1 int, out f2 int, out f3 text)
 RETURNS record
-AS 'select $1+1' LANGUAGE sql CONTAINS SQL;
+AS 'select $1+1' LANGUAGE sql;
 
 -- Can't change the result type, previously record now typed record (implied)
 CREATE OR REPLACE FUNCTION foo(in f1 int, out f2 int, out f3 text)
@@ -395,36 +395,36 @@ AS 'select $1+1' LANGUAGE sql;
 
 -- Can't change the result type, previously record, now setof record
 CREATE OR REPLACE FUNCTION foo(in f1 int) RETURNS setof record
-AS 'select $1+1' LANGUAGE sql CONTAINS SQL;
+AS 'select $1+1' LANGUAGE sql;
 
 DROP FUNCTION foo(int);
 CREATE OR REPLACE FUNCTION foo(in f1 int) RETURNS setof record
-AS 'select $1+1' LANGUAGE sql CONTAINS SQL;
+AS 'select $1+1' LANGUAGE sql;
 
 -- Can't convert between setof record and setof (typed) record.
 CREATE OR REPLACE FUNCTION foo(in f1 int, out f2 int, out f3 text) 
 RETURNS setof record
-AS 'select $1+1, null' LANGUAGE sql CONTAINS SQL;
+AS 'select $1+1, null' LANGUAGE sql;
 
 -- Can't convert between setof record and TABLE
 CREATE OR REPLACE FUNCTION foo(in f1 int)
 RETURNS TABLE(f2 int, f3 text)
-AS 'select $1+1' LANGUAGE sql CONTAINS SQL;
+AS 'select $1+1' LANGUAGE sql;
 
 DROP FUNCTION foo(int);
 CREATE OR REPLACE FUNCTION foo(in f1 int, out f2 int, out f3 text) 
 RETURNS setof record
-AS 'select $1+1, null::text' LANGUAGE sql CONTAINS SQL;
+AS 'select $1+1, null::text' LANGUAGE sql;
 
 -- CAN convert between setof (typed) record and TABLE
 CREATE OR REPLACE FUNCTION foo(in f1 int)
 RETURNS TABLE(f2 int, f3 text)
-AS 'select $1+1, null::text' LANGUAGE sql CONTAINS SQL;
+AS 'select $1+1, null::text' LANGUAGE sql;
 
 -- Can't change the definition of a (typed) record or table
 CREATE OR REPLACE FUNCTION foo(in f1 int)
 RETURNS TABLE(f2 int, different text)
-AS 'select $1+1, null::text' LANGUAGE sql CONTAINS SQL;
+AS 'select $1+1, null::text' LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION foor(in f1 int, out f2 int, out text)
 AS $$select $1-1, $1::text || 'z'$$ LANGUAGE sql;

@@ -333,7 +333,6 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 %type <boolean> opt_instead opt_analyze
 %type <boolean> index_opt_unique opt_verbose opt_full
 %type <boolean> opt_freeze opt_default opt_ordered opt_recheck
-%type <boolean> opt_dxl
 %type <defelt>	opt_binary opt_oids copy_delimiter
 
 %type <boolean> copy_from opt_hold
@@ -500,7 +499,7 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 	EXCHANGE EXCLUDE EXCLUDING EXCLUSIVE EXECUTE EXISTS EXPLAIN EXTERNAL EXTRACT
 
 	FALSE_P FETCH FIELDS FILESPACE FILL FILTER FIRST_P FLOAT_P FOLLOWING FOR 
-    FORCE FOREIGN FORMAT FORMATTER FORWARD FREEZE FROM FULL FUNCTION DXL
+    FORCE FOREIGN FORMAT FORMATTER FORWARD FREEZE FROM FULL FUNCTION
 
 	GLOBAL GRANT GRANTED GREATEST GROUP_P GROUP_ID GROUPING
 
@@ -927,7 +926,6 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 			%nonassoc LOG_P
 			%nonassoc OUTER_P
 			%nonassoc VERBOSE
-			
 
 
 %left		Op OPERATOR		/* multi-character ops and user-defined operators */
@@ -1487,7 +1485,6 @@ OptAlterRoleList:
 OptAlterRoleElem:
 			OptRoleElem								{ $$ = $1; }
 			| DROP DENY FOR deny_point				{ $$ = makeDefElem("drop_deny", $4); }
-
 
 
 /*****************************************************************************
@@ -8343,7 +8340,7 @@ opt_verbose:
 			VERBOSE									{ $$ = TRUE; }
 			| /*EMPTY*/								{ $$ = FALSE; }
 		;
-			
+
 opt_full:	FULL									{ $$ = TRUE; }
 			| /*EMPTY*/								{ $$ = FALSE; }
 		;
@@ -8365,17 +8362,16 @@ opt_name_list:
  *
  *****************************************************************************/
 
-ExplainStmt: EXPLAIN opt_analyze opt_verbose opt_dxl opt_force ExplainableStmt
+ExplainStmt: EXPLAIN opt_analyze opt_verbose opt_force ExplainableStmt
 				{
 					ExplainStmt *n = makeNode(ExplainStmt);
 					n->analyze = $2;
 					n->verbose = $3;
-					n->dxl = $4;
-					if($5)
+					if($4)
 						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR), 
 								errmsg("cannot use force with explain statement")
 							       ));
-					n->query = (Query*)$6;
+					n->query = (Query*)$5;
 					$$ = (Node *)n;
 				}
 		;
@@ -8395,10 +8391,6 @@ ExplainableStmt:
 							 errmsg("cannot EXPLAIN CREATE TABLE without AS "
 							 		"clause")));
 				}
-		;
-
-opt_dxl:	DXL										{ $$ = TRUE; }
-			| /*EMPTY*/								{ $$ = FALSE; }
 		;
 
 opt_analyze:
@@ -12397,7 +12389,6 @@ unreserved_keyword:
 			| CONTINUE_P
 			| CONVERSION_P
 			| COPY
-			| DXL
 			| COST
 			| CREATEDB
 			| CREATEEXTTABLE

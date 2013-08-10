@@ -30,8 +30,6 @@
 
 #include "utils/memutils.h"
 
-static void splitJoinQualExpr(NestLoopState *nlstate);
-static void extractFuncExprArgs(FuncExprState *fstate, List **lclauses, List **rclauses);
 
 /* ----------------------------------------------------------------
  *		ExecNestLoop(node)
@@ -128,12 +126,6 @@ ExecNestLoop(NestLoopState *node)
 
 		if (TupIsNull(innerTupleSlot))
 		{
-			/*
-			 * Finished one complete scan of the inner side. Mark it here
-			 * so that we don't keep checking for inner nulls at subsequent
-			 * iterations.
-			 */
-			node->nl_innerSideScanned = true;
             /* CDB: Quit if empty inner implies no outer rows can match. */
 			/* See MPP-1146 and MPP-1694 */
 			if (node->nl_QuitIfEmptyInner)
@@ -141,23 +133,6 @@ ExecNestLoop(NestLoopState *node)
                 ExecSquelchNode(outerPlan);
                 return NULL;
             }
-		}
-
-		if ((node->js.jointype == JOIN_LASJ_NOTIN) &&
-				(!node->nl_innerSideScanned) &&
-				(isJoinExprNull(node->nl_InnerJoinKeys, econtext)))
-		{
-			/*
-			 * If LASJ_NOTIN and a null was found on the inner side, then clean out.
-			 * We'll read no more from either inner or outer subtree. To keep our
-			 * sibling QEs from being starved, tell source QEs not to
-			 * clog up the pipeline with our never-to-be-consumed
-			 * data.
-			 */
-			ENL1_printf("Found NULL tuple on the inner side, clean out");
-			ExecSquelchNode(outerPlan);
-			ExecSquelchNode(innerPlan);
-			return NULL;
 		}
 
 		ExecReScan(innerPlan, econtext);
@@ -211,10 +186,7 @@ ExecNestLoop(NestLoopState *node)
 				 * they are not eager free safe. However, when the nestloop is done,
 				 * we can free the memory used by the child nodes.
 				 */
-				if (!node->js.ps.delayEagerFree)
-				{
-					ExecEagerFreeChildNodes((PlanState *)node, false);
-				}
+				ExecEagerFreeChildNodes((PlanState *)node, false);
 
 				return NULL;
 			}
@@ -259,17 +231,10 @@ ExecNestLoop(NestLoopState *node)
 			ENL1_printf("no inner tuple, need new outer tuple");
 
 			node->nl_NeedNewOuter = true;
-			/*
-			 * Finished one complete scan of the inner side. Mark it here
-			 * so that we don't keep checking for inner nulls at subsequent
-			 * iterations.
-			 */
-			node->nl_innerSideScanned = true;
 
 			if (!node->nl_MatchedOuter &&
 				(node->js.jointype == JOIN_LEFT || 
-				 node->js.jointype == JOIN_LASJ ||
-				 node->js.jointype == JOIN_LASJ_NOTIN))
+				 node->js.jointype == JOIN_LASJ))
 			{
 				/*
 				 * We are doing an outer join and there were no join matches
@@ -311,24 +276,7 @@ ExecNestLoop(NestLoopState *node)
 
         node->nl_QuitIfEmptyInner = false;  /*CDB*/
 
-		if ((node->js.jointype == JOIN_LASJ_NOTIN) &&
-				(!node->nl_innerSideScanned) &&
-				(isJoinExprNull(node->nl_InnerJoinKeys, econtext)))
-		{
-			/*
-			 * If LASJ_NOTIN and a null was found on the inner side, then clean out.
-			 * We'll read no more from either inner or outer subtree. To keep our
-			 * sibling QEs from being starved, tell source QEs not to
-			 * clog up the pipeline with our never-to-be-consumed
-			 * data.
-			 */
-			ENL1_printf("Found NULL tuple on the inner side, clean out");
-			ExecSquelchNode(outerPlan);
-			ExecSquelchNode(innerPlan);
-			return NULL;
-		}
-
-		/*
+        /*
 		 * at this point we have a new pair of inner and outer tuples so we
 		 * test the inner and outer tuples to see if they satisfy the node's
 		 * qualification.
@@ -338,12 +286,12 @@ ExecNestLoop(NestLoopState *node)
 		 */
 		ENL1_printf("testing qualification");
 
-		if (ExecQual(joinqual, econtext, node->nl_qualResultForNull))
+		if (ExecQual(joinqual, econtext, false))
 		{
 			node->nl_MatchedOuter = true;
 
 			/* In an antijoin, we never return a matched tuple */
-			if (node->js.jointype == JOIN_LASJ || node->js.jointype == JOIN_LASJ_NOTIN)
+			if (node->js.jointype == JOIN_LASJ) 
 			{
 				node->nl_NeedNewOuter = true;
 				continue;		/* return to top of loop */
@@ -414,13 +362,6 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 	ExecAssignExprContext(estate, &nlstate->js.ps);
 
 	/*
-	 * If eflag contains EXEC_FLAG_REWIND or EXEC_FLAG_BACKWARD or EXEC_FLAG_MARK,
-	 * then this node is not eager free safe.
-	 */
-	nlstate->js.ps.delayEagerFree =
-		((eflags & (EXEC_FLAG_REWIND | EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)) != 0);
-
-	/*
 	 * initialize child expressions
 	 */
 	nlstate->js.ps.targetlist = (List *)
@@ -485,7 +426,6 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 			break;
 		case JOIN_LEFT:
 		case JOIN_LASJ:
-		case JOIN_LASJ_NOTIN:
 			nlstate->nl_NullInnerTupleSlot =
 				ExecInitNullTupleSlot(estate,
 								 ExecGetResultType(innerPlanState(nlstate)));
@@ -516,22 +456,6 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 		 node->join.jointype == JOIN_RIGHT ||
 		 node->join.jointype == JOIN_IN))
         nlstate->nl_QuitIfEmptyInner = true;
-
-    if (node->join.jointype == JOIN_LASJ_NOTIN)
-    {
-    	splitJoinQualExpr(nlstate);
-    	Assert(NIL != nlstate->nl_InnerJoinKeys && NIL != nlstate->nl_OuterJoinKeys);
-    	/*
-    	 * For LASJ_NOTIN, when we evaluate the join condition, we want to
-    	 * return true when one of the conditions is NULL, so we exclude
-    	 * that tuple from the output.
-    	 */
-		nlstate->nl_qualResultForNull = true;
-    }
-    else
-    {
-        nlstate->nl_qualResultForNull = false;
-    }
 
 	NL1_printf("ExecInitNestLoop: %s\n",
 			   "node initialized");
@@ -610,7 +534,6 @@ ExecReScanNestLoop(NestLoopState *node, ExprContext *exprCtxt)
 	node->js.ps.ps_OuterTupleSlot = NULL;
 	node->nl_NeedNewOuter = true;
 	node->nl_MatchedOuter = false;
-	node->nl_innerSideScanned = false;
 	/* CDB: We intentionally leave node->nl_innerSquelchNeeded unchanged on ReScan */
 }
 
@@ -631,7 +554,6 @@ initGpmonPktForNestLoop(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estat
 				type = PMNT_NestedLoopLeftJoin;
 			break;
 			case JOIN_LASJ:
-			case JOIN_LASJ_NOTIN:
 				type = PMNT_NestedLoopLeftAntiSemiJoin;
 			break;
 			case JOIN_FULL:
@@ -660,67 +582,4 @@ initGpmonPktForNestLoop(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estat
 							 (int64)planNode->plan_rows,
 							 NULL);
 	}
-}
-
-/* ----------------------------------------------------------------
- * splitJoinQualExpr
- *
- * Deconstruct the join clauses into outer and inner argument values, so
- * that we can evaluate those subexpressions separately.
- *
- * This is used for NOTIN joins, as we need to look for NULLs on both
- * inner and outer side.
- * ----------------------------------------------------------------
- */
-static void
-splitJoinQualExpr(NestLoopState *nlstate)
-{
-	List *lclauses = NIL;
-	List *rclauses = NIL;
-	ListCell *lc = NULL;
-
-	foreach(lc, nlstate->js.joinqual)
-	{
-		GenericExprState *exprstate = (GenericExprState *) lfirst(lc);
-		switch (exprstate->xprstate.type)
-		{
-		case T_FuncExprState:
-			extractFuncExprArgs((FuncExprState *) exprstate, &lclauses, &rclauses);
-			break;
-		case T_BoolExprState:
-		{
-			BoolExprState *bstate = (BoolExprState *) exprstate;
-			ListCell *argslc = NULL;
-			foreach(argslc,bstate->args)
-			{
-				FuncExprState *fstate = (FuncExprState *) lfirst(argslc);
-				Assert(IsA(fstate, FuncExprState));
-				extractFuncExprArgs(fstate, &lclauses, &rclauses);
-			}
-			break;
-		}
-		default:
-			insist_log(false, "unexpected expression type in NestLoopJoin qual");
-		}
-	}
-	Assert(NIL == nlstate->nl_InnerJoinKeys && NIL == nlstate->nl_OuterJoinKeys);
-	nlstate->nl_InnerJoinKeys = rclauses;
-	nlstate->nl_OuterJoinKeys = lclauses;
-}
-
-
-/* ----------------------------------------------------------------
- * extractFuncExprArgs
- *
- * Extract the arguments of a FuncExpr and append them into two
- * given lists:
- *   - lclauses for the left side of the expression,
- *   - rclauses for the right side
- * ----------------------------------------------------------------
- */
-static void
-extractFuncExprArgs(FuncExprState *fstate, List **lclauses, List **rclauses)
-{
-	*lclauses = lappend(*lclauses, linitial(fstate->args));
-	*rclauses = lappend(*rclauses, lsecond(fstate->args));
 }

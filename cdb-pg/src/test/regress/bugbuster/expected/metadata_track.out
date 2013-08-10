@@ -190,7 +190,7 @@ NOTICE:  CREATE TABLE will create partition "mdt_part_tbl_split_list_1_prt_foo" 
 NOTICE:  CREATE TABLE will create partition "mdt_part_tbl_split_list_1_prt_bar" for table "mdt_part_tbl_split_list"
 NOTICE:  CREATE TABLE will create partition "mdt_part_tbl_split_list_1_prt_baz" for table "mdt_part_tbl_split_list"
 alter table mdt_part_tbl_split_list split default partition at ('baz') into (partition bing, default partition);
-NOTICE:  exchanged partition "baz" of relation "mdt_part_tbl_split_list" with relation "pg_temp_148803"
+NOTICE:  exchanged partition "baz" of relation "mdt_part_tbl_split_list" with relation "pg_temp_98430"
 NOTICE:  dropped partition "baz" for relation "mdt_part_tbl_split_list"
 NOTICE:  CREATE TABLE will create partition "mdt_part_tbl_split_list_1_prt_bing" for table "mdt_part_tbl_split_list"
 NOTICE:  CREATE TABLE will create partition "mdt_part_tbl_split_list_1_prt_baz" for table "mdt_part_tbl_split_list"
@@ -405,7 +405,7 @@ NOTICE:  CREATE TABLE / UNIQUE will create implicit index "mdt_price_change_apn_
           END IF;
           RETURN new;
           END
-          ' LANGUAGE plpgsql MODIFIES SQL DATA;
+          ' LANGUAGE plpgsql;
           --create a trigger on the table you wish to monitor:
           CREATE TRIGGER mdt_insert_mdt_price_change AFTER INSERT OR DELETE OR UPDATE ON mdt_stock
           FOR EACH ROW EXECUTE PROCEDURE mdt_insert_mdt_price_change();
@@ -1041,7 +1041,7 @@ create group mdt_group1 with superuser;
           END IF;
           RETURN new;
           END
-          ' LANGUAGE plpgsql MODIFIES SQL DATA;
+          ' LANGUAGE plpgsql;
 grant execute on function mdt_insert_mdt_price_change1() to mdt_user1 with grant option;
 revoke grant option for execute on function mdt_insert_mdt_price_change1() from mdt_user1 cascade;
           CREATE OR REPLACE FUNCTION mdt_insert_mdt_price_change2() RETURNS trigger AS '
@@ -1064,7 +1064,7 @@ revoke grant option for execute on function mdt_insert_mdt_price_change1() from 
           END IF;
           RETURN new;
           END
-          ' LANGUAGE plpgsql MODIFIES SQL DATA;
+          ' LANGUAGE plpgsql;
 grant execute on function mdt_insert_mdt_price_change2() to group mdt_group1 with grant option;
 revoke execute on function mdt_insert_mdt_price_change2() from group mdt_group1 restrict;
           CREATE OR REPLACE FUNCTION mdt_insert_mdt_price_change3() RETURNS trigger AS '
@@ -1087,7 +1087,7 @@ revoke execute on function mdt_insert_mdt_price_change2() from group mdt_group1 
           END IF;
           RETURN new;
           END
-          ' LANGUAGE plpgsql MODIFIES SQL DATA;
+          ' LANGUAGE plpgsql;
 grant all on function mdt_insert_mdt_price_change3() to public;
 revoke all on function mdt_insert_mdt_price_change3() from public;
           CREATE OR REPLACE FUNCTION mdt_insert_mdt_price_change4() RETURNS trigger AS '
@@ -1110,7 +1110,7 @@ revoke all on function mdt_insert_mdt_price_change3() from public;
           END IF;
           RETURN new;
           END
-          ' LANGUAGE plpgsql MODIFIES SQL DATA;
+          ' LANGUAGE plpgsql;
 grant all privileges on function mdt_insert_mdt_price_change4() to public;
 revoke all privileges on function mdt_insert_mdt_price_change4() from public;
 drop function mdt_insert_mdt_price_change1();
@@ -1122,11 +1122,8 @@ drop group mdt_group1;
 --
 create user mdt_user1 with superuser;
 create group mdt_group1 with superuser;
--- start_ignore
-drop language if exists plperl cascade;
-NOTICE:  language "plperl" does not exist, skipping
--- end_ignore
 create language plperl;
+ERROR:  language "plperl" already exists
 grant usage on language plperl to mdt_user1 with grant option;
 revoke grant option for usage on language plperl from mdt_user1;
 grant usage on language plpgsql to group mdt_group1 with grant option;

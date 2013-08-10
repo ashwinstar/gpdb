@@ -5885,7 +5885,7 @@ within_agg_construct_inner(PlannerInfo *root,
 	root->parse = parse = copyObject(root->parse);
 	root->parse->targetList = tlist;
 	root->parse->havingQual = NULL;
-	root->parse->scatterClause = NIL;
+	root->parse->scatterClause = NULL;
 	root->group_pathkeys =
 		make_pathkeys_for_sortclauses(parse->groupClause, tlist);
 

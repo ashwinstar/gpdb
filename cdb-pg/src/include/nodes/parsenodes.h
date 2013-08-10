@@ -2499,7 +2499,6 @@ typedef struct ExplainStmt
 	Query	   *query;			/* the query */
 	bool		verbose;		/* print plan info */
 	bool		analyze;		/* get statistics by executing plan */
-	bool		dxl;			/* display plan in dxl format */
 } ExplainStmt;
 
 /* ----------------------

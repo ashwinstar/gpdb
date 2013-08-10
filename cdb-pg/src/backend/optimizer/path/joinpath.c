@@ -199,7 +199,6 @@ sort_inner_and_outer(PlannerInfo *root,
 		case JOIN_INNER:
 		case JOIN_LEFT:
 		case JOIN_LASJ:
-		case JOIN_LASJ_NOTIN:
 			useallclauses = false;
 			break;
 		case JOIN_RIGHT:
@@ -382,7 +381,6 @@ match_unsorted_outer(PlannerInfo *root,
 		case JOIN_INNER:
 		case JOIN_LEFT:
 		case JOIN_LASJ:
-		case JOIN_LASJ_NOTIN:
 			nestjoinOK = true;
 			useallclauses = false;
 			break;
@@ -728,7 +726,6 @@ hashclauses_for_join(List *restrictlist,
 			break;
 		case JOIN_LEFT:
 		case JOIN_LASJ:
-		case JOIN_LASJ_NOTIN:
 			isouterjoin = true;
 			break;
 		default:
@@ -804,7 +801,7 @@ hash_inner_and_outer(PlannerInfo *root,
 	/*
 	 * Hashjoin only supports inner, left  and anti joins.
 	 */
-    Assert(jointype == JOIN_INNER || jointype == JOIN_LEFT || jointype == JOIN_LASJ || jointype == JOIN_LASJ_NOTIN);
+    Assert(jointype == JOIN_INNER || jointype == JOIN_LEFT || jointype == JOIN_LASJ);
     Assert(hashclause_list);
 
     /*

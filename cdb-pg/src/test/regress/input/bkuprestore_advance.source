@@ -80,7 +80,7 @@ create unique index idxt2 on idxt(j);
 create function C3ToBit (s char(3)) 
 	returns bit(3) as 
 	$$ select '101'::bit(3); $$ 
-	language sql immutable CONTAINS SQL returns NULL on NULL input;
+	language sql immutable returns NULL on NULL input;
 
 create language plpgsql;
 create function incr (i int) returns int as
@@ -88,7 +88,7 @@ $$
 	BEGIN 
 		return i + 1;
 	END
-$$ language plpgsql NO SQL;
+$$ language plpgsql;
 
 create cast (char(3) as bit(3))
 	with function C3ToBit (char(3)) ;
@@ -139,7 +139,7 @@ create function trigf() returns trigger as
 	BEGIN
 		insert into trig1 values (1, 1);
 	END
-	$$ LANGUAGE PLPGSQL MODIFIES SQL DATA;
+	$$ LANGUAGE PLPGSQL;
 
 create trigger trig after delete on trig1 for each row execute procedure trigf();
 insert into trig1 values (1, 1), (2, 2);

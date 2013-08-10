@@ -17,7 +17,7 @@ begin
     end if;
     return new;
 end;
-' language plpgsql NO SQL;
+' language plpgsql;
 create trigger tg_bu before update
    on test for each row execute procedure bu();
 update test set a=200 where a=10;
@@ -55,7 +55,7 @@ begin
         return;
     end if;
 end
-$$ language plpgsql READS SQL DATA;
+$$ language plpgsql;
 select * from (select refcursor (1, 10)) t1, test;
 ERROR:  function cannot execute on segment because it accesses relation "public.test" (functions.c:151)  (seg0 slice1 usensimiobmbp.corp.emc.com:18506 pid=17309) (cdbdisp.c:1380)
 DETAIL:  

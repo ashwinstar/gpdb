@@ -33,19 +33,7 @@
 #include "utils/tuplesort.h"
 #include "postmaster/primary_mirror_mode.h"
 
-typedef struct ShareInput_Lk_Context
-{
-	int readyfd;
-	int donefd;
-	int  zcnt;
-	bool del_ready;
-	bool del_done;
-	char lkname_ready[MAXPGPATH];
-	char lkname_done[MAXPGPATH];
-} ShareInput_Lk_Context;
-
 static TupleTableSlot *ShareInputNext(ShareInputScanState *node);
-static void writer_wait_for_acks(ShareInput_Lk_Context *pctxt, int share_id, int xslice);
 
 /* ------------------------------------------------------------------
  * 	ExecShareInputScan 
@@ -176,8 +164,6 @@ ShareInputNext(ShareInputScanState *node)
 	/* if first time call, need to initialize the tuplestore state.  */
 	if(node->ts_state == NULL)
 	{
-		elog(DEBUG1, "SISC (shareid=%d, slice=%d): No tuplestore yet, initializing tuplestore",
-				sisc->share_id, currentSliceId);
 		init_tuplestore_state(node);
 	}
 
@@ -287,16 +273,10 @@ ExecSliceDependencyShareInputScan(ShareInputScanState *node)
 {
 	ShareInputScan * sisc = (ShareInputScan *) node->ss.ps.plan;
 
-	elog(DEBUG1, "SISC READER (shareid=%d, slice=%d): exec dependency on slice %d, driver_slice is %d",
-			sisc->share_id, currentSliceId,
-			currentSliceId, sisc->driver_slice);
+	elog(DEBUG1, "SISC exec dependency on slice %d, driver_slice is %d", currentSliceId, sisc->driver_slice);
 
-	EState *estate = node->ss.ps.state;
 	if(sisc->driver_slice >= 0 && sisc->driver_slice == currentSliceId)
-	{
-		node->share_lk_ctxt = shareinput_reader_waitready(sisc->share_id,
-			estate->es_plannedstmt->planGen);
-	}
+		node->share_lk_ctxt = shareinput_reader_waitready(sisc->share_id);
 }
 
 /* ------------------------------------------------------------------
@@ -509,11 +489,22 @@ static void sisc_lockname(char* p, int size, int share_id, const char* name)
 	}
 }
 
+typedef struct ShareInput_Lk_Context 
+{
+	int readyfd;
+	int donefd;
+	int  zcnt;
+	bool del_ready; 
+	bool del_done;
+	char lkname_ready[MAXPGPATH];
+	char lkname_done[MAXPGPATH];
+} ShareInput_Lk_Context;
+
 static void shareinput_clean_lk_ctxt(ShareInput_Lk_Context *lk_ctxt)
 {
 	int err;
 
-	elog(DEBUG1, "shareinput_clean_lk_ctxt cleanup lk ctxt %p", lk_ctxt);
+	elog(LOG, "shareinput_clean_lk_ctxt cleanup lk ctxt %p", lk_ctxt);
 
 	if(lk_ctxt->readyfd >= 0)
 	{
@@ -642,27 +633,14 @@ write_retry:
  *
  * One thing to note is that some 'z' may comeback before all 'b' come back.
  * So, need to handle this in notifyready.
- *
- * For optimizer-generated plans, we skip the 'b' synchronization. The writer
- * does not wait for readers to acknowledge the "ready" handshake anymore, as
- * that can cause deadlocks (OPT-2690).
  */
-
-/*
- * shareinput_reader_waitready
- *
- *  Called by the reader (consumer) to wait for the writer (producer) to produce
- *  all the tuples and write them to disk.
- *
- *  This is a blocking operation.
- */
-void *
-shareinput_reader_waitready(int share_id, PlanGenerator planGen)
+void *shareinput_reader_waitready(int share_id)
 {
 	mpp_fd_set rset;
 	struct timeval tval;
 	int n;
 	char a;
+	int rwsize;
 
 	ShareInput_Lk_Context *pctxt = gp_malloc(sizeof(ShareInput_Lk_Context));
 
@@ -706,62 +684,35 @@ shareinput_reader_waitready(int share_id, PlanGenerator planGen)
 
 		if(n==1)
 		{
-#if USE_ASSERT_CHECKING
-			int rwsize =
-#endif
-			retry_read(pctxt->readyfd, &a, 1);
+			rwsize = retry_read(pctxt->readyfd, &a, 1);
 			Assert(rwsize == 1 && a == 'a');
 
-			elog(DEBUG1, "SISC READER (shareid=%d, slice=%d): Wait ready got writer's handshake",
-					share_id, currentSliceId);
-
-			if (planGen == PLANGEN_PLANNER)
-			{
-				/* For planner-generated plans, we send ack back after receiving the handshake */
-				elog(DEBUG1, "SISC READER (shareid=%d, slice=%d): Wait ready writing ack back to writer",
-						share_id, currentSliceId);
-
-#if USE_ASSERT_CHECKING
-				rwsize =
-#endif
-				retry_write(pctxt->donefd, "b", 1);
-				Assert(rwsize == 1);
-			}
+			elog(DEBUG1, "SISC: Wait ready get a, now write b");
+			rwsize = retry_write(pctxt->donefd, "b", 1);
+			Assert(rwsize == 1);
 
 			break;
 		}
 		else if(n==0)
 		{
-			elog(DEBUG1, "SISC READER (shareid=%d, slice=%d): Wait ready time out once",
-					share_id, currentSliceId);
+			elog(DEBUG1, "SISC: Wait ready time out once");
 		}
 		else
 		{
 			int save_errno = errno;
-			elog(LOG, "SISC READER (shareid=%d, slice=%d): Wait ready try again, errno %d ... ",
-					share_id, currentSliceId, save_errno);
+			elog(LOG, "SISC: Wait ready try again, errno %d ... ", save_errno);
 		}
 	}
 	return (void *) pctxt;
 }
 
-/*
- * shareinput_writer_notifyready
- *
- *  Called by the writer (producer) once it is done producing all tuples and
- *  writing them to disk. It notifies all the readers (consumers) that tuples
- *  are ready to be read from disk.
- *
- *  For planner-generated plans we wait for acks from all the readers before
- *  proceedings. It is a blocking operation.
- *
- *	For optimizer-generated plans we don't wait for acks, we proceed immediately.
- *  It is a non-blocking operation.
- */
-void *
-shareinput_writer_notifyready(int share_id, int xslice, PlanGenerator planGen)
+void *shareinput_writer_notifyready(int share_id, int xslice)
 {
+	mpp_fd_set rset;
+	struct timeval tval;
 	int n;
+	char b;
+	int rwsize;
 
 	ShareInput_Lk_Context *pctxt = gp_malloc(sizeof(ShareInput_Lk_Context));
 
@@ -795,41 +746,11 @@ shareinput_writer_notifyready(int share_id, int xslice, PlanGenerator planGen)
 
 	for(n=0; n<xslice; ++n)
 	{
-#if USE_ASSERT_CHECKING
-		int rwsize =
-#endif
-		retry_write(pctxt->readyfd, "a", 1);
+		rwsize = retry_write(pctxt->readyfd, "a", 1);
 		Assert(rwsize == 1);
 	}
-	elog(DEBUG1, "SISC WRITER (shareid=%d, slice=%d): wrote notify_ready to %d xslice readers",
-						share_id, currentSliceId, xslice);
 	
-	if (planGen == PLANGEN_PLANNER)
-	{
-		/* For planner-generated plans, we wait for acks from all the readers */
-		writer_wait_for_acks(pctxt, share_id, xslice);
-	}
-
-	return (void *) pctxt;
-}
-
-/*
- * writer_wait_for_acks
- *
- * After sending the handshake to all the reader, the writer waits for acks
- * from all the readers.
- *
- * This is a blocking operation.
- */
-static void
-writer_wait_for_acks(ShareInput_Lk_Context *pctxt, int share_id, int xslice)
-{
-	int ack_needed = xslice;
-	mpp_fd_set rset;
-	struct timeval tval;
-	char b;
-
-	while(ack_needed > 0)
+	while(xslice > 0)
 	{
 		CHECK_FOR_INTERRUPTS();
 
@@ -838,86 +759,59 @@ writer_wait_for_acks(ShareInput_Lk_Context *pctxt, int share_id, int xslice)
 
 		tval.tv_sec = 1;
 		tval.tv_usec = 0;
-		int numReady = select(pctxt->donefd+1, (fd_set *) &rset, NULL, NULL, &tval);
+		n = select(pctxt->donefd+1, (fd_set *) &rset, NULL, NULL, &tval);
 
-		if(numReady==1)
+		if(n==1)
 		{
-#if USE_ASSERT_CHECKING
-			int rwsize =
-#endif
-			retry_read(pctxt->donefd, &b, 1);
+			rwsize = retry_read(pctxt->donefd, &b, 1);
 			Assert(rwsize == 1);
 
 			if(b == 'z')
-			{
 				++pctxt->zcnt;
-			}
 			else
 			{
 				Assert(b == 'b');
-				--ack_needed;
-				elog(DEBUG1, "SISC WRITER (shareid=%d, slice=%d): notify ready succeed 1, xslice remaining %d",
-						share_id, currentSliceId, ack_needed);
+				--xslice;
+				elog(DEBUG1, "SISC: notify ready succeed 1, xslice remaining %d", xslice);
 			}
 		}
-		else if(numReady==0)
+		else if(n==0)
 		{
-			elog(DEBUG1, "SISC WRITER (shareid=%d, slice=%d): Notify ready time out once ... ",
-					share_id, currentSliceId);
+			elog(DEBUG1, "SISC: Notify ready time out once ... ");
 		}
 		else
 		{
 			int save_errno = errno;
-			elog(LOG, "SISC WRITER (shareid=%d, slice=%d): notify still wait for an answer, errno %d",
-					share_id, currentSliceId, save_errno);
+			elog(LOG, "SISC: notify still wait for an answer, errno %d", save_errno);
 		}
 	}
+	return (void *) pctxt;
 }
 
-/*
- * shareinput_reader_notifydone
- *
- *  Called by the reader (consumer) to notify the writer (producer) that
- *  it is done reading tuples from disk.
- *
- *  This is a non-blocking operation.
- */
-void
-shareinput_reader_notifydone(void *ctxt, int share_id)
+void shareinput_reader_notifydone(void *ctxt, int share_id)
 {
 	ShareInput_Lk_Context *pctxt = (ShareInput_Lk_Context *) ctxt;
-#if USE_ASSERT_CHECKING
-	int rwsize  =
-#endif
-	retry_write(pctxt->donefd, "z", 1);
+	int rwsize;
+
+	rwsize = retry_write(pctxt->donefd, "z", 1);
 	Assert(rwsize == 1);
 
 	shareinput_clean_lk_ctxt(pctxt);
 	UnregisterXactCallbackOnce(XCallBack_ShareInput_FIFO, (void *) ctxt);
 }
 
-/*
- * shareinput_writer_waitdone
- *
- *  Called by the writer (producer) to wait for the "done" notfication from
- *  all readers (consumers).
- *
- *  This is a blocking operation.
- */
-void
-shareinput_writer_waitdone(void *ctxt, int share_id, int nsharer_xslice)
+void shareinput_writer_waitdone(void *ctxt, int share_id, int nsharer_xslice)
 {
 	ShareInput_Lk_Context *pctxt = (ShareInput_Lk_Context *) ctxt;
 	mpp_fd_set rset;
 	struct timeval tval;
-	int numReady;
+	int n;
 	char z;
-	int ack_needed = nsharer_xslice - pctxt->zcnt;
+	int rwsize;
 
-	elog(DEBUG1, "SISC WRITER (shareid=%d, slice=%d): waiting for DONE message from %d readers",
-							share_id, currentSliceId, ack_needed);
+	nsharer_xslice -= pctxt->zcnt;
 
-	while(ack_needed > 0)
+	while(nsharer_xslice > 0)
 	{
 		CHECK_FOR_INTERRUPTS();
 	
@@ -926,36 +820,28 @@ shareinput_writer_waitdone(void *ctxt, int share_id, int nsharer_xslice)
 
 		tval.tv_sec = 1;
 		tval.tv_usec = 0;
-		numReady = select(pctxt->donefd+1, (fd_set *) &rset, NULL, NULL, &tval);
+		n = select(pctxt->donefd+1, (fd_set *) &rset, NULL, NULL, &tval);
 	
-		if(numReady==1)
+		if(n==1)
 		{
-#if USE_ASSERT_CHECKING
-			int rwsize =
-#endif
-			retry_read(pctxt->donefd, &z, 1);
+			rwsize = retry_read(pctxt->donefd, &z, 1); 
 			Assert(rwsize == 1 && z == 'z');
 
-			elog(DEBUG1, "SISC WRITER (shareid=%d, slice=%d): wait done get 1 notification",
-					share_id, currentSliceId);
-			--ack_needed;
+			elog(DEBUG1, "SISC: wait done get 1 notification");
+			--nsharer_xslice;
 		}
-		else if(numReady==0)
+		else if(n==0)
 		{
-			elog(DEBUG1, "SISC WRITER (shareid=%d, slice=%d): wait done timeout once",
-					share_id, currentSliceId);
+			elog(DEBUG1, "SISC: wait done timeout onece");
 		}
 		else 
 		{
 			int save_errno = errno;
-			elog(LOG, "SISC WRITER (shareid=%d, slice=%d): wait done time out once, errno %d",
-					share_id, currentSliceId, save_errno);
+			elog(LOG, "SISC: wait done time out once, errno %d", save_errno);
 		}
 	}
 
-	elog(DEBUG1, "SISC WRITER (shareid=%d, slice=%d): Writer received all %d reader done notifications",
-			share_id, currentSliceId, nsharer_xslice - pctxt->zcnt);
-
+	elog(DEBUG1, "SISC: Writer have got all reader done notification");
 	shareinput_clean_lk_ctxt(ctxt);
 	UnregisterXactCallbackOnce(XCallBack_ShareInput_FIFO, (void *) ctxt);
 }
@@ -972,4 +858,3 @@ initGpmonPktForShareInputScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState 
 							 NULL);
 	}
 }
-

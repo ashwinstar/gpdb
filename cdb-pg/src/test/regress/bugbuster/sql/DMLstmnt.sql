@@ -89,9 +89,8 @@ DROP DOMAIN country_code;
 
 CREATE FUNCTION addlab1111(integer,integer) RETURNS integer
 AS 'select $1 + $2;'
-LANGUAGE SQL 
+LANGUAGE SQL
 IMMUTABLE
-CONTAINS SQL
 RETURNS NULL ON NULL INPUT;
 
 ALTER FUNCTION addlab1111(integer,integer) RENAME TO addition111;

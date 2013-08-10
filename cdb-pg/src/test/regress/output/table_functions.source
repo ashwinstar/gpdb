@@ -17,88 +17,88 @@ analyze example;
 analyze example_r;
 /* Create some normal scalar input / scalar output functions */
 CREATE FUNCTION scalar_1(int) RETURNS int
-    AS $$ SELECT $1 $$ LANGUAGE SQL CONTAINS SQL;
+    AS $$ SELECT $1 $$ LANGUAGE SQL;
 CREATE FUNCTION scalar_2(IN int) RETURNS int
-    AS $$ SELECT $1 $$ LANGUAGE SQL CONTAINS SQL;
+    AS $$ SELECT $1 $$ LANGUAGE SQL;
 CREATE FUNCTION scalar_3(IN a int, OUT b INT)
-    AS $$ SELECT $1 $$ LANGUAGE SQL CONTAINS SQL;
+    AS $$ SELECT $1 $$ LANGUAGE SQL;
 CREATE FUNCTION scalar_4(INOUT x int)
-    AS $$ SELECT $1 $$ LANGUAGE SQL CONTAINS SQL;
+    AS $$ SELECT $1 $$ LANGUAGE SQL;
 CREATE FUNCTION scalar_5(anyelement) RETURNS anyelement
-    AS $$ SELECT $1 $$ LANGUAGE SQL CONTAINS SQL;
+    AS $$ SELECT $1 $$ LANGUAGE SQL;
 /* Create some normal scalar input / table output functions */
 CREATE FUNCTION scalar_tf_1(int) RETURNS TABLE(a int, b text)
-    AS $$ SELECT a+$1, b from example $$ LANGUAGE SQL CONTAINS SQL;
+    AS $$ SELECT a+$1, b from example $$ LANGUAGE SQL;
 CREATE FUNCTION scalar_tf_2(IN int) RETURNS TABLE(a int, b text)
-    AS $$ SELECT a+$1, b from example $$ LANGUAGE SQL CONTAINS SQL;
+    AS $$ SELECT a+$1, b from example $$ LANGUAGE SQL;
 CREATE FUNCTION scalar_tf_3(IN a int) RETURNS TABLE(a int, b text)
-    AS $$ SELECT a+$1, b from example $$ LANGUAGE SQL CONTAINS SQL;
+    AS $$ SELECT a+$1, b from example $$ LANGUAGE SQL;
 CREATE FUNCTION scalar_tf_4(IN a int, OUT a int, OUT b text) RETURNS SETOF RECORD
-    AS $$ SELECT a+$1, b from example $$ LANGUAGE SQL CONTAINS SQL;
+    AS $$ SELECT a+$1, b from example $$ LANGUAGE SQL;
 CREATE FUNCTION scalar_tf_5(IN a int) RETURNS SETOF RECORD
-    AS $$ SELECT a+$1, b from example $$ LANGUAGE SQL CONTAINS SQL;
+    AS $$ SELECT a+$1, b from example $$ LANGUAGE SQL;
 CREATE FUNCTION scalar_tf_6(IN a anyelement) RETURNS SETOF example
-    AS $$ SELECT a+$1, b from example $$ LANGUAGE SQL CONTAINS SQL;
+    AS $$ SELECT a+$1, b from example $$ LANGUAGE SQL;
 /* CREATE some multiset input table functions */
 /* scalar value outputs */
 CREATE FUNCTION multiset_scalar_null(anytable) RETURNS int 
-    AS '@abs_srcdir@/regress.so', 'multiset_scalar_null' LANGUAGE C READS SQL DATA;
+    AS '@abs_srcdir@/regress.so', 'multiset_scalar_null' LANGUAGE C;
 CREATE FUNCTION multiset_scalar_value(anytable) RETURNS int 
-    AS '@abs_srcdir@/regress.so', 'multiset_scalar_value' LANGUAGE C READS SQL DATA;
+    AS '@abs_srcdir@/regress.so', 'multiset_scalar_value' LANGUAGE C;
 CREATE FUNCTION multiset_scalar_tuple(anytable) RETURNS example
-    AS '@abs_srcdir@/regress.so', 'multiset_scalar_tuple' LANGUAGE C READS SQL DATA;
+    AS '@abs_srcdir@/regress.so', 'multiset_scalar_tuple' LANGUAGE C;
 /* set value outputs */
 CREATE FUNCTION multiset_setof_null(anytable) RETURNS setof int
-    AS '@abs_srcdir@/regress.so', 'multiset_setof_null' LANGUAGE C READS SQL DATA;
+    AS '@abs_srcdir@/regress.so', 'multiset_setof_null' LANGUAGE C;
 CREATE FUNCTION multiset_setof_value(anytable) RETURNS setof int
-    AS '@abs_srcdir@/regress.so', 'multiset_setof_value' LANGUAGE C READS SQL DATA;
+    AS '@abs_srcdir@/regress.so', 'multiset_setof_value' LANGUAGE C;
 /* Bunches of different ways of saying "returns a setof rows */
 CREATE FUNCTION multiset_materialize_good(anytable) 
 	   RETURNS TABLE(a int, b text)
-    AS '@abs_srcdir@/regress.so', 'multiset_materialize_good' LANGUAGE C READS SQL DATA;
+    AS '@abs_srcdir@/regress.so', 'multiset_materialize_good' LANGUAGE C;
 CREATE FUNCTION multiset_materialize_bad(anytable) 
 	   RETURNS TABLE(a int, b text)
-    AS '@abs_srcdir@/regress.so', 'multiset_materialize_bad' LANGUAGE C READS SQL DATA;
+    AS '@abs_srcdir@/regress.so', 'multiset_materialize_bad' LANGUAGE C;
 CREATE FUNCTION multiset_1(a anytable) RETURNS TABLE(a int, b text) 
-    AS '@abs_srcdir@/regress.so', 'multiset_example' LANGUAGE C READS SQL DATA;
+    AS '@abs_srcdir@/regress.so', 'multiset_example' LANGUAGE C;
 CREATE FUNCTION multiset_2(a anytable) RETURNS TABLE(a int, b text) 
-    AS '@abs_srcdir@/regress.so', 'multiset_example' LANGUAGE C READS SQL DATA;
+    AS '@abs_srcdir@/regress.so', 'multiset_example' LANGUAGE C;
 CREATE FUNCTION multiset_3(a anytable, out a int, out b text) RETURNS SETOF RECORD
-    AS '@abs_srcdir@/regress.so', 'multiset_example' LANGUAGE C READS SQL DATA;
+    AS '@abs_srcdir@/regress.so', 'multiset_example' LANGUAGE C;
 CREATE FUNCTION multiset_4(a anytable) RETURNS SETOF RECORD
-    AS '@abs_srcdir@/regress.so', 'multiset_example' LANGUAGE C READS SQL DATA;
+    AS '@abs_srcdir@/regress.so', 'multiset_example' LANGUAGE C;
 CREATE FUNCTION multiset_5(a anytable) RETURNS SETOF example
-    AS '@abs_srcdir@/regress.so', 'multiset_example' LANGUAGE C READS SQL DATA;
+    AS '@abs_srcdir@/regress.so', 'multiset_example' LANGUAGE C;
 CREATE FUNCTION multiset_6(a anytable) RETURNS SETOF record
-    AS '@abs_srcdir@/regress.so', 'multiset_example' LANGUAGE C READS SQL DATA;
+    AS '@abs_srcdir@/regress.so', 'multiset_example' LANGUAGE C;
 /* Negative test cases around CREATE FUNCTION */
 /* ERROR: TABLE output not allowed with OUT parameters */
 CREATE FUNCTION error(OUT a int) RETURNS TABLE(a int, b text)
-    AS $$ SELECT * from example $$ LANGUAGE SQL READS SQL DATA;
+    AS $$ SELECT * from example $$ LANGUAGE SQL;
 ERROR:  OUT arguments aren't allowed in TABLE functions
 /* ERROR: Multiple multiset inputs not supported */
 CREATE FUNCTION error(a anytable, b anytable) RETURNS TABLE(a int, b text)
-    AS $$ SELECT * FROM example $$ LANGUAGE SQL READS SQL DATA;
+    AS $$ SELECT * FROM example $$ LANGUAGE SQL;
 ERROR:  functions cannot have multiple "anytable" arguments
 /* ERROR: Multiset outputs not supported */
 CREATE FUNCTION error(OUT anytable) 
-    AS $$ SELECT * FROM example $$ LANGUAGE SQL READS SQL DATA;
+    AS $$ SELECT * FROM example $$ LANGUAGE SQL;
 ERROR:  functions cannot return "anytable" arguments
 CREATE FUNCTION error() RETURNS TABLE(x anytable)
-    AS $$ SELECT * FROM example $$ LANGUAGE SQL READS SQL DATA;
+    AS $$ SELECT * FROM example $$ LANGUAGE SQL;
 ERROR:  functions cannot return "anytable" arguments
 /* ERROR: SETOF as IN/OUT/TABLE parameters is not supported */
 CREATE FUNCTION error(OUT setof example) 
-    AS $$ SELECT * FROM example $$ LANGUAGE SQL READS SQL DATA;
+    AS $$ SELECT * FROM example $$ LANGUAGE SQL;
 ERROR:  functions cannot accept set arguments
 CREATE FUNCTION error(IN setof example) 
-    AS $$ SELECT * FROM example $$ LANGUAGE SQL READS SQL DATA;
+    AS $$ SELECT * FROM example $$ LANGUAGE SQL;
 ERROR:  functions cannot accept set arguments
 CREATE FUNCTION error(INOUT setof example) 
-    AS $$ SELECT * FROM example $$ LANGUAGE SQL READS SQL DATA;
+    AS $$ SELECT * FROM example $$ LANGUAGE SQL;
 ERROR:  functions cannot accept set arguments
 CREATE FUNCTION error() RETURNS TABLE(a setof example) 
-    AS $$ SELECT * FROM example $$ LANGUAGE SQL READS SQL DATA;
+    AS $$ SELECT * FROM example $$ LANGUAGE SQL;
 ERROR:  functions cannot accept set arguments
 /* Negative test cases around the "anytable" type */
 CREATE TABLE fail(x anytable);
@@ -1348,7 +1348,7 @@ ERROR:  table functions must use SFRM_ValuePerCall protocol  (seg1 slice1 @hostn
 -- name resolution rules should work correctly between scalar and anytable,
 -- i.e. there cannot be any automatic conversion.
 CREATE FUNCTION nameres(int) RETURNS int
-    AS $$ SELECT $1 $$ LANGUAGE SQL CONTAINS SQL;
+    AS $$ SELECT $1 $$ LANGUAGE SQL;
 SELECT * from nameres(5);                -- should work
  nameres 
 ---------
@@ -1361,7 +1361,7 @@ LINE 1: SELECT * from nameres(TABLE(SELECT 5));
                       ^
 HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
 CREATE FUNCTION nameres(anytable) RETURNS int
-    AS '@abs_srcdir@/regress.so', 'multiset_scalar_value' LANGUAGE C READS SQL DATA;
+    AS '@abs_srcdir@/regress.so', 'multiset_scalar_value' LANGUAGE C;
 SELECT * from nameres(5);                -- should work
  nameres 
 ---------
@@ -1399,7 +1399,7 @@ LINE 1: SELECT * from nameres(TABLE(SELECT 5));
 HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
 -- Error: anytable does NOT match anyelement
 CREATE FUNCTION nameres(anyelement) returns int 
-  AS $$ SELECT $1 $$ LANGUAGE SQL CONTAINS SQL;
+  AS $$ SELECT $1 $$ LANGUAGE SQL;
 SELECT * FROM nameres( TABLE( SELECT 1) ); -- should fail
 ERROR:  function nameres(anytable) does not exist
 LINE 1: SELECT * FROM nameres( TABLE( SELECT 1) );
@@ -1931,7 +1931,7 @@ explain WITH cte AS (SELECT * FROM example) SELECT x.* FROM multiset_5( TABLE ( 
          ->  Nested Loop  (cost=2.43..6.26 rows=5 width=36)
                ->  Table Function Scan on multiset_5 x  (cost=0.00..2.23 rows=5 width=36)
                      ->  Seq Scan on example  (cost=0.00..2.10 rows=5 width=16)
-               ->  Materialize  (cost=2.43..2.51 rows=4 width=0)
+               ->  Materialize for deadlock safety  (cost=2.43..2.51 rows=4 width=0)
                      ->  Broadcast Motion 1:2  (slice2; segments: 1)  (cost=2.24..2.42 rows=8 width=0)
                            ->  Subquery Scan y  (cost=2.24..2.26 rows=8 width=0)
                                  ->  Aggregate  (cost=2.24..2.25 rows=1 width=8)
@@ -1995,7 +1995,7 @@ explain SELECT x.* FROM multiset_5( TABLE ( SELECT 1 ) ) x right join (SELECT 1)
 ------------------------------------------------------------------------------------
  Nested Loop Left Join  (cost=0.03..1.33 rows=27 width=36)
    ->  Result  (cost=0.00..0.01 rows=1 width=0)
-   ->  Materialize  (cost=0.03..0.11 rows=4 width=36)
+   ->  Materialize for deadlock safety  (cost=0.03..0.11 rows=4 width=36)
          ->  Table Function Scan on multiset_5 x  (cost=0.00..0.02 rows=8 width=36)
                ->  Result  (cost=0.00..0.01 rows=1 width=0)
  Settings:  gp_segments_for_planner=8
@@ -2214,7 +2214,7 @@ DROP view v3;
 -- Interaction with set returning functions
 -- ========================================
 CREATE FUNCTION multi_args(a anytable, x int) RETURNS SETOF example
-    AS '@abs_srcdir@/regress.so', 'multiset_example' LANGUAGE C READS SQL DATA;
+    AS '@abs_srcdir@/regress.so', 'multiset_example' LANGUAGE C;
 -- In select list requires some extra setrefs logic in planning
 SELECT *, generate_series(1,2) FROM multi_args( TABLE(SELECT 1::int, 'hello'::text), 2);
  a |   b   | generate_series 
@@ -2292,18 +2292,18 @@ SELECT * FROM multiset_5( TABLE( SELECT 1::integer, 'hello'::text) ) as tf;
 create language plperl;
 create language plpythonu;
 -- end_ignore
-CREATE FUNCTION tf_sql(anytable) returns int AS $$ SELECT 1 $$ language sql CONTAINS SQL;
+CREATE FUNCTION tf_sql(anytable) returns int AS $$ SELECT 1 $$ language sql;
 ERROR:  SQL functions cannot have arguments of type anytable
 CREATE FUNCTION tf_pgsql(anytable) returns int AS $$ 
 BEGIN
   RETURN 1;
 END; 
-$$ language plpgsql NO SQL;
+$$ language plpgsql;
 ERROR:  PL/pgSQL functions cannot accept type anytable
-CREATE FUNCTION tf_perl(anytable) returns int AS $$ return 1 $$ language plperl NO SQL;
+CREATE FUNCTION tf_perl(anytable) returns int AS $$ return 1 $$ language plperl;
 ERROR:  PL/Perl functions cannot accept type anytable
 -- python functions have no validator, error at call time.
-CREATE FUNCTION tf_python(anytable) returns int AS $$ return 1 $$ language plpythonu NO SQL;
+CREATE FUNCTION tf_python(anytable) returns int AS $$ return 1 $$ language plpythonu;
 SELECT * FROM tf_python( TABLE(SELECT 1) );
 ERROR:  PL/Python functions cannot accept type anytable
 DROP FUNCTION tf_python(anytable);
@@ -2314,11 +2314,11 @@ DROP FUNCTION tf_python(anytable);
 CREATE FUNCTION sessionize_describe(internal)
   RETURNS internal
   AS '@abs_srcdir@/regress.so', 'describe'
-  LANGUAGE C READS SQL DATA;
+  LANGUAGE C;
 CREATE FUNCTION sessionize(anytable, interval) 
   RETURNS setof record
   AS '@abs_srcdir@/regress.so', 'sessionize'
-  LANGUAGE C READS SQL DATA;
+  LANGUAGE C;
 -- No dependency yet, all three queries should return 0 rows
 SELECT * FROM pg_proc_callback where profnoid = 'sessionize'::regproc;
  profnoid | procallback | promethod 
@@ -2341,19 +2341,19 @@ DROP FUNCTION sessionize_describe(internal);
 CREATE OR REPLACE FUNCTION sessionize(anytable, interval) 
   RETURNS setof record
   AS '@abs_srcdir@/regress.so', 'sessionize'
-  LANGUAGE C READS SQL DATA
+  LANGUAGE C
   WITH (describe = sessionize_describe);
 ERROR:  function sessionize_describe(internal) does not exist
 -- Recreate describe function
 CREATE OR REPLACE FUNCTION sessionize_describe(internal)
   RETURNS internal
   AS '@abs_srcdir@/regress.so', 'describe'
-  LANGUAGE C READS SQL DATA;
+  LANGUAGE C;
 -- Alter the existing function to add the describe callback
 CREATE OR REPLACE FUNCTION sessionize(anytable, interval) 
   RETURNS setof record
   AS '@abs_srcdir@/regress.so', 'sessionize'
-  LANGUAGE C READS SQL DATA
+  LANGUAGE C
   WITH (describe = sessionize_describe);
 -- Observe the relationship now recorded in pg_proc_callback
 SELECT * FROM pg_proc_callback where profnoid = 'sessionize'::regproc;
@@ -2394,11 +2394,11 @@ SELECT * FROM pg_proc_callback where procallback not in (select oid from pg_proc
 CREATE OR REPLACE FUNCTION sessionize_describe(internal)
   RETURNS internal
   AS '@abs_srcdir@/regress.so', 'describe'
-  LANGUAGE C READS SQL DATA;
+  LANGUAGE C;
 CREATE OR REPLACE FUNCTION sessionize(anytable, interval) 
   RETURNS setof record
   AS '@abs_srcdir@/regress.so', 'sessionize'
-  LANGUAGE C READS SQL DATA
+  LANGUAGE C
   WITH (describe = sessionize_describe);
 -- Check the dependency again, drop should fail
 DROP FUNCTION sessionize_describe(internal);
@@ -2415,7 +2415,7 @@ SELECT * FROM pg_proc_callback where profnoid = 'sessionize'::regproc;
 CREATE OR REPLACE FUNCTION sessionize(anytable, interval) 
   RETURNS setof record
   AS '@abs_srcdir@/regress.so', 'sessionize'
-  LANGUAGE C READS SQL DATA;
+  LANGUAGE C;
 -- Check the dependency again, drop should succeed
 DROP FUNCTION sessionize_describe(internal);
 SELECT * FROM pg_proc_callback where profnoid = 'sessionize'::regproc;
@@ -2439,19 +2439,19 @@ SELECT * FROM pg_proc_callback where procallback not in (select oid from pg_proc
 CREATE FUNCTION sessionize_describe(internal)
   RETURNS internal
   AS '@abs_srcdir@/regress.so', 'describe'
-  LANGUAGE C READS SQL DATA;
+  LANGUAGE C;
 CREATE FUNCTION sessionize_plain(anytable, interval) 
   RETURNS setof record
   AS '@abs_srcdir@/regress.so', 'sessionize'
-  LANGUAGE C READS SQL DATA;
+  LANGUAGE C;
 CREATE FUNCTION sessionize_static(anytable, interval) 
   RETURNS TABLE(id integer, "time" timestamp, sessionnum integer)
   AS '@abs_srcdir@/regress.so', 'sessionize'
-  LANGUAGE C READS SQL DATA;
+  LANGUAGE C;
 CREATE FUNCTION sessionize_dynamic(anytable, interval) 
   RETURNS setof record
   AS '@abs_srcdir@/regress.so', 'sessionize'
-  LANGUAGE C READS SQL DATA
+  LANGUAGE C
   WITH (describe = sessionize_describe);
 -- Check catalog for the new functions, should only see sessionize_describe
 SELECT * FROM pg_proc_callback 
@@ -2738,7 +2738,7 @@ FROM sessionize_plain(
 CREATE OR REPLACE FUNCTION sessionize_plain(anytable, interval) 
   RETURNS setof record
   AS '@abs_srcdir@/regress.so', 'sessionize'
-  LANGUAGE C READS SQL DATA
+  LANGUAGE C
   WITH (describe = sessionize_describe);  -- ERROR: views exist
 ERROR:  cannot add DESCRIBE callback to function used in view(s)
 DROP VIEW supported;
@@ -2748,11 +2748,11 @@ DROP VIEW supported;
 CREATE FUNCTION project_describe(internal)
   RETURNS internal
   AS '@abs_srcdir@/regress.so', 'project_describe'
-  LANGUAGE C READS SQL DATA;
+  LANGUAGE C;
 CREATE FUNCTION project(anytable, integer)
   RETURNS setof record
   AS '@abs_srcdir@/regress.so', 'project'
-  LANGUAGE C READS SQL DATA
+  LANGUAGE C
   WITH (describe = project_describe);
 SELECT * FROM project( TABLE( SELECT * FROM history ), 1) order by 1;
  id 
@@ -2919,10 +2919,10 @@ LINE 1: SELECT * FROM project( TABLE( SELECT * FROM pg_am ), (ROW(1,...
 -- ========================
 CREATE FUNCTION ud_describe(internal) RETURNS internal
   AS '@abs_builddir@/regress@DLSUFFIX@', 'userdata_describe'
-  LANGUAGE C READS SQL DATA;
+  LANGUAGE C;
 CREATE FUNCTION ud_project(anytable) RETURNS setof RECORD
   AS '@abs_builddir@/regress@DLSUFFIX@', 'userdata_project'
-  LANGUAGE C READS SQL DATA
+  LANGUAGE C
   WITH (describe = ud_describe);
 SELECT * FROM ud_project( TABLE( SELECT * FROM history ) );
               message               
@@ -2952,7 +2952,7 @@ SELECT * FROM ud_project( TABLE( SELECT * FROM history ) );
 -- ========================
 CREATE FUNCTION noop_project(anytable) RETURNS setof RECORD
   AS '@abs_builddir@/regress@DLSUFFIX@'
-  LANGUAGE C READS SQL DATA;
+  LANGUAGE C;
 SELECT * FROM noop_project( TABLE( SELECT * FROM history ) ) AS s (id integer, time timestamp);
  id |           time           
 ----+--------------------------
@@ -3023,25 +3023,25 @@ SELECT * FROM noop_project( TABLE( SELECT count(*) FROM history GROUP BY time SC
 -- explicit return type not suitable for dynamic type resolution
 CREATE FUNCTION x() returns int
   AS '@abs_srcdir@/regress.so', 'sessionize'
-  LANGUAGE C READS SQL DATA
+  LANGUAGE C 
   WITH (describe = sessionize_describe);
 ERROR:  DESCRIBE only supported for functions returning "record"
 -- explicit return type (setof) not suitable for dynamic type resolution
 CREATE FUNCTION x() returns setof int
   AS '@abs_srcdir@/regress.so', 'sessionize'
-  LANGUAGE C READS SQL DATA
+  LANGUAGE C 
   WITH (describe = sessionize_describe);
 ERROR:  DESCRIBE only supported for functions returning "record"
 -- explicit return type (TABLE) not suitable for dynamic type resolution
 CREATE FUNCTION x() returns TABLE(id integer, "time" timestamp, sessionnum integer)
   AS '@abs_srcdir@/regress.so', 'sessionize'
-  LANGUAGE C READS SQL DATA
+  LANGUAGE C 
   WITH (describe = sessionize_describe);
 ERROR:  DESCRIBE is not supported for functions that return TABLE
 -- explicit return type (OUT PARAMS) not suitable for dynamic type resolution
 CREATE FUNCTION x(OUT id integer, OUT "time" timestamp, OUT sessionnum integer)
   AS '@abs_srcdir@/regress.so', 'sessionize'
-  LANGUAGE C READS SQL DATA
+  LANGUAGE C 
   WITH (describe = sessionize_describe);
 ERROR:  DESCRIBE is not supported for functions with OUT parameters
 -- ========================

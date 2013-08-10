@@ -12,14 +12,6 @@ subdir = src/backend/optimizer/plan
 top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
-BLD_TOP = $(top_builddir)/..
-include $(top_builddir)/../releng/releng.mk
-
-override CPPFLAGS := -I $(LIBGPOS)/include $(CPPFLAGS)
-override CPPFLAGS := -I $(OPTIMIZER)/libgpopt/include $(CPPFLAGS)
-override CPPFLAGS := -I $(OPTIMIZER)/libnaucrates/include $(CPPFLAGS)
-override CPPFLAGS := -I $(OPTIMIZER)/libgpoptudf/include $(CPPFLAGS)
-
 OBJS = createplan.o \
 	   initsplan.o \
 	   planagg.o \

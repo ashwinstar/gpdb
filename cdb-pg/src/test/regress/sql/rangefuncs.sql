@@ -5,7 +5,7 @@ INSERT INTO foo2 VALUES(1, 11);
 INSERT INTO foo2 VALUES(2, 22);
 INSERT INTO foo2 VALUES(1, 111);
 
-CREATE FUNCTION foot(int) returns setof foo2 as 'SELECT * FROM foo2 WHERE fooid = $1;' LANGUAGE SQL READS SQL DATA;
+CREATE FUNCTION foot(int) returns setof foo2 as 'SELECT * FROM foo2 WHERE fooid = $1;' LANGUAGE SQL;
 
 -- supposed to fail with ERROR
 select * from foo2, foot(foo2.fooid) z where foo2.f2 = z.f2;
@@ -30,7 +30,7 @@ INSERT INTO foo VALUES(1,2,'Ed');
 INSERT INTO foo VALUES(2,1,'Mary');
 
 -- sql, proretset = f, prorettype = b
-CREATE FUNCTION getfoo(int) RETURNS int AS 'SELECT $1;' LANGUAGE SQL CONTAINS SQL;
+CREATE FUNCTION getfoo(int) RETURNS int AS 'SELECT $1;' LANGUAGE SQL;
 SELECT * FROM getfoo(1) AS t1;
 CREATE VIEW vw_getfoo AS SELECT * FROM getfoo(1);
 SELECT * FROM vw_getfoo;
@@ -38,7 +38,7 @@ SELECT * FROM vw_getfoo;
 -- sql, proretset = t, prorettype = b
 DROP VIEW vw_getfoo;
 DROP FUNCTION getfoo(int);
-CREATE FUNCTION getfoo(int) RETURNS setof int AS 'SELECT fooid FROM foo WHERE fooid = $1;' LANGUAGE SQL READS SQL DATA;
+CREATE FUNCTION getfoo(int) RETURNS setof int AS 'SELECT fooid FROM foo WHERE fooid = $1;' LANGUAGE SQL;
 SELECT * FROM getfoo(1) AS t1;
 CREATE VIEW vw_getfoo AS SELECT * FROM getfoo(1);
 SELECT * FROM vw_getfoo;
@@ -46,7 +46,7 @@ SELECT * FROM vw_getfoo;
 -- sql, proretset = t, prorettype = b
 DROP VIEW vw_getfoo;
 DROP FUNCTION getfoo(int);
-CREATE FUNCTION getfoo(int) RETURNS setof text AS 'SELECT fooname FROM foo WHERE fooid = $1;' LANGUAGE SQL READS SQL DATA;
+CREATE FUNCTION getfoo(int) RETURNS setof text AS 'SELECT fooname FROM foo WHERE fooid = $1;' LANGUAGE SQL;
 SELECT * FROM getfoo(1) AS t1;
 CREATE VIEW vw_getfoo AS SELECT * FROM getfoo(1);
 SELECT * FROM vw_getfoo;
@@ -54,7 +54,7 @@ SELECT * FROM vw_getfoo;
 -- sql, proretset = f, prorettype = c
 DROP VIEW vw_getfoo;
 DROP FUNCTION getfoo(int);
-CREATE FUNCTION getfoo(int) RETURNS foo AS 'SELECT * FROM foo WHERE fooid = $1 ORDER BY 1,2,3;' LANGUAGE SQL READS SQL DATA;
+CREATE FUNCTION getfoo(int) RETURNS foo AS 'SELECT * FROM foo WHERE fooid = $1 ORDER BY 1,2,3;' LANGUAGE SQL;
 SELECT * FROM getfoo(1) AS t1;
 CREATE VIEW vw_getfoo AS SELECT * FROM getfoo(1);
 SELECT * FROM vw_getfoo;
@@ -62,7 +62,7 @@ SELECT * FROM vw_getfoo;
 -- sql, proretset = t, prorettype = c
 DROP VIEW vw_getfoo;
 DROP FUNCTION getfoo(int);
-CREATE FUNCTION getfoo(int) RETURNS setof foo AS 'SELECT * FROM foo WHERE fooid = $1 ORDER BY 1,2,3;' LANGUAGE SQL READS SQL DATA;
+CREATE FUNCTION getfoo(int) RETURNS setof foo AS 'SELECT * FROM foo WHERE fooid = $1 ORDER BY 1,2,3;' LANGUAGE SQL;
 SELECT * FROM getfoo(1) AS t1;
 CREATE VIEW vw_getfoo AS SELECT * FROM getfoo(1);
 SELECT * FROM vw_getfoo;
@@ -70,7 +70,7 @@ SELECT * FROM vw_getfoo;
 -- sql, proretset = f, prorettype = record
 DROP VIEW vw_getfoo;
 DROP FUNCTION getfoo(int);
-CREATE FUNCTION getfoo(int) RETURNS RECORD AS 'SELECT * FROM foo WHERE fooid = $1 ORDER BY 1,2,3;' LANGUAGE SQL READS SQL DATA;
+CREATE FUNCTION getfoo(int) RETURNS RECORD AS 'SELECT * FROM foo WHERE fooid = $1 ORDER BY 1,2,3;' LANGUAGE SQL;
 SELECT * FROM getfoo(1) AS t1(fooid int, foosubid int, fooname text);
 CREATE VIEW vw_getfoo AS SELECT * FROM getfoo(1) AS 
 (fooid int, foosubid int, fooname text);
@@ -79,7 +79,7 @@ SELECT * FROM vw_getfoo;
 -- sql, proretset = t, prorettype = record
 DROP VIEW vw_getfoo;
 DROP FUNCTION getfoo(int);
-CREATE FUNCTION getfoo(int) RETURNS setof record AS 'SELECT * FROM foo WHERE fooid = $1 ORDER BY 1,2,3;' LANGUAGE SQL READS SQL DATA;
+CREATE FUNCTION getfoo(int) RETURNS setof record AS 'SELECT * FROM foo WHERE fooid = $1 ORDER BY 1,2,3;' LANGUAGE SQL;
 SELECT * FROM getfoo(1) AS t1(fooid int, foosubid int, fooname text);
 CREATE VIEW vw_getfoo AS SELECT * FROM getfoo(1) AS
 (fooid int, foosubid int, fooname text);
@@ -88,7 +88,7 @@ SELECT * FROM vw_getfoo;
 -- plpgsql, proretset = f, prorettype = b
 DROP VIEW vw_getfoo;
 DROP FUNCTION getfoo(int);
-CREATE FUNCTION getfoo(int) RETURNS int AS 'DECLARE fooint int; BEGIN SELECT fooid into fooint FROM foo WHERE fooid = $1; RETURN fooint; END;' LANGUAGE plpgsql READS SQL DATA;
+CREATE FUNCTION getfoo(int) RETURNS int AS 'DECLARE fooint int; BEGIN SELECT fooid into fooint FROM foo WHERE fooid = $1; RETURN fooint; END;' LANGUAGE plpgsql;
 SELECT * FROM getfoo(1) AS t1;
 CREATE VIEW vw_getfoo AS SELECT * FROM getfoo(1);
 SELECT * FROM vw_getfoo;
@@ -96,7 +96,7 @@ SELECT * FROM vw_getfoo;
 -- plpgsql, proretset = f, prorettype = c
 DROP VIEW vw_getfoo;
 DROP FUNCTION getfoo(int);
-CREATE FUNCTION getfoo(int) RETURNS foo AS 'DECLARE footup foo%ROWTYPE; BEGIN SELECT * into footup FROM foo WHERE fooid = $1 ORDER BY 1,2,3; RETURN footup; END;' LANGUAGE plpgsql READS SQL DATA;
+CREATE FUNCTION getfoo(int) RETURNS foo AS 'DECLARE footup foo%ROWTYPE; BEGIN SELECT * into footup FROM foo WHERE fooid = $1 ORDER BY 1,2,3; RETURN footup; END;' LANGUAGE plpgsql;
 SELECT * FROM getfoo(1) AS t1;
 CREATE VIEW vw_getfoo AS SELECT * FROM getfoo(1);
 SELECT * FROM vw_getfoo;
@@ -164,7 +164,7 @@ INSERT INTO foorescan values(5007,5,'abc.5007.5');
 INSERT INTO foorescan values(5008,5,'abc.5008.5');
 INSERT INTO foorescan values(5009,5,'abc.5009.5');
 
-CREATE FUNCTION foorescan(int,int) RETURNS setof foorescan AS 'SELECT * FROM foorescan WHERE fooid >= $1 and fooid < $2 ;' LANGUAGE SQL READS SQL DATA;
+CREATE FUNCTION foorescan(int,int) RETURNS setof foorescan AS 'SELECT * FROM foorescan WHERE fooid >= $1 and fooid < $2 ;' LANGUAGE SQL;
 
 --invokes ExecFunctionReScan
 SELECT * FROM foorescan f WHERE f.fooid IN (SELECT fooid FROM foorescan(5002,5004)) ORDER BY 1,2;
@@ -182,7 +182,7 @@ INSERT INTO barrescan values(5006);
 INSERT INTO barrescan values(5007);
 INSERT INTO barrescan values(5008);
 
-CREATE FUNCTION foorescan(int) RETURNS setof foorescan AS 'SELECT * FROM foorescan WHERE fooid = $1;' LANGUAGE SQL READS SQL DATA;
+CREATE FUNCTION foorescan(int) RETURNS setof foorescan AS 'SELECT * FROM foorescan WHERE fooid = $1;' LANGUAGE SQL;
 
 --invokes ExecFunctionReScan with chgParam != NULL
 select 'The following query will Assert in cdb2.  Please fix'
@@ -216,16 +216,16 @@ SELECT * FROM foo(42) AS p(x);
 
 -- explicit spec of return type is OK
 CREATE OR REPLACE FUNCTION foo(in f1 int, out f2 int) RETURNS int
-AS 'select $1+1' LANGUAGE sql CONTAINS SQL;
+AS 'select $1+1' LANGUAGE sql;
 -- error, wrong result type
 CREATE OR REPLACE FUNCTION foo(in f1 int, out f2 int) RETURNS float
-AS 'select $1+1' LANGUAGE sql CONTAINS SQL; 
+AS 'select $1+1' LANGUAGE sql;
 -- with multiple OUT params you must get a RECORD result
 CREATE OR REPLACE FUNCTION foo(in f1 int, out f2 int, out f3 text) RETURNS int
-AS 'select $1+1' LANGUAGE sql CONTAINS SQL;
+AS 'select $1+1' LANGUAGE sql;
 CREATE OR REPLACE FUNCTION foo(in f1 int, out f2 int, out f3 text)
 RETURNS record
-AS 'select $1+1' LANGUAGE sql CONTAINS SQL;
+AS 'select $1+1' LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION foor(in f1 int, out f2 int, out text)
 AS $$select $1-1, $1::text || 'z'$$ LANGUAGE sql;

@@ -147,7 +147,7 @@ select name, increment(emp_fun) as new_sal from emp_fun where emp_fun.name='bill
 ERROR:  relation "emp_fun" does not exist
 LINE 1: select name, increment(emp_fun) as new_sal from emp_fun wher...
                                                         ^
-create or replace function set_tab(int) returns SETOF tab_sour as $$ select * from tab_sour where tabid=$1; $$ language sql READS SQL DATA;
+create or replace function set_tab(int) returns SETOF tab_sour as $$ select * from tab_sour where tabid=$1; $$ language sql;
 ERROR:  type "tab_sour" does not exist
 select * from set_tab(1) as new_tab;
 ERROR:  function set_tab(integer) does not exist
@@ -164,7 +164,7 @@ CREATE or REPLACE FUNCTION sales_tax(subtotal real, OUT tax real) AS $$
                                                 BEGIN
                                                     tax := subtotal * 0.06;
                                                 END;
-                                                $$ LANGUAGE plpgsql NO SQL;
+                                                $$ LANGUAGE plpgsql;
 ERROR:  language "plpgsql" does not exist
 HINT:  Use CREATE LANGUAGE to load the language into the database.
 select sales_tax(30);
@@ -194,7 +194,7 @@ create function bad_ddl() returns void as $body$
                  execute 'create table junk_table(a int)';
                  execute 'drop table junk_table';
          end;
-$body$ language plpgsql volatile MODIFIES SQL DATA;
+$body$ language plpgsql volatile;
 ERROR:  language "plpgsql" does not exist
 HINT:  Use CREATE LANGUAGE to load the language into the database.
 select bad_ddl();

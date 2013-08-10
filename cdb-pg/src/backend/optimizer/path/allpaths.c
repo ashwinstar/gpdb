@@ -440,9 +440,6 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("SELECT FOR UPDATE/SHARE is not supported for inheritance queries")));
 
-	/* Mark rel with estimated output rows, width, etc */
-	set_baserel_size_estimates(root, rel);
-
 	/*
 	 * Initialize to compute size estimates for whole append relation
 	 */
@@ -520,7 +517,6 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 								   ((AppendPath *) childpath)->subpaths);
 		else
 			subpaths = lappend(subpaths, childpath);
-
 
 		/*
 		 * Propagate size information from the child back to the parent. For

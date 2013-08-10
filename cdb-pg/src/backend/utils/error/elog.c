@@ -168,7 +168,6 @@ static void write_eventlog(int level, const char *line);
 #define GET_FRAME_POINTER(x)
 #endif
 
-
 static ErrorData errordata[ERRORDATA_STACK_SIZE];
 
 static int	errordata_stack_depth = -1; /* index of topmost active frame */

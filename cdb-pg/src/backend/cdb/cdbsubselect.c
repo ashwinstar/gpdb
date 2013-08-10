@@ -39,6 +39,7 @@ convert_IN_to_antijoin(PlannerInfo * root, List** rtrlist_inout, SubLink * subli
 static int
 add_expr_subquery_rte(Query * parse, Query * subselect);
 
+
 static JoinExpr *
 make_join_expr(Node *larg, int r_rtindex, int join_type);
 
@@ -1439,7 +1440,7 @@ make_lasj_quals(PlannerInfo *root, SubLink * sublink, int subquery_indx)
 }
 
 /* add IS NOT FALSE clause on top of the clause */
-Node *
+static Node *
 add_null_match_clause(Node *clause)
 {
 	BooleanTest *btest;
@@ -1748,7 +1749,7 @@ static bool find_nonnullable_vars_walker(Node *node, NonNullableVarsContext *con
  * A targetlist is "nullable" if all entries in the targetlist
  * cannot be proven to be non-nullable.
  */
-bool is_targetlist_nullable(Query *subq)
+static bool is_targetlist_nullable(Query *subq)
 {
 	Assert(subq);
 	
@@ -1923,7 +1924,8 @@ convert_IN_to_antijoin(PlannerInfo * root, List **rtrlist_inout __attribute__((u
 
 		int			subq_indx = add_notin_subquery_rte(parse, subselect);
 		bool		inner_nullable = is_targetlist_nullable(subselect);
-		JoinExpr   *join_expr = make_join_expr(larg, subq_indx, JOIN_LASJ_NOTIN);
+
+		JoinExpr   *join_expr = make_join_expr(larg, subq_indx, JOIN_LASJ);
 
 		join_expr->quals = make_lasj_quals(root, sublink, subq_indx);
 

@@ -40,7 +40,7 @@ CREATE AGGREGATE newcnt ("any") (
 
 -- multi-argument aggregate
 create function sum3(int8,int8,int8) returns int8 as
-'select $1 + $2 + $3' language sql CONTAINS SQL strict immutable;
+'select $1 + $2 + $3' language sql strict immutable;
 
 create aggregate sum2(int8,int8) (
    sfunc = sum3, stype = int8,
@@ -74,11 +74,11 @@ create aggregate aggfns(integer,integer,text) (
 */
 create function aggf_trans(text[],integer,integer,text) returns text[]
 as 'select array_append($1, textin(record_out(ROW($2,$3,$4))))'
-language sql CONTAINS SQL strict immutable;
+language sql strict immutable;
 
 create function aggfns_trans(text[],integer,integer,text) returns text[]
 as 'select array_append($1, textin(record_out(ROW($2,$3,$4))))'
-language sql CONTAINS SQL immutable;
+language sql immutable;
 
 create ordered aggregate aggfstr(integer,integer,text) (
    stype = text[],
@@ -112,7 +112,7 @@ COMMENT ON AGGREGATE newcnt ("any") IS 'an agg(any) comment';
 create function str_concat(t1 text, t2 text) returns text as
 $$
     select $1 || $2;
-$$ language sql CONTAINS SQL;
+$$ language sql;
 
 CREATE AGGREGATE string_concat (sfunc = str_concat, prefunc=str_concat, basetype = 'text', stype = text,initcond = '');
 

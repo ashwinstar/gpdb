@@ -123,7 +123,7 @@ select i, lower('Hello') filter (where i < 5) from filter_test order by i;
 
 --- TEST against function like projection => should error
 create or replace function maketuple() returns setof filter_test 
-as 'select * from filter_test' language sql READS SQL DATA;
+as 'select * from filter_test' language sql;
 
 select i(t), j(t) from (select maketuple() as t) x order by i(t);
 select i(t) filter (where true) from (select maketuple() as t) x order by i(t);
@@ -147,7 +147,7 @@ create or replace function _maxodd(oldmax int, newval int) returns int as $$
                                     THEN $2 ELSE $1 END) 
                          END)
               END;
-$$ LANGUAGE sql STRICT CONTAINS SQL;
+$$ LANGUAGE sql STRICT;
 
 create aggregate maxodd(sfunc = _maxodd, basetype = int, stype = int, initcond = 0);
 
@@ -166,7 +166,7 @@ create or replace function _maxodd(oldmax int, newval int) returns int as $$
                                     THEN $2 ELSE $1 END) 
                          END)
               END;
-$$ LANGUAGE sql CONTAINS SQL;
+$$ LANGUAGE sql;
 SELECT maxodd(i) FROM filter_test;
 SELECT maxodd(i) FILTER (WHERE TRUE) from filter_test;
 SELECT j, maxodd(i) FROM filter_test group by j order by j;

@@ -85,7 +85,6 @@ int			NTupleDeleted;
 int			NIndexTupleInserted;
 int			NIndexTupleProcessed;
 
-DynamicTableScanInfo *dynamicTableScanInfo = NULL;
 
 static EState *InternalCreateExecutorState(MemoryContext qcontext,
 										   bool is_subquery);
@@ -184,23 +183,7 @@ CreateExecutorState(void)
 									 ALLOCSET_DEFAULT_INITSIZE,
 									 ALLOCSET_DEFAULT_MAXSIZE);
 
-	EState *estate = InternalCreateExecutorState(qcontext, false);
-
-	/*
-	 * Initialize dynamicTableScanInfo. Since this is shared by subqueries,
-	 * this can not be put inside InternalCreateExecutorState.
-	 */
-	MemoryContext oldcontext = MemoryContextSwitchTo(qcontext);
-	
-	estate->dynamicTableScanInfo = palloc(sizeof(DynamicTableScanInfo));
-	estate->dynamicTableScanInfo->numScans = 0;
-	estate->dynamicTableScanInfo->pidIndexes = NULL;
-	estate->dynamicTableScanInfo->memoryContext = qcontext;
-	estate->dynamicTableScanInfo->partsMetadata = NIL;
-
-	MemoryContextSwitchTo(oldcontext);
-
-	return estate;
+	return InternalCreateExecutorState(qcontext, false);
 }
 
 /* ----------------
@@ -224,8 +207,6 @@ CreateSubExecutorState(EState *parent_estate)
     es->showstatctx = parent_estate->showstatctx;                   /*CDB*/
 
 	es->subplanLevel = parent_estate->subplanLevel + 1;
-	/* Subqueries share the same dynamicTableScanInfo with their parents. */
-	es->dynamicTableScanInfo = parent_estate->dynamicTableScanInfo;
     return es;
 }
 
@@ -319,23 +300,6 @@ InternalCreateExecutorState(MemoryContext qcontext, bool is_subquery)
 	return estate;
 }
 
-/*
- * freeDynamicTableScanInfo
- *   Free the space for DynamicTableScanInfo.
- */
-static void
-freeDynamicTableScanInfo(DynamicTableScanInfo *scanInfo)
-{
-	Assert(scanInfo != NULL);
-	
-	if (scanInfo->partsMetadata != NIL)
-	{
-		list_free_deep(scanInfo->partsMetadata);
-	}
-	
-	pfree(scanInfo);
-}
-
 /* ----------------
  *		FreeExecutorState
  *
@@ -374,18 +338,6 @@ FreeExecutorState(EState *estate)
 	{
 		pfree(estate->dispatcherState);
 		estate->dispatcherState = NULL;
-	}
-
-	/*
-	 * Free dynamicTableScanInfo. In a subquery, we don't do this, since
-	 * the subquery shares the value with its parent.
-	 */
-	if (!estate->es_is_subquery &&
-		estate->dynamicTableScanInfo != NULL)
-	{
-		Assert(dynamicTableScanInfo != estate->dynamicTableScanInfo);
-		freeDynamicTableScanInfo(estate->dynamicTableScanInfo);
-		estate->dynamicTableScanInfo = NULL;
 	}
 
 	/*
@@ -1861,6 +1813,7 @@ InventorySliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 }
 
 
+
 #ifdef USE_ASSERT_CHECKING
 static int
 countNonNullValues(List *list)
@@ -1948,6 +1901,7 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 		AssociateSlicesToProcesses(sliceMap, childIndex, req);
 	}
 }
+
 
 /*
  * Choose the execution identity (who does this executor serve?).
@@ -2212,15 +2166,6 @@ void mppExecutorCleanup(QueryDesc *queryDesc)
 	}
 }
 
-void
-initGpmonPktForDefunctOperators(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
-{
-	Assert(IsA(planNode, SeqScan) ||
-		   IsA(planNode, AppendOnlyScan) ||
-		   IsA(planNode, AOCSScan));
-	insist_log(false, "SeqScan/AppendOnlyScan/AOCSScan are defunct");
-}
-
 /*
  * The funcion pointers to init gpmon package for each plan node. 
  * The order of the function pointers are the same as the one defined in
@@ -2230,17 +2175,13 @@ void (*initGpmonPktFuncs[])(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *e
 {
 	&initGpmonPktForResult, /* T_Result */
 	&initGpmonPktForAppend, /* T_Append */
-	&initGpmonPktForSequence, /* T_Sequence */
 	&initGpmonPktForBitmapAnd, /* T_BitmapAnd */
 	&initGpmonPktForBitmapOr, /* T_BitmapOr */
-	&initGpmonPktForDefunctOperators, /* T_SeqScan */
+	&initGpmonPktForSeqScan, /* T_SeqScan */
 	&initGpmonPktForExternalScan, /* T_ExternalScan */
-	&initGpmonPktForDefunctOperators, /* T_AppendOnlyScan */
-	&initGpmonPktForDefunctOperators, /* T_AOCSScan */
-	&initGpmonPktForTableScan, /* T_TableScan */
-	&initGpmonPktForDynamicTableScan, /* reserved for T_DynamicTableScan */
+	&initGpmonPktForAppendOnlyScan, /* T_AppendOnlyScan */
+	&initGpmonPktForAOCSScan, /* T_AOCSScan */
 	&initGpmonPktForIndexScan, /* T_IndexScan */
-	&initGpmonPktForDynamicIndexScan, /* T_DynamicIndexScan */
 	&initGpmonPktForBitmapIndexScan, /* T_BitmapIndexScan */
 	&initGpmonPktForBitmapHeapScan, /* T_BitmapHeapScan */
 	&initGpmonPktForBitmapAppendOnlyScan, /* T_BitmapAppendOnlyScan */
@@ -2323,20 +2264,6 @@ sendInitGpmonPkts(Plan *node, EState *estate)
 			break;
 		}
 
-		case T_Sequence:
-		{
-			Sequence *sequence = (Sequence *)node;
-
-			ListCell *lc;
-			foreach (lc, sequence->subplans)
-			{
-				Plan *subplan = (Plan *)lfirst(lc);
-				
-				sendInitGpmonPkts(subplan, estate);
-			}
-			break;
-		}
-
 		case T_BitmapAnd:
 		{
 			ListCell *lc;
@@ -2366,7 +2293,6 @@ sendInitGpmonPkts(Plan *node, EState *estate)
 		case T_SeqScan:
 		case T_AppendOnlyScan:
 		case T_AOCSScan:
-		case T_DynamicTableScan:
 		case T_ExternalScan:
 		case T_IndexScan:
 		case T_BitmapIndexScan:

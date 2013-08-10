@@ -227,8 +227,7 @@ ExecMaterial(MaterialState *node)
 				{
 					ntuplestore_flush(ts);
 
-					node->share_lk_ctxt = shareinput_writer_notifyready(ma->share_id, ma->nsharer_xslice,
-							estate->es_plannedstmt->planGen);
+					node->share_lk_ctxt = shareinput_writer_notifyready(ma->share_id, ma->nsharer_xslice); 
 				}
 			}
 			return NULL;

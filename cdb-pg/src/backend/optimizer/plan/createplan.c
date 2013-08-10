@@ -2592,57 +2592,6 @@ create_valuesscan_plan(CreatePlanContext *ctx, Path *best_path,
 	return scan_plan;
 }
 
-/*
- * remove_isnotfalse_expr
- */
-static Expr *
-remove_isnotfalse_expr(Expr *expr)
-{
-	if (IsA(expr, BooleanTest))
-	{
-		BooleanTest *bt = (BooleanTest *) expr;
-		if (bt->booltesttype == IS_NOT_FALSE)
-		{
-			return bt->arg;
-		}
-	}
-	return expr;
-}
-
-/*
- * remove_isnotfalse
- *	  Given a list of joinclauses, extract the bare clauses, removing any IS_NOT_FALSE
- *	  additions. The original data structure is not touched; a modified list is returned
- */
-static List *
-remove_isnotfalse(List *clauses)
-{
-	List	   *t_list = NIL;
-	ListCell   *l;
-
-	foreach (l, clauses)
-	{
-		Node *node = (Node *) lfirst(l);
-		if (IsA(node, Expr) || IsA(node, BooleanTest))
-		{
-			Expr *expr = (Expr *) node;
-			expr = remove_isnotfalse_expr(expr);
-			t_list = lappend(t_list, expr);
-		}
-		else if (IsA(node, RestrictInfo))
-		{
-			RestrictInfo *restrictinfo = (RestrictInfo *) node;
-			Expr *rclause = restrictinfo->clause;
-			rclause = remove_isnotfalse_expr(rclause);
-			t_list = lappend(t_list, rclause);
-		}
-		else
-		{
-			t_list = lappend(t_list, node);
-		}
-	}
-	return t_list;
-}
 /*****************************************************************************
  *
  *	JOIN METHODS
@@ -2804,11 +2753,6 @@ create_nestloop_plan(CreatePlanContext *ctx,
 		/* We can treat all clauses alike for an inner join */
 		joinclauses = extract_actual_clauses(joinrestrictclauses, false);
 		otherclauses = NIL;
-	}
-
-	if (best_path->jpath.jointype == JOIN_LASJ_NOTIN)
-	{
-		joinclauses = remove_isnotfalse(joinclauses);
 	}
 
 	/* Sort clauses into best execution order */
@@ -2980,8 +2924,7 @@ create_hashjoin_plan(CreatePlanContext *ctx,
 
 	/* Get the join qual clauses (in plain expression form) */
 	/* Any pseudoconstant clauses are ignored here */
-	JoinType	jointype = best_path->jpath.jointype;
-	if (IS_OUTER_JOIN(jointype))
+	if (IS_OUTER_JOIN(best_path->jpath.jointype))
 	{
 		extract_actual_join_clauses(best_path->jpath.joinrestrictinfo,
 									&joinclauses, &otherclauses);
@@ -3023,7 +2966,6 @@ create_hashjoin_plan(CreatePlanContext *ctx,
 	 * Build the hash node and hash join node.
 	 */
 	hash_plan = make_hash(inner_plan);
-
 	join_plan = make_hashjoin(tlist,
 							  joinclauses,
 							  otherclauses,
@@ -3031,7 +2973,7 @@ create_hashjoin_plan(CreatePlanContext *ctx,
 							  NIL, /* hashqualclauses */
 							  outer_plan,
 							  (Plan *) hash_plan,
-							  jointype);
+							  best_path->jpath.jointype);
 
 	/* 
 	 * MPP-4635.  best_path->jpath.outerjoinpath may be NULL.  
@@ -3770,7 +3712,7 @@ make_append(List *appendplans, bool isTarget, List *tlist)
 	Append	   *node = makeNode(Append);
 	Plan	   *plan = &node->plan;
 	ListCell   *subnode;
-	double          weighted_total_width = 0.0;     /* maintain weighted total */
+	double		weighted_total_width = 0.0;	/* maintain weighted total */
 	/*
 	 * Compute cost as sum of subplan costs.  We charge nothing extra for the
 	 * Append itself, which perhaps is too optimistic, but since it doesn't do
@@ -3780,15 +3722,12 @@ make_append(List *appendplans, bool isTarget, List *tlist)
 	plan->total_cost = 0;
 	plan->plan_rows = 0;
 	plan->plan_width = 0;
-
 	foreach(subnode, appendplans)
 	{
-		Plan *subplan = (Plan *) lfirst(subnode);
-		if (subnode == list_head(appendplans))  
-		{
-			/* first node */
+		Plan	   *subplan = (Plan *) lfirst(subnode);
+
+		if (subnode == list_head(appendplans))	/* first node? */
 			plan->startup_cost = subplan->startup_cost;
-		}
 		plan->total_cost += subplan->total_cost;
 		plan->plan_rows += subplan->plan_rows;
 		weighted_total_width += (double) subplan->plan_rows * (double) subplan->plan_width;

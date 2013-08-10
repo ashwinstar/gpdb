@@ -3,8 +3,10 @@
 \! sleep 5
 \echo --start_ignore
 --start_ignore
-drop external table if exists readxml;
-NOTICE:  table "readxml" does not exist, skipping
+drop if exists external table readxml;
+ERROR:  syntax error at or near "if"
+LINE 1: drop if exists external table readxml;
+             ^
 \echo --end_ignore
 --end_ignore
 create readable external table readxml (text xml) location ('gpfdist://localhost:45555/CD.xml') format 'TEXT' (escape 'off' newline as 'CRLF');
@@ -368,8 +370,10 @@ bad
 ^
 \echo --start_ignore
 --start_ignore
-drop table if exists test;
-NOTICE:  table "test" does not exist, skipping
+drop if exists table test;
+ERROR:  syntax error at or near "if"
+LINE 1: drop if exists table test;
+             ^
 \echo --end_ignore
 --end_ignore
 CREATE TABLE test (y int, x xml);
@@ -391,8 +395,10 @@ SELECT xmlagg(x ORDER BY y DESC) FROM test;
 
 \echo --start_ignore
 --start_ignore
-drop table if exists xmlToText;
-NOTICE:  table "xmltotext" does not exist, skipping
+drop if exists table xmlToText;
+ERROR:  syntax error at or near "if"
+LINE 1: drop if exists table xmlToText;
+             ^
 \echo --end_ignore
 --end_ignore
 create table xmlToText(xmltext text);

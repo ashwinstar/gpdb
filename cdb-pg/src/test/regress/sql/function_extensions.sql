@@ -42,14 +42,14 @@ begin
 	select relname from pg_class into v_name where oid=$1;
 	return v_name;
 end;
-$$ language plpgsql READS SQL DATA;
+$$ language plpgsql;
 
 select proname, proargnames, prodataaccess from pg_proc where proname = 'func1';
 
 create function func4(int, int) returns int as
 $$
   select $1 + $2;
-$$ language sql CONTAINS SQL;
+$$ language sql;
 
 -- check prodataaccess column
 select proname, proargnames, prodataaccess from pg_proc where proname = 'func4';

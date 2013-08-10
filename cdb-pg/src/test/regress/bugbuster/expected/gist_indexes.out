@@ -602,7 +602,7 @@ NOTICE:  language "plpgsql" already exists, skipping
 CREATE FUNCTION TO_BOX(TEXT) RETURNS BOX AS
   $$
     SELECT box_in(textout($1))
-  $$ LANGUAGE SQL CONTAINS SQL;
+  $$ LANGUAGE SQL;
 CREATE FUNCTION insertIntoGistTable13 (seed INTEGER) RETURNS VOID
 AS
 $$
@@ -617,7 +617,7 @@ BEGIN
    INSERT INTO GistTable13(id, property) VALUES (seed, TO_BOX(CAST(str1 AS TEXT)) );
 END;
 $$
-LANGUAGE PLPGSQL MODIFIES SQL DATA
+LANGUAGE PLPGSQL
 ;
 CREATE FUNCTION insertManyIntoGistTable13 (startValue INTEGER, endValue INTEGER) RETURNS VOID
 AS
@@ -632,7 +632,7 @@ BEGIN
    END LOOP;
 END;
 $$
-LANGUAGE PLPGSQL MODIFIES SQL DATA
+LANGUAGE PLPGSQL
 ;
 -- Add some rows before we create the index.
 SELECT insertManyIntoGistTable13(1, 1000);

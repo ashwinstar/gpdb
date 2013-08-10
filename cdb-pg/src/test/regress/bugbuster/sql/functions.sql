@@ -24,14 +24,14 @@ create table test (a integer, b integer);
 insert into test select a, a%25 from generate_series(1,100) a;
 select greatest(a,b) from test;
 select name, increment(emp_fun) as new_sal from emp_fun where emp_fun.name='bill';
-create or replace function set_tab(int) returns SETOF tab_sour as $$ select * from tab_sour where tabid=$1; $$ language sql READS SQL DATA;
+create or replace function set_tab(int) returns SETOF tab_sour as $$ select * from tab_sour where tabid=$1; $$ language sql;
 select * from set_tab(1) as new_tab;
 SELECT round(4, 0);
 CREATE or REPLACE FUNCTION sales_tax(subtotal real, OUT tax real) AS $$
                                                 BEGIN
                                                     tax := subtotal * 0.06;
                                                 END;
-                                                $$ LANGUAGE plpgsql NO SQL;
+                                                $$ LANGUAGE plpgsql;
 select sales_tax(30);
 
 -- --------------------------------------------------------------------------------------
@@ -60,7 +60,7 @@ create function bad_ddl() returns void as $body$
                  execute 'create table junk_table(a int)';
                  execute 'drop table junk_table';
          end;
-$body$ language plpgsql volatile MODIFIES SQL DATA;
+$body$ language plpgsql volatile;
 
 select bad_ddl();
 

@@ -1811,8 +1811,7 @@ cost_mergejoin(MergePath *path, PlannerInfo *root)
 			innerscansel = firstclause->left_mergescansel;
 		}
 		if (path->jpath.jointype == JOIN_LEFT || 
-			path->jpath.jointype == JOIN_LASJ ||
-			path->jpath.jointype == JOIN_LASJ_NOTIN)
+			path->jpath.jointype == JOIN_LASJ)
 			outerscansel = 1.0;
 		else if (path->jpath.jointype == JOIN_RIGHT)
 			innerscansel = 1.0;
@@ -2659,7 +2658,6 @@ set_joinrel_size_estimates(PlannerInfo *root, RelOptInfo *rel,
 			nrows *= pselec;
 			break;
 		case JOIN_LASJ:
-		case JOIN_LASJ_NOTIN:
 			nrows = outer_rel->rows * jselec;
 			Assert (0.0 == pselec);
 			break;

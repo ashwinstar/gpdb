@@ -60,7 +60,7 @@ begin
 
 	return result3;
 
-end $$ language plpgsql volatile MODIFIES SQL DATA;
+end $$ language plpgsql volatile;
 
 --ctas with sirv in the select list
 --start_ignore
@@ -118,7 +118,7 @@ BEGIN
 
 END;
 $$
-    LANGUAGE plpgsql volatile MODIFIES SQL DATA;
+    LANGUAGE plpgsql volatile;
 
 
 --ctas with sirv in the from clause
@@ -175,7 +175,7 @@ BEGIN
 
 END;
 $$
-    LANGUAGE plpgsql volatile MODIFIES SQL DATA;
+    LANGUAGE plpgsql volatile;
 
 
 create table sirv_test3_result1(id int,country_index text) distributed by(id);
@@ -246,7 +246,7 @@ begin
 
 	RETURN res;
 end
-$$ LANGUAGE plpgsql volatile MODIFIES SQL DATA;
+$$ LANGUAGE plpgsql volatile;
 
 
 create table sirv_test4_result1(res float[]) distributed by(res);
@@ -332,7 +332,7 @@ begin
 
 	return result3;
 
-end $$ language plpgsql volatile MODIFIES SQL DATA;
+end $$ language plpgsql volatile;
 
 
 CREATE OR REPLACE FUNCTION sirv_test5_fun2 (min_languages integer, min_area float8, min_gnp float8)
@@ -368,7 +368,7 @@ BEGIN
 
 END;
 $$
-    LANGUAGE plpgsql volatile MODIFIES SQL DATA;
+    LANGUAGE plpgsql volatile;
 
 
 CREATE OR REPLACE FUNCTION sirv_test5_fun3 (min_languages integer, min_area float8, min_gnp float8)
@@ -403,7 +403,7 @@ BEGIN
 
 END;
 $$
-    LANGUAGE plpgsql volatile MODIFIES SQL DATA;
+    LANGUAGE plpgsql volatile;
 
 
 CREATE OR REPLACE FUNCTION sirv_test5_fun4(gnp_diff float8, opt integer)  RETURNS FLOAT[] AS $$
@@ -449,7 +449,7 @@ begin
         EXECUTE 'DROP table h_gnp';
 	RETURN res;
 end
-$$ LANGUAGE plpgsql volatile MODIFIES SQL DATA;
+$$ LANGUAGE plpgsql volatile;
 
 
 
@@ -548,7 +548,7 @@ begin
 
 	return result3;
 
-end $$ language plpgsql volatile MODIFIES SQL DATA;
+end $$ language plpgsql volatile;
 
 
 CREATE OR REPLACE FUNCTION sirv_test6_fun2 (min_languages integer, min_area float8, min_gnp float8)
@@ -584,7 +584,7 @@ BEGIN
 
 END;
 $$
-    LANGUAGE plpgsql volatile MODIFIES SQL DATA;
+    LANGUAGE plpgsql volatile;
 
 
 CREATE OR REPLACE FUNCTION sirv_test6_fun3 (min_languages integer, min_area float8, min_gnp float8)
@@ -619,7 +619,7 @@ BEGIN
 
 END;
 $$
-    LANGUAGE plpgsql volatile MODIFIES SQL DATA;
+    LANGUAGE plpgsql volatile;
 
 
 CREATE OR REPLACE FUNCTION sirv_test6_fun4(gnp_diff float8, opt integer)  RETURNS FLOAT[] AS $$
@@ -665,7 +665,7 @@ begin
         EXECUTE 'DROP table h_gnp';
 	RETURN res;
 end
-$$ LANGUAGE plpgsql volatile MODIFIES SQL DATA;
+$$ LANGUAGE plpgsql volatile;
 
 
 
@@ -748,7 +748,7 @@ BEGIN
 
 END;
 $$
-    LANGUAGE plpgsql volatile READS SQL DATA;
+    LANGUAGE plpgsql volatile;
 
 
 --ctas with srf should not apply init plan changes. this is not supported
@@ -805,7 +805,7 @@ BEGIN
 
 END;
 $$
-    LANGUAGE plpgsql volatile MODIFIES SQL DATA;
+    LANGUAGE plpgsql volatile;
 
 
 --ctas with srf should not apply init plan changes. this is not supported
@@ -862,7 +862,7 @@ BEGIN
 
 END;
 $$
-    LANGUAGE plpgsql volatile READS SQL DATA;
+    LANGUAGE plpgsql volatile;
 
 
 --insert select with srf should not apply init plan changes. this is not supported
@@ -925,7 +925,7 @@ BEGIN
 
 END;
 $$
-    LANGUAGE plpgsql volatile MODIFIES SQL DATA;
+    LANGUAGE plpgsql volatile;
 
 
 
@@ -988,7 +988,7 @@ BEGIN
 
 END;
 $$
-    LANGUAGE plpgsql volatile MODIFIES SQL DATA;
+    LANGUAGE plpgsql volatile;
 
 create table sirv_test11_input as select trunc(0.5 * 5) as lang_count,surfacearea, gnp from country where continent = 'Asia' distributed by (lang_count);
 
@@ -1041,7 +1041,7 @@ BEGIN
 
 END;
 $$
-    LANGUAGE plpgsql volatile MODIFIES SQL DATA;
+    LANGUAGE plpgsql volatile;
 
 create table sirv_test12_input as select trunc(0.5 * 5) as lang_count,surfacearea, gnp from country where continent = 'Asia' distributed by (lang_count);
 
@@ -1102,7 +1102,7 @@ AS $$
   plpy.execute('DROP TABLE test_data2')
   return result3
   
-$$ LANGUAGE plpythonu MODIFIES SQL DATA;
+$$ LANGUAGE plpythonu;
 
 
 
@@ -1130,7 +1130,7 @@ CREATE OR REPLACE FUNCTION sirv_test13_fun2(gnp_diff float8, opt integer)  RETUR
  
   return res[0]["gnp_values"]
 
-$$ LANGUAGE plpythonu MODIFIES SQL DATA;
+$$ LANGUAGE plpythonu;
 
 
 --select list
@@ -1196,7 +1196,7 @@ AS $$
   plpy.execute('DROP TABLE test_data2')
   return result3
   
-$$ LANGUAGE plpythonu MODIFIES SQL DATA;
+$$ LANGUAGE plpythonu;
 
 
 
@@ -1224,7 +1224,7 @@ CREATE OR REPLACE FUNCTION sirv_test14_fun2(gnp_diff float8, opt integer)  RETUR
  
   return res[0]["gnp_values"]
 
-$$ LANGUAGE plpythonu MODIFIES SQL DATA;
+$$ LANGUAGE plpythonu;
 
 
 --select list
@@ -1290,7 +1290,7 @@ BEGIN
 
 END;
 $$
-    LANGUAGE plpgsql volatile MODIFIES SQL DATA;
+    LANGUAGE plpgsql volatile;
 
 --ctas with a function returning anonymous composite type
 
@@ -1331,7 +1331,7 @@ BEGIN
 
 END;
 $$
-    LANGUAGE plpgsql volatile MODIFIES SQL DATA;
+    LANGUAGE plpgsql volatile;
 
 --ctas with a function returning record
 

@@ -44,5 +44,4 @@ extern void assign_plannode_id(PlannedStmt *stmt);
 extern List *getExprListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx,
 									   bool useExecutorVarFormat);
 
-extern int32 cdbhash_const(Const *pconst, int iSegments);
 #endif   /* CDBMUTATE_H */

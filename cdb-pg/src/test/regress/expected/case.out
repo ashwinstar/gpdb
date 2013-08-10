@@ -8,14 +8,10 @@ CREATE TABLE CASE_TBL (
   f double precision
 );
 NOTICE:  CREATE TABLE will create implicit sequence "case_tbl_dummy_seq" for serial column "case_tbl.dummy"
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'dummy' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 CREATE TABLE CASE2_TBL (
   i integer,
   j integer
 );
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 INSERT INTO CASE_TBL VALUES (1, 10.1);
 INSERT INTO CASE_TBL VALUES (2, 20.2);
 INSERT INTO CASE_TBL VALUES (3, -30.3);
@@ -291,37 +287,33 @@ SELECT i,f FROM CASE_TBL ORDER BY 1,2;
 -- CASE ... WHEN IS NOT DISTINCT FROM ...
 --
 DROP TABLE IF EXISTS mytable CASCADE;
-NOTICE:  table "mytable" does not exist, skipping
 CREATE TABLE mytable (a int, b int, c varchar(1));
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-INSERT INTO mytable values 	(1,2,'t'),
-							(2,3,'e'),
-							(3,4,'o'),
-							(4,5,'o'),
-							(4,4,'o'),
-							(5,5,'t'),
-							(6,6,'t'),
-							(7,6,'a'),
-							(8,7,'t'),
-							(9,8,'a');
-CREATE OR REPLACE FUNCTION negate(int) RETURNS int 
+INSERT INTO mytable values  (1,2,'t'),
+                            (2,3,'e'),
+                            (3,4,'o'),
+                            (4,5,'o'),
+                            (4,4,'o'),
+                            (5,5,'t'),
+                            (6,6,'t'),
+                            (7,6,'a'),
+                            (8,7,'t'),
+                            (9,8,'a');
+CREATE OR REPLACE FUNCTION negate(int) RETURNS int
 AS 'SELECT $1 * (-1)'
-LANGUAGE sql CONTAINS SQL
+LANGUAGE sql
 IMMUTABLE
 RETURNS null ON null input;
 DROP VIEW IF EXISTS myview;
-NOTICE:  view "myview" does not exist, skipping
-CREATE VIEW myview AS 
+CREATE VIEW myview AS
    SELECT a,b, CASE a WHEN IS NOT DISTINCT FROM b THEN b*10
-                      WHEN IS NOT DISTINCT FROM b+1 THEN b*100 
+                      WHEN IS NOT DISTINCT FROM b+1 THEN b*100
                       WHEN b-1 THEN b*1000
                       WHEN b*10 THEN b*10000
                       WHEN negate(b) THEN b*(-1.0)
                       ELSE b END AS newb
      FROM mytable;
 SELECT * FROM myview ORDER BY a,b;
- a | b | newb 
+ a | b | newb
 ---+---+------
  1 | 2 | 2000
  2 | 3 | 3000
@@ -336,75 +328,70 @@ SELECT * FROM myview ORDER BY a,b;
 (10 rows)
 
 -- Test deparse
-select pg_get_viewdef('myview',true); 
-                                   pg_get_viewdef                                    
+select pg_get_viewdef('myview',true);
+                                   pg_get_viewdef
 -------------------------------------------------------------------------------------
-  SELECT mytable.a, mytable.b,                                                       
-         CASE mytable.a                                                              
-             WHEN IS NOT DISTINCT FROM mytable.b THEN (mytable.b * 10)::numeric      
-             WHEN IS NOT DISTINCT FROM mytable.b + 1 THEN (mytable.b * 100)::numeric 
-             WHEN mytable.b - 1 THEN (mytable.b * 1000)::numeric                     
-             WHEN mytable.b * 10 THEN (mytable.b * 10000)::numeric                   
-             WHEN negate(mytable.b) THEN mytable.b::numeric * (-1.0)                 
-             ELSE mytable.b::numeric                                                 
-         END AS newb                                                                 
+  SELECT mytable.a, mytable.b,
+         CASE mytable.a
+             WHEN IS NOT DISTINCT FROM mytable.b THEN (mytable.b * 10)::numeric
+             WHEN IS NOT DISTINCT FROM mytable.b + 1 THEN (mytable.b * 100)::numeric
+             WHEN mytable.b - 1 THEN (mytable.b * 1000)::numeric
+             WHEN mytable.b * 10 THEN (mytable.b * 10000)::numeric
+             WHEN negate(mytable.b) THEN mytable.b::numeric * (-1.0)
+             ELSE mytable.b::numeric
+         END AS newb   
     FROM mytable;
 (1 row)
 
 DROP TABLE IF EXISTS products CASCADE;
-NOTICE:  table "products" does not exist, skipping
 CREATE TABLE products (id serial, name text, price numeric);
-NOTICE:  CREATE TABLE will create implicit sequence "products_id_seq" for serial column "products.id"
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'id' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 INSERT INTO products (name, price) values ('keyboard', 124.99);
 INSERT INTO products (name, price) values ('monitor', 299.99);
 INSERT INTO products (name, price) values ('mouse', 45.59);
 SELECT id,name,price as old_price,
-       CASE name WHEN IS NOT DISTINCT FROM 'keyboard' THEN products.price*1.5 
+       CASE name WHEN IS NOT DISTINCT FROM 'keyboard' THEN products.price*1.5
                  WHEN IS NOT DISTINCT FROM 'monitor' THEN price*1.2
-                 WHEN 'keyboard tray' THEN price*.9 
+                 WHEN 'keyboard tray' THEN price*.9
                  END AS new_price
   FROM products;
- id |   name   | old_price | new_price 
+ id |   name   | old_price | new_price
 ----+----------+-----------+-----------
-  1 | keyboard |    124.99 |   187.485
   2 | monitor  |    299.99 |   359.988
-  3 | mouse    |     45.59 |          
+  1 | keyboard |    124.99 |   187.485
+  3 | mouse    |     45.59 |
 (3 rows)
 
-                            
+
 -- testexpr should be evaluated only once
 DROP FUNCTION IF EXISTS blip(int);
 NOTICE:  function blip(pg_catalog.int4) does not exist, skipping
 DROP TABLE IF EXISTS calls_to_blip;
-NOTICE:  table "calls_to_blip" does not exist, skipping
 CREATE TABLE calls_to_blip (n serial, v int) DISTRIBUTED RANDOMLY;
 NOTICE:  CREATE TABLE will create implicit sequence "calls_to_blip_n_seq" for serial column "calls_to_blip.n"
 CREATE OR REPLACE FUNCTION blip(int) RETURNS int
-LANGUAGE plpgsql MODIFIES SQL DATA
+LANGUAGE plpgsql
 VOLATILE
 AS $$
 DECLARE
-	x alias for $1;
+    x alias for $1;
 BEGIN
-	INSERT INTO calls_to_blip(v) VALUES (x);
-	RETURN x;
+    INSERT INTO calls_to_blip(v) VALUES (x);
+    RETURN x;
 END;
 $$;
-SELECT CASE blip(1) 
-			WHEN IS NOT DISTINCT FROM blip(2) THEN blip(20)
-			WHEN IS NOT DISTINCT FROM blip(3) THEN blip(30)
-			WHEN IS NOT DISTINCT FROM blip(4) THEN blip(40)
-			ELSE blip(666)
-			END AS answer;
- answer 
+SELECT CASE blip(1)
+            WHEN IS NOT DISTINCT FROM blip(2) THEN blip(20)
+            WHEN IS NOT DISTINCT FROM blip(3) THEN blip(30)
+            WHEN IS NOT DISTINCT FROM blip(4) THEN blip(40)
+            ELSE blip(666)
+            END AS answer;
+ answer
 --------
     666
 (1 row)
 
 SELECT * FROM calls_to_blip ORDER BY 1;
- n |  v  
+ n |  v 
 ---+-----
  1 |   1
  2 |   2
@@ -423,8 +410,8 @@ LINE 1: SELECT a,b,CASE WHEN IS NOT DISTINCT FROM b THEN b*100 ELSE ...
 HINT:  Missing <operand> for "CASE <operand> WHEN IS NOT DISTINCT FROM ..."
 SELECT a,b,c,CASE c WHEN IS NOT DISTINCT FROM b THEN a
                     WHEN IS NOT DISTINCT FROM b+1 THEN a*100
-                    ELSE c END 
-  FROM mytable; 
+                    ELSE c END
+  FROM mytable;
 ERROR:  CASE types character varying and integer cannot be matched
 LINE 1: SELECT a,b,c,CASE c WHEN IS NOT DISTINCT FROM b THEN a
                           ^
@@ -432,69 +419,69 @@ LINE 1: SELECT a,b,c,CASE c WHEN IS NOT DISTINCT FROM b THEN a
 -- DECODE(): Oracle compatibility
 --
 SELECT decode(null,null,true,false);
- case 
+ case
 ------
  t
 (1 row)
 
 SELECT decode(NULL, 1, 100, NULL, 200, 300);
- case 
+ case
 ------
   200
 (1 row)
 
 SELECT decode('1'::text, '1', 100, '2', 200);
- case 
+ case
 ------
   100
 (1 row)
 
 SELECT decode(2, 1, 'ABC', 2, 'DEF');
- case 
+ case
 ------
  DEF
 (1 row)
 
 SELECT decode('2009-02-05'::date, '2009-02-05', 'ok');
- case 
+ case
 ------
  ok
 (1 row)
 
 SELECT decode('2009-02-05 01:02:03'::timestamp, '2009-02-05 01:02:03', 'ok');
- case 
+ case
 ------
  ok
 (1 row)
 
 SELECT b,c,decode(c,'a',b*10,'e',b*100,'o',b*1000,'u',b*10000,'i',b*100000) as newb from mytable;
- b | c | newb 
+ b | c | newb
 ---+---+------
- 2 | t |     
- 3 | e |  300
+ 2 | t |
  4 | o | 4000
+ 5 | t |
+ 6 | a |   60
+ 8 | a |   80
+ 3 | e |  300
  5 | o | 5000
  4 | o | 4000
- 5 | t |     
- 6 | t |     
- 6 | a |   60
- 7 | t |     
- 8 | a |   80
+ 6 | t |
+ 7 | t |
 (10 rows)
 
 SELECT b,c,decode(c,'a',ARRAY[1,2],'e',ARRAY[3,4],'o',ARRAY[5,6],'u',ARRAY[7,8],'i',ARRAY[9,10],ARRAY[0]) as newb from mytable;
- b | c | newb  
+ b | c | newb
 ---+---+-------
  2 | t | {0}
- 3 | e | {3,4}
+ 5 | t | {0}
  4 | o | {5,6}
+ 6 | a | {1,2}
+ 8 | a | {1,2}
+ 6 | t | {0}
+ 7 | t | {0}
+ 3 | e | {3,4}
  5 | o | {5,6}
  4 | o | {5,6}
- 5 | t | {0}
- 6 | t | {0}
- 6 | a | {1,2}
- 7 | t | {0}
- 8 | a | {1,2}
 (10 rows)
 
 DROP VIEW IF EXISTS myview;
@@ -510,7 +497,7 @@ CREATE VIEW myview as
   FROM products
  WHERE id < 100;
 SELECT * FROM myview ORDER BY id, location;
- id |   name   | price  |   location    
+ id |   name   | price  |   location
 ----+----------+--------+---------------
   1 | keyboard | 124.99 | Southlake
   2 | monitor  | 299.99 | San Francisco
@@ -518,54 +505,54 @@ SELECT * FROM myview ORDER BY id, location;
 (3 rows)
 
 -- Test deparse
-select pg_get_viewdef('myview',true); 
-                           pg_get_viewdef                           
+select pg_get_viewdef('myview',true);
+                           pg_get_viewdef      
 --------------------------------------------------------------------
-  SELECT products.id, products.name, products.price,                
-         CASE products.id                                           
-             WHEN IS NOT DISTINCT FROM 1 THEN 'Southlake'::text     
-             WHEN IS NOT DISTINCT FROM 2 THEN 'San Francisco'::text 
-             WHEN IS NOT DISTINCT FROM 3 THEN 'New Jersey'::text    
-             WHEN IS NOT DISTINCT FROM 4 THEN 'Seattle'::text       
-             WHEN IS NOT DISTINCT FROM 5 THEN 'Portland'::text      
-             WHEN IS NOT DISTINCT FROM 6 THEN 'San Francisco'::text 
-             WHEN IS NOT DISTINCT FROM 7 THEN 'Portland'::text      
-             ELSE 'Non domestic'::text                              
-         END AS location                                            
-    FROM products                                                   
+  SELECT products.id, products.name, products.price,
+         CASE products.id
+             WHEN IS NOT DISTINCT FROM 1 THEN 'Southlake'::text
+             WHEN IS NOT DISTINCT FROM 2 THEN 'San Francisco'::text
+             WHEN IS NOT DISTINCT FROM 3 THEN 'New Jersey'::text
+             WHEN IS NOT DISTINCT FROM 4 THEN 'Seattle'::text
+             WHEN IS NOT DISTINCT FROM 5 THEN 'Portland'::text
+             WHEN IS NOT DISTINCT FROM 6 THEN 'San Francisco'::text
+             WHEN IS NOT DISTINCT FROM 7 THEN 'Portland'::text
+             ELSE 'Non domestic'::text
+         END AS location
+    FROM products
    WHERE products.id < 100;
 (1 row)
 
 -- User-defined DECODE function
 CREATE OR REPLACE FUNCTION "decode"(int, int, int) RETURNS int
 AS 'select $1 * $2 - $3;'
-LANGUAGE sql CONTAINS SQL
+LANGUAGE sql
 IMMUTABLE
 RETURNS null ON null input;
 SELECT decode(11,8,11);
- case 
+ case
 ------
-     
+
 (1 row)
 
 SELECT "decode"(11,8,11);
- decode 
+ decode
 --------
      77
 (1 row)
 
 SELECT public.decode(11,8,11);
- decode 
+ decode
 --------
      77
 (1 row)
 
 -- Test CASE x WHEN IS NOT DISTINCT FROM y with DECODE
-SELECT a,b,decode(a,1,1), 
-		CASE decode(a,1,1) WHEN IS NOT DISTINCT FROM 1 THEN b*100
-                  		   WHEN IS NOT DISTINCT FROM 4 THEN b*1000 ELSE b END as newb
-  FROM mytable ORDER BY a,b; 
- a | b | case | newb 
+SELECT a,b,decode(a,1,1),
+        CASE decode(a,1,1) WHEN IS NOT DISTINCT FROM 1 THEN b*100
+                           WHEN IS NOT DISTINCT FROM 4 THEN b*1000 ELSE b END as newb
+  FROM mytable ORDER BY a,b;
+ a | b | case | newb
 ---+---+------+------
  1 | 2 |    1 |  200
  2 | 3 |      |    3
@@ -580,11 +567,11 @@ SELECT a,b,decode(a,1,1),
 (10 rows)
 
 -- Test CASE WHEN x IS NOT DISTINCT FROM y with DECODE
-SELECT a,b,decode(a,1,1), 
-		CASE WHEN decode(a,1,1) IS NOT DISTINCT FROM 1 THEN b*100
-			 WHEN decode(a,1,1) IS NOT DISTINCT FROM 4 THEN b*1000 ELSE b END as newb
-  FROM mytable ORDER BY a,b; 
- a | b | case | newb 
+SELECT a,b,decode(a,1,1),
+        CASE WHEN decode(a,1,1) IS NOT DISTINCT FROM 1 THEN b*100
+             WHEN decode(a,1,1) IS NOT DISTINCT FROM 4 THEN b*1000 ELSE b END as newb
+  FROM mytable ORDER BY a,b;
+ a | b | case | newb
 ---+---+------+------
  1 | 2 |    1 |  200
  2 | 3 |      |    3
@@ -598,11 +585,11 @@ SELECT a,b,decode(a,1,1),
  9 | 8 |      |    8
 (10 rows)
 
-SELECT a,b,"decode"(a,1,1), 
-			CASE WHEN "decode"(a,1,1) IS NOT DISTINCT FROM 1 THEN b*100
+SELECT a,b,"decode"(a,1,1),
+            CASE WHEN "decode"(a,1,1) IS NOT DISTINCT FROM 1 THEN b*100
                  WHEN "decode"(a,1,1) IS NOT DISTINCT FROM 4 THEN b*1000 ELSE b END as newb
-  FROM mytable ORDER BY a,b; 
- a | b | decode | newb 
+  FROM mytable ORDER BY a,b;
+ a | b | decode | newb
 ---+---+--------+------
  1 | 2 |      0 |    2
  2 | 3 |      1 |  300
@@ -628,8 +615,6 @@ DROP TABLE CASE_TBL;
 DROP TABLE CASE2_TBL;
 DROP TABLE mytable CASCADE;
 DROP TABLE products CASCADE;
-NOTICE:  drop cascades to rule _RETURN on view myview
-NOTICE:  drop cascades to view myview
 DROP TABLE calls_to_blip;
 DROP FUNCTION negate(int);
 DROP FUNCTION "decode"(int, int, int);

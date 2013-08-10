@@ -34,13 +34,6 @@ typedef struct DirectDispatchInfo
     List *contentIds;
 } DirectDispatchInfo;
 
-/* DML Actions */
-typedef enum DMLAction
-{
-	DML_DELETE,
-	DML_INSERT
-} DMLAction;
-
 /* ----------------------------------------------------------------
  *						node definitions
  * ----------------------------------------------------------------
@@ -447,64 +440,6 @@ typedef struct IndexScan
 	List	   *indexsubtype;	/* OID list of strategy subtypes */
 	ScanDirection indexorderdir;	/* forward or backward or don't care */
 } IndexScan;
-
-typedef struct LogicalIndexInfo
-{
-	Oid	logicalIndexOid;	/* OID of the logical index */
-	int	nColumns;		/* Number of columns in the index */
-	AttrNumber	*indexKeys;	/* column numbers of index keys */
-	List	*indPred;		/* predicate if partial index, or NIL */
-	List	*indExprs;		/* index on expressions */
-	bool	indIsUnique;		/* unique index */
-	Node	*partCons;		/* concatenated list of check constraints 
-					 * of each partition on which this index is defined */
-	List	*defaultLevels;		/* Used to identify a default partition */
-} LogicalIndexInfo;
-
-/*
- * DynamicIndexScan
- *   Scan a list of indexes that will be determined at run time.
- *   The primary application of this operator is to be used
- *   for partition tables.
-*/
-typedef struct DynamicIndexScan
-{
-	/* Contains the plan and position of range table */
-	Scan scan;
-	/* OID of logical index to use */
-	Oid indexid;
-	/* List of index quals (OpExprs) */
-	List	   *indexqual;
-	/* List of index quals in original form */
-	List	   *indexqualorig;
-
-	/* Indexstrategy and indexsubtype are lists corresponding one-to-one
-	 * with indexqual. They give information about the indexable operators
-	 * that appear at the top of each indexqual. For example,
-	 * searchstrategy= equality and indexsubtype is a particularity
-	 * of the search strategy like the input data type.
-	 * For example, in the btree AM nondefault operators can have right-hand input data
-	 * types different from opcintype and their amopsubtype
-	 * is equal to the right-hand input data type (see pg_amop.h). */
-
-	/* Integer list of strategy numbers */
-	List	   *indexstrategy;
-	/* OID list of strategy subtypes */
-	List	   *indexsubtype;
-	/* Specifies scan direction (forward, backward, or don't care) */
-	ScanDirection indexorderdir;
-	/*
-	 * The index to an internal array structure that
-	 * contains oids of the parts that need to be scanned.
-	 *
-	 * This internal structure is maintained in EState.
-	 */
-	int partIndex;
-	
-	/* logical index to use */
-	LogicalIndexInfo *logicalIndexInfo;
-
-} DynamicIndexScan;
 
 /* ----------------
  *		bitmap index scan node
@@ -1065,64 +1000,6 @@ typedef struct Motion
 	Oid			*sortOperators;		/* OID of operators to sort them by */
 } Motion;
 
-/*
- * DML Node
- */
-typedef struct DML
-{
-	
-	Plan		plan;				
-	Index		scanrelid;		/* index into the range table */
-	AttrNumber	oidColIdx;		/* index of table oid into the target list */
-	AttrNumber	actionColIdx;		/* index of action column into the target list */
-	AttrNumber	ctidColIdx;		/* index of ctid column into the target list */
-	AttrNumber	tupleoidColIdx;		/* index of tuple oid column into the target list */
-
-} DML;
-
-/*
- * SplitUpdate Node
- *
- */
-typedef struct SplitUpdate
-{
-	
-	Plan		plan;				
-	AttrNumber	actionColIdx;		/* index of action column into the target list */
-	AttrNumber	ctidColIdx;		/* index of ctid column into the target list */
-	AttrNumber	tupleoidColIdx;		/* index of tuple oid column into the target list */
-	List		*insertColIdx;		/* list of columns to INSERT into the target list */
-	List		*deleteColIdx;		/* list of columns to DELETE into the target list */
-
-} SplitUpdate;
-
-/*
- * AssertOp Node
- *
- */
-typedef struct AssertOp
-{
-	
-	Plan 			plan;
-	int			errcode;	/* SQL error code */
-	char 			*errmessage;	/* error message */
-
-} AssertOp;
-
-/*
- * RowTrigger Node
- *
- */
-typedef struct RowTrigger
-{
-
-	Plan		plan;
-	Oid			relid;				/* OID of target relation */
-	int 		eventFlags;			/* TriggerEvent bit flags (see trigger.h).*/
-	List		*oldValuesColIdx;	/* list of old columns */
-	List		*newValuesColIdx;	/* list of new columns */
-
-} RowTrigger;
 
 /*
  * Plan invalidation info
@@ -1147,3 +1024,6 @@ typedef struct PlanInvalItem
 	
 
 #endif   /* PLANNODES_H */
+
+
+

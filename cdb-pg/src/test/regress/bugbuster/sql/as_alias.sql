@@ -1,22 +1,19 @@
--- start_ignore
-DROP TABLE IF EXISTS xyz_ctas1;
-DROP TABLE IF EXISTS xyz_ctas2;
-DROP TABLE IF EXISTS xyz;
-DROP TABLE IF EXISTS xyz1;
-DROP TABLE IF EXISTS xyz2;
-DROP TABLE IF EXISTS supplier;
-DROP TABLE IF EXISTS test_having; 
-DROP TABLE IF EXISTS subselect_tbl; 
-DROP TABLE IF EXISTS timestamp_tbl;
-DROP TABLE IF EXISTS test;
-DROP TABLE IF EXISTS vendor;
-DROP TABLE IF EXISTS product;
-DROP TABLE IF EXISTS sale;
-DROP TABLE IF EXISTS sale_ord;
-DROP TABLE IF EXISTS util;
-DROP TABLE IF EXISTS customer;
-DROP TABLE IF EXISTS TIMESTAMP_TBL;
--- end_ignore
+DROP TABLE xyz_ctas1;
+DROP TABLE xyz_ctas2;
+DROP TABLE xyz;
+DROP TABLE xyz1;
+DROP TABLE xyz2;
+DROP TABLE supplier;
+DROP TABLE test_having; 
+DROP TABLE subselect_tbl; 
+DROP TABLE timestamp_tbl;
+DROP TABLE test;
+DROP TABLE vendor;
+DROP TABLE product;
+DROP TABLE sale;
+DROP TABLE sale_ord;
+DROP TABLE util;
+DROP TABLE customer;
 create table xyz ("B B" int, "C" int, "D+1" int) DISTRIBUTED RANDOMLY;
 -- start_equiv
 create table xyz_ctas1 as (select "B B" AS "B+1", "C" AS "_%A", "D+1" AS "D" from xyz) DISTRIBUTED RANDOMLY;
@@ -302,8 +299,8 @@ CREATE OR REPLACE FUNCTION one() returns integer as $$ select 1 result; $$ langu
 -- end_equiv
 
 -- start_equiv
-CREATE OR REPLACE FUNCTION add_em(integer, integer) RETURNS integer as $$ SELECT $1 + $2 AS sum; $$ LANGUAGE SQL CONTAINS SQL;
-CREATE OR REPLACE FUNCTION add_em(integer, integer) RETURNS integer as $$ SELECT $1 + $2 sum; $$ LANGUAGE SQL CONTAINS SQL;
+CREATE OR REPLACE FUNCTION add_em(integer, integer) RETURNS integer as $$ SELECT $1 + $2 AS sum; $$ LANGUAGE SQL;
+CREATE OR REPLACE FUNCTION add_em(integer, integer) RETURNS integer as $$ SELECT $1 + $2 sum; $$ LANGUAGE SQL;
 -- end_equiv
 
 -- start_equiv

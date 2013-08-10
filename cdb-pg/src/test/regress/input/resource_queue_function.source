@@ -1,6 +1,6 @@
 
 CREATE FUNCTION checkResourceQueueMemoryLimits(cstring) RETURNS boolean
-AS '@abs_builddir@/regress@DLSUFFIX@', 'checkResourceQueueMemoryLimits' LANGUAGE C READS SQL DATA;
+AS '@abs_builddir@/regress@DLSUFFIX@', 'checkResourceQueueMemoryLimits' LANGUAGE C;
 
 CREATE TABLE test_table(c1 int, c2 int); 
 INSERT INTO test_table values(1, 2);

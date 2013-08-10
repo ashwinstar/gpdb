@@ -1,8 +1,8 @@
 --start_ignore
 create language plpgsql;
+--end_ignore
 drop table foo cascade;
 drop table tenk1 cascade;
---end_ignore
 CREATE TABLE employee(ID int,name varchar(10),salary real,start_date date,city varchar(10),region char(1));
 
 INSERT INTO employee values (1,'jason',40420,'02/01/2007','New York');
@@ -333,7 +333,7 @@ end loop;
 END;
 close ref_1234_1;
 END;
-' LANGUAGE plpgsql MODIFIES SQL DATA;
+' LANGUAGE plpgsql;
 
 
 BEGIN;
@@ -510,7 +510,7 @@ insert into prerds.FINANCE_HIE_ACC_GRP_FINAL select * from prerds.fin_hie__desc_
 Return (select count(*) from prerds.FINANCE_HIE_ACC_GRP_FINAL )  ;
 end; 
 
-$$ language plpgsql MODIFIES SQL DATA;
+$$ language plpgsql;
 
 
 CREATE TABLE prerds.ramana_fin_setleaf_bt
@@ -714,7 +714,7 @@ DROP TABLE tenk1;
 CREATE TABLE xacttest_table (a int, b float);
 INSERT INTO xacttest_table (a, b) VALUES (777, 777.777);
 select * from xacttest_table;
-create or replace function max_xacttest() returns double precision language sql READS SQL DATA as
+create or replace function max_xacttest() returns double precision language sql as
 'select max(b) from xacttest_table' stable;
 
 begin;
@@ -722,7 +722,7 @@ update xacttest_table set b = max_xacttest() + 10 where b > 0;
 select * from xacttest_table;
 rollback;
 
-create or replace function max_xacttest() returns double precision language sql READS SQL DATA as
+create or replace function max_xacttest() returns double precision language sql as
 'select max(b) from xacttest_table' volatile;
 
 begin;
@@ -731,7 +731,7 @@ select * from xacttest_table;
 rollback;
 
 
-create or replace function max_xacttest() returns double precision language plpgsql READS SQL DATA as
+create or replace function max_xacttest() returns double precision language plpgsql as
 'begin return max(b) from xacttest_table; end' stable;
 
 begin;
@@ -739,7 +739,7 @@ update xacttest_table set b = max_xacttest() + 10 where b > 0;
 select * from xacttest_table;
 rollback;
 
-create or replace function max_xacttest() returns double precision language plpgsql READS SQL DATA as
+create or replace function max_xacttest() returns double precision language plpgsql as
 'begin return max(b) from xacttest_table; end' volatile;
 
 begin;

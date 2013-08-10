@@ -8,11 +8,11 @@
 --
 create function gp_build_logical_index(IN rootoid oid)
 returns setof record
-language C volatile NO SQL as '@abs_builddir@/regress@DLSUFFIX@', 'gp_build_logical_index_info';
+language C volatile as '@abs_builddir@/regress@DLSUFFIX@', 'gp_build_logical_index_info';
 
 create function gp_get_physical_index_relid(oid, oid, int[], text, text, bool)
 returns oid
-language C volatile NO SQL AS '@abs_builddir@/regress@DLSUFFIX@', 'gp_get_physical_index_relid';
+language C volatile AS '@abs_builddir@/regress@DLSUFFIX@', 'gp_get_physical_index_relid';
 
 --
 -- ************************************************************
@@ -425,84 +425,6 @@ select gp_get_physical_index_relid('part_table4'::regclass, 'part_table4_1_prt_g
 	from pg_index
 	where indexrelid = ('id_index_1_prt_boys_2_prt_3'::regclass);
 
--- ************************************************************
--- * Scenario 8
--- *    - open-ended partitions
--- ************************************************************
-create table part_table6(a int) 
-PARTITION BY RANGE(a)
-(
-PARTITION p1 END (1) INCLUSIVE,
-PARTITION p2 START (1) EXCLUSIVE END (2) INCLUSIVE,
-PARTITION p3 START (2) EXCLUSIVE END (3) INCLUSIVE,
-PARTITION p4 START (3) EXCLUSIVE END (4) INCLUSIVE
-);
-create index part_table6_1_ind on part_table6_1_prt_p1(a); 
-create index part_table6_2_ind on part_table6_1_prt_p2(a);
-create index part_table6_3_ind on part_table6_1_prt_p3(a);
-
-create table part_table7(a int) 
-PARTITION BY RANGE(a)
-(
-PARTITION p2 START (1) EXCLUSIVE END (2) INCLUSIVE,
-PARTITION p3 START (2) EXCLUSIVE END (3) INCLUSIVE,
-PARTITION p4 START (3) EXCLUSIVE END (4) INCLUSIVE,
-PARTITION p5 START (4) EXCLUSIVE
-);
-create index part_table7_3_ind on part_table7_1_prt_p3(a); 
-create index part_table7_4_ind on part_table7_1_prt_p4(a);
-create index part_table7_5_ind on part_table7_1_prt_p5(a);
-
-create table part_table8(a int) 
-PARTITION BY RANGE(a)
-(
-PARTITION p1 END (1) INCLUSIVE,
-PARTITION p2 START (1) EXCLUSIVE END (2) INCLUSIVE,
-PARTITION p3 START (2) EXCLUSIVE END (3) INCLUSIVE,
-PARTITION p4 START (3) EXCLUSIVE END (4) INCLUSIVE,
-PARTITION p5 START (4) EXCLUSIVE
-);
-create index part_table8_ind on part_table8(a); 
-
--- non-contiguous indexes
-create table part_table9(a int, b int) 
-PARTITION BY RANGE(a)
-(
-PARTITION p1 END (1) INCLUSIVE,
-PARTITION p2 START (1) EXCLUSIVE END (2) INCLUSIVE,
-PARTITION p3 START (2) EXCLUSIVE END (3) INCLUSIVE,
-PARTITION p4 START (3) EXCLUSIVE END (4) INCLUSIVE,
-PARTITION p5 START (4) EXCLUSIVE
-);
-create index part_table9_1_ind on part_table9_1_prt_p1(a);
-create index part_table9_2_ind on part_table9_1_prt_p2(a,b);
-create index part_table9_3_ind on part_table9_1_prt_p3(a);
-
-create table part_table10(a int, b int) 
-PARTITION BY RANGE(a)
-(
-PARTITION p1 START (1) EXCLUSIVE END (2) EXCLUSIVE,
-PARTITION p2 START (2) EXCLUSIVE END (3) INCLUSIVE,
-PARTITION p3 START (3) EXCLUSIVE END (4) INCLUSIVE
-);
-create index part_table10_1_ind on part_table10_1_prt_p1(a);
-create index part_table10_2_ind on part_table10_1_prt_p2(a);
-
-select 'part_table6', partCons, defaultLevels from gp_build_logical_index('part_table6'::regclass)
-as index(logicalIndexOid Oid, nColumns smallint, indKey text, indUnique bool, indPred text, indExprs text, partCons text, defaultLevels text);
-
-select 'part_table7', partCons, defaultLevels from gp_build_logical_index('part_table7'::regclass)
-as index(logicalIndexOid Oid, nColumns smallint, indKey text, indUnique bool, indPred text, indExprs text, partCons text, defaultLevels text);
-
-select 'part_table8', partCons, defaultLevels from gp_build_logical_index('part_table8'::regclass)
-as index(logicalIndexOid Oid, nColumns smallint, indKey text, indUnique bool, indPred text, indExprs text, partCons text, defaultLevels text);
-
-select 'part_table9', partCons, defaultLevels from gp_build_logical_index('part_table9'::regclass)
-as index(logicalIndexOid Oid, nColumns smallint, indKey text, indUnique bool, indPred text, indExprs text, partCons text, defaultLevels text);
-
-select 'part_table10', partCons, defaultLevels from gp_build_logical_index('part_table10'::regclass)
-as index(logicalIndexOid Oid, nColumns smallint, indKey text, indUnique bool, indPred text, indExprs text, partCons text, defaultLevels text);
-
 -- cleanup
 drop function gp_build_logical_index(oid);
 drop function gp_get_physical_index_relid(oid, oid, int[], text, text, bool);
@@ -513,8 +435,3 @@ drop table part_table2;
 drop table part_table3;
 drop table part_table4;
 drop table part_table5;
-drop table part_table6;
-drop table part_table7;
-drop table part_table8;
-drop table part_table9;
-drop table part_table10;

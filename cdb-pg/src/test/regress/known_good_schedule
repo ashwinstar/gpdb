@@ -164,7 +164,6 @@ test: trig
 test: xml
 test: auth_constraint
 test: column_compression
-ignore: tpch500GB_orca
 test: role
 test: rle
 test: portals_updatable
@@ -172,7 +171,6 @@ test: plpgsql_cache
 test: percentile
 test: timeseries
 test: resource_queue_function
-test: gp_optimizer
 test: co_nestloop_idxscan
 test: pg_stat_last_operation
 test: plan_size

@@ -15,7 +15,7 @@
 CREATE FUNCTION check_auth_time_constraints(cstring, timestamptz)
     RETURNS bool
     AS '@abs_builddir@/regress@DLSUFFIX@'
-    LANGUAGE C IMMUTABLE STRICT NO SQL;
+    LANGUAGE C IMMUTABLE STRICT;
 
 ---
 --- invalid timestamp should error out

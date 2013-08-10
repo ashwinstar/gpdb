@@ -27,7 +27,7 @@ $$
 BEGIN
 	return i-1;
 END
-$$ language plpgsql NO SQL;
+$$ language plpgsql;
 
 select decr(100);
 
@@ -75,7 +75,7 @@ $$
 BEGIN
 	return i-1;
 END
-$$ language plpgsql NO SQL
+$$ language plpgsql;
 
 select decr(100);
 
@@ -123,7 +123,7 @@ $$
 BEGIN
 	return i-1;
 END
-$$ language plpgsql NO SQL;
+$$ language plpgsql;
 
 select decr(100);
 

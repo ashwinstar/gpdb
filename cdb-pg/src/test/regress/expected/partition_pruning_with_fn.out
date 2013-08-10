@@ -63,8 +63,8 @@ explain select * from ds_4 where month_id::int - 801 < 200000;
 explain select * from ds_4 where month_id::int - 801 < 200000 OR count_vas > 10;
                                      QUERY PLAN                                      
 -------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..0.00 rows=1 width=184)
-   ->  Append  (cost=0.00..0.00 rows=1 width=184)
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..0.00 rows=2 width=184)
+   ->  Append  (cost=0.00..0.00 rows=2 width=184)
          ->  Seq Scan on ds_4_1_prt_p200800 ds_4  (cost=0.00..0.00 rows=1 width=184)
                Filter: (month_id::integer - 801) < 200000 OR count_vas > 10
          ->  Seq Scan on ds_4_1_prt_p200801 ds_4  (cost=0.00..0.00 rows=1 width=184)
@@ -186,11 +186,11 @@ insert into ds_2(month_id) values('200809');
 explain select * from ds_2 where month_id::int in (200808, 1315) order by month_id;
                                         QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice1; segments: 2)  (cost=3.30..3.31 rows=1 width=184)
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=3.30..3.31 rows=1 width=185)
    Merge Key: month_id
-   ->  Sort  (cost=3.30..3.31 rows=1 width=184)
+   ->  Sort  (cost=3.30..3.31 rows=1 width=185)
          Sort Key: public.ds_2.month_id
-         ->  Append  (cost=0.00..3.29 rows=1 width=184)
+         ->  Append  (cost=0.00..3.29 rows=1 width=185)
                ->  Seq Scan on ds_2_1_prt_p200808 ds_2  (cost=0.00..3.29 rows=1 width=184)
                      Filter: month_id::integer = ANY ('{200808,1315}'::integer[])
 (7 rows)
@@ -198,14 +198,14 @@ explain select * from ds_2 where month_id::int in (200808, 1315) order by month_
 explain  select * from ds_2 where month_id::int in (200808, 200801, 2008010) order by month_id;
                                          QUERY PLAN                                         
 --------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice1; segments: 2)  (cost=3.50..3.50 rows=1 width=184)
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=7.05..7.06 rows=3 width=184)
    Merge Key: month_id
-   ->  Sort  (cost=3.50..3.50 rows=1 width=184)
+   ->  Sort  (cost=7.05..7.06 rows=3 width=184)
          Sort Key: public.ds_2.month_id
-         ->  Append  (cost=0.00..3.49 rows=1 width=184)
-               ->  Seq Scan on ds_2_1_prt_p200801 ds_2  (cost=0.00..3.49 rows=1 width=184)
+         ->  Append  (cost=0.00..6.97 rows=3 width=184)
+               ->  Seq Scan on ds_2_1_prt_p200801 ds_2  (cost=0.00..3.49 rows=2 width=184)
                      Filter: month_id::integer = ANY ('{200808,200801,2008010}'::integer[])
-               ->  Seq Scan on ds_2_1_prt_p200808 ds_2  (cost=0.00..3.49 rows=1 width=184)
+               ->  Seq Scan on ds_2_1_prt_p200808 ds_2  (cost=0.00..3.49 rows=2 width=184)
                      Filter: month_id::integer = ANY ('{200808,200801,2008010}'::integer[])
 (9 rows)
 

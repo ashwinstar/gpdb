@@ -996,23 +996,6 @@ select f3,max(f1) from foo group by f3 order by f3;
 alter table foo alter f1 TYPE integer; -- fails
 alter table foo alter f1 TYPE varchar(10);
 
---
--- Test ALTER COLUMN TYPE after dropped column with text datatype (see MPP-19146)
---
-drop table foo;
-create domain mytype as text;
-create temp table foo (f1 text, f2 mytype, f3 text);
-insert into foo values('aa','bb','cc');
-drop domain mytype cascade;
-alter table foo alter f1 TYPE varchar(10);
-
-drop table foo;
-create domain mytype as int;
-create temp table foo (f1 text, f2 mytype, f3 text);
-insert into foo values('aa',0,'cc');
-drop domain mytype cascade;
-alter table foo alter f1 TYPE varchar(10);
-
 create table anothertab (atcol1 serial8, atcol2 boolean,
 	constraint anothertab_chk check (atcol1 <= 3));
 
@@ -1071,14 +1054,14 @@ drop table another;
 --
 create function test_strict(text) returns text as
     'select coalesce($1, ''got passed a null'');'
-    language sql CONTAINS SQL returns null on null input;
+    language sql returns null on null input;
 select test_strict(NULL);
 alter function test_strict(text) called on null input;
 select test_strict(NULL);
 
 create function non_strict(text) returns text as
     'select coalesce($1, ''got passed a null'');'
-    language sql CONTAINS SQL called on null input;
+    language sql called on null input;
 select non_strict(NULL);
 alter function non_strict(text) returns null on null input;
 select non_strict(NULL);
@@ -1094,7 +1077,7 @@ create table alter1.t1(f1 serial primary key, f2 int check (f2 > 0));
 
 create view alter1.v1 as select * from alter1.t1;
 
-create function alter1.plus1(int) returns int as 'select $1+1' language sql CONTAINS SQL;
+create function alter1.plus1(int) returns int as 'select $1+1' language sql;
 
 create domain alter1.posint integer check (value > 0);
 
