@@ -12,7 +12,7 @@ begin
 	  execute 'select tupcount from pg_aoseg.' || aosegname into tupcount;
   end if;
   return tupcount;
-end; $$ language plpgsql volatile;
+end; $$ language plpgsql volatile READS SQL DATA;
 CREATE TABLE tenk_heap_for_aocs (
 	unique1 	int4,
 	unique2 	int4,

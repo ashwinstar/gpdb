@@ -2645,7 +2645,7 @@ begin
 	  execute 'select tupcount from pg_aoseg.' || aosegname into tupcount;
   end if;
   return tupcount;
-end; $$ language plpgsql volatile;
+end; $$ language plpgsql volatile READS SQL DATA;
 
 create table ao_p (i int) with (appendonly = true)
  partition by range(i)

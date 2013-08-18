@@ -5,7 +5,7 @@ drop language plpgsql;
 --end_ignore
 create language plpgsql;
 CREATE TABLE test_trig(id int, aaa text) DISTRIBUTED BY (id);
-CREATE OR REPLACE FUNCTION fn_trig() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+CREATE OR REPLACE FUNCTION fn_trig() RETURNS TRIGGER LANGUAGE plpgsql NO SQL AS $$
 BEGIN
    NEW.id = NEW.id + 1;
    RAISE NOTICE '%', NEW.id;

@@ -416,7 +416,7 @@ begin
   end if;
   return array_to_string(array(select substr('JABICEDOIKEALOMENAPIROSTEII', trunc(random() * 61)::integer + 3, 1) from generate_series(1, length)), '');
 end;
-$$ language plpgsql;
+$$ language plpgsql CONTAINS SQL;
 
 create or replace function random_lname(length integer) returns text as 
 $$
@@ -426,7 +426,7 @@ begin
   end if;
   return array_to_string(array(select substr('SMIGRAHITYSAOMBENAPICROSTEVIWHIZ', trunc(random() * 61)::integer + 3, 1) from generate_series(1, length)), '');
 end;
-$$ language plpgsql;
+$$ language plpgsql CONTAINS SQL;
 
 create or replace function get_random_number(integer, integer) returns integer as 
 $$
@@ -436,7 +436,7 @@ declare
 begin
     return trunc(random() * (end_int-start_int) + start_int);
 end;
-$$ language 'plpgsql' strict;
+$$ language 'plpgsql' strict NO SQL;
 
 insert into emp(empid)
 select generate_series(1000,11000);
@@ -479,7 +479,7 @@ begin
     end loop;
     return 1;
 end;
-$$ language plpgsql VOLATILE;
+$$ language plpgsql VOLATILE MODIFIES SQL DATA;
 
 
 insert into dept
@@ -522,7 +522,7 @@ begin
 
     return 1;
 end;
-$$ language plpgsql VOLATILE;
+$$ language plpgsql VOLATILE MODIFIES SQL DATA;
 
 
 -- start_ignore
@@ -621,7 +621,7 @@ begin
   end if; 
   return split_part(phone, '-', 1); 
 end;
-$$ language plpgsql;
+$$ language plpgsql NO SQL;
 
 insert into office(locid, company_name, address1, address2, city, state, zip, country, phone)
 values(100, 'Greenplum', '1900 S. Norfolk St.', 'Suite 125', 'San Mateo', 'CA', '94403', 'USA', '650-111-1111');
@@ -793,7 +793,7 @@ begin
     select count(*) from vtable into rowcnt;
     return rowcnt;
 end;
-$$ language plpgsql VOLATILE;
+$$ language plpgsql VOLATILE MODIFIES SQL DATA;
 
 select decode(test_volatile(100), 1, 'PASS', 2, 'FAIL', 3, 'FAIL', 4, 'FAIL', 5, 'FAIL', 6, 'FAIL') as decode;
 
@@ -956,7 +956,7 @@ begin
                 'CN', 'APJ', 'JP', 'APJ', 'RU', 'APJ', 'UK', 'EMEA', 'FR', 'EMEA', 
                'IL', 'EMEA', 'IT', 'EMEA', 'IE', 'EMEA'); 
 end;
-$$ language plpgsql;
+$$ language plpgsql CONTAINS SQL;
 
 select 'FR' as country_code, sales_region('FR');
 

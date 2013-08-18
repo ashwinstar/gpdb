@@ -21,7 +21,7 @@ CREATE UNIQUE INDEX idx_lineitem_keys ON lineitem USING btree (l_orderkey, l_par
 CREATE INDEX idx_linenumber ON lineitem USING btree (l_linenumber);
 
 -- Create function trigger_func() that will be used as the trigger
-CREATE FUNCTION trigger_func() RETURNS trigger LANGUAGE plpgsql AS '
+CREATE FUNCTION trigger_func() RETURNS trigger LANGUAGE plpgsql NO SQL AS '
 BEGIN
 RAISE NOTICE ''trigger_func() called: action = %, when = %, level = %'', TG_OP, TG_WHEN, TG_LEVEL;
 RETURN NULL;

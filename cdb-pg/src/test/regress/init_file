@@ -2,5 +2,9 @@
 # match ignore the gpmon WARNING message
 m/^WARNING:  gpmon:.*Connection refused.*/
 s/^WARNING:  gpmon:.*Connection refused.*//
+
+# MPP-20400
+m/^WARNING:  gpmon:.*No buffer space available socket.*/
+s/^WARNING:  gpmon:.*No buffer space available socket.*//
 -- end_matchignore
 

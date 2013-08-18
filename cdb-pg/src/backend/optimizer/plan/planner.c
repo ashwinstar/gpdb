@@ -14,6 +14,7 @@
  *-------------------------------------------------------------------------
  */
 
+#include <dlfcn.h>
 #include "postgres.h"
 
 #include <limits.h>
@@ -42,6 +43,7 @@
 #endif
 #include "parser/parse_expr.h"
 #include "parser/parse_oper.h"
+#include "parser/parse_relation.h"
 #include "parser/parsetree.h"
 #include "utils/selfuncs.h"
 #include "utils/syscache.h"
@@ -58,6 +60,8 @@
 #include "utils/debugbreak.h"
 #include "catalog/gp_policy.h"
 
+#include "postmaster/optserver.h"
+
 /* GUC parameter */
 double cursor_tuple_fraction = DEFAULT_CURSOR_TUPLE_FRACTION;
 
@@ -66,6 +70,8 @@ planner_hook_type planner_hook = NULL;
 
 ParamListInfo PlannerBoundParamList = NULL;		/* current boundParams */
 
+extern bool		optimizer; /* Enable the optimizer */
+extern bool		optimizer_log; /* Enable logging of the optimizer */
 
 /* Expression kind codes for preprocess_expression */
 #define EXPRKIND_QUAL			0
@@ -76,6 +82,19 @@ ParamListInfo PlannerBoundParamList = NULL;		/* current boundParams */
 #define EXPRKIND_ININFO			5
 #define EXPRKIND_APPINFO		6
 #define EXPRKIND_WINDOW_BOUND	7
+
+/*
+ * struct containing optimization request parameters;
+ * needs to be in sync with the argument expected by COptClient object;
+ */
+struct optimizer_params
+{
+	// path where socket is initialized
+	const char *socketPath;
+
+	// input query
+	Query *query;
+};
 
 
 static Node *preprocess_expression(PlannerInfo *root, Node *expr, int kind);
@@ -89,6 +108,9 @@ static bool hash_safe_grouping(PlannerInfo *root);
 static List *make_subplanTargetList(PlannerInfo *root, List *tlist,
 					   AttrNumber **groupColIdx, bool *need_tlist_eval);
 static List *register_ordered_aggs(List *tlist, Node *havingqual, List *sub_tlist);
+
+// GP optimizer entry point
+extern PlannedStmt *PplstmtOptimize(Query *parse, bool *pfUnexpectedFailure);
 
 typedef struct
 {
@@ -122,6 +144,108 @@ static Plan *pushdown_preliminary_limit(Plan *plan, Node *limitCount, int64 coun
 bool is_dummy_plan(Plan *plan);
 
 
+/**
+ * Logging of optimization outcome
+ */
+static void log_optimizer(PlannedStmt *plan, bool fUnexpectedFailure)
+{
+	if (!optimizer_log)
+	{
+		//  optimizer logging is not enabled
+		return;
+	}
+
+	if (NULL != plan)
+	{
+		elog(DEBUG1, "Optimizer produced plan");
+		return;
+	}
+
+	// optimizer failed to produce a plan, log failure
+	if (OPTIMIZER_ALL_FAIL == optimizer_log_failure)
+	{
+		elog(LOG, "Planner produced plan :%d", fUnexpectedFailure);
+		return;
+	}
+
+	if (fUnexpectedFailure && OPTIMIZER_UNEXPECTED_FAIL == optimizer_log_failure)
+	{
+		// unexpected fall back
+		elog(LOG, "Planner produced plan :%d", fUnexpectedFailure);
+		return;
+	}
+
+	if (!fUnexpectedFailure && OPTIMIZER_EXPECTED_FAIL == optimizer_log_failure)
+	{
+		// expected fall back
+		elog(LOG, "Planner produced plan :%d", fUnexpectedFailure);
+	}
+}
+
+
+/**
+ * Postprocessing of optimizer's plan
+ */
+static void postprocess_plan(PlannedStmt *plan)
+{
+	Assert(plan);
+
+	PlannerGlobal *globNew =  makeNode(PlannerGlobal);
+
+	/* initialize */
+	globNew->paramlist = NIL;
+	globNew->subrtables = NIL;
+	globNew->rewindPlanIDs = NULL;
+	globNew->finalrtable = NIL;
+	globNew->relationOids = NIL;
+	globNew->invalItems = NIL;
+	globNew->transientPlan = false;
+	globNew->share.sharedNodes = NIL;
+	globNew->share.sliceMarks = NIL;
+	globNew->share.motStack = NIL;
+	globNew->share.qdShares = NIL;
+	globNew->share.qdSlices = NIL;
+	globNew->share.planNodes = NIL;
+	globNew->share.nextPlanId = 0;
+	globNew->subplans = plan->subplans;
+	(void) apply_shareinput_xslice(plan->planTree, globNew);
+}
+
+
+/*
+ * optimize query using the new optimizer
+ */
+static PlannedStmt *
+optimize_query(Query *parse, ParamListInfo boundParams)
+{
+	/* flag to check if optimizer unexpectedly failed to produce a plan */
+	bool fUnexpectedFailure = false;
+
+	/* create a local copy and hand it to the optimizer */
+	Query *pqueryCopy = (Query *) copyObject(parse);
+
+	/* perform pre-processing of query tree before calling optimizer */
+	pqueryCopy = preprocess_query_optimizer(pqueryCopy, boundParams);
+
+	PlannedStmt *result = PplstmtOptimize(pqueryCopy, &fUnexpectedFailure);
+
+	if (result)
+	{
+		postprocess_plan(result);
+
+		/* assign access rights for the range table entries. */
+		if (NULL != result->rtable)
+		{
+			assign_permissions(result->commandType, result->rtable);
+		}
+	}
+
+	log_optimizer(result, fUnexpectedFailure);
+
+	return result;
+}
+
+
 /*****************************************************************************
  *
  *	   Query optimizer entry point
@@ -140,14 +264,25 @@ PlannedStmt *
 planner(Query *parse, int cursorOptions,
 		ParamListInfo boundParams)
 {
-	PlannedStmt *result;
-	
-	if (planner_hook)
-		result = (*planner_hook) (parse, cursorOptions, boundParams);
-	else
+	PlannedStmt *result = NULL;
+
+	/**
+	 * If the new optimizer is enabled, try that first. If it does not return a plan,
+	 * then fall back to the planner.
+	 */
+	if (optimizer)
+	{
+		result = optimize_query(parse, boundParams);
+	}
+
+	if (!result)
+	{
 		result = standard_planner(parse, cursorOptions, boundParams);
+	}
+
 	return result;
 }
+
 
 PlannedStmt *
 standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
@@ -328,6 +463,8 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	result->nMotionNodes = top_plan->nMotionNodes;
 	result->nInitPlans = top_plan->nInitPlans;
 	result->intoPolicy = GpPolicyCopy(CurrentMemoryContext, parse->intoPolicy);
+	result->queryPartOids = NIL;
+	result->queryPartsMetadata = NIL;
 	
 	Assert(result->utilityStmt == NULL || IsA(result->utilityStmt, DeclareCursorStmt));
 	
@@ -2072,6 +2209,7 @@ is_dummy_plan_walker(Node *node, bool *context)
 					break;
 					
 				case JOIN_IN:
+				case JOIN_LASJ_NOTIN:
 				case JOIN_LASJ: /* outer */
 					*context = is_dummy_plan(outerPlan(node));
 					break;
@@ -3419,3 +3557,9 @@ pushdown_preliminary_limit(Plan *plan, Node *limitCount, int64 count_est, Node *
 
 	return result_plan;
 }
+
+
+
+
+
+

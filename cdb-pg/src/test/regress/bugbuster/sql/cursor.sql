@@ -229,7 +229,7 @@ BEGIN
     OPEN $1 FOR SELECT col FROM refcur1;
     RETURN $1;
 END;
-' LANGUAGE plpgsql;
+' LANGUAGE plpgsql READS SQL DATA;
 
 CREATE TABLE refcur1 (col text) distributed randomly;
 
@@ -264,7 +264,7 @@ BEGIN
     OPEN $2 FOR SELECT * FROM table_2;
     RETURN NEXT $2;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql READS SQL DATA;
 CREATE TABLE table_1 (a1 text, b1 integer) distributed randomly;
 INSERT INTO table_1 VALUES ('abcd',10);
 CREATE TABLE table_2 (a1 text, b1 integer) distributed randomly;

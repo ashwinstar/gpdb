@@ -4,7 +4,7 @@
 \! sleep 5
 
 \echo --start_ignore
-drop if exists external table readxml;
+drop external table if exists readxml;
 \echo --end_ignore
 
 create readable external table readxml (text xml) location ('gpfdist://localhost:45555/CD.xml') format 'TEXT' (escape 'off' newline as 'CRLF');

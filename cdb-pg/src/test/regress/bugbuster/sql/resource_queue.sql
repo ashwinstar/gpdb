@@ -92,6 +92,18 @@ alter resource queue test_rq without (memory_limit);
 
 drop resource queue test_rq;
 
+
+
+-- start_ignore
+drop table if exists tenk1;
+-- end_ignore
+
+create table tenk1 (unique1 int4,unique2 int4, two int4,four int4,ten int4,twenty int4,
+                                hundred int4,thousand int4,twothousand int4,fivethous int4,tenthous int4,
+                                odd int4,even int4,stringu1 name,stringu2 name,string4 name);
+
+\copy tenk1 from 'bugbuster/data/tenk.data';
+
 -- SQL coverage of ROLE -> RESOURCE QUEUE
 
 CREATE RESOURCE QUEUE reg_activeq ACTIVE THRESHOLD 2;

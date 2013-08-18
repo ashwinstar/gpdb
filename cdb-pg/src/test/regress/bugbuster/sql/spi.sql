@@ -15,7 +15,7 @@ begin
     end if;
     return new;
 end;
-' language plpgsql;
+' language plpgsql NO SQL;
 
 create trigger tg_bu before update
    on test for each row execute procedure bu();
@@ -55,7 +55,7 @@ begin
         return;
     end if;
 end
-$$ language plpgsql;
+$$ language plpgsql READS SQL DATA;
 
 select * from (select refcursor (1, 10)) t1, test;
 

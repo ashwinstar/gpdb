@@ -521,7 +521,7 @@ DECLARE
 RETURN NEXT retval;
 END;
 $_$
-    LANGUAGE plpgsql;
+    LANGUAGE plpgsql MODIFIES SQL DATA;
 
 CREATE OR REPLACE FUNCTION create_target_list_sql(integer) RETURNS int4
     AS $$
@@ -559,7 +559,7 @@ CREATE OR REPLACE FUNCTION create_target_list_sql(integer) RETURNS int4
 
 	select count(*)::int4 from module_targets;
 $$
-    LANGUAGE sql;
+    LANGUAGE sql MODIFIES SQL DATA;
 
 truncate module_targets;
 select * from create_target_list(30, 1);

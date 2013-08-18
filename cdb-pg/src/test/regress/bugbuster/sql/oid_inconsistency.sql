@@ -126,7 +126,7 @@ CREATE OR REPLACE function trig_func() RETURNS trigger AS $$
   BEGIN
     RETURN new;
   END
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql NO SQL;
 
 CREATE trigger troid_trigger AFTER INSERT ON trigger_oid
     FOR EACH ROW EXECUTE PROCEDURE trig_func();

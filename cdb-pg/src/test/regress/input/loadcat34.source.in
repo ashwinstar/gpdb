@@ -116,7 +116,7 @@ update @gpupgradeschemaname@.pg_operator set oprcode = 'pg_catalog.textne'::regp
 update @gpupgradeschemaname@.pg_rewrite set ev_action = regexp_replace(ev_action, ':forceDistRandom (true|false)}', E':forceDistRandom \\1 :pseudocols <>}', 'g'), ev_qual = regexp_replace(ev_qual, ':forceDistRandom (true|false)}', E':forceDistRandom \\1 :pseudocols <>}', 'g');
 
 -- upgrade views to account for prepared statement work
-CREATE FUNCTION public.gpviewreparse(text) returns text language C as '$libdir/gpupgrade', 'gpviewreparse' STRICT IMMUTABLE;
+CREATE FUNCTION public.gpviewreparse(text) returns text language C as '$libdir/gpupgrade', 'gpviewreparse' STRICT IMMUTABLE NO SQL;
 update @gpupgradeschemaname@.pg_rewrite set ev_action = public.gpviewreparse(ev_action), ev_qual = public.gpviewreparse(ev_qual);
 
 -- Reindex normal tables (not shared tables)
@@ -216,7 +216,7 @@ GRANT SELECT ON @gpinfoschemaname@.user_mappings TO PUBLIC;
 -- the view definition.  Additionally we perform validations that the 
 -- source and target view are compatible and do not change the record type
 -- of the underlying view.
-CREATE FUNCTION public.gpviewcopy(oid, oid) returns void language C as '$libdir/gpupgrade', 'gpviewcopy' STRICT IMMUTABLE;
+CREATE FUNCTION public.gpviewcopy(oid, oid) returns void language C as '$libdir/gpupgrade', 'gpviewcopy' STRICT IMMUTABLE NO SQL;
 
 -- Update modified views in pg_catalog
 set search_path='pg_catalog';

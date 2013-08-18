@@ -1,10 +1,10 @@
 --start_ignore
 create language plpgsql;
---end_ignore
 drop table foo cascade;
 ERROR:  table "foo" does not exist
 drop table tenk1 cascade;
 ERROR:  table "tenk1" does not exist
+--end_ignore
 CREATE TABLE employee(ID int,name varchar(10),salary real,start_date date,city varchar(10),region char(1));
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'id' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
@@ -496,7 +496,7 @@ end loop;
 END;
 close ref_1234_1;
 END;
-' LANGUAGE plpgsql;
+' LANGUAGE plpgsql MODIFIES SQL DATA;
 BEGIN;
 TRUNCATE tabcd;
 TRUNCATE t1234;
@@ -718,7 +718,7 @@ insert into prerds.FINANCE_HIE_ACC_GRP_FINAL select * from prerds.fin_hie__desc_
 Return (select count(*) from prerds.FINANCE_HIE_ACC_GRP_FINAL )  ;
 end; 
 
-$$ language plpgsql;
+$$ language plpgsql MODIFIES SQL DATA;
 CREATE TABLE prerds.ramana_fin_setleaf_bt
 (
   setname character varying(24),
@@ -1053,7 +1053,7 @@ select * from xacttest_table;
  777 | 777.777
 (1 row)
 
-create or replace function max_xacttest() returns double precision language sql as
+create or replace function max_xacttest() returns double precision language sql READS SQL DATA as
 'select max(b) from xacttest_table' stable;
 begin;
 update xacttest_table set b = max_xacttest() + 10 where b > 0;
@@ -1064,7 +1064,7 @@ select * from xacttest_table;
 (1 row)
 
 rollback;
-create or replace function max_xacttest() returns double precision language sql as
+create or replace function max_xacttest() returns double precision language sql READS SQL DATA as
 'select max(b) from xacttest_table' volatile;
 begin;
 update xacttest_table set b = max_xacttest() + 10 where b > 0;
@@ -1073,7 +1073,7 @@ DETAIL:  SQL function "max_xacttest" during startup
 select * from xacttest_table;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 rollback;
-create or replace function max_xacttest() returns double precision language plpgsql as
+create or replace function max_xacttest() returns double precision language plpgsql READS SQL DATA as
 'begin return max(b) from xacttest_table; end' stable;
 begin;
 update xacttest_table set b = max_xacttest() + 10 where b > 0;
@@ -1084,7 +1084,7 @@ select * from xacttest_table;
 (1 row)
 
 rollback;
-create or replace function max_xacttest() returns double precision language plpgsql as
+create or replace function max_xacttest() returns double precision language plpgsql READS SQL DATA as
 'begin return max(b) from xacttest_table; end' volatile;
 begin;
 update xacttest_table set b = max_xacttest() + 10 where b > 0;

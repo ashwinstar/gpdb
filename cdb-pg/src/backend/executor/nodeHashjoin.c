@@ -42,7 +42,7 @@ static bool ExecHashJoinLoadBatchFiles(HashJoinTable hashtable);
 static void ReleaseHashTable(HashJoinState *node);
 static void ExecHashJoinResetWorkfileState(HashJoinState *node);
 static void ExecHashJoinSaveState(HashJoinTable hashtable);
-
+static bool isHashtableEmpty(HashJoinTable hashtable);
 
 /* ----------------------------------------------------------------
  *		ExecHashJoin
@@ -136,9 +136,11 @@ ExecHashJoin(HashJoinState *node)
 			 * outer plan node.  If we succeed, we have to stash it away for later
 			 * consumption by ExecHashJoinOuterGetTuple.
 			 */
-			if ((node->js.jointype == JOIN_LEFT) || (node->js.jointype == JOIN_LASJ) || 
-				(outerNode->plan->startup_cost < hashNode->ps.plan->total_cost &&
-				 !node->hj_OuterNotEmpty))
+			if ((node->js.jointype == JOIN_LEFT) ||
+					(node->js.jointype == JOIN_LASJ) ||
+					(node->js.jointype == JOIN_LASJ_NOTIN) ||
+					(outerNode->plan->startup_cost < hashNode->ps.plan->total_cost &&
+						!node->hj_OuterNotEmpty))
 			{
 				TupleTableSlot *slot;
 
@@ -206,7 +208,11 @@ ExecHashJoin(HashJoinState *node)
 		 */
 		hashNode->hashtable = hashtable;
 
-		hashNode->hs_quit_if_hashkeys_null = (node->js.jointype == JOIN_LASJ);
+		/*
+		 * Only if doing a LASJ_NOTIN join, we want to quit as soon as we find
+		 * a NULL key on the inner side
+		 */
+		hashNode->hs_quit_if_hashkeys_null = (node->js.jointype == JOIN_LASJ_NOTIN);
 
 		/* Store pointer to the HashJoinState in the hashtable, as we will need
 		 * the HashJoin plan when creating the spill file set */
@@ -255,9 +261,9 @@ ExecHashJoin(HashJoinState *node)
 		}
 
 		/**
-		 * If LASJ and a null was found on the inner side, then clean out.
+		 * If LASJ_NOTIN and a null was found on the inner side, then clean out.
 		 */
-		if (node->js.jointype == JOIN_LASJ && hashNode->hs_hashkeys_null)
+		if (node->js.jointype == JOIN_LASJ_NOTIN && hashNode->hs_hashkeys_null)
 		{
 			/*
 			 * CDB: We'll read no more from outer subtree. To keep sibling
@@ -274,33 +280,33 @@ ExecHashJoin(HashJoinState *node)
 		}
 
 		/*
+		 * We just scanned the entire inner side and built the hashtable
+		 * (and its overflow batches). Check here and remember if the inner
+		 * side is empty.
+		 */
+		node->hj_InnerEmpty = isHashtableEmpty(hashtable);
+
+		/*
 		 * If the inner relation is completely empty, and we're not doing an
 		 * outer join, we can quit without scanning the outer relation.
 		 */
-		if (node->js.jointype != JOIN_LEFT && node->js.jointype != JOIN_LASJ)
+		if (node->js.jointype != JOIN_LEFT
+				&& node->js.jointype != JOIN_LASJ
+				&& node->js.jointype != JOIN_LASJ_NOTIN
+				&& node->hj_InnerEmpty)
         {
-            int         i;
-
-            /* Is there a nonempty batch? */
-            for (i = 0; i < hashtable->nbatch; i++)
-                if (hashtable->batches[i]->innertuples)
-                    break;
-
-		    if (i == hashtable->nbatch)
-		    {
-			    /*
-			     * CDB: We'll read no more from outer subtree. To keep sibling
-			     * QEs from being starved, tell source QEs not to clog up the
-			     * pipeline with our never-to-be-consumed data.
-			     */
-			    ExecSquelchNode(outerNode);
-				/* end of join */
-				if (gp_eager_hashtable_release)
-				{
-					ExecEagerFreeHashJoin(node);
-				}
-			    return NULL;
-		    }
+			/*
+			 * CDB: We'll read no more from outer subtree. To keep sibling
+			 * QEs from being starved, tell source QEs not to clog up the
+			 * pipeline with our never-to-be-consumed data.
+			 */
+			ExecSquelchNode(outerNode);
+			/* end of join */
+			if (gp_eager_hashtable_release)
+			{
+				ExecEagerFreeHashJoin(node);
+			}
+			return NULL;
         }
 
 		/*
@@ -396,6 +402,20 @@ ExecHashJoin(HashJoinState *node)
 		 */
 		for (;;)
 		{
+			/*
+			 * OPT-3325: Handle NULLs in the outer side of LASJ_NOTIN
+			 *  - if tuple is NULL and inner is not empty, drop outer tuple
+			 *  - if tuple is NULL and inner is empty, keep going as we'll
+			 *    find no match for this tuple in the inner side
+			 */
+			if (node->js.jointype == JOIN_LASJ_NOTIN &&
+					!node->hj_InnerEmpty &&
+					isJoinExprNull(node->hj_OuterHashKeys,econtext))
+			{
+				node->hj_MatchedOuter = true;
+				break;		/* loop around for a new outer tuple */
+			}
+
 			curtuple = ExecScanHashBucket(node, econtext);
 			if (curtuple == NULL)
 				break;			/* out of matches */
@@ -419,12 +439,12 @@ ExecHashJoin(HashJoinState *node)
 			 * Only the joinquals determine MatchedOuter status, but all quals
 			 * must pass to actually return the tuple.
 			 */
-			if (joinqual == NIL || ExecQual(joinqual, econtext, false))
+			if (joinqual == NIL || ExecQual(joinqual, econtext, false /* resultForNull */))
 			{
 				node->hj_MatchedOuter = true;
 
 				/* In an antijoin, we never return a matched tuple */
-				if (node->js.jointype == JOIN_LASJ) 
+				if (node->js.jointype == JOIN_LASJ || node->js.jointype == JOIN_LASJ_NOTIN)
 				{
 					node->hj_NeedNewOuter = true;
 					break;		/* out of loop over hash bucket */
@@ -457,7 +477,8 @@ ExecHashJoin(HashJoinState *node)
 
 		if (!node->hj_MatchedOuter &&
 			(node->js.jointype == JOIN_LEFT ||
-			node->js.jointype == JOIN_LASJ))
+			node->js.jointype == JOIN_LASJ ||
+			node->js.jointype == JOIN_LASJ_NOTIN))
 		{
 			/*
 			 * We are doing an outer join and there were no join matches for
@@ -589,6 +610,7 @@ ExecInitHashJoin(HashJoin *node, EState *estate, int eflags)
 			break;
 		case JOIN_LEFT:
 		case JOIN_LASJ:
+		case JOIN_LASJ_NOTIN:
 			hjstate->hj_NullInnerTupleSlot =
 				ExecInitNullTupleSlot(estate,
 								 ExecGetResultType(innerPlanState(hjstate)));
@@ -772,11 +794,13 @@ ExecHashJoinOuterGetTuple(PlanState *outerNode,
 			econtext->ecxt_outertuple = slot;
 
 			bool hashkeys_null = false;
+			bool keep_nulls = (hjstate->js.jointype == JOIN_LEFT) ||
+					(hjstate->js.jointype == JOIN_LASJ) ||
+					(hjstate->js.jointype == JOIN_LASJ_NOTIN) ||
+					hjstate->hj_nonequijoin;
 			if (ExecHashGetHashValue(hashtable, econtext,
 						hjstate->hj_OuterHashKeys,
-						(hjstate->js.jointype == JOIN_LEFT) || 
-						(hjstate->js.jointype == JOIN_LASJ) || 
-						hjstate->hj_nonequijoin,
+						keep_nulls,
 						hashvalue,
 						&hashkeys_null
 						))
@@ -927,7 +951,8 @@ start_over:
         batch = hashtable->batches[curbatch];
 		if (batch->outerside.workfile != NULL &&
 			((hjstate->js.jointype == JOIN_LEFT) || 
-			 (hjstate->js.jointype == JOIN_LASJ)))
+			 (hjstate->js.jointype == JOIN_LASJ) ||
+			 (hjstate->js.jointype == JOIN_LASJ_NOTIN)))
 			break;				/* must process due to rule 1 */
 		if (batch->innerside.workfile != NULL &&
 			nbatch != hashtable->nbatch_original)
@@ -1322,6 +1347,7 @@ initGpmonPktForHashJoin(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estat
 				type = PMNT_HashLeftJoin;
 				break;
 			case JOIN_LASJ:
+			case JOIN_LASJ_NOTIN:
 				type = PMNT_HashLeftAntiSemiJoin;
 				break;
 			case JOIN_FULL:
@@ -1675,6 +1701,40 @@ ExecHashJoinLoadBatchFiles(HashJoinTable hashtable)
 
 	MemoryContextSwitchTo(oldcxt);
 	return true;
+}
+
+/*
+ * isHashtableEmpty
+ *
+ *  After populating the hashtable with all the tuples from the innerside,
+ *  scan all the batches and return true if the hashtable is completely empty
+ *
+ */
+static bool
+isHashtableEmpty(HashJoinTable hashtable)
+{
+    int         i;
+    bool isEmpty = true;
+
+    /* Is there a nonempty batch? */
+    for (i = 0; i < hashtable->nbatch; i++)
+    {
+        /*
+         * For batch 0, the number of inner tuples is stored in batches[i].innertuples.
+         * For batches on disk (1 and above), the batches[i].innertuples is 0,
+         * but batches[i].innerside.workfile is non-NULL if any tuples were written to disk.
+         * Check both here.
+         */
+        if ((hashtable->batches[i]->innertuples > 0) ||
+                (NULL != hashtable->batches[i]->innerside.workfile))
+        {
+            /* Found a non-empty batch, stop the search */
+        	isEmpty = false;
+            break;
+        }
+    }
+
+    return isEmpty;
 }
 
 /* EOF */

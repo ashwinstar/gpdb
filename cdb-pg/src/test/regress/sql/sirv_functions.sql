@@ -33,7 +33,7 @@ begin
   return 'abc' || v_c || '_' || i || '_dist';
 end;
 $$
-language plpgsql volatile;
+language plpgsql volatile MODIFIES SQL DATA;
 
 
 --
@@ -133,7 +133,7 @@ begin
 	execute 'select i+1, t  from foo order by i desc limit 1' into r;
 	return r;
 end
-$$ language plpgsql;
+$$ language plpgsql READS SQL DATA;
 
 -- Select statements
 

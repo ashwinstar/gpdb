@@ -834,7 +834,7 @@ expand_inherited_rtentry(PlannerInfo *root, RangeTblEntry *rte, Index rti)
 	}
 	/* Fast path for common case of childless table */
 	parentOID = rte->relid;
-	if (!has_subclass(parentOID))
+	if (!has_subclass_fast(parentOID))
 	{
 		/* Clear flag before returning */
 		rte->inh = false;
@@ -902,7 +902,7 @@ expand_inherited_rtentry(PlannerInfo *root, RangeTblEntry *rte, Index rti)
 			continue;
 
 		/*
-		 * show only leaf tables when the parent table is partitioned
+		 * show root and leaf partitions
 		 */
 		if (rel_is_partitioned(parentOID) && !rel_is_leaf_partition(childOID))
 		{

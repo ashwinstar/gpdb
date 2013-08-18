@@ -14,6 +14,7 @@ WANTED_DIRS = \
 		formatter_fixedwidth \
 		extprotocol \
 		gp_workfile_mgr \
+		gp_distribution_policy \
 		gp_internal_tools \
 		gp_cancel_query
 
