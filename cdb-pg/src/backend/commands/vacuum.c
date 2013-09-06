@@ -1220,17 +1220,19 @@ vac_truncate_clog(TransactionId frozenXID)
 
 		Assert(TransactionIdIsNormal(dbform->datfrozenxid));
 
-		if (TransactionIdPrecedes(myXID, dbform->datfrozenxid))
-			frozenAlreadyWrapped = true;
 		/*
 		 * MPP-20053: Skip databases that cannot be connected to in computing
 		 * the oldest database.
 		 */
-		else if (dbform->datallowconn &&
-				 TransactionIdPrecedes(dbform->datfrozenxid, frozenXID))
+		if (dbform->datallowconn)
 		{
-			frozenXID = dbform->datfrozenxid;
-			namecpy(&oldest_datname, &dbform->datname);
+			if (TransactionIdPrecedes(myXID, dbform->datfrozenxid))
+				frozenAlreadyWrapped = true;
+			else if (TransactionIdPrecedes(dbform->datfrozenxid, frozenXID))
+			{
+				frozenXID = dbform->datfrozenxid;
+				namecpy(&oldest_datname, &dbform->datname);
+			}
 		}
 	}
 
