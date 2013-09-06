@@ -1222,7 +1222,12 @@ vac_truncate_clog(TransactionId frozenXID)
 
 		if (TransactionIdPrecedes(myXID, dbform->datfrozenxid))
 			frozenAlreadyWrapped = true;
-		else if (TransactionIdPrecedes(dbform->datfrozenxid, frozenXID))
+		/*
+		 * MPP-20053: Skip databases that cannot be connected to in computing
+		 * the oldest database.
+		 */
+		else if (dbform->datallowconn &&
+				 TransactionIdPrecedes(dbform->datfrozenxid, frozenXID))
 		{
 			frozenXID = dbform->datfrozenxid;
 			namecpy(&oldest_datname, &dbform->datname);
