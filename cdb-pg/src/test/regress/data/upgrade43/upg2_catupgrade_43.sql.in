@@ -139,6 +139,9 @@ COMMENT ON FUNCTION @gpupgradeschemaname@.linear_interpolate( anyelement, anyele
 CREATE FUNCTION @gpupgradeschemaname@.linear_interpolate( anyelement, anyelement, "numeric", anyelement, "numeric" ) RETURNS "numeric" LANGUAGE internal IMMUTABLE STRICT AS 'linterp_Numeric' WITH (OID=6082);
 COMMENT ON FUNCTION @gpupgradeschemaname@.linear_interpolate( anyelement, anyelement, "numeric", anyelement, "numeric" ) IS 'linear interpolation: x, x0,y0, x1,y1';
 
+CREATE OR REPLACE FUNCTION @gpupgradeschemaname@.pg_stat_get_activity(pid integer, OUT datid oid, OUT procpid integer, OUT usesysid oid, OUT application_name text, OUT current_query text, OUT waiting boolean, OUT xact_start timestamp with time zone, OUT query_start timestamp with time zone, OUT backend_start timestamp with time zone, OUT client_addr inet, OUT client_port integer, OUT sess_id integer) RETURNS SETOF @gpupgradeschemaname@.record LANGUAGE internal VOLATILE AS 'pg_stat_get_activity' WITH (OID=6071);
+COMMENT ON FUNCTION @gpupgradeschemaname@.pg_stat_get_activity(pid integer, OUT datid oid, OUT procpid integer, OUT usesysid oid, OUT application_name text, OUT current_query text, OUT waiting boolean, OUT xact_start timestamp with time zone, OUT query_start timestamp with time zone, OUT backend_start timestamp with time zone, OUT client_addr inet, OUT client_port integer, OUT sess_id integer) IS 'statistics: information about currently active backends';
+
 -- add new operators
 
 -- psql expands this for us
@@ -182,7 +185,7 @@ CREATE FUNCTION @gpupgradeschemaname@.gp_partition_expansion(oid) RETURNS setof 
 COMMENT ON FUNCTION @gpupgradeschemaname@.gp_partition_expansion(oid) IS 'finds all child partition oids for the given parent oid';
 
 CREATE FUNCTION @gpupgradeschemaname@.gp_partition_inverse(oid) RETURNS setof record LANGUAGE internal STABLE STRICT AS 'gp_partition_inverse' WITH (OID=6086);
-COMMENT ON FUNCTION @gpupgradeschemaname@.gp_partition_inverse(oid) IS 'returns all child partitition oids with their constraints for a given parent oid');
+COMMENT ON FUNCTION @gpupgradeschemaname@.gp_partition_inverse(oid) IS 'returns all child partitition oids with their constraints for a given parent oid';
 
 --
 -- Functions for enabling and disabling transformations
