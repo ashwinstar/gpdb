@@ -374,41 +374,42 @@ set_ps_display(const char *activity, bool force)
     if (!ps_buffer)
         return;
 #endif
-    
-    /* Drop the remote host and port from the fixed prefix. */
-    if (ps_host_info_size > 0)
-    {
-        ps_buffer_fixed_size -= ps_host_info_size;
-        cp -= ps_host_info_size;
-        ps_host_info_size = 0;
-    }
 
-    /* Add client session's global id. */
-    if (gp_session_id > 0)
-        cp += snprintf(cp, ep-cp, "con%d ", gp_session_id);
+	/* Drop the remote host and port from the fixed prefix. */
+	if (ps_host_info_size > 0)
+	{
+		ps_buffer_fixed_size -= ps_host_info_size;
+		cp -= ps_host_info_size;
+		ps_host_info_size = 0;
+	}
 
-    /* Add host and port.  (Not very useful for qExecs, so skip.) */
-    if (Gp_role != GP_ROLE_EXECUTE &&
-        ps_host_info[0] != '\0')
-        cp += snprintf(cp, ep-cp, "%s ", ps_host_info);
+	/* Add client session's global id. */
+	if (gp_session_id > 0 && ep - cp > 0)
+		cp += snprintf(cp, ep - cp, "con%d ", gp_session_id);
 
-    /* Which segment is accessed by this qExec? */
-    if (Gp_role == GP_ROLE_EXECUTE &&
-        Gp_segment >= -1)
-        cp += snprintf(cp, ep-cp, "seg%d ", Gp_segment);
+	/* Add host and port.  (Not very useful for qExecs, so skip.) */
+	if (Gp_role != GP_ROLE_EXECUTE &&
+		ps_host_info[0] != '\0' && ep - cp > 0)
+		cp += snprintf(cp, ep - cp, "%s ", ps_host_info);
 
-    /* Add count of commands received from client session. */
-    if (gp_command_count > 0)
-        cp += snprintf(cp, ep-cp, "cmd%d ", gp_command_count);
+	/* Which segment is accessed by this qExec? */
+	if (Gp_role == GP_ROLE_EXECUTE &&
+		Gp_segment >= -1 && ep - cp > 0)
+		cp += snprintf(cp, ep - cp, "seg%d ", Gp_segment);
+
+	/* Add count of commands received from client session. */
+	if (gp_command_count > 0 && ep - cp > 0)
+		cp += snprintf(cp, ep - cp, "cmd%d ", gp_command_count);
 
 	/* Add slice number information */
-	if (currentSliceId > 0)
-		cp += snprintf(cp, ep-cp,"slice%d ", currentSliceId);
+	if (currentSliceId > 0 && ep - cp > 0)
+		cp += snprintf(cp, ep - cp, "slice%d ", currentSliceId);
 
 	real_act_prefix_size = cp - ps_buffer;
 
-    /* Append caller's activity string. */
-    StrNCpy(cp, activity, ep-cp);
+	/* Append caller's activity string. */
+	if (ep - cp > 0)
+		StrNCpy(cp, activity, ep - cp);
 
     /* Transmit new setting to kernel, if necessary */
 #ifdef PS_USE_SETPROCTITLE
