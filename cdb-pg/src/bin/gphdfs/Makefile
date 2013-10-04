@@ -105,3 +105,4 @@ clean:
 	$(ANT) clean
 	rm -rf *-javadoc
 	rm -f *-javadoc.tar
+	rm -rf result

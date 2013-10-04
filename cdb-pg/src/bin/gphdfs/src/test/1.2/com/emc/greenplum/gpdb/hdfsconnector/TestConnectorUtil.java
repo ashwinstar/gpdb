@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------
  *
- * ConnectorUtil
+ * TestConnectorUtil
  *
  * Copyright (c) 2011 EMC Corporation All Rights Reserved
  *

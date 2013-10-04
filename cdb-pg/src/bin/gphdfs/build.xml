@@ -2,6 +2,7 @@
 <project name="gphdfs" default="all" xmlns:ivy="antlib:org.apache.ivy.ant">
 
   <property file="build.properties" />
+  <property environment="env" />
 
   <!-- Compiler options -->
   <property name="src.dir" value="${basedir}/src/java/${gpgnet.src}" />
@@ -180,17 +181,24 @@
   </target>
 
 
+
   <target name="test" depends="compile, compile-ut"> 
+
+    <condition property="result.home" value="${env.BLDWRAP_TOP}/src/result" else="./result">
+        <isset property="env.BLDWRAP_TOP" />
+    </condition>
+
+    <mkdir dir="${result.home}"/>
     <junit>
         <formatter type="plain" usefile="false" />
-        <formatter type="plain" />
+        <formatter type="xml" />
         <classpath>
             <pathelement path="${build.dir}/classes"/>
         </classpath>
         <classpath refid="library.commons.classpath" />
-        <batchtest>
+        <batchtest todir="${result.home}">
             <fileset dir="${build.dir}/classes" includes="**/Test*.class" />
         </batchtest>
     </junit>
-   </target>
+  </target>
 </project>
