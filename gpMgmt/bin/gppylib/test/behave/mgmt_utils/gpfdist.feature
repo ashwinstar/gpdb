@@ -8,6 +8,7 @@ Feature: gpfdist configure timeout value
         When the user runs "gpfdist -p 8080 -V -t 5 -l ./gpfdist.log &" 
         And the user runs client program "gpfdist_client.py" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
         Then the client program should print TIMEOUT PERIOD: to stdout with value in range 4 to 6
+        Then the client program should print HTTP/1.0 408 time out to stdout with value in range 4 to 6
         And the gpfdist should print time out to "./gpfdist.log" under CWD
         And the file "./gpfdist.log" is removed from the system
         And the "gpfdist" process is killed
@@ -77,4 +78,17 @@ Feature: gpfdist configure timeout value
         When the "gpfdist" process is killed
         Given the directory "extdata" does not exist in current working directory
 
-
+    Scenario: simple writable external table test
+        Given the database is running
+        And database "gpfdistdb" is created if not exists
+        And the external table "write_ext_data" does not exist in "gpfdistdb"
+        And the "gpfdist" process is killed
+        Given the directory "extdata" exists in current working directory
+        When a "WRITABLE" external table "write_ext_data" is created on file "write_data.txt" in "gpfdistdb"
+        And the user runs "gpfdist -p 8080 -V -l ./gpfdist.log -d extdata &" 
+        Given the row "'Ivan', 123" is inserted into "write_ext_data" in "gpfdistdb"
+        And the row "'Yandong', 456" is inserted into "write_ext_data" in "gpfdistdb"
+        Then the data line "Yandong|456" is appened to "extdata/write_data.txt" in cwd
+        And the data line "Ivan|123" is appened to "extdata/write_data.txt" in cwd
+        When the "gpfdist" process is killed
+        Given the directory "extdata" does not exist in current working directory

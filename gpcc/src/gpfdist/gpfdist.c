@@ -709,6 +709,7 @@ static void parse_command_line(int argc, const char* const argv[],
 /* http error codes used by gpfdist */
 #define FDIST_OK 200
 #define FDIST_BAD_REQUEST 400
+#define FDIST_TIMEOUT 408
 #define FDIST_INTERNAL_ERROR 500
 
 /* send an error response */
@@ -872,7 +873,7 @@ static void request_end(request_t* r, int error, const char* errmsg)
 			gp1_send_errmsg(r, errmsg);
 	}
 
-	TR(("[%d] request end\n", r->sock));
+	TR(("[%d] request end\n---------------------------------------------------\n", r->sock));
 
 	/* If we still have a block outstanding, the session is corrupted. */
 	if (r->outblock.top != r->outblock.bot)
@@ -1538,7 +1539,7 @@ static void do_read_request(int fd, short event, void* arg)
 	/* If we timeout, close the request. */
 	if (event & EV_TIMEOUT)
 	{
-		http_error(r, FDIST_BAD_REQUEST, "time out");
+		http_error(r, FDIST_TIMEOUT, "time out");
 		request_end(r, 1, 0);
 		return;
 	}
@@ -1727,6 +1728,7 @@ static void do_accept(int fd, short event, void* arg)
 		gwarning(FLINE, "accept failed");
 		goto failure;
 	}
+
 	if (opt.ssl)
 	{
 		sbio = BIO_new_socket(sock, BIO_NOCLOSE);

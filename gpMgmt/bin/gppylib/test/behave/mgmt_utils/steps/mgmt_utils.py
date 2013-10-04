@@ -1614,6 +1614,7 @@ def impl(context, dirname):
         raise Exception("directory '%s' not removed" % dirname)
 
 @when('the data line "{dataline}" is appened to "{fname}" in cwd')
+@then('the data line "{dataline}" is appened to "{fname}" in cwd')
 def impl(context, dataline, fname):
     fname = os.path.join(os.getcwd(), fname)
     with open(fname, 'a') as fd:
