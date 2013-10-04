@@ -5873,6 +5873,23 @@ SyncAgentMain(int argc, char *argv[], const char *username)
 		printf("\nPostgreSQL stand-alone backend %s\n", PG_VERSION);
 
 	/*
+	 * Create the memory context we will use in the main loop.
+	 *
+	 * MessageContext is reset once per iteration of the main loop, ie, upon
+	 * completion of processing of each command message from the client.
+	 *
+	 * SyncAgent doesn't allocate memory thrgough the memory context
+	 * other than input buffer, but for the consistency with PostgresMain,
+	 * we define MessageContext and switch to it at the beginning of loop,
+	 * so that we can create another context in case we need one in the future.
+	 */
+	MessageContext = AllocSetContextCreate(TopMemoryContext,
+										   "MessageContext",
+										   ALLOCSET_DEFAULT_MINSIZE,
+										   ALLOCSET_DEFAULT_INITSIZE,
+										   ALLOCSET_DEFAULT_MAXSIZE);
+
+	/*
 	 * POSTGRES main processing loop begins here
 	 *
 	 * If an exception is encountered, processing resumes here so we abort
@@ -5971,6 +5988,13 @@ SyncAgentMain(int argc, char *argv[], const char *username)
 		 * errors encountered in "idle" state don't provoke skip.
 		 */
 		doing_extended_query_message = false;
+
+		/*
+		 * Release storage left over from prior query cycle, and create a new
+		 * query input buffer in the cleared MessageContext.
+		 */
+		MemoryContextSwitchTo(MessageContext);
+		MemoryContextResetAndDeleteChildren(MessageContext);
 
 		initStringInfo(&input_message);
 
