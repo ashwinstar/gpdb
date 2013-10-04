@@ -974,7 +974,11 @@ gfile_close(gfile_t*fd)
 			fd->close(fd);
 		}
 
-		if (!fd->is_win_pipe)
+		if (fd->is_win_pipe)
+		{
+			fd->close(fd);
+		}
+		else
 		{
 			int i;
 
