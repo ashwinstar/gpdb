@@ -7784,6 +7784,7 @@ XLogStandbyRecoverRange(XLogRecPtr *redoCheckpointLoc, CheckPoint *redoCheckPoin
 	ShmemVariableCache->oidCount = 0;
 	MultiXactSetNextMXact(redoCheckPoint->nextMulti, redoCheckPoint->nextMultiOffset);
 
+	InRecovery = true;
 	/*
 	 * We need to initialize the Master Mirroring persistent hash tables from the checkpoint.
 	 * It first empties out the current entries and then reads the Master Mirroring checkpoint
@@ -7858,7 +7859,6 @@ XLogStandbyRecoverRange(XLogRecPtr *redoCheckpointLoc, CheckPoint *redoCheckPoin
 						XLogLocationToString2(redoCheckpointLoc))));
 	}
 
-	InRecovery = true;
 	InRedo = true;
 	CurrentResourceOwner = ResourceOwnerCreate(NULL, "xlog");
 	while (true)
@@ -7957,7 +7957,6 @@ XLogStandbyRecoverRange(XLogRecPtr *redoCheckpointLoc, CheckPoint *redoCheckPoin
 	CurrentResourceOwner = NULL;
 
 	InRedo = false;
-	InRecovery = false;
 
 	/*
 	 * Allow resource managers to do any required cleanup.
@@ -7985,6 +7984,8 @@ XLogStandbyRecoverRange(XLogRecPtr *redoCheckpointLoc, CheckPoint *redoCheckPoin
 	XLogCloseRelationCache();
 
 	XLogCloseReadRecord();
+
+	InRecovery = false;
 
 	ereport(LOG,
 			(errmsg("QDSYNC: finished redo pass")));
