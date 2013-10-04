@@ -346,3 +346,21 @@ with yy as (
 )
 select * from x, yy;
 -- End of MPP-17848
+--
+-- MPP-19436
+-- Test queries mixes window functions with aggregate functions or grouping.
+--
+
+DROP TABLE IF EXISTS test_group_window;
+
+CREATE TABLE test_group_window(c1 int, c2 int);
+
+WITH tt AS (SELECT * FROM test_group_window)
+SELECT tt.c1, COUNT() over () as fraction
+FROM tt
+GROUP BY tt.c1
+ORDER BY tt.c1;
+
+DROP TABLE test_group_window;
+
+-- End of MPP-19436
