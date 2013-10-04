@@ -5,6 +5,7 @@
 
   <!-- Compiler options -->
   <property name="src.dir" value="${basedir}/src/java/${gpgnet.src}" />
+  <property name="test.dir" value="${basedir}/src/test" />
   <property name="lib.dir" value="${basedir}/build/lib" />
   <property name="build.dir" value="${basedir}/build" />
   <property name="javadoc.dir" value="${basedir}/${gphdgnet.version}-javadoc" />
@@ -19,7 +20,7 @@
   <!--Apache Ivy(http://ant.apache.org/ivy/history/latest-milestone/install.html) -->
   <loadproperties srcfile="${basedir}/ivy/libraries.properties" />
   <property name="build.ivy.lib.dir" value="${build.dir}/lib" />
-  <property name="ivy.artifact.retrieve.pattern" value="[artifact]-[revision].[ext]" />
+  <property name="ivy.artifact.retrieve.pattern" value="[artifact]-[revision](-[classifier]).[ext]" />
   <property name="ivy.install.version" value="2.2.0" />
   <condition property="ivy.home" value="${env.IVY_HOME}">
     <isset property="env.IVY_HOME" />
@@ -159,4 +160,37 @@
       <link href="${javadoc.link.java}"/>
     </javadoc>
   </target>
+
+  <!-- Following targets are used to run UT -->
+
+  <target name="compile-ut" depends="ivy-retrieve-hadoop">
+    <mkdir dir="${build.dir}/classes" />
+    <javac classpathref="library.commons.classpath"
+           destdir="${build.dir}/classes"
+           includeantruntime="${compiler.includeantruntime}"
+           debug="${compiler.debug}"
+           deprecation="${compiler.deprecation}"
+           nowarn="${compiler.generate.no.warnings}"
+           fork="yes"
+           verbose="${compiler.verbose}"
+           memoryMaximumSize="${compiler.max.memory}">
+      <src path="${test.dir}" />
+    </javac>
+
+  </target>
+
+
+  <target name="test" depends="compile, compile-ut"> 
+    <junit>
+        <formatter type="plain" usefile="false" />
+        <formatter type="plain" />
+        <classpath>
+            <pathelement path="${build.dir}/classes"/>
+        </classpath>
+        <classpath refid="library.commons.classpath" />
+        <batchtest>
+            <fileset dir="${build.dir}/classes" includes="**/Test*.class" />
+        </batchtest>
+    </junit>
+   </target>
 </project>

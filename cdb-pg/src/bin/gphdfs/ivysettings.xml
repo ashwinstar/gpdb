@@ -2,8 +2,8 @@
 
   <!-- ====================================================================== -->
 
-  <settings defaultResolver="shared" />
-
+  <settings defaultResolver="default" />
+  
   <!-- ====================================================================== -->
 
   <resolvers>
@@ -16,6 +16,10 @@
       <artifact pattern="/opt/ivy/modules/[organisation]/[module]/[type]s/[module]-[revision].[ext]" />
     </filesystem>
   </resolvers>
+
+  <include url="${ivy.default.settings.dir}/ivysettings-public.xml"/>
+  <include url="${ivy.default.settings.dir}/ivysettings-main-chain.xml"/>
+  <include url="${ivy.default.settings.dir}/ivysettings-default-chain.xml"/>
 
   <!-- ====================================================================== -->
 

@@ -1,4 +1,4 @@
-<ivy-module version="1.0">
+<ivy-module version="1.0" xmlns:e="http://ant.apache.org/ivy/extra">
     <info organisation="emc" module="gphdfs">
       <license name="EMC"/>
       <ivyauthor name="GPDB Hadoop Team" url="http://emc.com"/>
@@ -10,27 +10,41 @@
     <configurations defaultconfmapping="default">
       <!--these match the Maven configurations-->
       <conf name="default" extends="master,runtime"/>
-      <conf name="master" description="contains the artifact but no dependencies"/>
+      <conf name="master"  description="contains the artifact but no dependencies"/>
       <conf name="compile" description="contains the artifact but no dependencies"/>
       <conf name="runtime" description="runtime but not the artifact"/>
       <conf name="hadoop2" description="hadoop2.0 build configuration"/>
+      <conf name="ut"      description="ut for hadoop 2.0+"/>
       <!-- Private configurations -->
       <conf name="checkstyle" visibility="private"/>
     </configurations>
 
     <dependencies>
-      <dependency org="${org}" name="${name}" rev="${revision}"
-                  conf="compile->master"/>
-      <dependency org="checkstyle" name="checkstyle" rev="${checkstyle.version}"
-                  conf="checkstyle->default"/>
+      <dependency org="${org}"     name="${name}"    rev="${revision}"           conf="compile->master"/>
+      <dependency org="checkstyle" name="checkstyle" rev="${checkstyle.version}" conf="checkstyle->default"/>
 
-   <dependency org="org.apache.hadoop" name="hadoop-annotations"
-	   rev="${hadoop-common.revision}" conf="hadoop2->master"/>
-   <dependency org="org.apache.hadoop" name="hadoop-core"
-	   rev="${revision}" conf="hadoop2->master"/>
-   <dependency org="org.apache.hadoop" name="hadoop-mapreduce-client-core"
-	   rev="${hadoop-common.revision}" conf="hadoop2->master"/>
-   <dependency org="org.apache.hadoop" name="hadoop-mapreduce-client-common"
-	   rev="${hadoop-common.revision}" conf="hadoop2->master"/>
+      <dependency org="org.apache.hadoop" name="hadoop-annotations" rev="${hadoop-common.revision}" conf="hadoop2->master"/>
+      <dependency org="org.apache.hadoop" name="hadoop-core"        rev="${revision}"               conf="hadoop2->master"/>
+      <dependency org="org.apache.hadoop" name="hadoop-mapreduce-client-core" 
+                  rev="${hadoop-common.revision}" conf="hadoop2->master"/>
+      <dependency org="org.apache.hadoop" name="hadoop-mapreduce-client-common" 
+                  rev="${hadoop-common.revision}" conf="hadoop2->master"/>
+
+
+      <!-- dependency for UT -->
+      <dependency org="org.apache.hadoop" name="hadoop-client" rev="2.0.5-alpha" conf="ut->*"/>
+      <dependency org="org.apache.hadoop" name="hadoop-common" rev="2.0.5-alpha" conf="ut->*">
+        <artifact name="hadoop-common" type="jar"/>
+        <artifact name="hadoop-common" type="test-jar" ext="jar" e:classifier="tests" />
+      </dependency>
+
+      <dependency org="org.apache.hadoop" name="hadoop-hdfs" rev="2.0.5-alpha" conf="ut->*">
+          <artifact name="hadoop-hdfs" type="jar"/>
+          <artifact name="hadoop-hdfs" type="test-jar" ext="jar" e:classifier="tests" />
+      </dependency>
+      <dependency org="log4j"                 name="log4j"                 rev="1.2.17" conf="ut->*"/>
+      <dependency org="commons-lang"          name="commons-lang"          rev="2.6"    conf="ut->*"/>
+      <dependency org="commons-configuration" name="commons-configuration" rev="1.9"    conf="ut->*" />
+      <dependency org="junit"                 name="junit"                 rev="4.10"   conf="ut->*"/>
     </dependencies>
 </ivy-module>

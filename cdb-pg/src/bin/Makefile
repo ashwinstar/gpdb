@@ -15,6 +15,7 @@ SUBDIRS = pg_dump pg_dump/cdb
 include $(top_builddir)/src/Makefile.global
 
 unittest-check:
+	$(MAKE) -C gphdfs unittest
 ifdef SUBDIRS
 	@for dir in $(SUBDIRS); do if [ -d $$dir/test ]; then $(MAKE) -C $$dir/test check; fi; done
 endif

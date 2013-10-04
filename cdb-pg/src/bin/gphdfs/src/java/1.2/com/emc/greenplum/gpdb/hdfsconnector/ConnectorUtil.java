@@ -58,7 +58,10 @@ public class ConnectorUtil
 	    	conf.set("fs.maprfs.impl", "com.mapr.fs.MapRFileSystem");
 	    	conf.set("fs.default.name", "maprfs:///"+inputURI.getHost());
 	    } else {
-	    	String uri = "hdfs://"+inputURI.getHost()+":"+inputURI.getPort();
+	    	String uri = "hdfs://"+inputURI.getHost();
+		if (inputURI.getPort() != -1) {
+			uri += ":" + inputURI.getPort();
+		}
 	    	conf.set("fs.defaultFS", uri);
 	    }
 	}

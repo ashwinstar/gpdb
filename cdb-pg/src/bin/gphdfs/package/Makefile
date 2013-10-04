@@ -15,7 +15,7 @@ JRE_RPM_FLAGS="--define 'jre_dir $(JRE_DIR)' --define 'jre_ver $(JRE_VER)' --def
 JRE_RPM=jre-$(JRE_VER)-$(JRE_REL).$(ARCH).rpm
 
 GPHDFS_DIR=`cd .. && pwd`
-GPHDFS_VER=1.5
+GPHDFS_VER=1.5.1
 GPHDFS_REL=1
 GPHDFS_RPM_FLAGS="--define 'gphdfs_dir $(GPHDFS_DIR)' --define 'gphdfs_ver $(GPHDFS_VER)' --define 'gphdfs_rel $(GPHDFS_REL)' --define 'jre_ver $(JRE_VER)'"
 GPHDFS_RPM=gphdfs-$(GPHDFS_VER)-$(GPHDFS_REL).$(ARCH).rpm

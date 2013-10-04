@@ -61,7 +61,15 @@ gphdfs:
                 -Dgphdgnet.version=gphd-2.0.2-gnet-1.2.0.0 \
                 -Dgpgnet.src=1.2 \
                 -Dgpgnet.configuration=hadoop2
-
+unittest:
+	$(ANT) clean
+	$(ANT) test -Dorg=org.apache.hadoop \
+                -Dname=hadoop-core \
+                -Drevision=2.0.0-mr1-cdh4.1.2 \
+                -Dhadoop-common.revision=2.0.0-cdh4.1.2 \
+                -Dgphdgnet.version=cdh4.1-gnet-1.2.0.0 \
+                -Dgpgnet.src=1.2 \
+                -Dgpgnet.configuration=ut
 
 gphdfsdoc:
 	$(ANT) javadoc -Dorg=emc \
