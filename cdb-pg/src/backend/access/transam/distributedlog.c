@@ -582,7 +582,7 @@ DistributedLog_Startup(
 
 		/* Zero the rest of the page */
 		remainingEntries = ENTRIES_PER_PAGE - entryno;
-		MemSet(ptr, 0, BLCKSZ - (remainingEntries * sizeof(DistributedLogEntry)));
+		MemSet(ptr, 0, remainingEntries * sizeof(DistributedLogEntry));
 
 		DistributedLogCtl->shared->page_dirty[slotno] = true;
 	}

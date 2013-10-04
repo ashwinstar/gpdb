@@ -9,7 +9,7 @@
 #ifndef GP_GLOBAL_SEQUENCE_H
 #define GP_GLOBAL_SEQUENCE_H
 
-#define int8 int64
+#include "catalog/genbki.h"
 
 /*
  * Defines for gp_global_sequence table
