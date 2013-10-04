@@ -1569,3 +1569,29 @@ select * from (select i,j,k, sum(i) over(partition by i), row_number() over(part
 select * from (select i,j,k, sum(i) over(partition by i,j), row_number() over(partition by i,j), rank() over(partition by i,j order by i) from window_preds) as foo where i>2 and j>2 order by sum;
 select * from (select i,j,k, sum(i) over(partition by i,j), row_number() over(partition by i,j), rank() over(partition by i,j order by i) from window_preds) as foo where i+j>2 order by sum;
 select * from (select i, sum(i) over(partition by j) from (select i,j, row_number() over(partition by i) from window_preds) as bar) as foo where i>2 order by sum;
+
+-- MPP-19964
+drop table if exists customers_test;
+create table customers_test(name text, device_model text, device_id integer, ppp numeric) distributed by (device_id);
+INSERT INTO customers_test values ('n1', 'd1', 1, 1);
+INSERT INTO customers_test values ('n1', 'd1', 1, 3); 
+INSERT INTO customers_test values ('n2', 'd1', 1, 2); 
+INSERT INTO customers_test values ('n2', 'd1', 2, 1); 
+INSERT INTO customers_test values ('n2', 'd1', 2, 2); 
+INSERT INTO customers_test values ('n3', 'd3', 1, 0); 
+SELECT COUNT(*)
+FROM
+(
+  SELECT name,device_model,median(ppp) md
+  FROM
+  (
+    SELECT name,
+      device_model,
+      device_id,
+      ppp,
+      ntile(4) over (partition by name,device_model order by ppp)
+    FROM customers_test
+  ) a
+  GROUP BY name,device_model
+  HAVING COUNT(DISTINCT CASE WHEN ppp > 0 THEN device_id ELSE NULL END)>0
+) b;
