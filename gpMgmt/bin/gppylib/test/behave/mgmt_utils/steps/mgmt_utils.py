@@ -29,7 +29,7 @@ from gppylib.test.behave_utils.utils import bring_nic_down, bring_nic_up, get_ta
                                             populate_partition_diff_data_same_eof, populate_partition_same_data, execute_sql, verify_integer_tuple_counts,  validate_no_aoco_stats, \
                                             check_string_not_present_stdout, clear_all_saved_data_verify_files, copy_file_to_all_db_hosts, validate_num_restored_tables, \
                                             get_partition_list, verify_stats, drop_external_table_if_exists, get_all_hostnames_as_list, get_pid_for_segment, kill_process, get_num_segments, \
-                                            check_user_permissions
+                                            check_user_permissions, get_change_tracking_segment_info
 
 from gppylib.operations.dump import get_partition_state
 
@@ -292,6 +292,7 @@ def impl(context, dbname, tablename):
     drop_database(context, dbname)
 
     
+@when('the segments are synchronized')
 @then('the segments are synchronized')
 def impl(context):
 
@@ -1761,7 +1762,10 @@ def impl(context, hostname):
 
 @when('the user runs the query "{query}" on "{dbname}"')
 def impl(context, query, dbname):
-    thread.start_new_thread(getRows, (dbname, query))
+    if query.lower().startswith('create') or query.lower().startswith('insert'):
+        thread.start_new_thread(execute_sql, (dbname, query))
+    else:
+        thread.start_new_thread(getRows, (dbname, query))
     time.sleep(30)
 
 @given('we have exchanged keys with the cluster')
@@ -1810,6 +1814,7 @@ def impl(context):
         if seg.isSegmentPrimary():
             seg_data_dir = seg.getSegmentDataDirectory()
             seg_host = seg.getSegmentHostName()
+            seg_port = seg.getSegmentPort()
             break
     
     pid = get_pid_for_segment(seg_data_dir, seg_host) 
@@ -1823,6 +1828,9 @@ def impl(context):
     pid = get_pid_for_segment(seg_data_dir, seg_host)
     if pid is not None:
         raise Exception('Unable to kill postmaster with pid "%d" datadir "%s"' % (pid, seg_data_dir)) 
+
+    context.killed_seg_host = seg_host
+    context.killed_seg_port = seg_port
 
 @when('the temp files "{filename_prefix}" are removed from the system')
 @given('the temp files "{filename_prefix}" are removed from the system')
@@ -1844,6 +1852,7 @@ def impl(context):
         cmd.run(validateAfter=True)
 
 @given('user can start transactions')
+@then('user can start transactions')
 def impl(context):
     num_retries = 50
     attempt = 0
@@ -2244,7 +2253,47 @@ def impl(context, path):
 def impl(context, path):
     if os.path.exists(path):
         shutil.rmtree(path)
-   
+
+@when('the user runs the following query on "{dbname}" without fetching results')
+def impl(context, dbname):
+    query = context.text.strip()
+    thread.start_new_thread(execute_sql, (dbname, query))
+    time.sleep(30)
+
+@when('the user runs query from the file "{filename}" on "{dbname}" without fetching results')
+def impl(context, filename, dbname):
+    with open(filename) as fr:
+        for line in fr:
+            query = line.strip() 
+    thread.start_new_thread(execute_sql, (dbname, query))
+    time.sleep(30)
+
+@then('the following text should be printed to stdout')
+def impl(context):
+   check_stdout_msg(context, context.text.strip()) 
+
+@then('the text in the file "{filename}" should be printed to stdout')
+def impl(context, filename):
+    contents = ''
+    with open(filename) as fr:
+        for line in fr:
+            contents = line.strip()       
+    print "contents: ", contents
+    check_stdout_msg(context, contents) 
+
+@when('the user runs command "{cmd}" on the "{seg_type}" segment') 
+def impl(context, cmd, seg_type):
+    if seg_type == 'Change Tracking':
+        port, host = get_change_tracking_segment_info() 
+    elif seg_type == 'Original':
+        port, host = context.killed_seg_port, context.killed_seg_host
+    else:
+        raise Exception('Invalid segment type "%s" specified' % seg_type)
+
+    cmd += ' -p %s -h %s' % (port, host)
+
+    run_command(context, cmd)
+    
 @given('below sql is executed in "{dbname}" db')
 @when('below sql is executed in "{dbname}" db')
 def impl(context, dbname):

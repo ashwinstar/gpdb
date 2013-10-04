@@ -118,7 +118,6 @@ bool		pgstat_track_counts = false;
 bool		pgstat_collect_queuelevel = false;
 
 int			pgstat_track_functions = TRACK_FUNC_OFF;
-int			pgstat_track_activity_query_size = PGBE_ACTIVITY_SIZE;
 
 /* ----------
  * Built from GUC parameter

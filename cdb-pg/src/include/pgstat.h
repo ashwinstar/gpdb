@@ -588,9 +588,6 @@ typedef struct PgStat_GlobalStats
  * ----------
  */
 
-/* Max length of st_activity string ... perhaps replace with a GUC var? */
-#define PGBE_ACTIVITY_SIZE	1024
-
 /* ----------
  * PgBackendStatus
  *

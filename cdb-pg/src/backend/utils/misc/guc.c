@@ -5450,6 +5450,17 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"pgstat_track_activity_query_size", PGC_POSTMASTER, UNGROUPED,
+		gettext_noop("Maximum length of the query to be displayed in pg_stat_activity"),
+		NULL,
+		GUC_NOT_IN_SAMPLE
+		},
+		&pgstat_track_activity_query_size,
+		1024, 1024, INT_MAX,
+		NULL, NULL
+	},
+
+	{
 		{"gp_workfile_bytes_to_checksum", PGC_USERSET, GP_ARRAY_TUNING,
 		 gettext_noop("The number of bytes to be checksummed in every WORKFILE_SAFEWRITE_SIZE bytes."),
 		 NULL,

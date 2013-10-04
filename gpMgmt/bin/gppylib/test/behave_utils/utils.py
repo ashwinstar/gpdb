@@ -975,3 +975,10 @@ def check_user_permissions(file_name, access_mode):
         return bool(st.st_mode & stat.S_IXUSR)
     else:
         raise Exception('Invalid mode specified, should be read, write or execute only')
+
+def get_change_tracking_segment_info():
+    gparray = GpArray.initFromCatalog(dbconn.DbURL())
+    for seg in gparray.getDbList():
+        if seg.isSegmentModeInChangeLogging():
+            return seg.getSegmentPort(), seg.getSegmentHostName()
+
