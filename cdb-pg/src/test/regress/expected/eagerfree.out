@@ -223,7 +223,7 @@ where t1.d = t2.d;
                            Rows out:  Avg 10.0 rows x 2 workers.  Max 10 rows (seg0) with 2.779 ms to first row, 5.114 ms to end, start offset by 4.413 ms.
                            Executor memory:  3153K bytes avg, 3153K bytes max (seg0).
                            ->  Seq Scan on smallt  (cost=0.00..3.00 rows=50 width=4)
-                                 Rows out:  Avg 50.0 rows x 2 workers.  Max 50 rows (seg0) with 0.106 ms to first row, 0.163 ms to end, start offset by 4.837 ms.
+                                 Rows out:  Avg 50.0 rows x 2 workers.  Max 50 rows (seg0) with 0.039 ms to first row, 0.071 ms to end, start offset by 5.261 ms.
          ->  Materialize  (cost=4.67..4.87 rows=10 width=12)
                Rows out:  Avg 101.0 rows x 2 workers.  Max 101 rows (seg0) with 11 ms to end of 11 scans, start offset by 15 ms.
                ->  HashAggregate  (cost=4.20..4.45 rows=10 width=12)
@@ -287,7 +287,7 @@ where t1.i = t2.i;
                Rows out:  Avg 5.0 rows x 2 workers.  Max 5 rows (seg0) with 1.627 ms to first row, 3.500 ms to end, start offset by 4.297 ms.
                Executor memory:  3153K bytes avg, 3153K bytes max (seg0).
                ->  Seq Scan on smallt  (cost=0.00..3.00 rows=50 width=4)
-                     Rows out:  Avg 50.0 rows x 2 workers.  Max 50 rows (seg0) with 0.037 ms to first row, 0.062 ms to end, start offset by 5.008 ms.
+                     Rows out:  Avg 50.0 rows x 2 workers.  Max 50 rows (seg0) with 0.018 ms to first row, 0.041 ms to end, start offset by 7.857 ms.
          ->  Materialize  (cost=3.73..3.83 rows=5 width=12)
                Rows out:  Avg 26.0 rows x 2 workers.  Max 26 rows (seg0) with 3.317 ms to first row, 3.331 ms to end of 6 scans, start offset by 6.926 ms.
                ->  HashAggregate  (cost=3.50..3.62 rows=5 width=12)
@@ -1550,7 +1550,7 @@ explain analyze select * from smallt_part where i < any (select count(*) from sm
                                    Rows out:  Avg 125.0 rows x 2 workers.  Max 150 rows (seg1) with 89 ms to first row, 90 ms to end of 15 scans, start offset by 297 ms.
                                    ->  Result  (cost=6.84..6.85 rows=1 width=4)
                                          Filter: $0 = public.smallt2_part.i
-                                         Rows out:  Avg 40.0 rows x 2 workers.  Max 40 rows (seg0) with 112 ms to first row, 115 ms to end of 10 scans, start offset by 291 ms.
+                                         Rows out:  Avg 40.0 rows x 2 workers.  Max 40 rows (seg0) with 31 ms to end of 10 scans, start offset by 358 ms.
                                          ->  Materialize  (cost=6.84..6.85 rows=1 width=4)
                                                Rows out:  Avg 200.0 rows x 2 workers.  Max 240 rows (seg1) with 89 ms to end of 15 scans, start offset by 297 ms.
                                                ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..6.84 rows=1 width=4)
@@ -1559,7 +1559,7 @@ explain analyze select * from smallt_part where i < any (select count(*) from sm
                                                            Rows out:  Avg 8.0 rows x 2 workers.  Max 8 rows (seg0) with 0.062 ms to first row, 0.079 ms to end, start offset by 223 ms.
                                    ->  Result  (cost=6.84..6.85 rows=1 width=4)
                                          Filter: $0 = public.smallt2_part.i
-                                         Rows out:  Avg 32.5 rows x 2 workers.  Max 50 rows (seg1) with 0.176 ms to first row, 0.374 ms to end of 15 scans, start offset by 297 ms.
+                                         Rows out:  Avg 32.5 rows x 2 workers.  Max 50 rows (seg1) with 11 ms to end of 15 scans, start offset by 364 ms.
                                          ->  Materialize  (cost=6.84..6.85 rows=1 width=4)
                                                Rows out:  Avg 162.5 rows x 2 workers.  Max 195 rows (seg1) with 0.171 ms to first row, 0.238 ms to end of 15 scans, start offset by 297 ms.
                                                ->  Broadcast Motion 2:2  (slice2; segments: 2)  (cost=0.00..6.84 rows=1 width=4)
@@ -1568,7 +1568,7 @@ explain analyze select * from smallt_part where i < any (select count(*) from sm
                                                            Rows out:  Avg 6.5 rows x 2 workers.  Max 10 rows (seg1) with 0.087 ms to first row, 0.103 ms to end, start offset by 243 ms.
                                    ->  Result  (cost=6.84..6.85 rows=1 width=4)
                                          Filter: $0 = public.smallt2_part.i
-                                         Rows out:  Avg 30.0 rows x 2 workers.  Max 30 rows (seg0) with 0.116 ms to first row, 0.230 ms to end of 10 scans, start offset by 291 ms.
+                                         Rows out:  Avg 30.0 rows x 2 workers.  Max 30 rows (seg0) with 0.053 ms to first row, 0.141 ms to end of 10 scans, start offset by 358 ms.
                                          ->  Materialize  (cost=6.84..6.85 rows=1 width=4)
                                                Rows out:  Avg 150.0 rows x 2 workers.  Max 180 rows (seg1) with 0.115 ms to first row, 0.191 ms to end of 15 scans, start offset by 297 ms.
                                                ->  Broadcast Motion 2:2  (slice3; segments: 2)  (cost=0.00..6.84 rows=1 width=4)
@@ -1577,7 +1577,7 @@ explain analyze select * from smallt_part where i < any (select count(*) from sm
                                                            Rows out:  Avg 6.0 rows x 2 workers.  Max 6 rows (seg0) with 0.050 ms to first row, 0.064 ms to end, start offset by 236 ms.
                                    ->  Result  (cost=6.84..6.85 rows=1 width=4)
                                          Filter: $0 = public.smallt2_part.i
-                                         Rows out:  Avg 22.5 rows x 2 workers.  Max 30 rows (seg1) with 0.113 ms to first row, 0.242 ms to end of 15 scans, start offset by 297 ms.
+                                         Rows out:  Avg 22.5 rows x 2 workers.  Max 30 rows (seg1) with 0.036 ms to first row, 0.128 ms to end of 15 scans, start offset by 364 ms.
                                          ->  Materialize  (cost=6.84..6.85 rows=1 width=4)
                                                Rows out:  Avg 112.5 rows x 2 workers.  Max 135 rows (seg1) with 0.105 ms to first row, 0.148 ms to end of 15 scans, start offset by 297 ms.
                                                ->  Broadcast Motion 2:2  (slice4; segments: 2)  (cost=0.00..6.84 rows=1 width=4)
@@ -1598,7 +1598,7 @@ explain analyze select * from smallt_part where i < any (select count(*) from sm
                                    Rows out:  (No row requested) 0 rows (seg0) with 0 ms to end.
                                    ->  Result  (cost=6.84..6.85 rows=1 width=4)
                                          Filter: $0 = public.smallt2_part.i
-                                         Rows out:  (No row requested) 0 rows (seg0) with 0 ms to end.
+                                         Rows out:  0 rows (seg0) with 0 ms to end.
                                          ->  Materialize  (cost=6.84..6.85 rows=1 width=4)
                                                Rows out:  Avg 200.0 rows x 2 workers.  Max 240 rows (seg0) with 0.159 ms to first row, 0.248 ms to end of 15 scans, start offset by 305 ms.
                                                ->  Broadcast Motion 2:2  (slice5; segments: 2)  (cost=0.00..6.84 rows=1 width=4)
@@ -1646,7 +1646,7 @@ explain analyze select * from smallt_part where i < any (select count(*) from sm
                                    Rows out:  Avg 125.0 rows x 2 workers.  Max 150 rows (seg1) with 0.208 ms to first row, 1.305 ms to end of 15 scans, start offset by 310 ms.
                                    ->  Result  (cost=6.84..6.85 rows=1 width=4)
                                          Filter: $0 = public.smallt2_part.i
-                                         Rows out:  Avg 40.0 rows x 2 workers.  Max 40 rows (seg0) with 0.160 ms to first row, 0.311 ms to end of 10 scans, start offset by 310 ms.
+                                         Rows out:  Avg 40.0 rows x 2 workers.  Max 40 rows (seg0) with 0.048 ms to first row, 0.167 ms to end of 10 scans, start offset by 369 ms.
                                          ->  Materialize  (cost=6.84..6.85 rows=1 width=4)
                                                Rows out:  Avg 200.0 rows x 2 workers.  Max 240 rows (seg1) with 0.194 ms to first row, 0.271 ms to end of 15 scans, start offset by 310 ms.
                                                ->  Broadcast Motion 2:2  (slice9; segments: 2)  (cost=0.00..6.84 rows=1 width=4)
