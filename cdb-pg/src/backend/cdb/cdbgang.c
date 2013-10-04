@@ -2660,6 +2660,7 @@ CheckForResetSession(void)
 		return;
 	}
 
+
 	dropTempNamespaceOid = OldTempNamespace;
 	OldTempNamespace = InvalidOid;
 	NeedResetSession = false;
@@ -2716,7 +2717,6 @@ resetSessionForPrimaryGangLoss(void)
 			 * we will attempt to actually drop the old session tables to
 			 * release the disk space.
 			 */
-
 			OldTempNamespace = ResetTempNamespace();
 
 			elog(WARNING, "Any temporary tables for this session have been dropped because the gang was disconnected (session id = %d)",

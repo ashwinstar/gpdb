@@ -2094,6 +2094,16 @@ ResetTempNamespace(void)
 
 	result = myTempNamespace;
 	
+	if (ExistsCommittedTempNamespace())
+	{
+		/*
+		 * MPP-19973: The shmem exit callback to remove a temp
+		 * namespace is registered. We need to remove it here as the
+		 * namespace has already been reseted. 
+		 */
+		cancel_shmem_exit(RemoveTempRelationsCallback, 0);
+	}
+	
 	myTempNamespace = InvalidOid;
 	myTempNamespaceSubID = InvalidSubTransactionId;
 	namespaceSearchPathValid = false;	/* need to rebuild list */
