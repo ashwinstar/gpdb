@@ -37,13 +37,13 @@ public class TestConnectorUtil  {
 
     @BeforeClass
     public static void setupBeforeClass() throws Exception {
-        final Configuration conf = new Configuration();
-        cluster=  new MiniDFSCluster.Builder(conf).numDataNodes(2).format(true).build();
+        // final Configuration conf = new Configuration();
+        // cluster=  new MiniDFSCluster.Builder(conf).numDataNodes(2).format(true).build();
     }
 
     @AfterClass
     public static void teardownAfterClass() throws Exception {
-        cluster.shutdown();
+        // cluster.shutdown();
     }
 
     @Test
