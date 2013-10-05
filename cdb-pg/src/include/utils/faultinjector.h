@@ -166,6 +166,8 @@ typedef enum FaultInjectorIdentifier_e {
 	InternalFlushError,
 	ExecSimpleQueryEndCommand,
 
+	ExecSortBeforeSorting,
+
 	/* INSERT has to be done before that line */
 	FaultInjectorIdMax,
 	

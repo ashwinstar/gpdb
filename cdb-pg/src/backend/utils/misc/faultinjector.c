@@ -248,6 +248,8 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject an error during internal_flush */
 	_("exec_simple_query_end_command"),
 		/* inject fault before EndCommand in exec_simple_query */
+	_("execsort_before_sorting"),
+		/* inject fault in ExecSort before doing the actual sort */
 	_("not recognized"),
 };
 
@@ -1013,6 +1015,7 @@ FaultInjector_NewHashEntry(
 		case Checkpoint:
 		case AbortTransactionFail:
 		case UpdateCommittedEofInPersistentTable:
+		case ExecSortBeforeSorting:
 			
 			if (fileRepRole != FileRepNoRoleConfigured && fileRepRole != FileRepPrimaryRole)
 			{
