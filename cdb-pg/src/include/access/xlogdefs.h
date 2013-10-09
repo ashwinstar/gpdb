@@ -12,6 +12,8 @@
 #ifndef XLOG_DEFS_H
 #define XLOG_DEFS_H
 
+#include <fcntl.h>				/* need open() flags */
+
 /*
  * Pointer to a location in the XLOG.  These pointers are 64 bits wide,
  * because we don't want them ever to overflow.
@@ -33,6 +35,8 @@ typedef struct XLogRecPtr
 	uint32		xrecoff;		/* byte offset of location in log file */
 } XLogRecPtr;
 
+#define XLogRecPtrIsInvalid(r)	((r).xrecoff == 0)
+
 
 /*
  * Macros for comparing XLogRecPtrs
@@ -50,6 +54,22 @@ typedef struct XLogRecPtr
 
 #define XLByteEQ(a, b)		\
 			((a).xlogid == (b).xlogid && (a).xrecoff == (b).xrecoff)
+
+
+/*
+ * Macro for advancing a record pointer by the specified number of bytes.
+ */
+#define XLByteAdvance(recptr, nbytes)						\
+	do {													\
+		if (recptr.xrecoff + nbytes >= XLogFileSize)		\
+		{													\
+			recptr.xlogid += 1;								\
+			recptr.xrecoff									\
+				= recptr.xrecoff + nbytes - XLogFileSize;	\
+		}													\
+		else												\
+			recptr.xrecoff += nbytes;						\
+	} while (0)
 
 
 /*

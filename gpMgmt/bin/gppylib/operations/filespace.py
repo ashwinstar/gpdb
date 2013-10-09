@@ -984,10 +984,6 @@ class MoveFilespace(Operation):
             if not self.check_database_stopped():
                 self.stop_database()
 
-            #Restart the system
-            self.start_database()
-            self.stop_database()
-
             #StartGPDB in Master only mode
             self.start_master_only()
 

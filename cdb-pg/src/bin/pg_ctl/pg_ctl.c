@@ -70,6 +70,7 @@ typedef enum
 	RESTART_COMMAND,
 	RELOAD_COMMAND,
 	STATUS_COMMAND,
+	PROMOTE_COMMAND,
 	KILL_COMMAND,
 	REGISTER_COMMAND,
 	UNREGISTER_COMMAND,
@@ -115,6 +116,7 @@ static void do_stop(void);
 static void do_restart(void);
 static void do_reload(void);
 static void do_status(void);
+static void do_promote(void);
 static void do_kill(pgpid_t pid);
 static void print_msg(const char *msg);
 
@@ -148,6 +150,9 @@ static bool postmaster_is_alive(pid_t pid);
 
 static char def_postopts_file[MAXPGPATH];
 static char postopts_file[MAXPGPATH];
+static char backup_file[MAXPGPATH];
+static char recovery_file[MAXPGPATH];
+static char promote_file[MAXPGPATH];
 static char pid_file[MAXPGPATH];
 static char conf_file[MAXPGPATH];
 
@@ -958,6 +963,71 @@ do_reload(void)
 
 	print_msg(_("server signaled\n"));
 }
+
+/*
+ * promote
+ */
+
+static void
+do_promote(void)
+{
+	FILE	   *prmfile;
+	pgpid_t		pid;
+	struct stat statbuf;
+
+	pid = get_pgpid();
+
+	if (pid == 0)				/* no pid file */
+	{
+		write_stderr(_("%s: PID file \"%s\" does not exist\n"), progname, pid_file);
+		write_stderr(_("Is server running?\n"));
+		exit(1);
+	}
+	else if (pid < 0)			/* standalone backend, not postmaster */
+	{
+		pid = -pid;
+		write_stderr(_("%s: cannot promote server; "
+					   "single-user server is running (PID: %ld)\n"),
+					 progname, pid);
+		exit(1);
+	}
+
+	/* If recovery.conf doesn't exist, the server is not in standby mode */
+	if (stat(recovery_file, &statbuf) != 0)
+	{
+		write_stderr(_("%s: cannot promote server; "
+					   "server is not in standby mode\n"),
+					 progname);
+		exit(1);
+	}
+
+	if ((prmfile = fopen(promote_file, "w")) == NULL)
+	{
+		write_stderr(_("%s: could not create promote signal file \"%s\": %s\n"),
+					 progname, promote_file, strerror(errno));
+		exit(1);
+	}
+	if (fclose(prmfile))
+	{
+		write_stderr(_("%s: could not write promote signal file \"%s\": %s\n"),
+					 progname, promote_file, strerror(errno));
+		exit(1);
+	}
+
+	sig = SIGUSR1;
+	if (kill((pid_t) pid, sig) != 0)
+	{
+		write_stderr(_("%s: could not send promote signal (PID: %ld): %s\n"),
+					 progname, pid, strerror(errno));
+		if (unlink(promote_file) != 0)
+			write_stderr(_("%s: could not remove promote signal file \"%s\": %s\n"),
+						 progname, promote_file, strerror(errno));
+		exit(1);
+	}
+
+	print_msg(_("server promoting\n"));
+}
+
 
 /*
  *	utility routines
@@ -1888,6 +1958,8 @@ main(int argc, char **argv)
 				ctl_command = RELOAD_COMMAND;
 			else if (strcmp(argv[optind], "status") == 0)
 				ctl_command = STATUS_COMMAND;
+			else if (strcmp(argv[optind], "promote") == 0)
+				ctl_command = PROMOTE_COMMAND;
 			else if (strcmp(argv[optind], "kill") == 0)
 			{
 				if (argc - optind < 3)
@@ -1971,6 +2043,9 @@ main(int argc, char **argv)
 		snprintf(postopts_file, MAXPGPATH, "%s/postmaster.opts", pg_data);
 		snprintf(pid_file, MAXPGPATH, "%s/postmaster.pid", pg_data);
 		snprintf(conf_file, MAXPGPATH, "%s/postgresql.conf", pg_data);
+		snprintf(backup_file, MAXPGPATH, "%s/backup_label", pg_data);
+		snprintf(recovery_file, MAXPGPATH, "%s/recovery.conf", pg_data);
+		snprintf(promote_file, MAXPGPATH, "%s/promote", pg_data);
 	}
 
 	switch (ctl_command)
@@ -1989,6 +2064,9 @@ main(int argc, char **argv)
 			break;
 		case RELOAD_COMMAND:
 			do_reload();
+			break;
+		case PROMOTE_COMMAND:
+			do_promote();
 			break;
 		case KILL_COMMAND:
 			do_kill(killproc);

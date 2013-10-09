@@ -10,7 +10,7 @@ SYNOPSIS
 *****************************************************
 
 
-gpactivatestandby -d <standby_master_datadir> [-c <new_standby_master>] 
+gpactivatestandby -d <standby_master_datadir> 
 [-f] [-a] [-q] [-l <logfile_directory>]  
 
 gpactivatestandby -? | -h | --help 
@@ -26,8 +26,7 @@ The gpactivatestandby script activates a backup master host and
 brings it into operation as the active master instance for a Greenplum 
 Database system. The activated standby master effectively becomes the 
 Greenplum Database master, accepting client connections on the master port 
-(which must be set to the same port number on the master host and the 
-backup master host). 
+(if it is set to be the same, and that is by default.)
 
 You must run this script from the master host you are 
 activating, not the failed master host you are disabling. Running this 
@@ -36,30 +35,22 @@ script assumes you have a backup master host configured for the system
 
 The script will perform the following steps:
 
-* Stop the synchronization process (gpsyncmaster) on the backup master
-
-* Update the system catalog tables of the backup master using the logs
-
-* Activate the backup master to be the new active master for the system
-
-* (optional) Make the host specified with the -c option the new standby 
-  master host
+* Send signal to the postmaster to activate the backup master to be the
+  new active master for the system
 
 * Restart the Greenplum Database system with the new master host
 
 A backup Greenplum master host serves as a warm standby in the event 
 of the primary Greenplum master host becoming unoperational. The backup 
-master is kept up to date by a transaction log replication process 
-(gpsyncmaster), which runs on the backup master host and keeps the 
-data between the primary and backup master hosts synchronized. 
+master is kept up to date by a transaction log replication process , which
+runs on the backup master host and keeps the data between the primary and
+backup master hosts synchronized. 
 
 If the primary master fails, the log replication process is shutdown, 
 and the backup master can be activated in its place by using the 
 gpactivatestandby script. Upon activation of the backup master, the 
 replicated logs are used to reconstruct the state of the Greenplum master 
-host at the time of the last successfully committed transaction. To specify 
-a new standby master host after making your current standby 
-master active, use the -c option.
+host at the time of the last successfully committed transaction.
 
 In order to use gpactivatestandby to activate a new primary master host, 
 the master host that was previously serving as the primary master cannot 
@@ -85,15 +76,6 @@ OPTIONS
 
 Required. The absolute path of the data directory for the master host 
 you are activating.
-
-
--c <new_standby_master_hostname>
-
-Optional. After you activate your standby master you may want to specify 
-another host to be the new standby, otherwise your Greenplum Database 
-system will no longer have a standby master configured. Use this option 
-to specify the hostname of the new standby master host. You can also use 
-gpinitstandby at a later time to configure a new standby master host.
 
 
 -f (force activation)
@@ -145,12 +127,6 @@ Activate the backup master host and make it the active master instance for a
 Greenplum Database system (run from backup master host you are activating):
 
 gpactivatestandby -d /gpdata
-
-
-Activate the backup master host and at the same time configure another 
-host to be your new standby master:
-
-gpactivatestandby -d /gpdata -c new_standby_hostname
 
 
 *****************************************************

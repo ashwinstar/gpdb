@@ -2260,7 +2260,7 @@ pgstat_bestart(void)
 	beentry->st_userid = userid;
 	beentry->st_session_id = gp_session_id;  /* GPDB only */
 	beentry->st_clientaddr = clientaddr;
-	beentry->st_waiting = false;
+	beentry->st_waiting = PGBE_WAITING_NONE;
 	beentry->st_appname[0] = '\0';
 	beentry->st_activity[0] = '\0';
 	/* Also make sure the last byte in each string area is always 0 */
@@ -2433,7 +2433,7 @@ pgstat_report_xact_timestamp(TimestampTz tstamp)
  * ----------
  */
 void
-pgstat_report_waiting(bool waiting)
+pgstat_report_waiting(char waiting)
 {
 	volatile PgBackendStatus *beentry = MyBEEntry;
 
@@ -2447,7 +2447,6 @@ pgstat_report_waiting(bool waiting)
 	 */
 	beentry->st_waiting = waiting;
 }
-
 
 /* ----------
  * pgstat_read_current_status() -

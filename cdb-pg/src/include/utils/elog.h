@@ -173,6 +173,15 @@ void elog_internalerror(const char *filename, int lineno, const char *funcname)
 
 #define TEXTDOMAIN NULL
 
+/*
+ * the error or log report is only issued if the predicate is true.
+ */
+#define ereportif(p, elevel, ...) \
+	do { \
+		if(p) ereport_domain(elevel, TEXTDOMAIN, __VA_ARGS__); \
+	} while (0)
+
+
 extern bool errstart(int elevel, const char *filename, int lineno,
 		 const char *funcname, const char *domain);
 extern void errfinish(int dummy,...);
@@ -273,6 +282,16 @@ elog_finish(int elevel, const char *fmt,...)
    the supplied arguments. */
 __attribute__((format(printf, 2, 3)));
 
+/*
+ * The message is only logged if a predicate is true.
+ * This is a replacement for the common pattern of
+ *
+ * if (guc)
+ *     elog(LOG, ...)
+ */
+#define elogif(p, ...) do { \
+	if (p) elog(__VA_ARGS__); \
+    } while(false);
 
 /* Support for attaching context information to error reports */
 

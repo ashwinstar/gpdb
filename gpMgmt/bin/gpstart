@@ -30,6 +30,7 @@ try:
     from gppylib.commands import pg
     from gppylib.commands import dca
     from gppylib import pgconf
+    from gppylib.commands.pg import PgControlData
     from gppylib.operations.startSegments import *
     from gppylib.gpcoverage import GpCoverage
     from gppylib.utils import TableLogger
@@ -49,6 +50,7 @@ class GpStart:
     def __init__(self, specialMode, restricted, start_standby, master_datadir,
                  wrapper,
                  wrapper_args,
+                 skip_standby_check,
                  parallel=DEFAULT_NUM_WORKERS,
                  quiet=False,
                  masteronly=False,
@@ -69,6 +71,7 @@ class GpStart:
         self.timeout=timeout
         self.wrapper=wrapper;
         self.wrapper_args=wrapper_args;
+        self.skip_standby_check=skip_standby_check;
         
         #
         # Some variables that are set during execution
@@ -125,7 +128,10 @@ class GpStart:
                 logger.info("Re-obtaining updated segment details from master...")
                 self.gparray = GpArray.initFromCatalog(self.dburl, utility=True)
 
-            self._check_standby_activated()
+            if not self.skip_standby_check:
+                self._check_standby_activated()
+            else:
+                logger.info("Skipping Standby activation status checking.")
 
             filespace_configured = is_filespace_configured()
             inconsistent_filespace = False
@@ -189,9 +195,6 @@ class GpStart:
         logger.info("Gathering information and validating the environment...")
         self._basic_setup()
 
-        if not self.masteronly:
-            gp.standby_check(self.master_datadir)
-
         self._check_version()
         self._check_master_running()
 
@@ -249,28 +252,36 @@ class GpStart:
 
         self._remove_postmaster_tmpfile(self.port)
 
+    def fetch_tli(self, data_dir_path, remoteHost=None):
+        if not remoteHost:
+            controldata = PgControlData("Latest checkpoint's TimeLineID", data_dir_path)
+        else:
+            controldata = PgControlData("Latest checkpoint's TimeLineID", data_dir_path, REMOTE, remoteHost)
+
+        controldata.run(validateAfter=True)
+        return controldata.get_value("Latest checkpoint's TimeLineID")
+
     def _check_standby_activated(self):
         logger.debug("Checking if standby has been activated...")
 
         if self.gparray.standbyMaster:
-            
-            syncmaster_pid = gp.getSyncmasterPID(self.gparray.standbyMaster.getSegmentHostName(),
-                                                 self.gparray.standbyMaster.getSegmentDataDirectory())
-            if syncmaster_pid <= 0:
-                # we don't have a syncmaster running, so now check for postmaster.pid
-                cmd = pg.DbStatus('check standby postmaster', 
-                                  self.gparray.standbyMaster,
-                                  ctxt=base.REMOTE, 
-                                  remoteHost=self.gparray.standbyMaster.getSegmentHostName())
-                cmd.run(validateAfter=False)
-                if cmd.is_running():
-                    # stop the master we've started up.
-                    cmd=gp.GpStop("Shutting down master", masterOnly=True, 
-                                  fast=True, quiet=logging_is_quiet(),
-                                  verbose=logging_is_verbose(),
-                                  datadir=self.master_datadir)
-                    cmd.run(validateAfter=True)
-                    raise ExceptionNoStackTraceNeeded("Standby activated")
+
+            # fetch timelineids for both primary and standby (post-promote)
+            primary_tli = self.fetch_tli(self.master_datadir)
+            standby_tli = self.fetch_tli(self.gparray.standbyMaster.getSegmentDataDirectory(), self.gparray.standbyMaster.getSegmentHostName())
+
+            logger.debug("Primary TLI = " + primary_tli)
+            logger.debug("Standby TLI = " + standby_tli)
+
+            if primary_tli < standby_tli:
+                # stop the master we've started up.
+                cmd=gp.GpStop("Shutting down master", masterOnly=True, 
+                              fast=True, quiet=logging_is_quiet(),
+                              verbose=logging_is_verbose(),
+                              datadir=self.master_datadir)
+                cmd.run(validateAfter=True)
+                logger.info("Master Stopped...")
+                raise ExceptionNoStackTraceNeeded("Standby activated, this node no more can act as master.")
 
     ######
     def _recovery_startup(self):
@@ -416,7 +427,7 @@ class GpStart:
 
     ######
     def _start(self, segmentsToStart, invalidSegments, inactiveSegments):
-        """ starts the standby master, all of the segments, and the master
+        """ starts all of the segments, the master and the standby master
             
             returns whether all segments that should be started were started successfully
 
@@ -427,8 +438,6 @@ class GpStart:
 
         if os.path.exists(self.master_datadir + "/gpexpand.status") and not self.restricted:
             raise ExceptionNoStackTraceNeeded("Found a System Expansion Setup in progress. Please run 'gpexpand --rollback'")
-
-        self.standby_was_started = self._start_standby()
 
         strategy = self.gparray.getFaultStrategy()
         logger.debug("Strategy in gparray is %s" % strategy)
@@ -459,8 +468,17 @@ class GpStart:
             raise ExceptionNoStackTraceNeeded("Do not have enough valid segments to start the array.")
 
         failedToStart = segmentStartResult.getFailedSegmentObjs()
-        final_result  = self._start_final_master(failedToStart, invalidSegments)
-        return final_result
+        master_result, message = self._start_final_master()
+        if not master_result:
+            return False
+
+        # start standby after master in dispatch mode comes up
+        standby_was_started = self._start_standby()
+
+        # report if we complete operations
+        return self._check_final_result(
+                not standby_was_started and self.attempt_standby_start,
+                failedToStart, invalidSegments, message)
 
 
     ######
@@ -681,13 +699,36 @@ class GpStart:
 
 
     ######
-    def _start_final_master(self, failedToStart, invalidSegments):
+    def _check_final_result(self, standbyFailure,
+                            failedToStart, invalidSegments, msg):
+        if standbyFailure:
+            logger.warning("Standby Master could not be started")
+        if len(failedToStart) > 0:
+            logger.warning("Number of segments which failed to start:  %d", len(failedToStart))
+
+        if standbyFailure or len(failedToStart) > 0:
+            return False
+
+        if len(invalidSegments) > 0:
+            logger.warning("Number of segments not attempted to start: %d", len(invalidSegments))
+
+        if (len(failedToStart) > 0 or len(invalidSegments) > 0 or
+                msg is not None):
+            logger.info("Check status of database with gpstate utility")
+        else:
+            logger.info("Database successfully started")
+
+        return True
+
+    ######
+    def _start_final_master(self):
         ''' Last item in the startup sequence is to start the master. 
 
             After starting the master we connect to it.  This is done both as a check that the system is 
             actually started but its also done because certain backend processes don't get kickstarted
             until the first connection.  The DTM is an example of this and it allows those initialization
             messages to end up in the gpstart log as opposed to the user's psql session.
+            Returns a tuple of (result[bool], message[string])
         '''
         restrict_txt = ""
         if self.restricted:
@@ -718,7 +759,7 @@ class GpStart:
         if not pg.DbStatus.local('master instance',self.gparray.master):
             logger.warning("Command pg_ctl reports Master %s on port %d not running" % (self.gparray.master.datadir,self.gparray.master.port))
             logger.warning("Master could not be started")
-            return False
+            return False, None
 
         logger.info("Command pg_ctl reports Master %s instance active" % self.gparray.master.hostname)
 
@@ -744,28 +785,11 @@ class GpStart:
                 return False
             logger.warning(msg)
 
-        standby_failure = not self.standby_was_started and self.attempt_standby_start
-        if standby_failure:
-            logger.warning("Standby Master could not be started")
-        if len(failedToStart) > 0:
-            logger.warning("Number of segments which failed to start:  %d", len(failedToStart))
-
-        if standby_failure or len(failedToStart) > 0:
-            return False
-        
-        if len(invalidSegments) > 0:
-            logger.warning("Number of segments not attempted to start: %d", len(invalidSegments))
-            
-        if len(failedToStart) > 0 or len(invalidSegments) > 0 or msg is not None:
-            logger.info("Check status of database with gpstate utility")
-        else:
-            logger.info("Database successfully started")
-
         # set the era we used when starting the segments
         e = GpEraFile(self.master_datadir, logger=get_logger_if_verbose())
         e.set_era(self.era)
 
-        return True
+        return True, msg
 
 
 
@@ -783,7 +807,10 @@ class GpStart:
                 port=self.gparray.standbyMaster.port
                 dbid=self.gparray.standbyMaster.dbid
                 ncontents = self.gparray.getNumSegmentContents()
-                return gp.start_standbymaster(host,datadir,port,dbid,ncontents)
+                return gp.start_standbymaster(host, datadir, port, dbid,
+                                              ncontents, era=self.era,
+                                              wrapper=self.wrapper,
+                                              wrapper_args=self.wrapper_args)
             except base.ExecutionError, e:
                 logger.warning("Error occured while starting the standby master: %s" % e)
                 return False
@@ -822,7 +849,8 @@ class GpStart:
                            help='time to wait for segment startup (in seconds)')
         addTo.add_option('', '--wrapper', dest="wrapper", default=None, type='string');
         addTo.add_option('', '--wrapper-args', dest="wrapper_args", default=None, type='string');
-        
+        addTo.add_option('-S', '--skip_standby_check', dest="skip_standby_check", action='store_true',default=False)
+
         parser.set_defaults(verbose=False, filters=[], slice=(None, None))
 
         return parser
@@ -849,7 +877,8 @@ class GpStart:
                           interactive=options.interactive,
                           timeout=options.timeout,
                           wrapper=options.wrapper,
-                          wrapper_args=options.wrapper_args);
+                          wrapper_args=options.wrapper_args,
+                          skip_standby_check=options.skip_standby_check)
 
 if __name__ == '__main__':
     simple_main( GpStart.createParser, GpStart.createProgram)

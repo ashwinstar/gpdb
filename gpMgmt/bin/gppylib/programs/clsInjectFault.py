@@ -378,6 +378,7 @@ class GpInjectFaultProgram:
                              "internal_flush_error (inject an error during internal_flush), " \
 			      "exec_simple_query_end_command (inject fault before EndCommand in exec_simple_query), " \
                   "execsort_before_sorting (inject fault in nodeSort after receiving all tuples and before sorting), " \
+                  "base_backup_post_create_checkpoint (inject fault after requesting checkpoint as part of basebackup), "
 			      "all (affects all faults injected, used for 'status' and 'reset'), ") 
         addTo.add_option("-c", "--ddl_statement", dest="ddlStatement", type="string",
                          metavar="ddlStatement",

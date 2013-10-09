@@ -38,7 +38,7 @@ OBJS = cdbanalyze.o \
 	   cdbglobalsequence.o \
 	   cdbgang.o cdbgroup.o \
 	   cdbhash.o cdbheap.o \
-	   cdblink.o cdbllize.o cdblocaldistribxact.o cdblogsync.o \
+	   cdbllize.o cdblocaldistribxact.o \
 	   cdbmaxdistributedxid.o \
 	   cdbmirroredbufferpool.o \
 	   cdbmirroredfilesysobj.o cdbmirroredflatfile.o \

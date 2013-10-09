@@ -12,9 +12,9 @@
 #include "optimizer/pathnode.h" /* Path */
 #include "optimizer/planmain.h" /* make_sort_from_pathkeys() */
 
-#include "cdb/cdblink.h"        /* getgpsegmentCount() */
 #include "cdb/cdbllize.h"       /* makeFlow() */
 #include "cdb/cdbmutate.h"      /* make_*_motion() */
+#include "cdb/cdbutil.h"
 #include "cdb/cdbvars.h"        /* gp_singleton_segindex */
 
 #include "cdb/cdbpathtoplan.h"  /* me */

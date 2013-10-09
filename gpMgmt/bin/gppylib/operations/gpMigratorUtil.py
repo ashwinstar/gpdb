@@ -149,6 +149,7 @@ class GPUpgradeBase(object):
         self.option    = None     # Argument passed to cmd
         self.path      = None     # Default path
         self.pool      = None     # worker pool
+        self.skipcheckcat = False
         self.user      = None     # db admin user
         self.workdir   = None     # directory: masterdir/gpmigrator
         self.checkonly = False    # checkcat only; do not run upgrade
@@ -683,7 +684,10 @@ class GPUpgradeBase(object):
         self.CheckBinaryVersion()
         self.CheckGUCs()
         self.CheckFreeSpace()
-        self.CheckCatalog()
+        if not self.skipcheckcat:
+            self.CheckCatalog()
+        else:
+            logger.info('Skip Checking Catalog')
 
     #------------------------------------------------------------
     def CheckBinaryVersion(self):

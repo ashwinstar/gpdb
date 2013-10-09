@@ -680,11 +680,6 @@ class GPDetective:
             SELECT * FROM pg_catalog.pg_resqueue
         ''')
         
-        self.writeSelect('mastermirror.log',
-        '''
-            SELECT * FROM pg_catalog.gp_master_mirroring
-        ''')
-        
         self.writeSelect('version_at_initdb.log',
         '''
             SELECT * FROM pg_catalog.gp_version_at_initdb

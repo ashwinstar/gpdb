@@ -44,7 +44,6 @@
 #include "cdb/cdbdispatchresult.h"
 #include "cdb/cdbfts.h"
 #include "cdb/cdbgang.h"
-#include "cdb/cdblink.h"		/* just for our CdbProcess population hack. */
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbsubplan.h"
 #include "cdb/cdbvars.h"
@@ -57,6 +56,7 @@
 #include "libpq/libpq-be.h"
 #include "commands/vacuum.h" /* VUpdatedStats */
 #include "cdb/cdbanalyze.h"  /* cdbanalyze_get_columnstats */
+#include "cdb/cdbutil.h"
 
 #include "parser/parsetree.h"
 #include "parser/parse_oper.h"

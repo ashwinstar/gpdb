@@ -46,14 +46,15 @@
 #include "postmaster/postmaster.h"
 #include "postmaster/primary_mirror_mode.h"
 #include "postmaster/seqserver.h"
-#include "postmaster/walredoserver.h"
-#include "postmaster/walsendserver.h"
+#include "replication/walsender.h"
+#include "replication/walreceiver.h"
 #include "storage/freespace.h"
 #include "storage/ipc.h"
 #include "storage/pg_shmem.h"
 #include "storage/pmsignal.h"
 #include "storage/procarray.h"
-#include "storage/sinval.h"
+#include "storage/procsignal.h"
+#include "storage/sinvaladt.h"
 #include "storage/spin.h"
 #include "utils/resscheduler.h"
 #include "utils/faultinjector.h"
@@ -163,14 +164,13 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 
 		size = add_size(size, SInvalShmemSize());
 		size = add_size(size, PMSignalShmemSize());
+		size = add_size(size, ProcSignalShmemSize());
 		size = add_size(size, primaryMirrorModeShmemSize());
 		size = add_size(size, FreeSpaceShmemSize());
 		//size = add_size(size, AutoVacuumShmemSize());
 		size = add_size(size, FtsShmemSize());
 		size = add_size(size, tmShmemSize());
 		size = add_size(size, SeqServerShmemSize());
-		size = add_size(size, WalSendServerShmemSize());
-		size = add_size(size, WalRedoServerShmemSize());
 		size = add_size(size, PersistentFileSysObj_ShmemSize());
 		size = add_size(size, PersistentFilespace_ShmemSize());
 		size = add_size(size, PersistentTablespace_ShmemSize());
@@ -212,6 +212,9 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 
 		size = add_size(size, BgWriterShmemSize());
 		size = add_size(size, CheckpointShmemSize());
+
+		size = add_size(size, WalSndShmemSize());
+		size = add_size(size, WalRcvShmemSize());
 
 		/* freeze the addin request size and include it */
 		addin_request_allowed = false;
@@ -357,12 +360,13 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	 * Set up interprocess signaling mechanisms
 	 */
 	PMSignalShmemInit();
+	ProcSignalShmemInit();
 	BgWriterShmemInit();
 	CheckpointShmemInit();
+	WalSndShmemInit();
+	WalRcvShmemInit();
 	//AutoVacuumShmemInit();
 	SeqServerShmemInit();
-	WalSendServerShmemInit();
-	WalRedoServerShmemInit();
 
 	if (GPAreFileReplicationStructuresRequired()) {
 	

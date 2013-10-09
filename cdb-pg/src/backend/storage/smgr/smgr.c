@@ -1392,7 +1392,7 @@ smgrnblocks(SMgrRelation reln)
 {
 	BlockNumber nblocks;
 
-	nblocks = mdnblocks(reln);
+	nblocks = mdnblocks(reln, false);
 
 	/*
 	 * NOTE: if a relation ever did grow to 2^32-1 blocks, this code would
@@ -1437,7 +1437,7 @@ smgrtruncate(SMgrRelation reln, BlockNumber nblocks, bool isTemp, bool isLocalBu
 	FreeSpaceMapTruncateRel(&reln->smgr_rnode, nblocks);
 
 	/* Do the truncation */
-	newblks = mdtruncate(reln, nblocks, isTemp);
+	newblks = mdtruncate(reln, nblocks, isTemp, false);
 	if (newblks == InvalidBlockNumber)
 		ereport(ERROR,
 				(errcode_for_file_access(),
@@ -3225,11 +3225,16 @@ smgr_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 		 */
 		FreeSpaceMapTruncateRel(&reln->smgr_rnode, xlrec->blkno);
 
-		/* Do the truncation */
+		/*
+		 * Do the truncation
+		 * Pass true for allowedNotFound below to mdtruncate to cope for the case
+		 * when replay of truncate redo log happen multiple times it acts as NOP, 
+		 * which makes redo truncate behavior is idempotent.
+		 */
 		newblks = mdtruncate(
 						reln,
 					   	xlrec->blkno,
-					   	false);
+					   	false, true);
 		if (newblks == InvalidBlockNumber)
 			ereport(WARNING,
 					(errcode_for_file_access(),

@@ -471,7 +471,7 @@ XLogOpenRelation(RelFileNode rnode)
 		/*
 		 * We need to fault in the database directory on the standby.
 		 */
-		if (rnode.spcNode != GLOBALTABLESPACE_OID && GPStandby())
+		if (rnode.spcNode != GLOBALTABLESPACE_OID && IsStandbyMode())
 		{
 			char *primaryFilespaceLocation = NULL;
 

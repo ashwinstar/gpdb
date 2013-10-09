@@ -17,31 +17,31 @@ include $(top_builddir)/src/Makefile.global
 LIBS := $(filter-out -llapack -lblas -lf2c -lresolv -lbz2, $(LIBS))
 LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses -lcurl -lssl -lz -lpam -lkrb5 -lgssapi_krb5 -lcom_err -lk5crypto -lnuma -lkrb5support, $(LIBS))
 
-MODCAT_OBJS= gpmodcatversion.o pg_crc.o crc32c.o
+MODCAT_OBJS= gpmodcontrol.o pg_crc.o crc32c.o
 DATADIR=$(top_srcdir)/src/test/regress/data
 
 UPGRADEFILES = $(DATADIR)/upgrade/upg2_catupgrade.sql \
 			   $(DATADIR)/upgrade/upg2_catupgrade_check.sql \
 			   $(DATADIR)/upgrade43/upg2_catupgrade_43.sql
 
-DATAFILES = $(DATADIR)/upgrade43/pg_operator.data
+DATAFILES = $(DATADIR)/upgrade43/pg_operator.data $(DATADIR)/upgrade43/pg_type.data
 
 # This sets things up to create a "contrib" module for upgrade extensions
 MODULE_big = gpupgrade
 OBJS= gpviewcp.o
 include $(top_srcdir)/contrib/contrib-global.mk
 
-# In addition to the contrib module we are also building the gpmodcatversion program and the upgrade scripts
-all: gpmodcatversion upgradesql
+# In addition to the contrib module we are also building the gpmodcontrol program and the upgrade scripts
+all: gpmodcontrol upgradesql
 
-clean distclean maintainer-clean: clean-lib gpmodcat_clean upgradesql_clean
+clean distclean maintainer-clean: clean-lib gpmodcontrol_clean upgradesql_clean
 
-install: all installdirs installupgradefiles gpmodcat_install
+install: all installdirs installupgradefiles gpmodcontrol_install
 
-uninstall: gpmodcat_uninstall
+uninstall: gpmodcontrol_uninstall
 
-# build the gpmodcatversion program and the upgrade script
-gpmodcatversion: $(MODCAT_OBJS)
+# build the gpmodcontrol program and the upgrade script
+gpmodcontrol: $(MODCAT_OBJS)
 	$(CC) $(CFLAGS) $^ $(LDFLAGS) $(LIBS) -o $@$(X)
 
 pg_crc.c: $(top_srcdir)/src/backend/utils/hash/pg_crc.c
@@ -56,8 +56,8 @@ upgradesql:
         sed -e 's/\@gpupgradeschemaname\@/pg_catalog/g' -e 's/\@gpupgradetoolkitschema\@/gp_toolkit/g' $$i.in > $$i; \
 	done
 	
-gpmodcat_clean:
-	rm -f gpmodcatversion$(X)
+gpmodcontrol_clean:
+	rm -f gpmodcontrol$(X)
 	rm -f $(MODCAT_OBJS)
 	rm -f pg_crc.c
 	rm -f crc32c.c
@@ -65,9 +65,9 @@ gpmodcat_clean:
 upgradesql_clean:
 	rm -f $(DATADIR)/upgrade43/*.sql
 
-gpmodcat_install: gpmodcatversion
-	$(INSTALL_PROGRAM) gpmodcatversion$(X) \
-		'$(DESTDIR)$(bindir)/lib'/gpmodcatversion$(X)
+gpmodcontrol_install: gpmodcontrol
+	$(INSTALL_PROGRAM) gpmodcontrol$(X) \
+		'$(DESTDIR)$(bindir)/lib'/gpmodcontrol$(X)
 
 installdirs:
 	$(MKDIR_P) '$(DESTDIR)$(bindir)' '$(DESTDIR)$(bindir)/lib'
@@ -79,6 +79,6 @@ installupgradefiles: $(UPGRADEFILES) $(DATAFILES)
 		$(INSTALL_DATA) $$i '$(DESTDIR)$(datadir)/upgrade/'`basename $$i`; \
 	done
 
-gpmodcat_unistall:
-	rm -f '$(DESTDIR)$(bindir)'/lib, gpmodcatversion$(X)
+gpmodcontrol_unistall:
+	rm -f '$(DESTDIR)$(bindir)'/lib, gpmodcontrol$(X)
 

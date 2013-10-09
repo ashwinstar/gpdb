@@ -31,7 +31,6 @@
 #include "catalog/gp_segment_config.h"
 #include "cdb/cdbcat.h"
 #include "cdb/cdbutil.h"
-#include "cdb/cdblink.h"
 #include "nodes/execnodes.h"	/* Slice, SliceTable */
 #include "cdb/cdbmotion.h"
 #include "cdb/cdbvars.h"
@@ -462,8 +461,6 @@ cdb_setup(void)
 {
 	elog(DEBUG1, "Initializing Greenplum components...");
 
-	cdblink_setup();
-
 	/* If gp_role is UTILITY, skip this call. */
 	if (Gp_role != GP_ROLE_UTILITY)
 	{
@@ -473,25 +470,6 @@ cdb_setup(void)
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		/* check mirrored entry db configuration */
-		buildMirrorQDDefinition();
-
-		if (isQDMirroringPendingCatchup())
-		{
-			/* 
-			 * Do a checkpoint to cause a checkpoint xlog record to
-			 * to be written and force the QD mirror to get
-			 * synchronized.
-			 */
-			RequestCheckpoint(true, false);
-		}
-
-		/*
-		 * This call will generate a warning if master mirroring
-		 * is not synchronized.
-		 */
-		QDMirroringWriteCheck();
-		
 		/* initialize TM */
 		initTM();
 	}
@@ -1286,4 +1264,31 @@ my_mirror_dbid(void)
 	/* no need to hold the lock, it's a catalog */
 
 	return dbid;
+}
+
+/*
+ * Returns the number of segments
+ *
+ * N.B.  Gp_role must be either dispatch or execute, since
+ * when utiliy	no GP catalog tables are read.  An Assert is
+ * thrown if Gp_role = utility.
+ */
+int
+getgpsegmentCount(void)
+{
+	if (Gp_role == GP_ROLE_UTILITY)
+	{
+		if (GpIdentity.numsegments <= 0)
+		{
+            elog(DEBUG5, "getgpsegmentCount called when Gp_role == utility. returning zero segments.");
+            return 0;
+	    }
+
+		elog(DEBUG1, "getgpsegmentCount called when Gp_role == utility, but is relying on gp_id info");
+
+	}
+
+	verifyGpIdentityIsSet();
+	Assert(GpIdentity.numsegments > 0);
+	return GpIdentity.numsegments;
 }

@@ -1,10 +1,10 @@
 subdir=src/backend/access/transam
 top_builddir=../../../../..
 
-TARGETS=xact distributedlog
+TARGETS=xact distributedlog xlog
 
 # Objects from backend, which don't need to be mocked but need to be linked.
-xact_REAL_OBJS=\
+COMMON_REAL_OBJS=\
 	$(top_srcdir)/src/backend/access/hash/hashfunc.o \
 	$(top_srcdir)/src/backend/access/transam/filerepdefs.o \
 	$(top_srcdir)/src/backend/bootstrap/bootparse.o \
@@ -32,7 +32,14 @@ xact_REAL_OBJS=\
 	$(top_srcdir)/src/timezone/localtime.o \
 	$(top_srcdir)/src/timezone/pgtz.o \
 	$(top_srcdir)/src/backend/access/transam/transam.o \
-	$(top_srcdir)/src/backend/utils/time/tqual.o
+	$(top_srcdir)/src/backend/utils/time/tqual.o \
+	$(top_srcdir)/src/backend/replication/repl_gram.o \
+	$(top_srcdir)/src/backend/utils/error/elog.o \
+	$(top_srcdir)/src/timezone/strftime.o
+
+xact_REAL_OBJS=$(COMMON_REAL_OBJS)
+
+xlog_REAL_OBJS=$(COMMON_REAL_OBJS)
 
 distributedlog_REAL_OBJS=\
 	$(top_srcdir)/src/backend/access/hash/hashfunc.o \

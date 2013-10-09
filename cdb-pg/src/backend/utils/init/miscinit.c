@@ -35,6 +35,7 @@
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "postmaster/autovacuum.h"
+#include "replication/walsender.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/pg_shmem.h"
@@ -421,8 +422,6 @@ InitializeSessionUserId(const char *rolename)
 {
 	HeapTuple	roleTup;
 	Form_pg_authid rform;
-	Datum		datum;
-	bool		isnull;
 	Oid			roleid;
 	cqContext  *pcqCtx;
 	/*
@@ -481,35 +480,6 @@ InitializeSessionUserId(const char *rolename)
 					 errOmitLocation(true)));
 
 		/*
-		 * In Upgrade Mode, normal connection (i.e. dispatch mode)
-		 * is disallowed unless it's the bootstrap user and
-		 * gp_maintenance_conn GUC is set.
-		 */
-		if (gp_upgrade_mode && Gp_role == GP_ROLE_DISPATCH &&
-			!(roleid==BOOTSTRAP_SUPERUSERID && gp_maintenance_conn))
-		{
-			ereport(FATAL,
-					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 errmsg("Upgrade in progress, connection refused"),
-					 errOmitLocation(true),
-					 errSendAlert(false)));
-		}
-
-		/*
-		 * Maintenance Mode: allow superuser to connect when
-		 * gp_maintenance_conn GUC is set
-		 */
-		if (gp_maintenance_mode && Gp_role == GP_ROLE_DISPATCH &&
-			!(superuser() && gp_maintenance_conn))
-		{
-			ereport(FATAL,
-					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 errmsg("Maintenance mode: connected by superuser only"),
-					 errOmitLocation(true),
-					 errSendAlert(false)));
-		}
-
-		/*
 		 * Check connection limit for this role.
 		 *
 		 * There is a race condition here --- we create our PGPROC before
@@ -548,19 +518,6 @@ InitializeSessionUserId(const char *rolename)
 					AuthenticatedUserIsSuperuser ? "on" : "off",
 					PGC_INTERNAL, PGC_S_OVERRIDE);
 
-	/*
-	 * Set up user-specific configuration variables.  This is a good place to
-	 * do it so we don't have to read pg_authid twice during session startup.
-	 */
-	datum = caql_getattr(pcqCtx,
-						 Anum_pg_authid_rolconfig, &isnull);
-	if (!isnull)
-	{
-		ArrayType  *a = DatumGetArrayTypeP(datum);
-
-		ProcessGUCArray(a, PGC_S_USER);
-	}
-
 	caql_endscan(pcqCtx);
 }
 
@@ -572,7 +529,7 @@ void
 InitializeSessionUserIdStandalone(void)
 {
 	/* This function should only be called in a single-user backend. */
-	AssertState(!IsUnderPostmaster || IsAutoVacuumProcess());
+	AssertState(!IsUnderPostmaster || IsAutoVacuumProcess() || am_startup);
 
 	/* call only once */
 	AssertState(!OidIsValid(AuthenticatedUserId));

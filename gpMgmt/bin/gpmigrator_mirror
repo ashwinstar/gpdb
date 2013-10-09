@@ -216,6 +216,9 @@ class GPUpgrade(GPUpgradeBase):
                               help=optparse.SUPPRESS_HELP)
             parser.add_option('--internal-option', dest='option',
                               help=optparse.SUPPRESS_HELP)
+            parser.add_option('--skip-checkcat', dest='skipcheckcat',
+                              action='store_true',
+                              help=optparse.SUPPRESS_HELP)
             parser.add_option('--fault-injection', dest='faultinjection',
                               type='int', help=optparse.SUPPRESS_HELP)
             (options, args) = parser.parse_args()
@@ -269,6 +272,7 @@ class GPUpgrade(GPUpgradeBase):
             logger.fatal('cannot log to %s: %s' % (self.logdir, str(e)))
             exit(1)
         
+        self.skipcheckcat = options.skipcheckcat
         self.faultinjection = options.faultinjection
 
         if self.cmd == 'MASTER':
@@ -688,7 +692,8 @@ class GPUpgrade(GPUpgradeBase):
     #------------------------------------------------------------
     def SetCatVersion(self, tonewver):
         '''
-        Set the catalog version to something different. Cluster should be down.
+        Upgrade/downgrade pg_control file to another version. Cluster should
+        be clean shutdown.
         '''
 
         logger.info('Modifying catalog version')
@@ -734,6 +739,14 @@ class GPUpgrade(GPUpgradeBase):
         def setcatversion(datadir, to):
             '''
             Set catalog version to 'to'
+
+            We use gpmodcontrol to update pg_control file since in this
+            version (4.3) we change the ControlFile structure.  If only
+            catalog_version_no needs to change, we could use gpmodcatversion
+            as was previously.  In case of gpmodcontrol (but not the case
+            for gpmodcatversion), the newer environment is responsible to
+            take care of downgrade too since older version does not have
+            knowledge of the newer structure.
             '''
             # It is an error if the current state is not "shut down", that
             # means that there may be pending xlog records which will cause 
@@ -742,12 +755,14 @@ class GPUpgrade(GPUpgradeBase):
             if state != "shut down":
                 raise UpgradeError("Cannot upgrade: Database did not shutdown cleanly")
 
-            cmd = ['%s/bin/lib/gpmodcatversion' % curhome,
-                   '--catversion', to, datadir]
+            cmd = ['%s/bin/lib/gpmodcontrol' % self.newhome]
+            if not tonewver:
+                cmd.append('--downgrade')
+            cmd.append(datadir)
             p = subprocess.Popen(cmd,
                                  shell=False,
                                  close_fds=True,
-                                 env=curenv,
+                                 env=self.newenv, # always newenv
                                  stdout=subprocess.PIPE,
                                  stderr=subprocess.PIPE)
             result = p.communicate()
@@ -1072,13 +1087,15 @@ class GPUpgrade(GPUpgradeBase):
         snv        = newversion.getVersionRelease()
         
         self.ForceShutDown()
-        self.Startup(self.newenv, False, True)
         
         try:
+            # Upgrade pg_control first, and start up the database with
+            # the upgrade flag on.
+            self.SetCatVersion(True)
+            self.Startup(self.newenv, False, True)
             runfile = "%s/share/postgresql/upgrade/upg2_catupgrade.sql" % self.newhome
             self.ExecuteSQLFileOnAllDBs(runfile)
             self.Shutdown()
-            self.SetCatVersion(True)
             self.Startup(self.newenv, False, False)
             self.PerformPostUpgrade()
         except:

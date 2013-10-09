@@ -2246,8 +2246,14 @@ FormatControl()
 		case DB_IN_CRASH_RECOVERY:
 			dbState = "IN CRASH RECOVERY";
 			break;
-		case DB_IN_ARCHIVE_RECOVERY:
-			dbState = "IN ARCHIVE RECOVERY";
+		case DB_IN_STANDBY_MODE:
+			dbState = "IN STANDBY MODE";
+			break;
+		case DB_IN_STANDBY_PROMOTED:
+			dbState = "IN STANDBY MODE (PROMOTED)";
+			break;
+		case DB_IN_STANDBY_NEW_TLI_SET:
+			dbState = "IN STANDBY MODE (NEW TLI SET)";
 			break;
 		case DB_IN_PRODUCTION:
 			dbState = "IN PRODUCTION";
@@ -2275,6 +2281,8 @@ FormatControl()
 		       "             |-    Next Multi: %u\n"
 		       "             |- Next MultiOff: %u\n"
 		       "             |-          Time: %s"
+		       "          Backup Start Record: Log File (%u) Offset (0x%08x)\n"
+		       "End-of-Backup Record Required: %s\n"
 		       "       Maximum Data Alignment: %u\n"
 		       "        Floating-Point Sample: %.7g%s\n"
 		       "          Database Block Size: %u\n"
@@ -2304,6 +2312,8 @@ FormatControl()
 		       checkPoint->nextXid, checkPoint->nextOid,
 		       checkPoint->nextMulti, checkPoint->nextMultiOffset,
 		       ctime(&checkPoint->time),
+		       controlData->backupStartPoint.xlogid, controlData->backupStartPoint.xrecoff,
+		       controlData->backupEndRequired ? "yes" : "no",
 		       controlData->maxAlign,
 		       controlData->floatFormat,
 		       (controlData->floatFormat == FLOATFORMAT_VALUE ?

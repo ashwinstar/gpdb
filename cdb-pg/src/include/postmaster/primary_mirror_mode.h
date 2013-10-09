@@ -367,6 +367,8 @@ extern bool isTxnDir(char *path);
 extern bool isFilespaceUsedForTempFiles(Oid fsoid);
 extern bool isFilespaceUsedForTxnFiles(Oid fsoid);
 extern void primaryMirrorModeResetSpinLocks(void);
+extern void primaryMirrorSetNewDbid(int16 newdbid);
+extern int16 primaryMirrorGetNewDbid(void);
 
 #define getCurrentTempFilePath                                 \
         primaryMirrorIsUsingDefaultFilespaceForTempFiles()?    \

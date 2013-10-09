@@ -317,7 +317,7 @@ class GPUpgrade(GPUpgradeBase):
             parser.add_option('--internal-mirrors', dest='mirrors',
                               action='store_true',
                               help=optparse.SUPPRESS_HELP)
-            parser.add_option('--nocheckcat', dest='nocheckcat',
+            parser.add_option('--skip-checkcat', dest='skipcheckcat',
                               action='store_true',
                               help=optparse.SUPPRESS_HELP)
             parser.add_option('--fault-injection', dest='faultinjection',
@@ -406,10 +406,7 @@ class GPUpgrade(GPUpgradeBase):
                 self.upgrade = True
             else:
                 self.upgrade = False
-        if options.nocheckcat:
-            self.checkcat = False
-        else:
-            self.checkcat = True
+        self.skipcheckcat = options.skipcheckcat
         self.faultinjection = options.faultinjection
 
         if self.cmd == 'MASTER':
@@ -1859,7 +1856,12 @@ class GPUpgrade(GPUpgradeBase):
             # We will tag all the other segment directories after re-mirroring.
             GpCreateDBIdFile.local('create master gp_dbid file',
                                    directory=self.newmaster, dbid=1)
-            self.Startup(self.newenv, utility=True)
+
+            # Use upgrade mode to tell the backend code to do some trick,
+            # since at this point the catalog has not yet updated so there
+            # are some discrepancy between code and catalog.  The code handles
+            # that case by looking at gp_upgrade_mode flag.
+            self.Startup(self.newenv, utility=True, upgrade=True)
 
             # Move datadirectory location to gpmigrator/upgrade subdirectories
             self.Update("""
@@ -2382,7 +2384,7 @@ class GPUpgrade(GPUpgradeBase):
             # set highest oid
             # XXX: should check that this oid is higher!
             self.RunCmd("pg_resetxlog -o %d %s" % \
-                        (self.highestoid, dst), env=self.newenv)
+                        (self.highestoid, dst), env=self.oldenv)
 
     #------------------------------------------------------------
     def TransformDbs(self):
@@ -2491,6 +2493,14 @@ class GPUpgrade(GPUpgradeBase):
             '''
             Set catalog version to 'to' from 'frm'. Make sure the database
             is already set to frm.
+
+            We use gpmodcontrol to update pg_control file since in this
+            version (4.3) we change the ControlFile structure.  If only
+            catalog_version_no needs to change, we could use gpmodcatversion
+            as was previously.  In case of gpmodcontrol (but not the case
+            for gpmodcatversion), the newer environment is responsible to
+            take care of downgrade too since older version does not have
+            knowledge of the newer structure.
             '''
             (ver, state) = get_control_data(datadir)
         
@@ -2506,19 +2516,15 @@ class GPUpgrade(GPUpgradeBase):
                 raise UpgradeError("Cannot upgrade: Database did not shutdown cleanly")
 
             # gpmodcatversion is only in the 3.3 env so we must use that
-            if self.upgrade:
-                e = self.newenv
-                h = self.newhome
-            else:
-                e = self.oldenv
-                h = self.oldhome
 
-            cmd = ['%s/bin/lib/gpmodcatversion' % h,
-                   '--catversion', to, datadir]
+            cmd = ['%s/bin/lib/gpmodcontrol' % self.newhome]
+            if not self.upgrade:
+                cmd.append('--downgrade')
+            cmd.append(datadir)
             p = subprocess.Popen(cmd,
                                  shell=False,
                                  close_fds=True,
-                                 env=e,
+                                 env=self.newenv, # always newenv
                                  stdout=subprocess.PIPE,
                                  stderr=subprocess.PIPE)
             result = p.communicate()
@@ -2822,7 +2828,7 @@ class GPUpgrade(GPUpgradeBase):
     
 
             # Run the common pre-upgrade check
-            if 'CHECKCAT' not in current_state and self.checkcat:
+            if 'CHECKCAT' not in current_state:
                 self.PreUpgradeCheck()
                 self.SetState('CHECKCAT')
                 

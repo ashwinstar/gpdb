@@ -2762,6 +2762,8 @@
 
  CREATE FUNCTION pg_stat_get_backend_client_port(int4) RETURNS int4 LANGUAGE internal STABLE STRICT AS 'pg_stat_get_backend_client_port' WITH (OID=1393, DESCRIPTION="Statistics: Port number of client connected to backend");
 
+ CREATE FUNCTION pg_stat_get_backend_waiting_reason(int4) RETURNS text LANGUAGE internal STABLE STRICT AS 'pg_stat_get_backend_waiting_reason' WITH (OID=2972, DESCRIPTION="Statistics: Reason backend is waiting for");
+
  CREATE FUNCTION pg_stat_get_db_numbackends(oid) RETURNS int4 LANGUAGE internal STABLE STRICT AS 'pg_stat_get_db_numbackends' WITH (OID=1941, DESCRIPTION="Statistics: Number of backends in database");
 
  CREATE FUNCTION pg_stat_get_db_xact_commit(oid) RETURNS int8 LANGUAGE internal STABLE STRICT AS 'pg_stat_get_db_xact_commit' WITH (OID=1942, DESCRIPTION="Statistics: Transactions committed");
@@ -2784,7 +2786,9 @@
 
  CREATE FUNCTION pg_renice_session(int4, int4) RETURNS int4 LANGUAGE internal VOLATILE STRICT AS 'pg_renice_session' WITH (OID=6042, DESCRIPTION="change priority of all the backends for a given session id");
 
- CREATE FUNCTION pg_stat_get_activity(IN pid int4, OUT datid oid, OUT procpid int4, OUT usesysid oid, OUT application_name text, OUT current_query text, OUT waiting bool, OUT xact_start timestamptz, OUT query_start timestamptz, OUT backend_start timestamptz, OUT client_addr inet, OUT client_port int4, OUT sess_id int4) RETURNS SETOF pg_catalog.record LANGUAGE internal VOLATILE AS 'pg_stat_get_activity' WITH (OID=6071, DESCRIPTION="statistics: information about currently active backends");
+ CREATE FUNCTION pg_stat_get_activity(IN pid int4, OUT datid oid, OUT procpid int4, OUT usesysid oid, OUT application_name text, OUT current_query text, OUT waiting bool, OUT xact_start timestamptz, OUT query_start timestamptz, OUT backend_start timestamptz, OUT client_addr inet, OUT client_port int4, OUT sess_id int4, OUT waiting_reason text) RETURNS SETOF pg_catalog.record LANGUAGE internal VOLATILE AS 'pg_stat_get_activity' WITH (OID=6071, DESCRIPTION="statistics: information about currently active backends");
+
+ CREATE FUNCTION pg_stat_get_wal_senders(OUT pid int4, OUT state text, OUT sent_location text, OUT write_location text, OUT flush_location text, OUT replay_location text, OUT sync_priority int4, OUT sync_state text) RETURNS SETOF pg_catalog.record LANGUAGE internal STABLE AS 'pg_stat_get_wal_senders' WITH (OID=3099, DESCRIPTION="statistics: information about currently active replication");
 
  CREATE FUNCTION encode(bytea, text) RETURNS text LANGUAGE internal IMMUTABLE STRICT AS 'binary_encode' WITH (OID=1946, DESCRIPTION="Convert bytea value into some ascii-only text string");
 
@@ -5444,6 +5448,8 @@
 
 -- Segment and master administration functions, see utils/gp/segadmin.c
  CREATE FUNCTION gp_add_master_standby(text, text, _text) RETURNS int2 LANGUAGE internal VOLATILE AS 'gp_add_master_standby' WITH (OID=5046, DESCRIPTION="Perform the catalog operations necessary for adding a new standby");
+
+ CREATE FUNCTION gp_add_master_standby(text, text, _text, int4) RETURNS int2 LANGUAGE internal VOLATILE AS 'gp_add_master_standby_port' WITH (OID=5038, DESCRIPTION="Perform the catalog operations necessary for adding a new standby");
 
  CREATE FUNCTION gp_remove_master_standby() RETURNS bool LANGUAGE internal VOLATILE AS 'gp_remove_master_standby' WITH (OID=5047, DESCRIPTION="Remove a master standby from the system catalog");
 

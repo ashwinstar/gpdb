@@ -39,6 +39,7 @@
 #include "miscadmin.h"
 #include "pgtime.h"
 #include "postmaster/postmaster.h"
+#include "replication/walsender.h"
 #include "utils/builtins.h"
 #include "utils/datetime.h"
 #include "utils/guc.h"
@@ -330,10 +331,10 @@ auth_failed(Port *port, int status)
  * QE. This is non-trivial because a QE some times runs at the master (i.e., an
  * entry-DB for things like master only tables).
  */
-static void
+static bool
 internal_client_authentication(Port *port)
 {
-	if (GpIdentity.dbid == MASTER_DBID && !GPStandby())
+	if (GpIdentity.segindex == MASTER_CONTENT_ID)
 	{
 		/* 
 		 * The entry-DB (or QE at the master) case.
@@ -364,9 +365,9 @@ internal_client_authentication(Port *port)
 				/* Security violation? */
 				elog(LOG, "rejecting TCP connection to master using internal"
 					 "connection protocol");
-				auth_failed(port, STATUS_ERROR);
+				return false;
 			}
-			return;
+			return true;
 		}
 		else if (port->raddr.addr.ss_family == AF_UNIX)
 		{
@@ -385,21 +386,17 @@ internal_client_authentication(Port *port)
 			if (!ident_unix(port->sock, remote_name) ||
 				!strlen(remote_name) ||
 				strcmp(local_name, remote_name) != 0)
-			{
-				auth_failed(port, STATUS_ERROR);
-			}
+				return false;
 			else
-			{
 				FakeClientAuthentication(port);
-			}
-			return;
+			return true;
 		}
 		else
 		{
 			/* Security violation? */
 			elog(LOG, "rejecting TCP connection to master using internal"
 				 "connection protocol");
-			auth_failed(port, STATUS_ERROR);
+			return false;
 		}
 	}
 	else
@@ -407,6 +404,8 @@ internal_client_authentication(Port *port)
 		/* We're on an actual segment host */	
 		FakeClientAuthentication(port);
 	}
+
+	return true;
 }
 
 static bool
@@ -437,8 +436,10 @@ ClientAuthentication(Port *port)
 	 */
 	if (is_internal_gpdb_conn(port))
 	{
-		internal_client_authentication(port);
-		return;
+		if (internal_client_authentication(port))
+			return;
+
+		/* Else, try the normal authentication */
 	}
 
 	/*
@@ -518,7 +519,6 @@ ClientAuthentication(Port *port)
 								   NULL, 0,
 								   NI_NUMERICHOST);
 
-#if 0
 				if (am_walsender)
 				{
 #ifdef USE_SSL
@@ -535,7 +535,6 @@ ClientAuthentication(Port *port)
 #endif
 				}
 				else
-#endif 
                 {
 #ifdef USE_SSL
 				ereport(FATAL,
@@ -575,7 +574,6 @@ ClientAuthentication(Port *port)
 								   NULL, 0,
 								   NI_NUMERICHOST);
 
-#if 0
 				if (am_walsender)
 				{
 #ifdef USE_SSL
@@ -592,7 +590,6 @@ ClientAuthentication(Port *port)
 #endif
 				}
 				else
-#endif
 				{
 #ifdef USE_SSL
 					ereport(FATAL,

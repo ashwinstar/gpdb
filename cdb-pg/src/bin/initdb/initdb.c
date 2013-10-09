@@ -1518,6 +1518,11 @@ setup_config(void)
 							  "@authcomment@",
 					   strcmp(authmethod, "trust") ? "" : AUTHTRUST_WARNING);
 
+	/* Replace username for replication */
+	conflines = replace_token(conflines,
+							  "@default_username@",
+							  username);
+
 	snprintf(path, sizeof(path), "%s/pg_hba.conf", pg_data);
 
 	writefile(path, conflines);

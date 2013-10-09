@@ -513,9 +513,9 @@ extern bool mdextend(SMgrRelation reln, BlockNumber blocknum, char *buffer,
 extern bool mdread(SMgrRelation reln, BlockNumber blocknum, char *buffer);
 extern bool mdwrite(SMgrRelation reln, BlockNumber blocknum, char *buffer,
 		bool isTemp);
-extern BlockNumber mdnblocks(SMgrRelation reln);
+extern BlockNumber mdnblocks(SMgrRelation reln, bool allowedNotFound);
 extern BlockNumber mdtruncate(SMgrRelation reln, BlockNumber nblocks,
-		   bool isTemp);
+		   bool isTemp, bool allowedNotFound);
 extern bool mdimmedsync(SMgrRelation reln);
 extern bool mdsync(void);
 

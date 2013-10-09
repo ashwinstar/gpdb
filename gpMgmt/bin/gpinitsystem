@@ -134,6 +134,8 @@ USAGE () {
 		$ECHO "          List of additional PostgreSQL parameters to be applied to each Master/Segment"
 		$ECHO "          postgresql.conf file during Greenplum database initialization."
 		$ECHO "      -s, standby_hostname [optional]"
+		$ECHO "      -P, standby_port [optional]"
+		$ECHO "      -F, standby_filespaces [optiona]"
 		$ECHO "      -i, do not initialize standby sync process [default:- start process]"
 		$ECHO "      -m, maximum number of connections for master instance [default ${DEFAULT_QD_MAX_CONNECT}]"
 		$ECHO "      -b, shared_buffers per instance [default $DEFAULT_BUFFERS]"
@@ -1263,7 +1265,7 @@ CREATE_QD_DB () {
 		BUILD_PERFMON $GP_DIR
 		ERROR_CHK $? "create perfmon directories and configuration file" 1
 		LOG_MSG "[INFO]:-Starting the Master in admin mode" 1
-		export PGPORT=$GP_PORT;$PG_CTL -w -l $GP_DIR/pg_log/startup.log -D $GP_DIR -o "-i -p $GP_PORT -c gp_role=utility -M master -b -1 -C -1 -z 0 -m" start >> /dev/null 2>&1
+		export PGPORT=$GP_PORT;$PG_CTL -w -l $GP_DIR/pg_log/startup.log -D $GP_DIR -o "-i -p $GP_PORT -c gp_role=utility -M master -b 1 -C -1 -z 0 -m" start >> /dev/null 2>&1
 		RET_TEXT="`$PG_CTL status -D $GP_DIR`"
 		RUNNING=`$ECHO $RET_TEXT|$EGREP -c "not running|neither"`
 		if [ $RUNNING -ne 0 ]; then
@@ -1527,7 +1529,14 @@ CREATE_STANDBY_QD () {
 		EXIT_STATUS=1
 	else
 		LOG_MSG "[INFO]:-Starting initialization of standby master $STANDBY_HOSTNAME" 1
-		export MASTER_DATA_DIRECTORY=${MASTER_DIRECTORY}/${SEG_PREFIX}-1;$INIT_STANDBY_PROG -s $STANDBY_HOSTNAME -a
+		INIT_STANDBY_ARGS=""
+		if [ x"" != x"$STANDBY_PORT" ]; then
+			INIT_STANDBY_ARGS+=" -P $STANDBY_PORT"
+		fi
+		if [ x"" != x"$STANDBY_FILESPACES" ]; then
+			INIT_STANDBY_ARGS+=" -F $STANDBY_FILESPACES"
+		fi
+		export MASTER_DATA_DIRECTORY=${MASTER_DIRECTORY}/${SEG_PREFIX}-1;$INIT_STANDBY_PROG -s $STANDBY_HOSTNAME $INIT_STANDBY_ARGS -a
 		RETCODE=$?
 		case $RETCODE in
 			0) LOG_MSG "[INFO]:-Successfully completed standby master initialization" 1 ;;
@@ -1942,7 +1951,7 @@ SET_DCA_CONFIG_SETTINGS () {
 # Main Section
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Received INT or TERM signal" 2' INT TERM
-while getopts ":v'?'aiqe:c:l:-:p:m:h:on:s:b:!DB:SI:O:" opt
+while getopts ":v'?'aiqe:c:l:-:p:m:h:on:s:P:F:b:!DB:SI:O:" opt
 		do
 		case $opt in
 				v ) VERSION_INFO ;;
@@ -1959,6 +1968,8 @@ while getopts ":v'?'aiqe:c:l:-:p:m:h:on:s:b:!DB:SI:O:" opt
 				m ) MASTER_MAX_CONNECT=$OPTARG ;;
 				b ) NEW_BUFFERS=$OPTARG ;;
 				s ) STANDBY_HOSTNAME=$OPTARG ;;
+				P ) STANDBY_PORT=$OPTARG ;;
+				F ) STANDBY_FILESPACES=$OPTARG ;;
 				n ) REQ_LOCALE_SETTING=$OPTARG ;;
 				D ) DEBUG_LEVEL=1 ;;
 				B ) BATCH_DEFAULT=$OPTARG ;;

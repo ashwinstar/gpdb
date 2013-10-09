@@ -53,6 +53,8 @@
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "pgstat.h"
+#include "replication/walsender.h"
+#include "replication/syncrep.h"
 #include "storage/fd.h"
 #include "storage/procarray.h"
 #include "storage/smgr.h"
@@ -1210,6 +1212,11 @@ void EndPrepare(GlobalTransaction gxact)
 
         XLogFlush(gxact->prepare_lsn);
 
+		/*
+		 * Now we may update the CLOG, if we wrote COMMIT record above
+		 */
+		if (max_wal_senders > 0)
+			WalSndWakeup();
         /* If we crash now, we have prepared: WAL replay will fix things */
 
         if (Debug_persistent_print)
@@ -1259,6 +1266,12 @@ void EndPrepare(GlobalTransaction gxact)
                         "", // databaseName
                         ""); // tableName
 #endif
+
+       /*
+        * Wait for synchronous replication, if required.
+        */
+        Assert(gxact->prepare_lsn.xrecoff != 0);
+        SyncRepWaitForLSN(gxact->prepare_lsn);
 
         records.tail = records.head = NULL;
 } /* end EndPrepare */
@@ -1378,7 +1391,7 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
            LWLockRelease(TwoPhaseStateLock);
 
        XLogCloseReadRecord();
-       tfRecord = XLogReadRecord(&tfXLogRecPtr, LOG);
+       tfRecord = XLogReadRecord(&tfXLogRecPtr, false, LOG);
            if (tfRecord == NULL)
            {
                    /*
@@ -1682,7 +1695,7 @@ PrescanPreparedTransactions(void)
                XLogLocationToString(tfXLogRecPtr));
 
 
-        tfRecord = XLogReadRecord(tfXLogRecPtr, LOG);
+        tfRecord = XLogReadRecord(tfXLogRecPtr, false, LOG);
         hdr = (TwoPhaseFileHeader *) XLogRecGetData(tfRecord);
         xid = hdr->xid;
 
@@ -1825,7 +1838,7 @@ void RecoverPreparedTransactions()
                      XLogLocationToString(tfXLogRecPtr));
 
 
-                tfRecord = XLogReadRecord(tfXLogRecPtr, LOG);
+                tfRecord = XLogReadRecord(tfXLogRecPtr, false, LOG);
 
                 hdr = (TwoPhaseFileHeader *) XLogRecGetData(tfRecord);
 
@@ -2031,6 +2044,9 @@ RecordTransactionCommitPrepared(TransactionId xid,
         /* Flush XLOG to disk */
         XLogFlush(recptr);
 
+			if (max_wal_senders > 0)
+				WalSndWakeup();
+
         /*
          * Crack open the gid to get the DTM start time and distributed
          * transaction id.
@@ -2055,6 +2071,14 @@ RecordTransactionCommitPrepared(TransactionId xid,
 
         /* to avoid race conditions, the parent must commit first */
         TransactionIdCommitTree(nchildren, children);
+
+        /*
+         * Wait for synchronous replication, if required.
+         *
+         * Note that at this stage we have marked clog, but still show as running
+         * in the procarray and continue to hold locks.
+         */
+         SyncRepWaitForLSN(recptr);
 
         if (persistentCommitBuffer != NULL)
                 pfree(persistentCommitBuffer);
@@ -2168,12 +2192,24 @@ RecordTransactionAbortPrepared(TransactionId xid,
         /* Always flush, since we're about to remove the 2PC state file */
         XLogFlush(recptr);
 
+			if (max_wal_senders > 0)
+				WalSndWakeup();
+
         /*
          * Mark the transaction aborted in clog.  This is not absolutely necessary
          * but we may as well do it while we are here.
          */
         TransactionIdAbort(xid);
         TransactionIdAbortTree(nchildren, children);
+
+        /*
+         * Wait for synchronous replication, if required.
+         *
+         * Note that at this stage we have marked clog, but still show as running
+         * in the procarray and continue to hold locks.
+         */
+         Assert(recptr.xrecoff != 0);
+         SyncRepWaitForLSN(recptr);
 
         if (persistentAbortBuffer != NULL)
                 pfree(persistentAbortBuffer);

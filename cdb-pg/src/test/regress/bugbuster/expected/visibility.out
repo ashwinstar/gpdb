@@ -67,16 +67,19 @@ FETCH ALL FROM curs;
 
 BEGIN ISOLATION LEVEL READ COMMITTED;
 WARNING:  there is already a transaction in progress
-ERROR:  SET TRANSACTION ISOLATION LEVEL must be called before any query
-SELECT * FROM visi ORDER BY 1,2;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
-UPDATE visi SET b=4 where b=1;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
-COMMIT;
 SELECT * FROM visi ORDER BY 1,2;
  a | b 
 ---+---
  1 | 1
+ 2 | 2
+(2 rows)
+
+UPDATE visi SET b=4 where b=1;
+COMMIT;
+SELECT * FROM visi ORDER BY 1,2;
+ a | b 
+---+---
+ 1 | 4
  2 | 2
 (2 rows)
 

@@ -101,6 +101,9 @@ NON_EXEC_STATIC void SegmentInfoSenderMain(int argc, char *argv[])
 	IsUnderPostmaster = true;
 	isSenderProcess = true;
 
+	/* Stay away from PMChildSlot */
+	MyPMChildSlot = -1;
+
 	/* reset MyProcPid */
 	MyProcPid = getpid();
 

@@ -13,8 +13,8 @@
 #include "access/heapam.h"
 #include "nodes/execnodes.h" /* Slice, SliceTable */
 #include "cdb/cdbheap.h"
-#include "cdb/cdblink.h"
 #include "cdb/cdbmotion.h"
+#include "cdb/cdbutil.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbhash.h"
 #include "executor/executor.h"

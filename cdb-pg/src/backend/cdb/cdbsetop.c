@@ -17,10 +17,10 @@
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
 
-#include "cdb/cdblink.h" /* getgpsegmentCount */
 #include "cdb/cdbllize.h"
 #include "cdb/cdbmutate.h"
 #include "cdb/cdbsetop.h"
+#include "cdb/cdbutil.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbpullup.h"
 

@@ -18,14 +18,18 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include "access/genam.h"
 #include "access/heapam.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
+#include "catalog/catquery.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_tablespace.h"
+#include "libpq/auth.h"
 #include "libpq/hba.h"
+#include "libpq/libpq-be.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbutil.h"
 #include "mb/pg_wchar.h"
@@ -33,122 +37,283 @@
 #include "pgstat.h"
 #include "postmaster/autovacuum.h"
 #include "postmaster/postmaster.h"
+#include "replication/walsender.h"
 #include "storage/backendid.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/proc.h"
 #include "storage/procarray.h"
-#include "storage/sinval.h"
+#include "storage/procsignal.h"
+#include "storage/sinvaladt.h"
 #include "storage/smgr.h"
 #include "utils/acl.h"
 #include "utils/flatfiles.h"
+#include "utils/fmgroids.h"
 #include "utils/guc.h"
+#include "utils/portal.h"
+#include "utils/ps_status.h"
 #include "utils/relcache.h"
 #include "utils/resscheduler.h"
 #include "utils/syscache.h"
 #include "utils/tqual.h"  		/* SharedSnapshot */
-#include "utils/portal.h"
 #include "pgstat.h"
 
 
-bool FindMyDatabase(const char *name, Oid *db_id, Oid *db_tablespace);
-static bool FindMyDatabaseByOid(Oid dbid, char *dbname, Oid *db_tablespace);
+static HeapTuple GetDatabaseTuple(const char *dbname);
+static HeapTuple GetDatabaseTupleByOid(Oid dboid);
+static void PerformAuthentication(Port *port);
 static void CheckMyDatabase(const char *name, bool am_superuser);
+static void ProcessRoleGUC(void);
 static void InitCommunication(void);
 static void ShutdownPostgres(int code, Datum arg);
 static bool ThereIsAtLeastOneRole(void);
+static void process_startup_options(Port *port, bool am_superuser);
 
 
 /*** InitPostgres support ***/
 
-
 /*
- * FindMyDatabase -- get the critical info needed to locate my database
+ * FindMyDatabase
  *
- * Find the named database in pg_database, return its database OID and the
- * OID of its default tablespace.  Return TRUE if found, FALSE if not.
+ * Get oids of the database and default tablespace by the database name.
+ * Returns true if succeeded.
  *
- * Since we are not yet up and running as a backend, we cannot look directly
- * at pg_database (we can't obtain locks nor participate in transactions).
- * So to get the info we need before starting up, we must look at the "flat
- * file" copy of pg_database that is helpfully maintained by flatfiles.c.
- * This is subject to various race conditions, so after we have the
- * transaction infrastructure started, we have to recheck the information;
- * see InitPostgres.
+ * XXX: This shouldn't be necessary, but for now it's here for fts, etc.
  */
 bool
-FindMyDatabase(const char *name, Oid *db_id, Oid *db_tablespace)
+FindMyDatabase(const char *dbname, Oid *db_id, Oid *db_tablespace)
 {
-	bool		result = false;
-	char	   *filename;
-	FILE	   *db_file;
-	char		thisname[NAMEDATALEN];
-	TransactionId db_frozenxid;
+	HeapTuple		tuple;
+	Form_pg_database dbform;
 
-	filename = database_getflatfilename();
-	db_file = AllocateFile(filename, "r");
-	if (db_file == NULL)
-		ereport(FATAL,
-				(errcode_for_file_access(),
-				 errmsg("could not open file \"%s\": %m", filename)));
+	tuple = GetDatabaseTuple(dbname);
 
-	while (read_pg_database_line(db_file, thisname, db_id,
-								 db_tablespace, &db_frozenxid))
-	{
-		if (strcmp(thisname, name) == 0)
-		{
-			result = true;
-			break;
-		}
-	}
+	if (!HeapTupleIsValid(tuple))
+		return false;
 
-	FreeFile(db_file);
-	pfree(filename);
+	/* Return oids to the caller */
+	dbform = (Form_pg_database) GETSTRUCT(tuple);
+	*db_id = HeapTupleGetOid(tuple);
+	*db_tablespace = dbform->dattablespace;
 
-	return result;
+	/* Be tidy */
+	pfree(tuple);
+
+	return true;
 }
 
 /*
- * FindMyDatabaseByOid
+ * GetDatabaseTuple -- fetch the pg_database row for a database
  *
- * As above, but the actual database Id is known.  Return its name and the
- * tablespace OID.	Return TRUE if found, FALSE if not.  The same restrictions
- * as FindMyDatabase apply.
+ * This is used during backend startup when we don't yet have any access to
+ * system catalogs in general.	In the worst case, we can seqscan pg_database
+ * using nothing but the hard-wired descriptor that relcache.c creates for
+ * pg_database.  In more typical cases, relcache.c was able to load
+ * descriptors for both pg_database and its indexes from the shared relcache
+ * cache file, and so we can do an indexscan.  criticalSharedRelcachesBuilt
+ * tells whether we got the cached descriptors.
  */
-static bool
-FindMyDatabaseByOid(Oid dbid, char *dbname, Oid *db_tablespace)
+static HeapTuple
+GetDatabaseTuple(const char *dbname)
 {
-	bool		result = false;
-	char	   *filename;
-	FILE	   *db_file;
-	Oid			db_id;
-	char		thisname[NAMEDATALEN];
-	TransactionId db_frozenxid;
+	HeapTuple	tuple;
+	Relation	relation;
+	SysScanDesc scan;
+	ScanKeyData key[1];
 
-	filename = database_getflatfilename();
-	db_file = AllocateFile(filename, "r");
-	if (db_file == NULL)
-		ereport(FATAL,
-				(errcode_for_file_access(),
-				 errmsg("could not open file \"%s\": %m", filename)));
+	/*
+	 * form a scan key
+	 */
+	ScanKeyInit(&key[0],
+				Anum_pg_database_datname,
+				BTEqualStrategyNumber, F_NAMEEQ,
+				CStringGetDatum(dbname));
 
-	while (read_pg_database_line(db_file, thisname, &db_id,
-								 db_tablespace, &db_frozenxid))
-	{
-		if (dbid == db_id)
-		{
-			result = true;
-			strlcpy(dbname, thisname, NAMEDATALEN);
-			break;
-		}
-	}
+	/*
+	 * Open pg_database and fetch a tuple.	Force heap scan if we haven't yet
+	 * built the critical shared relcache entries (i.e., we're starting up
+	 * without a shared relcache cache file).
+	 */
+	relation = heap_open(DatabaseRelationId, AccessShareLock);
+	scan = systable_beginscan(relation, DatabaseNameIndexId,
+							  criticalSharedRelcachesBuilt,
+							  SnapshotNow,
+							  1, key);
 
-	FreeFile(db_file);
-	pfree(filename);
+	tuple = systable_getnext(scan);
 
-	return result;
+	/* Must copy tuple before releasing buffer */
+	if (HeapTupleIsValid(tuple))
+		tuple = heap_copytuple(tuple);
+
+	/* all done */
+	systable_endscan(scan);
+	heap_close(relation, AccessShareLock);
+
+	return tuple;
 }
 
+/*
+ * GetDatabaseTupleByOid -- as above, but search by database OID
+ */
+static HeapTuple
+GetDatabaseTupleByOid(Oid dboid)
+{
+	HeapTuple	tuple;
+	Relation	relation;
+	SysScanDesc scan;
+	ScanKeyData key[1];
+
+	/*
+	 * form a scan key
+	 */
+	ScanKeyInit(&key[0],
+				ObjectIdAttributeNumber,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(dboid));
+
+	/*
+	 * Open pg_database and fetch a tuple.	Force heap scan if we haven't yet
+	 * built the critical shared relcache entries (i.e., we're starting up
+	 * without a shared relcache cache file).
+	 */
+	relation = heap_open(DatabaseRelationId, AccessShareLock);
+	scan = systable_beginscan(relation, DatabaseOidIndexId,
+							  criticalSharedRelcachesBuilt,
+							  SnapshotNow,
+							  1, key);
+
+	tuple = systable_getnext(scan);
+
+	/* Must copy tuple before releasing buffer */
+	if (HeapTupleIsValid(tuple))
+		tuple = heap_copytuple(tuple);
+
+	/* all done */
+	systable_endscan(scan);
+	heap_close(relation, AccessShareLock);
+
+	return tuple;
+}
+
+
+/*
+ * PerformAuthentication -- authenticate a remote client
+ *
+ * returns: nothing.  Will not return at all if there's any failure.
+ */
+static void
+PerformAuthentication(Port *port)
+{
+	/* This should be set already, but let's make sure */
+	ClientAuthInProgress = true;	/* limit visibility of log messages */
+
+	/*
+	 * In EXEC_BACKEND case, we didn't inherit the contents of pg_hba.conf
+	 * etcetera from the postmaster, and have to load them ourselves.  Note we
+	 * are loading them into the startup transaction's memory context, not
+	 * PostmasterContext, but that shouldn't matter.
+	 *
+	 * FIXME: [fork/exec] Ugh.	Is there a way around this overhead?
+	 */
+#ifdef EXEC_BACKEND
+	if (!load_hba())
+	{
+		/*
+		 * It makes no sense to continue if we fail to load the HBA file,
+		 * since there is no way to connect to the database in this case.
+		 */
+		ereport(FATAL,
+				(errmsg("could not load pg_hba.conf")));
+	}
+	load_ident();
+#endif
+
+	/*
+	 * Set up a timeout in case a buggy or malicious client fails to respond
+	 * during authentication.  Since we're inside a transaction and might do
+	 * database access, we have to use the statement_timeout infrastructure.
+	 */
+	if (!enable_sig_alarm(AuthenticationTimeout * 1000, true))
+		elog(FATAL, "could not set timer for authorization timeout");
+
+	/*
+	 * Now perform authentication exchange.
+	 */
+	ClientAuthentication(port); /* might not return, if failure */
+
+	/*
+	 * Done with authentication.  Disable the timeout, and log if needed.
+	 */
+	if (!disable_sig_alarm(true))
+		elog(FATAL, "could not disable timer for authorization timeout");
+
+	if (Log_connections)
+	{
+		if (am_walsender)
+			ereport(LOG,
+					(errmsg("replication connection authorized: user=%s",
+							port->user_name)));
+		else
+			ereport(LOG,
+					(errmsg("connection authorized: user=%s database=%s",
+							port->user_name, port->database_name)));
+	}
+
+	set_ps_display("startup", false);
+
+	ClientAuthInProgress = false;		/* client_min_messages is active now */
+}
+
+
+/*
+ * ProcessRoleGUC --
+ * We now process pg_authid.rolconfig separately from InitializeSessionUserId,
+ * since it's too early to access toast table before initializing all
+ * relcaches in phase3.
+ */
+static void
+ProcessRoleGUC(void)
+{
+	cqContext  *pcqCtx;
+	Oid			roleId;
+	HeapTuple	roleTup;
+	Datum		datum;
+	bool		isnull;
+
+	/* This should have been set by now */
+	roleId = GetUserId();
+	Assert(OidIsValid(roleId));
+
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_authid "
+				" WHERE oid = :1",
+				ObjectIdGetDatum(roleId)));
+
+	roleTup = caql_getnext(pcqCtx);
+
+	if (!HeapTupleIsValid(roleTup))
+		ereport(FATAL,
+				(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
+				 errmsg("role %u does not exist", roleId),
+				 errOmitLocation(true), errSendAlert(false)));
+
+	/*
+	 * Set up user-specific configuration variables.  This is a good place to
+	 * do it so we don't have to read pg_authid twice during session startup.
+	 */
+	datum = caql_getattr(pcqCtx,
+						 Anum_pg_authid_rolconfig, &isnull);
+	if (!isnull)
+	{
+		ArrayType  *a = DatumGetArrayTypeP(datum);
+
+		ProcessGUCArray(a, PGC_S_USER);
+	}
+
+	caql_endscan(pcqCtx);
+}
 
 /*
  * CheckMyDatabase -- fetch information from the pg_database entry for our DB
@@ -159,7 +324,7 @@ CheckMyDatabase(const char *name, bool am_superuser)
 	HeapTuple	tup;
 	Form_pg_database dbform;
 
-	/* Fetch our real pg_database row */
+	/* Fetch our pg_database row normally, via syscache */
 	tup = SearchSysCache(DATABASEOID,
 						 ObjectIdGetDatum(MyDatabaseId),
 						 0, 0, 0);
@@ -183,24 +348,21 @@ CheckMyDatabase(const char *name, bool am_superuser)
 	 * a way to recover from disabling all access to all databases, for
 	 * example "UPDATE pg_database SET datallowconn = false;".
 	 *
-	 * We do not enforce them for the autovacuum worker processes either.
+	 * We do not enforce them for autovacuum worker processes either.
 	 */
 	if (IsUnderPostmaster && !IsAutoVacuumProcess())
 	{
 		/*
 		 * Check that the database is currently allowing connections.
-		 * (exception during upgrade_mode)
 		 */
 		if (gp_upgrade_mode && !dbform->datallowconn)
-	        elog(INFO, "Connecting to no-connection db in upgrade mode.");
+			elog(INFO, "Connecting to no-connection db in upgrade mode.");
 
 		if (!dbform->datallowconn && !gp_upgrade_mode)
 			ereport(FATAL,
 					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 			 errmsg("database \"%s\" is not currently accepting connections",
-					name),
-			 errOmitLocation(true),
-			 errSendAlert(false)));
+					name)));
 
 		/*
 		 * Check privilege to connect to the database.	(The am_superuser test
@@ -213,9 +375,7 @@ CheckMyDatabase(const char *name, bool am_superuser)
 			ereport(FATAL,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 					 errmsg("permission denied for database \"%s\"", name),
-					 errdetail("User does not have CONNECT privilege."),
-					 errOmitLocation(true),
-					 errSendAlert(false)));
+					 errdetail("User does not have CONNECT privilege.")));
 
 		/*
 		 * Check connection limit for this database.
@@ -233,9 +393,7 @@ CheckMyDatabase(const char *name, bool am_superuser)
 			ereport(FATAL,
 					(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
 					 errmsg("too many connections for database \"%s\"",
-							name),
-					 errOmitLocation(true),
-					 errSendAlert(false)));
+							name)));
 	}
 
 	/*
@@ -301,6 +459,37 @@ InitCommunication(void)
 	}
 }
 
+/*
+ * pg_split_opts -- split a string of options and append it to an argv array
+ *
+ * NB: the input string is destructively modified!	Also, caller is responsible
+ * for ensuring the argv array is large enough.  The maximum possible number
+ * of arguments added by this routine is (strlen(optstr) + 1) / 2.
+ *
+ * Since no current POSTGRES arguments require any quoting characters,
+ * we can use the simple-minded tactic of assuming each set of space-
+ * delimited characters is a separate argv element.
+ *
+ * If you don't like that, well, we *used* to pass the whole option string
+ * as ONE argument to execl(), which was even less intelligent...
+ */
+void
+pg_split_opts(char **argv, int *argcp, char *optstr)
+{
+	while (*optstr)
+	{
+		while (isspace((unsigned char) *optstr))
+			optstr++;
+		if (*optstr == '\0')
+			break;
+		argv[(*argcp)++] = optstr;
+		while (*optstr && !isspace((unsigned char) *optstr))
+			optstr++;
+		if (*optstr)
+			*optstr++ = '\0';
+	}
+}
+
 
 /*
  * Early initialization of a backend (either standalone or under postmaster).
@@ -334,8 +523,9 @@ BaseInit(void)
  *		Initialize POSTGRES.
  *
  * The database can be specified by name, using the in_dbname parameter, or by
- * OID, using the dboid parameter.	In the latter case, the computed database
- * name is passed out to the caller as a palloc'ed string in out_dbname.
+ * OID, using the dboid parameter.	In the latter case, the actual database
+ * name can be returned to the caller in out_dbname.  If out_dbname isn't
+ * NULL, it must point to a buffer of size NAMEDATALEN.
  *
  * In bootstrap mode no parameters are used.
  *
@@ -350,9 +540,9 @@ BaseInit(void)
  *		Be very careful with the order of calls in the InitPostgres function.
  * --------------------------------
  */
-bool
+void
 InitPostgres(const char *in_dbname, Oid dboid, const char *username,
-			 char **out_dbname)
+			 char *out_dbname)
 {
 	bool		bootstrap = IsBootstrapProcessingMode();
 	bool		autovacuum = IsAutoVacuumProcess();
@@ -361,60 +551,7 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	char		dbname[NAMEDATALEN];
 
 	/*
-	 * Set up the global variables holding database id and path.  But note we
-	 * won't actually try to touch the database just yet.
-	 *
-	 * We take a shortcut in the bootstrap case, otherwise we have to look up
-	 * the db name in pg_database.
-	 */
-	if (bootstrap)
-	{
-		MyDatabaseId = TemplateDbOid;
-		MyDatabaseTableSpace = DEFAULTTABLESPACE_OID;
-	}
-	else
-	{
-		/*
-		 * Find tablespace of the database we're about to open. Since we're
-		 * not yet up and running we have to use one of the hackish
-		 * FindMyDatabase variants, which look in the flat-file copy of
-		 * pg_database.
-		 *
-		 * If the in_dbname param is NULL, lookup database by OID.
-		 */
-		if (in_dbname == NULL)
-		{
-			if (!FindMyDatabaseByOid(dboid, dbname, &MyDatabaseTableSpace))
-				ereport(FATAL,
-						(errcode(ERRCODE_UNDEFINED_DATABASE),
-						 errmsg("database %u does not exist", dboid),
-						 errSendAlert(false)));
-			MyDatabaseId = dboid;
-			/* pass the database name to the caller */
-			*out_dbname = pstrdup(dbname);
-		}
-		else
-		{
-			if (!FindMyDatabase(in_dbname, &MyDatabaseId, &MyDatabaseTableSpace))
-				ereport(FATAL,
-						(errcode(ERRCODE_UNDEFINED_DATABASE),
-						 errmsg("database \"%s\" does not exist",
-								in_dbname),
-						 errOmitLocation(true),
-						 errSendAlert(false)));
-			/* our database name is gotten from the caller */
-			strlcpy(dbname, in_dbname, NAMEDATALEN);
-		}
-	}
-
-	fullpath = GetDatabasePath(MyDatabaseId, MyDatabaseTableSpace);
-
-	SetDatabasePath(fullpath);
-
-	/*
-	 * Finish filling in the PGPROC struct, and add it to the ProcArray. (We
-	 * need to know MyDatabaseId before we can do this, since it's entered
-	 * into the PGPROC struct.)
+	 * Add my PGPROC struct to the ProcArray.
 	 *
 	 * Once I have done this, I am visible to other backends!
 	 */
@@ -428,10 +565,13 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	 */
 	MyBackendId = InvalidBackendId;
 
-	InitBackendSharedInvalidationState();
+	SharedInvalBackendInit(false);
 
 	if (MyBackendId > MaxBackends || MyBackendId <= 0)
 		elog(FATAL, "bad backend id: %d", MyBackendId);
+
+	/* Now that we have a BackendId, we can participate in ProcSignal */
+	ProcSignalInit(MyBackendId);
 
 	/*
 	 * bufmgr needs another initialization call too
@@ -462,6 +602,12 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 		pgstat_initialize();
 
 	/*
+	 * Load relcache entries for the shared system catalogs.  This must create
+	 * at least entries for pg_database and catalogs used for authentication.
+	 */
+	RelationCacheInitializePhase2();
+
+	/*
 	 * Set up process-exit callback to do pre-shutdown cleanup.  This has to
 	 * be after we've initialized all the low-level modules like the buffer
 	 * manager, because during shutdown this has to run before the low-level
@@ -471,6 +617,8 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	 * AbortTransaction call to clean up.
 	 */
 	on_shmem_exit(ShutdownPostgres, 0);
+
+	/* TODO: autovacuum launcher should be done here? */
 
 	/*
 	 * Start a new transaction here before first access to db, and get a
@@ -482,79 +630,6 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 		StartTransactionCommand();
 		(void) GetTransactionSnapshot();
 	}
-
-	/*
-	 * Now that we have a transaction, we can take locks.  Take a writer's
-	 * lock on the database we are trying to connect to.  If there is a
-	 * concurrently running DROP DATABASE on that database, this will block us
-	 * until it finishes (and has updated the flat file copy of pg_database).
-	 *
-	 * Note that the lock is not held long, only until the end of this startup
-	 * transaction.  This is OK since we are already advertising our use of
-	 * the database in the PGPROC array; anyone trying a DROP DATABASE after
-	 * this point will see us there.
-	 *
-	 * Note: use of RowExclusiveLock here is reasonable because we envision
-	 * our session as being a concurrent writer of the database.  If we had a
-	 * way of declaring a session as being guaranteed-read-only, we could use
-	 * AccessShareLock for such sessions and thereby not conflict against
-	 * CREATE DATABASE.
-	 */
-	if (!bootstrap)
-		LockSharedObject(DatabaseRelationId, MyDatabaseId, 0,
-						 RowExclusiveLock);
-
-	/*
-	 * Recheck the flat file copy of pg_database to make sure the target
-	 * database hasn't gone away.  If there was a concurrent DROP DATABASE,
-	 * this ensures we will die cleanly without creating a mess.
-	 */
-	if (!bootstrap)
-	{
-		Oid			dbid2;
-		Oid			tsid2;
-
-		if (!FindMyDatabase(dbname, &dbid2, &tsid2) ||
-			dbid2 != MyDatabaseId || tsid2 != MyDatabaseTableSpace)
-			ereport(FATAL,
-					(errcode(ERRCODE_UNDEFINED_DATABASE),
-					 errmsg("database \"%s\" does not exist",
-							dbname),
-					 errdetail("It seems to have just been dropped or renamed.")));
-	}
-
-	/*
-	 * Now we should be able to access the database directory safely. Verify
-	 * it's there and looks reasonable.
-	 */
-	if (!bootstrap)
-	{
-		if (access(fullpath, F_OK) == -1)
-		{
-			if (errno == ENOENT)
-				ereport(FATAL,
-						(errcode(ERRCODE_UNDEFINED_DATABASE),
-						 errmsg("database \"%s\" does not exist",
-								dbname),
-						 errdetail("The database subdirectory \"%s\" is missing.",
-								   fullpath)));
-			else
-				ereport(FATAL,
-						(errcode_for_file_access(),
-						 errmsg("could not access directory \"%s\": %m",
-								fullpath)));
-		}
-
-		ValidatePgVersion(fullpath);
-	}
-
-	/*
-	 * It's now possible to do real access to the system catalogs.
-	 *
-	 * Load relcache entries for the system catalogs.  This must create at
-	 * least the minimum set of "nailed-in" cache entries.
-	 */
-	RelationCacheInitializePhase2();
 
 	/*
 	 * Figure out our postgres user id, and see if we are a superuser.
@@ -581,21 +656,11 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	else
 	{
 		/* normal multiuser case */
+		Assert(MyProcPort != NULL);
+		PerformAuthentication(MyProcPort);
 		InitializeSessionUserId(username);
 		am_superuser = superuser();
 	}
-
-	/* set up ACL framework (so CheckMyDatabase can check permissions) */
-	initialize_acl();
-
-	/*
-	 * Read the real pg_database row for our database, check permissions and
-	 * set up database-specific GUC settings.  We can't do this until all the
-	 * database-access infrastructure is up.  (Also, it wants to know if the
-	 * user is a superuser, so the above stuff has to happen first.)
-	 */
-	if (!bootstrap)
-		CheckMyDatabase(dbname, am_superuser);
 
 	/*
 	 * Check a normal user hasn't connected to a superuser reserved slot.
@@ -610,9 +675,243 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 				 errSendAlert(true)));
 
 	/*
-	 * Initialize various default states that can't be set up until we've
-	 * selected the active user and gotten the right GUC settings.
+	 * If walsender, we don't want to connect to any particular database. Just
+	 * finish the backend startup by processing any options from the startup
+	 * packet, and we're done.
 	 */
+	if (am_walsender)
+	{
+		Assert(!bootstrap);
+
+		/*
+		 * We don't have replication role, which existed in postgres.
+		 */
+		if (!superuser())
+			ereport(FATAL,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("must be superuser role to start walsender")));
+
+		/* process any options passed in the startup packet */
+		if (MyProcPort != NULL)
+			process_startup_options(MyProcPort, am_superuser);
+
+		/* Apply PostAuthDelay as soon as we've read all options */
+		if (PostAuthDelay > 0)
+			pg_usleep(PostAuthDelay * 1000000L);
+
+		/* initialize client encoding */
+		InitializeClientEncoding();
+
+		/* report this backend in the PgBackendStatus array */
+		pgstat_bestart();
+
+		/* close the transaction we started above */
+		CommitTransactionCommand();
+
+		return;
+	}
+
+	/*
+	 * Set up the global variables holding database id and path.  But note we
+	 * won't actually try to touch the database just yet.
+	 *
+	 * We take a shortcut in the bootstrap case, otherwise we have to look up
+	 * the db name in pg_database.
+	 */
+	if (bootstrap)
+	{
+		MyDatabaseId = TemplateDbOid;
+		MyDatabaseTableSpace = DEFAULTTABLESPACE_OID;
+	}
+	else if (in_dbname != NULL)
+	{
+		HeapTuple	tuple;
+		Form_pg_database dbform;
+
+		tuple = GetDatabaseTuple(in_dbname);
+		if (!HeapTupleIsValid(tuple))
+			ereport(FATAL,
+					(errcode(ERRCODE_UNDEFINED_DATABASE),
+					 errmsg("database \"%s\" does not exist", in_dbname)));
+		dbform = (Form_pg_database) GETSTRUCT(tuple);
+		MyDatabaseId = HeapTupleGetOid(tuple);
+		MyDatabaseTableSpace = dbform->dattablespace;
+		/* take database name from the caller, just for paranoia */
+		strlcpy(dbname, in_dbname, sizeof(dbname));
+		pfree(tuple);
+	}
+	else
+	{
+		/* caller specified database by OID */
+		HeapTuple	tuple;
+		Form_pg_database dbform;
+
+		tuple = GetDatabaseTupleByOid(dboid);
+		if (!HeapTupleIsValid(tuple))
+			ereport(FATAL,
+					(errcode(ERRCODE_UNDEFINED_DATABASE),
+					 errmsg("database %u does not exist", dboid)));
+		dbform = (Form_pg_database) GETSTRUCT(tuple);
+		MyDatabaseId = HeapTupleGetOid(tuple);
+		MyDatabaseTableSpace = dbform->dattablespace;
+		Assert(MyDatabaseId == dboid);
+		strlcpy(dbname, NameStr(dbform->datname), sizeof(dbname));
+		/* pass the database name back to the caller */
+		if (out_dbname)
+			strcpy(out_dbname, dbname);
+		pfree(tuple);
+	}
+
+	/* Now we can mark our PGPROC entry with the database ID */
+	/* (We assume this is an atomic store so no lock is needed) */
+	MyProc->databaseId = MyDatabaseId;
+
+	/*
+	 * Now, take a writer's lock on the database we are trying to connect to.
+	 * If there is a concurrently running DROP DATABASE on that database, this
+	 * will block us until it finishes (and has committed its update of
+	 * pg_database).
+	 *
+	 * Note that the lock is not held long, only until the end of this startup
+	 * transaction.  This is OK since we are already advertising our use of
+	 * the database in the PGPROC array; anyone trying a DROP DATABASE after
+	 * this point will see us there.
+	 *
+	 * Note: use of RowExclusiveLock here is reasonable because we envision
+	 * our session as being a concurrent writer of the database.  If we had a
+	 * way of declaring a session as being guaranteed-read-only, we could use
+	 * AccessShareLock for such sessions and thereby not conflict against
+	 * CREATE DATABASE.
+	 */
+	if (!bootstrap)
+		LockSharedObject(DatabaseRelationId, MyDatabaseId, 0,
+						 RowExclusiveLock);
+
+	/*
+	 * Recheck pg_database to make sure the target database hasn't gone away.
+	 * If there was a concurrent DROP DATABASE, this ensures we will die
+	 * cleanly without creating a mess.
+	 */
+	if (!bootstrap)
+	{
+		HeapTuple	tuple;
+
+		tuple = GetDatabaseTuple(dbname);
+		if (!HeapTupleIsValid(tuple) ||
+			MyDatabaseId != HeapTupleGetOid(tuple) ||
+			MyDatabaseTableSpace != ((Form_pg_database) GETSTRUCT(tuple))->dattablespace)
+			ereport(FATAL,
+					(errcode(ERRCODE_UNDEFINED_DATABASE),
+					 errmsg("database \"%s\" does not exist", dbname),
+			   errdetail("It seems to have just been dropped or renamed.")));
+	}
+
+	fullpath = GetDatabasePath(MyDatabaseId, MyDatabaseTableSpace);
+
+	if (!bootstrap)
+	{
+		if (access(fullpath, F_OK) == -1)
+		{
+			if (errno == ENOENT)
+				ereport(FATAL,
+						(errcode(ERRCODE_UNDEFINED_DATABASE),
+						 errmsg("database \"%s\" does not exist",
+								dbname),
+					errdetail("The database subdirectory \"%s\" is missing.",
+							  fullpath)));
+			else
+				ereport(FATAL,
+						(errcode_for_file_access(),
+						 errmsg("could not access directory \"%s\": %m",
+								fullpath)));
+		}
+
+		ValidatePgVersion(fullpath);
+	}
+
+	SetDatabasePath(fullpath);
+
+	/*
+	 * It's now possible to do real access to the system catalogs.
+	 *
+	 * Load relcache entries for the system catalogs.  This must create at
+	 * least the minimum set of "nailed-in" cache entries.
+	 */
+	RelationCacheInitializePhase3();
+
+	/*
+	 * Now we have full access to catalog including toast tables,
+	 * we can process pg_authid.rolconfig.  This ought to come before
+	 * processing startup options so that it can override the settings.
+	 */
+	if (!bootstrap)
+		ProcessRoleGUC();
+
+	/* set up ACL framework (so CheckMyDatabase can check permissions) */
+	initialize_acl();
+
+	/*
+	 * Re-read the pg_database row for our database, check permissions and set
+	 * up database-specific GUC settings.  We can't do this until all the
+	 * database-access infrastructure is up.  (Also, it wants to know if the
+	 * user is a superuser, so the above stuff has to happen first.)
+	 */
+	if (!bootstrap)
+		CheckMyDatabase(dbname, am_superuser);
+
+	/*
+	 * Now process any command-line switches and any additional GUC variable
+	 * settings passed in the startup packet.	We couldn't do this before
+	 * because we didn't know if client is a superuser.
+	 */
+	if (MyProcPort != NULL)
+		process_startup_options(MyProcPort, am_superuser);
+
+	/*
+	 * In Upgrade Mode, normal connection (i.e. dispatch mode)
+	 * is disallowed unless it's the bootstrap user and
+	 * gp_maintenance_conn GUC is set.  We cannot check it until
+	 * process_startup_options parses the GUC.
+	 */
+	if (gp_upgrade_mode && Gp_role == GP_ROLE_DISPATCH &&
+		!(GetAuthenticatedUserId() == BOOTSTRAP_SUPERUSERID &&
+			gp_maintenance_conn))
+		ereport(FATAL,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("upgrade in progress, connection refused"),
+				 errOmitLocation(true),
+				 errSendAlert(false)));
+
+	/*
+	 * Maintenance Mode: allow superuser to connect when
+	 * gp_maintenance_conn GUC is set.  We cannot check it until
+	 * process_startup_options parses the GUC.
+	 */
+	if (gp_maintenance_mode && Gp_role == GP_ROLE_DISPATCH &&
+		!(superuser() && gp_maintenance_conn))
+		ereport(FATAL,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("maintenance mode: connected by superuser only"),
+				 errOmitLocation(true),
+				 errSendAlert(false)));
+
+	/*
+	 * MPP:  If we were started in utility mode then we only want to allow
+	 * incoming sessions that specify gp_session_role=utility as well.  This
+	 * lets the bash scripts start the QD in utility mode and connect in but
+	 * protect ourselves from normal clients who might be trying to connect to
+	 * the system while we startup.
+	 */
+	if ((Gp_role == GP_ROLE_UTILITY) && (Gp_session_role != GP_ROLE_UTILITY))
+	{
+		ereport(FATAL,
+				(errcode(ERRCODE_CANNOT_CONNECT_NOW),
+				 errmsg("System was started in master-only utility mode - only utility mode connections are allowed")));
+	}
+
+	/* Apply PostAuthDelay as soon as we've read all options */
+	if (PostAuthDelay > 0)
+		pg_usleep(PostAuthDelay * 1000000L);
 
 	/* set default namespace search path */
 	InitializeSearchPath();
@@ -677,9 +976,72 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	if (!bootstrap)
 		CommitTransactionCommand();
 
-	return am_superuser;
+	return;
 }
 
+/*
+ * Process any command-line switches and any additional GUC variable
+ * settings passed in the startup packet.
+ */
+static void
+process_startup_options(Port *port, bool am_superuser)
+{
+	GucContext	gucctx;
+	ListCell   *gucopts;
+
+	gucctx = am_superuser ? PGC_SUSET : PGC_BACKEND;
+
+	/*
+	 * First process any command-line switches that were included in the
+	 * startup packet, if we are in a regular backend.
+	 */
+	if (port->cmdline_options != NULL)
+	{
+		/*
+		 * The maximum possible number of commandline arguments that could
+		 * come from port->cmdline_options is (strlen + 1) / 2; see
+		 * pg_split_opts().
+		 */
+		char	  **av;
+		int			maxac;
+		int			ac;
+
+		maxac = 2 + (strlen(port->cmdline_options) + 1) / 2;
+
+		av = (char **) palloc(maxac * sizeof(char *));
+		ac = 0;
+
+		av[ac++] = "postgres";
+
+		/* Note this mangles port->cmdline_options */
+		pg_split_opts(av, &ac, port->cmdline_options);
+
+		av[ac] = NULL;
+
+		Assert(ac < maxac);
+
+		(void) process_postgres_switches(ac, av, gucctx, NULL);
+	}
+
+	/*
+	 * Process any additional GUC variable settings passed in startup packet.
+	 * These are handled exactly like command-line variables.
+	 */
+	gucopts = list_head(port->guc_options);
+	while (gucopts)
+	{
+		char	   *name;
+		char	   *value;
+
+		name = lfirst(gucopts);
+		gucopts = lnext(gucopts);
+
+		value = lfirst(gucopts);
+		gucopts = lnext(gucopts);
+
+		SetConfigOption(name, value, gucctx, PGC_S_CLIENT);
+	}
+}
 
 /*
  * Backend-shutdown callback.  Do cleanup that we want to be sure happens

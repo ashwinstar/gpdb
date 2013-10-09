@@ -498,7 +498,7 @@ PersistentTablespaceGetFilespaces PersistentTablespace_TryGetPrimaryAndMirrorFil
 	 * Can't rely on persistent tables or memory structures on the standby so
 	 * get it from the cache maintained by the master mirror sync code
 	 */
-	if (GPStandby())
+	if (IsStandbyMode())
 	{
 		if (!mmxlog_tablespace_get_filespace(
 									tablespaceOid,

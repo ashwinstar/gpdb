@@ -45,7 +45,6 @@
 #include "catalog/gp_san_config.h"
 #include "catalog/gp_verification_history.h"
 
-#include "catalog/gp_master_mirroring.h"
 #include "catalog/gp_persistent.h"
 #include "catalog/gp_global_sequence.h"
 #include "catalog/gp_id.h"
@@ -749,8 +748,6 @@ relationId == ResourceTypeRelationId ||
 relationId == ResQueueCapabilityRelationId || 
 /* relation id: 1260 - pg_authid 20100129 */
 relationId == AuthIdRelationId || 
-/* relation id: 5008 - gp_master_mirroring 20101104 */
-relationId == GpMasterMirroringRelationId || 
 /* relation id: 5035 - gp_san_configuration 20101104 */
 relationId == GpSanConfigRelationId || 
 /* relation id: 5039 - gp_fault_strategy 20101104 */

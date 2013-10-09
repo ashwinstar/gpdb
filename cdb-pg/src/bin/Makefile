@@ -20,7 +20,7 @@ ifdef SUBDIRS
 	@for dir in $(SUBDIRS); do if [ -d $$dir/test ]; then $(MAKE) -C $$dir/test check; fi; done
 endif
 
-DIRS = initdb ipcclean pg_ctl pg_dump \
+DIRS = initdb ipcclean pg_basebackup pg_ctl pg_dump \
 	psql scripts pg_config pg_controldata pg_resetxlog \
 	gpmapreduce gpmirrortransition gpupgrade gphdfs/src/protocol_formatter
 

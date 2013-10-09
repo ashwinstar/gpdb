@@ -154,12 +154,6 @@ typedef struct XLogRecData
 extern TimeLineID ThisTimeLineID;		/* current TLI */
 extern bool InRecovery;
 
-/* 
- * In some cases, InRecovery might be true but we can still emit
- * XLOG records.
- */
-extern bool CanEmitXLogRecords;
-
 extern XLogRecPtr MyLastRecPtr;
 extern bool MyXactMadeXLogEntry;
 extern bool MyXactMadeTempRelUpdate;
@@ -173,6 +167,7 @@ extern int	XLogArchiveTimeout;
 extern char *XLOG_sync_method;
 extern const char XLOG_sync_method_default[];
 extern bool gp_keep_all_xlog;
+extern int keep_wal_segments;
 
 #define XLogArchivingActive()	(XLogArchiveCommand[0] != '\0')
 
@@ -191,6 +186,8 @@ extern bool XLog_UnconvertedCanBypassWal(void);
 
 extern char *writeBufAligned;
 
+extern bool am_startup;
+
 #ifdef WAL_DEBUG
 extern bool XLOG_DEBUG;
 #endif
@@ -206,10 +203,19 @@ extern void XLogFlush(XLogRecPtr RecPtr);
 extern void XLogFileRepFlushCache(
 	XLogRecPtr	*lastChangeTrackingEndLoc);
 
+extern void XLogGetLastRemoved(uint32 *log, uint32 *seg);
+
 extern void xlog_redo(XLogRecPtr beginLoc __attribute__((unused)), XLogRecPtr lsn __attribute__((unused)), XLogRecord *record);
 extern void xlog_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record);
 
+extern void issue_xlog_fsync(int fd, uint32 log, uint32 seg);
+
+extern bool RecoveryInProgress(void);
+extern XLogRecPtr GetInsertRecPtr(void);
+extern XLogRecPtr GetFlushRecPtr(void);
+
 extern void UpdateControlFile(void);
+extern uint64 GetSystemIdentifier(void);
 extern Size XLOGShmemSize(void);
 extern void XLOGShmemInit(void);
 extern void XLogStartupInit(void);
@@ -226,18 +232,10 @@ extern void CreateCheckPoint(bool shutdown, bool force);
 extern void XLogPutNextOid(Oid nextOid);
 extern XLogRecPtr GetRedoRecPtr(void);
 extern void GetNextXidAndEpoch(TransactionId *xid, uint32 *epoch);
-extern void XLogPopulateMasterMirroring(
-	XLogRecPtr		*redoCheckPointLoc);
 
 extern void XLogFileClose(void);
 extern void XLogGetBuffer(int startidx, int npages, char **from, Size *nbytes);
 extern void XLogGetRecoveryStart(char *callerStr, char *reasonStr, XLogRecPtr *redoCheckPointLoc, CheckPoint *redoCheckPoint);
-extern void XLogScanForStandbyEndLocation(XLogRecPtr *startLoc, XLogRecPtr *endLoc);
-extern void XLogStandbyRecoverRange(XLogRecPtr *redoCheckpointLoc, CheckPoint *redoCheckPoint, XLogRecPtr *lastRecordLoc);
-extern bool XLogQDMirrorPositionToEnd(void);
-extern bool XLogQDMirrorCatchup(XLogRecPtr *flushedLocation);
-extern bool XLogCatchupQDMirror(XLogRecPtr *standbyLocation, XLogRecPtr *flushedLocation, struct timeval *timeout, bool *shutdownGlobal);
-extern void XLogRemoveStandbyLogs(uint32 log, uint32 seg, int *nsegsremoved);
 extern void XLog_OutRec(StringInfo buf, XLogRecord *record);
 extern void XLogPrintLogNames(void);
 extern char *XLogLocationToString(XLogRecPtr *loc);
@@ -251,6 +249,7 @@ extern char *XLogLocationToString3_Long(XLogRecPtr *loc);
 extern char *XLogLocationToString4_Long(XLogRecPtr *loc);
 extern char *XLogLocationToString5_Long(XLogRecPtr *loc);
 
+extern void HandleStartupProcInterrupts(void);
 extern void StartupProcessMain(int passNum);
 
 extern int XLogReconcileEofPrimary(void);
@@ -278,7 +277,7 @@ extern void xlog_print_redo_lsn_application(
 		XLogRecPtr		lsn,
 		const char		*funcName);
 
-extern XLogRecord *XLogReadRecord(XLogRecPtr *RecPtr, int emode);
+extern XLogRecord *XLogReadRecord(XLogRecPtr *RecPtr, bool fetching_ckpt, int emode);
 
 extern void XLogCloseReadRecord(void);
 
@@ -289,5 +288,29 @@ extern void XLogReadRecoveryCommandFile(int emode);
 extern List *XLogReadTimeLineHistory(TimeLineID targetTLI);
 
 extern int XLogRecoverMirror(void);
+
+extern XLogRecPtr GetStandbyFlushRecPtr(TimeLineID *targetTLI);
+extern XLogRecPtr GetXLogReplayRecPtr(TimeLineID *targetTLI);
+extern TimeLineID GetRecoveryTargetTLI(void);
+extern int XLogFileInitExt(
+	uint32 log, uint32 seg,
+	bool *use_existent, bool use_lock);
+
+extern bool CheckPromoteSignal(bool do_unlink);
+extern void WakeupRecovery(void);
+extern void SetStandbyDbid(int16 dbid);
+extern int16 GetStandbyDbid(void);
+extern bool IsStandbyMode(void);
+
+/*
+ * Starting/stopping a base backup
+ */
+extern XLogRecPtr do_pg_start_backup(const char *backupidstr, bool fast, char **labelfile);
+extern XLogRecPtr do_pg_stop_backup(char *labelfile);
+extern void do_pg_abort_backup(void);
+
+/* File path names (all relative to $PGDATA) */
+#define BACKUP_LABEL_FILE		"backup_label"
+#define BACKUP_LABEL_OLD		"backup_label.old"
 
 #endif   /* XLOG_H */

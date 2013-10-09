@@ -123,7 +123,7 @@ SHMQueueInsertBefore(SHM_QUEUE *queue, SHM_QUEUE *elem)
  *		element.  Inserting "after" the queue head puts the elem
  *		at the head of the queue.
  */
-#ifdef NOT_USED
+//#ifdef NOT_USED
 void
 SHMQueueInsertAfter(SHM_QUEUE *queue, SHM_QUEUE *elem)
 {
@@ -146,7 +146,7 @@ SHMQueueInsertAfter(SHM_QUEUE *queue, SHM_QUEUE *elem)
 	dumpQ(queue, "in SHMQueueInsertAfter: end");
 #endif
 }
-#endif   /* NOT_USED */
+//#endif   /* NOT_USED */
 
 /*--------------------
  * SHMQueueNext -- Get the next element from a queue
@@ -175,6 +175,25 @@ Pointer
 SHMQueueNext(SHM_QUEUE *queue, SHM_QUEUE *curElem, Size linkOffset)
 {
 	SHM_QUEUE  *elemPtr = (SHM_QUEUE *) MAKE_PTR((curElem)->next);
+
+	Assert(SHM_PTR_VALID(curElem));
+
+	if (elemPtr == queue)		/* back to the queue head? */
+		return NULL;
+
+	return (Pointer) (((char *) elemPtr) - linkOffset);
+}
+
+/*--------------------
+ * SHMQueuePrev -- Get the previous element from a queue
+ *
+ * Same as SHMQueueNext, just starting at tail and moving towards head.
+ * All other comments and usage applies.
+ */
+Pointer
+SHMQueuePrev(SHM_QUEUE *queue, SHM_QUEUE *curElem, Size linkOffset)
+{
+	SHM_QUEUE  *elemPtr = (SHM_QUEUE *) MAKE_PTR((curElem)->prev);
 
 	Assert(SHM_PTR_VALID(curElem));
 

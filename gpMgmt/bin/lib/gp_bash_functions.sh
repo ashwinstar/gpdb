@@ -47,7 +47,7 @@ if [ ${#GPPATH[@]} -eq 0 ];then
 fi
 
 #GP_UNIQUE_COMMAND is used to identify the binary directory
-GP_UNIQUE_COMMAND=gpsyncmaster
+GP_UNIQUE_COMMAND=gpstart
 
 
 findCmdInPath() {
@@ -1201,6 +1201,10 @@ BUILD_MASTER_PG_HBA_FILE () {
         	CIDRADDR=$(GET_CIDRADDR $ADDR)
         	$ECHO "host     all         $USER_NAME         $CIDRADDR       trust" >> ${GP_DIR}/$PG_HBA
         done
+
+        # Add replication config
+        $ECHO "local    replication $USER_NAME         $PG_METHOD" >> ${GP_DIR}/$PG_HBA
+        $ECHO "host     replication $USER_NAME         samenet       trust" >> ${GP_DIR}/$PG_HBA
         LOG_MSG "[INFO]:-Complete Master $PG_HBA configuration"
         LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }

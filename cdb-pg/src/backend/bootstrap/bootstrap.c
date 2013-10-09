@@ -38,6 +38,7 @@
 #include "postmaster/bgwriter.h"
 #include "postmaster/checkpoint.h"
 #include "postmaster/primary_mirror_mode.h"
+#include "replication/walreceiver.h"
 #include "storage/freespace.h"
 #include "storage/ipc.h"
 #include "storage/pmsignal.h"
@@ -363,6 +364,9 @@ AuxiliaryProcessMain(int argc, char *argv[])
 			case CheckpointProcess:
 				statmsg = "checkpoint process";
 				break;
+			case WalReceiverProcess:
+				statmsg = "wal receiver process";
+				break;
 			case FilerepProcess:
 				statmsg = "filerep process";
 				break;
@@ -480,6 +484,11 @@ AuxiliaryProcessMain(int argc, char *argv[])
 			/* don't set signals, checkpoint is similar to bgwriter and has its own agenda */
 			InitXLOGAccess();
 			CheckpointMain();
+			proc_exit(1);		/* should never return */
+
+		case WalReceiverProcess:
+			/* don't set signals, walreceiver has its own agenda */
+			WalReceiverMain();
 			proc_exit(1);		/* should never return */
 
 		case FilerepProcess:

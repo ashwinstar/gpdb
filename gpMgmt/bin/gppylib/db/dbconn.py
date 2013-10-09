@@ -151,7 +151,9 @@ class DbURL:
             (canonicalize(self.pghost),self.pgport,self.pgdb,self.pguser,self.pgpass)    
 
 
-def connect(dburl, utility=False, verbose=False, encoding=None, allowSystemTableMods=None, upgrade=False):
+def connect(dburl, utility=False, verbose=False,
+            encoding=None, allowSystemTableMods=None, upgrade=False,
+            logConn=True):
 
     if utility:
         options = '-c gp_session_role=utility' 
@@ -190,7 +192,10 @@ def connect(dburl, utility=False, verbose=False, encoding=None, allowSystemTable
         cstr    = "dbname=%s" % dbbase
         retries = 1
 
-    (logger.info if timeout is not None else logger.debug)("Connecting to %s" % cstr)
+    # This flag helps to avoid logging the connection string in some special
+    # situations as requested
+    if (logConn == True):
+        (logger.info if timeout is not None else logger.debug)("Connecting to %s" % cstr)
 
     for i in range(retries):
         try:

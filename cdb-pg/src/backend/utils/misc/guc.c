@@ -35,6 +35,7 @@
 #include "access/aosegfiles.h"
 #include "access/twophase.h"
 #include "access/xact.h"
+#include "access/xlog_internal.h"
 #include "access/transam.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_type.h"
@@ -65,6 +66,8 @@
 #include "postmaster/postmaster.h"
 #include "postmaster/syslogger.h"
 #include "postmaster/backoff.h"
+#include "replication/walsender.h"
+#include "replication/walreceiver.h"
 #include "storage/fd.h"
 #include "storage/freespace.h"
 #include "storage/bfz.h"
@@ -308,6 +311,7 @@ bool		Debug_appendonly_rezero_quicklz_decompress_scratch = false;
 bool		Debug_appendonly_guard_end_quicklz_scratch = false;
 bool 		gp_local_distributed_cache_stats = false;
 bool		Debug_xlog_insert_print = false;
+bool		debug_xlog_record_read = false;
 bool		Debug_persistent_print = false;
 int			Debug_persistent_print_level = LOG;
 bool		Debug_persistent_recovery_print = true;
@@ -367,8 +371,19 @@ bool		Debug_filerep_memory_log_flush = false;
 bool		filerep_inject_listener_fault = false;
 bool		filerep_inject_db_startup_fault = false;
 bool		filerep_inject_change_tracking_recovery_fault = false;
+
+/* WAL based replication debug GUCs */
+bool	 	debug_walrepl_snd = false;
+bool	 	debug_walrepl_syncrep = false;
+bool	 	debug_walrepl_rcv = false;
+bool		debug_basebackup = false;
+
+/* Latch mechanism debug GUCs */
+bool		debug_latch = false;
+
 bool		gp_crash_recovery_suppress_ao_eof = false;
-bool        gp_keep_all_xlog = false;
+bool 	        gp_keep_all_xlog = false;
+int			keep_wal_segments = 0;
 int 		ddboost_buf_size = 512*1024;
 
 #define DEBUG_DTM_ACTION_PRIMARY_DEFAULT true
@@ -768,6 +783,8 @@ const char *const config_group_names[] =
 	gettext_noop("Write-Ahead Log / Settings"),
 	/* WAL_CHECKPOINTS */
 	gettext_noop("Write-Ahead Log / Checkpoints"),
+	/* WAL based REPLICATION */
+	gettext_noop("WAL Replication"),
 
 
 	/* QUERY_TUNING */
@@ -2588,6 +2605,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"debug_xlog_record_read", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print debug information for xlog record read."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&debug_xlog_record_read,
+		false, NULL, NULL
+	},
+
+	{
 		{"debug_persistent_print", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Print persistent file-system object debugging information."),
 			NULL,
@@ -3234,6 +3261,56 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&filerep_inject_change_tracking_recovery_fault,
+		false, NULL, NULL
+	},
+
+	{
+		{"debug_walrepl_snd", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print debug messages for WAL sender in WAL based replication (Master Mirroring)."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&debug_walrepl_snd,
+		false, NULL, NULL
+	},
+
+	{
+		{"debug_walrepl_syncrep", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print debug messages for synchronous behavior in WAL based replication (Master Mirroring)."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&debug_walrepl_syncrep,
+		false, NULL, NULL
+	},
+
+	{
+		{"debug_walrepl_rcv", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print debug messages for WAL receiver in WAL based replication (Master Mirroring)."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&debug_walrepl_rcv,
+		false, NULL, NULL
+	},
+
+	{
+		{"debug_basebackup", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print debug messages for basebackup mechanism (Master Mirroring)."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&debug_basebackup,
+		false, NULL, NULL
+	},
+
+	{
+		{"debug_latch", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print debug messages for latch mechanism."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&debug_latch,
 		false, NULL, NULL
 	},
 
@@ -5579,6 +5656,48 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&optimizer_cte_inlining_bound,
 		0, 0, INT_MAX, NULL, NULL
+	},
+
+	{
+		{"keep_wal_segments", PGC_SIGHUP, WAL_SETTINGS,
+			gettext_noop("Sets the number of WAL files held for standby servers."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&keep_wal_segments,
+		5, 0, INT_MAX, NULL, NULL
+	},
+
+	{
+		{"wal_receiver_status_interval", PGC_SUSET, WAL_REPLICATION,
+			gettext_noop("Sets the maximum interval between WAL receiver "
+						 "status reports to the primary. (Master Mirroring)"),
+			NULL,
+			GUC_UNIT_S
+		},
+		&wal_receiver_status_interval,
+		10, 0, INT_MAX / 1000, NULL, NULL
+	},
+
+	{
+		{"replication_timeout", PGC_SUSET, WAL_REPLICATION,
+			gettext_noop("Sets the maximum time to wait for WAL replication (Master Mirroring)"),
+			NULL,
+			GUC_UNIT_MS | GUC_SUPERUSER_ONLY
+		},
+		&replication_timeout,
+		60 * 1000, 0, INT_MAX, NULL, NULL
+	},
+	{
+		{"repl_catchup_within_range", PGC_SUSET, WAL_REPLICATION,
+			gettext_noop("Sets the maximum number of xlog segments allowed to lag"
+						 " when the backends can start blocking despite the WAL"
+						 " sender being in catchup phase. (Master Mirroring)"),
+			NULL,
+			GUC_SUPERUSER_ONLY
+		},
+		&repl_catchup_within_range,
+		1, 0, XLogSegsPerFile, NULL, NULL
 	},
 
 
@@ -8228,72 +8347,6 @@ ReportGUCOption(struct config_generic * record)
 
 
 /*
- * Try to interpret value as boolean value.  Valid values are: true,
- * false, yes, no, on, off, 1, 0.  If the string parses okay, return
- * true, else false.  If result is not NULL, return the parsing result
- * there.
- */
-static bool
-parse_bool(const char *value, bool *result)
-{
-	size_t		len = strlen(value);
-
-	if (pg_strncasecmp(value, "true", len) == 0)
-	{
-		if (result)
-			*result = true;
-	}
-	else if (pg_strncasecmp(value, "false", len) == 0)
-	{
-		if (result)
-			*result = false;
-	}
-
-	else if (pg_strncasecmp(value, "yes", len) == 0)
-	{
-		if (result)
-			*result = true;
-	}
-	else if (pg_strncasecmp(value, "no", len) == 0)
-	{
-		if (result)
-			*result = false;
-	}
-
-	else if (pg_strcasecmp(value, "on") == 0)
-	{
-		if (result)
-			*result = true;
-	}
-	else if (pg_strcasecmp(value, "off") == 0)
-	{
-		if (result)
-			*result = false;
-	}
-
-	else if (pg_strcasecmp(value, "1") == 0)
-	{
-		if (result)
-			*result = true;
-	}
-	else if (pg_strcasecmp(value, "0") == 0)
-	{
-		if (result)
-			*result = false;
-	}
-
-	else
-	{
-		if (result)
-			*result = false;	/* suppress compiler warning */
-		return false;
-	}
-	return true;
-}
-
-
-
-/*
  * Try to parse value as an integer.  The accepted formats are the
  * usual decimal, octal, or hexadecimal formats, optionally followed by
  * a unit name if "flags" indicates a unit is allowed.
@@ -8746,7 +8799,8 @@ set_config_option(const char *name, const char *value,
 				if (IsUnderPostmaster)
 					return true;
 			}
-			else if (context != PGC_BACKEND && context != PGC_POSTMASTER)
+			else if (context != PGC_BACKEND && context != PGC_POSTMASTER &&
+					 source != PGC_S_CLIENT)
 			{
 				ereport(elevel,
 						(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),

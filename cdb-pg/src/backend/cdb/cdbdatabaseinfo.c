@@ -832,9 +832,18 @@ DatabaseInfo_Scan(
 		snprintf(fromfile, MAXPGPATH, "%s/%s", dbDirPath, xlde->d_name);
 
 		if (lstat(fromfile, &fst) < 0)
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("could not stat file \"%s\": %m", fromfile)));
+		{
+			if (errno != ENOENT)
+				ereport(ERROR,
+						(errcode_for_file_access(),
+						 errmsg("could not stat file \"%s\": %m", fromfile)));
+			/*
+			 * If the file went away while scanning, it's no error.
+			 * This could happen especillay with shared relcache init file
+			 * that is stored in global tablespace.
+			 */
+			continue;
+		}
 
 		if (S_ISDIR(fst.st_mode))
 		{

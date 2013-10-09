@@ -161,6 +161,7 @@ extern bool	Debug_appendonly_rezero_quicklz_compress_scratch;
 extern bool	Debug_appendonly_rezero_quicklz_decompress_scratch;
 extern bool	Debug_appendonly_guard_end_quicklz_scratch;
 extern bool	Debug_xlog_insert_print;
+extern bool	debug_xlog_record_read;
 extern bool	Debug_persistent_print;
 extern int	Debug_persistent_print_level;
 extern bool	Debug_persistent_recovery_print;
@@ -208,6 +209,15 @@ extern bool filerep_inject_db_startup_fault;
 extern bool filerep_inject_change_tracking_recovery_fault;
 extern bool gp_crash_recovery_suppress_ao_eof;
 extern bool Debug_check_for_invalid_persistent_tid;
+
+/* WAL replication debug gucs */
+extern bool debug_walrepl_snd;
+extern bool debug_walrepl_syncrep;
+extern bool debug_walrepl_rcv;
+extern bool debug_basebackup;
+
+/* Latch mechanism debug GUCs */
+extern bool debug_latch;
 
 extern bool gp_upgrade_mode;
 extern bool gp_maintenance_mode;

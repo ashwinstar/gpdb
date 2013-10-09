@@ -15,9 +15,11 @@
 #ifndef _PROC_H_
 #define _PROC_H_
 
+#include "storage/latch.h"
 #include "storage/lock.h"
 #include "storage/spin.h"
 #include "storage/pg_sema.h"
+#include "access/xlog.h"
 
 #include "cdb/cdbpublic.h"  /* LocalDistribXactRef */
 
@@ -75,6 +77,8 @@ struct PGPROC
 	PGSemaphoreData sem;		/* ONE semaphore to sleep on */
 	int			waitStatus;		/* STATUS_WAITING, STATUS_OK or STATUS_ERROR */
 
+	Latch		procLatch;		/* generic latch for process */
+
 	TransactionId xid;			/* transaction currently being executed by
 								 * this proc */
 
@@ -108,6 +112,16 @@ struct PGPROC
 	LOCKMODE	waitLockMode;	/* type of lock we're waiting for */
 	LOCKMASK	heldLocks;		/* bitmask for lock types already held on this
 								 * lock object by this backend */
+
+	/*
+	 * Info to allow us to wait for synchronous replication, if needed.
+	 * waitLSN is InvalidXLogRecPtr if not waiting; set only by user backend.
+	 * syncRepState must not be touched except by owning process or WALSender.
+	 * syncRepLinks used only while holding SyncRepLock.
+	 */
+	XLogRecPtr	waitLSN;		/* waiting for this LSN or higher */
+	int			syncRepState;	/* wait state for sync rep */
+	SHM_QUEUE	syncRepLinks;	/* list link if process is in syncrep queue */
 
 	/*
 	 * All PROCLOCK objects for locks held or awaited by this backend are

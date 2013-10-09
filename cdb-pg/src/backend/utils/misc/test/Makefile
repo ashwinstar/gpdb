@@ -21,6 +21,7 @@ common_REAL_OBJS=\
     $(top_srcdir)/src/backend/storage/page/itemptr.o \
     $(top_srcdir)/src/backend/utils/adt/arrayfuncs.o \
     $(top_srcdir)/src/backend/utils/adt/arrayutils.o \
+    $(top_srcdir)/src/backend/utils/adt/bool.o \
     $(top_srcdir)/src/backend/utils/adt/datum.o \
     $(top_srcdir)/src/backend/utils/adt/like.o \
     $(top_srcdir)/src/backend/utils/adt/varlena.o \

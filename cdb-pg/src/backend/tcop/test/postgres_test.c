@@ -8,6 +8,8 @@
 #include "nodes/nodes.h"
 #include "../postgres.c"
 
+const char *progname = "postgres";
+
 /*List with multiple elements, return FALSE.*/
 void 
 test__IsTransactionExitStmtList__MultipleElementList(void **state) 

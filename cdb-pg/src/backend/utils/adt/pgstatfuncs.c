@@ -19,7 +19,11 @@
 #include "pgstat.h"
 #include "catalog/pg_type.h"
 #include "utils/builtins.h"
+#include "utils/fmgroids.h"
+#include "utils/guc.h"
 #include "utils/inet.h"
+#include "utils/lsyscache.h"
+#include "utils/syscache.h"
 #include "libpq/ip.h"
 
 /* bogus ... these externs should be in a header file */
@@ -49,6 +53,7 @@ extern Datum pg_stat_get_backend_activity_start(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_backend_start(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_backend_client_addr(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_backend_client_port(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_backend_waiting_reason(PG_FUNCTION_ARGS);
 
 extern Datum pg_stat_get_db_numbackends(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_db_xact_commit(PG_FUNCTION_ARGS);
@@ -68,6 +73,20 @@ extern Datum pg_stat_reset(PG_FUNCTION_ARGS);
 
 /* Global bgwriter statistics, from bgwriter.c */
 extern PgStat_MsgBgWriter bgwriterStats;
+
+static char *
+pgstat_waiting_string(char reason)
+{
+	switch(reason)
+	{
+		case PGBE_WAITING_LOCK:
+			return "lock";
+		case PGBE_WAITING_REPLICATION:
+			return "replication";
+		default:
+			return NULL;
+	}
+}
 
 Datum
 pg_stat_get_numscans(PG_FUNCTION_ARGS)
@@ -317,12 +336,46 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 	{
 		MemoryContext oldcontext;
 		TupleDesc	tupdesc;
+		int			nattr = 13;
 
 		funcctx = SRF_FIRSTCALL_INIT();
 
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
-		tupdesc = CreateTemplateTupleDesc(12, false);
+#if GP_VERSION_NUM >= 40300 && GP_VERSION_NUM < 40400
+		/*
+		 * During upgrade, we use normal gpstart/gpstop, which invokes this
+		 * via pg_stat_activity view.  If catalog has not upgraded yet, SQL
+		 * ends up with ERROR about discrepancy of output and definition.
+		 * so we need to check the catalog definition before deciding the
+		 * number of output column.
+		 */
+		if (gp_upgrade_mode)
+		{
+			HeapTuple	procTup;
+			Oid	   *argtypes;
+			char  **argnames;
+			char   *argmodes;
+			int		nargs;
+
+			procTup = SearchSysCache(PROCOID,
+									 ObjectIdGetDatum(F_PG_STAT_GET_ACTIVITY), 0, 0, 0);
+			if (!HeapTupleIsValid(procTup))
+				elog(ERROR, "cache lookup failed for %u", F_PG_STAT_GET_ACTIVITY);
+			nargs = get_func_arg_info(procTup, &argtypes, &argnames, &argmodes);
+			if (nargs == 13)
+				nattr = 12;
+			else
+				nattr = 13;
+
+			pfree(argtypes);
+			pfree(argnames);
+			pfree(argmodes);
+			ReleaseSysCache(procTup);
+		}
+#endif
+
+		tupdesc = CreateTemplateTupleDesc(nattr, false);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "datid", OIDOID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "procpid", INT4OID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "usesysid", OIDOID, -1, 0);
@@ -335,6 +388,9 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 		TupleDescInitEntry(tupdesc, (AttrNumber) 10, "client_addr", INETOID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 11, "client_port", INT4OID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 12, "sess_id", INT4OID, -1, 0);  /* GPDB */
+
+		if (nattr > 12)
+			TupleDescInitEntry(tupdesc, (AttrNumber) 13, "waiting_for", TEXTOID, -1, 0);
 
 		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
 
@@ -386,8 +442,8 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 	if (funcctx->call_cntr < funcctx->max_calls)
 	{
 		/* for each row */
-		Datum		values[12];
-		bool		nulls[12];
+		Datum		values[13];
+		bool		nulls[13];
 		HeapTuple	tuple;
 		PgBackendStatus *beentry;
 		SockAddr	zero_clientaddr;
@@ -431,6 +487,8 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 		/* Values only available to same user or superuser */
 		if (superuser() || beentry->st_userid == GetUserId())
 		{
+			bool		waiting;
+
 			if (*(beentry->st_activity) == '\0')
 			{
 				values[4] = CStringGetTextDatum("<command string not enabled>");
@@ -440,6 +498,7 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 				values[4] = CStringGetTextDatum(beentry->st_activity);
 			}
 
+			waiting = beentry->st_waiting != PGBE_WAITING_NONE;
 			values[5] = BoolGetDatum(beentry->st_waiting);
 
 			if (beentry->st_xact_start_timestamp != 0)
@@ -515,6 +574,21 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 					nulls[10] = true;
 				}
 			}
+			values[11] = Int32GetDatum(beentry->st_session_id);  /* GPDB */
+
+			if (funcctx->tuple_desc->natts > 12)
+			{
+				char	st_waiting = beentry->st_waiting;
+				char   *reason;
+
+				reason = pgstat_waiting_string(st_waiting);
+
+				if (reason != NULL)
+					values[12] = CStringGetTextDatum(reason);
+				else
+					nulls[12] = true;
+			}
+
 		}
 		else
 		{
@@ -526,9 +600,10 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 			nulls[8] = true;
 			nulls[9] = true;
 			nulls[10] = true;
+			values[11] = Int32GetDatum(beentry->st_session_id);
+			if (funcctx->tuple_desc->natts > 12)
+				nulls[12] = true;
 		}
-		
-		values[11] = Int32GetDatum(beentry->st_session_id);  /* GPDB */
 
 		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
 
@@ -644,11 +719,10 @@ pg_stat_get_backend_waiting(PG_FUNCTION_ARGS)
 	if (!superuser() && beentry->st_userid != GetUserId())
 		PG_RETURN_NULL();
 
-	result = beentry->st_waiting;
+	result = beentry->st_waiting != PGBE_WAITING_NONE;
 
 	PG_RETURN_BOOL(result);
 }
-
 
 Datum
 pg_stat_get_backend_activity_start(PG_FUNCTION_ARGS)
@@ -790,6 +864,27 @@ pg_stat_get_backend_client_port(PG_FUNCTION_ARGS)
 										CStringGetDatum(remote_port)));
 }
 
+Datum
+pg_stat_get_backend_waiting_reason(PG_FUNCTION_ARGS)
+{
+	int32		beid = PG_GETARG_INT32(0);
+	PgBackendStatus *beentry;
+	char	   *result;
+
+	if ((beentry = pgstat_fetch_stat_beentry(beid)) == NULL)
+		PG_RETURN_NULL();
+
+	if (!superuser() && beentry->st_userid != GetUserId())
+		PG_RETURN_NULL();
+
+	result = pgstat_waiting_string(beentry->st_waiting);
+
+	/* waiting for nothing */
+	if (result == NULL)
+		PG_RETURN_NULL();
+
+	PG_RETURN_DATUM(CStringGetTextDatum(result));
+}
 
 Datum
 pg_stat_get_db_numbackends(PG_FUNCTION_ARGS)

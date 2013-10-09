@@ -2776,21 +2776,13 @@ if (1)
 			if (defined($glob_connect));
 
 		$psql_str .= " -c \' ".
-			"select * from gp_master_mirroring " . 
-			" order by log_time desc limit 1 \' ";
+			"select * from pg_stat_replication \'";
 
 		$tabdef = `$psql_str`;
 
 		my $gp_mm_state = tablelizer($tabdef);
 
-		if (scalar(@{$gp_mm_state})
-			&& exists($gp_mm_state->[0]->{summary_state}))
-		{
-			# skip unless synchronized
-			$do_mm_skip = 
-				($gp_mm_state->[0]->{summary_state} !~
-				 m/^Synchronized$/);
-		}
+		$do_mm_skip = scalar(@{$gp_mm_state}) == 0;
 
 		warn "master mirror not synchronized"
 			if ($do_mm_skip);

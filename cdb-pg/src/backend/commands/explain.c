@@ -35,8 +35,8 @@
 #include "utils/resscheduler.h"
 #include "cdb/cdbdisp.h"                /* CheckDispatchResult() */
 #include "cdb/cdbexplain.h"             /* cdbexplain_recvExecStats */
-#include "cdb/cdblink.h"                /* getgpsegmentCount() */
 #include "cdb/cdbpullup.h"              /* cdbpullup_targetlist() */
+#include "cdb/cdbutil.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbpathlocus.h"
 #include "cdb/memquota.h"

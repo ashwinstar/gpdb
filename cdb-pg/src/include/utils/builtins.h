@@ -97,6 +97,8 @@ extern Datum isnottrue(PG_FUNCTION_ARGS);
 extern Datum isnotfalse(PG_FUNCTION_ARGS);
 extern Datum booland_statefunc(PG_FUNCTION_ARGS);
 extern Datum boolor_statefunc(PG_FUNCTION_ARGS);
+extern bool parse_bool(const char *value, bool *result);
+extern bool parse_bool_with_len(const char *value, size_t len, bool *result);
 
 /* char.c */
 extern Datum charin(PG_FUNCTION_ARGS);
@@ -812,9 +814,7 @@ extern Datum chr (PG_FUNCTION_ARGS);
 extern Datum repeat(PG_FUNCTION_ARGS);
 extern Datum ascii(PG_FUNCTION_ARGS);
 
-/* inet_net_ntop.c */
-extern char *inet_net_ntop(int af, const void *src, int bits,
-			  char *dst, size_t size);
+/* inet_cidr_ntop.c */
 extern char *inet_cidr_ntop(int af, const void *src, int bits,
 			   char *dst, size_t size);
 
@@ -1114,6 +1114,7 @@ extern Datum gp_elog(PG_FUNCTION_ARGS);
 extern Datum gp_deprecated(PG_FUNCTION_ARGS);
 
 /* utils/gp/segadmin.c */
+extern Datum gp_add_master_standby_port(PG_FUNCTION_ARGS);
 extern Datum gp_add_master_standby(PG_FUNCTION_ARGS);
 extern Datum gp_remove_master_standby(PG_FUNCTION_ARGS);
 extern Datum gp_activate_standby(PG_FUNCTION_ARGS);

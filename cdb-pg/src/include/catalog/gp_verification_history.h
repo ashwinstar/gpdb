@@ -22,7 +22,6 @@
  */
 #define GpVerificationHistoryRelationName		"gp_verification_history"
 
-#define MASTER_DBID 1
 #define MASTER_CONTENT_ID (-1)
 #define InvalidDbid 0
 

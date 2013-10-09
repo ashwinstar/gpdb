@@ -1181,7 +1181,7 @@ num_filespaces(void)
 	cqContext	 cqc;
 	int n = 0;
 
-	Insist(GpIdentity.dbid == MASTER_DBID);
+	Assert(GpIdentity.segindex == MASTER_CONTENT_ID);
 
 	/* XXX: should we do this via gp_persistent_filespace_node? */
 	n = caql_getcount(

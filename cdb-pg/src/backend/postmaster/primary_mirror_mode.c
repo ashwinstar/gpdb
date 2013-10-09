@@ -201,6 +201,14 @@ typedef struct PMModuleState
         volatile Oid txnFilespaceOID;
         volatile bool isUsingDefaultFilespaceForTxnFiles;
 
+	/*
+	 * We use PMModuleState to tell to change current dbid on the fly,
+	 * because this structure is the only sane place we could use to tell some
+	 * value from child process to postmaster.  This is mainly for master
+	 * mirroring, although it sounds bizarre to use PMModuleState for this
+	 * purpose.
+	 */
+	volatile int16 newdbid;
 } PMModuleState;
 
 static volatile PMModuleState *pmModuleState = NULL;
@@ -2648,4 +2656,37 @@ void primaryMirrorModeResetSpinLocks(void)
 	{
 		SpinLockInit(&pmModuleState->lock);
 	}
+}
+
+/*
+ * This changes the dbid of postmaster from child proces.
+ * You should carefully use this, because if any other child
+ * process has already forked with old dbid value, that process
+ * will be out of sync.
+ */
+void
+primaryMirrorSetNewDbid(int16 newdbid)
+{
+	Assert(IsUnderPostmaster);
+	assertModuleInitialized();
+	pmModuleState->newdbid = newdbid;
+	SendPostmasterSignal(PMSIGNAL_SEGCONFIG_CHANGE);
+}
+
+/*
+ * Counterpart of primaryMirrorSetNewDbid().  This is the receiver
+ * side at postmaster, so nobody else should call this function.
+ */
+int16
+primaryMirrorGetNewDbid(void)
+{
+	int16		newdbid;
+
+	Assert(!IsUnderPostmaster);
+	assertModuleInitialized();
+
+	newdbid = pmModuleState->newdbid;
+	pmModuleState->newdbid = InvalidDbid;
+
+	return newdbid;
 }

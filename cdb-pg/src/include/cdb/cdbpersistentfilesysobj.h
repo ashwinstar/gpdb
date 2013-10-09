@@ -437,8 +437,8 @@ extern void PersistentFileSysObj_ActivateStandby(
 								   PersistentFileSysObjName *fsObjName,
 								   ItemPointer persistentTid,
 								   int64 persistentSerialNum,
-								   int16 oldmaster,
 								   int16 newmaster,
+								   int16 oldmaster,
 								   bool flushToXLog);
 
 extern void PersistentFileSysObj_DoGlobalSequenceScan(void);

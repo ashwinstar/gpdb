@@ -965,7 +965,7 @@ IndexScanOK(CatCache *cache, ScanKey cur_skey)
 		 */
 		if (!criticalRelcachesBuilt)
 			return false;
-			break;
+		break;
 
 		case AMOID:
 		case AMNAME:
@@ -977,7 +977,19 @@ IndexScanOK(CatCache *cache, ScanKey cur_skey)
 			 * well just always do it.
 		     */
 		return false;
-		
+
+		case AUTHNAME:
+		case AUTHOID:
+		case AUTHMEMMEMROLE:
+
+			/*
+			 * Protect authentication lookups occurring before relcache has
+			 * collected entries for shared indexes.
+			 */
+			if (!criticalSharedRelcachesBuilt)
+				return false;
+		break;
+
 		case OPEROID:
 		
 			if (!criticalRelcachesBuilt)

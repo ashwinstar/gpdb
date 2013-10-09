@@ -148,7 +148,6 @@ class GpStop:
         self.user=gp.get_user() 
         gp.check_permissions(self.user)
         self._read_postgresqlconf()
-        gp.standby_check(self.master_datadir)   
         self._check_db_running()
         self._build_gparray()
         self._check_version()
@@ -281,31 +280,34 @@ class GpStop:
         if self.gparray.standbyMaster:
             standby=self.gparray.standbyMaster
             
-            logger.info("Stopping gpsyncmaster on standby host %s mode=fast" % standby.hostname)
+            logger.info("Stopping master standby host %s mode=fast" % standby.hostname)
             try:
-                cmd=gp.SegmentStop("stopping gpsyncmaster", standby.datadir,mode='fast',timeout=self.timeout, 
-                                   ctxt=base.REMOTE,remoteHost=standby.hostname)
-                cmd.run(validateAfter=True)                
+                cmd = gp.SegmentStop("stopping master standby",
+                                     standby.datadir, mode='fast',
+                                     timeout=self.timeout,
+                                     ctxt=base.REMOTE,
+                                     remoteHost=standby.hostname)
+                cmd.run(validateAfter=True)
             except base.ExecutionError, e:
                 logger.warning("Error occured while stopping the standby master: %s" % e)
             
             if not pg.DbStatus.remote('checking status of standby master instance',standby,standby.hostname):
-                logger.info("Successfully shutdown sync process on %s" % standby.hostname)
+                logger.info("Successfully shutdown standby process on %s" % standby.hostname)
                 return True
             else:
-                logger.warning("Process gpsyncmaster still running, will issue fast shutdown with immediate")
+                logger.warning("Process master standby still running, will issue fast shutdown with immediate")
                 try:            
-                    cmd=gp.SegmentStop("stopping gpsyncmaster", standby.datadir,mode='immediate', timeout=self.timeout, 
+                    cmd=gp.SegmentStop("stopping master standby", standby.datadir,mode='immediate', timeout=self.timeout, 
                                        ctxt=base.REMOTE,remoteHost=standby.hostname)
                     cmd.run(validateAfter=True)
                 except base.ExecutionError, e:
                     logger.warning("Error occured while stopping the standby master: %s" % e)
                     
                 if not pg.DbStatus.remote('checking status of standby master instance',standby,standby.hostname):
-                    logger.info("Successfully shutdown sync process on %s" % standby.hostname)
+                    logger.info("Successfully shutdown master standby process on %s" % standby.hostname)
                     return True
                 else:
-                    logger.error("Unable to stop gpsyncmaster on host: %s" % standby.hostname)
+                    logger.error("Unable to stop master standby on host: %s" % standby.hostname)
                     return False
         else:
             logger.info("No standby master host configured")

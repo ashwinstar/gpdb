@@ -31,15 +31,14 @@
 #include "postmaster/fork_process.h"
 #include "postmaster/postmaster.h"
 #include "postmaster/service.h"
-#include "postmaster/walsendserver.h"
 #include "storage/ipc.h"
-#include "storage/proc.h"
 #include "storage/pmsignal.h"			/* PostmasterIsAlive */
+#include "storage/proc.h"
+#include "storage/procsignal.h"
 #include "storage/sinval.h"
 #include "tcop/tcopprot.h"
 #include "utils/ps_status.h"
 #include "cdb/cdbutil.h"
-#include "cdb/cdblink.h"
 #include "access/xlog_internal.h"
 #include "utils/memutils.h"
 
@@ -841,7 +840,7 @@ ServiceMain(ServiceCtrl *serviceCtrl)
 	pqsignal(SIGALRM, handle_sig_alarm);
 
 	pqsignal(SIGPIPE, SIG_IGN);
-	pqsignal(SIGUSR1, CatchupInterruptHandler);
+	pqsignal(SIGUSR1, procsignal_sigusr1_handler);
 	/* We don't listen for async notifies */
 	pqsignal(SIGUSR2, serviceConfig->ServiceRequestShutdown);
 	pqsignal(SIGFPE, FloatExceptionHandler);

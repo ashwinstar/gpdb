@@ -250,6 +250,8 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault before EndCommand in exec_simple_query */
 	_("execsort_before_sorting"),
 		/* inject fault in ExecSort before doing the actual sort */
+	_("base_backup_post_create_checkpoint"),
+		/* inject fault after creation of checkpoint when basebackup requested */
 	_("not recognized"),
 };
 
@@ -427,7 +429,8 @@ FaultInjector_InjectFaultIfSet(
 							   char*					 tableName)
 {
 	
-	FaultInjectorEntry_s	*entryLocal;
+	FaultInjectorEntry_s   *entryShared, localEntry,
+						   *entryLocal = &localEntry;
 	char					databaseNameLocal[NAMEDATALEN];
 	char					tableNameLocal[NAMEDATALEN];
 	int						ii = 0;
@@ -451,13 +454,16 @@ FaultInjector_InjectFaultIfSet(
 			
 	LockAcquire();
 	
-	entryLocal = FaultInjector_LookupHashEntry(identifier);
-	
+	entryShared = FaultInjector_LookupHashEntry(identifier);
+
+	if (entryShared != NULL)
+		memcpy(entryLocal, entryShared, sizeof(FaultInjectorEntry_s));
+
 	LockRelease();
 	
 	/* Verify if fault injection is set */
 	
-	if (entryLocal == NULL) 
+	if (entryShared == NULL) 
 		/* fault injection is not set */
 		return FALSE;
 	
@@ -637,6 +643,14 @@ FaultInjector_InjectFaultIfSet(
 				ereport(LOG, 
 						(errmsg("fault 'NULL', fault name:'%s'  ",
 								FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier])));				
+
+				/*
+				 * Since the entry is gone already, we should NOT update
+				 * the entry below.  (There could be other places in this
+				 * function that are under the same situation, but I'm too
+				 * tired to look for them...)
+				 */
+				return entryLocal->faultInjectorType;
 			}
 			break;
 		}
@@ -1183,11 +1197,11 @@ FaultInjector_SetFaultInjection(
 						faultInjectorShmem->faultInjectorSlots--;
 					}					
 				}
-				Assert(faultInjectorShmem->faultInjectorSlots == 0);
 				LockRelease();
-					
-			} else {
-				
+				Assert(faultInjectorShmem->faultInjectorSlots == 0);
+			}
+			else
+			{
 				LockAcquire();	
 				isRemoved = FaultInjector_RemoveHashEntry(entry->faultInjectorIdentifier);
 				if (isRemoved == TRUE) {

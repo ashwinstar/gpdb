@@ -34,9 +34,10 @@
 #include "catalog/pg_database.h"
 #include "catalog/pg_tablespace.h"
 #include "storage/ipc.h"
-#include "storage/proc.h"
 #include "storage/pmsignal.h"			/* PostmasterIsAlive */
-#include "storage/sinval.h"
+#include "storage/proc.h"
+#include "storage/procsignal.h"
+#include "storage/sinvaladt.h"
 #include "tcop/tcopprot.h"
 #include "utils/ps_status.h"
 #include "storage/backendid.h"
@@ -78,7 +79,6 @@ static void SeqServerLoop(void);
 static bool processSequenceRequest( int sockfd );
 static int listenerSetup(void);
 
-extern bool FindMyDatabase(const char *name, Oid *db_id, Oid *db_tablespace);
 
 /*=========================================================================
  * GLOBAL STATE VARIABLES
@@ -385,12 +385,14 @@ NON_EXEC_STATIC void
 SeqServerMain(int argc, char *argv[])
 {
 	sigjmp_buf	local_sigjmp_buf;
-
 	char	   *fullpath;
 
 	IsUnderPostmaster = true;
 	am_seqserver = true;
-	
+
+	/* Stay away from PMChildSlot */
+	MyPMChildSlot = -1;
+
 	/* reset MyProcPid */
 	MyProcPid = getpid();
 	
@@ -422,7 +424,7 @@ SeqServerMain(int argc, char *argv[])
 	pqsignal(SIGALRM, handle_sig_alarm);
 
 	pqsignal(SIGPIPE, SIG_IGN);
-	pqsignal(SIGUSR1, CatchupInterruptHandler);
+	pqsignal(SIGUSR1, procsignal_sigusr1_handler);
 	/* We don't listen for async notifies */
 	pqsignal(SIGUSR2, RequestShutdown);
 	pqsignal(SIGFPE, FloatExceptionHandler);
@@ -481,27 +483,9 @@ SeqServerMain(int argc, char *argv[])
 	 * buffer pins).
 	 */
 	CurrentResourceOwner = ResourceOwnerCreate(NULL, "SeqServer");
-	
-	/*
-	 * In order to access the catalog, we need a database, and a
-	 * tablespace; our access to the heap is going to be slightly
-	 * limited, so we'll just use some defaults.
-	 */
-	MyDatabaseId = TemplateDbOid;
-	MyDatabaseTableSpace = DEFAULTTABLESPACE_OID;
-
-	if (!FindMyDatabase(knownDatabase, &MyDatabaseId, &MyDatabaseTableSpace))
-		ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE),
-			errmsg("database 'postgres' does not exist")));
-
-	fullpath = GetDatabasePath(MyDatabaseId, MyDatabaseTableSpace);
-
-	SetDatabasePath(fullpath);
 
 	/*
-	 * Finish filling in the PGPROC struct, and add it to the ProcArray. (We
-	 * need to know MyDatabaseId before we can do this, since it's entered
-	 * into the PGPROC struct.)
+	 * Add my PGPROC struct to the ProcArray.
 	 *
 	 * Once I have done this, I am visible to other backends!
 	 */
@@ -515,7 +499,7 @@ SeqServerMain(int argc, char *argv[])
 	 */
 	MyBackendId = InvalidBackendId;
 
-	InitBackendSharedInvalidationState();
+	SharedInvalBackendInit(false);
 
 	if (MyBackendId > MaxBackends || MyBackendId <= 0)
 		elog(FATAL, "bad backend id: %d", MyBackendId);
@@ -535,8 +519,28 @@ SeqServerMain(int argc, char *argv[])
 	 * Load relcache entries for the system catalogs.  This must create at
 	 * least the minimum set of "nailed-in" cache entries.
 	 */
-	RelationCacheInitializePhase2();		/* main loop */
-	
+	RelationCacheInitializePhase2();
+
+	/*
+	 * In order to access the catalog, we need a database, and a
+	 * tablespace; our access to the heap is going to be slightly
+	 * limited, so we'll just use some defaults.
+	 */
+	if (!FindMyDatabase(knownDatabase, &MyDatabaseId, &MyDatabaseTableSpace))
+		ereport(FATAL,
+				(errcode(ERRCODE_UNDEFINED_DATABASE),
+				 errmsg("database \"%s\" does not exit", knownDatabase)));
+
+	/* Now we can mark our PGPROC entry with the database ID */
+	/* (We assume this is an atomic store so no lock is needed) */
+	MyProc->databaseId = MyDatabaseId;
+
+	fullpath = GetDatabasePath(MyDatabaseId, MyDatabaseTableSpace);
+
+	SetDatabasePath(fullpath);
+
+	RelationCacheInitializePhase3();
+
 	SeqServerLoop();
 
 	ResourceOwnerRelease(CurrentResourceOwner,

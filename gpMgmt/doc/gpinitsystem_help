@@ -12,7 +12,8 @@ gpinitsystem -c <gpinitsystem_config>
             [-h <hostfile_gpinitsystem>]
             [-B <parallel_processes>] 
             [-p <postgresql_conf_param_file>]
-            [-s <standby_master_host>]
+            [-s <standby_master_host>
+                [-P <standby_master_port>] [-F <standby_master_filespaces>]]
             [--max_connections=<number>] [--shared_buffers=<size>]
             [--locale=<locale>] [--lc-collate=<locale>] 
             [--lc-ctype=<locale>] [--lc-messages=<locale>] 
@@ -195,6 +196,19 @@ OPTIONS
  Optional. If you wish to configure a backup master host, specify the 
  host name using this option. The Greenplum Database software must 
  already be installed and configured on this host.
+
+
+-P <standby_master_port>
+
+ Optional and effective only when specified with -s.  This option can
+ specify the port to be used by the standby master.  The default value
+ is the same as the primary master.
+
+
+-F <standby_master_filespace>
+
+ Optional and effective only when specified with -s.  This option can
+ specify the filespace mappings.
 
 
 --su_password=<superuser_password> | -e <superuser_password>

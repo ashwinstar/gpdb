@@ -39,7 +39,9 @@
 #include "catalog/pg_appendonly_alter_column.h"
 #include "catalog/pg_attribute.h"
 #include "catalog/pg_authid.h"
+#include "catalog/pg_auth_members.h"
 #include "catalog/pg_class.h"
+#include "catalog/pg_database.h"
 #include "catalog/pg_extprotocol.h"
 #include "catalog/pg_filespace.h"
 #include "catalog/pg_filespace_entry.h"
@@ -370,6 +372,18 @@ Boot_CreateStmt:
 								break;
 
 /* TIDYCAT_END_CODEGEN */
+
+							case DatabaseRelationId:
+								typid = PG_DATABASE_RELTYPE_OID;
+								break;
+
+							case AuthIdRelationId:
+								typid = PG_AUTHID_RELTYPE_OID;
+								break;
+
+							case AuthMemRelationId:
+								typid = PG_AUTH_MEMBERS_RELTYPE_OID;
+								break;
 
 							default:
 								break;

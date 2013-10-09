@@ -55,12 +55,12 @@
 #include "utils/builtins.h"
 
 #include "cdb/cdbvars.h"
-#include "cdb/cdblink.h"
 #include "cdb/cdbcopy.h"
 #include "cdb/cdbhash.h"
 #include "cdb/cdbdispatchresult.h"
 #include "cdb/cdbsreh.h"
 #include "cdb/cdbrelsize.h"
+#include "cdb/cdbutil.h"
 #include "cdb/cdbvarblock.h"
 #include "cdb/cdbbufferedappend.h"
 #include "commands/vacuum.h"

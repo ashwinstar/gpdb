@@ -44,7 +44,7 @@ class GpDbidFile:
         Open the gp_dbid file and parse its contents.
         """
         INFO = self.logger.info
-        INFO('%s - read_gp_dbid' % self.filepath)
+        INFO('Reading the gp_dbid file - %s...' % self.filepath)
 
         with open(self.filepath) as f:
             self.parse(f)
@@ -63,17 +63,17 @@ class GpDbidFile:
         self.standby_dbid = None
         for line in f:
             line = line.strip()
-            DEBUG('parse: %s' % line)
+            DEBUG('Parsing : %s ...' % line)
 
             m = re.match(DBID_RE, line)
             if m:
                 self.dbid = int(m.group(1))
-                INFO('match dbid: %d' % self.dbid)
+                INFO('Found match for dbid: %d.' % self.dbid)
 
             m = re.match(STANDBY_DBID_RE, line)
             if m:
                 self.standby_dbid = int(m.group(1))
-                INFO('match standby_dbid: %d' % self.standby_dbid)
+                INFO('Found match for standby_dbid: %d.' % self.standby_dbid)
 
         assert self.dbid is not None
 
@@ -87,11 +87,11 @@ class GpDbidFile:
         f.write("# Greenplum Database identifier for this master/segment.\n")
         f.write("# Do not change the contents of this file.\n")
         f.write('dbid = %d\n' % self.dbid)
-        INFO('wrote dbid: %d' % self.dbid)
+        INFO('Wrote dbid: %d to the file.' % self.dbid)
 
         if self.standby_dbid:
             f.write('standby_dbid = %d\n' % self.standby_dbid)
-            INFO('wrote standby_dbid: %d' % self.standby_dbid)
+            INFO('Wrote standby_dbid: %d to the file.' % self.standby_dbid)
 
  
     def write_gp_dbid(self):
@@ -101,22 +101,22 @@ class GpDbidFile:
         the file contents and checking the values read match desired values
         """
         INFO  = self.logger.info
-        INFO('%s - write_gp_dbid' % self.filepath)
+        INFO('Writing the gp_dbid file - %s...' % self.filepath)
 
         if os.path.exists(self.filepath):
-            INFO('found existing file')
+            INFO('But found an already existing file.')
 
             os.remove(self.filepath)
-            INFO('removed existing file')
+            INFO('Hence removed that existing file.')
 
-        self.logger.info('opening new file')
+        INFO('Creating a new file...')
         with open(self.filepath, 'w') as f:
             self.format(f)
 
-        INFO('setting read only')
+        INFO('Now marking it as read only...')
         os.chmod(self.filepath, stat.S_IRUSR)  # user read permissions (0400)
 
-        INFO('verifying file')
+        INFO('Verifying the file...')
         v = GpDbidFile(self.datadir, do_read=True)
         assert self.dbid == v.dbid
         assert self.standby_dbid == v.standby_dbid

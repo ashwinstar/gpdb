@@ -31,7 +31,7 @@
 #include "storage/ipc.h"
 #include "storage/proc.h"
 #include "storage/pmsignal.h"			/* PostmasterIsAlive */
-#include "storage/sinval.h"
+#include "storage/sinvaladt.h"
 #include "utils/fmgroids.h"
 #include "utils/ps_status.h"
 
@@ -103,7 +103,6 @@ NON_EXEC_STATIC void ftsMain(int argc, char *argv[]);
 static void FtsLoop(void);
 
 static void retrieveUserAndDb(char **probeUser);
-extern bool FindMyDatabase(const char *name, Oid *db_id, Oid *db_tablespace);
 
 static void readCdbComponentInfoAndUpdateStatus(void);
 static bool probePublishUpdate(uint8 *scan_status);
@@ -234,7 +233,10 @@ ftsMain(int argc, char *argv[])
 
 	IsUnderPostmaster = true;
 	am_ftsprobe = true;
-	
+
+	/* Stay away from PMChildSlot */
+	MyPMChildSlot = -1;
+
 	/* reset MyProcPid */
 	MyProcPid = getpid();
 	
@@ -314,25 +316,7 @@ ftsMain(int argc, char *argv[])
 	PG_SETMASK(&UnBlockSig);
 
 	/*
-	 * In order to access the catalog, we need a database, and a
-	 * tablespace; our access to the heap is going to be slightly
-	 * limited, so we'll just use some defaults.
-	 */
-	MyDatabaseId = TemplateDbOid;
-	MyDatabaseTableSpace = DEFAULTTABLESPACE_OID;
-
-	if (!FindMyDatabase(probeDatabase, &MyDatabaseId, &MyDatabaseTableSpace))
-		ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE),
-			errmsg("database 'postgres' does not exist")));
-
-	fullpath = GetDatabasePath(MyDatabaseId, MyDatabaseTableSpace);
-
-	SetDatabasePath(fullpath);
-
-	/*
-	 * Finish filling in the PGPROC struct, and add it to the ProcArray. (We
-	 * need to know MyDatabaseId before we can do this, since it's entered
-	 * into the PGPROC struct.)
+	 * Add my PGPROC struct to the ProcArray.
 	 *
 	 * Once I have done this, I am visible to other backends!
 	 */
@@ -346,7 +330,7 @@ ftsMain(int argc, char *argv[])
 	 */
 	MyBackendId = InvalidBackendId;
 
-	InitBackendSharedInvalidationState();
+	SharedInvalBackendInit(false);
 
 	if (MyBackendId > MaxBackends || MyBackendId <= 0)
 		elog(FATAL, "bad backend id: %d", MyBackendId);
@@ -367,6 +351,26 @@ ftsMain(int argc, char *argv[])
 	 * least the minimum set of "nailed-in" cache entries.
 	 */
 	RelationCacheInitializePhase2();
+
+	/*
+	 * In order to access the catalog, we need a database, and a
+	 * tablespace; our access to the heap is going to be slightly
+	 * limited, so we'll just use some defaults.
+	 */
+	if (!FindMyDatabase(probeDatabase, &MyDatabaseId, &MyDatabaseTableSpace))
+		ereport(FATAL,
+				(errcode(ERRCODE_UNDEFINED_DATABASE),
+				 errmsg("database \"%s\" does not exit", probeDatabase)));
+
+	/* Now we can mark our PGPROC entry with the database ID */
+	/* (We assume this is an atomic store so no lock is needed) */
+	MyProc->databaseId = MyDatabaseId;
+
+	fullpath = GetDatabasePath(MyDatabaseId, MyDatabaseTableSpace);
+
+	SetDatabasePath(fullpath);
+
+	RelationCacheInitializePhase3();
 
 	/* shmem: publish probe pid */
 	ftsProbeInfo->fts_probePid = MyProcPid;

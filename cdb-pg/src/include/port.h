@@ -375,6 +375,10 @@ extern void srand48(long seed);
 extern int	getopt(int nargc, char *const * nargv, const char *ostr);
 #endif
 
+#ifndef HAVE_GETPEEREID
+extern int getpeereid(int sock, uid_t *uid, gid_t *gid);
+#endif
+
 #ifndef HAVE_ISINF
 extern int	isinf(double x);
 #endif
@@ -444,5 +448,18 @@ extern void qsort_arg(void *base, size_t nel, size_t elsize,
 
 /* port/chklocale.c */
 extern int	pg_get_encoding_from_locale(const char *ctype);
+
+/* port/inet_net_ntop.c */
+extern char *inet_net_ntop(int af, const void *src, int bits,
+			  char *dst, size_t size);
+
+/* port/pgcheckdir.c */
+extern int	pg_check_dir(const char *dir);
+
+/* port/pgmkdirp.c */
+extern int	pg_mkdir_p(char *path, int omode);
+
+/* port/quotes.c */
+extern char *escape_single_quotes_ascii(const char *src);
 
 #endif   /* PG_PORT_H */

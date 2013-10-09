@@ -617,7 +617,7 @@ bool PersistentFilespace_TryGetPrimaryAndMirrorUnderLock(
 	 * Can't rely on persistent tables or memory structures on the standby so
 	 * get it from the cache maintained by the master mirror sync code
 	 */
-	if (GPStandby())
+	if (IsStandbyMode())
 	{
 		return mmxlog_filespace_get_path(
 									filespaceOid,

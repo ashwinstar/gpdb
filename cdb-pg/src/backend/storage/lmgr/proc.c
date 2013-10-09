@@ -39,6 +39,8 @@
 #include "access/transam.h"
 #include "access/xact.h"
 #include "miscadmin.h"
+#include "postmaster/autovacuum.h"
+#include "replication/syncrep.h"
 #include "storage/ipc.h"
 #include "storage/spin.h"
 #include "storage/proc.h"
@@ -185,6 +187,7 @@ InitProcGlobal(int mppLocalProcessCounter)
 	for (i = 0; i < MaxBackends; i++)
 	{
 		PGSemaphoreCreate(&(procs[i].sem));
+		InitSharedLatch(&(procs[i].procLatch));
 
 		procs[i].links.next = ProcGlobal->freeProcs;
 		ProcGlobal->freeProcs = MAKE_OFFSET(&procs[i]);
@@ -198,6 +201,7 @@ InitProcGlobal(int mppLocalProcessCounter)
 		AuxiliaryProcs[i].pid = 0;		/* marks auxiliary proc as not in use */
 		AuxiliaryProcs[i].postmasterResetRequired = true;
 		PGSemaphoreCreate(&(AuxiliaryProcs[i].sem));
+		InitSharedLatch(&(AuxiliaryProcs[i].procLatch));
 	}
 }
 
@@ -313,6 +317,13 @@ InitProcess(void)
 	if (MyProc != NULL)
 		elog(ERROR, "you already exist");
 
+	/*
+	 * Initialize process-local latch support.  This could fail if the kernel
+	 * is low on resources, and if so we want to exit cleanly before acquiring
+	 * any shared-memory resources.
+	 */
+	InitializeLatchSupport();
+
 	MyProc = RemoveFirst();
 	
 	if (MyProc == NULL)
@@ -336,6 +347,20 @@ InitProcess(void)
 
 	/* Set the next pointer to INVALID_OFFSET */
 	MyProc->links.next = INVALID_OFFSET;
+
+	/*
+	 * Now that we have a PGPROC, mark ourselves as an active postmaster
+	 * child; this is so that the postmaster can detect it if we exit without
+	 * cleaning up.  (XXX autovac launcher currently doesn't participate in
+	 * this; it probably should.)
+	 *
+	 * Ideally, we should create functions similar to IsAutoVacuumProcess()
+	 * for ftsProber, SeqServer etc who call InitProcess().
+	 * But MyPMChildSlot helps to get away with it.
+	 */
+	if (IsUnderPostmaster && !IsAutoVacuumProcess()
+		&& MyPMChildSlot > 0)
+		MarkPostmasterChildActive();
 
 	/*
 	 * Initialize all fields of MyProc, except for the semaphore which was
@@ -387,6 +412,17 @@ InitProcess(void)
     if (Gp_role == GP_ROLE_DISPATCH)
     	MyProc->mppIsWriter = !gp_is_callback;
 
+	/* Initialize fields for sync rep */
+	MyProc->waitLSN.xlogid = 0;
+	MyProc->waitLSN.xrecoff = 0;
+	MyProc->syncRepState = SYNC_REP_NOT_WAITING;
+	SHMQueueElemInit(&(MyProc->syncRepLinks));
+
+	/*
+	 * Acquire ownership of the PGPROC's latch, so that we can use WaitLatch.
+	 * Note that there's no particular need to do ResetLatch here.
+	 */
+	OwnLatch(&MyProc->procLatch);
 
 	/*
 	 * We might be reusing a semaphore that belonged to a failed process. So
@@ -423,14 +459,6 @@ void
 InitProcessPhase2(void)
 {
 	Assert(MyProc != NULL);
-
-	/*
-	 * We should now know what database we're in, so advertise that.  (We need
-	 * not do any locking here, since no other backend can yet see our
-	 * PGPROC.)
-	 */
-	Assert(OidIsValid(MyDatabaseId));
-	MyProc->databaseId = MyDatabaseId;
 
 	/*
 	 * Add our PGPROC to the PGPROC array in shared memory.
@@ -473,6 +501,13 @@ InitAuxiliaryProcess(void)
 
 	if (MyProc != NULL)
 		elog(ERROR, "you already exist");
+
+	/*
+	 * Initialize process-local latch support.  This could fail if the kernel
+	 * is low on resources, and if so we want to exit cleanly before acquiring
+	 * any shared-memory resources.
+	 */
+	InitializeLatchSupport();
 
 	/*
 	 * Find a free auxproc entry. Use compare_and_swap to avoid locking.
@@ -522,6 +557,19 @@ InitAuxiliaryProcess(void)
 	MyProc->waitProcLock = NULL;
 	for (i = 0; i < NUM_LOCK_PARTITIONS; i++)
 		SHMQueueInit(&(MyProc->myProcLocks[i]));
+
+	/*
+	 * Auxiliary process doesn't bother with sync rep.  Though it was
+	 * originally supposed to not do transaction work, but it does in GPDB,
+	 * we mark it and avoid sync rep work.
+	 */
+	MyProc->syncRepState = SYNC_REP_DISABLED;
+
+	/*
+	 * Acquire ownership of the PGPROC's latch, so that we can use WaitLatch.
+	 * Note that there's no particular need to do ResetLatch here.
+	 */
+	OwnLatch(&MyProc->procLatch);
 
 	/*
 	 * We might be reusing a semaphore that belonged to a failed process. So
@@ -722,6 +770,9 @@ ProcKill(int code, Datum arg)
 	 */
 	LWLockReleaseAll();
 
+	/* Release ownership of the process's latch, too */
+	DisownLatch(&MyProc->procLatch);
+
 	/* Update shared estimate of spins_per_delay */
 	update_spins_per_delay();
 
@@ -738,6 +789,14 @@ ProcKill(int code, Datum arg)
 	/* PGPROC struct isn't mine anymore */
 	MyProc = NULL;
 	lockHolderProcPtr = NULL;
+
+	/*
+	 * This process is no longer present in shared memory in any meaningful
+	 * way, so tell the postmaster we've cleaned up acceptably well.
+	 */
+	if (IsUnderPostmaster && !IsAutoVacuumProcess()
+		&& MyPMChildSlot > 0)
+		MarkPostmasterChildInactive();
 }
 
 /*
@@ -759,6 +818,9 @@ AuxiliaryProcKill(int code, Datum arg)
 
 	/* Release any LW locks I am holding (see notes above) */
 	LWLockReleaseAll();
+
+	/* Release ownership of the process's latch, too */
+	DisownLatch(&MyProc->procLatch);
 
 	/* Update shared estimate of spins_per_delay */
 	update_spins_per_delay();
@@ -1531,6 +1593,10 @@ void
 handle_sig_alarm(SIGNAL_ARGS)
 {
 	int			save_errno = errno;
+
+	/* SIGALRM is cause for waking anything waiting on the process latch */
+	if (MyProc)
+		SetLatch(&MyProc->procLatch);
 
 	/*
 	 * Idle session timeout shares with the deadlock timeout.

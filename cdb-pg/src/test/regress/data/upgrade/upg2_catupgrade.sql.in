@@ -37,10 +37,10 @@ create language plpgsql;
 -- Use this pl/pgsql function to execute DML on cat tab on all segs
 create or replace function @gpupgradeschemaname@.catDML(stmt text) returns int as $$
 declare
-  dbid integer;
+  contentid integer;
 begin
-  SELECT INTO dbid gp_execution_dbid();
-  IF dbid = 1 THEN
+  SELECT INTO contentid current_setting('gp_contentid');
+  IF contentid = -1 THEN
     PERFORM @gpupgradeschemaname@.catDML(stmt) FROM gp_dist_random('gp_id');
   END IF;
 

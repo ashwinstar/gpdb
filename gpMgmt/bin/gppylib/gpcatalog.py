@@ -28,7 +28,6 @@ MASTER_ONLY_TABLES = [
     'gp_distribution_policy',
     'gp_db_interfaces',
     'gp_interfaces',
-    'gp_master_mirroring',
     'gp_fault_strategy',
     'gp_san_configuration',
     'gp_segment_configuration',

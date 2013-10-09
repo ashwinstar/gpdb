@@ -648,6 +648,9 @@ RewriteControlFile(void)
 	ControlFile.prevCheckPoint.xrecoff = 0;
 	ControlFile.minRecoveryPoint.xlogid = 0;
 	ControlFile.minRecoveryPoint.xrecoff = 0;
+	ControlFile.backupStartPoint.xlogid = 0;
+	ControlFile.backupStartPoint.xrecoff = 0;
+	ControlFile.backupEndRequired = false;
 
 	/* Contents are protected with a CRC */
 	ControlFile.crc = crc32c(crc32cInit(), &ControlFile, offsetof(ControlFileData, crc));

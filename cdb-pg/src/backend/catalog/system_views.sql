@@ -348,10 +348,32 @@ CREATE VIEW pg_stat_activity AS
             S.client_addr,
             S.client_port,
             S.application_name,
-            S.xact_start
+            S.xact_start,
+            S.waiting_reason
     FROM pg_database D, pg_stat_get_activity(NULL) AS S, pg_authid U
     WHERE S.datid = D.oid AND 
             S.usesysid = U.oid;
+
+CREATE VIEW pg_stat_replication AS
+    SELECT
+            S.procpid,
+            S.usesysid,
+            U.rolname AS usename,
+            S.application_name,
+            S.client_addr,
+            S.client_port,
+            S.backend_start,
+            W.state,
+            W.sent_location,
+            W.write_location,
+            W.flush_location,
+            W.replay_location,
+            W.sync_priority,
+            W.sync_state
+    FROM pg_stat_get_activity(NULL) AS S, pg_authid U,
+            pg_stat_get_wal_senders() AS W
+    WHERE S.usesysid = U.oid AND
+            S.procpid = W.pid;
 
 CREATE VIEW pg_stat_database AS 
     SELECT 

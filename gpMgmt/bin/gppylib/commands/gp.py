@@ -27,18 +27,9 @@ GPHOME=os.environ.get('GPHOME')
 #Default timeout for segment start
 SEGMENT_TIMEOUT_DEFAULT=600
 
-def check_passive_standby(name,dir):
-    path = os.path.join(dir, 'postmaster.opts')
-    if os.path.exists(path):
-        cmd=FileContainsTerm(name,'gpsync', path)
-        cmd.run(validateAfter=False)
-        return cmd.contains_term()
-    else:
-        return 0
-
-def getSyncmasterPID(hostname, datadir):
-    cmdStr="ps -ef | grep gpsyncmaster | grep -v grep | awk '{print $2}' | grep \\`cat %s/postmaster.pid | head -1\\` || echo -1" % (datadir)
-    name="get gpsyncmaster"
+def getPostmasterPID(hostname, datadir):
+    cmdStr="ps -ef | grep postgres | grep -v grep | awk '{print $2}' | grep \\`cat %s/postmaster.pid | head -1\\` || echo -1" % (datadir)
+    name="get postmaster pid"
     cmd=Command(name,cmdStr,ctxt=REMOTE,remoteHost=hostname)
     try:
         cmd.run(validateAfter=True)
@@ -311,7 +302,8 @@ class PgCtlStopArgs(CmdArgs):
 class MasterStart(Command):
     def __init__(self, name, dataDir, port, dbid, standby_dbid, numContentsInCluster, era,
                  wrapper, wrapper_args, specialMode=None, restrictedMode=False, timeout=SEGMENT_TIMEOUT_DEFAULT,
-                 max_connections=1, disableMasterMirror=False, utilityMode=False, ctxt=LOCAL, remoteHost=None
+                 max_connections=1, disableMasterMirror=False, utilityMode=False, ctxt=LOCAL, remoteHost=None,
+                 wait=True
                  ):
         self.dataDir=dataDir
         self.port=port
@@ -327,7 +319,7 @@ class MasterStart(Command):
         b.set_restricted(restrictedMode, max_connections)
 
         # build pg_ctl command
-        c = PgCtlStartArgs(dataDir, b, era, wrapper, wrapper_args, True, timeout)
+        c = PgCtlStartArgs(dataDir, b, era, wrapper, wrapper_args, wait, timeout)
         self.cmdStr = str(c)
 
         Command.__init__(self, name, self.cmdStr, ctxt, remoteHost)
@@ -834,29 +826,49 @@ class GpSegStopCmd(Command):
 
 
 #-----------------------------------------------
-class GpStandbyStart(Command):
-    def __init__(self,name,datadir,port,ncontents,ctxt=LOCAL,
-                 remoteHost=None,dbid=None):
-        self.datadir=datadir
-        self.port=port
-        self.dbid=dbid
-        self.ncontents=ncontents
-        cmdStr="exec $GPHOME/sbin/gpstandbystart.sh %s %d %s %d" % \
-            (datadir,port,dbid,ncontents)
-        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+class GpStandbyStart(MasterStart, object):
+    """
+    Start up the master standby.  The options to postgres in standby
+    are almost same as primary master, with a few exceptions.
+    The standby will be up as dispatch mode, and could be in remote.
+    """
+
+    def __init__(self, name, datadir, port, ncontents, ctxt=LOCAL,
+                 remoteHost=None, dbid=None, era=None,
+                 wrapper=None, wrapper_args=None):
+        super(GpStandbyStart, self).__init__(
+                name=name,
+                dataDir=datadir,
+                port=port,
+                dbid=dbid,
+                standby_dbid=0,
+                numContentsInCluster=ncontents,
+                era=era,
+                wrapper=wrapper,
+                wrapper_args=wrapper_args,
+                disableMasterMirror=True,
+                ctxt=ctxt,
+                remoteHost=remoteHost,
+                wait=False
+                )
 
     @staticmethod
-    def remote(name,host,datadir,port,ncontents,dbid):
-        cmd=GpStandbyStart(name,datadir,port,ncontents,
-                           ctxt=REMOTE,remoteHost=host,dbid=dbid)
+    def local(name, datadir, port, ncontents, dbid, era=None,
+              wrapper=None, wrapper_args=None):
+        cmd = GpStandbyStart(name, datadir, port, ncontents,
+                             dbid=dbid, era=era,
+                             wrapper=wrapper, wrapper_args=wrapper_args)
         cmd.run(validateAfter=True)
         return cmd
 
-    def validate(self, expected_rt=0):
-        if self.results.rc != 0:
-            raise ExecutionError("non-zero rc: %d" % self.results.rc, self)
-        if len(self.results.stderr) != 0:
-            raise ExecutionError("messages on stderr: %s" % self.results.stderr, self)
+    @staticmethod
+    def remote(name, host, datadir, port, ncontents, dbid, era=None,
+               wrapper=None, wrapper_args=None):
+        cmd = GpStandbyStart(name, datadir, port, ncontents, ctxt=REMOTE,
+                             remoteHost=host, dbid=dbid, era=era,
+                             wrapper=wrapper, wrapper_args=wrapper_args)
+        cmd.run(validateAfter=True)
+        return cmd
 
 #-----------------------------------------------
 class GpInitSystem(Command):
@@ -1319,21 +1331,24 @@ def check_permissions(username):
 
 
 
-######
-def standby_check(master_datadir):
-    logger.debug("---Make sure we aren't a passive standby master")
-    if (check_passive_standby('check if passive standby',master_datadir)):
-        raise GpError('Cannot run this utility on the standby instance')
 
 
 
 #=-=-=-=-=-=-=-=-=-= Bash Migration Helper Functions =-=-=-=-=-=-=-=-
 
-def start_standbymaster(host,datadir,port,dbid,ncontents):
+def start_standbymaster(host, datadir, port, dbid, ncontents, era=None,
+                        wrapper=None, wrapper_args=None):
     logger.info("Starting standby master")
 
     logger.info("Checking if standby master is running on host: %s  in directory: %s" % (host,datadir))
-    res = recovery_startup(datadir)
+    cmd = Command("recovery_startup",
+                  ("python -c "
+                   "'from gppylib.commands.gp import recovery_startup; "
+                   """recovery_startup("{0}", "{1}")'""").format(
+                       datadir, port),
+                  ctxt=REMOTE, remoteHost=host)
+    cmd.run()
+    res = cmd.get_results().stderr
 
     if res:
         logger.warning("Unable to cleanup previously started standby: '%s'" % res)
@@ -1342,21 +1357,47 @@ def start_standbymaster(host,datadir,port,dbid,ncontents):
     CreateDirIfNecessary.remote('create standby logdir if needed', host, datadir + "/pg_log")
 
 
-    cmd=GpStandbyStart.remote('start standby master',host,datadir,port,
-                              ncontents,dbid)
+    cmd = GpStandbyStart.remote('start standby master',
+                                host, datadir, port, ncontents, dbid, era=era,
+                                wrapper=wrapper, wrapper_args=wrapper_args)
     logger.debug("Starting standby: %s" % cmd )
 
     logger.debug("Starting standby master results: %s" % cmd.get_results() )
 
-    if cmd.get_results().rc == 0:
-        return True
-    else:
+    if cmd.get_results().rc != 0:
+        logger.warning("Could not start standby master: %s" % cmd)
         return False
 
-    pass
+    # Wait for the standby to start recovery.  Ideally this means the
+    # standby connection is recoginized by the primary, but locally this
+    # function it is better to work with only standby.  If recovery has
+    # started, this means now postmaster is responsive to signals, which
+    # allows shutdown etc.  If we exit earlier, there is a big chance
+    # a shutdown message from other process is missed.
+    for i in xrange(60):
+        # Fetch it every time, as postmaster might not have been up yet for
+        # the first few cycles, which we have seen when trying wrapper
+        # shell script.
+        pid = getPostmasterPID(host, datadir)
+        cmd = Command("get pids",
+                      ("python -c "
+                       "'from gppylib.commands import unix; "
+                       "print unix.getDescendentProcesses({0})'".format(pid)),
+                      ctxt=REMOTE, remoteHost=host)
+        cmd.run()
+        logger.debug(str(cmd))
+        result = cmd.get_results()
+        logger.debug(result)
+        # We want more than postmaster and logger processes.
+        if result.rc == 0 and len(result.stdout.split(',')) > 2:
+            return True
+        time.sleep(1)
+
+    logger.warning("Could not start standby master")
+    return False
 
 ######
-def recovery_startup(datadir):
+def recovery_startup(datadir, port=None):
     """ investigate a db that may still be running """
 
     pid=read_postmaster_pidfile(datadir)
@@ -1376,9 +1417,13 @@ def recovery_startup(datadir):
             logger.info("shutdown of db successful with datadir: %s" % datadir)
             return None
     else:
-        #if we get this far it means we don't have a pid and need to do some cleanup.
-        pgconf_dict = pgconf.readfile(datadir + "/postgresql.conf")
-        port = pgconf_dict.int('port')
+        # If we get this far it means we don't have a pid and need to do some
+        # cleanup.  Use port number if supplied.  postgresql.conf may be
+        # bogus as we pass port number anyway instead of postgresql.conf
+        # default value.
+        if port is None:
+            pgconf_dict = pgconf.readfile(datadir + "/postgresql.conf")
+            port = pgconf_dict.int('port')
 
         lockfile="/tmp/.s.PGSQL.%s" % port
         tmpfile_exists = os.path.exists(lockfile)

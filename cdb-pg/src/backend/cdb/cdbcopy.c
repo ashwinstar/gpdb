@@ -18,7 +18,6 @@
 #include "cdb/cdbconn.h"
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbvars.h"
-#include "cdb/cdblink.h"
 #include "cdb/cdbtm.h"
 #include "cdb/cdbfts.h"
 #include "cdb/cdbcopy.h"

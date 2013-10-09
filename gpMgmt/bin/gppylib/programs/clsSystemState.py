@@ -1319,28 +1319,31 @@ class GpSystemStateProgram:
             tabLog.outputTable()
 
         #
-        # now print gp_master_mirroring table
+        # now print pg_stat_replication
         #
-
         logger.info("-------------------------------------------------------------" )
-        logger.info("-gp_master_mirroring table" )
+        logger.info("-pg_stat_replication" )
         logger.info("-------------------------------------------------------------" )
 
         dbUrl = dbconn.DbURL(port=gpEnv.getMasterPort(), dbname='template1')
         conn = dbconn.connect(dbUrl, utility=True)
-        sql = "SELECT summary_state, detail_state, log_time, error_message FROM gp_master_mirroring"
-        row = dbconn.execSQLForSingletonRow(conn, sql)
-        row = ["" if val is None else val for val in row] # transform None to empty string
-        conn.close()
+        sql = "SELECT state, sync_state, sent_location, flush_location, replay_location FROM pg_stat_replication"
+        cur = dbconn.execSQL(conn, sql)
+        if cur.rowcount == 1:
+            row = cur.fetchall()[0]
+            logger.info("-WAL Sender State: %s" % row[0])
+            logger.info("-Sync state: %s" % row[1])
+            logger.info("-Sent Location: %s" % row[2])
+            logger.info("-Flush Location: %s" % row[3])
+            logger.info("-Replay Location: %s" % row[4])
+        elif cur.rowcount > 1:
+            logger.warning("pg_stat_replication shows more than 1 row.")
+        else:
+            logger.info("No entries found.")
 
-        logger.info("-Summary state: %s" % row[0])
-        logger.info("-Detail state: %s" % row[1])
-        logger.info("-Log time: %s" % row[2])
-        if row[3] != "":
-            logger.info("-Error message: %s" % row[3])
         logger.info("-------------------------------------------------------------" )
 
-        # done printing gp_master_mirroring table
+        # done printing pg_stat_replication table
 
     def __poolWait(self, dispatchCount):
         self.__pool.wait_and_printdots(dispatchCount, self.__options.quiet)

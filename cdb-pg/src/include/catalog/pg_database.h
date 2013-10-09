@@ -98,4 +98,17 @@ DATA(insert OID = 1 (  template1 PGUID ENCODING t t -1 0 0 1663 _null_ _null_ ))
 SHDESCR("Default template database");
 #define TemplateDbOid			1
 
+#define Schema_pg_database \
+{ 1262, {"datname"}       ,   19,  -1 , NAMEDATALEN,  1, 0, -1, -1 , false, 'p', 'i',  true, false, false, true, 0}, \
+{ 1262, {"datdba"}        ,   26,  -1 ,           4,  2, 0, -1, -1 ,  true, 'p', 'i',  true, false, false, true, 0}, \
+{ 1262, {"encoding"}      ,   23,  -1 ,           4,  3, 0, -1, -1 ,  true, 'p', 'i',  true, false, false, true, 0}, \
+{ 1262, {"datistemplate"} ,   16,  -1 ,           1,  4, 0, -1, -1 ,  true, 'p', 'c',  true, false, false, true, 0}, \
+{ 1262, {"datallowconn"}  ,   16,  -1 ,           1,  5, 0, -1, -1 ,  true, 'p', 'c',  true, false, false, true, 0}, \
+{ 1262, {"datconnlimit"}  ,   23,  -1 ,           4,  6, 0, -1, -1 ,  true, 'p', 'i',  true, false, false, true, 0}, \
+{ 1262, {"datlastsysoid"} ,   26,  -1 ,           4,  7, 0, -1, -1 ,  true, 'p', 'i',  true, false, false, true, 0}, \
+{ 1262, {"datfrozenxid"}  ,   28,  -1 ,           4,  8, 0, -1, -1 ,  true, 'p', 'i',  true, false, false, true, 0}, \
+{ 1262, {"dattablespace"} ,   26,  -1 ,           4,  9, 0, -1, -1 ,  true, 'p', 'i',  true, false, false, true, 0}, \
+{ 1262, {"datconfig"}     , 1009,  -1 ,          -1, 10, 1, -1, -1 , false, 'x', 'i', false, false, false, true, 0}, \
+{ 1262, {"datacl"}        , 1034,  -1 ,          -1, 11, 1, -1, -1 , false, 'x', 'i', false, false, false, true, 0}
+
 #endif   /* PG_DATABASE_H */

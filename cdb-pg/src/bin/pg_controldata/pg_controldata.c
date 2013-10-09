@@ -53,8 +53,12 @@ dbState(DBState state)
 			return _("shutting down");
 		case DB_IN_CRASH_RECOVERY:
 			return _("in crash recovery");
-		case DB_IN_ARCHIVE_RECOVERY:
-			return _("in archive recovery");
+		case DB_IN_STANDBY_MODE:
+			return _("in standby mode");
+		case DB_IN_STANDBY_PROMOTED:
+			return _("in standby mode (promoted)");
+		case DB_IN_STANDBY_NEW_TLI_SET:
+			return _("in standby mode (new tli set)");
 		case DB_IN_PRODUCTION:
 			return _("in production");
 	}
@@ -214,6 +218,11 @@ main(int argc, char *argv[])
 	printf(_("Minimum recovery ending location:     %X/%X\n"),
 		   ControlFile.minRecoveryPoint.xlogid,
 		   ControlFile.minRecoveryPoint.xrecoff);
+	printf(_("Backup start location:                %X/%X\n"),
+		   ControlFile.backupStartPoint.xlogid,
+		   ControlFile.backupStartPoint.xrecoff);
+	printf(_("End-of-backup record required:        %s\n"),
+		   ControlFile.backupEndRequired ? _("yes") : _("no"));
 	printf(_("Maximum data alignment:               %u\n"),
 		   ControlFile.maxAlign);
 	/* we don't print floatFormat since can't say much useful about it */

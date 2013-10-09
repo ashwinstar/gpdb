@@ -77,6 +77,7 @@ typedef enum
 	BgWriterProcess,
 	CheckpointProcess,
 	WalWriterProcess,
+	WalReceiverProcess,
 	FilerepProcess,
 	FilerepResetPeerProcess
 } AuxProcType;

@@ -38,6 +38,8 @@
 #include "libpq/be-fsstubs.h"
 #include "miscadmin.h"
 #include "pgstat.h"
+#include "replication/walsender.h"
+#include "replication/syncrep.h"
 #include "storage/fd.h"
 #include "storage/lmgr.h"
 #include "storage/procarray.h"
@@ -1014,6 +1016,7 @@ RecordTransactionCommit(void)
 	bool		isDtxPrepared = 0;
 	bool		omitCommitRecordForDirtyQEReader;
 	TMGXACT_LOG gxact_log;
+	XLogRecPtr	recptr = {0,0};
 
 	/* Get data needed for commit record */
 	persistentCommitSerializeLen =
@@ -1038,7 +1041,6 @@ RecordTransactionCommit(void)
 	{
 		TransactionId xid = GetCurrentTransactionId();
 		bool		madeTCentries;
-		XLogRecPtr	recptr;
 
 		/* Safety check in case our assumption is ever broken. */
 		if (Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer && !seqXlogWrite)
@@ -1256,7 +1258,13 @@ RecordTransactionCommit(void)
 												   ""); // tableName
 			}
 #endif
-			
+
+			/*
+			 * Now we may update the CLOG, if we wrote COMMIT record above
+			 */
+			if (max_wal_senders > 0)
+				WalSndWakeup();
+
 			if (isDtxPrepared)
 			{
 				forcedDistributedCommitted(&recptr);
@@ -1308,6 +1316,18 @@ RecordTransactionCommit(void)
 
 		END_CRIT_SECTION();
 	}
+	}
+
+	/*
+	 * Wait for synchronous replication, if required.
+	 *
+	 * Note that at this stage we have marked clog, but still show as running
+	 * in the procarray and continue to hold locks.
+	 */
+	if (MyXactMadeXLogEntry)
+	{
+		Assert(recptr.xrecoff != 0);
+		SyncRepWaitForLSN(recptr);
 	}
 
 	/* Break the chain of back-links in the XLOG records I output */
@@ -1668,6 +1688,10 @@ RecordTransactionAbort(void)
 			/* Must flush if we are deleting files... */
 			if (persistentAbortObjectCount > 0)
 				XLogFlush(recptr);
+
+			if (max_wal_senders > 0)
+				WalSndWakeup();
+
 		}
 
 		/*

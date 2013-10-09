@@ -52,7 +52,7 @@ extern char *default_tablespace;
  *	thread_DoConnect is the thread proc used to perform the connection to one of the qExecs.
  */
 static void *thread_DoConnect(void *arg);
-static void build_gpqeid_params(PQExpBuffer buf);
+static void build_gpqeid_params(PQExpBuffer buf, bool is_writer);
 
 static Gang *createGang(GangType type, int gang_id, int size, int content, char *portal_name);
 
@@ -988,9 +988,6 @@ addOptions(PQExpBufferData *buffer, bool iswriter, int segindex, bool i_am_super
 	appendPQExpBufferStr(buffer, "options='");
 
 	/* The following gucs are set will function parameter */
-	if (iswriter)
-		appendPQExpBufferStr(buffer, " -c gp_is_writer=true");
-
 	appendPQExpBuffer(buffer, " -c gp_segment=%d", segindex);
 
 	/* GUCs need special handling */
@@ -1107,10 +1104,11 @@ thread_DoConnect(void *arg)
 		initPQExpBuffer(&buffer);
 
 		/*
-		 * Build the connection string
+		 * Build the connection string.  Writer-ness needs to be processed
+		 * early enough now some locks are taken before command line options
+		 * are recognized.
 		 */
-
-		build_gpqeid_params(&buffer);
+		build_gpqeid_params(&buffer, pParms->type == GANGTYPE_PRIMARY_WRITER);
 
 		err = addOptions(&buffer,
 						 (pParms->type == GANGTYPE_PRIMARY_WRITER),
@@ -1158,7 +1156,7 @@ thread_DoConnect(void *arg)
  * thread, so mustn't use palloc/elog/ereport/etc.
  */
 static void
-build_gpqeid_params(PQExpBuffer buf)
+build_gpqeid_params(PQExpBuffer buf, bool is_writer)
 {
 	appendPQExpBufferStr(buf, "gpqeid=");
 
@@ -1173,6 +1171,7 @@ build_gpqeid_params(PQExpBuffer buf)
 	appendPQExpBuffer(buf, "%g;", PgStartTime);
 #endif
 #endif
+	appendPQExpBuffer(buf, "%s;", (is_writer ? "true" : "false"));
 
 	/* change last semicolon to space */
 	Assert(buf->data[buf->len - 1] == ';');
@@ -1231,6 +1230,11 @@ cdbgang_parse_gpqeid_params(struct Port * port __attribute__((unused)), const ch
 		PgStartTime = strtod(cp, NULL);
 #endif
 	}
+
+	/* Gp_is_writer */
+	if (gpqeid_next_param(&cp, &np))
+		SetConfigOption("gp_is_writer", cp,
+						PGC_POSTMASTER, PGC_S_OVERRIDE);
 
 	/* Too few items, or too many? */
 	if (!cp || np)

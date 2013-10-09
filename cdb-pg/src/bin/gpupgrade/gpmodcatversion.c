@@ -3,6 +3,8 @@
  *
  * Reads and modifies pg_control data.
  *
+ * This is not used for 4.3, but we may be back to this in later versions.
+ *
  * Copyright (c) 2007-2008, Greenplum inc
  * Copyright (c) 2007 PostgreSQL Global Development Group
  *
@@ -67,8 +69,12 @@ dbState(DBState state)
 			return _("shutting down");
 		case DB_IN_CRASH_RECOVERY:
 			return _("in crash recovery");
-		case DB_IN_ARCHIVE_RECOVERY:
-			return _("in archive recovery");
+		case DB_IN_STANDBY_MODE:
+			return _("in standby mode");
+		case DB_IN_STANDBY_PROMOTED:
+			return _("in standby mode (promoted)");
+		case DB_IN_STANDBY_NEW_TLI_SET:
+			return _("in standby mode (new tli set)");
 		case DB_IN_PRODUCTION:
 			return _("in production");
 	}

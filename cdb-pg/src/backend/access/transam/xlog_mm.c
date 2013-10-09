@@ -175,7 +175,7 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 		 * Inform the persistent table code about the new filespace or
 		 * tablespace.
 		 */
-		if (xlrec->objtype == MM_OBJ_FILESPACE && GPStandby())
+		if (xlrec->objtype == MM_OBJ_FILESPACE && IsStandbyMode())
 		{
 			fspc_map m;
 
@@ -188,7 +188,7 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 			strncpy(m.path2, xlrec->mirror_path, MAXPGPATH);
 			add_filespace_map_entry(&m, &beginLoc, "mmxlog_redo");
 		}
-		else if (xlrec->objtype == MM_OBJ_TABLESPACE && GPStandby())
+		else if (xlrec->objtype == MM_OBJ_TABLESPACE && IsStandbyMode())
 		{
 			tspc_map m;
 
@@ -214,7 +214,7 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 			 */
 			if (errno != EEXIST)
 			{
-				if (GPStandby())
+				if (IsStandbyMode())
 				{
 					elog(ERROR, "could not create directory \"%s\": %m",
 						 path);
@@ -265,11 +265,10 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 		unlink_obj(path, info);
 
 
-		if (GpIdentity.dbid == MASTER_DBID)
-		{
-			// We only maintain the master mirroring hash tables on the standby.
-		}
-		else
+		/*
+		 * We only maintain the master mirroring hash tables on the standby.
+		 */
+		if (IsStandbyMode())
 		{
 			if (xlrec->objtype == MM_OBJ_FILESPACE)
 			{
@@ -365,7 +364,7 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 
 		XLogDropRelation(rnode);
 
-		if (GpIdentity.dbid == MASTER_DBID)
+		if (GpIdentity.segindex == MASTER_CONTENT_ID && !IsStandbyMode())
 		{
 			PersistentTablespaceGetFilespaces tablespaceGetFilespaces;
 
@@ -536,19 +535,19 @@ emit_mmxlog_fs_record(mm_fs_obj_type type, Oid filespace,
 {
 	MemSet(beginLoc, 0, sizeof(XLogRecPtr));
 
-	if (!CanEmitXLogRecords)
+	if (InRecovery)
 		/* no business here */
 		return false;
 
 	/* only interesting on the master */
-	if (GpIdentity.dbid == MASTER_DBID)
+	if (GpIdentity.segindex == MASTER_CONTENT_ID)
 	{
 		XLogRecData rdata;
 		xl_mm_fs_obj xlrec;
 		char *master_path;
 		char *mirror_path;
 		int16 master_dbid = GpIdentity.dbid;
-		int16 mirror_dbid = GpStandbyDbid;
+		int16 mirror_dbid = GetStandbyDbid();
 
 		Insist(Gp_role == GP_ROLE_DISPATCH ||
 			   Gp_role == GP_ROLE_UTILITY);
@@ -926,17 +925,6 @@ mmxlog_log_create_relfilenode(Oid tablespace, Oid database,
 }
 
 /*
- * We need to make sure the memory for these maps doesn't
- away.
- */
-static void *
-map_alloc(Size sz)
-{
-	/* XXX: might have to allocate in a higher memory context */
-	return palloc(sz);
-}
-
-/*
  * Generic initialisation of hash table.
  */
 static HTAB *
@@ -946,11 +934,11 @@ init_hash(const char *name, Size keysize, Size entrysize, int initialSize)
 
 	ctl.keysize = keysize;
 	ctl.entrysize = entrysize;
-	ctl.alloc = map_alloc;
+	ctl.hash = tag_hash;
 	return hash_create(name,
 					   initialSize,
 					   &ctl,
-					   HASH_ELEM | HASH_ALLOC);
+					   HASH_ELEM | HASH_FUNCTION);
 }
 
 static void
@@ -1246,7 +1234,7 @@ mmxlog_filespace_get_path(
 		return false;
 	}
 
-	if (GPStandby())
+	if (IsStandbyMode())
 		path = m->path2;
 	else
 	{
@@ -1589,26 +1577,26 @@ mmxlog_append_checkpoint_data(XLogRecData rdata[6])
 		return;
 	}
 
-        if (GpIdentity.dbid != MASTER_DBID)
-	  {
-	    f = (fspc_agg_state  *)palloc0(sizeof(*f));
-            t = (tspc_agg_state  *)palloc0(sizeof(*t));
-            d = (dbdir_agg_state *)palloc0(sizeof(*d));
-            f->count  = 0;
-            t->count  = 0;
-            d-> count = 0;
-	  }
-        else
-	  {
-   	  f = NULL;
-	  get_filespace_data(&f, "mmxlog_append_checkpoint_data");
+	if (IsStandbyMode())
+	{
+		f = (fspc_agg_state  *) palloc0(sizeof(*f));
+		t = (tspc_agg_state  *) palloc0(sizeof(*t));
+		d = (dbdir_agg_state *) palloc0(sizeof(*d));
+		f->count = 0;
+		t->count = 0;
+		d->count = 0;
+	}
+	else
+	{
+		f = NULL;
+		get_filespace_data(&f, "mmxlog_append_checkpoint_data");
 
-	  t = NULL;
-	  get_tablespace_data(&t, "mmxlog_append_checkpoint_data");
+		t = NULL;
+		get_tablespace_data(&t, "mmxlog_append_checkpoint_data");
 
-	  d = NULL;
-	  get_database_data(&d, "mmxlog_append_checkpoint_data");
-	  }
+		d = NULL;
+		get_database_data(&d, "mmxlog_append_checkpoint_data");
+	}
 
 	rdata[2].data = (char*)f;
 	rdata[2].buffer = InvalidBuffer;
@@ -1881,7 +1869,7 @@ mmxlog_read_checkpoint_data(char *cpdata, int masterMirroringLen, int checkpoint
 
 	Assert(cpdata != NULL);
 
-	if (!GPStandby())
+	if (!IsStandbyMode())
 		return;
 
 	mmxlog_get_checkpoint_info(cpdata, masterMirroringLen, checkpointLen, beginLoc, PANIC, &f, &t, &d);

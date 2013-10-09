@@ -296,17 +296,6 @@ write_database_file(Relation drel, bool startup)
 		 */
 		if (gp_before_filespace_setup && !IsBuiltinTablespace(dattablespace))
 			continue;
-
-		/*
-		 * Also clear relcache init file for each DB if starting up.
-		 */
-		if (startup)
-		{
-			char *dbpath = GetDatabasePath(datoid, dattablespace);
-
-			RelationCacheInitFileRemove(dbpath);
-			pfree(dbpath);
-		}
 	}
 	heap_endscan(scan);
 

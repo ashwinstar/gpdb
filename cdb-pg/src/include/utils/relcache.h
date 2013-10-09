@@ -115,6 +115,7 @@ extern void RelationFetchGpRelationNodeForXLog_Index(Relation relation);
  */
 extern void RelationCacheInitialize(void);
 extern void RelationCacheInitializePhase2(void);
+extern void RelationCacheInitializePhase3(void);
 	
 /*
  * Routine to create a relcache entry for an about-to-be-created relation
@@ -145,7 +146,7 @@ extern void AtEOSubXact_RelationCache(bool isCommit, SubTransactionId mySubid,
  */
 extern bool RelationIdIsInInitFile(Oid relationId);
 extern void RelationCacheInitFileInvalidate(bool beforeSend);
-extern void RelationCacheInitFileRemove(const char *dbPath);
+extern void RelationCacheInitFileRemove(void);
 
 extern void IndexSupportInitialize(oidvector *indclass,
 					   Oid *indexOperator,
@@ -156,5 +157,6 @@ extern void IndexSupportInitialize(oidvector *indclass,
 
 /* should be used only by relcache.c and catcache.c */
 extern bool criticalRelcachesBuilt;
+extern bool criticalSharedRelcachesBuilt;
 
 #endif   /* RELCACHE_H */

@@ -278,6 +278,23 @@ AppendInvalidationMessageList(InvalidationChunk **destHdr,
 		} \
 	} while (0)
 
+/*
+ * Process a list of invalidation messages group-wise.
+ *
+ * As above, but the code fragment can handle an array of messages.
+ * The fragment should refer to the messages as msgs[], with n entries.
+ */
+#define ProcessMessageListMulti(listHdr, codeFragment) \
+	do { \
+		InvalidationChunk *_chunk; \
+		for (_chunk = (listHdr); _chunk != NULL; _chunk = _chunk->next) \
+		{ \
+			SharedInvalidationMessage *msgs = _chunk->msgs; \
+			int		n = _chunk->nitems; \
+			codeFragment; \
+		} \
+	} while (0)
+
 
 /* ----------------------------------------------------------------
  *				Invalidation set support functions
@@ -372,6 +389,18 @@ ProcessInvalidationMessages(InvalidationListHeader *hdr,
 {
 	ProcessMessageList(hdr->cclist, func(msg));
 	ProcessMessageList(hdr->rclist, func(msg));
+}
+
+/*
+ * As above, but the function is able to process an array of messages
+ * rather than just one at a time.
+ */
+static void
+ProcessInvalidationMessageMulti(InvalidationListHeader *hdr,
+				 void (*func) (const SharedInvalidationMessage *msgs, int n))
+{
+	ProcessMessageListMulti(hdr->cclist, func(msgs, n));
+	ProcessMessageListMulti(hdr->rclist, func(msgs, n));
 }
 
 /* ----------------------------------------------------------------
@@ -865,7 +894,7 @@ inval_twophase_postcommit(TransactionId xid, uint16 info,
 		case TWOPHASE_INFO_MSG:
 			msg = (SharedInvalidationMessage *) recdata;
 			Assert(len == sizeof(SharedInvalidationMessage));
-			SendSharedInvalidMessage(msg);
+			SendSharedInvalidMessages(msg, 1);
 			break;
 		case TWOPHASE_INFO_FILE_BEFORE:
 			RelationCacheInitFileInvalidate(true);
@@ -923,8 +952,8 @@ AtEOXact_Inval(bool isCommit)
 		AppendInvalidationMessages(&transInvalInfo->PriorCmdInvalidMsgs,
 								   &transInvalInfo->CurrentCmdInvalidMsgs);
 
-		ProcessInvalidationMessages(&transInvalInfo->PriorCmdInvalidMsgs,
-									SendSharedInvalidMessage);
+		ProcessInvalidationMessageMulti(&transInvalInfo->PriorCmdInvalidMsgs,
+										SendSharedInvalidMessages);
 
 		if (transInvalInfo->RelcacheInitFileInval)
 			RelationCacheInitFileInvalidate(false);

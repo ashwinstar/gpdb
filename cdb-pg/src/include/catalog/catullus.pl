@@ -200,6 +200,9 @@ my %array_type_exception_h =
 	 pg_attribute => 1,
 	 pg_proc => 1,
 	 pg_class => 1,
+	 pg_authid => 1,
+	 pg_auth_members => 1,
+	 pg_database => 1,
 	 smgr => 1,
 	 unknown => 1,
 	 nb_classification => 1
@@ -1482,7 +1485,7 @@ sub make_type
 
 	# treat bootstrap tables (and nb_classification) special
 	if (($h1{tuple}->{typname} =~ 
-		m/^pg\_(type|attribute|proc|class)$/) ||
+		m/^pg\_(type|attribute|proc|class|authid|auth_members|database)$/) ||
 		($h1{tuple}->{typname} eq "nb_classification"))
 	{
 		my %boottabdef = (

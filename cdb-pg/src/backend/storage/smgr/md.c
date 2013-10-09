@@ -1438,7 +1438,7 @@ mdread(SMgrRelation reln, BlockNumber blocknum, char *buffer)
 		 * pages are initialized out-of-order.
 		 */
 		if (nbytes == 0 ||
-			(nbytes > 0 && mdnblocks(reln) == blocknum))
+			(nbytes > 0 && mdnblocks(reln, false) == blocknum))
 			MemSet(buffer, 0, BLCKSZ);
 		else
 			status = false;
@@ -1492,9 +1492,13 @@ mdwrite(SMgrRelation reln, BlockNumber blocknum, char *buffer, bool isTemp)
  *		Returns # of blocks, or InvalidBlockNumber on error.
  */
 BlockNumber
-mdnblocks(SMgrRelation reln)
+mdnblocks(SMgrRelation reln, bool allowNotFound)
 {
-	MdMirVec    *v = mdopen(reln, false);
+	MdMirVec    *v = mdopen(reln, allowNotFound);
+	if (NULL == v)
+	{
+		return InvalidBlockNumber;
+	}
 
 #ifndef LET_OS_MANAGE_FILESIZE
 	BlockNumber nblocks;
@@ -1559,7 +1563,7 @@ mdnblocks(SMgrRelation reln)
  *		Returns # of blocks or InvalidBlockNumber on error.
  */
 BlockNumber
-mdtruncate(SMgrRelation reln, BlockNumber nblocks, bool isTemp)
+mdtruncate(SMgrRelation reln, BlockNumber nblocks, bool isTemp, bool allowNotFound)
 {
 	MdMirVec    *v;
 	BlockNumber curnblk;
@@ -1572,7 +1576,7 @@ mdtruncate(SMgrRelation reln, BlockNumber nblocks, bool isTemp)
 	 * NOTE: mdnblocks makes sure we have opened all active segments, so
 	 * that truncation loop will get them all!
 	 */
-	curnblk = mdnblocks(reln);
+	curnblk = mdnblocks(reln, allowNotFound);
 	if (curnblk == InvalidBlockNumber)
 		return InvalidBlockNumber;		/* mdnblocks failed */
 	if (nblocks > curnblk)
@@ -1672,7 +1676,7 @@ mdimmedsync(SMgrRelation reln)
 	 * NOTE: mdnblocks makes sure we have opened all active segments, so
 	 * that fsync loop will get them all!
 	 */
-	curnblk = mdnblocks(reln);
+	curnblk = mdnblocks(reln, false);
 	if (curnblk == InvalidBlockNumber)
 		return false;			/* mdnblocks failed */
 

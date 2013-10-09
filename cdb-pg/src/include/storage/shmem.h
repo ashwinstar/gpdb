@@ -104,7 +104,11 @@ extern bool SHMQueueIsDetached(SHM_QUEUE *queue);
 extern void SHMQueueElemInit(SHM_QUEUE *queue);
 extern void SHMQueueDelete(SHM_QUEUE *queue);
 extern void SHMQueueInsertBefore(SHM_QUEUE *queue, SHM_QUEUE *elem);
+extern void SHMQueueInsertAfter(SHM_QUEUE *queue, SHM_QUEUE *elem);
+
 extern Pointer SHMQueueNext(SHM_QUEUE *queue, SHM_QUEUE *curElem,
+			 Size linkOffset);
+extern Pointer SHMQueuePrev(SHM_QUEUE *queue, SHM_QUEUE *curElem,
 			 Size linkOffset);
 extern bool SHMQueueEmpty(SHM_QUEUE *queue);
 

@@ -853,7 +853,7 @@ PersistentDatabase_RemoveSegment(int16 dbid, bool ismirror)
 }
 
 void
-PersistentDatabase_ActivateStandby(int16 oldmaster, int16 newmaster)
+PersistentDatabase_ActivateStandby(int16 newmaster, int16 oldmaster)
 {
 	Relation rel;
 	HeapScanDesc scandesc;
@@ -892,8 +892,8 @@ PersistentDatabase_ActivateStandby(int16 oldmaster, int16 newmaster)
 	    PersistentFileSysObj_ActivateStandby(&fsObjName,
 											 &tuple->t_self,
 											 serial,
-											 oldmaster,
 											 newmaster,
+											 oldmaster,
 											 /* flushToXlog */ false);
 	}
 

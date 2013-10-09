@@ -293,7 +293,8 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
 	 * On the master, we must use UNIX domain sockets for security -- as it can
 	 * be authenticated. See MPP-15802.
 	 */
-	if (!(q->dbid == MASTER_DBID && GpIdentity.dbid == MASTER_DBID))
+	if (!(q->segindex == MASTER_CONTENT_ID &&
+			GpIdentity.segindex == MASTER_CONTENT_ID))
 	{
 		/*
 		 * First we pick the cached hostip if we have it.

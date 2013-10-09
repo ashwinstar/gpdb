@@ -45,7 +45,9 @@ char	   *const pgresStatus[] = {
 	"PGRES_COPY_IN",
 	"PGRES_BAD_RESPONSE",
 	"PGRES_NONFATAL_ERROR",
-	"PGRES_FATAL_ERROR"
+	"PGRES_FATAL_ERROR",
+	"PGRES_COPY_BOTH",
+	"PGRES_SINGLE_TUPLE"
 };
 
 /*
@@ -56,6 +58,7 @@ static int	static_client_encoding = PG_SQL_ASCII;
 static bool static_std_strings = false;
 
 
+static bool pqAddTuple(PGresult *res, PGresAttValue *tup);
 static bool PQsendQueryStart(PGconn *conn);
 static int PQsendQueryGuts(PGconn *conn,
 				const char *command,
@@ -209,6 +212,8 @@ PQmakeEmptyPGresult(PGconn *conn, ExecStatusType status)
 			case PGRES_TUPLES_OK:
 			case PGRES_COPY_OUT:
 			case PGRES_COPY_IN:
+			case PGRES_COPY_BOTH:
+			case PGRES_SINGLE_TUPLE:
 				/* non-error cases */
 				break;
 			default:
@@ -234,7 +239,7 @@ PQmakeEmptyPGresult(PGconn *conn, ExecStatusType status)
  *
  * Set the attributes for a given result.  This function fails if there are
  * already attributes contained in the provided result.  The call is
- * ignored if numAttributes is is zero or attDescs is NULL.  If the
+ * ignored if numAttributes is zero or attDescs is NULL.  If the
  * function fails, it returns zero.  If the function succeeds, it
  * returns a non-zero value.
  */
@@ -376,31 +381,11 @@ PQsetvalue(PGresult *res, int tup_num, int field_num, char *value, int len)
 	if (tup_num < 0 || tup_num > res->ntups)
 		return FALSE;
 
-	/* need to grow the tuple table? */
-	if (res->ntups >= res->tupArrSize)
-	{
-		int n = res->tupArrSize ? res->tupArrSize * 2 : 128;
-		PGresAttValue **tups;
-
-		if (res->tuples)
-			tups = (PGresAttValue **) realloc(res->tuples, n * sizeof(PGresAttValue *));
-		else
-			tups = (PGresAttValue **) malloc(n * sizeof(PGresAttValue *));
-
-		if (!tups)
-			return FALSE;
-
-		memset(tups + res->tupArrSize, 0,
-			   (n - res->tupArrSize) * sizeof(PGresAttValue *));
-		res->tuples = tups;
-		res->tupArrSize = n;
-	}
-
 	/* need to allocate a new tuple? */
-	if (tup_num == res->ntups && !res->tuples[tup_num])
+	if (tup_num == res->ntups)
 	{
 		PGresAttValue *tup;
-		int i;
+		int			i;
 
 		tup = (PGresAttValue *)
 			pqResultAlloc(res, res->numAttributes * sizeof(PGresAttValue),
@@ -416,8 +401,9 @@ PQsetvalue(PGresult *res, int tup_num, int field_num, char *value, int len)
 			tup[i].value = res->null_field;
 		}
 
-		res->tuples[tup_num] = tup;
-		res->ntups++;
+		/* add it to the array */
+		if (!pqAddTuple(res, tup))
+			return FALSE;
 	}
 
 	attval = &res->tuples[tup_num][field_num];
@@ -664,15 +650,18 @@ PQclear(PGresult *res)
 
 /*
  * Handy subroutine to deallocate any partially constructed async result.
+ *
+ * Any "next" result gets cleared too.
  */
-
 void
 pqClearAsyncResult(PGconn *conn)
 {
 	if (conn->result)
 		PQclear(conn->result);
 	conn->result = NULL;
-	conn->curTuple = NULL;
+	if (conn->next_result)
+		PQclear(conn->next_result);
+	conn->next_result = NULL;
 }
 
 /*
@@ -726,8 +715,6 @@ pqPrepareAsyncResult(PGconn *conn)
 	 * conn->errorMessage.
 	 */
 	res = conn->result;
-	conn->result = NULL;		/* handing over ownership to caller */
-	conn->curTuple = NULL;		/* just in case */
 	if (!res)
 		res = PQmakeEmptyPGresult(conn, PGRES_FATAL_ERROR);
 	else
@@ -740,6 +727,16 @@ pqPrepareAsyncResult(PGconn *conn)
 		appendPQExpBufferStr(&conn->errorMessage,
 							 PQresultErrorMessage(res));
 	}
+
+	/*
+	 * Replace conn->result with next_result, if any.  In the normal case
+	 * there isn't a next result and we're just dropping ownership of the
+	 * current result.	In single-row mode this restores the situation to what
+	 * it was before we created the current single-row result.
+	 */
+	conn->result = conn->next_result;
+	conn->next_result = NULL;
+
 	return res;
 }
 
@@ -753,7 +750,7 @@ pqPrepareAsyncResult(PGconn *conn)
  * a trailing newline, and should not be more than one line).
  */
 void
-pqInternalNotice(const PGNoticeHooks * hooks, const char *fmt,...)
+pqInternalNotice(const PGNoticeHooks *hooks, const char *fmt,...)
 {
 	char		msgBuf[1024];
 	va_list		args;
@@ -803,15 +800,9 @@ pqInternalNotice(const PGNoticeHooks * hooks, const char *fmt,...)
  *	  add a row pointer to the PGresult structure, growing it if necessary
  *	  Returns TRUE if OK, FALSE if not enough memory to add the row
  */
-int
+static bool
 pqAddTuple(PGresult *res, PGresAttValue *tup)
 {
-	if (res->ntups == INT_MAX)
-	{
-		/* If we are going to overflow ntups, then abort.  */
-		return FALSE;
-	}
-
 	if (res->ntups >= res->tupArrSize)
 	{
 		/*
@@ -955,6 +946,112 @@ pqSaveParameterStatus(PGconn *conn, const char *name, const char *value)
 }
 
 
+/*
+ * pqRowProcessor
+ *	  Add the received row to the current async result (conn->result).
+ *	  Returns 1 if OK, 0 if error occurred.
+ *
+ * On error, *errmsgp can be set to an error string to be returned.
+ * If it is left NULL, the error is presumed to be "out of memory".
+ *
+ * In single-row mode, we create a new result holding just the current row,
+ * stashing the previous result in conn->next_result so that it becomes
+ * active again after pqPrepareAsyncResult().  This allows the result metadata
+ * (column descriptions) to be carried forward to each result row.
+ */
+int
+pqRowProcessor(PGconn *conn, const char **errmsgp)
+{
+	PGresult   *res = conn->result;
+	int			nfields = res->numAttributes;
+	const PGdataValue *columns = conn->rowBuf;
+	PGresAttValue *tup;
+	int			i;
+
+	/*
+	 * In single-row mode, make a new PGresult that will hold just this one
+	 * row; the original conn->result is left unchanged so that it can be used
+	 * again as the template for future rows.
+	 */
+	if (conn->singleRowMode)
+	{
+		/* Copy everything that should be in the result at this point */
+		res = PQcopyResult(res,
+						   PG_COPYRES_ATTRS | PG_COPYRES_EVENTS |
+						   PG_COPYRES_NOTICEHOOKS);
+		if (!res)
+			return 0;
+	}
+
+	/*
+	 * Basically we just allocate space in the PGresult for each field and
+	 * copy the data over.
+	 *
+	 * Note: on malloc failure, we return 0 leaving *errmsgp still NULL, which
+	 * caller will take to mean "out of memory".  This is preferable to trying
+	 * to set up such a message here, because evidently there's not enough
+	 * memory for gettext() to do anything.
+	 */
+	tup = (PGresAttValue *)
+		pqResultAlloc(res, nfields * sizeof(PGresAttValue), TRUE);
+	if (tup == NULL)
+		goto fail;
+
+	for (i = 0; i < nfields; i++)
+	{
+		int			clen = columns[i].len;
+
+		if (clen < 0)
+		{
+			/* null field */
+			tup[i].len = NULL_LEN;
+			tup[i].value = res->null_field;
+		}
+		else
+		{
+			bool		isbinary = (res->attDescs[i].format != 0);
+			char	   *val;
+
+			val = (char *) pqResultAlloc(res, clen + 1, isbinary);
+			if (val == NULL)
+				goto fail;
+
+			/* copy and zero-terminate the data (even if it's binary) */
+			memcpy(val, columns[i].value, clen);
+			val[clen] = '\0';
+
+			tup[i].len = clen;
+			tup[i].value = val;
+		}
+	}
+
+	/* And add the tuple to the PGresult's tuple array */
+	if (!pqAddTuple(res, tup))
+		goto fail;
+
+	/*
+	 * Success.  In single-row mode, make the result available to the client
+	 * immediately.
+	 */
+	if (conn->singleRowMode)
+	{
+		/* Change result status to special single-row value */
+		res->resultStatus = PGRES_SINGLE_TUPLE;
+		/* Stash old result for re-use later */
+		conn->next_result = conn->result;
+		conn->result = res;
+		/* And mark the result ready to return */
+		conn->asyncStatus = PGASYNC_READY;
+	}
+
+	return 1;
+
+fail:
+	/* release locally allocated PGresult, if we made one */
+	if (res != conn->result)
+		PQclear(res);
+	return 0;
+}
 /* Special Greenplum-only method for executing SQL statements.  Specifies a global
  * transaction context that the statement should be executed within.
  *
@@ -1607,7 +1704,10 @@ PQsendQueryStart(PGconn *conn)
 
 	/* initialize async result-accumulation state */
 	conn->result = NULL;
-	conn->curTuple = NULL;
+	conn->next_result = NULL;
+
+	/* reset single-row processing mode */
+	conn->singleRowMode = false;
 
 	/* ready to send command message */
 	return true;
@@ -1813,6 +1913,31 @@ pqHandleSendFailure(PGconn *conn)
 }
 
 /*
+ * Select row-by-row processing mode
+ */
+int
+PQsetSingleRowMode(PGconn *conn)
+{
+	/*
+	 * Only allow setting the flag when we have launched a query and not yet
+	 * received any results.
+	 */
+	if (!conn)
+		return 0;
+	if (conn->asyncStatus != PGASYNC_BUSY)
+		return 0;
+	if (conn->queryclass != PGQUERY_SIMPLE &&
+		conn->queryclass != PGQUERY_EXTENDED)
+		return 0;
+	if (conn->result)
+		return 0;
+
+	/* OK, set flag */
+	conn->singleRowMode = true;
+	return 1;
+}
+
+/*
  * Consume any available input from the backend
  * 0 return: some kind of trouble
  * 1 return: no problem
@@ -1954,6 +2079,12 @@ PQgetResult(PGconn *conn)
 				res = pqPrepareAsyncResult(conn);
 			else
 				res = PQmakeEmptyPGresult(conn, PGRES_COPY_OUT);
+			break;
+		case PGASYNC_COPY_BOTH:
+			if (conn->result && conn->result->resultStatus == PGRES_COPY_BOTH)
+				res = pqPrepareAsyncResult(conn);
+			else
+				res = PQmakeEmptyPGresult(conn, PGRES_COPY_BOTH);
 			break;
 		default:
 			printfPQExpBuffer(&conn->errorMessage,
@@ -2115,6 +2246,13 @@ PQexecStart(PGconn *conn)
 				return false;
 			}
 		}
+		else if (resultStatus == PGRES_COPY_BOTH)
+		{
+			/* We don't allow PQexec during COPY BOTH */
+			printfPQExpBuffer(&conn->errorMessage,
+					 libpq_gettext("PQexec not allowed during COPY BOTH\n"));
+			return false;
+		}
 		/* check for loss of connection, too */
 		if (conn->status == CONNECTION_BAD)
 			return false;
@@ -2138,8 +2276,8 @@ PQexecFinish(PGconn *conn)
 	 * than one --- but merge error messages if we get more than one error
 	 * result.
 	 *
-	 * We have to stop if we see copy in/out, however. We will resume parsing
-	 * after application performs the data transfer.
+	 * We have to stop if we see copy in/out/both, however. We will resume
+	 * parsing after application performs the data transfer.
 	 *
 	 * Also stop if the connection is lost (else we'll loop infinitely).
 	 */
@@ -2167,6 +2305,7 @@ PQexecFinish(PGconn *conn)
 		lastResult = result;
 		if (result->resultStatus == PGRES_COPY_IN ||
 			result->resultStatus == PGRES_COPY_OUT ||
+			result->resultStatus == PGRES_COPY_BOTH ||
 			conn->status == CONNECTION_BAD)
 			break;
 	}
@@ -2340,7 +2479,7 @@ PQnotifies(PGconn *conn)
 }
 
 /*
- * PQputCopyData - send some data to the backend during COPY IN
+ * PQputCopyData - send some data to the backend during COPY IN or COPY BOTH
  *
  * Returns 1 if successful, 0 if data could not be sent (only possible
  * in nonblock mode), or -1 if an error occurs.
@@ -2350,7 +2489,8 @@ PQputCopyData(PGconn *conn, const char *buffer, int nbytes)
 {
 	if (!conn)
 		return -1;
-	if (conn->asyncStatus != PGASYNC_COPY_IN)
+	if (conn->asyncStatus != PGASYNC_COPY_IN &&
+		conn->asyncStatus != PGASYNC_COPY_BOTH)
 	{
 		printfPQExpBuffer(&conn->errorMessage,
 						  libpq_gettext("no COPY in progress\n"));
@@ -2488,6 +2628,7 @@ PQputCopyEnd(PGconn *conn, const char *errormsg)
 
 /*
  * PQgetCopyData - read a row of data from the backend during COPY OUT
+ * or COPY BOTH
  *
  * If successful, sets *buffer to point to a malloc'd row of data, and
  * returns row length (always > 0) as result.
@@ -2501,7 +2642,8 @@ PQgetCopyData(PGconn *conn, char **buffer, int async)
 	*buffer = NULL;				/* for all failure cases */
 	if (!conn)
 		return -2;
-	if (conn->asyncStatus != PGASYNC_COPY_OUT)
+	if (conn->asyncStatus != PGASYNC_COPY_OUT &&
+		conn->asyncStatus != PGASYNC_COPY_BOTH)
 	{
 		printfPQExpBuffer(&conn->errorMessage,
 						  libpq_gettext("no COPY in progress\n"));
@@ -2712,7 +2854,7 @@ PQresultStatus(const PGresult *res)
 char *
 PQresStatus(ExecStatusType status)
 {
-	if ((int)status < 0 || status >= sizeof pgresStatus / sizeof pgresStatus[0])
+	if ((unsigned int) status >= sizeof pgresStatus / sizeof pgresStatus[0])
 		return libpq_gettext("invalid ExecStatusType code");
 	return pgresStatus[status];
 }
@@ -3176,7 +3318,7 @@ PQparamtype(const PGresult *res, int param_num)
 
 /* PQsetnonblocking:
  *	sets the PGconn's database connection non-blocking if the arg is TRUE
- *	or makes it non-blocking if the arg is FALSE, this will not protect
+ *	or makes it blocking if the arg is FALSE, this will not protect
  *	you from PQexec(), you'll only be safe when using the non-blocking API.
  *	Needs to be called only on a connected database connection.
  */
@@ -3589,18 +3731,18 @@ PQescapeByteaInternal(PGconn *conn,
 	}
 	else
 	{
-	vp = from;
-	for (i = from_length; i > 0; i--, vp++)
-	{
-		if (*vp < 0x20 || *vp > 0x7e)
-			len += bslash_len + 3;
-		else if (*vp == '\'')
-			len += 2;
-		else if (*vp == '\\')
-			len += bslash_len + bslash_len;
-		else
-			len++;
-	}
+		vp = from;
+		for (i = from_length; i > 0; i--, vp++)
+		{
+			if (*vp < 0x20 || *vp > 0x7e)
+				len += bslash_len + 3;
+			else if (*vp == '\'')
+				len += 2;
+			else if (*vp == '\\')
+				len += bslash_len + bslash_len;
+			else
+				len++;
+		}
 	}
 
 	*to_length = len;
@@ -3749,52 +3891,52 @@ PQunescapeBytea(const unsigned char *strtext, size_t *retbuflen)
 	}
 	else
 	{
-	/*
-	 * Length of input is max length of output, but add one to avoid
-	 * unportable malloc(0) if input is zero-length.
-	 */
-	buffer = (unsigned char *) malloc(strtextlen + 1);
-	if (buffer == NULL)
-		return NULL;
+		/*
+		 * Length of input is max length of output, but add one to avoid
+		 * unportable malloc(0) if input is zero-length.
+		 */
+		buffer = (unsigned char *) malloc(strtextlen + 1);
+		if (buffer == NULL)
+			return NULL;
 
-	for (i = j = 0; i < strtextlen;)
-	{
-		switch (strtext[i])
+		for (i = j = 0; i < strtextlen;)
 		{
-			case '\\':
-				i++;
-				if (strtext[i] == '\\')
-					buffer[j++] = strtext[i++];
-				else
-				{
-					if ((ISFIRSTOCTDIGIT(strtext[i])) &&
-						(ISOCTDIGIT(strtext[i + 1])) &&
-						(ISOCTDIGIT(strtext[i + 2])))
+			switch (strtext[i])
+			{
+				case '\\':
+					i++;
+					if (strtext[i] == '\\')
+						buffer[j++] = strtext[i++];
+					else
 					{
-						int			byte;
+						if ((ISFIRSTOCTDIGIT(strtext[i])) &&
+							(ISOCTDIGIT(strtext[i + 1])) &&
+							(ISOCTDIGIT(strtext[i + 2])))
+						{
+							int			byte;
 
-						byte = OCTVAL(strtext[i++]);
-						byte = (byte << 3) + OCTVAL(strtext[i++]);
-						byte = (byte << 3) + OCTVAL(strtext[i++]);
-						buffer[j++] = byte;
+							byte = OCTVAL(strtext[i++]);
+							byte = (byte << 3) + OCTVAL(strtext[i++]);
+							byte = (byte << 3) + OCTVAL(strtext[i++]);
+							buffer[j++] = byte;
+						}
 					}
-				}
 
-				/*
-				 * Note: if we see '\' followed by something that isn't a
-				 * recognized escape sequence, we loop around having done
+					/*
+					 * Note: if we see '\' followed by something that isn't a
+					 * recognized escape sequence, we loop around having done
 					 * nothing except advance i.  Therefore the something will
 					 * be emitted as ordinary data on the next cycle. Corner
 					 * case: '\' at end of string will just be discarded.
-				 */
-				break;
+					 */
+					break;
 
-			default:
-				buffer[j++] = strtext[i++];
-				break;
+				default:
+					buffer[j++] = strtext[i++];
+					break;
+			}
 		}
-	}
-	buflen = j;					/* buflen is the length of the dequoted data */
+		buflen = j;				/* buflen is the length of the dequoted data */
 	}
 
 	/* Shrink the buffer to be no larger than necessary */

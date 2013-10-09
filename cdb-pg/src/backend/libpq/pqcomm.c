@@ -93,6 +93,7 @@
 #include "miscadmin.h"
 #include "storage/ipc.h"
 #include "utils/guc.h"
+#include "utils/memutils.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbfilerepservice.h"
 #include "utils/faultinjector.h"
@@ -114,23 +115,31 @@ static char sock_path[MAXPGPATH];
 
 
 /*
- * Buffers for low-level I/O
+ * Buffers for low-level I/O.
+ *
+ * The receive buffer is fixed size. Send buffer is usually 8k, but can be
+ * enlarged by pq_putmessage_noblock() if the message doesn't fit otherwise.
  */
 
-#define PQ_BUFFER_SIZE 8192
+#define PQ_SEND_BUFFER_SIZE 8192
+#define PQ_RECV_BUFFER_SIZE 8192
 
-static char PqSendBuffer[PQ_BUFFER_SIZE];
+static char *PqSendBuffer;
+static int	PqSendBufferSize;	/* Size send buffer */
 static int	PqSendPointer;		/* Next index to store a byte in PqSendBuffer */
+static int	PqSendStart;		/* Next index to send a byte in PqSendBuffer */
 
-static char PqRecvBuffer[PQ_BUFFER_SIZE];
+static char PqRecvBuffer[PQ_RECV_BUFFER_SIZE];
 static int	PqRecvPointer;		/* Next index to read a byte from PqRecvBuffer */
 static int	PqRecvLength;		/* End of data available in PqRecvBuffer */
 
+/* TODO: do we really need this? */
 static pthread_mutex_t send_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /*
  * Message status
  */
+static bool PqCommBusy;
 /* XXX This flag is used by frontend protocal 1 and 2 only.  That is 
  * VERY OLD (We should be on Protocol 3).
  */
@@ -140,6 +149,7 @@ static bool DoingCopyOut;
 static void pq_close(int code, Datum arg);
 static int	internal_putbytes(const char *s, size_t len);
 static int	internal_flush(void);
+static void pq_set_nonblocking(bool nonblocking);
 
 #ifdef HAVE_UNIX_SOCKETS
 static int	Lock_AF_UNIX(unsigned short portNumber, char *unixSocketName);
@@ -154,7 +164,10 @@ static int	Setup_AF_UNIX(void);
 void
 pq_init(void)
 {
-	PqSendPointer = PqRecvPointer = PqRecvLength = 0;
+	PqSendBufferSize = PQ_SEND_BUFFER_SIZE;
+	PqSendBuffer = MemoryContextAlloc(TopMemoryContext, PqSendBufferSize);
+	PqSendPointer = PqSendStart = PqRecvPointer = PqRecvLength = 0;
+	PqCommBusy = false;
 	DoingCopyOut = false;
 	on_proc_exit(pq_close, 0);
 }
@@ -170,6 +183,8 @@ pq_init(void)
 void
 pq_comm_reset(void)
 {
+	/* Do not throw away pending data, but do reset the busy flag */
+	PqCommBusy = false;
 	/* We can abort any old-style COPY OUT, too */
 	pq_endcopyout(true);
 }
@@ -678,7 +693,7 @@ StreamConnection(pgsocket server_fd, Port *port)
 		 * This is a Win32 socket optimization.  The ideal size is 32k.
 		 * http://support.microsoft.com/kb/823764/EN-US/
 		 */
-		on = PQ_BUFFER_SIZE * 4;
+		on = PQ_SEND_BUFFER_SIZE * 4;
 		if (setsockopt(port->sock, SOL_SOCKET, SO_SNDBUF, (char *) &on,
 					   sizeof(on)) < 0)
 		{
@@ -759,6 +774,43 @@ TouchSocketFile(void)
  * --------------------------------
  */
 
+/* --------------------------------
+ *			  pq_set_nonblocking - set socket blocking/non-blocking
+ *
+ * Sets the socket non-blocking if nonblocking is TRUE, or sets it
+ * blocking otherwise.
+ * --------------------------------
+ */
+static void
+pq_set_nonblocking(bool nonblocking)
+{
+	if (MyProcPort->noblock == nonblocking)
+		return;
+
+#ifdef WIN32
+	pgwin32_noblock = nonblocking ? 1 : 0;
+#else
+
+	/*
+	 * Use COMMERROR on failure, because ERROR would try to send the error to
+	 * the client, which might require changing the mode again, leading to
+	 * infinite recursion.
+	 */
+	if (nonblocking)
+	{
+		if (!pg_set_noblock(MyProcPort->sock))
+			ereport(COMMERROR,
+				  (errmsg("could not set socket to non-blocking mode: %m")));
+	}
+	else
+	{
+		if (!pg_set_block(MyProcPort->sock))
+			ereport(COMMERROR,
+					(errmsg("could not set socket to blocking mode: %m")));
+	}
+#endif
+	MyProcPort->noblock = nonblocking;
+}
 
 /* --------------------------------
  *		pq_recvbuf - load some bytes into the input buffer
@@ -783,13 +835,16 @@ pq_recvbuf(void)
 			PqRecvLength = PqRecvPointer = 0;
 	}
 
+	/* Ensure that we're in blocking mode */
+	pq_set_nonblocking(false);
+
 	/* Can fill buffer from PqRecvLength and upwards */
 	for (;;)
 	{
 		int			r;
 
 		r = secure_read(MyProcPort, PqRecvBuffer + PqRecvLength,
-						PQ_BUFFER_SIZE - PqRecvLength);
+						PQ_RECV_BUFFER_SIZE - PqRecvLength);
 
 		if (r < 0)
 		{
@@ -920,7 +975,6 @@ pq_peekbyte(void)
 	return (unsigned char) PqRecvBuffer[PqRecvPointer];
 }
 
-
 /* --------------------------------
  *		pq_getbyte_if_available - get a single byte from connection,
  *			if available
@@ -940,72 +994,37 @@ pq_getbyte_if_available(unsigned char *c)
 		return 1;
 	}
 
-	/* Temporarily put the socket into non-blocking mode */
-#ifdef WIN32
-	pgwin32_noblock = 1;
-#else
-	if (!pg_set_noblock(MyProcPort->sock))
-		ereport(ERROR,
-				(errmsg("could not set socket to non-blocking mode: %m")));
-#endif
-	MyProcPort->noblock = true;
-	PG_TRY();
+	/* Put the socket into non-blocking mode */
+	pq_set_nonblocking(true);
+
+	r = secure_read(MyProcPort, c, 1);
+	if (r < 0)
 	{
-		r = secure_read(MyProcPort, c, 1);
-		if (r < 0)
+		/*
+		 * Ok if no data available without blocking or interrupted (though
+		 * EINTR really shouldn't happen with a non-blocking socket). Report
+		 * other errors.
+		 */
+		if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+			r = 0;
+		else
 		{
 			/*
-			 * Ok if no data available without blocking or interrupted (though
-			 * EINTR really shouldn't happen with a non-blocking socket).
-			 * Report other errors.
+			 * Careful: an ereport() that tries to write to the client would
+			 * cause recursion to here, leading to stack overflow and core
+			 * dump!  This message must go *only* to the postmaster log.
 			 */
-			if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
-				r = 0;
-			else
-			{
-				/*
-				 * Careful: an ereport() that tries to write to the client
-				 * would cause recursion to here, leading to stack overflow
-				 * and core dump!  This message must go *only* to the
-				 * postmaster log.
-				 */
-				ereport(COMMERROR,
-						(errcode_for_socket_access(),
-						 errmsg("could not receive data from client: %m")));
-				r = EOF;
-			}
-		}
-		else if (r == 0)
-		{
-			/* EOF detected */
+			ereport(COMMERROR,
+					(errcode_for_socket_access(),
+					 errmsg("could not receive data from client: %m")));
 			r = EOF;
 		}
 	}
-	PG_CATCH();
+	else if (r == 0)
 	{
-		/*
-		 * The rest of the backend code assumes the socket is in blocking
-		 * mode, so treat failure as FATAL.
-		 */
-#ifdef WIN32
-		pgwin32_noblock = 0;
-#else
-		if (!pg_set_block(MyProcPort->sock))
-			ereport(FATAL,
-					(errmsg("could not set socket to blocking mode: %m")));
-#endif
-		MyProcPort->noblock = false;
-		PG_RE_THROW();
+		/* EOF detected */
+		r = EOF;
 	}
-	PG_END_TRY();
-#ifdef WIN32
-	pgwin32_noblock = 0;
-#else
-	if (!pg_set_block(MyProcPort->sock))
-		ereport(FATAL,
-				(errmsg("could not set socket to blocking mode: %m")));
-#endif
-	MyProcPort->noblock = false;
 
 	return r;
 }
@@ -1214,6 +1233,9 @@ pq_putbytes(const char *s, size_t len)
 {
 	int			res;
 
+	/* No-op if reentrant call */
+	if (PqCommBusy)
+		return 0;
 	/* Should only be called by old-style COPY OUT */
 	Assert(DoingCopyOut);
     pthread_mutex_lock(&send_mutex);
@@ -1221,10 +1243,13 @@ pq_putbytes(const char *s, size_t len)
 	/* The code below can throw an error. Make sure we release the send_mutex lock when that happens */
     PG_TRY();
     {
+		PqCommBusy = true;
     	res = internal_putbytes(s, len);
+		PqCommBusy = false;
     }
     PG_CATCH();
     {
+		PqCommBusy = false;
     	pthread_mutex_unlock(&send_mutex);
     	PG_RE_THROW();
     }
@@ -1242,10 +1267,13 @@ internal_putbytes(const char *s, size_t len)
 	while (len > 0)
 	{
 		/* If buffer is full, then flush it out */
-		if (PqSendPointer >= PQ_BUFFER_SIZE)
+		if (PqSendPointer >= PqSendBufferSize)
+		{
+			pq_set_nonblocking(false);
 			if (internal_flush())
 				return EOF;
-		amount = PQ_BUFFER_SIZE - PqSendPointer;
+		}
+		amount = PqSendBufferSize - PqSendPointer;
 		if (amount > len)
 			amount = len;
 		memcpy(PqSendBuffer + PqSendPointer, s, amount);
@@ -1268,6 +1296,8 @@ pq_flush(void)
 	int			res;
 
 	/* No-op if reentrant call */
+	if (PqCommBusy)
+		return 0;
 	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && IsUnderPostmaster)
 	{
 		pthread_mutex_lock(&send_mutex);
@@ -1276,10 +1306,14 @@ pq_flush(void)
 	/* The code below can throw an error. Make sure we release the send_mutex lock when that happens */
 	PG_TRY();
 	{
+		PqCommBusy = true;
+		pq_set_nonblocking(false);
 		res = internal_flush();
+		PqCommBusy = false;
 	}
 	PG_CATCH();
 	{
+		PqCommBusy = false;
 		if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && IsUnderPostmaster)
 		{
 			pthread_mutex_unlock(&send_mutex);
@@ -1295,12 +1329,19 @@ pq_flush(void)
 	return res;
 }
 
+/* --------------------------------
+ *		internal_flush - flush pending output
+ *
+ * Returns 0 if OK (meaning everything was sent, or operation would block
+ * and the socket is in non-blocking mode), or EOF if trouble.
+ * --------------------------------
+ */
 static int
 internal_flush(void)
 {
 	static int	last_reported_send_errno = 0;
 
-	char	   *bufptr = PqSendBuffer;
+	char	   *bufptr = PqSendBuffer + PqSendStart;
 	char	   *bufend = PqSendBuffer + PqSendPointer;
 
 #ifdef FAULT_INJECTOR
@@ -1327,6 +1368,16 @@ internal_flush(void)
 				continue;		/* Ok if we were interrupted */
 
 			/*
+			 * Ok if no data writable without blocking, and the socket is in
+			 * non-blocking mode.
+			 */
+			if (errno == EAGAIN ||
+				errno == EWOULDBLOCK)
+			{
+				return 0;
+			}
+
+			/*
 			 * Careful: an ereport() that tries to write to the client would
 			 * cause recursion to here, leading to stack overflow and core
 			 * dump!  This message must go *only* to the postmaster log.
@@ -1338,7 +1389,7 @@ internal_flush(void)
 			if (errno != last_reported_send_errno)
 			{
 				last_reported_send_errno = errno;
-				
+				/* TDOO: what's this? */
 				HOLD_INTERRUPTS();
 
 				ereport(COMMERROR,
@@ -1349,11 +1400,11 @@ internal_flush(void)
 
 			/*
 			 * We drop the buffered data anyway so that processing can
-			 * continue, even though we'll probably quit soon.  We also set a
+			 * continue, even though we'll probably quit soon. We also set a
 			 * flag that'll cause the next CHECK_FOR_INTERRUPTS to terminate
 			 * the connection.
 			 */
-			PqSendPointer = 0;
+			PqSendStart = PqSendPointer = 0;
 			ClientConnectionLost = 1;
 			InterruptPending = 1;
 			return EOF;
@@ -1361,12 +1412,50 @@ internal_flush(void)
 
 		last_reported_send_errno = 0;	/* reset after any successful send */
 		bufptr += r;
+		PqSendStart += r;
 	}
 
-	PqSendPointer = 0;
+	PqSendStart = PqSendPointer = 0;
 	return 0;
 }
 
+/* --------------------------------
+ *		pq_flush_if_writable - flush pending output if writable without blocking
+ *
+ * Returns 0 if OK, or EOF if trouble.
+ * --------------------------------
+ */
+int
+pq_flush_if_writable(void)
+{
+	int			res;
+
+	/* Quick exit if nothing to do */
+	if (PqSendPointer == PqSendStart)
+		return 0;
+
+	/* No-op if reentrant call */
+	if (PqCommBusy)
+		return 0;
+
+	/* Temporarily put the socket into non-blocking mode */
+	pq_set_nonblocking(true);
+
+	PqCommBusy = true;
+	res = internal_flush();
+	PqCommBusy = false;
+	return res;
+}
+
+/* --------------------------------
+ *		pq_is_send_pending	- is there any pending data in the output buffer?
+ * --------------------------------
+ */
+bool
+pq_is_send_pending(void)
+{
+	return (PqSendStart < PqSendPointer);
+}
 
 /* --------------------------------
  * Message-level I/O routines begin here.
@@ -1404,7 +1493,9 @@ internal_flush(void)
 int
 pq_putmessage(char msgtype, const char *s, size_t len)
 {
-    int ret = EOF;
+	if (DoingCopyOut || PqCommBusy)
+		return 0;
+	PqCommBusy = true;
 	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && IsUnderPostmaster)
 	{
 		pthread_mutex_lock(&send_mutex);
@@ -1415,7 +1506,6 @@ pq_putmessage(char msgtype, const char *s, size_t len)
 	{
 		if (DoingCopyOut)
 		{
-			ret = 0;
 			goto fail;
 		}
 
@@ -1444,6 +1534,8 @@ pq_putmessage(char msgtype, const char *s, size_t len)
 			pthread_mutex_unlock(&send_mutex);
 		}
 
+		PqCommBusy = false;
+
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -1453,6 +1545,7 @@ pq_putmessage(char msgtype, const char *s, size_t len)
 		pthread_mutex_unlock(&send_mutex);
 	}
 
+	PqCommBusy = false;
 	return 0;
 
 fail:
@@ -1460,8 +1553,38 @@ fail:
 	{
 		pthread_mutex_unlock(&send_mutex);
 	}
+
+	PqCommBusy = false;
 	return EOF;
 }
+
+/* --------------------------------
+ *		pq_putmessage_noblock	- like pq_putmessage, but never blocks
+ *
+ *		If the output buffer is too small to hold the message, the buffer
+ *		is enlarged.
+ */
+void
+pq_putmessage_noblock(char msgtype, const char *s, size_t len)
+{
+	int res		PG_USED_FOR_ASSERTS_ONLY;
+	int			required;
+
+	/*
+	 * Ensure we have enough space in the output buffer for the message header
+	 * as well as the message itself.
+	 */
+	required = PqSendPointer + 1 + 4 + len;
+	if (required > PqSendBufferSize)
+	{
+		PqSendBuffer = repalloc(PqSendBuffer, required);
+		PqSendBufferSize = required;
+	}
+	res = pq_putmessage(msgtype, s, len);
+	Assert(res == 0);			/* should not fail when the message fits in
+								 * buffer */
+}
+
 
 /* --------------------------------
  *		pq_startcopyout - inform libpq that an old-style COPY OUT transfer

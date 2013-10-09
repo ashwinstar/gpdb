@@ -8,6 +8,7 @@
 #include "postgres.h"
 #include "miscadmin.h"
 
+#include "access/xlog.h"
 #include "catalog/catquery.h"
 #include "catalog/gp_segment_config.h"
 #include "catalog/pg_filespace.h"
@@ -24,6 +25,7 @@
 #include "commands/filespace.h"
 #include "executor/spi.h"
 #include "lib/stringinfo.h"
+#include "postmaster/primary_mirror_mode.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/segadmin.h"
@@ -255,7 +257,7 @@ mirroring_sanity_check(int flags, const char *func)
 		if (GpIdentity.dbid == UNINITIALIZED_GP_IDENTITY_VALUE)
 			elog(ERROR, "%s requires valid GpIdentity dbid", func);
 
-		if (GpIdentity.dbid != MASTER_DBID)
+		if (GpIdentity.segindex != MASTER_CONTENT_ID)
 			elog(ERROR, "%s must be run on the master", func);
 	}
 
@@ -293,13 +295,12 @@ mirroring_sanity_check(int flags, const char *func)
 			elog(ERROR, "%s cannot be run on the master", func);
 	}
 
-	if ((flags && STANDBY_ONLY) == STANDBY_ONLY)
+	if ((flags & STANDBY_ONLY) == STANDBY_ONLY)
 	{
 		if (GpIdentity.dbid == UNINITIALIZED_GP_IDENTITY_VALUE)
 			elog(ERROR, "%s requires valid GpIdentity dbid", func);
 
-		if (!(GpIdentity.segindex == MASTER_CONTENT_ID ||
-			  GpIdentity.dbid == MASTER_DBID))
+		if (!dbid_is_master_standby(GpIdentity.dbid))
 			elog(ERROR, "%s can only be run on the standby master", func);
 	}
 }
@@ -413,7 +414,7 @@ update_filespaces(int16 pridbid, seginfo *i, bool add, ArrayType *fsmap)
 	 * If we're on the master, process the pg_filespace_entry rows for this
 	 * segment.
 	 */
-	if (GpIdentity.dbid == MASTER_DBID)
+	if (GpIdentity.segindex == MASTER_CONTENT_ID)
 	{
 		Relation rel = heap_open(FileSpaceEntryRelationId,
 								 RowExclusiveLock);
@@ -448,7 +449,8 @@ update_tablespaces(int16 pridbid, seginfo *i, bool add)
 		return;
 	}
 
-	if (pridbid == MASTER_DBID || !must_update_persistent(pridbid, i))
+	if (pridbid == MASTER_DBID ||
+			!must_update_persistent(pridbid, i))
 		return;
 
 	/*
@@ -465,7 +467,8 @@ update_tablespaces(int16 pridbid, seginfo *i, bool add)
 static void
 update_databases(int16 pridbid, seginfo *i, bool add)
 {
-	if (pridbid == MASTER_DBID || !must_update_persistent(pridbid, i))
+	if (pridbid == MASTER_DBID ||
+			!must_update_persistent(pridbid, i))
 		return;
 
 	/*
@@ -482,7 +485,8 @@ update_databases(int16 pridbid, seginfo *i, bool add)
 static void
 update_relations(int16 pridbid, seginfo *i, bool add)
 {
-	if (pridbid == MASTER_DBID || !must_update_persistent(pridbid, i))
+	if (pridbid == MASTER_DBID ||
+			!must_update_persistent(pridbid, i))
 		return;
 
 	/*
@@ -942,22 +946,30 @@ gp_remove_segment_mirror(PG_FUNCTION_ARGS)
 /*
  * Add a master standby.
  *
- * gp_add_master_standby(hostname, address, filespace_map)
+ * gp_add_master_standby(hostname, address, filespace_map, [port])
  *
  * Args:
  *  hostname - as above
  *  address - as above
  *  filespace_map - as above
+ *  port - the port number of new standby
  *
  * Returns:
  *  dbid of the new standby
  */
+Datum
+gp_add_master_standby_port(PG_FUNCTION_ARGS)
+{
+	return gp_add_master_standby(fcinfo);
+}
+
 Datum
 gp_add_master_standby(PG_FUNCTION_ARGS)
 {
 	seginfo *i;
 	seginfo new;
 	int maxdbid;
+	int16	master_dbid;
 	Relation gprel;
 	ArrayType *fsmap;
 
@@ -975,14 +987,23 @@ gp_add_master_standby(PG_FUNCTION_ARGS)
 
 	check_fsmap(fsmap);
 
-	/* Lock exclusively to avoid concurrent changes */
-	gprel = heap_open(GpSegmentConfigRelationId, AccessExclusiveLock);
-
+	/* Check if the system is ok */
 	if (standby_exists())
 		elog(ERROR, "only a single master standby may be defined");
 
+	/* Lock exclusively to avoid concurrent changes */
+	gprel = heap_open(GpSegmentConfigRelationId, AccessExclusiveLock);
+
 	maxdbid = get_maxdbid();
-	i = get_seginfo(MASTER_DBID); /* master dbid */
+
+	/*
+	 * Don't reference GpIdentity.dbid, as it is legitimate to set -1
+	 * for -b option in utility mode.  Content ID = -1 AND role = 'p' is
+	 * the definition of primary master.
+	 */
+	master_dbid = contentid_get_dbid(MASTER_CONTENT_ID,
+									 SEGMENT_ROLE_PRIMARY, false);
+	i = get_seginfo(master_dbid);
 	memcpy(&new, i, sizeof(seginfo));
 
 	new.db.dbid = maxdbid + 1;
@@ -997,56 +1018,18 @@ gp_add_master_standby(PG_FUNCTION_ARGS)
 	new.db.address = DatumGetCString(DirectFunctionCall1(textout,
 								PointerGetDatum(PG_GETARG_TEXT_P(1))));
 
-	add_segment_config_entry(MASTER_DBID, &new, fsmap);
+	/* Use the new port number if specified */
+	if (PG_NARGS() > 3 && !PG_ARGISNULL(3))
+		new.db.port = PG_GETARG_INT32(3);
+
+	add_segment_config_entry(GpIdentity.dbid, &new, fsmap);
 
 	heap_close(gprel, NoLock);
 
+	/* Update shared memory for mmxlog */
+	SetStandbyDbid(new.db.dbid);
+
 	PG_RETURN_INT16(new.db.dbid);
-}
-
-static void
-update_gp_master_mirroring(char *str)
-{
-	volatile bool connected = false;
-	volatile bool resetModsDML = false;
-
-	PG_TRY();
-	{
-		StringInfoData sql;
-
-		initStringInfo(&sql);
-
-		appendStringInfo(&sql, "update gp_master_mirroring set "
-						 "summary_state = '%s', detail_state = null,"
-						 "log_time = current_timestamp, error_message = null",
-						 str);
-
-		if (SPI_OK_CONNECT != SPI_connect())
-			elog(ERROR, "cannot connect via SPI");
-		connected = true;
-
-		if (!allowSystemTableModsDML)
-		{
-			allowSystemTableModsDML = true;
-			resetModsDML = true;
-		}
-		if (SPI_execute(sql.data, false, 0) < 0)
-			elog(ERROR, "cannot update gp_master_mirroring");
-		if (resetModsDML)
-			allowSystemTableModsDML = false;
-	}
-	PG_CATCH();
-	{
-		if (connected)
-			SPI_finish();
-		if (resetModsDML)
-			allowSystemTableModsDML = false;
-
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
-
-	SPI_finish();
 }
 
 /*
@@ -1068,9 +1051,10 @@ gp_remove_master_standby(PG_FUNCTION_ARGS)
 	if (!dbid)
 		elog(ERROR, "no master standby defined");
 
-	remove_segment(MASTER_DBID, dbid);
+	remove_segment(GpIdentity.dbid, dbid);
 
-	update_gp_master_mirroring("Not Configured");
+	/* Update shared memory for mmxlog */
+	SetStandbyDbid(InvalidDbid);
 
 	PG_RETURN_BOOL(true);
 }
@@ -1152,9 +1136,6 @@ gp_prep_new_segment(PG_FUNCTION_ARGS)
 static void
 persistent_activate_standby(int16 standbyid, int16 newdbid)
 {
-	/* for now primary master must be dbid 1 */
-	Insist(newdbid == MASTER_DBID);
-
 	PersistentFilespace_ActivateStandby(standbyid, newdbid);
 	PersistentTablespace_ActivateStandby(standbyid, newdbid);
 	PersistentDatabase_ActivateStandby(standbyid, newdbid);
@@ -1172,8 +1153,6 @@ segment_config_activate_standby(int16 standbydbid, int16 newdbid)
 	int numDel = 0;
 
 	/* first, delete the old master */
-	Insist(newdbid == MASTER_DBID);
-
 	numDel = caql_getcount(
 			caql_addrel(cqclr(&cqc), rel),
 			cql("DELETE FROM gp_segment_configuration "
@@ -1225,8 +1204,6 @@ filespace_entry_activate_standby(int standbydbid, int newdbid)
 	int numDel = 0;
 
 	/* first, delete the old master */
-	Insist(newdbid == MASTER_DBID);
-
 	numDel = caql_getcount(
 			caql_addrel(cqclr(&cqc), rel),
 			cql("DELETE FROM pg_filespace_entry "
@@ -1253,31 +1230,29 @@ filespace_entry_activate_standby(int standbydbid, int newdbid)
 
 /*
  * Update pg_filespace_entry and gp_segment_configuration to activate a standby.
- * This means deleting references to the old standby and changing out dbid from
- * standbydbid to newdbid.
+ * This means deleting references to the old standby.
  */
 static void
-catalog_activate_standby(int16 standbydbid, int16 newdbid)
+catalog_activate_standby(int16 standbydbid, int16 olddbid)
 {
-	segment_config_activate_standby(standbydbid, newdbid);
-	filespace_entry_activate_standby(standbydbid, newdbid);
+	segment_config_activate_standby(standbydbid, olddbid);
+	filespace_entry_activate_standby(standbydbid, olddbid);
 }
 
 /*
  * Activate a standby. To do this, we need to change
  *
  * 1. Check that we're actually the standby
- * 2. Change our identity to the master (i.e., switch our dbid to
  *    dbid 1)
- * 3. Update pg_filespace_entry, switching our entries from the old dbid
+ * 2. Update pg_filespace_entry, switching our entries from the old dbid
  *    to the new dbid
- * 4. Remove references to the old master
- * 5. Update the persistence tables to remove references to the master,
+ * 3. Remove references to the old master
+ * 4. Update the persistence tables to remove references to the master,
  *    switching our old dbid for the new one
  *
  * Things are actually a little hairy here. The reason is that in order to
  * read/write the filesystem, we need to lookup the gp_persistent_filespace_node
- * table. However, if we change our dbid, we don't get the right results.
+ * table.
  *
  * gp_activate_standby()
  *
@@ -1288,24 +1263,39 @@ Datum
 gp_activate_standby(PG_FUNCTION_ARGS)
 {
 	int16 olddbid = GpIdentity.dbid;
-	int16 newdbid = MASTER_DBID;
+	int16 newdbid;
+
+	newdbid = contentid_get_dbid(MASTER_CONTENT_ID, SEGMENT_ROLE_PRIMARY, true);
+
+	/*
+	 * This call comes from Startup process post checking state in pg_control 
+	 * file to make sure its standby.
+	 * If user calls (ideally SHOULD NOT) but just for troubleshooting or 
+	 * wired case must make usre its only executed on Standby.
+	 * So, this checking should return after matching DBIDs only for StartUp Process,
+	 * to cover for case of crash after updating the catalogs during promote.
+	 */
+	if (am_startup && (newdbid == olddbid))
+	{
+		/*
+		 * Job is already done, nothing needs to be done. We mostly crashed after updating the catalogs.
+		 */
+		PG_RETURN_BOOL(true);
+	}
 
 	mirroring_sanity_check(SUPERUSER | UTILITY_MODE | STANDBY_ONLY,
 						   PG_FUNCNAME_MACRO);
 
-	if (!dbid_is_master_standby(olddbid))
-		elog(ERROR, "%s must be run on the standby master",
-			 PG_FUNCNAME_MACRO);
-
 	persistent_activate_standby(olddbid, newdbid);
 
-	/*
-	 * Now the persistent tables now about us, so we can switch our
-	 * identity
-	 */
-	GpIdentity.dbid = newdbid;
-
 	catalog_activate_standby(olddbid, newdbid);
+
+	/*
+	 * Tell postmaster to change dbid to the new one.  This should come last
+	 * after completing catalog change, as the new value will reside after
+	 * transaction abort or PANIC.
+	 */
+	primaryMirrorSetNewDbid(newdbid);
 
 	/* done */
 	PG_RETURN_BOOL(true);

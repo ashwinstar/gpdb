@@ -1119,6 +1119,9 @@ NON_EXEC_STATIC void BackoffSweeperMain(int argc, char *argv[])
 	IsUnderPostmaster = true;
 	isSweeperProcess = true;
 
+	/* Stay away from PMChildSlot */
+	MyPMChildSlot = -1;
+
 	/* reset MyProcPid */
 	MyProcPid = getpid();
 

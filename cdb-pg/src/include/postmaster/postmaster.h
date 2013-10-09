@@ -31,6 +31,16 @@ extern char *bonjour_name;
 
 #ifdef WIN32
 extern HANDLE PostmasterHandle;
+#else
+extern int	postmaster_alive_fds[2];
+
+/*
+ * Constants that represent which of postmaster_alive_fds is held by
+ * postmaster, and which is used in children to check for postmaster death.
+ */
+#define POSTMASTER_FD_WATCH		0		/* used in children to check for
+										 * postmaster death */
+#define POSTMASTER_FD_OWN		1		/* kept open by postmaster only */
 #endif
 
 #define POSTMASTER_IN_STARTUP_MSG "the database system is starting up"
@@ -55,10 +65,8 @@ extern void ShmemBackendArrayAllocation(void);
 #endif
 
 /* CDB */
-extern int gpsyncMain(int argc, char *argv[]);
 typedef int (PMSubStartCallback)(void);
 extern bool GPPostmaster(void);
-extern bool GPStandby(void);
 extern bool GPIsSegmentDatabase(void);
 extern bool GPAreFileReplicationStructuresRequired(void);
 extern int PostmasterGetMppLocalProcessCounter(void);

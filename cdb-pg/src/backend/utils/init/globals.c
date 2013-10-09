@@ -41,7 +41,7 @@ int			MyProcPid;
 pg_time_t	MyStartTime;
 struct Port *MyProcPort;
 long		MyCancelKey;
-int			MyPMChildSlot;
+int			MyPMChildSlot = -1;
 
 /*
  * DataDir is the absolute path to the top level of the PGDATA directory tree.

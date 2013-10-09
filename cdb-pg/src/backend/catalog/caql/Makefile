@@ -110,6 +110,7 @@ CAQL_CQL_SRCS := $(addprefix $(top_srcdir)/src/backend/,\
 	utils/fmgr/funcapi.c \
 	utils/gp/segadmin.c \
 	utils/init/miscinit.c \
+	utils/init/postinit.c \
 	utils/misc/superuser.c \
 	utils/resscheduler/resscheduler.c \
 	utils/sort/tuplesort.c \

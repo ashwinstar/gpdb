@@ -558,60 +558,57 @@ show_log_timezone(void)
 const char *
 assign_XactIsoLevel(const char *value, bool doit, GucSource source)
 {
-	if (SerializableSnapshot != NULL)
-	{
-		if (source >= PGC_S_INTERACTIVE)
-			ereport(ERROR,
-					(errcode(ERRCODE_ACTIVE_SQL_TRANSACTION),
-					 errmsg("SET TRANSACTION ISOLATION LEVEL must be called before any query")));
-		/* source == PGC_S_OVERRIDE means do it anyway, eg at xact abort */
-		else if (source != PGC_S_OVERRIDE)
-			return NULL;
-	}
-	if (IsSubTransaction())
-	{
-		if (source >= PGC_S_INTERACTIVE)
-			ereport(ERROR,
-					(errcode(ERRCODE_ACTIVE_SQL_TRANSACTION),
-					 errmsg("SET TRANSACTION ISOLATION LEVEL must not be called in a subtransaction")));
-		/* source == PGC_S_OVERRIDE means do it anyway, eg at xact abort */
-		else if (source != PGC_S_OVERRIDE)
-			return NULL;
-	}
+	int			newXactIsoLevel;
 
 	if (strcmp(value, "serializable") == 0)
 	{
-		if (doit)
-		{
-			XactIsoLevel = XACT_SERIALIZABLE;
-		}
+		newXactIsoLevel = XACT_SERIALIZABLE;
 	}
-	else if (strcmp(value, "repeatable read") == 0) 
+	else if (strcmp(value, "repeatable read") == 0)
 	{
 		if (doit)
-		{
-			if (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_EXECUTE) 
-				elog(ERROR, "Greenplum Database does not support REPEATABLE READ transactions.");
-			XactIsoLevel = XACT_REPEATABLE_READ;
-		}
+			elog(ERROR, "Greenplum Database does not support REPEATABLE READ transactions.");
+
+		newXactIsoLevel = XACT_REPEATABLE_READ;
 	}
-	else if (strcmp(value, "read committed") == 0)  
+	else if (strcmp(value, "read committed") == 0)
 	{
-		if (doit)
-			XactIsoLevel = XACT_READ_COMMITTED;
+		newXactIsoLevel = XACT_READ_COMMITTED;
 	}
-	else if (strcmp(value, "read uncommitted") == 0) 
+	else if (strcmp(value, "read uncommitted") == 0)
 	{
-		if (doit)
-			XactIsoLevel = XACT_READ_UNCOMMITTED;
+		newXactIsoLevel = XACT_READ_UNCOMMITTED;
 	}
 	else if (strcmp(value, "default") == 0)
 	{
-		if (doit)
-			XactIsoLevel = DefaultXactIsoLevel;
+		newXactIsoLevel = DefaultXactIsoLevel;
 	}
 	else
 		return NULL;
+
+	/* source == PGC_S_OVERRIDE means do it anyway, eg at xact abort */
+	if (source != PGC_S_OVERRIDE &&
+			newXactIsoLevel != XactIsoLevel && IsTransactionState())
+	{
+		if (SerializableSnapshot != NULL)
+		{
+			if (source >= PGC_S_INTERACTIVE)
+				ereport(ERROR,
+						(errcode(ERRCODE_ACTIVE_SQL_TRANSACTION),
+						 errmsg("SET TRANSACTION ISOLATION LEVEL must be called before any query")));
+		}
+		if (IsSubTransaction())
+		{
+			if (source >= PGC_S_INTERACTIVE)
+				ereport(ERROR,
+						(errcode(ERRCODE_ACTIVE_SQL_TRANSACTION),
+						 errmsg("SET TRANSACTION ISOLATION LEVEL must not be called in a subtransaction")));
+			/* source == PGC_S_OVERRIDE means do it anyway, eg at xact abort */
+		}
+	}
+
+	if (doit)
+		XactIsoLevel = newXactIsoLevel;
 
 	return value;
 }

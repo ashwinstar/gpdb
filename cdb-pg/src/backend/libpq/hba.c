@@ -28,6 +28,7 @@
 #include "libpq/ip.h"
 #include "libpq/libpq.h"
 #include "regex/regex.h"
+#include "replication/walsender.h"
 #include "storage/fd.h"
 #include "utils/flatfiles.h"
 #include "utils/acl.h"
@@ -625,16 +626,13 @@ check_db(const char *dbname, const char *role, char *param_str)
 		 tok != NULL;
 		 tok = strtok(NULL, MULTI_VALUE_SEP))
 	{
-#if 0
 		if (am_walsender)
 		{
 			/* walsender connections can only match replication keyword */
 			if (strcmp(tok, "replication\n") == 0)
 				return true;
 		}
-		else 
-#endif
-          if (strcmp(tok, "all\n") == 0)
+		else if (strcmp(tok, "all\n") == 0)
 			return true;
 		else if (strcmp(tok, "sameuser\n") == 0)
 		{

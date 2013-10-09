@@ -167,6 +167,7 @@ typedef enum FaultInjectorIdentifier_e {
 	ExecSimpleQueryEndCommand,
 
 	ExecSortBeforeSorting,
+	BaseBackupPostCreateCheckpoint,
 
 	/* INSERT has to be done before that line */
 	FaultInjectorIdMax,

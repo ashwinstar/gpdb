@@ -32,7 +32,7 @@
 #include "storage/ipc.h"
 #include "storage/pmsignal.h"
 #include "storage/proc.h"
-#include "storage/sinval.h"
+#include "storage/sinvaladt.h"
 #include "tcop/tcopprot.h"
 #include "utils/guc.h"
 #include "utils/memutils.h"
@@ -572,28 +572,10 @@ FileRepSubProcess_InitializeResyncManagerProcess(void)
 	InitXLOGAccess();
 	
 	SetProcessingMode(NormalProcessing);
-		
-	/*
-	 * In order to access the catalog, we need a database, and a
-	 * tablespace; our access to the heap is going to be slightly
-	 * limited, so we'll just use some defaults.
-	 */
-	MyDatabaseId = TemplateDbOid;
-	MyDatabaseTableSpace = DEFAULTTABLESPACE_OID;
-	
-	if (!FindMyDatabase(knownDatabase, &MyDatabaseId, &MyDatabaseTableSpace))
-		ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE),
-						errmsg("database 'postgres' does not exist")));
-	
-	fullpath = GetDatabasePath(MyDatabaseId, MyDatabaseTableSpace);
-	
-	SetDatabasePath(fullpath);
-	
+
 	InitBufferPoolAccess();
 	/*
-	 * Finish filling in the PGPROC struct, and add it to the ProcArray. (We
-	 * need to know MyDatabaseId before we can do this, since it's entered
-	 * into the PGPROC struct.)
+	 * Add my PGPROC struct to the ProcArray.
 	 *
 	 * Once I have done this, I am visible to other backends!
 	 */
@@ -607,7 +589,7 @@ FileRepSubProcess_InitializeResyncManagerProcess(void)
 	 */
 	MyBackendId = InvalidBackendId;
 	
-	InitBackendSharedInvalidationState();
+	SharedInvalBackendInit(false);
 	
 	if (MyBackendId > MaxBackends || MyBackendId <= 0)
 		elog(FATAL, "bad backend id: %d", MyBackendId);
@@ -627,8 +609,28 @@ FileRepSubProcess_InitializeResyncManagerProcess(void)
 	 * Load relcache entries for the system catalogs.  This must create at
 	 * least the minimum set of "nailed-in" cache entries.
 	 */
-	RelationCacheInitializePhase2();	
-	
+	RelationCacheInitializePhase2();
+
+	/*
+	 * In order to access the catalog, we need a database, and a
+	 * tablespace; our access to the heap is going to be slightly
+	 * limited, so we'll just use some defaults.
+	 */
+	if (!FindMyDatabase(knownDatabase, &MyDatabaseId, &MyDatabaseTableSpace))
+		ereport(FATAL,
+				(errcode(ERRCODE_UNDEFINED_DATABASE),
+				 errmsg("database \"%s\" does not exit", knownDatabase)));
+
+	/* Now we can mark our PGPROC entry with the database ID */
+	/* (We assume this is an atomic store so no lock is needed) */
+	MyProc->databaseId = MyDatabaseId;
+
+	fullpath = GetDatabasePath(MyDatabaseId, MyDatabaseTableSpace);
+
+	SetDatabasePath(fullpath);
+
+	RelationCacheInitializePhase3();
+
 	/* No need to StartupXLOG_Pass2(); since we're not writing any data to disk */
 }
 
