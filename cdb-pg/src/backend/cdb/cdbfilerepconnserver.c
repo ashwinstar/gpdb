@@ -184,6 +184,8 @@ ConnFree(void)
 		free(port);
 	}
 	port = NULL;
+	/* We copied the pointer in FileRepConnServer_CreateConnection() */
+	MyProcPort = NULL;
 }
 
 /*
