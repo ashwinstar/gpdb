@@ -337,9 +337,19 @@ ProcessCatchupEvent(void)
 		saveDistributedTransactionContext = DistributedTransactionContext;
 		DistributedTransactionContext = DTX_CONTEXT_LOCAL_ONLY;
 
+		/*
+		 * As per above comment we are using the transaction just for cleaning-up the stuff
+		 * if error happens and not realy anyhting which needs to run in transaction or write to XLog.
+		 * So, this transaction commit doesn't need to wait for Sync Replication,
+		 * hence save MyXactMadeXLogEntry, and mark it false for this transaction.
+		 */
+		bool saveMyXactMadeXLogEntry = MyXactMadeXLogEntry;
+		MyXactMadeXLogEntry = false;
+
 		StartTransactionCommand();
 		CommitTransactionCommand();
 
+		MyXactMadeXLogEntry = saveMyXactMadeXLogEntry;
 		DistributedTransactionContext = saveDistributedTransactionContext;
 	}
 
