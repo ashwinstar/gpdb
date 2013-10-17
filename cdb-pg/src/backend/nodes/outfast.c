@@ -1001,9 +1001,13 @@ _outIntoClause(StringInfo str, IntoClause *node)
 	WRITE_OID_FIELD(oidInfo.aosegOid);
 	WRITE_OID_FIELD(oidInfo.aosegIndexOid);
 	WRITE_OID_FIELD(oidInfo.aosegComptypeOid);
+	WRITE_OID_FIELD(oidInfo.aovisimapOid);
+	WRITE_OID_FIELD(oidInfo.aovisimapIndexOid);
+	WRITE_OID_FIELD(oidInfo.aovisimapComptypeOid);
 	WRITE_OID_FIELD(oidInfo.aoblkdirOid);
 	WRITE_OID_FIELD(oidInfo.aoblkdirIndexOid);
-	WRITE_OID_FIELD(oidInfo.aoblkdirComptypeOid);
+	WRITE_OID_FIELD(oidInfo.aoblkdirComptypeOid);	
+
 }
 
 static void
@@ -1919,6 +1923,9 @@ _outCreateStmt(StringInfo str, CreateStmt *node)
 	WRITE_OID_FIELD(oidInfo.aosegOid);
 	WRITE_OID_FIELD(oidInfo.aosegIndexOid);
 	WRITE_OID_FIELD(oidInfo.aosegComptypeOid);
+	WRITE_OID_FIELD(oidInfo.aovisimapOid);
+	WRITE_OID_FIELD(oidInfo.aovisimapIndexOid);
+	WRITE_OID_FIELD(oidInfo.aovisimapComptypeOid);
 	WRITE_OID_FIELD(oidInfo.aoblkdirOid);
 	WRITE_OID_FIELD(oidInfo.aoblkdirIndexOid);
 	WRITE_OID_FIELD(oidInfo.aoblkdirComptypeOid);
@@ -2248,6 +2255,7 @@ _outTruncateStmt(StringInfo str, TruncateStmt *node)
 	WRITE_NODE_FIELD(new_toast_oids);
 	WRITE_NODE_FIELD(new_aoseg_oids);
 	WRITE_NODE_FIELD(new_aoblkdir_oids);
+	WRITE_NODE_FIELD(new_aovisimap_oids);
 	WRITE_NODE_FIELD(new_ind_oids);
 }
 
@@ -2273,6 +2281,9 @@ _outAlterTableStmt(StringInfo str, AlterTableStmt *node)
 		WRITE_OID_FIELD(oidInfo[m].aosegOid);
 		WRITE_OID_FIELD(oidInfo[m].aosegIndexOid);
 		WRITE_OID_FIELD(oidInfo[m].aosegComptypeOid);
+		WRITE_OID_FIELD(oidInfo[m].aovisimapOid);
+		WRITE_OID_FIELD(oidInfo[m].aovisimapIndexOid);
+		WRITE_OID_FIELD(oidInfo[m].aovisimapComptypeOid);
 		WRITE_OID_FIELD(oidInfo[m].aoblkdirOid);
 		WRITE_OID_FIELD(oidInfo[m].aoblkdirIndexOid);
 		WRITE_OID_FIELD(oidInfo[m].aoblkdirComptypeOid);
@@ -2456,6 +2467,9 @@ _outClusterStmt(StringInfo str, ClusterStmt *node)
 	WRITE_OID_FIELD(oidInfo.aosegOid);
 	WRITE_OID_FIELD(oidInfo.aosegIndexOid);
 	WRITE_OID_FIELD(oidInfo.aosegComptypeOid);
+	WRITE_OID_FIELD(oidInfo.aovisimapOid);
+	WRITE_OID_FIELD(oidInfo.aovisimapIndexOid);
+	WRITE_OID_FIELD(oidInfo.aovisimapComptypeOid);
 	WRITE_OID_FIELD(oidInfo.aoblkdirOid);
 	WRITE_OID_FIELD(oidInfo.aoblkdirIndexOid);
 	WRITE_OID_FIELD(oidInfo.aoblkdirComptypeOid);
@@ -3450,6 +3464,10 @@ _outVacuumStmt(StringInfo str, VacuumStmt *node)
 	WRITE_NODE_FIELD(va_cols);
 	WRITE_NODE_FIELD(expanded_relids);
 	WRITE_NODE_FIELD(extra_oids);
+	WRITE_NODE_FIELD(appendonly_compaction_segno);
+	WRITE_NODE_FIELD(appendonly_compaction_insert_segno);
+	WRITE_BOOL_FIELD(appendonly_compaction_vacuum_cleanup);
+	WRITE_BOOL_FIELD(appendonly_compaction_vacuum_prepare);
 }
 
 
@@ -4112,7 +4130,6 @@ _outNode(StringInfo str, void *obj)
 			case T_TruncateStmt:
 				_outTruncateStmt(str, obj);
 				break;
-
 			case T_AlterTableStmt:
 				_outAlterTableStmt(str, obj);
 				break;

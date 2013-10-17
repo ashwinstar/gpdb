@@ -1306,6 +1306,8 @@ DefineCompositeType(const RangeVar *typevar, List *coldeflist, Oid relOid, Oid c
 	createStmt->oidInfo.aosegIndexOid = 0;
 	createStmt->oidInfo.aoblkdirOid = 0;
 	createStmt->oidInfo.aoblkdirIndexOid = 0;
+	createStmt->oidInfo.aovisimapOid = 0;
+	createStmt->oidInfo.aovisimapIndexOid = 0;
 	createStmt->ownerid = GetUserId();
 
 	if (coldeflist == NIL)

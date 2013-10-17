@@ -2377,12 +2377,7 @@ heap_delete(Relation relation, ItemPointer tid,
 	bool		iscombo;
 
 	Assert(ItemPointerIsValid(tid));
-
-	if (RelationIsAoRows(relation) || RelationIsAoCols(relation))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Append-only tables are not updatable. Operation not permitted."),
-				 errOmitLocation(true)));
+	Assert(RelationIsHeap(relation));
 
 	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
 	RelationFetchGpRelationNodeForXLog(relation);
@@ -2609,7 +2604,7 @@ l1:
 	 * release the content lock on the buffer first.
 	 */
 	if (HeapTupleHasExternal(&tp))
-		toast_delete(relation, &tp);
+		toast_delete(relation, &tp, NULL);
 
 	/*
 	 * Mark tuple for invalidation from system caches at next command
@@ -2705,12 +2700,7 @@ heap_update_internal(Relation relation, ItemPointer otid, HeapTuple newtup,
 	RelationFetchGpRelationNodeForXLog(relation);
 
 	Assert(ItemPointerIsValid(otid));
-
-	if (RelationIsAoRows(relation) || RelationIsAoCols(relation))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Append-only tables are not updatable. Operation not permitted."),
-				 errOmitLocation(true)));
+	Assert(!(RelationIsAoRows(relation) || RelationIsAoCols(relation)));
 	
 	// -------- MirroredLock ----------
 	MIRROREDLOCK_BUFMGR_LOCK;

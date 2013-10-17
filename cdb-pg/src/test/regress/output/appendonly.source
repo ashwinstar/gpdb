@@ -568,15 +568,16 @@ select * from ao where j = 2;
  10 | 2 | bb
 (6 rows)
 
+---------------------
+-- UAO
+---------------------
+-- DELETE
+DELETE FROM tenk_ao1 WHERE unique1 = 1;
+-- UPDATE
+UPDATE tenk_ao1 SET unique2 = 1 WHERE unique2 = 2;
 -------------------- 
 -- unsupported sql 
 --------------------
--- DELETE (not supported)
-DELETE FROM tenk_ao1 WHERE unique1 = 1;
-ERROR:  Append-only tables are not updatable. Operation not permitted.
--- UPDATE (not supported)
-UPDATE tenk_ao1 SET unique2 = 1 WHERE unique2 = 2;
-ERROR:  Append-only tables are not updatable. Operation not permitted.
 -- ALTER
 ALTER TABLE tenk_ao1 RENAME TO tenk_renamed;
 ALTER TABLE tenk_renamed ADD COLUMN newcol int default 10;
@@ -588,7 +589,7 @@ HINT:  Use a DEFAULT value, or use INSERT...SELECT to movedata to a newly create
 SELECT count(*) FROM tenk_renamed;
  count 
 -------
- 10000
+  9999
 (1 row)
 
 ALTER TABLE tenk_renamed RENAME TO tenk_ao1;

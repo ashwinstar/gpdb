@@ -2150,7 +2150,7 @@ CopyTo(CopyState cstate)
 				TupleTableSlot	*slot = MakeSingleTupleTableSlot(tupDesc);
 				MemTupleBinding *mt_bind = create_memtuple_binding(tupDesc);
 
-				aoscandesc = appendonly_beginscan(rel, ActiveSnapshot, 0, NULL);
+				aoscandesc = appendonly_beginscan(rel, ActiveSnapshot, ActiveSnapshot, 0, NULL);
 
 				while ((tuple = appendonly_getnext(aoscandesc, ForwardScanDirection, slot)) != NULL)
 				{
@@ -2187,7 +2187,7 @@ CopyTo(CopyState cstate)
                 for(i=0; i<nvp; ++i)
                     proj[i] = true;
 
-                scan = aocs_beginscan(rel, ActiveSnapshot, NULL /* relationTupleDesc */, proj);
+                scan = aocs_beginscan(rel, ActiveSnapshot, ActiveSnapshot, NULL /* relationTupleDesc */, proj);
                 for(;;)
                 {
                     CHECK_FOR_INTERRUPTS();
@@ -3435,7 +3435,7 @@ CopyFromDispatch(CopyState cstate)
 
 				cstate->processed++;
 				if (estate->es_result_partitions)
-					resultRelInfo->ri_aoprocessed++;
+					resultRelInfo->ri_aoadded++;
 
 				if (cdbCopy->io_errors)
 				{
@@ -3574,7 +3574,7 @@ CopyFromDispatch(CopyState cstate)
 
     				UpdateMasterAosegTotals(resultRelInfo->ri_RelationDesc,
 											resultRelInfo->ri_aosegno,
-											ao->tupcount);
+											ao->tupcount, 1);
 				}
 			}
 			else
@@ -3582,7 +3582,7 @@ CopyFromDispatch(CopyState cstate)
 				ResultRelInfoSetSegno(resultRelInfo, cstate->ao_segnos);
 				UpdateMasterAosegTotals(resultRelInfo->ri_RelationDesc,
 										resultRelInfo->ri_aosegno,
-										cstate->processed);
+										cstate->processed, 1);
 			}
 		}
 
@@ -4025,7 +4025,8 @@ CopyFrom(CopyState cstate)
 					ResultRelInfoSetSegno(resultRelInfo, cstate->ao_segnos);
 					resultRelInfo->ri_aoInsertDesc =
 						appendonly_insert_init(resultRelInfo->ri_RelationDesc,
-											   resultRelInfo->ri_aosegno);
+											   SnapshotNow,
+											   resultRelInfo->ri_aosegno, false);
 				}
 				else if (relstorage == RELSTORAGE_AOCOLS &&
 						 resultRelInfo->ri_aocsInsertDesc == NULL)
@@ -4033,7 +4034,7 @@ CopyFrom(CopyState cstate)
 					ResultRelInfoSetSegno(resultRelInfo, cstate->ao_segnos);
                     resultRelInfo->ri_aocsInsertDesc =
                         aocs_insert_init(resultRelInfo->ri_RelationDesc,
-                        				 resultRelInfo->ri_aosegno);
+                        				 resultRelInfo->ri_aosegno, false);
 				}
 				else if (relstorage == RELSTORAGE_EXTERNAL &&
 						 resultRelInfo->ri_extInsertDesc == NULL)
@@ -4180,7 +4181,7 @@ CopyFrom(CopyState cstate)
 					 */
 					cstate->processed++;
 					if (relstorage_is_ao(relstorage))
-						resultRelInfo->ri_aoprocessed++;
+						resultRelInfo->ri_aoadded++;
 				}
 
 				RESET_LINEBUF;

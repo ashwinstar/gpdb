@@ -157,14 +157,14 @@ void AppendOnlyStorageWrite_Init(
 					   storageWrite->largeWriteLen,
 					   relationName);
 
-	if (Debug_appendonly_print_insert || Debug_appendonly_print_append_block)
-		elog(LOG,"Append-Only Storage Write initialize for table '%s' "
-		     "(compression = %s, compression level %d, maximum buffer length %d, large write length %d)",
-		     storageWrite->relationName,
-		     (storageWrite->storageAttributes.compress ? "true" : "false"),
-		     storageWrite->storageAttributes.compressLevel,
-		     storageWrite->maxBufferWithCompressionOverrrunLen,
-		     storageWrite->largeWriteLen);
+	elogif(Debug_appendonly_print_insert || Debug_appendonly_print_append_block, LOG,
+		"Append-Only Storage Write initialize for table '%s' "
+			 "(compression = %s, compression level %d, maximum buffer length %d, large write length %d)",
+			 storageWrite->relationName,
+			 (storageWrite->storageAttributes.compress ? "true" : "false"),
+			 storageWrite->storageAttributes.compressLevel,
+			 storageWrite->maxBufferWithCompressionOverrrunLen,
+			 storageWrite->largeWriteLen);
 
 	/*
 	 * When doing VerifyBlock, allocate the extra buffers.
@@ -515,11 +515,11 @@ AppendOnlyStorageWrite_DoPadOutRemainder(
 								   safeWriteRemainder,
 								   safeWriteRemainder);
 
-		if (Debug_appendonly_print_insert)
-			elog(LOG,"Append-only insert zero padded safeWriteRemainder for table '%s' (nextWritePosition = " INT64_FORMAT ", safeWriteRemainder = %d)",
-			     storageWrite->relationName,
-			     nextWritePosition,
-			     safeWriteRemainder);
+		elogif(Debug_appendonly_print_insert, LOG,
+			"Append-only insert zero padded safeWriteRemainder for table '%s' (nextWritePosition = " INT64_FORMAT ", safeWriteRemainder = %d)",
+				 storageWrite->relationName,
+				 nextWritePosition,
+				 safeWriteRemainder);
 
 	}
 }
@@ -669,8 +669,7 @@ void AppendOnlyStorageWrite_TransactionFlushAndCloseFile(
 		 * This routine will handle both updating the persistent information about the
 		 * new EOF and copy data to the mirror if we are now in synchronized state.
 		 */
-		if (Debug_persistent_print)
-			elog(Persistent_DebugPrintLevel(),
+		elogif(Debug_persistent_print, Persistent_DebugPrintLevel(),
 				 "AppendOnlyStorageWrite_TransactionFlushAndCloseFile: %u/%u/%u, segment file #%d, serial number " INT64_FORMAT ", TID %s, mirror catchup required %s, "
 				 "mirror data loss tracking (state '%s', session num " INT64_FORMAT "), "
 				 "mirror start EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT,
@@ -1383,17 +1382,17 @@ AppendOnlyStorageWrite_CompressAppend(
 								header);
 		}
 
-		if (Debug_appendonly_print_insert)
-			elog(LOG,"Append-only insert finished compressed block for table '%s' "
+		elogif(Debug_appendonly_print_insert, LOG,
+			"Append-only insert finished compressed block for table '%s' "
 				 "(segment file '%s', header offset in file " INT64_FORMAT ", "
 				 "length = %d, compressed length %d, item count %d, block count " INT64_FORMAT ")",
-			     storageWrite->relationName,
-			     storageWrite->segmentFileName,
-			     BufferedAppendCurrentBufferPosition(&storageWrite->bufferedAppend),
-			     sourceLen,
-			     *compressedLen,
-			     itemCount,
-			     storageWrite->bufferCount);
+				 storageWrite->relationName,
+				 storageWrite->segmentFileName,
+				 BufferedAppendCurrentBufferPosition(&storageWrite->bufferedAppend),
+				 sourceLen,
+				 *compressedLen,
+				 itemCount,
+				 storageWrite->bufferCount);
 	}
 	else
 	{
@@ -1442,16 +1441,16 @@ AppendOnlyStorageWrite_CompressAppend(
 								header);
 		}
 
-		if (Debug_appendonly_print_insert)
-			elog(LOG,"Append-only insert could not compress block for table '%s' smaller -- non-compressed block stored "
+		elogif(Debug_appendonly_print_insert, LOG,
+			"Append-only insert could not compress block for table '%s' smaller -- non-compressed block stored "
 				 "(segment file '%s', header offset in file " INT64_FORMAT ", "
 				 "length = %d, item count %d, block count " INT64_FORMAT ")",
-			     storageWrite->relationName,
-			     storageWrite->segmentFileName,
-			     BufferedAppendCurrentBufferPosition(&storageWrite->bufferedAppend),
-			     sourceLen,
-			     itemCount,
-			     storageWrite->bufferCount);
+				 storageWrite->relationName,
+				 storageWrite->segmentFileName,
+				 BufferedAppendCurrentBufferPosition(&storageWrite->bufferedAppend),
+				 sourceLen,
+				 itemCount,
+				 storageWrite->bufferCount);
 	}
 
 	*bufferLen = storageWrite->currentCompleteHeaderLen + dataRoundedUpLen;
@@ -1600,15 +1599,14 @@ void AppendOnlyStorageWrite_FinishBuffer(
 		// Declare it finished.
 		storageWrite->currentCompleteHeaderLen = 0;
 
-		if (Debug_appendonly_print_insert)
-			elog(LOG,
-			     "Append-only insert finished uncompressed block for table '%s' "
-			     "(length = %d, executor block kind %d, item count %d, block count " INT64_FORMAT ")",
-			     storageWrite->relationName,
-			     contentLen,
-			     executorBlockKind,
-			     rowCount,
-			     storageWrite->bufferCount);
+		elogif(Debug_appendonly_print_insert, LOG,
+				 "Append-only insert finished uncompressed block for table '%s' "
+				 "(length = %d, executor block kind %d, item count %d, block count " INT64_FORMAT ")",
+				 storageWrite->relationName,
+				 contentLen,
+				 executorBlockKind,
+				 rowCount,
+				 storageWrite->bufferCount);
 
 	}
 	else
@@ -1890,11 +1888,11 @@ void AppendOnlyStorageWrite_Content(
 			else
 			{
 				/* 
-                         	 * Since ~_GetBuffer now takes in a specification of the header kind, we
-                         	 * need to set the header kind so general routines like ~_CompressAppend
-                         	 * will work correctly when writing the small "fragments 
-                        	 */
-                        	storageWrite->getBufferAoHeaderKind = AoHeaderKind_SmallContent;
+				 * Since ~_GetBuffer now takes in a specification of the header kind, we
+				 * need to set the header kind so general routines like ~_CompressAppend
+				 * will work correctly when writing the small "fragments 
+				 */
+				storageWrite->getBufferAoHeaderKind = AoHeaderKind_SmallContent;
 
 				AppendOnlyStorageWrite_CompressAppend(
 							 storageWrite,

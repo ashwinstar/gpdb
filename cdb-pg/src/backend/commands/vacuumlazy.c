@@ -54,6 +54,8 @@
 #include "access/aosegfiles.h"
 #include "access/aocssegfiles.h"
 #include "access/aomd.h"
+#include "access/appendonly_compaction.h"
+#include "access/aocs_compaction.h"
 #include "commands/vacuum.h"
 #include "catalog/catalog.h"
 #include "catalog/indexing.h"
@@ -65,10 +67,12 @@
 #include "utils/memutils.h"
 #include "utils/pg_rusage.h"
 #include "utils/fmgroids.h"
+#include "utils/faultinjector.h"
 #include "storage/smgr.h"
 
 #include "cdb/cdbvars.h"
 #include "cdb/cdbpersistentfilesysobj.h"
+
 
 
 /*
@@ -147,7 +151,6 @@ static void lazy_update_fsm(Relation onerel, LVRelStats *vacrelstats);
 static int	vac_cmp_itemptr(const void *left, const void *right);
 static int	vac_cmp_page_spaces(const void *left, const void *right);
 
-
 /*
  *	lazy_vacuum_rel() -- perform LAZY VACUUM for one heap relation
  *
@@ -164,6 +167,7 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 	Relation   *Irel;
 	int			nindexes;
 	BlockNumber possibly_freeable;
+	bool update_relstats = true;
 
 	if (vacstmt->verbose)
 		elevel = INFO;
@@ -175,21 +179,62 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 
 	vacrelstats = (LVRelStats *) palloc0(sizeof(LVRelStats));
 
+
+#ifdef FAULT_INJECTOR
+	if (vacuumStatement_IsInAppendOnlyDropPhase(vacstmt))
+	{
+			FaultInjector_InjectFaultIfSet(
+				CompactionBeforeSegmentFileDropPhase,
+				DDLNotSpecified,
+				"",	// databaseName
+				""); // tableName
+	}
+	if (vacummStatement_IsInAppendOnlyCleanupPhase(vacstmt))
+	{
+			FaultInjector_InjectFaultIfSet(
+				CompactionBeforeCleanupPhase,
+				DDLNotSpecified,
+				"",	// databaseName
+				""); // tableName
+	}
+#endif
+
 	/*
 	 * Execute the various vaccum operations. Appendonly tables are treated
-	 * differently as they are not heap based and have no indexes.
+	 * differently.
 	 */
-	if (RelationIsAoRows(onerel))
+	if (RelationIsAoRows(onerel) || RelationIsAoCols(onerel))
 	{
-		/* append-only relation. has a special path */
-		vacuum_appendonly_rel(onerel, vacrelstats, /* FULL */ false);
-	}
-	else if (RelationIsAoCols(onerel))
-	{
-        vacuum_aocs_rel(onerel, vacrelstats, /* FULL */ false);
+		/* append-only relation has a special path */
+		if(vacuumStatement_IsInAppendOnlyPreparePhase(vacstmt))
+		{
+			elogif(Debug_appendonly_print_compaction, LOG,
+				"Vacuum prepare phase %s", RelationGetRelationName(onerel));
+
+			vacuum_appendonly_indexes(onerel, vacstmt, updated_stats);
+			if (RelationIsAoRows(onerel))
+				AppendOnlyTruncateToEOF(onerel);
+			else
+				AOCSTruncateToEOF(onerel);
+			update_relstats = false;
+		}
+		else if(!vacummStatement_IsInAppendOnlyCleanupPhase(vacstmt))
+		{
+			vacuum_appendonly_rel(onerel, vacstmt);
+			update_relstats = false;
+		}
+		else
+		{
+			elogif(Debug_appendonly_print_compaction, LOG,
+					"Vacuum cleanup phase %s", RelationGetRelationName(onerel));
+
+			vacuum_appendonly_fill_stats(onerel, ActiveSnapshot, vacrelstats, false);
+		}
 	}
 	else
 	{
+		/* heap relation */
+
 		vacuum_set_xid_limits(vacstmt, onerel->rd_rel->relisshared,
 							  &OldestXmin, &FreezeLimit);
 
@@ -222,19 +267,22 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 		lazy_update_fsm(onerel, vacrelstats);
 	}
 
-	/* Update statistics in pg_class */
-	vac_update_relstats(onerel,
-						vacrelstats->rel_pages,
-						vacrelstats->rel_tuples,
-						vacrelstats->hasindex,
-						FreezeLimit,
-						updated_stats);
+	if (update_relstats)
+	{
+		/* Update statistics in pg_class */
+		vac_update_relstats(onerel,
+							vacrelstats->rel_pages,
+							vacrelstats->rel_tuples,
+							vacrelstats->hasindex,
+							FreezeLimit,
+							updated_stats);
 
-	/* report results to the stats collector, too */
-	pgstat_report_vacuum(RelationGetRelid(onerel),
-						 onerel->rd_rel->relisshared,
-						 true /*vacrelstats->scanned_all*/,
-						 vacstmt->analyze, vacrelstats->rel_tuples);
+		/* report results to the stats collector, too */
+		pgstat_report_vacuum(RelationGetRelid(onerel),
+							 onerel->rd_rel->relisshared,
+							 true /*vacrelstats->scanned_all*/,
+							 vacstmt->analyze, vacrelstats->rel_tuples);
+	}
 }
 
 
@@ -928,33 +976,18 @@ lazy_truncate_heap(Relation onerel, LVRelStats *vacrelstats)
 					   pg_rusage_show(&ru0))));
 }
 
+
 /*
- *	vacuum_appendonly_rel() -- vaccum an append-only relation
+ * Fills in the relation statistics for an append-only relation.
  *
- *		This prodecure will be what gets executed both for VACUUM
- *		and VACUUM FULL (and also ANALYZE or any other thing that
- *		needs the pg_class stats updated).
- *
- *		In here we don't really vacuum nor scan anything per-se. We
- *		already have the information that we need in pg_aoseg_<oid>
- *		relation on each segment. We are interested in reltuples and
- *		relpages. reltuples is the same as "pg_aoseg_<oid>:tupcount"
- *		column and we simulate relpages by subdividing the eof value
- *		("pg_aoseg_<oid>:eof") over the defined page size.
- *
- *		We also truncate any leftover bytes that come after eof
- *		and are not a valid part of the relation (for example invalid rows
- *		that were left over after a failed COPY operation and needs
- *		vacuuming).
- *
- *		There are txn ids, hint bits, free space, dead tuples,
- *		etc. these are all irrelevant in the append only relation context.
- *
- *		There may be indexes on the table, but currently nothing is done
- *		to clean up the indexes.
+ *	This information is used to update the reltuples and relpages information 
+ *	in pg_class. reltuples is the same as "pg_aoseg_<oid>:tupcount"
+ *	column and we simulate relpages by subdividing the eof value
+ *	("pg_aoseg_<oid>:eof") over the defined page size.
  */
-void
-vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
+void 
+vacuum_appendonly_fill_stats(Relation aorel, Snapshot snapshot,
+		void* vacrelstats, bool isVacFull)
 {
 	FileSegTotals *fstotal;
 	BlockNumber nblocks;
@@ -962,18 +995,24 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 	double		num_tuples;
 	double		totalbytes;
 	double		eof;
-	PGRUsage	ru0;
+	int64       hidden_tupcount;
+	AppendOnlyVisimap visimap;
+	AppendOnlyEntry *aoEntry;
 
-	pg_rusage_init(&ru0);
+	Assert(RelationIsAoRows(aorel) || RelationIsAoCols(aorel));
 
 	relname = RelationGetRelationName(aorel);
-	ereport(elevel,
-			(errmsg("vacuuming \"%s.%s\"",
-					get_namespace_name(RelationGetNamespace(aorel)),
-					relname)));
 
-	/* get statistics from the pg_aoseg table */
-	fstotal = GetSegFilesTotals(aorel, SnapshotNow);
+	/* get updated statistics from the pg_aoseg table */
+	if (RelationIsAoRows(aorel))
+	{
+		fstotal = GetSegFilesTotals(aorel, snapshot);
+	}
+	else
+	{
+		Assert(RelationIsAoCols(aorel));
+		fstotal = GetAOCSSSegFilesTotals(aorel, snapshot);
+	}
 
 	/* calculate the values we care about */
 	eof = (double)fstotal->totalbytes;
@@ -981,6 +1020,20 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 	totalbytes = eof;
 	nblocks = (uint32)RelationGuessNumberOfBlocks(totalbytes);
 
+	aoEntry = GetAppendOnlyEntry(RelationGetRelid(aorel), snapshot);
+	AppendOnlyVisimap_Init(&visimap, aoEntry->visimaprelid, aoEntry->visimapidxid, AccessShareLock, snapshot);
+	hidden_tupcount = AppendOnlyVisimap_GetRelationHiddenTupleCount(&visimap);
+	num_tuples -= hidden_tupcount;
+	Assert(num_tuples > -1.0);
+	AppendOnlyVisimap_Finish(&visimap, AccessShareLock);
+	pfree(aoEntry);
+
+	elogif (Debug_appendonly_print_compaction, LOG,
+			"Gather statistics after vacuum for append-only relation %s: "
+			"page count %d, tuple count %f", 
+			relname,
+			nblocks, num_tuples);
+
 	if(isVacFull)
 	{
 		/* FULL */
@@ -1013,369 +1066,90 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 		((LVRelStats *)vacrelstats)->pages_removed = 0;
 	}
 
-	/*
-	 * in both VACUUM and VACUUM FULL we want to also truncate the relation
-	 * after eof. This must only be done when the relation is exclusively locked
-	 * (as in VACUUM FULL) or the aoseg tuple for the segfile being truncated
-	 * is exclusively locked.
-	 *
-	 * If we don't guarantee the locking conditions we can truncate concurrent
-	 * user's data while he's in the process of writing it!
-	 */
-	if (Gp_role == GP_ROLE_EXECUTE)
-	{
-		FileSegInfo **segfile_array = NULL;	/* array of all segfiles information */
-		int total_segfiles;
-		int i;
-		AppendOnlyEntry *aoEntry = GetAppendOnlyEntry(RelationGetRelid(aorel), SnapshotNow);
-
-		/* Get information about all the file segments we need to scan */
-		segfile_array = GetAllFileSegInfo(aorel, aoEntry, SnapshotNow, &total_segfiles);
-
-		if (Debug_persistent_print)
-			elog(Persistent_DebugPrintLevel(),
-				 "vacuum_appendonly_rel: AO ROL relation \"%s.%s\", relation id %u, relfilenode %u has %d physical segment files, %d atributes (columns)",
-				 get_namespace_name(RelationGetNamespace(aorel)),
-				 relname,
-				 aorel->rd_id,
-				 aorel->rd_node.relNode,
-				 total_segfiles,
-				 aorel->rd_rel->relnatts);
-
-		/*
-		 * For each fileseg, get a lock on it and truncate beyond eof. If
-		 * fileseg is currently locked for update by another transaction
-		 * then skip it and don't truncate it (we don't want to wait on the lock
-		 * because that may take a long time. besides, the other transaction may
-		 * overwrite the junk beyond eof anyway, so we need not worry about this
-		 * too much, and treat it as a "best effort" operation).
-		 */
-		for(i = 0 ; i < total_segfiles ; i++)
-		{
-			int 			segno;
-
-			LockAcquireResult acquireResult;
-
-			int64 			segeof;
-			char 			filenamepath[MAXPGPATH];
-
-			segno = segfile_array[i]->segno;
-
-			/*
-			 * Try to get the transaction write-lock for the Append-Only segment file.
-			 *
-			 * NOTE: This is a transaction scope lock that must be held until commit / abort.
-			 */
-			acquireResult = LockRelationAppendOnlySegmentFile(
-														&aorel->rd_node,
-														segno,
-														AccessExclusiveLock,
-														/* dontWait */ true);
-			if (acquireResult == LOCKACQUIRE_NOT_AVAIL)
-			{
-				elog(DEBUG5, "vacuum skipping truncate of AO segfile %d, "
-							 "relation %s", segno, relname);
-			}
-			else
-			{
-				FileSegInfo*		   fsinfo;
-				MirroredAppendOnlyOpen mirroredOpened;
-				int32				   fileSegNo;
-
-				/* Re-fetch under the write lock to get latest committed eof. */
-				fsinfo = GetFileSegInfo(aorel, aoEntry, SnapshotNow, segno);
-				if (fsinfo == NULL)
-					continue;
-
-				segeof = (int64)fsinfo->eof;
-
-				/* Open and truncate the relation segfile beyond its eof */
-				MakeAOSegmentFileName(aorel, segno, -1, &fileSegNo, filenamepath);
-
-				if (Debug_persistent_print)
-					elog(Persistent_DebugPrintLevel(),
-						 "vacuum_appendonly_rel: Opening AO ROW relation \"%s.%s\", relation id %u, relfilenode %u (physical segment file #%d, logical EOF " INT64_FORMAT ")",
-						 get_namespace_name(RelationGetNamespace(aorel)),
-						 relname,
-						 aorel->rd_id,
-						 aorel->rd_node.relNode,
-						 segno,
-						 segeof);
-
-				if (OpenAOSegmentFile(aorel, filenamepath, fileSegNo, segeof, &mirroredOpened))
-				{
-					TruncateAOSegmentFile(&mirroredOpened, aorel, segeof, elevel);
-					CloseAOSegmentFile(&mirroredOpened);
-
-					if (Debug_persistent_print)
-						elog(Persistent_DebugPrintLevel(),
-							 "vacuum_appendonly_rel: Successfully truncated AO ROL relation \"%s.%s\", relation id %u, relfilenode %u (physical segment file #%d, logical EOF " INT64_FORMAT ")",
-							 get_namespace_name(RelationGetNamespace(aorel)),
-							 relname,
-							 aorel->rd_id,
-							 aorel->rd_node.relNode,
-							 segno,
-							 segeof);
-				}
-				else
-				{
-					if (Debug_persistent_print)
-						elog(Persistent_DebugPrintLevel(),
-							 "vacuum_appendonly_rel: No gp_relation_node entry for AO ROW relation \"%s.%s\", relation id %u, relfilenode %u (physical segment file #%d, logical EOF " INT64_FORMAT ")",
-							 get_namespace_name(RelationGetNamespace(aorel)),
-							 relname,
-							 aorel->rd_id,
-							 aorel->rd_node.relNode,
-							 segno,
-							 segeof);
-				}
-				pfree(fsinfo);
-				fsinfo = NULL;
-			}
-		}
-
-		pfree(aoEntry);
-
-		if (segfile_array)
-		{
-			FreeAllSegFileInfo(segfile_array, total_segfiles);
-			pfree(segfile_array);
-		}
-	}
-
 	ereport(elevel,
-			(errmsg("\"%s\": found %.0f rows in %u pages. %s",
-					relname, num_tuples, nblocks,
-					(isVacFull ? "truncated unused data after eof." : ""))));
+			(errmsg("\"%s\": found %.0f rows in %u pages.",
+					relname, num_tuples, nblocks)));
 	pfree(fstotal);
 }
 
 /*
- *	vacuum_aocs_rel() -- vaccum an aocs relation
- *              See vacuum_appendonly_rel.
+ *	vacuum_appendonly_rel() -- vaccum an append-only relation
+ *
+ *		This procedure will be what gets executed both for VACUUM
+ *		and VACUUM FULL (and also ANALYZE or any other thing that
+ *		needs the pg_class stats updated).
+ *
+ *		The function can compact append-only segment files or just
+ *		truncating the segment file to its existing eof.
+ *
+ *		Afterwards, the reltuples and relpages information in pg_class
+ *		are updated. reltuples is the same as "pg_aoseg_<oid>:tupcount"
+ *		column and we simulate relpages by subdividing the eof value
+ *		("pg_aoseg_<oid>:eof") over the defined page size.
+ *
+ *
+ *		There are txn ids, hint bits, free space, dead tuples,
+ *		etc. these are all irrelevant in the append only relation context.
+ *
  */
 void
-vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
+vacuum_appendonly_rel(Relation aorel, VacuumStmt *vacstmt)
 {
-	BlockNumber nblocks = 0;
 	char	   *relname;
-	int64		num_tuples = 0;
-	int64           sz = 0;
-
-	int totalseg;
-	AOCSFileSegInfo **allseg;
-	AppendOnlyEntry *aoEntry;
-
 	PGRUsage	ru0;
-	int i, j;
+
+	Assert(RelationIsAoRows(aorel) || RelationIsAoCols(aorel));
+	Assert(!vacummStatement_IsInAppendOnlyCleanupPhase(vacstmt));
 
 	pg_rusage_init(&ru0);
-
 	relname = RelationGetRelationName(aorel);
 	ereport(elevel,
 			(errmsg("vacuuming \"%s.%s\"",
 					get_namespace_name(RelationGetNamespace(aorel)),
 					relname)));
 
-	aoEntry = GetAppendOnlyEntry(RelationGetRelid(aorel), SnapshotNow);
-
-	allseg = GetAllAOCSFileSegInfo(aorel, aoEntry, SnapshotNow, &totalseg);
-	if (Debug_persistent_print)
-		elog(Persistent_DebugPrintLevel(),
-			 "vacuum_aocs_rel: AO COL relation \"%s.%s\", relation id %u, relfilenode %u has %d logical segments, %d atributes (columns)",
-			 get_namespace_name(RelationGetNamespace(aorel)),
-			 relname,
-			 aorel->rd_id,
-			 aorel->rd_node.relNode,
-			 totalseg,
-			 aorel->rd_rel->relnatts);
-	for(i=0; i<totalseg; ++i)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		num_tuples += allseg[i]->tupcount;
-		nblocks += allseg[i]->varblockcount;
-
-		for(j=0; j<allseg[i]->vpinfo.nEntry; ++j)
-		{
-			AOCSVPInfoEntry *entry;
-			entry = getAOCSVPEntry(allseg[i], j);
-
-			sz += entry->eof;
-		}
+		return;
 	}
-	nblocks = (uint32)RelationGuessNumberOfBlocks(sz);
-
-	if(isVacFull)
+	Assert(list_length(vacstmt->appendonly_compaction_insert_segno) <= 1);
+	if (vacstmt->appendonly_compaction_insert_segno == NULL)
 	{
-		/* FULL */
+		elogif(Debug_appendonly_print_compaction, LOG,
+			"Vacuum drop phase %s", RelationGetRelationName(aorel));
 
-		/* fill in remaining VRelStats values */
-		((VRelStats *)vacrelstats)->rel_pages = nblocks;
-		((VRelStats *)vacrelstats)->rel_tuples = num_tuples;
-		((VRelStats *)vacrelstats)->hasindex = aorel->rd_rel->relhasindex;
-		((VRelStats *)vacrelstats)->min_tlen = 0;
-		((VRelStats *)vacrelstats)->max_tlen = 0;
-		((VRelStats *)vacrelstats)->num_vtlinks = 0;
-		((VRelStats *)vacrelstats)->vtlinks = NULL;
+		if (RelationIsAoRows(aorel))
+		{
+			AppendOnlyDrop(aorel, vacstmt->appendonly_compaction_segno);
+		}
+		else
+		{
+			Assert(RelationIsAoCols(aorel));
+			AOCSDrop(aorel, vacstmt->appendonly_compaction_segno);
+		}
 	}
 	else
 	{
-		/* LAZY */
+		elogif(Debug_appendonly_print_compaction, LOG,
+			"Vacuum compaction phase %s", RelationGetRelationName(aorel));
 
-		/* fill in remaining LVRelStats values */
-		((LVRelStats *)vacrelstats)->rel_pages = nblocks;
-		((LVRelStats *)vacrelstats)->rel_tuples = num_tuples;
-		((LVRelStats *)vacrelstats)->hasindex = aorel->rd_rel->relhasindex;
-		((LVRelStats *)vacrelstats)->nonempty_pages = 0;
-		((LVRelStats *)vacrelstats)->num_dead_tuples = 0;
-		((LVRelStats *)vacrelstats)->max_dead_tuples = 0;
-		((LVRelStats *)vacrelstats)->tuples_deleted = 0;
-		((LVRelStats *)vacrelstats)->tot_free_pages = 0;
-		((LVRelStats *)vacrelstats)->fs_is_heap = false;
-		((LVRelStats *)vacrelstats)->num_free_pages = 0;
-		((LVRelStats *)vacrelstats)->max_free_pages = 0;
-		((LVRelStats *)vacrelstats)->pages_removed = 0;
-	}
+		int insert_segno = APPENDONLY_COMPACTION_SEGNO_INVALID;
+		if (vacstmt->appendonly_compaction_insert_segno) 
+				insert_segno = list_nth_int(vacstmt->appendonly_compaction_insert_segno, 0);
 
-	/*
-	 * in both VACUUM and VACUUM FULL we want to also truncate the relation
-	 * after eof. This must only be done when the relation is exclusively locked
-	 * (as in VACUUM FULL) or the aoseg tuple for the segfile being truncated
-	 * is exclusively locked.
-	 *
-	 * If we don't guarantee the locking conditions we can truncate concurrent
-	 * user's data while he's in the process of writing it!
-	 */
-	if (Gp_role == GP_ROLE_EXECUTE)
-	{
-		/*
-		 * For each fileseg, get a lock on it and truncate beyond eof. If
-		 * fileseg is currently locked for update by another transaction
-		 * then skip it and don't truncate it (we don't want to wait on the lock
-		 * because that may take a long time. besides, the other transaction may
-		 * overwrite the junk beyond eof anyway, so we need not worry about this
-		 * too much, and treat it as a "best effort" operation).
-		 */
-		for(i = 0 ; i < totalseg ; i++)
+		if (RelationIsAoRows(aorel))
 		{
-
-			LockAcquireResult acquireResult;
-
-            AOCSFileSegInfo         *fsinfo;
-
-			int 			segno;
-
-			segno = allseg[i]->segno;
-
-			if (Debug_persistent_print)
-				elog(Persistent_DebugPrintLevel(),
-					 "vacuum_aocs_rel: Working on AO COL relation \"%s.%s\", relation id %u, relfilenode %u logical segment #%d",
-					 get_namespace_name(RelationGetNamespace(aorel)),
-					 relname,
-					 aorel->rd_id,
-					 aorel->rd_node.relNode,
-					 segno);
-
-
-			/*
-			 * Try to get the transaction write-lock for the Append-Only segment file.
-			 *
-			 * NOTE: This is a transaction scope lock that must be held until commit / abort.
-			 */
-			 acquireResult = LockRelationAppendOnlySegmentFile(
-														&aorel->rd_node,
-														segno,
-														AccessExclusiveLock,
-														/* dontWait */ true);
-			if (acquireResult == LOCKACQUIRE_NOT_AVAIL)
-			{
-				elog(DEBUG5, "vacuum skipping truncate of AO segfile %d, "
-							 "relation %s", segno, relname);
-			}
-			else
-			{
-
-				/* Re-fetch under the write lock to get latest committed eof. */
-				fsinfo = GetAOCSFileSegInfo(aorel, aoEntry, SnapshotNow, segno);
-				if (fsinfo == NULL)
-					continue;
-
-				for(j=0; j<fsinfo->vpinfo.nEntry; ++j)
-				{
-					int64 			segeof;
-					char 			filenamepath[MAXPGPATH];
-					AOCSVPInfoEntry *entry;
-
-					MirroredAppendOnlyOpen mirroredOpened;
-					int32				   fileSegNo;
-
-					entry = getAOCSVPEntry(fsinfo, j);
-					segeof = entry->eof;
-
-					/* Open and truncate the relation segfile beyond its eof */
-					MakeAOSegmentFileName(aorel, segno, j, &fileSegNo, filenamepath);
-
-					if (Debug_persistent_print)
-						elog(Persistent_DebugPrintLevel(),
-							 "vacuum_aocs_rel: Opening AO COL relation \"%s.%s\", relation id %u, relfilenode %u column #%d, logical segment #%d (physical segment file #%d, logical EOF " INT64_FORMAT ")",
-							 get_namespace_name(RelationGetNamespace(aorel)),
-							 relname,
-							 aorel->rd_id,
-							 aorel->rd_node.relNode,
-							 j,
-							 segno,
-							 fileSegNo,
-							 segeof);
-
-					if (OpenAOSegmentFile(aorel, filenamepath, fileSegNo, segeof, &mirroredOpened))
-					{
-						TruncateAOSegmentFile(&mirroredOpened, aorel, segeof, elevel);
-						CloseAOSegmentFile(&mirroredOpened);
-
-						if (Debug_persistent_print)
-							elog(Persistent_DebugPrintLevel(),
-								 "vacuum_aocs_rel: Successfully truncated AO COL relation \"%s.%s\", relation id %u, relfilenode %u column #%d, logical segment #%d (physical segment file #%d, logical EOF " INT64_FORMAT ")",
-								 get_namespace_name(RelationGetNamespace(aorel)),
-								 relname,
-								 aorel->rd_id,
-								 aorel->rd_node.relNode,
-								 j,
-								 segno,
-								 fileSegNo,
-								 segeof);
-					}
-					else
-					{
-						if (Debug_persistent_print)
-							elog(Persistent_DebugPrintLevel(),
-								 "vacuum_aocs_rel: No gp_relation_node entry for AO COL relation \"%s.%s\", relation id %u, relfilenode %u column #%d, logical segment #%d (physical segment file #%d, logical EOF " INT64_FORMAT ")",
-								 get_namespace_name(RelationGetNamespace(aorel)),
-								 relname,
-								 aorel->rd_id,
-								 aorel->rd_node.relNode,
-								 j,
-								 segno,
-								 fileSegNo,
-								 segeof);
-					}
-				}
-
-				pfree(fsinfo);
-				fsinfo = NULL;
-			}
+			AppendOnlyCompact(aorel, 
+				vacstmt->appendonly_compaction_segno,
+				insert_segno, vacstmt->full);
 		}
-	}
-
-	ereport(elevel,
-			(errmsg("\"%s\": found %.0f rows in %u pages. %s",
-					relname, (double) num_tuples, nblocks,
-					(isVacFull ? "truncated unused data after eof." : ""))));
-
-	pfree(aoEntry);
-
-	if (allseg)
-	{
-		FreeAllAOCSSegFileInfo(allseg, totalseg);
-		pfree(allseg);
+		else
+		{
+			Assert(RelationIsAoCols(aorel));
+			AOCSCompact(aorel,
+				vacstmt->appendonly_compaction_segno,
+				insert_segno, vacstmt->full);
+		}
 	}
 }
 

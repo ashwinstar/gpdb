@@ -222,7 +222,8 @@ typedef struct JunkFilter
         struct TupleTableSlot *jf_resultSlot;
 } JunkFilter;
 
-
+typedef void* RelationUpdateDesc;
+typedef void* RelationDeleteDesc;
 
 /* ----------------
  * ResultRelInfo information
@@ -246,6 +247,7 @@ typedef struct JunkFilter
  *  tupdesc_match		???
  *  mt_bind				???
  *  aoInsertDesc		context for appendonly relation buffered INSERT.
+ *  aoDeleteDesc		context for appendonly relation buffered DELETE.
  *  ao_segno			the AO segfile we inserted into.
  *  extinsertDesc		???
  *  aosegno				???
@@ -275,8 +277,12 @@ typedef struct ResultRelInfo
 	struct AppendOnlyInsertDescData *ri_aoInsertDesc;
 	struct AOCSInsertDescData       *ri_aocsInsertDesc;
 	struct ExternalInsertDescData	*ri_extInsertDesc;   
+
+	RelationDeleteDesc ri_deleteDesc;
+	RelationUpdateDesc ri_updateDesc;
+
 	int                     ri_aosegno;
-	uint64                  ri_aoprocessed; /* tuples processed for AO */
+	uint64                  ri_aoadded; /* tuples added for AO */
 	struct AttrMap			*ri_partInsertMap;
 	struct TupleTableSlot			*ri_partSlot;
 	struct TupleTableSlot *ri_resultSlot;

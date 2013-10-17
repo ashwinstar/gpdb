@@ -405,6 +405,83 @@ TransactionIdIsActive(TransactionId xid)
 	return result;
 }
 
+/*
+ * Returns true if there are any UAO drop transaction active (except the current
+ * one).
+ *
+ * If allDbs is TRUE then all backends are considered; if allDbs is FALSE
+ * then only backends running in my own database are considered.
+ */
+bool
+HasDropTransaction(bool allDbs)
+{
+	ProcArrayStruct *arrayP = procArray;
+	bool result = false; /* Assumes */
+	int			index;
+
+	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	for (index = 0; index < arrayP->numProcs; index++)
+	{
+		volatile PGPROC *proc = arrayP->procs[index];
+		if (proc->pid == 0)
+			continue;			/* do not count prepared xacts */
+
+		if (allDbs || proc->databaseId == MyDatabaseId)
+		{
+			if (proc->inDropTransaction && proc != MyProc)
+			{
+				elog(DEBUG3, "Found drop transaction: "
+					"database %d, pid %d, xid %d, xmin %d",
+					proc->databaseId, proc->pid, proc->xid, proc->xmin);
+				result = true;
+			}
+		}
+	}
+
+	LWLockRelease(ProcArrayLock);
+
+	return result;
+}
+
+/*
+ * Returns true if there are of serializable backends (except the current
+ * one).
+ *
+ * If allDbs is TRUE then all backends are considered; if allDbs is FALSE
+ * then only backends running in my own database are considered.
+ */
+bool
+HasSerializableBackends(bool allDbs)
+{
+	ProcArrayStruct *arrayP = procArray;
+	bool result = false; /* Assumes */
+	int			index;
+
+	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	for (index = 0; index < arrayP->numProcs; index++)
+	{
+		volatile PGPROC *proc = arrayP->procs[index];
+		if (proc->pid == 0)
+			continue;			/* do not count prepared xacts */
+
+		if (allDbs || proc->databaseId == MyDatabaseId)
+		{
+			if (proc->serializableIsoLevel && proc != MyProc)
+			{
+				elog(DEBUG3, "Found serializable transaction: "
+					"database %d, pid %d, xid %d, xmin %d",
+					proc->databaseId, proc->pid, proc->xid, proc->xmin);
+				result = true;
+			}
+		}
+	}
+
+	LWLockRelease(ProcArrayLock);
+
+	return result;
+}
 
 /*
  * GetOldestXmin -- returns oldest transaction that was running
@@ -1192,7 +1269,19 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 	}
 
 	if (serializable)
+	{
+		/* Not that these values are not set atomically. However,
+		 * each of these assignments is itself assumed to be atomic. */
 		MyProc->xmin = TransactionXmin = xmin;
+	}
+	if (IsXactIsoLevelSerializable)
+	{
+		MyProc->serializableIsoLevel = true;
+
+		elog(DEBUG3, "Got serializable snapshot: "
+			"database %d, pid %d, xid %d, xmin %d",
+			MyProc->databaseId, MyProc->pid, MyProc->xid, MyProc->xmin);
+	}
 
 	LWLockRelease(ProcArrayLock);
 

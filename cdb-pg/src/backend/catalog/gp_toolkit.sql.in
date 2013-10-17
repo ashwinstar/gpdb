@@ -1454,6 +1454,12 @@ AS
 				THEN pg_total_relation_size(ao.blkdirrelid)
 				ELSE 0
 			END
+			+
+			CASE
+				WHEN ao.visimaprelid IS NOT NULL AND ao.visimaprelid > 0
+				THEN pg_total_relation_size(ao.visimaprelid)
+				ELSE 0
+			END
 			AS sotdadditionalsize
 		FROM 
 			(SELECT * 
@@ -1824,6 +1830,144 @@ AS
 	;
 
 GRANT SELECT ON %%JETPACK_PREFIX%%resqueue_status TO public;
+
+--------------------------------------------------------------------------------
+-- AO/CO diagnostics functions
+--------------------------------------------------------------------------------
+
+CREATE FUNCTION %%JETPACK_PREFIX_AUX%%aoseg_history(oid)
+RETURNS TABLE(gp_tid tid, 
+	gp_xmin integer, 
+	gp_xmin_status text, 
+	gp_xmin_commit_distrib_id text, 
+	gp_xmax integer, 
+	gp_xmax_status text, 
+	gp_xmax_commit_distrib_id text, 
+	gp_command_id integer, 
+	gp_infomask text,
+	gp_update_tid tid, 
+	gp_visibility text, 
+	segno integer, 
+	tupcount bigint, 
+	eof bigint, 
+	eof_uncompressed bigint, 
+	modcount bigint, 
+	state smallint) 
+AS '%%AO_CO_DIAGNOSTICS_MODULE%%', 'gp_aoseg_history_wrapper' 
+LANGUAGE C STRICT;
+GRANT EXECUTE ON FUNCTION %%JETPACK_PREFIX_AUX%%aoseg_history(oid) TO public;
+
+CREATE FUNCTION %%JETPACK_PREFIX_AUX%%aocsseg(oid)
+RETURNS TABLE(gp_tid tid, 
+	segno integer, 
+	column_num smallint, 
+	physical_segno integer, 
+	tupcount bigint, 
+	eof bigint, 
+	eof_uncompressed bigint, 
+	modcount bigint,
+	state smallint)
+AS '%%AO_CO_DIAGNOSTICS_MODULE%%', 'gp_aocsseg_wrapper' 
+LANGUAGE C STRICT;
+GRANT EXECUTE ON FUNCTION %%JETPACK_PREFIX_AUX%%aocsseg(oid) TO public;
+
+CREATE FUNCTION %%JETPACK_PREFIX_AUX%%aocsseg_name(text)
+RETURNS TABLE (gp_tid tid, 
+	segno integer, 
+	column_num smallint, 
+	physical_segno integer, 
+	tupcount bigint, 
+	eof bigint, 
+	eof_uncompressed bigint, 
+	modcount bigint, 
+	state smallint)
+AS '%%AO_CO_DIAGNOSTICS_MODULE%%', 'gp_aocsseg_name_wrapper' 
+LANGUAGE C STRICT;
+GRANT EXECUTE ON FUNCTION %%JETPACK_PREFIX_AUX%%aocsseg_name(text) TO public;
+
+CREATE FUNCTION %%JETPACK_PREFIX_AUX%%aocsseg_history(oid)
+RETURNS TABLE(gp_tid tid, 
+	gp_xmin integer, 
+	gp_xmin_status text, 
+	gp_xmin_distrib_id text, 
+	gp_xmax integer, 
+	gp_xmax_status text, 
+	gp_xmax_distrib_id text, 
+	gp_command_id integer, 
+	gp_infomask text, 
+	gp_update_tid tid, 
+	gp_visibility text, 
+	segno integer, 
+	column_num smallint, 
+	physical_segno integer, 
+	tupcount bigint, 
+	eof bigint, 
+	eof_uncompressed bigint, 
+	modcount bigint, 
+	state smallint)
+AS '%%AO_CO_DIAGNOSTICS_MODULE%%' , 'gp_aocsseg_history_wrapper' 
+LANGUAGE C STRICT;
+GRANT EXECUTE ON FUNCTION %%JETPACK_PREFIX_AUX%%aocsseg_history(oid) TO public;
+
+CREATE FUNCTION %%JETPACK_PREFIX_AUX%%aovisimap(oid)
+RETURNS TABLE (tid tid, 
+	segno int, 
+	row_num bigint)
+AS '%%AO_CO_DIAGNOSTICS_MODULE%%', 'gp_aovisimap_wrapper'
+LANGUAGE C IMMUTABLE;
+GRANT EXECUTE ON FUNCTION %%JETPACK_PREFIX_AUX%%aovisimap(oid) TO public;
+
+CREATE FUNCTION %%JETPACK_PREFIX_AUX%%aovisimap_name(text) 
+RETURNS TABLE (tid tid, 
+	segno integer, 
+	row_num bigint) 
+AS '%%AO_CO_DIAGNOSTICS_MODULE%%', 'gp_aovisimap_name_wrapper' 
+LANGUAGE C STRICT;
+GRANT EXECUTE ON FUNCTION %%JETPACK_PREFIX_AUX%%aovisimap_name(text) TO public;
+
+CREATE FUNCTION %%JETPACK_PREFIX_AUX%%aovisimap_hidden_info(oid)
+RETURNS TABLE (segno integer, 
+	hidden_tupcount bigint, 
+	total_tupcount bigint) 
+AS '%%AO_CO_DIAGNOSTICS_MODULE%%', 'gp_aovisimap_hidden_info_wrapper' 
+LANGUAGE C STRICT;
+GRANT EXECUTE ON FUNCTION %%JETPACK_PREFIX_AUX%%aovisimap_hidden_info(oid) TO public;
+
+CREATE FUNCTION %%JETPACK_PREFIX_AUX%%aovisimap_hidden_info_name(text)
+RETURNS TABLE (segno integer, 
+	hidden_tupcount bigint, 
+	total_tupcount bigint) 
+AS '%%AO_CO_DIAGNOSTICS_MODULE%%', 'gp_aovisimap_hidden_info_name_wrapper' 
+LANGUAGE C STRICT;
+GRANT EXECUTE ON FUNCTION %%JETPACK_PREFIX_AUX%%aovisimap_hidden_info_name(text) TO public;
+
+CREATE FUNCTION %%JETPACK_PREFIX_AUX%%aovisimap_entry(oid) 
+RETURNS TABLE(segno integer, 
+	first_row_num bigint, 
+	hidden_tupcount int,
+	bitmap text) 
+AS '%%AO_CO_DIAGNOSTICS_MODULE%%','gp_aovisimap_entry_wrapper' 
+LANGUAGE C STRICT;
+GRANT EXECUTE ON FUNCTION %%JETPACK_PREFIX_AUX%%aovisimap_entry(oid) TO public;
+
+CREATE FUNCTION %%JETPACK_PREFIX_AUX%%aovisimap_entry_name(text) 
+RETURNS TABLE(segno integer, 
+	first_row_num bigint, 
+	hidden_tupcount int, 
+	bitmap text)
+AS '%%AO_CO_DIAGNOSTICS_MODULE%%', 'gp_aovisimap_entry_name_wrapper' LANGUAGE C STRICT;
+GRANT EXECUTE ON FUNCTION %%JETPACK_PREFIX_AUX%%aovisimap_entry_name(text) TO public;
+
+CREATE FUNCTION %%JETPACK_PREFIX_AUX%%aoseg_name(text)
+RETURNS TABLE (segno integer, eof bigint, 
+	tupcount bigint, 
+	varblockcount bigint, 
+	eof_uncompressed bigint, 
+	modcount bigint, state smallint)
+AS '%%AO_CO_DIAGNOSTICS_MODULE%%', 'gp_aoseg_name_wrapper' 
+LANGUAGE C STRICT;
+GRANT EXECUTE ON FUNCTION %%JETPACK_PREFIX_AUX%%aoseg_name(text) TO public;
+
 
 -- Finalize install
 COMMIT;

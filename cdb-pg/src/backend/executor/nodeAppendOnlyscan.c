@@ -183,12 +183,25 @@ ExecInitAppendOnlyScan(AppendOnlyScan *node, EState *estate, int eflags)
  */
 static void OpenAOScanRelation(AppendOnlyScanState *node)
 {
+	Snapshot appendOnlyMetaDataSnapshot;
+
 	Assert(node->ss.scan_state == SCAN_INIT || node->ss.scan_state == SCAN_DONE);
 	Assert(!node->aos_ScanDesc);
-
+	
+	appendOnlyMetaDataSnapshot = node->ss.ps.state->es_snapshot;
+	if (appendOnlyMetaDataSnapshot == SnapshotAny)
+	{
+		/* 
+		 * the append-only meta data should never be fetched with
+		 * SnapshotAny as bogus results are returned.
+		 */
+		appendOnlyMetaDataSnapshot = GetTransactionSnapshot();
+	}
+	
 	node->aos_ScanDesc = appendonly_beginscan(
 			node->ss.ss_currentRelation, 
-			node->ss.ps.state->es_snapshot, 
+			node->ss.ps.state->es_snapshot,
+			appendOnlyMetaDataSnapshot,
 			0, NULL);
 	node->ss.scan_state = SCAN_SCAN;
 }

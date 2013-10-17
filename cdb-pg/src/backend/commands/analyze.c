@@ -747,7 +747,7 @@ static void analyzeRelation(Relation relation, List *lAttributeNames)
 	float4 sampleTableRelTuples = 0.0;
 	List	*indexOidList = NIL;
 	ListCell	*lc = NULL;
-	
+
 	relationOid = RelationGetRelid(relation);
 	
 	/**
@@ -829,7 +829,8 @@ static void analyzeRelation(Relation relation, List *lAttributeNames)
 	 */
 	if (minSampleTableSize == 0)
 	{
-		elog(elevel, "ANALYZE skipping computing statistics on table %s because no attribute needs it.", RelationGetRelationName(relation));
+		elog(elevel, "ANALYZE skipping computing statistics on table %s because no attribute needs it.", 
+				RelationGetRelationName(relation));
 		return;		
 	}
 
@@ -849,8 +850,10 @@ static void analyzeRelation(Relation relation, List *lAttributeNames)
 	 */
 	if (sampleTableRequired)
 	{
-		elog(elevel, "ANALYZE building sample table of size %.0f on table %s because it has too many rows.", minSampleTableSize, RelationGetRelationName(relation));
-		sampleTableOid = buildSampleTable(relationOid, lAttributeNames, estimatedRelTuples, minSampleTableSize, &sampleTableRelTuples);
+		elog(elevel, "ANALYZE building sample table of size %.0f on table %s because it has too many rows.", 
+				minSampleTableSize, RelationGetRelationName(relation));
+		sampleTableOid = buildSampleTable(relationOid, lAttributeNames, 
+				estimatedRelTuples, minSampleTableSize, &sampleTableRelTuples);
 		
 		/* We must have a non-empty sample table */
 		Assert(sampleTableRelTuples > 0.0);	
@@ -865,9 +868,13 @@ static void analyzeRelation(Relation relation, List *lAttributeNames)
 		const char *lAttributeName = (const char *) lfirst(le);
 		elog(elevel, "ANALYZE computing statistics on attribute %s", lAttributeName);
 		if (sampleTableRequired)			
-			analyzeComputeAttributeStatistics(relationOid, lAttributeName, estimatedRelTuples, sampleTableOid, sampleTableRelTuples,  &stats);
+			analyzeComputeAttributeStatistics(relationOid, lAttributeName, 
+					estimatedRelTuples, sampleTableOid, sampleTableRelTuples,  
+					&stats);
 		else
-			analyzeComputeAttributeStatistics(relationOid, lAttributeName, estimatedRelTuples, relationOid, estimatedRelTuples, &stats);
+			analyzeComputeAttributeStatistics(relationOid, lAttributeName, 
+					estimatedRelTuples, relationOid, estimatedRelTuples, 
+					&stats);
 		updateAttributeStatisticsInCatalog(relationOid, lAttributeName, &stats);
 	}
 	
@@ -1394,7 +1401,7 @@ static void updateReltuplesRelpagesInCatalog(Oid relationOid, float4 relTuples, 
 	Assert(relationOid != InvalidOid);
 	Assert(relTuples > -1.0);
 	Assert(relPages > -1.0);
-	
+
 	/* 
 	 * We need a way to distinguish these 2 cases:
 	 * a) ANALYZEd table is empty
@@ -2560,11 +2567,13 @@ static void gp_statistics_estimate_reltuples_relpages_heap(Relation rel, float4 
 
 static void gp_statistics_estimate_reltuples_relpages_ao_cs(Relation rel, float4 *reltuples, float4 *relpages)
 {
-    AOCSFileSegInfo	**aocsInfo = NULL;
-    int				nsegs = 0;
-    double			totalBytes = 0;
+	AOCSFileSegInfo	**aocsInfo = NULL;
+	int				nsegs = 0;
+	double			totalBytes = 0;
 	AppendOnlyEntry *aoEntry;
-	
+	int64 hidden_tupcount;
+	AppendOnlyVisimap visimap;
+
 	/**
 	 * Ensure that the right kind of relation with the right type of storage is passed to us.
 	 */
@@ -2576,37 +2585,48 @@ static void gp_statistics_estimate_reltuples_relpages_ao_cs(Relation rel, float4
 	
     /* get table level statistics from the pg_aoseg table */
 	aoEntry = GetAppendOnlyEntry(RelationGetRelid(rel), SnapshotNow);
-    aocsInfo = GetAllAOCSFileSegInfo(rel, aoEntry, SnapshotNow, &nsegs);
-    if (aocsInfo)
-    {
-    	int i = 0;
-    	int j = 0;
-    	for(i = 0; i < nsegs; i++)
-    	{
-    		for(j = 0; j < RelationGetNumberOfAttributes(rel); j++)
-    		{
-    			AOCSVPInfoEntry *e = getAOCSVPEntry(aocsInfo[i], j);
-    			Assert(e);
-    			totalBytes += e->eof_uncompressed;
-    		}
+	aocsInfo = GetAllAOCSFileSegInfo(rel, aoEntry, SnapshotNow, &nsegs);
+	if (aocsInfo)
+	{
+		int i = 0;
+		int j = 0;
+		for(i = 0; i < nsegs; i++)
+		{
+			for(j = 0; j < RelationGetNumberOfAttributes(rel); j++)
+			{
+				AOCSVPInfoEntry *e = getAOCSVPEntry(aocsInfo[i], j);
+				Assert(e);
+				totalBytes += e->eof_uncompressed;
+			}
 
-    		*reltuples += aocsInfo[i]->tupcount;
-    	}
-    	/**
-    	 * The planner doesn't understand AO's blocks, so need this method to try to fudge up a number for
-    	 * the planner. 
-    	 */
-    	*relpages = RelationGuessNumberOfBlocks(totalBytes);
-    }
+			/* Do not include tuples from an awaiting drop segment file */
+			if (aocsInfo[i]->state != AOSEG_STATE_AWAITING_DROP)
+			{
+				*reltuples += aocsInfo[i]->total_tupcount;
+			}
+		}
+		/**
+		 * The planner doesn't understand AO's blocks, so need this method to try to fudge up a number for
+		 * the planner. 
+		 */
+		*relpages = RelationGuessNumberOfBlocks(totalBytes);
+	}
+
+	AppendOnlyVisimap_Init(&visimap, aoEntry->visimaprelid, aoEntry->visimapidxid, AccessShareLock, SnapshotNow);
+	hidden_tupcount = AppendOnlyVisimap_GetRelationHiddenTupleCount(&visimap);
+	AppendOnlyVisimap_Finish(&visimap, AccessShareLock);
+
+	(*reltuples) -= hidden_tupcount;
 
 	pfree(aoEntry);
 	  
 	return;
 }
 /**
- * This method estimates the number of tuples and pages in an append-only relation. AO tables maintain accurate
- * tuple counts in the catalog. Therefore, we will only require access to segment catalogs to determine reltuples.
- * Relpages is obtained by fudging AO block sizes.
+ * This method estimates the number of visible tuples and pages in an append-only relation. AO tables maintain accurate
+ * tuple counts in the catalog. Therefore, we will require access to segment catalogs to determine reltuples.
+ * Relpages is obtained by fudging AO block sizes. In addition, we substract the number of invisible
+ * tuples from the total number of tuples.
  * 
  * Input:
  * 	rel - Relation. Must be an AO table.
@@ -2619,7 +2639,9 @@ static void gp_statistics_estimate_reltuples_relpages_ao_cs(Relation rel, float4
 static void gp_statistics_estimate_reltuples_relpages_ao_rows(Relation rel, float4 *reltuples, float4 *relpages)
 {
 	FileSegTotals		*fstotal;
-	
+	AppendOnlyEntry *aoEntry;
+	AppendOnlyVisimap visimap;
+	int64 hidden_tupcount = 0;
 	/**
 	 * Ensure that the right kind of relation with the right type of storage is passed to us.
 	 */
@@ -2633,11 +2655,19 @@ static void gp_statistics_estimate_reltuples_relpages_ao_rows(Relation rel, floa
 	 * the planner. 
 	 */
 	*relpages = RelationGuessNumberOfBlocks((double)fstotal->totalbytes);
+
+	aoEntry = GetAppendOnlyEntry(RelationGetRelid(rel), SnapshotNow);
+	AppendOnlyVisimap_Init(&visimap, aoEntry->visimaprelid, aoEntry->visimapidxid, AccessShareLock, SnapshotNow);
+	hidden_tupcount = AppendOnlyVisimap_GetRelationHiddenTupleCount(&visimap);
+	AppendOnlyVisimap_Finish(&visimap, AccessShareLock);
+
 	/**
 	 * The number of tuples in AO table is known accurately. Therefore, we just utilize this value.
 	 */
-	*reltuples = (double)fstotal->totaltuples;
+	*reltuples = (double)(fstotal->totaltuples - hidden_tupcount);
+
 	pfree(fstotal);
+	pfree(aoEntry);
 	
 	return;
 }

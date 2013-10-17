@@ -371,6 +371,8 @@ InitProcess(void)
 	MyProc->xid = InvalidTransactionId;
 	LocalDistribXactRef_Init(&MyProc->localDistribXactRef);
 	MyProc->xmin = InvalidTransactionId;
+	MyProc->serializableIsoLevel = false;
+	MyProc->inDropTransaction = false;
 	MyProc->pid = MyProcPid;
 	/* databaseId and roleId will be filled in later */
 	MyProc->databaseId = InvalidOid;
@@ -543,6 +545,8 @@ InitAuxiliaryProcess(void)
 	MyProc->xid = InvalidTransactionId;
 	LocalDistribXactRef_Init(&MyProc->localDistribXactRef);
 	MyProc->xmin = InvalidTransactionId;
+	MyProc->serializableIsoLevel = false;
+	MyProc->inDropTransaction = false;
 	MyProc->databaseId = InvalidOid;
 	MyProc->roleId = InvalidOid;
     MyProc->mppLocalProcessSerial = 0;

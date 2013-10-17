@@ -181,7 +181,7 @@ _bt_ao_check_unique(Relation rel, Relation aoRel, ItemPointer tid)
 	if (RelationIsAoRows(aoRel))
 	{
 		AppendOnlyFetchDesc aoFetchDesc =
-			appendonly_fetch_init(aoRel, SnapshotDirty);
+			appendonly_fetch_init(aoRel, SnapshotDirty, SnapshotDirty);
 
 		if (appendonly_fetch(aoFetchDesc, (AOTupleId*)tid, NULL))
 		{
@@ -212,7 +212,7 @@ _bt_ao_check_unique(Relation rel, Relation aoRel, ItemPointer tid)
 		
 		/* Just set the first column */
 		proj[0] = true;
-		aocsFetchDesc =	aocs_fetch_init(aoRel, SnapshotDirty, proj);
+		aocsFetchDesc =	aocs_fetch_init(aoRel, SnapshotDirty, SnapshotDirty, proj);
 
 		if (aocs_fetch(aocsFetchDesc, (AOTupleId*)tid, NULL))
 		{

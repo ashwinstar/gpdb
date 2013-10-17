@@ -51,9 +51,19 @@ initFetchDesc(BitmapAppendOnlyScanState *scanstate)
 	{
 		if (scanstate->baos_currentAOFetchDesc == NULL)
 		{
+			Snapshot appendOnlyMetaDataSnapshot = estate->es_snapshot;
+			if (appendOnlyMetaDataSnapshot == SnapshotAny)
+			{
+				/* 
+				 * the append-only meta data should never be fetched with
+				 * SnapshotAny as bogus results are returned.
+				 */
+				appendOnlyMetaDataSnapshot = GetTransactionSnapshot();
+			}
 			scanstate->baos_currentAOFetchDesc = 
 				appendonly_fetch_init(currentRelation,
-									  estate->es_snapshot);
+									  estate->es_snapshot,
+									  appendOnlyMetaDataSnapshot);
 			scanstate->baos_currentAOCSFetchDesc = NULL;
 		}
 	}
@@ -64,7 +74,16 @@ initFetchDesc(BitmapAppendOnlyScanState *scanstate)
 		{
 			bool *proj;
 			int colno;
-		
+			Snapshot appendOnlyMetaDataSnapshot = estate->es_snapshot;
+			if (appendOnlyMetaDataSnapshot == SnapshotAny)
+			{
+				/* 
+				 * the append-only meta data should never be fetched with
+				 * SnapshotAny as bogus results are returned.
+				 */
+				appendOnlyMetaDataSnapshot = GetTransactionSnapshot();
+			}
+
 			scanstate->baos_currentAOFetchDesc = NULL;
 
 			/*
@@ -92,7 +111,7 @@ initFetchDesc(BitmapAppendOnlyScanState *scanstate)
 				proj[0] = true;
 			
 			scanstate->baos_currentAOCSFetchDesc =
-				aocs_fetch_init(currentRelation, estate->es_snapshot, proj);
+				aocs_fetch_init(currentRelation, estate->es_snapshot, appendOnlyMetaDataSnapshot, proj);
 		}
 	}
 }

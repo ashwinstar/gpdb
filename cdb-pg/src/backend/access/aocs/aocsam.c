@@ -42,9 +42,19 @@
 #include "storage/smgr.h"
 #include "storage/quicklz1.h"
 #include "storage/quicklz3.h"
+#include "utils/faultinjector.h"
 #include "utils/guc.h"
 
 #include "utils/debugbreak.h"
+
+static AOCSScanDesc
+aocs_beginscan_internal(Relation relation, 
+		AppendOnlyEntry *aoentry,
+		AOCSFileSegInfo **seginfo,
+		int total_seg,
+		Snapshot snapshot,
+		Snapshot appendOnlyMetaDataSnapshot, 
+		TupleDesc relationTupleDesc, bool *proj);
 
 /*
  * Open the segment file for a specified column
@@ -294,7 +304,7 @@ static int open_next_scan_seg(AOCSScanDesc scan)
     {
         AOCSFileSegInfo * curSegInfo = scan->seginfo[scan->cur_seg];
 
-        if(curSegInfo->tupcount > 0)
+        if(curSegInfo->total_tupcount > 0)
         {
             int i = 0;
             bool emptySeg = false;
@@ -303,7 +313,7 @@ static int open_next_scan_seg(AOCSScanDesc scan)
                 if (scan->proj[i])
                 {
                     AOCSVPInfoEntry *e = getAOCSVPEntry(curSegInfo, i);
-                    if (e->eof == 0)
+                    if (e->eof == 0  || curSegInfo->state == AOSEG_STATE_AWAITING_DROP)
                         emptySeg = true;
 
                     break;
@@ -333,7 +343,7 @@ static int open_next_scan_seg(AOCSScanDesc scan)
                     int64 firstSequence =
                         GetFastSequences(scan->aoEntry->segrelid,
                                          curSegInfo->segno,
-                                         curSegInfo->tupcount + 1,
+                                         curSegInfo->total_tupcount + 1,
                                          NUM_FAST_SEQUENCES,
                                          &tid);
 
@@ -391,6 +401,75 @@ static void close_cur_scan_seg(AOCSScanDesc scan)
 	}
 }
 
+/* 
+ * aocs_beginrangescan
+ *
+ * begins range-limited relation scan
+ */
+AOCSScanDesc
+aocs_beginrangescan(Relation relation, 
+		Snapshot snapshot,
+		Snapshot appendOnlyMetaDataSnapshot, 
+		int *segfile_no_arr, int segfile_count,
+		TupleDesc relationTupleDesc, bool *proj)
+{
+	AOCSFileSegInfo **seginfo;
+	AppendOnlyEntry *aoentry;
+	int i;
+
+	ValidateAppendOnlyMetaDataSnapshot(&appendOnlyMetaDataSnapshot);
+	RelationIncrementReferenceCount(relation);
+
+	/*
+	 * Get the pg_appendonly information for this table
+	 */
+	aoentry = GetAppendOnlyEntry(RelationGetRelid(relation), 
+		appendOnlyMetaDataSnapshot);
+
+	seginfo = palloc0(sizeof(AOCSFileSegInfo *) * segfile_count);
+	for (i = 0; i < segfile_count; i++)
+	{
+		seginfo[i] = GetAOCSFileSegInfo(relation, aoentry, appendOnlyMetaDataSnapshot,
+				segfile_no_arr[i]);
+	}
+	return aocs_beginscan_internal(relation,
+			aoentry,
+			seginfo,
+			segfile_count,
+			snapshot,
+			appendOnlyMetaDataSnapshot,
+			relationTupleDesc,
+			proj);
+}
+
+AOCSScanDesc
+aocs_beginscan(Relation relation, 
+		Snapshot snapshot,
+		Snapshot appendOnlyMetaDataSnapshot, 
+		TupleDesc relationTupleDesc, bool *proj)
+{
+    AppendOnlyEntry *aoentry;
+	AOCSFileSegInfo **seginfo;
+	int total_seg;
+
+	ValidateAppendOnlyMetaDataSnapshot(&appendOnlyMetaDataSnapshot);
+    RelationIncrementReferenceCount(relation);
+
+    aoentry = GetAppendOnlyEntry(RelationGetRelid(relation), appendOnlyMetaDataSnapshot);
+    Assert(aoentry->majorversion == 1 && aoentry->minorversion == 1);
+
+    seginfo = GetAllAOCSFileSegInfo(relation, aoentry, appendOnlyMetaDataSnapshot, &total_seg);
+
+	return aocs_beginscan_internal(relation,
+			aoentry,
+			seginfo,
+			total_seg,
+			snapshot,
+			appendOnlyMetaDataSnapshot,
+			relationTupleDesc,
+			proj);
+}
+
 /**
  * begin the scan over the given relation.
  *
@@ -399,37 +478,37 @@ static void close_cur_scan_seg(AOCSScanDesc scan)
  *               relation->rd_att without updating the underlying relation files yet (that is, the caller is doing
  *               an alter and relation->rd_att will be the relation's new form but relationTupleDesc is the old form)
  */
-AOCSScanDesc
-aocs_beginscan(Relation relation, Snapshot appendOnlyMetaDataSnapshot, TupleDesc relationTupleDesc, bool *proj)
+static AOCSScanDesc
+aocs_beginscan_internal(Relation relation, 
+		AppendOnlyEntry *aoentry,
+		AOCSFileSegInfo **seginfo,
+		int total_seg,
+		Snapshot snapshot,
+		Snapshot appendOnlyMetaDataSnapshot, 
+		TupleDesc relationTupleDesc, bool *proj)
 {
     AOCSScanDesc scan;
-    AppendOnlyEntry *aoentry;
 
-	ValidateAppendOnlyMetaDataSnapshot(&appendOnlyMetaDataSnapshot);
-	
     if (!relationTupleDesc)
     {
         relationTupleDesc = relation->rd_att;
     }
 
-
     int nvp = relationTupleDesc->natts;
 
-    RelationIncrementReferenceCount(relation);
     scan = (AOCSScanDesc) palloc0(sizeof(AOCSScanDescData));
     scan->aos_rel = relation;
 	scan->appendOnlyMetaDataSnapshot = appendOnlyMetaDataSnapshot;
-
-    aoentry = GetAppendOnlyEntry(RelationGetRelid(relation), appendOnlyMetaDataSnapshot);
-    scan->aoEntry = aoentry;
-    Assert(aoentry->majorversion == 1 && aoentry->minorversion == 0);
+	scan->snapshot = snapshot;
+	scan->aoEntry = aoentry;
+    Assert(aoentry->majorversion == 1 && aoentry->minorversion == 1);
 
     scan->compLevel = aoentry->compresslevel;
     scan->compType = aoentry->compresstype;
     scan->blocksz = aoentry->blocksize;
 
-    scan->seginfo = GetAllAOCSFileSegInfo(relation, aoentry, appendOnlyMetaDataSnapshot, &scan->total_seg);
-
+    scan->seginfo = seginfo;
+	scan->total_seg = total_seg;
     scan->relationTupleDesc = relationTupleDesc;
 
     Assert(proj);
@@ -441,6 +520,12 @@ aocs_beginscan(Relation relation, Snapshot appendOnlyMetaDataSnapshot, TupleDesc
 
 	scan->buildBlockDirectory = false;
 	scan->blockDirectory = NULL;
+
+	AppendOnlyVisimap_Init(&scan->visibilityMap,
+						   aoentry->visimaprelid,
+						   aoentry->visimapidxid,
+						   AccessShareLock,
+						   appendOnlyMetaDataSnapshot);
 
     return scan;
 }
@@ -474,63 +559,66 @@ void aocs_endscan(AOCSScanDesc scan)
     if (scan->seginfo)
         pfree(scan->seginfo);
 
+	AppendOnlyVisimap_Finish(&scan->visibilityMap, AccessShareLock);
+
 	pfree(scan->aoEntry);
     pfree(scan);
 }
 
 void aocs_getnext(AOCSScanDesc scan, ScanDirection direction, TupleTableSlot *slot)
 {
-    int ncol;
-    Datum *d = slot_get_values(slot);
-    bool *null = slot_get_isnull(slot);
+	int ncol;
+	Datum *d = slot_get_values(slot);
+	bool *null = slot_get_isnull(slot);
 	AOTupleId aoTupleId;
 	int64 rowNum = INT64CONST(-1);
 
-    int err = 0;
-    int i;
+	int err = 0;
+	int i;
+	bool isSnapshotAny = (scan->snapshot == SnapshotAny);
 
-    Assert(ScanDirectionIsForward(direction));
+	Assert(ScanDirectionIsForward(direction));
 
-    ncol = slot->tts_tupleDescriptor->natts;
-    Assert(ncol <= scan->relationTupleDesc->natts);
+	ncol = slot->tts_tupleDescriptor->natts;
+	Assert(ncol <= scan->relationTupleDesc->natts);
 
-    while(1)
-    {
+	while(1)
+	{
 ReadNext:
-        /* If necessary, open next seg */
-        if(scan->cur_seg < 0 || err < 0)
-        {
-            err = open_next_scan_seg(scan);
-            if(err < 0)
-            {
-                /* No more seg, we are at the end */
-                ExecClearTuple(slot);
+		/* If necessary, open next seg */
+		if(scan->cur_seg < 0 || err < 0)
+		{
+			err = open_next_scan_seg(scan);
+			if(err < 0)
+			{
+				/* No more seg, we are at the end */
+				ExecClearTuple(slot);
 				scan->cur_seg = -1;
-                return;
-            }
+				return;
+			}
 			scan->cur_seg_row = 0;
-        }
+		}
 
-        Assert(scan->cur_seg >= 0);
+		Assert(scan->cur_seg >= 0);
 
-        /* Read from cur_seg */
-        for(i=0; i<ncol; ++i)
-        {
-            if(scan->proj[i])
-            {
-                err = datumstreamread_advance(scan->ds[i]);
-                Assert(err >= 0);
-                if(err == 0)
-                {
-                    err = datumstreamread_block(scan->ds[i]);
-                    if(err < 0)
-                    {
-                        /* Ha, cannot read next block,
-		                           * we need to go to next seg
-		                           */
+		/* Read from cur_seg */
+		for(i=0; i<ncol; ++i)
+		{
+			if(scan->proj[i])
+			{
+				err = datumstreamread_advance(scan->ds[i]);
+				Assert(err >= 0);
+				if(err == 0)
+				{
+					err = datumstreamread_block(scan->ds[i]);
+					if(err < 0)
+					{
+						/* Ha, cannot read next block,
+						 * we need to go to next seg
+						 */
 						close_cur_scan_seg(scan);
-                        goto ReadNext;
-                    }
+						goto ReadNext;
+					}
 
 					if (scan->buildBlockDirectory)
 					{
@@ -543,15 +631,15 @@ ReadNext:
 															 scan->ds[i]->blockRowCount);
 					}
 
-                    err = datumstreamread_advance(scan->ds[i]);
-                    Assert(err > 0);
-                }
+					err = datumstreamread_advance(scan->ds[i]);
+					Assert(err > 0);
+				}
 
 				/*
 				 * Get the column's datum right here since the data structures should still
 				 * be hot in CPU data cache memory.
 				 */
-                datumstreamread_get(scan->ds[i], &d[i], &null[i]);
+				datumstreamread_get(scan->ds[i], &d[i], &null[i]);
 
 				if (rowNum == INT64CONST(-1) &&
 					scan->ds[i]->blockFirstRowNum != INT64CONST(-1))
@@ -561,9 +649,9 @@ ReadNext:
 						datumstreamread_nth(scan->ds[i]);
 
 				}
-            }
-        }
-
+			}
+		}
+	
 		AOTupleIdInit_Init(&aoTupleId);
 		AOTupleIdInit_segmentFileNum(&aoTupleId,
 									 scan->seginfo[scan->cur_seg]->segno);
@@ -578,6 +666,11 @@ ReadNext:
 			AOTupleIdInit_rowNum(&aoTupleId, rowNum);
 		}
 
+		if (!isSnapshotAny && !AppendOnlyVisimap_IsVisible(&scan->visibilityMap, &aoTupleId))
+		{
+			rowNum = INT64CONST(-1);
+			goto ReadNext;
+		}
 		scan->cdb_fake_ctid = *((ItemPointer)&aoTupleId);
 
         TupSetVirtualTupleNValid(slot, ncol);
@@ -636,7 +729,11 @@ static void OpenAOCSDatumStreams(AOCSInsertDesc desc)
 		seginfo = NewAOCSFileSegInfo(desc->cur_segno, nvp);
 	}
 	desc->fsInfo = seginfo;
-	desc->rowCount = seginfo->tupcount;
+
+	/* Never insert into a segment that is awaiting a drop */
+	Assert(desc->fsInfo->state != AOSEG_STATE_AWAITING_DROP);
+
+	desc->rowCount = seginfo->total_tupcount;
 
     for(int i=0; i<nvp; ++i)
     {
@@ -671,7 +768,7 @@ SetBlockFirstRowNums(DatumStreamWrite **datumStreams,
 }
 
 
-AOCSInsertDesc aocs_insert_init(Relation rel, int segno)
+AOCSInsertDesc aocs_insert_init(Relation rel, int segno, bool update_mode)
 {
 	AOCSInsertDesc desc;
 	AppendOnlyEntry *aoentry;
@@ -679,7 +776,7 @@ AOCSInsertDesc aocs_insert_init(Relation rel, int segno)
 	int64 firstSequence = 0;
 
     aoentry = GetAppendOnlyEntry(RelationGetRelid(rel), SnapshotNow);
-    Assert(aoentry->majorversion == 1 && aoentry->minorversion == 0);
+    Assert(aoentry->majorversion == 1 && aoentry->minorversion == 1);
 
 
     desc = (AOCSInsertDesc) palloc0(sizeof(AOCSInsertDescData));
@@ -694,6 +791,7 @@ AOCSInsertDesc aocs_insert_init(Relation rel, int segno)
 	Assert(segno >= 0);
 	desc->cur_segno = segno;
 	desc->aoEntry = aoentry;
+	desc->update_mode = update_mode;
 
 	desc->compLevel = aoentry->compresslevel;
 	desc->compType = aoentry->compresstype;
@@ -739,22 +837,30 @@ AOCSInsertDesc aocs_insert_init(Relation rel, int segno)
 
 Oid aocs_insert_values(AOCSInsertDesc idesc, Datum *d, bool * null, AOTupleId *aoTupleId)
 {
-    Relation rel = idesc->aoi_rel;
-    int i;
+	Relation rel = idesc->aoi_rel;
+	int i;
 
-    if (rel->rd_rel->relhasoids)
+	if (rel->rd_rel->relhasoids)
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 				 errmsg("append-only column-oriented tables do not support rows with OIDs")));
 
-    /* As usual, at this moment, we assume one col per vp */
-    for(i=0; i<rel->rd_att->natts; ++i)
-    {
-    	void *toFree1;
+#ifdef FAULT_INJECTOR
+	FaultInjector_InjectFaultIfSet(
+		AppendOnlyInsert,
+		DDLNotSpecified,
+		"",	// databaseName
+		RelationGetRelationName(idesc->aoi_rel)); // tableName
+#endif
+
+	/* As usual, at this moment, we assume one col per vp */
+	for(i=0; i< RelationGetNumberOfAttributes(rel); ++i)
+	{
+		void *toFree1;
 		Datum datum;
 
 		datum = d[i];
-        int err = datumstreamwrite_put(idesc->ds[i], datum, null[i], &toFree1);
+		int err = datumstreamwrite_put(idesc->ds[i], datum, null[i], &toFree1);
 		if (toFree1 != NULL)
 		{
 			/*
@@ -762,8 +868,8 @@ Oid aocs_insert_values(AOCSInsertDesc idesc, Datum *d, bool * null, AOTupleId *a
 			 */
 			datum = PointerGetDatum(toFree1);
 		}
-        if(err < 0)
-        {
+		if(err < 0)
+		{
 			int itemCount = datumstreamwrite_nth(idesc->ds[i]);
 			void *toFree2;
 
@@ -779,20 +885,21 @@ Oid aocs_insert_values(AOCSInsertDesc idesc, Datum *d, bool * null, AOTupleId *a
 					AppendOnlyStorageWrite_LastWriteBeginPosition(&idesc->ds[i]->ao_write),
 					itemCount);
 
-    			/* since we have written all up to the new tuple,
-	    		  *   the new blockFirstRowNum is the inserted tuple's row number */
-                idesc->ds[i]->blockFirstRowNum = idesc->lastSequence + 1;
+				/* since we have written all up to the new tuple,
+				 * the new blockFirstRowNum is the inserted tuple's row number 
+				 */
+				idesc->ds[i]->blockFirstRowNum = idesc->lastSequence + 1;
 			}
 
 			Assert(idesc->ds[i]->blockFirstRowNum == idesc->lastSequence + 1);
 
 
-            /* now write this new item to the new block */
-            err = datumstreamwrite_put(idesc->ds[i], datum, null[i], &toFree2);
+			/* now write this new item to the new block */
+			err = datumstreamwrite_put(idesc->ds[i], datum, null[i], &toFree2);
 			Assert(toFree2 == NULL);
-            if (err < 0)
-            {
-                Assert(!null[i]);
+			if (err < 0)
+			{
+				Assert(!null[i]);
 				/*
 				 * rle_type is running on a block stream, if an object spans multiple
 				 * blocks than data will not be compressed (if rle_type is set).
@@ -802,17 +909,17 @@ Oid aocs_insert_values(AOCSInsertDesc idesc, Datum *d, bool * null, AOTupleId *a
 					idesc->ds[i]->ao_write.storageAttributes.compress = FALSE;
 				}
 
-                err = datumstreamwrite_lob(idesc->ds[i], datum);
-                Assert(err >= 0);
+				err = datumstreamwrite_lob(idesc->ds[i], datum);
+				Assert(err >= 0);
 
-                /* Insert an entry to the block directory */
-                AppendOnlyBlockDirectory_InsertEntry(
-                    &idesc->blockDirectory,
-                    i,
-                    idesc->ds[i]->blockFirstRowNum,
-                    AppendOnlyStorageWrite_LastWriteBeginPosition(&idesc->ds[i]->ao_write),
-                    1 /*itemCount -- always just the lob just inserted */
-                );
+				/* Insert an entry to the block directory */
+				AppendOnlyBlockDirectory_InsertEntry(
+					&idesc->blockDirectory,
+					i,
+					idesc->ds[i]->blockFirstRowNum,
+					AppendOnlyStorageWrite_LastWriteBeginPosition(&idesc->ds[i]->ao_write),
+					1 /*itemCount -- always just the lob just inserted */
+				);
 
 
 				/*
@@ -821,16 +928,16 @@ Oid aocs_insert_values(AOCSInsertDesc idesc, Datum *d, bool * null, AOTupleId *a
 				 * AFTER the one we are inserting
 				 */
 				idesc->ds[i]->blockFirstRowNum = idesc->lastSequence + 2;
-            }
-        }
+			}
+		}
 
 		if (toFree1 != NULL)
 		{
 			pfree(toFree1);
 		}
-    }
+	}
 
-    idesc->insertCount++;
+	idesc->insertCount++;
 	idesc->lastSequence++;
 	if (idesc->numSequences > 0)
 		(idesc->numSequences)--;
@@ -863,14 +970,14 @@ Oid aocs_insert_values(AOCSInsertDesc idesc, Datum *d, bool * null, AOTupleId *a
 
 void aocs_insert_finish(AOCSInsertDesc idesc)
 {
-    Relation rel = idesc->aoi_rel;
-    int i;
+	Relation rel = idesc->aoi_rel;
+	int i;
 
-    for(i=0; i<rel->rd_att->natts; ++i)
-    {
+	for(i=0; i<rel->rd_att->natts; ++i)
+	{
 		int itemCount = datumstreamwrite_nth(idesc->ds[i]);
 
-        datumstreamwrite_block(idesc->ds[i]);
+		datumstreamwrite_block(idesc->ds[i]);
 
 		AppendOnlyBlockDirectory_InsertEntry(
 			&idesc->blockDirectory,
@@ -879,15 +986,15 @@ void aocs_insert_finish(AOCSInsertDesc idesc)
 			AppendOnlyStorageWrite_LastWriteBeginPosition(&idesc->ds[i]->ao_write),
 			itemCount);
 
-        datumstreamwrite_close_file(idesc->ds[i]);
-    }
+		datumstreamwrite_close_file(idesc->ds[i]);
+	}
 
 	AppendOnlyBlockDirectory_End_forInsert(&(idesc->blockDirectory));
 
-    UpdateAOCSFileSegInfo(idesc);
+	UpdateAOCSFileSegInfo(idesc);
 
 	pfree(idesc->fsInfo);
-    pfree(idesc->aoEntry);
+	pfree(idesc->aoEntry);
 
 	close_ds_write(idesc->ds, rel->rd_att->natts);
 }
@@ -1034,8 +1141,9 @@ openFetchSegmentFile(AOCSFetchDesc aocsFetchDesc,
 	/*
 	 * Don't try to open a segment file when its EOF is 0, since the file may not
 	 * exist. See MPP-8280.
+     * Also skip the segment file if it is awaiting a drop
 	 */
-	if (logicalEof == 0)
+	if (logicalEof == 0 || fsInfo->state == AOSEG_STATE_AWAITING_DROP)
 		return false;
 
 	open_datumstreamread_segfile(
@@ -1065,6 +1173,7 @@ resetCurrentBlockInfo(CurrentBlock *currentBlock)
  */
 AOCSFetchDesc
 aocs_fetch_init(Relation relation,
+				Snapshot snapshot,
 				Snapshot appendOnlyMetaDataSnapshot,
 				bool *proj)
 {
@@ -1091,6 +1200,7 @@ aocs_fetch_init(Relation relation,
 	aocsFetchDesc->relation = relation;
 	
 	aocsFetchDesc->appendOnlyMetaDataSnapshot = appendOnlyMetaDataSnapshot;
+	aocsFetchDesc->snapshot = snapshot;
 	
 
 	aocsFetchDesc->initContext = CurrentMemoryContext;
@@ -1105,7 +1215,7 @@ aocs_fetch_init(Relation relation,
 	aocsFetchDesc->proj = proj;
 
 	aoentry = GetAppendOnlyEntry(RelationGetRelid(relation), appendOnlyMetaDataSnapshot);
-    Assert(aoentry->majorversion == 1 && aoentry->minorversion == 0);
+    Assert(aoentry->majorversion == 1 && aoentry->minorversion == 1);
 	aocsFetchDesc->aoEntry = aoentry;
 
 	aocsFetchDesc->segmentFileInfo =
@@ -1184,6 +1294,12 @@ aocs_fetch_init(Relation relation,
 		}
 	}
 
+	AppendOnlyVisimap_Init(&aocsFetchDesc->visibilityMap,
+						   aoentry->visimaprelid,
+						   aoentry->visimapidxid,
+						   AccessShareLock,
+						   appendOnlyMetaDataSnapshot);
+
 	return aocsFetchDesc;
 }
 
@@ -1220,9 +1336,9 @@ aocs_fetch(AOCSFetchDesc aocsFetchDesc,
 		if (datumStreamFetchDesc == NULL)
 			continue;
 		
-		if (Debug_appendonly_print_datumstream)
-			elog(LOG, 
-				 "aocs_fetch filePathName %s segno %u rowNum  " INT64_FORMAT " firstRowNum " INT64_FORMAT " lastRowNum " INT64_FORMAT " ",
+		elogif(Debug_appendonly_print_datumstream, LOG,
+				 "aocs_fetch filePathName %s segno %u rowNum  " INT64_FORMAT 
+				 " firstRowNum " INT64_FORMAT " lastRowNum " INT64_FORMAT " ",
 				 datumStreamFetchDesc->datumStream->ao_read.bufferedRead.filePathName,
 				 datumStreamFetchDesc->currentSegmentFile.num,
 				 rowNum,
@@ -1327,6 +1443,13 @@ aocs_fetch(AOCSFetchDesc aocsFetchDesc,
 			break;
 		}
 
+		bool isSnapshotAny = (aocsFetchDesc->snapshot == SnapshotAny);
+		if (!isSnapshotAny && !AppendOnlyVisimap_IsVisible(&aocsFetchDesc->visibilityMap, aoTupleId))
+		{
+			found = false;
+			break;
+		}
+
 		/*
 		 * Set scan range covered by new Block Directory entry.
 		 */
@@ -1395,4 +1518,200 @@ aocs_fetch_finish(AOCSFetchDesc aocsFetchDesc)
 	pfree(aocsFetchDesc->basepath);
 
 	pfree(aocsFetchDesc->aoEntry);
+	AppendOnlyVisimap_Finish(&aocsFetchDesc->visibilityMap, AccessShareLock);
 }
+
+typedef struct AOCSUpdateDescData
+{
+	AOCSInsertDesc insertDesc;
+
+	/*
+	 * visibility map
+	 */
+	AppendOnlyVisimap visibilityMap;
+
+	/*
+	 * Visimap delete support structure.
+	 * Used to handle out-of-order deletes
+	 */
+	AppendOnlyVisimapDelete visiMapDelete;
+
+} AOCSUpdateDescData;
+
+AOCSUpdateDesc
+aocs_update_init(Relation rel, int segno)
+{
+	AOCSUpdateDesc desc = (AOCSUpdateDesc) palloc0(sizeof(AOCSUpdateDescData));
+
+	desc->insertDesc = aocs_insert_init(rel, segno, true);
+
+	AppendOnlyVisimap_Init(&desc->visibilityMap,
+			desc->insertDesc->aoEntry->visimaprelid,
+			desc->insertDesc->aoEntry->visimapidxid,
+			RowExclusiveLock,
+			desc->insertDesc->appendOnlyMetaDataSnapshot);
+
+	AppendOnlyVisimapDelete_Init(&desc->visiMapDelete,
+			&desc->visibilityMap);
+
+	return desc;
+}
+
+void
+aocs_update_finish(AOCSUpdateDesc desc)
+{
+	Assert(desc);
+
+	AppendOnlyVisimapDelete_Finish(&desc->visiMapDelete);
+
+	aocs_insert_finish(desc->insertDesc);
+	desc->insertDesc = NULL;
+
+	/* Keep lock until the end of transaction */
+	AppendOnlyVisimap_Finish(&desc->visibilityMap, NoLock);
+
+	pfree(desc);
+}
+
+HTSU_Result
+aocs_update(AOCSUpdateDesc desc, TupleTableSlot *slot,
+			AOTupleId *oldTupleId, AOTupleId *newTupleId)
+{
+	Oid oid;
+	HTSU_Result result;
+
+	Assert(desc);
+	Assert(oldTupleId);
+	Assert(newTupleId);
+
+#ifdef FAULT_INJECTOR
+	FaultInjector_InjectFaultIfSet(
+		AppendOnlyUpdate,
+		DDLNotSpecified,
+		"",	// databaseName
+		RelationGetRelationName(desc->insertDesc->aoi_rel)); // tableName
+#endif
+
+	result = AppendOnlyVisimapDelete_Hide(&desc->visiMapDelete, oldTupleId);
+	if (result != HeapTupleMayBeUpdated)
+		return result;
+
+	slot_getallattrs(slot);
+	oid = aocs_insert_values(desc->insertDesc, 
+			slot_get_values(slot), slot_get_isnull(slot), 
+			newTupleId);
+	(void) oid; /*ignore the oid value */
+
+	return result;
+ }
+
+
+/*
+ * AOCSDeleteDescData is used for delete data from AOCS relations. 
+ * It serves an equivalent purpose as AppendOnlyScanDescData
+ * (relscan.h) only that the later is used for scanning append-only 
+ * relations. 
+ */
+typedef struct AOCSDeleteDescData
+{
+	/*
+	 * Relation to delete from
+	 */ 
+	Relation		aod_rel;
+
+	/*
+	 * Snapshot to use for meta data operations
+	 */ 
+	Snapshot		appendOnlyMetaDataSnapshot;
+
+	/*
+	 * pg_appendonly entry for the append-only relation
+	 */
+	AppendOnlyEntry *aoEntry;
+
+	/*
+	 * visibility map
+	 */
+	AppendOnlyVisimap visibilityMap;
+
+	/*
+	 * Visimap delete support structure.
+	 * Used to handle out-of-order deletes
+	 */
+	AppendOnlyVisimapDelete visiMapDelete;
+
+} AOCSDeleteDescData;
+
+
+/*
+ * appendonly_delete_init
+ *
+ * before using appendonly_delete() to delete tuples from append-only segment 
+ * files, we need to call this function to initialize the delete desc
+ * data structured.
+ */
+AOCSDeleteDesc
+aocs_delete_init(Relation rel)
+{
+	/*
+	 * Get the pg_appendonly information
+	 */ 
+	AppendOnlyEntry *aoentry = GetAppendOnlyEntry(RelationGetRelid(rel),
+			SnapshotNow);
+	Assert(aoentry && aoentry->majorversion == 1 && aoentry->minorversion == 1);
+
+	AOCSDeleteDesc aoDeleteDesc = palloc0(sizeof(AOCSDeleteDescData));
+	aoDeleteDesc->aod_rel = rel;
+	aoDeleteDesc->appendOnlyMetaDataSnapshot = SnapshotNow;
+	aoDeleteDesc->aoEntry = aoentry;
+
+	AppendOnlyVisimap_Init(&aoDeleteDesc->visibilityMap,
+			aoentry->visimaprelid, 
+			aoentry->visimapidxid,
+			RowExclusiveLock,
+			aoDeleteDesc->appendOnlyMetaDataSnapshot);
+
+	AppendOnlyVisimapDelete_Init(&aoDeleteDesc->visiMapDelete,
+			&aoDeleteDesc->visibilityMap);
+
+	return aoDeleteDesc;
+}
+
+void aocs_delete_finish(AOCSDeleteDesc aoDeleteDesc)
+{
+	Assert(aoDeleteDesc);
+
+	AppendOnlyVisimapDelete_Finish(&aoDeleteDesc->visiMapDelete);
+
+	if (aoDeleteDesc->aoEntry != NULL)
+	{
+		pfree(aoDeleteDesc->aoEntry);
+	}
+	
+	AppendOnlyVisimap_Finish(&aoDeleteDesc->visibilityMap, NoLock);
+
+	pfree(aoDeleteDesc);
+}
+
+HTSU_Result aocs_delete(AOCSDeleteDesc aoDeleteDesc,
+		AOTupleId* aoTupleId)
+{
+	Assert(aoDeleteDesc);
+	Assert(aoTupleId);
+
+	elogif (Debug_appendonly_print_delete, LOG, 
+		"AOCS delete tuple from table '%s' (AOTupleId %s)",
+		NameStr(aoDeleteDesc->aod_rel->rd_rel->relname),
+		AOTupleIdToString(aoTupleId));
+
+#ifdef FAULT_INJECTOR
+	FaultInjector_InjectFaultIfSet(
+		AppendOnlyDelete,
+		DDLNotSpecified,
+		"",	// databaseName
+		RelationGetRelationName(aoDeleteDesc->aod_rel)); // tableName
+#endif
+
+	return AppendOnlyVisimapDelete_Hide(&aoDeleteDesc->visiMapDelete, aoTupleId);
+}
+

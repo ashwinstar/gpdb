@@ -2060,6 +2060,7 @@ typedef struct TruncateStmt
 	List	   *new_toast_oids;
 	List	   *new_aoseg_oids;
 	List	   *new_aoblkdir_oids;
+	List       *new_aovisimap_oids;
 	List	   *new_ind_oids;
 } TruncateStmt;
 
@@ -2487,6 +2488,35 @@ typedef struct VacuumStmt
 	 * We need these since vacuuming a bitmap index is done through reindex.
 	 */
 	List *extra_oids;
+
+	/*
+	 * AO segment file num to compact (integer).
+	 */ 
+	List *appendonly_compaction_segno;
+
+	/*
+	 * AO table meta data from the dispatcher.
+	 * Used during compaction.
+	 *
+	 * Unless appendonly_compaction_vacuum_cleanup is specified, it should
+	 * only contain a single entry.
+	 */
+	List *appendonly_compaction_insert_segno;
+
+	/*
+	 * Iff true, the vacuum run is the cleanup phase of an append-only compaction.
+	 * In the cleanup phase, the following operations are performed
+	 * - Vacuum of append-only auxility relations
+	 * - Update of pg_class statistics of append-only relation
+	 */
+	bool appendonly_compaction_vacuum_cleanup;
+
+	/*
+	 * Iff true, the vacuum runs the prepare phase of an append-only compaction.
+	 * In the prepare phase, the following operations are performed
+	 * - Vacuum of indexes on append-only relation based on visimap.
+	 */
+	bool appendonly_compaction_vacuum_prepare;
 } VacuumStmt;
 
 /* ----------------------

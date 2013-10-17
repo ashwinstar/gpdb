@@ -107,6 +107,9 @@ extern bool ReadGpRelationNode(
 	int32			segmentFileNum,
 	ItemPointer		persistentTid,
 	int64			*persistentSerialNum);
+extern void DeleteGpRelationNode(
+	Oid             relfilenode,
+	int32           segmentFileNum);
 extern void RelationFetchSegFile0GpRelationNode(Relation relation);
 extern void RelationFetchGpRelationNodeForXLog_Index(Relation relation);
 

@@ -1831,6 +1831,7 @@ IndexBuildAppendOnlyRowScan(Relation parentRelation,
 	
 	aoscan = appendonly_beginscan(parentRelation,
 								  snapshot,
+								  snapshot,
 								  0,
 								  NULL);
 
@@ -1963,7 +1964,8 @@ IndexBuildAppendOnlyColScan(Relation parentRelation,
 
 	GetAppendOnlyEntryAuxOids(RelationGetRelid(parentRelation), SnapshotNow,
 							  NULL, NULL,
-							  &blkdirrelid, &blkdiridxid);
+							  &blkdirrelid, &blkdiridxid,
+							  NULL, NULL);
 
 	if (OidIsValid(blkdirrelid) && OidIsValid(blkdiridxid))
 	{
@@ -1986,7 +1988,7 @@ IndexBuildAppendOnlyColScan(Relation parentRelation,
 			proj[attno] = true;
 	}
 	
-	aocsscan = aocs_beginscan(parentRelation, snapshot, NULL /* relationTupleDesc */, proj);
+	aocsscan = aocs_beginscan(parentRelation, snapshot, snapshot, NULL /* relationTupleDesc */, proj);
 
 	if (!OidIsValid(blkdirrelid) || !OidIsValid(blkdiridxid))
 	{
@@ -2798,13 +2800,19 @@ reindex_index(Oid indexId, Oid newrelfilenode, List **extra_oids)
  * new relfilenode specified in the map.
  */
 bool
-reindex_relation(Oid relid, bool toast_too, bool aoseg_too, bool aoblkdir_too,
-				 List **oidmap, bool build_map)
+reindex_relation(Oid relid, 
+		bool toast_too, 
+		bool aoseg_too, 
+		bool aoblkdir_too,
+		bool aovisimap_too,
+		List **oidmap,
+		bool build_map)
 {
 	Relation	rel;
 	Oid			toast_relid;
 	Oid			aoseg_relid = InvalidOid;
 	Oid         aoblkdir_relid = InvalidOid;
+	Oid         aovisimap_relid = InvalidOid;
 	bool		is_pg_class;
 	bool		result;
 	List	   *indexIds,
@@ -2933,26 +2941,35 @@ reindex_relation(Oid relid, bool toast_too, bool aoseg_too, bool aoblkdir_too,
 	 * still hold the lock on the master table.
 	 */
 	if (toast_too && OidIsValid(toast_relid))
-		result |= reindex_relation(toast_relid, false, false, false, oidmap, build_map);
+		result |= reindex_relation(toast_relid, false, false, false, false, oidmap, build_map);
 
 	/* Obtain the aoseg_relid and aoblkdir_relid if the relation is an AO table. */
-	if ((aoseg_too || aoblkdir_too) && relIsAO)
+	if ((aoseg_too || aoblkdir_too || aovisimap_too) && relIsAO)
 		GetAppendOnlyEntryAuxOids(relid, SnapshotNow,
-								  &aoseg_relid, NULL, &aoblkdir_relid, NULL);
+								  &aoseg_relid, NULL, 
+								  &aoblkdir_relid, NULL,
+								  &aovisimap_relid, NULL);
 
 	/*
 	 * If an AO rel has a secondary segment list rel, reindex that too while we
 	 * still hold the lock on the master table.
 	 */
 	if (aoseg_too && OidIsValid(aoseg_relid))
-		result |= reindex_relation(aoseg_relid, false, false, false, oidmap, build_map);
+		result |= reindex_relation(aoseg_relid, false, false, false, false, oidmap, build_map);
 
 	/*
 	 * If an AO rel has a secondary block directory rel, reindex that too while we
 	 * still hold the lock on the master table.
 	 */
 	if (aoblkdir_too && OidIsValid(aoblkdir_relid))
-		result |= reindex_relation(aoblkdir_relid, false, false, false, oidmap, build_map);
+		result |= reindex_relation(aoblkdir_relid, false, false, false, false, oidmap, build_map);
+	
+	/*
+	 * If an AO rel has a secondary visibility map rel, reindex that too while we
+	 * still hold the lock on the master table.
+	 */
+	if (aovisimap_too && OidIsValid(aovisimap_relid))
+		result |= reindex_relation(aovisimap_relid, false, false, false, false, oidmap, build_map);
 
 	return result;
 }

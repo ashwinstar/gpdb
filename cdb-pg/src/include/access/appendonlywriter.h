@@ -50,6 +50,68 @@
 extern int	MaxAppendOnlyTables;	/* Max # of concurrently used AO rels */
 
 /*
+ * The valid states w.r.t. inuse, incompaction and awaiting drop are
+ *   | use | compa. | awaiting | description
+ * ---------------------------------------------------------------------
+ *   |     |        |          | Default initial state
+ * ---------------------------------------------------------------------
+ *   |     |        |    x     | Initial state if the last compaction drop 
+ *   |     |        |          | transaction on the segment file was aborted.
+ *   |     |        |          | The segment file should not be used for inserts.
+ * ---------------------------------------------------------------------
+ *   | x   |        |          | Segment file is assigned to an insert or
+ *   |     |        |          | compaction transaction for insertion.
+ * ---------------------------------------------------------------------
+ *   | x   |    x   |          | Segment file is assigned to a compaction transaction.
+ *   |     |        |          | The segment file is in the compaction phase.
+ * ---------------------------------------------------------------------
+ *   | x   |    x   |    x     | The segment file is assigned to be dropped in
+ *   |     |        |          | a compaction drop transaction (state 6) or
+ *   |     |        |          | is in a pseudo compaction transaction (state 7)
+ *   |     |        |          | after a fault recovery.
+ * ---------------------------------------------------------------------
+ *   |     |    x   |    x     | INVALID STATE
+ * ---------------------------------------------------------------------
+ *   | x   |        |    x     | The segment file has been compacted by the
+ *   |     |        |          | current vacuum run and will be dropped.
+ * ---------------------------------------------------------------------
+ *   |     |    x   |          | INVALID STATE
+ * ---------------------------------------------------------------------
+ *  
+ * Awaiting drop means: if true - the segment file is awaiting
+ * drop in at least one of the segment
+ * nodes. The segment file should not
+ * be used for inserts or compaction inserts.
+ *  The segment file should be compacted before
+ * any other segment file. At most one segment
+ * file can awaiting a drop.
+ *
+ * The valid state transitions are:
+ * 1 -> 3 (normal insertion or compact insertion)
+ * 1 -> 4 (compaction)
+ * 2 -> 6 (pseude compaction transaction started)
+ * 3 -> 1 (insertion committed or aborted)
+ * 4 -> 6 (compaction transaction committed)
+ * 4 -> 1 (compaction transaction aborted)
+ * 5 -> 1 (drop transaction committed)
+ * 5 -> 2 (drop transaction aborted)
+ * 6 -> 5 (drop transaction started)
+ * 6 -> 8 (drop transaction skipped)
+ * 8 -> 2 (drop transaction skipped (commit or aborted))
+ */
+typedef enum AOSegfileState
+{
+	AVAILABLE = 1,
+	INITIAL_AWAITING_DROP = 2,
+	INSERT_USE = 3,
+	COMPACTION_USE = 4,
+	DROP_USE = 5,
+	COMPACTED_AWAITING_DROP = 6,
+	PSEUDO_COMPACTION_USE = 7,
+	COMPACTED_DROP_SKIPPED = 8
+} AOSegfileState;
+
+/*
  * Describes the status of a particular file segment number accross an entire
  * AO relation. 
  *
@@ -66,21 +128,47 @@ extern int	MaxAppendOnlyTables;	/* Max # of concurrently used AO rels */
  * Note that 'isfull' tries to guess if any of the file segments is full. Since
  * there may be some skew in the data we use a threshold that is a bit lower
  * than the max tuples allowed per segment.
- * 
+ *
+
  */
 typedef struct AOSegfileStatus
 {
-	int64			tupcount;  		/* Total tupcount for this segno across   * 
-									 * all segdbs 							  */
-	int64			tupsadded;		/* Num tuples added in this segno across  * 
-									 * all segdbs in the current transaction  */
-	TransactionId	xid;	   		/* the inserting transaction id 		  */
-	DistributedTransactionId latestWriteXid; /* the latest committed inserting
-												transaction id */
-	bool			inuse;	   		/* if true - segno is assigned right now. *
-									 * use another 							  */
-	bool			isfull;	   		/* if true - never insert into this segno *
-									 * anymore 								  */
+	/* 
+	 * Total tupcount for this segno across 
+	 * all segdbs. This includes invisible tuples
+	 */
+	int64			total_tupcount; 
+	
+	/* 
+	 * Num tuples added in this segno across  
+	 * all segdbs in the current transaction
+	 */
+	int64			tupsadded;		
+	
+	/* 
+	 * the inserting transaction id 		  
+	 */
+	TransactionId	xid;	   	
+	
+	/* 
+	 * the latest committed inserting
+	 * transaction id
+	 */
+	DistributedTransactionId latestWriteXid;
+	
+	AOSegfileState state;
+
+	/* if true - never insert into this segno anymore */ 	
+	bool			isfull;	   	
+	
+
+	/*
+	 * Flag to indicate if the current transaction has been aborted.
+	 * It is set by AtAbort_AppendOnly to ensure the correct state
+	 * transition in AtEOXact_AppendOnly_Relation. Outside
+	 * this transition, the value is false.
+	 */
+	bool            aborted;
 } AOSegfileStatus;
 
 /*
@@ -116,10 +204,21 @@ extern Size AppendOnlyWriterShmemSize(void);
 extern void InitAppendOnlyWriter(void);
 extern Size AppendOnlyWriterShmemSize(void);
 extern int  SetSegnoForWrite(int existingsegno, Oid relid);
+extern void RegisterSegnoForCompactionDrop(Oid relid, List *compactedSegmentFileList);
+extern void DeregisterSegnoForCompactionDrop(Oid relid, List *compactedSegmentFileList);
+extern List *SetSegnoForCompaction(Oid relid, List *compactedSegmentFileList,
+		List *insertedSegmentFileList, bool *isdrop);
+extern int SetSegnoForCompactionInsert(Oid relid, List *compacted_segno,
+		List *compactedSegmentFileList,
+		List *insertedSegmentFileList);
 extern List *assignPerRelSegno(List *all_rels);
 extern void UpdateMasterAosegTotals(Relation parentrel,
 									int segno, 
-									uint64 tupcount);
+									int64 tupcount,
+									int64 modcount_added);
+extern void UpdateMasterAosegTotalsFromSegments(Relation parentrel, 
+		Snapshot appendOnlyMetaDataSnapshot, List *segmentNumList,
+		int64 modcount_added);
 extern bool AORelRemoveHashEntry(Oid relid);
 extern void AtCommit_AppendOnly(void);
 extern void AtAbort_AppendOnly(void);

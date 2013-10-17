@@ -94,4 +94,17 @@ extern int	bms_first_member(Bitmapset *a);
 /* support for hashtables using Bitmapsets as keys: */
 extern uint32 bms_hash_value(const Bitmapset *a);
 
+/* 
+ * returns true iff the bitmap is sufficently large that
+ * it stores the bit for member x
+ */
+extern bool bms_covers_member(const Bitmapset *a, int x);
+
+/* 
+ * Extend the bitmap a to have at least wc number of words.
+ * If wc is smaller than the bitmap a, the bitmap a
+ * is returned
+ */
+extern Bitmapset *bms_resize(Bitmapset *a, int wc);
+
 #endif   /* BITMAPSET_H */

@@ -544,15 +544,16 @@ select * from co where j = 2;
  11 | 2 | bbb
 (6 rows)
 
+---------------------
+-- UAO
+---------------------
+-- DELETE
+DELETE FROM tenk_aocs1 WHERE unique1 = 1;
+-- UPDATE
+UPDATE tenk_aocs1 SET unique2 = 1 WHERE unique2 = 2;
 -------------------- 
 -- unsupported sql 
 --------------------
--- DELETE (not supported)
-DELETE FROM tenk_aocs1 WHERE unique1 = 1;
-ERROR:  Append-only tables are not updatable. Operation not permitted.  (seg0 @hostname@:11002 pid=30886)
--- UPDATE (not supported)
-UPDATE tenk_aocs1 SET unique2 = 1 WHERE unique2 = 2;
-ERROR:  Append-only tables are not updatable. Operation not permitted.  (seg0 @hostname@:11002 pid=30886)
 -- ALTER
 ALTER TABLE tenk_aocs1 RENAME TO tenk_renamed;
 ALTER TABLE tenk_renamed ADD COLUMN newcol int default 10;
@@ -562,7 +563,7 @@ ERROR:  ADD COLUMN with no default value in append-only tables is not yet suppor
 SELECT count(*) FROM tenk_renamed;
  count 
 -------
- 10000
+ 9999
 (1 row)
 
 ALTER TABLE tenk_renamed RENAME TO tenk_aocs1;

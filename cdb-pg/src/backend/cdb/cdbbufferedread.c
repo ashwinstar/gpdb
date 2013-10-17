@@ -12,6 +12,7 @@
 #include "cdb/cdbbufferedread.h"
 #include <unistd.h>				/* for read() */
 #include "utils/guc.h"
+#include "miscadmin.h"
 
 static void BufferedReadIo(
     BufferedRead        *bufferedRead);
@@ -204,9 +205,7 @@ static void BufferedReadIo(
 								   bufferedRead->filePathName,
 								   errno)));
 		
-		if (Debug_appendonly_print_read_block)
-		{
-			elog(LOG,
+		elogif(Debug_appendonly_print_read_block, LOG,
 				 "Append-Only storage read: table '%s', segment file '%s', read postition " INT64_FORMAT " (small offset %d), "
 				 "actual read length %d (equals large read length %d is %s)",
 				 bufferedRead->relationName,
@@ -216,12 +215,14 @@ static void BufferedReadIo(
 				 actualLen,
 				 bufferedRead->largeReadLen,
 				 (actualLen == bufferedRead->largeReadLen ? "true" : "false"));
-		}
 		
 		largeReadLen -= actualLen;
 		largeReadMemory += actualLen;
 		offset += actualLen;
 	}
+
+	if (VacuumCostActive)
+		VacuumCostBalance += VacuumCostPageMiss;
 }
 
 static uint8 *BufferedReadUseBeforeBuffer(

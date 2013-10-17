@@ -278,6 +278,9 @@ bool 		Debug_appendonly_print_insert = false;
 bool 		Debug_appendonly_print_insert_tuple = false;
 bool 		Debug_appendonly_print_scan = false;
 bool 		Debug_appendonly_print_scan_tuple = false;
+bool		Debug_appendonly_print_delete = false;
+bool 		Debug_appendonly_print_update = false;
+bool 		Debug_appendonly_print_update_tuple = false;
 bool 		Debug_appendonly_print_storage_headers = false;
 bool 		Debug_appendonly_print_verify_write_block = false;
 bool		Debug_appendonly_use_no_toast = false;
@@ -287,6 +290,8 @@ bool 		Debug_appendonly_print_append_block = false;
 bool 		Debug_appendonly_print_segfile_choice = false;
 int			Debug_appendonly_bad_header_print_level = ERROR;
 bool		Debug_appendonly_print_datumstream = false;
+bool		Debug_appendonly_print_visimap = false;
+bool		Debug_appendonly_print_compaction = false;
 bool 		Debug_gp_relation_node_fetch_wait_for_debugging = false;
 bool        gp_crash_recovery_abort_suppress_fatal = false;
 bool		gp_persistent_statechange_suppress_error = false;
@@ -305,6 +310,8 @@ bool        Master_mirroring_administrator_disable = false;
 int			gp_max_local_distributed_cache = 1024;
 bool		gp_appendonly_verify_block_checksums = false;
 bool 		gp_appendonly_verify_write_block = false;
+bool		gp_appendonly_compaction = true;
+int         gp_appendonly_compaction_threshold = 0;
 bool		gp_heap_require_relhasoids_match = true;
 bool		Debug_appendonly_rezero_quicklz_compress_scratch = false;
 bool		Debug_appendonly_rezero_quicklz_decompress_scratch = false;
@@ -2094,6 +2101,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"gp_appendonly_compaction", PGC_SUSET, APPENDONLY_TABLES,
+		 gettext_noop("Perform append-only compaction instead of eof truncation on vacuum."),
+		 NULL,
+		 GUC_SUPERUSER_ONLY | GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		},
+		&gp_appendonly_compaction,
+		true, NULL, NULL
+	},
+
+	{
 		{"gp_heap_require_relhasoids_match", PGC_USERSET, DEVELOPER_OPTIONS,
 		 gettext_noop("Issue an error on discovery of a mismatch between relhasoids and a tuple header."),
 		 NULL,
@@ -2492,6 +2509,26 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_appendonly_print_append_block,
 		false, NULL, NULL
 	},
+	
+	{
+		{"debug_appendonly_print_visimap", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print log messages for append-only visibility bitmap information."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_appendonly_print_visimap,
+		false, NULL, NULL
+	},
+
+	{
+		{"debug_appendonly_print_compaction", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print log messages about append-only visibility compactions."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_appendonly_print_compaction,
+		false, NULL, NULL
+	},
 
 	{
 		{"debug_appendonly_print_insert", PGC_SUSET, DEVELOPER_OPTIONS,
@@ -2530,6 +2567,36 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_appendonly_print_scan_tuple,
+		false, NULL, NULL
+	},
+
+	{
+		{"debug_appendonly_print_delete", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print log messages for append-only delete."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_appendonly_print_delete,
+		false, NULL, NULL
+	},
+
+	{
+		{"debug_appendonly_print_update", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print log messages for append-only update."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_appendonly_print_update,
+		false, NULL, NULL
+	},
+
+	{
+		{"debug_appendonly_print_update_tuple", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print log messages for append-only update tuples (caution -- generates a lot of log!)."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_appendonly_print_update_tuple,
 		false, NULL, NULL
 	},
 
@@ -4235,6 +4302,17 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&autovacuum_vac_cost_limit,
 		-1, -1, 10000, NULL, NULL
+	},
+
+	{
+		{"gp_appendonly_compaction_threshold", PGC_SUSET, APPENDONLY_TABLES,
+			gettext_noop("Threshold of the ratio of dirty data in a segment file over which the file"
+					     " will be compacted during lazy vacuum."),
+			NULL,
+			GUC_SUPERUSER_ONLY | GUC_NO_SHOW_ALL
+		},
+		&gp_appendonly_compaction_threshold,
+		10, 0, 100, NULL, NULL
 	},
 
 	{

@@ -326,10 +326,6 @@ rel_is_leaf_partition(Oid relid)
 									   * partition set
 									   */
 	
-	/* pg_partition and  pg_partition_rule are populated only on the 
-	 * entry database, so our result is only meaningful there. */
-	Insist(Gp_segment == -1);
-	
 	/*
 	 * Find the pg_partition_rule entry to see if this is a child at
 	 * all and, if so, to locate the OID for the pg_partition entry.

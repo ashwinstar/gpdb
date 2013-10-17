@@ -16,7 +16,8 @@ OBJS = catalog.o dependency.o heap.o index.o indexing.o namespace.o aclchk.o \
        pg_exttable.o pg_extprotocol.o pg_largeobject.o pg_namespace.o \
        pg_operator.o pg_proc.o pg_proc_callback.o pg_shdepend.o \
        pg_type.o toasting.o aoseg.o aoblkdir.o gp_fastsequence.o \
-	   pg_attribute_encoding.o pg_compression.o 
+	   pg_attribute_encoding.o pg_compression.o aovisimap.o \
+	   aocatalog.o
 SUBDIRS = caql core
 
 BKIFILES = postgres.bki postgres.description postgres.shdescription
@@ -43,6 +44,7 @@ JETPACK_SCHEMA = gp_$(JETPACK_NAME)
 JETPACK_OBJECT_PREFIX = gp_
 JETPACK_PREFIX = $(JETPACK_SCHEMA).$(JETPACK_OBJECT_PREFIX)
 JETPACK_PREFIX_AUX = $(JETPACK_SCHEMA).__$(JETPACK_OBJECT_PREFIX)
+AO_CO_DIAGNOSTICS_PATHNAME = $$libdir\/gp_ao_co_diagnostics
 
 gp_toolkit.sql: gp_toolkit.sql.in
 	sed \
@@ -50,6 +52,7 @@ gp_toolkit.sql: gp_toolkit.sql.in
 	-e 's/%%JETPACK_SCHEMA%%/$(JETPACK_SCHEMA)/g' \
 	-e 's/%%JETPACK_PREFIX%%/$(JETPACK_PREFIX)/g' \
 	-e 's/%%JETPACK_PREFIX_AUX%%/$(JETPACK_PREFIX_AUX)/g' \
+	-e 's/%%AO_CO_DIAGNOSTICS_MODULE%%/$(AO_CO_DIAGNOSTICS_PATHNAME)/g' \
 	-e 's/	/    /g' \
 	$< > $@
 
@@ -59,6 +62,7 @@ gp_toolkit_test.sql: gp_toolkit_test.sql.in
 	-e 's/%%JETPACK_SCHEMA%%/$(JETPACK_SCHEMA)/g' \
 	-e 's/%%JETPACK_PREFIX%%/$(JETPACK_PREFIX)/g' \
 	-e 's/%%JETPACK_PREFIX_AUX%%/$(JETPACK_PREFIX_AUX)/g' \
+	-e 's/%%AO_CO_DIAGNOSTICS_MODULE%%/$(AO_CO_DIAGNOSTICS_PATHNAME)/g' \
 	-e 's/	/    /g' \
 	$< > $@
 

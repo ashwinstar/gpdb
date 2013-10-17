@@ -368,3 +368,65 @@ SELECT @gpupgradeschemaname@.drop_shared_relation(5008);
 RESET gp_permit_relation_node_change;
 
 DROP FUNCTION @gpupgradeschemaname@.drop_shared_relation(oid);
+-- updatable AO
+-- The relid and idx id are set InvalidOid. This is not a
+-- valid state.
+ALTER TABLE pg_catalog.pg_appendonly
+    ADD COLUMN visimaprelid oid,
+    ADD COLUMN visimapidxid oid;
+SELECT @gpupgradeschemaname@.catDML(
+     'UPDATE pg_catalog.pg_appendonly SET visimaprelid = 0::oid, visimapidxid = 0::oid, minorversion = 1;'
+);
+
+-- Upgrade catalog tables for append-only tables.
+-- 1) add visimap
+-- 2) add state column to pg_ao(cs)seg
+CREATE FUNCTION @gpupgradeschemaname@.upgrade_appendonly_aux(aoRelId oid) RETURNS int AS $$
+DECLARE
+  aoSegRelName name;
+BEGIN
+  EXECUTE 'CREATE TABLE pg_aoseg.pg_aovisimap_' || aoRelid ||
+    ' (segno int, first_row_num bigint, visimap varbit)';
+  EXECUTE 'CREATE INDEX pg_aovisimap_' || aoRelid || '_index
+    ON pg_aoseg.pg_aovisimap_' || aoRelid || '(segno, first_row_num)';
+  DELETE FROM gp_distribution_policy
+    WHERE localoid = ('pg_aoseg.pg_aovisimap_' || aoRelId)::regclass;
+  PERFORM @gpupgradeschemaname@.catDML(
+    'UPDATE pg_catalog.pg_appendonly
+     SET visimaprelid = (SELECT oid FROM pg_class
+           WHERE relname = ''pg_aovisimap_' || aoRelid || '''
+              AND relnamespace = 6104),
+         visimapidxid = (SELECT oid FROM pg_class
+           WHERE relname = ''pg_aovisimap_' || aoRelid || '_index''
+             AND relnamespace = 6104) WHERE relid = ' || aoRelid);
+  PERFORM @gpupgradeschemaname@.catDML(
+    'UPDATE pg_catalog.pg_class SET relkind = ''m''
+       WHERE relname = ''pg_aovisimap_' || aoRelid || '''
+         AND relnamespace = 6104');
+
+  -- Add modcount and state column to pg_ao(cs)seg
+  SELECT INTO aoSegRelName relname FROM pg_catalog.pg_class
+    INNER JOIN pg_catalog.pg_appendonly ON pg_class.oid = pg_appendonly.segrelid
+    WHERE pg_appendonly.relid = aoRelId;
+  EXECUTE 'ALTER TABLE pg_aoseg.' || aoSegRelName ||
+    ' ADD COLUMN modcount bigint, ADD COLUMN state smallint';
+  PERFORM @gpupgradeschemaname@.catDML(
+    'UPDATE pg_aoseg.' || aoSegRelName || ' SET state = 1, modcount = tupcount');
+
+  RETURN 1;
+END;
+$$ LANGUAGE plpgsql;
+
+-- We separate transactions for each AO table in order to avoid out of shared
+-- memory for table locks.  Output to a SQL file and execute it with \i.
+\o appendonly_upgrade.sql
+\t
+SELECT 'select @gpupgradeschemaname@.upgrade_appendonly_aux(' || relid::text || ');'
+  FROM pg_catalog.pg_appendonly;
+\o
+\t
+
+\i appendonly_upgrade.sql
+\! rm appendonly_upgrade.sql
+
+DROP FUNCTION @gpupgradeschemaname@.upgrade_appendonly_aux(oid);

@@ -115,26 +115,45 @@ def get_co_partition_state(master_port, dbname):
     co_partition_list = get_partition_state(master_port, dbname, 'pg_aoseg', co_partition_info)
     return co_partition_list
 
-def validate_tuple_count(schema, tablename, cnt):
+def validate_modcount(schema, tablename, cnt):
     if not cnt:
         return
     if not cnt.isdigit():
-        raise Exception("Can not convert tuple count for table. Possibly exceeded  backup max tuple count of 1 quadrillion rows per table for: '%s.%s' '%s'" % (schema, tablename, cnt))
+        raise Exception("Can not convert modification count for table. Possibly exceeded  backup max tuple count of 1 quadrillion rows per table for: '%s.%s' '%s'" % (schema, tablename, cnt))
     if len(cnt) > 15:
         raise Exception("Exceeded backup max tuple count of 1 quadrillion rows per table for: '%s.%s' '%s'" % (schema, tablename, cnt))
 
+
 def get_partition_state(master_port, dbname, catalog_schema, partition_info):
+    """
+        Reads the partition state for an AO or AOCS relation, which is the sum of 
+        the modication counters over all ao segment files.
+        The sum might be an invalid number even when the relation contains tuples.
+        The reason is that the master aoseg info tuple for segno 0 is not there 
+        after the CTAS. Vacuum will correct in missing state on the master. 
+        However, this leads to a difference in the modcount when the partition
+        state is checked on the next incremantal backup.
+
+        Thus, partition state returns 0 also when the aoseg relation is empty. 
+        Why is that correct?
+        A table that as a modcount of 0 can only be there iff the last operation
+        was a special operation (TRUNCATE, CREATE, ALTER TABLE). That is handled 
+        in a special way by backup. Every DML operation will increase the 
+        modcount by 1. Therefore it is save to assume that to relations with 
+        modcount 0 with the same last special operation do not have a logical 
+        change in them.
+    """
     partition_list = list()
 
     dburl = dbconn.DbURL(port=master_port, dbname=dbname)
     conn = dbconn.connect(dburl)
     for (oid, schemaname, partition_name, tupletable) in partition_info:
-        tuple_count_sql = "select to_char(sum(tupcount::bigint), '999999999999999999999') from %s.%s" % (catalog_schema, tupletable)
-        tuple_count = execSQLForSingleton(conn, tuple_count_sql)
-        if tuple_count:
-            tuple_count = tuple_count.strip()
-        validate_tuple_count(schemaname, partition_name, tuple_count)
-        partition_list.append('%s, %s, %s' %(schemaname, partition_name, tuple_count))
+        modcount_sql = "select to_char(coalesce(sum(modcount::bigint), 0), '999999999999999999999') from %s.%s" % (catalog_schema, tupletable)
+        modcount = execSQLForSingleton(conn, modcount_sql)
+        if modcount:
+            modcount = modcount.strip()
+        validate_modcount(schemaname, partition_name, modcount)
+        partition_list.append('%s, %s, %s' %(schemaname, partition_name, modcount))
 
     return partition_list
 

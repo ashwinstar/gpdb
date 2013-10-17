@@ -344,6 +344,9 @@ _readQuery(void)
 			local_node->intoClause->oidInfo.aoblkdirOid = InvalidOid;
 			local_node->intoClause->oidInfo.aoblkdirIndexOid = InvalidOid;
 			local_node->intoClause->oidInfo.aoblkdirComptypeOid = InvalidOid;
+			local_node->intoClause->oidInfo.aovisimapOid = InvalidOid;
+			local_node->intoClause->oidInfo.aovisimapIndexOid = InvalidOid;
+			local_node->intoClause->oidInfo.aovisimapComptypeOid = InvalidOid;
 		}
 	}
 	else
@@ -417,6 +420,9 @@ _readQuery(void)
         READ_SCALAR_VALUE(intoOidInfo.aosegOid, InvalidOid);
         READ_SCALAR_VALUE(intoOidInfo.aosegIndexOid, InvalidOid);
         READ_SCALAR_VALUE(intoOidInfo.aosegComptypeOid, InvalidOid);
+        READ_SCALAR_VALUE(intoOidInfo.aovisimapOid, InvalidOid);
+        READ_SCALAR_VALUE(intoOidInfo.aovisimapIndexOid, InvalidOid);
+		READ_SCALAR_VALUE(intoOidInfo.aovisimapComptypeOid, InvalidOid);
 	}
     if (pg_strtok_peek_fldname("intoOidInfo.aoblkdirOid"))
 	{
@@ -751,6 +757,10 @@ _readIntoClause(void)
     READ_OID_FIELD(oidInfo.aosegOid);
     READ_OID_FIELD(oidInfo.aosegIndexOid);
     READ_OID_FIELD(oidInfo.aosegComptypeOid);
+	READ_OID_FIELD(oidInfo.aovisimapOid);
+	READ_OID_FIELD(oidInfo.aovisimapIndexOid);
+	READ_OID_FIELD(oidInfo.aovisimapComptypeOid);
+
     if (pg_strtok_peek_fldname("oidInfo.aoblkdirOid"))
 	{
         READ_OID_FIELD(oidInfo.aoblkdirOid);
@@ -778,7 +788,10 @@ _readIntoClause(void)
 	local_node->oidInfo.aoblkdirOid = InvalidOid;
 	local_node->oidInfo.aoblkdirIndexOid = InvalidOid;
 	local_node->oidInfo.aoblkdirComptypeOid = InvalidOid;
-	
+	local_node->oidInfo.aovisimapOid = InvalidOid;
+	local_node->oidInfo.aovisimapIndexOid = InvalidOid;
+	local_node->oidInfo.aovisimapComptypeOid = InvalidOid;
+
 	/* policy not serialized */
 	
 	READ_DONE();
@@ -1030,9 +1043,13 @@ _readAlterTableStmt(void)
 			READ_OID_FIELD(oidInfo[m].aosegOid);
 			READ_OID_FIELD(oidInfo[m].aosegIndexOid);
 			READ_OID_FIELD(oidInfo[m].aosegComptypeOid);
+			READ_OID_FIELD(oidInfo[m].aovisimapOid);
+			READ_OID_FIELD(oidInfo[m].aovisimapIndexOid);
+			READ_OID_FIELD(oidInfo[m].aovisimapComptypeOid);
 			READ_OID_FIELD(oidInfo[m].aoblkdirOid);
 			READ_OID_FIELD(oidInfo[m].aoblkdirIndexOid);
 			READ_OID_FIELD(oidInfo[m].aoblkdirComptypeOid);
+
 		}
 	}
 
@@ -2152,6 +2169,9 @@ _readCreateStmt(void)
 	READ_OID_FIELD(oidInfo.aosegOid);
 	READ_OID_FIELD(oidInfo.aosegIndexOid);
 	READ_OID_FIELD(oidInfo.aosegComptypeOid);
+	READ_OID_FIELD(oidInfo.aovisimapOid);
+	READ_OID_FIELD(oidInfo.aovisimapIndexOid);
+	READ_OID_FIELD(oidInfo.aovisimapComptypeOid);
 	READ_OID_FIELD(oidInfo.aoblkdirOid);
 	READ_OID_FIELD(oidInfo.aoblkdirIndexOid);
 	READ_OID_FIELD(oidInfo.aoblkdirComptypeOid);
@@ -2404,6 +2424,9 @@ _readClusterStmt(void)
 	READ_OID_FIELD(oidInfo.aosegOid);
 	READ_OID_FIELD(oidInfo.aosegIndexOid);
 	READ_OID_FIELD(oidInfo.aosegComptypeOid);
+	READ_OID_FIELD(oidInfo.aovisimapOid);
+	READ_OID_FIELD(oidInfo.aovisimapIndexOid);
+	READ_OID_FIELD(oidInfo.aovisimapComptypeOid);
 	READ_OID_FIELD(oidInfo.aoblkdirOid);
 	READ_OID_FIELD(oidInfo.aoblkdirIndexOid);
 	READ_OID_FIELD(oidInfo.aoblkdirComptypeOid);
@@ -2839,6 +2862,10 @@ _readVacuumStmt(void)
 	READ_NODE_FIELD(va_cols);
 	READ_NODE_FIELD(expanded_relids);
 	READ_NODE_FIELD(extra_oids);
+	READ_NODE_FIELD(appendonly_compaction_segno);
+	READ_NODE_FIELD(appendonly_compaction_insert_segno);
+	READ_BOOL_FIELD(appendonly_compaction_vacuum_cleanup);
+	READ_BOOL_FIELD(appendonly_compaction_vacuum_prepare);
 
 	READ_DONE();
 }

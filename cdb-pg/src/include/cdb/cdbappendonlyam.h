@@ -18,8 +18,10 @@
 #include "access/sdir.h"
 #include "access/tupmacs.h"
 #include "access/xlogutils.h"
+#include "access/appendonly_visimap.h"
 #include "executor/tuptable.h"
 #include "nodes/primnodes.h"
+#include "nodes/bitmapset.h"
 #include "storage/block.h"
 #include "storage/lmgr.h"
 #include "utils/rel.h"
@@ -102,6 +104,7 @@ typedef struct AppendOnlyInsertDescData
 	/* The block directory for the appendonly relation. */
 	AppendOnlyBlockDirectory blockDirectory;
 
+	bool update_mode;
 } AppendOnlyInsertDescData;
 
 typedef AppendOnlyInsertDescData *AppendOnlyInsertDesc;
@@ -151,6 +154,13 @@ typedef struct AppendOnlyScanDescData
 	Relation	aos_rd;				/* target relation descriptor */
 	Snapshot	appendOnlyMetaDataSnapshot;
 
+	/*
+	 * Snapshot to use for non-metadata operations.
+	 * Usually snapshot = appendOnlyMetaDataSnapshot, but they
+	 * differ e.g. if gp_select_invisible is set.
+	 */ 
+	Snapshot    snapshot;
+
 	Index       aos_scanrelid;
 	int			aos_nkeys;			/* number of scan keys */
 	ScanKey		aos_key;			/* array of scan key descriptors */
@@ -199,6 +209,12 @@ typedef struct AppendOnlyScanDescData
 	bool buildBlockDirectory; /* Indicate whether to build block directory while scanning */
 	AppendOnlyBlockDirectory *blockDirectory;
 
+	/**
+	 * The visibility map is used during scans
+	 * to check tuple visibility using visi map.
+	 */ 
+	AppendOnlyVisimap visibilityMap;
+
 }	AppendOnlyScanDescData;
 
 typedef AppendOnlyScanDescData *AppendOnlyScanDesc;
@@ -244,6 +260,13 @@ typedef struct AppendOnlyFetchDescData
 	Relation		relation;
 	Snapshot		appendOnlyMetaDataSnapshot;
 
+	/*
+	 * Snapshot to use for non-metadata operations.
+	 * Usually snapshot = appendOnlyMetaDataSnapshot, but they
+	 * differ e.g. if gp_select_invisible is set.
+	 */ 
+	Snapshot    snapshot;
+
 	MemoryContext	initContext;
 
 	AppendOnlyStorageAttributes	storageAttributes;
@@ -283,9 +306,15 @@ typedef struct AppendOnlyFetchDescData
 
 	int64	skipBlockCount;
 
+	AppendOnlyVisimap visibilityMap;
+
 }	AppendOnlyFetchDescData;
 
 typedef AppendOnlyFetchDescData *AppendOnlyFetchDesc;
+
+typedef struct AppendOnlyUpdateDescData *AppendOnlyUpdateDesc;
+typedef struct AppendOnlyDeleteDescData *AppendOnlyDeleteDesc;
+
 
 /* ----------------
  *		function prototypes for appendonly access method
@@ -293,9 +322,15 @@ typedef AppendOnlyFetchDescData *AppendOnlyFetchDesc;
  */
 
 extern AppendOnlyScanDesc appendonly_beginscan(Relation relation,
+											   Snapshot snapshot,
 											   Snapshot appendOnlyMetaDataSnapshot,
 											   int nkeys, 
 											   ScanKey key);
+extern AppendOnlyScanDesc appendonly_beginrangescan(Relation relation, 
+		Snapshot snapshot,
+		Snapshot appendOnlyMetaDataSnapshot, 
+		int *segfile_no_arr, int segfile_count,
+		int nkeys, ScanKey keys);
 extern void appendonly_rescan(AppendOnlyScanDesc scan, ScanKey key);
 extern void appendonly_endscan(AppendOnlyScanDesc scan);
 extern MemTuple appendonly_getnext(AppendOnlyScanDesc scan, 
@@ -303,6 +338,7 @@ extern MemTuple appendonly_getnext(AppendOnlyScanDesc scan,
 									TupleTableSlot *slot);
 extern AppendOnlyFetchDesc appendonly_fetch_init(
 	Relation 	relation,
+	Snapshot    snapshot,
 	Snapshot 	appendOnlyMetaDataSnapshot);
 extern bool appendonly_fetch(
 	AppendOnlyFetchDesc aoFetchDesc,
@@ -312,7 +348,7 @@ extern void appendonly_fetch_detail(
 	AppendOnlyFetchDesc aoFetchDesc, 
 	AppendOnlyFetchDetail *aoFetchDetail);
 extern void appendonly_fetch_finish(AppendOnlyFetchDesc aoFetchDesc);
-extern AppendOnlyInsertDesc appendonly_insert_init(Relation rel, int segno);
+extern AppendOnlyInsertDesc appendonly_insert_init(Relation rel, Snapshot appendOnlyMetaDataSnapshot, int segno, bool update_mode);
 extern void appendonly_insert(
 		AppendOnlyInsertDesc aoInsertDesc, 
 		MemTuple instup, 
@@ -321,4 +357,17 @@ extern void appendonly_insert(
 extern void appendonly_insert_finish(AppendOnlyInsertDesc aoInsertDesc);
 extern BlockNumber RelationGuessNumberOfBlocks(double totalbytes);
 
+extern AppendOnlyDeleteDesc appendonly_delete_init(Relation rel, Snapshot appendOnlyMetaDataSnapshot);
+extern HTSU_Result appendonly_delete(
+		AppendOnlyDeleteDesc aoDeleteDesc,
+		AOTupleId* aoTupleId);
+extern void appendonly_delete_finish(AppendOnlyDeleteDesc aoDeleteDesc);
+
+extern AppendOnlyUpdateDesc appendonly_update_init(Relation rel, Snapshot appendOnlyMetaDataSnapshot, int segno);
+extern HTSU_Result appendonly_update(
+		AppendOnlyUpdateDesc aoUpdateDesc,
+		MemTuple memTuple,
+		AOTupleId* aoTupleId,
+		AOTupleId* newAoTupleId);
+extern void appendonly_update_finish(AppendOnlyUpdateDesc aoUpdateDesc);
 #endif   /* APPENDONLYAM_H */

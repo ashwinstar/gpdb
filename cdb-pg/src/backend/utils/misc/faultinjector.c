@@ -252,6 +252,18 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault in ExecSort before doing the actual sort */
 	_("base_backup_post_create_checkpoint"),
 		/* inject fault after creation of checkpoint when basebackup requested */
+	_("compaction_before_segmentfile_drop"),
+		/* inject fault after compaction, but before the drop of the
+		 * segment file */
+	_("compaction_before_cleanup_phase"),
+		/* inject fault after compaction and drop, but before
+		 * the cleanup phase for a relation */
+	_("appendonly_insert"),
+		/* inject fault before an append-only insert */
+	_("appendonly_delete"),
+		/* inject fault before an append-only delete */
+	_("appendonly_update"),
+		/* inject fault before an append-only update */
 	_("not recognized"),
 };
 

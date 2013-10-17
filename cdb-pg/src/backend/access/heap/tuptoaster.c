@@ -501,7 +501,7 @@ toast_datum_size(Datum value)
  * ----------
  */
 void
-toast_delete(Relation rel, HeapTuple oldtup)
+toast_delete(Relation rel, HeapTuple oldtup, MemTupleBinding *pbind)
 {
 	TupleDesc	tupleDesc;
 	Form_pg_attribute *att;
@@ -509,6 +509,10 @@ toast_delete(Relation rel, HeapTuple oldtup)
 	int			i;
 	Datum		toast_values[MaxHeapAttributeNumber];
 	bool		toast_isnull[MaxHeapAttributeNumber];
+	bool 		ismemtuple = is_heaptuple_memtuple(oldtup);
+	
+	AssertImply(ismemtuple, pbind);
+	AssertImply(!ismemtuple, !pbind);
 
 	/*
 	 * We should only ever be called for tuples of plain relations ---
@@ -532,7 +536,11 @@ toast_delete(Relation rel, HeapTuple oldtup)
 	numAttrs = tupleDesc->natts;
 
 	Assert(numAttrs <= MaxHeapAttributeNumber);
-	heap_deform_tuple(oldtup, tupleDesc, toast_values, toast_isnull);
+
+	if(ismemtuple)
+		memtuple_deform((MemTuple) oldtup, pbind, toast_values, toast_isnull);
+	else
+		heap_deform_tuple(oldtup, tupleDesc, toast_values, toast_isnull);
 
 	/*
 	 * Check for external stored attributes and delete them from the secondary
@@ -610,8 +618,9 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
 
 	bool 		ismemtuple = is_heaptuple_memtuple(newtup);
 
-	AssertImply(ismemtuple, oldtup == NULL && pbind);
+	AssertImply(ismemtuple, pbind);
 	AssertImply(!ismemtuple, !pbind);
+	AssertImply(ismemtuple && oldtup, is_heaptuple_memtuple(oldtup));
 	Assert(toast_tuple_target > 0);
 	
 	/*
@@ -637,8 +646,12 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
 		heap_deform_tuple(newtup, tupleDesc, toast_values, toast_isnull);
 
 	if (oldtup != NULL)
-		heap_deform_tuple(oldtup, tupleDesc, toast_oldvalues, toast_oldisnull);
-
+	{
+		if(ismemtuple)
+			memtuple_deform((MemTuple) oldtup, pbind, toast_oldvalues, toast_oldisnull);
+		else
+			heap_deform_tuple(oldtup, tupleDesc, toast_oldvalues, toast_oldisnull);
+	}
 	/* ----------
 	 * Then collect information about the values given
 	 *

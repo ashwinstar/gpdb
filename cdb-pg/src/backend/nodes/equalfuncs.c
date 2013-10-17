@@ -1024,6 +1024,9 @@ _equalClusterStmt(ClusterStmt *a, ClusterStmt *b)
 	COMPARE_SCALAR_FIELD(oidInfo.aosegIndexOid);
 	COMPARE_SCALAR_FIELD(oidInfo.aoblkdirOid);
 	COMPARE_SCALAR_FIELD(oidInfo.aoblkdirIndexOid);
+	COMPARE_SCALAR_FIELD(oidInfo.aovisimapOid);
+	COMPARE_SCALAR_FIELD(oidInfo.aovisimapIndexOid);
+
 	COMPARE_NODE_FIELD(new_ind_oids);
 
 	return true;
@@ -1189,6 +1192,7 @@ _equalTruncateStmt(TruncateStmt *a, TruncateStmt *b)
 	COMPARE_NODE_FIELD(new_toast_oids);
 	COMPARE_NODE_FIELD(new_aoseg_oids);
 	COMPARE_NODE_FIELD(new_aoblkdir_oids);
+	COMPARE_NODE_FIELD(new_aovisimap_oids);
 	COMPARE_NODE_FIELD(new_ind_oids);
 
 	return true;

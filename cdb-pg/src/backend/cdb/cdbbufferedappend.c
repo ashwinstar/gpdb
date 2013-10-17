@@ -182,9 +182,7 @@ static void BufferedAppendWrite(
 					 		bufferedAppend->relationName,
 							bufferedAppend->filePathName)));
 	   
-	   if (Debug_appendonly_print_append_block)
-	   {
-		   elog(LOG,
+		elogif(Debug_appendonly_print_append_block, LOG,
 				"Append-Only storage write: table '%s', segment file '%s', write position " INT64_FORMAT ", "
 				"writeLen %d (equals large write length %d is %s)",
 				bufferedAppend->relationName,
@@ -193,7 +191,6 @@ static void BufferedAppendWrite(
 				writeLen,
 				bufferedAppend->largeWriteLen,
 				(writeLen == bufferedAppend->largeWriteLen ? "true" : "false"));
-	   }
 	   
 		actualLen = writeLen;
 

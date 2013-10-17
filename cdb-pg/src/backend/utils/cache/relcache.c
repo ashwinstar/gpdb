@@ -519,6 +519,46 @@ FetchGpRelationNodeTuple(
 	return tuple;
 }
 
+/*
+ * Deletes the gp relation node entry for the
+ * given segment file.
+ */ 
+void
+DeleteGpRelationNode(
+	Oid             relfilenode,
+	int32           segmentFileNum)
+{
+	Relation gp_relation_node;
+	HeapTuple tuple;
+
+	ItemPointerData persistentTid;
+	int64 persistentSerialNum;
+
+	gp_relation_node = heap_open(GpRelationNodeRelationId, RowExclusiveLock);
+
+	tuple = FetchGpRelationNodeTuple(
+						gp_relation_node,
+						relfilenode,
+						segmentFileNum,
+						&persistentTid,
+						&persistentSerialNum);
+
+	/*
+	 * if no such tuple exists, return NULL
+	 */
+	if (!HeapTupleIsValid(tuple))
+	{
+		elog(ERROR, "Failed to find gp_relation_node for "
+				"rel file node %d, segno %d", relfilenode, segmentFileNum);
+	}
+
+	simple_heap_delete(gp_relation_node, &tuple->t_self);
+
+	heap_freetuple(tuple);
+
+	heap_close(gp_relation_node, RowExclusiveLock);
+}
+
 bool
 ReadGpRelationNode(
 	Oid 			relfilenode,
@@ -772,6 +812,7 @@ RelationParseRelOptions(Relation relation, HeapTuple tuple)
 		case RELKIND_TOASTVALUE:
 		case RELKIND_AOSEGMENTS:
 		case RELKIND_AOBLOCKDIR:
+		case RELKIND_AOVISIMAP:
 		case RELKIND_INDEX:
 			break;
 		default:
@@ -797,6 +838,7 @@ RelationParseRelOptions(Relation relation, HeapTuple tuple)
 		case RELKIND_TOASTVALUE:
 		case RELKIND_AOSEGMENTS:
 		case RELKIND_AOBLOCKDIR:
+		case RELKIND_AOVISIMAP:
 		case RELKIND_UNCATALOGED:
 			options = heap_reloptions(relation->rd_rel->relkind, datum,
 									  false);

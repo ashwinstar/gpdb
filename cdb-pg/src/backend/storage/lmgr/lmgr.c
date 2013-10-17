@@ -187,6 +187,35 @@ LockRelation(Relation relation, LOCKMODE lockmode)
 }
 
 /*
+ *		LockRelationNoWait
+ *
+ * Similar to LockReation, except that it is not waiting
+ * for the lock if it is not available.
+ *
+ */
+LockAcquireResult
+LockRelationNoWait(Relation relation, LOCKMODE lockmode)
+{
+	LOCKTAG		tag;
+	LockAcquireResult res;
+
+	SET_LOCKTAG_RELATION(tag,
+						 relation->rd_lockInfo.lockRelId.dbId,
+						 relation->rd_lockInfo.lockRelId.relId);
+
+	res = LockAcquire(&tag, lockmode, false, true);
+
+	/*
+	 * Now that we have the lock, check for invalidation messages; see notes
+	 * in LockRelationOid.
+	 */
+	if (res != LOCKACQUIRE_ALREADY_HELD)
+		AcceptInvalidationMessages();
+
+	return res;
+}
+
+/*
  *		ConditionalLockRelation
  *
  * This is a convenience routine for acquiring an additional lock on an

@@ -14,17 +14,47 @@
 #include "utils/tqual.h"
 #include "catalog/pg_appendonly.h"
 
-#define Natts_pg_aoseg					6
+#define Natts_pg_aoseg					7
 #define Anum_pg_aoseg_segno				1
 #define Anum_pg_aoseg_eof				2
 #define Anum_pg_aoseg_tupcount			3
 #define Anum_pg_aoseg_varblockcount		4
 #define Anum_pg_aoseg_eofuncompressed	5
+#define Anum_pg_aoseg_modcount          6
+#define Anum_pg_aoseg_state             7
 
 #define InvalidFileSegNumber			-1
 #define InvalidUncompressedEof			-1
 
 #define AO_FILESEGINFO_ARRAY_SIZE		8
+
+
+/*
+ * The state of a segment file.
+ *
+ * The state AOSEG_STATE_USECURRENT is a pseudo-state that is used
+ * when a state parameter in a function should not change the
+ * current state.
+ * AOSEG_STATE_DEFAULT is the default state. The segment file can be used for
+ * insertions and compactions. The contents if the segment file 
+ * is visible under the limitations  of the visimap and the eof.
+ * AOSEG_STATE_AWAITING_DROP is used if a compaction drop transaction on that
+ * segment fails because the transaction was aborted. The segment
+ * cannot be used for insertions. It has the highest priority for
+ * compactions (to repeat the drop transaction) and its contents
+ * is not visible to scan/fetches.
+ *
+ * The state of the segment file is only maintained at the
+ * segment node level. The state at the master is always 
+ * AOSEG_STATE_DEFAULT.
+ */ 
+typedef enum FileSegInfoState
+{
+	/* 0 is reserved */
+	AOSEG_STATE_USECURRENT = 0,
+	AOSEG_STATE_DEFAULT = 1,
+	AOSEG_STATE_AWAITING_DROP = 2
+} FileSegInfoState;
 
 /*
  * pg_aoseg_nnnnnn table values for FormData_pg_attribute.
@@ -33,11 +63,13 @@
  *  pg_attribute.h]
  */
 #define Schema_pg_aoseg \
-{ -1, {"segno"}, 				23, -1, 4, 1, 0, -1, -1, true, 'p', 'i', false, false, false, true, 0 }, \
+{ -1, {"segno"}, 				 23, -1, 4, 1, 0, -1, -1, true, 'p', 'i', false, false, false, true, 0 }, \
 { -1, {"eof"},					701, -1, 8, 2, 0, -1, -1, true, 'p', 'd', false, false, false, true, 0 }, \
 { -1, {"tupcount"},				701, -1, 8, 3, 0, -1, -1, true, 'p', 'd', false, false, false, true, 0 }, \
 { -1, {"varblockcount"},		701, -1, 8, 4, 0, -1, -1, true, 'p', 'd', false, false, false, true, 0 }, \
-{ -1, {"eofuncompressed"},		701, -1, 8, 5, 0, -1, -1, true, 'p', 'd', false, false, false, true, 0 }
+{ -1, {"eofuncompressed"},		701, -1, 8, 5, 0, -1, -1, true, 'p', 'd', false, false, false, true, 0 }, \
+{ -1, {"modcount"}, 			 20, -1, 8, 6, 0, -1, -1, true, 'p', 'i', false, false, false, true, 0 }, \
+{ -1, {"state"}, 				 21, -1, 2, 6, 0, -1, -1, true, 'p', 'i', false, false, false, true, 0 }
 
 /*
  * pg_aoseg_nnnnnn table values for FormData_pg_class.
@@ -61,14 +93,36 @@ typedef struct FileSegInfo
 {
 	TupleVisibilitySummary	tupleVisibilitySummary;
 
-	int			segno;			/* the file segment number */
-	int64		tupcount;		/* total number of tuples in this fileseg */
-	int64		varblockcount;	/* total number of varblocks in this fileseg */	
-	ItemPointerData  sequence_tid;     /* tid for the unique sequence number for this fileseg */
+	/* the file segment number */
+	int	segno;	
 
-	int64		eof;			/* the effective eof for this segno  */
-	int64		eof_uncompressed;/* what would have been the eof if we didn't 
-								   compress this rel (= eof if no compression)*/
+	/* total (i.e. including invisible) number of tuples in this fileseg */
+	int64 total_tupcount;	
+
+	/* total number of varblocks in this fileseg */	
+	int64 varblockcount;	
+	
+	/*
+	 * Number of data modification operations
+	 */
+	int64 modcount;
+
+	/* tid for the unique sequence number for this fileseg */
+	ItemPointerData sequence_tid;  
+
+	/* the effective eof for this segno  */
+	int64 eof;
+
+	/* what would have been the eof if we didn't 
+	   compress this rel (= eof if no compression) */
+	int64 eof_uncompressed;
+
+	/* 
+     * state of the segno.
+	 * The state is only maintained on the segments.
+	 */
+	FileSegInfoState state; 
+
 } FileSegInfo;
 
 /*
@@ -121,15 +175,18 @@ GetAllFileSegInfo(Relation parentrel, AppendOnlyEntry *aoEntry, Snapshot appendO
 extern FileSegInfo **
 GetAllFileSegInfo_pg_aoseg_rel(char *relationName, AppendOnlyEntry *aoEntry, Relation pg_aoseg_rel, Snapshot appendOnlyMetaDataSnapshot, int *totalsegs);
 
-extern void
-UpdateFileSegInfo(Relation parentrel,
+extern void UpdateFileSegInfo(Relation parentrel,
 				  AppendOnlyEntry *aoEntry,
 				  int segno,
 				  int64 eof,
 				  int64 eof_uncompressed,
 				  int64 tuples_added, 
-				  int64 varblocks_added);
+				  int64 varblocks_added,
+				  int64 modcount_added,
+				  FileSegInfoState newState);
 
+extern void ClearFileSegInfo(Relation parentrel, AppendOnlyEntry *aoEntry, int segno, FileSegInfoState newState);
+extern void SetFileSegInfoState(Relation parentrel, AppendOnlyEntry *aoEntry, int segno, FileSegInfoState newState);
 extern FileSegTotals *
 GetSegFilesTotals(Relation parentrel, Snapshot appendOnlyMetaDataSnapshot);
 

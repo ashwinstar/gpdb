@@ -75,6 +75,8 @@ AOCSScanNext(ScanState *scanState)
 void
 BeginScanAOCSRelation(ScanState *scanState)
 {
+	Snapshot appendOnlyMetaDataSnapshot;
+
 	Assert(IsA(scanState, TableScanState) ||
 		   IsA(scanState, DynamicTableScanState));
 	AOCSScanState *node = (AOCSScanState *)scanState;
@@ -82,10 +84,21 @@ BeginScanAOCSRelation(ScanState *scanState)
 	Assert(node->ss.scan_state == SCAN_INIT || node->ss.scan_state == SCAN_DONE);
 
 	InitAOCSScanOpaque(scanState);
-        
+	   
+	appendOnlyMetaDataSnapshot = node->ss.ps.state->es_snapshot;
+	if (appendOnlyMetaDataSnapshot == SnapshotAny)
+	{
+		/* 
+		 * the append-only meta data should never be fetched with
+		 * SnapshotAny as bogus results are returned.
+		 */
+		appendOnlyMetaDataSnapshot = GetTransactionSnapshot();
+	}
+
 	node->opaque->scandesc =
 		aocs_beginscan(node->ss.ss_currentRelation, 
 					   node->ss.ps.state->es_snapshot,
+					   appendOnlyMetaDataSnapshot,
 					   NULL /* relationTupleDesc */,
 					   node->opaque->proj);
 

@@ -12,16 +12,24 @@
 
 #include "postgres.h"
 
-#include "access/appendonlywriter.h"
+#include "access/appendonly_compaction.h"
 #include "access/appendonlytid.h"	  /* AOTupleId_MaxRowNum  */
+#include "access/appendonlywriter.h"
 #include "access/aocssegfiles.h"                  /* AOCS */
 #include "access/heapam.h"			  /* heap_open            */
 #include "access/transam.h"			  /* InvalidTransactionId */
+#include "catalog/pg_authid.h"
+#include "gp-libpq-fe.h"
+#include "miscadmin.h"
+#include "utils/builtins.h"
 #include "utils/lsyscache.h"
 
 #include "cdb/cdbvars.h"			  /* Gp_role              */
+#include "cdb/cdbdisp.h"
 #include "cdb/cdbtm.h"
+#include "cdb/cdbutil.h"
 #include "utils/tqual.h"
+#include "pg_config.h"
 
 /*
  * GUC variables
@@ -42,7 +50,10 @@ static AORelHashEntry AppendOnlyRelHashNew(Oid relid, bool *exists);
 static AORelHashEntry AORelGetHashEntry(Oid relid);
 static AORelHashEntry AORelLookupHashEntry(Oid relid);
 static bool AORelCreateHashEntry(Oid relid);
-
+static bool *GetFileSegStateInfoFromSegments(Relation parentrel,
+				AppendOnlyEntry *aoEntry);
+static int64 *GetTotalTupleCountFromSegments(Oid aoRelid,
+				Snapshot appendOnlyMetaDataSnapshot, int segno);
 /*
  * AppendOnlyWriterShmemSize -- estimate size the append only writer structures
  * will need in shared memory.
@@ -125,11 +136,9 @@ AOHashTableInit(void)
 	info.hash = tag_hash;
 	hash_flags = (HASH_ELEM | HASH_FUNCTION);
 
-	if (Debug_appendonly_print_segfile_choice)
-	{
-		ereport(LOG, (errmsg("AOHashTableInit: Creating hash table for %d append only tables",
+	ereportif(Debug_appendonly_print_segfile_choice, LOG,
+		(errmsg("AOHashTableInit: Creating hash table for %d append only tables",
 				MaxAppendOnlyTables)));
-	}
 
 	AppendOnlyHash = ShmemInitHash("Append Only Hash",
 								   MaxAppendOnlyTables,
@@ -155,12 +164,14 @@ static bool
 AORelCreateHashEntry(Oid relid)
 {
 	bool			exists = false;
-	FileSegInfo		**allfsinfo;
+	FileSegInfo		**allfsinfo = NULL;
+    AOCSFileSegInfo **aocsallfsinfo = NULL;
 	int				i;
 	int				total_segfiles = 0;
 	AORelHashEntry	aoHashEntry = NULL;
 	Relation		aorel;
 	AppendOnlyEntry *aoEntry;
+	bool		   *awaiting_drop = NULL;
 
 	Insist(Gp_role == GP_ROLE_DISPATCH);
 
@@ -182,7 +193,19 @@ AORelCreateHashEntry(Oid relid)
 	 */
 	aoEntry = GetAppendOnlyEntry(relid, SnapshotNow);
 
-	allfsinfo = GetAllFileSegInfo(aorel, aoEntry, SnapshotNow, &total_segfiles);
+	if (RelationIsAoRows(aorel))
+	{
+		allfsinfo = GetAllFileSegInfo(aorel, aoEntry, SnapshotNow, &total_segfiles);
+	}
+	else
+	{
+		Assert(RelationIsAoCols(aorel));
+		aocsallfsinfo = GetAllAOCSFileSegInfo(aorel, aoEntry, SnapshotNow, &total_segfiles);
+	}
+
+	/* Ask segment DBs about the segfile status */
+	awaiting_drop = GetFileSegStateInfoFromSegments(aorel, aoEntry);
+
 	pfree(aoEntry);
 	heap_close(aorel, RowExclusiveLock);
 
@@ -199,7 +222,15 @@ AORelCreateHashEntry(Oid relid)
 	if(exists)
 	{
 		if(allfsinfo)
+		{
+			FreeAllSegFileInfo(allfsinfo, total_segfiles);
 			pfree(allfsinfo);
+		}
+		if (aocsallfsinfo)
+		{
+			FreeAllAOCSSegFileInfo(aocsallfsinfo, total_segfiles);
+			pfree(aocsallfsinfo);
+		}
 		return true;
 	}
 
@@ -223,25 +254,14 @@ AORelCreateHashEntry(Oid relid)
 	 */
 	for (i = 0 ; i < MAX_AOREL_CONCURRENCY ; i++)
 	{
-		aoHashEntry->relsegfiles[i].inuse = false;
+		aoHashEntry->relsegfiles[i].state = AVAILABLE;
 		aoHashEntry->relsegfiles[i].xid = InvalidTransactionId;
 		aoHashEntry->relsegfiles[i].latestWriteXid = InvalidDistributedTransactionId;
 		aoHashEntry->relsegfiles[i].isfull = false;
-		aoHashEntry->relsegfiles[i].tupcount = 0;
+		aoHashEntry->relsegfiles[i].total_tupcount = 0;
 		aoHashEntry->relsegfiles[i].tupsadded = 0;
-
+		aoHashEntry->relsegfiles[i].aborted = false;
 	}
-
-	/*
-	 * Segment file number 0 is reserved for utility mode operations.
-	 */
-	aoHashEntry->relsegfiles[RESERVED_SEGNO].inuse = true;
-	aoHashEntry->relsegfiles[RESERVED_SEGNO].xid = InvalidTransactionId;
-	aoHashEntry->relsegfiles[RESERVED_SEGNO].latestWriteXid = InvalidDistributedTransactionId;
-	aoHashEntry->relsegfiles[RESERVED_SEGNO].isfull = true;
-	aoHashEntry->relsegfiles[RESERVED_SEGNO].tupcount = 0;
-	aoHashEntry->relsegfiles[RESERVED_SEGNO].tupsadded = 0;
-
 
 	/*
 	 * update the tupcount of each 'segment' file in the append
@@ -249,20 +269,51 @@ AORelCreateHashEntry(Oid relid)
 	 */
 	for (i = 0 ; i < total_segfiles; i++)
 	{
-		aoHashEntry->relsegfiles[allfsinfo[i]->segno].tupcount = allfsinfo[i]->tupcount;
+		int segno;
+		int64 total_tupcount;
+		if (allfsinfo)
+		{
+			segno = allfsinfo[i]->segno;
+			total_tupcount = allfsinfo[i]->total_tupcount;
+		}
+		else
+		{
+			Assert(aocsallfsinfo);
+			segno = aocsallfsinfo[i]->segno;
+			total_tupcount = aocsallfsinfo[i]->total_tupcount;
+		}
+
+		if (awaiting_drop[segno])
+		{
+			ereportif(Debug_appendonly_print_segfile_choice, LOG,
+				(errmsg("Found segment num with awaiting drop state on at least one segment node: "
+				"relation %d, segno %d", relid, segno)));
+			aoHashEntry->relsegfiles[segno].state = INITIAL_AWAITING_DROP;
+		}
+		aoHashEntry->relsegfiles[segno].total_tupcount = total_tupcount;
 	}
 
 	/* record the fact that another hash entry is now taken */
 	AppendOnlyWriter->num_existing_aorels++;
 
 	if(allfsinfo)
-		pfree(allfsinfo);
-
-	if (Debug_appendonly_print_segfile_choice)
 	{
-		ereport(LOG, (errmsg("AORelCreateHashEntry: Created a hash entry for append-only "
-							 "relation %d ", relid)));
+		FreeAllSegFileInfo(allfsinfo, total_segfiles);
+		pfree(allfsinfo);
 	}
+	if (aocsallfsinfo)
+	{
+		FreeAllAOCSSegFileInfo(aocsallfsinfo, total_segfiles);
+		pfree(aocsallfsinfo);
+	}
+	if (awaiting_drop)
+	{
+		pfree(awaiting_drop);
+	}
+
+	ereportif(Debug_appendonly_print_segfile_choice, LOG,
+		(errmsg("AORelCreateHashEntry: Created a hash entry for append-only "
+							 "relation %d ", relid)));
 
 	return true;
 }
@@ -287,13 +338,11 @@ AORelRemoveHashEntry(Oid relid)
 						  HASH_REMOVE,
 						  &found);
 
-	if (Debug_appendonly_print_segfile_choice)
-	{
-		ereport(LOG, (errmsg("AORelRemoveHashEntry: Remove hash entry for inactive append-only "
+	ereportif(Debug_appendonly_print_segfile_choice, LOG,
+		(errmsg("AORelRemoveHashEntry: Remove hash entry for inactive append-only "
 							 "relation %d (found %s)", 
 							 relid,
 							 (aoentry != NULL ? "true" : "false"))));
-	}
 
 	if (aoentry == NULL)
 		return false;
@@ -339,13 +388,53 @@ AORelGetHashEntry(Oid relid)
 		ereport(ERROR, (errmsg("expected an AO hash entry for relid %d but "
 							   "found none", relid)));
 
-	if (Debug_appendonly_print_segfile_choice)
-	{
-		ereport(LOG, (errmsg("AORelGetHashEntry: Retrieved hash entry for append-only relation "
+	ereportif(Debug_appendonly_print_segfile_choice, LOG,
+		(errmsg("AORelGetHashEntry: Retrieved hash entry for append-only relation "
 							 "%d", relid)));
-	}
 
 	return (AORelHashEntry) aoentry;
+}
+
+/* 
+ * Gets or creates the AORelHashEntry.
+ * 
+ * Assumes that the AOSegFileLock is acquired.
+ * The AOSegFileLock will still be aquired when this function returns, expect
+ * if it errors out.
+ */
+static AORelHashEntryData * 
+AORelGetOrCreateHashEntry(Oid relid)
+{
+	
+	AORelHashEntryData	*aoentry = NULL;
+
+	aoentry = AORelLookupHashEntry(relid);
+	if (aoentry != NULL)
+	{
+		return aoentry;
+	}
+
+	/* 
+	 * We need to create a hash entry for this relation.
+	 *
+	 * However, we need to access the pg_appendonly system catalog
+	 * table, so AORelCreateHashEntry will carefully release the AOSegFileLock, 
+	 * gather the information, and then re-acquire AOSegFileLock.
+	 */
+	if(!AORelCreateHashEntry(relid))
+	{
+		LWLockRelease(AOSegFileLock);
+		ereport(ERROR, (errmsg("can't have more than %d different append-only "
+					"tables open for writing data at the same time. "
+					"if tables are heavily partitioned or if your "
+					"workload requires, increase the value of "
+					"max_appendonly_tables and retry",
+					MaxAppendOnlyTables)));
+	}
+
+	/* get the hash entry for this relation (must exist) */
+	aoentry = AORelGetHashEntry(relid);
+	return aoentry;
 }
 
 /*
@@ -400,13 +489,11 @@ AppendOnlyRelHashNew(Oid relid, bool *exists)
 			{
 				if(hentry->txns_using_rel == 0)
 				{
-					if (Debug_appendonly_print_segfile_choice)
-					{
-						ereport(LOG, (errmsg("AppendOnlyRelHashNew: Appendonly Writer removing an "
+					ereportif(Debug_appendonly_print_segfile_choice, LOG,
+						(errmsg("AppendOnlyRelHashNew: Appendonly Writer removing an "
 											 "unused entry (rel %d) to make "
 											 "room for a new one (rel %d)",
 											 hentry->relid, relid)));
-					}
 
 					/* remove this unused entry */
 					/* TODO: remove the LRU entry, not just any unused one */
@@ -449,6 +536,7 @@ AppendOnlyRelHashNew(Oid relid, bool *exists)
 }
 
 #define SEGFILE_CAPACITY_THRESHOLD	0.9
+#define SEGFILE_TUPCOUNT_DIFF_THRESHOLD 65536
 
 /*
  * segfileMaxRowThreshold
@@ -486,12 +574,10 @@ usedByConcurrentTransaction(AOSegfileStatus *segfilestat, int segno)
 	 */
 	if (!TransactionIdIsValid(latestWriteXid))
 	{
-		if (Debug_appendonly_print_segfile_choice)
-		{
-			ereport(LOG, (errmsg("usedByConcurrentTransaction: latestWriterXid %u of segno %d not in use, so it is NOT considered concurrent",
+		ereportif(Debug_appendonly_print_segfile_choice, LOG,
+			(errmsg("usedByConcurrentTransaction: latestWriterXid %u of segno %d not in use, so it is NOT considered concurrent",
 								 latestWriteXid,
 								 segno)));
-		}
 		return false;
 	}
 	
@@ -503,13 +589,11 @@ usedByConcurrentTransaction(AOSegfileStatus *segfilestat, int segno)
 	if (TransactionIdPrecedes(getDistributedTransactionId(),
 							  latestWriteXid))
 	{
-		if (Debug_appendonly_print_segfile_choice)
-		{
-			ereport(LOG, (errmsg("usedByConcurrentTransaction: current distributed transaction id %u preceeds latestWriterXid %x of segno %d, so it is considered concurrent",
+		ereportif(Debug_appendonly_print_segfile_choice, LOG,
+			(errmsg("usedByConcurrentTransaction: current distributed transaction id %u preceeds latestWriterXid %x of segno %d, so it is considered concurrent",
 								 getDistributedTransactionId(),
 								 latestWriteXid,
 								 segno)));
-		}
 		return true;
 	}
 	
@@ -548,23 +632,19 @@ usedByConcurrentTransaction(AOSegfileStatus *segfilestat, int segno)
 	
 	if (!snapshot->haveDistribSnapshot)
 	{
-		if (Debug_appendonly_print_segfile_choice)
-		{
-			ereport(LOG, (errmsg("usedByConcurrentTransaction: snapshot is not distributed, so it is NOT considered concurrent")));
-		}
+		ereportif(Debug_appendonly_print_segfile_choice, LOG, 
+			(errmsg("usedByConcurrentTransaction: snapshot is not distributed, so it is NOT considered concurrent")));
 		return false;
 	}
 
 	/* If latestWriterXid is invisible to me, return true. */
 	if (latestWriteXid >= snapshot->distribSnapshotWithLocalMapping.header.xmax)
 	{
-		if (Debug_appendonly_print_segfile_choice)
-		{
-			ereport(LOG, (errmsg("usedByConcurrentTransaction: latestWriterXid %x of segno %d is >= distributed snapshot xmax %u, so it is considered concurrent",
+		ereportif(Debug_appendonly_print_segfile_choice, LOG,
+			(errmsg("usedByConcurrentTransaction: latestWriterXid %x of segno %d is >= distributed snapshot xmax %u, so it is considered concurrent",
 								 latestWriteXid,
 								 segno,
 								 snapshot->distribSnapshotWithLocalMapping.header.xmax)));
-		}
 		return true;
 	}
 
@@ -578,23 +658,398 @@ usedByConcurrentTransaction(AOSegfileStatus *segfilestat, int segno)
 		if (latestWriteXid ==
 			snapshot->distribSnapshotWithLocalMapping.inProgressEntryArray[inProgressNo].distribXid)
 		{
-			if (Debug_appendonly_print_segfile_choice)
-			{
-				ereport(LOG, (errmsg("usedByConcurrentTransaction: latestWriterXid %x of segno %d is equal to distributed snapshot in-flight %u, so it is considered concurrent",
+			ereportif(Debug_appendonly_print_segfile_choice, LOG,
+				(errmsg("usedByConcurrentTransaction: latestWriterXid %x of segno %d is equal to distributed snapshot in-flight %u, so it is considered concurrent",
 									 latestWriteXid,
 									 segno,
 									 snapshot->distribSnapshotWithLocalMapping.inProgressEntryArray[inProgressNo].distribXid)));
-			}
 			return true;
 		}
 	}
 	
-	if (Debug_appendonly_print_segfile_choice)
-	{
-		ereport(LOG, (errmsg("usedByConcurrentTransaction: snapshot can see latestWriteXid %u as committed, so it is NOT considered concurrent",
+	ereportif(Debug_appendonly_print_segfile_choice, LOG,
+		(errmsg("usedByConcurrentTransaction: snapshot can see latestWriteXid %u as committed, so it is NOT considered concurrent",
 							 latestWriteXid)));
-	}
 	return false;
+}
+
+void
+DeregisterSegnoForCompactionDrop(Oid relid, List *compactedSegmentFileList)
+{
+	TransactionId CurrentXid = GetTopTransactionId();
+	AORelHashEntryData *aoentry;
+	int i;
+
+	Assert(Gp_role != GP_ROLE_EXECUTE);
+	if (Gp_role == GP_ROLE_UTILITY)
+	{
+		return;
+	}
+
+	if (compactedSegmentFileList == NIL)
+	{
+		return;
+	}
+
+	LWLockAcquire(AOSegFileLock, LW_EXCLUSIVE);
+
+	aoentry = AORelGetOrCreateHashEntry(relid);
+	Assert(aoentry);
+	aoentry->txns_using_rel++;
+
+	for (i = 0 ; i < MAX_AOREL_CONCURRENCY ; i++)
+	{
+		AOSegfileStatus *segfilestat = &aoentry->relsegfiles[i];
+
+		if (list_find_int(compactedSegmentFileList, i) >= 0)
+		{
+			ereportif(Debug_appendonly_print_segfile_choice, LOG,
+				(errmsg("Deregister segno %d for drop "
+							 "relation \"%s\" (%d)", i, 
+							 get_rel_name(relid), relid)));
+
+			Assert(segfilestat->state == COMPACTED_AWAITING_DROP);
+			segfilestat->xid = CurrentXid;
+			segfilestat->state = COMPACTED_DROP_SKIPPED;
+		}
+	}
+	
+	LWLockRelease(AOSegFileLock);
+	return;
+}
+
+void
+RegisterSegnoForCompactionDrop(Oid relid, List *compactedSegmentFileList)
+{
+	TransactionId CurrentXid = GetTopTransactionId();
+	AORelHashEntryData *aoentry;
+	int i;
+
+	Assert(Gp_role != GP_ROLE_EXECUTE);
+	if (Gp_role == GP_ROLE_UTILITY)
+	{
+		return;
+	}
+
+	if (compactedSegmentFileList == NIL)
+	{
+		return;
+	}
+
+	LWLockAcquire(AOSegFileLock, LW_EXCLUSIVE);
+
+	aoentry = AORelGetOrCreateHashEntry(relid);
+	Assert(aoentry);
+	aoentry->txns_using_rel++;
+
+	for (i = 0 ; i < MAX_AOREL_CONCURRENCY ; i++)
+	{
+		AOSegfileStatus *segfilestat = &aoentry->relsegfiles[i];
+
+		if (list_find_int(compactedSegmentFileList, i) >= 0)
+		{
+			ereportif(Debug_appendonly_print_segfile_choice, LOG,
+				(errmsg("Register segno %d for drop "
+							 "relation \"%s\" (%d)", i, 
+							 get_rel_name(relid), relid)));
+
+			Assert(segfilestat->state == COMPACTED_AWAITING_DROP);
+			segfilestat->xid = CurrentXid;
+			segfilestat->state = DROP_USE;
+		}
+	}
+	
+	LWLockRelease(AOSegFileLock);
+	return;
+}
+
+/*
+ * SetSegnoForCompaction
+ *
+ * This function determines which segment to use for the next
+ * compaction run.
+ *
+ * If a list with more than one entry is returned, all these segments should be 
+ * compacted. This is only returned in utility mode as the usual ways to 
+ * determine a segment for compaction are not available.
+ * If NIL is returned, no segment should be compacted. This usually
+ * means that all segments are clean or empty.
+ *
+ * Should only be called in DISPATCH and UTILITY mode.
+ */
+List *SetSegnoForCompaction(Oid relid,
+		List *compactedSegmentFileList,
+		List *insertedSegmentFileList,
+		bool *is_drop)
+{
+	TransactionId CurrentXid = GetTopTransactionId();
+	int usesegno;
+	int i;
+	AORelHashEntryData *aoentry;
+	int64 segzero_tupcount = 0;
+
+	Assert(Gp_role != GP_ROLE_EXECUTE);
+	Assert(is_drop);
+	*is_drop = false;
+	if (Gp_role == GP_ROLE_UTILITY)
+	{
+		if (compactedSegmentFileList)
+		{
+			return NIL;
+		}
+		else
+		{
+			/* Compact all segments */
+			List *compaction_segno_list = NIL;
+			for (int i = 1; i < MAX_AOREL_CONCURRENCY;i++)
+			{
+				compaction_segno_list = lappend_int(compaction_segno_list, i);
+			}
+			return compaction_segno_list;
+		}
+	}
+
+	ereportif(Debug_appendonly_print_segfile_choice, LOG,
+		(errmsg("SetSegnoForCompaction: "
+						"Choosing a compaction segno for append-only "
+							 "relation \"%s\" (%d)", 
+							 get_rel_name(relid), relid)));
+
+	/* 
+	 * On the first call in a vacuum run, get an updated estimate from segno 0.
+	 * We do this before aquiring the AOSegFileLock.
+	 */
+	if (!compactedSegmentFileList)
+	{
+		int64	   *total_tupcount;
+
+		total_tupcount = GetTotalTupleCountFromSegments(relid, SnapshotNow, 0);
+		segzero_tupcount = total_tupcount[0];
+		pfree(total_tupcount);
+	}
+
+	LWLockAcquire(AOSegFileLock, LW_EXCLUSIVE);
+
+	aoentry = AORelGetOrCreateHashEntry(relid);
+	Assert(aoentry);
+
+	/* 
+	 * On the first call in a vacuum run, set the estimated for segno 0
+	 */
+	if (!compactedSegmentFileList)
+	{
+		AOSegfileStatus *segfilestat = &aoentry->relsegfiles[0];
+		segfilestat->total_tupcount = segzero_tupcount;
+	}
+
+	/* First: Always check if some segment is awaiting a drop */
+	usesegno = APPENDONLY_COMPACTION_SEGNO_INVALID;
+	for (i = 0; i < MAX_AOREL_CONCURRENCY ; i++)
+	{
+		AOSegfileStatus *segfilestat = &aoentry->relsegfiles[i];
+
+		ereportif(Debug_appendonly_print_segfile_choice, LOG,
+			(errmsg("segment file %i for append-only relation \"%s\" (%d): state %d",
+				i, get_rel_name(relid), relid, segfilestat->state)));
+
+		if (segfilestat->state == INITIAL_AWAITING_DROP && 
+				!usedByConcurrentTransaction(segfilestat, i))
+		{
+			ereportif(Debug_appendonly_print_segfile_choice, LOG,
+				(errmsg("Found segment awaiting drop for append-only relation \"%s\" (%d)",
+				get_rel_name(relid), relid)));
+			
+			*is_drop = true;
+			usesegno = i;
+			break;
+		}
+	}
+
+	if (usesegno <= 0)
+	{
+		for (i = 0; i < MAX_AOREL_CONCURRENCY ; i++)
+		{
+			AOSegfileStatus *segfilestat = &aoentry->relsegfiles[i];
+			bool in_compaction_list = list_find_int(compactedSegmentFileList, i) >= 0;
+			bool in_inserted_list = list_find_int(insertedSegmentFileList, i) >= 0;
+			
+			ereportif(Debug_appendonly_print_segfile_choice, LOG,
+				(errmsg("SetSegnoForCompaction: "
+						"Check segno %d for appendonly relation \"%s\" (%d): "
+						"total tupcount " INT64_FORMAT ", state %d, "
+						"in compacted list %d, in inserted list %d", 
+						i, get_rel_name(relid), relid,
+						segfilestat->total_tupcount, segfilestat->state,
+						in_compaction_list, in_inserted_list)));
+
+			/* 
+			 * Select when there are tuples and it is available.
+			 */
+			if ((segfilestat->total_tupcount > 0) &&
+					segfilestat->state == AVAILABLE && 
+					!usedByConcurrentTransaction(segfilestat, i) &&
+					!in_compaction_list &&
+					!in_inserted_list)
+			{
+				usesegno = i;
+				break;
+			}
+		}
+	}
+	
+	if (usesegno != APPENDONLY_COMPACTION_SEGNO_INVALID)
+	{
+		/* mark this segno as in use */
+		if (aoentry->relsegfiles[usesegno].xid != CurrentXid)
+		{
+			aoentry->txns_using_rel++;
+		}	
+		if (*is_drop)
+		{
+			aoentry->relsegfiles[usesegno].state = PSEUDO_COMPACTION_USE;
+		}
+		else
+		{
+			aoentry->relsegfiles[usesegno].state = COMPACTION_USE;
+
+		}
+		aoentry->relsegfiles[usesegno].xid = CurrentXid;
+
+		ereportif(Debug_appendonly_print_segfile_choice, LOG,
+			(errmsg("Compaction segment chosen for append-only relation \"%s\" (%d) "
+							 "is %d (tupcount " INT64_FORMAT ", txns count %d)", 
+							 get_rel_name(relid), relid, usesegno, 
+							 aoentry->relsegfiles[usesegno].total_tupcount,
+							 aoentry->txns_using_rel)));
+	}
+	else
+	{
+		ereportif(Debug_appendonly_print_segfile_choice, LOG,
+			(errmsg("No compaction segment chosen for append-only relation \"%s\" (%d)", 
+							 get_rel_name(relid), relid))); 
+	}
+
+	LWLockRelease(AOSegFileLock);
+
+	Assert(usesegno >= 0 || usesegno == APPENDONLY_COMPACTION_SEGNO_INVALID);
+
+	if (usesegno == APPENDONLY_COMPACTION_SEGNO_INVALID)
+	{
+		return NIL;
+	}
+	return lappend_int(NIL, usesegno);
+}
+
+/*
+ * SetSegnoForCompactionInsert
+ *
+ * This function determines into which segment a compaction
+ * run should write into.
+ *
+ * Currently, it always selects a non-used, least-filled segment.
+ *
+ * Note that this code does not manipulate aoentry->txns_using_rel
+ * as it has before been set by SetSegnoForCompaction.
+ *
+ * Should only be called in DISPATCH and UTILITY mode.
+ */ 
+int SetSegnoForCompactionInsert(Oid relid, 
+		List *compacted_segno,
+		List *compactedSegmentFileList,
+		List *insertedSegmentFileList)
+{
+	int					i, usesegno = -1;
+	bool				segno_chosen = false;
+	AORelHashEntryData	*aoentry = NULL;
+	TransactionId 		CurrentXid = GetTopTransactionId();
+	int64 min_tupcount;
+
+	Assert(Gp_role != GP_ROLE_EXECUTE);
+
+	if (Gp_role == GP_ROLE_UTILITY)
+	{
+		return RESERVED_SEGNO;
+	}
+
+	ereportif(Debug_appendonly_print_segfile_choice, LOG,
+		(errmsg("SetSegnoForCompactionInsert: "
+						"Choosing a segno for append-only "
+							 "relation \"%s\" (%d)", 
+							 get_rel_name(relid), relid)));
+
+	LWLockAcquire(AOSegFileLock, LW_EXCLUSIVE);
+
+	aoentry = AORelGetOrCreateHashEntry(relid);
+	Assert(aoentry);
+
+	ereportif(Debug_appendonly_print_segfile_choice, LOG,
+		(errmsg("SetSegnoForCompaction: got the hash entry for relation \"%s\" (%d).",
+							 get_rel_name(relid), relid)));
+
+	min_tupcount = INT64_MAX;
+	usesegno = 0;
+
+	/* 
+	 * Never use segno 0 for inserts (unless in utility mode)
+	 */
+	for (i = 1; i < MAX_AOREL_CONCURRENCY ; i++)
+	{
+		AOSegfileStatus *segfilestat = &aoentry->relsegfiles[i];
+		bool in_compaction_list = list_find_int(compacted_segno, i) >= 0 ||
+			list_find_int(compactedSegmentFileList, i) >= 0;
+
+		if (segfilestat->total_tupcount < min_tupcount &&
+				segfilestat->state == AVAILABLE && 
+				!usedByConcurrentTransaction(segfilestat, i) &&
+				!in_compaction_list)
+		{
+			min_tupcount = segfilestat->total_tupcount;
+			usesegno = i;
+			segno_chosen = true;
+		}
+
+		if (!in_compaction_list && segfilestat->xid == CurrentXid)
+		{
+			/* we already used this segno in our txn. use it again */
+			usesegno = i;
+			segno_chosen = true;
+				
+			ereportif(Debug_appendonly_print_segfile_choice, LOG,
+				(errmsg("SetSegnoForCompaction: reusing segno %d for append-"
+						 "only relation "
+						 "%d. there are " INT64_FORMAT " tuples "
+						 "added to it from previous operations "
+						 "in this not yet committed txn.",
+						 usesegno, relid,
+						 (int64) segfilestat->tupsadded)));
+			break;
+		}
+	}
+
+	if(!segno_chosen)
+	{
+		LWLockRelease(AOSegFileLock);
+		ereport(ERROR, (errmsg("could not find segment file to use for "
+							   "inserting into relation %s (%d).", 
+							   get_rel_name(relid), relid)));
+	}
+		
+	Insist(usesegno != RESERVED_SEGNO);
+
+	/* mark this segno as in use */
+	aoentry->relsegfiles[usesegno].state = INSERT_USE;
+	aoentry->relsegfiles[usesegno].xid = CurrentXid;
+
+	LWLockRelease(AOSegFileLock);
+
+	Assert(usesegno >= 0);
+	Assert(usesegno != RESERVED_SEGNO);
+
+	ereportif(Debug_appendonly_print_segfile_choice, LOG,
+		(errmsg("Segno chosen for append-only relation \"%s\" (%d) "
+							 "is %d", get_rel_name(relid), relid, usesegno)));
+
+	return usesegno;
 }
 
 /*
@@ -631,7 +1086,7 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 	bool				segno_chosen = false;
 	AORelHashEntryData	*aoentry = NULL;
 	TransactionId 		CurrentXid = GetTopTransactionId();
-
+	int64               min_tupcount;
 
 	switch(Gp_role)
 	{
@@ -650,68 +1105,43 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 
 			Assert(existingsegno == InvalidFileSegNumber);
 
-			if (Debug_appendonly_print_segfile_choice)
-			{
-				ereport(LOG, (errmsg("SetSegnoForWrite: Choosing a segno for append-only "
+			ereportif(Debug_appendonly_print_segfile_choice, LOG,
+				(errmsg("SetSegnoForWrite: Choosing a segno for append-only "
 									 "relation \"%s\" (%d) ", 
 									 get_rel_name(relid), relid)));
-			}
 
 			LWLockAcquire(AOSegFileLock, LW_EXCLUSIVE);
 
-			/*
-			 * The most common case is likely the entry exists already.
-			 */
-			aoentry = AORelLookupHashEntry(relid);
-			if (aoentry == NULL)
-			{
-				/* 
-				 * We need to create a hash entry for this relation.
-				 *
-				 * However, we need to access the pg_appendonly system catalog
-				 * table, so AORelCreateHashEntry will carefully release the AOSegFileLock, 
-				 * gather the information, and then re-acquire AOSegFileLock.
-				 */
-				if(!AORelCreateHashEntry(relid))
-				{
-					LWLockRelease(AOSegFileLock);
-					ereport(ERROR, (errmsg("can't have more than %d different append-only "
-							    "tables open for writing data at the same time. "
-							    "if tables are heavily partitioned or if your "
-							    "workload requires, increase the value of "
-							    "max_appendonly_tables and retry",
-							    MaxAppendOnlyTables)));
-				}
-
-				/* get the hash entry for this relation (must exist) */
-				aoentry = AORelGetHashEntry(relid);
-			}
+			aoentry = AORelGetOrCreateHashEntry(relid);
+			Assert(aoentry);
 			aoentry->txns_using_rel++;
 
-			if (Debug_appendonly_print_segfile_choice)
-			{
-				ereport(LOG, (errmsg("SetSegnoForWrite: got the hash entry for relation \"%s\" (%d). "
+			ereportif(Debug_appendonly_print_segfile_choice, LOG,
+				(errmsg("SetSegnoForWrite: got the hash entry for relation \"%s\" (%d). "
 									 "setting txns_using_rel to %d",
 									 get_rel_name(relid), relid, 
 									 aoentry->txns_using_rel)));
-			}
 
 			/*
-			 * Now pick a segment that is not in use and is not over the
+			 * Now pick the smallest segment that is not in use and is not over the
 			 * allowed size threshold (90% full).
 			 *
 			 * However, if we already picked a segno for a previous statement
 			 * in this very same transaction we are still in (explicit txn) we
 			 * pick the same one to insert into it again.
+			 *
+			 * Never use segno 0 for inserts (unless in utility mode)
 			 */
-			for (i = 0 ; i < MAX_AOREL_CONCURRENCY ; i++)
+			min_tupcount = INT64_MAX;
+			for (i = 1 ; i < MAX_AOREL_CONCURRENCY ; i++)
 			{
 				AOSegfileStatus *segfilestat = &aoentry->relsegfiles[i];
 
 				if(!segfilestat->isfull)
 				{
-					if(!segfilestat->inuse && !segno_chosen &&
-					   !usedByConcurrentTransaction(segfilestat, i))
+					if(segfilestat->state == AVAILABLE && 
+					   !usedByConcurrentTransaction(segfilestat, i) &&
+					   segfilestat->total_tupcount < min_tupcount)
 					{
 						/*
 						 * this segno is avaiable and not full. use it.
@@ -722,19 +1152,18 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 						 */
 						usesegno = i;
 						segno_chosen = true;
+						min_tupcount = segfilestat->total_tupcount - SEGFILE_TUPCOUNT_DIFF_THRESHOLD;
 					}
 
 					if(segfilestat->xid == CurrentXid)
 					{
 						/* we already used this segno in our txn. use it again */
-						Assert(segfilestat->inuse);
 						usesegno = i;
 						segno_chosen = true;
 						aoentry->txns_using_rel--; /* same txn. re-adjust */
 						
-						if (Debug_appendonly_print_segfile_choice)
-						{
-							ereport(LOG, (errmsg("SetSegnoForWrite: reusing segno %d for append-"
+						ereportif(Debug_appendonly_print_segfile_choice, LOG,
+							(errmsg("SetSegnoForWrite: reusing segno %d for append-"
 									 "only relation "
 									 "%d. there are " INT64_FORMAT " tuples "
 									 "added to it from previous operations "
@@ -743,7 +1172,6 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 									 usesegno, relid,
 									 (int64) segfilestat->tupsadded,
 									 aoentry->txns_using_rel)));
-						}
 
 						break;
 					}
@@ -761,7 +1189,7 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 			Insist(usesegno != RESERVED_SEGNO);
 
 			/* mark this segno as in use */
-			aoentry->relsegfiles[usesegno].inuse = true;
+			aoentry->relsegfiles[usesegno].state = INSERT_USE;
 			aoentry->relsegfiles[usesegno].xid = CurrentXid;
 
 			LWLockRelease(AOSegFileLock);
@@ -769,11 +1197,9 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 			Assert(usesegno >= 0);
 			Assert(usesegno != RESERVED_SEGNO);
 
-			if (Debug_appendonly_print_segfile_choice)
-			{
-				ereport(LOG, (errmsg("Segno chosen for append-only relation \"%s\" (%d)"
+			ereportif(Debug_appendonly_print_segfile_choice, LOG,
+				(errmsg("Segno chosen for append-only relation \"%s\" (%d) "
 									 "is %d", get_rel_name(relid), relid, usesegno)));
-			}
 
 			return usesegno;
 
@@ -820,13 +1246,10 @@ List *assignPerRelSegno(List *all_relids)
 
 			mapping = lappend(mapping, n);
 
-			if (Debug_appendonly_print_segfile_choice)
-			{
-				ereport(LOG, (errmsg("assignPerRelSegno: Appendonly Writer assigned segno %d to "
+			ereportif(Debug_appendonly_print_segfile_choice, LOG,
+				(errmsg("assignPerRelSegno: Appendonly Writer assigned segno %d to "
 									"relid %d for this write operation",
 									 n->segno, n->relid)));
-			}
-
 		}
 
 		heap_close(rel, NoLock);
@@ -835,7 +1258,353 @@ List *assignPerRelSegno(List *all_relids)
 	return mapping;
 }
 
+/*
+ * Collects tupcount for each segfile from all segdbs by sending a query.
+ * Returns an array of int64, each of whose element has the aggregated
+ * total tupcount for corresponding segfile.  This fills elements for all
+ * segfiles that are available in segments if segno is negative, otherwise
+ * tries to fetch the tupcount for only the segfile that is passed by segno.
+ */
+static int64 *
+GetTotalTupleCountFromSegments(Oid aoRelid,
+							   Snapshot appendOnlyMetaDataSnapshot,
+							   int segno)
+{
+	StringInfoData	sqlstmt;
+	StringInfoData	errbuf;
+	Relation		aosegrel;
+	AppendOnlyEntry *aoEntry = NULL;
+	struct pg_result **results = NULL;
+	int				resultCount;
+	int				i, j;
+	int64		   *total_tupcount = NULL;
+	Oid				save_userid;
+	bool			save_secdefcxt;
 
+	aoEntry = GetAppendOnlyEntry(aoRelid, appendOnlyMetaDataSnapshot);
+	Assert(aoEntry != NULL);
+
+	/*
+	 * get the name of the aoseg relation
+	 */
+	aosegrel = heap_open(aoEntry->segrelid, AccessShareLock);
+	/*
+	 * assemble our query string
+	 */
+	initStringInfo(&sqlstmt);
+	appendStringInfo(&sqlstmt, "SELECT tupcount, segno FROM pg_aoseg.%s",
+					 RelationGetRelationName(aosegrel));
+	if (segno >= 0)
+		appendStringInfo(&sqlstmt, " WHERE segno = %d", segno);
+	heap_close(aosegrel, AccessShareLock);
+
+	initStringInfo(&errbuf);
+
+	/* Allocate result array to be returned. */
+	total_tupcount = palloc0(sizeof(int64) * MAX_AOREL_CONCURRENCY);
+
+	/*
+	 * Dispatch the query to segments.  Although this path is not critical
+	 * to use SPI, it is desirable to avoid another MPP query here, too.
+	 *
+	 * Since pg_aoseg namespace is a part of catalog, we need a superuser
+	 * privilege.  This is just a band-aid and we need to revisit
+	 * the mechanism to synchronize pg_aoseg between master and segment.
+	 */
+	GetUserIdAndContext(&save_userid, &save_secdefcxt);
+	SetUserIdAndContext(BOOTSTRAP_SUPERUSERID, true);
+	results = cdbdisp_dispatchRMCommand(sqlstmt.data, true,
+										&errbuf, &resultCount);
+	/* Restore userid */
+	SetUserIdAndContext(save_userid, save_secdefcxt);
+
+	PG_TRY();
+	{
+		if (errbuf.len > 0)
+			ereport(ERROR,
+					(errmsg("failed to obtain AO total tupcount: %s (%s)",
+							sqlstmt.data, errbuf.data)));
+
+		for (i = 0; i < resultCount; i++)
+		{
+			if (PQresultStatus(results[i]) != PGRES_TUPLES_OK)
+				ereport(ERROR,
+						(errmsg("failed to obtain AO total tupcount: %s (%s)",
+								sqlstmt.data,
+								PQresultErrorMessage(results[i]))));
+			else
+			{
+				for (j = 0; j < PQntuples(results[i]); j++)
+				{
+					char	   *value;
+					int64		tupcount;
+					int			segno;
+
+					/* We don't expect NULL, but sanity check. */
+					if (PQgetisnull(results[i], j, 0) == 1)
+						elog(ERROR, "unexpected NULL in tupcount in results[%d]: %s",
+									i, sqlstmt.data);
+					if (PQgetisnull(results[i], j, 0) == 1)
+						elog(ERROR, "unexpected NULL in segno in results[%d]: %s",
+								i, sqlstmt.data);
+
+					value = PQgetvalue(results[i], j, 0);
+					tupcount = DatumGetFloat8(
+						DirectFunctionCall1(float8in, CStringGetDatum(value)));
+					value = PQgetvalue(results[i], j, 1);
+					segno = pg_atoi(value, sizeof(int32), 0);
+					total_tupcount[segno] += tupcount;
+				}
+			}
+		}
+	}
+	PG_CATCH();
+	{
+		/* Clean up malloc'ed items */
+		if (results)
+		{
+			for (i = 0; i < resultCount; i++)
+				PQclear(results[i]);
+			free(results);
+		}
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	pfree(sqlstmt.data);
+	pfree(errbuf.data);
+
+	for (i = 0; i < resultCount; i++)
+		PQclear(results[i]);
+	free(results);
+
+	return total_tupcount;
+}
+
+/*
+ * Check if the segfiles are awaiting to be dropped by dispatching a query.
+ * Returns palloc'ed an array of bool, whose element is true if the
+ * corresponding segfile is marked as awaiting to be dropped in any of segdb.
+ * We do this one-shot instead of interating for each segno, because the
+ * dispatch cost increases as the number of segment becomes large.
+ */
+static bool *
+GetFileSegStateInfoFromSegments(Relation parentrel, AppendOnlyEntry *aoEntry)
+{
+	StringInfoData	sqlstmt;
+	StringInfoData	errbuf;
+	Relation		aosegrel;
+	struct pg_result **results = NULL;
+	int				resultCount;
+	int				i, j;
+	bool		   *awaiting_drop;
+	Oid				save_userid;
+	bool			save_secdefcxt;
+
+	Assert(RelationIsAoRows(parentrel) || RelationIsAoCols(parentrel));
+	Assert(aoEntry != NULL);
+
+	/*
+	 * get the name of the aoseg relation
+	 */
+	aosegrel = heap_open(aoEntry->segrelid, AccessShareLock);
+	/*
+	 * assemble our query string
+	 */
+	initStringInfo(&sqlstmt);
+	appendStringInfo(&sqlstmt, "SELECT state, segno FROM pg_aoseg.%s",
+					 RelationGetRelationName(aosegrel));
+	heap_close(aosegrel, AccessShareLock);
+
+	elogif(Debug_appendonly_print_segfile_choice, LOG,
+		   "Get awaiting drop state from segments: "
+		   "releation %s (%d)",
+				RelationGetRelationName(parentrel),
+				RelationGetRelid(parentrel));
+
+	initStringInfo(&errbuf);
+
+	/* Allocate result array to be returned. */
+	awaiting_drop = palloc0(sizeof(bool) * MAX_AOREL_CONCURRENCY);
+
+	/*
+	 * We should not use SPI here because the code path is between
+	 * the initialization of slice table and query dispatch.  SPI
+	 * would create another slice table and bump gp_interconnect_id,
+	 * which would cause inconsistent order of execution.
+	 *
+	 * Since pg_aoseg namespace is a part of catalog, we need a superuser
+	 * privilege.  This is just a band-aid and we need to revisit
+	 * the mechanism to synchronize pg_aoseg between master and segment.
+	 */
+	GetUserIdAndContext(&save_userid, &save_secdefcxt);
+	SetUserIdAndContext(BOOTSTRAP_SUPERUSERID, true);
+	results = cdbdisp_dispatchRMCommand(sqlstmt.data, true,
+										&errbuf, &resultCount);
+	/* Restore userid */
+	SetUserIdAndContext(save_userid, save_secdefcxt);
+
+	PG_TRY();
+	{
+		if (errbuf.len > 0)
+			ereport(ERROR,
+					(errmsg("failed to obtain AO segfile state: %s (%s)",
+							sqlstmt.data, errbuf.data)));
+
+		for (i = 0; i < resultCount; i++)
+		{
+			if (PQresultStatus(results[i]) != PGRES_TUPLES_OK)
+				ereport(ERROR,
+						(errmsg("failed to obtain AO segfile state: %s (%s)",
+								sqlstmt.data,
+								PQresultErrorMessage(results[i]))));
+			else
+			{
+				for (j = 0; j < PQntuples(results[i]); j++)
+				{
+					char	   *value;
+					int			qe_state;
+					int			segno;
+
+					/* We don't expect NULL, but sanity check. */
+					if (PQgetisnull(results[i], j, 0) == 1)
+						elog(ERROR, "unexpected NULL in state in results[%d]: %s",
+									i, sqlstmt.data);
+					if (PQgetisnull(results[i], j, 1) == 1)
+						elog(ERROR, "unexpected NULL in segno in results[%d}: %s",
+									i, sqlstmt.data);
+					value = PQgetvalue(results[i], j, 0);
+					qe_state = pg_atoi(value, sizeof(int32), 0);
+					value = PQgetvalue(results[i], j, 1);
+					segno = pg_atoi(value, sizeof(int32), 0);
+
+					if (segno < 0)
+						elog(ERROR, "segno %d is negative", segno);
+					if (segno >= MAX_AOREL_CONCURRENCY)
+						elog(ERROR, "segno %d exceeds max AO concurrency", segno);
+
+					if (qe_state == AOSEG_STATE_AWAITING_DROP)
+					{
+						awaiting_drop[segno] = true;
+						elogif(Debug_appendonly_print_segfile_choice, LOG,
+							   "Found awaiting drop segment file: "
+							   "releation %s (%d), segno = %d",
+									RelationGetRelationName(parentrel),
+									RelationGetRelid(parentrel),
+									segno);
+					}
+				}
+			}
+		}
+	}
+	PG_CATCH();
+	{
+		/* Clean up malloc'ed items */
+		if (results)
+		{
+			for (i = 0; i < resultCount; i++)
+				PQclear(results[i]);
+			free(results);
+		}
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	pfree(sqlstmt.data);
+	pfree(errbuf.data);
+
+	for (i = 0; i < resultCount; i++)
+		PQclear(results[i]);
+	free(results);
+
+	return awaiting_drop;
+}
+
+/*
+ * Updates the tupcount information from the segments.
+ * Should only be called in rare circumstances from the QD.
+ */
+void
+UpdateMasterAosegTotalsFromSegments(Relation parentrel,
+									Snapshot appendOnlyMetaDataSnapshot,
+									List *segmentNumList,
+									int64 modcount_added)
+{
+	ListCell	   *l;
+	int64		   *total_tupcount;
+	AppendOnlyEntry *aoEntry = NULL;
+
+	Assert(RelationIsAoRows(parentrel) || RelationIsAoCols(parentrel));
+	Assert(Gp_role == GP_ROLE_DISPATCH);
+
+	aoEntry = GetAppendOnlyEntry(RelationGetRelid(parentrel), SnapshotNow);
+	Assert(aoEntry != NULL);
+
+	/* Give -1 for segno, so that we'll have all segfile tupcount. */
+	total_tupcount = GetTotalTupleCountFromSegments(RelationGetRelid(parentrel),
+													appendOnlyMetaDataSnapshot,
+													-1);
+
+	/*
+	 * We are interested in only the segfiles that were told to be updated.
+	 */
+	foreach (l, segmentNumList)
+	{
+		int		qe_segno = lfirst_int(l);
+		int64	qe_tupcount = total_tupcount[qe_segno];
+		int64	known_tupcount = 0;
+
+		/*
+		 * If segfile doesn't exist, assume tupcount is 0.
+		 * UpdateMasterAosegTotals will create a segfile entry if necessary.
+		 */
+		if (RelationIsAoRows(parentrel))
+		{
+			FileSegInfo	   *fsinfo;
+
+			fsinfo = GetFileSegInfo(parentrel, aoEntry,
+									appendOnlyMetaDataSnapshot, qe_segno);
+			if (fsinfo != NULL)
+			{
+				known_tupcount = fsinfo->total_tupcount;
+				pfree(fsinfo);
+			}
+		}
+		else
+		{
+			AOCSFileSegInfo *seginfo;
+			Assert(RelationIsAoCols(parentrel));
+
+			seginfo = GetAOCSFileSegInfo(parentrel, aoEntry,
+										 SnapshotNow, qe_segno);
+			if (seginfo != NULL)
+			{
+				known_tupcount = seginfo->total_tupcount;
+				pfree(seginfo);
+			}
+		}
+
+		/*
+		 * Check if the new tupcount is different, and update the master
+		 * catalog if so.
+		 */
+		if (known_tupcount != qe_tupcount)
+		{
+			int64	tupcount_diff = qe_tupcount - known_tupcount;
+
+			elog(DEBUG3, "UpdateMasterAosegTotalsFromSegments: updating "
+				 "segno %d with tupcount " INT64_FORMAT
+				 ", known tupcount " INT64_FORMAT,
+				 qe_segno,
+				 qe_tupcount,
+				 known_tupcount);
+			UpdateMasterAosegTotals(parentrel, qe_segno,
+									tupcount_diff, modcount_added);
+		}
+	}
+
+	pfree(total_tupcount);
+}
 
 /*
  * UpdateMasterAosegTotals
@@ -845,7 +1614,7 @@ List *assignPerRelSegno(List *all_relids)
  * track of file 'segments' and their EOF's and decide which segno to use in
  * future writes into the table.
  */
-void UpdateMasterAosegTotals(Relation parentrel, int segno, uint64 tupcount)
+void UpdateMasterAosegTotals(Relation parentrel, int segno, int64 tupcount, int64 modcount_added)
 {
 	AORelHashEntry	aoHashEntry = NULL;
 	AppendOnlyEntry *aoEntry = NULL;
@@ -853,17 +1622,10 @@ void UpdateMasterAosegTotals(Relation parentrel, int segno, uint64 tupcount)
 	Assert(Gp_role == GP_ROLE_DISPATCH);
 	Assert(segno >= 0);
 
-	if (Debug_appendonly_print_segfile_choice)
-	{
-		ereport(LOG,(errmsg("UpdateMasterAosegTotals: Updating aoseg entry for append-only relation %d "
+	ereportif(Debug_appendonly_print_segfile_choice, LOG,
+		(errmsg("UpdateMasterAosegTotals: Updating aoseg entry for append-only relation %d "
 							"with " INT64_FORMAT " new tuples for segno %d",
 							RelationGetRelid(parentrel), (int64)tupcount, segno)));
-	}
-
-	if((int64) tupcount < 0)
-		ereport(ERROR,
-				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-				 errmsg("int64 out of range (" INT64_FORMAT ")", (int64) tupcount)));
 
 	aoEntry = GetAppendOnlyEntry(RelationGetRelid(parentrel), SnapshotNow);
 	Assert(aoEntry != NULL);
@@ -884,7 +1646,7 @@ void UpdateMasterAosegTotals(Relation parentrel, int segno, uint64 tupcount)
 		/*
 		 * Since we have an exclusive lock on the segment-file entry, we can use SnapshotNow.
 		 */
-        fsinfo = GetFileSegInfo(parentrel, aoEntry, SnapshotNow, segno);
+		fsinfo = GetFileSegInfo(parentrel, aoEntry, SnapshotNow, segno);
 		if (fsinfo == NULL)
 		{
 			InsertInitialSegnoEntry(aoEntry, segno);
@@ -897,14 +1659,15 @@ void UpdateMasterAosegTotals(Relation parentrel, int segno, uint64 tupcount)
 		/*
 		 * Update the master AO segment info table with correct tuple count total
 		 */
-        UpdateFileSegInfo(parentrel, aoEntry, segno, 0, 0, tupcount, 0);
+		UpdateFileSegInfo(parentrel, aoEntry, segno, 0, 0, tupcount, 0, 
+				modcount_added, AOSEG_STATE_USECURRENT);
 	}
-    else
-    {
+	else
+	{
 		AOCSFileSegInfo *seginfo;
 
-    	/* AO column store */
-    	Assert(RelationIsAoCols(parentrel));
+		/* AO column store */
+		Assert(RelationIsAoCols(parentrel));
 
 		seginfo = GetAOCSFileSegInfo(
 							parentrel, 
@@ -913,14 +1676,15 @@ void UpdateMasterAosegTotals(Relation parentrel, int segno, uint64 tupcount)
 							segno);
 		if (seginfo == NULL)
 		{
-			InsertInitialAOCSFileSegInfo(aoEntry->segrelid, segno, parentrel->rd_att->natts);
+			InsertInitialAOCSFileSegInfo(aoEntry->segrelid, segno, 
+					RelationGetNumberOfAttributes(parentrel));
 		}
 		else
 		{
 			pfree(seginfo);
 		}
-    	AOCSFileSegInfoAddCount(parentrel, aoEntry, segno, tupcount, 0);
-    }
+		AOCSFileSegInfoAddCount(parentrel, aoEntry, segno, tupcount, 0, modcount_added);
+	}
 
 	/*
 	 * Now, update num of tups added in the hash table. This pending count will
@@ -960,7 +1724,6 @@ AtCommit_AppendOnly(void)
 	hash_seq_init(&status, AppendOnlyHash);
 
 	LWLockAcquire(AOSegFileLock, LW_EXCLUSIVE);
-
 	/*
 	 * for each AO table hash entry
 	 */
@@ -980,31 +1743,31 @@ AtCommit_AppendOnly(void)
 			{
 				AOSegfileStatus *segfilestat = &aoentry->relsegfiles[i];
 				TransactionId 	InsertingXid = segfilestat->xid;
-
 				if(InsertingXid == CurrentXid)
 				{
 					/* bingo! */
+					Assert(segfilestat->state == INSERT_USE ||
+							segfilestat->state == COMPACTION_USE ||
+							segfilestat->state == DROP_USE ||
+							segfilestat->state == PSEUDO_COMPACTION_USE ||
+							segfilestat->state == COMPACTED_DROP_SKIPPED);
 
-					Assert(segfilestat->inuse);
-
-					if (Debug_appendonly_print_segfile_choice)
-					{
-						ereport(LOG, (errmsg("AtCommit_AppendOnly: found a segno that inserted in "
+					ereportif(Debug_appendonly_print_segfile_choice, LOG,
+						(errmsg("AtCommit_AppendOnly: found a segno that inserted in "
 								  "our txn for table %d. Updating segno %d "
 								  "tupcount: old count " INT64_FORMAT ", tups "
 								  "added in this txn " INT64_FORMAT " new "
 								  "count " INT64_FORMAT, aoentry->relid, i,
-								  (int64)segfilestat->tupcount,
+								  (int64)segfilestat->total_tupcount,
 								  (int64)segfilestat->tupsadded,
-								  (int64)segfilestat->tupcount +
+								  (int64)segfilestat->total_tupcount +
 								  (int64)segfilestat->tupsadded )));
-					}
 
 					/* now do the in memory update */
-					segfilestat->tupcount += segfilestat->tupsadded;
+					segfilestat->total_tupcount += segfilestat->tupsadded;
 					segfilestat->tupsadded = 0;
 					segfilestat->isfull =
-							(segfilestat->tupcount > segfileMaxRowThreshold());
+							(segfilestat->total_tupcount > segfileMaxRowThreshold());
 
 					Assert(!TransactionIdIsValid(segfilestat->latestWriteXid) ||
 						   TransactionIdPrecedes(segfilestat->latestWriteXid,
@@ -1053,46 +1816,178 @@ AtAbort_AppendOnly(void)
 		/*
 		 * Only look at tables that are marked in use currently
 		 */
-		if(aoentry->txns_using_rel > 0)
+		if(aoentry->txns_using_rel == 0)
 		{
+			continue;
+		}
 			int i;
 
 			/*
-			 * Was any segfile  updated in our own transaction?
+			 * Was any segfile updated in our own transaction?
 			 */
 			for (i = 0 ; i < MAX_AOREL_CONCURRENCY ; i++)
 			{
 				AOSegfileStatus *segfilestat = &aoentry->relsegfiles[i];
 				TransactionId 	InsertingXid = segfilestat->xid;
 
-				if(InsertingXid == CurrentXid)
+				if(InsertingXid != CurrentXid)
 				{
-					/* bingo! */
-
-					Assert(segfilestat->inuse);
-
-					if (Debug_appendonly_print_segfile_choice)
-					{
-						ereport(LOG, (errmsg("AtAbort_AppendOnly: found a segno that inserted in our txn for "
-								  "table %d. Cleaning segno %d tupcount: old "
-								  "count " INT64_FORMAT " tups added in this "
-								  "txn " INT64_FORMAT ", count "
-								  "remains " INT64_FORMAT, aoentry->relid, i,
-								  (int64)segfilestat->tupcount,
-								  (int64)segfilestat->tupsadded,
-								  (int64)segfilestat->tupcount)));
-					}
-
-					/* now do the in memory cleanup. tupcount not touched */
-					segfilestat->tupsadded = 0;
+					continue;
 				}
-			}
+				/* bingo! */
+
+				Assert(segfilestat->state == INSERT_USE ||
+							segfilestat->state == COMPACTION_USE ||
+							segfilestat->state == DROP_USE ||
+							segfilestat->state == PSEUDO_COMPACTION_USE ||
+							segfilestat->state == COMPACTED_DROP_SKIPPED);
+
+				ereportif(Debug_appendonly_print_segfile_choice, LOG,
+					(errmsg("AtAbort_AppendOnly: found a segno that inserted in our txn for "
+						  "table %d. Cleaning segno %d tupcount: old "
+						  "count " INT64_FORMAT " tups added in this "
+						  "txn " INT64_FORMAT ", count "
+						  "remains " INT64_FORMAT, aoentry->relid, i,
+						  (int64)segfilestat->total_tupcount,
+						  (int64)segfilestat->tupsadded,
+						  (int64)segfilestat->total_tupcount)));
+
+			/* now do the in memory cleanup. tupcount not touched */
+			segfilestat->tupsadded = 0;
+			segfilestat->aborted = true;
+			/* state transitions are done by AtEOXact_AppendOnly and friends */		
 		}
 	}
 
 	LWLockRelease(AOSegFileLock);
 }
 
+/*
+ * Assumes that AOSegFileLock is held.
+ * Transitions from state 3, 4, or 4 to the correct next state based
+ * on the abort/commit of the transaction.
+ *
+ */
+static void
+AtEOXact_AppendOnly_StateTransition(AORelHashEntry aoentry, int segno, 
+		AOSegfileStatus *segfilestat)
+{
+	AOSegfileState oldstate;
+
+	Assert(segfilestat);
+	Assert(segfilestat->state == INSERT_USE ||
+						segfilestat->state == COMPACTION_USE ||
+						segfilestat->state == DROP_USE ||
+						segfilestat->state == PSEUDO_COMPACTION_USE ||
+						segfilestat->state == COMPACTED_DROP_SKIPPED);
+	
+	oldstate = segfilestat->state;
+	if (segfilestat->state == INSERT_USE)
+	{
+		if (!segfilestat->aborted)
+		{
+			segfilestat->state = AVAILABLE;
+		}
+		else
+		{
+			segfilestat->state = AVAILABLE;
+		}
+	}
+	else if (segfilestat->state == DROP_USE)
+	{
+		if (!segfilestat->aborted)
+		{
+			segfilestat->state = AVAILABLE;
+		}
+		else
+		{
+			segfilestat->state = INITIAL_AWAITING_DROP;
+		}
+	}
+	else if (segfilestat->state == COMPACTION_USE)
+	{
+		if (!segfilestat->aborted)
+		{
+			segfilestat->state = COMPACTED_AWAITING_DROP;
+		}
+		else
+		{
+			segfilestat->state = AVAILABLE;
+		}
+	}
+	else if (segfilestat->state == PSEUDO_COMPACTION_USE)
+	{
+		if (!segfilestat->aborted)
+		{
+			segfilestat->state = COMPACTED_AWAITING_DROP;
+		}
+		else
+		{
+			segfilestat->state = INITIAL_AWAITING_DROP;
+		}
+	}
+	else if (segfilestat->state == COMPACTED_DROP_SKIPPED)
+	{
+		segfilestat->state = INITIAL_AWAITING_DROP;
+	}
+	else
+	{
+		Assert(false);
+	}
+	
+	ereportif(Debug_appendonly_print_segfile_choice, LOG,
+			(errmsg("Segment file state transition for "
+				  "table %d, segno %d: %d -> %d",
+				  aoentry->relid, segno,
+				  oldstate, segfilestat->state)));
+	segfilestat->xid = InvalidTransactionId;
+	segfilestat->aborted = false;
+}
+/*
+ * Assumes that AOSegFileLock is held.
+ */
+static void
+AtEOXact_AppendOnly_Relation(AORelHashEntry	aoentry, TransactionId currentXid)
+{
+	int i;
+	bool entry_updated = false;
+
+	/*
+	 * Only look at tables that are marked in use currently
+	 */
+	if(aoentry->txns_using_rel == 0)
+	{
+		return;
+	}
+
+	/*
+	 * Was any segfile  updated in our own transaction?
+	 */
+	for (i = 0 ; i < MAX_AOREL_CONCURRENCY ; i++)
+	{
+		AOSegfileStatus *segfilestat = &aoentry->relsegfiles[i];
+		TransactionId 	InsertingXid = segfilestat->xid;
+
+		if(InsertingXid != currentXid)
+		{
+			continue;
+		}
+		/* bingo! */
+
+		AtEOXact_AppendOnly_StateTransition(aoentry, i, segfilestat);
+		entry_updated = true;
+	}
+
+	/* done with this AO table entry */
+	if(entry_updated)
+	{
+		aoentry->txns_using_rel--;
+
+		ereportif(Debug_appendonly_print_segfile_choice, LOG,
+			(errmsg("AtEOXact_AppendOnly: updated txns_using_rel, it is now %d",
+								  aoentry->txns_using_rel)));	
+	}
+}
 /*
  * End of txn processing for append only tables.
  *
@@ -1104,14 +1999,12 @@ AtAbort_AppendOnly(void)
  * NOTE: if you change this function, take a look at AtCommit_AppendOnly and
  * AtAbort_AppendOnly as well.
  */
-
 void
 AtEOXact_AppendOnly(void)
 {
 	HASH_SEQ_STATUS status;
 	AORelHashEntry	aoentry = NULL;
 	TransactionId 	CurrentXid = GetCurrentTransactionIdIfAny();
-	bool			entry_updated = false;
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
@@ -1125,62 +2018,10 @@ AtEOXact_AppendOnly(void)
 	 */
 	while ((aoentry = (AORelHashEntryData *) hash_seq_search(&status)) != NULL)
 	{
-		/*
-		 * Only look at tables that are marked in use currently
-		 */
-		if(aoentry->txns_using_rel > 0)
-		{
-			int i;
-
-			entry_updated = false;
-
-			/*
-			 * Was any segfile  updated in our own transaction?
-			 */
-			for (i = 0 ; i < MAX_AOREL_CONCURRENCY ; i++)
-			{
-				AOSegfileStatus *segfilestat = &aoentry->relsegfiles[i];
-				TransactionId 	InsertingXid = segfilestat->xid;
-
-				if(InsertingXid == CurrentXid)
-				{
-					/* bingo! */
-
-					Assert(segfilestat->inuse);
-
-					if (Debug_appendonly_print_segfile_choice)
-					{
-						ereport(LOG, (errmsg("AtEOXact_AppendOnly: found a segno that inserted in our txn for "
-								  "table %d. Releasing segno %d. It can now be "
-								  "used by another incoming AO transaction",
-								  aoentry->relid, i)));
-					}
-
-					/* now do the in memory cleanup. tupcount not touched */
-					segfilestat->inuse = false;
-					segfilestat->xid = InvalidTransactionId;
-					entry_updated = true;
-				}
-			}
-
-			/* done with this AO table entry */
-			if(entry_updated)
-			{
-				aoentry->txns_using_rel--;
-				
-				if (Debug_appendonly_print_segfile_choice)
-				{
-					ereport(LOG, (errmsg("AtEOXact_AppendOnly: updated txns_using_rel, it is now %d",
-										  aoentry->txns_using_rel)));	
-				}
-			}
-				
-				
-		}
+		AtEOXact_AppendOnly_Relation(aoentry, CurrentXid);
 	}
 
 	LWLockRelease(AOSegFileLock);
-
 }
 
 void ValidateAppendOnlyMetaDataSnapshot(

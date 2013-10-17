@@ -586,7 +586,6 @@ bms_is_empty(const Bitmapset *a)
 	return true;
 }
 
-
 /*
  * These operations all "recycle" their non-const inputs, ie, either
  * return the modified input or pfree it if it can't hold the result.
@@ -655,6 +654,42 @@ bms_add_member(Bitmapset *a, int x)
 	/* Fast path: x fits in existing set */
 	a->words[wordnum] |= ((bitmapword) 1 << bitnum);
 	return a;
+}
+
+bool
+bms_covers_member(const Bitmapset *a, int x)
+{
+	int wordnum;
+	if (x < 0)
+		elog(ERROR, "negative bitmapset member not allowed");
+	if (a == NULL)
+		return false;
+	wordnum = WORDNUM(x);
+	return (wordnum < a->nwords);
+}
+
+Bitmapset *
+bms_resize(Bitmapset *a, int wc)
+{
+	Bitmapset  *result;
+
+	if (a && a->nwords >= wc)
+		return a;
+
+	if (a)
+	{
+		result = (Bitmapset *) repalloc(a, BITMAPSET_SIZE(wc));
+		/* do not access a again */
+		MemSet(result->words + result->nwords, 0, 
+				(wc - result->nwords) * sizeof(bitmapword));
+		result->nwords = wc;
+	} 
+	else
+	{
+		result = palloc0(BITMAPSET_SIZE(wc));
+		result->nwords = wc;
+	}
+	return result;
 }
 
 /*

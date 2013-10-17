@@ -594,7 +594,7 @@ pg_relation_size_name(PG_FUNCTION_ARGS)
 /*
  *	Compute the on-disk size of files for the relation according to the
  *	stat function, including heap data, index data, toast data, aoseg data,
- *  and aoblkdir data.
+ *  aoblkdir data, and aovisimap data.
  */
 static int64
 calculate_total_relation_size(Oid Relid)
@@ -651,6 +651,10 @@ calculate_total_relation_size(Oid Relid)
         {
      		size += calculate_total_relation_size(aoEntry->blkdirrelid);
         }
+		if (OidIsValid(aoEntry->visimaprelid))
+		{
+			size += calculate_total_relation_size(aoEntry->visimaprelid);
+		}
 	}
 
 	if (aoEntry != NULL)

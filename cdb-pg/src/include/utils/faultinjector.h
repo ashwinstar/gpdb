@@ -169,6 +169,13 @@ typedef enum FaultInjectorIdentifier_e {
 	ExecSortBeforeSorting,
 	BaseBackupPostCreateCheckpoint,
 
+	CompactionBeforeSegmentFileDropPhase,
+	CompactionBeforeCleanupPhase,
+
+	AppendOnlyInsert,
+	AppendOnlyDelete,
+	AppendOnlyUpdate,
+
 	/* INSERT has to be done before that line */
 	FaultInjectorIdMax,
 	

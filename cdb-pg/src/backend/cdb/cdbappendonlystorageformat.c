@@ -100,8 +100,7 @@ AppendOnlyStorageFormat_AddFirstRowNum(
 	firstRowNumPtr = (int64*)&headerPtr[offsetToFirstRowNum];
 	*firstRowNumPtr = firstRowNum;
 	
-	if (Debug_appendonly_print_storage_headers)
-		elog(LOG,
+	elogif(Debug_appendonly_print_storage_headers, LOG,
 			 "Append-Only storage first row number header result: block_bytes_0_3 0x%X, block_bytes_4_7 0x%X, "
 			 "firstRowNum " INT64_FORMAT,
 			 blockHeader->smallcontent_bytes_0_3,
@@ -242,8 +241,7 @@ AppendOnlyStorageFormat_MakeSmallContentHeader(
 	
 	blockHeader = (AOSmallContentHeader*)headerPtr;
 
-	if (Debug_appendonly_print_storage_headers)
-		elog(LOG,
+	elogif(Debug_appendonly_print_storage_headers, LOG,
 			 "Append-Only storage make Small Content header parameters: wantChecksum = %s, hasFirstRowNum %s, executorKind = %d, "
 			 "rowCount = %d, dataLength %d, compressedLength %d",
 			 (usingChecksums ? "true" : "false"),
@@ -297,8 +295,7 @@ AppendOnlyStorageFormat_MakeSmallContentHeader(
 	}
 	else
 	{
-		if (Debug_appendonly_print_storage_headers)
-			elog(LOG,
+		elogif(Debug_appendonly_print_storage_headers, LOG,
 				 "Append-Only storage make Small Content header result: smallcontent_bytes_0_3 0x%X, smallcontent_bytes_4_7 0x%X",
 				 blockHeader->smallcontent_bytes_0_3,
 				 blockHeader->smallcontent_bytes_4_7);
@@ -968,8 +965,7 @@ AppendOnlyStorageFormat_MakeLargeContentHeader(
 	
 	largeContentHeader = (AOLargeContentHeader*)headerPtr;
 
-	if (Debug_appendonly_print_storage_headers)
-		elog(LOG,
+	elogif(Debug_appendonly_print_storage_headers, LOG,
 			 "Append-Only Storage make LargeContent header parameters: usingChecksums = %s, executorKind = %d, "
 			 "largeRowCount = %d, largeContentLength %d",
 			 (usingChecksums ? "true" : "false"),
@@ -1018,8 +1014,7 @@ AppendOnlyStorageFormat_MakeLargeContentHeader(
 	}
 	else
 	{
-		if (Debug_appendonly_print_storage_headers)
-			elog(LOG,
+		elogif(Debug_appendonly_print_storage_headers, LOG,
 				 "Append-Only storage make block header result: block_bytes_0_3 0x%X, block_bytes_4_7 0x%X",
 				 largeContentHeader->largecontent_bytes_0_3,
 				 largeContentHeader->largecontent_bytes_4_7);
@@ -1043,8 +1038,7 @@ AppendOnlyStorageFormat_MakeNonBulkDenseContentHeader(
 	
 	blockHeader = (AONonBulkDenseContentHeader*)headerPtr;
 
-	if (Debug_appendonly_print_storage_headers)
-		elog(LOG,
+	elogif(Debug_appendonly_print_storage_headers, LOG,
 			 "Append-Only storage make Non-Bulk Dense Content header parameters: wantChecksum = %s, hasFirstRowNum %s, executorKind = %d, "
 			 "rowCount = %d, dataLength %d",
 			 (usingChecksums ? "true" : "false"),
@@ -1093,8 +1087,7 @@ AppendOnlyStorageFormat_MakeNonBulkDenseContentHeader(
 	}
 	else
 	{
-		if (Debug_appendonly_print_storage_headers)
-			elog(LOG,
+		elogif(Debug_appendonly_print_storage_headers, LOG,
 				 "Append-Only storage make Bulk Dense Content header result: nonbulkdensecontent_bytes_0_3 0x%X, nonbulkdensecontent_bytes_4_7 0x%X",
 				 blockHeader->nonbulkdensecontent_bytes_0_3,
 				 blockHeader->nonbulkdensecontent_bytes_4_7);
@@ -1133,8 +1126,7 @@ AppendOnlyStorageFormat_MakeBulkDenseContentHeader(
 	 */
 	extHeader = (AOBulkDenseContentHeaderExt*)(headerPtr + firstHeaderAndChecksumsLen);
 
-	if (Debug_appendonly_print_storage_headers)
-		elog(LOG,
+	elogif(Debug_appendonly_print_storage_headers, LOG,
 			 "Append-Only storage make Bulk Dense Content header parameters: wantChecksum = %s, hasFirstRowNum %s, executorKind = %d, "
 			 "rowCount = %d, dataLength %d, compressedLength %d",
 			 (usingChecksums ? "true" : "false"),
@@ -1191,8 +1183,7 @@ AppendOnlyStorageFormat_MakeBulkDenseContentHeader(
 	}
 	else
 	{
-		if (Debug_appendonly_print_storage_headers)
-			elog(LOG,
+		elogif(Debug_appendonly_print_storage_headers, LOG,
 				 "Append-Only storage make Bulk Dense Content header result: "
 				 "bulkdensecontent_bytes_0_3 0x%X, bulkdensecontent_bytes_4_7 0x%X "
 				 "bulkdensecontent_ext_bytes_0_3 0x%X, bulkdensecontent_ext_bytes_4_7 0x%X ",

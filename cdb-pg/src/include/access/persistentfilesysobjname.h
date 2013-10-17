@@ -174,6 +174,7 @@ typedef enum PersistentFileSysRelBufpoolKind
 	PersistentFileSysRelBufpoolKind_UnknownRelStorage = 2,
 	PersistentFileSysRelBufpoolKind_AppendOnlySeginfo = 3,
 	PersistentFileSysRelBufpoolKind_AppendOnlyBlockDirectory = 4,
+	PersistentFileSysRelBufpoolKind_AppendOnlyVisibilityMap = 12,
 	PersistentFileSysRelBufpoolKind_Btree = 5,
 	PersistentFileSysRelBufpoolKind_BitMap = 6,
 	PersistentFileSysRelBufpoolKind_UnknownIndex = 7,
@@ -181,7 +182,7 @@ typedef enum PersistentFileSysRelBufpoolKind
 	PersistentFileSysRelBufpoolKind_Toast = 9,
 	PersistentFileSysRelBufpoolKind_UncatalogedHeap = 10,
 	PersistentFileSysRelBufpoolKind_UnknownRelKind = 11,
-	MaxPersistentFileSysRelBufpoolKind /* must always be last */
+	MaxPersistentFileSysRelBufpoolKind = 13 /* must always be last */
 } PersistentFileSysRelBufpoolKind;
 
 /*

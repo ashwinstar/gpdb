@@ -2009,8 +2009,9 @@ class GPUpgrade(GPUpgradeBase):
                          pg_filespace fs
                          left outer join gp_persistent_filespace_node fse on (fs.oid = fse.filespace_oid)
                     WHERE (nspname = 'pg_catalog' or
+                           nspname = 'pg_aoseg' or
                            nspname = 'information_schema')
-                      and c1.relkind in ('r', 'i')
+                      and c1.relkind in ('r', 'i', 'o')
                       and not c1.relisshared
                       and d.dattablespace = ts.oid
                       and ts.spcfsoid = fs.oid

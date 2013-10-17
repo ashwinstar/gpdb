@@ -226,6 +226,7 @@ DATA(insert OID = 3250    ( nb_classification PGNSP 3251 PGUID 0 3250 0 0 0 0 0 
 #define		  RELKIND_TOASTVALUE	  't'		/* moved off huge values */
 #define		  RELKIND_AOSEGMENTS	  'o'		/* AO segment files and eof's */
 #define		  RELKIND_AOBLOCKDIR	  'b'		/* AO block directory */
+#define       RELKIND_AOVISIMAP       'm'       /* AO visibility map */
 #define		  RELKIND_VIEW		  'v'		/* view */
 #define		  RELKIND_COMPOSITE_TYPE  'c'		/* composite type */
 

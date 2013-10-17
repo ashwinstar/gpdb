@@ -44,6 +44,8 @@ AppendOnlyScanNext(ScanState *scanState)
 void
 BeginScanAppendOnlyRelation(ScanState *scanState)
 {
+	Snapshot appendOnlyMetaDataSnapshot;
+
 	Assert(IsA(scanState, TableScanState) ||
 		   IsA(scanState, DynamicTableScanState));
 	AppendOnlyScanState *node = (AppendOnlyScanState *)scanState;
@@ -52,9 +54,20 @@ BeginScanAppendOnlyRelation(ScanState *scanState)
 		   node->ss.scan_state == SCAN_DONE);
 	Assert(node->aos_ScanDesc == NULL);
 
+	appendOnlyMetaDataSnapshot = node->ss.ps.state->es_snapshot;
+	if (appendOnlyMetaDataSnapshot == SnapshotAny)
+	{
+		/* 
+		 * the append-only meta data should never be fetched with
+		 * SnapshotAny as bogus results are returned.
+		 */
+		appendOnlyMetaDataSnapshot = GetTransactionSnapshot();
+	}
+
 	node->aos_ScanDesc = appendonly_beginscan(
 			node->ss.ss_currentRelation, 
 			node->ss.ps.state->es_snapshot, 
+			appendOnlyMetaDataSnapshot,
 			0, NULL);
 	node->ss.scan_state = SCAN_SCAN;
 }

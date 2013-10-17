@@ -25,12 +25,25 @@ static TupleTableSlot *AOCSNext(AOCSScanState *node)
  */
 static void OpenAOCSScanRelation(AOCSScanState *node)
 {
+	Snapshot appendOnlyMetaDataSnapshot;
+
 	Assert(node->ss.scan_state == SCAN_INIT || node->ss.scan_state == SCAN_DONE);
 	Assert(!node->scandesc);
-        
+
+	appendOnlyMetaDataSnapshot = node->ss.ps.state->es_snapshot;
+	if (appendOnlyMetaDataSnapshot == SnapshotAny)
+	{
+		/* 
+		 * the append-only meta data should never be fetched with
+		 * SnapshotAny as bogus results are returned.
+		 */
+		appendOnlyMetaDataSnapshot = GetTransactionSnapshot();
+	}
+
 	node->scandesc = aocs_beginscan(
 			node->ss.ss_currentRelation, 
 			node->ss.ps.state->es_snapshot,
+			appendOnlyMetaDataSnapshot,
 			NULL /* relationTupleDesc */,
 			node->proj);
 

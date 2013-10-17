@@ -15,6 +15,7 @@
 #include "access/tupmacs.h"
 #include "access/xlogutils.h"
 #include "access/appendonlytid.h"
+#include "access/appendonly_visimap.h"
 #include "executor/tuptable.h"
 #include "nodes/primnodes.h"
 #include "storage/block.h"
@@ -56,6 +57,13 @@ typedef struct AOCSInsertDescData
 	struct DatumStreamWrite **ds;
 
 	AppendOnlyBlockDirectory blockDirectory;
+
+	/**
+	 * When initialized in update mode, the insert is really part of
+	 * an AO update.
+	 * Certain statistics are then counted differently.
+	 */ 
+	bool update_mode;
 } AOCSInsertDescData;
 
 typedef AOCSInsertDescData *AOCSInsertDesc;
@@ -68,11 +76,20 @@ typedef struct AOCSScanDescData
 	/* scan parameters */
 	Relation	aos_rel;			/* target relation descriptor */
 	Snapshot	appendOnlyMetaDataSnapshot;
-	TupleDesc   relationTupleDesc;	/* tuple descriptor of table to scan.
-									 *  Code should use this rather than aos_rel->rd_att,
-									 *  as THEY MAY BE DIFFERENT.
-									 *  See code in aocsam.c's aocs_beginscan for more info
- 									 */
+
+	/*
+	 * Snapshot to use for non-metadata operations.
+	 * Usually snapshot = appendOnlyMetaDataSnapshot, but they
+	 * differ e.g. if gp_select_invisible is set.
+	 */ 
+	Snapshot    snapshot;
+
+	/* tuple descriptor of table to scan.
+	 *  Code should use this rather than aos_rel->rd_att,
+	 *  as THEY MAY BE DIFFERENT.
+	 *  See code in aocsam.c's aocs_beginscan for more info
+	 */
+	TupleDesc   relationTupleDesc;	
 
 	Index aos_scanrelid; /* index */
 
@@ -103,6 +120,8 @@ typedef struct AOCSScanDescData
 	bool buildBlockDirectory;
 	AppendOnlyBlockDirectory *blockDirectory;
 
+	AppendOnlyVisimap visibilityMap;
+
 }	AOCSScanDescData;
 
 typedef AOCSScanDescData *AOCSScanDesc;
@@ -115,6 +134,13 @@ typedef struct AOCSFetchDescData
 {
 	Relation		relation;
 	Snapshot		appendOnlyMetaDataSnapshot;
+
+	/*
+	 * Snapshot to use for non-metadata operations.
+	 * Usually snapshot = appendOnlyMetaDataSnapshot, but they
+	 * differ e.g. if gp_select_invisible is set.
+	 */ 
+	Snapshot    snapshot;
 
 	MemoryContext	initContext;
 
@@ -134,20 +160,32 @@ typedef struct AOCSFetchDescData
 
 	int64	skipBlockCount;
 
+	AppendOnlyVisimap visibilityMap;
+
 } AOCSFetchDescData;
 
 typedef AOCSFetchDescData *AOCSFetchDesc;
+
+typedef struct AOCSUpdateDescData *AOCSUpdateDesc;
+typedef struct AOCSDeleteDescData *AOCSDeleteDesc;
 
 /* ----------------
  *		function prototypes for appendonly access method
  * ----------------
  */
 
-extern AOCSScanDesc aocs_beginscan(Relation relation, Snapshot appendOnlyMetaDataSnapshot, TupleDesc relationTupleDesc, bool *proj);
+extern AOCSScanDesc aocs_beginscan(Relation relation, Snapshot snapshot,
+		Snapshot appendOnlyMetaDataSnapshot, TupleDesc relationTupleDesc, bool *proj);
+extern AOCSScanDesc aocs_beginrangescan(Relation relation, Snapshot snapshot,
+		Snapshot appendOnlyMetaDataSnapshot, 
+		int *segfile_no_arr, int segfile_count,
+	TupleDesc relationTupleDesc, bool *proj);
+
 extern void aocs_rescan(AOCSScanDesc scan);
 extern void aocs_endscan(AOCSScanDesc scan);
+
 extern void aocs_getnext(AOCSScanDesc scan, ScanDirection direction, TupleTableSlot *slot);
-extern AOCSInsertDesc aocs_insert_init(Relation rel, int segno);
+extern AOCSInsertDesc aocs_insert_init(Relation rel, int segno, bool update_mode);
 extern Oid aocs_insert_values(AOCSInsertDesc idesc, Datum *d, bool *null, AOTupleId *aoTupleId);
 static inline Oid aocs_insert(AOCSInsertDesc idesc, TupleTableSlot *slot)
 {
@@ -163,10 +201,20 @@ static inline Oid aocs_insert(AOCSInsertDesc idesc, TupleTableSlot *slot)
 extern void aocs_insert_finish(AOCSInsertDesc idesc);
 extern AOCSFetchDesc aocs_fetch_init(Relation relation,
 									 Snapshot snapshot,
+									 Snapshot appendOnlyMetaDataSnapshot,
 									 bool *proj);
 extern bool aocs_fetch(AOCSFetchDesc aocsFetchDesc,
 					   AOTupleId *aoTupleId,
 					   TupleTableSlot *slot);
 extern void aocs_fetch_finish(AOCSFetchDesc aocsFetchDesc);
 
+extern AOCSUpdateDesc aocs_update_init(Relation rel, int segno);
+extern void aocs_update_finish(AOCSUpdateDesc desc);
+extern HTSU_Result aocs_update(AOCSUpdateDesc desc, TupleTableSlot *slot,
+			AOTupleId *oldTupleId, AOTupleId *newTupleId);
+
+extern AOCSDeleteDesc aocs_delete_init(Relation rel);
+extern HTSU_Result aocs_delete(AOCSDeleteDesc desc, 
+		AOTupleId *aoTupleId);
+extern void aocs_delete_finish(AOCSDeleteDesc desc);
 #endif   /* AOCSAM_H */

@@ -33,6 +33,7 @@
 #include "catalog/toasting.h"
 #include "catalog/aoseg.h"
 #include "catalog/aoblkdir.h"
+#include "catalog/aovisimap.h"
 #include "catalog/pg_tablespace.h"
 #include "commands/cluster.h"
 #include "commands/tablecmds.h"
@@ -701,7 +702,7 @@ rebuild_relation(Relation OldHeap, Oid indexOid, ClusterStmt *stmt)
 	 * all-new at this point).	We do not need CommandCounterIncrement()
 	 * because reindex_relation does it.
 	 */
-	reindex_relation(tableOid, false, false, false, &stmt->new_ind_oids,
+	reindex_relation(tableOid, false, false, false, false, &stmt->new_ind_oids,
 					 Gp_role == GP_ROLE_DISPATCH);
 }
 
@@ -710,7 +711,8 @@ rebuild_relation(Relation OldHeap, Oid indexOid, ClusterStmt *stmt)
  */
 Oid
 make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
-			  TableOidInfo * oidInfo, bool createAoBlockDirectory)
+			  TableOidInfo * oidInfo, 
+			  bool createAoBlockDirectory)
 {
 	TupleDesc	OldHeapDesc,
 				tupdesc;
@@ -723,9 +725,12 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 	Oid			*comptypeOid = NULL;
 	Oid         blkdirOid = InvalidOid;
 	Oid         blkdirIdxOid = InvalidOid;
+	Oid         visimapOid = InvalidOid;
+	Oid         visimapIndexOid = InvalidOid;
 	Oid			*toastComptypeOid = NULL;
 	Oid			*aosegComptypeOid = NULL;
 	Oid			*aoblkdirComptypeOid = NULL;
+	Oid         *aovisimapComptypeOid = NULL;
 	HeapTuple	tuple;
 	Datum		reloptions;
 	bool		isNull;
@@ -762,6 +767,9 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 	blkdirOid = oidInfo->aoblkdirOid;
 	blkdirIdxOid = oidInfo->aoblkdirIndexOid;
 	aoblkdirComptypeOid = &oidInfo->aoblkdirComptypeOid;
+	visimapOid = oidInfo->aovisimapOid;
+	visimapIndexOid = oidInfo->aovisimapIndexOid;
+	aovisimapComptypeOid = &oidInfo->aovisimapComptypeOid;
 
 	/*
 	 * Need to make a copy of the tuple descriptor, since
@@ -830,6 +838,8 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 									  toastComptypeOid, is_part);
 	AlterTableCreateAoSegTableWithOid(OIDNewHeap, aOid, aiOid,
 									  aosegComptypeOid, is_part);
+	AlterTableCreateAoVisimapTableWithOid(OIDNewHeap, visimapOid, visimapIndexOid,
+				aovisimapComptypeOid, is_part);
 
     if ( createAoBlockDirectory )
     {
@@ -1331,6 +1341,11 @@ void populate_oidInfo(TableOidInfo *oidInfo, Oid TableSpace, bool relisshared,
 				GetNewRelFileNode(TableSpace, relisshared,  pg_class_desc);
 			oidInfo->aoblkdirIndexOid = 
 				GetNewRelFileNode(TableSpace, relisshared,  pg_class_desc);
+			oidInfo->aovisimapOid = 
+				GetNewRelFileNode(TableSpace, relisshared,  pg_class_desc);
+			oidInfo->aovisimapIndexOid =
+				GetNewRelFileNode(TableSpace, relisshared,  pg_class_desc);
+
 
 			/* gonna update, so don't unlock */
 			heap_close(pg_class_desc, NoLock);  
@@ -1348,7 +1363,8 @@ void populate_oidInfo(TableOidInfo *oidInfo, Oid TableSpace, bool relisshared,
 					GetNewRelFileNode(TableSpace, relisshared,  pg_type_desc);
 				oidInfo->aoblkdirComptypeOid = 
 					GetNewRelFileNode(TableSpace, relisshared,  pg_type_desc);
-
+				oidInfo->aovisimapComptypeOid = 
+					GetNewRelFileNode(TableSpace, relisshared,  pg_type_desc);
 				/* We don't need to keep the pg_type lock */
 				heap_close(pg_type_desc, RowExclusiveLock);
 			}
@@ -1368,11 +1384,14 @@ void populate_oidInfo(TableOidInfo *oidInfo, Oid TableSpace, bool relisshared,
 				oidInfo->aosegIndexOid == 0 ||
 				oidInfo->aoblkdirOid == 0 ||
 				oidInfo->aoblkdirIndexOid == 0 ||
+				oidInfo->aovisimapOid == 0 ||
+				oidInfo->aovisimapIndexOid == 0 ||
 				(withTypes && (
 					oidInfo->comptypeOid == 0 ||
 					oidInfo->toastComptypeOid == 0 ||
 					oidInfo->aosegComptypeOid == 0 ||
-					oidInfo->aoblkdirComptypeOid == 0)
+					oidInfo->aoblkdirComptypeOid == 0 ||
+					oidInfo->aovisimapComptypeOid == 0)
 					)
 				)
 			{

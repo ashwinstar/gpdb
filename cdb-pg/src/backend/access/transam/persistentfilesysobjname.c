@@ -289,6 +289,7 @@ char *PersistentFileSysRelBufpoolKind_Name(
 	case PersistentFileSysRelBufpoolKind_UnknownRelStorage:			return "UnknownRelStorage";
 	case PersistentFileSysRelBufpoolKind_AppendOnlySeginfo:			return "AppendOnlySeginfo";
 	case PersistentFileSysRelBufpoolKind_AppendOnlyBlockDirectory:	return "AppendOnlyBlockDirectory";
+	case PersistentFileSysRelBufpoolKind_AppendOnlyVisibilityMap:   return "AppendOnlyVisibilityMap";
 	case PersistentFileSysRelBufpoolKind_Btree:						return "Btree";
 	case PersistentFileSysRelBufpoolKind_BitMap:					return "BitMap";
 	case PersistentFileSysRelBufpoolKind_UnknownIndex:				return "UnknownIndex";

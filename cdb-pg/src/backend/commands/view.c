@@ -123,6 +123,8 @@ DefineVirtualRelation(const RangeVar *relation, List *tlist, bool replace, Oid v
 	createStmt->oidInfo.aosegIndexOid = 0;
 	createStmt->oidInfo.aoblkdirOid = 0;
 	createStmt->oidInfo.aoblkdirIndexOid = 0;
+	createStmt->oidInfo.aovisimapOid = 0;
+	createStmt->oidInfo.aovisimapIndexOid = 0;
 	createStmt->ownerid = GetUserId();
 
 	/*

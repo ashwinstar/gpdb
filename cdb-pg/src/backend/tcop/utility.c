@@ -24,6 +24,7 @@
 #include "catalog/toasting.h"
 #include "catalog/aoseg.h"
 #include "catalog/aoblkdir.h"
+#include "catalog/aovisimap.h"
 #include "commands/alter.h"
 #include "commands/async.h"
 #include "commands/cluster.h"
@@ -944,11 +945,12 @@ ProcessUtility(Node *parsetree,
 				DefinePartitionedRelation((CreateStmt *) parsetree, relOid);
 
 				elog(DEBUG2,"CreateStmt: rel Oid %d toast Oid %d AoSeg Oid %d"
-					 "AoBlkdir Oid %d",
+					 "AoBlkdir Oid %d AoVisimap Oid %d",
 					 relOid,
 					 ((CreateStmt *) parsetree)->oidInfo.toastOid,
 					 ((CreateStmt *) parsetree)->oidInfo.aosegOid,
-					 ((CreateStmt *) parsetree)->oidInfo.aoblkdirOid);
+					 ((CreateStmt *) parsetree)->oidInfo.aoblkdirOid,
+					 ((CreateStmt *) parsetree)->oidInfo.aovisimapOid);
 
 				if (relKind != RELKIND_COMPOSITE_TYPE)
 				{
@@ -969,6 +971,13 @@ ProcessUtility(Node *parsetree,
 							((CreateStmt *) parsetree)->oidInfo.aoblkdirIndexOid,
 							&(((CreateStmt *) parsetree)->oidInfo.aoblkdirComptypeOid),
 							((CreateStmt *)parsetree)->is_part_child);
+
+					AlterTableCreateAoVisimapTableWithOid(relOid,
+							((CreateStmt *) parsetree)->oidInfo.aovisimapOid,
+							((CreateStmt *) parsetree)->oidInfo.aovisimapIndexOid,
+							&(((CreateStmt *) parsetree)->oidInfo.aovisimapComptypeOid),
+							((CreateStmt *)parsetree)->is_part_child);
+
 				}
 				CommandCounterIncrement();
 				/*

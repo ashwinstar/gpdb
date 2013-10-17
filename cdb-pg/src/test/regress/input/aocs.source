@@ -284,16 +284,17 @@ insert into co values (9,2,'b'), (10,2,'bb'), (11,2,'bbb'), (12,2,'bbbb'),
 	(13,5,'aaaaa'), (14,6,'aaaaaa'), (15,7,'aaaaaaa'), (16,8,'aaaaaaaa');
 select * from co where j = 2;
 
+
+---------------------
+-- UAO
+---------------------
+-- DELETE
+DELETE FROM tenk_aocs1 WHERE unique1 = 1;
+-- UPDATE
+UPDATE tenk_aocs1 SET unique2 = 1 WHERE unique2 = 2;
 -------------------- 
 -- unsupported sql 
 --------------------
-
--- DELETE (not supported)
-DELETE FROM tenk_aocs1 WHERE unique1 = 1;
-
--- UPDATE (not supported)
-UPDATE tenk_aocs1 SET unique2 = 1 WHERE unique2 = 2;
-
 -- ALTER
 ALTER TABLE tenk_aocs1 RENAME TO tenk_renamed;
 ALTER TABLE tenk_renamed ADD COLUMN newcol int default 10;

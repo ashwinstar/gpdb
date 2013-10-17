@@ -145,6 +145,10 @@ struct PGPROC
 	char		combocid_map_name[MAXPGPATH]; /* name of the map */
 
 	int queryCommandId; /* command_id for the running query */
+
+	bool serializableIsoLevel; /* true if proc has serializable isolation level set */
+
+	bool inDropTransaction; /* true if proc is in vacuum drop transaction */
 };
 
 /* NOTE: "typedef struct PGPROC PGPROC" appears in storage/lock.h. */

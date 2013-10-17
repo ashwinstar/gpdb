@@ -377,7 +377,8 @@ AlterRelationNamespaceInternalTwo(Relation rel,
 
 static RangeVar *make_temp_table_name(Relation rel, BackendId id);
 static bool prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro,
-								List *opts, List **hidden_types, bool isTmpTableAo);
+								List *opts, List **hidden_types, bool isTmpTableAo,
+								bool useExistingColumnAttributes);
 static void ATPartitionCheck(AlterTableType subtype, Relation rel, bool rejectroot, bool recursing);
 static void InvokeProtocolValidation(Oid procOid, char *procName, bool iswritable, List *locs);
 
@@ -639,6 +640,9 @@ DefineRelation_int(CreateStmt *stmt,
 		Oid			aoblkdirIndexId = InvalidOid;
 		Oid         aosegComptypeOid = InvalidOid;
 		Oid         aoblkdirComptypeOid = InvalidOid;
+		Oid         aovisimapRelationId = InvalidOid;
+		Oid			aovisimapIndexId = InvalidOid;
+		Oid         aovisimapComptypeOid = InvalidOid;
 
 		MemoryContext oldContext;
 
@@ -685,6 +689,10 @@ DefineRelation_int(CreateStmt *stmt,
 			aoblkdirIndexId     = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
 			aosegComptypeOid    = GetNewRelFileNode(tablespaceId, false,  pg_type_desc);
 			aoblkdirComptypeOid = GetNewRelFileNode(tablespaceId, false,  pg_type_desc);
+			aovisimapRelationId = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
+			aovisimapIndexId    = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
+			aovisimapComptypeOid = GetNewRelFileNode(tablespaceId, false, pg_type_desc);
+
 		}
 
 		heap_close(pg_class_desc, NoLock);  /* gonna update, so don't unlock */
@@ -700,6 +708,9 @@ DefineRelation_int(CreateStmt *stmt,
 		stmt->oidInfo.aoblkdirOid = aoblkdirRelationId;
 		stmt->oidInfo.aoblkdirIndexOid = aoblkdirIndexId;
 		stmt->oidInfo.aoblkdirComptypeOid = aoblkdirComptypeOid;
+		stmt->oidInfo.aovisimapOid = aovisimapRelationId;
+		stmt->oidInfo.aovisimapIndexOid = aovisimapIndexId;
+		stmt->oidInfo.aovisimapComptypeOid = aovisimapComptypeOid;
 
 		stmt->relKind = relkind;
 		stmt->relStorage = relstorage;
@@ -726,6 +737,8 @@ DefineRelation_int(CreateStmt *stmt,
 		stmt->oidInfo.aosegIndexOid = InvalidOid;
 		stmt->oidInfo.aoblkdirOid = InvalidOid;
 		stmt->oidInfo.aoblkdirIndexOid = InvalidOid;
+		stmt->oidInfo.aovisimapOid = InvalidOid;
+		stmt->oidInfo.aovisimapIndexOid = InvalidOid;
 		stmt->ownerid = GetUserId();
 	}
 
@@ -1715,6 +1728,7 @@ ExecuteTruncate(TruncateStmt *stmt)
 	List	   *new_toast_oids = NIL;
 	List	   *new_aoseg_oids = NIL;
 	List       *new_aoblkdir_oids = NIL;
+	List       *new_aovisimap_oids = NIL;
 	List	   *new_ind_oids = NIL;
 	ListCell   *cell;
     int partcheck = 2;
@@ -1881,10 +1895,12 @@ ExecuteTruncate(TruncateStmt *stmt)
 			Oid			toast_relid;
 			Oid			aoseg_relid = InvalidOid;
 			Oid			aoblkdir_relid = InvalidOid;
+			Oid         aovisimap_relid = InvalidOid;
 			Oid			new_heap_oid = InvalidOid;
 			Oid			new_toast_oid = InvalidOid;
 			Oid			new_aoseg_oid = InvalidOid;
 			Oid			new_aoblkdir_oid = InvalidOid;
+			Oid         new_aovisimap_oid = InvalidOid;
 			List	   *indoids = NIL;
 
 			/*
@@ -1904,7 +1920,8 @@ ExecuteTruncate(TruncateStmt *stmt)
 				RelationIsAoCols(rel))
 				GetAppendOnlyEntryAuxOids(heap_relid, SnapshotNow,
 										  &aoseg_relid, NULL,
-										  &aoblkdir_relid, NULL);
+										  &aoblkdir_relid, NULL,
+										  &aovisimap_relid, NULL);
 
 			/*
 			 * The same for the toast table, if any.
@@ -1932,21 +1949,32 @@ ExecuteTruncate(TruncateStmt *stmt)
 				new_aoblkdir_oid = setNewRelfilenode(rel);
 				heap_close(rel, NoLock);
 			}
+	
+			if (OidIsValid(aovisimap_relid))
+			{
+				rel = relation_open(aovisimap_relid, AccessExclusiveLock);
+				new_aovisimap_oid = setNewRelfilenode(rel);
+				heap_close(rel, NoLock);
+			}
 
 			new_toast_oids = lappend_oid(new_toast_oids, new_toast_oid);
 			new_aoseg_oids = lappend_oid(new_aoseg_oids, new_aoseg_oid);
 			new_aoblkdir_oids = lappend_oid(new_aoblkdir_oids, new_aoblkdir_oid);
+			new_aovisimap_oids = lappend_oid(new_aovisimap_oids, new_aovisimap_oid);
 
 			elog(DEBUG5, "Truncate in DISPATCH mode: old heap oid %u "
-				 "toast %u aoseg %u aoblkdir %u new heap oid %u, new toast oid %u "
-				 "aoseg oid %u aoblkdir oid %u",
+				 "toast %u aoseg %u aoblkdir %u aovisimap %u" 
+				 "new heap oid %u, new toast oid %u "
+				 "aoseg oid %u aoblkdir oid %u aovisimap oid %u",
 				 heap_relid, toast_relid, aoseg_relid, aoblkdir_relid,
-				 new_heap_oid, new_toast_oid, new_aoseg_oid, new_aoblkdir_oid);
+				 aovisimap_relid,
+				 new_heap_oid, new_toast_oid, new_aoseg_oid, new_aoblkdir_oid,
+				 new_aovisimap_oid);
 
 			/*
 			 * Reconstruct the indexes to match, and we're done.
 			 */
-			reindex_relation(heap_relid, true, true, true, &indoids, true);
+			reindex_relation(heap_relid, true, true, true, true, &indoids, true);
 			new_ind_oids = lappend(new_ind_oids, indoids);
 		}
 
@@ -1959,6 +1987,7 @@ ExecuteTruncate(TruncateStmt *stmt)
 			stmt->new_toast_oids = new_toast_oids;
 			stmt->new_aoseg_oids = new_aoseg_oids;
 			stmt->new_aoblkdir_oids = new_aoblkdir_oids;
+			stmt->new_aovisimap_oids = new_aovisimap_oids;
 			stmt->new_ind_oids = new_ind_oids;
 
 			CdbDispatchUtilityStatement((Node *) stmt, "ExecuteTruncate");
@@ -1988,6 +2017,7 @@ ExecuteTruncate(TruncateStmt *stmt)
 		ListCell   *cell4;
 		ListCell   *cell5;
 		ListCell   *cell6;
+		ListCell   *cell7;
 		ListCell   *ind_cell;
 
 #ifdef USE_ASSERT_CHECKING
@@ -1997,6 +2027,7 @@ ExecuteTruncate(TruncateStmt *stmt)
 		Assert(len == list_length(stmt->new_toast_oids));
 		Assert(len == list_length(stmt->new_aoseg_oids));
 		Assert(len == list_length(stmt->new_aoblkdir_oids));
+		Assert(len == list_length(stmt->new_aovisimap_oids));
 		Assert(len == list_length(stmt->new_ind_oids));
 #endif /* USE_ASSERT_CHECKING */
 
@@ -2005,6 +2036,7 @@ ExecuteTruncate(TruncateStmt *stmt)
 		cell4 = list_head(stmt->new_toast_oids);
 		cell5 = list_head(stmt->new_aoseg_oids);
 		cell6 = list_head(stmt->new_aoblkdir_oids);
+		cell7 = list_head(stmt->new_aovisimap_oids);
 
 		ind_cell = list_head(stmt->new_ind_oids);
 
@@ -2015,10 +2047,12 @@ ExecuteTruncate(TruncateStmt *stmt)
 			Oid			toast_relid;
 			Oid			aoseg_relid = InvalidOid;
 			Oid			aoblkdir_relid = InvalidOid;
+			Oid         aovisimap_relid = InvalidOid;
 			Oid			new_heap_oid = lfirst_oid(cell3);
 			Oid			new_toast_oid = lfirst_oid(cell4);
 			Oid			new_aoseg_oid = lfirst_oid(cell5);
 			Oid			new_aoblkdir_oid = lfirst_oid(cell6);
+			Oid         new_aovisimap_oid = lfirst_oid(cell7);
 			List	   *ind_oids = ind_cell ? lfirst(ind_cell) : NIL;
 
 			/*
@@ -2035,7 +2069,8 @@ ExecuteTruncate(TruncateStmt *stmt)
 			if (RelationIsAoRows(rel) || RelationIsAoCols(rel))
 				GetAppendOnlyEntryAuxOids(heap_relid, SnapshotNow,
 										  &aoseg_relid, NULL,
-										  &aoblkdir_relid, NULL);
+										  &aoblkdir_relid, NULL,
+										  &aovisimap_relid, NULL);
 
 			/*
 			 * The same for the toast table, if any.
@@ -2064,6 +2099,13 @@ ExecuteTruncate(TruncateStmt *stmt)
 				setNewRelfilenodeToOid(rel, new_aoblkdir_oid);
 				heap_close(rel, NoLock);
 			}
+	
+			if (OidIsValid(aovisimap_relid))
+			{
+				rel = relation_open(aovisimap_relid, AccessExclusiveLock);
+				setNewRelfilenodeToOid(rel, new_aovisimap_oid);
+				heap_close(rel, NoLock);
+			}
 
 			elog(DEBUG5, "Truncate in EXECUTE mode: old heap oid %u "
 				 "toast %u aoseg %u aoblkdir %u new heap oid %u, new toast oid %u "
@@ -2074,13 +2116,14 @@ ExecuteTruncate(TruncateStmt *stmt)
 			/*
 			 * Reconstruct the indexes to match, and we're done.
 			 */
-			reindex_relation(heap_relid, true, true, true, &ind_oids, false);
+			reindex_relation(heap_relid, true, true, true, true, &ind_oids, false);
 
 			cell2 = lnext(cell2);
 			cell3 = lnext(cell3);
 			cell4 = lnext(cell4);
 			cell5 = lnext(cell5);
 			cell6 = lnext(cell6);
+			cell7 = lnext(cell7);
 			ind_cell = ind_cell ? lnext(ind_cell) : NULL;
 		}
 	}
@@ -5601,7 +5644,7 @@ ATRewriteTables(List **wqueue,
 			 * It is not legal to reindex without dispatch of the associated
 			 * oids!
 			 */
-			reindex_relation(tab->relid, false, false, false, 
+			reindex_relation(tab->relid, false, false, false, false, 
 							 poidmap, poidmap && Gp_role == GP_ROLE_DISPATCH);
 		}
 		else
@@ -5957,11 +6000,11 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 			MemTupleBinding*		mt_bind;
 
 			if(newrel)
-				aoInsertDesc = appendonly_insert_init(newrel, segno);
+				aoInsertDesc = appendonly_insert_init(newrel, SnapshotNow, segno, false);
 
 			mt_bind = (newrel ? aoInsertDesc->mt_bind : create_memtuple_binding(newTupDesc));
 
-			aoscan = appendonly_beginscan(oldrel, SnapshotNow, 0, NULL);
+			aoscan = appendonly_beginscan(oldrel, SnapshotNow, SnapshotNow, 0, NULL);
 
 			/*
 			 * Switch to per-tuple memory context and reset it for each tuple
@@ -6098,9 +6141,9 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 				memset(proj, true, nvp);
 
 			if(newrel)
-				idesc = aocs_insert_init(newrel, segno);
+				idesc = aocs_insert_init(newrel, segno, false);
 
-			sdesc = aocs_beginscan(oldrel, SnapshotNow, oldTupDesc, proj);
+			sdesc = aocs_beginscan(oldrel, SnapshotNow, SnapshotNow, oldTupDesc, proj);
 
 			aocs_getnext(sdesc, ForwardScanDirection, oldslot);
 
@@ -6332,15 +6375,27 @@ ATSimplePermissions(Relation rel, bool allowView)
 								RelationGetRelationName(rel)),
 						 errOmitLocation(true)));
 		}
-		else if (!IsUnderPostmaster &&
+		else if ((!IsUnderPostmaster || gp_upgrade_mode) &&
 				 (rel->rd_rel->relkind == RELKIND_AOSEGMENTS ||
-				  rel->rd_rel->relkind == RELKIND_AOBLOCKDIR))
+				  rel->rd_rel->relkind == RELKIND_AOBLOCKDIR ||
+				  rel->rd_rel->relkind == RELKIND_AOVISIMAP))
 		{
 			/*
 			 * Allow ALTER TABLE operations in standard alone mode on
 			 * AO segment tables.
 			 */
 		}
+#if GP_VERSION_NUM >= 40300 && GP_VERSION_NUM < 40400
+		else if (gp_upgrade_mode &&
+				 (rel->rd_rel->relkind == RELKIND_AOSEGMENTS ||
+				  rel->rd_rel->relkind == RELKIND_AOBLOCKDIR ||
+				  rel->rd_rel->relkind == RELKIND_AOVISIMAP))
+		{
+			/*
+			 * We add columns to pg_aoseg.  Allow it in upgrade mode.
+			 */
+		}
+#endif
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
@@ -6792,7 +6847,8 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 	 * 20,000 columns for AO, for example.
 	 */
 	if (!(!IsUnderPostmaster && (rel->rd_rel->relkind == RELKIND_AOSEGMENTS ||
-								 rel->rd_rel->relkind == RELKIND_AOBLOCKDIR)))
+								 rel->rd_rel->relkind == RELKIND_AOBLOCKDIR ||
+								 rel->rd_rel->relkind == RELKIND_AOVISIMAP)))
 	{
 		cqContext	cqc3;
 
@@ -9851,6 +9907,7 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing)
 		case RELKIND_TOASTVALUE:
 		case RELKIND_AOSEGMENTS:
 		case RELKIND_AOBLOCKDIR:
+		case RELKIND_AOVISIMAP:
 		case RELKIND_COMPOSITE_TYPE:
 			if (recursing)
 				break;
@@ -9957,7 +10014,8 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing)
 		if (tuple_class->relkind == RELKIND_RELATION ||
 			tuple_class->relkind == RELKIND_TOASTVALUE ||
 			tuple_class->relkind == RELKIND_AOSEGMENTS ||
-			tuple_class->relkind == RELKIND_AOBLOCKDIR)
+			tuple_class->relkind == RELKIND_AOBLOCKDIR ||
+			tuple_class->relkind == RELKIND_AOVISIMAP)
 		{
 			List	   *index_oid_list;
 			ListCell   *i;
@@ -9982,9 +10040,11 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing)
 			if(RelationIsAoRows(target_rel) || RelationIsAoCols(target_rel))
 			{
 				Oid segrelid, blkdirrelid;
+				Oid visimap_relid;
 				GetAppendOnlyEntryAuxOids(relationOid, SnapshotNow,
 										  &segrelid, NULL,
-										  &blkdirrelid, NULL);
+										  &blkdirrelid, NULL,
+										  &visimap_relid, NULL);
 				
 				/* If it has an AO segment table, recurse to change its
 				 * ownership */
@@ -9995,6 +10055,13 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing)
 				 * ownership */
 				if (blkdirrelid != InvalidOid)
 					ATExecChangeOwner(blkdirrelid, newOwnerId, true);
+
+				/* If it has an AO visimap table, recurse to change its 
+				 * ownership */
+				if (visimap_relid != InvalidOid)
+				{
+					ATExecChangeOwner(visimap_relid, newOwnerId, true);
+				}
 			}
 			
 			/* If it has dependent sequences, recurse to change them too */
@@ -10307,6 +10374,7 @@ ATExecSetRelOptions(Relation rel, List *defList, bool isReset)
 		case RELKIND_TOASTVALUE:
 		case RELKIND_AOSEGMENTS:
 		case RELKIND_AOBLOCKDIR:
+		case RELKIND_AOVISIMAP:
 			if(RelationIsAoRows(rel) || RelationIsAoCols(rel))
 				ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
@@ -11071,6 +11139,8 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace, TableOidInfo *oidInfo)
 	Oid			relaosegidxid = InvalidOid;
 	Oid			relaoblkdirrelid = InvalidOid;
 	Oid			relaoblkdiridxid = InvalidOid;
+	Oid         relaovisimaprelid = InvalidOid;
+	Oid         relaovisimapidxid = InvalidOid;
 	Oid			relbmrelid = InvalidOid;
 	Oid			relbmidxid = InvalidOid;
 
@@ -11103,7 +11173,8 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace, TableOidInfo *oidInfo)
 	if (RelationIsAoRows(rel) || RelationIsAoCols(rel))
 		GetAppendOnlyEntryAuxOids(tableOid, SnapshotNow,
 								  &relaosegrelid, &relaosegidxid,
-								  &relaoblkdirrelid, &relaoblkdiridxid);
+								  &relaoblkdirrelid, &relaoblkdiridxid,
+								  &relaovisimaprelid, &relaovisimapidxid);
 
 	/* Get the bitmap sub objects */
 	if (RelationIsBitmapIndex(rel))
@@ -11136,6 +11207,12 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace, TableOidInfo *oidInfo)
 	if (OidIsValid(relaoblkdiridxid))
 		ATExecSetTableSpace_Relation(relaoblkdiridxid, newTableSpace,
 									 oidInfo->aoblkdirIndexOid);
+	if (OidIsValid(relaovisimaprelid))
+		ATExecSetTableSpace_Relation(relaovisimaprelid, newTableSpace,
+									 oidInfo->aovisimapOid);
+	if (OidIsValid(relaovisimapidxid))
+		ATExecSetTableSpace_Relation(relaovisimapidxid, newTableSpace,
+									 oidInfo->aovisimapIndexOid);
 
 	/* 
 	 * MPP-7996 - bitmap index subobjects w/Alter Table Set tablespace
@@ -12072,7 +12149,8 @@ reloptions_list(Oid relid)
  */
 static QueryDesc *
 build_ctas_with_dist(Relation rel, List *dist_clause,
-					 List *storage_opts, RangeVar **tmprv, List **hidden_types)
+					 List *storage_opts, RangeVar **tmprv, List **hidden_types,
+					 bool useExistingColumnAttributes)
 {
 	Query *q;
 	SelectStmt *s = makeNode(SelectStmt);
@@ -12111,7 +12189,8 @@ build_ctas_with_dist(Relation rel, List *dist_clause,
 	pre_built = prebuild_temp_table(rel, tmprel, dist_clause,
 									storage_opts, hidden_types,
 									(RelationIsAoRows(rel) ||
-									 RelationIsAoCols(rel)));
+									 RelationIsAoCols(rel)),
+									useExistingColumnAttributes);
 	if (pre_built)
 	{
 		InsertStmt *i = makeNode(InsertStmt);
@@ -12586,7 +12665,8 @@ make_typname(Form_pg_attribute att, bool *built)
  */
 static bool
 prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro, List *opts,
-					List **hidden_types, bool isTmpTableAo)
+					List **hidden_types, bool isTmpTableAo, 
+					bool useExistingColumnAttributes)
 {
 	bool need_rebuild = false;
 	int attno = 0;
@@ -12646,25 +12726,38 @@ prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro, List *opts,
 
 		if (RelationIsAoCols(rel))
 		{
-			/* 
-			 * Need to remove table level compression settings for the
-			 * AOCO case since they're set at the column level.
-			 */
-			ListCell *lc;
-
-			foreach(lc, opts)
+			if (useExistingColumnAttributes)
 			{
-				DefElem *de = lfirst(lc);
+				/* 
+				 * Need to remove table level compression settings for the
+				 * AOCO case since they're set at the column level.
+				 */
+				ListCell *lc;
 
-				if (de->defname &&
-					(strcmp("compresstype", de->defname) == 0 ||
-					 strcmp("compresslevel", de->defname) == 0 ||
-					 strcmp("blocksize", de->defname) == 0))
-					continue;
-				else
-					cs->options = lappend(cs->options, de);
+				foreach(lc, opts)
+				{
+					DefElem *de = lfirst(lc);
+
+					if (de->defname &&
+						(strcmp("compresstype", de->defname) == 0 ||
+						 strcmp("compresslevel", de->defname) == 0 ||
+						 strcmp("blocksize", de->defname) == 0))
+						continue;
+					else
+						cs->options = lappend(cs->options, de);
+				}
+				col_encs = RelationGetUntransformedAttributeOptions(rel);
 			}
-			col_encs = RelationGetUntransformedAttributeOptions(rel);
+			else
+			{
+				ListCell *lc;
+
+				foreach(lc, opts)
+				{
+					DefElem *de = lfirst(lc);
+					cs->options = lappend(cs->options, de);
+				}
+			}
 		}
 		else
 			cs->options = opts;
@@ -12825,9 +12918,11 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 	Datum		newOptions = PointerGetDatum(NULL);
 	bool		change_policy = false;
 	bool		is_ao = false;
-    bool        is_aocs = false;
-    char        relstorage = RELSTORAGE_HEAP;
+	bool        is_aocs = false;
+	char        relstorage = RELSTORAGE_HEAP;
 	List	   *hidden_types = NIL; /* types we need to build for dropped columns */
+	int         nattr; /* number of attributes */
+	bool useExistingColumnAttributes = true;
 
 	/* Permissions checks */
 	if (!pg_class_ownercheck(RelationGetRelid(rel), GetUserId()))
@@ -12888,9 +12983,9 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 				{
 					/* MPP-7770: disable changing storage options for now */
 					if (!gp_setwith_alter_storage)
-                        ereport(ERROR,
-                                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                                 errmsg("option \"%s\" not supported",
+						ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("option \"%s\" not supported",
 										 def->defname),
 								 errOmitLocation(true)));
 
@@ -12904,8 +12999,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 						else
 							is_ao = false;
 					}
-
-                    if (pg_strcasecmp(def->defname, "orientation") == 0)
+					else if (pg_strcasecmp(def->defname, "orientation") == 0)
                     {
 						if (IsA(def->arg, String) && pg_strcasecmp(strVal(def->arg), "column") == 0)
                         {
@@ -12922,6 +13016,10 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
                                   			   errOmitLocation(true)));
                         }
                     }
+					else
+					{
+						useExistingColumnAttributes=false;
+					}
 
 					nlist = lappend(nlist, def);
 				}
@@ -12983,13 +13081,15 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 										   errOmitLocation(true)));
 
 			newOptions = new_rel_opts(rel, lwith);
-			
+
 			/* ensure that the options parse */
 			if (newOptions)
 				(void)heap_reloptions(rel->rd_rel->relkind, newOptions, true);
 		}
 		else
+		{
 			newOptions = new_rel_opts(rel, NIL);
+		}
 
 		if (ldistro)
 			change_policy = true;
@@ -13180,7 +13280,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 		queryDesc = build_ctas_with_dist(rel, ldistro,
 										 untransformRelOptions(newOptions),
 										 &tmprv,
-										 &hidden_types);
+										 &hidden_types, useExistingColumnAttributes);
 
 		PG_TRY();
 		{
@@ -13298,7 +13398,9 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 	 * the cache, we keep the lock though. ATRewriteCatalogs() knows
 	 * that we've closed the relation here.
 	 */
+	nattr = RelationGetNumberOfAttributes(rel);
 	heap_close(rel, NoLock);
+	rel = NULL;
    	tmprelid = RangeVarGetRelid(tmprv, false);
 	swap_relation_files(tarrelid, tmprelid, false);
 
@@ -13354,8 +13456,15 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 		CommandCounterIncrement();
 	}
 
+	if (gp_setwith_alter_storage)
+	{
+		RemoveAttributeEncodingsByRelid(tarrelid);
+		cloneAttributeEncoding(tmprelid, tarrelid, 
+			nattr);
+	}
+
 	/* now, reindex */
-	reindex_relation(tarrelid, false, false /* ao_segs ? */, false,
+	reindex_relation(tarrelid, false, false /* ao_segs ? */, false, false,
 					 &oid_map, Gp_role == GP_ROLE_DISPATCH);
 
 	/* Step (g) */
@@ -13451,6 +13560,7 @@ rel_get_table_oid(Relation rel)
 	}
 	else if (rel->rd_rel->relkind == RELKIND_AOSEGMENTS ||
 			 rel->rd_rel->relkind == RELKIND_AOBLOCKDIR ||
+			 rel->rd_rel->relkind == RELKIND_AOVISIMAP ||
 			 rel->rd_rel->relkind == RELKIND_TOASTVALUE)
 	{
 		/* use pg_depend to find parent */
@@ -15238,7 +15348,7 @@ split_rows(Relation intoa, Relation intob, Relation temprel)
 	if (RelationIsHeap(temprel))
 		heapscan = heap_beginscan(temprel, SnapshotNow, 0, NULL);
 	else if (RelationIsAoRows(temprel))
-		aoscan = appendonly_beginscan(temprel, SnapshotNow, 0, NULL);
+		aoscan = appendonly_beginscan(temprel, SnapshotNow, SnapshotNow, 0, NULL);
 	else if (RelationIsAoCols(temprel))
 	{
 		int nvp = temprel->rd_att->natts;
@@ -15248,7 +15358,7 @@ split_rows(Relation intoa, Relation intob, Relation temprel)
 		for(i=0; i<nvp; ++i)
 			aocsproj[i] = true;
 
-		aocsscan = aocs_beginscan(temprel, SnapshotNow, NULL /* relationTupleDesc */, aocsproj);
+		aocsscan = aocs_beginscan(temprel, SnapshotNow, SnapshotNow, NULL /* relationTupleDesc */, aocsproj);
 	}
 	else
 	{
@@ -15354,8 +15464,8 @@ split_rows(Relation intoa, Relation intob, Relation temprel)
 			if (!(*targetAODescPtr))
 			{
 				MemoryContextSwitchTo(oldCxt);
-				*targetAODescPtr = appendonly_insert_init(targetRelation,
-														  RESERVED_SEGNO);
+				*targetAODescPtr = appendonly_insert_init(targetRelation, SnapshotNow,
+														  RESERVED_SEGNO, false);
 				MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 			}
 
@@ -15371,7 +15481,7 @@ split_rows(Relation intoa, Relation intob, Relation temprel)
 			{
 				MemoryContextSwitchTo(oldCxt);
 				*targetAOCSDescPtr = aocs_insert_init(targetRelation,
-													  RESERVED_SEGNO);
+													  RESERVED_SEGNO, false);
 				MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 			}
 
@@ -16656,6 +16766,13 @@ AlterTableNamespace(RangeVar *relation, const char *newschema)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("\"%s\" is an Append Only block directory relation",
+						RelationGetRelationName(rel)),
+								   errOmitLocation(true)));
+	
+	if (rel->rd_rel->relkind == RELKIND_AOVISIMAP)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("\"%s\" is an Append Only visibility map relation",
 						RelationGetRelationName(rel)),
 								   errOmitLocation(true)));
 

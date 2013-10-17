@@ -46,6 +46,7 @@
 #include "catalog/toasting.h"
 #include "catalog/aoseg.h"
 #include "catalog/aoblkdir.h"
+#include "catalog/aovisimap.h"
 #include "catalog/catalog.h"
 #include "catalog/pg_attribute_encoding.h"
 #include "catalog/pg_type.h"
@@ -443,7 +444,9 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			intoClause->oidInfo.aoblkdirOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
 			intoClause->oidInfo.aoblkdirIndexOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
 			intoClause->oidInfo.aoblkdirComptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
-			
+			intoClause->oidInfo.aovisimapOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
+			intoClause->oidInfo.aovisimapIndexOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
+			intoClause->oidInfo.aovisimapComptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
 			heap_close(pg_class_desc, RowExclusiveLock);
 			heap_close(pg_type_desc, RowExclusiveLock);
 
@@ -1393,19 +1396,24 @@ InitializeResultRelations(PlannedStmt *plannedstmt, EState *estate, CmdType oper
 		all_relids = list_concat(all_relids,
 								 all_partition_relids(estate->es_result_partitions));
 		
+        /* 
+         * We also assign a segno for a deletion operation.
+         * That segno will later be touched to ensure a correct
+         * incremental backup.
+         */
 		estate->es_result_aosegnos = assignPerRelSegno(all_relids);
-		
+
 		plannedstmt->result_partitions = estate->es_result_partitions;
 		plannedstmt->result_aosegnos = estate->es_result_aosegnos;
 		
 		/* Set any QD resultrels segno, just in case. The QEs set their own in ExecInsert(). */
-		int relno = 0;
-		ResultRelInfo* relinfo;
-		for (relno = 0; relno < numResultRelations; relno ++)
-		{
-			relinfo = &(resultRelInfos[relno]);
-			ResultRelInfoSetSegno(relinfo, estate->es_result_aosegnos);
-		}
+        int relno = 0;
+        ResultRelInfo* relinfo;
+        for (relno = 0; relno < numResultRelations; relno ++)
+        {
+            relinfo = &(resultRelInfos[relno]);
+            ResultRelInfoSetSegno(relinfo, estate->es_result_aosegnos);
+        }
 	}
 	
 	estate->es_partition_state = NULL;
@@ -1578,7 +1586,6 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	 * If there are partitions involved in the query, initialize partitioning metadata.
 	 */
 	InitializeQueryPartsMetadata(plannedstmt, estate);
-
 
 	/*
 	 * Detect whether we're doing SELECT INTO.  If so, set the es_into_oids
@@ -1975,17 +1982,27 @@ initResultRelInfo(ResultRelInfo *resultRelInfo,
 							RelationGetRelationName(resultRelationDesc))));
 			break;
 		case RELKIND_AOSEGMENTS:
-			ereport(ERROR,
-					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-					 errmsg("cannot change AO segment listing relation \"%s\"",
-							RelationGetRelationName(resultRelationDesc))));
+			if (!gp_upgrade_mode)
+				ereport(ERROR,
+						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+						 errmsg("cannot change AO segment listing relation \"%s\"",
+								RelationGetRelationName(resultRelationDesc))));
 			break;
 		case RELKIND_AOBLOCKDIR:
-			ereport(ERROR,
-					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-					 errmsg("cannot change AO block directory relation \"%s\"",
-							RelationGetRelationName(resultRelationDesc))));
+			if (!gp_upgrade_mode)
+				ereport(ERROR,
+						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+						 errmsg("cannot change AO block directory relation \"%s\"",
+								RelationGetRelationName(resultRelationDesc))));
 			break;
+		case RELKIND_AOVISIMAP:
+			if (!gp_upgrade_mode)
+				ereport(ERROR,
+						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+						 errmsg("cannot change AO visibility map relation \"%s\"",
+								RelationGetRelationName(resultRelationDesc))));
+			break;
+
 		case RELKIND_VIEW:
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
@@ -2027,6 +2044,8 @@ initResultRelInfo(ResultRelInfo *resultRelInfo,
 	resultRelInfo->ri_aoInsertDesc = NULL;
 	resultRelInfo->ri_aocsInsertDesc = NULL;
 	resultRelInfo->ri_extInsertDesc = NULL;
+	resultRelInfo->ri_deleteDesc = NULL;
+	resultRelInfo->ri_updateDesc = NULL;
 	resultRelInfo->ri_aosegno = InvalidFileSegNumber;
 
 	/*
@@ -2080,9 +2099,9 @@ ResultRelInfoSetSegno(ResultRelInfo *resultRelInfo, List *mapping)
 			Assert(n->segno != InvalidFileSegNumber);
 			resultRelInfo->ri_aosegno = n->segno;
 
-			if (Debug_appendonly_print_insert)
-				elog(LOG, "Appendonly: setting pre-assigned segno %d in result "
-						  "relation with relid %d", n->segno, n->relid);
+			elogif(Debug_appendonly_print_insert, LOG,
+				"Appendonly: setting pre-assigned segno %d in result "
+				"relation with relid %d", n->segno, n->relid);
 
 			found = true;
 		}
@@ -2187,7 +2206,7 @@ SendAOTupCounts(EState *estate)
 				if (relstorage_is_ao(RelinfoGetStorage(resultRelInfo)))
 				{
 					Oid relid = RelationGetRelid(resultRelInfo->ri_RelationDesc);
-					uint64 tupcount = resultRelInfo->ri_aoprocessed;
+					uint64 tupcount = resultRelInfo->ri_aoadded;
 
 					pq_sendint(&buf, relid, 4);
 					pq_sendint64(&buf, tupcount);
@@ -2248,11 +2267,34 @@ ExecEndPlan(PlanState *planstate, EState *estate)
 		/* end (flush) the INSERT operation in the access layer */
 		if (resultRelInfo->ri_aoInsertDesc)
 			appendonly_insert_finish(resultRelInfo->ri_aoInsertDesc);
-        if (resultRelInfo->ri_aocsInsertDesc)
-            aocs_insert_finish(resultRelInfo->ri_aocsInsertDesc);
-        if (resultRelInfo->ri_extInsertDesc)
-        	external_insert_finish(resultRelInfo->ri_extInsertDesc);
+		if (resultRelInfo->ri_aocsInsertDesc)
+			aocs_insert_finish(resultRelInfo->ri_aocsInsertDesc);
+		if (resultRelInfo->ri_extInsertDesc)
+			external_insert_finish(resultRelInfo->ri_extInsertDesc);
 
+		if (resultRelInfo->ri_deleteDesc != NULL)
+		{
+			if (RelationIsAoRows(resultRelInfo->ri_RelationDesc))
+				appendonly_delete_finish(resultRelInfo->ri_deleteDesc);
+			else
+			{
+				Assert(RelationIsAoCols(resultRelInfo->ri_RelationDesc));
+				aocs_delete_finish(resultRelInfo->ri_deleteDesc);
+			}
+			resultRelInfo->ri_deleteDesc = NULL;
+		}
+		if (resultRelInfo->ri_updateDesc != NULL)
+		{
+			if (RelationIsAoRows(resultRelInfo->ri_RelationDesc))
+				appendonly_update_finish(resultRelInfo->ri_updateDesc);
+			else
+			{
+				Assert(RelationIsAoCols(resultRelInfo->ri_RelationDesc));
+				aocs_update_finish(resultRelInfo->ri_updateDesc);
+			}
+			resultRelInfo->ri_updateDesc = NULL;
+		}
+		
 		if (resultRelInfo->ri_resultSlot)
 		{
 			Assert(resultRelInfo->ri_resultSlot->tts_tupleDescriptor);
@@ -2421,23 +2463,6 @@ ExecutePlan(EState *estate,
 			default:
 				/* do nothing */
 				break;
-		}
-	}
-
-	/* Error out for unsupported updates */
-	if (operation == CMD_UPDATE)
-	{
-		Assert(estate->es_result_relation_info->ri_RelationDesc);
-		Relation rel = estate->es_result_relation_info->ri_RelationDesc;
-		bool rel_is_aocols = RelationIsAoCols(rel);
-		bool rel_is_aorows = RelationIsAoRows(rel);
-		
-		if ((rel_is_aocols || rel_is_aorows))
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							errmsg("Append-only tables are not updatable. Operation not permitted."),
-							errOmitLocation(true)));
 		}
 	}
 
@@ -3520,7 +3545,7 @@ OpenIntoRel(QueryDesc *queryDesc)
 	 */
 	intoName = intoClause->rel->relname;
 	namespaceId = RangeVarGetCreationNamespace(intoClause->rel);
-	
+
 	aclresult = pg_namespace_aclcheck(namespaceId, GetUserId(),
 									  ACL_CREATE);
 	if (aclresult != ACLCHECK_OK)
@@ -3641,6 +3666,12 @@ OpenIntoRel(QueryDesc *queryDesc)
 									  intoClause->oidInfo.aosegIndexOid,
 									  &intoClause->oidInfo.aosegComptypeOid, 
 									  false);
+	AlterTableCreateAoVisimapTableWithOid(intoRelationId,
+									  intoClause->oidInfo.aovisimapOid,
+									  intoClause->oidInfo.aovisimapIndexOid,
+									  &intoClause->oidInfo.aovisimapComptypeOid,
+									  false);
+
     /* don't create AO block directory here, it'll be created when needed */
 	/*
 	 * And open the constructed table for writing.
@@ -3868,8 +3899,8 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 		AOTupleId	aoTupleId;
 
 		if (myState->ao_insertDesc == NULL)
-			myState->ao_insertDesc = appendonly_insert_init(into_rel,
-															RESERVED_SEGNO);
+			myState->ao_insertDesc = appendonly_insert_init(into_rel, SnapshotNow,
+															RESERVED_SEGNO, false);
 
 		appendonly_insert(myState->ao_insertDesc, tuple, &tupleOid, &aoTupleId);
 		pfree(tuple);
@@ -3877,7 +3908,7 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 	else if (RelationIsAoCols(into_rel))
 	{
 		if(myState->aocs_ins == NULL)
-			myState->aocs_ins = aocs_insert_init(into_rel, RESERVED_SEGNO);
+			myState->aocs_ins = aocs_insert_init(into_rel, RESERVED_SEGNO, false);
 
 		aocs_insert(myState->aocs_ins, slot);
 	}

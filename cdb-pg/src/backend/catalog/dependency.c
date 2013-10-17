@@ -2253,6 +2253,10 @@ getRelationDescription(StringInfo buffer, Oid relid)
 			appendStringInfo(buffer, _("append only file block directory %s"),
 							 relname);
 			break;
+		case RELKIND_AOVISIMAP:
+			appendStringInfo(buffer, _("append only file visibility map %s"),
+							 relname);
+			break;
 		case RELKIND_VIEW:
 			appendStringInfo(buffer, _("view %s"),
 							 relname);

@@ -20,6 +20,7 @@
 #include "nodes/parsenodes.h"
 #include "storage/lock.h"
 #include "utils/rel.h"
+#include "utils/tqual.h"
 
 /*----------
  * ANALYZE builds one of these structs for each attribute (column) that is
@@ -198,6 +199,7 @@ typedef struct VPgStatisticStats
 	PgStatistic pgstat;
 } VPgStatisticStats;
 
+
 /* GUC parameters */
 extern PGDLLIMPORT int default_statistics_target; /* PGDLLIMPORT for PostGIS */
 extern PGDLLIMPORT double analyze_relative_error;
@@ -222,9 +224,17 @@ extern void vac_update_datfrozenxid(void);
 extern bool vac_is_partial_index(Relation indrel);
 extern void vacuum_delay_point(void);
 
+extern bool vacuumStatement_IsInAppendOnlyDropPhase(VacuumStmt *vacstmt);
+extern bool vacummStatement_IsInAppendOnlyCleanupPhase(VacuumStmt *vacstmt);
+extern bool vacuumStatement_IsInAppendOnlyPreparePhase(VacuumStmt* vacstmt);
+extern bool vacuumStatement_IsInAppendOnlyCompactionPhase(VacuumStmt* vacstmt);
+
 /* in commands/vacuumlazy.c */
 extern void lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats);
-extern void vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull);
+extern void vacuum_appendonly_rel(Relation aorel, VacuumStmt *vacstmt);
+extern void vacuum_appendonly_fill_stats(Relation aorel, Snapshot snapshot,
+		void* vacrelstats, bool isVacFull);
+extern int vacuum_appendonly_indexes(Relation aoRelation, VacuumStmt *vacstmt, List* updated_stats);
 extern void vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull);
 extern void gen_oids_for_bitmaps(VacuumStmt *vacstmt, Relation onerel);
 extern List *get_oids_for_bitmap(List *all_extra_oids, Relation Irel, Relation onerel, int occurrence);

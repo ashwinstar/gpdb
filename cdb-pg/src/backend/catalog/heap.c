@@ -1068,6 +1068,7 @@ AddNewRelationTuple(Relation pg_class_desc,
 		case RELKIND_TOASTVALUE:
 		case RELKIND_AOSEGMENTS:
 		case RELKIND_AOBLOCKDIR:
+		case RELKIND_AOVISIMAP:
 			/* The relation is real, but as yet empty */
 			new_rel_reltup->relpages = 0;
 			new_rel_reltup->reltuples = 0;
@@ -1096,7 +1097,8 @@ AddNewRelationTuple(Relation pg_class_desc,
 	if (relkind == RELKIND_RELATION ||
 		relkind == RELKIND_TOASTVALUE ||
 		relkind == RELKIND_AOSEGMENTS ||
-		relkind == RELKIND_AOBLOCKDIR)
+		relkind == RELKIND_AOBLOCKDIR ||
+		relkind == RELKIND_AOVISIMAP)
 	{
 		/*
 		 * Initialize to the minimum XID that could put tuples in the table.
@@ -1560,6 +1562,8 @@ heap_create_with_catalog(const char *relname,
 							  stdRdOptions->checksum,
                               stdRdOptions->columnstore,
 							  stdRdOptions->compresstype,
+							  InvalidOid,
+							  InvalidOid,
 							  InvalidOid,
 							  InvalidOid,
 							  InvalidOid,
@@ -2365,9 +2369,7 @@ StoreAttrDefault(Relation rel, AttrNumber attnum, char *adbin)
 			cql("INSERT INTO pg_attrdef ", 
 				NULL));
 
-	if (Debug_check_for_invalid_persistent_tid)
-	{	
-		elog(LOG, 
+	elogif(Debug_check_for_invalid_persistent_tid, LOG,
 			 "StoreAttrDefault[1] relation %u/%u/%u '%s', isPresent %s, serial number " INT64_FORMAT ", TID %s",
 			 adrel->rd_node.spcNode,
 			 adrel->rd_node.dbNode,
@@ -2376,14 +2378,11 @@ StoreAttrDefault(Relation rel, AttrNumber attnum, char *adbin)
 			 (adrel->rd_segfile0_relationnodeinfo.isPresent ? "true" : "false"),
 			 adrel->rd_segfile0_relationnodeinfo.persistentSerialNum,
 			 ItemPointerToString(&adrel->rd_segfile0_relationnodeinfo.persistentTid));
-	}
 
 	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
 	RelationFetchGpRelationNodeForXLog(adrel);
 
-	if (Debug_check_for_invalid_persistent_tid)
-	{	
-		elog(LOG, 
+	elogif(Debug_check_for_invalid_persistent_tid, LOG,
 			 "StoreAttrDefault[2] relation %u/%u/%u '%s', isPresent %s, serial number " INT64_FORMAT ", TID %s",
 			 adrel->rd_node.spcNode,
 			 adrel->rd_node.dbNode,
@@ -2392,7 +2391,6 @@ StoreAttrDefault(Relation rel, AttrNumber attnum, char *adbin)
 			 (adrel->rd_segfile0_relationnodeinfo.isPresent ? "true" : "false"),
 			 adrel->rd_segfile0_relationnodeinfo.persistentSerialNum,
 			 ItemPointerToString(&adrel->rd_segfile0_relationnodeinfo.persistentTid));
-	}
 
 	tuple = caql_form_tuple(adrcqCtx, values, nulls);
 
@@ -3132,6 +3130,7 @@ heap_truncate(List *relids)
 		Oid			toastrelid;
 		Oid			aosegrelid;
 		Oid         aoblkdirrelid;
+		Oid         aovisimaprelid;
 		AppendOnlyEntry *aoEntry = NULL;
 
 		rel = heap_open(rid, AccessExclusiveLock);
@@ -3165,6 +3164,13 @@ heap_truncate(List *relids)
 			if (OidIsValid(aoblkdirrelid))
 			{
 				rel = heap_open(aoblkdirrelid, AccessExclusiveLock);
+				relations = lappend(relations, rel);
+			}
+
+			aovisimaprelid = aoEntry->visimaprelid;
+			if (OidIsValid(aovisimaprelid))
+			{
+				rel = heap_open(aovisimaprelid, AccessExclusiveLock);
 				relations = lappend(relations, rel);
 			}
 

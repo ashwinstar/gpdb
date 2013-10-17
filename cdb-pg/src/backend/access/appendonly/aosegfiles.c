@@ -34,6 +34,15 @@
 #include "access/aocssegfiles.h"
 
 static Datum ao_compression_ratio_internal(Oid relid);
+static void UpdateFileSegInfo_internal(Relation parentrel,
+				  AppendOnlyEntry *aoEntry,
+				  int segno,
+				  int64 eof,
+				  int64 eof_uncompressed,
+				  int64 tuples_added,
+				  int64 varblocks_added,
+				  int64 modcount_added,
+				  FileSegInfoState newState);
 
 /* ------------------------------------------------------------------------
  *
@@ -49,6 +58,7 @@ NewFileSegInfo(int segno)
 
 	fsinfo = (FileSegInfo *) palloc0(sizeof(FileSegInfo));
 	fsinfo->segno = segno;
+	fsinfo->state = AOSEG_STATE_DEFAULT;
 
 	return fsinfo;
 }
@@ -84,7 +94,7 @@ InsertInitialSegnoEntry(AppendOnlyEntry *aoEntry,
 
 	pg_aoseg_rel = heap_open(aoEntry->segrelid, RowExclusiveLock);
 
-	pg_aoseg_dsc = pg_aoseg_rel->rd_att;
+	pg_aoseg_dsc = RelationGetDescr(pg_aoseg_rel);
 	natts = pg_aoseg_dsc->natts;
 	nulls = palloc(sizeof(bool) * natts);
 	values = palloc0(sizeof(Datum) * natts);
@@ -92,11 +102,13 @@ InsertInitialSegnoEntry(AppendOnlyEntry *aoEntry,
 
 	pg_aoseg_idx = index_open(aoEntry->segidxid, RowExclusiveLock);
 
-	values[Anum_pg_aoseg_segno - 1] = ObjectIdGetDatum(segno);
+	values[Anum_pg_aoseg_segno - 1] = Int32GetDatum(segno);
 	values[Anum_pg_aoseg_tupcount - 1] = Float8GetDatum(0);
 	values[Anum_pg_aoseg_varblockcount - 1] = Float8GetDatum(0);
 	values[Anum_pg_aoseg_eof - 1] = Float8GetDatum(0);
 	values[Anum_pg_aoseg_eofuncompressed - 1] = Float8GetDatum(0);
+	values[Anum_pg_aoseg_modcount - 1] = Int64GetDatum(0);
+	values[Anum_pg_aoseg_state - 1] = Int16GetDatum(AOSEG_STATE_DEFAULT);
 
 	/*
 	 * form the tuple and insert it
@@ -137,7 +149,7 @@ GetFileSegInfo(Relation parentrel, AppendOnlyEntry *aoEntry, Snapshot appendOnly
 	HeapTuple		tuple;
 	ScanKeyData		key;
 	IndexScanDesc	aoscan;
-	Datum			eof, eof_uncompressed, tupcount, varbcount;
+	Datum			eof, eof_uncompressed, tupcount, varbcount, modcount, state;
 	bool			isNull;
 	FileSegInfo 	*fsinfo;
 
@@ -146,14 +158,14 @@ GetFileSegInfo(Relation parentrel, AppendOnlyEntry *aoEntry, Snapshot appendOnly
 	 * is there.
 	 */
 	pg_aoseg_rel = heap_open(aoEntry->segrelid, AccessShareLock);
-	pg_aoseg_dsc = pg_aoseg_rel->rd_att;
+	pg_aoseg_dsc = RelationGetDescr(pg_aoseg_rel);
 	pg_aoseg_idx = index_open(aoEntry->segidxid, AccessShareLock);
 
 	/*
 	 * Setup a scan key to fetch from the index by segno.
 	 */
 	ScanKeyInit(&key,
-				(AttrNumber) 1,
+				(AttrNumber) Anum_pg_aoseg_segno,
 				BTEqualStrategyNumber,
 				F_OIDEQ,
 				ObjectIdGetDatum(segno));
@@ -204,6 +216,22 @@ GetFileSegInfo(Relation parentrel, AppendOnlyEntry *aoEntry, Snapshot appendOnly
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				errmsg("got invalid varblockcount value: NULL")));
+	
+	/* get the modcount */
+	modcount = fastgetattr(tuple, Anum_pg_aoseg_modcount, pg_aoseg_dsc, &isNull);
+
+	if(isNull)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				errmsg("got invalid modcount value: NULL")));
+
+	/* get the state */
+	state = fastgetattr(tuple, Anum_pg_aoseg_state, pg_aoseg_dsc, &isNull);
+
+	if(isNull)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				errmsg("got invalid state value: NULL")));
 
 	/* get the uncompressed eof */
 	eof_uncompressed = fastgetattr(tuple, Anum_pg_aoseg_eofuncompressed, pg_aoseg_dsc, &isNull);
@@ -228,15 +256,17 @@ GetFileSegInfo(Relation parentrel, AppendOnlyEntry *aoEntry, Snapshot appendOnly
 
 	fsinfo->segno = segno;
 	fsinfo->eof = (int64)DatumGetFloat8(eof);
-	fsinfo->tupcount = (int64)DatumGetFloat8(tupcount);
+	fsinfo->total_tupcount = (int64)DatumGetFloat8(tupcount);
 	fsinfo->varblockcount = (int64)DatumGetFloat8(varbcount);
+	fsinfo->modcount = (int64)DatumGetInt64(modcount);
+	fsinfo->state = (int32)DatumGetInt16(state);
 	ItemPointerSetInvalid(&fsinfo->sequence_tid);
 
 	if (fsinfo->eof < 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_INTERNAL_ERROR),
 				errmsg("Invalid eof " INT64_FORMAT " for relation %s",
-					   fsinfo->eof, NameStr(parentrel->rd_rel->relname))));
+					   fsinfo->eof, RelationGetRelationName(parentrel))));
 
 	/* Finish up scan and close appendonly catalog. */
 	heap_close(pg_aoseg_rel, AccessShareLock);
@@ -259,13 +289,14 @@ FileSegInfo **GetAllFileSegInfo(Relation parentrel,
 								int *totalsegs)
 {
 	Relation		pg_aoseg_rel;
-
 	FileSegInfo		**result;
+
+	Assert(RelationIsAoRows(parentrel));
 
 	pg_aoseg_rel = heap_open(aoEntry->segrelid, AccessShareLock);
 
 	result = GetAllFileSegInfo_pg_aoseg_rel(
-									NameStr(parentrel->rd_rel->relname),
+									RelationGetRelationName(parentrel),
 									aoEntry,
 									pg_aoseg_rel,
 									appendOnlyMetaDataSnapshot,
@@ -312,10 +343,11 @@ FileSegInfo **GetAllFileSegInfo_pg_aoseg_rel(
 					eof,
 					eof_uncompressed,
 					tupcount,
-					varblockcount;
+					varblockcount,
+					modcount,
+					state;
 	bool			isNull;
-
-	pg_aoseg_dsc = pg_aoseg_rel->rd_att;
+	pg_aoseg_dsc = RelationGetDescr(pg_aoseg_rel);
 
 	/* MPP-16407:
 	 * Initialize the segment file information array, we first allocate 8 slot for the array,
@@ -328,7 +360,6 @@ FileSegInfo **GetAllFileSegInfo_pg_aoseg_rel(
 	 * Now get the actual segfile information
 	 */
 	aoscan = heap_beginscan(pg_aoseg_rel, appendOnlyMetaDataSnapshot, 0, NULL);
-
 	while ((tuple = heap_getnext(aoscan, ForwardScanDirection)) != NULL)
 	{
 		/* dynamically expand space for FileSegInfo* array */
@@ -339,7 +370,6 @@ FileSegInfo **GetAllFileSegInfo_pg_aoseg_rel(
 		}
 
 		FileSegInfo *oneseginfo;
-		
 		allseginfo[seginfo_no] = (FileSegInfo *)palloc0(sizeof(FileSegInfo));
 		oneseginfo = allseginfo[seginfo_no];
 
@@ -354,32 +384,44 @@ FileSegInfo **GetAllFileSegInfo_pg_aoseg_rel(
 		oneseginfo->eof += (int64)DatumGetFloat8(eof);
 
 		tupcount = fastgetattr(tuple, Anum_pg_aoseg_tupcount, pg_aoseg_dsc, &isNull);
-		oneseginfo->tupcount += (int64)DatumGetFloat8(tupcount);
+		oneseginfo->total_tupcount += (int64)DatumGetFloat8(tupcount);
 
 		varblockcount = fastgetattr(tuple, Anum_pg_aoseg_varblockcount, pg_aoseg_dsc, &isNull);
 		oneseginfo->varblockcount += (int64)DatumGetFloat8(varblockcount);
 
+		/*
+		 * Modcount cannot be NULL in normal operation. However, when
+		 * called from gp_aoseg_history after an upgrade, the old now invisible
+		 * entries may have not set the state and the modcount.
+		 */
+		modcount = fastgetattr(tuple, Anum_pg_aoseg_modcount, pg_aoseg_dsc, &isNull);
+		Assert(!isNull || appendOnlyMetaDataSnapshot == SnapshotAny);
+		if (!isNull)
+			oneseginfo->modcount += (int64)DatumGetInt64(modcount);
+
+		state = fastgetattr(tuple, Anum_pg_aoseg_state, pg_aoseg_dsc, &isNull);
+		Assert(!isNull || appendOnlyMetaDataSnapshot == SnapshotAny);
+		if (!isNull)
+			oneseginfo->state = (int64)DatumGetInt16(state);
+
 		ItemPointerSetInvalid(&oneseginfo->sequence_tid);
 
-		eof_uncompressed = fastgetattr(tuple, Anum_pg_aoseg_varblockcount, pg_aoseg_dsc, &isNull);
+		eof_uncompressed = fastgetattr(tuple, Anum_pg_aoseg_eofuncompressed, pg_aoseg_dsc, &isNull);
 
 		if(isNull)
 			oneseginfo->eof_uncompressed = InvalidUncompressedEof;
 		else
 			oneseginfo->eof_uncompressed += (int64)DatumGetFloat8(eof);
 
-		if (Debug_appendonly_print_scan)
-			elog(LOG,"Append-only found existing segno %d with eof " INT64_FORMAT " for table '%s' out of total %d segs",
+		elogif(Debug_appendonly_print_scan, LOG,
+				"Append-only found existing segno %d with eof " INT64_FORMAT " for table '%s'",
 				oneseginfo->segno,
 				oneseginfo->eof,
-				relationName,
-				*totalsegs);
-
+				relationName);
 		seginfo_no++;
 
 		CHECK_FOR_INTERRUPTS();
 	}
-
 	heap_endscan(aoscan);
 
 	*totalsegs = seginfo_no;
@@ -402,8 +444,136 @@ FileSegInfo **GetAllFileSegInfo_pg_aoseg_rel(
 	return allseginfo;
 }
 
+void
+SetFileSegInfoState(Relation parentrel,
+		AppendOnlyEntry *aoEntry,
+		int segno,
+		FileSegInfoState newState)
+{
+	elogif(Debug_appendonly_print_compaction, LOG,
+			"Set segfile info state: segno %d, table '%s', new state %d",
+			segno,
+			RelationGetRelationName(parentrel),
+			newState);
+
+	UpdateFileSegInfo_internal(parentrel,
+				  aoEntry,
+				  segno,
+				  -1,
+				  -1,
+				  0,
+				  0,
+				  0,
+				 newState);
+}
+
+void
+ClearFileSegInfo(Relation parentrel,
+		AppendOnlyEntry *aoEntry,
+		int segno,
+		FileSegInfoState newState)
+{
+	LockAcquireResult acquireResult;
+	
+	Relation			pg_aoseg_rel;
+	Relation			pg_aoseg_idx;
+	TupleDesc			pg_aoseg_dsc;
+	ScanKeyData			key;
+	IndexScanDesc		aoscan;
+	HeapTuple			tuple, new_tuple;
+	Datum			   *new_record;
+	bool			   *new_record_nulls;
+	bool			   *new_record_repl;
+
+    Assert(RelationIsAoRows(parentrel));
+	Assert(newState >= AOSEG_STATE_USECURRENT && newState <= AOSEG_STATE_AWAITING_DROP);
+
+	elogif(Debug_appendonly_print_compaction, LOG,
+			"Clear seg file info: segno %d table '%s'",
+			segno,
+			RelationGetRelationName(parentrel));
+
+	/*
+	 * Verify we already have the write-lock!
+	 */
+	acquireResult = LockRelationAppendOnlySegmentFile(
+												&parentrel->rd_node,
+												segno,
+												AccessExclusiveLock,
+												/* dontWait */ false);
+	if (acquireResult != LOCKACQUIRE_ALREADY_HELD)
+	{
+		elog(ERROR, "Should already have the (transaction-scope) write-lock on Append-Only segment file #%d, "
+					 "relation %s", segno, RelationGetRelationName(parentrel));
+	}
+
+	/*
+	 * Open the aoseg relation and its index.
+	 */
+	pg_aoseg_rel = heap_open(aoEntry->segrelid, RowExclusiveLock);
+	pg_aoseg_dsc = RelationGetDescr(pg_aoseg_rel);
+	pg_aoseg_idx = index_open(aoEntry->segidxid, RowExclusiveLock);
+
+	/*
+	 * Setup a scan key to fetch from the index by segno.
+	 */
+	ScanKeyInit(&key,
+				(AttrNumber) Anum_pg_aoseg_segno,
+				BTEqualStrategyNumber,
+				F_OIDEQ,
+				ObjectIdGetDatum(segno));
+
+	aoscan = index_beginscan(pg_aoseg_rel, pg_aoseg_idx, SnapshotNow, 1, &key);
+
+	tuple = index_getnext(aoscan, ForwardScanDirection);
+
+	if (!HeapTupleIsValid(tuple))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				errmsg("append-only table \"%s\" file segment \"%d\" entry "
+						"does not exist", RelationGetRelationName(parentrel),
+						segno)));
+
+	new_record = palloc0(sizeof(Datum) * pg_aoseg_dsc->natts);
+	new_record_nulls = palloc0(sizeof(bool) * pg_aoseg_dsc->natts);
+	new_record_repl = palloc0(sizeof(bool) * pg_aoseg_dsc->natts);
+	new_record[Anum_pg_aoseg_eof - 1] = Float8GetDatum(0);
+	new_record_repl[Anum_pg_aoseg_eof - 1] = true;
+	new_record[Anum_pg_aoseg_tupcount - 1] = Float8GetDatum(0);
+	new_record_repl[Anum_pg_aoseg_tupcount - 1] = true;
+	new_record[Anum_pg_aoseg_varblockcount - 1] = Float8GetDatum(0);
+	new_record_repl[Anum_pg_aoseg_varblockcount - 1] = true;
+	new_record[Anum_pg_aoseg_eofuncompressed - 1] = Float8GetDatum(0);
+	new_record_repl[Anum_pg_aoseg_eofuncompressed - 1] = true;
+	/* We do not reset the modcount here */
+
+	if (newState > 0)
+	{
+		new_record[Anum_pg_aoseg_state - 1] = Int16GetDatum(newState);
+		new_record_repl[Anum_pg_aoseg_state - 1] = true;
+	}
+
+	new_tuple = heap_modify_tuple(tuple, pg_aoseg_dsc, new_record,
+								new_record_nulls, new_record_repl);
+
+	simple_heap_update(pg_aoseg_rel, &tuple->t_self, new_tuple);
+	CatalogUpdateIndexes(pg_aoseg_rel, new_tuple);
+	heap_freetuple(new_tuple);
+
+	index_endscan(aoscan);
+	index_close(pg_aoseg_idx, RowExclusiveLock);
+	heap_close(pg_aoseg_rel, RowExclusiveLock);
+
+	pfree(new_record);
+	pfree(new_record_nulls);
+	pfree(new_record_repl);
+}
+
 /*
  * Update the eof and filetupcount of an append only table.
+ *
+ * The parameters eof and eof_uncompressed should not be negative.
+ * tuples_added and varblocks_added can be negative.
  */
 void
 UpdateFileSegInfo(Relation parentrel,
@@ -412,7 +582,45 @@ UpdateFileSegInfo(Relation parentrel,
 				  int64 eof,
 				  int64 eof_uncompressed,
 				  int64 tuples_added,
-				  int64 varblocks_added)
+				  int64 varblocks_added,
+				  int64 modcount_added,
+				  FileSegInfoState newState)
+{
+	Assert(eof >= 0);
+	Assert(eof_uncompressed >= 0);
+
+	elog(DEBUG3, "UpdateFileSegInfo called. segno = %d", segno);
+
+	UpdateFileSegInfo_internal(parentrel,
+				  aoEntry,
+				  segno,
+				  eof,
+				  eof_uncompressed,
+				  tuples_added,
+				  varblocks_added,
+				  modcount_added,
+				  newState);
+}
+
+/*
+ * Update the eof and filetupcount of an append only table.
+ *
+ * The parameters eof and eof_uncompressed can be negative.
+ * In this case, the columns are not updated. 
+ *
+ * The parameters tuples_added and varblocks_added can be negative, e.g. after
+ * a AO compaction.
+ */
+static void
+UpdateFileSegInfo_internal(Relation parentrel,
+				  AppendOnlyEntry *aoEntry,
+				  int segno,
+				  int64 eof,
+				  int64 eof_uncompressed,
+				  int64 tuples_added,
+				  int64 varblocks_added,
+				  int64 modcount_added,
+				  FileSegInfoState newState)
 {
 	LockAcquireResult acquireResult;
 	
@@ -426,17 +634,17 @@ UpdateFileSegInfo(Relation parentrel,
 	Datum				filevarblockcount;
 	Datum				new_tuple_count;
 	Datum				new_varblock_count;
+	Datum               new_modcount;
+	Datum               old_eof;
+	Datum               old_eof_uncompressed;
+	Datum               old_modcount;
 	Datum			   *new_record;
 	bool			   *new_record_nulls;
 	bool			   *new_record_repl;
 	bool				isNull;
 
-	/* overflow sanity checks. don't check the same for tuples_added,
-	 * it may be coming as a negative diff from gp_update_ao_master_stats */
-	Assert(varblocks_added >= 0);
-	Assert(eof >= 0);
-
-	elog(DEBUG3, "UpdateFileSegInfo called. segno = %d", segno);
+    Assert(RelationIsAoRows(parentrel));
+	Assert(newState >= AOSEG_STATE_USECURRENT && newState <= AOSEG_STATE_AWAITING_DROP);
 
 	/*
 	 * Verify we already have the write-lock!
@@ -449,21 +657,21 @@ UpdateFileSegInfo(Relation parentrel,
 	if (acquireResult != LOCKACQUIRE_ALREADY_HELD)
 	{
 		elog(ERROR, "Should already have the (transaction-scope) write-lock on Append-Only segment file #%d, "
-					 "relation %s", segno, parentrel->rd_rel->relname.data);
+					 "relation %s", segno, RelationGetRelationName(parentrel));
 	}
 
 	/*
 	 * Open the aoseg relation and its index.
 	 */
 	pg_aoseg_rel = heap_open(aoEntry->segrelid, RowExclusiveLock);
-	pg_aoseg_dsc = pg_aoseg_rel->rd_att;
+	pg_aoseg_dsc = RelationGetDescr(pg_aoseg_rel);
 	pg_aoseg_idx = index_open(aoEntry->segidxid, RowExclusiveLock);
 
 	/*
 	 * Setup a scan key to fetch from the index by segno.
 	 */
 	ScanKeyInit(&key,
-				(AttrNumber) 1,
+				(AttrNumber) Anum_pg_aoseg_segno,
 				BTEqualStrategyNumber,
 				F_OIDEQ,
 				ObjectIdGetDatum(segno));
@@ -483,6 +691,36 @@ UpdateFileSegInfo(Relation parentrel,
 	new_record_nulls = palloc0(sizeof(bool) * pg_aoseg_dsc->natts);
 	new_record_repl = palloc0(sizeof(bool) * pg_aoseg_dsc->natts);
 
+	if (eof < 0)
+	{
+		old_eof = fastgetattr(tuple,
+								Anum_pg_aoseg_eof,
+								pg_aoseg_dsc,
+								&isNull);
+
+		if(isNull)
+			ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				errmsg("got invalid pg_aoseg eof value: NULL")));
+
+		eof = DatumGetFloat8(old_eof);
+	}
+
+	if (eof_uncompressed < 0)
+	{
+		old_eof_uncompressed = fastgetattr(tuple,
+								Anum_pg_aoseg_eofuncompressed,
+								pg_aoseg_dsc,
+								&isNull);
+
+		if(isNull)
+			ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				errmsg("got invalid pg_aoseg eofuncompressed value: NULL")));
+
+		eof_uncompressed = DatumGetFloat8(old_eof_uncompressed);
+	}
+	
 	/* get the current tuple count so we can add to it */
 	filetupcount = fastgetattr(tuple,
 								Anum_pg_aoseg_tupcount,
@@ -498,6 +736,7 @@ UpdateFileSegInfo(Relation parentrel,
 	new_tuple_count = DirectFunctionCall2(float8pl,
 										  filetupcount,
 										  Float8GetDatum((float8)tuples_added));
+	Assert(DatumGetFloat8(new_tuple_count) > -1.0);
 
 	/* get the current varblock count so we can add to it */
 	filevarblockcount = fastgetattr(tuple,
@@ -514,7 +753,24 @@ UpdateFileSegInfo(Relation parentrel,
 	new_varblock_count = DirectFunctionCall2(float8pl,
 											 filevarblockcount,
 											 Float8GetDatum((float8)varblocks_added));
+	Assert(DatumGetFloat8(new_varblock_count) > -1.0);
 
+	/* get the current modcount so we can add to it */
+	old_modcount = fastgetattr(tuple,
+									Anum_pg_aoseg_modcount,
+									pg_aoseg_dsc,
+									&isNull);
+
+	if(isNull)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				errmsg("got invalid pg_aoseg modcount value: NULL")));
+
+	/* calculate the new mod count */
+	new_modcount = DirectFunctionCall2(int8pl,
+											 old_modcount,
+											 Int64GetDatum(modcount_added));
+	Assert(DatumGetInt64(new_modcount) >= 0);
 
 	/*
 	 * Build a tuple to update
@@ -528,8 +784,17 @@ UpdateFileSegInfo(Relation parentrel,
 	new_record[Anum_pg_aoseg_varblockcount - 1] = new_varblock_count;
 	new_record_repl[Anum_pg_aoseg_varblockcount - 1] = true;
 
+	new_record[Anum_pg_aoseg_modcount - 1] = new_modcount;
+	new_record_repl[Anum_pg_aoseg_modcount - 1] = true;
+
 	new_record[Anum_pg_aoseg_eofuncompressed - 1] = Float8GetDatum((float8)eof_uncompressed);
 	new_record_repl[Anum_pg_aoseg_eofuncompressed - 1] = true;
+
+	if (newState > 0)
+	{
+		new_record[Anum_pg_aoseg_state - 1] = Int16GetDatum(newState);
+		new_record_repl[Anum_pg_aoseg_state - 1] = true;
+	}
 
 	/*
 	 * update the tuple in the pg_aoseg table
@@ -558,7 +823,8 @@ UpdateFileSegInfo(Relation parentrel,
  * Get the total bytes, tuples, and varblocks for a specific AO table
  * from the pg_aoseg table on this local segdb.
  */
-FileSegTotals *GetSegFilesTotals(Relation parentrel, Snapshot appendOnlyMetaDataSnapshot)
+FileSegTotals *
+GetSegFilesTotals(Relation parentrel, Snapshot appendOnlyMetaDataSnapshot)
 {
 
 	Relation		pg_aoseg_rel;
@@ -569,7 +835,8 @@ FileSegTotals *GetSegFilesTotals(Relation parentrel, Snapshot appendOnlyMetaData
 	Datum			eof,
 					eof_uncompressed,
 					tupcount,
-					varblockcount;
+					varblockcount,
+					state;
 	bool			isNull;
 	AppendOnlyEntry *aoEntry = NULL;
 	
@@ -580,7 +847,7 @@ FileSegTotals *GetSegFilesTotals(Relation parentrel, Snapshot appendOnlyMetaData
 	result = (FileSegTotals *) palloc0(sizeof(FileSegTotals));
 
 	pg_aoseg_rel = heap_open(aoEntry->segrelid, AccessShareLock);
-	pg_aoseg_dsc = pg_aoseg_rel->rd_att;
+	pg_aoseg_dsc = RelationGetDescr(pg_aoseg_rel);
 
 	aoscan = heap_beginscan(pg_aoseg_rel, appendOnlyMetaDataSnapshot, 0, NULL);
 
@@ -590,6 +857,7 @@ FileSegTotals *GetSegFilesTotals(Relation parentrel, Snapshot appendOnlyMetaData
 		tupcount = fastgetattr(tuple, Anum_pg_aoseg_tupcount, pg_aoseg_dsc, &isNull);
 		varblockcount = fastgetattr(tuple, Anum_pg_aoseg_varblockcount, pg_aoseg_dsc, &isNull);
 		eof_uncompressed = fastgetattr(tuple, Anum_pg_aoseg_eofuncompressed, pg_aoseg_dsc, &isNull);
+		state = fastgetattr(tuple, Anum_pg_aoseg_state, pg_aoseg_dsc, &isNull);
 
 		if(isNull)
 			result->totalbytesuncompressed = InvalidUncompressedEof;
@@ -597,7 +865,11 @@ FileSegTotals *GetSegFilesTotals(Relation parentrel, Snapshot appendOnlyMetaData
 			result->totalbytesuncompressed += (int64)DatumGetFloat8(eof_uncompressed);
 
 		result->totalbytes += (int64)DatumGetFloat8(eof);
-		result->totaltuples += (int64)DatumGetFloat8(tupcount);
+
+		if (DatumGetInt16(state) != AOSEG_STATE_AWAITING_DROP)
+		{
+			result->totaltuples += (int64)DatumGetFloat8(tupcount);
+		}
 		result->totalvarblocks += (int64)DatumGetFloat8(varblockcount);
 		result->totalfilesegs++;
 
@@ -629,13 +901,15 @@ int64 GetAOTotalBytes(Relation parentrel, Snapshot appendOnlyMetaDataSnapshot)
 	Datum			eof;
 	bool			isNull;
 	AppendOnlyEntry *aoEntry = NULL;
-	
+
+    Assert(RelationIsAoRows(parentrel));
+
 	aoEntry = GetAppendOnlyEntry(RelationGetRelid(parentrel), appendOnlyMetaDataSnapshot);
 
 	result = 0;
 
 	pg_aoseg_rel = heap_open(aoEntry->segrelid, AccessShareLock);
-	pg_aoseg_dsc = pg_aoseg_rel->rd_att;
+	pg_aoseg_dsc = RelationGetDescr(pg_aoseg_rel);
 
 	aoscan = heap_beginscan(pg_aoseg_rel, appendOnlyMetaDataSnapshot, 0, NULL);
 
@@ -699,7 +973,7 @@ gp_aoseg_history(PG_FUNCTION_ARGS)
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
 		/* build tupdesc for result tuples */
-		tupdesc = CreateTemplateTupleDesc(15, false);
+		tupdesc = CreateTemplateTupleDesc(17, false);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "gp_tid",
 						   TIDOID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "gp_xmin",
@@ -730,6 +1004,10 @@ gp_aoseg_history(PG_FUNCTION_ARGS)
 						   INT8OID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 15, "eof_uncompressed",
 						   INT8OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 16, "modcount",
+						   INT8OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 17, "state",
+						   INT2OID, -1, 0);
 
 		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
 
@@ -755,7 +1033,7 @@ gp_aoseg_history(PG_FUNCTION_ARGS)
 		
 		context->aoSegfileArray = 
 				GetAllFileSegInfo_pg_aoseg_rel(
-											aocsRel->rd_rel->relname.data, 
+											RelationGetRelationName(aocsRel), 
 											aoEntry, 
 											pg_aoseg_rel,
 											SnapshotAny,	// Get ALL tuples from pg_aoseg_% including aborted and in-progress ones. 
@@ -780,8 +1058,8 @@ gp_aoseg_history(PG_FUNCTION_ARGS)
 	 */
 	while (true)
 	{
-		Datum		values[15];
-		bool		nulls[15];
+		Datum		values[17];
+		bool		nulls[17];
 		HeapTuple	tuple;
 		Datum		result;
 
@@ -806,9 +1084,11 @@ gp_aoseg_history(PG_FUNCTION_ARGS)
 								&aoSegfile->tupleVisibilitySummary);
 
 		values[11] = Int32GetDatum(aoSegfile->segno);
-		values[12] = Int64GetDatum(aoSegfile->tupcount);
+		values[12] = Int64GetDatum(aoSegfile->total_tupcount);
 		values[13] = Int64GetDatum(aoSegfile->eof);
 		values[14] = Int64GetDatum(aoSegfile->eof_uncompressed);
+		values[15] = Int64GetDatum(aoSegfile->modcount);
+		values[16] = Int16GetDatum(aoSegfile->state);
 
 		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
 		result = HeapTupleGetDatum(tuple);
@@ -830,13 +1110,14 @@ gp_update_aorow_master_stats_internal(Relation parentrel, Snapshot appendOnlyMet
 	StringInfoData 	sqlstmt;
 	Relation		aosegrel;
 	bool 			connected = false;
-	char			aoseg_relname[32];
+	char			aoseg_relname[NAMEDATALEN];
 	int 			proc;
 	int 			ret;
 	int64			total_count = 0;
 	MemoryContext 	oldcontext = CurrentMemoryContext;
 	AppendOnlyEntry *aoEntry = NULL;
 	
+    Assert(RelationIsAoRows(parentrel));
 	aoEntry = GetAppendOnlyEntry(RelationGetRelid(parentrel), appendOnlyMetaDataSnapshot);
 	Assert(aoEntry != NULL);
 
@@ -844,7 +1125,7 @@ gp_update_aorow_master_stats_internal(Relation parentrel, Snapshot appendOnlyMet
 	 * get the name of the aoseg relation
 	 */
 	aosegrel = heap_open(aoEntry->segrelid, AccessShareLock);
-	snprintf(aoseg_relname, 32, "%s", RelationGetRelationName(aosegrel));
+	snprintf(aoseg_relname, NAMEDATALEN, "%s", RelationGetRelationName(aosegrel));
 	heap_close(aosegrel, AccessShareLock);
 
 	/*
@@ -907,6 +1188,7 @@ gp_update_aorow_master_stats_internal(Relation parentrel, Snapshot appendOnlyMet
 				qe_tupcount = (int64)DatumGetFloat8(DirectFunctionCall1(float8in,
 																 CStringGetDatum(val_tupcount)));
 
+
 				total_count += qe_tupcount;
 
 				/*
@@ -942,9 +1224,9 @@ gp_update_aorow_master_stats_internal(Relation parentrel, Snapshot appendOnlyMet
 				 * NOTE: proper way is to use int8eq() but since we
 				 * don't expect any NAN's in here better do it directly
 				 */
-				if(fsinfo->tupcount != qe_tupcount)
+				if(fsinfo->total_tupcount != qe_tupcount)
 				{
-					int64 	diff = qe_tupcount - fsinfo->tupcount;
+					int64 	tupcount_diff = qe_tupcount - fsinfo->total_tupcount;
 
 					elog(DEBUG3, "gp_update_ao_master_stats: updating "
 						"segno %d with tupcount %d", qe_segno,
@@ -954,7 +1236,8 @@ gp_update_aorow_master_stats_internal(Relation parentrel, Snapshot appendOnlyMet
 					 * QD tup count !=  QE tup count. update QD count by
 					 * passing in the diff (may be negative sometimes).
 					 */
-					UpdateFileSegInfo(parentrel, aoEntry, qe_segno, 0, 0, diff, 0);
+					UpdateFileSegInfo_internal(parentrel, aoEntry, qe_segno, -1, -1, 
+							tupcount_diff, 0, 1, AOSEG_STATE_USECURRENT);
 				}
 				else
 					elog(DEBUG3, "gp_update_ao_master_stats: no need to "
@@ -996,6 +1279,172 @@ gp_update_aorow_master_stats_internal(Relation parentrel, Snapshot appendOnlyMet
 	pfree(sqlstmt.data);
 
 	PG_RETURN_FLOAT8((float8)total_count);
+}
+
+PG_FUNCTION_INFO_V1(gp_aoseg_name);
+
+extern Datum
+gp_aoseg_name(PG_FUNCTION_ARGS);
+
+/*
+ * UDF to get aoseg information by relation name
+ */
+Datum
+gp_aoseg_name(PG_FUNCTION_ARGS)
+{
+    int aoRelOid;
+	RangeVar		*parentrv;
+	text	   		*relname = PG_GETARG_TEXT_P(0);
+
+	parentrv = makeRangeVarFromNameList(textToQualifiedNameList(relname));
+	aoRelOid = RangeVarGetRelid(parentrv, false);
+
+	typedef struct Context
+	{
+		Oid		aoRelOid;
+
+		FileSegInfo **aoSegfileArray;
+
+		int totalAoSegFiles;
+
+		int		segfileArrayIndex;
+	} Context;
+	
+	FuncCallContext *funcctx;
+	Context *context;
+
+	if (SRF_IS_FIRSTCALL())
+	{
+		TupleDesc	tupdesc;
+		MemoryContext oldcontext;
+		Relation aocsRel;
+		AppendOnlyEntry *aoEntry;
+		Relation pg_aoseg_rel;
+
+		/* create a function context for cross-call persistence */
+		funcctx = SRF_FIRSTCALL_INIT();
+
+		/*
+		 * switch to memory context appropriate for multiple function
+		 * calls
+		 */
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+		/* build tupdesc for result tuples */
+		tupdesc = CreateTemplateTupleDesc(7, false);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "segno",
+						   INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "eof",
+						   INT8OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "tupcount",
+						   INT8OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 4, "varblockcount",
+						   INT8OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 5, "eofuncompressed",
+						   INT8OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 6, "modcount",
+						   INT8OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 7, "state",
+						   INT2OID, -1, 0);
+
+		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
+
+		/*
+		 * Collect all the locking information that we will format and send
+		 * out as a result set.
+		 */
+		context = (Context *) palloc(sizeof(Context));
+		funcctx->user_fctx = (void *) context;
+
+		context->aoRelOid = aoRelOid;
+
+		aocsRel = heap_open(aoRelOid, NoLock);
+		if(!RelationIsAoRows(aocsRel))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					errmsg("'%s' is not an append-only row relation",
+							RelationGetRelationName(aocsRel))));
+
+		aoEntry = GetAppendOnlyEntry(aoRelOid, SnapshotNow);
+		
+		pg_aoseg_rel = heap_open(aoEntry->segrelid, NoLock);
+		
+		context->aoSegfileArray = 
+				GetAllFileSegInfo_pg_aoseg_rel(
+											RelationGetRelationName(aocsRel), 
+											aoEntry, 
+											pg_aoseg_rel,
+											SnapshotNow,
+											&context->totalAoSegFiles);
+
+		heap_close(pg_aoseg_rel, NoLock);
+		heap_close(aocsRel, NoLock);
+		pfree(aoEntry);
+
+		// Iteration position.
+		context->segfileArrayIndex = 0;
+
+		funcctx->user_fctx = (void *) context;
+
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	funcctx = SRF_PERCALL_SETUP();
+	context = (Context *) funcctx->user_fctx;
+
+	/*
+	 * Process each column for each segment file.
+	 */
+	while (true)
+	{
+		Datum		values[7];
+		bool		nulls[7];
+		HeapTuple	tuple;
+		Datum		result;
+
+		struct FileSegInfo *aoSegfile;
+
+		if (context->segfileArrayIndex >= context->totalAoSegFiles)
+		{
+			break;
+		}
+		
+		/*
+		 * Form tuple with appropriate data.
+		 */
+		MemSet(values, 0, sizeof(values));
+		MemSet(nulls, false, sizeof(nulls));
+
+		aoSegfile = context->aoSegfileArray[context->segfileArrayIndex];
+
+		values[0] = Int32GetDatum(aoSegfile->segno);
+		values[1] = Int64GetDatum(aoSegfile->eof);
+		values[2] = Int64GetDatum(aoSegfile->total_tupcount);
+		values[3] = Int64GetDatum(aoSegfile->varblockcount);
+		values[4] = Int64GetDatum(aoSegfile->eof_uncompressed);
+		values[5] = Int64GetDatum(aoSegfile->modcount);
+		values[6] = Int16GetDatum(aoSegfile->state);
+
+		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
+		result = HeapTupleGetDatum(tuple);
+
+		// Indicate we emitted one segment file.
+		context->segfileArrayIndex++;
+
+		SRF_RETURN_NEXT(funcctx, result);
+	}
+
+	if (context->aoSegfileArray)
+	{
+		FreeAllSegFileInfo(context->aoSegfileArray, context->totalAoSegFiles);
+		pfree(context->aoSegfileArray);
+		context->aoSegfileArray = NULL;
+		context->totalAoSegFiles = 0;
+	}
+	pfree(context);
+	funcctx->user_fctx = NULL;
+
+	SRF_RETURN_DONE(funcctx);
 }
 
 /*
@@ -1096,7 +1545,7 @@ get_ao_distribution_oid(PG_FUNCTION_ARGS)
 	StringInfoData 	sqlstmt;
 	Relation		parentrel;
 	Relation		aosegrel;
-	char			aoseg_relname[32];
+	char			aoseg_relname[NAMEDATALEN];
 	int 			ret;
 	Oid				relid = PG_GETARG_OID(0);
 
@@ -1139,14 +1588,14 @@ get_ao_distribution_oid(PG_FUNCTION_ARGS)
 							RelationGetRelationName(parentrel))));
 
 		GetAppendOnlyEntryAuxOids(RelationGetRelid(parentrel), SnapshotNow,
-								  &segrelid, NULL, NULL, NULL);
+								  &segrelid, NULL, NULL, NULL, NULL, NULL);
 		Assert(OidIsValid(segrelid));
 		
 		/*
 		 * get the name of the aoseg relation
 		 */
 		aosegrel = heap_open(segrelid, AccessShareLock);
-		snprintf(aoseg_relname, 32, "%s", RelationGetRelationName(aosegrel));
+		snprintf(aoseg_relname, NAMEDATALEN, "%s", RelationGetRelationName(aosegrel));
 		heap_close(aosegrel, AccessShareLock);
 
 		/*
@@ -1282,7 +1731,7 @@ get_ao_distribution_name(PG_FUNCTION_ARGS)
 	RangeVar		*parentrv;
 	Relation		parentrel;
 	Relation		aosegrel;
-	char			aoseg_relname[32];
+	char			aoseg_relname[NAMEDATALEN];
 	int 			ret;
 	text	   		*relname = PG_GETARG_TEXT_P(0);
 	Oid				relid;
@@ -1330,14 +1779,14 @@ get_ao_distribution_name(PG_FUNCTION_ARGS)
 		
 		GetAppendOnlyEntryAuxOids(RelationGetRelid(parentrel), SnapshotNow,
 								  &segrelid,
-								  NULL, NULL, NULL);
+								  NULL, NULL, NULL, NULL, NULL);
 		Assert(OidIsValid(segrelid));
 
 		/*
 		 * get the name of the aoseg relation
 		 */
 		aosegrel = heap_open(segrelid, AccessShareLock);
-		snprintf(aoseg_relname, 32, "%s", RelationGetRelationName(aosegrel));
+		snprintf(aoseg_relname, NAMEDATALEN, "%s", RelationGetRelationName(aosegrel));
 		heap_close(aosegrel, AccessShareLock);
 
 		/*
@@ -1497,7 +1946,7 @@ aorow_compression_ratio_internal(Relation parentrel)
 	StringInfoData 	sqlstmt;
 	Relation		aosegrel;
 	bool 			connected = false;
-	char			aoseg_relname[32];
+	char			aoseg_relname[NAMEDATALEN];
 	int 			proc;
 	int 			ret;
 	float8			compress_ratio = -1; /* the default, meaning "not available" */
@@ -1507,14 +1956,14 @@ aorow_compression_ratio_internal(Relation parentrel)
 
 	GetAppendOnlyEntryAuxOids(RelationGetRelid(parentrel), SnapshotNow,
 							  &segrelid,
-							  NULL, NULL, NULL);
+							  NULL, NULL, NULL, NULL, NULL);
 	Assert(OidIsValid(segrelid));
 
 	/*
 	 * get the name of the aoseg relation
 	 */
 	aosegrel = heap_open(segrelid, AccessShareLock);
-	snprintf(aoseg_relname, 32, "%s", RelationGetRelationName(aosegrel));
+	snprintf(aoseg_relname, NAMEDATALEN, "%s", RelationGetRelationName(aosegrel));
 	heap_close(aosegrel, AccessShareLock);
 
 	/*

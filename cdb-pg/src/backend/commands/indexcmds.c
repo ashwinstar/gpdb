@@ -1642,7 +1642,7 @@ ReindexTable(ReindexStmt *stmt)
 
 	caql_endscan(pcqCtx);
 
-	if (!reindex_relation(heapOid, true, true, true, &stmt->new_ind_oids,
+	if (!reindex_relation(heapOid, true, true, true, true, &stmt->new_ind_oids,
 						  Gp_role == GP_ROLE_DISPATCH))
 	{
 		if (Gp_role != GP_ROLE_EXECUTE)
@@ -1772,7 +1772,7 @@ ReindexDatabase(ReindexStmt *stmt)
 		StartTransactionCommand();
 		/* functions in indexes may want a snapshot set */
 		ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
-		if (reindex_relation(relid, true, true, true, NULL, false))
+		if (reindex_relation(relid, true, true, true, true, NULL, false))
 			ereport(NOTICE,
 					(errmsg("table \"%s\" was reindexed",
 							get_rel_name(relid))));

@@ -15,6 +15,7 @@
 #include "postgres.h"
 
 #include "access/xact.h"
+#include "catalog/catalog.h"
 #include "catalog/catquery.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
@@ -147,7 +148,9 @@ bool querytree_safe_for_segment_walker(Node *expr, void *context)
 
 						Assert(namespaceId != InvalidOid);
 						
-						if (namespaceId != PG_CATALOG_NAMESPACE)
+						if (!(IsSystemNamespace(namespaceId) ||
+							  IsToastNamespace(namespaceId) ||
+							  IsAoSegmentNamespace(namespaceId)))
 						{
 							elog(ERROR, "function cannot execute on segment because it accesses relation \"%s.%s\"", 
 									quote_identifier(get_namespace_name(namespaceId)), quote_identifier(get_rel_name(rte->relid)));

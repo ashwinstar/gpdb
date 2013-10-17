@@ -44,7 +44,9 @@ InsertAppendOnlyEntry(Oid relid,
 					  Oid segrelid,
 					  Oid segidxid,
 					  Oid blkdirrelid,
-					  Oid blkdiridxid)
+					  Oid blkdiridxid,
+					  Oid visimaprelid,
+					  Oid visimapidxid)
 {
 	Relation	pg_appendonly_rel;
 	HeapTuple	pg_appendonly_tuple = NULL;
@@ -56,7 +58,7 @@ InsertAppendOnlyEntry(Oid relid,
 
 	/* these are hardcoded for now. in the future should get passed in */
 	const int	majorversion = 1;
-	const int	minorversion = 0;
+	const int	minorversion = 1;
 
     /*
      * Open and lock the pg_appendonly catalog.
@@ -84,6 +86,9 @@ InsertAppendOnlyEntry(Oid relid,
 	values[Anum_pg_appendonly_segidxid - 1] = ObjectIdGetDatum(segidxid);
 	values[Anum_pg_appendonly_blkdirrelid - 1] = ObjectIdGetDatum(blkdirrelid);
 	values[Anum_pg_appendonly_blkdiridxid - 1] = ObjectIdGetDatum(blkdiridxid);
+	values[Anum_pg_appendonly_visimaprelid - 1] = ObjectIdGetDatum(visimaprelid);
+	values[Anum_pg_appendonly_visimapidxid - 1] = ObjectIdGetDatum(visimapidxid);
+
 	values[Anum_pg_appendonly_version - 1] = test_appendonly_version_default;
 	
 	if(compresstype)
@@ -146,7 +151,9 @@ GetAppendOnlyEntryAuxOids(Oid relid,
 						  Oid *segrelid,
 						  Oid *segidxid,
 						  Oid *blkdirrelid,
-						  Oid *blkdiridxid)
+						  Oid *blkdiridxid,
+						  Oid *visimaprelid,
+						  Oid *visimapidxid)
 {
 	HeapTuple	tuple;
 	cqContext	cqc;
@@ -228,6 +235,33 @@ GetAppendOnlyEntryAuxOids(Oid relid,
 		*blkdiridxid = DatumGetObjectId(auxOid);
 	}
 
+	if (visimaprelid != NULL)
+	{
+		auxOid = caql_getattr(pcqCtx,
+							  Anum_pg_appendonly_visimaprelid,
+							  &isNull);
+		Assert(!isNull);
+		if(isNull)
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("got invalid visimaprelid value: NULL")));	
+		
+		*visimaprelid = DatumGetObjectId(auxOid);
+	}
+
+	if (visimapidxid != NULL)
+	{
+		auxOid = caql_getattr(pcqCtx,
+							  Anum_pg_appendonly_visimapidxid,
+							  &isNull);
+		Assert(!isNull);
+		if(isNull)
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("got invalid visimapidxid value: NULL")));	
+		
+		*visimapidxid = DatumGetObjectId(auxOid);
+	}
 	/* Finish up scan and close pg_appendonly catalog. */
 	caql_endscan(pcqCtx);
 }
@@ -309,6 +343,8 @@ GetAppendOnlyEntryFromTuple(
 				segidxid,
 				blkdirrelid,
 				blkdiridxid,
+				visimaprelid,
+				visimapidxid,
 				version
 				;
 
@@ -457,6 +493,27 @@ GetAppendOnlyEntryFromTuple(
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("got invalid blkdiridxid value: NULL")));	
 
+	/* get visimap rel id and visimap index id */
+    visimaprelid = heap_getattr(tuple, 
+							   Anum_pg_appendonly_visimaprelid,
+							   pg_appendonly_dsc, 
+							   &isNull);
+    Assert(!isNull);
+	if(isNull)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("got invalid visimaprelid value: NULL")));	
+
+    visimapidxid = heap_getattr(tuple, 
+							   Anum_pg_appendonly_visimapidxid,
+							   pg_appendonly_dsc, 
+							   &isNull);
+    Assert(!isNull);
+	if(isNull)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("got invalid visimapidxid value: NULL")));	
+
 	/* get the version */
 	version = heap_getattr(tuple,
 						   Anum_pg_appendonly_version,
@@ -479,6 +536,8 @@ GetAppendOnlyEntryFromTuple(
     aoentry->segidxid = DatumGetObjectId(segidxid);
     aoentry->blkdirrelid = DatumGetObjectId(blkdirrelid);
     aoentry->blkdiridxid = DatumGetObjectId(blkdiridxid);
+	aoentry->visimaprelid = DatumGetObjectId(visimaprelid);
+	aoentry->visimapidxid = DatumGetObjectId(visimapidxid);
     aoentry->version = DatumGetInt32(version);
 
     AORelationVersion_CheckValid(aoentry->version);
@@ -497,7 +556,9 @@ UpdateAppendOnlyEntryAuxOids(Oid relid,
 							 Oid newSegrelid,
 							 Oid newSegidxid,
 							 Oid newBlkdirrelid,
-							 Oid newBlkdiridxid)
+							 Oid newBlkdiridxid,
+							 Oid newVisimaprelid,
+							 Oid newVisimapidxid)
 {
 	HeapTuple	tuple, newTuple;
 	cqContext  *pcqCtx;
@@ -552,6 +613,17 @@ UpdateAppendOnlyEntryAuxOids(Oid relid,
 		newValues[Anum_pg_appendonly_blkdiridxid - 1] = newBlkdiridxid;
 	}
 	
+	if (OidIsValid(newVisimaprelid))
+	{
+		replace[Anum_pg_appendonly_visimaprelid - 1] = true;
+		newValues[Anum_pg_appendonly_visimaprelid - 1] = newVisimaprelid;
+	}
+	
+	if (OidIsValid(newVisimapidxid))
+	{
+		replace[Anum_pg_appendonly_visimapidxid - 1] = true;
+		newValues[Anum_pg_appendonly_visimapidxid - 1] = newVisimapidxid;
+	}
 	newTuple = caql_modify_current(pcqCtx,
 								   newValues, newNulls, replace);
 	caql_update_current(pcqCtx, newTuple);
@@ -659,14 +731,11 @@ TransferDependencyLink(
 static HeapTuple 
 GetAppendEntryForMove(
 	Relation	pg_appendonly_rel,
-
 	TupleDesc	pg_appendonly_dsc,
-
 	Oid 		relId,
-
 	Oid 		*aosegrelid,
-	
-	Oid 		*aoblkdirrelid)
+	Oid 		*aoblkdirrelid,
+	Oid         *aovisimaprelid)
 {
 	HeapTuple	tuple;
 	cqContext	cqc;
@@ -704,6 +773,15 @@ GetAppendEntryForMove(
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("got invalid blkdirrelid value: NULL")));	
+ 
+	*aovisimaprelid = caql_getattr(pcqCtx,
+								  Anum_pg_appendonly_visimaprelid,
+								  &isNull);
+    Assert(!isNull);
+	if(isNull)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("got invalid visimaprelid value: NULL")));	
 
 	/* tupleCopy = heap_copytuple(tuple); XXX XXX already a copy */
 
@@ -727,7 +805,9 @@ TransferAppendonlyEntry(Oid sourceRelId, Oid targetRelId)
 	bool 		*replace;
 	Oid			aosegrelid;
 	Oid			aoblkdirrelid;
+	Oid			aovisimaprelid;
 	
+
 	/*
 	 * Fetch the pg_appendonly entry 
 	 */
@@ -739,7 +819,8 @@ TransferAppendonlyEntry(Oid sourceRelId, Oid targetRelId)
 							pg_appendonly_dsc,
 							sourceRelId,
 							&aosegrelid,
-							&aoblkdirrelid);
+							&aoblkdirrelid,
+							&aovisimaprelid);
 
 	/* Since gp_fastsequence entry is referenced by aosegrelid, it rides along  */
 
@@ -774,19 +855,23 @@ TransferAppendonlyEntry(Oid sourceRelId, Oid targetRelId)
 	{
 		TransferDependencyLink(targetRelId, aosegrelid, "aoseg");
 	}
-
 	if (OidIsValid(aoblkdirrelid))
 	{
 		TransferDependencyLink(targetRelId, aoblkdirrelid, "aoblkdir");
 	}
+	if (OidIsValid(aovisimaprelid))
+	{
+		TransferDependencyLink(targetRelId, aovisimaprelid, "aovisimap");
+	}
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
-			 "TransferAppendonlyEntry: source relation id %u, target relation id %u, aosegrelid %u, aoblkdirrelid %u",
+			 "TransferAppendonlyEntry: source relation id %u, target relation id %u, aosegrelid %u, aoblkdirrelid %u, aovisimaprelid %u",
 			 sourceRelId,
 			 targetRelId,
 			 aosegrelid,
-			 aoblkdirrelid);
+			 aoblkdirrelid,
+			 aovisimaprelid);
 }
 
 /*
@@ -805,8 +890,10 @@ SwapAppendonlyEntries(Oid entryRelId1, Oid entryRelId2)
 	bool 		*replace;
 	Oid			aosegrelid1;
 	Oid			aoblkdirrelid1;
+	Oid			aovisimaprelid1;
 	Oid			aosegrelid2;
 	Oid			aoblkdirrelid2;
+	Oid			aovisimaprelid2;
 
 	pg_appendonly_rel = heap_open(AppendOnlyRelationId, RowExclusiveLock);
 	pg_appendonly_dsc = RelationGetDescr(pg_appendonly_rel);
@@ -816,7 +903,8 @@ SwapAppendonlyEntries(Oid entryRelId1, Oid entryRelId2)
 							pg_appendonly_dsc,
 							entryRelId1,
 							&aosegrelid1,
-							&aoblkdirrelid1);
+							&aoblkdirrelid1,
+							&aovisimaprelid1);
 
 	/* Since gp_fastsequence entry is referenced by aosegrelid, it rides along  */
 
@@ -831,7 +919,8 @@ SwapAppendonlyEntries(Oid entryRelId1, Oid entryRelId2)
 							pg_appendonly_dsc,
 							entryRelId2,
 							&aosegrelid2,
-							&aoblkdirrelid2);
+							&aoblkdirrelid2,
+							&aovisimaprelid2);
 
 	/* Since gp_fastsequence entry is referenced by aosegrelid, it rides along  */
 
@@ -898,16 +987,30 @@ SwapAppendonlyEntries(Oid entryRelId1, Oid entryRelId2)
 			TransferDependencyLink(entryRelId1, aoblkdirrelid2, "aoblkdir");
 		}
 	}
+	
+	if ((aovisimaprelid1 || aovisimaprelid2) && (aovisimaprelid1 != aovisimaprelid2))
+	{
+		if (OidIsValid(aovisimaprelid1))
+		{
+			TransferDependencyLink(entryRelId2, aovisimaprelid1, "aovisimap");
+		}
+		if (OidIsValid(aovisimaprelid2))
+		{
+			TransferDependencyLink(entryRelId1, aovisimaprelid2, "aovisimap");
+		}
+	}
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
-			 "SwapAppendonlyEntries: relation id #1 %u, aosegrelid1 %u, aoblkdirrelid1 %u, "
-			 "relation id #2 %u, aosegrelid2 %u, aoblkdirrelid2 %u",
+			 "SwapAppendonlyEntries: relation id #1 %u, aosegrelid1 %u, aoblkdirrelid1 %u, aovisimaprelid1 %u"
+			 "relation id #2 %u, aosegrelid2 %u, aoblkdirrelid2 %u, aovisimaprelid2 %u",
 			 entryRelId1,
 			 aosegrelid1,
 			 aoblkdirrelid1,
+			 aovisimaprelid1,
 			 entryRelId2,
 			 aosegrelid2,
-			 aoblkdirrelid2);
+			 aoblkdirrelid2,
+			 aovisimaprelid2);
 }
 

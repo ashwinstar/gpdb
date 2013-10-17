@@ -1023,7 +1023,8 @@ DatabaseInfo_HandleAppendOnly(
 				elog(Persistent_DebugPrintLevel(), 
 					 "DatabaseInfo_AddPgClassStoredRelation: Append-Only entry for relation id %u, relation name %s, "
 				     "blocksize %d, safefswritesize %d, compresslevel %d, major version %d, minor version %d, "
-				     " checksum %s, compresstype %s, columnstore %s, segrelid %u, segidxid %u, blkdirrelid %u, blkdiridxid %u",
+				     " checksum %s, compresstype %s, columnstore %s, segrelid %u, segidxid %u, blkdirrelid %u, blkdiridxid %u, "
+					 " visimaprelid %u, visimapidxid %u",
 				     dbInfoRel->relationOid,
 				     dbInfoRel->relname,
 					 aoEntry->blocksize,
@@ -1037,7 +1038,9 @@ DatabaseInfo_HandleAppendOnly(
 					 aoEntry->segrelid,
 					 aoEntry->segidxid,
 					 aoEntry->blkdirrelid,
-					 aoEntry->blkdiridxid);
+					 aoEntry->blkdiridxid,
+					 aoEntry->visimaprelid,
+					 aoEntry->visimapidxid);
 
 			/*
 			 * Translate the ao[cs]seg relation id to relfilenode.

@@ -189,9 +189,20 @@ extern bool AppendOnlyBlockDirectory_InsertEntry(
 	int64 firstRowNum,
 	int64 fileOffset,
 	int64 rowCount);
+extern bool AppendOnlyBlockDirectory_DeleteEntry(
+	AppendOnlyBlockDirectory *blockDirectory,
+	AOTupleId *aoTupleId);
+extern bool AppendOnlyBlockDirectory_DeleteEntryForUpdate(
+	AppendOnlyBlockDirectory *visibilityBlockDirectory,
+	AppendOnlyBlockDirectory *insertBlockDirectory,
+	AOTupleId* aoTupleId);
 extern void AppendOnlyBlockDirectory_End_forInsert(
 	AppendOnlyBlockDirectory *blockDirectory);
 extern void AppendOnlyBlockDirectory_End_forSearch(
 	AppendOnlyBlockDirectory *blockDirectory);
-
+extern void AppendOnlyBlockDirectory_DeleteSegmentFile(
+		AppendOnlyEntry *aoEntry,
+		Snapshot snapshot,
+		int segno,
+		int columnGroupNo);
 #endif

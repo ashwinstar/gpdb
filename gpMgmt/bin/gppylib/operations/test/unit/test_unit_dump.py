@@ -16,7 +16,7 @@ from gppylib.operations.dump import DumpDatabase, DumpGlobal, compare_dict, crea
                                     write_dirty_file, write_partition_list_file, write_dirty_file_to_temp, write_state_file,\
                                     get_pgstatlastoperations_dict, get_tables_with_dirty_metadata, compare_metadata,\
                                     CreateIncrementsFile, PostDumpDatabase, get_dirty_tables, validate_current_timestamp,\
-                                    validate_tuple_count, generate_dump_timestamp, get_filter_file, filter_dirty_tables, get_backup_dir
+                                    validate_modcount, generate_dump_timestamp, get_filter_file, filter_dirty_tables, get_backup_dir
 from mock import patch, MagicMock, Mock
 
 class DumpTestCase(unittest.TestCase):
@@ -792,32 +792,32 @@ class DumpTestCase(unittest.TestCase):
         #no exception
         validate_current_timestamp(directory, current='20130127151000')
 
-    def test_validate_tuple_count_00(self):
+    def test_validate_modcount_00(self):
         schemaname = 'public'
         partitionname = 't1'
         tuple_count = '999999999999999'
-        validate_tuple_count(schemaname, partitionname, tuple_count)
+        validate_modcount(schemaname, partitionname, tuple_count)
 
-    def test_validate_tuple_count_01(self):
+    def test_validate_modcount_01(self):
         schemaname = 'public'
         partitionname = 't1'
         tuple_count = '#########'
         with self.assertRaisesRegexp(Exception, 'Can not convert tuple count for table.'):
-            validate_tuple_count(schemaname, partitionname, tuple_count)
+            validate_modcount(schemaname, partitionname, tuple_count)
 
-    def test_validate_tuple_count_02(self):
+    def test_validate_modcount_02(self):
         schemaname = 'public'
         partitionname = 't1'
         tuple_count = '1+e15'
         with self.assertRaisesRegexp(Exception, 'Can not convert tuple count for table.'):
-            validate_tuple_count(schemaname, partitionname, tuple_count)
+            validate_modcount(schemaname, partitionname, tuple_count)
 
-    def test_validate_tuple_count_03(self):
+    def test_validate_modcount_03(self):
         schemaname = 'public'
         partitionname = 't1'
         tuple_count = '1000000000000000'
         with self.assertRaisesRegexp(Exception, 'Exceeded backup max tuple count of 1 quadrillion rows per table for:'):
-            validate_tuple_count(schemaname, partitionname, tuple_count)
+            validate_modcount(schemaname, partitionname, tuple_count)
  
     def test_generate_dump_timestamp_00(self):
         timestamp = datetime(2013, 02, 04, 10, 10, 10, 10000)

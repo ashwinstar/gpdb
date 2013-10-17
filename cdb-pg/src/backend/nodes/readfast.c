@@ -499,10 +499,12 @@ _readIntoClause(const char ** str)
     READ_OID_FIELD(oidInfo.aosegOid);
     READ_OID_FIELD(oidInfo.aosegIndexOid);
     READ_OID_FIELD(oidInfo.aosegComptypeOid);
+    READ_OID_FIELD(oidInfo.aovisimapOid);
+    READ_OID_FIELD(oidInfo.aovisimapIndexOid);
+	READ_OID_FIELD(oidInfo.aovisimapComptypeOid);
     READ_OID_FIELD(oidInfo.aoblkdirOid);
     READ_OID_FIELD(oidInfo.aoblkdirIndexOid);
     READ_OID_FIELD(oidInfo.aoblkdirComptypeOid);
-
 	READ_DONE();
 }
 
@@ -745,6 +747,7 @@ _readTruncateStmt(const char ** str)
 	READ_NODE_FIELD(new_toast_oids);
 	READ_NODE_FIELD(new_aoseg_oids);
 	READ_NODE_FIELD(new_aoblkdir_oids);
+	READ_NODE_FIELD(new_aovisimap_oids);
 	READ_NODE_FIELD(new_ind_oids);
 
 	READ_DONE();
@@ -775,6 +778,9 @@ _readAlterTableStmt(const char ** str)
 			READ_OID_FIELD(oidInfo[m].aosegOid);
 			READ_OID_FIELD(oidInfo[m].aosegIndexOid);
 			READ_OID_FIELD(oidInfo[m].aosegComptypeOid);
+			READ_OID_FIELD(oidInfo[m].aovisimapOid);
+			READ_OID_FIELD(oidInfo[m].aovisimapIndexOid);
+			READ_OID_FIELD(oidInfo[m].aovisimapComptypeOid);
 			READ_OID_FIELD(oidInfo[m].aoblkdirOid);
 			READ_OID_FIELD(oidInfo[m].aoblkdirIndexOid);
 			READ_OID_FIELD(oidInfo[m].aoblkdirComptypeOid);
@@ -1855,6 +1861,9 @@ _readCreateStmt(const char ** str)
 	READ_OID_FIELD(oidInfo.aosegOid);
 	READ_OID_FIELD(oidInfo.aosegIndexOid);
 	READ_OID_FIELD(oidInfo.aosegComptypeOid);
+	READ_OID_FIELD(oidInfo.aovisimapOid);
+	READ_OID_FIELD(oidInfo.aovisimapIndexOid);
+	READ_OID_FIELD(oidInfo.aovisimapComptypeOid);
 	READ_OID_FIELD(oidInfo.aoblkdirOid);
 	READ_OID_FIELD(oidInfo.aoblkdirIndexOid);
 	READ_OID_FIELD(oidInfo.aoblkdirComptypeOid);
@@ -1884,7 +1893,8 @@ _readCreateStmt(const char ** str)
 		   local_node->relKind == RELKIND_VIEW ||
 		   local_node->relKind == RELKIND_COMPOSITE_TYPE ||
 		   local_node->relKind == RELKIND_AOSEGMENTS ||
-		   local_node->relKind == RELKIND_AOBLOCKDIR);
+		   local_node->relKind == RELKIND_AOBLOCKDIR ||
+		   local_node->relKind == RELKIND_AOVISIMAP);
 	Assert(local_node->oncommit <= ONCOMMIT_DROP);
 
 	READ_DONE();
@@ -2221,6 +2231,9 @@ _readClusterStmt(const char ** str)
 	READ_OID_FIELD(oidInfo.aosegOid);
 	READ_OID_FIELD(oidInfo.aosegIndexOid);
 	READ_OID_FIELD(oidInfo.aosegComptypeOid);
+	READ_OID_FIELD(oidInfo.aovisimapOid);
+	READ_OID_FIELD(oidInfo.aovisimapIndexOid);
+	READ_OID_FIELD(oidInfo.aovisimapComptypeOid);
 	READ_OID_FIELD(oidInfo.aoblkdirOid);
 	READ_OID_FIELD(oidInfo.aoblkdirIndexOid);
 	READ_OID_FIELD(oidInfo.aoblkdirComptypeOid);
@@ -3442,6 +3455,10 @@ _readVacuumStmt(const char ** str)
 	READ_NODE_FIELD(expanded_relids);
 	READ_NODE_FIELD(extra_oids);
 
+	READ_NODE_FIELD(appendonly_compaction_segno);
+	READ_NODE_FIELD(appendonly_compaction_insert_segno);
+	READ_BOOL_FIELD(appendonly_compaction_vacuum_cleanup);
+	READ_BOOL_FIELD(appendonly_compaction_vacuum_prepare);
 	READ_DONE();
 }
 

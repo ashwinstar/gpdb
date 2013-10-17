@@ -96,6 +96,9 @@ typedef struct TableOidInfo
 	Oid		    aoblkdirOid;		/* if ao blkdir table needed, use this for the relOid of the aoblkdir table */
 	Oid		    aoblkdirIndexOid;	/* if ao blkdir table needed, use this for the relOid of the aoblkdir index */
 	Oid			aoblkdirComptypeOid;
+	Oid         aovisimapOid;
+	Oid         aovisimapIndexOid;
+	Oid         aovisimapComptypeOid;
 } TableOidInfo;
 
 /*

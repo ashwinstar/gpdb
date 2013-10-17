@@ -31,7 +31,7 @@
  * Initialize AppendOnlyStorageRead.
  *
  * The AppendOnlyStorageRead data structure is initialized
- * once for a read �session� and can be used to read
+ * once for a read "session" and can be used to read
  * Append-Only Storage Blocks from 1 or more segment files.
  *
  * The current file to read to is opened with the
@@ -131,8 +131,8 @@ void AppendOnlyStorageRead_Init(
 					 storageRead->largeReadLen,
 					 relationName);
 
-	if (Debug_appendonly_print_scan || Debug_appendonly_print_read_block)
-		elog(LOG,"Append-Only Storage Read initialize for table '%s' "
+	elogif(Debug_appendonly_print_scan || Debug_appendonly_print_read_block, LOG,
+		"Append-Only Storage Read initialize for table '%s' "
 		     "(compression = %s, compression level %d, maximum buffer length %d, large read length %d)",
 		     storageRead->relationName,
 		     (storageRead->storageAttributes.compress ? "true" : "false"),
@@ -240,15 +240,13 @@ static File AppendOnlyStorageRead_DoOpenFile(
 	Assert(storageRead->isActive);
 	Assert(filePathName != NULL);
 
-	if (Debug_appendonly_print_read_block)
-	{
-		elog(LOG,
+	elogif(Debug_appendonly_print_read_block, LOG,
 			 "Append-Only storage read: opening table '%s', segment file '%s', fileFlags 0x%x, fileMode 0x%x",
 			 storageRead->relationName,
 			 storageRead->segmentFileName,
 			 fileFlags,
 			 fileMode);
-	}
+
 	/*
 	 * Open the file for read.
 	 */
@@ -551,11 +549,11 @@ AppendOnlyStorageRead_DoSkipPadding(
 		// UNDONE: For verification purposes, we should verify the
 		// UNDONE: reminder is all zeroes.
 
-		if (Debug_appendonly_print_scan)
-			elog(LOG,"Append-only scan skipping zero padded remainder for table '%s' (nextReadPosition = " INT64_FORMAT ", safeWriteRemainder = %d)",
-			     storageRead->relationName,
-			     nextReadPosition,
-			     safeWriteRemainder);
+		elogif(Debug_appendonly_print_scan, LOG,
+			"Append-only scan skipping zero padded remainder for table '%s' (nextReadPosition = " INT64_FORMAT ", safeWriteRemainder = %d)",
+				storageRead->relationName,
+				nextReadPosition,
+				safeWriteRemainder);
 	}
 }
 
@@ -812,8 +810,9 @@ static bool AppendOnlyStorageRead_InternalGetBlockInfo(
 //	storageRead->current.isCompressed = false;
 //	storageRead->current.compressedLen = 0;
 
-	if(Debug_appendonly_print_datumstream)
-		elog(LOG, "before AppendOnlyStorageRead_PositionToNextBlock, storageRead->current.headerOffsetInFile is" INT64_FORMAT "storageRead->current.overallBlockLen is %d", storageRead->current.headerOffsetInFile, storageRead->current.overallBlockLen); 
+	elogif(Debug_appendonly_print_datumstream, LOG,
+		"before AppendOnlyStorageRead_PositionToNextBlock, storageRead->current.headerOffsetInFile is" INT64_FORMAT "storageRead->current.overallBlockLen is %d", 
+		storageRead->current.headerOffsetInFile, storageRead->current.overallBlockLen); 
 
 	if (!AppendOnlyStorageRead_PositionToNextBlock(
 											storageRead,
@@ -825,8 +824,9 @@ static bool AppendOnlyStorageRead_InternalGetBlockInfo(
 		return false;
 	}
 
-	if(Debug_appendonly_print_datumstream)
-		elog(LOG, "after AppendOnlyStorageRead_PositionToNextBlock, storageRead->current.headerOffsetInFile is" INT64_FORMAT "storageRead->current.overallBlockLen is %d", storageRead->current.headerOffsetInFile, storageRead->current.overallBlockLen); 
+	elogif(Debug_appendonly_print_datumstream, LOG,
+		"after AppendOnlyStorageRead_PositionToNextBlock, storageRead->current.headerOffsetInFile is" INT64_FORMAT "storageRead->current.overallBlockLen is %d", 
+		storageRead->current.headerOffsetInFile, storageRead->current.overallBlockLen); 
 
 	/*
 	 * Proceed very carefully:
@@ -1411,47 +1411,51 @@ void AppendOnlyStorageRead_Content(
 			if (Debug_appendonly_print_scan)
 				elog(LOG,
 					 "Append-only Storage Read non-compressed block for table '%s' "
-					 "(length = %d, segment file '%s', header offset in file = " INT64_FORMAT ", block count " INT64_FORMAT ")",
-				     storageRead->relationName,
-				     storageRead->current.uncompressedLen,
-				     storageRead->segmentFileName,
-				     storageRead->current.headerOffsetInFile,
-				     storageRead->bufferCount);
+					 "(length = %d, segment file '%s', header offset in file = " 
+					 INT64_FORMAT ", block count " INT64_FORMAT ")",
+					 storageRead->relationName,
+					 storageRead->current.uncompressedLen,
+					 storageRead->segmentFileName,
+					 storageRead->current.headerOffsetInFile,
+					 storageRead->bufferCount);
 		}
 		else
 		{
-		  /*
-		   * Compressed.
-		   */
+			/*
+			 * Compressed.
+			 */
 
-		  PGFunction	  decompressor;
-		  PGFunction	 *cfns = storageRead->compression_functions;
+			PGFunction	  decompressor;
+			PGFunction	 *cfns = storageRead->compression_functions;
 
+			/* How can it be valid that decompressor is NULL, gp_decompress_new will
+			 * always crash if decompresor is NULL
+			 */
 			if (cfns == NULL)
 				decompressor = NULL;
 			else
 				decompressor = cfns[COMPRESSION_DECOMPRESS];
 
-		  gp_decompress_new(
-		  		content,				// Compressed data in block.
-		  		storageRead->current.compressedLen,
-		  		contentOut,
-		  		storageRead->current.uncompressedLen,
-		  		decompressor,
-		  		storageRead->compressionState,
-		  		storageRead->bufferCount);
+			gp_decompress_new(
+				content,				// Compressed data in block.
+				storageRead->current.compressedLen,
+				contentOut,
+				storageRead->current.uncompressedLen,
+				decompressor,
+				storageRead->compressionState,
+				storageRead->bufferCount);
 
 			if (Debug_appendonly_print_scan)
 				elog(LOG,
-				     "Append-only Storage Read decompressed block for table '%s' "
+					"Append-only Storage Read decompressed block for table '%s' "
 					 "(compressed length %d, uncompressed length = %d, segment file '%s', "
 					 "header offset in file = " INT64_FORMAT ", block count " INT64_FORMAT ")",
-				     storageRead->relationName,
-				     AppendOnlyStorageFormat_GetCompressedLen(header),
-				     storageRead->current.uncompressedLen,
-				     storageRead->segmentFileName,
-				     storageRead->current.headerOffsetInFile,
-				     storageRead->bufferCount);
+					 storageRead->relationName,
+					 AppendOnlyStorageFormat_GetCompressedLen(header),
+					 storageRead->current.uncompressedLen,
+					 storageRead->segmentFileName,
+					 storageRead->current.headerOffsetInFile,
+					 storageRead->bufferCount);
 		}
 	}
 

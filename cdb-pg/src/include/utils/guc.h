@@ -129,6 +129,9 @@ extern bool Debug_appendonly_print_insert;
 extern bool Debug_appendonly_print_insert_tuple;
 extern bool Debug_appendonly_print_scan;
 extern bool Debug_appendonly_print_scan_tuple;
+extern bool Debug_appendonly_print_delete;
+extern bool Debug_appendonly_print_update;
+extern bool Debug_appendonly_print_update_tuple;
 extern bool Debug_appendonly_print_storage_headers;
 extern bool Debug_appendonly_print_verify_write_block;
 extern bool Debug_appendonly_use_no_toast;
@@ -138,6 +141,8 @@ extern bool Debug_appendonly_print_append_block;
 extern bool Debug_appendonly_print_segfile_choice;
 extern int  Debug_appendonly_bad_header_print_level;
 extern bool Debug_appendonly_print_datumstream;
+extern bool Debug_appendonly_print_visimap;
+extern bool Debug_appendonly_print_compaction;
 extern bool Debug_gp_relation_node_fetch_wait_for_debugging;
 extern bool gp_crash_recovery_abort_suppress_fatal;
 extern bool gp_persistent_statechange_suppress_error;
@@ -156,6 +161,17 @@ extern int  gp_max_local_distributed_cache;
 extern bool gp_local_distributed_cache_stats;
 extern bool gp_appendonly_verify_block_checksums;
 extern bool gp_appendonly_verify_write_block;
+extern bool gp_appendonly_compaction;
+
+/*
+ * Threshold of the ratio of dirty data in a segment file
+ * over which the segment file will be compacted during
+ * lazy vacuum.
+ * 0 indicates compact whenever there is hidden data.
+ * 10 indicates that a segment should be compacted when more than
+ * 10% of the tuples are hidden.
+ */ 
+extern int  gp_appendonly_compaction_threshold;
 extern bool gp_heap_require_relhasoids_match;
 extern bool	Debug_appendonly_rezero_quicklz_compress_scratch;
 extern bool	Debug_appendonly_rezero_quicklz_decompress_scratch;

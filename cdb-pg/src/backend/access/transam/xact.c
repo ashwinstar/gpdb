@@ -3340,7 +3340,9 @@ ClearTransactionFromPgProc_UnderLock(void)
 	MyProc->xid = InvalidTransactionId;
 	MyProc->xmin = InvalidTransactionId;
 	MyProc->inVacuum = false;		/* must be cleared with xid/xmin */
-	
+	MyProc->serializableIsoLevel = false;
+	MyProc->inDropTransaction = false;
+
 	/* Clear the subtransaction-XID cache too while holding the lock */
 	MyProc->subxids.nxids = 0;
 	MyProc->subxids.overflowed = false;
@@ -3882,6 +3884,8 @@ PrepareTransaction(void)
 	
 	MyProc->xmin = InvalidTransactionId;
 	MyProc->inVacuum = false;	/* must be cleared with xid/xmin */
+	MyProc->serializableIsoLevel = false;
+	MyProc->inDropTransaction = false;
 
 	/* Clear the subtransaction-XID cache too while holding the lock */
 	MyProc->subxids.nxids = 0;
@@ -4169,6 +4173,8 @@ AbortTransaction(void)
 		MyProc->xid = InvalidTransactionId;
 		MyProc->xmin = InvalidTransactionId;
 		MyProc->inVacuum = false;		/* must be cleared with xid/xmin */
+		MyProc->serializableIsoLevel = false;
+		MyProc->inDropTransaction = false;
 
 		/* Clear the subtransaction-XID cache too while holding the lock */
 		MyProc->subxids.nxids = 0;

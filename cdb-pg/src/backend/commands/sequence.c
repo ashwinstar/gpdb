@@ -399,6 +399,8 @@ DefineSequence(CreateSeqStmt *seq)
 	stmt->oidInfo.aosegIndexOid = 0;
 	stmt->oidInfo.aoblkdirOid = 0;
 	stmt->oidInfo.aoblkdirIndexOid = 0;
+	stmt->oidInfo.aovisimapOid = 0;
+	stmt->oidInfo.aovisimapIndexOid = 0;
 
 	if (shouldDispatch)
 	{

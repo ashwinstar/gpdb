@@ -1251,20 +1251,37 @@ static void
 ExecUpdateAOtupCount(ResultRelInfo *result_rels,
 					 Snapshot shapshot,
 					 int num_result_rels,
-					 uint64 processed)
+					 EState* estate,
+					 uint64 tupadded)
 {
 	int		i;
 
 	Assert(Gp_role == GP_ROLE_DISPATCH);
+
+	bool was_delete = estate && estate->es_plannedstmt &&
+		(estate->es_plannedstmt->commandType == CMD_DELETE);
 
 	for (i = num_result_rels; i > 0; i--)
 	{
 		if(RelationIsAoRows(result_rels->ri_RelationDesc) || RelationIsAoCols(result_rels->ri_RelationDesc))
 		{
 			Assert(result_rels->ri_aosegno != InvalidFileSegNumber);
-			UpdateMasterAosegTotals(result_rels->ri_RelationDesc,
+
+			if (was_delete && tupadded > 0)
+			{
+				/* Touch the ao seg info */
+				UpdateMasterAosegTotals(result_rels->ri_RelationDesc,
 									result_rels->ri_aosegno,
-									processed);
+									0,
+									1);
+			} 
+			else if (!was_delete)
+			{
+				UpdateMasterAosegTotals(result_rels->ri_RelationDesc,
+									result_rels->ri_aosegno,
+									tupadded,
+									1);
+			}
 		}
 
 		result_rels++;
@@ -2082,7 +2099,7 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 				if (found)
 				{
 					Relation r = heap_open(map->relid, AccessShareLock);
-					UpdateMasterAosegTotals(r, map->segno, entry->tupcount);
+					UpdateMasterAosegTotals(r, map->segno, entry->tupcount, 1);
 					heap_close(r, NoLock);
 				}
 			}
@@ -2095,6 +2112,7 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 			ExecUpdateAOtupCount(estate->es_result_relations,
 								 estate->es_snapshot,
 								 estate->es_num_result_relations,
+								 estate,
 								 estate->es_processed);
 		}
 

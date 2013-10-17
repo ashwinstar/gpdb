@@ -3828,6 +3828,7 @@ isRelBufKindOkForHeapException(PersistentFileSysRelBufpoolKind kind)
 		case PersistentFileSysRelBufpoolKind_Heap:
 		case PersistentFileSysRelBufpoolKind_AppendOnlySeginfo:
 		case PersistentFileSysRelBufpoolKind_AppendOnlyBlockDirectory:
+		case PersistentFileSysRelBufpoolKind_AppendOnlyVisibilityMap:
 		case PersistentFileSysRelBufpoolKind_BitMap:
 		case PersistentFileSysRelBufpoolKind_Sequence:
         case PersistentFileSysRelBufpoolKind_Toast:

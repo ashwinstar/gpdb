@@ -90,6 +90,10 @@ void GpPersistentRelationNode_GetRelationInfo(
 	case RELKIND_AOBLOCKDIR:		/* AO block directory */
 		*relationBufpoolKind = PersistentFileSysRelBufpoolKind_AppendOnlyBlockDirectory;
 		break;
+	
+	case RELKIND_AOVISIMAP:		/* AO visibility map */
+		*relationBufpoolKind = PersistentFileSysRelBufpoolKind_AppendOnlyVisibilityMap;
+		break;
 
 	case RELKIND_UNCATALOGED:		/* temporary heap */
 		*relationBufpoolKind = PersistentFileSysRelBufpoolKind_UncatalogedHeap;
