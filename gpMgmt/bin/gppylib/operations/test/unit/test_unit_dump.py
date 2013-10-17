@@ -802,14 +802,14 @@ class DumpTestCase(unittest.TestCase):
         schemaname = 'public'
         partitionname = 't1'
         tuple_count = '#########'
-        with self.assertRaisesRegexp(Exception, 'Can not convert tuple count for table.'):
+        with self.assertRaisesRegexp(Exception, 'Can not convert modification count for table.'):
             validate_modcount(schemaname, partitionname, tuple_count)
 
     def test_validate_modcount_02(self):
         schemaname = 'public'
         partitionname = 't1'
         tuple_count = '1+e15'
-        with self.assertRaisesRegexp(Exception, 'Can not convert tuple count for table.'):
+        with self.assertRaisesRegexp(Exception, 'Can not convert modification count for table.'):
             validate_modcount(schemaname, partitionname, tuple_count)
 
     def test_validate_modcount_03(self):
