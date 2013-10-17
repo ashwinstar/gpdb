@@ -60,6 +60,7 @@ typedef struct
 
 static ProcSignalSlot *ProcSignalSlots = NULL;
 static volatile ProcSignalSlot *MyProcSignalSlot = NULL;
+static volatile bool InSIGUSR1Handler = false;
 
 static bool CheckProcSignal(ProcSignalReason reason);
 static void CleanupProcSignalState(int status, Datum arg);
@@ -245,18 +246,36 @@ CheckProcSignal(ProcSignalReason reason)
 	return false;
 }
 
+bool
+AmIInSIGUSR1Handler(void)
+{
+	return InSIGUSR1Handler;
+}
+
 /*
  * procsignal_sigusr1_handler - handle SIGUSR1 signal.
  */
 void
 procsignal_sigusr1_handler(SIGNAL_ARGS)
 {
-	int			save_errno = errno;
+	int save_errno = errno;
 
-	if (CheckProcSignal(PROCSIG_CATCHUP_INTERRUPT))
-		HandleCatchupInterrupt();
+	PG_TRY();
+	{
+		InSIGUSR1Handler = true;
 
-	latch_sigusr1_handler();
+		if (CheckProcSignal(PROCSIG_CATCHUP_INTERRUPT))
+			HandleCatchupInterrupt();
+
+		latch_sigusr1_handler();
+		InSIGUSR1Handler = false;
+	}
+	PG_CATCH();
+	{
+		InSIGUSR1Handler = false;
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 
 	errno = save_errno;
 }

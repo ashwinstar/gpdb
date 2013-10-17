@@ -40,6 +40,7 @@
 #include "replication/walsender_private.h"
 #include "storage/pmsignal.h"
 #include "storage/proc.h"
+#include "storage/procsignal.h"
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/ps_status.h"
@@ -82,6 +83,15 @@ SyncRepWaitForLSN(XLogRecPtr XactCommitLSN)
 	int			mode = SyncRepWaitMode;
 	bool		syncStandbyPresent = false;
 	int			i = 0;
+
+	/*
+	 * SIGUSR1 is used to wake us up, cannot wait from inside SIGUSR1 handler
+	 * as its non-reentrant, so check for the same and avoid waiting.
+	 */
+	if (AmIInSIGUSR1Handler())
+	{
+		return;
+	}
 
 	elogif(debug_walrepl_syncrep, LOG,
 			"syncrep wait -- This backend's commit LSN for syncrep is %X/%X.",
