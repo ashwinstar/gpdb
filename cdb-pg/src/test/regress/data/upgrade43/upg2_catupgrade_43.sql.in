@@ -366,3 +366,5 @@ $$ LANGUAGE plpgsql;
 SET gp_permit_relation_node_change = on;
 SELECT @gpupgradeschemaname@.drop_shared_relation(5008);
 RESET gp_permit_relation_node_change;
+
+DROP FUNCTION @gpupgradeschemaname@.drop_shared_relation(oid);
