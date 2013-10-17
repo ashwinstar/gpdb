@@ -181,11 +181,12 @@ void
 ConnFree(void) 
 {	
 	if (port) {
+		/* We copied the pointer in FileRepConnServer_CreateConnection() */
+		if (port == MyProcPort)
+			MyProcPort = NULL;
 		free(port);
 	}
 	port = NULL;
-	/* We copied the pointer in FileRepConnServer_CreateConnection() */
-	MyProcPort = NULL;
 }
 
 /*
