@@ -27,6 +27,7 @@
 #include "access/tupmacs.h"
 #include "access/multixact.h"
 #include "access/nbtree.h"
+#include "access/twophase.h"
 #include "access/xact.h"
 #include "access/xlog_internal.h"
 #include "access/xlogmm.h"
@@ -782,6 +783,152 @@ printInsert(xl_heap_insert *xlrecord, uint32 datalen)
 	}
 }
 
+typedef struct dtx_checkpoint
+{
+	uint32				len;
+	TMGXACT_CHECKPOINT *tmgxact;
+} dtx_checkpoint;
+
+typedef struct mmxlog_checkpoint
+{
+	uint32			len;
+	fspc_agg_state *fspc;
+	tspc_agg_state *tspc;
+	dbdir_agg_state *dbdir;
+} mmxlog_checkpoint;
+
+typedef struct prpt_checkpoint
+{
+	uint32			len;
+	prepared_transaction_agg_state *prpt;
+} prpt_checkpoint;
+
+/*
+ * Read mmxlog checkpoint info embedded in checkpoint xlog.  len is the known length
+ * we can read up to, and this function returns the number of bytes of the mmxlog info
+ * as well as pointers to each field into p_mmCheckpoint.  Returns 0 if len is not
+ * long enough unexpectedly.
+ */
+static size_t
+read_mmxlog_checkpoint(char *ptr0, int len, mmxlog_checkpoint *p_mmCheckpoint)
+{
+	fspc_agg_state *fspc;
+	tspc_agg_state *tspc;
+	dbdir_agg_state *dbdir;
+	int fspc_len;
+	int tspc_len;
+	int dbdir_len;
+	char *ptr;
+
+	/* read filespace info and advance pointer */
+	ptr = ptr0;
+	fspc = (fspc_agg_state *) ptr;
+	fspc_len = FSPC_CHECKPOINT_BYTES(fspc->count);
+	if (len < fspc_len)
+		return 0;
+	ptr += fspc_len;
+	len -= fspc_len;
+
+	/* read tablespace info and advance pointer */
+	tspc = (tspc_agg_state *) ptr;
+	tspc_len = TSPC_CHECKPOINT_BYTES(tspc->count);
+	if (len < tspc_len)
+		return 0;
+	ptr += tspc_len;
+	len -= tspc_len;
+
+	/* read database info and advance pointer */
+	dbdir = (dbdir_agg_state *) ptr;
+	dbdir_len = DBDIR_CHECKPOINT_BYTES(dbdir->count);
+	if (len < dbdir_len)
+		return 0;
+	ptr += dbdir_len;
+	len -= dbdir_len;
+
+	/* pack returning values */
+	if (p_mmCheckpoint != NULL)
+	{
+		p_mmCheckpoint->len = ptr - ptr0;
+		p_mmCheckpoint->fspc = fspc;
+		p_mmCheckpoint->tspc = tspc;
+		p_mmCheckpoint->dbdir = dbdir;
+	}
+
+	return ptr - ptr0;
+}
+
+/*
+ * Read DTX, mmxlog and prepared transaction payload of checkpoint record.
+ * Each information is returned to the argument pointers.  Each is
+ * initialized with 0/NULL, and if record looks corrupted we stop reading.
+ */
+static void
+read_checkpoint_payload(XLogRecord *record,
+						dtx_checkpoint *p_dtxCheckpoint,
+						mmxlog_checkpoint *p_mmCheckpoint,
+						prpt_checkpoint *p_prptCheckpoint)
+{
+	if (p_dtxCheckpoint != NULL)
+		memset(p_dtxCheckpoint, 0, sizeof(dtx_checkpoint));
+	if (p_mmCheckpoint != NULL)
+		memset(p_mmCheckpoint, 0, sizeof(mmxlog_checkpoint));
+	if (p_prptCheckpoint != NULL)
+		memset(p_prptCheckpoint, 0, sizeof(prpt_checkpoint));
+
+	if (record->xl_len > sizeof(CheckPoint))
+	{
+		uint32	remainderLen;
+		TMGXACT_CHECKPOINT *dtxCheckpoint;
+		uint32 dtxCheckpointLen;
+		char *mmCheckpoint;
+		uint32 mmCheckpointLen;
+		prepared_transaction_agg_state *prptCheckpoint;
+		uint32 prptCheckpointLen;
+
+		remainderLen = record->xl_len - sizeof(CheckPoint);
+
+		/* Read distributed transaction payload */
+		dtxCheckpoint = (TMGXACT_CHECKPOINT *)
+			(XLogRecGetData(record) + sizeof(CheckPoint));
+		dtxCheckpointLen =
+			TMGXACT_CHECKPOINT_BYTES(dtxCheckpoint->committedCount);
+		/* Not enough length?  Don't return values. */
+		if (remainderLen < dtxCheckpointLen)
+			return;
+		if (p_dtxCheckpoint != NULL)
+		{
+			p_dtxCheckpoint->len = dtxCheckpointLen;
+			p_dtxCheckpoint->tmgxact = dtxCheckpoint;
+		}
+
+		remainderLen -= dtxCheckpointLen;
+
+		/* Read mmxlog payload */
+		mmCheckpoint = ((char *) dtxCheckpoint + dtxCheckpointLen);
+		mmCheckpointLen =
+			read_mmxlog_checkpoint(mmCheckpoint, remainderLen, p_mmCheckpoint);
+		/* 0 means mmxlog could not be read (not enough length) */
+		if (mmCheckpointLen == 0)
+			return;
+
+		remainderLen -= mmCheckpointLen;
+
+		/* Read prepared transaction payload */
+		prptCheckpoint = (prepared_transaction_agg_state *)
+			((char *) mmCheckpoint + mmCheckpointLen);
+		prptCheckpointLen =
+				PREPARED_TRANSACTION_CHECKPOINT_BYTES(prptCheckpoint->count);
+		/* Not enough length?  Don't return values. */
+		if (remainderLen < prptCheckpointLen)
+			return;
+		if (p_prptCheckpoint != NULL)
+		{
+			p_prptCheckpoint->len = prptCheckpointLen;
+			p_prptCheckpoint->prpt = prptCheckpoint;
+		}
+	}
+}
+
 static void
 dumpXLogRecord(XLogRecord *record, bool header_only)
 {
@@ -845,6 +992,10 @@ dumpXLogRecord(XLogRecord *record, bool header_only)
 				info == XLOG_CHECKPOINT_ONLINE)
 			{
 				CheckPoint	*checkpoint = (CheckPoint*) XLogRecGetData(record);
+				dtx_checkpoint dtxCheckpoint;
+				mmxlog_checkpoint mmCheckpoint;
+				prpt_checkpoint prptCheckpoint;
+
 				if(!hideTimestamps)
 					printf("checkpoint: redo %X/%X; undo %X/%X; tli %u; nextxid %u;\n"
 						   "  nextoid %u; nextmulti %u; nextoffset %u; %s at %s\n",
@@ -868,7 +1019,78 @@ dumpXLogRecord(XLogRecord *record, bool header_only)
 						   checkpoint->nextMultiOffset,
 						   (info == XLOG_CHECKPOINT_SHUTDOWN) ?
 						   "shutdown" : "online");
-				
+
+				read_checkpoint_payload(record,
+										&dtxCheckpoint,
+										&mmCheckpoint,
+										&prptCheckpoint);
+
+				if (dtxCheckpoint.len > 0)
+				{
+					int i, count;
+					TMGXACT_CHECKPOINT *tmgxact;
+
+					tmgxact = dtxCheckpoint.tmgxact;
+					count = tmgxact->committedCount;
+					for (i = 0; i < count; i++)
+					{
+						TMGXACT_LOG *log = &tmgxact->committedGxactArray[i];
+
+						printf("  dtx: gxid = %u, gid = %s\n",
+							   log->gxid, log->gid);
+					}
+				}
+
+				if (mmCheckpoint.len > 0)
+				{
+					fspc_agg_state *f;
+					tspc_agg_state *t;
+					dbdir_agg_state *d;
+					int i;
+
+					f = mmCheckpoint.fspc;
+					for (i = 0; i < f->count; i++)
+					{
+						fspc_map *m = &(f->maps[i]);
+
+						printf("  filespace: filespaceoid = %u, dbid1 = %d, dbid = %d, path1 = %s, path2 = %s\n",
+								m->filespaceoid,
+								m->dbid1, m->dbid2,
+								m->path1, m->path2);
+					}
+
+					t = mmCheckpoint.tspc;
+					for (i = 0; i < t->count; i++)
+					{
+						tspc_map *m = &(t->maps[i]);
+						printf("  tablespace: tablespaceoid = %u, filespaceoid = %u\n",
+								m->tablespaceoid, m->filespaceoid);
+					}
+
+					d = mmCheckpoint.dbdir;
+					for (i = 0; i < d->count; i++)
+					{
+						dbdir_map *m = &(d->maps[i]);
+						printf("  database: tablespaceoid = %u, databaseoid = %u\n",
+								m->tablespaceoid, m->databaseoid);
+					}
+				}
+
+				if (prptCheckpoint.len > 0)
+				{
+					int i, count;
+					prepared_transaction_agg_state *prpt;
+
+					prpt = prptCheckpoint.prpt;
+					count = prpt->count;
+					for (i = 0; i < count; i++)
+					{
+						prpt_map *m = &prpt->maps[i];
+						printf("  prepared transaction: xid = %u, xlogrecptr = %08X/%08X\n",
+								m->xid, m->xlogrecptr.xlogid, m->xlogrecptr.xrecoff);
+					}
+				}
+
 			}
 			else if (info == XLOG_NEXTOID)
 			{
