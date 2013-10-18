@@ -36,6 +36,7 @@
 #include "cdb/cdbpersistentdatabase.h"
 #include "cdb/cdbpersistentrelation.h"
 #include "cdb/cdbpersistentrecovery.h"
+#include "cdb/cdbpersistentcheck.h"
 #include "cdb/cdbresynchronizechangetracking.h"
 #include "cdb/cdbvars.h"
 #include "miscadmin.h"
@@ -177,6 +178,13 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		size = add_size(size, PersistentDatabase_ShmemSize());
 		size = add_size(size, PersistentRelation_ShmemSize());
 		size = add_size(size, Pass2Recovery_ShmemSize());
+
+		/*Add shared memory for PT verification checks*/
+		if (Gp_role == GP_ROLE_DISPATCH && debug_persistent_ptcat_verification)
+		{
+			size = add_size(size, Persistent_PostDTMRecv_ShmemSize());
+		}
+
 		if (GPAreFileReplicationStructuresRequired()) {
 			size = add_size(size, FileRep_SubProcShmemSize());
 			size = add_size(size, FileRep_ShmemSize());
@@ -312,6 +320,9 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	PersistentDatabase_ShmemInit();
 	PersistentRelation_ShmemInit();
 	Pass2Recovery_ShmemInit();
+
+	if (Gp_role == GP_ROLE_DISPATCH && debug_persistent_ptcat_verification)
+		Persistent_PostDTMRecv_ShmemInit();
 
 	/*
 	 * Set up resource schedular

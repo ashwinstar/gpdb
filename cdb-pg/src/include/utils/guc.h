@@ -187,6 +187,7 @@ extern bool	Debug_persistent_store_print;
 extern bool Debug_persistent_bootstrap_print;
 extern bool persistent_integrity_checks;
 extern bool disable_persistent_diagnostic_dump;
+extern bool debug_persistent_ptcat_verification;
 extern bool debug_print_persistent_checks;
 extern bool Debug_bulk_load_bypass_wal;
 extern bool Debug_persistent_appendonly_commit_count_print;

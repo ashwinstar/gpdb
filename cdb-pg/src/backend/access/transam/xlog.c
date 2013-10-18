@@ -40,8 +40,10 @@
 #include "catalog/pg_type.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_tablespace.h"
+#include "executor/spi.h"
 #include "funcapi.h"
 #include "libpq/pqsignal.h"
+#include "libpq/hba.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "postmaster/postmaster.h"
@@ -82,6 +84,7 @@
 #include "cdb/cdbpersistentrecovery.h"
 #include "cdb/cdbresynchronizechangetracking.h"
 #include "cdb/cdbpersistentfilesysobj.h"
+#include "cdb/cdbpersistentcheck.h"
 #include "cdb/cdbfilerep.h"
 #include "postmaster/primary_mirror_mode.h"
 #include "utils/elog.h"
@@ -527,7 +530,22 @@ typedef struct XLogCtlData
 	XLogRecPtr	pass1LastLoc;
 	XLogRecPtr	pass1LastCheckpointLoc;
 
+	/*=================Pass 4 PersistentTable-Cat verification================*/
+	/*If true integrity checks will be performed in Pass4.*/
 	bool		integrityCheckNeeded;
+
+	/*
+	 * Currently set database and tablespace to be verified for database specific
+	 * PT-Cat verification in Pass4. These fields also act as implicit flags
+	 * PT-Cat which indicate if there are any more databases to perform
+	 * PT-Cat verifications checks on.
+	 */
+	Oid			currentDatabaseToVerify;
+	Oid			tablespaceOfCurrentDatabaseToVerify;
+
+	/*Indicates if pass4 PT-Cat verification checks passed*/
+	bool		pass4_PTCatVerificationPassed;
+	/*==========Pass 4 PersistentTable-Cat verification End===================*/
 
 } XLogCtlData;
 
@@ -695,8 +713,15 @@ static void XLogFileOpen(
 				MirroredFlatFileOpen *mirroredOpen,
 				uint32 log,
 				uint32 seg);
+
+static bool StartupXLOG_Pass4_CheckIfAnyInDoubtPreparedTransactions(void);
+static void StartupXLOG_Pass4_NonDBSpecificPTCatVerification(void);
+static void StartupXLOG_Pass4_DBSpecificPTCatVerification(void);
+static bool StartupXLOG_Pass4_GetDBForPTCatVerification(void);
+
 static bool XLogPageRead(XLogRecPtr *RecPtr, int emode, bool fetching_ckpt,
 			 bool randAccess);
+
 static int	PreallocXlogFiles(XLogRecPtr endptr);
 static void UpdateLastRemovedPtr(char *filename);
 static void MoveOfflineLogs(uint32 log, uint32 seg, XLogRecPtr endptr,
@@ -5376,6 +5401,8 @@ XLOGShmemInit(void)
 
 	memset(XLogCtl, 0, sizeof(XLogCtlData));
 
+	XLogCtl->pass4_PTCatVerificationPassed = true;
+
 	/*
 	 * Since XLogCtlData contains XLogRecPtr fields, its sizeof should be a
 	 * multiple of the alignment for same, so no extra alignment padding is
@@ -7545,61 +7572,273 @@ StartupXLOG_Pass3(void)
 }
 
 /*
- * This must be called ONCE during postmaster or standalone-backend startup
+ * Startup Pass 4 can perform basic integrity checks as well as
+ * PersistentTable-Catalog verification (if appropriate GUC is turned on).
+ * If the GUC is NOT set --
+ * 1. Only basic integrity checks will be performed.
+ *
+ * If the GUC is set --
+ * 1. Both Non-DB specific and DB-specific verification checks
+ * are executed to see if the system is consistent.
+ * 2. First run of Pass 4 performs basic integrity checks and
+ * non-DB specific checks. At the same time, next DB on which DB-specific
+ * verifications are to be performed is selected.
+ * 3. This DB selected in #2 will be used in the next cycle of Pass 4
+ * as a new spawned process for verification purposes. At the same time,
+ * a new database is selected for the subsequent cycle and thus this
+ * continues until there are no more DBs left to be verified in the system.
  */
 void
 StartupXLOG_Pass4(void)
 {
-	if (Debug_persistent_recovery_print)
-		elog(PersistentRecovery_DebugPrintLevel(),
-		     "Entering StartupXLOG_Pass4");
-
-	PersistentFileSysObj_StartupIntegrityCheck();
-
-	/* 
-	 * Do the check for inconsistencies in global sequence number after the catalog cache is set up 
-	 * MPP-17207. Inconsistent global sequence number can be fixed with setting the guc
-	 * gp_persistent_repair_global_sequence 
-	 */
-	PersistentFileSysObj_DoGlobalSequenceScan();
-
-	Insist(isFilespaceInfoConsistent());
-
-	ereport(LOG,
-			(errmsg("Finished startup integrity checking")));
+	bool doPTCatVerification = false;
 
 	/*
-	 * Now we can update the catalog to tell the system is fully-promoted,
-	 * if was standby.  This should be done after all WAL-replay finished
-	 * otherwise we'll be in inconsistent state where catalog says I'm in
-	 * primary state while the recovery is trying to stream.
+	 * Start with the basic Pass 4 integrity checks. If requested (GUC & No In-Doubt
+	 * prepared Xacts) then pursue non-database specific integrity checks
 	 */
-	if (ControlFile->state == DB_IN_STANDBY_NEW_TLI_SET)
+	if(!XLogStartup_DoNextPTCatVerificationIteration())
 	{
-		GpRoleValue old_role = Gp_role;
+		PersistentFileSysObj_StartupIntegrityCheck();
 
-		/* I am privileged */
-		InitializeSessionUserIdStandalone();
-		/* Start transaction locally */
-		Gp_role = GP_ROLE_UTILITY;
-		StartTransactionCommand();
-		GetTransactionSnapshot();
-		DirectFunctionCall1(gp_activate_standby, (Datum) 0);
-		/* close the transaction we started above */
-		CommitTransactionCommand();
-		Gp_role = old_role;
+		/*
+		 * Do the check for inconsistencies in global sequence number after the catalog cache is set up
+		 * MPP-17207. Inconsistent global sequence number can be fixed with setting the guc
+		 * gp_persistent_repair_global_sequence
+		 */
 
-		ereport(LOG, (errmsg("Updated catalog to support standby promotion")));
+		PersistentFileSysObj_DoGlobalSequenceScan();
+		Insist(isFilespaceInfoConsistent());
 
-		ControlFile->state = DB_IN_PRODUCTION;
-		ControlFile->time = time(NULL);
-		UpdateControlFile();
-		ereport(LOG, (errmsg("database system is ready")));
+		/*
+		 * Now we can update the catalog to tell the system is fully-promoted,
+		 * if was standby.  This should be done after all WAL-replay finished
+		 * otherwise we'll be in inconsistent state where catalog says I'm in
+		 * primary state while the recovery is trying to stream.
+		 */
+		if (ControlFile->state == DB_IN_STANDBY_NEW_TLI_SET)
+		{
+			GpRoleValue old_role = Gp_role;
+	
+			/* I am privileged */
+			InitializeSessionUserIdStandalone();
+			/* Start transaction locally */
+			Gp_role = GP_ROLE_UTILITY;
+			StartTransactionCommand();
+			GetTransactionSnapshot();
+			DirectFunctionCall1(gp_activate_standby, (Datum) 0);
+			/* close the transaction we started above */
+			CommitTransactionCommand();
+			Gp_role = old_role;
+
+			ereport(LOG, (errmsg("Updated catalog to support standby promotion")));
+
+			ControlFile->state = DB_IN_PRODUCTION;
+			ControlFile->time = time(NULL);
+			UpdateControlFile();
+			ereport(LOG, (errmsg("database system is ready")));
+		}
+
+		ereport(LOG,
+			(errmsg("Finished BASIC startup integrity checking")));
+
+		/*
+		 * Check if the system has any in-doubt prepared transactions
+		 * If No(Yes) - Do(nt) perform extra verification checks
+		 */
+		if (debug_persistent_ptcat_verification)
+		{
+			/*
+			 * As the startup passes are Auxiliary processes and not pure Backeneds
+			 * they don't have a user set. Hence, a concrete user id is needed.
+			 * Pass 4 may perform some PersistentTable-Catalog verification, which
+			 * uses SPI and hence will need a user id set
+			 * Set the user id to bootstrap user id to obtain super user rights.
+			 */
+			if (GpIdentity.segindex != MASTER_CONTENT_ID)
+				Gp_role = GP_ROLE_UTILITY;
+
+			SetSessionUserId(BOOTSTRAP_SUPERUSERID, true);
+			StartTransactionCommand();
+			doPTCatVerification = !StartupXLOG_Pass4_CheckIfAnyInDoubtPreparedTransactions();
+
+			/* Perform non-database specific verification checks */
+			if (doPTCatVerification)
+				StartupXLOG_Pass4_NonDBSpecificPTCatVerification();
+
+			CommitTransactionCommand();
+		}
 	}
 
-	if (Debug_persistent_recovery_print)
-		elog(PersistentRecovery_DebugPrintLevel(),
-			 "Exiting StartupXLOG_Pass4");
+	/*
+	 * If a database (and thus its tablespace) has already been selected, perform
+	 * database specific verifications.
+	 *
+	 * And then get the first or the next database (and its tablespace) for the first or
+	 * next cycle of Pass4 database specific extra verification checks
+	 */
+	if (doPTCatVerification || XLogStartup_DoNextPTCatVerificationIteration())
+	{
+		/* Redundant usage to maintain code readability */
+		if (GpIdentity.segindex != MASTER_CONTENT_ID)
+			Gp_role = GP_ROLE_UTILITY;
+
+		SetSessionUserId(BOOTSTRAP_SUPERUSERID, true);
+		StartTransactionCommand();
+
+		if(XLogStartup_DoNextPTCatVerificationIteration())
+			StartupXLOG_Pass4_DBSpecificPTCatVerification();
+
+		if (!StartupXLOG_Pass4_GetDBForPTCatVerification())
+		{
+			if (!XLogCtl->pass4_PTCatVerificationPassed)
+				elog(FATAL,"Startup Pass 4 PersistentTable-Catalog verification failed!!!");
+		}
+		else
+		{
+			if (Gp_role == GP_ROLE_DISPATCH && (GpIdentity.segindex == MASTER_CONTENT_ID))
+			{
+				bool exists = false;
+				postDTMRecv_dbTblSpc_Hash_Entry currentDbTblSpc;
+
+				if (!Persistent_PostDTMRecv_IsHashFull())
+				{
+					currentDbTblSpc.database = XLogCtl->currentDatabaseToVerify;
+					currentDbTblSpc.tablespace = XLogCtl->tablespaceOfCurrentDatabaseToVerify;
+
+					if (Persistent_PostDTMRecv_InsertHashEntry(currentDbTblSpc.database, &currentDbTblSpc, &exists))
+					{
+						if (exists)
+							elog(FATAL,"Database already present in the Hash Table");
+					}
+				}
+			}
+		}
+
+		CommitTransactionCommand();
+	}
+}
+
+static bool StartupXLOG_Pass4_CheckIfAnyInDoubtPreparedTransactions(void)
+{
+	bool retVal = false;
+	Persistent_Pre_ExecuteQuery();
+
+	PG_TRY();
+	{
+		int ret = Persistent_ExecuteQuery("select * from pg_prepared_xacts", true);
+
+		if (ret > 0)
+			retVal = true;
+		else if(ret == 0)
+			retVal = false;
+		else
+			Insist(0);
+	}
+	PG_CATCH();
+	{
+		Persistent_ExecuteQuery_Cleanup();
+		elog(FATAL, "In-Doubt transaction Check: Failure");
+	}
+	PG_END_TRY();
+
+	Persistent_Post_ExecuteQuery();
+	return retVal;
+}
+
+/*
+ * Indicates if more verification cycles are needed. XLogCtl current database
+ * and tablespace act as the flags and also carry database Oid and tablespace Oid
+ * for the next cycle of verification.
+ */
+bool XLogStartup_DoNextPTCatVerificationIteration(void)
+{
+	if (XLogCtl->currentDatabaseToVerify != InvalidOid &&
+			XLogCtl->tablespaceOfCurrentDatabaseToVerify != InvalidOid)
+		return true;
+
+	Insist(XLogCtl->currentDatabaseToVerify == InvalidOid &&
+				XLogCtl->tablespaceOfCurrentDatabaseToVerify == InvalidOid);
+		return false;
+}
+
+bool
+StartupXLOG_Pass4_GetDBForPTCatVerification(void)
+{
+	char		*filename;
+	FILE		*db_file;
+	char		dbName[NAMEDATALEN];
+	Oid			dbId= InvalidOid;
+	Oid			tblSpaceId = InvalidOid;
+	Oid			selectDbId = InvalidOid;
+	Oid			selectTblSpaceId = InvalidOid;
+	TransactionId dbFrozenxid;
+	bool		gotDatabase = false;
+	bool		chooseNextDatabase = false;
+
+	filename = database_getflatfilename();
+	db_file = AllocateFile(filename, "r");
+	if (db_file == NULL)
+		ereport(FATAL,
+				(errcode_for_file_access(),
+				 errmsg("could not open file \"%s\": %m", filename)));
+
+	while (read_pg_database_line(db_file, dbName, &dbId,
+								 &tblSpaceId, &dbFrozenxid))
+	{
+		Assert(dbId != InvalidOid && tblSpaceId != InvalidOid);
+		if(XLogCtl->currentDatabaseToVerify == InvalidOid)
+		{
+			Assert(XLogCtl->tablespaceOfCurrentDatabaseToVerify == InvalidOid);
+			selectDbId = dbId;
+			selectTblSpaceId = tblSpaceId;
+			gotDatabase = true;
+			break;
+		}
+		else if (XLogCtl->currentDatabaseToVerify == dbId)
+		{
+			Assert(XLogCtl->tablespaceOfCurrentDatabaseToVerify == tblSpaceId);
+			chooseNextDatabase = true;
+		}
+		else if (chooseNextDatabase)
+		{
+			selectDbId = dbId;
+			selectTblSpaceId = tblSpaceId;
+			gotDatabase = true;
+			break;
+		}
+	}
+
+	FreeFile(db_file);
+	pfree(filename);
+
+	XLogCtl->currentDatabaseToVerify = selectDbId;
+	XLogCtl->tablespaceOfCurrentDatabaseToVerify = selectTblSpaceId;
+	return gotDatabase;
+}
+
+/*
+ * Perform Verification which is database specific
+ * - Currently performed as part of Startup Pass 4
+ */
+void
+StartupXLOG_Pass4_DBSpecificPTCatVerification()
+{
+	elog(LOG,"DB specific PersistentTable-Catalog Verification using DB %d", MyDatabaseId);
+	if (!Persistent_DBSpecificPTCatVerification())
+		XLogCtl->pass4_PTCatVerificationPassed = false;
+}
+
+/*
+ * Perform Verification which is NOT based on particular database
+ * - Currently performed as part of Startup Pass 4
+ */
+void
+StartupXLOG_Pass4_NonDBSpecificPTCatVerification(void)
+{
+	elog(LOG,"Non-DB specific PersistentTable-Catalog Verification using DB %d", MyDatabaseId);
+	if (!Persistent_NonDBSpecificPTCatVerification())
+		XLogCtl->pass4_PTCatVerificationPassed = false;
 }
 
 /*
@@ -10666,8 +10905,6 @@ HandleCrash(SIGNAL_ARGS)
     StandardHandlerForSigillSigsegvSigbus_OnMainThread("a startup process", PASS_SIGNAL_ARGS);
 }
 
-static char *knownDatabase = "postgres";
-
 /* Main entry point for startup process */
 void
 StartupProcessMain(int passNum)
@@ -10807,13 +11044,21 @@ StartupProcessMain(int passNum)
 		 * tablespace; our access to the heap is going to be slightly
 		 * limited, so we'll just use some defaults.
 		 */
-		if (!FindMyDatabase(knownDatabase, &MyDatabaseId, &MyDatabaseTableSpace))
-			ereport(FATAL,
-					(errcode(ERRCODE_UNDEFINED_DATABASE),
-					 errmsg("database \"%s\" does not exit", knownDatabase)));
+		if (!XLogStartup_DoNextPTCatVerificationIteration())
+		{
+			MyDatabaseId = TemplateDbOid;
+			MyDatabaseTableSpace = DEFAULTTABLESPACE_OID;
+		}
+		else
+		{
+			MyDatabaseId = XLogCtl->currentDatabaseToVerify;
+			MyDatabaseTableSpace = XLogCtl->tablespaceOfCurrentDatabaseToVerify;
+		}
 
-		/* Now we can mark our PGPROC entry with the database ID */
-		/* (We assume this is an atomic store so no lock is needed) */
+		/*
+		 * Now we can mark our PGPROC entry with the database ID */
+		/* (We assume this is an atomic store so no lock is needed) 
+		 */
 		MyProc->databaseId = MyDatabaseId;
 
 		fullpath = GetDatabasePath(MyDatabaseId, MyDatabaseTableSpace);
@@ -10832,9 +11077,6 @@ StartupProcessMain(int passNum)
 			StartupXLOG_Pass4();
 		}
 
-//		ResourceOwnerRelease(CurrentResourceOwner,
-//							 RESOURCE_RELEASE_BEFORE_LOCKS,
-//							 false, true);
 		break;
 
 	case 3:

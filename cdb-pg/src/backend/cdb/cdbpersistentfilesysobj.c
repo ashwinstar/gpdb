@@ -6925,9 +6925,7 @@ void PersistentFileSysObj_StartupIntegrityCheck(void)
 		PersistentFileSysObj_StartupIntegrityCheckPrintDbDirs();
 	}
 
-	/*
-	 * Verify each relation has a database directory parent.
-	 */
+	/*Verify each relation has a database directory parent.*/
 	PersistentFileSysObj_StartupIntegrityCheckRelation();
 
 	/*

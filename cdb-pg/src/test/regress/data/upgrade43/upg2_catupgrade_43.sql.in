@@ -6,6 +6,7 @@
 -- Creating catalog objects must specific its oid. For example,
 --   Create function f1(int) ... with (oid = <newoid>)
 --   Create aggregate agg1(int) (..., oid = <newoid>)
+
 --
 -- Some operations can't be declared as DDL, such as populating a new catalog column,
 -- or replacing the on-disk representation of views. These must be done as DML.
@@ -187,6 +188,12 @@ COMMENT ON FUNCTION @gpupgradeschemaname@.pg_stat_get_backend_waiting_reason(int
 
 CREATE FUNCTION @gpupgradeschemaname@.pg_stat_get_wal_senders(OUT pid int4, OUT state text, OUT sent_location text, OUT write_location text, OUT flush_location text, OUT replay_location text, OUT sync_priority int4, OUT sync_state text) RETURNS SETOF @gpupgradeschemaname@.record LANGUAGE internal STABLE AS 'pg_stat_get_wal_senders' WITH (OID=3099);
 COMMENT ON FUNCTION @gpupgradeschemaname@.pg_stat_get_wal_senders() IS 'statistics: information about currently active replication';
+
+CREATE FUNCTION @gpupgradeschemaname@.gp_dbspecific_ptcat_verification() RETURNS bool LANGUAGE internal VOLATILE AS 'gp_dbspecific_ptcat_verification' WITH (OID=5075);
+COMMENT ON FUNCTION pg_catalog.gp_dbspecific_ptcat_verification() IS 'perform database specific PersistentTables-Catalog verification';
+
+CREATE FUNCTION @gpupgradeschemaname@.gp_nondbspecific_ptcat_verification() RETURNS bool LANGUAGE internal VOLATILE AS 'gp_nondbspecific_ptcat_verification' WITH (OID=5080);
+COMMENT ON FUNCTION pg_catalog.gp_nondbspecific_ptcat_verification() IS 'perform non-database specific PersistentTables-Catalog verification';
 
 -- pg_stat_get_activity adds a new column.
 -- we cannot use CREATE OR REPLACE FUNCTION as the object is pinned.

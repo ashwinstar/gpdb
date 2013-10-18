@@ -329,6 +329,7 @@ int			Debug_persistent_store_print_level = LOG;
 bool		Debug_persistent_bootstrap_print = false;
 bool		persistent_integrity_checks = true;
 bool		disable_persistent_diagnostic_dump = false;
+bool		debug_persistent_ptcat_verification = false;
 bool		debug_print_persistent_checks = false;
 bool		Debug_bulk_load_bypass_wal = true;
 bool		Debug_persistent_appendonly_commit_count_print = false;
@@ -2749,6 +2750,16 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&disable_persistent_diagnostic_dump,
 		true, NULL, NULL
+	},
+
+	{
+		{"debug_persistent_ptcat_verification", PGC_SUSET, DEVELOPER_OPTIONS,
+				gettext_noop("When set, it enables all set of cross catalog consistency integrity checks for persistent tables in Startup pass 4."),
+				NULL,
+				GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&debug_persistent_ptcat_verification,
+		false, NULL, NULL
 	},
 
 	{

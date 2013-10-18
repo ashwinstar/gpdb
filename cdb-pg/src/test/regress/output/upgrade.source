@@ -824,7 +824,9 @@ select stmt from catdump.DDL where ver = '4.3'
 except
 select stmt from catdump.DDL where ver = '4.2u'
 order by 1;
- stmt 
-------
-(0 rows)
+                                                                               stmt
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+CREATE FUNCTION pg_catalog.gp_dbspecific_ptcat_verification() RETURNS pg_catalog.bool LANGUAGE internal VOLATILE AS 'gp_dbspecific_ptcat_verification';
+CREATE FUNCTION pg_catalog.gp_nondbspecific_ptcat_verification() RETURNS pg_catalog.bool LANGUAGE internal VOLATILE AS 'gp_nondbspecific_ptcat_verification';
+(2 rows)
 
