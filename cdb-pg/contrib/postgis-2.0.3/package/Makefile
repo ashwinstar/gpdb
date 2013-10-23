@@ -22,12 +22,13 @@ PROJ_RPM_FLAGS="--define 'proj_dir $(PROJ_DIR)' --define 'proj_ver $(PROJ_VER)' 
 PROJ_RPM=proj-$(PROJ_VER)-$(PROJ_REL).$(ARCH).rpm
 
 POSTGIS_DIR=`cd .. && pwd`
-POSTGIS_VER=2.0
+POSTGIS_VER=2.0.3
+POSTGIS_PKG_VER=ossv2.0.3_pv2.0_gpdb4.3
 POSTGIS_REL=1
 POSTGIS_RPM_FLAGS="--define 'postgis_dir $(POSTGIS_DIR)' --define 'postgis_ver $(POSTGIS_VER)' --define 'postgis_rel $(POSTGIS_REL)' --define 'geos_ver $(GEOS_VER)' --define 'proj_ver $(PROJ_VER)'"
 DEPENDENT_RPMS="$(GEOS_RPM) $(PROJ_RPM)"
 POSTGIS_RPM=postgis-$(POSTGIS_VER)-$(POSTGIS_REL).$(ARCH).rpm
-POSTGIS_GPPKG=postgis-$(POSTGIS_VER)-$(OS)-$(ARCH).gppkg
+POSTGIS_GPPKG=postgis-$(POSTGIS_PKG_VER)-$(OS)-$(ARCH).gppkg
 
 TARGET_GPPKG=$(POSTGIS_GPPKG)
 EXTRA_CLEAN+=$(GEOS_RPM) $(PROJ_RPM) $(POSTGIS_RPM) $(POSTGIS_GPPKG)

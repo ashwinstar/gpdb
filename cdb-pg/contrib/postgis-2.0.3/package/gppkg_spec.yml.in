@@ -1,7 +1,7 @@
 Pkgname: postgis
 Architecture: #arch
 OS: #os
-Version: 2.0
+Version: ossv2.0.3_pv2.0_gpdb4.3
 GPDBVersion: #gpver
 Description: PostGIS provides spatial database functions for the Greenplum Database. 
 PostInstall:

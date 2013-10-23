@@ -16,10 +16,11 @@ JRE_RPM=jre-$(JRE_VER)-$(JRE_REL).$(ARCH).rpm
 
 GPHDFS_DIR=`cd .. && pwd`
 GPHDFS_VER=1.5.1
+GPHDFS_PKG_VER=pv1.5.1_gpdb4.3
 GPHDFS_REL=1
 GPHDFS_RPM_FLAGS="--define 'gphdfs_dir $(GPHDFS_DIR)' --define 'gphdfs_ver $(GPHDFS_VER)' --define 'gphdfs_rel $(GPHDFS_REL)' --define 'jre_ver $(JRE_VER)'"
 GPHDFS_RPM=gphdfs-$(GPHDFS_VER)-$(GPHDFS_REL).$(ARCH).rpm
-GPHDFS_GPPKG=gphdfs-$(GPHDFS_VER)-$(OS)-$(ARCH).gppkg
+GPHDFS_GPPKG=gphdfs-$(GPHDFS_PKG_VER)-$(OS)-$(ARCH).gppkg
 
 TARGET_GPPKG=$(GPHDFS_GPPKG)
 EXTRA_CLEAN+=$(JRE_RPM) $(GPHDFS_RPM) $(GPHDFS_GPPKG)
