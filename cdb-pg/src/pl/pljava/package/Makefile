@@ -15,11 +15,12 @@ JRE_RPM_FLAGS="--define 'jre_dir $(JRE_DIR)' --define 'jre_ver $(JRE_VER)' --def
 JRE_RPM=jre-$(JRE_VER)-$(JRE_REL).$(ARCH).rpm
 
 PLJAVA_DIR=`cd .. && pwd`
+PLJAVA_GPPKG_VER=ossv1.4.0_pv1.1_gpdb4.3
 PLJAVA_VER=1.1
 PLJAVA_REL=1
 PLJAVA_RPM_FLAGS="--define 'pljava_dir $(PLJAVA_DIR)' --define 'pljava_ver $(PLJAVA_VER)' --define 'pljava_rel $(PLJAVA_REL)' --define 'jre_ver $(JRE_VER)'"
 PLJAVA_RPM=pljava-$(PLJAVA_VER)-$(PLJAVA_REL).$(ARCH).rpm
-PLJAVA_GPPKG=pljava-$(PLJAVA_VER)-$(OS)-$(ARCH).gppkg
+PLJAVA_GPPKG=pljava-$(PLJAVA_GPPKG_VER)-$(OS)-$(ARCH).gppkg
 
 TARGET_GPPKG=$(PLJAVA_GPPKG)
 EXTRA_CLEAN+=$(JRE_RPM) $(PLJAVA_RPM) $(PLJAVA_GPPKG)

@@ -1,6 +1,6 @@
 Pkgname: ddboostlib
 Architecture: #arch
-Version: 2.4.1
+Version: 2.4.1_pv1.2_gpdb4.3
 OS: #os
 GPDBVersion: 4.3
 Description: The DDBoostlib package updates the Data Domain services for the Greenplum database.

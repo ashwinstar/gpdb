@@ -11,7 +11,7 @@ ARCH=$(shell uname -p)
 
 # NOTE: PERL_DIR is dfined in $(BLD_TOP)/releng/releng.mk
 
-PLPERL_GPPKG_VER=1.2
+PLPERL_GPPKG_VER=ossv5.12.4_pv1.2_gpdb4.3
 PLPERL_VER=1.1
 PLPERL_REL=2
 PLPERL_DIR=`cd .. && pwd`
