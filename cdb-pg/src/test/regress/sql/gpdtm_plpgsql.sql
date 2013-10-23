@@ -282,3 +282,43 @@ INSERT INTO dtm_plpg_foo SELECT * FROM dtm_plpg_foo LIMIT 10000;
 FETCH c0;
 CLOSE c0;
 COMMIT;
+
+--
+-- Sequence server test for an extended query
+--
+
+CREATE OR REPLACE function parse_arr (p_array text)
+	returns int[] IMMUTABLE
+	AS $dbvis$
+	declare
+		v_return int[][];
+		v_text text;
+		v_first int; 
+	BEGIN
+		if p_array is null 
+		then 
+			return null;
+		end if;  
+
+		v_first := 1;
+		for v_text in
+			select unnest(string_to_array(p_array, ';'))
+		loop 
+			v_return := v_return || ARRAY[(string_to_array(regexp_replace(v_text, '[)( ]', '', 'g'), ',')::int[])];
+		end loop;
+   
+		RETURN v_return;
+	END; 
+$dbvis$ LANGUAGE plpgsql;
+
+CREATE TABLE test_parse_arr (a bigserial, b int[]);
+
+INSERT INTO test_parse_arr (b)
+	SELECT parse_arr(x) FROM 
+				(    
+				  SELECT '(1, 2, 3)' AS x 
+				  UNION ALL
+				  SELECT NULL 
+				) AS q;
+
+SELECT * FROM test_parse_arr ORDER BY a;

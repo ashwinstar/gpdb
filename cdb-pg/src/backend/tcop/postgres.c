@@ -1271,11 +1271,16 @@ exec_mpp_query(const char *query_string,
 						  list_make1(plan ? (Node*)plan : (Node*)utilityStmt),
 						  MessageContext);
 
+		/* 
+		 * Setting up SequenceServer since
+		 * portal and SequenceServer were decoupled (MPP-20504). 
+		 */
+		SetupSequenceServer(seqServerHost, seqServerPort);
+
 		/*
 		 * Start the portal.  No parameters here.
 		 */
-		PortalStart(portal, paramLI, InvalidSnapshot,
-					seqServerHost, seqServerPort);
+		PortalStart(portal, paramLI, InvalidSnapshot);
 
 		/*
 		 * Select text output format, the default.
@@ -1306,6 +1311,9 @@ exec_mpp_query(const char *query_string,
 		(*receiver->rDestroy) (receiver);
 
 		PortalDrop(portal, false);
+
+		/* Decoupled Portal and SequenceServer (MPP-20504). */
+		TeardownSequenceServer();
 
 		/*
 		 * Close down transaction statement before reporting command-complete.  
@@ -1697,11 +1705,15 @@ exec_simple_query(const char *query_string, const char *seqServerHost, int seqSe
 						  plantree_list,
 						  MessageContext);
 
+		/* 
+		 * Setting up SequenceServer since
+		 * portal and SequenceServer were decoupled (MPP-20504).
+		 */
+		SetupSequenceServer(seqServerHost, seqServerPort);
 		/*
 		 * Start the portal.  No parameters here.
 		 */
-		PortalStart(portal, NULL, InvalidSnapshot,
-					seqServerHost, seqServerPort);
+		PortalStart(portal, NULL, InvalidSnapshot);
 
 		/*
 		 * Select the appropriate output format: text unless we are doing a
@@ -1748,6 +1760,9 @@ exec_simple_query(const char *query_string, const char *seqServerHost, int seqSe
 		(*receiver->rDestroy) (receiver);
 
 		PortalDrop(portal, false);
+
+		/* Decoupled Portal and SequenceServer (MPP-20504). */
+		TeardownSequenceServer();
 
 		if (IsA(parsetree, TransactionStmt))
 		{
@@ -2461,8 +2476,13 @@ exec_bind_message(StringInfo input_message)
 					  stmt_list,
 					  qContext);
 
-	PortalStart(portal, params, InvalidSnapshot,
-				savedSeqServerHost, savedSeqServerPort);
+	/* 
+	 * Setting up SequenceServer since
+	 * portal and SequenceServer were decoupled (MPP-20504).
+	 */
+	SetupSequenceServer(savedSeqServerHost, savedSeqServerPort);
+
+	PortalStart(portal, params, InvalidSnapshot);
 
 	/*
 	 * Apply the result format requests to the portal.
@@ -5063,7 +5083,12 @@ PostgresMain(int argc, char *argv[],
 
 								portal = GetPortalByName(close_target);
 								if (PortalIsValid(portal))
+								{
 									PortalDrop(portal, false);
+
+									/* Decoupled Portal and SequenceServer (MPP-20504). */
+									TeardownSequenceServer();
+								}
 							}
 							break;
 						default:

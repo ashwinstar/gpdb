@@ -688,10 +688,11 @@ FetchStatementTargetList(Node *stmt)
  *
  * On return, portal is ready to accept PortalRun() calls, and the result
  * tupdesc (if any) is known.
+ * 
+ * The caller should setup a SequenceServer if required.
  */
 void
-PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
-			const char *seqServerHost, int seqServerPort)
+PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot)
 {
 	Portal		saveActivePortal;
 	Snapshot	saveActiveSnapshot;
@@ -705,12 +706,9 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
 	AssertState(portal->queryContext != NULL);	/* query defined? */
 	AssertState(PortalGetStatus(portal)  == PORTAL_NEW);	/* else extra PortalStart */
 
-	/* Set up the sequence server */
-	SetupSequenceServer(seqServerHost, seqServerPort);
-
 	portal->releaseResLock = false;
-    
-    /*
+
+	/*
 	 * Set up global portal context pointers.  (Should we set QueryContext?)
 	 */
 	saveActivePortal = ActivePortal;

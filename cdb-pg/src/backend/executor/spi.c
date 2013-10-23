@@ -1169,8 +1169,7 @@ SPI_cursor_open(const char *name, SPIPlanPtr plan,
 	/*
 	 * Start portal execution.
 	 */
-	PortalStart(portal, paramLI, snapshot,
-				savedSeqServerHost, savedSeqServerPort);
+	PortalStart(portal, paramLI, snapshot);
 
 	Assert(portal->strategy != PORTAL_MULTI_QUERY);
 
