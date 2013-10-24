@@ -16,7 +16,8 @@ from gppylib.operations.dump import DumpDatabase, DumpGlobal, compare_dict, crea
                                     write_dirty_file, write_partition_list_file, write_dirty_file_to_temp, write_state_file,\
                                     get_pgstatlastoperations_dict, get_tables_with_dirty_metadata, compare_metadata,\
                                     CreateIncrementsFile, PostDumpDatabase, get_dirty_tables, validate_current_timestamp,\
-                                    validate_modcount, generate_dump_timestamp, get_filter_file, filter_dirty_tables, get_backup_dir
+                                    validate_modcount, generate_dump_timestamp, get_filter_file, filter_dirty_tables, get_backup_dir, \
+                                    update_filter_file
 from mock import patch, MagicMock, Mock
 
 class DumpTestCase(unittest.TestCase):
@@ -1002,6 +1003,38 @@ class DumpGlobalTestCase(unittest.TestCase):
         expected_output = "pg_dumpall -p 9000 -g --gp-syntax > %s" % global_file_name 
         output = self.dumper.create_pgdump_command_line(master_port, global_file_name)
         self.assertEquals(output, expected_output)
+
+    @patch('gppylib.operations.dump.get_filter_file', return_value = '/tmp/update_test')
+    @patch('gppylib.operations.dump.get_lines_from_file', return_value = ['public.heap_table1','public.ao_part_table','public.ao_part_table_1_prt_p1'])
+    @patch('gppylib.operations.dump.execute_sql', return_value = [('public','ao_part_table','ao_part_table_1_prt_p1'), ('public','ao_part_table','ao_part_table_1_prt_p2')])
+    def test_update_filter_file_00(self, mock1, mock2, mock3):
+        master_datadir = '/tmp'
+        backup_dir = None
+        dump_database = 'testdb'
+        master_port = 5432
+        filter_filename = '/tmp/update_test'
+        
+        update_filter_file(dump_database, master_datadir, backup_dir, master_port) 
+        contents = get_lines_from_file(filter_filename) 
+        expected_result = ['public.heap_table1','public.ao_part_table','public.ao_part_table_1_prt_p1', 'public.ao_part_table_1_prt_p2']
+        self.assertEqual(expected_result.sort(), contents.sort())
+        os.remove(filter_filename)
+
+    @patch('gppylib.operations.dump.get_filter_file', return_value = '/tmp/update_test')
+    @patch('gppylib.operations.dump.get_lines_from_file', return_value = ['public.heap_table1','public.ao_part_table','public.ao_part_table_1_prt_p1', 'public.ao_part_table_1_prt_p2'])
+    @patch('gppylib.operations.dump.execute_sql', return_value = [('public','ao_part_table','ao_part_table_1_prt_p1')])
+    def test_update_filter_file_01(self, mock1, mock2, mock3):
+        master_datadir = '/tmp'
+        backup_dir = None
+        dump_database = 'testdb'
+        master_port = 5432
+        filter_filename = '/tmp/update_test'
+        
+        update_filter_file(dump_database, master_datadir, backup_dir, master_port) 
+        contents = get_lines_from_file(filter_filename) 
+        expected_result = ['public.heap_table1','public.ao_part_table','public.ao_part_table_1_prt_p1', 'public.ao_part_table_1_prt_p2']
+        self.assertEqual(expected_result.sort(), contents.sort())
+        os.remove(filter_filename)
 
 if __name__ == '__main__':
     unittest.main()

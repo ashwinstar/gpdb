@@ -35,7 +35,7 @@ try:
                                         write_dirty_file, write_dirty_file_to_temp, write_last_operation_file,\
                                         write_partition_list_file, write_state_file, get_last_operation_data, \
                                         validate_current_timestamp, generate_dump_timestamp, get_dirty_heap_tables, \
-                                        DUMP_DIR, filter_dirty_tables, get_filter_file
+                                        DUMP_DIR, filter_dirty_tables, get_filter_file, update_filter_file
     from gppylib.operations.backup_utils import get_latest_full_dump_timestamp, check_funny_chars_in_tablenames, \
                                                 expand_partitions_and_populate_filter_file, get_lines_from_file, \
                                                 remove_file_from_segments, validate_timestamp, write_lines_to_file, \
@@ -610,6 +610,9 @@ class GpCronDump(Operation):
                                                     self.master_datadir, self.backup_dir,
                                                     self.full_dump_timestamp, ao_partition_list,
                                                     co_partition_list, last_operation_list)
+                if backup_utils.dump_prefix and \
+                   get_filter_file(dump_database, self.master_datadir, self.backup_dir):
+                    update_filter_file(dump_database, self.master_datadir, self.backup_dir, self.master_port)
                 dirty_partitions = filter_dirty_tables(dirty_partitions, dump_database, self.master_datadir,
                                                        self.backup_dir)
                 dirty_file = write_dirty_file_to_temp(dirty_partitions)

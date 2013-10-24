@@ -61,6 +61,13 @@ SELECT ALLTABLES.oid, ALLTABLES.schemaname, ALLTABLES.tablename FROM
 WHERE ALLTABLES.schemaname = DATATABLES.schemaname and ALLTABLES.tablename = DATATABLES.tablename AND ALLTABLES.oid not in (select reloid from pg_exttable)
 """
 
+GET_ALL_USER_TABLES_SQL = """
+SELECT n.nspname AS schemaname, c.relname AS tablename
+    FROM pg_class c LEFT JOIN pg_namespace n ON n.oid = c.relnamespace
+    LEFT JOIN pg_tablespace t ON t.oid = c.reltablespace
+    WHERE c.relkind = 'r'::"char" AND c.oid > 16384 AND (c.relnamespace > 16384 or n.nspname = 'public')
+"""
+
 GET_APPENDONLY_DATA_TABLE_INFO_SQL = """
     SELECT ALL_DATA_TABLES.oid, ALL_DATA_TABLES.schemaname, ALL_DATA_TABLES.tablename, OUTER_PG_CLASS.relname as tupletable FROM
     (%s) as ALL_DATA_TABLES, pg_appendonly, pg_class OUTER_PG_CLASS
@@ -322,6 +329,9 @@ def get_co_partition_list(master_port, dbname):
 def get_partition_list(master_port, dbname):
     return execute_sql(GET_ALL_DATATABLES_SQL, master_port, dbname)
 
+def get_user_table_list(master_port, dbname):
+    return execute_sql(GET_ALL_USER_TABLES_SQL, master_port, dbname)
+
 def get_last_operation_data(master_port, dbname):
     # oid, action, subtype, timestamp
     rows = execute_sql(GET_LAST_OPERATION_SQL, master_port, dbname)
@@ -373,6 +383,20 @@ def get_backup_dir(master_datadir, backup_dir):
     if backup_dir:
         return backup_dir
     return master_datadir
+
+def update_filter_file(dump_database, master_datadir, backup_dir, master_port):
+    filter_filename = get_filter_file(dump_database, master_datadir, backup_dir)
+    filter_tables = get_lines_from_file(filter_filename)
+    tables_sql = "SELECT DISTINCT schemaname||'.'||tablename FROM pg_partitions";
+    partitions_sql = "SELECT schemaname||'.'||partitiontablename FROM pg_partitions WHERE schemaname||'.'||tablename='%s';"
+    table_list = execute_sql(tables_sql, master_port, dump_database)
+
+    for table in table_list:
+        if table[0] in filter_tables:
+            partitions_list = execute_sql(partitions_sql % table[0], master_port, dump_database)
+            filter_tables.extend([x[0] for x in partitions_list])
+
+    write_lines_to_file(filter_filename, list(set(filter_tables)))
 
 def get_filter_file(dump_database, master_datadir, backup_dir):
     timestamp = get_latest_full_dump_timestamp(dump_database, get_backup_dir(master_datadir, backup_dir))
@@ -470,10 +494,10 @@ class DumpDatabase(Operation):
             verify_lines_in_file(filter_name, get_lines_from_file(self.include_dump_tables_file[0]))
         elif self.exclude_dump_tables_file[0]:
             filter = get_lines_from_file(self.exclude_dump_tables_file[0])
-            partitions = get_partition_list(self.master_port, self.dump_database)
+            partitions = get_user_table_list(self.master_port, self.dump_database)
             tables = []
             for p in partitions:
-                tablename = '%s.%s' % (p[1], p[2])
+                tablename = '%s.%s' % (p[0], p[1])
                 if tablename not in filter:
                     tables.append(tablename)
             write_lines_to_file(filter_name, tables)

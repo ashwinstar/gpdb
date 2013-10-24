@@ -3550,6 +3550,221 @@ Feature: Validate command line arguments
         And verify that there is no table "public.ao_part_table" in "testdb"
         And verify that there is no table "public.heap_table2" in "testdb"
 
+    @filter
+    @backupsmoke
+    Scenario: Filtered Incremental Backup and Restore with -t and added partition
+        Given the database is running
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb --prefix=foo -t public.ao_part_table -t public.heap_table1"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored 
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "public.ao_part_table"
+        And verify that the "filter" file in " " dir contains "public.heap_table1"
+        And partition "3" is added to partition table "public.ao_part_table" in "testdb"
+        When the user runs "gpcrondump -x testdb --prefix=foo --incremental  < gppylib/test/behave/mgmt_utils/steps/data/yes.txt"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And all the data from "testdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp and options "--prefix=foo" 
+        And gpdbrestore should return a return code of 0 
+        And verify that there is a "heap" table "public.heap_table1" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_part_table" in "testdb" with data
+        And verify that there is no table "public.ao_index_table" in "testdb"
+        And verify that there is no table "public.heap_table2" in "testdb"
+        And verify that partitioned tables "ao_part_table" in "testdb" have 9 partitions
+        And verify that there is partition "3" of "ao" partition table "ao_part_table" in "testdb" in "public"
+        And verify that the data of "14" tables in "testdb" is validated after restore 
+
+    @filter
+    Scenario: Filtered Incremental Backup and Restore with -T and added partition
+        Given the database is running
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb --prefix=foo -T public.ao_index_table -T public.heap_table2"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored 
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "public.ao_part_table"
+        And verify that the "filter" file in " " dir contains "public.heap_table1"
+        And partition "3" is added to partition table "public.ao_part_table" in "testdb"
+        When the user runs "gpcrondump -x testdb --prefix=foo --incremental  < gppylib/test/behave/mgmt_utils/steps/data/yes.txt"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And all the data from "testdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp and options "--prefix=foo" 
+        And gpdbrestore should return a return code of 0 
+        And verify that there is a "heap" table "public.heap_table1" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_part_table" in "testdb" with data
+        And verify that there is no table "public.ao_index_table" in "testdb"
+        And verify that there is no table "public.heap_table2" in "testdb"
+        And verify that partitioned tables "ao_part_table" in "testdb" have 9 partitions
+        And verify that there is partition "3" of "ao" partition table "ao_part_table" in "testdb" in "public"
+        And verify that the data of "14" tables in "testdb" is validated after restore 
+
+    @filter
+    Scenario: Filtered Incremental Backup and Restore with -t and dropped partition
+        Given the database is running
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb --prefix=foo -t public.ao_part_table -t public.heap_table1"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored 
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "public.ao_part_table"
+        And verify that the "filter" file in " " dir contains "public.heap_table1"
+        And partition "2" is dropped from partition table "public.ao_part_table" in "testdb"
+        When the user runs "gpcrondump -x testdb --prefix=foo --incremental  < gppylib/test/behave/mgmt_utils/steps/data/yes.txt"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And all the data from "testdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp and options "--prefix=foo" 
+        And gpdbrestore should return a return code of 0 
+        And verify that there is a "heap" table "public.heap_table1" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_part_table" in "testdb" with data
+        And verify that there is no table "public.ao_index_table" in "testdb"
+        And verify that there is no table "public.heap_table2" in "testdb"
+        And verify that partitioned tables "ao_part_table" in "testdb" have 3 partitions
+        And verify that the data of "6" tables in "testdb" is validated after restore 
+
+    @filter
+    Scenario: Filtered Incremental Backup and Restore with -T and dropped partition
+        Given the database is running
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb --prefix=foo -T public.ao_index_table -T public.heap_table2"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored 
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "public.ao_part_table"
+        And verify that the "filter" file in " " dir contains "public.heap_table1"
+        And partition "2" is dropped from partition table "public.ao_part_table" in "testdb"
+        When the user runs "gpcrondump -x testdb --prefix=foo --incremental  < gppylib/test/behave/mgmt_utils/steps/data/yes.txt"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And all the data from "testdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp and options "--prefix=foo" 
+        And gpdbrestore should return a return code of 0 
+        And verify that there is a "heap" table "public.heap_table1" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_part_table" in "testdb" with data
+        And verify that there is no table "public.ao_index_table" in "testdb"
+        And verify that there is no table "public.heap_table2" in "testdb"
+        And verify that partitioned tables "ao_part_table" in "testdb" have 3 partitions
+        And verify that the data of "6" tables in "testdb" is validated after restore 
+
+    @filter
+    Scenario: Filtered Incremental Backup and Restore with -t and dropped non-partition and partition table
+        Given the database is running
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table1" with compression "quicklz" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table2" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb --prefix=foo -t public.ao_part_table1 -t public.ao_part_table2 -t public.heap_table1"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored 
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "public.ao_part_table1"
+        And verify that the "filter" file in " " dir contains "public.ao_part_table2"
+        And verify that the "filter" file in " " dir contains "public.heap_table1"
+        When table "public.ao_part_table2" is dropped in "testdb"
+        And table "public.heap_table1" is dropped in "testdb"
+        And the user runs "gpcrondump -x testdb --prefix=foo --incremental  < gppylib/test/behave/mgmt_utils/steps/data/yes.txt"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And all the data from "testdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp and options "--prefix=foo" 
+        And gpdbrestore should return a return code of 0 
+        And verify that there is a "ao" table "public.ao_part_table1" in "testdb" with data
+        And verify that there is no table "public.ao_index_table" in "testdb"
+        And verify that there is no table "public.heap_table2" in "testdb"
+        And verify that there is no table "public.ao_part_table2" in "testdb"
+        And verify that there is no table "public.heap_table1" in "testdb"
+        And verify that partitioned tables "ao_part_table1" in "testdb" have 6 partitions
+        And verify that the data of "9" tables in "testdb" is validated after restore 
+
+    @filter
+    Scenario: Filtered Multiple Incremental Backups and Restore with -t and dropped partition between IBs
+        Given the database is running
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb --prefix=foo -t public.ao_part_table -t public.heap_table1"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored 
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "public.ao_part_table"
+        And verify that the "filter" file in " " dir contains "public.heap_table1"
+        When the user runs "gpcrondump -x testdb --prefix=foo --incremental  < gppylib/test/behave/mgmt_utils/steps/data/yes.txt"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And all the data from "testdb" is saved for verification
+        And partition "2" is dropped from partition table "public.ao_part_table" in "testdb"
+        When the user runs "gpcrondump -x testdb --prefix=foo --incremental  < gppylib/test/behave/mgmt_utils/steps/data/yes.txt"
+        Then gpcrondump should return a return code of 0 
+        And the user runs gpdbrestore with the stored timestamp and options "--prefix=foo" 
+        And gpdbrestore should return a return code of 0 
+        And verify that there is a "heap" table "public.heap_table1" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_part_table" in "testdb" with data
+        And verify that there is no table "public.ao_index_table" in "testdb"
+        And verify that there is no table "public.heap_table2" in "testdb"
+        And verify that partitioned tables "ao_part_table" in "testdb" have 6 partitions
+        And verify that the data of "10" tables in "testdb" is validated after restore 
+        When the user runs "gpcrondump -x testdb --prefix=foo --incremental  < gppylib/test/behave/mgmt_utils/steps/data/yes.txt"
+        Then gpcrondump should return a return code of 0 
+
     Scenario: Gpcrondump with no PGPORT set
         Given the database is running
         And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data

@@ -2370,6 +2370,15 @@ def impl(context, filename, path):
     if not os.path.exists(fullpath):
         raise Exception('file "%s" is not exist' % fullpath)
 
+@then('partition "{partitionnum}" is added to partition table "{tablename}" in "{dbname}"')
+def impl(context, partitionnum, tablename, dbname):
+     add_partition(context, partitionnum, tablename, dbname)
+
+@then('partition "{partitionnum}" is dropped from partition table "{tablename}" in "{dbname}"')
+def impl(context, partitionnum, tablename, dbname):
+     drop_partition(context, partitionnum, tablename, dbname)
+
+@when('table "{tablename}" is dropped in "{dbname}"')
 @then('table "{tablename}" is dropped in "{dbname}"')
 def impl(context, tablename, dbname):
     drop_sql = """DROP TABLE %s""" % tablename

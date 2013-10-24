@@ -446,6 +446,18 @@ def modify_data(context, tablename, dbname):
         dbconn.execSQL(conn, sql)
         conn.commit()
 
+def add_partition(context, partitionnum, tablename, dbname):
+    alter_table_str = "alter table %s add default partition p%s; insert into %s select i+%d, 'update', i + date '%s' from generate_series(0,1094) as i" \
+                      % (tablename, partitionnum, tablename, int(partitionnum), PARTITION_START_DATE)
+    with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
+        dbconn.execSQL(conn, alter_table_str)
+        conn.commit()
+
+def drop_partition(context, partitionnum, tablename, dbname):
+    alter_table_str = "alter table %s drop partition p%s;" % (tablename, partitionnum)
+    with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
+        dbconn.execSQL(conn, alter_table_str)
+        conn.commit()
 
 def create_partition(context, tablename, storage_type, dbname, compression_type=None, partition=True):
 
