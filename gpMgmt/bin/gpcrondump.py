@@ -126,9 +126,6 @@ class GpCronDump(Operation):
             if self.incremental and len(self.dump_databases.split(',')) > 1:
                 raise ExceptionNoStackTraceNeeded('multi-database backup is not supported with incremental backup: %s databases selected' % len(self.dump_databases))
 
-        if self.clear_catalog_dumps:
-            logger.info('Additional options            = -C')
-
         if self.clear_dumps_only and self.incremental:
             raise Exception('-o option cannot be selected with incremental backup')
 
