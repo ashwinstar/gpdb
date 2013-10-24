@@ -499,6 +499,9 @@ insert into nhtest values(300000.19);
 explain select * from nhtest a join nhtest b using (i);
 select * from nhtest a join nhtest b using (i);
 
+create temp table l(a int);
+insert into l values (1), (1), (2);
+select * from l l1 join l l2 on l1.a = l2.a left join l l3 on l1.a = l3.a and l1.a = 2 order by 1,2,3;
 
 --
 -- Predicate propagation over equality conditions

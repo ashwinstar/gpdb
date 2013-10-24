@@ -299,6 +299,27 @@ isBelowNullableSideOfOuterJoin( PlannerInfo *root, Relids qualscope)
 }
 
 /**
+ * Iterate on the given list of restrict infos, and build a new list that contains
+ * only the elements that have outerjoin_delayed= false
+ */
+static List *remove_outer_join_restrict_infos(List *restrictinfolist)
+{
+	List *newlist = NIL;
+
+	ListCell *lc = NULL;
+	foreach (lc, restrictinfolist)
+	{
+		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+		if (!rinfo->outerjoin_delayed)
+		{
+			newlist = lappend(newlist, rinfo);
+		}
+	}
+
+	return newlist;
+}
+
+/**
  * Given a list of pathkey items, extract out all relevant known clauses.
  * This is done by finding all relations represented in the pathkey item.
  * Then, we extract out all the restrictinfos from these relations and find
@@ -338,7 +359,7 @@ static List *relevant_known_clauses(PlannerInfo *root, List *lpkitems)
 	{
 		RelOptInfo *rel1 = find_base_rel(root, relid);
 
-		List *restrictinfolist = list_union(rel1->baserestrictinfo, rel1->joininfo);
+		List *restrictinfolist = list_union(rel1->baserestrictinfo, remove_outer_join_restrict_infos(rel1->joininfo));
 		List *restrictlistclauses = list_union(
 				extract_actual_clauses(restrictinfolist, true),
 				extract_actual_clauses(restrictinfolist, false)
@@ -357,7 +378,7 @@ static List *relevant_known_clauses(PlannerInfo *root, List *lpkitems)
 	{
 		RelOptInfo *rel1 = find_base_rel(root, relid);
 
-		List *restrictinfolist = list_union(rel1->baserestrictinfo, rel1->joininfo);
+		List *restrictinfolist = list_union(rel1->baserestrictinfo, remove_outer_join_restrict_infos(rel1->joininfo));
 		List *restrictlistclauses = list_union(
 				extract_actual_clauses(restrictinfolist, true),
 				extract_actual_clauses(restrictinfolist, false)
