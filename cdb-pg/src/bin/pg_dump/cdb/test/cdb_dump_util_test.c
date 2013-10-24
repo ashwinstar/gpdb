@@ -617,11 +617,14 @@ void test__formPostDataSchemaOnlyPsqlCommandLine1(void **state)
 	const char* compProg = "gzip -c";
 	const char* psqlPg = "psql"; 
 	const char* catPg = "cat";
-
+	const char* postDataFilterScript = "gprestore_post_data_filter.py";
+	const char* tableFilterFile = "tablefilter";
+	
 	formPostDataSchemaOnlyPsqlCommandLine(&cmdLine, inputFileSpec, compUsed, compProg, 
-							   psqlPg, catPg);
+							postDataFilterScript, tableFilterFile, 
+							psqlPg, catPg);
 
-	char *expected_output = "cat fileSpec | gzip -c | psql";
+	char *expected_output = "cat fileSpec | gzip -c | gprestore_post_data_filter.py -t tablefilter | psql";
 	assert_string_equal(cmdLine, expected_output);
 	free(cmdLine);
 }
@@ -634,9 +637,12 @@ void test__formPostDataSchemaOnlyPsqlCommandLine2(void **state)
 	const char* compProg = "gzip -c";
 	const char* psqlPg = "psql"; 
 	const char* catPg = "cat";
+	const char* postDataFilterScript = "gprestore_post_data_filter.py";
+	const char* tableFilterFile = "tablefilter";
 
 	formPostDataSchemaOnlyPsqlCommandLine(&cmdLine, inputFileSpec, compUsed, compProg, 
-							   psqlPg, catPg);
+							postDataFilterScript, tableFilterFile,
+							psqlPg, catPg);
 
 	char *expected_output = "psql -f fileSpec";
 	assert_string_equal(cmdLine, expected_output);

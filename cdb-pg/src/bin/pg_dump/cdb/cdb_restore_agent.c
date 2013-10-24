@@ -703,6 +703,7 @@ main(int argc, char **argv)
 		{
 			char	   *psqlPg = NULL;
 			char	   *filterScript = NULL;
+			char	   *postDataFilterScript = NULL;
 			char	   *catPg = NULL;
 
 			pszOnErrorStop = "-v ON_ERROR_STOP=";
@@ -720,6 +721,12 @@ main(int argc, char **argv)
 			if ((filterScript = testProgramExists("gprestore_filter.py")) == NULL)
 			{
 				mpp_err_msg(logError, progname, "Restore filter script not found in path");
+				exit(1);
+			}
+
+			if ((postDataFilterScript = testProgramExists("gprestore_post_data_filter.py")) == NULL)
+			{
+				mpp_err_msg(logError, progname, "Restore post data filter script not found in path");
 				exit(1);
 			}
 
@@ -777,7 +784,7 @@ main(int argc, char **argv)
 			{
                 /* Right now the postdata files will be synced to segment directories before restore */
                 formPostDataSchemaOnlyPsqlCommandLine(&pszCmdLine, inputFileSpec, bCompUsed, g_compPg,
-							psqlPg, catPg);
+							postDataFilterScript, table_filter_file, psqlPg, catPg);
 			}
 
 			strcat(pszCmdLine, " -h ");

@@ -2366,3 +2366,43 @@ def impl(context, filename, path):
 
     if not os.path.exists(fullpath):
         raise Exception('file "%s" is not exist' % fullpath)
+
+@then('table "{tablename}" is dropped in "{dbname}"')
+def impl(context, tablename, dbname):
+    drop_sql = """DROP TABLE %s""" % tablename
+    execute_sql(dbname, drop_sql)
+
+def create_trigger_function(dbname, trigger_func_name, tablename):
+    trigger_func_sql = """ 
+    CREATE OR REPLACE FUNCTION %s() RETURNS TRIGGER AS $$
+    BEGIN
+    INSERT INTO %s VALUES(2001, 'backup', '2100-08-23');
+    END;
+    $$ LANGUAGE plpgsql
+    """ % (trigger_func_name, tablename)
+    execute_sql(dbname, trigger_func_sql) 
+
+def create_trigger(dbname, trigger_func_name, trigger_name, tablename):
+    SQL = """
+    CREATE TRIGGER %s AFTER INSERT OR UPDATE OR DELETE ON %s FOR EACH STATEMENT EXECUTE PROCEDURE %s();
+    """ % (trigger_name, tablename, trigger_func_name)
+    execute_sql(dbname, SQL)
+
+@given('there is a trigger "{trigger_name}" on table "{tablename}" in "{dbname}" based on function "{trigger_func_name}"')
+def impl(context, trigger_name, tablename, dbname, trigger_func_name):
+    create_trigger_function(dbname, trigger_func_name, tablename)
+    create_trigger(dbname, trigger_func_name, trigger_name, tablename)
+
+@then('there is a trigger function "{trigger_func_name}" on table "{tablename}" in "{dbname}"')
+def impl(context, trigger_func_name, tablename, dbname):
+    create_trigger_function(dbname, trigger_func_name, tablename) 
+
+@when('the index "{index_name}" in "{dbname}" is dropped')
+def impl(context, index_name, dbname):
+    drop_index_sql = """DROP INDEX %s""" % index_name
+    execute_sql(dbname, drop_index_sql)
+
+@when('the trigger "{trigger_name}" on table "{tablename}" in "{dbname}" is dropped')
+def impl(context, trigger_name, tablename, dbname):
+    drop_trigger_sql = """DROP TRIGGER %s ON %s""" % (trigger_name, tablename)
+    execute_sql(dbname, drop_trigger_sql)

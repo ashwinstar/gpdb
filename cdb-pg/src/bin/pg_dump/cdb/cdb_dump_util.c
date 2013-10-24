@@ -960,7 +960,8 @@ formCompressionProgramString(char* compPg)
 
 void 
 formPostDataSchemaOnlyPsqlCommandLine(char** retVal, const char* inputFileSpec, bool compUsed, const char* compProg,
-							          const char* psqlPg, const char* catPg)
+									const char* post_data_filter_script, const char* table_filter_file, 
+									const char* psqlPg, const char* catPg)
 {
 	char* pszCmdLine = *retVal;
 	if (compUsed)
@@ -970,15 +971,22 @@ formPostDataSchemaOnlyPsqlCommandLine(char** retVal, const char* inputFileSpec, 
         strcat(pszCmdLine, inputFileSpec);
         strcat(pszCmdLine, " | ");
         strcat(pszCmdLine, compProg);
-        strcat(pszCmdLine, " | ");
-        strcat(pszCmdLine, psqlPg);
-    }    
-    else 
-    {    
-        strcat(pszCmdLine, psqlPg); 
-        strcat(pszCmdLine, " -f ");
-        strcat(pszCmdLine, inputFileSpec);
-    } 
+		if (table_filter_file)
+		{
+			strcat(pszCmdLine, " | ");
+			strcat(pszCmdLine, post_data_filter_script);
+			strcat(pszCmdLine, " -t ");
+			strcat(pszCmdLine, table_filter_file);
+		}
+		strcat(pszCmdLine, " | ");
+		strcat(pszCmdLine, psqlPg);
+	}    
+	else 
+	{    
+		strcat(pszCmdLine, psqlPg); 
+		strcat(pszCmdLine, " -f ");
+		strcat(pszCmdLine, inputFileSpec);
+	} 
 }
 
 void 

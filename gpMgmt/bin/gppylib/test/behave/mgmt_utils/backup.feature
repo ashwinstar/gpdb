@@ -3701,7 +3701,6 @@ Feature: Validate command line arguments
         And there is a file "restore_file" with tables "public.heap_table,public.ao_table,public.co_table,public.ao_part_table" 
         And the database "testdb" does not exist
         And database "testdb" exists
-        And there is schema "pepper" exists in "testdb"
         And the user runs "gpdbrestore --table-file restore_file -a" with the stored timestamp
         And gpdbrestore should return a return code of 0 
         And verify that there is a "heap" table "public.heap_table" in "testdb" with data
@@ -3779,6 +3778,202 @@ Feature: Validate command line arguments
         And the user runs "psql -c '\df' testdb"
         And psql should not print pymax to stdout
         And verify that the data of "2" tables in "testdb" is validated after restore 
+
+    Scenario: Full Backup and Restore filtering tables with post data objects 
+        Given the database is running
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a "heap" table "public.heap_table" with compression "None" in "testdb" with data
+        And there is a "heap" table "public.heap_table_ex" with compression "None" in "testdb" with data
+        And there is a "ao" table "public.ao_table" with compression "None" in "testdb" with data
+        And there is a "co" table "public.co_table_ex" with compression "None" in "testdb" with data
+        And there is a "ao" table "public.ao_index_table" with index "ao_index" compression "None" in "testdb" with data
+        And there is a "co" table "public.co_index_table" with index "co_index" compression "None" in "testdb" with data
+        And there is a trigger "heap_trigger" on table "public.heap_table" in "testdb" based on function "heap_trigger_func"
+        And there is a trigger "heap_ex_trigger" on table "public.heap_table_ex" in "testdb" based on function "heap_ex_trigger_func"
+        And the user runs "psql -c 'ALTER TABLE ONLY public.heap_table ADD CONSTRAINT heap_table_pkey PRIMARY KEY (column1, column2, column3);' testdb"
+        And the user runs "psql -c 'ALTER TABLE ONLY public.heap_table_ex ADD CONSTRAINT heap_table_pkey PRIMARY KEY (column1, column2, column3);' testdb"
+        And the user runs "psql -c 'ALTER TABLE ONLY heap_table ADD CONSTRAINT heap_const_1 FOREIGN KEY (column1, column2, column3) REFERENCES heap_table_ex(column1, column2, column3);' testdb"
+        And the user runs "psql -c """create rule heap_co_rule as on insert to heap_table where column1=100 do instead insert into co_table_ex values(27, 'restore', '2013-08-19');""" testdb"
+        When the user runs "gpcrondump -a -x testdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And all the data from "testdb" is saved for verification
+        And there is a file "restore_file" with tables "public.ao_table,public.ao_index_table,public.heap_table" 
+        When table "public.ao_index_table" is dropped in "testdb"
+        And table "public.ao_table" is dropped in "testdb"
+        And table "public.heap_table" is dropped in "testdb"
+        And the index "bitmap_co_index" in "testdb" is dropped
+        And the trigger "heap_ex_trigger" on table "public.heap_table_ex" in "testdb" is dropped
+        Then the user runs "gpdbrestore --table-file restore_file -a" with the stored timestamp
+        And gpdbrestore should return a return code of 0 
+        And verify that there is a "ao" table "public.ao_table" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_index_table" in "testdb" with data
+        And verify that there is a "heap" table "public.heap_table" in "testdb" with data
+        And verify that there is a "heap" table "public.heap_table_ex" in "testdb" with data
+        And verify that there is a "co" table "public.co_table_ex" in "testdb" with data
+        And verify that there is a "co" table "public.co_index_table" in "testdb" with data
+        And the user runs "psql -c '\d public.ao_index_table' testdb"
+        And psql should print \"bitmap_ao_index\" bitmap \(column3\) to stdout
+        And psql should print \"btree_ao_index\" btree \(column1\) to stdout
+        And the user runs "psql -c '\d public.heap_table' testdb"
+        And psql should print \"heap_table_pkey\" PRIMARY KEY, btree \(column1, column2, column3\) to stdout
+        And psql should print heap_trigger AFTER INSERT OR DELETE OR UPDATE ON heap_table FOR EACH STATEMENT EXECUTE PROCEDURE heap_trigger_func\(\) to stdout
+        And psql should print heap_co_rule AS\n.*ON INSERT TO heap_table\n.*WHERE new\.column1 = 100 DO INSTEAD  INSERT INTO co_table_ex \(column1, column2, column3\) to stdout
+        And psql should print \"heap_const_1\" FOREIGN KEY \(column1, column2, column3\) REFERENCES heap_table_ex\(column1, column2, column3\) to stdout
+        And the user runs "psql -c '\d public.co_index_table' testdb"
+        And psql should not print bitmap_co_index to stdout
+        And the user runs "psql -c '\d public.heap_table_ex' testdb"
+        And psql should not print heap_ex_trigger to stdout
+        And verify that the data of "6" tables in "testdb" is validated after restore 
+
+    Scenario: Full Backup and Restore dropped database filtering tables with post data objects 
+        Given the database is running
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a "heap" table "public.heap_table" with compression "None" in "testdb" with data
+        And there is a "heap" table "public.heap_table2" with compression "None" in "testdb" with data
+        And there is a "ao" table "public.ao_table" with compression "None" in "testdb" with data
+        And there is a "co" table "public.co_table_ex" with compression "None" in "testdb" with data
+        And there is a "ao" table "public.ao_index_table" with index "ao_index" compression "None" in "testdb" with data
+        And there is a "co" table "public.co_index_table" with index "co_index" compression "None" in "testdb" with data
+        And there is a trigger "heap_trigger" on table "public.heap_table" in "testdb" based on function "heap_trigger_func"
+        And the user runs "psql -c 'ALTER TABLE ONLY public.heap_table ADD CONSTRAINT heap_table_pkey PRIMARY KEY (column1, column2, column3);' testdb"
+        And the user runs "psql -c 'ALTER TABLE ONLY public.heap_table2 ADD CONSTRAINT heap_table_pkey PRIMARY KEY (column1, column2, column3);' testdb"
+        And the user runs "psql -c 'ALTER TABLE ONLY heap_table ADD CONSTRAINT heap_const_1 FOREIGN KEY (column1, column2, column3) REFERENCES heap_table2(column1, column2, column3);' testdb"
+        And the user runs "psql -c """create rule heap_ao_rule as on insert to heap_table where column1=100 do instead insert into ao_table values(27, 'restore', '2013-08-19');""" testdb"
+        When the user runs "gpcrondump -a -x testdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And all the data from "testdb" is saved for verification
+        And there is a file "restore_file" with tables "public.ao_table,public.ao_index_table,public.heap_table,public.heap_table2" 
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a trigger function "heap_trigger_func" on table "public.heap_table" in "testdb"
+        Then the user runs "gpdbrestore --table-file restore_file -a" with the stored timestamp
+        And gpdbrestore should return a return code of 0 
+        And verify that there is a "ao" table "public.ao_table" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_index_table" in "testdb" with data
+        And verify that there is a "heap" table "public.heap_table" in "testdb" with data
+        And verify that there is a "heap" table "public.heap_table2" in "testdb" with data
+        And verify that there is no table "public.co_table_ex" in "testdb"
+        And verify that there is no table "public.co_index_table" in "testdb"
+        And the user runs "psql -c '\d public.ao_index_table' testdb"
+        And psql should print \"bitmap_ao_index\" bitmap \(column3\) to stdout
+        And psql should print \"btree_ao_index\" btree \(column1\) to stdout
+        And the user runs "psql -c '\d public.heap_table' testdb"
+        And psql should print \"heap_table_pkey\" PRIMARY KEY, btree \(column1, column2, column3\) to stdout
+        And psql should print heap_trigger AFTER INSERT OR DELETE OR UPDATE ON heap_table FOR EACH STATEMENT EXECUTE PROCEDURE heap_trigger_func\(\) to stdout
+        And psql should print heap_ao_rule AS\n.*ON INSERT TO heap_table\n.*WHERE new\.column1 = 100 DO INSTEAD  INSERT INTO ao_table \(column1, column2, column3\) to stdout
+        And psql should print \"heap_const_1\" FOREIGN KEY \(column1, column2, column3\) REFERENCES heap_table2\(column1, column2, column3\) to stdout
+        And verify that the data of "4" tables in "testdb" is validated after restore 
+
+    Scenario: Full Backup and Restore filtering tables post data objects with -C
+        Given the database is running
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a "heap" table "public.heap_table" with compression "None" in "testdb" with data
+        And there is a "heap" table "public.heap_table_ex" with compression "None" in "testdb" with data
+        And there is a "ao" table "public.ao_table" with compression "None" in "testdb" with data
+        And there is a "co" table "public.co_table_ex" with compression "None" in "testdb" with data
+        And there is a "ao" table "public.ao_index_table" with index "ao_index" compression "None" in "testdb" with data
+        And there is a "co" table "public.co_index_table" with index "co_index" compression "None" in "testdb" with data
+        And there is a trigger "heap_trigger" on table "public.heap_table" in "testdb" based on function "heap_trigger_func"
+        And the user runs "psql -c 'ALTER TABLE ONLY public.heap_table ADD CONSTRAINT heap_table_pkey PRIMARY KEY (column1, column2, column3);' testdb"
+        And the user runs "psql -c 'ALTER TABLE ONLY public.heap_table_ex ADD CONSTRAINT heap_table_pkey PRIMARY KEY (column1, column2, column3);' testdb"
+        And the user runs "psql -c 'ALTER TABLE ONLY heap_table ADD CONSTRAINT heap_const_1 FOREIGN KEY (column1, column2, column3) REFERENCES heap_table_ex(column1, column2, column3);' testdb"
+        And the user runs "psql -c """create rule heap_co_rule as on insert to heap_table where column1=100 do instead insert into co_table_ex values(27, 'restore', '2013-08-19');""" testdb"
+        When the user runs "gpcrondump -a -x testdb -C"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And all the data from "testdb" is saved for verification
+        When the index "bitmap_co_index" in "testdb" is dropped
+        And the index "bitmap_ao_index" in "testdb" is dropped
+        And the user runs "psql -c 'CREATE INDEX bitmap_ao_index_new ON public.ao_index_table USING bitmap(column3);' testdb"
+        Then there is a file "restore_file" with tables "public.ao_table,public.ao_index_table,public.heap_table" 
+        And the user runs "gpdbrestore --table-file restore_file -a" with the stored timestamp
+        And gpdbrestore should return a return code of 0 
+        And verify that there is a "ao" table "public.ao_table" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_index_table" in "testdb" with data
+        And verify that there is a "heap" table "public.heap_table" in "testdb" with data
+        And verify that there is a "heap" table "public.heap_table_ex" in "testdb" with data
+        And verify that there is a "co" table "public.co_table_ex" in "testdb" with data
+        And verify that there is a "co" table "public.co_index_table" in "testdb" with data
+        And the user runs "psql -c '\d public.ao_index_table' testdb"
+        And psql should print \"bitmap_ao_index\" bitmap \(column3\) to stdout
+        And psql should print \"btree_ao_index\" btree \(column1\) to stdout
+        And psql should not print bitmap_ao_index_new to stdout
+        And the user runs "psql -c '\d public.heap_table' testdb"
+        And psql should print \"heap_table_pkey\" PRIMARY KEY, btree \(column1, column2, column3\) to stdout
+        And psql should print heap_trigger AFTER INSERT OR DELETE OR UPDATE ON heap_table FOR EACH STATEMENT EXECUTE PROCEDURE heap_trigger_func\(\) to stdout
+        And psql should print heap_co_rule AS\n.*ON INSERT TO heap_table\n.*WHERE new\.column1 = 100 DO INSTEAD  INSERT INTO co_table_ex \(column1, column2, column3\) to stdout
+        And psql should print \"heap_const_1\" FOREIGN KEY \(column1, column2, column3\) REFERENCES heap_table_ex\(column1, column2, column3\) to stdout
+        And the user runs "psql -c '\d public.co_index_table' testdb"
+        And psql should not print bitmap_co_index to stdout
+        And verify that the data of "6" tables in "testdb" is validated after restore 
+
+    Scenario: Incremental Backup and Restore of specified post data objects
+        Given the database is running
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is schema "pepper" exists in "testdb"
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "pepper.heap_table" with compression "None" in "testdb" with data
+        And there is a "heap" partition table "heap_part_table" with compression "quicklz" in "testdb" with data
+        And there is a "ao" table "pepper.ao_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "pepper.ao_part_table" with compression "quicklz" in "testdb" with data
+        And there is a "co" table "co_table" with compression "None" in "testdb" with data
+        And there is a "co" partition table "co_part_table" with compression "quicklz" in "testdb" with data
+        And there is a "heap" table "heap_table_ex" with compression "None" in "testdb" with data
+        And there is a "heap" partition table "heap_part_table_ex" with compression "quicklz" in "testdb" with data
+        And there is a "co" table "pepper.co_table_ex" with compression "None" in "testdb" with data
+        And there is a "co" partition table "pepper.co_part_table_ex" with compression "quicklz" in "testdb" with data
+        And there is a "co" table "public.co_index_table" with index "co_index" compression "None" in "testdb" with data
+        And the user runs "psql -c 'ALTER TABLE ONLY pepper.heap_table ADD CONSTRAINT heap_table_pkey PRIMARY KEY (column1, column2, column3);' testdb"
+        And the user runs "psql -c 'ALTER TABLE ONLY heap_table_ex ADD CONSTRAINT heap_table_pkey PRIMARY KEY (column1, column2, column3);' testdb"
+        And the user runs "psql -c 'ALTER TABLE ONLY pepper.heap_table ADD CONSTRAINT heap_const_1 FOREIGN KEY (column1, column2, column3) REFERENCES heap_table_ex(column1, column2, column3);' testdb"
+        And the user runs "psql -c """create rule heap_co_rule as on insert to pepper.heap_table where column1=100 do instead insert into pepper.co_table_ex values(27, 'restore', '2013-08-19');""" testdb"
+        When the user runs "gpcrondump -a -x testdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored
+        And table "public.co_table" is assumed to be in dirty state in "testdb"
+        And partition "2" of partition table "ao_part_table" is assumed to be in dirty state in "testdb" in schema "pepper"
+        When the user runs "gpcrondump -a -x testdb --incremental"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And all the data from "testdb" is saved for verification
+        And there is a file "restore_file" with tables "pepper.heap_table,pepper.ao_table,public.co_table,pepper.ao_part_table" 
+        And table "pepper.heap_table" is dropped in "testdb"
+        And table "pepper.ao_table" is dropped in "testdb"
+        And table "public.co_table" is dropped in "testdb"
+        And table "pepper.ao_part_table" is dropped in "testdb"
+        When the index "bitmap_co_index" in "testdb" is dropped
+        Then the user runs "gpdbrestore --table-file restore_file -a" with the stored timestamp
+        And gpdbrestore should return a return code of 0 
+        And verify that there is a "heap" table "pepper.heap_table" in "testdb" with data
+        And verify that there is a "ao" table "pepper.ao_table" in "testdb" with data
+        And verify that there is a "co" table "public.co_table" in "testdb" with data
+        And verify that there is a "ao" table "pepper.ao_part_table" in "testdb" with data
+        And verify that there is a "heap" table "public.heap_table_ex" in "testdb" with data
+        And verify that there is a "co" table "pepper.co_table_ex" in "testdb" with data
+        And verify that there is a "heap" table "public.heap_part_table_ex" in "testdb" with data
+        And verify that there is a "co" table "pepper.co_part_table_ex" in "testdb" with data
+        And verify that there is a "co" table "public.co_part_table" in "testdb" with data
+        And verify that there is a "heap" table "public.heap_part_table" in "testdb" with data
+        And verify that there is a "co" table "public.co_index_table" in "testdb" with data
+        And the user runs "psql -c '\d pepper.heap_table' testdb"
+        And psql should print \"heap_table_pkey\" PRIMARY KEY, btree \(column1, column2, column3\) to stdout
+        And psql should print heap_co_rule AS\n.*ON INSERT TO pepper.heap_table\n.*WHERE new\.column1 = 100 DO INSTEAD  INSERT INTO pepper.co_table_ex \(column1, column2, column3\) to stdout
+        And psql should print \"heap_const_1\" FOREIGN KEY \(column1, column2, column3\) REFERENCES heap_table_ex\(column1, column2, column3\) to stdout
+        And the user runs "psql -c '\d public.co_index_table' testdb"
+        And psql should not print bitmap_co_index to stdout
+        And verify that the data of "51" tables in "testdb" is validated after restore 
 
     # THIS SHOULD BE THE LAST TEST
     @backupfire
