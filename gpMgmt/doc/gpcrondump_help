@@ -133,14 +133,17 @@ OPTIONS
  deleted. 
 
 
--C (clean old catalog dumps) 
+-C (clean catalog before restore) 
 
- Clean out old catalog schema dump files prior to create. gpcrondump adds 
- the DROP command to the SQL script files when creating the backup files. 
+ Clean out the catalog schema prior to restoring database objects. 
+ gpcrondump adds the DROP command to the SQL script files when creating 
+ the backup files. When the script files are used by the gpdbrestore 
+ utility to restore database objects, the DROP commands remove existing 
+ database objects before restoring them. 
 
  If --incremental is specified and the files are on NFS storage, the -C 
- option is not supported. The files are not deleted if the -C option is 
- specified.
+ option is not supported. The database objects are not dropped if the -C 
+ option is specified. 
 
 
 --column-inserts 
