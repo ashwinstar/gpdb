@@ -302,8 +302,9 @@ class GpInjectFaultProgram:
 			      "skip (inject skip i.e. skip checkpoint), " \
 			      "memory_full (all memory is consumed when injected), " \
 			      "reset (remove fault injection), status (report fault injection status), " \
-			      "panic_suppress (inject suppressed PANIC in critical section), "
-			      "segv (inject a SEGV) ")
+			      "panic_suppress (inject suppressed PANIC in critical section), " \
+			      "segv (inject a SEGV), " \
+			      "interrupt (inject an Interrupt) ")
         addTo.add_option("-z", "--sleep_time_s", dest="sleepTimeSeconds", type="int", default="10" ,
                             metavar="<sleepTime>",
                             help="For 'sleep' faults, the amount of time for the sleep.  Defaults to %default." \
@@ -375,11 +376,12 @@ class GpInjectFaultProgram:
 			      "malloc_failure (inject fault to simulate memory allocation failure), " \
 			      "transaction_abort_failure (inject fault to simulate transaction abort failure), " \
 			      "update_committed_eof_in_persistent_table (inject fault before committed EOF is updated in gp_persistent_relation_node for Append Only segment files), " \
-                             "internal_flush_error (inject an error during internal_flush), " \
-                  "exec_simple_query_end_command (inject fault before EndCommand in exec_simple_query), " \
-                  "multi_exec_hash_large_vmem (allocate large vmem using palloc inside MultiExecHash to attempt to exceed vmem limit), " \
-                  "execsort_before_sorting (inject fault in nodeSort after receiving all tuples and before sorting), " \
-                  "base_backup_post_create_checkpoint (inject fault after requesting checkpoint as part of basebackup), " \
+			      "internal_flush_error (inject an error during internal_flush), " \
+			      "exec_simple_query_end_command (inject fault before EndCommand in exec_simple_query), " \
+			      "multi_exec_hash_large_vmem (allocate large vmem using palloc inside MultiExecHash to attempt to exceed vmem limit), " \
+			      "execsort_before_sorting (inject fault in nodeSort after receiving all tuples and before sorting), " \
+			      "execsort_mksort_mergeruns (inject fault in MKSort during the mergeruns phase), " \
+			      "base_backup_post_create_checkpoint (inject fault after requesting checkpoint as part of basebackup), " \
 			      "compaction_before_segmentfile_drop (inject fault after compaction, but before the drop of the segment file), "  \
 			      "compaction_before_cleanup_phase (inject fault after compaction and drop, but before the cleanup phase), " \
 			      "appendonly_insert (inject fault before an append-only insert), " \

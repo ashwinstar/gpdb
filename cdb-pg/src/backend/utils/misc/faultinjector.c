@@ -33,6 +33,7 @@
 #include "storage/shmem.h"
 #include "utils/faultinjector.h"
 #include "utils/hsearch.h"
+#include "miscadmin.h"
 
 #ifdef FAULT_INJECTOR
 
@@ -92,6 +93,7 @@ FaultInjectorTypeEnumToString[] = {
 	_("status"),
 	_("panic_suppress"),
 	_("segv"),
+	_("interrupt"),
 	_("not recognized"),
 };
 
@@ -252,6 +254,8 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* large palloc inside MultiExecHash to attempt to exceed vmem limit */
 	_("execsort_before_sorting"),
 		/* inject fault in ExecSort before doing the actual sort */
+	_("execsort_mksort_mergeruns"),
+		/* inject fault in MKSort during the mergeruns phase */
 	_("base_backup_post_create_checkpoint"),
 		/* inject fault after creation of checkpoint when basebackup requested */
 	_("compaction_before_segmentfile_drop"),
@@ -730,6 +734,23 @@ FaultInjector_InjectFaultIfSet(
 			break;
 		}
 		
+		case FaultInjectorTypeInterrupt:
+		{
+			/*
+			 * The place where this type of fault is injected must have
+			 * has HOLD_INTERRUPTS() .. RESUME_INTERRUPTS() around it, otherwise
+			 * the interrupt could be handled inside the fault injector itself
+			 */
+			ereport(LOG,
+					(errmsg("fault triggered, fault name:'%s' fault type:'%s' ",
+							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],
+							FaultInjectorTypeEnumToString[entryLocal->faultInjectorType])));
+
+			InterruptPending = true;
+			QueryCancelPending = true;
+			break;
+		}
+
 		default:
 			
 			ereport(LOG, 
@@ -962,6 +983,7 @@ FaultInjector_NewHashEntry(
 		case FinishPreparedTransactionAbortPass2AbortingCreateNeeded:
 		case TwoPhaseTransactionCommitPrepared:
 		case TwoPhaseTransactionAbortPrepared:
+		case ExecSortMKSortMergeRuns:
 		
 //		case SubtransactionFlushToFile:
 //		case SubtransactionReadFromFile:

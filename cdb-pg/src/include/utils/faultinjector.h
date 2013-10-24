@@ -168,6 +168,7 @@ typedef enum FaultInjectorIdentifier_e {
 	MultiExecHashLargeVmem,
 
 	ExecSortBeforeSorting,
+	ExecSortMKSortMergeRuns,
 	BaseBackupPostCreateCheckpoint,
 
 	CompactionBeforeSegmentFileDropPhase,
@@ -218,6 +219,8 @@ typedef enum FaultInjectorType_e {
 
 	FaultInjectorTypeSegv,
 	
+	FaultInjectorTypeInterrupt,
+
 	/* INSERT has to be done before that line */
 	FaultInjectorTypeMax,
 	
