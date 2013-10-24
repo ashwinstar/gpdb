@@ -165,6 +165,7 @@ typedef enum FaultInjectorIdentifier_e {
 
 	InternalFlushError,
 	ExecSimpleQueryEndCommand,
+	MultiExecHashLargeVmem,
 
 	ExecSortBeforeSorting,
 	BaseBackupPostCreateCheckpoint,
