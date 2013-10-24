@@ -1449,6 +1449,18 @@ cdbdisp_finishCommand(struct CdbDispatcherState *ds,
 	if (!ds || !ds->primaryResults)
 		return;
 
+	/*
+	 * If we are called in the dying sequence, don't touch QE connections.
+	 * Anything below could cause ERROR in which case we would miss a chance
+	 * to clean up shared memory as this is from AbortTransaction.
+	 * QE may stay a bit longer, but since we can consider QD as libpq
+	 * client to QE, they will notice that we as a client do not
+	 * appear anymore and will finish soon.  Also ERROR report doesn't
+	 * go to the client anyway since we are in proc_exit.
+	 */
+	if (proc_exit_inprogress)
+		return;
+
 	/* Wait for all QEs to finish. Don't cancel them. */
 	CdbCheckDispatchResult(ds, false);
 
