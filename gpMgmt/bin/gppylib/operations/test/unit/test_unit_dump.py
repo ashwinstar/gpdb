@@ -407,13 +407,24 @@ class DumpTestCase(unittest.TestCase):
     @patch('gppylib.operations.dump.dbconn.DbURL')
     @patch('gppylib.operations.dump.dbconn.connect')
     @patch('gppylib.operations.dump.execSQLForSingleton', return_value='10000000000000000')
-    def test_get_partition_state_01(self, mock1, mock2, mock3):
+    def test_get_partition_state_02(self, mock1, mock2, mock3):
         master_port=5432
         dbname='testdb'
         partition_info = [(123, 'pepper', 't1', 4444), (234, 'pepper', 't2', 5555)]
         expected_output = ['pepper, t1, 10000000000000000', 'pepper, t2, 10000000000000000']
         with self.assertRaisesRegexp(Exception, 'Exceeded backup max tuple count of 1 quadrillion rows per table for:'):
             get_partition_state(master_port, dbname, 'pg_aoseg', partition_info)
+
+    @patch('gppylib.operations.dump.dbconn.DbURL')
+    @patch('gppylib.operations.dump.dbconn.connect')
+    @patch('gppylib.operations.dump.execSQLForSingleton', return_value='100')
+    def test_get_partition_state_with_more_than_thousand_partition(self, mock1, mock2, mock3):
+        master_port=5432
+        dbname='testdb'
+        partition_info = [(123, 'pepper', 't1', 4444), (234, 'pepper', 't2', 5555)] * 1000
+        expected_output = ['pepper, t1, 100', 'pepper, t2, 100'] * 1000
+        result = get_partition_state(master_port, dbname, 'pg_aoseg', partition_info)
+        self.assertEqual(result, expected_output)
         
     def test_get_filename_from_filetype_00(self):
         table_type = 'ao'

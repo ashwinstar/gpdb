@@ -146,14 +146,20 @@ def get_partition_state(master_port, dbname, catalog_schema, partition_info):
     partition_list = list()
 
     dburl = dbconn.DbURL(port=master_port, dbname=dbname)
-    conn = dbconn.connect(dburl)
-    for (oid, schemaname, partition_name, tupletable) in partition_info:
-        modcount_sql = "select to_char(coalesce(sum(modcount::bigint), 0), '999999999999999999999') from %s.%s" % (catalog_schema, tupletable)
-        modcount = execSQLForSingleton(conn, modcount_sql)
-        if modcount:
-            modcount = modcount.strip()
-        validate_modcount(schemaname, partition_name, modcount)
-        partition_list.append('%s, %s, %s' %(schemaname, partition_name, modcount))
+    num_sqls = 0
+    with dbconn.connect(dburl) as conn:
+        for (oid, schemaname, partition_name, tupletable) in partition_info:
+            modcount_sql = "select to_char(coalesce(sum(modcount::bigint), 0), '999999999999999999999') from %s.%s" % (catalog_schema, tupletable)
+            modcount = execSQLForSingleton(conn, modcount_sql)
+            num_sqls += 1
+            if num_sqls == 1000: # The choice of batch size was chosen arbitrarily
+                logger.debug('Completed executing batch of 1000 tuple count SQLs')
+                conn.commit()
+                num_sqls = 0
+            if modcount:
+                modcount = modcount.strip()
+            validate_modcount(schemaname, partition_name, modcount)
+            partition_list.append('%s, %s, %s' %(schemaname, partition_name, modcount))
 
     return partition_list
 

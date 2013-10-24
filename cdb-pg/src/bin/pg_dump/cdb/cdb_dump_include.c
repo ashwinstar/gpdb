@@ -31,7 +31,7 @@ static void expand_table_name_patterns(SimpleStringList *patterns,
 static void expand_table_name_patterns_long(SimpleStringList *patterns,
 							SimpleOidList *oids, unsigned int tables_per_query);
 const int TABLE_COUNT_PER_ITERATION = 100;
-
+const int SQL_BATCH_SIZE = 1000;
 
 /*
  * Subquery used to convert user ID (eg, datdba) to user name. The default
@@ -2653,12 +2653,12 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
 				j;
 	PQExpBuffer q = createPQExpBuffer();
 	int			i_attnum;
+	int			i_atttypid;
 	int			i_attname;
 	int			i_atttypname;
 	int			i_atttypmod;
 	int			i_attstattarget;
 	int			i_attstorage;
-	int			i_typstorage;
 	int			i_attnotnull;
 	int			i_atthasdef;
 	int			i_attisdropped;
@@ -2667,6 +2667,40 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
 	PGresult   *res;
 	int			ntups;
 	bool		hasdefaults;
+	int 		ht_size = 5000;
+	int 		num_sql_processed = 0;
+
+	resetPQExpBuffer(q);
+	appendPQExpBuffer(q, "select distinct(oid), typstorage from pg_type where oid in (select distinct atttypid from pg_attribute)");
+
+	mpp_err_msg(logInfo, progname, "started obtaining oids from pg_type\n");
+	res = PQexec(g_conn, q->data);
+	check_sql_result(res, g_conn, q->data, PGRES_TUPLES_OK);
+
+	mpp_err_msg(logInfo, progname, "finished obtaining oids from pg_type\n");
+	ntups = PQntuples(res);
+
+	if (initializeHashTable(ht_size) < 0)
+	{
+		mpp_err_msg(logError, progname, "Unable to initialize hash table\n");
+		exit_nicely();
+	}
+
+	mpp_err_msg(logInfo, progname, "inserting oids into hash table\n");
+	Oid oid;
+	char typstorage;
+	for (i = 0; i < ntups; i++)
+	{
+		oid = atoi(PQgetvalue(res, i, 0));
+ 		typstorage = *(PQgetvalue(res, i, 1));
+		if (insertIntoHashTable(oid, typstorage) < 0)
+		{		
+			mpp_err_msg(logError, progname, "Unable to insert the following values into hash table Oid: %u, typstorage: %c"
+																									, oid, typstorage);
+			exit_nicely();
+		}
+	}
+	mpp_err_msg(logInfo, progname, "hash table successfully initialized with oids\n");
 
 	for (i = 0; i < numTables; i++)
 	{
@@ -2702,13 +2736,12 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
 		resetPQExpBuffer(q);
 
 		/* need left join here to not fail on dropped columns ... */
-		appendPQExpBuffer(q, "SELECT a.attnum, a.attname, a.atttypmod, a.attstattarget, a.attstorage, t.typstorage, "
+		appendPQExpBuffer(q, "SELECT a.attnum, a.atttypid, a.attname, a.atttypmod, a.attstattarget, a.attstorage, "
 				  "a.attnotnull, a.atthasdef, a.attisdropped, a.attislocal, "
-				   "pg_catalog.format_type(t.oid,a.atttypmod) as atttypname ");
+				   "pg_catalog.format_type(a.atttypid,a.atttypmod) as atttypname ");
 		if (g_gp_supportsAttributeEncoding)
 			appendPQExpBuffer(q, ", pg_catalog.array_to_string(e.attoptions, ',') as attencoding ");
-		appendPQExpBuffer(q, "from pg_catalog.pg_attribute a left join pg_catalog.pg_type t "
-						  "on a.atttypid = t.oid ");
+		appendPQExpBuffer(q, "from pg_catalog.pg_attribute a ");
 		if (g_gp_supportsAttributeEncoding)
 			appendPQExpBuffer(q, "	 LEFT OUTER JOIN pg_catalog.pg_attribute_encoding e ON e.attrelid = a.attrelid AND e.attnum = a.attnum ");
 		appendPQExpBuffer(q, "where a.attrelid = '%u'::pg_catalog.oid "
@@ -2722,12 +2755,12 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
 		ntups = PQntuples(res);
 
 		i_attnum = PQfnumber(res, "attnum");
+		i_atttypid = PQfnumber(res, "atttypid");
 		i_attname = PQfnumber(res, "attname");
 		i_atttypname = PQfnumber(res, "atttypname");
 		i_atttypmod = PQfnumber(res, "atttypmod");
 		i_attstattarget = PQfnumber(res, "attstattarget");
 		i_attstorage = PQfnumber(res, "attstorage");
-		i_typstorage = PQfnumber(res, "typstorage");
 		i_attnotnull = PQfnumber(res, "attnotnull");
 		i_atthasdef = PQfnumber(res, "atthasdef");
 		i_attisdropped = PQfnumber(res, "attisdropped");
@@ -2764,7 +2797,7 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
 			tbinfo->atttypmod[j] = atoi(PQgetvalue(res, j, i_atttypmod));
 			tbinfo->attstattarget[j] = atoi(PQgetvalue(res, j, i_attstattarget));
 			tbinfo->attstorage[j] = *(PQgetvalue(res, j, i_attstorage));
-			tbinfo->typstorage[j] = *(PQgetvalue(res, j, i_typstorage));
+			tbinfo->typstorage[j] = getTypstorage(atoi(PQgetvalue(res, j, i_atttypid)));
 			tbinfo->attisdropped[j] = (PQgetvalue(res, j, i_attisdropped)[0] == 't');
 			tbinfo->attislocal[j] = (PQgetvalue(res, j, i_attislocal)[0] == 't');
 			tbinfo->notnull[j] = (PQgetvalue(res, j, i_attnotnull)[0] == 't');
@@ -2784,7 +2817,6 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
 		}
 
 		PQclear(res);
-
 		/*
 		 * Get info about column defaults
 		 */
@@ -2926,9 +2958,23 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
 				 * split out from the table definition.
 				 */
 			}
+			
+			
 			PQclear(res);
 		}
+
+		num_sql_processed++;
+		if (num_sql_processed == SQL_BATCH_SIZE)
+		{
+			num_sql_processed = 0;
+			mpp_err_msg(logInfo, progname, "batch of sql commands finished executing\n");
+		}
+
 	}
+
+		mpp_err_msg(logInfo, progname, "last batch of sql commands finished executing\n");
+	
+	cleanUpTable();
 
 	destroyPQExpBuffer(q);
 }

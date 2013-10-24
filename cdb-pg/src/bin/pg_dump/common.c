@@ -18,7 +18,7 @@
 #include "postgres_fe.h"
 
 #include <ctype.h>
-
+#include <time.h>
 #include "dumputils.h"
 #include "postgres.h"
 #include "catalog/pg_class.h"
@@ -64,6 +64,8 @@ static void findParentsByOid(TableInfo *self,
 				 InhInfo *inhinfo, int numInherits);
 static int	strInArray(const char *pattern, char **arr, int arr_size);
 
+void status_log_msg(const char *loglevel, const char *prog, const char *fmt,...);
+
 void		reset(void);
 /*
  * getSchemaData
@@ -94,57 +96,49 @@ getSchemaData(int *numTablesPtr)
 	int			numForeignDataWrappers;
 	int			numForeignServers;
 	int			numExtProtocols;
+	const char *LOGGER_INFO = "INFO";
 
-	if (g_verbose)
-		write_msg(NULL, "reading schemas\n");
+	//write_msg(NULL, "reading schemas\n");
+	status_log_msg(LOGGER_INFO, progname, "reading schemas\n");
 	nsinfo = getNamespaces(&numNamespaces);
 
-	if (g_verbose)
-		write_msg(NULL, "reading user-defined functions\n");
+	status_log_msg(LOGGER_INFO, progname, "reading user-defined functions\n");
 	funinfo = getFuncs(&numFuncs);
 
 	/* this must be after getFuncs */
-	if (g_verbose)
-		write_msg(NULL, "reading user-defined types\n");
+	status_log_msg(LOGGER_INFO, progname, "reading user-defined types\n");
 	typinfo = getTypes(&numTypes);
 
 	/* this must be after getFuncs */
-	if (g_verbose)
-		write_msg(NULL, "reading type storage options\n");
+	status_log_msg(LOGGER_INFO, progname, "reading type storage options\n");
 	typestorageoptions = getTypeStorageOptions(&numTypeStorageOptions);
 
 	/* this must be after getFuncs, too */
-	if (g_verbose)
-		write_msg(NULL, "reading procedural languages\n");
+	status_log_msg(LOGGER_INFO, progname, "reading procedural languages\n");
 	proclanginfo = getProcLangs(&numProcLangs);
 
-	if (g_verbose)
-		write_msg(NULL, "reading user-defined aggregate functions\n");
+
+	status_log_msg(LOGGER_INFO, progname, "reading user-defined aggregate functions\n");
 	agginfo = getAggregates(&numAggregates);
 
-	if (g_verbose)
-		write_msg(NULL, "reading user-defined operators\n");
+	status_log_msg(LOGGER_INFO, progname, "reading user-defined operators\n");
 	oprinfo = getOperators(&numOperators);
 
 	if (testExtProtocolSupport())
 	{
-		if (g_verbose)
-			write_msg(NULL, "reading user-defined external protocols\n");
+		status_log_msg(LOGGER_INFO, progname, "reading user-defined external protocols\n");
 		ptcinfo = getExtProtocols(&numExtProtocols);
 	}
 
-	if (g_verbose)
-		write_msg(NULL, "reading user-defined operator classes\n");
+	status_log_msg(LOGGER_INFO, progname, "reading user-defined operator classes\n");
 	opcinfo = getOpclasses(&numOpclasses);
 
 	if (testSqlMedSupport())
 	{
-		if (g_verbose)
-			write_msg(NULL, "reading user-defined foreign-data wrappers\n");
+		status_log_msg(LOGGER_INFO, progname, "reading user-defined foreign-data wrappers\n");
 		fdwinfo = getForeignDataWrappers(&numForeignDataWrappers);
 
-		if (g_verbose)
-			write_msg(NULL, "reading user-defined foreign servers\n");
+		status_log_msg(LOGGER_INFO, progname, "reading user-defined foreign servers\n");
 		srvinfo = getForeignServers(&numForeignServers);
 	}
 	else
@@ -155,49 +149,38 @@ getSchemaData(int *numTablesPtr)
 		numForeignServers = 0;
 	}
 
-	if (g_verbose)
-		write_msg(NULL, "reading user-defined conversions\n");
+	status_log_msg(LOGGER_INFO, progname, "reading user-defined conversions\n");
 	convinfo = getConversions(&numConversions);
 
-	if (g_verbose)
-		write_msg(NULL, "reading user-defined tables\n");
+	status_log_msg(LOGGER_INFO, progname, "reading user-defined tables\n");
 	tblinfo = getTables(&numTables);
 
-	if (g_verbose)
-		write_msg(NULL, "reading table inheritance information\n");
+	status_log_msg(LOGGER_INFO, progname, "reading table inheritance information\n");
 	inhinfo = getInherits(&numInherits);
 
-	if (g_verbose)
-		write_msg(NULL, "reading rewrite rules\n");
+	status_log_msg(LOGGER_INFO, progname, "reading rewrite rules\n");
 	ruleinfo = getRules(&numRules);
 
-	if (g_verbose)
-		write_msg(NULL, "reading type casts\n");
+	status_log_msg(LOGGER_INFO, progname, "reading type casts\n");
 	castinfo = getCasts(&numCasts);
 
 	/* Link tables to parents, mark parents of target tables interesting */
-	if (g_verbose)
-		write_msg(NULL, "finding inheritance relationships\n");
+	status_log_msg(LOGGER_INFO, progname, "finding inheritance relationships\n");
 	flagInhTables(tblinfo, numTables, inhinfo, numInherits);
 
-	if (g_verbose)
-		write_msg(NULL, "reading column info for interesting tables\n");
+	status_log_msg(LOGGER_INFO, progname, "reading column info for interesting tables\n");
 	getTableAttrs(tblinfo, numTables);
 
-	if (g_verbose)
-		write_msg(NULL, "flagging inherited columns in subtables\n");
+	status_log_msg(LOGGER_INFO, progname, "flagging inherited columns in subtables\n");
 	flagInhAttrs(tblinfo, numTables, inhinfo, numInherits);
 
-	if (g_verbose)
-		write_msg(NULL, "reading indexes\n");
+	status_log_msg(LOGGER_INFO, progname, "reading indexes\n");
 	getIndexes(tblinfo, numTables);
 
-	if (g_verbose)
-		write_msg(NULL, "reading constraints\n");
+	status_log_msg(LOGGER_INFO, progname, "reading constraints\n");
 	getConstraints(tblinfo, numTables);
 
-	if (g_verbose)
-		write_msg(NULL, "reading triggers\n");
+	status_log_msg(LOGGER_INFO, progname, "reading triggers\n");
 	getTriggers(tblinfo, numTables);
 
 	*numTablesPtr = numTables;
@@ -1134,4 +1117,22 @@ pg_realloc(void *ptr, size_t size)
 	if (!tmp)
 		exit_horribly(NULL, NULL, "out of memory\n");
 	return tmp;
+}
+
+void
+status_log_msg(const char *loglevel, const char *prog, const char *fmt,...)
+{
+    va_list     ap;  
+    char        szTimeNow[18];
+    struct tm   pNow;
+    time_t      tNow = time(NULL);
+    char       *format = "%Y%m%d:%H:%M:%S";
+
+    localtime_r(&tNow, &pNow);
+    strftime(szTimeNow, 18, format, &pNow);
+
+    va_start(ap, fmt);
+    fprintf(stderr, "%s|%s-[%s]:-", szTimeNow, prog, loglevel);
+    vfprintf(stderr, gettext(fmt), ap); 
+    va_end(ap);
 }

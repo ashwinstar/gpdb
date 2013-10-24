@@ -6,10 +6,11 @@ Feature: gpfdist configure timeout value
         Given the "gpfdist" process is killed
         Given the client program "gpfdist_client.py" is present under CWD in "gppylib/test/behave_utils/gpfdist_utils"
         When the user runs "gpfdist -p 8080 -V -t 5 -l ./gpfdist.log &" 
+        And the performance timer is started
         And the user runs client program "gpfdist_client.py" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
-        Then the client program should print TIMEOUT PERIOD: to stdout with value in range 4 to 6
-        Then the client program should print HTTP/1.0 408 time out to stdout with value in range 4 to 6
-        And the gpfdist should print time out to "./gpfdist.log" under CWD
+        Then the performance timer should be less then "7" seconds
+        And the client program should print TIMEOUT PERIOD: to stdout with value in range 4 to 6
+        And the client program should print HTTP/1.0 408 time out to stdout with value in range 4 to 6
         And the file "./gpfdist.log" is removed from the system
         And the "gpfdist" process is killed
 
@@ -18,9 +19,10 @@ Feature: gpfdist configure timeout value
         Given the "gpfdist" process is killed
         Given the client program "gpfdist_client.py" is present under CWD in "gppylib/test/behave_utils/gpfdist_utils"
         When the user runs "gpfdist -p 8080 -V -t 30 -l ./gpfdist.log &" 
+        And the performance timer is started
         And the user runs client program "gpfdist_client.py" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
-        Then the client program should print TIMEOUT PERIOD: to stdout with value in range 29 to 31
-        And the gpfdist should print time out to "./gpfdist.log" under CWD
+        Then the performance timer should be less then "33" seconds
+        And the client program should print TIMEOUT PERIOD: to stdout with value in range 29 to 31
         And the file "./gpfdist.log" is removed from the system
         And the "gpfdist" process is killed
 
@@ -28,9 +30,10 @@ Feature: gpfdist configure timeout value
         Given the "gpfdist" process is killed
         Given the client program "gpfdist_client.py" is present under CWD in "gppylib/test/behave_utils/gpfdist_utils"
         When the user runs "gpfdist -p 8080 -V -t 61 -l ./gpfdist.log &" 
+        And the performance timer is started
         And the user runs client program "gpfdist_client.py" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
-        Then the client program should print TIMEOUT PERIOD: to stdout with value in range 60 to 62
-        And the gpfdist should print time out to "./gpfdist.log" under CWD
+        Then the performance timer should be less then "64" seconds
+        And the client program should print TIMEOUT PERIOD: to stdout with value in range 60 to 62
         And the file "./gpfdist.log" is removed from the system
         And the "gpfdist" process is killed
 
@@ -39,9 +42,10 @@ Feature: gpfdist configure timeout value
         Given the "gpfdist" process is killed
         Given the client program "gpfdist_client.py" is present under CWD in "gppylib/test/behave_utils/gpfdist_utils"
         When the user runs "gpfdist -p 8080 -V -t 600 -l ./gpfdist.log &" 
+        And the performance timer is started
         And the user runs client program "gpfdist_client.py" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
-        Then the client program should print TIMEOUT PERIOD: to stdout with value in range 600 to 601
-        And the gpfdist should print time out to "./gpfdist.log" under CWD
+        Then the performance timer should be less then "605" seconds
+        And the client program should print TIMEOUT PERIOD: to stdout with value in range 600 to 601
         And the file "./gpfdist.log" is removed from the system
         And the "gpfdist" process is killed
 

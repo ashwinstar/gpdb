@@ -169,4 +169,18 @@ extern void formPostDataSchemaOnlyPsqlCommandLine(char** retVal, const char* inp
 						bool compUsed, const char* compProg, const char* post_data_filter_script,
                         const char* table_filter_file, const char* psqlPg, const char* catPg);
 
+/* prototypes for hash table */
+
+void cleanUpTable(void);
+
+int initializeHashTable(int num_elems);
+
+int insertIntoHashTable(Oid o, char t);
+
+int hashFunc(Oid k);
+
+char getTypstorage(Oid o);
+
+int removeNode(Oid o);
+
 #endif   /* CDB_DUMP_UTIL_H */

@@ -18,6 +18,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <fcntl.h>
+
 #include "pqexpbuffer.h"
 #include "cdb_dump_util.h"
 
@@ -1695,5 +1696,149 @@ formDDBoostPsqlCommandLine(char** retVal, bool compUsed, const char* ddboostPg, 
 	strcat(pszCmdLine, psqlPg);
 }
 
-
 #endif
+
+/***************************************
+ *
+ * Below are functions relating to
+ * the hash table used in getTableAttrs.
+ *
+ ***************************************/
+
+typedef struct Node
+{
+    Oid oid;
+    char typstorage;
+    struct Node *next;
+}Node;
+
+Node **hash_table;
+int HASH_TABLE_SIZE = 0;
+const Oid EMPTY_OID = 0;
+const char EMPTY_TYPSTORAGE = '\0';
+
+int
+initializeHashTable(int num_elems)
+{ 
+    HASH_TABLE_SIZE = num_elems;
+
+    if(!(hash_table = (Node **)calloc(HASH_TABLE_SIZE, sizeof(Node*))))
+    {
+        printf("Could not allocate memory for the hash table\n");
+        return -1;
+    }
+    return 0;
+}
+
+int
+insertIntoHashTable(Oid o, char t)
+{
+    int index = hashFunc(o);
+    Node *cur = hash_table[index];
+    Node *prev = NULL;
+
+    Node *new_node = (Node *)malloc(sizeof(Node));
+
+	if (!new_node) 
+		return -1;
+
+    new_node->oid = o;
+    new_node->typstorage = t;
+    new_node->next = NULL;
+
+    if(!cur)
+    {
+		hash_table[index] = new_node;
+        return 0;
+    }
+
+    while(cur)
+    {
+        if(cur->oid == o)
+		{
+			free(new_node);
+            return -1;
+		}
+
+        prev = cur;
+        cur = cur->next;
+    }
+
+	prev->next = new_node;
+    return 0;
+}
+
+int hashFunc(Oid k)
+{
+    return k % HASH_TABLE_SIZE;
+}
+
+char getTypstorage(Oid o)
+{
+    int index  = hashFunc(o);
+    Node *temp = hash_table[index];
+
+    while(temp != NULL)
+    {
+        if(temp->oid == o)
+            return temp->typstorage;
+        temp = temp->next;
+    }
+    
+    return EMPTY_TYPSTORAGE;    
+}
+
+int removeNode(Oid o)
+{
+    int index = hashFunc(o);
+
+	if(!hash_table[index])
+	{
+		return -1;
+	}
+
+    Node *cur = hash_table[index];
+    Node *prev = NULL;
+
+    while(cur)
+    {
+        if(cur->oid == o)
+        {
+            if(!prev)
+            {
+				hash_table[index] = cur->next;
+				free(cur);
+				return 0;
+            }
+			prev->next = cur->next;
+			free(cur);
+			return 0;
+        }
+        prev = cur;
+        cur = cur->next;
+    }
+    return -1;
+}
+
+void cleanUpTable()
+{
+
+    int i = 0;
+    for(; i < HASH_TABLE_SIZE; i++)
+    {
+        Node *cur = hash_table[i];
+        Node *tmp = NULL;
+        while(cur)
+        {
+			tmp = cur;
+			cur = cur->next;
+			free(tmp);
+        }
+    }
+	if(hash_table)
+    	free(hash_table);
+    hash_table = NULL;
+    HASH_TABLE_SIZE = 0;
+
+}
+

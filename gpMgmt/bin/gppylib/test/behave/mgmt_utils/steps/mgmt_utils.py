@@ -2150,6 +2150,9 @@ def impl(context):
             if 'kernel.core_pattern' in line:
                 context.core_dir = os.path.dirname(line.strip().split('=')[1])
 
+    if not hasattr(context, 'core_dir') or not context.core_dir:
+        context.core_dir = os.getcwd()
+
 @given('the number of core files "{stage}" running "{utility}" is stored')
 @then('the number of core files "{stage}" running "{utility}" is stored')
 def impl(context, stage, utility):

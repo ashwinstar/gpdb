@@ -106,3 +106,20 @@ Feature: Scale tests for backup
         And verify that the data of "1" tables in "large_table_db" is validated after restore 
         And verify that the tuple count of all appendonly tables are consistent in "large_table_db"
 
+    @irs
+    @customer
+    Scenario: Test full backup and restore for very large number of tables 
+        Given the database is running
+        And the database "scale_db" does not exist
+        And database "scale_db" exists
+        And there are no backup files
+        When the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/tables.sql scale_db"
+        And the performance timer is started
+        And the user runs "gpcrondump -a -x scale_db"
+        Then gpcrondump should return a return code of 0 
+        And the performance timer should be less then "7000" seconds
+        And the timestamp from gpcrondump is stored 
+        When the performance timer is started
+        And the user runs gpdbrestore with the stored timestamp
+        Then gpdbrestore should return a return code of 0
+        And the performance timer should be less then "30000" seconds
