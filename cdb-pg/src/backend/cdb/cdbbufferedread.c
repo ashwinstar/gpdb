@@ -195,15 +195,27 @@ static void BufferedReadIo(
 
 		if (actualLen == 0) 
 			ereport(ERROR, (errcode_for_file_access(),
-							errmsg("read beyond eof in table \"%s\" in file \"%s\"",
-								   bufferedRead->relationName,
-							       bufferedRead->filePathName)));
+							errmsg("read beyond eof in table \"%s\" in file \"%s\","
+								"read postition " INT64_FORMAT " (small offset %d),"
+								"actual read length %d (large read length %d)",
+								bufferedRead->relationName,
+								bufferedRead->filePathName,
+								bufferedRead->largeReadPosition,
+								offset,
+								actualLen,
+								bufferedRead->largeReadLen)));
 		else if (actualLen < 0)
 			ereport(ERROR, (errcode_for_file_access(),
-							errmsg("unable to read table \"%s\" file \"%s\" (errcode %d)", 
-								   bufferedRead->relationName,
-								   bufferedRead->filePathName,
-								   errno)));
+							errmsg("unable to read table \"%s\" file \"%s\" (errcode %d)"
+								"read postition " INT64_FORMAT " (small offset %d),"
+								"actual read length %d (large read length %d)",
+								bufferedRead->relationName,
+								bufferedRead->filePathName,
+								errno,
+								bufferedRead->largeReadPosition,
+								offset,
+								actualLen,
+								bufferedRead->largeReadLen)));
 		
 		elogif(Debug_appendonly_print_read_block, LOG,
 				 "Append-Only storage read: table '%s', segment file '%s', read postition " INT64_FORMAT " (small offset %d), "

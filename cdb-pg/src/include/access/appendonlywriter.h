@@ -89,7 +89,7 @@ extern int	MaxAppendOnlyTables;	/* Max # of concurrently used AO rels */
  * The valid state transitions are:
  * 1 -> 3 (normal insertion or compact insertion)
  * 1 -> 4 (compaction)
- * 2 -> 6 (pseude compaction transaction started)
+ * 2 -> 7 (pseude compaction transaction started)
  * 3 -> 1 (insertion committed or aborted)
  * 4 -> 6 (compaction transaction committed)
  * 4 -> 1 (compaction transaction aborted)
@@ -97,12 +97,14 @@ extern int	MaxAppendOnlyTables;	/* Max # of concurrently used AO rels */
  * 5 -> 2 (drop transaction aborted)
  * 6 -> 5 (drop transaction started)
  * 6 -> 8 (drop transaction skipped)
+ * 7 -> 6 (pseudo compaction committed)
+ * 7 -> 2 (pseudo compaction aborted)
  * 8 -> 2 (drop transaction skipped (commit or aborted))
  */
 typedef enum AOSegfileState
 {
 	AVAILABLE = 1,
-	INITIAL_AWAITING_DROP = 2,
+	AWAITING_DROP_READY = 2,
 	INSERT_USE = 3,
 	COMPACTION_USE = 4,
 	DROP_USE = 5,

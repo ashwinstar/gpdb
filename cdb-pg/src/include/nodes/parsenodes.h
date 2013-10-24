@@ -2499,7 +2499,9 @@ typedef struct VacuumStmt
 	 * Used during compaction.
 	 *
 	 * Unless appendonly_compaction_vacuum_cleanup is specified, it should
-	 * only contain a single entry.
+	 * only contain a single entry. If the entry is
+	 * APPENDONLY_COMPACTION_SEGNO_INVALID, it is a pseudo compaction
+	 * transaction. If the list has no entries, it is a drop transaction.
 	 */
 	List *appendonly_compaction_insert_segno;
 

@@ -288,7 +288,7 @@ AORelCreateHashEntry(Oid relid)
 			ereportif(Debug_appendonly_print_segfile_choice, LOG,
 				(errmsg("Found segment num with awaiting drop state on at least one segment node: "
 				"relation %d, segno %d", relid, segno)));
-			aoHashEntry->relsegfiles[segno].state = INITIAL_AWAITING_DROP;
+			aoHashEntry->relsegfiles[segno].state = AWAITING_DROP_READY;
 		}
 		aoHashEntry->relsegfiles[segno].total_tupcount = total_tupcount;
 	}
@@ -852,7 +852,7 @@ List *SetSegnoForCompaction(Oid relid,
 			(errmsg("segment file %i for append-only relation \"%s\" (%d): state %d",
 				i, get_rel_name(relid), relid, segfilestat->state)));
 
-		if (segfilestat->state == INITIAL_AWAITING_DROP && 
+		if (segfilestat->state == AWAITING_DROP_READY && 
 				!usedByConcurrentTransaction(segfilestat, i))
 		{
 			ereportif(Debug_appendonly_print_segfile_choice, LOG,
@@ -1554,6 +1554,8 @@ UpdateMasterAosegTotalsFromSegments(Relation parentrel,
 		int64	qe_tupcount = total_tupcount[qe_segno];
 		int64	known_tupcount = 0;
 
+		Assert(qe_segno >= 0);
+
 		/*
 		 * If segfile doesn't exist, assume tupcount is 0.
 		 * UpdateMasterAosegTotals will create a segfile entry if necessary.
@@ -1901,7 +1903,7 @@ AtEOXact_AppendOnly_StateTransition(AORelHashEntry aoentry, int segno,
 		}
 		else
 		{
-			segfilestat->state = INITIAL_AWAITING_DROP;
+			segfilestat->state = AWAITING_DROP_READY;
 		}
 	}
 	else if (segfilestat->state == COMPACTION_USE)
@@ -1923,12 +1925,12 @@ AtEOXact_AppendOnly_StateTransition(AORelHashEntry aoentry, int segno,
 		}
 		else
 		{
-			segfilestat->state = INITIAL_AWAITING_DROP;
+			segfilestat->state = AWAITING_DROP_READY;
 		}
 	}
 	else if (segfilestat->state == COMPACTED_DROP_SKIPPED)
 	{
-		segfilestat->state = INITIAL_AWAITING_DROP;
+		segfilestat->state = AWAITING_DROP_READY;
 	}
 	else
 	{

@@ -372,8 +372,11 @@ static bool vacuum_assign_compaction_segno(
 		}
 		else
 		{
-			/* If we continue a aborted drop phase, we do not assign a insert segment file */
-			insert_segno = NIL;
+			/*
+			 * If we continue an aborted drop phase, we do not assign a real
+			 * insert segment file.
+			 */
+			insert_segno = list_make1_int(APPENDONLY_COMPACTION_SEGNO_INVALID);
 		}
 
 		elogif(Debug_appendonly_print_compaction, LOG,
@@ -534,6 +537,18 @@ vacuumStatement_IsInAppendOnlyCompactionPhase(VacuumStmt *vacstmt)
 	return (vacstmt->appendonly_compaction_segno && 
 			vacstmt->appendonly_compaction_insert_segno &&
 			!vacstmt->appendonly_compaction_vacuum_prepare && 
+			!vacstmt->appendonly_compaction_vacuum_cleanup);
+}
+
+bool
+vacuumStatement_IsInAppendOnlyPseudoCompactionPhase(VacuumStmt *vacstmt)
+{
+	Assert(vacstmt);
+	return (vacstmt->appendonly_compaction_segno &&
+			vacstmt->appendonly_compaction_insert_segno &&
+			linitial_int(vacstmt->appendonly_compaction_insert_segno)
+				== APPENDONLY_COMPACTION_SEGNO_INVALID &&
+			!vacstmt->appendonly_compaction_vacuum_prepare &&
 			!vacstmt->appendonly_compaction_vacuum_cleanup);
 }
 
@@ -812,7 +827,8 @@ vacuumStatement_Relation(VacuumStmt *vacstmt, Oid relid, List *relations)
 			{
 				Assert(RelationIsAoRows(onerel) || RelationIsAoCols(onerel));
 
-				if (vacuumStatement_IsInAppendOnlyCompactionPhase(vacstmt))
+				if (vacuumStatement_IsInAppendOnlyCompactionPhase(vacstmt) &&
+						!vacuumStatement_IsInAppendOnlyPseudoCompactionPhase(vacstmt))
 				{
 					/* In the compact phase, we need to update the information of the segment file we inserted into */
 					UpdateMasterAosegTotalsFromSegments(onerel, SnapshotNow, vacstmt->appendonly_compaction_insert_segno, 0);

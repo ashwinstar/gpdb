@@ -228,6 +228,7 @@ extern bool vacuumStatement_IsInAppendOnlyDropPhase(VacuumStmt *vacstmt);
 extern bool vacummStatement_IsInAppendOnlyCleanupPhase(VacuumStmt *vacstmt);
 extern bool vacuumStatement_IsInAppendOnlyPreparePhase(VacuumStmt* vacstmt);
 extern bool vacuumStatement_IsInAppendOnlyCompactionPhase(VacuumStmt* vacstmt);
+extern bool vacuumStatement_IsInAppendOnlyPseudoCompactionPhase(VacuumStmt* vacstmt);
 
 /* in commands/vacuumlazy.c */
 extern void lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats);

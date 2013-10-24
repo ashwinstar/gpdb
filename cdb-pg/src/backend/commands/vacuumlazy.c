@@ -1130,25 +1130,29 @@ vacuum_appendonly_rel(Relation aorel, VacuumStmt *vacstmt)
 	}
 	else
 	{
-		elogif(Debug_appendonly_print_compaction, LOG,
-			"Vacuum compaction phase %s", RelationGetRelationName(aorel));
-
-		int insert_segno = APPENDONLY_COMPACTION_SEGNO_INVALID;
-		if (vacstmt->appendonly_compaction_insert_segno) 
-				insert_segno = list_nth_int(vacstmt->appendonly_compaction_insert_segno, 0);
-
-		if (RelationIsAoRows(aorel))
+		int insert_segno = linitial_int(vacstmt->appendonly_compaction_insert_segno);
+		if (insert_segno == APPENDONLY_COMPACTION_SEGNO_INVALID)
 		{
-			AppendOnlyCompact(aorel, 
-				vacstmt->appendonly_compaction_segno,
-				insert_segno, vacstmt->full);
+			elogif(Debug_appendonly_print_compaction, LOG,
+			"Vacuum pseudo-compaction phase %s", RelationGetRelationName(aorel));
 		}
 		else
 		{
-			Assert(RelationIsAoCols(aorel));
-			AOCSCompact(aorel,
-				vacstmt->appendonly_compaction_segno,
-				insert_segno, vacstmt->full);
+			elogif(Debug_appendonly_print_compaction, LOG,
+				"Vacuum compaction phase %s", RelationGetRelationName(aorel));
+			if (RelationIsAoRows(aorel))
+			{
+				AppendOnlyCompact(aorel, 
+					vacstmt->appendonly_compaction_segno,
+					insert_segno, vacstmt->full);
+			}
+			else
+			{
+				Assert(RelationIsAoCols(aorel));
+				AOCSCompact(aorel,
+					vacstmt->appendonly_compaction_segno,
+					insert_segno, vacstmt->full);
+			}
 		}
 	}
 }
