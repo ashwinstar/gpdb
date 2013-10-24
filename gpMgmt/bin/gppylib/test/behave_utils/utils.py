@@ -760,6 +760,7 @@ def create_fake_pg_aoseg_table(context, table, dbname):
     sql = """CREATE TABLE %s(segno int, 
                              eof double precision,
                              tupcount double precision,
+                             modcount bigint,
                              varblockcount double precision,
                              eofuncompressed double precision)""" % table
     execute_sql(dbname, sql)

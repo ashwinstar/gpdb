@@ -1288,7 +1288,7 @@ Feature: Validate command line arguments
         And the database "tempdb" does not exist
         And database "tempdb" exists
         And there is a fake pg_aoseg table named "public.tuple_count_table" in "tempdb"
-        And the row "1, 0, 1000000000000000, 0, 0" is inserted into "public.tuple_count_table" in "tempdb"
+        And the row "1, 0, 1000000000000000, 1000000000000000, 0, 0" is inserted into "public.tuple_count_table" in "tempdb"
         When the method get_partition_state is executed on table "public.tuple_count_table" in "tempdb" for ao table "pepper.t1" 
         Then an exception should be raised with "Exceeded backup max tuple count of 1 quadrillion rows per table for:" 
 
@@ -1297,8 +1297,8 @@ Feature: Validate command line arguments
         And the database "tempdb" does not exist
         And database "tempdb" exists
         And there is a fake pg_aoseg table named "public.tuple_count_table" in "tempdb"
-        And the row "1, 0, 999999999999999, 0, 0" is inserted into "public.tuple_count_table" in "tempdb"
-        And the row "2, 0, 1, 0, 0" is inserted into "public.tuple_count_table" in "tempdb"
+        And the row "1, 0, 999999999999999, 999999999999999, 0, 0" is inserted into "public.tuple_count_table" in "tempdb"
+        And the row "2, 0, 1, 1, 0, 0" is inserted into "public.tuple_count_table" in "tempdb"
         When the method get_partition_state is executed on table "public.tuple_count_table" in "tempdb" for ao table "pepper.t1"
         Then an exception should be raised with "Exceeded backup max tuple count of 1 quadrillion rows per table for:" 
 
@@ -1307,8 +1307,8 @@ Feature: Validate command line arguments
         And the database "tempdb" does not exist
         And database "tempdb" exists
         And there is a fake pg_aoseg table named "public.tuple_count_table" in "tempdb"
-        And the row "1, 0, 999999999999998, 0, 0" is inserted into "public.tuple_count_table" in "tempdb"
-        And the row "2, 0, 1, 0, 0" is inserted into "public.tuple_count_table" in "tempdb"
+        And the row "1, 0, 999999999999998, 999999999999998, 0, 0" is inserted into "public.tuple_count_table" in "tempdb"
+        And the row "2, 0, 1, 1, 0, 0" is inserted into "public.tuple_count_table" in "tempdb"
         When the method get_partition_state is executed on table "public.tuple_count_table" in "tempdb" for ao table "pepper.t1"
         Then the get_partition_state result should contain "pepper, t1, 999999999999999"
 
