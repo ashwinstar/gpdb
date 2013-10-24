@@ -1611,8 +1611,8 @@ Feature: Validate command line arguments
         And all the data from "fullbkdb" is saved for verification
         When the user runs "gpdbrestore -e -T public.ao_index_table -a" with the stored timestamp
         And gpdbrestore should return a return code of 0
-        And verify that partitioned tables "ao_part_table" in "fullbkdb" has 6 empty partitions
-        Then verify that tables "public.heap_table" in "fullbkdb" has no rows
+        Then verify that there is no table "ao_part_table" in "fullbkdb"
+        And verify that there is no table "heap_table" in "fullbkdb"
         And verify that there is a "ao" table "public.ao_index_table" in "fullbkdb" with data
 
     @backupfire
@@ -1633,8 +1633,8 @@ Feature: Validate command line arguments
         And database "fullbkdb" exists
         When the user runs "gpdbrestore -T public.ao_index_table -a" with the stored timestamp
         And gpdbrestore should return a return code of 0
-        And verify that partitioned tables "ao_part_table" in "fullbkdb" has 6 empty partitions
-        Then verify that tables "public.heap_table" in "fullbkdb" has no rows
+        Then verify that there is no table "ao_part_table" in "fullbkdb"
+        And verify that there is no table "heap_table" in "fullbkdb"
         And verify that there is a "ao" table "public.ao_index_table" in "fullbkdb" with data
 
     @backupfire
@@ -1761,8 +1761,8 @@ Feature: Validate command line arguments
         And all the data from "fullbkdb" is saved for verification
         When the user runs "gpdbrestore -e -T public.ao_index_table -a" with the stored timestamp
         And gpdbrestore should return a return code of 0
-        And verify that partitioned tables "ao_part_table" in "fullbkdb" has 6 empty partitions
-        Then verify that tables "public.heap_table" in "fullbkdb" has no rows
+        Then verify that there is no table "ao_part_table" in "fullbkdb" 
+        And verify that there is no table "heap_table" in "fullbkdb"
         And verify that there is a "ao" table "public.ao_index_table" in "fullbkdb" with data
 
     Scenario: Incremental backup -T test 2 
@@ -1783,8 +1783,8 @@ Feature: Validate command line arguments
         And database "fullbkdb" exists
         When the user runs "gpdbrestore -T public.ao_index_table -a" with the stored timestamp
         And gpdbrestore should return a return code of 0
-        And verify that partitioned tables "ao_part_table" in "fullbkdb" has 6 empty partitions
-        Then verify that tables "public.heap_table" in "fullbkdb" has no rows
+        Then verify that there is no table "ao_part_table" in "fullbkdb" 
+        And verify that there is no table "heap_table" in "fullbkdb"
         And verify that there is a "ao" table "public.ao_index_table" in "fullbkdb" with data
 
     Scenario: Incremental backup -T test 3
@@ -1878,8 +1878,8 @@ Feature: Validate command line arguments
         And all the data from "fullbkdb" is saved for verification
         And the user runs "gpdbrestore -T public.ao_part_table -a -e" with the stored timestamp
         And gpdbrestore should return a return code of 0
-        Then verify that tables "public.heap_table" in "fullbkdb" has no rows
-        Then verify that tables "public.ao_index_table" in "fullbkdb" has no rows
+        Then verify that there is no table "heap_table" in "fullbkdb"
+        And verify that there is no table "ao_index_table" in "fullbkdb"
         And verify that there is a "ao" table "public.ao_part_table" in "fullbkdb" with data
 
     @backupfire
@@ -2151,10 +2151,14 @@ Feature: Validate command line arguments
         And the timestamp from gpcrondump is stored 
         When the user runs "gpdbrestore -e -T public.ao_part_table -a" with the stored timestamp
         Then gpdbrestore should return a return code of 0
-        And verify that tables "public.ao_part_table1_1_prt_p1_2_prt_3, public.ao_part_table1_1_prt_p2_2_prt_3" in "testdb" has no rows
-        And verify that tables "public.ao_part_table1_1_prt_p1_2_prt_2, public.ao_part_table1_1_prt_p2_2_prt_2" in "testdb" has no rows
-        And verify that tables "public.ao_part_table1_1_prt_p1_2_prt_1, public.ao_part_table1_1_prt_p2_2_prt_1" in "testdb" has no rows
-        And verify that tables "public.heap_table_1, public.heap_table_2" in "testdb" has no rows
+        And verify that there is no table "public.ao_part_table1_1_prt_p1_2_prt_3" in "testdb"
+        And verify that there is no table "public.ao_part_table1_1_prt_p2_2_prt_3" in "testdb"
+        And verify that there is no table "public.ao_part_table1_1_prt_p1_2_prt_2" in "testdb"
+        And verify that there is no table "public.ao_part_table1_1_prt_p2_2_prt_2" in "testdb"
+        And verify that there is no table "public.ao_part_table1_1_prt_p1_2_prt_1" in "testdb"
+        And verify that there is no table "public.ao_part_table1_1_prt_p2_2_prt_1" in "testdb"
+        And verify that there is no table "public.heap_table_1" in "testdb"
+        And verify that there is no table "public.heap_table_2" in "testdb"
 
     @backupfire
     Scenario: Incremental table filter gpdbrestore with different schema for same tablenames
@@ -2181,13 +2185,20 @@ Feature: Validate command line arguments
         And the timestamp from gpcrondump is stored 
         When the user runs "gpdbrestore -e -T public.ao_part_table1 -a" with the stored timestamp
         Then gpdbrestore should return a return code of 0
-        And verify that tables "public.ao_part_table_1_prt_p1_2_prt_3, public.ao_part_table_1_prt_p2_2_prt_3" in "schematestdb" has no rows
-        And verify that tables "public.ao_part_table_1_prt_p1_2_prt_2, public.ao_part_table_1_prt_p2_2_prt_2" in "schematestdb" has no rows
-        And verify that tables "public.ao_part_table_1_prt_p1_2_prt_1, public.ao_part_table_1_prt_p2_2_prt_1" in "schematestdb" has no rows
-        And verify that tables "pepper.ao_part_table1_1_prt_p1_2_prt_3, pepper.ao_part_table1_1_prt_p2_2_prt_3" in "schematestdb" has no rows
-        And verify that tables "pepper.ao_part_table1_1_prt_p1_2_prt_2, pepper.ao_part_table1_1_prt_p2_2_prt_2" in "schematestdb" has no rows
-        And verify that tables "pepper.ao_part_table1_1_prt_p1_2_prt_1, pepper.ao_part_table1_1_prt_p2_2_prt_1" in "schematestdb" has no rows
-        And verify that tables "public.heap_table_1, public.heap_table_2" in "schematestdb" has no rows
+        And verify that there is no table "public.ao_part_table_1_prt_p1_2_prt_3" in "schematestdb"
+        And verify that there is no table "public.ao_part_table_1_prt_p2_2_prt_3" in "schematestdb"
+        And verify that there is no table "public.ao_part_table_1_prt_p1_2_prt_2" in "schematestdb"
+        And verify that there is no table "public.ao_part_table_1_prt_p2_2_prt_2" in "schematestdb"
+        And verify that there is no table "public.ao_part_table_1_prt_p1_2_prt_1" in "schematestdb"
+        And verify that there is no table "public.ao_part_table_1_prt_p2_2_prt_1" in "schematestdb"
+        And verify that there is no table "pepper.ao_part_table1_1_prt_p1_2_prt_3" in "schematestdb"
+        And verify that there is no table "pepper.ao_part_table1_1_prt_p2_2_prt_3" in "schematestdb"
+        And verify that there is no table "pepper.ao_part_table1_1_prt_p1_2_prt_2" in "schematestdb"
+        And verify that there is no table "pepper.ao_part_table1_1_prt_p2_2_prt_2" in "schematestdb"
+        And verify that there is no table "pepper.ao_part_table1_1_prt_p1_2_prt_1" in "schematestdb"
+        And verify that there is no table "pepper.ao_part_table1_1_prt_p2_2_prt_1" in "schematestdb"
+        And verify that there is no table "public.heap_table_1" in "schematestdb"
+        And verify that there is no table "public.heap_table_2" in "schematestdb"
 
     @backupfire
     Scenario: Incremental table filter gpdbrestore with noplan option
@@ -3560,8 +3571,8 @@ Feature: Validate command line arguments
         And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
         And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
         And there is a "co" partition table "co_part_table" with compression "None" in "fullbkdb" with data
-        And there is a backupfile of tables "co_part_table" in "fullbkdb" exists for validation
         And there is a file "include_file_with_whitespace" with tables "public.heap_table   ,public.ao_part_table" 
+        And there is a backupfile of tables "co_part_table" in "fullbkdb" exists for validation
         When the user runs "gpcrondump -a -x fullbkdb --table-file include_file_with_whitespace"
         Then gpcrondump should return a return code of 0
         And the timestamp from gpcrondump is stored 
@@ -3571,6 +3582,203 @@ Feature: Validate command line arguments
         And verify that there is a "ao" table "ao_part_table" in "fullbkdb" with data
         And verify that there is a "heap" table "heap_table" in "fullbkdb" with data
         And verify that there is no table "co_part_table" in "fullbkdb"
+
+    Scenario: Full Backup and Restore of one table with -C option
+        Given the database is running
+        And there are no backup files
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is an external table "ext_tab" in "fullbkdb" with data for file "/tmp/ext_tab"
+        When the user runs "gpcrondump -a -x fullbkdb -C -K 20140101010101"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And verify that the "report" file in " " dir contains "Backup Type: Full"
+        And all the data from "fullbkdb" is saved for verification
+        And the user runs "gpdbrestore -a -t 20140101010101 -T public.ao_part_table,public.ext_tab"
+        And gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "heap_table" in "fullbkdb" with data
+        And verify that there is a "ao" table "ao_part_table" in "fullbkdb" with data
+        And verify that there is a "external" table "public.ext_tab" in "fullbkdb"
+
+    Scenario: Full Backup and Restore of all tables with -C option
+        Given the database is running
+        And there are no backup files
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a "ao" table "ao_table" with compression "None" in "fullbkdb" with data
+        When the user runs "gpcrondump -a -x fullbkdb -C"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And verify that the "report" file in " " dir contains "Backup Type: Full"
+        And all the data from "fullbkdb" is saved for verification
+        When the user runs "gpdbrestore -a" with the stored timestamp
+        Then gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "heap_table" in "fullbkdb"
+        And verify that there is a "ao" table "ao_table" in "fullbkdb"
+        And verify that there is a "ao" table "ao_part_table" in "fullbkdb"
+    
+    Scenario: Incremental Backup with -C option
+        Given the database is running
+        And there are no backup files
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        When the user runs "gpcrondump -a -x fullbkdb -C"
+        Then gpcrondump should return a return code of 0
+        When the user runs "gpcrondump -a -x fullbkdb --incremental -C"
+        Then gpcrondump should print -C option can not be selected with incremental backup to stdout
+        And gpcrondump should return a return code of 2 
+
+    Scenario: Full Backup and Restore of specified metadata
+        Given the database is running
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is schema "pepper" exists in "testdb"
+        And there is a "heap" table "public.heap_table" with compression "None" in "testdb" with data
+        And there is a "heap" partition table "pepper.heap_part_table" with compression "quicklz" in "testdb" with data
+        And there is a "ao" table "pepper.ao_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "public.ao_part_table" with compression "quicklz" in "testdb" with data
+        And there is a "co" table "public.co_table" with compression "None" in "testdb" with data
+        And there is a "co" partition table "public.co_part_table" with compression "quicklz" in "testdb" with data
+        And there is a "heap" table "pepper.heap_table_ex" with compression "None" in "testdb" with data
+        And there is a "heap" partition table "public.heap_part_table_ex" with compression "quicklz" in "testdb" with data
+        And there is a "ao" table "public.ao_table_ex" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "public.ao_part_table_ex" with compression "quicklz" in "testdb" with data
+        And there is a "co" table "pepper.co_table_ex" with compression "None" in "testdb" with data
+        And there is a "co" partition table "pepper.co_part_table_ex" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And all the data from "testdb" is saved for verification
+        And there is a file "restore_file" with tables "public.heap_table,pepper.ao_table,public.co_table" 
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is schema "pepper" exists in "testdb"
+        And the user runs "gpdbrestore --table-file restore_file -a" with the stored timestamp
+        And gpdbrestore should return a return code of 0 
+        And verify that there is a "heap" table "public.heap_table" in "testdb" with data
+        And verify that there is a "ao" table "pepper.ao_table" in "testdb" with data
+        And verify that there is a "co" table "public.co_table" in "testdb" with data
+        And verify that there is no table "pepper.heap_table_ex" in "testdb"
+        And verify that there is no table "public.ao_table_ex" in "testdb"
+        And verify that there is no table "pepper.co_table_ex" in "testdb"
+        And verify that there is no table "public.heap_part_table_ex" in "testdb"
+        And verify that there is no table "public.ao_part_table_ex" in "testdb"
+        And verify that there is no table "pepper.co_part_table_ex" in "testdb"
+        And verify that there is no table "pepper.heap_part_table" in "testdb"
+        And verify that there is no table "public.ao_part_table" in "testdb"
+        And verify that there is no table "public.co_part_table" in "testdb"
+        And verify that the data of "3" tables in "testdb" is validated after restore 
+
+    Scenario: Incremental Backup and Restore of specified metadata
+        Given the database is running
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "heap" partition table "heap_part_table" with compression "quicklz" in "testdb" with data
+        And there is a "ao" table "ao_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        And there is a "co" table "co_table" with compression "None" in "testdb" with data
+        And there is a "co" partition table "co_part_table" with compression "quicklz" in "testdb" with data
+        And there is a "heap" table "heap_table_ex" with compression "None" in "testdb" with data
+        And there is a "heap" partition table "heap_part_table_ex" with compression "quicklz" in "testdb" with data
+        And there is a "ao" table "ao_table_ex" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table_ex" with compression "quicklz" in "testdb" with data
+        And there is a "co" table "co_table_ex" with compression "None" in "testdb" with data
+        And there is a "co" partition table "co_part_table_ex" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored
+        And table "public.co_table" is assumed to be in dirty state in "testdb"
+        And partition "2" of partition table "ao_part_table" is assumed to be in dirty state in "testdb" in schema "public"
+        When the user runs "gpcrondump -a -x testdb --incremental"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And all the data from "testdb" is saved for verification
+        And there is a file "restore_file" with tables "public.heap_table,public.ao_table,public.co_table,public.ao_part_table" 
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is schema "pepper" exists in "testdb"
+        And the user runs "gpdbrestore --table-file restore_file -a" with the stored timestamp
+        And gpdbrestore should return a return code of 0 
+        And verify that there is a "heap" table "public.heap_table" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_table" in "testdb" with data
+        And verify that there is a "co" table "public.co_table" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_part_table" in "testdb" with data
+        And verify that there is no table "public.heap_table_ex" in "testdb"
+        And verify that there is no table "public.ao_table_ex" in "testdb"
+        And verify that there is no table "public.co_table_ex" in "testdb"
+        And verify that there is no table "public.heap_part_table_ex" in "testdb"
+        And verify that there is no table "public.ao_part_table_ex" in "testdb"
+        And verify that there is no table "public.co_part_table_ex" in "testdb"
+        And verify that there is no table "public.co_part_table" in "testdb"
+        And verify that there is no table "public.heap_part_table" in "testdb"
+        And verify that partitioned tables "ao_part_table" in "testdb" have 6 partitions
+        And verify that the data of "12" tables in "testdb" is validated after restore 
+
+    Scenario: Full Backup and Restore with filtering different types of metadata
+        Given the database is running
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is schema "pepper" exists in "testdb"
+        And there is a "heap" table "public.heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" table "pepper.ao_table" with compression "None" in "testdb" with data
+        And there is a "co" table "pepper.co_table_ex" with compression "None" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And all the data from "testdb" is saved for verification
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is schema "pepper" exists in "testdb"
+        And the user runs "gpdbrestore -T pepper.ao_table -a" with the stored timestamp
+        And gpdbrestore should return a return code of 0 
+        And verify that there is a "ao" table "pepper.ao_table" in "testdb" with data
+        And verify that there is no table "public.heap_table" in "testdb"
+        And verify that there is no table "pepper.co_table_ex" in "testdb"
+        And verify that the data of "1" tables in "testdb" is validated after restore 
+
+    Scenario: Full Backup and Restore of external and ao table 
+        Given the database is running
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a "heap" table "public.heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" table "public.ao_table" with compression "None" in "testdb" with data
+        And there is a "co" table "public.co_table_ex" with compression "None" in "testdb" with data
+        And there is an external table "ext_tab" in "testdb" with data for file "/tmp/ext_tab"
+        And the user runs "psql -c 'CREATE LANGUAGE plpythonu' testdb"
+        And there is a function "pymax" in "testdb"
+        And the user runs "psql -c 'CREATE VIEW vista AS SELECT text 'Hello World' AS hello' testdb"
+        And the user runs "psql -c 'COMMENT ON  TABLE public.ao_table IS 'Hello World' testdb"
+        And the user runs "psql -c 'CREATE ROLE foo_user' testdb"
+        And the user runs "psql -c 'GRANT INSERT ON TABLE public.ao_table TO foo_user' testdb"
+        And the user runs "psql -c 'ALTER TABLE ONLY public.ao_table ADD CONSTRAINT null_check CHECK (column1 <> NULL);' testdb"
+        When the user runs "gpcrondump -a -x testdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And all the data from "testdb" is saved for verification
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a file "restore_file" with tables "public.ao_table,public.ext_tab" 
+        And the user runs "gpdbrestore --table-file restore_file -a" with the stored timestamp
+        And gpdbrestore should return a return code of 0 
+        And verify that there is a "ao" table "public.ao_table" in "testdb" with data
+        And verify that there is a "external" table "public.ext_tab" in "testdb" with data
+        And verify that there is a constraint "null_check" in "testdb"
+        And verify that there is no table "public.heap_table" in "testdb"
+        And verify that there is no table "public.co_table_ex" in "testdb"
+        And verify that there is no view "vista" in "testdb"
+        And verify that there is no procedural language "plpythonu" in "testdb"
+        And the user runs "psql -c '\z' testdb"
+        And psql should not print foo_user=a/ to stdout
+        And the user runs "psql -c '\df' testdb"
+        And psql should not print pymax to stdout
+        And verify that the data of "2" tables in "testdb" is validated after restore 
 
     # THIS SHOULD BE THE LAST TEST
     @backupfire

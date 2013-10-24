@@ -29,7 +29,7 @@ from gppylib.test.behave_utils.utils import bring_nic_down, bring_nic_up, get_ta
                                             populate_partition_diff_data_same_eof, populate_partition_same_data, execute_sql, verify_integer_tuple_counts,  validate_no_aoco_stats, \
                                             check_string_not_present_stdout, clear_all_saved_data_verify_files, copy_file_to_all_db_hosts, validate_num_restored_tables, \
                                             get_partition_list, verify_stats, drop_external_table_if_exists, get_all_hostnames_as_list, get_pid_for_segment, kill_process, get_num_segments, \
-                                            check_user_permissions, get_change_tracking_segment_info
+                                            check_user_permissions, get_change_tracking_segment_info, add_partition, drop_partition, check_pl_exists, check_constraint_exists
 
 from gppylib.operations.dump import get_partition_state
 
@@ -574,6 +574,21 @@ def impl(context, tablename, dbname):
     if check_table_exists(context, dbname=dbname, table_name=tablename): 
         raise Exception("Table '%s' still exists when it should not" % tablename)
 
+@then('verify that there is no view "{viewname}" in "{dbname}"')
+def impl(context, viewname, dbname):
+    if check_table_exists(context, dbname=dbname, table_name=viewname, table_type='view'):
+        raise Exception("View '%s' still exists when it should not" % viewname)
+
+@then('verify that there is no procedural language "{planguage}" in "{dbname}"')
+def impl(context, planguage, dbname):
+    if check_pl_exists(context, dbname=dbname, lan_name=planguage):
+        raise Exception("Procedural Language '%s' still exists when it should not" % planguage)
+
+@then('verify that there is a constraint "{conname}" in "{dbname}"')
+def impl(context, conname, dbname):
+    if not check_constraint_exists(context, dbname=dbname, conname=conname):
+        raise Exception("Constraint '%s' does not exist when it should" % conname)
+
 @then('verify that there is a "{table_type}" table "{tablename}" in "{dbname}"')
 def impl(context, table_type, tablename, dbname):
     if not check_table_exists(context, dbname=dbname, table_name=tablename,table_type=table_type): 
@@ -589,6 +604,16 @@ def impl(context, partition, tablename, storage_type, dbname, schemaname):
     part_t = get_partition_names(schemaname, tablename, dbname, 1, partition)
     partname = part_t[0][0].strip()
     validate_storage_type(context, partname, storage_type, dbname)
+
+@given('there is a function "{functionname}" in "{dbname}"')
+def impl(context, functionname, dbname):
+    SQL = """CREATE FUNCTION %s(a integer, b integer)
+    RETURNS integer AS $$
+        if a > b:
+            return a
+        return b
+    $$ LANGUAGE plpythonu;""" % functionname
+    execute_sql(dbname, SQL)
 
 @then('verify that storage_types of the partition table "{tablename}" are as expected in "{dbname}"')
 def impl(context, tablename, dbname):
@@ -703,6 +728,7 @@ def impl(context, table_type, tablename, dbname):
     validate_restore_data(context, tablename, dbname) 
 
 @given('there is schema "{schema_list}" exists in "{dbname}"')
+@then('there is schema "{schema_list}" exists in "{dbname}"')
 def impl(context, schema_list, dbname):
     schemas = [s.strip() for s in schema_list.split(',')]
     for s in schemas:
@@ -723,6 +749,7 @@ def create_table_file_locally(context, filename, table_list, location=os.getcwd(
     context.filename = file_path
 
 @given('there is a file "{filename}" with tables "{table_list}"')
+@then('there is a file "{filename}" with tables "{table_list}"')
 def impl(context, filename, table_list):
     create_table_file_locally(context, filename, table_list)
 

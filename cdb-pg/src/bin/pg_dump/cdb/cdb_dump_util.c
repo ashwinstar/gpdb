@@ -1002,10 +1002,12 @@ formSegmentPsqlCommandLine(char** retVal, const char* inputFileSpec, bool compUs
 		strcat(pszCmdLine, inputFileSpec);
 	}
 
-	if (table_filter_file && (role == ROLE_SEGDB))
+	if (table_filter_file)
 	{
 		strcat(pszCmdLine, " | ");
 		strcat(pszCmdLine, filter_script);
+		if (role == ROLE_MASTER)
+			strcat(pszCmdLine, " -m");
 		strcat(pszCmdLine, " -t ");
 		strcat(pszCmdLine, table_filter_file);
 	}

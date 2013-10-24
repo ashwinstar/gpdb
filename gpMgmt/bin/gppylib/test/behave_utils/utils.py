@@ -271,12 +271,28 @@ def check_table_exists(context, dbname, table_name, table_type=None):
         original_table_type = 'heap'
     elif table_row[2] == 'x':
         original_table_type = 'external'
+    elif table_row[2] == 'v':
+        original_table_type = 'view'
     else:
         raise Exception('Unknown table type %s' % table_row[2]) 
 
     if original_table_type != table_type.strip():
         return False
 
+    return True
+
+def check_pl_exists(context, dbname, lan_name):
+    SQL = """select count(*) from pg_language where lanname='%s';""" % lan_name
+    lan_count = getRows(dbname, SQL)[0][0]
+    if lan_count == 0:
+        return False
+    return True
+
+def check_constraint_exists(context, dbname, conname):
+    SQL = """select count(*) from pg_constraint where conname='%s';""" % conname
+    con_count = getRows(dbname, SQL)[0][0]
+    if con_count == 0:
+        return False
     return True
 
 def drop_external_table_if_exists(context, table_name, dbname):

@@ -325,7 +325,7 @@ void test__formSegmentPsqlCommandLine5(void **state)
 							   filter_script, table_filter_file, role,
 							   psqlPg, catPg);
 
-	char *expected_output = "cat fileSpec | gzip -c | psql";
+	char *expected_output = "cat fileSpec | gzip -c | filter.py -m -t filter.conf | psql";
 	assert_string_equal(cmdLine, expected_output);
 	free(cmdLine);
 }
@@ -365,7 +365,7 @@ void test__formSegmentPsqlCommandLine7(void **state)
 							   filter_script, table_filter_file, role,
 							   psqlPg, catPg);
 
-	char *expected_output = "cat fileSpec | psql";
+	char *expected_output = "cat fileSpec | filter.py -m -t filter.conf | psql";
 	assert_string_equal(cmdLine, expected_output);
 	free(cmdLine);
 }

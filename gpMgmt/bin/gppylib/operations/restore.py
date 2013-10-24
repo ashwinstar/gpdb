@@ -294,11 +294,13 @@ class RestoreDatabase(Operation):
        
         if is_begin_incremental_run(self.master_datadir, self.backup_dir, self.restore_timestamp, self.no_plan):
             metadata_file = generate_metadata_filename(self.master_datadir, self.backup_dir, self.restore_timestamp)
+            table_filter_file = self.create_filter_file() # returns None if nothing to filter
             restore_line = self._build_schema_only_restore_line(restore_timestamp, 
                                                                 restore_db, 
                                                                 compress, 
                                                                 self.master_port, 
-                                                                metadata_file)
+                                                                metadata_file,
+                                                                table_filter_file)
             logger.info("Running metadata restore")
             logger.info("Invoking commandline: %s" % restore_line) 
             Command('Invoking gp_restore', restore_line).run(validateAfter=True)
@@ -437,7 +439,7 @@ class RestoreDatabase(Operation):
             restore_line += " --gp-nostats"
         return restore_line
 
-    def _build_schema_only_restore_line(self, restore_timestamp, restore_db, compress, master_port, metadata_filename):
+    def _build_schema_only_restore_line(self, restore_timestamp, restore_db, compress, master_port, metadata_filename, table_filter_file):
         user = getpass.getuser()
         hostname = socket.gethostname()    # TODO: can this just be localhost? bash was using `hostname`
         path = os.path.join(DUMP_DIR, restore_timestamp[0:8])
@@ -448,6 +450,8 @@ class RestoreDatabase(Operation):
         if backup_utils.dump_prefix:
             logger.info("Adding --prefix")
             restore_line += " --prefix=%s" % backup_utils.dump_prefix
+        if table_filter_file:
+            restore_line += " --gp-f=%s" % table_filter_file
         if compress:
             restore_line += " --gp-c"
         restore_line += " -d %s" % restore_db

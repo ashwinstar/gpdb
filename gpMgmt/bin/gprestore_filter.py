@@ -4,7 +4,7 @@ from gppylib.gpparseopts import OptParser, OptChecker
 import sys
 
 search_path_expr = 'SET search_path = '
-search_path_start = 'S'
+set_start = 'S'
 len_search_path_expr = len(search_path_expr)
 copy_expr = 'COPY ' 
 copy_start = 'C'
@@ -12,7 +12,92 @@ copy_expr_end = 'FROM stdin;\n'
 len_copy_expr = len(copy_expr)
 copy_end_expr = '\\.'
 copy_end_start = '\\'
+set_expr = 'SET '
+drop_start = 'D'
+drop_expr = 'DROP '
 
+comment_start_expr = '-- '
+comment_expr = '-- Name: '
+comment_data_expr = '-- Data: '
+len_start_comment_expr = len(comment_start_expr)
+
+def get_table_info(line):
+    try:
+        temp = line[len_start_comment_expr:]
+        tokens = temp.strip().split(';')
+        name = tokens[0].split(':')[1].strip()
+        type = tokens[1].split(':')[1].strip()
+        schema = tokens[2].split(':')[1].strip()
+    except:
+        return (None, None, None)
+    return (name, type, schema) 
+
+def process_schema(dump_schemas, dump_tables, fdin, fdout):
+    schema, table = None, None
+    line_buff = ''
+    output = False
+    further_investigation_required = False
+    search_path = True
+    for line in fdin:
+        if search_path and (line[0] == set_start) and line.startswith(search_path_expr):
+            further_investigation_required = False
+            schema = extract_schema(line)
+            if schema in dump_schemas:
+                output = True
+                search_path = False
+            else:
+                output = False
+        elif (line[0] == set_start) and line.startswith(set_expr):
+            output = True
+        elif (line[0] == drop_start) and line.startswith(drop_expr):
+            if line.startswith('DROP TABLE') or line.startswith('DROP EXTERNAL TABLE'):
+                output = check_dropped_table(line, dump_tables)
+            else:
+                output = False
+        elif line[:3] == comment_start_expr and line.startswith(comment_expr):
+            name, type, schema = get_table_info(line)
+            output = False
+            if type in ['TABLE', 'EXTERNAL TABLE']:
+                further_investigation_required = False
+                output = check_valid_table(schema, name, dump_tables)
+                if output:
+                    search_path = True
+            elif type in ['CONSTRAINT']:
+                further_investigation_required = True
+                if schema in dump_schemas:
+                    line_buff = line 
+        elif (line[:3] == comment_start_expr) and line.startswith(comment_data_expr):
+            further_investigation_required = False
+            name, type, schema = get_table_info(line)
+            if type == 'TABLE DATA':
+                output = check_valid_table(schema, name, dump_tables)
+                if output:
+                    search_path = True
+            else:
+                output = False  
+        elif further_investigation_required:
+            if line.startswith('ALTER TABLE'):
+                further_investigation_required = False
+                name = line.split()[-1]
+                output = check_valid_table(schema, name, dump_tables)
+                if output:
+                    if line_buff:
+                        fdout.write(line_buff)
+                        line_buff = ''
+                    search_path = True
+        else:
+            further_investigation_required = False
+
+
+        if output:
+            fdout.write(line)
+
+def check_valid_table(schema, name, dump_tables):
+    if (schema, name) in dump_tables:
+        output = True
+    else:
+        output = False
+    return output
 
 def get_table_schema_set(filename):
     dump_schemas = set()
@@ -48,12 +133,19 @@ def extract_table(line):
     table = temp[:idx]
     return table
 
+def check_dropped_table(line, dump_tables):
+    temp = line.split()[-1][:-1]
+    (schema, table) = temp.split('.')
+    if (schema, table) in dump_tables:
+        return True
+    return False
+
 def process_data(dump_schemas, dump_tables, fdin, fdout):
     schema, table = None, None
     output = False
     #PYTHON PERFORMANCE IS TRICKY .... THIS CODE IS LIKE THIS BECAUSE ITS FAST
     for line in fdin:
-        if (line[0] == search_path_start) and line.startswith(search_path_expr):
+        if (line[0] == set_start) and line.startswith(search_path_expr):
             schema = extract_schema(line)
             if schema and schema in dump_schemas:
                 fdout.write(line)
@@ -76,9 +168,13 @@ if __name__ == "__main__":
     parser.remove_option('-h')
     parser.add_option('-h', '-?', '--help', action='store_true')
     parser.add_option('-t', '--tablefile', type='string', default=None)
+    parser.add_option('-m', '--master_only', action='store_true')
     (options, args) = parser.parse_args()
     if not options.tablefile:
         raise Exception('-t table file name has to be specified')
     (schemas, tables) = get_table_schema_set(options.tablefile)
-    process_data(schemas, tables, sys.stdin, sys.stdout)
+    if options.master_only:
+        process_schema(schemas, tables, sys.stdin, sys.stdout)
+    else:
+        process_data(schemas, tables, sys.stdin, sys.stdout)
 
