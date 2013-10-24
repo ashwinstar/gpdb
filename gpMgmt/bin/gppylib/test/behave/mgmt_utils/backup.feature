@@ -3975,6 +3975,23 @@ Feature: Validate command line arguments
         And psql should not print bitmap_co_index to stdout
         And verify that the data of "51" tables in "testdb" is validated after restore 
 
+    Scenario: Simple incremental for table names with multibyte (chinese) characters
+        Given the database is running
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/create_multi_byte_char_table_name.sql testdb"
+        When the user runs "gpcrondump -a -x testdb"
+        Then gpcrondump should return a return code of 0
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/insert_data_multi_byte_char.sql testdb"
+        When the user runs "gpcrondump --incremental -a -x testdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        When the user runs gpdbrestore with the stored timestamp 
+        Then gpdbrestore should return a return code of 0
+        When the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/select_multi_byte_char.sql testdb"
+        Then psql should print 2000 to stdout 
+
     # THIS SHOULD BE THE LAST TEST
     @backupfire
     Scenario: cleanup for backup feature

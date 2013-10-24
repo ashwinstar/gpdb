@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# coding: utf-8 
 
 import os, sys
 import unittest2 as unittest
@@ -385,7 +386,100 @@ SET search_path = pepper, pg_catalog;
         os.remove(in_name)
         os.remove(out_name)
 
+    def test_process_data04(self):
+
+        test_case_buf = """
+--
+-- Greenplum Database database dump
+--
+
+SET search_path = pepper, pg_catalog;
+
+--
+-- Data for Name: ao_table; Type: TABLE DATA; Schema: pepper; Owner: dcddev
+--
+
+ COPY ao_table (column1, column2, column3) FROM stdin;
+3	backup	2010-01-04
+7	backup	2010-01-08
+11	backup	2010-01-12
+15	backup	2010-01-16
+19	backup	2010-01-20
+23	backup	2010-01-24
+\.
+
+
+--
+-- Greenplum Database database dump complete
+--
+"""
+
+        expected_out = """SET search_path = pepper, pg_catalog;
+"""
+
+        in_name = os.path.join(os.getcwd(), 'infile')
+        out_name = os.path.join(os.getcwd(), 'outfile')
+        with open(in_name, 'w') as fd:
+            fd.write(test_case_buf)
+
+        dump_schemas = set(['pepper'])
+        dump_tables = set([('pepper', 'ao_table')])
+        with open(out_name, 'w') as fdout:
+            with open(in_name, 'r') as fdin:
+                process_data(dump_schemas, dump_tables, fdin, fdout)
+
+        with open(out_name, 'r') as fd:
+            results = fd.read()
+
+        self.assertEquals(results, expected_out)
+        os.remove(in_name)
+        os.remove(out_name)
               
+    def test_process_data_multi_byte_char(self):
+
+        test_case_buf = """SET search_path = public, pg_catalog;
+
+--
+-- Data for Name: 测试; Type: TABLE DATA; Schema: public; Owner: dcddev
+--
+
+COPY "测试" (column1, column2, column3) FROM stdin;
+3	backup	2010-01-04
+7	backup	2010-01-08
+11	backup	2010-01-12
+15	backup	2010-01-16
+19	backup	2010-01-20
+23	backup	2010-01-24
+\.
+"""
+        expected_out = """SET search_path = public, pg_catalog;
+COPY "测试" (column1, column2, column3) FROM stdin;
+3	backup	2010-01-04
+7	backup	2010-01-08
+11	backup	2010-01-12
+15	backup	2010-01-16
+19	backup	2010-01-20
+23	backup	2010-01-24
+\.
+"""
+        in_name = os.path.join(os.getcwd(), 'infile')
+        out_name = os.path.join(os.getcwd(), 'outfile')
+        with open(in_name, 'w') as fd:
+            fd.write(test_case_buf)
+
+        dump_schemas = set(['public'])
+        dump_tables = set([('public', '测试')])
+        with open(out_name, 'w') as fdout:
+            with open(in_name, 'r') as fdin:
+                process_data(dump_schemas, dump_tables, fdin, fdout)
+
+        with open(out_name, 'r') as fd:
+            results = fd.read()
+
+        self.assertEquals(results, expected_out)
+        os.remove(in_name)
+        os.remove(out_name)
+    
     def test_get_table_info00(self):
         line = ''
         (name, type, schema) = get_table_info(line)

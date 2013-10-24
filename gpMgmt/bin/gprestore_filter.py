@@ -151,6 +151,7 @@ def process_data(dump_schemas, dump_tables, fdin, fdout):
                 fdout.write(line)
         elif (line[0] == copy_start) and line.startswith(copy_expr) and line.endswith(copy_expr_end):
             table = extract_table(line)
+            table = table.strip('"')
             if table and (schema, table) in dump_tables:
                 output = True
         elif output and (line[0] == copy_end_start) and line.startswith(copy_end_expr):
