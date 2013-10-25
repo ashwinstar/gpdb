@@ -31,6 +31,12 @@ select f.id from co_nestloop_idxscan.foo f, co_nestloop_idxscan.bar b where f.id
 (1 row)
 
 -- test with nested loop join
+select disable_xform('CXformInnerJoin2HashJoin');
+            disable_xform             
+--------------------------------------
+ CXformInnerJoin2HashJoin is disabled
+(1 row)
+
 set enable_hashjoin=off;
 explain select f.id from co_nestloop_idxscan.foo f, co_nestloop_idxscan.bar b where f.id = b.id;
                                     QUERY PLAN                                     
@@ -51,6 +57,9 @@ select f.id from co_nestloop_idxscan.foo f, co_nestloop_idxscan.bar b where f.id
 
 -- test with nested loop join and index scan
 set enable_seqscan = off;
+-- start_ignore
+-- Known_opt_diff: OPT-929
+-- end_ignore
 explain select f.id from co_nestloop_idxscan.foo f, co_nestloop_idxscan.bar b where f.id = b.id;
                                              QUERY PLAN                                             
 ----------------------------------------------------------------------------------------------------
@@ -67,6 +76,12 @@ select f.id from co_nestloop_idxscan.foo f, co_nestloop_idxscan.bar b where f.id
  id 
 ----
   1
+(1 row)
+
+select enable_xform('CXformInnerJoin2HashJoin');
+            enable_xform             
+-------------------------------------
+ CXformInnerJoin2HashJoin is enabled
 (1 row)
 
 drop schema co_nestloop_idxscan cascade;

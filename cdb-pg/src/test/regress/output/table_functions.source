@@ -28,17 +28,17 @@ CREATE FUNCTION scalar_5(anyelement) RETURNS anyelement
     AS $$ SELECT $1 $$ LANGUAGE SQL CONTAINS SQL;
 /* Create some normal scalar input / table output functions */
 CREATE FUNCTION scalar_tf_1(int) RETURNS TABLE(a int, b text)
-    AS $$ SELECT a+$1, b from example $$ LANGUAGE SQL CONTAINS SQL;
+    AS $$ SELECT a+$1, b from example $$ LANGUAGE SQL READS SQL DATA;
 CREATE FUNCTION scalar_tf_2(IN int) RETURNS TABLE(a int, b text)
-    AS $$ SELECT a+$1, b from example $$ LANGUAGE SQL CONTAINS SQL;
+    AS $$ SELECT a+$1, b from example $$ LANGUAGE SQL READS SQL DATA;
 CREATE FUNCTION scalar_tf_3(IN a int) RETURNS TABLE(a int, b text)
-    AS $$ SELECT a+$1, b from example $$ LANGUAGE SQL CONTAINS SQL;
+    AS $$ SELECT a+$1, b from example $$ LANGUAGE SQL READS SQL DATA;
 CREATE FUNCTION scalar_tf_4(IN a int, OUT a int, OUT b text) RETURNS SETOF RECORD
-    AS $$ SELECT a+$1, b from example $$ LANGUAGE SQL CONTAINS SQL;
+    AS $$ SELECT a+$1, b from example $$ LANGUAGE SQL READS SQL DATA;
 CREATE FUNCTION scalar_tf_5(IN a int) RETURNS SETOF RECORD
-    AS $$ SELECT a+$1, b from example $$ LANGUAGE SQL CONTAINS SQL;
+    AS $$ SELECT a+$1, b from example $$ LANGUAGE SQL READS SQL DATA;
 CREATE FUNCTION scalar_tf_6(IN a anyelement) RETURNS SETOF example
-    AS $$ SELECT a+$1, b from example $$ LANGUAGE SQL CONTAINS SQL;
+    AS $$ SELECT a+$1, b from example $$ LANGUAGE SQL READS SQL DATA;
 /* CREATE some multiset input table functions */
 /* scalar value outputs */
 CREATE FUNCTION multiset_scalar_null(anytable) RETURNS int 

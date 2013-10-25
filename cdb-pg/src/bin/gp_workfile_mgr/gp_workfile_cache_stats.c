@@ -31,7 +31,7 @@
 #define NUM_CACHE_STATS_ELEM 23
 
 /* The number of columns as defined in gp_workfile_mgr_cache_entries view */
-#define NUM_CACHE_ENTRIES_ELEM 12
+#define NUM_CACHE_ENTRIES_ELEM 13
 
 /* The number of columns as defined in gp_workfile_mgr_diskspace view */
 #define NUM_USED_DISKSPACE_ELEM 2
@@ -159,8 +159,10 @@ gp_workfile_mgr_cache_entries(PG_FUNCTION_ARGS)
 				INT4OID, -1 /* typmod */, 0 /* attdim */);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 12, "query_start",
 				TIMESTAMPTZOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 13, "numfiles",
+				INT4OID, -1 /* typmod */, 0 /* attdim */);
 
-		Assert(NUM_CACHE_ENTRIES_ELEM == 12);
+		Assert(NUM_CACHE_ENTRIES_ELEM == 13);
 
 		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
 
@@ -237,6 +239,7 @@ gp_workfile_mgr_cache_entries(PG_FUNCTION_ARGS)
 		values[9] = UInt32GetDatum(work_set->session_id);
 		values[10] = UInt32GetDatum(work_set->command_count);
 		values[11] = TimestampTzGetDatum(work_set->session_start_time);
+		values[12] = UInt32GetDatum(work_set->no_files);
 
 		/* Done reading from the payload of the entry, release lock */
 		Cache_UnlockEntry(cache, crtEntry);

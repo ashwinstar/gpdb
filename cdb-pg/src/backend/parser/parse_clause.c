@@ -50,6 +50,7 @@
 #include "utils/lsyscache.h"
 
 #include "cdb/cdbvars.h"
+#include "cdb/cdbpartition.h"
 #include "catalog/catalog.h"
 #include "miscadmin.h"
 
@@ -916,6 +917,16 @@ setTargetTable(ParseState *pstate, RangeVar *relation,
 		}
 	}
 	
+    /* MPP-21035: Directly modify a part of a partitioned table is disallowed */
+    PartStatus targetRelPartStatus = rel_part_status(RelationGetRelid(pstate->p_target_relation));
+    if(PART_STATUS_INTERIOR == targetRelPartStatus || PART_STATUS_LEAF == targetRelPartStatus)
+    {
+    	ereport(ERROR,
+    			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+    			 errmsg("Directly modifying a part of a partitioned table is disallowed"),
+    			 errhint("Modify the partitioned table instead"),
+    			 errOmitLocation(true)));
+    }
 
 	/*
 	 * Override addRangeTableEntry's default ACL_SELECT permissions check, and

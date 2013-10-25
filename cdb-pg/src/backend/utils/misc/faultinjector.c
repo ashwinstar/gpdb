@@ -270,6 +270,8 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault before an append-only delete */
 	_("appendonly_update"),
 		/* inject fault before an append-only update */
+	_("fault_during_exec_dynamic_table_scan"),
+		/* inject fault during scanning of a partition */
 	_("not recognized"),
 };
 
@@ -1071,6 +1073,7 @@ FaultInjector_NewHashEntry(
 		case AbortTransactionFail:
 		case UpdateCommittedEofInPersistentTable:
 		case ExecSortBeforeSorting:
+		case FaultDuringExecDynamicTableScan:
 			
 			if (fileRepRole != FileRepNoRoleConfigured && fileRepRole != FileRepPrimaryRole)
 			{

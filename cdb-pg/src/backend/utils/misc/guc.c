@@ -397,6 +397,7 @@ int 		ddboost_buf_size = 512*1024;
 #define DEBUG_DTM_ACTION_PRIMARY_DEFAULT true
 bool		Debug_dtm_action_primary = DEBUG_DTM_ACTION_PRIMARY_DEFAULT;
 
+bool 		gp_log_optimization_time = false;
 bool		log_parser_stats = false;
 bool		log_planner_stats = false;
 bool		log_executor_stats = false;
@@ -710,6 +711,8 @@ int			optimizer_cte_inlining_bound;
 double 		optimizer_damping_factor_filter;
 double		optimizer_damping_factor_join;
 double 		optimizer_damping_factor_groupby;
+int			optimizer_segments;
+bool		optimizer_analyze_root_partition;
 
 /* Security */
 bool		gp_reject_internal_tcp_conn = true;
@@ -3812,6 +3815,26 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"optimizer_analyze_root_partition", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable statistics collection on root partitions during ANALYZE"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_analyze_root_partition,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_log_optimization_time", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Writes time spent producing a plan to the server log"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+ 		&gp_log_optimization_time,
+		false, NULL, NULL
+	},
+
+	{
 		{"gp_reject_internal_tcp_connection", PGC_POSTMASTER,
 			DEVELOPER_OPTIONS,
 			gettext_noop("Permit internal TCP connections to the master."),
@@ -5758,6 +5781,16 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"optimizer_segments", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Number of segments to be considered by the optimizer during costing, or 0 to take the actual number of segments."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_segments,
+		0, 0, INT_MAX, NULL, NULL
+	},
+
+	{
 		{"keep_wal_segments", PGC_SIGHUP, WAL_SETTINGS,
 			gettext_noop("Sets the number of WAL files held for standby servers."),
 			NULL,
@@ -5798,7 +5831,6 @@ static struct config_int ConfigureNamesInt[] =
 		&repl_catchup_within_range,
 		1, 0, XLogSegsPerFile, NULL, NULL
 	},
-
 
 	/* End-of-list marker */
 	{
@@ -6068,6 +6100,7 @@ static struct config_real ConfigureNamesReal[] =
 		&optimizer_cost_threshold,
 		0.0, 0.0, INT_MAX, NULL, NULL
 	},
+	
 
 /* End-of-list marker */
 	{

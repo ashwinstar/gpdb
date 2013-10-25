@@ -2977,12 +2977,19 @@ begin;
 -- creation
 create table g (i int, t text) partition by range(i)
 (start(1) end(10) every(1));
+
+-- start_ignore
+-- Known_opt_diff: MPP-20936
+-- end_ignore
 select * from locktest;
 commit;
 
 -- drop
 begin;
 drop table g;
+-- start_ignore
+-- Known_opt_diff: MPP-20936
+-- end_ignore
 select * from locktest;
 commit;
 
@@ -2993,6 +3000,9 @@ create table g (i int, t text, n numeric)
 with (appendonly = true)
 partition by list(i)
 (values(1), values(2), values(3));
+-- start_ignore
+-- Known_opt_diff: MPP-20936
+-- end_ignore
 select * from locktest;
 commit;
 begin;
@@ -3003,13 +3013,18 @@ insert into g values(1), (2), (3);
 insert into g values(1), (2), (3);
 insert into g values(1), (2), (3);
 insert into g values(1), (2), (3);
-
+-- start_ignore
+-- Known_opt_diff: MPP-20936
+-- end_ignore
 select * from locktest;
 
 commit;
 -- drop
 begin;
 drop table g;
+-- start_ignore
+-- Known_opt_diff: MPP-20936
+-- end_ignore
 select * from locktest;
 commit;
 
@@ -3019,30 +3034,45 @@ create table g (i int, t text) partition by range(i)
 
 begin;
 create index g_idx on g(i);
+-- start_ignore
+-- Known_opt_diff: MPP-20936
+-- end_ignore
 select * from locktest;
 commit;
 
 -- test select locking
 begin;
 select * from g where i = 1;
+-- start_ignore
+-- Known_opt_diff: MPP-20936
+-- end_ignore
 select * from locktest;
 commit;
 
 begin;
 -- insert locking
 insert into g values(3, 'f');
+-- start_ignore
+-- Known_opt_diff: MPP-20936
+-- end_ignore
 select * from locktest;
 commit;
 
 -- delete locking
 begin;
 delete from g where i = 4;
+-- start_ignore
+-- Known_opt_diff: MPP-20936
+-- end_ignore
 select * from locktest;
 commit;
 
 -- drop index
 begin;
 drop table g;
+-- start_ignore
+-- Known_opt_diff: MPP-20936
+-- end_ignore
 select * from locktest;
 commit;
 
@@ -4706,6 +4736,10 @@ insert into bar select i % 7, i % 6, i % 9, i || 'SOME NUMBER', i % 4 from gener
 
 analyze foo_p;
 analyze bar;
+
+-- start_ignore
+-- Known_opt_diff: OPT-1243
+-- end_ignore
 
 explain select foo_p.b, foo_p.t from foo_p left outer join bar on foo_p.a = bar.k  where foo_p.t is not null and foo_p.a = (array[1])[1];
 

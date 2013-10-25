@@ -103,6 +103,14 @@ select count(*)+1 from orca.bar1 b where b.x1 < any (with cte1 as (select * from
 select count(*)+1 from orca.bar1 b where b.x1 < any (with cte1 as (select * from orca.foo) select a.x1 from cte1 a group by a.x1);
 with cte1 as (select * from orca.foo) select count(*)+1 from cte1 a where a.x1 < any (with cte2 as (select * from cte1 b where b.x1 > 10) select c.x1 from (select * from cte2) c group by c.x1);
 with cte1 as (select * from orca.foo) select count(*)+1 from cte1 a where a.x1 < any (with cte2 as (select * from cte1 b where b.x1 > 10) select c.x1+1 from (select * from cte2) c group by c.x1);
+with x as (select * from orca.foo) select count(*) from (select * from x) y where y.x1 <= (select count(*) from x);
+with x as (select * from orca.foo) select count(*)+1 from (select * from x) y where y.x1 <= (select count(*) from x);
+with x as (select * from orca.foo) select count(*) from (select * from x) y where y.x1 < (with z as (select * from x) select count(*) from z);
+
+-- outer references
+select count(*)+1 from orca.foo x where x.x1 > (select count(*)+1 from orca.bar1 y where y.x1 = x.x2);
+select count(*)+1 from orca.foo x where x.x1 > (select count(*) from orca.bar1 y where y.x1 = x.x2);
+select count(*) from orca.foo x where x.x1 > (select count(*)+1 from orca.bar1 y where y.x1 = x.x2);
 
 ----------------------------------------------------------------------
 set optimizer=off;
@@ -309,6 +317,8 @@ select a, c from orca.r, orca.s where a = (select c) order by a, c limit 10;
 select a, c from orca.r, orca.s where a  not in  (select c) order by a, c limit 10;
 select a, c from orca.r, orca.s where a  = any  (select c from orca.r) order by a, c limit 10;
 select a, c from orca.r, orca.s where a  <> all (select c) order by a, c limit 10;
+select a, (select (select (select c from orca.s where a=c group by c))) as subq from orca.r order by a;
+with v as (select a,b from orca.r, orca.s where a=c)  select c from orca.s group by c having count(*) not in (select b from v where a=c) order by c;
 ----------------------------------------------------------------------
 set optimizer=off;
 
@@ -550,6 +560,24 @@ CTE1(e,f) AS
 SELECT * FROM CTE1,CTE WHERE CTE.a = CTE1.f and CTE.a = 2 ORDER BY 1;
 
 SET optimizer_cte_inlining = off;
+
+-- catalog queries
+select 1 from pg_class c group by c.oid limit 1;
+
+-- CSQs
+drop table if exists orca.tab1;
+drop table if exists orca.tab2;
+create table orca.tab1 (i, j) as select i,i%2 from generate_series(1,10) i;
+create table orca.tab2 (a, b) as select 1, 2;
+select * from orca.tab1 where 0 < (select count(*) from generate_series(1,i)) order by 1;
+select * from orca.tab1 where i > (select b from orca.tab2);
+
+-- subqueries
+select NULL in (select 1);
+select 1 in (select 1);
+select 1 in (select 2);
+select NULL in (select 1/0);
+
 
 -- clean up
 drop schema orca cascade;

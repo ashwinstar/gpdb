@@ -45,6 +45,7 @@ JETPACK_OBJECT_PREFIX = gp_
 JETPACK_PREFIX = $(JETPACK_SCHEMA).$(JETPACK_OBJECT_PREFIX)
 JETPACK_PREFIX_AUX = $(JETPACK_SCHEMA).__$(JETPACK_OBJECT_PREFIX)
 AO_CO_DIAGNOSTICS_PATHNAME = $$libdir\/gp_ao_co_diagnostics
+WORKFILE_PATHNAME = $$libdir\/gp_workfile_mgr
 
 gp_toolkit.sql: gp_toolkit.sql.in
 	sed \
@@ -53,6 +54,7 @@ gp_toolkit.sql: gp_toolkit.sql.in
 	-e 's/%%JETPACK_PREFIX%%/$(JETPACK_PREFIX)/g' \
 	-e 's/%%JETPACK_PREFIX_AUX%%/$(JETPACK_PREFIX_AUX)/g' \
 	-e 's/%%AO_CO_DIAGNOSTICS_MODULE%%/$(AO_CO_DIAGNOSTICS_PATHNAME)/g' \
+	-e 's/%%WORKFILE_MODULE%%/$(WORKFILE_PATHNAME)/g' \
 	-e 's/	/    /g' \
 	$< > $@
 

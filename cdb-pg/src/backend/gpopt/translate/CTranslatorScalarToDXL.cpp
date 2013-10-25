@@ -26,6 +26,7 @@
 #include "nodes/parsenodes.h"
 #include "nodes/primnodes.h"
 #include "utils/datum.h"
+#include "utils/numeric.h"
 
 #include "gpos/base.h"
 #include "gpos/string/CWStringDynamic.h"
@@ -34,12 +35,6 @@
 #include "dxl/operators/CDXLDatumInt4.h"
 #include "dxl/operators/CDXLDatumInt8.h"
 #include "dxl/operators/CDXLDatumOid.h"
-#include "dxl/operators/CDXLDatumGeneric.h"
-#include "dxl/operators/CDXLDatumDouble.h"
-#include "dxl/operators/CDXLDatumDate.h"
-#include "dxl/operators/CDXLDatumTimestamp.h"
-#include "dxl/operators/CDXLDatumBpchar.h"
-#include "dxl/operators/CDXLDatumVarchar.h"
 
 #include "dxl/CDXLUtils.h"
 #include "dxl/xml/dxltokens.h"
@@ -1192,12 +1187,6 @@ CTranslatorScalarToDXL::PdxlnScFuncExprFromFuncExpr
 	GPOS_ASSERT(IsA(pexpr, FuncExpr));
 	const FuncExpr *pfuncexpr = (FuncExpr *) pexpr;
 
-	if (pg_stat_get_activity_oid == pfuncexpr->funcid)
-	{
-		// TODO 07/19/2013; solimm1: remove exception when pg_stat_get_activity() properties are fixed in the catalog
-		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature, GPOS_WSZ_LIT("pg_stat_get_activity() function"));
-	}
-
 	CMDIdGPDB *pmdidFunc = New(m_pmp) CMDIdGPDB(pfuncexpr->funcid);
 
 	// In the planner, scalar functions that are volatile (SIRV) or read or modify SQL
@@ -2080,37 +2069,21 @@ CTranslatorScalarToDXL::PdxldatumGeneric
 		ulLength = (ULONG) gpdb::SDatumSize(datum, pmdtype->FByValue(), ulLen);
 	}
 
-	if (pmdid->FEquals(&CMDIdGPDB::m_mdidDate) || pmdid->FEquals(&CMDIdGPDB::m_mdidTimestamp) || pmdid->FEquals(&CMDIdGPDB::m_mdidBPChar)  || pmdid->FEquals(&CMDIdGPDB::m_mdidVarChar))
-	{
-		LINT lValue = LValue(pmdid, fNull, pba, ulLength);
-
-		if (pmdid->FEquals(&CMDIdGPDB::m_mdidDate))
-		{
-			return New(pmp) CDXLDatumDate(pmp, pmdid, fConstByVal, fNull, pba, ulLength, lValue);
-		}
-
-		if (pmdid->FEquals(&CMDIdGPDB::m_mdidTimestamp))
-		{
-			return New(pmp) CDXLDatumTimestamp(pmp, pmdid, fConstByVal, fNull, pba, ulLength, lValue);
-		}
-
-		if (pmdid->FEquals(&CMDIdGPDB::m_mdidBPChar))
-		{
-			return New(pmp) CDXLDatumBpchar(pmp, pmdid, fConstByVal, fNull, pba, ulLength, lValue);
-		}
-
-		GPOS_ASSERT(pmdid->FEquals(&CMDIdGPDB::m_mdidVarChar));
-		return New(pmp) CDXLDatumVarchar(pmp, pmdid, fConstByVal, fNull, pba, ulLength, lValue);
-	}
-
+	CDouble dValue(0);
 	if (pmdid->FEquals(&CMDIdGPDB::m_mdidNumeric))
 	{
-		CDouble dValue = DValue(pba, fNull);
-		return New(pmp) CDXLDatumDouble(pmp, pmdid, fConstByVal, fNull, pba, ulLength, dValue);
+		dValue = DValue(pba, fNull);
 	}
 
-	return New(pmp) CDXLDatumGeneric(pmp, pmdid, fConstByVal, fNull, pba, ulLength);
+	LINT lValue = 0;
+	if (CMDTypeGenericGPDB::FNeedsByteaLintMapping(pmdid))
+	{
+		lValue = LValue(pmdid, fNull, pba, ulLength);
+	}
+
+	return CMDTypeGenericGPDB::Pdxldatum(pmp, pmdid, fConstByVal, fNull, pba, ulLength, lValue, dValue);
 }
+
 
 //---------------------------------------------------------------------------
 //	@function:
@@ -2136,6 +2109,7 @@ CTranslatorScalarToDXL::PdxldatumBool
 	return New(pmp) CDXLDatumBool(pmp, pmdid, fNull, gpdb::FBoolFromDatum(datum));
 }
 
+
 //---------------------------------------------------------------------------
 //	@function:
 //		CTranslatorScalarToDXL::PdxldatumOid
@@ -2159,6 +2133,7 @@ CTranslatorScalarToDXL::PdxldatumOid
 
 	return New(pmp) CDXLDatumOid(pmp, pmdid, fNull, gpdb::OidFromDatum(datum));
 }
+
 
 //---------------------------------------------------------------------------
 //	@function:
@@ -2185,7 +2160,6 @@ CTranslatorScalarToDXL::PdxldatumInt4
 }
 
 
-
 //---------------------------------------------------------------------------
 //	@function:
 //		CTranslatorScalarToDXL::PdxldatumInt8
@@ -2210,6 +2184,7 @@ CTranslatorScalarToDXL::PdxldatumInt8
 	return New(pmp) CDXLDatumInt8(pmp, pmdid, fNull, gpdb::LlInt64FromDatum(datum));
 }
 
+
 //---------------------------------------------------------------------------
 //	@function:
 //		CTranslatorScalarToDXL::DValue
@@ -2228,11 +2203,19 @@ CTranslatorScalarToDXL::DValue
 	if (!fNull)
 	{
 		Numeric num = (Numeric) (pba);
+		if (NUMERIC_IS_NAN(num))
+		{
+			// in GPDB NaN is considered the largest numeric number.
+			return CDouble(GPOS_FP_ABS_MAX);
+		}
+
 		double d = gpdb::DNumericToDoubleNoOverflow(num);
 		dValue = CDouble(d);
 	}
+
 	return dValue;
 }
+
 
 //---------------------------------------------------------------------------
 //	@function:
@@ -2273,8 +2256,10 @@ CTranslatorScalarToDXL::Pba
 	{
 		clib::PvMemCpy(pba, gpdb::PvPointerFromDatum(datum), ulLength);
 	}
+
 	return pba;
 }
+
 
 //---------------------------------------------------------------------------
 //	@function:
@@ -2298,49 +2283,46 @@ CTranslatorScalarToDXL::LValue
 		return lValue;
 	}
 
-	if (pmdid->FEquals(&CMDIdGPDB::m_mdidDate) || pmdid->FEquals(&CMDIdGPDB::m_mdidTimestamp) ||
-		pmdid->FEquals(&CMDIdGPDB::m_mdidBPChar) || pmdid->FEquals(&CMDIdGPDB::m_mdidVarChar))
+	if (pmdid->FEquals(&CMDIdGPDB::m_mdidDate))
 	{
-		if (pmdid->FEquals(&CMDIdGPDB::m_mdidDate))
+		Datum datumConstVal = (Datum) 0;
+		// the value is stored in the datum.
+		clib::PvMemCpy(&datumConstVal, pba, ulLength);
+		// Date is internally represented as an int32
+		lValue = (LINT) (gpdb::IInt32FromDatum(datumConstVal));
+		lValue = lValue * LINT(86400000000LL); // microseconds per day
+	}
+	else if (pmdid->FEquals(&CMDIdGPDB::m_mdidTimestamp))
+	{
+		Datum datumConstVal = (Datum) 0;
+		// the value is stored in the datum.
+		clib::PvMemCpy(&datumConstVal, pba, ulLength);
+		// Timestamp is internally an int64
+		lValue = (LINT) (gpdb::LlInt64FromDatum(datumConstVal));
+	}
+	else
+	{
+		// use hash value
+		ULONG ulHash = 0;
+		if (fNull)
 		{
-			Datum datumConstVal = (Datum) 0;
-			// the value is stored in the datum.
-			clib::PvMemCpy(&datumConstVal, pba, ulLength);
-			// Date is internally represented as an int32
-			lValue = (LINT) (gpdb::IInt32FromDatum(datumConstVal));
-			lValue = lValue * LINT(86400000000LL); // microseconds per day
-		}
-		else if (pmdid->FEquals(&CMDIdGPDB::m_mdidTimestamp))
-		{
-			Datum datumConstVal = (Datum) 0;
-			// the value is stored in the datum.
-			clib::PvMemCpy(&datumConstVal, pba, ulLength);
-			// Timestamp is internally an int64
-			lValue = (LINT) (gpdb::LlInt64FromDatum(datumConstVal));
+			ulHash = gpos::UlHash<ULONG>(&ulHash);
 		}
 		else
 		{
-			GPOS_ASSERT(pmdid->FEquals(&CMDIdGPDB::m_mdidBPChar) || pmdid->FEquals(&CMDIdGPDB::m_mdidVarChar));
-			// use hash value
-			ULONG ulHash = 0;
-			if (fNull)
+			ulHash = gpos::UlHash<BYTE>(pba);
+			for (ULONG ul = 1; ul < ulLength; ul++)
 			{
-				ulHash = gpos::UlHash<ULONG>(&ulHash);
+				ulHash = gpos::UlCombineHashes(ulHash, gpos::UlHash<BYTE>(&pba[ul]));
 			}
-			else
-			{
-				ulHash = gpos::UlHash<BYTE>(pba);
-				for (ULONG ul = 1; ul < ulLength; ul++)
-				{
-					ulHash = gpos::UlCombineHashes(ulHash, gpos::UlHash<BYTE>(&pba[ul]));
-				}
-			}
-
-			lValue = (LINT) (ulHash / 4);
 		}
+
+		lValue = (LINT) (ulHash / 4);
 	}
+
 	return lValue;
 }
+
 
 //---------------------------------------------------------------------------
 //	@function:

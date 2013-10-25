@@ -21,7 +21,6 @@ test: sirv_functions
 test: jetpack
 test: spi
 test: security
-test: dpe
 test: load_tpch
 test: hashagg
 test: tpch_query
@@ -49,7 +48,6 @@ test: limit
 test: case
 test: bkup_pg
 test: bkup_gpcrondump
-test: stransaction
 test: cursor
 test: aggfunc
 test: visibility

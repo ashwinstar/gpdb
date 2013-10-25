@@ -1013,6 +1013,42 @@ as index(logicalIndexOid Oid, nColumns smallint, indKey text, indUnique bool, in
  part_table10 | (((a > 1) AND (a < 2)) OR ((a > 2) AND (a <= 3))) | 
 (1 row)
 
+-- AO partitioned tables: Orca only supports indexes on heap partitions
+create table part_table11(a int, b int, c int) with (appendonly=true) partition by list(b) (partition p1 values(1), partition p2 values(2));
+NOTICE:  CREATE TABLE will create partition "part_table11_1_prt_p1" for table "part_table11"
+NOTICE:  CREATE TABLE will create partition "part_table11_1_prt_p2" for table "part_table11"
+create index part_table11_idx on part_table11(c);
+NOTICE:  building index for child partition "part_table11_1_prt_p1"
+NOTICE:  building index for child partition "part_table11_1_prt_p2"
+select 'part_table11', partCons, defaultLevels from gp_build_logical_index('part_table11'::regclass)
+as index(logicalIndexOid Oid, nColumns smallint, indKey text, indUnique bool, indPred text, indExprs text, partCons text, defaultLevels text);
+ ?column? | partcons | defaultlevels 
+----------+----------+---------------
+(0 rows)
+
+-- mixed heap, AO and AOCO tables: Orca only supports indexes on heap partitions
+create table part_table12(a int, b int, c int) partition by list(b) 
+(partition p1 values(1), 
+partition p2 values(2) with (appendonly=true, orientation=column),
+partition p3 values(3) with (appendonly=true),
+partition p4 values(4)
+);
+NOTICE:  CREATE TABLE will create partition "part_table12_1_prt_p1" for table "part_table12"
+NOTICE:  CREATE TABLE will create partition "part_table12_1_prt_p2" for table "part_table12"
+NOTICE:  CREATE TABLE will create partition "part_table12_1_prt_p3" for table "part_table12"
+NOTICE:  CREATE TABLE will create partition "part_table12_1_prt_p4" for table "part_table12"
+create index part_table12_idx on part_table12(c);
+NOTICE:  building index for child partition "part_table12_1_prt_p1"
+NOTICE:  building index for child partition "part_table12_1_prt_p2"
+NOTICE:  building index for child partition "part_table12_1_prt_p3"
+NOTICE:  building index for child partition "part_table12_1_prt_p4"
+select 'part_table12', partCons, defaultLevels from gp_build_logical_index('part_table12'::regclass)
+as index(logicalIndexOid Oid, nColumns smallint, indKey text, indUnique bool, indPred text, indExprs text, partCons text, defaultLevels text);
+   ?column?   |       partcons       | defaultlevels 
+--------------+----------------------+---------------
+ part_table12 | ((b = 1) OR (b = 4)) | 
+(1 row)
+
 -- cleanup
 drop function gp_build_logical_index(oid);
 drop function gp_get_physical_index_relid(oid, oid, int[], text, text, bool);
@@ -1027,3 +1063,5 @@ drop table part_table7;
 drop table part_table8;
 drop table part_table9;
 drop table part_table10;
+drop table part_table11;
+drop table part_table12;

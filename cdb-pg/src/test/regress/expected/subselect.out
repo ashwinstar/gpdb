@@ -323,15 +323,15 @@ END) AS "Status",
 	END) 
 END) AS "Status_OK"
 FROM orderstest ord;
-SELECT * FROM orders_view ORDER BY 1,2;
+SELECT * FROM orders_view ORDER BY 1,2,5;
  approver_ref | po_ref | ordercancelled | Approved |  Status   | Status_OK 
 --------------+--------+----------------+----------+-----------+-----------
             1 |      1 | f              | ---      | ---       | ---
             1 |      1 | f              | ---      | ---       | ---
             1 |      1 | f              | ---      | ---       | ---
            66 |      1 | f              | Approved | Approved  | Approved
-           66 |      1 | t              | Approved | Cancelled | Cancelled
            66 |      1 | f              | Approved | Approved  | Approved
+           66 |      1 | t              | Approved | Cancelled | Cancelled
            66 |      5 | f              | Approved | PO        | PO
            66 |      6 | f              | Approved | PO        | PO
            66 |      7 | f              | Approved | PO        | PO
@@ -707,23 +707,6 @@ select * from mrs_t1 where x in (select x-95 from mrs_t1) or x < 5 order by 1;
  3
  4
 (4 rows)
-
-explain select 1 as mrs_t1 where 1 <= ALL (Select x from mrs_t1);
-                                        QUERY PLAN                                         
--------------------------------------------------------------------------------------------
- Result  (cost=0.00..0.01 rows=1 width=0)
-   One-Time Filter: (subplan)
-   SubPlan 1
-     ->  Materialize  (cost=2.22..2.42 rows=10 width=4)
-           ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..2.20 rows=10 width=4)
-                 ->  Seq Scan on mrs_t1  (cost=0.00..2.20 rows=10 width=4)
-(6 rows)
-
-select 1 as mrs_t1 where 1 <= ALL (Select x from mrs_t1) order by 1;
- mrs_t1 
---------
-      1
-(1 row)
 
 drop table if exists mrs_t1;
 --
@@ -1297,6 +1280,9 @@ select * from finra_t1 where x in (select y from finra_t2);
  1
 (2 rows)
 
+-- start_ignore
+-- Known_opt_diff: MPP-21351
+-- end_ignore
 explain select * from finra_t1 where x in (select y from finra_t2 union all select y from finra_t2);
                                              QUERY PLAN                                             
 ----------------------------------------------------------------------------------------------------
@@ -1338,6 +1324,9 @@ select count(*) from finra_t1 where x in (select y from finra_t2);
      2
 (1 row)
 
+-- start_ignore
+-- Known_opt_diff: MPP-21351
+-- end_ignore
 explain select count(*) from finra_t1 where x in (select y from finra_t2 union all select y from finra_t2);
                                                    QUERY PLAN                                                   
 ----------------------------------------------------------------------------------------------------------------

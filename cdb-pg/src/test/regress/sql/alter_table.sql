@@ -306,6 +306,9 @@ ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest2, ftest1)
 create table atacc1 ( test int );
 -- add a check constraint
 alter table atacc1 add constraint atacc_test1 check (test>3);
+-- start_ignore
+-- Known_opt_diff: MPP-21330
+-- end_ignore
 -- should fail
 insert into atacc1 (test) values (2);
 -- should succeed

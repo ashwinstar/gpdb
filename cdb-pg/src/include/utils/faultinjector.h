@@ -178,6 +178,8 @@ typedef enum FaultInjectorIdentifier_e {
 	AppendOnlyDelete,
 	AppendOnlyUpdate,
 
+	FaultDuringExecDynamicTableScan,
+
 	/* INSERT has to be done before that line */
 	FaultInjectorIdMax,
 	

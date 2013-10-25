@@ -503,6 +503,24 @@ as index(logicalIndexOid Oid, nColumns smallint, indKey text, indUnique bool, in
 select 'part_table10', partCons, defaultLevels from gp_build_logical_index('part_table10'::regclass)
 as index(logicalIndexOid Oid, nColumns smallint, indKey text, indUnique bool, indPred text, indExprs text, partCons text, defaultLevels text);
 
+-- AO partitioned tables: Orca only supports indexes on heap partitions
+create table part_table11(a int, b int, c int) with (appendonly=true) partition by list(b) (partition p1 values(1), partition p2 values(2));
+create index part_table11_idx on part_table11(c);
+select 'part_table11', partCons, defaultLevels from gp_build_logical_index('part_table11'::regclass)
+as index(logicalIndexOid Oid, nColumns smallint, indKey text, indUnique bool, indPred text, indExprs text, partCons text, defaultLevels text);
+
+-- mixed heap, AO and AOCO tables: Orca only supports indexes on heap partitions
+create table part_table12(a int, b int, c int) partition by list(b) 
+(partition p1 values(1), 
+partition p2 values(2) with (appendonly=true, orientation=column),
+partition p3 values(3) with (appendonly=true),
+partition p4 values(4)
+);
+create index part_table12_idx on part_table12(c);
+select 'part_table12', partCons, defaultLevels from gp_build_logical_index('part_table12'::regclass)
+as index(logicalIndexOid Oid, nColumns smallint, indKey text, indUnique bool, indPred text, indExprs text, partCons text, defaultLevels text);
+
+
 -- cleanup
 drop function gp_build_logical_index(oid);
 drop function gp_get_physical_index_relid(oid, oid, int[], text, text, bool);
@@ -518,3 +536,5 @@ drop table part_table7;
 drop table part_table8;
 drop table part_table9;
 drop table part_table10;
+drop table part_table11;
+drop table part_table12;

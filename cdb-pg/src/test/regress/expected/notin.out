@@ -286,14 +286,6 @@ select c1 from t1, t2 where c1 not in
 (2 rows)
 
 --
---q16
---
-select c1 from t1 where c1 not in 
-	(select c2 from t2 where c2 not in 
-		(select c3 from t3 where c3 not in 
-			(select c4 from t4 where c4 = c2 )));
-ERROR:  correlated subquery with skip-level correlations is not supported (subselect.c:399)
---
 --q17
 -- null test
 --
@@ -465,24 +457,6 @@ select c3 from t3 where not c3 <> any (select c4 from t4);
  c3 
 ----
 (0 rows)
-
---
---q30
---
-select c1 from t1 where 49 not in (select c3 from t3);
- c1 
-----
-  2
-  4
-  6
-  8
- 10
-  1
-  3
-  5
-  7
-  9
-(10 rows)
 
 --
 --q31

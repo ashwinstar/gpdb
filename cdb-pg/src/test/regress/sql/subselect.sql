@@ -188,7 +188,7 @@ END) AS "Status",
 END) AS "Status_OK"
 FROM orderstest ord;
 
-SELECT * FROM orders_view ORDER BY 1,2;
+SELECT * FROM orders_view ORDER BY 1,2,5;
 
 DROP TABLE orderstest cascade;
 
@@ -339,9 +339,6 @@ select * from mrs_t1 where exists (select x from mrs_t1 where x = 1) order by 1;
 
 explain select * from mrs_t1 where x in (select x-95 from mrs_t1) or x < 5;
 select * from mrs_t1 where x in (select x-95 from mrs_t1) or x < 5 order by 1;
-
-explain select 1 as mrs_t1 where 1 <= ALL (Select x from mrs_t1);
-select 1 as mrs_t1 where 1 <= ALL (Select x from mrs_t1) order by 1;
 
 drop table if exists mrs_t1;
 
@@ -608,6 +605,9 @@ explain select * from finra_t1 where x in (select y from finra_t2);
 
 select * from finra_t1 where x in (select y from finra_t2);
 
+-- start_ignore
+-- Known_opt_diff: MPP-21351
+-- end_ignore
 explain select * from finra_t1 where x in (select y from finra_t2 union all select y from finra_t2);
 
 select * from finra_t1 where x in (select y from finra_t2 union all select y from finra_t2);
@@ -616,6 +616,9 @@ explain select count(*) from finra_t1 where x in (select y from finra_t2);
 
 select count(*) from finra_t1 where x in (select y from finra_t2);
 
+-- start_ignore
+-- Known_opt_diff: MPP-21351
+-- end_ignore
 explain select count(*) from finra_t1 where x in (select y from finra_t2 union all select y from finra_t2);
 
 select count(*) from finra_t1 where x in (select y from finra_t2 union all select y from finra_t2);

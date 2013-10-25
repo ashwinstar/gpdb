@@ -22,8 +22,8 @@ endif
 
 DIRS = initdb ipcclean pg_basebackup pg_ctl pg_dump \
 	psql scripts pg_config pg_controldata pg_resetxlog \
-	gpmapreduce gpmirrortransition gpupgrade gphdfs/src/protocol_formatter
-
+	gpmapreduce gpmirrortransition gpupgrade gphdfs/src/protocol_formatter \
+	gp_workfile_mgr
 
 ifeq ($(enable_gphdfs),yes)
 DIRS+=gphdfs

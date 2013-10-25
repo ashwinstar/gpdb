@@ -369,24 +369,21 @@ FETCH 1 FROM c;
 (1 row)
 
 UPDATE rank_1_prt_extra set f = f * -1 WHERE CURRENT OF c;
-SELECT * FROM rank_1_prt_extra ORDER BY 1, 2, 3;
- id | rank |  f  
-----+------+-----
- 10 |   10 | -10
-(1 row)
-
+ERROR:  Directly modifying a part of a partitioned table is disallowed
+HINT:  Modify the partitioned table instead
 COMMIT;
 SELECT * FROM rank_1_prt_extra ORDER BY 1, 2, 3;
  id | rank |  f  
-----+------+-----
- 10 |   10 | -10
+----+------+----
+ 10 |   10 | 10
 (1 row)
 
 -- Partitioning: DECLARE CURSOR against rank, CURRENT OF against rank_1_prt_extra
 BEGIN;
 DECLARE c CURSOR FOR SELECT * FROM rank WHERE rank = 10; 
 DELETE FROM rank_1_prt_extra WHERE CURRENT OF c;	-- error out on wrong table
-ERROR:  cursor "c" is not a simply updatable scan of table "rank_1_prt_extra"
+ERROR:  Directly modifying a part of a partitioned table is disallowed
+HINT:  Modify the partitioned table instead
 ROLLBACK;
 -- Partitioning: DECLARE CURSOR against rank_1_prt_extra, CURRENT OF against rank
 BEGIN;
@@ -499,15 +496,15 @@ BEGIN;
 DECLARE c CURSOR FOR SELECT * FROM rank WHERE rank = 10;    -- isolate the remaining heap part
 FETCH 1 FROM c;
  id | rank |  f  
-----+------+-----
- 10 |   10 | -10
+----+------+----
+ 10 |   10 | 10
 (1 row)
 
 UPDATE rank SET f = f * -1 WHERE CURRENT OF c;
 COMMIT;
 SELECT * FROM rank ORDER BY 1, 2, 3;
  id | rank | f  
-----+------+----
+----+------+-----
   0 |    0 |  0
   1 |    1 | -1
   2 |    2 |  2
@@ -518,7 +515,7 @@ SELECT * FROM rank ORDER BY 1, 2, 3;
   7 |    7 |  7
   8 |    8 |  8
   9 |    9 |  9
- 10 |   10 | 10
+ 10 |   10 | -10
 (11 rows)
 
 -- Partitioning, sub-partitioning

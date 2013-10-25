@@ -548,11 +548,9 @@ outIndexScanFields(StringInfo str, IndexScan *node)
 static void
 outLogicalIndexInfo(StringInfo str, LogicalIndexInfo *node)
 {	
-	WRITE_NODE_TYPE("LOGICALINDEXINFO");
-
 	WRITE_OID_FIELD(logicalIndexOid);
 	WRITE_INT_FIELD(nColumns);
-	WRITE_INT_ARRAY(indexKeys, nColumns, int);
+	WRITE_INT_ARRAY(indexKeys, nColumns, AttrNumber);
 	WRITE_LIST_FIELD(indPred);
 	WRITE_LIST_FIELD(indExprs);
 	WRITE_BOOL_FIELD(indIsUnique);
@@ -576,7 +574,7 @@ _outDynamicIndexScan(StringInfo str, DynamicIndexScan *node)
 	outIndexScanFields(str, (IndexScan *) node);
 
 	WRITE_INT_FIELD(partIndex);
-	
+
 	outLogicalIndexInfo(str, node->logicalIndexInfo);
 }
 

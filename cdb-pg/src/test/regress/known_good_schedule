@@ -127,7 +127,7 @@ test: olap_window
 test: olap_window_seq
 test: tpch500GB
 test: partition
-test: dpe
+ignore: dpe
 test: sirv_functions
 test: appendonly
 test: aocs

@@ -256,7 +256,6 @@ from my_sum;
 WITH q AS (SELECT 'foo' AS x)
 SELECT x, x IS OF (unknown) as is_unknown FROM q;
 
-with cte(foo) as ( values(42) ) values((select foo from cte));
 with cte(foo) as ( select 42 ) select * from ((select foo from cte)) q;
 
 select ( with cte(foo) as ( values(i) )

@@ -1197,12 +1197,6 @@ SELECT x, x IS OF (unknown) as is_unknown FROM q;
  foo | t
 (1 row)
 
-with cte(foo) as ( values(42) ) values((select foo from cte));
- column1 
----------
-      42
-(1 row)
-
 with cte(foo) as ( select 42 ) select * from ((select foo from cte)) q;
  foo 
 -----

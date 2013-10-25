@@ -1452,6 +1452,17 @@ CTranslatorQueryToDXL::AddSortingGroupingColumn
 {
 	if (0 < pte->ressortgroupref)
 	{
+		if (IsA(pte->expr, Var))
+		{
+			// TODO, raghav Oct 7 2013, in ORCA we currently crash when we group/sort on outer references
+			// This temporary fix enables us to falls back to planner cleanly.
+			// This fix will be removed when we fix the issue in MPP-21456
+			Var *pvar = (Var *) pte->expr;
+			if (0 < pvar->varlevelsup)
+			{
+				GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature, GPOS_WSZ_LIT("Grouping / Sorting on Outer References"));
+			}
+		}
 		INT *piKey = New(m_pmp) INT(pte->ressortgroupref);
 		ULONG *pulValue = New(m_pmp) ULONG(ulColId);
 
@@ -1701,7 +1712,15 @@ CTranslatorQueryToDXL::PdxlnGroupingSets
 								phmiulOutputCols
 								);
 		
-		CDXLNode *pdxlnResult = PdxlnProjectGroupingFuncs(plTargetList, pdxlnGroupBy, pbs, phmiulOutputCols, phmululGrpColPos);
+		CDXLNode *pdxlnResult = PdxlnProjectGroupingFuncs
+									(
+									plTargetList,
+									pdxlnGroupBy,
+									pbs,
+									phmiulOutputCols,
+									phmululGrpColPos,
+									phmiulSortgrouprefColId
+									);
 
 		phmiulChild->Release();
 		pdrgpbs->Release();
@@ -1829,7 +1848,7 @@ CTranslatorQueryToDXL::PdxlnUnionAllForGroupingSets
 		}
 
 		pdrgpulColIdsInner = pdrgpulColIdsOuter;
-
+		
 		if (ul == ulGroupingSets - 1)
 		{
 			// add the sortgroup columns to output map of the last column
@@ -1839,26 +1858,17 @@ CTranslatorQueryToDXL::PdxlnUnionAllForGroupingSets
 			{
 				TargetEntry *pte = (TargetEntry *) lfirst(plcTE);
 
-				INT iSortGroupRef = INT (pte->ressortgroupref);
-				BOOL fSortGroupColum = false;
-				if (0 < iSortGroupRef)
+				INT iSortGrpRef = INT (pte->ressortgroupref);
+				if (0 < iSortGrpRef && NULL != phmiulSortgrouprefColIdConsumer->PtLookup(&iSortGrpRef))
 				{
-					fSortGroupColum = true;
+					// add the mapping information for sorting columns
+					AddSortingGroupingColumn(pte, phmiulSortgrouprefColId, *(*pdrgpulColIdsInner)[ulTargetEntryPos]);
 				}
 
-				if (fSortGroupColum && NULL != phmiulSortgrouprefColIdConsumer->PtLookup(&iSortGroupRef))
-				{
-					// the map is between the ressortgroupref of the target list entry and the DXL column identifier
-					phmiulSortgrouprefColId->FInsert(New(m_pmp) INT(iSortGroupRef), New(m_pmp) ULONG(*(*pdrgpulColIdsInner)[ulTargetEntryPos]));
-				}
-
-				if (!pte->resjunk)
-				{
-					ulTargetEntryPos++;
-				}
+				ulTargetEntryPos++;
 			}
 		}
-		
+
 		// cleanup
 		phmiulGroupBy->Release();
 		phmiulSPJConsumer->Release();
@@ -1868,7 +1878,6 @@ CTranslatorQueryToDXL::PdxlnUnionAllForGroupingSets
 	// cleanup
 	phmiulSPJ->Release();
 	phmiulSortgrouprefColIdProducer->Release();
-
 	delete pmapvarcolidOriginal;
 	pdrgpulColIdsInner->Release();
 
@@ -1884,11 +1893,16 @@ CTranslatorQueryToDXL::PdxlnUnionAllForGroupingSets
 		GPOS_ASSERT(0 < pte->resno);
 		ULONG ulResNo = pte->resno;
 
+		// note that all target list entries are kept in union all's output column
+		// this is achieved by the fKeepResjunked flag in CTranslatorUtils::Pdrgpdxlcd
+		const CDXLColDescr *pdxlcd = pdxlopUnion->Pdxlcd(ulOutputColIndex);
+		const ULONG ulColId = pdxlcd->UlID();
+		ulOutputColIndex++;
+
 		if (!pte->resjunk)
 		{
-			const CDXLColDescr *pdxlcd = pdxlopUnion->Pdxlcd(ulOutputColIndex);
-			StoreAttnoColIdMapping(phmiulOutputCols, ulResNo, pdxlcd->UlID());
-			ulOutputColIndex++;
+			// add non-resjunk columns to the hash map that maintains the output columns
+			StoreAttnoColIdMapping(phmiulOutputCols, ulResNo, ulColId);
 		}
 	}
 
@@ -2243,6 +2257,9 @@ CTranslatorQueryToDXL::PdxlnSetOpChild
 			CDXLNode *pdxln = trquerytodxl.PdxlnFromQueryInternal();
 			GPOS_ASSERT(NULL != pdxln);
 
+			DrgPdxln *pdrgpdxlnCTE = trquerytodxl.PdrgpdxlnCTE();
+			CUtils::AddRefAppend(m_pdrgpdxlnCTE, pdrgpdxlnCTE);
+
 			// get the output columns of the derived table
 			DrgPdxln *pdrgpdxln = trquerytodxl.PdrgpdxlnQueryOutput();
 			GPOS_ASSERT(pdrgpdxln != NULL);
@@ -2510,8 +2527,19 @@ CTranslatorQueryToDXL::PdxlnFromRelation
 {
 	// construct table descriptor for the scan node from the range table entry
 	CDXLTableDescr *pdxltabdesc = CTranslatorUtils::Pdxltabdesc(m_pmp, m_pmda, m_pidgtorCol, prte);
-	CDXLNode *pdxlnGet = New(m_pmp) CDXLNode(m_pmp, New(m_pmp) CDXLLogicalGet(m_pmp, pdxltabdesc));
-	GPOS_ASSERT(NULL != pdxlnGet);
+
+	CDXLLogicalGet *pdxlop = NULL;
+	const IMDRelation *pmdrel = m_pmda->Pmdrel(pdxltabdesc->Pmdid());
+	if (IMDRelation::ErelstorageExternal == pmdrel->Erelstorage())
+	{
+		pdxlop = New(m_pmp) CDXLLogicalExternalGet(m_pmp, pdxltabdesc);
+	}
+	else
+	{
+		pdxlop = New(m_pmp) CDXLLogicalGet(m_pmp, pdxltabdesc);
+	}
+
+	CDXLNode *pdxlnGet = New(m_pmp) CDXLNode(m_pmp, pdxlop);
 
 	// make note of new columns from base relation
 	m_pmapvarcolid->LoadTblColumns(m_ulQueryLevel, ulRTIndex, pdxltabdesc);
@@ -2772,12 +2800,6 @@ CTranslatorQueryToDXL::PdxlnFromTVF
 {
 	GPOS_ASSERT(NULL != prte->funcexpr);
 
-	if (pg_stat_get_activity_oid == ((FuncExpr *)prte->funcexpr)->funcid)
-	{
-		// TODO 07/19/2013; solimm1: MPP-20686 remove exception when pg_stat_get_activity() properties are fixed in the catalog
-		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature, GPOS_WSZ_LIT("pg_stat_get_activity() function"));
-	}
-
 	// if this is a folded function expression, generate a project over a CTG
 	if (!IsA(prte->funcexpr, FuncExpr))
 	{
@@ -2845,7 +2867,16 @@ CTranslatorQueryToDXL::PdxlnFromCTE
 {
 	const ULONG ulCteQueryLevel = ulCurrQueryLevel - prte->ctelevelsup;
 	const CCTEListEntry *pctelistentry = m_phmulCTEEntries->PtLookup(&ulCteQueryLevel);
-	GPOS_ASSERT(NULL != pctelistentry);
+	if (NULL == pctelistentry)
+	{
+		// TODO: raghav, Sept 09 2013, remove temporary fix  (revert exception to assert) to avoid crash during algebrization
+		GPOS_RAISE
+			(
+			gpdxl::ExmaDXL,
+			gpdxl::ExmiQuery2DXLError,
+			GPOS_WSZ_LIT("CTE")
+			);
+	}
 
 	const CDXLNode *pdxlnCTEProducer = pctelistentry->PdxlnCTEProducer(prte->ctename);
 	const List *plCTEProducerTargetList = pctelistentry->PlCTEProducerTL(prte->ctename);
@@ -3226,7 +3257,8 @@ CTranslatorQueryToDXL::PdxlnProjectGroupingFuncs
 	CDXLNode *pdxlnChild,
 	CBitSet *pbs,
 	HMIUl *phmiulOutputCols,
-	HMUlUl *phmululGrpColPos
+	HMUlUl *phmululGrpColPos,
+	HMIUl *phmiulSortgrouprefColId
 	)
 	const
 {
@@ -3263,6 +3295,7 @@ CTranslatorQueryToDXL::PdxlnProjectGroupingFuncs
 			CDXLNode *pdxlnPrEl = New(m_pmp) CDXLNode(m_pmp, New(m_pmp) CDXLScalarProjElem(m_pmp, ulColId, pmdnameAlias), pdxlnGroupingFunc);
 			pdxlnPrL->AddChild(pdxlnPrEl);
 			StoreAttnoColIdMapping(phmiulOutputCols, ulResno, ulColId);
+			AddSortingGroupingColumn(pte, phmiulSortgrouprefColId, ulColId);
 		}
 	}
 

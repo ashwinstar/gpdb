@@ -2494,13 +2494,17 @@ WHERE tq.sym = tt.symbol AND
       tt.event_ts <  tq.end_ts
 GROUP BY 1
 ORDER BY 1 asc ;
-  
+
+select disable_xform('CXformInnerJoin2HashJoin');
 set enable_hashjoin=off;
 set enable_seqscan=off;
 set enable_mergejoin=off;
 set enable_nestloop=on;
 set enable_indexscan=on;
 
+-- start_ignore
+-- Known_opt_diff: OPT-929
+-- end_ignore
 -- force_explain
 EXPLAIN 
 SELECT (tt.event_ts / 100000) / 5 * 5 as fivemin, COUNT(*)
@@ -2518,4 +2522,5 @@ WHERE tq.sym = tt.symbol AND
       tt.event_ts <  tq.end_ts
 GROUP BY 1
 ORDER BY 1 asc ;
-  
+
+select enable_xform('CXformInnerJoin2HashJoin');  

@@ -386,7 +386,7 @@ COptClient::PplstmtConstruct
 	GPOS_ASSERT(NULL != pplstmt);
 	GPOS_ASSERT(CurrentMemoryContext);
 
-	return (PlannedStmt *) gpdb::PvCopyObject(pplstmt);
+	return (PlannedStmt *) gpdb::PvCopyObject(pplstmt);;
 }
 
 //---------------------------------------------------------------------------

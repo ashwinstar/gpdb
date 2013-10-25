@@ -24,8 +24,6 @@
 #define GPDXL_CTE_ID_START 1
 #define GPDXL_COL_ID_START 1
 
-#define pg_stat_get_activity_oid  6071		// OID of pg_stat_get_activity function
-
 #include "gpopt/translate/CMappingVarColId.h"
 #include "gpopt/translate/CTranslatorScalarToDXL.h"
 #include "gpopt/translate/CTranslatorUtils.h"
@@ -259,7 +257,16 @@ namespace gpdxl
 				const;
 
 			// construct a project node with appropriate values for the grouping funcs in the given target list
-			CDXLNode *PdxlnProjectGroupingFuncs(List *plTargetList, CDXLNode *pdxlnChild, CBitSet *pbs, HMIUl *phmiulOutputCols, HMUlUl *phmululGrpColPos) const;
+			CDXLNode *PdxlnProjectGroupingFuncs
+						(
+						List *plTargetList,
+						CDXLNode *pdxlnChild,
+						CBitSet *pbs,
+						HMIUl *phmiulOutputCols,
+						HMUlUl *phmululGrpColPos,
+						HMIUl *phmiulSortgrouprefColId
+						)
+						const;
 
 			// add sorting and grouping column into the hash map
 			void AddSortingGroupingColumn(TargetEntry *pte, HMIUl *phmiulSortGrpColsColId, ULONG ulColId) const;

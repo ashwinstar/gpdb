@@ -39,6 +39,9 @@ set gp_enable_agg_distinct=on;
 set gp_eager_one_phase_agg=off;
 
 -- Rescan on Agg (with Material in the inner side of nestloop)
+-- start_ignore
+-- Known_opt_diff: This test is only here for the planner. It doesn't exercise eagerfree in ORCA plans
+-- end_ignore
 set enable_nestloop=on;
 set enable_hashjoin=off;
 select t1.*, t2.* from
@@ -51,6 +54,9 @@ set enable_nestloop=off;
 set enable_hashjoin=on;
 
 -- Rescan on Agg (with Material in the inner side of nestloop)
+-- start_ignore
+-- Known_opt_diff: This test is only here for the planner. It doesn't exercise eagerfree in ORCA plans
+-- end_ignore
 set enable_nestloop=on;
 set enable_hashjoin=off;
 select t1.*, t2.* from
@@ -80,26 +86,10 @@ where i < (select count(*) from smallt where smallt.i = smallt2.i);
 explain select smallt2.* from smallt2
 where i < (select count(*) from smallt where smallt.i = smallt2.i);
 
--- Append + Material in SubPlan
-drop table if exists smallt_part;
-drop table if exists smallt2_part;
-
-create table smallt_part (i int, t text, d date)
-partition by range (d) (start ('2011-01-01'::date) end ('2011-01-21'::date) every ('5 days'::interval));
-
-create table smallt2_part (i int, t text, d date)
-partition by range (d) (start ('2011-01-01'::date) end ('2011-01-16'::date) every ('4 days'::interval));
-
-insert into smallt_part select i%10, 'text ' || (i%15), '2011-01-01'::date + ((i%20) || ' days')::interval
-from generate_series(0, 99) i;
-
-insert into smallt2_part select i%5, 'text ' || (i%10), '2011-01-01'::date + ((i%15) || ' days')::interval
-from generate_series(0, 49) i;
-
-select * from smallt_part where i < any (select count(*) from smallt2_part where smallt_part.i = smallt2_part.i group by d);
-explain analyze select * from smallt_part where i < any (select count(*) from smallt2_part where smallt_part.i = smallt2_part.i group by d);
-
 -- Sort in MergeJoin
+-- start_ignore
+-- Known_opt_diff: OPT-3417. Missing feature: Sort Merge Join
+-- end_ignore
 set enable_hashjoin=off;
 set enable_mergejoin=on;
 select t1.* from smallt as t1, smallt as t2 where t1.i = t2.i and t1.i < 2;
@@ -124,6 +114,9 @@ set enable_mergejoin=off;
 create index smallt_d_idx on smallt (d);
 create index smallt2_d_idx on smallt2 (d);
 
+-- start_ignore
+-- Known_opt_diff: This test is only here for the planner. It doesn't exercise eagerfree in ORCA plans
+-- end_ignore
 set enable_hashjoin=off;
 set enable_nestloop=on;
 set enable_seqscan=off;
@@ -134,6 +127,9 @@ explain analyze select smallt.* from smallt, smallt2 where smallt.i = smallt2.i 
 and smallt.d = '2011-01-04'::date;
 
 -- BitmapScan
+-- start_ignore
+-- Known_opt_diff: This test is only here for the planner. It doesn't exercise eagerfree in ORCA plans
+-- end_ignore
 set enable_indexscan=off;
 set enable_bitmapscan=on;
 select smallt.* from smallt, smallt2 where smallt.i = smallt2.i and smallt2.d = '2011-01-04'::date

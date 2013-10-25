@@ -51,6 +51,9 @@ select relname from pg_class where relnamespace in (select oid from pg_namespace
  gp_skew_idle_fractions
  gp_stats_missing
  gp_table_indexes
-(45 rows)
+ gp_workfile_entries
+ gp_workfile_usage_per_query
+ gp_workfile_usage_per_segment
+(48 rows)
 
 \c regression

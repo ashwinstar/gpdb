@@ -177,14 +177,6 @@ select c1 from t1, t2 where c1 not in
 	(select c3 from t3 where c3 = c1) and c1 = c2;
 
 --
---q16
---
-select c1 from t1 where c1 not in 
-	(select c2 from t2 where c2 not in 
-		(select c3 from t3 where c3 not in 
-			(select c4 from t4 where c4 = c2 )));
-
---
 --q17
 -- null test
 --
@@ -267,11 +259,6 @@ select c2 from t2 where not c2 < all (select c2 from t2);
 --q29
 --
 select c3 from t3 where not c3 <> any (select c4 from t4);
-
---
---q30
---
-select c1 from t1 where 49 not in (select c3 from t3);
 
 --
 --q31

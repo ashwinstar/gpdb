@@ -31,7 +31,7 @@ psql_start_test(const char *testname,
 	PID_TYPE	pid;
 	char		infile[MAXPGPATH];
 	char		outfile[MAXPGPATH];
-	char		expectfile[MAXPGPATH];
+	char		expectfile[MAXPGPATH] = "";
 	char		psql_cmd[MAXPGPATH * 3];
 	char		use_utility_mode = 0;
 
@@ -54,11 +54,31 @@ psql_start_test(const char *testname,
 	snprintf(outfile, sizeof(outfile), "%s/results/%s.out",
 			 outputdir, testname);
 
-	snprintf(expectfile, sizeof(expectfile), "%s/expected/%s.out",
-			 outputdir, testname);
+	if (optimizer_enabled)
+	{
+		snprintf(expectfile, sizeof(expectfile), "%s/expected/%s_optimizer.out",
+				 outputdir, testname);
+		if (!file_exists(expectfile))
+		{
+			snprintf(expectfile, sizeof(expectfile), "%s/expected/%s_optimizer.out",
+					 inputdir, testname);
+		}
+	}
+
+	// if optimizer is off or there is no orca-specific answer file, then
+	// use the default answer file
+
 	if (!file_exists(expectfile))
+	{
 		snprintf(expectfile, sizeof(expectfile), "%s/expected/%s.out",
-				 inputdir, testname);
+				 outputdir, testname);
+
+		if (!file_exists(expectfile))
+		{
+			snprintf(expectfile, sizeof(expectfile), "%s/expected/%s.out",
+					 inputdir, testname);
+		}
+	}
 
 	add_stringlist_item(resultfiles, outfile);
 	add_stringlist_item(expectfiles, expectfile);

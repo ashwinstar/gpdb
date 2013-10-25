@@ -1561,7 +1561,7 @@ insert into window_preds values(3,4,5);
 insert into window_preds values(4,5,6);
 insert into window_preds values(5,6,7);
 insert into window_preds values(6,7,8);
-select * from (select i,j,k, sum(i) over(), row_number() over(), rank() over(order by i) from window_preds) as foo where i>2 order by rank;
+select * from (select i,j,k, sum(i) over(), row_number() over(order by i), rank() over(order by i) from window_preds) as foo where i>2 order by rank;
 select * from (select i,j,k, sum(i) over(), row_number() over(partition by i), rank() over(order by i) from window_preds) as foo where i>2 order by rank;
 select * from (select i,j,k, sum(i) over(partition by i), row_number() over(partition by i), rank() over(partition by i order by i) from window_preds) as foo where i>2 order by sum;
 select * from (select i,j,k, sum(i) over(partition by i), row_number() over(partition by i), rank() over(partition by i order by i) from window_preds) as foo where i>2 or j>2 order by sum;

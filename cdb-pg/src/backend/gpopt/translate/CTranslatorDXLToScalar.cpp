@@ -664,12 +664,15 @@ CTranslatorDXLToScalar::PsubplanFromDXLNodeScSubPlan
 	// insert outer reference mappings in the translate context
 	for (ULONG ul = 0; ul < ulLen; ul++)
 	{
-		ULONG ulid = (*m_pdrgdxlcrOuterRefs)[ul]->UlID();
 		IMDId *pmdid = (*m_pdrgmdidOuterRefs)[ul];
-		if (NULL == pdxltrctxOut->Pmecolidparamid(ulid))
+		CDXLColRef *pdxlcr = (*m_pdrgdxlcrOuterRefs)[ul];
+		ULONG ulColid = pdxlcr->UlID();
+		
+		if (NULL == pdxltrctxOut->Pmecolidparamid(ulColid))
 		{
-			CMappingElementColIdParamId *pmecolidparamid = New (m_pmp) CMappingElementColIdParamId(ulid, pctxdxltoplstmt->UlNextParamId(), pmdid);
-			pdxltrctxOut->FInsertParamMapping(ulid, pmecolidparamid);
+			// keep outer reference mapping to the original column for subsequent subplans
+			CMappingElementColIdParamId *pmecolidparamid = New (m_pmp) CMappingElementColIdParamId(ulColid, pctxdxltoplstmt->UlNextParamId(), pmdid);
+			pdxltrctxOut->FInsertParamMapping(ulColid, pmecolidparamid);
 		}
 	}
 
@@ -708,6 +711,7 @@ CTranslatorDXLToScalar::PsubplanFromDXLNodeScSubPlan
 	for (ULONG ul = 0; ul < ulSize; ul++)
 	{
 		CDXLColRef *pdxlcr = (*m_pdrgdxlcrOuterRefs)[ul];
+		ULONG ulColId = pdxlcr->UlID();
 		pdxlcr->AddRef();
 		const CMappingElementColIdParamId *pmecolidparamid = pdxltrctxOut->Pmecolidparamid(pdxlcr->UlID());
 
@@ -718,7 +722,15 @@ CTranslatorDXLToScalar::PsubplanFromDXLNodeScSubPlan
 		pmdidType->AddRef();
 
 		CDXLScalarIdent *pdxlopIdent = New(m_pmp) CDXLScalarIdent(m_pmp, pdxlcr, pmdidType);
-		Expr *parg = (Expr *) pmapcidvar->PvarFromDXLNodeScId(pdxlopIdent);
+        Expr *parg = (Expr *) pmapcidvar->PvarFromDXLNodeScId(pdxlopIdent);
+		
+		// not found in mapping, it must be an external parameter		
+		if (NULL == parg)
+		{
+			parg = (Expr*) PparamFromMapping(pmecolidparamid);
+			GPOS_ASSERT(NULL != parg);
+		}
+		
 		pdxlopIdent->Release();
 
 		psubplan->args = gpdb::PlAppendElement(psubplan->args, parg);
@@ -1343,6 +1355,7 @@ CTranslatorDXLToScalar::PconstFromDXLDatum
 			{CDXLDatum::EdxldatumTimeStamp, &CTranslatorDXLToScalar::PconstGeneric},
 			{CDXLDatum::EdxldatumBpchar, &CTranslatorDXLToScalar::PconstGeneric},
 			{CDXLDatum::EdxldatumVarchar, &CTranslatorDXLToScalar::PconstGeneric},
+			{CDXLDatum::EdxldatumText, &CTranslatorDXLToScalar::PconstGeneric},
 			{CDXLDatum::EdxldatumDouble, &CTranslatorDXLToScalar::PconstGeneric}
 		};
 

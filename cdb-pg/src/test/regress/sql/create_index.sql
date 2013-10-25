@@ -419,6 +419,9 @@ insert into bm_test values (0, 0), (1,0);
 
 set enable_seqscan=off;
 set enable_bitmapscan=off;
+-- start_ignore
+-- Known_opt_diff: MPP-19808
+-- end_ignore
 explain select * from bm_test where j = 1;
 select * from bm_test where j = 1;
 drop table bm_test;

@@ -265,7 +265,7 @@ COMMENT ON FUNCTION @gpupgradeschemaname@.enable_xform(text) IS 'enables transfo
 -- Show Optimizer's version
 --
 CREATE FUNCTION @gpupgradeschemaname@.gp_opt_version() RETURNS text LANGUAGE internal IMMUTABLE STRICT AS 'gp_opt_version' WITH (OID=6089);
-COMMENT ON FUNCTION @gpupgradeschemaname@.gp_opt_version() IS 'returns the optimizer and gpos library versions';
+COMMENT ON FUNCTION @gpupgradeschemaname@.gp_opt_version() IS 'Returns the optimizer and gpos library versions';
 
 -- pg_stat_activity adds a new column derived from pg_stat_get_activity.
 -- CREATE OR REPLACE with extra column is allowed only in upgrade mode.

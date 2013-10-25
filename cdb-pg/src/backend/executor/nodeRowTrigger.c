@@ -37,7 +37,7 @@
 static HeapTuple
 ExecTriggers(EState *estate, ResultRelInfo *relinfo,
 				HeapTuple originalTuple,
-				HeapTuple finalTuple, int eventFlags, bool *insertTuple);
+				HeapTuple finalTuple, int eventFlags, bool *processTuple);
 
 /* Executes Before and After Update triggers. */
 static HeapTuple
@@ -200,15 +200,19 @@ ExecInsertTriggers(EState *estate, ResultRelInfo *relinfo,
 	return newtuple;
 }
 
-/* Executes Before and After Delete Row Triggers.
+/*
+ * Executes Before and After Delete Row Triggers.
  * This trigger can only cancel the deletion of a tuple.
- * */
+ *
+ * If any of the triggers return NULL tuple, this method
+ * will return false to indicate that this tuple should not
+ * be deleted.
+ */
 bool
 ExecDeleteTriggers(EState *estate, ResultRelInfo *relinfo,
 				TriggerDesc *trigdesc, int ntrigs, int *tgindx,
 				HeapTuple	trigtuple, TriggerEvent eventFlags)
 {
-	bool		result = true;
 	TriggerData triggerData;
 	HeapTuple	newtuple;
 
@@ -243,8 +247,7 @@ ExecDeleteTriggers(EState *estate, ResultRelInfo *relinfo,
 									   GetPerTupleMemoryContext(estate));
 		if (newtuple == NULL)
 		{
-			result = false;
-			break;
+			return false;
 		}
 
 		if (newtuple != trigtuple)
@@ -253,7 +256,7 @@ ExecDeleteTriggers(EState *estate, ResultRelInfo *relinfo,
 		}
 	}
 
-	return result;
+	return true;
 }
 
 /*
@@ -265,7 +268,7 @@ ExecDeleteTriggers(EState *estate, ResultRelInfo *relinfo,
 HeapTuple
 ExecTriggers(EState *estate, ResultRelInfo *relinfo,
 				HeapTuple originalTuple,
-				HeapTuple finalTuple, int eventFlags, bool *insertTuple)
+				HeapTuple finalTuple, int eventFlags, bool *processTuple)
 {
 	TriggerDesc *trigdesc = relinfo->ri_TrigDesc;
 
@@ -296,13 +299,18 @@ ExecTriggers(EState *estate, ResultRelInfo *relinfo,
 
 	if (delete)
 	{
-		*insertTuple = ExecDeleteTriggers(estate, relinfo, trigdesc, ntrigs, tgindx,
+		*processTuple = ExecDeleteTriggers(estate, relinfo, trigdesc, ntrigs, tgindx,
 										originalTuple, triggerFlags);
 	}
 	else if (update)
 	{
 		originalTuple = ExecUpdateTriggers(estate, relinfo, trigdesc, ntrigs, tgindx,
 										originalTuple, finalTuple, triggerFlags);
+
+		if (NULL == originalTuple)
+		{
+			*processTuple = false;
+		}
 	}
 	else if (!insert)
 	{
@@ -433,7 +441,7 @@ ExecRowTrigger(RowTriggerState *node)
 	ResultRelInfo *resultRelInfo = outerNode->state->es_result_relation_info;
 
 	Assert(outerNode != NULL);
-	bool insertTuple = true;
+	bool processTuple = true;
 	TupleTableSlot *slot = NULL;
 
 	/* Loop if DELETE skips a tuple */
@@ -468,14 +476,14 @@ ExecRowTrigger(RowTriggerState *node)
 
 		Assert(tuple);
 
-		insertTuple = true;
+		processTuple = true;
 
 		HeapTuple newtuple = ExecTriggers(outerNode->state, resultRelInfo, tuple,
-								oldTuple, plannode->eventFlags,&insertTuple);
+								oldTuple, plannode->eventFlags,&processTuple);
 
 
-		/* A tuple does not get deleted if a predicate is not satisfied. */
-		if (insertTuple)
+		/* A tuple does not get processed if a predicate is not satisfied. */
+		if (processTuple)
 		{
 			/* Return unmodified tuple. */
 			if (newtuple == NULL)
@@ -497,7 +505,7 @@ ExecRowTrigger(RowTriggerState *node)
 				ConstructNewTupleTableSlot(newtuple, node->triggerTuple, colidx->head, values, nulls);
 			}
 		}
-	} while (!insertTuple);
+	} while (!processTuple);
 
 	return slot;
 }

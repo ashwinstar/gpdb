@@ -112,7 +112,7 @@ namespace gpdxl
 			PfPplan m_rgpfTranslators[EdxlopSentinel];
 
 			CContextDXLToPlStmt *m_pctxdxltoplstmt;
-
+			
 			CTranslatorDXLToScalar *m_pdxlsctranslator;
 
 			// command type

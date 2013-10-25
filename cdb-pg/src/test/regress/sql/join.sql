@@ -551,7 +551,15 @@ select count(*) from hjn_test, (select 3 as bar) foo where hjn_test.i = least (f
 select count(*) from hjn_test, (select 3 as bar) foo where least (foo.bar,(array[4])[1]) = hjn_test.i and hjn_test.j = (array[4])[1];
 select count(*) from hjn_test, (select 3 as bar) foo where hjn_test.i = least (foo.bar, least(4,10)) and hjn_test.j = least(4,10);
 select * from int4_tbl a join int4_tbl b on (a.f1 = (select f1 from int4_tbl c where c.f1=b.f1));
+
 set enable_hashjoin to off;
+-- Disable hashjoin forms fo ORCA
+select disable_xform('CXformInnerJoin2HashJoin');
+select disable_xform('CXformLeftAntiSemiJoin2HashJoin');
+select disable_xform('CXformLeftAntiSemiJoinNotIn2HashJoinNotIn');
+select disable_xform('CXformLeftOuterJoin2HashJoin');
+select disable_xform('CXformLeftSemiJoin2HashJoin');
+
 select count(*) from hjn_test, (select 3 as bar) foo where hjn_test.i = least (foo.bar,4) and hjn_test.j = 4;
 select count(*) from hjn_test, (select 3 as bar) foo where hjn_test.i = least (foo.bar,(array[4])[1]) and hjn_test.j = (array[4])[1];
 select count(*) from hjn_test, (select 3 as bar) foo where least (foo.bar,(array[4])[1]) = hjn_test.i and hjn_test.j = (array[4])[1];
@@ -559,5 +567,12 @@ select count(*) from hjn_test, (select 3 as bar) foo where hjn_test.i = least (f
 select * from int4_tbl a join int4_tbl b on (a.f1 = (select f1 from int4_tbl c where c.f1=b.f1));
 
 reset enable_hashjoin;
+
+-- Enable hashjoin forms fo ORCA
+select enable_xform('CXformInnerJoin2HashJoin');
+select enable_xform('CXformLeftAntiSemiJoin2HashJoin');
+select enable_xform('CXformLeftAntiSemiJoinNotIn2HashJoinNotIn');
+select enable_xform('CXformLeftOuterJoin2HashJoin');
+select enable_xform('CXformLeftSemiJoin2HashJoin');
 
 drop schema pred cascade;

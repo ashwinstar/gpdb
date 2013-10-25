@@ -50,6 +50,7 @@
 #include "gpos/common/CAutoP.h"
 
 #include "init.h"
+#include "traceflags/traceflags.h"
 
 #include "gpopt/translate/CTranslatorDXLToExpr.h"
 #include "gpopt/translate/CTranslatorExprToDXL.h"
@@ -569,7 +570,7 @@ COptTasks::Pplstmt
 							&plRTable,
 							&plSubplans
 							);
-
+	
 	// translate DXL -> PlannedStmt
 	CTranslatorDXLToPlStmt trdxltoplstmt(pmp, pmda, &ctxdxltoplstmt, gpdb::UlSegmentCountGP());
 	return trdxltoplstmt.PplstmtFromDXL(pdxln);
@@ -768,12 +769,15 @@ COptTasks::PvOptimizeTask
 	DrgPss *pdrgpss = PdrgPssLoad(pmp, optimizer_search_strategy_path);
 
 	CBitSet *pbsTraceFlags = NULL;
+	CBitSet *pbsEnabled = NULL;
+	CBitSet *pbsDisabled = NULL;
 	CDXLNode *pdxlnPlan = NULL;
 
 	GPOS_TRY
 	{
 		// set trace flags
 		pbsTraceFlags = CConfigParamMapping::PbsPack(pmp, CXform::ExfSentinel);
+		SetTraceflags(pmp, pbsTraceFlags, &pbsEnabled, &pbsDisabled);
 
 		// set up relcache MD provider
 		CMDProviderRelcache *pmdpRelcache = New(pmp) CMDProviderRelcache(pmp);
@@ -806,18 +810,22 @@ COptTasks::PvOptimizeTask
 			GPOS_ASSERT(NULL != pdrgpdxlnQueryOutput);
 
 			ULONG ulSegments = gpdb::UlSegmentCountGP();
+			ULONG ulSegmentsForCosting = optimizer_segments;
+			
+			if (0 == ulSegmentsForCosting)
+			{
+				ulSegmentsForCosting = gpdb::UlSegmentCountGP();
+			}
 
 			pdxlnPlan = COptimizer::PdxlnOptimize
 									(
 									pmp,
-									CMDCache::Pcache(),
-									pbsTraceFlags,
+									&mda,
 									pdxlnQuery,
 									pdrgpdxlnQueryOutput,
 									pdrgpdxlnCTE,
-									pmdpRelcache,
-									sysidDefault,
 									ulSegments,
+									ulSegmentsForCosting,
 									gp_session_id,
 									gp_command_count,
 									pdrgpss,
@@ -844,6 +852,10 @@ COptTasks::PvOptimizeTask
 	}
 	GPOS_CATCH_EX(ex)
 	{
+		ResetTraceflags(pbsEnabled, pbsDisabled);
+		CRefCount::SafeRelease(pbsEnabled);
+		CRefCount::SafeRelease(pbsDisabled);
+		CRefCount::SafeRelease(pbsTraceFlags);
 		CMDCache::Shutdown();
 
 		if (GPOS_MATCH_EX(ex, gpdxl::ExmaGPDB, gpdxl::ExmiGPDBError))
@@ -864,9 +876,11 @@ COptTasks::PvOptimizeTask
 	GPOS_CATCH_END;
 
 	// cleanup
-	pbsTraceFlags->Release();
+	ResetTraceflags(pbsEnabled, pbsDisabled);
+	CRefCount::SafeRelease(pbsEnabled);
+	CRefCount::SafeRelease(pbsDisabled);
+	CRefCount::SafeRelease(pbsTraceFlags);
 	CRefCount::SafeRelease(pdxlnPlan);
-
 	if (optimizer_release_mdcache)
 	{
 		CMDCache::Shutdown();

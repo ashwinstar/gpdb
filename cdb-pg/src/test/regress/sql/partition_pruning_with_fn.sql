@@ -27,31 +27,55 @@ PARTITION BY LIST(month_id)
 );
 
 -- this is the case that worked before MPP-6861
+-- start_ignore
+-- Known_opt_diff: MPP-21316
+-- end_ignore
 explain select * from ds_4 where month_id = '200800';
 
 
 -- now we can evaluate this function at planning/prune time
+-- start_ignore
+-- Known_opt_diff: MPP-21316
+-- end_ignore
 explain select * from ds_4 where month_id::int = 200800;
 
 -- this will be satisfied by 200800
+-- start_ignore
+-- Known_opt_diff: MPP-21316
+-- end_ignore
 explain select * from ds_4 where month_id::int - 801 < 200000;
 
 -- test OR case -- should NOT get pruning
 explain select * from ds_4 where month_id::int - 801 < 200000 OR count_vas > 10;
 
 -- test AND case -- should still get pruning
+-- start_ignore
+-- Known_opt_diff: MPP-21316
+-- end_ignore
 explain select * from ds_4 where month_id::int - 801 < 200000 AND count_vas > 10;
 
 -- test expression case : should get pruning
+-- start_ignore
+-- Known_opt_diff: MPP-21316
+-- end_ignore
 explain select * from ds_4 where case when month_id = '200800' then 100 else 2 end = 100;
 
 -- test expression case : should get pruning
+-- start_ignore
+-- Known_opt_diff: MPP-21316
+-- end_ignore
 explain select * from ds_4 where case when month_id = '200800' then NULL else 2 end IS NULL;
 
 -- should still get pruning here -- count_vas is only used in the path for month id = 200800
+-- start_ignore
+-- Known_opt_diff: MPP-21316
+-- end_ignore
 explain select * from ds_4 where case when month_id::int = 200800 then count_vas else 2 end IS NULL;
 
 -- do one that matches a couple partitions
+-- start_ignore
+-- Known_opt_diff: MPP-21316
+-- end_ignore
 explain select * from ds_4 where month_id::int in (200801, 1,55,6,6,6,6,66,565,65,65,200803);
 
 -- cleanup
@@ -105,8 +129,14 @@ insert into ds_2(month_id) values('200808');
 insert into ds_2(month_id) values('200809');
 
 -- queries without bitmap scan
+-- start_ignore
+-- Known_opt_diff: MPP-21316
+-- end_ignore
 explain select * from ds_2 where month_id::int in (200808, 1315) order by month_id;
 
+-- start_ignore
+-- Known_opt_diff: MPP-21316
+-- end_ignore
 explain  select * from ds_2 where month_id::int in (200808, 200801, 2008010) order by month_id;
 
 select * from ds_2 where month_id::int in (200907, 1315) order by month_id;

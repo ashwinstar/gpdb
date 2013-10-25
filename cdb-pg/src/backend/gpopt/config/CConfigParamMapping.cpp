@@ -194,9 +194,8 @@ CConfigParamMapping::PbsPack
 		}
 	}
 
-	// TODO: solimm1 - May 31, 2013 enable dynamic index scan when executor support is complete
-	(void) pbs->FExchangeSet(EopttraceDisableXformBase + CXform::ExfDynamicIndexGet2DynamicIndexScan);
-
+	// TODO: antova - Sep 17, 2013; re-enable heterogeneous indexes when support is complete (MPP-21176)
+	(void) pbs->FExchangeSet(GPOPT_DISABLE_XFORM_TF(CXform::ExfSelect2PartialDynamicIndexGet));
 	return pbs;
 }
 

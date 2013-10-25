@@ -155,7 +155,6 @@ BEGIN;
 DECLARE c CURSOR FOR SELECT * FROM rank_1_prt_extra;
 FETCH 1 FROM c;
 UPDATE rank_1_prt_extra set f = f * -1 WHERE CURRENT OF c;
-SELECT * FROM rank_1_prt_extra ORDER BY 1, 2, 3;
 COMMIT;
 SELECT * FROM rank_1_prt_extra ORDER BY 1, 2, 3;
 

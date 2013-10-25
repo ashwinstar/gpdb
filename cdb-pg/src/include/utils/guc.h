@@ -253,6 +253,7 @@ extern bool	Debug_print_server_processes;
 extern bool Debug_print_control_checkpoints;
 extern bool	Debug_dtm_action_primary;
 
+extern bool gp_log_optimization_time;
 extern bool log_parser_stats;
 extern bool log_planner_stats;
 extern bool log_executor_stats;
@@ -385,6 +386,9 @@ extern int optimizer_cte_inlining_bound;
 extern double optimizer_damping_factor_filter;
 extern double optimizer_damping_factor_join;
 extern double optimizer_damping_factor_groupby;
+extern int optimizer_segments;
+extern bool optimizer_analyze_root_partition;
+
 
 #if USE_EMAIL
 extern char  *gp_email_smtp_server;

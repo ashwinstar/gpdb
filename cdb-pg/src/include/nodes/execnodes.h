@@ -1411,16 +1411,35 @@ typedef struct DynamicIndexScanState
 	IndexScanState indexScanState;
 
 	/*
-	* Partition Id Index that mantains all unique ids for the
+	* Partition id index that mantains all unique partition ids for the
 	* DynamicIndexScan.
 	*/
 	HTAB *pidxIndex;
 
 	/*
-	* Status of the sequentially index scan of the pid index.
+	* Status of the part to retrieve (result of the sequential search in a hash table).
 	*/
 	HASH_SEQ_STATUS pidxStatus;
 
+	/* Like DynamicTableScanState, this flag is required to handle error condition.
+	 * This flag prevent ExecEndDynamicIndexScan from calling hash_seq_term() or
+	 * a NULL hash table. */
+	bool shouldCallHashSeqTerm;
+
+	/*
+	 * The original logicalIndexInfo before we started mapping columns to physical
+	 * indexes per-partition. We use this as a template to restore the logicalIndexInfo
+	 * in the plan node once per-partition before calling getPhysicalIndexRelid(),
+	 * which is modifies plan's logicalIndexInfo in-place (MPP-21029)
+	 */
+	LogicalIndexInfo *logicalIndexInfo;
+
+	/*
+	 * We will create a new copy of logicalIndexInfo in this memory context for
+	 * each partition. This memory context will be reset per-partition to free
+	 * up previous partition's logicalIndexInfo memory
+	 */
+	MemoryContext partitionMemoryContext;
 } DynamicIndexScanState;
 
 
@@ -1704,6 +1723,41 @@ typedef struct DynamicTableScanState
 	 * The status of sequentially scan the pid index.
 	 */
 	HASH_SEQ_STATUS pidStatus;
+
+	/*
+	 * Should we call hash_seq_term()? This is required
+	 * to handle error condition, where we are required to explicitly
+	 * call hash_seq_term(). Also, if we don't have any partition, this
+	 * flag should prevent ExecEndDynamicTableScan from calling
+	 * hash_seq_term() on a NULL hash table.
+	 */
+	bool shouldCallHashSeqTerm;
+
+	/*
+	 * The first partition requires initialization of expression states,
+	 * such as qual and targetlist, regardless of whether we need to re-map varattno
+	 */
+	bool firstPartition;
+	/*
+	 * lastRelOid is the last relation that corresponds to the
+	 * varattno mapping of qual and target list. Each time we open a new partition, we will
+	 * compare the last relation with current relation by using varattnos_map()
+	 * and then convert the varattno to the new varattno
+	 */
+	Oid lastRelOid;
+
+	/*
+	 * scanrelid is the RTE index for this scan node. It will be used to select
+	 * varno whose varattno will be remapped, if necessary
+	 */
+	Index scanrelid;
+
+	/*
+	 * This memory context will be reset per-partition to free
+	 * up previous partition's memory
+	 */
+	MemoryContext partitionMemoryContext;
+
 
 } DynamicTableScanState;
 

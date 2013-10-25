@@ -174,7 +174,6 @@ DROP TABLE tmp;
 --UPDATE INSERT_TBL SET x = NULL WHERE x = 5;
 --UPDATE INSERT_TBL SET x = 6 WHERE x = 6;
 --UPDATE INSERT_TBL SET x = -z, z = -x;
-UPDATE INSERT_TBL SET y = 'check failed' where x = 2;
 
 SELECT * FROM INSERT_TBL;
 

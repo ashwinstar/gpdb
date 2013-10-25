@@ -569,9 +569,7 @@ _outIndexScan(StringInfo str, IndexScan *node)
 
 static void
 outLogicalIndexInfo(StringInfo str, LogicalIndexInfo *node)
-{	
-	WRITE_NODE_TYPE("LOGICALINDEXINFO");
-
+{
 	WRITE_OID_FIELD(logicalIndexOid);
 	WRITE_INT_FIELD(nColumns);
 	appendStringInfoLiteral(str, " :indexKeys");
@@ -579,7 +577,6 @@ outLogicalIndexInfo(StringInfo str, LogicalIndexInfo *node)
 	{
 		appendStringInfo(str, " %d", node->indexKeys[i]);
 	}
-
 	WRITE_NODE_FIELD(indPred);
 	WRITE_NODE_FIELD(indExprs);
 	WRITE_BOOL_FIELD(indIsUnique);

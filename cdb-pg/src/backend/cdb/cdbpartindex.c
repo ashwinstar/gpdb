@@ -418,8 +418,10 @@ constructIndexHashKey(Oid partOid,
 	/* map the attrnos in the indKey to root part */
 	for (int i = 0; i < ii->ii_NumIndexAttrs; i++)
 	{
-		if (ii->ii_KeyAttrNumbers[i] != 0)
+		if (attMap && ii->ii_KeyAttrNumbers[i] != 0)
+		{
 			ii->ii_KeyAttrNumbers[i] = attMap[(ii->ii_KeyAttrNumbers[i]) - 1];
+		}
 		appendStringInfo(&buf, "%d", ii->ii_KeyAttrNumbers[i]);
 	}	
 
@@ -542,6 +544,17 @@ recordIndexesOnLeafPart(PartitionIndexNode **pNodePtr,
 	LogicalIndexInfoHashEntry	*logicalIndexInfoHashEntry;
 	PartitionIndexNode		*pNode = *pNodePtr;
 	
+	Relation partRel = heap_open(partOid, AccessShareLock);
+
+	if (RELSTORAGE_HEAP != partRel->rd_rel->relstorage)
+	{
+		/* do not cosider indexes on AO and AOCO partitions */
+		/* TODO: antova - Sep 10, 2013; remove this limitation when MPP-19808 is resolved */
+		heap_close(partRel, AccessShareLock);
+		return;
+	}
+	heap_close(partRel, AccessShareLock);
+
 	pcqCtx = caql_beginscan(
 			caql_addrel(cqclr(&cqc), indexRel),
 			cql("SELECT * FROM pg_index "
@@ -559,19 +572,20 @@ recordIndexesOnLeafPart(PartitionIndexNode **pNodePtr,
 		 */
 		if (!attmap)
 		{
-			Relation rootRel = heap_open(rootOid, AccessShareLock);
 			Relation partRel = heap_open(partOid, AccessShareLock);
+			Relation rootRel = heap_open(rootOid, AccessShareLock);
 
 			TupleDesc rootTupDesc = rootRel->rd_att;
 			TupleDesc partTupDesc = partRel->rd_att;
 		
 			attmap = varattnos_map(partTupDesc, rootTupDesc);
-
+			
 			/* can we close here ? */
-			heap_close(rootRel, AccessShareLock);
 			heap_close(partRel, AccessShareLock);
+			heap_close(rootRel, AccessShareLock);
 		}
 
+		
 		/* populate index info structure */
 		ii = populateIndexInfo(pcqCtx, tuple, indForm);
 			
@@ -632,7 +646,7 @@ recordIndexesOnLeafPart(PartitionIndexNode **pNodePtr,
 		/* update the PartitionIndexNode -> index bitmap */
 		pNode->index = bms_add_member(pNode->index, partIndexHashEntry->logicalIndexId);
 	}
-
+	
 	caql_endscan(pcqCtx);
 }
 
@@ -1447,17 +1461,20 @@ LogicalIndexInfo *logicalIndexInfoForIndexOid(Oid rootOid, Oid indexOid)
 	plogicalIndexInfo->indExprs = copyObject(pindexInfo->ii_Expressions);
 	plogicalIndexInfo->indPred = copyObject(pindexInfo->ii_Predicate);
 	
-	// remap expression fields
+	/* remap expression fields */
 	/* map the attrnos if necessary */
-	for (int i = 0; i < plogicalIndexInfo->nColumns; i++)
+	if (attMap)
 	{
-		if (plogicalIndexInfo->indexKeys[i] != 0)
+		for (int i = 0; i < plogicalIndexInfo->nColumns; i++)
 		{
-			plogicalIndexInfo->indexKeys[i] = attMap[(plogicalIndexInfo->indexKeys[i]) - 1];
+			if (plogicalIndexInfo->indexKeys[i] != 0)
+			{
+				plogicalIndexInfo->indexKeys[i] = attMap[(plogicalIndexInfo->indexKeys[i]) - 1];
+			}
 		}
+		change_varattnos_of_a_node((Node *) plogicalIndexInfo->indExprs, attMap);
+		change_varattnos_of_a_node((Node *) plogicalIndexInfo->indPred, attMap);
 	}
-	change_varattnos_of_a_node((Node *) plogicalIndexInfo->indExprs, attMap);
-	change_varattnos_of_a_node((Node *) plogicalIndexInfo->indPred, attMap);
 	
 	return plogicalIndexInfo;
 }

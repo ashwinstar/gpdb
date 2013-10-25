@@ -387,6 +387,7 @@ class GpInjectFaultProgram:
 			      "appendonly_insert (inject fault before an append-only insert), " \
 			      "appendonly_delete (inject fault before an append-only delete), " \
 			      "appendonly_update (inject fault before an append-only update), " \
+			      "fault_during_exec_dynamic_table_scan (inject fault during scanning of a partition), " \
 			      "all (affects all faults injected, used for 'status' and 'reset'), ") 
         addTo.add_option("-c", "--ddl_statement", dest="ddlStatement", type="string",
                          metavar="ddlStatement",

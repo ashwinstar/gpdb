@@ -14,12 +14,16 @@
 #include "nodes/execnodes.h"
 #include "executor/nodeDynamicTableScan.h"
 #include "utils/hsearch.h"
-#include "utils/elog.h"
 #include "parser/parsetree.h"
-#include "nodes/makefuncs.h"
-#include "access/sysattr.h"
+#include "utils/faultinjector.h"
+#include "commands/tablecmds.h"
+#include "nodes/pg_list.h"
+#include "utils/memutils.h"
 
 #define DYNAMIC_TABLE_SCAN_NSLOTS 2
+
+static inline void
+CleanupOnePartition(ScanState *scanState);
 
 DynamicTableScanState *
 ExecInitDynamicTableScan(DynamicTableScan *node, EState *estate, int eflags)
@@ -30,103 +34,30 @@ ExecInitDynamicTableScan(DynamicTableScan *node, EState *estate, int eflags)
 	
 	InitScanStateInternal((ScanState *)state, (Plan *)node, estate, eflags);
 
+	Oid reloid = getrelid(node->scan.scanrelid, estate->es_range_table);
+
+	Assert(OidIsValid(reloid));
+
+	state->firstPartition = true;
+
+	/* lastRelOid is used to remap varattno for heterogeneous partitions */
+	state->lastRelOid = reloid;
+
+	state->scanrelid = node->scan.scanrelid;
+
+	/*
+	 * This context will be reset per-partition to free up per-partition
+	 * qual and targetlist allocations
+	 */
+	state->partitionMemoryContext = AllocSetContextCreate(CurrentMemoryContext,
+									 "DynamicTableScanPerPartition",
+									 ALLOCSET_DEFAULT_MINSIZE,
+									 ALLOCSET_DEFAULT_INITSIZE,
+									 ALLOCSET_DEFAULT_MAXSIZE);
+
 	initGpmonPktForDynamicTableScan((Plan *)node, &state->tableScanState.ss.ps.gpmon_pkt, estate);
 
 	return state;
-}
-
-/*
- * Constructs a new targetlist list that maps to a tuple descriptor.
- */
-static List *
-GetPartitionTargetlist(TupleDesc partDescr, List *targetlist)
-{
-	Assert(NIL != targetlist);
-	Assert(partDescr);
-
-	List *partitionTargetlist = NIL;
-
-	AttrMap *attrmap = NULL;
-
-	TupleDesc targetDescr = ExecTypeFromTL(targetlist, false);
-
-	map_part_attrs_from_targetdesc(targetDescr, partDescr, &attrmap);
-	
-	ListCell *entry = NULL;
-	int pos = 1;
-	foreach(entry, targetlist)
-	{
-		TargetEntry *te = (TargetEntry *) lfirst(entry);
-
-		/* Obtain corresponding attribute number in the part (this will be the resno). */
-		int partAtt = (int)attrMap(attrmap, pos);
-
-		/* A system attribute should be added to the target list with its original
-		 * attribute number.
-		 */
-		if (te->resorigcol < 0)
-		{
-			/* te->resorigcol should be equivalent to ((Var *)te->expr)->varattno.
-			 * te->resorigcol is used for simplicity.
-			 */
-			Assert(((Var *)te->expr)->varattno == te->resorigcol);
-
-			/* Validate interval for system-defined attributes. */
-			Assert(te->resorigcol > FirstLowInvalidHeapAttributeNumber &&
-				te->resorigcol <= SelfItemPointerAttributeNumber);
- 
-			partAtt = te->resorigcol;
-		}
-
-		TargetEntry *newTe = flatCopyTargetEntry(te);
-
-		/* Parts are not explicitly specified in the range table. Therefore, the original RTE index is kept. */
-		Index rteIdx = ((Var *)te->expr)->varno;
-		/* Variable expression required by the Target Entry. */
-		Var *var = makeVar(rteIdx,
-				partAtt,
-				targetDescr->attrs[pos-1]->atttypid,
-				targetDescr->attrs[pos-1]->atttypmod,
-				0 /* resjunk */);
-		
-
-		/* Modify resno in the new TargetEntry */
-		newTe->resno = partAtt;
-		newTe->expr = (Expr *) var;
-
-		partitionTargetlist = lappend(partitionTargetlist, newTe);
-
-		pos++; 
-	}
-	
-	Assert(attrmap);
-	pfree(attrmap);
-	Assert(partitionTargetlist);
-
-	return partitionTargetlist;
-}
-
-/*
- * Replace all attribute numbers to the corresponding mapped value (resno)
- *  in GenericExprState list with the attribute numbers in the  target list. 
- */
-static void
-UpdateGenericExprState(List *teTargetlist, List *geTargetlist)
-{
-	Assert(list_length(teTargetlist) ==
-		list_length(geTargetlist));
-
-	ListCell   *ge = NULL;
-	ListCell   *te = NULL;
-
-	forboth(te, teTargetlist, ge, geTargetlist)
-	{
-		GenericExprState *gstate = (GenericExprState *)ge->data.ptr_value;
-		TargetEntry *tle = (TargetEntry *)te->data.ptr_value;
-
-		Var *variable = (Var *) gstate->arg->expr;
-		variable->varattno = tle->resno;
-	}
 }
 
 /*
@@ -149,24 +80,66 @@ initNextTableToScan(DynamicTableScanState *node)
 		Oid *pid = hash_seq_search(&node->pidStatus);
 		if (pid == NULL)
 		{
+			node->shouldCallHashSeqTerm = false;
 			return false;
 		}
 		
-		scanState->ss_currentRelation = OpenScanRelationByOid(*pid);
-		ExecAssignScanType(scanState, RelationGetDescr(scanState->ss_currentRelation));
-
-		if ( NULL != scanState->ps.plan->targetlist )
+		/*
+		 * Inside ExecInitScanTupleSlot() we set the tuple table slot's oid
+		 * to range table entry's relid, which for partitioned table always set
+		 * to parent table's oid. In queries where we need to read table oids
+		 * (MPP-20736) we use the tuple table slot's saved oid (refer to slot_getsysattr()).
+		 * This wrongly returns parent oid, instead of partition oid. Therefore,
+		 * to return correct partition oid, we need to update
+		 * our tuple table slot's oid to reflect the partition oid.
+		 */
+		for (int i = 0; i < DYNAMIC_TABLE_SCAN_NSLOTS; i++)
 		{
-			/* Update targetlist to the current partition.
-			 * This is important for heterogeneous partitions (e.g. dropped attributes.)
-			 */
-			scanState->ps.plan->targetlist =
-				GetPartitionTargetlist(scanState->ss_currentRelation->rd_att, 
-						scanState->ps.plan->targetlist);
+			scanState->ss_ScanTupleSlot[i].tts_tableOid = *pid;
+		}
 
-			/* Update attribute number in expression target list. */
-			UpdateGenericExprState(scanState->ps.plan->targetlist,
-					 scanState->ps.targetlist);
+		scanState->ss_currentRelation = OpenScanRelationByOid(*pid);
+		Relation lastScannedRel = OpenScanRelationByOid(node->lastRelOid);
+		TupleDesc lastTupDesc = RelationGetDescr(lastScannedRel);
+		CloseScanRelation(lastScannedRel);
+
+		TupleDesc partTupDesc = RelationGetDescr(scanState->ss_currentRelation);
+
+		ExecAssignScanType(scanState, partTupDesc);
+
+		AttrNumber	*attMap = NULL;
+
+		attMap = varattnos_map(lastTupDesc, partTupDesc);
+
+		/* If attribute remapping is not necessary, then do not change the varattno */
+		if (attMap)
+		{
+			change_varattnos_of_a_varno((Node*)scanState->ps.plan->qual, attMap, node->scanrelid);
+			change_varattnos_of_a_varno((Node*)scanState->ps.plan->targetlist, attMap, node->scanrelid);
+
+			/*
+			 * Now that the varattno mapping has been changed, change the relation that
+			 * the new varnos correspond to
+			 */
+			node->lastRelOid = *pid;
+		}
+
+		/*
+		 * For the very first partition, the targetlist of planstate is set to null. So, we must
+		 * initialize quals and targetlist, regardless of remapping requirements. For later
+		 * partitions, we only initialize quals and targetlist if a column re-mapping is necessary.
+		 */
+		if (attMap || node->firstPartition)
+		{
+			node->firstPartition = false;
+			MemoryContextReset(node->partitionMemoryContext);
+			MemoryContext oldCxt = MemoryContextSwitchTo(node->partitionMemoryContext);
+
+			/* Initialize child expressions */
+			scanState->ps.qual = (List *)ExecInitExpr((Expr *)scanState->ps.plan->qual, (PlanState*)scanState);
+			scanState->ps.targetlist = (List *)ExecInitExpr((Expr *)scanState->ps.plan->targetlist, (PlanState*)scanState);
+
+			MemoryContextSwitchTo(oldCxt);
 		}
 
 		ExecAssignScanProjectionInfo(scanState);
@@ -223,6 +196,7 @@ ExecDynamicTableScan(DynamicTableScanState *node)
 		}
 		
 		hash_seq_init(&node->pidStatus, node->pidIndex);
+		node->shouldCallHashSeqTerm = true;
 	}
 
 	/*
@@ -234,28 +208,55 @@ ExecDynamicTableScan(DynamicTableScanState *node)
 	{
 		slot = ExecTableScanRelation(scanState);
 		
+#ifdef FAULT_INJECTOR
+    FaultInjector_InjectFaultIfSet(
+    		FaultDuringExecDynamicTableScan,
+            DDLNotSpecified,
+            "",  // databaseName
+            ""); // tableName
+#endif
+
 		if (!TupIsNull(slot))
 		{
 			Gpmon_M_Incr_Rows_Out(GpmonPktFromDynamicTableScanState(node));
 			CheckSendPlanStateGpmonPkt(&scanState->ps);
 		}
-		
 		else
 		{
-			EndTableScanRelation(scanState);
-
-			Assert(scanState->ss_currentRelation != NULL);
-			ExecCloseScanRelation(scanState->ss_currentRelation);
-			scanState->ss_currentRelation = NULL;
+			CleanupOnePartition(scanState);
 		}
 	}
 
 	return slot;
 }
 
+/*
+ * CleanupOnePartition
+ *		Cleans up a partition's relation and releases all locks.
+ */
+static inline void
+CleanupOnePartition(ScanState *scanState)
+{
+	Assert(NULL != scanState);
+	if ((scanState->scan_state & SCAN_SCAN) != 0)
+	{
+		EndTableScanRelation(scanState);
+
+		Assert(scanState->ss_currentRelation != NULL);
+		ExecCloseScanRelation(scanState->ss_currentRelation);
+		scanState->ss_currentRelation = NULL;
+	}
+}
+
 void
 ExecEndDynamicTableScan(DynamicTableScanState *node)
 {
+	CleanupOnePartition((ScanState*)node);
+
+	if (node->shouldCallHashSeqTerm)
+	{
+		hash_seq_term(&node->pidStatus);
+	}
 	FreeScanRelationInternal((ScanState *)node);
 	EndPlanStateGpmonPkt(&node->tableScanState.ss.ps);
 }

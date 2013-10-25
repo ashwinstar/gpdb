@@ -2,6 +2,7 @@ drop schema if exists dpe_single cascade;
 create schema dpe_single;
 set search_path='dpe_single';
 set gp_segments_for_planner=2;
+set optimizer_segments=2;
 
 drop table if exists pt;
 drop table if exists pt1;
@@ -72,6 +73,9 @@ explain select * from pt where ptid in (select tid from t where t1 = 'hello' || 
 
 select * from pt where ptid in (select tid from t where t1 = 'hello' || tid);
 
+-- start_ignore
+-- Known_opt_diff: MPP-21320
+-- end_ignore
 explain select * from pt where exists (select 1 from t where tid = ptid and t1 = 'hello' || tid);
 
 select * from pt where exists (select 1 from t where tid = ptid and t1 = 'hello' || tid);
@@ -145,6 +149,9 @@ set enable_indexscan=on;
 set enable_bitmapscan=off;
 set enable_hashjoin=off;
 
+-- start_ignore
+-- Known_opt_diff: MPP-21322
+-- end_ignore
 explain select * from t, pt where tid = ptid and pt1 = 'hello0';
 
 select * from t, pt where tid = ptid and pt1 = 'hello0';
@@ -182,6 +189,7 @@ select * from t, pt where tid < ptid;
 -- cascading joins
 --
 
+
 explain select * from t, t1, pt where t1.t2 = t.t2 and t1.tid = ptid;
 
 select * from t, t1, pt where t1.t2 = t.t2 and t1.tid = ptid;
@@ -214,6 +222,7 @@ drop schema if exists dpe_multi cascade;
 create schema dpe_multi;
 set search_path='dpe_multi';
 set gp_segments_for_planner=2;
+set optimizer_segments=2;
 
 create table dim1(dist int, pid int, code text, t1 text);
 
@@ -295,6 +304,7 @@ drop schema if exists dpe_malp cascade;
 create schema dpe_malp;
 set search_path='dpe_malp';
 set gp_segments_for_planner=2;
+set optimizer_segments=2;
 
 create table malp (i int, j int, t text) 
 distributed by (i) 
@@ -339,11 +349,15 @@ drop schema if exists dpe_bugs cascade;
 create schema dpe_bugs;
 set search_path='dpe_bugs';
 set gp_segments_for_planner=2;
+set optimizer_segments=2;
 
 create table pat(a int, b date) partition by range (b) (start ('2010-01-01') end ('2010-01-05') every (1), default partition other);
 insert into pat select i,date '2010-01-01' + i from generate_series(1, 10)i;  
 create table jpat(a int, b date);
 insert into jpat values(1, '2010-01-02');
+-- start_ignore
+-- Known_opt_diff: MPP-21323
+-- end_ignore
 explain select * from (select count(*) over (order by a rows between 1 preceding and 1 following), a, b from jpat)jpat inner join pat using(b);
 
 select * from (select count(*) over (order by a rows between 1 preceding and 1 following), a, b from jpat)jpat inner join pat using(b);

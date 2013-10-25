@@ -46,6 +46,7 @@ namespace gpdxl
 	typedef CHashMapIter<ULONG, CMappingElementColIdParamId, gpos::UlHash<ULONG>, gpos::FEqual<ULONG>,
 					CleanupDelete<ULONG>, CleanupRelease<CMappingElementColIdParamId> > HMColParamIter;
 
+
 	//---------------------------------------------------------------------------
 	//	@class:
 	//		CDXLTranslateContext
