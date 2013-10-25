@@ -319,7 +319,7 @@ OPTIONS
  will create table if it does not currently exist. 
 
 
---incremental (backup changes to append-only tables) 
+--incremental (backup changes to append-optimized tables)
 
  Adds an incremental backup to a backup set. When performing an 
  incremental backup, the complete backup set created prior to the 
@@ -332,16 +332,18 @@ OPTIONS
    the current incremental backup 
 
  An incremental backup is similar to a full back up except for 
- append-only tables, including column-oriented tables. An append-only 
- table is backed up only if one of the following operations was performed 
- on the table after the last backup. 
+ append-optimized tables, including column-oriented tables. An 
+ append-optimized table is backed up only if at least one of the 
+ following operations was performed on the table after the last backup. 
    ALTER TABLE 
    INSERT 
-   TRUNCATE
-   DROP and then re-create the table 
+   UPDATE
+   DELETE
+   TRUNCATE 
+   DROP and then re-create the table
 
- For a partitioned append-only tables, only the changed table partitions 
- are backed up. 
+ For partitioned append-optimized tables, only the changed table 
+ partitions are backed up. 
 
  The -u option must be used consistently within a backup set that 
  includes a full and incremental backups. If you use the -u option with a 
