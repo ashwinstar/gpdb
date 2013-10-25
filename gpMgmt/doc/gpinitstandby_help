@@ -7,12 +7,11 @@ Adds and/or initializes a standby master host for a Greenplum Database system.
 SYNOPSIS
 *****************************************************
 
-gpinitstandby { -s <standby_hostname>
-                   [-P <standby_port>] [-F <standby_filespaces>] |
-                -r | -n }
-              [-a] [-q] [-D] [-l <logfile_directory>]
+gpinitstandby { -s <standby_hostname> [-P <port>] 
+    [-F <list_of_filespaces>] | -r | -n } 
 
- 
+[-a] [-q] [-D] [-l <logfile_directory>]
+
 gpinitstandby -? | -v
 
 
@@ -20,129 +19,175 @@ gpinitstandby -? | -v
 DESCRIPTION
 *****************************************************
 
-The gpinitstandby utility adds a backup master host to your
-Greenplum Database system. If your system has an existing backup
-master host configured, use the -r option to remove it before adding 
-the new standby master host.
+The gpinitstandby utility adds a backup, standby master host to your 
+Greenplum Database system. If your system has an existing standby master 
+host configured, use the -r option to remove it before adding the new 
+standby master host. 
 
-Before running this utility, make sure 
-that the Greenplum Database software is installed on the backup master
-host and that you have exchanged SSH keys between hosts.  This utility
-should be run on the currently active primary master host.
+Before running this utility, make sure that the Greenplum Database 
+software is installed on the standby master host and that you have 
+exchanged SSH keys between the hosts. It is recommended that the master 
+port is set to the same port number on the master host and the backup 
+master host. 
 
-The utility will perform the following steps:
-* Update the Greenplum Database system catalog to remove the
-  existing backup master host information (if the -r option is supplied)
-* Update the Greenplum Database system catalog to add the new backup
-  master host information
-* Edit the pg_hba.conf files of the segment instances to allow access
-  from the newly added standby master.
-* Setup the backup master instance on the alternate master host
-* Start the synchronization process
+See the Greenplum Database Installation Guide for instructions. This 
+utility should be run on the currently active primary master host. 
 
-A backup master host serves as a 'warm standby' in the event of the 
-primary master host becoming nonoperational. The backup master is kept 
-up to date by a transaction log replication process,
-which runs on the backup master host and keeps the data between the 
-primary and backup master hosts synchronized. If the primary master 
-fails, the log replication process is shutdown, and the backup master 
-can be activated in its place by using the gpactivatestandby utility. 
-Upon activation of the backup master, the replicated logs are used to 
-reconstruct the state of the master host at the time of the last 
-successfully committed transaction.
+The utility performs the following steps: 
 
+* Updates the Greenplum Database system catalog to remove the existing 
+  standby master host information (if the -r option is supplied) 
+
+* Updates the Greenplum Database system catalog to add the new standby 
+  master host information 
+
+* Edits the pg_hba.conf file of the Greenplum Database master to allow 
+  access from the newly added standby master. 
+
+* Sets up the standby master instance on the alternate master host 
+
+* Starts the synchronization process 
+
+A backup, standby master host serves as a 'warm standby' in the 
+event of the primary master host becoming non-operational. The standby 
+master is kept up to date by transaction log replication processes (the 
+walsender and walreceiver), which run on the primary master and standby 
+master hosts and keep the data between the primary and standby master 
+hosts synchronized. If the primary master fails, the log replication 
+process is shut down, and the standby master can be activated in its 
+place by using the gpactivatestandby utility. Upon activation of the 
+standby master, the replicated logs are used to reconstruct the state of 
+the master host at the time of the last successfully committed 
+transaction. 
+
+The activated standby master effectively becomes the Greenplum Database 
+master, accepting client connections on the master port and performing 
+normal master operations such as SQL command processing and workload 
+management. 
 
 
 *****************************************************
 OPTIONS
 *****************************************************
 
--s <standby_hostname>
+-a (do not prompt) 
 
-The host name of the standby master host.
-
-
--P <standby_port>
-
-The port of the standby master.  Default is the same as the primary master.
+ Do not prompt the user for confirmation. 
 
 
--F <standby_filespaces>
+-D (debug) 
 
-The filespace mapping of the standby master.  This string should be
-formatted in the following pattern.
-
-  <filespace_name>:<filespace_path>[,<filespace_name>:<filespace_path>...]
-
-If omitted, the utility will prompt for the user input.
+ Sets logging level to debug. 
 
 
--r (remove standby master)
+-F <list_of_filespaces> 
 
-Removes the currently configured standby master host from your 
-Greenplum Database system.
+ A list of filespace names and the associated locations. Each filespace 
+ name and its location is separated by a colon. If there is more than one 
+ file space name, each pair (name and location) is separated by a comma. 
+ For example: 
 
+ filespace1_name:fs1_location,filespace2_name:fs2_location 
 
--n (starts standby master if stopped)
+ If this option is not specified, gpinitstandby prompts the user for the 
+ filespace names and locations. 
 
-Use this option if you already have a standby master configured, 
-and just want to start the same if its stopped due to some reason.
-
-
--a (do not prompt)
-
-Do not prompt the user for confirmation.
-
-
--q (no screen output)
-
-Run in quiet mode. Command output is not displayed on the screen, 
-but is still written to the log file.
+ If the list is not formatted correctly or number of filespaces do not 
+ match the number of filespaces already created in the system, 
+ gpinitstandby returns an error. 
 
 
--l <logfile_directory>
+-l <logfile_directory> 
 
-The directory to write the log file. Defaults to ~/gpAdminLogs.
-
-
--D (debug)
-
-Sets logging level to debug.
+ The directory to write the log file. Defaults to ~/gpAdminLogs. 
 
 
--? (help)
+-n (restart standby master) 
 
-Displays the online help.
+ Specify this option to start a Greenplum Database standby master that 
+ has been configured but has stopped for some reason. 
 
 
--v (show script version)
+-P <port> 
 
-Displays the version of this utility.
+ This option specifies the port that is used by the Greenplum Database 
+ standby master. The default is the same port used by the active 
+ Greenplum Database master. 
+
+ If the Greenplum Database standby master is on the same host as the 
+ active master, the ports must be different. If the ports are the same 
+ for the active and standby master and the host is the same, the utility 
+ returns an error. 
+
+
+-q (no screen output) 
+
+ Run in quiet mode. Command output is not displayed on the screen, but is 
+ still written to the log file. 
+
+
+-r (remove standby master) 
+
+ Removes the currently configured standby master host from your Greenplum 
+ Database system. 
+
+
+-s <standby_hostname> 
+
+ The host name of the standby master host. 
+
+
+-v (show utility version) 
+
+ Displays the version, status, last updated date, and check sum of this 
+ utility. 
+
+
+-? (help) 
+
+ Displays the online help. 
 
 
 *****************************************************
 EXAMPLES
 *****************************************************
 
-Add a backup master host to your Greenplum Database system and 
-start the synchronization process:
+Add a standby master host to your Greenplum Database system and start 
+the synchronization process: 
 
-gpinitstandby -s host09
+gpinitstandby -s host09 
+
+Start an existing standby master host and synchronize the data with the 
+current primary master host: 
+
+gpinitstandby -n 
+
+NOTE: Do not specify the -n and -s options in the same command. 
 
 
-Remove the existing backup master from your Greenplum system configuration:
+Add a standby master host to your Greenplum Database system specifying a 
+different port: 
 
-gpinitstandby -r
+gpinitstandby -s myhost -P 2222 
+
+If you specify the same host name as the active Greenplum Database 
+master, the installed Greenplum Database software that is used as a 
+standby master must be in a separate location from the active Greenplum 
+Database master. Also, filespace locations that are used by the standby 
+master must be different than the filespace locations used by the active 
+Greenplum Database master. 
 
 
-Start an existing backup master host - do not add a new Greenplum backup 
-master host to the system catalog:
+Remove the existing standby master from your Greenplum system 
+configuration: 
 
-gpinitstandby -n
+gpinitstandby -r 
 
 
 *****************************************************
 SEE ALSO
 *****************************************************
 
-gpinitsystem, gpaddmirrors, gpactivatestandby
+gpinitsystem, gpaddmirrors, gpactivatestandby 
+
+
