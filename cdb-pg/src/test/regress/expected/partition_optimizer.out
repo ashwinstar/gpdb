@@ -5669,6 +5669,10 @@ select * from locktest;
  dropped table          | AccessExclusiveLock | relation
  dropped table          | AccessExclusiveLock | relation
  dropped table          | AccessExclusiveLock | relation
+ dropped table          | AccessExclusiveLock | relation
+ dropped table          | AccessExclusiveLock | relation
+ dropped table          | AccessExclusiveLock | relation
+ dropped table          | AccessExclusiveLock | relation
  gp_distribution_policy | RowExclusiveLock    | relation
  locktest               | AccessShareLock     | relation
  pg_appendonly          | RowExclusiveLock    | relation
@@ -5679,7 +5683,7 @@ select * from locktest;
  pg_partition           | RowExclusiveLock    | relation
  pg_partition_rule      | RowExclusiveLock    | relation
  pg_type                | RowExclusiveLock    | relation
-(15 rows)
+(17 rows)
 
 commit;
 -- Indexing

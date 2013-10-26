@@ -2391,6 +2391,18 @@ select * from nhtest a join nhtest b using (i);
  100000.22
 (2 rows)
 
+create temp table l(a int);
+insert into l values (1), (1), (2);
+select * from l l1 join l l2 on l1.a = l2.a left join l l3 on l1.a = l3.a and l1.a = 2 order by 1,2,3;
+ a | a | a 
+---+---+---
+ 1 | 1 |  
+ 1 | 1 |  
+ 1 | 1 |  
+ 1 | 1 |  
+ 2 | 2 | 2
+(5 rows)
+
 --
 -- Predicate propagation over equality conditions
 --
