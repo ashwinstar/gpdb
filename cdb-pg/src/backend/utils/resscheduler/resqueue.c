@@ -282,11 +282,23 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 
 	LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
 
+	/* Look up existing queue */
+	PG_TRY();
+	{
+		queue = GetResQueueFromLock(lock);
+	}
+	PG_CATCH();
+	{
+		/* Something wrong happened - our RQ is gone. Release all locks and clean out */
+		LWLockReleaseAll();
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
 	/*
 	 * If the query cost is smaller than the ignore cost limit for this queue
 	 * then don't try to take a lock at all.
 	 */
-	queue = GetResQueueFromLock(lock);
 	if (incrementSet->increments[RES_COST_LIMIT] < queue->ignorecostlimit)
 	{
 		/* Decrement requested. */
