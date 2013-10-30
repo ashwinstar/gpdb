@@ -29,6 +29,8 @@
  */
 
 #include "gp_filedump.h"
+#include "storage/quicklz1.h"
+#include "storage/quicklz3.h"
 
 bool            assert_enabled = true;
 /* Global variables for ease of use mostly */
@@ -46,6 +48,22 @@ Oid             relid = InvalidOid;
 TupleDesc       tupdesc = NULL;
 MemoryContext   CurrentMemoryContext = NULL;
 
+// Variables for AppendOnly Column Oriented table Dump
+bool Debug_appendonly_print_storage_headers = false;
+static CompressType compressType = DECOMPRESS_ZLIB;
+static unsigned int compressLevel = 1;
+static Orientation orientation = ORIENTATION_COLUMN;
+#define AO_CO_HEADER_VERSION 2
+#define DEFAULT_AO_BLOCK_SIZE 32768
+
+/*
+ * From the QuickLZ manual:
+ *
+ *   "The destination buffer must be at least size + 400 bytes large because
+ *   incompressible data may increase in size."
+ *
+ */
+#define EXTRA_BUFFER_SPACE_REQUIRED_FOR_QUICKLZ 400
 
 /* Function Prototypes */
 static void     DisplayOptions(unsigned int validOptions);
@@ -87,6 +105,26 @@ void           *
 MemoryContextAllocImpl(MemoryContext context, Size size, const char *sfile, const char *sfunc, int sline)
 {
 	return malloc(size);
+}
+
+char *
+MemoryContextStrdup(MemoryContext context, const char *string)
+{
+	char	   *nstr;
+	Size		len = strlen(string) + 1;
+
+	nstr = (char *) malloc (len);
+
+	memcpy(nstr, string, len);
+
+	return nstr;
+}
+
+void *
+MemoryContextReallocImpl(void *pointer, Size size, const char *sfile, const char *sfunc, int sline)
+{
+
+	return realloc( pointer, size );
 }
 
 Datum
@@ -642,7 +680,7 @@ DisplayOptions(unsigned int validOptions)
 		("\nVersion 3.1 (based on Postgres 8.2) Copyright (c) 2002-2007 Red Hat, Inc.\n");
 
 	printf
-		("\nUsage: gp_filedump [-abcdfhixy] [-R startblock [endblock]] [-S blocksize] file\n\n"
+		("\nUsage: gp_filedump [-abcdfhixyz] [-R startblock [endblock]] [-S blocksize] file\n\n"
 		 "Display formatted contents of a PostgreSQL heap/index/control file\n"
 		 " Defaults are: relative addressing, range of the entire file, block\n"
 		 "               size as listed on block 0 in the file\n\n"
@@ -670,6 +708,12 @@ DisplayOptions(unsigned int validOptions)
 		 "  -c  Interpret the file listed as a control file\n"
 	  "  -f  Display formatted content dump along with interpretation\n"
 		 "  -S  Force block size to [blocksize]\n"
+		 "\nThe following options are valid for AppendOnly Column Oriented Table files:\n"
+	  "  -z  Interpret the file listed as a AppendOnly file\n"
+		"  -T  Compression type (zlib or quicklz) default=zlib if not specified.\n"
+		"  -L  Compression level (1-4) default=1 if not specified\n"
+		"  -M  Checksum option for AppendOnly files. By default tool considers checksums not present\n"
+		"  -O  Orientation of AppendOnly table (row or column). Default is column.\n\n"
 		 "\nReport bugs to <rhdb@sources.redhat.com>\n");
 }
 
@@ -812,6 +856,112 @@ ConsumeOptions(int numOptions, char **options)
 			{
 				rc = OPT_RC_INVALID;
 				printf("Error: Invalid block size requested <%s>.\n",
+				       optionString);
+				break;
+			}
+		}
+		else if ((optionStringLength == 2)
+			 && (strcmp(optionString, "-T") == 0))
+		{
+			/* Only accept the compressType  option once */
+			if (rc == OPT_RC_DUPLICATE)
+				break;
+
+			/*
+			 * The token immediately following -T is the compressType string
+			 */
+			if (x >= (numOptions - 2))
+			{
+				rc = OPT_RC_INVALID;
+				printf("Error: Missing compressType identifier.\n");
+				break;
+			}
+			/* Next option encountered must be forced compressType string */
+			optionString = options[++x];
+			if (strcmp(optionString, "zlib") == 0)
+			{
+				compressType = DECOMPRESS_ZLIB;
+			}
+			else if (strcmp(optionString, "quicklz") == 0)
+			{
+				compressType = DECOMPRESS_QUICKLZ;
+			}
+			else
+			{
+				rc = OPT_RC_INVALID;
+				printf("Error: Invalid compressType requested <%s>.\n",
+				       optionString);
+				break;
+			}
+		}
+		else if ((optionStringLength == 2)
+			 && (strcmp(optionString, "-L") == 0))
+		{
+			int             localCompressLevel;
+
+			/* Only accept the compressLevel option once */
+			if (rc == OPT_RC_DUPLICATE)
+				break;
+
+			/*
+			 * The token immediately following -L is the compressLevel
+			 */
+			if (x >= (numOptions - 2))
+			{
+				rc = OPT_RC_INVALID;
+				printf("Error: Missing compressLevel identifier.\n");
+				break;
+			}
+			/* Next option encountered must be compressLevel */
+			optionString = options[++x];
+			if ((localCompressLevel = GetOptionValue(optionString)) > 0)
+				compressLevel = (unsigned int) localCompressLevel;
+			else
+			{
+				rc = OPT_RC_INVALID;
+				printf("Error: Invalid compess level requested <%s>.\n",
+				       optionString);
+				break;
+			}
+
+			if ( compressLevel > 5 )
+			{
+				rc = OPT_RC_INVALID;
+				printf("Error: Invalid compess level requested <%s>.\n",
+                                       optionString);
+				break;
+			}
+		}
+		else if ((optionStringLength == 2)
+			 && (strcmp(optionString, "-O") == 0))
+		{
+			/* Only accept the orientation option once */
+			if (rc == OPT_RC_DUPLICATE)
+				break;
+
+			/*
+			 * The token immediately following -O is the orientation string
+			 */
+			if (x >= (numOptions - 2))
+			{
+				rc = OPT_RC_INVALID;
+				printf("Error: Missing orientation string.\n");
+				break;
+			}
+			/* Next option encountered must be forced orientation string */
+			optionString = options[++x];
+			if (strcmp(optionString, "row") == 0)
+			{
+				orientation = ORIENTATION_ROW;
+			}
+			else if (strcmp(optionString, "column") == 0)
+			{
+				orientation = ORIENTATION_COLUMN;
+			}
+			else
+			{
+				rc = OPT_RC_INVALID;
+				printf("Error: Invalid orientation requested <%s>.\n",
 				       optionString);
 				break;
 			}
@@ -966,6 +1116,14 @@ ConsumeOptions(int numOptions, char **options)
 				case 'M':
 					SET_OPTION(itemOptions, ITEM_CHECKSUM, 'M');
 					break;
+				case 'z':
+					SET_OPTION(appendOnlyOptions, APPEND_ONLY_DUMP, 'z');
+					break;
+
+					/*
+					 * Do not interpret the data. Format
+					 * to hex and ascii.
+					 */
 
 				default:
 					rc = OPT_RC_INVALID;
@@ -1002,6 +1160,23 @@ ConsumeOptions(int numOptions, char **options)
 			{
 				controlOptions |=
 					(blockOptions & (BLOCK_FORMAT | BLOCK_FORCED));
+				blockOptions = itemOptions = 0;
+			}
+		}
+		/* The user has requested a appendOnly Column oriented file dump */
+		/* -M, -T and -L  are valid... turn off all other formatting */
+		else if (appendOnlyOptions & APPEND_ONLY_DUMP)
+		{
+			if ( (itemOptions & ~(ITEM_CHECKSUM)) || blockOptions )
+			{
+				rc = OPT_RC_INVALID;
+				printf("Error: Invalid options used for Append Only Column Oriented File dump.\n"
+				       "       Only <MTL> can be used with <z> option.\n");
+			}
+			else
+			{
+				appendOnlyOptions |=
+					(itemOptions & (ITEM_CHECKSUM));
 				blockOptions = itemOptions = 0;
 			}
 		}
@@ -2481,6 +2656,399 @@ DumpFileContents()
 	}
 }
 
+static bool
+Dump_AppendOnlyStorage_ContentInfo(
+	uint8                   *headerPtr,
+	AppendOnlyStorageReadCurrent *blkHdr )
+{
+	printf("\n\t<AO Content Info> -----");
+	Bytef *uncompressedDatum = NULL;
+	bool success = true;
+
+	if ( blkHdr->isCompressed )
+	{
+		uncompressedDatum = palloc(blkHdr->uncompressedLen + EXTRA_BUFFER_SPACE_REQUIRED_FOR_QUICKLZ );
+		printf("\n\t Decompressing using \"%s\" with compressionLevel: %d",
+				compressType==DECOMPRESS_ZLIB?"ZLIB":"QUICKLZ", compressLevel);
+		
+		if ( compressType == DECOMPRESS_QUICKLZ )
+		{
+			uLongf destLen = 0;
+			if ( compressLevel == 1 )
+			{
+				qlz1_state_decompress state;
+				memset( &state, 0, sizeof(qlz1_state_decompress));
+				destLen = qlz1_decompress((char*)headerPtr, uncompressedDatum, (qlz1_state_decompress *)&state);
+			}
+
+			if ( compressLevel == 3 )
+			{
+				qlz3_state_decompress state;
+				memset( &state, 0, sizeof(qlz3_state_decompress));
+				destLen = qlz3_decompress((char*)headerPtr, uncompressedDatum, (qlz3_state_decompress *)&state);
+			}
+
+			if ( destLen != blkHdr->uncompressedLen )
+			{
+				printf("\n\t Decompression falied for QuickLZ as expected uncompressedLen: %d and actual uncompressedLen: %lu",
+					blkHdr->uncompressedLen, destLen );
+				pfree(uncompressedDatum);
+				return false;
+			}
+		}
+
+		if ( compressType == DECOMPRESS_ZLIB )
+		{
+			uLongf destLen = blkHdr->uncompressedLen;
+			int status = uncompress (uncompressedDatum, &destLen, (Bytef*)headerPtr, blkHdr->compressedLen);
+
+			if (status != Z_OK)
+			{
+				printf("\nERROR uncompression failed: %s(%d)  %lu", zError(status), status, destLen );
+				pfree(uncompressedDatum);
+				return false;
+			}
+		}
+
+		headerPtr = uncompressedDatum;
+	}
+
+	DatumStreamBlock_Orig *contentPtr = (DatumStreamBlock_Orig*)headerPtr;
+
+	switch( contentPtr->version )
+	{
+		
+	case DatumStreamVersion_Original:
+		printf("\n\t DatumStreamVersion_Original  flags: %d",
+			contentPtr->flags );
+		if ( contentPtr->flags & DSB_HAS_NULLBITMAP )
+		{
+			printf( " (HAS_NULLBITMAP)");
+		}
+		printf("\n\t ndatum: %d nullSize: %d Size: %d",
+			contentPtr->ndatum,
+			contentPtr->nullsz,
+			contentPtr->sz);
+		break;
+	case DatumStreamVersion_Dense:
+		{
+		uint8 *p = headerPtr;
+		DatumStreamBlock_Dense *densePtr = (DatumStreamBlock_Dense*) p;
+		p += sizeof(DatumStreamBlock_Dense);
+		printf("\n\t DatumStreamVersion_Dense  flags: %d", densePtr->orig_4_bytes.flags );
+		/* Print meaning of flags before printing the header fields. */
+		if ( densePtr->orig_4_bytes.flags & DSB_HAS_NULLBITMAP )
+		{
+			printf( " (HAS_NULLBITMAP)");
+		}
+		if ( densePtr->orig_4_bytes.flags & DSB_HAS_RLE_COMPRESSION )
+		{
+			printf( " (HAS_RLE_COMPRESSION)");
+		}
+		printf("\n\t logical_row_count: %d physical_datum_count: %d\n\t physical_data_size: %d",
+			densePtr->logical_row_count,
+			densePtr->physical_datum_count,
+			densePtr->physical_data_size );
+		/* Print RLE and/or Delta Extension Headers if present. */
+		if ( densePtr->orig_4_bytes.flags & DSB_HAS_RLE_COMPRESSION )
+		{
+			DatumStreamBlock_Rle_Extension *rlePtr = (DatumStreamBlock_Rle_Extension*) p;
+			p += sizeof(DatumStreamBlock_Rle_Extension);
+			printf("\n\t\t<RLE Extension> -----");
+			printf("\n\t\t norepeats_null_bitmap_count: %d compress_bitmap_count: %d\n\t\t repeatcounts_count: %d repeatcounts_size: %d",
+					 rlePtr->norepeats_null_bitmap_count,
+					 rlePtr->compress_bitmap_count,
+					 rlePtr->repeatcounts_count,
+					 rlePtr->repeatcounts_size);
+		}
+		break;
+		}
+	default:
+		printf( "\n Unexpected Append-Only Content DatumStream Version %d", contentPtr->version );
+		success = false;;
+	}
+
+	if ( uncompressedDatum != NULL )
+		pfree(uncompressedDatum);
+
+	return success;
+}
+
+static void
+Print_AppendOnlyStorageReadCurrent( AppendOnlyStorageReadCurrent *blkHdr)
+{
+	printf("\n executorBlockKind: %d rowCount: %d\n headerLen: %d uncompressedLen: %d",
+		blkHdr->executorBlockKind,
+		blkHdr->rowCount,
+		blkHdr->actualHeaderLen,
+		blkHdr->uncompressedLen);
+
+	if ( blkHdr->isCompressed )
+		printf(" compressedLen: %d", blkHdr->compressedLen);
+	else
+		printf(" (Block Not Compressed)");
+
+	printf("\n firstRowNumber: ");
+	if ( blkHdr->hasFirstRowNum )
+		printf(INT64_FORMAT, blkHdr->firstRowNum);
+	else
+		printf("NONE");
+	
+}
+
+static bool
+Dump_AppendOnlyStorage_ContentHeaderInfo(
+		uint8                   *headerPtr,
+		AppendOnlyStorageReadCurrent *blkHdr )
+{
+	bool useChecksum = appendOnlyOptions & APPEND_ONLY_CHECKSUM;
+	bool success = true;
+	AOHeaderCheckError checkError;
+	int version = AO_CO_HEADER_VERSION;
+
+	checkError = AppendOnlyStorageFormat_GetHeaderInfo ( headerPtr, useChecksum, &blkHdr->headerKind, &blkHdr->actualHeaderLen);
+	printf("\n<AO Header> -----");
+	printf("\n HeaderKind: %d ", blkHdr->headerKind);
+
+
+	switch( blkHdr->headerKind )
+	{
+		case AoHeaderKind_None:
+			printf("(AoHeaderKind_None)");
+			success = false;
+			break;
+		case AoHeaderKind_SmallContent:
+			printf("(AoHeaderKind_SmallContent)");	
+			checkError = AppendOnlyStorageFormat_GetSmallContentHeaderInfo (
+								(uint8*)buffer, 
+								blkHdr->actualHeaderLen, 
+								useChecksum, 
+								MAX_APPENDONLY_BLOCK_SIZE, 
+								&blkHdr->overallBlockLen, 
+								&blkHdr->contentOffset, 
+								&blkHdr->uncompressedLen, 
+								&blkHdr->executorBlockKind, 
+								&blkHdr->hasFirstRowNum, 
+								version, 
+								&blkHdr->firstRowNum, 
+								&blkHdr->rowCount, 
+								&blkHdr->isCompressed, 
+								&blkHdr->compressedLen );
+			break;
+		case AoHeaderKind_LargeContent:
+			printf("AoHeaderKind_LargeContent");
+			checkError = AppendOnlyStorageFormat_GetLargeContentHeaderInfo (
+								(uint8*)buffer, 
+								blkHdr->actualHeaderLen, 
+								useChecksum,
+								&blkHdr->uncompressedLen,
+								&blkHdr->executorBlockKind,
+								&blkHdr->hasFirstRowNum, 
+								&blkHdr->firstRowNum, 
+								&blkHdr->rowCount);
+
+			blkHdr->overallBlockLen = blkHdr->actualHeaderLen;
+			blkHdr->contentOffset = blkHdr->actualHeaderLen;			
+			blkHdr->isLarge = true;
+			break;
+		case AoHeaderKind_NonBulkDenseContent:
+			printf("AoHeaderKind_NonBulkDenseContent");
+			checkError = AppendOnlyStorageFormat_GetNonBulkDenseContentHeaderInfo (
+								(uint8*)buffer, 
+								blkHdr->actualHeaderLen, 
+								useChecksum, 
+								MAX_APPENDONLY_BLOCK_SIZE, 
+								&blkHdr->overallBlockLen, 
+								&blkHdr->contentOffset, 
+								&blkHdr->uncompressedLen, 
+								&blkHdr->executorBlockKind, 
+								&blkHdr->hasFirstRowNum, 
+								version, 
+								&blkHdr->firstRowNum, 
+								&blkHdr->rowCount);
+			break;
+		case AoHeaderKind_BulkDenseContent:
+			printf("AoHeaderKind_BulkDenseContent");
+			checkError = AppendOnlyStorageFormat_GetBulkDenseContentHeaderInfo (
+								(uint8*)buffer, 
+								blkHdr->actualHeaderLen, 
+								useChecksum, 
+								MAX_APPENDONLY_BLOCK_SIZE, 
+								&blkHdr->overallBlockLen, 
+								&blkHdr->contentOffset, 
+								&blkHdr->uncompressedLen, 
+								&blkHdr->executorBlockKind, 
+								&blkHdr->hasFirstRowNum, 
+								version, 
+								&blkHdr->firstRowNum, 
+								&blkHdr->rowCount, 
+								&blkHdr->isCompressed, 
+								&blkHdr->compressedLen );
+			break;
+     		default:
+			printf( "Unexpected Append-Only header kind %d", blkHdr->headerKind);
+			success = false;
+			break;
+	}
+
+	if (checkError != AOHeaderCheckOk)
+	{
+		printf("\nError append-only storage header of type %d. Header check error\n", blkHdr->headerKind);
+		success = false;
+	}
+	else
+	{
+		Print_AppendOnlyStorageReadCurrent( blkHdr );
+	}
+
+	return success;
+}
+
+static void
+DumpAppendOnlyFileContents()
+{
+	int bytesRead = 0;
+	bool success = true;
+	int64 blocksRemaining = 0;
+	bool largeContentFragments = false;
+	unsigned long overallBlockLenDisplay = 0;
+	unsigned long long totaloverallBlockPosition = 0;
+
+	if ( compressType == DECOMPRESS_QUICKLZ )
+	{
+		if ( compressLevel != 1 && compressLevel != 3 )
+		{
+			printf("\nQuickLZ compression supports only compression levels 1 or 3\n");
+			return;
+		}
+	}
+
+	while ( success )
+	{
+        bytesRead = fread(buffer, 1, blockSize, fp);
+		printf("\n Initial Bytes Read = %d\n", bytesRead);
+		if ( bytesRead == 0 )
+		{
+			break;
+		}
+
+		if ( !largeContentFragments )
+		{
+			printf("\n***** Block %4u Start ***( Position: %4llu) *************************", 
+				currentBlock, totaloverallBlockPosition);
+			overallBlockLenDisplay = 0;
+		}
+
+		AppendOnlyStorageReadCurrent blkHdr;
+		memset(&blkHdr, 0, sizeof(AppendOnlyStorageReadCurrent));
+
+		success = Dump_AppendOnlyStorage_ContentHeaderInfo( (uint8*)buffer, &blkHdr ); 
+		if ( !success )
+		{
+			printf("\nError dumping append-only Block Header info.\n");
+			break;
+		}	
+
+		if ( ! blkHdr.isLarge )
+		{
+			if ( !largeContentFragments )
+			{
+				// If the Datum is not compressed, then actual blockSize doesn't matter as tool is dumping just the
+				// Headers and not Data. The tool by default is reading 32K and hence headers fit into this range
+				// despite blockSize.
+				// Only if we have compressed Datum and compressed size if greater than 32K, we need to grow the
+				// buffer and read it at full to uncompress successfully.
+				if ( blkHdr.isCompressed )
+				{
+					if ( blockSize < blkHdr.overallBlockLen )
+					{
+						free(buffer);
+						blockSize = blkHdr.overallBlockLen;
+						buffer = (char*) malloc (blockSize);
+
+						// Move back the filepointer to start of this block
+						if (fseek(fp, -bytesRead, SEEK_CUR) != 0)
+						{
+							printf("\nError: Seek error encountered.\n" );
+							return;
+						}
+						// Read the block again now in full
+						bytesRead = fread(buffer, 1, blockSize, fp);
+						// printf("\n Bytes Read = %d\n", bytesRead);
+						if ( bytesRead == 0 )
+						{
+							printf("\nFailed to read the Block from file\n");
+							return;
+						}
+					}
+				}
+				if ( orientation == ORIENTATION_COLUMN )
+				{
+				   success = Dump_AppendOnlyStorage_ContentInfo( (uint8*)(buffer + blkHdr.contentOffset), &blkHdr );
+					if ( !success )
+					{
+					   printf("\nError dumping append-only Block Content info, still moving ahead to dump rest \n");
+						success = true;
+					}
+				}
+			}
+			else
+			{
+				Assert( blocksRemaining >= blkHdr.uncompressedLen );
+				blocksRemaining = blocksRemaining - blkHdr.uncompressedLen ;
+				if ( blocksRemaining == 0 )
+				{
+					largeContentFragments = false;
+				}
+			}
+		}
+		else
+		{
+			// Recurse till end of Large content
+			blocksRemaining = blkHdr.uncompressedLen;
+			largeContentFragments = true;
+		}
+
+		overallBlockLenDisplay = overallBlockLenDisplay + blkHdr.overallBlockLen;
+
+		if ( ! largeContentFragments )
+		{
+			printf ("\n***** Block %4u End (Total Block length: %4lu) ******************", 
+				currentBlock, overallBlockLenDisplay);
+			currentBlock++;
+			totaloverallBlockPosition = totaloverallBlockPosition + overallBlockLenDisplay;
+		}
+		// We have already seeked fp by blockSize
+		// So, now just need to move it by the difference between current totalAoBlockSize and blockSize
+		int seekOffset;
+		if ( bytesRead > blkHdr.overallBlockLen )
+		{
+			// Seek backward
+			seekOffset = bytesRead - blkHdr.overallBlockLen;
+			if (fseek(fp, -seekOffset, SEEK_CUR) != 0)
+			{
+				printf("Error: Seek error encountered when moving backward...\n" );
+				success = false;
+			}
+		}
+		else
+		{
+			// Seek forward
+			seekOffset = blkHdr.overallBlockLen - bytesRead;
+			if (fseek(fp, seekOffset, SEEK_CUR) != 0)
+			{
+				printf("Error: Seek error encountered when moving forward...\n" );
+				success = false;
+			}
+		}
+	}
+
+	if ( success )
+		printf("\n Done DumpAppendOnlyFileContents..... \n");
+	else
+		printf("\n FAILED to DumpAppendOnlyFileContents..... \n");
+}
+
 /*
  * Consume the options and iterate through the given file, formatting as
  * requested.
@@ -2520,6 +3088,11 @@ main(int argv, char **argc)
 			if (!(controlOptions & CONTROL_FORCED))
 				blockSize = sizeof(ControlFileData);
 		}
+		else if (appendOnlyOptions)
+		{
+			// We grow this based on header read, dynamically
+			blockSize = DEFAULT_AO_BLOCK_SIZE;
+		}
 		else if (!(blockOptions & BLOCK_FORCED))
 			blockSize = GetBlockSize();
 
@@ -2529,7 +3102,16 @@ main(int argv, char **argc)
 		{
 			buffer = (char *) malloc(blockSize);
 			if (buffer)
-				DumpFileContents();
+			{
+				if ( appendOnlyOptions )
+				{
+					DumpAppendOnlyFileContents();
+				}
+				else
+				{
+					DumpFileContents();
+				}
+			}
 			else
 				printf("\nError: Unable to create buffer of size <%d>.\n",
 				       blockSize);

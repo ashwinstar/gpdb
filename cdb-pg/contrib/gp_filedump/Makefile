@@ -1,7 +1,7 @@
 PROGRAM = gp_filedump
-OBJS	= gp_filedump.o pg_crc.o crc32c.o numutils.o heaptuple.o
+OBJS	= gp_filedump.o pg_crc.o crc32c.o numutils.o heaptuple.o cdbappendonlystorageformat.o stringinfo.o quicklz1.o quicklz3.o
 
-EXTRA_CLEAN = pg_crc.c crc32c.c
+EXTRA_CLEAN = pg_crc.c crc32c.c cdbappendonlystorageformat.c stringinfo.c quicklz1.c quicklz3.c
 #PG_CPPFLAGS = -msse4.2
 
 DOCS = README.gp_filedump
@@ -30,3 +30,16 @@ numutils.c: $(top_srcdir)/src/backend/utils/adt/numutils.c
 
 heaptuple.c: $(top_srcdir)/src/backend/access/common/heaptuple.c
 	rm -f $@ && $(LN_S) $< .
+
+cdbappendonlystorageformat.c: $(top_srcdir)/src/backend/cdb/cdbappendonlystorageformat.c
+	rm -f $@ && $(LN_S) $< .
+
+stringinfo.c: $(top_srcdir)/src/backend/lib/stringinfo.c
+	rm -f $@ && $(LN_S) $< .
+
+quicklz1.c: $(top_srcdir)/src/backend/storage/file/quicklz1.c
+	rm -f $@ && $(LN_S) $< .
+
+quicklz3.c: $(top_srcdir)/src/backend/storage/file/quicklz3.c
+	rm -f $@ && $(LN_S) $< .
+

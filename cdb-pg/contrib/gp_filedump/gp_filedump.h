@@ -45,6 +45,12 @@
 #include "access/htup.h"
 #include "catalog/pg_control.h"
 #include "utils/builtins.h"
+#include "cdb/cdbappendonlystorage_int.h"
+#include "cdb/cdbappendonlystorage.h"
+#include "cdb/cdbappendonlystorageread.h"
+#include "cdb/cdbappendonlyam.h"
+#include "cdb/cdbappendonlystorageformat.h"
+#include "utils/datumstreamblock.h"
 
 // Options for Block formatting operations
 static unsigned int blockOptions = 0;
@@ -84,6 +90,15 @@ typedef enum
 }
 controlSwitches;
 
+// Options for Append Only File formatting operations
+static unsigned int appendOnlyOptions = 0;
+typedef enum
+{
+  APPEND_ONLY_DUMP = 0x00000001,	// -z: Dump Append only file
+  APPEND_ONLY_CHECKSUM = ITEM_CHECKSUM	// -M: File has Header CheckSums
+}
+AppendOnlySwitches;
+
 // Possible value types for the Special Section
 typedef enum
 {
@@ -111,6 +126,21 @@ typedef enum
   OPT_RC_COPYRIGHT		// Copyright should be displayed
 }
 optionReturnCodes;
+
+typedef enum
+{
+	DECOMPRESS_ZLIB,
+	DECOMPRESS_QUICKLZ,
+	DECOMPRESS_RLE
+}
+CompressType;
+
+typedef enum
+{
+	ORIENTATION_COLUMN,
+	ORIENTATION_ROW
+}
+Orientation;
 
 // Simple macro to check for duplicate options and then set
 // an option flag for later consumption 
