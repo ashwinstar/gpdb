@@ -406,11 +406,11 @@ def create_mixed_storage_partition(context, tablename, dbname):
     create_table_str = "Create table %s (%s) Distributed randomly \
                         Partition by list(Column2)  \
                         Subpartition by range(Column3) Subpartition Template ( \
-                        subpartition s_1  start(date '2010-01-01') end(date '2010-05-01') with (appendonly=true, orientation=column, compresstype=quicklz, compresslevel=1), \
-                        subpartition s_2  start(date '2010-05-01') end(date '2010-10-01') with (appendonly=true, orientation=row, compresstype=zlib, compresslevel=1), \
-                        subpartition s_3  start(date '2010-10-01') end(date '2011-05-01') with (appendonly=true, orientation=column), \
-                        subpartition s_4  start(date '2011-05-01') end(date '2011-10-01') with (appendonly=true, orientation=row), \
-                        subpartition s_5  start(date '2011-10-01') end(date '2013-01-01') ) \
+                        subpartition s_1  start(date '2010-01-01') end(date '2011-01-01') with (appendonly=true, orientation=column, compresstype=quicklz, compresslevel=1), \
+                        subpartition s_2  start(date '2011-01-01') end(date '2012-01-01') with (appendonly=true, orientation=row, compresstype=zlib, compresslevel=1), \
+                        subpartition s_3  start(date '2012-01-01') end(date '2013-01-01') with (appendonly=true, orientation=column), \
+                        subpartition s_4  start(date '2013-01-01') end(date '2014-01-01') with (appendonly=true, orientation=row), \
+                        subpartition s_5  start(date '2014-01-01') end(date '2015-01-01') ) \
                         (partition p1 values('backup') , partition p2 values('restore')) \
                         ;" % (tablename, table_definition)
 
@@ -432,19 +432,15 @@ def modify_partition_data(context, tablename, dbname, partitionnum):
     else:
         raise Exception("BAD PARAM to modify_partition_data %s" % partitionnum)
 
-    sql = "insert into %s values(90, 'backup', '%s-12-30')" % (tablename, year)
-    with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
-        for i in range(10):
-            dbconn.execSQL(conn, sql)
-        conn.commit()
+    cmdStr = """ echo "90,backup,%s-12-30" | psql -d %s -c "copy %s from stdin delimiter ',';" """ % (year, dbname, tablename)    
+    for i in range(10):
+        cmd = Command(name='insert data into %s' % tablename, cmdStr=cmdStr)
+        cmd.run(validateAfter=True) 
 
 def modify_data(context, tablename, dbname):
-
-    sql = 'insert into %s select * from %s' % (tablename, tablename)
-
-    with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
-        dbconn.execSQL(conn, sql)
-        conn.commit()
+    cmdStr = 'psql -d %s -c "copy %s to stdout;" | psql -d %s -c "copy %s from stdin;"' % (dbname, tablename, dbname, tablename)
+    cmd = Command(name='insert data into %s' % tablename, cmdStr=cmdStr)
+    cmd.run(validateAfter=True)
 
 def add_partition(context, partitionnum, tablename, dbname):
     alter_table_str = "alter table %s add default partition p%s; insert into %s select i+%d, 'update', i + date '%s' from generate_series(0,1094) as i" \
