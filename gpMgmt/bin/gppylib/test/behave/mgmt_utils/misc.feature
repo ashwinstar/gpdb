@@ -28,6 +28,7 @@ Feature: Miscellaneous tests which do not belong to mgmt utilities
         When the user runs "psql -c 'show pgstat_track_activity_query_size' template1"
         Then psql should print 1024 to stdout 
 
+    @wip
     Scenario: Large query with number of chars greater than current_query size in pgstat_activity in CT mode
         Given the database is running
         And the database "testdb" does not exist

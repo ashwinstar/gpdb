@@ -2,6 +2,7 @@
 Feature: gpfdist configure timeout value
 
     @smoke
+    @wip
     Scenario: Validate timeout command line option - debug case 1
         Given the "gpfdist" process is killed
         Given the client program "gpfdist_client.py" is present under CWD in "gppylib/test/behave_utils/gpfdist_utils"
@@ -15,6 +16,7 @@ Feature: gpfdist configure timeout value
         And the "gpfdist" process is killed
 
     @fire
+    @wip
     Scenario: Validate timeout command line option - debug case 2
         Given the "gpfdist" process is killed
         Given the client program "gpfdist_client.py" is present under CWD in "gppylib/test/behave_utils/gpfdist_utils"
@@ -65,6 +67,7 @@ Feature: gpfdist configure timeout value
         And gpfdist should return a return code of 1 
 
     @fire
+    @wip
     Scenario: gpfdist select from simple external table
         Given the database is running
         And database "gpfdistdb" is created if not exists
@@ -82,6 +85,7 @@ Feature: gpfdist configure timeout value
         When the "gpfdist" process is killed
         Given the directory "extdata" does not exist in current working directory
 
+    @wip
     Scenario: simple writable external table test
         Given the database is running
         And database "gpfdistdb" is created if not exists
