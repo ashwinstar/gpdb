@@ -757,21 +757,28 @@ def impl(context, filename, table_list):
 def impl(context, table, dbname):
     create_fake_pg_aoseg_table(context, table, dbname)
 
-@then('verify that the "{file_type}" file in "{file_dir}" dir contains "{text_find}"')
-def impl(context, file_type, file_dir, text_find):
+def verify_file_contents(context, file_type, file_dir, text_find, should_contain=True):
     if len(file_dir.strip()) == 0:
         file_dir = master_data_dir
     if not hasattr(context, "dump_prefix"):
         context.dump_prefix = ''
 
-    if file_type == 'report':
+    if file_type == 'pg_dump_log':
+        fn = 'pg_dump_log'
+        context.backup_timestamp = '0'
+    elif file_type == 'report':
         fn = '%sgp_dump_%s.rpt' % (context.dump_prefix, context.backup_timestamp)
+    elif file_type == 'status':
+        fn = '%sgp_dump_status_1_1_%s' % (context.dump_prefix, context.backup_timestamp)
     elif file_type == 'filter':
         fn = '%sgp_dump_%s_filter' % (context.dump_prefix, context.backup_timestamp)
 
     subdirectory = context.backup_timestamp[0:8]
-
-    full_path = os.path.join(file_dir, 'db_dumps', subdirectory, fn)
+    
+    if file_type == 'pg_dump_log':
+        full_path = os.path.join(file_dir, fn)
+    else:
+        full_path = os.path.join(file_dir, 'db_dumps', subdirectory, fn)
 
     if not os.path.isfile(full_path):
         raise Exception ("Can not find %s file: %s" % (file_type, full_path))
@@ -780,8 +787,18 @@ def impl(context, file_type, file_dir, text_find):
     with open(full_path) as fd:
         contents = fd.read()
 
-    if not text_find in contents:
+    if should_contain and not text_find in contents:
         raise Exception("Did not find '%s' in file %s" % (text_find, full_path))
+    elif not should_contain and text_find in contents:
+        raise Exception("Found '%s' in file '%s'" % (text_find, full_path)) 
+    
+@then('verify that the "{file_type}" file in "{file_dir}" dir contains "{text_find}"')
+def impl(context, file_type, file_dir, text_find):
+    verify_file_contents(context, file_type, file_dir, text_find)
+
+@then('verify that the "{file_type}" file in "{file_dir}" dir does not contain "{text_find}"')
+def impl(context, file_type, file_dir, text_find):
+    verify_file_contents(context, file_type, file_dir, text_find, should_contain=False)
 
 @then('the timestamp in the report file should be same as timestamp key')
 def impl(context):

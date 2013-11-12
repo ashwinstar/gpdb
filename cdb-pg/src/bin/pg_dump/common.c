@@ -55,6 +55,8 @@ static int  numTypeStorageOptions;
 static int	numFuncs;
 static int	numOperators;
 
+bool is_gpdump; /* determines whether to print extra logging messages in getSchemaData */
+
 static void flagInhTables(TableInfo *tbinfo, int numTables,
 			  InhInfo *inhinfo, int numInherits);
 static void flagInhAttrs(TableInfo *tbinfo, int numTables,
@@ -99,46 +101,56 @@ getSchemaData(int *numTablesPtr)
 	const char *LOGGER_INFO = "INFO";
 
 	//write_msg(NULL, "reading schemas\n");
-	status_log_msg(LOGGER_INFO, progname, "reading schemas\n");
+	if(is_gpdump || g_verbose)
+		status_log_msg(LOGGER_INFO, progname, "reading schemas\n");
 	nsinfo = getNamespaces(&numNamespaces);
 
-	status_log_msg(LOGGER_INFO, progname, "reading user-defined functions\n");
+	if(is_gpdump || g_verbose)
+		status_log_msg(LOGGER_INFO, progname, "reading user-defined functions\n");
 	funinfo = getFuncs(&numFuncs);
 
 	/* this must be after getFuncs */
-	status_log_msg(LOGGER_INFO, progname, "reading user-defined types\n");
+	if(is_gpdump || g_verbose)
+		status_log_msg(LOGGER_INFO, progname, "reading user-defined types\n");
 	typinfo = getTypes(&numTypes);
 
 	/* this must be after getFuncs */
-	status_log_msg(LOGGER_INFO, progname, "reading type storage options\n");
+	if(is_gpdump || g_verbose)
+		status_log_msg(LOGGER_INFO, progname, "reading type storage options\n");
 	typestorageoptions = getTypeStorageOptions(&numTypeStorageOptions);
 
 	/* this must be after getFuncs, too */
-	status_log_msg(LOGGER_INFO, progname, "reading procedural languages\n");
+	if(is_gpdump || g_verbose)
+		status_log_msg(LOGGER_INFO, progname, "reading procedural languages\n");
 	proclanginfo = getProcLangs(&numProcLangs);
 
-
-	status_log_msg(LOGGER_INFO, progname, "reading user-defined aggregate functions\n");
+	if(is_gpdump || g_verbose)
+		status_log_msg(LOGGER_INFO, progname, "reading user-defined aggregate functions\n");
 	agginfo = getAggregates(&numAggregates);
-
-	status_log_msg(LOGGER_INFO, progname, "reading user-defined operators\n");
+	
+	if(is_gpdump || g_verbose)
+		status_log_msg(LOGGER_INFO, progname, "reading user-defined operators\n");
 	oprinfo = getOperators(&numOperators);
 
 	if (testExtProtocolSupport())
 	{
-		status_log_msg(LOGGER_INFO, progname, "reading user-defined external protocols\n");
+		if(is_gpdump || g_verbose)
+			status_log_msg(LOGGER_INFO, progname, "reading user-defined external protocols\n");
 		ptcinfo = getExtProtocols(&numExtProtocols);
 	}
 
-	status_log_msg(LOGGER_INFO, progname, "reading user-defined operator classes\n");
+	if(is_gpdump || g_verbose)
+		status_log_msg(LOGGER_INFO, progname, "reading user-defined operator classes\n");
 	opcinfo = getOpclasses(&numOpclasses);
 
 	if (testSqlMedSupport())
 	{
-		status_log_msg(LOGGER_INFO, progname, "reading user-defined foreign-data wrappers\n");
+		if(is_gpdump || g_verbose)
+			status_log_msg(LOGGER_INFO, progname, "reading user-defined foreign-data wrappers\n");
 		fdwinfo = getForeignDataWrappers(&numForeignDataWrappers);
 
-		status_log_msg(LOGGER_INFO, progname, "reading user-defined foreign servers\n");
+		if(is_gpdump || g_verbose)
+			status_log_msg(LOGGER_INFO, progname, "reading user-defined foreign servers\n");
 		srvinfo = getForeignServers(&numForeignServers);
 	}
 	else
@@ -149,38 +161,49 @@ getSchemaData(int *numTablesPtr)
 		numForeignServers = 0;
 	}
 
-	status_log_msg(LOGGER_INFO, progname, "reading user-defined conversions\n");
+	if(is_gpdump || g_verbose)
+		status_log_msg(LOGGER_INFO, progname, "reading user-defined conversions\n");
 	convinfo = getConversions(&numConversions);
 
-	status_log_msg(LOGGER_INFO, progname, "reading user-defined tables\n");
+	if(is_gpdump || g_verbose)
+		status_log_msg(LOGGER_INFO, progname, "reading user-defined tables\n");
 	tblinfo = getTables(&numTables);
 
-	status_log_msg(LOGGER_INFO, progname, "reading table inheritance information\n");
+	if(is_gpdump || g_verbose)
+		status_log_msg(LOGGER_INFO, progname, "reading table inheritance information\n");
 	inhinfo = getInherits(&numInherits);
 
-	status_log_msg(LOGGER_INFO, progname, "reading rewrite rules\n");
+	if(is_gpdump || g_verbose)
+		status_log_msg(LOGGER_INFO, progname, "reading rewrite rules\n");
 	ruleinfo = getRules(&numRules);
 
-	status_log_msg(LOGGER_INFO, progname, "reading type casts\n");
+	if(is_gpdump || g_verbose)
+		status_log_msg(LOGGER_INFO, progname, "reading type casts\n");
 	castinfo = getCasts(&numCasts);
 
 	/* Link tables to parents, mark parents of target tables interesting */
-	status_log_msg(LOGGER_INFO, progname, "finding inheritance relationships\n");
+	if(is_gpdump || g_verbose)
+		status_log_msg(LOGGER_INFO, progname, "finding inheritance relationships\n");
 	flagInhTables(tblinfo, numTables, inhinfo, numInherits);
 
-	status_log_msg(LOGGER_INFO, progname, "reading column info for interesting tables\n");
+	if(is_gpdump || g_verbose)
+		status_log_msg(LOGGER_INFO, progname, "reading column info for interesting tables\n");
 	getTableAttrs(tblinfo, numTables);
 
-	status_log_msg(LOGGER_INFO, progname, "flagging inherited columns in subtables\n");
+	if(is_gpdump || g_verbose)
+		status_log_msg(LOGGER_INFO, progname, "flagging inherited columns in subtables\n");
 	flagInhAttrs(tblinfo, numTables, inhinfo, numInherits);
 
-	status_log_msg(LOGGER_INFO, progname, "reading indexes\n");
+	if(is_gpdump || g_verbose)
+		status_log_msg(LOGGER_INFO, progname, "reading indexes\n");
 	getIndexes(tblinfo, numTables);
 
-	status_log_msg(LOGGER_INFO, progname, "reading constraints\n");
+	if(is_gpdump || g_verbose)
+		status_log_msg(LOGGER_INFO, progname, "reading constraints\n");
 	getConstraints(tblinfo, numTables);
 
-	status_log_msg(LOGGER_INFO, progname, "reading triggers\n");
+	if(is_gpdump || g_verbose)
+		status_log_msg(LOGGER_INFO, progname, "reading triggers\n");
 	getTriggers(tblinfo, numTables);
 
 	*numTablesPtr = numTables;

@@ -87,6 +87,7 @@ int			optreset;
 extern char *optarg;
 extern int	optind,
 			opterr;
+extern bool is_gpdump;
 
 typedef struct
 {
@@ -453,6 +454,7 @@ main(int argc, char **argv)
 	set_pglocale_pgservice(argv[0], "pg_dump");
 
 	g_verbose = false;
+	is_gpdump = true;
 
 	strcpy(g_comment_start, "-- ");
 	g_comment_end[0] = '\0';

@@ -385,6 +385,26 @@ Feature: Validate command line arguments
         Then gpcrondump should return a return code of 0
         And the timestamp from gpcrondump is stored 
         And verify that the "report" file in " " dir contains "Backup Type: Full"
+        And verify that the "status" file in " " dir contains "reading schemas"
+        And verify that the "status" file in " " dir contains "reading user-defined functions"
+        And verify that the "status" file in " " dir contains "reading user-defined types"
+        And verify that the "status" file in " " dir contains "reading type storage options"
+        And verify that the "status" file in " " dir contains "reading procedural languages"
+        And verify that the "status" file in " " dir contains "reading user-defined aggregate functions"
+        And verify that the "status" file in " " dir contains "reading user-defined operators"
+        And verify that the "status" file in " " dir contains "reading user-defined external protocols"
+        And verify that the "status" file in " " dir contains "reading user-defined operator classes"
+        And verify that the "status" file in " " dir contains "reading user-defined conversions"
+        And verify that the "status" file in " " dir contains "reading user-defined tables"
+        And verify that the "status" file in " " dir contains "reading table inheritance information"
+        And verify that the "status" file in " " dir contains "reading rewrite rules"
+        And verify that the "status" file in " " dir contains "reading type casts"
+        And verify that the "status" file in " " dir contains "finding inheritance relationships"
+        And verify that the "status" file in " " dir contains "reading column info for interesting tables"
+        And verify that the "status" file in " " dir contains "flagging inherited columns in subtables"
+        And verify that the "status" file in " " dir contains "reading indexes"
+        And verify that the "status" file in " " dir contains "reading constraints"
+        And verify that the "status" file in " " dir contains "reading triggers"
         And the user runs gpdbrestore with the stored timestamp
         And gpdbrestore should return a return code of 0
         And verify that there is a "heap" table "heap_table" in "fullbkdb" with data
@@ -4206,6 +4226,76 @@ Feature: Validate command line arguments
         Then gpdbrestore should return a return code of 0
         When the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/select_multi_byte_char.sql testdb"
         Then psql should print 2000 to stdout 
+
+    Scenario: Testing pg_dump log messages
+        Given the database is running
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        And there is a backupfile of tables "heap_table, ao_part_table" in "testdb" exists for validation
+        When the user runs "pg_dump testdb 2> /tmp/pg_dump_log -f /tmp/pg_dump"
+        Then pg_dump should return a return code of 0
+        And verify that the "pg_dump_log" file in "/tmp" dir does not contain "reading schemas"
+        And verify that the "pg_dump_log" file in "/tmp" dir does not contain "reading user-defined functions"
+        And verify that the "pg_dump_log" file in "/tmp" dir does not contain "reading user-defined types"
+        And verify that the "pg_dump_log" file in "/tmp" dir does not contain "reading type storage options"
+        And verify that the "pg_dump_log" file in "/tmp" dir does not contain "reading procedural languages"
+        And verify that the "pg_dump_log" file in "/tmp" dir does not contain "reading user-defined aggregate functions"
+        And verify that the "pg_dump_log" file in "/tmp" dir does not contain "reading user-defined operators"
+        And verify that the "pg_dump_log" file in "/tmp" dir does not contain "reading user-defined external protocols"
+        And verify that the "pg_dump_log" file in "/tmp" dir does not contain "reading user-defined operator classes"
+        And verify that the "pg_dump_log" file in "/tmp" dir does not contain "reading user-defined conversions"
+        And verify that the "pg_dump_log" file in "/tmp" dir does not contain "reading user-defined tables"
+        And verify that the "pg_dump_log" file in "/tmp" dir does not contain "reading table inheritance information"
+        And verify that the "pg_dump_log" file in "/tmp" dir does not contain "reading rewrite rules"
+        And verify that the "pg_dump_log" file in "/tmp" dir does not contain "reading type casts"
+        And verify that the "pg_dump_log" file in "/tmp" dir does not contain "finding inheritance relationships"
+        And verify that the "pg_dump_log" file in "/tmp" dir does not contain "reading column info for interesting tables"
+        And verify that the "pg_dump_log" file in "/tmp" dir does not contain "flagging inherited columns in subtables"
+        And verify that the "pg_dump_log" file in "/tmp" dir does not contain "reading indexes"
+        And verify that the "pg_dump_log" file in "/tmp" dir does not contain "reading constraints"
+        And verify that the "pg_dump_log" file in "/tmp" dir does not contain "reading triggers"
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And the user runs "psql -f /tmp/pg_dump testdb" 
+        And psql should return a return code of 0
+        And verify that there is a "heap" table "heap_table" in "testdb" with data
+        And verify that there is a "ao" table "ao_part_table" in "testdb" with data
+        And there are no report files in the master data directory
+
+    Scenario: Testing pg_dump log messages with verbose option set
+        Given the database is running
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        And there is a backupfile of tables "heap_table, ao_part_table" in "testdb" exists for validation
+        When the user runs "pg_dump testdb 2> /tmp/pg_dump_log -f /tmp/pg_dump --verbose"
+        Then pg_dump should return a return code of 0
+        And verify that the "pg_dump_log" file in "/tmp" dir contains "reading schemas"
+        And verify that the "pg_dump_log" file in "/tmp" dir contains "reading user-defined functions"
+        And verify that the "pg_dump_log" file in "/tmp" dir contains "reading user-defined types"
+        And verify that the "pg_dump_log" file in "/tmp" dir contains "reading type storage options"
+        And verify that the "pg_dump_log" file in "/tmp" dir contains "reading procedural languages"
+        And verify that the "pg_dump_log" file in "/tmp" dir contains "reading user-defined aggregate functions"
+        And verify that the "pg_dump_log" file in "/tmp" dir contains "reading user-defined operators"
+        And verify that the "pg_dump_log" file in "/tmp" dir contains "reading user-defined external protocols"
+        And verify that the "pg_dump_log" file in "/tmp" dir contains "reading user-defined operator classes"
+        And verify that the "pg_dump_log" file in "/tmp" dir contains "reading user-defined conversions"
+        And verify that the "pg_dump_log" file in "/tmp" dir contains "reading user-defined tables"
+        And verify that the "pg_dump_log" file in "/tmp" dir contains "reading table inheritance information"
+        And verify that the "pg_dump_log" file in "/tmp" dir contains "reading rewrite rules"
+        And verify that the "pg_dump_log" file in "/tmp" dir contains "reading type casts"
+        And verify that the "pg_dump_log" file in "/tmp" dir contains "finding inheritance relationships"
+        And verify that the "pg_dump_log" file in "/tmp" dir contains "reading column info for interesting tables"
+        And verify that the "pg_dump_log" file in "/tmp" dir contains "flagging inherited columns in subtables"
+        And verify that the "pg_dump_log" file in "/tmp" dir contains "reading indexes"
+        And verify that the "pg_dump_log" file in "/tmp" dir contains "reading constraints"
+        And verify that the "pg_dump_log" file in "/tmp" dir contains "reading triggers"
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And the user runs "psql -f /tmp/pg_dump testdb" 
+        And psql should return a return code of 0
+        And verify that there is a "heap" table "heap_table" in "testdb" with data
+        And verify that there is a "ao" table "ao_part_table" in "testdb" with data
+        And there are no report files in the master data directory
 
     # THIS SHOULD BE THE LAST TEST
     @backupfire
