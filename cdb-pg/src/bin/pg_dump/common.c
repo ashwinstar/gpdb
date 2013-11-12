@@ -55,7 +55,7 @@ static int  numTypeStorageOptions;
 static int	numFuncs;
 static int	numOperators;
 
-bool is_gpdump; /* determines whether to print extra logging messages in getSchemaData */
+bool is_gpdump = false; /* determines whether to print extra logging messages in getSchemaData */
 
 static void flagInhTables(TableInfo *tbinfo, int numTables,
 			  InhInfo *inhinfo, int numInherits);
