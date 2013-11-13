@@ -581,7 +581,6 @@ ExecEagerFree(PlanState *node)
 		case T_RepeatState:
 		case T_ResultState:
 		case T_SetOpState:
-		case T_ShareInputScanState:
 		case T_SubqueryScanState:
 		case T_TidScanState:
 		case T_UniqueState:
@@ -644,6 +643,10 @@ ExecEagerFree(PlanState *node)
 
 		case T_WindowState:
 			ExecEagerFreeWindow((WindowState *)node);
+			break;
+
+		case T_ShareInputScanState:
+			ExecEagerFreeShareInputScan((ShareInputScanState *)node);
 			break;
 
 		default:
