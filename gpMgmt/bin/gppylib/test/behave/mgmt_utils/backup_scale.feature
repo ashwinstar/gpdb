@@ -117,9 +117,9 @@ Feature: Scale tests for backup
         And the performance timer is started
         And the user runs "gpcrondump -a -x scale_db"
         Then gpcrondump should return a return code of 0 
-        And the performance timer should be less then "7000" seconds
+        And the performance timer should be less then "10000" seconds
         And the timestamp from gpcrondump is stored 
         When the performance timer is started
         And the user runs gpdbrestore with the stored timestamp
         Then gpdbrestore should return a return code of 0
-        And the performance timer should be less then "30000" seconds
+        And the performance timer should be less then "45000" seconds
