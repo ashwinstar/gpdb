@@ -8,6 +8,8 @@ import filecmp
 import shutil
 import signal
 import socket
+import tarfile
+import platform
 
 from gppylib.commands.base import Command, ExecutionError, REMOTE
 from gppylib.commands.unix import findCmdInPath
@@ -19,7 +21,7 @@ from gppylib.test.behave_utils.utils import bring_nic_down, bring_nic_up, get_ta
                                             check_return_code, create_int_table, create_partition, check_table_exists, create_large_num_partitions,\
                                             create_fake_pg_aoseg_table, drop_database, drop_database_if_exists, drop_table_if_exists, getRows,\
                                             get_hosts_and_datadirs, get_master_hostname, insert_row, start_database_if_not_started, stop_database_if_started,\
-                                            run_gpcommand, are_segments_synchronized, has_exception, modify_data, modify_partition_data, \
+                                            run_gpcommand, check_db_exists, check_database_is_running, are_segments_synchronized, has_exception, modify_data, modify_partition_data, \
                                             validate_part_table_data_on_segments, validate_table_data_on_segments, validate_db_data, \
                                             get_partition_tablenames, check_partition_table_exists, create_indexes, get_partition_names, \
                                             validate_restore_data, backup_data, backup_db_data, cleanup_report_files, run_command, \
@@ -2386,6 +2388,163 @@ def impl(context, filename, path):
 
     if not os.path.exists(fullpath):
         raise Exception('file "%s" is not exist' % fullpath)
+
+@given('the user ran {command} and directory {path} exists')
+def impl(context, command, path):
+    if not os.path.isdir(path):
+        raise Exception('Directory "%s" does not exist' %path) 
+
+@then('{file} should be found in tarball with prefix "{prefix}" within directory {path}')
+def impl(context, file, prefix, path):
+
+    ## look for subdirectory created during collection
+    collection_dirlist = os.listdir(path)
+
+    if len(collection_dirlist) > 1:
+        raise Exception('more then one data collection directory found.  Possibly left over from a previous run of gp_log_collector')
+    if len(collection_dirlist) == 0:
+        raise Exception('Collection directory was not found')
+
+    ## get a listing of files in the subdirectory and make sure there is only one tarball found
+    tarpath = os.path.join(path, collection_dirlist[0])
+    collection_filelist = os.listdir(tarpath)
+
+    if len(collection_filelist) > 1: 
+        raise Exception('Too many files found in "%s"' %tarpath)
+    if len(collection_filelist) == 0:
+        raise Exception('No files found in "%s"' %tarpath)
+
+    ## Expand tarball with prefix "GP_LOG_COLLECTION_" and search for given file within collection
+    if prefix in collection_filelist[0]:
+
+        ## extract the root tarball
+        tar = tarfile.open(os.path.join(tarpath, collection_filelist[0]), "r:")
+        tar.extractall(tarpath)
+        tar.close()
+
+        FOUND = False
+        for tfile in os.listdir(tarpath):
+            if prefix in tfile:
+                continue
+		
+            ## Find any tar file that contain given file
+            segtar = tarfile.open(os.path.join(tarpath, tfile), "r:gz")
+            for tarinfo in segtar:
+                if tarinfo.isreg() and file in tarinfo.name:
+                    FOUND = True
+                    segtar.close()
+                    break ## break segtar loop
+            if FOUND:
+                break ## break listdir loop
+            else:
+                ## the file should have been found in the first segment tarball
+                raise Exception('Unable to find "%s" in "%s" tar file' % (file, collection_filelist[0]) )
+    else:
+        raise Exception('tarball with prefix "%s" was not found' %prefix)
+        
+@then('the directory {path} is removed')
+def impl(context, path):
+    if '*' in path:
+        raise Exception('Wildcard not supported')
+
+    if path[0] == '~':
+        path = os.path.join(os.path.expanduser('~'), path[2:])
+
+    run_command(context, 'rm -rf %s' % path)
+
+@given('the user runs sbin command "{cmd}"')
+@when('the user runs sbin command "{cmd}"')
+@then('the user runs sbin command "{cmd}"')
+def impl(context, cmd):
+    gpsbin = os.path.join(os.environ.get('GPHOME'), 'sbin')
+
+    if not os.path.isdir(gpsbin):
+        raise Exception('ERROR: GPHOME not set in environment')
+
+    cmd = gpsbin + "/" + cmd  ## don't us os.path join because command might have arguments
+    run_command(context, cmd)
+
+
+@given('the OS type is not "{os_type}"')
+def impl(context, os_type):
+    assert platform.system() != os_type
+
+@given('the user is installing {utility} using command "{command}" from install path {path}')
+@when('the user is installing {utility} using command "{command}" from install path {path}')
+@then('the user is installing {utility} using command "{command}" from install path {path}')
+def impl(context, utility, command, path):
+    context.command = command
+    context.utility = utility
+    context.path = path
+    context.currenttime = time.time()
+    context.cwd = os.getcwd()
+
+ 
+    ## create the install direcotry and copy scripts there
+    gphome = os.environ.get('GPHOME')
+    if not os.path.exists(path):
+        os.makedirs(path)
+    os.chdir(path)
+
+    shutil.copy(os.path.join(gphome, 'sbin/nodecollector.py'), path )
+    shutil.copy(os.path.join(gphome, 'bin/gp_log_collector'), path )
+
+    run_gpcommand(context, command)
+
+@then('{file1} and {file2} should exist and have a new mtime')
+def impl(context, file1, file2):
+    gphome = os.environ.get('GPHOME')
+   
+    if not os.path.isfile(os.path.join(gphome, file1)) or not os.path.isfile(os.path.join(gphome, file2)):
+        raise Exception('installation of ' + context.utility + ' failed because one or more files do not exist in ' + os.path.join(gphome, file1))
+
+    file1_mtime = os.path.getmtime(os.path.join(gphome, file1))
+    file2_mtime = os.path.getmtime(os.path.join(gphome, file2))
+    
+    if file1_mtime < context.currenttime or file2_mtime < context.currenttime:
+        raise Exception('one or both file mtime was not updated')
+
+    os.chdir(context.cwd)
+    run_command(context, 'rm -rf %s' % context.path)
+
+@given('the user ran this query "{query}" against database "{dbname}" for table "{table}" and it hangs')
+@when('the user ran this query "{query}" against database "{dbname}" for table "{table}" and it hangs')
+def impl(context, query, dbname, table):
+    get_sessionID_query = "select sess_id from pg_stat_activity where current_query ~ '" + table + "' and current_query !~ 'pg_stat_activity'"
+
+    if not check_db_exists(dbname):
+        raise Exception('The database ' + dbname + 'Does not exist')
+
+    thread.start_new_thread(getRows, (dbname, query))
+    time.sleep(30)
+    context.sessionIDRow = getRows(dbname, get_sessionID_query)
+
+    if len(context.sessionIDRow) == 0:
+        raise Exception('Was not able to determine the session ID')
+
+    context.sessionID = context.sessionIDRow[0][0]
+
+
+@then('user runs "{command}" against the queries session ID')
+def impl(context, command):
+    command += " " + str(context.sessionID)
+    run_gpcommand(context, command)
+
+@then('database is restarted to kill the hung query')
+def impl(context):
+    try:
+        stop_database_if_started(context)
+    except Exception as e:
+        context.exception = None
+        pass   ## capture the thread dieing from our hung query
+
+    if check_database_is_running(context):
+        raise Exception('Failed to stop the database')
+
+    start_database_if_not_started(context)
+    if not check_database_is_running():
+        raise Exception('Failed to start the database')
+
 
 @then('partition "{partitionnum}" is added to partition table "{tablename}" in "{dbname}"')
 def impl(context, partitionnum, tablename, dbname):

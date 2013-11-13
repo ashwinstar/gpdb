@@ -1,0 +1,733 @@
+#!/usr/bin/env python
+#
+# Copyright (c) Greenplum Inc 2008. All Rights Reserved.
+#
+# --------------------------------------------------------------------
+# Define Imports
+# --------------------------------------------------------------------
+try:
+    import os
+    import sys
+    import getopt
+    import datetime
+    import tarfile
+    import subprocess
+    import signal
+    import platform
+
+    from pwd import getpwnam
+    from grp import getgrnam
+    from contextlib import closing
+    from gppylib.gparray import GpArray
+    from gppylib.commands import base, unix
+    from gppylib.db import dbconn
+    from gppylib import gplog
+    from gppylib.gpparseopts import OptParser, OptChecker, OptionGroup
+except ImportError, e:
+    sys.exit('Cannot import modules. Please check that you have sourced greenplum_path.sh. Detail: ' + str(e))
+
+# --------------------------------------------------------------------
+# GLOBALS
+# --------------------------------------------------------------------
+
+logger = gplog.get_default_logger()
+gplog.setup_tool_logging(
+    "gp_log_collector", unix.getLocalHostname(), unix.getUserName(), "/home/gpadmin/gpAdminLogs")
+
+DEFAULT_NUM_WORKERS=64
+USER = os.environ.get('LOGNAME') or os.environ.get('USER')
+PID = os.getpid()
+
+#exit code
+ERR_OPT = 2  # Parser option error
+ERR_FAULT = 3
+ERR_UNEXPECTED = 911  # Unexpected error
+
+def usage():
+    print "usage\n"
+    exit(ERR_OPT)
+
+# --------------------------------------------------------------------
+# Classes ##
+# --------------------------------------------------------------------
+class gp_log_collector:
+    '''
+    Manages the collection of master and segments logs for troubleshooting
+    '''
+
+    def __init__(self):
+        self.options = None
+        self.args = None
+        self.GPHOME = os.environ['GPHOME']
+        self.MASTER_HOSTNAME = platform.node()
+        self.NODECOLLECTOR_FILE = "nodecollector.py"
+        self.GP_LOG_COLLECTOR_FILE = "gp_log_collector"
+        self.CURRENT_WORKING_DIR = os.getcwd()
+        self.errors = 0
+        self.segmentmaps = None  				## dict of hostaddress -> CONTENT:ROLE:SEG_PATH
+        self.hostaddress_override = False
+        self.cmds = []
+        self.pool = None
+        self.__quiet = False
+        self.nodeArgs = ''					## what args we need to pass to nodecollector
+        self.gparray = None
+        self.hostaddress_maps = None 	## dict of hostname -> hostname and hostaddress -> hosthostname
+
+    # --------------------------------------------------------------------
+    def _setOptions(self):
+
+        parser = self.createParser()
+        ( self.options, self.args ) = parser.parse_args()
+        if not self.options.startDate:
+            self.options.startDate = datetime.date.today().isoformat()
+        if not self.options.endDate:
+            self.options.endDate = datetime.date.today().isoformat()
+
+        if not self.options.gpLogCollector:
+            self.options.gpLogCollector =  os.path.join(self.GPHOME + '/bin/', self.GP_LOG_COLLECTOR_FILE)
+        if not self.options.nodeCollector:
+            self.options.nodeCollector =  os.path.join(self.GPHOME + '/sbin/', self.NODECOLLECTOR_FILE)
+
+        self.gparray = self._build_array()
+        self.hostaddress_maps = self._build_hostaddress_maps()
+        if self.options.segs:
+            self.hostaddress_override = True
+        if self.options.file:
+            self._get_segs()
+            self.hostaddress_override = True
+        if not self.options.segs:
+            self._get_segs(True) ## collect everything
+
+        if not self.options.gpPath:
+            self.options.gpPath = os.path.join(self.GPHOME, "greenplum_path.sh")
+        if not os.path.isfile(self.options.gpPath):
+            raise Exception("Unable to find file " + self.options.gpPath)
+        self.options.gpPath = "source " + self.options.gpPath + "; "
+
+
+        ## create the master logDir
+        self._build_log_dir(self.options.logDir)
+
+        ######################################
+        ## Setup nodecollector command options
+        self.nodeArgs += ' -l ' + self.MASTER_HOSTNAME + ":" + self.options.logDir   ## following scp syntax
+        self.nodeArgs += ' -s ' + self.options.startDate
+        self.nodeArgs += ' -e ' + self.options.endDate
+        self.nodeArgs += ' -q ' ## suppress nodecollector from master console
+
+        if self.options.tempDir:
+            self.nodeArgs += ' -t ' + self.options.tempDir
+	if self.options.xLogs:
+            self.nodeArgs += ' -x '
+        if self.options.cLogs:
+            self.nodeArgs += ' -y '
+        if self.options.changeTrack:
+            self.nodeArgs += ' -z '
+        if self.options.skipFreeSpaceCheck:
+            self.nodeArgs += ' --skip-freespace-check '
+        if self.options.verbose:
+            self.nodeArgs += ' -v '
+
+
+    # --------------------------------------------------------------------
+    def _build_array(self):
+        '''
+        Build gparray
+        maybe if db is offline we could init from file using gparray.initFromFile() in a future release
+        '''
+
+        try:
+            gparray = GpArray.initFromCatalog(dbconn.DbURL())
+        except Exception as e:
+            logger.error("Failed to collect segment info with error " + str(e))
+            raise Exception('Unable to build gparray')
+
+        return gparray
+
+    # --------------------------------------------------------------------
+    # populates the self.hostaddress_maps dict
+    def _build_hostaddress_maps(self):
+        hostaddress_maps = {}
+
+        ## need to include the master host
+        hostaddress_maps[self.gparray.master.address] = self.gparray.master.hostname
+        hostaddress_maps[self.gparray.master.hostname] = self.gparray.master.hostname
+        if self.gparray.standbyMaster:
+            hostaddress_maps[self.gparray.standbyMaster.address] = self.gparray.master.hostname
+            hostaddress_maps[self.gparray.standbyMaster.hostname] = self.gparray.master.hostname
+
+        for segment in self.gparray.segments:
+            hostaddress_maps[segment.primaryDB.address] = segment.primaryDB.hostname
+            hostaddress_maps[segment.primaryDB.hostname] = segment.primaryDB.hostname
+
+        return hostaddress_maps
+
+    # --------------------------------------------------------------------
+    # Sets self.segs to include segment hosts from file list or the default
+    # all segmemnts from gp_segment_configuration
+    def _get_segs(self, ALLSEGS=None):
+
+        # grab all segments here
+        if ALLSEGS:
+            for segment in self.gparray.segments:
+                self._add_seg(str(segment.primaryDB.hostname))
+                self._add_seg(str(segment.primaryDB.address))
+
+        # parse file and add it to segstring
+        else:
+            with open(self.options.file) as fp:
+                for i, line in enumerate(fp):
+                    line = line.strip()
+                    if not line or line[0] == '#':
+                        continue
+                    self._add_seg(line)
+
+    # --------------------------------------------------------------------
+    # Used to build a comma delimited string of hosts or content ids
+    def _add_seg(self, segname):
+        if self.options.segs:
+            self.options.segs = self.options.segs + "," + segname
+        else:
+            self.options.segs = segname
+
+    # --------------------------------------------------------------------
+    # Find the unique host address in the segment mappings
+    def _get_unique_address(self, address, host):
+        if self.segmentmaps:
+            for hostkey in self.segmentmaps:
+                if address == str(hostkey):
+                    return address
+     
+                if host == self.hostaddress_maps[hostkey]:
+                    return hostkey
+
+         ## if nothing was found we need to use the current key
+            return address
+
+    # --------------------------------------------------------------------
+    def run(self):
+        logger.info("Starting gp_log_collector")
+        # Catch everything
+        try:
+            # Setup all the options that define our behavior
+            self._setOptions()
+            if not self.options.segs:
+                raise Exception("List of segments was not passed to gp_log_collector")
+
+            ######################################################
+            # Build the mappings for host -> segmetns here
+            logger.info("Determining primary and mirror segments for collection")
+            commandcount = 0
+            self._build_map()
+            workers = min(len(self.segmentmaps.keys()), DEFAULT_NUM_WORKERS)
+
+            #####################################################
+            # if install gp_log_collector before going any further
+            if self.options.install:
+                hostlist = []
+                for host, segs in self.segmentmaps.items():
+                    hostlist.append(host)
+                self._installCollector(hostlist)
+
+            #####################################################
+            # Get the commands ready for execution
+            # Disable Ctrl-c here
+            signal.signal(signal.SIGINT, signal.SIG_IGN)
+            self.pool = base.WorkerPool(numWorkers=workers)
+
+            logger.info("Gernerating commands for execution: ")
+            for host, segs in self.segmentmaps.items():
+                cmd = self._build_cmd(host, segs)
+                if cmd:
+                    logger.info(host + ": " + cmd.cmdStr)
+                else:
+                    logger.error("Failed to build command for host " + host)
+                    sys.exit(ERR_UNEXPECTED)
+
+                self.pool.addCommand(cmd)
+                commandcount += 1
+
+            #####################################################
+            # Excute nodecollectors
+            self.pool.wait_and_printdots(commandcount, self.__quiet)
+            self.pool.join()
+            for cmd in self.pool.getCompletedItems():
+
+                # print the host and get the success or failure status from STDOUT
+                # successful execution: "success"
+                # failed execution "failed:<error string>"
+                for status in cmd.get_stdout_lines():
+                    if status == "success":
+                        logger.info(cmd.remoteHost + ": COMPLETED SUCCESSFULLY")
+                    else:
+                        logger.error(cmd.remoteHost + ": " + status)
+                        self.errors += 1
+                    break
+
+                # if there was nothing returned to STDOUT something must be wrong
+                # so log an error
+                if len(cmd.get_stdout_lines()) == 0:
+                    logger.error(
+                        "UNKNOWN status returned from host " + cmd.remoteHost)
+                    self.errors += 1
+
+            self.pool.empty_completed_items()
+
+            #####################################################
+            # we are done so Clean up threads
+            logger.info("Cleaning up...")
+            self.pool.haltWork()
+            self.pool.joinWorkers()
+
+            #####################################################
+            # Enable Ctrl-c here
+            signal.signal(signal.SIGINT, signal.default_int_handler)
+
+            #####################################################
+            # we need to tar everything up here and pass the full file path to user
+            logger.info("Generating log tarball")
+            tarball = self._make_tarball()
+            logger.info("Final tarball can be found here: " + tarball)
+
+            return int(self.errors)
+        except Exception as e:
+            logger.error('Error during log collector exection: ' + str(e))
+        finally:
+            self.cleanup()
+
+    # --------------------------------------------------------------------
+    # populates the self.segment_maps dict
+    def _build_map(self):
+        # need a map of segmetns for passing to collect.py
+        self.segmentmaps = {}
+
+        ###########################################################################
+        # treat the masters as a segment and add it to the mappings
+        # mdw:/data/master/danl4240/dlseg-1:content=-1:dbid=1:mode=s:status=u
+        masterdb = str(self.gparray.master).split(':')
+        self.segmentmaps[masterdb[0]] = str(masterdb[2]).replace(
+            'content=', '') + ":p:" + str(masterdb[1])
+
+        standbymasterdb = []
+        if self.gparray.standbyMaster:
+            # smdw:/data/master/gp4230-1:content=-1:dbid=194:mode=s:status=u
+            standbymasterdb = str(self.gparray.standbyMaster).split(':')
+            self.segmentmaps[standbymasterdb[0]] = str(standbymasterdb[
+                                                  2]).replace('content=', '') + ":p:" + str(standbymasterdb[1])
+
+        ###########################################################################
+        # self.segs can be a hostname like sdw10 or content ID like 0,1,2,3
+        for segment in self.gparray.segments:
+            #print segment.primaryDB.address
+            # sdw10:/data1/primary/danl4240/dseg0:content=0:dbid=2:mode=s:status=u
+            # set up the primary instance vars
+            primary = str(segment.primaryDB).split(':')
+            pdb = None
+            pcid = str(primary[2]).replace('content=', '')
+            phost = primary[0]
+            paddress = str(segment.primaryDB.address) ## usually sdw1-1 or sdw1-2 etc.. 
+            pdir = primary[1]
+
+            #######################################################################
+            # 14|0|m|m|s|u|sdw11|sdw11|51700|52500|/data2/mirror/danl4240/dseg0
+            # set up the mirror instance vars
+            mdb = None
+            mirror = None
+            mcid = None
+            mhost = None
+            maddress = None
+            mdir = None
+            # check if there are mirrors to avoid crashing
+            if segment.mirrorDBs:
+                mirror = str(segment.mirrorDBs).split('|')
+                mcid = mirror[1]
+                mhost = mirror[6]
+                mdir = mirror[10]
+                maddress = mirror[7]
+
+            #######################################################################
+            ## Set paddress/maddress to the a unique address 
+            ## by default we should choose the first primay address we find
+            ## if there is a nic issues then allow user to specify address via -S or -f switch 
+            ## override does not work for content ID's
+            ##############
+            ## There are three ways to collect segment logs
+            ## DEFAULT: all segments
+            ##     - the self.segs list will contain both hostname and address labels
+            ## -S: comma delimitered of content ids or hostnames
+            ##     - Override the default where it finds the address based on first obtained primary
+            ##     - self.segs will contain only what was specified in cmd line.
+            ## -f: file with list of conent ids or hostnames
+            ##     - Same as -S and buids sefl.segs the same way
+
+            paddress = self._get_unique_address(paddress, phost)
+            if mirror:
+                maddress =  self._get_unique_address(maddress, mhost)
+            
+            #######################################################################
+            # build the segment instance string that conatins CID:ROLD:DATADIR
+            for content in self.options.segs.split(','):
+ 
+                # its a hostname
+                if not content.isdigit():
+                    if self.hostaddress_override:
+                        if phost == self.hostaddress_maps[content]:
+                            paddress = content
+                    if paddress == content:
+                        pdb = pcid + ":p:" + pdir
+                        if mirror:
+                            mdb = mcid + ":m:" + mdir
+                        break
+
+                # its a content id
+                elif pcid == content:
+                    pdb = pcid + ":p:" + pdir
+                    if mirror:
+                        mdb = mcid + ":m:" + mdir
+                    break
+
+            #######################################################################
+            # populate the dict with segment instance string
+            if pdb:
+                if paddress in self.segmentmaps:
+                    self.segmentmaps[paddress] = self.segmentmaps[paddress] + "," + pdb
+                else:
+                    self.segmentmaps[paddress] = pdb
+
+                if self.options.mirror and mirror and mdb:
+                    if maddress in self.segmentmaps:
+                        self.segmentmaps[maddress] = self.segmentmaps[maddress] + "," + mdb
+                    else:
+                        self.segmentmaps[maddress] = mdb
+        if not self.segmentmaps:
+            raise Exception("Was not able to find any segment instance from --segs \"" + self.options.segs + "\"")
+
+
+    # --------------------------------------------------------------------
+    # Returns the command object that gets passed to the worker pool
+    def _build_cmd(self, host, segs):
+
+        ########################################
+        # Build the base command
+        stringcmd = self.options.gpPath  + self.options.nodeCollector + " -a " + segs
+
+        ########################################
+        # if this is mdw or smdw then default to /data
+        if 'mdw' in host and not self.options.tempDir:
+            stringcmd += " -t /data"
+
+        ########################################
+        # add options
+        if self.options:
+            stringcmd += self.nodeArgs
+
+        ########################################
+        # value of 2 means set ctxt to REMOTE
+        return base.Command(self.NODECOLLECTOR_FILE, stringcmd, 2, host)
+
+    # --------------------------------------------------------------------
+    # create the default log dir if it does not exists
+    def _build_log_dir(self, dir=None):
+
+        # we need this for setting permissions later
+        # incase someone uses default /data/work.support as root initially
+        # and then tries to run as gpadmin
+        parent_dir = ""
+
+        # set the default logdir if nothing is passed in
+        if not dir:
+            dir = "/data/gp_log_collect/" + str(
+                datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+            parent_dir = "/data/gp_log_collect"
+        # append a subdir to the logDir incase of multiple runs
+        else:
+            parent_dir = None
+            dir = dir + "/" + str(
+                datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+
+        # finish up if directory already exists
+        if os.path.isdir(dir):
+            self.options.logDir = dir
+            os.chdir(dir)
+            return
+
+        # create directories like mkdir -p
+        # then set permissions for gpadmin
+        try:
+            os.makedirs(dir)
+            if parent_dir:
+                os.chown(parent_dir, getpwnam(
+                    'gpadmin').pw_uid, getgrnam('gpadmin').gr_gid)
+        except ( OSError, IOError ) as e:
+            raise Exception("Failed to create or set permissions on " + dir + ": " + str(e))
+
+        os.chdir(dir)
+        self.options.logDir = dir
+
+    # --------------------------------------------------------------------
+    # tars up self.options.logDir and returns the name of the resulting file
+    def _make_tarball(self):
+
+        # make sure we have some files to tar up:
+        dirlist = os.listdir(self.options.logDir)
+        if len(dirlist) == 0:
+            raise Exception("No files found in " + self.options.logDir)
+
+        CWD = os.getcwd()  # change directories to keep the tar file neat
+        os.chdir(self.options.logDir)
+        tfilename = "GP_LOG_COLLECTION_" + str(
+            datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')) + ".tar"
+        with closing(tarfile.open(tfilename, 'w')) as t:
+            for f in os.listdir(self.options.logDir):
+                if not f == tfilename:
+                    t.add(f)
+        os.chdir(CWD)
+
+        # Clean up logDir
+        logger.info("Removing redundant files from " + self.options.logDir)
+        subprocess.call('rm -f ' + self.options.logDir + "/*.tgz", shell=True)
+        return os.path.join(self.options.logDir, tfilename)
+
+    # --------------------------------------------------------------------
+    # Option to install gp_log_collector prior to execution
+    # if any failure here at all die
+    def _installCollector(self, hostlist):
+        src_node_script = os.path.join(self.CURRENT_WORKING_DIR, self.NODECOLLECTOR_FILE)
+        src_gp_script = os.path.join(self.CURRENT_WORKING_DIR, self.GP_LOG_COLLECTOR_FILE)
+        install_nodepath = os.path.dirname(self.options.nodeCollector)
+        install_gppath = os.path.dirname(self.options.gpLogCollector)
+
+        logger.info("Starting the gp_log_collector installation")
+        #
+        # Verify gp_log_collector and nodecollector.py exists in CWD
+        if not os.path.isfile(src_node_script) or not os.path.isfile(src_gp_script):
+            raise Exception("Unable to find " + src_node_script + " or " +
+                         src_gp_script + " script in current working directory")
+
+        #
+        # if the length of hostlist is zero then fail
+        if len(hostlist) <= 0:
+            raise Exception("gp_log_collecter is not able to install with empty host list")
+
+        logger.info("Installer is verifing install paths exist on all nodes")
+        #
+        # iterate host list and start installing
+        host_opt = ""
+        for host in hostlist:
+            # make sure self.optionsnodeCollector path exists
+            rc = subprocess.call(
+                'ssh ' + host + ' ls ' + install_nodepath, shell=True, stdout=subprocess.PIPE)
+            if rc != 0:
+                raise Exception("The destination direcotry of " +
+                                install_nodepath + " does not exist on host " + host)
+
+            # make sure the self.gp_path exists
+            rc = subprocess.call(
+                'ssh ' + host + ' ls ' + install_nodepath, shell=True, stdout=subprocess.PIPE)
+            if rc != 0:
+                raise Exception("The destination direcotry of " +
+                                install_gppath + " does not exist on host " + host)
+
+            # build the host option for gpscp
+            host_opt = host_opt + " -h " + host
+
+        #
+        # Set permissions
+        rc1 = subprocess.call(
+            'chown gpadmin:gpadmin ' + src_gp_script, shell=True)
+        rc2 = subprocess.call(
+            'chown gpadmin:gpadmin ' + src_node_script, shell=True)
+        if rc1 != 0 or rc2 != 0:
+            raise Exception("Failed to change ownership on " +
+                            self.GP_LOG_COLLECTOR_FILE + " or " + self.NODECOLLECTOR_FILE)
+
+        rc1 = subprocess.call('chmod 755 ' + src_gp_script, shell=True)
+        rc2 = subprocess.call('chmod 755 ' + src_node_script, shell=True)
+        if rc1 != 0 or rc2 != 0:
+            raise Exception("Failed to change permissions on " +
+                            self.GP_LOG_COLLECTOR_FILE + " or " + self.NODECOLLECTOR_FILE)
+
+        logger.info("Installing " + self.options.nodeCollector)
+        #
+        # push the nodecollector.py file out to all hosts
+        rc = subprocess.call(
+            'gpscp ' + host_opt + ' ' + src_node_script + ' =:' + install_nodepath, shell=True)
+        if rc != 0:
+            raise Exception("Failed to SCP " + self.options.nodeCollector + " to one or more hosts")
+
+        logger.info("Installing " + self.options.gpLogCollector)
+        #
+        # push the gp_log_collector file out to all hosts
+        rc = subprocess.call(
+            'gpscp ' + host_opt + ' ' + src_gp_script + ' =:' + install_gppath, shell=True)
+        if rc != 0:
+            raise Exception("Failed to SCP " + src_gp_script + " to one or more hosts")
+
+    # --------------------------------------------------------------------
+    # Need this to prevent threads from lingering during a crash
+    def cleanup(self):
+  
+        # Disable Ctrl-c here 
+        # make sure we clean up everything 
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+        if self.pool:
+            logger.debug("Cleaning worker pool...")
+            try: 
+                self.pool.haltWork()
+            except TypeError:
+                #Ignore the noisy TypeError when halting threads
+                pass
+            self.pool.joinWorkers()
+
+        logger.info("Cleanup completed");
+        # Enable Ctrl-c here
+        signal.signal(signal.SIGINT, signal.default_int_handler)
+
+        
+
+    # --------------------------------------------------------------------
+    # parse Options
+    @staticmethod
+    def createParser():
+        parser = OptParser(option_class=OptChecker,
+                           description="Support Tool: Greenplum Log Collector",
+                           version='%prog version 1.0')
+        
+        addTo = OptionGroup(parser, 'Collection options')
+        parser.add_option_group(addTo)
+        addTo.add_option('-S', '--segs', dest='segs', type='string',
+                        help="""[ sdw1,sdw2,8,9 ]                                  
+                                Comma delimited list of hosts content ids.         
+                                Override the default nic interface selection       
+                                and specify sdw1-2 when sdw1-1 interface is down   
+                                DEFAULT: collect logs form all segments            
+                                ---------------------------------------------------
+                             """)
+        addTo.add_option('-f', '--file', dest='file', type='string',               
+                        help="""[ /path/to/file ]                                  
+                                List of hosts or content ids                       
+                                Same behavior as -S                                
+                                ---------------------------------------------------
+                             """)
+        addTo.add_option('-s', '--startDate', dest='startDate', type='string',
+                        help="""[ yyyy-mm-dd ]                                     
+                                Collect logs with this date until endDate          
+                                DEFAULT: Current date                              
+                                ---------------------------------------------------
+                             """)
+        addTo.add_option('-e', '--endDate', dest='endDate', type='string',
+                        help="""[ yyyy-mm-dd ]                                     
+                                Collect from startDate to this date                
+                                DEFAULT: Current date                              
+                                ---------------------------------------------------
+                             """)
+        addTo.add_option('-x', '--xLogs', dest='xLogs', action='store_true', 
+                        help="""Collect segment database xlogs                     
+                                DEFAULT: False                                     
+                                ---------------------------------------------------
+                             """)
+        addTo.add_option('-y', '--cLogs', dest='cLogs', action='store_true',
+                        help="""Collect segment database clogs                     
+                                DEFAULT: False                                     
+                                ---------------------------------------------------
+                             """)
+        addTo.add_option('-z', '--changeTrack', dest='changeTrack', action='store_true', 
+                        help="""Collect segment database change tracking logs      
+                                DEFAULT: False                                     
+                                ---------------------------------------------------
+                             """)
+        addTo.add_option('-m', '--mirror', dest='mirror', action='store_true', 
+                        help="""collect mirror logs too                            
+                                DEFAULT: False                                     
+                                ---------------------------------------------------
+                             """)
+
+        addTo = OptionGroup(parser, 'DataPath options')
+        parser.add_option_group(addTo)
+        addTo.add_option('-l', '--log_dir', dest='logDir', type='string',
+                        help="""[ /path ]                                          
+                                All segment hosts will upload logs to this         
+                                directory on master                                
+                                DEFAULT: "/data/work.support"                      
+                                ---------------------------------------------------
+                             """)
+        addTo.add_option('-t', '--tempDir', dest='tempDir', type='string', 
+                        help="""[ /path ]                                          
+                                Temp direcotry for segment colleciton              
+                                DEFAULT: "/data1"                                  
+                                ---------------------------------------------------
+                             """)
+
+        addTo = OptionGroup(parser, 'Control options')
+        parser.add_option_group(addTo)
+        addTo.add_option('-g', '--gp_path', dest='gpPath', type='string', default='/usr/local/greenplum-db/greenplum_path.sh',
+                        help="""[ /path/to/greenplum_path.sh ]                     
+                                Location of greenplum_path.sh                      
+                                DEFAULT: "/usr/local/greenplum-db/greenplum_path.sh"
+                                ---------------------------------------------------
+                             """)
+        addTo.add_option('-n', '--nodeCollector', dest='nodeCollector', type='string',
+                        help="""[ /path/to/nodecollector.py ]                      
+                                location for node collector                        
+                                DEFAULT: /usr/local/greenplum-db/sbin/nodecollector
+                                ---------------------------------------------------
+                             """)
+        addTo.add_option('-r', '--gpLogCollector', dest='gpLogCollector', type='string',
+                        help="""[ /path/to/gp_log_collector ]                      
+                                location for gp_log_collector                      
+                                DEFAULT: /usr/local/greenplum-db/bin/gp_log_collector
+                                ---------------------------------------------------
+                             """)
+        addTo.add_option('--skip-freespace-check', dest='skipFreeSpaceCheck', action='store_true',
+                        help="""Bypass free space check during node collection
+                                DEFAULT: False
+                                ---------------------------------------------------
+                             """)
+        addTo.add_option('-v', '--verbose', dest='verbose', action='store_true',
+                        help="""Enable debug logging
+                                ---------------------------------------------------
+                             """)
+        addTo.add_option('-i', '--install', dest='install', action='store_true',
+                        help="""Installs gp_log_collecotr and nodecollector.py     
+                                based on -r and -n.                                
+                                Both gp_log_collector and nodecollector.py need to 
+                                be in the current working direcotry                
+                                DEFAULT: False                                     
+                                ---------------------------------------------------
+                             """)
+        helpStr = ["""
+**************************************************************************
+EXAMPLES
+**************************************************************************
+""",
+"""
+gp_log_collector
+""",
+"""
+gp_log_collector -S sdw4,sdw5,4,5,6 -m
+""",""
+]
+        parser.setHelp(helpStr)
+        return parser
+
+# --------------------------------------------------------------------
+# MAIN
+# --------------------------------------------------------------------
+def main():
+    gpcollector = gp_log_collector()
+    rc = gpcollector.run()
+    if rc == 0:
+        logger.info("gp_log_collector finished successfully")
+    else:
+        logger.warn("gp_log_collector found " + str(
+        rc) + " error[s] during segment command execution")
+        exit(ERR_FAULT)
+    exit(0)
+
+# --------------------------------------------------------------------
+# INIT
+# --------------------------------------------------------------------
+
+if __name__ == '__main__':
+    main()
