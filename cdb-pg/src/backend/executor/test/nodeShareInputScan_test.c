@@ -1,0 +1,86 @@
+#include <stdarg.h>
+#include <stddef.h>
+#include <setjmp.h>
+#include "cmockery.h"
+
+#include "c.h"
+#include "postgres.h"
+#include "nodes/nodes.h"
+#include "../nodeShareInputScan.c"
+
+#define FIXED_POINTER_VAL ((LargestIntegralType) 0x0000beef)
+
+/*
+ * Tests ExecEagerFreeShareInputScan when plan->share_type = SHARE_NOTSHARED
+ * Verifies that all the pointers are set to NULL
+ */
+void
+test__ExecEagerFreeShareInputScan_NOTSHARED(void **state)
+{
+	ShareInputScanState *sisc = makeNode(ShareInputScanState);
+	ShareInputScan *plan = makeNode(ShareInputScan);
+	sisc->ss.ps.plan = plan;
+
+	sisc->ts_markpos = FIXED_POINTER_VAL;
+	sisc->ts_pos = FIXED_POINTER_VAL;
+	sisc->ts_state = FIXED_POINTER_VAL;
+
+	plan->share_type = SHARE_NOTSHARED;
+
+	ExecEagerFreeShareInputScan(sisc);
+
+	assert_int_equal(sisc->ts_markpos, NULL);
+	assert_int_equal(sisc->ts_pos, NULL);
+	assert_int_equal(sisc->ts_state, NULL);
+
+	return;
+}
+
+/* ==================== ExecEagerFreeShareInputScan ==================== */
+/*
+ * Tests ExecEagerFreeShareInputScan when plan->share_type = SHARE_MATERIAL
+ * Verifies that the tuplestore accessor and the tuplestore state are destroyed,
+ * and that all the pointers are set to NULL
+ */
+void
+test__ExecEagerFreeShareInputScan_SHARE_MATERIAL(void **state)
+{
+	ShareInputScanState *sisc = makeNode(ShareInputScanState);
+	ShareInputScan *plan = makeNode(ShareInputScan);
+	sisc->ss.ps.plan = plan;
+
+	sisc->ts_markpos = NULL;
+	sisc->ts_pos = FIXED_POINTER_VAL;
+	sisc->ts_state = FIXED_POINTER_VAL;
+
+	plan->share_type = SHARE_MATERIAL;
+
+	expect_value(ntuplestore_destroy_accessor, acc, FIXED_POINTER_VAL);
+	will_be_called(ntuplestore_destroy_accessor);
+
+	expect_value(ntuplestore_is_readerwriter_reader, nts, FIXED_POINTER_VAL);
+	will_return(ntuplestore_is_readerwriter_reader, true);
+
+	expect_value(ntuplestore_destroy, ts, FIXED_POINTER_VAL);
+	will_be_called(ntuplestore_destroy);
+
+	ExecEagerFreeShareInputScan(sisc);
+
+	assert_int_equal(sisc->ts_markpos, NULL);
+	assert_int_equal(sisc->ts_pos, NULL);
+	assert_int_equal(sisc->ts_state, NULL);
+
+	return;
+}
+
+int
+main(int argc, char* argv[])
+{
+        cmockery_parse_arguments(argc, argv);
+
+        const UnitTest tests[] = {
+                        unit_test(test__ExecEagerFreeShareInputScan_NOTSHARED),
+                        unit_test(test__ExecEagerFreeShareInputScan_SHARE_MATERIAL)
+        };
+        return run_tests(tests);
+}
