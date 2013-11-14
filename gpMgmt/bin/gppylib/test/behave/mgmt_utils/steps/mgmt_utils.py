@@ -2389,10 +2389,11 @@ def impl(context, filename, path):
     if not os.path.exists(fullpath):
         raise Exception('file "%s" is not exist' % fullpath)
 
-@given('the user ran {command} and directory {path} exists')
-def impl(context, command, path):
-    if not os.path.isdir(path):
-        raise Exception('Directory "%s" does not exist' %path) 
+@given('the directory {path} exists')
+@then('the directory {path} exists')
+def impl(context, path):
+   if not os.path.isdir(path):
+       raise Exception('Directory "%s" does not exist' %path)
 
 @then('{file} should be found in tarball with prefix "{prefix}" within directory {path}')
 def impl(context, file, prefix, path):
