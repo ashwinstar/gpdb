@@ -32,7 +32,7 @@ except ImportError, e:
 
 logger = gplog.get_default_logger()
 gplog.setup_tool_logging(
-    "gp_log_collector", unix.getLocalHostname(), unix.getUserName(), "/home/gpadmin/gpAdminLogs")
+    "gp_log_collector", unix.getLocalHostname(), unix.getUserName(), os.path.join(os.path.expanduser('~'), "gpAdminLogs"))
 
 DEFAULT_NUM_WORKERS=64
 USER = os.environ.get('LOGNAME') or os.environ.get('USER')
@@ -41,11 +41,15 @@ PID = os.getpid()
 #exit code
 ERR_OPT = 2  # Parser option error
 ERR_FAULT = 3
-ERR_UNEXPECTED = 911  # Unexpected error
+ERR_UNEXPECTED = 911  # Unexpected error/
 
-def usage():
-    print "usage\n"
-    exit(ERR_OPT)
+# --------------------------------------------------------------------
+# PRE-CHECKS ##
+# --------------------------------------------------------------------
+
+if platform.system() != 'Linux':
+    logger.error('This tool is only supported on a LINUX platforms')
+    sys.exit(555)
 
 # --------------------------------------------------------------------
 # Classes ##
@@ -117,7 +121,7 @@ class gp_log_collector:
 
         if self.options.tempDir:
             self.nodeArgs += ' -t ' + self.options.tempDir
-	if self.options.xLogs:
+        if self.options.xLogs:
             self.nodeArgs += ' -x '
         if self.options.cLogs:
             self.nodeArgs += ' -y '
@@ -127,6 +131,7 @@ class gp_log_collector:
             self.nodeArgs += ' --skip-freespace-check '
         if self.options.verbose:
             self.nodeArgs += ' -v '
+            gplog.enable_verbose_logging()
 
 
     # --------------------------------------------------------------------
@@ -327,6 +332,7 @@ class gp_log_collector:
             phost = primary[0]
             paddress = str(segment.primaryDB.address) ## usually sdw1-1 or sdw1-2 etc.. 
             pdir = primary[1]
+            logger.debug('Processing segment host: ' + phost)
 
             #######################################################################
             # 14|0|m|m|s|u|sdw11|sdw11|51700|52500|/data2/mirror/danl4240/dseg0
@@ -360,9 +366,11 @@ class gp_log_collector:
             ## -f: file with list of conent ids or hostnames
             ##     - Same as -S and buids sefl.segs the same way
 
+            logger.debug('Current Address of host is: ' + paddress)
             paddress = self._get_unique_address(paddress, phost)
             if mirror:
                 maddress =  self._get_unique_address(maddress, mhost)
+            logger.debug('New addres of host is: ' + paddress)
             
             #######################################################################
             # build the segment instance string that conatins CID:ROLD:DATADIR
@@ -371,8 +379,13 @@ class gp_log_collector:
                 # its a hostname
                 if not content.isdigit():
                     if self.hostaddress_override:
-                        if phost == self.hostaddress_maps[content]:
-                            paddress = content
+                        logger.debug('processing host override for: ' + phost)
+                        try:
+                            if phost == self.hostaddress_maps[content]:
+                                paddress = content
+                        except Exception:
+                            logger.warn('The host ' + content + ' in segment list does not exist in gpdb configuration')
+
                     if paddress == content:
                         pdb = pcid + ":p:" + pdir
                         if mirror:
@@ -661,22 +674,22 @@ class gp_log_collector:
 
         addTo = OptionGroup(parser, 'Control options')
         parser.add_option_group(addTo)
-        addTo.add_option('-g', '--gp_path', dest='gpPath', type='string', default='/usr/local/greenplum-db/greenplum_path.sh',
+        addTo.add_option('-g', '--gp_path', dest='gpPath', type='string',
                         help="""[ /path/to/greenplum_path.sh ]                     
                                 Location of greenplum_path.sh                      
-                                DEFAULT: "/usr/local/greenplum-db/greenplum_path.sh"
+                                DEFAULT: "$GPHOME/greenplum_path.sh"
                                 ---------------------------------------------------
                              """)
         addTo.add_option('-n', '--nodeCollector', dest='nodeCollector', type='string',
                         help="""[ /path/to/nodecollector.py ]                      
                                 location for node collector                        
-                                DEFAULT: /usr/local/greenplum-db/sbin/nodecollector
+                                DEFAULT: $GPHOME/sbin/nodecollector
                                 ---------------------------------------------------
                              """)
         addTo.add_option('-r', '--gpLogCollector', dest='gpLogCollector', type='string',
                         help="""[ /path/to/gp_log_collector ]                      
                                 location for gp_log_collector                      
-                                DEFAULT: /usr/local/greenplum-db/bin/gp_log_collector
+                                DEFAULT: $GPHOME/bin/gp_log_collector
                                 ---------------------------------------------------
                              """)
         addTo.add_option('--skip-freespace-check', dest='skipFreeSpaceCheck', action='store_true',

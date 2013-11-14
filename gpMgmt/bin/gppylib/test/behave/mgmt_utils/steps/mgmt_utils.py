@@ -2441,8 +2441,10 @@ def impl(context, file, prefix, path):
                 raise Exception('Unable to find "%s" in "%s" tar file' % (file, collection_filelist[0]) )
     else:
         raise Exception('tarball with prefix "%s" was not found' %prefix)
-        
-@then('the directory {path} is removed')
+
+@given('the directory {path} is removed or does not exist')
+@when('the directory {path} is removed or does not exist')
+@then('the directory {path} is removed or does not exist')
 def impl(context, path):
     if '*' in path:
         raise Exception('Wildcard not supported')
@@ -2507,6 +2509,12 @@ def impl(context, file1, file2):
     os.chdir(context.cwd)
     run_command(context, 'rm -rf %s' % context.path)
 
+@given('you are about to run a database query')
+@when('you are about to run a database query')
+@then('you are about to run a database query')
+def impl(context):
+    context.sessionID = []
+
 @given('the user ran this query "{query}" against database "{dbname}" for table "{table}" and it hangs')
 @when('the user ran this query "{query}" against database "{dbname}" for table "{table}" and it hangs')
 def impl(context, query, dbname, table):
@@ -2516,19 +2524,79 @@ def impl(context, query, dbname, table):
         raise Exception('The database ' + dbname + 'Does not exist')
 
     thread.start_new_thread(getRows, (dbname, query))
-    time.sleep(30)
+    time.sleep(15)
     context.sessionIDRow = getRows(dbname, get_sessionID_query)
 
     if len(context.sessionIDRow) == 0:
         raise Exception('Was not able to determine the session ID')
 
-    context.sessionID = context.sessionIDRow[0][0]
+    context.sessionID.append( context.sessionIDRow[0][0] )
 
 
 @then('user runs "{command}" against the queries session ID')
 def impl(context, command):
-    command += " " + str(context.sessionID)
+
+    ## build the session_list
+    session_list = None
+    for session in context.sessionID:
+        if not session_list:
+            session_list = str(session)
+        else:
+            session_list = session_list + ',' + str(session)
+
+    command += " " + session_list
     run_gpcommand(context, command)
+
+@then('{file} file with queries sessionIDs should be found within directory {path}')
+def impl(context, file, path):
+
+    ######################################################################################
+    ## This function needs to be modified.. changes are pending hung_analyzer revisions ##
+    ######################################################################################
+
+
+    ## look for subdirectory created during collection
+    collection_dirlist = os.listdir(path)
+
+    if len(collection_dirlist) > 1:
+        raise Exception('more then one data collection directory found.  Possibly left over from a previous run of hung analyzer')
+    if len(collection_dirlist) == 0:
+        raise Exception('Collection directory was not found')
+
+    ## Make sure we have a core file for each session
+    sessions_found = 0
+    for rootdir, dirs, files in os.walk(os.path.join(path, collection_dirlist[0])):
+        for session in context.sessionID:
+            for f in files:
+                core_prefix = file + str(session) + '.'
+                if core_prefix in f:
+                    sessions_found += 1
+                    break
+
+    if sessions_found == 0:
+        raise Exception('No core files were found in collection')
+
+    if sessions_found != len(context.sessionID):
+        raise Exception('Only ' + str(sessions_found) + ' core files were found out of ' + str(len(context.sessionID)))
+
+@then('{file} file should be found within directory {path}')
+def impl(context, file, path):
+    ## look for subdirectory created during collection
+    collection_dirlist = os.listdir(path)
+
+    if len(collection_dirlist) > 1:
+        raise Exception('more then one data collection directory found.  Possibly left over from a previous run of hung analyzer')
+    if len(collection_dirlist) == 0:
+        raise Exception('Collection directory was not found')
+
+    ## get a listing of files and dirs and prune until file is found
+    for rootdir, dirs, files in os.walk(os.path.join(path, collection_dirlist[0])):
+        for f in files:
+            if file in f:
+                return
+
+    raise Exception('File was not found in :' + path)
+
 
 @then('database is restarted to kill the hung query')
 def impl(context):
