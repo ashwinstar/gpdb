@@ -2427,7 +2427,7 @@ def impl(context, file, prefix, path):
         for tfile in os.listdir(tarpath):
             if prefix in tfile:
                 continue
-		
+
             ## Find any tar file that contain given file
             segtar = tarfile.open(os.path.join(tarpath, tfile), "r:gz")
             for tarinfo in segtar:
@@ -2435,11 +2435,11 @@ def impl(context, file, prefix, path):
                     FOUND = True
                     segtar.close()
                     break ## break segtar loop
-            if FOUND:
-                break ## break listdir loop
-            else:
-                ## the file should have been found in the first segment tarball
-                raise Exception('Unable to find "%s" in "%s" tar file' % (file, collection_filelist[0]) )
+        if FOUND:
+            return ## we found the file so pass the test case
+        else:
+            ## the file should have been found in the first segment tarball
+            raise Exception('Unable to find "%s" in "%s" tar file' % (file, collection_filelist[0]) )
     else:
         raise Exception('tarball with prefix "%s" was not found' %prefix)
 
@@ -2613,8 +2613,6 @@ def impl(context):
     start_database_if_not_started(context)
     if not check_database_is_running():
         raise Exception('Failed to start the database')
-
-
 @then('partition "{partitionnum}" is added to partition table "{tablename}" in "{dbname}"')
 def impl(context, partitionnum, tablename, dbname):
      add_partition(context, partitionnum, tablename, dbname)
