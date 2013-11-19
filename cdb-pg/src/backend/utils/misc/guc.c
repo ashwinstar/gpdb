@@ -6898,7 +6898,7 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 	{
-		{"gp_log_fts", PGC_POSTMASTER, LOGGING_WHAT,
+		{"gp_log_fts", PGC_SIGHUP, LOGGING_WHAT,
 			gettext_noop("Sets the verbosity of logged messages pertaining to fault probing."),
 			gettext_noop("Valid values are \"off\", \"terse\", \"verbose\" and \"debug\"."),
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE

@@ -3073,13 +3073,75 @@ def impl(context, partition, schema_parent, table_name, schema_child, dbname):
     alter_sql = """ALTER TABLE %s SET SCHEMA %s""" % (a_partition_name, schema_child)
     execute_sql(dbname, alter_sql) 
 
+def gp_fts_log_in_master_log_count(mdd):
+    pg_log_glob = os.path.join(mdd, 'pg_log', 'gpdb-20??-??-*.csv')
+    files = glob.glob(pg_log_glob)
+    files.sort()
+    if not files:
+        raise Exception('pg_log not found with the following pattern on master: %s' % pg_log_glob)
+    fd = open(files[-1])
+    output = fd.read()
+    counter = 0
+    for line in output.splitlines():
+        if 'FTS: probe result processing is complete' in line:
+            counter = counter + 1
+    return counter
 
-@given('this test sleeps for "{secs}" seconds')
+def gp_fts_log_in_segment_log_count():
+    COUNT_SQL = """
+        SELECT count(*) from gp_toolkit.__gp_log_segment_ext 
+        WHERE logmessage like '%FTS: Probe Request%';
+        """
+
+    result = execute_sql_singleton('template1', COUNT_SQL)
+    return result
+
+@then('the count of verbose logs in pg_log is stored')
+def impl(context):
+    context.master_fts_log_count = gp_fts_log_in_master_log_count(master_data_dir)
+    context.segment_fts_log_count = gp_fts_log_in_segment_log_count()
+
+@then('the count of verbose fts logs is not changed')
+def impl(context):
+    master_fts_log_count = gp_fts_log_in_master_log_count(master_data_dir)
+    segment_fts_log_count = gp_fts_log_in_segment_log_count()
+
+    if master_fts_log_count != context.master_fts_log_count:
+        raise Exception("Number of FTS logs on master has changed when logging is turned off: orig count %d new count %d" % (context.master_fts_log_count, master_fts_log_count))
+
+    if segment_fts_log_count != context.segment_fts_log_count:
+        raise Exception("Number of FTS logs on segments has changed when logging is turned off: orig count %d new count %d" % (context.segment_fts_log_count, segment_fts_log_count))
+
+    context.master_fts_log_count = master_fts_log_count
+    context.segment_fts_log_count = segment_fts_log_count
+
+@then('the count of verbose fts logs is increased on all segments')
+def impl(context):
+    master_fts_log_count = gp_fts_log_in_master_log_count(master_data_dir)
+    segment_fts_log_count = gp_fts_log_in_segment_log_count()
+
+    if master_fts_log_count <= context.master_fts_log_count:
+        raise Exception("Number of FTS logs on master has not increased changed when logging is turned on: orig count %d new count %d" % (context.master_fts_log_count, master_fts_log_count))
+
+    if segment_fts_log_count <= context.segment_fts_log_count:
+        raise Exception("Number of FTS logs on segments has not increased when logging is turned on: orig count %d new count %d" % (context.segment_fts_log_count, segment_fts_log_count))
+
+    context.master_fts_log_count = master_fts_log_count
+    context.segment_fts_log_count = segment_fts_log_count
+
+
 @when('this test sleeps for "{secs}" seconds')
-@then('this test sleeps for "{secs}" seconds')
 def impl(context, secs):
     secs = float(secs)
     time.sleep(secs)
+
+
+@then('verify that there are no duplicates in column "{columnname}" of table "{tablename}" in "{dbname}"')
+def impl(context, columnname, tablename, dbname):
+    duplicate_sql = 'SELECT %s, COUNT(*) FROM %s GROUP BY %s HAVING COUNT(*) > 1' % (columnname, tablename, columnname)
+    rows = getRows(dbname, duplicate_sql)
+    if rows:
+        raise Exception('Found duplicate rows in the column "%s" for table "%s" in database "%s"' % (columnname, tablename, dbname))
 
 def execute_sql_for_sec(dbname, query, sec):
     with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:

@@ -122,7 +122,7 @@ static bool probePoll(ProbeConnectionInfo *probeInfo, bool incoming);
 static bool probeSend(ProbeConnectionInfo *probeInfo);
 static bool probeReceive(ProbeConnectionInfo *probeInfo);
 static bool probeProcessResponse(ProbeConnectionInfo *probeInfo);
-static bool probeTimeout(ProbeConnectionInfo *probeInfo);
+static bool probeTimeout(ProbeConnectionInfo *probeInfo, const char* calledFrom);
 static void probeClose(ProbeConnectionInfo *probeInfo);
 
 
@@ -418,7 +418,7 @@ probeConnect(ProbeConnectionInfo *probeInfo)
 	while ((res = gp_connect(probeInfo->fd, (struct sockaddr *) &probeInfo->saddr, probeInfo->saddr_len)) == -1)
 	{
 		/* check for transient error */
-		if (SYS_ERR_TRANSIENT(errno) && !probeTimeout(probeInfo) && FtsIsActive())
+		if (SYS_ERR_TRANSIENT(errno) && !probeTimeout(probeInfo, "connect") && FtsIsActive())
 		{
 			continue;
 		}
@@ -463,7 +463,7 @@ probePoll(ProbeConnectionInfo *probeInfo, bool incoming)
 
 	while (FtsIsActive() &&
 	       (res = gp_poll(&nfd, 1, timeoutMs)) <= 0 &&
-		   !probeTimeout(probeInfo))
+		   !probeTimeout(probeInfo, "poll"))
 	{
 		/* check for transient error */
 		if (res != 0 && !SYS_ERR_TRANSIENT(errno))
@@ -501,7 +501,7 @@ probeSend(ProbeConnectionInfo *probeInfo)
 	msg.payload.dataLength = 0;
 
 	while (bytesSent < sizeof(msg) &&
-	       !probeTimeout(probeInfo) &&
+	       !probeTimeout(probeInfo, "send") &&
 	       probePoll(probeInfo, false /*incoming*/))
 	{
 		int res = gp_send(probeInfo->fd, ((char*) &msg) + bytesSent, sizeof(msg) - bytesSent, 0);
@@ -540,7 +540,7 @@ probeReceive(ProbeConnectionInfo *probeInfo)
 	uint32 bytesReceived = 0;
 
 	while (bytesReceived < sizeof(probeInfo->response) &&
-	       !probeTimeout(probeInfo) &&
+	       !probeTimeout(probeInfo, "receive") &&
 	       probePoll(probeInfo, true /*incoming*/))
 	{
 		int res = gp_recv
@@ -552,7 +552,7 @@ probeReceive(ProbeConnectionInfo *probeInfo)
 				)
 				;
 
-		if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
+		if (gp_log_fts > GPVARS_VERBOSITY_VERBOSE)
 		{
 			write_log("FTS: read %d offset %d remainder %ld from segment (dbid=%d, content=%d).",
 			           res, bytesReceived, (long)(sizeof(probeInfo->response) - bytesReceived), probeInfo->dbId, probeInfo->segmentId);
@@ -619,14 +619,15 @@ probeClose(ProbeConnectionInfo *probeInfo)
  * Check if probe timeout has expired
  */
 static bool
-probeTimeout(ProbeConnectionInfo *probeInfo)
+probeTimeout(ProbeConnectionInfo *probeInfo, const char* calledFrom)
 {
 	uint64 elapsed_ms = gp_get_elapsed_ms(&probeInfo->startTime);
+	const uint64 debug_elapsed_ms = 5000;
 
-	if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
+	if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE && elapsed_ms > debug_elapsed_ms)
 	{
-		write_log("FTS: probe elapsed time: " UINT64_FORMAT " ms for segment (dbid=%d, content=%d).",
-		          elapsed_ms, probeInfo->dbId, probeInfo->segmentId);
+		write_log("FTS: probe '%s' elapsed time: " UINT64_FORMAT " ms for segment (dbid=%d, content=%d).",
+		          calledFrom, elapsed_ms, probeInfo->dbId, probeInfo->segmentId);
 	}
 
 	/* If connection takes more than the gp_fts_probe_timeout, we fail. */
@@ -678,7 +679,7 @@ probeProcessResponse(ProbeConnectionInfo *probeInfo)
 	memcpy(&bufInt, probeInfo->response + 16, sizeof(bufInt));
 	fault = (FaultType_e)ntohl(bufInt);
 
-	if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
+	if (gp_log_fts > GPVARS_VERBOSITY_VERBOSE)
 	{
 		write_log("FTS: probe result for dbid=%d, content=%d: %s %s %s %s.",
 				  probeInfo->dbId, probeInfo->segmentId,

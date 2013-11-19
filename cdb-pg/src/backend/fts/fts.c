@@ -82,6 +82,7 @@ static bool am_ftsprobe = false;
 
 static volatile bool shutdown_requested = false;
 static volatile bool rescan_requested = false;
+static volatile sig_atomic_t got_SIGHUP = false;
 
 static char *probeUser = NULL;
 static char *probeDatabase = "postgres";
@@ -215,6 +216,13 @@ RequestShutdown(SIGNAL_ARGS)
 	shutdown_requested = true;
 }
 
+/* SIGHUP: set flag to reload config file */
+static void
+sigHupHandler(SIGNAL_ARGS)
+{
+	got_SIGHUP = true;
+}
+
 /* SIGINT: set flag to run an fts full-scan */
 static void
 ReqFtsFullScan(SIGNAL_ARGS)
@@ -249,14 +257,9 @@ ftsMain(int argc, char *argv[])
 	SetProcessingMode(InitProcessing);
 
 	/*
-	 * Set up signal handlers.	We operate on databases much like a regular
-	 * backend, so we use the same signal handling.  See equivalent code in
-	 * tcop/postgres.c.
-	 *
-	 * Currently, we don't pay attention to postgresql.conf changes that
-	 * happen during a single daemon iteration, so we can ignore SIGHUP.
+	 * reread postgresql.conf if requested
 	 */
-	pqsignal(SIGHUP, SIG_IGN);
+	pqsignal(SIGHUP, sigHupHandler);
 
 	/*
 	 * Presently, SIGINT will lead to autovacuum shutdown, because that's how
@@ -444,6 +447,12 @@ void FtsLoop()
 		/* no need to live on if postmaster has died */
 		if (!PostmasterIsAlive(true))
 			exit(1);
+
+		if (got_SIGHUP)
+		{
+			got_SIGHUP = false;
+			ProcessConfigFile(PGC_SIGHUP);
+		}
 
 		probe_start_time = time(NULL);
 
@@ -716,7 +725,7 @@ probePublishUpdate(uint8 *probe_results)
 		/* get transition type */
 		uint32 trans = getTransition(isPrimaryAlive, isMirrorAlive);
 
-		if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
+		if (gp_log_fts > GPVARS_VERBOSITY_VERBOSE)
 		{
 			elog(LOG, "FTS: primary found %s, mirror found %s, transition %d.",
 				 (isPrimaryAlive ? "alive" : "dead"), (isMirrorAlive ? "alive" : "dead"), trans);

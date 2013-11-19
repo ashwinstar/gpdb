@@ -126,7 +126,7 @@ FtsGetPairStateFilerep(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseIn
 	    FTS_STATUS_IS_SYNCED(mirror->dbid, ftsProbeInfo->fts_status))
 	{
 		/* Primary: Up, Sync - Mirror: Up, Sync */
-		if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
+		if (gp_log_fts > GPVARS_VERBOSITY_VERBOSE)
 		{
 			elog(LOG, "FTS: last state: primary (dbid=%d) sync, mirror (dbid=%d) sync.",
 				 primary->dbid, mirror->dbid);

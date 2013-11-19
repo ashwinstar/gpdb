@@ -88,3 +88,34 @@ Feature: Miscellaneous tests which do not belong to mgmt utilities
         Then the following text should be printed to stdout 
             """select count\(\*\) from aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa b, aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa c, aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa d, aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa e, aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa f, aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa g, aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa h, aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa i, aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa j, aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa k, aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa l, aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa m, aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa n, aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa o, aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa p, aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa q, aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa r, aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa s, aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa t, aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa u"""
         And the user runs "gpstop -M fast -a"
+
+    @gp_log_fts
+    Scenario: SIGHUP test of fts verbose logs
+        Given the database is running
+        When the user runs "gpconfig -c gp_log_fts -v terse --skipvalidation"
+        Then gpconfig should return a return code of 0
+        When the user runs "gpconfig -c gp_fts_probe_interval -v 10"
+        Then gpconfig should return a return code of 0
+        And the user runs "gpstop -ar"
+        And gpstop should return a return code of 0
+        And the count of verbose logs in pg_log is stored
+        When this test sleeps for "60" seconds
+        Then the count of verbose fts logs is not changed
+        When the user runs "gpconfig -c gp_log_fts -v verbose --skipvalidation"
+        Then gpconfig should return a return code of 0
+        When the user runs "gpstop -u"
+        Then gpstop should return a return code of 0
+        And the count of verbose logs in pg_log is stored
+        When this test sleeps for "60" seconds
+        Then the count of verbose fts logs is increased on all segments
+        When the user runs "gpconfig -c gp_log_fts -v terse --skipvalidation"
+        Then gpconfig should return a return code of 0
+        When the user runs "gpstop -u"
+        Then gpstop should return a return code of 0
+        And the count of verbose logs in pg_log is stored
+        When this test sleeps for "60" seconds
+        Then the count of verbose fts logs is not changed
+        When the user runs "gpconfig -c gp_fts_probe_interval -v 60"
+        Then gpconfig should return a return code of 0
+        And the user runs "gpstop -ar"
+        And gpstop should return a return code of 0

@@ -3972,6 +3972,12 @@ processPrimaryMirrorTransitionQuery(Port *port, void *pkt)
 			f_type = FaultTypeNet;
 		}
 	}
+	
+	if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
+	{
+		ereport(LOG, (errmsg("FTS: Probe Request (mode: %s) (segmentState: %s) (dataState: %s) (fault: %s)", 
+			getMirrorModeLabel(pm_mode), getSegmentStateLabel(s_state), getDataStateLabel(d_state), getFaultTypeLabel(f_type))));
+	}
 
 	/*
 	 * FTS apart from below code doesn't perform any disk IO,
