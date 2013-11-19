@@ -24,6 +24,7 @@ fi
 
 cat $MASTER_DATA_DIRECTORY/pg_hba.conf.orig  | sed  -e 's/local.*trust/#removed insecure line/' | sed -e 's/host.*0\.0\.0\.0.*trust/#removed insecure line/' > $MASTER_DATA_DIRECTORY/pg_hba.conf
 echo "host    all     all     0.0.0.0/0       gss include_realm=0 krb_realm=KRB.GREENPLUM.COM" >> $MASTER_DATA_DIRECTORY/pg_hba.conf
+echo "local   all     gpadmin/kerberos-test   trust" >> $MASTER_DATA_DIRECTORY/pg_hba.conf
 
 
 echo "krb_server_keyfile='$HOME/gpdb-kerberos.keytab'" >> $MASTER_DATA_DIRECTORY/postgresql.conf
