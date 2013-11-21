@@ -103,8 +103,8 @@ endif
 endif
 
 GPERF_VERSION = $(shell grep 'name="gperf"' $(GREP_SED_VAR))
-ifneq "$(wildcard /opt/releng/tools/gnu/gperf/$(GPERF_VERSION)/$(BLD_ARCH)/bin/gperf)" ""
-GPERF_DIR = /opt/releng/tools/gnu/gperf/$(GPERF_VERSION)/$(BLD_ARCH)
+ifneq "$(wildcard $(BLD_TOP)/ext/$(BLD_ARCH)/gperf-$(GPERF_VERSION)/bin/gperf)" ""
+GPERF_DIR = $(BLD_TOP)/ext/$(BLD_ARCH)/gperf-$(GPERF_VERSION)
 gperftmpPATH:=$(GPERF_DIR)/bin:$(PATH)
 export PATH=$(gperftmpPATH)
 endif
@@ -144,7 +144,9 @@ opt_write_test:
 /opt/releng/apache-ant: 
 	${MAKE} opt_write_test
 	echo "Sync Ivy project dependency management framework ..."
-	curl --silent http://releng.sanmateo.greenplum.com/tools/apache-ant.1.8.1.tar.gz -o /tmp/apache-ant.1.8.1.tar.gz
+	type curl; \
+	if [ $$? = 0 ]; then curl --silent http://releng.sanmateo.greenplum.com/tools/apache-ant.1.8.1.tar.gz -o /tmp/apache-ant.1.8.1.tar.gz; \
+	else wget http://releng.sanmateo.greenplum.com/tools/apache-ant.1.8.1.tar.gz -O /tmp/apache-ant.1.8.1.tar.gz; fi; \
 	( umask 002; [ ! -d /opt/releng ] && mkdir -p /opt/releng; \
 	   cd /opt/releng; \
 	   gunzip -qc /tmp/apache-ant.1.8.1.tar.gz | tar xf -; \

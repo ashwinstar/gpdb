@@ -5,7 +5,7 @@
 
   <caches defaultCacheDir="/opt/releng/tools"
           lockStrategy="artifact-lock"
-               ivyPattern="[organisation]/[module]/[revision]/[type]s/ivy-[revision].xml"
+          ivyPattern="[organisation]/[module]/[revision]/[type]s/ivy-[revision].xml"
           artifactPattern="[organisation]/[module]/[revision]/[type]s/[artifact]-[revision].[ext]"
           datafilePattern="[organisation]/[module]/ivydata-[revision].properties"
           />
@@ -29,6 +29,12 @@
   </resolvers>
 
   <!-- ====================================================================== -->
+
+  <triggers>
+    <ant-call target="post-resolve-trigger"
+              prefix="dep"
+              event="post-resolve-dependency"/>
+  </triggers>
 
   <triggers>
     <ant-call target="download-untar-trigger"
