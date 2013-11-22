@@ -492,9 +492,10 @@ cdbdisp_dispatchToGang(struct CdbDispatcherState *ds,
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_INTERNAL_ERROR),
-						 errmsg("Cannot dispatch multiple queries to the segments."),
-						 errhint("Likely caused by a function that reads or modifies data in a distributed table.")));
+						 errmsg("query plan with multiple segworker groups is not supported"),
+						 errhint("likely caused by a function that reads or modifies data in a distributed table")));
 			}
+
 			dispatchResults->writer_gang->dispatcherActive = true;
 		}
 	}
