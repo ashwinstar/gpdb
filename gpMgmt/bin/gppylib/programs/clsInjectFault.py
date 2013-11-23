@@ -376,7 +376,6 @@ class GpInjectFaultProgram:
 			      "malloc_failure (inject fault to simulate memory allocation failure), " \
 			      "transaction_abort_failure (inject fault to simulate transaction abort failure), " \
 			      "update_committed_eof_in_persistent_table (inject fault before committed EOF is updated in gp_persistent_relation_node for Append Only segment files), " \
-			      "internal_flush_error (inject an error during internal_flush), " \
 			      "exec_simple_query_end_command (inject fault before EndCommand in exec_simple_query), " \
 			      "multi_exec_hash_large_vmem (allocate large vmem using palloc inside MultiExecHash to attempt to exceed vmem limit), " \
 			      "execsort_before_sorting (inject fault in nodeSort after receiving all tuples and before sorting), " \

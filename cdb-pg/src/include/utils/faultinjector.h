@@ -163,7 +163,6 @@ typedef enum FaultInjectorIdentifier_e {
 
 	UpdateCommittedEofInPersistentTable,
 
-	InternalFlushError,
 	ExecSimpleQueryEndCommand,
 	MultiExecHashLargeVmem,
 
