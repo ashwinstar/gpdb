@@ -3114,7 +3114,7 @@ RelationCacheInitializePhase3(void)
 		load_critical_index(TriggerRelidNameIndexId,
 							TriggerRelationId);
 
-#define NUM_CRITICAL_LOCAL_INDEXES	7	/* fix if you change list above */
+#define NUM_CRITICAL_LOCAL_INDEXES	8	/* fix if you change list above */
 
 		criticalRelcachesBuilt = true;
 	}
