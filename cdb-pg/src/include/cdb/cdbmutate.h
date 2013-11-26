@@ -43,6 +43,8 @@ extern void assign_plannode_id(PlannedStmt *stmt);
 
 extern List *getExprListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx,
 									   bool useExecutorVarFormat);
+extern List *params_in_rtable(List *rtable);
+extern void remove_unused_initplans(Plan *plan, List **usedParams, List *rte_params);
 
 extern int32 cdbhash_const(Const *pconst, int iSegments);
 #endif   /* CDBMUTATE_H */

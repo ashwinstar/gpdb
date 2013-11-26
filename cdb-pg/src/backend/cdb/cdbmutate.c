@@ -2435,3 +2435,270 @@ cdbhash_const(Const *pconst, int iSegments)
 	return cdbhashreduce(pcdbhash);	
 }
 
+/**
+ * These are helpers to find params in expressions
+ */
+typedef struct find_params_context
+{
+	List *paramids;
+} find_params_context;
+
+static bool
+find_params_walker(Node *node, find_params_context *context)
+{
+	if (NULL == node)
+	{
+		return false;
+	}
+
+	if (IsA(node, Param))
+	{
+		Param *param = (Param *) node;
+		if (0 > list_find_int(context->paramids, param->paramid))
+		{
+			context->paramids = lappend_int(context->paramids, param->paramid);
+		}
+		return false;
+	}
+
+	return expression_tree_walker(node, find_params_walker, (void *) context);
+}
+
+/*
+ * Remove unused initplans. This may happen if an initplan has been created, but
+ * its corresponding param has been removed because of contradiction detection
+ */
+void remove_unused_initplans(Plan *plan, List **usedParams, List *rte_params)
+{
+	if (NULL == plan || IsA(plan, ValuesScan) || IsA(plan, FunctionScan))
+	{
+		*usedParams = list_union_int(*usedParams, rte_params);
+		return;
+	}
+
+	if (IsA(plan, List))
+	{
+		List *l = (List *) plan;
+		ListCell *lc;
+
+		foreach(lc, l)
+		{
+			remove_unused_initplans(lfirst(lc), usedParams, rte_params);
+		}
+
+		return;
+	}
+
+	/* process children, and collect params that they use */
+	find_params_context context;
+	context.paramids = NIL;
+
+	if (IsA(plan, Append))
+	{
+		Append *app = (Append *) plan;
+		remove_unused_initplans((Plan *) app->appendplans, &(context.paramids), rte_params);
+	}
+	else if (IsA(plan, SubqueryScan))
+	{
+		SubqueryScan *subq = (SubqueryScan *) plan;
+		remove_unused_initplans(subq->subplan, &(context.paramids), rte_params);
+	}
+	else
+	{
+		remove_unused_initplans(plan->lefttree, &(context.paramids), rte_params);
+		remove_unused_initplans(plan->righttree, &(context.paramids), rte_params);
+	}
+
+	/* collect params used in target list and qual of current node */
+	find_params_walker((Node *) plan->qual, &context);
+	find_params_walker((Node *) plan->targetlist, &context);
+
+	/* collect params used in special fields based on node type */
+	switch (((Node*)(plan))->type)
+	{
+		case T_Result:
+		{
+			Result *result = (Result *) plan;
+			find_params_walker(result->resconstantqual, &context);
+			break;
+		}
+		case T_IndexScan:
+		{
+			IndexScan *iscan = (IndexScan *) plan;
+			find_params_walker((Node *) iscan->indexqual, &context);
+			break;
+		}
+		case T_BitmapIndexScan:
+		{
+			BitmapIndexScan *iscan = (BitmapIndexScan *) plan;
+			find_params_walker((Node *) iscan->indexqual, &context);
+			break;
+		}
+		case T_TidScan:
+		{
+			TidScan *tscan = (TidScan *) plan;
+			find_params_walker((Node *) tscan->tidquals, &context);
+			break;
+		}
+		case T_Limit:
+		{
+			Limit *limit = (Limit *) plan;
+			find_params_walker((Node *) limit->limitCount, &context);
+			find_params_walker((Node *) limit->limitOffset, &context);
+			break;
+		}
+		case T_Join:
+		{
+			Join *join = (Join *) plan;
+			find_params_walker((Node *) join->joinqual, &context);
+			break;
+		}
+		case T_NestLoop:
+		{
+			NestLoop *nljoin = (NestLoop *) plan;
+			find_params_walker((Node *) nljoin->join.joinqual, &context);
+			break;
+		}
+		case T_MergeJoin:
+		{
+			MergeJoin *mgjoin = (MergeJoin *) plan;
+			find_params_walker((Node *) mgjoin->join.joinqual, &context);
+			find_params_walker((Node *) mgjoin->mergeclauses, &context);
+			break;
+		}
+		case T_HashJoin:
+		{
+			HashJoin *hsjoin = (HashJoin *) plan;
+			find_params_walker((Node *) hsjoin->join.joinqual, &context);
+			find_params_walker((Node *) hsjoin->hashclauses, &context);
+			find_params_walker((Node *) hsjoin->hashqualclauses, &context);
+			break;
+		}
+		case T_Motion:
+		{
+			Motion *motion = (Motion *) plan;
+			find_params_walker((Node *) motion->hashExpr, &context);
+			break;
+		}
+		case T_SubPlan:
+		{
+			SubPlan *subplan = (SubPlan *) subplan;
+			find_params_walker((Node *) subplan->testexpr, &context);
+			find_params_walker((Node *) subplan->args, &context);
+			break;
+		}
+		default:
+			break;
+	}
+
+	if (NIL != plan->initPlan)
+	{
+		/* gather initplans from current node, and keep track of their param ids */
+		List *paramids = NIL;
+		List *planids = NIL;
+
+		ListCell *lc = NULL;
+		foreach (lc, plan->initPlan)
+		{
+			SubPlan *initplan = (SubPlan *) lfirst(lc);
+			Assert(initplan->is_initplan);
+			Assert(1 == list_length(initplan->setParam));
+
+			planids = lappend_int(planids, initplan->plan_id);
+			paramids = lappend_int(paramids, linitial_int(initplan->setParam));
+		}
+
+		/* remove from these lists the params that are used */
+		foreach (lc, context.paramids)
+		{
+			int paramid = lfirst_int(lc);
+			int index = list_find_int(paramids, paramid);
+			if (0 <= index)
+			{
+				int planid = list_nth_int(planids, index);
+				paramids = list_delete_int(paramids, paramid);
+				planids = list_delete_int(planids, planid);
+			}
+		}
+
+		/* delete unused initplans */
+		List *oldInitPlans = plan->initPlan;
+		plan->initPlan = NIL;
+
+		foreach (lc, oldInitPlans)
+		{
+			SubPlan *initplan = (SubPlan *) lfirst(lc);
+			if (0 > list_find_int(planids, initplan->plan_id))
+			{
+				plan->initPlan = lappend(plan->initPlan, initplan);
+			}
+			else
+			{
+				pfree(initplan);
+			}
+		}
+
+		/* remove unused params */
+		foreach (lc, paramids)
+		{
+			int paramid = lfirst_int(lc);
+			plan->allParam = bms_del_member(plan->allParam, paramid);
+		}
+
+		/* cleanup */
+		list_free(oldInitPlans);
+		list_free(planids);
+		list_free(paramids);
+	}
+
+	*usedParams = list_union_int(*usedParams, context.paramids);
+	list_free(context.paramids);
+}
+
+/* return a list of param ids that are referenced in RTEs */
+List *params_in_rtable(List *rtable)
+{
+	if (NIL == rtable)
+	{
+		return NIL;
+	}
+
+	find_params_context context;
+	context.paramids = NIL;
+
+	ListCell *lc = NULL;
+	foreach (lc, rtable)
+	{
+		RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc);
+		switch (rte->rtekind)
+		{
+			case RTE_RELATION:
+			case RTE_SPECIAL:
+			case RTE_VOID:
+			case RTE_CTE:
+				/* nothing to do */
+				break;
+			case RTE_SUBQUERY:
+				find_params_walker((Node *) rte->subquery, &context);
+				break;
+			case RTE_JOIN:
+				find_params_walker((Node *) rte->joinaliasvars, &context);
+				break;
+			case RTE_FUNCTION:
+				find_params_walker(rte->funcexpr, &context);
+				break;
+			case RTE_TABLEFUNCTION:
+			{
+				find_params_walker((Node *) rte->subquery, &context);
+				find_params_walker(rte->funcexpr, &context);
+				break;
+			}
+			case RTE_VALUES:
+				find_params_walker((Node *) rte->values_lists, &context);
+				break;
+		}
+	}
+
+	return context.paramids;
+}
+

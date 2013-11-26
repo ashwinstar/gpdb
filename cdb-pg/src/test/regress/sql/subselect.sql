@@ -660,3 +660,33 @@ drop table if exists t1;
 drop table if exists t2; 
 drop table if exists t3; 
 drop table if exists t4; 
+
+--
+-- Initplans with no corresponding params should be removed MPP-20600
+--
+
+drop table if exists t1;
+drop table if exists t2;
+
+create table t1(a int);
+create table t2(b int);
+
+explain select * from t1 where a=1 and a=2 and a > (select t2.b from t2);
+
+select * from t1 where a=1 and a=2 and a > (select t2.b from t2);
+
+explain select * from t1 where a=1 and a=2 and a > (select t2.b from t2)
+union all
+select * from t1 where a=1 and a=2 and a > (select t2.b from t2);
+
+select * from t1 where a=1 and a=2 and a > (select t2.b from t2)
+union all
+select * from t1 where a=1 and a=2 and a > (select t2.b from t2);
+
+explain select * from t1,
+(select * from t1 where a=1 and a=2 and a > (select t2.b from t2)) foo
+where t1.a = foo.a;
+
+select * from t1,
+(select * from t1 where a=1 and a=2 and a > (select t2.b from t2)) foo
+where t1.a = foo.a;
