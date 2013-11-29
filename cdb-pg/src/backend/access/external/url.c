@@ -97,6 +97,7 @@ char extssl_cas_full[MAXPGPATH] = {0};
 /* Will hold the last curl error					*/
 /* Currently it is in use only for SSL connection,	*/
 /* but we should consider using it always			*/
+static URL_FILE * alloc_url_file(const char *url);
 static char curl_Error_Buffer[CURL_ERROR_SIZE];
 static char *interpretError(int exitCode, char *buf, size_t buflen, char *err, size_t errlen);
 static const char *getSignalNameFromCode(int signo);
@@ -954,6 +955,26 @@ void extract_http_domain(char* i_path, char* o_domain, int dlen)
 }
 
 /**
+ * alloc_url_file()
+ *
+ * alloc URL_FILE struct and assign url field
+ */
+static URL_FILE * 
+alloc_url_file(const char *url)
+{
+	int sz = sizeof(URL_FILE) + strlen(url) + 1;
+	URL_FILE *file = (URL_FILE *) calloc(sz, 1);
+	if (file == NULL)
+	{
+		elog(ERROR, "out of memory");
+	}
+	file->url = ((char *) file) + sizeof(URL_FILE);
+	strcpy(file->url, url);
+	return file;
+}
+
+
+/**
  * execute_fopen()
  *
  * refactor the fopen code for execute into this routine
@@ -961,25 +982,15 @@ void extract_http_domain(char* i_path, char* o_domain, int dlen)
 URL_FILE *
 url_execute_fopen(char* url, char *cmd, bool forwrite, extvar_t *ev)
 {
-	URL_FILE*      file;
-	int            save_errno;
-	struct itimers savetimers;
-	pqsigfunc      save_SIGPIPE;
+	int		save_errno;
+	struct itimers	savetimers;
+	pqsigfunc	save_SIGPIPE;
 
-	int 	sz;
-	char*	shexec;
-
-    if (! (file = (URL_FILE *)malloc(sizeof(URL_FILE) + strlen(url) + 1)))
-	{
-		elog(ERROR, "out of memory");
-	}
-    memset(file, 0, sizeof(URL_FILE));
-	file->url = ((char *) file) + sizeof(URL_FILE);
-	strcpy(file->url, url);
+	URL_FILE *file = alloc_url_file(url);
 
 	/* Execute command */
-	sz     = make_command(cmd, ev, 0);
-	shexec = palloc(sz);
+	int sz = make_command(cmd, ev, 0);
+	char *shexec = palloc(sz);
 	make_command(cmd, ev, shexec);
 
 	file->type = CFTYPE_EXEC; /* marked as a EXEC */
@@ -1065,7 +1076,6 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 
 	/* an EXECUTE string will always be prefixed like this */
 	const char*	exec_prefix = "execute:";
-	URL_FILE*	file;
 	int 		e;
 	int         ip_mode;
 
@@ -1082,16 +1092,7 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 		return url_execute_fopen(url, cmd, forwrite, ev);
 	}
 
-	if (!(file = (URL_FILE *)malloc(sizeof(URL_FILE) + strlen(url) + 1)))
-	{
-		elog(ERROR, "out of memory");
-	}
-
-	memset(file, 0, sizeof(URL_FILE));
-
-	file->url = ((char *) file) + sizeof(URL_FILE);
-	strcpy(file->url, url);
-
+	URL_FILE* file = alloc_url_file(url);
 	/* Reset curl_Error_Buffer */
 	curl_Error_Buffer[0] = '\0';
 
@@ -1154,12 +1155,12 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 
 		if (!IS_GPFDISTS_URI(url))
 		{
-			if (!(file->u.curl.curl_url = (char *)malloc(sz)))
+			file->u.curl.curl_url = (char *)calloc(sz, 1);
+			if (file->u.curl.curl_url == NULL) 
 			{
 				url_fclose(file, false, pstate->cur_relname);
 				elog(ERROR, "out of memory");
 			}
-			memset(file->u.curl.curl_url, 0, sz);
 			file->u.curl.for_write = forwrite;
 			
 			make_url(file->url, file->u.curl.curl_url, is_ipv6);
@@ -1181,7 +1182,8 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 			 */
 			char* tmp_resolved;
 			int url_len = strlen(file->url);
-			if (!(file->u.curl.curl_url = (char*)malloc(url_len + 1)))
+			file->u.curl.curl_url = (char*)calloc(url_len + 1, 1);
+			if (file->u.curl.curl_url == NULL)
 			{
 				url_fclose(file, false, pstate->cur_relname);
 				elog(ERROR, "out of memory");
