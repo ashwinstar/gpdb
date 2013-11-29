@@ -119,3 +119,36 @@ Feature: Miscellaneous tests which do not belong to mgmt utilities
         Then gpconfig should return a return code of 0
         And the user runs "gpstop -ar"
         And gpstop should return a return code of 0
+
+    @gang_allocation
+    Scenario: Gang allocation failure due to lack of connections on segment
+        Given the database is running
+        And the database "slicedb" does not exist
+        And database "slicedb" exists
+        When the user runs the query "create table t1 (a int, b int, c int, d int, e int, f int, g int, h int);" on "slicedb"
+        When the user runs the query "create table t2 (a int, b int, c int, d int, e int, f int, g int, h int);" on "slicedb"
+        When the user runs the query "insert into t1 values(1, 2, 3, 4, 5, 6, 7, 8);" on "slicedb"
+        When the user runs the query "insert into t1 select * from t1;" on "slicedb"
+        When the user runs the query "insert into t1 select * from t1;" on "slicedb"
+        When the user runs the query "insert into t1 select * from t1;" on "slicedb"
+        When the user runs the query "insert into t1 select * from t1;" on "slicedb"
+        When the user runs the query "insert into t1 select * from t1;" on "slicedb"
+        When the user runs the query "insert into t1 select * from t1;" on "slicedb"
+        When the user runs the query "insert into t2 select * from t1;" on "slicedb"
+        Then verify that table "t1" in "slicedb" has "64" rows
+        Then verify that table "t2" in "slicedb" has "64" rows
+        When the user runs a twelve slice query on "slicedb"
+        Then there should not be a dispatch exception
+        When the user runs "gpconfig -c max_connections -m 10 -v 11"
+        Then gpconfig should return a return code of 0
+        And the user runs "gpstop -ar"
+        And gpstop should return a return code of 0
+        When the user runs a twelve slice query on "slicedb"
+        Then the dispatch exception should contain the string "ERROR:  segworker group creation failed"
+        Then the dispatch exception should contain the string "HINT:  server log may have more detailed error message"
+        When the user runs "gpconfig -c max_connections -m 25 -v 250"
+        Then gpconfig should return a return code of 0
+        And the user runs "gpstop -ar"
+        And gpstop should return a return code of 0
+
+

@@ -421,21 +421,15 @@ create_gang_retry:
 		 */
 		if (!segdbDesc->conn)
 		{
-			if (gp_log_gang >= GPVARS_VERBOSITY_VERBOSE)
-			{
-				if (segdbDesc->whoami)
-					elog(LOG, "Failed connection to %s", segdbDesc->whoami);
-			}
+			if (segdbDesc->whoami)
+				elog(LOG, "Failed connection to %s", segdbDesc->whoami);
 
 			/*
 			 * Log failed connections.	Complete failures
 			 * are taken care of later.
 			 */
-			if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
-			{
-				ereport(LOG, (errcode(segdbDesc->errcode),
+			ereport(LOG, (errcode(segdbDesc->errcode),
 						  errmsg("%s", segdbDesc->error_message.data)));
-			}
 
 			insist_log(segdbDesc->errcode != 0 || segdbDesc->error_message.len != 0,
 					"connection is null, but no error code or error message, for segDB %d", i);
@@ -1448,7 +1442,13 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 						}
 					}
 				}
-				insist_log(gp != NULL, "no reader segworker group allocated");
+
+				if (!gp)
+				{
+					ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+							errmsg("segworker group creation failed"),
+							errhint("server log may have more detailed error message")));
+				}
 
 				allocatedReaderGangsN = lappend(allocatedReaderGangsN, gp);
 
