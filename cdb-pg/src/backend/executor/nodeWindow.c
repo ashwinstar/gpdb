@@ -5747,13 +5747,13 @@ init_frames(WindowState *wstate)
 		bool has_only_trans_funcs = false;
 		int funcno = 0;
 
-		if (level_state->is_rows)
-			continue;
-		
 		foreach(lc, level_state->level_funcs)
 		{
 			WindowStatePerFunction funcstate =
 				(WindowStatePerFunction) lfirst(lc);
+
+			Assert(NULL != level_state->level_funcs);
+
 			if (HAS_ONLY_TRANS_FUNC(funcstate))
 			{
 				Assert(funcno == 0 || has_only_trans_funcs);
