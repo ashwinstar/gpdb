@@ -670,7 +670,25 @@ initGpmonPktForMaterial(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estat
 void
 ExecEagerFreeMaterial(MaterialState *node)
 {
-	Material *ma = (Material *) node->ss.ps.plan;
+	Material   *ma = (Material *) node->ss.ps.plan;
+	EState	   *estate = node->ss.ps.state;
+
+	/*
+	 * If we still have potential readers assocated with this node,
+	 * we shouldn't free the tuplestore too early.  The eager-free message
+	 * doesn't know about upper ShareInputScan nodes, but those nodes
+	 * bumps up the reference count in their initializations and decrement
+	 * it in either EagerFree or ExecEnd.
+	 */
+	if (ma->share_type == SHARE_MATERIAL || ma->share_type == SHARE_SORT)
+	{
+		ShareNodeEntry	   *snEntry;
+
+		snEntry = ExecGetShareNodeEntry(estate, ma->share_id, false);
+
+		if (snEntry->refcount > 0)
+			return;
+	}
 
 	/*
 	 * Release tuplestore resources
