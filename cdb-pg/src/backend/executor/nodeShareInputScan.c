@@ -332,8 +332,6 @@ ExecCountSlotsShareInputScan(ShareInputScan* node)
 void ExecEndShareInputScan(ShareInputScanState *node)
 {
 
-	ExecEagerFreeShareInputScan(node);
-
 	/* clean up tuple table */
 	ExecClearTuple(node->ss.ss_ScanTupleSlot);
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
@@ -1007,19 +1005,19 @@ ExecEagerFreeShareInputScan(ShareInputScanState *node)
 	node->ts_markpos = NULL;
 
 	/* This can be called more than once */
-        if (!node->freed && 
-	   (sisc->share_type == SHARE_MATERIAL || sisc->share_type == SHARE_SORT))
-        {
-                /*
-                 * Decrement reference count when it's intra-slice.  We don't need
-                 * two-pass tree descending because ShareInputScan should always appear
-                 * before the underlying Material/Sort node.
-                 */
+	if (!node->freed &&
+			(sisc->share_type == SHARE_MATERIAL || sisc->share_type == SHARE_SORT))
+	{
+		/*
+		 * Decrement reference count when it's intra-slice.  We don't need
+		 * two-pass tree descending because ShareInputScan should always appear
+		 * before the underlying Material/Sort node.
+		 */
 		EState *estate = node->ss.ps.state;
-                ShareNodeEntry *snEntry = ExecGetShareNodeEntry(estate, sisc->share_id, false);
+		ShareNodeEntry *snEntry = ExecGetShareNodeEntry(estate, sisc->share_id, false);
 
-                Assert(snEntry && snEntry->refcount > 0);
-                snEntry->refcount--;
-        }
-        node->freed = true;
+		Assert(snEntry && snEntry->refcount > 0);
+		snEntry->refcount--;
+	}
+	node->freed = true;
 }
