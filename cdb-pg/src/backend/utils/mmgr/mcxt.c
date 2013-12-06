@@ -443,9 +443,9 @@ MemoryContextError(int errorcode, MemoryContext context,
 		*(int *) NULL = errorcode;
 	}
 
-	if(errorcode != ERRCODE_OUT_OF_MEMORY)
+	if(errorcode != ERRCODE_OUT_OF_MEMORY && errorcode != ERRCODE_INTERNAL_ERROR)
 	{
-		Assert(!"Memory context error!");
+		Assert(!"Memory context error: unknown error code.");
 	}
 
 	/* Format caller's message. */
