@@ -64,7 +64,7 @@ class DumpTestCase(unittest.TestCase):
 
     def test00_create_dump_line_without_incremental(self):
         output = self.dumper.create_dump_string('dcddev', '20121212', '01234567891234')
-        expected_output = """gp_dump -p 0 -U dcddev --gp-d=/data/master/p1/db_dumps/20121212 --gp-r=/data/master/p1/db_dumps/20121212 --gp-s=p --gp-k=01234567891234 --gp-c --no-expand-children -n "\\"testschema\\"" testdb --table-file=/tmp/table_list.txt"""
+        expected_output = """gp_dump -p 0 -U dcddev --gp-d=/data/master/p1/db_dumps/20121212 --gp-r=/data/master/p1/db_dumps/20121212 --gp-s=p --gp-k=01234567891234 --no-lock --gp-c --no-expand-children -n "\\"testschema\\"" testdb --table-file=/tmp/table_list.txt"""
         self.assertEquals(output, expected_output)
 
     @patch('gppylib.operations.dump.get_heap_partition_list', return_value=[['123', 'public', 't4'], ['123', 'public', 't5'], ['123', 'pepper', 't6']])
@@ -874,7 +874,7 @@ class DumpTestCase(unittest.TestCase):
         import gppylib.operations.backup_utils as backup_utils
         backup_utils.dump_prefix = 'foo_'
         output = self.dumper.create_dump_string('dcddev', '20121212', '01234567891234')
-        expected_output = """gp_dump -p 0 -U dcddev --gp-d=/data/master/p1/db_dumps/20121212 --gp-r=/data/master/p1/db_dumps/20121212 --gp-s=p --gp-k=01234567891234 --gp-c --prefix=foo_ --no-expand-children -n "\\"testschema\\"" testdb --table-file=/tmp/table_list.txt"""
+        expected_output = """gp_dump -p 0 -U dcddev --gp-d=/data/master/p1/db_dumps/20121212 --gp-r=/data/master/p1/db_dumps/20121212 --gp-s=p --gp-k=01234567891234 --no-lock --gp-c --prefix=foo_ --no-expand-children -n "\\"testschema\\"" testdb --table-file=/tmp/table_list.txt"""
         backup_utils.dump_prefix = ''
         self.assertEquals(output, expected_output)
 
@@ -883,7 +883,7 @@ class DumpTestCase(unittest.TestCase):
         backup_utils.dump_prefix = 'metro_'
         self.dumper.include_dump_tables_file = ('bar')
         output = self.dumper.create_dump_string('dcddev', '20121212', '01234567891234')
-        expected_output = """gp_dump -p 0 -U dcddev --gp-d=/data/master/p1/db_dumps/20121212 --gp-r=/data/master/p1/db_dumps/20121212 --gp-s=p --gp-k=01234567891234 --gp-c --prefix=metro_ --no-expand-children -n "\\"testschema\\"" testdb --table-file=%s""" % self.dumper.include_dump_tables_file
+        expected_output = """gp_dump -p 0 -U dcddev --gp-d=/data/master/p1/db_dumps/20121212 --gp-r=/data/master/p1/db_dumps/20121212 --gp-s=p --gp-k=01234567891234 --no-lock --gp-c --prefix=metro_ --no-expand-children -n "\\"testschema\\"" testdb --table-file=%s""" % self.dumper.include_dump_tables_file
         backup_utils.dump_prefix = ''
         self.assertEquals(output, expected_output)
 
@@ -892,7 +892,7 @@ class DumpTestCase(unittest.TestCase):
         backup_utils.dump_prefix = 'metro_'
         self.dumper.include_dump_tables_file = (None,)
         output = self.dumper.create_dump_string('dcddev', '20121212', '01234567891234')
-        expected_output = """gp_dump -p 0 -U dcddev --gp-d=/data/master/p1/db_dumps/20121212 --gp-r=/data/master/p1/db_dumps/20121212 --gp-s=p --gp-k=01234567891234 --gp-c --prefix=metro_ --no-expand-children -n "\\"testschema\\"" testdb"""
+        expected_output = """gp_dump -p 0 -U dcddev --gp-d=/data/master/p1/db_dumps/20121212 --gp-r=/data/master/p1/db_dumps/20121212 --gp-s=p --gp-k=01234567891234 --no-lock --gp-c --prefix=metro_ --no-expand-children -n "\\"testschema\\"" testdb"""
         backup_utils.dump_prefix = ''
         self.assertEquals(output, expected_output)
 
@@ -969,7 +969,7 @@ class DumpTestCase(unittest.TestCase):
         import gppylib.operations.backup_utils as backup_utils
         backup_utils.dump_prefix = 'foo_'
         output = self.dumper.create_filtered_dump_string('dcddev', '20121212', '01234567891234')
-        expected_output = """gp_dump -p 0 -U dcddev --gp-d=/data/master/p1/db_dumps/20121212 --gp-r=/data/master/p1/db_dumps/20121212 --gp-s=p --gp-k=01234567891234 --gp-c --prefix=foo_ --no-expand-children -n "\\"testschema\\"" testdb --table-file=/tmp/table_list.txt --incremental-filter=/tmp/db_dumps/20121212/foo_gp_dump_01234567891234_filter"""
+        expected_output = """gp_dump -p 0 -U dcddev --gp-d=/data/master/p1/db_dumps/20121212 --gp-r=/data/master/p1/db_dumps/20121212 --gp-s=p --gp-k=01234567891234 --no-lock --gp-c --prefix=foo_ --no-expand-children -n "\\"testschema\\"" testdb --table-file=/tmp/table_list.txt --incremental-filter=/tmp/db_dumps/20121212/foo_gp_dump_01234567891234_filter"""
         backup_utils.dump_prefix = ''
         self.assertEquals(output, expected_output)
 
@@ -979,7 +979,7 @@ class DumpTestCase(unittest.TestCase):
         import gppylib.operations.backup_utils as backup_utils
         backup_utils.dump_prefix = 'foo_'
         title = 'Dump process'
-        dump_line = """gp_dump -p 0 -U dcddev --gp-d=/data/master/p1/db_dumps/20121212 --gp-r=/data/master/p1/db_dumps/20121212 --gp-s=p --gp-k=01234567891234 --gp-c --prefix=foo_ --no-expand-children -n "\\"testschema\\"" testdb --table-file=/tmp/table_list.txt"""
+        dump_line = """gp_dump -p 0 -U dcddev --gp-d=/data/master/p1/db_dumps/20121212 --gp-r=/data/master/p1/db_dumps/20121212 --gp-s=p --gp-k=01234567891234 --no-lock --gp-c --prefix=foo_ --no-expand-children -n "\\"testschema\\"" testdb --table-file=/tmp/table_list.txt"""
         (start, end, rc) = self.dumper.perform_dump(title, dump_line)
         backup_utils.dump_prefix = ''
         self.assertNotEqual(start, None)

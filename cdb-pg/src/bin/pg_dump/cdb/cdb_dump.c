@@ -90,6 +90,7 @@ char		g_comment_start[10];
 char		g_comment_end[10];
 static bool bForcePassword = false;
 static bool bIgnoreVersion = false;
+static bool no_lock = false;
 static int  rsyncable = false;
 
 static const char *logInfo = "INFO";
@@ -195,8 +196,10 @@ main(int argc, char **argv)
 		goto cleanup;
 
 	/* Start a transaction (to be released in spinOffThreads)  */
-	if (!startTransactionAndLock(master_db_conn))
-		goto cleanup;
+	if (!no_lock) {
+	    if (!startTransactionAndLock(master_db_conn))
+		    goto cleanup;
+	}
 
 	/* Install the SIGINT and SIGTERM handlers */
 	installSignalHandlers();
@@ -867,6 +870,7 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		{"no-expand-children", no_argument, NULL, 11},
 		{"prefix", required_argument, NULL, 12},
 		{"incremental-filter", required_argument, NULL, 13},
+		{"no-lock", no_argument, NULL, 14},
 
 		{NULL, 0, NULL, 0}
 	};
@@ -1245,6 +1249,9 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 			case 13:
 				incremental_filter = Safe_strdup(optarg);
 				pInputOpts->pszPassThroughParms = addPassThroughLongParm("incremental-filter", incremental_filter, pInputOpts->pszPassThroughParms);
+				break;
+			case 14:
+				no_lock = true;
 				break;
 
 			default:

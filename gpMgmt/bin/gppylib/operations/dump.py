@@ -528,7 +528,7 @@ class DumpDatabase(Operation):
             else:
                 report_path = os.path.join(self.master_datadir, dump_path)
 
-        dump_line = "gp_dump -p %d -U %s --gp-d=%s --gp-r=%s --gp-s=p --gp-k=%s" % (self.master_port, user_name, dump_path, report_path, timestamp_key) 
+        dump_line = "gp_dump -p %d -U %s --gp-d=%s --gp-r=%s --gp-s=p --gp-k=%s --no-lock" % (self.master_port, user_name, dump_path, report_path, timestamp_key) 
         if self.ddboost:
             dump_line += " --ddboost"
         if self.clear_catalog_dumps:
@@ -798,15 +798,6 @@ class ValidateDumpDatabase(Operation):
                                                        include_dump_tables_file = self.include_dump_tables_file,
                                                        exclude_dump_tables_file = self.exclude_dump_tables_file,
                                                        master_port = self.master_port).run()
-
-        if self.free_space_percent is not None:
-            logger.info('Validating disk space')
-            ValidateDiskSpace(free_space_percent = self.free_space_percent,
-                              compress = self.compress,
-                              dump_database = self.dump_database,
-                              include_dump_tables = self.include_dump_tables,
-                              batch_default = self.batch_default,
-                              master_port = self.master_port).run()
 
         return self.exclude_dump_tables
 

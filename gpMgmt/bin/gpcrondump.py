@@ -30,7 +30,7 @@ try:
     from gppylib.operations.dump import CreateIncrementsFile, DeleteCurrentDump, DeleteOldestDumps,\
                                         DumpDatabase, DumpConfig, DumpGlobal, MailDumpEvent,\
                                         PostDumpDatabase, UpdateHistoryTable, VacuumDatabase,\
-                                        ValidateDatabaseExists, ValidateSchemaExists,\
+                                        ValidateDatabaseExists, ValidateSchemaExists, ValidateDiskSpace,\
                                         get_ao_partition_state, get_co_partition_state, get_dirty_tables,\
                                         write_dirty_file, write_dirty_file_to_temp, write_last_operation_file,\
                                         write_partition_list_file, write_state_file, get_last_operation_data, \
@@ -593,91 +593,110 @@ class GpCronDump(Operation):
                 VacuumDatabase(database = dump_database, 
                                master_port = self.master_port).run()
         
-            ao_partition_list = get_ao_partition_state(self.master_port, dump_database)
-            co_partition_list = get_co_partition_state(self.master_port, dump_database)
-            heap_partitions = get_dirty_heap_tables(self.master_port, dump_database)
-            last_operation_list = get_last_operation_data(self.master_port, dump_database)
+            if self.free_space_percent is not None:
+                logger.info('Validating disk space')
+                ValidateDiskSpace(free_space_percent = self.free_space_percent,
+                                  compress = self.compress,
+                                  dump_database = dump_database,
+                                  include_dump_tables = self.include_dump_tables,
+                                  batch_default = self.batch_default,
+                                  master_port = self.master_port).run()
+
+            try: 
+                LOCK_TABLE_SQL = "LOCK TABLE pg_catalog.pg_class IN EXCLUSIVE MODE;"
+                conn = dbconn.connect(dbconn.DbURL(dbname=dump_database), utility=True)
+                dbconn.execSQL(conn, LOCK_TABLE_SQL)
+
+                ao_partition_list = get_ao_partition_state(self.master_port, dump_database)
+                co_partition_list = get_co_partition_state(self.master_port, dump_database)
+                heap_partitions = get_dirty_heap_tables(self.master_port, dump_database)
+                last_operation_list = get_last_operation_data(self.master_port, dump_database)
             
-            self._verify_tablenames(ao_partition_list, co_partition_list, heap_partitions)
+                self._verify_tablenames(ao_partition_list, co_partition_list, heap_partitions)
 
-            dirty_partitions = None
-            dirty_file = None
-            if self.incremental:
-                dirty_partitions = get_dirty_tables(self.master_port, dump_database,
-                                                    self.master_datadir, self.backup_dir,
-                                                    self.full_dump_timestamp, ao_partition_list,
-                                                    co_partition_list, last_operation_list)
-                if backup_utils.dump_prefix and \
-                   get_filter_file(dump_database, self.master_datadir, self.backup_dir):
-                    update_filter_file(dump_database, self.master_datadir, self.backup_dir, self.master_port)
-                dirty_partitions = filter_dirty_tables(dirty_partitions, dump_database, self.master_datadir,
-                                                       self.backup_dir)
-                dirty_file = write_dirty_file_to_temp(dirty_partitions)
+                dirty_partitions = None
+                dirty_file = None
+                if self.incremental:
+                    dirty_partitions = get_dirty_tables(self.master_port, dump_database,
+                                                        self.master_datadir, self.backup_dir,
+                                                        self.full_dump_timestamp, ao_partition_list,
+                                                        co_partition_list, last_operation_list)
+                    if backup_utils.dump_prefix and \
+                       get_filter_file(dump_database, self.master_datadir, self.backup_dir):
+                        update_filter_file(dump_database, self.master_datadir, self.backup_dir, self.master_port)
+                    dirty_partitions = filter_dirty_tables(dirty_partitions, dump_database, self.master_datadir,
+                                                           self.backup_dir)
+                    dirty_file = write_dirty_file_to_temp(dirty_partitions)
 
-            (include_file, exclude_file) = self.get_include_exclude_for_dump_database(dirty_file, dump_database)
+                (include_file, exclude_file) = self.get_include_exclude_for_dump_database(dirty_file, dump_database)
 
-            dump_outcome = DumpDatabase(dump_database = dump_database,
-                                        dump_schema = self.dump_schema,
-                                        include_dump_tables = self.include_dump_tables,
-                                        exclude_dump_tables = self.exclude_dump_tables,
-                                        compress = self.compress,
-                                        free_space_percent = self.free_space_percent,  
-                                        clear_catalog_dumps = self.clear_catalog_dumps,
-                                        backup_dir = self.backup_dir,
-                                        include_dump_tables_file = include_file,
-                                        exclude_dump_tables_file = exclude_file,
-                                        encoding = self.encoding,
-                                        output_options = self.output_options,
-                                        batch_default = self.batch_default,
-                                        master_datadir = self.master_datadir,
-                                        master_port = self.master_port,
-                                        dump_dir = self.dump_dir,
-                                        ddboost = self.ddboost,
-                                        incremental = self.incremental).run()
-
-            post_dump_outcome = PostDumpDatabase(timestamp_start = dump_outcome['timestamp_start'],
-                                                 compress = self.compress,
-                                                 backup_dir = self.backup_dir,
-                                                 batch_default = self.batch_default,
-                                                 master_datadir = self.master_datadir,
-                                                 master_port = self.master_port,
-                                                 dump_dir = self.dump_dir,
-                                                 ddboost = self.ddboost,
-                                                 incremental = self.incremental).run()
-            
-            if self.incremental:
-                if os.path.isfile(dirty_file):
-                    os.remove(dirty_file)
-                    remove_file_from_segments(self.master_port, dirty_file)
-                write_dirty_file(self.master_datadir, dirty_partitions, self.backup_dir)
-
-            if include_file is not None and os.path.exists(include_file): 
-                os.remove(include_file)
-                remove_file_from_segments(self.master_port, include_file)
-            if exclude_file is not None and os.path.exists(exclude_file):
-                os.remove(exclude_file)
-                remove_file_from_segments(self.master_port, exclude_file)
-
-            write_state_file('ao', self.master_datadir, self.backup_dir, ao_partition_list)
-            write_state_file('co', self.master_datadir, self.backup_dir, co_partition_list)
-            write_last_operation_file(self.master_datadir, self.backup_dir, last_operation_list)
-
-            current_exit_status = max(dump_outcome['exit_status'], post_dump_outcome['exit_status'])
-            if self.replicate and current_exit_status == 0:
-                self.dump_timestamps.append((dump_database, post_dump_outcome["timestamp"]))
-            final_exit_status = max(final_exit_status, current_exit_status)
-
-            if self.incremental:
-                if final_exit_status:
-                    logger.info('non-zero exit status from gp_dump, skipping generation of increments file')
-                else:
-                    # if this fails, it raises an exception and bombs out RC and to the screen
-                    CreateIncrementsFile(   dump_database = dump_database,
-                                            full_timestamp = self.full_dump_timestamp,
-                                            timestamp = post_dump_outcome['timestamp'],
+                dump_outcome = DumpDatabase(dump_database = dump_database,
+                                            dump_schema = self.dump_schema,
+                                            include_dump_tables = self.include_dump_tables,
+                                            exclude_dump_tables = self.exclude_dump_tables,
+                                            compress = self.compress,
+                                            free_space_percent = self.free_space_percent,  
+                                            clear_catalog_dumps = self.clear_catalog_dumps,
+                                            backup_dir = self.backup_dir,
+                                            include_dump_tables_file = include_file,
+                                            exclude_dump_tables_file = exclude_file,
+                                            encoding = self.encoding,
+                                            output_options = self.output_options,
+                                            batch_default = self.batch_default,
                                             master_datadir = self.master_datadir,
-                                            backup_dir = self.backup_dir ).run()
-                    write_partition_list_file(self.master_datadir, self.backup_dir, post_dump_outcome['timestamp'], self.master_port, dump_database)
+                                            master_port = self.master_port,
+                                            dump_dir = self.dump_dir,
+                                            ddboost = self.ddboost,
+                                            incremental = self.incremental).run()
+    
+                post_dump_outcome = PostDumpDatabase(timestamp_start = dump_outcome['timestamp_start'],
+                                                     compress = self.compress,
+                                                     backup_dir = self.backup_dir,
+                                                     batch_default = self.batch_default,
+                                                     master_datadir = self.master_datadir,
+                                                     master_port = self.master_port,
+                                                     dump_dir = self.dump_dir,
+                                                     ddboost = self.ddboost,
+                                                     incremental = self.incremental).run()
+                
+                if self.incremental:
+                    if os.path.isfile(dirty_file):
+                        os.remove(dirty_file)
+                        remove_file_from_segments(self.master_port, dirty_file)
+                    write_dirty_file(self.master_datadir, dirty_partitions, self.backup_dir)
+
+                if include_file is not None and os.path.exists(include_file): 
+                    os.remove(include_file)
+                    remove_file_from_segments(self.master_port, include_file)
+                if exclude_file is not None and os.path.exists(exclude_file):
+                    os.remove(exclude_file)
+                    remove_file_from_segments(self.master_port, exclude_file)
+
+                write_state_file('ao', self.master_datadir, self.backup_dir, ao_partition_list)
+                write_state_file('co', self.master_datadir, self.backup_dir, co_partition_list)
+                write_last_operation_file(self.master_datadir, self.backup_dir, last_operation_list)
+
+                current_exit_status = max(dump_outcome['exit_status'], post_dump_outcome['exit_status'])
+                if self.replicate and current_exit_status == 0:
+                    self.dump_timestamps.append((dump_database, post_dump_outcome["timestamp"]))
+                final_exit_status = max(final_exit_status, current_exit_status)
+
+                if self.incremental:
+                    if final_exit_status:
+                        logger.info('non-zero exit status from gp_dump, skipping generation of increments file')
+                    else:
+                        # if this fails, it raises an exception and bombs out RC and to the screen
+                        CreateIncrementsFile(   dump_database = dump_database,
+                                                full_timestamp = self.full_dump_timestamp,
+                                                timestamp = post_dump_outcome['timestamp'],
+                                                master_datadir = self.master_datadir,
+                                                backup_dir = self.backup_dir ).run()
+                        write_partition_list_file(self.master_datadir, self.backup_dir, post_dump_outcome['timestamp'], self.master_port, dump_database)
+
+            finally:
+                if conn:
+                    conn.commit()
+                    conn.close()
 
             if self.history:
                 # This certainly does not belong under DumpDatabase, due to CLI assumptions. Note the use of options_list.

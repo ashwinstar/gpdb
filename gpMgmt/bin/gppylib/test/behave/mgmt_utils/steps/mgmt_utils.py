@@ -3130,7 +3130,9 @@ def impl(context):
     context.segment_fts_log_count = segment_fts_log_count
 
 
+@given('this test sleeps for "{secs}" seconds')
 @when('this test sleeps for "{secs}" seconds')
+@then('this test sleeps for "{secs}" seconds')
 def impl(context, secs):
     secs = float(secs)
     time.sleep(secs)
