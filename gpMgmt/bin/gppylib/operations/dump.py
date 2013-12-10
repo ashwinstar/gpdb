@@ -800,6 +800,7 @@ class ValidateDumpDatabase(Operation):
                                                        master_port = self.master_port).run()
 
         if self.free_space_percent is not None:
+            logger.info('Validating disk space')
             ValidateDiskSpace(free_space_percent = self.free_space_percent,
                               compress = self.compress,
                               dump_database = self.dump_database,
