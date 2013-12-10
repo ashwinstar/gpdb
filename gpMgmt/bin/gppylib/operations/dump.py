@@ -799,6 +799,14 @@ class ValidateDumpDatabase(Operation):
                                                        exclude_dump_tables_file = self.exclude_dump_tables_file,
                                                        master_port = self.master_port).run()
 
+        if self.free_space_percent is not None:
+            ValidateDiskSpace(free_space_percent = self.free_space_percent,
+                              compress = self.compress,
+                              dump_database = self.dump_database,
+                              include_dump_tables = self.include_dump_tables,
+                              batch_default = self.batch_default,
+                              master_port = self.master_port).run()
+        
         return self.exclude_dump_tables
 
 
@@ -813,9 +821,6 @@ class ValidateDiskSpace(Operation):
         self.batch_default = batch_default
         self.master_port = master_port
     def execute(self):
-        ValidateGpToolkit(database = self.dump_database,
-                          master_port = self.master_port).run()
-
         operations = []
         gparray = GpArray.initFromCatalog(dbconn.DbURL(port = self.master_port), utility=True)
         segs = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary(current_role=True)]

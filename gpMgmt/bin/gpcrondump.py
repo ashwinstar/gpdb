@@ -30,7 +30,7 @@ try:
     from gppylib.operations.dump import CreateIncrementsFile, DeleteCurrentDump, DeleteOldestDumps,\
                                         DumpDatabase, DumpConfig, DumpGlobal, MailDumpEvent,\
                                         PostDumpDatabase, UpdateHistoryTable, VacuumDatabase,\
-                                        ValidateDatabaseExists, ValidateSchemaExists, ValidateDiskSpace,\
+                                        ValidateDatabaseExists, ValidateSchemaExists, ValidateGpToolkit,\
                                         get_ao_partition_state, get_co_partition_state, get_dirty_tables,\
                                         write_dirty_file, write_dirty_file_to_temp, write_last_operation_file,\
                                         write_partition_list_file, write_state_file, get_last_operation_data, \
@@ -68,6 +68,7 @@ class GpCronDump(Operation):
         self.interactive = options.interactive
         self.master_datadir = options.masterDataDirectory
         self.master_port = self._get_master_port(self.master_datadir)
+        self.pgport = self._get_pgport()
         self.options_list = " ".join(sys.argv[1:])
         self.cur_host = socket.gethostname()
 
@@ -594,17 +595,13 @@ class GpCronDump(Operation):
                                master_port = self.master_port).run()
         
             if self.free_space_percent is not None:
-                logger.info('Validating disk space')
-                ValidateDiskSpace(free_space_percent = self.free_space_percent,
-                                  compress = self.compress,
-                                  dump_database = dump_database,
-                                  include_dump_tables = self.include_dump_tables,
-                                  batch_default = self.batch_default,
-                                  master_port = self.master_port).run()
+                ValidateGpToolkit(database = dump_database,
+                                master_port = self.master_port).run()
 
+            conn = None
             try: 
                 LOCK_TABLE_SQL = "LOCK TABLE pg_catalog.pg_class IN EXCLUSIVE MODE;"
-                conn = dbconn.connect(dbconn.DbURL(dbname=dump_database), utility=True)
+                conn = dbconn.connect(dbconn.DbURL(port=self.pgport, dbname=dump_database), utility=True)
                 dbconn.execSQL(conn, LOCK_TABLE_SQL)
 
                 ao_partition_list = get_ao_partition_state(self.master_port, dump_database)
@@ -1108,6 +1105,14 @@ class GpCronDump(Operation):
     def _run_program(self):
         Command('Invoking post script', self.post_script).run()
 
+    def _get_pgport(self):
+        env_pgport = os.getenv('PGPORT')
+        if not env_pgport:
+            logger.warn('PGPORT environment variable is not set')
+            logger.warn('Running gpcrondump using the master port from the config file')
+            return self.master_port
+        return env_pgport
+        
     def _get_master_port(self, datadir):
         """ TODO: This function will be widely used. Move it elsewhere?
             Its necessity is a direct consequence of allowing the -d <master_data_directory> option. From this,
