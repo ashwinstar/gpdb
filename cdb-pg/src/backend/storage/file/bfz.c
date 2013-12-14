@@ -522,6 +522,7 @@ bfz_scan_begin(bfz_t * thiz)
 	compression_algorithms[thiz->compression_index].init(thiz);
 	fs = thiz->freeable_stuff;
 	fs->buffer_pointer = fs->buffer_end = fs->buffer;
+	fs->tot_bytes = 0L;
 
 	if (gp_workfile_faultinject)
 	{
