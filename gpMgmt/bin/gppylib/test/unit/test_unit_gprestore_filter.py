@@ -1954,3 +1954,704 @@ SET default_tablespace = '';
         with open(outfile, 'r') as fd:
             results = fd.read()
         self.assertEquals(results, expected_out)
+
+
+    def test_process_schema_with_priviledges(self):
+        test_case_buf = """--
+-- Greenplum Database database dump
+--
+
+SET statement_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = off;
+SET check_function_bodies = false;
+SET client_min_messages = warning;
+SET escape_string_warning = off;
+
+SET default_with_oids = false;
+
+--
+-- Name: SCHEMA public; Type: COMMENT; Schema: -; Owner: dcddev
+--
+
+COMMENT ON SCHEMA public IS 'Standard public schema';
+
+
+--
+-- Name: user_schema_a; Type: SCHEMA; Schema: -; Owner: user_role_a
+--
+
+CREATE SCHEMA user_schema_a;
+
+
+ALTER SCHEMA user_schema_a OWNER TO user_role_a;
+
+--
+-- Name: user_schema_b; Type: SCHEMA; Schema: -; Owner: user_role_a
+--
+
+CREATE SCHEMA user_schema_b;
+
+
+ALTER SCHEMA user_schema_b OWNER TO user_role_a;
+
+--
+-- Name: plpgsql; Type: PROCEDURAL LANGUAGE; Schema: -; Owner: dcddev
+--
+
+CREATE PROCEDURAL LANGUAGE plpgsql;
+ALTER FUNCTION plpgsql_call_handler() OWNER TO dcddev;
+ALTER FUNCTION plpgsql_validator(oid) OWNER TO dcddev;
+
+
+SET search_path = user_schema_a, pg_catalog;
+
+SET default_tablespace = '';
+
+--
+-- Name: user_table; Type: TABLE; Schema: user_schema_a; Owner: user_role_b; Tablespace: 
+--
+
+CREATE TABLE user_table (
+    a character(1) NOT NULL,
+    b character(60)
+) DISTRIBUTED BY (a);
+
+
+ALTER TABLE user_schema_a.user_table OWNER TO user_role_b;
+
+SET search_path = user_schema_b, pg_catalog;
+
+--
+-- Name: test_table; Type: TABLE; Schema: user_schema_b; Owner: dcddev; Tablespace: 
+--
+
+CREATE TABLE test_table (
+    a integer
+) DISTRIBUTED BY (a);
+
+
+ALTER TABLE user_schema_b.test_table OWNER TO dcddev;
+
+SET search_path = user_schema_a, pg_catalog;
+
+--
+-- Data for Name: user_table; Type: TABLE DATA; Schema: user_schema_a; Owner: user_role_b
+--
+
+COPY user_table (a, b) FROM stdin;
+\.
+
+
+SET search_path = user_schema_b, pg_catalog;
+
+--
+-- Data for Name: test_table; Type: TABLE DATA; Schema: user_schema_b; Owner: dcddev
+--
+
+COPY test_table (a) FROM stdin;
+\.
+
+
+--
+-- Name: public; Type: ACL; Schema: -; Owner: dcddev
+--
+
+REVOKE ALL ON SCHEMA public FROM PUBLIC;
+REVOKE ALL ON SCHEMA public FROM dcddev;
+GRANT ALL ON SCHEMA public TO dcddev;
+GRANT ALL ON SCHEMA public TO PUBLIC;
+
+
+--
+-- Name: user_schema_b; Type: ACL; Schema: -; Owner: user_role_a
+--
+
+REVOKE ALL ON SCHEMA user_schema_b FROM PUBLIC;
+REVOKE ALL ON SCHEMA user_schema_b FROM user_role_a;
+GRANT ALL ON SCHEMA user_schema_b TO user_role_a;
+
+--
+-- Name: user_schema_a; Type: ACL; Schema: -; Owner: user_role_a
+--
+
+REVOKE ALL ON SCHEMA user_schema_a FROM PUBLIC;
+REVOKE ALL ON SCHEMA user_schema_a FROM user_role_a;
+GRANT ALL ON SCHEMA user_schema_a TO user_role_a;
+
+
+SET search_path = user_schema_a, pg_catalog;
+
+--
+-- Name: user_table; Type: ACL; Schema: user_schema_a; Owner: user_role_b
+--
+
+REVOKE ALL ON TABLE user_table FROM PUBLIC;
+REVOKE ALL ON TABLE user_table FROM user_role_b;
+GRANT ALL ON TABLE user_table TO user_role_b;
+
+
+--
+-- Greenplum Database database dump complete
+--
+"""
+
+        dump_schemas = ['user_schema_a']
+        dump_tables = [('user_schema_a', 'user_table')]
+
+        infile = '/tmp/test_schema.in'
+        outfile = '/tmp/test_schema.out'
+        with open(infile, 'w') as fd:
+            fd.write(test_case_buf)
+     
+        with open(infile, 'r') as fdin:
+            with open(outfile, 'w') as fdout:
+                process_schema(dump_schemas, dump_tables, fdin, fdout)
+
+        expected_out = """SET statement_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = off;
+SET check_function_bodies = false;
+SET client_min_messages = warning;
+SET escape_string_warning = off;
+
+SET default_with_oids = false;
+
+--
+SET search_path = user_schema_a, pg_catalog;
+
+SET default_tablespace = '';
+
+--
+-- Name: user_table; Type: TABLE; Schema: user_schema_a; Owner: user_role_b; Tablespace: 
+--
+
+CREATE TABLE user_table (
+    a character(1) NOT NULL,
+    b character(60)
+) DISTRIBUTED BY (a);
+
+
+ALTER TABLE user_schema_a.user_table OWNER TO user_role_b;
+
+SET search_path = user_schema_a, pg_catalog;
+
+--
+-- Data for Name: user_table; Type: TABLE DATA; Schema: user_schema_a; Owner: user_role_b
+--
+
+COPY user_table (a, b) FROM stdin;
+\.
+
+
+-- Name: user_schema_a; Type: ACL; Schema: -; Owner: user_role_a
+--
+
+REVOKE ALL ON SCHEMA user_schema_a FROM PUBLIC;
+REVOKE ALL ON SCHEMA user_schema_a FROM user_role_a;
+GRANT ALL ON SCHEMA user_schema_a TO user_role_a;
+
+
+SET search_path = user_schema_a, pg_catalog;
+
+--
+-- Name: user_table; Type: ACL; Schema: user_schema_a; Owner: user_role_b
+--
+
+REVOKE ALL ON TABLE user_table FROM PUBLIC;
+REVOKE ALL ON TABLE user_table FROM user_role_b;
+GRANT ALL ON TABLE user_table TO user_role_b;
+
+
+--
+-- Greenplum Database database dump complete
+--
+"""
+
+        with open(outfile, 'r') as fd:
+            results = fd.read()
+        self.assertEquals(results, expected_out)
+
+
+    def test_special_char_schema_name_filter(self):
+        test_case_buf = """--
+-- Greenplum Database database dump
+--
+
+SET statement_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = off;
+SET check_function_bodies = false;
+SET client_min_messages = warning;
+SET escape_string_warning = off;
+
+SET default_with_oids = false;
+
+--
+-- Name: 测试_schema; Type: SCHEMA; Schema: -; Owner: user_role_a
+--
+
+CREATE SCHEMA "测试_schema";
+
+
+ALTER SCHEMA "测试_schema" OWNER TO user_role_a;
+
+--
+-- Name: plpgsql; Type: PROCEDURAL LANGUAGE; Schema: -; Owner: dcddev
+--
+
+CREATE PROCEDURAL LANGUAGE plpgsql;
+ALTER FUNCTION plpgsql_call_handler() OWNER TO dcddev;
+ALTER FUNCTION plpgsql_validator(oid) OWNER TO dcddev;
+
+SET search_path = "测试_schema", pg_catalog;
+
+--
+-- Name: 测试; Type: TABLE; Schema: 测试_schema; Owner: user_role_b; Tablespace: 
+--
+
+CREATE TABLE "测试" (
+    a character(1) NOT NULL,
+    b character(60)
+) DISTRIBUTED BY (a);
+
+
+ALTER TABLE "测试_schema"."测试" OWNER TO user_role_b;
+
+SET search_path = "测试_schema", pg_catalog;
+
+--
+-- Data for Name: 测试; Type: TABLE DATA; Schema: 测试_schema; Owner: user_role_b
+--
+
+COPY "测试" (a, b) FROM stdin;
+\.
+
+
+--
+-- Name: public; Type: ACL; Schema: -; Owner: dcddev
+--
+
+REVOKE ALL ON SCHEMA public FROM PUBLIC;
+REVOKE ALL ON SCHEMA public FROM dcddev;
+GRANT ALL ON SCHEMA public TO dcddev;
+GRANT ALL ON SCHEMA public TO PUBLIC;
+
+--
+-- Name: 测试_schema; Type: ACL; Schema: -; Owner: user_role_a
+--
+
+REVOKE ALL ON SCHEMA "测试_schema" FROM PUBLIC;
+REVOKE ALL ON SCHEMA "测试_schema" FROM user_role_a;
+GRANT ALL ON SCHEMA "测试_schema" TO user_role_a;
+
+SET search_path = "测试_schema", pg_catalog;
+
+--
+-- Name: 测试; Type: ACL; Schema: 测试_schema; Owner: user_role_b
+--
+
+REVOKE ALL ON TABLE "测试" FROM PUBLIC;
+REVOKE ALL ON TABLE "测试" FROM user_role_b;
+GRANT ALL ON TABLE "测试" TO user_role_b;
+
+
+--
+-- Greenplum Database database dump complete
+--
+"""
+        dump_schemas = ['测试_schema']
+        dump_tables = [('测试_schema', '测试')]
+
+        infile = '/tmp/test_schema.in'
+        outfile = '/tmp/test_schema.out'
+        with open(infile, 'w') as fd:
+            fd.write(test_case_buf)
+     
+        with open(infile, 'r') as fdin:
+            with open(outfile, 'w') as fdout:
+                process_schema(dump_schemas, dump_tables, fdin, fdout)
+
+        expected_out = """SET statement_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = off;
+SET check_function_bodies = false;
+SET client_min_messages = warning;
+SET escape_string_warning = off;
+
+SET default_with_oids = false;
+
+--
+SET search_path = "测试_schema", pg_catalog;
+
+--
+-- Name: 测试; Type: TABLE; Schema: 测试_schema; Owner: user_role_b; Tablespace: 
+--
+
+CREATE TABLE "测试" (
+    a character(1) NOT NULL,
+    b character(60)
+) DISTRIBUTED BY (a);
+
+
+ALTER TABLE "测试_schema"."测试" OWNER TO user_role_b;
+
+SET search_path = "测试_schema", pg_catalog;
+
+--
+-- Data for Name: 测试; Type: TABLE DATA; Schema: 测试_schema; Owner: user_role_b
+--
+
+COPY "测试" (a, b) FROM stdin;
+\.
+
+
+--
+-- Name: 测试_schema; Type: ACL; Schema: -; Owner: user_role_a
+--
+
+REVOKE ALL ON SCHEMA "测试_schema" FROM PUBLIC;
+REVOKE ALL ON SCHEMA "测试_schema" FROM user_role_a;
+GRANT ALL ON SCHEMA "测试_schema" TO user_role_a;
+
+SET search_path = "测试_schema", pg_catalog;
+
+--
+-- Name: 测试; Type: ACL; Schema: 测试_schema; Owner: user_role_b
+--
+
+REVOKE ALL ON TABLE "测试" FROM PUBLIC;
+REVOKE ALL ON TABLE "测试" FROM user_role_b;
+GRANT ALL ON TABLE "测试" TO user_role_b;
+
+
+--
+-- Greenplum Database database dump complete
+--
+"""
+
+        with open(outfile, 'r') as fd:
+            results = fd.read()
+        self.assertEquals(results, expected_out)
+
+    def test_euro_char_schema_name_filter(self):
+        test_case_buf = """--
+-- Greenplum Database database dump
+--
+
+SET statement_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = off;
+SET check_function_bodies = false;
+SET client_min_messages = warning;
+SET escape_string_warning = off;
+
+SET default_with_oids = false;
+
+--
+-- Name: Áá_schema; Type: SCHEMA; Schema: -; Owner: user_role_a
+--
+
+CREATE SCHEMA "Áá_schema";
+
+
+ALTER SCHEMA "Áá_schema" OWNER TO user_role_a;
+
+--
+-- Name: plpgsql; Type: PROCEDURAL LANGUAGE; Schema: -; Owner: dcddev
+--
+
+CREATE PROCEDURAL LANGUAGE plpgsql;
+ALTER FUNCTION plpgsql_call_handler() OWNER TO dcddev;
+ALTER FUNCTION plpgsql_validator(oid) OWNER TO dcddev;
+
+SET search_path = "Áá_schema", pg_catalog;
+
+--
+-- Name: Áá; Type: TABLE; Schema: Áá_schema; Owner: user_role_b; Tablespace: 
+--
+
+CREATE TABLE "Áá" (
+    a character(1) NOT NULL,
+    b character(60)
+) DISTRIBUTED BY (a);
+
+
+ALTER TABLE "Áá_schema"."Áá" OWNER TO user_role_b;
+
+SET search_path = "Áá_schema", pg_catalog;
+
+--
+-- Data for Name: Áá; Type: TABLE DATA; Schema: Áá_schema; Owner: user_role_b
+--
+
+COPY "Áá" (a, b) FROM stdin;
+\.
+
+
+--
+-- Name: public; Type: ACL; Schema: -; Owner: dcddev
+--
+
+REVOKE ALL ON SCHEMA public FROM PUBLIC;
+REVOKE ALL ON SCHEMA public FROM dcddev;
+GRANT ALL ON SCHEMA public TO dcddev;
+GRANT ALL ON SCHEMA public TO PUBLIC;
+
+--
+-- Name: Áá_schema; Type: ACL; Schema: -; Owner: user_role_a
+--
+
+REVOKE ALL ON SCHEMA "Áá_schema" FROM PUBLIC;
+REVOKE ALL ON SCHEMA "Áá_schema" FROM user_role_a;
+GRANT ALL ON SCHEMA "Áá_schema" TO user_role_a;
+
+SET search_path = "Áá_schema", pg_catalog;
+
+--
+-- Name: Áá; Type: ACL; Schema: Áá_schema; Owner: user_role_b
+--
+
+REVOKE ALL ON TABLE "Áá" FROM PUBLIC;
+REVOKE ALL ON TABLE "Áá" FROM user_role_b;
+GRANT ALL ON TABLE "Áá" TO user_role_b;
+
+
+--
+-- Greenplum Database database dump complete
+--
+"""
+        dump_schemas = ['Áá_schema']
+        dump_tables = [('Áá_schema', 'Áá')]
+
+        infile = '/tmp/test_schema.in'
+        outfile = '/tmp/test_schema.out'
+        with open(infile, 'w') as fd:
+            fd.write(test_case_buf)
+     
+        with open(infile, 'r') as fdin:
+            with open(outfile, 'w') as fdout:
+                process_schema(dump_schemas, dump_tables, fdin, fdout)
+
+        expected_out = """SET statement_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = off;
+SET check_function_bodies = false;
+SET client_min_messages = warning;
+SET escape_string_warning = off;
+
+SET default_with_oids = false;
+
+--
+SET search_path = "Áá_schema", pg_catalog;
+
+--
+-- Name: Áá; Type: TABLE; Schema: Áá_schema; Owner: user_role_b; Tablespace: 
+--
+
+CREATE TABLE "Áá" (
+    a character(1) NOT NULL,
+    b character(60)
+) DISTRIBUTED BY (a);
+
+
+ALTER TABLE "Áá_schema"."Áá" OWNER TO user_role_b;
+
+SET search_path = "Áá_schema", pg_catalog;
+
+--
+-- Data for Name: Áá; Type: TABLE DATA; Schema: Áá_schema; Owner: user_role_b
+--
+
+COPY "Áá" (a, b) FROM stdin;
+\.
+
+
+--
+-- Name: Áá_schema; Type: ACL; Schema: -; Owner: user_role_a
+--
+
+REVOKE ALL ON SCHEMA "Áá_schema" FROM PUBLIC;
+REVOKE ALL ON SCHEMA "Áá_schema" FROM user_role_a;
+GRANT ALL ON SCHEMA "Áá_schema" TO user_role_a;
+
+SET search_path = "Áá_schema", pg_catalog;
+
+--
+-- Name: Áá; Type: ACL; Schema: Áá_schema; Owner: user_role_b
+--
+
+REVOKE ALL ON TABLE "Áá" FROM PUBLIC;
+REVOKE ALL ON TABLE "Áá" FROM user_role_b;
+GRANT ALL ON TABLE "Áá" TO user_role_b;
+
+
+--
+-- Greenplum Database database dump complete
+--
+"""
+
+        with open(outfile, 'r') as fd:
+            results = fd.read()
+        self.assertEquals(results, expected_out)
+
+    def test_cyrillic_char_schema_name_filter(self):
+        test_case_buf = """--
+-- Greenplum Database database dump
+--
+
+SET statement_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = off;
+SET check_function_bodies = false;
+SET client_min_messages = warning;
+SET escape_string_warning = off;
+
+SET default_with_oids = false;
+
+--
+-- Name: Ж_schema; Type: SCHEMA; Schema: -; Owner: user_role_a
+--
+
+CREATE SCHEMA "Ж_schema";
+
+
+ALTER SCHEMA "Ж_schema" OWNER TO user_role_a;
+
+--
+-- Name: plpgsql; Type: PROCEDURAL LANGUAGE; Schema: -; Owner: dcddev
+--
+
+CREATE PROCEDURAL LANGUAGE plpgsql;
+ALTER FUNCTION plpgsql_call_handler() OWNER TO dcddev;
+ALTER FUNCTION plpgsql_validator(oid) OWNER TO dcddev;
+
+SET search_path = "Ж_schema", pg_catalog;
+
+--
+-- Name: Ж; Type: TABLE; Schema: Ж_schema; Owner: user_role_b; Tablespace: 
+--
+
+CREATE TABLE "Ж" (
+    a character(1) NOT NULL,
+    b character(60)
+) DISTRIBUTED BY (a);
+
+
+ALTER TABLE "Ж_schema"."Ж" OWNER TO user_role_b;
+
+SET search_path = "Ж_schema", pg_catalog;
+
+--
+-- Data for Name: Ж; Type: TABLE DATA; Schema: Ж_schema; Owner: user_role_b
+--
+
+COPY "Ж" (a, b) FROM stdin;
+\.
+
+
+--
+-- Name: public; Type: ACL; Schema: -; Owner: dcddev
+--
+
+REVOKE ALL ON SCHEMA public FROM PUBLIC;
+REVOKE ALL ON SCHEMA public FROM dcddev;
+GRANT ALL ON SCHEMA public TO dcddev;
+GRANT ALL ON SCHEMA public TO PUBLIC;
+
+--
+-- Name: Ж_schema; Type: ACL; Schema: -; Owner: user_role_a
+--
+
+REVOKE ALL ON SCHEMA "Ж_schema" FROM PUBLIC;
+REVOKE ALL ON SCHEMA "Ж_schema" FROM user_role_a;
+GRANT ALL ON SCHEMA "Ж_schema" TO user_role_a;
+
+SET search_path = "Ж_schema", pg_catalog;
+
+--
+-- Name: Ж; Type: ACL; Schema: Ж_schema; Owner: user_role_b
+--
+
+REVOKE ALL ON TABLE "Ж" FROM PUBLIC;
+REVOKE ALL ON TABLE "Ж" FROM user_role_b;
+GRANT ALL ON TABLE "Ж" TO user_role_b;
+
+
+--
+-- Greenplum Database database dump complete
+--
+"""
+        dump_schemas = ['Ж_schema']
+        dump_tables = [('Ж_schema', 'Ж')]
+
+        infile = '/tmp/test_schema.in'
+        outfile = '/tmp/test_schema.out'
+        with open(infile, 'w') as fd:
+            fd.write(test_case_buf)
+     
+        with open(infile, 'r') as fdin:
+            with open(outfile, 'w') as fdout:
+                process_schema(dump_schemas, dump_tables, fdin, fdout)
+
+        expected_out = """SET statement_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = off;
+SET check_function_bodies = false;
+SET client_min_messages = warning;
+SET escape_string_warning = off;
+
+SET default_with_oids = false;
+
+--
+SET search_path = "Ж_schema", pg_catalog;
+
+--
+-- Name: Ж; Type: TABLE; Schema: Ж_schema; Owner: user_role_b; Tablespace: 
+--
+
+CREATE TABLE "Ж" (
+    a character(1) NOT NULL,
+    b character(60)
+) DISTRIBUTED BY (a);
+
+
+ALTER TABLE "Ж_schema"."Ж" OWNER TO user_role_b;
+
+SET search_path = "Ж_schema", pg_catalog;
+
+--
+-- Data for Name: Ж; Type: TABLE DATA; Schema: Ж_schema; Owner: user_role_b
+--
+
+COPY "Ж" (a, b) FROM stdin;
+\.
+
+
+--
+-- Name: Ж_schema; Type: ACL; Schema: -; Owner: user_role_a
+--
+
+REVOKE ALL ON SCHEMA "Ж_schema" FROM PUBLIC;
+REVOKE ALL ON SCHEMA "Ж_schema" FROM user_role_a;
+GRANT ALL ON SCHEMA "Ж_schema" TO user_role_a;
+
+SET search_path = "Ж_schema", pg_catalog;
+
+--
+-- Name: Ж; Type: ACL; Schema: Ж_schema; Owner: user_role_b
+--
+
+REVOKE ALL ON TABLE "Ж" FROM PUBLIC;
+REVOKE ALL ON TABLE "Ж" FROM user_role_b;
+GRANT ALL ON TABLE "Ж" TO user_role_b;
+
+
+--
+-- Greenplum Database database dump complete
+--
+"""
+
+        with open(outfile, 'r') as fd:
+            results = fd.read()
+        self.assertEquals(results, expected_out)

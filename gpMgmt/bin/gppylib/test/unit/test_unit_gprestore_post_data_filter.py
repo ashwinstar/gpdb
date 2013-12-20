@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# coding: utf-8 
 
 import os, sys
 import unittest2 as unittest
@@ -334,3 +335,440 @@ CREATE RULE ab_reporting_beta_match_ins AS ON INSERT TO weblog_mart_tbls.ab_repo
         
         self.assertTrue(check_table(schema, line, search_str, dump_tables))
 
+    def test_process_schema_index_pkey(self):
+
+        test_case_buf = """--
+-- Greenplum Database database dump
+--
+SET statement_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = off;
+SET check_function_bodies = false;
+SET client_min_messages = warning;
+SET escape_string_warning = off;
+
+SET search_path = user_schema, pg_catalog;
+
+SET default_tablespace = '';
+
+SET default_with_oids = false;
+
+--
+-- Name: a_pkey; Type: CONSTRAINT; Schema: user_schema; Owner: user_role_b; Tablespace: 
+--
+
+ALTER TABLE ONLY user_table
+    ADD CONSTRAINT a_pkey PRIMARY KEY (a);
+
+
+SET search_path = public, pg_catalog;
+
+--
+-- Name: 测试_btree_index; Type: INDEX; Schema: public; Owner: dcddev; Tablespace: 
+--
+
+CREATE INDEX "测试_btree_index" ON "测试" USING btree (id);
+
+
+SET search_path = user_schema, pg_catalog;
+
+--
+-- Name: user_table_idx; Type: INDEX; Schema: user_schema; Owner: user_role_b; Tablespace: 
+--
+
+CREATE INDEX user_table_idx ON user_table USING btree (b);
+
+
+--
+-- Greenplum Database database dump complete
+--
+"""
+        expected_out="""SET statement_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = off;
+SET check_function_bodies = false;
+SET client_min_messages = warning;
+SET escape_string_warning = off;
+
+SET search_path = user_schema, pg_catalog;
+SET default_tablespace = '';
+
+SET default_with_oids = false;
+
+--
+ALTER TABLE ONLY user_table
+    ADD CONSTRAINT a_pkey PRIMARY KEY (a);
+
+
+SET search_path = user_schema, pg_catalog;
+CREATE INDEX user_table_idx ON user_table USING btree (b);
+
+
+--
+-- Greenplum Database database dump complete
+--
+"""
+
+        in_name = os.path.join(os.getcwd(), 'infile')
+        out_name = os.path.join(os.getcwd(), 'outfile')
+        with open(in_name, 'w') as fd:
+            fd.write(test_case_buf)
+        
+        dump_schemas = set(['user_schema'])
+        dump_tables = set([('user_schema', 'user_table')])
+        with open(out_name, 'w') as fdout:
+            with open(in_name, 'r') as fdin: 
+                process_schema(dump_schemas, dump_tables, fdin, fdout)
+        
+        with open(out_name, 'r') as fd:
+            results = fd.read()
+        
+        self.assertEquals(results, expected_out)
+        os.remove(in_name)
+        os.remove(out_name)
+
+
+    def test_process_schema_index_pkey_special_characters(self):
+
+        test_case_buf = """--
+-- Greenplum Database database dump
+--
+SET statement_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = off;
+SET check_function_bodies = false;
+SET client_min_messages = warning;
+SET escape_string_warning = off;
+
+SET search_path = user_schema, pg_catalog;
+
+SET default_tablespace = '';
+
+SET default_with_oids = false;
+
+--
+-- Name: a_pkey; Type: CONSTRAINT; Schema: user_schema; Owner: user_role_b; Tablespace: 
+--
+
+ALTER TABLE ONLY user_table
+    ADD CONSTRAINT a_pkey PRIMARY KEY (a);
+
+
+SET search_path = public, pg_catalog;
+
+--
+-- Name: 测试_btree_index; Type: INDEX; Schema: public; Owner: dcddev; Tablespace: 
+--
+
+CREATE INDEX "测试_btree_index" ON "测试" USING btree (id);
+
+
+SET search_path = user_schema, pg_catalog;
+
+--
+-- Name: user_table_idx; Type: INDEX; Schema: user_schema; Owner: user_role_b; Tablespace: 
+--
+
+CREATE INDEX user_table_idx ON user_table USING btree (b);
+
+
+--
+-- Greenplum Database database dump complete
+--
+"""
+
+        expected_out="""SET statement_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = off;
+SET check_function_bodies = false;
+SET client_min_messages = warning;
+SET escape_string_warning = off;
+
+SET default_tablespace = '';
+
+SET default_with_oids = false;
+
+--
+SET search_path = public, pg_catalog;
+CREATE INDEX "测试_btree_index" ON "测试" USING btree (id);
+
+
+"""
+        in_name = os.path.join(os.getcwd(), 'infile')
+        out_name = os.path.join(os.getcwd(), 'outfile')
+        with open(in_name, 'w') as fd:
+            fd.write(test_case_buf)
+        
+        dump_schemas = set(['public'])
+        dump_tables = set([('public', '测试')])
+        with open(out_name, 'w') as fdout:
+            with open(in_name, 'r') as fdin: 
+                process_schema(dump_schemas, dump_tables, fdin, fdout)
+        
+        with open(out_name, 'r') as fd:
+            results = fd.read()
+        
+        self.assertEquals(results, expected_out)
+        os.remove(in_name)
+        os.remove(out_name)
+
+    def test_special_char_schema_filter_index(self):
+
+        test_case_buf = """--
+-- Greenplum Database database dump
+--
+
+SET statement_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = off;
+SET check_function_bodies = false;
+SET client_min_messages = warning;
+SET escape_string_warning = off;
+
+SET search_path = user_schema_a, pg_catalog;
+
+SET default_tablespace = '';
+
+SET default_with_oids = false;
+
+
+SET search_path = "测试_schema", pg_catalog;
+
+--
+-- Name: a_pkey; Type: CONSTRAINT; Schema: 测试_schema; Owner: user_role_b; Tablespace: 
+--
+
+ALTER TABLE ONLY "测试"
+    ADD CONSTRAINT a_pkey PRIMARY KEY (a);
+
+
+SET search_path = "测试_schema", pg_catalog;
+
+--
+-- Name: user_table_idx; Type: INDEX; Schema: 测试_schema; Owner: user_role_b; Tablespace: 
+--
+
+CREATE INDEX user_table_idx ON "测试" USING btree (b);
+
+
+--
+-- Greenplum Database database dump complete
+--
+"""
+
+        expected_out = """SET statement_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = off;
+SET check_function_bodies = false;
+SET client_min_messages = warning;
+SET escape_string_warning = off;
+
+SET default_tablespace = '';
+
+SET default_with_oids = false;
+
+
+SET search_path = "测试_schema", pg_catalog;
+ALTER TABLE ONLY "测试"
+    ADD CONSTRAINT a_pkey PRIMARY KEY (a);
+
+
+SET search_path = "测试_schema", pg_catalog;
+CREATE INDEX user_table_idx ON "测试" USING btree (b);
+
+
+--
+-- Greenplum Database database dump complete
+--
+"""
+        in_name = os.path.join(os.getcwd(), 'infile')
+        out_name = os.path.join(os.getcwd(), 'outfile')
+        with open(in_name, 'w') as fd:
+            fd.write(test_case_buf)
+        
+        dump_schemas = set(['测试_schema'])
+        dump_tables = set([('测试_schema', '测试')])
+        with open(out_name, 'w') as fdout:
+            with open(in_name, 'r') as fdin: 
+                process_schema(dump_schemas, dump_tables, fdin, fdout)
+        
+        with open(out_name, 'r') as fd:
+            results = fd.read()
+        
+        self.assertEquals(results, expected_out)
+        os.remove(in_name)
+        os.remove(out_name)
+
+    def test_euro_char_schema_filter_index(self):
+
+        test_case_buf = """--
+-- Greenplum Database database dump
+--
+
+SET statement_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = off;
+SET check_function_bodies = false;
+SET client_min_messages = warning;
+SET escape_string_warning = off;
+
+SET search_path = user_schema_a, pg_catalog;
+
+SET default_tablespace = '';
+
+SET default_with_oids = false;
+
+
+SET search_path = "Áá_schema", pg_catalog;
+
+--
+-- Name: a_pkey; Type: CONSTRAINT; Schema: Áá_schema; Owner: user_role_b; Tablespace: 
+--
+
+ALTER TABLE ONLY "Áá"
+    ADD CONSTRAINT a_pkey PRIMARY KEY (a);
+
+
+SET search_path = "Áá_schema", pg_catalog;
+
+--
+-- Name: user_table_idx; Type: INDEX; Schema: Áá_schema; Owner: user_role_b; Tablespace: 
+--
+
+CREATE INDEX user_table_idx ON "Áá" USING btree (b);
+
+
+--
+-- Greenplum Database database dump complete
+--
+"""
+
+        expected_out = """SET statement_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = off;
+SET check_function_bodies = false;
+SET client_min_messages = warning;
+SET escape_string_warning = off;
+
+SET default_tablespace = '';
+
+SET default_with_oids = false;
+
+
+SET search_path = "Áá_schema", pg_catalog;
+ALTER TABLE ONLY "Áá"
+    ADD CONSTRAINT a_pkey PRIMARY KEY (a);
+
+
+SET search_path = "Áá_schema", pg_catalog;
+CREATE INDEX user_table_idx ON "Áá" USING btree (b);
+
+
+--
+-- Greenplum Database database dump complete
+--
+"""
+        in_name = os.path.join(os.getcwd(), 'infile')
+        out_name = os.path.join(os.getcwd(), 'outfile')
+        with open(in_name, 'w') as fd:
+            fd.write(test_case_buf)
+        
+        dump_schemas = set(['Áá_schema'])
+        dump_tables = set([('Áá_schema', 'Áá')])
+        with open(out_name, 'w') as fdout:
+            with open(in_name, 'r') as fdin: 
+                process_schema(dump_schemas, dump_tables, fdin, fdout)
+        
+        with open(out_name, 'r') as fd:
+            results = fd.read()
+        
+        self.assertEquals(results, expected_out)
+        os.remove(in_name)
+        os.remove(out_name)
+
+    def test_cyrillic_char_schema_filter_index(self):
+
+        test_case_buf = """--
+-- Greenplum Database database dump
+--
+
+SET statement_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = off;
+SET check_function_bodies = false;
+SET client_min_messages = warning;
+SET escape_string_warning = off;
+
+SET search_path = user_schema_a, pg_catalog;
+
+SET default_tablespace = '';
+
+SET default_with_oids = false;
+
+
+SET search_path = "Ж_schema", pg_catalog;
+
+--
+-- Name: a_pkey; Type: CONSTRAINT; Schema: Ж_schema; Owner: user_role_b; Tablespace: 
+--
+
+ALTER TABLE ONLY "Ж"
+    ADD CONSTRAINT a_pkey PRIMARY KEY (a);
+
+
+SET search_path = "Ж_schema", pg_catalog;
+
+--
+-- Name: user_table_idx; Type: INDEX; Schema: Ж_schema; Owner: user_role_b; Tablespace: 
+--
+
+CREATE INDEX user_table_idx ON "Ж" USING btree (b);
+
+
+--
+-- Greenplum Database database dump complete
+--
+"""
+
+        expected_out = """SET statement_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = off;
+SET check_function_bodies = false;
+SET client_min_messages = warning;
+SET escape_string_warning = off;
+
+SET default_tablespace = '';
+
+SET default_with_oids = false;
+
+
+SET search_path = "Ж_schema", pg_catalog;
+ALTER TABLE ONLY "Ж"
+    ADD CONSTRAINT a_pkey PRIMARY KEY (a);
+
+
+SET search_path = "Ж_schema", pg_catalog;
+CREATE INDEX user_table_idx ON "Ж" USING btree (b);
+
+
+--
+-- Greenplum Database database dump complete
+--
+"""
+        in_name = os.path.join(os.getcwd(), 'infile')
+        out_name = os.path.join(os.getcwd(), 'outfile')
+        with open(in_name, 'w') as fd:
+            fd.write(test_case_buf)
+        
+        dump_schemas = set(['Ж_schema'])
+        dump_tables = set([('Ж_schema', 'Ж')])
+        with open(out_name, 'w') as fdout:
+            with open(in_name, 'r') as fdin: 
+                process_schema(dump_schemas, dump_tables, fdin, fdout)
+        
+        with open(out_name, 'r') as fd:
+            results = fd.read()
+        
+        self.assertEquals(results, expected_out)
+        os.remove(in_name)
+        os.remove(out_name)

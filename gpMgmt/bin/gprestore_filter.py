@@ -18,7 +18,8 @@ drop_expr = 'DROP '
 
 comment_start_expr = '-- '
 comment_expr = '-- Name: '
-comment_data_expr = '-- Data: '
+comment_data_expr_a = '-- Data: '
+comment_data_expr_b = '-- Data for Name: '
 len_start_comment_expr = len(comment_start_expr)
 
 def get_table_info(line):
@@ -66,7 +67,15 @@ def process_schema(dump_schemas, dump_tables, fdin, fdout):
                 further_investigation_required = True
                 if schema in dump_schemas:
                     line_buff = line 
-        elif (line[:3] == comment_start_expr) and line.startswith(comment_data_expr):
+            elif type in ['ACL']:
+                if schema == '-' and (name in dump_schemas):
+                    output = True
+                    search_path = True
+                else:
+                    output = check_valid_table(schema, name, dump_tables)
+                    if output:
+                        search_path = True
+        elif (line[:3] == comment_start_expr) and (line.startswith(comment_data_expr_a) or line.startswith(comment_data_expr_b)):
             further_investigation_required = False
             name, type, schema = get_table_info(line)
             if type == 'TABLE DATA':
@@ -123,7 +132,7 @@ def extract_schema(line):
     if idx == -1:
         return None
     schema = temp[:idx]
-    return schema
+    return schema.strip('"')
 
 def extract_table(line):
     temp = line[len_copy_expr:]

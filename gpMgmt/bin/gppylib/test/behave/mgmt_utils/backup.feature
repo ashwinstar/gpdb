@@ -4548,6 +4548,238 @@ Feature: Validate command line arguments
         And the worker pool "w1" is cleaned up
         Then gp_dump should return a return code of 0
 
+    Scenario: Restore -T for incremental dump should restore metadata/postdata objects for tablenames with English and multibyte (chinese) characters
+        Given the database is running
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is schema "schema_heap" exists in "testdb"
+        And there is a "heap" table "schema_heap.heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" table "public.ao_index_table" with index "ao_index" compression "None" in "testdb" with data
+        And there is a "co" table "public.co_index_table" with index "co_index" compression "None" in "testdb" with data
+        And there is a "heap" table "public.heap_index_table" with index "heap_index" compression "None" in "testdb" with data
+        And the user runs "psql -c 'ALTER TABLE ONLY public.heap_index_table ADD CONSTRAINT heap_index_table_pkey PRIMARY KEY (column1, column2, column3);' testdb"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/create_multi_byte_char_tables.sql testdb"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/primary_key_multi_byte_char_table_name.sql testdb"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/index_multi_byte_char_table_name.sql testdb"
+        When the user runs "gpcrondump -a -x testdb"
+        Then gpcrondump should return a return code of 0
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/dirty_table_multi_byte_char.sql testdb"
+        When the user runs "gpcrondump --incremental -a -x testdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/describe_multi_byte_char.sql testdb > /tmp/describe_multi_byte_char_before"
+        And the user runs "psql -c '\d public.ao_index_table' testdb > /tmp/describe_ao_index_table_before"
+        When there is a backupfile of tables "ao_index_table, co_index_table, heap_index_table" in "testdb" exists for validation
+        And table "public.ao_index_table" is dropped in "testdb"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/drop_table_with_multi_byte_char.sql testdb" 
+        When the user runs "gpdbrestore --table-file gppylib/test/behave/mgmt_utils/steps/data/include_tables_with_metadata_postdata -a" with the stored timestamp
+        Then gpdbrestore should return a return code of 0
+        When the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/select_multi_byte_char_tables.sql testdb"
+        Then psql should print 2000 to stdout 4 times
+        And verify that there is a "ao" table "ao_index_table" in "testdb" with data
+        And verify that there is a "co" table "co_index_table" in "testdb" with data
+        And verify that there is a "heap" table "heap_index_table" in "testdb" with data
+        When the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/describe_multi_byte_char.sql testdb > /tmp/describe_multi_byte_char_after"
+        And the user runs "psql -c '\d public.ao_index_table' testdb > /tmp/describe_ao_index_table_after"
+        Then verify that the contents of the files "/tmp/describe_multi_byte_char_before" and "/tmp/describe_multi_byte_char_after" are identical
+        And verify that the contents of the files "/tmp/describe_ao_index_table_before" and "/tmp/describe_ao_index_table_after" are identical
+        And the file "/tmp/describe_multi_byte_char_before" is removed from the system
+        And the file "/tmp/describe_multi_byte_char_after" is removed from the system
+        And the file "/tmp/describe_ao_index_table_before" is removed from the system
+        And the file "/tmp/describe_ao_index_table_after" is removed from the system
+
+    Scenario: Restore -T for full dump should restore metadata/postdata objects for tablenames with English and multibyte (chinese) characters
+        Given the database is running
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a "ao" table "public.ao_index_table" with index "ao_index" compression "None" in "testdb" with data
+        And there is a "co" table "public.co_index_table" with index "co_index" compression "None" in "testdb" with data
+        And there is a "heap" table "public.heap_index_table" with index "heap_index" compression "None" in "testdb" with data
+        And the user runs "psql -c 'ALTER TABLE ONLY public.heap_index_table ADD CONSTRAINT heap_index_table_pkey PRIMARY KEY (column1, column2, column3);' testdb"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/create_multi_byte_char_tables.sql testdb"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/primary_key_multi_byte_char_table_name.sql testdb"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/index_multi_byte_char_table_name.sql testdb"
+        When the user runs "gpcrondump -a -x testdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And verify the metadata dump file syntax under " " for comments and types
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/describe_multi_byte_char.sql testdb > /tmp/describe_multi_byte_char_before"
+        And the user runs "psql -c '\d public.ao_index_table' testdb > /tmp/describe_ao_index_table_before"
+        When there is a backupfile of tables "ao_index_table, co_index_table, heap_index_table" in "testdb" exists for validation
+        And table "public.ao_index_table" is dropped in "testdb"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/drop_table_with_multi_byte_char.sql testdb" 
+        When the user runs "gpdbrestore --table-file gppylib/test/behave/mgmt_utils/steps/data/include_tables_with_metadata_postdata -a" with the stored timestamp
+        Then gpdbrestore should return a return code of 0
+        When the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/select_multi_byte_char_tables.sql testdb"
+        Then psql should print 1000 to stdout 4 times
+        And verify that there is a "ao" table "ao_index_table" in "testdb" with data
+        And verify that there is a "co" table "co_index_table" in "testdb" with data
+        And verify that there is a "heap" table "heap_index_table" in "testdb" with data
+        When the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/describe_multi_byte_char.sql testdb > /tmp/describe_multi_byte_char_after"
+        And the user runs "psql -c '\d public.ao_index_table' testdb > /tmp/describe_ao_index_table_after"
+        Then verify that the contents of the files "/tmp/describe_multi_byte_char_before" and "/tmp/describe_multi_byte_char_after" are identical
+        And verify that the contents of the files "/tmp/describe_ao_index_table_before" and "/tmp/describe_ao_index_table_after" are identical
+        And the file "/tmp/describe_multi_byte_char_before" is removed from the system
+        And the file "/tmp/describe_multi_byte_char_after" is removed from the system
+        And the file "/tmp/describe_ao_index_table_before" is removed from the system
+        And the file "/tmp/describe_ao_index_table_after" is removed from the system
+
+    Scenario: Restore -T for full dump should restore GRANT privileges for tablenames with English and multibyte (chinese) characters
+        Given the database is running
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/create_multi_byte_char_tables.sql testdb"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/primary_key_multi_byte_char_table_name.sql testdb"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/index_multi_byte_char_table_name.sql testdb"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/grant_multi_byte_char_table_name.sql testdb"
+        And the user runs """psql -c "CREATE ROLE test_gpadmin LOGIN ENCRYPTED PASSWORD 'changeme' SUPERUSER INHERIT CREATEDB CREATEROLE RESOURCE QUEUE pg_default;" testdb"""
+        And the user runs """psql -c "CREATE ROLE customer LOGIN ENCRYPTED PASSWORD 'changeme' NOSUPERUSER INHERIT NOCREATEDB NOCREATEROLE RESOURCE QUEUE pg_default;" testdb"""
+        And the user runs """psql -c "CREATE ROLE select_group NOSUPERUSER INHERIT NOCREATEDB NOCREATEROLE RESOURCE QUEUE pg_default;" testdb"""
+        And the user runs """psql -c "CREATE ROLE test_group NOSUPERUSER INHERIT NOCREATEDB NOCREATEROLE RESOURCE QUEUE pg_default;" testdb"""
+        And the user runs """psql -c "CREATE SCHEMA customer AUTHORIZATION test_gpadmin" testdb"""
+        And the user runs """psql -c "GRANT ALL ON SCHEMA customer TO test_gpadmin;" testdb"""
+        And the user runs """psql -c "GRANT ALL ON SCHEMA customer TO customer;" testdb"""
+        And the user runs """psql -c "GRANT USAGE ON SCHEMA customer TO select_group;" testdb"""
+        And the user runs """psql -c "GRANT ALL ON SCHEMA customer TO test_group;" testdb"""
+        And there is a "heap" table "customer.heap_index_table_1" with index "heap_index_1" compression "None" in "testdb" with data
+        And the user runs """psql -c "ALTER TABLE customer.heap_index_table_1 owner to customer" testdb"""
+        And the user runs """psql -c "GRANT ALL ON TABLE customer.heap_index_table_1 TO customer;" testdb"""
+        And the user runs """psql -c "GRANT ALL ON TABLE customer.heap_index_table_1 TO test_group;" testdb"""
+        And the user runs """psql -c "GRANT SELECT ON TABLE customer.heap_index_table_1 TO select_group;" testdb"""
+        And there is a "heap" table "customer.heap_index_table_2" with index "heap_index_2" compression "None" in "testdb" with data
+        And the user runs """psql -c "ALTER TABLE customer.heap_index_table_2 owner to customer" testdb"""
+        And the user runs """psql -c "GRANT ALL ON TABLE customer.heap_index_table_2 TO customer;" testdb"""
+        And the user runs """psql -c "GRANT SELECT, UPDATE, INSERT, DELETE ON TABLE customer.heap_index_table_2 TO test_group;" testdb"""
+        And the user runs """psql -c "GRANT SELECT ON TABLE customer.heap_index_table_2 TO select_group;" testdb"""
+        And there is a "heap" table "customer.heap_index_table_3" with index "heap_index_3" compression "None" in "testdb" with data
+        And the user runs """psql -c "ALTER TABLE customer.heap_index_table_3 owner to customer" testdb"""
+        And the user runs """psql -c "GRANT ALL ON TABLE customer.heap_index_table_3 TO customer;" testdb"""
+        And the user runs """psql -c "GRANT SELECT, UPDATE, INSERT, DELETE ON TABLE customer.heap_index_table_3 TO test_group;" testdb"""
+        And the user runs """psql -c "GRANT SELECT ON TABLE customer.heap_index_table_3 TO select_group;" testdb"""
+        And the user runs """psql -c "ALTER ROLE customer SET search_path = customer, public;" testdb"""
+        When the user runs "psql -c '\d customer.heap_index_table_1' testdb > /tmp/describe_heap_index_table_1_before"
+        And the user runs "psql -c '\dp customer.heap_index_table_1' testdb > /tmp/privileges_heap_index_table_1_before"
+        And the user runs "psql -c '\d customer.heap_index_table_2' testdb > /tmp/describe_heap_index_table_2_before"
+        And the user runs "psql -c '\dp customer.heap_index_table_2' testdb > /tmp/privileges_heap_index_table_2_before"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/describe_multi_byte_char.sql testdb > /tmp/describe_multi_byte_char_before"
+        When the user runs "gpcrondump -x testdb -g -G -a -b -v -u /tmp --rsyncable"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        When there is a backupfile of tables "customer.heap_index_table_1, customer.heap_index_table_2, customer.heap_index_table_3" in "testdb" exists for validation
+        And table "customer.heap_index_table_1" is dropped in "testdb"
+        And table "customer.heap_index_table_2" is dropped in "testdb"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/drop_table_with_multi_byte_char.sql testdb" 
+        And the user runs "gpdbrestore --table-file gppylib/test/behave/mgmt_utils/steps/data/include_tables_with_grant_permissions -u /tmp -a" with the stored timestamp
+        Then gpdbrestore should return a return code of 0
+        When the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/select_multi_byte_char_tables.sql testdb"
+        Then psql should print 1000 to stdout 4 times
+        And verify that there is a "heap" table "customer.heap_index_table_1" in "testdb" with data
+        And verify that there is a "heap" table "customer.heap_index_table_2" in "testdb" with data
+        And verify that there is a "heap" table "customer.heap_index_table_3" in "testdb" with data
+        When the user runs "psql -c '\d customer.heap_index_table_1' testdb > /tmp/describe_heap_index_table_1_after"
+        And the user runs "psql -c '\dp customer.heap_index_table_1' testdb > /tmp/privileges_heap_index_table_1_after"
+        And the user runs "psql -c '\d customer.heap_index_table_2' testdb > /tmp/describe_heap_index_table_2_after"
+        And the user runs "psql -c '\dp customer.heap_index_table_2' testdb > /tmp/privileges_heap_index_table_2_after"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/describe_multi_byte_char.sql testdb > /tmp/describe_multi_byte_char_after"
+        Then verify that the contents of the files "/tmp/describe_heap_index_table_1_before" and "/tmp/describe_heap_index_table_1_after" are identical
+        And verify that the contents of the files "/tmp/describe_heap_index_table_2_before" and "/tmp/describe_heap_index_table_2_after" are identical
+        And verify that the contents of the files "/tmp/privileges_heap_index_table_1_before" and "/tmp/privileges_heap_index_table_1_after" are identical
+        And verify that the contents of the files "/tmp/privileges_heap_index_table_2_before" and "/tmp/privileges_heap_index_table_2_after" are identical
+        And verify that the contents of the files "/tmp/describe_multi_byte_char_before" and "/tmp/describe_multi_byte_char_after" are identical
+        And the file "/tmp/describe_heap_index_table_1_before" is removed from the system
+        And the file "/tmp/describe_heap_index_table_1_after" is removed from the system
+        And the file "/tmp/privileges_heap_index_table_1_before" is removed from the system
+        And the file "/tmp/privileges_heap_index_table_1_after" is removed from the system
+        And the file "/tmp/describe_heap_index_table_2_before" is removed from the system
+        And the file "/tmp/describe_heap_index_table_2_after" is removed from the system
+        And the file "/tmp/privileges_heap_index_table_2_before" is removed from the system
+        And the file "/tmp/privileges_heap_index_table_2_after" is removed from the system
+        And the file "/tmp/describe_multi_byte_char_before" is removed from the system
+        And the file "/tmp/describe_multi_byte_char_after" is removed from the system
+
+    Scenario: Restore -T for incremental dump should restore GRANT privileges for tablenames with English and multibyte (chinese) characters
+        Given the database is running
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/create_multi_byte_char_tables.sql testdb"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/primary_key_multi_byte_char_table_name.sql testdb"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/index_multi_byte_char_table_name.sql testdb"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/grant_multi_byte_char_table_name.sql testdb"
+        And the user runs """psql -c "CREATE ROLE test_gpadmin LOGIN ENCRYPTED PASSWORD 'changeme' SUPERUSER INHERIT CREATEDB CREATEROLE RESOURCE QUEUE pg_default;" testdb"""
+        And the user runs """psql -c "CREATE ROLE customer LOGIN ENCRYPTED PASSWORD 'changeme' NOSUPERUSER INHERIT NOCREATEDB NOCREATEROLE RESOURCE QUEUE pg_default;" testdb"""
+        And the user runs """psql -c "CREATE ROLE select_group NOSUPERUSER INHERIT NOCREATEDB NOCREATEROLE RESOURCE QUEUE pg_default;" testdb"""
+        And the user runs """psql -c "CREATE ROLE test_group NOSUPERUSER INHERIT NOCREATEDB NOCREATEROLE RESOURCE QUEUE pg_default;" testdb"""
+        And the user runs """psql -c "CREATE SCHEMA customer AUTHORIZATION test_gpadmin" testdb"""
+        And the user runs """psql -c "GRANT ALL ON SCHEMA customer TO test_gpadmin;" testdb"""
+        And the user runs """psql -c "GRANT ALL ON SCHEMA customer TO customer;" testdb"""
+        And the user runs """psql -c "GRANT USAGE ON SCHEMA customer TO select_group;" testdb"""
+        And the user runs """psql -c "GRANT ALL ON SCHEMA customer TO test_group;" testdb"""
+        And there is a "heap" table "customer.heap_index_table_1" with index "heap_index_1" compression "None" in "testdb" with data
+        And the user runs """psql -c "ALTER TABLE customer.heap_index_table_1 owner to customer" testdb"""
+        And the user runs """psql -c "GRANT ALL ON TABLE customer.heap_index_table_1 TO customer;" testdb"""
+        And the user runs """psql -c "GRANT ALL ON TABLE customer.heap_index_table_1 TO test_group;" testdb"""
+        And the user runs """psql -c "GRANT SELECT ON TABLE customer.heap_index_table_1 TO select_group;" testdb"""
+        And there is a "heap" table "customer.heap_index_table_2" with index "heap_index_2" compression "None" in "testdb" with data
+        And the user runs """psql -c "ALTER TABLE customer.heap_index_table_2 owner to customer" testdb"""
+        And the user runs """psql -c "GRANT ALL ON TABLE customer.heap_index_table_2 TO customer;" testdb"""
+        And the user runs """psql -c "GRANT SELECT, UPDATE, INSERT, DELETE ON TABLE customer.heap_index_table_2 TO test_group;" testdb"""
+        And the user runs """psql -c "GRANT SELECT ON TABLE customer.heap_index_table_2 TO select_group;" testdb"""
+        And there is a "heap" table "customer.heap_index_table_3" with index "heap_index_3" compression "None" in "testdb" with data
+        And the user runs """psql -c "ALTER TABLE customer.heap_index_table_3 owner to customer" testdb"""
+        And the user runs """psql -c "GRANT ALL ON TABLE customer.heap_index_table_3 TO customer;" testdb"""
+        And the user runs """psql -c "GRANT SELECT, UPDATE, INSERT, DELETE ON TABLE customer.heap_index_table_3 TO test_group;" testdb"""
+        And the user runs """psql -c "GRANT SELECT ON TABLE customer.heap_index_table_3 TO select_group;" testdb"""
+        And the user runs """psql -c "ALTER ROLE customer SET search_path = customer, public;" testdb"""
+        When the user runs "psql -c '\d customer.heap_index_table_1' testdb > /tmp/describe_heap_index_table_1_before"
+        And the user runs "psql -c '\dp customer.heap_index_table_1' testdb > /tmp/privileges_heap_index_table_1_before"
+        And the user runs "psql -c '\d customer.heap_index_table_2' testdb > /tmp/describe_heap_index_table_2_before"
+        And the user runs "psql -c '\dp customer.heap_index_table_2' testdb > /tmp/privileges_heap_index_table_2_before"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/describe_multi_byte_char.sql testdb > /tmp/describe_multi_byte_char_before"
+        When the user runs "gpcrondump -x testdb -g -G -a -b -v -u /tmp --rsyncable"
+        Then gpcrondump should return a return code of 0
+        And table "customer.heap_index_table_1" is assumed to be in dirty state in "testdb"
+        And table "customer.heap_index_table_2" is assumed to be in dirty state in "testdb"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/dirty_table_multi_byte_char.sql testdb"
+        When the user runs "gpcrondump --incremental -x testdb -g -G -a -b -v -u /tmp --rsyncable"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        When there is a backupfile of tables "customer.heap_index_table_1, customer.heap_index_table_2, customer.heap_index_table_3" in "testdb" exists for validation
+        And table "customer.heap_index_table_1" is dropped in "testdb"
+        And table "customer.heap_index_table_2" is dropped in "testdb"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/drop_table_with_multi_byte_char.sql testdb" 
+        And the user runs "gpdbrestore --table-file gppylib/test/behave/mgmt_utils/steps/data/include_tables_with_grant_permissions -u /tmp -a" with the stored timestamp
+        Then gpdbrestore should return a return code of 0
+        When the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/select_multi_byte_char_tables.sql testdb"
+        Then psql should print 2000 to stdout 4 times
+        And verify that there is a "heap" table "customer.heap_index_table_1" in "testdb" with data
+        And verify that there is a "heap" table "customer.heap_index_table_2" in "testdb" with data
+        And verify that there is a "heap" table "customer.heap_index_table_3" in "testdb" with data
+        When the user runs "psql -c '\d customer.heap_index_table_1' testdb > /tmp/describe_heap_index_table_1_after"
+        And the user runs "psql -c '\dp customer.heap_index_table_1' testdb > /tmp/privileges_heap_index_table_1_after"
+        And the user runs "psql -c '\d customer.heap_index_table_2' testdb > /tmp/describe_heap_index_table_2_after"
+        And the user runs "psql -c '\dp customer.heap_index_table_2' testdb > /tmp/privileges_heap_index_table_2_after"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/describe_multi_byte_char.sql testdb > /tmp/describe_multi_byte_char_after"
+        Then verify that the contents of the files "/tmp/describe_heap_index_table_1_before" and "/tmp/describe_heap_index_table_1_after" are identical
+        And verify that the contents of the files "/tmp/describe_heap_index_table_2_before" and "/tmp/describe_heap_index_table_2_after" are identical
+        And verify that the contents of the files "/tmp/privileges_heap_index_table_1_before" and "/tmp/privileges_heap_index_table_1_after" are identical
+        And verify that the contents of the files "/tmp/privileges_heap_index_table_2_before" and "/tmp/privileges_heap_index_table_2_after" are identical
+        And verify that the contents of the files "/tmp/describe_multi_byte_char_before" and "/tmp/describe_multi_byte_char_after" are identical
+        And the file "/tmp/describe_heap_index_table_1_before" is removed from the system
+        And the file "/tmp/describe_heap_index_table_1_after" is removed from the system
+        And the file "/tmp/privileges_heap_index_table_1_before" is removed from the system
+        And the file "/tmp/privileges_heap_index_table_1_after" is removed from the system
+        And the file "/tmp/describe_heap_index_table_2_before" is removed from the system
+        And the file "/tmp/describe_heap_index_table_2_after" is removed from the system
+        And the file "/tmp/privileges_heap_index_table_2_before" is removed from the system
+        And the file "/tmp/privileges_heap_index_table_2_after" is removed from the system
+        And the file "/tmp/describe_multi_byte_char_before" is removed from the system
+        And the file "/tmp/describe_multi_byte_char_after" is removed from the system
+
     # THIS SHOULD BE THE LAST TEST
     @backupfire
     Scenario: cleanup for backup feature

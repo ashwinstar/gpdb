@@ -209,15 +209,20 @@ def validate_restore_tables_list(plan_file_contents, restore_tables):
     if restore_tables is None:
         return
 
-    table_list = [] 
+    table_set = set()
+    comp_set = set()
+    
     for ts, table in plan_file_contents:
-            table_list.extend(table.split(','))
+        tables = table.split(',')
+        for table in tables:
+            table_set.add(table)
 
     invalid_tables = []
     for table in restore_tables:
-        if table not in table_list: 
+        comp_set.add(table)
+        if not comp_set.issubset(table_set): 
             invalid_tables.append(table)
-    
+
     if invalid_tables != []:
         raise Exception('Invalid tables for -T option: The following tables were not found in plan file : "%s"' % (invalid_tables))
 

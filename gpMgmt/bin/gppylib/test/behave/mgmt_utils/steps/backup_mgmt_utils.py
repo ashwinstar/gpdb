@@ -1,7 +1,15 @@
+# coding: utf-8 
+
 import thread
 from gppylib.commands.base import Command, ExecutionError, REMOTE, WorkerPool
 from gppylib.db import dbconn
 from gppylib.test.behave_utils.utils import run_gpcommand, getRows
+
+comment_start_expr = '-- '
+comment_expr = '-- Name: '
+comment_data_expr_a = '-- Data: '
+comment_data_expr_b = '-- Data for Name: '
+len_start_comment_expr = len(comment_start_expr)
 
 @given('the user locks "{table_name}" in "{lock_mode}" using connection "{conn}" on "{dbname}"')
 @when('the user locks "{table_name}" in "{lock_mode}" using connection "{conn}" on "{dbname}"')
@@ -92,3 +100,67 @@ def impl(context, backup_pg, dbname):
 def impl(context, tabletype, table_name, compression_type, dbname, rowcount):
     populate_regular_table_data(context, tabletype, table_name, compression_type, dbname, int(rowcount))
 
+@given('verify the metadata dump file syntax under "{directory}" for comments and types')
+@when('verify the metadata dump file syntax under "{directory}" for comments and types')
+@then('verify the metadata dump file syntax under "{directory}" for comments and types')
+def impl(context, directory):
+    names = ["Name", "Data", "Data for Name"]
+    types = ["TABLE", "TABLE DATA", "EXTERNAL TABLE", "ACL", "CONSTRAINT", "COMMENT", "PROCEDURAL LANGUAGE", "SCHEMA"]
+    master_dump_dir = directory if len(directory.strip()) != 0 else master_data_dir
+    timestamp = context.backup_timestamp
+    metadata_file = '%s/db_dumps/%s/gp_dump_1_1_%s.gz' % (master_dump_dir, timestamp[0:8], timestamp)
+    tmp_metadata_file = '/tmp/behave_metadata_file'
+
+    cmd = Command(name="Unzip conetnts of metadata dump file to temp file", cmdStr='zcat %s > %s' % (metadata_file, tmp_metadata_file))
+    cmd.run(validateAfter=True)
+
+    try:
+        with open(tmp_metadata_file, 'r') as fd:
+            lines = fd.readlines() 
+            if len(lines) == 0:
+                raise Exception('Metadata file has no data')
+            for line in lines:
+                if (line[:3] == comment_start_expr):
+                    if (line.startswith(comment_expr) or line.startswith(comment_data_expr_a) or line.startswith(comment_data_expr_b)):
+                        name_k, type_k, schema_k = get_comment_keys(line)
+                        if (name_k not in names and type_k != "Type" and schema_k != "Schema"):
+                            raise Exception("Unknown key in the comment line of the metdata_file '%s'. Please check and confirm if the key is correct" % (metadata_file))
+                        name_v, type_v, schema_v = get_comment_values(line)
+                        if (type_v not in types):
+                            raise Exception("Value of Type in the comment line '%s' of the metadata_file '%s' does not fall under the expected list %s. Please check if the value is correct" %(type_v, metadata_file, types))
+    finally:
+        if os.path.exists(tmp_metadata_file):
+            os.remove(tmp_metadata_file)
+
+def get_comment_keys(line):
+    try:
+        temp = line[len_start_comment_expr:]
+        tokens = temp.strip().split(';')
+        name = tokens[0].split(':')[0].strip()
+        type = tokens[1].split(':')[0].strip()
+        schema = tokens[2].split(':')[0].strip()
+    except:
+        return (None, None, None)
+    return (name, type, schema) 
+
+def get_comment_values(line):
+    try:
+        temp = line[len_start_comment_expr:]
+        tokens = temp.strip().split(';')
+        name = tokens[0].split(':')[1].strip()
+        type = tokens[1].split(':')[1].strip()
+        schema = tokens[2].split(':')[1].strip()
+    except:
+        return (None, None, None)
+    return (name, type, schema) 
+
+@given('{command} should print {out_msg} to stdout {num} times')
+@when('{command} should print {out_msg} to stdout {num} times')
+@then('{command} should print {out_msg} to stdout {num} times')
+def impl(context, command, out_msg, num):
+    msg_list = context.stdout_message.split('\n')
+    msg_list = [x.strip() for x in msg_list]
+
+    count = msg_list.count(out_msg)
+    if count != int(num):
+        raise Exception("Expected %s to occur %s times. Found %d" % (out_msg, num, count))

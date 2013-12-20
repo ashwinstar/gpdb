@@ -79,6 +79,7 @@ def process_schema(dump_schemas, dump_tables, fdin, fdout):
 # Handles both 'tablename' and 'schemaname.tablename' cases.
 def check_table(schema, line, search_str, dump_tables):
     try:
+        comp_set = set()
         start = line.index(search_str) + len(search_str)
         end = line.find(' ',start)
         if end > 0:
@@ -89,7 +90,8 @@ def check_table(schema, line, search_str, dump_tables):
             (schemaname, table) = table.split('.')
             if schemaname != schema:
                 return False
-        if (schema, table) in dump_tables:
+        comp_set.add((schema, table.strip('"')))
+        if comp_set.issubset(dump_tables):
             return True
         return False
     except:
@@ -119,7 +121,7 @@ def extract_schema(line):
     if idx == -1:
         return None
     schema = temp[:idx]
-    return schema
+    return schema.strip('"')
 
 
 if __name__ == "__main__":
