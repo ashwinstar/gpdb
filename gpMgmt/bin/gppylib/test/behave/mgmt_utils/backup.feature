@@ -4012,7 +4012,7 @@ Feature: Validate command line arguments
         And verify that there is no view "vista" in "testdb"
         And verify that there is no procedural language "plpythonu" in "testdb"
         And the user runs "psql -c '\z' testdb"
-        And psql should not print foo_user=a/ to stdout
+        And psql should print foo_user=a/ to stdout
         And the user runs "psql -c '\df' testdb"
         And psql should not print pymax to stdout
         And verify that the data of "2" tables in "testdb" is validated after restore 
