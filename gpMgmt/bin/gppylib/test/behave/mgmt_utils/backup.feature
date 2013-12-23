@@ -4517,13 +4517,14 @@ Feature: Validate command line arguments
         And verify that there is a "heap" table "public.heap_table_1" in "fullbkdb" with data
         And verify that there is a "ao" table "ao_part_table" in "fullbkdb" with data
 
+    @foo
     Scenario: Full Backup and Restore using gp_dump without no-lock
         Given the database is running
         And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data and 1000000 rows
         And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
         And there is a backupfile of tables "heap_table, ao_part_table" in "fullbkdb" exists for validation
         When the user runs the "gp_dump --gp-d=db_dumps --gp-s=p --gp-c fullbkdb" in a worker pool "w1"
-        And this test sleeps for "2" seconds
+        And this test sleeps for "1" seconds
         And the "gp_dump" has a lock on the pg_class table in "fullbkdb"
         And the worker pool "w1" is cleaned up
         Then gp_dump should return a return code of 0

@@ -1108,8 +1108,6 @@ class GpCronDump(Operation):
     def _get_pgport(self):
         env_pgport = os.getenv('PGPORT')
         if not env_pgport:
-            logger.warn('PGPORT environment variable is not set')
-            logger.warn('Running gpcrondump using the master port from the config file')
             return self.master_port
         return env_pgport
         
