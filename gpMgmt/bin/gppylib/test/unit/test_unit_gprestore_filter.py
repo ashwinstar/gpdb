@@ -2144,14 +2144,6 @@ COPY user_table (a, b) FROM stdin;
 \.
 
 
--- Name: user_schema_a; Type: ACL; Schema: -; Owner: user_role_a
---
-
-REVOKE ALL ON SCHEMA user_schema_a FROM PUBLIC;
-REVOKE ALL ON SCHEMA user_schema_a FROM user_role_a;
-GRANT ALL ON SCHEMA user_schema_a TO user_role_a;
-
-
 SET search_path = user_schema_a, pg_catalog;
 
 --
@@ -2307,13 +2299,6 @@ COPY "测试" (a, b) FROM stdin;
 
 
 --
--- Name: 测试_schema; Type: ACL; Schema: -; Owner: user_role_a
---
-
-REVOKE ALL ON SCHEMA "测试_schema" FROM PUBLIC;
-REVOKE ALL ON SCHEMA "测试_schema" FROM user_role_a;
-GRANT ALL ON SCHEMA "测试_schema" TO user_role_a;
-
 SET search_path = "测试_schema", pg_catalog;
 
 --
@@ -2468,13 +2453,6 @@ COPY "Áá" (a, b) FROM stdin;
 
 
 --
--- Name: Áá_schema; Type: ACL; Schema: -; Owner: user_role_a
---
-
-REVOKE ALL ON SCHEMA "Áá_schema" FROM PUBLIC;
-REVOKE ALL ON SCHEMA "Áá_schema" FROM user_role_a;
-GRANT ALL ON SCHEMA "Áá_schema" TO user_role_a;
-
 SET search_path = "Áá_schema", pg_catalog;
 
 --
@@ -2629,13 +2607,6 @@ COPY "Ж" (a, b) FROM stdin;
 
 
 --
--- Name: Ж_schema; Type: ACL; Schema: -; Owner: user_role_a
---
-
-REVOKE ALL ON SCHEMA "Ж_schema" FROM PUBLIC;
-REVOKE ALL ON SCHEMA "Ж_schema" FROM user_role_a;
-GRANT ALL ON SCHEMA "Ж_schema" TO user_role_a;
-
 SET search_path = "Ж_schema", pg_catalog;
 
 --

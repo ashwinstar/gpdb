@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# coding: utf-8
 #
 # Copyright (c) Greenplum Inc 2008. All Rights Reserved. 
 #
@@ -749,6 +750,27 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         restore_tables = ['public.t5', 'public.t2']
         with self.assertRaisesRegexp(Exception, 'Invalid tables for -T option: The following tables were not found in plan file'):
             validate_restore_tables_list(plan_file_contents, restore_tables)
+
+    def test_validate_restore_tables_list_02(self):
+        plan_file_contents = [('20121212121213', 'public.t1'), ('20121212121212', 'public.t2,public.t3'), ('20121212121212', 'public.Ž')]
+        restore_tables = ['public.t1', 'public.Áá']
+        with self.assertRaisesRegexp(Exception, 'Invalid tables for -T option: The following tables were not found in plan file'):
+            validate_restore_tables_list(plan_file_contents, restore_tables)
+
+    def test_validate_restore_tables_list_03(self):
+        plan_file_contents = [('20121212121213', 'public.t1'), ('20121212121212', 'public.t2,public.t3'), ('20121212121212', 'public.测试')]
+        restore_tables = ['public.t1', 'public.测试']
+        validate_restore_tables_list(plan_file_contents, restore_tables)
+
+    def test_validate_restore_tables_list_04(self):
+        plan_file_contents = [('20121212121213', 'public.t1'), ('20121212121212', 'public.t2,public.t3'), ('20121212121212', 'public.Ž')]
+        restore_tables = ['public.t1', 'public.Ž']
+        validate_restore_tables_list(plan_file_contents, restore_tables)
+
+    def test_validate_restore_tables_list_05(self):
+        plan_file_contents = [('20121212121213', 'public.t1'), ('20121212121212', 'public.t2,public.t3'), ('20121212121212', 'public.Áá')]
+        restore_tables = ['public.t1', 'public.Áá']
+        validate_restore_tables_list(plan_file_contents, restore_tables)
 
     @patch('gppylib.operations.unix.CheckFile.run', return_value=False)
     def test_restore_global_00(self, mock):
