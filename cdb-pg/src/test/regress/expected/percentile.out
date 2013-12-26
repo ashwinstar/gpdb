@@ -1079,60 +1079,24 @@ select (select a from perct where median(t.a) = 5) from perct t;
 ERROR:  percentile functions cannot reference columns from outer queries
 LINE 1: select (select a from perct where median(t.a) = 5) from perc...
                                                  ^
--- MPP-22219
-SELECT b.dkey_a, MEDIAN(B.VALUE)
+  -- MPP-22219
+select count(*) from
+(SELECT b.dkey_a, MEDIAN(B.VALUE)
 FROM     mpp_22219 B
-GROUP BY b.dkey_a;
- dkey_a | median 
---------+--------
- 1      |      1
- 10     |     10
- 11     |     11
- 12     |     12
- 13     |     13
- 14     |     14
- 15     |     15
- 16     |     16
- 17     |     17
- 18     |     18
- 19     |     19
- 2      |      2
- 20     |     20
- 3      |      3
- 4      |      4
- 5      |      5
- 6      |      6
- 7      |      7
- 8      |      8
- 9      |      9
-(20 rows)
+GROUP BY b.dkey_a) s;
+ count 
+-------
+    20
+(1 row)
 
-SELECT b.dkey_a, percentile_cont(0.5) within  group (order by b.VALUE)
+select count(*) from
+(SELECT b.dkey_a, percentile_cont(0.5) within  group (order by b.VALUE)
 FROM     mpp_22219 B
-GROUP BY b.dkey_a;
- dkey_a | percentile_cont 
---------+-----------------
- 11     |              11
- 13     |              13
- 15     |              15
- 17     |              17
- 19     |              19
- 2      |               2
- 20     |              20
- 4      |               4
- 6      |               6
- 8      |               8
- 1      |               1
- 10     |              10
- 12     |              12
- 14     |              14
- 16     |              16
- 18     |              18
- 3      |               3
- 5      |               5
- 7      |               7
- 9      |               9
-(20 rows)
+GROUP BY b.dkey_a) s;
+ count 
+-------
+    20
+(1 row)
 
 -- MPP-21026
 select median(t2) from mpp_21026 group by t1;
@@ -1169,4 +1133,3 @@ drop table perct4;
 drop table percts;
 drop table perctsz;
 drop table mpp_22219;
-drop table mpp_21026;

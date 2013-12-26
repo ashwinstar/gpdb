@@ -206,13 +206,15 @@ select percentile_cont(0.5) within group (order by point(0,0)) from perct;
 select (select a from perct where median(t.a) = 5) from perct t;
 
 -- MPP-22219
-SELECT b.dkey_a, MEDIAN(B.VALUE)
+select count(*) from
+(SELECT b.dkey_a, MEDIAN(B.VALUE)
 FROM     mpp_22219 B
-GROUP BY b.dkey_a;
+GROUP BY b.dkey_a) s;
 
-SELECT b.dkey_a, percentile_cont(0.5) within  group (order by b.VALUE)
+select count(*) from
+(SELECT b.dkey_a, percentile_cont(0.5) within  group (order by b.VALUE)
 FROM     mpp_22219 B
-GROUP BY b.dkey_a;
+GROUP BY b.dkey_a) s;
 
 -- MPP-21026
 select median(t2) from mpp_21026 group by t1;
@@ -226,4 +228,4 @@ drop table perct4;
 drop table percts;
 drop table perctsz;
 drop table mpp_22219;
-drop table mpp_21026;
+
