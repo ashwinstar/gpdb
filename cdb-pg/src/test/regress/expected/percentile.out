@@ -26,6 +26,8 @@ DISTRIBUTED BY (dkey_a);
 insert into mpp_22219 select i, i, i from  (select * from generate_series(1, 20) i ) a ;
 create table mpp_21026 ( t1 varchar(10), t2 int);
 insert into mpp_21026 select i, i from  (select * from generate_series(1, 20) i ) a ;
+create table mpp_20076 (col1 timestamp, col2 int);
+insert into mpp_20076 select to_timestamp(i),i from generate_series(1,20) i;
 -- We test the same queries with gp_idf_deduplicate none/force. Make sure
 -- both tests have the same when adding.
 set gp_idf_deduplicate to none;
@@ -1124,6 +1126,50 @@ select median(t2) from mpp_21026 group by t1;
      20
 (20 rows)
 
+-- MPP-20076
+select 1, to_char(col1, 'YYYY'), median(col2) from mpp_20076 group by 1, 2;
+ ?column? | to_char | median 
+----------+---------+--------
+        1 | 1969    |   10.5
+(1 row)
+
+select 1, col1, median(col2) from mpp_20076 group by 1, 2;
+ ?column? |           col1           | median 
+----------+--------------------------+--------
+        1 | Wed Dec 31 16:00:01 1969 |      1
+        1 | Wed Dec 31 16:00:02 1969 |      2
+        1 | Wed Dec 31 16:00:03 1969 |      3
+        1 | Wed Dec 31 16:00:04 1969 |      4
+        1 | Wed Dec 31 16:00:05 1969 |      5
+        1 | Wed Dec 31 16:00:06 1969 |      6
+        1 | Wed Dec 31 16:00:07 1969 |      7
+        1 | Wed Dec 31 16:00:08 1969 |      8
+        1 | Wed Dec 31 16:00:09 1969 |      9
+        1 | Wed Dec 31 16:00:10 1969 |     10
+        1 | Wed Dec 31 16:00:11 1969 |     11
+        1 | Wed Dec 31 16:00:12 1969 |     12
+        1 | Wed Dec 31 16:00:13 1969 |     13
+        1 | Wed Dec 31 16:00:14 1969 |     14
+        1 | Wed Dec 31 16:00:15 1969 |     15
+        1 | Wed Dec 31 16:00:16 1969 |     16
+        1 | Wed Dec 31 16:00:17 1969 |     17
+        1 | Wed Dec 31 16:00:18 1969 |     18
+        1 | Wed Dec 31 16:00:19 1969 |     19
+        1 | Wed Dec 31 16:00:20 1969 |     20
+(20 rows)
+
+select to_char(col1, 'YYYY') AS tstmp_column, median(col2) from mpp_20076 group by 1;
+ tstmp_column | median 
+--------------+--------
+ 1969         |   10.5
+(1 row)
+
+select 1, median(col2) from mpp_20076 group by 1;
+ ?column? | median 
+----------+--------
+        1 |   10.5
+(1 row)
+
 drop view percv2;
 drop view percv;
 drop table perct;
@@ -1133,3 +1179,5 @@ drop table perct4;
 drop table percts;
 drop table perctsz;
 drop table mpp_22219;
+drop table mpp_21026;
+drop table mpp_20076;

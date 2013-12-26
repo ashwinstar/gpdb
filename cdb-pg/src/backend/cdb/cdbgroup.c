@@ -6030,6 +6030,7 @@ within_agg_join_plans(PlannerInfo *root,
 		{
 			join_tle = flatCopyTargetEntry(gc_tle);
 			join_tlist = lappend(join_tlist, join_tle);
+			join_tle->resno = list_length(join_tlist);
 		}
 	}
 
@@ -6043,6 +6044,10 @@ within_agg_join_plans(PlannerInfo *root,
 	join_tlist = add_to_flat_tlist(join_tlist,
 								   list_make2((void *) pc_var, (void *) tc_var),
 								   false);
+
+	/* add vars from flow expression: MPP-20076 */
+	extravars = pull_var_clause((Node *) outer_plan->flow->hashExpr, false);
+	join_tlist = add_to_flat_tlist(join_tlist, extravars, false /*resjunk*/);
 
 	/*
 	 * It is ideal to tell if the inner plan is fine to merge-join by
@@ -6156,8 +6161,15 @@ within_agg_final_agg(PlannerInfo *root,
 	grpColIdx = get_grouplist_colidx(root->parse->groupClause,
 									 result_plan->targetlist, &numGroupCols);
 	aggstrategy = root->parse->groupClause ? AGG_SORTED : AGG_PLAIN;
+
+	/* add vars from flow expression: MPP-20076 */
+	List *targetList = root->parse->targetList;
+	List *extravars = pull_var_clause((Node *) result_plan->flow->hashExpr, false);
+	targetList = add_to_flat_tlist(targetList, extravars, true /*resjunk*/);
+	list_free(extravars);
+
 	result_plan = (Plan *) make_agg(root,
-									root->parse->targetList,
+									targetList,
 									(List *) root->parse->havingQual,
 									aggstrategy,
 									false,

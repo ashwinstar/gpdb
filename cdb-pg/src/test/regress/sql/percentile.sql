@@ -19,6 +19,8 @@ insert into mpp_22219 select i, i, i from  (select * from generate_series(1, 20)
 create table mpp_21026 ( t1 varchar(10), t2 int);
 insert into mpp_21026 select i, i from  (select * from generate_series(1, 20) i ) a ;
 
+create table mpp_20076 (col1 timestamp, col2 int);
+insert into mpp_20076 select to_timestamp(i),i from generate_series(1,20) i;
 
 -- We test the same queries with gp_idf_deduplicate none/force. Make sure
 -- both tests have the same when adding.
@@ -219,6 +221,12 @@ GROUP BY b.dkey_a) s;
 -- MPP-21026
 select median(t2) from mpp_21026 group by t1;
 
+-- MPP-20076
+select 1, to_char(col1, 'YYYY'), median(col2) from mpp_20076 group by 1, 2;
+select 1, col1, median(col2) from mpp_20076 group by 1, 2;
+select to_char(col1, 'YYYY') AS tstmp_column, median(col2) from mpp_20076 group by 1;
+select 1, median(col2) from mpp_20076 group by 1;
+
 drop view percv2;
 drop view percv;
 drop table perct;
@@ -228,4 +236,5 @@ drop table perct4;
 drop table percts;
 drop table perctsz;
 drop table mpp_22219;
-
+drop table mpp_21026;
+drop table mpp_20076;
