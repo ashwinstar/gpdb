@@ -5010,14 +5010,21 @@ wrap_plan_index(PlannerInfo *root, Plan *plan, Query *query,
 	{
 		foreach (l, plan->flow->hashExpr)
 		{
-			Var			   *var = lfirst(l);
-
+			Var *var = lfirst(l);
+			
+			if (IsA(var, RelabelType) && IsA(((RelabelType *) var)->arg, Var))
+			{
+				/* handle RelabelType expressions in the flow: MPP-21026, MPP-22219 */
+				var = (Var*) ((RelabelType *) var)->arg;
+			}
+			
 			if (IsA(var, Var))
 			{
 				/* fix varno, which is set to 1 in wrap_plan */
 				Assert(var->varno == 1);
 				var->varno = var->varnoold = varno;
 			}
+			
 		}
 
 		/*

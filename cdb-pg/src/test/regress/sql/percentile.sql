@@ -11,6 +11,15 @@ create view percv as select percentile_cont(0.4) within group (order by a / 10),
 	median(a), percentile_disc(0.51) within group (order by a desc) from perct group by b order by b;
 create view percv2 as select median(a) as m1, median(a::float) as m2 from perct;
 
+create table mpp_22219(col_a character(2) NOT NULL, dkey_a character varying(8) NOT NULL, value double precision)
+WITH (APPENDONLY=true, COMPRESSLEVEL=5, ORIENTATION=column, COMPRESSTYPE=zlib, OIDS=FALSE)
+DISTRIBUTED BY (dkey_a);
+insert into mpp_22219 select i, i, i from  (select * from generate_series(1, 20) i ) a ;
+
+create table mpp_21026 ( t1 varchar(10), t2 int);
+insert into mpp_21026 select i, i from  (select * from generate_series(1, 20) i ) a ;
+
+
 -- We test the same queries with gp_idf_deduplicate none/force. Make sure
 -- both tests have the same when adding.
 set gp_idf_deduplicate to none;
@@ -196,6 +205,18 @@ select percentile_cont(0.5) within group (order by point(0,0)) from perct;
 -- outer reference is not allowed for now
 select (select a from perct where median(t.a) = 5) from perct t;
 
+-- MPP-22219
+SELECT b.dkey_a, MEDIAN(B.VALUE)
+FROM     mpp_22219 B
+GROUP BY b.dkey_a;
+
+SELECT b.dkey_a, percentile_cont(0.5) within  group (order by b.VALUE)
+FROM     mpp_22219 B
+GROUP BY b.dkey_a;
+
+-- MPP-21026
+select median(t2) from mpp_21026 group by t1;
+
 drop view percv2;
 drop view percv;
 drop table perct;
@@ -204,3 +225,5 @@ drop table perct3;
 drop table perct4;
 drop table percts;
 drop table perctsz;
+drop table mpp_22219;
+drop table mpp_21026;
