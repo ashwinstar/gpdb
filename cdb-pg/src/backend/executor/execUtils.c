@@ -2327,6 +2327,8 @@ void mppExecutorCleanup(QueryDesc *queryDesc)
 	/* Workfile manager per-query resource accounting */
 	WorkfileQueryspace_ReleaseEntry();
 
+	ReportOOMConsumption();
+
 	/**
 	 * Since there was an error, clean up the function scan stack.
 	 */

@@ -26,6 +26,8 @@
 #include "access/tupdesc.h"
 #include "utils/relcache.h"
 #include "gpmon/gpmon.h"                /* gpmon_packet_t */
+#include "utils/memaccounting.h"
+
 
 struct CdbDispatchResults;              /* in cdbdispatchresult.h */
 struct CdbExplain_ShowStatCtx;          /* private, in "cdb/cdbexplain.c" */
@@ -516,6 +518,8 @@ typedef struct EState
 	 */
 	DynamicTableScanInfo *dynamicTableScanInfo;
 
+	/* MemoryAccount that records the executor memory usage information. */
+	MemoryAccount *memoryAccount;
 } EState;
 
 struct PlanState;
@@ -1122,6 +1126,9 @@ typedef struct PlanState
          */
         int gpmon_plan_tick;
         gpmon_packet_t gpmon_pkt;
+
+        /* MemoryAccount to use for recording the memory usage of different plan nodes. */
+        MemoryAccount* memoryAccount;
 } PlanState;
 
 typedef struct Gpmon_NameUnit_MaxVal

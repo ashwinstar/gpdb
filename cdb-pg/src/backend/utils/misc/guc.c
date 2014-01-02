@@ -205,6 +205,7 @@ static const char *show_num_temp_buffers(void);
 static bool assign_phony_autocommit(bool newval, bool doit, GucSource source);
 static const char *assign_custom_variable_classes(const char *newval, bool doit,
 							   GucSource source);
+static const char *assign_explain_memory_verbosity(const char *newval, bool doit, GucSource source);
 static bool assign_debug_assertions(bool newval, bool doit, GucSource source);
 static bool assign_ssl(bool newval, bool doit, GucSource source);
 static bool assign_stage_log_stats(bool newval, bool doit, GucSource source);
@@ -342,6 +343,13 @@ bool		Debug_datumstream_block_write_check_integrity = false;
 bool		Debug_datumstream_read_print_varlena_info = false;
 bool		Debug_datumstream_write_use_small_initial_buffers = false;
 bool		gp_temporary_files_filespace_repair = false;
+
+int			explain_memory_verbosity = 0;
+char* 		memory_profiler_run_id = "none";
+char* 		memory_profiler_dataset_id = "none";
+char* 		memory_profiler_query_id = "none";
+int 		memory_profiler_dataset_size = 0;
+bool 		gp_dump_memory_usage = FALSE;
 
 #define VERIFY_CHECKPOINT_INTERVAL_DEFAULT 180
 int         verify_checkpoint_interval =
@@ -519,6 +527,7 @@ static char *log_min_error_statement_str;
 static char *log_destination_string;
 static char *gp_log_format_string;
 static char *gp_workfile_caching_loglevel_str;
+static char *explain_memory_verbosity_str;
 
 #ifdef HAVE_SYSLOG
 static char *syslog_facility_str;
@@ -1872,6 +1881,16 @@ static struct config_bool ConfigureNamesBool[] =
             GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_enable_explain_allstat,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_dump_memory_usage", PGC_USERSET, CLIENT_CONN_OTHER,
+			gettext_noop("Save memory usage in each segment."),
+			NULL,
+			GUC_GPDB_ADDOPT | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_dump_memory_usage,
 		false, NULL, NULL
 	},
 
@@ -5800,6 +5819,15 @@ static struct config_int ConfigureNamesInt[] =
 		&optimizer_segments,
 		0, 0, INT_MAX, NULL, NULL
 	},
+	{
+		{"memory_profiler_dataset_size", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Set the size in GB"),
+			NULL,
+			GUC_GPDB_ADDOPT | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&memory_profiler_dataset_size,
+		0, 0, INT_MAX, NULL, NULL
+	},
 
 	{
 		{"keep_wal_segments", PGC_SIGHUP, WAL_SETTINGS,
@@ -6202,6 +6230,46 @@ static struct config_string ConfigureNamesString[] =
 		},
 		&client_min_messages_str,
 		"notice", assign_client_min_messages, NULL
+	},
+
+	{
+		{"explain_memory_verbosity", PGC_USERSET, RESOURCES_MEM,
+			gettext_noop("Experimental feature: show memory account usage in EXPLAIN ANALYZE."),
+			gettext_noop("Valid values are SUPPRESS, SUMMARY, and DETAIL."),
+			GUC_GPDB_ADDOPT
+		},
+		&explain_memory_verbosity_str,
+		"suppress", assign_explain_memory_verbosity, NULL
+	},
+
+	{
+		{"memory_profiler_run_id", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Set the unique run ID for memory profiling"),
+			gettext_noop("Any string is acceptable"),
+			GUC_GPDB_ADDOPT | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&memory_profiler_run_id,
+		"none", NULL, NULL
+	},
+
+	{
+		{"memory_profiler_dataset_id", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Set the dataset ID for memory profiling"),
+			gettext_noop("Any string is acceptable"),
+			GUC_GPDB_ADDOPT | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&memory_profiler_dataset_id,
+		"none", NULL, NULL
+	},
+
+	{
+		{"memory_profiler_query_id", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Set the query ID for memory profiling"),
+			gettext_noop("Any string is acceptable"),
+			GUC_GPDB_ADDOPT | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&memory_profiler_query_id,
+		"none", NULL, NULL
 	},
 
 	{
@@ -11656,6 +11724,33 @@ assign_msglvl(int *var, const char *newval, bool doit, GucSource source)
 	else
 		return NULL;			/* fail */
 	return newval;				/* OK */
+}
+
+static const char *
+assign_explain_memory_verbosity(const char *newval, bool doit, GucSource source)
+{
+	if (pg_strcasecmp(newval, "suppress") == 0)
+	{
+		if (doit)
+			explain_memory_verbosity = EXPLAIN_MEMORY_VERBOSITY_SUPPRESS;
+	}
+	else if (pg_strcasecmp(newval, "summary") == 0)
+	{
+		if (doit)
+			explain_memory_verbosity = EXPLAIN_MEMORY_VERBOSITY_SUMMARY;
+	}
+	else if (pg_strcasecmp(newval, "detail") == 0)
+	{
+		if (doit)
+			explain_memory_verbosity = EXPLAIN_MEMORY_VERBOSITY_DETAIL;
+	}
+	else
+	{
+		printf("Unknown memory verbosity.");
+		return NULL;
+	}
+
+	return newval;
 }
 
 static const char *

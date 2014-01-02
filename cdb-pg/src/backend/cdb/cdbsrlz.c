@@ -17,6 +17,7 @@
 #include "optimizer/clauses.h"
 #include "cdb/cdbplan.h"
 #include "cdb/cdbsrlz.h"
+#include "utils/memaccounting.h"
 #include "nodes/print.h"
 #include <math.h>
 #ifdef HAVE_LIBZ
@@ -52,40 +53,43 @@ serializeNode(Node *node, int *size, int *uncompressed_size_out)
 
 	Assert(node != NULL);
 	Assert(size != NULL);
-
-	pszNode = nodeToBinaryStringFast(node, &uncompressed_size);
-	Assert(pszNode != NULL);
-
-	if (NULL != uncompressed_size_out)
+	START_MEMORY_ACCOUNT(MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_Serializer));
 	{
-		*uncompressed_size_out = uncompressed_size;
-	}
-	sNode = compress_string(pszNode, uncompressed_size, size);
-	pfree(pszNode);
+		pszNode = nodeToBinaryStringFast(node, &uncompressed_size);
+		Assert(pszNode != NULL);
 	
-	if (DEBUG5 >= log_min_messages)
-	{
-		Node * newnode = NULL;
-		PG_TRY();
+		if (NULL != uncompressed_size_out)
 		{
-		 	newnode = deserializeNode(sNode, *size);
+			*uncompressed_size_out = uncompressed_size;
 		}
-		PG_CATCH();
-		{
-			elog_node_display(DEBUG5, "Before serialization", node, true);
-			PG_RE_THROW();
-		}
-		PG_END_TRY();
+		sNode = compress_string(pszNode, uncompressed_size, size);
+		pfree(pszNode);
 
-		/* Some plans guarantee these differences (see serialization
-		 * of plan nodes -- they avoid sending QD-only info out) */
-		if (strcmp(nodeToString(node), nodeToString(newnode)) != 0)
+		if (DEBUG5 >= log_min_messages)
 		{
-			elog_node_display(DEBUG5, "Before serialization", node, true);
+			Node * newnode = NULL;
+			PG_TRY();
+			{
+				newnode = deserializeNode(sNode, *size);
+			}
+			PG_CATCH();
+			{
+				elog_node_display(DEBUG5, "Before serialization", node, true);
+				PG_RE_THROW();
+			}
+			PG_END_TRY();
 
-			elog_node_display(DEBUG5, "After deserialization", newnode, true);
+			/* Some plans guarantee these differences (see serialization
+			 * of plan nodes -- they avoid sending QD-only info out) */
+			if (strcmp(nodeToString(node), nodeToString(newnode)) != 0)
+			{
+				elog_node_display(DEBUG5, "Before serialization", node, true);
+
+				elog_node_display(DEBUG5, "After deserialization", newnode, true);
+			}
 		}
 	}
+	END_MEMORY_ACCOUNT();
 
 	return sNode;
 }
@@ -105,13 +109,17 @@ deserializeNode(const char *strNode, int size)
 
 	Assert(strNode != NULL);
 
-	sNode = uncompress_string(strNode, size, &uncompressed_len);
+	START_MEMORY_ACCOUNT(MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_Deserializer));
+	{
+		sNode = uncompress_string(strNode, size, &uncompressed_len);
 
-	Assert(sNode != NULL);
+		Assert(sNode != NULL);
+
+		node = readNodeFromBinaryString(sNode, uncompressed_len);
 	
-	node = readNodeFromBinaryString(sNode, uncompressed_len);
-
-	pfree(sNode);
+		pfree(sNode);
+	}
+	END_MEMORY_ACCOUNT();
 
 	return node;
 }

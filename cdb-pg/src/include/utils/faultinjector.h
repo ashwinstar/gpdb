@@ -179,6 +179,8 @@ typedef enum FaultInjectorIdentifier_e {
 
 	FaultDuringExecDynamicTableScan,
 
+	FaultInBackgroundWriterMain,
+
 	/* INSERT has to be done before that line */
 	FaultInjectorIdMax,
 	

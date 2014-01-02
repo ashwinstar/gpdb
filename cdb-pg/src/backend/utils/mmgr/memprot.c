@@ -28,13 +28,18 @@
 
 #include "miscadmin.h"
 #include "storage/pg_sema.h"
+#include "storage/ipc.h"
 #include "utils/palloc.h"
+#include "utils/memutils.h"
 
 #include "cdb/cdbvars.h"
 #include "utils/debugbreak.h"
 #include "utils/faultinjection.h" 
 #include "utils/simex.h"
 #include "utils/workfile_mgr.h"
+#include "utils/atomic.h"
+
+#define SHMEM_OOM_TIME "last vmem oom time"
 
 #ifndef HAVE_UNION_SEMUN
 union semun
@@ -121,6 +126,26 @@ int max_chunks_per_query = 0;
 static volatile int64 mop_bytes;         /* bytes allocated */
 static volatile int mop_hld_cnt;          /* mop hold counter */
 
+/*
+ * Last OOM time of a segment. Maintained in shared memory.
+ */
+volatile OOMTimeType* segmentOOMTime = 0;
+
+/*
+ * We don't report memory usage of current process multiple times
+ * for a single OOM event. This variable saves the last time we reported
+ * OOM. If this time is not greater than the segmentOOMTime, we don't
+ * report memory usage.
+ */
+volatile OOMTimeType alreadyReportedOOMTime = 0;
+
+/*
+ * Time when we started tracking for OOM in this process.
+ * If this time is greater than segmentOOMTime, we don't
+ * consider this process as culpable for that OOM event.
+ */
+volatile OOMTimeType oomTrackerStartTime = 0;
+
 #if defined(__x86_64__) && defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 1)) 
 static int64 mop_add_bytes(int64 val)
 {
@@ -165,7 +190,7 @@ int getMOPChunksReserved(void)
     return mop_add_hld_cnt(0);
 }
 
-static bool gp_mp_inited = false;
+bool gp_mp_inited = false;
 static inline bool gp_memprot_enabled()
 {
 	if(!gp_mp_inited || Gp_role != GP_ROLE_EXECUTE)
@@ -181,6 +206,76 @@ static inline bool gp_memprot_enabled()
 void GPMemoryProtectReset()
 {
 	gp_mp_inited = false;
+}
+
+/*
+ * UpdateTimeAtomically
+ *
+ * Updates a OOMTimeType variable atomically, using compare_and_swap_*
+ */
+void UpdateTimeAtomically(volatile OOMTimeType* time_var)
+{
+	bool updateCompleted = false;
+
+	OOMTimeType newOOMTime;
+
+	while (!updateCompleted)
+	{
+#if defined(__x86_64__)
+	    newOOMTime = GetCurrentTimestamp();
+#else
+	    struct timeval curTime;
+	    gettimeofday(&curTime, NULL);
+
+	    newOOMTime = (uint32)curTime.tv_sec;
+#endif
+	    OOMTimeType oldOOMTime = *time_var;
+
+#if defined(__x86_64__)
+	    updateCompleted = compare_and_swap_64((uint64*)time_var,
+										(uint64)oldOOMTime,
+										(uint64)newOOMTime);
+#else
+	    updateCompleted = compare_and_swap_32((uint32*)time_var,
+										(uint32)oldOOMTime,
+										(uint32)newOOMTime);
+#endif
+	}
+}
+
+/*
+ * AtShmemExit_VMEM
+ *
+ * on_shmem_exit hook to execute VMEM shutdown code such as logging memory usage
+ * if necessary.
+ */
+static void
+AtShmemExit_VMEM(int code, Datum arg)
+{
+	ReportOOMConsumption();
+}
+
+/*
+ * InitPerProcessOOMTracking
+ *
+ * Initializes per-process OOM tracking data structures.
+ */
+void InitPerProcessOOMTracking()
+{
+	Assert(NULL != segmentOOMTime);
+
+	alreadyReportedOOMTime = 0;
+
+#if defined(__x86_64__)
+    oomTrackerStartTime = GetCurrentTimestamp();
+#else
+    struct timeval curTime;
+    gettimeofday(&curTime, NULL);
+
+    oomTrackerStartTime = (uint32)curTime.tv_sec;
+#endif
+
+    on_shmem_exit(AtShmemExit_VMEM, 0);
 }
 
 /* Initialization */
@@ -215,6 +310,26 @@ void GPMemoryProtectInit()
          */
         max_chunks_per_query = ceil(gp_vmem_limit_per_query / (1024.0 * (1 << (gp_memprot_chunksize_shift - 20))));
 
+    	bool		isSegmentOOMTimeInShmem;
+
+    	segmentOOMTime = (OOMTimeType *)
+    		ShmemInitStruct(SHMEM_OOM_TIME,
+    						sizeof(OOMTimeType),
+    						&isSegmentOOMTimeInShmem);
+
+    	/*
+    	 * We are not under Postmaster, so no one else
+    	 * should have already initialized segmentOOMTime
+    	 */
+    	Assert(!isSegmentOOMTimeInShmem);
+
+		/*
+		 * Initializing segmentOOMTime to 0 ensures that no
+		 * process dumps memory usage, unless we hit an OOM
+		 * and update segmentOOMTime to a proper value.
+		 */
+    	*segmentOOMTime = 0;
+
 #ifdef USE_TEST_UTILS
         PGSemaphoreCreateInitVal(&gpsema_vmem_prot, gpsema_vmem_prot_max);
         PGSemaphoreCreateInitVal(&gpsema_mp_fault, gpsema_vmem_prot_max);
@@ -223,6 +338,28 @@ void GPMemoryProtectInit()
             PGSemaphoreCreateInitVal(&gpsema_vmem_prot, gpsema_vmem_prot_max);
 #endif
     }
+    else
+    {
+#ifdef EXEC_BACKEND
+    	/* We should only reach this part if EXEC_BACKEND is true */
+    	bool		isSegmentOOMTimeInShmem;
+
+    	/*
+    	 * Get or create the shared strategy control block
+    	 */
+    	segmentOOMTime = (struct timeval *)
+    		ShmemInitStruct(SHMEM_OOM_TIME,
+    						sizeof(OOMTimeType),
+    						&isSegmentOOMTimeInShmem);
+
+    	/*
+    	 * We are under Postmaster, so segmentOOMTime should already be
+    	 * in shared memory.
+    	 */
+    	Assert(isSegmentOOMTimeInShmem);
+#endif
+    }
+    Assert(NULL != segmentOOMTime);
 
     gp_mp_inited = true;
 }
@@ -257,8 +394,72 @@ static bool is_main_thread()
     return pthread_equal(main_tid, pthread_self());
 }
 
+/*
+ * gp_failed_to_alloc is called upon an OOM. We can have either a VMEM
+ * limited OOM (i.e., the system still has memory, but we ran out of either
+ * per-query VMEM limit or segment VMEM limit) or a true OOM, where the
+ * malloc returns a NULL pointer.
+ *
+ * This function logs OOM details, such as memory allocation/deallocation/peak.
+ * It also updates segment OOM time by calling UpdateTimeAtomically().
+ *
+ * Parameters:
+ *
+ * 		ec: error code; indicates what type of OOM event happend (system, VMEM, per-query VMEM)
+ * 		en: the last seen error number as retrieved by calling __error() or similar function
+ * 		sz: the requested allocation size for which we reached OOM
+ * 		availmb: available memory in MB
+ */
 static void gp_failed_to_alloc(int ec, int en, int sz, int availmb) 
 {
+	/*
+	 * A per-query vmem overflow shouldn't trigger a segment-wide
+	 * OOM reporting.
+	 */
+	if (MOP_FAIL_REACHED_QUERY_LIMIT != ec)
+	{
+		UpdateTimeAtomically(segmentOOMTime);
+	}
+
+	UpdateTimeAtomically(&alreadyReportedOOMTime);
+
+	/* Give an extra chunk for error handling. */
+    mop_add_hld_cnt(1);
+
+	if (pthread_equal(main_tid, pthread_self()))
+	{
+		if (ec == MOP_FAIL_REACHED_QUERY_LIMIT)
+		{
+			elog(LOG, "Logging memory usage for reaching per-query memory limit");
+		}
+		else if (ec == MOP_FAIL_REACHED_LIMIT)
+		{
+			elog(LOG, "Logging memory usage for reaching Vmem limit");
+		}
+		else if (ec == MOP_FAIL_SYSTEM)
+		{
+			/*
+			 * The system memory is exhausted and malloc returned a null pointer.
+			 * Although elog switches to ErrorContext, which already
+			 * has pre-allocated space, we are not risking any new allocation until
+			 * we dump the memory context and memory accounting tree. We are therefore
+			 * printing the log message header using write_stderr.
+			 */
+			write_stderr("Logging memory usage for reaching system memory limit");
+		}
+		else
+		{
+			elog(LOG, "Logging memory usage for semaphore error");
+		}
+
+		MemoryAccounting_SaveToLog();
+		MemoryContextStats(TopMemoryContext);
+	}
+	else
+	{
+		write_log("Child thread detected: failed to log memory usage.");
+	}
+
 	if(coredump_on_memerror)
 	{
 		/*
@@ -266,9 +467,6 @@ static void gp_failed_to_alloc(int ec, int en, int sz, int availmb)
 		 */
 		*(int *) NULL = ec;
 	}
-
-	/* Give an extra chunk for error handling. */
-    mop_add_hld_cnt(1);
 
     if (ec == MOP_FAIL_REACHED_LIMIT)
     {
@@ -307,7 +505,7 @@ static void gp_failed_to_alloc(int ec, int en, int sz, int availmb)
     else if (ec == MOP_FAIL_SYSTEM)
     {
         /* MOP OK, but system allocation failed */ 
-        if(is_main_thread())
+    	if(is_main_thread())
         {
             ereport(ERROR, (errcode(ERRCODE_GP_MEMPROT_KILL),
                         errmsg("Out of memory"),
@@ -321,14 +519,14 @@ static void gp_failed_to_alloc(int ec, int en, int sz, int availmb)
             write_log("Out of memory: Alloc from system failed");
         }
     }
-    else
-    {
+	else
+	{
         if(is_main_thread())
         {
             /* SemOp error.  */
             ereport(ERROR, (errcode(ERRCODE_GP_MEMPROT_KILL),
                         errmsg("Failed to allocate memory under virtual memory protection"),
-                        errdetail("Error %d, errno %d, %s", ec, en, strerror(en)) 
+                        errdetail("Error %d, errno %d, %s", ec, en, strerror(en))
                         )); 
         }
         else
@@ -355,18 +553,31 @@ static void *gp_malloc_internal(int64 sz1, int64 sz2, bool ismalloc)
 
 	newsz_chunk = (total_malloc + sz) >> gp_memprot_chunksize_shift;
 
+	int mem_avail = 0;
+
 	if(newsz_chunk > hldcnt) 
 	{
-		int mem_avail;
 		int err_code = -1;
 
 		need_chunk = newsz_chunk - hldcnt; 
 		mem_avail = gpmemprot_peek_sem(&gpsema_vmem_prot);
         if (mem_avail < 0)
-            return NULL;
+        {
+        	ReportOOMConsumption();
+        	return NULL;
+        }
 
 		if(mem_avail >= need_chunk)
         {
+	    	/*
+	    	 * Before attempting to reserve vmem, we check if there was any OOM
+	    	 * situation, and report our consumption if there was any. This accurately
+	    	 * tells us our share of fault in an OOM situation. Note: if this is *not*
+	    	 * the main thread, then we might end up reserving additional VMEM
+	    	 * without reporting our OOM share.
+	    	 */
+	    	ReportOOMConsumption();
+
 			bool query_mem_success = PerQueryMemory_ReserveChunks(need_chunk);
 
 			if (!query_mem_success)
@@ -416,13 +627,7 @@ static void *gp_malloc_internal(int64 sz1, int64 sz2, bool ismalloc)
 		if(need_chunk > 0)
 			gpmemprot_up_sem(&gpsema_vmem_prot, need_chunk, true);
 
-        /*
-        gp_failed_to_alloc(MOP_FAIL_SYSTEM, 0, sz, mem_avail << (gp_memprot_chunksize_shift - 20)); 
-        */
-        if (is_main_thread())
-            elog(LOG, "VM Protect: failed to allocate memory from system");
-        else
-            write_log("VM Protect: failed to allocate memory from system");
+        gp_failed_to_alloc(MOP_FAIL_SYSTEM, 0, sz, mem_avail << (gp_memprot_chunksize_shift - 20));
 
 		return NULL;
 	}
@@ -455,7 +660,7 @@ void *gp_calloc(int64 sz1, int64 sz2)
 
 	ret = calloc(sz1, sz2);
 	if(ret)
-        mop_add_bytes(sz1 * sz2); 
+        mop_add_bytes(sz1 * sz2);
 	return ret;
 }
 
@@ -470,19 +675,23 @@ void *gp_realloc(void *ptr, int64 sz, int64 newsz)
 
 	if(gp_memprot_enabled())
 	{
+		int mem_avail = 0;
+
 		if(newsz > sz)
 		{
 			newsz_chunk = (total_malloc - sz + newsz) >> gp_memprot_chunksize_shift;
 
 			if(newsz_chunk > hldcnt) 
 			{
-				int mem_avail;
 				int err_code = -1;
 
 				need_chunk = newsz_chunk - hldcnt; 
 				mem_avail = gpmemprot_peek_sem(&gpsema_vmem_prot);
                 if (mem_avail < 0)
+                {
+                	ReportOOMConsumption();
                     return NULL;
+                }
 
 				if(mem_avail >= need_chunk)
                 {
@@ -529,13 +738,7 @@ void *gp_realloc(void *ptr, int64 sz, int64 newsz)
 			if(need_chunk > 0)
 				gpmemprot_up_sem(&gpsema_vmem_prot, need_chunk, true);
 
-            /*
-               gp_failed_to_alloc(MOP_FAIL_SYSTEM, 0, sz, mem_avail << (gp_memprot_chunksize_shift - 20)); 
-             */
-            if (is_main_thread())
-                elog(LOG, "VM Protect: failed to allocate memory from system");
-            else
-                write_log("VM Protect: failed to allocate memory from system");
+		   gp_failed_to_alloc(MOP_FAIL_SYSTEM, 0, sz, mem_avail << (gp_memprot_chunksize_shift - 20));
 
             return NULL;
         }

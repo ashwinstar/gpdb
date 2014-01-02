@@ -270,6 +270,8 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault before an append-only update */
 	_("fault_during_exec_dynamic_table_scan"),
 		/* inject fault during scanning of a partition */
+	_("fault_in_background_writer_main"),
+		/* inject fault at the beginning of rxThreadFunc */
 	_("not recognized"),
 };
 
@@ -1017,6 +1019,7 @@ FaultInjector_NewHashEntry(
 
 		/* We do not use vmem on master. Therefore, we only attempt large palloc on segments. */
 		case MultiExecHashLargeVmem:
+		case FaultInBackgroundWriterMain:
 			
 			if (fileRepRole != FileRepPrimaryRole)
 			{
