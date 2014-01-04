@@ -690,3 +690,9 @@ where t1.a = foo.a;
 select * from t1,
 (select * from t1 where a=1 and a=2 and a > (select t2.b from t2)) foo
 where t1.a = foo.a;
+
+explain select gp_segment_id, relname, relowner from gp_dist_random('pg_class') 
+where relname like 'gp_%' and gp_segment_id=0
+except 
+select i, relname, relowner from pg_class, generate_series(-1, (select max(content) 
+from gp_configuration)) i order by 1;

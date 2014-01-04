@@ -2435,16 +2435,46 @@ cdbhash_const(Const *pconst, int iSegments)
 	return cdbhashreduce(pcdbhash);	
 }
 
-/**
- * These are helpers to find params in expressions
+/*
+ * return the IDs of RTEs that are referenced in the given plan
+ */
+static Bitmapset *
+referenced_rtes(Plan *plan)
+{
+	Bitmapset *scanrelids = NULL;
+
+	List *scans = extract_nodes_plan(plan, T_SubqueryScan, true /*descendIntoSubqueries*/);
+	scans = list_concat(scans, extract_nodes_plan(plan, T_ValuesScan, true /*descendIntoSubqueries*/));
+	scans = list_concat(scans, extract_nodes_plan(plan, T_FunctionScan, true /*descendIntoSubqueries*/));
+	scans = list_concat(scans, extract_nodes_plan(plan, T_TableFunctionScan, true /*descendIntoSubqueries*/));
+
+	ListCell *lc = NULL;
+	foreach (lc, scans)
+	{
+		Scan *scan = (Scan *) lfirst(lc);
+		int scanrelid = scan->scanrelid;
+		if (!bms_is_member(scanrelid, scanrelids))
+		{
+			scanrelids = bms_add_member(scanrelids, scanrelid);
+		}
+	}
+
+	list_free(scans);
+	return scanrelids;
+}
+
+/*
+ * walker context for finding all param IDs
  */
 typedef struct find_params_context
 {
-	List *paramids;
+	Bitmapset *paramids;
 } find_params_context;
 
-static bool
-find_params_walker(Node *node, find_params_context *context)
+/*
+ * find all param IDs in the given query or plan, represented by its root node
+ */
+static bool find_params_walker(Node *node, find_params_context *context)
 {
 	if (NULL == node)
 	{
@@ -2454,11 +2484,16 @@ find_params_walker(Node *node, find_params_context *context)
 	if (IsA(node, Param))
 	{
 		Param *param = (Param *) node;
-		if (0 > list_find_int(context->paramids, param->paramid))
+		if (!bms_is_member(param->paramid, context->paramids))
 		{
-			context->paramids = lappend_int(context->paramids, param->paramid);
+			context->paramids = bms_add_member(context->paramids, param->paramid);
 		}
 		return false;
+	}
+
+	if (IsA(node, Query))
+	{
+		return query_tree_walker((Query *) node, find_params_walker, (void *) context, 0);
 	}
 
 	return expression_tree_walker(node, find_params_walker, (void *) context);
@@ -2468,11 +2503,13 @@ find_params_walker(Node *node, find_params_context *context)
  * Remove unused initplans. This may happen if an initplan has been created, but
  * its corresponding param has been removed because of contradiction detection
  */
-void remove_unused_initplans(Plan *plan, List **usedParams, List *rte_params)
+static void remove_unused_initplans_helper(Plan *plan, Bitmapset **usedParams, Bitmapset *rte_params)
 {
 	if (NULL == plan || IsA(plan, ValuesScan) || IsA(plan, FunctionScan))
 	{
-		*usedParams = list_union_int(*usedParams, rte_params);
+		Bitmapset *oldbms = *usedParams;
+		*usedParams = bms_union(*usedParams, rte_params);
+		bms_free(oldbms);
 		return;
 	}
 
@@ -2483,7 +2520,7 @@ void remove_unused_initplans(Plan *plan, List **usedParams, List *rte_params)
 
 		foreach(lc, l)
 		{
-			remove_unused_initplans(lfirst(lc), usedParams, rte_params);
+			remove_unused_initplans_helper(lfirst(lc), usedParams, rte_params);
 		}
 
 		return;
@@ -2491,22 +2528,22 @@ void remove_unused_initplans(Plan *plan, List **usedParams, List *rte_params)
 
 	/* process children, and collect params that they use */
 	find_params_context context;
-	context.paramids = NIL;
+	context.paramids = NULL;
 
 	if (IsA(plan, Append))
 	{
 		Append *app = (Append *) plan;
-		remove_unused_initplans((Plan *) app->appendplans, &(context.paramids), rte_params);
+		remove_unused_initplans_helper((Plan *) app->appendplans, &(context.paramids), rte_params);
 	}
 	else if (IsA(plan, SubqueryScan))
 	{
 		SubqueryScan *subq = (SubqueryScan *) plan;
-		remove_unused_initplans(subq->subplan, &(context.paramids), rte_params);
+		remove_unused_initplans_helper(subq->subplan, &(context.paramids), rte_params);
 	}
 	else
 	{
-		remove_unused_initplans(plan->lefttree, &(context.paramids), rte_params);
-		remove_unused_initplans(plan->righttree, &(context.paramids), rte_params);
+		remove_unused_initplans_helper(plan->lefttree, &(context.paramids), rte_params);
+		remove_unused_initplans_helper(plan->righttree, &(context.paramids), rte_params);
 	}
 
 	/* collect params used in target list and qual of current node */
@@ -2609,9 +2646,9 @@ void remove_unused_initplans(Plan *plan, List **usedParams, List *rte_params)
 		}
 
 		/* remove from these lists the params that are used */
-		foreach (lc, context.paramids)
+		int paramid = bms_first_from(context.paramids, 0);
+		while (0 <= paramid)
 		{
-			int paramid = lfirst_int(lc);
 			int index = list_find_int(paramids, paramid);
 			if (0 <= index)
 			{
@@ -2619,6 +2656,8 @@ void remove_unused_initplans(Plan *plan, List **usedParams, List *rte_params)
 				paramids = list_delete_int(paramids, paramid);
 				planids = list_delete_int(planids, planid);
 			}
+
+			paramid = bms_first_from(context.paramids, paramid + 1);
 		}
 
 		/* delete unused initplans */
@@ -2651,25 +2690,38 @@ void remove_unused_initplans(Plan *plan, List **usedParams, List *rte_params)
 		list_free(paramids);
 	}
 
-	*usedParams = list_union_int(*usedParams, context.paramids);
-	list_free(context.paramids);
+	Bitmapset *oldbms = *usedParams;
+	*usedParams = bms_union(*usedParams, context.paramids);
+	bms_free(oldbms);
+	bms_free(context.paramids);
 }
 
 /* return a list of param ids that are referenced in RTEs */
-List *params_in_rtable(List *rtable)
+static Bitmapset *params_in_rtable(Plan *plan, List *rtable)
 {
 	if (NIL == rtable)
 	{
-		return NIL;
+		return NULL;
 	}
 
+	Bitmapset *scanrelids = referenced_rtes(plan);
+
 	find_params_context context;
-	context.paramids = NIL;
+	context.paramids = NULL;
 
 	ListCell *lc = NULL;
+	int rteid = 0;
 	foreach (lc, rtable)
 	{
 		RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc);
+		rteid ++;
+
+		if (!bms_is_member(rteid, scanrelids))
+		{
+			// rte not referenced in the plan
+			continue;
+		}
+
 		switch (rte->rtekind)
 		{
 			case RTE_RELATION:
@@ -2700,5 +2752,23 @@ List *params_in_rtable(List *rtable)
 	}
 
 	return context.paramids;
+}
+
+/*
+ * Remove unused initplans from the given plan object
+ */
+void remove_unused_initplans(Plan *plan, PlannerInfo *root)
+{
+	/*
+	 * RTEs may have params as well, so we need to get param IDs from them
+	 * before walking the plan to remove unused initplans
+	 */
+	Bitmapset *rte_params = params_in_rtable(plan, root->parse->rtable);
+
+	/* now do the actual cleanup */
+	Bitmapset *params = NULL;
+	remove_unused_initplans_helper(plan, &params, rte_params);
+	bms_free(params);
+	bms_free(rte_params);
 }
 

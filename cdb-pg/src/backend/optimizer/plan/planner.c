@@ -404,13 +404,6 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	/* primary planning entry point (may recurse for subqueries) */
 	top_plan = subquery_planner(glob, parse, NULL, tuple_fraction, &root, config);
 
-	/* walk plan and remove unused initplans and their params */
-	List *rte_params = params_in_rtable(root->parse->rtable);
-	List *params = NIL;
-	remove_unused_initplans(top_plan, &params, rte_params);
-	list_free(params);
-	list_free(rte_params);
-
 	/*
 	 * If creating a plan for a scrollable cursor, make sure it can run
 	 * backwards on demand.  Add a Material node at the top at need.
@@ -450,6 +443,9 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		
 		lfirst(lp) = set_plan_references(glob, subplan, subrtable);
 	}
+
+	/* walk plan and remove unused initplans and their params */
+	remove_unused_initplans(top_plan, root);
 
 	/* executor wants to know total number of Params used overall */
 	top_plan->nParamExec = list_length(glob->paramlist);

@@ -1463,3 +1463,27 @@ where t1.a = foo.a;
 ---+---
 (0 rows)
 
+explain select gp_segment_id, relname, relowner from gp_dist_random('pg_class') 
+where relname like 'gp_%' and gp_segment_id=0
+except 
+select i, relname, relowner from pg_class, generate_series(-1, (select max(content) 
+from gp_configuration)) i order by 1;
+                                               QUERY PLAN                                               
+--------------------------------------------------------------------------------------------------------
+ SetOp Except  (cost=402614.97..416095.04 rows=134801 width=72)
+   ->  Sort  (cost=402614.97..405984.99 rows=1348008 width=72)
+         Sort Key: gp_segment_id, relname, relowner
+         ->  Append  (cost=0.00..61946.70 rows=1348008 width=72)
+               ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..14.18 rows=4 width=72)
+                     ->  Subquery Scan "*SELECT* 1"  (cost=0.00..14.18 rows=4 width=72)
+                           ->  Seq Scan on pg_class  (cost=0.00..14.11 rows=4 width=72)
+                                 Filter: relname ~~ 'gp_%'::text AND gp_segment_id = 0
+               ->  Subquery Scan "*SELECT* 2"  (cost=0.02..61932.52 rows=1348000 width=72)
+                     ->  Nested Loop  (cost=0.02..48452.52 rows=1348000 width=72)
+                           InitPlan  (slice2)
+                             ->  Aggregate  (cost=0.01..0.02 rows=1 width=2)
+                                   ->  Seq Scan on gp_configuration  (cost=0.00..0.00 rows=2 width=2)
+                           ->  Function Scan on generate_series i  (cost=0.00..12.50 rows=2000 width=4)
+                           ->  Seq Scan on pg_class  (cost=0.00..10.74 rows=1348 width=68)
+(15 rows)
+
