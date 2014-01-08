@@ -151,4 +151,52 @@ Feature: Miscellaneous tests which do not belong to mgmt utilities
         And the user runs "gpstop -ar"
         And gpstop should return a return code of 0
 
+    @query_plan_size
+    Scenario: QUERY PLAN SIZE should only be printed with debug
+        Given the database is running
+        And the database "slicedb" does not exist
+        And database "slicedb" exists
+        When the user runs "gpconfig -c log_min_messages -v info"
+        Then gpconfig should return a return code of 0
+        When the user runs "gpconfig -c gp_log_gang -v terse --skipvalidation"
+        Then gpconfig should return a return code of 0
+        When the user runs "gpstop -u"
+        Then gpstop should return a return code of 0
+        And the count of query plan logs in pg_log is stored
+        When the user runs the query "create table t1 (a int);" on "slicedb"
+        When the user runs the query "insert into t1 values(1);" on "slicedb"
+        Then verify that table "t1" in "slicedb" has "1" rows
+        When this test sleeps for "3" seconds
+        Then the count of query plan logs is not changed
+        When the user runs "gpconfig -c gp_log_gang -v verbose --skipvalidation"
+        Then gpconfig should return a return code of 0
+        When the user runs "gpstop -u"
+        Then gpstop should return a return code of 0
+        Then verify that table "t1" in "slicedb" has "1" rows
+        When this test sleeps for "3" seconds
+        Then the count of query plan logs is increased
+        When the user runs "gpconfig -c gp_log_gang -v terse --skipvalidation"
+        Then gpconfig should return a return code of 0
+        When the user runs "gpstop -u"
+        Then gpstop should return a return code of 0
+        And the count of query plan logs in pg_log is stored
+        Then verify that table "t1" in "slicedb" has "1" rows
+        When this test sleeps for "3" seconds
+        Then the count of query plan logs is not changed
+        When the user runs "gpconfig -c log_min_messages -v debug1"
+        Then gpconfig should return a return code of 0
+        When the user runs "gpstop -u"
+        Then gpstop should return a return code of 0
+        And the count of query plan logs in pg_log is stored
+        Then verify that table "t1" in "slicedb" has "1" rows
+        When this test sleeps for "3" seconds
+        Then the count of query plan logs is increased
+        When the user runs "gpconfig -c log_min_messages -v info"
+        Then gpconfig should return a return code of 0
+        When the user runs "gpstop -u"
+        Then gpstop should return a return code of 0
+        And the count of query plan logs in pg_log is stored
+        Then verify that table "t1" in "slicedb" has "1" rows
+        When this test sleeps for "3" seconds
+        Then the count of query plan logs is not changed
 

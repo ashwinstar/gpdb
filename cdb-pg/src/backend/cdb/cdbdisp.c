@@ -3931,7 +3931,8 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	int num_slices = queryDesc->plannedstmt->planTree->nMotionNodes + 1;
 	uint64 plan_size_in_kb = ((uint64)splan_len_uncompressed * (uint64)num_slices) / (uint64)1024;
 	
-	elog(LOG, "Query plan size to dispatch: " UINT64_FORMAT "KB", plan_size_in_kb);
+	elog(((gp_log_gang >= GPVARS_VERBOSITY_VERBOSE) ? LOG : DEBUG1), 
+		"Query plan size to dispatch: " UINT64_FORMAT "KB", plan_size_in_kb);
 
 	if (0 < gp_max_plan_size && plan_size_in_kb > gp_max_plan_size)
 	{
