@@ -379,6 +379,7 @@ define BUILD_STEPS
 	$(MAKE) set_scripts_version INSTLOC=$(CONNECTIVITYINSTLOC)
 	@$(MAKE) loaders INSTLOC=$(INSTLOC) LOADERSINSTLOC=$(LOADERSINSTLOC)
 	@$(MAKE) set_scripts_version INSTLOC=$(LOADERSINSTLOC)
+	@$(MAKE) embed_pgcrypto INSTLOC=$(INSTLOC)
 	@$(MAKE) gppkg INSTLOC=$(INSTLOC) GPPKGINSTLOC=$(GPPKGINSTLOC)
 endef
 
@@ -1545,6 +1546,14 @@ else
 		source $$GPHOME/greenplum_path.sh && $(MAKE) -C $${source} installcheck >> installcheck-gppkg.log; \
 	done
 endif
+endif
+
+embed_pgcrypto:
+ifeq "$(EMBED_PGCRYPTO)" "true"
+	@echo "Embedding pgcrypto is enabled"
+	cd $(GPPGDIR)/contrib/pgcrypto && $(MAKE) prefix=$(INSTLOC) install
+else
+	@echo "Embedding pgcrypto is disabled"
 endif
 
 ## ----------------------------------------------------------------------
