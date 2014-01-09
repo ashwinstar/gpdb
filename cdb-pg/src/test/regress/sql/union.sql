@@ -196,3 +196,15 @@ CREATE TABLE union_quals1 (a, b) AS SELECT i, i%2 from generate_series(1,10) i;
 CREATE TABLE union_quals2 (a, b) AS SELECT i%2, i from generate_series(1,10) i;
 SELECT * FROM (SELECT a, b from union_quals1 UNION SELECT b, a from union_quals2) as foo(a,b) where a > b order by a;
 SELECT * FROM (SELECT a, max(b) over() from union_quals1 UNION SELECT * from union_quals2) as foo(a,b) where b > 6 order by a,b;
+
+-- MPP-22266: different combinations of set operations and distinct
+select * from ((select 1, 'A' from (select distinct 'B') as foo) union (select 1, 'C')) as bar;
+select 1 union (select distinct null union select '10');
+select 1 union (select 2 from (select distinct null union select 1) as x);
+select 1 union (select distinct '10' from (select 1, 3.0 union select distinct 2, null) as foo);
+select distinct a from (select 'A' union select 'B') as foo(a);
+select distinct a from (select distinct 'A' union select 'B') as foo(a);
+select distinct a from (select distinct 'A' union select distinct 'B') as foo(a);
+select distinct a from (select  'A' from (select distinct 'C' ) as bar union select distinct 'B') as foo(a);
+select distinct a from (select  distinct 'A' from (select distinct 'C' ) as bar union select distinct 'B') as foo(a);
+select distinct a from (select  distinct 'A' from (select 'C' from (select distinct 'D') as bar1 ) as bar union select distinct 'B') as foo(a);
