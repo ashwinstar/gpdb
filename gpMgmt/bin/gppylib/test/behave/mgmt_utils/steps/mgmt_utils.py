@@ -1682,7 +1682,7 @@ def impl(context, readwrite, tname, fname, dbname):
 
     sql = """CREATE %s EXTERNAL TABLE  
             %s (name varchar(255), id int) 
-            LOCATION ('gpfdist://%s:8080/%s') 
+            LOCATION ('gpfdist://%s:8088/%s') 
             FORMAT 'text'
             (DELIMITER '|');
             """ % (readwrite, tname, hostname, fname)

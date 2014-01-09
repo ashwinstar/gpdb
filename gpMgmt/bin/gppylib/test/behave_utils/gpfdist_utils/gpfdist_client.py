@@ -6,7 +6,7 @@ s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 if not s:
     raise Exception("socket not created")
 
-s.connect(("localhost", 8080))
+s.connect(("localhost", 8088))
 
 print "connected"
 
