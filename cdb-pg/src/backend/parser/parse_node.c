@@ -42,6 +42,9 @@ make_parsestate(ParseState *parentParseState)
 	pstate = palloc0(sizeof(ParseState));
 
 	pstate->parentParseState = parentParseState;
+	
+	/* disable propagateSetopTypes by default */
+	pstate->p_propagateSetopTypes = false;
 
 	/* Fill in fields that don't start at null/false/zero */
 	pstate->p_next_resno = 1;
@@ -50,8 +53,11 @@ make_parsestate(ParseState *parentParseState)
 	{
 		pstate->p_sourcetext = parentParseState->p_sourcetext;
 		pstate->p_variableparams = parentParseState->p_variableparams;
-		pstate->p_setopTypes = parentParseState->p_setopTypes;
-		pstate->p_setopTypmods = parentParseState->p_setopTypmods;
+		if (parentParseState->p_propagateSetopTypes)
+		{
+			pstate->p_setopTypes = parentParseState->p_setopTypes;
+			pstate->p_setopTypmods = parentParseState->p_setopTypmods;
+		}
 	}
 
 	return pstate;

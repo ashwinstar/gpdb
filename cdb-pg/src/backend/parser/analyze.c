@@ -10366,6 +10366,7 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 
 		pstate->p_setopTypes = lappend_oid(pstate->p_setopTypes, restype);
 		pstate->p_setopTypmods = lappend_int(pstate->p_setopTypmods, restypmod);
+		pstate->p_propagateSetopTypes = true; /* once p_setopTypes are set, we allow pstate to propagate setop types */
 	}
 
 	/*

@@ -104,6 +104,7 @@ typedef struct ParseState
 	bool        p_hasDynamicFunction; /* function w/unstable return type */
 	List	   *p_setopTypes;		/* predicated types on Setop */
 	List	   *p_setopTypmods;		/* predicated typmods on Setop */
+	bool        p_propagateSetopTypes;      /* if possible to propagate types on Setop */
 } ParseState;
 
 extern ParseState *make_parsestate(ParseState *parentParseState);
