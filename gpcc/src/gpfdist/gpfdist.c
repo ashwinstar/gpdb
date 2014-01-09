@@ -43,8 +43,6 @@
 #include <windows.h>
 #include <io.h>
 #define SHUT_WR SD_SEND
-#define SHUT_RD SD_RECEIVE
-#define SHUT_RDWR SD_BOTH
 #define socklen_t int
 #ifndef ECONNRESET
 #define ECONNRESET   WSAECONNRESET
@@ -943,7 +941,6 @@ static void request_end(request_t* r, int error, const char* errmsg)
 	}
 
 	TR(("[%s] [%s:%ld:%d] request end\n", datetime(), GET_SID(r), r->id, r->sock));
-	TR(("---------------------------------------------------\n"));
 
 	/* If we still have a block outstanding, the session is corrupted. */
 	if (r->outblock.top != r->outblock.bot)
@@ -1605,8 +1602,9 @@ static void do_write(int fd, short event, void* arg)
 			return;
 		}
 
-		TR(("[%s:%ld:%d] send data bytes off buf %d .. %d (top %d)\n", GET_SID(r), r->id,
-			fd, datablock->bot, datablock->bot + n, datablock->top));
+		TR(("[%s] [%s:%ld:%d] send data bytes off buf %d .. %d (top %d)\n", 
+			datetime(), GET_SID(r), r->id, fd, datablock->bot, 
+			datablock->bot + n, datablock->top));
 
 		datablock->bot += n;
 
@@ -1745,11 +1743,6 @@ static void do_read_request(int fd, short event, void* arg)
 	/* mark it as a GET or PUT request */
 	if (0 == strcmp("GET", r->in.req->argv[0]))
 		r->is_get = 1;
-
-	/* if GET, we don't need to read from the socket anymore */
-	if (r->is_get)
-		shutdown(r->sock, SHUT_RD);
-
 
 	/* make a copy of the path */
 	path = apr_pstrdup(r->pool, r->in.req->argv[1]);
@@ -3680,7 +3673,7 @@ static void do_close(int fd, short event, void *arg) {
 				datetime(), GET_SID(r), r->id, r->sock);
 	}
 
-    int ret = read(r->sock, buffer, sizeof(buffer) - 1);
+	int ret = read(r->sock, buffer, sizeof(buffer) - 1);
 	if (ret < 0) {
 		gwarning(FLINE, "[%s] [%s:%ld:%d]: gpfdist read error after shutdown: errno = %d, %s", 
 				datetime(), GET_SID(r), r->id, r->sock, errno, strerror(errno));
@@ -3695,7 +3688,9 @@ static void do_close(int fd, short event, void *arg) {
 	TR(("[%s] [%s:%ld:%d] close = %d, errno = %d, msg = %s\n", 
 				datetime(), GET_SID(r), r->id, r->sock, ret,
 				(ret == 0 ? 0 : errno), (ret == 0 ? "" : strerror(errno))));
+	TR(("---------------------------------------------------\n"));
 
+	event_del(&r->ev);
 	r->sock = -1;
 	apr_pool_destroy(r->pool);
 
@@ -3710,7 +3705,7 @@ static void do_close(int fd, short event, void *arg) {
  */
 static void request_cleanup(request_t *r)
 {
-	int ret = shutdown(r->sock, (r->is_get ? SHUT_WR : SHUT_RDWR));
+	int ret = shutdown(r->sock, SHUT_WR);
 	TR(("[%s] [%s:%ld:%d] shutdown = %d, errno = %d, msg = %s\n", 
 				datetime(), GET_SID(r), r->id, r->sock, ret, 
 				(ret == 0 ? 0 : errno), (ret == 0 ? "" : strerror(errno))));
