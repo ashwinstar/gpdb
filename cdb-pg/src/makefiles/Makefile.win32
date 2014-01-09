@@ -3,8 +3,8 @@
 # Use replacement include files for those missing on Win32
 override CPPFLAGS+="-I$(top_srcdir)/src/include/port/win32"
 
-DLLTOOL= dlltool
-DLLWRAP= dllwrap
+DLLTOOL= i686-pc-mingw32-dlltool
+DLLWRAP= i686-pc-mingw32-dllwrap
 ifdef PGXS
 BE_DLLLIBS= -L$(libdir) -lpostgres
 else

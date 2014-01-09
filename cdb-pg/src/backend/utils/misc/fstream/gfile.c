@@ -94,7 +94,7 @@ readwinpipe(gfile_t* fd, void* ptr, size_t size)
 	assert(fd->is_win_pipe);
 #ifdef WIN32
 	do
-		ReadFile(fd->fd.pipefd, ptr, size, &i, NULL);
+		ReadFile(fd->fd.pipefd, ptr, size, (PDWORD)&i, NULL);
 	while (i < 0 && errno == EINTR);
 #endif
 
@@ -112,7 +112,7 @@ writewinpipe(gfile_t* fd, void* ptr, size_t size)
 	assert(fd->is_win_pipe);
 #ifdef WIN32
 	do
-		WriteFile(fd->fd.pipefd, ptr, size, &i, NULL);
+		WriteFile(fd->fd.pipefd, ptr, size, (PDWORD)&i, NULL);
 	while (i < 0 && errno == EINTR);
 #endif
 	if (i > 0)

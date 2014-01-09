@@ -306,9 +306,9 @@ pg_krb5_sendauth(PGconn *conn)
  * that contain the OIDs required. Redefine here, values copied
  * from src/athena/auth/krb5/src/lib/gssapi/generic/gssapi_generic.c
  */
-static const gss_OID_desc GSS_C_NT_HOSTBASED_SERVICE_desc =
+const gss_OID_desc GSS_C_NT_HOSTBASED_SERVICE_desc =
 {10, (void *) "\x2a\x86\x48\x86\xf7\x12\x01\x02\x01\x04"};
-static GSS_DLLIMP gss_OID GSS_C_NT_HOSTBASED_SERVICE = &GSS_C_NT_HOSTBASED_SERVICE_desc;
+GSS_DLLIMP gss_OID GSS_C_NT_HOSTBASED_SERVICE = &GSS_C_NT_HOSTBASED_SERVICE_desc;
 #endif
 
 /*

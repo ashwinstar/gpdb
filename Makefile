@@ -172,6 +172,7 @@ DEBUGFLAGS="$(strip $(CFLAGS_INLINE) $(CFLAGS_OPT) $(DEBUG_CFLAGS_OPT) $(TRACE_G
 #---------------------------------------------------------------------
 
 DEFPORT=5432
+win32_CONFIGFLAGS=--with-gssapi
 rhel4_x86_64_CONFIGFLAGS=--with-gssapi
 rhel5_x86_32_CONFIGFLAGS=--host=i686-pc-linux-gnu --enable-email --enable-snmp --enable-ddboost --with-gssapi
 rhel5_x86_64_CONFIGFLAGS=--enable-email --enable-snmp --enable-connectemc --enable-ddboost --with-gssapi
@@ -194,7 +195,11 @@ PG_LANG=false
 endif
 
 ifneq (false, ${PG_LANG})
+ifeq "$(findstring win,$(BLD_ARCH))" "win"
+CONFIGFLAGS+= --with-perl --with-python 
+else
 CONFIGFLAGS+= --with-perl --with-python --with-java
+endif 
 ifdef TCL_CFG
 CONFIGFLAGS+= --with-tcl-config=${TCL_CFG}
 endif
@@ -250,7 +255,7 @@ CONFIGFLAGS+= $(LIBXML2FLAGS)
 aix5_ppc_64_CONFIG_ADDITIONS=LDFLAGS="-Wl,-bbigtoc -L/usr/lib/threads"
 aix5_ppc_32_CONFIG_ADDITIONS=LDFLAGS="-L/usr/lib/threads"
 hpux_ia64_CONFIG_ADDITIONS=--without-readline --without-ldap
-win32_CONFIG_ADDITIONS=--build=x86_x64-unknown-linux-gnu --host=i686-pc-mingw32 --without-zlib --enable-debug CC=/usr/local/mingw32/bin/mingw32-gcc LDFLAGS=-L/usr/local/mingw32/mingw32/lib CPP= CPPFLAGS=-I/usr/local/mingw32/mingw32/include
+win32_CONFIG_ADDITIONS=--build=x86_x64-unknown-linux-gnu --host=i686-pc-mingw32 --without-zlib --enable-debug CC=/usr/bin/i686-pc-mingw32-gcc LDFLAGS="-L/usr/i686-pc-mingw32/sys-root/mingw/lib -L$(BLD_TOP)/ext/win32/kfw-3-2-2/lib" CPP= CPPFLAGS="-I/usr/i686-pc-mingw32/sys-root/mingw/include -I$(BLD_TOP)/ext/win32/kfw-3-2-2/inc/krb5"
 win64_CONFIG_ADDITIONS=--build=x86_x64-unknown-linux-gnu --host=x86_64-pc-mingw64 --without-zlib --enable-debug CC=/usr/local/mingw64/bin/x86_64-w64-mingw32-gcc LDFLAGS=-L/usr/local/mingw64/x86_64-w64-mingw32/lib CPP= CPPFLAGS=-I/usr/local/mingw64/x86_64-w64-mingw32/include
 CONFIG_ADDITIONS=$($(BLD_ARCH)_CONFIG_ADDITIONS)
 

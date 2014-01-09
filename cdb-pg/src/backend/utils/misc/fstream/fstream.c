@@ -847,8 +847,13 @@ int fstream_read(fstream_t *fs,
 			 */
 			if (!p || (char*)dest + size >= p + buffer_capacity)
 			{
+#ifdef WIN32
+				snprintf(err_buf, sizeof(err_buf)-1, "line too long in file %s near (%ld bytes)",
+						 fs->glob.gl_pathv[fs->fidx], (long) fs->foff);
+#else
 				snprintf(err_buf, sizeof(err_buf)-1, "line too long in file %s near (%lld bytes)",
 						 fs->glob.gl_pathv[fs->fidx], (long long) fs->foff);
+#endif
 				fs->ferror = err_buf;
 				gfile_printf_then_putc_newline("%s", err_buf);
 				return -1;

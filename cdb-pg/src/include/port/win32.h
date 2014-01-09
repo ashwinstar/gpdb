@@ -13,7 +13,7 @@
  * we want a switch to disable it sometime in the future.
  */
 #ifndef __BORLANDC__
-#define ENABLE_SSPI 1
+#undef ENABLE_SSPI
 #endif
 
 /* undefine and redefine after #include */

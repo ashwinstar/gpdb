@@ -17,8 +17,8 @@ GPFDIST_EXTRA_LIBS="-lxnet"
 endif
 
 ifeq "$(BLD_ARCH)" "win32"
-override CC=$(strip /usr/local/mingw32/bin/mingw32-gcc $(BLD_CFLAGS))
-override BLD_CFLAGS += -L/usr/local/mingw32/mingw32/lib -I/usr/local/mingw32/mingw32/include -DWIN32 $(CDBINCL)/port/win32 $(CDBINCL)/port/win32_msvc -DFRONTEND
+override CC=$(strip /usr/bin/i686-pc-mingw32-gcc $(BLD_CFLAGS))
+override BLD_CFLAGS += -L/usr/i686-pc-mingw32/sys-root/mingw/lib -I/usr/i686-pc-mingw32/sys-root/mingw/include -DWIN32 $(CDBINCL)/port/win32 $(CDBINCL)/port/win32_msvc -DFRONTEND
 GPFDISTFILES=gpfdist.c
 GPFDISTFILES_EXTRA=fstream.c gfile.c transform.c glob.c gpfdist_helper.c $(CURDIR)/../cdb-pg/src/port/dirent.c $(CURDIR)/../cdb-pg/src/port/strlcpy.c $(CURDIR)/../cdb-pg/src/port/win32error.c $(CURDIR)/../cdb-pg/src/port/snprintf.c
 GPFDISTOBJS_EXTRA=$(strip $(patsubst %.c,%.o,$(notdir $(GPFDISTFILES_EXTRA))))

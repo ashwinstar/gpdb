@@ -234,7 +234,11 @@ static void block_fill_header(block_t* b,
 	p += 4;
 	memcpy(p, &len8, 8);
 	p += 8;
+#ifndef WIN32
 	TR(("O %llu\n",(unsigned long long) local_ntohll(len8)));
+#else
+	TR(("O %lu\n",(unsigned long) local_ntohll(len8)));
+#endif
 
 	/* LINENUMBER: 'L' + len + linenumber */
 	*p++ = 'L';
@@ -243,7 +247,11 @@ static void block_fill_header(block_t* b,
 	p += 4;
 	memcpy(p, &len8, 8);
 	p += 8;
-	TR(("L %llu\n", (unsigned long long)local_ntohll(len8)));
+#ifndef WIN32
+	TR(("L %llu\n",(unsigned long long) local_ntohll(len8)));
+#else
+	TR(("L %lu\n", (unsigned long)local_ntohll(len8)));
+#endif
 
 	/* DATA: 'D' + len */
 	*p++ = 'D';
@@ -872,12 +880,22 @@ static apr_status_t send_gpfdist_status(request_t* r)
 										"Cache-Control: no-cache\r\n"
 										"Connection: close\r\n\r\n"
 										"requst_time %s\r\n"
-										"read_bytes %"APR_INT64_T_FMT"\r\n"
-										"total_bytes %"APR_INT64_T_FMT"\r\n"
+#ifdef WIN32
+										"read_bytes %ld\r\n"
+										"total_bytes %ld\r\n"
+#else
+ 										"read_bytes %"APR_INT64_T_FMT"\r\n"
+ 										"total_bytes %"APR_INT64_T_FMT"\r\n"
+#endif
 										"total_sessions %d\r\n",
 										time,
+#ifdef WIN32
+										(long)gcb.read_bytes,
+										(long)gcb.total_bytes,
+#else
 										gcb.read_bytes,
 										gcb.total_bytes,
+#endif
 										gcb.total_sessions);
 
 

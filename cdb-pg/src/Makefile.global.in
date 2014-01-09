@@ -271,6 +271,8 @@ LDFLAGS += @LDFLAGS@
 LDFLAGS_EX = @LDFLAGS_EX@
 # LDFLAGS_SL might have already been assigned by calling makefile
 LDFLAGS_SL += @LDFLAGS_SL@
+
+
 LDREL = -r
 LDOUT = -o
 RANLIB = @RANLIB@
@@ -516,6 +518,8 @@ endif
 # so SHGetFolderName isn't picked up from shell32.dll
 ifeq ($(PORTNAME),win32)
 LIBS += -lws2_32 -lshfolder
+override LDFLAGS := -L$(top_builddir)/../ext/win32/kfw-3-2-2/lib $(LDFLAGS)
+override AR := /usr/bin/i686-pc-mingw32-ar
 endif
 
 # Not really standard libc functions, used by the backend.
@@ -550,7 +554,7 @@ win32ver.rc: $(top_builddir)/src/port/win32ver.rc
 	sed -e 's;FILEDESC;$(PGFILEDESC);' -e 's;VFT_APP;$(PGFTYPE);' -e 's;_ICO_;$(PGICOSTR);' -e 's;\(VERSION.*\),0 *$$;\1,'`date '+%y%j' | sed 's/^0*//'`';' $(top_builddir)/src/port/win32ver.rc > win32ver.rc
 win32ver.o: $(top_builddir)/src/port/win32ver.rc
 	sed -e 's;FILEDESC;$(PGFILEDESC);' -e 's;VFT_APP;$(PGFTYPE);' -e 's;_ICO_;$(PGICOSTR);' -e 's;\(VERSION.*\),0 *$$;\1,'`date '+%y%j' | sed 's/^0*//'`';' $(top_builddir)/src/port/win32ver.rc > win32ver.rc
-	windres -i win32ver.rc -o win32ver.o --include-dir=$(top_builddir)/src/include
+	/usr/bin/i686-pc-mingw32-windres -i win32ver.rc -o win32ver.o --include-dir=$(top_builddir)/src/include
 	rm -f win32ver.rc
 endif
 

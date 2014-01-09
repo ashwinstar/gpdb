@@ -33,11 +33,11 @@ LIBEVENT=libevent-1.4.6-stable
 OPENSSL=openssl-0.9.8r
 
 ifeq "$(BLD_ARCH)" "win32"
-MINGWRANLIB=/usr/local/mingw32/mingw32/bin/ranlib
+MINGWRANLIB=/usr/bin/i686-pc-mingw32-ranlib
 CONFFLAGS=--build=x86_64-unknown-linux-gnu --host=i686-pc-mingw32 --without-zlib
-CC=/usr/local/mingw32/bin/mingw32-gcc
-LDFLAGS=-L/usr/local/mingw32/mingw32/lib
-CPPFLAGS=-I/usr/local/mingw32/mingw32/include
+CC=/usr/bin/i686-pc-mingw32-gcc
+LDFLAGS=-L/usr/i686-pc-mingw32/sys-root/mingw/lib
+CPPFLAGS=-I/usr/i686-pc-mingw32/sys-root/mingw/include
 endif
 
 ifeq "$(BLD_ARCH)" "win32"
