@@ -1960,7 +1960,7 @@ class gpload:
     # This function will return the SQL to run in order to find out whether
     # such a table exists.
     # 
-    def get_reuse_exttable_query(self, formatType, formatOpts, limitStr, errorTable, from_cols):
+    def get_reuse_exttable_query(self, formatType, formatOpts, limitStr, errorTableOid, from_cols):
         
         sql = """select attrelid::regclass
                  from (
@@ -1986,8 +1986,8 @@ class gpload:
                     pg_exttable pgext 
                     on(pgattr.attrelid = pgext.reloid) 
                     """
-        if errorTable:
-            sql += " LEFT JOIN pg_class pc ON pc.oid = pgext.fmterrtbl WHERE pc.relname = %s\n " % quote(quote_unident(errorTable))
+        if errorTableOid:
+            sql += " WHERE pgext.fmterrtbl = %d\n " % errorTableOid
         else:
             sql += " WHERE pgext.fmterrtbl IS NULL " 
          
@@ -2052,6 +2052,19 @@ class gpload:
 	    
         self.log(self.DEBUG, "query used to identify reusable temporary relations: %s" % sql)
         return sql
+
+    # 
+    # get oid for table from pg_class, None if not exist
+    #
+    def get_table_oid(self, tableName):
+        if tableName:
+            sql = "select %s::regclass::oid" % quote(quote_unident(tableName))
+            try:
+                resultList = self.db.query(sql.encode('utf-8')).getresult()
+                return resultList[0][0]
+            except Exception, e:
+                pass
+        return None 
     
     # 
     # Create a new external table or find a reusable external table to use for this operation
@@ -2062,7 +2075,6 @@ class gpload:
         # in order to construct a CREATE EXTERNAL TABLE statement if will be
         # needed later on
         
-        self.error_table = self.getconfig('gpload:input:error_table', unicode, None)
         formatType = self.getconfig('gpload:input:format', unicode, 'text').lower()
         formatOpts = ""
         locationStr = ','.join(map(quote,self.locations))
@@ -2139,16 +2151,16 @@ class gpload:
         # the one that we need to use. It must have identical attributes,
         # external location, format, and encoding specifications.
         if self.reuse_tables == True:
-            sql = self.get_reuse_exttable_query(formatType, formatOpts, limitStr, self.error_table, from_cols)
-            resultList = self.db.query(sql.encode('utf-8')).getresult()
-            
-            if len(resultList) > 0:
-                
-                # found an external table to reuse. no need to create one. we're done here.
-                self.extTableName = (resultList[0])[0]
-                self.log(self.INFO, "reusing external table %s" % self.extTableName)
-                return
-            
+                         
+            if (not self.error_table or self.error_table_oid): 
+                sql = self.get_reuse_exttable_query(formatType, formatOpts, limitStr, self.error_table_oid, from_cols)
+                resultList = self.db.query(sql.encode('utf-8')).getresult()
+                if len(resultList) > 0:
+                    # found an external table to reuse. no need to create one. we're done here.
+                    self.extTableName = (resultList[0])[0]
+                    self.log(self.INFO, "reusing external table %s" % self.extTableName)
+                    return
+
             # didn't find an existing external table suitable for reuse. Format a reusable
             # name and issue a CREATE EXTERNAL TABLE on it. Hopefully we can use it next time
             # around
@@ -2515,8 +2527,11 @@ class gpload:
         # Is the table to be truncated before the load?
         preload = self.getconfig('gpload:preload', list, default=None)
         method = self.getconfig('gpload:output:mode', unicode, 'insert').lower()
+        self.error_table = self.getconfig('gpload:input:error_table', unicode, None)
         truncate = False
         self.reuse_tables = False
+
+        self.error_table_oid = self.get_table_oid(self.error_table)
         
         if not self.options.no_auto_trans and not method=='insert':
             self.db.query("BEGIN")

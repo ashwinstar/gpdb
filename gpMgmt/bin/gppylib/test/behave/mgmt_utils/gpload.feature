@@ -97,7 +97,7 @@ Feature: gpload tests
             | 111    |  11      |
             | 222    |  22      |
 
-	Scenario: gpload reuse external table when having the same source and different target tables 
+    Scenario: gpload reuse external table when having the same source and different target tables 
         Given the database is running
         And the database "testdb" does not exist
         And database "testdb" exists
@@ -119,3 +119,14 @@ Feature: gpload tests
         Then validate that following rows are in the stored rows
             | count   |
             | 1       |
+
+    @gpload_reuse_errtbl
+    Scenario: gpload reuse external table as error table name is case insensitive
+        Given the database is running
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        When the user runs the query "create table tbl1 (id int, msg text) distributed by (id)" on "testdb"
+        And the user runs command "gpload -f gppylib/test/behave/mgmt_utils/steps/data/gpload_reuse_ext_errtbl_1.yml"
+        Then the client program should print did not find an external table to reuse to stdout
+        When the user runs command "gpload -f gppylib/test/behave/mgmt_utils/steps/data/gpload_reuse_ext_errtbl_2.yml"
+        Then the client program should print reusing external table to stdout
