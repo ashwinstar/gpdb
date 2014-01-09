@@ -785,7 +785,7 @@ def copy_file_to_all_db_hosts(context, filename):
 
     os.remove(hostfile)
 
-def create_large_num_partitions(table_type, table_name, db_name):
+def create_large_num_partitions(table_type, table_name, db_name, num_partitions=None):
     if table_type == "ao":
         condition = "with(appendonly=true)"
     elif table_type == "co":
@@ -793,9 +793,14 @@ def create_large_num_partitions(table_type, table_name, db_name):
     else:
         condition = ""
 
-    create_large_partitions_sql = """
-                                    create table %s (column1 int, column2 int) %s partition by range(column1) subpartition by range(column2) subpartition template(start(1) end(75) every(1)) (start(1) end(75) every(1))
-                                  """ % (table_name, condition)
+    if num_partitions is None:
+        create_large_partitions_sql = """
+                                        create table %s (column1 int, column2 int) %s partition by range(column1) subpartition by range(column2) subpartition template(start(1) end(75) every(1)) (start(1) end(75) every(1))
+                                      """ % (table_name, condition)
+    else:
+        create_large_partitions_sql = """
+                                        create table %s (column1 int, column2 int) %s partition by range(column1) (start(1) end(%d) every(1)) 
+                                      """ % (table_name, condition, num_partitions)
     execute_sql(db_name, create_large_partitions_sql)
 
     verify_table_exists_sql = """select count(*) from pg_class where relname = '%s'""" % table_name

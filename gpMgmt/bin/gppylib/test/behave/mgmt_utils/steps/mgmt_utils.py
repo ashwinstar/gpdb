@@ -1380,6 +1380,14 @@ def impl(context, db_list):
 def impl(context, table_type, table_name, db_name):
     create_large_num_partitions(table_type, table_name, db_name)
 
+@given('there is a "{table_type}" table "{table_name}" in "{db_name}" having "{num_partitions}" partitions')
+def impl(context, table_type, table_name, db_name, num_partitions):
+    if not num_partitions.strip().isdigit():
+        raise Exception('Invalid number of partitions specified "%s"' % num_partitions)
+
+    num_partitions = int(num_partitions.strip()) + 1
+    create_large_num_partitions(table_type, table_name, db_name, num_partitions)
+
 @given('the length of partition names of table "{table_name}" in "{db_name}" exceeds the command line maximum limit')
 def impl(context, table_name, db_name):
     partitions = get_partition_tablenames(table_name, db_name)

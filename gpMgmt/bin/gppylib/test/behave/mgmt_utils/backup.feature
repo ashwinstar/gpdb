@@ -4227,6 +4227,21 @@ Feature: Validate command line arguments
         When the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/select_multi_byte_char.sql testdb"
         Then psql should print 2000 to stdout 
 
+    Scenario: Full Backup with option -T and Restore with exactly 1000 partitions
+        Given the database is running
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a "ao" table "ao_table" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_part_table" in "testdb" having "1000" partitions
+        When the user runs "gpcrondump -a -x testdb -T public.ao_part_table"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And all the data from "testdb" is saved for verification 
+        And the user runs gpdbrestore with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And verify that the data of "1" tables in "testdb" is validated after restore 
+
     Scenario: Testing pg_dump log messages
         Given the database is running
         And there is a "heap" table "heap_table" with compression "None" in "testdb" with data

@@ -542,42 +542,53 @@ expand_table_name_patterns(SimpleStringList *patterns, SimpleOidList *oids)
 	PGresult   *res;
 	SimpleStringListCell *cell;
 	int			i;
+	int 		cur_batch = 0;
+	const int 	batch_size = 1000;
 
 	if (patterns->head == NULL)
 		return;					/* nothing to do */
-
-	query = createPQExpBuffer();
 
 	/*
 	 * We use UNION ALL rather than UNION; this might sometimes result in
 	 * duplicate entries in the OID list, but we don't care.
 	 */
 
-	for (cell = patterns->head; cell; cell = cell->next)
+	mpp_err_msg(logInfo, progname, "Converting tablenames to oids\n");
+	mpp_err_msg(logInfo, progname, "Processing tables in batches of %d\n", batch_size);
+	for (cell = patterns->head; cell;)
 	{
-		if (cell != patterns->head)
-			appendPQExpBuffer(query, "UNION ALL\n");
-		appendPQExpBuffer(query,
+
+		query = createPQExpBuffer();
+		for (int j = 0; j < batch_size && cell; ++j, cell = cell->next)
+		{
+			if (j != 0 && cell != patterns->head)
+				appendPQExpBuffer(query, "UNION ALL\n");
+
+			appendPQExpBuffer(query,
 						  "SELECT c.oid"
 						  "\nFROM pg_catalog.pg_class c"
-		"\n     LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace"
+						  "\n     LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace"
 						  "\nWHERE c.relkind in ('%c', '%c', '%c')\n",
 						  RELKIND_RELATION, RELKIND_SEQUENCE, RELKIND_VIEW);
-		processSQLNamePattern(g_conn, query, cell->val, true, false,
+			processSQLNamePattern(g_conn, query, cell->val, true, false,
 							  "n.nspname", "c.relname", NULL,
 							  "pg_catalog.pg_table_is_visible(c.oid)");
+
+		}
+		cur_batch++;
+		res = PQexec(g_conn, query->data);
+		check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+
+		mpp_err_msg(logInfo, progname, "Finished processing batch %d of tables\n", cur_batch);
+
+		for (i = 0; i < PQntuples(res); i++)
+		{
+			simple_oid_list_append(oids, atooid(PQgetvalue(res, i, 0)));
+		}
+
+		PQclear(res);
+		destroyPQExpBuffer(query);
 	}
-
-	res = PQexec(g_conn, query->data);
-	check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
-
-	for (i = 0; i < PQntuples(res); i++)
-	{
-		simple_oid_list_append(oids, atooid(PQgetvalue(res, i, 0)));
-	}
-
-	PQclear(res);
-	destroyPQExpBuffer(query);
 }
 
 
