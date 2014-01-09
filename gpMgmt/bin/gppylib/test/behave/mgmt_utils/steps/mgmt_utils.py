@@ -2426,6 +2426,11 @@ def impl(context, filename, pidfile, num):
     if int(output) != int(num):
         raise Exception('file %s opened number %d is not %d' % (filename, int(output), int(num)))
 
+@given('the directory {path} exists')
+@then('the directory {path} exists')
+def impl(context, path):
+   if not os.path.isdir(path):
+       raise Exception('Directory "%s" does not exist' %path)
 
 @then('{file} should be found in tarball with prefix "{prefix}" within directory {path}')
 def impl(context, file, prefix, path):
