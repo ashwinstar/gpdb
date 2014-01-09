@@ -136,7 +136,15 @@ define tmpBLD_THIRDPARTY_LIBS_BASE
 	yaml/0.1.1
 	zlib/1.2.3
 endef
-else
+endif
+
+ifeq "$(findstring win32,$(BLD_ARCH))" "win32"
+define tmpBLD_THIRDPARTY_LIBS_BASE
+	kfw/3.2.2
+endef
+endif
+
+ifeq "$(findstring $(BLD_ARCH),hpux_ia64 win32)" ""
 define tmpBLD_THIRDPARTY_LIBS_BASE
 	DDBoostSDK/2.4.1.0-289644
 	apr/1.2.12
