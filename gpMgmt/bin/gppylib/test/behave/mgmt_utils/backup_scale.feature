@@ -1,7 +1,7 @@
-@backupscale
 Feature: Scale tests for backup
 
     @dca
+    @backupscale
     Scenario: Test restore for large number of tables
          Given the database is running
          And the database "large_table_db" does not exist
@@ -27,6 +27,7 @@ Feature: Scale tests for backup
          And verify that the tuple count of all appendonly tables are consistent in "large_table_db"
 
     @customer
+    @backupscale
     Scenario: gpcrondump -t with parent partition for large partition tables
         Given the database is running
         And the database "large_table_db" does not exist
@@ -46,6 +47,7 @@ Feature: Scale tests for backup
         And verify that the data of "5551" tables in "large_table_db" is validated after restore 
         
     @customer
+    @backupscale
     Scenario: gpcrondump --table-file with parent partition for large partition tables
         Given the database is running
         And the database "large_table_db" does not exist
@@ -66,6 +68,7 @@ Feature: Scale tests for backup
         And verify that the data of "5551" tables in "large_table_db" is validated after restore 
 
     @customer
+    @backupscale
     Scenario: gpcrondump -T with parent partition for large partition tables
         Given the database is running
         And the database "large_table_db" does not exist
@@ -86,6 +89,7 @@ Feature: Scale tests for backup
         And verify that the tuple count of all appendonly tables are consistent in "large_table_db"
 
     @customer
+    @backupscale
     Scenario: gpcrondump --exclude-table-file with parent partition for large partition tables
         Given the database is running
         And the database "large_table_db" does not exist
@@ -108,6 +112,7 @@ Feature: Scale tests for backup
 
     @irs
     @customer
+    @backupscaleextreme
     Scenario: Test full backup and restore for very large number of tables 
         Given the database is running
         And the database "scale_db" does not exist
