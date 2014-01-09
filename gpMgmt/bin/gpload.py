@@ -1960,7 +1960,7 @@ class gpload:
     # This function will return the SQL to run in order to find out whether
     # such a table exists.
     # 
-    def get_reuse_exttable_query(self, formatType, formatOpts, limitStr, from_cols):
+    def get_reuse_exttable_query(self, formatType, formatOpts, limitStr, errorTable, from_cols):
         
         sql = """select attrelid::regclass
                  from (
@@ -1986,21 +1986,23 @@ class gpload:
                     pg_exttable pgext 
                     on(pgattr.attrelid = pgext.reloid) 
                     """
+        if errorTable:
+            sql += " LEFT JOIN pg_class pc ON pc.oid = pgext.fmterrtbl WHERE pc.relname = %s\n " % quote(quote_unident(errorTable))
+        else:
+            sql += " WHERE pgext.fmterrtbl IS NULL " 
          
         for i, l in enumerate(self.locations):
-            if i == 0:
-                sql+= "where "
-            else:
-                sql+= "and "
-            sql+=  "pgext.location[%s] = %s\n" % (i + 1, quote(l))
+            sql += " and pgext.location[%s] = %s\n" % (i + 1, quote(l))
              
         sql+= """and pgext.fmttype = %s
                  and pgext.writable = false
                  and pgext.fmtopts like %s """ % (quote(formatType[0]),quote("%" + quote_unident(formatOpts.rstrip()) +"%"))
         
         if limitStr:
-            sql+= "and pgext.rejectlimit = %s " % limitStr         
-                 
+            sql += "and pgext.rejectlimit = %s " % limitStr         
+        else:
+            sql += "and pgext.rejectlimit IS NULL "
+
         sql+= "group by attrelid " 
 
         sql+= """having 
@@ -2137,7 +2139,7 @@ class gpload:
         # the one that we need to use. It must have identical attributes,
         # external location, format, and encoding specifications.
         if self.reuse_tables == True:
-            sql = self.get_reuse_exttable_query(formatType, formatOpts, limitStr, from_cols)
+            sql = self.get_reuse_exttable_query(formatType, formatOpts, limitStr, self.error_table, from_cols)
             resultList = self.db.query(sql.encode('utf-8')).getresult()
             
             if len(resultList) > 0:

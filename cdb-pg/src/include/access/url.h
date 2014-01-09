@@ -92,12 +92,12 @@ typedef struct curlctl_t {
 
 typedef struct URL_FILE
 {
-    enum fcurl_type_e type;     /* type of handle */
+	enum fcurl_type_e type;     /* type of handle */
 	char *url;
+	int64 seq_number;
 
-    union {
-		
-    	struct {
+	union {
+		struct {
 			struct fstream_t*fp;
 		} file;
 

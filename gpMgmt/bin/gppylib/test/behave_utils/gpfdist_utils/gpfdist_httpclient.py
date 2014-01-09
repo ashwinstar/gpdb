@@ -36,6 +36,9 @@ def parse_commandline(parser):
             help="gpdb segment count", action="store")
     parser.add_option("-i", "--segment_index", dest="segment_idx", type='int', default=0,
             help="gpdb segment index", action="store")
+    parser.add_option("-S", "--sequence_num", dest="sequence_num", type='int', default=None,
+            help="gpdb sequence number", action="store")
+
 
     (options, args) = parser.parse_args()
     
@@ -55,7 +58,8 @@ if __name__ == '__main__':
     else:
         logger.debug('option params : %s', str(options))
 
-    client = GpfdistClient(options.http_url, options.http_path, options.session_id, options.segment_count)
+    client = GpfdistClient(options.http_url, options.http_path, options.session_id,
+                           options.segment_count, options.sequence_num)
     if options.b_done:
         client.post_done(options.segment_idx)
     else:

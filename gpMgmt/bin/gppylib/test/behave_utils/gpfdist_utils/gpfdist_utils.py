@@ -1,11 +1,12 @@
 import httplib, urllib
 
 class GpfdistClient:
-    def __init__(self, url, path, xid, segmentcount): 
+    def __init__(self, url, path, xid, segmentcount, sequence_num): 
         self.url = url
         self.path = path
         self.xid = xid
         self.segmentcount = segmentcount
+        self.sequence_num = sequence_num
             
     def send_request(self, method, params, segmentid, isdone):
         headers = {
@@ -19,8 +20,12 @@ class GpfdistClient:
                 "X-GP-PROTO":               "0",
                 "Content-Type":             "text/xml",
         }
+
+        if self.sequence_num:
+            headers = dict({"X-GP-SEQ": self.sequence_num}, **headers)
        
         if method == 'POST' and params != None:
+            params += '\n'
             headers['Content-Length'] = str(len(params))
         
         if isdone: 

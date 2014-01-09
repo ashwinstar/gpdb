@@ -84,7 +84,7 @@ int gprint(const char* fmt, ...);
 void gfatal(const char* fline, const char* fmt, ...);
 int gwarning(const char* fline, const char* fmt, ...);
 
-static void base16_decode(char* data);
+static bool base16_decode(char* data);
 
 /* SSL additions */
 #define SSL_RENEGOTIATE_TIMEOUT_SEC	(600) /* 10 minutes */
@@ -194,6 +194,8 @@ address_t;
 #define local_ntohll(n)  ((((apr_uint64_t) ntohl(n)) << 32LL) | (apr_uint32_t) ntohl(((apr_uint64_t)n) >> 32LL))
 #endif
 
+#define NO_SEQ    0
+#define OPEN_SEQ  1
 /* if VERBOSE mode, print log information */
 #define TR(x)  while (opt.V){printf x;break;}
 /*
@@ -306,6 +308,8 @@ struct session_t
 	int*			active_segids;	/* array indexed by segid. used for write operations
 									   to indicate which segdbs are writing and when each
 									   is done (sent a final request) */
+	apr_int64_t*          seq_segs;       /* array indexed by segid. used for write operations to record the sequence number
+						   of data which has been written to disk*/
 	int				maxsegs; 		/* same as request->totalsegs. length of active_segs arr */
 	apr_time_t		mtime; 			/* time when nrequest was modified */
 	struct timeval 	tm;             /* timeout for struct event */
@@ -317,6 +321,7 @@ typedef struct request_t request_t;
 struct request_t
 {
 	long			id;
+	apr_int64_t             seq;    /* sequence number */
 	unsigned short  port;
 	SOCKET 			sock; 		/* the socket */
 	apr_pool_t* 	pool; 		/* memory pool container */
@@ -842,7 +847,8 @@ static apr_status_t send_gpfdist_status(request_t* r)
 	int numses = apr_hash_count(gcb.session.tab);
 	apr_hash_index_t* hi = apr_hash_first(gcb.pool, gcb.session.tab);
 
-	gprint("STATUS request at %s (%d sessions)\n", time, numses);
+	gprint("---------------------------------------\n");
+	gprint("STATUS: total session(s) %d\n", numses);
 	for (i = 0; hi && i < numses; i++, hi = apr_hash_next(hi))
 	{
 		void *entry;
@@ -853,10 +859,11 @@ static apr_status_t send_gpfdist_status(request_t* r)
 			continue;
 		}
 		const char *ferror = (s->fstream == NULL ? NULL : fstream_get_error(s->fstream));
-	    gprint("session %d: tid=%s, fstream error=%s, is_error=%d, nrequest=%d is_get=%d, maxsegs=%d\n",
+		gprint("session %d: tid=%s, fs_error=%s, is_error=%d, nrequest=%d is_get=%d, maxsegs=%d\n",
 				i, s->tid, (ferror == NULL ? "N/A" : ferror), s->is_error, s->nrequest, s->is_get, s->maxsegs);
 		session_active_segs_dump(s);
 	}
+	gprint("---------------------------------------\n");
 
 	n = apr_snprintf(buf, sizeof(buf),	"HTTP/1.0 200 ok\r\n"
 										"Content-type: text/plain\r\n"
@@ -1379,7 +1386,7 @@ static int session_attach(request_t* r)
 
 		if (!fstream)
 		{
-			gwarning(FLINE, "[%s:%ld:%d] reject request from %s, path %s\n", GET_SID(r), r->id, r->sock, r->peer,
+			gwarning(FLINE, "[%s:%ld:%d] reject request from %s, path %s", GET_SID(r), r->id, r->sock, r->peer,
 					r->path);
 			http_error(r, response_code, response_string);
 			request_end(r, 1, 0);
@@ -1407,6 +1414,14 @@ static int session_attach(request_t* r)
 			gfatal(FLINE, "out of memory when allocating active_segids array");
 
 		memset(session->active_segids, 0, sizeof(int) * r->totalsegs);
+
+		/* allocate seq_segs array (session member) */
+		session->seq_segs = (apr_int64_t *) apr_palloc(pool, sizeof(apr_int64_t) * r->totalsegs);
+
+		if (session->seq_segs == 0)
+			gfatal(FLINE, "out of memory when allocating seq_segs array");
+
+		memset(session->seq_segs, 0, sizeof(apr_int64_t) * r->totalsegs);
 
 		/* initialize session values */
 		session->tid = apr_pstrdup(pool, r->tid);
@@ -2535,6 +2550,7 @@ static void handle_post_request(request_t *r, int header_end)
 	char *data_start = 0;
 	int data_bytes_in_req = 0;
 	int wrote = 0;
+	session_t *session = r->session;
 
 	/*
 	 * If this request is a "done" request (has GP-DONE header set)
@@ -2562,6 +2578,46 @@ static void handle_post_request(request_t *r, int header_end)
 
 	gprint("available data to consume %d, starting at offset %d\n", r->in.davailable, r->in.hbuftop);
 
+	switch (r->seq ) {
+		case OPEN_SEQ:
+			/* sequence number is 1, it's the first OPEN request */
+			session->seq_segs[r->segid] = r->seq;
+			goto done_processing_request;
+
+		case NO_SEQ:
+			/* don't have sequence number */
+			if (session->seq_segs[r->segid] > 0) {
+				/* missing sequence number */
+				TR(("[%s] [%s:%ld:%d] got an request missing sequence number, expected sequence number is %"APR_INT64_T_FMT". \n",
+					datetime(), GET_SID(r), r->id, r->sock, session->seq_segs[r->segid]+1)); 
+				http_error(r, FDIST_BAD_REQUEST, "invalid request due to missing sequence number");
+				gwarning(FLINE, "got an request missing sequence number");
+				request_end(r, 1, 0);
+				return;
+			} else {
+				/* old version GPDB, don't have sequence number */
+				break;
+			}
+
+		default:
+			/* sequence number > 1, it's the subsequent DATA request */
+			if (session->seq_segs[r->segid] == r->seq)
+			{
+				/* duplicate DATA request, ignore it*/
+				TR(("[%s] [%s:%ld:%d] got a duplicate request, sequence number is %"APR_INT64_T_FMT" . \n",
+					datetime(), GET_SID(r), r->id, r->sock, r->seq)); 
+				goto done_processing_request;
+			} else if (session->seq_segs[r->segid] != r->seq - 1) {
+				/* out of order DATA request, ignore it*/
+				TR(("[%s] [%s:%ld:%d] got an out of order request, sequence number is %"APR_INT64_T_FMT", expected sequence number is %"APR_INT64_T_FMT". \n",
+					datetime(), GET_SID(r), r->id, r->sock, r->seq, session->seq_segs[r->segid]+1)); 
+				http_error(r, FDIST_BAD_REQUEST, "invalid request due to wrong sequence number");
+				gwarning(FLINE, "got an out of order request");
+				request_end(r, 1, 0);
+				return;
+			}
+	}
+
 	/* create a buffer to hold the incoming raw data */
 	r->in.dbufmax = opt.m; /* size of max line size */
 	r->in.dbuf = apr_palloc(r->pool, r->in.dbufmax);
@@ -2578,13 +2634,23 @@ static void handle_post_request(request_t *r, int header_end)
 	if(data_bytes_in_req > 0)
 	{
 		/* we have data after the request headers. consume it */
+		/* should make sure r->in.dbuftop + data_bytes_in_req <  r->in.dbufmax */
 		memcpy(r->in.dbuf, data_start, data_bytes_in_req);
 		r->in.dbuftop += data_bytes_in_req;
 		r->in.davailable -= data_bytes_in_req;
 
 		/* only write it out if no more data is expected */
 		if(r->in.davailable == 0)
-			wrote = fstream_write(r->session->fstream, r->in.dbuf, data_bytes_in_req, 1, r->line_delim_str, r->line_delim_length);
+		{
+			wrote = fstream_write(session->fstream, r->in.dbuf, data_bytes_in_req, 1, r->line_delim_str, r->line_delim_length);
+			if(wrote == -1)
+			{
+				/* write error */
+				http_error(r, FDIST_INTERNAL_ERROR, fstream_get_error(session->fstream));
+				request_end(r, 1, 0);
+				return;
+			}
+		}
 	}
 
 	/*
@@ -2638,14 +2704,15 @@ static void handle_post_request(request_t *r, int header_end)
 			if (r->in.dbufmax == r->in.dbuftop || r->in.davailable == 0)
 			{
 				/* only write up to end of last row */
-				wrote = fstream_write(r->session->fstream, r->in.dbuf, r->in.dbuftop, 1, r->line_delim_str, r->line_delim_length);
+				wrote = fstream_write(session->fstream, r->in.dbuf, r->in.dbuftop, 1, r->line_delim_str, r->line_delim_length);
 				gprint("wrote %d bytes to file\n", wrote);
 
 				if(wrote == -1)
 				{
 					/* write error */
-					http_error(r, FDIST_INTERNAL_ERROR, fstream_get_error(r->session->fstream));
+					http_error(r, FDIST_INTERNAL_ERROR, fstream_get_error(session->fstream));
 					request_end(r, 1, 0);
+					return;
 				}
 				else if(wrote == r->in.dbuftop)
 				{
@@ -2664,6 +2731,8 @@ static void handle_post_request(request_t *r, int header_end)
 		}
 
 	}
+
+	session->seq_segs[r->segid] = r->seq;	
 
 done_processing_request:
 
@@ -2768,7 +2837,7 @@ static int request_validate(request_t *r)
 	return 0;
 }
 
-static void base16_decode(char* data)
+static bool base16_decode(char* data)
 {
 	int i = 0;
 	char *encoded_bytes = data;
@@ -2780,13 +2849,18 @@ static void base16_decode(char* data)
 	{
 		buf[0] = encoded_bytes[0];
 		buf[1] = encoded_bytes[1];
-
-        data[i] = strtoul(buf, NULL, 16);
-
+		char *endptr = NULL;
+		char ch = strtoul(buf, &endptr, 16);
+		if(*endptr != '\0')
+		{
+			return false;
+		}
+		data[i] = ch;
 		i++;
-        encoded_bytes += 2;
-     }
-     data[i] = '\0';
+		encoded_bytes += 2;
+	}
+	data[i] = '\0';
+	return true;
 }
 
 /*
@@ -2805,6 +2879,7 @@ static int request_parse_gp_headers(request_t *r, int opt_g)
 
 	r->csvopt = "";
 	r->is_final = 0;
+	r->seq = 0;
 
 	for (i = 0; i < r->in.req->hc; i++)
 	{
@@ -2826,13 +2901,13 @@ static int request_parse_gp_headers(request_t *r, int opt_g)
 			r->segid = atoi(r->in.req->hvalue[i]);
 		else if (0 == strcmp("X-GP-LINE-DELIM-STR", r->in.req->hname[i]))
 		{
-			if (NULL == r->in.req->hvalue[i] || ((int)strlen(r->in.req->hvalue[i]))%2 == 1)
+			if (NULL == r->in.req->hvalue[i] ||  ((int)strlen(r->in.req->hvalue[i])) % 2 == 1 || !base16_decode(r->in.req->hvalue[i]))
 			{
 				gwarning(FLINE, "reject invalid request from %s, invalid EOL encoding: %s", r->peer, r->in.req->hvalue[i]);
 				http_error(r, FDIST_BAD_REQUEST, "invalid EOL encoding");
 				request_end(r, 1, 0);
+				return -1;
 			}
-			base16_decode(r->in.req->hvalue[i]);
 			r->line_delim_str = r->in.req->hvalue[i];
 		}
 		else if (0 == strcmp("X-GP-LINE-DELIM-LENGTH", r->in.req->hname[i]))
@@ -2841,15 +2916,28 @@ static int request_parse_gp_headers(request_t *r, int opt_g)
 		else if (0 == strcmp("X-GP-TRANSFORM", r->in.req->hname[i]))
 			r->trans.name = r->in.req->hvalue[i];
 #endif
+		else if (0 == strcmp("X-GP-SEQ", r->in.req->hname[i]))
+		{
+			r->seq = atol(r->in.req->hvalue[i]); 
+			/* sequence number starting from 1 */
+			if(r->seq <= 0)
+			{
+				gwarning(FLINE, "reject invalid request from %s, invalid sequence number: %s", r->peer, r->in.req->hvalue[i]);
+				http_error(r, FDIST_BAD_REQUEST, "invalid sequence number");
+				request_end(r, 1, 0);
+				return -1;
+			}
+		}
 	}
 
 	if (r->line_delim_length > 0)
 	{
 		if (NULL == r->line_delim_str || (((int)strlen(r->line_delim_str)) != r->line_delim_length))
 		{
-			gwarning(FLINE, "reject invalid request from %s, invalid EOL length: %s, EOL: %s", r->peer, r->line_delim_length, r->line_delim_str);
+			gwarning(FLINE, "reject invalid request from %s, invalid EOL length: %d, EOL: %s", r->peer, r->line_delim_length, r->line_delim_str);
 			http_error(r, FDIST_BAD_REQUEST, "invalid EOL length");
 			request_end(r, 1, 0);
+			return -1;
 		}
 	}
 	r->gp_proto = strtol(gp_proto, 0, 0);
@@ -3664,31 +3752,43 @@ static void setup_flush_ssl_buffer(request_t* r)
 /*
  * call close after timeout or EV_READ ready.
  */
-static void do_close(int fd, short event, void *arg) {
+static void do_close(int fd, short event, void *arg) 
+{
 	request_t *r		= (request_t *) arg;
 	char buffer[256]	= {0};
 
-	if (event & EV_TIMEOUT) {
+	if (event & EV_TIMEOUT) 
+	{
 		gwarning(FLINE, "[%s] [%s:%ld:%d]: gpfdist shutdown the connection, while have not received response from segment",
 				datetime(), GET_SID(r), r->id, r->sock);
 	}
 
 	int ret = read(r->sock, buffer, sizeof(buffer) - 1);
-	if (ret < 0) {
-		gwarning(FLINE, "[%s] [%s:%ld:%d]: gpfdist read error after shutdown: errno = %d, %s", 
+	if (ret < 0) 
+	{
+		gwarning(FLINE, "[%s] [%s:%ld:%d]: gpfdist read error after shutdown. errno: %d, msg: %s", 
 				datetime(), GET_SID(r), r->id, r->sock, errno, strerror(errno));
-	} else if (ret == 0) {
-		TR(("[%s] [%s:%ld:%d] graceful shutdown\n", datetime(), GET_SID(r), r->id, r->sock));
-	} else {
+	} 
+	else if (ret == 0) 
+	{
+		TR(("[%s] [%s:%ld:%d] peer closed after gpfdist shutdown\n", datetime(), GET_SID(r), r->id, r->sock));
+	} 
+	else 
+	{
 		gwarning(FLINE, "[%s] [%s:%ld:%d]: gpfdist read unexpected data after shutdown %s", 
 				datetime(), GET_SID(r), r->id, r->sock, buffer);
 	}
 
 	ret = closesocket(r->sock);
-	TR(("[%s] [%s:%ld:%d] close = %d, errno = %d, msg = %s\n", 
-				datetime(), GET_SID(r), r->id, r->sock, ret,
-				(ret == 0 ? 0 : errno), (ret == 0 ? "" : strerror(errno))));
-	TR(("---------------------------------------------------\n"));
+	if (ret == 0) 
+	{
+		TR(("[%s] [%s:%ld:%d] successfully closed socket\n", datetime(), GET_SID(r), r->id, r->sock));
+	} 
+	else 
+	{
+		TR(("[%s] [%s:%ld:%d] failed to close socket. errno: %d, msg: %s\n", 
+				datetime(), GET_SID(r), r->id, r->sock, errno, strerror(errno)));
+	}
 
 	event_del(&r->ev);
 	r->sock = -1;
@@ -3706,9 +3806,15 @@ static void do_close(int fd, short event, void *arg) {
 static void request_cleanup(request_t *r)
 {
 	int ret = shutdown(r->sock, SHUT_WR);
-	TR(("[%s] [%s:%ld:%d] shutdown = %d, errno = %d, msg = %s\n", 
-				datetime(), GET_SID(r), r->id, r->sock, ret, 
-				(ret == 0 ? 0 : errno), (ret == 0 ? "" : strerror(errno))));
+	if (ret == 0)
+	{
+		TR(("[%s] [%s:%ld:%d] successfully shutdown socket\n", datetime(), GET_SID(r), r->id, r->sock));
+	}
+	else
+	{
+		TR(("[%s] [%s:%ld:%d] failed to shutdown socket. errno: %d, msg: %s\n", 
+				datetime(), GET_SID(r), r->id, r->sock, errno, strerror(errno))); 
+	}
 
 	event_set(&r->ev, r->sock, EV_READ, do_close, r);
 
@@ -3749,7 +3855,8 @@ static void free_session_cb(int fd, short event, void* arg)
 	 */
 	if (!session->is_get && 
 		session->nrequest == 0 &&
-		session_active_segs_isempty(session)) {
+		session_active_segs_isempty(session)) 
+	{
 		session_free(session); 
 	}
 }

@@ -186,5 +186,94 @@ Feature: gpfdist configure timeout value
         When the "gpfdist" process is killed
         Given the directory "extdata" does not exist in current working directory
 
+    @gpfdist_with_sequence_number
+    Scenario: gpfdist works when using sequence_number and avoid duplicated writes 
+        Given the "gpfdist" process is killed
+        Given the client program "gpfdist_httpclient.py" is present under CWD in "gppylib/test/behave_utils/gpfdist_utils"
+        Given the directory "extdata" exists in current working directory
+        When the user runs "gpfdist -p 8088 -V -l ./gpfdist.log -d extdata -w 3 & echo $! > extdata/gpfdist.pid &"
+        When the user runs client program "gpfdist_httpclient.py --url=localhost:8088 --path=/data.txt --segment_count=2 --segment_index=0 --session_id=1 --sequence_num=1" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
+        And the user runs client program "gpfdist_httpclient.py --url=localhost:8088 --path=/data.txt --segment_count=2 --segment_index=0 --session_id=1 --sequence_num=2 --data=1234" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
+        And the user runs client program "gpfdist_httpclient.py --url=localhost:8088 --path=/data.txt --segment_count=2 --segment_index=0 --session_id=1 --sequence_num=2 --data=1234" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
+        And the user runs client program "gpfdist_httpclient.py --url=localhost:8088 --path=/data.txt --segment_count=2 --segment_index=0 --session_id=1 --sequence_num=2 --isdone" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
+        Given waiting "4" seconds
+        When the user runs command "wc -l ./extdata/data.txt"
+        Then the file "extdata/data.txt" by process "extdata/gpfdist.pid" is closed
+        Then the client program should print 1 ./extdata/data.txt to stdout 
+        When the user runs command "cat ./extdata/data.txt"
+        Then the client program should print 1234 to stdout 
 
+    @gpfdist_without_sequence_number
+    Scenario: gpfdist works when using sequence_number and avoid duplicated writes 
+        Given the "gpfdist" process is killed
+        Given the client program "gpfdist_httpclient.py" is present under CWD in "gppylib/test/behave_utils/gpfdist_utils"
+        Given the directory "extdata" exists in current working directory
+        When the user runs "gpfdist -p 8088 -V -l ./gpfdist.log -d extdata -w 3 & echo $! > extdata/gpfdist.pid &"
+        And the user runs client program "gpfdist_httpclient.py --url=localhost:8088 --path=/data.txt --segment_count=2 --segment_index=0 --session_id=1 --data='1234'" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
+        And the user runs client program "gpfdist_httpclient.py --url=localhost:8088 --path=/data.txt --segment_count=2 --segment_index=0 --session_id=1 --isdone" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
+        Given waiting "4" seconds
+        When the user runs command "wc -l ./extdata/data.txt"
+        Then the file "extdata/data.txt" by process "extdata/gpfdist.pid" is closed
+        Then the client program should print 1 ./extdata/data.txt to stdout 
+        When the user runs command "cat ./extdata/data.txt"
+        Then the client program should print 1234 to stdout 
+
+
+    @gpfdist_bad_sequence_number
+    Scenario: gpfdist should reject if first sequence number != 1
+        Given the "gpfdist" process is killed
+        Given the client program "gpfdist_httpclient.py" is present under CWD in "gppylib/test/behave_utils/gpfdist_utils"
+        Given the directory "extdata" exists in current working directory
+        When the user runs "gpfdist -p 8088 -V -l gpfdist.log -d extdata -w 3 & echo $! > extdata/gpfdist.pid &"
+        When the user runs client program "gpfdist_httpclient.py --url=localhost:8088 --path=/data.txt --segment_count=2 --segment_index=0 --session_id=1 --sequence_num=2" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
+        Then the client program should print 400 invalid request due to wrong sequence number to stdout
+
+    @gpfdist_non_consective_sequence_number
+    Scenario: gpfdist should reject if first sequence number != 1
+        Given the "gpfdist" process is killed
+        Given the client program "gpfdist_httpclient.py" is present under CWD in "gppylib/test/behave_utils/gpfdist_utils"
+        Given the directory "extdata" exists in current working directory
+        When the user runs "gpfdist -p 8088 -V -l gpfdist.log -d extdata -w 3 & echo $! > extdata/gpfdist.pid &"
+        When the user runs client program "gpfdist_httpclient.py --url=localhost:8088 --path=/data.txt --segment_count=2 --segment_index=0 --session_id=1 --sequence_num=1" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
+        When the user runs client program "gpfdist_httpclient.py --url=localhost:8088 --path=/data.txt --segment_count=2 --segment_index=0 --session_id=1 --sequence_num=3" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
+        Then the client program should print 400 invalid request due to wrong sequence number to stdout
+     
+     
+    @gpfdist_negative_sequence_number
+    Scenario: gpfdist should reject if first sequence number != 1
+        Given the "gpfdist" process is killed
+        Given the client program "gpfdist_httpclient.py" is present under CWD in "gppylib/test/behave_utils/gpfdist_utils"
+        Given the directory "extdata" exists in current working directory
+        When the user runs "gpfdist -p 8088 -V -l gpfdist.log -d extdata -w 3 & echo $! > extdata/gpfdist.pid &"
+        When the user runs client program "gpfdist_httpclient.py --url=localhost:8088 --path=/data.txt --segment_count=2 --segment_index=0 --session_id=1 --sequence_num=-1" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
+        Then the client program should print 400 invalid sequence number to stdout
+     
+    @gpfdist_status_message
+    Scenario: gpfdist should output status message when segment read timeout 
+        Given the "gpfdist" process is killed
+        Given the directory "extdata" exists in current working directory
+        Given database "testdb" is created if not exists
+        Given the external table "read_ext_data" does not exist in "testdb"
+        When the user runs "gpfdist -p 8088 -V -d extdata -w 3 > ./gpfdist.log & echo $! > extdata/gpfdist.pid &"
+        And a "READABLE" external table "read_ext_data" is created on file "demo" in "testdb" 
+        And the user runs command "gdb -p $(cat extdata/gpfdist.pid) < gppylib/test/behave/mgmt_utils/steps/data/gpfdist_gdb_jump_doWrite &" 
+        And the data line "abcd|1" is appened to "extdata/demo" in cwd
+        And the user runs "psql -d testdb -c 'select * from read_ext_data'"
+        Then the client program should print suspected intermittent network connectivity issue, cancelling the query error message
+        When the "gpfdist" process is killed
+        And the user runs command "cat ./gpfdist.log"
+        Then the client program should print STATUS: total session to stdout
+
+    @gpfdist_eol_encoding
+    Scenario: gpfdist should reject bad encoded EOL  
+	Given the client program "fake_url.py" is present under CWD in "gppylib/test/behave_utils/gpfdist_utils"
+	Given the directory "extdata" exists in current working directory
+        Given the "gpfdist" process is killed
+	When the user runs command "echo -e 'X-GP-XID:1380088278-0000000529\nX-GP-CID:0\nX-GP-SN:0\nX-GP-SEGMENT-ID:0\nX-GP-SEGMENT-COUNT:1\nX-GP-PROTO:0\nX-GP-SEQ:1\nContent-Type:text/xml\nContent-Length:0\nX-GP-LINE-DELIM-LENGTH:2\nX-GP-LINE-DELIM-STR:abc' > ./extdata/open"
+	And the user runs "gpfdist -p 8088 -V > ./gpfdist.log & " 
+        And the user runs client program "fake_url.py -u 'localhost:8088/demo' -H extdata/open" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
+	Given waiting "2" seconds
+        When the "gpfdist" process is killed
+        And the user runs command "cat ./gpfdist.log"
+        Then the client program should print invalid EOL to stdout
 
