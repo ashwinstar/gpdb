@@ -720,48 +720,45 @@ int gfile_open(gfile_t* fd, const char* fpath, int flags, int* response_code, co
 	if (is_win_pipe)
 	{
 		/* Try and open it as a windows named pipe */
-		while (1)
+		HANDLE pipe = CreateFile(fpath, 
+								 (flags != GFILE_OPEN_FOR_READ ? GENERIC_WRITE : GENERIC_READ),
+								 0, /* no sharing */
+								 NULL, /* default security */
+								 OPEN_EXISTING, /* file must exist */
+								 0, /* default attributes */
+								 NULL /* no template */);
+		gfile_printf_then_putc_newline("trying to connect to pipe");
+		if (pipe != INVALID_HANDLE_VALUE)
 		{
-			HANDLE pipe = CreateFile(fpath, 
-									 (flags != GFILE_OPEN_FOR_READ ? GENERIC_WRITE : GENERIC_READ),
-									 0, /* no sharing */
-									 NULL, /* default security */
-									 OPEN_EXISTING, /* file must exist */
-									 0, /* default attributes */
-									 NULL /* no template */);
-			gfile_printf_then_putc_newline("trying to connect to pipe");
-			if (pipe != INVALID_HANDLE_VALUE)
+			is_win_pipe = TRUE;
+			fd->is_win_pipe = TRUE;
+			fd->fd.pipefd = pipe;
+			gfile_printf_then_putc_newline("connected to pipe");
+		}
+		else
+		{
+			LPSTR msg;
+
+			FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER |
+						  FORMAT_MESSAGE_FROM_SYSTEM,
+				   		  NULL, GetLastError(),
+						  MAKELANGID(LANG_ENGLISH, SUBLANG_DEFAULT),
+						  (LPSTR) & msg, 0, NULL);
+			CloseHandle(pipe);
+			gfile_printf_then_putc_newline("could not create pipe: %s", msg);
+
+			if (GetLastError() != ERROR_PIPE_BUSY)
 			{
-				is_win_pipe = TRUE;
-				fd->is_win_pipe = TRUE;
-				fd->fd.pipefd = pipe;
-				gfile_printf_then_putc_newline("connected to pipe");
-				break;
+				*response_code = 500;
+				*response_string = "could not connect to pipe";
 			}
 			else
 			{
-				if (GetLastError() != ERROR_PIPE_BUSY)
-				{
-					LPSTR msg;
-
-					FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER |
-								  FORMAT_MESSAGE_FROM_SYSTEM,
-						   		  NULL, GetLastError(),
-								  MAKELANGID(LANG_ENGLISH, SUBLANG_DEFAULT),
-								  (LPSTR) & msg, 0, NULL);
-					CloseHandle(pipe);
-					gfile_printf_then_putc_newline("could not create pipe: %s", msg);
-					*response_code = 500;
-					*response_string = "could not connect to pipe";
-					return 1;
-				}
-				else
-				{
-					gfile_printf_then_putc_newline("pipe busy, waiting 2 seconds");
-					WaitNamedPipe(fpath, 2000);
-				}
+				*response_code = 501;
+				*response_string = "pipe is busy, close the pipe and try again";
 			}
- 	   }
+			return 1;
+		}
 	}
 
 #else

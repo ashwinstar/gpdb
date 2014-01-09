@@ -11,12 +11,12 @@
 #include <ws2tcpip.h>
 #endif
 #include <fstream/fstream.h>
-#include <fstream/gfile.h>
 #include <assert.h>
 #include <glob.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 #ifdef GPFXDIST
 #include <gpfxdist.h>
@@ -956,19 +956,17 @@ int fstream_write(fstream_t *fs,
 				
 		/* TODO: need to do this more carefully for CSV, like in the read case */
 		
-		/* write data to destination file */
-		byteswritten = (int)gfile_write(&fs->fd, (char*) buf, last_delim - (char *)buf);
-		
+                size = last_delim - (char *) buf;
 		/* caller should move leftover data to start of buffer */
-	}
-	else
-	{
-		/* write data to destination file */
-		byteswritten = (int)gfile_write(&fs->fd, (char*) buf, size);
-	}
-		
+        }
+
+	/* write data to destination file */
+	byteswritten = (int)gfile_write(&fs->fd, (char*) buf, size);
+
 	if (byteswritten < 0)
 	{
+                gfile_printf_then_putc_newline("cannot write into file, byteswritten=%d, size=%d, errno=%d, errmsg=%s", 
+                        byteswritten, size, errno, strerror(errno));
 		fs->ferror = "cannot write into file";
 		return -1;
 	}
@@ -1026,3 +1024,9 @@ int fstream_rewind(fstream_t *fs)
 	}
 	return 0;
 }
+
+bool_t fstream_is_win_pipe(fstream_t *fs)
+{
+	return fs->fd.is_win_pipe;
+}
+

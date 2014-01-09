@@ -307,7 +307,7 @@ write_callback(char *buffer,
  * the error code and message it to the database user and abort operation.
  */
 static int
-check_response(URL_FILE *file, int *rc, const char **response_string, bool report_timeout)
+check_response(URL_FILE *file, int *rc, const char **response_string, bool do_close)
 {
 	long 		response_code;
 	char*		effective_url = NULL;
@@ -330,6 +330,8 @@ check_response(URL_FILE *file, int *rc, const char **response_string, bool repor
 
 	if (! (200 <= response_code && response_code < 300))
 	{
+		char *url_dup = pstrdup(file->url);
+		char *effective_url_dup = effective_url == NULL ? "" : pstrdup(effective_url);
 		if (response_code == 0)
 		{
 			long 		oserrno = 0;
@@ -343,14 +345,18 @@ check_response(URL_FILE *file, int *rc, const char **response_string, bool repor
 							 (int) oserrno, strerror((int)oserrno));
 			}
 
+			if (do_close) {
+				url_fclose(file, false, "");
+			}
+
 			ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE),
 							errmsg("connection with gpfdist failed for %s. "
-									"effective url: %s. %s\n%s", file->url, effective_url,
+									"effective url: %s. %s\n%s", url_dup, effective_url_dup,
 									(oserrno != 0 ? connmsg : ""),
 									(curl_Error_Buffer[0] != '\0' ? curl_Error_Buffer : "")),
 						    errOmitLocation(true)));
 		}
-		else if (report_timeout && response_code == FDIST_TIMEOUT)	// gpfdist server return timeout code
+		else if (response_code == FDIST_TIMEOUT)	// gpfdist server return timeout code
 		{
 			return FDIST_TIMEOUT;
 		}
@@ -363,15 +369,93 @@ check_response(URL_FILE *file, int *rc, const char **response_string, bool repor
 			   in seg X is thrown away.
 			*/
 			pg_usleep(1000000);
+			if (do_close) {
+				url_fclose(file, false, "");
+			}
+
 			elog(ERROR, "http response code %ld from gpfdist (%s): %s",
-				 response_code, file->url,
+				 response_code, url_dup,
 				 file->u.curl.http_response ? file->u.curl.http_response : "?");
 		}
+		pfree(url_dup);
+		pfree(effective_url_dup);
 	}
 
 	return 0;
 }
 
+// callback for request /gpfdist/status for debugging purpose.
+static size_t
+log_http_body(char *buffer,
+              size_t size,
+              size_t nitems,
+              void *userp)
+{
+	char body[256] = {0};
+	int  nbytes = size * nitems;
+	int  len = sizeof(body) - 1 > nbytes ? nbytes : sizeof(body) - 1;
+
+	memcpy(body, buffer, len);
+
+	elog(LOG, "gpfdist/status: %s", body);
+
+	return nbytes;
+}
+
+// GET /gpfdist/status to get gpfdist status.
+static void
+get_gpfdist_status(URL_FILE *file) 
+{
+	CURL * status_handle = NULL;
+	char status_url[256];
+	char domain[HOST_NAME_SIZE] = {0};
+	CURLcode e;
+
+	if (file == NULL) {
+		elog(LOG, "get_gpfdist_status: file = NULL");
+		return;
+	}
+
+	if (file->url == NULL) {
+		elog(LOG, "get_gpfdist_status: file->url = NULL");
+		return;
+	}
+
+	extract_http_domain(file->url, domain, HOST_NAME_SIZE);
+	snprintf(status_url, sizeof(status_url), "http://%s/gpfdist/status", domain);
+
+	do {
+		if (! (status_handle = curl_easy_init()))
+		{
+		    elog(LOG, "internal error: get_gpfdist_status.curl_easy_init failed");
+			break;
+		}
+		if (CURLE_OK != (e = curl_easy_setopt(status_handle, CURLOPT_TIMEOUT, 60L)))
+		{
+		    elog(LOG, "internal error: get_gpfdist_status.curl_easy_setopt CURLOPT_TIMEOUT error (%d - %s)",
+		         e, curl_easy_strerror(e));
+			break;
+		}
+		if (CURLE_OK != (e = curl_easy_setopt(status_handle, CURLOPT_URL, status_url)))
+		{
+		    elog(LOG, "internal error: get_gpfdist_status.curl_easy_setopt CURLOPT_URL error (%d - %s)",
+		         e, curl_easy_strerror(e));
+			break;
+		}  
+		if (CURLE_OK != (e = curl_easy_setopt(status_handle, CURLOPT_WRITEFUNCTION, log_http_body)))
+		{
+			elog(LOG, "internal error: get_gpfdist_status.curl_easy_setopt CURLOPT_WRITEFUNCTION error (%d - %s)",
+				 e, curl_easy_strerror(e));
+			break;
+		}
+		if (CURLE_OK != (e = curl_easy_perform(status_handle)))
+		{
+			elog(LOG, "send status request failed: %s", curl_easy_strerror(e));
+		}
+	} while (0);
+
+	curl_easy_cleanup(status_handle);
+}
 
 /**
  * Send curl request and check response.
@@ -397,7 +481,7 @@ gp_curl_easy_perform_backoff_and_check_response(URL_FILE *file)
 		}
 		                                                                                   	
 		/* check the response from server */                                              	
-		response_code = check_response(file, &response_code, &response_string, true);
+		response_code = check_response(file, &response_code, &response_string, false);
 		if (response_code == FDIST_TIMEOUT) 
                 {
 			if (wait_time > MAX_TRY_WAIT_TIME) 
@@ -446,6 +530,7 @@ fill_buffer(URL_FILE *file, int want)
     int 	maxfd;
     struct 	timeval timeout;
     int 	nfds, e;
+	int     timeout_count = 0;
 	curlctl_t* curl = &file->u.curl;
 
 	/* elog(NOTICE, "= still_running %d, bot %d, top %d, want %d",
@@ -474,24 +559,44 @@ fill_buffer(URL_FILE *file, int want)
 
 		if (maxfd <= 0)
 		{
+			elog(LOG, "curl_multi_fdset set maxfd = %d", maxfd);
 			curl->still_running = 0;
 			break;
 		}
+		nfds = select(maxfd+1, &fdread, &fdwrite, &fdexcep, &timeout);
 
-        if (-1 == (nfds = select(maxfd+1, &fdread, &fdwrite, &fdexcep, &timeout)))
-		{
-			if (errno == EINTR || errno == EAGAIN)
+		if (nfds == -1) {
+			if (errno == EINTR || errno == EAGAIN) {
+				elog(WARNING, "select failed on curl_multi_fdset (maxfd %d) (%d - %s)", maxfd, errno, strerror(errno));
 				continue;
+			}
 			elog(ERROR, "internal error: select failed on curl_multi_fdset (maxfd %d) (%d - %s)",
 				 maxfd, errno, strerror(errno));
-		}
-
-		if (nfds > 0)
-		{
-            /* timeout or readable/writable sockets */
-            /* note we *could* be more efficient and not wait for
-             * CURLM_CALL_MULTI_PERFORM to clear here and check it on re-entry
-             * but that gets messy */
+		} else if (nfds == 0) {
+			// timeout
+			timeout_count++;
+			if (timeout_count > 120) {
+				// Hack to get the offset of num_easy and num_alive in 
+				// struct Curl_multi, is 96 and 100 in libcurl 7.21.7.
+				int num_easy = * (int *) ((char *) multi_handle + 96 );
+				int num_alive= * (int *) ((char *) multi_handle + 100);
+				elog(LOG, "bot = %d, top = %d, want = %d, maxfd = %d, nfds = %d, e = %d, "
+						  "still_running = %d, for_write = %d, error = %d, eof = %d, datalen = %d"
+						  "num_easy = %d, num_alive = %d", 
+						  curl->in.bot, curl->in.top, want, maxfd, nfds, e, curl->still_running, 
+						  curl->for_write, curl->error, curl->eof, curl->block.datalen,
+						  num_easy, num_alive);
+				get_gpfdist_status(file);
+				elog(ERROR, "suspected intermittent network connectivity issue, cancelling the query.");
+				break;
+			} else if (timeout_count % 12 == 0) {
+				elog(LOG, "suspected intermittent network connectivity issue, continuing to wait for recovery.");
+			}
+		} else if (nfds > 0) {
+			/* timeout or readable/writable sockets */
+			/* note we *could* be more efficient and not wait for
+			 * CURLM_CALL_MULTI_PERFORM to clear here and check it on re-entry
+			 * but that gets messy */
 			while (CURLM_CALL_MULTI_PERFORM ==
 				   (e = curl_multi_perform(multi_handle, &file->u.curl.still_running)));
 
@@ -500,12 +605,22 @@ fill_buffer(URL_FILE *file, int want)
 				elog(ERROR, "internal error: curl_multi_perform failed (%d - %s)",
 					 e, curl_easy_strerror(e));
 			}
-        }
+		} else {
+			elog(ERROR, "select return unexpected result");
+		}
 
 		/* elog(NOTICE, "- still_running %d, bot %d, top %d, want %d",
 		   file->u.curl.still_running, curl->in.bot, curl->in.top, want);
 		*/
     }
+
+	if (curl->still_running == 0) {
+		elog(LOG, "quit fill_buffer due to still_running = 0, bot = %d, top = %d, want = %d, "
+				"for_write = %d, error = %d, eof = %d, datalen = %d",
+				curl->in.bot, curl->in.top, want, curl->for_write, curl->error, 
+				curl->eof, curl->block.datalen);
+	}
+
 
     return 0;
 }
@@ -1037,6 +1152,7 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 		}
 
 		/* initialize a curl session and get a libcurl handle for it */
+		elog(LOG, "curl_easy_init: %s", file->url);
         if (! (file->u.curl.handle = curl_easy_init()))
 		{
 			url_fclose(file, false, pstate->cur_relname);
@@ -1125,6 +1241,15 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 
 		if(forwrite)
 		{
+			// TIMEOUT for POST only, GET is single HTTP request,
+			// probablity take long time.
+			if (CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_TIMEOUT, 300L)))
+			{
+				url_fclose(file, false, pstate->cur_relname);
+				elog(ERROR, "internal error: curl_easy_setopt CURLOPT_TIMEOUT error (%d - %s)",
+					 e, curl_easy_strerror(e));
+			}
+
 			/* write specific headers */
 			if(set_httpheader(file, "X-GP-PROTO", "0") ||
 			   set_httpheader(file, "Content-Type", "text/xml"))
@@ -1349,9 +1474,8 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
     		fill_buffer(file, 1);
  
 		/* check the connection for GET request*/
-		if (check_response(file, response_code, response_string, false))
+		if (check_response(file, response_code, response_string, true))
 		{
-			url_fclose(file, false, pstate->cur_relname);
 			return NULL;
 		}
         }
@@ -1514,8 +1638,13 @@ url_fclose(URL_FILE *file, bool failOnError, const char *relname)
 			/* make sure the easy handle is not in the multi handle anymore */
 			if (file->u.curl.handle)
 			{
-				curl_multi_remove_handle(multi_handle, file->u.curl.handle);
+				CURLMcode e = curl_multi_remove_handle(multi_handle, file->u.curl.handle);
+				if (CURLM_OK != e) {
+					elog(WARNING, "internal error curl_multi_remove_handle (%d - %s)", e, curl_easy_strerror(e));
+				}
+
 				/* cleanup */
+				elog(LOG, "curl_easy_cleanup: %s", file->url);
 				curl_easy_cleanup(file->u.curl.handle);
 				file->u.curl.handle = NULL;
 			}
@@ -2165,6 +2294,7 @@ url_fflush(URL_FILE *file, CopyState pstate)
 void
 url_rewind(URL_FILE *file, const char *relname)
 {
+	CURLMcode e;
 	char *url = file->url;
     switch(file->type)
     {
@@ -2183,10 +2313,16 @@ url_rewind(URL_FILE *file, const char *relname)
 
 		case CFTYPE_CURL:
 			/* halt transaction */
-			curl_multi_remove_handle(multi_handle, file->u.curl.handle);
+			e = curl_multi_remove_handle(multi_handle, file->u.curl.handle);
+			if (CURLM_OK != e) {
+				elog(ERROR, "internal error curl_multi_remove_handle (%d - %s)", e, curl_easy_strerror(e));
+			}
 
 			/* restart */
-			curl_multi_add_handle(multi_handle, file->u.curl.handle);
+			e = curl_multi_add_handle(multi_handle, file->u.curl.handle);
+			if (CURLM_OK != e) {
+				elog(ERROR, "internal error curl_multi_add_handle (%d - %s)", e, curl_easy_strerror(e));
+			}
 
 			/* ditch buffer - write will recreate - resets stream pos*/
 			if (file->u.curl.in.ptr)

@@ -13,6 +13,16 @@ bool is_valid_timeout(int timeout_val)
 	
 }
 
+bool is_valid_session_timeout(int timeout_val)
+{
+	if (timeout_val < 0)
+		return false;
+	else if (timeout_val > 600)
+		return false;
+	else
+		return true;
+	
+}
 
 bool is_valid_listen_queue_size(int listen_queue_size)
 {

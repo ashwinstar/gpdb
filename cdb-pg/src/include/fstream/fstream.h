@@ -1,6 +1,7 @@
 #ifndef FSTREAM_H
 #define FSTREAM_H
 
+#include <fstream/gfile.h>
 #include <sys/types.h>
 /*#include "c.h"*/
 #ifdef WIN32
@@ -50,5 +51,6 @@ const char* fstream_get_error(fstream_t* fs);
 fstream_t* fstream_open(const char* path, const struct fstream_options* options,
 						int* response_code, const char** response_string);
 void fstream_close(fstream_t* fs);
+bool_t fstream_is_win_pipe(fstream_t *fs);
 
 #endif

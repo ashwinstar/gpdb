@@ -8,6 +8,9 @@ import filecmp
 import shutil
 import signal
 import socket
+import subprocess
+import commands
+import sys
 import tarfile
 import platform
 
@@ -214,6 +217,10 @@ def impl(context, dbname):
 @then('the user runs "{command}"')
 def impl(context, command):
     run_gpcommand(context, command)
+
+@when('the user runs command "{command}"') 
+def impl(context, command):                 
+    run_command(context, command) 
 
 def run_valgrind_command(context, command):
     current_path = os.path.realpath(__file__)
@@ -2389,11 +2396,36 @@ def impl(context, filename, path):
     if not os.path.exists(fullpath):
         raise Exception('file "%s" is not exist' % fullpath)
 
+@given('waiting "{second}" seconds')
+def impl(context, second):
+    time.sleep(float(second))
+
+@then('the file "{filename}" by process "{pidfile}" is not closed')
+def impl(context, filename, pidfile):
+    cmd = 'PATH=$PATH:/usr/bin:/usr/sbin lsof -p `cat %s` | grep %s | wc -l' % (pidfile, filename)
+    (ret, output) = commands.getstatusoutput(cmd)
+    if int(output) == 0:
+        raise Exception('file %s has been closed' % (filename))
 @given('the directory {path} exists')
 @then('the directory {path} exists')
 def impl(context, path):
    if not os.path.isdir(path):
        raise Exception('Directory "%s" does not exist' %path)
+
+@then('the file "{filename}" by process "{pidfile}" is closed')
+def impl(context, filename, pidfile):
+    cmd = 'PATH=$PATH:/usr/bin:/usr/sbin lsof -p `cat %s` | grep %s | wc -l' % (pidfile, filename)
+    (ret, output) = commands.getstatusoutput(cmd)
+    if int(output) != 0:
+        raise Exception('file %s has not been closed' % (filename))
+
+@then('the file "{filename}" by process "{pidfile}" opened number is "{num}"')
+def impl(context, filename, pidfile, num):
+    cmd = 'PATH=$PATH:/usr/bin:/usr/sbin lsof -p `cat %s` | grep %s | wc -l' % (pidfile, filename)
+    (ret, output) = commands.getstatusoutput(cmd)
+    if int(output) != int(num):
+        raise Exception('file %s opened number %d is not %d' % (filename, int(output), int(num)))
+
 
 @then('{file} should be found in tarball with prefix "{prefix}" within directory {path}')
 def impl(context, file, prefix, path):

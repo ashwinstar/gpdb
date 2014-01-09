@@ -100,3 +100,91 @@ Feature: gpfdist configure timeout value
         And the data line "Ivan|123" is appened to "extdata/write_data.txt" in cwd
         When the "gpfdist" process is killed
         Given the directory "extdata" does not exist in current working directory
+
+    @gpfdist_wait_before_close
+    Scenario: gpfdist wait some time before close file - simple 
+        Given the "gpfdist" process is killed
+        Given the client program "gpfdist_httpclient.py" is present under CWD in "gppylib/test/behave_utils/gpfdist_utils"
+        Given the directory "extdata" exists in current working directory
+        When the user runs "gpfdist -p 8080 -V -l ./gpfdist.log -d extdata -w 2 & echo $! > extdata/gpfdist.pid &" 
+        And the data line "abcd" is appened to "extdata/data.txt" in cwd
+
+        When the user runs client program "gpfdist_httpclient.py --url=localhost:8080 --path=/data.txt --segment_count=2 --segment_index=0" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
+        And  the user runs client program "gpfdist_httpclient.py --url=localhost:8080 --path=/data.txt --segment_count=2 --segment_index=0 --isdone" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
+        Given waiting "1" seconds
+        Then the file "./extdata/data.txt" by process "extdata/gpfdist.pid" is not closed 
+        
+        When the user runs client program "gpfdist_httpclient.py --url=localhost:8080 --path=/data.txt --segment_count=2 --segment_index=1" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
+        And  the user runs client program "gpfdist_httpclient.py --url=localhost:8080 --path=/data.txt --segment_count=2 --segment_index=1 --isdone" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
+        Given waiting "3" seconds
+        Then the file "extdata/data.txt" by process "extdata/gpfdist.pid" is closed 
+        When the "gpfdist" process is killed
+        Given the directory "extdata" does not exist in current working directory
+
+    @gpfdist_wait_before_close
+    Scenario: gpfdist wait some time before close file - multi session 
+        Given the "gpfdist" process is killed
+        Given the client program "gpfdist_httpclient.py" is present under CWD in "gppylib/test/behave_utils/gpfdist_utils"
+        Given the directory "extdata" exists in current working directory
+        When the user runs "gpfdist -p 8080 -V -l ./gpfdist.log -d extdata -w 3 & echo $! > extdata/gpfdist.pid &" 
+        And the data line "abcd" is appened to "extdata/data.txt" in cwd
+
+        When the user runs client program "gpfdist_httpclient.py --url=localhost:8080 --path=/data.txt --segment_count=2 --segment_index=0 --session_id=1" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
+        And  the user runs client program "gpfdist_httpclient.py --url=localhost:8080 --path=/data.txt --segment_count=2 --segment_index=0 --session_id=1 --isdone" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
+        Given waiting "1" seconds
+        Then the file "./extdata/data.txt" by process "extdata/gpfdist.pid" is not closed 
+        
+        When the user runs client program "gpfdist_httpclient.py --url=localhost:8080 --path=/data.txt --segment_count=2 --segment_index=1 --session_id=2" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
+        And  the user runs client program "gpfdist_httpclient.py --url=localhost:8080 --path=/data.txt --segment_count=2 --segment_index=1 --session_id=2 --isdone" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
+
+        Then the file "./extdata/data.txt" by process "extdata/gpfdist.pid" opened number is "2"
+        
+        Given waiting "4" seconds
+        Then the file "extdata/data.txt" by process "extdata/gpfdist.pid" is closed 
+        When the "gpfdist" process is killed
+        Given the directory "extdata" does not exist in current working directory
+
+    @gpfdist_wait_before_close
+    Scenario: gpfdist wait some time before close file - more segments
+        Given the "gpfdist" process is killed
+        Given the client program "gpfdist_httpclient.py" is present under CWD in "gppylib/test/behave_utils/gpfdist_utils"
+        Given the directory "extdata" exists in current working directory
+        When the user runs "gpfdist -p 8080 -V -l ./gpfdist.log -d extdata -w 3 & echo $! > extdata/gpfdist.pid &" 
+        And the data line "abcd" is appened to "extdata/data.txt" in cwd
+
+        # seg0 send data
+        When the user runs client program "gpfdist_httpclient.py --url=localhost:8080 --path=/data.txt --segment_count=8 --segment_index=0 --session_id=1" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
+        # seg1 send data
+        And the user runs client program "gpfdist_httpclient.py --url=localhost:8080 --path=/data.txt --segment_count=8 --segment_index=1 --session_id=1" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
+        # seg1 send done
+        And  the user runs client program "gpfdist_httpclient.py --url=localhost:8080 --path=/data.txt --segment_count=8 --segment_index=1 --session_id=1 --isdone" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
+        # seg0 send done
+        And  the user runs client program "gpfdist_httpclient.py --url=localhost:8080 --path=/data.txt --segment_count=8 --segment_index=0 --session_id=1 --isdone" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
+
+        Given waiting "1" seconds
+        Then the file "./extdata/data.txt" by process "extdata/gpfdist.pid" is not closed 
+        
+        # seg2 send data
+        When the user runs client program "gpfdist_httpclient.py --url=localhost:8080 --path=/data.txt --segment_count=8 --segment_index=2 --session_id=1" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
+        # seg3 send data
+        When the user runs client program "gpfdist_httpclient.py --url=localhost:8080 --path=/data.txt --segment_count=8 --segment_index=3 --session_id=1" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
+        # seg2 send done
+        And  the user runs client program "gpfdist_httpclient.py --url=localhost:8080 --path=/data.txt --segment_count=8 --segment_index=2 --session_id=1 --isdone" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
+        # seg3 send done
+        And  the user runs client program "gpfdist_httpclient.py --url=localhost:8080 --path=/data.txt --segment_count=8 --segment_index=3 --session_id=1 --isdone" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
+
+        Given waiting "1" seconds
+        Then the file "./extdata/data.txt" by process "extdata/gpfdist.pid" is not closed 
+        
+        # seg4 send data
+        When the user runs client program "gpfdist_httpclient.py --url=localhost:8080 --path=/data.txt --segment_count=8 --segment_index=4 --session_id=1" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
+        # seg4 send done
+        And  the user runs client program "gpfdist_httpclient.py --url=localhost:8080 --path=/data.txt --segment_count=8 --segment_index=4 --session_id=1 --isdone" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
+
+        Given waiting "4" seconds
+        Then the file "extdata/data.txt" by process "extdata/gpfdist.pid" is closed 
+        When the "gpfdist" process is killed
+        Given the directory "extdata" does not exist in current working directory
+
+
+

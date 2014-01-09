@@ -9,7 +9,7 @@ SYNOPSIS
 
 gpload -f <control_file> [-l <log_file>] 
 [-h <hostname>] [-p <port>] [-U <username>] [-d <database>] [-W] 
-[--gpfdist_timeout <seconds>] [[-v | -V] | [-q]] [-D]
+[--gpfdist_timeout <seconds>] [[-v | -V] | [-q]] [-D] [-t <true|false>]
 
 gpload -? 
 
@@ -99,6 +99,11 @@ screen, but is still written to the log file.
 -D (debug mode)
 
 Check for error conditions, but do not execute the load. 
+
+
+-t <true|false>
+
+Whether to wrap in "BEGIN" and "COMMIT". 
 
 
 -? (show help)

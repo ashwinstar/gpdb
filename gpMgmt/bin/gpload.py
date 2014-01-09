@@ -16,6 +16,7 @@ Options:
     -v: verbose
     -V: very verbose
     -l logfile: log output to logfile
+    --no_auto_trans: do not wrap gpload in transaction
     --gpfdist_timeout timeout: gpfdist timeout value
     --version: print version number and exit
     -?: help
@@ -42,6 +43,8 @@ except Exception, e:
 import hashlib
 import datetime,getpass,os,signal,socket,subprocess,threading,time,traceback,re
 import platform
+import uuid
+
 thePlatform = platform.system()
 if thePlatform in ['Windows', 'Microsoft']:
    windowsPlatform = True
@@ -1048,7 +1051,8 @@ def jenkins(data, initval = 0):
     a, b, c = jenkinsmix(a, b, c)
     return c
 
-
+# MPP-20927 Citibank: gpload external table name problem
+# Not sure if it is used by other components, just leave it here.
 def shortname(name):
     """
     Returns a 10 character string formed by concatenating the first two characters 
@@ -1103,6 +1107,7 @@ class gpload:
         self.options.U = None
         self.options.W = False
         self.options.D = False
+        self.options.no_auto_trans = False 
         self.options.password = None
         self.options.d = None
         self.DEBUG = 5
@@ -1118,9 +1123,11 @@ class gpload:
 
         # Create Temp and External table names. However external table name could 
         # get overwritten with another name later on (see create_external_table_name). 
-        self.unique_suffix = '%s_%d'%(datetime.datetime.today().strftime('%Y%m%d_%H%M%S'),os.getpid())
+        # MPP-20927 Citibank: gpload external table name problem. We use uuid to avoid
+        # external table name confliction.
+        self.unique_suffix = str(uuid.uuid1()).replace('-', '_')
         self.staging_table_name = 'temp_staging_gpload_' + self.unique_suffix
-        self.extTableName  = 'ext_gpload' + self.unique_suffix
+        self.extTableName  = 'ext_gpload_' + self.unique_suffix
 
         # SQL to run in order to undo our temporary work
         self.cleanupSql = []
@@ -1171,6 +1178,9 @@ class gpload:
                     elif argv[0]=='-f':
                         configFilename = argv[1]
                         argv = argv[2:]
+                    elif argv[0]=='--no_auto_trans':
+                        self.options.no_auto_trans = True 
+                        argv = argv[1:]
                     elif argv[0]=='-?':
                         usage()
                     else:
@@ -1950,7 +1960,7 @@ class gpload:
     # This function will return the SQL to run in order to find out whether
     # such a table exists.
     # 
-    def get_reuse_exttable_query(self, shortTableName, formatType, formatOpts, limitStr, from_cols):
+    def get_reuse_exttable_query(self, formatType, formatOpts, limitStr, from_cols):
         
         sql = """select attrelid::regclass
                  from (
@@ -1967,7 +1977,7 @@ class gpload:
                             on (pg_class.oid = attrelid)
                         where 
                             relstorage = 'x' and
-                            relname like 'ext_gpload_reusable_%s_%%' and
+                            relname like 'ext_gpload_reusable_%%' and
                             attnum > 0 and
                             not attisdropped
                     
@@ -1975,7 +1985,7 @@ class gpload:
                     join 
                     pg_exttable pgext 
                     on(pgattr.attrelid = pgext.reloid) 
-                    """ % (shortTableName)
+                    """
          
         for i, l in enumerate(self.locations):
             if i == 0:
@@ -2127,15 +2137,7 @@ class gpload:
         # the one that we need to use. It must have identical attributes,
         # external location, format, and encoding specifications.
         if self.reuse_tables == True:
-            
-            tableName = quote_unident(self.table)
-
-            # MPP-13348
-            shortTableName = shortname(tableName)
-            self.log(self.DEBUG, "create_external_table: %s shortTableName: %s" % (tableName, shortTableName))
-
-            sql = self.get_reuse_exttable_query(shortTableName, formatType, formatOpts, limitStr, from_cols)
-            
+            sql = self.get_reuse_exttable_query(formatType, formatOpts, limitStr, from_cols)
             resultList = self.db.query(sql.encode('utf-8')).getresult()
             
             if len(resultList) > 0:
@@ -2149,7 +2151,7 @@ class gpload:
             # name and issue a CREATE EXTERNAL TABLE on it. Hopefully we can use it next time
             # around
 
-            self.extTableName = "ext_gpload_reusable_%s_created_%s" % (shortTableName, self.unique_suffix)
+            self.extTableName = "ext_gpload_reusable_%s" % self.unique_suffix
             self.log(self.INFO, "did not find an external table to reuse. creating %s" % self.extTableName)
         
         
@@ -2217,12 +2219,17 @@ class gpload:
         # already existing staging table in the catalog which will match
         # the one that we need to use. It must meet the reuse conditions
         is_temp_table = 'TEMP '
+        target_columns = []
+        for column in self.into_columns:
+            if column[2]:
+                target_columns.append([quote_unident(column[0]), column[1]])        
+
         if self.reuse_tables == True:
             is_temp_table = ''
             target_table_name = quote_unident(self.table)
 
             # create a string from all reuse conditions for staging tables and ancode it 
-            conditions_str = self.get_staging_conditions_string(target_table_name, from_cols, distcols)
+            conditions_str = self.get_staging_conditions_string(target_table_name, target_columns, distcols)
             encoding_conditions = hashlib.md5(conditions_str).hexdigest()
 					
             sql = self.get_reuse_staging_table_query(encoding_conditions)
@@ -2250,7 +2257,7 @@ class gpload:
         # MPP-14667 - self.reuse_tables should change one, and only one, aspect of how we build the following table,
         # and that is, whether it's a temp table or not. In other words, is_temp_table = '' iff self.reuse_tables == True.
         sql = 'CREATE %sTABLE %s ' % (is_temp_table, self.staging_table_name)
-        cols = map(lambda a:'%s %s' % (a[0], a[1]), from_cols)
+        cols = map(lambda a:'%s %s' % (a[0], a[1]), target_columns)
         sql += "(%s)" % ','.join(cols)
         sql += " DISTRIBUTED BY (%s)" % ', '.join(distcols)
         self.log(self.LOG, sql)
@@ -2509,6 +2516,9 @@ class gpload:
         truncate = False
         self.reuse_tables = False
         
+        if not self.options.no_auto_trans and not method=='insert':
+            self.db.query("BEGIN")
+
         if preload:
             truncate = self.getconfig('gpload:preload:truncate',bool,False)
             self.reuse_tables = self.getconfig('gpload:preload:reuse_tables',bool,False)
@@ -2557,6 +2567,10 @@ class gpload:
                 except Exception, e:
                     self.log(self.ERROR, 'could not execute SQL in sql:after "%s": %s' %
                              (after, str(e)))
+
+        if not self.options.no_auto_trans and not method=='insert':
+            self.db.query("COMMIT")
+
 
     def run2(self):
         self.log(self.DEBUG, 'config ' + str(self.config))
@@ -2637,6 +2651,8 @@ class gpload:
             if platform.uname()[0] == 'HP-UX':
                 time.sleep(1)
 
-g = gpload(sys.argv[1:])
-g.run()
-sys.exit(g.exitValue)
+
+if __name__ == '__main__':
+    g = gpload(sys.argv[1:])
+    g.run()
+    sys.exit(g.exitValue)
