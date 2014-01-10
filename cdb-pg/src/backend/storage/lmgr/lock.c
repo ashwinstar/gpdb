@@ -1056,7 +1056,8 @@ LockAcquire(const LOCKTAG *locktag,
 void
 RemoveLocalLock(LOCALLOCK *locallock)
 {
-	pfree(locallock->lockOwners);
+	if (locallock->lockOwners != NULL)
+		pfree(locallock->lockOwners);
 	locallock->lockOwners = NULL;
 	if (!hash_search(LockMethodLocalHash,
 					 (void *) &(locallock->tag),
