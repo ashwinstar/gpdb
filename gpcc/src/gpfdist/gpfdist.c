@@ -2606,8 +2606,13 @@ static void handle_post_request(request_t *r, int header_end)
 			/* don't have sequence number */
 			if (session->seq_segs[r->segid] > 0) {
 				/* missing sequence number */
+#ifdef WIN32
+				TR(("[%s] [%s:%ld:%d] got an request missing sequence number, expected sequence number is %ld. \n",
+					datetime(), GET_SID(r), r->id, r->sock, (long)session->seq_segs[r->segid]+1)); 
+#else
 				TR(("[%s] [%s:%ld:%d] got an request missing sequence number, expected sequence number is %"APR_INT64_T_FMT". \n",
 					datetime(), GET_SID(r), r->id, r->sock, session->seq_segs[r->segid]+1)); 
+#endif
 				http_error(r, FDIST_BAD_REQUEST, "invalid request due to missing sequence number");
 				gwarning(FLINE, "got an request missing sequence number");
 				request_end(r, 1, 0);
@@ -2622,13 +2627,23 @@ static void handle_post_request(request_t *r, int header_end)
 			if (session->seq_segs[r->segid] == r->seq)
 			{
 				/* duplicate DATA request, ignore it*/
+#ifdef WIN32
+				TR(("[%s] [%s:%ld:%d] got a duplicate request, sequence number is %ld. \n",
+					datetime(), GET_SID(r), r->id, r->sock, (long)r->seq)); 
+#else
 				TR(("[%s] [%s:%ld:%d] got a duplicate request, sequence number is %"APR_INT64_T_FMT" . \n",
 					datetime(), GET_SID(r), r->id, r->sock, r->seq)); 
+#endif
 				goto done_processing_request;
 			} else if (session->seq_segs[r->segid] != r->seq - 1) {
 				/* out of order DATA request, ignore it*/
+#ifdef WIN32
+				TR(("[%s] [%s:%ld:%d] got an out of order request, sequence number is %ld, expected sequence number is %ld. \n",
+					datetime(), GET_SID(r), r->id, r->sock, (long)r->seq, (long)session->seq_segs[r->segid]+1)); 
+#else
 				TR(("[%s] [%s:%ld:%d] got an out of order request, sequence number is %"APR_INT64_T_FMT", expected sequence number is %"APR_INT64_T_FMT". \n",
 					datetime(), GET_SID(r), r->id, r->sock, r->seq, session->seq_segs[r->segid]+1)); 
+#endif
 				http_error(r, FDIST_BAD_REQUEST, "invalid request due to wrong sequence number");
 				gwarning(FLINE, "got an out of order request");
 				request_end(r, 1, 0);
