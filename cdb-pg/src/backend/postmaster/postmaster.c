@@ -1848,6 +1848,131 @@ static void checkPgDir2(const char *dir)
 	pfree(path);
 }
 
+#define FTS_PROBE_FILE_NAME "/fts_probe_file"
+#define FTS_PROBE_MAGIC_STRING "FtS PrObEr MaGiC StRiNg, pRoBiNg cHeCk......."
+
+/*
+ * Check if we can smoothly read and write to data directory.
+ *
+ * O_DIRECT flag requires buffer to be OS/FS block aligned.
+ * Best to have it IO Block alligned henece using BLCKSZ
+ */
+static bool 
+checkIODataDirectory(void)
+{
+	Assert(DataDir);
+
+	int fd;
+	char filename[MAXPGPATH];
+	int size = BLCKSZ + BLCKSZ;
+	char *data = malloc(size);
+	if (data == NULL)
+	{
+		elog(LOG, "FTS: Failed to allocate memory");
+		return true;
+	}
+	memset(data, 0, size);
+	/*
+	 * Buffer needs to be alligned to BLOCK_SIZE for reads and writes if using O_DIRECT
+	 */
+	char* dataAligned = (char *) TYPEALIGN(BLCKSZ, data);
+
+	snprintf(filename, MAXPGPATH, "%s%s", DataDir, FTS_PROBE_FILE_NAME);
+
+	errno = 0;
+	bool failure = false;
+	
+	fd = BasicOpenFile(filename, O_RDWR | PG_O_DIRECT | O_EXCL,
+                                           S_IRUSR | S_IWUSR);
+	do
+	{
+		if (fd < 0)
+		{
+			if (errno == ENOENT)
+			{
+				elog(LOG, "FTS: \"%s\" file doesn't exist, creating it once.", filename);
+				fd = BasicOpenFile(filename, O_RDWR | O_CREAT | O_EXCL,
+                                           S_IRUSR | S_IWUSR);
+				if (fd < 0)
+				{
+					failure = true;
+					ereport(LOG, (errcode_for_file_access(), 
+							errmsg("FTS: could not create file \"%s\": %m", 
+								filename)));
+				}
+				int len = strlen(FTS_PROBE_MAGIC_STRING);
+				strncpy(dataAligned, FTS_PROBE_MAGIC_STRING, len);
+				if (write(fd, dataAligned, BLCKSZ) != BLCKSZ)
+				{
+					ereport(LOG, (errcode_for_file_access(), 
+							errmsg("FTS: could not write file \"%s\" : %m", 
+								filename)));
+					failure = true;
+				}
+			}
+			else
+			{
+				/*
+				 * Some other error
+				 */
+				failure = true;
+				ereport(LOG, (errcode_for_file_access(), 
+						errmsg("FTS: could not open file \"%s\": %m", 
+							filename)));
+			}
+			break;
+		}
+
+		int len = read(fd, dataAligned, BLCKSZ);
+		if (len != BLCKSZ)
+		{
+			ereport(LOG, (errcode_for_file_access(), 
+					errmsg("FTS: could not read file \"%s\" "
+						"(actual bytes read %d, required: %d): %m",
+						filename, len, BLCKSZ)));
+			failure = true;
+			break;
+		}
+
+		if (strncmp(dataAligned, FTS_PROBE_MAGIC_STRING, strlen(FTS_PROBE_MAGIC_STRING)) != 0)
+		{
+			ereport(LOG, (errmsg("FTS: Failed to compare read data (%s) "
+					"from file with MAGIC (%s)",
+	                                data, FTS_PROBE_MAGIC_STRING)));
+			failure = true;
+			break;
+		}
+
+		if (lseek(fd, (off_t) 0, SEEK_SET) < 0)
+		{
+			ereport(LOG, (errcode_for_file_access(),
+					errmsg("FTS: could not seek in file \"%s\" to offset zero: %m",
+					filename)));
+			failure = true;
+			break;
+		}
+
+		/*
+		 * Read worked, lets overwrite what we read, to check if can write also
+		 */
+		if (write(fd, dataAligned, BLCKSZ) != BLCKSZ)
+		{
+			ereport(LOG, (errcode_for_file_access(), 
+					errmsg("FTS: could not write file \"%s\" : %m", 
+					filename)));
+			failure = true;
+			break;
+		}
+	} while (0);
+
+	if (fd > 0)
+		close(fd);
+
+	if(data)
+		free(data);
+
+	return failure;
+}
 
 #ifdef USE_TEST_UTILS
 /*
@@ -3821,6 +3946,30 @@ processPrimaryMirrorTransitionQuery(Port *port, void *pkt)
 		{
 			/* report NIC failure to FTS */
 			f_type = FaultTypeNet;
+		}
+	}
+
+	/*
+	 * FTS apart from below code doesn't perform any disk IO,
+	 * hence adding code to perform reads and writes to segment data directory.
+	 * Several DU cases exposed FTS not detecting server hangs because of IO hang.
+	 * Hence adding this code to perform IO and if some issue will hang similar to other queries,
+	 * causing FTS to detect the problem.
+	 */
+	if (fts_diskio_check)
+	{
+		if (pm_mode == PMModePrimarySegment && 
+			f_type == FaultTypeNotInitialized)
+		{
+			bool failure = checkIODataDirectory();
+			if (failure)
+			{
+				elog(LOG, "FTS_PROBE for IO Check: FAILED");
+				s_state = SegmentStateFault;
+				f_type = FaultTypeIO; 
+
+				FileRep_SetSegmentState(s_state, f_type);
+			}
 		}
 	}
 

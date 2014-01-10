@@ -41,12 +41,6 @@
 #include "utils/hsearch.h"
 #include "utils/pg_crc.h"
 
-#ifdef O_DIRECT
-#define PG_O_DIRECT                             O_DIRECT
-#else
-#define PG_O_DIRECT                             0
-#endif
-
 /*
  * It specifies fields maintained by each entry in hash table
  * of open files.

@@ -99,11 +99,6 @@
  *	Also, O_DIRECT is never enough to force data to the drives, it merely
  *	tries to bypass the kernel cache, so we still need O_SYNC or fsync().
  */
-#ifdef O_DIRECT
-#define PG_O_DIRECT				O_DIRECT
-#else
-#define PG_O_DIRECT				0
-#endif
 
 /*
  * This chunk of hackery attempts to determine which file sync methods

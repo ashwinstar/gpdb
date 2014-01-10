@@ -672,6 +672,7 @@ bool		gp_cte_sharing = false;
 
 char	   *gp_idf_deduplicate_str;
 
+bool fts_diskio_check = false;
 /* gp_disable_catalog_access_on_segment */
 bool gp_disable_catalog_access_on_segment = false;
 
@@ -3866,6 +3867,15 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"fts_diskio_check", PGC_USERSET, DEVELOPER_OPTIONS,
+		 gettext_noop("Controls if FTS should perform disk IO checks on primary segments as part of probe"),
+		 NULL, 
+		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&fts_diskio_check,
+		true, NULL, NULL
+	},
+
 		{"gp_enable_caql_logging", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enable caql logging."),
 			NULL,

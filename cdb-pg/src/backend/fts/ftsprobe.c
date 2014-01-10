@@ -737,8 +737,8 @@ probeProcessResponse(ProbeConnectionInfo *probeInfo)
 			default:
 				Assert(!"Unexpected segment fault type");
 		}
-		write_log("FTS: segment (dbid=%d, content=%d) reported fault %s to the prober.",
-				  probeInfo->dbId, probeInfo->segmentId, getFaultTypeLabel(fault));
+		write_log("FTS: segment (dbid=%d, content=%d) reported fault %s segmentstatus %x to the prober.",
+				  probeInfo->dbId, probeInfo->segmentId, getFaultTypeLabel(fault), probeInfo->segmentStatus);
 	}
 
 	return true;
