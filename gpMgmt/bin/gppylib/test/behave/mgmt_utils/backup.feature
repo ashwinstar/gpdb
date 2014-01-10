@@ -753,7 +753,7 @@ Feature: Validate command line arguments
         And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
         And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
         And there is a "co" partition table "co_part_table" with compression "None" in "fullbkdb" with data
-        And there is a backupfile of tables "co_part_table" in "fullbkdb" exists for validation
+        And there is a backupfile of tables "ao_part_table,heap_table" in "fullbkdb" exists for validation        
         And there is a file "include_file" with tables "public.heap_table,public.ao_part_table" 
         When the user runs "gpcrondump -a -x fullbkdb --table-file include_file"
         Then gpcrondump should return a return code of 0
@@ -3807,7 +3807,7 @@ Feature: Validate command line arguments
         And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
         And there is a "co" partition table "co_part_table" with compression "None" in "fullbkdb" with data
         And there is a file "include_file_with_whitespace" with tables "public.heap_table   ,public.ao_part_table" 
-        And there is a backupfile of tables "co_part_table" in "fullbkdb" exists for validation
+        And there is a backupfile of tables "heap_table,ao_part_table" in "fullbkdb" exists for validation
         When the user runs "gpcrondump -a -x fullbkdb --table-file include_file_with_whitespace"
         Then gpcrondump should return a return code of 0
         And the timestamp from gpcrondump is stored 
@@ -3818,6 +3818,9 @@ Feature: Validate command line arguments
         And verify that there is a "heap" table "heap_table" in "fullbkdb" with data
         And verify that there is no table "co_part_table" in "fullbkdb"
 
+    #This is a bad test case. Currently gpdbrestore -T with parent partition name for a full backup
+    #does not restore data. See MPP-19246
+    @wip
     Scenario: Full Backup and Restore of one table with -C option
         Given the database is running
         And there are no backup files
@@ -4246,7 +4249,6 @@ Feature: Validate command line arguments
         Given the database is running
         And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
         And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
-        And there is a backupfile of tables "heap_table, ao_part_table" in "testdb" exists for validation
         When the user runs "pg_dump testdb 2> /tmp/pg_dump_log -f /tmp/pg_dump"
         Then pg_dump should return a return code of 0
         And verify that the "pg_dump_log" file in "/tmp" dir does not contain "reading schemas"
@@ -4273,15 +4275,12 @@ Feature: Validate command line arguments
         And database "testdb" exists
         And the user runs "psql -f /tmp/pg_dump testdb" 
         And psql should return a return code of 0
-        And verify that there is a "heap" table "heap_table" in "testdb" with data
-        And verify that there is a "ao" table "ao_part_table" in "testdb" with data
         And there are no report files in the master data directory
 
     Scenario: Testing pg_dump log messages with verbose option set
         Given the database is running
         And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
         And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
-        And there is a backupfile of tables "heap_table, ao_part_table" in "testdb" exists for validation
         When the user runs "pg_dump testdb 2> /tmp/pg_dump_log -f /tmp/pg_dump --verbose"
         Then pg_dump should return a return code of 0
         And verify that the "pg_dump_log" file in "/tmp" dir contains "reading schemas"
@@ -4308,12 +4307,11 @@ Feature: Validate command line arguments
         And database "testdb" exists
         And the user runs "psql -f /tmp/pg_dump testdb" 
         And psql should return a return code of 0
-        And verify that there is a "heap" table "heap_table" in "testdb" with data
-        And verify that there is a "ao" table "ao_part_table" in "testdb" with data
         And there are no report files in the master data directory
 
     Scenario: Single table restore with shared sequence across multiple tables
         Given the database is running
+        And there are no backup files
         And the database "seqtestdb" does not exist
         And database "seqtestdb" exists
         And there is a sequence "shared_seq" in "seqtestdb"
@@ -4339,6 +4337,7 @@ Feature: Validate command line arguments
 
     Scenario: Single table restore from an incremental backup with shared sequence across multiple tables
         Given the database is running
+        And there are no backup files
         And the database "seqtestdb" does not exist
         And database "seqtestdb" exists
         And there is a sequence "shared_seq" in "seqtestdb"

@@ -198,11 +198,29 @@ def clear_all_saved_data_verify_files(context):
 def get_table_data_to_file(filename, tablename, dbname):
     current_dir = os.getcwd()
     filename = os.path.join(current_dir, './gppylib/test/data', filename)
-    data_sql = "COPY (select gp_segment_id, * from gp_dist_random('%s') order by column1) TO '%s'" %(tablename.strip(), filename)
-
-    with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
-        dbconn.execSQL(conn, data_sql)
+    order_sql = """
+                    select string_agg(a, ',')
+                        from (
+                            select generate_series(1,c.relnatts+1) as a
+                                from pg_class as c
+                                    inner join pg_namespace as n
+                                    on c.relnamespace = n.oid
+                                where (n.nspname || '.' || c.relname = '%s')
+                                    or c.relname = '%s'
+                        ) as q;
+                """ % (tablename, tablename)
+    query = order_sql
+    conn = dbconn.connect(dbconn.DbURL(dbname=dbname))
+    try:
+        res = dbconn.execSQLForSingleton(conn, query)
+        data_sql = "COPY (select gp_segment_id, * from %s order by %s) TO '%s'" %(tablename.strip(), res, filename)
+        query = data_sql
+        dbconn.execSQL(conn, query)
         conn.commit()
+    except Exception as e:
+        print "Cannot execute the query '%s' on the connection %s" % (query, str(dbconn.DbURL(dbname=dbname)))
+        print "Exception: %s" % str(e)
+    conn.close()
 
 def diff_backup_restore_data(context, backup_file, restore_file):
     if not filecmp.cmp(backup_file, restore_file):
