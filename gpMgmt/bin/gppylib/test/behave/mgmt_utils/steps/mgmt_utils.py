@@ -2706,3 +2706,58 @@ def impl(context, index_name, dbname):
 def impl(context, trigger_name, tablename, dbname):
     drop_trigger_sql = """DROP TRIGGER %s ON %s""" % (trigger_name, tablename)
     execute_sql(dbname, drop_trigger_sql)
+
+@given('there is a sequence "{seq_name}" in "{dbname}"')
+def impl(context, seq_name, dbname):
+    sequence_sql = 'CREATE SEQUENCE %s' % seq_name
+    execute_sql(dbname, sequence_sql) 
+
+@when('the user removes the "{cmd}" command on standby')
+@then('the user removes the "{cmd}" command on standby')
+def impl(context, cmd):
+    cmdStr = 'cp ~/.bashrc ~/.bashrc.backup'
+    run_cmd = Command('run remote command', cmdStr, ctxt=REMOTE, remoteHost=context.standby_host)
+    run_cmd.run(validateAfter=True)
+    cmdStr = """echo >>~/.bashrc && echo "shopt -s expand_aliases" >>~/.bashrc && echo "alias %s='no_command'" >>~/.bashrc""" % cmd
+    run_cmd = Command('run remote command', cmdStr, ctxt=REMOTE, remoteHost=context.standby_host)
+    run_cmd.run(validateAfter=True)
+
+@when('the user restores the "{cmd}" command on the standby')
+@then('the user restores the "{cmd}" command on the standby')
+def impl(context, cmd):
+    cmdStr = 'cp ~/.bashrc.backup ~/.bashrc'
+    run_cmd = Command('run remote command', cmdStr, ctxt=REMOTE, remoteHost=context.standby_host)
+    run_cmd.run(validateAfter=True)
+   
+@when('the user stops the syncmaster')
+@then('the user stops the syncmaster')
+def impl(context):
+    host   = context.gparray.standbyMaster.hostname
+    #Cat is added because pgrep returns all the processes of the tree, while
+    #child processes are kill when the parent is kill, which produces an error
+    cmdStr = 'pgrep syncmaster | xargs -i kill {} | cat'
+    run_cmd = Command('kill syncmaster', cmdStr, ctxt=REMOTE, remoteHost=host)
+    run_cmd.run(validateAfter=True)
+    datadir=context.gparray.standbyMaster.datadir
+
+@when('the user starts the syncmaster')
+@then('the user starts the syncmaster')
+def impl(context):
+    host=context.gparray.standbyMaster.hostname
+    datadir=context.gparray.standbyMaster.datadir
+    port=context.gparray.standbyMaster.port
+    dbid=context.gparray.standbyMaster.dbid
+    ncontents = context.gparray.getNumSegmentContents()
+    GpStandbyStart.remote('test start syncmaster',host,datadir,port,ncontents,dbid)
+
+@when('save the cluster configuration')
+@then('save the cluster configuration')
+def impl(context):
+    context.gparray = GpArray.initFromCatalog(dbconn.DbURL())
+
+@then('verify that there are no duplicates in column "{columnname}" of table "{tablename}" in "{dbname}"')
+def impl(context, columnname, tablename, dbname):
+    duplicate_sql = 'SELECT %s, COUNT(*) FROM %s GROUP BY %s HAVING COUNT(*) > 1' % (columnname, tablename, columnname)
+    rows = getRows(dbname, duplicate_sql)
+    if rows:
+        raise Exception('Found duplicate rows in the column "%s" for table "%s" in database "%s"' % (columnname, tablename, dbname))

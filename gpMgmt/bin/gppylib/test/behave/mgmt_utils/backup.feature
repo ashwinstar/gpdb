@@ -4312,6 +4312,59 @@ Feature: Validate command line arguments
         And verify that there is a "ao" table "ao_part_table" in "testdb" with data
         And there are no report files in the master data directory
 
+    Scenario: Single table restore with shared sequence across multiple tables
+        Given the database is running
+        And the database "seqtestdb" does not exist
+        And database "seqtestdb" exists
+        And there is a sequence "shared_seq" in "seqtestdb"
+        And the user runs "psql -c """CREATE TABLE table1 (column1 INT4 DEFAULT nextval('shared_seq') NOT NULL, price NUMERIC);""" seqtestdb"
+        And the user runs "psql -c """CREATE TABLE table2 (column1 INT4 DEFAULT nextval('shared_seq') NOT NULL, price NUMERIC);""" seqtestdb"
+        And the user runs "psql -c 'CREATE TABLE table3 (column1 INT4)' seqtestdb"
+        And the user runs "psql -c 'CREATE TABLE table4 (column1 INT4)' seqtestdb"
+        And the user runs "psql -c 'INSERT INTO table1 (price) SELECT * FROM generate_series(1000,1009)' seqtestdb"
+        And the user runs "psql -c 'INSERT INTO table2 (price) SELECT * FROM generate_series(2000,2009)' seqtestdb"
+        And the user runs "psql -c 'INSERT INTO table3 SELECT * FROM generate_series(3000,3009)' seqtestdb"
+        And the user runs "psql -c 'INSERT INTO table4 SELECT * FROM generate_series(4000,4009)' seqtestdb"
+        When the user runs "gpcrondump -x seqtestdb -a"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And all the data from "seqtestdb" is saved for verification
+        And the user runs "psql -c 'INSERT INTO table2 (price) SELECT * FROM generate_series(2010,2019)' seqtestdb"
+        When table "public.table1" is dropped in "seqtestdb"
+        And the user runs "gpdbrestore -T public.table1 -a" with the stored timestamp
+        Then gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "public.table1" in "seqtestdb" with data
+        And the user runs "psql -c 'INSERT INTO table2 (price) SELECT * FROM generate_series(2020,2029)' seqtestdb"
+        And verify that there are no duplicates in column "column1" of table "public.table2" in "seqtestdb"
+
+    Scenario: Single table restore from an incremental backup with shared sequence across multiple tables
+        Given the database is running
+        And the database "seqtestdb" does not exist
+        And database "seqtestdb" exists
+        And there is a sequence "shared_seq" in "seqtestdb"
+        And the user runs "psql -c """CREATE TABLE table1 (column1 INT4 DEFAULT nextval('shared_seq') NOT NULL, price NUMERIC);""" seqtestdb"
+        And the user runs "psql -c """CREATE TABLE table2 (column1 INT4 DEFAULT nextval('shared_seq') NOT NULL, price NUMERIC);""" seqtestdb"
+        And the user runs "psql -c 'CREATE TABLE table3 (column1 INT4)' seqtestdb"
+        And the user runs "psql -c 'CREATE TABLE table4 (column1 INT4)' seqtestdb"
+        And the user runs "psql -c 'INSERT INTO table1 (price) SELECT * FROM generate_series(1000,1009)' seqtestdb"
+        And the user runs "psql -c 'INSERT INTO table2 (price) SELECT * FROM generate_series(2000,2009)' seqtestdb"
+        And the user runs "psql -c 'INSERT INTO table3 SELECT * FROM generate_series(3000,3009)' seqtestdb"
+        And the user runs "psql -c 'INSERT INTO table4 SELECT * FROM generate_series(4000,4009)' seqtestdb"
+        When the user runs "gpcrondump -x seqtestdb -a -t public.table1 -t public.table2 --prefix=foo"
+        Then gpcrondump should return a return code of 0
+        And the user runs "psql -c 'INSERT INTO table1 (price) SELECT * FROM generate_series(2010,2019)' seqtestdb"
+        When the user runs "gpcrondump -x seqtestdb --incremental --prefix=foo -a"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And all the data from "seqtestdb" is saved for verification
+        And the user runs "psql -c 'INSERT INTO table2 (price) SELECT * FROM generate_series(2010,2019)' seqtestdb"
+        When table "public.table1" is dropped in "seqtestdb"
+        And the user runs "gpdbrestore -T public.table1 --prefix=foo -a" with the stored timestamp
+        Then gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "public.table1" in "seqtestdb" with data
+        And the user runs "psql -c 'INSERT INTO table2 (price) SELECT * FROM generate_series(2020,2029)' seqtestdb"
+        And verify that there are no duplicates in column "column1" of table "public.table2" in "seqtestdb"
+
     # THIS SHOULD BE THE LAST TEST
     @backupfire
     Scenario: cleanup for backup feature
