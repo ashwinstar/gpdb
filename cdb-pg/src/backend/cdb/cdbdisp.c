@@ -12,6 +12,12 @@
 #include "postgres.h"
 #include <pthread.h>
 #include <limits.h>
+#ifdef HAVE_POLL_H
+#include <poll.h>
+#endif
+#ifdef HAVE_SYS_POLL_H
+#include <sys/poll.h>
+#endif
 
 #include "catalog/catquery.h"
 #include "executor/execdesc.h"	/* QueryDesc */
@@ -109,12 +115,12 @@ void dispatchCommandDtxProtocol(CdbDispatchResult *dispatchResult,
                      DtxProtocolCommand dtxProtocolCommand);
 							
 static void
-handleSelectError(DispatchCommandParms *pParms,
+handlePollError(DispatchCommandParms *pParms,
                   int                   db_count,
                   int                   sock_errno);							
 
 static void
-handleSelectTimeout(DispatchCommandParms   *pParms,
+handlePollTimeout(DispatchCommandParms   *pParms,
                     int                     db_count,
                     int                    *timeoutCounter,
                     bool                    useSampling);
@@ -681,6 +687,16 @@ cdbdisp_dispatchToGang(struct CdbDispatcherState *ds,
 			newThreads += 1;
 		else
 			newThreads += 1 + (segdbs_in_thread_pool - 1) / gp_connections_per_thread;
+
+	oldContext = MemoryContextSwitchTo(DispatchContext);
+	for (i = 0; i < newThreads; i++)
+	{
+		DispatchCommandParms *pParms = &(ds->dispatchThreads->dispatchCommandParmsAr + ds->dispatchThreads->threadCount)[i];
+
+		pParms->fds = (struct pollfd *) palloc0(sizeof(struct pollfd) * pParms->db_count);
+		pParms->nfds = pParms->db_count;
+	}
+	MemoryContextSwitchTo(oldContext);
 
 	/*
 	 * Create the threads. (which also starts the dispatching).
@@ -1977,16 +1993,14 @@ thread_DispatchWait(DispatchCommandParms		*pParms)
 	 */
 	for (;;)
 	{							/* some QEs running */
-		struct timeval tv;
-		int			max_sock;
 		int			sock;
 		int			n;
+		int			nfds = 0;
+		int			cur_fds_num = 0;
 
 		/*
 		 * Which QEs are still running and could send results to us?
 		 */
-		max_sock = -1;
-		MPP_FD_ZERO(&pParms->mask);
 
 		for (i = 0; i < db_count; i++)
 		{						/* loop to check connection status */
@@ -2002,8 +2016,10 @@ thread_DispatchWait(DispatchCommandParms		*pParms)
 			if (sock >= 0 &&
 				PQstatus(segdbDesc->conn) != CONNECTION_BAD)
 			{
-				MPP_FD_SET(sock, &pParms->mask);
-				max_sock = Max(max_sock, sock);
+				pParms->fds[nfds].fd = sock;
+				pParms->fds[nfds].events = POLLIN;
+				nfds++;
+				Assert(nfds <= pParms->nfds);
 			}
 
 			/* Lost the connection. */
@@ -2026,19 +2042,15 @@ thread_DispatchWait(DispatchCommandParms		*pParms)
 		}						/* loop to check connection status */
 
 		/* Break out when no QEs still running. */
-		if (max_sock < 0)
+		if (nfds <= 0)
 			break;
 
 		/*
 		 * Wait for results from QEs.
 		 */
 
-		/* Timeout should be reinitialized before each select(). */
-		tv.tv_sec = 2;
-		tv.tv_usec = 0;
-
 		/* Block here until input is available. */
-		n = select(max_sock + 1, (fd_set *)&pParms->mask, NULL, NULL, &tv);
+		n = poll(pParms->fds, nfds, 2 * 1000);
 
 		if (n < 0)
 		{
@@ -2047,16 +2059,17 @@ thread_DispatchWait(DispatchCommandParms		*pParms)
 			if (sock_errno == EINTR)
 				continue;
 
-			handleSelectError(pParms, db_count, sock_errno);
+			handlePollError(pParms, db_count, sock_errno);
 			continue;
 		}
 
 		if (n == 0)
 		{
-			handleSelectTimeout(pParms, db_count, &timeoutCounter, true);
+			handlePollTimeout(pParms, db_count, &timeoutCounter, true);
 			continue;
 		}
 
+		cur_fds_num = 0;
 		/*
 		 * We have data waiting on one or more of the connections.
 		 */
@@ -2076,9 +2089,18 @@ thread_DispatchWait(DispatchCommandParms		*pParms)
 
 			/* Skip this connection if it has no input available. */
 			sock = PQsocket(segdbDesc->conn);
-			if (sock >= 0 &&
-				!MPP_FD_ISSET(sock, &pParms->mask))
-				continue;
+			if (sock >= 0)
+				/*
+				 * The fds array is shorter than conn array, so the following
+				 * match method will use this assumtion.
+				 */
+				Assert(sock == pParms->fds[cur_fds_num].fd);
+			if (sock >= 0 && (sock == pParms->fds[cur_fds_num].fd))
+			{
+				cur_fds_num++;
+				if (!(pParms->fds[cur_fds_num - 1].revents & POLLIN))
+					continue;
+			}
 
 			if (DEBUG4 >= log_min_messages)
 				write_log("PQsocket says there are results from %d",i+1);
@@ -2494,15 +2516,15 @@ dispatchCommandDtxProtocol(CdbDispatchResult	*dispatchResult,
 
 
 /* Helper function to thread_DispatchCommand that handles errors that occur
- * during the select() call.
+ * during the poll() call.
  *
  * NOTE: since this is called via a thread, the same rules apply as to
  *		 thread_DispatchCommand absolutely no elog'ing.
  *
- * NOTE: The cleanup of the connections will be performed by handleSelectTimeout().
+ * NOTE: The cleanup of the connections will be performed by handlePollTimeout().
  */
 void
-handleSelectError(DispatchCommandParms *pParms,
+handlePollError(DispatchCommandParms *pParms,
 				  int db_count,
 				  int sock_errno)
 {
@@ -2512,7 +2534,7 @@ handleSelectError(DispatchCommandParms *pParms,
 	if (LOG >= log_min_messages)
 	{
 		/* Don't use elog, it's not thread-safe */
-		write_log("handleSelectError select() failed; errno=%d", sock_errno);
+		write_log("handlePollError poll() failed; errno=%d", sock_errno);
 	}
 
 	/*
@@ -2545,7 +2567,7 @@ handleSelectError(DispatchCommandParms *pParms,
 				write_log("Dispatcher encountered connection error on %s: %s",
 						  dispatchResult->segdbDesc->whoami, msg);
 
-			write_log("Dispatcher noticed bad connection in handleSelectError()");
+			write_log("Dispatcher noticed bad connection in handlePollError()");
 
 			/* Save error info for later. */
 			cdbdisp_appendMessage(dispatchResult, LOG,
@@ -2561,12 +2583,12 @@ handleSelectError(DispatchCommandParms *pParms,
 	}
 
 	forceTimeoutCount = 60; /* anything bigger than 30 */
-	handleSelectTimeout(pParms, db_count, &forceTimeoutCount, false);
+	handlePollTimeout(pParms, db_count, &forceTimeoutCount, false);
 
 	return;
 
 	/* No point in trying to cancel the other QEs with select() broken. */
-}	/* handleSelectError */
+}	/* handlePollError */
 
 static void
 cdbdisp_issueCancel(SegmentDatabaseDescriptor *segdbDesc, bool *requestFlag)
@@ -2599,13 +2621,13 @@ cdbdisp_issueCancel(SegmentDatabaseDescriptor *segdbDesc, bool *requestFlag)
 }
 
 /* Helper function to thread_DispatchCommand that handles timeouts that occur
- * during the select() call.
+ * during the poll() call.
  *
  * NOTE: since this is called via a thread, the same rules apply as to
  *		 thread_DispatchCommand absolutely no elog'ing.
  */
 void
-handleSelectTimeout(DispatchCommandParms * pParms,
+handlePollTimeout(DispatchCommandParms * pParms,
 					int db_count,
 					int *timeoutCounter, bool useSampling)
 {
@@ -4499,6 +4521,14 @@ cdbdisp_destroyDispatchThreads(CdbDispatchCmdThreads *dThreads)
 			 * free() not pfree() */
 			free(pParms->query_text);
 			pParms->query_text = NULL;
+		}
+
+		if (pParms->nfds != 0)
+		{
+			if (pParms->fds != NULL)
+				pfree(pParms->fds);
+			pParms->fds = NULL;
+			pParms->nfds = 0;
 		}
 		
 		switch (pParms->mppDispatchCommandType)
