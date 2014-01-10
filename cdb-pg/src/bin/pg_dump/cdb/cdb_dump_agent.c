@@ -44,6 +44,8 @@
 #include <time.h>
 #include <unistd.h>
 #include <ctype.h>
+#include <poll.h>
+
 #ifdef ENABLE_NLS
 #include <locale.h>
 #endif
@@ -7007,14 +7009,15 @@ void *
 monitorThreadProc(void *arg __attribute__((unused)))
 {
 	int			sock;
-	fd_set		input_mask;
 	bool		bGotFinished;
 	bool		bGotCancelRequest;
 	int			PID;
-	struct timeval tv;
 	PGnotify   *notify;
 	StatusOp   *pOp;
 	char	   *pszMsg;
+	struct pollfd *pollInput;
+	int 		pollResult = 0;
+	int 		pollTimeout;
 
 	/* Block SIGINT and SIGKILL signals (we want them only ion main thread) */
 	sigset_t	newset;
@@ -7035,17 +7038,25 @@ monitorThreadProc(void *arg __attribute__((unused)))
 	bGotCancelRequest = false;
 	PID = PQbackendPID(g_conn_status);
 
+	pollInput = (struct pollfd *)malloc(sizeof(struct pollfd));
+
 	/* Once we've seen the TASK_FINISH insert request, we know to leave */
 	while (!bGotFinished)
 	{
-		tv.tv_sec = 2;
-		tv.tv_usec = 0;
-		FD_ZERO(&input_mask);
-		FD_SET(sock, &input_mask);
 
-		if (select(sock + 1, &input_mask, NULL, NULL, &tv) < 0)
+		/* Replacing select() by poll() here to overcome the limitations of 
+		select() to handle large socket file descriptor values.
+		*/
+
+		pollInput->fd = sock;
+		pollInput->events = POLLIN;
+		pollInput->revents = 0; 
+		pollTimeout = 2000;
+		pollResult = poll(pollInput, 1, pollTimeout);
+
+		if(pollResult < 0) 
 		{
-			mpp_err_msg(logError, progname, "select failed for backup key %s, instid %d, segid %d failed\n",
+			mpp_err_msg(logError, progname, "poll failed for backup key %s, instid %d, segid %d failed\n",
 						g_CDBDumpKey, g_role, g_dbID);
 			bGotCancelRequest = true;
 		}

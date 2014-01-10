@@ -46,7 +46,7 @@
 #include <ctype.h>
 /* #include <sys/types.h> */
 #include <sys/stat.h>
-
+#include <poll.h>
 
 #ifdef HAVE_TERMIOS_H
 #include <termios.h>
@@ -1113,14 +1113,15 @@ monitorThreadProc(void *arg __attribute__((unused)))
 	bool		bGotFinished;
 	bool		bGotCancelRequest;
 	int			PID;
-	struct timeval tv;
 	int			nNotifies;
 	bool		bFromOtherProcess;
 	StatusOp   *pOp;
 	char	   *pszMsg;
-	fd_set		input_mask;
 	PGnotify   *notify;
 	sigset_t	newset;
+	struct pollfd *pollInput;
+	int			pollResult = 0;
+	int			pollTimeout;
 
 	/* Block until parent thread is ready for us to run. */
 	pthread_mutex_lock(&g_threadSyncPoint);
@@ -1144,16 +1145,24 @@ monitorThreadProc(void *arg __attribute__((unused)))
 	bGotCancelRequest = false;
 	PID = PQbackendPID(g_conn_status);
 
+	pollInput = (struct pollfd *)malloc(sizeof(struct pollfd));
+
 	/* Once we've seen the TASK_FINISH insert request, we know to leave */
 	while (!bGotFinished)
 	{
-		tv.tv_sec = 2;
-		tv.tv_usec = 0;
-		FD_ZERO(&input_mask);
-		FD_SET(sock, &input_mask);
-		if (select(sock + 1, &input_mask, NULL, NULL, &tv) < 0)
+		/* Replacing select() by poll() here to overcome the limitations of 
+		select() to handle large socket file descriptor values.
+		*/
+
+		pollInput->fd = sock;
+		pollInput->events = POLLIN;
+		pollInput->revents = 0; 
+		pollTimeout = 2000;
+		pollResult = poll(pollInput, 1, pollTimeout);
+
+		if(pollResult < 0) 
 		{
-			mpp_err_msg(logError, progname, "select failed for backup key %s, instid %d, segid %d failed\n",
+			mpp_err_msg(logError, progname, "poll failed for backup key %s, instid %d, segid %d failed\n",
 						g_gpdumpKey, g_role, g_sourceDBID);
 			bGotCancelRequest = true;
 		}

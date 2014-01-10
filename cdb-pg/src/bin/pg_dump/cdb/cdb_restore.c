@@ -22,7 +22,7 @@
 #include "cdb_dump_util.h"
 #include "cdb_backup_state.h"
 #include "cdb_dump.h"
-
+#include <poll.h>
 
 /* This is necessary on platforms where optreset variable is not available.
  * Look at "man getopt" documentation for details.
@@ -923,7 +923,6 @@ threadProc(void *arg)
 	PQExpBuffer Qry;
 	PGresult   *pRes;
 	int			sock;
-	fd_set		input_mask;
 	bool		bSentCancelMessage;
 	bool		bIsFinished;
 	bool		bIsStarted;
@@ -932,9 +931,11 @@ threadProc(void *arg)
 	char	   *pszNotifyRelNameStart;
 	char	   *pszNotifyRelNameSucceed;
 	char	   *pszNotifyRelNameFail;
-	struct timeval tv;
 	PGnotify   *pNotify;
 	int			nNotifies;
+	struct pollfd *pollInput;
+	int 		pollResult = 0;
+	int			pollTimeout;
 
 	/*
 	 * Block SIGINT and SIGKILL signals (we can handle them in the main
@@ -1036,6 +1037,8 @@ threadProc(void *arg)
 	pszNotifyRelNameSucceed = MakeString("%s_%s", pszNotifyRelName, SUFFIX_SUCCEED);
 	pszNotifyRelNameFail = MakeString("%s_%s", pszNotifyRelName, SUFFIX_FAIL);
 
+	pollInput = (struct pollfd *)malloc(sizeof(struct pollfd));
+	
 	while (!bIsFinished)
 	{
 		/*
@@ -1054,15 +1057,21 @@ threadProc(void *arg)
 			DoCancelNotifyListen(pConn, false, pszKey, sSegDB->role, sSegDB->dbid, tSegDB->dbid, NULL);
 			bSentCancelMessage = true;
 		}
+		
+		/* Replacing select() by poll() here to overcome the limitations of 
+		select() to handle large socket file descriptor values.
+		*/
 
-		tv.tv_sec = 2;
-		tv.tv_usec = 0;
-		FD_ZERO(&input_mask);
-		FD_SET(sock, &input_mask);
-		if (select(sock + 1, &input_mask, NULL, NULL, &tv) < 0)
+		pollInput->fd = sock;
+		pollInput->events = POLLIN;
+		pollInput->revents = 0; 		
+		pollTimeout = 2000;
+		pollResult = poll(pollInput, 1, pollTimeout);
+
+		if(pollResult < 0) 
 		{
 			g_b_SendCancelMessage = true;
-			pParm->pszErrorMsg = MakeString("select failed for backup key %s, source dbid %d, target dbid %d failed\n",
+			pParm->pszErrorMsg = MakeString("poll failed for backup key %s, source dbid %d, target dbid %d failed\n",
 										 pszKey, sSegDB->dbid, tSegDB->dbid);
 			mpp_err_msg(logError, progname, pParm->pszErrorMsg);
 			PQfinish(pConn);

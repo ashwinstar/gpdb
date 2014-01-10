@@ -25,6 +25,7 @@
 #include "cdb_backup_state.h"
 #include "cdb_dump.h"
 #include "cdb_dump_include.h"
+#include <poll.h>
 
 /* This is necessary on platforms where optreset variable is not available.
  * Look at "man getopt" documentation for details.
@@ -1945,11 +1946,12 @@ threadProc(void *arg)
 	PQExpBuffer Qry;
 	PGresult   *pRes;
 	int			sock;
-	fd_set		input_mask;
 	bool		bSentCancelMessage;
 	BackupStateMachine *pState;
-	struct timeval tv;
 	PGnotify   *pNotify;
+	int			pollResult = 0;
+	int			pollTimeout;
+	struct pollfd *pollInput;
 
 	/*
 	 * Block SIGINT and SIGKILL signals (we can handle them in the main
@@ -2050,17 +2052,19 @@ threadProc(void *arg)
 		return NULL;
 	}
 
+	pollInput = (struct pollfd *)malloc(sizeof(struct pollfd));
+
 	/*
 	 * This is a bit involved.	We are waiting for 4 messages: one that the
 	 * backend process has started, one that the SET_SERIALIZABLE has
 	 * happened, one that the SET_GOTLOCKS has happened, and the third that
 	 * FINISH has happened. To avoid polling, we use the NOTIFY/LISTEM
-	 * approach. But we only select for 2 secs at a time, so we can see
+	 * approach. But we use poll() for 2 secs at a time, so we can see
 	 * whether or not we need to NOTIFY our backend to cancel, based on
 	 * another thread failing. A BackupStateMachine object is used to manage
 	 * receiving these notifications
 	 */
-
+	
 	while (!IsFinalState(pState))
 	{
 		/*
@@ -2079,15 +2083,21 @@ threadProc(void *arg)
 			DoCancelNotifyListen(pConn, false, pszKey, pSegDB->role, pSegDB->dbid, -1, NULL);
 			bSentCancelMessage = true;
 		}
+		
+		/* Replacing select() by poll() here to overcome the limitations of 
+			select() to handle large socket file descriptor values.
+		*/
 
-		tv.tv_sec = 2;
-		tv.tv_usec = 0;
-		FD_ZERO(&input_mask);
-		FD_SET(sock, &input_mask);
-		if (select(sock + 1, &input_mask, NULL, NULL, &tv) < 0)
+		pollInput->fd = sock;
+		pollInput->events = POLLIN;
+		pollInput->revents = 0;
+		pollTimeout = 2000;
+		pollResult = poll(pollInput, 1, pollTimeout);
+
+		if(pollResult < 0)
 		{
 			g_b_SendCancelMessage = true;
-			pParm->pszErrorMsg = MakeString("select failed for backup key %s, role %d, dbid %d failed\n",
+			pParm->pszErrorMsg = MakeString("poll failed for backup key %s, role %d, dbid %d failed\n",
 										 pszKey, pSegDB->role, pSegDB->dbid);
 			mpp_err_msg(logFatal, progname, pParm->pszErrorMsg);
 			PQfinish(pConn);
