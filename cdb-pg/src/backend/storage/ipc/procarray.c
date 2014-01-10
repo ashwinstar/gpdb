@@ -875,6 +875,10 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 		}
 
 		Assert(snapshot->subxip == NULL);
+	}
+
+	if (snapshot->subxip == NULL)
+	{
 		snapshot->subxip = (TransactionId *)
 			malloc(arrayP->maxProcs * PGPROC_MAX_CACHED_SUBXIDS * sizeof(TransactionId));
 		if (snapshot->subxip == NULL)
