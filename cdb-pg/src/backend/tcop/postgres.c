@@ -3513,23 +3513,32 @@ ProcessInterrupts(void)
 	if (QueryCancelPending)
 	{
 		elog(LOG,"Process interrupt for 'query cancel pending'.");
-		
+
 		QueryCancelPending = false;
-		ImmediateInterruptOK = false;	/* not idle anymore */
-		DisableNotifyInterrupt();
-		DisableCatchupInterrupt();
-        if (Gp_role == GP_ROLE_EXECUTE || Gp_role == GP_ROLE_DISPATCHAGENT)
-		    ereport(ERROR,
-			    	(errcode(ERRCODE_GP_OPERATION_CANCELED),
-				     errmsg("canceling MPP operation")));
-        else if (cancel_from_timeout)
-			ereport(ERROR,
-					(errcode(ERRCODE_QUERY_CANCELED),
-					 errmsg("canceling statement due to statement timeout")));
-		else
-			ereport(ERROR,
-					(errcode(ERRCODE_QUERY_CANCELED),
-					 errmsg("canceling statement due to user request")));
+
+		/*
+		 * If we are reading a command from the client, just ignore the cancel
+		 * request --- sending an extra error message won't accomplish
+		 * anything.  Otherwise, go ahead and throw the error.
+		 */
+		if (!DoingCommandRead)
+		{
+			ImmediateInterruptOK = false;	/* not idle anymore */
+			DisableNotifyInterrupt();
+			DisableCatchupInterrupt();
+			if (Gp_role == GP_ROLE_EXECUTE || Gp_role == GP_ROLE_DISPATCHAGENT)
+				ereport(ERROR,
+						(errcode(ERRCODE_GP_OPERATION_CANCELED),
+						 errmsg("canceling MPP operation")));
+			else if (cancel_from_timeout)
+				ereport(ERROR,
+						(errcode(ERRCODE_QUERY_CANCELED),
+						 errmsg("canceling statement due to statement timeout")));
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_QUERY_CANCELED),
+						 errmsg("canceling statement due to user request")));
+		}
 	}
 	/* If we get here, do nothing (probably, QueryCancelPending was reset) */
 
