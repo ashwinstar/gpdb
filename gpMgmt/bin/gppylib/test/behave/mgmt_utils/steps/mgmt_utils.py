@@ -2714,7 +2714,7 @@ def impl(context, seq_name, dbname):
 @when('the user removes the "{cmd}" command on standby')
 @then('the user removes the "{cmd}" command on standby')
 def impl(context, cmd):
-    cmdStr = 'cp ~/.bashrc ~/.bashrc.backup'
+    cmdStr = 'chmod u+rw ~/.bashrc && cp ~/.bashrc ~/.bashrc.backup'
     run_cmd = Command('run remote command', cmdStr, ctxt=REMOTE, remoteHost=context.standby_host)
     run_cmd.run(validateAfter=True)
     cmdStr = """echo >>~/.bashrc && echo "shopt -s expand_aliases" >>~/.bashrc && echo "alias %s='no_command'" >>~/.bashrc""" % cmd
