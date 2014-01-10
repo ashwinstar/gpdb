@@ -18,6 +18,7 @@
 #include "miscadmin.h"
 #include "cdb/cdbvars.h"
 #include "utils/workfile_mgr.h"
+#include "utils/memutils.h"
 
 /*
  * Number of temporary files opened during the current session;
@@ -45,6 +46,14 @@ ExecWorkFile_Create(const char *fileName,
 	ExecWorkFile *workfile = NULL;
 	void *file = NULL;
 
+	/*
+	 * Create ExecWorkFile in the TopMemoryContext since this memory context
+	 * is still available when calling the transaction callback at the
+	 * time when the transaction aborts.
+	 */
+	 MemoryContext oldContext = MemoryContextSwitchTo(TopMemoryContext);
+
+
 	switch(fileType)
 	{
 		case BUFFILE:
@@ -62,13 +71,14 @@ ExecWorkFile_Create(const char *fileName,
 	}
 
 	workfile = palloc0(sizeof(ExecWorkFile));
-
 	workfile->fileType = fileType;
 	workfile->compressType = compressType;
 	workfile->file = file;
 	workfile->fileName = pstrdup(fileName);
 	workfile->size = 0;
 	ExecWorkFile_SetFlags(workfile, delOnClose, true /* created */);
+
+	MemoryContextSwitchTo(oldContext);
 
 	return workfile;
 }
@@ -197,12 +207,11 @@ ExecWorkFile_Write(ExecWorkFile *workfile,
 	}
 
 	/* Test the per-query and per-segment limit */
-	bool success = WorkfileDiskspace_Reserve(size);
-	if (!success)
+	if ((workfile->flags & EXEC_WORKFILE_LIMIT_SIZE) &&
+			!WorkfileDiskspace_Reserve(size))
 	{
 		/* Failed to reserve additional disk space, notify caller */
-		ereport(ERROR, (errcode_for_file_access(),
-								errmsg("could not write to temporary file")));
+		workfile_mgr_report_error();
 	}
 
 	switch(workfile->fileType)
@@ -239,8 +248,7 @@ ExecWorkFile_Write(ExecWorkFile *workfile,
 
 			if (bytes != size)
 			{
-				ereport(ERROR, (errcode_for_file_access(),
-										errmsg("could not write to temporary file")));
+				workfile_mgr_report_error();
 			}
 
 			break;
@@ -264,7 +272,10 @@ ExecWorkFile_Write(ExecWorkFile *workfile,
 
 			/* bfz_append always adds to the file size */
 			workfile->size += size;
-			WorkfileDiskspace_Commit(size, size, true /* update_query_size */);
+			if ((workfile->flags & EXEC_WORKFILE_LIMIT_SIZE))
+			{
+				WorkfileDiskspace_Commit(size, size, true /* update_query_size */);
+			}
 			workfile_update_in_progress_size(workfile, size);
 
 			break;
@@ -308,6 +319,38 @@ ExecWorkFile_Read(ExecWorkFile *workfile,
 	
 	return bytes;
 }
+
+/*
+ * ExecWorkFile_ReadFromBuffer
+ *
+ * This function provides a faster implementation of Read which applies
+ * when the data is already in the underlying buffer.
+ * In that case, it returns a pointer to the data in the buffer
+ * If the data is not in the buffer, returns NULL and the caller must
+ * call the regular ExecWorkFile_Read with a destination buffer.
+ *
+ * Currently only bfz supports this behavior.
+ *
+ */
+void *
+ExecWorkFile_ReadFromBuffer(ExecWorkFile *workfile,
+				  uint64 size)
+{
+	Assert(workfile != NULL);
+	void *data = NULL;
+
+	switch(workfile->fileType)
+	{
+		case BFZ:
+			data = bfz_scan_peek((bfz_t *)workfile->file, size);
+			break;
+		default:
+			insist_log(false, "invalid work file type: %d", workfile->fileType);
+	}
+
+	return data;
+}
+
 
 /*
  * ExecWorkFile_Rewind
@@ -628,6 +671,10 @@ ExecWorkFile_SetFlags(ExecWorkFile *workfile, bool delOnClose, bool created)
 				ExecWorkFile_GetFileName(workfile), delOnClose);
 	}
 
+	if ((gp_workfile_limit_per_query > 0) || (gp_workfile_limit_per_segment > 0))
+	{
+		workfile->flags |= EXEC_WORKFILE_LIMIT_SIZE;
+	}
 
 }
 
@@ -685,9 +732,8 @@ ExecWorkFile_AdjustBFZSize(ExecWorkFile *workfile, int64 file_size)
 			{
 				elog(gp_workfile_caching_loglevel, "Could not reserve " INT64_FORMAT " additional bytes while adjusting for BFZ addtional size",
 						extra_bytes);
-				ereport(ERROR,
-						(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
-						errmsg("could not write to temporary file")));
+
+				workfile_mgr_report_error();
 			}
 
 			WorkfileDiskspace_Commit(extra_bytes, extra_bytes, true /* update_query_size */);

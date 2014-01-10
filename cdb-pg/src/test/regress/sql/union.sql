@@ -190,3 +190,9 @@ select pg_typeof(a) from(select 1 x, 'foo' a union
 CREATE TABLE union_ctas (a, b) AS SELECT 1, 2 UNION SELECT 1, 1 UNION SELECT 1, 1;
 SELECT * FROM union_ctas;
 DROP TABLE union_ctas;
+
+-- MPP-21075: push quals below union
+CREATE TABLE union_quals1 (a, b) AS SELECT i, i%2 from generate_series(1,10) i;
+CREATE TABLE union_quals2 (a, b) AS SELECT i%2, i from generate_series(1,10) i;
+SELECT * FROM (SELECT a, b from union_quals1 UNION SELECT b, a from union_quals2) as foo(a,b) where a > b order by a;
+SELECT * FROM (SELECT a, max(b) over() from union_quals1 UNION SELECT * from union_quals2) as foo(a,b) where b > 6 order by a,b;

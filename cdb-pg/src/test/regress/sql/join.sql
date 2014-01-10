@@ -504,6 +504,15 @@ insert into l values (1), (1), (2);
 select * from l l1 join l l2 on l1.a = l2.a left join l l3 on l1.a = l3.a and l1.a = 2 order by 1,2,3;
 
 --
+-- test hash join
+--
+
+create table hjtest (i int, j int) distributed by (i,j);
+insert into hjtest values(3, 4);
+
+select count(*) from hjtest a1, hjtest a2 where a2.i = least (a1.i,4) and a2.j = 4;
+
+--
 -- Predicate propagation over equality conditions
 --
 

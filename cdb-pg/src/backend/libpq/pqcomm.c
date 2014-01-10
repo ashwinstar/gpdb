@@ -1233,7 +1233,6 @@ pq_putbytes(const char *s, size_t len)
 	/* Should only be called by old-style COPY OUT */
 	Assert(DoingCopyOut);
     pthread_mutex_lock(&send_mutex);
-
 	PqCommBusy = true;
 	res = internal_putbytes(s, len);
 	PqCommBusy = false;
@@ -1283,7 +1282,6 @@ pq_flush(void)
 		return 0;
 	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && IsUnderPostmaster)
 		pthread_mutex_lock(&send_mutex);
-
 	PqCommBusy = true;
 	pq_set_nonblocking(false);
 	res = internal_flush();
@@ -1453,7 +1451,7 @@ pq_putmessage(char msgtype, const char *s, size_t len)
 		pthread_mutex_lock(&send_mutex);
 
 	if (msgtype)
-	{
+    {
 		if (internal_putbytes(&msgtype, 1))
 			goto fail;
     }

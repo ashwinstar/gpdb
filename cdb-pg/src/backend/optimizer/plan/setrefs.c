@@ -61,6 +61,7 @@ typedef struct
 		Index		skip_rel;
 		int			rtoffset;
 		bool        use_outer_tlist_for_matching_nonvars;
+		bool        use_inner_tlist_for_matching_nonvars;
 	} fix_join_expr_context;
 
 typedef struct
@@ -114,18 +115,17 @@ static List *fix_join_expr(PlannerGlobal *glob,
 						   Index skip_rel, int rtoffset);
 static Node *fix_join_expr_mutator(Node *node,
 								   fix_join_expr_context *context);
-
 static List *fix_hashclauses(PlannerGlobal *glob,
-						   List *clauses,
-						   indexed_tlist *outer_itlist,
-						   indexed_tlist *inner_itlist,
-						   Index skip_rel, int rtoffset);
-
-static List *fix_inner_hashclauses(PlannerGlobal *glob,
-						   List *clauses,
-						   indexed_tlist *outer_itlist,
-						   indexed_tlist *inner_itlist,
-						   Index skip_rel, int rtoffset);
+                           List *clauses,
+                           indexed_tlist *outer_itlist,
+                           indexed_tlist *inner_itlist,
+                           Index skip_rel, int rtoffset);
+static List *fix_child_hashclauses(PlannerGlobal *glob,
+                           List *clauses,
+                           indexed_tlist *outer_itlist,
+                           indexed_tlist *inner_itlist,
+                           Index skip_rel, int rtoffset,
+                           Index child);
 
 static Node *fix_upper_expr(PlannerGlobal *glob,
 							Node *node,
@@ -145,6 +145,13 @@ static void record_plan_function_dependency(PlannerGlobal *glob,
 
 static bool extract_query_dependencies_walker(Node *node,
 											  PlannerGlobal *context);
+/* fix the target lists of projection-incapable nodes to use the target list of the child node */
+static void fix_projection_incapable_nodes(Plan *plan);
+
+/* fix the target lists of  projection-incapable nodes in subplans to use the target list of the child node */
+static void fix_projection_incapable_nodes_in_subplans(PlannerGlobal *context, Plan *plan);
+
+
 extern bool is_plan_node(Node *node);
 
 #ifdef USE_ASSERT_CHECKING
@@ -407,6 +414,9 @@ set_plan_references(PlannerGlobal *glob, Plan *plan, List *rtable)
 	}
 	
 	/* Now fix the Plan tree */
+	fix_projection_incapable_nodes(plan);
+	fix_projection_incapable_nodes_in_subplans(glob, plan);
+
 	Plan *retPlan = set_plan_refs(glob, plan, rtoffset);
 
 #ifdef USE_ASSERT_CHECKING
@@ -1317,7 +1327,7 @@ set_join_references(PlannerGlobal *glob, Join *join, int rtoffset)
 	}
 	else if (IsA(join, HashJoin))
 	{
-		HashJoin   *hj = (HashJoin *) join;
+		HashJoin   *hj = (HashJoin *) join;		
 
 		hj->hashclauses = fix_hashclauses(glob,
 										hj->hashclauses,
@@ -1905,107 +1915,114 @@ fix_join_expr(PlannerGlobal *glob,
 	context.skip_rel = skip_rel;
 	context.rtoffset = rtoffset;
 	context.use_outer_tlist_for_matching_nonvars = true;
+	context.use_inner_tlist_for_matching_nonvars = true;
+
 	return (List *) fix_join_expr_mutator((Node *) clauses, &context);
 }
 
 /*
  * fix_hashclauses
  *
- *	make sure that inner argument of each hashclause does not refer to
- *	target entries found in the target list of join's outer child
+ *  make sure that inner argument of each hashclause does not refer to
+ *  target entries found in the target list of join's outer child
  *
  */
 static List *fix_hashclauses(PlannerGlobal *glob,
-						   List *clauses,
-						   indexed_tlist *outer_itlist,
-						   indexed_tlist *inner_itlist,
-						   Index skip_rel, int rtoffset)
+                           List *clauses,
+                           indexed_tlist *outer_itlist,
+                           indexed_tlist *inner_itlist,
+                           Index skip_rel, int rtoffset)
 {
-	Assert(clauses);
-
-	ListCell *lc = NULL;
-	foreach(lc, clauses)
-	{
-		Node *node = (Node *) lfirst(lc);
-		Assert(IsA(node, OpExpr));
-		OpExpr	   *opexpr = (OpExpr *) node;
-		Assert(list_length(opexpr->args) == 2);
-
-		/* extract clause arguments */
-		List *outer_arg = linitial(opexpr->args);
-		List *inner_arg = lsecond(opexpr->args);
-
-		List *new_args = NIL;
-
-		/* outer argument is processed regularly */
-		List *new_outer_arg = fix_join_expr(glob,
-				outer_arg,
-				outer_itlist,
-				inner_itlist,
-				(Index) 0,
-				rtoffset);
-
-		/*
-		 * for inner argument, we cannot refer to target entries
-		 * in join's outer child target list, otherwise hash table
-		 * creation could fail,
-		 * we change walker's context to guarantee this
-		 */
-		List *new_inner_arg = fix_inner_hashclauses(glob,
-				inner_arg,
-				outer_itlist,
-				inner_itlist,
-				(Index) 0,
-				rtoffset);
-
-		new_args = lappend(new_args, new_outer_arg);
-		new_args = lappend(new_args, new_inner_arg);
-
-		/* replace old arguments with the fixed arguments */
-		list_free(opexpr->args);
-		opexpr->args = new_args;
-
-		/* fix opexpr */
-		fix_expr_common(glob, node);
-	}
-
-	return clauses;
+    Assert(clauses);
+    ListCell *lc = NULL;
+    foreach(lc, clauses)
+    {
+        Node *node = (Node *) lfirst(lc);
+        Assert(IsA(node, OpExpr));
+        OpExpr     *opexpr = (OpExpr *) node;
+        Assert(list_length(opexpr->args) == 2);
+        /* extract clause arguments */
+        List *outer_arg = linitial(opexpr->args);
+        List *inner_arg = lsecond(opexpr->args);
+        List *new_args = NIL;
+        /*
+         * for outer argument, we cannot refer to target entries
+         * in join's inner child target list
+         * we change walker's context to guarantee this
+         */
+        List *new_outer_arg = fix_child_hashclauses(glob,
+                outer_arg,
+                outer_itlist,
+                inner_itlist,
+                (Index) 0,
+                rtoffset,
+                OUTER);
+        /*
+         * for inner argument, we cannot refer to target entries
+         * in join's outer child target list, otherwise hash table
+         * creation could fail,
+         * we change walker's context to guarantee this
+         */
+        List *new_inner_arg = fix_child_hashclauses(glob,
+                inner_arg,
+                outer_itlist,
+                inner_itlist,
+                (Index) 0,
+                rtoffset,
+                INNER);
+        new_args = lappend(new_args, new_outer_arg);
+        new_args = lappend(new_args, new_inner_arg);
+        /* replace old arguments with the fixed arguments */
+        list_free(opexpr->args);
+        opexpr->args = new_args;
+        /* fix opexpr */
+        fix_expr_common(glob, node);
+    }
+    return clauses;
 }
-
-
 /*
- * fix_inner_hashclauses
- *	   A special case of fix_join_expr used to process hash join's inner hashclauses.
- *	   The main use case is MPP-18537, where we have a constant in the target list
- *	   of hash join's outer child, and the constant is used when computing hash
- *	   value of hash join's inner child.
+ * fix_child_hashclauses
+ *     A special case of fix_join_expr used to process hash join's child hashclauses.
+ *     The main use case is MPP-18537 and MPP-21564, where we have a constant in the
+ *     target list of hash join's child, and the constant is used when computing hash
+ *     value of hash join's other child.
  *
- *	   Example: select * from A, B where A.i = least(B.i,4) and A.j=4;
- *	   Here, B's hash value is least(B.i,4), and constant 4 is defined by A's target list
+ *     Example: select * from A, B where A.i = least(B.i,4) and A.j=4;
+ *     Here, B's hash value is least(B.i,4), and constant 4 is defined by A's target list
  *
- *	   Since during building hash table on the inner child of hash join, we cannot access
- *	   the target list of hash join's outer child, this function skips using outer target list
- *	   when matching non-vars.
+ *     Since during computing the hash value for a tuple on one side of hash join, we cannot access
+ *     the target list of hash join's other child, this function skips using other target list
+ *     when matching non-vars.
  *
  */
 static List *
-fix_inner_hashclauses(PlannerGlobal *glob,
-			  List *clauses,
-			  indexed_tlist *outer_itlist,
-			  indexed_tlist *inner_itlist,
-			  Index skip_rel,
-			  int rtoffset)
+fix_child_hashclauses(PlannerGlobal *glob,
+              List *clauses,
+              indexed_tlist *outer_itlist,
+              indexed_tlist *inner_itlist,
+              Index skip_rel,
+              int rtoffset,
+              Index child)
 {
-	fix_join_expr_context context;
-
-	context.glob = glob;
-	context.outer_itlist = outer_itlist;
-	context.inner_itlist = inner_itlist;
-	context.skip_rel = skip_rel;
-	context.rtoffset = rtoffset;
-	/* skips using outer target list when matching non-vars */
-	context.use_outer_tlist_for_matching_nonvars = false;
-	return (List *) fix_join_expr_mutator((Node *) clauses, &context);
+    fix_join_expr_context context;
+    context.glob = glob;
+    context.outer_itlist = outer_itlist;
+    context.inner_itlist = inner_itlist;
+    context.skip_rel = skip_rel;
+    context.rtoffset = rtoffset;
+    if (INNER == child)
+    {
+    	/* skips using outer target list when matching non-vars */
+    	context.use_outer_tlist_for_matching_nonvars = false;
+    	context.use_inner_tlist_for_matching_nonvars = true;
+	}
+	else
+	{
+    	/* skips using inner target list when matching non-vars */
+    	context.use_inner_tlist_for_matching_nonvars = false;
+    	context.use_outer_tlist_for_matching_nonvars = true;
+	}	
+    return (List *) fix_join_expr_mutator((Node *) clauses, &context);
 }
 
 
@@ -2048,7 +2065,7 @@ fix_join_expr_mutator(Node *node, fix_join_expr_context *context)
 	}
 
 	if (context->outer_itlist && context->outer_itlist->has_non_vars &&
-		context->use_outer_tlist_for_matching_nonvars)
+	        context->use_outer_tlist_for_matching_nonvars)
 	{
 		newvar = search_indexed_tlist_for_non_var(node,
 												  context->outer_itlist,
@@ -2056,6 +2073,8 @@ fix_join_expr_mutator(Node *node, fix_join_expr_context *context)
 		if (newvar)
 			return (Node *) newvar;
 	}
+	if (context->inner_itlist && context->inner_itlist->has_non_vars &&
+	        context->use_inner_tlist_for_matching_nonvars)
 
 	if (context->inner_itlist && context->inner_itlist->has_non_vars)
 	{
@@ -2399,6 +2418,74 @@ extract_query_dependencies_walker(Node *node, PlannerGlobal *context)
 								  (void *) context);
 }
 
+/*
+ * fix_projection_incapable_nodes
+ * 		Fix the project list of projection incapable nodes by copying the project list
+ * 		of the child node
+ */
+static void 
+fix_projection_incapable_nodes(Plan *plan) 
+{
+	if (plan == NULL)
+	{
+		return;
+	}
+	
+	fix_projection_incapable_nodes(plan->lefttree);
+	fix_projection_incapable_nodes(plan->righttree);
+	
+
+	if (IsA(plan, ShareInputScan) || IsA(plan, SetOp)) 
+	{
+		if (NULL != plan->lefttree)
+		{
+			insist_target_lists_aligned(plan->targetlist, plan->lefttree->targetlist);
+		}
+		
+		if (NULL != plan->righttree)
+		{
+			insist_target_lists_aligned(plan->targetlist, plan->righttree->targetlist);
+		}
+	}	
+	else if (!is_projection_capable_plan(plan) && !IsA(plan, Append) && NULL != plan->lefttree)
+	{
+		/*
+		 * while Append does not evaluate projections, we cannot always copy the child's target list,
+		 * as Append nodes are used for updating partitioned and inherited tables, in which
+		 * cases the target lists may be legally different, e.g. in the presence of dropped columns
+		 */
+		List *oldTargetList = plan->targetlist;
+		plan->targetlist = copyObject(plan->lefttree->targetlist);
+		if (NIL != oldTargetList)
+		{
+			list_free(oldTargetList);
+		}	
+	}
+}
+
+/*
+ * fix_projection_incapable_nodes_in_subplans
+ * 		Fix the project list of projection incapable nodes in subplans by copying the project list
+ * 		of the child node
+ */
+static void 
+fix_projection_incapable_nodes_in_subplans(PlannerGlobal *context, Plan *plan) 
+{
+	if (plan == NULL)
+	{
+		return;
+	}
+	
+	List *subplans = extract_nodes(context, (Node*) plan, T_SubPlan);
+	
+	ListCell *lcSubPlan = NULL;
+	foreach (lcSubPlan, subplans)
+	{
+		SubPlan *sp = lfirst(lcSubPlan);
+		Plan *spPlan = list_nth(context->subplans, sp->plan_id - 1);
+		fix_projection_incapable_nodes(spPlan);
+	}			
+}
 
 /*
  * cdb_expr_requires_full_eval

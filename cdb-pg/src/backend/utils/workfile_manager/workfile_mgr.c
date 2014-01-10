@@ -70,6 +70,9 @@ static char *create_workset_directory(NodeTag node_type, int slice_id);
 /* Workfile manager cache is stored here, once attached to */
 Cache *workfile_mgr_cache = NULL;
 
+/* Workfile error type */
+WorkfileError workfileError = WORKFILE_ERROR_UNKNOWN;
+
 /*
  * Initialize the cache in shared memory, or attach to an existing one
  *
@@ -934,7 +937,10 @@ workfile_mgr_save_plan(workfile_set *work_set, workfile_set_plan *sf_plan)
 
 	bool res = ExecWorkFile_Write(plan_file, sf_plan->serialized_plan,
 			sf_plan->serialized_plan_len);
-	insist_log(res, "Could not write to temporary work file: %m");
+	if(!res)
+	{
+		workfile_mgr_report_error();
+	}
 
 	workfile_mgr_close_file(work_set, plan_file);
 }
@@ -1067,6 +1073,31 @@ workfile_update_in_progress_size(ExecWorkFile *workfile, int64 size)
 		workfile->work_set->in_progress_size += size;
 		Assert(workfile->work_set->in_progress_size >= 0);
 	}
+}
+
+/*
+ * Reports corresponding error message when the query or segment size limit is exceeded.
+ */
+void 
+workfile_mgr_report_error(void)
+{
+	char* message = NULL;
+
+	switch(workfileError)
+	{
+		case WORKFILE_ERROR_LIMIT_PER_QUERY:
+				message = "workfile per query size limit exceeded";
+				break;
+		case WORKFILE_ERROR_LIMIT_PER_SEGMENT:
+				message = "workfile per segment size limit exceeded";
+				break;
+		default:
+				message = "could not write to workfile";
+				break;
+	}
+
+	ereport(ERROR, (errcode(ERRCODE_INSUFFICIENT_RESOURCES),
+		errmsg("%s", message)));
 }
 
 /* EOF */

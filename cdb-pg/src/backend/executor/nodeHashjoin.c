@@ -1125,12 +1125,14 @@ ExecHashJoinSaveTuple(PlanState *ps, MemTuple tuple, uint32 hashvalue,
 	}
 
 	if (!ExecWorkFile_Write(batchside->workfile, (void *)&hashvalue, sizeof(uint32)))
-		ereport(ERROR, (errcode_for_file_access(),
-						errmsg("could not write to temporary file")));
-		
+	{
+		workfile_mgr_report_error();
+	}
+
 	if (!ExecWorkFile_Write(batchside->workfile, (void *) tuple, memtuple_get_size(tuple, NULL)))
-		ereport(ERROR, (errcode_for_file_access(),
-			errmsg("could not write to temporary file")));
+	{
+		workfile_mgr_report_error();
+	}
 
 	batchside->total_tuples++;
 
@@ -1500,7 +1502,10 @@ SaveBatchFileNameAndClose(HashJoinTable hashtable, ExecWorkFile *workfile)
 	}
 
 	bool res = WriteStringWorkFile(hashtable->state_file, batch_file_name);
-	insist_log(res, "Could not write to temporary work file: %m");
+	if (!res)
+	{
+		workfile_mgr_report_error();
+	}
 
 	if (free_name)
 	{
@@ -1550,11 +1555,18 @@ ExecHashJoinSaveState(HashJoinTable hashtable)
 
 	res = ExecWorkFile_Write(hashtable->state_file,
 			& hashtable->nbuckets, sizeof(hashtable->nbuckets));
-	insist_log(res, "Could not write to temporary work file: %m");
+	if(!res)
+	{
+		workfile_mgr_report_error();
+	}
 
 	res = ExecWorkFile_Write(hashtable->state_file,
 			& hashtable->nbatch, sizeof(hashtable->nbatch));
-	insist_log(res, "Could not write to temporary work file: %m");
+
+	if(!res)
+	{
+		workfile_mgr_report_error();
+	}
 
 	int i;
 	for (i=0; i < hashtable->nbatch; i++)

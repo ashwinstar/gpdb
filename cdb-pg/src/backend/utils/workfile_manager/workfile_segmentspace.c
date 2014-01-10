@@ -90,6 +90,7 @@ WorkfileSegspace_Reserve(int64 bytes_to_reserve)
 
 			if (size_evicted < bytes_to_reserve)
 			{
+				workfileError = WORKFILE_ERROR_LIMIT_PER_SEGMENT;
 				/*
 				 * We couldn't evict as much as we need to write. Reservation
 				 * failed, notify caller.

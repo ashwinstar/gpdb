@@ -529,3 +529,29 @@ SELECT * FROM union_ctas;
 (2 rows)
 
 DROP TABLE union_ctas;
+-- MPP-21075: push quals below union
+CREATE TABLE union_quals1 (a, b) AS SELECT i, i%2 from generate_series(1,10) i;
+CREATE TABLE union_quals2 (a, b) AS SELECT i%2, i from generate_series(1,10) i;
+SELECT * FROM (SELECT a, b from union_quals1 UNION SELECT b, a from union_quals2) as foo(a,b) where a > b order by a;
+ a  | b 
+----+---
+  2 | 0
+  3 | 1
+  4 | 0
+  5 | 1
+  6 | 0
+  7 | 1
+  8 | 0
+  9 | 1
+ 10 | 0
+(9 rows)
+
+SELECT * FROM (SELECT a, max(b) over() from union_quals1 UNION SELECT * from union_quals2) as foo(a,b) where b > 6 order by a,b;
+ a | b  
+---+----
+ 0 |  8
+ 0 | 10
+ 1 |  7
+ 1 |  9
+(4 rows)
+

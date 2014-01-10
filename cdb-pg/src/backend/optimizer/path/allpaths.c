@@ -1396,6 +1396,81 @@ compare_tlist_datatypes(List *tlist, List *colTypes,
 		elog(ERROR, "wrong number of tlist entries");
 }
 
+
+
+/*
+ * qual_contains_winref
+ *
+ * does qual include a window ref node?
+ *
+ */
+static bool
+qual_contains_winref(Query *topquery,
+				Index rti,  /* index of RTE of subquery where qual needs to be checked */
+				Node *qual)
+{
+	Assert(topquery);
+
+	/*
+	 * extract subquery where qual needs to be checked
+	 */
+	RangeTblEntry *rte = rt_fetch(rti, topquery->rtable);
+	Query *subquery =  rte->subquery;
+	bool result = false;
+	if (NULL != subquery && NIL != subquery->windowClause)
+	{
+		 /*
+		  * qual needs to be resolved first to map qual columns
+		  * to the underlying set of produced columns,
+		  * e.g., if we work on a setop child
+		 */
+		Node *qualNew = ResolveNew(qual, rti, 0, rte,
+								subquery->targetList,
+								CMD_SELECT, 0);
+
+		result = contain_windowref(qualNew, NULL);
+		pfree(qualNew);
+	}
+
+	return result;
+}
+
+
+/*
+ * qual_is_pushdown_safe_set_operation
+ *
+ * is a particular qual safe to push down set operation?
+ *
+ */
+static bool
+qual_is_pushdown_safe_set_operation(Query *subquery, Node *qual)
+{
+	Assert(subquery);
+
+	SetOperationStmt *setop = (SetOperationStmt *)subquery->setOperations;
+	Assert(setop);
+
+	/*
+	 * MPP-21075
+	 * for queries of the form:
+	 *   SELECT * from (SELECT max(i) over () as w from X Union Select 1 as w) as foo where w > 0
+	 * the qual (w > 0) is not push_down_safe since it uses a window ref
+	 *
+	 * we check if this is the case for either left or right setop inputs
+	 *
+	 */
+	Index rtiLeft = ((RangeTblRef *)setop->larg)->rtindex;
+	Index rtiRight = ((RangeTblRef *)setop->rarg)->rtindex;
+	if (qual_contains_winref(subquery, rtiLeft, qual) ||
+		qual_contains_winref(subquery, rtiRight, qual))
+	{
+		return false;
+	}
+
+	return true;
+}
+
+
 /*
  * qual_is_pushdown_safe - is a particular qual safe to push down?
  *
@@ -1408,14 +1483,17 @@ compare_tlist_datatypes(List *tlist, List *colTypes,
  * it will work correctly: sublinks will already have been transformed into
  * subplans in the qual, but not in the subquery).
  *
- * 2. The qual must not refer to the whole-row output of the subquery
+ * 2. If we try to push qual below set operation, then qual must be pushable
+ * below set operation children
+ *
+ * 3. The qual must not refer to the whole-row output of the subquery
  * (since there is no easy way to name that within the subquery itself).
  *
- * 3. The qual must not refer to any subquery output columns that were
+ * 4. The qual must not refer to any subquery output columns that were
  * found to have inconsistent types across a set operation tree by
  * subquery_is_pushdown_safe().
  *
- * 4. If the subquery uses DISTINCT ON, we must not push down any quals that
+ * 5. If the subquery uses DISTINCT ON, we must not push down any quals that
  * refer to non-DISTINCT output columns, because that could change the set
  * of rows returned.  This condition is vacuous for DISTINCT, because then
  * there are no non-DISTINCT output columns, but unfortunately it's fairly
@@ -1423,11 +1501,11 @@ compare_tlist_datatypes(List *tlist, List *colTypes,
  * parsetree representation.  It's cheaper to just make sure all the Vars
  * in the qual refer to DISTINCT columns.
  *
- * 5. We must not push down any quals that refer to subselect outputs that
+ * 6. We must not push down any quals that refer to subselect outputs that
  * return sets, else we'd introduce functions-returning-sets into the
  * subquery's WHERE/HAVING quals.
  *
- * 6. We must not push down any quals that refer to subselect outputs that
+ * 7. We must not push down any quals that refer to subselect outputs that
  * contain volatile functions, for fear of introducing strange results due
  * to multiple evaluation of a volatile function.
  */
@@ -1445,6 +1523,17 @@ qual_is_pushdown_safe(Query *subquery, Index rti, Node *qual,
 		return false;
 
 	/*
+	 * (point 2)
+	 * if we try to push quals below set operation, make
+	 * sure that qual is pushable to below set operation children
+	 */
+	if (NULL != subquery->setOperations &&
+		!qual_is_pushdown_safe_set_operation(subquery, qual))
+	{
+		return false;
+	}
+
+	/*
 	 * Examine all Vars used in clause; since it's a restriction clause, all
 	 * such Vars must refer to subselect output columns.
 	 */
@@ -1456,7 +1545,7 @@ qual_is_pushdown_safe(Query *subquery, Index rti, Node *qual,
 
 		Assert(var->varno == rti);
 
-		/* Check point 2 */
+		/* Check point 3 */
 		if (var->varattno == 0)
 		{
 			safe = false;
@@ -1472,7 +1561,7 @@ qual_is_pushdown_safe(Query *subquery, Index rti, Node *qual,
 			continue;
 		tested = bms_add_member(tested, var->varattno);
 
-		/* Check point 3 */
+		/* Check point 4 */
 		if (differentTypes[var->varattno])
 		{
 			safe = false;
@@ -1484,7 +1573,7 @@ qual_is_pushdown_safe(Query *subquery, Index rti, Node *qual,
 		Assert(tle != NULL);
 		Assert(!tle->resjunk);
 
-		/* If subquery uses DISTINCT or DISTINCT ON, check point 4 */
+		/* If subquery uses DISTINCT or DISTINCT ON, check point 5 */
 		if (subquery->distinctClause != NIL &&
 			!targetIsInSortGroupList(tle, subquery->distinctClause))
 		{
@@ -1493,14 +1582,14 @@ qual_is_pushdown_safe(Query *subquery, Index rti, Node *qual,
 			break;
 		}
 
-		/* Refuse functions returning sets (point 5) */
+		/* Refuse functions returning sets (point 6) */
 		if (expression_returns_set((Node *) tle->expr))
 		{
 			safe = false;
 			break;
 		}
 
-		/* Refuse volatile functions (point 6) */
+		/* Refuse volatile functions (point 7) */
 		if (contain_volatile_functions((Node *) tle->expr))
 		{
 			safe = false;

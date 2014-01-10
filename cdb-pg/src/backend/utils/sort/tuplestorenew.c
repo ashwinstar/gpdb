@@ -440,8 +440,7 @@ static NTupleStorePage *nts_get_free_page(NTupleStore *nts)
 					Assert(nts->rwflag != NTS_IS_READER);
 					if(!ntsWriteBlock(nts, page_next))
 					{
-						ereport(ERROR, (ERRCODE_DISK_FULL,
-								errmsg("could not write to temporary file")));
+						workfile_mgr_report_error();
 					}
 				}
 
@@ -893,8 +892,7 @@ ntuplestore_flush(NTupleStore *ts)
 		{
 			if (!ntsWriteBlock(ts, p))
 			{
-				ereport(ERROR, (ERRCODE_DISK_FULL,
-						errmsg("could not write to temporary file")));
+				workfile_mgr_report_error();
 			}
 		}
 		p = nts_page_next(p);
@@ -1180,9 +1178,7 @@ void ntuplestore_trim(NTupleStore *ts, NTupleStorePos *pos)
 			{
 				if (!ntsWriteBlock(ts, ts->first_page))
 				{
-					ereport(ERROR, (ERRCODE_DISK_FULL,
-							errmsg("could not write to temporary file")));
-
+					workfile_mgr_report_error();
 				}
 			}
 

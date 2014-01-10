@@ -112,6 +112,12 @@ bfz_append(bfz_t * thiz, const char *buffer, int size)
 	return;
 }
 
+/*
+ * If the data requested is already in the bfz buffer, this function
+ * returns a pointer to the data in the buffer.
+ * If more data needs to be read from disk, this function returns NULL and
+ * the caller must call bfz_scan_next.
+ */
 static inline void *
 bfz_scan_peek(bfz_t * thiz, int size)
 {

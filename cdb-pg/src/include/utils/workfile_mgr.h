@@ -216,6 +216,19 @@ void outfast_workfile_mgr_end(void);
 /* Debugging functions */
 void workfile_mgr_print_set(workfile_set *work_set);
 
+/* Workfile error reporting */
+typedef enum WorkfileError
+{
+	WORKFILE_ERROR_LIMIT_PER_QUERY,
+	WORKFILE_ERROR_LIMIT_PER_SEGMENT,
+	WORKFILE_ERROR_UNKNOWN,
+} WorkfileError;
+
+/* Holds latest workfile error type */
+extern WorkfileError workfileError;
+void workfile_mgr_report_error(void);
+
+
 #endif /* __WORKFILE_MGR_H__ */
 
 /* EOF */

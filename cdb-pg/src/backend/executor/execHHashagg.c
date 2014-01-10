@@ -1690,14 +1690,18 @@ readHashEntry(AggState *aggstate, BatchFileInfo *file_info,
 						errmsg("could not read from temporary file: %m")));
 	}
 
-	oldcxt = MemoryContextSwitchTo(aggstate->tmpcontext->ecxt_per_tuple_memory);
-	tuple_and_aggs = palloc(*p_input_size);
-	int32 read_size = ExecWorkFile_Read(file_info->wfile, tuple_and_aggs, *p_input_size);
-	if (read_size != *p_input_size)
-		ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
-				errmsg("could not read from temporary file, requesting %d bytes, read %d bytes: %m",
-						*p_input_size, read_size)));
-	MemoryContextSwitchTo(oldcxt);
+	tuple_and_aggs = ExecWorkFile_ReadFromBuffer(file_info->wfile, *p_input_size);
+	if (tuple_and_aggs == NULL)
+	{
+		oldcxt = MemoryContextSwitchTo(aggstate->tmpcontext->ecxt_per_tuple_memory);
+		tuple_and_aggs = palloc(*p_input_size);
+		int32 read_size = ExecWorkFile_Read(file_info->wfile, tuple_and_aggs, *p_input_size);
+		if (read_size != *p_input_size)
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
+					errmsg("could not read from temporary file, requesting %d bytes, read %d bytes: %m",
+							*p_input_size, read_size)));
+		MemoryContextSwitchTo(oldcxt);
+	}
 
 	return tuple_and_aggs;
 }

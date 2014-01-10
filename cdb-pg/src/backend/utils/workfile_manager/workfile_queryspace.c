@@ -148,6 +148,8 @@ WorkfileQueryspace_Reserve(int64 bytes_to_reserve)
 
 		if (!success)
 		{
+			workfileError = WORKFILE_ERROR_LIMIT_PER_QUERY;
+
 			/* Revert the reserved space */
 			gp_atomic_add_64(&queryEntry->queryDiskspace, - bytes_to_reserve);
 			/* Set diskfull to true to stop any further attempts to write more data */
