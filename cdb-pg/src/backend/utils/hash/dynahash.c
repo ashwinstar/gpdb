@@ -21,6 +21,11 @@
  * lookup key's hash value as a partition number --- this will work because
  * of the way calc_bucket() maps hash values to bucket numbers.
  *
+ * For hash tables in shared memory, the memory allocator function should
+ * match malloc's semantics of returning NULL on failure.  For hash tables
+ * in local memory, we typically use palloc() which will throw error on
+ * failure.  The code in this file has to cope with both cases.
+ *
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -818,6 +823,31 @@ hash_search_with_hash_value(HTAB *hashp,
 #endif
 
 	/*
+	 * If inserting, check if it's time to split the bucket.
+	 *
+	 * NOTE: failure to expand table is not a fatal error, it just means we
+	 * have to run at higher fill factor than we wanted. However, if we're
+	 * using the palloc allocator then it will throw error anyway on
+	 * out-of-memory, so we must do this before modifying the table.
+	 */
+	if (action == HASH_ENTER || action == HASH_ENTER_NULL)
+	{
+		/* ENTER_NULL does not work with palloc-based allocator */
+		if (action == HASH_ENTER_NULL)
+			Assert(hashp->alloc != DynaHashAlloc);
+
+		/*
+		 * Can't split if running in partitioned mode, nor if frozen, nor if
+		 * table is the subject of any active hash_seq_search scans.  Strange
+		 * order of these tests is to try to check cheaper conditions first.
+		 */
+		if (!IS_PARTITIONED(hctl) && !hashp->frozen &&
+			hctl->nentries / (long) (hctl->max_bucket + 1) >= hctl->ffactor &&
+			!has_seq_scans(hashp))
+			(void)expand_table(hashp);
+	}
+
+	/*
 	 * Do the initial lookup
 	 */
 	bucket = calc_bucket(hctl, hashvalue);
@@ -898,8 +928,6 @@ hash_search_with_hash_value(HTAB *hashp,
 			return NULL;
 
 		case HASH_ENTER_NULL:
-			/* ENTER_NULL does not work with palloc-based allocator */
-			Assert(hashp->alloc != DynaHashAlloc);
 			/* FALL THRU */
 
 		case HASH_ENTER:
@@ -937,25 +965,12 @@ hash_search_with_hash_value(HTAB *hashp,
 			currBucket->hashvalue = hashvalue;
 			hashp->keycopy(ELEMENTKEY(currBucket), keyPtr, keysize);
 
-			/* caller is expected to fill the data field on return */
-
 			/*
-			 * Check if it is time to split a bucket.  Can't split if running
-			 * in partitioned mode, nor if table is the subject of any active
-			 * hash_seq_search scans.  Strange order of these tests is to try
-			 * to check cheaper conditions first.
+			 * Caller is expected to fill the data field on return. DO NOT
+			 * insert any code that could possibly throw error here, as doing
+			 * so would leave the table entry incomplete and hence corrupt the
+			 * caller's data structure.
 			 */
-			if (!IS_PARTITIONED(hctl) &&
-				hctl->nentries / (long) (hctl->max_bucket + 1) >= hctl->ffactor &&
-				!has_seq_scans(hashp))
-			{
-				/*
-				 * NOTE: failure to expand table is not a fatal error, it just
-				 * means we have to run at higher fill factor than we wanted.
-				 */
-				expand_table(hashp);
-			}
-
 			return (void *) ELEMENTKEY(currBucket);
 	}
 
