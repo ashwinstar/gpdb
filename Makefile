@@ -1327,6 +1327,10 @@ ifneq "$(BLD_GPDB_BUILDSET)" "partial"
 	rm -f $(INSTLOC)/lib/libgpoptudf.$(LDSFX);
 	g++ $(GPOPT_UDF_FLAGS) -L$(INSTLOC)/lib -lgpos -lnaucrates -lgpopt -o $(INSTLOC)/lib/libgpoptudf.$(LDSFX)  ./cdb-pg/src/backend/gpopt/utils/funcs.o ;
 endif
+ifeq "$(BLD_ARCH)" "win32"
+	# Copy kfw dlls
+	cp -rp $(BLD_TOP)/ext/win32/kfw-3-2-2/lib/*dll $(INSTLOC)/lib/
+endif
 
 
 greenplum_path:
