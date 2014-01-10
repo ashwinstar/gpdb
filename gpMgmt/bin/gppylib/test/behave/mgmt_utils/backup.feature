@@ -4365,6 +4365,88 @@ Feature: Validate command line arguments
         And the user runs "psql -c 'INSERT INTO table2 (price) SELECT * FROM generate_series(2020,2029)' seqtestdb"
         And verify that there are no duplicates in column "column1" of table "public.table2" in "seqtestdb"
 
+    Scenario: Single table backup of the table with partitions in a separate schema
+        Given the database is running
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is schema "schema_parent, schema_child" exists in "testdb"
+        And there is a "ao" partition table "schema_parent.ao_part_table" with compression "None" in "testdb" with data
+        And partition "1" of partition table "schema_parent.ao_part_table" is assumed to be in schema "schema_child" in database "testdb"
+        And all the data from "testdb" is saved for verification
+        When the user runs "gpcrondump -a -v -x testdb -t schema_parent.ao_part_table"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        When table "schema_parent.ao_part_table" is dropped in "testdb"
+        And the user runs "gpdbrestore -a" with the stored timestamp
+        And the user runs "psql -d testdb -t -c """select count(*) from pg_partitions where schemaname='schema_parent' and tablename='ao_part_table' and schemaname<>partitionschemaname;""" "
+        Then gpdbrestore should return a return code of 0
+        And verify that the data of "9" tables in "testdb" is validated after restore 
+        And psql should print 1 to stdout
+
+    Scenario: Database backup, while one of the tables have a partition in a separate schema
+        Given the database is running
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is schema "schema_parent, schema_child" exists in "testdb"
+        And there is a "ao" partition table "schema_parent.ao_part_table" with compression "None" in "testdb" with data
+        And there is a mixed storage partition table "public.part_mixed_1" in "testdb" with data
+        And there is a "heap" table "schema_parent.heap_table" with compression "None" in "testdb" with data
+        And partition "1" of partition table "schema_parent.ao_part_table" is assumed to be in schema "schema_child" in database "testdb"
+        And all the data from "testdb" is saved for verification
+        When the user runs "gpcrondump -a -v -x testdb -t schema_parent.ao_part_table"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        When table "schema_parent.ao_part_table" is dropped in "testdb"
+        And the user runs "gpdbrestore -a" with the stored timestamp
+        And the user runs "psql -d testdb -t -c """select count(*) from pg_partitions where schemaname='schema_parent' and tablename='ao_part_table' and schemaname<>partitionschemaname;""" "
+        Then gpdbrestore should return a return code of 0
+        And verify that the data of "23" tables in "testdb" is validated after restore 
+        And psql should print 1 to stdout
+
+    Scenario: Database backup, while one of the tables have all the partitions in a separate schema
+        Given the database is running
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is schema "schema_parent, schema_child" exists in "testdb"
+        And there is a "ao" partition table "schema_child.ao_part_table" with compression "None" in "testdb" with data
+        And the user runs "psql -d testdb -c 'alter table schema_child.ao_part_table set schema schema_parent'"
+        And there is a mixed storage partition table "public.part_mixed_1" in "testdb" with data
+        And there is a "heap" table "schema_parent.heap_table" with compression "None" in "testdb" with data
+        And all the data from "testdb" is saved for verification
+        When the user runs "gpcrondump -a -v -x testdb -t schema_parent.ao_part_table"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        When table "schema_parent.ao_part_table" is dropped in "testdb"
+        And the user runs "gpdbrestore -a" with the stored timestamp
+        And the user runs "psql -d testdb -t -c """select count(*) from pg_partitions where schemaname='schema_parent' and tablename='ao_part_table' and schemaname<>partitionschemaname;""" "
+        Then gpdbrestore should return a return code of 0
+        And verify that the data of "23" tables in "testdb" is validated after restore 
+        And psql should print 8 to stdout
+
+    Scenario: Incremental backup of partitioned tables which have child partitions in different schema
+        Given the database is running
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is schema "schema_parent, schema_child" exists in "testdb"
+        And there is a "ao" table "ao_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "schema_parent.ao_part_table" with compression "None" in "testdb" with data
+        And partition "1" of partition table "schema_parent.ao_part_table" is assumed to be in schema "schema_child" in database "testdb"
+        When the user runs "gpcrondump -a -x testdb"
+        Then gpcrondump should return a return code of 0
+        And the full backup timestamp from gpcrondump is stored
+        And partition "1" of partition table "ao_part_table" is assumed to be in dirty state in "testdb" in schema "schema_parent"
+        And the user runs "gpcrondump -a --incremental -x testdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And all the data from "testdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp
+        Then gpdbrestore should return a return code of 0
+        And verify that the data of "10" tables in "testdb" is validated after restore 
+
     # THIS SHOULD BE THE LAST TEST
     @backupfire
     Scenario: cleanup for backup feature

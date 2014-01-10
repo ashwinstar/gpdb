@@ -366,7 +366,9 @@ def get_partition_tablenames(tablename, dbname, part_level = 1):
     return rows
      
 def get_partition_names(schemaname, tablename, dbname, part_level, part_number):
-    part_num_sql = "select partitiontablename from pg_partitions where schemaname='%s' and tablename='%s' and partitionlevel=%s and partitionposition=%s;" % (schemaname, tablename, part_level, part_number)
+    part_num_sql = """select partitionschemaname || '.' || partitiontablename from pg_partitions 
+                             where schemaname='%s' and tablename='%s'
+                             and partitionlevel=%s and partitionposition=%s;""" % (schemaname, tablename, part_level, part_number)
     rows = getRows(dbname, part_num_sql)
     return rows
      

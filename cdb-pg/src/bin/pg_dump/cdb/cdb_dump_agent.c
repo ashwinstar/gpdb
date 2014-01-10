@@ -5803,7 +5803,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 				exit_nicely();
 			}
 			if (!PQgetisnull(res, 0, 0))
-				appendPQExpBuffer(q, " %s", PQgetvalue(res, 0, 0));
+				appendPQExpBuffer(q, " %s;\n", PQgetvalue(res, 0, 0));
 
 			PQclear(res);
 
@@ -5838,17 +5838,50 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 					exit_nicely();
 				}
 
-				/*
-				 * MPP-9537: terminate (with semicolon) the previous
-				 * statement, and dump the template definitions
-				 */
 				if (!PQgetisnull(res, 0, 0) &&
 					PQgetlength(res, 0, 0))
-					appendPQExpBuffer(q, ";\n %s", PQgetvalue(res, 0, 0));
+					appendPQExpBuffer(q, "%s;\n", PQgetvalue(res, 0, 0));
 
 				PQclear(res);
 			}
 
+			resetPQExpBuffer(query);
+
+    		appendPQExpBuffer(
+							  query,
+                              "SELECT " 
+                              "string_agg('ALTER TABLE \"' || p.partitiontablename || '\" SET SCHEMA \"' || p.partitionschemaname || E'\";\n')"                              
+                              "     FROM pg_partitions as p, pg_class as c, pg_namespace as n"
+                              "     WHERE c.oid = '%u'::pg_catalog.oid AND c.relnamespace = n.oid AND p.tablename = c.relname"
+                              "         AND p.schemaname = n.nspname AND p.schemaname <> p.partitionschemaname",
+							  tbinfo->dobj.catId.oid);
+
+			res = PQexec(g_conn, query->data);
+			check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+
+			if (PQntuples(res) != 1)
+			{
+				if (PQntuples(res) < 1)
+					write_msg(
+							  NULL,
+							  "query to obtain definition of table \"%s\" returned no data\n",
+							  tbinfo->dobj.name);
+				else
+					write_msg(
+							  NULL,
+							  "query to obtain definition of table \"%s\" returned more than one definition\n",
+							  tbinfo->dobj.name);
+				exit_nicely();
+            }
+            else
+            {
+			    if (!PQgetisnull(res, 0, 0) &&
+				    PQgetlength(res, 0, 0))
+				    appendPQExpBuffer(q, "%s\n", PQgetvalue(res, 0, 0));
+            }
+
+			PQclear(res);
+	
 		}
 
 		/* END MPP ADDITION */

@@ -341,10 +341,9 @@ def impl(context, partition, table_list, dbname, schema):
         part_t = get_partition_names(schema, t.strip(), dbname, 1, partition)
         if len(part_t) < 1 or len(part_t[0]) < 1:
             print part_t 
-        a_partition_name = part_t[0][0].strip()
-        dirty_table_name = '%s.%s\n' % (schema, a_partition_name)
-        modify_partition_data(context, dirty_table_name.strip(), dbname, int(partition))
-        backup_data(context, dirty_table_name.strip(), dbname)
+        dirty_table_name = part_t[0][0].strip()
+        modify_partition_data(context, dirty_table_name, dbname, int(partition))
+        backup_data(context, dirty_table_name, dbname)
 
 def validate_timestamp(ts):
     try:
@@ -1516,7 +1515,7 @@ def impl(context, part_num, table_list, dbname, schema, dirty_hack_file):
             if len(part_t) < 1 or len(part_t[0]) < 1:
                 print part_t
             partition_name = part_t[0][0].strip()
-            fd.write(schema + '.' + partition_name + '\n')
+            fd.write(partition_name + '\n')
 
     if not os.path.exists(dirty_hack_file):
         raise Exception('Failed to write to dirty hack file "%s"' % dirty_hack_file)
@@ -2754,6 +2753,17 @@ def impl(context):
 @then('save the cluster configuration')
 def impl(context):
     context.gparray = GpArray.initFromCatalog(dbconn.DbURL())
+
+@given('partition "{partition}" of partition table "{schema_parent}.{table_name}" is assumed to be in schema "{schema_child}" in database "{dbname}"')
+@when('partition "{partition}" of partition table "{schema_parent}.{table_name}" is assumed to be in schema "{schema_child}" in database "{dbname}"')
+@then('partition "{partition}" of partition table "{schema_parent}.{table_name}" is assumed to be in schema "{schema_child}" in database "{dbname}"')
+def impl(context, partition, schema_parent, table_name, schema_child, dbname):
+    part_t = get_partition_names(schema_parent.strip(), table_name.strip(), dbname.strip(), 1, partition)
+    if len(part_t) < 1 or len(part_t[0]) < 1: 
+        print part_t 
+    a_partition_name = part_t[0][0].strip()
+    alter_sql = """ALTER TABLE %s SET SCHEMA %s""" % (a_partition_name, schema_child)
+    execute_sql(dbname, alter_sql) 
 
 @then('verify that there are no duplicates in column "{columnname}" of table "{tablename}" in "{dbname}"')
 def impl(context, columnname, tablename, dbname):

@@ -30,9 +30,9 @@ def populate_filter_tables(table, rows, non_partition_tables, partition_leaves):
                     
 def expand_partition_tables(dbname, filter_tables):
     partition_leaves_sql = """
-                           SELECT x.schemaname, x.partitiontablename 
+                           SELECT x.partitionschemaname, x.partitiontablename 
                            FROM (
-                                SELECT distinct schemaname, tablename, partitiontablename, partitionlevel 
+                                SELECT distinct schemaname, tablename, partitionschemaname, partitiontablename, partitionlevel 
                                 FROM pg_partitions 
                                 WHERE tablename = '%s' and schemaname = '%s'
                                 ) as X, 
