@@ -1904,6 +1904,8 @@ class gpload:
             self.log(self.DEBUG, "found input column: " + str(i))
         if count == 0:
             # see if it's a permissions issue or it actually doesn't exist
+            tableName = quote_unident(self.table)
+            tableSchema = quote_unident(self.schema)
             sql = """select 1 from pg_class c, pg_namespace n
                         where c.relname = '%s' and 
                         n.nspname = '%s' and 

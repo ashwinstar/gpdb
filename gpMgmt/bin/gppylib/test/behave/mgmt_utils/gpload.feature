@@ -130,3 +130,12 @@ Feature: gpload tests
         Then the client program should print did not find an external table to reuse to stdout
         When the user runs command "gpload -f gppylib/test/behave/mgmt_utils/steps/data/gpload_reuse_ext_errtbl_2.yml"
         Then the client program should print reusing external table to stdout
+
+
+    @gpload_target_not_exist
+    Scenario: gpload output error message when target table not exists 
+        Given the database is running
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        When the user runs command "gpload -f gppylib/test/behave/mgmt_utils/steps/data/gpload_target_not_exist.yml"
+        Then the client program should print table "tablenot11exists" not found in any database schema to stdout

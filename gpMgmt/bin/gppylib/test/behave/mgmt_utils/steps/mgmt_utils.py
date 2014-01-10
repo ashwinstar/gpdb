@@ -2409,7 +2409,7 @@ def impl(context, second):
 
 @then('the file "{filename}" by process "{pidfile}" is not closed')
 def impl(context, filename, pidfile):
-    cmd = 'PATH=$PATH:/usr/bin:/usr/sbin lsof -p `cat %s` | grep %s | wc -l' % (pidfile, filename)
+    cmd = "if [ `uname -s` == 'SunOS' ]; then CMD=pfiles; else CMD='lsof -p'; fi && PATH=$PATH:/usr/bin:/usr/sbin $CMD `cat %s` | grep %s | wc -l" % (pidfile, filename)
     (ret, output) = commands.getstatusoutput(cmd)
     if int(output) == 0:
         raise Exception('file %s has been closed' % (filename))
