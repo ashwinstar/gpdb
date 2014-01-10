@@ -249,6 +249,7 @@ Feature: gpfdist configure timeout value
         Then the client program should print 400 invalid sequence number to stdout
      
     @gpfdist_status_message
+    @nosolaris
     Scenario: gpfdist should output status message when segment read timeout 
         Given the "gpfdist" process is killed
         Given the directory "extdata" exists in current working directory
