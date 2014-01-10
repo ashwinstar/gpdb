@@ -2407,10 +2407,13 @@ def impl(context, filename, path):
 def impl(context, second):
     time.sleep(float(second))
 
+def get_opened_files(filename, pidfile):
+    cmd = "if [ `uname -s` = 'SunOS' ]; then CMD=pfiles; else CMD='lsof -p'; fi && PATH=$PATH:/usr/bin:/usr/sbin $CMD `cat %s` | grep %s | wc -l" % (pidfile, filename)
+    return commands.getstatusoutput(cmd)
+
 @then('the file "{filename}" by process "{pidfile}" is not closed')
 def impl(context, filename, pidfile):
-    cmd = "if [ `uname -s` == 'SunOS' ]; then CMD=pfiles; else CMD='lsof -p'; fi && PATH=$PATH:/usr/bin:/usr/sbin $CMD `cat %s` | grep %s | wc -l" % (pidfile, filename)
-    (ret, output) = commands.getstatusoutput(cmd)
+    (ret, output) = get_opened_files(filename, pidfile)
     if int(output) == 0:
         raise Exception('file %s has been closed' % (filename))
 @given('the directory {path} exists')
@@ -2421,15 +2424,13 @@ def impl(context, path):
 
 @then('the file "{filename}" by process "{pidfile}" is closed')
 def impl(context, filename, pidfile):
-    cmd = 'PATH=$PATH:/usr/bin:/usr/sbin lsof -p `cat %s` | grep %s | wc -l' % (pidfile, filename)
-    (ret, output) = commands.getstatusoutput(cmd)
+    (ret, output) = get_opened_files(filename, pidfile)
     if int(output) != 0:
         raise Exception('file %s has not been closed' % (filename))
 
 @then('the file "{filename}" by process "{pidfile}" opened number is "{num}"')
 def impl(context, filename, pidfile, num):
-    cmd = 'PATH=$PATH:/usr/bin:/usr/sbin lsof -p `cat %s` | grep %s | wc -l' % (pidfile, filename)
-    (ret, output) = commands.getstatusoutput(cmd)
+    (ret, output) = get_opened_files(filename, pidfile)
     if int(output) != int(num):
         raise Exception('file %s opened number %d is not %d' % (filename, int(output), int(num)))
 
