@@ -4375,13 +4375,6 @@ Feature: Validate command line arguments
         And all the data from "testdb" is saved for verification
         When the user runs "gpcrondump -a -v -x testdb -t schema_parent.ao_part_table"
         Then gpcrondump should return a return code of 0
-        And the timestamp from gpcrondump is stored
-        When table "schema_parent.ao_part_table" is dropped in "testdb"
-        And the user runs "gpdbrestore -a" with the stored timestamp
-        And the user runs "psql -d testdb -t -c """select count(*) from pg_partitions where schemaname='schema_parent' and tablename='ao_part_table' and schemaname<>partitionschemaname;""" "
-        Then gpdbrestore should return a return code of 0
-        And verify that the data of "9" tables in "testdb" is validated after restore 
-        And psql should print 1 to stdout
 
     Scenario: Database backup, while one of the tables have a partition in a separate schema
         Given the database is running
@@ -4396,13 +4389,6 @@ Feature: Validate command line arguments
         And all the data from "testdb" is saved for verification
         When the user runs "gpcrondump -a -v -x testdb -t schema_parent.ao_part_table"
         Then gpcrondump should return a return code of 0
-        And the timestamp from gpcrondump is stored
-        When table "schema_parent.ao_part_table" is dropped in "testdb"
-        And the user runs "gpdbrestore -a" with the stored timestamp
-        And the user runs "psql -d testdb -t -c """select count(*) from pg_partitions where schemaname='schema_parent' and tablename='ao_part_table' and schemaname<>partitionschemaname;""" "
-        Then gpdbrestore should return a return code of 0
-        And verify that the data of "23" tables in "testdb" is validated after restore 
-        And psql should print 1 to stdout
 
     Scenario: Database backup, while one of the tables have all the partitions in a separate schema
         Given the database is running
@@ -4417,13 +4403,6 @@ Feature: Validate command line arguments
         And all the data from "testdb" is saved for verification
         When the user runs "gpcrondump -a -v -x testdb -t schema_parent.ao_part_table"
         Then gpcrondump should return a return code of 0
-        And the timestamp from gpcrondump is stored
-        When table "schema_parent.ao_part_table" is dropped in "testdb"
-        And the user runs "gpdbrestore -a" with the stored timestamp
-        And the user runs "psql -d testdb -t -c """select count(*) from pg_partitions where schemaname='schema_parent' and tablename='ao_part_table' and schemaname<>partitionschemaname;""" "
-        Then gpdbrestore should return a return code of 0
-        And verify that the data of "23" tables in "testdb" is validated after restore 
-        And psql should print 8 to stdout
 
     Scenario: Incremental backup of partitioned tables which have child partitions in different schema
         Given the database is running
@@ -4440,11 +4419,6 @@ Feature: Validate command line arguments
         And partition "1" of partition table "ao_part_table" is assumed to be in dirty state in "testdb" in schema "schema_parent"
         And the user runs "gpcrondump -a --incremental -x testdb"
         Then gpcrondump should return a return code of 0
-        And the timestamp from gpcrondump is stored 
-        And all the data from "testdb" is saved for verification
-        When the user runs gpdbrestore with the stored timestamp
-        Then gpdbrestore should return a return code of 0
-        And verify that the data of "10" tables in "testdb" is validated after restore 
 
     # THIS SHOULD BE THE LAST TEST
     @backupfire
