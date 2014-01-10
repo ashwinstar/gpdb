@@ -1848,7 +1848,7 @@ static void checkPgDir2(const char *dir)
 	pfree(path);
 }
 
-#define FTS_PROBE_FILE_NAME "/fts_probe_file"
+#define FTS_PROBE_FILE_NAME "/fts_probe_file.bak"
 #define FTS_PROBE_MAGIC_STRING "FtS PrObEr MaGiC StRiNg, pRoBiNg cHeCk......."
 
 /*
