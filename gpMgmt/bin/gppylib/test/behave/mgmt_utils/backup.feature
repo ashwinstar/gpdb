@@ -4420,6 +4420,58 @@ Feature: Validate command line arguments
         And the user runs "gpcrondump -a --incremental -x testdb"
         Then gpcrondump should return a return code of 0
 
+    Scenario: Full backup should not backup temp tables
+        Given the database is running
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is schema "a" exists in "testdb"
+        And there is a "heap" table "a.heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "a.ao_part_table" with compression "None" in "testdb" with data
+        And there is schema "b" exists in "testdb"
+        And there is a "heap" table "b.heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "b.ao_part_table" with compression "None" in "testdb" with data
+        And there is schema "z" exists in "testdb"
+        And there is a "heap" table "z.heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "z.ao_part_table" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "public.ao_part_table" with compression "None" in "testdb" with data
+        And the user runs the query "CREATE TEMP TABLE temp_1 as select generate_series(1, 100);" on "testdb" for "120" seconds
+        When the user runs "gpcrondump -x testdb -a"
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And all the data from "testdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp
+        Then gpdbrestore should return a return code of 0
+        And verify that the data of "40" tables in "testdb" is validated after restore
+
+    Scenario: Incremental backup should not backup temp tables
+        Given the database is running
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is schema "a" exists in "testdb"
+        And there is a "heap" table "a.heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "a.ao_part_table" with compression "None" in "testdb" with data
+        And there is schema "b" exists in "testdb"
+        And there is a "heap" table "b.heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "b.ao_part_table" with compression "None" in "testdb" with data
+        And there is schema "z" exists in "testdb"
+        And there is a "heap" table "z.heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "z.ao_part_table" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "public.ao_part_table" with compression "None" in "testdb" with data
+        When the user runs "gpcrondump -x testdb -a"
+        And gpcrondump should return a return code of 0
+        And the user runs the query "CREATE TEMP TABLE temp_1 as select generate_series(1, 100);" on "testdb" for "120" seconds
+        When the user runs "gpcrondump -x testdb -a --incremental"
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And all the data from "testdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp
+        Then gpdbrestore should return a return code of 0
+        And verify that the data of "40" tables in "testdb" is validated after restore
+
     # THIS SHOULD BE THE LAST TEST
     @backupfire
     Scenario: cleanup for backup feature

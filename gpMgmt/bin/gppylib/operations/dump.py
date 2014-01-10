@@ -58,7 +58,7 @@ SELECT ALLTABLES.oid, ALLTABLES.schemaname, ALLTABLES.tablename FROM
     WHERE x.schemaname = y.schemaname and x.tablename = Y.maxtable and x.partitionlevel != Y.maxlevel) 
     UNION (SELECT distinct schemaname, tablename FROM pg_partitions))) as DATATABLES 
 
-WHERE ALLTABLES.schemaname = DATATABLES.schemaname and ALLTABLES.tablename = DATATABLES.tablename AND ALLTABLES.oid not in (select reloid from pg_exttable)
+WHERE ALLTABLES.schemaname = DATATABLES.schemaname and ALLTABLES.tablename = DATATABLES.tablename AND ALLTABLES.oid not in (select reloid from pg_exttable) AND ALLTABLES.schemaname NOT LIKE 'pg_temp_%'
 """
 
 GET_ALL_USER_TABLES_SQL = """

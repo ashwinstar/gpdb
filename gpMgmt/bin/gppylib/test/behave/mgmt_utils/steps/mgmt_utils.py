@@ -2771,3 +2771,20 @@ def impl(context, columnname, tablename, dbname):
     rows = getRows(dbname, duplicate_sql)
     if rows:
         raise Exception('Found duplicate rows in the column "%s" for table "%s" in database "%s"' % (columnname, tablename, dbname))
+
+def execute_sql_for_sec(dbname, query, sec):
+    with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
+        dbconn.execSQL(conn, query)
+        conn.commit()
+        time.sleep(sec)
+
+@given('the user runs the query "{query}" on "{dbname}" for "{sec}" seconds')
+@when('the user runs the query "{query}" on "{dbname}" for "{sec}" seconds')
+@then('the user runs the query "{query}" on "{dbname}" for "{sec}" seconds')
+def impl(context, query, dbname, sec):
+    if query.lower().startswith('create') or query.lower().startswith('insert'):
+        thread.start_new_thread(execute_sql_for_sec, (dbname, query, float(sec)))
+    else:
+        thread.start_new_thread(getRows, (dbname, query))
+    time.sleep(30)
+
