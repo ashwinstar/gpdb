@@ -1848,6 +1848,10 @@ static void checkPgDir2(const char *dir)
 	pfree(path);
 }
 
+/*
+ * This file is only created/used on primary and not on mirror
+ * Hence .bak extension to filename, so that checkMirrorIntegrity tool skips checking it
+ */
 #define FTS_PROBE_FILE_NAME "/fts_probe_file.bak"
 #define FTS_PROBE_MAGIC_STRING "FtS PrObEr MaGiC StRiNg, pRoBiNg cHeCk......."
 
@@ -1966,7 +1970,27 @@ checkIODataDirectory(void)
 	} while (0);
 
 	if (fd > 0)
+	{
 		close(fd);
+
+		/*
+		 * We are more concerned with IOs hanging than failures.
+		 * Cleanup the file as detected the problem and reporting the same.
+		 * This is done to cover for cases like:
+		 * 1] FTS detects corruption/read failure on the file, reports to Master
+		 * 2] Triggers failover to mirror
+		 * 3] But if the file stays around, when it transitions back to Primary 
+		 *    would again detect this corrupted file and again trigger failover.
+		 * To avoid such scenarios remove the file.
+		 */
+		if (failure)
+		{
+			if (unlink(filename) < 0)
+				ereport(LOG,
+				(errcode_for_file_access(),
+				errmsg("could not unlink file \"%s\": %m", filename)));
+		}
+	}
 
 	if(data)
 		free(data);
