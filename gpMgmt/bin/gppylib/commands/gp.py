@@ -27,6 +27,9 @@ GPHOME=os.environ.get('GPHOME')
 #Default timeout for segment start
 SEGMENT_TIMEOUT_DEFAULT=600
 
+#"Command not found" return code in bash
+COMMAND_NOT_FOUND=127
+
 def getPostmasterPID(hostname, datadir):
     cmdStr="ps -ef | grep postgres | grep -v grep | awk '{print $2}' | grep \\`cat %s/postmaster.pid | head -1\\` || echo -1" % (datadir)
     name="get postmaster pid"
@@ -1396,12 +1399,54 @@ def start_standbymaster(host, datadir, port, dbid, ncontents, era=None,
     logger.warning("Could not start standby master")
     return False
 
+def is_pid_postmaster(datadir, pid, remoteHost=None):
+    """
+    This function returns true on any uncertancy: if it cannot execute pgrep, pwdx or just connect to the standby host
+    it will return true
+    """
+    def validate_command (commandName, datadir, ctxt, remoteHost):
+        cmd = Command ('Check %s availability' % commandName, commandName, ctxt=ctxt, remoteHost=remoteHost)
+        cmd.run()
+        if cmd.get_results().rc == COMMAND_NOT_FOUND:
+            if not remoteHost is None:
+                logger.warning('command "%s" is not found on host %s. cannot check postmaster status, assuming it is running', commandName, remoteHost)
+            else:
+                logger.warning('command "%s" is not found. cannot check postmaster status, assuming it is running', commandName)
+            return False
+        return True
+
+    if remoteHost is not None:
+        ctxt = REMOTE
+    else:
+        ctxt = LOCAL
+    
+    is_postmaster = True
+    if (validate_command ('pgrep', datadir, ctxt, remoteHost) and
+            validate_command ('pwdx', datadir, ctxt, remoteHost)):
+        cmdStr = 'pgrep postgres | xargs -i pwdx {} | grep "%s" | grep "^%s:" | cat' % (datadir, pid)
+        cmd = Command("search for postmaster process", cmdStr, ctxt=ctxt, remoteHost=remoteHost)
+        res = None
+        try:
+            cmd.run(validateAfter=True)
+            res = cmd.get_results()
+            if not res.stdout.strip():
+                is_postmaster = False
+            else:
+                logger.info(res.stdout.strip())                
+        except Exception as e:
+            if not remoteHost is None:
+                logger.warning('failed to get the status of postmaster %s on %s. assuming that postmaster is running' % (datadir, remoteHost))
+            else:
+                logger.warning('failed to get the status of postmaster %s. assuming that postmaster is running' % (datadir))
+
+    return is_postmaster
+
 ######
 def recovery_startup(datadir, port=None):
     """ investigate a db that may still be running """
 
     pid=read_postmaster_pidfile(datadir)
-    if check_pid(pid):
+    if check_pid(pid) or is_pid_postmaster(datadir, pid):
         info_str="found postmaster with pid: %d for datadir: %s still running" % (pid,datadir)
         logger.info(info_str)
 
@@ -1409,7 +1454,7 @@ def recovery_startup(datadir, port=None):
         cmd=SegmentStop('db shutdown' , datadir,mode='fast')
         cmd.run()
 
-        if check_pid(pid):
+        if check_pid(pid) or is_pid_postmaster(datadir, pid):
             info_str="unable to stop postmaster with pid: %d for datadir: %s still running" % (pid,datadir)
             logger.info(info_str)
             return info_str
