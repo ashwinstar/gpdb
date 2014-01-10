@@ -71,11 +71,13 @@ test__expand_table(void **state)
 	will_be_called(AllocSetContextCreate);
 
 	/* We don't care Assert macro */
+#ifdef USE_ASSERT_CHECKING
 	expect_any_count(ExceptionalCondition, conditionName, -1);
 	expect_any_count(ExceptionalCondition, errorType, -1);
 	expect_any_count(ExceptionalCondition, fileName, -1);
 	expect_any_count(ExceptionalCondition, lineNumber, -1);
 	will_be_called_count(ExceptionalCondition, -1);
+#endif
 
 	htab = hash_create("Test hash",
 					   128,
