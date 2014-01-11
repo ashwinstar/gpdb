@@ -1351,30 +1351,33 @@ select t1.* from smallt as t1, smallt as t2 where t1.i = t2.i;
 (1000 rows)
 
 explain analyze select t1.* from smallt as t1, smallt as t2 where t1.i = t2.i;
-                                                                      QUERY PLAN                                                                      
-------------------------------------------------------------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..12.50 rows=500 width=15)
-   Rows out:  1000 rows at destination with 7.553 ms to first row, 14 ms to end, start offset by 0.379 ms.
-   ->  Hash Join  (cost=0.00..4.17 rows=500 width=15)
-         Hash Cond: public.smallt.i = public.smallt.i
-         Rows out:  Avg 500.0 rows x 2 workers.  Max 500 rows (seg0) with 6.325 ms to first row, 12 ms to end, start offset by 0.782 ms.
-         Executor memory:  1K bytes avg, 1K bytes max (seg0).
-         Work_mem used:  1K bytes avg, 1K bytes max (seg0). Workfile: (0 spilling, 0 reused)
-         (seg0)   Hash chain length 10.0 avg, 10 max, using 5 of 1048589 buckets.
+                                                                                                         QUERY PLAN                                                                                                          
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Hash Join  (cost=0.00..11.69 rows=500 width=15)
+   Hash Cond: public.smallt.i = public.smallt.i
+   Rows out:  1000 rows with 11 ms to first row, 15 ms to end, start offset by 0.393 ms.
+   Executor memory:  2K bytes.
+   Work_mem used:  2K bytes. Workfile: (0 spilling, 0 reused)
+   Hash chain length 10.0 avg, 10 max, using 10 of 1048589 buckets.
+   ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..2.46 rows=50 width=15)
+         Rows out:  100 rows at destination with 5.126 ms to first row, 5.212 ms to end, start offset by 6.064 ms.
          ->  Table Scan on smallt  (cost=0.00..0.73 rows=50 width=15)
-               Rows out:  Avg 50.0 rows x 2 workers.  Max 50 rows (seg0) with 0.010 ms to first row, 0.022 ms to end, start offset by 7.092 ms.
-         ->  Hash  (cost=0.20..0.20 rows=50 width=4)
-               Rows in:  Avg 50.0 rows x 2 workers.  Max 50 rows (seg0) with 0.113 ms to end, start offset by 6.978 ms.
+               Rows out:  Avg 50.0 rows x 2 workers.  Max 50 rows (seg0) with 2.926 ms to first row, 2.944 ms to end, start offset by 8.035 ms.
+   ->  Hash  (cost=1.39..1.39 rows=50 width=4)
+         Rows in:  100 rows with 0.182 ms to end, start offset by 5.881 ms.
+         ->  Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..1.39 rows=50 width=4)
+               Rows out:  100 rows at destination with 0.056 ms to first row, 0.133 ms to end, start offset by 5.882 ms.
                ->  Table Scan on smallt  (cost=0.00..0.20 rows=50 width=4)
-                     Rows out:  Avg 50.0 rows x 2 workers.  Max 50 rows (seg0) with 0.052 ms to first row, 0.079 ms to end, start offset by 6.979 ms.
+                     Rows out:  Avg 50.0 rows x 2 workers.  Max 50 rows (seg0) with 0.028 ms to first row, 0.053 ms to end, start offset by 0.800 ms.
  Slice statistics:
-   (slice0)    Executor memory: 203K bytes.
-   (slice1)    Executor memory: 12487K bytes avg x 2 workers, 12487K bytes max (seg0).  Work_mem: 1K bytes max.
+   (slice0)    Executor memory: 12483K bytes.  Peak memory: 14314K bytes.  Work_mem: 2K bytes max.
+   (slice1)    Executor memory: 183K bytes avg x 2 workers, 183K bytes max (seg0).  Peak memory: 908K bytes avg x 2 workers, 908K bytes max (seg0).  Vmem reserved: 1024K bytes avg x 2 workers, 1024K bytes max (seg0).
+   (slice2)    Executor memory: 159K bytes avg x 2 workers, 159K bytes max (seg0).  Peak memory: 1397K bytes avg x 2 workers, 1397K bytes max (seg0).  Vmem reserved: 25600K bytes avg x 2 workers, 25600K bytes max (seg0).
  Statement statistics:
    Memory used: 128000K bytes
  Settings:  enable_hashjoin=on; enable_nestloop=off; gp_enable_agg_distinct=on; optimizer=on
- Total runtime: 14.371 ms
-(21 rows)
+ Total runtime: 16.028 ms
+(24 rows)
 
 -- Rescan on HashJoin
 --select t1.* from (select t11.* from smallt as t11, smallt as t22 where t11.i = t22.i and t11.i < 2) as t1,

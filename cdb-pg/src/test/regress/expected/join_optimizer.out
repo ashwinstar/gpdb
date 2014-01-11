@@ -2420,19 +2420,19 @@ analyze t2;
 -- infer over equalities
 --
 explain select count(*) from t1,t2 where t1.x = 100 and t1.x = t2.x;
-                                                QUERY PLAN                                                
-----------------------------------------------------------------------------------------------------------
- Aggregate  (cost=0.00..6.43 rows=1 width=8)
-   ->  Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..5.41 rows=1 width=1)
-         ->  Hash Join  (cost=0.00..4.41 rows=1 width=1)
-               Hash Cond: t2.x = t1.x
-               ->  Table Scan on t2  (cost=0.00..1.20 rows=1 width=4)
-                     Filter: x = 100
-               ->  Hash  (cost=2.20..2.20 rows=1 width=4)
-                     ->  Redistribute Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.20 rows=1 width=4)
-                           Hash Key: t1.x
-                           ->  Table Scan on t1  (cost=0.00..1.20 rows=1 width=4)
-                                 Filter: x = 100
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Aggregate  (cost=0.00..6.44 rows=1 width=8)
+   ->  Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..5.42 rows=1 width=1)
+         ->  Hash Join  (cost=0.00..4.42 rows=1 width=1)
+               Hash Cond: t1.x = t2.x
+               ->  Redistribute Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.20 rows=1 width=4)
+                     Hash Key: t1.x
+                     ->  Table Scan on t1  (cost=0.00..1.20 rows=1 width=4)
+                           Filter: x = 100
+               ->  Hash  (cost=1.20..1.20 rows=1 width=4)
+                     ->  Table Scan on t2  (cost=0.00..1.20 rows=1 width=4)
+                           Filter: x = 100
  Settings:  enable_hashjoin=on; enable_mergejoin=off; enable_nestloop=off; optimizer=on
 (12 rows)
 
