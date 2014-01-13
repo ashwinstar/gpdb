@@ -3876,6 +3876,7 @@ static struct config_bool ConfigureNamesBool[] =
 		true, NULL, NULL
 	},
 
+	{
 		{"gp_enable_caql_logging", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enable caql logging."),
 			NULL,
