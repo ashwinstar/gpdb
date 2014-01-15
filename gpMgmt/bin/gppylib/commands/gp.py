@@ -1399,6 +1399,16 @@ def start_standbymaster(host, datadir, port, dbid, ncontents, era=None,
     logger.warning("Could not start standby master")
     return False
 
+def get_pid_from_remotehost(host, datadir):
+    cmd = Command(name = 'get the pid from postmaster file',
+                  cmdStr = 'head -1 %s/postmaster.pid' % datadir, 
+                  ctxt=REMOTE, remoteHost = host)  
+    cmd.run()
+    pid = None 
+    if cmd.get_results().rc == 0 and cmd.get_results().stdout.strip():
+        pid = int(cmd.get_results().stdout.strip())
+    return pid
+
 def is_pid_postmaster(datadir, pid, remoteHost=None):
     """
     This function returns true on any uncertancy: if it cannot execute pgrep, pwdx or just connect to the standby host
