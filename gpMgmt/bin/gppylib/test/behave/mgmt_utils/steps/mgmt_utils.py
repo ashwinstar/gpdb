@@ -2416,11 +2416,6 @@ def impl(context, filename, pidfile):
     (ret, output) = get_opened_files(filename, pidfile)
     if int(output) == 0:
         raise Exception('file %s has been closed' % (filename))
-@given('the directory {path} exists')
-@then('the directory {path} exists')
-def impl(context, path):
-   if not os.path.isdir(path):
-       raise Exception('Directory "%s" does not exist' %path)
 
 @then('the file "{filename}" by process "{pidfile}" is closed')
 def impl(context, filename, pidfile):
