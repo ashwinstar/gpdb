@@ -36,3 +36,15 @@ Feature: gpdeletesystem tests
         Then gpdeletesystem should return a return code of 0
         And the user runs "gpinitsystem -c $BLDWRAP_TOP/sys_mgmt_test/test/general/cluster_conf.out -h $BLDWRAP_TOP/sys_mgmt_test/test/general/hostlist.out -p $BLDWRAP_TOP/sys_mgmt_test/test/general/postgresql_param.conf -a"
         And database "testdb" health check should pass on table "t1"
+
+    @dca
+    @wip
+    Scenario: gpinitsystem to bring up standby
+        Given the database is running
+        And there are no backup files
+        And the standby hostname is saved
+        When the user runs "gpdeletesystem -d $MASTER_DATA_DIRECTORY < gppylib/test/behave/mgmt_utils/steps/data/yes.txt"
+        Then gpdeletesystem should return a return code of 0
+        And user runs the init command "gpinitsystem -c $BLDWRAP_TOP/sys_mgmt_test/test/general/cluster_conf.out -h $BLDWRAP_TOP/sys_mgmt_test/test/general/hostlist.out -p $BLDWRAP_TOP/sys_mgmt_test/test/general/postgresql_param.conf -a" with the saved standby host
+        And database "testdb" health check should pass on table "t1"
+        And all the segments are running 

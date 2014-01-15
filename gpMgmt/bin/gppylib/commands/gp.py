@@ -1399,6 +1399,16 @@ def start_standbymaster(host, datadir, port, dbid, ncontents, era=None,
     logger.warning("Could not start standby master")
     return False
 
+def get_pid_from_remotehost(host, datadir):
+    cmd = Command(name = 'get the pid from postmaster file',
+                  cmdStr = 'head -1 %s/postmaster.pid' % datadir, 
+                  ctxt=REMOTE, remoteHost = host)  
+    cmd.run()
+    pid = None 
+    if cmd.get_results().rc == 0 and cmd.get_results().stdout.strip():
+        pid = int(cmd.get_results().stdout.strip())
+    return pid
+
 def is_pid_postmaster(datadir, pid, remoteHost=None):
     """
     This function returns true on any uncertancy: if it cannot execute pgrep, pwdx or just connect to the standby host
@@ -1446,7 +1456,7 @@ def recovery_startup(datadir, port=None):
     """ investigate a db that may still be running """
 
     pid=read_postmaster_pidfile(datadir)
-    if check_pid(pid) or is_pid_postmaster(datadir, pid):
+    if check_pid(pid) and is_pid_postmaster(datadir, pid):
         info_str="found postmaster with pid: %d for datadir: %s still running" % (pid,datadir)
         logger.info(info_str)
 
@@ -1454,7 +1464,7 @@ def recovery_startup(datadir, port=None):
         cmd=SegmentStop('db shutdown' , datadir,mode='fast')
         cmd.run()
 
-        if check_pid(pid) or is_pid_postmaster(datadir, pid):
+        if check_pid(pid) and is_pid_postmaster(datadir, pid):
             info_str="unable to stop postmaster with pid: %d for datadir: %s still running" % (pid,datadir)
             logger.info(info_str)
             return info_str

@@ -19,6 +19,8 @@ from gppylib.operations import startSegments
 from gppylib.gp_era import read_era
 from gppylib.operations.utils import ParallelOperation
 from gppylib.operations.filespace import PG_SYSTEM_FILESPACE, GP_TRANSACTION_FILES_FILESPACE, GP_TEMPORARY_FILES_FILESPACE, GetMoveOperationList, GetFilespaceEntriesDict, GetFilespaceEntries, GetCurrentFilespaceEntries, RollBackFilespaceChanges, UpdateFlatFiles, FileType, MoveFilespaceError
+from gppylib.commands.gp import is_pid_postmaster, get_pid_from_remotehost
+from gppylib.commands.unix import check_pid_on_remotehost
     
 logger = get_default_logger()
 
@@ -642,6 +644,17 @@ class GpMirrorListToBuild:
         #
         unix.RemoveFiles.local('remove temp directory', tempDir)
 
+    def _get_running_postgres_segments(self, segments):
+        running_segments = []
+        for seg in segments:
+            pid = get_pid_from_remotehost(seg.getSegmentHostName(), seg.getSegmentDataDirectory())
+            if pid is not None and check_pid_on_remotehost(pid, seg.getSegmentHostName()) and is_pid_postmaster(seg.getSegmentDataDirectory(), pid, seg.getSegmentHostName()):
+                running_segments.append(seg)
+            else:
+                logger.info("Skipping to stop segment %s on host %s as it is not a postgres process" % (seg.getSegmentDataDirectory(), seg.getSegmentHostName()))
+
+        return running_segments
+
     def __ensureStopped(self, gpEnv, directives):
         """
 
@@ -653,6 +666,7 @@ class GpMirrorListToBuild:
 
         logger.info("Ensuring %d failed segment(s) are stopped" % (len(directives)))
         segments = [d.getSegment() for d in directives]
+        segments = self._get_running_postgres_segments(segments)
         segmentByHost = GpArray.getSegmentsByHostName(segments)
 
         cmds = []

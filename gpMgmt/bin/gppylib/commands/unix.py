@@ -89,6 +89,19 @@ def getLocalHostname():
 def getUserName():
     return os.environ.get('LOGNAME') or os.environ.get('USER')
 
+def check_pid_on_remotehost(pid, host):
+    """ Check For the existence of a unix pid on remote host. """
+    
+    if pid == 0:
+        return False
+
+    cmd = Command(name='check pid on remote host', cmdStr='kill -0 %d' % pid, ctxt=REMOTE, remoteHost=host)
+    cmd.run()
+    if cmd.get_results().rc == 0:
+        return True
+
+    return False
+
 def check_pid(pid):        
     """ Check For the existence of a unix pid. """
     

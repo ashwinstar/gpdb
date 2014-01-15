@@ -37,6 +37,55 @@ Feature: Validate command line arguments
         And MASTER_DATA_DIRECTORY environment variable should be restored
         
     
+    # gpstart fails after hard shutdown of the system, the postmaster.pid file exists with a pid
+    # that matches that of a currently running non-postgres pid
+
+    Scenario: Pid corresponds to a non postgres process 
+        Given the database is running
+        and all the segments are running
+        and the segments are synchronized
+        and the "primary" segment information is saved
+        When the postmaster.pid file on "primary" segment is saved
+        And the user runs "gpstop -a"
+        And gpstop should return a return code of 0
+        And the background pid is killed on "primary" segment
+        When we run a sample background script to generate a pid on "primary" segment
+        And we generate the postmaster.pid file with the background pid on "primary" segment
+        Then the user runs "gpstart -a -v"
+        And gpstart should return a return code of 0
+        And all the segments are running
+        and the segments are synchronized
+        And the backup pid file is deleted on "primary" segment
+        And the background pid is killed on "primary" segment
+
+    Scenario: Pid does not correspond to any running process 
+        Given the database is running
+        And all the segments are running
+        and the segments are synchronized
+        and the "primary" segment information is saved
+        When the postmaster.pid file on "primary" segment is saved
+        And the user runs "gpstop -a"
+        And gpstop should return a return code of 0
+        And we generate the postmaster.pid file with a non running pid on the same "primary" segment
+        Then the user runs "gpstart -a"
+        And gpstart should return a return code of 0
+        And all the segments are running
+        and the segments are synchronized
+        And the backup pid file is deleted on "primary" segment
+ 
+    Scenario: Starting DB when one mirror segment is already up
+        Given the database is running
+        And all the segments are running
+        and the segments are synchronized
+        and the "mirror" segment information is saved
+        When the user runs "gpstop -a"
+        And gpstop should return a return code of 0
+        And the user starts one "mirror" segment
+        Then the user runs "gpstart -a"
+        And gpstart should return a return code of 0
+        And all the segments are running
+        and the segments are synchronized
+
     @wip
     Scenario: Standby syncmaster is running with no pgrep command on standby
         Given the database is running

@@ -15,10 +15,12 @@ import tarfile
 import platform
 
 from gppylib.commands.base import Command, ExecutionError, REMOTE
-from gppylib.commands.unix import findCmdInPath
+from gppylib.commands.unix import findCmdInPath, RemoteCopy
+from gppylib.commands.gp import SegmentStart, GpStandbyStart
 from gppylib.db import dbconn
 from gppylib.gparray import GpArray
 from gppylib.operations.unix import ListRemoteFilesByPattern, CheckRemoteFile
+from gppylib.operations.startSegments import MIRROR_MODE_MIRRORLESS
 from gppylib.test.behave_utils.utils import bring_nic_down, bring_nic_up, get_table_names, get_segment_hostnames,\
                                             create_database, create_database_if_not_exists, check_empty_table, check_err_msg, check_stdout_msg, \
                                             check_return_code, create_int_table, create_partition, check_table_exists, create_large_num_partitions,\
@@ -34,7 +36,8 @@ from gppylib.test.behave_utils.utils import bring_nic_down, bring_nic_up, get_ta
                                             populate_partition_diff_data_same_eof, populate_partition_same_data, execute_sql, verify_integer_tuple_counts,  validate_no_aoco_stats, \
                                             check_string_not_present_stdout, clear_all_saved_data_verify_files, copy_file_to_all_db_hosts, validate_num_restored_tables, \
                                             get_partition_list, verify_stats, drop_external_table_if_exists, get_all_hostnames_as_list, get_pid_for_segment, kill_process, get_num_segments, \
-                                            check_user_permissions, get_change_tracking_segment_info, add_partition, drop_partition, check_pl_exists, check_constraint_exists
+                                            check_user_permissions, get_change_tracking_segment_info, add_partition, drop_partition, check_pl_exists, check_constraint_exists, \
+                                            are_segments_running, execute_sql_singleton, check_row_count
 
 from gppylib.operations.dump import get_partition_state
 
@@ -50,6 +53,7 @@ def impl(context):
         raise context.exception
 
 @given('the database is not running')
+@when('the database is not running')
 def impl(context): 
     stop_database_if_started(context)
     if has_exception(context):
@@ -128,14 +132,19 @@ def impl(context, table_list, dbname):
     for t in tables:
         truncate_table(dbname, t.strip()) 
 
-@given('there is a "{tabletype}" table "{table_name}" with compression "{compression_type}" in "{dbname}" with data')
-def impl(context, tabletype, table_name, compression_type, dbname):
+def populate_regular_table_data(context, tabletype, table_name, compression_type, dbname, rowcount=1094):
     create_database_if_not_exists(context, dbname)
     drop_table_if_exists(context, table_name=table_name, dbname=dbname)
     if compression_type == "None":
-        create_partition(context, table_name, tabletype, dbname, compression_type=None, partition=False)
+        create_partition(context, table_name, tabletype, dbname, compression_type=None, partition=False, rowcount=rowcount)
     else:
-        create_partition(context, table_name, tabletype, dbname, compression_type, partition=False)
+        create_partition(context, table_name, tabletype, dbname, compression_type, partition=False, rowcount=rowcount)
+
+@given('there is a "{tabletype}" table "{table_name}" with compression "{compression_type}" in "{dbname}" with data')
+@when('there is a "{tabletype}" table "{table_name}" with compression "{compression_type}" in "{dbname}" with data')
+@then('there is a "{tabletype}" table "{table_name}" with compression "{compression_type}" in "{dbname}" with data')
+def impl(context, tabletype, table_name, compression_type, dbname):
+    populate_regular_table_data(context, tabletype, table_name, compression_type, dbname)
 
 @when('the partition table "{table_name}" in "{dbname}" is populated with similar data')
 def impl(context, table_name, dbname):
@@ -274,6 +283,8 @@ def impl(context, command, err_msg):
 def impl(context, command, out_msg):
     check_stdout_msg(context, out_msg)
 
+@given('{command} should not print {out_msg} to stdout')
+@when('{command} should not print {out_msg} to stdout')
 @then('{command} should not print {out_msg} to stdout')
 def impl(context, command, out_msg):
     check_string_not_present_stdout(context, out_msg)
@@ -292,6 +303,8 @@ def impl(context, ex_type):
     if typ != ex_type:
         raise Exception('got exception of type "%s" but expected type "%s"' % (typ, ex_type))
 
+@given('database "{dbname}" health check should pass on table "{tablename}"')
+@when('database "{dbname}" health check should pass on table "{tablename}"')
 @then('database "{dbname}" health check should pass on table "{tablename}"')
 def impl(context, dbname, tablename):
     
@@ -301,6 +314,7 @@ def impl(context, dbname, tablename):
     drop_database(context, dbname)
 
     
+@given('the segments are synchronized')
 @when('the segments are synchronized')
 @then('the segments are synchronized')
 def impl(context):
@@ -662,6 +676,10 @@ def impl(context, table_list, dbname):
     for t in tables:
         check_empty_table(t, dbname)
 
+@then('verify that table "{tname}" in "{dbname}" has "{nrows}" rows')
+def impl(context, tname, dbname, nrows):
+    check_row_count(tname, dbname, int(nrows))
+
 @then('verify that partitioned tables "{table_list}" in "{dbname}" have {num_parts} partitions')
 def impl(context, table_list, dbname, num_parts):
     num_parts = int(num_parts.strip())
@@ -723,6 +741,8 @@ def impl(context, table_list, dbname, num_parts):
         check_x_empty_parts(dbname, t, expected_num_parts)
 
 @given('there is a backupfile of tables "{table_list}" in "{dbname}" exists for validation')
+@when('there is a backupfile of tables "{table_list}" in "{dbname}" exists for validation')
+@then('there is a backupfile of tables "{table_list}" in "{dbname}" exists for validation')
 def impl(context, table_list, dbname):
     tables = [t.strip() for t in table_list.split(',')] 
     for t in tables:
@@ -1598,6 +1618,8 @@ def impl(context, num_seconds):
     print "Elapsed time was %.1f seconds" % elapsed
 
 
+@given('the file "{filename}" is removed from the system')
+@when('the file "{filename}" is removed from the system')
 @then('the file "{filename}" is removed from the system')
 def impl(context, filename): 
     os.remove(filename)
@@ -1806,6 +1828,12 @@ def impl(context, hostname):
         segment_hostlist = get_segment_hostlist()    
         segment_hosts = [seg for seg in segment_hostlist if seg != context.master] 
         context.standby_host = segment_hosts[0]
+        gparray = GpArray.initFromCatalog(dbconn.DbURL())
+        segdbs = gparray.getDbList()
+        for seg in segdbs:
+            if seg.getSegmentHostName() == context.standby_host:
+                context.standby_host_data_dir = seg.getSegmentDataDirectory()
+
         context.standby_was_initialized = False
         standby = get_standby_host()
 
@@ -1852,6 +1880,7 @@ def impl(context, filename_prefix):
             raise Exception('Temp files with prefix %s are not cleaned up on host %s after gpcrondump' % (filename_prefix, host))
 
 @when('the user activates standby on the standbyhost')
+@then('the user activates standby on the standbyhost')
 def impl(context):
     port = os.environ.get('PGPORT')
     cmd = 'PGPORT=%s MASTER_DATA_DIRECTORY=%s gpactivatestandby -d %s -fa' % (port, master_data_dir, master_data_dir) 
@@ -1867,15 +1896,21 @@ def impl(context, cmd):
     cmd.run(validateAfter=True)
 
 @given('user kills a primary postmaster process')
+@when('user kills a primary postmaster process')
+@then('user kills a primary postmaster process')
 def impl(context):
-    gparray=GpArray.initFromCatalog(dbconn.DbURL())
-
-    for seg in gparray.getDbList():
-        if seg.isSegmentPrimary():
-            seg_data_dir = seg.getSegmentDataDirectory()
-            seg_host = seg.getSegmentHostName()
-            seg_port = seg.getSegmentPort()
-            break
+    if hasattr(context, 'pseg'):
+        seg_data_dir = context.pseg_data_dir
+        seg_host = context.pseg_hostname
+        seg_port = context.pseg.getSegmentPort() 
+    else:
+        gparray=GpArray.initFromCatalog(dbconn.DbURL())
+        for seg in gparray.getDbList():
+            if seg.isSegmentPrimary():
+                seg_data_dir = seg.getSegmentDataDirectory()
+                seg_host = seg.getSegmentHostName()
+                seg_port = seg.getSegmentPort()
+                break
     
     pid = get_pid_for_segment(seg_data_dir, seg_host) 
     if pid is None:
@@ -1912,6 +1947,7 @@ def impl(context):
         cmd.run(validateAfter=True)
 
 @given('user can start transactions')
+@when('user can start transactions')
 @then('user can start transactions')
 def impl(context):
     num_retries = 50
@@ -2702,10 +2738,286 @@ def impl(context, trigger_name, tablename, dbname):
     drop_trigger_sql = """DROP TRIGGER %s ON %s""" % (trigger_name, tablename)
     execute_sql(dbname, drop_trigger_sql)
 
+@given('all the segments are running')
+@when('all the segments are running')
+@then('all the segments are running')
+def impl(context):
+    if not are_segments_running():
+        raise Exception("all segments are not currently running")
+
+    return
+
+@given('the "{seg}" segment information is saved')
+@when('the "{seg}" segment information is saved')
+@then('the "{seg}" segment information is saved')
+def impl(context, seg):
+    gparray = GpArray.initFromCatalog(dbconn.DbURL())
+   
+    if seg == "primary": 
+        primary_segs = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary()]
+        context.pseg = primary_segs[0]
+        context.pseg_data_dir = context.pseg.getSegmentDataDirectory()
+        context.pseg_hostname = context.pseg.getSegmentHostName()
+        context.pseg_dbid = context.pseg.getSegmentDbId()
+    elif seg == "mirror":
+        mirror_segs = [seg for seg in gparray.getDbList() if seg.isSegmentMirror()]
+        context.mseg = mirror_segs[0]
+        context.mseg_hostname = context.mseg.getSegmentHostName()
+        context.mseg_dbid = context.mseg.getSegmentDbId()
+        context.mseg_data_dir = context.mseg.getSegmentDataDirectory()
+
+@when('we run a sample background script to generate a pid on "{seg}" segment')
+def impl(context, seg):
+    if seg == "primary":
+        if not hasattr(context, 'pseg_hostname'):
+            raise Exception("primary seg host is not saved in the context")
+        hostname = context.pseg_hostname
+    elif seg == "smdw":
+        if not hasattr(context, 'standby_host'):
+            raise Exception("Standby host is not saved in the context")
+        hostname = context.standby_host
+
+    filename = os.path.join(os.getcwd(), './gppylib/test/behave/mgmt_utils/steps/data/pid_background_script.py')
+    
+    cmd = Command(name="Remove background script on remote host", cmdStr='rm -f /tmp/pid_background_script.py', remoteHost=hostname, ctxt=REMOTE)
+    cmd.run(validateAfter=True)
+
+    cmd = Command(name="Copy background script to remote host", cmdStr='scp %s %s:/tmp' % (filename, hostname))
+    cmd.run(validateAfter=True)
+
+    cmd = Command(name="Run Bg process to save pid", cmdStr='sh -c "python /tmp/pid_background_script.py" &>/dev/null &', remoteHost=hostname, ctxt=REMOTE)
+    cmd.run(validateAfter=True)
+
+    cmd = Command(name="get bg pid", cmdStr="ps ux | grep pid_background_script.py | grep -v grep | awk '{print \$2}'", remoteHost=hostname, ctxt=REMOTE)
+    cmd.run(validateAfter=True)
+    context.bg_pid = cmd.get_results().stdout.strip()
+    if not context.bg_pid:
+        raise Exception("Unable to obtain the pid of the background script. Seg Host: %s, get_results: %s" % (hostname, cmd.get_results().stdout.strip()))
+ 
+@when('the background pid is killed on "{seg}" segment')
+@then('the background pid is killed on "{seg}" segment')
+def impl(context, seg):
+    if seg == "primary":
+        if not hasattr(context, 'pseg_hostname'):
+            raise Exception("primary seg host is not saved in the context")
+        hostname = context.pseg_hostname
+    elif seg == "smdw":
+        if not hasattr(context, 'standby_host'):
+            raise Exception("Standby host is not saved in the context")
+        hostname = context.standby_host
+
+    cmd = Command(name="get bg pid", cmdStr="ps ux | grep pid_background_script.py | grep -v grep | awk '{print \$2}'", remoteHost=hostname, ctxt=REMOTE)
+    cmd.run(validateAfter=True)
+    pids = cmd.get_results().stdout.strip().splitlines()
+
+    for pid in pids:
+        cmd = Command(name="killbg pid", cmdStr='kill -9 %s' % pid, remoteHost=hostname, ctxt=REMOTE)
+        cmd.run(validateAfter=True)
+
+@when('we generate the postmaster.pid file with the background pid on "{seg}" segment')
+def impl(context, seg):
+    if seg == "primary":
+        if not hasattr(context, 'pseg_hostname'):
+            raise Exception("primary seg host is not saved in the context")
+        hostname = context.pseg_hostname
+        data_dir = context.pseg_data_dir
+    elif seg == "smdw":
+        if not hasattr(context, 'standby_host'):
+            raise Exception("Standby host is not saved in the context")
+        hostname = context.standby_host
+        data_dir = context.standby_host_data_dir
+
+    
+    pid_file = os.path.join(data_dir, 'postmaster.pid')
+    pid_file_orig = pid_file + '.orig'
+
+    cmd = Command(name="Copy pid file", cmdStr='cp %s %s' % (pid_file_orig, pid_file), remoteHost=hostname, ctxt=REMOTE)
+    cmd.run(validateAfter=True)
+
+    cpCmd = Command(name='copy pid file to master for editing', cmdStr='scp %s:%s /tmp' % (hostname, pid_file))
+
+    cpCmd.run(validateAfter=True)
+
+    with open('/tmp/postmaster.pid', 'r') as fr:
+        lines = fr.readlines()
+
+    lines[0] = "%s\n" % context.bg_pid
+
+    with open('/tmp/postmaster.pid', 'w') as fw:
+        fw.writelines(lines)
+
+    cpCmd = Command(name='copy pid file to segment after editing', cmdStr='scp /tmp/postmaster.pid %s:%s' % (hostname, pid_file))
+    cpCmd.run(validateAfter=True)
+ 
+@when('we generate the postmaster.pid file with a non running pid on the same "{seg}" segment')
+def impl(context, seg):
+    if seg == "primary":
+        data_dir = context.pseg_data_dir
+        hostname = context.pseg_hostname
+    elif seg == "mirror":
+        data_dir = context.mseg_data_dir
+        hostname = context.mseg_hostname
+    elif seg == "smdw":
+        if not hasattr(context, 'standby_host'):
+            raise Exception("Standby host is not saved in the context")
+        hostname = context.standby_host
+        data_dir = context.standby_host_data_dir
+
+    pid_file = os.path.join(data_dir, 'postmaster.pid')
+    pid_file_orig = pid_file + '.orig'
+    
+    cmd = Command(name="Copy pid file", cmdStr='cp %s %s' % (pid_file_orig, pid_file), remoteHost=hostname, ctxt=REMOTE)
+    cmd.run(validateAfter=True)
+
+    cpCmd = Command(name='copy pid file to master for editing', cmdStr='scp %s:%s /tmp' % (hostname, pid_file))
+
+    cpCmd.run(validateAfter=True)
+
+    with open('/tmp/postmaster.pid', 'r') as fr:
+        pid = fr.readline().strip()
+
+    while True:
+        cmd = Command(name="get non-existing pid", cmdStr="ps ux | grep %s | grep -v grep | awk '{print \$2}'" % pid, remoteHost=hostname, ctxt=REMOTE)
+        cmd.run(validateAfter=True)
+        if cmd.get_results().stdout.strip():
+            pid = pid + 1
+        else:
+            break
+
+    
+    with open('/tmp/postmaster.pid', 'r') as fr:
+        lines = fr.readlines()
+
+    lines[0] = "%s\n" % pid
+
+    with open('/tmp/postmaster.pid', 'w') as fw:
+        fw.writelines(lines)
+
+    cpCmd = Command(name='copy pid file to segment after editing', cmdStr='scp /tmp/postmaster.pid %s:%s' % (hostname, pid_file))
+    cpCmd.run(validateAfter=True)
+        
+@when('the user starts one "{seg}" segment')
+def impl(context, seg):
+    if seg == "primary":
+        dbid = context.pseg_dbid
+        hostname = context.pseg_hostname
+        segment = context.pseg
+    elif seg == "mirror":
+        dbid = context.mseg_dbid
+        hostname = context.mseg_hostname
+        segment = context.mseg
+
+    segStartCmd = SegmentStart( name = "Starting new segment dbid %s on host %s." % (str(dbid), hostname)
+                              , gpdb = segment
+                              , numContentsInCluster = 0  # Starting seg on it's own.
+                              , era = None 
+                              , mirrormode = MIRROR_MODE_MIRRORLESS
+                              , utilityMode = False
+                              , ctxt = REMOTE
+                              , remoteHost = hostname
+                              , noWait = False
+                              , timeout = 300)
+    segStartCmd.run(validateAfter=True)
+
+
+@when('the postmaster.pid file on "{seg}" segment is saved')
+def impl(context, seg):
+    if seg == "primary":
+        data_dir = context.pseg_data_dir
+        hostname = context.pseg_hostname
+    elif seg == "mirror":
+        data_dir = context.mseg_data_dir
+        hostname = context.mseg_hostname
+    elif seg == "smdw":
+        if not hasattr(context, 'standby_host'):
+            raise Exception("Standby host is not saved in the context")
+        hostname = context.standby_host
+        data_dir = context.standby_host_data_dir
+
+    pid_file = os.path.join(data_dir, 'postmaster.pid')
+    pid_file_orig = pid_file + '.orig'
+        
+    cmd = Command(name="Copy pid file", cmdStr='cp %s %s' % (pid_file, pid_file_orig), remoteHost=hostname, ctxt=REMOTE)
+    cmd.run(validateAfter=True)
+ 
+@then('the backup pid file is deleted on "{seg}" segment')
+def impl(context, seg):
+    if seg == "primary":
+        data_dir = context.pseg_data_dir
+        hostname = context.pseg_hostname
+    elif seg == "mirror":
+        data_dir = context.mseg_data_dir
+        hostname = context.mseg_hostname
+    elif seg == "smdw":
+        data_dir = context.standby_host_data_dir
+        hostname = context.standby_host
+
+    cmd = Command(name="Remove pid file", cmdStr='rm -f %s' % (os.path.join(data_dir, 'postmaster.pid.orig')), remoteHost=hostname, ctxt=REMOTE)
+    cmd.run(validateAfter=True)
+
+@given('the user creates an init config file "{to_file}" without mirrors')
+@when('the user creates an init config file "{to_file}" without mirrors')
+@then('the user creates an init config file "{to_file}" without mirrors')
+def impl(context, to_file):
+    write_lines = []
+    BLDWRAP_TOP = os.environ.get('BLDWRAP_TOP')
+    from_file = BLDWRAP_TOP + '/sys_mgmt_test/test/general/cluster_conf.out'
+    with open(from_file) as fr:
+        lines = fr.readlines()
+        for line in lines:
+            if not line.startswith('REPLICATION_PORT_BASE') and not line.startswith('MIRROR_REPLICATION_PORT_BASE') and not line.startswith('MIRROR_PORT_BASE') and not line.startswith('declare -a MIRROR_DATA_DIRECTORY'):
+                write_lines.append(line)
+
+    with open(to_file, 'w+') as fw:
+        fw.writelines(write_lines)
+
+@given('the user creates mirrors config file "{to_file}"')
+@when('the user creates mirrors config file "{to_file}"')
+@then('the user creates mirrors config file "{to_file}"')
+def impl(context, to_file):
+    data_dirs = []
+    BLDWRAP_TOP = os.environ.get('BLDWRAP_TOP')
+    from_file = BLDWRAP_TOP + '/sys_mgmt_test/test/general/cluster_conf.out'
+    with open(from_file) as fr:
+        lines = fr.readlines()
+        for line in lines:
+            if line.startswith('declare -a MIRROR_DATA_DIRECTORY'):
+                data_dirs = line.split('(')[-1].strip().strip(')').split()
+                break
+
+    if not data_dirs:
+        raise Exception("Could not find MIRROR_DATA_DIRECTORY in config file %s" % from_file)
+
+    with open(to_file, 'w+') as fw:
+        for dir in data_dirs:
+            fw.write(dir.strip(')') + '\n')
+
+@given('the standby hostname is saved')
+@when('the standby hostname is saved')
+@then('the standby hostname is saved')
+def impl(context):
+    gparray = GpArray.initFromCatalog(dbconn.DbURL())
+    primary_segs = [seg for seg in gparray.getDbList() if (seg.isSegmentPrimary() and not seg.isSegmentMaster())]
+    context.standby = primary_segs[0].getSegmentHostName()
+    
+@given('user runs the init command "{cmd}" with the saved standby host')
+@when('user runs the init command "{cmd}" with the saved standby host')
+@then('user runs the init command "{cmd}" with the saved standby host')
+def impl(context, cmd):
+    run_cmd = cmd + '-s %s' % context.standby
+    run_cmd.run(validateAfter=True)
+
 @given('there is a sequence "{seq_name}" in "{dbname}"')
 def impl(context, seq_name, dbname):
     sequence_sql = 'CREATE SEQUENCE %s' % seq_name
     execute_sql(dbname, sequence_sql) 
+
+@then('verify that there are no duplicates in column "{columnname}" of table "{tablename}" in "{dbname}"')
+def impl(context, columnname, tablename, dbname):
+    duplicate_sql = 'SELECT %s, COUNT(*) FROM %s GROUP BY %s HAVING COUNT(*) > 1' % (columnname, tablename, columnname)
+    rows = getRows(dbname, duplicate_sql)
+    if rows:
+        raise Exception('Found duplicate rows in the column "%s" for table "%s" in database "%s"' % (columnname, tablename, dbname))
 
 @when('the user removes the "{cmd}" command on standby')
 @then('the user removes the "{cmd}" command on standby')
@@ -2761,12 +3073,13 @@ def impl(context, partition, schema_parent, table_name, schema_child, dbname):
     alter_sql = """ALTER TABLE %s SET SCHEMA %s""" % (a_partition_name, schema_child)
     execute_sql(dbname, alter_sql) 
 
-@then('verify that there are no duplicates in column "{columnname}" of table "{tablename}" in "{dbname}"')
-def impl(context, columnname, tablename, dbname):
-    duplicate_sql = 'SELECT %s, COUNT(*) FROM %s GROUP BY %s HAVING COUNT(*) > 1' % (columnname, tablename, columnname)
-    rows = getRows(dbname, duplicate_sql)
-    if rows:
-        raise Exception('Found duplicate rows in the column "%s" for table "%s" in database "%s"' % (columnname, tablename, dbname))
+
+@given('this test sleeps for "{secs}" seconds')
+@when('this test sleeps for "{secs}" seconds')
+@then('this test sleeps for "{secs}" seconds')
+def impl(context, secs):
+    secs = float(secs)
+    time.sleep(secs)
 
 def execute_sql_for_sec(dbname, query, sec):
     with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
@@ -2784,3 +3097,17 @@ def impl(context, query, dbname, sec):
         thread.start_new_thread(getRows, (dbname, query))
     time.sleep(30)
 
+@given('verify that the contents of the files "{filepath1}" and "{filepath2}" are identical')
+@when('verify that the contents of the files "{filepath1}" and "{filepath2}" are identical')
+@then('verify that the contents of the files "{filepath1}" and "{filepath2}" are identical')
+def impl(context, filepath1, filepath2):
+    contents1 = []
+    contents2 = [] 
+    with open(filepath1) as fr1:
+        contents1 = fr1.readlines()
+
+    with open(filepath2) as fr2:
+        contents2 = fr2.readlines()
+
+    if (contents1 != contents2):
+        raise Exception("Contents of the files: %s and %s do not match" % (filepath1, filepath2))

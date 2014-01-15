@@ -47,6 +47,17 @@ def execute_sql(dbname, sql):
         dbconn.execSQL(conn, sql)
         conn.commit()
 
+def execute_sql_singleton(dbname, sql):
+    result = None
+    with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
+        result = dbconn.execSQLForSingleton(conn, sql)
+
+    if result is None:
+        raise Exception("error running query: %s" % sql)
+
+    return result
+
+
 def has_exception(context):
     if not hasattr(context, 'exception'):
         return False
@@ -373,6 +384,7 @@ def get_table_names(dbname):
             LEFT JOIN pg_namespace n ON n.oid = c.relnamespace\
             LEFT JOIN pg_tablespace t ON t.oid = c.reltablespace\
             WHERE c.relkind = 'r'::"char" AND c.oid > 16384 AND (c.relnamespace > 16384 or n.nspname = 'public')
+                  AND n.nspname NOT LIKE 'pg_temp_%'
           """
 
     return getRows(dbname, sql)
@@ -460,7 +472,7 @@ def modify_partition_data(context, tablename, dbname, partitionnum):
 def modify_data(context, tablename, dbname):
     cmdStr = 'psql -d %s -c "copy %s to stdout;" | psql -d %s -c "copy %s from stdin;"' % (dbname, tablename, dbname, tablename)
     cmd = Command(name='insert data into %s' % tablename, cmdStr=cmdStr)
-    cmd.run(validateAfter=True)
+    cmd.run(validateAfter=True) 
 
 def add_partition(context, partitionnum, tablename, dbname):
     alter_table_str = "alter table %s add default partition p%s; insert into %s select i+%d, 'update', i + date '%s' from generate_series(0,1094) as i" \
@@ -475,7 +487,7 @@ def drop_partition(context, partitionnum, tablename, dbname):
         dbconn.execSQL(conn, alter_table_str)
         conn.commit()
 
-def create_partition(context, tablename, storage_type, dbname, compression_type=None, partition=True):
+def create_partition(context, tablename, storage_type, dbname, compression_type=None, partition=True, rowcount=1094):
 
     interval = '1 year'
 
@@ -507,7 +519,7 @@ def create_partition(context, tablename, storage_type, dbname, compression_type=
         dbconn.execSQL(conn, create_table_str)
         conn.commit()
 
-    populate_partition(tablename, PARTITION_START_DATE, dbname, 0)
+    populate_partition(tablename, PARTITION_START_DATE, dbname, 0, rowcount)
 
 # same data size as populate partition, but different values
 def populate_partition_diff_data_same_eof(tablename, dbname):
@@ -516,10 +528,10 @@ def populate_partition_diff_data_same_eof(tablename, dbname):
 def populate_partition_same_data(tablename, dbname):
     populate_partition(tablename, PARTITION_START_DATE, dbname, 0)
 
-def populate_partition(tablename, start_date, dbname, data_offset):
+def populate_partition(tablename, start_date, dbname, data_offset, rowcount=1094):
 
-    insert_sql_str = "insert into %s select i+%d, 'backup', i + date '%s' from generate_series(0,1094) as i" %(tablename, data_offset, start_date)
-    insert_sql_str += "; insert into %s select i+%d, 'restore', i + date '%s' from generate_series(0,1094) as i" %(tablename, data_offset, start_date)
+    insert_sql_str = "insert into %s select i+%d, 'backup', i + date '%s' from generate_series(0,%d) as i" %(tablename, data_offset, start_date, rowcount)
+    insert_sql_str += "; insert into %s select i+%d, 'restore', i + date '%s' from generate_series(0,%d) as i" %(tablename, data_offset, start_date, rowcount)
 
     with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
         dbconn.execSQL(conn, insert_sql_str)
@@ -670,15 +682,17 @@ def validate_distribution_policy(context, dbname):
     backup_file = os.path.join(current_dir, './gppylib/test/data', dbname.strip() + "_dist_policy_backup")
     restore_file = os.path.join(current_dir, './gppylib/test/data', dbname.strip() + "_dist_policy_restore")
     diff_backup_restore_data(context, backup_file, restore_file)
-   
-def check_empty_table(tablename, dbname):
+
+def check_row_count(tablename, dbname, nrows):
     NUM_ROWS_QUERY = 'select count(*) from %s' % tablename
     # We want to bubble up the exception so that if table does not exist, the test fails
     with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
         result = dbconn.execSQLForSingleton(conn, NUM_ROWS_QUERY)
-
-    if result != 0:
-        raise Exception('Unexpected rows in table %s.%s, rows = %d' % (dbname, tablename, result))
+    if result != nrows:
+        raise Exception('%d rows in table %s.%s, expected row count = %d' % (result, dbname, tablename, nrows))
+ 
+def check_empty_table(tablename, dbname):
+    check_row_count(tablename, dbname, 0)
      
 def get_master_hostname(dbname='template1'):
     master_hostname_sql = "select distinct hostname from gp_segment_configuration where content=-1"
@@ -776,7 +790,6 @@ def create_fake_pg_aoseg_table(context, table, dbname):
     sql = """CREATE TABLE %s(segno int, 
                              eof double precision,
                              tupcount double precision,
-                             modcount bigint,
                              varblockcount double precision,
                              eofuncompressed double precision)""" % table
     execute_sql(dbname, sql)
@@ -1032,3 +1045,10 @@ def get_change_tracking_segment_info():
         if seg.isSegmentModeInChangeLogging():
             return seg.getSegmentPort(), seg.getSegmentHostName()
 
+def are_segments_running():
+    gparray = GpArray.initFromCatalog(dbconn.DbURL())
+    segments = gparray.getDbList()
+    for seg in segments:
+        if seg.status != 'u':
+            return False 
+    return True
