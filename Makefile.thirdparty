@@ -146,7 +146,7 @@ endif
 
 ifeq "$(findstring $(BLD_ARCH),hpux_ia64 win32)" ""
 define tmpBLD_THIRDPARTY_LIBS_BASE
-	DDBoostSDK/2.4.1.0-289644
+	DDBoostSDK/2.6.2.0-410681
 	apr/1.2.12
 	apr-util/1.2.12
 	bzip2/1.0.6
