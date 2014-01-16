@@ -3,7 +3,7 @@
 
 #include "apr_general.h"
 #include "apr_md5.h"
-
+#include "apr_hash.h"
 
 /**
  * Validate the the gpperfmon database is correct and
@@ -48,9 +48,16 @@ APR_DECLARE(void) gpdb_get_hostlist(int* hostcnt, host_t** host_table, apr_pool_
 APR_DECLARE(void) gpdb_get_master_data_dir(char** hostname, char** mstrdir, apr_pool_t* pool);
 
 /**
+ * Find out all read only alert tail files, which don't include the one being written by
+ * gpdb currently. Merge them into stage file, and load into log_alert_history table,
+ * and remove them when successful.
+ */
+APR_DECLARE(void) gpdb_import_alert_log(apr_pool_t* pool);
+
+/**
  * check if new historical partitions are required and create them
  */
-APR_DECLARE(apr_status_t) gpdb_check_partitions(void);
+APR_DECLARE(apr_status_t) gpdb_check_partitions(mmon_options_t *opt);
 
 /**
  * insert _tail data into history table
@@ -83,6 +90,9 @@ APR_DECLARE (apr_status_t) gpdb_harvest_healthdata();
 
 APR_DECLARE (apr_status_t) remove_segid_constraint(void);
 
+APR_DECLARE (apr_hash_t *) get_active_queries(apr_pool_t* pool);
+
+APR_DECLARE (void) create_log_alert_table(void);
 
 #endif /* GPMONDB_H */
 

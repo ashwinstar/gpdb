@@ -93,8 +93,8 @@ extern char* gpmon_datetime(time_t t, char str[GPMON_DATE_BUF_SIZE]);
 extern char* gpmon_datetime_rounded(time_t t, char str[GPMON_DATE_BUF_SIZE]);
 
 /* utility */
-extern apr_int32_t get_query_status(apr_int32_t tmid, apr_int32_t ssid,
-									apr_int32_t ccnt);
+extern apr_int32_t get_query_status(apr_int32_t tmid, apr_int32_t ssid, apr_int32_t ccnt);
+extern char *get_query_text(apr_int32_t tmid, apr_int32_t ssid, apr_int32_t ccnt, apr_pool_t *pool);
 
 #define PATH_TO_APPLIANCE_VERSION_FILE "/etc/gpdb-appliance-version"
 #define PATH_TO_APPLAINCE_DEVICES_FILE "/opt/dca/etc/healthmond/devices.cnf"
@@ -155,9 +155,10 @@ typedef struct mmon_options_t
 	int health_harvest_interval;
 	int warning_disk_space_percentage;
 	int error_disk_space_percentage;
-	time_t disk_space_interval; //interval in seconds
+	time_t disk_space_interval; // interval in seconds
 	unsigned int max_disk_space_messages_per_interval;
 	int iterator_aggregate;
+	int partition_age;  		// in month 
 } mmon_options_t;
 
 typedef struct addressinfo_holder_t addressinfo_holder_t;

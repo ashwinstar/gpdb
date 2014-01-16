@@ -90,8 +90,6 @@ oid				objid_gpdbAlertSystemName[] = { 1, 3, 6, 1, 4, 1, 31327, 1, 6 };
 
 #if USE_EMAIL
 
-static char * get_str_from_chunk(CSVChunkStr *chunkstr,
-		const PipeProtoChunk *saved_chunks);
 static const char * messagebody_cb(void **buf, int *len, void *arg);
 static void print_recipient_status(smtp_recipient_t recipient,
 		const char *mailbox, void *arg  __attribute__((unused)));
@@ -1028,7 +1026,7 @@ static void move_to_next_chunk(CSVChunkStr * chunkstr,
 		}
 }
 
-static char *
+char *
 get_str_from_chunk(CSVChunkStr *chunkstr, const PipeProtoChunk *saved_chunks)
 {
 	int wlen = 0;

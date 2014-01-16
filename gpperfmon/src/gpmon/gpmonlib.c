@@ -230,20 +230,20 @@ int gpmon_warning(const char* fline, const char* fmt, ...)
 
 int gpmon_warningx(const char* fline, int e, const char* fmt, ...)
 {
-    va_list ap;
-    va_start(ap, fmt);
+	va_list ap;
+	va_start(ap, fmt);
 
 	LOCK_STDOUT
-    fprintf(stdout, "%s|:-WARNING: [%s] ", datetime(), fline);
-    vfprintf(stdout, fmt, ap);
-    if (e) {
-	char msg[512];
-	fprintf(stdout, "\n\terror %d (%s)", e, apr_strerror(e, msg, sizeof(msg)));
-    }
-    fprintf(stdout, "\n");
+	fprintf(stdout, "%s|:-WARNING: [%s] ", datetime(), fline);
+	vfprintf(stdout, fmt, ap);
+	if (e) {
+		char msg[512];
+		fprintf(stdout, "\n\terror %d (%s)", e, apr_strerror(e, msg, sizeof(msg)));
+	}
+	fprintf(stdout, "\n");
 	UNLOCK_STDOUT
 
-    return 0;
+	return 0;
 }
 
 
@@ -336,6 +336,45 @@ apr_int32_t get_query_status(apr_int32_t tmid, apr_int32_t ssid,
 	fscanf(fp, "%d", &status);
 	fclose(fp);
 	return status;
+}
+
+/* get query text from query text file */
+char *get_query_text(apr_int32_t tmid, apr_int32_t ssid, apr_int32_t ccnt, apr_pool_t *pool)
+{
+	const int META_LEN = 100;
+	char meta[META_LEN];
+	int qrylen = 0;
+	char fname[GPMON_DIR_MAX_PATH];
+	const char *META_FMT = "%s qtext";
+
+	snprintf(fname, GPMON_DIR_MAX_PATH, "%sq%d-%d-%d.txt", GPMON_DIR, tmid, ssid, ccnt);
+
+	FILE *fp = fopen(fname, "r");
+	if (!fp)
+	{
+		gpmon_warning(FLINE, "Open file %s failed", fname);
+		return NULL;
+	}
+	
+	// get query text length
+	fgets(meta, META_LEN, fp);
+	sscanf(meta, META_FMT, &qrylen);
+
+	char *query = apr_palloc(pool, qrylen + 1);
+	if (query == NULL) 
+	{
+		fclose(fp);	
+		gpmon_warning(FLINE, "Out of memory");
+		return NULL;
+	}
+
+	// read query text
+	int readlen = fread(query, 1, qrylen, fp);
+	query[readlen] = '\0';
+
+	fclose(fp);
+
+	return query;
 }
 
 int gpmon_recursive_mkdir(char* work_dir)

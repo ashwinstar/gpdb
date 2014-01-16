@@ -4,7 +4,7 @@ import shutil
 from gppylib.test.behave_utils.utils import drop_database_if_exists, start_database_if_not_started,\
                                             create_database, enable_postgis_and_load_test_data,    \
                                             enable_postgis_and_load_test_data_for_postgis_1,       \
-                                            run_command, check_user_permissions
+                                            run_command, check_user_permissions, run_gpcommand
 
 def before_feature(context, feature):
     drop_database_if_exists(context, 'testdb')
@@ -22,6 +22,13 @@ def before_feature(context, feature):
         drop_database_if_exists(context, 'opengeo')
         create_database(context, 'opengeo')
         enable_postgis_and_load_test_data_for_postgis_1(context)
+
+    if 'gpperfmon' in feature.tags:
+        drop_database_if_exists(context, 'gpperfmon')
+        pgport = os.getenv('PGPORT', 5432)
+        command = "gpperfmon_install --enable --password changeme --port %s" % pgport
+        run_gpcommand(context, command)
+        run_gpcommand(context, "gpstop -ar")
 
 
 def before_scenario(context, scenario):

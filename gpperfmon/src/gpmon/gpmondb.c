@@ -6,7 +6,6 @@
 #include "libpq-fe.h"
 #include "apr_strings.h"
 #include "apr_file_io.h"
-#include "apr_hash.h"
 #include "time.h"
 
 #define GPMON_HOSTTTYPE_HDW 1
@@ -24,7 +23,7 @@ int find_token_in_config_string(char* buffer, char**result, const char* token);
 #else
 int find_token_in_config_string(char* buffer, char**result, const char* token)
 {
-    return 1;
+	return 1;
 }
 #endif
 
@@ -57,7 +56,7 @@ static const char* gpdb_exec(PGconn** pconn, PGresult** pres, const char* query)
 
 	*pconn = conn;
 
-    return gpdb_exec_only(conn, pres, query);
+	return gpdb_exec_only(conn, pres, query);
 }
 
 // persistant_conn is optional if you are already holding an open connectionconn
@@ -71,9 +70,9 @@ int gpdb_exec_search_for_at_least_one_row(const char* QUERY, PGconn* persistant_
 	int res = 0;
 	const char* errmsg;
 
-    if (persistant_conn)
+	if (persistant_conn)
 	    errmsg = gpdb_exec_only(persistant_conn, &result, QUERY);
-    else
+	else
 	    errmsg = gpdb_exec(&conn, &result, QUERY);
 
 	if (errmsg)
@@ -89,7 +88,7 @@ int gpdb_exec_search_for_at_least_one_row(const char* QUERY, PGconn* persistant_
 
 	PQclear(result);
 
-    if (conn)
+	if (conn)
 	    PQfinish(conn);
 
 	return res;
@@ -225,7 +224,8 @@ void initializeHostInfoDataFromFileEntry(apr_pool_t* tmp_pool, struct hostinfo_h
 	holder->hostname = apr_pstrdup(tmp_pool, primary_hostname);
 	CHECKMEM(holder->hostname);
 
-	if (smon_bin_dir && smon_log_dir) {		
+	if (smon_bin_dir && smon_log_dir)
+	{		
 
 		holder->smon_dir = apr_pstrdup(tmp_pool, smon_bin_dir);
 		CHECKMEM(holder->smon_dir);
@@ -233,13 +233,16 @@ void initializeHostInfoDataFromFileEntry(apr_pool_t* tmp_pool, struct hostinfo_h
 		holder->datadir = apr_pstrdup(tmp_pool, smon_log_dir);
 		CHECKMEM(holder->datadir);
 
-	} else {
+	}
+	else
+	{
 		holder->smon_dir = NULL;
 		holder->datadir = apr_pstrdup(tmp_pool, "/opt/dca/var/gpsmon");
 		CHECKMEM(holder->datadir);
 	}
 
- 	switch(hostType){
+	switch(hostType)
+	{
 		case GPMON_HOSTTTYPE_HDW:
 			holder->is_hdw = 1;
 		break;
@@ -286,8 +289,8 @@ void process_line_in_devices_cnf(apr_pool_t* tmp_pool, apr_hash_t* htab, char* l
 	}
 
 	char* host;
-    char* device;
-    char* category;
+	char* device;
+	char* category;
 	char primary_hostname[64];
 
 	char* location = strchr(line, '#');
@@ -304,19 +307,19 @@ void process_line_in_devices_cnf(apr_pool_t* tmp_pool, apr_hash_t* htab, char* l
 	}
 
 	// we do these in reverse order so inserting null chars does not prevent finding other tokens
-    if (find_token_in_config_string(line, &host, "Host"))
+	if (find_token_in_config_string(line, &host, "Host"))
 	{
-        return;
+		return;
 	}
 
-    if (find_token_in_config_string(line, &device, "Device"))
+	if (find_token_in_config_string(line, &device, "Device"))
 	{
-        return;
+		return;
 	}
 
-    if (find_token_in_config_string(line, &category, "Category"))
+	if (find_token_in_config_string(line, &category, "Category"))
 	{
-        return;
+		return;
 	}
 
 	int monitored_device = 0;
@@ -381,7 +384,8 @@ void process_line_in_devices_cnf(apr_pool_t* tmp_pool, apr_hash_t* htab, char* l
 		*location = 0;
 
 	struct hostinfo_holder_t* hostinfo_holder = apr_hash_get(htab, primary_hostname, APR_HASH_KEY_STRING);
-	if (hostinfo_holder) {
+	if (hostinfo_holder)
+	{
 		gpmon_warningx(FLINE, 0, "Host '%s' is duplicated in devices.cnf", primary_hostname);
 		return;
 	}
@@ -398,7 +402,8 @@ void process_line_in_devices_cnf(apr_pool_t* tmp_pool, apr_hash_t* htab, char* l
 
 void process_line_in_hadoop_cluster_info(apr_pool_t* tmp_pool, apr_hash_t* htab, char* line, char* smon_bin_location, char* smon_log_location)
 {
-	if (!line) {
+	if (!line)
+	{
 		gpmon_warningx(FLINE, 0, "Line in hadoop cluster info file is null, skipping");
 		return;
 	}
@@ -409,25 +414,30 @@ void process_line_in_hadoop_cluster_info(apr_pool_t* tmp_pool, apr_hash_t* htab,
 	char primary_hostname[64];
 
 	char* location = strchr(line, '#');
-	if (location) {
+	if (location)
+	{
 		*location = 0; // remove comments from the line
 	}
 
-	if (!line) {
+	if (!line)
+	{
 		gpmon_warningx(FLINE, 0, "Line in devices file is null after removing comments, skipping");
 		return;
 	}
 
 	// we do these in reverse order so inserting null chars does not prevent finding other tokens
-	if (find_token_in_config_string(line, &category, "Categories")) {
+	if (find_token_in_config_string(line, &category, "Categories"))
+	{
 		return;
 	}
 	location = strchr(category, ','); //remove the comma and extra categories
-	if (location) {
+	if (location)
+	{
 		*location = 0;
 	}
 
-	if (find_token_in_config_string(line, &host, "Hostname")) {
+	if (find_token_in_config_string(line, &host, "Hostname"))
+	{
 		return;
 	}
 	TR1(("Found hadoop host %s\n",host ));
@@ -454,19 +464,22 @@ void process_line_in_hadoop_cluster_info(apr_pool_t* tmp_pool, apr_hash_t* htab,
 	// The below code is the same as the devices file parsing code
 
 	// segment host, switch, etc ... we are only adding additional hosts required for performance monitoring
-	if (!monitored_device) {
+	if (!monitored_device)
+	{
 		return;
 	}
 
 	strncpy(primary_hostname, host, sizeof(primary_hostname));
 	primary_hostname[sizeof(primary_hostname) - 1] = 0;
 	location = strchr(primary_hostname, ',');
-	if (location) {
+	if (location)
+	{
 		*location = 0;
 	}
 
 	struct hostinfo_holder_t* hostinfo_holder = apr_hash_get(htab, primary_hostname, APR_HASH_KEY_STRING);
-	if (hostinfo_holder) {
+	if (hostinfo_holder)
+	{
 		gpmon_warningx(FLINE, 0, "Host '%s' is duplicated in clusterinfo.txt", primary_hostname);
 		return;
 	}
@@ -517,23 +530,28 @@ int get_appliance_hosts_and_add_to_hosts(apr_pool_t* tmp_pool, apr_hash_t* htab)
 //Return 1 if not a hadoop software only cluster and 0 it is a hadoop software only cluster
 int get_hadoop_hosts_and_add_to_hosts(apr_pool_t* tmp_pool, apr_hash_t* htab, mmon_options_t* opt)
 {
-	if (!opt->smon_hadoop_swonly_binfile){
+	if (!opt->smon_hadoop_swonly_binfile)
+	{
 		TR0(("hadoop_smon_path not specified in gpmmon config. not processing hadoop nodes\n"));
 		return 1;
 	}
 
 	char* smon_log_dir;
 	char* hadoop_cluster_file;
-	if (opt->smon_hadoop_swonly_logdir){
+	if (opt->smon_hadoop_swonly_logdir)
+	{
 		smon_log_dir = opt->smon_hadoop_swonly_logdir;
 	}
-	else{
+	else
+	{
 		smon_log_dir = (char*)PATH_TO_HADOOP_SMON_LOGS;
 	}
-	if (opt->smon_hadoop_swonly_clusterfile){
+	if (opt->smon_hadoop_swonly_clusterfile)
+	{
 		hadoop_cluster_file = opt->smon_hadoop_swonly_clusterfile;
 	}
-	else{
+	else
+	{
 		hadoop_cluster_file = (char*)DEFAULT_PATH_TO_HADOOP_HOST_FILE;
 	}
 
@@ -548,7 +566,8 @@ int get_hadoop_hosts_and_add_to_hosts(apr_pool_t* tmp_pool, apr_hash_t* htab, mm
 	char buffer[1024];
 
 	// process the hostlines
-	while (NULL != fgets(buffer, sizeof(buffer), fd)) {
+	while (NULL != fgets(buffer, sizeof(buffer), fd))
+	{
 		line = gpmon_trim(buffer);// remove new line
 		process_line_in_hadoop_cluster_info(tmp_pool, htab, line, opt->smon_hadoop_swonly_binfile, smon_log_dir);
 	}
@@ -592,7 +611,7 @@ void gpdb_get_hostlist(int* hostcnt, host_t** host_table, apr_pool_t* global_poo
 	else
 	{
 		// hash of hostnames to addresses
- 		htab = apr_hash_make(pool);
+		htab = apr_hash_make(pool);
 
 		rowcount = PQntuples(result);
 
@@ -654,7 +673,8 @@ void gpdb_get_hostlist(int* hostcnt, host_t** host_table, apr_pool_t* global_poo
 		}
 
 		// if we have any appliance specific hosts such as hadoop nodes add them to the hash table
-		if (get_appliance_hosts_and_add_to_hosts(pool, htab)){
+		if (get_appliance_hosts_and_add_to_hosts(pool, htab))
+		{
 			TR0(("Not an appliance: checking for SW Only hadoop hosts.\n"));
 			get_hadoop_hosts_and_add_to_hosts(pool, htab, opt); // Not an appliance, so check for SW only hadoop nodes.
 		} 
@@ -680,7 +700,8 @@ void gpdb_get_hostlist(int* hostcnt, host_t** host_table, apr_pool_t* global_poo
 
 			hosts[hostcounter].hostname = strdup(hostinfo_holder->hostname);
 			hosts[hostcounter].data_dir = strdup(hostinfo_holder->datadir);
-			if (hostinfo_holder->smon_dir){
+			if (hostinfo_holder->smon_dir)
+			{
 				hosts[hostcounter].smon_bin_location = strdup(hostinfo_holder->smon_dir);
 			}
 			hosts[hostcounter].is_master = hostinfo_holder->is_master;
@@ -831,7 +852,60 @@ static void check_and_add_partition(PGconn* conn, const char* tbl, int begin_yea
 	}
 }
 
-static apr_status_t check_partition(const char* tbl, apr_pool_t* pool, PGconn* conn)
+// Drop pretty old partitons if exists.
+static void drop_old_partitions(PGconn* conn, const char* tbl, mmon_options_t *opt)
+{
+	const int QRYBUFSIZ = 1024;
+	PGresult* result = NULL;
+	const char* errmsg;
+	char qry[QRYBUFSIZ];
+
+	const char* SELECT_QRYFMT = "SELECT partitiontablename, partitionrangestart FROM pg_partitions "
+						        "WHERE tablename = '%s_history' "
+								"ORDER BY partitionrangestart DESC OFFSET %d;";
+	const char* DROP_QRYFMT   = "ALTER TABLE %s_history DROP PARTITION IF EXISTS FOR (%s);";
+
+	int partition_age = opt->partition_age;
+
+	if (partition_age <= 0)
+		return;
+
+	// partition_age + 1 because we always add 2 partitions for the boundary case 
+	
+	snprintf(qry, QRYBUFSIZ, SELECT_QRYFMT, tbl, partition_age + 1);
+
+	TR2(("drop partition: executing select query '%s\n'", qry));
+	errmsg = gpdb_exec_only(conn, &result, qry);
+	if (errmsg)
+	{
+		gpmon_warning(FLINE, "drop partition: select query '%s' response from server: %s\n", qry, errmsg);
+	}
+	else
+	{
+		int rowcount = PQntuples(result);
+		int i = 0;
+		for (; i < rowcount; i++)
+		{
+			PGresult* dropResult = NULL;
+			char* partitiontablename  = PQgetvalue(result, i, 0);
+			char* partitionrangestart = PQgetvalue(result, i, 1);
+			snprintf(qry, QRYBUFSIZ, DROP_QRYFMT, tbl, partitionrangestart); 
+			TR0(("Dropped partition table '%s\n'", partitiontablename));
+			errmsg = gpdb_exec_only(conn, &dropResult, qry);
+			PQclear(dropResult);
+			if (errmsg)
+			{
+				gpmon_warning(FLINE, "drop partion: drop query '%s' response from server: %s\n", qry, errmsg);
+				break;
+			}
+		}
+				
+	}
+	PQclear(result);
+}
+
+
+static apr_status_t check_partition(const char* tbl, apr_pool_t* pool, PGconn* conn, mmon_options_t *opt)
 {
 	struct tm tm;
 	time_t now;
@@ -841,10 +915,10 @@ static apr_status_t check_partition(const char* tbl, apr_pool_t* pool, PGconn* c
 
 	TR0(("check partitions on %s_history\n", tbl));
 
-    if (!conn)
-        return APR_ENOMEM;
+	if (!conn)
+		return APR_ENOMEM;
 
-   	now = time(NULL);
+	now = time(NULL);
 	if (!localtime_r(&now, &tm))
 	{
 		gpmon_warning(FLINE, "error in check_partition getting current time\n");
@@ -888,6 +962,8 @@ static apr_status_t check_partition(const char* tbl, apr_pool_t* pool, PGconn* c
 	check_and_add_partition(conn, tbl, year[0], month[0], year[1], month[1]);
 	check_and_add_partition(conn, tbl, year[1], month[1], year[2], month[2]);
 
+	drop_old_partitions(conn, tbl, opt);
+
 	TR0(("check partitions on %s_history done\n", tbl));
 	return APR_SUCCESS;
 }
@@ -926,7 +1002,8 @@ static apr_status_t harvest(const char* tbl, apr_pool_t* pool, PGconn* conN)
 	const char* errmsg;
 	apr_status_t res = APR_SUCCESS;
 
-	if (strcmp(tbl, "iterators") == 0) { //this is to leave the cpu percentage out of iterators history
+	if (strcmp(tbl, "iterators") == 0)
+	{ //this is to leave the cpu percentage out of iterators history
 		const char* ITERQRYFMT = "insert into %s_history (ctime, tmid, ssid, ccnt, segid, pid, nid, pnid, hostname, ntype, nstatus, tstart, "
 		"tduration, pmemsize, pmemmax, memsize, memresid, memshare, cpu_elapsed, cpu_currpct, phase, rows_out, rows_out_est, m0_name, m0_unit, m0_val, "
 		"m0_est, m1_name, m1_unit, m1_val, m1_est, m2_name, m2_unit, m2_val, m2_est, m3_name, m3_unit, m3_val, m3_est, m4_name, m4_unit, "
@@ -943,7 +1020,8 @@ static apr_status_t harvest(const char* tbl, apr_pool_t* pool, PGconn* conN)
 
 		snprintf(qrybuf, QRYBUFSIZ, ITERQRYFMT, tbl, tbl);
 	}
-	else {
+	else
+	{
 		snprintf(qrybuf, QRYBUFSIZ, QRYFMT, tbl, tbl);
 	}
 
@@ -964,7 +1042,8 @@ static apr_status_t harvest(const char* tbl, apr_pool_t* pool, PGconn* conN)
 }
 
 /**
- * This function removes the not null constraint from the segid column so that we can set it to null when the segment aggregation flag is true
+ * This function removes the not null constraint from the segid column so that
+ * we can set it to null when the segment aggregation flag is true
  */
 apr_status_t remove_segid_constraint(void)
 {
@@ -975,10 +1054,13 @@ apr_status_t remove_segid_constraint(void)
 	apr_status_t res = APR_SUCCESS;
 
 	errmsg = gpdb_exec(&conn, &result, ALTERSTR);
-	if (errmsg) {
+	if (errmsg)
+	{
 		res = 1;
 		gpmon_warningx(FLINE, 0, "---- Alter FAILED ---- on command: %s with error %s\n", ALTERSTR, errmsg);
-	} else {
+	}
+	else
+	{
 		TR1(("remove_segid_constraint: alter completed OK\n"));
 	}
 
@@ -1072,12 +1154,13 @@ static apr_status_t append_to_harvest(const char* tbl, apr_pool_t* pool, PGconn*
 }
 
 typedef apr_status_t eachtablefunc(const char* tbl, apr_pool_t*, PGconn*);
+typedef apr_status_t eachtablefuncwithopt(const char* tbl, apr_pool_t*, PGconn*, mmon_options_t*);
 
 char* all_tables[] = { "system", "queries", "iterators", "database", "segment", "filerep", "diskspace" };
 
 apr_status_t call_for_each_table(eachtablefunc func, apr_pool_t* pool, PGconn* conn)
-{ 
- 	apr_status_t status = APR_SUCCESS;
+{
+	apr_status_t status = APR_SUCCESS;
 	apr_status_t r;
 	int num_tables = sizeof(all_tables) / sizeof (char*);
 	int i;
@@ -1085,6 +1168,25 @@ apr_status_t call_for_each_table(eachtablefunc func, apr_pool_t* pool, PGconn* c
 	for (i = 0; i < num_tables; ++i)
 	{
 		r = func(all_tables[i], pool, conn);
+		if (r != APR_SUCCESS)
+		{
+			status = r;
+		}
+	}
+	
+	return status;
+}
+
+apr_status_t call_for_each_table_with_opt(eachtablefuncwithopt func, apr_pool_t* pool, PGconn* conn, mmon_options_t *opt)
+{
+	apr_status_t status = APR_SUCCESS;
+	apr_status_t r;
+	int num_tables = sizeof(all_tables) / sizeof (char*);
+	int i;
+
+	for (i = 0; i < num_tables; ++i)
+	{
+		r = func(all_tables[i], pool, conn, opt);
 		if (r != APR_SUCCESS)
 		{
 			status = r;
@@ -1140,39 +1242,277 @@ apr_status_t gpdb_harvest(void)
 	return call_for_each_table(harvest, NULL, NULL);
 }
 
+static bool gpdb_insert_alert_log()
+{
+	PGconn* conn = 0;
+	PGresult* result = 0;
+	const char* QRY = "insert into log_alert_history select * from log_alert_tail;";
+	const char* errmsg;
+	errmsg = gpdb_exec(&conn, &result, QRY);
+
+	bool success = true;
+	if (errmsg)
+	{
+		gpmon_warningx(
+			FLINE, 0,
+			"---- ARCHIVING HISTORICAL ALERT DATA FAILED ---- on query %s with error %s\n",
+			QRY, errmsg);
+		success = false;
+	}
+	else
+	{
+		TR1(("load completed OK: alert_log\n"));
+	}
+
+	PQclear(result);
+	PQfinish(conn);
+	return success;
+}
+
+static void gpdb_remove_success_files(apr_array_header_t *success_append_files, apr_pool_t *pool)
+{
+	void *file_slot = NULL;
+	while ((file_slot = apr_array_pop(success_append_files)))
+	{
+		const char *file_name = (*(char**)file_slot);
+		if (file_name)
+		{
+			if (apr_file_remove(file_name, pool) != APR_SUCCESS)
+			{
+				gpmon_warningx(FLINE, 0, "failed removing file:%s", file_name);
+			}
+		}
+	}
+}
+
+static int cmp_string(const void *left, const void *right)
+{
+	const char *op1 = *(const char**)left;
+	const char *op2 = *(const char**)right;
+	return strcmp(op1, op2);
+}
+
+// Find all files start with 'gpdb-alert' under GPMON_LOG directory, sort it and
+// remove the latest one 'gpdb-alert-*.csv' as it is still used by GPDB.
+static void get_alert_log_tail_files(apr_array_header_t *tail_files, apr_pool_t *pool)
+{
+	apr_dir_t *dir;
+	apr_status_t status = apr_dir_open(&dir, GPMON_LOG, pool);
+	if (status != APR_SUCCESS)
+	{
+		gpmon_warningx(FLINE, status, "failed openning directory:%s", GPMON_LOG);
+		return;
+	}
+
+	apr_finfo_t dirent;
+	static const char gpdb_prefix[] = "gpdb-alert";
+	while (apr_dir_read(&dirent, APR_FINFO_DIRENT, dir) == APR_SUCCESS)
+	{
+		if (strncmp(dirent.name, gpdb_prefix, sizeof(gpdb_prefix) - 1) == 0)
+		{
+			void *file_slot = apr_array_push(tail_files);
+			if (! file_slot)
+			{
+	    	    gpmon_warningx(FLINE, 0, "failded getting alert tail log:%s due to out of memory", dirent.name);
+				continue;
+			}
+			(*(const char**)file_slot) = apr_pstrcat(pool, GPMON_LOG, "/", dirent.name, NULL);
+		}
+	}
+
+	// We only want to use qsort in stdlib.h, not the macro qsort in port.h.
+	(qsort)(tail_files->elts, tail_files->nelts, tail_files->elt_size, cmp_string);
+	(void)apr_array_pop(tail_files);
+	apr_dir_close(dir);
+}
+
+void gpdb_import_alert_log(apr_pool_t *pool)
+{
+	// Get alert log files to be imported.
+	apr_array_header_t* tail_files = apr_array_make(pool, 10, sizeof(char*)); 
+	apr_array_header_t* success_append_files = apr_array_make(pool, 10, sizeof(char*));
+	get_alert_log_tail_files(tail_files, pool); 
+
+	// Create or truncate stage file.
+	char *dst_file = apr_pstrcat(pool, GPMON_LOG, "/", GPMON_ALERT_LOG_STAGE, NULL);
+	apr_status_t status = truncate_file(dst_file, pool);
+	if (status != APR_SUCCESS)
+	{
+	    gpmon_warningx(FLINE, 0, "failded truncate stage file:%s", dst_file);
+	    return;
+	}
+
+	// Append alert log tail file to stage file
+	void *tail_file = NULL;
+	while ((tail_file = apr_array_pop(tail_files)))
+	{
+		char *filename = *(char**)tail_file;
+		void *success_file_slot = apr_array_push(success_append_files);
+		if (!success_file_slot)
+		{
+			gpmon_warningx(
+				FLINE, 0, "failded appending file:%s to stage file:%s due to out of memory",
+				filename, dst_file);
+			continue;
+		} 
+		(*(char**)success_file_slot) = NULL;
+
+	    status = apr_file_append(filename, dst_file, APR_FILE_SOURCE_PERMS, pool);
+	    if (status != APR_SUCCESS)
+	    {
+			gpmon_warningx(FLINE, status, "failed appending file:%s to stage file:%s", filename, dst_file);
+			continue;
+		}
+	    else
+	    {
+			(*(char**)success_file_slot) = filename;
+	    	TR1(("success appending file:%s to stage file:%s\n", filename, dst_file));
+	    }
+	}
+
+	// Insert tail file to history table.
+	if (gpdb_insert_alert_log())
+	{
+		// Delete tail file
+		gpdb_remove_success_files(success_append_files, pool);
+		truncate_file(dst_file, pool);
+	}
+}
+
+
 /* insert _tail data into history table */
-apr_status_t gpdb_check_partitions(void)
+apr_status_t gpdb_check_partitions(mmon_options_t *opt)
 {
 	// health is not a full table and needs to be added to the list
 
 	apr_status_t r1, r2, r3;
 
-    // open a connection
-    PGconn* conn = NULL;
+	// open a connection
+	PGconn* conn = NULL;
 	conn = PQconnectdb(GPDB_CONNECTION_STRING);
 
 	if (PQstatus(conn) != CONNECTION_OK)
-    {
-		gpmon_warning(FLINE, "error creating GPDB client connection to dynamically check/create gpperfmon partitions: %s", 
-            PQerrorMessage(conn));
+	{
+		gpmon_warning(
+			FLINE,
+			"error creating GPDB client connection to dynamically "
+			"check/create gpperfmon partitions: %s", 
+		PQerrorMessage(conn));
 
-        return APR_EINVAL;
-    }
+		return APR_EINVAL;
+	}
 
-	r1 = check_partition("health", NULL, conn);
+	r1 = check_partition("health", NULL, conn, opt);
 
-	r2 = check_partition("emcconnect", NULL, conn);
+	r2 = check_partition("emcconnect", NULL, conn, opt);
 	
-	r3 = call_for_each_table(check_partition, NULL, conn);
+	r3 = call_for_each_table_with_opt(check_partition, NULL, conn, opt);
 
-    // close connection
+	// close connection
 	PQfinish(conn);
 
-	if (r1  != APR_SUCCESS)
+	if (r1 != APR_SUCCESS)
+	{
 		return r1;
-    else if (r2 != APR_SUCCESS)
+	}
+	else if (r2 != APR_SUCCESS)
+	{
 		return r2;
-    else
-        return r3;
+	} 
+	return r3;
 }
 
+static void convert_tuples_to_hash(PGresult *result, apr_hash_t *hash, apr_pool_t *pool)
+{
+	int rowcount = PQntuples(result);
+	int i = 0;
+	for (; i < rowcount; i++)
+	{
+		char* sessid = PQgetvalue(result, i, 0);
+		char* query  = PQgetvalue(result, i, 1);
+
+		char *sessid_copy = apr_pstrdup(pool, sessid);
+		char *query_copy  = apr_pstrdup(pool, query);
+		if (sessid_copy == NULL || query_copy == NULL)
+		{
+			gpmon_warning(FLINE, "Out of memory");
+			continue;
+		}
+		apr_hash_set(hash, sessid_copy, APR_HASH_KEY_STRING, query_copy);
+	}
+}
+
+apr_hash_t *get_active_queries(apr_pool_t *pool)
+{
+	PGresult   *result = NULL;
+	apr_hash_t *active_query_tab = NULL;
+
+	PGconn *conn = PQconnectdb(GPDB_CONNECTION_STRING);
+	if (PQstatus(conn) != CONNECTION_OK)
+	{
+		gpmon_warning(
+			FLINE,
+			"error creating GPDB client connection to dynamically "
+			"check/create gpperfmon partitions: %s", 
+		PQerrorMessage(conn));
+		return NULL;
+	}
+
+	const char *qry= "SELECT sess_id, current_query FROM pg_stat_activity;";
+	const char *errmsg = gpdb_exec_only(conn, &result, qry);
+	if (errmsg)
+	{
+		gpmon_warning(FLINE, "check query status failed : %s", errmsg);
+	}
+	else
+	{
+		active_query_tab = apr_hash_make(pool);
+		if (! active_query_tab)
+		{
+			gpmon_warning(FLINE, "Out of memory");
+		}
+		else
+		{
+			convert_tuples_to_hash(result, active_query_tab, pool);
+		}
+	}
+
+	PQclear(result);
+	PQfinish(conn);
+
+	return active_query_tab;
+}
+
+void create_log_alert_table()
+{
+	PGconn *conn = PQconnectdb(GPDB_CONNECTION_STRING);
+	if (PQstatus(conn) != CONNECTION_OK)
+	{
+		gpmon_warning(
+			FLINE,
+			"error creating GPDB client connection to dynamically "
+			"check/create gpperfmon partitions: %s", 
+		PQerrorMessage(conn));
+		return;
+	}
+
+	char *qry= "SELECT tablename FROM pg_tables WHERE tablename = 'log_alert_history' AND schemaname = 'public' ;";
+	bool has_table = gpdb_exec_search_for_at_least_one_row(qry, conn);
+	if (! has_table)
+	{
+		PGresult *result = NULL;
+		qry = "BEGIN; CREATE TABLE public.log_alert_history (LIKE gp_toolkit.__gp_log_master_ext);"
+		      "CREATE EXTERNAL WEB TABLE public.log_alert_tail (LIKE public.log_alert_history) EXECUTE 'cat gpperfmon/logs/alert_log_stage 2> /dev/null || true' ON MASTER FORMAT 'csv' (delimiter E',' null E'' escape E'\"' quote E'\"') ENCODING 'UTF8';"
+		      "CREATE EXTERNAL WEB TABLE public.log_alert_now (LIKE public.log_alert_history) EXECUTE 'cat gpperfmon/logs/*.csv 2> /dev/null || true' ON MASTER FORMAT 'csv' (delimiter E',' null E'' escape E'\"' quote E'\"') ENCODING 'UTF8'; COMMIT;";
+
+		const char *errmsg = gpdb_exec_only(conn, &result, qry);
+		PQclear(result);
+		if (errmsg)
+		{
+			gpmon_warning(FLINE, "failed to create log_alter_* tables: %s\n", errmsg);
+		}
+	}
+
+	PQfinish(conn);
+	return;
+}

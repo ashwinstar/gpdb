@@ -49,6 +49,9 @@ static struct
 	const char* log_dir;
 	apr_uint64_t max_log_size;
 	int iterator_aggregate;
+	// The timeout in seconds for smon to restart if no requests
+	// come during that period.
+	apr_uint64_t terminate_timeout;
 } opt = { 0 };
 
 int verbose = 0; /* == opt.v */
@@ -434,6 +437,25 @@ static apr_uint64_t metric_diff_calc( sigar_uint64_t newval, apr_uint64_t oldval
 }
 #endif
 
+// Helper function to calculate cpu percentage during a period
+static float calc_diff_percentage(sigar_uint64_t newvalue, sigar_uint64_t oldvalue, int total_diff, const char *itemname)
+{
+	float result = ((float) (newvalue - oldvalue) * 100 / total_diff);
+	if (newvalue < oldvalue)
+	{
+		TR0(("calc_diff_percentage: new value %" APR_UINT64_T_FMT " is less than old value %" APR_UINT64_T_FMT " for metric %s; set to 0.\n",
+				newvalue, oldvalue, itemname));
+		result = 0.0;
+	} 
+	else if (result > 100)
+	{
+		TR0(("calc_diff_percentage: new value %" APR_UINT64_T_FMT " old value %" APR_UINT64_T_FMT " total diff %d for metric %s; set to 100.\n",
+				newvalue, oldvalue, total_diff, itemname));
+		result = 100;
+	}
+	return result;
+}
+
 static void send_machine_metrics(SOCKET sock)
 {
 	sigar_mem_t mem;
@@ -797,9 +819,9 @@ static void send_machine_metrics(SOCKET sock)
 	cpu_total_diff = cpu.total - pcpu.total;
 	if (cpu_total_diff)
 	{
-		float cpu_user = ((float) (cpu.user - pcpu.user) * 100 / cpu_total_diff) + ((float)((cpu.nice - pcpu.nice) * 100 / cpu_total_diff));
-		float cpu_sys = ((float) (cpu.sys - pcpu.sys) * 100 / cpu_total_diff) + ((float)((cpu.wait - pcpu.wait) * 100 / cpu_total_diff));
-		float cpu_idle = ((float) (cpu.idle - pcpu.idle) * 100 / cpu_total_diff);
+		float cpu_user = calc_diff_percentage(cpu.user, pcpu.user, cpu_total_diff, "cpu.user") + calc_diff_percentage(cpu.nice, pcpu.nice, cpu_total_diff, "cpu.nice");
+		float cpu_sys  = calc_diff_percentage(cpu.sys,  pcpu.sys,  cpu_total_diff, "cpu.sys")  + calc_diff_percentage(cpu.wait, pcpu.wait, cpu_total_diff, "cpu.wait");
+		float cpu_idle = calc_diff_percentage(cpu.idle, pcpu.idle, cpu_total_diff, "cpu.idle");
 
 #if defined (sun)
 		// lib sigar on sun returns total cpu% of 100% times number of cores
@@ -1225,6 +1247,11 @@ static void gx_accept(SOCKET sock, short event, void* arg)
 	socklen_t alen = sizeof(a);
 	char* p;
 	char* q;
+
+	if (event & EV_TIMEOUT)
+	{
+		gpmon_fatal(FLINE, "smon terminates due to no requests come after %" FMT64 " seconds\n", opt.terminate_timeout);
+	}
 
 	if (0 == (event & EV_READ))
 		return;
@@ -1887,10 +1914,14 @@ static void setup_tcp(void)
 	TR1(("TCP port %d opened\n", gx.port));
 
 	/* set up listen event, and associate with our event_base */
-	event_set(&gx.listen_event, sock, EV_READ | EV_PERSIST, gx_accept, 0);
+	event_set(&gx.listen_event, sock, EV_READ | EV_PERSIST | EV_TIMEOUT, gx_accept, 0);
+
+	struct timeval accept_timeout;
+	accept_timeout.tv_sec = opt.terminate_timeout;
+	accept_timeout.tv_usec = 0;
 
 	/* start watching this event */
-	if (event_add(&gx.listen_event, 0))
+	if (event_add(&gx.listen_event, opt.terminate_timeout ? &accept_timeout : 0))
 	{
 		gpsmon_fatal(FLINE, "event_add failed");
 	}
@@ -2336,6 +2367,7 @@ static void parse_command_line(int argc, const char* const argv[])
 	{ NULL, 'D', 0, "debug mode" },
 	{ NULL, 'l', 1, "log directory" },
 	{ NULL, 'm', 1, "max log size" },
+	{ NULL, 't', 1, "terminate timeout" },
 	{ NULL, 'a', 0, "iterator aggregate" },
 	{ NULL, 0, 0, NULL } };
 	apr_pool_t* pool;
@@ -2354,6 +2386,7 @@ static void parse_command_line(int argc, const char* const argv[])
 	opt.pname = bin_start;
 	opt.v = opt.D = 0;
 	opt.max_log_size = 0;
+	opt.terminate_timeout = 0;
 
 	if (0 != (e = apr_getopt_init(&os, pool, argc, argv)))
 	{
@@ -2381,6 +2414,9 @@ static void parse_command_line(int argc, const char* const argv[])
 			break;
 		case 'a':
 			opt.iterator_aggregate = 1;
+			break;
+		case 't':
+			opt.terminate_timeout = apr_atoi64(arg);
 			break;
 		}
 	}

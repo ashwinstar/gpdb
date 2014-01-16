@@ -208,6 +208,9 @@ if __name__ == '__main__':
         cmd = Command("PGPORT=%d gpconfig -c gp_external_enable_exec -v on --masteronly" % (options.port))
         commands.append(cmd)
 
+        cmd = Command("PGPORT=%d gpconfig -c gpperfmon_log_alert_level -v warning" % (options.port))
+        commands.append(cmd)
+
     command = None
     try:
         for c in (commands):

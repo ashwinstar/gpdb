@@ -228,5 +228,20 @@ alter external table public.queries_tail add column application_name varchar(64)
 alter external table public._queries_tail add column application_name varchar(64), add column rsqname varchar(64), add column rqppriority varchar(16);
 alter table public.queries_history add column application_name varchar(64), add column rsqname varchar(64), add column rqppriority varchar(16);
 
+-- TABLE: gp_log_master_ext 
+--   (like gp_toolkit.__gp_log_master_ext)
+CREATE EXTERNAL WEB TABLE public.gp_log_master_ext (LIKE gp_toolkit.__gp_log_master_ext) EXECUTE E'find $GP_SEG_DATADIR/pg_log/ -name "gpdb*.csv" | sort -r | head -n 2 | xargs cat' ON MASTER FORMAT 'csv' (delimiter E',' null E'' escape E'"' quote E'"') ENCODING 'UTF8';
+
+-- TABLE: log_alert_history 
+--   (like gp_toolkit.__gp_log_master_ext)
+CREATE TABLE public.log_alert_history (LIKE gp_toolkit.__gp_log_master_ext);
+
+-- TABLE: log_alert_tail 
+--   (like gp_toolkit.__gp_log_master_ext)
+CREATE EXTERNAL WEB TABLE public.log_alert_tail (LIKE public.log_alert_history) EXECUTE 'cat gpperfmon/logs/alert_log_stage 2> /dev/null || true' ON MASTER FORMAT 'csv' (delimiter E',' null E'' escape E'"' quote E'"') ENCODING 'UTF8'; 
+
+-- TABLE: log_alert_all 
+--   (like gp_toolkit.__gp_log_master_ext)
+CREATE EXTERNAL WEB TABLE public.log_alert_now (LIKE public.log_alert_history) EXECUTE 'cat gpperfmon/logs/*.csv 2> /dev/null || true' ON MASTER FORMAT 'csv' (delimiter E',' null E'' escape E'"' quote E'"') ENCODING 'UTF8'; 
 
 -- END

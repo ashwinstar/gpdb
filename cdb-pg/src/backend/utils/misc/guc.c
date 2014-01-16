@@ -579,6 +579,7 @@ bool gp_debug_resqueue_priority = false;
 
 /* Perfmon segment GUCs */
 int gp_perfmon_segment_interval;
+static char *gpperfmon_log_alert_level_str;
 
 /* Perfmon debug GUC */
 bool gp_perfmon_print_packet_info;
@@ -6188,6 +6189,15 @@ static struct config_string ConfigureNamesString[] =
 		},
 		&gp_workfile_type_hashjoin_str,
 		"bfz", assign_gp_workfile_type_hashjoin, NULL
+	},
+
+	{
+		{"gpperfmon_log_alert_level", PGC_USERSET, LOGGING,
+			gettext_noop("Specify the log alert level used by gpperfmon."),
+			gettext_noop("Valid values are 'none', 'warning', 'error', 'fatal', 'panic'.")
+		},
+		&gpperfmon_log_alert_level_str,
+		"none", gpvars_assign_gp_gpperfmon_log_alert_level, gpvars_show_gp_gpperfmon_log_alert_level
 	},
 
 	{

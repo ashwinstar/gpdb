@@ -62,6 +62,7 @@ extern bool Gp_entry_postmaster;
 bool		Redirect_stderr = false;
 int			Log_RotationAge = HOURS_PER_DAY * MINS_PER_HOUR;
 int			Log_RotationSize = 10 * 1024;
+int			Alert_Log_RotationSize = 1024;
 char	   *Log_directory = NULL;
 char	   *Log_filename = NULL;
 bool		Log_truncate_on_rotation = false;
@@ -81,6 +82,15 @@ static pg_time_t next_rotation_time;
 static bool pipe_eof_seen = false;
 static FILE *syslogFile = NULL;
 static char *last_file_name = NULL;
+// Store only those logs the severe of that are at least WARNING level to
+// speed up the access for it when log files become very huge.
+static FILE *alertLogFile = NULL;
+// The directory used by gpperfmon where we store alert logs.
+static const char *gp_perf_mon_directory = "gpperfmon/logs";
+static const char *alert_file_pattern = "gpdb-alert-%Y-%m-%d_%H%M%S.csv";
+static char *alert_last_file_name = NULL;
+static bool alert_log_level_opened = false;
+static bool write_to_alert_log = false;
 
 /* An err msg may break into sever pipe chunks, so we need a buffer to assemble them.
  * We fix the number of buffers.  Generally a relative small number should suffice.
@@ -125,7 +135,7 @@ HANDLE		syslogPipe[2] = {0, 0};
 
 #ifdef WIN32
 static HANDLE threadHandle = 0;
-static CRITICAL_SECTION sysfileSection;
+static CRITICAL_SECTION fileSection;
 #endif
 
 static bool chunk_is_postgres_chunk(PipeProtoHeader *hdr)
@@ -144,6 +154,7 @@ static void syslogger_flush_chunks(void);
  */
 static volatile sig_atomic_t got_SIGHUP = false;
 static volatile sig_atomic_t rotation_requested = false;
+static volatile sig_atomic_t alert_rotation_requested = false;
 
 
 /* Local subroutines */
@@ -159,8 +170,9 @@ static void open_csvlogfile(void);
 
 static unsigned int __stdcall pipeThread(void *arg);
 #endif
-static void logfile_rotate(bool time_based_rotation);
-static char *logfile_getname(pg_time_t timestamp);
+static void logfile_rotate(bool time_based_rotation, const char *log_directory, const char* log_filename, 
+                           FILE **fh, char **last_log_file_name, bool is_alert_rotate);
+static char *logfile_getname(pg_time_t timestamp, const char *log_directory, const char *log_file_pattern);
 static void set_next_rotation_time(void);
 static void sigHupHandler(SIGNAL_ARGS);
 static void sigUsr1Handler(SIGNAL_ARGS);
@@ -285,7 +297,7 @@ SysLoggerMain(int argc, char *argv[])
 
 #ifdef WIN32
     /* Fire up separate data transfer thread */
-    InitializeCriticalSection(&sysfileSection);
+    InitializeCriticalSection(&fileSection);
 
     threadHandle = (HANDLE) _beginthreadex(NULL, 0, pipeThread, NULL, 0, NULL);
     if (threadHandle == 0)
@@ -351,7 +363,13 @@ SysLoggerMain(int argc, char *argv[])
             pg_time_t	now = (pg_time_t) time(NULL);
 
             if (now >= next_rotation_time)
+            {
                 rotation_requested = time_based_rotation = true;
+                if (alert_log_level_opened)
+                {
+                    alert_rotation_requested = true;
+                }
+             }
         }
 
         if (!rotation_requested && Log_RotationSize > 0)
@@ -359,10 +377,24 @@ SysLoggerMain(int argc, char *argv[])
             /* Do a rotation if file is too big */
             if (ftell(syslogFile) >= Log_RotationSize * 1024L)
                 rotation_requested = true;
+            
+        }
+            
+        if (alert_log_level_opened && 
+            !alert_rotation_requested &&
+            alertLogFile &&
+            ftell(alertLogFile) >= Alert_Log_RotationSize * 1024L)
+        {
+                alert_rotation_requested = true;
         }
 
         if (rotation_requested)
-            logfile_rotate(time_based_rotation);
+            logfile_rotate(time_based_rotation, Log_directory, Log_filename, &syslogFile, &last_file_name,
+                           false /* is_alert_rotate */);
+        
+        if (alert_log_level_opened && alert_rotation_requested)
+            logfile_rotate(time_based_rotation, gp_perf_mon_directory, alert_file_pattern,
+                           &alertLogFile, &alert_last_file_name, true /* is_alert_rotate */);
 
 #ifndef WIN32
 
@@ -583,6 +615,32 @@ SysLoggerMain(int argc, char *argv[])
     }
 }
 
+static void
+open_alert_log_file()
+{
+    if (Gp_entry_postmaster &&
+        Gp_role == GP_ROLE_DISPATCH &&
+        gpperfmon_log_alert_level != GPPERFMON_LOG_ALERT_LEVEL_NONE)
+    {
+        alert_log_level_opened = true;
+        mkdir(gp_perf_mon_directory, 0700);
+        char *alert_file_name = logfile_getname(time(NULL), gp_perf_mon_directory, alert_file_pattern);
+        alertLogFile = fopen(alert_file_name, "a");
+        if (!alertLogFile)
+        {
+	        ereport(WARNING,
+			        (errcode_for_file_access(),
+			         (errmsg("could not create log file \"%s\": %m",
+					  alert_file_name))));
+        }
+        else
+        {
+            setvbuf(alertLogFile, NULL, LBF_MODE, 0);
+        }
+        pfree(alert_file_name);
+    }
+}
+
 /*
  * Postmaster subroutine to start a syslogger subprocess.
  */
@@ -640,7 +698,7 @@ SysLogger_Start(void)
      * The initial logfile is created right in the postmaster, to verify that
      * the Log_directory is writable.
      */
-    filename = logfile_getname(time(NULL));
+    filename = logfile_getname(time(NULL), Log_directory, Log_filename);
 
     syslogFile = fopen(filename, "a");
 
@@ -649,6 +707,8 @@ SysLogger_Start(void)
 				(errcode_for_file_access(),
 				 (errmsg("could not create log file \"%s\": %m",
 						 filename))));
+
+    open_alert_log_file();
 
     setvbuf(syslogFile, NULL, LBF_MODE, 0);
 
@@ -729,6 +789,11 @@ SysLogger_Start(void)
                 /* postmaster will never write the file; close it */
                 fclose(syslogFile);
                 syslogFile = NULL;
+                if (alertLogFile)
+                {
+                    fclose(alertLogFile);
+                    alertLogFile = NULL;
+                }
                 return (int) sysloggerPid;
         }
 
@@ -750,6 +815,7 @@ syslogger_forkexec(void)
     char	   *av[10];
     int			ac = 0;
     char		filenobuf[32];
+    char        alertFileNobuf[32];
 
     av[ac++] = "postgres";
     av[ac++] = "--forklog";
@@ -771,6 +837,23 @@ syslogger_forkexec(void)
 #endif   /* WIN32 */
     av[ac++] = filenobuf;
 
+    if (alert_log_level_opened)
+    {
+#ifndef WIN32
+        if (alertLogFile != NULL)
+            snprintf(alertFileNoBuf, sizeof(alertFileNoBuf), "%d",
+                    fileno(alertLogFile));
+        else
+            strcpy(alertFileNoBuf, "-1");
+#else							/* WIN32 */
+        if (alertLogFile != NULL)
+            snprintf(alertFileNoBuf, sizeof(alertFileNoBuf), "%ld",
+                     _get_osfhandle(_fileno(alertLogFile)));
+        else
+            strcpy(alertFileNoBuf, "0");
+#endif
+        av[ac++] = alertFileNoBuf;
+    }
     av[ac] = NULL;
 	Assert(ac < lengthof(av));
 
@@ -786,8 +869,9 @@ syslogger_forkexec(void)
 syslogger_parseArgs(int argc, char *argv[])
 {
     int			fd;
+    int         alertFd;
 
-	Assert(argc == 4);
+    Assert(argc == alert_log_level_opened ? 4 : 3);
     argv += 3;
 
 #ifndef WIN32
@@ -808,14 +892,36 @@ syslogger_parseArgs(int argc, char *argv[])
             setvbuf(syslogFile, NULL, LBF_MODE, 0);
         }
     }
+#endif
+
+    if (alert_log_level_opened)
+    {
+        alertFd = atoi(*argv++);
+#ifndef WIN32
+        if (alertFd != -1)
+        {
+            alertLogFile = fdopen(alertFd, "a");
+            setvbuf(alertLogFile, NULL, LBF_MODE, 0);
+        }
+#else							/* WIN32 */
+        if (alertFd != 0)
+        {
+            alertFd = _open_osfhandle(alertFd, _O_APPEND | _O_TEXT);
+            if (alertFd > 0)
+            {
+                alertLogFile = fdopen(alertFd, "a");
+                setvbuf(alertLogFile, NULL, LBF_MODE, 0);
+            }
+        }
 #endif   /* WIN32 */
+    }
 }
 #endif   /* EXEC_BACKEND */
 
 /*
  * Write a given timestamp to the log file.
  */
-    void
+void
 syslogger_append_timestamp(pg_time_t stamp_time, bool amsyslogger, bool append_comma)
 {
     if(stamp_time != 0)
@@ -1007,7 +1113,7 @@ syslogger_write_str_from_chunk(CSVChunkStr *chunkstr, bool csv,
         write_syslogger_file_binary(",", 1);
 }
 
-    void
+void
 syslogger_write_int32(bool test0, const char *prefix, int32 i, bool amsyslogger, bool append_comma)
 {
     char buf[1024];
@@ -1245,6 +1351,26 @@ syslogger_write_errordata(PipeProtoHeader *chunkHeader, GpErrorData *errorData, 
 #endif	
 }
 
+static void set_write_to_alert_log(const char *severity)
+{
+    if (alert_log_level_opened)
+    {
+        GpperfmonLogAlertLevel alert_level =
+            gpperfmon_log_alert_level_from_string(severity);
+        // gpperfmon_log_alert_level cannot be GPPERFMON_LOG_ALERT_LEVEL_NONE,
+        // because alert_log_level_opened is true; 
+        if (alert_level >= gpperfmon_log_alert_level)
+        {
+            write_to_alert_log = true;
+        }
+    }
+}
+
+static void unset_write_to_alert_log()
+{
+    write_to_alert_log = false;
+}
+
 /*
  * syslogger_log_segv_chunk
  *   Write the chunk for the message sent inside a SEGV/BUS/ILL handler to the log.
@@ -1260,11 +1386,13 @@ syslogger_log_segv_chunk(PipeProtoChunk *chunk)
 
 	GpErrorData errorData;
 	fillinErrorDataFromSegvChunk(&errorData, chunk);
+    set_write_to_alert_log(errorData.error_severity);
 	syslogger_write_errordata(&chunk->hdr, &errorData, chunk->hdr.log_format == 'c');
 	freeErrorDataFields(&errorData);
 	
 	/* mark chunk as unused */
 	chunk->hdr.pid = 0;
+    unset_write_to_alert_log();
 }
 
 void syslogger_log_chunk_list(PipeProtoChunk *chunk)
@@ -1279,6 +1407,27 @@ void syslogger_log_chunk_list(PipeProtoChunk *chunk)
     else
     {
         CSVChunkStr chunkstr = { chunk, chunk->data + sizeof(GpErrorDataFixFields) };
+	    GpErrorData errorData;
+        memset(&errorData, 0, sizeof(errorData));
+        memcpy(&errorData.fix_fields, chunk->data, sizeof(errorData.fix_fields));
+        errorData.username = get_str_from_chunk(&chunkstr,saved_chunks);
+        errorData.databasename = get_str_from_chunk(&chunkstr,saved_chunks);
+        errorData.remote_host = get_str_from_chunk(&chunkstr,saved_chunks);
+        errorData.remote_port = get_str_from_chunk(&chunkstr,saved_chunks);
+        errorData.error_severity = get_str_from_chunk(&chunkstr,saved_chunks);
+        errorData.sql_state = get_str_from_chunk(&chunkstr,saved_chunks);
+        errorData.error_message = get_str_from_chunk(&chunkstr,saved_chunks);
+        errorData.error_detail = get_str_from_chunk(&chunkstr,saved_chunks);
+        errorData.error_hint = get_str_from_chunk(&chunkstr,saved_chunks);
+        errorData.internal_query = get_str_from_chunk(&chunkstr,saved_chunks);
+        errorData.error_context = get_str_from_chunk(&chunkstr,saved_chunks);
+        errorData.debug_query_string = get_str_from_chunk(&chunkstr,saved_chunks);
+        errorData.error_func_name = get_str_from_chunk(&chunkstr,saved_chunks);
+        errorData.error_filename = get_str_from_chunk(&chunkstr,saved_chunks);
+        errorData.stacktrace = get_str_from_chunk(&chunkstr,saved_chunks);
+
+        // We only send to alert for csv format log.
+        set_write_to_alert_log(errorData.error_severity);
 
         /*
          * timestamp_with_milliseconds 
@@ -1286,19 +1435,19 @@ void syslogger_log_chunk_list(PipeProtoChunk *chunk)
         syslogger_append_current_timestamp(true);
 
         /* username */
-        syslogger_write_str_from_chunk(&chunkstr, true, false, true);
+        syslogger_write_str_with_comma(errorData.username, true, true);
 
         /* databasename */
-        syslogger_write_str_from_chunk(&chunkstr, true, false, true);
+        syslogger_write_str_with_comma(errorData.databasename, true, true);
 
         /* Process id, thread id */
         syslogger_write_int32(false, "p", chunk->hdr.pid, true, true);
         syslogger_write_int32(false, "th", chunk->hdr.thid, true, true);
 
         /* Remote host */
-        syslogger_write_str_from_chunk(&chunkstr, true, false, true);
+        syslogger_write_str_with_comma(errorData.remote_host, true, true);
         /* Remote port */
-        syslogger_write_str_from_chunk(&chunkstr, true, false, true);
+        syslogger_write_str_with_comma(errorData.remote_port, true, true);
 
         /* session start timestamp */
         syslogger_append_timestamp(pfixed->session_start_time, true, true);
@@ -1317,36 +1466,54 @@ void syslogger_log_chunk_list(PipeProtoChunk *chunk)
         syslogger_write_int32(true, "sx", pfixed->subtrans_id, true, true); 
 
         /* error severity */
-        syslogger_write_str_from_chunk(&chunkstr, true, false, true);
+        syslogger_write_str_with_comma(errorData.error_severity, true, true);
         /* sql state code */
-        syslogger_write_str_from_chunk(&chunkstr, true, false, true);
+        syslogger_write_str_with_comma(errorData.sql_state, true, true);
         /* errmsg */
-        syslogger_write_str_from_chunk(&chunkstr, true, false, true);
+        syslogger_write_str_with_comma(errorData.error_message, true, true);
         /* errdetail */
-        syslogger_write_str_from_chunk(&chunkstr, true, false, true);
+        syslogger_write_str_with_comma(errorData.error_detail, true, true);
         /* errhint */
-        syslogger_write_str_from_chunk(&chunkstr, true, false, true);
+        syslogger_write_str_with_comma(errorData.error_hint, true, true);
         /* internal query */
-        syslogger_write_str_from_chunk(&chunkstr, true, false, true);
+        syslogger_write_str_with_comma(errorData.internal_query, true, true);
         /* internal query pos */
         syslogger_write_int32(true, "", pfixed->internal_query_pos, true, true);
         /* err ctxt */
-        syslogger_write_str_from_chunk(&chunkstr, true, false, true);
+        syslogger_write_str_with_comma(errorData.error_context, true, true);
         /* user query */
-        syslogger_write_str_from_chunk(&chunkstr, true, false, true);
+        syslogger_write_str_with_comma(errorData.debug_query_string, true, true);
         /* cursor pos */
         syslogger_write_int32(false, "", pfixed->error_cursor_pos, true, true); 
         /* func name */
-        syslogger_write_str_from_chunk(&chunkstr, true, false, true);
+        syslogger_write_str_with_comma(errorData.error_func_name, true, true);
         /* file name */
-        syslogger_write_str_from_chunk(&chunkstr, true, false, true);
+        syslogger_write_str_with_comma(errorData.error_filename, true, true);
         /* line number */
         syslogger_write_int32(true, "", pfixed->error_fileline, true, true);
         /* stack trace */
-        syslogger_write_str_from_chunk(&chunkstr, true, false, false);
+        syslogger_write_str(errorData.stacktrace, strlen(errorData.stacktrace), true, true);
 
         /* EOL */
         write_syslogger_file_binary(LOG_EOL, strlen(LOG_EOL));
+
+        free(errorData.stacktrace ); errorData.stacktrace = NULL;
+        free((char *)errorData.error_filename ); errorData.error_filename = NULL;
+        free((char *)errorData.error_func_name ); errorData.error_func_name = NULL;
+        free(errorData.debug_query_string ); errorData.debug_query_string = NULL;
+        free(errorData.error_context); errorData.error_context = NULL;
+        free(errorData.internal_query ); errorData.internal_query = NULL;
+        free(errorData.error_hint ); errorData.error_hint = NULL;
+        free(errorData.error_detail ); errorData.error_detail = NULL;
+        free(errorData.error_message ); errorData.error_message = NULL;
+        free(errorData.sql_state ); errorData.sql_state = NULL;
+        free((char *)errorData.error_severity ); errorData.error_severity = NULL;
+        free(errorData.remote_port ); errorData.remote_port = NULL;
+        free(errorData.remote_host ); errorData.remote_host = NULL;
+        free(errorData.databasename ); errorData.databasename = NULL;
+        free(errorData.username ); errorData.username = NULL;
+
+        unset_write_to_alert_log();
 
 #if USE_EMAIL
         if (pfixed->send_alert == 't')
@@ -1576,6 +1743,23 @@ flush_pipe_input(char *logbuffer, int *bytes_in_logbuffer)
 }
 #endif
 
+static void write_binary_to_file(const char *buffer, int count, FILE *fh)
+{
+    int			rc;
+
+#ifndef WIN32
+    rc = fwrite(buffer, 1, count, fh);
+#else
+    EnterCriticalSection(&fileSection);
+    rc = fwrite(buffer, 1, count, fh);
+    LeaveCriticalSection(&fileSection);
+#endif
+
+    /* can't use ereport here because of possible recursion */
+    if (rc != count)
+        write_stderr("could not write to log file: %s\n", strerror(errno));
+}
+
 /* --------------------------------
  *		logfile routines
  * --------------------------------
@@ -1589,19 +1773,11 @@ flush_pipe_input(char *logbuffer, int *bytes_in_logbuffer)
  */
 void write_syslogger_file_binary(const char *buffer, int count)
 {
-    int			rc;
-
-#ifndef WIN32
-    rc = fwrite(buffer, 1, count, syslogFile);
-#else
-    EnterCriticalSection(&sysfileSection);
-    rc = fwrite(buffer, 1, count, syslogFile);
-    LeaveCriticalSection(&sysfileSection);
-#endif
-
-    /* can't use ereport here because of possible recursion */
-    if (rc != count)
-        write_stderr("could not write to log file: %s\n", strerror(errno));
+    write_binary_to_file(buffer, count, syslogFile);
+    if (write_to_alert_log)
+    {
+        write_binary_to_file(buffer, count, alertLogFile);
+    }
 }
 void write_syslogger_file(const char *buffer, int count)
 {
@@ -1663,12 +1839,22 @@ pipeThread(void *arg)
  * perform logfile rotation
  */
 static void
-logfile_rotate(bool time_based_rotation)
+logfile_rotate(bool time_based_rotation, 
+               const char *log_directory, 
+               const char *log_filename, 
+               FILE **fh,
+               char **last_log_file_name,
+               bool is_alert_rotate)
 {
     char	   *filename;
-    FILE	   *fh;
 
-    rotation_requested = false;
+    if (is_alert_rotate)
+    {
+        alert_rotation_requested = false;
+    } else
+    {
+        rotation_requested = false;
+    }
 
     /*
      * When doing a time-based rotation, invent the new logfile name based on
@@ -1676,10 +1862,11 @@ logfile_rotate(bool time_based_rotation)
      * file name when we don't do the rotation immediately.
      */
     if (time_based_rotation)
-        filename = logfile_getname(next_rotation_time);
+        filename = logfile_getname(next_rotation_time, log_directory, log_filename);
     else
-        filename = logfile_getname(time(NULL));
+        filename = logfile_getname(time(NULL), log_directory, log_filename);
 
+    FILE *old_fh = *fh;
     /*
      * Decide whether to overwrite or append.  We can overwrite if (a)
      * Log_truncate_on_rotation is set, (b) the rotation was triggered by
@@ -1693,12 +1880,12 @@ logfile_rotate(bool time_based_rotation)
      * usually be safe.
      */
     if (Log_truncate_on_rotation && time_based_rotation &&
-            last_file_name != NULL && strcmp(filename, last_file_name) != 0)
-        fh = fopen(filename, "w");
+        *last_log_file_name != NULL && strcmp(filename, *last_log_file_name) != 0)
+        *fh = fopen(filename, "w");
     else
-        fh = fopen(filename, "a");
+        *fh = fopen(filename, "a");
 
-    if (!fh)
+    if (!(*fh))
     {
         int			saveerrno = errno;
 
@@ -1720,32 +1907,35 @@ logfile_rotate(bool time_based_rotation)
             Log_RotationAge = 0;
             Log_RotationSize = 0;
         }
+        *fh = old_fh;
         pfree(filename);
         return;
     }
 
-    setvbuf(fh, NULL, LBF_MODE, 0);
+    setvbuf(*fh, NULL, LBF_MODE, 0);
 
 #ifdef WIN32
-    _setmode(_fileno(fh), _O_TEXT); /* use CRLF line endings on Windows */
+    _setmode(_fileno(*fh), _O_TEXT); /* use CRLF line endings on Windows */
 #endif
 
+    if (old_fh)
+    {
     /* On Windows, need to interlock against data-transfer thread */
 #ifdef WIN32
-    EnterCriticalSection(&sysfileSection);
+        EnterCriticalSection(&fileSection);
 #endif
-    fclose(syslogFile);
-    syslogFile = fh;
+        fclose(old_fh);
 #ifdef WIN32
-    LeaveCriticalSection(&sysfileSection);
+        LeaveCriticalSection(&fileSection);
 #endif
+    }
 
     set_next_rotation_time();
 
     /* instead of pfree'ing filename, remember it for next time */
-    if (last_file_name != NULL)
-        pfree(last_file_name);
-    last_file_name = filename;
+    if ((*last_log_file_name) != NULL)
+        pfree(*last_log_file_name);
+    *last_log_file_name = filename;
 }
 
 
@@ -1754,8 +1944,8 @@ logfile_rotate(bool time_based_rotation)
  *
  * Result is palloc'd.
  */
-    static char *
-logfile_getname(pg_time_t timestamp)
+static char *
+logfile_getname(pg_time_t timestamp, const char *log_directory, const char *log_file_pattern)
 {
     char	   *filename;
     int			len;
@@ -1765,21 +1955,21 @@ logfile_getname(pg_time_t timestamp)
 
     filename = palloc(MAXPGPATH);
 
-    snprintf(filename, MAXPGPATH, "%s/", Log_directory);
+    snprintf(filename, MAXPGPATH, "%s/", log_directory);
 
     len = strlen(filename);
 
-    if (strchr(Log_filename, '%'))
+    if (strchr(log_file_pattern, '%'))
     {
         /* treat it as a strftime pattern */
         tm = pg_localtime(&timestamp, log_timezone);
-        pg_strftime(filename + len, MAXPGPATH - len, Log_filename, tm);
+        pg_strftime(filename + len, MAXPGPATH - len, log_file_pattern, tm);
     }
     else
     {
         /* no strftime escapes, so append timestamp to new filename */
         snprintf(filename + len, MAXPGPATH - len, "%s.%lu",
-                Log_filename, (unsigned long) timestamp);
+                 log_file_pattern, (unsigned long) timestamp);
     }
 
 	/*

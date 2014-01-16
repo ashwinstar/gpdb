@@ -15421,7 +15421,7 @@ split_rows(Relation intoa, Relation intob, Relation temprel)
 		AppendOnlyInsertDesc *targetAODescPtr;
 		AOCSInsertDesc *targetAOCSDescPtr;
 		TupleTableSlot	   *targetSlot;
-		ItemPointer			tid;
+		ItemPointer			tid = NULL;
 		ResultRelInfo	   *targetRelInfo = NULL;
 		AOTupleId			aoTupleId;
 

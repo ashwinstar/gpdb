@@ -29,6 +29,8 @@ typedef struct gpmon_fsinfo_t gpmon_fsinfo_t;
  * suffix /
  */
 #define GPMON_DIR   "./gpperfmon/data/"
+#define GPMON_LOG   "./gpperfmon/logs/"
+#define GPMON_ALERT_LOG_STAGE    "alert_log_stage"
 #define GPMON_DIR_MAX_PATH 100
 #define GPMON_DB    "gpperfmon"
 

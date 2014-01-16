@@ -5,8 +5,10 @@
 #include "apr_hash.h"
 #include "apr_time.h"
 #include "apr_queue.h"
+#include "apr_strings.h"
 #include "gpmon/gpmon.h"
 #include "gpmon_agg.h"
+#include "gpmondb.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -84,7 +86,8 @@ extern mmon_options_t opt;
 extern apr_queue_t* message_queue;
 
 extern void incremement_tail_bytes(apr_uint64_t bytes);
-
+static bool is_query_not_active(apr_int32_t tmid, apr_int32_t ssid, 
+			apr_int32_t ccnt, apr_hash_t *hash, apr_pool_t *pool);
 
 /**
  * Disk space check helper function
@@ -167,6 +170,29 @@ static apr_status_t  check_disk_space(mmon_fsinfo_t* rec)
 		rec->sent_error_flag = DISK_SPACE_NO_MESSAGE_SENT;
 	}
 	return 0;
+}
+
+static bool is_query_not_active(apr_int32_t tmid, apr_int32_t ssid, apr_int32_t ccnt, apr_hash_t *hash, apr_pool_t *pool)
+{
+	// get active query of session
+	char *key = apr_psprintf(pool, "%d", ssid);	
+	char *active_query = apr_hash_get(hash, key, APR_HASH_KEY_STRING);
+	if (active_query == NULL)
+		return true;
+
+	// read query text from q file
+	char *query = get_query_text(tmid, ssid, ccnt, pool);	
+	if (query == NULL)
+		return false;
+
+	// if the current active query of session (ssid) is not the same 
+	// as the one we are checking, we assume q(tmid)-(ssid)-(ccnt).txt
+	// has wrong status. This is a bug in execMain.c, which too hard to 
+	// fix it there.  
+	int qlen = strlen(active_query);
+	int res = strncmp(query, active_query, qlen);
+		
+	return res != 0;
 }
 
 static apr_status_t agg_put_fsinfo(agg_t* agg, const gpmon_fsinfo_t* met)
@@ -443,17 +469,27 @@ apr_status_t agg_create(agg_t** retagg, apr_int64_t generation, apr_pool_t* pare
 }
 
 
+
 apr_status_t agg_dup(agg_t** retagg, agg_t* oldagg, apr_pool_t* parent_pool, apr_hash_t* fsinfotab)
 {
 	int e, cnt;
 	agg_t* newagg;
 	apr_hash_index_t *hi, *hj;
 
-	if (0 != (e = agg_create(&newagg, oldagg->generation + 1, parent_pool, fsinfotab))) {
+	if (0 != (e = agg_create(&newagg, oldagg->generation + 1, parent_pool, fsinfotab)))
+	{
 		return e;
 	}
 
-	for (hi = apr_hash_first(0, oldagg->qtab); hi; hi = apr_hash_next(hi)) {
+	apr_hash_t *active_query_tab = get_active_queries(newagg->pool);
+	if (! active_query_tab)
+	{
+		agg_destroy(newagg);
+		return APR_EINVAL;	
+	}
+
+	for (hi = apr_hash_first(0, oldagg->qtab); hi; hi = apr_hash_next(hi))
+	{
 		void* vptr;
 		qdnode_t* dp;
 		qdnode_t* newdp;
@@ -464,16 +500,25 @@ apr_status_t agg_dup(agg_t** retagg, agg_t* oldagg, apr_pool_t* parent_pool, apr
 
 		/* skip all entries that weren't updated recently and aren't waiting in a queue */
 		/* Read status from query text as this is reliable */
-		status = get_query_status(dp->qlog.key.tmid, dp->qlog.key.ssid,
-				dp->qlog.key.ccnt);
-		if (dp->last_updated_generation
-				< newagg->generation - 1 && status != GPMON_QLOG_STATUS_SUBMIT
-				&& status != GPMON_QLOG_STATUS_CANCELING
-				&& status != GPMON_QLOG_STATUS_START) {
-			if (0 != strcmp(dp->qlog.db, GPMON_DB)) {
-				TR2( ("agg_dup: skip %d.%d.%d generation %d, current generation %d, recorded %d\n", dp->qlog.key.tmid, dp->qlog.key.ssid, dp->qlog.key.ccnt, (int) dp->last_updated_generation, (int) newagg->generation, dp->recorded));
+		status = get_query_status(dp->qlog.key.tmid, dp->qlog.key.ssid, dp->qlog.key.ccnt);
+
+		apr_int32_t age = newagg->generation - dp->last_updated_generation - 1;
+		if (age > 0)
+		{
+			if (  (status != GPMON_QLOG_STATUS_SUBMIT
+			       && status != GPMON_QLOG_STATUS_CANCELING
+			       && status != GPMON_QLOG_STATUS_START)
+			   || ((age % 5 == 0) /* don't call is_query_not_active every time because it's expensive */
+			       && is_query_not_active(dp->qlog.key.tmid, dp->qlog.key.ssid, dp->qlog.key.ccnt, active_query_tab, newagg->pool)))
+			{
+				if (0 != strcmp(dp->qlog.db, GPMON_DB))
+				{
+					TR2(("agg_dup: skip %d.%d.%d generation %d, current generation %d, recorded %d\n",
+						dp->qlog.key.tmid, dp->qlog.key.ssid, dp->qlog.key.ccnt,
+						(int) dp->last_updated_generation, (int) newagg->generation, dp->recorded));
+				}
+				continue;
 			}
-			continue;
 		}
 
 		/* check if we missed a status change */
@@ -568,9 +613,7 @@ struct bloom_t {
 static void bloom_init(bloom_t* bloom);
 static void bloom_set(bloom_t* bloom, const char* name);
 static int  bloom_isset(bloom_t* bloom, const char* name);
-
 static void delete_old_files(bloom_t* bloom);
-
 static apr_uint32_t write_fsinfo(agg_t* agg, const char* nowstr);
 static apr_uint32_t write_system(agg_t* agg, const char* nowstr);
 static apr_uint32_t write_segmentinfo(agg_t* agg, char* nowstr);

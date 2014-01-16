@@ -1036,6 +1036,23 @@ extern bool gpvars_assign_gp_gpperfmon_send_interval(int newval, bool doit, GucS
 extern bool gp_enable_gpperfmon;
 extern int gp_gpperfmon_send_interval;
 
+/*gpmon alert level*/
+/* control log alert level used by gpperfmon */
+typedef enum 
+{
+	GPPERFMON_LOG_ALERT_LEVEL_NONE,
+	GPPERFMON_LOG_ALERT_LEVEL_WARNING,
+	GPPERFMON_LOG_ALERT_LEVEL_ERROR,
+	GPPERFMON_LOG_ALERT_LEVEL_FATAL,
+	GPPERFMON_LOG_ALERT_LEVEL_PANIC
+} GpperfmonLogAlertLevel;
+extern GpperfmonLogAlertLevel gpperfmon_log_alert_level;
+extern const char *gpperfmon_log_alert_level_to_string(GpperfmonLogAlertLevel level);
+extern GpperfmonLogAlertLevel gpperfmon_log_alert_level_from_string(const char *level_string);
+extern const char *gpvars_assign_gp_gpperfmon_log_alert_level(const char *newval, bool doit, GucSource source);
+extern const char *gpvars_show_gp_gpperfmon_log_alert_level(void);
+
+
 extern int gp_hashagg_compress_spill_files;
 extern int gp_workfile_compress_algorithm;
 extern bool gp_workfile_checksumming;

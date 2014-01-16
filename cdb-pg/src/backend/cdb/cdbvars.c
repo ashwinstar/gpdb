@@ -351,6 +351,7 @@ int gp_workfile_type_hashjoin = 0;
 /* Gpmon */
 bool gp_enable_gpperfmon = false;
 int gp_gpperfmon_send_interval = 1;
+GpperfmonLogAlertLevel gpperfmon_log_alert_level = GPPERFMON_LOG_ALERT_LEVEL_NONE;
 
 /* Enable single-slice single-row inserts ?*/
 bool		gp_enable_fast_sri=true;
@@ -829,6 +830,48 @@ gpvars_verbosity_to_string(GpVars_Verbosity verbosity)
 	}
 }                               /* gpvars_verbosity_to_string */
 
+/*
+ * gpperfmon_log_alert_level_to_string 
+ */
+const char *
+gpperfmon_log_alert_level_to_string(GpperfmonLogAlertLevel level)
+{
+	switch (level)
+	{
+		case GPPERFMON_LOG_ALERT_LEVEL_NONE : 
+			return "none";
+		case GPPERFMON_LOG_ALERT_LEVEL_WARNING : 
+			return "warning";
+		case GPPERFMON_LOG_ALERT_LEVEL_ERROR : 
+			return "error";
+		case GPPERFMON_LOG_ALERT_LEVEL_FATAL : 
+			return "fatal";
+		case GPPERFMON_LOG_ALERT_LEVEL_PANIC : 
+			return "panic";
+		default:
+			return "*undefined*"; 
+	}
+}                               
+
+/*
+ * gpperfmon_log_alert_level_from_string
+ */
+GpperfmonLogAlertLevel
+gpperfmon_log_alert_level_from_string(const char *level_string) {
+    if (strcasecmp(level_string, "warning") == 0) {
+        return GPPERFMON_LOG_ALERT_LEVEL_WARNING;
+    }
+    if (strcasecmp(level_string, "error") == 0) {
+        return GPPERFMON_LOG_ALERT_LEVEL_ERROR;
+    }
+    if (strcasecmp(level_string, "fatal") == 0) {
+        return GPPERFMON_LOG_ALERT_LEVEL_FATAL;
+    }
+    if (strcasecmp(level_string, "panic") == 0) {
+        return GPPERFMON_LOG_ALERT_LEVEL_PANIC;
+    }
+    return GPPERFMON_LOG_ALERT_LEVEL_NONE;
+}
 
 /*
  * gpvars_assign_gp_log_gangs
@@ -1164,6 +1207,45 @@ gpvars_assign_gp_gpperfmon_send_interval(int newval, bool doit, GucSource source
 	return true;
 }
 
+const char *
+gpvars_assign_gp_gpperfmon_log_alert_level(const char *newval, bool doit, GucSource source)
+{
+	if (doit)
+	{
+		if (!pg_strcasecmp(newval, "none")) 
+		{
+			gpperfmon_log_alert_level = GPPERFMON_LOG_ALERT_LEVEL_NONE;
+		}
+		else if (!pg_strcasecmp(newval, "warning")) 
+		{
+			gpperfmon_log_alert_level = GPPERFMON_LOG_ALERT_LEVEL_WARNING;
+		}
+		else if (!pg_strcasecmp(newval, "error")) 
+		{
+			gpperfmon_log_alert_level = GPPERFMON_LOG_ALERT_LEVEL_ERROR;
+		}
+		else if (!pg_strcasecmp(newval, "fatal")) 
+		{
+			gpperfmon_log_alert_level = GPPERFMON_LOG_ALERT_LEVEL_FATAL;
+		}
+		else if (!pg_strcasecmp(newval, "panic")) 
+		{
+			gpperfmon_log_alert_level = GPPERFMON_LOG_ALERT_LEVEL_PANIC;
+		}
+		else
+		{
+			elog(ERROR, "Unknown log alert level '%s'. (current value is '%s')", newval, gpperfmon_log_alert_level_to_string(gpperfmon_log_alert_level)); 
+		}
+	}
+
+	return newval;
+}
+
+const char *
+gpvars_show_gp_gpperfmon_log_alert_level(void)
+{
+        return gpperfmon_log_alert_level_to_string(gpperfmon_log_alert_level); 
+}
 /*
  * Request the fault-prober to suspend probes -- no fault actions will
  * be taken based on in-flight probes until the prober is unpaused.

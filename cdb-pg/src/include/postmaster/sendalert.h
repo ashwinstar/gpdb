@@ -9,4 +9,6 @@ extern int send_alert(const GpErrorData * errorData);
 
 extern int send_alert_from_chunks(const PipeProtoChunk *chunk, const PipeProtoChunk * saved_chunks_in);
 
+extern char *get_str_from_chunk(CSVChunkStr *chunkstr, const PipeProtoChunk *saved_chunks);
+
 #endif 

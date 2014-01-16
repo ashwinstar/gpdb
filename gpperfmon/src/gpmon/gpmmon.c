@@ -37,6 +37,12 @@
 
 mmon_options_t opt = { 0 };
 
+static const apr_uint64_t smon_terminate_safe_factor = 240;
+
+// If smon doesn't receive any request from mmon,
+// it simply kill itself to restart.
+static apr_uint64_t smon_terminate_timeout = 0;
+
 /* gpmmon host */
 static struct
 {
@@ -112,16 +118,19 @@ static apr_status_t recvpkt(int sock, gp_smon_to_mmon_packet_t* pkt, bool loop_u
 char mmon_log_filename[MMON_LOG_FILENAME_SIZE];
 void update_mmonlog_filename()
 {
-    time_t stamp = time(NULL);
-    struct tm* tm = gmtime(&stamp);
-    snprintf(mmon_log_filename, MMON_LOG_FILENAME_SIZE, "%s/gpmmon.%d.%02d.%02d_%02d%02d%02d.log", 
-		opt.log_dir,
-        tm->tm_year + 1900, 
-        tm->tm_mon + 1, 
-        tm->tm_mday,
-        tm->tm_hour,
-        tm->tm_min,
-        tm->tm_sec);
+		time_t stamp = time(NULL);
+		struct tm* tm = gmtime(&stamp);
+		snprintf(
+			mmon_log_filename,
+	 		MMON_LOG_FILENAME_SIZE,
+ 			"%s/gpmmon.%d.%02d.%02d_%02d%02d%02d.log", 
+			opt.log_dir,
+			tm->tm_year + 1900, 
+			tm->tm_mon + 1, 
+			tm->tm_mday,
+			tm->tm_hour,
+			tm->tm_min,
+			tm->tm_sec);
 }
 
 char gpdb_appliance_version[MAXPATHLEN];
@@ -565,8 +574,8 @@ static void* conm_main(apr_thread_t* thread_, void* arg_)
 
 					if (h->smon_bin_location) { //if this if filled, then use it as the directory for smon istead of the default
 						snprintf(line, line_size, "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'"
-								" %s %s -m %" FMT64 " -l %s%s -v %d %s%d ",
-								active_hostname, h->smon_bin_location, opt.max_log_size, ptr_smon_log_location, ptr_smon_log_location_suffix, opt.v,
+								" %s %s -m %" FMT64 " -t %" FMT64 " -l %s%s -v %d %s%d ",
+								active_hostname, h->smon_bin_location, opt.max_log_size, smon_terminate_timeout, ptr_smon_log_location, ptr_smon_log_location_suffix, opt.v,
 								((opt.iterator_aggregate)?"-a ":""), ax.port);
 					} else {
 						snprintf(line, line_size, "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'"
@@ -649,21 +658,28 @@ static void* snmp_main(apr_thread_t* thread_, void* arg_)
 	snprintf(snmp_module_params.externaltable_dir, PATH_MAX, "%s/gpperfmon/data", ax.master_data_directory);
 	snmp_module_params.health_harvest_interval = opt.health_harvest_interval;
 	snmp_module_params.warning_disk_space_percentage = opt.warning_disk_space_percentage;
-	if (snmp_module_params.warning_disk_space_percentage == 0) {
+	if (snmp_module_params.warning_disk_space_percentage == 0)
+	{
 		snmp_module_params.warning_disk_space_percentage = 90;
 	}
 	snmp_module_params.error_disk_space_percentage = opt.error_disk_space_percentage;
-	if (snmp_module_params.error_disk_space_percentage == 0) {
+	if (snmp_module_params.error_disk_space_percentage == 0)
+	{
 		snmp_module_params.error_disk_space_percentage = 95;
 	}
-	if (arg_ && *((int*)arg_) == 1) {
+	if (arg_ && *((int*)arg_) == 1)
+	{
 		snmp_module_params.healthmon_running_separately = 1;
 		TR0(("healthmond will do healthmonitoring, not doing snmp....\n"));
-	} else {
+	}
+	else
+	{
 		snmp_module_params.healthmon_running_separately = 0;
 	}
 
-	if (snmp_module_params.healthmon_running_separately && snmp_module_params.health_harvest_interval < 30) {
+	if (snmp_module_params.healthmon_running_separately &&
+			snmp_module_params.health_harvest_interval < 30)
+	{
 		snmp_module_params.health_harvest_interval = 30;
 	}
 
@@ -697,9 +713,12 @@ static void* snmp_main(apr_thread_t* thread_, void* arg_)
 
 	snmp_report(ax.hosttab, ax.hosttabsz); 
 
-	if (snmp_module_params.healthmon_running_separately) {
+	if (snmp_module_params.healthmon_running_separately)
+	{
 		sleep_interval = snmp_module_params.health_harvest_interval;
-	} else {
+	}
+	else
+	{
 		sleep_interval = opt.snmp_interval;
 	}
 	
@@ -738,9 +757,10 @@ static void* harvest_main(apr_thread_t* thread_, void* arg_)
 	unsigned int consecutive_failures = 0;
 	unsigned int partition_check_interval = 3600 * 6; // check for new partitions every 6 hours
 
-	gpdb_check_partitions();
+	gpdb_check_partitions(&opt);
 
-	if (opt.iterator_aggregate) {
+	if (opt.iterator_aggregate)
+	{
 		remove_segid_constraint();
 	}
 
@@ -774,7 +794,8 @@ static void* harvest_main(apr_thread_t* thread_, void* arg_)
 			apr_pool_t* pool; /* create this pool so we can destroy it each loop */
 
 
-			if (0 != (e = apr_pool_create(&pool, ax.pool))) {
+			if (0 != (e = apr_pool_create(&pool, ax.pool)))
+			{
 				interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 				gpmon_fatalx(FLINE, e, "apr_pool_create failed");
 				return (void*)1;
@@ -806,7 +827,9 @@ static void* harvest_main(apr_thread_t* thread_, void* arg_)
 				consecutive_failures++;
 			}
 
-			if (status == APR_SUCCESS || consecutive_failures > 100 || (ax._tail_buffer_bytes > opt.tail_buffer_max))
+			if (status == APR_SUCCESS ||
+					consecutive_failures > 100 ||
+					(ax._tail_buffer_bytes > opt.tail_buffer_max))
 			{
 				/* 
 					delete the data in the _tail file because it has been inserted successfully into history
@@ -823,12 +846,12 @@ static void* harvest_main(apr_thread_t* thread_, void* arg_)
 				consecutive_failures = 0;
 				ax._tail_buffer_bytes = 0;
 			}
-
+			gpdb_import_alert_log(pool);
 			apr_pool_destroy(pool); /*destroy the pool since we are done with it*/
 		}
 		if (0 == (loop % partition_check_interval))
 		{
-			gpdb_check_partitions();
+			gpdb_check_partitions(&opt);
 		}
 	}
 
@@ -844,20 +867,30 @@ static void* message_main(apr_thread_t* thread_, void* arg_)
 
 	TR2(("In message_main: error_disk_space_percentage = %d, warning_disk_space_percentage = %d, disk_space_interval = %d, max_disk_space_messages_per_interval = %d\n",
 			opt.error_disk_space_percentage, opt.warning_disk_space_percentage, opt.disk_space_interval, opt.max_disk_space_messages_per_interval));
-	while (1) {
+	while (1)
+	{
 		query = NULL;
 		status = apr_queue_pop(queue, &query);
-		if (status == APR_EINTR) { //the blocking operation was interrupted (try again)
+		if (status == APR_EINTR)
+		{ //the blocking operation was interrupted (try again)
 			continue;
-		} else if (status != APR_SUCCESS) {
+		}
+		else if (status != APR_SUCCESS)
+		{
 			interuptable_sleep(30); // sleep to prevent loop of forking process and failing
-			gpmon_fatalx(FLINE, status, "message_main ERROR: apr_queue_pop failed: returned %d", status);
+			gpmon_fatalx(
+				FLINE, status, "message_main ERROR: apr_queue_pop failed: returned %d", status);
 			return (void*)1;
-		} else if (NULL == query) {
+		}
+		else if (NULL == query)
+		{
 			TR0(("message_main ERROR: apr_queue_pop returned NULL\n"));
-		} else { // send the message
+		}
+		else
+		{ // send the message
 			query_str = query; // have to do this because we still build on SUN!!!
-			if (!gpdb_exec_search_for_at_least_one_row((const char *)query_str, NULL)) {
+			if (!gpdb_exec_search_for_at_least_one_row((const char *)query_str, NULL))
+			{
 				TR0(("message_main ERROR: query %s failed. Cannot send message\n", query_str));
 			}
 			free(query);
@@ -873,7 +906,8 @@ int is_gpdb_appliance()
 	{
 		char buffer[MAXPATHLEN+1];
 		buffer[0] = 0;
-		if (!fgets(buffer, 1024, fd)) {
+		if (!fgets(buffer, 1024, fd))
+		{
 			strncpy(gpdb_appliance_version, buffer, MAXPATHLEN);
 			buffer[MAXPATHLEN] = 0;
 		}	
@@ -982,7 +1016,7 @@ static void gpmmon_main(void)
 		ax.signature = ~ax.signature;
 
 	/* make sure to update the partition tables once before starting all the threads */
-	retCode = gpdb_check_partitions();
+	retCode = gpdb_check_partitions(&opt);
 	if (retCode != APR_SUCCESS)
 	{
 		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
@@ -994,7 +1028,8 @@ static void gpmmon_main(void)
 
 	/* create the persistent fsinfo hash table */
 	ax.fsinfotab = apr_hash_make(ax.pool);
-	if (!ax.fsinfotab) {
+	if (!ax.fsinfotab)
+	{
 		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, e, "apr_hash_make for fsinfo hash table failed");
 	}
@@ -1175,6 +1210,7 @@ static int read_conf_file(char *conffile)
 	opt.emcconnect = 1; // assume enabled unless disabled explicitly
 	opt.max_disk_space_messages_per_interval = MAX_MESSAGES_PER_INTERVAL;
 	opt.disk_space_interval = (60*MINIMUM_MESSAGE_INTERVAL);
+	opt.partition_age = 0;
 
 	if (!fp)
 	{
@@ -1306,20 +1342,29 @@ static int read_conf_file(char *conffile)
 			{
 				opt.snmp_interval = atoi(pVal);
 			}
-			else if (apr_strnatcasecmp(pName, "warning_disk_space_percentage") == 0) {
+			else if (apr_strnatcasecmp(pName, "warning_disk_space_percentage") == 0)
+			{
 				opt.warning_disk_space_percentage = atoi(pVal);
 			} 
-			else if (apr_strnatcasecmp(pName, "error_disk_space_percentage") == 0) {
+			else if (apr_strnatcasecmp(pName, "error_disk_space_percentage") == 0)
+			{
 				opt.error_disk_space_percentage = atoi(pVal);
 			}
-			else if (apr_strnatcasecmp(pName, "disk_space_interval") == 0) {
+			else if (apr_strnatcasecmp(pName, "disk_space_interval") == 0)
+			{
 				opt.disk_space_interval = (time_t) (atoi(pVal)*60); //interval in seconds but set in minutes, so multiply
 			}
-			else if (apr_strnatcasecmp(pName, "max_disk_space_messages_per_interval") == 0) {
+			else if (apr_strnatcasecmp(pName, "max_disk_space_messages_per_interval") == 0)
+			{
 				opt.max_disk_space_messages_per_interval = atoi(pVal);
 			}
-			else if (apr_strnatcasecmp(pName, "iterator_aggregate") == 0) {
+			else if (apr_strnatcasecmp(pName, "iterator_aggregate") == 0)
+			{
 				opt.iterator_aggregate = atoi(pVal);
+			}
+			else if (apr_strnatcasecmp(pName, "partition_age") == 0)
+			{
+				opt.partition_age = atoi(pVal);
 			}
 			else
 			{
@@ -1328,6 +1373,8 @@ static int read_conf_file(char *conffile)
 			}
 		}
 	}
+
+	smon_terminate_timeout = opt.q * smon_terminate_safe_factor;
 
 	/* check for valid entries */
 	if (!section_found)
@@ -1582,6 +1629,7 @@ int main(int argc, const char* const argv[])
 			break;
 	}
 
+	create_log_alert_table();
 	getconfig();
 	read_conf_file(opt.conf_file);
 
@@ -1831,9 +1879,11 @@ static apr_status_t recv_data(int sock, char* data, size_t data_size, bool loop_
 {
 	char* p = data;
 	char* q = p + data_size;
-	while (p < q) {
+	while (p < q)
+	{
 		int n = recv(sock, p, q - p, 0);
-		if (n == -1) {
+		if (n == -1)
+		{
 			switch (errno)
 			{
 			case EINTR:
@@ -1843,11 +1893,14 @@ static apr_status_t recv_data(int sock, char* data, size_t data_size, bool loop_
 			return APR_FROM_OS_ERROR(errno);
 		}
 		p += n;
-		if (loop_until_all_recv) { // loop until we get all the data
-			if (p == (char*) &data) {
+		if (loop_until_all_recv)
+		{ // loop until we get all the data
+			if (p == (char*) &data)
+			{
 				return APR_FROM_OS_ERROR(EINTR);
 			}
-		} else if (n == 0) { // didn't get data this time so return an error
+		} else if (n == 0)
+		{ // didn't get data this time so return an error
 			return APR_FROM_OS_ERROR(EINTR);
 		}
 	}
@@ -1866,19 +1919,25 @@ static apr_status_t recvpkt(int sock, gp_smon_to_mmon_packet_t* pkt, bool loop_u
 		return e;
 	}
 
-	if (pkt->header.pkttype == GPMON_PKTTYPE_QEXEC) {
+	if (pkt->header.pkttype == GPMON_PKTTYPE_QEXEC)
+	{
 		// Get the data portion, then get the line
-		if (0 != (e = recv_data(sock, (char *)&pkt->u.qexec_packet.data, sizeof(qexec_packet_data_t), loop_until_all_recv))) {
+		if (0 != (e = recv_data(sock, (char *)&pkt->u.qexec_packet.data, sizeof(qexec_packet_data_t), loop_until_all_recv)))
+		{
 			return e;
 		}
-		if (0 != (e = recv_data(sock, qexec_mmon_temp_line, pkt->u.qexec_packet.data.size_of_line, loop_until_all_recv))) {
+		if (0 != (e = recv_data(sock, qexec_mmon_temp_line, pkt->u.qexec_packet.data.size_of_line, loop_until_all_recv)))
+		{
 			return e;
 		}
 		pkt->u.qexec_packet.line = qexec_mmon_temp_line;
 		TR2(("received qexec line size %d, %s\n", pkt->u.qexec_packet.data.size_of_line, pkt->u.qexec_packet.line));
-	} else {
+	}
+	else
+	{
 		//receive the union packet
-		if (0 != (e = recv_data(sock, (char *)&pkt->u, get_size_by_pkttype_smon_to_mmon(pkt->header.pkttype), loop_until_all_recv))) {
+		if (0 != (e = recv_data(sock, (char *)&pkt->u, get_size_by_pkttype_smon_to_mmon(pkt->header.pkttype), loop_until_all_recv)))
+		{
 			return e;
 		}
 	}
