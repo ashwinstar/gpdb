@@ -1,0 +1,4 @@
+[submodule "client"]
+	path = client
+	url = ssh://git@stash.greenplum.com:2222/gpdb/clients.git
+	branch = 4.3
