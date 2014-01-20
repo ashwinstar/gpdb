@@ -44,6 +44,19 @@ static const char* gpdb_exec_only(PGconn* conn, PGresult** pres, const char* que
 	return 0;
 }
 
+static const bool gpdb_exec_ddl(PGconn* conn, const char* ddl_query)
+{
+	PGresult *result = NULL;
+	const char *errmsg = gpdb_exec_only(conn, &result, ddl_query);
+	PQclear(result);
+	if (errmsg)
+	{
+		gpmon_warning(FLINE, "failed to execut query '%s': %s\n", ddl_query, errmsg);
+	}
+	return errmsg == NULL;
+}
+
+
 static const char* gpdb_exec(PGconn** pconn, PGresult** pres, const char* query)
 {
 	const char *connstr = "dbname='" GPMON_DB "' user='" GPMON_DBUSER
@@ -1385,7 +1398,7 @@ apr_status_t gpdb_check_partitions(mmon_options_t *opt)
 {
 	// health is not a full table and needs to be added to the list
 
-	apr_status_t r1, r2, r3;
+	apr_status_t r1, r2, r3, r4;
 
 	// open a connection
 	PGconn* conn = NULL;
@@ -1408,6 +1421,8 @@ apr_status_t gpdb_check_partitions(mmon_options_t *opt)
 	
 	r3 = call_for_each_table_with_opt(check_partition, NULL, conn, opt);
 
+	r4 = check_partition("log_alert", NULL, conn, opt);
+
 	// close connection
 	PQfinish(conn);
 
@@ -1419,7 +1434,11 @@ apr_status_t gpdb_check_partitions(mmon_options_t *opt)
 	{
 		return r2;
 	} 
-	return r3;
+	else if (r3 != APR_SUCCESS)
+	{
+		return r3;
+	}
+	return r4;
 }
 
 static void convert_tuples_to_hash(PGresult *result, apr_hash_t *hash, apr_pool_t *pool)
@@ -1500,17 +1519,18 @@ void create_log_alert_table()
 	bool has_table = gpdb_exec_search_for_at_least_one_row(qry, conn);
 	if (! has_table)
 	{
-		PGresult *result = NULL;
-		qry = "BEGIN; CREATE TABLE public.log_alert_history (LIKE gp_toolkit.__gp_log_master_ext);"
+		qry = "BEGIN; CREATE TABLE public.log_alert_history (LIKE gp_toolkit.__gp_log_master_ext) distributed by (logsegment) partition by range (logtime)(start (date '2010-01-01') end (date '2010-02-01') EVERY (interval '1 month'));"
 		      "CREATE EXTERNAL WEB TABLE public.log_alert_tail (LIKE public.log_alert_history) EXECUTE 'cat gpperfmon/logs/alert_log_stage 2> /dev/null || true' ON MASTER FORMAT 'csv' (delimiter E',' null E'' escape E'\"' quote E'\"') ENCODING 'UTF8';"
 		      "CREATE EXTERNAL WEB TABLE public.log_alert_now (LIKE public.log_alert_history) EXECUTE 'cat gpperfmon/logs/*.csv 2> /dev/null || true' ON MASTER FORMAT 'csv' (delimiter E',' null E'' escape E'\"' quote E'\"') ENCODING 'UTF8'; COMMIT;";
 
-		const char *errmsg = gpdb_exec_only(conn, &result, qry);
-		PQclear(result);
-		if (errmsg)
-		{
-			gpmon_warning(FLINE, "failed to create log_alter_* tables: %s\n", errmsg);
-		}
+		gpdb_exec_ddl(conn, qry);
+
+		// change owner to gpadmin from gpmon, otherwise, gpperfmon_install
+		// might report error when execute 'DROP ROLE gpmon IF EXISTS'
+		qry = "ALTER TABLE public.log_alert_history OWNER TO gpadmin;"
+		      "ALTER TABLE public.log_alert_tail OWNER TO gpadmin;"
+		      "ALTER TABLE public.log_alert_now OWNER TO gpadmin;";
+		gpdb_exec_ddl(conn, qry);
 	}
 
 	PQfinish(conn);

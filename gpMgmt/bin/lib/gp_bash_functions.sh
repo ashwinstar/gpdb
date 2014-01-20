@@ -1264,6 +1264,10 @@ disk_space_interval = 60
 #getting set to the maximum.
 max_disk_space_messages_per_interval = 10
 
+# The number of partitions for statistics data in month 
+# will be retained. Older partitions will be dropped.
+#partition_age = 6
+
 
 log_location = $GP_DIR/gpperfmon/logs
 _EOF_

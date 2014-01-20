@@ -1225,24 +1225,51 @@ freeErrorDataFields(GpErrorData *errorData)
  * If csv is true, double quotes are added around the string.
  */
 static void
-syslogger_write_str_with_comma(const char *data, bool amsyslogger, bool csv)
+syslogger_write_str_with_comma(const char *data, bool amsyslogger, bool csv, bool quote_empty)
 {
 	if (data != NULL)
 	{
-		if (csv)
+		bool is_empty = (data[0] == '\0');
+		if (csv && (!is_empty || quote_empty))
 		{
 			write_syslogger_file_binary("\"", 1);
 		}
 
 		syslogger_write_str(data, strlen(data), amsyslogger, csv);
 
-		if (csv)
+		if (csv && (!is_empty || quote_empty))
 		{
 			write_syslogger_file_binary("\"", 1);
 		}
 	}
 	
 	write_syslogger_file_binary(",", 1);
+}
+
+/*
+ * syslogger_write_str_end
+ *   Write the given string to the log. No comma is appended after the given string.
+ *
+ * If csv is true, double quotes are added around the string.
+ */
+static void
+syslogger_write_str_end(const char *data, bool amsyslogger, bool csv, bool quote_empty)
+{
+	if (data != NULL)
+	{
+		bool is_empty = (data[0] == '\0');
+		if (csv && (!is_empty || quote_empty))
+		{
+			write_syslogger_file_binary("\"", 1);
+		}
+
+		syslogger_write_str(data, strlen(data), amsyslogger, csv);
+
+		if (csv && (!is_empty || quote_empty))
+		{
+			write_syslogger_file_binary("\"", 1);
+		}
+	}
 }
 
 /*
@@ -1255,19 +1282,19 @@ syslogger_write_errordata(PipeProtoHeader *chunkHeader, GpErrorData *errorData, 
 	syslogger_append_current_timestamp(true);
 	
 	/* username */
-	syslogger_write_str_with_comma(errorData->username, true, csv);
+	syslogger_write_str_with_comma(errorData->username, true, csv, true);
 	
 	/* databasename */
-	syslogger_write_str_with_comma(errorData->databasename, true, csv);
+	syslogger_write_str_with_comma(errorData->databasename, true, csv, true);
 	
 	/* Process id, thread id */
 	syslogger_write_int32(false, "p", chunkHeader->pid, true, true);
 	syslogger_write_int32(false, "th", chunkHeader->thid, true, true);
 	
 	/* Remote host */
-	syslogger_write_str_with_comma(errorData->remote_host, true, csv);
+	syslogger_write_str_with_comma(errorData->remote_host, true, csv, true);
 	/* Remote port */
-	syslogger_write_str_with_comma(errorData->remote_port, true, csv);
+	syslogger_write_str_with_comma(errorData->remote_port, true, csv, true);
 	
 	/* session start timestamp */
 	syslogger_append_timestamp(errorData->fix_fields.session_start_time, true, true);
@@ -1286,29 +1313,29 @@ syslogger_write_errordata(PipeProtoHeader *chunkHeader, GpErrorData *errorData, 
 	syslogger_write_int32(true, "sx", errorData->fix_fields.subtrans_id, true, true); 
 	
 	/* error severity */
-	syslogger_write_str_with_comma(errorData->error_severity, true, csv);
+	syslogger_write_str_with_comma(errorData->error_severity, true, csv, true);
 	/* sql state code */
-	syslogger_write_str_with_comma(errorData->sql_state, true, csv);
+	syslogger_write_str_with_comma(errorData->sql_state, true, csv, true);
 	/* errmsg */
-	syslogger_write_str_with_comma(errorData->error_message, true, csv);
+	syslogger_write_str_with_comma(errorData->error_message, true, csv, true);
 	/* errdetail */
-	syslogger_write_str_with_comma(errorData->error_detail, true, csv);
+	syslogger_write_str_with_comma(errorData->error_detail, true, csv, true);
 	/* errhint */
-	syslogger_write_str_with_comma(errorData->error_hint, true, csv);
+	syslogger_write_str_with_comma(errorData->error_hint, true, csv, true);
 	/* internal query */
-	syslogger_write_str_with_comma(errorData->internal_query, true, csv);
+	syslogger_write_str_with_comma(errorData->internal_query, true, csv, true);
 	/* internal query pos */
 	syslogger_write_int32(true, "", errorData->fix_fields.internal_query_pos, true, true);
 	/* err ctxt */
-	syslogger_write_str_with_comma(errorData->error_context, true, csv);
+	syslogger_write_str_with_comma(errorData->error_context, true, csv, true);
 	/* user query */
-	syslogger_write_str_with_comma(errorData->debug_query_string, true, csv);
+	syslogger_write_str_with_comma(errorData->debug_query_string, true, csv, true);
 	/* cursor pos */
 	syslogger_write_int32(false, "", errorData->fix_fields.error_cursor_pos, true, true); 
 	/* func name */
-	syslogger_write_str_with_comma(errorData->error_func_name, true, csv);
+	syslogger_write_str_with_comma(errorData->error_func_name, true, csv, true);
 	/* file name */
-	syslogger_write_str_with_comma(errorData->error_filename, true, csv);
+	syslogger_write_str_with_comma(errorData->error_filename, true, csv, true);
 	/* line number */
 	syslogger_write_int32(true, "", errorData->fix_fields.error_fileline, true, true);
 	/* stack trace */
@@ -1435,19 +1462,19 @@ void syslogger_log_chunk_list(PipeProtoChunk *chunk)
         syslogger_append_current_timestamp(true);
 
         /* username */
-        syslogger_write_str_with_comma(errorData.username, true, true);
+        syslogger_write_str_with_comma(errorData.username, true, true, false);
 
         /* databasename */
-        syslogger_write_str_with_comma(errorData.databasename, true, true);
+        syslogger_write_str_with_comma(errorData.databasename, true, true, false);
 
         /* Process id, thread id */
         syslogger_write_int32(false, "p", chunk->hdr.pid, true, true);
         syslogger_write_int32(false, "th", chunk->hdr.thid, true, true);
 
         /* Remote host */
-        syslogger_write_str_with_comma(errorData.remote_host, true, true);
+        syslogger_write_str_with_comma(errorData.remote_host, true, true, false);
         /* Remote port */
-        syslogger_write_str_with_comma(errorData.remote_port, true, true);
+        syslogger_write_str_with_comma(errorData.remote_port, true, true, false);
 
         /* session start timestamp */
         syslogger_append_timestamp(pfixed->session_start_time, true, true);
@@ -1466,33 +1493,33 @@ void syslogger_log_chunk_list(PipeProtoChunk *chunk)
         syslogger_write_int32(true, "sx", pfixed->subtrans_id, true, true); 
 
         /* error severity */
-        syslogger_write_str_with_comma(errorData.error_severity, true, true);
+        syslogger_write_str_with_comma(errorData.error_severity, true, true, false);
         /* sql state code */
-        syslogger_write_str_with_comma(errorData.sql_state, true, true);
+        syslogger_write_str_with_comma(errorData.sql_state, true, true, false);
         /* errmsg */
-        syslogger_write_str_with_comma(errorData.error_message, true, true);
+        syslogger_write_str_with_comma(errorData.error_message, true, true, false);
         /* errdetail */
-        syslogger_write_str_with_comma(errorData.error_detail, true, true);
+        syslogger_write_str_with_comma(errorData.error_detail, true, true, false);
         /* errhint */
-        syslogger_write_str_with_comma(errorData.error_hint, true, true);
+        syslogger_write_str_with_comma(errorData.error_hint, true, true, false);
         /* internal query */
-        syslogger_write_str_with_comma(errorData.internal_query, true, true);
+        syslogger_write_str_with_comma(errorData.internal_query, true, true, false);
         /* internal query pos */
         syslogger_write_int32(true, "", pfixed->internal_query_pos, true, true);
         /* err ctxt */
-        syslogger_write_str_with_comma(errorData.error_context, true, true);
+        syslogger_write_str_with_comma(errorData.error_context, true, true, false);
         /* user query */
-        syslogger_write_str_with_comma(errorData.debug_query_string, true, true);
+        syslogger_write_str_with_comma(errorData.debug_query_string, true, true, false);
         /* cursor pos */
         syslogger_write_int32(false, "", pfixed->error_cursor_pos, true, true); 
         /* func name */
-        syslogger_write_str_with_comma(errorData.error_func_name, true, true);
+        syslogger_write_str_with_comma(errorData.error_func_name, true, true, false);
         /* file name */
-        syslogger_write_str_with_comma(errorData.error_filename, true, true);
+        syslogger_write_str_with_comma(errorData.error_filename, true, true, false);
         /* line number */
         syslogger_write_int32(true, "", pfixed->error_fileline, true, true);
         /* stack trace */
-        syslogger_write_str(errorData.stacktrace, strlen(errorData.stacktrace), true, true);
+        syslogger_write_str_end(errorData.stacktrace, true, true, false);
 
         /* EOL */
         write_syslogger_file_binary(LOG_EOL, strlen(LOG_EOL));
