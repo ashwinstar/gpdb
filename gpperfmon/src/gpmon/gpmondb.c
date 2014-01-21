@@ -1502,35 +1502,61 @@ apr_hash_t *get_active_queries(apr_pool_t *pool)
 	return active_query_tab;
 }
 
+// To mitigate upgrade hassle.
 void create_log_alert_table()
 {
 	PGconn *conn = PQconnectdb(GPDB_CONNECTION_STRING);
 	if (PQstatus(conn) != CONNECTION_OK)
 	{
-		gpmon_warning(
-			FLINE,
+		gpmon_warning(FLINE,
 			"error creating GPDB client connection to dynamically "
 			"check/create gpperfmon partitions: %s", 
 		PQerrorMessage(conn));
 		return;
 	}
 
-	char *qry= "SELECT tablename FROM pg_tables WHERE tablename = 'log_alert_history' AND schemaname = 'public' ;";
-	bool has_table = gpdb_exec_search_for_at_least_one_row(qry, conn);
+	const char *qry= "SELECT tablename FROM pg_tables WHERE tablename = 'log_alert_history' AND schemaname = 'public' ;";
+	const bool has_table = gpdb_exec_search_for_at_least_one_row(qry, conn);
 	if (! has_table)
 	{
 		qry = "BEGIN; CREATE TABLE public.log_alert_history (LIKE gp_toolkit.__gp_log_master_ext) distributed by (logsegment) partition by range (logtime)(start (date '2010-01-01') end (date '2010-02-01') EVERY (interval '1 month'));"
 		      "CREATE EXTERNAL WEB TABLE public.log_alert_tail (LIKE public.log_alert_history) EXECUTE 'cat gpperfmon/logs/alert_log_stage 2> /dev/null || true' ON MASTER FORMAT 'csv' (delimiter E',' null E'' escape E'\"' quote E'\"') ENCODING 'UTF8';"
 		      "CREATE EXTERNAL WEB TABLE public.log_alert_now (LIKE public.log_alert_history) EXECUTE 'cat gpperfmon/logs/*.csv 2> /dev/null || true' ON MASTER FORMAT 'csv' (delimiter E',' null E'' escape E'\"' quote E'\"') ENCODING 'UTF8'; COMMIT;";
 
+		TR0(("sounds like you have just upgraded your database, creating newer tables\n"));
+
 		gpdb_exec_ddl(conn, qry);
 
-		// change owner to gpadmin from gpmon, otherwise, gpperfmon_install
-		// might report error when execute 'DROP ROLE gpmon IF EXISTS'
-		qry = "ALTER TABLE public.log_alert_history OWNER TO gpadmin;"
-		      "ALTER TABLE public.log_alert_tail OWNER TO gpadmin;"
-		      "ALTER TABLE public.log_alert_now OWNER TO gpadmin;";
-		gpdb_exec_ddl(conn, qry);
+		PGresult *result = NULL;
+		qry = "SELECT pg_catalog.pg_get_userbyid(d.datdba) as owner FROM pg_catalog.pg_database d WHERE d.datname = 'gpperfmon'";
+		const char* errmsg = gpdb_exec_only(conn, &result, qry);
+		if (errmsg != NULL)
+		{
+			gpmon_warning(FLINE, "GPDB error %s\n\tquery: %s\n", errmsg, qry);
+		}
+		else
+		{
+			if (PQntuples(result) > 0) 
+			{
+				// change owner from gpmon, otherwise, gpperfmon_install
+				// might quit with error when execute 'DROP ROLE gpmon IF EXISTS'
+				const char* query_format = "ALTER TABLE public.log_alert_history OWNER TO %s;"
+				                           "ALTER EXTERNAL TABLE public.log_alert_tail OWNER TO %s;"
+				      					   "ALTER EXTERNAL TABLE public.log_alert_now OWNER TO %s;";
+				const char* owner = PQgetvalue(result, 0, 0);
+				const int QUERYBUFSIZE = 512;
+				char query[QUERYBUFSIZE];
+				snprintf(query, QUERYBUFSIZE, query_format, owner, owner, owner);
+				TR0(("change owner to %s\n", owner));
+				gpdb_exec_ddl(conn, query);
+			} 
+			else 
+			{
+				TR0(("could not find owner for 'gpperfmon' database\n"));
+			}
+		}
+
+		PQclear(result);
 	}
 
 	PQfinish(conn);
