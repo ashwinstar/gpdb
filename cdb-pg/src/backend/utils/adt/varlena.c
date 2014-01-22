@@ -646,6 +646,8 @@ static void
 find_memory_limited_substring(const char *strStart, int byteLen, int memoryLimit, int *subStringByteLen, int *subStringCharLen)
 {
 	AssertArg(byteLen > memoryLimit);
+	AssertArg(NULL != strStart);
+	AssertArg(NULL != subStringCharLen);
 
 	if (pg_database_encoding_max_length() == 1)
 	{
@@ -2815,9 +2817,14 @@ text_to_array(PG_FUNCTION_ARGS)
 	if (stringCharLen < 1)
 	{
 		if(toFreeString)
+		{
 			pfree(toFreeString);
+		}
+
 		if(toFreeDelimiter)
+		{
 			pfree(toFreeDelimiter);
+		}
 
 		PG_RETURN_NULL();
 	}
@@ -2829,9 +2836,13 @@ text_to_array(PG_FUNCTION_ARGS)
 	if (delimiterCharLen < 1)
 	{
 		if(toFreeString)
+		{
 			pfree(toFreeString);
+		}
 		if(toFreeDelimiter)
+		{
 			pfree(toFreeDelimiter);
+		}
 
 		PG_RETURN_ARRAYTYPE_P(create_singleton_array(fcinfo, TEXTOID, stringDatum, 1));
 	}
@@ -2839,9 +2850,14 @@ text_to_array(PG_FUNCTION_ARGS)
 	ArrayBuildState *astate = text_to_array_multi_pass(string, stringByteLen, delimiter, delimiterByteLen, delimiterCharLen);
 
 	if(toFreeString)
+	{
 		pfree(toFreeString);
+	}
+
 	if(toFreeDelimiter)
+	{
 		pfree(toFreeDelimiter);
+	}
 
 	PG_RETURN_DATUM(makeArrayResult(astate, CurrentMemoryContext));
 }
