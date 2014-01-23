@@ -657,7 +657,7 @@ cdbdisp_dispatchToGang(struct CdbDispatcherState *ds,
 		if (qeResult == NULL)
 		{
 			dispatchResults->writer_gang->dispatcherActive = true;
-			insist_log(false, "allocation failed, cannot dispatch");
+			elog(FATAL, "allocation failed, cannot dispatch");
 		}
 
 		/* Transfer any connection errors from segdbDesc. */
