@@ -31,16 +31,15 @@ NOTICE:  CREATE TABLE will create partition "ds_4_1_prt_p200802" for table "ds_4
 NOTICE:  CREATE TABLE will create partition "ds_4_1_prt_p200803" for table "ds_4"
 -- this is the case that worked before MPP-6861
 explain select * from ds_4 where month_id = '200800';
-                                           QUERY PLAN                                            
--------------------------------------------------------------------------------------------------
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..3.23 rows=1 width=80)
    ->  Sequence  (cost=0.00..1.12 rows=1 width=80)
-         ->  Result  (cost=10.00..100.00 rows=50 width=4)
-               ->  Function Scan on gp_partition_expansion  (cost=10.00..100.00 rows=50 width=4)
+         ->  Result  (cost=0.00..1.12 rows=1 width=80)
          ->  Dynamic Table Scan on ds_4 (partIndex: 0)  (cost=0.00..0.04 rows=1 width=80)
                Filter: month_id::text = '200800'::text
  Settings:  optimizer=on
-(7 rows)
+(6 rows)
 
 -- now we can evaluate this function at planning/prune time
 explain select * from ds_4 where month_id::int = 200800;
