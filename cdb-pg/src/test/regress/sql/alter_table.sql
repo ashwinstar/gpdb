@@ -458,6 +458,16 @@ insert into atacc1 (test,test2) values (5,4);
 insert into atacc1 (test,test2) values (5,5);
 drop table atacc1;
 
+-- MPP-20466 Dis-allow duplicate constraint names for same table
+create table dupconstr (
+						i int,
+						j int constraint test CHECK (j > 10));
+-- should fail because of duplicate constraint name
+alter table dupconstr add constraint test unique (i);
+alter table dupconstr add constraint test primary key (i);
+-- cleanup
+drop table dupconstr;
+
 -- lets do some naming tests
 create table atacc1 (test int, test2 int, unique(test));
 alter table atacc1 add unique (test2);

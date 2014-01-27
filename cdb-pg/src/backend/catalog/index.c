@@ -775,6 +775,21 @@ index_create(Oid heapRelationId,
 				constraintName = altConName;
 			}
 
+			/*
+			 * Let's make sure that the constraint name is unique
+			 * for this relation.
+			 */
+			Assert(constraintName);
+			if (ConstraintNameIsUsed(CONSTRAINT_RELATION,
+									 RelationGetRelid(heapRelation),
+									 RelationGetNamespace(heapRelation),
+									 constraintName))
+				ereport(ERROR,
+						(errcode(ERRCODE_DUPLICATE_OBJECT),
+						 errmsg("constraint \"%s\" for relation \"%s\" already exists",
+								constraintName, RelationGetRelationName(heapRelation)),
+								errOmitLocation(true)));
+
 			if (isprimary)
 				constraintType = CONSTRAINT_PRIMARY;
 			else if (indexInfo->ii_Unique)

@@ -232,6 +232,12 @@ CREATE TABLE array_index_op_test (
 	t			text[]
 );
 
+--MPP-22020: Dis-allow duplicate constraint names for the same table.
+create table dupconstr (
+						i int,
+						j int constraint test CHECK (j > 10),
+						CONSTRAINT test UNIQUE (i,j));
+
 -- MPP-2764: distributed randomly is not compatible with primary key or unique
 -- constraints
 create table distrand(i int, j int, primary key (i)) distributed randomly;
