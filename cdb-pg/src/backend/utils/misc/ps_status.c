@@ -383,6 +383,7 @@ set_ps_display(const char *activity, bool force)
 		ps_host_info_size = 0;
 	}
 
+	Assert(cp >= ps_buffer);
 	/* Add client session's global id. */
 	if (gp_session_id > 0 && ep - cp > 0)
 		cp += snprintf(cp, ep - cp, "con%d ", gp_session_id);
@@ -405,7 +406,13 @@ set_ps_display(const char *activity, bool force)
 	if (currentSliceId > 0 && ep - cp > 0)
 		cp += snprintf(cp, ep - cp, "slice%d ", currentSliceId);
 
-	real_act_prefix_size = cp - ps_buffer;
+	/*
+	 * snprintf returns the number of bytes that *would* have been written if
+	 * enough space had been available.  This means cp might beyond, in which
+	 * case we need to trim it down to ep and real_act_prefix_size
+	 * effectively becomes ps_buffer_size.
+	 */
+	real_act_prefix_size = Min(cp, ep) - ps_buffer;
 
 	/* Append caller's activity string. */
 	if (ep - cp > 0)
@@ -511,6 +518,7 @@ get_ps_display_from_position(size_t pos, int *displen)
 #else
 	*displen = strlen(ps_buffer + pos);
 #endif
+	Assert(*displen >= 0);
 
 	return ps_buffer + pos;
 }
