@@ -67,9 +67,11 @@
 #include "parser/parsetree.h"
 #include "parser/parse_oper.h"
 #include "parser/parse_relation.h"
+#include "utils/atomic.h"
 #include "utils/builtins.h"
 #include "utils/portal.h"
 
+#define DISPATCH_WAIT_TIMEOUT_SEC 2
 extern bool Test_print_direct_dispatch_info;
 
 extern pthread_t main_tid;
@@ -234,6 +236,13 @@ static MemoryContext DispatchContext = NULL;
  * Ugly:  This write in a fixed format, and ignore what the log_prefix guc says.
  */
 static pthread_mutex_t send_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+/*
+ * Counter to indicate there are some dispatch threads running.  This will
+ * be incremented at the beginning of dispatch threads and decremented at
+ * the end of them.
+ */
+static volatile int32 RunningThreadCount = 0;
 
 #ifdef WIN32
 static void
@@ -965,7 +974,7 @@ CdbCheckDispatchResult(struct CdbDispatcherState *ds,
 	PG_END_TRY();
 
 	cdbdisp_clearGangActiveFlag(ds);
-	
+
 	if (log_dispatch_stats)
 		ShowUsage("DISPATCH STATISTICS");
 	
@@ -2047,11 +2056,19 @@ thread_DispatchWait(DispatchCommandParms		*pParms)
 			break;
 
 		/*
+		 * bail-out if we are dying.  We should not do much of cleanup
+		 * as the main thread is waiting on this thread to finish.  Once
+		 * QD dies, QE will recognize it shortly anyway.
+		 */
+		if (proc_exit_inprogress)
+			break;
+
+		/*
 		 * Wait for results from QEs.
 		 */
 
 		/* Block here until input is available. */
-		n = poll(pParms->fds, nfds, 2 * 1000);
+		n = poll(pParms->fds, nfds, DISPATCH_WAIT_TIMEOUT_SEC * 1000);
 
 		if (n < 0)
 		{
@@ -2291,6 +2308,16 @@ thread_DispatchWaitSingle(DispatchCommandParms		*pParms)
 }
 
 /*
+ * Cleanup routine for the dispatching thread.  This will indicate the thread
+ * is not running any longer.
+ */
+static void
+DecrementRunningCount(void *arg)
+{
+	gp_atomic_add_32(&RunningThreadCount, -1);
+}
+
+/*
  * thread_DispatchCommand is the thread proc used to dispatch the command to one or more of the qExecs.
  *
  * NOTE: This function MUST NOT contain elog or ereport statements. (or most any other backend code)
@@ -2308,16 +2335,36 @@ thread_DispatchCommand(void *arg)
 
 	gp_set_thread_sigmasks();
 
-	if (thread_DispatchOut(pParms))
+	/*
+	 * Mark that we are runnig a new thread.  The main thread will check
+	 * it to see if there is still alive one.  Let's do this after we block
+	 * signals so that nobody will intervent and mess up the value.
+	 * (should we actually block signals before spawning a thread, as much
+	 * like we do in fork??)
+	 */
+	gp_atomic_add_32(&RunningThreadCount, 1);
+
+	/*
+	 * We need to make sure the value will be decremented once the thread
+	 * finishes.  Currently there is not such case but potentially we could
+	 * have pthread_exit or thread cancellation in the middle of code, in
+	 * which case we would miss to decrement value if we tried to do this
+	 * without the cleanup callback facility.
+	 */
+	pthread_cleanup_push(DecrementRunningCount, NULL);
 	{
-		/*
-		 * thread_DispatchWaitSingle might have a problem with interupts
-		 */
-		if (pParms->db_count == 1 && false)
-			thread_DispatchWaitSingle(pParms);
-		else
-			thread_DispatchWait(pParms);
+		if (thread_DispatchOut(pParms))
+		{
+			/*
+			 * thread_DispatchWaitSingle might have a problem with interupts
+			 */
+			if (pParms->db_count == 1 && false)
+				thread_DispatchWaitSingle(pParms);
+			else
+				thread_DispatchWait(pParms);
+		}
 	}
+	pthread_cleanup_pop(1);
 
 	return (NULL);
 }	/* thread_DispatchCommand */
@@ -4605,4 +4652,35 @@ cdbdisp_destroyDispatchThreads(CdbDispatchCmdThreads *dThreads)
 	pfree(dThreads);
 }                               /* cdbdisp_destroyDispatchThreads */
 
+/*
+ * Synchronize threads to finish for this process to die.  Dispatching
+ * threads need to acknowledge that we are dying, otherwise the main
+ * thread will cleanup memory contexts which could cause process crash
+ * while the threads are touching stale pointers.  Threads will check
+ * proc_exit_inprogress and immediately stops once it's found to be true.
+ */
+void
+cdbdisp_waitThreads(void)
+{
+	int i, max_retry;
+	long interval = 10 * 1000; /* 10 msec */
 
+	/*
+	 * Just in case to avoid to be stuck in the final stage of process
+	 * lifecycle, insure by setting time limit.  If it exceeds, it probably
+	 * means some threads are stuck and not progressing, in which case
+	 * we can go ahead and cleanup things anyway.  The duration should be
+	 * longer than the select timeout in thread_DispatchWait.
+	 */
+	max_retry = (DISPATCH_WAIT_TIMEOUT_SEC + 10) * 1000000L / interval;
+
+	/* This is supposed to be called after the flag is set. */
+	Assert(proc_exit_inprogress);
+
+	for (i = 0; i < max_retry; i++)
+	{
+		if (RunningThreadCount == 0)
+			break;
+		pg_usleep(interval);
+	}
+}

@@ -23,6 +23,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 
+#include "cdb/cdbdisp.h"
 #include "miscadmin.h"
 #ifdef PROFILE_PID_DIR
 #include "postmaster/autovacuum.h"
@@ -171,6 +172,20 @@ proc_exit_prepare(int code)
 	 * case of elog(FATAL) for example.)
 	 */
 	error_context_stack = NULL;
+
+	/*
+	 * Make sure threads get cleaned up: there might be still ongoing
+	 * dispatch threads with something that will be cleaned up during
+	 * shmem_exit.  And this should be after proc_exit_inprogress = true above
+	 * so that threads will recognize we are dying and break-out from the loop
+	 * even if they're in the middle of work.  Note this call will block for
+	 * a certain time until threads get cleaned up.  While it is generally
+	 * expected for a process to die immediately in this code path, it should
+	 * be ok to block as we are most likely not in signal handler or
+	 * something.  Actually, I cannot find any better option to do the
+	 * correct work.
+	 */
+	cdbdisp_waitThreads();
 
 	/* do our shared memory exits first */
 	shmem_exit(code);

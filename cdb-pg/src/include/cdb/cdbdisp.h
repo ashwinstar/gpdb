@@ -462,10 +462,6 @@ char *
 qdSerializeDtxContextInfo(int * size, bool wantSnapshot, bool inCursor, int txnOptions, char *debugCaller);
 
 
-/* this is used for dire cleanup emergencies (in portalmem.c) */
-void
-CdbShutdownPortals(void);
-
 struct EState;
 struct PlannedStmt;
 struct PlannerInfo;
@@ -481,6 +477,7 @@ cdbdisp_check_estate_for_cancel(struct EState *estate);
 extern Node *exec_make_plan_constant(struct PlannedStmt *stmt, bool is_SRI);
 extern Node *planner_make_plan_constant(struct PlannerInfo *root, Node *n, bool is_SRI);
 
+void cdbdisp_waitThreads(void);
 /*--------------------------------------------------------------------*/
 
 #endif   /* CDBDISP_H */

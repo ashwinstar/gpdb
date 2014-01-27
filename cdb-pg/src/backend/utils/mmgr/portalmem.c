@@ -1035,39 +1035,6 @@ pg_cursor(PG_FUNCTION_ARGS)
 	return (Datum) 0;
 }
 
-/*
- * Scan the hash table of active portals; shutdown all of their
- * threads and prepare for immediate exit. (called from die()).
- */
-void
-CdbShutdownPortals(void)
-{
-	HASH_SEQ_STATUS status;
-	PortalHashEnt *hentry;
-
-	hash_seq_init(&status, PortalHashTable);
-
-	while ((hentry = (PortalHashEnt *) hash_seq_search(&status)) != NULL)
-	{
-		Portal 	portal = hentry->portal;
-		EState	*es;
-
-		if (portal->queryDesc == NULL ||
-			portal->queryDesc->estate == NULL ||
-			portal->queryDesc->estate->dispatcherState == NULL ||
-			portal->queryDesc->estate->dispatcherState->dispatchThreads == NULL)
-			continue;
-
-		es = portal->queryDesc->estate;
-
-		/* active portal, shut it down */
-		if (es->dispatcherState->dispatchThreads)
-		{
-			CdbCheckDispatchResult(es->dispatcherState, true);   /* cancel any QEs still running */
-		}
-	}
-}
-
 void PortalSetStatus(Portal p, PortalStatus s)
 {
 	p->portal_status = s;
