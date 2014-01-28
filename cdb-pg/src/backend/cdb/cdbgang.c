@@ -376,8 +376,7 @@ create_gang_retry:
 
 		if (0 != pthread_join(pParms->thread, NULL))
 		{
-			elog(FATAL, "pthread_join failed on thread %d of %d",
-									 i + 1, threadCount);
+			elog(FATAL, "could not create segworker group");
 		}
 	}
 
@@ -1363,7 +1362,7 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 	{
-		elog(FATAL, "Dispatch process called with Gp_role %d", Gp_role);
+		elog(FATAL, "dispatch process called with role %d", Gp_role);
 	}
 
 	if (type == GANGTYPE_PRIMARY_WRITER)
@@ -2019,7 +2018,7 @@ cleanupGang(Gang *gp)
 					elog(LOG, "cleanup called when a segworker is still busy, waiting didn't help, trying to destroy the segworker group");
 					disconnectAndDestroyGang(gp);
 					gp = NULL;
-					elog(FATAL, "cleanup called when a segworker is still busy.  Fatal error.");
+					elog(FATAL, "cleanup called when a segworker is still busy");
 					return false;
 				}
 			}
