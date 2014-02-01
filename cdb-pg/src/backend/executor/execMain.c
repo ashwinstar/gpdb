@@ -2212,7 +2212,7 @@ SendAOTupCounts(EState *estate)
 				if (relstorage_is_ao(RelinfoGetStorage(resultRelInfo)))
 				{
 					Oid relid = RelationGetRelid(resultRelInfo->ri_RelationDesc);
-					uint64 tupcount = resultRelInfo->ri_aoadded;
+					uint64 tupcount = resultRelInfo->ri_aoprocessed;
 
 					pq_sendint(&buf, relid, 4);
 					pq_sendint64(&buf, tupcount);

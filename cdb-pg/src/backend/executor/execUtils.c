@@ -2190,14 +2190,26 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 									HASH_FIND,
 									&found);
 
-				if (found)
+				/*
+				 * Must update the mod count only for segfiles where actual tuples were touched 
+				 * (added/deleted) based on entry->tupcount.
+				 */
+				if (found && entry->tupcount)
 				{
+					bool was_delete = estate->es_plannedstmt && (estate->es_plannedstmt->commandType == CMD_DELETE);
+
 					Relation r = heap_open(map->relid, AccessShareLock);
-					UpdateMasterAosegTotals(r, map->segno, entry->tupcount, 1);
+					if (was_delete)
+					{
+						UpdateMasterAosegTotals(r, map->segno, 0, 1);
+					}
+					else
+					{
+						UpdateMasterAosegTotals(r, map->segno, entry->tupcount, 1);	
+					}
 					heap_close(r, NoLock);
 				}
 			}
-
 		}
 		else
 		{

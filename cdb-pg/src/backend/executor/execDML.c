@@ -303,7 +303,7 @@ ExecInsert(TupleTableSlot *slot,
 
 	IncrAppended();
 	(estate->es_processed)++;
-	(resultRelInfo->ri_aoadded)++;
+	(resultRelInfo->ri_aoprocessed)++;
 	estate->es_lastoid = newId;
 
 	partslot->tts_tableOid = RelationGetRelid(resultRelationDesc);
@@ -550,6 +550,10 @@ ldelete:;
 	{
 		IncrDeleted();
 		(estate->es_processed)++;
+		/*
+		 * To notify master if tuples deleted or not, to update mod_count.
+		 */
+		(resultRelInfo->ri_aoprocessed)++;
 	}
 
 	/*
@@ -844,7 +848,7 @@ lreplace:;
 
 	IncrReplaced();
 	(estate->es_processed)++;
-	resultRelInfo->ri_aoadded++;
+	(resultRelInfo->ri_aoprocessed)++;
 
 	/*
 	 * Note: instead of having to update the old index tuples associated with

@@ -3435,7 +3435,7 @@ CopyFromDispatch(CopyState cstate)
 
 				cstate->processed++;
 				if (estate->es_result_partitions)
-					resultRelInfo->ri_aoadded++;
+					resultRelInfo->ri_aoprocessed++;
 
 				if (cdbCopy->io_errors)
 				{
@@ -4181,7 +4181,7 @@ CopyFrom(CopyState cstate)
 					 */
 					cstate->processed++;
 					if (relstorage_is_ao(relstorage))
-						resultRelInfo->ri_aoadded++;
+						resultRelInfo->ri_aoprocessed++;
 				}
 
 				RESET_LINEBUF;

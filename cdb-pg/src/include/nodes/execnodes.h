@@ -282,7 +282,7 @@ typedef struct ResultRelInfo
 	RelationUpdateDesc ri_updateDesc;
 
 	int                     ri_aosegno;
-	uint64                  ri_aoadded; /* tuples added for AO */
+	uint64                  ri_aoprocessed; /* tuples added/deleted for AO */
 	struct AttrMap			*ri_partInsertMap;
 	struct TupleTableSlot			*ri_partSlot;
 	struct TupleTableSlot *ri_resultSlot;
