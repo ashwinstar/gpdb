@@ -48,8 +48,13 @@ SELECT catDML('DELETE FROM pg_type
 COPY @gpupgradeschemaname@.pg_type FROM
         :pgtypedatafile WITH OIDS CSV;
 
+-- Create a special schema for use by the pg_operator_load external table.
+-- We cannot use gpupgradeschemaname (pg_catalog), as that will see the external
+-- table executed on the master only.
+CREATE SCHEMA __@gpupgradeschemaname@_gpmigrator;
+
 CREATE EXTERNAL WEB TABLE
-		pg_type_load(database text,
+		__@gpupgradeschemaname@_gpmigrator.pg_type_load(database text,
 									port text,
 									status text)
 	execute ' PGOPTIONS=''-c gp_session_role=utility'' \\
@@ -59,9 +64,9 @@ CREATE EXTERNAL WEB TABLE
 		WITH OIDS CSV" $GP_DATABASE $GP_USER && echo "$GP_DATABASE, $GP_SEG_PORT, done";'
 format 'csv';
 
-SELECT * FROM pg_type_load;
+SELECT * FROM __@gpupgradeschemaname@_gpmigrator.pg_type_load;
 
-DROP EXTERNAL WEB TABLE pg_type_load;
+DROP EXTERNAL WEB TABLE __@gpupgradeschemaname@_gpmigrator.pg_type_load;
 \c
 
 -- Following code populates the prodataaccess field for functions
@@ -211,11 +216,6 @@ COMMENT ON FUNCTION @gpupgradeschemaname@.gp_add_master_standby(text, text, _tex
 
 -- psql expands this for us
 \set pgoperatordatafile `echo "'$GPHOME/share/postgresql/upgrade/pg_operator.data'"`
-
--- Create a special schema for use by the pg_operator_load external table.
--- We cannot use gpupgradeschemaname (pg_catalog), as that will see the external
--- table executed on the master only.
-CREATE SCHEMA __@gpupgradeschemaname@_gpmigrator;
 
 -- Add entries to the master
 COPY @gpupgradeschemaname@.pg_operator FROM
