@@ -40,7 +40,7 @@ test__set_ps_display__real_act_prefix_size(void **state)
 
 	ps_buffer = (char *) malloc(127 * sizeof(char));
 	ps_buffer_fixed_size = 79;
-	memset(ps_buffer, 'x', ps_buffer_fixed_size * sizeof(int));
+	memset(ps_buffer, 'x', ps_buffer_fixed_size * sizeof(char));
 	ps_buffer_size = 127;
 	IsUnderPostmaster = true;
 
