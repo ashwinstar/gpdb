@@ -514,15 +514,14 @@ FaultInjector_InjectFaultIfSet(
 		if (entryLocal->occurrence > 1) 
 		{
 			entryLocal->occurrence--;
+			FaultInjector_UpdateHashEntry(entryLocal);
 			return FALSE;
-		} 
-		else 
-			entryLocal->faultInjectorState = FaultInjectorStateTriggered;
+		}
+
+		entryLocal->faultInjectorState = FaultInjectorStateTriggered;
+		FaultInjector_UpdateHashEntry(entryLocal);
 	}
-	
-	FaultInjector_UpdateHashEntry(entryLocal);	
-	
-	
+
 	/* Inject fault */
 	
 	switch (entryLocal->faultInjectorType) {
@@ -577,9 +576,17 @@ FaultInjector_InjectFaultIfSet(
 			
 			break;
 		case FaultInjectorTypeFatal:
-			entryLocal->faultInjectorState = FaultInjectorStateCompleted;
-			
-			FaultInjector_UpdateHashEntry(entryLocal);	
+			/*
+			 * If it's one time occurrence then disable the fault before it's
+			 * actually triggered because this fault errors out the transaction
+			 * and hence we wont get a chance to disable it or put it in completed
+			 * state.
+			 */
+			if (entryLocal->occurrence != FILEREP_UNDEFINED)
+			{
+				entryLocal->faultInjectorState = FaultInjectorStateCompleted;
+				FaultInjector_UpdateHashEntry(entryLocal);
+			}
 			
 			ereport(FATAL, 
 					(errmsg("fault triggered, fault name:'%s' fault type:'%s' ",
@@ -588,9 +595,17 @@ FaultInjector_InjectFaultIfSet(
 
 			break;
 		case FaultInjectorTypePanic:
-			entryLocal->faultInjectorState = FaultInjectorStateCompleted;
-			
-			FaultInjector_UpdateHashEntry(entryLocal);	
+			/*
+			 * If it's one time occurrence then disable the fault before it's
+			 * actually triggered because this fault errors out the transaction
+			 * and hence we wont get a chance to disable it or put it in completed
+			 * state. For PANIC it may be unnecessary though.
+			 */
+			if (entryLocal->occurrence != FILEREP_UNDEFINED)
+			{
+				entryLocal->faultInjectorState = FaultInjectorStateCompleted;
+				FaultInjector_UpdateHashEntry(entryLocal);
+			}
 			
 			ereport(PANIC, 
 					(errmsg("fault triggered, fault name:'%s' fault type:'%s' ",
@@ -599,10 +614,18 @@ FaultInjector_InjectFaultIfSet(
 
 			break;
 		case FaultInjectorTypeError:
-			entryLocal->faultInjectorState = FaultInjectorStateCompleted;
-			
-			FaultInjector_UpdateHashEntry(entryLocal);	
-			
+			/*
+			 * If it's one time occurrence then disable the fault before it's
+			 * actually triggered because this fault errors out the transaction
+			 * and hence we wont get a chance to disable it or put it in completed
+			 * state.
+			 */
+			if (entryLocal->occurrence != FILEREP_UNDEFINED)
+			{
+				entryLocal->faultInjectorState = FaultInjectorStateCompleted;
+				FaultInjector_UpdateHashEntry(entryLocal);
+			}
+
 			ereport(ERROR, 
 					(errmsg("fault triggered, fault name:'%s' fault type:'%s' ",
 							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],
