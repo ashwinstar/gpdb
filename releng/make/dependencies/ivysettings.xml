@@ -13,19 +13,21 @@
   <!-- ====================================================================== -->
 
   <property name="repo.dir" value="/opt/repo"/>
-  <settings defaultResolver="public"/>
+  <settings defaultResolver="chain-resolver"/>
 
   <!-- ====================================================================== -->
 
   <resolvers>
-    <filesystem name="local">
-      <ivy      pattern="${repo.dir}/[organization]/[module]/[revision]/[type]s/ivy-[revision].xml" />
-      <artifact pattern="${repo.dir}/[organization]/[module]/[revision]/[type]s/[artifact]-[revision].[ext]" />
-    </filesystem>
-    <url name="public">
-      <ivy      pattern="http://artifactory.greenplum.com/gpdb-ext-release-local/[organization]/[module]/[revision]/[type]s/ivy-[revision].xml" />
-      <artifact pattern="http://artifactory.greenplum.com/gpdb-ext-release-local/[organization]/[module]/[revision]/[type]s/[artifact]-[revision].[ext]" />
-    </url>
+    <chain name="chain-resolver">
+      <filesystem name="local">
+        <ivy      pattern="${repo.dir}/[organization]/[module]/[revision]/[type]s/ivy-[revision].xml" />
+        <artifact pattern="${repo.dir}/[organization]/[module]/[revision]/[type]s/[artifact]-[revision].[ext]" />
+      </filesystem>
+      <url name="public">
+        <ivy      pattern="http://artifactory.greenplum.com/gpdb-ext-release-local/[organization]/[module]/[revision]/[type]s/ivy-[revision].xml" />
+        <artifact pattern="http://artifactory.greenplum.com/gpdb-ext-release-local/[organization]/[module]/[revision]/[type]s/[artifact]-[revision].[ext]" />
+      </url>
+    </chain>
   </resolvers>
 
   <!-- ====================================================================== -->
