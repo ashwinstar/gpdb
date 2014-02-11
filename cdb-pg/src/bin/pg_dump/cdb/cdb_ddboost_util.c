@@ -1265,7 +1265,7 @@ ddBoostRmdir(char *dir_path, ddp_conn_desc_t ddp_conn, char *parent_dir)
         err = ddp_readdir(dird, &ret_dirent);
         if (err != DD_OK) 
 		{
-            if (err == DD_ERR_UNDERFLOW) 
+            if (err == DD_ERR_EMPTY) 
 			{
                 err = DD_OK;
                 break;
@@ -1735,7 +1735,7 @@ int listDirectory(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn)
         err = ddp_readdir(dird, &ret_dirent);
         if (err != DD_OK)
         {
-            if (err == DD_ERR_UNDERFLOW)
+            if (err == DD_ERR_EMPTY)
             {
                 err = DD_OK;
                 break;
@@ -2150,7 +2150,7 @@ getLatestTimestamp(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn,
         err = ddp_readdir(dird, &ret_dirent);
         if (err != DD_OK)
         {
-            if (err == DD_ERR_UNDERFLOW)
+            if (err == DD_ERR_EMPTY)
             {
                 err = DD_OK;
                 break;
@@ -2400,7 +2400,7 @@ syncFilesFromDDBoost(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_con
         err = ddp_readdir(dird, &ret_dirent);
         if (err != DD_OK)
         {
-            if (err == DD_ERR_UNDERFLOW)
+            if (err == DD_ERR_EMPTY)
             {
                 err = DD_OK;
                 break;
@@ -2536,7 +2536,7 @@ copyFilesFromDir(const char *fromDir, char *toDir, ddp_conn_desc_t ddp_conn)
         err = ddp_readdir(dird, &ret_dirent);
         if (err != DD_OK)
         {
-            if (err == DD_ERR_UNDERFLOW)
+            if (err == DD_ERR_EMPTY)
             {
                 err = DD_OK;
                 break;
@@ -2920,7 +2920,7 @@ int listDirectoryFull(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_co
         err = ddp_readdir(dird, &ret_dirent);
         if (err != DD_OK)
         {
-            if (err == DD_ERR_UNDERFLOW)
+            if (err == DD_ERR_EMPTY)
             {
                 err = DD_OK;
                 break;
@@ -3089,7 +3089,7 @@ syncFilesFromDDBoostTimestamp(struct ddboost_options *dd_options, ddp_conn_desc_
         err = ddp_readdir(dird, &ret_dirent);
         if (err != DD_OK)
         {
-            if (err == DD_ERR_UNDERFLOW)
+            if (err == DD_ERR_EMPTY)
             {
                 err = DD_OK;
                 break;

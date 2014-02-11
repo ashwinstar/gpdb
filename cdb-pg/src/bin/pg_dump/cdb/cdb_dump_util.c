@@ -22,6 +22,8 @@
 #include "pqexpbuffer.h"
 #include "cdb_dump_util.h"
 
+#define DDP_CL_DDP 1
+
 static char predump_errmsg[1024];
 
 bool shouldDumpSchemaOnly(int g_role, bool incrementalBackup, void *list) {
