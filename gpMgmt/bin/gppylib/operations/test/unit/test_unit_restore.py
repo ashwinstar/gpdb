@@ -33,7 +33,8 @@ class restoreTestCase(unittest.TestCase):
                             no_plan = False,
                             restore_tables = None,
                             batch_default=64,
-                            no_ao_stats = False)
+                            no_ao_stats = False,
+                            redirected_restore_db = None)
 
     def create_backup_dirs(self, top_dir=os.getcwd(), dump_dirs=[]):
         if dump_dirs is None:
@@ -97,13 +98,13 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
     @patch('gppylib.operations.restore.RestoreDatabase._process_createdb', side_effect=ExceptionNoStackTraceNeeded('Failed to create database'))
     @patch('time.sleep')
     def test_multitry_createdb_1(self, mock1, mock2):
-        r = RestoreDatabase('20121219', True, True, False, 'FOO', None, 1234, False, False, None, None, 'db_dumps', False)
-        self.assertRaises(ExceptionNoStackTraceNeeded, r._multitry_createdb, '20121219', 'fullbkdb', 'FOO', None, 1234)
+        r = RestoreDatabase('20121219', True, True, False, 'FOO', None, 1234, False, False, None, None, 'db_dumps', False, None)
+        self.assertRaises(ExceptionNoStackTraceNeeded, r._multitry_createdb, '20121219', 'fullbkdb', None, 'FOO', None, 1234)
 
     @patch('gppylib.operations.restore.RestoreDatabase._process_createdb')
     def test_multitry_createdb_2(self, mock):
-        r = RestoreDatabase('20121219', True, True, False, 'FOO', None, 1234, False, False, None, None, 'db_dumps',  False)
-        r._multitry_createdb('20121219', 'fullbkdb', 'FOO', None, 1234)
+        r = RestoreDatabase('20121219', True, True, False, 'FOO', None, 1234, False, False, None, None, 'db_dumps',  False, None)
+        r._multitry_createdb('20121219', 'fullbkdb', None, 'FOO', None, 1234)
 
     @patch('gppylib.operations.restore.get_partition_list', return_value=[('public', 't1'), ('public', 't2'), ('public', 't3')])
     @patch('gppylib.operations.restore.get_full_timestamp_for_incremental', return_value='123456789')
@@ -413,7 +414,17 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         ts = '20121212121212' 
         backup_utils.dump_prefix = 'bar_'
         expected_output = 'gpdbrestore -t 20121212121212 --table-file foo -a -v --noplan --noanalyze --noaostats --prefix=bar'
-        restore_line = _build_gpdbrestore_cmd_line(ts, 'foo', None)
+        restore_line = _build_gpdbrestore_cmd_line(ts, 'foo', None, None)
+        backup_utils.dump_prefix = '' 
+        self.assertEqual(restore_line, expected_output)
+
+    @patch('gppylib.operations.restore.socket.gethostname', return_value='host')
+    @patch('gppylib.operations.restore.getpass.getuser', return_value='user')
+    def test_redirected_restore_build_gpdbrestore_cmd_line_00(self, mock1, mock2):
+        ts = '20121212121212' 
+        backup_utils.dump_prefix = 'bar_'
+        expected_output = 'gpdbrestore -t 20121212121212 --table-file foo -a -v --noplan --noanalyze --noaostats --prefix=bar --redirect=redb'
+        restore_line = _build_gpdbrestore_cmd_line(ts, 'foo', None, 'redb')
         backup_utils.dump_prefix = '' 
         self.assertEqual(restore_line, expected_output)
 
@@ -423,7 +434,17 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         ts = '20121212121212' 
         backup_utils.dump_prefix = 'bar_'
         expected_output = 'gpdbrestore -t 20121212121212 --table-file foo -a -v --noplan --noanalyze --noaostats -u /tmp --prefix=bar'
-        restore_line = _build_gpdbrestore_cmd_line(ts, 'foo', '/tmp')
+        restore_line = _build_gpdbrestore_cmd_line(ts, 'foo', '/tmp', None)
+        backup_utils.dump_prefix = '' 
+        self.assertEqual(restore_line, expected_output)
+
+    @patch('gppylib.operations.restore.socket.gethostname', return_value='host')
+    @patch('gppylib.operations.restore.getpass.getuser', return_value='user')
+    def test_redirected_restore_build_gpdbrestore_cmd_line_01(self, mock1, mock2):
+        ts = '20121212121212' 
+        backup_utils.dump_prefix = 'bar_'
+        expected_output = 'gpdbrestore -t 20121212121212 --table-file foo -a -v --noplan --noanalyze --noaostats -u /tmp --prefix=bar --redirect=redb'
+        restore_line = _build_gpdbrestore_cmd_line(ts, 'foo', '/tmp', 'redb')
         backup_utils.dump_prefix = '' 
         self.assertEqual(restore_line, expected_output)
 
@@ -588,7 +609,17 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         timestamp = '20121212121212'
         backup_dir = None
         restore_tables = None
-        results = restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables)
+        results = restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables, None)
+        self.assertTrue(results)
+    
+    @patch('gppylib.operations.restore.get_plan_file_contents', return_value=[('20121212121212','t1,t2'), ('20121212121211','t3,t4'), ('20121212121210','t5,t6,t7')])
+    @patch('gppylib.operations.restore.Command.run')
+    def redirected_restore_test_restore_incremental_data_only_00(self, mock1, mock2):
+        master_datadir = 'foo' 
+        timestamp = '20121212121212'
+        backup_dir = None
+        restore_tables = None
+        results = restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables, 'redb')
         self.assertTrue(results)
     
     @patch('gppylib.operations.restore.get_plan_file_contents', return_value=[('20121212121212',''), ('20121212121211',''), ('20121212121210','')])
@@ -599,7 +630,7 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         backup_dir = None
         restore_tables = None
         with self.assertRaisesRegexp(Exception, 'There were no tables to restore. Check the plan file contents for restore timestamp %s' % timestamp):
-            restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables)
+            restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables, 'redb')
     
     @patch('gppylib.operations.restore.get_plan_file_contents', return_value=[('20121212121212','t1,t2'), ('20121212121211','t3,t4'), ('20121212121210','t5,t6,t7')])
     @patch('gppylib.operations.restore.Command.run')
@@ -608,7 +639,7 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         timestamp = '20121212121212'
         backup_dir = None
         restore_tables = None
-        self.assertTrue(restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables))
+        self.assertTrue(restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables, 'redb'))
 
     @patch('gppylib.operations.restore.get_plan_file_contents', return_value=[('20121212121212','t1,t2'), ('20121212121211','t3,t4'), ('20121212121210','t5,t6,t7')])
     @patch('gppylib.operations.restore.Command.run', side_effect=Exception('Error executing gpdbrestore'))
@@ -618,7 +649,7 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         backup_dir = None
         restore_tables = None
         with self.assertRaisesRegexp(Exception, 'Error executing gpdbrestore'):
-            restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables)
+            restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables, 'redb')
 
     def test_get_restore_dir_00(self):
         master_datadir = '/foo'

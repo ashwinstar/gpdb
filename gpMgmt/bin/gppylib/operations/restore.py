@@ -12,7 +12,7 @@ from gppylib.db import dbconn
 from gppylib.db.dbconn import execSQL, execSQLForSingleton
 from gppylib.gparray import GpArray
 from gppylib.mainUtils import ExceptionNoStackTraceNeeded
-from gppylib.commands.base import WorkerPool, Command, REMOTE
+from gppylib.commands.base import WorkerPool, Command, REMOTE, ExecutionError
 from gppylib.commands.gp import Psql
 from gppylib.commands.unix import Scp
 from gppylib.operations import Operation
@@ -226,7 +226,7 @@ def validate_restore_tables_list(plan_file_contents, restore_tables):
     if invalid_tables != []:
         raise Exception('Invalid tables for -T option: The following tables were not found in plan file : "%s"' % (invalid_tables))
 
-def restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables):
+def restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables, redirected_restore_db):
     restore_data = False
     plan_file_items = get_plan_file_contents(master_datadir, backup_dir, timestamp)
     table_file = None
@@ -240,7 +240,7 @@ def restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore
             table_file = get_restore_table_list(table_list.split(','), restore_tables)
             if table_file is None:
                 continue
-            cmd = _build_gpdbrestore_cmd_line(ts, table_file, backup_dir)
+            cmd = _build_gpdbrestore_cmd_line(ts, table_file, backup_dir, redirected_restore_db)
             logger.info('Invoking commandline: %s: ' % cmd)
             Command('Invoking gpdbrestore', cmd).run(validateAfter=True) 
             table_files.append(table_file)
@@ -254,17 +254,19 @@ def restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore
 
     return True
 
-def _build_gpdbrestore_cmd_line(ts, table_file, backup_dir):
+def _build_gpdbrestore_cmd_line(ts, table_file, backup_dir, redirected_restore_db):
     cmd = 'gpdbrestore -t %s --table-file %s -a -v --noplan --noanalyze --noaostats' % (ts, table_file) 
     if backup_dir is not None:
         cmd += " -u %s" % backup_dir
     if backup_utils.dump_prefix:
         cmd += " --prefix=%s" % backup_utils.dump_prefix.strip('_')
+    if redirected_restore_db:
+        cmd += " --redirect=%s" % redirected_restore_db
     return cmd
 
 class RestoreDatabase(Operation):
     def __init__(self, restore_timestamp, no_analyze, drop_db, restore_global, master_datadir, backup_dir, 
-                master_port, dump_dir, ddboost, no_plan, restore_tables, batch_default, no_ao_stats): 
+                master_port, dump_dir, ddboost, no_plan, restore_tables, batch_default, no_ao_stats, redirected_restore_db): 
         self.restore_timestamp = restore_timestamp
         self.no_analyze = no_analyze
         self.drop_db = drop_db
@@ -278,6 +280,7 @@ class RestoreDatabase(Operation):
         self.restore_tables = restore_tables
         self.batch_default = batch_default
         self.no_ao_stats = no_ao_stats
+        self.redirected_restore_db = redirected_restore_db
 
     def execute(self): 
         (restore_timestamp, restore_db, compress) = ValidateRestoreDatabase(restore_timestamp = self.restore_timestamp,
@@ -287,9 +290,16 @@ class RestoreDatabase(Operation):
                                                                             dump_dir = self.dump_dir,
                                                                             ddboost = self.ddboost).run()
 
+        if self.redirected_restore_db and not self.drop_db:
+            restore_db = self.redirected_restore_db
+            self.create_database_if_not_exists(self.master_port, self.redirected_restore_db)
+        elif self.redirected_restore_db:
+            restore_db = self.redirected_restore_db
+
         if self.drop_db:
             self._multitry_createdb(restore_timestamp, 
                                     restore_db, 
+                                    self.redirected_restore_db,
                                     self.master_datadir, 
                                     self.backup_dir, 
                                     self.master_port)
@@ -316,7 +326,8 @@ class RestoreDatabase(Operation):
             restore_incremental_data_only(self.master_datadir, 
                                           self.backup_dir, 
                                           self.restore_timestamp, 
-                                          self.restore_tables)
+                                          self.restore_tables,
+                                          self.redirected_restore_db)
 
             logger.info("Updating AO/CO statistics on master")
             update_ao_statistics(self.master_port, restore_db)
@@ -380,11 +391,11 @@ class RestoreDatabase(Operation):
             raise Exception('Unable to locate global file %s%s in dump set' % (generate_global_prefix(), restore_timestamp))
         Psql('Invoking global dump', filename=global_file).run(validateAfter=True)
 
-    def _multitry_createdb(self, restore_timestamp, restore_db, master_datadir, backup_dir, master_port):
+    def _multitry_createdb(self, restore_timestamp, restore_db, redirected_restore_db, master_datadir, backup_dir, master_port):
         no_of_trys = 600 
         for i in range(no_of_trys):
             try:
-                self._process_createdb(restore_timestamp, restore_db, master_datadir, backup_dir, master_port)
+                self._process_createdb(restore_timestamp, restore_db, redirected_restore_db, master_datadir, backup_dir, master_port)
             except ExceptionNoStackTraceNeeded, e:
                 time.sleep(1)
             else:
@@ -392,20 +403,40 @@ class RestoreDatabase(Operation):
         raise ExceptionNoStackTraceNeeded('Failed to drop database %s' % restore_db)
 
     def drop_database_if_exists(self, master_port, restore_db):
-        cmd = Command(name='drop database %s' % restore_db, cmdStr='dropdb %s -p %s' % (restore_db, master_port))
+        conn = None
         try:
-            cmd.run(validateAfter=True)
+            dburl = dbconn.DbURL(port=master_port)
+            conn = dbconn.connect(dburl)
+            count = execSQLForSingleton(conn, "select count(*) from pg_database where datname='%s';" % restore_db)
+
+            logger.info("Dropping Database %s" % restore_db)
+            if count == 1:
+                cmd = Command(name='drop database %s' % restore_db, cmdStr='dropdb %s -p %s' % (restore_db, master_port))
+                cmd.run(validateAfter=True)
+            logger.info("Dropped Database %s" % restore_db)
         except ExecutionError, e:
             logger.exception("Could not drop database %s" % restore_db)
             raise ExceptionNoStackTraceNeeded('Failed to drop database %s' % restore_db)
+        finally:
+            conn.close()
 
     def create_database_if_not_exists(self, master_port, restore_db):
-        cmd = Command(name='create database %s' % restore_db, cmdStr='createdb %s -p %s -T template0' % (restore_db, master_port))
+        conn = None
         try:
-            cmd.run(validateAfter=True)
+            dburl = dbconn.DbURL(port=master_port)
+            conn = dbconn.connect(dburl)
+            count = execSQLForSingleton(conn, "select count(*) from pg_database where datname='%s';" % restore_db)
+
+            logger.info("Creating Database %s" % restore_db)
+            if count == 0:
+                cmd = Command(name='create database %s' % restore_db, cmdStr='createdb %s -p %s -T template0' % (restore_db, master_port))
+                cmd.run(validateAfter=True)
+            logger.info("Created Database %s" % restore_db)
         except ExecutionError, e:
             logger.exception("Could not create database %s" % restore_db)
             raise ExceptionNoStackTraceNeeded('Failed to create database %s' % restore_db)
+        finally:
+            conn.close()
 
     def _process_createdb(self, restore_timestamp, restore_db, redirected_restore_db, master_datadir, backup_dir, master_port): 
         if redirected_restore_db:

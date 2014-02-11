@@ -88,6 +88,7 @@ class GpdbRestore(Operation):
         self.backup_dir = options.backup_dir
         self.table_file = options.table_file
         self.list_backup = options.list_backup
+        self.redirected_restore_db = options.redirected_restore_db
         if options.local_dump_prefix: 
             backup_utils.dump_prefix = options.local_dump_prefix + '_'
 
@@ -189,7 +190,8 @@ class GpdbRestore(Operation):
                         no_plan = self.no_plan,
                         restore_tables = self.restore_tables,
                         batch_default = self.batch_default,
-                        no_ao_stats = self.no_ao_stats).run()
+                        no_ao_stats = self.no_ao_stats,
+                        redirected_restore_db = self.redirected_restore_db).run()
 
         if self.no_analyze:
             logger.warn('--------------------------------------------------------------------------------------------------')
@@ -238,6 +240,8 @@ class GpdbRestore(Operation):
             logger.info("Restore method             = Restore specific timestamp")
         if self.search_for_dbname is not None and self.restore_tables is None:
             logger.info("Restore method             = Search for latest")
+        if self.redirected_restore_db is not None:
+            logger.info("Redirect Restore database  = %s" % self.redirected_restore_db)
         if self.db_date_dir is not None and self.restore_tables is None:
             logger.info("Restore method             = Restore specific date")
         if self.restore_tables is not None:
@@ -501,6 +505,8 @@ def create_parser():
                      help="List backup timestamps that are required to restore from the input timestamp. The input timestamp should be of an incremental backup")
     addTo.add_option('--prefix', dest='local_dump_prefix', default='', metavar='<filename prefix>',
                      help="Prefix of the dump files to be restored")
+    addTo.add_option('--redirect', dest='redirected_restore_db', metavar='<database name>',
+                     help="Database name to which the data needs to be restored for the given timestamp")
     parser.add_option_group(addTo)
 
     ddOpt = OptionGroup(parser, "DDBoost")

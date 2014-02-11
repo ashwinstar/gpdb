@@ -4784,6 +4784,7 @@ Feature: Validate command line arguments
         Given the database is running
         And the database "fullbkdb" does not exist
         And database "fullbkdb" exists
+        And the database "testdb" does not exist
         And there are no backup files
         And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
         And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
@@ -4791,15 +4792,16 @@ Feature: Validate command line arguments
         When the user runs "gpcrondump -x fullbkdb -a"
         Then gpcrondump should return a return code of 0
         And the timestamp from gpcrondump is stored
-        And the user runs "gpdbrestore --redirected-restore-database=testdb -a" with the stored timestamp
+        And the user runs "gpdbrestore --redirect=testdb -a" with the stored timestamp
         Then gpdbrestore should return a return code of 0
-        And verify that there is a "heap" table "heap_table" in "testdb" with data
-        And verify that there is a "ao" table "ao_part_table" in "testdb" with data
+        And verify that there is a "heap" table "public.heap_table" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_part_table" in "testdb" with data
 
     Scenario: (RR) Full Backup and Restore with -e option
         Given the database is running
         And the database "fullbkdb" does not exist
         And database "fullbkdb" exists
+        And the database "testdb" does not exist
         And there are no backup files
         And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
         And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
@@ -4807,15 +4809,16 @@ Feature: Validate command line arguments
         When the user runs "gpcrondump -x fullbkdb -a"
         Then gpcrondump should return a return code of 0
         And the timestamp from gpcrondump is stored
-        And the user runs "gpdbrestore --redirected-restore-database=testdb -e -a" with the stored timestamp
+        And the user runs "gpdbrestore --redirect=testdb -e -a" with the stored timestamp
         Then gpdbrestore should return a return code of 0
-        And verify that there is a "heap" table "heap_table" in "testdb" with data
-        And verify that there is a "ao" table "ao_part_table" in "testdb" with data
+        And verify that there is a "heap" table "public.heap_table" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_part_table" in "testdb" with data
 
     Scenario: (RR) Incremental Backup and Restore 
         Given the database is running
         And the database "fullbkdb" does not exist
         And database "fullbkdb" exists
+        And the database "testdb" does not exist
         And there are no backup files
         And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
         And there is a "ao" partition table "ao_part_table1" with compression "quicklz" in "fullbkdb" with data
@@ -4826,7 +4829,7 @@ Feature: Validate command line arguments
         Then gpcrondump should return a return code of 0
         And the timestamp from gpcrondump is stored
         And all the data from "fullbkdb" is saved for verification
-        And the user runs "gpdbrestore --redirected-restore-database=testdb -e -a" with the stored timestamp
+        And the user runs "gpdbrestore --redirect=testdb -e -a" with the stored timestamp
         Then gpdbrestore should return a return code of 0
         And verify that the data of "10" tables in "testdb" is validated after restore 
 
@@ -4834,6 +4837,7 @@ Feature: Validate command line arguments
         Given the database is running
         And the database "fullbkdb" does not exist
         And database "fullbkdb" exists
+        And the database "testdb" does not exist
         And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data 
         And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data 
         And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data 
@@ -4842,7 +4846,7 @@ Feature: Validate command line arguments
         And the timestamp from gpcrondump is stored 
         And all the data from "fullbkdb" is saved for verification
         When the user truncates "public.ao_index_table" tables in "fullbkdb"
-        And the user runs "gpdbrestore -T public.ao_index_table --redirected-restore-database=testdb -a" with the stored timestamp
+        And the user runs "gpdbrestore -T public.ao_index_table --redirect=testdb -a" with the stored timestamp
         And gpdbrestore should return a return code of 0
         And verify that there is a "ao" table "public.ao_index_table" in "testdb" with data
 
@@ -4850,6 +4854,7 @@ Feature: Validate command line arguments
         Given the database is running
         And the database "schematestdb" does not exist
         And database "schematestdb" exists
+        And the database "testdb" does not exist
         And there is a "heap" table "heap_table" with compression "None" in "schematestdb" with data
         And there is a "ao" table "ao_table" with compression "None" in "schematestdb" with data
         And there is a "ao" table "ao_table2" with compression "None" in "schematestdb" with data
@@ -4863,7 +4868,7 @@ Feature: Validate command line arguments
         And gpcrondump should return a return code of 0
         And the timestamp from gpcrondump is stored 
         And all the data from "schematestdb" is saved for verification
-        And the user runs gpdbrestore with the stored timestamp and options "-T public.ao_table2,public.co_table --redirected-restore-database=testdb"
+        And the user runs gpdbrestore with the stored timestamp and options "-T public.ao_table2,public.co_table --redirect=testdb"
         Then gpdbrestore should return a return code of 0
         And verify that exactly "2" tables in "testdb" have been restored 
 
@@ -4873,13 +4878,14 @@ Feature: Validate command line arguments
         And there are no backup files
         And the database "testdb" does not exist
         And database "testdb" exists
+        And the database "testdb1" does not exist
         And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
         And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
         And there is a backupfile of tables "heap_table, ao_part_table" in "testdb" exists for validation
         When the user runs "gpcrondump -a -x testdb --prefix=foo"
         Then gpcrondump should return a return code of 0
         And the timestamp from gpcrondump is stored 
-        And the user runs gpdbrestore with the stored timestamp and options "--prefix=foo --redirected-restore-database=testdb1"
+        And the user runs gpdbrestore with the stored timestamp and options "--prefix=foo --redirect=testdb1"
         And gpdbrestore should return a return code of 0
         And there should be dump files under " " with prefix "foo"
         And verify that there is a "heap" table "heap_table" in "testdb1" with data
@@ -4889,6 +4895,8 @@ Feature: Validate command line arguments
         Given the database is running
         And the prefix "foo" is stored
         And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
         And the database "testdb1" does not exist
         And database "testdb1" exists
         And the database "testdb2" does not exist
@@ -4901,7 +4909,7 @@ Feature: Validate command line arguments
         When the user runs "gpcrondump -a -x testdb1,testdb2 --prefix=foo"
         Then gpcrondump should return a return code of 0
         And the timestamp from gpcrondump is stored 
-        And the user runs gpdbrestore with the stored timestamp and options "--prefix=foo --redirected-restore-database=testdb"
+        And the user runs gpdbrestore with the stored timestamp and options "--prefix=foo --redirect=testdb"
         And gpdbrestore should return a return code of 0
         And there should be dump files under " " with prefix "foo"
         And verify that there is a "heap" table "heap_table1" in "testdb" with data
@@ -4913,6 +4921,7 @@ Feature: Validate command line arguments
         And there are no backup files
         And the database "testdb" does not exist
         And database "testdb" exists
+        And the database "testdb1" does not exist
         And there is a list to store the incremental backup timestamps
         And there is a "heap" table "heap_table1" with compression "None" in "testdb" with data
         And there is a "heap" table "heap_table2" with compression "None" in "testdb" with data
@@ -4933,7 +4942,7 @@ Feature: Validate command line arguments
         And the user runs "gpcrondump -x testdb --incremental --prefix=foo -a --list-filter-tables"
         And gpcrondump should return a return code of 0
         And all the data from "testdb" is saved for verification
-        And the user runs gpdbrestore with the stored timestamp and options "--prefix=foo --redirected-restore-database=testdb1" 
+        And the user runs gpdbrestore with the stored timestamp and options "--prefix=foo --redirect=testdb1" 
         And gpdbrestore should return a return code of 0 
         And verify that there is a "heap" table "public.heap_table1" in "testdb1" with data
         And verify that there is a "ao" table "public.ao_index_table" in "testdb1" with data
