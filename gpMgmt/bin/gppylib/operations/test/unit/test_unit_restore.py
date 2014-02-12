@@ -12,7 +12,7 @@ from gppylib.operations.restore import RestoreDatabase, create_restore_plan, get
         validate_tablenames, create_plan_file_contents, GetDbName, get_dirty_table_file_contents, \
         get_incremental_restore_timestamps, get_partition_list, get_restore_dir, is_begin_incremental_run, \
         is_incremental_restore, get_restore_table_list, validate_restore_tables_list, \
-        update_ao_stat_func, update_ao_statistics, _build_gpdbrestore_cmd_line
+        update_ao_stat_func, update_ao_statistics, _build_gpdbrestore_cmd_line, ValidateTimestamp
 import gppylib.operations.backup_utils as backup_utils
 
 

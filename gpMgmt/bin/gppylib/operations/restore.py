@@ -589,6 +589,15 @@ class ValidateTimestamp(Operation):
         self.dump_dir = dump_dir
         self.ddboost = ddboost
 
+    def validate_compressed_file(self, compressed_file):
+        compress = os.path.exists(compressed_file)
+        if not compress:
+            uncompressed_file = compressed_file[:compressed_file.index('.gz')]
+            if not os.path.exists(uncompressed_file):
+                raise ExceptionNoStackTraceNeeded('Unable to find {ucfile} or {ucfile}.gz. Skipping restore.'
+                                                  .format(ucfile=uncompressed_file))
+        return compress
+
     def execute(self):
         path = os.path.join(get_restore_dir(self.master_datadir, self.backup_dir), self.dump_dir, self.candidate_timestamp[0:8])
         createdb_file = generate_createdb_filename(self.master_datadir, self.backup_dir, self.candidate_timestamp)
@@ -597,7 +606,7 @@ class ValidateTimestamp(Operation):
         restore_db = GetDbName(createdb_file).run()
         if not self.ddboost:
             compressed_file = os.path.join(path, "%s%s.gz" % (generate_master_dbdump_prefix(), self.candidate_timestamp))
-            compress = os.path.exists(compressed_file)
+            compress = self.validate_compressed_file(compressed_file)
         else:
             compressed_file = os.path.join(path, "%s%s%s.gz" % (generate_master_dbdump_prefix(), self.candidate_timestamp, POST_DATA_SUFFIX))
             compress = CheckFile(compressed_file).run() 

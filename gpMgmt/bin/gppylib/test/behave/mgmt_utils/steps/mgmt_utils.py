@@ -229,6 +229,7 @@ def impl(context, command):
 
 @given('the user runs command "{command}"') 
 @when('the user runs command "{command}"') 
+@then('the user runs command "{command}"')
 def impl(context, command):                 
     run_command(context, command) 
 
