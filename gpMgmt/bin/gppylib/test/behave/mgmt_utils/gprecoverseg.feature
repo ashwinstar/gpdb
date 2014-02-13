@@ -1,5 +1,6 @@
 @gprecoverseg
 Feature: gprecoverseg tests
+    @dca
     Scenario: gprecoverseg should not output bootstrap error on success
         Given the database is running
         And user kills a primary postmaster process
@@ -13,6 +14,7 @@ Feature: gprecoverseg tests
         And gprecoverseg should not print Unhandled exception in thread started by <bound method Worker.__bootstrap to stdout
          
     @wip
+    @dca
     Scenario: Pid corresponds to a non postgres process 
         Given the database is running
         and all the segments are running
@@ -38,7 +40,8 @@ Feature: gprecoverseg tests
         And the background pid is killed on "primary" segment
 
     @wip
-    Scenario: Pid does not correspond to any running process
+    @dca
+    Scenario: Pid does not correspond to any running process 
         Given the database is running
         And all the segments are running
         And the segments are synchronized
@@ -58,7 +61,8 @@ Feature: gprecoverseg tests
         And the segments are synchronized
         And the backup pid file is deleted on "primary" segment
 
-    Scenario: gprecoveseg testing using gpfaultinjector
+    @dca
+    Scenario: gprecoveseg testing using gpfaultinjector 
         Given the database is running
         And all the segments are running
         And the segments are synchronized

@@ -40,6 +40,7 @@ Feature: Validate command line arguments
     # gpstart fails after hard shutdown of the system, the postmaster.pid file exists with a pid
     # that matches that of a currently running non-postgres pid
 
+    @dca
     Scenario: Pid corresponds to a non postgres process 
         Given the database is running
         and all the segments are running
@@ -87,6 +88,7 @@ Feature: Validate command line arguments
         and the segments are synchronized
 
     @wip
+    @dca
     Scenario: Standby syncmaster is running with no pgrep command on standby
         Given the database is running
         and all the segments are running
