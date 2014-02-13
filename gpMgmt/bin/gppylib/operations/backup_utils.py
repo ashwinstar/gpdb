@@ -111,7 +111,7 @@ def check_cdatabase_exists(dbname, report_file):
             parts = line.split()
             if len(parts) < 3:
                 continue
-            if dbname == parts[2]:
+            if parts[2] is not None and dbname == parts[2].strip('"'):
                 return True
     return False
 

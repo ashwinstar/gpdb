@@ -391,32 +391,31 @@ class RestoreDatabase(Operation):
                 return
         raise ExceptionNoStackTraceNeeded('Failed to drop database %s' % restore_db)
 
-    def _process_createdb(self, restore_timestamp, restore_db, master_datadir, backup_dir, master_port): 
-        conn = None
+    def drop_database_if_exists(self, master_port, restore_db):
+        cmd = Command(name='drop database %s' % restore_db, cmdStr='dropdb %s -p %s' % (restore_db, master_port))
         try:
-            dburl = dbconn.DbURL(port=master_port)
-            conn = dbconn.connect(dburl)
-            count = execSQLForSingleton(conn, "select count(*) from pg_database where datname='%s';" % restore_db)
+            cmd.run(validateAfter=True)
+        except ExecutionError, e:
+            logger.exception("Could not drop database %s" % restore_db)
+            raise ExceptionNoStackTraceNeeded('Failed to drop database %s' % restore_db)
 
-            if count == 1:
-                logger.info("Dropping database %s" % restore_db)
-                try:
-                    cursor=conn.cursor()
-                    cursor.execute("commit")                          # hack to move drop stmt out of implied transaction
-                    cursor.execute("drop database %s" % restore_db)
-                    cursor.close()
-                except Exception, e:
-                    logger.exception("Could not create database %s" % restore_db)
-                    raise ExceptionNoStackTraceNeeded('Failed to drop database %s' % restore_db)
-                else:
-                    logger.info('Dropped database %s' % restore_db)
-        finally:
-            if conn is not None:
-                conn.close()
+    def create_database_if_not_exists(self, master_port, restore_db):
+        cmd = Command(name='create database %s' % restore_db, cmdStr='createdb %s -p %s -T template0' % (restore_db, master_port))
+        try:
+            cmd.run(validateAfter=True)
+        except ExecutionError, e:
+            logger.exception("Could not create database %s" % restore_db)
+            raise ExceptionNoStackTraceNeeded('Failed to create database %s' % restore_db)
 
-        createdb_file = generate_createdb_filename(master_datadir, backup_dir, restore_timestamp)
-        logger.info('Invoking sql file: %s' % createdb_file)
-        Psql('Invoking schema dump', filename=createdb_file).run(validateAfter=True)
+    def _process_createdb(self, restore_timestamp, restore_db, redirected_restore_db, master_datadir, backup_dir, master_port): 
+        if redirected_restore_db:
+            self.drop_database_if_exists(master_port, redirected_restore_db)
+            self.create_database_if_not_exists(master_port, redirected_restore_db)
+        else:
+            self.drop_database_if_exists(master_port, restore_db)
+            createdb_file = generate_createdb_filename(master_datadir, backup_dir, restore_timestamp)
+            logger.info('Invoking sql file: %s' % createdb_file)
+            Psql('Invoking schema dump', filename=createdb_file).run(validateAfter=True)
 
     def _build_restore_line(self, restore_timestamp, restore_db, compress, master_port, ddboost, no_plan, table_filter_file, no_stats): 
         user = getpass.getuser()
@@ -602,8 +601,10 @@ class GetDbName(Operation):
             if not line:
                 break
             if line.startswith("CREATE DATABASE"):
-                restore_db = line.split()[2]
-                return restore_db
+                restore_db = line.split()[2]    
+                if restore_db is None:
+                    raise Exception('Expected database name after CREATE DATABASE in line "%s" of file "%s"' % (line, self.createdb_file))
+                return restore_db.strip().strip('"')
         else:
             raise GetDbName.DbNameGiveUp()
         raise GetDbName.DbNameNotFound()

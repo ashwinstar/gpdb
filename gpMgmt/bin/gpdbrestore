@@ -76,7 +76,7 @@ class GpdbRestore(Operation):
         self.list_tables = options.list_tables
         self.db_date_dir = options.db_date_dir
         self.db_host_path = options.db_host_path
-        self.search_for_dbname = options.search_for_dbname
+        self.search_for_dbname = options.search_for_dbname.strip('"') if options.search_for_dbname is not None else options.search_for_dbname
         self.drop_db = options.drop_db
         self.restore_global = options.restore_global
         self.restore_tables = options.restore_tables
