@@ -2520,4 +2520,23 @@ gpdb::CheckRTPermissions
 	GP_WRAP_END;
 }
 
+// check permissions on range table
+void
+gpdb::IndexOpProperties
+	(
+	Oid opno,
+	Oid opclass,
+	int *strategy,
+	Oid *subtype,
+	bool *recheck
+	)
+{
+	GP_WRAP_START;
+	{
+		get_op_opclass_properties(opno, opclass, strategy, subtype, recheck);	
+		return;
+	}
+	GP_WRAP_END;
+}
+
 // EOF
