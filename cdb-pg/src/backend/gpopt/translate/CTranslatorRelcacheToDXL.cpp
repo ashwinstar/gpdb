@@ -2096,12 +2096,20 @@ CTranslatorRelcacheToDXL::PimdobjRelStats
 
 	CDouble dRows(rel->rd_rel->reltuples);
 	pmdidRelStats->AddRef();
+	
+	BOOL fEmptyStats = false;
+	if (dRows == CDouble(0.0))
+	{
+		fEmptyStats = true;
+	}
+		
 	CDXLRelStats *pdxlrelstats = New(pmp) CDXLRelStats
 												(
 												pmp,
 												pmdidRelStats,
 												pmdname,
-												dRows
+												dRows,
+												fEmptyStats
 												);
 	gpdb::CloseRelation(rel);
 
