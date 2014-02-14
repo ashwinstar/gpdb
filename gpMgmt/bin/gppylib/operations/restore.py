@@ -293,6 +293,7 @@ class RestoreDatabase(Operation):
         if self.redirected_restore_db and not self.drop_db:
             restore_db = self.redirected_restore_db
             self.create_database_if_not_exists(self.master_port, self.redirected_restore_db)
+            self.create_gp_toolkit(self.redirected_restore_db)
         elif self.redirected_restore_db:
             restore_db = self.redirected_restore_db
 
@@ -438,6 +439,30 @@ class RestoreDatabase(Operation):
         finally:
             conn.close()
 
+    def check_gp_toolkit(self, restore_db):
+        GP_TOOLKIT_QUERY = """SELECT count(*)
+                              FROM pg_class pgc, pg_namespace pgn
+                              WHERE pgc.relnamespace=pgn.oid AND
+                                    pgn.nspname='gp_toolkit'
+                           """
+        with dbconn.connect(dbconn.DbURL(dbname=restore_db, port=self.master_port)) as conn:
+            res = dbconn.execSQLForSingleton(conn, GP_TOOLKIT_QUERY) 
+            if res == 0:
+                return False
+            return True
+
+    def create_gp_toolkit(self, restore_db):
+        if not self.check_gp_toolkit(restore_db):
+            if 'GPHOME' not in os.environ:
+                logger.warn('Please set $GPHOME in your environment')
+                logger.warn('Skipping creation of gp_toolkit since $GPHOME/share/postgresql/gp_toolkit.sql could not be found')
+            else:
+                logger.info('Creating gp_toolkit schema for database "%s"' % restore_db)
+                Psql(name='create gp_toolkit', filename=os.path.join(os.environ['GPHOME'],
+                                                                     'share', 'postgresql',
+                                                                     'gp_toolkit.sql'),
+                                               database=restore_db).run(validateAfter=True)
+
     def _process_createdb(self, restore_timestamp, restore_db, redirected_restore_db, master_datadir, backup_dir, master_port): 
         if redirected_restore_db:
             self.drop_database_if_exists(master_port, redirected_restore_db)
@@ -447,6 +472,7 @@ class RestoreDatabase(Operation):
             createdb_file = generate_createdb_filename(master_datadir, backup_dir, restore_timestamp)
             logger.info('Invoking sql file: %s' % createdb_file)
             Psql('Invoking schema dump', filename=createdb_file).run(validateAfter=True)
+        self.create_gp_toolkit(restore_db)
 
     def _build_restore_line(self, restore_timestamp, restore_db, compress, master_port, ddboost, no_plan, table_filter_file, no_stats): 
         user = getpass.getuser()

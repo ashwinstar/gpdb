@@ -4,6 +4,7 @@
 # Copyright (c) Greenplum Inc 2008. All Rights Reserved. 
 #
 
+import sys
 import unittest2 as unittest
 import tempfile, os, shutil
 from gppylib.operations.restore import RestoreDatabase, create_restore_plan, get_plan_file_contents, \
@@ -882,7 +883,47 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         db = 'testdb'
         update_ao_statistics(port, db)
 
+    @patch('gppylib.operations.restore.dbconn.connect')
+    @patch('gppylib.db.dbconn.execSQLForSingleton', return_value=5)
+    def test_check_gp_toolkit_true(self, m1, m2):
+        restore_db = 'testdb'
+        self.assertTrue(self.restore.check_gp_toolkit(restore_db))
 
+    @patch('gppylib.operations.restore.dbconn.connect')
+    @patch('gppylib.db.dbconn.execSQLForSingleton', return_value=0)
+    def test_check_gp_toolkit_false(self, m1, m2):
+        restore_db = 'testdb'
+        self.assertFalse(self.restore.check_gp_toolkit(restore_db))
+
+class ValidateTimestampTestCase(unittest.TestCase):
+
+    def setUp(self):
+        self.validate_timestamp = ValidateTimestamp(candidate_timestamp='20140211111111',
+                                                    master_datadir='/mdd',
+                                                    backup_dir='/backup_dir',
+                                                    dump_dir='/db_dumps',
+                                                    ddboost = False)
+    @patch('os.path.exists', side_effect=[True, False])
+    def test_validate_compressed_file_with_compression_exists(self, mock):
+        compressed_file = 'compressed_file.gz'
+        self.assertTrue(self.validate_timestamp.validate_compressed_file(compressed_file))
+
+    @patch('os.path.exists', side_effect=[False, False])
+    def test_validate_compressed_file_with_compression_doesnt_exists(self, mock):
+        compressed_file = 'compressed_file.gz'
+        with self.assertRaisesRegexp(ExceptionNoStackTraceNeeded, 'Unable to find compressed_file or compressed_file.gz'):
+            self.validate_timestamp.validate_compressed_file(compressed_file)
+
+    @patch('os.path.exists', side_effect=[False, True])
+    def test_validate_compressed_file_without_compression_exists(self, mock):
+        compressed_file = 'compressed_file.gz'
+        self.assertFalse(self.validate_timestamp.validate_compressed_file(compressed_file))
+
+    @patch('os.path.exists', side_effect=[False, False])
+    def test_validate_compressed_file_without_compression_doesnt_exist(self, mock):
+        compressed_file = 'compressed_file.gz'
+        with self.assertRaisesRegexp(ExceptionNoStackTraceNeeded, 'Unable to find compressed_file or compressed_file.gz'):
+            self.validate_timestamp.validate_compressed_file(compressed_file)
 
 if __name__ == '__main__':
     unittest.main()

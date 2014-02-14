@@ -5127,6 +5127,77 @@ Feature: Validate command line arguments
         And verify that there is a "heap" table "heap_table" in "TESTING" with data
         And verify that there is a "ao" table "ao_part_table" in "TESTING" with data
 
+    Scenario: Full backup and Restore should create the gp_toolkit schema with -e option
+        Given the database is running
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there are no backup files
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        And all the data from "testdb" is saved for verification
+        And the gp_toolkit schema for "testdb" is saved for verification
+        When the user runs "gpcrondump -x testdb -a"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the user runs gpdbrestore with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And verify that the data of "10" tables in "testdb" is validated after restore
+        And the gp_toolkit schema for "testdb" is verified after restore 
+
+    Scenario: Incremental backup and Restore should create the gp_toolkit schema with -e option
+        Given the database is running
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there are no backup files
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        And all the data from "testdb" is saved for verification
+        And the gp_toolkit schema for "testdb" is saved for verification
+        When the user runs "gpcrondump -x testdb -a"
+        Then gpcrondump should return a return code of 0
+        When the user runs "gpcrondump -x testdb --incremental -a"
+        THen gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the user runs gpdbrestore with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And verify that the data of "10" tables in "testdb" is validated after restore
+        And the gp_toolkit schema for "testdb" is verified after restore 
+
+    Scenario: Redirected Restore should create the gp_toolkit schema with -e option
+        Given the database is running
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there are no backup files
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        And all the data from "testdb" is saved for verification
+        And the gp_toolkit schema for "testdb" is saved for verification
+        When the user runs "gpcrondump -x testdb -a"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the user runs "gpdbrestore --redirect=fullbkdb -e -a" with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And verify that the data of "10" tables in "fullbkdb" is validated after restore
+        And the gp_toolkit schema for "fullbkdb" is verified after restore 
+
+    Scenario: Redirected Restore should create the gp_toolkit schema without -e option
+        Given the database is running
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And the database "fullbkdb" does not exist
+        And there are no backup files
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        And all the data from "testdb" is saved for verification
+        And the gp_toolkit schema for "testdb" is saved for verification
+        When the user runs "gpcrondump -x testdb -a"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the user runs "gpdbrestore --redirect=fullbkdb -a" with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And verify that the data of "10" tables in "fullbkdb" is validated after restore
+        And the gp_toolkit schema for "fullbkdb" is verified after restore 
+
     # THIS SHOULD BE THE LAST TEST
     @backupfire
     Scenario: cleanup for backup feature
