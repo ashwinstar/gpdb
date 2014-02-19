@@ -99,3 +99,13 @@ CREATE TABLE tab2 (a char(15), b integer) DISTRIBUTED BY (a);
 
 UPDATE tab1 SET b = tab2.b FROM tab2 WHERE tab1.a = tab2.a;
 
+DROP TABLE IF EXISTS update_distr_key; 
+
+CREATE TABLE update_distr_key (a int, b int) DISTRIBUTED BY (a); 
+INSERT INTO update_distr_key select i, i* 10 from generate_series(0, 9) i; 
+
+UPDATE update_distr_key SET a = 5 WHERE b = 10; 
+
+SELECT * from update_distr_key; 
+
+DROP TABLE update_distr_key; 

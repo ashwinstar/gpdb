@@ -44,9 +44,6 @@
 
 #include "executor/executor.h"
 
-/* Enable the optimizer */
-extern bool		optimizer;
-
 /*
  * An ApplyMotionState holds state for the recursive apply_motion_mutator().
  * It is externalized here to make it shareable by helper code in other
@@ -697,10 +694,8 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 			{
 				/*
 				 * The planner does not support updating any of the partitioning columns.
-				 * The optimizer supports updating partitioning columns.
 				 */
 				if (query->commandType == CMD_UPDATE &&
-					!optimizer &&
 					doesUpdateAffectPartitionCols(root, plan,query))
 				{
 					ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
