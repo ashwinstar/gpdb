@@ -248,23 +248,6 @@ Feature: gpfdist configure timeout value
         When the user runs client program "gpfdist_httpclient.py --url=localhost:8088 --path=/data.txt --segment_count=2 --segment_index=0 --session_id=1 --sequence_num=-1" from "gppylib/test/behave_utils/gpfdist_utils" under CWD
         Then the client program should print 400 invalid sequence number to stdout
      
-    @gpfdist_status_message
-    @nosolaris
-    Scenario: gpfdist should output status message when segment read timeout 
-        Given the "gpfdist" process is killed
-        Given the directory "extdata" exists in current working directory
-        Given database "testdb" is created if not exists
-        Given the external table "read_ext_data" does not exist in "testdb"
-        When the user runs "gpfdist -p 8088 -V -d extdata -w 3 > ./gpfdist.log & echo $! > extdata/gpfdist.pid &"
-        And a "READABLE" external table "read_ext_data" is created on file "demo" in "testdb" 
-        And the user runs command "gdb -p $(cat extdata/gpfdist.pid) < gppylib/test/behave/mgmt_utils/steps/data/gpfdist_gdb_jump_doWrite &" 
-        And the data line "abcd|1" is appened to "extdata/demo" in cwd
-        And the user runs "psql -d testdb -c 'select * from read_ext_data'"
-        Then the client program should print suspected intermittent network connectivity issue, cancelling the query error message
-        When the "gpfdist" process is killed
-        And the user runs command "cat ./gpfdist.log"
-        Then the client program should print STATUS: total session to stdout
-
     @gpfdist_eol_encoding
     Scenario: gpfdist should reject bad encoded EOL  
 	Given the client program "fake_url.py" is present under CWD in "gppylib/test/behave_utils/gpfdist_utils"

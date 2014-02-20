@@ -159,4 +159,5 @@ extern void url_fflush(URL_FILE *file, CopyState pstate);
 
 extern URL_FILE *url_execute_fopen(char* url, char *cmd, bool forwrite, extvar_t *ev);
 
+extern int readable_external_table_timeout;
 #endif

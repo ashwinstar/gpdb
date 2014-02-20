@@ -37,6 +37,7 @@
 #include "access/xact.h"
 #include "access/xlog_internal.h"
 #include "access/transam.h"
+#include "access/url.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_type.h"
 #include "cdb/cdbappendonlyam.h"
@@ -3934,6 +3935,16 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&ddboost_buf_size,
 		524288, 65536, 1048576, NULL, NULL
+	},
+
+	{
+		{"readable_external_table_timeout", PGC_USERSET, EXTERNAL_TABLES,
+			gettext_noop("Cancel the query if no data read within N seconds."),
+			gettext_noop("A value of 0 turns off the timeout."),
+			GUC_UNIT_S | GUC_NOT_IN_SAMPLE  
+		},
+		&readable_external_table_timeout,
+		0, 0, INT_MAX, NULL, NULL
 	},
 
 	{

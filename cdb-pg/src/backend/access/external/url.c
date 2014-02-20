@@ -93,6 +93,7 @@ static int extssl_libcurldebug = 1;
 char extssl_key_full[MAXPGPATH] = {0};
 char extssl_cer_full[MAXPGPATH] = {0};
 char extssl_cas_full[MAXPGPATH] = {0};
+int readable_external_table_timeout = 0;
 
 /* Will hold the last curl error					*/
 /* Currently it is in use only for SSL connection,	*/
@@ -572,7 +573,13 @@ fill_buffer(URL_FILE *file, int want)
 		{
 			// timeout
 			timeout_count++;
-			if (timeout_count > 120) 
+
+			if (timeout_count % 12 == 0)
+			{
+				elog(LOG, "suspected intermittent network connectivity issue, continuing to wait for recovery.");
+			}
+
+			if (readable_external_table_timeout != 0 && timeout_count * 5 > readable_external_table_timeout)
 			{
 				// Hack to get the offset of num_easy and num_alive in 
 				// struct Curl_multi, is 96 and 100 in libcurl 7.21.7.
@@ -588,10 +595,6 @@ fill_buffer(URL_FILE *file, int want)
 				elog(ERROR, "suspected intermittent network connectivity issue, cancelling the query.");
 				break;
 			} 
-			else if (timeout_count % 12 == 0) 
-			{
-				elog(LOG, "suspected intermittent network connectivity issue, continuing to wait for recovery.");
-			}
 		} 
 		else if (nfds > 0) 
 		{
@@ -1899,7 +1902,7 @@ static size_t gp_proto0_read(char *buf, int bufsz, URL_FILE* file)
 		n = bufsz;
 
 	/* xfer data to caller */
-	memcpy(buf, curl->in.ptr, n);
+	memcpy(buf, curl->in.ptr + curl->in.bot, n);
 	curl->in.bot += n;
 
 	return n;

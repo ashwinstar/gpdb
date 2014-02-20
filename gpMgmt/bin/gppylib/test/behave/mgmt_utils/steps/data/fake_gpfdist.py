@@ -50,7 +50,8 @@ class TimerHandler(BaseHTTPRequestHandler):
 
 class NoResponseHandler(TimerHandler):
     def do_GET_internal(self):
-        reponse_with_code(self, 200)
+        time.sleep(360)
+        simple_exit()
 
     def do_POST_internal(self):
         time.sleep(360)
