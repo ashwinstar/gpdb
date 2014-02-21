@@ -126,18 +126,17 @@ explain with my_order as (select * from with_test1 order by i)
 select i, count(*)
 from my_order
 group by i;
-                                      QUERY PLAN                                       
----------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..6.05 rows=5 width=12)
-   ->  Sequence  (cost=0.00..4.99 rows=5 width=12)
-         ->  Shared Scan (share slice:id 1:0)  (cost=0.00..1.78 rows=50 width=1)
-               ->  Materialize  (cost=0.00..1.78 rows=50 width=1)
-                     ->  Table Scan on with_test1  (cost=0.00..0.68 rows=50 width=14)
-         ->  HashAggregate  (cost=0.00..2.09 rows=5 width=12)
-               Group By: "?column1?"
-               ->  Shared Scan (share slice:id 1:0)  (cost=0.00..0.20 rows=50 width=4)
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ GroupAggregate  (cost=0.00..15.01 rows=5 width=12)
+   Group By: i
+   ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..11.21 rows=50 width=4)
+         Merge Key: i
+         ->  Sort  (cost=0.00..10.01 rows=50 width=4)
+               Sort Key: i
+               ->  Table Scan on with_test1  (cost=0.00..0.20 rows=50 width=4)
  Settings:  optimizer=on
-(9 rows)
+(8 rows)
 
 -- WITH query used in InitPlan
 --begin_equivalent
@@ -1912,19 +1911,13 @@ select * from (select * from (select * from b) as b1 where b1.i = 1) AS FOO, (se
 --end_equivalent
 -- qual push down test
 explain with t as (select * from with_test1) select * from t where i = 10;
-                                      QUERY PLAN                                       
----------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..5.74 rows=1 width=14)
-   ->  Sequence  (cost=0.00..4.73 rows=1 width=14)
-         ->  Shared Scan (share slice:id 1:0)  (cost=0.00..2.70 rows=1 width=1)
-               ->  Materialize  (cost=0.00..2.70 rows=1 width=1)
-                     ->  Table Scan on with_test1  (cost=0.00..1.70 rows=1 width=14)
-                           Filter: i = 10
-         ->  Result  (cost=0.00..1.02 rows=1 width=14)
-               Filter: i = 10
-               ->  Shared Scan (share slice:id 1:0)  (cost=0.00..0.01 rows=1 width=14)
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..3.04 rows=1 width=14)
+   ->  Table Scan on with_test1  (cost=0.00..1.02 rows=1 width=14)
+         Filter: i = 10
  Settings:  optimizer=on
-(10 rows)
+(4 rows)
 
 -- MPP-17848
 drop table x;
