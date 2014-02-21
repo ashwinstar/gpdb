@@ -55,6 +55,9 @@ Feature: Validate command line arguments
         When the user runs "gpcrondump -a --list-filter-tables -x bkdb --incremental"
         Then gpcrondump should return a return code of 2
         And gpcrondump should print list filter tables option requires --prefix and --incremental to stdout
+        When the user runs "gpdbrestore --help"
+        Then gpcrondump should return a return code of 0
+        And gpcrondump should print noanalyze to stdout
 
     ### 
     ### Any tests that require this data set should come after
@@ -5197,6 +5200,41 @@ Feature: Validate command line arguments
         And gpdbrestore should return a return code of 0
         And verify that the data of "10" tables in "fullbkdb" is validated after restore
         And the gp_toolkit schema for "fullbkdb" is verified after restore 
+
+    Scenario: gpdbrestore with noanalyze
+        Given the database is running
+        And there are no backup files        
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And all the data from "testdb" is saved for verification
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And the user runs "gpdbrestore --noanalyze -a" with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And gpdbestore should print Analyze bypassed on request to stdout
+        And verify that the data of "10" tables in "testdb" is validated after restore 
+        And verify that the tuple count of all appendonly tables are consistent in "testdb"
+
+    Scenario: gpdbrestore without noanalyze
+        Given the database is running
+        And there are no backup files        
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And all the data from "testdb" is saved for verification
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And the user runs "gpdbrestore -a" with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And gpdbestore should print Commencing analyze of testdb database to stdout
+        And gpdbestore should print Analyze of testdb completed without error to stdout
+        And verify that the data of "10" tables in "testdb" is validated after restore 
+        And verify that the tuple count of all appendonly tables are consistent in "testdb"
 
     # THIS SHOULD BE THE LAST TEST
     @backupfire
