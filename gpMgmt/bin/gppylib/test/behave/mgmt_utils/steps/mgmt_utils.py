@@ -1812,6 +1812,9 @@ def delete_data_dir(host):
 
 @when('the user initializes standby master on "{hostname}"') 
 def impl(context, hostname):
+    create_standby(context, hostname)
+
+def create_standby(context, hostname):
     port = os.environ.get('PGPORT')
     if hostname.strip() == 'mdw':
         if not hasattr(context, 'master') or not hasattr(context, 'standby_host'):
@@ -1944,10 +1947,16 @@ def impl(context, filename_prefix):
 
 @then('the standby is initialized if required')
 def impl(context):
-    if context.standby_was_initialized: 
+    if context.standby_was_initialized or hasattr(context, 'cluster_had_standby'):
+        if get_standby_host():
+            return
         delete_data_dir(context.standby_host)
         cmd = Command('create the standby', cmdStr='gpinitstandby -s %s -a' % context.standby_host)
         cmd.run(validateAfter=True)
+    else:
+        standby = get_standby_host()
+        if standby:
+            run_gpcommand(context, 'gpinitstandby -ra')
 
 @given('user can start transactions')
 @when('user can start transactions')
@@ -3129,3 +3138,20 @@ def impl(context, dbname):
 def impl(context, dbname):
     get_gp_toolkit_info(context, dbname, 'gp_toolkit_restore')
     diff_backup_restore_data(context, 'gp_toolkit_backup', 'gp_toolkit_restore')
+
+@given('the standby is not initialized')
+@then('the standby is not initialized')
+def impl(context):
+    standby = get_standby_host()
+    if standby:
+        context.cluster_had_standby = True
+        context.standby_host = standby
+        run_gpcommand(context, 'gpinitstandby -ra')
+
+@given('"{path}" has "{perm}" permissions')
+@then('"{path}" has "{perm}" permissions')
+def impl(context, path, perm):
+    path = os.path.expandvars(path)
+    if not os.path.exists(path):
+        raise Exception('Path does not exist! "%s"' % path)
+    os.chmod(path, int(perm, 8))

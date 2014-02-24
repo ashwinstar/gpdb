@@ -695,7 +695,7 @@ def check_empty_table(tablename, dbname):
     check_row_count(tablename, dbname, 0)
      
 def get_master_hostname(dbname='template1'):
-    master_hostname_sql = "select distinct hostname from gp_segment_configuration where content=-1"
+    master_hostname_sql = "select distinct hostname from gp_segment_configuration where content=-1 and role='p'"
     return getRows(dbname, master_hostname_sql)
 
 def get_hosts_and_datadirs(dbname='template1'):
