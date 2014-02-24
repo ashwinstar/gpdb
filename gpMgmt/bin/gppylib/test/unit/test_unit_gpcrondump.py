@@ -61,6 +61,11 @@ class GpCronDumpTestCase(unittest.TestCase):
             self.verbose = False
             self.local_dump_prefix = None
             self.list_filter_tables = None
+            self.netbackup_service_host = None
+            self.netbackup_policy = None
+            self.netbackup_schedule = None
+            self.netbackup_block_size = None
+            self.netbackup_keyword = None
 
     @patch('gpcrondump.GpCronDump._get_master_port')
     @patch('gpcrondump.validate_current_timestamp')
@@ -329,6 +334,32 @@ class GpCronDumpTestCase(unittest.TestCase):
         options.ddboost = True
         options.list_backup_files = True
         with self.assertRaisesRegexp(Exception, 'list backup files not supported with ddboost option'):
+            GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options29(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.dump_databases = 'bkdb'
+        options.timestamp_key = True
+        options.ddboost = True
+        options.netbackup_service_host = "mdw"
+        options.netbackup_policy = "test_policy"
+        options.netbackup_schedule = "test_schedule"
+        with self.assertRaisesRegexp(Exception, '--ddboost is not supported with NetBackup'):
+            GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options30(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.dump_databases = 'bkdb'
+        options.timestamp_key = True
+        options.incremental = True
+        options.netbackup_service_host = "mdw"
+        options.netbackup_policy = "test_policy"
+        options.netbackup_schedule = "test_schedule"
+        with self.assertRaisesRegexp(Exception, '--incremental is not supported with NetBackup'):
             GpCronDump(options, None)
 
     @patch('gpcrondump.GpCronDump._get_master_port')

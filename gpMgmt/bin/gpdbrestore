@@ -36,7 +36,10 @@ try:
     from gppylib.operations.restore import RestoreDatabase, RecoverRemoteDumps, ValidateTimestamp, GetDumpTables, \
                                            GetDbName, create_restore_plan, is_incremental_restore, DUMP_DIR, \
                                            is_begin_incremental_run, get_restore_tables_from_table_file,\
-                                           validate_tablenames, get_restore_dir
+                                           validate_tablenames, get_restore_dir, restore_state_files_with_nbu, \
+                                           restore_report_file_with_nbu, restore_cdatabase_file_with_nbu, \
+                                           restore_config_files_with_nbu, restore_global_file_with_nbu, \
+                                           config_files_dumped, global_file_dumped, check_file_dumped_with_nbu
     import gppylib.operations.backup_utils as backup_utils
     import gppylib.operations.restore as restore
 
@@ -90,6 +93,9 @@ class GpdbRestore(Operation):
         self.list_backup = options.list_backup
         self.redirected_restore_db = options.redirected_restore_db
         self.report_status_dir = options.report_status_dir
+        # NetBackup params
+        self.netbackup_service_host = options.netbackup_service_host
+        self.netbackup_block_size = options.netbackup_block_size
         if options.local_dump_prefix: 
             backup_utils.dump_prefix = options.local_dump_prefix + '_'
 
@@ -113,6 +119,18 @@ class GpdbRestore(Operation):
             else:
                 self.db_host_path = self.db_host_path.split(':')
 
+        if self.db_host_path and self.netbackup_service_host:
+            raise Exception('-R is not supported for restore with NetBackup.')
+
+        if self.search_for_dbname and self.netbackup_service_host:
+            raise Exception('-s is not supported with NetBackup.')
+
+        if self.db_date_dir and self.netbackup_service_host:
+            raise Exception('-b is not supported with NetBackup.')
+
+        if self.list_tables and self.netbackup_service_host:
+            raise Exception('-L is not supported with NetBackup.')
+
         # force non-interactive if list_backup
         if options.list_backup:
             self.interactive = False
@@ -133,6 +151,9 @@ class GpdbRestore(Operation):
 
         self.ddboost = options.ddboost
         if self.ddboost:
+            if self.netbackup_service_host:
+                raise Exception('--ddboost option is not supported with NetBackup')
+
             if self.db_host_path is not None:
                 raise ExceptionNoStackTraceNeeded("-R cannot be used with DDBoost parameters.")
             elif self.backup_dir:
@@ -153,6 +174,16 @@ class GpdbRestore(Operation):
             cmd.run(validateAfter = True)
 
         self.gparray = GpArray.initFromCatalog(dbconn.DbURL(port = self.master_port), utility=True)
+
+        if self.netbackup_service_host:
+            logger.info("Restoring metadata files with NetBackup")
+            restore_state_files_with_nbu(self.master_datadir, self.backup_dir, self.db_timestamp, self.netbackup_service_host, self.netbackup_block_size)
+            restore_report_file_with_nbu(self.master_datadir, self.backup_dir, self.db_timestamp, self.netbackup_service_host, self.netbackup_block_size)
+            restore_cdatabase_file_with_nbu(self.master_datadir, self.backup_dir, self.db_timestamp, self.netbackup_service_host, self.netbackup_block_size)
+            if config_files_dumped(self.master_datadir, self.backup_dir, self.db_timestamp, self.netbackup_service_host):
+                restore_config_files_with_nbu(self.master_datadir, self.backup_dir, self.db_timestamp, self.master_port, self.netbackup_service_host, self.netbackup_block_size)
+            if global_file_dumped(self.master_datadir, self.backup_dir, self.dump_dir, self.db_timestamp, self.netbackup_service_host):
+                restore_global_file_with_nbu(self.master_datadir, self.backup_dir, self.dump_dir, self.db_timestamp, self.netbackup_service_host, self.netbackup_block_size)
 
         if self.list_tables and self.db_timestamp is not None:
             return self._list_dump_tables()
@@ -177,6 +208,9 @@ class GpdbRestore(Operation):
             if is_incremental_restore(self.master_datadir, self.backup_dir, info['restore_timestamp']):
                 raise Exception('-R is not supported for restore with incremental timestamp %s' % info['restore_timestamp'])
 
+        if self.netbackup_service_host and is_incremental_restore(self.master_datadir, self.backup_dir, info['restore_timestamp']):
+            raise Exception('--netbackup-service-host is not supported for restore with incremental timestamp %s' % info['restore_timestamp'])
+
         if not is_incremental_restore(self.master_datadir, self.backup_dir, info['restore_timestamp']) and self.list_backup:
             raise Exception('--list-backup is not supported for restore with full timestamps')
 
@@ -200,7 +234,9 @@ class GpdbRestore(Operation):
                         batch_default = self.batch_default,
                         no_ao_stats = self.no_ao_stats,
                         redirected_restore_db = self.redirected_restore_db,
-                        report_status_dir = self.report_status_dir).run()
+                        report_status_dir = self.report_status_dir,
+                        netbackup_service_host = self.netbackup_service_host,
+                        netbackup_block_size = self.netbackup_block_size).run()
 
         if self.no_analyze:
             logger.warn('--------------------------------------------------------------------------------------------------')
@@ -293,7 +329,8 @@ class GpdbRestore(Operation):
                                     backup_dir = self.backup_dir, 
                                     restore_timestamp = self.db_timestamp,
                                     dump_dir = self.dump_dir,
-                                    ddboost = self.ddboost).run()
+                                    ddboost = self.ddboost,
+                                    netbackup_service_host = self.netbackup_service_host).run()
 
         logger.info("--------------------------------------------------------------------")
         logger.info("List of database tables for dump file with time stamp %s" % self.db_timestamp)
@@ -329,6 +366,7 @@ class GpdbRestore(Operation):
                                                                           backup_dir = self.backup_dir, 
                                                                           candidate_timestamp = self.db_timestamp,
                                                                           dump_dir = self.dump_dir,
+                                                                          netbackup_service_host = self.netbackup_service_host,
                                                                           ddboost = self.ddboost).run()
         elif self.db_date_dir is not None:
             (restore_timestamp, restore_db, compress) = self._validate_db_date_dir()
@@ -519,6 +557,10 @@ def create_parser():
                      help="Database name to which the data needs to be restored for the given timestamp")
     addTo.add_option('--report-status-dir', dest='report_status_dir', metavar='<report_status_dir>',
                      help="Writable directory for report and status file creation")
+    addTo.add_option('--netbackup-service-host', dest='netbackup_service_host', metavar="<server name>",
+                     help="NetBackup service hostname")
+    addTo.add_option('--netbackup-block-size', dest='netbackup_block_size', metavar="<block size>",
+                     help="NetBackup data transfer block size")
     parser.add_option_group(addTo)
 
     ddOpt = OptionGroup(parser, "DDBoost")

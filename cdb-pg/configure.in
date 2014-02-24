@@ -547,6 +547,15 @@ AC_MSG_RESULT([$enable_ddboost])
 AC_SUBST(enable_ddboost)
 
 #
+# --enable-netbackup enables NetBackup support
+#
+PGAC_ARG_BOOL(enable, netbackup, no,  [  --enable-netbackup     enable NetBackup support],
+              [AC_DEFINE([USE_NETBACKUP], 1,
+                         [Define to 1 to build with NetBackup capabilities. (--enable-netbackup)])])
+AC_MSG_RESULT([$enable_netbackup])
+AC_SUBST(enable_netbackup)
+
+#
 # Include directories
 #
 ac_save_IFS=$IFS

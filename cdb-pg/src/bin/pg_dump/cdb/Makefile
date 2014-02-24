@@ -28,10 +28,16 @@ DDBOOSTLIB += -lDDBoost
 override CFLAGS += -I$(top_builddir)/../ext/$(BLD_ARCH)/include/rsa_csp -I$(top_builddir)/../ext/$(BLD_ARCH)/include/rsa_csp/lb
 endif
 
+ifeq ($(enable_netbackup), yes)
+NETBACKUPLIB += -lxbsa64 -lnbclientcST -lnbbasecST
+GPBSALIB += -L$(top_builddir)/src/bin/pg_dump/cdb -lgpbsa
+endif
+
 PGDUMP_SRCDIR= $(top_srcdir)/src/bin/pg_dump
 PGDUMP_DIR= $(top_builddir)/src/bin/pg_dump
 
 override CPPFLAGS := -I$(PGDUMP_SRCDIR) -I$(libpq_srcdir) $(CPPFLAGS) -DBINDIR=\"$(bindir)\"
+override CFLAGS += -I$(top_builddir)/src/include -I$(top_builddir)/src/interfaces/libpq -I$(top_builddir)/../ext/$(BLD_ARCH)/include
 
 
 OBJS= $(PGDUMP_DIR)/pg_backup_db.o $(PGDUMP_DIR)/pg_backup_custom.o \
@@ -41,7 +47,7 @@ OBJS= $(PGDUMP_DIR)/pg_backup_db.o $(PGDUMP_DIR)/pg_backup_custom.o \
 
 KEYWRDOBJS = ../keywords.o ../kwlookup.o
 
-all: submake-libpq submake-libpgport cdb_dump cdb_dump_agent cdb_restore cdb_restore_agent gpddboost
+all: submake-libpq submake-libpgport cdb_dump cdb_dump_agent cdb_restore cdb_restore_agent gpddboost libgpbsa.so cdb_bsa_dump_agent cdb_bsa_restore_agent cdb_bsa_query_agent
 
 cdb_dump: cdb_dump.o cdb_backup_status.o cdb_seginst.o cdb_backup_state.o cdb_table.o cdb_backup_archiver.o cdb_dump_util.o cdb_dump_include.o $(PGDUMP_DIR)/common.o $(OBJS) $(KEYWRDOBJS) $(libpq_builddir)/libpq.a $(EXTRA_OBJS) 
 	$(CC) $(CFLAGS) cdb_dump.o cdb_backup_status.o cdb_seginst.o cdb_backup_state.o cdb_table.o cdb_backup_archiver.o cdb_dump_util.o cdb_dump_include.o $(PGDUMP_DIR)/common.o $(OBJS) $(KEYWRDOBJS)  $(libpq) $(LDFLAGS) $(LIBS) $(DDBOOSTLIB) -o $@
@@ -61,6 +67,18 @@ cdb_restore_agent: cdb_restore_agent.o cdb_backup_archiver.o cdb_backup_status.o
 gpddboost: cdb_ddboost_util.o cdb_backup_status.o cdb_seginst.o cdb_backup_state.o cdb_table.o cdb_dump_util.o $(libpq_builddir)/libpq.a 
 	$(CC) $(CFLAGS) cdb_ddboost_util.o cdb_backup_status.o cdb_seginst.o cdb_backup_state.o cdb_table.o cdb_dump_util.o $(libpq) $(LDFLAGS) $(LIBS) $(DDBOOSTLIB) -o $@
 
+libgpbsa.so: cdb_bsa_util.c $(libpq_builddir)/libpq.a
+	$(CC) $(CFLAGS) -fPIC cdb_bsa_util.c $(libpq) $(LDFLAGS) -shared $(LIBS) $(DDBOOSTLIB) $(NETBACKUPLIB) -o $@
+
+cdb_bsa_dump_agent: cdb_bsa_dump_agent.o cdb_dump_util.o $(libpq_builddir)/libpq.a
+	$(CC) $(CFLAGS) cdb_bsa_dump_agent.o cdb_dump_util.o $(libpq) $(LDFLAGS) $(LIBS) $(DDBOOSTLIB) $(GPBSALIB) -o $@
+
+cdb_bsa_restore_agent: cdb_bsa_restore_agent.o cdb_dump_util.o $(libpq_builddir)/libpq.a
+	$(CC) $(CFLAGS) cdb_bsa_restore_agent.o cdb_dump_util.o $(libpq) $(LDFLAGS) $(LIBS) $(DDBOOSTLIB) $(GPBSALIB) -o $@
+
+cdb_bsa_query_agent: cdb_bsa_query_agent.o cdb_dump_util.o $(libpq_builddir)/libpq.a
+	$(CC) $(CFLAGS) cdb_bsa_query_agent.o cdb_dump_util.o $(libpq) $(LDFLAGS) $(LIBS) $(DDBOOSTLIB) $(GPBSALIB) -o $@
+
 .PHONY: submake-backend
 submake-backend:
 	$(MAKE) -C $(top_builddir)/src/backend/parser keywords.o
@@ -71,13 +89,19 @@ install: all installdirs
 	$(INSTALL_PROGRAM) cdb_dump_agent$(X) $(DESTDIR)$(bindir)/gp_dump_agent$(X)
 	$(INSTALL_PROGRAM) cdb_restore_agent$(X) $(DESTDIR)$(bindir)/gp_restore_agent$(X)
 	$(INSTALL_PROGRAM) gpddboost$(X) $(DESTDIR)$(bindir)/gpddboost$(X)
+	$(INSTALL_PROGRAM) libgpbsa.so$(X) $(DESTDIR)$(libdir)/libgpbsa.so$(X)
+	$(INSTALL_PROGRAM) cdb_bsa_dump_agent$(X) $(DESTDIR)$(bindir)/gp_bsa_dump_agent$(X)
+	$(INSTALL_PROGRAM) cdb_bsa_restore_agent$(X) $(DESTDIR)$(bindir)/gp_bsa_restore_agent$(X)
+	$(INSTALL_PROGRAM) cdb_bsa_query_agent$(X) $(DESTDIR)$(bindir)/gp_bsa_query_agent$(X)
 
 installdirs:
 	$(MKDIR_P) $(DESTDIR)$(bindir)
 
 uninstall:
-	rm -f $(addprefix $(DESTDIR)$(bindir)/, cdb_dump$(X) cdb_dump_agent$(X) cdb_restore$(X) cdb_restore_agent$(X))  
+	rm -f $(addprefix $(DESTDIR)$(bindir)/, cdb_dump$(X) cdb_dump_agent$(X) cdb_restore$(X) cdb_restore_agent$(X) cdb_bsa_dump_agent$(X)  cdb_bsa_restore_agent$(X) cdb_bsa_query_agent$(X))  
 
 clean distclean maintainer-clean:
-	rm -f cdb_dump$(X) cdb_restore$(X) cdb_dump_agent$(X) cdb_restore_agent$(X) cdbheadsync$(X) cdbheadmakeactive$(X) $(OBJS) $(OBJS) cdb_dump.o cdb_restore.o cdb_dump_agent.o cdb_restore_agent.o $(PGDUMP_DIR)/common.o cdb_backup_status.o \
-	cdb_dump_include.o cdb_seginst.o cdb_backup_state.o cdb_table.o cdb_dump_util.o cdb_backup_archiver.o cdbheadsync.o cdbheadmakeactive.o kwlookup.c cdb_ddboost_util.o $(KEYWRDOBJS)
+	rm -f cdb_dump$(X) cdb_restore$(X) cdb_dump_agent$(X) cdb_restore_agent$(X) cdbheadsync$(X) cdbheadmakeactive$(X) cdb_bsa_dump_agent$(X) cdb_bsa_restore_agent$(X) \
+	cdb_bsa_query_agent$(X) $(OBJS) $(OBJS) cdb_dump.o cdb_restore.o cdb_dump_agent.o cdb_restore_agent.o $(PGDUMP_DIR)/common.o cdb_backup_status.o cdb_dump_include.o cdb_seginst.o \
+	cdb_backup_state.o cdb_table.o cdb_dump_util.o cdb_backup_archiver.o cdbheadsync.o cdbheadmakeactive.o kwlookup.c cdb_ddboost_util.o cdb_bsa_dump_agent.o cdb_bsa_query_agent.o \
+	cdb_bsa_restore_agent.o libgpbsa.so $(KEYWRDOBJS)

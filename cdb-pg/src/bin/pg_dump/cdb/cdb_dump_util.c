@@ -964,16 +964,36 @@ formCompressionProgramString(char* compPg)
 void 
 formPostDataSchemaOnlyPsqlCommandLine(char** retVal, const char* inputFileSpec, bool compUsed, const char* compProg,
 									const char* post_data_filter_script, const char* table_filter_file, 
-									const char* psqlPg, const char* catPg)
+									const char* psqlPg, const char* catPg,
+									const char* gpNBURestorePg, const char* netbackupServiceHost, const char* netbackupBlockSize)
 {
 	char* pszCmdLine = *retVal;
 	if (compUsed)
 	{
-        strcpy(pszCmdLine, catPg);
-        strcat(pszCmdLine, " ");
-        strcat(pszCmdLine, inputFileSpec);
-        strcat(pszCmdLine, " | ");
-        strcat(pszCmdLine, compProg);
+		if (netbackupServiceHost)
+		{
+			strncpy(pszCmdLine, gpNBURestorePg, (1 + strlen(gpNBURestorePg)));
+			strncat(pszCmdLine, " --netbackup-service-host ", strlen(" --netbackup-service-host "));
+			strncat(pszCmdLine, netbackupServiceHost, strlen(netbackupServiceHost));
+			strncat(pszCmdLine, " --netbackup-filename ", strlen(" --netbackup-filename "));
+			strncat(pszCmdLine, inputFileSpec, strlen(inputFileSpec));
+			if (netbackupBlockSize)
+			{
+				strncat(pszCmdLine, " --netbackup-block-size ", strlen(" --netbackup-block-size "));
+				strncat(pszCmdLine, netbackupBlockSize, strlen(netbackupBlockSize));
+			}
+			strncat(pszCmdLine, " | ", strlen(" | "));
+			strncat(pszCmdLine, compProg, strlen(compProg));
+		}
+		else
+		{
+			strcpy(pszCmdLine, catPg);
+			strcat(pszCmdLine, " ");
+			strcat(pszCmdLine, inputFileSpec);
+			strcat(pszCmdLine, " | ");
+			strcat(pszCmdLine, compProg);
+		}
+
 		if (table_filter_file)
 		{
 			strcat(pszCmdLine, " | ");
@@ -981,36 +1001,90 @@ formPostDataSchemaOnlyPsqlCommandLine(char** retVal, const char* inputFileSpec, 
 			strcat(pszCmdLine, " -t ");
 			strcat(pszCmdLine, table_filter_file);
 		}
+
 		strcat(pszCmdLine, " | ");
 		strcat(pszCmdLine, psqlPg);
 	}    
 	else 
 	{    
-		strcat(pszCmdLine, psqlPg); 
-		strcat(pszCmdLine, " -f ");
-		strcat(pszCmdLine, inputFileSpec);
+		if (netbackupServiceHost)
+		{
+			strncpy(pszCmdLine, gpNBURestorePg, (1 + strlen(gpNBURestorePg)));
+			strncat(pszCmdLine, " --netbackup-service-host ", strlen(" --netbackup-service-host "));
+			strncat(pszCmdLine, netbackupServiceHost, strlen(netbackupServiceHost));
+			strncat(pszCmdLine, " --netbackup-filename ", strlen(" --netbackup-filename "));
+			strncat(pszCmdLine, inputFileSpec, strlen(inputFileSpec));
+			if (netbackupBlockSize)
+			{
+				strncat(pszCmdLine, " --netbackup-block-size ", strlen(" --netbackup-block-size "));
+				strncat(pszCmdLine, netbackupBlockSize, strlen(netbackupBlockSize));
+			}
+			strncat(pszCmdLine, " | ", strlen(" | "));
+			strncat(pszCmdLine, psqlPg, strlen(psqlPg));
+		}
+		else
+		{
+			strcat(pszCmdLine, psqlPg);
+			strcat(pszCmdLine, " -f ");
+			strcat(pszCmdLine, inputFileSpec);
+		}
 	} 
 }
 
 void 
 formSegmentPsqlCommandLine(char** retVal, const char* inputFileSpec, bool compUsed, const char* compProg,
 							const char* filter_script, const char* table_filter_file, 
-							int role, const char* psqlPg, const char* catPg)
+							int role, const char* psqlPg, const char* catPg,
+							const char* gpNBURestorePg, const char* netbackupServiceHost, const char* netbackupBlockSize)
 {
 	char* pszCmdLine = *retVal;
 	if (compUsed)
 	{
-		strcpy(pszCmdLine, catPg);
-		strcat(pszCmdLine, " ");
-		strcat(pszCmdLine, inputFileSpec);
-		strcat(pszCmdLine, " | ");
-		strcat(pszCmdLine, compProg);
+		if (netbackupServiceHost)
+		{
+			strncpy(pszCmdLine, gpNBURestorePg, (1 + strlen(gpNBURestorePg)));
+			strncat(pszCmdLine, " --netbackup-service-host ", strlen(" --netbackup-service-host "));
+			strncat(pszCmdLine, netbackupServiceHost, strlen(netbackupServiceHost));
+			strncat(pszCmdLine, " --netbackup-filename ", strlen(" --netbackup-filename "));
+			strncat(pszCmdLine, inputFileSpec, strlen(inputFileSpec));
+			if (netbackupBlockSize)
+			{
+				strncat(pszCmdLine, " --netbackup-block-size ", strlen(" --netbackup-block-size "));
+				strncat(pszCmdLine, netbackupBlockSize, strlen(netbackupBlockSize));
+			}
+			strncat(pszCmdLine, " | ", strlen(" | "));
+			strncat(pszCmdLine, compProg, strlen(compProg));
+		}
+		else
+		{
+			strcpy(pszCmdLine, catPg);
+			strcat(pszCmdLine, " ");
+			strcat(pszCmdLine, inputFileSpec);
+			strcat(pszCmdLine, " | ");
+			strcat(pszCmdLine, compProg);
+		}
 	}
 	else
 	{
-		strcpy(pszCmdLine, catPg);
-		strcat(pszCmdLine, " ");
-		strcat(pszCmdLine, inputFileSpec);
+		if (netbackupServiceHost)
+		{
+			strncpy(pszCmdLine, gpNBURestorePg, (1 + strlen(gpNBURestorePg)));
+			strncat(pszCmdLine, " --netbackup-service-host ", strlen(" --netbackup-service-host "));
+			strncat(pszCmdLine, netbackupServiceHost, strlen(netbackupServiceHost));
+			strncat(pszCmdLine, " --netbackup-filename ", strlen(" --netbackup-filename "));
+			strncat(pszCmdLine, inputFileSpec, strlen(inputFileSpec));
+			if (netbackupBlockSize)
+			{
+				strncat(pszCmdLine, " --netbackup-block-size ", strlen(" --netbackup-block-size "));
+				strncat(pszCmdLine, netbackupBlockSize, strlen(netbackupBlockSize));
+			}
+		}
+		else
+		{
+			strcpy(pszCmdLine, catPg);
+			strcat(pszCmdLine, " ");
+			strcat(pszCmdLine, inputFileSpec);
+		}
 	}
 
 	if (table_filter_file)

@@ -7,19 +7,21 @@
 import sys
 import unittest2 as unittest
 import tempfile, os, shutil
+from gppylib.commands.base import CommandResult
 from gppylib.operations.restore import RestoreDatabase, create_restore_plan, get_plan_file_contents, \
         get_restore_tables_from_table_file, restore_incremental_data_only, write_to_plan_file, \
         validate_tablenames, create_plan_file_contents, GetDbName, get_dirty_table_file_contents, \
         get_incremental_restore_timestamps, get_partition_list, get_restore_dir, is_begin_incremental_run, \
         is_incremental_restore, get_restore_table_list, validate_restore_tables_list, \
         update_ao_stat_func, update_ao_statistics, _build_gpdbrestore_cmd_line, ValidateTimestamp, \
-        is_full_restore
+        is_full_restore, restore_state_files_with_nbu, restore_report_file_with_nbu, restore_cdatabase_file_with_nbu, \
+        restore_global_file_with_nbu, restore_config_files_with_nbu, config_files_dumped, global_file_dumped
 import gppylib.operations.backup_utils as backup_utils
 
 
 from gppylib.commands.base import ExecutionError
 from gppylib.mainUtils import ExceptionNoStackTraceNeeded
-from mock import patch, MagicMock
+from mock import patch, MagicMock, Mock
 
 class restoreTestCase(unittest.TestCase):
     def setUp(self):
@@ -37,7 +39,9 @@ class restoreTestCase(unittest.TestCase):
                             batch_default=64,
                             no_ao_stats = False,
                             redirected_restore_db = None,
-                            report_status_dir = None)
+                            report_status_dir = None,
+                            netbackup_service_host = None,
+                            netbackup_block_size = None)
 
     def create_backup_dirs(self, top_dir=os.getcwd(), dump_dirs=[]):
         if dump_dirs is None:
@@ -101,12 +105,12 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
     @patch('gppylib.operations.restore.RestoreDatabase._process_createdb', side_effect=ExceptionNoStackTraceNeeded('Failed to create database'))
     @patch('time.sleep')
     def test_multitry_createdb_1(self, mock1, mock2):
-        r = RestoreDatabase('20121219', True, True, False, 'FOO', None, 1234, False, False, None, None, 'db_dumps', False, None, None)
+        r = RestoreDatabase('20121219', True, True, False, 'FOO', None, 1234, False, False, None, None, 'db_dumps', False, None, None, None, None)
         self.assertRaises(ExceptionNoStackTraceNeeded, r._multitry_createdb, '20121219', 'fullbkdb', None, 'FOO', None, 1234)
 
     @patch('gppylib.operations.restore.RestoreDatabase._process_createdb')
     def test_multitry_createdb_2(self, mock):
-        r = RestoreDatabase('20121219', True, True, False, 'FOO', None, 1234, False, False, None, None, 'db_dumps',  False, None, None)
+        r = RestoreDatabase('20121219', True, True, False, 'FOO', None, 1234, False, False, None, None, 'db_dumps',  False, None, None, None, None)
         r._multitry_createdb('20121219', 'fullbkdb', None, 'FOO', None, 1234)
 
     @patch('gppylib.operations.restore.get_partition_list', return_value=[('public', 't1'), ('public', 't2'), ('public', 't3')])
@@ -945,6 +949,26 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         restore_line = self.restore._build_restore_line(restore_timestamp, restore_db, compress, master_port, ddboost, no_plan, table_filter_file, no_ao_stats, full_restore_with_filter)
         self.assertEqual(restore_line, expected_output)
 
+    @patch('gppylib.operations.restore.socket.gethostname', return_value='host')
+    @patch('gppylib.operations.restore.getpass.getuser', return_value='user')
+    def test_build_restore_line_13(self, mock1, mock2):
+        restore_timestamp = '20121212121212'
+        restore_db = 'bkdb'
+        compress = True
+        master_port = '5432'
+        ddboost = False
+        no_plan = True
+        no_ao_stats = True
+        table_filter_file = None
+        self.restore.report_status_dir = '/tmp'
+        self.restore.backup_dir = '/foo'
+        self.restore.netbackup_service_host = "mdw"
+        full_restore_with_filter = False
+        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=/foo/db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-l=p --gp-r=/tmp --status=/tmp --gp-c -d bkdb -a --gp-nostats --netbackup-service-host=mdw'
+
+        restore_line = self.restore._build_restore_line(restore_timestamp, restore_db, compress, master_port, ddboost, no_plan, table_filter_file, no_ao_stats, full_restore_with_filter)
+        self.assertEqual(restore_line, expected_output)
+
     @patch('gppylib.operations.restore.generate_plan_filename', return_value='foo')
     def test_get_plan_file_contents_00(self, mock1):
         master_datadir = 'foo' 
@@ -1283,6 +1307,7 @@ class ValidateTimestampTestCase(unittest.TestCase):
                                                     master_datadir='/mdd',
                                                     backup_dir='/backup_dir',
                                                     dump_dir='/db_dumps',
+                                                    netbackup_service_host=None,
                                                     ddboost = False)
     @patch('os.path.exists', side_effect=[True, False])
     def test_validate_compressed_file_with_compression_exists(self, mock):
@@ -1305,6 +1330,815 @@ class ValidateTimestampTestCase(unittest.TestCase):
         compressed_file = 'compressed_file.gz'
         with self.assertRaisesRegexp(ExceptionNoStackTraceNeeded, 'Unable to find compressed_file or compressed_file.gz'):
             self.validate_timestamp.validate_compressed_file(compressed_file)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_state_files_with_nbu_00(self, mock1):
+        master_datadir = "/data"
+        backup_dir = "/datadomain"
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+
+        restore_state_files_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_state_files_with_nbu_01(self, mock1):
+        master_datadir = "/data"
+        backup_dir = None
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+
+        restore_state_files_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_state_files_with_nbu_02(self, mock1):
+        master_datadir = None
+        backup_dir = "/datadomain"
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+
+        restore_state_files_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_state_files_with_nbu_03(self, mock1):
+        master_datadir = None
+        backup_dir = None
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+
+        with self.assertRaisesRegexp(Exception, 'Master data directory and backup directory are both none.'):
+            restore_state_files_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_state_files_with_nbu_04(self, mock1):
+        master_datadir = "/data"
+        backup_dir = "/datadomain"
+        restore_timestamp = None
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+
+        with self.assertRaisesRegexp(Exception, 'Restore timestamp is None.'):
+            restore_state_files_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_state_files_with_nbu_05(self, mock1):
+        master_datadir = "/data"
+        backup_dir = "/datadomain"
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = None
+        netbackup_block_size = None
+
+        with self.assertRaisesRegexp(Exception, 'Netbackup service hostname is None.'):
+            restore_state_files_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_state_files_with_nbu_06(self, mock1):
+        master_datadir = "/data"
+        backup_dir = "/datadomain"
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 2048
+
+        restore_state_files_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_state_files_with_nbu_07(self, mock1):
+        master_datadir = "/data"
+        backup_dir = None
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 1024
+
+        restore_state_files_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_state_files_with_nbu_08(self, mock1):
+        master_datadir = None
+        backup_dir = "/datadomain"
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 4096
+
+        restore_state_files_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_report_file_with_nbu_00(self, mock1):
+        master_datadir = "/data"
+        backup_dir = "/datadomain"
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+
+        restore_report_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_report_file_with_nbu_01(self, mock1):
+        master_datadir = "/data"
+        backup_dir = None
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+
+        restore_report_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_report_file_with_nbu_02(self, mock1):
+        master_datadir = None
+        backup_dir = "/datadomain"
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+
+        restore_report_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_report_file_with_nbu_03(self, mock1):
+        master_datadir = None
+        backup_dir = None
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+
+        with self.assertRaisesRegexp(Exception, 'Master data directory and backup directory are both none.'):
+            restore_report_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_report_file_with_nbu_04(self, mock1):
+        master_datadir = "/data"
+        backup_dir = "/datadomain"
+        restore_timestamp = None
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+
+        with self.assertRaisesRegexp(Exception, 'Restore timestamp is None.'):
+            restore_report_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_report_file_with_nbu_05(self, mock1):
+        master_datadir = "/data"
+        backup_dir = "/datadomain"
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = None
+        netbackup_block_size = None
+
+        with self.assertRaisesRegexp(Exception, 'Netbackup service hostname is None.'):
+            restore_report_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_report_file_with_nbu_06(self, mock1):
+        master_datadir = "/data"
+        backup_dir = "/datadomain"
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 1024
+
+        restore_report_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_report_file_with_nbu_07(self, mock1):
+        master_datadir = "/data"
+        backup_dir = None
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 2048
+
+        restore_report_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_report_file_with_nbu_08(self, mock1):
+        master_datadir = None
+        backup_dir = "/datadomain"
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 4096
+
+        restore_report_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_cdatabase_file_with_nbu_00(self, mock1):
+        master_datadir = "/data"
+        backup_dir = "/datadomain"
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+
+        restore_cdatabase_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_cdatabase_file_with_nbu_01(self, mock1):
+        master_datadir = "/data"
+        backup_dir = None
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+
+        restore_cdatabase_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_cdatabase_file_with_nbu_02(self, mock1):
+        master_datadir = None
+        backup_dir = "/datadomain"
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+
+        restore_cdatabase_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_cdatabase_file_with_nbu_03(self, mock1):
+        master_datadir = None
+        backup_dir = None
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+
+        with self.assertRaisesRegexp(Exception, 'Master data directory and backup directory are both none.'):
+            restore_cdatabase_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_cdatabase_file_with_nbu_04(self, mock1):
+        master_datadir = "/data"
+        backup_dir = "/datadomain"
+        restore_timestamp = None
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+
+        with self.assertRaisesRegexp(Exception, 'Restore timestamp is None.'):
+            restore_cdatabase_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_cdatabase_file_with_nbu_05(self, mock1):
+        master_datadir = "/data"
+        backup_dir = "/datadomain"
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = None
+        netbackup_block_size = None
+
+        with self.assertRaisesRegexp(Exception, 'Netbackup service hostname is None.'):
+            restore_cdatabase_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_cdatabase_file_with_nbu_06(self, mock1):
+        master_datadir = "/data"
+        backup_dir = "/datadomain"
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 1024
+
+        restore_cdatabase_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_cdatabase_file_with_nbu_07(self, mock1):
+        master_datadir = "/data"
+        backup_dir = None
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 2048
+
+        restore_cdatabase_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_cdatabase_file_with_nbu_08(self, mock1):
+        master_datadir = None
+        backup_dir = "/datadomain"
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 4096
+
+        restore_cdatabase_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_global_file_with_nbu_00(self, mock1):
+        master_datadir = "/data"
+        backup_dir = "/datadomain"
+        dump_dir = "db_dumps"
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+
+        restore_global_file_with_nbu(master_datadir, backup_dir, dump_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_global_file_with_nbu_01(self, mock1):
+        master_datadir = "/data"
+        backup_dir = None
+        dump_dir = "db_dumps"
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+
+        restore_global_file_with_nbu(master_datadir, backup_dir, dump_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_global_file_with_nbu_02(self, mock1):
+        master_datadir = None
+        backup_dir = "/datadomain"
+        dump_dir = "db_dumps"
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+
+        restore_global_file_with_nbu(master_datadir, backup_dir, dump_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_global_file_with_nbu_03(self, mock1):
+        master_datadir = None
+        backup_dir = None
+        dump_dir = "db_dumps"
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+
+        with self.assertRaisesRegexp(Exception, 'Master data directory and backup directory are both none.'):
+            restore_global_file_with_nbu(master_datadir, backup_dir, dump_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_global_file_with_nbu_04(self, mock1):
+        master_datadir = "/data"
+        backup_dir = "/datadomain"
+        dump_dir = "db_dumps"
+        restore_timestamp = None
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+
+        with self.assertRaisesRegexp(Exception, 'Restore timestamp is None.'):
+            restore_global_file_with_nbu(master_datadir, backup_dir, dump_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_global_file_with_nbu_05(self, mock1):
+        master_datadir = "/data"
+        backup_dir = "/datadomain"
+        dump_dir = "db_dumps"
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = None
+        netbackup_block_size = None
+
+        with self.assertRaisesRegexp(Exception, 'Netbackup service hostname is None.'):
+            restore_global_file_with_nbu(master_datadir, backup_dir, dump_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_global_file_with_nbu_06(self, mock1):
+        master_datadir = "/data"
+        backup_dir = "/datadomain"
+        dump_dir = "db_dumps"
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 1024
+
+        restore_global_file_with_nbu(master_datadir, backup_dir, dump_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_global_file_with_nbu_07(self, mock1):
+        master_datadir = "/data"
+        backup_dir = None
+        dump_dir = "db_dumps"
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 2048
+
+        restore_global_file_with_nbu(master_datadir, backup_dir, dump_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_global_file_with_nbu_08(self, mock1):
+        master_datadir = None
+        backup_dir = "/datadomain"
+        dump_dir = "db_dumps"
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 4096
+
+        restore_global_file_with_nbu(master_datadir, backup_dir, dump_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.get_backup_directory')
+    @patch('gppylib.operations.restore.generate_master_config_filename')
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    @patch('gppylib.operations.restore.GpArray.initFromCatalog')
+    @patch('gppylib.operations.dump.GpArray.getDbList')
+    @patch('gppylib.operations.restore.generate_segment_config_filename')
+    def test_restore_config_files_with_nbu_00(self, mock1, mock2, mock3, mock4, mock5, mock6):
+        master_datadir = "/data"
+        backup_dir = "/datadomain"
+        restore_timestamp = "20141400002014"
+        master_port = "5432"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+        mock_segs = [Mock(), Mock()]
+        for id, seg in enumerate(mock_segs):
+            seg.isSegmentPrimary.return_value = True
+            seg.getSegmentDbId.return_value = id + 1
+            seg.getSegmentDataDirectory.return_value = "/data"
+            seg.getSegmentHostName.return_value = "sdw"
+
+        restore_config_files_with_nbu(master_datadir, backup_dir, restore_timestamp, master_port, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.get_backup_directory')
+    @patch('gppylib.operations.restore.generate_master_config_filename')
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    @patch('gppylib.operations.restore.GpArray.initFromCatalog')
+    @patch('gppylib.operations.dump.GpArray.getDbList')
+    @patch('gppylib.operations.restore.generate_segment_config_filename')
+    def test_restore_config_files_with_nbu_01(self, mock1, mock2, mock3, mock4, mock5, mock6):
+        master_datadir = "/data"
+        backup_dir = None
+        restore_timestamp = "20141400002014"
+        master_port = "5432"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+        mock_segs = [Mock(), Mock()]
+        for id, seg in enumerate(mock_segs):
+            seg.isSegmentPrimary.return_value = True
+            seg.getSegmentDbId.return_value = id + 1
+            seg.getSegmentDataDirectory.return_value = "/data"
+            seg.getSegmentHostName.return_value = "sdw"
+
+        restore_config_files_with_nbu(master_datadir, backup_dir, restore_timestamp, master_port, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.get_backup_directory')
+    @patch('gppylib.operations.restore.generate_master_config_filename')
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    @patch('gppylib.operations.restore.GpArray.initFromCatalog')
+    @patch('gppylib.operations.dump.GpArray.getDbList')
+    @patch('gppylib.operations.restore.generate_segment_config_filename')
+    def test_restore_config_files_with_nbu_02(self, mock1, mock2, mock3, mock4, mock5, mock6):
+        master_datadir = None
+        backup_dir = "/datadomain"
+        restore_timestamp = "20141400002014"
+        master_port = "5432"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+        mock_segs = [Mock(), Mock()]
+        for id, seg in enumerate(mock_segs):
+            seg.isSegmentPrimary.return_value = True
+            seg.getSegmentDbId.return_value = id + 1
+            seg.getSegmentDataDirectory.return_value = "/data"
+            seg.getSegmentHostName.return_value = "sdw"
+
+        restore_config_files_with_nbu(master_datadir, backup_dir, restore_timestamp, master_port, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.get_backup_directory')
+    @patch('gppylib.operations.restore.generate_master_config_filename')
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    @patch('gppylib.operations.restore.GpArray.initFromCatalog')
+    @patch('gppylib.operations.dump.GpArray.getDbList')
+    @patch('gppylib.operations.restore.generate_segment_config_filename')
+    def test_restore_config_files_with_nbu_03(self, mock1, mock2, mock3, mock4, mock5, mock6):
+        master_datadir = None
+        backup_dir = None
+        restore_timestamp = "20141400002014"
+        master_port = "5432"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+        mock_segs = [Mock(), Mock()]
+        for id, seg in enumerate(mock_segs):
+            seg.isSegmentPrimary.return_value = True
+            seg.getSegmentDbId.return_value = id + 1
+            seg.getSegmentDataDirectory.return_value = "/data"
+            seg.getSegmentHostName.return_value = "sdw"
+
+        with self.assertRaisesRegexp(Exception, 'Master data directory and backup directory are both none.'):
+            restore_config_files_with_nbu(master_datadir, backup_dir, restore_timestamp, master_port, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.get_backup_directory')
+    @patch('gppylib.operations.restore.generate_master_config_filename')
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    @patch('gppylib.operations.restore.GpArray.initFromCatalog')
+    @patch('gppylib.operations.dump.GpArray.getDbList')
+    @patch('gppylib.operations.restore.generate_segment_config_filename')
+    def test_restore_config_files_with_nbu_04(self, mock1, mock2, mock3, mock4, mock5, mock6):
+        master_datadir = "/data"
+        backup_dir = "/datadomain"
+        restore_timestamp = None
+        master_port = "5432"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+        mock_segs = [Mock(), Mock()]
+        for id, seg in enumerate(mock_segs):
+            seg.isSegmentPrimary.return_value = True
+            seg.getSegmentDbId.return_value = id + 1
+            seg.getSegmentDataDirectory.return_value = "/data"
+            seg.getSegmentHostName.return_value = "sdw"
+
+        with self.assertRaisesRegexp(Exception, 'Restore timestamp is None.'):
+            restore_config_files_with_nbu(master_datadir, backup_dir, restore_timestamp, master_port, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.get_backup_directory')
+    @patch('gppylib.operations.restore.generate_master_config_filename')
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    @patch('gppylib.operations.restore.GpArray.initFromCatalog')
+    @patch('gppylib.operations.dump.GpArray.getDbList')
+    @patch('gppylib.operations.restore.generate_segment_config_filename')
+    def test_restore_config_files_with_nbu_05(self, mock1, mock2, mock3, mock4, mock5, mock6):
+        master_datadir = "/data"
+        backup_dir = None
+        restore_timestamp = "20141400002014"
+        master_port = "5432"
+        netbackup_service_host = None
+        netbackup_block_size = None
+        mock_segs = [Mock(), Mock()]
+        for id, seg in enumerate(mock_segs):
+            seg.isSegmentPrimary.return_value = True
+            seg.getSegmentDbId.return_value = id + 1
+            seg.getSegmentDataDirectory.return_value = "/data"
+            seg.getSegmentHostName.return_value = "sdw"
+
+        with self.assertRaisesRegexp(Exception, 'Netbackup service hostname is None.'):
+            restore_config_files_with_nbu(master_datadir, backup_dir, restore_timestamp, master_port, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.get_backup_directory')
+    @patch('gppylib.operations.restore.generate_master_config_filename')
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    @patch('gppylib.operations.restore.GpArray.initFromCatalog')
+    @patch('gppylib.operations.dump.GpArray.getDbList')
+    @patch('gppylib.operations.restore.generate_segment_config_filename')
+    def test_restore_config_files_with_nbu_06(self, mock1, mock2, mock3, mock4, mock5, mock6):
+        master_datadir = "/data"
+        backup_dir = None
+        restore_timestamp = "20141400002014"
+        master_port = None
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+        mock_segs = [Mock(), Mock()]
+        for id, seg in enumerate(mock_segs):
+            seg.isSegmentPrimary.return_value = True
+            seg.getSegmentDbId.return_value = id + 1
+            seg.getSegmentDataDirectory.return_value = "/data"
+            seg.getSegmentHostName.return_value = "sdw"
+
+        with self.assertRaisesRegexp(Exception, 'Master port is None.'):
+            restore_config_files_with_nbu(master_datadir, backup_dir, restore_timestamp, master_port, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.get_backup_directory')
+    @patch('gppylib.operations.restore.generate_master_config_filename')
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    @patch('gppylib.operations.restore.GpArray.initFromCatalog')
+    @patch('gppylib.operations.dump.GpArray.getDbList')
+    @patch('gppylib.operations.restore.generate_segment_config_filename')
+    def test_restore_config_files_with_nbu_07(self, mock1, mock2, mock3, mock4, mock5, mock6):
+        master_datadir = "/data"
+        backup_dir = "/datadomain"
+        restore_timestamp = "20141400002014"
+        master_port = "5432"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 1024
+        mock_segs = [Mock(), Mock()]
+        for id, seg in enumerate(mock_segs):
+            seg.isSegmentPrimary.return_value = True
+            seg.getSegmentDbId.return_value = id + 1
+            seg.getSegmentDataDirectory.return_value = "/data"
+            seg.getSegmentHostName.return_value = "sdw"
+
+        restore_config_files_with_nbu(master_datadir, backup_dir, restore_timestamp, master_port, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.get_backup_directory')
+    @patch('gppylib.operations.restore.generate_master_config_filename')
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    @patch('gppylib.operations.restore.GpArray.initFromCatalog')
+    @patch('gppylib.operations.dump.GpArray.getDbList')
+    @patch('gppylib.operations.restore.generate_segment_config_filename')
+    def test_restore_config_files_with_nbu_08(self, mock1, mock2, mock3, mock4, mock5, mock6):
+        master_datadir = "/data"
+        backup_dir = None
+        restore_timestamp = "20141400002014"
+        master_port = "5432"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 2048
+        mock_segs = [Mock(), Mock()]
+        for id, seg in enumerate(mock_segs):
+            seg.isSegmentPrimary.return_value = True
+            seg.getSegmentDbId.return_value = id + 1
+            seg.getSegmentDataDirectory.return_value = "/data"
+            seg.getSegmentHostName.return_value = "sdw"
+
+        restore_config_files_with_nbu(master_datadir, backup_dir, restore_timestamp, master_port, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.get_backup_directory')
+    @patch('gppylib.operations.restore.generate_master_config_filename')
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    @patch('gppylib.operations.restore.GpArray.initFromCatalog')
+    @patch('gppylib.operations.dump.GpArray.getDbList')
+    @patch('gppylib.operations.restore.generate_segment_config_filename')
+    def test_restore_config_files_with_nbu_09(self, mock1, mock2, mock3, mock4, mock5, mock6):
+        master_datadir = None
+        backup_dir = "/datadomain"
+        restore_timestamp = "20141400002014"
+        master_port = "5432"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 4096
+        mock_segs = [Mock(), Mock()]
+        for id, seg in enumerate(mock_segs):
+            seg.isSegmentPrimary.return_value = True
+            seg.getSegmentDbId.return_value = id + 1
+            seg.getSegmentDataDirectory.return_value = "/data"
+            seg.getSegmentHostName.return_value = "sdw"
+
+        restore_config_files_with_nbu(master_datadir, backup_dir, restore_timestamp, master_port, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.get_backup_directory', return_value="/data")
+    @patch('gppylib.operations.restore.generate_master_config_filename', return_value="gp_master_config_20141200002014.tar")
+    @patch('gppylib.operations.restore.check_file_dumped_with_nbu', return_value=True)
+    def test_config_files_dumped_00(self, mock1, mock2, mock3):
+        master_datadir = "/data"
+        backup_dir = "/datadomain"
+        restore_timestamp = "20141200002014"
+        netbackup_service_host = "mdw"
+
+        self.assertTrue(config_files_dumped(master_datadir, backup_dir, restore_timestamp, netbackup_service_host))
+
+    @patch('gppylib.operations.restore.get_backup_directory', return_value="/data")
+    @patch('gppylib.operations.restore.generate_master_config_filename', return_value="gp_master_config_20141200002014.tar")
+    @patch('gppylib.operations.restore.check_file_dumped_with_nbu', return_value=True)
+    def test_config_files_dumped_01(self, mock1, mock2, mock3):
+        master_datadir = "/data"
+        backup_dir = None
+        restore_timestamp = "20141200002014"
+        netbackup_service_host = "mdw"
+
+        self.assertTrue(config_files_dumped(master_datadir, backup_dir, restore_timestamp, netbackup_service_host))
+
+    @patch('gppylib.operations.restore.get_backup_directory', return_value="/datadomain")
+    @patch('gppylib.operations.restore.generate_master_config_filename', return_value="gp_master_config_20141200002014.tar")
+    @patch('gppylib.operations.restore.check_file_dumped_with_nbu', return_value=True)
+    def test_config_files_dumped_02(self, mock1, mock2, mock3):
+        master_datadir = None
+        backup_dir = "/datadomain"
+        restore_timestamp = "20141200002014"
+        netbackup_service_host = "mdw"
+
+        self.assertTrue(config_files_dumped(master_datadir, backup_dir, restore_timestamp, netbackup_service_host))
+
+    @patch('gppylib.operations.restore.get_backup_directory')
+    @patch('gppylib.operations.restore.generate_master_config_filename')
+    @patch('gppylib.operations.restore.check_file_dumped_with_nbu')
+    def test_config_files_dumped_03(self, mock1, mock2, mock3):
+        master_datadir = None
+        backup_dir = None
+        restore_timestamp = "20141200002014"
+        netbackup_service_host = "mdw"
+
+        with self.assertRaisesRegexp(Exception, 'Master data directory and backup directory are both none.'):
+            config_files_dumped(master_datadir, backup_dir, restore_timestamp, netbackup_service_host)
+
+    @patch('gppylib.operations.restore.get_backup_directory')
+    @patch('gppylib.operations.restore.generate_master_config_filename')
+    @patch('gppylib.operations.restore.check_file_dumped_with_nbu')
+    def test_config_files_dumped_04(self, mock1, mock2, mock3):
+        master_datadir = "/data"
+        backup_dir = None
+        restore_timestamp = None
+        netbackup_service_host = "mdw"
+
+        with self.assertRaisesRegexp(Exception, 'Restore timestamp is None.'):
+            config_files_dumped(master_datadir, backup_dir, restore_timestamp, netbackup_service_host)
+
+    @patch('gppylib.operations.restore.get_backup_directory')
+    @patch('gppylib.operations.restore.generate_master_config_filename')
+    @patch('gppylib.operations.restore.check_file_dumped_with_nbu')
+    def test_config_files_dumped_05(self, mock1, mock2, mock3):
+        master_datadir = "/data"
+        backup_dir = None
+        restore_timestamp = "20141200002014"
+        netbackup_service_host = None
+
+        with self.assertRaisesRegexp(Exception, 'Netbackup service hostname is None.'):
+            config_files_dumped(master_datadir, backup_dir, restore_timestamp, netbackup_service_host)
+
+    @patch('gppylib.operations.restore.get_backup_directory', return_value="/datadomain")
+    @patch('gppylib.operations.restore.generate_master_config_filename', return_value="gp_master_config_20141200002014.tar")
+    @patch('gppylib.operations.restore.check_file_dumped_with_nbu', return_value=False)
+    def test_config_files_dumped_06(self, mock1, mock2, mock3):
+        master_datadir = "/data"
+        backup_dir = None
+        restore_timestamp = "20141200002014"
+        netbackup_service_host = "mdw"
+
+        self.assertFalse(config_files_dumped(master_datadir, backup_dir, restore_timestamp, netbackup_service_host))
+
+    @patch('gppylib.operations.restore.get_backup_directory', return_value="/datadomain")
+    @patch('gppylib.operations.restore.generate_master_config_filename', return_value="gp_master_config_20141200002014.tar")
+    @patch('gppylib.operations.restore.check_file_dumped_with_nbu', return_value=False)
+    def test_config_files_dumped_07(self, mock1, mock2, mock3):
+        master_datadir = None
+        backup_dir = "/datadomain"
+        restore_timestamp = "20141200002014"
+        netbackup_service_host = "mdw"
+
+        self.assertFalse(config_files_dumped(master_datadir, backup_dir, restore_timestamp, netbackup_service_host))
+
+    @patch('gppylib.operations.restore.get_backup_directory', return_value="/data")
+    @patch('gppylib.operations.restore.generate_master_config_filename', return_value="gp_master_config_20141200002014.tar")
+    @patch('gppylib.operations.restore.check_file_dumped_with_nbu', return_value=False)
+    def test_config_files_dumped_08(self, mock1, mock2, mock3):
+        master_datadir = "/data"
+        backup_dir = "/datadomain"
+        restore_timestamp = "20141200002014"
+        netbackup_service_host = "mdw"
+
+        self.assertFalse(config_files_dumped(master_datadir, backup_dir, restore_timestamp, netbackup_service_host))
+
+    @patch('gppylib.operations.restore.generate_global_filename', return_value="/data/gp_global_1_1_20141200002014")
+    @patch('gppylib.operations.restore.check_file_dumped_with_nbu', return_value=True)
+    def test_global_file_dumped_00(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = "/datadomain"
+        dump_dir = "db_dumps"
+        restore_timestamp = "20141200002014"
+        netbackup_service_host = "mdw"
+
+        self.assertTrue(global_file_dumped(master_datadir, backup_dir, dump_dir, restore_timestamp, netbackup_service_host))
+
+    @patch('gppylib.operations.restore.generate_global_filename', return_value="/data/gp_global_1_1_20141200002014")
+    @patch('gppylib.operations.restore.check_file_dumped_with_nbu', return_value=True)
+    def test_global_file_dumped_01(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = None
+        dump_dir = "db_dumps"
+        restore_timestamp = "20141200002014"
+        netbackup_service_host = "mdw"
+
+        self.assertTrue(global_file_dumped(master_datadir, backup_dir, dump_dir, restore_timestamp, netbackup_service_host))
+
+    @patch('gppylib.operations.restore.generate_global_filename', return_value="/datadomain/gp_global_1_1_20141200002014")
+    @patch('gppylib.operations.restore.check_file_dumped_with_nbu', return_value=True)
+    def test_global_file_dumped_02(self, mock1, mock2):
+        master_datadir = None
+        backup_dir = "/datadomain"
+        dump_dir = "db_dumps"
+        restore_timestamp = "20141200002014"
+        netbackup_service_host = "mdw"
+
+        self.assertTrue(global_file_dumped(master_datadir, backup_dir, dump_dir, restore_timestamp, netbackup_service_host))
+
+    @patch('gppylib.operations.restore.generate_global_filename')
+    @patch('gppylib.operations.restore.check_file_dumped_with_nbu')
+    def test_global_file_dumped_03(self, mock1, mock2):
+        master_datadir = None
+        backup_dir = None
+        dump_dir = "db_dumps"
+        restore_timestamp = "20141200002014"
+        netbackup_service_host = "mdw"
+
+        with self.assertRaisesRegexp(Exception, 'Master data directory and backup directory are both none.'):
+            global_file_dumped(master_datadir, backup_dir, dump_dir, restore_timestamp, netbackup_service_host)
+
+    @patch('gppylib.operations.restore.generate_global_filename')
+    @patch('gppylib.operations.restore.check_file_dumped_with_nbu')
+    def test_global_file_dumped_04(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = None
+        dump_dir = "db_dumps"
+        restore_timestamp = None
+        netbackup_service_host = "mdw"
+
+        with self.assertRaisesRegexp(Exception, 'Restore timestamp is None.'):
+            global_file_dumped(master_datadir, backup_dir, dump_dir, restore_timestamp, netbackup_service_host)
+
+    @patch('gppylib.operations.restore.generate_global_filename')
+    @patch('gppylib.operations.restore.check_file_dumped_with_nbu')
+    def test_global_file_dumped_05(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = None
+        dump_dir = "db_dumps"
+        restore_timestamp = "20141200002014"
+        netbackup_service_host = None
+
+        with self.assertRaisesRegexp(Exception, 'Netbackup service hostname is None.'):
+            global_file_dumped(master_datadir, backup_dir, dump_dir, restore_timestamp, netbackup_service_host)
+
+    @patch('gppylib.operations.restore.generate_global_filename', return_value="/datadomain/gp_global_1_1_20141200002014")
+    @patch('gppylib.operations.restore.check_file_dumped_with_nbu', return_value=False)
+    def test_global_file_dumped_06(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = None
+        dump_dir = "db_dumps"
+        restore_timestamp = "20141200002014"
+        netbackup_service_host = "mdw"
+
+        self.assertFalse(global_file_dumped(master_datadir, backup_dir, dump_dir, restore_timestamp, netbackup_service_host))
+
+    @patch('gppylib.operations.restore.generate_global_filename', return_value="/datadomain/gp_global_1_1_20141200002014")
+    @patch('gppylib.operations.restore.check_file_dumped_with_nbu', return_value=False)
+    def test_global_file_dumped_07(self, mock1, mock2):
+        master_datadir = None
+        backup_dir = "/datadomain"
+        dump_dir = "db_dumps"
+        restore_timestamp = "20141200002014"
+        netbackup_service_host = "mdw"
+
+        self.assertFalse(global_file_dumped(master_datadir, backup_dir, dump_dir, restore_timestamp, netbackup_service_host))
+
+    @patch('gppylib.operations.restore.generate_global_filename', return_value="/data/gp_global_1_1_20141200002014")
+    @patch('gppylib.operations.restore.check_file_dumped_with_nbu', return_value=False)
+    def test_global_file_dumped_08(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = "/datadomain"
+        dump_dir = "db_dumps"
+        restore_timestamp = "20141200002014"
+        netbackup_service_host = "mdw"
+
+        self.assertFalse(global_file_dumped(master_datadir, backup_dir, dump_dir, restore_timestamp, netbackup_service_host))
 
 if __name__ == '__main__':
     unittest.main()
