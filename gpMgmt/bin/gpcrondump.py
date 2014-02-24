@@ -35,7 +35,9 @@ try:
                                         write_dirty_file, write_dirty_file_to_temp, write_last_operation_file,\
                                         write_partition_list_file, write_state_file, get_last_operation_data, \
                                         validate_current_timestamp, generate_dump_timestamp, get_dirty_heap_tables, \
-                                        DUMP_DIR, filter_dirty_tables, get_filter_file, update_filter_file
+                                        DUMP_DIR, filter_dirty_tables, get_filter_file, update_filter_file, \
+                                        backup_cdatabase_file_with_nbu, backup_report_file_with_nbu, \
+                                        backup_global_file_with_nbu, backup_state_files_with_nbu, backup_config_files_with_nbu
     from gppylib.operations.backup_utils import get_latest_full_dump_timestamp, check_funny_chars_in_tablenames, \
                                                 expand_partitions_and_populate_filter_file, get_lines_from_file, \
                                                 remove_file_from_segments, validate_timestamp, write_lines_to_file, \
@@ -110,6 +112,14 @@ class GpCronDump(Operation):
         self.ddboost_backupdir = options.ddboost_backupdir
         # This variable indicates whether we need to exit after verifying the DDBoost credentials 
         self.ddboost_verify_and_exit = False
+        # NetBackup params
+        self.netbackup_service_host = options.netbackup_service_host
+        self.netbackup_policy = options.netbackup_policy
+        self.netbackup_schedule = options.netbackup_schedule
+        self.netbackup_block_size = options.netbackup_block_size
+        self.netbackup_keyword = options.netbackup_keyword
+        if (self.netbackup_keyword is not None) and (len(self.netbackup_keyword) > 100):
+            raise Exception('NetBackup Keyword provided has more than max limit (100) characters. Cannot proceed with backup.')
  
         # TODO: if action is 'append', wouldn't you expect a lack of input to result in [], as opposed to None?
         if self.include_dump_tables is None: self.include_dump_tables = []
@@ -173,6 +183,21 @@ class GpCronDump(Operation):
 
         if self.list_filter_tables and (not backup_utils.dump_prefix or not self.incremental):
             raise Exception('list filter tables option requires --prefix and --incremental')
+
+        # NetBackup params check
+        if self.netbackup_service_host or self.netbackup_policy or self.netbackup_schedule:
+            if self.netbackup_service_host is None:
+                raise Exception("NetBackup service hostname (--netbackup-service-host) param should be provided in order to use NetBackup")
+            if self.netbackup_policy is None:
+                raise Exception("NetBackup policy name (--netbackup-policy) param should be provided in order to use NetBackup")
+            if self.netbackup_schedule is None:
+                raise Exception("NetBackup schedule name (--netbackup-schedule) param should be provided in order to use NetBackup")
+
+        if self.incremental and self.netbackup_service_host:
+            raise Exception('--incremental is not supported with NetBackup')
+
+        if self.ddboost and self.netbackup_service_host:
+            raise Exception('--ddboost is not supported with NetBackup')
 
         self.replicate = options.replicate
         self.max_streams = options.max_streams
@@ -644,6 +669,11 @@ class GpCronDump(Operation):
                                             master_port = self.master_port,
                                             dump_dir = self.dump_dir,
                                             ddboost = self.ddboost,
+                                            netbackup_service_host = self.netbackup_service_host,
+                                            netbackup_policy = self.netbackup_policy,
+                                            netbackup_schedule = self.netbackup_schedule,
+                                            netbackup_block_size = self.netbackup_block_size,
+                                            netbackup_keyword = self.netbackup_keyword,
                                             incremental = self.incremental).run()
     
                 post_dump_outcome = PostDumpDatabase(timestamp_start = dump_outcome['timestamp_start'],
@@ -654,8 +684,12 @@ class GpCronDump(Operation):
                                                      master_port = self.master_port,
                                                      dump_dir = self.dump_dir,
                                                      ddboost = self.ddboost,
+                                                     netbackup_service_host = self.netbackup_service_host,
                                                      incremental = self.incremental).run()
-                
+                if self.netbackup_service_host and self.netbackup_policy and self.netbackup_schedule:
+                    backup_cdatabase_file_with_nbu(self.master_datadir, self.backup_dir, self.dump_dir, self.netbackup_service_host, self.netbackup_policy, self.netbackup_schedule, self.netbackup_block_size, self.netbackup_keyword)
+                    backup_report_file_with_nbu(self.master_datadir, self.backup_dir, self.dump_dir, self.netbackup_service_host, self.netbackup_policy, self.netbackup_schedule, self.netbackup_block_size, self.netbackup_keyword)
+
                 if self.incremental:
                     if os.path.isfile(dirty_file):
                         os.remove(dirty_file)
@@ -672,6 +706,9 @@ class GpCronDump(Operation):
                 write_state_file('ao', self.master_datadir, self.backup_dir, ao_partition_list)
                 write_state_file('co', self.master_datadir, self.backup_dir, co_partition_list)
                 write_last_operation_file(self.master_datadir, self.backup_dir, last_operation_list)
+
+                if self.netbackup_service_host and self.netbackup_policy and self.netbackup_schedule:
+                    backup_state_files_with_nbu(self.master_datadir, self.backup_dir, self.netbackup_service_host, self.netbackup_policy, self.netbackup_schedule, self.netbackup_block_size, self.netbackup_keyword)
 
                 current_exit_status = max(dump_outcome['exit_status'], post_dump_outcome['exit_status'])
                 if self.replicate and current_exit_status == 0:
@@ -714,6 +751,8 @@ class GpCronDump(Operation):
                                backup_dir = self.backup_dir,
                                dump_dir = self.dump_dir,
                                ddboost = self.ddboost).run()
+                    if self.netbackup_service_host and self.netbackup_policy and self.netbackup_schedule:
+                        backup_global_file_with_nbu(self.master_datadir, self.backup_dir, self.dump_dir, self.netbackup_service_host, self.netbackup_policy, self.netbackup_schedule, self.netbackup_block_size, self.netbackup_keyword)
                 else:
                     logger.info("Skipping global dump due to issues during post-dump checks.")
             
@@ -773,6 +812,8 @@ class GpCronDump(Operation):
                                         master_port = self.master_port,
                                         dump_dir = self.dump_dir,
                                         ddboost = self.ddboost).run()
+            if self.netbackup_service_host and self.netbackup_policy and self.netbackup_schedule:
+                backup_config_files_with_nbu(self.master_datadir, self.backup_dir, self.dump_dir, self.master_port, self.netbackup_service_host, self.netbackup_policy, self.netbackup_schedule, self.netbackup_block_size, self.netbackup_keyword)
 
         if self.ddboost and self.replicate:
             logger.info("Backup to local Data Domain successful.")
@@ -1210,6 +1251,18 @@ def create_parser():
                      help="Dump the tables named in this file for the specified database. Option can be used only once.")
     addTo.add_option('--exclude-table-file', dest='exclude_dump_tables_file', metavar="<filename>",
                      help="Exclude the tables named in this file from the dump. Option can be used only once.")
+
+    # NetBackup params
+    addTo.add_option('--netbackup-service-host', dest='netbackup_service_host', metavar="<server name>",
+                     help="NetBackup service hostname")
+    addTo.add_option('--netbackup-policy', dest='netbackup_policy', metavar="<policy name>",
+                     help="NetBackup policy name")
+    addTo.add_option('--netbackup-schedule', dest='netbackup_schedule', metavar="<schedule name>",
+                     help="NetBackup schedule name")
+    addTo.add_option('--netbackup-block-size', dest='netbackup_block_size', metavar="<block size>",
+                     help="NetBackup data transfer block size")
+    addTo.add_option('--netbackup-keyword', dest='netbackup_keyword', metavar="<keyword>",
+                     help="NetBackup Keyword")
 
     # TODO: Dead options. Remove eventually.
     addTo.add_option('-i', action='store_true', dest='bypass_cluster_check', default=False, help="No longer supported.")

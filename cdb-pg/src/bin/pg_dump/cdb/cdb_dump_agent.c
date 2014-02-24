@@ -449,6 +449,11 @@ main(int argc, char **argv)
 		{"dd_boost_buf_size", required_argument, NULL, 9},
 #endif
 		{"incremental-filter", required_argument, NULL, 10},
+		{"netbackup-service-host", required_argument, NULL, 11},
+		{"netbackup-policy", required_argument, NULL, 12},
+		{"netbackup-schedule", required_argument, NULL, 13},
+		{"netbackup-block-size", required_argument, NULL, 14},
+		{"netbackup-keyword", required_argument, NULL, 15},
 		{NULL, 0, NULL, 0}
 	};
 	int			optindex;
@@ -694,6 +699,18 @@ main(int argc, char **argv)
 			case 10:
 				incrementalFilter = strdup(optarg);
 				break;
+			/* Hack to pass NetBackup params to gp_dump_agent */
+			case 11:
+				break;
+			case 12:
+				break;
+			case 13:
+				break;
+			case 14:
+				break;
+			case 15:
+				break;
+
 			default:
 				fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
 				exit(1);

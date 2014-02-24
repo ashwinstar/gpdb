@@ -26,7 +26,9 @@ from gppylib.operations.backup_utils import write_lines_to_file, verify_lines_in
                                             create_temp_file_from_list, execute_sql, generate_master_config_filename, \
                                             generate_segment_config_filename, generate_global_prefix, generate_master_dbdump_prefix, \
                                             generate_master_status_prefix, generate_seg_dbdump_prefix, generate_seg_status_prefix, \
-                                            generate_dbdump_prefix, generate_createdb_filename, generate_filter_filename, get_latest_full_dump_timestamp
+                                            generate_dbdump_prefix, generate_createdb_filename, generate_filter_filename, \
+                                            get_latest_full_dump_timestamp, backup_file_with_nbu, generate_cdatabase_filename, \
+                                            generate_global_filename
 
 logger = gplog.get_default_logger()
 
@@ -416,10 +418,87 @@ def filter_dirty_tables(dirty_tables, dump_database, master_datadir, backup_dir)
                 dirty_tables.remove(table)
     return dirty_tables
 
+def backup_state_files_with_nbu(master_datadir, backup_dir, netbackup_service_host, netbackup_policy, netbackup_schedule,
+                                netbackup_block_size, netbackup_keyword, timestamp_key=None):
+    logger.debug("Inside backup_state_files_with_nbu\n")
+    if (master_datadir is None) and (backup_dir is None):
+        raise Exception('Master data directory and backup directory are both none.')
+
+    if timestamp_key is None:
+        timestamp_key = TIMESTAMP_KEY
+
+    backup_file_with_nbu(netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword,
+                         get_filename_from_filetype('ao', master_datadir, backup_dir, timestamp_key))
+    backup_file_with_nbu(netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword,
+                         get_filename_from_filetype('co', master_datadir, backup_dir, timestamp_key))
+    backup_file_with_nbu(netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword,
+                         generate_pgstatlastoperation_filename(master_datadir, backup_dir, timestamp_key))
+
+def backup_cdatabase_file_with_nbu(master_datadir, backup_dir, dump_dir, netbackup_service_host, netbackup_policy, netbackup_schedule,
+                                   netbackup_block_size, netbackup_keyword, timestamp_key=None):
+    logger.debug("Inside backup_cdatabase_file_with_nbu\n")
+    if (master_datadir is None) and (backup_dir is None):
+        raise Exception('Master data directory and backup directory are both none.')
+    if timestamp_key is None:
+        timestamp_key = TIMESTAMP_KEY
+
+    backup_file_with_nbu(netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword,
+                         generate_cdatabase_filename(master_datadir, backup_dir, timestamp_key))
+
+def backup_report_file_with_nbu(master_datadir, backup_dir, dump_dir, netbackup_service_host, netbackup_policy, netbackup_schedule,
+                                netbackup_block_size, netbackup_keyword, timestamp_key=None):
+    logger.debug("Inside backup_report_file_with_nbu\n")
+    if (master_datadir is None) and (backup_dir is None):
+        raise Exception('Master data directory and backup directory are both none.')
+    if timestamp_key is None:
+        timestamp_key = TIMESTAMP_KEY
+
+    backup_file_with_nbu(netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword,
+                         generate_report_filename(master_datadir, backup_dir, timestamp_key))
+
+def backup_global_file_with_nbu(master_datadir, backup_dir, dump_dir, netbackup_service_host, netbackup_policy, netbackup_schedule,
+                                netbackup_block_size, netbackup_keyword, timestamp_key=None):
+    logger.debug("Inside backup_global_file_with_nbu\n")
+    if (master_datadir is None) and (backup_dir is None):
+        raise Exception('Master data directory and backup directory are both none.')
+    if timestamp_key is None:
+        timestamp_key = TIMESTAMP_KEY
+
+    backup_file_with_nbu(netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword,
+                         generate_global_filename(master_datadir, backup_dir, dump_dir, DUMP_DATE, timestamp_key))
+
+def backup_config_files_with_nbu(master_datadir, backup_dir, dump_dir, master_port, netbackup_service_host, netbackup_policy,
+                                 netbackup_schedule, netbackup_block_size, netbackup_keyword, timestamp_key=None):
+    logger.debug("Inside backup_config_files_with_nbu\n")
+    if (master_datadir is None) and (backup_dir is None):
+        raise Exception('Master data directory and backup directory are both none.')
+    if timestamp_key is None:
+        timestamp_key = TIMESTAMP_KEY
+
+    #backing up master config file
+    config_backup_file = generate_master_config_filename(timestamp_key)
+    if backup_dir is not None:
+        path = os.path.join(backup_dir, DUMP_DIR, DUMP_DATE, config_backup_file)
+    else:
+        path = os.path.join(master_datadir, dump_dir, DUMP_DATE, config_backup_file)
+    backup_file_with_nbu(netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword, path)
+
+    #backing up segment config files
+    gparray = GpArray.initFromCatalog(dbconn.DbURL(port = master_port), utility=True)
+    primaries = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary(current_role=True)]
+    for seg in primaries:
+        config_backup_file = generate_segment_config_filename(seg.getSegmentDbId(), timestamp_key)
+        if backup_dir is not None:
+            path = os.path.join(backup_dir, DUMP_DIR, DUMP_DATE, config_backup_file)
+        else:
+            path = os.path.join(seg.getSegmentDataDirectory(), dump_dir, DUMP_DATE, config_backup_file)
+        host = seg.getSegmentHostName()
+        backup_file_with_nbu(netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword, path, host)
+
 class DumpDatabase(Operation):
     # TODO: very verbose constructor = room for improvement. in the parent constructor, we could use kwargs
     # to automatically take in all arguments and perhaps do some data type validation.
-    def __init__(self, dump_database, dump_schema, include_dump_tables, exclude_dump_tables, include_dump_tables_file, exclude_dump_tables_file, backup_dir, free_space_percent, compress, clear_catalog_dumps, encoding, output_options, batch_default, master_datadir, master_port, dump_dir, ddboost, incremental=False):
+    def __init__(self, dump_database, dump_schema, include_dump_tables, exclude_dump_tables, include_dump_tables_file, exclude_dump_tables_file, backup_dir, free_space_percent, compress, clear_catalog_dumps, encoding, output_options, batch_default, master_datadir, master_port, dump_dir, ddboost, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword, incremental=False):
         self.dump_database = dump_database
         self.dump_schema = dump_schema
         self.include_dump_tables = include_dump_tables
@@ -438,6 +517,11 @@ class DumpDatabase(Operation):
         self.dump_dir = dump_dir
         self.ddboost = ddboost
         self.incremental = incremental
+        self.netbackup_service_host = netbackup_service_host
+        self.netbackup_policy = netbackup_policy
+        self.netbackup_schedule = netbackup_schedule
+        self.netbackup_block_size = netbackup_block_size
+        self.netbackup_keyword = netbackup_keyword
 
     def execute(self):
         self.exclude_dump_tables = ValidateDumpDatabase(dump_database = self.dump_database,
@@ -545,6 +629,13 @@ class DumpDatabase(Operation):
         if backup_utils.dump_prefix:
             logger.info("Adding --prefix")
             dump_line += " --prefix=%s" % backup_utils.dump_prefix
+        if self.netbackup_service_host is not None:
+            logger.info("Adding NetBackup params")
+            dump_line += " --netbackup-service-host=%s --netbackup-policy=%s --netbackup-schedule=%s" % (self.netbackup_service_host, self.netbackup_policy, self.netbackup_schedule)
+        if self.netbackup_block_size is not None:
+            dump_line += " --netbackup-block-size=%s" % self.netbackup_block_size
+        if self.netbackup_keyword is not None:
+            dump_line += " --netbackup-keyword=%s" % self.netbackup_keyword
 
         logger.info('Adding --no-expand-children')
         dump_line += " --no-expand-children"
@@ -629,7 +720,7 @@ class CreateIncrementsFile(Operation):
                 raise Exception("Timestamp '%s' from increments file '%s' is not a valid increment" % (ts, inc_file_name))
 
 class PostDumpDatabase(Operation):
-    def __init__(self, timestamp_start, compress, backup_dir, batch_default, master_datadir, master_port, dump_dir, ddboost, incremental=False):
+    def __init__(self, timestamp_start, compress, backup_dir, batch_default, master_datadir, master_port, dump_dir, ddboost, netbackup_service_host, incremental=False):
         self.timestamp_start = timestamp_start
         self.compress = compress
         self.backup_dir = backup_dir
@@ -639,6 +730,7 @@ class PostDumpDatabase(Operation):
         self.dump_dir = dump_dir
         self.ddboost = ddboost
         self.incremental = incremental
+        self.netbackup_service_host = netbackup_service_host
 
     def get_report_dir(self, dump_date):
         path = self.backup_dir if self.backup_dir is not None else self.master_datadir
@@ -661,6 +753,10 @@ class PostDumpDatabase(Operation):
         logger.info("Timestamp key = %s" % timestamp)
 
         if self.ddboost:
+            return {'exit_status': 0,               # feign success with exit_status = 0
+                    'timestamp': timestamp}
+
+        if self.netbackup_service_host:
             return {'exit_status': 0,               # feign success with exit_status = 0
                     'timestamp': timestamp}
 
