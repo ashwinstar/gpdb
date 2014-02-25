@@ -5641,8 +5641,6 @@ insert into g values(1), (2), (3);
 select * from locktest;
     coalesce     |        mode         |         locktype         
 -----------------+---------------------+--------------------------
- g               | AccessExclusiveLock | append-only segment file
- g               | AccessShareLock     | relation
  g               | RowExclusiveLock    | relation
  g_1_prt_1       | AccessExclusiveLock | append-only segment file
  g_1_prt_1       | AccessShareLock     | relation
@@ -5654,7 +5652,7 @@ select * from locktest;
  locktest        | AccessShareLock     | relation
  pg_class        | AccessShareLock     | relation
  pg_locks        | AccessShareLock     | relation
-(13 rows)
+(11 rows)
 
 commit;
 -- drop
