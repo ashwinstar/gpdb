@@ -34,7 +34,7 @@ then copy it to the master host. Use the Greenplum
 Package Manager to install each package using the 
 options described below.
 
-After a major upgrade to Greenplum Database, you must 
+NOTE: After a major upgrade to Greenplum Database, you must 
 download and install all extensions again.
 
 The following packages are available for download from the
@@ -45,6 +45,15 @@ EMC Download Center.
 * PL/Perl
 * MADlib
 * Pgcrypto
+* Greenplum Database gNet Connectivity Software for Hadoop
+
+Note that Greenplum Package Manager installation files for extension 
+packages may release outside of standard Database release cycles. 
+Therefore, for the latest install and configuration information 
+regarding any supported database package/extension, go to the Support 
+site (https://support.emc.com) and download Primus Article 288189
+(https://support.emc.com/search/#text=emc288189) from our knowledge base. 
+
 
 *****************************************************
 OPTIONS
@@ -52,72 +61,97 @@ OPTIONS
 
 Options
 -a (do not prompt)
-Do not prompt the user for confirmation.
 
+ Do not prompt the user for confirmation.
+
+ 
 -c | --clean
-Reconciles the package state of the cluster to match the 
-state of the master host. Running this option after a failed
-or partial install/uninstall ensures that the package 
-installation state is consistent across the cluster.
 
+ Reconciles the package state of the cluster to match the 
+ state of the master host. Running this option after a failed
+ or partial install/uninstall ensures that the package 
+ installation state is consistent across the cluster.
+
+ 
 -d <master_data_directory>
-The master data directory. If not specified, the value set
+
+ The master data directory. If not specified, the value set
  for $MASTER_DATA_DIRECTORY will be used.
 
+ 
 -i <package> | --install=<package>
-Installs the given package. This includes any pre/post 
-installation steps and installation of any dependencies.
 
+ Installs the given package. This includes any pre/post 
+ installation steps and installation of any dependencies.
+
+ 
 --migrate <GPHOME_1> <GPHOME_2>
-Migrates packages from a separate $GPHOME. Carries over 
-packages from one version of Greenplum Database to another.
-For example: 
-  gppkg --migrate /usr/local/greenplum-db-4.2.0.1 
-  /usr/local/greenplum-db-4.2.1.0
 
-This option is automatically invoked by the installer 
-during minor upgrades. This option is given here for 
-cases when the user wants to migrate packages 
-manually.
-Migration can only proceed if gppkg is executed 
-from the installation directory to which packages 
-are being migrated. That is, GPHOME_2 must match 
-the $GPHOME from which the currently executing 
-gppkg is being run. 
+ Migrates packages from a separate $GPHOME. Carries over 
+ packages from one version of Greenplum Database to another.
+ For example: 
+   gppkg --migrate /usr/local/greenplum-db-4.2.0.1 
+   /usr/local/greenplum-db-4.2.1.0
 
+ This option is automatically invoked by the installer 
+ during minor upgrades. This option is given here for 
+ cases when the user wants to migrate packages 
+ manually.
+ 
+ Migration can only proceed if gppkg is executed 
+ from the installation directory to which packages 
+ are being migrated. That is, GPHOME_2 must match 
+ the $GPHOME from which the currently executing 
+ gppkg is being run. 
+
+ 
 -q | --query query_option
 
-Provides information specified by query_option about the 
-installed packages. Only one query_option can be specified 
-at a time. The following table lists the possible values 
-for query_option. <package_file> is the name of a package.
+ Provides information specified by query_option about the 
+ installed packages. Only one query_option can be specified 
+ at a time. The following table lists the possible values 
+ for query_option. <package_file> is the name of a package.
 
-query_option              Returns
-------------              -------
+ query_option              Returns
+ ------------              -------
 
-<package_file>            Whether the specified package is installed.
+ <package_file>            Whether the specified package is installed.
 
---info <package_file>     The name, version, and other information 
-                          about the specified package.
+ --info <package_file>     The name, version, and other information 
+                           about the specified package.
 
---list <package_file>     The file contents of the specified package.
+ --list <package_file>     The file contents of the specified package.
 
---all                     List of all installed packages.
+ --all                     List of all installed packages.
 
 
 -r <name>-<version> | --remove=<name>-<version>
-Removes the specified package.
 
+ Removes the specified package.
+
+ 
 -u <package> | --update=<package>
-Updates the given package.
+
+ Updates the given package.
+ 
+ WARNING: The process of updating a package includes removing all 
+ previous versions of the system objects related to the package. For 
+ example, previous versions of shared libraries are removed. 
+
+ After the update process, a database function will fail when it is 
+ called if the function references a package file that has been removed. 
 
 --version 
-Displays the version of this utility.
+
+ Displays the version of this utility.
+
 
 -v | --verbose
-Sets the logging level to verbose.
+
+ Sets the logging level to verbose.
 
 -? | -h | --help
-Displays the online help.
+
+ Displays the online help.
 
 
