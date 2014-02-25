@@ -1,12 +1,12 @@
 COMMAND NAME: gpmigrator
 
-Upgrades an existing Greenplum Database 4.1.x system 
-without mirrors to 4.2.x.
+Upgrades an existing Greenplum Database 4.2.x system 
+without mirrors to 4.3.x.
 
-Use gpmigrator_mirror to upgrade a 4.1.x system that 
+Use gpmigrator_mirror to upgrade a 4.2.x system that 
 has mirrors.
 
-Note: Using gpmigrator on a system with mirrors causes 
+NOTE: Using gpmigrator on a system with mirrors causes 
       an error.
 
 *****************************************************
@@ -31,10 +31,10 @@ The following tasks should be performed prior to executing an upgrade:
 
 * Make sure you are logged in to the master host as the Greenplum Database 
   superuser (gpadmin).
-* Install the Greenplum Database 4.2 binaries on all Greenplum hosts.
-* Copy any custom modules you use into your 4.2 installation.  Make sure 
+* Install the Greenplum Database 4.3 binaries on all Greenplum hosts.
+* Copy any custom modules you use into your 4.3 installation.  Make sure 
   you obtain the latest version of any custom modules and that they are 
-  compatible with Greenplum Database 4.2.
+  compatible with Greenplum Database 4.3.
 * Copy or preserve any additional folders or files (such as backup folders) 
   that you have added in the Greenplum data directories or $GPHOME directory. 
   Only files or folders strictly related to Greenplum Database operations are 
@@ -49,7 +49,7 @@ The following tasks should be performed prior to executing an upgrade:
    you can restore this backup.
 * Remove the standby master from your system configuration (gpinitstandby -r).
 * Do a clean shutdown of your current system (gpstop).
-* Update your environment to source the 4.2 installation.
+* Update your environment to source the 4.3 installation.
 * Inform all database users of the upgrade and lockout time frame. Once the 
   upgrade is in process, users will not be allowed on the system until the 
   upgrade is complete.
@@ -59,8 +59,8 @@ The following tasks should be performed prior to executing an upgrade:
 DESCRIPTION
 *****************************************************
 
-The gpmigrator utility upgrades an existing Greenplum Database 4.1.x.x 
-system without mirrors to 4.2. This utility updates the system catalog 
+The gpmigrator utility upgrades an existing Greenplum Database 4.2.x.x 
+system without mirrors to 4.3. This utility updates the system catalog 
 and internal version number, but not the actual software binaries. 
 During the migration process, all client connections to Greenplum 
 Database will be locked out.
@@ -111,35 +111,36 @@ OPTIONS
   * Check catalog health
   * Check that the Greenplum Database binaries on each segment match 
     those on the master
-  * Check for a minium amount of free disk space
+  * Check for a minimum amount of free disk space
 
- Note: Performing a pre-migration check of your database should done 
+ NOTE: Performing a pre-migration check of your database should done 
  during a database maintenance period. If the utility detects catalog 
  errors, the utility stops the database.
 
 
 --help | -h
-Displays the online help.
+ Displays the online help.
 
 
 --debug
-Sets logging level to debug.
+ Sets logging level to debug.
 
 
 --version | -v
-Displays the version of this utility. 
+ Displays the version of this utility. 
 
 
 *****************************************************
 EXAMPLE
 *****************************************************
 
-Upgrade to version 4.2 from version 4.1.1.3 without mirrors 
-(make sure you are using the 4.2 version of gpmigrator):
+Upgrade to version 4.3.x from version 4.2.x (make sure you are using the 
+4.3 version of gpmigrator). This example upgrades to version 4.3.0.0 
+from version 4.2.6.3: 
 
-/usr/local/greenplum-db-4.2.x.x/bin/gpmigrator \
-  /usr/local/greenplum-db-4.1.1.3 \
-  /usr/local/greenplum-db-4.2.x.x
+/usr/local/greenplum-db-4.3.0.0/bin/gpmigrator \
+  /usr/local/greenplum-db-4.2.6.3 \
+  /usr/local/greenplum-db-4.3.0.0
 
 
 *****************************************************
