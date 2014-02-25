@@ -40,8 +40,8 @@ enabled.
 The Greenplum Database master segment must be able to connect to both 
 the local Data Domain system and the remote Data Domain system. 
 
-Greenplum Database supports Data Domain Boost SDK version 2.4.2.2 with 
-DDOS 5.0.1.0, 5.1 and 5.2.
+See the Greenplum Database release notes for information about the 
+supported version of Data Domain Boost. 
 
 *****************************************************
 DESCRIPTION
