@@ -10,7 +10,7 @@ gpdbrestore { -t <timestamp_key> [-L]
               | -b <YYYYMMDD> 
               | -R <hostname>:<path_to_dumpset> 
               | -s <database_name> } 
-     [--noplan] [-u <backup_directory>] [--list-backup]
+     [--noplan]  [--noanalyze]  [-u <backup_directory>] [--list-backup]
      [--prefix <prefix_string> ]
      [-T <schema>.<table> [,...]] [--table-file <file_name>]
      [-e] [-G] [-B <parallel_processes>] 
@@ -167,6 +167,18 @@ OPTIONS
  named backup set and exits. Does not do a restore. 
 
  
+--noanalyze
+
+The ANALYZE command is not run after a successful restore. The default 
+is to run the ANALYZE command after a restore. This option is useful if 
+running ANALYZE on tables in your database requires a significant amount 
+of time. 
+
+If this option is specified, you should run ANALYZE manually on 
+restored tables. Failure to run ANALYZE following a restore might result 
+in poor database performance. 
+
+
 --noplan 
 
  Restores only the data backed up during the incremental backup specified 
