@@ -227,6 +227,7 @@ def impl(context, dbname):
 def impl(context, command):
     run_gpcommand(context, command)
 
+@given('the user runs command "{command}"') 
 @when('the user runs command "{command}"') 
 def impl(context, command):                 
     run_command(context, command) 
@@ -724,7 +725,9 @@ def impl(context, path):
 def impl(context):
     cleanup_backup_files(context, 'template1')
 
-@given('there are no backup files in "{location}"')
+@given('the backup files in "{location}" are deleted')
+@when('the backup files in "{location}" are deleted')
+@then('the backup files in "{location}" are deleted')
 def impl(context, location):
     cleanup_backup_files(context, 'template1', location)
 

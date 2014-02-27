@@ -227,6 +227,7 @@ main(int argc, char **argv)
 		{"dd_boost_buf_size", required_argument, NULL, 11},
 		{"gp-f", required_argument, NULL, 12},
 		{"prefix", required_argument, NULL, 13},
+		{"status", required_argument, NULL, 14},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -430,6 +431,10 @@ main(int argc, char **argv)
 			case 13:
 				dump_prefix = strdup(optarg);
 				break;
+            /* Hack to pass in the status_file name to cdbbackup.c (gp_restore_launch) */
+			case 14:
+				break;
+
 
 			default:
 				fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);

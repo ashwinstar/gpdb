@@ -22,7 +22,7 @@ from gppylib.operations.backup_utils import check_backup_type, generate_dirtytab
                                             get_all_segment_addresses, scp_file_to_hosts, run_pool_command, execute_sql, expand_partition_tables, \
                                             generate_global_prefix, generate_master_dbdump_prefix, \
                                             generate_master_status_prefix, generate_seg_dbdump_prefix, generate_seg_status_prefix, \
-                                            generate_dbdump_prefix, generate_createdb_filename, generate_createdb_prefix
+                                            generate_dbdump_prefix, generate_createdb_filename, generate_createdb_prefix, check_dir_writable
 
 from gppylib.operations.utils import RemoteOperation, ParallelOperation
 from gppylib.operations.unix import CheckFile, CheckRemoteDir, MakeRemoteDir, CheckRemotePath
@@ -226,7 +226,8 @@ def validate_restore_tables_list(plan_file_contents, restore_tables):
     if invalid_tables != []:
         raise Exception('Invalid tables for -T option: The following tables were not found in plan file : "%s"' % (invalid_tables))
 
-def restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables, redirected_restore_db):
+def restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables, 
+                                  redirected_restore_db, report_status_dir):
     restore_data = False
     plan_file_items = get_plan_file_contents(master_datadir, backup_dir, timestamp)
     table_file = None
@@ -240,7 +241,7 @@ def restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore
             table_file = get_restore_table_list(table_list.split(','), restore_tables)
             if table_file is None:
                 continue
-            cmd = _build_gpdbrestore_cmd_line(ts, table_file, backup_dir, redirected_restore_db)
+            cmd = _build_gpdbrestore_cmd_line(ts, table_file, backup_dir, redirected_restore_db, report_status_dir)
             logger.info('Invoking commandline: %s: ' % cmd)
             Command('Invoking gpdbrestore', cmd).run(validateAfter=True) 
             table_files.append(table_file)
@@ -254,7 +255,7 @@ def restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore
 
     return True
 
-def _build_gpdbrestore_cmd_line(ts, table_file, backup_dir, redirected_restore_db):
+def _build_gpdbrestore_cmd_line(ts, table_file, backup_dir, redirected_restore_db, report_status_dir):
     cmd = 'gpdbrestore -t %s --table-file %s -a -v --noplan --noanalyze --noaostats' % (ts, table_file) 
     if backup_dir is not None:
         cmd += " -u %s" % backup_dir
@@ -262,11 +263,15 @@ def _build_gpdbrestore_cmd_line(ts, table_file, backup_dir, redirected_restore_d
         cmd += " --prefix=%s" % backup_utils.dump_prefix.strip('_')
     if redirected_restore_db:
         cmd += " --redirect=%s" % redirected_restore_db
+    if report_status_dir:
+        cmd += " --report-status-dir=%s" % report_status_dir
+
     return cmd
 
 class RestoreDatabase(Operation):
     def __init__(self, restore_timestamp, no_analyze, drop_db, restore_global, master_datadir, backup_dir, 
-                master_port, dump_dir, ddboost, no_plan, restore_tables, batch_default, no_ao_stats, redirected_restore_db): 
+                master_port, dump_dir, ddboost, no_plan, restore_tables, batch_default, no_ao_stats, 
+                redirected_restore_db, report_status_dir): 
         self.restore_timestamp = restore_timestamp
         self.no_analyze = no_analyze
         self.drop_db = drop_db
@@ -281,6 +286,7 @@ class RestoreDatabase(Operation):
         self.batch_default = batch_default
         self.no_ao_stats = no_ao_stats
         self.redirected_restore_db = redirected_restore_db
+        self.report_status_dir = report_status_dir
 
     def execute(self): 
         (restore_timestamp, restore_db, compress) = ValidateRestoreDatabase(restore_timestamp = self.restore_timestamp,
@@ -328,7 +334,8 @@ class RestoreDatabase(Operation):
                                           self.backup_dir, 
                                           self.restore_timestamp, 
                                           self.restore_tables,
-                                          self.redirected_restore_db)
+                                          self.redirected_restore_db,
+                                          self.report_status_dir)
 
             logger.info("Updating AO/CO statistics on master")
             update_ao_statistics(self.master_port, restore_db)
@@ -338,7 +345,8 @@ class RestoreDatabase(Operation):
             restore_line = self._build_restore_line(restore_timestamp, 
                                                     restore_db, compress, 
                                                     self.master_port, self.ddboost, 
-                                                    self.no_plan, table_filter_file, self.no_ao_stats)
+                                                    self.no_plan, table_filter_file, 
+                                                    self.no_ao_stats)
             logger.info('gp_restore commandline: %s: ' % restore_line)
             Command('Invoking gp_restore', restore_line).run(validateAfter=True)
 
@@ -474,10 +482,25 @@ class RestoreDatabase(Operation):
             Psql('Invoking schema dump', filename=createdb_file).run(validateAfter=True)
         self.create_gp_toolkit(restore_db)
 
-    def _build_restore_line(self, restore_timestamp, restore_db, compress, master_port, ddboost, no_plan, table_filter_file, no_stats): 
+    def backup_dir_is_writable(self):
+        if self.backup_dir and not self.report_status_dir:
+            try:
+                path = os.path.join(self.dump_dir, self.restore_timestamp[0:8])
+                dir = os.path.join(self.backup_dir, path)
+                check_dir_writable(dir)
+            except Exception as e:
+                logger.warning('Backup directory %s is not writable. Error %s' % (dir, str(e)))
+                logger.warning('Since --report-status-dir option is not specified, report and status file will be written in segment data directory.')
+                return False
+        return True
+
+    def _build_restore_line(self, restore_timestamp, restore_db, compress, master_port, ddboost, no_plan, 
+                            table_filter_file, no_stats): 
+
+            
         user = getpass.getuser()
         hostname = socket.gethostname()    # TODO: can this just be localhost? bash was using `hostname`
-        path = os.path.join(self.dump_dir, restore_timestamp[0:8])
+        prefix_path = path = os.path.join(self.dump_dir, restore_timestamp[0:8])
         if self.backup_dir is not None:
             path = os.path.join(self.backup_dir, path)
         restore_line = "gp_restore -i -h %s -p %s -U %s --gp-d=%s --gp-i" % (hostname, master_port, user, path)
@@ -486,7 +509,18 @@ class RestoreDatabase(Operation):
             restore_line += " --prefix=%s" % backup_utils.dump_prefix
         if ddboost:
             path = os.path.join(self.master_datadir, path)
-        restore_line += " --gp-k=%s --gp-r=%s --gp-l=p" % (restore_timestamp, path)
+        restore_line += " --gp-k=%s --gp-l=p" % (restore_timestamp)
+ 
+        if self.report_status_dir:
+            restore_line += " --gp-r=%s" % self.report_status_dir
+            restore_line += " --status=%s" % self.report_status_dir
+        elif self.backup_dir and self.backup_dir_is_writable():
+                restore_line += " --gp-r=%s" % path
+                restore_line += " --status=%s" % path
+        # else
+        # gp-r is not set, restore.c sets it to MASTER_DATA_DIRECTORY if not specified.
+        # status file is not set, cdbbackup.c sets it to SEGMENT_DATA_DIRECTORY if not specified.
+        
         if table_filter_file:
             restore_line += " --gp-f=%s" % table_filter_file
         if compress:
@@ -500,14 +534,26 @@ class RestoreDatabase(Operation):
             restore_line += " --gp-nostats"
         return restore_line
 
-    def _build_schema_only_restore_line(self, restore_timestamp, restore_db, compress, master_port, metadata_filename, table_filter_file):
+    def _build_schema_only_restore_line(self, restore_timestamp, restore_db, compress, master_port, 
+                                        metadata_filename, table_filter_file):
         user = getpass.getuser()
         hostname = socket.gethostname()    # TODO: can this just be localhost? bash was using `hostname`
-        path = os.path.join(DUMP_DIR, restore_timestamp[0:8])
+        prefix_path = path = os.path.join(DUMP_DIR, restore_timestamp[0:8])
         if self.backup_dir is not None:
             path = os.path.join(self.backup_dir, path)
         restore_line = "gp_restore -i -h %s -p %s -U %s --gp-d=%s --gp-i" % (hostname, master_port, user, path)
-        restore_line += " --gp-k=%s --gp-r=%s --gp-l=p -s %s" % (restore_timestamp, path, metadata_filename)
+        restore_line += " --gp-k=%s --gp-l=p -s %s" % (restore_timestamp, metadata_filename)
+
+        if self.report_status_dir:
+            restore_line += " --gp-r=%s" % self.report_status_dir
+            restore_line += " --status=%s" % self.report_status_dir
+        elif self.backup_dir and self.backup_dir_is_writable():
+                restore_line += " --gp-r=%s" % path
+                restore_line += " --status=%s" % path
+        # else
+        # gp-r is not set, restore.c sets it to MASTER_DATA_DIRECTORY if not specified.
+        # status file is not set, cdbbackup.c sets it to SEGMENT_DATA_DIRECTORY if not specified.
+
         if backup_utils.dump_prefix:
             logger.info("Adding --prefix")
             restore_line += " --prefix=%s" % backup_utils.dump_prefix
@@ -547,7 +593,7 @@ class ValidateTimestamp(Operation):
         path = os.path.join(get_restore_dir(self.master_datadir, self.backup_dir), self.dump_dir, self.candidate_timestamp[0:8])
         createdb_file = generate_createdb_filename(self.master_datadir, self.backup_dir, self.candidate_timestamp)
         if not CheckFile(createdb_file).run():
-            raise ExceptionNoStackTraceNeeded("Dump file %s does not exist on Master" % createdb_file)
+            raise ExceptionNoStackTraceNeeded("Dump file '%s' does not exist on Master" % createdb_file)
         restore_db = GetDbName(createdb_file).run()
         if not self.ddboost:
             compressed_file = os.path.join(path, "%s%s.gz" % (generate_master_dbdump_prefix(), self.candidate_timestamp))

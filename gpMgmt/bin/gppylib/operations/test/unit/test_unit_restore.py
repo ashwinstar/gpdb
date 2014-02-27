@@ -35,7 +35,8 @@ class restoreTestCase(unittest.TestCase):
                             restore_tables = None,
                             batch_default=64,
                             no_ao_stats = False,
-                            redirected_restore_db = None)
+                            redirected_restore_db = None,
+                            report_status_dir = None)
 
     def create_backup_dirs(self, top_dir=os.getcwd(), dump_dirs=[]):
         if dump_dirs is None:
@@ -99,12 +100,12 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
     @patch('gppylib.operations.restore.RestoreDatabase._process_createdb', side_effect=ExceptionNoStackTraceNeeded('Failed to create database'))
     @patch('time.sleep')
     def test_multitry_createdb_1(self, mock1, mock2):
-        r = RestoreDatabase('20121219', True, True, False, 'FOO', None, 1234, False, False, None, None, 'db_dumps', False, None)
+        r = RestoreDatabase('20121219', True, True, False, 'FOO', None, 1234, False, False, None, None, 'db_dumps', False, None, None)
         self.assertRaises(ExceptionNoStackTraceNeeded, r._multitry_createdb, '20121219', 'fullbkdb', None, 'FOO', None, 1234)
 
     @patch('gppylib.operations.restore.RestoreDatabase._process_createdb')
     def test_multitry_createdb_2(self, mock):
-        r = RestoreDatabase('20121219', True, True, False, 'FOO', None, 1234, False, False, None, None, 'db_dumps',  False, None)
+        r = RestoreDatabase('20121219', True, True, False, 'FOO', None, 1234, False, False, None, None, 'db_dumps',  False, None, None)
         r._multitry_createdb('20121219', 'fullbkdb', None, 'FOO', None, 1234)
 
     @patch('gppylib.operations.restore.get_partition_list', return_value=[('public', 't1'), ('public', 't2'), ('public', 't3')])
@@ -336,7 +337,7 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         master_port = '5432'
         table_filter_file = None
         metadata_file = os.path.join(master_datadir, 'db_dumps', restore_timestamp[0:8], 'gp_dump_1_1_%s.gz' % restore_timestamp)
-        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-r=db_dumps/20121212 --gp-l=p -s %s -d bkdb' % metadata_file
+        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-l=p -s %s -d bkdb' % metadata_file
 
         restore_line = self.restore._build_schema_only_restore_line(restore_timestamp, restore_db, compress, master_port, metadata_file, table_filter_file)
         self.assertEqual(restore_line, expected_output)
@@ -351,14 +352,15 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         master_port = '5432'
         table_filter_file = None
         metadata_file = os.path.join(master_datadir, 'db_dumps', restore_timestamp[0:8], 'gp_dump_1_1_%s.gz' % restore_timestamp)
-        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-r=db_dumps/20121212 --gp-l=p -s %s --gp-c -d bkdb' % metadata_file
+        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-l=p -s %s --gp-c -d bkdb' % metadata_file
 
         restore_line = self.restore._build_schema_only_restore_line(restore_timestamp, restore_db, compress, master_port, metadata_file, table_filter_file)
         self.assertEqual(restore_line, expected_output)
 
     @patch('gppylib.operations.restore.socket.gethostname', return_value='host')
     @patch('gppylib.operations.restore.getpass.getuser', return_value='user')
-    def test_build_schema_only_restore_line_02(self, mock1, mock2):
+    @patch('gppylib.operations.restore.RestoreDatabase.backup_dir_is_writable', return_value=True)
+    def test_build_schema_only_restore_line_02(self, mock1, mock2, mock3):
         master_datadir = 'foo' 
         restore_timestamp = '20121212121212' 
         restore_db = 'bkdb' 
@@ -367,14 +369,15 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         self.restore.backup_dir = '/foo'
         table_filter_file = None
         metadata_file = os.path.join(master_datadir, 'db_dumps', restore_timestamp[0:8], 'gp_dump_1_1_%s.gz' % restore_timestamp)
-        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=/foo/db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-r=/foo/db_dumps/20121212 --gp-l=p -s %s --gp-c -d bkdb' % metadata_file
+        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=/foo/db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-l=p -s %s --gp-r=/foo/db_dumps/20121212 --status=/foo/db_dumps/20121212 --gp-c -d bkdb' % metadata_file
 
         restore_line = self.restore._build_schema_only_restore_line(restore_timestamp, restore_db, compress, master_port, metadata_file, table_filter_file)
         self.assertEqual(restore_line, expected_output)
 
     @patch('gppylib.operations.restore.socket.gethostname', return_value='host')
     @patch('gppylib.operations.restore.getpass.getuser', return_value='user')
-    def test_build_schema_only_restore_line_03(self, mock1, mock2):
+    @patch('gppylib.operations.restore.RestoreDatabase.backup_dir_is_writable', return_value=False)
+    def test_build_schema_only_restore_line_03(self, mock1, mock2, mock3):
         master_datadir = 'foo' 
         restore_timestamp = '20121212121212' 
         restore_db = 'bkdb' 
@@ -384,7 +387,7 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         backup_utils.dump_prefix = 'bar_'
         table_filter_file = None
         metadata_file = os.path.join(master_datadir, 'db_dumps', restore_timestamp[0:8], 'gp_dump_1_1_%s.gz' % restore_timestamp)
-        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=/foo/db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-r=/foo/db_dumps/20121212 --gp-l=p -s %s --prefix=bar_ --gp-c -d bkdb' % metadata_file
+        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=/foo/db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-l=p -s %s --prefix=bar_ --gp-c -d bkdb' % metadata_file
 
         restore_line = self.restore._build_schema_only_restore_line(restore_timestamp, restore_db, compress, master_port, metadata_file, table_filter_file)
         backup_utils.dump_prefix = ''
@@ -393,7 +396,8 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
     
     @patch('gppylib.operations.restore.socket.gethostname', return_value='host')
     @patch('gppylib.operations.restore.getpass.getuser', return_value='user')
-    def test_build_schema_only_restore_line_04(self, mock1, mock2):
+    @patch('gppylib.operations.restore.RestoreDatabase.backup_dir_is_writable', return_value=False)
+    def test_build_schema_only_restore_line_04(self, mock1, mock2, mock3):
         master_datadir = 'foo' 
         restore_timestamp = '20121212121212' 
         restore_db = 'bkdb' 
@@ -403,10 +407,44 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         backup_utils.dump_prefix = 'bar_'
         table_filter_file = 'filter_file1'
         metadata_file = os.path.join(master_datadir, 'db_dumps', restore_timestamp[0:8], 'gp_dump_1_1_%s.gz' % restore_timestamp)
-        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=/foo/db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-r=/foo/db_dumps/20121212 --gp-l=p -s %s --prefix=bar_ --gp-f=%s --gp-c -d bkdb' % (metadata_file, table_filter_file)
+        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=/foo/db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-l=p -s %s --prefix=bar_ --gp-f=%s --gp-c -d bkdb' % (metadata_file, table_filter_file)
 
         restore_line = self.restore._build_schema_only_restore_line(restore_timestamp, restore_db, compress, master_port, metadata_file, table_filter_file)
         backup_utils.dump_prefix = ''
+        self.assertEqual(restore_line, expected_output)
+
+    @patch('gppylib.operations.restore.socket.gethostname', return_value='host')
+    @patch('gppylib.operations.restore.getpass.getuser', return_value='user')
+    @patch('gppylib.operations.restore.RestoreDatabase.backup_dir_is_writable', return_value=False)
+    def test_build_schema_only_restore_line_05(self, mock1, mock2, mock3):
+        master_datadir = 'foo' 
+        restore_timestamp = '20121212121212' 
+        restore_db = 'bkdb' 
+        compress = True
+        master_port = '5432'
+        self.restore.backup_dir = '/foo'
+        table_filter_file = None
+        metadata_file = os.path.join(master_datadir, 'db_dumps', restore_timestamp[0:8], 'gp_dump_1_1_%s.gz' % restore_timestamp)
+        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=/foo/db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-l=p -s %s --gp-c -d bkdb' % metadata_file
+
+        restore_line = self.restore._build_schema_only_restore_line(restore_timestamp, restore_db, compress, master_port, metadata_file, table_filter_file)
+        self.assertEqual(restore_line, expected_output)
+
+    @patch('gppylib.operations.restore.socket.gethostname', return_value='host')
+    @patch('gppylib.operations.restore.getpass.getuser', return_value='user')
+    def test_build_schema_only_restore_line_06(self, mock1, mock2):
+        master_datadir = 'foo' 
+        restore_timestamp = '20121212121212' 
+        restore_db = 'bkdb' 
+        compress = True
+        master_port = '5432'
+        self.restore.report_status_dir = '/tmp'
+        self.restore.backup_dir = '/foo'
+        table_filter_file = None
+        metadata_file = os.path.join(master_datadir, 'db_dumps', restore_timestamp[0:8], 'gp_dump_1_1_%s.gz' % restore_timestamp)
+        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=/foo/db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-l=p -s %s --gp-r=/tmp --status=/tmp --gp-c -d bkdb' % metadata_file
+
+        restore_line = self.restore._build_schema_only_restore_line(restore_timestamp, restore_db, compress, master_port, metadata_file, table_filter_file)
         self.assertEqual(restore_line, expected_output)
 
     @patch('gppylib.operations.restore.socket.gethostname', return_value='host')
@@ -415,7 +453,7 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         ts = '20121212121212' 
         backup_utils.dump_prefix = 'bar_'
         expected_output = 'gpdbrestore -t 20121212121212 --table-file foo -a -v --noplan --noanalyze --noaostats --prefix=bar'
-        restore_line = _build_gpdbrestore_cmd_line(ts, 'foo', None, None)
+        restore_line = _build_gpdbrestore_cmd_line(ts, 'foo', None, None, None)
         backup_utils.dump_prefix = '' 
         self.assertEqual(restore_line, expected_output)
 
@@ -425,7 +463,7 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         ts = '20121212121212' 
         backup_utils.dump_prefix = 'bar_'
         expected_output = 'gpdbrestore -t 20121212121212 --table-file foo -a -v --noplan --noanalyze --noaostats --prefix=bar --redirect=redb'
-        restore_line = _build_gpdbrestore_cmd_line(ts, 'foo', None, 'redb')
+        restore_line = _build_gpdbrestore_cmd_line(ts, 'foo', None, 'redb', None)
         backup_utils.dump_prefix = '' 
         self.assertEqual(restore_line, expected_output)
 
@@ -435,7 +473,18 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         ts = '20121212121212' 
         backup_utils.dump_prefix = 'bar_'
         expected_output = 'gpdbrestore -t 20121212121212 --table-file foo -a -v --noplan --noanalyze --noaostats -u /tmp --prefix=bar'
-        restore_line = _build_gpdbrestore_cmd_line(ts, 'foo', '/tmp', None)
+        restore_line = _build_gpdbrestore_cmd_line(ts, 'foo', '/tmp', None, None)
+        backup_utils.dump_prefix = '' 
+        self.assertEqual(restore_line, expected_output)
+
+    @patch('gppylib.operations.restore.socket.gethostname', return_value='host')
+    @patch('gppylib.operations.restore.getpass.getuser', return_value='user')
+    def test_build_gpdbrestore_cmd_line_02(self, mock1, mock2):
+        ts = '20121212121212' 
+        backup_utils.dump_prefix = 'bar_'
+        report_status_dir = '/tmp'
+        expected_output = 'gpdbrestore -t 20121212121212 --table-file foo -a -v --noplan --noanalyze --noaostats --prefix=bar --report-status-dir=/tmp'
+        restore_line = _build_gpdbrestore_cmd_line(ts, 'foo', None, None, '/tmp')
         backup_utils.dump_prefix = '' 
         self.assertEqual(restore_line, expected_output)
 
@@ -445,7 +494,7 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         ts = '20121212121212' 
         backup_utils.dump_prefix = 'bar_'
         expected_output = 'gpdbrestore -t 20121212121212 --table-file foo -a -v --noplan --noanalyze --noaostats -u /tmp --prefix=bar --redirect=redb'
-        restore_line = _build_gpdbrestore_cmd_line(ts, 'foo', '/tmp', 'redb')
+        restore_line = _build_gpdbrestore_cmd_line(ts, 'foo', '/tmp', 'redb', None)
         backup_utils.dump_prefix = '' 
         self.assertEqual(restore_line, expected_output)
 
@@ -460,7 +509,7 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         no_plan = True
         no_ao_stats = False
         table_filter_file = None
-        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-r=db_dumps/20121212 --gp-l=p --gp-c -d bkdb -a'
+        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-l=p --gp-c -d bkdb -a'
 
         restore_line = self.restore._build_restore_line(restore_timestamp, restore_db, compress, master_port, ddboost, no_plan, table_filter_file, no_ao_stats)
         self.assertEqual(restore_line, expected_output)
@@ -476,7 +525,7 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         no_plan = False
         no_ao_stats = False
         table_filter_file = '/tmp/foo'
-        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-r=db_dumps/20121212 --gp-l=p --gp-f=/tmp/foo --gp-c -d bkdb'
+        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-l=p --gp-f=/tmp/foo --gp-c -d bkdb'
 
         restore_line = self.restore._build_restore_line(restore_timestamp, restore_db, compress, master_port, ddboost, no_plan, table_filter_file, no_ao_stats)
         self.assertEqual(restore_line, expected_output)
@@ -492,7 +541,24 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         no_plan = True
         no_ao_stats = False
         table_filter_file = None
-        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-r=foo/db_dumps/20121212 --gp-l=p --gp-c -d bkdb --ddboost -a'
+        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-l=p --gp-c -d bkdb --ddboost -a'
+
+        restore_line = self.restore._build_restore_line(restore_timestamp, restore_db, compress, master_port, ddboost, no_plan, table_filter_file, no_ao_stats)
+        self.assertEqual(restore_line, expected_output)
+
+    @patch('gppylib.operations.restore.socket.gethostname', return_value='host')
+    @patch('gppylib.operations.restore.getpass.getuser', return_value='user')
+    def test_build_restore_line_03(self, mock1, mock2):
+        restore_timestamp = '20121212121212' 
+        restore_db = 'bkdb' 
+        compress = True
+        master_port = '5432'
+        ddboost = False
+        no_plan = True
+        no_ao_stats = True
+        table_filter_file = None
+        self.restore.report_status_dir = '/tmp'
+        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-l=p --gp-r=/tmp --status=/tmp --gp-c -d bkdb -a --gp-nostats'
 
         restore_line = self.restore._build_restore_line(restore_timestamp, restore_db, compress, master_port, ddboost, no_plan, table_filter_file, no_ao_stats)
         self.assertEqual(restore_line, expected_output)
@@ -508,7 +574,7 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         no_plan = True
         no_ao_stats = True
         table_filter_file = None
-        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-r=db_dumps/20121212 --gp-l=p --gp-c -d bkdb -a --gp-nostats'
+        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-l=p --gp-c -d bkdb -a --gp-nostats'
 
         restore_line = self.restore._build_restore_line(restore_timestamp, restore_db, compress, master_port, ddboost, no_plan, table_filter_file, no_ao_stats)
         self.assertEqual(restore_line, expected_output)
@@ -524,7 +590,7 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         no_plan = False
         no_ao_stats = True
         table_filter_file = '/tmp/foo'
-        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-r=db_dumps/20121212 --gp-l=p --gp-f=/tmp/foo --gp-c -d bkdb --gp-nostats'
+        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-l=p --gp-f=/tmp/foo --gp-c -d bkdb --gp-nostats'
 
         restore_line = self.restore._build_restore_line(restore_timestamp, restore_db, compress, master_port, ddboost, no_plan, table_filter_file, no_ao_stats)
         self.assertEqual(restore_line, expected_output)
@@ -540,7 +606,7 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         no_plan = True
         no_ao_stats = True
         table_filter_file = None
-        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-r=foo/db_dumps/20121212 --gp-l=p --gp-c -d bkdb --ddboost -a --gp-nostats'
+        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-l=p --gp-c -d bkdb --ddboost -a --gp-nostats'
 
         restore_line = self.restore._build_restore_line(restore_timestamp, restore_db, compress, master_port, ddboost, no_plan, table_filter_file, no_ao_stats)
         self.assertEqual(restore_line, expected_output)
@@ -558,10 +624,64 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         table_filter_file = None
         backup_utils.dump_prefix = 'bar_'
         
-        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=db_dumps/20121212 --gp-i --prefix=bar_ --gp-k=20121212121212 --gp-r=foo/db_dumps/20121212 --gp-l=p --gp-c -d bkdb --ddboost -a --gp-nostats'
+        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=db_dumps/20121212 --gp-i --prefix=bar_ --gp-k=20121212121212 --gp-l=p --gp-c -d bkdb --ddboost -a --gp-nostats'
 
         restore_line = self.restore._build_restore_line(restore_timestamp, restore_db, compress, master_port, ddboost, no_plan, table_filter_file, no_ao_stats)
         backup_utils.dump_prefix = ''
+        self.assertEqual(restore_line, expected_output)
+
+    @patch('gppylib.operations.restore.socket.gethostname', return_value='host')
+    @patch('gppylib.operations.restore.getpass.getuser', return_value='user')
+    @patch('gppylib.operations.restore.RestoreDatabase.backup_dir_is_writable', return_value=True)
+    def test_build_restore_line_08(self, mock1, mock2, mock3):
+        restore_timestamp = '20121212121212' 
+        restore_db = 'bkdb' 
+        compress = True
+        master_port = '5432'
+        ddboost = False
+        no_plan = True
+        no_ao_stats = True
+        table_filter_file = None
+        self.restore.backup_dir = '/tmp'
+        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=/tmp/db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-l=p --gp-r=/tmp/db_dumps/20121212 --status=/tmp/db_dumps/20121212 --gp-c -d bkdb -a --gp-nostats'
+
+        restore_line = self.restore._build_restore_line(restore_timestamp, restore_db, compress, master_port, ddboost, no_plan, table_filter_file, no_ao_stats)
+        self.assertEqual(restore_line, expected_output)
+
+    @patch('gppylib.operations.restore.socket.gethostname', return_value='host')
+    @patch('gppylib.operations.restore.getpass.getuser', return_value='user')
+    @patch('gppylib.operations.restore.RestoreDatabase.backup_dir_is_writable', return_value=False)
+    def test_build_restore_line_09(self, mock1, mock2, mock3):
+        restore_timestamp = '20121212121212' 
+        restore_db = 'bkdb' 
+        compress = True
+        master_port = '5432'
+        ddboost = False
+        no_plan = True
+        no_ao_stats = True
+        table_filter_file = None
+        self.restore.backup_dir = '/tmp'
+        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=/tmp/db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-l=p --gp-c -d bkdb -a --gp-nostats'
+
+        restore_line = self.restore._build_restore_line(restore_timestamp, restore_db, compress, master_port, ddboost, no_plan, table_filter_file, no_ao_stats)
+        self.assertEqual(restore_line, expected_output)
+
+    @patch('gppylib.operations.restore.socket.gethostname', return_value='host')
+    @patch('gppylib.operations.restore.getpass.getuser', return_value='user')
+    def test_build_restore_line_10(self, mock1, mock2):
+        restore_timestamp = '20121212121212' 
+        restore_db = 'bkdb' 
+        compress = True
+        master_port = '5432'
+        ddboost = False
+        no_plan = True
+        no_ao_stats = True
+        table_filter_file = None
+        self.restore.report_status_dir = '/tmp'
+        self.restore.backup_dir = '/foo'
+        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=/foo/db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-l=p --gp-r=/tmp --status=/tmp --gp-c -d bkdb -a --gp-nostats'
+
+        restore_line = self.restore._build_restore_line(restore_timestamp, restore_db, compress, master_port, ddboost, no_plan, table_filter_file, no_ao_stats)
         self.assertEqual(restore_line, expected_output)
 
     @patch('gppylib.operations.restore.generate_plan_filename', return_value='foo')
@@ -610,7 +730,7 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         timestamp = '20121212121212'
         backup_dir = None
         restore_tables = None
-        results = restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables, None)
+        results = restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables, None, None)
         self.assertTrue(results)
     
     @patch('gppylib.operations.restore.get_plan_file_contents', return_value=[('20121212121212','t1,t2'), ('20121212121211','t3,t4'), ('20121212121210','t5,t6,t7')])
@@ -620,7 +740,7 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         timestamp = '20121212121212'
         backup_dir = None
         restore_tables = None
-        results = restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables, 'redb')
+        results = restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables, 'redb', None)
         self.assertTrue(results)
     
     @patch('gppylib.operations.restore.get_plan_file_contents', return_value=[('20121212121212',''), ('20121212121211',''), ('20121212121210','')])
@@ -631,7 +751,7 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         backup_dir = None
         restore_tables = None
         with self.assertRaisesRegexp(Exception, 'There were no tables to restore. Check the plan file contents for restore timestamp %s' % timestamp):
-            restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables, 'redb')
+            restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables, 'redb', None)
     
     @patch('gppylib.operations.restore.get_plan_file_contents', return_value=[('20121212121212','t1,t2'), ('20121212121211','t3,t4'), ('20121212121210','t5,t6,t7')])
     @patch('gppylib.operations.restore.Command.run')
@@ -640,7 +760,7 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         timestamp = '20121212121212'
         backup_dir = None
         restore_tables = None
-        self.assertTrue(restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables, 'redb'))
+        self.assertTrue(restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables, 'redb', None))
 
     @patch('gppylib.operations.restore.get_plan_file_contents', return_value=[('20121212121212','t1,t2'), ('20121212121211','t3,t4'), ('20121212121210','t5,t6,t7')])
     @patch('gppylib.operations.restore.Command.run', side_effect=Exception('Error executing gpdbrestore'))
@@ -650,7 +770,7 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         backup_dir = None
         restore_tables = None
         with self.assertRaisesRegexp(Exception, 'Error executing gpdbrestore'):
-            restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables, 'redb')
+            restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables, 'redb', None)
 
     def test_get_restore_dir_00(self):
         master_datadir = '/foo'

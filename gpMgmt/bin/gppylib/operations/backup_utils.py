@@ -173,6 +173,21 @@ def verify_lines_in_file(fname, expected):
     if lines != expected:
         raise Exception("After writing file '%s' contents not as expected, suspected IO error" % fname)
 
+def check_dir_writable(dir):
+    fp = None
+    try:
+        tmp_file = os.path.join(dir, 'tmp_file')
+        fp = open(tmp_file, 'w')
+    except IOError as e:
+        raise Exception('No write access permission on %s' % dir)
+    except Exception as e:
+        raise Exception(str(e))
+    finally:
+        if fp is not None:
+            fp.close()
+        if os.path.isfile(tmp_file):
+            os.remove(tmp_file) 
+
 def execute_sql(query, master_port, dbname):
     dburl = dbconn.DbURL(port=master_port, dbname=dbname)
     conn = dbconn.connect(dburl)

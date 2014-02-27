@@ -124,7 +124,7 @@ Feature: Validate command line arguments
         And partition "1" of partition table "ao_part_table, co_part_table_comp" is assumed to be in dirty state in "bkdb" in schema "public"
         And table "public.ao_index_table" is assumed to be in dirty state in "bkdb"
         And there are no backup files
-        And there are no backup files in "/tmp"
+        And the backup files in "/tmp" are deleted
         When the user runs "gpcrondump -a -x bkdb"
         Then gpcrondump should return a return code of 0
         And the user runs "gpcrondump -a --incremental -x bkdb -u /tmp"
@@ -136,7 +136,7 @@ Feature: Validate command line arguments
         And partition "1" of partition table "ao_part_table, co_part_table_comp" is assumed to be in dirty state in "bkdb" in schema "public"
         And table "public.ao_index_table" is assumed to be in dirty state in "bkdb"
         And there are no backup files
-        And there are no backup files in "/tmp"
+        And the backup files in "/tmp" are deleted
         When the user runs "gpcrondump -a -x bkdb -u /tmp"
         Then gpcrondump should return a return code of 0
         And the user runs "gpcrondump -a --incremental -x bkdb"
@@ -312,7 +312,7 @@ Feature: Validate command line arguments
     Scenario: Simple Incremental Backup with -u option
         Given the database is running
         And there are no backup files
-        And there are no backup files in "/tmp"
+        And the backup files in "/tmp" are deleted
         When the user runs "gpcrondump -a -x bkdb -u /tmp"
         And partition "1" of partition table "ao_part_table, co_part_table_comp" is assumed to be in dirty state in "bkdb" in schema "public"
         And table "public.ao_index_table" is assumed to be in dirty state in "bkdb"
@@ -347,7 +347,7 @@ Feature: Validate command line arguments
     Scenario: gpdbrestore with -R for full dump
         Given the database is running
         And there are no backup files        
-        And there are no backup files in "/tmp"
+        And the backup files in "/tmp" are deleted
         When the user runs "gpcrondump -a -x bkdb -u /tmp"
         Then gpcrondump should return a return code of 0
         And the full backup timestamp from gpcrondump is stored 
@@ -364,7 +364,7 @@ Feature: Validate command line arguments
     Scenario: gpdbrestore with -R for incremental dump
         Given the database is running
         And there are no backup files        
-        And there are no backup files in "/tmp"
+        And the backup files in "/tmp" are deleted
         When the user runs "gpcrondump -a -x bkdb -u /tmp"
         Then gpcrondump should return a return code of 0
         And the subdir from gpcrondump is stored
@@ -610,7 +610,7 @@ Feature: Validate command line arguments
     @valgrind
     Scenario: Valgrind test of gp_dump_agent incremental
         Given the database is running
-        And there are no backup files in "/tmp"
+        And the backup files in "/tmp" are deleted
         And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
         And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
         And there is a backupfile of tables "heap_table, ao_part_table" in "fullbkdb" exists for validation
@@ -1924,7 +1924,7 @@ Feature: Validate command line arguments
     Scenario: gpdbrestore -b with -u option for Full timestamp
         Given the database is running
         And there are no backup files
-        And there are no backup files in "/tmp"
+        And the backup files in "/tmp" are deleted
         And the database "schematestdb" does not exist
         And database "schematestdb" exists
         And there is a "heap" table "heap_table" with compression "None" in "schematestdb" with data
@@ -1951,7 +1951,7 @@ Feature: Validate command line arguments
     Scenario: gpdbrestore with -s and -u options for full backup
         Given the database is running
         And there are no backup files
-        And there are no backup files in "/tmp"
+        And the backup files in "/tmp" are deleted
         And the database "schematestdb" does not exist
         And database "schematestdb" exists
         And there is a "heap" table "heap_table" with compression "None" in "schematestdb" with data
@@ -1969,7 +1969,7 @@ Feature: Validate command line arguments
     Scenario: gpdbrestore with -s and -u options for incremental backup
         Given the database is running
         And there are no backup files
-        And there are no backup files in "/tmp"
+        And the backup files in "/tmp" are deleted
         And the database "schematestdb" does not exist
         And database "schematestdb" exists
         And there is a "heap" table "heap_table" with compression "None" in "schematestdb" with data
@@ -2013,7 +2013,7 @@ Feature: Validate command line arguments
     Scenario: gpdbrestore -R option should display the timestamps in sorted order
         Given the database is running
         And there are no backup files
-        And there are no backup files in "/tmp"
+        And the backup files in "/tmp" are deleted
         And the database "schematestdb" does not exist
         And database "schematestdb" exists
         And there is a "heap" table "heap_table" with compression "None" in "schematestdb" with data
@@ -2726,7 +2726,7 @@ Feature: Validate command line arguments
     Scenario: --list-backup-files option for dump -u
         Given the database is running
         And there are no backup files
-        And there are no backup files in "/tmp"
+        And the backup files in "/tmp" are deleted
         And the database "testdb" does not exist
         And database "testdb" exists
         And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
@@ -2909,7 +2909,7 @@ Feature: Validate command line arguments
 
     Scenario: Incremental Backup and Restore with named pipes with -u
         Given the database is running
-        And there are no backup files in "/tmp"
+        And the backup files in "/tmp" are deleted
         And there are no backup files
         And the database "testdb" does not exist
         And database "testdb" exists
@@ -3072,7 +3072,7 @@ Feature: Validate command line arguments
         Given the database is running
         And the prefix "foo" is stored
         And there are no backup files
-        And there are no backup files in "/tmp"
+        And the backup files in "/tmp" are deleted
         And the database "testdb" does not exist
         And database "testdb" exists
         And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
@@ -3219,7 +3219,7 @@ Feature: Validate command line arguments
     Scenario: Incremental Backup and Restore with --prefix and -u options
         Given the database is running
         And the prefix "foo" is stored
-        And there are no backup files in "/tmp"
+        And the backup files in "/tmp" are deleted
         And the database "testdb" does not exist
         And database "testdb" exists
         And there is a list to store the incremental backup timestamps
@@ -5236,8 +5236,185 @@ Feature: Validate command line arguments
         And verify that the data of "10" tables in "testdb" is validated after restore 
         And verify that the tuple count of all appendonly tables are consistent in "testdb"
 
+    Scenario: Writable Report/Status Directory (WRD) Full Backup and Restore without --report-status-dir option
+        Given the database is running
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there are no backup files
+        And there are no report files in "master_data_directory"
+        And there are no status files in "segment_data_directory"
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        And all the data from "testdb" is saved for verification
+        When the user runs "gpcrondump -x testdb -a" 
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the user runs gpdbrestore with the stored timestamp
+        Then gpdbrestore should return a return code of 0
+        And gpdbestore should not print gp-r to stdout
+        And gpdbestore should not print status to stdout
+        And verify that there is a "heap" table "public.heap_table" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_part_table" in "testdb" with data
+        And verify that report file is generated in master_data_directory
+        And verify that status file is generated in segment_data_directory
+        And there are no report files in "master_data_directory"
+        And there are no status files in "segment_data_directory"
+
+    Scenario: Writable Report/Status Directory (WRD) Full Backup and Restore with --report-status-dir option
+        Given the database is running
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there are no backup files
+        And there are no report files in "/tmp"
+        And there are no status files in "/tmp"
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        And all the data from "testdb" is saved for verification
+        When the user runs "gpcrondump -x testdb -a" 
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the user runs "gpdbrestore --report-status-dir=/tmp -e -a" with the stored timestamp
+        Then gpdbrestore should return a return code of 0
+        And gpdbestore should print gp-r to stdout
+        And gpdbestore should print status to stdout
+        And verify that there is a "heap" table "public.heap_table" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_part_table" in "testdb" with data
+        And verify that report file is generated in /tmp
+        And verify that status file is generated in /tmp
+        And there are no report files in "/tmp"
+        And there are no status files in "/tmp"
+
+    Scenario: Writable Report/Status Directory (WRD) Full Backup and Restore with -u option
+        Given the database is running
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there are no backup files
+        And the backup files in "/tmp" are deleted
+        And there are no report files in "/tmp"
+        And there are no status files in "/tmp"
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        And all the data from "testdb" is saved for verification
+        When the user runs "gpcrondump -x testdb -a -u /tmp -K 20140227010101" 
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the user runs "gpdbrestore -u /tmp -e -a -t 20140227010101"
+        Then gpdbrestore should return a return code of 0
+        And gpdbestore should print gp-r to stdout
+        And gpdbestore should print status to stdout
+        And verify that there is a "heap" table "public.heap_table" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_part_table" in "testdb" with data
+        And verify that report file is generated in /tmp/db_dumps/20140227
+        And verify that status file is generated in /tmp/db_dumps/20140227
+        And the backup files in "/tmp" are deleted
+
+    Scenario: Writable Report/Status Directory (WRD) Full Backup and Restore with no write access -u option
+        Given the database is running
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there are no backup files
+        And the backup files in "/tmp" are deleted
+        And there are no report files in "/tmp"
+        And there are no status files in "/tmp"
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        And all the data from "testdb" is saved for verification
+        When the user runs "gpcrondump -x testdb -a -u /tmp -K 20140227010101" 
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the user runs command "chmod -R 555 /tmp/db_dumps"
+        And the user runs "gpdbrestore -u /tmp -e -a -t 20140227010101"
+        Then gpdbrestore should return a return code of 0
+        And gpdbestore should not print gp-r to stdout
+        And gpdbestore should not print --status= to stdout
+        And verify that there is a "heap" table "public.heap_table" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_part_table" in "testdb" with data
+        And verify that report file is generated in master_data_directory
+        And verify that status file is generated in segment_data_directory
+        And there are no report files in "master_data_directory"
+        And there are no status files in "segment_data_directory"
+        And the user runs command "chmod -R 777 /tmp/db_dumps"
+        And the backup files in "/tmp" are deleted
+
+    Scenario: Writable Report/Status Directory (WRD) Full Backup and Restore with --report-status-dir option
+        Given the database is running
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there are no backup files
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -x testdb -a" 
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the user runs command "mkdir -p /tmp/test"
+        And the user runs command "chmod -R 555 /tmp/test"
+        And the user runs "gpdbrestore --report-status-dir=/tmp/test -e -a" with the stored timestamp
+        Then gpdbrestore should return a return code of 2
+        And the user runs command "chmod -R 777 /tmp/test"
+        And the user runs command "rm -rf /tmp/test"
+
+    Scenario: WRD Incremental restore with table filter with --report-status-dir
+        Given the database is running
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there are no backup files
+        And there are no report files in "/tmp"
+        And there are no status files in "/tmp"
+        And there is a "heap" table "heap_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "ao_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "ao_table2" with compression "None" in "schematestdb" with data
+        And there is a "co" table "co_table" with compression "None" in "schematestdb" with data
+        And there are no backup files
+        When the user runs "gpcrondump -a -x schematestdb"
+        And gpcrondump should return a return code of 0
+        And table "ao_table2" is assumed to be in dirty state in "schematestdb"
+        And table "co_table" is assumed to be in dirty state in "schematestdb"
+        And the user runs "gpcrondump -a --incremental -x schematestdb"
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And all the data from "schematestdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp and options "-T public.ao_table2,public.co_table --report-status-dir=/tmp"
+        Then gpdbrestore should return a return code of 0
+        And gpdbestore should print gp-r to stdout
+        And gpdbestore should print --status= to stdout
+        And verify that exactly "2" tables in "schematestdb" have been restored 
+        And verify that report file is generated in /tmp
+        And verify that status file is generated in /tmp
+        And there are no report files in "/tmp"
+        And there are no status files in "/tmp"
+
+    Scenario: WRD Incremental restore with table filter and no --report-status-dir
+        Given the database is running
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there are no backup files
+        And there are no report files in "/tmp"
+        And there are no status files in "/tmp"
+        And there is a "heap" table "heap_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "ao_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "ao_table2" with compression "None" in "schematestdb" with data
+        And there is a "co" table "co_table" with compression "None" in "schematestdb" with data
+        And there are no backup files
+        When the user runs "gpcrondump -a -x schematestdb"
+        And gpcrondump should return a return code of 0
+        And table "ao_table2" is assumed to be in dirty state in "schematestdb"
+        And table "co_table" is assumed to be in dirty state in "schematestdb"
+        And the user runs "gpcrondump -a --incremental -x schematestdb"
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And all the data from "schematestdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp and options "-T public.ao_table2,public.co_table"
+        Then gpdbrestore should return a return code of 0
+        And gpdbestore should not print gp-r to stdout
+        And gpdbestore should not print --status= to stdout
+        And verify that exactly "2" tables in "schematestdb" have been restored 
+        And verify that report file is generated in master_data_directory
+        And verify that status file is generated in segment_data_directory
+        And there are no report files in "master_data_directory"
+        And there are no status files in "segment_data_directory"
+
     # THIS SHOULD BE THE LAST TEST
     @backupfire
     Scenario: cleanup for backup feature
-        Given there are no backup files in "/tmp"
+        Given the backup files in "/tmp" are deleted
 

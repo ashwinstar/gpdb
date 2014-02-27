@@ -47,6 +47,7 @@ static char *testProgramExists(char *pszProgramName);
 static void validateBackupDirectory(char *pszBackupDirectory);
 static char *positionToError(char *source);
 static char* parse_prefix_from_params(char *params);
+static char* parse_status_from_params(char *params);
 
 
 #ifdef USE_DDBOOST
@@ -67,7 +68,8 @@ static char *gpDDBoostPg = NULL;
 
 static char *compPg = NULL,
 			*bkPg = NULL,
-			*dump_prefix = NULL;
+			*dump_prefix = NULL,
+			*statusDirectory = NULL;
 
 typedef enum backup_file_type
 {
@@ -87,6 +89,25 @@ char* parse_prefix_from_params(char *params)
 	if (pch)
 	{
 		pch = pch + strlen("--prefix");
+		char *ptr = strtok(pch," ");
+		if (ptr == NULL)
+			return NULL;
+		return ptr;
+	}
+	return NULL;
+}
+
+char* parse_status_from_params(char *params)
+{
+	if (params == NULL)
+		return NULL;
+	char *temp = strdup(params);
+	if (temp == NULL)
+		ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), errmsg("out of memory")));
+	char *pch = strstr(temp, "--status");
+	if (pch)
+	{
+		pch = pch + strlen("--status");
 		char *ptr = strtok(pch," ");
 		if (ptr == NULL)
 			return NULL;
@@ -765,12 +786,15 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 
 
     dump_prefix = parse_prefix_from_params(pszPassThroughParameters);
+    statusDirectory = parse_status_from_params(pszPassThroughParameters);
 
 	/*
 	 * if BackupDirectory is relative, make it absolute based on the directory
 	 * where the database resides
 	 */
 	pszBackupDirectory = relativeToAbsolute(pszBackupDirectory);
+    /* if statusDirectory is NULL, it defaults to SEGMENT DATA DIRECTORY */ 
+	statusDirectory    = relativeToAbsolute(statusDirectory);
 
 	/* Validate existence of compression program and gp_restore_agent program */
 	testCmdsExist(pszCompressionProgram, "gp_restore_agent");
@@ -783,7 +807,7 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 
 	/* Form backup file path name */
 	pszBackupFileName = formBackupFilePathName(pszBackupDirectory, pszBackupKey, is_decompress, postDataSchemaOnly);
-	pszStatusFileName = formStatusFilePathName(pszBackupDirectory, pszBackupKey, false);
+	pszStatusFileName = formStatusFilePathName(statusDirectory, pszBackupKey, false);
 
 #ifdef USE_DDBOOST
         if (strstr(pszPassThroughParameters,"--dd_boost_enabled") != NULL)
@@ -1663,18 +1687,29 @@ relativeToAbsolute(char *pszRelativeDirectory)
 {
 	char	   *pszAbsolutePath;
 
-	if (pszRelativeDirectory[0] == '/')
+	if (pszRelativeDirectory != NULL && pszRelativeDirectory[0] == '/')
 		return pszRelativeDirectory;
 
-	pszAbsolutePath = (char *) palloc(strlen(DataDir) + 1 + strlen(pszRelativeDirectory) + 1);
-	if (pszAbsolutePath == NULL)
+    if (pszRelativeDirectory != NULL)
+    {
+	    pszAbsolutePath = (char *) palloc(strlen(DataDir) + 1 + strlen(pszRelativeDirectory) + 1);
+    } 
+
+	if (pszRelativeDirectory != NULL && pszAbsolutePath == NULL)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of memory")));
 	}
 
-	sprintf(pszAbsolutePath, "%s/%s", DataDir, pszRelativeDirectory);
+    if (pszRelativeDirectory != NULL)
+    {
+	    sprintf(pszAbsolutePath, "%s/%s", DataDir, pszRelativeDirectory);
+    }
+    else
+    {
+        return DataDir;
+    }
 
 	return pszAbsolutePath;
 }

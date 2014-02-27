@@ -67,6 +67,7 @@ const char *progname;
 static char * addPassThroughLongParm(const char *Parm, const char *pszValue, char *pszPassThroughParmString);
 static char * shellEscape(const char *shellArg, PQExpBuffer escapeBuf);
 static char *dump_prefix = NULL;
+static char *status_file = NULL;
 
 #ifdef USE_DDBOOST
 static int dd_boost_enabled = 0;
@@ -273,6 +274,7 @@ usage(void)
 	printf(("  --gp-i                  ignore error\n"));
 	printf(("  --gp-k=KEY              date time backup key from gp_backup run\n"));
 	printf(("  --gp-r=REPORTFILEDIR    directory where report file is placed\n"));
+	printf(("  --status=STATUSFILEDIR  directory where status file is placed\n"));
 	printf(("  --gp-l=FILELOCATIONS    backup files are on (p)rimaries only (default)\n"));
 	printf(("                          or (i)ndividual segdb (must be followed with a list of dbid's\n"));
 	printf(("                          where backups are located. For example: --gp-l=i[10,12,15]\n"));
@@ -350,6 +352,7 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		{"gp-f", required_argument, NULL, 11},
 		{"gp-nostats", no_argument, NULL, 12},
 		{"prefix", required_argument, NULL, 13},
+		{"status", required_argument, NULL, 14},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -708,6 +711,10 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 			case 13:
 				dump_prefix = Safe_strdup(optarg);
 				pInputOpts->pszPassThroughParms = addPassThroughLongParm("prefix", DUMP_PREFIX, pInputOpts->pszPassThroughParms);
+				break;
+			case 14:
+				status_file = Safe_strdup(optarg);
+				pInputOpts->pszPassThroughParms = addPassThroughLongParm("status", status_file, pInputOpts->pszPassThroughParms);
 				break;
 
 			default:

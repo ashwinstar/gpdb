@@ -30,7 +30,7 @@ try:
     from gppylib.operations.backup_utils import check_backup_type, get_lines_from_file, generate_report_filename,\
                                            generate_dbdump_prefix, generate_master_dbdump_prefix,\
                                            generate_global_prefix, generate_createdb_prefix, \
-                                           generate_createdb_filename
+                                           generate_createdb_filename, check_dir_writable
     from gppylib.operations.unix import CheckFile, CheckRemoteFile, ListFilesByPattern, ListRemoteFilesByPattern
     from gppylib.operations.utils import DEFAULT_NUM_WORKERS
     from gppylib.operations.restore import RestoreDatabase, RecoverRemoteDumps, ValidateTimestamp, GetDumpTables, \
@@ -89,6 +89,7 @@ class GpdbRestore(Operation):
         self.table_file = options.table_file
         self.list_backup = options.list_backup
         self.redirected_restore_db = options.redirected_restore_db
+        self.report_status_dir = options.report_status_dir
         if options.local_dump_prefix: 
             backup_utils.dump_prefix = options.local_dump_prefix + '_'
 
@@ -122,6 +123,13 @@ class GpdbRestore(Operation):
         self.master_port = self._get_master_port(self.master_datadir)
 
         self.gparray = None
+
+        try:
+            if self.report_status_dir:
+                check_dir_writable(self.report_status_dir)
+        except Exception as e:
+            logger.warning('Directory %s should be writable' % self.report_status_dir)
+            raise Exception(str(e))
 
         self.ddboost = options.ddboost
         if self.ddboost:
@@ -191,7 +199,8 @@ class GpdbRestore(Operation):
                         restore_tables = self.restore_tables,
                         batch_default = self.batch_default,
                         no_ao_stats = self.no_ao_stats,
-                        redirected_restore_db = self.redirected_restore_db).run()
+                        redirected_restore_db = self.redirected_restore_db,
+                        report_status_dir = self.report_status_dir).run()
 
         if self.no_analyze:
             logger.warn('--------------------------------------------------------------------------------------------------')
@@ -507,6 +516,8 @@ def create_parser():
                      help="Prefix of the dump files to be restored")
     addTo.add_option('--redirect', dest='redirected_restore_db', metavar='<database name>',
                      help="Database name to which the data needs to be restored for the given timestamp")
+    addTo.add_option('--report-status-dir', dest='report_status_dir', metavar='<report_status_dir>',
+                     help="Writable directory for report and status file creation")
     parser.add_option_group(addTo)
 
     ddOpt = OptionGroup(parser, "DDBoost")

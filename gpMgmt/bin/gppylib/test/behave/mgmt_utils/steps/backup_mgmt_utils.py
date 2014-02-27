@@ -1,9 +1,13 @@
 # coding: utf-8 
 
 import thread
+import os
 from gppylib.commands.base import Command, ExecutionError, REMOTE, WorkerPool
 from gppylib.db import dbconn
 from gppylib.test.behave_utils.utils import run_gpcommand, getRows
+from gppylib.gparray import GpArray
+
+master_data_dir = os.environ.get('MASTER_DATA_DIRECTORY')
 
 comment_start_expr = '-- '
 comment_expr = '-- Name: '
@@ -164,3 +168,70 @@ def impl(context, command, out_msg, num):
     count = msg_list.count(out_msg)
     if count != int(num):
         raise Exception("Expected %s to occur %s times. Found %d" % (out_msg, num, count))
+
+@given('verify that {filetype} file is generated in {dir}')
+@when('verify that {filetype} file is generated in {dir}')
+@then('verify that {filetype} file is generated in {dir}')
+def impl(context, filetype, dir):
+    if dir == 'master_data_directory':
+        dir = master_data_dir
+    if filetype == 'report':
+        filename = '%s/gp_restore_%s.rpt' % (dir, context.backup_timestamp)
+        if not os.path.isfile(filename):
+            raise Exception('Report file %s is not present in master data directory' % filename)
+    elif filetype == 'status':
+        gparray = GpArray.initFromCatalog(dbconn.DbURL())
+        if dir == 'segment_data_directory':
+            primary_segs = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary()]
+            for seg in primary_segs:
+                host = seg.getSegmentHostName()
+                seg_data_dir = seg.getSegmentDataDirectory()
+                cmd = Command('check status file', "ls %s/gp_restore_status_*_%s" % (seg_data_dir, context.backup_timestamp), ctxt=REMOTE, remoteHost=host)
+                cmd.run(validateAfter=True)
+                results = cmd.get_results()
+                if not results.stdout.strip():
+                    raise Exception('Status file ending with timestamp %s is not present in segment %s data directory' % (context.backup_timestamp, host))
+        else:
+            count = 0
+            primary_segs = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary()]
+            for seg in primary_segs:
+                host = seg.getSegmentHostName()
+                cmd = Command('check status file', "ls %s/gp_restore_status_*_%s" % (dir, context.backup_timestamp), ctxt=REMOTE, remoteHost=host)
+                cmd.run(validateAfter=True)
+                results = cmd.get_results()
+                if results.stdout.strip():
+                    count += 1
+                else:
+                    raise Exception('Status file not found in segment: %s' % host)
+            segs = len(primary_segs)
+            if count != segs:
+                raise Exception('Expected %d status file but found %d' % (segs, count))
+
+@given('there are no {filetype} files in "{dir}"')
+@when('there are no {filetype} files in "{dir}"')
+@then('there are no {filetype} files in "{dir}"')
+def impl(context, filetype, dir):
+    if filetype == 'report':
+        if dir == 'master_data_directory':
+            dir = master_data_dir
+        filenames = os.listdir(dir)
+        for filename in filenames:
+            if filename.startswith('gp_restore') and filename.endswith('.rpt'):
+                filename = '%s/%s' % (dir, filename)
+                os.remove(filename)
+    if filetype == 'status':
+        gparray = GpArray.initFromCatalog(dbconn.DbURL())
+        if dir == 'segment_data_directory':
+            primary_segs = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary()]
+            for seg in primary_segs:
+                host = seg.getSegmentHostName()
+                seg_data_dir = seg.getSegmentDataDirectory()
+                cmd = Command('remove status file', "rm -f %s/gp_restore_status_*" % (seg_data_dir), ctxt=REMOTE, remoteHost=host)
+                cmd.run(validateAfter=True)
+        else:
+            primary_segs = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary()]
+            for seg in primary_segs:
+                host = seg.getSegmentHostName()
+                cmd = Command('remove status file', "rm -f %s/gp_restore_status_*" % dir, ctxt=REMOTE, remoteHost=host)
+                cmd.run(validateAfter=True)
+    
