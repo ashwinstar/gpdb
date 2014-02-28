@@ -475,6 +475,21 @@ ExecEndMaterial(MaterialState *node)
 	ExecEagerFreeMaterial(node);
 
 	/*
+	 * Release tuplestore resources for cases where EagerFree doesn't do it
+	 */
+	if (node->ts_state != NULL)
+	{
+		Material   *ma = (Material *) node->ss.ps.plan;
+		if (ma->share_type == SHARE_MATERIAL_XSLICE && node->share_lk_ctxt)
+		{
+			shareinput_writer_waitdone(node->share_lk_ctxt, ma->share_id, ma->nsharer_xslice);
+		}
+		Assert(node->ts_pos);
+
+		DestroyTupleStore(node);
+	}
+
+	/*
 	 * shut down the subplan
 	 */
 	ExecEndNode(outerPlanState(node));
@@ -697,7 +712,13 @@ ExecEagerFreeMaterial(MaterialState *node)
 	{
 		if (ma->share_type == SHARE_MATERIAL_XSLICE && node->share_lk_ctxt)
 		{
-			shareinput_writer_waitdone(node->share_lk_ctxt, ma->share_id, ma->nsharer_xslice);
+			/*
+			 * MPP-22682: If this is a producer shared XSLICE, don't free up
+			 * the tuple store here. For XSLICE producers, that will wait for
+			 * consumers that haven't completed yet, which can cause deadlocks.
+			 * Wait until ExecEndMaterial to free it, which is safer.
+			 */
+			return;
 		}
 		Assert(node->ts_pos);
 		

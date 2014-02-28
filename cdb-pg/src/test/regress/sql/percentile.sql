@@ -22,6 +22,22 @@ insert into mpp_21026 select i, i from  (select * from generate_series(1, 20) i 
 create table mpp_20076 (col1 timestamp, col2 int);
 insert into mpp_20076 select to_timestamp(i),i from generate_series(1,20) i;
 
+CREATE TABLE mpp_22413
+(
+  col_a character(2) NOT NULL,
+  d1 character varying(8) NOT NULL,
+  d2 character varying(8) NOT NULL,
+  d3 character varying(8) NOT NULL,
+  value1 double precision,
+  value2 double precision
+)
+WITH (OIDS=FALSE)
+DISTRIBUTED BY (d1,d2,d3);
+
+insert into mpp_22413
+select i, i, i, i, i,i
+from  (select * from generate_series(1, 99) i ) a ;
+
 -- We test the same queries with gp_idf_deduplicate none/force. Make sure
 -- both tests have the same when adding.
 set gp_idf_deduplicate to none;
@@ -227,6 +243,37 @@ select 1, col1, median(col2) from mpp_20076 group by 1, 2;
 select to_char(col1, 'YYYY') AS tstmp_column, median(col2) from mpp_20076 group by 1;
 select 1, median(col2) from mpp_20076 group by 1;
 
+-- MPP-22413
+select median(value1), count(*)
+from  mpp_22413
+where d2 ='55'
+group by d1, d2, d3, value2;
+
+select median(value1), count(*)
+from  mpp_22413
+where d2 ='55'
+group by d1, d2, d3, value2::int;
+
+select median(value1), count(*)
+from  mpp_22413
+where d2 ='55'
+group by d1, d2, d3, value2::varchar;
+
+select median(value1), count(*)
+from  mpp_22413
+where d2 ='55'
+group by d1, d2, value2;
+
+select median(value1), count(*)
+from  mpp_22413
+where d2 ='55'
+group by d1, d2, value2, d3;
+
+select median(value1), count(*)
+from  mpp_22413
+where d2 ='55'
+group by d1, d2;
+
 drop view percv2;
 drop view percv;
 drop table perct;
@@ -238,3 +285,4 @@ drop table perctsz;
 drop table mpp_22219;
 drop table mpp_21026;
 drop table mpp_20076;
+drop table mpp_22413;

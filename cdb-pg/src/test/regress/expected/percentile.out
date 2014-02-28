@@ -28,6 +28,20 @@ create table mpp_21026 ( t1 varchar(10), t2 int);
 insert into mpp_21026 select i, i from  (select * from generate_series(1, 20) i ) a ;
 create table mpp_20076 (col1 timestamp, col2 int);
 insert into mpp_20076 select to_timestamp(i),i from generate_series(1,20) i;
+CREATE TABLE mpp_22413
+(
+  col_a character(2) NOT NULL,
+  d1 character varying(8) NOT NULL,
+  d2 character varying(8) NOT NULL,
+  d3 character varying(8) NOT NULL,
+  value1 double precision,
+  value2 double precision
+)
+WITH (OIDS=FALSE)
+DISTRIBUTED BY (d1,d2,d3);
+insert into mpp_22413
+select i, i, i, i, i,i
+from  (select * from generate_series(1, 99) i ) a ;
 -- We test the same queries with gp_idf_deduplicate none/force. Make sure
 -- both tests have the same when adding.
 set gp_idf_deduplicate to none;
@@ -1170,6 +1184,61 @@ select 1, median(col2) from mpp_20076 group by 1;
         1 |   10.5
 (1 row)
 
+-- MPP-22413
+select median(value1), count(*)
+from  mpp_22413
+where d2 ='55'
+group by d1, d2, d3, value2;
+ median | count 
+--------+-------
+     55 |     1
+(1 row)
+
+select median(value1), count(*)
+from  mpp_22413
+where d2 ='55'
+group by d1, d2, d3, value2::int;
+ median | count 
+--------+-------
+     55 |     1
+(1 row)
+
+select median(value1), count(*)
+from  mpp_22413
+where d2 ='55'
+group by d1, d2, d3, value2::varchar;
+ median | count 
+--------+-------
+     55 |     1
+(1 row)
+
+select median(value1), count(*)
+from  mpp_22413
+where d2 ='55'
+group by d1, d2, value2;
+ median | count 
+--------+-------
+     55 |     1
+(1 row)
+
+select median(value1), count(*)
+from  mpp_22413
+where d2 ='55'
+group by d1, d2, value2, d3;
+ median | count 
+--------+-------
+     55 |     1
+(1 row)
+
+select median(value1), count(*)
+from  mpp_22413
+where d2 ='55'
+group by d1, d2;
+ median | count 
+--------+-------
+     55 |     1
+(1 row)
+
 drop view percv2;
 drop view percv;
 drop table perct;
@@ -1181,3 +1250,4 @@ drop table perctsz;
 drop table mpp_22219;
 drop table mpp_21026;
 drop table mpp_20076;
+drop table mpp_22413;

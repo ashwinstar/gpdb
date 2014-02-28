@@ -435,6 +435,13 @@ static Plan *plan_within_agg_persort(PlannerInfo *root, GroupContext *group_cont
 			List *sortClause, List *current_pathkeys, Plan *base_plan);
 
 /*
+ * add_motion_to_dqa_plan
+ * 		Add a Redistribute motion to a dqa child plan if the plan is not already 
+ * 		distributed on the grouping columns
+ */
+static Plan *add_motion_to_dqa_child(Plan *plan, PlannerInfo *root, bool *motion_added);
+
+/*
  * Function: cdb_grouping_planner
  *
  * This is basically an extension of the function grouping_planner() from
@@ -506,7 +513,7 @@ cdb_grouping_planner(PlannerInfo* root,
 		 */
 		if ( has_groups && 
 			 pathkeys_contained_in(root->group_pathkeys, group_context->best_path->pathkeys) &&
-			 cdbpathlocus_collocates(group_context->best_path->locus, root->group_pathkeys) )
+			 cdbpathlocus_collocates(group_context->best_path->locus, root->group_pathkeys, false /*exact_match*/) )
 		{
 			input_path = group_context->best_path;
 		}
@@ -530,7 +537,7 @@ cdb_grouping_planner(PlannerInfo* root,
 	else if ( has_groups ) /* and not single or replicated */
 	{
 		if (root->group_pathkeys != NULL &&
-				cdbpathlocus_collocates(plan_1p.input_locus, root->group_pathkeys) )
+				cdbpathlocus_collocates(plan_1p.input_locus, root->group_pathkeys, false /*exact_match*/) )
 		{
 			plan_1p.group_prep = MPP_GRP_PREP_NONE;
 			plan_1p.output_locus = plan_1p.input_locus; /* may be less discriminating that group locus */
@@ -734,7 +741,7 @@ cdb_grouping_planner(PlannerInfo* root,
 														  list_make1(makeString("=")));
 			distinct_pathkeys = list_make1(distinct_pathkeys);
 			
-			if ( ! cdbpathlocus_collocates(plan_2p.input_locus, distinct_pathkeys))
+			if ( ! cdbpathlocus_collocates(plan_2p.input_locus, distinct_pathkeys, false /*exact_match*/))
 			{
 				plan_2p.group_prep = MPP_GRP_PREP_HASH_DISTINCT;
 				CdbPathLocus_MakeHashed(&plan_2p.input_locus, distinct_pathkeys);
@@ -826,7 +833,7 @@ cdb_grouping_planner(PlannerInfo* root,
 														  list_make1(makeString("=")));
 			distinct_pathkeys = list_make1(distinct_pathkeys);
 			
-			if (cdbpathlocus_collocates(plan_3p.input_locus, distinct_pathkeys))
+			if (cdbpathlocus_collocates(plan_3p.input_locus, distinct_pathkeys, false /*exact_match*/))
 			{
 				ctx.dqaArgs[i].distinctkey_collocate = true;
 			}
@@ -1828,7 +1835,7 @@ make_plan_for_one_dqa(PlannerInfo *root, MppGroupContext *ctx, int dqa_index,
 	int i, n;
 	DqaInfo *dqaArg = &ctx->dqaArgs[dqa_index];
 	bool sort_coplans = ( ctx->join_strategy == DqaJoinMerge );
-	bool groupkeys_collocate = cdbpathlocus_collocates(ctx->input_locus, root->group_pathkeys);
+	bool groupkeys_collocate = cdbpathlocus_collocates(ctx->input_locus, root->group_pathkeys, false /*exact_match*/);
 	bool need_inter_agg = false;
 	bool dqaduphazard = false;
 	bool stream_bottom_agg = root->config->gp_hashagg_streambottom; /* Take hint */
@@ -2317,8 +2324,20 @@ join_dqa_coplan(PlannerInfo *root, MppGroupContext *ctx, Plan *outer, int dqa_in
 		if ( ctx->join_strategy == DqaJoinHash )
 		{
 			/* Make the hash join. */
-			Hash *hash_plan = make_hash(inner);
+			bool motion_added_outer = false;
+			bool motion_added_inner = false;
+
+			outer = add_motion_to_dqa_child(outer, root, &motion_added_outer);
+			inner = add_motion_to_dqa_child(inner, root, &motion_added_inner);
 			
+			bool prefetch_inner = motion_added_outer || motion_added_inner;
+			if (motion_added_outer || motion_added_inner)
+			{
+				ctx->current_pathkeys = NULL;
+			}
+			
+			Hash *hash_plan = make_hash(inner);
+
 			join_plan = (Plan*)make_hashjoin(join_tlist,
 											 NIL, /* joinclauses */
 											 NIL, /* otherclauses */
@@ -2326,6 +2345,7 @@ join_dqa_coplan(PlannerInfo *root, MppGroupContext *ctx, Plan *outer, int dqa_in
 											 joinclause, /* hashqualclauses */
 											 outer, (Plan*)hash_plan,
 											 JOIN_INNER);
+			((Join *) join_plan)->prefetch_inner = prefetch_inner;
 		}
 		else
 		{
@@ -2333,6 +2353,7 @@ join_dqa_coplan(PlannerInfo *root, MppGroupContext *ctx, Plan *outer, int dqa_in
 			 * distinct in the join key.  (So does the inner, for that matter,
 			 * but the MJ algorithm is only sensitive to the outer.)
 			 */
+			
 			join_plan = (Plan*)make_mergejoin(join_tlist,
 											  NIL, NIL,
 											  joinclause,
@@ -2697,7 +2718,7 @@ generate_subquery_tlist(Index varno, List *input_tlist,
  * We ignore onther sorts of collocation, e.g., replication or partitioning
  * on a range since these cannot occur at the moment (MPP 2.3).
  */
-bool cdbpathlocus_collocates(CdbPathLocus locus, List *pathkeys)
+bool cdbpathlocus_collocates(CdbPathLocus locus, List *pathkeys, bool exact_match)
 {
 	ListCell *lc;
 	List *exprs = NIL;
@@ -2707,6 +2728,11 @@ bool cdbpathlocus_collocates(CdbPathLocus locus, List *pathkeys)
 	
 	if ( !CdbPathLocus_IsHashed(locus) )
 		return false;  /* Or would HashedOJ ok, too? */
+	
+	if (exact_match && list_length(pathkeys) != list_length(locus.partkey))
+	{
+		return false;
+	}
 	
 	/* Extract a list of expressions from the pathkeys.  Since the locus
 	 * presumably knows all about attribute equivalence classes, we use
@@ -5708,7 +5734,7 @@ within_agg_add_outer_sort(PlannerInfo *root,
 		 * group_pathkeys should have been fixed to reflect the latest targetlist.
 		 * best_path->locus is wrong here since we put SubqueryScan already.
 		 */
-		if (!cdbpathlocus_collocates(current_locus, root->group_pathkeys))
+		if (!cdbpathlocus_collocates(current_locus, root->group_pathkeys, false /*exact_match*/))
 		{
 			List	   *groupExprs;
 
@@ -6772,3 +6798,32 @@ within_agg_planner(PlannerInfo *root,
 
 	return result_plan;
 }
+
+Plan *add_motion_to_dqa_child(Plan *plan, PlannerInfo *root, bool *motion_added)
+{
+	Plan *result = plan;
+	*motion_added = false;
+	
+	List *pathkeys = 	make_pathkeys_for_groupclause(root->parse->groupClause, plan->targetlist);
+	CdbPathLocus locus = cdbpathlocus_from_flow(plan->flow);
+	if (CdbPathLocus_IsPartitioned(locus) && NIL != plan->flow->hashExpr)
+	{
+		locus = cdbpathlocus_from_exprs(root, plan->flow->hashExpr);
+	}
+	
+	if (!cdbpathlocus_collocates(locus, pathkeys, true /*exact_match*/))
+	{
+		/* MPP-22413: join requires exact distribution match for collocation purposes,
+		 * which may not be provided by the underlying group by, as computing the 
+		 * group by only requires relaxed distribution collocation
+		 */
+		List	   *groupExprs = get_sortgrouplist_exprs(root->parse->groupClause,
+											 plan->targetlist);
+		result = (Plan *) make_motion_hash(root, plan, groupExprs);
+		result->total_cost += incremental_motion_cost(plan->plan_rows, plan->plan_rows);
+		*motion_added = true;
+	}
+	
+	return result;
+}
+

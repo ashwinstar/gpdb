@@ -1960,7 +1960,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		{
 			List *distinct_pathkeys = make_pathkeys_for_sortclauses(parse->distinctClause,
 																	result_plan->targetlist);
-			bool needMotion = !cdbpathlocus_collocates(current_locus, distinct_pathkeys);
+			bool needMotion = !cdbpathlocus_collocates(current_locus, distinct_pathkeys, false /*exact_match*/);
 			
 			/* Apply the preunique optimization, if enabled and worthwhile. */
 			if ( root->config->gp_enable_preunique && needMotion )
