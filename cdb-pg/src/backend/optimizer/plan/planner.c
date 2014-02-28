@@ -267,7 +267,7 @@ planner(Query *parse, int cursorOptions,
 	 * TODO: caragg 11/08/2013: Enable ORCA when running in utility mode (MPP-21841)
 	 * TODO: caragg 02/05/2014: Enable ORCA when running on the segments (MPP-22515)
 	 */
-	if (optimizer && (GP_ROLE_UTILITY != Gp_role) && (Gp_segment == -1))
+	if (optimizer && (GP_ROLE_UTILITY != Gp_role) && (MASTER_CONTENT_ID == GpIdentity.segindex))
 	{
 		if (gp_log_optimization_time)
 		{
