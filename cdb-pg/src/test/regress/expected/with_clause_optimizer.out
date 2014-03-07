@@ -126,17 +126,14 @@ explain with my_order as (select * from with_test1 order by i)
 select i, count(*)
 from my_order
 group by i;
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
- GroupAggregate  (cost=0.00..15.01 rows=5 width=12)
-   Group By: i
-   ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..11.21 rows=50 width=4)
-         Merge Key: i
-         ->  Sort  (cost=0.00..10.01 rows=50 width=4)
-               Sort Key: i
-               ->  Table Scan on with_test1  (cost=0.00..0.20 rows=50 width=4)
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..4.27 rows=5 width=12)
+   ->  HashAggregate  (cost=0.00..2.09 rows=5 width=12)
+         Group By: i
+         ->  Table Scan on with_test1  (cost=0.00..0.20 rows=50 width=4)
  Settings:  optimizer=on
-(8 rows)
+(5 rows)
 
 -- WITH query used in InitPlan
 --begin_equivalent
