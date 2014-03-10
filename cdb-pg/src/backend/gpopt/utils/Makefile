@@ -22,6 +22,6 @@ endif
 
 override CPPFLAGS := $(CFLAGS_DL) $(CPPFLAGS)
 
-OBJS = COptTasks.o COptServer.o COptClient.o CCatalogUtils.o nodeutils.o funcs.o
+OBJS = COptTasks.o COptServer.o COptClient.o CCatalogUtils.o CConstExprEvaluatorProxy.o nodeutils.o funcs.o
 
 include $(top_srcdir)/src/backend/common.mk

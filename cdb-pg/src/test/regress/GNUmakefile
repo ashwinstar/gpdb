@@ -13,6 +13,7 @@
 subdir = src/test/regress
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
+include $(top_builddir)/../releng/releng.mk
 
 contribdir = $(top_builddir)/contrib
 
@@ -181,8 +182,11 @@ installcheck-bugbuster: all ./bugbuster/current_good_schedule
 	@grep memory_quota ./bugbuster/current_good_schedule > /dev/null; \
 	if [ $$? = 0 ]; then bugbuster/bugbuster_cleanup.sh; fi
 
+$(srcdir)/sql/orca_udfs.sql: $(srcdir)/sql/orca_udfs.sql.in
+	sed -e 's,%%GPOPTUTILS_NAMESPACE%%,orcaudftest,g; s,%%EXT%%,$(LDSFX),g' $(srcdir)/sql/orca_udfs.sql.in > $(srcdir)/sql/orca_udfs.sql
+
 .PHONY: ./current_good_schedule
-./current_good_schedule: $(srcdir)/parallel_good_schedule
+./current_good_schedule: $(srcdir)/sql/orca_udfs.sql $(srcdir)/known_good_schedule
 ifneq ($(origin TT), undefined)
 	cd $(srcdir) && ./maketestschedule.py "$(TT)" > $(abs_builddir)/current_good_schedule
 else
@@ -277,6 +281,7 @@ clean distclean maintainer-clean: clean-lib
 	rm -f input/loadcat34_sh.source
 	rm -f gmon.out
 	rm -f $(upg2_temp_files)
+	rm -f $(srcdir)/sql/cppudf.sql
 ifeq ($(PORTNAME), cygwin)
 	rm -f regress.def
 endif
