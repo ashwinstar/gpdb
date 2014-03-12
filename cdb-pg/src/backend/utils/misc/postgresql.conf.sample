@@ -180,6 +180,8 @@ max_prepared_transactions = 250		# can be 0 or more
 
 #gp_enable_direct_dispatch = on
 
+optimizer_analyze_root_partition = on # stats collection on root partitions
+
 #------------------------------------------------------------------------------
 # ERROR REPORTING AND LOGGING
 #------------------------------------------------------------------------------
