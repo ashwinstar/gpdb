@@ -532,7 +532,9 @@ crc32cSlicingBy8(pg_crc32 crc, const void* data, int length)
 }
 
 #if (defined(__X86__) || defined(__i386__) || defined(i386) || defined(_M_IX86) || defined(__386__) || defined(__x86_64__) || defined(_M_X64))
+#ifndef SUSE11SP2
 #pragma GCC target ("sse4.2")
+#endif
 #include <nmmintrin.h>
 
 /* Hardware-accelerated CRC-32C (using CRC32 instruction) */

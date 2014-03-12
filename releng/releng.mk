@@ -32,11 +32,9 @@ endif
 ## dependent modules
 ##
 ## NOTE: Dependent project module version is kept in $(BLD_TOP)/releng/make/dependencies/ivy.xml
+## Removing EXTRA_EXT for osx as we do copy libgpos and optimizer into ext and
+## we will be using it from there rather than /opt
 ##-------------------------------------------------------------------------------------
-
-ifeq "$(BLD_ARCH)" "osx105_x86"
-EXTRA_EXT=_32
-endif
 
 # by default use optimized build libraries of GP Optimizer
 # use 'make BLD_TYPE=debug' to work with debug build libraries of GP Optimizer
@@ -51,19 +49,19 @@ LIBGPOS_VER = $(shell grep "\"libgpos\""    $(GREP_SED_VAR))
 OPTIMIZER_VER = $(shell grep "\"optimizer\""  $(GREP_SED_VAR))
 LIBSTDC++_VER = $(shell grep "\"libstdc\""  $(GREP_SED_VAR))
 
-XERCES =  /opt/releng/tools/xerces/xerces-c/$(XERCES_VER)/$(BLD_ARCH)$(EXTRA_EXT)
+XERCES = $(BLD_TOP)/ext/$(BLD_ARCH)
 XERCES_LIBDIR = $(XERCES)/lib
 
-LIBGPOS = /opt/releng/tools/emc/libgpos/$(LIBGPOS_VER)/$(BLD_ARCH)$(EXTRA_EXT)/libgpos
+LIBGPOS = $(BLD_TOP)/ext/$(BLD_ARCH)/libgpos
 LIBGPOS_LIBDIR = $(LIBGPOS)/$(OBJDIR_DEFAULT)
 
-OPTIMIZER = /opt/releng/tools/emc/optimizer/$(OPTIMIZER_VER)/$(BLD_ARCH)$(EXTRA_EXT)
+OPTIMIZER = $(BLD_TOP)/ext/$(BLD_ARCH)
 LIBGPOPT_LIBDIR = $(OPTIMIZER)/libgpopt/$(OBJDIR_DEFAULT)
 LIBGPOPTUDF_LIBDIR = $(OPTIMIZER)/libgpoptudf/$(OBJDIR_DEFAULT)
 LIBNAUCRATES_LIBDIR = $(OPTIMIZER)/libnaucrates/$(OBJDIR_DEFAULT)
 LIBGPDBCOST_LIBDIR = $(OPTIMIZER)/libgpdbcost/$(OBJDIR_DEFAULT)
 
-LIBSTDC++_BASEDIR = /opt/releng/tools/gnu/libstdc/$(LIBSTDC++_VER)/$(BLD_ARCH)
+LIBSTDC++_BASEDIR = $(BLD_TOP)/ext/$(BLD_ARCH)
 
 ifeq "$(BLD_ARCH)" "osx105_x86"
 LIBSTDC++_LIBDIR = $(LIBSTDC++_BASEDIR)/lib
@@ -78,6 +76,10 @@ LIBSTDC++_LIBDIR = $(LIBSTDC++_BASEDIR)/lib64
 endif
 
 ifeq "$(BLD_ARCH)" "suse10_x86_64"
+LIBSTDC++_LIBDIR = $(LIBSTDC++_BASEDIR)/lib64
+endif
+
+ifeq "$(BLD_ARCH)" "suse11_x86_64"
 LIBSTDC++_LIBDIR = $(LIBSTDC++_BASEDIR)/lib64
 endif
 

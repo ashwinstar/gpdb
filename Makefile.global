@@ -115,6 +115,7 @@ sol10_sparc_32_PYTHON=/opt/python32-2.5.1
 sol9_sparc_32_PYTHON=/opt/python32-2.5.1
 sol8_sparc_32_PYTHON=/opt/python32-2.5.1
 suse10_x86_64_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
+suse11_x86_64_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
 BLD_PYTHON=$($(BLD_ARCH)_PYTHON)
 
 # perfmon version of python since at some point
@@ -135,6 +136,7 @@ sol10_sparc_32_PYTHON_PERFMON=/opt/python32-2.5.1
 sol9_sparc_32_PYTHON_PERFMON=/opt/python32-2.5.1
 sol8_sparc_32_PYTHON_PERFMON=/opt/python32-2.5.1
 suse10_x86_64_PYTHON_PERFMON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
+suse11_x86_64_PYTHON_PERFMON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
 BLD_PYTHON_PERFMON=$($(BLD_ARCH)_PYTHON_PERFMON)
 
 # if PYTHON was specified above, use it for the build
@@ -193,6 +195,7 @@ sol8_sparc_BLD_CFLAGS=-m32
 sol10_x86_64_BLD_CFLAGS=-m64
 sol10_x86_32_BLD_CFLAGS=-m32
 suse10_x86_64_BLD_CFLAGS=-m64
+suse11_x86_64_BLD_CFLAGS=-m64 -msse4.2 -DSUSE11SP2
 win64_BLD_CFLAGS=-m64
 win32_BLD_CFLAGS=-m32
 aix5_ppc_64_BLD_CFLAGS=-maix64

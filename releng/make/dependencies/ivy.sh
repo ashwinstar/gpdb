@@ -23,6 +23,19 @@ if [ ! -d "${EXT_DIRECTORY}" ]; then
     mkdir -p ${EXT_DIRECTORY}
 fi
 
+while read line; do
+    if [[ $line =~ .*"${BUILD_STAGE}->"* && $line =~ ${REVISION} && $line =~ ${MODULE} && $line =~ ${ORG} ]]; then
+        line=`echo $line | cut -f5 -d "="`
+        IFS=';' read -ra dependency <<< "$line"
+        for i in "${dependency[@]}"; do
+            if [[ $i =~ .*"${BUILD_STAGE}->"* ]]; then
+                IFS='->' read -a array <<< "$i"
+                BUILD_STAGE=`echo "${array[2]}" | cut -f1 -d "\"" | cut -f2 -d ";"`
+            fi
+        done
+    fi
+done < ivy.xml
+
 TOOLS_DIRECTORY=/opt/releng/tools/${ORG}/${MODULE}/${REVISION}/${BUILD_STAGE}
 ##
 ## Copy all the files from /opt/tools to main/ext

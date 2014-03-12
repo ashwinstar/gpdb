@@ -136,7 +136,7 @@ ISCONFIG=cdb-pg/GNUmakefile
 ## Support gppkg platforms
 ##
 
-GPPKG_PLATFORMS=rhel5_x86_64 rhel6_x86_64 suse10_x86_64
+GPPKG_PLATFORMS=rhel5_x86_64 rhel6_x86_64 suse10_x86_64 suse11_x86_64
 
 #---------------------------------------------------------------------
 # Compiler options
@@ -180,6 +180,7 @@ rhel6_x86_64_CONFIGFLAGS=--enable-email --enable-snmp --enable-connectemc --enab
 sol10_x86_64_CONFIGFLAGS=--enable-email --enable-snmp
 sol_x86_64_CONFIGFLAGS=--enable-email
 suse10_x86_64_CONFIGFLAGS=--enable-email --enable-snmp --enable-ddboost
+suse11_x86_64_CONFIGFLAGS=--enable-email --enable-snmp --enable-ddboost
 linux_x86_64_CONFIGFLAGS=--enable-email --enable-snmp
 osx104_x86_CONFIGFLAGS=--enable-email
 osx105_x86_CONFIGFLAGS=--enable-email --enable-snmp	
@@ -241,6 +242,7 @@ rhel6_x86_64_LIBXML2=LIBS="-lxml2"
 sol10_x86_64_LIBXML2=LIBS="-lxml2"
 sol10_sparc_64_LIBXML2=LIBS="-lxml2"
 suse10_x86_64_LIBXML2=LDFLAGS="-L$(BLD_THIRDPARTY_LIB_DIR)" LIBS="-lxml2"
+suse11_x86_64_LIBXML2=LDFLAGS="-L$(BLD_THIRDPARTY_LIB_DIR)" LIBS="-lxml2"
 osx105_x86_LIBXML2=LIBS="-lxml2"
 osx106_x86_LIBXML2=LIBS="-lxml2"
 LIBXML2FLAGS= $($(BLD_ARCH)_LIBXML2)
@@ -1483,7 +1485,7 @@ authlibs:
 
 ## ----------------------------------------------------------------------
 
-ifeq "$(BLD_ARCH)" "rhel6_x86_64"
+ifeq ($(BLD_ARCH),$(filter $(BLD_ARCH),rhel6_x86_64 suse11_x86_64))
 GPPKG_SOURCES = \
 	cdb-pg/src/pl/plperl \
 	$(NULL)
