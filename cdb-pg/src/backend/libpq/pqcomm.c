@@ -659,6 +659,21 @@ StreamConnection(pgsocket server_fd, Port *port)
 		return STATUS_ERROR;
 	}
 
+	/* Set a send timeout on the socket if specified, on the master only */
+	if (GpIdentity.segindex == MASTER_CONTENT_ID && gp_connection_send_timeout > 0)
+	{
+	  struct timeval timeout;
+	  timeout.tv_sec = gp_connection_send_timeout;
+	  timeout.tv_usec = 0;
+
+	  if (setsockopt (port->sock, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout,
+			  sizeof(timeout)) < 0)
+	    {
+	      elog(LOG, "setsockopt(SO_SNDTIMEO) failed: %m");
+	    }
+	}
+
+
 	/* select NODELAY and KEEPALIVE options if it's a TCP connection */
 	if (!IS_AF_UNIX(port->laddr.addr.ss_family))
 	{

@@ -468,6 +468,8 @@ int			tcp_keepalives_idle;
 int			tcp_keepalives_interval;
 int			tcp_keepalives_count;
 
+int			gp_connection_send_timeout;
+
 int			gp_filerep_tcp_keepalives_idle;
 int			gp_filerep_tcp_keepalives_interval;
 int			gp_filerep_tcp_keepalives_count;
@@ -4874,6 +4876,15 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&tcp_keepalives_count,
 		0, 0, INT_MAX, assign_tcp_keepalives_count, show_tcp_keepalives_count
+	},
+
+	{
+		{"gp_connection_send_timeout", PGC_SIGHUP, CLIENT_CONN_OTHER,
+			gettext_noop("Timeout for sending data to unresponsive clients (seconds)"),
+			gettext_noop("A value of 0 uses the system default."),
+		},
+		&gp_connection_send_timeout,
+		0, 0, INT_MAX, NULL, NULL
 	},
 
 	{
