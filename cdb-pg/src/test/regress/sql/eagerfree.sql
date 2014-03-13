@@ -74,7 +74,9 @@ explain analyze select d, count(*) from smallt group by d limit 5;
 
 -- HashJoin
 select t1.* from smallt as t1, smallt as t2 where t1.i = t2.i;
+set optimizer_segments = 2;
 explain analyze select t1.* from smallt as t1, smallt as t2 where t1.i = t2.i;
+reset optimizer_segments;
 
 -- Rescan on HashJoin
 --select t1.* from (select t11.* from smallt as t11, smallt as t22 where t11.i = t22.i and t11.i < 2) as t1,
