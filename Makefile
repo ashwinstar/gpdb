@@ -1064,6 +1064,7 @@ SET_VERSION_SCRIPTS = \
 	bin/gpmovemirrors \
 	bin/gprebuildsystem \
 	bin/gprecoverseg \
+	bin/gpreload \
 	bin/gpscp \
 	bin/gpsizecalc \
 	bin/gpskew \
