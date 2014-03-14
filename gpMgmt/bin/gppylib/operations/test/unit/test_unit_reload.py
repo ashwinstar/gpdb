@@ -214,17 +214,20 @@ class GpReloadTestCase(unittest.TestCase):
             self.reload.validate_columns('public', 't1', [('a', 'w'), ('b', 'x'), ('c', 'y'), ('d', 'z')])
 
     @patch('gppylib.operations.reload.execSQLForSingleton', return_value=0)
-    def test_check_indexes_no_indexes(self, mock1):
+    @patch('gppylib.operations.reload.dbconn.connect')
+    def test_check_indexes_no_indexes(self, mock1, mock2):
         self.assertTrue(self.reload.check_indexes('public', 't1'))
 
     @patch('gppylib.operations.reload.ask_yesno', return_value=True)
+    @patch('gppylib.operations.reload.dbconn.connect')
     @patch('gppylib.operations.reload.execSQLForSingleton', return_value=1)
-    def test_check_indexes_with_indexes_with_continue(self, mock1, mock2):
+    def test_check_indexes_with_indexes_with_continue(self, mock1, mock2, mock3):
         self.reload.interactive=True
         self.assertTrue(self.reload.check_indexes('public', 't1'))
 
     @patch('gppylib.operations.reload.ask_yesno', return_value=False)
+    @patch('gppylib.operations.reload.dbconn.connect')
     @patch('gppylib.operations.reload.execSQLForSingleton', return_value=1)
-    def test_check_indexes_with_indexes_without_continue(self, mock1, mock2):
+    def test_check_indexes_with_indexes_without_continue(self, mock1, mock2, mock3):
         self.reload.interactive=True
         self.assertFalse(self.reload.check_indexes('public', 't1'))
