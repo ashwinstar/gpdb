@@ -307,17 +307,71 @@ EOF
 # Create cluster
 #*****************************************************************************************
 
-if [ "${BUILD_TYPE}" = "gcov" ] && [ -f "${CLUSTER_CONFIG_POSTGRES_ADDONS}" ]; then
+##
+## Provide support to pass dynamic values to ${CLUSTER_CONFIG_POSTGRES_ADDONS}
+## which is used during gpinitsystems.
+##
+
+if [ "${BLDWRAP_POSTGRES_CONF_ADDONS}" != "__none__" ]  && \
+   [ "${BLDWRAP_POSTGRES_CONF_ADDONS}" != "__unset__" ] && \
+   [ -n "${BLDWRAP_POSTGRES_CONF_ADDONS}" ]; then
+
+    [ -f ${CLUSTER_CONFIG_POSTGRES_ADDONS} ] && chmod a+w ${CLUSTER_CONFIG_POSTGRES_ADDONS}
+
+    for addon in $( echo ${BLDWRAP_POSTGRES_CONF_ADDONS} | sed -e "s/|/ /g" ); do
+        echo "" >> ${CLUSTER_CONFIG_POSTGRES_ADDONS}
+        echo $addon >> ${CLUSTER_CONFIG_POSTGRES_ADDONS}
+        echo "" >> ${CLUSTER_CONFIG_POSTGRES_ADDONS}
+    done
+
+    echo ""
+    echo "======================================================================"
+    echo "CLUSTER_CONFIG_POSTGRES_ADDONS: ${CLUSTER_CONFIG_POSTGRES_ADDONS}"
+    echo "----------------------------------------------------------------------"
+    cat ${CLUSTER_CONFIG_POSTGRES_ADDONS}
+    echo "======================================================================"
+    echo ""
+fi
+
+if [ -f "${CLUSTER_CONFIG_POSTGRES_ADDONS}" ]; then
     echo "executing: $GPPATH/gpinitsystem -a -c $CLUSTER_CONFIG -p ${CLUSTER_CONFIG_POSTGRES_ADDONS} \"$@\""
     $GPPATH/gpinitsystem -a -c $CLUSTER_CONFIG -p ${CLUSTER_CONFIG_POSTGRES_ADDONS} "$@"
 else
     echo "executing: $GPPATH/gpinitsystem -a -c $CLUSTER_CONFIG \"$@\""
     $GPPATH/gpinitsystem -a -c $CLUSTER_CONFIG "$@"
 fi
-
 RETURN=$?
+
 echo "========================================"
 echo "gpinitsystem returned: ${RETURN}"
 echo "========================================"
+echo ""
+
+OPTIMIZER=$(psql -t -p ${MASTER_DEMO_PORT} -d template1 -c "show optimizer" 2>&1)
+
+echo "======================================================================" 2>&1 | tee -a optimizer-state.log
+echo "                           OPTIMIZER STATE" 2>&1 | tee -a optimizer-state.log
+echo "----------------------------------------------------------------------"  2>&1 | tee -a optimizer-state.log
+echo " Pulse Project .......... : ${PULSE_PROJECT}" 2>&1 | tee -a optimizer-state.log
+echo " Pulse Build Number ..... : ${PULSE_BUILD_NUMBER}" 2>&1 | tee -a optimizer-state.log
+echo " Pulse Build Timestamp .. : ${PULSE_BUILD_TIMESTAMP}" 2>&1 | tee -a optimizer-state.log
+echo " Optimmizer state ....... : ${OPTIMIZER}" 2>&1 | tee -a optimizer-state.log
+echo "======================================================================" 2>&1 | tee -a optimizer-state.log
+echo "" 2>&1 | tee -a optimizer-state.log
+
+psql -p ${MASTER_DEMO_PORT} -d template1 -c "select version();" 2>&1 | tee -a optimizer-state.log
+
+psql -p ${MASTER_DEMO_PORT} -d template1 -c "show optimizer;" > /dev/null 2>&1
+if [ $? = 0 ]; then
+    psql -p ${MASTER_DEMO_PORT} -d template1 -c "show optimizer;" 2>&1 | tee -a optimizer-state.log
+fi
+
+psql -p ${MASTER_DEMO_PORT} -d template1 -c "select gp_opt_version();" > /dev/null 2>&1
+if [ $? = 0 ]; then
+    psql -p ${MASTER_DEMO_PORT} -d template1 -c "select gp_opt_version();" 2>&1 | tee -a optimizer-state.log
+fi
+
+echo "======================================================================" 2>&1 | tee -a optimizer-state.log
+echo ""
 
 exit ${RETURN}
