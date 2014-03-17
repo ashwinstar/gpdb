@@ -17,6 +17,7 @@ try:
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.mainUtils import addMasterDirectoryOptionForSingleClusterProgram, addStandardLoggingAndHelpOptions, ExceptionNoStackTraceNeeded
     from gppylib.operations.package import MigratePackages, InstallPackage, UninstallPackage, QueryPackage, BuildGppkg, UpdatePackage, CleanGppkg, Gppkg, GPPKG_EXTENSION, GPPKG_ARCHIVE_PATH
+    from gppylib.userinput import ask_yesno
     from gppylib.operations.unix import ListFilesByPattern
 
     import yaml
@@ -43,6 +44,7 @@ class GpPkgProgram:
         self.update = options.update
         self.clean = options.clean
         self.migrate = options.migrate
+        self.interactive = options.interactive
 
         # only one of the following may be provided: --install, --remove, --update, --query, --build, --clean, --migrate
         count = sum([1 for opt in ['install', 'remove', 'update', 'query', 'build', 'clean', 'migrate'] if getattr(self, opt)])
@@ -220,6 +222,15 @@ class GpPkgProgram:
             pkg = Gppkg.from_package_path(os.path.join(GPPKG_ARCHIVE_PATH, pkg_file))
             UninstallPackage(pkg, self.master_host, self.standby_host, self.segment_host_list).run()
         elif self.update:
+            logger.warning('WARNING: The process of updating a package includes removing all')
+            logger.warning('previous versions of the system objects related to the package. For')
+            logger.warning('example, previous versions of shared libraries are removed.')
+            logger.warning('After the update process, a database function will fail when it is')
+            logger.warning('called if the function references a package file that has been removed.')
+            if self.interactive:
+                if not ask_yesno(None, 'Do you still want to continue ?', 'N'):
+                    logger.info('Skipping update of gppkg based on user input')
+                    return
             pkg = Gppkg.from_package_path(self.update)
             UpdatePackage(pkg, self.master_host, self.standby_host, self.segment_host_list).run()
         elif self.clean:
