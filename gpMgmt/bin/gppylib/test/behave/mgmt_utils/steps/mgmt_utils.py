@@ -3012,13 +3012,6 @@ def impl(context, seq_name, dbname):
     sequence_sql = 'CREATE SEQUENCE %s' % seq_name
     execute_sql(dbname, sequence_sql) 
 
-@then('verify that there are no duplicates in column "{columnname}" of table "{tablename}" in "{dbname}"')
-def impl(context, columnname, tablename, dbname):
-    duplicate_sql = 'SELECT %s, COUNT(*) FROM %s GROUP BY %s HAVING COUNT(*) > 1' % (columnname, tablename, columnname)
-    rows = getRows(dbname, duplicate_sql)
-    if rows:
-        raise Exception('Found duplicate rows in the column "%s" for table "%s" in database "%s"' % (columnname, tablename, dbname))
-
 @when('the user removes the "{cmd}" command on standby')
 @then('the user removes the "{cmd}" command on standby')
 def impl(context, cmd):
