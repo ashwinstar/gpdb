@@ -1129,10 +1129,22 @@ SPI_cursor_open(const char *name, SPIPlanPtr plan,
 		
 		if ( list_length(ptlist) == 1 )
 		{
-			PlannedStmt *stmt = (PlannedStmt *)linitial(ptlist);
-			if ( stmt && stmt->planTree && 
-				ExecSupportsBackwardScan(stmt->planTree) )
-				option = CURSOR_OPT_SCROLL;
+			Node *node = (Node *)linitial(ptlist);
+
+			/*
+			 * For utility statements such as EXPLAIN, we may not have
+			 * a valid PlannedStmt pointer. Therefore, make sure that
+			 * the cast to PlannedStmt* is valid (MPP-22435).
+			 */
+			if (nodeTag(node) == T_PlannedStmt)
+			{
+				PlannedStmt *stmt = (PlannedStmt *)node;
+				if ( stmt && stmt->planTree &&
+					ExecSupportsBackwardScan(stmt->planTree) )
+				{
+					option = CURSOR_OPT_SCROLL;
+				}
+			}
 		}
 		portal->cursorOptions |= option;
 	}
