@@ -1,6 +1,7 @@
 -- ensure legacy default settings;
 -- new installations have different settings due to modified conf files;
 
+set optimizer = off;
 set enable_mergejoin = on;
 set enable_nestloop = on;
 set gp_enable_agg_distinct = off;
@@ -2686,4 +2687,6 @@ group by
 	cntrycode
 order by
 	cntrycode;
+	
+reset optimizer;
 -- EOF

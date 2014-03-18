@@ -1,5 +1,6 @@
 -- ensure legacy default settings;
 -- new installations have different settings due to modified conf files;
+set optimizer = off;
 set enable_mergejoin = on;
 set enable_nestloop = on;
 set gp_enable_agg_distinct = off;
@@ -3355,4 +3356,6 @@ order by
  Settings:  enable_mergejoin=on; enable_nestloop=on; gp_enable_agg_distinct=off; gp_segments_for_planner=16; gp_selectivity_damping_for_joins=off; gp_selectivity_damping_for_scans=off
 (28 rows)
 
+	
+reset optimizer;
 -- EOF
