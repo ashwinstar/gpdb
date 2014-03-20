@@ -2684,7 +2684,10 @@ CTranslatorDXLToPlStmt::PaggFromDXLAgg
 	{
 		ULONG ulGroupingColId = *((*pdrpulGroupingCols)[ul]);
 		const TargetEntry *pteGroupingCol = dxltrctxChild.Pte(ulGroupingColId);
-		GPOS_ASSERT(NULL != pteGroupingCol);
+		if (NULL  == pteGroupingCol)
+		{
+			GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiDXL2PlStmtAttributeNotFound, ulGroupingColId);
+		}
 		pagg->grpColIdx[ul] = pteGroupingCol->resno;
 	}
 
@@ -2774,7 +2777,10 @@ CTranslatorDXLToPlStmt::PwindowFromDXLWindow
 	{
 		ULONG ulPartColId = *((*pdrpulPartCols)[ul]);
 		const TargetEntry *ptePartCol = dxltrctxChild.Pte(ulPartColId);
-		GPOS_ASSERT(NULL != ptePartCol);
+		if (NULL  == ptePartCol)
+		{
+			GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiDXL2PlStmtAttributeNotFound, ulPartColId);
+		}
 		pwindow->partColIdx[ul] = ptePartCol->resno;
 	}
 
@@ -4368,8 +4374,14 @@ CTranslatorDXLToPlStmt::PplanSplit
 	const TargetEntry *pteCtidCol = pdxltrctxOut->Pte(pdxlop->UlCtid());
 	const TargetEntry *pteTupleOidCol = pdxltrctxOut->Pte(pdxlop->UlTupleOid());
 
-	GPOS_ASSERT(NULL != pteActionCol);
-	GPOS_ASSERT(NULL != pteCtidCol);	 
+	if (NULL  == pteActionCol)
+	{
+		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiDXL2PlStmtAttributeNotFound, pdxlop->UlAction());
+	}
+	if (NULL  == pteCtidCol)
+	{
+		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiDXL2PlStmtAttributeNotFound, pdxlop->UlCtid());
+	}	 
 	
 	psplit->actionColIdx = pteActionCol->resno;
 	psplit->ctidColIdx = pteCtidCol->resno;
@@ -4782,7 +4794,10 @@ CTranslatorDXLToPlStmt::PlTargetListFromProjList
 					pteOriginal = pdxltrctxRight->Pte(ulColId);
 				}
 
-				GPOS_ASSERT(NULL != pteOriginal);
+				if (NULL  == pteOriginal)
+				{
+					GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiDXL2PlStmtAttributeNotFound, ulColId);
+				}	
 				pte->resorigtbl = pteOriginal->resorigtbl;
 				pte->resorigcol = pteOriginal->resorigcol;
 			}
@@ -4880,7 +4895,10 @@ CTranslatorDXLToPlStmt::PlTargetListForHashNode
 		CDXLScalarProjElem *pdxlopPrel = CDXLScalarProjElem::PdxlopConvert(pdxlnPrEl->Pdxlop());
 
 		const TargetEntry *pteChild = pdxltrctxChild->Pte(pdxlopPrel->UlId());
-		GPOS_ASSERT(NULL != pteChild);
+		if (NULL  == pteChild)
+		{
+			GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiDXL2PlStmtAttributeNotFound, pdxlopPrel->UlId());
+		}	
 
 		// get type oid for project element's expression
 		GPOS_ASSERT(1 == pdxlnPrEl->UlArity());
@@ -5177,7 +5195,10 @@ CTranslatorDXLToPlStmt::TranslateSortCols
 
 		ULONG ulSortColId = pdxlopSortCol->UlColId();
 		const TargetEntry *pteSortCol = pdxltrctxChild->Pte(ulSortColId);
-		GPOS_ASSERT(NULL != pteSortCol);
+		if (NULL  == pteSortCol)
+		{
+			GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiDXL2PlStmtAttributeNotFound, ulSortColId);
+		}	
 
 		pattnoSortColIds[ul] = pteSortCol->resno;
 		poidSortOpIds[ul] = CMDIdGPDB::PmdidConvert(pdxlopSortCol->PmdidSortOp())->OidObjectId();
