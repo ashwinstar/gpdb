@@ -87,10 +87,14 @@ static void PreparedCacheReset(MemoryContext context);
 static void PreparedCacheDelete(MemoryContext context);
 static bool PreparedCacheIsEmpty(MemoryContext context);
 #ifdef GP_VERSION
-static void PreparedCacheStats(MemoryContext context, const char* contextName);
+static void PreparedCacheStats(MemoryContext context, uint64 *nBlocks, uint64 *nChunks,
+		uint64 *currentAvailable, uint64 *allAllocated, uint64 *allFreed, uint64 *maxHeld);
 #else
 static void PreparedCacheStats(MemoryContext context, int level);
 #endif
+
+static void PreparedChacheReleaseAccounting(MemoryContext context);
+static void PreparedChacheUpdateGeneration(MemoryContext context);
 
 #ifdef MEMORY_CONTEXT_CHECKING
 static void PreparedCacheCheck(MemoryContext context);
@@ -107,7 +111,15 @@ static MemoryContextMethods PreparedCacheContextMethods =
 	PreparedCacheDelete,
 	NULL,
 	PreparedCacheIsEmpty,
-	PreparedCacheStats
+	PreparedCacheStats,
+
+	/*
+	 * The PreparedChacheReleaseAccounting and PreparedChacheUpdateGeneration are
+	 * required for the MemoryContextMethods changes due to memory monitoring
+	 * framework (MPP-23033)
+	 */
+	PreparedChacheReleaseAccounting,
+	PreparedChacheUpdateGeneration
 #ifdef MEMORY_CONTEXT_CHECKING
 	, PreparedCacheCheck
 #endif
@@ -166,7 +178,8 @@ PreparedCacheIsEmpty(MemoryContext context)
 
 static void
 #ifdef GP_VERSION
-PreparedCacheStats(MemoryContext context, const char* contextName)
+PreparedCacheStats(MemoryContext context, uint64 *nBlocks, uint64 *nChunks,
+		uint64 *currentAvailable, uint64 *allAllocated, uint64 *allFreed, uint64 *maxHeld)
 #else
 PreparedCacheStats(MemoryContext context, int level)
 #endif
@@ -177,6 +190,38 @@ PreparedCacheStats(MemoryContext context, int level)
 	 */
 
 	fprintf(stderr, "%s: Prepared context\n", context->name);
+
+#ifdef GP_VERSION
+	*nBlocks = 0;
+	*nChunks = 0;
+	*currentAvailable = 0;
+	*allAllocated = 0;
+	*allFreed = 0;
+	*maxHeld = 0;
+#endif
+}
+
+static void
+PreparedChacheReleaseAccounting(MemoryContext context)
+{
+	/*
+	 * This is currently just an skeleton method. The MemoryContextMethods
+	 * need a method that can release accounting of all the chunks in this
+	 * context. As this context has no allocator method, we never accounted
+	 * for any of the allocations. Therefore, releasing accounting does not
+	 * make any sense.
+	 */
+}
+
+static void
+PreparedChacheUpdateGeneration(MemoryContext context)
+{
+	/*
+	 * This is currently just an skeleton method. The MemoryContextMethods
+	 * need a method that can update generations of all the chunks. However,
+	 * this context never had any allocation with a chunk header and so we
+	 * don't need a method to update the generation.
+	 */
 }
 
 #ifdef MEMORY_CONTEXT_CHECKING
