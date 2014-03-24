@@ -1515,7 +1515,20 @@ ifeq "$(findstring $(BLD_ARCH),$(GPPKG_PLATFORMS))" ""
 	@echo ""
 else
 	for source in $(GPPKG_SOURCES); do \
+		echo "";\
+		echo "====================================================================================================";\
+		echo "Starting build of gppkg: $${source}" ; \
+		echo "----------------------------------------------------------------------------------------------------";\
 		$(MAKE) -C $${source}/package INSTLOC=$(INSTLOC) BLD_ARCH=`$(BLD_TOP)/releng/set_bld_arch.sh`; \
+		RET_VAL=$$? ; \
+		if [ $$RET_VAL -ne 0 ] ; then \
+			echo "Error building gppkg: $${source}" ; \
+			exit $$RET_VAL; \
+		fi; \
+		echo "";\
+		echo "====================================================================================================";\
+		echo "Completed build of gppkg: $${source}" ;\
+		echo "____________________________________________________________________________________________________";\
 		cp $${source}/package/*.gppkg $(GPPKGINSTLOC); \
 	done
 endif
