@@ -504,13 +504,13 @@ float8_mregr_compute(MRegrState	*inState,
 					 ArrayType	**outTStats,
 					 ArrayType	**outPValues)
 {
-	ArrayType   *coef_array, *stdErr_array, *tStats_array, *pValues_array;
+	ArrayType   *coef_array, *stdErr_array, *tStats_array = NULL, *pValues_array = NULL;
 	float8      ess = 0., /* explained sum of squares (regression sum of squares) */
 	            tss = 0., /* total sum of squares */
 	            rss, /* residual sum of squares */
 	            r2,
 	            variance;
-	float8      *XtX_inv, *coef, *stdErr, *tStats, *pValues;
+	float8      *XtX_inv, *coef, *stdErr, *tStats = NULL, *pValues = NULL;
 	float8      condNoOfXtX;
 	uint32      i;
 	

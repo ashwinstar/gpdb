@@ -1636,7 +1636,7 @@ connAddHash(ConnHashTable *ht, MotionConn *conn)
 {
 	uint32 hashcode;
 	struct ConnHtabBin *bin, *newbin;
-	MemoryContext old;
+	MemoryContext old = NULL;
 
 	hashcode = CONN_HASH_VALUE(&conn->conn_info) % ht->size;
 

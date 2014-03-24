@@ -8449,7 +8449,7 @@ transformFkeyGetPrimaryKey(Relation pkrel, Oid *indexOid,
 	bool		isnull;
 	oidvector  *indclass;
 	int			i;
-	cqContext  *pcqCtx;
+	cqContext  *pcqCtx = NULL;
 
 	/*
 	 * Get the list of index OIDs for the table from the relcache, and look up

@@ -1376,7 +1376,7 @@ findAcceptableBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, i
 	char	   *pszBackupFilePathName = NULL;
 	static regex_t rFindFileName;
 	static bool bFirstTime = true;
-	char	   *pszRegex;
+	char	   *pszRegex = NULL;
 	char	   *pszFileName;
 	char	   *pszSep;
 	struct stat info;
