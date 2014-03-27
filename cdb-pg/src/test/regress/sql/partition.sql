@@ -4737,10 +4737,6 @@ insert into bar select i % 7, i % 6, i % 9, i || 'SOME NUMBER', i % 4 from gener
 analyze foo_p;
 analyze bar;
 
--- start_ignore
--- Known_opt_diff: OPT-1243
--- end_ignore
-
 explain select foo_p.b, foo_p.t from foo_p left outer join bar on foo_p.a = bar.k  where foo_p.t is not null and foo_p.a = (array[1])[1];
 
 drop table if exists foo_p;
