@@ -103,6 +103,9 @@ void		plperl_spi_freeplan(char *);
 void		plperl_spi_cursor_close(char *);
 char	   *plperl_sv_to_literal(SV *, char *);
 
-
+/*  supply GvCV_set if it's missing - ppport.h doesn't supply it, unfortunately */
+#ifndef GvCV_set
+#define GvCV_set(gv, cv)		(GvCV(gv) = cv)
+#endif
 
 #endif   /* PL_PERL_H */
