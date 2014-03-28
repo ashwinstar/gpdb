@@ -62,6 +62,9 @@ struct Instrumentation;                 /* #include "executor/instrument.h" */
  */
 #define PAGES_PER_CHUNK  (BLCKSZ / 32)
 
+/* A -1 ntuples in TBMIterateResult indicates a lossy bitmap page */
+#define BITMAP_IS_LOSSY -1
+
 /* The bitmap unit size can be adjusted by changing these declarations: */
 #define TBM_BITS_PER_BITMAPWORD 64
 typedef uint64 tbm_bitmapword;		/* must be an unsigned type */

@@ -2892,6 +2892,20 @@ _readExternalScan(const char ** str)
 }
 
 static void
+readLogicalIndexInfo(const char ** str, LogicalIndexInfo *local_node)
+{
+	READ_OID_FIELD(logicalIndexOid);
+	READ_INT_FIELD(nColumns);
+	READ_INT_ARRAY(indexKeys, nColumns, AttrNumber);
+	READ_NODE_FIELD(indPred);
+	READ_NODE_FIELD(indExprs);
+	READ_BOOL_FIELD(indIsUnique);
+	READ_ENUM_FIELD(indType, LogicalIndexType);
+	READ_NODE_FIELD(partCons);
+	READ_NODE_FIELD(defaultLevels);
+}
+
+static void
 readIndexScanFields(const char ** str, IndexScan *local_node)
 {
 	readScanInfo(str, (Scan *)local_node);
@@ -2902,6 +2916,12 @@ readIndexScanFields(const char ** str, IndexScan *local_node)
 	READ_NODE_FIELD(indexstrategy);
 	READ_NODE_FIELD(indexsubtype);
 	READ_ENUM_FIELD(indexorderdir, ScanDirection);
+
+	if (isDynamicScan(&local_node->scan))
+	{
+		ALLOCATE_LOCAL(local_node->logicalIndexInfo, LogicalIndexInfo, 1 /* single node allocation  */);
+		readLogicalIndexInfo(str, local_node->logicalIndexInfo);
+	}
 }
 
 /*
@@ -2917,20 +2937,6 @@ _readIndexScan(const char ** str)
 	READ_DONE();
 }
 
-static void
-readLogicalIndexInfo(const char ** str, LogicalIndexInfo *local_node)
-{
-	READ_OID_FIELD(logicalIndexOid);
-	READ_INT_FIELD(nColumns);
-	READ_INT_ARRAY(indexKeys, nColumns, AttrNumber);
-	READ_NODE_FIELD(indPred);
-	READ_NODE_FIELD(indExprs);
-	READ_BOOL_FIELD(indIsUnique);
-	READ_ENUM_FIELD(indType, LogicalIndexType);
-	READ_NODE_FIELD(partCons);
-	READ_NODE_FIELD(defaultLevels);
-}
-
 static DynamicIndexScan *
 _readDynamicIndexScan(const char **str)
 {
@@ -2938,12 +2944,6 @@ _readDynamicIndexScan(const char **str)
 
 	/* DynamicIndexScan has some content from IndexScan. */
 	readIndexScanFields(str, (IndexScan *)local_node);
-
-	READ_INT_FIELD(partIndex);
-
-	ALLOCATE_LOCAL(local_node->logicalIndexInfo, LogicalIndexInfo, 1 /* single node allocation  */);
-
-	readLogicalIndexInfo(str, local_node->logicalIndexInfo);
 
 	READ_DONE();
 }
@@ -2953,13 +2953,8 @@ _readBitmapIndexScan(const char ** str)
 {
 	READ_LOCALS(BitmapIndexScan);
 
-	readScanInfo(str, (Scan *)local_node);
-
-	READ_OID_FIELD(indexid);
-	READ_NODE_FIELD(indexqual);
-	READ_NODE_FIELD(indexqualorig);
-	READ_NODE_FIELD(indexstrategy);
-	READ_NODE_FIELD(indexsubtype);
+	/* BitmapIndexScan has some content from IndexScan. */
+	readIndexScanFields(str, (IndexScan *)local_node);
 
 	READ_DONE();
 }
@@ -2985,6 +2980,18 @@ _readBitmapAppendOnlyScan(const char ** str)
 
 	READ_NODE_FIELD(bitmapqualorig);
 	READ_BOOL_FIELD(isAORow);
+
+	READ_DONE();
+}
+
+static BitmapTableScan *
+_readBitmapTableScan(const char ** str)
+{
+	READ_LOCALS(BitmapTableScan);
+
+	readScanInfo(str, (Scan *)local_node);
+
+	READ_NODE_FIELD(bitmapqualorig);
 
 	READ_DONE();
 }
@@ -3538,11 +3545,11 @@ _readVariableResetStmt(const char ** str)
 
 void readScanInfo(const char ** str, Scan *local_node)
 {
-
-
 	readPlanInfo(str,(Plan *)local_node);
 
 	READ_UINT_FIELD(scanrelid);
+
+	READ_INT_FIELD(partIndex);
 }
 
 void readPlanInfo(const char ** str, Plan *local_node)
@@ -3928,6 +3935,9 @@ readNodeBinary(const char ** str)
 				break;
 			case T_BitmapAppendOnlyScan:
 				return_value = _readBitmapAppendOnlyScan(str);
+				break;
+			case T_BitmapTableScan:
+				return_value = _readBitmapTableScan(str);
 				break;
 			case T_TidScan:
 				return_value = _readTidScan(str);

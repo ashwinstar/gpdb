@@ -53,9 +53,9 @@ increaseScanArraySize(int newMaxPartIndex)
 {
 	int oldNumScans = dynamicTableScanInfo->numScans;
 	int newNumScans = oldNumScans + NUM_PID_INDEXES_ADDED;
-	if (newNumScans <= newMaxPartIndex)
+	if (newNumScans < newMaxPartIndex)
 	{
-		newNumScans = newMaxPartIndex + 1;
+		newNumScans = newMaxPartIndex;
 	}
 	
 	dynamicTableScanInfo->numScans = newNumScans;
@@ -64,6 +64,9 @@ increaseScanArraySize(int newMaxPartIndex)
 	{
 		dynamicTableScanInfo->pidIndexes = (HTAB **)
 			palloc0(dynamicTableScanInfo->numScans * sizeof(HTAB*));
+
+		Assert(dynamicTableScanInfo->iterators == NULL);
+		dynamicTableScanInfo->iterators = palloc0(dynamicTableScanInfo->numScans * sizeof(DynamicPartitionIterator*));
 	}
 	else
 	{
@@ -71,9 +74,13 @@ increaseScanArraySize(int newMaxPartIndex)
 			repalloc(dynamicTableScanInfo->pidIndexes,
 					 dynamicTableScanInfo->numScans * sizeof(HTAB*));
 
+		dynamicTableScanInfo->iterators = repalloc(dynamicTableScanInfo->iterators,
+				 dynamicTableScanInfo->numScans * sizeof(DynamicPartitionIterator*));
+
 		for (int scanNo = oldNumScans; scanNo < dynamicTableScanInfo->numScans; scanNo++)
 		{
 			dynamicTableScanInfo->pidIndexes[scanNo] = NULL;
+			dynamicTableScanInfo->iterators[scanNo] = NULL;
 		}
 	}
 }
@@ -85,7 +92,7 @@ increaseScanArraySize(int newMaxPartIndex)
 static HTAB *
 createPidIndex(int index)
 {
-	Assert((dynamicTableScanInfo->pidIndexes)[index] == NULL);
+	Assert((dynamicTableScanInfo->pidIndexes)[index - 1] == NULL);
 
 	HASHCTL hashCtl;
 	MemSet(&hashCtl, 0, sizeof(HASHCTL));
@@ -100,6 +107,46 @@ createPidIndex(int index)
 					   HASH_ELEM | HASH_CONTEXT | HASH_FUNCTION);
 }
 
+/*
+ * InsertPidIntoDynamicTableScanInfo
+ * 		Inserts a partition oid into the dynamicTableScanInfo's
+ * 		pidIndexes at the provided index.
+ */
+void
+InsertPidIntoDynamicTableScanInfo(int32 index, Oid partOid)
+{
+	Assert(dynamicTableScanInfo != NULL &&
+		   dynamicTableScanInfo->memoryContext != NULL);
+
+	/* It's 1 based indexing */
+	Assert(index > 0);
+
+	MemoryContext oldCxt = MemoryContextSwitchTo(dynamicTableScanInfo->memoryContext);
+
+	if (index > dynamicTableScanInfo->numScans)
+	{
+		increaseScanArraySize(index);
+	}
+	
+	Assert(index <= dynamicTableScanInfo->numScans);
+	if ((dynamicTableScanInfo->pidIndexes)[index - 1] == NULL)
+	{
+		dynamicTableScanInfo->pidIndexes[index - 1] = createPidIndex(index);
+	}
+
+	Assert(dynamicTableScanInfo->pidIndexes[index - 1] != NULL);
+	
+#ifdef USE_ASSERT_CHECKING
+	Oid *pidInHash = 
+#endif
+		hash_search(dynamicTableScanInfo->pidIndexes[index - 1],
+					&partOid, HASH_ENTER, NULL /* foundPtr */);
+	
+	Assert(*pidInHash == partOid);
+
+	MemoryContextSwitchTo(oldCxt);
+}
+
 PG_FUNCTION_INFO_V1(gp_partition_propagation);
 
 /*
@@ -112,33 +159,7 @@ gp_partition_propagation(PG_FUNCTION_ARGS)
 	int32 index = PG_GETARG_INT32(0);
 	Oid partOid = PG_GETARG_OID(1);
 
-	Assert(dynamicTableScanInfo != NULL &&
-		   dynamicTableScanInfo->memoryContext != NULL);
-
-	MemoryContext oldCxt = MemoryContextSwitchTo(dynamicTableScanInfo->memoryContext);
-
-	if (index >= dynamicTableScanInfo->numScans)
-	{
-		increaseScanArraySize(index);
-	}
-	
-	Assert(index < dynamicTableScanInfo->numScans);
-	if ((dynamicTableScanInfo->pidIndexes)[index] == NULL)
-	{
-		dynamicTableScanInfo->pidIndexes[index] = createPidIndex(index);
-	}
-
-	Assert(dynamicTableScanInfo->pidIndexes[index] != NULL);
-	
-#ifdef USE_ASSERT_CHECKING
-	Oid *pidInHash = 
-#endif
-		hash_search(dynamicTableScanInfo->pidIndexes[index],
-					&partOid, HASH_ENTER, NULL /* foundPtr */);
-	
-	Assert(*pidInHash == partOid);
-
-	MemoryContextSwitchTo(oldCxt);
+	InsertPidIntoDynamicTableScanInfo(index, partOid);
 
 	PG_RETURN_VOID();
 }

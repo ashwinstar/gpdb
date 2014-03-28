@@ -292,6 +292,7 @@ namespace gpdxl
 				CMappingColIdVar *pmapcidvar
 				);
 			
+			
 			// translate children of DXL node, and add them to list
 			List *PlistTranslateScalarChildren
 				(

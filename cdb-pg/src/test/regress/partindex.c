@@ -3,6 +3,7 @@
 #include "funcapi.h"
 #include "cdb/cdbpartition.h"
 #include "executor/spi.h"
+#include "executor/execDynamicScan.h"
 #include "utils/lsyscache.h"
 
 extern Datum gp_build_logical_index_info(PG_FUNCTION_ARGS);
@@ -230,8 +231,20 @@ gp_get_physical_index_relid(PG_FUNCTION_ARGS)
 
 	logicalIndexInfo.indIsUnique = PG_GETARG_BOOL(5);
 
+	AttrNumber *attMap = DynamicScan_GetColumnMapping(rootOid, partOid);
+
+	/*
+	 * The varno is hard-coded to 1 as the original getPhysicalIndexRelid was
+	 * using a hard-coded 1 for varattno mapping of logicalIndexInfo.
+	 */
+	IndexScan_MapLogicalIndexInfo(&logicalIndexInfo, attMap, 1);
 	/* do the actual work */
-	resultOid = getPhysicalIndexRelid(&logicalIndexInfo, rootOid, partOid);
+	resultOid = getPhysicalIndexRelid(&logicalIndexInfo, partOid);
+
+	if (attMap)
+	{
+		pfree(attMap);
+	}
 
 	return ObjectIdGetDatum(resultOid);
 }

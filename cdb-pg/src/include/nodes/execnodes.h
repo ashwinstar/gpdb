@@ -336,6 +336,48 @@ typedef struct PartitionMetadata
 } PartitionMetadata;
 
 /*
+ * DynamicPartitionIterator
+ *   Defines the iterator state to iterate over a set of partitions.
+ */
+typedef struct DynamicPartitionIterator
+{
+	/* An HTAB of partition oids to work on. */
+	HTAB *partitionOids;
+
+	/* The current HTAB iterator */
+	HASH_SEQ_STATUS *partitionIterator;
+
+	/*
+	 * If the HTAB is not completely iterated, we need to
+	 * call hash_seq_term.
+	 */
+	bool shouldCallHashSeqTerm;
+
+	 /* Is this first partition of the HTAB? */
+	bool firstPartition;
+
+	/* The current partition's relation */
+	Relation currentRelation;
+
+	/*
+	 * The attribute mapping to use to convert varattno for an
+	 * out-dated expression because of dropped attributes mismatch
+	 * between the partition at last iterator position and the
+	 * partition at current iterator position.
+	 */
+	AttrNumber *attMap;
+
+	/* The relation oid at current iterator position. */
+	Oid attMapRelOid;
+
+	/*
+	 * The per-partition memory context to prevent memory leak during
+	 * processing multiple partitions.
+	 */
+	MemoryContext partitionMemoryContext;
+} DynamicPartitionIterator;
+
+/*
  * DynamicTableScanInfo
  *   Encapsulate the information that is needed to maintain the pid indexes
  * for all dynamic table scans in a plan.
@@ -353,6 +395,12 @@ typedef struct DynamicTableScanInfo
 	 * in the scan.
 	 */
 	HTAB **pidIndexes;
+
+	/*
+	 * An array of *pointers* to DynamicPartitionIterator to record the
+	 * current hash table iterator position.
+	 */
+	DynamicPartitionIterator **iterators;
 
 	/*
 	 * Partitioning metadata for all relevant partition tables.
@@ -1286,6 +1334,46 @@ typedef struct BitmapOrState
  * ----------------------------------------------------------------
  */
 
+/* What stage the scan node is currently
+ *
+ * 	SCAN_INIT: we are initializing the scan state
+ * 	SCAN_FIRST: part of the initialization is done and we are
+ * 		ready to scan the first relation of possibly multiple
+ * 		relations, if it is a dynamic scan.
+ * 	SCAN_SCAN: all initializations for reading tuples are done
+ * 		and we are either reading tuples, or ready to read tuples
+ * 	SCAN_MARKPOS: we have marked a position in the scan state
+ * 	SCAN_NEXT: we are done with the current relation and waiting
+ * 		for the next relation (if multi-partition)
+ * 	SCAN_DONE: we are done with all relations/partitions, but
+ * 		the scan state is still valid for a ReScan (i.e., we
+ * 		haven't destroyed our scan state yet)
+ * 	SCAN_END: we are completely done. We cannot ReScan, without
+ * 		redoing the whole initialization phase again.
+ */
+enum {
+        SCAN_INIT           = 0,
+        SCAN_FIRST          = 1,
+        SCAN_SCAN           = 2,
+        SCAN_MARKPOS        = 4,
+        SCAN_NEXT           = 8,
+        SCAN_DONE           = 16,
+        SCAN_RESCAN         = 32,
+        SCAN_END            = 64,
+};
+
+/*
+ * TableType
+ *   Enum for different types of tables.
+ */
+typedef enum
+{
+	TableTypeHeap = 0,
+	TableTypeAppendOnly = 1,
+	TableTypeAOCS = 2,
+	TableTypeInvalid,
+} TableType;
+
 /* ----------------
  *         ScanState information
  *
@@ -1296,29 +1384,11 @@ typedef struct BitmapOrState
  *                retrieved from the subplan.
  *
  *                currentRelation    relation being scanned (NULL if none)
- *                currentScanDesc    current scan descriptor for scan (NULL if none)
  *                ScanTupleSlot           pointer to slot in tuple table holding scan tuple
+ *                scan_state		the stage of scanning
+ *                tableType			the table type of the target relation
  * ----------------
  */
-enum {
-        SCAN_INIT         = 0,
-        SCAN_SCAN         = 1,
-        SCAN_MARKPOS         = 2,
-        SCAN_DONE         = 4,
-};
-
-/*
- * TableType
- *   Enum for different types of tables.
- */
-typedef enum
-{
-	TableTypeHeap,
-	TableTypeAppendOnly,
-	TableTypeAOCS,
-	TableTypeInvalid,
-} TableType;
-
 typedef struct ScanState
 {
 	PlanState        ps;                                /* its first field is NodeTag */
@@ -1402,10 +1472,18 @@ typedef struct IndexScanState
         int                        iss_NumScanKeys;
         IndexRuntimeKeyInfo *iss_RuntimeKeys;
         int                        iss_NumRuntimeKeys;
+    	IndexArrayKeyInfo *iss_ArrayKeys;
+    	int                        iss_NumArrayKeys;
         bool                iss_RuntimeKeysReady;
         ExprContext *iss_RuntimeContext;
         Relation        iss_RelationDesc;
         struct IndexScanDescData *iss_ScanDesc;
+
+    	/*
+    	 * tableOid is the oid of the partition or relation on which
+    	 * our current index relation is defined.
+    	 */
+    	Oid tableOid;
 } IndexScanState;
 
 /*
@@ -1432,52 +1510,25 @@ typedef struct DynamicIndexScanState
 	bool shouldCallHashSeqTerm;
 
 	/*
-	 * The original logicalIndexInfo before we started mapping columns to physical
-	 * indexes per-partition. We use this as a template to restore the logicalIndexInfo
-	 * in the plan node once per-partition before calling getPhysicalIndexRelid(),
-	 * which is modifies plan's logicalIndexInfo in-place (MPP-21029)
-	 */
-	LogicalIndexInfo *logicalIndexInfo;
-
-	/*
 	 * We will create a new copy of logicalIndexInfo in this memory context for
 	 * each partition. This memory context will be reset per-partition to free
 	 * up previous partition's logicalIndexInfo memory
 	 */
 	MemoryContext partitionMemoryContext;
+
+	/* The partition oid for which the current varnos are mapped */
+	Oid columnLayoutOid;
 } DynamicIndexScanState;
 
 
 /* ----------------
  *         BitmapIndexScanState information
- *
- *                result                           bitmap to return output into, or NULL
- *                ScanKeys                   Skey structures to scan index rel
- *                NumScanKeys                   number of Skey structs
- *                RuntimeKeys                   info about Skeys that must be evaluated at runtime
- *                NumRuntimeKeys           number of RuntimeKeys structs
- *                ArrayKeys                   info about Skeys that come from ScalarArrayOpExprs
- *                NumArrayKeys           number of ArrayKeys structs
- *                RuntimeKeysReady   true if runtime Skeys have been computed
- *                RuntimeContext           expr context for evaling runtime Skeys
- *                RelationDesc           index relation descriptor
- *                ScanDesc                   index scan descriptor
  * ----------------
  */
 typedef struct BitmapIndexScanState
 {
-	ScanState        ss;                                /* its first field is NodeTag */
+	IndexScanState indexScanState;					/* pseudo inheritance */
 	Node            *bitmap;                        /* output bitmap */
-	ScanKey                biss_ScanKeys;
-	int                        biss_NumScanKeys;
-	IndexRuntimeKeyInfo *biss_RuntimeKeys;
-	int                        biss_NumRuntimeKeys;
-	IndexArrayKeyInfo *biss_ArrayKeys;
-	int                        biss_NumArrayKeys;
-	bool                biss_RuntimeKeysReady;
-	ExprContext *biss_RuntimeContext;
-	Relation        biss_RelationDesc;
-	struct IndexScanDescData *biss_ScanDesc;
 } BitmapIndexScanState;
 
 /* ----------------
@@ -1520,6 +1571,33 @@ typedef struct BitmapAppendOnlyScanState
 	int			baos_ntuples;
 	bool        isAORow; /* If this is for AO Row tables. */
 } BitmapAppendOnlyScanState;
+
+/* ----------------
+ * BitmapTableScanState information
+ *
+ *		scanDesc			an opaque (scan method dependent) scan descriptor
+ *		bitmapqualorig		execution state for bitmapqualorig expressions
+ *		tbm					bitmap obtained from child index scan(s)
+ *		tbmres				current bitmap-page data
+ *		isLossyBitmapPage	is the current bitmap-page lossy?
+ *		recheckTuples		should the tuples be rechecked for eligibility because of visibility issues
+ *		needNewBitmapPage	are we done with current bitmap page and therefore need a new one?
+ *		iterator			an opaque iterator object to iterate a bitmap page and the corresponding table data
+ * ----------------
+ */
+typedef struct BitmapTableScanState
+{
+	ScanState        			ss;                                /* its first field is NodeTag */
+
+	void 						*scanDesc;
+	List           				*bitmapqualorig;
+	Node  						*tbm;
+	struct TBMIterateResult 	*tbmres;
+	bool						isLossyBitmapPage;
+	bool						recheckTuples;
+	bool						needNewBitmapPage;
+	void						*iterator;
+} BitmapTableScanState;
 
 /* ----------------
  *         TidScanState information

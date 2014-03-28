@@ -1310,6 +1310,7 @@ motion_sanity_walker(Node *node, sanity_result_t *result)
 		case T_BitmapIndexScan:
 		case T_BitmapHeapScan:
 		case T_BitmapAppendOnlyScan:
+		case T_BitmapTableScan:
 		case T_TidScan:
 		case T_SubqueryScan:
 		case T_FunctionScan:

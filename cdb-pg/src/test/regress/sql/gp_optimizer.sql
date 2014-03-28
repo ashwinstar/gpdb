@@ -859,5 +859,60 @@ from cust c, sales s, datedim d
 where c.cid = s.cid and s.date_sk = d.date_sk and
       ((d.year = 2001 and lower(s.type) = 't1' and plusone(d.moy) = 5) or (d.moy = 4 and upper(s.type) = 'T2'));
 
+-- Bitmap indexes
+drop table if exists orca.bm_test;
+create table orca.bm_test (i int, t text);
+insert into orca.bm_test select i % 10, (i % 10)::text  from generate_series(1, 100) i;
+create index bm_test_idx on orca.bm_test using bitmap (i);
+
+set optimizer_enable_bitmapscan=on;
+explain select * from orca.bm_test where i=2 and t='2';
+select * from orca.bm_test where i=2 and t='2';
+reset optimizer_enable_bitmapscan;
+
+-- Dynamic bitmap indexes
+drop table if exists orca.bm_dyn_test;
+create table orca.bm_dyn_test (i int, to_be_dropped char(5), j int, t text) distributed by (i) partition by list(j)
+  (partition part0 values(0) with (appendonly=true, compresslevel=5, orientation=column),
+   partition part1 values(1),
+   partition part2 values(2) with (appendonly=true, compresslevel=5, orientation=row),
+   partition part3 values(3), partition part4 values(4));
+insert into orca.bm_dyn_test select i % 10, 'drop', i % 5, (i % 10)::text  from generate_series(1, 100) i;
+create index bm_dyn_test_idx on orca.bm_dyn_test using bitmap (i);
+
+alter table orca.bm_dyn_test drop column to_be_dropped;
+alter table orca.bm_dyn_test add partition part5 values(5);
+insert into orca.bm_dyn_test values(2, 5, '2');
+
+set optimizer_enable_bitmapscan=on;
+explain select * from orca.bm_dyn_test where i=2 and t='2';
+select * from orca.bm_dyn_test where i=2 and t='2';
+
+reset optimizer_enable_bitmapscan;
+
+-- Now, create a partial index
+drop table if exists orca.bm_dyn_test_onepart;
+create table orca.bm_dyn_test_onepart (i int, to_be_dropped char(5), j int, t text)
+  distributed by (i) partition by list(j)
+  (partition part0 values(0) with (appendonly=true, compresslevel=5, orientation=column),
+   partition part1 values(1),
+   partition part2 values(2) with (appendonly=true, compresslevel=5, orientation=row),
+   partition part3 values(3), partition part4 values(4));
+insert into orca.bm_dyn_test_onepart select i % 10, 'drop', i % 5, (i % 10)::text  from generate_series(1, 100) i;
+create index bm_test_idx_part on orca.bm_dyn_test_onepart_1_prt_part2 using bitmap (i);
+
+alter table orca.bm_dyn_test_onepart drop column to_be_dropped;
+alter table orca.bm_dyn_test_onepart add partition part5 values(5);
+insert into orca.bm_dyn_test_onepart values(2, 5, '2');
+
+set optimizer_enable_bitmapscan=on;
+select disable_xform('CXformDynamicGet2DynamicTableScan');
+
+explain select * from orca.bm_dyn_test_onepart where i=2 and t='2';
+select * from orca.bm_dyn_test_onepart where i=2 and t='2';
+
+select enable_xform('CXformDynamicGet2DynamicTableScan');
+reset optimizer_enable_bitmapscan;
+
 -- clean up
 drop schema orca cascade;

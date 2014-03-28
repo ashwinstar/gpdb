@@ -491,14 +491,27 @@ InitRuntimeKeysContext(IndexScanState *indexstate)
 	EState *estate = indexstate->ss.ps.state;
 	Assert(estate != NULL);
 
-	indexstate->iss_RuntimeContext = NULL;
-	if (indexstate->iss_NumRuntimeKeys != 0)
+	if (indexstate->iss_RuntimeContext == NULL)
 	{
 		ExprContext *stdecontext = indexstate->ss.ps.ps_ExprContext;
-		
+
 		ExecAssignExprContext(estate, &indexstate->ss.ps);
 		indexstate->iss_RuntimeContext = indexstate->ss.ps.ps_ExprContext;
 		indexstate->ss.ps.ps_ExprContext = stdecontext;
+	}
+}
+
+/*
+ * FreeRuntimeKeysContext
+ *   Frees the expression context for runtime keys.
+ */
+void
+FreeRuntimeKeysContext(IndexScanState *indexstate)
+{
+	if (indexstate->iss_RuntimeContext != NULL)
+	{
+		FreeExprContext(indexstate->iss_RuntimeContext);
+		indexstate->iss_RuntimeContext = NULL;
 	}
 }
 

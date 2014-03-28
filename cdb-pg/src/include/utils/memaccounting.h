@@ -119,6 +119,7 @@ typedef enum MemoryOwnerType
 	MEMORY_OWNER_TYPE_Exec_RowTrigger = 1038,
 	MEMORY_OWNER_TYPE_Exec_AssertOp = 1039,
 	MEMORY_OWNER_TYPE_Exec_AlienShared = 1040,
+	MEMORY_OWNER_TYPE_Exec_BitmapTableScan = 1041,
 	MEMORY_OWNER_TYPE_Exec_Plan_End, /* No explicit number. Automatically gets the last of executor enumeration */
 
 } MemoryOwnerType;

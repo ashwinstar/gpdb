@@ -30,7 +30,7 @@ enum
 
 static inline gpmon_packet_t * GpmonPktFromBitmapIndexScanState(BitmapIndexScanState *node)
 {
-	return &node->ss.ps.gpmon_pkt;
+	return &((IndexScanState*)node)->ss.ps.gpmon_pkt;
 }
 
 #endif   /* NODEBITMAPINDEXSCAN_H */

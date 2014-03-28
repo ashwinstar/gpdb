@@ -231,6 +231,7 @@ create_subplan(CreatePlanContext *ctx, Path *best_path)
 		case T_AOCSScan:
 		case T_BitmapHeapScan:
 		case T_BitmapAppendOnlyScan:
+		case T_BitmapTableScan:
 		case T_TidScan:
 		case T_SubqueryScan:
 		case T_FunctionScan:
@@ -544,6 +545,7 @@ disuse_physical_tlist(Plan *plan, Path *path)
 		case T_IndexScan:
 		case T_BitmapHeapScan:
 		case T_BitmapAppendOnlyScan:
+		case T_BitmapTableScan:
 		case T_TidScan:
 		case T_SubqueryScan:
 		case T_FunctionScan:
@@ -3584,6 +3586,7 @@ make_indexscan(List *qptlist,
 	plan->lefttree = NULL;
 	plan->righttree = NULL;
 	node->scan.scanrelid = scanrelid;
+
 	node->indexid = indexid;
 	node->indexqual = indexqual;
 	node->indexqualorig = indexqualorig;
@@ -3611,6 +3614,7 @@ make_bitmap_indexscan(Index scanrelid,
 	plan->lefttree = NULL;
 	plan->righttree = NULL;
 	node->scan.scanrelid = scanrelid;
+
 	node->indexid = indexid;
 	node->indexqual = indexqual;
 	node->indexqualorig = indexqualorig;
@@ -3636,6 +3640,7 @@ make_bitmap_heapscan(List *qptlist,
 	plan->lefttree = lefttree;
 	plan->righttree = NULL;
 	node->scan.scanrelid = scanrelid;
+
 	node->bitmapqualorig = bitmapqualorig;
 
 	return node;
@@ -3658,6 +3663,7 @@ make_bitmap_appendonlyscan(List *qptlist,
 	plan->lefttree = lefttree;
 	plan->righttree = NULL;
 	node->scan.scanrelid = scanrelid;
+
 	node->bitmapqualorig = bitmapqualorig;
 	node->isAORow = isAORow;
 
@@ -3679,6 +3685,7 @@ make_tidscan(List *qptlist,
 	plan->lefttree = NULL;
 	plan->righttree = NULL;
 	node->scan.scanrelid = scanrelid;
+
 	node->tidquals = tidquals;
 
 	return node;
@@ -3722,6 +3729,7 @@ make_subqueryscan(PlannerInfo *root,
 	 * level plan!
 	 */
 	node->scan.scanrelid = scanrelid;
+
 	node->subplan = subplan;
 	node->subrtable = subrtable;
 

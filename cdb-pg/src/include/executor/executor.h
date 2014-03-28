@@ -179,6 +179,29 @@ typedef struct AttrMap
 	AttrNumber attr_map[1];
 } AttrMap;
 
+/*
+ * ScanMethod
+ *   Methods that are relevant to support scans on various table types.
+ */
+typedef struct ScanMethod
+{
+	/* Function that scans the table. */
+	TupleTableSlot *(*accessMethod)(ScanState *scanState);
+
+	/* Functions that initiate or terminate a scan. */
+	void (*beginScanMethod)(ScanState *scanState);
+	void (*endScanMethod)(ScanState *scanState);
+
+	/* Function that does rescan. */
+	void (*reScanMethod)(ScanState *scanState);
+
+	/* Function that does MarkPos in a scan. */
+	void (*markPosMethod)(ScanState *scanState);
+
+	/* Function that does RestroPos in a scan. */
+	void (*restrPosMethod)(ScanState *scanState);
+} ScanMethod;
+
 extern void ExecutorStart(QueryDesc *queryDesc, int eflags);
 extern TupleTableSlot *ExecutorRun(QueryDesc *queryDesc,
 			ScanDirection direction, long count);
@@ -271,8 +294,10 @@ typedef TupleTableSlot *(*ExecScanAccessMtd) (ScanState *node);
 
 extern TupleTableSlot *ExecScan(ScanState *node, ExecScanAccessMtd accessMtd);
 extern void ExecAssignScanProjectionInfo(ScanState *node);
-extern void InitScanStateInternal(ScanState *scanState, Plan *plan, EState *estate, int eflags);
-extern void FreeScanRelationInternal(ScanState *scanState);
+extern void InitScanStateRelationDetails(ScanState *scanState, Plan *plan, EState *estate);
+extern void InitScanStateInternal(ScanState *scanState, Plan *plan,
+	EState *estate, int eflags, bool initCurrentRelation);
+extern void FreeScanRelationInternal(ScanState *scanState, bool closeCurrentRelation);
 extern Relation OpenScanRelationByOid(Oid relid);
 extern void CloseScanRelation(Relation rel);
 extern int getTableType(Relation rel);
@@ -309,6 +334,32 @@ extern TupleTableSlot *AOCSScanNext(ScanState *scanState);
 extern void BeginScanAOCSRelation(ScanState *scanState);
 extern void EndScanAOCSRelation(ScanState *scanState);
 extern void ReScanAOCSRelation(ScanState *scanState);
+
+/*
+ * prototypes from functions in execBitmapHeapScan.c
+ */
+extern TupleTableSlot *BitmapHeapScanNext(ScanState *scanState);
+extern void BitmapHeapScanBegin(ScanState *scanState);
+extern void BitmapHeapScanEnd(ScanState *scanState);
+extern void BitmapHeapScanReScan(ScanState *scanState);
+
+/*
+ * prototypes from functions in execBitmapAOScan.c
+ */
+extern TupleTableSlot *BitmapAOScanNext(ScanState *scanState);
+extern void BitmapAOScanBegin(ScanState *scanState);
+extern void BitmapAOScanEnd(ScanState *scanState);
+extern void BitmapAOScanReScan(ScanState *scanState);
+
+/*
+ * prototypes from functions in execBitmapTableScan.c
+ */
+extern void initGpmonPktForBitmapTableScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern TupleTableSlot *BitmapTableScanNext(BitmapTableScanState *scanState);
+extern void BitmapTableScanBegin(BitmapTableScanState *scanState, Plan *plan, EState *estate, int eflags);
+extern void BitmapTableScanEnd(BitmapTableScanState *scanState);
+extern void BitmapTableScanReScan(BitmapTableScanState *node, ExprContext *exprCtxt);
+extern bool BitmapTableScanRecheckTuple(BitmapTableScanState *scanState, TupleTableSlot *slot);
 
 /*
  * prototypes from functions in execTuples.c

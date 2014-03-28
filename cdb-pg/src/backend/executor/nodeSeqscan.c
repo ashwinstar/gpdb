@@ -284,6 +284,7 @@ ExecInitSeqScan(SeqScan *node, EState *estate, int eflags)
 	scanstate = makeNode(SeqScanState);
 	scanstate->ps.plan = (Plan *) node;
 	scanstate->ps.state = estate;
+	scanstate->ss->scan_state = SCAN_INIT;
 
 	/*
 	 * Miscellaneous initialization

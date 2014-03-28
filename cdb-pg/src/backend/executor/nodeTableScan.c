@@ -19,8 +19,9 @@ TableScanState *
 ExecInitTableScan(TableScan *node, EState *estate, int eflags)
 {
 	TableScanState *state = makeNode(TableScanState);
-	
-	InitScanStateInternal((ScanState *)state, (Plan *)node, estate, eflags);
+	state->ss.scan_state = SCAN_INIT;
+
+	InitScanStateInternal((ScanState *)state, (Plan *)node, estate, eflags, true /* initCurrentRelation */);
 	
 	initGpmonPktForTableScan((Plan *)node, &state->ss.ps.gpmon_pkt, estate);
 
@@ -62,7 +63,7 @@ ExecEndTableScan(TableScanState *node)
 		EndTableScanRelation(&(node->ss));
 	}
 
-	FreeScanRelationInternal((ScanState *)node);
+	FreeScanRelationInternal((ScanState *)node, true /* closeCurrentRelation */);
 	EndPlanStateGpmonPkt(&node->ss.ps);
 }
 

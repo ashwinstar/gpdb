@@ -339,7 +339,6 @@ CConfigParamMapping::PbsPack
 		(void) pbs->FExchangeSet(GPOPT_DISABLE_XFORM_TF(CXform::ExfSelect2DynamicBitmapTableGet));
 		(void) pbs->FExchangeSet(GPOPT_DISABLE_XFORM_TF(CXform::ExfSelect2BitmapBoolOp));
 		(void) pbs->FExchangeSet(GPOPT_DISABLE_XFORM_TF(CXform::ExfSelect2DynamicBitmapBoolOp));
-
 	}
 
 	return pbs;

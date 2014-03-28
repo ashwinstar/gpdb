@@ -831,6 +831,14 @@ typedef struct BitmapAppendOnlyPath
 	bool        isAORow;        /* If this is for AO Row tables */
 } BitmapAppendOnlyPath;
 
+typedef struct BitmapTableScanPath
+{
+	Path		path;
+	Path	   *bitmapqual;		/* IndexPath, BitmapAndPath, BitmapOrPath */
+	bool		isjoininner;	/* T if it's a nestloop inner scan */
+	double		rows;			/* estimated number of result tuples */
+} BitmapTableScanPath;
+
 /*
  * BitmapAndPath represents a BitmapAnd plan node; it can only appear as
  * part of the substructure of a BitmapHeapPath.  The Path structure is

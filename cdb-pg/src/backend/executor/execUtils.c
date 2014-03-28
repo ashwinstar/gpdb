@@ -194,11 +194,8 @@ CreateExecutorState(void)
 	 */
 	MemoryContext oldcontext = MemoryContextSwitchTo(qcontext);
 	
-	estate->dynamicTableScanInfo = palloc(sizeof(DynamicTableScanInfo));
-	estate->dynamicTableScanInfo->numScans = 0;
-	estate->dynamicTableScanInfo->pidIndexes = NULL;
+	estate->dynamicTableScanInfo = palloc0(sizeof(DynamicTableScanInfo));
 	estate->dynamicTableScanInfo->memoryContext = qcontext;
-	estate->dynamicTableScanInfo->partsMetadata = NIL;
 
 	MemoryContextSwitchTo(oldcontext);
 
@@ -2382,6 +2379,7 @@ void (*initGpmonPktFuncs[])(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *e
 	&initGpmonPktForBitmapIndexScan, /* T_BitmapIndexScan */
 	&initGpmonPktForBitmapHeapScan, /* T_BitmapHeapScan */
 	&initGpmonPktForBitmapAppendOnlyScan, /* T_BitmapAppendOnlyScan */
+	&initGpmonPktForBitmapTableScan, /* T_BitmapTableScan */
 	&initGpmonPktForTidScan, /* T_TidScan */
 	&initGpmonPktForSubqueryScan, /* T_SubqueryScan */
 	&initGpmonPktForFunctionScan, /*  T_FunctionScan */
@@ -2520,6 +2518,7 @@ sendInitGpmonPkts(Plan *node, EState *estate)
 		case T_Result:
 		case T_BitmapHeapScan:
 		case T_BitmapAppendOnlyScan:
+		case T_BitmapTableScan:
 		case T_ShareInputScan:
 		case T_Material:
 		case T_Sort:

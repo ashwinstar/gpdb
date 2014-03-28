@@ -182,6 +182,8 @@ CTranslatorDXLToPlStmt::InitTranslators()
 			{EdxlopPhysicalAssert,					&gpopt::CTranslatorDXLToPlStmt::PplanAssert},
 			{EdxlopPhysicalCTEProducer, 			&gpopt::CTranslatorDXLToPlStmt::PshscanFromDXLCTEProducer},
 			{EdxlopPhysicalCTEConsumer, 			&gpopt::CTranslatorDXLToPlStmt::PshscanFromDXLCTEConsumer},
+			{EdxlopPhysicalBitmapTableScan,			&gpopt::CTranslatorDXLToPlStmt::PplanBitmapTableScan},
+			{EdxlopPhysicalDynamicBitmapTableScan,	&gpopt::CTranslatorDXLToPlStmt::PplanBitmapTableScan},
 	};
 
 	const ULONG ulTranslators = GPOS_ARRAY_SIZE(rgTranslators);
@@ -1483,9 +1485,10 @@ CTranslatorDXLToPlStmt::TranslateIndexConditions
 		BOOL fRecheck = false;
 		
 		OID oidCmpOperator = CTranslatorUtils::OidCmpOperator(pexprIndexCond);
+		GPOS_ASSERT(InvalidOid != oidCmpOperator);
 		OID oidOpclass = CTranslatorUtils::OidIndexQualOpclass(iAttno, CMDIdGPDB::PmdidConvert(pmdindex->Pmdid())->OidObjectId());
+		GPOS_ASSERT(InvalidOid != oidOpclass);
 		gpdb::IndexOpProperties(oidCmpOperator, oidOpclass, &iSN, &oidIndexSubtype, &fRecheck);
-
 		GPOS_ASSERT(!fRecheck);
 		
 		// create index qual
@@ -3863,13 +3866,16 @@ CTranslatorDXLToPlStmt::PplanSequence
 		);
 
 	ULONG ulArity = pdxlnSequence->UlArity();
-
+	
 	// translate last child
+	// since last child may be a DynamicIndexScan with outer references,
+	// we pass the context received from parent to translate outer refs here
+
 	CDXLNode *pdxlnLastChild = (*pdxlnSequence)[ulArity - 1];
 
 	CDXLTranslateContext dxltrctxChild(m_pmp, false, pdxltrctxOut->PhmColParam());
 
-	Plan *pplanLastChild = PplFromDXL(pdxlnLastChild, &dxltrctxChild, pplan);
+	Plan *pplanLastChild = PplFromDXL(pdxlnLastChild, &dxltrctxChild, pplan, pdrgpdxltrctxPrevSiblings);
 	pplan->nMotionNodes = pplanLastChild->nMotionNodes;
 
 	CDXLNode *pdxlnPrL = (*pdxlnSequence)[0];
@@ -3947,10 +3953,10 @@ CTranslatorDXLToPlStmt::PplanDTS
 	// create dynamic scan node
 	DynamicTableScan *pdts = MakeNode(DynamicTableScan);
 
-	pdts->scan.scanrelid = iRel;
+	pdts->scanrelid = iRel;
 	pdts->partIndex = pdxlop->UlPartIndexId();
 
-	Plan *pplan = &(pdts->scan.plan);
+	Plan *pplan = &(pdts->plan);
 	pplan->plan_node_id = m_pctxdxltoplstmt->UlNextPlanId();
 	pplan->plan_parent_node_id = IPlanId(pplanParent);
 	pplan->nMotionNodes = 0;
@@ -4024,7 +4030,7 @@ CTranslatorDXLToPlStmt::PplanDIS
 	DynamicIndexScan *pdis = MakeNode(DynamicIndexScan);
 
 	pdis->scan.scanrelid = iRel;
-	pdis->partIndex = pdxlop->UlPartIndexId();
+	pdis->scan.partIndex = pdxlop->UlPartIndexId();
 
 	CMDIdGPDB *pmdidIndex = CMDIdGPDB::PmdidConvert(pdxlop->Pdxlid()->Pmdid());
 	const IMDIndex *pmdindex = m_pmda->Pmdindex(pmdidIndex);
@@ -4087,7 +4093,7 @@ CTranslatorDXLToPlStmt::PplanDIS
 		pmdrel,
 		pdxltrctxOut,
 		&dxltrctxbt,
-		NULL, // pdrgpdxltrctxPrevSiblings
+		pdrgpdxltrctxPrevSiblings,
 		pplan,
 		&plIndexConditions, 
 		&plIndexOrigConditions, 
@@ -5341,6 +5347,299 @@ CTranslatorDXLToPlStmt::JtFromEdxljt
 	}
 
 	return jt;
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CTranslatorDXLToPlStmt::PplanBitmapTableScan
+//
+//	@doc:
+//		Translates a DXL bitmap table scan node into a BitmapTableScan node
+//
+//---------------------------------------------------------------------------
+Plan *
+CTranslatorDXLToPlStmt::PplanBitmapTableScan
+	(
+	const CDXLNode *pdxlnBitmapScan,
+	CDXLTranslateContext *pdxltrctxOut,
+	Plan *pplanParent,
+	DrgPdxltrctx *pdrgpdxltrctxPrevSiblings
+	)
+{
+	ULONG ulPartIndex = INVALID_PART_INDEX;
+	const CDXLTableDescr *pdxltabdesc = NULL;
+	BOOL fDynamic = false;
+
+	CDXLOperator *pdxlop = pdxlnBitmapScan->Pdxlop();
+	if (EdxlopPhysicalBitmapTableScan == pdxlop->Edxlop())
+	{
+		pdxltabdesc = CDXLPhysicalBitmapTableScan::PdxlopConvert(pdxlop)->Pdxltabdesc();
+	}
+	else
+	{
+		GPOS_ASSERT(EdxlopPhysicalDynamicBitmapTableScan == pdxlop->Edxlop());
+		CDXLPhysicalDynamicBitmapTableScan *pdxlopDynamic =
+				CDXLPhysicalDynamicBitmapTableScan::PdxlopConvert(pdxlop);
+		pdxltabdesc = pdxlopDynamic->Pdxltabdesc();
+
+		ulPartIndex = pdxlopDynamic->UlPartIndexId();
+		fDynamic = true;
+	}
+
+	// translation context for column mappings in the base relation
+	CDXLTranslateContextBaseTable dxltrctxbt(m_pmp);
+
+	// add the new range table entry as the last element of the range table
+	Index iRel = gpdb::UlListLength(m_pctxdxltoplstmt->PlPrte()) + 1;
+
+	const IMDRelation *pmdrel = m_pmda->Pmdrel(pdxltabdesc->Pmdid());
+	const ULONG ulRelCols = pmdrel->UlColumns() - pmdrel->UlSystemColumns();
+
+	RangeTblEntry *prte = PrteFromTblDescr(pdxltabdesc, NULL /*pdxlid*/, ulRelCols, iRel, &dxltrctxbt);
+	GPOS_ASSERT(NULL != prte);
+	prte->requiredPerms |= ACL_SELECT;
+
+	m_pctxdxltoplstmt->AddRTE(prte);
+	if (fDynamic)
+	{
+		m_pctxdxltoplstmt->AddPartitionedTable(prte->relid);
+	}
+
+	BitmapTableScan *pdbts = MakeNode(BitmapTableScan);
+	pdbts->scan.scanrelid = iRel;
+	pdbts->scan.partIndex = ulPartIndex;
+
+	Plan *pplan = &(pdbts->scan.plan);
+	pplan->plan_node_id = m_pctxdxltoplstmt->UlNextPlanId();
+	pplan->plan_parent_node_id = IPlanId(pplanParent);
+	pplan->nMotionNodes = 0;
+
+	// translate operator costs
+	TranslatePlanCosts
+		(
+		CDXLPhysicalProperties::PdxlpropConvert(pdxlnBitmapScan->Pdxlprop())->Pdxlopcost(),
+		&(pplan->startup_cost),
+		&(pplan->total_cost),
+		&(pplan->plan_rows),
+		&(pplan->plan_width)
+		);
+
+	GPOS_ASSERT(4 == pdxlnBitmapScan->UlArity());
+
+	// translate proj list and filter
+	CDXLNode *pdxlnPrL = (*pdxlnBitmapScan)[0];
+	CDXLNode *pdxlnFilter = (*pdxlnBitmapScan)[1];
+	CDXLNode *pdxlnRecheckCond = (*pdxlnBitmapScan)[2];
+	CDXLNode *pdxlnBitmapAccessPath = (*pdxlnBitmapScan)[3];
+
+	List *plQuals = NULL;
+	TranslateProjListAndFilter
+		(
+		pdxlnPrL,
+		pdxlnFilter,
+		&dxltrctxbt,	// translate context for the base table
+		NULL,			// pdxltrctxLeft and pdxltrctxRight,
+		&pplan->targetlist,
+		&plQuals,
+		pdxltrctxOut,
+		pplan
+		);
+	pplan->qual = plQuals;
+
+	pdbts->bitmapqualorig = PlQualFromFilter
+							(
+							pdxlnRecheckCond,
+							&dxltrctxbt,
+							NULL,	  // pdrgpdxltrctx
+							pdxltrctxOut,
+							pplan
+							);
+
+	pdbts->scan.plan.lefttree = PplanBitmapAccessPath
+								(
+								pdxlnBitmapAccessPath,
+								pdxltrctxOut,
+								pmdrel,
+								pdxltabdesc,
+								&dxltrctxbt,
+								pdbts
+								);
+	SetParamIds(pplan);
+
+	return (Plan *) pdbts;
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CTranslatorDXLToPlStmt::PplanBitmapAccessPath
+//
+//	@doc:
+//		Translate the tree of bitmap index operators that are under the given
+//		(dynamic) bitmap table scan.
+//
+//---------------------------------------------------------------------------
+Plan *
+CTranslatorDXLToPlStmt::PplanBitmapAccessPath
+	(
+	const CDXLNode *pdxlnBitmapAccessPath,
+	CDXLTranslateContext *pdxltrctxOut,
+	const IMDRelation *pmdrel,
+	const CDXLTableDescr *pdxltabdesc,
+	CDXLTranslateContextBaseTable *pdxltrctxbt,
+	BitmapTableScan *pdbts
+	)
+{
+	Edxlopid edxlopid = pdxlnBitmapAccessPath->Pdxlop()->Edxlop();
+	if (EdxlopScalarBitmapIndexProbe == edxlopid)
+	{
+		return PplanBitmapIndexProbe
+				(
+				pdxlnBitmapAccessPath,
+				pdxltrctxOut,
+				pmdrel,
+				pdxltabdesc,
+				pdxltrctxbt,
+				pdbts
+				);
+	}
+	GPOS_ASSERT(EdxlopScalarBitmapBoolOp == edxlopid);
+
+	return PplanBitmapBoolOp
+			(
+			pdxlnBitmapAccessPath, 
+			pdxltrctxOut, 
+			pmdrel, 
+			pdxltabdesc, 
+			pdxltrctxbt, 
+			pdbts
+			);
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CTranslatorDXLToScalar::PplanBitmapBoolOp
+//
+//	@doc:
+//		Translates a DML bitmap bool op expression 
+//
+//---------------------------------------------------------------------------
+Plan *
+CTranslatorDXLToPlStmt::PplanBitmapBoolOp
+	(
+	const CDXLNode *pdxlnBitmapBoolOp,
+	CDXLTranslateContext *pdxltrctxOut,
+	const IMDRelation *pmdrel,
+	const CDXLTableDescr *pdxltabdesc,
+	CDXLTranslateContextBaseTable *pdxltrctxbt,
+	BitmapTableScan *pdbts
+	)
+{
+	GPOS_ASSERT(NULL != pdxlnBitmapBoolOp);
+	GPOS_ASSERT(EdxlopScalarBitmapBoolOp == pdxlnBitmapBoolOp->Pdxlop()->Edxlop());
+
+	CDXLScalarBitmapBoolOp *pdxlop = CDXLScalarBitmapBoolOp::PdxlopConvert(pdxlnBitmapBoolOp->Pdxlop());
+	
+	CDXLNode *pdxlnLeft = (*pdxlnBitmapBoolOp)[0];
+	CDXLNode *pdxlnRight = (*pdxlnBitmapBoolOp)[1];
+	
+	Plan *pplanLeft = PplanBitmapAccessPath(pdxlnLeft, pdxltrctxOut, pmdrel, pdxltabdesc, pdxltrctxbt, pdbts);
+	Plan *pplanRight = PplanBitmapAccessPath(pdxlnRight, pdxltrctxOut, pmdrel, pdxltabdesc, pdxltrctxbt, pdbts);
+	List *plChildPlans = ListMake2(pplanLeft, pplanRight);
+
+	Plan *pplan = NULL;
+	
+	if (CDXLScalarBitmapBoolOp::EdxlbitmapAnd == pdxlop->Edxlbitmapboolop())
+	{
+		BitmapAnd *bitmapand = MakeNode(BitmapAnd);
+		bitmapand->bitmapplans = plChildPlans;
+		bitmapand->plan.targetlist = NULL;
+		bitmapand->plan.qual = NULL;
+		pplan = (Plan *) bitmapand;
+	}
+	else
+	{
+		BitmapOr *bitmapor = MakeNode(BitmapOr);
+		bitmapor->bitmapplans = plChildPlans;
+		bitmapor->plan.targetlist = NULL;
+		bitmapor->plan.qual = NULL;
+		pplan = (Plan *) bitmapor;
+	}
+	
+	
+	return pplan;
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CTranslatorDXLToPlStmt::PplanBitmapIndexProbe
+//
+//	@doc:
+//		Translate CDXLScalarBitmapIndexProbe into BitmapIndexScan
+//
+//---------------------------------------------------------------------------
+Plan *
+CTranslatorDXLToPlStmt::PplanBitmapIndexProbe
+	(
+	const CDXLNode *pdxlnBitmapIndexProbe,
+	CDXLTranslateContext *pdxltrctxOut,
+	const IMDRelation *pmdrel,
+	const CDXLTableDescr *pdxltabdesc,
+	CDXLTranslateContextBaseTable *pdxltrctxbt,
+	BitmapTableScan *pdbts
+	)
+{
+	CDXLScalarBitmapIndexProbe *pdxlopScalar =
+			CDXLScalarBitmapIndexProbe::PdxlopConvert(pdxlnBitmapIndexProbe->Pdxlop());
+
+	BitmapIndexScan *pbis = MakeNode(BitmapIndexScan);
+	pbis->scan.scanrelid = pdbts->scan.scanrelid;
+	pbis->scan.partIndex = pdbts->scan.partIndex;
+
+	CMDIdGPDB *pmdidIndex = CMDIdGPDB::PmdidConvert(pdxlopScalar->Pdxlid()->Pmdid());
+	const IMDIndex *pmdindex = m_pmda->Pmdindex(pmdidIndex);
+	Oid oidIndex = pmdidIndex->OidObjectId();
+
+	GPOS_ASSERT(InvalidOid != oidIndex);
+	Plan *pplanParent = (Plan *) pdbts;
+	pbis->indexid = oidIndex;
+	OID oidRel = CMDIdGPDB::PmdidConvert(pdxltabdesc->Pmdid())->OidObjectId();
+	pbis->logicalIndexInfo = gpdb::Plgidxinfo(oidRel, oidIndex);
+	Plan *pplan = &(pbis->scan.plan);
+	pplan->plan_node_id = m_pctxdxltoplstmt->UlNextPlanId();
+	pplan->plan_parent_node_id = IPlanId(pplanParent);
+	pplan->nMotionNodes = 0;
+
+	GPOS_ASSERT(1 == pdxlnBitmapIndexProbe->UlArity());
+	CDXLNode *pdxlnIndexCondList = (*pdxlnBitmapIndexProbe)[0];
+	List *plIndexConditions = NIL;
+	List *plIndexOrigConditions = NIL;
+	List *plIndexStratgey = NIL;
+	List *plIndexSubtype = NIL;
+
+	TranslateIndexConditions
+		(
+		pdxlnIndexCondList,
+		pdxltabdesc,
+		false /*fIndexOnlyScan*/,
+		pmdindex,
+		pmdrel,
+		pdxltrctxOut,
+		pdxltrctxbt,
+		NULL,  // pdrgpdxltrctxPrevSiblings
+		pplan,
+		&plIndexConditions,
+		&plIndexOrigConditions,
+		&plIndexStratgey,
+		&plIndexSubtype
+		);
+
+	pbis->indexqual = plIndexConditions;
+	pbis->indexqualorig = plIndexOrigConditions;
+	pbis->indexstrategy = plIndexStratgey;
+	pbis->indexsubtype = plIndexSubtype;
+	SetParamIds(pplan);
+
+	return pplan;
 }
 
 // EOF

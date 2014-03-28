@@ -1775,6 +1775,7 @@ CTranslatorDXLToScalar::PexprDMLAction
 }
 
 
+
 //---------------------------------------------------------------------------
 //	@function:
 //		CTranslatorDXLToScalar::OidFunctionReturnType

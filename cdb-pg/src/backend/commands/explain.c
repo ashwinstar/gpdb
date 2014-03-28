@@ -1084,6 +1084,9 @@ explain_outNode(StringInfo str,
 			else
 				pname = "Bitmap Append-Only Column-Oriented Scan";
 			break;
+		case T_BitmapTableScan:
+			pname = "Bitmap Table Scan";
+			break;
 		case T_TidScan:
 			pname = "Tid Scan";
 			break;
@@ -1256,6 +1259,7 @@ explain_outNode(StringInfo str,
 		case T_DynamicIndexScan:
 		case T_BitmapHeapScan:
 		case T_BitmapAppendOnlyScan:
+		case T_BitmapTableScan:
 		case T_TidScan:
 			if (((Scan *) plan)->scanrelid > 0)
 			{
@@ -1427,19 +1431,32 @@ explain_outNode(StringInfo str,
 			break;
 		case T_BitmapHeapScan:
 		case T_BitmapAppendOnlyScan:
+		case T_BitmapTableScan:
 			/* XXX do we want to show this in production? */
 			if (nodeTag(plan) == T_BitmapHeapScan)
+			{
 				show_scan_qual(((BitmapHeapScan *) plan)->bitmapqualorig,
 							   "Recheck Cond",
 							   ((Scan *) plan)->scanrelid,
 							   plan, outer_plan,
 							   str, indent, es);
+			}
 			else if (nodeTag(plan) == T_BitmapAppendOnlyScan)
+			{
 				show_scan_qual(((BitmapAppendOnlyScan *) plan)->bitmapqualorig,
 							   "Recheck Cond",
 							   ((Scan *) plan)->scanrelid,
 							   plan, outer_plan,
 							   str, indent, es);
+			}
+			else if (nodeTag(plan) == T_BitmapTableScan)
+			{
+				show_scan_qual(((BitmapTableScan *) plan)->bitmapqualorig,
+							   "Recheck Cond",
+							   ((Scan *) plan)->scanrelid,
+							   plan, outer_plan,
+							   str, indent, es);
+			}
 			/* FALL THRU */
 		case T_SeqScan:
 		case T_ExternalScan:
