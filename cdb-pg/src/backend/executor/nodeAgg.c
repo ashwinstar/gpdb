@@ -1861,9 +1861,9 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 		AclResult	aclresult;
 		Oid			transfn_oid = InvalidOid,
 					finalfn_oid = InvalidOid;
-		Expr	   *transfnexpr,
-				   *finalfnexpr,
-				   *prelimfnexpr;
+		Expr	   *transfnexpr = NULL,
+				   *finalfnexpr = NULL,
+				   *prelimfnexpr = NULL;
 		Datum		textInitVal;
 		int			i;
 		ListCell   *lc;
@@ -2025,7 +2025,7 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 								aggref->aggtype,
 								transfn_oid,
 								finalfn_oid,
-								InvalidOid /* prelim */,
+								peraggstate->prelimfn_oid /* prelim */,
 								InvalidOid /* invtrans */,
 								InvalidOid /* invprelim */,
 								&transfnexpr,
