@@ -412,6 +412,7 @@ CTranslatorUtils::FCatalogFunc
 	{
 		1269, //pg_column_size
 		1371, //pg_lock_status
+		1387, //pg_get_constraintdef
 		1716, //pg_get_expr
 		2168, //pg_database_size
 		2286, //pg_total_relation_size
@@ -422,6 +423,7 @@ CTranslatorUtils::FCatalogFunc
 		2323, //pg_tablespace_size
 		2324, //pg_database_size
 		2325, //pg_relation_size
+		2508, //pg_get_constraintdef
 		2509, //pg_get_expr
 		5024, //pg_get_partition_def
 		5025, //pg_get_partition_def
