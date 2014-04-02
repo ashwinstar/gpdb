@@ -8,7 +8,11 @@
 extern Datum gp_build_logical_index_info(PG_FUNCTION_ARGS);
 extern Datum gp_get_physical_index_relid(PG_FUNCTION_ARGS);
 
-#define NUM_COLS 8
+/*
+ * number of output columns for the UDF for retrieving indexes on partitioned
+ * tables
+ */
+#define NUM_COLS 9
 
 /*
  * gp_build_logical_index_info
@@ -69,6 +73,9 @@ gp_build_logical_index_info(PG_FUNCTION_ARGS)
 
 		TupleDescInitEntry(tupdesc, (AttrNumber) 8, "defaultLevels",
 					TEXTOID, -1, 0);
+		
+		TupleDescInitEntry(tupdesc, (AttrNumber) 9, "indType",
+				INT2OID, -1, 0);
 
 		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
 
@@ -158,6 +165,9 @@ gp_build_logical_index_info(PG_FUNCTION_ARGS)
 		else
 			nulls[7] = true;
 
+		values[8] = li->indType;
+		nulls[8] = false;
+		
 		/* build tuple */
 		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
 
