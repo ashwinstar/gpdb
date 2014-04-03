@@ -563,7 +563,7 @@ fill_buffer(URL_FILE *file, int want)
 		{
 			if (errno == EINTR || errno == EAGAIN) 
 			{
-				elog(WARNING, "select failed on curl_multi_fdset (maxfd %d) (%d - %s)", maxfd, errno, strerror(errno));
+				elog(DEBUG2, "select failed on curl_multi_fdset (maxfd %d) (%d - %s)", maxfd, errno, strerror(errno));
 				continue;
 			}
 			elog(ERROR, "internal error: select failed on curl_multi_fdset (maxfd %d) (%d - %s)",
