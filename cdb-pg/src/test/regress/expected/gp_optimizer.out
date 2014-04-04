@@ -8538,6 +8538,7 @@ select count(*) from (select gp_segment_id,ctid,tableoid from orca.p1 group by g
  count 
 -------
     14
+(1 row)
 
 -- Arrayref
 drop table if exists orca.arrtest;
