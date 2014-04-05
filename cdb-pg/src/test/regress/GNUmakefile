@@ -86,9 +86,14 @@ all: all-lib
 # Test input and expected files.  These are created by pg_regress itself, so we
 # don't have a rule to create them.  We do need rules to clean them however.
 ifile_list := $(subst .source,, $(notdir $(wildcard $(top_srcdir)/$(subdir)/input/*.source)))
-input_files  := $(foreach file, $(ifile_list), sql/$(file).sql, bugbuster/sql/$(file).sql)
+input_files  := $(foreach file, $(ifile_list), sql/$(file).sql)
+bb_ifile_list := $(subst .source,, $(notdir $(wildcard $(top_srcdir)/$(subdir)/bugbuster/input/*.source)))
+bb_input_files := $(foreach file, $(bb_ifile_list), bugbuster/sql/$(file).sql)
 ofile_list := $(subst .source,, $(notdir $(wildcard $(top_srcdir)/$(subdir)/output/*.source)))
-output_files := $(foreach file, $(ofile_list), expected/$(file).out,bugbuster/expected/$(file).out)
+output_files := $(foreach file, $(ofile_list), expected/$(file).out)
+bb_ofile_list := $(subst .source,, $(notdir $(wildcard $(top_srcdir)/$(subdir)/bugbuster/output/*.source)))
+bb_output_files := $(foreach file, $(bb_ofile_list), bugbuster/expected/$(file).out)
+
 
 ifneq ($(PORTNAME),win32)
 abs_srcdir := $(shell cd $(srcdir) && pwd)
@@ -239,6 +244,7 @@ clean distclean maintainer-clean: clean-lib
 	rm -f $(NAME)$(DLSUFFIX) $(OBJS)
 	$(MAKE) -C $(contribdir)/spi clean
 	rm -f $(output_files) $(input_files) pg_regress_main.o pg_regress.o pg_regress$(X)
+	rm -f $(bb_output_files) $(bb_input_files)
 # things created by dynamic configs
 	rm -f ./current_good_schedule
 	rm -f ./bugbuster/current_good_schedule
