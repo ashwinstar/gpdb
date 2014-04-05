@@ -403,6 +403,9 @@ fi
 AC_PROG_CPP
 AC_SUBST(GCC)
 
+[BLD_ARCH=`echo $BLD_ARCH`]
+AC_SUBST(BLD_ARCH)
+
 # Get the Greenplum version string from ../VERSION
 # If there is no VERSION file, set the version to devel
 if [[ -f ../VERSION ]] ; then

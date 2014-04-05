@@ -4,7 +4,8 @@
 case "`uname -s`" in
 
     Darwin)
-    BLD_ARCH_HOST=`system_profiler SPSoftwareDataType | grep "System Version:" | awk ' {print tolower($4) tolower($5) $6}' | awk -F. ' {print $1 $2}'`_`uname -p | sed -e s/i386/x86/`
+    # Currently we build any OSX version as 10.5.
+    BLD_ARCH_HOST=osx105_x86
     ;;
 
     Linux)

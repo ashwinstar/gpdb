@@ -709,6 +709,7 @@ enable_snmp
 autodepend
 TAS
 GP_MAJORVERSION
+BLD_ARCH
 GCC
 CPP
 SUN_STUDIO_CC
@@ -4626,6 +4627,9 @@ ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
 ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
 ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
+
+
+BLD_ARCH=`echo $BLD_ARCH`
 
 
 # Get the Greenplum version string from ../VERSION

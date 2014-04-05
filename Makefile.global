@@ -6,11 +6,6 @@ ifeq "$(BLD_ARCH)" ""
 export BLD_ARCH:=$(shell $(BLD_TOP)/releng/set_bld_arch.sh)
 endif
 
-# map builds on Snow Leopard to act like builds on Leopard, for now
-ifeq "$(BLD_ARCH)" "osx106_x86"
-export BLD_ARCH=osx105_x86
-endif
-
 # map builds on OpenSUSE to look like SUSE enterprise 10, for now
 ifeq "$(BLD_ARCH)" "suse11.4_x86_64"
 export BLD_ARCH=suse10_x86_64
