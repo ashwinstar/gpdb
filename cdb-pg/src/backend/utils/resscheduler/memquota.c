@@ -1032,6 +1032,17 @@ PolicyEagerFreeAssignOperatorMemoryKB(PlannedStmt *stmt, uint64 memAvailableByte
 	ctx.groupNode = NULL;
 	ctx.nextGroupId = 0;
 
+	/*
+	 * Check if memory exceeds the limit in the root group
+	 */
+	const uint64 nonMemIntenseOpMemKB = (uint64)gp_resqueue_memory_policy_auto_fixed_mem;
+	if (ctx.groupTree->groupMemKB < ctx.groupTree->numNonMemIntenseOps * nonMemIntenseOpMemKB)
+	{
+		ereport(ERROR,
+			(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
+			errmsg("insufficient memory reserved for statement")));
+	}
+
 #ifdef USE_ASSERT_CHECKING
 	result = 
 #endif			 
