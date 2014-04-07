@@ -4461,6 +4461,15 @@ static struct config_int ConfigureNamesInt[] =
 		1000, 25, INT_MAX, NULL, NULL
 	},
 
+	{
+		{"gp_workfile_limit_files_per_query", PGC_USERSET, RESOURCES,
+			gettext_noop("Maximum number of workfiles allowed per query per segment."),
+			gettext_noop("0 for no limit. Current query is terminated when limit is exceeded."),
+			GUC_GPDB_ADDOPT | GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		},
+		&gp_workfile_limit_files_per_query,
+		100000, 0, INT_MAX, NULL, NULL,
+	},
 
 #ifdef LOCK_DEBUG
 	{

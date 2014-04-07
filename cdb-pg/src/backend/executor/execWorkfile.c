@@ -46,6 +46,13 @@ ExecWorkFile_Create(const char *fileName,
 	ExecWorkFile *workfile = NULL;
 	void *file = NULL;
 
+	/* Before creating a new file, let's check the limit on number of workfile created */
+	if (!WorkfileQueryspace_AddWorkfile())
+	{
+		/* Failed to reserve additional disk space, notify caller */
+		workfile_mgr_report_error();
+	}
+
 	/*
 	 * Create ExecWorkFile in the TopMemoryContext since this memory context
 	 * is still available when calling the transaction callback at the

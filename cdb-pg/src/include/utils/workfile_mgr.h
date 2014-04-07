@@ -156,6 +156,9 @@ typedef struct QueryspaceDesc
 
 	/* Number of memory chunks reserved for per-query QEs in this segment */
 	int chunksReserved;
+
+	/* Number of workfiles this query has created */
+	int32 workfilesCreated;
 } QueryspaceDesc;
 
 /* Workfile Set operations */
@@ -206,6 +209,7 @@ int32 PerQueryMemory_TotalChunksReserved(void);
 void WorkfileQueryspace_Commit(int64 commit_bytes, int64 reserved_bytes);
 QueryspaceDesc *WorkfileQueryspace_InitEntry(int session_id, int command_count);
 void WorkfileQueryspace_ReleaseEntry(void);
+bool WorkfileQueryspace_AddWorkfile(void);
 
 /* Serialization functions */
 void outfuncs_workfile_mgr_init(List *rtable);
@@ -221,6 +225,7 @@ typedef enum WorkfileError
 {
 	WORKFILE_ERROR_LIMIT_PER_QUERY,
 	WORKFILE_ERROR_LIMIT_PER_SEGMENT,
+	WORKFILE_ERROR_LIMIT_FILES_PER_QUERY,
 	WORKFILE_ERROR_UNKNOWN,
 } WorkfileError;
 

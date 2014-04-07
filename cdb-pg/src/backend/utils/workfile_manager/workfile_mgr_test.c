@@ -27,6 +27,9 @@
 #define TEST_NAME_LENGTH 50
 #define TEST_HT_NUM_ELEMENTS 8192
 
+/* Number of Workfiles created during the "stress" workfile test */
+#define TEST_MAX_NUM_WORKFILES 100000
+
 typedef struct TestSyncHTElt
 {
 	char key[TEST_NAME_LENGTH];
@@ -77,6 +80,8 @@ static bool fd_large_file_test(void);
 static bool execworkfile_create_one_MB_file(void);
 static bool workfile_queryspace(void);
 static bool workfile_fill_sharedcache(void);
+static bool workfile_create_and_set_cleanup(void);
+static bool workfile_create_and_individual_cleanup(void);
 
 static bool atomic_test(void);
 
@@ -125,6 +130,8 @@ static test_def test_defns[] = {
 		{"execworkfile_create_one_MB_file",execworkfile_create_one_MB_file},
 		{"workfile_queryspace", workfile_queryspace},
 		{"workfile_fill_sharedcache", workfile_fill_sharedcache},
+		{"workfile_create_and_set_cleanup", workfile_create_and_set_cleanup},
+		{"workfile_create_and_individual_cleanup", workfile_create_and_individual_cleanup},
 		{NULL, NULL}, /* This has to be the last element of the array */
 };
 
@@ -2186,6 +2193,114 @@ workfile_fill_sharedcache(void)
 
 	return unit_test_summary();
 
+}
+
+/*
+ * Unit test that creates very many workfiles, and then cleans them up
+ */
+static bool
+workfile_create_and_set_cleanup(void)
+{
+	bool success = true;
+
+	unit_test_reset();
+	elog(LOG, "Running test: workfile_create_and_set_cleanup");
+
+	elog(LOG, "Running sub-test: Create Workset");
+
+	workfile_set *work_set = workfile_mgr_create_set(BUFFILE,
+			false /* can_be_reused */, NULL /* PlanState */, NULL_SNAPSHOT);
+
+	unit_test_result(NULL != work_set);
+
+	elog(LOG, "Running sub-test: Create %d workfiles", TEST_MAX_NUM_WORKFILES);
+
+	ExecWorkFile **ewfiles = (ExecWorkFile **) palloc(TEST_MAX_NUM_WORKFILES * sizeof(ExecWorkFile *));
+
+	for (int i=0; i < TEST_MAX_NUM_WORKFILES; i++)
+	{
+		ewfiles[i] = workfile_mgr_create_file(work_set);
+
+		if (ewfiles[i] == NULL)
+		{
+			success = false;
+			break;
+		}
+
+		if (i % 1000 == 999)
+		{
+			elog(LOG, "Created %d workfiles so far", i);
+		}
+	}
+	unit_test_result(success);
+
+	elog(LOG, "Running sub-test: Closing Workset");
+	workfile_mgr_close_set(work_set);
+
+	unit_test_result(true);
+
+	return unit_test_summary();
+}
+
+
+/*
+ * Unit test that creates very many workfiles, and then closes them one by one
+ */
+static bool
+workfile_create_and_individual_cleanup(void)
+{
+	bool success = true;
+
+	unit_test_reset();
+	elog(LOG, "Running test: workfile_create_and_individual_cleanup");
+
+	elog(LOG, "Running sub-test: Create Workset");
+
+	workfile_set *work_set = workfile_mgr_create_set(BUFFILE,
+			false /* can_be_reused */, NULL /* PlanState */, NULL_SNAPSHOT);
+
+	unit_test_result(NULL != work_set);
+
+	elog(LOG, "Running sub-test: Create %d workfiles", TEST_MAX_NUM_WORKFILES);
+
+	ExecWorkFile **ewfiles = (ExecWorkFile **) palloc(TEST_MAX_NUM_WORKFILES * sizeof(ExecWorkFile *));
+
+	for (int i=0; i < TEST_MAX_NUM_WORKFILES; i++)
+	{
+		ewfiles[i] = workfile_mgr_create_file(work_set);
+
+		if (ewfiles[i] == NULL)
+		{
+			success = false;
+			break;
+		}
+
+		if (i % 1000 == 999)
+		{
+			elog(LOG, "Created %d workfiles so far", i);
+		}
+	}
+	unit_test_result(success);
+
+	elog(LOG, "Running sub-test: Closing %d workfiles", TEST_MAX_NUM_WORKFILES);
+
+	for (int i=0; i < TEST_MAX_NUM_WORKFILES; i++)
+	{
+		workfile_mgr_close_file(work_set, ewfiles[i]);
+
+		if (i % 1000 == 999)
+		{
+			elog(LOG, "Closed %d workfiles so far", i);
+		}
+	}
+	unit_test_result(success);
+
+	elog(LOG, "Running sub-test: Closing Workset");
+	workfile_mgr_close_set(work_set);
+
+	unit_test_result(true);
+
+	return unit_test_summary();
 }
 
 static bool

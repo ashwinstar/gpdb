@@ -254,6 +254,36 @@ WorkfileQueryspace_Commit(int64 commit_bytes, int64 reserved_bytes)
 }
 
 /*
+ * Increment the number of workfiles created and check
+ * if the limit has been reached.
+ *
+ * Returns true if we're still below the limit, false if we hit the limit.
+ */
+bool
+WorkfileQueryspace_AddWorkfile(void)
+{
+	if (NULL == queryEntry)
+	{
+		/*
+		 * Did not find entry for this query, it must be a utility query
+		 * that is spilling. No enforcing of per-query disk limit for these.
+		 */
+		return true;
+	}
+
+	int32 workfilesCreated = gp_atomic_add_32(&queryEntry->workfilesCreated, 1);
+
+	if (gp_workfile_limit_files_per_query > 0 &&
+			workfilesCreated > gp_workfile_limit_files_per_query)
+	{
+		workfileError = WORKFILE_ERROR_LIMIT_FILES_PER_QUERY;
+		return false;
+	}
+
+	return true;
+}
+
+/*
  * Initializes and returns the Queryspace entry for this query.
  *
  * If the entry already exists, it returns the existing one, otherwise
@@ -269,9 +299,11 @@ WorkfileQueryspace_InitEntry(int session_id, int command_count)
 	 * enforce any vmem limit) we already executed GPMemoryProtectInit(),
 	 * where max_chunks_per_query is derived from gp_vmem_limit_per_query.
 	 */
-	if (gp_workfile_limit_per_query == 0 && max_chunks_per_query == 0)
+	if (gp_workfile_limit_per_query == 0
+			&& max_chunks_per_query == 0
+			&& gp_workfile_limit_files_per_query == 0)
 	{
-		/* Per-query limit not enforced, don't allocate hashtable entry */
+		/* Per-query limits not enforced, don't allocate hashtable entry */
 		return NULL;
 	}
 
@@ -396,5 +428,6 @@ initQueryspaceElt(void *entry)
 	QueryspaceDesc *hashElt = (QueryspaceDesc *) entry;
 	hashElt->queryDiskspace = 0L;
 	hashElt->chunksReserved = 0;
+	hashElt->workfilesCreated = 0;
 	hashElt->pinCount = 0;
 }

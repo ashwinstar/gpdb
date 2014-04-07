@@ -1059,6 +1059,7 @@ extern bool gp_workfile_checksumming;
 extern bool gp_workfile_caching;
 extern double gp_workfile_limit_per_segment;
 extern double gp_workfile_limit_per_query;
+extern int gp_workfile_limit_files_per_query;
 extern int gp_workfile_caching_loglevel;
 extern bool gp_workfile_faultinject;
 extern int gp_workfile_bytes_to_checksum;

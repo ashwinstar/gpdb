@@ -1091,6 +1091,9 @@ workfile_mgr_report_error(void)
 		case WORKFILE_ERROR_LIMIT_PER_SEGMENT:
 				message = "workfile per segment size limit exceeded";
 				break;
+		case WORKFILE_ERROR_LIMIT_FILES_PER_QUERY:
+				message = "number of workfiles per query limit exceeded";
+				break;
 		default:
 				message = "could not write to workfile";
 				break;
