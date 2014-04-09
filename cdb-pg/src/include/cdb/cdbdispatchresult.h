@@ -11,6 +11,7 @@
 #ifndef CDBDISPATCHRESULT_H
 #define CDBDISPATCHRESULT_H
 
+#include "cdb/cdbdisp.h"
 #include "commands/tablecmds.h"
 #include "utils/hsearch.h"
 
@@ -55,7 +56,7 @@ typedef struct CdbDispatchResult
 
     bool                hasDispatched;  /* true => PQsendCommand done */
     bool                stillRunning;   /* true => busy in dispatch thread */
-    bool                requestedCancel; /*true => called PQrequestCancel */
+    DispatchWaitMode    sentSignal;     /* type of signal sent */
     bool                wasCanceled;    /* true => got any of these errors:
                                          *  ERRCODE_GP_OPERATION_CANCELED
                                          *  ERRCODE_QUERY_CANCELED

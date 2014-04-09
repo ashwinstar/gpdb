@@ -813,6 +813,15 @@ ExecProcNode(PlanState *node)
 
 	CHECK_FOR_INTERRUPTS();
 
+	/*
+	 * Even if we are requested to finish query, Motion has to do its work
+	 * to tell End of Stream message to upper slice.  He will probably get
+	 * NULL tuple from underlying operator by calling another ExecProcNode,
+	 * so one additional operator execution should not be a big hit.
+	 */
+	if (QueryFinishPending && !IsA(node, MotionState))
+		return NULL;
+
 #ifdef CDB_TRACE_EXECUTOR
 	ExecCdbTraceNode(node, true, NULL);
 #endif   /* CDB_TRACE_EXECUTOR */
@@ -980,6 +989,9 @@ Exec_Jmp_Done:
 #else
 
 	CHECK_FOR_INTERRUPTS();
+
+	if (QueryFinishPending && !IsA(node, MotionState))
+		return NULL;
 
 #ifdef CDB_TRACE_EXECUTOR
 	ExecCdbTraceNode(node, true, NULL);

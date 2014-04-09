@@ -297,6 +297,9 @@ BitmapAppendOnlyScanNext(BitmapAppendOnlyScanState *node)
 	{
 		CHECK_FOR_INTERRUPTS();
 
+		if (QueryFinishPending)
+			return NULL;
+
 		if (!node->baos_gotpage)
 		{
 			/*

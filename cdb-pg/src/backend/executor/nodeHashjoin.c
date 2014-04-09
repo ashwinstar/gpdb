@@ -860,6 +860,9 @@ ExecHashJoinOuterGetTuple(PlanState *outerNode,
 		 */
 		CHECK_FOR_INTERRUPTS();
 
+		if (QueryFinishPending)
+			return NULL;
+
 		slot = ExecHashJoinGetSavedTuple(&hashtable->batches[curbatch]->outerside,
 										 hashvalue,
 										 hjstate->hj_OuterTupleSlot);
@@ -1021,6 +1024,9 @@ start_over:
 	    for (;;)
 	    {
 		    CHECK_FOR_INTERRUPTS();
+
+			if (QueryFinishPending)
+				return nbatch;
 
 		    slot = ExecHashJoinGetSavedTuple(&batch->innerside,
 				    &hashvalue,

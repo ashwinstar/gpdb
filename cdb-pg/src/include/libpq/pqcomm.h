@@ -186,6 +186,15 @@ typedef uint32 AuthRequest;
  */
 #define CANCEL_REQUEST_CODE PG_PROTOCOL(1234,5678)
 
+/*
+ * query-finish operation is a special message betweeen QD and QE, used to
+ * indicate that QD is successfully finishing the current query so that
+ * QE can finish its work at the earliest point.  Though executor has
+ * a way to squelch QEs, it is necessary to have asynchronous message
+ * by signal.
+ */
+#define FINISH_REQUEST_CODE PG_PROTOCOL(1234,5677)
+
 typedef struct CancelRequestPacket
 {
 	/* Note that each field is stored in network byte order! */

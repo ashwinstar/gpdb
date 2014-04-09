@@ -281,6 +281,19 @@ ExecMotion(MotionState * node)
 		else
 			tuple = execMotionUnsortedReceiver(node);
 
+		/*
+		 * We tell the upper node as if this was the end of tuple stream
+		 * if query-finish is requested.  Unlike other nodes, we skipped
+		 * this check in ExecProc because this node in sender mode should
+		 * send EoS to the receiver side, but the receiver side can
+		 * simply stop processing the stream.  The sender side of this
+		 * stream could still be sending more tuples, but this slice will
+		 * eventually clean up the executor and eventually Stop message
+		 * will be delivered to the sender side.
+		 */
+		if (QueryFinishPending)
+			tuple = NULL;
+
 		if (tuple == NULL)
 			node->ps.state->active_recv_id = -1;
 		else

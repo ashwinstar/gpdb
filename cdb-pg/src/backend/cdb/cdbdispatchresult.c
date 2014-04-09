@@ -186,7 +186,7 @@ cdbdisp_resetResult(CdbDispatchResult  *dispatchResult)
     /* Reset progress indicators. */
     dispatchResult->hasDispatched = false;
     dispatchResult->stillRunning = false;
-    dispatchResult->requestedCancel = false;
+    dispatchResult->sentSignal = DISPATCH_WAIT_NONE;
     dispatchResult->wasCanceled = false;
 
     /* Empty (but don't free) the error message buffer and result buffer. */
@@ -238,7 +238,7 @@ cdbdisp_seterrcode(int                  errcode,        /* ERRCODE_xxx or 0 */
      * they are secondary to an earlier and more interesting error.
      */
     if (errcode == ERRCODE_GP_OPERATION_CANCELED &&
-        dispatchResult->requestedCancel)
+        dispatchResult->sentSignal == DISPATCH_WAIT_CANCEL)
     {}                          /* nop */
 
     else if (meleeResults->errcode == 0 || 

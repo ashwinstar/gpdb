@@ -1324,7 +1324,8 @@ tuplesort_performsort_mk(Tuplesortstate_mk *state)
     		 * If we're planning to reuse the spill files from this sort,
     		 * save metadata here and mark work_set complete.
     		 */
-    		if (gp_workfile_caching && state->work_set)
+    		if (gp_workfile_caching && state->work_set &&
+				!QueryFinishPending)
     		{
     			tuplesort_write_spill_metadata_mk(state);
 
@@ -1368,6 +1369,15 @@ tuplesort_gettuple_common_pos(Tuplesortstate_mk *state, TuplesortPos_mk *pos,
     bool fOK;
 
     Assert(is_under_sort_ctxt(state));
+
+	/*
+	 * No output if we are told to finish execution.
+	 */
+	if (QueryFinishPending)
+	{
+		*should_free = false;
+		return false;
+	}
 
     switch (state->status)
     {
@@ -1873,6 +1883,12 @@ mergeruns(Tuplesortstate_mk *state)
 
     Assert(state->status == TSS_BUILDRUNS);
 
+	if (QueryFinishPending)
+	{
+		state->status = TSS_SORTEDONTAPE;
+		return;
+	}
+
 #ifdef FAULT_INJECTOR
     /*
      * MPP-18288: We're injecting an interrupt here. We have to hold interrupts
@@ -1963,6 +1979,19 @@ mergeruns(Tuplesortstate_mk *state)
                 state->tp_dummy[state->tapeRange - 1])
         {
             bool		allDummy = true;
+
+			/*
+			 * We stop processing the input if we are asked to finish.
+			 * Although we haven't finished on each tape yet,
+			 * we will safely clean them up.  Make sure we don't
+			 * get into this code path again.
+			 */
+			if (QueryFinishPending)
+			{
+				/* pretend we are done */
+				state->status = TSS_SORTEDONTAPE;
+				return;
+			}
 
             for (tapenum = 0; tapenum < state->tapeRange; tapenum++)
             {
@@ -2318,7 +2347,12 @@ dumptuples_mk(Tuplesortstate_mk *state, bool alltuples)
     Assert(state->mkheap);
     while (1)
     {
-        if (mkheap_empty(state->mkheap)) 
+
+		/*
+		 * Done if we heap is empty, or pretend so if we are
+		 * told to finish execution.
+		 */
+        if (mkheap_empty(state->mkheap) || QueryFinishPending)
         {
             markrunend(state, state->tp_tapenum[state->destTape]);
             state->currentRun++;
@@ -3522,8 +3556,12 @@ static void tuplesort_limit_sort(Tuplesortstate_mk *state)
         for(i=0; i<state->entry_allocsize; ++i)
             mke_set_comp_max(state->entries+i); 
 
-        for(i=state->entry_allocsize-1; i>=0; --i)
-            mkheap_putAndGet(state->mkheap, state->entries+i);
+		for(i = state->entry_allocsize-1; i >= 0; --i)
+		{
+			if (QueryFinishPending)
+				break;
+			mkheap_putAndGet(state->mkheap, state->entries+i);
+		}
 
         Assert(mkheap_cnt(state->mkheap) == 0);
         state->entry_count = state->entry_allocsize;

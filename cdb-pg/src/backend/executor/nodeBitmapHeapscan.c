@@ -238,6 +238,9 @@ BitmapHeapNext(BitmapHeapScanState *node)
 		{
 			CHECK_FOR_INTERRUPTS();
 
+			if (QueryFinishPending)
+				return NULL;
+
 			if (tbm == NULL)
 				more = false;
 			else

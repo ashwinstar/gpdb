@@ -517,7 +517,8 @@ ExplainOnePlan_internal(PlannedStmt *plannedstmt,
         {
             if (estate->dispatcherState && estate->dispatcherState->primaryResults)
 			{
-                CdbCheckDispatchResult(estate->dispatcherState, false); 
+				CdbCheckDispatchResult(estate->dispatcherState,
+									   DISPATCH_WAIT_NONE);
 			}
         }
         PG_CATCH();

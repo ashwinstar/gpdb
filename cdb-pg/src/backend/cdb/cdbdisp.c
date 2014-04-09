@@ -95,11 +95,10 @@ static bool thread_DispatchOut(DispatchCommandParms		*pParms);
 static void thread_DispatchWait(DispatchCommandParms	*pParms);
 static void thread_DispatchWaitSingle(DispatchCommandParms		*pParms);
 
-static void
-CdbCheckDispatchResultInt(struct CdbDispatcherState *ds,
-						  struct SegmentDatabaseDescriptor   ***failedSegDB,
-                          int          *numOfFailed,
-                          bool          cancelUnfinishedWork);
+static void CdbCheckDispatchResultInt(struct CdbDispatcherState *ds,
+						  struct SegmentDatabaseDescriptor ***failedSegDB,
+						  int *numOfFailed,
+						  DispatchWaitMode waitMode);
 
 static bool
 shouldStillDispatchCommand(DispatchCommandParms *pParms, CdbDispatchResult * dispatchResult);
@@ -644,13 +643,6 @@ cdbdisp_dispatchToGang(struct CdbDispatcherState *ds,
 				continue;
 		}
 
-//		if (mppDispatchCommandType == GP_DISPATCH_COMMAND_TYPE_QUERY)
-//		{
-//			MarkSendingToSegment(
-//				 segdbDesc->segment_database_info->segindex,
-//				 segdbDesc->segment_database_info->isprimary);
-//		}
-
 		/* Initialize the QE's CdbDispatchResult object. */
 		qeResult = cdbdisp_makeResult(dispatchResults, segdbDesc, sliceIndex);
 
@@ -741,15 +733,15 @@ cdbdisp_dispatchToGang(struct CdbDispatcherState *ds,
 				 * they'll immediately have some problems -- so we need to
 				 * join them, and *then* we can issue our FATAL error
 				 */
-				pParms->pleaseCancel = true; /* mark the failed thread*/
-	
+				pParms->waitMode = DISPATCH_WAIT_CANCEL;
+
 				for (j = 0; j < ds->dispatchThreads->threadCount + (i - 1); j++)
 				{
 					DispatchCommandParms *pParms;
 	
 					pParms = &ds->dispatchThreads->dispatchCommandParmsAr[j];
 
-					pParms->pleaseCancel = true; /* mark the rest of threads */
+					pParms->waitMode = DISPATCH_WAIT_CANCEL;
 					pParms->thread_valid = false;
 					pthread_join(pParms->thread, NULL);
 				}
@@ -955,16 +947,16 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
  *
  * Waits for completion of threads launched by cdbdisp_dispatchToGang().
  *
- * If 'cancelUnfinishedWork' is true, QEs that were dispatched with
- * 'cancelOnError' true and are not yet idle will be canceled.
+ * QEs that were dispatched with 'cancelOnError' true and are not yet idle
+ * will be canceled/finished according to waitMode.
  */
 void
 CdbCheckDispatchResult(struct CdbDispatcherState *ds,
-					   bool cancelUnfinishedWork)
+					   DispatchWaitMode waitMode)
 {
 	PG_TRY();
 	{
-		CdbCheckDispatchResultInt(ds, NULL, NULL, cancelUnfinishedWork);
+		CdbCheckDispatchResultInt(ds, NULL, NULL, waitMode);
 	}
 	PG_CATCH();
 	{
@@ -996,7 +988,7 @@ static void
 CdbCheckDispatchResultInt(struct CdbDispatcherState *ds,
 						  struct SegmentDatabaseDescriptor *** failedSegDB,
 						  int *numOfFailed,
-						  bool cancelUnfinishedWork)
+						  DispatchWaitMode waitMode)
 {
 	int			i;
 	int			j;
@@ -1028,11 +1020,17 @@ CdbCheckDispatchResultInt(struct CdbDispatcherState *ds,
 		Assert(pParms != NULL);
 
 		/* Does caller want to stop short? */
-		if (cancelUnfinishedWork)
+		switch (waitMode)
 		{
-			pParms->pleaseCancel = true;
+		case DISPATCH_WAIT_CANCEL:
+		case DISPATCH_WAIT_FINISH:
+			pParms->waitMode = waitMode;
+			break;
+		default:
+			/* none */
+			break;
 		}
-		
+
 		if (gp_connections_per_thread==0)
 		{
 			thread_DispatchWait(pParms);
@@ -1123,12 +1121,13 @@ CdbCheckDispatchResultInt(struct CdbDispatcherState *ds,
 	/* reset thread state (will be destroyed later on in finishCommand) */
     ds->dispatchThreads->threadCount = 0;
 			
-	/* It looks like everything went fine, make sure we don't miss a
-	 * user cancellation ?
+	/*
+	 * It looks like everything went fine, make sure we don't miss a
+	 * user cancellation?
 	 *
-	 * The cancelUnfinishedWork argument is true when we're handling
-	 * an error, false when we are doing "normal work" */
-	if (!cancelUnfinishedWork)
+	 * The waitMode argument is NONE when we are doing "normal work".
+	 */
+	if (waitMode == DISPATCH_WAIT_NONE || waitMode == DISPATCH_WAIT_FINISH)
 		CHECK_FOR_INTERRUPTS();
 }	/* cdbdisp_checkDispatchResult */
 
@@ -1237,12 +1236,14 @@ cdbdisp_dispatchRMCommand(const char *strCommand,
 								(struct CdbDispatcherState *)&ds);
 
 		/* Wait for all QEs to finish.	Don't cancel. */
-		CdbCheckDispatchResult((struct CdbDispatcherState *)&ds, false);
+		CdbCheckDispatchResult((struct CdbDispatcherState *)&ds,
+							   DISPATCH_WAIT_NONE);
 	}
 	PG_CATCH();
 	{
 		/* Something happend, clean up after ourselves */
-		CdbCheckDispatchResult((struct CdbDispatcherState *)&ds, false);
+		CdbCheckDispatchResult((struct CdbDispatcherState *)&ds,
+							   DISPATCH_WAIT_NONE);
 
 		cdbdisp_destroyDispatchResults(ds.primaryResults);
 		cdbdisp_destroyDispatchThreads(ds.dispatchThreads);
@@ -1338,7 +1339,7 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 						   primaryGang, -1, 1, direct);
 
 	/* Wait for all QEs to finish.	Don't cancel. */
-	CdbCheckDispatchResult(&ds, false);
+	CdbCheckDispatchResult(&ds, DISPATCH_WAIT_NONE);
 
 	if (!gangOK(primaryGang))
 	{
@@ -1488,7 +1489,7 @@ cdbdisp_finishCommand(struct CdbDispatcherState *ds,
 		return;
 
 	/* Wait for all QEs to finish. Don't cancel them. */
-	CdbCheckDispatchResult(ds, false);
+	CdbCheckDispatchResult(ds, DISPATCH_WAIT_NONE);
 
 	/* If no errors, free the CdbDispatchResults objects and return. */
 	if (ds->primaryResults)
@@ -1564,8 +1565,9 @@ cdbdisp_handleError(struct CdbDispatcherState *ds)
 	 * Request any remaining commands executing on qExecs to stop.
 	 * We need to wait for the threads to finish.  This allows for proper
 	 * cleanup of the results from the async command executions.
+	 * Cancel any QEs still running.
 	 */
-	CdbCheckDispatchResult(ds, true);   /* cancel any QEs still running */
+	CdbCheckDispatchResult(ds, DISPATCH_WAIT_CANCEL);
 
     /*
      * When a QE stops executing a command due to an error, as a
@@ -1794,7 +1796,7 @@ thread_DispatchOut(DispatchCommandParms *pParms)
 		}
 
         dispatchResult->hasDispatched = false;
-        dispatchResult->requestedCancel = false;
+        dispatchResult->sentSignal = DISPATCH_WAIT_NONE;
         dispatchResult->wasCanceled = false;
 
         if (!shouldStillDispatchCommand(pParms, dispatchResult))
@@ -2417,7 +2419,7 @@ shouldStillDispatchCommand(DispatchCommandParms *pParms, CdbDispatchResult * dis
 	 * Don't submit if already encountered an error. The error has already
 	 * been noted, so just keep quiet.
 	 */
-	if (pParms->pleaseCancel || gangResults->errcode)
+	if (pParms->waitMode == DISPATCH_WAIT_CANCEL || gangResults->errcode)
 	{
 		if (gangResults->cancelOnError)
 		{
@@ -2638,34 +2640,48 @@ handlePollError(DispatchCommandParms *pParms,
 	/* No point in trying to cancel the other QEs with select() broken. */
 }	/* handlePollError */
 
-static void
-cdbdisp_issueCancel(SegmentDatabaseDescriptor *segdbDesc, bool *requestFlag)
+/*
+ * Send cancel/finish signal to still-running QE through libpq.
+ * waitMode is either CANCEL or FINISH.  Returns true if we successfully
+ * sent a signal (not necessarily received by the target process).
+ */
+static DispatchWaitMode
+cdbdisp_signalQE(SegmentDatabaseDescriptor *segdbDesc,
+				 DispatchWaitMode waitMode)
 {
 	char errbuf[256];
-	PGcancel * cn = PQgetCancel(segdbDesc->conn);
+	PGcancel *cn = PQgetCancel(segdbDesc->conn);
+	int		ret = 0;
 
-	/* PQcancel uses some strcpy/strcat functions; let's
-	 * clear this for safety */
+	if (cn == NULL)
+		return DISPATCH_WAIT_NONE;
+
+	/*
+	 * PQcancel uses some strcpy/strcat functions; let's
+	 * clear this for safety.
+	 */
 	MemSet(errbuf, 0, sizeof(errbuf));
 
 	if (Debug_cancel_print || DEBUG4 >= log_min_messages)
 		write_log("Calling PQcancel for %s", segdbDesc->whoami);
 
 	/*
-	 * Block here until segment postmaster replies that it has
-	 * carried out the cancellation request, which means signaling
-	 * SIGINT to the QE process, something like: pid =
-	 * PQbackendPID(segdbDesc->conn); kill(pid, SIGINT);
+	 * Send query-finish, unless the client really wants to cancel the
+	 * query.  This could happen if cancel comes after we sent finish.
 	 */
-	if (requestFlag != NULL)
-		*requestFlag = true;
-				
-	if (PQcancel(cn, errbuf, 256) == 0)
-	{	
-		if (Debug_cancel_print || LOG >= log_min_messages)
-			write_log("Unable to cancel: %s", errbuf);
-	}
+	if (waitMode == DISPATCH_WAIT_CANCEL)
+		ret = PQcancel(cn, errbuf, 256);
+	else if (waitMode == DISPATCH_WAIT_FINISH)
+		ret = PQrequestFinish(cn, errbuf, 256);
+	else
+		write_log("unknown waitMode: %d", waitMode);
+
+	if (ret == 0 && (Debug_cancel_print || LOG >= log_min_messages))
+		write_log("Unable to cancel: %s", errbuf);
+
 	PQfreeCancel(cn);
+
+	return (ret != 0 ? waitMode : DISPATCH_WAIT_NONE);
 }
 
 /* Helper function to thread_DispatchCommand that handles timeouts that occur
@@ -2693,6 +2709,8 @@ handlePollTimeout(DispatchCommandParms * pParms,
 	 */
 	for (i = 0; i < db_count; i++)
 	{							/* loop to check connection status */
+		DispatchWaitMode		waitMode;
+
 		dispatchResult = pParms->dispatchResultPtrArray[i];
 		if (dispatchResult == NULL)
 			continue;
@@ -2703,22 +2721,40 @@ handlePollTimeout(DispatchCommandParms * pParms,
 		if (!dispatchResult->stillRunning)
 			continue;
 
+		waitMode = DISPATCH_WAIT_NONE;
+
 		/*
-		 * Send cancellation request to this QE if an error has been reported
-		 * by another QE in the gang; or if a cancellation request is pending
-		 * here on the QD. Don't cancel if requestor said not to, if no longer
-		 * connected, or if we have already sent a cancellation request.
+		 * Send query finish to this QE if QD is already done.
 		 */
-		if (InterruptPending || pParms->pleaseCancel || meleeResults->errcode)
+		if (pParms->waitMode == DISPATCH_WAIT_FINISH)
+			waitMode = DISPATCH_WAIT_FINISH;
+
+		/*
+		 * However, escalate it to cancel if:
+		 *   - user interrupt has occurred,
+		 *   - or I'm told to send cancel,
+		 *   - or an error has been reported by another QE,
+		 *   - in case the caller wants cancelOnError and it was not canceled
+		 */
+		if ((InterruptPending ||
+			pParms->waitMode == DISPATCH_WAIT_CANCEL ||
+			meleeResults->errcode) &&
+				(meleeResults->cancelOnError &&
+				 !dispatchResult->wasCanceled))
+			waitMode = DISPATCH_WAIT_CANCEL;
+
+		/*
+		 * Finally, don't send the signal if
+		 *   - no action needed (NONE)
+		 *   - the signal was already sent
+		 *   - connection is dead
+		 */
+		if (waitMode != DISPATCH_WAIT_NONE &&
+			waitMode != dispatchResult->sentSignal &&
+			PQstatus(segdbDesc->conn) != CONNECTION_BAD)
 		{
-			if (meleeResults->cancelOnError &&
-				!dispatchResult->requestedCancel &&
-				!dispatchResult->wasCanceled &&
-				segdbDesc->conn &&
-				PQstatus(segdbDesc->conn) != CONNECTION_BAD)
-			{
-				cdbdisp_issueCancel(segdbDesc, &dispatchResult->requestedCancel);
-			}
+			dispatchResult->sentSignal =
+				cdbdisp_signalQE(segdbDesc, waitMode);
 		}
 	}
 
@@ -2744,24 +2780,17 @@ handlePollTimeout(DispatchCommandParms * pParms,
 				continue;
 
 			/*
-			 * MPP-5012:
-			 * There is a potential race between dispatch and
-			 * query-cancel for large queries -- and the cancel code
-			 * above only will attempt a single cancellation.
-			 *
 			 * If we hit the timeout, and the query has already been
 			 * cancelled we'll try to re-cancel here.
 			 *
-			 * The race is:
-			 *   QD cancels before QE has started work, QE 'cancels'
-			 * from idle_state -> idle_state and then starts work.
+			 * XXX we may not need this anymore.  It might be harmful
+			 * rather than helpful, as it creates another connection.
 			 */
-			if (dispatchResult->stillRunning &&
-				dispatchResult->requestedCancel &&
-				segdbDesc->conn &&
+			if (dispatchResult->sentSignal == DISPATCH_WAIT_CANCEL &&
 				PQstatus(segdbDesc->conn) != CONNECTION_BAD)
 			{
-				cdbdisp_issueCancel(segdbDesc, &dispatchResult->requestedCancel);
+				dispatchResult->sentSignal =
+					cdbdisp_signalQE(segdbDesc, DISPATCH_WAIT_CANCEL);
 			}
 
 			/* Skip the entry db. */
@@ -2793,7 +2822,7 @@ handlePollTimeout(DispatchCommandParms * pParms,
 		}
 	}
 
-}	/* handleSelectTimeout */
+}	/* handlePollTimeout */
 
 void
 CollectQEWriterTransactionInformation(SegmentDatabaseDescriptor *segdbDesc, CdbDispatchResult *dispatchResult)
@@ -3044,7 +3073,8 @@ CdbDoCommandOnAllGangs(const char *strCommand,
 	PG_CATCH();
 	{
 		/* Something happend, clean up after ourselves */
-		CdbCheckDispatchResult((struct CdbDispatcherState *)&ds, true);
+		CdbCheckDispatchResult((struct CdbDispatcherState *)&ds,
+							   DISPATCH_WAIT_CANCEL);
 
 		cdbdisp_destroyDispatchResults(ds.primaryResults);
 		cdbdisp_destroyDispatchThreads(ds.dispatchThreads);
@@ -3701,7 +3731,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 		elog(Debug_cancel_print ? LOG : DEBUG2, "Plan dispatch canceled; dispatched %d of %d slices", iSlice, nSlices);
 
 		/* Cancel any QEs still running, and wait for them to terminate. */
-		CdbCheckDispatchResult(ds, true);
+		CdbCheckDispatchResult(ds, DISPATCH_WAIT_CANCEL);
 
 		/*
 		 * Check and free the results of all gangs. If any QE had an
@@ -4341,7 +4371,8 @@ CdbDispatchUtilityStatement_Internal(struct Node *stmt, bool needTwoPhase, char 
 	PG_CATCH();
 	{
 		/* Something happend, clean up after ourselves */
-		CdbCheckDispatchResult((struct CdbDispatcherState *)&ds, true);
+		CdbCheckDispatchResult((struct CdbDispatcherState *)&ds,
+							   DISPATCH_WAIT_CANCEL);
 
 		cdbdisp_destroyDispatchResults(ds.primaryResults);
 		cdbdisp_destroyDispatchThreads(ds.dispatchThreads);

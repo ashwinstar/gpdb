@@ -74,6 +74,7 @@
 extern PGDLLIMPORT volatile bool InterruptPending;
 extern volatile bool QueryCancelPending;
 extern volatile bool QueryCancelCleanup; /* GPDB only */
+extern volatile bool QueryFinishPending;
 extern volatile bool ProcDiePending;
 
 extern volatile bool ClientConnectionLost;

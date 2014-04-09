@@ -17,6 +17,7 @@
 #include <signal.h>
 #include <unistd.h>
 
+#include "cdb/cdbvars.h"
 #include "commands/async.h"
 #include "miscadmin.h"
 #include "storage/latch.h"
@@ -253,6 +254,22 @@ AmIInSIGUSR1Handler(void)
 }
 
 /*
+ * Query-finish signal from QD.  The executor will deliverately try
+ * to finish execution as quickly as possible.
+ */
+static void
+QueryFinishHandler(void)
+{
+	/*
+	 * It might be too much to check Gp_role but just in case.
+	 */
+	if (!proc_exit_inprogress && Gp_role == GP_ROLE_EXECUTE)
+	{
+		QueryFinishPending = true;
+	}
+}
+
+/*
  * procsignal_sigusr1_handler - handle SIGUSR1 signal.
  */
 void
@@ -266,6 +283,9 @@ procsignal_sigusr1_handler(SIGNAL_ARGS)
 
 		if (CheckProcSignal(PROCSIG_CATCHUP_INTERRUPT))
 			HandleCatchupInterrupt();
+
+		if (CheckProcSignal(PROCSIG_QUERY_FINISH))
+			QueryFinishHandler();
 
 		latch_sigusr1_handler();
 		InSIGUSR1Handler = false;

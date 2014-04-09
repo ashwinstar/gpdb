@@ -81,6 +81,9 @@ MultiExecBitmapIndexScan(BitmapIndexScanState *node)
 
 		CHECK_FOR_INTERRUPTS();
 
+		if (QueryFinishPending)
+			break;
+
         /* CDB: If EXPLAIN ANALYZE, let bitmap share our Instrumentation. */
         if (node->ss.ps.instrument)
             tbm_bitmap_set_instrument(bitmap, node->ss.ps.instrument);

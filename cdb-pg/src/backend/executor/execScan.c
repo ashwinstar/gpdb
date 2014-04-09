@@ -147,6 +147,9 @@ ExecScan(ScanState *node,
 
 		CHECK_FOR_INTERRUPTS();
 
+		if (QueryFinishPending)
+			return NULL;
+
 		slot = (*accessMtd) (node);
 
 		/*

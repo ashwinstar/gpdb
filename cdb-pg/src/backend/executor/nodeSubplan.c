@@ -1272,7 +1272,8 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
                 MemoryContext   savecxt;
 
                 /* Wait for all gangs to finish. */
-                CdbCheckDispatchResult(queryDesc->estate->dispatcherState, false);	
+				CdbCheckDispatchResult(queryDesc->estate->dispatcherState,
+									   DISPATCH_WAIT_NONE);
 
                 /* Allocate buffer to pass extra message text to cdbexplain. */
                 savecxt = MemoryContextSwitchTo(gbl_queryDesc->estate->es_query_cxt);
@@ -1322,7 +1323,8 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 				Assert(queryDesc != NULL &&
 					   queryDesc->estate != NULL);
                 /* Wait for all gangs to finish.  Cancel slowpokes. */
-                CdbCheckDispatchResult(queryDesc->estate->dispatcherState, true);
+				CdbCheckDispatchResult(queryDesc->estate->dispatcherState,
+									   DISPATCH_WAIT_CANCEL);
 
                 cdbexplain_recvExecStats(planstate,
                                          queryDesc->estate->dispatcherState->primaryResults,

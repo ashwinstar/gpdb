@@ -116,7 +116,7 @@ test__ExecSetParamPlan__Check_Dispatch_Results(void **state)
 	will_be_called(cdbexplain_localExecStats);
 
 	expect_any(CdbCheckDispatchResult,ds);
-	expect_any(CdbCheckDispatchResult,cancelUnfinishedWork);
+	expect_any(CdbCheckDispatchResult,waitMode);
 	will_be_called(CdbCheckDispatchResult);
 
 	expect_any(cdbexplain_recvExecStats,planstate);

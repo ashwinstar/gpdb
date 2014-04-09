@@ -32,6 +32,8 @@ typedef enum
 	PROCSIG_CATCHUP_INTERRUPT,	/* sinval catchup interrupt */
 	PROCSIG_NOTIFY_INTERRUPT,	/* listen/notify interrupt */
 
+	PROCSIG_QUERY_FINISH,		/* query finish */
+
 	NUM_PROCSIGNALS				/* Must be last! */
 } ProcSignalReason;
 

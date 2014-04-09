@@ -141,6 +141,7 @@
 #include "storage/pmsignal.h"
 #include "storage/proc.h"
 #include "storage/procarray.h"
+#include "storage/procsignal.h"
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/datetime.h"
@@ -573,7 +574,7 @@ static bool ServiceStartable(PMSubProc *subProc);
 static int	ServerLoop(void);
 static int	BackendStartup(Port *port);
 static int	ProcessStartupPacket(Port *port, bool SSLdone);
-static void processCancelRequest(Port *port, void *pkt);
+static void processCancelRequest(Port *port, void *pkt, MsgType code);
 static void processPrimaryMirrorTransitionRequest(Port *port, void *pkt);
 static void processPrimaryMirrorTransitionQuery(Port *port, void *pkt);
 static int	initMasks(fd_set *rmask);
@@ -2715,9 +2716,9 @@ ProcessStartupPacket(Port *port, bool SSLdone)
 	 */
 	port->proto = proto = ntohl(*((ProtocolVersion *) buf));
 
-	if (proto == CANCEL_REQUEST_CODE)
+	if (proto == CANCEL_REQUEST_CODE || proto == FINISH_REQUEST_CODE)
 	{
-		processCancelRequest(port, buf);
+		processCancelRequest(port, buf, proto);
 		return 127;				/* XXX */
 	}
 	else if (proto == PRIMARY_MIRROR_TRANSITION_REQUEST_CODE)
@@ -4014,7 +4015,7 @@ processPrimaryMirrorTransitionQuery(Port *port, void *pkt)
  * Nothing is sent back to the client.
  */
 static void
-processCancelRequest(Port *port, void *pkt)
+processCancelRequest(Port *port, void *pkt, MsgType code)
 {
 	CancelRequestPacket *canc = (CancelRequestPacket *) pkt;
 	int			backendPID;
@@ -4049,10 +4050,21 @@ processCancelRequest(Port *port, void *pkt)
 			if (bp->cancel_key == cancelAuthCode)
 			{
 				/* Found a match; signal that backend to cancel current op */
-				ereport(DEBUG2,
-						(errmsg_internal("processing cancel request: sending SIGINT to process %d",
-										 backendPID)));
-				signal_child(bp->pid, SIGINT);
+				if (code == FINISH_REQUEST_CODE)
+				{
+					ereport(LOG,
+							(errmsg_internal("query finish request to process %d",
+											 backendPID)));
+					SendProcSignal(bp->pid, PROCSIG_QUERY_FINISH,
+								   InvalidBackendId);
+				}
+				else
+				{
+					ereport(DEBUG2,
+							(errmsg_internal("processing cancel request: sending SIGINT to process %d",
+											 backendPID)));
+					signal_child(bp->pid, SIGINT);
+				}
 			}
 			else
 				/* Right PID, wrong key: no way, Jose */

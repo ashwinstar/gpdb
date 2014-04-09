@@ -259,7 +259,10 @@ void mk_qsort_impl(MKEntry *a, int left, int right, int lv, bool lvdown, MKConte
 	Assert(ctxt);
 	Assert(lv < ctxt->total_lv);
 
-    CHECK_FOR_INTERRUPTS();
+	CHECK_FOR_INTERRUPTS();
+
+	if (QueryFinishPending)
+		return;
 
 	if(right <= left)
 		return;

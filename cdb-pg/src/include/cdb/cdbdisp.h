@@ -91,6 +91,16 @@ typedef struct DispatchCommandDtxProtocolParms
 } DispatchCommandDtxProtocolParms;
 
 /*
+ * Types of message to QE when we wait for it.
+ */
+typedef enum DispatchWaitMode
+{
+	DISPATCH_WAIT_NONE = 0,			/* wait until QE fully completes */
+	DISPATCH_WAIT_FINISH,			/* send query finish */
+	DISPATCH_WAIT_CANCEL			/* send query cancel */
+} DispatchWaitMode;
+
+/*
  * Parameter structure for the DispatchCommand threads
  */
 typedef struct DispatchCommandParms
@@ -141,7 +151,12 @@ typedef struct DispatchCommandParms
 	 */
 	struct CdbDispatchResult **dispatchResultPtrArray;
 
-	volatile bool pleaseCancel;
+	/*
+	 * Depending on this mode, we may send query cancel or query finish
+	 * message to QE while we are waiting it to complete.  NONE means
+	 * we expect QE to complete without any instruction.
+	 */
+	volatile DispatchWaitMode waitMode;
 
 	/*
 	 * pollfd supports for libpq
@@ -232,11 +247,11 @@ cdbdisp_dispatchToGang(struct CdbDispatcherState *ds,
  *
  * Waits for completion of threads launched by cdbdisp_dispatchToGang().
  *
- * If 'cancelUnfinishedWork' is true, QEs that were dispatched with
- * 'cancelOnError' true and are not yet idle will be canceled.
+ * QEs that were dispatched with 'cancelOnError' true and are not yet idle
+ * will be canceled/finished according to waitMode.
  */
 void
-CdbCheckDispatchResult(struct CdbDispatcherState *ds, bool cancelUnfinishedWork);
+CdbCheckDispatchResult(struct CdbDispatcherState *ds, DispatchWaitMode waitMode);
 
 /*--------------------------------------------------------------------*/
 

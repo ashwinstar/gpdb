@@ -1635,13 +1635,6 @@ RecordTransactionAbort(void)
 
 			xlrec.xtime = time(NULL);
 			/* Write the ABORT record */
-			/*
-			if (isSubXact)
-				xlrec.xact_time = GetCurrentTimestamp();
-			else
-			{
-				xlrec.xact_time = xactStopTimestamp;
-			}*/
 			xlrec.persistentAbortObjectCount = persistentAbortObjectCount;
 			xlrec.nsubxacts = nchildren;
 			rdata[0].data = (char *) (&xlrec);

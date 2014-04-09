@@ -583,6 +583,7 @@ prepare_for_client_read(void)
 
 		/* And don't forget to detect one that already arrived */
 		QueryCancelPending = false;
+		QueryFinishPending = false;
 		CHECK_FOR_INTERRUPTS();
 	}
 }
@@ -597,6 +598,7 @@ client_read_ended(void)
 	{
 		ImmediateInterruptOK = false;
 		QueryCancelPending = false;		/* forget any CANCEL signal */
+		QueryFinishPending = false;		/* forget any FINISH signal too */
 
 		DisableNotifyInterrupt();
 		DisableCatchupInterrupt();
@@ -3528,7 +3530,7 @@ ProcessInterrupts(void)
 			ImmediateInterruptOK = false;	/* not idle anymore */
 			DisableNotifyInterrupt();
 			DisableCatchupInterrupt();
-			if (Gp_role == GP_ROLE_EXECUTE || Gp_role == GP_ROLE_DISPATCHAGENT)
+			if (Gp_role == GP_ROLE_EXECUTE)
 				ereport(ERROR,
 						(errcode(ERRCODE_GP_OPERATION_CANCELED),
 						 errmsg("canceling MPP operation")));
@@ -4072,7 +4074,6 @@ PostgresMain(int argc, char *argv[],
 	StringInfoData input_message;
 	sigjmp_buf	local_sigjmp_buf;
 	volatile bool send_ready_for_query = true;
-	int			topErrCode;
 	int			topErrLevel;
 
 	MemoryAccount *postgresMainMemoryAccount = NULL;
@@ -4416,6 +4417,7 @@ PostgresMain(int argc, char *argv[],
 		QueryCancelPending = false;
 		disable_sig_alarm(true);
 		QueryCancelPending = false;		/* again in case timeout occurred */
+		QueryFinishPending = false;
 
 		/*
 		 * Turn off these interrupts too.  This is only needed here and not in
@@ -4437,14 +4439,6 @@ PostgresMain(int argc, char *argv[],
 		 * the storage it points at.
 		 */
 		debug_query_string = NULL;
-
-		topErrCode = elog_geterrcode();
-		if (Gp_role == GP_ROLE_EXECUTE &&
-			(topErrCode == ERRCODE_GP_OPERATION_CANCELED || topErrCode == ERRCODE_QUERY_CANCELED))
-		{
-			elog((Debug_print_full_dtm ? LOG : DEBUG5), "PostgresMain seeing cancel 0x%x",
-			     topErrCode);
-		}
 
 		/*
 		 * Abort the current transaction in order to recover.
@@ -4743,7 +4737,7 @@ PostgresMain(int argc, char *argv[],
 					 *
 					 * Or both?
 					 */
-					SetCurrentStatementStartTimestampToMaster(statementStart);
+					//SetCurrentStatementStartTimestampToMaster(statementStart);
 
 					/* read ser string lengths */
 					query_string_len = pq_getmsgint(&input_message, 4);

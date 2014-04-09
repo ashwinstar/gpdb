@@ -2139,6 +2139,7 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 	{
 		CdbDispatchResults *pr = estate->dispatcherState->primaryResults;
 		HTAB 			   *aopartcounts = NULL;
+		DispatchWaitMode	waitMode = DISPATCH_WAIT_NONE;
 
 		/*
 		 * If we are finishing a query before all the tuples of the query
@@ -2152,9 +2153,13 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		}
 
 		/*
-		 * Wait for completion of all QEs.
+		 * Wait for completion of all QEs.  We send a "graceful" query
+		 * finish, not cancel signal.  Since the query has succeeded,
+		 * don't confuse QEs by sending erroneous message.
 		 */
-		CdbCheckDispatchResult(estate->dispatcherState, estate->cancelUnfinished);
+		if (estate->cancelUnfinished)
+			waitMode = DISPATCH_WAIT_FINISH;
+		CdbCheckDispatchResult(estate->dispatcherState, waitMode);
 
 		/* If top slice was delegated to QEs, get num of rows processed. */
 		if (sliceRunsOnQE(currentSlice))
