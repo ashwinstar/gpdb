@@ -59,7 +59,6 @@ do {															\
 		 errmsg("value out of range: underflow"),errOmitLocation(true)));				\
 } while(0)
 
-
 /* ========== USER I/O ROUTINES ========== */
 
 
@@ -382,10 +381,11 @@ float4send(PG_FUNCTION_ARGS)
 Datum
 float8in(PG_FUNCTION_ARGS)
 {
-	char	   *num = PG_GETARG_CSTRING(0);
-	char	   *orig_num;
-	double		val;
-	char	   *endptr;
+	char			*num = PG_GETARG_CSTRING(0);
+	char			*orig_num;
+	long double		val;
+	char			*endptr;
+	bool 			literal_inf = true;
 
 	/*
 	 * endptr points to the first character _after_ the sequence we recognized
@@ -410,7 +410,7 @@ float8in(PG_FUNCTION_ARGS)
 		num++;
 
 	errno = 0;
-	val = strtod(num, &endptr);
+	val = strtold(num, &endptr);
 
 	/* did we not see anything that looks like a double? */
 	if (endptr == num || errno != 0)
@@ -500,9 +500,31 @@ float8in(PG_FUNCTION_ARGS)
 					orig_num),
 							 errOmitLocation(true)));
 
-	CHECKFLOATVAL(val, true, true);
+	/*
+	 * strtod does not support values from 1e-323 to 1e-308 for double datatype in rhel6
+	 * due to changes in glibc. In order to overcome this issue we use strtold to parse
+	 * the string and store it in long double so that we get higher precision. We check if
+	 * this value is within allowed range for double using the below two checks:- 
+	 *
+	 * 1) Overflow - When we try to store a value > 1e308 in a double datatype, it gets represented 
+	 * internally as "inf". Hence in order to check for overflow, we use the isinf() method in order
+	 * to check if (double) val has overflowed. But "inf" is a legitimate value for float8, hence if the
+	 * user entered "inf"/"Infinity" we allow it. Otherwise we treat it as overflow.
+	 *
+	 * 2) Underflow - When we try to store a value < 1e-323, it gets converted to a 0.0. But "0.0" is a 
+	 * legitimate value allowed by float8 datatype. Hence we examine if the val is > 0 or < 0 with higher 
+	 * precision (as long double). Again, 0.0 is allowed for float8. If the user entered 0.0, val will be 0.0
+	 * in both higher precision and when rounded down and we allow it. Otherwise in higher precision, 
+	 * val will be > 0 or < 0 and when rounded down to double it will be 0 which is treated as underflow.
+	 */
 
-	PG_RETURN_FLOAT8(val);
+	if ( pg_strncasecmp(num, "Infinity", 8) != 0  && pg_strncasecmp(num, "-Infinity", 9) != 0 &&\
+		 pg_strncasecmp(num, "Inf", 3) != 0 && pg_strncasecmp(num, "-Inf", 4) != 0)
+		literal_inf = false;
+
+	CHECKFLOATVAL((double) val, literal_inf, !(val > 0 || val < 0));
+
+	PG_RETURN_FLOAT8((double) val);
 }
 
 /*

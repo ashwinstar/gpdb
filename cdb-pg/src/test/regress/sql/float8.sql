@@ -13,8 +13,13 @@ INSERT INTO FLOAT8_TBL(f1) VALUES ('1.2345678901234e-200');
 -- test for underflow and overflow handling
 SELECT '10e400'::float8;
 SELECT '-10e400'::float8;
+SELECT '1e309'::float8;
 SELECT '10e-400'::float8;
 SELECT '-10e-400'::float8;
+SELECT '1e-324'::float8;
+SELECT '1e308'::float8;
+SELECT '1e-323'::float8;
+SELECT '0.0'::float8;
 
 -- bad input
 INSERT INTO FLOAT8_TBL(f1) VALUES ('');
@@ -31,6 +36,7 @@ SELECT 'NaN'::float8;
 SELECT 'nan'::float8;
 SELECT '   NAN  '::float8;
 SELECT 'infinity'::float8;
+SELECT 'inf'::float8;
 SELECT '          -INFINiTY   '::float8;
 -- bad special inputs
 SELECT 'N A N'::float8;
@@ -144,9 +150,39 @@ INSERT INTO FLOAT8_TBL(f1) VALUES ('10e400');
 
 INSERT INTO FLOAT8_TBL(f1) VALUES ('-10e400');
 
+INSERT INTO FLOAT8_TBL(f1) VALUES ('1e309');
+
 INSERT INTO FLOAT8_TBL(f1) VALUES ('10e-400');
 
 INSERT INTO FLOAT8_TBL(f1) VALUES ('-10e-400');
+
+INSERT INTO FLOAT8_TBL(f1) VALUES ('1e-324');
+
+INSERT INTO FLOAT8_TBL(f1) VALUES ('1e308');
+
+INSERT INTO FLOAT8_TBL(f1) VALUES ('1e-323');
+
+-- test for over- and underflow with update statement
+UPDATE FLOAT8_TBL SET f1='0.0'::float8 WHERE f1='1e-324'::float8;
+
+UPDATE FLOAT8_TBL SET f1='0.0'::float8 WHERE f1='1e309'::float8;
+
+UPDATE FLOAT8_TBL SET f1='0.0'::float8 WHERE f1='1e-400'::float8;
+
+UPDATE FLOAT8_TBL SET f1='0.0'::float8 WHERE f1='1e400'::float8;
+
+UPDATE FLOAT8_TBL SET f1='0.0'::float8 WHERE f1='0.0'::float8;
+
+-- test for over- and underflow with delete statement
+DELETE FROM FLOAT8_TBL WHERE f1='1e-324'::float8;
+
+DELETE FROM FLOAT8_TBL WHERE f1='1e309'::float8;
+
+DELETE FROM FLOAT8_TBL WHERE f1='1e400'::float8;
+
+DELETE FROM FLOAT8_TBL WHERE f1='1e-400'::float8;
+
+DELETE FROM FLOAT8_TBL WHERE f1='0.0'::float8;
 
 -- maintain external table consistency across platforms
 -- delete all values and reinsert well-behaved ones
@@ -165,3 +201,21 @@ INSERT INTO FLOAT8_TBL(f1) VALUES ('-1.2345678901234e-200');
 
 SELECT '' AS five, f1 FROM FLOAT8_TBL ORDER BY 2;
 
+-- test if you can dump/restore subnormal (1e-323) values
+-- using COPY
+
+CREATE TABLE FLOATS(a float8);
+
+INSERT INTO FLOATS select 1e-307::float8 / 10^i FROM generate_series(1,16) i;
+
+SELECT * FROM FLOATS ORDER BY a;
+
+SELECT float8in(float8out(a)) FROM FLOATS ORDER BY a;
+
+COPY FLOATS TO '/tmp/floats';
+
+TRUNCATE FLOATS;
+
+COPY FLOATS FROM '/tmp/floats';
+
+SELECT * FROM FLOATS ORDER BY a;
