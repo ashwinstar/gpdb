@@ -191,6 +191,7 @@ static krb5_principal pg_krb5_server;
 #endif
 
 static int	pg_GSS_recvauth(Port *port);
+static int check_valid_until_for_gssapi(Port *port);
 #endif   /* ENABLE_GSS */
 
 
@@ -421,6 +422,7 @@ is_internal_gpdb_conn(Port *port)
 		return false;
 }
 
+
 /*
  * Client authentication starts here.  If there is an error, this
  * function does not return and the backend process is terminated.
@@ -620,6 +622,12 @@ ClientAuthentication(Port *port)
 
 		case uaGSS:
 #ifdef ENABLE_GSS
+			if (check_valid_until_for_gssapi(port) == STATUS_ERROR) {
+				ereport(FATAL,
+					(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
+					errmsg("authentication failed for user \"%s\": valid until timestamp expired", port->user_name)));
+			}
+
 			sendAuthRequest(port, AUTH_REQ_GSS);
 			status = pg_GSS_recvauth(port);
 #else
@@ -1125,6 +1133,59 @@ pg_GSS_error(int severity, char *errmsg, OM_uint32 maj_stat, OM_uint32 min_stat)
 	ereport(severity,
 			(errmsg_internal("%s", errmsg),
 			 errdetail("%s: %s", msg_major, msg_minor)));
+}
+
+/* Check to see if the password of a user is valid 
+ * (using the validuntil attribute associated with the pg_role)
+ * for GSSAPI based authentication.
+ */
+static int
+check_valid_until_for_gssapi(Port *port)
+{
+	int         retval = 0;  
+	char        *valuntil = NULL;
+	char        *shadow_pass = NULL;
+	List        **line = NULL;
+	ListCell    *token = NULL;
+
+	if ((line = get_role_line(port->user_name)) == NULL)
+		return STATUS_ERROR;
+
+	/* Skip over rolename */
+	token = list_head(*line);
+	Assert(token != NULL);
+	if (token)
+		token = lnext(token);
+
+	if (token)
+	{        
+		shadow_pass = (char *) lfirst(token);
+		token = lnext(token);
+		if (token)
+			valuntil = (char *) lfirst(token);
+	}    
+
+	/* Validuntil attribute is not set.
+	 * No time constraint on the user to access the database.
+	 */
+	if (valuntil == NULL || *valuntil == '\0')
+		retval = STATUS_OK;
+	else 
+	{       
+		TimestampTz vuntil;
+
+		vuntil = DatumGetTimestampTz(DirectFunctionCall3(timestamptz_in,
+								CStringGetDatum(valuntil),
+								ObjectIdGetDatum(InvalidOid),
+								Int32GetDatum(-1)));
+
+		if (vuntil < GetCurrentTimestamp())
+			retval = STATUS_ERROR;
+		else
+			retval = STATUS_OK;
+	}
+
+	return retval;
 }
 
 static int

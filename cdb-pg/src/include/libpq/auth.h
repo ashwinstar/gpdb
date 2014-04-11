@@ -52,5 +52,4 @@ extern bool interval_overlap(const authInterval *a, const authInterval *b);
 extern bool interval_contains(const authInterval *interval, const authPoint *point);
 extern bool CheckAuthTimeConstraints(char *rolname);
 extern bool check_auth_time_constraints_internal(char *rolname, TimestampTz timestamp);
-
 #endif   /* AUTH_H */
