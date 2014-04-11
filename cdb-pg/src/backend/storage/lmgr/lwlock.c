@@ -27,6 +27,7 @@
 #include "access/subtrans.h"
 #include "miscadmin.h"
 #include "pg_trace.h"
+#include "storage/barrier.h"
 #include "storage/ipc.h"
 #include "storage/proc.h"
 #include "storage/spin.h"
@@ -843,6 +844,7 @@ LWLockRelease(LWLockId lockid)
 		proc = head;
 		head = proc->lwWaitLink;
 		proc->lwWaitLink = NULL;
+		pg_write_barrier();
 		proc->lwWaiting = false;
 		PGSemaphoreUnlock(&proc->sem);
 	}
