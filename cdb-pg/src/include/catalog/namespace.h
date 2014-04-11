@@ -59,7 +59,6 @@ extern void DeconstructQualifiedName(List *names,
 						 char **objname_p);
 extern Oid	LookupExplicitNamespace(const char *nspname);
 
-extern bool ExistsCommittedTempNamespace(void);
 extern void DropTempTableNamespaceForResetSession(Oid namespaceOid);
 extern void SetTempNamespace(Oid namespaceOid);
 extern Oid  ResetTempNamespace(void);

@@ -2710,12 +2710,13 @@ resetSessionForPrimaryGangLoss(void)
 		NeedSessionIdChange = true;
 
 		/*
-		 * WARNING:  ExistCommittedTempNamespace() requires that the caller be in
-		 * a transaction and a portal, because it relies on there being a valid ResourceOwner,
-		 * which is needed if you want to call syscache or catcache. (ugh).
-		 *
+		 * Keep this check away from transaction/catalog access, as we are
+		 * possibly just after releasing ResourceOwner at the end of Tx.
+		 * It's ok to remember uncommitted temporary namespace because
+		 * DropTempTableNamespaceForResetSession will simply do nothing
+		 * if the namespace is not visible.
 		 */
-		if (ExistsCommittedTempNamespace())
+		if (TempNamespaceOidIsValid())
 		{
 			/*
 			 * Here we indicate we don't have a temporary table namespace
@@ -2726,7 +2727,9 @@ resetSessionForPrimaryGangLoss(void)
 			 */
 			OldTempNamespace = ResetTempNamespace();
 
-			elog(WARNING, "Any temporary tables for this session have been dropped because the gang was disconnected (session id = %d)",
+			elog(WARNING,
+				 "Any temporary tables for this session have been dropped "
+				 "because the gang was disconnected (session id = %d)",
 				 gp_session_id);
 		}
 		else

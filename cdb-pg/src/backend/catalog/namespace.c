@@ -2026,24 +2026,6 @@ InitTempTableNamespace(void)
 }
 
 /*
- * Does the temporary namespace exist for this session (and committed)?
- */
-bool
-ExistsCommittedTempNamespace(void)
-{
-	/*
-	 * WARNING:  ExistCommittedTempNamespace() requires that the caller be in
-	 * a portal, because it relies on there being a valid ResourceOwner,
-	 * which is needed if you want to call syscache or catcache. (ugh).
-	 *
-	 * TempNameSpaceValid does use getsyscacheoid()
-	 *
-	 */
-	return TempNamespaceValid(false) &&
-		   (myTempNamespaceSubID == InvalidSubTransactionId);
-}
-
-/*
  * Drop temp relations for session reset.
  */
 void
@@ -2093,17 +2075,14 @@ ResetTempNamespace(void)
 	Oid result;
 
 	result = myTempNamespace;
-	
-	if (ExistsCommittedTempNamespace())
-	{
-		/*
-		 * MPP-19973: The shmem exit callback to remove a temp
-		 * namespace is registered. We need to remove it here as the
-		 * namespace has already been reseted. 
-		 */
-		cancel_shmem_exit(RemoveTempRelationsCallback, 0);
-	}
-	
+
+	/*
+	 * MPP-19973: The shmem exit callback to remove a temp
+	 * namespace is registered. We need to remove it here as the
+	 * namespace has already been reseted. 
+	 */
+	cancel_shmem_exit(RemoveTempRelationsCallback, 0);
+
 	myTempNamespace = InvalidOid;
 	myTempNamespaceSubID = InvalidSubTransactionId;
 	namespaceSearchPathValid = false;	/* need to rebuild list */
