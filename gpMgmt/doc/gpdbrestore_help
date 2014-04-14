@@ -16,7 +16,8 @@ gpdbrestore { -t <timestamp_key> [-L]
      [-e] [-G] [-B <parallel_processes>] 
      [-d <master_data_directory>] [-a] [-q] [-l <logfile_directory>] 
      [-v] [--ddboost ]
-
+     [--redirect <database_name> ]
+     
 gpdbrestore -? 
 
 gpdbrestore --version
@@ -213,6 +214,14 @@ in poor database performance.
  Allows you to provide a hostname and full path to a set of dump files. 
  The host does not have to be in the Greenplum Database array of hosts, 
  but must be accessible from the Greenplum master. 
+
+ 
+--redirect <database_name>
+
+The name of the database where the data is restored. Specify this option 
+to restore data to a database that is different than the database 
+specified during back up. If <database_name> does not exist, it is 
+created. 
 
 
 -s <database_name>
