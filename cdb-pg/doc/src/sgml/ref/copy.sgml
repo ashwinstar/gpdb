@@ -51,7 +51,7 @@ COPY table [(column [, ...])] FROM {'file' | STDIN}
        [DELIMITER [ AS ] 'delimiter']
        [NULL [ AS ] 'null string']
        [ESCAPE [ AS ] 'escape' | 'OFF']
-	   [NEWLINE [ AS ] 'LF' | 'CR' | 'CRLF']
+       [NEWLINE [ AS ] 'LF' | 'CR' | 'CRLF']
        [CSV [QUOTE [ AS ] 'quote'] 
             [FORCE NOT NULL column [, ...]]
        [FILL MISSING FIELDS]
