@@ -2860,6 +2860,7 @@ _readVacuumStmt(void)
 	READ_BOOL_FIELD(full);
 	READ_BOOL_FIELD(analyze);
 	READ_BOOL_FIELD(verbose);
+	READ_BOOL_FIELD(rootonly);
 	READ_INT_FIELD(freeze_min_age);
 	READ_NODE_FIELD(relation);
 	READ_NODE_FIELD(va_cols);

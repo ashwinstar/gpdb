@@ -233,7 +233,7 @@ static int VacFullInitialStatsSize = 0;
 
 /* non-export function prototypes */
 static List *get_rel_oids(List *relids, const RangeVar *vacrel,
-			 const char *stmttype);
+			 const char *stmttype, bool rootonly);
 static void vac_truncate_clog(TransactionId frozenXID);
 static void vacuum_rel(Relation onerel, VacuumStmt *vacstmt, LOCKMODE lmode, List *updated_stats);
 static void full_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats);
@@ -315,12 +315,20 @@ void vacuum(VacuumStmt *vacstmt, List *relids)
 	
 	if (doVacuum)
 	{
-		/**
-		 * Perform vacuum.
-		 */
-		vacstmt->analyze = false;
-		vacstmt->vacuum = true;
-		vacuumStatement(vacstmt, NIL);
+		if (vacstmt->rootonly)
+		{
+			ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+							errmsg("ROOTPARTITION option cannot be used together with VACUUM, try ANALYZE ROOTPARTITION")));
+		}
+		else
+		{
+			/**
+			 * Perform vacuum.
+			 */
+			vacstmt->analyze = false;
+			vacstmt->vacuum = true;
+			vacuumStatement(vacstmt, NIL);
+		}
 	}
 	
 	if (doAnalyze)
@@ -1124,7 +1132,7 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 	 * Build list of relations to process, unless caller gave us one. (If we
 	 * build one, we put it in vac_context for safekeeping.)
 	 */
-	relations = get_rel_oids(relids, vacstmt->relation, stmttype);
+	relations = get_rel_oids(relids, vacstmt->relation, stmttype, vacstmt->rootonly);
 
 	/*
 	 * vacuum_rel expects to be entered with no transaction active; it will
@@ -1234,7 +1242,8 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
  * per-relation transactions.
  */
 static List *
-get_rel_oids(List *relids, const RangeVar *vacrel, const char *stmttype)
+get_rel_oids(List *relids, const RangeVar *vacrel, const char *stmttype,
+			 bool rootonly)
 {
 	List	   *oid_list = NIL;
 	MemoryContext oldcontext;
