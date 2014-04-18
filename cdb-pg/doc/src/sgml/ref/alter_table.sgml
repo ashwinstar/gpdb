@@ -30,7 +30,6 @@ ALTER TABLE [ONLY] name SET
      DISTRIBUTED BY (column, [ ... ] ) 
    | DISTRIBUTED RANDOMLY 
    | WITH (REORGANIZE=true|false) 
-   | WITH (storage_parameter=value [, ... ])
 
 ALTER TABLE [ONLY] name action [, ... ]
 
