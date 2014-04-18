@@ -533,8 +533,20 @@ AssignContentIdsToPlanData_Walker(Node *node, void *context)
 				/* no change to dispatchInfo --> just iterate children */
 				break;
 			case T_SubPlan:
+			{
+				SubPlan    *subplan = (SubPlan *) node;
+				if (!subplan->is_initplan)
+				{
+					/* init subplans are dispatched independently of the main plan, but for regular
+					 * subplans we need to process the subplan plan as it may require dispatching to
+					 * all segments even if the main plan does not need to (MPP-22019)
+					 */
+					Plan	   *subplan_plan = plan_tree_base_subplan_get_plan(context, subplan);
+					plan_tree_walker((Node*) subplan_plan, AssignContentIdsToPlanData_Walker, context);
+				}
 				pushNewDirectDispatchInfo = true;
 				break;
+			}
 			default:
 				elog(ERROR, "Invalid plan node %d", nodeTag(node));
 				break;

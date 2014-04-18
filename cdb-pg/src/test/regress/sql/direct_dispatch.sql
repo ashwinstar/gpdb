@@ -509,6 +509,15 @@ SELECT * FROM direct_test_type_int2 WHERE 2147483648::int8 = id;
 -- end_ignore
 SELECT * FROM direct_test_type_int2 WHERE -2147483649::int8 = id;
 
+-- tests with subplans (MPP-22019)
+CREATE TABLE MPP_22019_a ( i INT, j INT);
+INSERT INTO MPP_22019_a (
+ SELECT i, i * i FROM generate_series(1, 10) AS i);
+CREATE TABLE MPP_22019_b (i INT, j INT);
+INSERT INTO MPP_22019_b (SELECT i, i * i FROM generate_series(1, 10) AS i);
+EXPLAIN SELECT a.* FROM MPP_22019_a a INNER JOIN MPP_22019_b b ON a.i = b.i WHERE a.j NOT IN (SELECT j FROM MPP_22019_a a2 where a2.j = b.j) and a.i = 1;
+SELECT a.* FROM MPP_22019_a a INNER JOIN MPP_22019_b b ON a.i = b.i WHERE a.j NOT IN (SELECT j FROM MPP_22019_a a2 where a2.j = b.j) and a.i = 1;
+SELECT a.* FROM MPP_22019_a a  WHERE a.j NOT IN (SELECT j FROM MPP_22019_a a2 where a2.j = a.j) and a.i = 1;
 
 -- cleanup
 set test_print_direct_dispatch_info=off;
@@ -538,6 +547,7 @@ drop table direct_test_type_inet;
 drop table direct_test_type_macaddr;
 drop table direct_test_type_tinterval;
 drop table direct_test_type_varbit;
-
+drop table MPP_22019_a;
+drop table MPP_22019_b;
 
 
