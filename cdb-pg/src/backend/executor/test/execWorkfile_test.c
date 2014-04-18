@@ -59,6 +59,8 @@ test__ExecWorkFile_Create__InTopMemContext(void **state)
 
 	char *test_filename = "foo";
 
+	will_return(WorkfileQueryspace_AddWorkfile, true);
+
 	expect_value(BufFileCreateFile, fileName, test_filename);
 	expect_value(BufFileCreateFile, delOnClose, true);
 	expect_value(BufFileCreateFile, interXact, false);
