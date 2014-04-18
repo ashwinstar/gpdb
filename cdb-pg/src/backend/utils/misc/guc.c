@@ -186,6 +186,8 @@ static const char *assign_optimizer_log_failure(const char *newval,
 							bool doit, GucSource source);
 static const char *assign_optimizer_minidump(const char *newval,
 							bool doit, GucSource source);
+static const char *assign_optimizer_cost_model(const char *newval,
+                                                        bool doit, GucSource source);
 static const char *assign_min_error_statement(const char *newval, bool doit,
 						   GucSource source);
 static const char *assign_gp_workfile_caching_loglevel(const char *newval,
@@ -529,6 +531,7 @@ static char *gp_workfile_type_hashjoin_str;
 static char *client_min_messages_str;
 static char *optimizer_log_failure_str;
 static char *optimizer_minidump_str;
+static char *optimizer_cost_model_str;
 static char *Debug_persistent_print_level_str;
 static char *Debug_persistent_recovery_print_level_str;
 static char *Debug_persistent_store_print_level_str;
@@ -702,6 +705,7 @@ bool		optimizer;
 bool		optimizer_log;
 bool		optimizer_partition_selection_log;
 bool		optimizer_minidump;
+int             optimizer_cost_model;
 bool		optimizer_print_query;
 bool		optimizer_print_plan;
 bool		optimizer_print_xform;
@@ -6507,6 +6511,15 @@ static struct config_string ConfigureNamesString[] =
 		"onerror", assign_optimizer_minidump, NULL
 	},
 
+        {
+                {"optimizer_cost_model", PGC_USERSET, LOGGING_WHEN,
+                        gettext_noop("Set optimizer cost model."),
+                        gettext_noop("Valid values are legacy, calibrated"),
+                },
+                &optimizer_cost_model_str,
+                "legacy", assign_optimizer_cost_model, NULL
+        },
+
 	{
 		{"log_min_messages", PGC_SUSET, LOGGING_WHEN,
 			gettext_noop("Sets the message levels that are logged."),
@@ -11876,6 +11889,24 @@ assign_optimizer_minidump(const char *val, bool assign, GucSource source)
 	}
 
 	return val;
+}
+
+static const char *
+assign_optimizer_cost_model(const char *val, bool assign, GucSource source)
+{
+        if (pg_strcasecmp(val, "legacy") == 0 && assign)
+        {
+                optimizer_cost_model = OPTIMIZER_GPDB_LEGACY;
+        }
+        else if (pg_strcasecmp(val, "calibrated") == 0 && assign)
+        {
+                optimizer_cost_model = OPTIMIZER_GPDB_CALIBRATED;
+        }
+        else
+        {
+                return NULL; /* fail */
+        }
+        return val;
 }
 
 
