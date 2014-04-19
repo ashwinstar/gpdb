@@ -79,6 +79,7 @@ CTranslatorScalarToDXL::CTranslatorScalarToDXL
 	m_pidgtorCol(pulidgtorCol),
 	m_pidgtorCTE(pulidgtorCTE),
 	m_ulQueryLevel(ulQueryLevel),
+	m_fHasDistributedTables(false),
 	m_fQuery(fQuery),
 	m_pplstmt(pplstmt),
 	m_pparammapping(pmapps),
@@ -145,7 +146,6 @@ CTranslatorScalarToDXL::PdxlnScIdFromVar
 	const Expr *pexpr,
 	const CMappingVarColId* pmapvarcolid
 	)
-    const
 {
 	GPOS_ASSERT(IsA(pexpr, Var));
 	const Var * pvar = (Var *) pexpr;
@@ -227,7 +227,6 @@ CTranslatorScalarToDXL::PdxlnSubPlanFromSubPlan
 	const Expr *pexpr,
 	const CMappingVarColId* pmapvarcolid
 	)
-    const
 {
 	GPOS_ASSERT(IsA(pexpr, SubPlan));
 	GPOS_ASSERT(NULL != m_pparammapping);
@@ -314,9 +313,9 @@ CDXLNode *
 CTranslatorScalarToDXL::PdxlnScOpFromExpr
 	(
 	const Expr *pexpr,
-	const CMappingVarColId* pmapvarcolid
+	const CMappingVarColId* pmapvarcolid,
+	BOOL *pfHasDistributedTables // output
 	)
-	const
 {
 	STranslatorElem rgTranslators[] =
 	{
@@ -346,6 +345,15 @@ CTranslatorScalarToDXL::PdxlnScOpFromExpr
 	const ULONG ulTranslators = GPOS_ARRAY_SIZE(rgTranslators);
 	NodeTag ent = pexpr->type;
 
+	// if an output variable is provided, we need to reset the member variable
+	if (NULL != pfHasDistributedTables)
+	{
+		m_fHasDistributedTables = false;
+	}
+
+	// save old value for distributed tables flag
+	BOOL fHasDistributedTablesOld = m_fHasDistributedTables;
+
 	// find translator for the expression type
 	PfPdxln pf = NULL;
 	for (ULONG ul = 0; ul < ulTranslators; ul++)
@@ -365,7 +373,17 @@ CTranslatorScalarToDXL::PdxlnScOpFromExpr
 		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiPlStmt2DXLConversion, pstr->Wsz());
 	}
 
-	return (this->*pf)(pexpr, pmapvarcolid);
+	CDXLNode *pdxlnReturn = (this->*pf)(pexpr, pmapvarcolid);
+
+	// combine old and current values for distributed tables flag
+	m_fHasDistributedTables = m_fHasDistributedTables || fHasDistributedTablesOld;
+
+	if (NULL != pfHasDistributedTables && m_fHasDistributedTables)
+	{
+		*pfHasDistributedTables = true;
+	}
+
+	return pdxlnReturn;
 }
 
 //---------------------------------------------------------------------------
@@ -386,7 +404,6 @@ CTranslatorScalarToDXL::PdxlnScDistCmpFromDistExpr
 	const Expr *pexpr,
 	const CMappingVarColId* pmapvarcolid
 	)
-	const
 {
 	GPOS_ASSERT(IsA(pexpr, DistinctExpr));
 	const DistinctExpr *pdistexpr = (DistinctExpr *) pexpr;
@@ -438,7 +455,6 @@ CTranslatorScalarToDXL::PdxlnScCmpFromOpExpr
 	const Expr *pexpr,
 	const CMappingVarColId* pmapvarcolid
 	)
-	const
 {
 	GPOS_ASSERT(IsA(pexpr, OpExpr));
 	const OpExpr *popexpr = (OpExpr *) pexpr;
@@ -450,7 +466,7 @@ CTranslatorScalarToDXL::PdxlnScCmpFromOpExpr
 	Expr *pexprRight = (Expr *) gpdb::PvListNth(popexpr->args, 1);
 
 	CDXLNode *pdxlnLeft = PdxlnScOpFromExpr(pexprLeft, pmapvarcolid);
-	CDXLNode *pdxlnRight = PdxlnScOpFromExpr(pexprRight, pmapvarcolid);;
+	CDXLNode *pdxlnRight = PdxlnScOpFromExpr(pexprRight, pmapvarcolid);
 
 	GPOS_ASSERT(NULL != pdxlnLeft);
 	GPOS_ASSERT(NULL != pdxlnRight);
@@ -489,7 +505,6 @@ CTranslatorScalarToDXL::PdxlnScOpExprFromExpr
 	const Expr *pexpr,
 	const CMappingVarColId* pmapvarcolid
 	)
-	const
 {
 	GPOS_ASSERT(IsA(pexpr, OpExpr));
 
@@ -535,7 +550,6 @@ CTranslatorScalarToDXL::PdxlnScNullIfFromExpr
 	const Expr *pexpr,
 	const CMappingVarColId* pmapvarcolid
 	)
-	const
 {
 	GPOS_ASSERT(IsA(pexpr, NullIfExpr));
 	const NullIfExpr *pnullifexpr = (NullIfExpr *) pexpr;
@@ -565,7 +579,6 @@ CTranslatorScalarToDXL::PdxlnArrayOpExpr
 	const Expr *pexpr,
 	const CMappingVarColId* pmapvarcolid
 	)
-	const
 {
 	return PdxlnScArrayCompFromExpr(pexpr, pmapvarcolid);
 }
@@ -583,7 +596,6 @@ CTranslatorScalarToDXL::PdxlnScArrayCompFromExpr
 	const Expr *pexpr,
 	const CMappingVarColId* pmapvarcolid
 	)
-	const
 {
 	GPOS_ASSERT(IsA(pexpr, ScalarArrayOpExpr));
 	const ScalarArrayOpExpr *pscarrayopexpr = (ScalarArrayOpExpr *) pexpr;
@@ -640,7 +652,6 @@ CTranslatorScalarToDXL::PdxlnScConstFromExpr
 	const Expr *pexpr,
 	const CMappingVarColId * // pmapvarcolid
 	)
-	const
 {
 	GPOS_ASSERT(IsA(pexpr, Const));
 	const Const *pconst = (Const *) pexpr;
@@ -719,7 +730,6 @@ CTranslatorScalarToDXL::PdxlnScBoolExprFromExpr
 	const Expr *pexpr,
 	const CMappingVarColId* pmapvarcolid
 	)
-	const
 {
 	GPOS_ASSERT(IsA(pexpr, BoolExpr));
 	const BoolExpr *pboolexpr = (BoolExpr *) pexpr;
@@ -774,7 +784,6 @@ CTranslatorScalarToDXL::PdxlnScBooleanTestFromExpr
 	const Expr *pexpr,
 	const CMappingVarColId* pmapvarcolid
 	)
-	const
 {
 	GPOS_ASSERT(IsA(pexpr, BooleanTest));
 
@@ -833,7 +842,6 @@ CTranslatorScalarToDXL::PdxlnScNullTestFromNullTest
 	const Expr *pexpr,
 	const CMappingVarColId* pmapvarcolid
 	)
-	const
 {
 	GPOS_ASSERT(IsA(pexpr, NullTest));
 	const NullTest *pnulltest = (NullTest *) pexpr;
@@ -870,7 +878,6 @@ CTranslatorScalarToDXL::PdxlnScCoalesceFromExpr
 	const Expr *pexpr,
 	const CMappingVarColId* pmapvarcolid
 	)
-	const
 {
 	GPOS_ASSERT(IsA(pexpr, CoalesceExpr));
 
@@ -902,15 +909,15 @@ CTranslatorScalarToDXL::TranslateScalarChildren
 	(
 	CDXLNode *pdxln,
 	List *plist,
-	const CMappingVarColId* pmapvarcolid
+	const CMappingVarColId* pmapvarcolid,
+	BOOL *pfHasDistributedTables // output
 	)
-	const
 {
 	ListCell *plc = NULL;
 	ForEach (plc, plist)
 	{
 		Expr *pexprChild = (Expr *) lfirst(plc);
-		CDXLNode *pdxlnChild = PdxlnScOpFromExpr(pexprChild, pmapvarcolid);
+		CDXLNode *pdxlnChild = PdxlnScOpFromExpr(pexprChild, pmapvarcolid, pfHasDistributedTables);
 		GPOS_ASSERT(NULL != pdxlnChild);
 		pdxln->AddChild(pdxlnChild);
 	}
@@ -933,7 +940,6 @@ CTranslatorScalarToDXL::PdxlnScCaseStmtFromExpr
 	const Expr *pexpr,
 	const CMappingVarColId* pmapvarcolid
 	)
-	const
 {
 	GPOS_ASSERT(IsA(pexpr, CaseExpr));
 
@@ -972,7 +978,6 @@ CTranslatorScalarToDXL::PdxlnScSwitchFromCaseExpr
 	const CaseExpr *pcaseexpr,
 	const CMappingVarColId* pmapvarcolid
 	)
-	const
 {
 	GPOS_ASSERT (NULL != pcaseexpr->arg);
 
@@ -1035,7 +1040,6 @@ CTranslatorScalarToDXL::PdxlnScCaseTestFromExpr
 	const Expr *pexpr,
 	const CMappingVarColId* //pmapvarcolid
 	)
-	const
 {
 	GPOS_ASSERT(IsA(pexpr, CaseTestExpr));
 	const CaseTestExpr *pcasetestexpr = (CaseTestExpr *) pexpr;
@@ -1061,7 +1065,6 @@ CTranslatorScalarToDXL::PdxlnScIfStmtFromCaseExpr
 	const CaseExpr *pcaseexpr,
 	const CMappingVarColId* pmapvarcolid
 	)
-	const
 {
 	GPOS_ASSERT (NULL == pcaseexpr->arg);
 	const ULONG ulWhenClauseCount = gpdb::UlListLength(pcaseexpr->args);
@@ -1125,7 +1128,6 @@ CTranslatorScalarToDXL::PdxlnScCastFromRelabelType
 	const Expr *pexpr,
 	const CMappingVarColId* pmapvarcolid
 	)
-	const
 {
 	GPOS_ASSERT(IsA(pexpr, RelabelType));
 
@@ -1133,11 +1135,7 @@ CTranslatorScalarToDXL::PdxlnScCastFromRelabelType
 
 	GPOS_ASSERT(NULL != prelabeltype->arg);
 
-	CDXLNode *pdxlnChild = PdxlnScOpFromExpr
-								(
-								prelabeltype->arg,
-								pmapvarcolid
-								);
+	CDXLNode *pdxlnChild = PdxlnScOpFromExpr(prelabeltype->arg, pmapvarcolid);
 
 	GPOS_ASSERT(NULL != pdxlnChild);
 
@@ -1170,12 +1168,12 @@ CTranslatorScalarToDXL::PdxlnScFuncExprFromFuncExpr
 	const Expr *pexpr,
 	const CMappingVarColId* pmapvarcolid
 	)
-	const
 {
 	GPOS_ASSERT(IsA(pexpr, FuncExpr));
 	const FuncExpr *pfuncexpr = (FuncExpr *) pexpr;
 
-	// check if this is a catalog function
+	// TODO: elhela - Apr 18, 2014; remove the following check once we enable
+	// forcing master-only plans
 	if (CTranslatorUtils::FCatalogFunc(pfuncexpr->funcid))
 	{
 		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature, GPOS_WSZ_LIT("Catalog functions"));
@@ -1229,7 +1227,6 @@ CTranslatorScalarToDXL::PdxlnScAggrefFromAggref
 	const Expr *pexpr,
 	const CMappingVarColId* pmapvarcolid
 	)
-	const
 {
 	GPOS_ASSERT(IsA(pexpr, Aggref));
 	const Aggref *paggref = (Aggref *) pexpr;
@@ -1354,9 +1351,9 @@ CTranslatorScalarToDXL::Pdxlwf
 	(
 	const Expr *pexpr,
 	const CMappingVarColId* pmapvarcolid,
-	CDXLNode *pdxlnNewChildScPrL
+	CDXLNode *pdxlnNewChildScPrL,
+	BOOL *pfHasDistributedTables // output
 	)
-	const
 {
 	GPOS_ASSERT(IsA(pexpr, WindowFrame));
 	const WindowFrame *pwindowframe = (WindowFrame *) pexpr;
@@ -1398,12 +1395,12 @@ CTranslatorScalarToDXL::Pdxlwf
 	// translate the lead and trail value
 	if (NULL != pwindowframe->lead->val)
 	{
-		pdxlnLeadEdge->AddChild(PdxlnWindowFrameEdgeVal(pwindowframe->lead->val, pmapvarcolid, pdxlnNewChildScPrL));
+		pdxlnLeadEdge->AddChild(PdxlnWindowFrameEdgeVal(pwindowframe->lead->val, pmapvarcolid, pdxlnNewChildScPrL, pfHasDistributedTables));
 	}
 
 	if (NULL != pwindowframe->trail->val)
 	{
-		pdxlnTrailEdge->AddChild(PdxlnWindowFrameEdgeVal(pwindowframe->trail->val, pmapvarcolid, pdxlnNewChildScPrL));
+		pdxlnTrailEdge->AddChild(PdxlnWindowFrameEdgeVal(pwindowframe->trail->val, pmapvarcolid, pdxlnNewChildScPrL, pfHasDistributedTables));
 	}
 
 	CDXLWindowFrame *pdxlWf = New(m_pmp) CDXLWindowFrame(m_pmp, edxlfs, edxlfes, pdxlnLeadEdge, pdxlnTrailEdge);
@@ -1424,11 +1421,11 @@ CTranslatorScalarToDXL::PdxlnWindowFrameEdgeVal
 	(
 	const Node *pnode,
 	const CMappingVarColId* pmapvarcolid,
-	CDXLNode *pdxlnNewChildScPrL
+	CDXLNode *pdxlnNewChildScPrL,
+	BOOL *pfHasDistributedTables
 	)
-	const
 {
-	CDXLNode *pdxlnVal = PdxlnScOpFromExpr((Expr *) pnode, pmapvarcolid);
+	CDXLNode *pdxlnVal = PdxlnScOpFromExpr((Expr *) pnode, pmapvarcolid, pfHasDistributedTables);
 
 	if (m_fQuery && !IsA(pnode, Var) && !IsA(pnode, Const))
 	{
@@ -1477,7 +1474,6 @@ CTranslatorScalarToDXL::PdxlnScWindowref
 	const Expr *pexpr,
 	const CMappingVarColId* pmapvarcolid
 	)
-	const
 {
 	GPOS_ASSERT(IsA(pexpr, WindowRef));
 
@@ -1546,9 +1542,9 @@ CDXLNode *
 CTranslatorScalarToDXL::PdxlnScCondFromQual
 	(
 	List *plQual,
-	const CMappingVarColId* pmapvarcolid
+	const CMappingVarColId* pmapvarcolid,
+	BOOL *pfHasDistributedTables
 	)
-	const
 {
 	if (NULL == plQual || 0 == gpdb::UlListLength(plQual))
 	{
@@ -1558,7 +1554,7 @@ CTranslatorScalarToDXL::PdxlnScCondFromQual
 	if (1 == gpdb::UlListLength(plQual))
 	{
 		Expr *pexpr = (Expr *) gpdb::PvListNth(plQual, 0);
-		return PdxlnScOpFromExpr(pexpr, pmapvarcolid);
+		return PdxlnScOpFromExpr(pexpr, pmapvarcolid, pfHasDistributedTables);
 	}
 	else
 	{
@@ -1566,7 +1562,7 @@ CTranslatorScalarToDXL::PdxlnScCondFromQual
 		// Here we build the left deep AND tree
 		CDXLNode *pdxln = New(m_pmp) CDXLNode(m_pmp, New(m_pmp) CDXLScalarBoolExpr(m_pmp, Edxland));
 
-		TranslateScalarChildren(pdxln, plQual, pmapvarcolid);
+		TranslateScalarChildren(pdxln, plQual, pmapvarcolid, pfHasDistributedTables);
 
 		return pdxln;
 	}
@@ -1586,9 +1582,9 @@ CTranslatorScalarToDXL::PdxlnFilterFromQual
 	(
 	List *plQual,
 	const CMappingVarColId* pmapvarcolid,
-	Edxlopid edxlopFilterType
+	Edxlopid edxlopFilterType,
+	BOOL *pfHasDistributedTables // output
 	)
-	const
 {
 	CDXLScalarFilter *pdxlop = NULL;
 
@@ -1610,7 +1606,7 @@ CTranslatorScalarToDXL::PdxlnFilterFromQual
 
 	CDXLNode *pdxlnFilter = New(m_pmp) CDXLNode(m_pmp, pdxlop);
 
-	CDXLNode *pdxlnCond = PdxlnScCondFromQual(plQual, pmapvarcolid);
+	CDXLNode *pdxlnCond = PdxlnScCondFromQual(plQual, pmapvarcolid, pfHasDistributedTables);
 
 	if (NULL != pdxlnCond)
 	{
@@ -1635,7 +1631,6 @@ CTranslatorScalarToDXL::PdxlnFromSublink
 	const Expr *pexpr,
 	const CMappingVarColId* pmapvarcolid
 	)
-	const
 {
 	const SubLink *psublink = (SubLink *) pexpr;
 
@@ -1673,7 +1668,6 @@ CTranslatorScalarToDXL::PdxlnQuantifiedSubqueryFromSublink
 	const SubLink *psublink,
 	const CMappingVarColId* pmapvarcolid
 	)
-	const
 {
 	CMappingVarColId *pmapvarcolidCopy = pmapvarcolid->PmapvarcolidCopy(m_pmp);
 
@@ -1699,6 +1693,8 @@ CTranslatorScalarToDXL::PdxlnQuantifiedSubqueryFromSublink
 	{
 		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature, GPOS_WSZ_LIT("Non-Scalar Subquery"));
 	}
+
+	m_fHasDistributedTables = m_fHasDistributedTables || trquerytodxl.FHasDistributedTables();
 
 	CDXLNode *pdxlnIdent = (*pdrgpdxlnQueryOutput)[0];
 	GPOS_ASSERT(NULL != pdxlnIdent);
@@ -1776,7 +1772,6 @@ CTranslatorScalarToDXL::PdxlnScSubqueryFromSublink
 	const SubLink *psublink,
 	const CMappingVarColId *pmapvarcolid
 	)
-	const
 {
 	CMappingVarColId *pmapvarcolidCopy = pmapvarcolid->PmapvarcolidCopy(m_pmp);
 
@@ -1800,6 +1795,7 @@ CTranslatorScalarToDXL::PdxlnScSubqueryFromSublink
 
 	DrgPdxln *pdrgpdxlnCTE = trquerytodxl.PdrgpdxlnCTE();
 	CUtils::AddRefAppend(m_pdrgpdxlnCTE, pdrgpdxlnCTE);
+	m_fHasDistributedTables = m_fHasDistributedTables || trquerytodxl.FHasDistributedTables();
 
 	// get dxl scalar identifier
 	CDXLNode *pdxlnIdent = (*pdrgpdxlnQueryOutput)[0];
@@ -1832,7 +1828,6 @@ CTranslatorScalarToDXL::PdxlnArray
 	const Expr *pexpr,
 	const CMappingVarColId* pmapvarcolid
 	)
-	const
 {
 	GPOS_ASSERT(IsA(pexpr, ArrayExpr));
 
@@ -1868,7 +1863,6 @@ CTranslatorScalarToDXL::PdxlnArrayRef
 	const Expr *pexpr,
 	const CMappingVarColId* pmapvarcolid
 	)
-	const
 {
 	GPOS_ASSERT(IsA(pexpr, ArrayRef));
 
@@ -1915,7 +1909,6 @@ CTranslatorScalarToDXL::AddArrayIndexList
 	CDXLScalarArrayRefIndexList::EIndexListBound eilb,
 	const CMappingVarColId* pmapvarcolid
 	)
-	const
 {
 	GPOS_ASSERT(NULL != pdxln);
 	GPOS_ASSERT(EdxlopScalarArrayRef == pdxln->Pdxlop()->Edxlop());
@@ -1969,7 +1962,6 @@ CTranslatorScalarToDXL::PdxlnExistSubqueryFromSublink
 	const SubLink *psublink,
 	const CMappingVarColId* pmapvarcolid
 	)
-	const
 {
 	GPOS_ASSERT(NULL != psublink);
 	CMappingVarColId *pmapvarcolidCopy = pmapvarcolid->PmapvarcolidCopy(m_pmp);
@@ -1989,6 +1981,7 @@ CTranslatorScalarToDXL::PdxlnExistSubqueryFromSublink
 	
 	DrgPdxln *pdrgpdxlnCTE = trquerytodxl.PdrgpdxlnCTE();
 	CUtils::AddRefAppend(m_pdrgpdxlnCTE, pdrgpdxlnCTE);
+	m_fHasDistributedTables = m_fHasDistributedTables || trquerytodxl.FHasDistributedTables();
 	
 	CDXLNode *pdxln = New(m_pmp) CDXLNode(m_pmp, New (m_pmp) CDXLScalarSubqueryExists(m_pmp));
 	pdxln->AddChild(pdxlnRoot);
@@ -2009,7 +2002,6 @@ CTranslatorScalarToDXL::PdxlnPlanFromParam
 	const Expr *pexpr,
 	const CMappingVarColId * // pmapvarcolid
 	)
-	const
 {
 	const Param *pparam = (Param *) pexpr;
 	// check first if this param can be translated into a scalar id (from a subplan)
