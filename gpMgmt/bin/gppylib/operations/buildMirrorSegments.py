@@ -647,13 +647,30 @@ class GpMirrorListToBuild:
     def _get_running_postgres_segments(self, segments):
         running_segments = []
         for seg in segments:
-            pid = get_pid_from_remotehost(seg.getSegmentHostName(), seg.getSegmentDataDirectory())
-            if pid is not None and check_pid_on_remotehost(pid, seg.getSegmentHostName()) and is_pid_postmaster(seg.getSegmentDataDirectory(), pid, seg.getSegmentHostName()):
-                running_segments.append(seg)
+            datadir = self.dereference_remote_symlink(seg.getSegmentDataDirectory(), seg.getSegmentHostName())
+            pid = get_pid_from_remotehost(seg.getSegmentHostName(), datadir)
+            if pid is not None:
+                if check_pid_on_remotehost(pid, seg.getSegmentHostName()):
+                    if is_pid_postmaster(datadir, pid, seg.getSegmentHostName()):
+                        running_segments.append(seg)
+                    else:
+                        logger.info("Skipping to stop segment %s on host %s since it is not a postgres process" % (seg.getSegmentDataDirectory(), seg.getSegmentHostName()))
+                else:
+                    logger.info("Skipping to stop segment %s on host %s since process with pid %s is not running" % (seg.getSegmentDataDirectory(), seg.getSegmentHostName(), pid))
             else:
-                logger.info("Skipping to stop segment %s on host %s as it is not a postgres process" % (seg.getSegmentDataDirectory(), seg.getSegmentHostName()))
+                logger.info("Skipping to stop segment %s on host %s since pid could not be found" % (seg.getSegmentDataDirectory(), seg.getSegmentHostName()))
 
         return running_segments
+
+    def dereference_remote_symlink(self, datadir, host):
+        cmdStr = """python -c 'import os; print os.path.realpath("%s")'""" % datadir
+        cmd = base.Command('dereference a symlink on a remote host', cmdStr=cmdStr, ctxt=base.REMOTE, remoteHost=host)
+        cmd.run()
+        results = cmd.get_results()
+        if results.rc != 0:
+            logger.debug('Unable to determine if %s is symlink. Assuming it is not symlink' % (datadir))
+            return datadir
+        return results.stdout.strip()
 
     def __ensureStopped(self, gpEnv, directives):
         """

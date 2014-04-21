@@ -5,6 +5,7 @@
 
 import unittest2 as unittest
 import tempfile, os, shutil
+from gppylib.commands.base import CommandResult
 from gppylib.operations.buildMirrorSegments import GpMirrorListToBuild
 from mock import patch, MagicMock, Mock
 
@@ -73,6 +74,20 @@ class buildMirrorSegmentsTestCase(unittest.TestCase):
         expected_output = []
         segs = self.buildMirrorSegs._get_running_postgres_segments(mock_segs)
         self.assertEquals(segs, expected_output)
+
+    @patch('gppylib.commands.base.Command.run')
+    @patch('gppylib.commands.base.Command.get_results', return_value=CommandResult(rc=0, stdout='/tmp/seg0', stderr='', completed=True, halt=False))
+    def test_dereference_remote_symlink_valid_symlink(self, mock1, mock2):
+        datadir = '/tmp/link/seg0'
+        host = 'h1'
+        self.assertEqual(self.buildMirrorSegs.dereference_remote_symlink(datadir, host), '/tmp/seg0')
+
+    @patch('gppylib.commands.base.Command.run')
+    @patch('gppylib.commands.base.Command.get_results', return_value=CommandResult(rc=1, stdout='', stderr='', completed=True, halt=False))
+    def test_dereference_remote_symlink_unable_to_determine_symlink(self, mock1, mock2):
+        datadir = '/tmp/seg0'
+        host = 'h1'
+        self.assertEqual(self.buildMirrorSegs.dereference_remote_symlink(datadir, host), '/tmp/seg0')
 
 if __name__ == '__main__':
     unittest.main()
