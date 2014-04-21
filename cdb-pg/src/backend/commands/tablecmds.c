@@ -12671,7 +12671,7 @@ new_rel_opts(Relation rel, List *lwith)
 {
 	Datum newOptions = PointerGetDatum(NULL);
 	bool make_heap = false;
-
+	bool need_free_value = false;
 	if (lwith && list_length(lwith))
 	{
 		ListCell *lc;
@@ -12683,9 +12683,8 @@ new_rel_opts(Relation rel, List *lwith)
 		foreach(lc, lwith)
 		{
 			DefElem *e = lfirst(lc);
-
 			if (pg_strcasecmp(e->defname, "appendonly") == 0 &&
-				pg_strcasecmp(defGetString(e), "false") == 0)
+				pg_strcasecmp(defGetString(e, &need_free_value), "false") == 0)
 			{
 				make_heap = true;
 				break;
@@ -18271,7 +18270,8 @@ static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols,
 		{
 			DefElem    *defel = (DefElem *) lfirst(option);
 			char	   *key = defel->defname;
-			char	   *val = defGetString(defel);
+			bool need_free_value = false;
+			char	   *val = defGetString(defel, &need_free_value);
 			
 			if (strcmp(key, "formatter") == 0)
 			{
@@ -18292,6 +18292,11 @@ static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols,
 			sprintf((char *) format_str + len, "%s '%s' ", key_modified.data, val);
 			len += strlen(key_modified.data) + strlen(val) + 4;
 			
+			if (need_free_value)
+			{
+				pfree(val);
+			}
+
 			if (len > maxlen)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
