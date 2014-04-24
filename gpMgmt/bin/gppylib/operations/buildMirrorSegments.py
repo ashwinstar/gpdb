@@ -656,9 +656,9 @@ class GpMirrorListToBuild:
                     else:
                         logger.info("Skipping to stop segment %s on host %s since it is not a postgres process" % (seg.getSegmentDataDirectory(), seg.getSegmentHostName()))
                 else:
-                    logger.info("Skipping to stop segment %s on host %s since process with pid %s is not running" % (seg.getSegmentDataDirectory(), seg.getSegmentHostName(), pid))
+                    logger.debug("Skipping to stop segment %s on host %s since process with pid %s is not running" % (seg.getSegmentDataDirectory(), seg.getSegmentHostName(), pid))
             else:
-                logger.info("Skipping to stop segment %s on host %s since pid could not be found" % (seg.getSegmentDataDirectory(), seg.getSegmentHostName()))
+                logger.debug("Skipping to stop segment %s on host %s since pid could not be found" % (seg.getSegmentDataDirectory(), seg.getSegmentHostName()))
 
         return running_segments
 
@@ -668,7 +668,7 @@ class GpMirrorListToBuild:
         cmd.run()
         results = cmd.get_results()
         if results.rc != 0:
-            logger.debug('Unable to determine if %s is symlink. Assuming it is not symlink' % (datadir))
+            logger.warning('Unable to determine if %s is symlink. Assuming it is not symlink' % (datadir))
             return datadir
         return results.stdout.strip()
 
