@@ -45,7 +45,6 @@ EMC Download Center.
 * PL/Perl
 * MADlib
 * Pgcrypto
-* Greenplum Database gNet Connectivity Software for Hadoop
 
 Note that Greenplum Package Manager installation files for extension 
 packages may release outside of standard Database release cycles. 
