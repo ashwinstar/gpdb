@@ -3821,11 +3821,10 @@ Feature: Validate command line arguments
         And verify that there is a "heap" table "heap_table" in "fullbkdb" with data
         And verify that there is no table "co_part_table" in "fullbkdb"
 
-    #This is a bad test case. Currently gpdbrestore -T with parent partition name for a full backup
-    #does not restore data. See MPP-19246
-    @wip
     Scenario: Full Backup and Restore of one table with -C option
         Given the database is running
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
         And there are no backup files
         And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
         And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
@@ -3837,8 +3836,8 @@ Feature: Validate command line arguments
         And all the data from "fullbkdb" is saved for verification
         And the user runs "gpdbrestore -a -t 20140101010101 -T public.ao_part_table,public.ext_tab"
         And gpdbrestore should return a return code of 0
-        And verify that there is a "heap" table "heap_table" in "fullbkdb" with data
-        And verify that there is a "ao" table "ao_part_table" in "fullbkdb" with data
+        And verify that there is a "heap" table "public.heap_table" in "fullbkdb" with data
+        And verify that there is a "ao" table "public.ao_part_table" in "fullbkdb" with data
         And verify that there is a "external" table "public.ext_tab" in "fullbkdb"
 
     Scenario: Full Backup and Restore of all tables with -C option
@@ -5412,6 +5411,47 @@ Feature: Validate command line arguments
         And verify that status file is generated in segment_data_directory
         And there are no report files in "master_data_directory"
         And there are no status files in "segment_data_directory"
+
+    @backupfire
+    Scenario: Filtered Full Backup with Partition Table
+        Given the database is running
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data 
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data 
+        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data 
+        When the user runs "gpcrondump -a -x fullbkdb"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored 
+        And all the data from "fullbkdb" is saved for verification
+        When the user runs "gpdbrestore -e -T public.ao_part_table -a" with the stored timestamp
+        Then gpdbrestore should return a return code of 0
+        And verify that there is no table "ao_index_table" in "fullbkdb" 
+        And verify that there is no table "heap_table" in "fullbkdb"
+        And verify that there is a "ao" table "public.ao_part_table" in "fullbkdb" with data
+        And verify that the data of "9" tables in "fullbkdb" is validated after restore
+
+    @backupfire
+    Scenario: Filtered Incremental Backup with Partition Table
+        Given the database is running
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data 
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data 
+        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data 
+        When the user runs "gpcrondump -a -x fullbkdb"
+        Then gpcrondump should return a return code of 0 
+        And table "ao_index_table" is assumed to be in dirty state in "fullbkdb"
+        When the user runs "gpcrondump -a -x fullbkdb --incremental"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored 
+        And all the data from "fullbkdb" is saved for verification
+        When the user runs "gpdbrestore -e -T public.ao_part_table -a" with the stored timestamp
+        Then gpdbrestore should return a return code of 0
+        And verify that there is no table "ao_index_table" in "fullbkdb" 
+        And verify that there is no table "heap_table" in "fullbkdb"
+        And verify that there is a "ao" table "public.ao_part_table" in "fullbkdb" with data
+        And verify that the data of "9" tables in "fullbkdb" is validated after restore
 
     # THIS SHOULD BE THE LAST TEST
     @backupfire

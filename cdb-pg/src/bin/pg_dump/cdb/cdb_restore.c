@@ -53,6 +53,10 @@ typedef struct option optType;
 
 static RestoreOptions *opts = NULL;
 static bool dataOnly = false;
+static bool postdataSchemaRestore = false;
+static bool postdataRestore = true;
+static bool schemaRestore = true;
+static bool dataRestore = true;
 static bool schemaOnly = false;
 static bool bForcePassword = false;
 static bool bIgnoreVersion = false;
@@ -160,11 +164,17 @@ main(int argc, char **argv)
 	/* Install the SIGINT and SIGTERM handlers */
 	installSignalHandlers();
 
+
+	/* There is no behavior change for full restore with no filter and for incremental restore.
+	 * The behavior only changes when postdataSchemaRestore is specified, incase of full restore with table filters,
+	 * for all other cases schemaRestore, dataRestore and postdataRestore defaults to true, hence no behavior change.
+	 */
+
 	/*
 	 * restore master first. However, if we restore only data, or if master
 	 * segment is not included in our restore set, skip master
 	 */
-	if (!dataOnly && found_master)
+	if (!dataOnly && found_master && schemaRestore)
 	{
 		if (!restoreMaster(&inputOpts, pConn, sourceSegDB, targetSegDB, &masterParm))
 		{
@@ -175,7 +185,7 @@ main(int argc, char **argv)
 	}
 
 	/* restore segdbs. However, if we restore schema only, skip segdbs */
-	if (!schemaOnly)
+	if (!schemaOnly && dataRestore)
 	{
 		if (restorePairAr.count > 0)
 		{
@@ -199,7 +209,7 @@ main(int argc, char **argv)
 	 * restore post-data items last. However, if we restore only data, or if master
 	 * segment is not included in our restore set, skip this step
 	 */
-	if (!dataOnly && found_master)
+	if (!dataOnly && found_master && postdataRestore)
 	{
 		char * newParms;
 		int newlen =  strlen(" --post-data-schema-only") + 1;
@@ -219,7 +229,6 @@ main(int argc, char **argv)
 		}
 
 	}
-
 
 	/* Produce results report */
 	failCount = reportRestoreResults(inputOpts.pszReportDirectory, &masterParm, &parmAr);
@@ -261,6 +270,7 @@ usage(void)
 	printf(("\nOptions controlling the output content:\n"));
 	printf(("  -a, --data-only          restore only the data, no schema\n"));
 	printf(("  -s, --schema-only        restore only the schema, no data\n"));
+	printf(("  -P, --post-data-schema-only    restore only the postdataSchema\n"));
 
 	printf(("\nConnection options:\n"));
 	printf(("  -h, --host=HOSTNAME      database server host or socket directory\n"));
@@ -300,6 +310,7 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		/*{"clean", 0, NULL, 'c'}, */
 		/* {"create", 0, NULL, 'C'}, */
 		{"data-only", 0, NULL, 'a'},
+		{"post-data-schema-only", 0, NULL, 'P'},
 		{"dbname", 1, NULL, 'd'},
 		/*{"file", 1, NULL, 'f'},
 		{"format", 1, NULL, 'F'},*/
@@ -435,7 +446,7 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 			strcat(pInputOpts->pszCmdLineParms, argv[i]);
 	}
 
-	while ((c = getopt_long(argc, argv, "acd:h:ip:RsuU:vwW",
+	while ((c = getopt_long(argc, argv, "aPcd:h:ip:RsuU:vwW",
 							cmdopts, NULL)) != -1)
 	{
 		switch (c)
@@ -444,6 +455,10 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 				opts->dataOnly = 1;
 				dataOnly = true;
 				pInputOpts->pszPassThroughParms = addPassThroughParm(c, NULL, pInputOpts->pszPassThroughParms);
+				break;
+			case 'P':			/* postdataSchemaRestore is only specified for full restore with table filters. */
+				opts->postdataSchemaRestore = 1;
+				postdataSchemaRestore = true;
 				break;
 /*			case 'c':		*/	/* clean (i.e., drop) schema prior to create */
 /*				opts->dropSchema = 1;
@@ -538,12 +553,13 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 				opts->triggerNames = strdup(optarg);
 				pInputOpts->pszPassThroughParms = addPassThroughParm( c, optarg, pInputOpts->pszPassThroughParms );
 				break;
-									   */ case 's':		/* dump schema only */
+*/ 
+			case 's':		/* dump schema only */
 				opts->schemaOnly = 1;
 				schemaOnly = true;
 				pInputOpts->pszPassThroughParms = addPassThroughParm(c, NULL, pInputOpts->pszPassThroughParms);
 				break;
-				/* case 'S':		  //  * Superuser username * */
+/* 			case 'S':		  //  * Superuser username * */
 /*				if (strlen(optarg) != 0) */
 /*					opts->superuser = strdup(optarg); */
 /*				break; */
@@ -723,6 +739,23 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		}
 	}
 
+
+	/* If postdataSchemaRestore is specified with -s option then only schema is restored and not postdataSchema.*/
+	if (schemaOnly && postdataSchemaRestore && !dataOnly)
+	{
+		schemaRestore = true;
+		postdataRestore = false;
+	}
+
+	/* If postdataSchemaRestore is specified without -s and -a option then only postdataSchema is restored. */
+	if (postdataSchemaRestore && !schemaOnly && !dataOnly)
+	{
+		postdataRestore = true;
+		schemaRestore = false;
+		dataRestore = false;
+	}
+
+	
 #ifdef USE_DDBOOST
         if (dd_boost_enabled)
 	{

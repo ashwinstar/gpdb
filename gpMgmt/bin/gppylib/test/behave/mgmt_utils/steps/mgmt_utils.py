@@ -2112,7 +2112,6 @@ def impl(context, dir):
     for seg, dump_files in segment_dump_files:
         segment_dump_dir =  dir if len(dir.strip()) != 0 else seg.getSegmentDataDirectory()
         if len(dump_files) != 0:
-            print 'results = ', results
             raise Exception('Found extra dump files on the segment %s under %s/db_dumps/%s' % (seg.getSegmentDataDirectory(), segment_dump_dir, context.backup_timestamp[0:8]))
     
     cmd = Command('check dump files', 'ls %s/db_dumps/%s' % (master_dump_dir, context.backup_timestamp[0:8]))

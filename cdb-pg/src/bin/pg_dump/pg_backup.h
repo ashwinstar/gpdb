@@ -96,6 +96,7 @@ typedef struct _restoreOptions
 								 * instead of OWNER TO */
 	char	   *superuser;		/* Username to use as superuser */
 	int			dataOnly;
+	int			postdataSchemaRestore;
 	int			dropSchema;
 	char	   *filename;
 	int			schemaOnly;

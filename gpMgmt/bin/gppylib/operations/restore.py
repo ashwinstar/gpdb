@@ -168,6 +168,18 @@ def is_incremental_restore(master_datadir, backup_dir, timestamp):
 
     return False 
 
+def is_full_restore(master_datadir, backup_dir, timestamp):
+
+    filename = generate_report_filename(master_datadir, backup_dir, timestamp)
+    if not os.path.isfile(filename):
+        raise Exception('Report file %s does not exist for restore timestamp %s' % (filename, timestamp))
+
+    report_file_contents = get_lines_from_file(filename)
+    if check_backup_type(report_file_contents, 'Full'):
+        return True
+
+    return False 
+
 def is_begin_incremental_run(master_datadir, backup_dir, timestamp, noplan):
     if is_incremental_restore(master_datadir, backup_dir, timestamp) and not noplan:
         return True
@@ -313,22 +325,37 @@ class RestoreDatabase(Operation):
         
         if self.restore_global:
             self._restore_global(restore_timestamp, self.master_datadir, self.backup_dir)
+
+        """ 
+        For full restore with table filter or for the first recurssion of the incremental restore 
+        we first restore the schema, expand the parent partition table name's in the restore table 
+        filter to include leaf partition names, and then restore data (only, using '-a' option).
+        """
        
-        if is_begin_incremental_run(self.master_datadir, self.backup_dir, self.restore_timestamp, self.no_plan):
+        full_restore_with_filter = False
+        full_restore = is_full_restore(self.master_datadir, self.backup_dir, self.restore_timestamp) 
+        begin_incremental = is_begin_incremental_run(self.master_datadir, self.backup_dir, self.restore_timestamp, self.no_plan)
+
+        if (full_restore and self.restore_tables is not None and not self.no_plan) or begin_incremental:
+            if full_restore and not self.no_plan:
+                full_restore_with_filter = True
+
             metadata_file = generate_metadata_filename(self.master_datadir, self.backup_dir, self.restore_timestamp)
             table_filter_file = self.create_filter_file() # returns None if nothing to filter
             restore_line = self._build_schema_only_restore_line(restore_timestamp, 
-                                                                restore_db, 
-                                                                compress, 
+                                                                restore_db, compress, 
                                                                 self.master_port, 
                                                                 metadata_file,
-                                                                table_filter_file)
+                                                                table_filter_file,
+                                                                full_restore_with_filter)
+
             logger.info("Running metadata restore")
             logger.info("Invoking commandline: %s" % restore_line) 
             Command('Invoking gp_restore', restore_line).run(validateAfter=True)
-
-            logger.info("Expanding parent partitions in table filter")
+            logger.info("Expanding parent partitions if any in table filter")
             self.restore_tables = expand_partition_tables(restore_db, self.restore_tables)
+
+        if begin_incremental:
             logger.info("Running data restore")
             restore_incremental_data_only(self.master_datadir, 
                                           self.backup_dir, 
@@ -346,9 +373,19 @@ class RestoreDatabase(Operation):
                                                     restore_db, compress, 
                                                     self.master_port, self.ddboost, 
                                                     self.no_plan, table_filter_file, 
-                                                    self.no_ao_stats)
+                                                    self.no_ao_stats, full_restore_with_filter)
             logger.info('gp_restore commandline: %s: ' % restore_line)
             Command('Invoking gp_restore', restore_line).run(validateAfter=True)
+
+            if full_restore_with_filter:
+                restore_line = self._build_post_data_schema_only_restore_line(restore_timestamp, 
+                                                                restore_db, compress, 
+                                                                self.master_port, 
+                                                                table_filter_file, 
+                                                                full_restore_with_filter)
+                logger.info("Running post data restore")
+                logger.info('gp_restore commandline: %s: ' % restore_line)
+                Command('Invoking gp_restore', restore_line).run(validateAfter=True)
 
             if table_filter_file: 
                 self.remove_filter_file(table_filter_file)
@@ -495,7 +532,7 @@ class RestoreDatabase(Operation):
         return True
 
     def _build_restore_line(self, restore_timestamp, restore_db, compress, master_port, ddboost, no_plan, 
-                            table_filter_file, no_stats): 
+                            table_filter_file, no_stats, full_restore_with_filter): 
 
             
         user = getpass.getuser()
@@ -528,14 +565,48 @@ class RestoreDatabase(Operation):
         restore_line += " -d %s" % restore_db
         if ddboost:
             restore_line += " --ddboost"
-        if no_plan:
+
+        # Restore only data if no_plan or full_restore_with_filter is True
+        if no_plan or full_restore_with_filter:
             restore_line += " -a"
         if no_stats:
             restore_line += " --gp-nostats"
         return restore_line
 
+    def _build_post_data_schema_only_restore_line(self, restore_timestamp, restore_db, compress, master_port, 
+                                        table_filter_file, full_restore_with_filter):
+        user = getpass.getuser()
+        hostname = socket.gethostname()    # TODO: can this just be localhost? bash was using `hostname`
+        prefix_path = path = os.path.join(DUMP_DIR, restore_timestamp[0:8])
+        if self.backup_dir is not None:
+            path = os.path.join(self.backup_dir, path)
+        restore_line = "gp_restore -i -h %s -p %s -U %s --gp-d=%s --gp-i" % (hostname, master_port, user, path)
+        restore_line += " --gp-k=%s --gp-l=p" % (restore_timestamp)
+
+        if full_restore_with_filter:
+            restore_line += " -P"
+        if self.report_status_dir:
+            restore_line += " --gp-r=%s" % self.report_status_dir
+            restore_line += " --status=%s" % self.report_status_dir
+        elif self.backup_dir and self.backup_dir_is_writable():
+                restore_line += " --gp-r=%s" % path
+                restore_line += " --status=%s" % path
+        # else
+        # gp-r is not set, restore.c sets it to MASTER_DATA_DIRECTORY if not specified.
+        # status file is not set, cdbbackup.c sets it to SEGMENT_DATA_DIRECTORY if not specified.
+
+        if backup_utils.dump_prefix:
+            logger.info("Adding --prefix")
+            restore_line += " --prefix=%s" % backup_utils.dump_prefix
+        if table_filter_file:
+            restore_line += " --gp-f=%s" % table_filter_file
+        if compress:
+            restore_line += " --gp-c"
+        restore_line += " -d %s" % restore_db
+        return restore_line
+
     def _build_schema_only_restore_line(self, restore_timestamp, restore_db, compress, master_port, 
-                                        metadata_filename, table_filter_file):
+                                        metadata_filename, table_filter_file, full_restore_with_filter):
         user = getpass.getuser()
         hostname = socket.gethostname()    # TODO: can this just be localhost? bash was using `hostname`
         prefix_path = path = os.path.join(DUMP_DIR, restore_timestamp[0:8])
@@ -544,6 +615,8 @@ class RestoreDatabase(Operation):
         restore_line = "gp_restore -i -h %s -p %s -U %s --gp-d=%s --gp-i" % (hostname, master_port, user, path)
         restore_line += " --gp-k=%s --gp-l=p -s %s" % (restore_timestamp, metadata_filename)
 
+        if full_restore_with_filter:
+            restore_line += " -P"
         if self.report_status_dir:
             restore_line += " --gp-r=%s" % self.report_status_dir
             restore_line += " --status=%s" % self.report_status_dir
