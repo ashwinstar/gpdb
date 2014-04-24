@@ -282,4 +282,5 @@ extern bool datumstreamread_find_block(DatumStreamRead *datumStream,
  * before calling datumstreamread_block_content.
  */
 extern void datumstreamread_block_content(DatumStreamRead *acc);
+extern bool init_datumstream_checksum(char *compName, bool checksum);
 #endif /* DATUM_STREAM_H */

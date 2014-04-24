@@ -183,7 +183,22 @@ extern void AppendOnlyBlockDirectory_Init_forSearch(
 	Relation aoRel,
 	int numColumnGroups,
 	bool isAOCol);
+extern void AppendOnlyBlockDirectory_Init_addCol(
+	AppendOnlyBlockDirectory *blockDirectory,
+	AppendOnlyEntry *aoEntry,
+	Snapshot appendOnlyMetaDataSnapshot,
+	FileSegInfo *segmentFileInfo,
+	Relation aoRel,
+	int segno,
+	int numColumnGroups,
+	bool isAOCol);
 extern bool AppendOnlyBlockDirectory_InsertEntry(
+	AppendOnlyBlockDirectory *blockDirectory,
+	int columnGroupNo,
+	int64 firstRowNum,
+	int64 fileOffset,
+	int64 rowCount);
+extern bool AppendOnlyBlockDirectory_addCol_InsertEntry(
 	AppendOnlyBlockDirectory *blockDirectory,
 	int columnGroupNo,
 	int64 firstRowNum,
@@ -199,6 +214,8 @@ extern bool AppendOnlyBlockDirectory_DeleteEntryForUpdate(
 extern void AppendOnlyBlockDirectory_End_forInsert(
 	AppendOnlyBlockDirectory *blockDirectory);
 extern void AppendOnlyBlockDirectory_End_forSearch(
+	AppendOnlyBlockDirectory *blockDirectory);
+extern void AppendOnlyBlockDirectory_End_addCol(
 	AppendOnlyBlockDirectory *blockDirectory);
 extern void AppendOnlyBlockDirectory_DeleteSegmentFile(
 		AppendOnlyEntry *aoEntry,

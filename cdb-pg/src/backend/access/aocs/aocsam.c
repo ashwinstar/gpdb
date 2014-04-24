@@ -1727,3 +1727,338 @@ HTSU_Result aocs_delete(AOCSDeleteDesc aoDeleteDesc,
 	return AppendOnlyVisimapDelete_Hide(&aoDeleteDesc->visiMapDelete, aoTupleId);
 }
 
+/*
+ * Initialize a scan on varblock headers in an AOCS segfile.  The
+ * segfile is identified by colno.
+ */
+AOCSHeaderScanDesc
+aocs_begin_headerscan(Relation rel,
+					  AppendOnlyEntry *aoentry,
+					  int colno)
+{
+	AOCSHeaderScanDesc hdesc;
+	AppendOnlyStorageAttributes ao_attr;
+	StdRdOptions 	**opts = RelationGetAttributeOptions(rel);
+
+	int32 blocksize = DEFAULT_APPENDONLY_BLOCK_SIZE;
+	ao_attr.checksum = false;
+	if (opts[colno])
+	{
+		ao_attr.checksum = init_datumstream_checksum(opts[colno]->compresstype,
+													 opts[colno]->checksum);
+		blocksize = opts[colno]->blocksize;
+	}
+	/*
+	 * We are concerned with varblock headers only, not their content.
+	 * Therefore, don't waste cycles in decompressing the content.
+	 */
+	ao_attr.compress = false;
+	ao_attr.compressType = NULL;
+	ao_attr.compressLevel = 0;
+	ao_attr.overflowSize = 0;
+	ao_attr.safeFSWriteSize = 0;
+	ao_attr.version = aoentry->version;
+	hdesc = palloc(sizeof(AOCSHeaderScanDescData));
+	AppendOnlyStorageRead_Init(&hdesc->ao_read,
+							   NULL, // current memory context
+							   blocksize,
+							   RelationGetRelationName(rel),
+							   "ALTER TABLE ADD COLUMN scan",
+							   &ao_attr);
+	hdesc->colno = colno;
+	return hdesc;
+}
+
+/*
+ * Open AOCS segfile for scanning varblock headers.
+ */
+void aocs_headerscan_opensegfile(AOCSHeaderScanDesc hdesc,
+								 AOCSFileSegInfo *seginfo,
+								 char *basepath)
+{
+	AOCSVPInfoEntry *vpe;
+	char fn[MAXPGPATH];
+	int32 fileSegNo;
+
+	/* Close currently open segfile, if any. */
+	AppendOnlyStorageRead_CloseFile(&hdesc->ao_read);
+	FormatAOSegmentFileName(basepath, seginfo->segno,
+							hdesc->colno, &fileSegNo, fn);
+	Assert(strlen(fn) + 1 <= MAXPGPATH);
+	vpe = getAOCSVPEntry(seginfo, hdesc->colno);
+	AppendOnlyStorageRead_OpenFile(&hdesc->ao_read, fn, vpe->eof);
+}
+
+bool aocs_get_nextheader(AOCSHeaderScanDesc hdesc)
+{
+	if (hdesc->ao_read.current.firstRowNum > 0)
+	{
+		AppendOnlyStorageRead_SkipCurrentBlock(&hdesc->ao_read);
+	}
+	return AppendOnlyStorageRead_ReadNextBlock(&hdesc->ao_read);
+}
+
+void aocs_end_headerscan(AOCSHeaderScanDesc hdesc)
+{
+	AppendOnlyStorageRead_CloseFile(&hdesc->ao_read);
+	AppendOnlyStorageRead_FinishSession(&hdesc->ao_read);
+	pfree(hdesc);
+}
+
+/*
+ * Initialize one datum stream per new column for writing.
+ */
+AOCSAddColumnDesc
+aocs_addcol_init(Relation rel,
+				 AppendOnlyEntry *aoentry,
+				 int num_newcols)
+{
+	char *ct;
+	int32 clvl;
+	int32 blksz;
+	bool checksum;
+	AOCSAddColumnDesc desc;
+	int i;
+	int iattr;
+
+	desc = palloc(sizeof(AOCSAddColumnDescData));
+	desc->num_newcols = num_newcols;
+	desc->rel = rel;
+	desc->aoEntry = aoentry;
+	desc->cur_segno = -1;
+
+	/*
+	 * Rewrite catalog phase of alter table has updated catalog with
+	 * info for new columns, which is available through rel.
+	 */
+	StdRdOptions 	**opts = RelationGetAttributeOptions(rel);
+	desc->dsw = palloc(sizeof(DatumStreamWrite*) * desc->num_newcols);
+
+	iattr = rel->rd_att->natts - num_newcols;
+	for (i = 0; i < num_newcols; ++i, ++iattr)
+	{
+		Form_pg_attribute attr = rel->rd_att->attrs[iattr];
+		if (opts[iattr])
+		{
+			ct = opts[iattr]->compresstype;
+			clvl = opts[iattr]->compresslevel;
+			blksz = opts[iattr]->blocksize;
+			checksum = opts[iattr]->checksum;
+		}
+		else
+		{
+			ct = "none";
+			clvl = 0;
+			blksz = DEFAULT_APPENDONLY_BLOCK_SIZE;
+			checksum = false;
+		}
+		desc->dsw[i] = create_datumstreamwrite(
+				ct, clvl, checksum, 0, blksz /* safeFSWriteSize */,
+				aoentry->version, attr, RelationGetRelationName(rel),
+				"ALTER TABLE ADD COLUMN new segfile");
+	}
+	return desc;
+}
+
+/*
+ * Create new physical segfiles for each newly added column.
+ */
+void aocs_addcol_newsegfile(AOCSAddColumnDesc desc,
+							AOCSFileSegInfo *seginfo,
+							char *basepath,
+							RelFileNode relfilenode)
+{
+	int32 fileSegNo;
+	char fn[MAXPGPATH];
+	int i;
+	/* Column numbers of newly added columns start from here. */
+	AttrNumber colno = desc->rel->rd_att->natts - desc->num_newcols;
+	if (desc->dsw[0]->need_close_file)
+	{
+		aocs_addcol_closefiles(desc);
+		AppendOnlyBlockDirectory_End_addCol(&desc->blockDirectory);
+	}
+	AppendOnlyBlockDirectory_Init_addCol(
+			&desc->blockDirectory,
+			desc->aoEntry,
+			SnapshotNow,
+			(FileSegInfo *)seginfo,
+			desc->rel,
+			seginfo->segno,
+			desc->num_newcols,
+			true /* isAOCol */);
+	for (i = 0; i < desc->num_newcols; ++i, ++colno)
+	{
+		FormatAOSegmentFileName(basepath, seginfo->segno, colno,
+								&fileSegNo, fn);
+		Assert(strlen(fn) + 1 <= MAXPGPATH);
+		datumstreamwrite_open_file(desc->dsw[i], fn,
+								   0 /* eof */, 0 /* eof_uncompressed */,
+								   relfilenode, fileSegNo);
+		desc->dsw[i]->blockFirstRowNum = 1;
+	}
+	desc->cur_segno = seginfo->segno;
+}
+
+void aocs_addcol_closefiles(AOCSAddColumnDesc desc)
+{
+	int i;
+	AttrNumber colno = desc->rel->rd_att->natts - desc->num_newcols;
+	int itemCount;
+	for (i = 0; i < desc->num_newcols; ++i)
+	{	
+		itemCount = datumstreamwrite_nth(desc->dsw[i]);
+		datumstreamwrite_block(desc->dsw[i]);
+		AppendOnlyBlockDirectory_addCol_InsertEntry(
+			&desc->blockDirectory,
+			i + colno,
+			desc->dsw[i]->blockFirstRowNum,
+			AppendOnlyStorageWrite_LastWriteBeginPosition(
+					&desc->dsw[i]->ao_write),
+			itemCount);
+		datumstreamwrite_close_file(desc->dsw[i]);
+	}
+	/* Update pg_aocsseg_* with eof of each segfile we just closed. */
+	AOCSFileSegInfoAddVpe(desc->rel, desc->aoEntry, desc->cur_segno, desc,
+						  desc->num_newcols, false /* non-empty VPEntry */);
+}
+
+/*
+ * Force writing new varblock in each segfile open for insert.
+ */
+void aocs_addcol_endblock(AOCSAddColumnDesc desc, int64 firstRowNum)
+{
+	int i;
+	AttrNumber colno = desc->rel->rd_att->natts - desc->num_newcols;
+	int itemCount;
+	for (i = 0; i < desc->num_newcols; ++i)
+	{
+		itemCount = datumstreamwrite_nth(desc->dsw[i]);
+		datumstreamwrite_block(desc->dsw[i]);
+		AppendOnlyBlockDirectory_addCol_InsertEntry(
+			&desc->blockDirectory,
+			i + colno,
+			desc->dsw[i]->blockFirstRowNum,
+			AppendOnlyStorageWrite_LastWriteBeginPosition(
+					&desc->dsw[i]->ao_write),
+			itemCount);
+		/*
+		 * Next block's first row number.  In this case, the block
+		 * being ended has less number of rows than its capacity.
+		 */
+		desc->dsw[i]->blockFirstRowNum = firstRowNum;
+	}
+}
+
+/*
+ * Insert one new datum for each new column being added.  This is
+ * derived from aocs_insert_values().
+ */
+void aocs_addcol_insert_datum(AOCSAddColumnDesc desc, Datum *d, bool *isnull)
+{
+	void *toFree1;
+	void *toFree2;
+	Datum datum;
+	int err;
+	int i;
+	int itemCount;
+
+	/* first column's number */
+	AttrNumber colno = desc->rel->rd_att->natts - desc->num_newcols;
+
+	for (i = 0; i < desc->num_newcols; ++i)
+	{
+		datum = d[i];
+		err  = datumstreamwrite_put(desc->dsw[i], datum, isnull[i], &toFree1);
+		if (toFree1 != NULL)
+		{
+			/*
+			 * Use the de-toasted and/or de-compressed as datum instead.
+			 */
+			datum = PointerGetDatum(toFree1);
+		}
+		if (err < 0)
+		{
+			/*
+			 * We have reached max number of datums that can be
+			 * accommodated in current varblock.
+			 */
+			itemCount = datumstreamwrite_nth(desc->dsw[i]);
+			/* write the block up to this one */
+			datumstreamwrite_block(desc->dsw[i]);
+			if (itemCount > 0)
+			{
+				AppendOnlyBlockDirectory_addCol_InsertEntry(
+						&desc->blockDirectory,
+						i + colno,
+						desc->dsw[i]->blockFirstRowNum,
+						AppendOnlyStorageWrite_LastWriteBeginPosition(
+								&desc->dsw[i]->ao_write),
+						itemCount);
+				/* Next block's first row number */
+				desc->dsw[i]->blockFirstRowNum += itemCount;
+			}
+
+			/* now write this new item to the new block */
+			err = datumstreamwrite_put(desc->dsw[i], datum, isnull[i],
+									   &toFree2);
+			Assert(toFree2 == NULL);
+			if (err < 0)
+			{
+				Assert(!isnull[i]);
+				/*
+				 * rle_type is running on a block stream, if an object
+				 * spans multiple blocks then data will not be compressed
+				 * (if rle_type is set).
+				 */
+				if (desc->dsw[i]->rle_want_compression)
+				{
+					desc->dsw[i]->ao_write.storageAttributes.compress = FALSE;
+				}
+				err = datumstreamwrite_lob(desc->dsw[i], datum);
+				Assert(err >= 0);
+			}
+		}
+		if (toFree1 != NULL)
+		{
+			pfree(toFree1);
+		}
+	}
+}
+
+void aocs_addcol_finish(AOCSAddColumnDesc desc)
+{
+	int i;
+	aocs_addcol_closefiles(desc);
+	AppendOnlyBlockDirectory_End_addCol(&desc->blockDirectory);
+	for (i = 0; i < desc->num_newcols; ++i)
+		destroy_datumstreamwrite(desc->dsw[i]);
+	pfree(desc->dsw);
+	pfree(desc);
+}
+
+/*
+ * Add empty VPEs (eof=0) to pg_aocsseg_* catalog, corresponding to
+ * each new column being added.
+ */
+void aocs_addcol_emptyvpe(Relation rel, AppendOnlyEntry *aoentry,
+						  AOCSFileSegInfo **segInfos, int32 nseg,
+						  int num_newcols)
+{
+	int i;
+	for (i = 0; i < nseg; ++i)
+	{
+		if (Gp_role == GP_ROLE_DISPATCH || segInfos[i]->total_tupcount == 0)
+		{
+			/*
+			 * On QD, all tuples in pg_aocsseg_* catalog have eof=0.
+			 * On QE, tuples with eof=0 may exist in pg_aocsseg_*
+			 * already, caused by VACUUM.  We need to add
+			 * corresponding tuples with eof=0 for each newly added
+			 * column on QE.
+			 */
+			AOCSFileSegInfoAddVpe(rel, aoentry, segInfos[i]->segno, NULL,
+								  num_newcols, true /* empty VPEntry */);
+		}
+	}
+}

@@ -169,6 +169,34 @@ typedef AOCSFetchDescData *AOCSFetchDesc;
 typedef struct AOCSUpdateDescData *AOCSUpdateDesc;
 typedef struct AOCSDeleteDescData *AOCSDeleteDesc;
 
+typedef struct AOCSHeaderScanDescData
+{
+	int32 colno;  /* chosen column number to read headers from */
+
+	AppendOnlyStorageRead ao_read;
+
+} AOCSHeaderScanDescData;
+
+typedef AOCSHeaderScanDescData *AOCSHeaderScanDesc;
+
+typedef struct AOCSAddColumnDescData
+{
+	Relation rel;
+
+	AppendOnlyEntry *aoEntry;
+
+	AppendOnlyBlockDirectory blockDirectory;
+
+	DatumStreamWrite **dsw;
+	/* array of datum stream write objects, one per new column */
+
+	int num_newcols;
+
+	int32 cur_segno;
+
+} AOCSAddColumnDescData;
+typedef AOCSAddColumnDescData *AOCSAddColumnDesc;
+
 /* ----------------
  *		function prototypes for appendonly access method
  * ----------------
@@ -217,4 +245,24 @@ extern AOCSDeleteDesc aocs_delete_init(Relation rel);
 extern HTSU_Result aocs_delete(AOCSDeleteDesc desc, 
 		AOTupleId *aoTupleId);
 extern void aocs_delete_finish(AOCSDeleteDesc desc);
+
+extern AOCSHeaderScanDesc aocs_begin_headerscan(
+		Relation rel, AppendOnlyEntry *aoentry, int colno);
+extern void aocs_headerscan_opensegfile(
+		AOCSHeaderScanDesc hdesc, AOCSFileSegInfo *seginfo, char *basepath);
+extern bool aocs_get_nextheader(AOCSHeaderScanDesc hdesc);
+extern void aocs_end_headerscan(AOCSHeaderScanDesc hdesc);
+extern AOCSAddColumnDesc aocs_addcol_init(
+		Relation rel, AppendOnlyEntry *aoentry, int num_newcols);
+extern void aocs_addcol_newsegfile(
+		AOCSAddColumnDesc desc, AOCSFileSegInfo *seginfo, char *basepath,
+		RelFileNode relfilenode);
+extern void aocs_addcol_closefiles(AOCSAddColumnDesc desc);
+extern void aocs_addcol_endblock(AOCSAddColumnDesc desc, int64 firstRowNum);
+extern void aocs_addcol_insert_datum(AOCSAddColumnDesc desc,
+									   Datum *d, bool *isnull);
+extern void aocs_addcol_finish(AOCSAddColumnDesc desc);
+extern void aocs_addcol_emptyvpe(
+		Relation rel, AppendOnlyEntry *aoentry, AOCSFileSegInfo **segInfos,
+		int32 nseg, int num_newcols);
 #endif   /* AOCSAM_H */

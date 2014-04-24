@@ -303,6 +303,19 @@ static void init_datumstream_typeinfo(
     typeInfo->byval = attr->attbyval;
 }
 
+/*
+ * FIXME: This function is added in the interim until we figure out
+ * why we honor checksum flag only if RLE compression is used.  The
+ * argument "checksum" is user specified checksum flag obtained from
+ * pg_attribute_encoding.  We currently honor that flag only if
+ * compression type is RLE!
+ */
+bool
+init_datumstream_checksum(char *compName, bool checksum)
+{
+	return (checksum && (pg_strcasecmp(compName, "rle_type") == 0));
+}
+
 static void init_datumstream_info(
 	DatumStreamTypeInfo 		*typeInfo,				// OUTPUT
 	DatumStreamVersion			*datumStreamVersion,	// OUTPUT
@@ -340,10 +353,10 @@ static void init_datumstream_info(
 
 	*datumStreamVersion = DatumStreamVersion_Original;
 
+	ao_attr->checksum = init_datumstream_checksum(compName, checksum);
 	/*
 	 * The original version didn't bother to populate these fields...
 	 */
-	ao_attr->checksum = false;
 	ao_attr->safeFSWriteSize = 0;
 
     if (compName != NULL && pg_strcasecmp(compName, "rle_type") == 0)
@@ -357,7 +370,6 @@ static void init_datumstream_info(
 		*datumStreamVersion = DatumStreamVersion_Dense;
 		*rle_compression = true;
 
-		ao_attr->checksum = checksum;
 		ao_attr->safeFSWriteSize = safeFSWriteSize;
 
 		/*
@@ -409,7 +421,6 @@ static void init_datumstream_info(
     	ao_attr->compress = true;
 		ao_attr->compressType = compName;
 		ao_attr->compressLevel = compLevel;
-	
 	}
 }
 

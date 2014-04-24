@@ -243,6 +243,10 @@ static void ATExecCmd(List **wqueue,
 static void ATRewriteTables(List **wqueue, 
 							int oidInfoCount, TableOidInfo * oidInfo, List **poidmap);
 static void ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap);
+static void ATAocsWriteNewColumns(
+		AOCSAddColumnDesc idesc, AOCSHeaderScanDesc sdesc,
+		AlteredTableInfo *tab, ExprContext *econtext, TupleTableSlot *slot);
+static bool ATAocsNoRewrite(AlteredTableInfo *tab);
 static AlteredTableInfo *ATGetQueueEntry(List **wqueue, Relation rel);
 static void ATSimplePermissions(Relation rel, bool allowView);
 static void ATSimplePermissionsRelationOrIndex(Relation rel);
@@ -5578,6 +5582,7 @@ ATRewriteTables(List **wqueue,
 {
 	ListCell   *ltab;
 	int			m = 0;
+	char        relstorage;
 
 	/* Go through each table that needs to be checked or rewritten */
 	foreach(ltab, *wqueue)
@@ -5597,6 +5602,7 @@ ATRewriteTables(List **wqueue,
 		relNamespace  = RelationGetNamespace(rel);
 		oldTableSpace = rel->rd_rel->reltablespace;
 		newTableSpace = tab->newTableSpace ? tab->newTableSpace : oldTableSpace;
+		relstorage    = rel->rd_rel->relstorage;
 
 		/*
 		 * There are two cases where we will rewrite the table, for these cases
@@ -5635,10 +5641,18 @@ ATRewriteTables(List **wqueue,
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				errmsg("cannot rewrite temporary tables of other sessions")));
-
 		}
 		heap_close(rel, NoLock);
 
+		if (tab->newvals && relstorage == RELSTORAGE_AOCOLS)
+		{
+			/*
+			 * ADD COLUMN case for AOCS relation: avoid rewriting the
+			 * whole relation.
+			 */
+			if (ATAocsNoRewrite(tab))
+				continue;
+		}
 		/*
 		 * We only need to rewrite the table if at least one column needs to be
 		 * recomputed, or we are removing the OID column.
@@ -5780,6 +5794,301 @@ ATRewriteTables(List **wqueue,
 		if (rel)
 			heap_close(rel, NoLock);
 	}
+}
+
+/*
+ * Scan an existing column for varblock headers, write one new segfile
+ * each for new columns.  newvals is a list of NewColumnValue items.
+ */
+static void
+ATAocsWriteNewColumns(
+		AOCSAddColumnDesc idesc, AOCSHeaderScanDesc sdesc,
+		AlteredTableInfo *tab, ExprContext *econtext, TupleTableSlot *slot)
+{
+	NewColumnValue *newval;
+	TupleDesc tupdesc = RelationGetDescr(idesc->rel);
+	Form_pg_attribute attr;
+	Datum *values = slot_get_values(slot);
+	bool *isnull = slot_get_isnull(slot);
+	int64 expectedFRN = -1; /* expected firstRowNum of the next varblock */
+	ListCell *l;
+	int i;
+
+	/* Start index in values and isnull array for newly added columns. */
+	AttrNumber newcol = tupdesc->natts - idesc->num_newcols;
+
+	/* Loop over each varblock in an appendonly segno. */
+	while (aocs_get_nextheader(sdesc))
+	{
+		if (sdesc->ao_read.current.hasFirstRowNum)
+		{
+			if (expectedFRN == -1)
+			{
+				/*
+				 * Initialize expected firstRowNum for each appendonly
+				 * segment.  Initializing it to 1 may not always be
+				 * good.  E.g. if the first insert into an appendonly
+				 * segment is aborted.  A subsequent successful insert
+				 * creates the first varblock having firstRowNum
+				 * greater than 1.
+				 */
+				expectedFRN = sdesc->ao_read.current.firstRowNum;
+			}
+			else
+			{
+				Assert(expectedFRN <= sdesc->ao_read.current.firstRowNum);
+				if (expectedFRN < sdesc->ao_read.current.firstRowNum)
+				{
+					elogif(Debug_appendonly_print_storage_headers, LOG,
+						   "hole in %s: exp FRN: " INT64_FORMAT ", actual FRN: "
+						   INT64_FORMAT, sdesc->ao_read.segmentFileName,
+						   expectedFRN, sdesc->ao_read.current.firstRowNum);
+					/*
+					 * We encountered a break in sequence of row
+					 * numbers (hole), replicate it in the new
+					 * segfiles.
+					 */
+					aocs_addcol_endblock(
+							idesc, sdesc->ao_read.current.firstRowNum);
+				}
+			}
+			for (i = 0; i < sdesc->ao_read.current.rowCount; ++i)
+			{
+				foreach (l, tab->newvals)
+				{
+					newval = lfirst(l);
+					values[newval->attnum-1] =
+							ExecEvalExprSwitchContext(newval->exprstate,
+													  econtext,
+													  &isnull[newval->attnum-1],
+													  NULL);
+					/*
+					 * Ensure that NOT NULL constraint for the newly
+					 * added columns is not being violated.  This
+					 * covers the case when explicit "CHECK()"
+					 * constraint is not specified but only "NOT NULL"
+					 * is specified in the new column's definition.
+					 */
+					attr = tupdesc->attrs[newval->attnum-1];
+					if (attr->attnotnull &&	isnull[newval->attnum-1])
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_NOT_NULL_VIOLATION),
+								 errmsg("column \"%s\" contains null values",
+										NameStr(attr->attname)),
+								 errOmitLocation(true)));
+					}
+				}
+				foreach (l, tab->constraints)
+				{
+					NewConstraint *con = lfirst(l);
+					switch(con->contype)
+					{
+						case CONSTR_CHECK:
+							if(!ExecQual(con->qualstate, econtext, true))
+								ereport(ERROR,
+										(errcode(ERRCODE_CHECK_VIOLATION),
+										 errmsg("check constraint \"%s\" is "
+												"violated",	con->name),
+										 errOmitLocation(true)));
+							break;
+						case CONSTR_FOREIGN:
+							/* Nothing to do */
+							break;
+						default:
+							elog(ERROR, "Unrecognized constraint type: %d",
+								 (int) con->contype);
+					}
+				}
+				aocs_addcol_insert_datum(idesc, values+newcol, isnull+newcol);
+				ResetExprContext(econtext);
+				CHECK_FOR_INTERRUPTS();
+			}
+			expectedFRN = sdesc->ao_read.current.firstRowNum +
+					sdesc->ao_read.current.rowCount;
+		}
+	}
+}
+
+/*
+ * Choose the column that has the smallest segfile size so as to
+ * minimize disk I/O in subsequent varblock header scan.  natts
+ * includes only existing columns and not the ones being added.
+ */
+static int
+column_to_scan(AOCSFileSegInfo **segInfos, int nseg, int natts)
+{
+	int scancol = -1;
+	int segi;
+	int i;
+	AOCSVPInfoEntry *vpe;
+	int64 min_eof = 0x7fffffffffffffff; /* largest value for int64 */
+	for (segi = 0; segi < nseg && scancol == -1; ++segi)
+	{
+		/*
+		 * Skip over appendonly segments with no tuples (caused by
+		 * VACUUM) or those left over by compaction process.
+		 */
+		if (segInfos[segi]->total_tupcount > 0 &&
+			(segInfos[segi]->state != AOSEG_STATE_AWAITING_DROP))
+		{
+			for (i = 0; i < natts; ++i)
+			{
+				vpe = getAOCSVPEntry(segInfos[segi], i);
+				if (vpe->eof < min_eof && vpe->eof > 0)
+				{
+					min_eof = vpe->eof;
+					scancol = i;
+					break;
+				}
+			}
+		}
+	}
+	return scancol;
+}
+
+/*
+ * ATAocsNoRewrite: Leverage column orientation to avoid rewrite.
+ *
+ * Return true if rewrite can be avoided for this command.  Return
+ * false to go the usual ATRewriteTable way.
+ */
+static bool
+ATAocsNoRewrite(AlteredTableInfo *tab)
+{
+	AppendOnlyEntry *aoEntry;
+	AOCSFileSegInfo **segInfos;
+	AOCSHeaderScanDesc sdesc;
+	AOCSAddColumnDesc idesc;
+	NewColumnValue *newval;
+	NewConstraint *con;
+	TupleTableSlot *slot;
+	EState *estate;
+	ExprContext *econtext;
+	Relation rel; /* Relation being altered */
+	int32 nseg;
+	int32 segi;
+	char *basepath;
+	int32 scancol; /* chosen column number to scan from */
+	ListCell *l;
+
+	/*
+	 * only ADD COLUMN subcommand is supported at this time
+	 */
+	if (!tab->subcmds[AT_PASS_ADD_COL])
+		return false;
+
+	estate = CreateExecutorState();
+	foreach(l, tab->constraints)
+	{
+		con = lfirst(l);
+		switch (con->contype)
+		{
+			case CONSTR_CHECK:
+				con->qualstate = (List *)
+					ExecPrepareExpr((Expr *) con->qual, estate);
+				break;
+			case CONSTR_FOREIGN:
+				/* Nothing to do here */
+				break;
+			default:
+				elog(ERROR, "unrecognized constraint type: %d",
+					 (int) con->contype);
+		}
+	}
+	foreach(l, tab->newvals)
+	{
+		newval = lfirst(l);
+		newval->exprstate = ExecPrepareExpr((Expr *) newval->expr, estate);
+	}
+
+	rel = heap_open(tab->relid, NoLock);
+	aoEntry = GetAppendOnlyEntry(tab->relid, SnapshotNow);
+	segInfos = GetAllAOCSFileSegInfo(rel, aoEntry, SnapshotNow, &nseg);
+	basepath = relpath(rel->rd_node);
+	if (nseg > 0)
+	{
+		aocs_addcol_emptyvpe(rel, aoEntry, segInfos, nseg,
+							 list_length(tab->newvals));
+	}
+
+	scancol = column_to_scan(segInfos, nseg, tab->oldDesc->natts);
+	elogif(Debug_appendonly_print_storage_headers, LOG,
+		   "using column %d of relation %s for alter table scan",
+		   scancol, RelationGetRelationName(rel));
+
+	/*
+	 * Continue only if a non-empty existing segfile was found above.
+	 */
+	if (Gp_role != GP_ROLE_DISPATCH && scancol != -1)
+	{
+		slot = MakeSingleTupleTableSlot(RelationGetDescr(rel));
+
+		/*
+		 * Initialize expression context for evaluating values and
+		 * constraints of the newly added columns.
+		 */
+		econtext = GetPerTupleExprContext(estate);
+		/*
+		 * The slot's data will be populated for each newly added
+		 * column by ExecEvalExpr().
+		 */
+		econtext->ecxt_scantuple = slot;
+
+		/*
+		 * Mark all attributes including newly added columns as valid.
+		 * Used for per tuple constraint evaluation.
+		 */
+		TupSetVirtualTupleNValid(slot, RelationGetDescr(rel)->natts);
+
+		memset(slot_get_isnull(slot), true,
+			   RelationGetDescr(rel)->natts * sizeof(bool));
+
+		sdesc = aocs_begin_headerscan(rel, aoEntry, scancol);
+		idesc = aocs_addcol_init(rel, aoEntry, list_length(tab->newvals));
+
+		/* Loop over all appendonly segments */
+		for (segi = 0; segi < nseg; ++segi)
+		{
+			if (segInfos[segi]->total_tupcount <= 0 ||
+				segInfos[segi]->state == AOSEG_STATE_AWAITING_DROP)
+			{
+				/*
+				 * VACUUM may cause appendonly segments with eof=0.
+				 * We only need to add new rows in pg_aocsseg_* in
+				 * this case for each newly added column.  This is
+				 * accomplished by aocs_addcol_emptyvpe() above.
+				 *
+				 * Compaction leaves redundant segments in
+				 * AOSEG_STATE_AWAITING_DROP.  We skip over them too.
+				 */
+				elogif(Debug_appendonly_print_storage_headers, LOG,
+					   "Skipping over empty segno %d relation %s",
+					   segInfos[segi]->segno, RelationGetRelationName(rel));
+				continue;
+			}
+			/*
+			 * Open aocs segfile for chosen column for current
+			 * appendonly segment.
+			 */
+			aocs_headerscan_opensegfile(sdesc, segInfos[segi], basepath);
+
+			/*
+			 * Create new segfiles for new columns for current
+			 * appendonly segment.
+			 */
+			aocs_addcol_newsegfile(idesc, segInfos[segi],
+								   basepath, rel->rd_node);
+
+			ATAocsWriteNewColumns(idesc, sdesc, tab, econtext, slot);
+		}
+		aocs_end_headerscan(sdesc);
+		aocs_addcol_finish(idesc);
+		ExecDropSingleTupleTableSlot(slot);
+	}
+	FreeExecutorState(estate);
+	heap_close(rel, NoLock);
+	return true;
 }
 
 /*

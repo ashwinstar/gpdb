@@ -756,6 +756,155 @@ UpdateAOCSFileSegInfo(AOCSInsertDesc idesc)
 	heap_close(segrel, RowExclusiveLock);
 }
 
+/*
+ * Update vpinfo column of pg_aocsseg_* by adding new
+ * AOCSVPInfoEntries.  One VPInfoEntry is added for each newly added
+ * segfile (column).  If empty=true, add empty VPInfoEntry's having
+ * eof=0.
+ */
+void AOCSFileSegInfoAddVpe(Relation prel, AppendOnlyEntry *aoEntry, int32 segno,
+						   AOCSAddColumnDesc desc, int num_newcols, bool empty)
+{
+	LockAcquireResult acquireResult;
+
+	Relation segrel;
+	Relation segidx;
+
+	ScanKeyData key;
+	IndexScanDesc scan;
+
+	AOCSVPInfo *oldvpinfo;
+	AOCSVPInfo *newvpinfo;
+	HeapTuple oldtup;
+	HeapTuple newtup;
+	Datum d[Natts_pg_aocsseg];
+	bool null[Natts_pg_aocsseg] = {0, };
+	bool repl[Natts_pg_aocsseg] = {0, };
+
+	TupleDesc tupdesc; 
+	int nvp = RelationGetNumberOfAttributes(prel);
+	/* nvp is new columns + existing columns */
+	int i;
+	int j;
+
+	if (Gp_role == GP_ROLE_UTILITY)
+	{
+		elog(ERROR, "cannot add column in utility mode, relation %s, segno %d",
+			 RelationGetRelationName(prel), segno);
+	}
+	if (empty && Gp_role != GP_ROLE_DISPATCH)
+	{
+		elog(LOG, "Adding empty VPEntries for relation %s, segno %d",
+			 RelationGetRelationName(prel), segno);
+	}
+
+	acquireResult = LockRelationNoWait(prel, AccessExclusiveLock);
+	if (acquireResult != LOCKACQUIRE_ALREADY_HELD)
+	{
+		elog(ERROR, "should already have (transaction-scope) AccessExclusive"
+			 " lock on relation %s, oid %d",
+			 RelationGetRelationName(prel), RelationGetRelid(prel));
+	}
+
+	segrel = heap_open(aoEntry->segrelid, RowExclusiveLock);
+	segidx = index_open(aoEntry->segidxid, RowExclusiveLock);
+	tupdesc = RelationGetDescr(segrel);
+
+	ScanKeyInit(&key, 1, BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(segno));
+	/*
+	 * Since we have the segment-file entry under lock (with
+	 * LockRelationAppendOnlySegmentFile) we can use SnapshotNow.
+	 */
+	scan = index_beginscan(segrel, segidx, SnapshotNow, 1, &key);
+
+	oldtup = index_getnext(scan, ForwardScanDirection);
+
+	if(!HeapTupleIsValid(oldtup))
+	{
+		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT),
+						errmsg("AOCS rel \"%s\" segment \"%d\" does not exist",
+						RelationGetRelationName(prel), segno)
+						));
+	}
+
+	d[Anum_pg_aocs_segno-1] = fastgetattr(oldtup, Anum_pg_aocs_segno,
+										  tupdesc, &null[Anum_pg_aocs_segno-1]);
+	Assert(!null[Anum_pg_aocs_segno-1]);
+	Assert(DatumGetInt32(d[Anum_pg_aocs_segno-1]) == segno);
+
+	d[Anum_pg_aocs_tupcount-1] = fastgetattr(oldtup, Anum_pg_aocs_tupcount,
+											 tupdesc,
+											 &null[Anum_pg_aocs_tupcount-1]);
+	Assert(!null[Anum_pg_aocs_tupcount-1]);
+
+	d[Anum_pg_aocs_modcount-1] = fastgetattr(oldtup, Anum_pg_aocs_modcount,
+											 tupdesc,
+											 &null[Anum_pg_aocs_modcount-1]);
+	Assert(!null[Anum_pg_aocs_modcount-1]);
+	d[Anum_pg_aocs_modcount-1] += 1;
+	repl[Anum_pg_aocs_modcount-1] = true;
+
+	/* new VPInfo having VPEntries with eof=0 */
+	newvpinfo = create_aocs_vpinfo(nvp);
+	if (!empty)
+	{
+		d[Anum_pg_aocs_vpinfo-1] =
+				fastgetattr(oldtup, Anum_pg_aocs_vpinfo, tupdesc,
+							&null[Anum_pg_aocs_vpinfo-1]);
+		Assert(!null[Anum_pg_aocs_vpinfo-1]);
+		struct varlena *v = (struct varlena *) DatumGetPointer(
+				d[Anum_pg_aocs_vpinfo-1]);
+		struct varlena *dv = pg_detoast_datum(v);
+		Assert(VARSIZE(dv) == aocs_vpinfo_size(nvp - num_newcols));
+		oldvpinfo = create_aocs_vpinfo(nvp - num_newcols);
+		memcpy(oldvpinfo, dv, aocs_vpinfo_size(nvp - num_newcols));
+		if(dv!=v)
+		{
+			pfree(dv);
+		}
+		Assert(oldvpinfo->nEntry + num_newcols == nvp);
+		/* copy existing columns' eofs to new vpinfo */
+		for (i = 0; i < oldvpinfo->nEntry; ++i)
+		{	
+			newvpinfo->entry[i].eof = oldvpinfo->entry[i].eof;
+			newvpinfo->entry[i].eof_uncompressed =
+					oldvpinfo->entry[i].eof_uncompressed;
+		}
+		/* eof for new segfiles come next */
+		for (i = oldvpinfo->nEntry, j = 0; i < nvp; ++i, ++j)
+		{
+			newvpinfo->entry[i].eof = desc->dsw[j]->eof;
+			newvpinfo->entry[i].eof_uncompressed =
+					desc->dsw[j]->eofUncompress;
+		}
+	}
+	d[Anum_pg_aocs_vpinfo-1] = PointerGetDatum(newvpinfo);
+	null[Anum_pg_aocs_vpinfo-1] = false;
+	repl[Anum_pg_aocs_vpinfo-1] = true;
+
+	newtup = heap_modify_tuple(oldtup, tupdesc, d, null, repl);
+
+	simple_heap_update(segrel, &oldtup->t_self, newtup);
+	CatalogUpdateIndexes(segrel, newtup);
+
+	pfree(newtup);
+	pfree(newvpinfo);
+	if (!empty)
+	{
+		pfree(oldvpinfo);
+	}
+
+	index_endscan(scan);
+	/*
+	 * Holding RowExclusiveLock lock on pg_aocsseg_* until the ALTER
+	 * TABLE transaction commits/aborts.  Additionally, we are already
+	 * holding AccessExclusive lock on the AOCS relation OID.
+	 */
+	index_close(segidx, NoLock);
+	heap_close(segrel, NoLock);
+}
+
 void AOCSFileSegInfoAddCount(Relation prel, AppendOnlyEntry *aoEntry, 
 		int32 segno, int64 tupadded, int64 varblockadded, int64 modcount_added)
 {

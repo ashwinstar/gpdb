@@ -379,6 +379,15 @@ extern bool AppendOnlyStorageRead_GetBlockInfo(
 				 */
 
 /*
+ * Read the next Append-Only storage block in buffer.
+ *
+ * Return true if another block was found.  Otherwise, we have reached
+ * the end of the current segment file.
+ */
+extern bool AppendOnlyStorageRead_ReadNextBlock(
+	AppendOnlyStorageRead		*storageRead);
+
+/*
  * Return the current Append-Only Storage Block buffer.
  */
 extern uint8 *AppendOnlyStorageRead_CurrentBuffer(

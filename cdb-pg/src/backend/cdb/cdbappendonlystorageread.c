@@ -780,7 +780,7 @@ static void AppendOnlyStorageRead_LogBlockHeader(
  * when we have reached the end of the current segment
  * file.
  */
-static bool AppendOnlyStorageRead_InternalGetBlockInfo(
+bool AppendOnlyStorageRead_ReadNextBlock(
 	AppendOnlyStorageRead		*storageRead)
 {
 	uint8  				*header;
@@ -1073,7 +1073,7 @@ bool AppendOnlyStorageRead_GetBlockInfo(
 	Assert(storageRead != NULL);
 	Assert(storageRead->isActive);
 
-	isNext = AppendOnlyStorageRead_InternalGetBlockInfo(storageRead);
+	isNext = AppendOnlyStorageRead_ReadNextBlock(storageRead);
 
 	/*
 	 * The current* variables have good values even when there is no next block.
@@ -1143,7 +1143,7 @@ int64 AppendOnlyStorageRead_OverallBlockLen(
  * Since we are growing the BufferedRead buffer to the whole block, old pointers to
  * the header must be abandoned.
  *
- * Header to current block was read and verified by AppendOnlyStorageRead_InternalGetBlockInfo.
+ * Header to current block was read and verified by AppendOnlyStorageRead_ReadNextBlock.
  */
 static void AppendOnlyStorageRead_InternalGetBuffer(
 	AppendOnlyStorageRead		*storageRead,
@@ -1310,7 +1310,7 @@ void AppendOnlyStorageRead_Content(
 			 * Read next regular block.
 			 */
 			regularBlockReadCount++;
-			if (!AppendOnlyStorageRead_InternalGetBlockInfo(storageRead))
+			if (!AppendOnlyStorageRead_ReadNextBlock(storageRead))
 			{
 				/*
 				 * Unexpected end of file.
@@ -1520,7 +1520,7 @@ void AppendOnlyStorageRead_SkipCurrentBlock(
 			 * Read next regular block.
 			 */
 			regularBlockReadCount++;
-			if (!AppendOnlyStorageRead_InternalGetBlockInfo(storageRead))
+			if (!AppendOnlyStorageRead_ReadNextBlock(storageRead))
 			{
 				/*
 				 * Unexpected end of file.

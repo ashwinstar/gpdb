@@ -122,6 +122,7 @@ static inline AOCSVPInfoEntry *getAOCSVPEntry(AOCSFileSegInfo *psinfo, int vp)
 }
 
 struct AOCSInsertDescData;
+struct AOCSAddColumnDescData;
 
 /* 
  * GetAOCSFileSegInfo.
@@ -171,6 +172,9 @@ extern FileSegTotals *GetAOCSSSegFilesTotals(Relation parentrel,
 extern AOCSFileSegInfo *NewAOCSFileSegInfo(int4 segno, int4 nvp);
 extern void InsertInitialAOCSFileSegInfo(Oid segrelid, int32 segno, int32 nvp); 
 extern void UpdateAOCSFileSegInfo(struct AOCSInsertDescData *desc);
+extern void AOCSFileSegInfoAddVpe(
+		Relation prel, AppendOnlyEntry *aoEntry, int32 segno,
+		struct AOCSAddColumnDescData *desc, int num_newcols, bool empty);
 extern void AOCSFileSegInfoAddCount(Relation prel, AppendOnlyEntry *aoEntry, int32 segno, int64 tupadded, int64 varblockadded, int64 modcount_added); 
 extern void ClearAOCSFileSegInfo(Relation prel, AppendOnlyEntry *aoEntry, int segno, FileSegInfoState newState);
 extern void SetAOCSFileSegInfoState(Relation parentrel, AppendOnlyEntry *aoEntry, int segno, FileSegInfoState newState);
