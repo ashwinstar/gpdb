@@ -7773,16 +7773,14 @@ order by 1,2,3;
 
 -- MPP-4840
 explain select n from ( select row_number() over () from (values (0)) as t(x) ) as r(n) group by n;
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
- Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..4.04 rows=1 width=8)
-   ->  HashAggregate  (cost=0.00..3.03 rows=1 width=8)
-         Group By: row_number
-         ->  Result  (cost=0.00..2.01 rows=1 width=8)
-               ->  Window  (cost=0.00..1.00 rows=1 width=8)
-                     ->  Result  (cost=0.00..0.00 rows=1 width=1)
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ HashAggregate  (cost=0.00..2.05 rows=1 width=8)
+   Group By: row_number()
+   ->  Window  (cost=0.00..1.00 rows=1 width=8)
+         ->  Result  (cost=0.00..0.00 rows=1 width=1)
  Settings:  gp_enable_sequential_window_plans=on; optimizer=on
-(7 rows)
+(5 rows)
 
 -- Test for MPP-11645
 create table olap_window_r (a int, b int, x int,  y int,  z int ) distributed by (b);
