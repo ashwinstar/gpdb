@@ -1441,6 +1441,27 @@ CTranslatorDXLToPlStmt::TranslateIndexConditions
 		List *plistArgs = ((OpExpr *) pexprIndexCond)->args;
 		Node *pnodeFst = (Node *) lfirst(gpdb::PlcListHead(plistArgs));
 		Node *pnodeSnd = (Node *) lfirst(gpdb::PlcListTail(plistArgs));
+				
+		BOOL fRelabel = false;
+		if (IsA(pnodeFst, RelabelType) && IsA(((RelabelType *) pnodeFst)->arg, Var))
+		{
+			pnodeFst = (Node *) ((RelabelType *) pnodeFst)->arg;
+			fRelabel = true;
+		}
+		else if (IsA(pnodeSnd, RelabelType) && IsA(((RelabelType *) pnodeSnd)->arg, Var))
+		{
+			pnodeSnd = (Node *) ((RelabelType *) pnodeSnd)->arg;
+			fRelabel = true;
+		}
+		
+		if (fRelabel)
+		{
+			List *plArgs = ((OpExpr *) pexprIndexCond)->args;
+			List *plNewArgs = ListMake2(pnodeFst, pnodeSnd);
+			gpdb::GPDBFree(plArgs);
+			((OpExpr *) pexprIndexCond)->args = plNewArgs;
+		}
+		
 		GPOS_ASSERT(IsA(pnodeFst, Var) || IsA(pnodeSnd, Var) && "expected index key in index qual");
 
 		INT iAttno = 0;
