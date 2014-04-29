@@ -852,6 +852,14 @@ ExecHashJoinOuterGetTuple(PlanState *outerNode,
 	 */
 	while (curbatch < hashtable->nbatch)
 	{
+		/* 
+		 * For batches > 0, we can be reading many many outer tuples from disk
+		 * and probing them against the hashtable. If we don't find any matches, 
+		 * we'll keep coming back here to read tuples from disk and 
+		 * returning them (MPP-23213). Break this long tight loop here. 
+		 */
+		CHECK_FOR_INTERRUPTS();
+
 		slot = ExecHashJoinGetSavedTuple(&hashtable->batches[curbatch]->outerside,
 										 hashvalue,
 										 hjstate->hj_OuterTupleSlot);
