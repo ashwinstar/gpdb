@@ -183,6 +183,7 @@ select count(*) from direct_test_range_partition where a =1;
 ----------------------------------------------------------------------------------
 -- MPP-7643: various types
 --
+set optimizer_enable_constant_expression_evaluation=on;
 -- start_ignore
 -- Known_opt_diff: MPP-21347
 -- end_ignore
@@ -208,6 +209,7 @@ insert into direct_test_type_date values (8,8,true,8,8,'2008-08-08',8.8);
 -- Known_opt_diff: MPP-21347
 -- end_ignore
 insert into direct_test_type_numeric values (8,8,true,8,8,'2008-08-08',8.8);
+reset optimizer_enable_constant_expression_evaluation;
 
 -- start_ignore
 -- Known_opt_diff: MPP-21346
