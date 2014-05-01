@@ -5413,8 +5413,6 @@ Feature: Validate command line arguments
         And there are no report files in "master_data_directory"
         And there are no status files in "segment_data_directory"
 
-=======
->>>>>>> 31c242f... gpdbrestore gives misleading error when it can't find master dump file
     # THIS SHOULD BE THE LAST TEST
     @backupfire
     Scenario: cleanup for backup feature

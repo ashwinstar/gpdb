@@ -3156,3 +3156,60 @@ def impl(context, path, perm):
     if not os.path.exists(path):
         raise Exception('Path does not exist! "%s"' % path)
     os.chmod(path, int(perm, 8))
+
+@when('user can "{can_ssh}" ssh locally on standby')
+@then('user can "{can_ssh}" ssh locally on standby')
+def impl(context, can_ssh):
+    if not hasattr(context, 'standby_host'):
+        raise Exception('Standby host not stored in context !')
+    if can_ssh.strip() == 'not':
+        cmdStr = 'mv ~/.ssh/authorized_keys ~/.ssh/authorized_keys.bk'
+    else:
+        cmdStr = 'mv ~/.ssh/authorized_keys.bk ~/.ssh/authorized_keys'
+    cmd = Command(name='disable ssh locally', cmdStr=cmdStr,
+                  ctxt=REMOTE, remoteHost=context.standby_host)
+    cmd.run(validateAfter=True)
+
+@given('all the compression data from "{dbname}" is saved for verification')
+def impl(context, dbname):
+    partitions = get_partition_list('ao', dbname) + get_partition_list('co', dbname)
+    with open('gppylib/test/data/compression_{db}_backup'.format(db=dbname), 'w') as fp:
+        with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
+            for p in partitions:
+                query = """SELECT get_ao_compression_ratio('{schema}.{table}')""".format(schema=p[1], table=p[2])
+                compression_rate = dbconn.execSQLForSingleton(conn, query)
+                fp.write('{schema}.{table}:{comp}\n'.format(schema=p[1], table=p[2], comp=compression_rate))
+
+@then('verify that the compression ratio of "{table}" in "{dbname}" is good')
+def impl(context, table, dbname):
+    with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
+        query = """SELECT get_ao_compression_ratio('{table}')""".format(table=table)
+        compression_rate = dbconn.execSQLForSingleton(conn, query)
+
+    found = False
+    with open('gppylib/test/data/compression_{db}_backup'.format(db=dbname)) as fp:
+        for line in fp:
+            t, c = line.split(':')
+            if t == table:
+                if float(c) != compression_rate and float(c) - 0.1 * float(c) > compression_rate: #10% more than original compression rate
+                    raise Exception('Expected compression ratio to be greater than or equal to %s but got %s' % (c, compression_rate))
+            found = True 
+    if not found:
+       raise Exception('Compression ratio for table %s was not stored' % table)
+
+@then('verify that the data of tables in "{dbname}" is validated after reload')
+def impl(context, dbname):
+    tbls = get_table_names(dbname)
+    backed_up_data = []
+    reloaded_data = []
+    for t in tbls:
+        with open('gppylib/test/data/%s.%s_backup' % (t[0], t[1])) as fp:
+            for line in fp:
+                toks = line.split()
+                backed_up_data.append(' '.join(toks[1:])) #Ignore the gp_segment_id value since it changes after reload
+        with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
+            res = dbconn.execSQL(conn, 'select * from %s.%s' % (t[0], t[1]))
+            for r in res:
+                reloaded_data.append(' '.join([str(x) for x in r]))
+        if sorted(reloaded_data) != sorted(backed_up_data):
+            raise Exception('Data does not match for table %s.%s' % (t[0], t[1]))
