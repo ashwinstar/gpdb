@@ -2277,6 +2277,9 @@ agg_hash_save_spillfile_info(ExecWorkFile *state_file, SpillFile *spill_file)
 		return;
 	}
 
+	Assert(NULL != spill_file->file_info);
+	Assert(NULL != spill_file->file_info->wfile);
+
 	agg_hash_write_string(state_file,
 			spill_file->file_info->wfile->fileName,
 			strlen(spill_file->file_info->wfile->fileName));

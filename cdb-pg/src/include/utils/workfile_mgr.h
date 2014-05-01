@@ -210,6 +210,7 @@ void WorkfileQueryspace_Commit(int64 commit_bytes, int64 reserved_bytes);
 QueryspaceDesc *WorkfileQueryspace_InitEntry(int session_id, int command_count);
 void WorkfileQueryspace_ReleaseEntry(void);
 bool WorkfileQueryspace_AddWorkfile(void);
+void WorkfileQueryspace_SubtractWorkfile(int32 nFiles);
 
 /* Serialization functions */
 void outfuncs_workfile_mgr_init(List *rtable);

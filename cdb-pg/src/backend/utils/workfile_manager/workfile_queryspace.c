@@ -273,6 +273,8 @@ WorkfileQueryspace_AddWorkfile(void)
 
 	int32 workfilesCreated = gp_atomic_add_32(&queryEntry->workfilesCreated, 1);
 
+	elog(gp_workfile_caching_loglevel, "Creating new workfile, query file count = %d", workfilesCreated);
+
 	if (gp_workfile_limit_files_per_query > 0 &&
 			workfilesCreated > gp_workfile_limit_files_per_query)
 	{
@@ -281,6 +283,30 @@ WorkfileQueryspace_AddWorkfile(void)
 	}
 
 	return true;
+}
+
+/*
+ * Decrement the number of workfiles created. This should be called when
+ * closing and deleting a workfile.
+ */
+void
+WorkfileQueryspace_SubtractWorkfile(int32 nFiles)
+{
+	if (NULL == queryEntry)
+	{
+		/*
+		 * Did not find entry for this query, it must be a utility query
+		 * that is spilling. No enforcing of per-query disk limit for these.
+		 */
+		return;
+	}
+
+	/* Subtract the number of files atomically */
+	int32 workfilesLeft = gp_atomic_add_32(&queryEntry->workfilesCreated, - nFiles);
+	elog(gp_workfile_caching_loglevel, "Closing %d workfiles, query file count = %d",
+			nFiles, workfilesLeft);
+	Assert(workfilesLeft >= 0);
+
 }
 
 /*
