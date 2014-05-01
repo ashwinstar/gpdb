@@ -425,7 +425,7 @@ float8in(PG_FUNCTION_ARGS)
 			val = get_float8_nan();
 			endptr = num + 3;
 		}
-		else if (pg_strncasecmp(num, "Infinity", 8) == 0)
+		else if (pg_strncasecmp(num, "Infinity", 8) == 0 || pg_strncasecmp(num, "+Infinity", 9) == 0)
 		{
 			val = get_float8_infinity();
 			endptr = num + 8;
@@ -470,7 +470,7 @@ float8in(PG_FUNCTION_ARGS)
 	 */
 	if (isinf(val))
 	{
-		if (pg_strncasecmp(num, "Infinity", 8) == 0)
+		if (pg_strncasecmp(num, "Infinity", 8) == 0 || pg_strncasecmp(num, "+Infinity", 9) == 0)
 		{
 			val = get_float8_infinity();
 			endptr = num + 8;
@@ -519,7 +519,8 @@ float8in(PG_FUNCTION_ARGS)
 	 */
 
 	if ( pg_strncasecmp(num, "Infinity", 8) != 0  && pg_strncasecmp(num, "-Infinity", 9) != 0 &&\
-		 pg_strncasecmp(num, "Inf", 3) != 0 && pg_strncasecmp(num, "-Inf", 4) != 0)
+		 pg_strncasecmp(num, "Inf", 3) != 0 && pg_strncasecmp(num, "-Inf", 4) != 0 &&\
+		 pg_strncasecmp(num, "+Infinity", 9) != 0 && pg_strncasecmp(num, "+Inf", 4) != 0 )
 		literal_inf = false;
 
 	CHECKFLOATVAL((double) val, literal_inf, !(val > 0 || val < 0));

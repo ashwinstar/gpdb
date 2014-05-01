@@ -38,6 +38,11 @@ SELECT '   NAN  '::float8;
 SELECT 'infinity'::float8;
 SELECT 'inf'::float8;
 SELECT '          -INFINiTY   '::float8;
+SELECT '+Infinity'::float8;
+SELECT '+INF'::float8;
+SELECT '+inf'::float8;
+SELECT '+INFINITY'::float8;
+
 -- bad special inputs
 SELECT 'N A N'::float8;
 SELECT 'NaN x'::float8;
@@ -162,6 +167,24 @@ INSERT INTO FLOAT8_TBL(f1) VALUES ('1e308');
 
 INSERT INTO FLOAT8_TBL(f1) VALUES ('1e-323');
 
+INSERT INTO FLOAT8_TBL(f1) VALUES ('+INFINITY'::float8);
+
+INSERT INTO FLOAT8_TBL(f1) VALUES ('+InFiNiTY'::float8);
+
+INSERT INTO FLOAT8_TBL(f1) VALUES ('+Inf'::float8);
+
+INSERT INTO FLOAT8_TBL(f1) VALUES ('-INFINITY'::float8);
+
+INSERT INTO FLOAT8_TBL(f1) VALUES ('-InFiNiTY'::float8);
+
+INSERT INTO FLOAT8_TBL(f1) VALUES ('-Inf'::float8);
+
+INSERT INTO FLOAT8_TBL(f1) VALUES ('NaN'::float8);
+
+INSERT INTO FLOAT8_TBL(f1) VALUES ('+naN'::float8);
+
+INSERT INTO FLOAT8_TBL(f1) VALUES ('-naN'::float8);
+
 -- test for over- and underflow with update statement
 UPDATE FLOAT8_TBL SET f1='0.0'::float8 WHERE f1='1e-324'::float8;
 
@@ -173,6 +196,22 @@ UPDATE FLOAT8_TBL SET f1='0.0'::float8 WHERE f1='1e400'::float8;
 
 UPDATE FLOAT8_TBL SET f1='0.0'::float8 WHERE f1='0.0'::float8;
 
+UPDATE FLOAT8_TBL SET f1='0.0'::float8 WHERE f1='+INFINITY'::float8;
+
+UPDATE FLOAT8_TBL SET f1='0.0'::float8 WHERE f1='+InFiNiTY'::float8;
+
+UPDATE FLOAT8_TBL SET f1='0.0'::float8 WHERE f1='+Inf'::float8;
+
+UPDATE FLOAT8_TBL SET f1='0.0'::float8 WHERE f1='-INFINITY'::float8;
+
+UPDATE FLOAT8_TBL SET f1='0.0'::float8 WHERE f1='-Inf'::float8;
+
+UPDATE FLOAT8_TBL SET f1='0.0'::float8 WHERE f1='NaN'::float8;
+
+UPDATE FLOAT8_TBL SET f1='0.0'::float8 WHERE f1='+naN'::float8;
+
+UPDATE FLOAT8_TBL SET f1='0.0'::float8 WHERE f1='-naN'::float8;
+
 -- test for over- and underflow with delete statement
 DELETE FROM FLOAT8_TBL WHERE f1='1e-324'::float8;
 
@@ -183,6 +222,22 @@ DELETE FROM FLOAT8_TBL WHERE f1='1e400'::float8;
 DELETE FROM FLOAT8_TBL WHERE f1='1e-400'::float8;
 
 DELETE FROM FLOAT8_TBL WHERE f1='0.0'::float8;
+
+DELETE FROM FLOAT8_TBL WHERE f1='+INFINITY'::float8;
+
+DELETE FROM FLOAT8_TBL WHERE f1='+InFiNiTY'::float8;
+
+DELETE FROM FLOAT8_TBL WHERE f1='+Inf'::float8;
+
+DELETE FROM FLOAT8_TBL WHERE f1='-INFINITY'::float8;
+
+DELETE FROM FLOAT8_TBL WHERE f1='-Inf'::float8;
+
+DELETE FROM FLOAT8_TBL WHERE f1='-naN'::float8;
+
+DELETE FROM FLOAT8_TBL WHERE f1='+naN'::float8;
+
+DELETE FROM FLOAT8_TBL WHERE f1='NaN'::float8;
 
 -- maintain external table consistency across platforms
 -- delete all values and reinsert well-behaved ones
