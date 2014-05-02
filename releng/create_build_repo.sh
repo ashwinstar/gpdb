@@ -14,8 +14,6 @@
 # pull the releng-build.  You could add git options like -c in this property.
 #
 
-mkdir -p ${BLDWRAP_TOP}/src
-
 mv ${BLDWRAP_TOP} ${BLDWRAP_TOP}.orig
 
 mkdir -p ${BLDWRAP_TOP}
