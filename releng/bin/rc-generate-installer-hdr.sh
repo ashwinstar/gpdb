@@ -192,7 +192,8 @@ generate_gpdb_installer_header() {
 		more << EOF
 
 		********************************************************************************
-		You must read and accept the EMC Database license agreement before installing
+		You must read and accept the Pivotal Database license agreement
+		before installing
 		********************************************************************************
 
 	EOF_HEADER
@@ -205,7 +206,7 @@ generate_gpdb_installer_header() {
 
 	cat <<-EOF_HEADER
 
-		I HAVE READ AND AGREE TO THE TERMS OF THE ABOVE EMC SOFTWARE
+		I HAVE READ AND AGREE TO THE TERMS OF THE ABOVE PIVOTAL SOFTWARE
 		LICENSE AGREEMENT.
 
 		EOF
@@ -215,7 +216,7 @@ generate_gpdb_installer_header() {
 			cat << EOF
 
 			********************************************************************************
-			Do you accept the EMC Database license agreement? [yes|no]
+			Do you accept the Pivotal Database license agreement? [yes|no]
 			********************************************************************************
 
 			EOF
@@ -472,8 +473,8 @@ generate_gpdb_installer_header() {
 		Installation complete.
 		Greenplum Database is installed in \${installPath}
 
-		Greenplum Database documentation is available for download
-		at http://powerlink.emc.com.
+		Pivotal Greenplum documentation is available
+		for download at http://docs.gopivotal.com/gpdb
 		********************************************************************************
 		EOF
 
