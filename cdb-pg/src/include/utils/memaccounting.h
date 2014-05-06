@@ -224,14 +224,21 @@ typedef struct SerializedMemoryAccount {
  * that will not be executed in current slice
  */
 #define CREATE_EXECUTOR_MEMORY_ACCOUNT(isAlienPlanNode, planNode, NodeType) \
-		isAlienPlanNode ? AlienExecutorMemoryAccount : MemoryAccounting_CreateAccount(((Plan*)node)->operatorMemKB == 0 ? work_mem : ((Plan*)node)->operatorMemKB, MEMORY_OWNER_TYPE_Exec_##NodeType);
+		(NULL != planNode->memoryAccount && MEMORY_OWNER_TYPE_Exec_##NodeType == planNode->memoryAccount->ownerType) ?\
+			planNode->memoryAccount : \
+			(isAlienPlanNode ? AlienExecutorMemoryAccount : \
+				MemoryAccounting_CreateAccount(((Plan*)node)->operatorMemKB == 0 ? \
+				work_mem : ((Plan*)node)->operatorMemKB, MEMORY_OWNER_TYPE_Exec_##NodeType));
 
 /*
- * SAVE_EXECUTOR_MEMORY_ACCOUNT saves an operator specific memory acocunt
+ * SAVE_EXECUTOR_MEMORY_ACCOUNT saves an operator specific memory account
  * into the PlanState of that operator
  */
 #define SAVE_EXECUTOR_MEMORY_ACCOUNT(execState, curMemoryAccount)\
-		((PlanState *)execState)->memoryAccount = curMemoryAccount;
+		Assert(NULL == ((PlanState *)execState)->plan->memoryAccount || \
+		AlienExecutorMemoryAccount == ((PlanState *)execState)->plan->memoryAccount || \
+		curMemoryAccount == ((PlanState *)execState)->plan->memoryAccount);\
+		((PlanState *)execState)->plan->memoryAccount = curMemoryAccount;
 
 extern struct MemoryAccount*
 MemoryAccounting_CreateAccount(long maxLimit, enum MemoryOwnerType ownerType);

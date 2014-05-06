@@ -1127,9 +1127,6 @@ typedef struct PlanState
          */
         int gpmon_plan_tick;
         gpmon_packet_t gpmon_pkt;
-
-        /* MemoryAccount to use for recording the memory usage of different plan nodes. */
-        MemoryAccount* memoryAccount;
 } PlanState;
 
 typedef struct Gpmon_NameUnit_MaxVal

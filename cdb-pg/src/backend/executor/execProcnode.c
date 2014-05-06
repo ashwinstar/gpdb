@@ -762,7 +762,7 @@ ExecProcNode(PlanState *node)
 {
 	TupleTableSlot *result = NULL;
 
-	START_MEMORY_ACCOUNT(node->memoryAccount);
+	START_MEMORY_ACCOUNT(node->plan->memoryAccount);
 	{
 
 #ifndef WIN32
@@ -1183,7 +1183,7 @@ MultiExecProcNode(PlanState *node)
 
 	CHECK_FOR_INTERRUPTS();
 
-	START_MEMORY_ACCOUNT(node->memoryAccount);
+	START_MEMORY_ACCOUNT(node->plan->memoryAccount);
 	{
 
 	if(node->plan)
