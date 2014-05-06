@@ -29,7 +29,7 @@ extern apr_thread_mutex_t *logfile_mutex;
 
 #define LOCK_STDOUT if (logfile_mutex) { apr_thread_mutex_lock(logfile_mutex); }
 #define UNLOCK_STDOUT if (logfile_mutex) { apr_thread_mutex_unlock(logfile_mutex); }
-
+#define META_LEN 100
 
 inline void gp_smon_to_mmon_set_header(gp_smon_to_mmon_packet_t* pkt, apr_int16_t pkttype)
 {
@@ -341,11 +341,11 @@ apr_int32_t get_query_status(apr_int32_t tmid, apr_int32_t ssid,
 /* get query text from query text file */
 char *get_query_text(apr_int32_t tmid, apr_int32_t ssid, apr_int32_t ccnt, apr_pool_t *pool)
 {
-	const int META_LEN = 100;
-	char meta[META_LEN];
+	char meta[META_LEN] = {0};
 	int qrylen = 0;
-	char fname[GPMON_DIR_MAX_PATH];
-	const char *META_FMT = "%s qtext";
+	char fname[GPMON_DIR_MAX_PATH] = {0};
+	const char *META_FMT = "%d qtext";
+	const char *META_QTEXT = "qtext\n";
 
 	snprintf(fname, GPMON_DIR_MAX_PATH, "%sq%d-%d-%d.txt", GPMON_DIR, tmid, ssid, ccnt);
 
@@ -357,8 +357,22 @@ char *get_query_text(apr_int32_t tmid, apr_int32_t ssid, apr_int32_t ccnt, apr_p
 	}
 	
 	// get query text length
-	fgets(meta, META_LEN, fp);
-	sscanf(meta, META_FMT, &qrylen);
+	char *readPtr = fgets(meta, META_LEN, fp);
+	int metaLen = strlen(meta);
+	if (readPtr != meta || metaLen <= strlen(META_QTEXT) || strcmp(META_QTEXT, meta + metaLen - strlen(META_QTEXT))) 
+	{
+		fclose(fp);	
+		gpmon_warning(FLINE, "Invalid format in file %s", fname);
+		return NULL;
+	}
+	
+	int count = sscanf(meta, META_FMT, &qrylen);
+	if (count != 1) 
+	{
+		fclose(fp);	
+		gpmon_warning(FLINE, "Invalid format in file %s, line 1:%s", fname, meta);
+		return NULL;
+	}
 
 	char *query = apr_palloc(pool, qrylen + 1);
 	if (query == NULL) 

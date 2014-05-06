@@ -178,7 +178,10 @@ static bool is_query_not_active(apr_int32_t tmid, apr_int32_t ssid, apr_int32_t 
 	char *key = apr_psprintf(pool, "%d", ssid);	
 	char *active_query = apr_hash_get(hash, key, APR_HASH_KEY_STRING);
 	if (active_query == NULL)
+	{
+		TR0(("Found orphan query, tmid:%d, ssid:%d, ccnt:%d\n", tmid, ssid, ccnt));
 		return true;
+	}
 
 	// read query text from q file
 	char *query = get_query_text(tmid, ssid, ccnt, pool);	
@@ -191,8 +194,13 @@ static bool is_query_not_active(apr_int32_t tmid, apr_int32_t ssid, apr_int32_t 
 	// fix it there.  
 	int qlen = strlen(active_query);
 	int res = strncmp(query, active_query, qlen);
-		
-	return res != 0;
+	if (res != 0)
+	{
+		TR0(("Found orphan query, tmid:%d, ssid:%d, ccnt:%d\n", tmid, ssid, ccnt));
+		return true;
+	}
+
+	return false; 
 }
 
 static apr_status_t agg_put_fsinfo(agg_t* agg, const gpmon_fsinfo_t* met)
