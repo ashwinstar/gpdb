@@ -9287,7 +9287,7 @@ explain select foo_p.b, foo_p.t from foo_p left outer join bar on foo_p.a = bar.
                ->  Sequence  (cost=0.00..50.80 rows=500 width=34)
                      ->  Result  (cost=0.00..50.80 rows=500 width=34)
                            ->  Function Scan on gp_partition_expansion  (cost=10.00..100.00 rows=50 width=4)
-                     ->  Dynamic Table Scan on foo_p (partIndex: 0)  (cost=0.00..65.09 rows=200 width=34)
+                     ->  Dynamic Table Scan on foo_p (partIndex: 1)  (cost=0.00..65.09 rows=200 width=34)
                            Filter: NOT t IS NULL AND a = (ARRAY[1])[1]
          ->  Hash  (cost=79.52..79.52 rows=10050 width=4)
                ->  Redistribute Motion 2:2  (slice2; segments: 2)  (cost=0.00..79.52 rows=10050 width=4)

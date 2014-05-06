@@ -511,7 +511,7 @@ explain select * from csq_t1 where csq_t1.x >ALL (select csq_t2.x from csq_t2 wh
                ->  Sequence  (cost=0.00..1.02 rows=1 width=16)
                      ->  Result  (cost=10.00..100.00 rows=50 width=4)
                            ->  Function Scan on gp_partition_expansion  (cost=10.00..100.00 rows=50 width=4)
-                     ->  Dynamic Table Scan on csq_t1 (partIndex: 0)  (cost=0.00..0.01 rows=1 width=16)
+                     ->  Dynamic Table Scan on csq_t1 (partIndex: 1)  (cost=0.00..0.01 rows=1 width=16)
          SubPlan 1
            ->  Result  (cost=0.00..10.15 rows=1 width=1)
                  Filter: "ColRef_0027" = true
@@ -527,7 +527,7 @@ explain select * from csq_t1 where csq_t1.x >ALL (select csq_t2.x from csq_t2 wh
                                                                  ->  Sequence  (cost=0.00..1.02 rows=1 width=16)
                                                                        ->  Result  (cost=10.00..100.00 rows=50 width=4)
                                                                              ->  Function Scan on gp_partition_expansion  (cost=10.00..100.00 rows=50 width=4)
-                                                                       ->  Dynamic Table Scan on csq_t2 (partIndex: 1)  (cost=0.00..0.01 rows=1 width=16)
+                                                                       ->  Dynamic Table Scan on csq_t2 (partIndex: 2)  (cost=0.00..0.01 rows=1 width=16)
  Settings:  optimizer=on
 (26 rows)
 

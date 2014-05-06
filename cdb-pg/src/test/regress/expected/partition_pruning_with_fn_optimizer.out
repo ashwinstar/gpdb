@@ -36,7 +36,7 @@ explain select * from ds_4 where month_id = '200800';
  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..3.23 rows=1 width=80)
    ->  Sequence  (cost=0.00..1.12 rows=1 width=80)
          ->  Result  (cost=0.00..1.12 rows=1 width=80)
-         ->  Dynamic Table Scan on ds_4 (partIndex: 0)  (cost=0.00..0.04 rows=1 width=80)
+         ->  Dynamic Table Scan on ds_4 (partIndex: 1)  (cost=0.00..0.04 rows=1 width=80)
                Filter: month_id::text = '200800'::text
  Settings:  optimizer=on
 (6 rows)
@@ -49,7 +49,7 @@ explain select * from ds_4 where month_id::int = 200800;
    ->  Sequence  (cost=0.00..1.12 rows=1 width=80)
          ->  Result  (cost=10.00..100.00 rows=50 width=4)
                ->  Function Scan on gp_partition_expansion  (cost=10.00..100.00 rows=50 width=4)
-         ->  Dynamic Table Scan on ds_4 (partIndex: 0)  (cost=0.00..0.04 rows=1 width=80)
+         ->  Dynamic Table Scan on ds_4 (partIndex: 1)  (cost=0.00..0.04 rows=1 width=80)
                Filter: int4(month_id) = 200800
  Settings:  optimizer=on
 (7 rows)
@@ -62,7 +62,7 @@ explain select * from ds_4 where month_id::int - 801 < 200000;
    ->  Sequence  (cost=0.00..1.12 rows=1 width=80)
          ->  Result  (cost=10.00..100.00 rows=50 width=4)
                ->  Function Scan on gp_partition_expansion  (cost=10.00..100.00 rows=50 width=4)
-         ->  Dynamic Table Scan on ds_4 (partIndex: 0)  (cost=0.00..0.04 rows=1 width=80)
+         ->  Dynamic Table Scan on ds_4 (partIndex: 1)  (cost=0.00..0.04 rows=1 width=80)
                Filter: (int4(month_id) - 801) < 200000
  Settings:  optimizer=on
 (7 rows)
@@ -75,7 +75,7 @@ explain select * from ds_4 where month_id::int - 801 < 200000 OR count_vas > 10;
    ->  Sequence  (cost=0.00..1.12 rows=1 width=80)
          ->  Result  (cost=10.00..100.00 rows=50 width=4)
                ->  Function Scan on gp_partition_expansion  (cost=10.00..100.00 rows=50 width=4)
-         ->  Dynamic Table Scan on ds_4 (partIndex: 0)  (cost=0.00..0.04 rows=1 width=80)
+         ->  Dynamic Table Scan on ds_4 (partIndex: 1)  (cost=0.00..0.04 rows=1 width=80)
                Filter: (int4(month_id) - 801) < 200000 OR count_vas > 10
  Settings:  optimizer=on
 (7 rows)
@@ -88,7 +88,7 @@ explain select * from ds_4 where month_id::int - 801 < 200000 AND count_vas > 10
    ->  Sequence  (cost=0.00..1.12 rows=1 width=80)
          ->  Result  (cost=10.00..100.00 rows=50 width=4)
                ->  Function Scan on gp_partition_expansion  (cost=10.00..100.00 rows=50 width=4)
-         ->  Dynamic Table Scan on ds_4 (partIndex: 0)  (cost=0.00..0.04 rows=1 width=80)
+         ->  Dynamic Table Scan on ds_4 (partIndex: 1)  (cost=0.00..0.04 rows=1 width=80)
                Filter: (int4(month_id) - 801) < 200000 AND count_vas > 10
  Settings:  optimizer=on
 (7 rows)
@@ -101,7 +101,7 @@ explain select * from ds_4 where case when month_id = '200800' then 100 else 2 e
    ->  Sequence  (cost=0.00..1.12 rows=1 width=80)
          ->  Result  (cost=10.00..100.00 rows=50 width=4)
                ->  Function Scan on gp_partition_expansion  (cost=10.00..100.00 rows=50 width=4)
-         ->  Dynamic Table Scan on ds_4 (partIndex: 0)  (cost=0.00..0.04 rows=1 width=80)
+         ->  Dynamic Table Scan on ds_4 (partIndex: 1)  (cost=0.00..0.04 rows=1 width=80)
                Filter: CASE WHEN month_id::text = '200800'::text THEN 100 ELSE 2 END = 100
  Settings:  optimizer=on
 (7 rows)
@@ -114,7 +114,7 @@ explain select * from ds_4 where case when month_id = '200800' then NULL else 2 
    ->  Sequence  (cost=0.00..1.12 rows=1 width=80)
          ->  Result  (cost=10.00..100.00 rows=50 width=4)
                ->  Function Scan on gp_partition_expansion  (cost=10.00..100.00 rows=50 width=4)
-         ->  Dynamic Table Scan on ds_4 (partIndex: 0)  (cost=0.00..0.04 rows=1 width=80)
+         ->  Dynamic Table Scan on ds_4 (partIndex: 1)  (cost=0.00..0.04 rows=1 width=80)
                Filter: CASE WHEN month_id::text = '200800'::text THEN NULL::integer ELSE 2 END IS NULL
  Settings:  optimizer=on
 (7 rows)
@@ -127,7 +127,7 @@ explain select * from ds_4 where case when month_id::int = 200800 then count_vas
    ->  Sequence  (cost=0.00..1.12 rows=1 width=80)
          ->  Result  (cost=10.00..100.00 rows=50 width=4)
                ->  Function Scan on gp_partition_expansion  (cost=10.00..100.00 rows=50 width=4)
-         ->  Dynamic Table Scan on ds_4 (partIndex: 0)  (cost=0.00..0.04 rows=1 width=80)
+         ->  Dynamic Table Scan on ds_4 (partIndex: 1)  (cost=0.00..0.04 rows=1 width=80)
                Filter: CASE WHEN int4(month_id) = 200800 THEN count_vas ELSE 2 END IS NULL
  Settings:  optimizer=on
 (7 rows)
@@ -140,7 +140,7 @@ explain select * from ds_4 where month_id::int in (200801, 1,55,6,6,6,6,66,565,6
    ->  Sequence  (cost=0.00..1.12 rows=1 width=80)
          ->  Result  (cost=10.00..100.00 rows=50 width=4)
                ->  Function Scan on gp_partition_expansion  (cost=10.00..100.00 rows=50 width=4)
-         ->  Dynamic Table Scan on ds_4 (partIndex: 0)  (cost=0.00..0.04 rows=1 width=80)
+         ->  Dynamic Table Scan on ds_4 (partIndex: 1)  (cost=0.00..0.04 rows=1 width=80)
                Filter: int4(month_id) = ANY (ARRAY[200801, 1, 55, 6, 6, 6, 6, 66, 565, 65, 65, 200803])
  Settings:  optimizer=on
 (7 rows)
@@ -210,7 +210,7 @@ explain select * from ds_2 where month_id::int in (200808, 1315) order by month_
          ->  Sequence  (cost=0.00..1.12 rows=1 width=80)
                ->  Result  (cost=10.00..100.00 rows=50 width=4)
                      ->  Function Scan on gp_partition_expansion  (cost=10.00..100.00 rows=50 width=4)
-               ->  Dynamic Table Scan on ds_2 (partIndex: 0)  (cost=0.00..0.04 rows=1 width=80)
+               ->  Dynamic Table Scan on ds_2 (partIndex: 1)  (cost=0.00..0.04 rows=1 width=80)
                      Filter: int4(month_id) = ANY (ARRAY[200808, 1315])
  Settings:  optimizer=on
 (9 rows)
@@ -224,7 +224,7 @@ explain  select * from ds_2 where month_id::int in (200808, 200801, 2008010) ord
          ->  Sequence  (cost=0.00..1.12 rows=1 width=80)
                ->  Result  (cost=10.00..100.00 rows=50 width=4)
                      ->  Function Scan on gp_partition_expansion  (cost=10.00..100.00 rows=50 width=4)
-               ->  Dynamic Table Scan on ds_2 (partIndex: 0)  (cost=0.00..0.04 rows=1 width=80)
+               ->  Dynamic Table Scan on ds_2 (partIndex: 1)  (cost=0.00..0.04 rows=1 width=80)
                      Filter: int4(month_id) = ANY (ARRAY[200808, 200801, 2008010])
  Settings:  optimizer=on
 (9 rows)

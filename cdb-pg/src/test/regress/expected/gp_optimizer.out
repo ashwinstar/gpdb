@@ -5,7 +5,7 @@
 SELECT gp_opt_version();
                            gp_opt_version
 ---------------------------------------------------------------------
- GPOPT version: 1.412, GPOS version: 1.100, Xerces version: 3.1.1-p1
+ GPOPT version: 1.413, GPOS version: 1.100, Xerces version: 3.1.1-p1
 (1 row)
 
 -- master only tables
@@ -8033,7 +8033,7 @@ explain select * from orca.t_date where user_id=9;
                ->  Append  (cost=0.00..3.63 rows=1 width=32)
                      ->  Dynamic Index Scan on t_date  (cost=0.00..1.47 rows=1 width=88)
                            Index Cond: user_id = 9::numeric
-                     ->  Dynamic Table Scan on t_date (partIndex: 2)  (cost=0.00..1.13 rows=1 width=88)
+                     ->  Dynamic Table Scan on t_date (partIndex: 3)  (cost=0.00..1.13 rows=1 width=88)
                            Filter: user_id = 9::numeric
  Settings:  optimizer=on
 (11 rows)
@@ -8085,7 +8085,7 @@ explain select * from orca.t_text where user_id=9;
                ->  Append  (cost=0.00..3.63 rows=1 width=32)
                      ->  Dynamic Index Scan on t_text  (cost=0.00..1.47 rows=1 width=88)
                            Index Cond: user_id = 9::numeric
-                     ->  Dynamic Table Scan on t_text (partIndex: 2)  (cost=0.00..1.13 rows=1 width=88)
+                     ->  Dynamic Table Scan on t_text (partIndex: 3)  (cost=0.00..1.13 rows=1 width=88)
                            Filter: user_id = 9::numeric
  Settings:  optimizer=on
 (11 rows)
@@ -8199,7 +8199,7 @@ explain select * from orca.t_ceeval_ints where user_id=4;
                ->  Append  (cost=0.00..3.63 rows=1 width=32)
                      ->  Dynamic Index Scan on t_ceeval_ints  (cost=0.00..1.47 rows=1 width=88)
                            Index Cond: user_id = 4::numeric
-                     ->  Dynamic Table Scan on t_ceeval_ints (partIndex: 2)  (cost=0.00..1.13 rows=1 width=88)
+                     ->  Dynamic Table Scan on t_ceeval_ints (partIndex: 3)  (cost=0.00..1.13 rows=1 width=88)
                            Filter: user_id = 4::numeric
  Settings:  optimizer=on
 (11 rows)
