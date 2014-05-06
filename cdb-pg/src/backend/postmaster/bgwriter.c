@@ -104,7 +104,6 @@ static volatile sig_atomic_t shutdown_requested = false;
  * Private state
  */
 static bool am_bg_writer = false;
-
 static time_t last_xlog_switch_time;
 
 static void BgSigHupHandler(SIGNAL_ARGS);
@@ -613,4 +612,9 @@ AbsorbFsyncRequests(void)
 		pfree(requests);
 
 	END_CRIT_SECTION();
+}
+
+bool AmBackgroundWriterProcess()
+{
+	return am_bg_writer;
 }

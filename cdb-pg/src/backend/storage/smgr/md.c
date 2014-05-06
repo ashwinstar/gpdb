@@ -146,7 +146,6 @@ static HTAB *pendingOpsTable = NULL;
 
 static CycleCtr mdsync_cycle_ctr = 0;
 
-
 /* local routines */
 static MdMirVec *mdopen(SMgrRelation reln, bool allowNotFound);
 static bool register_dirty_segment(SMgrRelation reln, MdMirVec *seg);
@@ -1954,6 +1953,13 @@ void
 RememberFsyncRequest(RelFileNode rnode, BlockNumber segno)
 {
 	Assert(pendingOpsTable);
+
+	/*
+	 * bgwriter don't do fsync after we import checkpointer process,
+	 * so we don't add anything into it's hash table.
+	 */
+	if (AmBackgroundWriterProcess())
+		return;
 
 	if (segno == FORGET_RELATION_FSYNC)
 	{

@@ -29,4 +29,6 @@ extern void AbsorbFsyncRequests(void);
 extern Size BgWriterShmemSize(void);
 extern void BgWriterShmemInit(void);
 
+extern bool AmBackgroundWriterProcess(void);
+
 #endif   /* _BGWRITER_H */
