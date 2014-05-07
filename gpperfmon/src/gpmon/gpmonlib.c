@@ -342,7 +342,7 @@ apr_int32_t get_query_status(apr_int32_t tmid, apr_int32_t ssid,
 char *get_query_text(apr_int32_t tmid, apr_int32_t ssid, apr_int32_t ccnt, apr_pool_t *pool)
 {
 	char meta[META_LEN] = {0};
-	int qrylen = 0;
+	signed int qrylen = 0;
 	char fname[GPMON_DIR_MAX_PATH] = {0};
 	const char *META_FMT = "%d qtext";
 	const char *META_QTEXT = "qtext\n";
@@ -352,38 +352,50 @@ char *get_query_text(apr_int32_t tmid, apr_int32_t ssid, apr_int32_t ccnt, apr_p
 	FILE *fp = fopen(fname, "r");
 	if (!fp)
 	{
-		gpmon_warning(FLINE, "Open file %s failed", fname);
+		TR0(("Warning: Open file %s failed\n", fname));
 		return NULL;
 	}
 	
 	// get query text length
 	char *readPtr = fgets(meta, META_LEN, fp);
 	int metaLen = strlen(meta);
-	if (readPtr != meta || metaLen <= strlen(META_QTEXT) || strcmp(META_QTEXT, meta + metaLen - strlen(META_QTEXT))) 
+	if (readPtr != meta || metaLen <= strlen(META_QTEXT) || 0 != strcmp(META_QTEXT, meta + metaLen - strlen(META_QTEXT)))
 	{
 		fclose(fp);	
-		gpmon_warning(FLINE, "Invalid format in file %s", fname);
+		TR0(("Warning: Invalid format in file '%s'\n", fname));
 		return NULL;
 	}
 	
 	int count = sscanf(meta, META_FMT, &qrylen);
-	if (count != 1) 
+	if (count != 1 || qrylen < 0)
 	{
 		fclose(fp);	
-		gpmon_warning(FLINE, "Invalid format in file %s, line 1:%s", fname, meta);
+		TR0(("Warning: Invalid format in file '%s', line 1: '%s'\n", fname, meta));
 		return NULL;
+	}
+
+	if (qrylen > MAX_QUERY_COMPARE_LENGTH)
+	{
+		TR0(("Warning: Query length is very big %d\n", qrylen));
+		qrylen = MAX_QUERY_COMPARE_LENGTH;
 	}
 
 	char *query = apr_palloc(pool, qrylen + 1);
 	if (query == NULL) 
 	{
 		fclose(fp);	
-		gpmon_warning(FLINE, "Out of memory");
+		TR0(("Warning: Out of memory when allocating query text\n"));
 		return NULL;
 	}
 
 	// read query text
 	int readlen = fread(query, 1, qrylen, fp);
+	if (readlen != qrylen)
+	{
+		fclose(fp);
+		TR0(("Warning: Failed to read query text in file: '%s', query text length %d, read length %d.\n", fname, qrylen, readlen));
+		return NULL;
+	}
 	query[readlen] = '\0';
 
 	fclose(fp);

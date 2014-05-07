@@ -106,6 +106,7 @@ extern char *get_query_text(apr_int32_t tmid, apr_int32_t ssid, apr_int32_t ccnt
 #define MINIMUM_MESSAGE_INTERVAL  (1) // in minutes
 #define MAXIMUM_MESSAGE_INTERVAL  (10080) //one week
 
+#define MAX_QUERY_COMPARE_LENGTH  (1024 * 1024 * 10)
 /*
 * The below is a simple divide macro that does division rounding up if you get .5 or greater or down if you get below .5 without
 * doing any floating point math.  It can be used instead of the round math.h functions to avoid floating point math and crazy casting.
