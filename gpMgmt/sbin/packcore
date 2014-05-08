@@ -4,12 +4,12 @@
 
 import glob
 import os
+import re
 import string
 import shutil
 import stat
 import sys
 from optparse import OptionParser
-
 from subprocess import Popen, PIPE
 
 
@@ -47,12 +47,17 @@ def _findBinary(fileCmdOutput):
 
 
 def _getLibraryListWithLDD(binary):
-    cmd = Popen(['ldd', binary, " | cut -d ' ' -f 3"], sheel=True, stdout=PIPE)
-    list = cmd.communicate()[0].splitlines()
-    result = set(list)
-    for lib in list:
-        result = result.union(_getLibraryListWithLDD(lib))
-    return result
+    # We manually seed this with a few libraries that are missed
+    # This may not be needed for all proces, but will round out the
+    # postgres binary debugging
+    # TODO: Look a ways to distinguise a 32 vs. 64 bit executable
+    libraries = ['/lib64/libgcc_s.so.1', '/lib64/libnss_files.so.2', '/lib/libgcc_s.so.1', '/lib/libnss_files.so.2']
+    ldd_output = Popen('ldd `which postgres`', shell=True, stdout=PIPE)
+    for line in ldd_output.stdout:
+        match = re.search(r'(\S+) \(0x', line)
+        if match and match.group(1):
+            libraries.append(match.group(1).strip())
+    return libraries
 
 
 def _getLibraryListWithGDB(coreFile, binary):
@@ -61,7 +66,7 @@ def _getLibraryListWithGDB(coreFile, binary):
         return False
 
     libraries = []
-    #fix for issues with PYTHONPATH and PYTHONHOME
+    # fix for issues with PYTHONPATH and PYTHONHOME
     environ = os.environ.copy()
     for key in ('PYTHONHOME', 'PYTHONPATH', 'LD_LIBRARY_PATH'):
         if key in environ:
@@ -81,7 +86,7 @@ def _copyFilePath(src, dst):
     srcDir = os.path.dirname(src)
     if srcDir.find('/') is 0:
         srcDir = srcDir[1:]
-        dstDir = os.path.join(dst, srcDir)
+    dstDir = os.path.join(dst, srcDir)
     if not os.path.exists(dstDir):
         os.makedirs(dstDir)
     shutil.copy(src, dstDir)
@@ -169,11 +174,20 @@ def packCoreFile(coreFile, binary):
         os.chdir(packDir)
         shutil.copy(coreFile, '.')
         _getPlatformInfo()
-
         shutil.copy(binary, '.')
-        for lib in _getLibraryListWithGDB(coreFile, binary):
-            _copyFilePath(lib, '.')
-            _generateGDBScript(os.path.basename(binary), os.path.basename(coreFile))
+
+        libraries = _getLibraryListWithGDB(coreFile, binary)
+
+        if libraries is False:
+            libraries = _getLibraryListWithLDD(binary)
+
+        for lib in libraries:
+            try:
+                _copyFilePath(lib, '.')
+            except IOError:
+                continue
+
+        _generateGDBScript(os.path.basename(binary), os.path.basename(coreFile))
         os.chdir(oldDir)
         cmd = Popen('tar zcf packcore-' + os.path.basename(coreFile) + '.tgz ' + packDir, shell=True)
         cmd.wait()
@@ -185,10 +199,10 @@ def packCoreFile(coreFile, binary):
 def parseArgs():
     u = '''%prog [options] core_file
 This will create an archive with the core file and all required
-libraries for analysis.  This currently requires GDB to be present
-on the system'''
+libraries for analysis.  The preference is to use GDB so that we can
+resolve dependancies for extensions.'''
 
-    parser = OptionParser(version='%prog: alpha 0.3', usage=u)
+    parser = OptionParser(version='%prog: 0.4beta', usage=u)
     parser.add_option('-b', '--binary', action='store', type='string', dest='binary', metavar='PROGRAMME', help='The full path to the binary that created the core file.  Used when packcore cannot determine the source binary')
     (option, args) = parser.parse_args()
     if len(args) != 1:
@@ -202,14 +216,8 @@ def main():
     if sys.hexversion < 0x020600f0:
         sys.stderr.write('packcore requires a minimum python version of 2.6.  Current version is:\n' + sys.version)
         sys.exit(1)
-    
-    if which('gdb') is None:
-        sys.stderr.write('GDB is required to run packcore.  Please make sure GDB is in your path')
-        sys.exit(1)
-    
+
     (options, args) = parseArgs()
-
-
 
     coreFile = os.path.abspath(args[0])
     fileCmd = _getFileInfo(coreFile)
