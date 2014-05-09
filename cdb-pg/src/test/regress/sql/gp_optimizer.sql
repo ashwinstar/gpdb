@@ -737,6 +737,10 @@ select NULL in (select 1);
 select 1 in (select 1);
 select 1 in (select 2);
 select NULL in (select 1/0);
+select 1 where 22 in (SELECT unnest(array[1,2]));
+select 1 where 22 not in (SELECT unnest(array[1,2]));
+select 1 where 22 in (SELECT generate_series(1,10));
+select 1 where 22 not in (SELECT generate_series(1,10));
 
 -- UDAs
 CREATE FUNCTION sum_sfunc(anyelement,anyelement) returns anyelement AS 'select $1+$2' LANGUAGE SQL STRICT;
