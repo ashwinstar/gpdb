@@ -2207,6 +2207,7 @@ appendonly_fetch(
 {
 	int		segmentFileNum = AOTupleIdGet_segmentFileNum(aoTupleId);
 	int64 	rowNum = AOTupleIdGet_rowNum(aoTupleId);
+	bool isSnapshotAny = (aoFetchDesc->snapshot == SnapshotAny);
 
 	/*
 	 * Do we have a current block?  If it has the requested tuple,
@@ -2219,7 +2220,17 @@ appendonly_fetch(
 		{
 			if (rowNum >= aoFetchDesc->currentBlock.firstRowNum &&
 				rowNum <= aoFetchDesc->currentBlock.lastRowNum)
+			{
+				if (!isSnapshotAny && !AppendOnlyVisimap_IsVisible(&aoFetchDesc->visibilityMap, aoTupleId))
+				{
+					if (slot != NULL)
+					{
+						ExecClearTuple(slot);
+					}
+					return false; /* row has been deleted or updated. */
+				}
 				return fetchFromCurrentBlock(aoFetchDesc, rowNum, slot);
+			}
 
 			/*
 			 * Otherwize, if the current Block Directory entry covers the request tuples,
@@ -2266,6 +2277,15 @@ appendonly_fetch(
 					positionSkipCurrentBlock(aoFetchDesc);
 
 					positionLimitToEndOfRange(aoFetchDesc);
+				}
+
+				if (!isSnapshotAny && !AppendOnlyVisimap_IsVisible(&aoFetchDesc->visibilityMap, aoTupleId))
+				{
+					if (slot != NULL)
+					{
+						ExecClearTuple(slot);
+					}
+					return false; /* row has been deleted or updated. */
 				}
 
 				if (scanToFetchTuple(aoFetchDesc, rowNum, slot))
@@ -2329,7 +2349,6 @@ appendonly_fetch(
 						/* Must be aborted or deleted and reclaimed. */
 	}
 	
-	bool isSnapshotAny = (aoFetchDesc->snapshot == SnapshotAny);
 	if (!isSnapshotAny && !AppendOnlyVisimap_IsVisible(&aoFetchDesc->visibilityMap, aoTupleId))
 	{
 		if (slot != NULL)

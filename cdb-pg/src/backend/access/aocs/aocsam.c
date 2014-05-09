@@ -1320,6 +1320,7 @@ aocs_fetch(AOCSFetchDesc aocsFetchDesc,
 	int numCols = aocsFetchDesc->relation->rd_att->natts;
 	int colno;
 	bool found = true;
+	bool isSnapshotAny = (aocsFetchDesc->snapshot == SnapshotAny);
 
 	Assert(numCols > 0);
 
@@ -1356,6 +1357,12 @@ aocs_fetch(AOCSFetchDesc aocsFetchDesc,
 			if (rowNum >= datumStreamFetchDesc->currentBlock.firstRowNum &&
 				rowNum <= datumStreamFetchDesc->currentBlock.lastRowNum)
 			{
+				if (!isSnapshotAny && !AppendOnlyVisimap_IsVisible(&aocsFetchDesc->visibilityMap, aoTupleId))
+				{
+					found = false;
+					break;
+				}
+
 				fetchFromCurrentBlock(aocsFetchDesc, rowNum, slot, colno);
 				continue;
 			}
@@ -1390,6 +1397,12 @@ aocs_fetch(AOCSFetchDesc aocsFetchDesc,
 					 */
 					positionSkipCurrentBlock(datumStreamFetchDesc);
 					positionLimitToEndOfRange(datumStreamFetchDesc);
+				}
+
+				if (!isSnapshotAny && !AppendOnlyVisimap_IsVisible(&aocsFetchDesc->visibilityMap, aoTupleId))
+				{
+					found = false;
+					break;
 				}
 
 				if (!scanToFetchValue(aocsFetchDesc, rowNum, slot, colno))
@@ -1443,7 +1456,6 @@ aocs_fetch(AOCSFetchDesc aocsFetchDesc,
 			break;
 		}
 
-		bool isSnapshotAny = (aocsFetchDesc->snapshot == SnapshotAny);
 		if (!isSnapshotAny && !AppendOnlyVisimap_IsVisible(&aocsFetchDesc->visibilityMap, aoTupleId))
 		{
 			found = false;
