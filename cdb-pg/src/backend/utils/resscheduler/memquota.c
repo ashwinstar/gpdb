@@ -821,14 +821,23 @@ ComputeMemLimitForChildGroups(OperatorGroupNode *parentGroupNode)
 
 		Assert(parentGroupNode->groupMemKB > 0);
 		
-		double scaleFactor =
-			((double)(memIntenseOpMemKB * 
-					  Max(childGroup->maxNumConcMemIntenseOps, childGroup->numMemIntenseOps) +
-					  nonMemIntenseOpMemKB * 
-					  Max(childGroup->maxNumConcNonMemIntenseOps, childGroup->numNonMemIntenseOps))) /
-			((double)parentGroupNode->groupMemKB);
-		
-		childGroup->groupMemKB = (uint64) (parentGroupNode->groupMemKB * scaleFactor);
+		/*
+		 * MPP-23130
+		 * In memory policy eager free, scaleFactor is used to balance memory allocated to
+		 * each child group based on the number of memory-intensive and non-memory-intensive
+		 * operators they have. The calculation of scaleFactor is as follows:
+		 * scaleFactor = (memIntensiveOpMem *
+		 *               Max(childGroup->maxNumConcMemIntenseOps, childGroup->numMemIntenseOps)
+		 *              + nonMemIntenseOpMemKB *
+		 *               Max(childGroup->maxNumConcNonMemIntenseOps, childGroup->numNonMemIntenseOps))
+		 *               / parentGroupNode->groupMemKB
+		 * Child group's memory: childGroup->groupMemKB = scaleFactor * parentGroupNode->groupMemKB,
+		 * which is the denominator of the scaleFactor formula.
+		 */
+		childGroup->groupMemKB = (uint64) (memIntenseOpMemKB *
+				  	  	  	  	  	  	  Max(childGroup->maxNumConcMemIntenseOps, childGroup->numMemIntenseOps) +
+				  	  	  	  	  	  	  nonMemIntenseOpMemKB *
+				  	  	  	  	  	  	  Max(childGroup->maxNumConcNonMemIntenseOps, childGroup->numNonMemIntenseOps));
 	}
 }
 
