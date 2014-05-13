@@ -41,7 +41,7 @@ from gppylib.test.behave_utils.utils import bring_nic_down, bring_nic_up, run_cm
                                             check_string_not_present_stdout, clear_all_saved_data_verify_files, copy_file_to_all_db_hosts, validate_num_restored_tables, \
                                             get_partition_list, verify_stats, drop_external_table_if_exists, get_all_hostnames_as_list, get_pid_for_segment, kill_process, get_num_segments, \
                                             check_user_permissions, get_change_tracking_segment_info, add_partition, drop_partition, check_pl_exists, check_constraint_exists, \
-                                            are_segments_running, execute_sql_singleton, check_row_count, diff_backup_restore_data
+                                            are_segments_running, execute_sql_singleton, check_row_count, diff_backup_restore_data, check_dump_dir_exists
 
 from gppylib.operations.dump import get_partition_state
 from gppylib.test.behave_utils.gpfdist_utils.gpfdist_mgmt import Gpfdist
@@ -3616,3 +3616,8 @@ def impl(context, port, hostfile):
                 ctxt = 1
             gpfdist = Gpfdist('gpfdist on host %s'%host, dir, port, os.path.join('/tmp','gpfdist.pid'), ctxt, host, gp_source_file)
             gpfdist.cleanupGpfdist()
+
+@when('verify that db_dumps directory does not exist in master or segments')
+@then('verify that db_dumps directory does not exist in master or segments')
+def impl(context):
+    check_dump_dir_exists(context, 'template1')

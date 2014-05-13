@@ -1019,20 +1019,16 @@ class ValidateAllDumpDirs(Operation):
         self.master_port = master_port
         self.dump_dir = dump_dir
     def execute(self):
-        if self.backup_dir is not None:
-            master_dirs_to_check = [self.backup_dir, self.master_datadir]
+	dir = self.backup_dir if self.backup_dir is not None else self.master_datadir
+	try:
+            ValidateDumpDirs(dir, self.dump_dir).run()
+        except DumpDirCreateFailed, e:
+            raise ExceptionNoStackTraceNeeded('Could not create %s on master. Cannot continue.' % dir)
+        except DumpDirNotWritable, e:
+            raise ExceptionNoStackTraceNeeded('Could not write to %s on master. Cannot continue.' % dir)
         else:
-            master_dirs_to_check = [self.master_datadir]
-
-        for dir in master_dirs_to_check:
-            try:
-                ValidateDumpDirs(dir, self.dump_dir).run()
-            except DumpDirCreateFailed, e:
-                raise ExceptionNoStackTraceNeeded('Could not create %s on master. Cannot continue.' % dir)
-            except DumpDirNotWritable, e:
-                raise ExceptionNoStackTraceNeeded('Could not write to %s on master. Cannot continue.' % dir)
-            else:
-                logger.info('Checked %s on master' % dir)
+            logger.info('Checked %s on master' % dir)
+	
             
         # Check backup target on segments (either master_datadir or backup_dir, if present)
         operations = []

@@ -1246,3 +1246,15 @@ def wait_till_resync_transition(host='localhost', port=os.environ.get('PGPORT'),
             if (count > 80): 
                 raise Exception("Timed out: cluster not in sync transition")
         return True 
+
+def check_dump_dir_exists(context, dbname):
+    hosts = get_hosts(dbname)
+    for host in hosts:
+	dirs = get_backup_dir_for_host(host[0], dbname)
+	for dir in dirs:
+	    cmd = "gpssh -h %s 'if [ -d %s/db_dumps/ ]; then echo 'EXISTS'; else echo 'NOT FOUND'; fi'" % (host[0], dir[0])
+	    run_command(context, cmd)
+	    if context.exception:
+		raise context.exception
+	    if 'EXISTS' in context.stdout_message:
+		raise Exception("db_dumps directory is present in master/segments.")
