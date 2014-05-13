@@ -390,6 +390,7 @@ class GpInjectFaultProgram:
 			      "fault_in_background_writer_main (inject fault in BackgroundWriterMain), " \
 			      "cdb_copy_start_after_dispatch (inject fault in cdbCopyStart after dispatch), " \
 			      "repair_frag_end (inject fault at the end of repair_frag), " \
+                  "rebuild_pt_db (inject fault while rebuilding persistent tables (for each db))" \
 			      "all (affects all faults injected, used for 'status' and 'reset'), ") 
         addTo.add_option("-c", "--ddl_statement", dest="ddlStatement", type="string",
                          metavar="ddlStatement",

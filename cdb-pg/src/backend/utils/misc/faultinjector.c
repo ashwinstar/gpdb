@@ -13,10 +13,10 @@
  *	at predefined 'fault_name. 
  * 
  * The utility is started on master host. Master host sends the fault injection request to specified segment. 
- *		•	It connects to postmaster on a segment. 
- *		•	Postmaster spawns backend process that sets fault injection request into shared memory. 
- *			Shared memory is accessible to all segment processes.
- *		•	Segment processes are checking shared memory to find if/when fault has to be injected.
+ *		It connects to postmaster on a segment.
+ *		Postmaster spawns backend process that sets fault injection request into shared memory.
+ *		Shared memory is accessible to all segment processes.
+ *		Segment processes are checking shared memory to find if/when fault has to be injected.
  *
  */
 
@@ -276,6 +276,8 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault in cdbCopyStart after dispatch */
 	_("repair_frag_end"),
 		/* inject fault at the end of repair_frag */
+	_("rebuild_pt_db"),
+		/* inject fault while rebuilding persistent tables (for each db) */
 	_("not recognized"),
 };
 

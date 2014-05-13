@@ -184,6 +184,7 @@ typedef enum FaultInjectorIdentifier_e {
 	CdbCopyStartAfterDispatch,
 
 	RepairFragEnd,
+	RebuildPTDB,
 
 	/* INSERT has to be done before that line */
 	FaultInjectorIdMax,

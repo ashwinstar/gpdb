@@ -41,6 +41,7 @@
 #include "cdb/cdbdatabaseinfo.h"
 #include "utils/syscache.h"
 #include "storage/bufpage.h"
+#include "utils/faultinjector.h"
 
 static void
 PersistentBuild_NonTransactionTruncate(RelFileNode *relFileNode)
@@ -630,6 +631,14 @@ PersistentBuild_BuildDb(
 	heap_close(pg_database, RowExclusiveLock);
 
 	gp_before_persistence_work = false;
+
+#ifdef FAULT_INJECTOR
+	FaultInjector_InjectFaultIfSet(
+								   RebuildPTDB,
+								   DDLNotSpecified,
+								   "",	// databaseName
+								   ""); // tableName
+#endif
 
 	/* 
 	 * Since we have written XLOG records with <persistentTid,
