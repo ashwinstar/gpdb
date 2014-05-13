@@ -7983,7 +7983,7 @@ select count(*) over (partition by 1 order by cn rows between 1 preceding and 1 
 -- MPP-13710
 create table redundant_sort_check (i int, j int, k int) distributed by (i);
 explain select count(*) over (order by i), count(*) over (partition by i order by j) from redundant_sort_check;
-                                                QUERY PLAN                                                 
+                                                QUERY PLAN
 -----------------------------------------------------------------------------------------------------------
  Result  (cost=0.00..5.09 rows=1 width=16)
    ->  Window  (cost=0.00..5.09 rows=1 width=16)
@@ -7993,12 +7993,13 @@ explain select count(*) over (order by i), count(*) over (partition by i order b
                Sort Key: i, j
                ->  Window  (cost=0.00..3.05 rows=1 width=24)
                      Order By: i
-                     ->  Sort  (cost=0.00..2.02 rows=1 width=16)
-                           Sort Key: i
-                           ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..1.02 rows=1 width=16)
+                     ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..2.02 rows=1 width=16)
+                           Merge Key: i
+                           ->  Sort  (cost=0.00..1.01 rows=1 width=16)
+                                 Sort Key: i
                                  ->  Table Scan on redundant_sort_check  (cost=0.00..0.01 rows=1 width=16)
  Settings:  gp_enable_sequential_window_plans=on; optimizer=on
-(13 rows)
+(14 rows)
 
 -- End of MPP-13710
 -- MPP-13879

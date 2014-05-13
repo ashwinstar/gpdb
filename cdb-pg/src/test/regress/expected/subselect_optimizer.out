@@ -501,35 +501,36 @@ NOTICE:  CREATE TABLE will create partition "csq_t2_1_prt_4" for table "csq_t2"
 insert into csq_t1 select * from csq_t1_base;
 insert into csq_t2 select * from csq_t2_base;
 explain select * from csq_t1 where csq_t1.x >ALL (select csq_t2.x from csq_t2 where csq_t2.y=csq_t1.y) order by 1;
-                                                                          QUERY PLAN                                                                           
----------------------------------------------------------------------------------------------------------------------------------------------------------------
- Sort  (cost=0.00..10000000000000000159028911097599180468360808563945281389781327557747838772170381060813469985856815104.00 rows=1 width=16)
-   Sort Key: csq_t1.x
-   ->  Result  (cost=0.00..2.03 rows=1 width=16)
-         Filter: (subplan)
-         ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..2.03 rows=1 width=16)
-               ->  Sequence  (cost=0.00..1.02 rows=1 width=16)
-                     ->  Result  (cost=10.00..100.00 rows=50 width=4)
-                           ->  Function Scan on gp_partition_expansion  (cost=10.00..100.00 rows=50 width=4)
+                                                                       QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------------------------------------
+ Result  (cost=0.00..3.03 rows=1 width=16)
+   Filter: (subplan)
+   ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..3.03 rows=1 width=16)
+         Merge Key: csq_t1.x
+         ->  Sequence  (cost=0.00..1.01 rows=1 width=16)
+               ->  Result  (cost=0.00..2.02 rows=1 width=16)
+                     ->  Function Scan on gp_partition_expansion  (cost=10.00..100.00 rows=50 width=4)
+               ->  Sort  (cost=0.00..1.01 rows=1 width=16)
+                     Sort Key: csq_t1.x
                      ->  Dynamic Table Scan on csq_t1 (partIndex: 1)  (cost=0.00..0.01 rows=1 width=16)
-         SubPlan 1
-           ->  Result  (cost=0.00..10.15 rows=1 width=1)
-                 Filter: "ColRef_0027" = true
-                 ->  Materialize  (cost=0.00..9.15 rows=1 width=8)
-                       ->  Result  (cost=0.00..8.14 rows=1 width=8)
-                             ->  Aggregate  (cost=0.00..7.14 rows=1 width=16)
-                                   ->  Materialize  (cost=0.00..6.09 rows=1 width=16)
-                                         ->  Result  (cost=0.00..5.08 rows=1 width=16)
-                                               ->  Result  (cost=0.00..4.07 rows=1 width=8)
-                                                     Filter: csq_t2.y = $1
-                                                     ->  Materialize  (cost=0.00..3.06 rows=1 width=16)
-                                                           ->  Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..2.03 rows=1 width=16)
-                                                                 ->  Sequence  (cost=0.00..1.02 rows=1 width=16)
-                                                                       ->  Result  (cost=10.00..100.00 rows=50 width=4)
-                                                                             ->  Function Scan on gp_partition_expansion  (cost=10.00..100.00 rows=50 width=4)
-                                                                       ->  Dynamic Table Scan on csq_t2 (partIndex: 2)  (cost=0.00..0.01 rows=1 width=16)
+   SubPlan 1
+     ->  Result  (cost=0.00..10.24 rows=1 width=1)
+           Filter: "ColRef_0022" = true
+           ->  Materialize  (cost=0.00..9.23 rows=1 width=8)
+                 ->  Result  (cost=0.00..8.22 rows=1 width=8)
+                       ->  Aggregate  (cost=0.00..7.20 rows=1 width=16)
+                             ->  Materialize  (cost=0.00..6.14 rows=1 width=16)
+                                   ->  Result  (cost=0.00..5.11 rows=1 width=16)
+                                         ->  Result  (cost=0.00..4.08 rows=1 width=8)
+                                               Filter: csq_t2.y = $1
+                                               ->  Materialize  (cost=0.00..3.06 rows=1 width=16)
+                                                     ->  Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..2.03 rows=1 width=16)
+                                                           ->  Sequence  (cost=0.00..0.01 rows=1 width=16)
+                                                                 ->  Result  (cost=0.00..1.02 rows=1 width=16)
+                                                                       ->  Function Scan on gp_partition_expansion  (cost=10.00..100.00 rows=50 width=4)
+                                                                 ->  Dynamic Table Scan on csq_t2 (partIndex: 2)  (cost=0.00..0.01 rows=1 width=16)
  Settings:  optimizer=on
-(26 rows)
+(27 rows)
 
 select * from csq_t1 where csq_t1.x >ALL (select csq_t2.x from csq_t2 where csq_t2.y=csq_t1.y) order by 1; -- expected (4,2)
  x | y 
@@ -607,7 +608,7 @@ select * from mrs_t1 where exists (select x from mrs_t1 where x = 1) order by 1;
 (20 rows)
 
 explain select * from mrs_t1 where x in (select x-95 from mrs_t1) or x < 5;
-                                                                                                         QUERY PLAN                                                                                                          
+                                                                                                         QUERY PLAN                                                           
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..128055.46 rows=10 width=4)
    ->  Result  (cost=0.00..128054.42 rows=10 width=4)

@@ -2480,18 +2480,18 @@ select * from t1,t2 where t1.x = 100 and t2.x >= t1.x;
 -- multiple inferences
 --
 explain select * from t1,t2 where t1.x = 100 and t1.x = t2.y and t1.x <= t2.x;
-                                            QUERY PLAN                                            
---------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..6.28 rows=1 width=24)
-   ->  Hash Join  (cost=0.00..5.27 rows=1 width=24)
-         Hash Cond: t2.y = t1.x
-         Join Filter: t1.x <= t2.x
-         ->  Table Scan on t2  (cost=0.00..1.60 rows=1 width=12)
-               Filter: y = 100
-         ->  Hash  (cost=2.61..2.61 rows=1 width=12)
-               ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.61 rows=1 width=12)
-                     ->  Table Scan on t1  (cost=0.00..1.60 rows=1 width=12)
-                           Filter: x = 100
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
+ Hash Join  (cost=0.00..6.35 rows=1 width=24)
+   Hash Cond: t1.x = t2.y
+   Join Filter: t1.x <= t2.x
+   ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..2.60 rows=1 width=12)
+         ->  Table Scan on t1  (cost=0.00..1.60 rows=1 width=12)
+               Filter: x = 100
+   ->  Hash  (cost=2.60..2.60 rows=1 width=12)
+         ->  Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..2.60 rows=1 width=12)
+               ->  Table Scan on t2  (cost=0.00..1.60 rows=1 width=12)
+                     Filter: y = 100
  Settings:  enable_hashjoin=on; enable_mergejoin=off; enable_nestloop=off; optimizer=on
 (11 rows)
 
