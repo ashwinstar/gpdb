@@ -334,8 +334,6 @@ extern int	tcp_keepalives_idle;
 extern int	tcp_keepalives_interval;
 extern int	tcp_keepalives_count;
 
-extern int	gp_connection_send_timeout;
-
 extern int	gp_filerep_tcp_keepalives_idle;
 extern int	gp_filerep_tcp_keepalives_interval;
 extern int	gp_filerep_tcp_keepalives_count;
