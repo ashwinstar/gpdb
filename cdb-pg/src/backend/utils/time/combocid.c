@@ -424,20 +424,26 @@ GetRealCmax(TransactionId xmin, CommandId combocid)
 	return comboCids[combocid].cmax;
 }
 
+#define ComboCidMapName(path, gp_session_id, pid) \
+	snprintf(path, MAXPGPATH, "sess%u_w%u_combocid_map", gp_session_id, pid)
+
 void
 dumpSharedComboCommandId(TransactionId xmin, CommandId cmin, CommandId cmax, CommandId combocid)
 {
 	/*
-	 * In any given segment, there are many readers, but only one writer. The combo cid file information
-	 * is stored in the MyProc of the writer process, and is referenced by reader process via lockHolderProcPtr.
-	 * The writer will setup and/or dump combocids to a combo cid file when appropriate. The writer keeps track
-	 * of the number of entries in the combo cid file in MyProc->combocid_map_count. Readers reference the
-	 * count via lockHolderProcPtr->combocid_map_count.
+	 * In any given segment, there are many readers, but only one writer. The
+	 * combo cid file information is stored in the MyProc of the writer process,
+	 * and is referenced by reader process via lockHolderProcPtr.  The writer
+	 * will setup and/or dump combocids to a combo cid file when appropriate.
+	 * The writer keeps track of the number of entries in the combo cid file in
+	 * MyProc->combocid_map_count. Readers reference the count via
+	 * lockHolderProcPtr->combocid_map_count.
 	 *
-	 * Since combo cid file entries are always appended to the end of a combo cid file and because there
-	 * is only one writer, it is not necessary to lock the combo cid file during reading or writing. A
-	 * new combo cid will not become visable to the reader until the combocid_map_count variable has been
-	 * incremented.
+	 * Since combo cid file entries are always appended to the end of a combo
+	 * cid file and because there is only one writer, it is not necessary to
+	 * lock the combo cid file during reading or writing. A new combo cid will
+	 * not become visable to the reader until the combocid_map_count variable
+	 * has been incremented.
 	 */
 
 	ComboCidEntryData entry;
@@ -447,16 +453,22 @@ dumpSharedComboCommandId(TransactionId xmin, CommandId cmin, CommandId cmax, Com
 	if (combocid_map == NULL)
 	{
 		/* This is the first time a combo cid is to be written by this writer. */
-
 		MemoryContext oldCtx;
+		char			path[MAXPGPATH];
 
 		MyProc->combocid_map_count = 0;
 
-		snprintf(MyProc->combocid_map_name, MAXPGPATH, "sess%u_w%u_combocid_map", gp_session_id, MyProc->pid);
+		ComboCidMapName(path, gp_session_id, MyProc->pid);
 
 		/* open our file, as appropriate: this will throw an error if the create-fails. */
 		oldCtx = MemoryContextSwitchTo(TopMemoryContext);
-		combocid_map = BufFileCreateTemp_ReaderWriter(MyProc->combocid_map_name, true);
+
+		/*
+		 * XXX: We could probably close and delete the file at the end of
+		 * transaction.  We would then need to keep combocid_map_count
+		 * synchronized with open files at (sub-) xact boundaries.
+		 */
+		combocid_map = BufFileCreateTemp_ReaderWriter(path, true, true);
 		MemoryContextSwitchTo(oldCtx);
 	}
 	Assert(combocid_map != NULL);
@@ -504,10 +516,12 @@ loadSharedComboCommandId(TransactionId xmin, CommandId combocid, CommandId *cmin
 	if (combocid_map == NULL)
 	{
 		MemoryContext oldCtx;
+		char			path[MAXPGPATH];
 
+		ComboCidMapName(path, gp_session_id, lockHolderProcPtr->pid);
 		/* open our file, as appropriate: this will throw an error if the create-fails. */
 		oldCtx = MemoryContextSwitchTo(TopMemoryContext);
-		combocid_map = BufFileCreateTemp_ReaderWriter(lockHolderProcPtr->combocid_map_name, false);
+		combocid_map = BufFileCreateTemp_ReaderWriter(path, false, true);
 		MemoryContextSwitchTo(oldCtx);
 	}
 	Assert(combocid_map != NULL);

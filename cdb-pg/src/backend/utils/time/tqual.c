@@ -608,7 +608,7 @@ dumpSharedLocalSnapshot_forCursor(void)
 	fname = sharedLocalSnapshot_filename(src->QDxid, src->QDcid, src->segmateSync);
 
 	/* Create our dump-file, this will either return a valid file, or throw an error */
-	f = BufFileCreateTemp_ReaderWriter(fname, true);
+	f = BufFileCreateTemp_ReaderWriter(fname, true, false);
 	/* we have our file. */
 
 #define FileWriteOK(file, ptr, size) (BufFileWrite(file, ptr, size) == size)
@@ -772,7 +772,7 @@ readSharedLocalSnapshot_forCursor(Snapshot snapshot)
 	fname = sharedLocalSnapshot_filename(QEDtxContextInfo.distributedXid,
 		QEDtxContextInfo.curcid, QEDtxContextInfo.segmateSync);
 
-	f = BufFileCreateTemp_ReaderWriter(fname, false);
+	f = BufFileCreateTemp_ReaderWriter(fname, false, false);
 	/* we have our file. */
 
 #define FileReadOK(file, ptr, size) (BufFileRead(file, ptr, size) == size)

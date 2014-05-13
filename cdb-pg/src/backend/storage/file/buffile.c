@@ -125,7 +125,7 @@ makeBufFile(File firstfile)
  * memory context that will survive across transaction boundaries.
  */
 BufFile *
-BufFileCreateTemp(const char * filePrefix, bool interXact)
+BufFileCreateTemp(const char *filePrefix, bool interXact)
 {
 	BufFile *file;
 	File pfile;
@@ -152,7 +152,7 @@ BufFileCreateTemp(const char * filePrefix, bool interXact)
  *
  */
 BufFile *
-BufFileCreateFile(const char * fileName, bool delOnClose, bool interXact)
+BufFileCreateFile(const char *fileName, bool delOnClose, bool interXact)
 {
 	return BufFileOpenFile(fileName,
 			true, /* create */
@@ -169,7 +169,7 @@ BufFileCreateFile(const char * fileName, bool delOnClose, bool interXact)
  *
  */
 BufFile *
-BufFileOpenFile(const char * fileName, bool create, bool delOnClose, bool interXact)
+BufFileOpenFile(const char *fileName, bool create, bool delOnClose, bool interXact)
 {
 	bool closeAtEOXact = !interXact;
 	File pfile = OpenNamedFile(fileName,
@@ -201,19 +201,21 @@ BufFileOpenFile(const char * fileName, bool create, bool delOnClose, bool interX
 }
 
 /*
- * Create a BufFile for a new temporary file used for producer-consumer operators
+ * Create a BufFile for a new temporary file used for writer-reader exchange.
  *
  * Adds the pgsql_tmp/ prefix to the file path before creating.
  *
  */
 BufFile *
-BufFileCreateTemp_ReaderWriter(const char* filePrefix, bool isWriter)
+BufFileCreateTemp_ReaderWriter(const char *filePrefix, bool isWriter,
+							   bool interXact)
 {
+	bool closeAtEOXact = !interXact;
 	File pfile = OpenTemporaryFile(filePrefix, 1, /* extentseqnum */
-							  false, /* makenameunique */
-							  isWriter, /* create */
-							  isWriter, /* delOnClose */
-							  false); /* closeAtEOXact */
+								   false, /* makenameunique */
+								   isWriter, /* create */
+								   isWriter, /* delOnClose */
+								   closeAtEOXact); /* closeAtEOXact */
 	if (pfile < 0)
 	{
 		elog(ERROR, "could not open temporary file \"%s\": %m", filePrefix);

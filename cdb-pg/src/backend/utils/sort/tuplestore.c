@@ -338,23 +338,6 @@ tuplestore_begin_heap(bool randomAccess, bool interXact, int maxKBytes)
 	return state;
 }
 
-Tuplestorestate *
-tuplestore_begin_heap_file_readerwriter(const char* fileName, bool isWriter)
-{
-	Tuplestorestate *state;
-	
-	state = tuplestore_begin_common(true, true, 1); 
-	
-	state->myfile = BufFileCreateTemp_ReaderWriter(fileName, isWriter); 
-	state->status = isWriter ? TSS_WRITEFILE : TSS_READFILE;
-
-	state->copytup = copytup_heap;
-	state->writetup = writetup_heap;
-	state->readtup = readtup_heap;
-
-	return state;
-}
-
 /*
  * tuplestore_set_instrument
  *
