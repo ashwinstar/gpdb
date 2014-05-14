@@ -825,10 +825,18 @@ cdbexplain_collectStatsFromNode(PlanState *planstate, CdbExplain_SendStatCtx *ct
  */
 typedef struct CdbExplain_DepStatAcc
 {
-    CdbExplain_Agg          agg;            /* vmax, vsum, vcnt, segmax */
-    CdbExplain_StatHdr     *rshmax;         /* max's received StatHdr */
-    CdbExplain_StatInst    *rsimax;         /* max's received inst in StatHdr */
-    CdbExplain_StatInst    *nsimax;         /* max's inst in NodeSummary */
+	/* vmax, vsum, vcnt, segmax */
+    CdbExplain_Agg          agg;
+    /* max's received StatHdr */
+    CdbExplain_StatHdr     *rshmax;
+    /* max's received inst in StatHdr */
+    CdbExplain_StatInst    *rsimax;
+    /* max's inst in NodeSummary */
+    CdbExplain_StatInst    *nsimax;
+    /* max run-time of all the segments */
+    double                  max_total;
+    /* start time of the first iteration for node with maximum runtime */
+    instr_time              firststart_of_max_total;
 } CdbExplain_DepStatAcc;
 
 static void
@@ -838,6 +846,8 @@ cdbexplain_depStatAcc_init0(CdbExplain_DepStatAcc *acc)
     acc->rshmax = NULL;
     acc->rsimax = NULL;
     acc->nsimax = NULL;
+    acc->max_total = 0;
+    INSTR_TIME_SET_ZERO(acc->firststart_of_max_total);
 }                               /* cdbexplain_depStatAcc_init0 */
 
 static inline void
@@ -852,6 +862,12 @@ cdbexplain_depStatAcc_upd(CdbExplain_DepStatAcc    *acc,
         acc->rshmax = rsh;
         acc->rsimax = rsi;
         acc->nsimax = nsi;
+    }
+
+    if (acc->max_total < nsi->total)
+    {
+    	acc->max_total = nsi->total;
+    	INSTR_TIME_ASSIGN(acc->firststart_of_max_total, nsi->firststart);
     }
 }                               /* cdbexplain_depStatAcc_upd */
 
@@ -957,6 +973,8 @@ cdbexplain_depositStatsToNode(PlanState *planstate, CdbExplain_RecvStatCtx *ctx)
     cdbexplain_depStatAcc_init0(&vmem_reserved);
     cdbexplain_depStatAcc_init0(&memory_accounting_global_peak);
 
+    bool isRunning = false;
+
     /* Examine the statistics from each qExec. */
     for (imsgptr = 0; imsgptr < ctx->nmsgptr; imsgptr++)
     {
@@ -981,6 +999,11 @@ cdbexplain_depositStatsToNode(PlanState *planstate, CdbExplain_RecvStatCtx *ctx)
          */
         if (ctx->extratextbuf)
             nsi->bnotes = nsi->enotes = 0;
+
+        if (nsi->running)
+        {
+        	isRunning = true;
+        }
 
         /* Update per-node accumulators. */
         cdbexplain_depStatAcc_upd(&ntuples, rsi->ntuples, rsh, rsi, nsi);
@@ -1009,6 +1032,10 @@ cdbexplain_depositStatsToNode(PlanState *planstate, CdbExplain_RecvStatCtx *ctx)
     /* Roll up summary over all nodes of slice into RecvStatCtx. */
     ctx->workmemused_max = Max(ctx->workmemused_max, workmemused.agg.vmax);
     ctx->workmemwanted_max = Max(ctx->workmemwanted_max, workmemwanted.agg.vmax);
+
+    instr->running = isRunning;
+    instr->total = ntuples.max_total;
+    INSTR_TIME_ASSIGN(instr->firststart, ntuples.firststart_of_max_total);
 
     /* Put winner's stats into qDisp PlanState's Instrument node. */
     if (ntuples.agg.vcnt > 0)
@@ -1440,8 +1467,11 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
     /* Time from this worker's first InstrStartNode() to end of its results */
     cdbexplain_formatSeconds(totalbuf, sizeof(totalbuf), instr->total);
 
-    /* Show elapsed time just once if they are the same. */
-    if (strcmp(firstbuf, totalbuf) != 0)
+    /*
+     * Show elapsed time just once if they are the same or if we don't have
+     * any valid elapsed time for first tuple.
+     */
+    if ((instr->ntuples > 0) && (strcmp(firstbuf, totalbuf) != 0))
         appendStringInfo(str,
                          " with %s to first%s, %s to end",
                          firstbuf,
