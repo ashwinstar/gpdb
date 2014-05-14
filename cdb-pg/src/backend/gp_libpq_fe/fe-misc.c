@@ -971,11 +971,11 @@ pqSendSome(PGconn *conn, int len)
 	}
 	conn->outCount = remaining;
 
+	/* Once we finish with the external buffer, switch back to the original. */
 	if (remaining == 0 && conn->outBuffer_shared)
 	{
 		conn->outBuffer_shared = false;
-		conn->outBuffer = malloc(16384);
-		conn->outBufSize = 16384;
+		conn->outBuffer = conn->outBufferSaved;
 	}
 
 	return result;

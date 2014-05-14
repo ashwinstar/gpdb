@@ -404,7 +404,8 @@ struct pg_conn
 	int			outBufSize;		/* allocated size of buffer */
 	int			outCount;		/* number of chars waiting in buffer */
 
-	bool		outBuffer_shared;
+	bool		outBuffer_shared; /* are we sending external buffer? */
+	char	   *outBufferSaved; /* stash area in case of outBuffer_shared */
 
 	/* State for constructing messages in outBuffer */
 	int			outMsgStart;	/* offset to msg start (length word); if -1,

@@ -1430,8 +1430,11 @@ PQsendGpQuery_shared(PGconn *conn, char *shared_query, int query_len)
 		return 0;
 	}
 
-	if (conn->outBuffer)
-		free(conn->outBuffer);
+	/*
+	 * Stash the original buffer and switch to the incoming pointer.
+	 * We will restore the buffer after completing to send the shared query.
+	 */
+	conn->outBufferSaved = conn->outBuffer;
 
 	conn->outBuffer = shared_query;
 	conn->outBuffer_shared = true;
