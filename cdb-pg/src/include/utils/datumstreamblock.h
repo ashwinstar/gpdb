@@ -864,7 +864,7 @@ inline static void DatumStreamBlockRead_Get(DatumStreamBlockRead *dsr, Datum *da
 	else
 		*null = false;
 
-	if (dsr->typeInfo.datumlen < 0)
+	if (dsr->typeInfo.datumlen == -1)
 	{
 #ifdef USE_ASSERT_CHECKING
 		int32 varLen;
@@ -1088,11 +1088,10 @@ inline static int DatumStreamBlockRead_AdvanceOrig(DatumStreamBlockRead *dsr)
 		/*
 		 * Advance the item pointer.
 		 */
-	    if(dsr->typeInfo.datumlen < 0)
+	    if(dsr->typeInfo.datumlen == -1)
 	    {
 	        struct varlena *s = (struct varlena *) dsr->datump;
 
-	        Assert(dsr->typeInfo.datumlen == -1);
 			Assert(dsr->datump >= dsr->datum_beginp);
 			Assert(dsr->datump < dsr->datum_afterp);
 
@@ -1142,6 +1141,10 @@ inline static int DatumStreamBlockRead_AdvanceOrig(DatumStreamBlockRead *dsr)
 				         errcontext_datumstreamblockread(dsr)));
 			}
 #endif
+		}
+		else if (dsr->typeInfo.datumlen == -2)
+		{
+			dsr->datump += strlen((char *) dsr->datump) + 1;
 		}
 	    else
 		{
@@ -1408,7 +1411,7 @@ inline static int DatumStreamBlockRead_AdvanceDense(DatumStreamBlockRead *dsr)
 		/*
 		 * Advance the item pointer.
 		 */
-		if(dsr->typeInfo.datumlen < 0)
+		if(dsr->typeInfo.datumlen == -1)
 		{
 	        struct varlena *s;
 
@@ -1463,6 +1466,10 @@ inline static int DatumStreamBlockRead_AdvanceDense(DatumStreamBlockRead *dsr)
 						 errcontext_datumstreamblockread(dsr)));
 			}
 #endif
+		}
+		else if (dsr->typeInfo.datumlen == -2)
+		{
+			dsr->datump += strlen((char *) dsr->datump) + 1;
 		}
 		else
 		{

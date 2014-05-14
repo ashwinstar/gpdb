@@ -1383,28 +1383,28 @@ static int DatumStreamBlockWrite_PutOrig(
         char c1 = 0;
         int32 wsz = 0;
 		Datum originalDatum;
-		bool wasExtended;
+		bool wasExtended = false;
 
-        Assert(dsw->typeInfo->datumlen == -1);
 		originalDatum = d;
 
 		/*
 		 * If toFree comes back non-NULL, we have created a palloc'd de-toasted and/or
 		 * de-compressed varlena copy.
 		 */
-		varattrib_untoast_ptr_len(
-								d, 
-								(char**)&dataStart, 
-								&dataLen, 
-								toFree);
-		if (*toFree != NULL)
+		if (dsw->typeInfo->datumlen == -1)
 		{
-			d = PointerGetDatum(*toFree);
-			wasExtended = true;
-		}
-		else
-		{
-			wasExtended = false;
+			varattrib_untoast_ptr_len(d, (char**) &dataStart,
+									  &dataLen,
+									  toFree);
+			if (*toFree != NULL)
+			{
+				d = PointerGetDatum(*toFree);
+				wasExtended = true;
+			}
+			else
+			{
+				wasExtended = false;
+			}
 		}
 
 		if (Debug_datumstream_write_print_small_varlena_info)
@@ -1415,7 +1415,13 @@ static int DatumStreamBlockWrite_PutOrig(
 													wasExtended);
 		}
 
-        if(VARATT_IS_SHORT_D(d))
+		if (dsw->typeInfo->datumlen == -2)
+		{
+			sz = strlen(DatumGetCString(d)) + 1;
+			p = DatumGetPointer(d);
+			wsz = sz;
+		}
+		else if(VARATT_IS_SHORT_D(d))
         {
             sz = VARSIZE_SHORT(DatumGetPointer(d));
             p = DatumGetPointer(d);
@@ -2301,7 +2307,7 @@ static int DatumStreamBlockWrite_PutDense(
         char c1 = 0;
         int32 wsz = 0;
 		Datum originalDatum;
-		bool wasExtended;
+		bool wasExtended = false;
 
 		Datum storedDatum;
     	uint8 *storedDataStart;
@@ -2309,26 +2315,28 @@ static int DatumStreamBlockWrite_PutDense(
 		void *storedToFree;
 
 		/* Variable length */
-        Assert(dsw->typeInfo->datumlen == -1);
 		originalDatum = d;
 
 		/*
 		 * If toFree comes back non-NULL, we have created a palloc'd de-toasted and/or
 		 * de-compressed varlena copy.
 		 */
-		varattrib_untoast_ptr_len(
-								d, 
-								(char**)&dataStart, 
-								&dataLen, 
-								toFree);
-		if (*toFree != NULL)
+		if (dsw->typeInfo->datumlen == -1)
 		{
-			d = PointerGetDatum(*toFree);
-			wasExtended = true;
-		}
-		else
-		{
-			wasExtended = false;
+			varattrib_untoast_ptr_len(
+									d, 
+									(char**)&dataStart, 
+									&dataLen, 
+									toFree);
+			if (*toFree != NULL)
+			{
+				d = PointerGetDatum(*toFree);
+				wasExtended = true;
+			}
+			else
+			{
+				wasExtended = false;
+			}
 		}
 
 		if (Debug_datumstream_write_print_small_varlena_info)
@@ -2340,14 +2348,14 @@ static int DatumStreamBlockWrite_PutDense(
 		}
 
 		if (dsw->rle_last_item_is_repeated &&
-		 	dsw->rle_repeatcounts[dsw->rle_repeatcounts_count - 1] >= MAXREPEAT_COUNT)
-	 	{
-	 		/*
-	 		 * Reguardless of whether new is equal, we need to finalized the repeated item.
+			dsw->rle_repeatcounts[dsw->rle_repeatcounts_count - 1] >= MAXREPEAT_COUNT)
+		{
+			/*
+			 * Reguardless of whether new is equal, we need to finalized the repeated item.
 			 */
 			Assert(dsw->rle_has_compression);
 			DatumStreamBlockWrite_RleFinalizeRepeatCountSize(dsw);
-	 	}
+		}
 		else if (havePreviousValueToLookAt)
 		{
 			if (Debug_appendonly_print_insert_tuple)
@@ -2410,8 +2418,14 @@ static int DatumStreamBlockWrite_PutDense(
 				DatumStreamBlockWrite_RleFinalizeRepeatCountSize(dsw);
 			}
 		}
-		
-         if(VARATT_IS_SHORT_D(d))
+
+		if (dsw->typeInfo->datumlen == -2)
+		{
+			sz = strlen(DatumGetCString(d)) + 1;
+			p = DatumGetPointer(d);
+			wsz = sz;
+		}
+		else if(VARATT_IS_SHORT_D(d))
         {
             sz = VARSIZE_SHORT(DatumGetPointer(d));
             p = DatumGetPointer(d);
@@ -2461,12 +2475,21 @@ static int DatumStreamBlockWrite_PutDense(
 
 		storedDatum = PointerGetDatum(item_beginp);
 
-		varattrib_untoast_ptr_len(
-								storedDatum, 
-								(char**)&storedDataStart, 
-								&storedDataLen, 
-								&storedToFree);
-		Assert(storedToFree == NULL);
+		if (dsw->typeInfo->datumlen == -1)
+		{
+			varattrib_untoast_ptr_len(
+									storedDatum, 
+									(char**)&storedDataStart, 
+									&storedDataLen, 
+									&storedToFree);
+			Assert(storedToFree == NULL);
+		}
+		else
+		{
+			Assert(dsw->typeInfo->datumlen == -2);
+			storedDataStart = (uint8 *) DatumGetCString(storedDatum);
+			storedDataLen = strlen(DatumGetCString(storedDatum)) + 1;
+		}
         DatumStreamBlockWrite_DenseIncrItem(
 										dsw, 
 										storedDataStart, 
@@ -3421,6 +3444,7 @@ static int32 DatumStreamBlock_IntegrityCheckVarlena(
 	int32 currentOffset;
 	uint8 *p;
 
+	Assert(typeInfo->datumlen == -1);
 	Assert(physicalDataSize >= 0);
 	if (physicalDataSize == 0)
 	{
@@ -3679,7 +3703,7 @@ static void DatumStreamBlock_IntegrityCheckOrig(
 		p += blockOrig->nullsz;
 	}
 
-	if (typeInfo->datumlen < 0)
+	if (typeInfo->datumlen == -1)
 	{
 		/*
 		 * Variable length items (i.e. varlena).
@@ -4180,7 +4204,7 @@ static void DatumStreamBlock_IntegrityCheckDense(
 		// UNDONE: Verify zero padding
 	}
 
-	if (typeInfo->datumlen < 0)
+	if (typeInfo->datumlen == -1)
 	{
 		/*
 		 * Variable-length items.

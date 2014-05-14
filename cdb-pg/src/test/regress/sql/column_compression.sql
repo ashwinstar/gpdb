@@ -51,13 +51,10 @@ select * from ccddl;
 
 drop table ccddl;
 
--- Make sure we cleaned up after ourselves: should return zero rows
--- We exclude the named tables because they're hang overs from other
--- tests
-select * from pg_attribute_encoding where 
-	attrelid not in (select oid from pg_class where
-	relname = 't3coquicklz' or relname = 'co' or
-	relname = 'aocs_new' or relname = 'tenk_aocs7');
+-- Make sure we cleaned up after ourselves: should return zero rows.
+-- We exclude the other tables leftover from other tests.
+select * from pg_attribute_encoding where
+	attrelid not in (select oid from pg_class where relname <> 'ccddl');
 
 -- mix inline and default
 create table ccddl (
