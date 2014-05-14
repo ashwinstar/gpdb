@@ -608,9 +608,6 @@ int gp_cancel_query_delay_time;
 
 /* partitioning GUC */
 bool gp_partitioning_dynamic_selection_log;
- 
-/* Enable the SEGV/BUS/ILL signal handler that are async safe. */
-bool gp_crash_handler_async = false;
 
 /* Upgrade & maintenance GUCs */
 bool gp_upgrade_mode;
@@ -3904,16 +3901,6 @@ static struct config_bool ConfigureNamesBool[] =
 		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
 		},
 		&gp_plpgsql_clear_cache_always,
-		false, NULL, NULL
-	},
-
-	{
-		{"gp_crash_handler_async", PGC_USERSET, UNGROUPED,
-		 gettext_noop("Enable async-safe SEGV/BUS/ILL signal handler"),
-		 NULL,
-		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
-		},
-		&gp_crash_handler_async,
 		false, NULL, NULL
 	},
 

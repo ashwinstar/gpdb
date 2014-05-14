@@ -4370,14 +4370,13 @@ SegvBusIllName(int signal)
 }
 
 /*
- * SafeHandlerForSegvBusIll
+ * StandardHandlerForSigillSigsegvSigbus_OnMainThread
  *   Async-safe signal handler for SEGV/BUS/ILL.
- *
  * This function simple collects the stack addresses and some process information
  * and write them to the pipe.
  */
-static void
-SafeHandlerForSegvBusIll(char *processName, SIGNAL_ARGS)
+void
+StandardHandlerForSigillSigsegvSigbus_OnMainThread(char *processName, SIGNAL_ARGS)
 {
 	PG_SETMASK(&BlockSig);
 
@@ -4406,12 +4405,12 @@ SafeHandlerForSegvBusIll(char *processName, SIGNAL_ARGS)
 	 */
 	buffer.hdr.thid = FIXED_THREAD_ID;
 	buffer.hdr.main_thid = mainthread();
-    buffer.hdr.chunk_no = 0;
-    buffer.hdr.is_last = 't';
-    buffer.hdr.log_format = 'c';
+	buffer.hdr.chunk_no = 0;
+	buffer.hdr.is_last = 't';
+	buffer.hdr.log_format = 'c';
 	buffer.hdr.is_segv_msg = 't';
-    buffer.hdr.log_line_number = 0;
-    buffer.hdr.next = -1;
+	buffer.hdr.log_line_number = 0;
+	buffer.hdr.next = -1;
 
 	char *data = buffer.data;
 	GpSegvErrorData *errorData = (GpSegvErrorData *)data;
@@ -4419,19 +4418,21 @@ SafeHandlerForSegvBusIll(char *processName, SIGNAL_ARGS)
     errorData->session_start_time = 0;
 	if (MyProcPort)
 	{
-        errorData->session_start_time = (pg_time_t)timestamptz_to_time_t(MyProcPort->SessionStartTime);
+		errorData->session_start_time =
+			(pg_time_t)timestamptz_to_time_t(MyProcPort->SessionStartTime);
 	}
-	
+
 	errorData->gp_session_id = gp_session_id;
 	errorData->gp_command_count = gp_command_count;
 	errorData->gp_segment_id = Gp_segment;
 	errorData->slice_id = currentSliceId;
 	errorData->signal_num = (int32)postgres_signal_arg;
 	errorData->frame_depth = 0;
-	
+
 	/*
-	 * Compute how many frame addresses we are able to send in a single chunk. The total space
-	 * that is available for frame addresses is (PIPE_MAX_PAYLOAD - MAXALIGN(sizeof(GpSegvErrorData))).
+	 * Compute how many frame addresses we are able to send in a single chunk.
+	 * The total space that is available for frame addresses is
+	 * (PIPE_MAX_PAYLOAD - MAXALIGN(sizeof(GpSegvErrorData))).
 	 */
 	int frameDepth = (PIPE_MAX_PAYLOAD - MAXALIGN(sizeof(GpSegvErrorData))) / sizeof(void *);
 	Assert(frameDepth > 0);
@@ -4449,88 +4450,3 @@ SafeHandlerForSegvBusIll(char *processName, SIGNAL_ARGS)
 	/* re-raise the signal to OS */
 	raise(postgres_signal_arg);
 }
-
-/**
- * Unsafe handler that can be called from a specific processes handler for
- *   SIGILL, SIGSEGV, and SIGBUS
- *
- * This handler logs the error and, if gp_reraise_signal is set, reraises
- *   the signal so the operating system can create a core file.
- *
- * Control will never return from this signal handler
- *
- * MUST be called from the main thread, if this process uses threads.
- */
-static void
-UnsafeHandlerForSegvBusIll(char *processName, SIGNAL_ARGS)
-{
-    int			save_errno = errno;
-
-    PG_SETMASK(&BlockSig);
-#ifdef SIGILL
-    pqsignal(SIGILL, SIG_DFL);
-#endif
-#ifdef SIGSEGV
-    pqsignal(SIGSEGV, SIG_DFL);
-#endif
-#ifdef SIGBUS
-    pqsignal(SIGBUS, SIG_DFL);
-#endif
-
-    write_stderr("\nUnexpected internal error: %s %d received signal %s\n"
-				 "(interrupt holdoff count %d, critical section count %d)\n",
-                 processName, MyProcPid, SegvBusIllName(postgres_signal_arg),
-				 InterruptHoldoffCount, CritSectionCount);
-
-    errno = save_errno;
-
-    ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR),
-                    errFatalReturn(gp_reraise_signal),
-                    errOmitLocation(true),
-                    errmsg("Unexpected internal error: %s received signal %s",
-                           processName, SegvBusIllName(postgres_signal_arg)),
-					errdetail("(interrupt holdoff count %d, critical section count %d)",
-			  				  InterruptHoldoffCount, CritSectionCount)));
-
-    /**
-     * We reach this point only if gp_reraise_signal is on.
-     */
-    Assert(gp_reraise_signal);
-
-	if (CritSectionCount == 0)
-	{
-		/* Some filerep processes may not set MyProc. */
-		if (MyProc != NULL)
-		{
-			MyProc->postmasterResetRequired = false;
-		}
-
-		/* Clean up shared memory by calling callback functions. Do not exit, though. We need to raise signal to get a core. */
-		proc_exit_prepare(0);
-		AssertImply(MyProc != NULL, !MyProc->postmasterResetRequired && "postmaster reset required flag changed unexpectedly");
-	}
-
-
-    /* CDB: Control returns here only if gp_reraise_signal is true. */
-    raise(postgres_signal_arg);
-    abort();                    /* not reached */
-}                               /* CdbProgramErrorHandler */
-
-/*
- * StandardHandlerForSigillSigsegvSigbus_OnMainThread
- *    Signal handlers for SEGV/BUS/ILL.
- */
-void
-StandardHandlerForSigillSigsegvSigbus_OnMainThread(char * processName, SIGNAL_ARGS)
-{
-	if (gp_crash_handler_async)
-	{
-		SafeHandlerForSegvBusIll(processName, postgres_signal_arg);
-	}
-	else
-	{
-		UnsafeHandlerForSegvBusIll(processName, postgres_signal_arg);
-	}
-}
-
-/* EOF */
