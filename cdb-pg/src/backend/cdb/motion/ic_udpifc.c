@@ -3464,9 +3464,11 @@ SetupUDPIFCInterconnect_Internal(EState *estate)
 		{						/* loop to set up outgoing connections */
 			conn = &sendingChunkTransportState->conns[i];
 
-			setupOutgoingUDPConnection(estate->interconnect_context, sendingChunkTransportState, conn);
-			outgoing_count++;
-			continue;
+			if (conn->cdbProc)
+			{
+				setupOutgoingUDPConnection(estate->interconnect_context, sendingChunkTransportState, conn);
+				outgoing_count++;
+			}
 		}
 		snd_control_info.minCwnd = snd_control_info.cwnd;
 		snd_control_info.ssthresh = snd_buffer_pool.maxCount;
@@ -5667,7 +5669,8 @@ SendEosUDPIFC(MotionLayerState *mlStates,
 				}
 			}
 
-			if (icBufferListLength(&conn->unackQueue) == 0 && icBufferListLength(&conn->sndQueue) == 0)
+			if ((!conn->cdbProc) || (icBufferListLength(&conn->unackQueue) == 0 &&
+					icBufferListLength(&conn->sndQueue) == 0))
 			{
 				conn->state = mcsEosSent;
 				conn->stillActive = false;

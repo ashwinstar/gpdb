@@ -1893,7 +1893,7 @@ SetupUDPInterconnect(EState *estate)
 		{						/* loop to set up outgoing connections */
 			conn = &sendingChunkTransportState->conns[i];
 
-			if (conn->state == mcsStarted)
+			if ((!conn->cdbProc) || (conn->state == mcsStarted))
 				continue;
 
 			/* if we're skipping setup, we don't have to bother with the wait-loop */

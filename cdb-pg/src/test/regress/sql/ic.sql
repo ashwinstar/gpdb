@@ -163,6 +163,12 @@ SELECT SUM(length(long_tval)) AS sum_len_tval
           FROM small_table ORDER BY dkey LIMIT 20) foo
             JOIN (SELECT * FROM small_table ORDER BY dkey LIMIT 100) bar USING(jkey);
 
+-- MPP-21916
+CREATE TABLE a (i INT, j INT) DISTRIBUTED BY (i);
+INSERT INTO a (SELECT i, i * i FROM generate_series(1, 10) as i);
+SELECT a.* FROM a WHERE a.j NOT IN (SELECT j FROM a a2 WHERE a2.j = a.j AND a2.i = 1) AND a.i = 1;
+SELECT a.* FROM a INNER JOIN a b ON a.i = b.i WHERE a.j NOT IN (SELECT j FROM a a2 WHERE a2.j = b.j) AND a.i = 1;
+
 -- Paramter range
 SET gp_interconnect_snd_queue_depth TO -1; -- ERROR
 SET gp_interconnect_snd_queue_depth TO 0; -- ERROR
@@ -173,6 +179,7 @@ SET gp_interconnect_queue_depth TO 4097; -- ERROR
 
 -- Cleanup
 DROP TABLE small_table;
+DROP TABLE a;
 
 RESET search_path;
 DROP SCHEMA ic_udp_test CASCADE;
