@@ -120,9 +120,11 @@ DtxContextInfo_CreateOnMaster(
 		dtxContextInfo->segmateSync = syncCount = 1;
 	}
 
+	dtxContextInfo->nestingLevel = GetCurrentTransactionNestLevel();
+
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),
-		 "DtxContextInfo_CreateOnMaster: created dtxcontext with dxid %u/%u segmateSync %u/%u (current/cached)",
-		 dtxContextInfo->distributedXid, syncCacheXid,
+		 "DtxContextInfo_CreateOnMaster: created dtxcontext with dxid %u/%u nestingLevel %d segmateSync %u/%u (current/cached)",
+		 dtxContextInfo->distributedXid, syncCacheXid, dtxContextInfo->nestingLevel,
 		 dtxContextInfo->segmateSync, syncCount);
 
 	if (dslm == NULL)
@@ -205,6 +207,7 @@ DtxContextInfo_SerializeSize(DtxContextInfo *dtxContextInfo)
 	}
 
 	size += sizeof(uint32); /* segmateSync */
+	size += sizeof(uint32); /* nestingLevel */
 	size += sizeof(bool);	/* haveDistributedSnapshot */
 	size += sizeof(bool);	/* cursorContext */
 
@@ -258,11 +261,14 @@ DtxContextInfo_Serialize(char *buffer, DtxContextInfo *dtxContextInfo)
 	}
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG3),
-		 "DtxContextInfo_Serialize distributedTimeStamp %u, distributedXid = %u, curcid %d segmateSync %u",
+		 "DtxContextInfo_Serialize distributedTimeStamp %u, distributedXid = %u, curcid %d nestingLevel %d segmateSync %u",
 		 dtxContextInfo->distributedTimeStamp, dtxContextInfo->distributedXid, 
-		 dtxContextInfo->curcid, dtxContextInfo->segmateSync);
+		 dtxContextInfo->curcid, dtxContextInfo->nestingLevel, dtxContextInfo->segmateSync);
 
 	memcpy(p, &dtxContextInfo->segmateSync, sizeof(uint32));
+	p += sizeof(uint32);
+
+	memcpy(p, &dtxContextInfo->nestingLevel, sizeof(uint32));
 	p += sizeof(uint32);
 
 	memcpy(p, &dtxContextInfo->haveDistributedSnapshot, sizeof(bool));
@@ -342,6 +348,7 @@ DtxContextInfo_Reset(DtxContextInfo *dtxContextInfo)
 
 	dtxContextInfo->curcid = 0;
 	dtxContextInfo->segmateSync = 0;
+	dtxContextInfo->nestingLevel = 0;
 
 	dtxContextInfo->haveDistributedSnapshot = false;
 	
@@ -366,6 +373,7 @@ DtxContextInfo_Copy(
 		TMGIDSIZE);
 
 	target->segmateSync = source->segmateSync;
+	target->nestingLevel = source->nestingLevel;
 
 	target->curcid = source->curcid;
 
@@ -443,6 +451,8 @@ DtxContextInfo_Deserialize(
 
 		memcpy(&dtxContextInfo->segmateSync, p, sizeof(uint32));
 		p += sizeof(uint32);
+		memcpy(&dtxContextInfo->nestingLevel, p, sizeof(uint32));
+		p += sizeof(uint32);
 		memcpy(&dtxContextInfo->haveDistributedSnapshot, p, sizeof(bool));
 		p += sizeof(bool);
 
@@ -455,9 +465,10 @@ DtxContextInfo_Deserialize(
 				 dtxContextInfo->curcid, dtxContextInfo->segmateSync);
 
 		elog((Debug_print_full_dtm ? LOG : DEBUG3),
-			 "DtxContextInfo_Deserialize distributedTimeStamp %u, distributedXid = %u, curcid %d segmateSync %u as %s",
+			 "DtxContextInfo_Deserialize distributedTimeStamp %u, distributedXid = %u, curcid %d nestingLevel %d segmateSync %u as %s",
 			 dtxContextInfo->distributedTimeStamp, dtxContextInfo->distributedXid, 
-			 dtxContextInfo->curcid, dtxContextInfo->segmateSync, (Gp_is_writer ? "WRITER" : "READER"));
+			 dtxContextInfo->curcid, dtxContextInfo->nestingLevel, 
+			 dtxContextInfo->segmateSync, (Gp_is_writer ? "WRITER" : "READER"));
 
 		if (dtxContextInfo->haveDistributedSnapshot)
 		{

@@ -5837,7 +5837,6 @@ DispatchRollbackToSavepoint(char *name)
 		pfree(cmd);
 }
 
-
 /*
  * BeginInternalSubTransaction
  *		This is the same as DefineSavepoint except it allows TBLOCK_STARTED,
@@ -5851,6 +5850,16 @@ void
 BeginInternalSubTransaction(char *name)
 {
 	TransactionState s = CurrentTransactionState;
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		if (!doDispatchSubtransactionInternalCmd(
+			DTX_PROTOCOL_COMMAND_SUBTRANSACTION_BEGIN_INTERNAL))
+		{
+			elog(ERROR, 
+				"Could not BeginInternalSubTransaction dispatch failed");
+		}
+	}
 
 	switch (s->blockState)
 	{
@@ -5909,6 +5918,17 @@ ReleaseCurrentSubTransaction(void)
 		elog(ERROR, "ReleaseCurrentSubTransaction: unexpected state %s",
 			 BlockStateAsString(s->blockState));
 	Assert(s->state == TRANS_INPROGRESS);
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		if (!doDispatchSubtransactionInternalCmd(
+			DTX_PROTOCOL_COMMAND_SUBTRANSACTION_RELEASE_INTERNAL))
+		{
+			elog(ERROR, 
+				"Could not ReleaseCurrentSubTransaction dispatch failed");
+		}
+	}
+
 	MemoryContextSwitchTo(CurTransactionContext);
 	CommitSubTransaction();
 	s = CurrentTransactionState;	/* changed by pop */
@@ -5968,6 +5988,16 @@ RollbackAndReleaseCurrentSubTransaction(void)
 	AssertState(s->blockState == TBLOCK_SUBINPROGRESS ||
 				s->blockState == TBLOCK_INPROGRESS ||
 				s->blockState == TBLOCK_STARTED);
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		if (!doDispatchSubtransactionInternalCmd(
+				DTX_PROTOCOL_COMMAND_SUBTRANSACTION_ROLLBACK_INTERNAL))
+		{
+			elog(ERROR, 
+				"Could not RollbackAndReleaseCurrentSubTransaction dispatch failed");
+		}
+	}
 }
 
 /*

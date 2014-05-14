@@ -234,7 +234,8 @@ static bool IsTransactionStmtList(List *nodes);
 static void SigHupHandler(SIGNAL_ARGS);
 static void log_disconnections(int code, Datum arg);
 static bool CheckDebugDtmActionSqlCommandTag(const char *sqlCommandTag);
-static bool CheckDebugDtmActionProtocol(DtxProtocolCommand dtxProtocolCommand);
+static bool CheckDebugDtmActionProtocol(DtxProtocolCommand dtxProtocolCommand, 
+					DtxContextInfo *contextInfo);
 static bool renice_current_process(int nice_level);
 
 /*
@@ -1372,11 +1373,22 @@ exec_mpp_query(const char *query_string,
 }
 
 static bool
-CheckDebugDtmActionProtocol(DtxProtocolCommand dtxProtocolCommand)
+CheckDebugDtmActionProtocol(DtxProtocolCommand dtxProtocolCommand, 
+				DtxContextInfo *contextInfo)
 {
-	return (Debug_dtm_action_target == DEBUG_DTM_ACTION_TARGET_PROTOCOL &&
+	if (Debug_dtm_action_nestinglevel == 0)
+	{
+		return (Debug_dtm_action_target == DEBUG_DTM_ACTION_TARGET_PROTOCOL &&
 			Debug_dtm_action_protocol == dtxProtocolCommand &&
 			Debug_dtm_action_segment == Gp_segment);
+	}
+	else
+	{
+		return (Debug_dtm_action_target == DEBUG_DTM_ACTION_TARGET_PROTOCOL &&
+			Debug_dtm_action_protocol == dtxProtocolCommand &&
+			Debug_dtm_action_segment == Gp_segment &&
+			Debug_dtm_action_nestinglevel == contextInfo->nestingLevel);
+	}
 }
 
 
@@ -1408,13 +1420,13 @@ exec_mpp_dtx_protocol_command(
 	set_ps_display(commandTag, false);
 
 	if (Debug_dtm_action == DEBUG_DTM_ACTION_FAIL_BEGIN_COMMAND &&
-		CheckDebugDtmActionProtocol(dtxProtocolCommand))
+		CheckDebugDtmActionProtocol(dtxProtocolCommand, contextInfo))
 	{
 		elog(ERROR,"Raise ERROR for debug_dtm_action = %d, debug_dtm_action_protocol = %s",
 			 Debug_dtm_action, DtxProtocolCommandToString(dtxProtocolCommand));
 	}
 	if (Debug_dtm_action == DEBUG_DTM_ACTION_PANIC_BEGIN_COMMAND &&
-		CheckDebugDtmActionProtocol(dtxProtocolCommand))
+		CheckDebugDtmActionProtocol(dtxProtocolCommand, contextInfo))
 	{
 		elog(PANIC,"PANIC for debug_dtm_action = %d, debug_dtm_action_protocol = %s",
 			 Debug_dtm_action, DtxProtocolCommandToString(dtxProtocolCommand));
@@ -1427,8 +1439,8 @@ exec_mpp_dtx_protocol_command(
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),"exec_mpp_dtx_protocol_command calling EndCommand for dtxProtocolCommand = %d (%s) gid = %s",
 		 dtxProtocolCommand, loggingStr, gid);
 
-	if (Debug_dtm_action == DEBUG_DTM_ACTION_FAIL_END_COMMAND &&
-		CheckDebugDtmActionProtocol(dtxProtocolCommand))
+	if (Debug_dtm_action == DEBUG_DTM_ACTION_FAIL_END_COMMAND && 
+		CheckDebugDtmActionProtocol(dtxProtocolCommand, contextInfo))
 	{
 		elog(ERROR,"Raise error for debug_dtm_action = %d, debug_dtm_action_protocol = %s",
 			 Debug_dtm_action, DtxProtocolCommandToString(dtxProtocolCommand));

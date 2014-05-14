@@ -444,9 +444,11 @@ int			Debug_dtm_action_protocol = DEBUG_DTM_ACTION_PROTOCOL_DEFAULT;
 
 #define DEBUG_DTM_ACTION_DELAY_MS_DEFAULT 5000
 #define DEBUG_DTM_ACTION_SEGMENT_DEFAULT 1
+#define DEBUG_DTM_ACTION_NESTINGLEVEL_DEFAULT 0
 
 int			Debug_dtm_action_delay_ms = DEBUG_DTM_ACTION_DELAY_MS_DEFAULT;
 int			Debug_dtm_action_segment = DEBUG_DTM_ACTION_SEGMENT_DEFAULT;
+int			Debug_dtm_action_nestinglevel = DEBUG_DTM_ACTION_NESTINGLEVEL_DEFAULT;
 
 char	   *ConfigFileName;
 char	   *HbaFileName;
@@ -4174,6 +4176,16 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&Debug_dtm_action_segment,
 		DEBUG_DTM_ACTION_SEGMENT_DEFAULT, 0, 1000, NULL, NULL
+	},
+
+	{
+		{"debug_dtm_action_nestinglevel", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Sets the debug DTM action transaction nesting level."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_dtm_action_nestinglevel,
+		DEBUG_DTM_ACTION_NESTINGLEVEL_DEFAULT, 0, 1000, NULL, NULL
 	},
 
 	{
@@ -12531,6 +12543,21 @@ assign_debug_dtm_action_protocol(const char *newval,
 	{
 		if (doit)
 			Debug_dtm_action_protocol = DTX_PROTOCOL_COMMAND_RECOVERY_ABORT_PREPARED;
+	}
+	else if (pg_strcasecmp(newval, "subtransaction_begin") == 0)
+	{
+		if (doit)
+			Debug_dtm_action_protocol = DTX_PROTOCOL_COMMAND_SUBTRANSACTION_BEGIN_INTERNAL;
+	}
+	else if (pg_strcasecmp(newval, "subtransaction_release") == 0)
+	{
+		if (doit)
+			Debug_dtm_action_protocol = DTX_PROTOCOL_COMMAND_SUBTRANSACTION_RELEASE_INTERNAL;
+	}
+	else if (pg_strcasecmp(newval, "subtransaction_rollback") == 0)
+	{
+		if (doit)
+			Debug_dtm_action_protocol = DTX_PROTOCOL_COMMAND_SUBTRANSACTION_ROLLBACK_INTERNAL;
 	}
 	else
 		return NULL;			/* fail */

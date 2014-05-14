@@ -558,6 +558,55 @@ dtmPreCommand(const char *debugCaller, const char *debugDetail, PlannedStmt *stm
 	}
 }
 
+
+/*
+ * Routine to dispatch internal sub-transaction calls from UDFs to segments.
+ * The calls are BeginInternalSubTransaction, ReleaseCurrentSubTransaction and
+ * RollbackAndReleaseCurrentSubTransaction. 
+ */
+bool
+doDispatchSubtransactionInternalCmd(DtxProtocolCommand cmdType)
+{
+	CdbDispatchDirectDesc direct = default_dispatch_direct_desc;
+	char *serializedDtxContextInfo = NULL;
+	int serializedDtxContextInfoLen = 0;
+	bool badGangs, succeeded = false;
+
+	if (cmdType == DTX_PROTOCOL_COMMAND_SUBTRANSACTION_BEGIN_INTERNAL)
+	{ 
+		getTmLock();
+		if (currentGxact->state == DTX_STATE_ACTIVE_NOT_DISTRIBUTED)
+		{
+			setCurrentGxactState(DTX_STATE_ACTIVE_DISTRIBUTED);
+		}
+		releaseTmLock();
+	}
+		
+	serializedDtxContextInfo = qdSerializeDtxContextInfo(
+					&serializedDtxContextInfoLen, 
+					false /* wantSnapshot */, 
+					false /* inCursor */,
+					mppTxnOptions(true), 
+					"doDispatchSubtransactionInternalCmd");
+
+	succeeded = doDispatchDtxProtocolCommand(
+			cmdType, /* flags */ 0,
+			currentGxact->gid, currentGxact->gxid,
+			&badGangs, /* raiseError */ true, &direct,
+			serializedDtxContextInfo, serializedDtxContextInfoLen);
+
+	/* send a DTM command to others to tell them about the transaction */
+	if (!succeeded)
+	{
+		ereport(ERROR, 
+			(errmsg(
+			"dispatching subtransaction internal command failed for gid = \"%s\" due to error",
+			currentGxact->gid)));
+	}
+
+	return succeeded;
+}
+
 /*
  * The executor can avoid starting a distributed transaction if it knows that
  * the current dtx is clean and we aren't in a user-started global transaction.
@@ -4225,7 +4274,7 @@ performDtxProtocolAbortPrepared(const char *gid, bool raiseErrorIfNotFound)
 }
 
 /**
- * On the QD, handle a DtxProtocolCommand
+ * On the QE, handle a DtxProtocolCommand
  */
 void
 performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
@@ -4371,6 +4420,62 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 		case DTX_PROTOCOL_COMMAND_RECOVERY_ABORT_PREPARED:
 			requireDistributedTransactionContext( DTX_CONTEXT_LOCAL_ONLY );
 			performDtxProtocolAbortPrepared(gid, /* raiseErrorIfNotFound */ false);
+			break;
+
+		case DTX_PROTOCOL_COMMAND_SUBTRANSACTION_BEGIN_INTERNAL:
+			switch(DistributedTransactionContext)
+			{
+				case DTX_CONTEXT_LOCAL_ONLY:
+					/*
+					 * QE is not aware of DTX yet.
+					 * A typical case is SELECT foo(), where foo() opens internal subtransaction
+					 */
+					setupQEDtxContext(contextInfo);
+					StartTransactionCommand();
+					break;
+				case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
+				/* We already marked this QE to be writer, and transaction is open. */
+				case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
+				case DTX_CONTEXT_QE_READER:
+					break;
+				default:
+					/* Lets flag this situation out, with explicit crash */
+					Assert (DistributedTransactionContext != DistributedTransactionContext);
+					elog(DTM_DEBUG5, 
+						" SUBTRANSACTION_BEGIN_INTERNAL distributed transaction context invalid: %d",
+						 (int) DistributedTransactionContext);
+					break;
+			}
+
+			BeginInternalSubTransaction(NULL);
+			Assert(contextInfo->nestingLevel+1 == GetCurrentTransactionNestLevel());
+			break;
+
+		case DTX_PROTOCOL_COMMAND_SUBTRANSACTION_RELEASE_INTERNAL:
+			Assert(contextInfo->nestingLevel == GetCurrentTransactionNestLevel());
+			ReleaseCurrentSubTransaction();
+			break;
+	
+		case DTX_PROTOCOL_COMMAND_SUBTRANSACTION_ROLLBACK_INTERNAL:
+			/* 
+			 * Rollback performs work on master and then dispatches, 
+			 * hence has nestingLevel its expecting post operation
+			 */
+			if ((contextInfo->nestingLevel + 1) > GetCurrentTransactionNestLevel())
+			{
+				ereport(ERROR, 
+					(errmsg("transaction %s at level %d already processed (current level %d)",
+						gid, contextInfo->nestingLevel, GetCurrentTransactionNestLevel())));
+			}
+			
+			uint i = GetCurrentTransactionNestLevel() - contextInfo->nestingLevel;
+			while (i > 0)
+			{
+				RollbackAndReleaseCurrentSubTransaction();
+				i--;
+			}
+
+			Assert(contextInfo->nestingLevel == GetCurrentTransactionNestLevel());
 			break;
 
 		default:

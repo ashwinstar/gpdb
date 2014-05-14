@@ -312,6 +312,7 @@ extern int Debug_dtm_action_target;
 extern int Debug_dtm_action_protocol;
 extern int Debug_dtm_action_delay_ms;
 extern int Debug_dtm_action_segment;
+extern int Debug_dtm_action_nestinglevel;
 
 extern char *ConfigFileName;
 extern char *HbaFileName;

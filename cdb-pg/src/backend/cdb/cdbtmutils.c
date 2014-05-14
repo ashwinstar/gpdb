@@ -96,8 +96,12 @@ char* DtxProtocolCommandToString(DtxProtocolCommand command)
 		case DTX_PROTOCOL_COMMAND_RETRY_ABORT_PREPARED: return "Retry Distributed Abort Prepared";
 		case DTX_PROTOCOL_COMMAND_RECOVERY_COMMIT_PREPARED: return "Recovery Commit Prepared";
 		case DTX_PROTOCOL_COMMAND_RECOVERY_ABORT_PREPARED: return "Recovery Abort Prepared";
-		default: return "Unknown";
+		case DTX_PROTOCOL_COMMAND_SUBTRANSACTION_BEGIN_INTERNAL: return " Begin Internal Subtransaction";
+		case DTX_PROTOCOL_COMMAND_SUBTRANSACTION_RELEASE_INTERNAL: return "Release Current Subtransaction";
+		case DTX_PROTOCOL_COMMAND_SUBTRANSACTION_ROLLBACK_INTERNAL: return "Rollback Current Subtransaction";
 	}
+
+	return "Unknown";
 }
 
 char* DtxContextToString(DtxContext context)
