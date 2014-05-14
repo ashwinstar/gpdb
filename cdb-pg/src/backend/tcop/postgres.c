@@ -3564,6 +3564,7 @@ gp_set_thread_sigmasks(void)
 	sigaddset(&sigs, SIGHUP);
 	sigaddset(&sigs, SIGINT);
 	sigaddset(&sigs, SIGTERM);
+	sigaddset(&sigs, SIGALRM);
 	sigaddset(&sigs, SIGUSR1);
 	sigaddset(&sigs, SIGUSR2);
 
