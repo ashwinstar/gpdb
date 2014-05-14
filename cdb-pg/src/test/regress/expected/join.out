@@ -2481,6 +2481,7 @@ select * from t1,t2 where t1.x = 100 and t2.x >= t1.x;
 --
 -- multiple inferences
 --
+set optimizer_segments=2;
 explain select * from t1,t2 where t1.x = 100 and t1.x = t2.y and t1.x <= t2.x;
                                             QUERY PLAN                                            
 --------------------------------------------------------------------------------------------------
@@ -2496,6 +2497,7 @@ explain select * from t1,t2 where t1.x = 100 and t1.x = t2.y and t1.x <= t2.x;
  Settings:  enable_hashjoin=on; enable_mergejoin=off; enable_nestloop=off
 (10 rows)
 
+reset optimizer_segments;
 select * from t1,t2 where t1.x = 100 and t1.x = t2.y and t1.x <= t2.x;
   x  |  y  |  z  |  x  |  y  |  z  
 -----+-----+-----+-----+-----+-----

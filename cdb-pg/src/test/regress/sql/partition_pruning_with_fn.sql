@@ -132,13 +132,14 @@ insert into ds_2(month_id) values('200809');
 -- start_ignore
 -- Known_opt_diff: MPP-21316
 -- end_ignore
+set optimizer_segments=2;
 explain select * from ds_2 where month_id::int in (200808, 1315) order by month_id;
 
 -- start_ignore
 -- Known_opt_diff: MPP-21316
 -- end_ignore
 explain  select * from ds_2 where month_id::int in (200808, 200801, 2008010) order by month_id;
-
+reset optimizer_segments;
 select * from ds_2 where month_id::int in (200907, 1315) order by month_id;
 
 select * from ds_2 where month_id::int in (200808, 1315) order by month_id;

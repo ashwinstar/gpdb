@@ -204,6 +204,7 @@ insert into ds_2(month_id) values('200809');
 -- start_ignore
 -- Known_opt_diff: MPP-21316
 -- end_ignore
+set optimizer_segments=2;
 explain select * from ds_2 where month_id::int in (200808, 1315) order by month_id;
                                               QUERY PLAN
 -------------------------------------------------------------------------------------------------------
@@ -237,6 +238,7 @@ explain  select * from ds_2 where month_id::int in (200808, 200801, 2008010) ord
  Settings:  optimizer=on
 (10 rows)
 
+reset optimizer_segments;
 select * from ds_2 where month_id::int in (200907, 1315) order by month_id;
  month_id | cust_group_acc | mobile_no | source | vas_group | vas_type | count_vas | amt_vas | network_type | execution_id 
 ----------+----------------+-----------+--------+-----------+----------+-----------+---------+--------------+--------------

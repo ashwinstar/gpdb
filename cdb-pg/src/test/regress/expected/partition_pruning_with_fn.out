@@ -183,6 +183,7 @@ insert into ds_2(month_id) values('200807');
 insert into ds_2(month_id) values('200808');
 insert into ds_2(month_id) values('200809');
 -- queries without bitmap scan
+set optimizer_segments=2;
 explain select * from ds_2 where month_id::int in (200808, 1315) order by month_id;
                                         QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
@@ -209,6 +210,7 @@ explain  select * from ds_2 where month_id::int in (200808, 200801, 2008010) ord
                      Filter: month_id::integer = ANY ('{200808,200801,2008010}'::integer[])
 (9 rows)
 
+reset optimizer_segments;
 select * from ds_2 where month_id::int in (200907, 1315) order by month_id;
  month_id | cust_group_acc | mobile_no | source | vas_group | vas_type | count_vas | amt_vas | network_type | execution_id 
 ----------+----------------+-----------+--------+-----------+----------+-----------+---------+--------------+--------------

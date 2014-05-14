@@ -544,7 +544,9 @@ select * from t1,t2 where t1.x = 100 and t2.x >= t1.x;
 -- multiple inferences
 --
 
+set optimizer_segments=2;
 explain select * from t1,t2 where t1.x = 100 and t1.x = t2.y and t1.x <= t2.x;
+reset optimizer_segments;
 select * from t1,t2 where t1.x = 100 and t1.x = t2.y and t1.x <= t2.x;
 
 --
