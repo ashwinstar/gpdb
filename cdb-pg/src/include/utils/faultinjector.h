@@ -181,6 +181,8 @@ typedef enum FaultInjectorIdentifier_e {
 
 	FaultInBackgroundWriterMain,
 
+	CdbCopyStartAfterDispatch,
+
 	/* INSERT has to be done before that line */
 	FaultInjectorIdMax,
 	

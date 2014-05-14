@@ -272,6 +272,8 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault during scanning of a partition */
 	_("fault_in_background_writer_main"),
 		/* inject fault at the beginning of rxThreadFunc */
+	_("cdb_copy_start_after_dispatch"),
+		/* inject fault in cdbCopyStart after dispatch */
 	_("not recognized"),
 };
 

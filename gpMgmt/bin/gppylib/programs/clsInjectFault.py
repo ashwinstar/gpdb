@@ -388,6 +388,7 @@ class GpInjectFaultProgram:
 			      "appendonly_update (inject fault before an append-only update), " \
 			      "fault_during_exec_dynamic_table_scan (inject fault during scanning of a partition), " \
 			      "fault_in_background_writer_main (inject fault in BackgroundWriterMain), " \
+			      "cdb_copy_start_after_dispatch (inject fault in cdbCopyStart after dispatch), " \
 			      "all (affects all faults injected, used for 'status' and 'reset'), ") 
         addTo.add_option("-c", "--ddl_statement", dest="ddlStatement", type="string",
                          metavar="ddlStatement",

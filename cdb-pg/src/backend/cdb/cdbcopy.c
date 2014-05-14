@@ -14,20 +14,20 @@
 #include "gp-libpq-fe.h"
 #include "gp-libpq-int.h"
 #include "miscadmin.h"
-#include "tcop/tcopprot.h"
 #include "cdb/cdbconn.h"
-#include "cdb/cdbdisp.h"
-#include "cdb/cdbvars.h"
-#include "cdb/cdbtm.h"
-#include "cdb/cdbfts.h"
 #include "cdb/cdbcopy.h"
-#include "cdb/cdbgang.h"
+#include "cdb/cdbdisp.h"
 #include "cdb/cdbdispatchresult.h"
-#include "utils/memutils.h"
+#include "cdb/cdbfts.h"
+#include "cdb/cdbgang.h"
 #include "cdb/cdbsrlz.h"
+#include "cdb/cdbtm.h"
+#include "cdb/cdbvars.h"
 #include "commands/copy.h"
+#include "tcop/tcopprot.h"
+#include "utils/faultinjector.h"
+#include "utils/memutils.h"
 
-extern int	pq_putmessage(char msgtype, const char *s, size_t len);
 /*
  * Create a cdbCopy object that includes all the cdb
  * information and state needed by the backend COPY.
@@ -194,11 +194,7 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 								true 		/* withSnapshot */,
 								&ds);
 
-	/*  MPP-3017: insert a call like this to expand the timing, and
-	 *  then play with cancellation during a COPY command:
-	 *
-	 *  pg_usleep(10000000);
-	 */
+	SIMPLE_FAULT_INJECTOR(CdbCopyStartAfterDispatch);
 
 	/*
 	 * Wait for all QEs to finish. If not all of our QEs were successful,
@@ -498,7 +494,7 @@ processCopyEndResults(CdbCopy *c,
 							 seg, q->segment_database_info->dbid);
 			c->io_errors = true;
 		}
-			
+
 		/*
 		 * Fetch any error status existing on completion of the COPY command.
 		 * It is critical that for any connection that had an asynchronous
@@ -513,9 +509,9 @@ processCopyEndResults(CdbCopy *c,
 			/* if the COPY command had a data error */
 			if (PQresultStatus(res) == PGRES_FATAL_ERROR)
 			{
-				/* 
-				 * Always append error from the primary. Append error from 
-				 * mirror only if its primary didn't have an error. 
+				/*
+				 * Always append error from the primary. Append error from
+				 * mirror only if its primary didn't have an error.
 				 *
 				 * For now, we only report the first error we get from the
 				 * QE's.
@@ -528,20 +524,20 @@ processCopyEndResults(CdbCopy *c,
 					char   *pri = PQresultErrorField(res, PG_DIAG_MESSAGE_PRIMARY);
 					char   *dtl = PQresultErrorField(res, PG_DIAG_MESSAGE_DETAIL);
 					char   *ctx = PQresultErrorField(res, PG_DIAG_CONTEXT);
-					
+
 					if (pri)
 						appendStringInfo(&(c->err_msg), "%s", pri);
 					else
 						appendStringInfo(&(c->err_msg), "Unknown primary error.");
-					
+
 					if (q->whoami)
-						appendStringInfo(&(c->err_msg),"  (%s)", q->whoami);
-					
+						appendStringInfo(&(c->err_msg), "  (%s)", q->whoami);
+
 					if (dtl)
 						appendStringInfo(&(c->err_msg), "\n%s", dtl);
-					
+
 					/*
-					 * note that due to cdb_tidy_message() in elog.c "If more than 
+					 * note that due to cdb_tidy_message() in elog.c "If more than
 					 * one line, move lines after the first to errdetail" so we save
 					 * the context in another stringInfo and fetch it in the error
 					 * callback in copy.c, so it wouldn't appear as DETAIL...
@@ -554,23 +550,44 @@ processCopyEndResults(CdbCopy *c,
 				}
 				c->remote_data_err = true;
 			}
-				
+
+			/*
+			 * If we are still in copy mode, tell QE to stop it.  COPY_IN
+			 * protocol has a way to say 'end of copy' but COPY_OUT doesn't.
+			 * We have no option but sending cancel message and consume
+			 * the output until the state transition to non-COPY.
+			 */
 			if (PQresultStatus(res) == PGRES_COPY_IN)
 			{
-				elog(LOG,"Bug, still in copy in, retrying the putCopyEnd");
+				elog(LOG, "Segment still in copy in, retrying the putCopyEnd");
 				result = PQputCopyEnd(q->conn, NULL);
 			}
-
-			if (PQresultStatus(res) == PGRES_COPY_OUT)
+			else if (PQresultStatus(res) == PGRES_COPY_OUT)
 			{
-				elog(LOG,"Segment still in copy out, cleaning retrying the putCopyEnd");
-				result = PQputCopyEnd(q->conn, NULL);
+				char	   *buffer = NULL;
+
+				elog(LOG, "Segment still in copy out, canceling QE");
+				/*
+				 * I'm a bit worried about sending a cancel, as if this
+				 * is a success case the QE gets inconsistent state than
+				 * QD.  But this code path is mostly for error handling
+				 * and in a success case we wouldn't see COPY_OUT here.
+				 * It's not clear what to do if this cancel failed,
+				 * since this is not a path we can error out.  FATAL maybe
+				 * the way, but I leave it for now.
+				 */
+				PQrequestCancel(q->conn);
+
+				/* Need to consume data from QE until he recognizes cancel. */
+				PQgetCopyData(q->conn, &buffer, false);
+				if (buffer)
+					free(buffer);
 			}
 
 			/* in SREH mode, check if this seg rejected (how many) rows */
 			if (res->numRejected > 0)
 				segment_rows_rejected = res->numRejected;
-				
+
 			/* Get AO tuple counts */
 			c->aotupcounts = process_aotupcounts(c->partitions, c->aotupcounts, res->aotupcounts, res->naotupcounts);
 			/* free the PGresult object */
@@ -650,14 +667,14 @@ cdbCopyEnd(CdbCopy *c)
 	gp = c->primary_writer;
 	db_descriptors = gp->db_descriptors;
 	size = gp->size;
-			
+
 	/* results from each segment */
 	results = (int *)palloc0(sizeof(int) * size);
 
 	for (seg = 0; seg < size; seg++)
 	{
-		q =&db_descriptors[seg];
-		elog(DEBUG1,"PQputCopyEnd seg %d    ",q->segindex);
+		q = &db_descriptors[seg];
+		elog(DEBUG1, "PQputCopyEnd seg %d    ",q->segindex);
 		/* end this COPY command */
 		results[seg] = PQputCopyEnd(q->conn, NULL);
 	}
@@ -673,10 +690,10 @@ cdbCopyEnd(CdbCopy *c)
 		elog(LOG, "COPY passes failed segment(s) information to FTS");
 		FtsHandleNetFailure(failedSegDBs, failed_count);
 	}
-	
+
 	pfree(results);
 	pfree(failedSegDBs);
-	
+
 	return total_rows_rejected;
 }
 
