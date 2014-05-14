@@ -1,3 +1,4 @@
+*.o
 gpfdist
 gpfdist.dSYM
 fstream.c

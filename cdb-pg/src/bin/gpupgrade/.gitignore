@@ -1,4 +1,5 @@
 gp_controldata_mod
+gpmodcontrol
 gpupgrade
 libgpupgradefuncs.a
 libgpupgradefuncs.so

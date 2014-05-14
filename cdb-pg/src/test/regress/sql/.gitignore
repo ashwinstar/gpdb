@@ -9,6 +9,8 @@ loadcat34.sql
 misc.sql
 bkuprestore_advance.sql
 bkuprestore_cleanup.sql
+caql.sql
+caqltrack.sql
 constraints.sql
 copy.sql
 create_function_1.sql
@@ -24,3 +26,10 @@ filespace.sql
 gpcheckmirrorseg.sql
 upgrade.sql
 auth_constraint.sql
+catversion.sql
+custom_format.sql
+resource_queue_function.sql
+table_functions.sql
+tidycat2.sql
+tpch500GB.sql
+partindex_test.sql

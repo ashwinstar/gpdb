@@ -2,6 +2,7 @@ blibpqdll.def
 exports.list
 encnames.c
 inet_aton.c
+inet_net_ntop.c
 ip.c
 libpq.a
 libpq.rc
