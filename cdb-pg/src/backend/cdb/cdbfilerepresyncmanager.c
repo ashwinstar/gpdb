@@ -26,27 +26,27 @@
  *				*) Take last LSN to be resynced “last resync LSN”
  *				*) Resync to mirror all CREATE file operations (RelFileNode, segmentFileNum)
  *				*) Resync to mirror all DROP file operations (RelFileNode, segmentFileNum)
- *				*) Resync to mirror all file changes up to “last resync LSN”. 
+ *				*) Resync to mirror all file changes up to “last resync LSN”.
  *				   Three options available:
  *						*) Full Copy
  *						   For each segment file in a relation for each relation in a 
  *						   segment repeat the following steps:
  *								*) Copy all blocks in segment file that has LSN < “last resync LSN”
  *								*) Blocks that has LSN =>”last resync LSN” will be mirrored
- *								*) After copy of each segment file take “resync CKPT” 
+ *								*) After copy of each segment file take “resync CKPT”
  *								   (persistently store the latest LSN, it identifies the start 
  *									resync point in case of restarting resync due to failures)
  *						*) Incremental File Copy
  *						   For each segment file in a relation that was modified during change tracking
  *								*) Copy all blocks in segment file that has LSN < “last resync LSN”
  *								*) Blocks that has LSN =>”last resync LSN” will be mirrored
- *								*) After copy of each segment file take “resync CKPT” 
+ *								*) After copy of each segment file take “resync CKPT”
  *								   (persistently store the latest LSN)
  *						*) Incremental Block Copy
  *						   For each segment file in a relation that was modified during change tracking
  *								*) Copy all blocks in segment file that has LSN < “last resync LSN”
  *								*) Blocks that has LSN =>”last resync LSN” will be mirrored
- *								*) After copy of each segment file take “resync CKPT” 
+ *								*) After copy of each segment file take “resync CKPT”
  *								   (persistently store the latest LSN)
  *				*) Crash Recovery of primary segment during resynchronization will 
  *				   restart copy from “resync CKPT”
@@ -872,23 +872,30 @@ FileRepResyncManager_InResyncTransition(void)
 
 	/*
 	 * It is important to keep order of dropping objects before creating objects since
-	 * it can happen that persistent table has two entries with the same object.
-	 * For example Append Only segment file was created and dropped since transaction
-	 * was aborted. Later the same Append Only segment file was created and
-	 * transaction was committed.
-	 * Note:
-	 * 	MirrorReDrop function drops the physical file plus also drops the entry from 
-	 *  the Persistent Table, if was able to successfully drop the file. This is slightly 
-	 *  different than how creates are coded. For create all the physical file creates happen 
-	 *  on Mirror, but the persistent table entries are not updated for them, only after transitioning 
-	 *  the system to READY state, we agains can through the PT and mark then CREATED.
-	 *  Since there is no reason we could figure out why it was done this way, we didn't make DROP
-	 *  semantics same as it but instead allowed drop to make PT entry update as soon as it perfomed the 
-	 *  operation, instaed of making an extra scan to do the same.
+	 * it can happen that persistent table has two entries for the same object.
+	 * For e.g Consider that an append only segment file was created (when mirror
+	 * was active) and dropped (after mirror went down) since transaction
+	 * was aborted. Later, if the same Append Only segment file was created and
+	 * transaction was committed (with the Mirror still down). This situation
+	 * can cause to have duplicate entries for the same append only segment file.
+	 * Now during resync phase if the file is created on the mirror first (re-create phase)
+	 * and later dropped (redrop phase for original file) you can loose the file
+	 * created by re-created phase.
 	 */
-														   
 	FileRep_InsertConfigLogEntry("run resync manager, mirror redrop");
+
+	/*
+	 * Drop the objects on the mirror that were dropped on the primary when the
+	 * mirror was down/inactive by looking at Persistent Tables (all object types).
+	 * But note that the accounting information in Persistent Tables will be
+	 * updated later. This is because at this stage the segment is still in
+	 * resync transition state and not ready. As a result any operations for e.g. write()
+	 * still assume that the mirror is inactive/down and so won't be mirrored.
+	 * Once the segment changes its state to ready, all such operations will be
+	 * correctly mirrored.
+	 */
 	PersistentFileSysObj_MirrorReDrop();
+
 	FileRep_InsertConfigLogEntry("run resync manager, mirror redrop completed");
 
 	FileRepSubProcess_ProcessSignals();
@@ -919,7 +926,7 @@ FileRepResyncManager_InResyncTransition(void)
 		goto exit;
 	}	
 
-	FileRepSubProcess_SetState(FileRepStateReady);	
+	FileRepSubProcess_SetState(FileRepStateReady);
 	
 #ifdef FAULT_INJECTOR	
 	FaultInjector_InjectFaultIfSet(
@@ -928,9 +935,24 @@ FileRepResyncManager_InResyncTransition(void)
 								   "",	// databaseName
 								   ""); // tableName
 #endif
-	
-	FileRep_InsertConfigLogEntry("run resync transition, mark mirror recreated");	
-	
+
+	/*
+	 * Mark Persistent Table entries as 'Dropped (i.e. Free)' to indicate the drops
+	 * performed in PersistenFileSysObj_MirrorReDrop(). This module only updates
+	 * drop pending/aborting create entries to 'free' in Persistent tables.
+	 */
+	FileRep_InsertConfigLogEntry("run resync transition, mark mirror redropped");
+	PersistentFileSysObj_MarkMirrorReDropped();
+
+	FileRepSubProcess_ProcessSignals();
+	if (! (segmentState == SegmentStateReady &&
+		   dataState == DataStateInResync))
+	{
+		goto exit;
+	}
+
+	FileRep_InsertConfigLogEntry("run resync transition, mark mirror recreated");
+
 	PersistentFileSysObj_MarkMirrorReCreated();
 	
 	FileRepSubProcess_ProcessSignals();
@@ -1757,7 +1779,7 @@ FileRepPrimary_GetResyncEntry(ChangeTrackingRequest **request)
 					 * When a single SN has more than 64K, it must be called in GetChanges by itself 
 					 * (without other relfilenodes). The GetChanges() routine will return the first 64K changes, 
 					 * plus an indication that GetChanges() did not finish with this relation. When the consumer 
-					 * sees this “not done yet” flag, he needs to call GetChanges() for this relfilenode again 
+					 * sees this “not done yet” flag, he needs to call GetChanges() for this relfilenode again
 					 * (when ready) and pass the end lsn from the previous call as the beginning lsn for this call. 
 					 * GetChanges() will then return the next 64K changes, etc, etc. 
 					 *

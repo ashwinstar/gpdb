@@ -280,6 +280,8 @@ extern void PersistentFileSysObj_MarkMirrorReCreated(void);
 
 extern void PersistentFileSysObj_MirrorReDrop(void);
 
+extern void PersistentFileSysObj_MarkMirrorReDropped(void);
+
 extern void PersistentFileSysObj_MirrorAdd(void);
 
 typedef struct ResynchronizeScanToken

@@ -2918,6 +2918,13 @@ void PersistentFileSysObj_DropObject(
 	error_context_stack = errcontext.previous;
 }
 
+/*
+ * This function performs database object (relation, tablespace etc) drops on the
+ * corresponding mirror segment but does NO updates to persistent tables.
+ *
+ * Input parameters help this function to determine exact database object for drop
+ * task or to find the exact persistent table tuple to mark it dropped/free.
+ */
 static void PersistentFileSysObj_DoMirrorReDrop(
 	PersistentFileSysObjName 	*fsObjName,
 	PersistentFileSysRelStorageMgr relStorageMgr,
@@ -2971,12 +2978,6 @@ static void PersistentFileSysObj_DoMirrorReDrop(
 
 			if (*mirrorDataLossOccurred)
 				return;
-
-			PersistentRelation_Dropped(
-								relFileNode,
-								segmentFileNum,
-								persistentTid,
-								persistentSerialNum);
 		}
 		break;
 
@@ -2990,14 +2991,8 @@ static void PersistentFileSysObj_DoMirrorReDrop(
 								/* mirrorOnly */ true,
 								/* ignoreNonExistence */ true,
 								mirrorDataLossOccurred);
-
 			if (*mirrorDataLossOccurred)
 				return;
-
-			PersistentDatabase_Dropped(
-								dbDirNode,
-								persistentTid,
-								persistentSerialNum);
 		}
 		break;
 
@@ -3012,17 +3007,12 @@ static void PersistentFileSysObj_DoMirrorReDrop(
 		if (*mirrorDataLossOccurred)
 			return;
 
-		PersistentTablespace_Dropped(
-							fsObjName->variant.tablespaceOid,
-							persistentTid,
-							persistentSerialNum);
-		break;
 		break;
 
 	case PersistentFsObjType_FilespaceDir:
 		{
-			char *primaryFilespaceLocation;
-			char *mirrorFilespaceLocation;
+			char *primaryFilespaceLocation = NULL;
+			char *mirrorFilespaceLocation = NULL;
 
 			PersistentFilespace_GetPrimaryAndMirror(
 								fsObjName->variant.filespaceOid,
@@ -3041,11 +3031,6 @@ static void PersistentFileSysObj_DoMirrorReDrop(
 			if (*mirrorDataLossOccurred)
 				return;
 
-			PersistentFilespace_Dropped(
-								fsObjName->variant.filespaceOid,
-								persistentTid,
-								persistentSerialNum);
-
 			if (primaryFilespaceLocation != NULL)
 				pfree(primaryFilespaceLocation);
 			if (mirrorFilespaceLocation != NULL)
@@ -3056,6 +3041,75 @@ static void PersistentFileSysObj_DoMirrorReDrop(
 	default:
 		elog(ERROR, "Unexpected persistent file-system object type: %d",
 			 fsObjName->type);
+	}
+}
+
+/*
+ * Performs updates to persistent table entries to mark them as dropped (i.e. free).
+ * This function (currently) is used during resync transition phase.
+ *
+ * Input parameters help this function to determine exact database object for drop
+ * task or to find the exact persistent table tuple to mark it dropped/free.
+ */
+static void PersistentFileSysObj_DoMirrorReDropped(
+	PersistentFileSysObjName 	*fsObjName,
+	PersistentFileSysRelStorageMgr relStorageMgr,
+	ItemPointer					persistentTid,
+	int64						persistentSerialNum)
+{
+	if (PersistentStore_IsZeroTid(persistentTid))
+		elog(ERROR, "TID for persistent '%s' tuple for mirror re-drop is invalid (0,0)",
+			 PersistentFileSysObjName_TypeName(fsObjName->type));
+
+	if (persistentSerialNum == 0)
+		elog(ERROR, "Persistent '%s' serial number for mirror re-drop is invalid (0)",
+			 PersistentFileSysObjName_TypeName(fsObjName->type));
+
+	switch (fsObjName->type)
+	{
+		case PersistentFsObjType_RelationFile:
+		{
+			RelFileNode *relFileNode = PersistentFileSysObjName_GetRelFileNodePtr(fsObjName);
+			int32 segmentFileNum = PersistentFileSysObjName_GetSegmentFileNum(fsObjName);
+
+			Assert(relStorageMgr != PersistentFileSysRelStorageMgr_None);
+
+			PersistentRelation_Dropped(
+								relFileNode,
+								segmentFileNum,
+								persistentTid,
+								persistentSerialNum);
+		}
+		break;
+
+		case PersistentFsObjType_DatabaseDir:
+		{
+			DbDirNode *dbDirNode = &fsObjName->variant.dbDirNode;
+
+			PersistentDatabase_Dropped(
+								dbDirNode,
+								persistentTid,
+								persistentSerialNum);
+		}
+		break;
+
+		case PersistentFsObjType_TablespaceDir:
+			PersistentTablespace_Dropped(
+								fsObjName->variant.tablespaceOid,
+								persistentTid,
+								persistentSerialNum);
+			break;
+
+		case PersistentFsObjType_FilespaceDir:
+			PersistentFilespace_Dropped(
+								fsObjName->variant.filespaceOid,
+								persistentTid,
+								persistentSerialNum);
+			break;
+
+		default:
+			elog(ERROR, "Unexpected persistent file-system object type: %d",
+				 fsObjName->type);
 	}
 }
 
@@ -4637,7 +4691,8 @@ typedef enum StateAction
 	StateAction_MirrorReCreate = 2,
 	StateAction_MarkMirrorReCreated = 3,
 	StateAction_MirrorReDrop = 4,
-	StateAction_MirrorAdd = 5,
+	StateAction_MirrorReDropped = 5,
+	StateAction_MirrorAdd = 6,
 	MaxStateAction /* must always be last */
 } StateAction;
 
@@ -5008,6 +5063,7 @@ static void PersistentFileSysObj_ScanStateAction(
 			break;
 
 		case StateAction_MirrorReDrop:
+		case StateAction_MirrorReDropped:
 			if ((state == PersistentFileSysState_DropPending ||
 				 state == PersistentFileSysState_AbortingCreate)
 				&&
@@ -5035,30 +5091,51 @@ static void PersistentFileSysObj_ScanStateAction(
 						 serialNum,
 						 ItemPointerToString(&persistentTid));
 
-
-				// Don't hold lock during physical file-system operation.
+				/*
+				 * We'll not hold lock during physical file-system operation.
+				 * Also note that we'll skip holding the lock even during Persistent
+				 * Table update because DoMirroDropped() call internally acquires
+				 * this lock.
+				 */
 				WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
-				FileRepResync_SetReMirrorAllowed();
+				/*
+				 * Based on if its 're-drop' phase or 're-dropped' phase either drop
+				 * the mirror objects or simply update the Persistent Tables.
+				 */
+				if (StateAction_MirrorReDrop == stateAction)
+				{
+					/* Set this flag to allow actions on mirror during resync transition */
+					FileRepResync_SetReMirrorAllowed();
 
-				// UNDONE: Pass this in from the resync worker?
-				mirrorDataLossTrackingState =
-							FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
-															&mirrorDataLossTrackingSessionNum);
-				PersistentFileSysObj_DoMirrorReDrop(
-										&fsObjName,
-										relStorageMgr,
-										&persistentTid,
-										persistentSerialNum,
-										mirrorDataLossTrackingState,
-										mirrorDataLossTrackingSessionNum,
-										&mirrorDataLossOccurred);
+					mirrorDataLossTrackingState =
+								FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
+																&mirrorDataLossTrackingSessionNum);
 
-				// UNDONE: Act on mirrorDataLossOccurred
-				FileRepResync_ResetReMirrorAllowed();
+					// UNDONE: Pass this in from the resync worker?
+					PersistentFileSysObj_DoMirrorReDrop(
+											&fsObjName,
+											relStorageMgr,
+											&persistentTid,
+											persistentSerialNum,
+											mirrorDataLossTrackingState,
+											mirrorDataLossTrackingSessionNum,
+											&mirrorDataLossOccurred);
 
+					// UNDONE: Act on mirrorDataLossOccurred
+					FileRepResync_ResetReMirrorAllowed();
+				}
+				else
+				{
+					PersistentFileSysObj_DoMirrorReDropped(
+											&fsObjName,
+											relStorageMgr,
+											&persistentTid,
+											persistentSerialNum);
+				}
+
+				/* Retain the lock */
 				WRITE_PERSISTENT_STATE_ORDERED_LOCK;
-
 			}
 			else
 			{
@@ -5181,7 +5258,6 @@ void PersistentFileSysObj_MarkMirrorReCreated(void)
 	}
 }
 
-
 void PersistentFileSysObj_MirrorReDrop(void)
 {
 	PersistentFsObjType 	fsObjType;
@@ -5198,6 +5274,24 @@ void PersistentFileSysObj_MirrorReDrop(void)
 										fsObjType);
 	}
 }
+
+void PersistentFileSysObj_MarkMirrorReDropped(void)
+{
+	PersistentFsObjType 	fsObjType;
+
+	/*
+	 * For DROPPED, we go bottom-up.
+	 */
+	for (fsObjType = PersistentFsObjType_First;
+		 fsObjType <= PersistentFsObjType_Last;
+		 fsObjType++)
+	{
+		PersistentFileSysObj_ScanStateAction(
+										StateAction_MirrorReDropped,
+										fsObjType);
+	}
+}
+
 
 void PersistentFileSysObj_MirrorAdd(void)
 {
