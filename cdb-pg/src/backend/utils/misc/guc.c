@@ -739,6 +739,7 @@ bool		optimizer_enable_materialize;
 bool		optimizer_enable_partition_propagation;
 bool		optimizer_enable_partition_selection;
 bool		optimizer_enable_outerjoin_rewrite;
+bool            optimizer_enable_space_pruning;
 bool		optimizer_enumerate_plans;
 bool		optimizer_sample_plans;
 int			optimizer_plan_id;
@@ -3959,6 +3960,15 @@ static struct config_bool ConfigureNamesBool[] =
 		&optimizer_enable_outerjoin_rewrite,
 		true, NULL, NULL
 	},
+        {
+                {"optimizer_enable_space_pruning", PGC_USERSET, DEVELOPER_OPTIONS,
+                        gettext_noop("Enable space pruning in the optimizer."),
+                        NULL,
+                        GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+                },
+                &optimizer_enable_space_pruning,
+                false, NULL, NULL
+        },
 	{
 		{"optimizer_enumerate_plans", PGC_USERSET, LOGGING_WHAT,
 			gettext_noop("Enable plan enumeration"),

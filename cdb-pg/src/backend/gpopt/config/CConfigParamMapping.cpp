@@ -197,11 +197,18 @@ CConfigParamMapping::SConfigMappingElem CConfigParamMapping::m_elem[] =
                 GPOS_WSZ_LIT("Disable partition selection in optimizer.")
                 },
 
-                {
+               {
                 EopttraceDisableOuterJoin2InnerJoinRewrite,
                 &optimizer_enable_outerjoin_rewrite,
                 true, // m_fNegate
                 GPOS_WSZ_LIT("Disable outer join to inner join rewrite in optimizer.")
+                },
+
+                {
+                EopttraceEnableSpacePruning,
+                &optimizer_enable_space_pruning,
+                false, // m_fNegate
+                GPOS_WSZ_LIT("Enable space pruning in optimizer.")
                 },
 
 		{
