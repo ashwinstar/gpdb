@@ -26,6 +26,7 @@
 #include "nodes/parsenodes.h"
 #include "nodes/primnodes.h"
 #include "utils/datum.h"
+#include "utils/date.h"
 #include "utils/numeric.h"
 
 #include "gpos/base.h"
@@ -2310,11 +2311,25 @@ CTranslatorScalarToDXL::DValue
 	}
 	else if (pmdid->FEquals(&CMDIdGPDB::m_mdidFloat4))
 	{
-		d = (double) gpdb::FpFloat4FromDatum(datum);
+		float4 f = gpdb::FpFloat4FromDatum(datum);
+
+		if (isnan(f))
+		{
+			d = GPOS_FP_ABS_MAX;
+		}
+		else
+		{
+			d = (double) f;
+		}
 	}
 	else if (pmdid->FEquals(&CMDIdGPDB::m_mdidFloat8))
 	{
 		d = gpdb::DFloat8FromDatum(datum);
+
+		if (isnan(d))
+		{
+			d = GPOS_FP_ABS_MAX;
+		}
 	}
 	else if (CMDTypeGenericGPDB::FTimeRelatedType(pmdid))
 	{
