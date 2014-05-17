@@ -10,7 +10,7 @@ from gppylib.commands.base import CommandResult
 from mock import patch, MagicMock, Mock
 import gppylib.commands.gp as gp
 
-from gppylib.commands.gp import is_pid_postmaster
+from gppylib.commands.gp import is_pid_postmaster, get_postmaster_pid_locally
 
 class GpTestCase(unittest.TestCase):
 
@@ -147,3 +147,15 @@ class GpTestCase(unittest.TestCase):
         remoteHost = 'smdw'
         self.assertTrue(is_pid_postmaster(datadir, pid, remoteHost=remoteHost))
 
+    @patch('gppylib.commands.gp.Command.run')
+    @patch('gppylib.commands.gp.Command.get_results', return_value=CommandResult(0, "1234", "", True, False))
+    def test_get_postmaster_pid_locally(self, mock1, mock2):
+        self.assertEqual(get_postmaster_pid_locally('/tmp'), 1234)
+
+    @patch('gppylib.commands.gp.Command.run', side_effect=Exception('Error'))
+    def test_get_postmaster_pid_locally_error(self, mock1):
+        self.assertEqual(get_postmaster_pid_locally('/tmp'), -1)
+
+    @patch('gppylib.commands.gp.Command.run', return_value=CommandResult(0, "", "", True, False))
+    def test_get_postmaster_pid_locally_empty(self, mock1):
+        self.assertEqual(get_postmaster_pid_locally('/tmp'), -1)

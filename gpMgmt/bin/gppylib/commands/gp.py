@@ -30,6 +30,17 @@ SEGMENT_TIMEOUT_DEFAULT=600
 #"Command not found" return code in bash
 COMMAND_NOT_FOUND=127
 
+def get_postmaster_pid_locally(datadir):
+    cmdStr = "ps -ef | grep postgres | grep -v grep | awk '{print $2}' | grep `cat %s/postmaster.pid | head -1` || echo -1" % (datadir)
+    name = "get postmaster"
+    cmd = Command(name, cmdStr)
+    try:
+        cmd.run(validateAfter=True)
+        sout = cmd.get_results().stdout.lstrip(' ')
+        return int(sout.split()[0])
+    except:
+        return -1
+
 def getPostmasterPID(hostname, datadir):
     cmdStr="ps -ef | grep postgres | grep -v grep | awk '{print $2}' | grep \\`cat %s/postmaster.pid | head -1\\` || echo -1" % (datadir)
     name="get postmaster pid"

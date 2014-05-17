@@ -425,16 +425,19 @@ class GpDB:
         """
         
         # Make sure we have enough room in the dstDir to fit the segment and its filespaces.
-        requiredSize = DiskUsage.get_size( name = "srcDir"
-                                         , remote_host = "localhost"
-                                         , directory = dstDir
-                                         )
+        duCmd = DiskUsage( name = "srcDir"
+                           , directory = dstDir
+                           )
+        duCmd.run(validateAfter=True)
+        requiredSize = duCmd.get_bytes_used()
         name = "segcopy filespace get_size"
         for oid in self.__filespaces:
             if oid == SYSTEM_FILESPACE:
                 continue
             dir = self.__filespaces[oid]
-            size = DiskUsage.get_size(name, "localhost", dir)
+            duCmd = DiskUsage(name, dir)
+            duCmd.run(validateAfter=True)
+            size = duCmd.get_bytes_used()
             requiredSize = requiredSize + size 
 
         dstBytesAvail = DiskFree.get_size_local(name = "Check for available free space for segment template", directory = dstDir)

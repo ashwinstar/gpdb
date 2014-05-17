@@ -375,7 +375,10 @@ class Ping(Command):
 class DiskUsage(Command):    
     def __init__(self,name,directory,ctxt=LOCAL,remoteHost=None):        
         self.directory=directory
-        cmdStr="ls -l -R %s | %s ^- | %s '{t+=\$5;} END{print t}'" % (directory,findCmdInPath('grep'), findCmdInPath('awk'))
+        if remoteHost:
+            cmdStr="ls -l -R %s | %s ^- | %s '{t+=\$5;} END{print t}'" % (directory,findCmdInPath('grep'), findCmdInPath('awk'))
+        else:
+            cmdStr="ls -l -R %s | %s ^- | %s '{t+=$5;} END{print t}'" % (directory,findCmdInPath('grep'), findCmdInPath('awk'))
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
     
     @staticmethod

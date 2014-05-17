@@ -131,4 +131,22 @@ Feature: gpactivatestandby stop segments
         Then gpstart should return a return code of 1
         And gpstart should print Standby Master could not be started to stdout
         And the user stops the syncmaster
- 
+
+    @wip
+    Scenario: gpactivatestandby should not ssh to localhost
+        Given the database is running
+        And all the segments are running
+        And the segments are synchronized
+        When the user initializes standby master on "smdw"
+        Then gpinitstandby should return a return code of 0
+        When the user runs "gpstop -ma"
+        And user can "not" ssh locally on standby
+        And the user activates standby on the standbyhost
+        Then gpactivatestandby should return a return code of 0
+        And user can " " ssh locally on standby
+        When the user initializes standby master on "mdw"
+        Then gpinitstandby should return a return code of 0
+        And the user runs the command "gpstop -a -m -M fast" from standby
+        And gpstop should return a return code of 0
+        When the user runs "gpactivatestandby -d $MASTER_DATA_DIRECTORY -fa"
+        Then gpactivatestandby should return a return code of 0

@@ -317,7 +317,7 @@ def check_or_start_standby(options):
     we'll end up restarting the master after promoting it.
     """
 
-    pid = gp.getPostmasterPID('localhost', options.master_data_dir)
+    pid = gp.get_postmaster_pid_locally(options.master_data_dir) 
 
 
     if pid > 0:
