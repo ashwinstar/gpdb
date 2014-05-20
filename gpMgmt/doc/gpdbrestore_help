@@ -11,7 +11,7 @@ gpdbrestore { -t <timestamp_key> [-L]
               | -R <hostname>:<path_to_dumpset> 
               | -s <database_name> } 
      [--noplan]  [--noanalyze]  [-u <backup_directory>] [--list-backup]
-     [--prefix <prefix_string> ]
+     [--prefix <prefix_string> ] [--report-status-dir <report_directory> ]
      [-T <schema>.<table> [,...]] [--table-file <file_name>]
      [-e] [-G] [-B <parallel_processes>] 
      [-d <master_data_directory>] [-a] [-q] [-l <logfile_directory>] 
@@ -165,7 +165,7 @@ OPTIONS
 -L (list tablenames in backup set) 
 
  When used with the -t option, lists the table names that exist in the 
- named backup set and exits. Does not do a restore. 
+ named backup set and exits. Does not perform a restore. 
 
  
 --noanalyze
@@ -218,10 +218,21 @@ in poor database performance.
  
 --redirect <database_name>
 
-The name of the database where the data is restored. Specify this option 
-to restore data to a database that is different than the database 
-specified during back up. If <database_name> does not exist, it is 
-created. 
+ The name of the database where the data is restored. Specify this option 
+ to restore data to a database that is different than the database 
+ specified during back up. If <database_name> does not exist, it is 
+ created. 
+
+ 
+--report-status-dir <report_directory>
+
+ Specifies the absolute path to the directory on the each Greenplum 
+ Database host (master and segment hosts) where gpdbrestore writes report 
+ status files for a restore operation. If <report_directory> does not exist 
+ or is not writable, gpdbrestore returns an error and stops. 
+
+ If this option is not specified and the -u option is specified, the log 
+ files are written to location specified by the -u option. 
 
 
 -s <database_name>
@@ -262,8 +273,14 @@ created.
  of each instance to be backed up. Specify this option if you specified a 
  backup directory with the gpcrondump option -u when creating a backup 
  set. 
-
- Note: This option is not supported if --ddboost is specified. 
+  
+ If this option is specified, gpdbrestore writes report status files to 
+ this directory during a restore operation. If the directory is not 
+ writable, gpdbrestore writes the files to the data directory of each 
+ instance. You can specify the --report-status-dir option to write the 
+ log files to a different directory. 
+ 
+ NOTE: This option is not supported if --ddboost is specified. 
 
 
 -v | --verbose 
