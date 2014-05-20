@@ -967,6 +967,72 @@ INFO:  Dispatch command to ALL contents
 ----
 (0 rows)
 
+-- tests with subplans (MPP-22019)
+CREATE TABLE MPP_22019_a ( i INT, j INT);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+INFO:  Distributed transaction command 'Distributed Prepare' to ALL contents
+INFO:  Distributed transaction command 'Distributed Commit Prepared' to ALL contents
+INSERT INTO MPP_22019_a (
+ SELECT i, i * i FROM generate_series(1, 10) AS i);
+INFO:  Dispatch command to ALL contents
+INFO:  Dispatch command to ALL contents
+INFO:  Distributed transaction command 'Distributed Prepare' to ALL contents
+INFO:  Distributed transaction command 'Distributed Commit Prepared' to ALL contents
+CREATE TABLE MPP_22019_b (i INT, j INT);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+INFO:  Distributed transaction command 'Distributed Prepare' to ALL contents
+INFO:  Distributed transaction command 'Distributed Commit Prepared' to ALL contents
+INSERT INTO MPP_22019_b (SELECT i, i * i FROM generate_series(1, 10) AS i);
+INFO:  Dispatch command to ALL contents
+INFO:  Dispatch command to ALL contents
+INFO:  Distributed transaction command 'Distributed Prepare' to ALL contents
+INFO:  Distributed transaction command 'Distributed Commit Prepared' to ALL contents
+EXPLAIN SELECT a.* FROM MPP_22019_a a INNER JOIN MPP_22019_b b ON a.i = b.i WHERE a.j NOT IN (SELECT j FROM MPP_22019_a a2 where a2.j = b.j) and a.i = 1;
+                                                                  QUERY PLAN                                                                   
+-----------------------------------------------------------------------------------------------------------------------------------------------
+ Result  (cost=0.00..10000000000000000159028911097599180468360808563945281389781327557747838772170381060813469985856815104.00 rows=1 width=16)
+   ->  Result  (cost=0.00..4.15 rows=1 width=24)
+         Filter: (subplan)
+         ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..4.15 rows=1 width=24)
+               ->  Hash Join  (cost=0.00..3.14 rows=1 width=24)
+                     Hash Cond: mpp_22019_b.i = public.mpp_22019_a.i
+                     ->  Table Scan on mpp_22019_b  (cost=0.00..1.02 rows=1 width=16)
+                           Filter: i = 1
+                     ->  Hash  (cost=1.02..1.02 rows=1 width=16)
+                           ->  Table Scan on mpp_22019_a  (cost=0.00..1.02 rows=1 width=16)
+                                 Filter: i = 1
+         SubPlan 1
+           ->  Result  (cost=0.00..9.20 rows=1 width=1)
+                 Filter: "ColRef_0031" = true
+                 ->  Materialize  (cost=0.00..8.20 rows=1 width=8)
+                       ->  Result  (cost=0.00..7.18 rows=1 width=8)
+                             ->  Aggregate  (cost=0.00..6.16 rows=1 width=16)
+                                   ->  Materialize  (cost=0.00..5.10 rows=1 width=16)
+                                         ->  Result  (cost=0.00..4.07 rows=1 width=16)
+                                               ->  Result  (cost=0.00..3.04 rows=1 width=8)
+                                                     Filter: public.mpp_22019_a.j = $1
+                                                     ->  Materialize  (cost=0.00..2.02 rows=1 width=8)
+                                                           ->  Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..1.01 rows=1 width=8)
+                                                                 ->  Table Scan on mpp_22019_a  (cost=0.00..0.00 rows=1 width=8)
+ Settings:  optimizer=on
+(25 rows)
+
+SELECT a.* FROM MPP_22019_a a INNER JOIN MPP_22019_b b ON a.i = b.i WHERE a.j NOT IN (SELECT j FROM MPP_22019_a a2 where a2.j = b.j) and a.i = 1;
+INFO:  Dispatch command to ALL contents
+INFO:  Dispatch command to ALL contents
+ i | j 
+---+---
+(0 rows)
+
+SELECT a.* FROM MPP_22019_a a  WHERE a.j NOT IN (SELECT j FROM MPP_22019_a a2 where a2.j = a.j) and a.i = 1;
+INFO:  Dispatch command to ALL contents
+INFO:  Dispatch command to ALL contents
+ i | j 
+---+---
+(0 rows)
+
 -- cleanup
 set test_print_direct_dispatch_info=off;
 drop table direct_test;
@@ -994,3 +1060,5 @@ drop table direct_test_type_inet;
 drop table direct_test_type_macaddr;
 drop table direct_test_type_tinterval;
 drop table direct_test_type_varbit;
+drop table MPP_22019_a;
+drop table MPP_22019_b;
