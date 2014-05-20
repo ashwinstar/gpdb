@@ -1562,6 +1562,8 @@ Feature: Validate command line arguments
          Then gpdbrestore should return a return code of 0
          And verify that the data of "2" tables in "testdb1" is validated after restore
          And verify that the tuple count of all appendonly tables are consistent in "testdb1"
+         And verify that the restored table "public.ao_table" in database "testdb1" is analyzed
+         And verify that the restored table "public.co_table" in database "testdb1" is analyzed
 
     @backupsmoke
     Scenario: Restore Scenarios
@@ -1676,6 +1678,7 @@ Feature: Validate command line arguments
         And the user runs "gpdbrestore -T public.ao_index_table -a" with the stored timestamp
         And gpdbrestore should return a return code of 0
         And verify that there is a "ao" table "public.ao_index_table" in "fullbkdb" with data
+        And verify that the restored table "public.ao_index_table" in database "fullbkdb" is analyzed
 
     Scenario: Full backup -T test 4 
         Given the database is running
@@ -1692,6 +1695,7 @@ Feature: Validate command line arguments
         And the user runs "gpdbrestore -T public.ao_index_table -a" with the stored timestamp
         And gpdbrestore should return a return code of 0
         And verify that there is a "ao" table "public.ao_index_table" in "fullbkdb" with data
+        And verify that the restored table "public.ao_index_table" in database "fullbkdb" is analyzed
 
     Scenario: Full backup -T test 5
         Given the database is running
@@ -1708,6 +1712,7 @@ Feature: Validate command line arguments
         And the user runs "gpdbrestore -T public.ao_part_table_1_prt_p2_2_prt_3 -a" with the stored timestamp
         And gpdbrestore should return a return code of 0
         And verify that there is a "ao" table "public.ao_part_table_1_prt_p2_2_prt_3" in "fullbkdb" with data
+        And verify that the restored table "public.ao_part_table_1_prt_p2_2_prt_3" in database "fullbkdb" is analyzed
 
     Scenario: Full backup -T test 6
         Given the database is running
@@ -5467,11 +5472,31 @@ Feature: Validate command line arguments
         Then gpcrondump should return a return code of 0
         And the timestamp from gpcrondump is stored
         And all the data from "testdb" is saved for verification
-	    And verify that "db_dumps" directory does not exist in master or segments
+        And verify that "db_dumps" directory does not exist in master or segments
         When the user runs gpdbrestore with the stored timestamp and options "-u /tmp --verbose"
         Then gpdbrestore should return a return code of 0
         And verify that the data of "2" tables in "testdb" is validated after restore
         And verify that the tuple count of all appendonly tables are consistent in "testdb"
+
+    Scenario: Gpdbrestore runs 'ANALYZE' on restored table only
+        Given the database is running
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data 
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data 
+        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data 
+        And the database "fullbkdb" is analyzed
+        When the user runs "gpcrondump -a -x fullbkdb"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored 
+        And all the data from "fullbkdb" is saved for verification
+        And the user truncates "public.ao_index_table" tables in "fullbkdb"
+        And the user deletes rows from the table "heap_table" of database "fullbkdb" where "column1" is "1088"
+        When the user runs "gpdbrestore -T public.ao_index_table -a" with the stored timestamp
+        Then gpdbrestore should return a return code of 0
+        And verify that there is a "ao" table "public.ao_index_table" in "fullbkdb" with data
+        And verify that the restored table "public.ao_index_table" in database "fullbkdb" is analyzed
+        And verify that the table "public.heap_table" in database "fullbkdb" is not analyzed
 
     # THIS SHOULD BE THE LAST TEST
     @backupfire

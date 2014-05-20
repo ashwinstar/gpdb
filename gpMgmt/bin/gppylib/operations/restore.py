@@ -477,8 +477,10 @@ class RestoreDatabase(Operation):
             if table_filter_file: 
                 self.remove_filter_file(table_filter_file)
 
-        if not self.no_analyze:
+        if (not self.no_analyze) and (self.restore_tables is None):
             self._analyze(restore_db, self.master_port)
+        elif (not self.no_analyze) and self.restore_tables :
+            self._analyze_restore_tables(restore_db, self.master_port, self.restore_tables)
 
     def _analyze(self, restore_db, master_port):
         conn = None
@@ -495,7 +497,34 @@ class RestoreDatabase(Operation):
         finally:
             if conn is not None:
                 conn.close()
-    
+
+    def _analyze_restore_tables(self, restore_db, master_port, restore_tables):
+        logger.info('Commencing analyze of restored tables in \'%s\' database, please wait' % restore_db)
+        batch_count = 0
+        try:
+            with dbconn.connect(dbconn.DbURL(dbname=restore_db, port=self.master_port)) as conn:
+                num_sqls = 0
+                for restore_table in restore_tables:
+                    analyze_table = "analyze " + restore_table
+                    try:
+                        execSQL(conn, analyze_table)
+                    except Exception as e:
+                        raise Exception('Issue with \'ANALYZE\' of restored table \'%s\' in \'%s\' database' % (restore_table, restore_db))
+                    else:
+                        num_sqls += 1
+                        if num_sqls == 1000: # The choice of batch size was choosen arbitrarily
+                            batch_count +=1
+                            logger.debug('Completed executing batch of 1000 tuple count SQLs')
+                            conn.commit()
+                            num_sqls = 0
+        except Exception as e:
+            logger.warn('Restore of \'%s\' database succeeded but \'ANALYZE\' of restored tables failed' % restore_db)
+            logger.warn('Please run ANALYZE manually on restored tables. Failure to run ANALYZE might result in poor database performance')
+            raise Exception(str(e))
+        else:
+            logger.info('\'Analyze\' of restored tables in \'%s\' database completed successfully' % restore_db)
+        return batch_count
+
     def create_filter_file(self):
         if self.restore_tables is None:
             return None

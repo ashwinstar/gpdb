@@ -24,6 +24,7 @@ from gppylib.mainUtils import ExceptionNoStackTraceNeeded
 from mock import patch, MagicMock, Mock
 
 class restoreTestCase(unittest.TestCase):
+
     def setUp(self):
         self.restore = RestoreDatabase(restore_timestamp = '20121212121212',
                             no_analyze = True,
@@ -1369,6 +1370,58 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
     def test_check_gp_toolkit_false(self, m1, m2):
         restore_db = 'testdb'
         self.assertFalse(self.restore.check_gp_toolkit(restore_db))
+
+    @patch('gppylib.operations.backup_utils.dbconn.DbURL')
+    @patch('gppylib.operations.backup_utils.dbconn.connect')
+    @patch('gppylib.operations.backup_utils.dbconn.execSQL')
+    def test_analyze_restore_tables_00(self, mock1, mock2, mock3):
+        db_name = 'FOO'
+        port = 1234 
+        restore_tables = ['public.t1', 'public.t2']
+        restoredb = RestoreDatabase('20121219', False, True, False, 'FOO', None, 1234, False, False, None, None, 'db_dumps', False, None, None, None, None) 
+        restoredb._analyze_restore_tables(db_name, port, restore_tables)
+
+    @patch('gppylib.operations.restore.execSQL', side_effect=Exception('analyze failed'))
+    @patch('gppylib.operations.backup_utils.dbconn.DbURL')
+    @patch('gppylib.operations.backup_utils.dbconn.connect')
+    def test_analyze_restore_tables_01(self, mock1, mock2, mock3):
+        db_name = 'FOO'
+        port = 1234 
+        restore_tables = ['public.t1', 'public.t2']
+        restoredb = RestoreDatabase('20121219', False, True, False, 'FOO', None, 1234, False, False, None, None, 'db_dumps', False, None, None, None, None)
+        self.assertRaises(Exception, restoredb._analyze_restore_tables, db_name, port, restore_tables)
+
+    @patch('gppylib.operations.restore.execSQL')
+    @patch('gppylib.operations.backup_utils.dbconn.DbURL', side_effect=Exception('Failed'))
+    @patch('gppylib.operations.backup_utils.dbconn.connect')
+    def test_analyze_restore_tables_02(self, mock1, mock2, mock3):
+        db_name = 'FOO'
+        port = 1234 
+        restore_tables = ['public.t1', 'public.t2']
+        restoredb = RestoreDatabase('20121219', False, True, False, 'FOO', None, 1234, False, False, None, None, 'db_dumps', False, None, None, None, None)
+        self.assertRaises(Exception, restoredb._analyze_restore_tables, db_name, port, restore_tables)
+
+    @patch('gppylib.operations.restore.execSQL')
+    @patch('gppylib.operations.backup_utils.dbconn.DbURL')
+    @patch('gppylib.operations.backup_utils.dbconn.connect', side_effect=Exception('Failed'))
+    def test_analyze_restore_tables_03(self, mock1, mock2, mock3):
+        db_name = 'FOO'
+        port = 1234 
+        restore_tables = ['public.t1', 'public.t2']
+        restoredb = RestoreDatabase('20121219', False, True, False, 'FOO', None, 1234, False, False, None, None, 'db_dumps', False, None, None, None, None)
+        self.assertRaises(Exception, restoredb._analyze_restore_tables, db_name, port, restore_tables)
+
+    @patch('gppylib.operations.backup_utils.dbconn.DbURL')
+    @patch('gppylib.operations.backup_utils.dbconn.connect')
+    @patch('gppylib.operations.backup_utils.dbconn.execSQL')
+    def test_analyze_restore_tables_04(self, mock1, mock2, mock3):
+        db_name = 'FOO'
+        port = 1234 
+        restore_tables = ['public.t%d' % i for i in range (3002)]
+        expected_batch_count = 3
+        restoredb = RestoreDatabase('20121219', False, True, False, 'FOO', None, 1234, False, False, None, None, 'db_dumps', False, None, None, None, None) 
+        batch_count = restoredb._analyze_restore_tables(db_name, port, restore_tables)
+        self.assertEqual(batch_count, expected_batch_count)
 
 class ValidateTimestampTestCase(unittest.TestCase):
 

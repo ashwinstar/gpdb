@@ -41,7 +41,8 @@ from gppylib.test.behave_utils.utils import bring_nic_down, bring_nic_up, run_cm
                                             check_string_not_present_stdout, clear_all_saved_data_verify_files, copy_file_to_all_db_hosts, validate_num_restored_tables, \
                                             get_partition_list, verify_stats, drop_external_table_if_exists, get_all_hostnames_as_list, get_pid_for_segment, kill_process, get_num_segments, \
                                             check_user_permissions, get_change_tracking_segment_info, add_partition, drop_partition, check_pl_exists, check_constraint_exists, \
-                                            are_segments_running, execute_sql_singleton, check_row_count, diff_backup_restore_data, check_dump_dir_exists
+                                            are_segments_running, execute_sql_singleton, check_row_count, diff_backup_restore_data, check_dump_dir_exists, verify_restored_table_is_analyzed, \
+                                            analyze_database, delete_rows_from_table
 
 from gppylib.operations.dump import get_partition_state
 from gppylib.test.behave_utils.gpfdist_utils.gpfdist_mgmt import Gpfdist
@@ -143,6 +144,7 @@ def impl(context, table_name, dbname):
 
 @given('the user truncates "{table_list}" tables in "{dbname}"')
 @when('the user truncates "{table_list}" tables in "{dbname}"')
+@then('the user truncates "{table_list}" tables in "{dbname}"')
 def impl(context, table_list, dbname):
     if not table_list:
         raise Exception('Table list is empty')
@@ -3448,6 +3450,7 @@ def impl(context, dbname):
                 reloaded_data.append(' '.join([str(x) for x in r]))
         if sorted(reloaded_data) != sorted(backed_up_data):
             raise Exception('Data does not match for table %s.%s' % (t[0], t[1]))
+
 @given('the schemas "{schema_list}" do not exist in "{dbname}"')
 @then('the schemas "{schema_list}" do not exist in "{dbname}"')
 def impl(context, schema_list, dbname):
@@ -3621,3 +3624,24 @@ def impl(context, port, hostfile):
 @then('verify that db_dumps directory does not exist in master or segments')
 def impl(context):
     check_dump_dir_exists(context, 'template1')
+
+@when('verify that the restored table "{table_name}" in database "{dbname}" is analyzed')
+@then('verify that the restored table "{table_name}" in database "{dbname}" is analyzed')
+def impl(context, table_name, dbname):
+    if verify_restored_table_is_analyzed(context, table_name, dbname) is not True:
+        raise Exception("The restored table \'%s\' of database \'%s\' is not analyzed" % (table_name, dbname))
+
+@when('verify that the table "{table_name}" in database "{dbname}" is not analyzed')
+@then('verify that the table "{table_name}" in database "{dbname}" is not analyzed')
+def impl(context, table_name, dbname):
+    if (verify_restored_table_is_analyzed(context, table_name, dbname)):
+        raise Exception("The restored table \'%s\' of database \'%s\' is analyzed" % (table_name, dbname))
+
+@given('the database "{dbname}" is analyzed')
+def impl(context, dbname):
+    analyze_database(context, dbname)
+
+@when('the user deletes rows from the table "{table_name}" of database "{dbname}" where "{column_name}" is "{info}"')
+@then('the user deletes rows from the table "{table_name}" of database "{dbname}" where "{column_name}" is "{info}"')
+def impl(context, dbname, table_name, column_name, info):
+    delete_rows_from_table(context, dbname, table_name, column_name, info)

@@ -1258,3 +1258,28 @@ def check_dump_dir_exists(context, dbname):
 		raise context.exception
 	    if 'EXISTS' in context.stdout_message:
 		raise Exception("db_dumps directory is present in master/segments.")
+
+def verify_restored_table_is_analyzed(context, table_name, dbname):
+    ROW_COUNT_SQL = """SELECT count(*) FROM %s""" % table_name
+    if table_name.find('.') != -1:
+        table_name = table_name.split(".")[1]
+    ROW_COUNT_PG_CLASS_SQL = """SELECT reltuples FROM pg_class WHERE relname = '%s'""" % (table_name)
+    with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
+        curs = dbconn.execSQL(conn, ROW_COUNT_SQL)
+        rows = curs.fetchall()
+        curs = dbconn.execSQL(conn, ROW_COUNT_PG_CLASS_SQL)
+        rows_from_pgclass = curs.fetchall()
+    if rows == rows_from_pgclass:
+        return True
+    else:
+        return False
+
+def analyze_database(context, dbname):
+    with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
+        dbconn.execSQL(conn, "analyze")
+
+def delete_rows_from_table(context, dbname, table_name, column_name, info):
+    DELETE_SQL = """DELETE FROM %s WHERE %s = %s""" % (table_name, column_name, info)
+    with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
+        dbconn.execSQL(conn, DELETE_SQL)
+        conn.commit()
