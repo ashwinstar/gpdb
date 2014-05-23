@@ -246,6 +246,7 @@ namespace gpdxl
 								IMemoryPool *pmp,
 								OID oidAttType,
 								CDouble dDistinct,
+								CDouble dNullFreq,
 								const Datum *pdrgdatumMCVValues,
 								const float4 *pdrgfMCVFrequencies,
 								ULONG ulNumMCVValues,

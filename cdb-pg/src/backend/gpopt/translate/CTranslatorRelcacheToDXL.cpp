@@ -2294,6 +2294,7 @@ CTranslatorRelcacheToDXL::PimdobjColStats
 					pmp,
 					oidAttType,
 					dDistinct,
+					dNullFrequency,
 					pdrgdatumMCVValues,
 					pdrgfMCVFrequencies,
 					ULONG(iNumMCVValues),
@@ -2447,6 +2448,7 @@ CTranslatorRelcacheToDXL::PdrgpdxlbucketTransformStats
 	IMemoryPool *pmp,
 	OID oidAttType,
 	CDouble dDistinct,
+	CDouble dNullFreq,
 	const Datum *pdrgdatumMCVValues,
 	const float4 *pdrgfMCVFrequencies,
 	ULONG ulNumMCVValues,
@@ -2471,7 +2473,7 @@ CTranslatorRelcacheToDXL::PdrgpdxlbucketTransformStats
 
 	CHistogram *phistGPDBHist = NULL;
 	ULONG ulHist = 0;
-	CDouble dHistFreq = CDouble(1.0) - phistGPDBMCV->DFrequency();
+	CDouble dHistFreq = CDouble(1.0) - dNullFreq - phistGPDBMCV->DFrequency();
 
 	// TODO: shene - Jul 23, 2013; The semantics is not very clear here - if there are
 	// no MCVs and no histogram, dHistFreq will be 1.0, which is counter-intuitive
