@@ -6548,7 +6548,7 @@ static struct config_string ConfigureNamesString[] =
                         gettext_noop("Valid values are legacy, calibrated"),
                 },
                 &optimizer_cost_model_str,
-                "legacy", assign_optimizer_cost_model, NULL
+                "calibrated", assign_optimizer_cost_model, NULL
         },
 
 	{

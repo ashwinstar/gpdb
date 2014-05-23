@@ -98,7 +98,7 @@ where
 pp.pronamespace =
 (select oid from pg_namespace where nspname = 'tidycat2')
 $$);
- equivalent_result
+ equivalent_result 
 -------------------
  t
 (1 row)

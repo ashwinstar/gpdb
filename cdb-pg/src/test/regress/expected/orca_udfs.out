@@ -105,7 +105,7 @@ select orcaudftest.OptimizeMinidumpFromFile(:'Mypath');
    <dxl:Plan Id="0" SpaceSize="0">                                                              
      <dxl:Result>                                                                               
        <dxl:Properties>                                                                         
-         <dxl:Cost StartupCost="0" TotalCost="1.017578" Rows="1.000000" Width="8"/>             
+         <dxl:Cost StartupCost="0" TotalCost="1.000009" Rows="1.000000" Width="8"/>             
        </dxl:Properties>                                                                        
        <dxl:ProjList>                                                                           
          <dxl:ProjElem ColId="1" Alias="?column?">                                              
@@ -116,7 +116,7 @@ select orcaudftest.OptimizeMinidumpFromFile(:'Mypath');
        <dxl:OneTimeFilter/>                                                                     
        <dxl:Result>                                                                             
          <dxl:Properties>                                                                       
-           <dxl:Cost StartupCost="0" TotalCost="0.001953" Rows="1.000000" Width="1"/>           
+           <dxl:Cost StartupCost="0" TotalCost="0.000001" Rows="1.000000" Width="1"/>           
          </dxl:Properties>                                                                      
          <dxl:ProjList>                                                                         
            <dxl:ProjElem ColId="0" Alias="">                                                    
@@ -141,7 +141,7 @@ select orcaudftest.OptimizeMinidumpFromFile(:'Mypath');
    <dxl:Plan Id="0" SpaceSize="0">                                                                                               
      <dxl:Result>                                                                                                                
        <dxl:Properties>                                                                                                          
-         <dxl:Cost StartupCost="0" TotalCost="1.017578" Rows="1.000000" Width="8"/>                                              
+         <dxl:Cost StartupCost="0" TotalCost="1.000009" Rows="1.000000" Width="8"/>                                              
        </dxl:Properties>                                                                                                         
        <dxl:ProjList>                                                                                                            
          <dxl:ProjElem ColId="1" Alias="text">                                                                                   
@@ -152,7 +152,7 @@ select orcaudftest.OptimizeMinidumpFromFile(:'Mypath');
        <dxl:OneTimeFilter/>                                                                                                      
        <dxl:Result>                                                                                                              
          <dxl:Properties>                                                                                                        
-           <dxl:Cost StartupCost="0" TotalCost="0.001953" Rows="1.000000" Width="1"/>                                            
+           <dxl:Cost StartupCost="0" TotalCost="0.000001" Rows="1.000000" Width="1"/>                                            
          </dxl:Properties>                                                                                                       
          <dxl:ProjList>                                                                                                          
            <dxl:ProjElem ColId="0" Alias="">                                                                                     
@@ -177,7 +177,7 @@ select orcaudftest.OptimizeMinidumpFromFile(:'Mypath');
    <dxl:Plan Id="0" SpaceSize="0">                                                              
      <dxl:Result>                                                                               
        <dxl:Properties>                                                                         
-         <dxl:Cost StartupCost="0" TotalCost="1.017578" Rows="1.000000" Width="8"/>             
+         <dxl:Cost StartupCost="0" TotalCost="1.000009" Rows="1.000000" Width="8"/>             
        </dxl:Properties>                                                                        
        <dxl:ProjList>                                                                           
          <dxl:ProjElem ColId="1" Alias="?column?">                                              
@@ -191,7 +191,7 @@ select orcaudftest.OptimizeMinidumpFromFile(:'Mypath');
        <dxl:OneTimeFilter/>                                                                     
        <dxl:Result>                                                                             
          <dxl:Properties>                                                                       
-           <dxl:Cost StartupCost="0" TotalCost="0.001953" Rows="1.000000" Width="1"/>           
+           <dxl:Cost StartupCost="0" TotalCost="0.000001" Rows="1.000000" Width="1"/>           
          </dxl:Properties>                                                                      
          <dxl:ProjList>                                                                         
            <dxl:ProjElem ColId="0" Alias="">                                                    

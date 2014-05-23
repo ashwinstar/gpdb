@@ -439,9 +439,9 @@ select * from direct_test;
 INFO:  Dispatch command to ALL contents
  key | value 
 -----+-------
-   2 | 100
      | cow
    1 | 100
+   2 | 100
 (3 rows)
 
 prepare test_update (int) as update direct_test set value = 'boo' where key = $1;
@@ -538,12 +538,14 @@ delete from direct_dispatch_foo where id * id = (select max(id2) from direct_dis
 INFO:  Dispatch command to ALL contents
 INFO:  Dispatch command to ALL contents
 INFO:  Dispatch command to ALL contents
+INFO:  Dispatch command to ALL contents
 INFO:  Distributed transaction command 'Distributed Prepare' to ALL contents
 INFO:  Distributed transaction command 'Distributed Commit Prepared' to ALL contents
 -- start_ignore
 -- Known_opt_diff: MPP-21346
 -- end_ignore
 delete from direct_dispatch_foo where id * id = (select max(id2) from direct_dispatch_bar) AND id = 3;
+INFO:  Dispatch command to ALL contents
 INFO:  Dispatch command to ALL contents
 INFO:  Dispatch command to ALL contents
 INFO:  Dispatch command to ALL contents
