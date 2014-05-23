@@ -5,7 +5,7 @@
 SELECT gp_opt_version();
                            gp_opt_version
 ---------------------------------------------------------------------
- GPOPT version: 1.428, GPOS version: 1.102, Xerces version: 3.1.1-p1
+ GPOPT version: 1.429, GPOS version: 1.102, Xerces version: 3.1.1-p1
 (1 row)
 
 -- master only tables
@@ -8770,6 +8770,48 @@ SELECT generate_series(1,10) EXCEPT SELECT 1;
                3
                7
 (9 rows)
+
+-- Push components of disjunctive predicates
+create table cust(cid integer, firstname text, lastname text) distributed by (cid);
+create table datedim(date_sk integer, year integer, moy integer) distributed by (date_sk);
+create table sales(item_sk integer, ticket_number integer, cid integer, date_sk integer, type text)
+  distributed by (item_sk, ticket_number);
+-- create a volatile function which should not be pushed
+CREATE FUNCTION plusone(integer) RETURNS integer AS $$
+BEGIN
+    SELECT $1 + 1;
+END;
+$$ LANGUAGE plpgsql volatile;
+-- force_explain
+explain
+select c.cid cid,
+       c.firstname firstname,
+       c.lastname lastname,
+       d.year dyear
+from cust c, sales s, datedim d
+where c.cid = s.cid and s.date_sk = d.date_sk and
+      ((d.year = 2001 and lower(s.type) = 't1' and plusone(d.moy) = 5) or (d.moy = 4 and upper(s.type) = 'T2'));
+                                                                                      QUERY PLAN                                                                                      
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice3; segments: 2)  (cost=0.00..7.36 rows=1 width=32)
+   ->  Hash Join  (cost=0.00..6.34 rows=1 width=32)
+         Hash Cond: cust.cid = sales.cid
+         ->  Table Scan on cust  (cost=0.00..0.01 rows=1 width=24)
+         ->  Hash  (cost=5.23..5.23 rows=1 width=16)
+               ->  Redistribute Motion 2:2  (slice2; segments: 2)  (cost=0.00..5.23 rows=1 width=16)
+                     Hash Key: sales.cid
+                     ->  Hash Join  (cost=0.00..4.22 rows=1 width=16)
+                           Hash Cond: sales.date_sk = datedim.date_sk
+                           Join Filter: (datedim.year = 2001 AND lower(sales.type) = 't1'::text AND plusone(datedim.moy) = 5) OR (datedim.moy = 4 AND upper(sales.type) = 'T2'::text)
+                           ->  Redistribute Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.05 rows=1 width=24)
+                                 Hash Key: sales.date_sk
+                                 ->  Table Scan on sales  (cost=0.00..1.04 rows=1 width=24)
+                                       Filter: lower(type) = 't1'::text OR upper(type) = 'T2'::text
+                           ->  Hash  (cost=1.04..1.04 rows=1 width=24)
+                                 ->  Table Scan on datedim  (cost=0.00..1.04 rows=1 width=24)
+                                       Filter: year = 2001 OR moy = 4
+ Settings:  optimizer=on
+(18 rows)
 
 -- clean up
 drop schema orca cascade;

@@ -832,5 +832,28 @@ select 1 as x where 1 in (2, 3);
 -- MPP-22918: join inner child with universal distribution
 SELECT generate_series(1,10) EXCEPT SELECT 1;
 
+-- Push components of disjunctive predicates
+create table cust(cid integer, firstname text, lastname text) distributed by (cid);
+create table datedim(date_sk integer, year integer, moy integer) distributed by (date_sk);
+create table sales(item_sk integer, ticket_number integer, cid integer, date_sk integer, type text)
+  distributed by (item_sk, ticket_number);
+
+-- create a volatile function which should not be pushed
+CREATE FUNCTION plusone(integer) RETURNS integer AS $$
+BEGIN
+    SELECT $1 + 1;
+END;
+$$ LANGUAGE plpgsql volatile;
+
+-- force_explain
+explain
+select c.cid cid,
+       c.firstname firstname,
+       c.lastname lastname,
+       d.year dyear
+from cust c, sales s, datedim d
+where c.cid = s.cid and s.date_sk = d.date_sk and
+      ((d.year = 2001 and lower(s.type) = 't1' and plusone(d.moy) = 5) or (d.moy = 4 and upper(s.type) = 'T2'));
+
 -- clean up
 drop schema orca cascade;
