@@ -57,7 +57,6 @@ static Oid plr_nspOid = InvalidOid;
  */ 
 extern Rboolean R_interrupts_suspended; 
 extern int		R_SignalHandlers;
-extern void (*ptr_R_CleanUp)(SA_TYPE, int, int);
 
 /*
  * defines
@@ -319,8 +318,6 @@ plr_atexit(void)
 	/* only react during plr startup */
 	if (plr_pm_init_done)
 	{
-		if (ptr_R_CleanUp)
-			ptr_R_CleanUp(SA_SAVE, 0, 0);
 		return;
 	}
 
