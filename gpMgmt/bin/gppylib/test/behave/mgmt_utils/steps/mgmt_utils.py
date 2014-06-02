@@ -13,6 +13,7 @@ import commands
 import sys
 import tarfile
 import platform
+from datetime import datetime
 
 from gppylib.commands.base import Command, ExecutionError, REMOTE
 from gppylib.commands.unix import findCmdInPath, RemoteCopy
@@ -21,8 +22,10 @@ from gppylib.db import dbconn
 from gppylib.gparray import GpArray
 from gppylib.operations.unix import ListRemoteFilesByPattern, CheckRemoteFile
 from gppylib.operations.startSegments import MIRROR_MODE_MIRRORLESS
-from gppylib.test.behave_utils.utils import bring_nic_down, bring_nic_up, get_table_names, get_segment_hostnames,\
-                                            create_database, create_database_if_not_exists, check_empty_table, check_err_msg, check_stdout_msg, \
+from gppylib.test.behave_utils.utils import bring_nic_down, bring_nic_up, run_cmd, get_table_names, get_segment_hostnames,check_schema_exists,\
+                                            create_database, create_database_if_not_exists, run_command_remote, wait_till_change_tracking_transition, \
+                                            wait_till_resync_transition, wait_till_insync_transition, create_gpfilespace_config,modify_sql_file, \
+                                            match_table_select, check_empty_table, check_err_msg, check_stdout_msg, \
                                             check_return_code, create_int_table, create_partition, check_table_exists, create_large_num_partitions,\
                                             create_fake_pg_aoseg_table, drop_database, drop_database_if_exists, drop_table_if_exists, getRows,\
                                             get_hosts_and_datadirs, get_master_hostname, insert_row, start_database_if_not_started, stop_database_if_started,\
@@ -40,7 +43,7 @@ from gppylib.test.behave_utils.utils import bring_nic_down, bring_nic_up, get_ta
                                             are_segments_running, execute_sql_singleton, check_row_count, diff_backup_restore_data
 
 from gppylib.operations.dump import get_partition_state
-
+from gppylib.test.behave_utils.gpfdist_utils.gpfdist_mgmt import Gpfdist
 
 master_data_dir = os.environ.get('MASTER_DATA_DIRECTORY')
 if master_data_dir is None:
@@ -59,6 +62,13 @@ def impl(context):
     if has_exception(context):
         raise context.exception
 
+@given('the database is "{version}" with dburl "{dbconn}"')
+def impl(context, dbconn, version):
+    command = '%s -t -q -c \'select version();\''%(dbconn)
+    (rc, out, err) = run_cmd(command)
+    if not ('Greenplum Database '+version) in out:
+        print 'version %s does not match current gpdb version %s'%(version, out)  
+
 @given('database "{dbname}" exists')
 @then('database "{dbname}" exists')
 def impl(context, dbname):
@@ -74,6 +84,13 @@ def impl(context, dbname):
 @then('the database "{dbname}" does not exist')
 def impl(context, dbname):
     drop_database_if_exists(context, dbname)
+
+@given('the database "{dbname}" does not exist with connection "{dbconn}"')
+@when('the database "{dbname}" does not exist with connection "{dbconn}"')
+@then('the database "{dbname}" does not exist with connection "{dbconn}"')
+def impl(context, dbname, dbconn): 
+    command = '%s -c \'drop database if exists %s;\''%(dbconn, dbname)
+    run_command(context, command)
 
 def get_segment_hostlist():
     gparray = GpArray.initFromCatalog(dbconn.DbURL())
@@ -232,6 +249,97 @@ def impl(context, command):
 @then('the user runs command "{command}"')
 def impl(context, command):                 
     run_command(context, command) 
+
+@given('the user puts cluster on "{HOST}" "{PORT}" "{USER}" in "{transition}"') 
+@when('the user puts cluster on "{HOST}" "{PORT}" "{USER}" in "{transition}"') 
+@then('the user puts cluster on "{HOST}" "{PORT}" "{USER}" in "{transition}"')
+def impl(context, HOST, PORT, USER, transition):
+    host = os.environ.get(HOST)
+    user = os.environ.get(USER)
+    port = os.environ.get(PORT)
+    source_file = os.path.join(os.environ.get('GPHOME'),'greenplum_path.sh') 
+    master_dd = os.environ.get('MASTER_DATA_DIRECTORY')
+    export_mdd = 'export MASTER_DATA_DIRECTORY=%s'%master_dd
+    # reset all fault inject entry if exists
+    command = 'gpfaultinjector -f all -m async -y reset -r primary -H ALL'
+    run_command_remote(context, command, host, source_file, export_mdd)
+    command = 'gpfaultinjector -f all -m async -y resume -r primary -H ALL'
+    run_command_remote(context, command, host, source_file, export_mdd)
+    trigger_transition = "psql -d template1 -h %s -U %s -p %s -c 'drop table if exists trigger;'"%(host,user,port)
+    if transition == 'ct':
+        command = 'gpfaultinjector -f filerep_consumer -m async -y fault -r primary -H ALL'
+        run_command_remote(context, command, host, source_file, export_mdd)
+        run_command(context, trigger_transition)
+        wait_till_change_tracking_transition(host,port,user)
+    if transition == 'resync':
+        command = 'gpfaultinjector -f filerep_consumer -m async -y fault -r primary -H ALL'
+        run_command_remote(context,command, host, source_file, export_mdd)
+        run_command(context, trigger_transition)
+        wait_till_change_tracking_transition(host,port,user)
+        command = 'gpfaultinjector -f filerep_resync -m async -y suspend -r primary -H ALL'
+        run_command_remote(context, command, host, source_file, export_mdd)
+        run_command_remote(context, 'gprecoverseg -a', host, source_file, export_mdd)
+        wait_till_resync_transition(host,port,user)
+    if transition == 'sync':
+        run_command_remote(context, 'gpstop -air', host, source_file, export_mdd)
+        run_command_remote(context, 'gprecoverseg -a', host, source_file, export_mdd)
+        wait_till_insync_transition(host,port,user)
+        run_command_remote(context, 'gprecoverseg -ar', host, source_file, export_mdd)  
+
+
+@given('the user runs workload under "{dir}" with connection "{dbconn}"')
+@when('the user runs workload under "{dir}" with connection "{dbconn}"')
+def impl(context, dir, dbconn): 
+    for file in os.listdir(dir):
+        if file.endswith('.sql'):
+            command = '%s -f %s'%(dbconn, os.path.join(dir,file))
+            run_command(context, command)
+
+
+@given('the user "{USER}" creates filespace_config file for "{fs_name}" on host "{HOST}" with gpdb port "{PORT}" and config "{config_file}"')
+@then('the user "{USER}" creates filespace_config file for "{fs_name}" on host "{HOST}" with gpdb port "{PORT}" and config "{config_file}"')
+def impl(context, USER, HOST, PORT,fs_name,config_file): 
+    user = os.environ.get(USER)
+    host = os.environ.get(HOST)
+    port = os.environ.get(PORT)
+    create_gpfilespace_config(host,port, user, fs_name, config_file)
+
+
+@given('the user "{USER}" creates filespace on host "{HOST}" with gpdb port "{PORT}" and config "{config_file}"')
+@when('the user "{USER}" creates filespace on host "{HOST}" with gpdb port "{PORT}" and config "{config_file}"')
+def impl(context, USER, HOST, PORT, config_file): 
+    user = os.environ.get(USER)
+    host = os.environ.get(HOST)
+    port = os.environ.get(PORT)
+    cmdStr = 'gpfilespace -h %s -p %s -U %s -c "%s"'%(host, port, user,config_file)
+    run_command(context, cmdStr)
+
+
+@given('the user modifies the external_table.sql file "{filepath}" with host "{HOST}" and port "{port}"')
+@when('the user modifies the external_table.sql file "{filepath}" with host "{HOST}" and port "{port}"')
+def impl(context, filepath, HOST, port): 
+    host=os.environ.get(HOST)
+    substr = host+':'+port
+    modify_sql_file(filepath, substr)
+
+@given('the user starts the gpfdist on host "{HOST}" and port "{port}" in work directory "{dir}" from remote "{ctxt}"')
+@then('the user starts the gpfdist on host "{HOST}" and port "{port}" in work directory "{dir}" from remote "{ctxt}"')
+def impl(context, HOST, port, dir, ctxt): 
+    host = os.environ.get(HOST)
+    remote_gphome = os.environ.get('GPHOME')
+    gp_source_file = os.path.join(remote_gphome, 'greenplum_path.sh')    
+    gpfdist = Gpfdist('gpfdist on host %s'%host, dir, port, os.path.join('/tmp','gpfdist.pid'), int(ctxt), host, gp_source_file)
+    gpfdist.startGpfdist()
+
+
+@given('the user stops the gpfdist on host "{HOST}" and port "{port}" in work directory "{dir}" from remote "{ctxt}"')
+@then('the user stops the gpfdist on host "{HOST}" and port "{port}" in work directory "{dir}" from remote "{ctxt}"')
+def impl(context, HOST, port, dir, ctxt): 
+    host = os.environ.get(HOST)
+    remote_gphome = os.environ.get('GPHOME')
+    gp_source_file = os.path.join(remote_gphome, 'greenplum_path.sh')
+    gpfdist = Gpfdist('gpfdist on host %s'%host, dir, port, os.path.join('/tmp','gpfdist.pid'), int(ctxt), host, gp_source_file)
+    gpfdist.cleanupGpfdist()
 
 def run_valgrind_command(context, command):
     current_path = os.path.realpath(__file__)
@@ -422,6 +530,54 @@ def impl(context):
 def impl(context):
     context.backup_timestamp = get_timestamp_from_output(context)
     context.inc_backup_timestamps.append(context.backup_timestamp)
+
+
+@then('Verify data integrity of database "{dbname}" between source and destination system, work-dir "{dir}"')
+def impl(context, dbname, dir):
+    dbconn_src = 'psql -p $GPTRANSFER_SOURCE_PORT -h $GPTRANSFER_SOURCE_HOST -U $GPTRANSFER_SOURCE_USER -d %s'%dbname
+    dbconn_dest = 'psql -p $GPTRANSFER_DEST_PORT -h $GPTRANSFER_DEST_HOST -U $GPTRANSFER_DEST_USER -d %s'%dbname
+    for file in os.listdir(dir):
+        if file.endswith('.sql'):
+            filename_prefix = os.path.splitext(file)[0]
+            ans_file_path = os.path.join(dir,filename_prefix+'.ans')
+            out_file_path = os.path.join(dir,filename_prefix+'.out')
+            diff_file_path = os.path.join(dir,filename_prefix+'.diff')
+            # run the command to get the exact data from the source system
+            command = '%s -f %s > %s'%(dbconn_src, os.path.join(dir,file), ans_file_path)
+            run_command(context, command)
+
+            # run the command to get the data from the destination system, locally
+            command = '%s -f %s > %s'%(dbconn_dest, os.path.join(dir,file), out_file_path)
+            run_command(context, command)
+            
+            gpdiff_cmd = 'gpdiff.pl -w  -I NOTICE: -I HINT: -I CONTEXT: -I GP_IGNORE: --gp_init_file=gppylib/test/behave/mgmt_utils/steps/data/global_init_file %s %s > %s'%(ans_file_path, out_file_path, diff_file_path)             
+            run_command(context, gpdiff_cmd)
+    for file in os.listdir(dir):
+        if file.endswith('.diff') and os.path.getsize(os.path.join(dir,file)) > 0: 
+            # if there is some difference generated into the diff file, raise expception
+                raise Exception ("Found difference between source and destination system, see %s"%file)
+
+
+@then('run post verifying workload under "{dir}"')
+def impl(context, dir):
+    for file in os.listdir(dir):
+        if file.endswith('.sql'):
+            filename_prefix = os.path.splitext(file)[0]
+            ans_file_path = os.path.join(dir,filename_prefix+'.ans')
+            out_file_path = os.path.join(dir,filename_prefix+'.out')
+            diff_file_path = os.path.join(dir,filename_prefix+'.diff')
+
+            # run the command to get the data from the destination system, locally
+            dbconn = 'psql -d template1 -p $GPTRANSFER_DEST_PORT -U $GPTRANSFER_DEST_USER -h $GPTRANSFER_DEST_HOST'
+            command = '%s -f %s > %s'%(dbconn, os.path.join(dir,file), out_file_path)
+            run_command(context, command)
+     
+            gpdiff_cmd = 'gpdiff.pl -w  -I NOTICE: -I HINT: -I CONTEXT: -I GP_IGNORE: --gp_init_file=gppylib/test/behave/mgmt_utils/steps/data/global_init_file %s %s > %s'%(ans_file_path, out_file_path, diff_file_path)          
+            run_command(context, gpdiff_cmd)
+    for file in os.listdir(dir):
+        if file.endswith('.diff') and os.path.getsize(os.path.join(dir,file)) > 0:
+            # if there is some difference generated into the diff file, raise expception
+                raise Exception ("Found difference between source and destination system, see %s"%file) 
 
 @then('verify that the incremental file has the stored timestamp')
 def impl(context):
@@ -682,6 +838,11 @@ def impl(context, table_list, dbname):
 def impl(context, tname, dbname, nrows):
     check_row_count(tname, dbname, int(nrows))
 
+@then('verify that table "{tname}" in "{dbname}" has same data on source and destination system')
+def impl(context, tname, dbname):
+    print 'veryfing data integraty'
+    match_table_select(context, tname, dbname)
+
 @then('verify that partitioned tables "{table_list}" in "{dbname}" have {num_parts} partitions')
 def impl(context, table_list, dbname, num_parts):
     num_parts = int(num_parts.strip())
@@ -769,8 +930,14 @@ def impl(context, schema_list, dbname):
 
 @then('the temporary file "{filename}" is removed')
 def impl(context, filename):
-    if os.path.exists(context.filename):
-        os.remove(context.filename)
+    if os.path.exists(filename):
+        os.remove(filename)
+
+@then('the temporary table file "{filename}" is removed')
+def impl(context, filename):
+    file = os.path.join(os.path.expanduser('~/'),filename)
+    if os.path.exists(file):
+        os.remove(file)
 
 def create_table_file_locally(context, filename, table_list, location=os.getcwd()):
     tables = table_list.split(',')
@@ -3212,3 +3379,171 @@ def impl(context, dbname):
                 reloaded_data.append(' '.join([str(x) for x in r]))
         if sorted(reloaded_data) != sorted(backed_up_data):
             raise Exception('Data does not match for table %s.%s' % (t[0], t[1]))
+@given('the schemas "{schema_list}" do not exist in "{dbname}"')
+@then('the schemas "{schema_list}" do not exist in "{dbname}"')
+def impl(context, schema_list, dbname):
+    schemas = [s.strip() for s in schema_list.split(',')]
+    for s in schemas:
+        drop_schema_if_exists(context, s.strip(), dbname)
+
+@then('verify that the schema "{schema_name}" exists in "{dbname}"')
+def impl(context, schema_name, dbname):
+    check_schema_exists(context, schema_name, dbname)
+
+def get_gptransfer_log_name(logdir):
+    today = datetime.now()
+    logname = "%s/gptransfer_%s.log" % (logdir, today.strftime('%Y%m%d'))
+    return logname
+
+@then('verify that a log was created by gptransfer in the user\'s "{dirname}" directory')
+def impl(context, dirname):
+    absdirname = "%s/%s" % (os.path.expanduser("~"), dirname)
+    if not os.path.exists(absdirname):
+        raise Exception('No such directory: %s' % absdirname)
+    logname = get_gptransfer_log_name(absdirname)
+    if not os.path.exists(logname):
+        raise Exception('Log "%s" was not created' % logname)
+
+@then('verify that a log was created by gptransfer in the "{dirname}" directory')
+def impl(context, dirname):
+    if not os.path.exists(dirname):
+        raise Exception('No such directory: %s' % dirname)
+    logname = get_gptransfer_log_name(dirname)
+    if not os.path.exists(logname):
+        raise Exception('Log "%s" was not created' % logname)
+
+@given('a table is created containing rows of length "{length}" with connection "{dbconn}"')
+def impl(context, length, dbconn):
+    length = int(length)
+    wide_row_file = os.path.join(os.path.expanduser('~/'),'wide_row_%s.sql'%length)
+    tablename = 'public.wide_row_%s' % length
+    entry = "x" * length
+    with open (wide_row_file, 'w') as sql_file:
+        sql_file.write("CREATE TABLE %s (a integer, b text);\n" % tablename) 
+        for i in range(10):
+            sql_file.write("INSERT INTO %s VALUES (%d, \'%s\');\n" % (tablename, i, entry))
+    command = '%s -f %s'%(dbconn, wide_row_file)
+    run_gpcommand(context, command)
+
+
+@then('drop the table "{tablename}" with connection "{dbconn}"')
+def impl(context, tablename, dbconn):
+    command = "%s -c \'drop table if exists %s\'"%(dbconn, tablename) 
+    run_gpcommand(context, command)
+
+
+# gptransfer must be run in verbose mode (-v) with default log location when using this step
+@then('verify that gptransfer has a sub batch size of "{num}"')
+def impl(context, num):
+    num = int(num)
+    logdir = "%s/gpAdminLogs" % os.path.expanduser("~")
+    if not os.path.exists(logdir):
+        raise Exception('No such directory: %s' % absdirname)
+    logname = get_gptransfer_log_name(logdir)
+
+    full_path = os.path.join(logdir, logname)
+
+    if not os.path.isfile(full_path):
+        raise Exception ("Can not find %s file: %s" % (file_type, full_path))
+
+    contents = "" 
+    with open(full_path) as fd:
+        contents = fd.read()
+
+    for i in range(num):
+        worker = "\[DEBUG\]:-\[worker%d\]" % i
+        try:
+            check_stdout_msg(context, worker)
+        except:
+            raise Exception("gptransfer sub batch size should be %d, is %d" % (num, i))
+
+    worker = "\[DEBUG\]:-\[worker%d\]" % num
+    try:
+        check_string_not_present_stdout(context, worker)
+    except:
+        raise Exception("gptransfer sub batch size should be %d, is at least %d" % (num, num+1))
+
+# Read in a full map file, remove the first host, print it to a new file
+@given('an incomplete map file is created')
+def impl(context):
+    map_file = os.environ['GPTRANSFER_MAP_FILE']
+    contents = []
+    with open(map_file, 'r') as fd:
+        contents = fd.readlines()
+
+    with open('/tmp/incomplete_map_file', 'w') as fd:
+        for line in contents[1:]:
+            fd.write(line)
+
+@given('there is a table "{table_name}" dependent on function "{func_name}" in database "{dbname}" on the source system')
+def impl(context, table_name, func_name, dbname):
+    dbconn = 'psql -d %s -p $GPTRANSFER_SOURCE_PORT -U $GPTRANSFER_SOURCE_USER -h $GPTRANSFER_SOURCE_HOST' % dbname
+    SQL = """CREATE TABLE %s (num integer); CREATE FUNCTION %s (integer) RETURNS integer AS 'select abs(\$1);' LANGUAGE SQL IMMUTABLE; CREATE INDEX test_index ON %s (%s(num))""" % (table_name, func_name, table_name, func_name)
+    command = '%s -c "%s"'%(dbconn, SQL)
+    run_command(context, command)
+
+@then('the function-dependent table "{table_name}" and the function "{func_name}" in database "{dbname}" are dropped on the source system')
+def impl(context, table_name, func_name, dbname):
+    dbconn = 'psql -d %s -p $GPTRANSFER_SOURCE_PORT -U $GPTRANSFER_SOURCE_USER -h $GPTRANSFER_SOURCE_HOST' % dbname
+    SQL = """DROP TABLE %s; DROP FUNCTION %s(integer);""" % (table_name, func_name)
+    command = '%s -c "%s"'%(dbconn, SQL)
+    run_command(context, command)
+
+@then('verify that function "{func_name}" exists in database "{dbname}"')
+def impl(context, func_name, dbname):
+    SQL = """SELECT proname FROM pg_proc WHERE proname = '%s';""" % func_name
+    row_count = getRows(dbname, SQL)[0][0]
+    if row_count != 'test_function':
+        raise Exception('Function %s does not exist in %s"' % (func_name, dbname))
+
+@when('the user runs the query "{query}" in database "{dbname}" and sends the output to "{filename}"')
+def impl(context, query, dbname, filename):
+    cmd = "psql -d %s -p $GPTRANSFER_DEST_PORT -U $GPTRANSFER_DEST_USER -c '\copy (%s) to %s'" % (dbname, query, filename)
+    thread.start_new_thread(run_gpcommand, (context, cmd))
+    time.sleep(10)
+
+@when('the user runs the command "{cmd}" in the background')
+def impl(context, cmd):
+    thread.start_new_thread(run_command, (context,cmd))
+    time.sleep(10)
+
+@then('verify that the file "{filename}" contains the string "{output}"')
+def impl(context, filename, output):
+    contents = ''
+    with open(filename) as fr:
+        for line in fr:
+            contents = line.strip()       
+    print contents
+    check_stdout_msg(context, output) 
+
+
+@given('the gpfdists occupying port {port} on host "{hostfile}"')
+def impl(context, port, hostfile):
+    remote_gphome = os.environ.get('GPHOME')
+    gp_source_file = os.path.join(remote_gphome, 'greenplum_path.sh')
+    source_map_file = os.environ.get(hostfile)
+    dir = '/tmp'
+    ctxt = 2
+    with open(source_map_file,'r') as f:
+        for line in f:
+            host = line.strip().split(',')[0]
+            if host in ('localhost', '127.0.0.1',socket.gethostname()):
+                ctxt = 1
+            gpfdist = Gpfdist('gpfdist on host %s'%host, dir, port, os.path.join('/tmp','gpfdist.pid'), ctxt, host, gp_source_file)
+            gpfdist.startGpfdist()
+
+
+@then('the gpfdists running on port {port} get cleaned up from host "{hostfile}"')
+def impl(context, port, hostfile):
+    remote_gphome = os.environ.get('GPHOME')
+    gp_source_file = os.path.join(remote_gphome, 'greenplum_path.sh')
+    source_map_file = os.environ.get(hostfile)
+    dir = '/tmp'
+    ctxt = 2
+    with open(source_map_file,'r') as f:
+        for line in f:
+            host = line.strip().split(',')[0]
+            if host in ('localhost', '127.0.0.1',socket.gethostname()):
+                ctxt = 1
+            gpfdist = Gpfdist('gpfdist on host %s'%host, dir, port, os.path.join('/tmp','gpfdist.pid'), ctxt, host, gp_source_file)
+            gpfdist.cleanupGpfdist()

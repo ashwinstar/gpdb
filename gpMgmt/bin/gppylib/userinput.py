@@ -15,7 +15,7 @@ def validate_yesno( input,default ):
         return True if default.upper() == 'Y' else False
     elif input.upper().rstrip() in ('Y', 'YES'):
         return True
-    elif input.upper().rstrip() in ('N', 'YES'):
+    elif input.upper().rstrip() in ('N', 'NO'):
         return False
     else:
         return None

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import re, os, signal, time, filecmp, stat
+import re, os, signal, time, filecmp, stat, fileinput
 
 from gppylib.commands.gp import GpStart, chk_local_db_running
 from gppylib.commands.base import Command, ExecutionError, REMOTE
@@ -78,6 +78,25 @@ def run_command(context, command):
     context.ret_code = result.rc 
     context.stdout_message = result.stdout
     context.error_message = result.stderr 
+
+def run_cmd(command):
+    cmd = Command(name='run %s' % command, cmdStr='%s' % command)
+    try: 
+        cmd.run(validateAfter=True)
+    except ExecutionError, e:
+        print 'caught exception %s'%e
+
+    result = cmd.get_results()
+    return (result.rc, result.stdout, result.stderr)
+
+def run_command_remote(context,command, host, source_file, export_mdd):
+    cmd = Command(name='run command %s'%command,
+                  cmdStr='gpssh -h %s -e \'source %s; %s; %s\''%(host, source_file,export_mdd, command))
+    cmd.run(validateAfter=True)
+    result = cmd.get_results()
+    context.ret_code = result.rc
+    context.stdout_message = result.stdout
+    context.error_message = result.stderr
 
 def run_gpcommand(context, command):
     context.exception = None
@@ -694,6 +713,14 @@ def check_row_count(tablename, dbname, nrows):
 def check_empty_table(tablename, dbname):
     check_row_count(tablename, dbname, 0)
      
+def match_table_select(context, tablename, dbname):
+    check_query = 'psql -d %s -c \'select * from %s\'' % (dbname, tablename)
+    (rc, out1, err) = run_cmd(check_query)
+    command = 'psql -p $GPTRANSFER_SOURCE_PORT -h $GPTRANSFER_SOURCE_HOST -U $GPTRANSFER_SOURCE_USER -d %s -c \'select * from %s\''%(dbname, tablename)
+    (rc, out2, err) = run_cmd(command)
+    if out2 != out1:
+        raise Exception('table %s in database %s between source and destination system does not match'%(tablename,dbname))
+
 def get_master_hostname(dbname='template1'):
     master_hostname_sql = "select distinct hostname from gp_segment_configuration where content=-1 and role='p'"
     return getRows(dbname, master_hostname_sql)
@@ -1053,3 +1080,168 @@ def are_segments_running():
         if seg.status != 'u':
             return False 
     return True
+
+def modify_sql_file(file, hostport):
+    if os.path.isfile(file):
+        for line in fileinput.FileInput(file,inplace=1):
+            if line.find("gpfdist")>=0:
+                line = re.sub('(\d+)\.(\d+)\.(\d+)\.(\d+)\:(\d+)',hostport, line)
+            print str(re.sub('\n','',line))
+
+def create_gpfilespace_config(host, port, user,fs_name, config_file):
+    mirror_hosts = []
+    primary_hosts = []
+    standby_host = ''
+    master_host = ''
+    get_master_filespace_entry = 'psql -t -h %s -p %s -U %s -d template1 -c \" select hostname, dbid, fselocation from pg_filespace_entry, gp_segment_configuration where dbid=fsedbid and preferred_role =\'p\' and content=-1;\"'%(host, port, user)
+    (rc, out, err) = run_cmd(get_master_filespace_entry)
+    if rc != 0:
+        raise Exception('Exception from executing psql query: %s'% get_master_filespace_entry)
+    else:
+        file = open(config_file,'w')
+        file.write('filespace:%s\n'%fs_name)
+        result = out.split('\n')
+        for line in result:
+            if line.strip():
+                row = line.split('|')
+                row = [col.strip() for col in row]
+                hostname = row[0]
+                master_host = hostname
+                dbid = row[1]
+                fs_loc = os.path.join('/tmp/fs_master',os.path.split(row[2])[1])
+                file.write(hostname+':'+dbid+':'+fs_loc)
+                file.write('\n')
+        file.close()
+
+    get_standby_filespace_entry= 'psql -t -h %s -p %s -U %s -d template1 -c \"select hostname, dbid, fselocation from pg_filespace_entry, gp_segment_configuration where dbid=fsedbid and preferred_role =\'m\' and content=-1;\"'%(host, port, user)
+    (rc, out, err) = run_cmd(get_standby_filespace_entry)
+    if rc != 0:
+        raise Exception('Exception from executing psql query: %s'% get_standby_filespace_entry)
+    else:
+        result = out.split('\n')
+        file = open(config_file,'a')
+        for line in result:
+            if line.strip():
+                row = line.strip().split('|')
+                row = [col.strip() for col in row]
+                hostname = row[0]
+                standby_host= hostname
+                dbid = row[1]
+                fs_loc = os.path.join('/tmp/fs_standby',os.path.split(row[2])[1])
+                file.write(hostname+':'+dbid+':'+fs_loc)
+                file.write('\n')
+        file.close()
+
+    get_primary_filespace_entry= 'psql -t -h %s -p %s -U %s -d template1 -c \"select hostname, dbid, fselocation from pg_filespace_entry, gp_segment_configuration where dbid=fsedbid and preferred_role =\'p\' and content>-1;\"'%(host, port, user)
+    (rc, out, err) = run_cmd(get_primary_filespace_entry)
+    if rc != 0:
+        raise Exception('Exception from executing psql query: %s'% get_primary_filespace_entry)
+    else:
+        result = out.split('\n')
+        file = open(config_file,'a')
+        for line in result:
+            if line.strip():
+                row = line.strip().split('|')
+                row = [col.strip() for col in row] 
+                hostname = row[0]
+                primary_hosts.append(hostname)
+                dbid = row[1]
+                fs_loc = os.path.join('/tmp/fs_primary',os.path.split(row[2])[1])
+                file.write(hostname+':'+dbid+':'+fs_loc)
+                file.write('\n')
+        file.close()
+
+    get_mirror_filespace_entry= 'psql -t -h %s -p %s -U %s -d template1 -c \"select hostname, dbid, fselocation from pg_filespace_entry, gp_segment_configuration where dbid=fsedbid and preferred_role =\'m\' and content>-1;\"'%(host, port, user)
+    (rc, out, err) = run_cmd(get_mirror_filespace_entry)
+    if rc != 0:
+        raise Exception('Exception from executing psql query: %s'% get_mirror_filespace_entry)
+    else:
+        result = out.split('\n')
+        file = open(config_file,'a')
+        for line in result:
+            if line.strip():
+                row = line.strip().split('|')
+                row = [col.strip() for col in row] 
+                hostname = row[0]
+                mirror_hosts.append(hostname)
+                dbid = row[1]
+                fs_loc = os.path.join('/tmp/fs_mirror',os.path.split(row[2])[1])
+                file.write(hostname+':'+dbid+':'+fs_loc)
+                file.write('\n')
+        file.close()
+
+    for host in primary_hosts:
+        remove_dir(host,'/tmp/fs_primary')
+        create_dir(host,'/tmp/fs_primary')
+    for host in mirror_hosts:
+        remove_dir(host,'/tmp/fs_mirror')
+        create_dir(host,'/tmp/fs_mirror')
+    remove_dir(master_host,'/tmp/fs_master') 
+    remove_dir(standby_host,'/tmp/fs_standby')
+    create_dir(master_host,'/tmp/fs_master')
+    create_dir(standby_host,'/tmp/fs_standby')
+
+def remove_dir(host, directory):
+    cmd = 'gpssh -h %s -e \'rm -rf %s\''%(host, directory) 
+    run_cmd(cmd)
+
+def create_dir(host, directory):
+    cmd = 'gpssh -h %s -e \'mkdir -p %s\''%(host, directory)
+    run_cmd(cmd)
+
+def wait_till_change_tracking_transition(host='localhost', port=os.environ.get('PGPORT'), user=os.environ.get('USER')):
+    num_ct_nodes = 'psql -t -h %s -p %s -U %s -d template1 -c "select count(*) from gp_segment_configuration where mode =\'c\';"'%(host, port, user)
+    (rc, out, err) = run_cmd(num_ct_nodes)
+    if rc != 0:
+        raise Exception('Exception from executing psql query: %s'%num_ct_nodes)
+    else:
+        num_cl = int(out.strip())
+        count = 0
+        while(num_cl == 0):
+            time.sleep(30)
+            (rc, out, err) = run_cmd(num_ct_nodes)
+            num_cl = int(out.strip())
+            count = count + 1
+            if (count > 80):
+                raise Exception("Timed out: cluster not in change tracking")
+        return (True,num_cl)            
+
+
+def wait_till_insync_transition(host='localhost', port=os.environ.get('PGPORT'), user=os.environ.get('USER')):
+    num_unsync_nodes = 'psql -t -h %s -p %s -U %s -d template1 -c "select count(*) from gp_segment_configuration where mode <> \'s\' or status<> \'u\';"'%(host, port, user)
+    (rc, out, err) = run_cmd(num_unsync_nodes)
+    if rc != 0:
+        raise Exception('Exception from executing psql query: %s'%num_unsync_nodes)
+    else:
+        num_unsync = int(out.strip())
+        count = 0
+        while(num_unsync > 0):
+            time.sleep(30)
+            (rc, out, err) = run_cmd(num_unsync_nodes)
+            num_unsync = int(out.strip())
+            count = count + 1
+            if (count > 80): 
+                raise Exception("Timed out: cluster not in sync transition")
+        return True    
+
+def wait_till_resync_transition(host='localhost', port=os.environ.get('PGPORT'), user=os.environ.get('USER')):
+    num_resync_nodes = 'psql -t -h %s -p %s -U %s -d template1 -c "select count(*) from gp_segment_configuration where mode =\'r\';"'%(host, port, user)
+    num_insync_nodes = 'psql -t -h %s -p %s -U %s -d template1 -c "select count(*) from gp_segment_configuration where mode <>\'s\';"'%(host, port, user)
+    (rc1, out1, err1) = run_cmd(num_resync_nodes)
+    (rc2, out2, err2) = run_cmd(num_insync_nodes)
+    if rc1 !=0 or rc2 !=0:
+        raise Exception('Exception from executing psql query: %s'%num_unsync_nodes)
+    else:
+        num_resync = int(out1.strip())
+        num_insync = int(out2.strip())
+        count = 0
+        while(num_resync != num_insync):
+            time.sleep(30)
+            (rc1, out1, err1) = run_cmd(num_resync_nodes)
+            (rc2, out2, err2) = run_cmd(num_insync_nodes)
+            num_resync = int(out1.strip())
+            num_insync = int(out2.strip())
+            count = count + 1
+            if (count > 80): 
+                raise Exception("Timed out: cluster not in sync transition")
+        return True 
