@@ -90,7 +90,6 @@ def is_supported_version(version, upgrade=True):
     We do not support:
       Versions < PREVIOUS MINOR RELEASE
       Versions > main
-      Versions with unusual "builds" (eg 3.4.0.0_EAP1)
     '''
     
     if upgrade:
@@ -98,10 +97,8 @@ def is_supported_version(version, upgrade=True):
     else:
         upstr = "downgrade"
 
-    # Acceptable builds are 'dev', 'filerep', and any build that consists
-    # entirely of digits
     build = version.getVersionBuild()
-    if not re.match(r"(dev|filerep|\d+)", build):
+    if not re.match(r"(.*)", build):
         raise UpgradeError(
             "Greenplum Version '%s' is not supported for %s"
             % (str(version), upstr))            
