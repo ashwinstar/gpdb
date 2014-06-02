@@ -5387,6 +5387,8 @@ checkExpirationCapacityFC(ChunkTransportState *transportStates, ChunkTransportSt
 /*
  * checkExceptions
  * 		Check exceptions including packet expiration, deadlock, bg thread error, NIC failure...
+ * 		Caller should start from 0 with retry, so that the expensive check for deadlock and
+ * 		QD connection can be avoided in a healthy state.
  */
 static void
 checkExceptions(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn *conn, int retry, int timeout)
@@ -5406,15 +5408,19 @@ checkExceptions(ChunkTransportState *transportStates, ChunkTransportStateEntry *
 		}
 	}
 
-	if ((retry & 0x3) == 0)
+	if ((retry & 0x3) == 2)
 	{
 		checkDeadlock(pEntry, conn);
 		checkRxThreadError();
 		ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
 	}
 
-	/* NIC on master (and thus the QD connection) may become bad, check it. */
-	if ((retry & 0x3f) == 0)
+	/*
+	 * NIC on master (and thus the QD connection) may become bad, check it.
+	 * We check modulo 2 to correlate with the deadlock check above at the
+	 * initial iteration.
+	 */
+	if ((retry & 0x3f) == 2)
 		checkQDConnectionAlive();
 }
 
@@ -5523,7 +5529,7 @@ SendChunkUDPIFC(MotionLayerState *mlStates,
 				gotStops = true;
 			}
 		}
-		checkExceptions(transportStates, pEntry, conn, ++retry, timeout);
+		checkExceptions(transportStates, pEntry, conn, retry++, timeout);
 		doCheckExpiration = false;
 	}
 
@@ -5662,7 +5668,7 @@ SendEosUDPIFC(MotionLayerState *mlStates,
 					if (pollAcks(transportStates, pEntry->txfd, timeout))
 						handleAcks(transportStates, pEntry);
 
-					checkExceptions(transportStates, pEntry, conn, ++retry, timeout);
+					checkExceptions(transportStates, pEntry, conn, retry++, timeout);
 
 					if (retry >= MAX_TRY)
 						break;
