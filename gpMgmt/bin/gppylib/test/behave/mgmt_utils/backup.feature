@@ -1724,6 +1724,25 @@ Feature: Validate command line arguments
         And gpdbrestore should return a return code of 2
         Then gpdbrestore should print No schema name supplied to stdout
 
+    Scenario: Full backup with gpdbrestore -T for DB with FUNCTION having DROP SQL
+        Given the database is running
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/create_function_with_drop_table.sql fullbkdb"
+        When the user runs "gpcrondump -a -x fullbkdb"
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And all the data from "fullbkdb" is saved for verification
+        When table "public.ao_index_table" is deleted in "fullbkdb"
+        And the user runs "gpdbrestore -T public.ao_index_table -a" with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And verify that there is a "ao" table "public.ao_index_table" in "fullbkdb" with data
+        And verify that there is a "ao" table "public.ao_part_table" in "fullbkdb" with data
+        And verify that there is a "heap" table "public.heap_table" in "fullbkdb" with data
+
     @backupfire
     Scenario: Incremental restore with table filter
         Given the database is running

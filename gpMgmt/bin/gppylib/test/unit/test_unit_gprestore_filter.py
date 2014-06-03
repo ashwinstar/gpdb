@@ -1805,7 +1805,112 @@ CREATE TABLE ao_part_table (
         with open(outfile, 'r') as fd:
             results = fd.read()
         self.assertEquals(results, expected_out)
-      
+
+
+    def test_process_schema_user_function_having_drop_table(self):
+        test_case_buf = """--
+-- Greenplum Database database dump
+--
+
+SET statement_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = off;
+SET check_function_bodies = false;
+SET client_min_messages = warning;
+SET escape_string_warning = off;
+DROP TABLE public.heap_table;
+DROP TABLE public.ao_part_table;
+DROP PROCEDURAL LANGUAGE plpgsql;
+DROP SCHEMA public;
+
+SET default_with_oids = false;
+
+--
+-- Name: SCHEMA public; Type: COMMENT; Schema: -; Owner: dcddev
+--
+
+COMMENT ON SCHEMA public IS 'Standard public schema';
+
+SET search_path = some_schema, pg_catalog;
+
+--
+-- Name: ao_part_table_constraint; Type: CONSTRAINT; Schema: some_schema; Owner: dcddev; Tablespace:
+--
+
+ALTER TABLE ONLY ao_part_table
+    ADD CONSTRAINT constraint_name PRIMARY KEY (name);
+
+
+SET search_path = public, pg_catalog;
+
+SET default_tablespace = '';
+
+--
+-- Name: ao_part_table; Type: TABLE; Schema: public; Owner: dcddev; Tablespace:
+--
+
+CREATE TABLE ao_part_table (
+    column1 integer,
+    column2 character varying(20),
+    column3 date
+) DISTRIBUTED BY (column1); with (appendonly=true)
+
+SET search_path = foo, pg_catalog;
+
+---
+--- Name: foofunc(); Type: FUNCTION; Schema: foo; Owner: foo
+---
+
+CREATE OR REPLACE FUNCTION foofunc()
+RETURNS TEXT AS $$
+DECLARE ver TEXT;
+BEGIN
+DROP TABLE IF EXISTS footab;
+SELECT version() INTO ver;
+RETURN ver;
+END;
+$$ LANGUAGE plpgsql;"""
+
+        dump_schemas = ['public']
+        dump_tables = [('public', 'ao_part_table')]
+
+        infile = '/tmp/test_schema.in'
+        outfile = '/tmp/test_schema.out'
+        with open(infile, 'w') as fd:
+            fd.write(test_case_buf)
+
+        with open(infile, 'r') as fdin:
+            with open(outfile, 'w') as fdout:
+                process_schema(dump_schemas, dump_tables, fdin, fdout)
+
+        expected_out = """SET statement_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = off;
+SET check_function_bodies = false;
+SET client_min_messages = warning;
+SET escape_string_warning = off;
+DROP TABLE public.ao_part_table;
+SET default_with_oids = false;
+
+--
+SET search_path = public, pg_catalog;
+
+SET default_tablespace = '';
+
+--
+-- Name: ao_part_table; Type: TABLE; Schema: public; Owner: dcddev; Tablespace:
+--
+
+CREATE TABLE ao_part_table (
+    column1 integer,
+    column2 character varying(20),
+    column3 date
+) DISTRIBUTED BY (column1); with (appendonly=true)"""
+
+        with open(outfile, 'r') as fd:
+            results = fd.read().strip()
+        self.assertEquals(results, expected_out)
+
     def test_process_schema_function_drop_external_table(self):
         test_case_buf = """--
 -- Greenplum Database database dump

@@ -39,6 +39,7 @@ def process_schema(dump_schemas, dump_tables, fdin, fdout):
     output = False
     further_investigation_required = False
     search_path = True
+    passedDropSchemaSection = False
     for line in fdin:
         if search_path and (line[0] == set_start) and line.startswith(search_path_expr):
             further_investigation_required = False
@@ -52,12 +53,16 @@ def process_schema(dump_schemas, dump_tables, fdin, fdout):
             output = True
         elif (line[0] == drop_start) and line.startswith(drop_expr):
             if line.startswith('DROP TABLE') or line.startswith('DROP EXTERNAL TABLE'):
-                output = check_dropped_table(line, dump_tables)
+                if passedDropSchemaSection:
+                    output = False
+                else:
+                    output = check_dropped_table(line, dump_tables)
             else:
                 output = False
         elif line[:3] == comment_start_expr and line.startswith(comment_expr):
             name, type, schema = get_table_info(line)
             output = False
+            passedDropSchemaSection = True
             if type in ['TABLE', 'EXTERNAL TABLE']:
                 further_investigation_required = False
                 output = check_valid_table(schema, name, dump_tables)
@@ -72,6 +77,7 @@ def process_schema(dump_schemas, dump_tables, fdin, fdout):
                 if output:
                     search_path = True
         elif (line[:3] == comment_start_expr) and (line.startswith(comment_data_expr_a) or line.startswith(comment_data_expr_b)):
+            passedDropSchemaSection = True
             further_investigation_required = False
             name, type, schema = get_table_info(line)
             if type == 'TABLE DATA':
