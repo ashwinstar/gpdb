@@ -24,6 +24,8 @@ bin/pgbench
 bin/postgresql_conf_gp_additions
 bin/run_operator_tests.pl
 bin/test_fsync
+bin/gp_filedump
 docs/cli_help/gpsuspend_help
 lib/python/gppylib/programs/clsInjectFault.py
 sbin/gpsuspend.py
+
