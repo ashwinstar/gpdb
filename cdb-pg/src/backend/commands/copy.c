@@ -5392,14 +5392,14 @@ CopyReadAttributesCSV(CopyState cstate, bool *nulls, int *attr_offsets,
 					ereport(ERROR,
 							(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 							 errmsg("missing data for column \"%s\"",
-									NameStr(attr[m + 1]->attname)),
+									NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)),
 							 errOmitLocation(true)));
 
 				else if (attribute == 1 && input_len == 0)
 					ereport(ERROR,
 							(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 							 errmsg("missing data for column \"%s\", found empty data line",
-									NameStr(attr[m + 1]->attname)),
+									NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)),
 							 errOmitLocation(true)));
 			}
 
