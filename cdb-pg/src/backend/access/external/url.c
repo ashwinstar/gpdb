@@ -800,12 +800,16 @@ local_strstr(const char *str1, const char *str2)
 }
 
 /*
- * This function purpose is to make sure that the URL string contains a numerical IP address.
- * The input URL is in the parameter url. The output result URL is in the output parameter - buf.
- * When parameter - url already contains a numerical ip, then output parameter - buf will be a copy of url.
- * For this case calling getDnsAddress method inside make_url, will serve the purpose of IP validation.
- * But when parameter - url will contain a domain name, then the domain name substring will be changed to a numerical
- * ip address in the buf output parameter.
+ * This function purpose is to make sure that the URL string contains a
+ * numerical IP address.  The input URL is in the parameter url. The output
+ * result URL is in the output parameter - buf.  When parameter - url already
+ * contains a numerical ip, then output parameter - buf will be a copy of url.
+ * For this case calling getDnsAddress method inside make_url, will serve the
+ * purpose of IP validation.  But when parameter - url will contain a domain
+ * name, then the domain name substring will be changed to a numerical ip
+ * address in the buf output parameter.
+ *
+ * Returns the length of the converted URL string, excluding null-terminator.
  */
 static int
 make_url(const char *url, char *buf, bool is_ipv6)
@@ -821,48 +825,52 @@ make_url(const char *url, char *buf, bool is_ipv6)
 	char *p;
 	int port = 80; /* default for http */
 	bool  domain_resolved_to_ipv6 = false;
-		
-	if (! authority_start)
-	{
+
+	if (!authority_start)
 		elog(ERROR, "illegal url '%s'", url);
-	}
-	
+
 	authority_start += 2;
 	authority_end = strchr(authority_start, '/');
-	if (! authority_end)
+	if (!authority_end)
 		authority_end = authority_start + strlen(authority_start);
-	
+
 	hostname_start = strchr(authority_start, '@');
-	if (! (hostname_start && hostname_start < authority_end))
+	if (!(hostname_start && hostname_start < authority_end))
 		hostname_start = authority_start;
-	
-	
-	if ( is_ipv6 ) /* IPV6 */
+
+	if (is_ipv6) /* IPV6 */
 	{
 		int len;
-		
+
 		hostname_end = strchr(hostname_start, ']');
-		hostname_end += 1;
-		
-		/* port number exists in this url. get it */
-		len = authority_end - hostname_end;
-		if (len > 8)
+		if (hostname_end == NULL)
 			ereport(ERROR,
-					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-					 errmsg("<port> substring size must not exceed %d characters", 8)));
-		
-		memcpy(portstr, hostname_end + 1, len);
-		portstr[len] = 0;
-		port = atoi(portstr);
-		
+					(errcode(ERRCODE_INVALID_NAME),
+					 errmsg("unexpected IPv6 format %s", url)));
+		hostname_end += 1;
+
+		if (hostname_end[0] == ':')
+		{
+			/* port number exists in this url. get it */
+			len = authority_end - hostname_end;
+			if (len > 8)
+				ereport(ERROR,
+						(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+						 errmsg("<port> substring size must not exceed %d characters", 8)));
+
+			memcpy(portstr, hostname_end + 1, len);
+			portstr[len] = '\0';
+			port = atoi(portstr);
+		}
+
 		/* skippping the brackets */
-		hostname_end -=1;
-		hostname_start +=1;
+		hostname_end -= 1;
+		hostname_start += 1;
 	}
-	else 
+	else
 	{
 		hostname_end = strchr(hostname_start, ':');
-		if (! (hostname_end && hostname_end < authority_end))
+		if (!(hostname_end && hostname_end < authority_end))
 		{
 			hostname_end = authority_end;
 		}
@@ -873,70 +881,70 @@ make_url(const char *url, char *buf, bool is_ipv6)
 			if (len > 8)
 				ereport(ERROR,
 						(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-						 errmsg("<port> substring size must not exceed %d characters", 8)));			
-			
+						 errmsg("<port> substring size must not exceed %d characters", 8)));
+
 			memcpy(portstr, hostname_end + 1, len);
-			portstr[len] = 0;
+			portstr[len] = '\0';
 			port = atoi(portstr);
 		}
 	}
-	
-	if ( !port ) 
+
+	if (!port)
 		ereport(ERROR,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("<port> substring must contain only digits")));	
-	
+
 	if (hostname_end - hostname_start >= sizeof(hostname))
-	{
 		elog(ERROR, "hostname too long for url '%s'", url);
-	}
-	
+
 	memcpy(hostname, hostname_start, hostname_end - hostname_start);
 	hostname[hostname_end - hostname_start] = 0;
-	
+
 	hostip = getDnsAddress(hostname, port, ERROR);
-	
+
 	/*
-	 * test for the case where the URL originaly contained a domain name (so is_ipv6 was set to false)
-	 * but the DNS resolution in getDnsAddress returned an IPv6 address so know we also have to put the
-	 * square brackets [..] in the URL string.
+	 * test for the case where the URL originaly contained a domain name
+	 * (so is_ipv6 was set to false) but the DNS resolution in getDnsAddress
+	 * returned an IPv6 address so know we also have to put the square
+	 * brackets [..] in the URL string.
 	 */
-	if ( strchr(hostip, ':') != NULL && !is_ipv6 ) /* hit the case where a domain name returned an IPv6 address */
+	if (strchr(hostip, ':') != NULL && !is_ipv6)
 		domain_resolved_to_ipv6 = true;
-	 
-	
+
 	if (!buf)
 	{
-		int len = strlen(url) + 1 - strlen(hostname) + strlen(hostip);
-		if ( domain_resolved_to_ipv6 )
+		int len = strlen(url) - strlen(hostname) + strlen(hostip);
+		if (domain_resolved_to_ipv6)
 			len += 2; /* for the square brackets */
 		return len;
 	}
-	
+
 	p = buf;
 	len = hostname_start - url;
-	strncpy(p, url, len); 
-	p += len; 
+	strncpy(p, url, len);
+	p += len;
 	url += len;
-	
+
 	len = strlen(hostname);
 	url += len;
-	
+
 	len = strlen(hostip);
-	if ( domain_resolved_to_ipv6 )
+	if (domain_resolved_to_ipv6)
 	{
 		*p = '[';
 		p++;
 	}
-	strncpy(p, hostip, len); 
+	strncpy(p, hostip, len);
 	p += len;
-	if ( domain_resolved_to_ipv6 )
+	if (domain_resolved_to_ipv6)
 	{
 		*p = ']';
 		p++;
-	}	
-	
+	}
+
 	strcpy(p, url);
+	p += strlen(url);
+
 	return p - buf;
 }
 
@@ -1143,8 +1151,8 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 		int sz;
 
 		bool is_ipv6 = url_has_ipv6_format(file->url);
-		
-		sz = make_url(file->url, 0, is_ipv6);
+
+		sz = make_url(file->url, NULL, is_ipv6);
 
 		file->type = CFTYPE_CURL; /* marked as URL */
 
@@ -1158,7 +1166,7 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 
 		if (!IS_GPFDISTS_URI(url))
 		{
-			file->u.curl.curl_url = (char *)calloc(sz, 1);
+			file->u.curl.curl_url = (char *)calloc(sz + 1, 1);
 			if (file->u.curl.curl_url == NULL) 
 			{
 				url_fclose(file, false, pstate->cur_relname);
@@ -1194,7 +1202,7 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 			memcpy(file->u.curl.curl_url, file->url, url_len);
 			file->u.curl.for_write = forwrite;
 			
-			tmp_resolved = palloc0(sz);
+			tmp_resolved = palloc0(sz + 1);
 			make_url(file->url, tmp_resolved, is_ipv6);
 			
 			/* keep the same ipv6 logic here */
