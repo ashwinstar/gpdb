@@ -460,7 +460,7 @@ typedef struct RelOptInfo
 	char		rejectlimittype;
 	Oid			fmterrtbl;
 	int32		ext_encoding;
-	bool		isrescannable; /* true for ext tables false for ext web tables */
+	bool		isrescannable; /* false for ext web tables */
 	bool		writable;	   /* true for writable, false for readable ext tables*/
 	
 	/* used by various scans and joins: */

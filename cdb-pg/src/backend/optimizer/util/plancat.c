@@ -343,8 +343,8 @@ get_external_relation_info(Oid relationObjectId, RelOptInfo *rel)
 	rel->ext_encoding = extentry->encoding;
 	rel->writable = extentry->iswritable;
 
-	/* web tables are non rescannable. others are */
-	rel->isrescannable = !extentry->isweb;
+	/* any external tables are non-rescannable. */
+	rel->isrescannable = false;
 
 }
 
