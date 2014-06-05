@@ -108,6 +108,8 @@ class GpCronDump(Operation):
         self.list_filter_tables = options.list_filter_tables
         if options.local_dump_prefix:
              backup_utils.dump_prefix = options.local_dump_prefix + "_"
+        self.include_email_file = options.include_email_file
+        self.email_details = None
         self.ddboost_hosts = options.ddboost_hosts
         self.ddboost_user = options.ddboost_user
         self.ddboost_config_remove = options.ddboost_config_remove
@@ -188,6 +190,9 @@ class GpCronDump(Operation):
 
         if self.list_filter_tables and (not backup_utils.dump_prefix or not self.incremental):
             raise Exception('list filter tables option requires --prefix and --incremental')
+
+        if self.include_email_file:
+            self._validate_parse_email_File()
 
         # NetBackup params check
         if self.netbackup_service_host or self.netbackup_policy or self.netbackup_schedule:
@@ -615,7 +620,7 @@ class GpCronDump(Operation):
 
         self._validate_dump_target()
 
-        
+        dump_db_info_list = []
         # final_exit_status := numeric outcome of this python program
         # current_exit_status := numeric outcome of one particular dump,
         #                        in this loop over the -x arguments
@@ -834,9 +839,18 @@ class GpCronDump(Operation):
                                 current_exit_status, 
                                 deleted_dump_set)
             
-            MailDumpEvent("Report from gpcrondump on host %s [COMPLETED]" % self.cur_host,
-                          "Completed for database %s with return code %d [Start=%s End=%s] Options passed [%s]" 
-                          % (dump_database, current_exit_status, dump_outcome['time_start'], dump_outcome['time_end'], self.options_list)).run()
+            if self.dump_config:
+                dump_info_dict = defaultdict(dict)
+                dump_info_dict['host'] = self.cur_host
+                dump_info_dict['dbname'] = dump_database
+                dump_info_dict['exit_status'] = current_exit_status
+                dump_info_dict['start_time'] = dump_outcome['time_start']
+                dump_info_dict['end_time'] = dump_outcome['time_end']
+                dump_info_dict['options_passed'] = self.options_list
+
+                dump_db_info_list.append(dump_info_dict)
+            else:
+                self._send_email(dump_database, current_exit_status, dump_outcome['time_start'], dump_outcome['time_end'])
 
         if self.dump_config:
             config_outcome = DumpConfig(backup_dir = self.backup_dir,
@@ -846,6 +860,9 @@ class GpCronDump(Operation):
                                         ddboost = self.ddboost).run()
             if self.netbackup_service_host and self.netbackup_policy and self.netbackup_schedule:
                 backup_config_files_with_nbu(self.master_datadir, self.backup_dir, self.dump_dir, self.master_port, self.netbackup_service_host, self.netbackup_policy, self.netbackup_schedule, self.netbackup_block_size, self.netbackup_keyword)
+
+            for dump_db_info in dump_db_info_list:
+                self._send_email(dump_db_info['dbname'], dump_db_info['exit_status'], dump_db_info['start_time'], dump_outcome['time_end'])
 
         if self.ddboost and self.replicate:
             logger.info("Backup to local Data Domain successful.")
@@ -1192,6 +1209,43 @@ class GpCronDump(Operation):
         pgconf_dict = pgconf.readfile(datadir + "/postgresql.conf")
         return pgconf_dict.int('port')
 
+    def _validate_parse_email_File(self):
+        if os.path.isfile(self.include_email_file) is False:
+            raise Exception("\'%s\' file does not exist." % self.include_email_file)
+        if not self.include_email_file.endswith('.yaml'):
+            raise Exception("\'%s\' is not \'.yaml\' file. File containing email details should be \'.yaml\' file." % self.include_email_file)
+        if (os.path.getsize(self.include_email_file) > 0) is False:
+            raise Exception("\'%s\' file is empty." % self.include_email_file)
+        email_key_list = ["DBNAME","FROM", "SUBJECT"]
+        try:
+            with open(self.include_email_file, 'r') as f:
+                doc = yaml.load(f)
+            self.email_details = doc['EMAIL_DETAILS']
+            for email in self.email_details:
+                if not (all(keys in email for keys in email_key_list)):
+                    raise Exception("File not formatted")
+                if email['DBNAME'] is None:
+                    raise Exception("Database name is not provided")
+        except Exception as e:
+            raise Exception("\'%s\' file is not formatted properly:" % self.include_email_file)
+
+    def _send_email(self, dump_database, exit_status, start_time, end_time):
+        default_email = True
+        default_subject = "Report from gpcrondump on host %s [COMPLETED]" % self.cur_host
+        default_msg = "Completed for database %s with return code %d [Start=%s End=%s] Options passed [%s]" % (dump_database, exit_status, start_time, end_time, self.options_list) 
+        if self.include_email_file:
+            for email in self.email_details:
+                if dump_database in email['DBNAME']:
+                    default_email = False
+                    if email['FROM'] is None:
+                        MailDumpEvent(email['SUBJECT'], default_msg).run()
+                    elif email['SUBJECT'] is None:
+                        MailDumpEvent(default_subject, default_msg, email['FROM']).run()
+                    else:
+                        MailDumpEvent(email['SUBJECT'], default_msg, email['FROM']).run()
+        if default_email is True:
+            MailDumpEvent(default_subject, default_msg).run()
+
 def create_parser():
     parser = OptParser(option_class=OptChecker, 
                        version='%prog version $Revision: #5 $',
@@ -1283,6 +1337,8 @@ def create_parser():
                      help="Dump the tables named in this file for the specified database. Option can be used only once.")
     addTo.add_option('--exclude-table-file', dest='exclude_dump_tables_file', metavar="<filename>",
                      help="Exclude the tables named in this file from the dump. Option can be used only once.")
+    addTo.add_option('--email-file', dest='include_email_file', metavar="<filename>",
+                     help="Customize the 'Sender' and 'Subject' of the email to be sent after backup")
 
     # NetBackup params
     addTo.add_option('--netbackup-service-host', dest='netbackup_service_host', metavar="<server name>",

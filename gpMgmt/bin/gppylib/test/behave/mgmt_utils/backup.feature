@@ -5498,6 +5498,46 @@ Feature: Validate command line arguments
         And verify that the restored table "public.ao_index_table" in database "fullbkdb" is analyzed
         And verify that the table "public.heap_table" in database "fullbkdb" is not analyzed
 
+    Scenario: Gpcrondump with --email-file option
+        Given the database is running
+        And the database "testdb1" does not exist
+        And the database "testdb2" does not exist
+        And database "testdb1" exists
+        And database "testdb2" exists
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb1" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "testdb2" with data
+        And the mail_contacts file does not exist
+        And the mail_contacts file exists
+        And the yaml file "gppylib/test/behave/mgmt_utils/steps/data/test_email_details.yaml" stores email details is in proper format
+        When the user runs "gpcrondump -a -x testdb1,testdb2 --email-file gppylib/test/behave/mgmt_utils/steps/data/test_email_details.yaml --verbose"
+        Then gpcrondump should return a return code of 0
+        And verify that emails are sent to the given contacts with appropriate messages after backup of "testdb1,testdb2"
+        And the mail_contacts file does not exist
+
+    Scenario: Gpcrondump without mail_contacts
+        Given the database is running
+        And the database "testdb1" does not exist
+        And database "testdb1" exists
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb1" with data
+        And the mail_contacts file does not exist
+        When the user runs "gpcrondump -a -x testdb1"
+        Then gpcrondump should return a return code of 0
+        And gpcrondump should print unable to send dump email notification to stdout as warning
+
+    Scenario: Negative case for gpcrondump with --email-file option
+        Given the database is running
+        And the database "testdb1" does not exist
+        And database "testdb1" exists
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb1" with data
+        And the mail_contacts file does not exist
+        And the mail_contacts file exists
+        And the yaml file "gppylib/test/behave/mgmt_utils/steps/data/test_email_details_wrong_format.yaml" stores email details is not in proper format
+        When the user runs "gpcrondump -a -x testdb1 --email-file gppylib/test/behave/mgmt_utils/steps/data/test_email_details_wrong_format.yaml --verbose"
+        Then gpcrondump should return a return code of 2
+        And gpcrondump should print file is not formatted properly to stdout
+        And the mail_contacts file does not exist
+
+
     # THIS SHOULD BE THE LAST TEST
     @backupfire
     Scenario: cleanup for backup feature

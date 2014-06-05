@@ -2,10 +2,12 @@
 
 import thread
 import os
+import socket
 from gppylib.commands.base import Command, ExecutionError, REMOTE, WorkerPool, CommandResult
 from gppylib.db import dbconn
-from gppylib.test.behave_utils.utils import run_gpcommand, getRows
+from gppylib.test.behave_utils.utils import run_gpcommand, getRows, validate_parse_email_file
 from gppylib.gparray import GpArray
+from gppylib.operations.unix import CheckFile
 
 master_data_dir = os.environ.get('MASTER_DATA_DIRECTORY')
 
@@ -276,4 +278,92 @@ def impl(context, filetype, dir):
                 host = seg.getSegmentHostName()
                 cmd = Command('remove status file', "rm -f %s/gp_restore_status_*" % dir, ctxt=REMOTE, remoteHost=host)
                 cmd.run(validateAfter=True)
-    
+
+@given('the mail_contacts file does not exist')
+@then('the mail_contacts file does not exist')
+def impl(context):
+    if "HOME" in os.environ:
+        home_mail_file = os.path.join(os.environ["HOME"], "mail_contacts")
+        if CheckFile(home_mail_file).run():
+            os.remove(home_mail_file)
+    if "GPHOME" in os.environ:
+        mail_file = os.path.join(os.environ["GPHOME"], "bin", "mail_contacts")
+        if CheckFile(mail_file).run():
+            os.remove(mail_file)
+
+@given('the mail_contacts file exists')
+def impl(context):
+    context.email_contact = "example_test@gopivotal.com"
+    if "HOME" in os.environ:
+        home_mail_file = os.path.join(os.environ["HOME"], "mail_contacts")
+        mail_contact = home_mail_file
+    elif "GPHOME" in os.environ:
+        mail_file = os.path.join(os.environ["GPHOME"], "bin", "mail_contacts")
+        mail_contact = mail_file
+    f = file(mail_contact, 'w+')
+    f.write(context.email_contact)
+    f.close
+
+@given('the yaml file "{email_file_path}" stores email details is in proper format')
+def impl(context, email_file_path):
+    try:
+        validate_parse_email_file(context, email_file_path)
+    except Exception as e:
+        raise Exception(str(e))
+
+@given('the yaml file "{email_file_path}" stores email details is not in proper format')
+def impl(context, email_file_path):
+    exception_raised = False
+    try:
+        validate_parse_email_file(context, email_file_path)
+    except Exception as e:
+        exception_raised = True
+    if exception_raised == False:
+        raise Exception("File is in proper format")
+
+@then('verify that emails are sent to the given contacts with appropriate messages after backup of "{dblist}"')
+def impl(context, dblist):
+    cmd_list = []
+    sending_email_list = []
+    database_list = dblist.split(',')
+    stdout = context.stdout_message
+    for line in stdout.splitlines():
+        if "Sending mail to" in line:
+            str = line.split(':-')[1]
+            sending_email_list.append(str.strip())
+        if "Email command string=" in line:
+            log_msg, delim, txt = line.partition('=')
+            cmd_list.append(txt.strip())
+    if len(sending_email_list) != len(database_list):
+        raise Exception("Emails are not sent properly")
+    count = 0
+    for dbname in database_list:
+        #expected email details
+        for email in context.email_details:
+            if dbname in email['DBNAME']:
+                expected_from  = email['FROM']
+                expected_sub = email['SUBJECT']
+            else:
+                expected_sub = "Report from gpcrondump on host %s [COMPLETED]" % socket.gethostname()
+        #original email details
+        result_cmd = cmd_list[count]
+        str = result_cmd[result_cmd.find("-s")+4:]
+        result_sub = (str[:str.find('"')]).strip()
+        if expected_sub != result_sub:
+            raise Exception("Subject of the sent email is not correct")
+        if result_cmd.find("-- -f") >= 0:
+            result_from = result_cmd[result_cmd.find("-- -f")+6:]
+            if expected_from != result_from:
+                raise Exception("ef : RF", expected_from, result_from, count)
+                #raise Exception("Sender of the sent email is not correct")
+        count += 1
+
+@then('gpcrondump should print unable to send dump email notification to stdout as warning')
+def impl(context):
+    stdout = context.stdout_message
+    found = False
+    for line in stdout.splitlines():
+        if "Unable to send dump email notification" in line:
+           found = True
+    if found is False:
+        raise Exception("'Unable to send dump email notification' exception is not raised")

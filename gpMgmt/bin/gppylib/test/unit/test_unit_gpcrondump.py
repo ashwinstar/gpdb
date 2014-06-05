@@ -8,7 +8,9 @@ from gpcrondump import GpCronDump, FREE_SPACE_PERCENT
 from gppylib.operations.utils import DEFAULT_NUM_WORKERS
 from mock import patch, Mock
 from gppylib.mainUtils import ExceptionNoStackTraceNeeded
+from gppylib.operations.dump import MailDumpEvent
 import gppylib.operations.backup_utils as backup_utils
+import mock
 
 
 logger = gplog.get_unittest_logger()
@@ -61,6 +63,8 @@ class GpCronDumpTestCase(unittest.TestCase):
             self.verbose = False
             self.local_dump_prefix = None
             self.list_filter_tables = None
+            self.include_email_file = None
+            self.email_details = None
             self.netbackup_service_host = None
             self.netbackup_policy = None
             self.netbackup_schedule = None
@@ -827,6 +831,78 @@ class GpCronDumpTestCase(unittest.TestCase):
         prefix = backup_utils.dump_prefix
         backup_utils.dump_prefix = ''
         self.assertEqual(prefix, 'foo_')
+
+    @patch('gpcrondump.os.path.isfile', return_value=True)
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.os.path.getsize', return_value=111)
+    @patch('gpcrondump.yaml.load', return_value={'EMAIL_DETAILS': [{'FROM': 'RRP_MPE2_DCA_1', 'DBNAME': 'testdb100', 'SUBJECT': "backup completed for Database 'testdb100'"}]})
+    def test_validate_parse_email_File00(self, mock1, mock2, mock3, mock4):
+        options = GpCronDumpTestCase.Options()
+        options.include_email_file = "/tmp/abc.yaml"
+        m = mock.MagicMock()
+        with patch('__builtin__.open', m, create=True):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.os.path.isfile', return_value=False)
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    def test_validate_parse_email_File01(self, mock1, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.include_email_file = "/tmp/abc.yaml"
+        with self.assertRaisesRegexp(Exception, "\'%s\' file does not exist." % options.include_email_file):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.os.path.isfile', return_value=True)
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.os.path.getsize', return_value=111)
+    def test_validate_parse_email_File02(self, mock1, mock2, mock3):
+        options = GpCronDumpTestCase.Options()
+        options.include_email_file = "/tmp/abc"
+        with self.assertRaisesRegexp(Exception, "'%s' is not '.yaml' file. File containing email details should be '.yaml' file." %  options.include_email_file):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.os.path.isfile', return_value=True)
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.os.path.getsize', return_value=0)
+    def test_validate_parse_email_File03(self, mock1, mock2, mock3):
+        options = GpCronDumpTestCase.Options()
+        options.include_email_file = "/tmp/abc.yaml"
+        with self.assertRaisesRegexp(Exception, "'%s' file is empty." % options.include_email_file):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.os.path.isfile', return_value=True)
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.os.path.getsize', return_value=111)
+    @patch('gpcrondump.yaml.load', return_value={'EMAIL_DETAILS': [{'FROM': 'RRP_MPE2_DCA_1', 'NAME': 'testdb100', 'SUBJECT': "backup completed for Database 'testdb100'"}]})
+    def test_validate_parse_email_File04(self, mock1, mock2, mock3, mock4):
+        options = GpCronDumpTestCase.Options()
+        options.include_email_file = "/tmp/abc.yaml"
+        m = mock.MagicMock()
+        with self.assertRaisesRegexp(Exception, "\'%s\' file is not formatted properly." % options.include_email_file):
+            with patch('__builtin__.open', m, create=True):
+                cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.os.path.isfile', return_value=True)
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.os.path.getsize', return_value=111)
+    @patch('gpcrondump.yaml.load', return_value={'EMAIL_DETAILS': [{'FROM': 'RRP_MPE2_DCA_1', 'DBNAME': None, 'SUBJECT': "backup completed for Database 'testdb100'"}]})
+    def test_validate_parse_email_File05(self, mock1, mock2, mock3, mock4):
+        options = GpCronDumpTestCase.Options()
+        options.include_email_file = "/tmp/abc.yaml"
+        m = mock.MagicMock()
+        with self.assertRaisesRegexp(Exception, "\'%s\' file is not formatted properly." % options.include_email_file):
+            with patch('__builtin__.open', m, create=True):
+                cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.MailDumpEvent')
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    def test_send_email00(self, mock1, MailDumpEvent):
+        options = GpCronDumpTestCase.Options()
+        dump_database = 'testdb1'
+        current_exit_status = 0
+        time_start = '12:07:09'
+        time_end = '12:08:18'
+        cron = GpCronDump(options, None)
+        cron._send_email(dump_database, current_exit_status, time_start, time_end)
 
 #------------------------------- Mainline --------------------------------
 if __name__ == '__main__':

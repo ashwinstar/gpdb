@@ -1557,9 +1557,10 @@ class VacuumDatabase(Operation):
 
 
 class MailDumpEvent(Operation):
-    def __init__(self, subject, message):
+    def __init__(self, subject, message, sender=None):
         self.subject = subject
         self.message = message
+        self.sender = sender or None
     def execute(self):
         if "HOME" not in os.environ or "GPHOME" not in os.environ:
             logger.warn("Could not find mail_contacts file. Set $HOME and $GPHOME.")
@@ -1581,18 +1582,24 @@ class MailDumpEvent(Operation):
             to_addrs = [line.strip() for line in f]
         MailEvent(subject = self.subject,
                   message = self.message,
-                  to_addrs = to_addrs).run()
+                  to_addrs = to_addrs,
+                  sender = self.sender).run()
 
 class MailEvent(Operation):
     # TODO: move this to gppylib.operations.common? 
-    def __init__(self, subject, message, to_addrs):
+    def __init__(self, subject, message, to_addrs, sender=None):
         if isinstance(to_addrs, str):
             to_addrs = [to_addrs]
         self.subject = subject
         self.message = message
         self.to_addrs = to_addrs
+        self.sender = sender or None
     def execute(self):
         logger.info("Sending mail to %s" % ",".join(self.to_addrs))
         cmd = "/bin/mailx" if curr_platform == SUNOS else findCmdInPath('mail')
-        Command('Sending email', 
-                'echo "%s" | %s -s "%s" %s' % (self.message, cmd, self.subject, " ".join(self.to_addrs))).run(validateAfter=True)
+        if self.sender is None:
+            command_str = 'echo "%s" | %s -s "%s" %s' % (self.message, cmd, self.subject, " ".join(self.to_addrs))
+        else:
+            command_str = 'echo "%s" | %s -s "%s" %s -- -f %s' % (self.message, cmd, self.subject, " ".join(self.to_addrs), self.sender)
+        logger.debug("Email command string= %s" % command_str)
+        Command('Sending email', command_str).run(validateAfter=True)

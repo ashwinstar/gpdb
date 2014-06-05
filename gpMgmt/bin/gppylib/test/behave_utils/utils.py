@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import re, os, signal, time, filecmp, stat, fileinput
-
+import yaml
 from gppylib.commands.gp import GpStart, chk_local_db_running
 from gppylib.commands.base import Command, ExecutionError, REMOTE
 from gppylib.db import dbconn
@@ -1283,3 +1283,22 @@ def delete_rows_from_table(context, dbname, table_name, column_name, info):
     with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
         dbconn.execSQL(conn, DELETE_SQL)
         conn.commit()
+
+def validate_parse_email_file(context, email_file_path):
+    if os.path.isfile(email_file_path) is False:
+        raise Exception("\'%s\' file does not exist." % email_file_path)
+    if email_file_path.split('.')[1] != "yaml":
+        raise Exception("\'%s\' is not \'.yaml\' file. File containing email details should be \'.yaml\' file." % email_file_path)
+    if (os.path.getsize(email_file_path) > 0) is False:
+        raise Exception("\'%s\' file is empty." % email_file_path)
+    email_key_list = ["DBNAME","FROM", "SUBJECT"]
+    try:
+        with open(email_file_path, 'r') as f:
+            doc = yaml.load(f)
+        context.email_details = doc['EMAIL_DETAILS']
+        for email in context.email_details:
+            for key in email.keys():
+                if key not in email_key_list:
+                    raise Exception(" %s not present" % key)
+    except Exception as e:
+        raise Exception("\'%s\' file is not formatted properly." % email_file_path)

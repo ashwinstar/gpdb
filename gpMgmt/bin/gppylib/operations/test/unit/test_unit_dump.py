@@ -1,5 +1,4 @@
-#!/usr/bin/env python
-#
+#!/usr/bin/env python #
 # Copyright (c) Greenplum Inc 2012. All Rights Reserved. 
 #
 
@@ -15,7 +14,7 @@ from gppylib.operations.dump import DumpDatabase, DumpGlobal, compare_dict, crea
                                     get_last_state, get_last_operation_data, get_dirty_partition_tables,\
                                     write_dirty_file, write_partition_list_file, write_dirty_file_to_temp, write_state_file,\
                                     get_pgstatlastoperations_dict, get_tables_with_dirty_metadata, compare_metadata,\
-                                    CreateIncrementsFile, PostDumpDatabase, get_dirty_tables, validate_current_timestamp,\
+                                    CreateIncrementsFile, PostDumpDatabase, get_dirty_tables, validate_current_timestamp, MailEvent,\
                                     validate_modcount, generate_dump_timestamp, get_filter_file, filter_dirty_tables, get_backup_dir, \
                                     update_filter_file, backup_state_files_with_nbu, backup_cdatabase_file_with_nbu, backup_report_file_with_nbu, \
                                     backup_global_file_with_nbu, backup_config_files_with_nbu
@@ -2110,6 +2109,17 @@ class DumpGlobalTestCase(unittest.TestCase):
             seg.getSegmentDataDirectory.return_value = "/data"
 
         backup_config_files_with_nbu(master_datadir, backup_dir, dump_dir, master_port, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword, timestamp_key)
+
+class MailEventTestCase(unittest.TestCase):
+
+    def setUp(self):
+        self.mailEvent = MailEvent(subject="test", message="Hello", to_addrs="example@gopivotal.com")
+
+    @patch('gppylib.operations.dump.Command.run')
+    @patch('gppylib.operations.dump.findCmdInPath', return_value='/bin/mail')
+    def test_mail_execute_00(self, mock1, mock2):
+        m = MailEvent(subject="test", message="Hello", to_addrs="example@gopivotal.com")
+        m.execute()
 
 if __name__ == '__main__':
     unittest.main()
