@@ -712,3 +712,42 @@ AppendOnlyCompact(Relation aorel,
 		pfree(segfile_array);
 	}
 }
+
+/*
+ * Returns true if the relation has no tuples.  Prepare phase of
+ * compaction invokes this function on each QE.
+ *
+ * Examples of empty tables:
+ * 1. parent of a partitioned table
+ * 2. table that is created but no tuples have been inserted yet
+ * 3. table from which all existing tuples are deleted and the table
+ * is vacuumed.  This is a special case in which pg_aoseg_<oid> has
+ * non-zero number of rows but tupcount value is zero for all rows.
+ */
+bool
+AppendOnlyCompaction_IsRelationEmpty(Relation aorel)
+{
+	AppendOnlyEntry *aoEntry;
+	Relation		pg_aoseg_rel;
+	TupleDesc		pg_aoseg_dsc;
+	HeapTuple		tuple;
+	HeapScanDesc	aoscan;
+	bool empty = true;
+
+	Assert(RelationIsAoRows(aorel) || RelationIsAoCols(aorel));
+
+	aoEntry = GetAppendOnlyEntry(RelationGetRelid(aorel), SnapshotNow);
+	pg_aoseg_rel = heap_open(aoEntry->segrelid, AccessShareLock);
+	pg_aoseg_dsc = RelationGetDescr(pg_aoseg_rel);
+	aoscan = heap_beginscan(pg_aoseg_rel, SnapshotNow, 0, NULL);
+	while ((tuple = heap_getnext(aoscan, ForwardScanDirection)) != NULL &&
+		   empty)
+	{
+		if (0 < fastgetattr(tuple, Anum_pg_aoseg_tupcount,
+							pg_aoseg_dsc, NULL))
+			empty = false;
+	}
+	heap_endscan(aoscan);
+	heap_close(pg_aoseg_rel, AccessShareLock);
+	return empty;
+}

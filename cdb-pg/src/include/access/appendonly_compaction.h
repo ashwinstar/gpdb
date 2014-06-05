@@ -34,4 +34,5 @@ extern void AppendOnlyThrowAwayTuple(Relation rel, MemTuple tuple,
 		TupleTableSlot	*slot, MemTupleBinding *mt_bind);
 extern void AppendOnlyTruncateToEOF(Relation aorel);
 extern bool HasLockForSegmentFileDrop(Relation aorel);
+extern bool AppendOnlyCompaction_IsRelationEmpty(Relation aorel);
 #endif

@@ -200,6 +200,14 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 #endif
 
 	/*
+	 * MPP-23647.  Update xid limits for heap as well as appendonly
+	 * relations.  This allows setting relfrozenxid to correct value
+	 * for an appendonly (AO/CO) table.
+	 */
+	vacuum_set_xid_limits(vacstmt, onerel->rd_rel->relisshared,
+						  &OldestXmin, &FreezeLimit);
+
+	/*
 	 * Execute the various vaccum operations. Appendonly tables are treated
 	 * differently.
 	 */
@@ -216,9 +224,37 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 				AppendOnlyTruncateToEOF(onerel);
 			else
 				AOCSTruncateToEOF(onerel);
-			update_relstats = false;
+			/*
+			 * MPP-23647.  For empty tables, we skip compaction phase
+			 * and cleanup phase.  Therefore, we update the stats
+			 * (specifically, relfrozenxid) in prepare phase if the
+			 * table is empty.  Otherwise, the stas will be updated in
+			 * the cleanup phase, when we would have computed the
+			 * correct values for stats.
+			 */
+			if (AppendOnlyCompaction_IsRelationEmpty(onerel))
+			{
+				update_relstats = true;
+				/*
+				 * For an empty relation, the only stats we care about
+				 * is relfrozenxid and relhasindex.  We need to be
+				 * mindful of correctly setting relhasindex here.
+				 * relfrozenxid is already taken care of above by
+				 * calling vacuum_set_xid_limits().
+				 */
+				vacrelstats->hasindex = onerel->rd_rel->relhasindex;
+			}
+			else
+			{
+				/*
+				 * For a non-empty relation, follow the usual
+				 * compaction phases and do not update stats in
+				 * prepare phase.
+				 */
+				update_relstats = false;
+			}
 		}
-		else if(!vacummStatement_IsInAppendOnlyCleanupPhase(vacstmt))
+		else if (!vacummStatement_IsInAppendOnlyCleanupPhase(vacstmt))
 		{
 			vacuum_appendonly_rel(onerel, vacstmt);
 			update_relstats = false;
@@ -234,9 +270,6 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 	else
 	{
 		/* heap relation */
-
-		vacuum_set_xid_limits(vacstmt, onerel->rd_rel->relisshared,
-							  &OldestXmin, &FreezeLimit);
 
 		/* Set threshold for interesting free space = average request size */
 		/* XXX should we scale it up or down?  Adjust vacuum.c too, if so */
