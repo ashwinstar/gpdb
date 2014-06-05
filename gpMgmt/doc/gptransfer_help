@@ -1,0 +1,542 @@
+COMMAND NAME: gptransfer
+
+For Greenplum Database version 4.2 and later, gptransfer copies database 
+objects from databases in a source Greenplum Database system to 
+databases in a destination Greenplum Database system. 
+
+*****************************************************
+SYNOPSIS
+*****************************************************
+
+gptransfer  { --full | [-d <database1> [ -d <database2> ... ]]
+  [-t <db.schema.table> [ -t <db1.schema1.table1> ... ]]
+  [-f <table_file> ] } 
+  [--delimiter <delim> ]
+  [--skip-existing | --truncate | --drop] 
+  [--analyze] [--validate=<type> ] [-x] [--dry-run] 
+  [--schema-only ]
+
+  [--source-host=<source_host> [--source-port=<source_port>] 
+  [--source-user=<source_user>] ]
+  [--base-port=<base_gpfdist_port>]
+  [--dest-host=<dest_host> --source-map-file=<host_map_file> 
+  [--dest-port=<dest_port>] [--dest-user=<dest_user>] ]
+  [--dest-database=<dest_database_name>] 
+
+  [--batch-size=<batch_size>] [--sub-batch-size=<sub_batch_size>]
+  [--timeout <seconds>]
+  [--max-line-length=<length>] 
+  [--work-base-dir=<work_dir>] [-l <log_dir>] 
+
+  [-v | --verbose] 
+  [-q |--quiet] 
+  [-a] 
+
+gptransfer --version 
+
+gptransfer h |-? | --help 
+
+
+*****************************************************
+DESCRIPTION
+*****************************************************
+
+The gptransfer utility copies database objects from a source Greenplum 
+Database system to a destination system. You can perform one of the 
+following types of operations: 
+
+* Copy a Greenplum Database system with the --full option. 
+
+  This option copies all user created databases in a source system to a 
+  different destination system. If you specify the --full option, you must 
+  specify both a source and destination system. The destination system 
+  cannot contain any user defined databases, only the default databases 
+  postgres, template0, and template1. 
+
+* Copy a set of database tables with a combination of the -d, -f, and -t 
+  options. 
+
+  This option copies a set of database tables to a destination system. If 
+  the destination system is the same as the source system, you must also 
+  specify a destination database with the --dest-database option. When you 
+  specify a destination database, the source database tables are copied 
+  into the specified destination database. 
+
+If an invalid set of gptransfer options are specified, or if a specified 
+source table or database does not exist, gptransfer returns an error and 
+quits. No data is copied. 
+
+To copy database objects between Greenplum Database systems gptransfer 
+utility uses: 
+
+* The Greenplum Database utility gpfdist on the source database system. 
+  The gpfdists protocol is not supported 
+
+* Writeable external tables on the source database system and readable 
+  external tables on the destination database system. 
+
+* Named pipes that transfer the data between a writeable external table 
+  and a readable external table. 
+
+When copying data into the destination system, it is redistributed on 
+the Greenplum Database segments of the destination system. This is the 
+flow of data when gptransfer copies database data: 
+
+writable external table > gpfidst > named pipe > gpfdist > readable external table
+
+
+*****************************************************
+NOTES
+*****************************************************
+
+When copying database data between different Greenplum Database systems, 
+gptransfer requires a text file that lists all the source segment host 
+names and IP addresses. Specify the name and location of the file with 
+the --source-map-file option. If the file is missing or not all segment 
+hosts are listed, gptransfer returns an error and quits. See the 
+description of the option for file format information. 
+
+The source and destination Greenplum Database segment hosts need to be 
+able to communicate with each other. To ensure that the segment hosts 
+can communicate, you can use a tool such as the Linux netperf utility. 
+
+If a filespace has been created for a source Greenplum Database system, 
+a corresponding filespace must exist on the target system. 
+
+SSH keys must be exchanged between the two systems before using 
+gptransfer. The gptransfer utility connects to the source system with SSH to 
+create the named pipes and start the gpfdist instances. You can use the 
+Greenplum Database gpssh-exkeys utility to exchange keys between 
+Greenplum Database hosts. 
+
+Source and destination systems must be able to access the gptransfer work 
+directory. The default directory is the user's home directory. You can 
+specify a different directory with the --work-base-dir option. 
+
+The gptransfer utility does not move configuration files such as 
+postgres.conf and pg_hba.conf. You must set up the destination system 
+configuration separately. 
+
+The gptransfer utility does not move external objects such as jar files, 
+shared object files. You must install the external objects separately. 
+
+The gptransfer utility does not move dependent database object unless you 
+specify the --full option. For example, if a table has a default value 
+on a column that is a user-defined function, that function must exist in 
+the destination system database when using the -t, -d, or -f options. 
+
+If you move a set of database tables with the -d, -t, and -f options, 
+and the destination table or database does not exist, gptransfer creates 
+it. 
+
+If a table exists on the destination system and one of the options 
+--skip-existing, --truncate, or --drop is not specified, gptransfer 
+returns an error and quits. 
+
+If an error occurs when during the process of copying a table, or table 
+validation fails, gptransfer continues copying the other specified tables. 
+After gptransfer finishes, it displays a list of tables where an error 
+occurred, writes the names of tables that failed into a text file, and 
+then prints the name of the file. You can use this file with the 
+gptransfer -f option to retry copying tables. 
+
+The name of the file that contains the list of tables where errors 
+occurred is failed_migrated_tables_<yyyymmdd_hhmmss>.txt. The 
+<yyyymmdd_hhmmss> is a time stamp when the gptransfer process was started. 
+The file is created in the directory were gptransfer is executed. 
+
+The gp_external_max_segs server configuration parameter controls the 
+number of segment instances that can access a single gpfdist instance 
+simultaneously. Setting a low value might affect gptransfer performance. 
+For information about the parameter, see the "Greenplum Database 
+Reference Guide". 
+
+
+*****************************************************
+LIMITATION FOR THE SOURCE AND DESTINATION SYSTEMS
+*****************************************************
+
+If you are copying data from a system with a larger number of segments 
+to a system fewer number of segment hosts. The total number of primary 
+segments on the destination system must be greater than or equal to the 
+total number of segment hosts on the source system. 
+
+For example, a quarter rack V1 DCA has a total of 24 primary segments. 
+The means the source side cannot have more than 24 segment hosts (one 
+and one-half racks). 
+
+
+*****************************************************
+OPTIONS
+*****************************************************
+
+-a 
+
+ Quiet mode, do not prompt the user for confirmation. 
+
+
+--analyze 
+
+ Run the ANALYZE command on non-system tables. The default is to not run 
+ the ANALYZE command. 
+
+
+ --base-port=<base_gpfdist_port> 
+
+ Base port for gpfdist on source segment systems. If not specified, the 
+ default is 8000. 
+
+
+--batch-size=<batch_size> 
+
+ Sets the maximum number of tables that gptransfer concurrently copies to 
+ the destination database. If not specified, the default is 2. The 
+ maximum is 10. 
+
+
+-d <database_name> 
+
+  A source database to copy. This option can be specified multiple times 
+  to copy multiple databases to the destination system. The user defined 
+  tables and table data is copied to the destination system. Wildcard 
+  characters are not supported. 
+
+  If the source database does not exist, gptransfer returns an error and 
+  quits. If a destination database does not exist a database is created. 
+
+  Not valid with the --full option. 
+
+
+--delimiter=<delim>
+
+ Delimiter to use for external tables. Specify a single ASCII character 
+ that separates columns within each row of data. The default is octal 
+ character \001, the SOH character. 
+
+ 
+--dest-database=<dest_database_name> 
+
+ The database in the destination Greenplum Database system. If not 
+ specified, the source tables are copied into a destination system 
+ database with the same name as the source system database. 
+
+ This option is required if the source and destination Greenplum Database 
+ systems are the same. 
+
+ If destination database does not exist, it is created. 
+
+ Not valid with the --full option. 
+
+
+--dest-host=<dest_host> 
+
+ Destination Greenplum Database hostname or IP address. If not specified, 
+ the default is the host the system running gptransfer (127.0.0.1) 
+
+
+--dest-port=<dest_port>
+
+Destination Greenplum Database port number, If not specified, the 
+default is 5432. 
+
+
+--dest-user=<dest_user> 
+
+ User ID that is used to connect to the destination Greenplum Database 
+ system. If not specified, the default is the user gpadmin. 
+
+
+--drop 
+
+ Specify this option to drop the table that is in the destination 
+ database if it already exists. Before copying table data, gptransfer drops 
+ the table and creates it again. 
+
+ At most, only one of the options can be specified --skip-existing, 
+ --truncate, or --drop. If one of them is not specified and the table 
+ exists in the destination system, gptransfer returns an error and quits. 
+
+ Not valid with the --full option. 
+
+
+--dry-run 
+
+ When you specify this option, gptransfer generates a list of the 
+ migration operations that would have been performed with the specified 
+ options. The data is not migrated. 
+
+ The information is displayed at the command line and written to the log 
+ file. 
+
+
+-f <table_file>
+
+ The location and name of file containing list of fully qualified table 
+ names to copy from the Greenplum Database source system. In the text 
+ file, you specify a single fully qualified table per line. Wildcard 
+ characters are not supported. 
+
+  sales.public.clients
+  sales.public.merchants
+  demo.test.lineitem
+
+ If the source table does not exist, gptransfer returns an error and quits. 
+ If the destination database or table does not exist, it is created. 
+
+ Only the table and table data is copied. Dependent objects are not 
+ copied. 
+
+ You cannot specify views, or system catalog tables. The --full option 
+ copies views. 
+
+ Not valid with the --full option. 
+
+
+--full 
+
+ Full migration of a Greenplum Database source system to a destination 
+ system. You must specify the options for the destination system, the 
+ --source-map-file option, the --dest-host option, and if necessary, the 
+ other destination system options. 
+
+ The --full option cannot be specified with the -t, -d, or -f options. 
+
+ A full migration copies all database objects including, tables, users, 
+ roles, functions, and resource queues for all user defined databases. 
+ The default databases, postgres, template0 and template1 are not moved. 
+
+ If a database exists in the destination system, besides the default 
+ postgres, template0 and template1 databases, gptransfer returns an error 
+ and quits. 
+
+
+-l <log_dir> 
+
+ Specify the gptransfer log file directory. If not specified, the default 
+ is ~/AdminLogs. 
+
+
+--max-line-length=<length> 
+
+
+ Sets the maximum allowed data row length in bytes for the gpfidst 
+ utility. If not specified, the default is 10485760. Valid range is 32768 
+ (32K) to 268435456 (256MB). 
+
+ Should be used when user data includes very wide rows (or when line too 
+ long error message occurs). Should not be used otherwise as it increases 
+ resource allocation. 
+
+
+-q | --quiet 
+
+ If specified, suppress status messages. Messages are only sent to the 
+ log file. 
+
+--schema-only
+
+ Create only the schemas specified by the command. Do not transfer data.
+
+ If specified with the --full option, gptransfer replicates the complete 
+ database schema, including all tables, views, user defined types (UDT), 
+ and user defined functions (UDF) for the source databases. No data is 
+ transferred. 
+
+ If you specify tables with the -t or -f option with --schema-only, 
+ gptransfer creates only the tables. No data is transferred. 
+
+ Not valid with the --truncate option. 
+
+ 
+--skip-existing 
+
+ Specify this option to skip copying a table from the source database if 
+ the table already exists in the destination database. 
+
+ At most, only one of the options can be specified --skip-existing, 
+ --truncate, or --drop. If one of them is not specified and the table 
+ exists in the destination system, gptransfer returns an error and quits. 
+
+ Not valid with the --full option. 
+
+
+--source-host=<source_host> 
+
+ Source Greenplum Database host name or IP address. If not specified, the 
+ default host is the system running gptransfer (127.0.0.1). 
+
+
+--source-map-file=<host_map_file> 
+
+ File that lists source segment host name and IP addresses. If the file 
+ is missing or not all segment hosts are listed, gptransfer returns an 
+ error and quits. 
+
+ Each line of the file contains a source host name and the host IP 
+ address separated by a comma: hostname,IPaddress. This example lists 
+ four Greenplum Database hosts and their IP addresses. 
+
+  sdw1,172.168.2.1
+  sdw2,172.168.2.2
+  sdw3,172.168.2.3
+  sdw4,172.168.2.4
+
+ This option is required if the --full option is specified or if the 
+ source Greenplum Database system is different than the destination 
+ system. This option is not required if source and destination systems 
+ are the same. 
+
+
+--source-port=<source_port> 
+
+ Source Greenplum Database port number. If not specified, the default is 
+ 5432. 
+
+
+--source-user=<source_user> 
+
+ User ID that is used to connect to the source Greenplum Database system. 
+ If not specified, the default is the user gpadmin. 
+
+
+--sub-batch-size=<sub_batch_size> 
+
+ Specifies the maximum degree of parallelism of the operations performed 
+ when migrating a table such as starting gpfdist instances, creating 
+ named pipes for the move operations. If not specified, the default is 25. 
+ The maximum is 100. 
+
+ Specify the --batch-size option to control the the maximum number of 
+ tables that gptransfer concurrently processes. 
+ 
+ 
+-t <db.schema.table> 
+
+
+ A table from the source database system to copy. The fully qualified 
+ table name must be specified, for example -t sales.public.clients. 
+ Wildcard characters are not supported. 
+
+ If the destination table or database does not exist, it is created. This 
+ option can be specified multiple times to include multiple tables. Only 
+ the table and table data are copied. Dependent objects are not copied. 
+
+ If the source table does not exist, gptransfer returns an error and quits. 
+
+ Not valid with the --full option. 
+
+ 
+--timeout <seconds>
+
+ Specify the time out value in seconds that gptransfer passes the gpfdist 
+ processes that gptransfer uses. The value is the time allowed for 
+ Greenplum Database to establish a connection to a gpfdist process. 
+ You might need to increase this value when operating on high-traffic 
+ networks. 
+
+ The default value is 300 seconds (5 minutes). The minimum value is 2 
+ seconds, the maximum value is 600 seconds. 
+
+
+--truncate 
+
+ Specify this option to truncate the table that is in the destination 
+ database if it already exists. 
+
+ At most, only one of the options can be specified --skip-existing, 
+ --truncate, or --drop. If one of them is not specified and the table 
+ exists in the destination system, gptransfer returns an error and quits. 
+
+ Not valid with the --full option. 
+
+
+--validate=<type> 
+
+ Perform data validation on table data. These are the supported types of 
+ validation. 
+
+  count - Specify this value to compare row counts between source and 
+     destination table data. 
+
+  MD5 - Specify this value to compare MD5 values between source and 
+     destination table data. 
+
+ If validation for a table fails, gpfidist displays the name of the table 
+ and writes the file name to the text file 
+ failed_migrated_tables_<yyyymmdd_hhmmss>.txt. The yyyymmdd_hhmmss is a 
+ time stamp when the gptransfer process was started. The file is created in 
+ the directory were gptransfer is executed. 
+
+ NOTE: The file contains the table names were validation failed or other 
+ errors occurred during table migration. 
+
+
+-v |--verbose 
+
+ If specified, sets the logging level to verbose. Additional log 
+ information is written to the log file and the command line during 
+ command execution. 
+
+
+--work-base-dir=<work_dir> 
+
+ Specify the directory that gptransfer uses to store temporary working 
+ files such as PID files and named pipes. The default directory is
+ the user's home directory. 
+
+ Source and destination systems must be able to access the gptransfer work 
+ directory. 
+
+
+-x 
+
+ Acquire an exclusive lock on tables during the migration to prevent 
+ insert or updates. 
+
+ On the source database, an exclusive lock is acquired when gptransfer 
+ inserts into the external table and is released after validation. 
+
+ On the destination database, an exclusive lock is acquired when gptransfer 
+ selects from external table and released after validation. 
+
+ NOTE: If -x option is not specified and --validate is specified, 
+ validation failures occur if data is inserted into either the source or 
+ destination table during the migration process. The gptransfer utility 
+ displays messages if validation errors occur. 
+
+
+-h | -? | --help 
+
+Displays the online help. 
+
+
+--version 
+
+ Displays the version of this utility. 
+
+
+
+*****************************************************
+EXAMPLE
+*****************************************************
+
+This command copies the table public.t1 from the database db1 and all 
+tables in the database db2 to the system mytest2. 
+
+ gptransfer -t db1.public.t1 -d db2 --dest-host=mytest2 
+    --source-map-file=gp-source-hosts --truncate
+
+If the databases db1 and db2 do not exist on the system mytest2, they 
+are created. If any of the source tables exist on the destination 
+system, gptransfer truncates the table and copies the data from the 
+source to the destination table. 
+
+
+*****************************************************
+See Also
+*****************************************************
+
+gpfdist 
+
+See the "Greenplum Database Database Administrator Guide" for 
+information about loading and unloading data. 
