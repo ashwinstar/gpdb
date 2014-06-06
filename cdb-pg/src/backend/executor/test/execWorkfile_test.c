@@ -87,6 +87,48 @@ test__ExecWorkFile_Create__InTopMemContext(void **state)
 
 }
 
+/* ==================== ExecWorkFile_Open ==================== */
+/*
+ * Test that the ExecWorkFile struct is allocated in TopMemoryContext
+ */
+void
+test__ExecWorkFile_Open__InTopMemContext(void **state)
+{
+
+	char *test_filename = "foo";
+	BufFile *bfile = (BufFile *) 0xbffffffe;
+
+	expect_value(BufFileOpenFile, fileName, test_filename);
+	expect_value(BufFileOpenFile, create, false);
+	expect_value(BufFileOpenFile, delOnClose, false);
+	expect_value(BufFileOpenFile, interXact, true);
+	will_return(BufFileOpenFile, bfile);
+
+	expect_value(BufFileSetWorkfile, buffile, bfile);
+	will_be_called(BufFileSetWorkfile);
+
+	expect_value(BufFileGetSize, buffile, bfile);
+	will_return(BufFileGetSize, 0);
+
+	/*
+	 * All the memory context stuff is mocked, so the TopMemoryContext is NULL
+	 * at this point. Set it to something specific so we can distinguish it from
+	 * the CurrentMemoryContext.
+	 */
+	TopMemoryContext = (MemoryContext) 0xdeadbeef;
+	CurrentMemoryContext = (MemoryContext) 0xfeadbead;
+
+	/*
+	 * ExecWorkFile_Open will call our mocked palloc0 function execWorkfile__palloc0_mock
+	 * and our mocked pstrdup function execWorkfile_pstrdup_mock.
+	 * These functions will assert that the allocation of the result happens
+	 * in the TopMemoryContext.
+	 */
+	ExecWorkFile *ewf = ExecWorkFile_Open(test_filename, BUFFILE, false /* delOnClose */, 0 /* compressType */);
+
+}
+
+
 /* ==================== main ==================== */
 int
 main(int argc, char* argv[])
@@ -94,7 +136,8 @@ main(int argc, char* argv[])
     cmockery_parse_arguments(argc, argv);
 
     const UnitTest tests[] = {
-                                 unit_test(test__ExecWorkFile_Create__InTopMemContext)
+                                 unit_test(test__ExecWorkFile_Create__InTopMemContext),
+                                 unit_test(test__ExecWorkFile_Open__InTopMemContext)
                              };
 
     return run_tests(tests);

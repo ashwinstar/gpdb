@@ -145,6 +145,13 @@ ExecWorkFile_Open(const char *fileName,
 	void *file = NULL;
 	int64 file_size = 0;
 
+	/*
+	 * Create ExecWorkFile in the TopMemoryContext since this memory context
+	 * is still available when calling the transaction callback at the
+	 * time when the transaction aborts.
+	 */
+	MemoryContext oldContext = MemoryContextSwitchTo(TopMemoryContext);
+
 	switch(fileType)
 	{
 		case BUFFILE:
@@ -178,6 +185,7 @@ ExecWorkFile_Open(const char *fileName,
 	/* Failed opening existing workfile. Inform the caller */
 	if (NULL == file)
 	{
+		MemoryContextSwitchTo(oldContext);
 		return NULL;
 	}
 
@@ -189,6 +197,8 @@ ExecWorkFile_Open(const char *fileName,
 	workfile->fileName = pstrdup(fileName);
 	workfile->size = file_size;
 	ExecWorkFile_SetFlags(workfile, delOnClose, false /* created */);
+
+	MemoryContextSwitchTo(oldContext);
 
 	return workfile;
 }
