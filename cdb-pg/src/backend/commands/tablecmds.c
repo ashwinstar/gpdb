@@ -935,8 +935,7 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 	createStmt->oncommit = ONCOMMIT_NOOP;
 	createStmt->tablespacename = NULL;
 	createStmt->policy = createExtStmt->policy; /* policy was set in transform */
-	
-		
+
 	switch(exttypeDesc->exttabletype)
 	{
 		case EXTTBL_TYPE_LOCATION:
@@ -975,9 +974,9 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 	 *   for this role and for this type of table, or if gp_external_grant_privileges 
 	 *   is on (gp_external_grant_privileges should be deprecated at some point).
 	 */
-	if(!superuser() && Gp_role == GP_ROLE_DISPATCH)
-	{		
-		if(exttypeDesc->exttabletype == EXTTBL_TYPE_EXECUTE)
+	if (!superuser() && Gp_role == GP_ROLE_DISPATCH)
+	{
+		if (exttypeDesc->exttabletype == EXTTBL_TYPE_EXECUTE)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
@@ -1095,7 +1094,7 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 					char*		protname = uri->customprotocol;
 					Oid			ptcId = LookupExtProtocolOid(protname, false);
 					AclResult	aclresult;
-					
+
 					/* Check we have the right permissions on this protocol */
 					if (!pg_extprotocol_ownercheck(ptcId, ownerId))
 					{	
@@ -1115,7 +1114,7 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 								   "protocol is %d, writable is %d", 
 								   uri->protocol, iswritable)));
 				}
-				
+
 				caql_endscan(pcqCtx);
 			}
 			FreeExternalTableUri(uri);
@@ -1138,10 +1137,10 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 	 */
 	singlerowerrorDesc = (SingleRowErrorDesc *)createExtStmt->sreh;
 
-	if(singlerowerrorDesc)
+	if (singlerowerrorDesc)
 	{
 		Assert(!iswritable);
-		
+
 		issreh = true;
 
 		/* get reject limit, and reject limit type */
@@ -1150,7 +1149,7 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 		VerifyRejectLimit(rejectlimittype, rejectlimit);
 
 		/* KEEP only allowed for COPY */
-		if(singlerowerrorDesc->is_keep)
+		if (singlerowerrorDesc->is_keep)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("KEEP is not supported in the external table definition. "
@@ -1158,7 +1157,7 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 							"dropped."),
 									   errOmitLocation(true)));
 
-		if(singlerowerrorDesc->errtable)
+		if (singlerowerrorDesc->errtable)
 			fmtErrTblOid = RangeVarGetRelid(singlerowerrorDesc->errtable, true);
 		else
 			fmtErrTblOid = InvalidOid; /* no err tbl was requested */
@@ -1259,11 +1258,11 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 							formatOptStr,
 							locationExec,
 							locationUris);
-		
+
 		/*
 		 * record a dependency between the external table and its error table (if one exists)
 		 */
-		if(singlerowerrorDesc && singlerowerrorDesc->errtable)
+		if (singlerowerrorDesc && singlerowerrorDesc->errtable)
 		{
 			ObjectAddress	myself,
 			referenced;

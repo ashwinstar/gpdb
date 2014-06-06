@@ -9,22 +9,23 @@
 *--------------------------------------------------------------------------
 */
 #include "postgres.h"
-#include "libpq/libpq.h"
-#include "libpq/pqformat.h"
-#include "utils/acl.h"
-#include "miscadmin.h"
+#include "access/transam.h"
+#include "catalog/gp_policy.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_type.h"
+#include "cdb/cdbdisp.h"
+#include "cdb/cdbpartition.h"
+#include "cdb/cdbsreh.h"
+#include "cdb/cdbvars.h"
 #include "commands/tablecmds.h"
+#include "libpq/libpq.h"
+#include "libpq/pqformat.h"
+#include "miscadmin.h"
+#include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "nodes/makefuncs.h"
-#include "access/transam.h"
-
-#include "cdb/cdbsreh.h"
-#include "cdb/cdbvars.h"
-#include "cdb/cdbdisp.h"
 
 static void OpenErrorTable(CdbSreh *cdbsreh, RangeVar *errortable);
 static void InsertIntoErrorTable(CdbSreh *cdbsreh);
@@ -384,42 +385,83 @@ void SendNumRowsRejected(int numrejected)
  * In here we verify that the metadata of the user selected table matches the
  * predefined requirement for an error table.
  */
-void ValidateErrorTableMetaData(Relation rel)
+void
+ValidateErrorTableMetaData(Relation rel)
 {
 	TupleDesc   tupDesc = RelationGetDescr(rel);
 	Form_pg_attribute *attr = tupDesc->attrs;
 	TupleConstr *constr = tupDesc->constr;
 	char		*relname = RelationGetRelationName(rel);
 	int			attr_count = tupDesc->natts;
-	
+
+	/*
+	 * Verify it is an ordinary table.
+	 */
+	if (rel->rd_rel->relkind != RELKIND_RELATION)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("error table \"%s\" is not a table", relname)));
+
+	/*
+	 * Verify it is a heap table.
+	 */
+	if (!RelationIsHeap(rel))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("error table \"%s\" is not a heap table", relname),
+				 errhint("Use a relation with heap storage type for error table")));
+
 	/*
 	 * Verify number of attributes match
 	 */
-	if(attr_count != NUM_ERRORTABLE_ATTR)
+	if (attr_count != NUM_ERRORTABLE_ATTR)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("Relation \"%s\" already exists and is not of a valid "
 						"error table format (expected %d attributes, found %d)",
 						relname, NUM_ERRORTABLE_ATTR, attr_count)));
-	
+
 	/*
-	 * Verify this table has no constraints
-	 *
-	 * (TODO: this currently checks for all the contraints in TupleConstr
-	 *        which are, defaults, check, and not null. We need to check 
-	 *		  for unique constraints as well).
+	 * Verify this table is randomly-distributed.
 	 */
-	if(constr)
+	if (!GpPolicyIsRandomly(rel->rd_cdbpolicy))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("error table \"%s\" is not randomly distributed",
+						relname),
+				 errhint("Use a randomly-distributed realtion for error table")));
+
+	/*
+	 * Verify this table is not a partitioned or child partition table.
+	 */
+	if (rel_is_partitioned(RelationGetRelid(rel)) ||
+		rel_is_child_partition(RelationGetRelid(rel)))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("error table \"%s\" is a partitioned table",
+						relname),
+				 errdetail("Both root and child partition are not allowed as error table")));
+
+	/*
+	 * Verify this table has no constraints.
+	 *
+	 * This errors out with DEFAULTs, CHECKs or NOT NULLs.
+	 *
+	 * Unique constraint is not allowed in randomly-distributed table
+	 * so we don't check it here.
+	 *
+	 * We never insert NULL values in some attributes, but allowing
+	 * NOT NULL for error table columns doesn't give much convenience
+	 * to the user anyway.  Likewise, DEFAULT values are not of interest
+	 * mostly, but it does not give much value to user, either.
+	 */
+	if (constr)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("Relation \"%s\" already exists and is not of a valid "
 						"error table format. If appears to have constraints "
 						"defined.", relname)));
-	
-	/*
-	 * TODO: verify it's distributed randomly.
-	 */
-	
+
 	/*
 	 * run through each attribute at a time and verify it's what we expect
 	 */
@@ -431,7 +473,6 @@ void ValidateErrorTableMetaData(Relation rel)
 	VerifyErrorTableAttr(attr, errtable_errmsg, "errmsg", TEXTOID, relname);
 	VerifyErrorTableAttr(attr, errtable_rawdata, "rawdata", TEXTOID, relname);
 	VerifyErrorTableAttr(attr, errtable_rawbytes, "rawbytes", BYTEAOID, relname);
-	
 }
 
 /*
@@ -440,18 +481,18 @@ void ValidateErrorTableMetaData(Relation rel)
  * Called by ValidateErrorTableMetaData() on each table attribute to verify
  * that it has the right predefined name, type and other attr characteristics.
  */
-void VerifyErrorTableAttr(Form_pg_attribute *attr, 
-						  int attrnum, 
-						  const char *expected_attname,
-						  Oid expected_atttype,
-						  char *relname)
+static void
+VerifyErrorTableAttr(Form_pg_attribute *attr,
+					 int attrnum,
+					 const char *expected_attname,
+					 Oid expected_atttype,
+					 char *relname)
 {
-	
 	bool		cur_attisdropped = attr[attrnum - 1]->attisdropped;
 	Name		cur_attname = &(attr[attrnum - 1]->attname);
 	Oid			cur_atttype = attr[attrnum - 1]->atttypid;
 	int4		cur_attndims = attr[attrnum - 1]->attndims;
-		
+
 	if(cur_attisdropped)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
@@ -465,22 +506,20 @@ void VerifyErrorTableAttr(Form_pg_attribute *attr,
 				 errmsg("Relation \"%s\" is an invalid error table. Expected "
 						"attribute \"%s\" found \"%s\"",
 						relname, expected_attname, NameStr(*cur_attname))));
-	
+
 	if(cur_atttype != expected_atttype)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("Relation \"%s\" is an invalid error table. Wrong data "
 						"type for attribute \"%s\"",
 						relname, NameStr(*cur_attname))));
-	
+
 	if(cur_attndims > 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("Relation \"%s\" is an invalid error table. Attribute "
 						"\"%s\" has more than zero dimensions (array).",
 						relname, NameStr(*cur_attname))));
-	
-	
 }
 
 /*

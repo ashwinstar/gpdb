@@ -82,16 +82,14 @@ struct GpPolicy
  *
  * The copy is palloc'ed in the specified context.
  */
-GpPolicy *
-GpPolicyCopy(MemoryContext mcxt, const GpPolicy *src);
+GpPolicy *GpPolicyCopy(MemoryContext mcxt, const GpPolicy *src);
 
 /* GpPolicyEqual
  *
  * A field-by-field comparison just to facilitate comparing IntoClause
  * (which embeds this) in equalFuncs.c
  */
-bool
-GpPolicyEqual(const GpPolicy *lft, const GpPolicy *rgt);
+bool GpPolicyEqual(const GpPolicy *lft, const GpPolicy *rgt);
 
 /*
  * GpPolicyFetch
@@ -105,20 +103,18 @@ GpPolicyEqual(const GpPolicy *lft, const GpPolicy *rgt);
  * function does not check and assigns a policy of type POLICYTYPE_ENTRY
  * for any oid not found in gp_distribution_policy.
  */
-GpPolicy *
-GpPolicyFetch(MemoryContext mcxt, Oid tbloid);
+GpPolicy *GpPolicyFetch(MemoryContext mcxt, Oid tbloid);
 
 /*
  * GpPolicyStore: sets the GpPolicy for a table.
  */
-void
-GpPolicyStore(Oid tbloid, const GpPolicy *policy);
+void GpPolicyStore(Oid tbloid, const GpPolicy *policy);
 
-void
-GpPolicyReplace(Oid tbloid, const GpPolicy *policy);
+void GpPolicyReplace(Oid tbloid, const GpPolicy *policy);
 
-void
-GpPolicyRemove(Oid tbloid);
+void GpPolicyRemove(Oid tbloid);
+
+bool GpPolicyIsRandomly(GpPolicy *policy);
 
 
 #endif /*_GP_POLICY_H_*/

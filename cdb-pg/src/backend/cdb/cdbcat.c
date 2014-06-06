@@ -401,6 +401,19 @@ GpPolicyRemove(Oid tbloid)
 }                               /* GpPolicyRemove */
 
 /*
+ * Returns true only if the policy is a randomly distributed.  In other cases,
+ * including non-distributed table case, returns fase.
+ */
+bool
+GpPolicyIsRandomly(GpPolicy *policy)
+{
+	if (policy == NULL)
+		return false;
+
+	return policy->ptype == POLICYTYPE_PARTITIONED && policy->nattrs == 0;
+}
+
+/*
  * Does the supplied GpPolicy support unique indexing on the specified
  * attributes?
  *
@@ -427,10 +440,9 @@ checkPolicyForUniqueIndex(Relation rel, AttrNumber *indattr, int nidxatts,
 	 * Firstly, unique/primary key indexes aren't supported if we're
 	 * distributing randomly.
 	 */
-	if (pol->ptype == POLICYTYPE_PARTITIONED &&
-		pol->nattrs == 0 /* distributed randomly */)
+	if (GpPolicyIsRandomly(pol))
 	{
-        ereport(ERROR,
+		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("%s and DISTRIBUTED RANDOMLY are incompatible",
 						isprimary ? "PRIMARY KEY" : "UNIQUE"),
