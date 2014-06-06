@@ -377,6 +377,14 @@ namespace gpdxl
 			// translate Optimizer comparison types to GPDB
 			static
 			ULONG UlCmpt(IMDType::ECmpType ecmpt);
+			
+			// retrieve the opclass mdids for the given scalar op
+			static
+			DrgPmdid *PdrgpmdidScOpOpClasses(IMemoryPool *pmp,	IMDId *pmdidScOp);
+			
+			// retrieve the opclass mdids for the given index
+			static
+			DrgPmdid *PdrgpmdidIndexOpClasses(IMemoryPool *pmp,	IMDId *pmdidIndex);
 
 		public:
 			// retrieve a metadata object from the relcache

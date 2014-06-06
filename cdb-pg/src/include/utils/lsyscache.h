@@ -173,6 +173,9 @@ extern bool get_cast_func(Oid oidSrc, Oid oidDest, bool *is_binary_coercible, Oi
 extern Oid get_comparison_operator(Oid oidLeft, Oid oidRight, CmpType cmpt);
 extern CmpType get_comparison_type(Oid oidOp, Oid oidLeft, Oid oidRight);
 
+extern List *get_operator_opclasses(Oid opno);
+extern List *get_index_opclasses(Oid oidIndex);
+
 #define is_array_type(typid)  (get_element_type(typid) != InvalidOid)
 
 #define TypeIsToastable(typid)	(get_typstorage(typid) != 'p')

@@ -3830,3 +3830,68 @@ has_subclass(Oid relationId)
 						" WHERE inhparent = :1 ",
 						ObjectIdGetDatum(relationId))));
 }
+
+/*
+ * get_operator_opclasses
+ *		Get the oid of classes the given operator belongs to
+ */
+List *
+get_operator_opclasses(Oid opno)
+{
+	cqContext *pcqCtx = caql_beginscan(
+							NULL,
+							cql("SELECT * FROM pg_amop "
+								" WHERE amopopr = :1 ",
+								ObjectIdGetDatum(opno)));
+
+	HeapTuple htup = NULL;
+	List *opclass_oids = NIL;
+	while (HeapTupleIsValid(htup = caql_getnext(pcqCtx)))
+	{		
+		Form_pg_amop amop_tuple = (Form_pg_amop) GETSTRUCT(htup);
+
+		opclass_oids = lappend_oid(opclass_oids, amop_tuple->amopclaid);
+	}
+	
+	caql_endscan(pcqCtx);
+
+	if (NIL == opclass_oids)
+	{
+		elog(ERROR, "Operator %u not found", opno);
+	}
+	
+	return opclass_oids;
+} 
+
+/*
+ * get_index_opclasses
+ *		Get the oid of classes for the index keys
+ */
+List *
+get_index_opclasses(Oid oidIndex)
+{
+	cqContext *pcqCtx = caql_beginscan(
+							NULL,
+							cql("SELECT * FROM pg_index "
+								" WHERE indexrelid = :1 ",
+								ObjectIdGetDatum(oidIndex)));
+
+	HeapTuple htup = caql_getnext(pcqCtx);
+
+	if (!HeapTupleIsValid(htup))
+	{
+		elog(ERROR, "Index %u not found", oidIndex);
+	}
+	
+	List *opclass_oids = NIL;
+	Form_pg_index index_tuple = (Form_pg_index) GETSTRUCT(htup);
+
+	for (int i = 0; i < index_tuple->indnatts; i++)
+	{
+		Oid oidOpClass = index_tuple->indclass.values[i];
+		opclass_oids = lappend_oid(opclass_oids, oidOpClass);
+	}
+	
+	caql_endscan(pcqCtx);
+	return opclass_oids;
+}

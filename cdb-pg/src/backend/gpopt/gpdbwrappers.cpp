@@ -173,6 +173,8 @@
 #define ALLOW_cdbhash_const
 #define ALLOW_ExecCheckRTPerms
 #define ALLOW_evaluate_expr
+#define ALLOW_get_operator_opclasses
+#define ALLOW_get_index_opclasses
 
 #include "gpopt/utils/gpdbdefs.h"
 
@@ -2616,6 +2618,40 @@ gpdb::IndexOpProperties
 	}
 	GP_WRAP_END;
 }
+
+// get oids of opclasses for the index keys
+List *
+gpdb::PlIndexOpClasses
+	(
+	Oid oidIndex
+	)
+{
+	GP_WRAP_START;
+	{
+		return get_index_opclasses(oidIndex);	
+	}
+	GP_WRAP_END;
+	
+	return NIL;
+}
+
+// get oids of classes this operator belongs to
+List *
+gpdb::PlScOpOpClasses
+	(
+	Oid opno
+	)
+{
+	GP_WRAP_START;
+	{
+		return get_operator_opclasses(opno);	
+	}
+	GP_WRAP_END;
+	
+	return NIL;
+}
+
+
 
 // Evaluates 'pexpr' and returns the result as an Expr.
 // Caller keeps ownership of 'pexpr' and takes ownership of the result

@@ -539,6 +539,12 @@ namespace gpdb {
 	
 	// get index operator properties
 	void IndexOpProperties(Oid opno, Oid opclass, int *strategy, Oid *subtype, bool *recheck);
+	
+	// get oids of classes this operator belongs to
+	List *PlScOpOpClasses(Oid opno);
+	
+	// get oids of op classes for the index keys
+	List *PlIndexOpClasses(Oid oidIndex);
 
 	// returns the result of evaluating 'pexpr' as an Expr. Caller keeps ownership of 'pexpr'
 	// and takes ownership of the result 

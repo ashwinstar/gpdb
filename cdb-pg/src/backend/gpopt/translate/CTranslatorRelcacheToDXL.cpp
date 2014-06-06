@@ -1022,6 +1022,8 @@ CTranslatorRelcacheToDXL::Pmdindex
 	}
 
 	pmdidIndex->AddRef();	
+	DrgPmdid *pdrgpmdidOpClasses = PdrgpmdidIndexOpClasses(pmp, pmdidIndex);
+	
 	CMDIndexGPDB *pmdindex = New(pmp) CMDIndexGPDB
 										(
 										pmp,
@@ -1034,6 +1036,7 @@ CTranslatorRelcacheToDXL::Pmdindex
 										false, // fPartial
 										pdrgpulKeyCols,
 										pdrgpulIncludeCols,
+										pdrgpmdidOpClasses,
 										NULL // pmdpartcnstr
 										);
 
@@ -1208,6 +1211,9 @@ CTranslatorRelcacheToDXL::PmdindexPartTable
 		emdindt = IMDIndex::EmdindBitmap;
 		pmdidItemType = New(pmp) CMDIdGPDB(GPDB_ANY);
 	}
+	
+	DrgPmdid *pdrgpmdidOpClasses = PdrgpmdidIndexOpClasses(pmp, pmdidIndex);
+	
 	CMDIndexGPDB *pmdindex = New(pmp) CMDIndexGPDB
 										(
 										pmp,
@@ -1220,6 +1226,7 @@ CTranslatorRelcacheToDXL::PmdindexPartTable
 										fPartial,
 										pdrgpulKeyCols,
 										pdrgpulIncludeCols,
+										pdrgpmdidOpClasses,
 										pmdpartcnstr
 										);
 	
@@ -1580,7 +1587,8 @@ CTranslatorRelcacheToDXL::Pmdscop
 											pmdidOpCommute,
 											pmdidOpInverse,
 											ecmpt,
-											fReturnsNullOnNullInput
+											fReturnsNullOnNullInput,
+											PdrgpmdidScOpOpClasses(pmp, pmdid)
 											);
 	return pmdscop;
 }
@@ -3199,6 +3207,64 @@ CTranslatorRelcacheToDXL::UlCmpt
 	}
 	
 	return CmptOther;
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CTranslatorRelcacheToDXL::PdrgpmdidIndexOpClasses
+//
+//	@doc:
+//		Retrieve the opclasses for the keys of the given index
+//
+//---------------------------------------------------------------------------
+DrgPmdid * 
+CTranslatorRelcacheToDXL::PdrgpmdidIndexOpClasses
+	(
+	IMemoryPool *pmp,
+	IMDId *pmdidIndex
+	)
+{
+	List *plOpClasses = gpdb::PlIndexOpClasses(CMDIdGPDB::PmdidConvert(pmdidIndex)->OidObjectId());
+	DrgPmdid *pdrgpmdid = New(pmp) DrgPmdid(pmp);
+	
+	ListCell *plc = NULL;
+	
+	ForEach(plc, plOpClasses)
+	{
+		OID oidOpClass = lfirst_oid(plc);
+		pdrgpmdid->Append(New(pmp) CMDIdGPDB(oidOpClass));
+	}
+	
+	return pdrgpmdid;
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CTranslatorRelcacheToDXL::PdrgpmdidScOpOpClasses
+//
+//	@doc:
+//		Retrieve the opclasses for the keys of the given scalar operator
+//
+//---------------------------------------------------------------------------
+DrgPmdid * 
+CTranslatorRelcacheToDXL::PdrgpmdidScOpOpClasses
+	(
+	IMemoryPool *pmp,
+	IMDId *pmdidScOp
+	)
+{
+	List *plOpClasses = gpdb::PlScOpOpClasses(CMDIdGPDB::PmdidConvert(pmdidScOp)->OidObjectId());
+	DrgPmdid *pdrgpmdid = New(pmp) DrgPmdid(pmp);
+	
+	ListCell *plc = NULL;
+	
+	ForEach(plc, plOpClasses)
+	{
+		OID oidOpClass = lfirst_oid(plc);
+		pdrgpmdid->Append(New(pmp) CMDIdGPDB(oidOpClass));
+	}
+	
+	return pdrgpmdid;
 }
 
 // EOF
