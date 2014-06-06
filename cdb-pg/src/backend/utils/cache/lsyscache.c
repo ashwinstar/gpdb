@@ -3854,11 +3854,6 @@ get_operator_opclasses(Oid opno)
 	}
 	
 	caql_endscan(pcqCtx);
-
-	if (NIL == opclass_oids)
-	{
-		elog(ERROR, "Operator %u not found", opno);
-	}
 	
 	return opclass_oids;
 } 
