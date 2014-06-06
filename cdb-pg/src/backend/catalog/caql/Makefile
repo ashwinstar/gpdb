@@ -45,6 +45,7 @@ CAQL_CQL_SRCS := $(addprefix $(top_srcdir)/src/backend/,\
 	cdb/cdbpartindex.c \
 	cdb/cdbpartition.c \
 	cdb/cdbpersistentbuild.c \
+	cdb/cdbsreh.c \
 	cdb/cdbsubselect.c \
 	cdb/cdbutil.c \
 	cdb/motion/tupser.c \

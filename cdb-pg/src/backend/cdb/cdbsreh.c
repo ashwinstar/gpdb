@@ -10,8 +10,10 @@
 */
 #include "postgres.h"
 #include "access/transam.h"
+#include "catalog/catquery.h"
 #include "catalog/gp_policy.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_depend.h"
 #include "catalog/pg_type.h"
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbpartition.h"
@@ -520,6 +522,49 @@ VerifyErrorTableAttr(Form_pg_attribute *attr,
 				 errmsg("Relation \"%s\" is an invalid error table. Attribute "
 						"\"%s\" has more than zero dimensions (array).",
 						relname, NameStr(*cur_attname))));
+}
+
+/*
+ * IsErrorTable
+ *
+ * Returns true if relid is used as an error table, which has dependent object
+ * that is an external table.  Though it's not great we didn't have a clear
+ * definition of Error Table, it satisfies the current requirements.
+ */
+bool
+IsErrorTable(Oid relid)
+{
+	cqContext	   *pcqCtx;
+	HeapTuple		tup;
+	bool			result = false;
+
+	pcqCtx = caql_beginscan(NULL,
+							cql("SELECT * FROM pg_depend "
+								" WHERE refclassid = :1 "
+								" AND refobjid = :2 ",
+								ObjectIdGetDatum(RelationRelationId),
+								ObjectIdGetDatum(relid)));
+
+	while (HeapTupleIsValid(tup = caql_getnext(pcqCtx)))
+	{
+		Form_pg_depend dep = (Form_pg_depend) GETSTRUCT(tup);
+		Relation		depRel;
+
+		depRel = try_relation_open(dep->objid, AccessShareLock, false);
+		if (RelationIsValid(depRel))
+		{
+			if (RelationIsExternal(depRel))
+				result = true;
+			relation_close(depRel, AccessShareLock);
+
+			if (result)
+				break;
+		}
+	}
+
+	caql_endscan(pcqCtx);
+
+	return result;
 }
 
 /*

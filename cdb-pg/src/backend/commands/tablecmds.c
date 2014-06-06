@@ -3742,16 +3742,14 @@ CheckTableNotInUse(Relation rel, const char *stmt)
 						stmt, RelationGetRelationName(rel))));
 }
 
-static
-void ATVerifyObject(AlterTableStmt *stmt, Relation rel)
+static void
+ATVerifyObject(AlterTableStmt *stmt, Relation rel)
 {
-
 	/* Nothing to check for ALTER INDEX */
 	if(stmt->relkind == OBJECT_INDEX)
 		return;
-	
 
-	/* 
+	/*
 	 * Verify the object specified against relstorage in the catalog.
 	 * Enforce correct syntax usage. 
 	 */
@@ -3767,7 +3765,7 @@ void ATVerifyObject(AlterTableStmt *stmt, Relation rel)
 	{
 		/*
 		 * special case: in order to support 3.3 dumps with ALTER TABLE OWNER of
-		 * external tables, we will allow using ALTER TABLE (without EXTERNAL) 
+		 * external tables, we will allow using ALTER TABLE (without EXTERNAL)
 		 * temporarily, and use a deprecation warning. This should be removed
 		 * in future releases.
 		 */
@@ -3778,7 +3776,7 @@ void ATVerifyObject(AlterTableStmt *stmt, Relation rel)
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("\"%s\" is an external table. ALTER TABLE for external tables is deprecated.", RelationGetRelationName(rel)),
 						 errhint("Use ALTER EXTERNAL TABLE instead"),
-						 errOmitLocation(true)));						
+						 errOmitLocation(true)));
 		}
 		else
 		{
@@ -3786,7 +3784,7 @@ void ATVerifyObject(AlterTableStmt *stmt, Relation rel)
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 					 errmsg("\"%s\" is an external table", RelationGetRelationName(rel)),
 					 errhint("Use ALTER EXTERNAL TABLE instead"),
-					 errOmitLocation(true)));			
+					 errOmitLocation(true)));
 		}
 	}
 	else if (!RelationIsExternal(rel) && !RelationIsForeign(rel) && stmt->relkind != OBJECT_TABLE)
@@ -3797,14 +3795,14 @@ void ATVerifyObject(AlterTableStmt *stmt, Relation rel)
 				 errhint("Use ALTER TABLE instead"),
 				 errOmitLocation(true)));
 	}
-	
+
 	/*
 	 * Check the ALTER command type is supported for this object
 	 */
 	if (RelationIsForeign(rel) || RelationIsExternal(rel))
 	{
 		ListCell *lcmd;
-		
+
 		foreach(lcmd, stmt->cmds)
 		{
 			AlterTableCmd *cmd = (AlterTableCmd *) lfirst(lcmd);
@@ -3812,69 +3810,80 @@ void ATVerifyObject(AlterTableStmt *stmt, Relation rel)
 			switch(cmd->subtype)
 			{
 				/* FOREIGN and EXTERNAL tables doesn't support the following AT */
-				case AT_ColumnDefault:		
-				case AT_DropNotNull:			
-				case AT_SetNotNull:			
-				case AT_SetStatistics:		
-				case AT_SetStorage:			
-				case AT_AddIndex:			
-				case AT_ReAddIndex:			
-				case AT_AddConstraint:		
+				case AT_ColumnDefault:
+				case AT_DropNotNull:
+				case AT_SetNotNull:
+				case AT_SetStatistics:
+				case AT_SetStorage:
+				case AT_AddIndex:
+				case AT_ReAddIndex:
+				case AT_AddConstraint:
 				case AT_AddConstraintRecurse:
-				case AT_ProcessedConstraint:	
-				case AT_DropConstraint:		
-				case AT_DropConstraintQuietly:			
-				case AT_ClusterOn:			
-				case AT_DropCluster:			
-				case AT_DropOids:			
-				case AT_SetTableSpace:		
-				case AT_SetRelOptions:		
-				case AT_ResetRelOptions:		
-				case AT_EnableTrig:			
-				case AT_DisableTrig:			
-				case AT_EnableTrigAll:		
-				case AT_DisableTrigAll:		
-				case AT_EnableTrigUser:		
-				case AT_DisableTrigUser:		
-				case AT_AddInherit:			
-				case AT_DropInherit:			
-				case AT_SetDistributedBy:	
-				case AT_PartAdd:				
-				case AT_PartAlter:			
-				case AT_PartCoalesce:		
-				case AT_PartDrop:			
-				case AT_PartExchange:		
-				case AT_PartMerge:			
-				case AT_PartModify:			
-				case AT_PartRename:			
-				case AT_PartSetTemplate:		
-				case AT_PartSplit:			
-				case AT_PartTruncate:		
-				case AT_PartAddInternal:		
+				case AT_ProcessedConstraint:
+				case AT_DropConstraint:
+				case AT_DropConstraintQuietly:
+				case AT_ClusterOn:
+				case AT_DropCluster:
+				case AT_DropOids:
+				case AT_SetTableSpace:
+				case AT_SetRelOptions:
+				case AT_ResetRelOptions:
+				case AT_EnableTrig:
+				case AT_DisableTrig:
+				case AT_EnableTrigAll:
+				case AT_DisableTrigAll:
+				case AT_EnableTrigUser:
+				case AT_DisableTrigUser:
+				case AT_AddInherit:
+				case AT_DropInherit:
+				case AT_SetDistributedBy:
+				case AT_PartAdd:
+				case AT_PartAlter:
+				case AT_PartCoalesce:
+				case AT_PartDrop:
+				case AT_PartExchange:
+				case AT_PartMerge:
+				case AT_PartModify:
+				case AT_PartRename:
+				case AT_PartSetTemplate:
+				case AT_PartSplit:
+				case AT_PartTruncate:
+				case AT_PartAddInternal:
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_COLUMN_DEFINITION),
-							 errmsg("Unsupported ALTER command for table type %s", 
+							 errmsg("Unsupported ALTER command for table type %s",
 									 (RelationIsExternal(rel) ? "external" : "foreign")),
 							 errOmitLocation(true)));
 					break;
-				
+
 				case AT_AddColumn: /* check no constraint is added too */
-					if(((ColumnDef *) cmd->def)->constraints != NIL ||
-					   ((ColumnDef *) cmd->def)->is_not_null ||
-					   ((ColumnDef *) cmd->def)->raw_default)
+					if (((ColumnDef *) cmd->def)->constraints != NIL ||
+						((ColumnDef *) cmd->def)->is_not_null ||
+						((ColumnDef *) cmd->def)->raw_default)
 						ereport(ERROR,
 								(errcode(ERRCODE_INVALID_COLUMN_DEFINITION),
-								 errmsg("Unsupported ALTER command for table type %s. No constraints allowed.", 
+								 errmsg("Unsupported ALTER command for table type %s. No constraints allowed.",
 										 (RelationIsExternal(rel) ? "external" : "foreign")),
 								 errOmitLocation(true)));
 					break;
-					
+
 				default:
 					/* ALTER type supported */
 					break;
 			}
 		}
 	}
+
+	/*
+	 * We disallow all ALTER commands with an error table.  Note it is still
+	 * allowed to RENAME.
+	 */
+	if (IsErrorTable(RelationGetRelid(rel)))
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("\"%s\" is an error table",
+						RelationGetRelationName(rel)),
+				 errdetail("ALTER TABLE is not allowed on error tables")));
 }
 
 /*
