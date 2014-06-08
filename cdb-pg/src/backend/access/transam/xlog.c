@@ -11515,7 +11515,7 @@ XLogRecoverMirrorControlFile(void)
  * it to gather all the xlog records since the last checkpoint and
  * add any relevant information to the change log if necessary.
  *
- * return the number of records that were found (not all of them
+ * It returns the number of records that were found (not all of them
  * were interesting to the changetracker though).
  *
  * See ChangeTracking_CreateInitialFromPreviousCheckpoint()
@@ -11524,7 +11524,6 @@ XLogRecoverMirrorControlFile(void)
 int XLogAddRecordsToChangeTracking(
 	XLogRecPtr	*lastChangeTrackingEndLoc)
 {
-
 	XLogRecord *record;
 	XLogRecPtr	redoCheckpointLoc;
 	CheckPoint	redoCheckpoint;
@@ -11533,10 +11532,14 @@ int XLogAddRecordsToChangeTracking(
 	XLogRecPtr	lastChangeTrackingLogEndLoc = {0, 0};
 	int count = 0;
 
-
-	elog(LOG, "searching for last checkpoint location for creating the initial resynchronize changetracking");
-
-	/* TODO: does this function really work for us? if so, change its name for something more global */
+	/*
+	 * Find latest checkpoint record and the redo record from xlog. This record
+	 * will be used to find the starting point to scan xlog records to be pushed
+	 * to changetracking log. This is needed either to generate/produce new change
+	 * tracking log or to make the changetracking log catchup with xlog in case
+	 * it has fallen behind.
+	 * TODO: does this function really work for us? if so, change its name for something more global
+	 */
 	XLogGetRecoveryStart("CHANGETRACKING",
 						 "get checkpoint location",
 						 &redoCheckpointLoc,
@@ -11545,11 +11548,21 @@ int XLogAddRecordsToChangeTracking(
 	startLoc = redoCheckpoint.redo;
 
 	XLogCloseReadRecord();
+	elog(LOG, "last checkpoint location for generating initial changetracking log %s",
+			XLogLocationToString(&startLoc));
 
-	if (Debug_persistent_print)
-		elog(Persistent_DebugPrintLevel(),
-			 "XLogAddRecordsToChangeTracking: Start location %s",
-			 XLogLocationToString(&startLoc));
+	/*
+	 * Find the last entry and thus the LSN recorded by it from the CT_FULL
+	 * log. Later, it will be used to maintain the xlog and changetracking log
+	 * to the same end point.
+	 * We perform this when the lastChangetrackingEndLoc is not known.
+	 */
+	if (lastChangeTrackingEndLoc == NULL)
+	{
+		ChangeTracking_GetLastChangeTrackingLogEndLoc(&lastChangeTrackingLogEndLoc);
+		elog(LOG, "last changetracked location in changetracking full log %s",
+				XLogLocationToString(&lastChangeTrackingLogEndLoc));
+	}
 
 	record = XLogReadRecord(&startLoc, false, LOG);
 	if (record == NULL)
@@ -11599,19 +11612,18 @@ int XLogAddRecordsToChangeTracking(
 #endif
 
 		if (filerep_inject_change_tracking_recovery_fault)
-		  {
-		    if (isDatabaseRunning() == FALSE)
-		      {
-			filerep_inject_change_tracking_recovery_fault = FALSE;
+		{
+			if (isDatabaseRunning() == FALSE)
+			{
+				filerep_inject_change_tracking_recovery_fault = FALSE;
 
-			ereport(PANIC,
-				(errmsg("change tracking failure, "
+				ereport(PANIC,
+					(errmsg("change tracking failure, "
 					"injected fault by guc filerep_inject_change_tracking_recovery_fault, "
 					"postmaster reset requested"),
-				 FileRep_errcontext()));
-		      }
-		  }
-
+					FileRep_errcontext()));
+			}
+		}
 
 		if (lastChangeTrackingEndLoc != NULL)
 		{
@@ -11623,7 +11635,6 @@ int XLogAddRecordsToChangeTracking(
 						 count,
 						 XLogLocationToString(&startLoc),
 						 XLogLocationToString2(lastChangeTrackingEndLoc));
-
 				break;
 			}
 
@@ -11643,7 +11654,6 @@ int XLogAddRecordsToChangeTracking(
 						 XLogLocationToString3(&startLoc));
 				break;
 			}
-
 		}
 		else
 		{
@@ -11668,22 +11678,22 @@ int XLogAddRecordsToChangeTracking(
 	 * We now need to make sure that (in the case of crash recovery) there are no
 	 * records in the change tracking logs that have lsn higher than the highest lsn in xlog.
 	 *
-	 *			a) Find the highest lsn in xlog
-	 *			b) Find the highest lsn in change tracking log files
-	 *			c) if the highest lsn in change tracking > the highest lsn in xlog then
-	 *					i) store in compacting shared memory the highest lsn in xlog
-	 *					ii) Flush all data into CT_LOG_FULL
-	 *					iii) Rename CT_LOG_FULL to CT_LOG_TRANSIENT
-	 *			d) after database is started the compacting (CT_LOG_TRANSIENT) will discard all records from
-	 *			   change tracking log file that are higher than the highest lsn in xlog
+	 *	a) Find the highest lsn in xlog
+	 *	b) Find the highest lsn in change tracking log files before interesting
+	 *	   xlog entries from last checkpoint onwards are appended to it
+	 *	   (see above)
+	 *	c) if the highest lsn in change tracking > the highest lsn in xlog then
+	 *		i) store in compacting shared memory the highest lsn in xlog
+	 *		ii) Flush all data into CT_LOG_FULL
+	 *		iii) Rename CT_LOG_FULL to CT_LOG_TRANSIENT
+	 *	d) after database is started the compacting (CT_LOG_TRANSIENT) will discard all records from
+	 *	   change tracking log file that are higher than the highest lsn in xlog
 	 */
 	if (lastChangeTrackingEndLoc == NULL)
 	{
 		/* read xlog till the end to get last lsn on disk (EndRecPtr) */
 		while(record != NULL)
 			record = XLogReadRecord(NULL, false, LOG);
-
-		ChangeTracking_GetLastChangeTrackingLogEndLoc(&lastChangeTrackingLogEndLoc);
 
 		if (! (lastChangeTrackingLogEndLoc.xlogid == 0 && lastChangeTrackingLogEndLoc.xrecoff == 0) &&
 			XLByteLT(EndRecPtr, lastChangeTrackingLogEndLoc))
@@ -11703,7 +11713,6 @@ int XLogAddRecordsToChangeTracking(
 	}
 
 	XLogCloseReadRecord();
-
 	return count;
 }
 

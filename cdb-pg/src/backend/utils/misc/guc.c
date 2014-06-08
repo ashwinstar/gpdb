@@ -4626,7 +4626,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"wal_buffers", PGC_POSTMASTER, WAL_SETTINGS,
 			gettext_noop("Sets the number of disk-page buffers in shared memory for WAL."),
 			NULL,
-			GUC_UNIT_XBLOCKS | GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL | GUC_DISALLOW_USER_SET
+			GUC_UNIT_XBLOCKS | GUC_NOT_IN_SAMPLE
 		},
 		&XLOGbuffers,
 		8, 4, INT_MAX, NULL, NULL
