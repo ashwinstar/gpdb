@@ -196,11 +196,7 @@ select * from orca.r join orca.s on(r.a=s.c) order by r.a + 5, s.d limit 10;
 select 1 from orca.m group by a+b;
 
 -- join with const table
--- TODO: 2014-06-04 Zhongxian Gu
--- Before we fix MPP-23734, turn indexapply off for this testcase.
-set optimizer_enable_indexjoin=off;
 select * from orca.r where a = (select 1);
-set optimizer_enable_indexjoin=on;
 
 -- union with const table
 select * from ((select a as x from orca.r) union (select 1 as x )) as foo order by x;

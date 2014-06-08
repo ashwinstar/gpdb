@@ -5,7 +5,7 @@
 SELECT gp_opt_version();
                            gp_opt_version
 ---------------------------------------------------------------------
- GPOPT version: 1.436, GPOS version: 1.105, Xerces version: 3.1.1-p1
+ GPOPT version: 1.437, GPOS version: 1.105, Xerces version: 3.1.1-p1
 (1 row)
 
 -- master only tables
@@ -3540,16 +3540,12 @@ select 1 from orca.m group by a+b;
 (18 rows)
 
 -- join with const table
--- TODO: 2014-06-04 Zhongxian Gu
--- Before we fix MPP-23734, turn indexapply off for this testcase.
-set optimizer_enable_indexjoin=off;
 select * from orca.r where a = (select 1);
  a | b 
 ---+---
  1 | 1
 (1 row)
 
-set optimizer_enable_indexjoin=on;
 -- union with const table
 select * from ((select a as x from orca.r) union (select 1 as x )) as foo order by x;
  x  
