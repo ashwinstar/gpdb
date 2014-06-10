@@ -150,6 +150,12 @@ namespace gpdxl
 				CMappingColIdVar *pmapcidvar
 				);
 
+                        Expr *PcoerceFromDXLNodeScCoerce
+                                (
+                                const CDXLNode *pdxlnScCoerce,
+                                CMappingColIdVar *pmapcidvar
+                                );
+
 			Expr *PnulltestFromDXLNodeScNullTest
 				(
 				const CDXLNode *pdxlnScNullTest,

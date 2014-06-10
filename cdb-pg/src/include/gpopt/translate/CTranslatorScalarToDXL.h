@@ -247,6 +247,13 @@ namespace gpdxl
 				const CMappingVarColId* pmapvarcolid
 				);
 
+                       // create a DXL scalar coerce node from a GPDB expression
+                        CDXLNode *PdxlnScCoerceFromCoerce
+                                (
+                                const Expr *pexpr,
+                                const CMappingVarColId* pmapvarcolid
+                                );
+
 			// create a DXL scalar funcexpr node from a GPDB expression
 			CDXLNode *PdxlnScFuncExprFromFuncExpr
 				(

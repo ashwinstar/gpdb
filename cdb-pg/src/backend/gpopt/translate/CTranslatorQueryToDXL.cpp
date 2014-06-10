@@ -263,7 +263,7 @@ CTranslatorQueryToDXL::CheckUnsupportedNodeTypes
 		{T_RowCompareExpr, GPOS_WSZ_LIT("ROW COMPARE")},
 		{T_FieldSelect, GPOS_WSZ_LIT("FIELDSELECT")},
 		{T_FieldStore, GPOS_WSZ_LIT("FIELDSTORE")},
-		{T_CoerceToDomain, GPOS_WSZ_LIT("COERCETODOMAIN")},
+		{T_CoerceToDomainValue, GPOS_WSZ_LIT("COERCETODOMAINVALUE")},
 		{T_GroupId, GPOS_WSZ_LIT("GROUPID")},
 		{T_PercentileExpr, GPOS_WSZ_LIT("PERCENTILE")},
 		{T_CurrentOfExpr, GPOS_WSZ_LIT("CURRENT OF")},

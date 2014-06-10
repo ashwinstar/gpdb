@@ -337,6 +337,7 @@ CTranslatorScalarToDXL::PdxlnScOpFromExpr
 		{T_NullTest, &CTranslatorScalarToDXL::PdxlnScNullTestFromNullTest},
 		{T_NullIfExpr, &CTranslatorScalarToDXL::PdxlnScNullIfFromExpr},
 		{T_RelabelType, &CTranslatorScalarToDXL::PdxlnScCastFromRelabelType},
+		{T_CoerceToDomain, &CTranslatorScalarToDXL::PdxlnScCoerceFromCoerce},
 		{T_Param, &CTranslatorScalarToDXL::PdxlnPlanFromParam},
 		{T_SubPlan, &CTranslatorScalarToDXL::PdxlnSubPlanFromSubPlan},
 		{T_SubLink, &CTranslatorScalarToDXL::PdxlnFromSublink},
@@ -1155,6 +1156,49 @@ CTranslatorScalarToDXL::PdxlnScCastFromRelabelType
 	pdxln->AddChild(pdxlnChild);
 
 	return pdxln;
+}
+
+//---------------------------------------------------------------------------
+//      @function:
+//              CTranslatorScalarToDXL::PdxlnScCoerceFromCoerce
+//
+//      @doc:
+//              Create a DXL node for a scalar coerce expression from a
+//             GPDB coerce expression
+//---------------------------------------------------------------------------
+CDXLNode *
+CTranslatorScalarToDXL::PdxlnScCoerceFromCoerce
+        (
+        const Expr *pexpr,
+        const CMappingVarColId* pmapvarcolid
+        )
+{
+        GPOS_ASSERT(IsA(pexpr, CoerceToDomain));
+
+        const CoerceToDomain *pcoerce = (CoerceToDomain *) pexpr;
+
+        GPOS_ASSERT(NULL != pcoerce->arg);
+
+        CDXLNode *pdxlnChild = PdxlnScOpFromExpr(pcoerce->arg, pmapvarcolid);
+
+        GPOS_ASSERT(NULL != pdxlnChild);
+
+        // create the DXL node holding the scalar boolean operator
+        CDXLNode *pdxln = New(m_pmp) CDXLNode
+                                                                        (
+                                                                        m_pmp,
+                                                                        New(m_pmp) CDXLScalarCoerceToDomain
+                                                                                                (
+                                                                                                m_pmp,
+                                                                                                New(m_pmp) CMDIdGPDB(pcoerce->resulttype),
+                                                                                               pcoerce->resulttypmod,
+                                                                                               (EdxlCoercionForm) pcoerce->coercionformat,
+                                                                                               pcoerce->location
+                                                                                                )
+                                                                        );
+        pdxln->AddChild(pdxlnChild);
+
+        return pdxln;
 }
 
 //---------------------------------------------------------------------------

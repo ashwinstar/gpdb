@@ -108,6 +108,7 @@ CTranslatorDXLToScalar::PexprFromDXLNodeScalar
 		{EdxlopScalarAggref, &CTranslatorDXLToScalar::PaggrefFromDXLNodeScAggref},
 		{EdxlopScalarWindowRef, &CTranslatorDXLToScalar::PwindowrefFromDXLNodeScWindowRef},
 		{EdxlopScalarCast, &CTranslatorDXLToScalar::PrelabeltypeFromDXLNodeScCast},
+		{EdxlopScalarCoerceToDomain, &CTranslatorDXLToScalar::PcoerceFromDXLNodeScCoerce},
 		{EdxlopScalarInitPlan, &CTranslatorDXLToScalar::PparamFromDXLNodeScInitPlan},
 		{EdxlopScalarSubPlan, &CTranslatorDXLToScalar::PsubplanFromDXLNodeScSubPlan},
 		{EdxlopScalarSubquery, &CTranslatorDXLToScalar::PsublinkFromDXLNodeScalarSubquery},
@@ -1259,6 +1260,42 @@ CTranslatorDXLToScalar::PrelabeltypeFromDXLNodeScCast
 	prelabeltype->relabelformat = COERCE_DONTCARE;
 
 	return (Expr *) prelabeltype;
+}
+
+
+//---------------------------------------------------------------------------
+//      @function:
+//              CTranslatorDXLToScalar::PcoerceFromDXLNodeScCoerce
+//
+//      @doc:
+//              Translates a DXL scalar coerce into a GPDB coerce node
+//
+//---------------------------------------------------------------------------
+Expr *
+CTranslatorDXLToScalar::PcoerceFromDXLNodeScCoerce
+        (
+        const CDXLNode *pdxlnCoerce,
+        CMappingColIdVar *pmapcidvar
+        )
+{
+        GPOS_ASSERT(NULL != pdxlnCoerce);
+        CDXLScalarCoerceToDomain *pdxlop = CDXLScalarCoerceToDomain::PdxlopConvert(pdxlnCoerce->Pdxlop());
+
+        GPOS_ASSERT(1 == pdxlnCoerce->UlArity());
+        CDXLNode *pdxlnChild = (*pdxlnCoerce)[0];
+
+        Expr *pexprChild = PexprFromDXLNodeScalar(pdxlnChild, pmapcidvar);
+
+
+        CoerceToDomain *pcoerce = MakeNode(CoerceToDomain);
+
+        pcoerce->resulttype = CMDIdGPDB::PmdidConvert(pdxlop->PmdidResultType())->OidObjectId();
+        pcoerce->arg = pexprChild;
+        pcoerce->resulttypmod = pdxlop->IMod();
+        pcoerce->location = pdxlop->ILoc();
+        pcoerce->coercionformat = (CoercionForm)  pdxlop->Edxlcf();
+
+        return (Expr *) pcoerce;
 }
 
 //---------------------------------------------------------------------------
