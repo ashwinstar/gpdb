@@ -1381,8 +1381,6 @@ CTranslatorDXLToPlStmt::PlTranslateIndexFilter
 	{
 		CDXLNode *pdxlnIndexFilter = (*pdxlnFilter)[ul];
 		Expr *pexprIndexFilter = m_pdxlsctranslator->PexprFromDXLNodeScalar(pdxlnIndexFilter, &mapcidvarplstmt);
-		GPOS_ASSERT(IsA(pexprIndexFilter, OpExpr) && "expected OpExpr in index filter");
-
 		plQuals = gpdb::PlAppendElement(plQuals, pexprIndexFilter);
 	}
 

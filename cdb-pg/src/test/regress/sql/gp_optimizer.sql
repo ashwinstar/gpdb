@@ -910,5 +910,59 @@ select * from orca.bm_dyn_test_onepart where i=2 and t='2';
 select enable_xform('CXformDynamicGet2DynamicTableScan');
 reset optimizer_enable_bitmapscan;
 
+set optimizer_enable_constant_expression_evaluation=on;
+
+CREATE TABLE my_tt_agg_opt (
+    symbol character(16),
+    event_ts bigint,
+    trade_price numeric,
+    trade_volume bigint
+) DISTRIBUTED BY (symbol);
+
+CREATE TABLE my_tq_agg_opt_part (
+    ets bigint,
+    sym character varying(16),
+    bid_price numeric,
+    ask_price numeric,
+    end_ts bigint
+) DISTRIBUTED BY (ets)
+   PARTITION BY RANGE(bid_price)(PARTITION p1 START(0) END(200000),
+                                 PARTITION p2 START(200000) END(900000));
+
+CREATE INDEX my_tq_agg_opt_part_ets_end_ts_ix_1 ON my_tq_agg_opt_part_1_prt_p1 USING btree (ets, end_ts);
+CREATE INDEX my_tq_agg_opt_part_ets_end_ts_ix_2 ON my_tq_agg_opt_part_1_prt_p2 USING btree (ets);
+
+CREATE FUNCTION plusone(numeric) RETURNS numeric AS $$
+BEGIN
+    SELECT $1 + 1;
+END;
+$$ LANGUAGE plpgsql volatile;
+
+select disable_xform('CXformInnerJoin2DynamicIndexGetApply');
+select disable_xform('CXformInnerJoin2HashJoin');
+select disable_xform('CXformInnerJoin2IndexGetApply');
+select disable_xform('CXformInnerJoin2NLJoin');
+
+set optimizer_enable_indexjoin=on;
+
+-- force_explain
+EXPLAIN 
+SELECT (tt.event_ts / 100000) / 5 * 5 as fivemin, COUNT(*)
+FROM my_tt_agg_opt tt, my_tq_agg_opt_part tq
+WHERE tq.sym = tt.symbol AND
+      plusone(tq.bid_price) < tt.trade_price AND
+      tt.event_ts >= tq.ets AND
+      tt.event_ts <  tq.end_ts
+GROUP BY 1
+ORDER BY 1 asc ;
+
+reset optimizer_enable_constant_expression_evaluation;
+reset optimizer_enable_indexjoin;
+
+select enable_xform('CXformInnerJoin2DynamicIndexGetApply');
+select enable_xform('CXformInnerJoin2HashJoin');
+select enable_xform('CXformInnerJoin2IndexGetApply');
+select enable_xform('CXformInnerJoin2NLJoin');
+
 -- clean up
 drop schema orca cascade;
