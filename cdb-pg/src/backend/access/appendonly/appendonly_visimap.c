@@ -24,8 +24,15 @@ typedef struct AppendOnlyVisiMapDeleteKey
 {
 	/*
 	 * Segno of the dirty visimap entry.
+	 *
+	 * MPP-23546: Changed the type of segno from int to uint64.  With
+	 * uint (4-bytes), additional 4-bytes were being used for padding.
+	 * The padding bits may differ for two keys causing two otherwise
+	 * equal objects to be treated as unequal by hash functions.
+	 * Keeping type to uint64 does not change the value of
+	 * sizeof(AppendOnlyVisiMapDeleteKey) but eliminates padding.
 	 */
-	int segno;
+	uint64 segno;
 
 	/*
 	 * First row num of the dirty visimap entry.
@@ -435,6 +442,24 @@ hash_delete_key(const void *key, Size keysize)
 }
 
 /*
+ * Hash function for comparing two keys of type
+ * AppendOnlyVisiMapDeleteKey.  Equality of keys is of interest and
+ * not ordering between them (greater/less).
+ */
+static int
+hash_compare_keys(const void *key1, const void *key2, Size keysize)
+{
+	Assert(keysize == sizeof(AppendOnlyVisiMapDeleteKey));
+	AppendOnlyVisiMapDeleteKey *k1 = (AppendOnlyVisiMapDeleteKey *) key1;
+	AppendOnlyVisiMapDeleteKey *k2 = (AppendOnlyVisiMapDeleteKey *) key2;
+	if ((k1->segno == k2->segno) && (k1->firstRowNum == k2->firstRowNum))
+	{
+		return 0;
+	}
+	return 1;
+}
+
+/*
  * Inits the visimap delete helper structure.
  * 
  * This prepares the hash table and opens the temporary file.
@@ -457,11 +482,12 @@ AppendOnlyVisimapDelete_Init(
 	hash_ctl.keysize = sizeof(AppendOnlyVisiMapDeleteKey);
 	hash_ctl.entrysize = sizeof(AppendOnlyVisiMapDeleteData);
 	hash_ctl.hash = hash_delete_key;
+	hash_ctl.match = hash_compare_keys;
 	hash_ctl.hcxt = visiMap->memoryContext;
 	visiMapDelete->dirtyEntryCache = hash_create("VisimapEntryCache",
 		4, /* start small and extend */
 		&hash_ctl,
-		HASH_ELEM | HASH_FUNCTION);
+		HASH_ELEM | HASH_FUNCTION | HASH_COMPARE);
 
 	len = snprintf(fileName, sizeof(fileName), "%s/visimap_delete", PG_TEMP_FILES_DIR);
 	if (len > MAXPGPATH - 1)
@@ -592,8 +618,8 @@ AppendOnlyVisimapDelete_Find(
 	key.firstRowNum = firstRowNum;
 
 	elogif (Debug_appendonly_print_visimap, LOG, 
-			"Append-only visi map delete: Search dirty visimap entry %d/" INT64_FORMAT,
-			key.segno, key.firstRowNum);
+			"Append-only visi map delete: Search dirty visimap entry "
+			INT64_FORMAT "/" INT64_FORMAT, key.segno, key.firstRowNum);
 
 	bool found = false;
 	r = hash_search(visiMapDelete->dirtyEntryCache, &key,
@@ -604,8 +630,9 @@ AppendOnlyVisimapDelete_Find(
 		Assert(r);
 
 		elogif (Debug_appendonly_print_visimap, LOG, 
-			"Append-only visi map delete: Found dirty visimap entry %d/" INT64_FORMAT,
-			r->key.segno, r->key.firstRowNum);
+				"Append-only visi map delete: Found dirty visimap entry "
+				INT64_FORMAT "/" INT64_FORMAT,
+				r->key.segno, r->key.firstRowNum);
 		Assert(r->key.firstRowNum == key.firstRowNum);
 		Assert(r->key.segno == key.segno);
 		AppendOnlyVisimapDelete_Unstash(visiMapDelete, key.segno, key.firstRowNum, r);
@@ -677,15 +704,17 @@ AppendOnlyVisimapDelete_Stash(
 		sizeof(key)))
 	{
 		elog(ERROR, "Failed to write visimap delete spill key information: "
-				"segno %d, first row " INT64_FORMAT ", offset " INT64_FORMAT ", length %lu",
-				key.segno, key.firstRowNum, offset, sizeof(4));
+			 "segno " INT64_FORMAT ", first row " INT64_FORMAT ", offset "
+			 INT64_FORMAT ", length %lu",
+			 key.segno, key.firstRowNum, offset, sizeof(key));
 	}
 	if (!ExecWorkFile_Write(visiMapDelete->workfile, visiMap->visimapEntry.data,
 		VARSIZE(visiMap->visimapEntry.data)))
 	{
 		elog(ERROR, "Failed to write visimap delete spill key information: "
-				"segno %d, first row " INT64_FORMAT ", offset " INT64_FORMAT ", length %d",
-				key.segno, key.firstRowNum, offset + sizeof(4), VARSIZE(visiMap->visimapEntry.data));
+			 "segno " INT64_FORMAT ", first row " INT64_FORMAT ", offset "
+			 INT64_FORMAT ", length %d", key.segno, key.firstRowNum,
+			 offset + sizeof(key), VARSIZE(visiMap->visimapEntry.data));
 	}
 	memcpy(&r->tupleTid, &visiMap->visimapEntry.tupleTid, sizeof(ItemPointerData));
 	r->workFileOffset = offset;
@@ -769,9 +798,9 @@ AppendOnlyVisimapDelete_WriteBackStashedEntries(AppendOnlyVisimapDelete *visiMap
 	while (len == sizeof(key))
 	{
 		elogif(Debug_appendonly_print_visimap, LOG, 
-				"Append-only visi map delete: Got next dirty visimap: %d/" INT64_FORMAT
-				", offset " INT64_FORMAT,
-				key.segno, key.firstRowNum, currentOffset);
+			   "Append-only visi map delete: Got next dirty visimap: "
+			   INT64_FORMAT "/" INT64_FORMAT ", offset " INT64_FORMAT,
+			   key.segno, key.firstRowNum, currentOffset);
 
 		/* VARSIZE is only using the first four byte */
 		len = ExecWorkFile_Read(visiMapDelete->workfile, visiMap->visimapEntry.data, 4);
