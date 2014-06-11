@@ -42,7 +42,7 @@ export LDFLAGS=$(BLD_CFLAGS)
 SHELL=bash
 OPT=-g -O3
 LIBEVENT=libevent-1.4.3-stable
-OPENSSL=openssl-0.9.8r
+OPENSSL=openssl-0.9.8za
 ifeq "$(BLD_ARCH)" "win32"
 OPENSSL_LIBS=-L $(GPCC)/ext/$(OPENSSL) -lssl -lcrypto
 else

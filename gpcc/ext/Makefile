@@ -30,7 +30,7 @@ endif
 
 JSON=json-c-0.6
 LIBEVENT=libevent-1.4.6-stable
-OPENSSL=openssl-0.9.8r
+OPENSSL=openssl-0.9.8za
 
 ifeq "$(BLD_ARCH)" "win32"
 MINGWRANLIB=/usr/bin/i686-pc-mingw32-ranlib
@@ -140,6 +140,7 @@ lib/libssl.a:
 	@echo     -- openssl
 	if [ ! -f $(OPENSSL)/Makefile ]; then \
 		gzip -d -c $(OPENSSL).tar.gz | tar xf - ;\
+		gzip -d -c $(OPENSSL).mods.tar.gz | tar xf - ;\
 		(cd $(OPENSSL) && CC="$(CC)" LDFLAGS="$(LDFLAGS)" CPPFLAGS="$(CPPFLAGS)" \
 	          $(CONFIG_OPENSSL) no-shared threads --prefix=$(GPCC)/ext ) \
 		  >LOG.$(@F)-configure 2>&1 ;\
