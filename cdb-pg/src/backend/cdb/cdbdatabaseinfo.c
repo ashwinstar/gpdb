@@ -842,6 +842,7 @@ DatabaseInfo_Scan(
 			 * This could happen especillay with shared relcache init file
 			 * that is stored in global tablespace.
 			 */
+			elog(LOG, "skipping missing file %s", fromfile);
 			continue;
 		}
 
