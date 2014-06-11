@@ -2526,25 +2526,8 @@ static void remove_unused_initplans_helper(Plan *plan, Bitmapset **usedParams, B
 		return;
 	}
 
-	/* process children, and collect params that they use */
 	find_params_context context;
-	context.paramids = NULL;
-
-	if (IsA(plan, Append))
-	{
-		Append *app = (Append *) plan;
-		remove_unused_initplans_helper((Plan *) app->appendplans, &(context.paramids), rte_params);
-	}
-	else if (IsA(plan, SubqueryScan))
-	{
-		SubqueryScan *subq = (SubqueryScan *) plan;
-		remove_unused_initplans_helper(subq->subplan, &(context.paramids), rte_params);
-	}
-	else
-	{
-		remove_unused_initplans_helper(plan->lefttree, &(context.paramids), rte_params);
-		remove_unused_initplans_helper(plan->righttree, &(context.paramids), rte_params);
-	}
+	context.paramids = bms_copy(*usedParams);
 
 	/* collect params used in target list and qual of current node */
 	find_params_walker((Node *) plan->qual, &context);
@@ -2626,6 +2609,23 @@ static void remove_unused_initplans_helper(Plan *plan, Bitmapset **usedParams, B
 		}
 		default:
 			break;
+	}
+
+	/* process children, and collect params that they use */
+	if (IsA(plan, Append))
+	{
+		Append *app = (Append *) plan;
+		remove_unused_initplans_helper((Plan *) app->appendplans, &(context.paramids), rte_params);
+	}
+	else if (IsA(plan, SubqueryScan))
+	{
+		SubqueryScan *subq = (SubqueryScan *) plan;
+		remove_unused_initplans_helper(subq->subplan, &(context.paramids), rte_params);
+	}
+	else
+	{
+		remove_unused_initplans_helper(plan->lefttree, &(context.paramids), rte_params);
+		remove_unused_initplans_helper(plan->righttree, &(context.paramids), rte_params);
 	}
 
 	if (NIL != plan->initPlan)
