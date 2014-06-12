@@ -270,8 +270,9 @@ extern void CopyOneRowTo(CopyState cstate, Oid tupleOid,
 						 Datum *values, bool *nulls);
 extern void CopyOneCustomRowTo(CopyState cstate, bytea *value);
 extern void CopySendEndOfRow(CopyState cstate);
-extern void limit_printout_length(StringInfo buf);
+extern char *limit_printout_length(const char *str);
 extern void truncateEol(StringInfo buf, EolType	eol_type);
+extern void truncateEolStr(char *str, EolType eol_type);
 extern void setEncodingConversionProc(CopyState cstate, int client_encoding, bool iswritable);
 extern void CopyEolStrToType(CopyState cstate);
 

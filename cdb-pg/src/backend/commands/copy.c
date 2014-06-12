@@ -114,6 +114,7 @@ static void copy_in_error_callback(void *arg);
 static void CopyInitPartitioningState(EState *estate);
 static void CopyInitDataParser(CopyState cstate);
 static bool CopyCheckIsLastLine(CopyState cstate);
+static char *extract_line_buf(CopyState cstate);
 
 /* ==========================================================================
  * The follwing macros aid in major refactoring of data processing code (in
@@ -6026,65 +6027,8 @@ void CopyExtractRowMetaData(CopyState cstate)
 static void
 copy_in_error_callback(void *arg)
 {
-	void *buff_orig;
 	CopyState	cstate = (CopyState) arg;
-
-	/*
-	 * Make sure to not modify the actual line_buf here (for example
-	 * in limit_printout_length() ) as we may got here not because of
-	 * a data error but because of an innocent elog(NOTICE) for example
-	 * somewhere in the code. We make a copy of line_buf and use it for
-	 * the error context purposes so that a non-data related elog call
-	 * won't corrupt our data in line_buf.
-	 */
-	StringInfoData copy_of_line_buf;
 	char buffer[20];
-
-	initStringInfo(&copy_of_line_buf);
-	appendStringInfoString(&copy_of_line_buf, cstate->line_buf.data);
-
-	/* NB:  be sure not to add anymore appendStringInfo() calls between here
-	 *      and the pfree() at the bottom.
-	 */
-	buff_orig = copy_of_line_buf.data;
-
-	/*
-	 * If our (copy of) linebuf has the embedded original row number and other
-	 * row-specific metadata, remove it. It is not part of the actual data, and 
-	 * should not be displayed.
-	 * 
-	 * we skip this step, however, if md_error was previously set by
-	 * CopyExtractRowMetaData. That should rarely happen, though.
-	 */
-	if(cstate->err_loc_type == ROWNUM_EMBEDDED && !cstate->md_error)
-	{
-
-		/* the following is a compacted mod of CopyExtractRowMetaData */
-		int value_len = 0;
-		char *line_start = copy_of_line_buf.data;
-		char *lineno_delim = memchr(line_start, COPY_METADATA_DELIM, 32);
-
-		if (lineno_delim && (lineno_delim != line_start))
-		{
-			/*
-			 * we only continue parsing metadata if the first extraction above
-			 * succeeded. there are some edge cases where we may not have a line
-			 * with MD to parse, for example if some non-copy related error 
-			 * propagated here and we don't yet have a proper data line. 
-			 * see MPP-11328
-			 */
-			value_len = lineno_delim - line_start + 1;
-			copy_of_line_buf.data += value_len; /* advance beyond original lineno */
-			copy_of_line_buf.len -= value_len;
-
-			line_start = copy_of_line_buf.data;
-			lineno_delim = memchr(line_start, COPY_METADATA_DELIM, 32);
-
-			value_len = lineno_delim - line_start + 1;
-			copy_of_line_buf.data += value_len; /* advance beyond line_buf_converted */
-			copy_of_line_buf.len -= value_len;		
-		}
-	}
 
 	/*
 	 * If we saved the error context from a QE in cdbcopy.c append it here.
@@ -6092,30 +6036,41 @@ copy_in_error_callback(void *arg)
 	if (Gp_role == GP_ROLE_DISPATCH && cstate->executor_err_context.len > 0)
 	{
 		errcontext("%s", cstate->executor_err_context.data);
-		pfree(buff_orig);
 		return;
 	}
+
+	/* don't need to print out context if error wasn't local */
+	if (cstate->error_on_executor)
+		return;
 
 	if (cstate->cur_attname)
 	{
 		/* error is relevant to a particular column */
-		limit_printout_length(&cstate->attribute_buf);
+		char	   *att_buf;
 
-		if(!cstate->error_on_executor) /* don't print out context if error wasn't local */
-			errcontext("COPY %s, line %s, column %s",
-					   cstate->cur_relname,linenumber_atoi(buffer,cstate->cur_lineno), cstate->cur_attname);
+		att_buf = limit_printout_length(cstate->attribute_buf.data);
+
+		errcontext("COPY %s, line %s, column %s",
+				   cstate->cur_relname,
+				   linenumber_atoi(buffer, cstate->cur_lineno),
+				   att_buf);
+		pfree(att_buf);
 	}
 	else
 	{
-
 		/* error is relevant to a particular line */
 		if (cstate->line_buf_converted || !cstate->need_transcoding)
 		{
-			truncateEol(&copy_of_line_buf, cstate->eol_type);
-			limit_printout_length(&copy_of_line_buf);
+			char	   *line_buf;
 
-			if(!cstate->error_on_executor) /* don't print out context if error wasn't local */
-				errcontext("COPY %s, line %s: \"%s\"", cstate->cur_relname,linenumber_atoi(buffer,cstate->cur_lineno), copy_of_line_buf.data);
+			line_buf = extract_line_buf(cstate);
+			truncateEolStr(line_buf, cstate->eol_type);
+
+			errcontext("COPY %s, line %s: \"%s\"",
+					   cstate->cur_relname,
+					   linenumber_atoi(buffer, cstate->cur_lineno),
+					   line_buf);
+			pfree(line_buf);
 		}
 		else
 		{
@@ -6127,11 +6082,61 @@ copy_in_error_callback(void *arg)
 			 * to regurgitate it without conversion.  So we have to punt
 			 * and just report the line number.
 			 */
-			if(!cstate->error_on_executor)
-				errcontext("COPY %s, line %s", cstate->cur_relname,linenumber_atoi(buffer,cstate->cur_lineno));
+			errcontext("COPY %s, line %s",
+					   cstate->cur_relname,
+					   linenumber_atoi(buffer, cstate->cur_lineno));
 		}
 	}
-	pfree(buff_orig);
+}
+
+/*
+ * If our (copy of) linebuf has the embedded original row number and other
+ * row-specific metadata, remove it. It is not part of the actual data, and
+ * should not be displayed.
+ *
+ * we skip this step, however, if md_error was previously set by
+ * CopyExtractRowMetaData. That should rarely happen, though.
+ *
+ * Returned value is a palloc'ed string to print.  The caller should pfree it.
+ */
+static char *
+extract_line_buf(CopyState cstate)
+{
+	char	   *line_buf = cstate->line_buf.data;
+
+	if (cstate->err_loc_type == ROWNUM_EMBEDDED && !cstate->md_error)
+	{
+		/* the following is a compacted mod of CopyExtractRowMetaData */
+		int value_len = 0;
+		char *line_start = cstate->line_buf.data;
+		char *lineno_delim = memchr(line_start, COPY_METADATA_DELIM, 32);
+
+		if (lineno_delim && (lineno_delim != line_start))
+		{
+			/*
+			 * we only continue parsing metadata if the first extraction above
+			 * succeeded. there are some edge cases where we may not have a line
+			 * with MD to parse, for example if some non-copy related error
+			 * propagated here and we don't yet have a proper data line.
+			 * see MPP-11328
+			 */
+			value_len = lineno_delim - line_start + 1;
+			line_start += value_len;
+
+			lineno_delim = memchr(line_start, COPY_METADATA_DELIM, 32);
+
+			value_len = lineno_delim - line_start + 1;
+			line_start += value_len;
+			line_buf = line_start;
+		}
+	}
+
+	/*
+	 * Finally allocate a new buffer and trim the string to a reasonable
+	 * length.  We need a copy since this might be called from non-ERROR
+	 * context like NOTICE, and we should preserve the original.
+	 */
+	return limit_printout_length(line_buf);
 }
 
 /*
@@ -6141,29 +6146,32 @@ copy_in_error_callback(void *arg)
  * truncate the string.  However, some versions of glibc have a bug/misfeature
  * that vsnprintf will always fail (return -1) if it is asked to truncate
  * a string that contains invalid byte sequences for the current encoding.
- * So, do our own truncation.  We assume we can alter the StringInfo buffer
- * holding the input data.
+ * So, do our own truncation.  We return a pstrdup'd copy of the input.
  */
-void
-limit_printout_length(StringInfo buf)
+char *
+limit_printout_length(const char *str)
 {
 #define MAX_COPY_DATA_DISPLAY 100
 
+	int			slen = strlen(str);
 	int			len;
+	char	   *res;
 
 	/* Fast path if definitely okay */
-	if (buf->len <= MAX_COPY_DATA_DISPLAY)
-		return;
+	if (slen <= MAX_COPY_DATA_DISPLAY)
+		return pstrdup(str);
 
 	/* Apply encoding-dependent truncation */
-	len = pg_mbcliplen(buf->data, buf->len, MAX_COPY_DATA_DISPLAY);
-	if (buf->len <= len)
-		return;					/* no need to truncate */
-	buf->len = len;
-	buf->data[len] = '\0';
+	len = pg_mbcliplen(str, slen, MAX_COPY_DATA_DISPLAY);
 
-	/* Add "..." to show we truncated the input */
-	appendStringInfoString(buf, "...");
+	/*
+	 * Truncate, and add "..." to show we truncated the input.
+	 */
+	res = (char *) palloc(len + 4);
+	memcpy(res, str, len);
+	strcpy(res + len, "...");
+
+	return res;
 }
 
 
@@ -6371,6 +6379,18 @@ void truncateEol(StringInfo buf, EolType eol_type)
 			buf->len--;
 		}
 	}
+}
+
+/* wrapper for truncateEol */
+void
+truncateEolStr(char *str, EolType eol_type)
+{
+	StringInfoData buf;
+
+	buf.data = str;
+	buf.len = strlen(str);
+	buf.maxlen = buf.len;
+	truncateEol(&buf, eol_type);
 }
 
 /*

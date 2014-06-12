@@ -1801,18 +1801,7 @@ external_senddata(URL_FILE *extfile, CopyState pstate)
 static void
 external_scan_error_callback(void *arg)
 {
-
 	CopyState	cstate = (CopyState) arg;
-
-	/*
-	 * Make sure to not modify the actual line_buf here (for example
-	 * in limit_printout_length() ) as we may got here not because of
-	 * a data error but because of an innocent elog(NOTICE) for example
-	 * somewhere in the code. We make a copy of line_buf and use it for
-	 * the error context purposes so that a non-data related elog call
-	 * won't corrupt our data in line_buf.
-	 */
-	StringInfoData copy_of_line_buf;
 	char buffer[20];
 
 	/*
@@ -1827,30 +1816,31 @@ external_scan_error_callback(void *arg)
 		return;
 	}
 
-	initStringInfo(&copy_of_line_buf);
-	appendStringInfoString(&copy_of_line_buf, cstate->line_buf.data);
-
 	if (cstate->cur_attname)
 	{
 		/* error is relevant to a particular column */
-		limit_printout_length(&cstate->attribute_buf);
 
 		errcontext("External table %s, line %s of %s, column %s",
-				   cstate->cur_relname,linenumber_atoi(buffer,cstate->cur_lineno), cstate->filename,
+				   cstate->cur_relname,
+				   linenumber_atoi(buffer, cstate->cur_lineno),
+				   cstate->filename,
 				   cstate->cur_attname);
 	}
 	else
 	{
-
 		/* error is relevant to a particular line */
 		if (cstate->line_buf_converted || !cstate->need_transcoding)
 		{
-			truncateEol(&copy_of_line_buf, cstate->eol_type);
-			limit_printout_length(&copy_of_line_buf);
+			char	   *line_buf;
+
+			line_buf = limit_printout_length(cstate->line_buf.data);
+			truncateEolStr(line_buf, cstate->eol_type);
 
 			errcontext("External table %s, line %s of %s: \"%s\"",
-					   cstate->cur_relname, linenumber_atoi(buffer,cstate->cur_lineno),
-					   cstate->filename, copy_of_line_buf.data);
+					   cstate->cur_relname,
+					   linenumber_atoi(buffer, cstate->cur_lineno),
+					   cstate->filename, line_buf);
+			pfree(line_buf);
 		}
 		else
 		{
@@ -1868,16 +1858,14 @@ external_scan_error_callback(void *arg)
 			 */
 			if(cstate->cur_lineno > 0)
 				errcontext("External table %s, line %s of file %s",
-					   cstate->cur_relname, linenumber_atoi(buffer,cstate->cur_lineno), cstate->filename);
+						   cstate->cur_relname,
+						   linenumber_atoi(buffer,cstate->cur_lineno),
+						   cstate->filename);
 			else
 				errcontext("External table %s, file %s",
 						   cstate->cur_relname, cstate->filename);
 		}
 	}
-
-	/* error context will possibly free it but just in case */
-	pfree(copy_of_line_buf.data);
-
 }
 
 /*
