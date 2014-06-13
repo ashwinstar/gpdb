@@ -109,6 +109,9 @@ extern void caql_yyset_column(int column_no, yyscan_t yyscanner);
 %option noinput
 %option nounput
 %option noyywrap
+%option noyyalloc
+%option noyyrealloc
+%option noyyfree
 %option prefix="caql_yy"
 %option extra-type="caql_yyextra_t *"
 %option bison-bridge
@@ -514,6 +517,8 @@ caql_scanner_finish(caql_scanner_t yyscanner)
 	pfree(yyget_extra(yyscanner)->scanbuf);
 	pfree(yyget_extra(yyscanner)->literalbuf);
 	pfree(yyget_extra(yyscanner));
+
+	caql_yyfree(yyscanner, yyscanner);
 }
 
 static void
@@ -569,4 +574,31 @@ litbufdup(caql_scanner_t yyscanner)
 	new = palloc(extra->literallen + 1);
 	memcpy(new, extra->literalbuf, extra->literallen + 1);
 	return new;
+}
+
+/*
+ * Interface functions to make flex use palloc() instead of malloc().
+ * It'd be better to make these static, but flex insists otherwise.
+ */
+
+void *
+caql_yyalloc(yy_size_t bytes, yyscan_t yyscanner)
+{
+	return palloc(bytes);
+}
+
+void *
+caql_yyrealloc(void *ptr, yy_size_t bytes, yyscan_t yyscanner)
+{
+	if (ptr)
+		return repalloc(ptr, bytes);
+	else
+		return palloc(bytes);
+}
+
+void
+caql_yyfree(void *ptr, yyscan_t yyscanner)
+{
+	if (ptr)
+		pfree(ptr);
 }
