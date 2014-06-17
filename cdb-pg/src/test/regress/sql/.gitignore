@@ -23,7 +23,6 @@ ereport.sql
 orafunk.sql
 tidycat.sql
 filespace.sql
-gpcheckmirrorseg.sql
 upgrade.sql
 auth_constraint.sql
 catversion.sql

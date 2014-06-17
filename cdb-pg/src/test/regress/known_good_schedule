@@ -177,8 +177,3 @@ test: co_nestloop_idxscan
 test: pg_stat_last_operation
 test: plan_size
 test: partindex_test
-#
-# gpcheckmirrorseg should be last to check mirror integrity
-#
-test: gpcheckmirrorseg
-# end of tests

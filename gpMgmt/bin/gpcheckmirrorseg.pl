@@ -10,7 +10,10 @@ use Pod::Usage;
 use Getopt::Long;
 use Data::Dumper;
 use File::Spec;
+use File::Basename;
+use Time::localtime;
 use Config;
+use Scalar::Util qw(looks_like_number);
 use strict;
 use warnings;
 
@@ -114,7 +117,7 @@ which are not in sync (normally true).
 =item B<-parallel> 
     
 Boolean flag to control whether to generate the md5 hashes for each
-segment in parallel, or sequentially (normally false).  If true,
+segment in parallel, or sequentially (normally true).  If true,
 gpcheckmirrorseg forks a separate process on each segment to generate
 the md5 hashes for the initial raw diff phase.  Note that the actual
 diff of primary/mirror hashes and subsequent "enhanced diff" phases
@@ -238,8 +241,6 @@ my $glob_ignore;
 
 my $glob_dirignore;
 
-my $glob_filedump;
-
 my $glob_exit;
 
 my $glob_mm;
@@ -265,6 +266,9 @@ my $glob_platform;
 
 my $glob_filename;
 
+my $glob_psql_str = "psql ";
+my $glob_debug_fmt = "    DEBUG: ";
+
 # from pg_tablespace.h: 
 my $DEFAULTTABLESPACE_OID = 1663;
 my $GLOBALTABLESPACE_OID  = 1664;
@@ -272,9 +276,9 @@ my $GLOBALTABLESPACE_OID  = 1664;
 my $DEFAULTFILESPACE_OID  = 3052;
 
 BEGIN {
-    my $man  = 0;
-    my $help = 0;
-    my $conn;
+	my $man  = 0;
+	my $help = 0;
+	my $conn;
 	my @ignore;
 	my @dirignore;
 	my $skipseg;
@@ -287,9 +291,7 @@ BEGIN {
 	my @content;
 	my @filnam;
 
-#	print Data::Dumper->Dump(\@ARGV), "\n";
-
-    GetOptions(
+	GetOptions(
                'help|?' => \$help, man => \$man, 
                "connect=s" => \$conn,
 		       'exclude|ignore:s' => \@ignore,
@@ -307,24 +309,18 @@ BEGIN {
         or pod2usage(2);
 
     
-    pod2usage(-msg => $glob_id, -exitstatus => 1) if $help;
-    pod2usage(-msg => $glob_id, -exitstatus => 0, -verbose => 2) if $man;
+	pod2usage(-msg => $glob_id, -exitstatus => 1) if $help;
+	pod2usage(-msg => $glob_id, -exitstatus => 0, -verbose => 2) if $man;
 
-    $glob_connect = $conn;
-    $glob_ignore = \@ignore;
-    $glob_dirignore = \@dirignore;
+	$glob_connect = $conn;
+	$glob_ignore = \@ignore;
+	$glob_dirignore = \@dirignore;
 	$glob_filename = \@filnam;
 
 	push @{$glob_dirignore}, "pgsql_tmp"; # this directory only on primaries
 	push @{$glob_dirignore}, "pg_verify"; # this directory may be just on primary
 
 	$glob_content = \@content;
-
-	my $gp_filedump = `which gp_filedump`;
-	chomp $gp_filedump;
-
-	$glob_filedump = $gp_filedump if (defined($gp_filedump) && 
-									  length($gp_filedump));
 
 	if (defined($skipseg))
 	{
@@ -372,7 +368,7 @@ BEGIN {
 	}
 	else
 	{
-		$glob_usefork = 0;
+		$glob_usefork = 1;
 	}
 
 	if (defined($nohash))
@@ -385,35 +381,37 @@ BEGIN {
 	}
 
 	$glob_diff = "diff";
-    # MPP-9810: need gnu diff on solaris
-    if ($Config{'osname'} =~ m/solaris|sunos/i)
-    {
-        $glob_diff = "gdiff";
-    }
+	# MPP-9810: need gnu diff on solaris
+	if ($Config{'osname'} =~ m/solaris|sunos/i)
+	{
+		$glob_diff = "gdiff";
+	}
 
 	$glob_fixfile = $fixfile if (defined($fixfile) && 
 								 length($fixfile));
 	$glob_fixlist = [];
-
-#    print "loading...\n" ;
 }
 
-sub perlhash
+sub printdivider
 {
-	# version of the original perl hash function
-	my $ini = shift;
+	print "____________________________________________________________________________________________________________\n";
+}
 
-	my $hash = 0;
+sub directorydivider
+{
+	print "############################################################################################################\n";
+}
 
-	for my $val (split (//, $ini))
-	{
-		$hash = $hash*33 + ord($val);
-		# MPP-8927: mod the hash when it gets too big
-		$hash = $hash % 100000000000000
-			if ($hash > 100000000000000);
-
-	}
-	return $hash;
+# For dumping datastructure in this tool should use this routine.
+# This allows controling stuff like:
+#  - adding KEYWORD at start of each statement for better readability plus greping 
+#  - disabling the logging etc.
+sub debug_print
+{
+	my ($input) = @_;
+	my $foo;
+	($foo = $input) =~ s/\n/\n${glob_debug_fmt}/g;
+	print "${glob_debug_fmt}$foo \n";
 }
 
 # convert a postgresql psql formatted table into an array of hashes
@@ -421,7 +419,7 @@ sub tablelizer
 {
     my ($ini, $got_line1) = @_;
 
-    # first, split into separate lines, the find all the column headings
+    # first, split into separate lines, then find all the column headings
 
     my @lines = split(/\n/, $ini);
 
@@ -469,7 +467,6 @@ sub tablelizer
             $rawcol =~ s/\s+$//;
 
             my $colhd = $colheads[$colhdcnt];
-#            $rowh->{($colhdcnt+1)} = $rawcol;
             $rowh->{$colhd} = $rawcol;
         }
         push @rows, $rowh;
@@ -534,7 +531,6 @@ sub ignore_list
 	push @master, " perl -nle \'print unless /(" . $regex . ")/  \' ";
 
 	return \@master;
-	
 }
 
 sub get_presh_txt
@@ -967,15 +963,6 @@ EOF_bigstr
 
 	$bigstr =~ s/^\#//gm;
 
-	if (defined($glob_filedump))
-	{
-		$bigstr =~ s/MYFILEDUMP/$glob_filedump/gm;
-	}
-	else
-	{
-		$bigstr =~ s/MYFILEDUMP//gm; # empty string
-	}
-
 	return $bigstr;
 }
 
@@ -987,14 +974,12 @@ EOF_bigstr
 sub dandydiff
 {
 	my ($prim, $mirr) = @_;
-
 	my ($pfh, $mfh);
 
 	open ($pfh, '<', $prim) or die ("cannot open $prim: $!");
 	open ($mfh, '<', $mirr) or die ("cannot open $mirr: $!");
 		
 	my ($plin, $mlin);
-
 	my $pstat = ($plin = <$pfh>);
 	my $mstat = ($mlin = <$mfh>);
 
@@ -1135,7 +1120,6 @@ sub dandydiff
 				hashdiff => \%hashdiff, topdir => \@topdir);
 
 	return \%bigh;
-
 } # end dandydiff
 
 sub get_relation_info_query_txt
@@ -1145,26 +1129,12 @@ sub get_relation_info_query_txt
 	# for this case.
 
 	my $bigstr = <<'EOF_bigstr';
-select
-pt.spcname,
-prn.tablespace_oid,
-pd.datname,
-prn.database_oid,
-pc.relname,
-pc.oid as relid,
-prn.relfilenode_oid,
-pc.relfilenode,
-pc.relisshared,
-pc.relstorage,
-pc.reltablespace,
-pc.relkind,
-pc.relam
-from gp_persistent_relation_node as prn,
-pg_class as pc,
-pg_tablespace as pt,
-pg_database as pd
-where prn.tablespace_oid = pt.oid
-and (prn.database_oid = pd.oid
+select pt.spcname, prn.tablespace_oid, pd.datname, prn.database_oid, pc.relname,
+pc.oid as relid, prn.relfilenode_oid, pc.relfilenode, pc.relisshared, 
+pc.relstorage, pc.reltablespace, pc.relkind, pc.relam
+from gp_persistent_relation_node as prn, pg_class as pc, 
+pg_tablespace as pt, pg_database as pd 
+where prn.tablespace_oid = pt.oid and (prn.database_oid = pd.oid
   or (prn.database_oid = 0 and pd.datname = $q$template1$q$))
 and prn.relfilenode_oid = pc.relfilenode
 and pc.relfilenode in (
@@ -1219,8 +1189,6 @@ sub find_eof_in_vpinfo
 
 		my @foo = split(/(\\\d\d\d)/, $rr->{vpinfo});
 
-#		print Data::Dumper->Dump(\@foo);
-
 		for my $cc (@foo)
 		{
 			# oh, did I neglect to mention that postgres returns the
@@ -1247,15 +1215,9 @@ sub find_eof_in_vpinfo
 				}
 				$bigbuf .= $cc;
 			}
-
-			
 		}
-#		print Data::Dumper->Dump($biga);
-
 		# two 32 bit ints
 		my @ppp = unpack("I2", $bigbuf);
-
-#		print Data::Dumper->Dump(\@ppp);
 
 		next unless (scalar(@ppp) > 1);
 
@@ -1282,8 +1244,6 @@ sub find_eof_in_vpinfo
 
 		@ppp = unpack("I2 I$nentry2", $bigbuf);
 
-#		print Data::Dumper->Dump(\@ppp);
-
 		# discard version, nentry
 		shift @ppp;
 		shift @ppp;
@@ -1291,7 +1251,7 @@ sub find_eof_in_vpinfo
 		# and discard the packing...
 		shift @ppp unless $isMac;
 
-		print "\nppp: \n",Data::Dumper->Dump(\@ppp);
+#		print "\nppp: \n",Data::Dumper->Dump(\@ppp);
 
 		# the nentry corresponds to the number of columns in the table
 		for my $column_num (0..($nentry-1))
@@ -1332,23 +1292,15 @@ sub find_eof_in_vpinfo
 
 			push @{$pseudo_aoseg}, $new_entry;
 		}
-
 	} # end for rr
-
 	$rnod->{pseudo_aoseg} = $pseudo_aoseg;
-
 } # end find_eof_in_vpinfo
-
 
 sub get_aoseg_func
 {
 	my ($relid, $rnod, $dbname, $diffi, $row, $fselochsh, $bigh) = @_;
-
 	my $storage_class = $rnod->{relstorage};
-
-	my $psql_str = "psql ";
-
-	# XXX XXX: need portnumber!!
+	my $psql_str = $glob_psql_str;
 	$psql_str .= "-p $glob_port " . $dbname;
 
 	# MPP-10866: segname construction is different for ALTER TABLE and
@@ -1359,14 +1311,8 @@ sub get_aoseg_func
 		"where relid = " . $relid . " ) " .
 		"\' ";
 
-#	print $psql_str, "\n";
-
 	my $tabdef = `$psql_str`;
-
-#	print $tabdef;
-
 	my $segname = "unknown_segname";
-
 	my $segs = tablelizer($tabdef);
 
 	for my $rr (@{$segs})
@@ -1378,11 +1324,8 @@ sub get_aoseg_func
 		}
 	}
 
-	$psql_str = "psql ";
-
-	# XXX XXX: need portnumber!!
+	$psql_str = $glob_psql_str;
 	$psql_str .= "-p $glob_port " . $dbname;
-
 
 	# select from gp_persistent_relation_node, pg_class, etc
 
@@ -1399,17 +1342,10 @@ sub get_aoseg_func
 	# for column store, will extract the eofs from vpinfo in
 	# pg_aocsseg_XXX
 
-#	print $psql_str, "\n";
-
 	$tabdef = `$psql_str`;
-
-#	print $tabdef;
-
 	my $ao_seg = tablelizer($tabdef);
-
 	return $ao_seg;
 }
-
 
 # helper function for resolve_sizediff, resolve_hashdiff
 sub get_relfilenode_func
@@ -1443,9 +1379,6 @@ sub get_relfilenode_func
 
 		$relfilenode =~ s/\.\d+$//gm; # remove the trailing ".number"...
 
-		# must be a number for dbid -- will error out later
-		warn "invalid dbid: $db" unless ($db =~ m/^((\d+)|global)$/);
-
 		$dbs{$db} = {relfilenodeh=>{}} unless exists($dbs{$db});
 
 		unless (exists($dbs{$db}->{relfilenodeh}->{$relfilenode}))
@@ -1468,33 +1401,24 @@ sub get_relfilenode_func
 					push @relfnods, $relfilenode;
 				}
 			}
-			else
-			{
-				warn "invalid relfilenode: $relfilenode in db: $db";
-			}
-
 		}
 		
 		push @{$dbs{$db}->{relfilenodeh}->{$relfilenode}->{files}}, $fil;
-
 		$dbs{$db}->{relfilenodeh}->{$relfilenode}->{tspace}->{$tspace} = 1;
 	}
 
-    my $psql_str = "psql ";
-
-    $psql_str .= $glob_connect
-        if (defined($glob_connect));
+	my $psql_str = $glob_psql_str;
+	$psql_str .= $glob_connect
+	if (defined($glob_connect));
 
 	# read from all db's, but separate out "connectable ones later...
-    $psql_str .= " -c \' " . 
+	$psql_str .= " -c \' " . 
 		"select oid, datname, datallowconn from pg_database  \' ";
 
-#	print $psql_str, "\n";
-
-    my $tabdef = `$psql_str`;
-
-	print "databases (with connect state):\n", $tabdef;
-
+	my $tabdef = `$psql_str`;
+	chomp($tabdef);
+	debug_print("DATABASES (with connect state):");
+	debug_print($tabdef);
 	my $dbidinfo = tablelizer($tabdef);
 
 	# Note: treat all global objects as belonging to template1 (dbid=1)
@@ -1528,30 +1452,28 @@ sub get_relfilenode_func
 		}
 	}
 
-#	print Data::Dumper->Dump([%dbs]);
-
 	for my $dbkey (keys(%dbs))
 	{
 		next
 			unless (exists($dbs{$dbkey}->{dbname}));
-
 		next
 			unless (scalar(@relfnods)); # MPP-9689: fix syntax error 
 
-		$psql_str = "psql ";
-
-		# XXX XXX: need portnumber!!
+		$psql_str = $glob_psql_str;
 		$psql_str .= "-p $glob_port " . $dbs{$dbkey}->{dbname};
-
 		# select from gp_persistent_relation_node, pg_class, etc
 		$psql_str .= " -c \' ". get_relation_info_query_txt()
 			. join (", ", @relfnods) . ") \'";
 
-#		print $psql_str, "\n";
+		print "Fetching the details from pg_class and gp_relation_node for $dbs{$dbkey}->{dbname} \n";
+		debug_print($psql_str);
 
 		$tabdef = `$psql_str`;
+		chomp($tabdef);
 
+		printdivider();
 		print $tabdef;
+		printdivider();
 
 		my $gp_prn = tablelizer($tabdef);
 
@@ -1601,7 +1523,6 @@ sub get_relfilenode_func
 							}
 						}
 					} # end if exists rnod->tspace
-
 				} # end unless exists tspace_match
 			} # end if exists dbs dbkey
 		} # end for my rr2
@@ -1623,7 +1544,6 @@ sub get_relfilenode_func
 		else
 		{
 			$bstat = 0;
-			warn "no dbname for $kk";
 			$dbname = "dbid: $kk";
 		}
 
@@ -1640,8 +1560,6 @@ sub get_relfilenode_func
 			else
 			{
 				$bstat = 0;
-				print Data::Dumper->Dump([$vv2]),"\n";
-				warn "bad relfilenode $kk2 for $dbname -- no relname";
 				$relname = "relfilenode: $kk2";
 				$unknown{$kk} = []
 					unless (exists($unknown{$kk}));
@@ -1674,7 +1592,6 @@ sub get_relfilenode_func
 				# MPP-10866: aoseg/aocsseg naming is inconsistent
 				$rnod->{aoseg} = 
 					get_aoseg_func($rnod->{relid}, $rnod, $dbname,
-#					get_aoseg_func($kk2, $rnod, $dbname,
 								   $diffi, $row, $fselochsh, $bigh);
 
 				$rnod->{aoseg_eof} = {};
@@ -1691,40 +1608,28 @@ sub get_relfilenode_func
 				{
 					# unpack the list of pseudo-segments from the vpinfo
 					find_eof_in_vpinfo($rnod);
-
-					print Data::Dumper->Dump([$rnod]);
-
 					for my $rr2 (@{$rnod->{pseudo_aoseg}})
 					{
 						$rnod->{aoseg_eof}->{$rr2->{segno}} = $rr2->{eof};
 					}
-
 				}
 			}
 
 			# MPP-10123: validate tablespace in filesystem and catalog
 			if (scalar(keys(%{$rnod->{tspace}})) > 1)
 			{
-				warn "relfilenode $kk2 appears in multiple tablespaces!!";
-				print Data::Dumper->Dump([$vv2]), "\n";
 				$unknown{$kk} = []
 					unless (exists($unknown{$kk}));
 				push @{$unknown{$kk}}, $kk2;
-
 			}
 			elsif ($rnod->{tablespace_oid})
 			{
 				my $nomatch = 0;
-				
-				print Data::Dumper->Dump([$rnod]);
-
 				my @tskk = sort(keys(%{$rnod->{tspace}}));
-
 				my $tspace1 = $tskk[0]; # should only be one
 
 				unless (defined($tspace1))
 				{
-					warn "no tablespace for $kk\n";
 					$tspace1 = "no tablespace";
 					$nomatch = 1;
 				}
@@ -1752,20 +1657,14 @@ sub get_relfilenode_func
 						unless (exists($unknown{$kk}));
 					push @{$unknown{$kk}}, $kk2;
 				}
-				
 			}
-
 		} # end for all relfilenodes
-
 	} # end for all db's
 		
 	# check for unknown relfilenodes separately across pg_class and
 	# gp_persistent_relation_node on all segments
 	if (scalar(keys(%unknown)))
 	{
-		print "\nFound ", scalar(keys(%unknown)), " unknown relfilenodes\n";
-		print "Checking for pg_class/gp_persistent_relation_node mismatch\n";
-
 		while (my ($ukk, $uvv) = each(%unknown))
 		{
 			my $relfnod2;
@@ -1774,19 +1673,18 @@ sub get_relfilenode_func
 			# see if have connectable database first...
 			if (exists($dbs{$ukk}) && exists($dbs{$ukk}->{dbname}))
 			{
-				print "Checking db: ", $dbs{$ukk}->{dbname}, "\n";
+#				print "Checking db: ", $dbs{$ukk}->{dbname}, "\n";
 			}
 			else
 			{
 				$bstat = 0;
-				print Data::Dumper->Dump($uvv);
-				warn "found ", scalar(@{$uvv}), 
+				print "found ", scalar(@{$uvv}),
 				" relfilenodes in unknown database dbid: ", $ukk, 
 				" -- no lookup possible!\n";
 				next;
 			}
 
-			$relfnod2	 = []; # MPP-9689: fix syntax error 
+			$relfnod2 = []; # MPP-9689: fix syntax error 
 			$bad_relfnod = [];
 
 			for my $rnod (@{$uvv})
@@ -1813,22 +1711,18 @@ sub get_relfilenode_func
 			next
 				unless (scalar(@{$relfnod2}));
 
-			$psql_str = "psql ";
-
-			# XXX XXX: need portnumber!!
+			$psql_str = $glob_psql_str;
 			$psql_str .= "-p $glob_port " . $dbs{$ukk}->{dbname};
-
 			# select from gp_persistent_relation_node, pg_class, etc
 			$psql_str .= " -c \' ". get_pg_class_query_txt()
 				. join (", ", @{$relfnod2}) . ") \'";
 
-#		print $psql_str, "\n";
 
 			$tabdef = `$psql_str`;
 
 			if ($tabdef !~ m/\(0 rows\)/)
 			{
-				print $tabdef;
+#				print $tabdef;
 			}
 			else
 			{
@@ -1837,21 +1731,16 @@ sub get_relfilenode_func
 				join (", ", @{$relfnod2}) . ")\n";
 			}
 
-			$psql_str = "psql ";
-
-			# XXX XXX: need portnumber!!
+			$psql_str = $glob_psql_str;
 			$psql_str .= "-p $glob_port " . $dbs{$ukk}->{dbname};
-
 			# select from gp_persistent_relation_node, pg_class, etc
 			$psql_str .= " -c \' ". get_prn_query_txt()
 				. join (", ", @{$relfnod2}) . ") \'";
 
-#		print $psql_str, "\n";
-
 			$tabdef = `$psql_str`;
 			if ($tabdef !~ m/\(0 rows\)/)
 			{
-				print $tabdef;
+#				print $tabdef;
 			}
 			else
 			{
@@ -1859,23 +1748,16 @@ sub get_relfilenode_func
 				print "no gp_persistent_relation_node entries for (",
 				join (", ", @{$relfnod2}) . ")\n";
 			}
-
 		}
-
 	} # end if unknowns
 
 	my $do_anyway = 1;
-
 	unless ($do_anyway || $bstat)
 	{
 		print Data::Dumper->Dump([%dbs]);
-
 		print $diffi;
-
 		print Data::Dumper->Dump([$row]);
-
 		print Data::Dumper->Dump([$bigh]);	 
-
 		die "too many failures resolving relfilenodes";
 		exit(1);
 	}
@@ -1892,11 +1774,9 @@ sub get_relfilenode_func
 sub resolve_sizediff
 {
 	my ($diffi, $row, $fselochsh, $bigh) = @_;
-	
 	my $dbs = 
 		get_relfilenode_func($bigh->{sizediff},
 							 $diffi, $row, $fselochsh, $bigh);
-
 	my $bstat = 1;
 
 	# for all db's
@@ -1920,7 +1800,6 @@ sub resolve_sizediff
 				warn "bad sizediff for non-ao file $relname for db $dbname (but could be ok - see block by block results)";
 			}
 		} # end for all relfilenodes
-
 	} # end for all db's
 
 	my $do_anyway = 1;
@@ -1928,32 +1807,22 @@ sub resolve_sizediff
 	unless ($do_anyway || $bstat)
 	{
 		print Data::Dumper->Dump([$dbs]);
-
 		print $diffi;
-
 		print Data::Dumper->Dump([$row]);
-
 		print Data::Dumper->Dump([$bigh]);	 
-
 		die "found size differences in non-ao files";
 		exit(1);
 	}
-
 	return $dbs;
-
 } # end resolve_sizediff
 
 sub resolve_hashdiff
 {
 	my ($diffi, $row, $fselochsh, $bigh) = @_;
-
 	my $dbs = 
 		get_relfilenode_func($bigh->{hashdiff},
 							 $diffi, $row, $fselochsh, $bigh);
-
-
 	return $dbs;
-
 } # end resolve_hashdiff
 
 sub extra_files_check_for_zero_length_heap
@@ -1970,8 +1839,6 @@ sub extra_files_check_for_zero_length_heap
 	# MPP-11639: 
 	print "extra files: check for zero-length heap files\n";
 
-#	print Data::Dumper->Dump([$bigh, $dbs3]);
-	
 	for my $e2 (@{($bigh->{extrafiles})})
 	{
 		my $extry;
@@ -2004,16 +1871,12 @@ sub extra_files_check_for_zero_length_heap
 		if ($extry =~ m|/|)
 		{
 			my @baz = split(/\//, $extry);
-
 			$extry = pop (@baz);
 		}
-
-#		print "extry: $extry\n";
 
 		while (my ($kk, $vv) = each(%{$dbs3}))	
 		{
 			my $dbname = $vv->{dbname};
-
 			$dbname = "<unknown dbname>" 
 				unless (defined($dbname) && length($dbname));
 
@@ -2021,7 +1884,6 @@ sub extra_files_check_for_zero_length_heap
 			my $kk2 = $extry;
 			next unless (exists($vv->{relfilenodeh}) &&
 						 exists($vv->{relfilenodeh}->{$kk2}));
-
 			my $vv2 = $vv->{relfilenodeh}->{$kk2};
 			my $rnod = $vv2;
 			my $relname = exists($rnod->{relname}) ? $rnod->{relname} : 
@@ -2029,7 +1891,6 @@ sub extra_files_check_for_zero_length_heap
 			if ($rnod->{relstorage} ne "h")
 			{
 				warn "extra file $e2->[0] for relation $relname in db $dbname is storage class: " . $rnod->{relstorage} . ", not heap";
-
 				# if extra file is zero length but not heap, complain
 				$bstat = 0;
 				last; # keep going
@@ -2042,9 +1903,7 @@ sub extra_files_check_for_zero_length_heap
 				$bstat = 0;
 				last; # keep going
 			}
-
 		} # end while kk
-
 	} # end while e2
 
 	if ($bstat)
@@ -2057,17 +1916,71 @@ sub extra_files_check_for_zero_length_heap
 
 		# found differences
 		print "\nextra files [$floc]: found differences\n\n";
-		push @{$glob_exit}, $row->{ploc}." ".$row->{mloc} ; 
+		push @{$glob_exit}, $row->{ploc}." ".$row->{mloc}; 
 		return (0);
 	}
 
 	return (1);
-
 } # end extra_files_check_for_zero_length_heap
+
+sub copyfiles
+{
+	my ($allfilescopy, $primhost, $mirrhost, $primfil, $mirrfil, $primtmp, $mirrtmp) = @_;
+	my $cmd_template;
+	my $primsh = $primtmp . "_copy.sh";
+	my $mirrsh = $mirrtmp . "_copy.sh";
+	my $dir;
+
+	return undef unless scalar(@{$allfilescopy});
+
+	for my $file (@{$allfilescopy})
+	{
+		$dir = "MYDIRTEMP_data/" . dirname($file);
+		$cmd_template .= "mkdir -p $dir; cp MYDIRDATA/$file $dir/;\n"
+	}
+
+	my $cmd = $cmd_template;
+	$cmd =~ s/MYDIRTEMP/$primtmp/g;
+	$cmd =~ s/MYDIRDATA/$primfil/g;
+
+	my $fh;
+	open ($fh, '>', $primsh);
+	print $fh $cmd, "\n";
+	close $fh;
+
+	$cmd = $cmd_template;
+	$cmd =~ s/MYDIRTEMP/$mirrtmp/g;
+	$cmd =~ s/MYDIRDATA/$mirrfil/g;
+
+	open ($fh, '>', $mirrsh);
+	print $fh $cmd, "\n";
+	close $fh;
+
+	# copy the shell scripts to the segments, execute them, then
+	# copy back the results. Note that we add "1" as a suffix to
+	# the script name and output file name to handle the case
+	# where the master and segment are on the same machine (useful
+	# for testing)
+	my $cmd_template2 = 
+			'gpscp -h MYHOST MYSHSCRIPT =:MYSHSCRIPT1 ; ' .
+			'gpssh -h MYHOST \' sh MYSHSCRIPT1 \' > /dev/null 2>&1;';
+
+	$cmd = $cmd_template2;
+	$cmd =~ s/MYHOST/$primhost/g;
+	$cmd =~ s/MYSHSCRIPT/$primsh/g;
+
+	system ($cmd);
+
+	$cmd = $cmd_template2;
+	$cmd =~ s/MYHOST/$mirrhost/g;
+	$cmd =~ s/MYSHSCRIPT/$mirrsh/g;
+
+	system ($cmd);
+}
 
 sub diff_again
 {
-	my ($dbs1, $dbs2, 
+	my ($dbs1, $dbs2,
 		$diffi, $row, $fselochsh, $bigh,
 		$primfil, $mirrfil, $primhost, $mirrhost, 
 		$primtmp, $mirrtmp,
@@ -2106,7 +2019,7 @@ sub diff_again
 					
 					# MPP-9415: use "base" or tablespace oid in directory name
 					push @filpref, "base" 
-						unless (($kk eq "global")
+						unless ((not looks_like_number($kk))
 								# MPP-9415: no "base" for other filespaces
 								|| ($row->{fsoid} != $DEFAULTFILESPACE_OID)); 
 					                                 # pg_system
@@ -2180,20 +2093,16 @@ sub diff_again
 						{
 							my $s1 = exists($rnod->{relstorage}) ? 
 								$rnod->{relstorage} : "<unknown>";
-							warn "unknown storage type: $s1 for $relname in $dbname";
 							push @unknownfiles, $filnam;
 						}
-
 					}
-
 				}
-
 			} # end for all relfilenodes
-			
 		} # end for all db's
 	}
 
 	my (@allfiles1, @allfiles2);
+	my (@allfilescopy);
 
 	for my $fil (@aofiles)
 	{
@@ -2215,7 +2124,6 @@ sub diff_again
 		# should be: perl -e 'for (<STDIN>) { print "filename: ", $_ ;}'
 		. "| perl -e 'for (<STDIN>) { print \"" . $fil . 
 		':heap: ", $_ ;}' . "'";
-###			File::Spec->catfile($primfil, $fil->{file});
 	}
 	for my $fil (@btreefiles)
 	{
@@ -2225,17 +2133,19 @@ sub diff_again
 		# should be: perl -e 'for (<STDIN>) { print "filename: ", $_ ;}'
 		. "| perl -e 'for (<STDIN>) { print \"" . $fil . 
 		':btree: ", $_ ;}' . "'";
-###			File::Spec->catfile($primfil, $fil->{file});
 	}
 	for my $fil (@unknownfiles)
 	{
-		push @allfiles1, 
-		$fil . "  ( cat MYDIR/" . $fil
-		. " | openssl dgst -md5 -hex ) 2>&1  "
-		# should be: perl -e 'for (<STDIN>) { print "filename: ", $_ ;}'
-		. "| perl -e 'for (<STDIN>) { print \"" . $fil . 
-		':unknown: ", $_ ;}' . "'";
-###			File::Spec->catfile($primfil, $fil->{file});
+		print "raw diff:\n";
+		debug_print($diffi);
+		# found differences
+		push @{$glob_exit}, $row->{ploc}." ".$row->{mloc} ;
+
+		push @{$glob_fixlist}, "unknown: " . $row->{paddress} . ":" . 
+			File::Spec->catfile($primfil, $fil) . " " .
+			$row->{maddress} . ":" . 
+			File::Spec->catfile($mirrfil, $fil);
+		push @allfilescopy, $fil;
 	}
 	for my $fil2 (@otheridx)
 	{
@@ -2250,11 +2160,7 @@ sub diff_again
 		# should be: perl -e 'for (<STDIN>) { print "filename: ", $_ ;}'
 		. "| perl -e 'for (<STDIN>) { print \"" . $fil . 
 		':' . $idx_type . ': ", $_ ;}' . "'";
-###			File::Spec->catfile($primfil, $fil->{file});
 	}
-
-#	print Data::Dumper->Dump([$dbs1]);
-#	print Data::Dumper->Dump([$dbs2]);
 
 	# need filename to sort correctly
 	@allfiles2 = sort @allfiles1;
@@ -2268,12 +2174,13 @@ sub diff_again
 		push @allfiles1, $zzz[0];
 	}
 
-
 	my $numfiles = scalar(@allfiles1);
 	my $floc = $row->{ploc};
 
-	print "enhanced diff: recheck $numfiles files for $floc\n";
-	print Data::Dumper->Dump(\@allfiles1);
+	copyfiles(\@allfilescopy, $primhost, $mirrhost, $primfil, $mirrfil, $primtmp, $mirrtmp);
+
+	return undef unless ($numfiles);
+	print "\nGoing for 2nd Phase enhanced diff (using storage-specific techniques) $numfiles files for $floc\n";
 
 	$primsh .= "_deux";
 	$mirrsh .= "_deux";
@@ -2290,9 +2197,7 @@ sub diff_again
 
 	my $fh;
 	open ($fh, '>', $primsh);
-
 	print $fh $cmd, "\n";
-
 	close $fh;
 
 	$cmd = $cmd_template;
@@ -2302,9 +2207,7 @@ sub diff_again
 	$cmd =~ s/MYPRESH2/$mpresh2/g;
 
 	open ($fh, '>', $mirrsh);
-
 	print $fh $cmd, "\n";
-
 	close $fh;
 
 	# copy the shell scripts to the segments, execute them, then
@@ -2312,10 +2215,9 @@ sub diff_again
 	# the script name and output file name to handle the case
 	# where the master and segment are on the same machine (useful
 	# for testing)
-
 	my $cmd_template2 = 
 			'gpscp -h MYHOST MYSHSCRIPT =:MYSHSCRIPT1 ; ' .
-			'gpssh -h MYHOST \' sh MYSHSCRIPT1 > MYOUT  \' ; ' .
+			'gpssh -h MYHOST \' sh MYSHSCRIPT1 > MYOUT  \' > /dev/null 2>&1; ' .
 			'gpscp -h MYHOST  =:MYOUT MYOUT1 ; ' ;
 
 	$cmd = $cmd_template2;
@@ -2324,8 +2226,6 @@ sub diff_again
 	$cmd =~ s/MYOUT/$primtmp/g;
 	$cmd =~ s/MYSHSCRIPT/$primsh/g;
 
-	print $cmd, "\n";
-
 	system ($cmd);
 
 	$cmd = $cmd_template2;
@@ -2333,8 +2233,6 @@ sub diff_again
 	$cmd =~ s/MYDIR/$mirrfil/g;
 	$cmd =~ s/MYOUT/$mirrtmp/g;
 	$cmd =~ s/MYSHSCRIPT/$mirrsh/g;
-
-	print $cmd, "\n";
 
 	system ($cmd);
 
@@ -2346,7 +2244,7 @@ sub diff_again
 
 	if (length($diffi2))
 	{
-		print "enhanced diff: found differences\n";
+		print "Enhanced diff: 			[ 2nd PHASE ALSO FOUND DIFFERENCES ] \n";
 
 		my $fdiff = $diffi2;
 
@@ -2363,10 +2261,10 @@ sub diff_again
 		for my $ff (@foo)
 		{
 			next
-				unless ($ff =~ m/\:ao\:|\:heap\:|\:btree\:|\:unknown\:/);
+				unless ($ff =~ m/\:ao\:|\:heap\:|\:btree\:/);
 			$thrice{$ff} = 1;
 		}
-		print "block by block: ", join("\n", sort(keys(%thrice))), "\n";
+		print "\nWill be performing block by block diff: ", join("\n", sort(keys(%thrice))), "\n";
 
 		diff_thrice($dbs1, $dbs2,
 					$diffi, $diffi2, $row, $fselochsh, $bigh,
@@ -2379,13 +2277,11 @@ sub diff_again
 					\@unknownfiles,
 					\@otheridx
 			);
-
 	}
 	else
 	{
-		print "\nenhanced diff [$floc]: no differences\n\n";
+		print "\nEnhanced diff \"$floc\" [ NO DIFFERENCES ]\n\n";
 	}
-
 } # end diff_again
 
 # MPP-8555: block by block diff 
@@ -2404,6 +2300,7 @@ sub diff_thrice
 	my $bstat = 1;
 
 	my (@allfiles1, @allfiles2);
+	my @allfilescopy;
 
 	for my $fil (@{$aofiles})
 	{
@@ -2421,7 +2318,7 @@ sub diff_thrice
 			File::Spec->catfile($primfil, $fil->{file}) . " " .
 			$row->{maddress} . ":" . 
 			File::Spec->catfile($mirrfil, $fil->{file});
-			
+		push @allfilescopy, $fil;	
 	}
 	for my $fil (@{$heapfiles})
 	{
@@ -2431,12 +2328,12 @@ sub diff_thrice
 		# should be: perl -e 'for (<STDIN>) { print "filename: ", $_ ;}'
 		. "| perl -e 'for (<STDIN>) { print \"" . $fil . 
 		':heap: ", $_ ;}' . "'";
-###			File::Spec->catfile($primfil, $fil->{file});
 
 		push @{$glob_fixlist}, "heap: " . $row->{paddress} . ":" .
 			File::Spec->catfile($primfil, $fil) . " " .
 			$row->{maddress} . ":" . 
 			File::Spec->catfile($mirrfil, $fil);
+		push @allfilescopy, $fil;	
 	}
 	for my $fil (@{$btreefiles})
 	{
@@ -2446,28 +2343,12 @@ sub diff_thrice
 		# should be: perl -e 'for (<STDIN>) { print "filename: ", $_ ;}'
 		. "| perl -e 'for (<STDIN>) { print \"" . $fil . 
 		':btree: ", $_ ;}' . "'";
-###			File::Spec->catfile($primfil, $fil->{file});
 
 		push @{$glob_fixlist}, "btree: " . $row->{paddress} . ":" .
 			File::Spec->catfile($primfil, $fil) . " " .
 			$row->{maddress} . ":" . 
 			File::Spec->catfile($mirrfil, $fil);
-	}
-	for my $fil (@{$unknownfiles})
-	{
-		push @allfiles1, 
-		# XXX XXX: use "-adler -other" to do block by block
-		$fil . "  ( perl MYPRESH21 -adler -other MYDIR/" . $fil
-		. " ) 2>&1  "
-		# should be: perl -e 'for (<STDIN>) { print "filename: ", $_ ;}'
-		. "| perl -e 'for (<STDIN>) { print \"" . $fil . 
-		':unknown: ", $_ ;}' . "'";
-###			File::Spec->catfile($primfil, $fil->{file});
-
-		push @{$glob_fixlist}, "unknown: " . $row->{paddress} . ":" . 
-			File::Spec->catfile($primfil, $fil) . " " .
-			$row->{maddress} . ":" . 
-			File::Spec->catfile($mirrfil, $fil);
+		push @allfilescopy, $fil;	
 	}
 	for my $fil2 (@{$otheridx})
 	{
@@ -2483,16 +2364,13 @@ sub diff_thrice
 		# should be: perl -e 'for (<STDIN>) { print "filename: ", $_ ;}'
 		. "| perl -e 'for (<STDIN>) { print \"" . $fil . 
 		':' . $idx_type . ': ", $_ ;}' . "'";
-###			File::Spec->catfile($primfil, $fil->{file});
 
 		push @{$glob_fixlist}, "$idx_type: " . $row->{paddress} . ":" . 
 			File::Spec->catfile($primfil, $fil) . " " .
 			$row->{maddress} . ":" . 
 			File::Spec->catfile($mirrfil, $fil);
+		push @allfilescopy, $fil;	
 	}
-
-#	print Data::Dumper->Dump([$dbs1]);
-#	print Data::Dumper->Dump([$dbs2]);
 
 	# need filename to sort correctly
 	@allfiles2 = sort @allfiles1;
@@ -2506,12 +2384,10 @@ sub diff_thrice
 		push @allfiles1, $zzz[0];
 	}
 
-
 	my $numfiles = scalar(@allfiles1);
 	my $floc = $row->{ploc};
 
-	print "block by block diff: recheck $numfiles files for $floc\n";
-	print Data::Dumper->Dump(\@allfiles1);
+	print "Block by block diff: $numfiles files for $floc\n";
 
 	$primsh  =~ s/deux/trois/;
 	$mirrsh  =~ s/deux/trois/;
@@ -2528,9 +2404,7 @@ sub diff_thrice
 
 	my $fh;
 	open ($fh, '>', $primsh);
-
 	print $fh $cmd, "\n";
-
 	close $fh;
 
 	$cmd = $cmd_template;
@@ -2540,9 +2414,7 @@ sub diff_thrice
 	$cmd =~ s/MYPRESH2/$mpresh2/g;
 
 	open ($fh, '>', $mirrsh);
-
 	print $fh $cmd, "\n";
-
 	close $fh;
 
 	# copy the shell scripts to the segments, execute them, then
@@ -2553,7 +2425,7 @@ sub diff_thrice
 
 	my $cmd_template2 = 
 			'gpscp -h MYHOST MYSHSCRIPT =:MYSHSCRIPT1 ; ' .
-			'gpssh -h MYHOST \' sh MYSHSCRIPT1 > MYOUT  \' ; ' .
+			'gpssh -h MYHOST \' sh MYSHSCRIPT1 > MYOUT  \' > /dev/null 2>&1; ' .
 			'gpscp -h MYHOST  =:MYOUT MYOUT1 ; ' ;
 
 	$cmd = $cmd_template2;
@@ -2561,8 +2433,6 @@ sub diff_thrice
 	$cmd =~ s/MYDIR/$primfil/g;
 	$cmd =~ s/MYOUT/$primtmp/g;
 	$cmd =~ s/MYSHSCRIPT/$primsh/g;
-
-	print $cmd, "\n";
 
 	system ($cmd);
 
@@ -2572,8 +2442,6 @@ sub diff_thrice
 	$cmd =~ s/MYOUT/$mirrtmp/g;
 	$cmd =~ s/MYSHSCRIPT/$mirrsh/g;
 
-	print $cmd, "\n";
-
 	system ($cmd);
 
 	# add "1" suffix on master
@@ -2581,7 +2449,6 @@ sub diff_thrice
 	$mirrtmp .= '1';
 
 	my $diffi3 = `$glob_diff -I GP_IGNORE -b $primtmp $mirrtmp`;
-
 	{
 		goto L_diff_fini unless (length($diffi3));
 
@@ -2606,7 +2473,6 @@ sub diff_thrice
 
 		if (length($diffi4))
 		{
-			print "block by block: suppress differences for trailing blanks in heap datafiles\n";
 			$diffi3 = "";
 		}
 
@@ -2614,74 +2480,74 @@ sub diff_thrice
 		if (length($diffi3))
 		{
 			print "raw diff:\n";
-			print $diffi;
+			debug_print($diffi);
 
 			print "\nenhanced diff:\n";
-			print $diffi2;
+			debug_print($diffi2);
 
 			print "\nblock by block diff:\n";
-			print $diffi3;
+			debug_print($diffi3);
 
-			print Data::Dumper->Dump([$row]);
-			
-			print Data::Dumper->Dump([$bigh]);	 
-			
 			# found differences
-			push @{$glob_exit}, $row->{ploc}." ".$row->{mloc} ; 
+			push @{$glob_exit}, $row->{ploc}." ".$row->{mloc};
+
+			$primtmp =~ s/_trois.*$//;
+			$mirrtmp =~ s/_trois.*$//;
+			copyfiles(\@allfilescopy, $primhost, $mirrhost, $primfil, $mirrfil, $primtmp, $mirrtmp);
 		}
 		else
 		{
-			print "\nblock by block diff [$floc]: no differences\n\n";
+			print "\nBlock by block diff \"$floc\":   [ NO DIFFERENCES ]\n\n";
 		}
-
 	}
-
 } # end diff_thrice
 
+#$Data::Dumper::Indent = 3;
+$Data::Dumper::Terse = 1;
+$Data::Dumper::Pad=${glob_debug_fmt};
 if (1)
 {
 	$glob_exit = [];
+	my $psql_str = $glob_psql_str;
 
-    my $psql_str = "psql ";
+	print "Starting the integrity check.\n";
 
-    $psql_str .= $glob_connect
+	$psql_str .= $glob_connect
         if (defined($glob_connect));
 
 	# select from gp_segment_configuration and pg_filespace_entry,
 	# to get file system location and port number
 
-    $psql_str .= " -c \' ".
-		"select g.hostname||f.fselocation as fselocation, " .
+	$psql_str .= " -c \' ".
+		"select f.fselocation as fselocation, " .
 		"g.port " .
 		"from pg_filespace_entry f, gp_segment_configuration g " .
 		"where f.fsedbid = 1 and g.dbid = 1  \' ";
 
-    my $tabdef = `$psql_str`;
-	
+	my $tabdef = `$psql_str`;
 	my $fseloc = tablelizer($tabdef);
 
-    pod2usage(-msg => "\nERROR: Could not open database.  Please check connect string.\n\n",
-			  -exitstatus => 1)
-		unless (defined($fseloc));
+	pod2usage(-msg => "\nERROR: Could not connect to database.  Please check connect string.\n\n",
+			  -exitstatus => 1) unless (defined($fseloc));
+	my $strtime = ctime();
+	$strtime =~ s/ /_/g;
+	$strtime =~ s/:/-/g;
+	my $fselochsh = "CK_" . ${strtime};
 
-	# hash the file system entry location and mod it to an acceptable size
-	my $fselochsh = perlhash($fseloc->[0]->{fselocation}) % 100000000000000;
-
-	print "Hash for \"", $fseloc->[0]->{fselocation}, 
-	"\" is  ", $fselochsh, "\n\n";
+	print "Timestamp used in filenames for this run \"", $fselochsh, "\"\n\n";
 
 	# XXX XXX: port number!
 	$glob_port = $fseloc->[0]->{port};
 
-	$psql_str = "psql ";
+	$psql_str = $glob_psql_str;
 
-    $psql_str .= $glob_connect
+	$psql_str .= $glob_connect
         if (defined($glob_connect));
 
 	# select from gp_segment_configuration and pg_filespace_entry,
 	# constructing a single row for each primary/mirror pair
 
-    $psql_str .= " -c \' ".
+	$psql_str .= " -c \' ".
 		"select gscp.content, " .
 		"gscp.hostname as phostname, gscp.address as paddress, " .
 		"fep.fselocation as ploc, " .
@@ -2710,67 +2576,58 @@ if (1)
 		"and pfs.oid = fep.fsefsoid " ;
 
 	# MPP-9883, MPP-9891: run integrity check only for desired segments
-    $psql_str .= " and gscp.content in ( " . 
+	$psql_str .= " and gscp.content in ( " . 
 		join(", ", @{$glob_content}) . " ) "
 		if (defined($glob_content) && scalar(@{$glob_content}));
 
-    $psql_str .= " order by gscp.dbid, content  \'";
+	$psql_str .= " order by gscp.dbid, content  \'";
 
-	print $psql_str, "\n";
-
+	print "Fetching Primary-Mirror pair configuration information\n";
 	$tabdef = `$psql_str`;
+	chomp($tabdef);
 
+	printdivider();
 	print $tabdef;
+	printdivider();
 	
 	my $gp_seg_config = tablelizer($tabdef);
 
-	if (0)
-	{
-		$psql_str = "psql ";
+	$psql_str = $glob_psql_str;
 
-		$psql_str .= $glob_connect
-			if (defined($glob_connect));
+	$psql_str .= $glob_connect if (defined($glob_connect));
 
-		$psql_str .= " -c \' select version() as vv, 1 as one \'" ;
+	my $arr = `pg_controldata $fseloc->[0]->{fselocation}`;
+	my @lines = split(/\n/, $arr);
+	my %pairs = map { my ($key, $value) = split(/:\s+/); {$key => $value} } @lines;
 
-		$tabdef = `$psql_str`;
-
-		my $vsnh = tablelizer($tabdef);
-
-#	print Data::Dumper->Dump([$vsnh]);
-
-		die "bad version"
-			unless (scalar(@{$vsnh}));
-
-		{
-			my @ggg = ($vsnh->[0]->{vv} =~ m/on\s+(.*)\,\s+\compiled by/);
-
-			die "bad platform"
-				unless scalar(@ggg);
-
-		}
-	}
-
-	$psql_str = "psql ";
-
-    $psql_str .= $glob_connect
-        if (defined($glob_connect));
-
+	print "Performing CHECKPOINT to flush pending writes.\n";
 	# checkpoint the database to flush pending writes
-    $psql_str .= " -c \' checkpoint \'" ;
-
+	$psql_str .= " -c \' checkpoint \'" ;
 	$tabdef = `$psql_str`;
 
-#	print $tabdef;
+	$arr = `pg_controldata $fseloc->[0]->{fselocation}`;
+	@lines = split(/\n/, $arr);
+	my %pairs_post = map { my ($key, $value) = split(/:\s+/); {$key => $value} } @lines;
 
-#	print Data::Dumper->Dump([$gp_seg_config]);
+	if ($pairs{'Time of latest checkpoint'} eq $pairs_post{'Time of latest checkpoint'})
+	{
+		die ("CHECKPOINT command failed/skipped (pg_control timestamp pre and post the command same \"$pairs{'Time of latest checkpoint'}\"");
+	}
+	printdivider();
+
+	# Fetch the latest clog file and copy it at temp location to compare at end of tool
+	# if any diference is found means IO was performed while tool was running, which invalidates the results.
+	my @clog_list = `ls -t $fseloc->[0]->{fselocation}/pg_clog`;
+	chomp($clog_list[0]);
+	my $prev_clog_file=$clog_list[0];
+	my $ret = `cp $fseloc->[0]->{fselocation}/pg_clog/${prev_clog_file} /tmp/${fselochsh}_clog.${prev_clog_file}`;
+	warn "Failed to copy file \"$fseloc->[0]->{fselocation}/pg_clog/${prev_clog_file}\", ERROR: $ret" if ($ret);
 
 	my $do_mm_skip = 0;
-
 	# MPP-10881: separate validation check for standby master
 	if ($glob_mm)
 	{
-		$psql_str = "psql ";
+		$psql_str = $glob_psql_str;
 
 		$psql_str .= $glob_connect
 			if (defined($glob_connect));
@@ -2816,7 +2673,6 @@ if (1)
 			" | perl -nle \'print if /(" . join("|", @m3) . ")/  \' ";
 	}
 
-
 	# build an array of "good" segments/filespaces
 	my @good_segs;
 
@@ -2842,8 +2698,6 @@ if (1)
 		my @foo = File::Spec->splitdir($prim_dd);
 		my $fil = pop @foo;
 		my $fil2 = $fil . "_" . $fsoid;
-
-		print "checking directory: ", $fil, "\nfilespace: $fsname\n";
 
 		# check that primary and mirror are in sync.  If they are not,
 		# don't bother checking for differences (unless skipseg is
@@ -2895,31 +2749,17 @@ EOF_msgstr
 		my $primhost = $row->{phostname};
 		my $mirrhost = $row->{mhostname};
 
-		my $primtmp = File::Spec->catfile("/tmp", 
-										  $fselochsh . "_" . $fil2 . ".prim");
-		my $mirrtmp = File::Spec->catfile("/tmp", 
-										  $fselochsh . "_" . $fil2 . ".mirr");
+		my $primtmp = File::Spec->catfile("/tmp", $fselochsh . "_" . $fil2 . ".prim");
+		my $mirrtmp = File::Spec->catfile("/tmp", $fselochsh . "_" . $fil2 . ".mirr");
 
-		my $ppresh = File::Spec->catfile("/tmp", 
-										  $fselochsh . "_" . $fil2 . 
-										 "_ppre.pl");
-		my $mpresh = File::Spec->catfile("/tmp", 
-										  $fselochsh . "_" . $fil2 . 
-										 "_mpre.pl");
+		my $ppresh = File::Spec->catfile("/tmp", $fselochsh . "_" . $fil2 . "_ppre.pl");
+		my $mpresh = File::Spec->catfile("/tmp", $fselochsh . "_" . $fil2 . "_mpre.pl");
 
-		my $ppresh2 = File::Spec->catfile("/tmp", 
-										  $fselochsh . "_" . $fil2 . 
-										 "_ppre2.pl");
-		my $mpresh2 = File::Spec->catfile("/tmp", 
-										  $fselochsh . "_" . $fil2 . 
-										 "_mpre2.pl");
+		my $ppresh2 = File::Spec->catfile("/tmp", $fselochsh . "_" . $fil2 . "_ppre2.pl");
+		my $mpresh2 = File::Spec->catfile("/tmp", $fselochsh . "_" . $fil2 . "_mpre2.pl");
 
-		my $primsh = File::Spec->catfile("/tmp", 
-										  $fselochsh . "_" . $fil2 . 
-										 "_prim.sh");
-		my $mirrsh = File::Spec->catfile("/tmp", 
-										  $fselochsh . "_" . $fil2 . 
-										 "_mirr.sh");
+		my $primsh = File::Spec->catfile("/tmp", $fselochsh . "_" . $fil2 . "_prim.sh");
+		my $mirrsh = File::Spec->catfile("/tmp", $fselochsh . "_" . $fil2 . "_mirr.sh");
 
 		push @good_segs, {
 			row	   => $row,
@@ -2940,7 +2780,7 @@ EOF_msgstr
 		};
 	} # end for my row
 						
-	print "\n\ndispatch phase:\n";
+	print "\nStarting to calculate full file hash on Primary and Mirror\n";
 
 	my $time1 = time();
 
@@ -2963,7 +2803,7 @@ EOF_msgstr
 		my $primsh	 = $seg->{primsh};
 		my $mirrsh	 = $seg->{mirrsh};
 
-		print "dispatch directory: ", $fil, "\nfilespace: $fsname\n";
+		print "DIRECTORY: ", $fil, "  FILESPACE: $fsname\n";
 
 		my $cmd_template = "";
 
@@ -2976,13 +2816,11 @@ pg_changetracking
 pg_clog
 pg_distributedlog
 pg_distributedxidmap
-pg_log
 pg_multixact
 pg_stat_tmp
 pg_subtrans
 pg_tblspc
 pg_twophase
-pg_utilitymodedtmredo
 pg_xlog
 );
 
@@ -3056,21 +2894,15 @@ pg_xlog
 		my $fh;
 
 		open ($fh, '>', $ppresh);
-		
 		print $fh $presh_txt;
-
 		close $fh;
 
 		open ($fh, '>', $ppresh2);
-		
 		print $fh $presh2_txt;
-
 		close $fh;
 
 		open ($fh, '>', $primsh);
-
 		print $fh $cmd, "\n";
-
 		close $fh;
 
 		$cmd = $cmd_template;
@@ -3080,21 +2912,15 @@ pg_xlog
 		$cmd =~ s/MYPRESH/$mpresh/g;
 
 		open ($fh, '>', $mpresh);
-		
 		print $fh $presh_txt;
-
 		close $fh;
 
 		open ($fh, '>', $mpresh2);
-		
 		print $fh $presh2_txt;
-
 		close $fh;
 
 		open ($fh, '>', $mirrsh);
-
 		print $fh $cmd, "\n";
-
 		close $fh;
 
 		# copy the shell scripts to the segments, execute them, then
@@ -3107,7 +2933,7 @@ pg_xlog
 			'gpscp -h MYHOST MYSHSCRIPT =:MYSHSCRIPT1 ; ' .
 			'gpscp -h MYHOST MYPRESCRIPT =:MYPRESCRIPT1 ; ' .
 			'gpscp -h MYHOST MYPRE2SCRIPT =:MYPRE2SCRIPT1 ; ' .
-			'gpssh -h MYHOST \' sh MYSHSCRIPT1 > MYOUT  \' ; ' .
+			'gpssh -h MYHOST \' sh MYSHSCRIPT1 > MYOUT  \' > /dev/null 2>&1 ;' .
 			'gpscp -h MYHOST  =:MYOUT MYOUT1 ; ' ;
 
 		$cmd = $cmd_template2;
@@ -3117,8 +2943,6 @@ pg_xlog
 		$cmd =~ s/MYSHSCRIPT/$primsh/g;
 		$cmd =~ s/MYPRESCRIPT/$ppresh/g;
 		$cmd =~ s/MYPRE2SCRIPT/$ppresh2/g;
-
-#		print $cmd, "\n";
 
 		$seg->{primthread} = fork()
 			if ($glob_usefork);
@@ -3151,8 +2975,6 @@ pg_xlog
 		$cmd =~ s/MYSHSCRIPT/$mirrsh/g;
 		$cmd =~ s/MYPRESCRIPT/$mpresh/g;
 		$cmd =~ s/MYPRE2SCRIPT/$mpresh2/g;
-
-#		print $cmd, "\n";
 
 		$seg->{mirrthread} = fork()
 			if ($glob_usefork);
@@ -3196,13 +3018,13 @@ pg_xlog
 			{
 				waitpid($seg->{mirrthread}, 0);
 			}
-
 		}
 	}
 	my $time2 = time();
-	print "Waited ", $time2-$time1, " seconds for " .
-		scalar(@good_segs) . " segs/filespaces. \n\n";
+	print "Done calculating hashes in ", $time2-$time1, " seconds for " .
+		scalar(@good_segs) . " segs/filespaces. \n";
 
+	print "\nNow starting to perform raw diff comparison of Primary and Mirror\n";
 	for my $ii (0..(scalar(@good_segs)-1))
 	{
 		my $seg = $good_segs[$ii];
@@ -3225,18 +3047,19 @@ pg_xlog
 		my $primthr  = $seg->{primthread};
 		my $mirrthr  = $seg->{primthread};
 
-		print "compare directory: ", $fil, "\nfilespace: $fsname\n";		
-
 		my $wcstr    = "wc -l < $primtmp" . "1"; # MPP-8951
 		my $numfiles = `$wcstr`;
 		chomp $numfiles;
-		print "\nprimary: ", $numfiles, " files \n\n";
+
+		directorydivider();
+		print "DIRECTORY: ", $fil, "  FILESPACE: $fsname";
+		print " PRIMARY: ", $numfiles, " files ";
 
 		$wcstr    = "wc -l < $mirrtmp" . "1"; # MPP-8951
 		$numfiles = `$wcstr`;
 		chomp $numfiles;
 
-		print "\nmirror: ", $numfiles, " files \n\n";
+		print " MIRROR: ", $numfiles, " files";
 
 		# add "1" suffix on master
 		$primtmp .= '1';
@@ -3253,22 +3076,19 @@ pg_xlog
 
 		if ((!length($diffi)) && (!length($grepi))) 
 		{
-			print "\n$fil: no differences\n\n";
+			print "   [ NO DIFFERENCES ]\n";
 		}
 		else
 		{
+			print "   [ 1st PHASE FOUND DIFFERENCES ]\n";
 			my $bigh = dandydiff($primtmp, $mirrtmp);
 
 			if (exists($bigh->{topdir})
 				&& scalar(@{($bigh->{topdir})}))
 			{
-				print $diffi;
-
-				print Data::Dumper->Dump([$row]);
-
-				print Data::Dumper->Dump([$bigh]);	 
-
-				warn "missing top-level data directory -- this is very bad";
+				warn "Missing top-level data directory -- this is very bad";
+				print "Dumping the data structure reporting differences:\n";
+				print Data::Dumper->Dump([$bigh]);
 
 				for my $td (@{($bigh->{topdir})})
 				{
@@ -3294,16 +3114,12 @@ pg_xlog
 				}
 			}
 
+			my @allfilescopy;
+
 			if (exists($bigh->{extrafiles})
 				&& scalar(@{($bigh->{extrafiles})}))
 			{
-				print $diffi;
-
-				print Data::Dumper->Dump([$row]);
-
-				print Data::Dumper->Dump([$bigh]);	 
-
-				warn "found extra files in data directory (could be ok for zero length heap files)";
+				print "Found extra files in data directory (could be ok if they are heap files with zero size)\n";
 
 				for my $e2 (@{($bigh->{extrafiles})})
 				{
@@ -3317,18 +3133,19 @@ pg_xlog
 					if ($extry =~ m/^m/i)
 					{
 						$extry =~ s|^m\:(/)?||i;
+						print "MIRROR: \"$extry\" (SIZE: $e2->[1])\n";
 
 						push @{$glob_fixlist}, "extra_m: " . 
 							$row->{maddress} . ":" .
-							File::Spec->catfile($mirrfil, 
-												$extry) . " " .
+							File::Spec->catfile($mirrfil, $extry) . " " .
 							$row->{paddress} . ":" .
-							File::Spec->catfile($primfil, 
-												$extry);
+							File::Spec->catfile($primfil, $extry);
+						push @allfilescopy, $extry;
 					}
 					else
 					{
 						$extry =~ s|^p\:(/)?||i;
+						print "PRIMARY: \"$extry\" (SIZE: $e2->[1])\n";
 
 						push @{$glob_fixlist}, "extra_p: " . 
 							$row->{paddress} . ":" .
@@ -3337,12 +3154,11 @@ pg_xlog
 							$row->{maddress} . ":" .
 							File::Spec->catfile($mirrfil, 
 												$extry);
+						push @allfilescopy, $extry;
 					}
 				}
-
+				copyfiles(\@allfilescopy, $primhost, $mirrhost, $primfil, $mirrfil, $primtmp, $mirrtmp);
 			}
-
-			print "\n\nraw diff mismatch for $fil: will diff again using storage-specific techniques\n\n";
 
 			my ($dbs1, $dbs2, $dbs3);
 
@@ -3363,7 +3179,7 @@ pg_xlog
 			{
 				my $extras = {};
 
-				print "trying to resolve extra files in catalog\n";
+				print "Trying to resolve extra files in catalog\n";
 
 				for my $e2 (@{($bigh->{extrafiles})})
 				{
@@ -3384,12 +3200,12 @@ pg_xlog
 										 \@bstat_ref_arr
 					);
 
-				print "extra files:\n", Data::Dumper->Dump([$dbs3]);
+				print "Extra files:\n", Data::Dumper->Dump([$dbs3]);
 
 				if (scalar(@bstat_ref_arr))
 				{
 					# found differences
-					push @{$glob_exit}, $row->{ploc}." ".$row->{mloc} ; 
+					push @{$glob_exit}, $row->{ploc}." ".$row->{mloc};
 				}
 				else
 				{
@@ -3402,16 +3218,20 @@ pg_xlog
 					   $primsh, $mirrsh);
 				}
 			}
-
-			diff_again($dbs1, $dbs2,
+		
+			if (($dbs1) or ($dbs2))
+			{
+				diff_again($dbs1, $dbs2,
 					   $diffi, $row, $fselochsh, $bigh,
 					   $primfil, $mirrfil, $primhost, $mirrhost, 
 					   $primtmp, $mirrtmp, 
 					   $ppresh2, $mpresh2,
 					   $primsh, $mirrsh);
+			}
 		}
-
 	} # end for my seg
+	
+	printdivider();
 
 	# MPP-8186: supply fix file location for repair utility
 	{
@@ -3442,19 +3262,30 @@ pg_xlog
 
 	}
 
+	printdivider();
 	if (scalar(@{$glob_exit}))
 	{
-		print "found differences: \n  ", join("\n  ", @{$glob_exit}), "\n";
+		my %hash   = map { $_, 1 } @{$glob_exit};
+		print "found differences: \n  ", join("\n  ", keys %hash), "\n";
+		printdivider();
+		print "Differing files are copied to directory \"/tmp/${fselochsh}*_data\" on affected primary and mirror.\n";
+		print "Please upload the same along with OUTPUT and FIX file while opening bug ticket.\n";
+		printdivider();
+
+		@clog_list = `ls -t $fseloc->[0]->{fselocation}/pg_clog`;
+		chomp($clog_list[0]);
+		if (($prev_clog_file ne $clog_list[0]) or 
+			(length(`$glob_diff -b $fseloc->[0]->{fselocation}/pg_clog/$clog_list[0] /tmp/${fselochsh}_clog.$prev_clog_file`)))
+		{
+			print "PreClogName=\"/tmp/${fselochsh}_clog.$prev_clog_file\", PostClogName=\"$fseloc->[0]->{fselocation}/pg_clog/$clog_list[0]\"";
+			print "\nNOTE: Write happened to CLOG file while tool was running, indicating IO was perfomed on DB";
+			print "\nSince this tool requires no IO activity, above results reported cannot be trusted.\n";
+			printdivider();
+		}
 		exit(1);
 	}
-	else
-	{
-		print "no differences found\n";
-		exit(0);
-	}
+
+	print "no differences found\n";
 	exit(0);
-
 }
-
-
 exit();
