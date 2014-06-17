@@ -8,7 +8,7 @@ include $(BLD_TOP)/Makefile.global
 OS=$(word 1,$(subst _, ,$(BLD_ARCH)))
 ARCH=$(shell uname -p)
 
-R_VER=2.13.0
+R_VER=2.13.0.1
 R_REL=1
 R_DIR=$(RELENG_TOOLS)/R-$(R_VER)
 R_RPM_FLAGS="--define 'r_dir $(R_DIR)' --define 'r_ver $(R_VER)' --define 'r_rel $(R_REL)'"

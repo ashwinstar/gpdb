@@ -381,8 +381,8 @@ define BUILD_STEPS
 	$(MAKE) set_scripts_version INSTLOC=$(CONNECTIVITYINSTLOC)
 	@$(MAKE) loaders INSTLOC=$(INSTLOC) LOADERSINSTLOC=$(LOADERSINSTLOC)
 	@$(MAKE) set_scripts_version INSTLOC=$(LOADERSINSTLOC)
-	@$(MAKE) embed_pgcrypto INSTLOC=$(INSTLOC)
 	@$(MAKE) gppkg INSTLOC=$(INSTLOC) GPPKGINSTLOC=$(GPPKGINSTLOC)
+	@$(MAKE) embed_GPPKG_CONTENTS INSTLOC=$(INSTLOC)
 endef
 
 ifeq "$(BLD_GPDB_BUILDSET)" "aix_subset"
@@ -1564,12 +1564,29 @@ else
 endif
 endif
 
-embed_pgcrypto:
-ifeq "$(EMBED_PGCRYPTO)" "true"
-	@echo "Embedding pgcrypto is enabled"
+embed_GPPKG_CONTENTS:
+ifeq "$(EMBED_GPPKG_CONTENTS)" "true"
+	@echo "======================================================================"
+	@echo "Embedding GPPKG contents (pgcrypto, plr, madlib) is enabled."
+	@echo "Update greenplum_path.sh for PLR package."
+	@echo "----------------------------------------------------------------------"
 	cd $(GPPGDIR)/contrib/pgcrypto && $(MAKE) prefix=$(INSTLOC) install
+	rm -rf plr-staging
+	mkdir plr-staging
+	pushd plr-staging; \
+	tar xvf $(INSTLOC)/../plr-1.1-rhel5-x86_64.gppkg; \
+	rpm2cpio *.rpm | cpio -idm; \
+	rpm2cpio deps/*.rpm | cpio -idm; \
+	rsync -auv temp/* $(INSTLOC); \
+	popd
+	echo '' >> $(INSTLOC)/greenplum_path.sh
+	echo 'export R_HOME=$$GPHOME/ext/R-2.13.0.1/lib64/R' >> $(INSTLOC)/greenplum_path.sh
+	echo 'export LD_LIBRARY_PATH=$$GPHOME/ext/R-2.13.0.1/lib64/R/lib:$$LD_LIBRARY_PATH' >> $(INSTLOC)/greenplum_path.sh
+	scp -oStrictHostKeyChecking=no build@build-prod.dh.greenplum.com:/var/www/html/releases/MADlib/v1.4.1/madlib-ossv1.4.1_pv1.8.1_gpdb4.2-rhel5-x86_64.gppkg.tgz .
+	tar zxvf madlib-ossv1.4.1_pv1.8.1_gpdb4.2-rhel5-x86_64.gppkg.tgz -C $(INSTLOC)
+	@echo "======================================================================"
 else
-	@echo "Embedding pgcrypto is disabled"
+	@echo "Embedding GPPKG contents is disabled"
 endif
 
 ## ----------------------------------------------------------------------
