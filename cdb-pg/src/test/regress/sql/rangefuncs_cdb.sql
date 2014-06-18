@@ -1,5 +1,7 @@
 SELECT name, setting FROM pg_settings WHERE name LIKE 'enable%';
 
+DROP TABLE IF EXISTS foo;
+
 CREATE TABLE foo(
   fooid int, foosubid int, fooname text, primary key(fooid,foosubid)
   ) DISTRIBUTED BY (fooid, foosubid);

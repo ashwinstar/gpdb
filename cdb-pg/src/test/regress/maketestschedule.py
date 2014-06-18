@@ -293,7 +293,7 @@ class ArchitectureSpecificTemplateManager:
         archLabel = archString[index+1:].strip()
 
         confLineMatcher = re.compile("([^ ]+)\s*:\s*'(.*)'\s*")
-        for archLine in readAllLinesFromFile(os.path.dirname(sys.argv[0]) + "/arch_config", stripLines=True, skipEmptyLines=True):
+        for archLine in readAllLinesFromFile(os.path.dirname(os.path.abspath(__file__)) + "/arch_config", stripLines=True, skipEmptyLines=True):
             match = confLineMatcher.match(archLine)
             if match is not None:
                 (arch, regExString) = match.group(1,2)
@@ -310,7 +310,7 @@ class TestScheduler:
     def printSchedule(self,sourceSchedule, testsToRun, doAll, enableTimeBasedSorting, parallelTestLimit ):
 
         orderedTests = self.__orderTests(sourceSchedule, testsToRun, doAll)
-
+        
         templateManager = ArchitectureSpecificTemplateManager()
         for i, testList in enumerate(orderedTests):
             newTestList = []

@@ -4,7 +4,7 @@ include $(top_builddir)/src/Makefile.global
 ANT=/opt/releng/apache-ant/bin/ant
 all: gphdfs protocol_formatter
 
-protocol_formatter:
+protocol_formatter: gphdfs
 	$(MAKE) -C src/protocol_formatter
 
 gphdfs:
@@ -61,7 +61,7 @@ gphdfs:
                 -Dgphdgnet.version=gphd-2.0.2-gnet-1.2.0.0 \
                 -Dgpgnet.src=1.2 \
                 -Dgpgnet.configuration=hadoop2
-unittest:
+unittest: gphdfs
 	$(ANT) clean
 	$(ANT) test -Dorg=org.apache.hadoop \
                 -Dname=hadoop-core \
@@ -71,7 +71,7 @@ unittest:
                 -Dgpgnet.src=1.2 \
                 -Dgpgnet.configuration=ut
 
-gphdfsdoc:
+gphdfsdoc: gphdfs
 	$(ANT) javadoc -Dorg=emc \
                    -Dname=hadoop-core-0.20.205.0-gphd \
                    -Drevision=1.1.0.0 \

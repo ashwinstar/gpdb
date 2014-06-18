@@ -9,7 +9,11 @@ SHELL=/bin/bash
 MASTER_PORT=18501
 PORT_BASE=18506
 
-all: clean check cluster probe
+all:
+	$(MAKE) clean
+	$(MAKE) check
+	$(MAKE) cluster
+	$(MAKE) probe
 
 cluster:	
 	@ echo ""

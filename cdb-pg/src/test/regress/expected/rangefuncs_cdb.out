@@ -13,6 +13,8 @@ SELECT name, setting FROM pg_settings WHERE name LIKE 'enable%';
  enable_tidscan    | on
 (10 rows)
 
+DROP TABLE IF EXISTS foo;
+NOTICE:  table "foo" does not exist, skipping
 CREATE TABLE foo(
   fooid int, foosubid int, fooname text, primary key(fooid,foosubid)
   ) DISTRIBUTED BY (fooid, foosubid);
@@ -78,10 +80,10 @@ select foost(fooid), * from foost(3);
 select foost(fooid), * from foo2;
  foost  | fooid | f2  
 --------+-------+-----
- (1,11) |     1 |  11
- (1,33) |     1 |  11
  (2,11) |     2 |  22
  (2,33) |     2 |  22
+ (1,11) |     1 |  11
+ (1,33) |     1 |  11
  (1,11) |     1 | 111
  (1,33) |     1 | 111
 (6 rows)
@@ -515,8 +517,8 @@ CREATE FUNCTION getfoo(int) RETURNS setof text AS 'SELECT fooname FROM foo WHERE
 SELECT * FROM getfoo(1) AS t1;
  t1  
 -----
- Joe
  Ed
+ Joe
 (2 rows)
 
 CREATE VIEW vw_getfoo AS SELECT * FROM getfoo(1);

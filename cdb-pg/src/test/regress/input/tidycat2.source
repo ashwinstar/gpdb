@@ -18,9 +18,9 @@
 -- *********************************************************************
 -- *********************************************************************
 
-create schema tidycat;
+create schema tidycat2;
 
-set search_path to tidycat, "$user", public;
+set search_path to tidycat2, "$user", public;
 
 -- pg_proc testing
 
@@ -30,7 +30,7 @@ set search_path to tidycat, "$user", public;
 -- Also fix the PGNSP reference.
 --
 CREATE EXTERNAL WEB TABLE get_pgproc (x text)
-execute E'(cat @abs_srcdir@/../../include/catalog/pg_proc.sql | perl -ple \' s/\\s*with\\s*\\(.*\\)\\s*//gmi\' | perl -ple \' s/RETURNS\\s+anyarray\\s+/RETURNS fake_anyarray /gmi \' | perl -ple \' s/RETURNS\\s+anyelement\\s+/RETURNS fake_anyelement /gmi \' | perl -ple \' s/RETURNS\\s+internal\\s+/RETURNS fake_internal /gmi \' | perl -ple \' s/relnamespace\\s+=\\s+PGNSP/relnamespace = 11 /gmi \' > @abs_srcdir@/data/tidyproc.sql ; sleep 20)' 
+execute E'((echo \'set search_path to tidycat2;\'; cat @abs_srcdir@/../../include/catalog/pg_proc.sql | perl -ple \' s/\\s*with\\s*\\(.*\\)\\s*//gmi\' | perl -ple \' s/RETURNS\\s+anyarray\\s+/RETURNS fake_anyarray /gmi \' | perl -ple \' s/RETURNS\\s+anyelement\\s+/RETURNS fake_anyelement /gmi \' | perl -ple \' s/RETURNS\\s+internal\\s+/RETURNS fake_internal /gmi \' | perl -ple \' s/relnamespace\\s+=\\s+PGNSP/relnamespace = 11 /gmi \') | psql $GP_DATABASE >/dev/null)' 
 ON MASTER
 FORMAT 'text' (delimiter '|');
 
@@ -38,22 +38,7 @@ select * from get_pgproc order by 1;
 
 drop external table get_pgproc;
 
--- start_ignore
-\i @abs_srcdir@/data/tidyproc.sql
-
--- how many tidycat procs?
-select pc1.proname
-from 
-	 pg_proc pc1
-where 
- pc1.pronamespace = 
-	(select oid from pg_namespace 
-	where nspname = 'tidycat')	  
-order by proname;
-
--- end_ignore
-
--- how many non-tidycat procs? (should be ZERO)
+-- how many non-tidycat2 procs? (should be ZERO)
 
 select proname from pg_proc pp
 where
@@ -65,13 +50,13 @@ and
 pp.proname not in
 (select proname from pg_proc pp2
 where pp2.pronamespace =
-(select oid from pg_namespace where nspname = 'tidycat'))
+(select oid from pg_namespace where nspname = 'tidycat2'))
 order by proname;
 
 select proname from pg_proc pp
 where
 pp.pronamespace =
-(select oid from pg_namespace where nspname = 'tidycat')
+(select oid from pg_namespace where nspname = 'tidycat2')
 and
 pp.proname not in
 (select proname from pg_proc pp2
@@ -79,35 +64,42 @@ where pp2.pronamespace =
 (select oid from pg_namespace where nspname = 'pg_catalog'))
 order by proname;
 
--- start_matchsubs
---
--- # remove tidycat prefix - use "checkthisproname" to avoid further
--- # mangling of other tidycat usages
---
--- m/checkthisproname\s+\|\s+tidycat\./
--- s/tidycat\.//
---
--- m/checkthisproname\s+\|.*\|\s+fake\_/
--- s/fake\_//
---
--- end_matchsubs
+CREATE OR REPLACE FUNCTION equivalent_result(sql1 text, sql2 text) RETURNS bool AS $$
+DECLARE
+  sql0 text;
+  res bool;
+BEGIN
+  sql0 := 'WITH base AS ( ' || sql1 || ' )
+           SELECT count(*) = (SELECT count(*) FROM base) FROM (SELECT * FROM base INTERSECT ALL ' || sql2 || ')s';
 
--- start_equiv
+  EXECUTE sql0 INTO res;
 
-select 'checkthisproname', oid::regprocedure, prorettype::regtype 
+  RETURN res;
+END;
+$$ LANGUAGE plpgsql;
+
+
+select equivalent_result(
+$$
+select
+  replace(textin(regprocedureout(oid::regprocedure)), 'fake_', '') proc,
+  replace(textin(regtypeout(prorettype::regtype)), 'fake_', '') rettype
 from pg_proc pp
 where
 pp.pronamespace =
 (select oid from pg_namespace where nspname = 'pg_catalog')
-and oid < 10000;
-
-select 'checkthisproname', oid::regprocedure, prorettype::regtype 
+and oid < 10000
+$$,
+$$
+select
+  replace(replace(textin(regprocedureout(oid::regprocedure)), 'fake_', ''), 'tidycat2.', ''),
+  replace(textin(regtypeout(prorettype::regtype)), 'fake_', '')
 from pg_proc pp
 where
 pp.pronamespace =
-(select oid from pg_namespace where nspname = 'tidycat');
+(select oid from pg_namespace where nspname = 'tidycat2')
+$$);
 
--- end_equiv
 
-drop schema tidycat CASCADE;
-
+set client_min_messages to error;
+drop schema tidycat2 CASCADE;

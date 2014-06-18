@@ -768,12 +768,12 @@ create index "testing_idx" on atacc1("........pg.dropped.1........");
 
 -- test create as and select into
 insert into atacc1 values (21, 22, 23);
-create table test1 as select * from atacc1;
-select * from test1 order by 1,2;
-drop table test1;
-select * into test2 from atacc1;
-select * from test2 order by 1,2;
-drop table test2;
+create table alter_table_test1 as select * from atacc1;
+select * from alter_table_test1 order by 1,2;
+drop table alter_table_test1;
+select * into alter_table_test2 from atacc1;
+select * from alter_table_test2 order by 1,2;
+drop table alter_table_test2;
 
 -- try dropping all columns
 alter table atacc1 drop c;
@@ -800,27 +800,27 @@ drop table child;
 drop table parent;
 
 -- test copy in/out
-create table test (a int4, b int4, c int4);
-insert into test values (1,2,3);
-alter table test drop a;
-copy test to stdout;
-copy test(a) to stdout;
-copy test("........pg.dropped.1........") to stdout;
-copy test from stdin;
+create table alter_table_test (a int4, b int4, c int4);
+insert into alter_table_test values (1,2,3);
+alter table alter_table_test drop a;
+copy alter_table_test to stdout;
+copy alter_table_test(a) to stdout;
+copy alter_table_test("........pg.dropped.1........") to stdout;
+copy alter_table_test from stdin;
 10	11	12
 \.
-select * from test order by 1;
-copy test from stdin;
+select * from alter_table_test order by 1;
+copy alter_table_test from stdin;
 21	22
 \.
-select * from test order by 1;
-copy test(a) from stdin;
-copy test("........pg.dropped.1........") from stdin;
-copy test(b,c) from stdin;
+select * from alter_table_test order by 1;
+copy alter_table_test(a) from stdin;
+copy alter_table_test("........pg.dropped.1........") from stdin;
+copy alter_table_test(b,c) from stdin;
 31	32
 \.
-select * from test order by 1;
-drop table test;
+select * from alter_table_test order by 1;
+drop table alter_table_test;
 
 -- test inheritance
 

@@ -5,11 +5,11 @@
 -- check platform and start 'gpfdist'
 -- --------------------------------------
 CREATE EXTERNAL WEB TABLE gpfdist_status (x text)
-execute E'( python $GPHOME/bin/lib/gppinggpfdist.py @hostname@:7070 2>&1 || echo) '
+execute E'( python $GPHOME/bin/lib/gppinggpfdist.py @hostname@:7575 2>&1 || echo) '
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 CREATE EXTERNAL WEB TABLE gpfdist_start (x text)
-execute E'((@gpwhich_gpfdist@ -p 7070 -d @abs_srcdir@/data/fixedwidth/  </dev/null >/dev/null 2>&1 &); sleep 2; echo "starting...") '
+execute E'((@gpwhich_gpfdist@ -p 7575 -d @abs_srcdir@/data/fixedwidth/  </dev/null >/dev/null 2>&1 &); sleep 2; echo "starting...") '
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 CREATE EXTERNAL WEB TABLE gpfdist_stop (x text)
@@ -40,7 +40,7 @@ SELECT * FROM gpfdist_start;
 SELECT * FROM gpfdist_status;
                                        x                                       
 -------------------------------------------------------------------------------
- Okay, gpfdist version "main build dev" is running on @hostname@:7070.
+ Okay, gpfdist version "main build dev" is running on @hostname@:7575.
 (1 row)
 
 -- end_ignore
@@ -73,7 +73,7 @@ DROP EXTERNAL TABLE IF EXISTS tbl_ext_fixedwidth;
 NOTICE:  table "tbl_ext_fixedwidth" does not exist, skipping
 CREATE READABLE EXTERNAL TABLE tbl_ext_fixedwidth 
 (s1 char(10), s2 varchar(10), s3 text, dt timestamp, n1 smallint, n2 integer, n3 bigint, n4 decimal, n5 numeric, n6 real, n7 double precision)                                                              
-LOCATION ('gpfdist://@hostname@:7070/fixedwidth_small_correct.tbl')       
+LOCATION ('gpfdist://@hostname@:7575/fixedwidth_small_correct.tbl')       
 FORMAT 'CUSTOM' (formatter='fixedwidth_in', s1='10', s2='10', s3='10', dt='20',n1='5', n2='10', n3='10', n4='10', n5='10', n6='10', n7='15');
 SELECT * FROM tbl_ext_fixedwidth ORDER BY s1;
      s1     |  s2  |   s3   |            dt            | n1 | n2  |   n3   |  n4   |   n5    |   n6    |     n7     
@@ -94,7 +94,7 @@ SELECT * FROM tbl_ext_fixedwidth ORDER BY s1;
 DROP EXTERNAL TABLE IF EXISTS tbl_ext_fixedwidth;
 CREATE READABLE EXTERNAL TABLE tbl_ext_fixedwidth 
 (s1 char(10), s2 varchar(10), s3 text, dt timestamp, n1 smallint, n2 integer, n3 bigint, n4 decimal, n5 numeric, n6 real, n7 double precision)                                                              
-LOCATION ('gpfdist://@hostname@:7070/fixedwidth_small_error_fieldtype.tbl')       
+LOCATION ('gpfdist://@hostname@:7575/fixedwidth_small_error_fieldtype.tbl')       
 FORMAT 'CUSTOM' (formatter='fixedwidth_in', s1='10', s2='10', s3='10', dt='20',n1='5', n2='10', n3='10', n4='10', n5='10', n6='10', n7='15');
 SELECT * FROM tbl_ext_fixedwidth ORDER BY s1;
 ERROR:  invalid input syntax for integer: "bbb"  (seg1 slice1 @hostname@:40001 pid=11441)
@@ -103,7 +103,7 @@ DETAIL:  External table tbl_ext_fixedwidth
 DROP EXTERNAL TABLE IF EXISTS tbl_ext_fixedwidth;
 CREATE READABLE EXTERNAL TABLE tbl_ext_fixedwidth 
 (s1 char(10), s2 varchar(10), s3 text, dt timestamp, n1 smallint, n2 integer, n3 bigint, n4 decimal, n5 numeric, n6 real, n7 double precision)                                                              
-LOCATION ('gpfdist://@hostname@:7070/fixedwidth_small_error_toomanyfields.tbl')       
+LOCATION ('gpfdist://@hostname@:7575/fixedwidth_small_error_toomanyfields.tbl')       
 FORMAT 'CUSTOM' (formatter='fixedwidth_in', s1='10', s2='10', s3='10', dt='20',n1='5', n2='10', n3='10', n4='10', n5='10', n6='10', n7='15');
 SELECT * FROM tbl_ext_fixedwidth ORDER BY s1;
 ERROR:  Expected line size from the formatting string: 120, but the actual size is: 125  (seg0 slice1 @hostname@:40000 pid=11440)
@@ -112,7 +112,7 @@ DETAIL:  External table tbl_ext_fixedwidth
 DROP EXTERNAL TABLE IF EXISTS tbl_ext_fixedwidth;
 CREATE READABLE EXTERNAL TABLE tbl_ext_fixedwidth 
 (s1 char(10), s2 varchar(10), s3 text, dt timestamp, n1 smallint, n2 integer, n3 bigint, n4 decimal, n5 numeric, n6 real, n7 double precision)                                                              
-LOCATION ('gpfdist://@hostname@:7070/fixedwidth_small_error_toofewfields.tbl')       
+LOCATION ('gpfdist://@hostname@:7575/fixedwidth_small_error_toofewfields.tbl')       
 FORMAT 'CUSTOM' (formatter='fixedwidth_in', s1='10', s2='10', s3='10', dt='20',n1='5', n2='10', n3='10', n4='10', n5='10', n6='10', n7='15');
 SELECT * FROM tbl_ext_fixedwidth ORDER BY s1;
 ERROR:  Expected line size from the formatting string: 120, but the actual size is: 105  (seg1 slice1 @hostname@:40001 pid=11441)
@@ -121,7 +121,7 @@ DETAIL:  External table tbl_ext_fixedwidth
 DROP EXTERNAL TABLE IF EXISTS tbl_ext_fixedwidth;
 CREATE READABLE EXTERNAL TABLE tbl_ext_fixedwidth 
 (s1 char(10), s2 varchar(10), s3 text, dt timestamp, n1 smallint, n2 integer, n3 bigint, n4 decimal, n5 numeric, n6 real, n7 double precision)                                                              
-LOCATION ('gpfdist://@hostname@:7070/fixedwidth_small_error_fieldtoolong.tbl')       
+LOCATION ('gpfdist://@hostname@:7575/fixedwidth_small_error_fieldtoolong.tbl')       
 FORMAT 'CUSTOM' (formatter='fixedwidth_in', s1='10', s2='10', s3='10', dt='20',n1='5', n2='10', n3='10', n4='10', n5='10', n6='10', n7='15');
 SELECT * FROM tbl_ext_fixedwidth ORDER BY s1;
 ERROR:  invalid input syntax for type timestamp: "u012-05-02 13:40:50"  (seg0 slice1 @hostname@:40000 pid=11440)
@@ -130,7 +130,7 @@ DETAIL:  External table tbl_ext_fixedwidth
 DROP EXTERNAL TABLE IF EXISTS tbl_ext_fixedwidth;
 CREATE READABLE EXTERNAL TABLE tbl_ext_fixedwidth 
 (s1 char(10), s2 varchar(10), s3 text, dt timestamp, n1 smallint, n2 integer, n3 bigint, n4 decimal, n5 numeric, n6 real, n7 double precision)                                                              
-LOCATION ('gpfdist://@hostname@:7070/fixedwidth_small_error_rejectlimitcrossed.tbl')       
+LOCATION ('gpfdist://@hostname@:7575/fixedwidth_small_error_rejectlimitcrossed.tbl')       
 FORMAT 'CUSTOM' (formatter='fixedwidth_in', s1='10', s2='10', s3='10', dt='20',n1='5', n2='10', n3='10', n4='10', n5='10', n6='10', n7='15')
 SEGMENT REJECT LIMIT 3 ROWS;
 SELECT * FROM tbl_ext_fixedwidth ORDER BY s1;
@@ -140,7 +140,7 @@ DETAIL:  External table tbl_ext_fixedwidth
 DROP EXTERNAL TABLE IF EXISTS tbl_ext_fixedwidth;
 CREATE READABLE EXTERNAL TABLE tbl_ext_fixedwidth 
 (s1 char(10), s2 varchar(10), s3 text, dt timestamp, n1 smallint, n2 integer, n3 bigint, n4 decimal, n5 numeric, n6 real, n7 double precision)                                                              
-LOCATION ('gpfdist://@hostname@:7070/fixedwidth_small_error_rejectlimitnotcrossed.tbl')       
+LOCATION ('gpfdist://@hostname@:7575/fixedwidth_small_error_rejectlimitnotcrossed.tbl')       
 FORMAT 'CUSTOM' (formatter='fixedwidth_in', s1='10', s2='10', s3='10', dt='20',n1='5', n2='10', n3='10', n4='10', n5='10', n6='10', n7='15')
 SEGMENT REJECT LIMIT 5 ROWS;
 SELECT * FROM tbl_ext_fixedwidth ORDER BY s1;
@@ -159,7 +159,7 @@ NOTICE:  Found 4 data formatting errors (4 or more input rows). Rejected related
 DROP EXTERNAL TABLE IF EXISTS tbl_ext_fixedwidth;
 CREATE READABLE EXTERNAL TABLE tbl_ext_fixedwidth 
 (s1 char(10), s2 varchar(10), s3 text, dt timestamp, n1 smallint, n2 integer, n3 bigint, n4 decimal, n5 numeric, n6 real, n7 double precision)                                                              
-LOCATION ('gpfdist://@hostname@:7070/fixedwidth_small_error_rejectlimitnotcrossed.tbl')       
+LOCATION ('gpfdist://@hostname@:7575/fixedwidth_small_error_rejectlimitnotcrossed.tbl')       
 FORMAT 'CUSTOM' (formatter='fixedwidth_in', s1='10', s2='10', s3='10', dt='20',n1='5', n2='10', n3='10', n4='10', n5='10', n6='10', n7='15')
 LOG ERRORS INTO err_fixedwidth SEGMENT REJECT LIMIT 5 ROWS;
 NOTICE:  Error table "err_fixedwidth" does not exist. Auto generating an error table with the same name
@@ -191,7 +191,7 @@ DROP EXTERNAL TABLE IF EXISTS tbl_ext_fixedwidth;
 NOTICE:  table "tbl_ext_fixedwidth" does not exist, skipping
 CREATE READABLE EXTERNAL TABLE tbl_ext_fixedwidth 
 (s1 char(10), s2 varchar(10), s3 text, dt timestamp, n1 smallint, n2 integer, n3 bigint, n4 decimal, n5 numeric, n6 real, n7 double precision)                                                              
-LOCATION ('gpfdist://@hostname@:7070/fixedwidth_small_correct.tbl')       
+LOCATION ('gpfdist://@hostname@:7575/fixedwidth_small_correct.tbl')       
 FORMAT 'CUSTOM' (formatter='fixedwidth_in', s1='10', '10'=s2, s3='10', dt='20',n1='5', n2='10', n3='10', n4='10', n5='10', n6='10', n7='15');
 ERROR:  syntax error at or near "'10'"
 LINE 4: ...MAT 'CUSTOM' (formatter='fixedwidth_in', s1='10', '10'=s2, s...
@@ -206,7 +206,7 @@ DROP EXTERNAL TABLE IF EXISTS tbl_ext_fixedwidth;
 NOTICE:  table "tbl_ext_fixedwidth" does not exist, skipping
 CREATE READABLE EXTERNAL TABLE tbl_ext_fixedwidth 
 (s1 char(10), s2 varchar(10), s3 text, dt timestamp, n1 smallint, n2 integer, n3 bigint, n4 decimal, n5 numeric, n6 real, n7 double precision)                                                              
-LOCATION ('gpfdist://@hostname@:7070/fixedwidth_small_correct.tbl')       
+LOCATION ('gpfdist://@hostname@:7575/fixedwidth_small_correct.tbl')       
 FORMAT 'CUSTOM' (formatter='fixedwidth_in', s1='10', n1='5', s2='10', s3='10', dt='20', n2='10', n3='10', n4='10', n5='10', n6='10', n7='15');
 SELECT * FROM tbl_ext_fixedwidth ORDER BY s1;
 ERROR:  invalid input syntax for integer: "twoa"  (seg1 slice1 @hostname@:40001 pid=11441)
@@ -215,7 +215,7 @@ DETAIL:  External table tbl_ext_fixedwidth
 DROP EXTERNAL TABLE IF EXISTS tbl_ext_fixedwidth;
 CREATE READABLE EXTERNAL TABLE tbl_ext_fixedwidth 
 (s1 char(10), s2 varchar(10), s25 text, dt timestamp, n1 smallint, n2 integer, n3 bigint, n4 decimal, n5 numeric, n6 real, n7 double precision)                                                              
-LOCATION ('gpfdist://@hostname@:7070/fixedwidth_small_correct.tbl')       
+LOCATION ('gpfdist://@hostname@:7575/fixedwidth_small_correct.tbl')       
 FORMAT 'CUSTOM' (formatter='fixedwidth_in', s1='10', n1='5', s2='10', s3='10', dt='20', n2='10', n3='10', n4='10', n5='10', n6='10', n7='15');
 SELECT * FROM tbl_ext_fixedwidth ORDER BY s1;
 ERROR:  the fixed width formatter requires a length specification for each one of the external table columns being used (missing field <s3>  (seg1 slice1 @hostname@:40001 pid=11441)
@@ -224,7 +224,7 @@ DETAIL:  External table tbl_ext_fixedwidth
 DROP EXTERNAL TABLE IF EXISTS tbl_ext_fixedwidth;
 CREATE READABLE EXTERNAL TABLE tbl_ext_fixedwidth 
 (s1 char(10), s2 varchar(10), s3 text, dt timestamp, n1 smallint, n2 integer, n3 bigint, n4 decimal, n5 numeric, n6 real, n7 double precision)                                                              
-LOCATION ('gpfdist://@hostname@:7070/fixedwidth_small_nulldefined.tbl')       
+LOCATION ('gpfdist://@hostname@:7575/fixedwidth_small_nulldefined.tbl')       
 FORMAT 'CUSTOM' (formatter='fixedwidth_in', s1='10', s2='10', s3='10', dt='20', n1='5', n2='10', n3='10', n4='10', n5='10', n6='10', n7='15', null='NULL');
 SELECT * FROM tbl_ext_fixedwidth ORDER BY s1;
      s1     |  s2  |   s3   |            dt            | n1 | n2  |   n3   |  n4   |   n5    |   n6    |     n7     
@@ -258,7 +258,7 @@ SELECT n1 FROM tbl_ext_fixedwidth WHERE n2 IS NULL ORDER BY s1;
 DROP EXTERNAL TABLE IF EXISTS tbl_ext_fixedwidth;
 CREATE READABLE EXTERNAL TABLE tbl_ext_fixedwidth 
 (s1 char(10), s2 varchar(10), s3 text, dt timestamp, n1 smallint, n2 integer, n3 bigint, n4 decimal, n5 numeric, n6 real, n7 double precision)                                                              
-LOCATION ('gpfdist://@hostname@:7070/fixedwidth_small_blankfields.tbl')       
+LOCATION ('gpfdist://@hostname@:7575/fixedwidth_small_blankfields.tbl')       
 FORMAT 'CUSTOM' (formatter='fixedwidth_in', s1='10', s2='10', s3='10', dt='20', n1='5', n2='10', n3='10', n4='10', n5='10', n6='10', n7='15');
 SELECT * FROM tbl_ext_fixedwidth ORDER BY s1;
      s1     |  s2  |   s3   |            dt            | n1 | n2  |   n3   |  n4   |   n5    |   n6    |     n7     
@@ -291,7 +291,7 @@ SELECT n1 FROM tbl_ext_fixedwidth WHERE n2 IS NULL ORDER BY s1;
 DROP EXTERNAL TABLE IF EXISTS tbl_ext_fixedwidth;
 CREATE READABLE EXTERNAL TABLE tbl_ext_fixedwidth 
 (s1 char(10), s2 varchar(10), s3 text, dt timestamp, n1 smallint, n2 integer, n3 bigint, n4 decimal, n5 numeric, n6 real, n7 double precision)                                                              
-LOCATION ('gpfdist://@hostname@:7070/fixedwidth_small_blankfields.tbl')       
+LOCATION ('gpfdist://@hostname@:7575/fixedwidth_small_blankfields.tbl')       
 FORMAT 'CUSTOM' (formatter='fixedwidth_in', s1='10', s2='10', s3='10', dt='20', n1='5', n2='10', n3='10', n4='10', n5='10', n6='10', n7='15', preserve_blanks='on');
 SELECT * FROM tbl_ext_fixedwidth ORDER BY s1;
 ERROR:  A null_value was not defined. When preserve_blanks is on, a null_value 								 must be defined in the formatter arguments string  (seg0 slice1 @hostname@:40000 pid=11440)
@@ -301,7 +301,7 @@ DETAIL:  External table tbl_ext_fixedwidth
 DROP EXTERNAL TABLE IF EXISTS tbl_ext_fixedwidth;
 CREATE READABLE EXTERNAL TABLE tbl_ext_fixedwidth 
 (s1 char(10), s2 varchar(10), s3 text, dt timestamp, n1 smallint, n2 integer, n3 bigint, n4 decimal, n5 numeric, n6 real, n7 double precision)                                                              
-LOCATION ('gpfdist://@hostname@:7070/fixedwidth_small_blankfields_and_nulls.tbl')       
+LOCATION ('gpfdist://@hostname@:7575/fixedwidth_small_blankfields_and_nulls.tbl')       
 FORMAT 'CUSTOM' (formatter='fixedwidth_in', s1='10', s2='10', s3='10', dt='20', n1='5', n2='10', n3='10', n4='10', n5='10', n6='10', n7='15', preserve_blanks='on', null='NULL');
 SELECT * FROM tbl_ext_fixedwidth ORDER BY s1;
      s1     |     s2     |     s3     |            dt            | n1 | n2  |   n3   |  n4   |   n5    |   n6    |     n7     
@@ -328,7 +328,7 @@ SELECT s1 FROM tbl_ext_fixedwidth WHERE s2 IS NULL ORDER BY s1;
 DROP EXTERNAL TABLE IF EXISTS tbl_ext_fixedwidth;
 CREATE READABLE EXTERNAL TABLE tbl_ext_fixedwidth 
 (s1 char(10), s2 varchar(10), s3 text, dt timestamp, n1 smallint, n2 integer, n3 bigint, n4 decimal, n5 numeric, n6 real, n7 double precision)                                                              
-LOCATION ('gpfdist://@hostname@:7070/fixedwidth_big.tbl')       
+LOCATION ('gpfdist://@hostname@:7575/fixedwidth_big.tbl')       
 FORMAT 'CUSTOM' (formatter='fixedwidth_in', s1='10', s2='10', s3='10', dt='20', n1='5', n2='10', n3='10', n4='10', n5='10', n6='10', n7='15');
 SELECT * FROM tbl_ext_fixedwidth ORDER BY s1;
      s1     |    s2    |    s3     |            dt            | n1  |   n2   |   n3    |   n4    |   n5    |   n6   |   n7    
@@ -10339,7 +10339,7 @@ SELECT * FROM tbl_ext_fixedwidth ORDER BY s1;
 DROP EXTERNAL TABLE IF EXISTS tbl_ext_fixedwidth;
 CREATE READABLE EXTERNAL TABLE tbl_ext_fixedwidth 
 (s1 char(10), s2 varchar(10), s3 text, dt timestamp, n1 smallint, n2 integer, n3 bigint, n4 decimal, n5 numeric, n6 real, n7 double precision)                                                              
-LOCATION ('gpfdist://@hostname@:7070/fixedwidth_small_correct.tbl')       
+LOCATION ('gpfdist://@hostname@:7575/fixedwidth_small_correct.tbl')       
 FORMAT 'CUSTOM' (formatter='fixedwidth_in', s1='10', s2='10', s3='10', dt='20',n1='5', n2='10', n3='10', n4='10', n5='10', n6='10', n7='15');
 DROP EXTERNAL WEB TABLE IF EXISTS clean_out_file;
 NOTICE:  table "clean_out_file" does not exist, skipping
@@ -10354,14 +10354,14 @@ SELECT * FROM clean_out_file;
 
 CREATE WRITABLE EXTERNAL TABLE tbl_out_fixedwidth
 (s1 char(10), s2 varchar(10), s3 text, dt timestamp, n1 smallint, n2 integer, n3 bigint, n4 decimal, n5 numeric, n6 real, n7 double precision)                                                              
-LOCATION ('gpfdist://@hostname@:7070/fixedwidth_out.tbl')     
+LOCATION ('gpfdist://@hostname@:7575/fixedwidth_out.tbl')     
 FORMAT 'CUSTOM' (formatter='fixedwidth_out', s1='10', s2='10', s3='10', dt='25', n1='5', n2='10', n3='10', n4='10', n5='10', n6='10', n7='15');
 INSERT INTO tbl_out_fixedwidth SELECT * FROM tbl_ext_fixedwidth ORDER BY s1;
 -- 18. import data into table with string and numeric fields - data OK - no line_delimiter in input data file
 DROP EXTERNAL TABLE IF EXISTS tbl_ext_fixedwidth;
 CREATE READABLE EXTERNAL TABLE tbl_ext_fixedwidth 
 (s1 char(10), s2 varchar(10), s3 text, dt timestamp, n1 smallint, n2 integer, n3 bigint, n4 decimal, n5 numeric, n6 real, n7 double precision)                                                              
-LOCATION ('gpfdist://@hostname@:7070/fixedwidth_no_line_delimiter.tbl')      
+LOCATION ('gpfdist://@hostname@:7575/fixedwidth_no_line_delimiter.tbl')      
 FORMAT 'CUSTOM' (formatter='fixedwidth_in', s1='10', s2='10', s3='10', dt='20', n1='5', n2='10', n3='10', n4='10', n5='10', n6='10', n7='15', line_delim='');
 SELECT * FROM tbl_ext_fixedwidth ORDER BY s1;
      s1     |  s2  |   s3   |            dt            | n1 | n2  |   n3   |  n4   |   n5    |   n6    |     n7     
@@ -10376,7 +10376,7 @@ SELECT * FROM tbl_ext_fixedwidth ORDER BY s1;
 DROP EXTERNAL TABLE IF EXISTS tbl_ext_fixedwidth;
 CREATE READABLE EXTERNAL TABLE tbl_ext_fixedwidth 
 (s1 char(10), s2 varchar(10), s3 text, dt timestamp, n1 smallint, n2 integer, n3 bigint, n4 decimal, n5 numeric, n6 real, n7 double precision)                                                              
-LOCATION ('gpfdist://@hostname@:7070/fixedwidth_3chars_line_delimiter.tbl')       
+LOCATION ('gpfdist://@hostname@:7575/fixedwidth_3chars_line_delimiter.tbl')       
 FORMAT 'CUSTOM' (formatter='fixedwidth_in', s1='10', s2='10', s3='10', dt='20', n1='5', n2='10', n3='10', n4='10', n5='10', n6='10', n7='15', line_delim='@#$');
 SELECT * FROM tbl_ext_fixedwidth ORDER BY s1;
      s1     |  s2  |   s3   |            dt            | n1 | n2  |   n3   |  n4   |   n5    |   n6    |     n7     
@@ -10391,7 +10391,7 @@ SELECT * FROM tbl_ext_fixedwidth ORDER BY s1;
 DROP EXTERNAL TABLE IF EXISTS tbl_ext_fixedwidth;
 CREATE READABLE EXTERNAL TABLE tbl_ext_fixedwidth 
 ("s 1" char(10), "s  2" varchar(10), s3 text, "dd ttt t t" timestamp, n1 smallint, n2 integer, n3 bigint, n4 decimal, n5 numeric, n6 real, n7 double precision)                                                              
-LOCATION ('gpfdist://@hostname@:7070/fixedwidth_small_correct.tbl')       
+LOCATION ('gpfdist://@hostname@:7575/fixedwidth_small_correct.tbl')       
 FORMAT 'CUSTOM' (formatter='fixedwidth_in', "s 1"='10', "s  2"='10', s3='10', "dd ttt t t"='20',n1='5', n2='10', n3='10', n4='10', n5='10', n6='10', n7='15');
 SELECT * FROM tbl_ext_fixedwidth ORDER BY "s 1";
     s 1     | s  2 |   s3   |        dd ttt t t        | n1 | n2  |   n3   |  n4   |   n5    |   n6    |     n7     
@@ -10415,7 +10415,7 @@ SELECT * FROM tbl_ext_fixedwidth ORDER BY "s 1";
 SELECT * FROM gpfdist_status;
                                        x                                       
 -------------------------------------------------------------------------------
- Okay, gpfdist version "main build dev" is running on @hostname@:7070.
+ Okay, gpfdist version "main build dev" is running on @hostname@:7575.
 (1 row)
 
 SELECT * FROM gpfdist_stop;

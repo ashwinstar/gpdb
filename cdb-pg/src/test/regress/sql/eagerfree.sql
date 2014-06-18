@@ -155,14 +155,14 @@ where i < all (select total from (select d, sum(i) as total from smallt group by
 and i = 0 order by 1,2,3; --order 1,2,3
 
 -- Nested Subplan
-drop table if exists r;
-drop table if exists s;
-drop table if exists t;
-create table r (r1 int, r2 int, r3 int);
-create table s (s1 int, s2 int, s3 int);
-create table t (t1 int, t2 int, t3 int);
-insert into r select generate_series(1, 20), generate_series(1, 5), generate_series(1, 8);
-insert into s select generate_series(1, 20), generate_series(6, 10), generate_series(1, 4);
-insert into t select generate_series(1, 30), generate_series(1, 6), generate_series(1, 5);
+drop table if exists eager_free_r;
+drop table if exists eager_free_s;
+drop table if exists eager_free_t;
+create table eager_free_r (r1 int, r2 int, r3 int);
+create table eager_free_s (s1 int, s2 int, s3 int);
+create table eager_free_t (t1 int, t2 int, t3 int);
+insert into eager_free_r select generate_series(1, 20), generate_series(1, 5), generate_series(1, 8);
+insert into eager_free_s select generate_series(1, 20), generate_series(6, 10), generate_series(1, 4);
+insert into eager_free_t select generate_series(1, 30), generate_series(1, 6), generate_series(1, 5);
 
-select * from t where t1 > (select min(r1) from r where r2<t2 and r3 > (Select min(s3) from s where s1<r1));
+select * from eager_free_t where t1 > (select min(r1) from eager_free_r where r2<t2 and r3 > (Select min(s3) from eager_free_s where s1<r1));

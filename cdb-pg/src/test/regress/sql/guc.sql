@@ -130,24 +130,24 @@ SELECT min_val, max_val FROM pg_settings WHERE name = 'gp_resqueue_priority_cpuc
 -- Test GUC - gp_disable_catalog_access_on_segment
 --
 SHOW gp_disable_catalog_access_on_segment;
-CREATE TABLE test1(c1 int, c2 int);
-INSERT INTO test1 values(1, 10);
-SELECT 1 FROM test1;
-SELECT * FROM test1;
-SELECT c1 + 1 FROM test1;
+CREATE TABLE guc_test1(c1 int, c2 int);
+INSERT INTO guc_test1 values(1, 10);
+SELECT 1 FROM guc_test1;
+SELECT * FROM guc_test1;
+SELECT c1 + 1 FROM guc_test1;
 
 SET gp_disable_catalog_access_on_segment = true;
 SHOW gp_disable_catalog_access_on_segment;
-CREATE TABLE test2(c1 int, c2 int);
-INSERT INTO test1 values(1, 10);
-SELECT 1 FROM test1;
-SELECT * FROM test1;
-SELECT c1 + 1 FROM test1;
+CREATE TABLE guc_test2(c1 int, c2 int);
+INSERT INTO guc_test1 values(1, 10);
+SELECT 1 FROM guc_test1;
+SELECT * FROM guc_test1;
+SELECT c1 + 1 FROM guc_test1;
 
 SET gp_disable_catalog_access_on_segment = false;
 SHOW gp_disable_catalog_access_on_segment;
 
 -- start_ignore
-DROP TABLE test1;
-DROP TABLE test2;
+DROP TABLE guc_test1;
+DROP TABLE guc_test2;
 -- end_ignore

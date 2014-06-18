@@ -1423,17 +1423,17 @@ select pn, vn, case when 1=2 then rank() over (partition by cn order by pn) end,
 rank() over (partition by pn order by vn) from sale; --mvd 1,2->4
 
 -- MPP-6027
-drop table if exists test;
-create table test (i int, j bigint, k int, l int, m int);
-insert into test select i, i%100, i%123, i%234, i%345 from generate_series(1, 500) i;
+drop table if exists olap_window_test;
+create table olap_window_test (i int, j bigint, k int, l int, m int);
+insert into olap_window_test select i, i%100, i%123, i%234, i%345 from generate_series(1, 500) i;
 -- begin equivalent
-select j, sum(k), row_number() over (partition by j order by sum(k)) from test group by j order by j limit 10;
+select j, sum(k), row_number() over (partition by j order by sum(k)) from olap_window_test group by j order by j limit 10;
 
-select j, sum, row_number() over (partition by j order by sum) from (select j, sum(k) as sum from test group by j) tmp
+select j, sum, row_number() over (partition by j order by sum) from (select j, sum(k) as sum from olap_window_test group by j) tmp
 order by j limit 10;
 
 -- end equivalent
-drop table test;
+drop table olap_window_test;
 
 -- Test for MPP-11645
 
@@ -1536,20 +1536,20 @@ select rank() over (wx)
 	window w as (partition by y order by z), wx as (w);
 -- End MPP-13802
 
-drop table if exists test;
-create table test (n numeric, d date);
-insert into test values (12, '2011-05-01'), (34, '2011-05-02'), (89, '2011-05-03');
+drop table if exists olap_window_test;
+create table olap_window_test (n numeric, d date);
+insert into olap_window_test values (12, '2011-05-01'), (34, '2011-05-02'), (89, '2011-05-03');
 
-select stddev(n) over(order by d range interval '1 day' preceding), n from test;
+select stddev(n) over(order by d range interval '1 day' preceding), n from olap_window_test;
 select stddev(n) over(order by d range interval '1 day' preceding),
        sum(n) over(order by d range interval '1 day' preceding),
-       avg(n) over(order by d range interval '1 day' preceding), n from test;
+       avg(n) over(order by d range interval '1 day' preceding), n from olap_window_test;
 select stddev(n) over(order by d range interval '2 day' preceding),
        sum(n) over(order by d range interval '2 day' preceding),
-       avg(n) over(order by d range interval '2 day' preceding), n from test;
+       avg(n) over(order by d range interval '2 day' preceding), n from olap_window_test;
 select stddev(n) over(order by d range between current row and interval '1 day' following),
        sum(n) over(order by d range between current row and interval '1 day' following),
-       avg(n) over(order by d range between current row and interval '1 day' following), n from test;
+       avg(n) over(order by d range between current row and interval '1 day' following), n from olap_window_test;
 
 
 -- MPP-19244; push predicates below window functions

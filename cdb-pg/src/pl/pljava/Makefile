@@ -55,9 +55,14 @@ MACHINE := $(shell uname -m)
 	examples_all examples_javadoc \
 	test_all test_javadoc
 
-all: pljava_all deploy_all c_all examples_all
+all:
+	$(MAKE) pljava_all
+	$(MAKE) deploy_all
+	$(MAKE) c_all
+	$(MAKE) examples_all
 
-install: all c_install
+install: all
+	$(MAKE) c_install
 	$(mkinstalldirs) '$(datadir)/pljava'
 	$(mkinstalldirs) '$(pkglibdir)/java'
 	$(INSTALL_DATA) '$(TARGETDIR)/pljava.jar' '$(pkglibdir)/.'

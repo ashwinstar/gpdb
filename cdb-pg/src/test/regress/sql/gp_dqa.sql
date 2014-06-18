@@ -119,16 +119,16 @@ drop table t2_mdqa;
 
 
 -- other queries from MPP-19037
-drop table if exists r;
-drop table if exists s;
+drop table if exists gp_dqa_r;
+drop table if exists gp_dqa_s;
 
-create table r (a int, b int, c int);
-create table s (d int, e int, f int);
+create table gp_dqa_r (a int, b int, c int);
+create table gp_dqa_s (d int, e int, f int);
 
-insert into r  select i , i %10, i%5 from generate_series(1,20) i;
-insert into s select i, i %15, i%10 from generate_series(1,30) i;
+insert into gp_dqa_r  select i , i %10, i%5 from generate_series(1,20) i;
+insert into gp_dqa_s select i, i %15, i%10 from generate_series(1,30) i;
 
-select a, d, count(distinct b) as c1, count(distinct c) as c2 from r, s where ( e = a ) group by d, a order by a,d;
+select a, d, count(distinct b) as c1, count(distinct c) as c2 from gp_dqa_r, gp_dqa_s where ( e = a ) group by d, a order by a,d;
 
 select distinct 
 count(distinct case when b >= 1 or c >= 1 then b else NULL end ) as c1,
@@ -136,7 +136,7 @@ sum(cast(b + c as DOUBLE PRECISION )) as c2,
 sum(cast(c as DOUBLE PRECISION )) as c3,
 count(distinct case when b >= 1 then b else NULL end ) as c2,
 d as c9
-from r, s
+from gp_dqa_r, gp_dqa_s
 where ( e = a ) 
 group by d order by c9;
 
@@ -145,52 +145,52 @@ select distinct
 count(distinct case when b >= 1 or c >= 1 then b else NULL end ) as c1,
 count(distinct case when b >= 1 then b else NULL end ) as c2,
 d as c9
-from r, s
+from gp_dqa_r, gp_dqa_s
 where ( e = a ) 
 group by d order by c9;
 
 
 select distinct count(distinct b) as c1, count(distinct c) as c2, d as c9
-from r, s
+from gp_dqa_r, gp_dqa_s
 where ( e = a ) 
 group by d order by c9;
 
-select distinct d, count(distinct b) as c1, count(distinct c) as c2, d as c9 from r, s group by d order by c9;
+select distinct d, count(distinct b) as c1, count(distinct c) as c2, d as c9 from gp_dqa_r, gp_dqa_s group by d order by c9;
 
-select distinct d, count(distinct b) as c1, count(distinct c) as c2, d as c9 from r, s group by d, a order by c9;
+select distinct d, count(distinct b) as c1, count(distinct c) as c2, d as c9 from gp_dqa_r, gp_dqa_s group by d, a order by c9;
 
-select distinct count(distinct b) as c1, count(distinct c) as c2 from r, s;
+select distinct count(distinct b) as c1, count(distinct c) as c2 from gp_dqa_r, gp_dqa_s;
 
-select distinct count(distinct b) as c1, count(distinct c) as c2 from r;
+select distinct count(distinct b) as c1, count(distinct c) as c2 from gp_dqa_r;
 
-select distinct count(distinct b) as c1, count(distinct c) as c2, d, a from r, s where ( e = a)group by d, a order by a,d;
+select distinct count(distinct b) as c1, count(distinct c) as c2, d, a from gp_dqa_r, gp_dqa_s where ( e = a)group by d, a order by a,d;
 
-select distinct count(distinct b) as c1, count(distinct c) as c2, d from r, s group by d, a order by d,a;
+select distinct count(distinct b) as c1, count(distinct c) as c2, d from gp_dqa_r, gp_dqa_s group by d, a order by d,a;
 
-select distinct count(distinct b) as c1, count(distinct c) as c2, d from r, s group by d, a order by d;
+select distinct count(distinct b) as c1, count(distinct c) as c2, d from gp_dqa_r, gp_dqa_s group by d, a order by d;
 
-select distinct count(distinct b) as c1, count(distinct c) as c2, d from r, s group by d order by d;
+select distinct count(distinct b) as c1, count(distinct c) as c2, d from gp_dqa_r, gp_dqa_s group by d order by d;
 
 -- cleanup
-drop table r;
-drop table s;
+drop table gp_dqa_r;
+drop table gp_dqa_s;
 
 -- setup
-drop table if exists t1;
-drop table if exists t2;
-create table t1 (a int, b int) distributed by (a);
-create table t2 (a int, c int) distributed by (a);
+drop table if exists gp_dqa_t1;
+drop table if exists gp_dqa_t2;
+create table gp_dqa_t1 (a int, b int) distributed by (a);
+create table gp_dqa_t2 (a int, c int) distributed by (a);
 
-insert into t1 select i , i %5 from generate_series(1,10) i;
-insert into t2 select i , i %4 from generate_series(1,10) i;
+insert into gp_dqa_t1 select i , i %5 from generate_series(1,10) i;
+insert into gp_dqa_t2 select i , i %4 from generate_series(1,10) i;
 
-select distinct A.a, sum(distinct A.b), count(distinct B.c) from t1 A left join t2 B on (A.a = B.a) group by A.a order by A.a;
+select distinct A.a, sum(distinct A.b), count(distinct B.c) from gp_dqa_t1 A left join gp_dqa_t2 B on (A.a = B.a) group by A.a order by A.a;
 
-select distinct A.a, sum(distinct A.b), count(distinct B.c) from t1 A right join t2 B on (A.a = B.a) group by A.a order by A.a;
+select distinct A.a, sum(distinct A.b), count(distinct B.c) from gp_dqa_t1 A right join gp_dqa_t2 B on (A.a = B.a) group by A.a order by A.a;
 
 -- cleanup
-drop table t1;
-drop table t2;
+drop table gp_dqa_t1;
+drop table gp_dqa_t2;
 
 create table foo_mdqa(x int, y int);
 

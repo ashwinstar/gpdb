@@ -153,15 +153,20 @@ check: all upg2-setup ugpart-setup
 installcheck: all upg2-setup ugpart-setup
 	$(pg_regress_call)  --psqldir=$(PSQLDIR) --schedule=$(srcdir)/serial_schedule --srcdir=$(abs_srcdir)
 
-installcheck-parallel: all upg2-setup ugpart-setup
-	$(pg_regress_call)  --psqldir=$(PSQLDIR) --schedule=$(srcdir)/parallel_schedule --srcdir=$(abs_srcdir)
-
-installcheck-good: all ./current_good_schedule upg2-setup ugpart-setup
+installcheck-good: all ./current_good_schedule
 	if [ -z "$(INSTALLCHECK_GOOD_KERBEROS)" ]; then \
-	$(pg_regress_call)  --psqldir=$(PSQLDIR) --schedule=./current_good_schedule --srcdir=$(abs_srcdir); \
+	$(pg_regress_call)  --psqldir=$(PSQLDIR) --schedule=$(srcdir)/current_good_schedule --srcdir=$(abs_srcdir); \
 	else \
 	bash kerberos/setup_test.sh; \
 	PGUSER="gpadmin/kerberos-test" $(pg_regress_call)  --psqldir=$(PSQLDIR) --schedule=./current_good_schedule --srcdir=$(abs_srcdir) --host=`hostname`; \
+	fi
+
+installcheck-good-serial: all ./current_good_schedule-serial upg2-setup ugpart-setup
+	if [ -z "$(INSTALLCHECK_GOOD_KERBEROS)" ]; then \
+	$(pg_regress_call)  --psqldir=$(PSQLDIR) --schedule=./current_good_schedule-serial --srcdir=$(abs_srcdir); \
+	else \
+	bash kerberos/setup_test.sh; \
+	PGUSER="gpadmin/kerberos-test" $(pg_regress_call)  --psqldir=$(PSQLDIR) --schedule=./current_good_schedule-serial --srcdir=$(abs_srcdir) --host=`hostname`; \
 	fi
 
 installcheck-bugbuster: all ./bugbuster/current_good_schedule
@@ -177,12 +182,20 @@ installcheck-bugbuster: all ./bugbuster/current_good_schedule
 	if [ $$? = 0 ]; then bugbuster/bugbuster_cleanup.sh; fi
 
 .PHONY: ./current_good_schedule
-./current_good_schedule: $(srcdir)/known_good_schedule
+./current_good_schedule: $(srcdir)/parallel_good_schedule
 ifneq ($(origin TT), undefined)
 	cd $(srcdir) && ./maketestschedule.py "$(TT)" > $(abs_builddir)/current_good_schedule
 else
+	cd $(srcdir) && cp ./parallel_good_schedule $(abs_builddir)/current_good_schedule
+endif
+
+.PHONY: ./current_good_schedule-serial
+./current_good_schedule-serial: $(srcdir)/known_good_schedule
+ifneq ($(origin TT), undefined)
+	cd $(srcdir) && ./maketestschedule.py "$(TT)" > $(abs_builddir)/current_good_schedule-serial
+else
 	echo $(srcdir)
-	cd $(srcdir) && ./makeschedule ./known_good_schedule $(abs_builddir)/current_good_schedule
+	cd $(srcdir) && ./makeschedule ./known_good_schedule $(abs_builddir)/current_good_schedule-serial
 endif
 
 .PHONY: ./bugbuster/current_good_schedule

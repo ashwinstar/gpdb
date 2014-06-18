@@ -315,14 +315,14 @@ limit 60; --order 1,2,3
 --end_equivalent
 
 drop table if exists b;
-create table b (i integer);
-insert into b values(1);
-insert into b values(2);
+create table with_b (i integer);
+insert into with_b values(1);
+insert into with_b values(2);
 
 --begin_equivalent
-with b1 as (select * from b) select * from (select * from b1 where b1.i =1) AS FOO, b1 FOO2;
+with b1 as (select * from with_b) select * from (select * from b1 where b1.i =1) AS FOO, b1 FOO2;
 
-select * from (select * from (select * from b) as b1 where b1.i = 1) AS FOO, (select * from b) as foo2;
+select * from (select * from (select * from with_b) as b1 where b1.i = 1) AS FOO, (select * from with_b) as foo2;
 --end_equivalent
 -- qual push down test
 explain with t as (select * from with_test1) select * from t where i = 10;
