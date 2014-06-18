@@ -741,6 +741,7 @@ bool		optimizer_enable_partition_propagation;
 bool		optimizer_enable_partition_selection;
 bool		optimizer_enable_outerjoin_rewrite;
 bool            optimizer_enable_space_pruning;
+bool            optimizer_prefer_multistage_agg;
 bool		optimizer_enumerate_plans;
 bool		optimizer_sample_plans;
 int			optimizer_plan_id;
@@ -3977,6 +3978,15 @@ static struct config_bool ConfigureNamesBool[] =
                         GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
                 },
                 &optimizer_enable_space_pruning,
+                false, NULL, NULL
+        },
+        {
+                {"optimizer_prefer_multistage_agg", PGC_USERSET, DEVELOPER_OPTIONS,
+                        gettext_noop("Prefer multistage aggregates in the optimizer."),
+                        NULL,
+                        GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+                },
+                &optimizer_prefer_multistage_agg,
                 false, NULL, NULL
         },
 	{

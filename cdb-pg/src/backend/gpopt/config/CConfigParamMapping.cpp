@@ -211,6 +211,13 @@ CConfigParamMapping::SConfigMappingElem CConfigParamMapping::m_elem[] =
                 GPOS_WSZ_LIT("Enable space pruning in optimizer.")
                 },
 
+                {
+                EopttracePreferMultiStageAgg,
+                &optimizer_prefer_multistage_agg,
+                false, // m_fNegate
+                GPOS_WSZ_LIT("Prefer multistage agg in optimizer.")
+                },
+
 		{
 		EopttraceExtractDXLStats,
 		&optimizer_extract_dxl_stats,
