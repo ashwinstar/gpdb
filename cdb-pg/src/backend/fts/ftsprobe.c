@@ -43,6 +43,7 @@
  */
 
 #define PROBE_RESPONSE_LEN  (20)         /* size of segment response message */
+#define PROBE_ERR_MSG_LEN   (256)        /* length of error message for errno */
 
 /*
  * MACROS
@@ -84,6 +85,8 @@ typedef struct ProbeConnectionInfo
 
 	char segmentStatus;                  /* probed segment status */
 
+	int16 probe_errno;                   /* saved errno from the latest system call */
+	char errmsg[PROBE_ERR_MSG_LEN];      /* message returned by strerror() */
 } ProbeConnectionInfo;
 
 typedef struct ProbeMsg
@@ -125,6 +128,35 @@ static bool probeProcessResponse(ProbeConnectionInfo *probeInfo);
 static bool probeTimeout(ProbeConnectionInfo *probeInfo, const char* calledFrom);
 static void probeClose(ProbeConnectionInfo *probeInfo);
 
+
+/*
+ * strerror() is not threadsafe.  Therefore, prober threads must use
+ * the correct strerror_r() available on the platform to obtain error
+ * message corresponding to errno.
+ */
+static char *errmessage(ProbeConnectionInfo *probeInfo)
+{
+#if (_POSIX_C_SOURCE >= 200112L || _XOPEN_SOURCE >= 600) && ! _GNU_SOURCE
+	/* POSIX compliant version (seen on OSX 10.9) */
+	int ret = strerror_r(probeInfo->probe_errno,
+						 probeInfo->errmsg, PROBE_ERR_MSG_LEN);
+	if (ret != 0)
+		probeInfo->errmsg[0] = '\0';
+#else
+	/* GNU version (seen on RHEL 6.2) */
+	char *msg = strerror_r(probeInfo->probe_errno,
+						   probeInfo->errmsg, PROBE_ERR_MSG_LEN);
+	if (msg == NULL)
+		probeInfo->errmsg[0] = '\0';
+	else
+	{
+		strncpy(probeInfo->errmsg, msg, PROBE_ERR_MSG_LEN-1);
+		/* In case strncpy doesn't null-terminate errmsg */
+		probeInfo->errmsg[PROBE_ERR_MSG_LEN-1] = '\0';
+	}
+#endif
+	return probeInfo->errmsg;
+}
 
 /*
  * probe segments to check if they are alive and if any failure has occurred
@@ -382,15 +414,17 @@ probeOpenSocket(ProbeConnectionInfo *probeInfo)
 	Assert(!probeInfo->isSocketOpened);
 	Assert(!probeInfo->isConnected);
 	Assert(probeInfo->fd == 0);
-
 	probeInfo->isSocketOpened = true;
 	struct addrinfo *addrs = probeInfo->addrs;
 
 	/* open socket */
 	if ((probeInfo->fd = gp_socket(addrs->ai_family, addrs->ai_socktype, addrs->ai_protocol)) < 0)
 	{
-		write_log("FTS: failed to open socket to connect to segment (content=%d, dbid=%d), errno %d.",
-		          probeInfo->segmentId, probeInfo->dbId, errno);
+		probeInfo->probe_errno = errno;
+        write_log("FTS: failed to open socket to connect to segment "
+                  "(content=%d, dbid=%d), errno=%d (%s)",
+                  probeInfo->segmentId, probeInfo->dbId, probeInfo->probe_errno,
+                  errmessage(probeInfo));
 		probeInfo->isSocketOpened = false;
 		probeInfo->fd = 0;
 	}
@@ -429,8 +463,10 @@ probeConnect(ProbeConnectionInfo *probeInfo)
 		 */
 		if (errno != EINPROGRESS)
 		{
-			write_log("FTS: failed to connect to segment (content=%d, dbid=%d), errno %d.",
-						  probeInfo->segmentId, probeInfo->dbId, errno);
+			probeInfo->probe_errno = errno;
+			write_log("FTS: failed to connect to segment (content=%d, dbid=%d),"
+					  " errno %d (%s).", probeInfo->segmentId, probeInfo->dbId,
+					  probeInfo->probe_errno, errmessage(probeInfo));
 			probeInfo->isConnected = false;
 		}
 
@@ -468,9 +504,12 @@ probePoll(ProbeConnectionInfo *probeInfo, bool incoming)
 		/* check for transient error */
 		if (res != 0 && !SYS_ERR_TRANSIENT(errno))
 		{
+			probeInfo->probe_errno = errno;
 			const char *operation = (incoming ? "receiving from" : "sending to");
-			write_log("FTS: failed to poll connection before %s segment (content=%d, dbid=%d), errno %d.",
-			          operation, probeInfo->segmentId, probeInfo->dbId, errno);
+			write_log("FTS: failed to poll connection before %s segment "
+					  "(content=%d, dbid=%d), errno %d (%s).", operation,
+					  probeInfo->segmentId, probeInfo->dbId,
+					  probeInfo->probe_errno, errmessage(probeInfo));
 			break;
 		}
 	}
@@ -510,8 +549,11 @@ probeSend(ProbeConnectionInfo *probeInfo)
 			/* check for transient error */
 			if (!SYS_ERR_TRANSIENT(errno))
 			{
-				write_log("FTS: failed to send request to segment (dbid=%d, content=%d), errno %d.",
-						  probeInfo->dbId, probeInfo->segmentId, errno);
+				probeInfo->probe_errno = errno;
+				write_log("FTS: failed to send request to segment "
+						  "(dbid=%d, content=%d), errno %d (%s).",
+						  probeInfo->dbId, probeInfo->segmentId,
+						  probeInfo->probe_errno, errmessage(probeInfo));
 				break;
 			}
 		}
@@ -571,8 +613,11 @@ probeReceive(ProbeConnectionInfo *probeInfo)
 			/* check for transient error */
 			if (!SYS_ERR_TRANSIENT(errno))
 			{
-				write_log("FTS: failed to receive response from segment (dbid=%d, content=%d), errno %d.",
-			              probeInfo->dbId, probeInfo->segmentId, errno);
+				probeInfo->probe_errno = errno;
+				write_log("FTS: failed to receive response from segment "
+						  "(dbid=%d, content=%d), errno %d (%s).",
+			              probeInfo->dbId, probeInfo->segmentId,
+						  probeInfo->probe_errno, errmessage(probeInfo));
 				break;
 			}
 		}

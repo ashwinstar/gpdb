@@ -18,11 +18,10 @@
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "catalog/catquery.h"
+#include "catalog/gp_configuration.h"
+#include "catalog/gp_segment_config.h"
 #include "libpq/pqsignal.h"
 #include "miscadmin.h"
-#include "gp-libpq-fe.h"
-#include "gp-libpq-int.h"
-#include "utils/memutils.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbfts.h"
 #include "postmaster/fork_process.h"
@@ -30,13 +29,14 @@
 #include "postmaster/fts.h"
 #include "storage/ipc.h"
 #include "storage/proc.h"
+#include "storage/procsignal.h"
 #include "storage/pmsignal.h"			/* PostmasterIsAlive */
 #include "storage/sinvaladt.h"
-#include "utils/fmgroids.h"
-#include "utils/ps_status.h"
-
 #include "utils/builtins.h"
-
+#include "utils/faultinjector.h"
+#include "utils/fmgroids.h"
+#include "utils/memutils.h"
+#include "utils/ps_status.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
 
@@ -105,7 +105,7 @@ static void FtsLoop(void);
 
 static void retrieveUserAndDb(char **probeUser);
 
-static void readCdbComponentInfoAndUpdateStatus(void);
+static void readCdbComponentInfoAndUpdateStatus(MemoryContext probeContext);
 static bool probePublishUpdate(uint8 *scan_status);
 
 static uint32 getTransition(bool isPrimaryAlive, bool isMirrorAlive);
@@ -131,11 +131,7 @@ static uint32 transition
 	;
 
 static void updateConfiguration(FtsSegmentStatusChange *changes, int changeEntries);
-static void probeUpdateConfig(PGconn *entryConn, FtsSegmentStatusChange *changes, int changeCount);
-
-static PGconn *openSelfConn(CdbComponentDatabaseInfo *entryDB);
-static void executeEntrySQL(PGconn *entryConn, const char *query);
-static void closeSelfConn(PGconn *conn, bool commit);
+static bool probeUpdateConfig(FtsSegmentStatusChange *changes, int changeCount);
 
 static void getFailoverStrategy(char *strategy);
 static void FtsFailoverNull(FtsSegmentStatusChange *changes);
@@ -210,6 +206,11 @@ ftsprobe_forkexec(void)
 }
 #endif   /* EXEC_BACKEND */
 
+inline bool
+IsFtsShudownRequested(void) {
+	return shutdown_requested;
+}
+
 static void
 RequestShutdown(SIGNAL_ARGS)
 {
@@ -271,7 +272,7 @@ ftsMain(int argc, char *argv[])
 	pqsignal(SIGALRM, handle_sig_alarm);
 
 	pqsignal(SIGPIPE, SIG_IGN);
-	pqsignal(SIGUSR1, SIG_IGN);
+	pqsignal(SIGUSR1, procsignal_sigusr1_handler);
 	/* We don't listen for async notifies */
 	pqsignal(SIGUSR2, RequestShutdown);
 	pqsignal(SIGFPE, FloatExceptionHandler);
@@ -391,12 +392,19 @@ ftsMain(int argc, char *argv[])
 	proc_exit(0);
 }
 
+/*
+ * Populate cdb_component_dbs object by reading from catalog.  Use
+ * probeContext instead of current memory context because current
+ * context will be destroyed by CommitTransactionCommand().
+ */
 static void
-readCdbComponentInfoAndUpdateStatus(void)
+readCdbComponentInfoAndUpdateStatus(MemoryContext probeContext)
 {
 	int i;
-
+	MemoryContext save = MemoryContextSwitchTo(probeContext);
+	/* cdb_component_dbs is free'd by FtsLoop(). */
 	cdb_component_dbs = getCdbComponentInfo(false);
+	MemoryContextSwitchTo(save);
 
 	for (i=0; i < cdb_component_dbs->total_segment_dbs; i++)
 	{
@@ -437,13 +445,12 @@ void FtsLoop()
 										 ALLOCSET_DEFAULT_INITSIZE,
 										 ALLOCSET_DEFAULT_MAXSIZE);
 	
-	readCdbComponentInfoAndUpdateStatus();
+	readCdbComponentInfoAndUpdateStatus(probeContext);
 
 	for (;;)
 	{
 		if (shutdown_requested)
 			break;
-		
 		/* no need to live on if postmaster has died */
 		if (!PostmasterIsAlive(true))
 			exit(1);
@@ -482,7 +489,7 @@ void FtsLoop()
 		else
 			processing_fullscan = false;
 
-		readCdbComponentInfoAndUpdateStatus();
+		readCdbComponentInfoAndUpdateStatus(probeContext);
 		getFailoverStrategy(&failover_strategy);
 
 		elog(DEBUG3, "FTS: starting %s scan with %d segments and %d contents",
@@ -510,6 +517,7 @@ void FtsLoop()
 
 		/* free any pallocs we made inside probeSegments() */
 		MemoryContextReset(probeContext);
+		cdb_component_dbs = NULL;
 
 		if (!FtsIsActive())
 		{
@@ -628,7 +636,6 @@ FtsFindSuperuser(bool try_bootstrap)
 		suser = pstrdup(DatumGetCString(attrName));
 
 		userOid = HeapTupleGetOid(auth_tup);
-
 		SetSessionUserId(userOid, true);
 
 		break;
@@ -896,7 +903,6 @@ updateConfiguration(FtsSegmentStatusChange *changes, int changeEntries)
 {
 	Assert(changes != NULL);
 
-	PGconn *entryConn = NULL;
 	char timestamp_str[TIMESTAMP_BUF_SIZE];
 
 	CdbComponentDatabaseInfo *entryDB = &cdb_component_dbs->entry_db_info[0];
@@ -916,19 +922,8 @@ updateConfiguration(FtsSegmentStatusChange *changes, int changeEntries)
 		return;
 	}
 
-	entryConn = openSelfConn(entryDB);
-	Assert(entryConn != NULL);
-
 	/* update segment configuration */
-	probeUpdateConfig(entryConn, changes, changeEntries);
-
-	/* if FTS is not active, we ignore probe results (abort transaction) */
-	ftsLock();
-	bool commit = FtsIsActive();
-	ftsUnlock();
-
-	/* commit/abort configuration and history changes */
-	closeSelfConn(entryConn, commit);
+	bool commit = probeUpdateConfig(changes, changeEntries);
 
 	if (commit)
 	{
@@ -950,31 +945,49 @@ updateConfiguration(FtsSegmentStatusChange *changes, int changeEntries)
 	}
 }
 
-
 /*
  * update segment configuration in catalog and shared memory
  */
-static void
-probeUpdateConfig(PGconn *entryConn, FtsSegmentStatusChange *changes, int changeCount)
+static bool
+probeUpdateConfig(FtsSegmentStatusChange *changes, int changeCount)
 {
+	Relation configrel;
+	Relation histrel;
+	HeapTuple configtuple;
+	HeapTuple newtuple;
+	HeapTuple histtuple;
+	Datum configvals[Natts_gp_segment_configuration];
+	bool confignulls[Natts_gp_segment_configuration] = { false };
+	bool repls[Natts_gp_segment_configuration] = { false };
+	Datum histvals[Natts_gp_configuration_history];
+	bool histnulls[Natts_gp_configuration_history] = { false };
+	bool valid;
+	bool primary;
+	bool changelogging;
 	int i;
+	char desc[VARHDRSZ + SQL_CMD_BUF_SIZE];
+	cqContext cqc_config, cqc_hist;
+	/*
+	 * Commit/abort transaction below will destroy
+	 * CurrentResourceOwner.  We need it for catalog reads.
+	 */
+	ResourceOwner save = CurrentResourceOwner;
+	StartTransactionCommand();
+	elog(LOG, "probeUpdateConfig called for %d changes", changeCount);
 
-	int count;
-	char cmd[SQL_CMD_BUF_SIZE];
-
-	bool	valid;
-	bool	primary;
-	bool	changelogging;
-
-	Assert(changes != NULL);
-	Assert(changeCount > 0);
+	histrel = heap_open(GpConfigHistoryRelationId,
+						RowExclusiveLock);
+	configrel = heap_open(GpSegmentConfigRelationId,
+						  RowExclusiveLock);
+	caql_addrel(cqclr(&cqc_config), configrel);
+	caql_addrel(cqclr(&cqc_hist), histrel);
 
 	for (i = 0; i < changeCount; i++)
 	{
 		FtsSegmentStatusChange *change = &changes[i];
-		valid   = (changes[i].newStatus & FTS_STATUS_ALIVE) ? true : false;
-		primary = (changes[i].newStatus & FTS_STATUS_PRIMARY) ? true : false;
-		changelogging = (changes[i].newStatus & FTS_STATUS_CHANGELOGGING) ? true : false;
+		valid   = (changes[i].newStatus & FTS_STATUS_ALIVE);
+		primary = (changes[i].newStatus & FTS_STATUS_PRIMARY);
+		changelogging = (changes[i].newStatus & FTS_STATUS_CHANGELOGGING);
 
 		if (changelogging)
 		{
@@ -985,42 +998,82 @@ probeUpdateConfig(PGconn *entryConn, FtsSegmentStatusChange *changes, int change
 		Assert((valid || !primary) && "Primary cannot be down");
 
 		/*
-		 * Log change to segment configuration
+		 * Insert new tuple into gp_configuration_history catalog.
+		 * Caql does not seem to support this table currently.
 		 */
-		count = snprintf(cmd, sizeof(cmd),
-						 "insert into %s values (now(), %d, 'FTS: content %d fault marking status %s%s role %c')",
-						 GpConfigHistoryRelName,
-						 change->dbid, change->segindex,
-						 valid ? "UP" : "DOWN",
-						 (changelogging) ? " mode: change-tracking" : "",
-						 primary ? 'p' : 'm');
+		histvals[Anum_gp_configuration_history_time-1] =
+				TimestampTzGetDatum(GetCurrentTimestamp());
+		histvals[Anum_gp_configuration_history_dbid-1] =
+				Int16GetDatum(changes[i].dbid);
+		snprintf(VARDATA(desc), SQL_CMD_BUF_SIZE,
+				 "'FTS: content %d fault marking status %s%s role %c'",
+				 change->segindex, valid ? "UP" : "DOWN",
+				 (changelogging) ? " mode: change-tracking" : "",
+				 primary ? 'p' : 'm');
+		SET_VARSIZE(desc, strlen(VARDATA(desc)) + 1);
+		histvals[Anum_gp_configuration_history_desc-1] = PointerGetDatum(desc);
+		caql_beginscan(&cqc_hist,
+					   cql("INSERT INTO gp_configuration_history", NULL));
 
-		Assert(count < sizeof(cmd));
-
-		executeEntrySQL(entryConn, cmd);
+		histtuple = caql_form_tuple(&cqc_hist, histvals, histnulls);
+		caql_insert(&cqc_hist, histtuple);
+		caql_endscan(&cqc_hist);
 
 		/*
-		 * Update segment configuration in catalog
+		 * Find and update gp_segment_configuration tuple using caql.
 		 */
-		count = snprintf(cmd, sizeof(cmd),
-						 "update %s set role='%c', status='%c'%s where dbid=CAST(%d AS SMALLINT)",
-						 GpSegmentConfigRelationName,
-						 primary ? 'p' : 'm',
-						 valid ? 'u' : 'd',
-						 (changelogging) ? ", mode = 'c'" : "",
-						 changes[i].dbid);
+		caql_beginscan(&cqc_config,
+					   cql("SELECT * FROM gp_segment_configuration  "
+						   "WHERE dbid = :1  FOR UPDATE ",
+						   Int16GetDatum(changes[i].dbid)));
 
-		Assert(count < sizeof(cmd));
+		configtuple = caql_getnext(&cqc_config);
+		if (!HeapTupleIsValid(configtuple))
+		{
+			elog(ERROR, "FTS cannot find dbid=%d in %s", changes[i].dbid,
+				 RelationGetRelationName(configrel));
+		}
+		configvals[Anum_gp_segment_configuration_role-1] =
+				CharGetDatum(primary ? 'p' : 'm');
+		repls[Anum_gp_segment_configuration_role-1] = true;
+		configvals[Anum_gp_segment_configuration_status-1] =
+				CharGetDatum(valid ? 'u' : 'd');
+		repls[Anum_gp_segment_configuration_status-1] = true;
+		if (changelogging)
+		{
+			configvals[Anum_gp_segment_configuration_mode-1] =
+					CharGetDatum('c');
+		}
+		repls[Anum_gp_segment_configuration_mode-1] = changelogging;
 
-		executeEntrySQL(entryConn, cmd);
-
+		newtuple = caql_modify_current(&cqc_config, configvals,
+									   confignulls, repls);
+		caql_update_current(&cqc_config, newtuple);
+		caql_endscan(&cqc_config);
+		pfree(newtuple);
 		/*
 		 * Update shared memory
 		 */
 		ftsProbeInfo->fts_status[changes[i].dbid] = changes[i].newStatus;
 	}
-}
+	heap_close(histrel, RowExclusiveLock);
+	heap_close(configrel, RowExclusiveLock);
 
+	SIMPLE_FAULT_INJECTOR(FtsWaitForShutdown);
+	/*
+	 * Do not block shutdown.  We will always get a change to update
+	 * gp_segment_configuration in subsequent probes upon database
+	 * restart.
+	 */
+	if (shutdown_requested)
+	{
+		elog(LOG, "Shutdown in progress, ignoring FTS prober updates.");
+		return false;
+	}
+	CommitTransactionCommand();
+	CurrentResourceOwner = save;
+	return true;
+}
 
 static void
 getFailoverStrategy(char *strategy)
@@ -1054,7 +1107,6 @@ getFailoverStrategy(char *strategy)
 
 	caql_endscan(pcqCtx);
 	heap_close(strategy_rel, AccessShareLock);
-
 	return;
 }
 
@@ -1140,29 +1192,30 @@ FtsMarkSegmentsInSync(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseInf
 		FtsRequestPostmasterShutdown(primary, mirror);
 	}
 
-	char cmd[SQL_CMD_BUF_SIZE];
-
-	CdbComponentDatabaseInfo *entryDB = &cdb_component_dbs->entry_db_info[0];
-
-	if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
-		elog(LOG, "FTS: updating segment to in-sync.");
-
-	if (entryDB->dbid != GpIdentity.dbid)
-	{
-		if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
-			elog(LOG, "FTS: advancing to second entryDB.");
-		entryDB = entryDB + 1;
-	}
-
 	if (ftsProbeInfo->fts_pauseProbes)
 	{
 		return;
 	}
 
 	uint8	segStatus=0;
-
-	PGconn *entryConn = openSelfConn(entryDB);
-	Assert(entryConn != NULL);
+	Relation configrel;
+	Relation histrel;
+	HeapTuple configtuple;
+	HeapTuple newtuple;
+	HeapTuple histtuple;
+	Datum configvals[Natts_gp_segment_configuration];
+	bool confignulls[Natts_gp_segment_configuration] = { false };
+	bool repls[Natts_gp_segment_configuration] = { false };
+	Datum histvals[Natts_gp_configuration_history];
+	bool histnulls[Natts_gp_configuration_history] = { false };
+	char desc[SQL_CMD_BUF_SIZE];
+	cqContext cqc_config, cqc_hist;
+	/*
+	 * Commit/abort transaction below will destroy
+	 * CurrentResourceOwner.  We need it for catalog reads.
+	 */
+	ResourceOwner save = CurrentResourceOwner;
+	StartTransactionCommand();
 
 	/* update primary */
 	segStatus = ftsProbeInfo->fts_status[primary->dbid];
@@ -1174,44 +1227,84 @@ FtsMarkSegmentsInSync(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseInf
 	segStatus |= FTS_STATUS_SYNCHRONIZED;
 	ftsProbeInfo->fts_status[mirror->dbid] = segStatus;
 
-	/* update gp_segment_configuration to insync */
-	snprintf(cmd, sizeof(cmd),
-			 "update %s set mode='s' where dbid=CAST(%d AS SMALLINT)",
-			 GpSegmentConfigRelationName,
-			 primary->dbid);
-	executeEntrySQL(entryConn, cmd);
+	histrel = heap_open(GpConfigHistoryRelationId,
+						RowExclusiveLock);
+	configrel = heap_open(GpSegmentConfigRelationId,
+						  RowExclusiveLock);
+	caql_addrel(cqclr(&cqc_config), configrel);
+	caql_addrel(cqclr(&cqc_hist), histrel);
 
-	snprintf(cmd, sizeof(cmd),
-			 "update %s set mode='s' where dbid=CAST(%d AS SMALLINT)",
-			 GpSegmentConfigRelationName,
-			 mirror->dbid);
-	executeEntrySQL(entryConn, cmd);
+	/* update gp_segment_configuration to insync */
+	caql_beginscan(&cqc_config,
+				   cql("SELECT * FROM gp_segment_configuration  "
+					   "WHERE dbid = :1 FOR UPDATE ",
+					   Int16GetDatum(primary->dbid)));
+	configtuple = caql_getnext(&cqc_config);
+	if (!HeapTupleIsValid(configtuple))
+	{
+		elog(ERROR,"FTS cannot find dbid (%d, %d) in %s", primary->dbid,
+			 mirror->dbid, RelationGetRelationName(configrel));
+	}
+	configvals[Anum_gp_segment_configuration_mode-1] = CharGetDatum('s');
+	repls[Anum_gp_segment_configuration_mode-1] = true;
+	newtuple = caql_modify_current(&cqc_config, configvals, confignulls, repls);
+	caql_update_current(&cqc_config, newtuple);
+	caql_endscan(&cqc_config);
+
+	caql_beginscan(&cqc_config,
+				   cql("SELECT * FROM gp_segment_configuration  "
+					   "WHERE dbid = :1 FOR UPDATE ",
+					   Int16GetDatum(mirror->dbid)));
+	configtuple = caql_getnext(&cqc_config);
+	if (!HeapTupleIsValid(configtuple))
+	{
+		elog(ERROR,"FTS cannot find dbid (%d, %d) in %s", primary->dbid,
+			 mirror->dbid, RelationGetRelationName(configrel));
+	}
+	newtuple = caql_modify_current(&cqc_config, configvals, confignulls, repls);
+	caql_update_current(&cqc_config, newtuple);
+	caql_endscan(&cqc_config);
 
 	/* update configuration history */
-	snprintf(cmd, sizeof(cmd),
-			 "insert into %s values (now(), %d, 'FTS: changed segment to insync from resync.')",
-			 GpConfigHistoryRelName,
-			 primary->dbid);
-	executeEntrySQL(entryConn, cmd);
+	caql_beginscan(&cqc_hist,
+				   cql("INSERT INTO gp_configuration_history", NULL));
 
-	snprintf(cmd, sizeof(cmd),
-			 "insert into %s values (now(), %d, 'FTS: changed segment to insync from resync.')",
-			 GpConfigHistoryRelName,
-			 mirror->dbid);
-	executeEntrySQL(entryConn, cmd);
-
+	histvals[Anum_gp_configuration_history_time-1] =
+			TimestampTzGetDatum(GetCurrentTimestamp());
+	histvals[Anum_gp_configuration_history_dbid-1] =
+			Int16GetDatum(primary->dbid);
+	snprintf(desc, sizeof(desc),
+			 "FTS: changed segment to insync from resync.");
+	histvals[Anum_gp_configuration_history_desc-1] = PointerGetDatum(desc);
+	SET_VARSIZE_SHORT(
+			DatumGetPointer(histvals[Anum_gp_configuration_history_desc-1]),
+			strlen(desc)+1);
+	histtuple = caql_form_tuple(&cqc_hist, histvals, histnulls);
+	caql_insert(&cqc_hist, histtuple);
+	histvals[Anum_gp_configuration_history_dbid-1] =
+			Int16GetDatum(mirror->dbid);
+	histtuple = caql_form_tuple(&cqc_hist, histvals, histnulls);
+	caql_insert(&cqc_hist, histtuple);
+	caql_endscan(&cqc_hist);
 	ereport(LOG,
 			(errmsg("FTS: resynchronization of mirror (dbid=%d, content=%d) on %s:%d has completed.",
 					mirror->dbid, mirror->segindex, mirror->address, mirror->port ),
 			 errSendAlert(true)));
 
-	/* if FTS is not active, we ignore probe results (abort transaction) */
-	ftsLock();
-	bool commit = FtsIsActive();
-	ftsUnlock();
-
-	/* commit/abort configuration and history changes */
-	closeSelfConn(entryConn, commit);
+	heap_close(histrel, RowExclusiveLock);
+	heap_close(configrel, RowExclusiveLock);
+	/*
+	 * Do not block shutdown.  We will always get a change to update
+	 * gp_segment_configuration in subsequent probes upon database
+	 * restart.
+	 */
+	if (shutdown_requested)
+	{
+		elog(LOG, "Shutdown in progress, ignoring FTS prober updates.");
+		return;
+	}
+	CommitTransactionCommand();
+	CurrentResourceOwner = save;
 }
 
 /*
@@ -1256,163 +1349,5 @@ void FtsRequestPostmasterShutdown(CdbComponentDatabaseInfo *primary, CdbComponen
 			    mirror->status
 			    );
 }
-
-
-/*
- * Obtains utility-mode self-connection to master-DB, and opens a transaction.
- */
-static PGconn *
-openSelfConn(CdbComponentDatabaseInfo *entryDB)
-{
-	PQExpBuffer entryBuffer = NULL;
-	PGconn *entryConn = NULL;
-
-	PGresult   *rs;
-
-	Assert(entryDB->segindex == -1);
-
-	entryBuffer = createPQExpBuffer();
-	if (PQExpBufferBroken(entryBuffer))
-	{
-		destroyPQExpBuffer(entryBuffer);
-		elog(FATAL, "FTS: failed to create self-connection buffer.");
-		/* never reached */
-		return NULL;
-	}
-
-	appendPQExpBuffer(entryBuffer, "options='-c gp_session_role=UTILITY -c allow_system_table_mods=dml' ");
-
-	/*
-	 * Do not need to set host, since FTS is running on the same host
-	 * as the master node.
-	 *
-	 * NOTE: do not be tempted to add a host and force TCP: we use ident
-	 * authentication to test that this is the master connecting back to itself
-	 * and we cannot do that via TCP. See MPP-15802.
-	 */
-	appendPQExpBuffer(entryBuffer, "port=%u ", entryDB->port);
-	appendPQExpBuffer(entryBuffer, "dbname=%s ", probeDatabase);
-	appendPQExpBuffer(entryBuffer, "user=%s ", probeUser);
-	appendPQExpBuffer(entryBuffer, "connect_timeout=%d ", gp_segment_connect_timeout);
-
-	/*
-	 * Call libpq to connect
-	 */
-	entryConn = PQconnectdb(entryBuffer->data);
-
-	if (PQstatus(entryConn) == CONNECTION_BAD)
-	{
-		/*
-		 * When we get an error, we strdup it here.  When the main thread
-		 * checks for errors, it makes a palloc copy of this, and frees
-		 * this.
-		 */
-		char	*error_message = strdup(PQerrorMessage(entryConn));
-
-		if (!error_message)
-			ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
-							errmsg("FTS: out of memory")));
-
-		destroyPQExpBuffer(entryBuffer);
-		PQfinish(entryConn);
-		entryConn = NULL;
-
-		elog(FATAL, "FTS: failed to connect to entry-db, error: %s.", error_message);
-	}
-
-	rs = PQexec(entryConn, "BEGIN");
-
-	if (PQresultStatus(rs) != PGRES_COMMAND_OK)
-	{
-		/*
-		 * When we get an error, we strdup it here.  When the main thread
-		 * checks for errors, it makes a palloc copy of this, and frees
-		 * this.
-		 */
-		char	*error_message = strdup(PQerrorMessage(entryConn));
-
-		if (!error_message)
-			ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
-							errmsg("FTS: out of memory")));
-
-		destroyPQExpBuffer(entryBuffer);
-		PQfinish(entryConn);
-		entryConn = NULL;
-
-		elog(FATAL, "FTS: failed to start transaction to entry-db, error: %s.", error_message);
-	}
-
-	destroyPQExpBuffer(entryBuffer);
-
-	return entryConn;
-}
-
-
-/*
- * Run SQL query on a previously established self-connection.
- */
-static void
-executeEntrySQL(PGconn *entryConn, const char *query)
-{
-	Assert(entryConn != NULL);
-	Assert(query != NULL);
-
-	PGresult   *rs = NULL;
-
-	rs = PQexec(entryConn, query);
-	if (PQresultStatus(rs) != PGRES_COMMAND_OK)
-	{
-		char	*error_message = strdup(PQerrorMessage(entryConn));
-
-		if (!error_message)
-			ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
-							errmsg("FTS: out of memory")));
-
-		PQclear(rs);
-		PQfinish(entryConn);
-		entryConn = NULL;
-
-		elog(FATAL, "FTS: query '%s' failed to execute to entry-db, error: %s.",
-		            query, error_message);
-	}
-}
-
-
-/*
- * Commit and close self-connection to master-DB.
- */
-static void
-closeSelfConn(PGconn *conn, bool commit)
-{
-	PGresult   *rs;
-	const char *stmt = (commit ? "COMMIT" : "ABORT");
-
-	rs = PQexec(conn, stmt);
-	if (PQresultStatus(rs) != PGRES_COMMAND_OK)
-	{
-		/*
-		 * When we get an error, we strdup it here.  When the main thread
-		 * checks for errors, it makes a palloc copy of this, and frees
-		 * this.
-		 */
-		char	*error_message = strdup(PQerrorMessage(conn));
-
-		if (!error_message)
-			ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
-							errmsg("FTS: out of memory")));
-
-		PQclear(rs);
-		PQfinish(conn);
-		conn = NULL;
-
-		elog(FATAL, "FTS: connection to master failed to %s, error: %s.", stmt, error_message);
-	}
-
-	/* No error, we're ready to go */
-	PQclear(rs);
-	PQfinish(conn);
-	return;
-}
-
 
 /* EOF */

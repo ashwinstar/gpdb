@@ -141,5 +141,11 @@ extern void FtsRequestPostmasterShutdown(CdbComponentDatabaseInfo *primary, CdbC
 extern bool FtsMasterShutdownRequested(void);
 extern void FtsRequestMasterShutdown(void);
 
+/*
+ * If master has requested FTS to shutdown.
+ */
+#ifdef FAULT_INJECTOR
+extern bool IsFtsShudownRequested(void);
+#endif
 #endif   /* FTS_H */
 

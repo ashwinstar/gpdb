@@ -401,6 +401,7 @@ class GpInjectFaultProgram:
                   "rebuild_pt_db (inject fault while rebuilding persistent tables (for each db)), " \
                   "procarray_add (inject fault while adding PGPROC to procarray), " \
 			      "exec_hashjoin_new_batch (inject fault before switching to a new batch in Hash Join), " \
+			      "fts_wait_for_shutdown (pause FTS before committing changes), " \
 			      "all (affects all faults injected, used for 'status' and 'reset'), ") 
         addTo.add_option("-c", "--ddl_statement", dest="ddlStatement", type="string",
                          metavar="ddlStatement",

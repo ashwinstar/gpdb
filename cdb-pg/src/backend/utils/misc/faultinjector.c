@@ -24,6 +24,8 @@
 #include "cdb/cdbfilerepservice.h"
 #include "cdb/cdbresynchronizechangetracking.h"
 #include "postmaster/checkpoint.h"
+#include "cdb/cdbutil.h"
+#include "postmaster/fts.h"
 #include "postmaster/service.h"
 #include "storage/spin.h"
 #include "storage/shmem.h"
@@ -292,6 +294,8 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault while adding PGPROC to procarray */
 	_("exec_hashjoin_new_batch"),
 		/* inject fault before switching to a new batch in Hash Join */
+	_("fts_wait_for_shutdown"),
+		/* pause FTS process before committing changes, until shutdown */
 	_("not recognized"),
 };
 
@@ -672,7 +676,8 @@ FaultInjector_InjectFaultIfSet(
 				if ((entryLocal->faultInjectorIdentifier != FileRepImmediateShutdownRequested) &&
 					(segmentState == SegmentStateShutdownFilerepBackends ||
 					segmentState == SegmentStateImmediateShutdown ||
-					segmentState == SegmentStateShutdown))
+					segmentState == SegmentStateShutdown ||
+					IsFtsShudownRequested()))
 				{
 					break;
 				}
