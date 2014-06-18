@@ -5944,7 +5944,7 @@ CopyGetAttnums(TupleDesc tupDesc, Relation rel, List *attnamelist)
 }
 
 #define COPY_FIND_MD_DELIM \
-md_delim = memchr(line_start, COPY_METADATA_DELIM, 32); \
+md_delim = memchr(line_start, COPY_METADATA_DELIM, Min(32, cstate->line_buf.len)); \
 if(md_delim && (md_delim != line_start)) \
 { \
 	value_len = md_delim - line_start + 1; \
@@ -6109,7 +6109,8 @@ extract_line_buf(CopyState cstate)
 		/* the following is a compacted mod of CopyExtractRowMetaData */
 		int value_len = 0;
 		char *line_start = cstate->line_buf.data;
-		char *lineno_delim = memchr(line_start, COPY_METADATA_DELIM, 32);
+		char *lineno_delim = memchr(line_start, COPY_METADATA_DELIM,
+									Min(32, cstate->line_buf.len));
 
 		if (lineno_delim && (lineno_delim != line_start))
 		{
@@ -6123,7 +6124,8 @@ extract_line_buf(CopyState cstate)
 			value_len = lineno_delim - line_start + 1;
 			line_start += value_len;
 
-			lineno_delim = memchr(line_start, COPY_METADATA_DELIM, 32);
+			lineno_delim = memchr(line_start, COPY_METADATA_DELIM,
+								  Min(32, cstate->line_buf.len));
 
 			value_len = lineno_delim - line_start + 1;
 			line_start += value_len;
