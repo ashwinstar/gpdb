@@ -522,7 +522,7 @@ class RestoreDatabase(Operation):
             logger.warn('Please run ANALYZE manually on restored tables. Failure to run ANALYZE might result in poor database performance')
             raise Exception(str(e))
         else:
-            logger.info('\'Analyze\' of restored tables in \'%s\' database completed successfully' % restore_db)
+            logger.info('\'Analyze\' of restored tables in \'%s\' database completed without error' % restore_db)
         return batch_count
 
     def create_filter_file(self):
