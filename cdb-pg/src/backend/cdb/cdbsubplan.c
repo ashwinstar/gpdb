@@ -187,8 +187,7 @@ addRemoteExecParamsToParamList(PlannedStmt *stmt, ParamListInfo extPrm, ParamExe
 {
 	ParamListInfo augPrm;
 	ParamWalkerContext context;
-	int			i,
-				j;
+	int			i;
 	int			nParams;
 	ListCell *lc;
 	Plan	   *plan = stmt->planTree;
@@ -204,7 +203,6 @@ addRemoteExecParamsToParamList(PlannedStmt *stmt, ParamListInfo extPrm, ParamExe
 
 	/* Allocate space for augmented array and set final sentinel. */
 	augPrm = palloc0(sizeof(ParamListInfoData) + (nParams + nIntPrm)* sizeof(ParamExternData));
-	augPrm->numParams = nParams + nIntPrm;
 
 	/* Copy in the existing external parameter entries. */
 	for (i = 0; i < nParams; i++)
@@ -260,15 +258,25 @@ addRemoteExecParamsToParamList(PlannedStmt *stmt, ParamListInfo extPrm, ParamExe
 	 * initplans we're "parameterizing".  Use the datatype info harvested
 	 * above.
 	 */
+	int j = nParams;
 	for (i = 0; i < nIntPrm; i++)
 	{
-		j = nParams + i;
+		Oid paramType = findParamType(context.params, i);
+		if (InvalidOid == paramType)
+		{
+			// param of id i not found. Likely have been removed because of
+			// constant folding
+			continue;
+		}
 
-
-		augPrm->params[j].ptype = findParamType(context.params, i);
+		augPrm->params[j].ptype = paramType;
 		augPrm->params[j].isnull = intPrm[i].isnull;
 		augPrm->params[j].value = intPrm[i].value;
+
+		j++;
 	}
+
+	augPrm->numParams = j;
 
 	list_free(context.params);
 
@@ -318,12 +326,6 @@ findParamType(List *params, int paramid)
 		if (p->paramid == paramid)
 			return p->paramtype;
 	}
-
-	ereport(ERROR,
-			(errcode(ERRCODE_CDB_INTERNAL_ERROR),
-			 errmsg("Failed to locate datatype for paramid %d",
-					paramid
-					)));
 
 	return InvalidOid;
 }
