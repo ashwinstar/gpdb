@@ -343,7 +343,7 @@ do_copy(const char *args)
 	 * Make sure we have pumped libpq dry of results; else it may still be in
 	 * ASYNC_BUSY state, leading to false readings in, eg, get_prompt().
 	 */
-	while ((result = PQgetResult(pset.db)) != NULL)
+	while ((result = PQgetResult(pset.db)) != NULL && PQstatus(pset.db) != CONNECTION_BAD)
 	{
 		success = false;
 		psql_error("\\copy: unexpected response (%d)\n",
