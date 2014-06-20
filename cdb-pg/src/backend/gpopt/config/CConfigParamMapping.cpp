@@ -218,6 +218,13 @@ CConfigParamMapping::SConfigMappingElem CConfigParamMapping::m_elem[] =
                 GPOS_WSZ_LIT("Prefer multistage agg in optimizer.")
                 },
 
+                {
+                EopttraceEnableRedistributeBroadcastHashJoin,
+		&optimizer_enable_hashjoin_redistribute_broadcast_children,
+                false, // m_fNegate
+                GPOS_WSZ_LIT("Enable generating hash join plan where outer child is Redistribute and inner child is Broadcast.")
+                },
+
 		{
 		EopttraceExtractDXLStats,
 		&optimizer_extract_dxl_stats,

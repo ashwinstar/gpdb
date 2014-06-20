@@ -742,6 +742,7 @@ bool		optimizer_enable_partition_selection;
 bool		optimizer_enable_outerjoin_rewrite;
 bool            optimizer_enable_space_pruning;
 bool            optimizer_prefer_multistage_agg;
+bool		optimizer_enable_hashjoin_redistribute_broadcast_children;
 bool		optimizer_enumerate_plans;
 bool		optimizer_sample_plans;
 int			optimizer_plan_id;
@@ -3988,6 +3989,15 @@ static struct config_bool ConfigureNamesBool[] =
                 },
                 &optimizer_prefer_multistage_agg,
                 false, NULL, NULL
+        },
+        {
+                {"optimizer_enable_hashjoin_redistribute_broadcast_children", PGC_USERSET, DEVELOPER_OPTIONS,
+                        gettext_noop("Enable hash join plans with, Redistribute outer child and Broadcast inner child, in the optimizer."),
+                        NULL,
+                        GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+                },
+                &optimizer_enable_hashjoin_redistribute_broadcast_children,
+                true, NULL, NULL
         },
 	{
 		{"optimizer_enumerate_plans", PGC_USERSET, LOGGING_WHAT,
