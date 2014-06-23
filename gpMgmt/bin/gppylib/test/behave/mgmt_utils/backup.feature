@@ -5461,23 +5461,6 @@ Feature: Validate command line arguments
         And verify that there is a "ao" table "public.ao_part_table" in "fullbkdb" with data
         And verify that the data of "9" tables in "fullbkdb" is validated after restore
 
-    Scenario: Dump directory "db_dumps" does not exist in master/segments after running gpcrondump with -u option
-        Given the database is running
-        And the database "testdb" does not exist
-        And database "testdb" exists
-        And there is a "ao" table "ao_table" with compression "None" in "testdb" with data
-        And there is a "co" table "co_table" with compression "None" in "testdb" with data
-        And there are no backup files
-        When the user runs "gpcrondump -a -x testdb -u /tmp"
-        Then gpcrondump should return a return code of 0
-        And the timestamp from gpcrondump is stored
-        And all the data from "testdb" is saved for verification
-        And verify that "db_dumps" directory does not exist in master or segments
-        When the user runs gpdbrestore with the stored timestamp and options "-u /tmp --verbose"
-        Then gpdbrestore should return a return code of 0
-        And verify that the data of "2" tables in "testdb" is validated after restore
-        And verify that the tuple count of all appendonly tables are consistent in "testdb"
-
     Scenario: Gpdbrestore runs 'ANALYZE' on restored table only
         Given the database is running
         And the database "fullbkdb" does not exist
