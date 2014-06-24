@@ -2287,8 +2287,8 @@ CTranslatorRelcacheToDXL::PimdobjColStats
 
 	// there will be remaining tuples when both conditions below are met:
 	// 1. no GPDB histogram is available
-	// 2. the MCVs do not cover all the tuples, i.e. sum(MCFs) < 1
-	if (1 >= iNumHistValues && 1 - CStatistics::DEpsilon > dMCFSum)
+	// 2. the MCVs do not cover all the tuples, i.e. sum(MCFs) < 1 && dDistinct > iNumMCVValues
+	if (1 >= iNumHistValues && 1 - CStatistics::DEpsilon > dMCFSum && 0 < dDistinct - iNumMCVValues)
 	{
 		dDistinctRemain = dDistinct - iNumMCVValues;
 		dFreqRemain = 1 - dMCFSum;
