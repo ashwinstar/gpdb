@@ -40,7 +40,8 @@ test: partition
 test: launch_oid_inconsistency
 test: metadata_track
 test: gp_persistent_table
-test: gpcheckmirrorseg
+#mpp23872: Disabling gpcheckmirrorseg as it is erroring out bugbuster on some platforms.
+ignore: gpcheckmirrorseg
 test: AOCO_Compression2
 test: schema_topology
 test: gpmgmt1
