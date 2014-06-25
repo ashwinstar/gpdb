@@ -406,6 +406,8 @@ class BackupPersistentTableFiles:
         for di in self.dbid_info:
             host, dbid = di.hostname, di.dbid 
             for fsoid, fsdir in di.filespace_dirs.items():
+                if fsoid not in di.fs_to_ts_map:
+                    continue
                 for tsoid in di.fs_to_ts_map[fsoid]:
                     if tsoid not in di.ts_to_dboid_map:
                         continue
@@ -532,6 +534,8 @@ class ValidatePersistentBackup:
                 cmd = Command('Check if global pt backup exists', cmdStr='find %s/global -name pt_files_bk_%s' % (global_datadir, self.timestamp))
                 self.pool.addCommand(cmd)
                 for fsoid, fsdir in di.filespace_dirs.items(): 
+                    if fsoid not in di.fs_to_ts_map:
+                        continue
                     for tsoid in di.fs_to_ts_map[fsoid]:
                         if tsoid not in di.ts_to_dboid_map:
                             continue

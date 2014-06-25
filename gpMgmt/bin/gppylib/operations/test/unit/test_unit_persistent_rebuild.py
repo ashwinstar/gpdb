@@ -563,6 +563,20 @@ class BackupPersistentTableFilesTestCase(unittest.TestCase):
         self.assertEqual(None, self.backup_persistent_files._copy_per_db_pt_files())
 
     @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_pt_files')
+    def test_copy_per_db_pt_files_with_unused_filespace(self, mock1):
+        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {3052: [2001]}, {2000: [123], 2001: [234]})
+        self.backup_persistent_files.dbid_info = [d1, d2]
+        self.assertEqual(None, self.backup_persistent_files._copy_per_db_pt_files())
+
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_pt_files')
+    def test_copy_per_db_pt_files_with_unused_tablespace(self, mock1):
+        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2001: [234]})
+        d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2001: [234]})
+        self.backup_persistent_files.dbid_info = [d1, d2]
+        self.assertEqual(None, self.backup_persistent_files._copy_per_db_pt_files())
+
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_pt_files')
     def test_copy_per_db_pt_files_with_restore_without_errors(self, mock1):
         d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]}) 
         d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
