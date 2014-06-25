@@ -245,6 +245,7 @@ DATA(insert OID = 3250    ( nb_classification PGNSP 3251 PGUID 0 3250 0 0 0 0 0 
 #define		  RELSTORAGE_HEAP	'h'
 #define		  RELSTORAGE_AOROWS	'a'
 #define 	  RELSTORAGE_AOCOLS	'c'
+#define		  RELSTORAGE_PARQUET 'p'
 #define		  RELSTORAGE_VIRTUAL	'v'
 #define		  RELSTORAGE_EXTERNAL 'x'
 #define		  RELSTORAGE_FOREIGN 'f'

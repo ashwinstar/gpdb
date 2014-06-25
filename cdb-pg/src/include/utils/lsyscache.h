@@ -167,11 +167,13 @@ Oid get_check_constraint_relid(Oid oidCheckconstraint);
 
 extern bool has_subclass_fast(Oid relationId);
 extern bool has_subclass(Oid relationId);
+extern bool has_parquet_children(Oid relationId);
 
 extern bool get_cast_func(Oid oidSrc, Oid oidDest, bool *is_binary_coercible, Oid *oidCastFunc);
 
 extern Oid get_comparison_operator(Oid oidLeft, Oid oidRight, CmpType cmpt);
 extern CmpType get_comparison_type(Oid oidOp, Oid oidLeft, Oid oidRight);
+extern List *find_all_inheritors(Oid parentrel);
 
 extern List *get_operator_opclasses(Oid opno);
 extern List *get_index_opclasses(Oid oidIndex);

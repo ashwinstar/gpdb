@@ -3890,3 +3890,32 @@ get_index_opclasses(Oid oidIndex)
 	caql_endscan(pcqCtx);
 	return opclass_oids;
 }
+
+/*
+ *  has_parquet_children
+ *  Check if relation has a Parquet child relation
+*/
+bool
+has_parquet_children(Oid relationId)
+{
+	Assert(InvalidOid != relationId);
+	List *child_oids = find_all_inheritors(relationId);
+	ListCell *lc = NULL;
+	
+	foreach (lc, child_oids)
+	{
+		Oid oidChild = lfirst_oid(lc);
+		Relation rel = RelationIdGetRelation(oidChild);
+		Assert(NULL != rel);
+		if (RELSTORAGE_PARQUET == rel->rd_rel->relstorage)
+		{
+			list_free(child_oids);
+			RelationClose(rel);
+			return true;
+		}
+
+		RelationClose(rel);
+	}
+	list_free(child_oids);
+	return false;
+}
