@@ -23,9 +23,11 @@
 #include <catalog/pg_type.h>
 #include <storage/ipc.h>
 #include <storage/proc.h>
+#include <storage/sinval.h>
 #include <stdio.h>
 #include <ctype.h>
 #include <unistd.h>
+#include <pthread.h>
 
 #include "org_postgresql_pljava_internal_Backend.h"
 #include "pljava/Invocation.h"
@@ -39,7 +41,7 @@
 
 /* Include the 'magic block' that PostgreSQL 8.2 and up will use to ensure
  * that a module is not loaded into an incompatible server.
- */ 
+ */
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
 #endif
@@ -53,6 +55,10 @@ PG_FUNCTION_INFO_V1(pljavau_call_handler);
 #define LOCAL_REFERENCE_COUNT 128
 
 jlong mainThreadId;
+
+static pthread_t s_mainThreadIdForHandler;
+static bool s_handlerSubstituted = false;
+static pqsigfunc s_oldHandlerFunc = NULL;
 
 static JavaVM* s_javaVM = 0;
 static jclass  s_Backend_class;
@@ -77,6 +83,26 @@ extern void SQLInputFromChunk_initialize(void);
 extern void SQLOutputToChunk_initialize(void);
 extern void SQLInputFromTuple_initialize(void);
 extern void SQLOutputToTuple_initialize(void);
+
+static void PLCatchupInterruptHandler(int signo)
+{
+	if(s_oldHandlerFunc == NULL)
+	{
+		return;
+	}
+
+	pthread_t currentThreadId = pthread_self();
+
+	if(currentThreadId == s_mainThreadIdForHandler)
+	{
+		s_oldHandlerFunc(signo);
+	}
+	else
+	{
+		pthread_kill(s_mainThreadIdForHandler, signo);
+	}
+}
+
 
 static void initPLJavaClasses(void)
 {
@@ -179,7 +205,7 @@ int Backend_setJavaLogLevel(int logLevel)
 	s_javaLogLevel = logLevel;
 	return oldLevel;
 }
-	
+
 /**
  * Special purpose logging function called from JNI when verbose is enabled.
  */
@@ -295,8 +321,8 @@ static char* getClassPath(const char* prefix)
 
 #if 0
 	/*
-	 * Currently pljava.classpath is user setable, which makes this a 
-	 * security problem.  If CLASSPATH needs to be setable beyond simply 
+	 * Currently pljava.classpath is user setable, which makes this a
+	 * security problem.  If CLASSPATH needs to be setable beyond simply
 	 * locating the pljava.jar file then this requires modification.
 	 *
 	 * The Greenplum version of pljava currently uses the classpath guc
@@ -306,9 +332,9 @@ static char* getClassPath(const char* prefix)
 	appendPathParts(pljava_classpath, &buf, unique, prefix);
 
 	/*
-	 * For this to be useful it needs to be propagated from the 
+	 * For this to be useful it needs to be propagated from the
 	 * master to all the segments, otherwise it wouldn't be the
-	 * same everyplace and that would be a problem.  
+	 * same everyplace and that would be a problem.
 	 *
 	 * Using a jvm_classpath GUC makes more architectural sense,
 	 * for it to be secure it would need to be super-user only,
@@ -366,7 +392,7 @@ static sigjmp_buf recoverBuf;
 static void terminationTimeoutHandler(int signum)
 {
 	kill(MyProcPid, SIGQUIT);
-	
+
 	/* Some sleep to get the SIGQUIT a chance to generate
 	 * the needed output.
 	 */
@@ -412,6 +438,19 @@ static void _destroyJavaVM(int status, Datum dummy)
 		elog(DEBUG1, "JavaVM destroyed");
 		s_javaVM = 0;
 		currentInvocation = 0;
+
+		/*
+		 * Recover the handler of SIGUSR1 when initiate JVM failed.
+		 * */
+		if(s_oldHandlerFunc == NULL)
+		{
+			pqsignal(SIGUSR1, SIG_IGN);
+		}
+		else
+		{
+			pqsignal(SIGUSR1, s_oldHandlerFunc);
+		}
+		s_handlerSubstituted = false;
 	}
 }
 
@@ -462,7 +501,7 @@ static void JVMOptList_add(JVMOptList* jol, const char* optString, void* extraIn
 	added->extraInfo    = extraInfo;
 	jol->size++;
 
-	elog(DEBUG1, "Added JVM option string \"%s\"", optString);		
+	elog(DEBUG1, "Added JVM option string \"%s\"", optString);
 }
 
 /* Split JVM options. The string is split on whitespace unless the
@@ -472,7 +511,7 @@ static void JVMOptList_add(JVMOptList* jol, const char* optString, void* extraIn
 static void addUserJVMOptions(JVMOptList* optList)
 {
 	const char* cp = pljava_vmoptions;
-	
+
 	if(cp != NULL)
 	{
 		StringInfoData buf;
@@ -504,7 +543,7 @@ static void addUserJVMOptions(JVMOptList* optList)
 						break;
 					appendStringInfoChar(&buf, c);
 					continue;
-					
+
 				default:
 					if(quote == 0 && isspace((int)c))
 					{
@@ -604,7 +643,7 @@ static void initializeJavaVM(void)
 	/**
 	 * As stipulated by JRT-2003
 	 */
-	JVMOptList_add(&optList, 
+	JVMOptList_add(&optList,
 		"-Dsqlj.defaultconnection=jdbc:default:connection",
 		0, true);
 
@@ -678,6 +717,22 @@ static Datum internalCallHandler(bool trusted, PG_FUNCTION_ARGS)
 	Invocation ctx;
 	Datum retval = 0;
 
+
+	/*
+	 * Substitute SIGUSR1 handler CatchupInterruptHandler with new local
+	 * handler PLCatchupInterruptHandler, which will strictly let main
+	 * thread of GPDB to process the signal rather than any other threads.
+	 *
+	 * Resolving possible lwlock releasing crash caused by SIGUSR1.
+	 * MPP-23735
+	 */
+	if(!s_handlerSubstituted)
+	{
+		s_mainThreadIdForHandler = pthread_self();
+		s_oldHandlerFunc = pqsignal(SIGUSR1, PLCatchupInterruptHandler);
+		s_handlerSubstituted = true;
+	}
+
 	if(s_javaVM == 0)
 	{
 		Invocation_pushBootContext(&ctx);
@@ -694,7 +749,7 @@ static Datum internalCallHandler(bool trusted, PG_FUNCTION_ARGS)
 			 * the VM if it exists. Perhaps the user will try
 			 * fixing the pljava_classpath and make a new attempt.
 			 */
-			_destroyJavaVM(0, 0);			
+			_destroyJavaVM(0, 0);
 
 			/* We can't stay here...
 			 */
@@ -731,6 +786,7 @@ static Datum internalCallHandler(bool trusted, PG_FUNCTION_ARGS)
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
+
 	return retval;
 }
 
@@ -751,7 +807,7 @@ JNIEXPORT jstring JNICALL
 JNICALL Java_org_postgresql_pljava_internal_Backend__1getConfigOption(JNIEnv* env, jclass cls, jstring jkey)
 {
 	jstring result = 0;
-	
+
 	BEGIN_NATIVE
 	char* key = String_createNTS(jkey);
 	if(key != 0)
@@ -782,7 +838,7 @@ JNIEXPORT jstring JNICALL
 JNICALL Java_org_postgresql_pljava_internal_Backend__1getLibraryPath(JNIEnv* env, jclass cls)
 {
 	jstring result = 0;
-	
+
 	BEGIN_NATIVE
 	PG_TRY();
     {
