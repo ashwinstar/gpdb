@@ -544,8 +544,8 @@ class ValidatePersistentBackup:
                                 base_dir = 'base'
                             else:
                                 base_dir = tsoid
-                            cmd = Command('Check if per db pt backup exists', cmdStr='find %s/base/%s -name pt_files_bk_%s' %
-                                                                                     (fsdir, dboid, self.timestamp))
+                            cmd = Command('Check if per db pt backup exists', cmdStr='find %s/%s/%s -name pt_files_bk_%s' %
+                                                                                     (fsdir, base_dir, dboid, self.timestamp))
                 self.pool.addCommand(cmd)
                 self.pool.join()
                 self._process_results(di, self.pool)
