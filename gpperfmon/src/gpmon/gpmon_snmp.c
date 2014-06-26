@@ -2295,7 +2295,9 @@ int mv_gpdb_emcconnect_records_to_perfmon()
 		ret = apr_file_append(p, si.emcconnect_tailfile, APR_OS_DEFAULT, pool);	
 		if (ret != APR_SUCCESS)
 		{
-			gpmon_warningx(FLINE, 0, "failed appending file %s to %s", p, si.emcconnect_tailfile);
+			gpmon_warningx(FLINE, ret, "failed appending file %s to %s", p, si.emcconnect_tailfile);
+			apr_pool_destroy(pool);
+			pool = NULL;
 			continue;
 		}
 
