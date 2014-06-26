@@ -238,7 +238,7 @@ static URL_FILE
 	 */
 	rel    = EXTPROTOCOL_GET_RELATION(fcinfo);
 	exttbl = GetExtTableEntry(rel->rd_id);
-	format = (fmttype_is_text(exttbl->fmtcode)) ? "TEXT":"GPDBWritable";
+	format = (fmttype_is_text(exttbl->fmtcode) || fmttype_is_csv(exttbl->fmtcode)) ? "TEXT":"GPDBWritable";
 
 	/* Form the actual command
 	 *
