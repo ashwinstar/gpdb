@@ -835,13 +835,12 @@ class RebuildPersistentTables(Operation):
             raise Exception('Unable to find %s program. Please make sure it is in PATH' % md5prog)
 
     def _get_persistent_table_filenames(self):
+        GET_ALL_DATABASES = """select oid, datname from pg_database"""
         PER_DATABASE_PT_FILES_QUERY = """SELECT relfilenode FROM pg_class WHERE oid IN (5094, 5095)"""
         GLOBAL_PT_FILES_QUERY = """SELECT relfilenode FROM pg_class WHERE oid IN (5090, 5091, 5092, 5093)"""
 
+        databases = []
         with dbconn.connect(dbconn.DbURL(dbname=DEFAULT_DATABASE)) as conn:
-            res = dbconn.execSQL(conn, PER_DATABASE_PT_FILES_QUERY)
-            for r in res:
-                PER_DATABASE_PERSISTENT_FILES.append(r[0])
             res = dbconn.execSQL(conn, GLOBAL_PT_FILES_QUERY)
             for r in res:
                 GLOBAL_PERSISTENT_FILES.append(r[0])

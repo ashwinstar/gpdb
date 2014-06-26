@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import unittest2 as unittest
+from collections import defaultdict
 from gppylib.gpversion import GpVersion
 from gppylib.commands.base import Command, CommandResult, ExecutionError
 from mock import patch, MagicMock, Mock, mock_open
@@ -1224,14 +1225,15 @@ class RebuildPersistentTableTestCase(unittest.TestCase):
         with self.assertRaisesRegexp(Exception, 'This tool is not supported on Greenplum version lower than 4.1.0.0'):
             self.rebuild_persistent_table._check_database_version()
 
-    @patch('gppylib.operations.persistent_rebuild.dbconn.execSQL', side_effect=[[[5094], [5095]], [[5090], [5091], [5092], [5093]]])
+    @patch('gppylib.operations.persistent_rebuild.dbconn.execSQL', side_effect=[[[5090], [5091], [5092], [5093]], [[123, 'template1']],
+                                                                               [[5094], [16992]]])
     @patch('gppylib.operations.persistent_rebuild.dbconn.connect')
     @patch('gppylib.operations.persistent_rebuild.dbconn.DbURL')
     def test_get_persistent_table_filenames(self, mock1, mock2, mock3):
         self.rebuild_persistent_table._get_persistent_table_filenames()
         from gppylib.operations.persistent_rebuild import GLOBAL_PERSISTENT_FILES, PER_DATABASE_PERSISTENT_FILES
         self.assertEqual(GLOBAL_PERSISTENT_FILES, [5090, 5091, 5092, 5093])
-        self.assertEqual(PER_DATABASE_PERSISTENT_FILES, [5094, 5095])
+        self.assertEqual(PER_DATABASE_PERSISTENT_FILES, defaultdict(list, {123: [5094, 16992]}))
 
 if __name__ == '__main__':
     unittest.main()
