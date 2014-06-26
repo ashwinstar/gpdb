@@ -121,8 +121,14 @@ class BackupFile(object):
         Returns True if the file is a database dump.  Config files, cdatabase
         files are not dump files.
         """
-        return self.name.startswith("gp_dump") and \
-            "post_data" not in self.name
+        metadata_keywords = ['rpt', 'ao_state_file', 'co_state_file', \
+                        'last_operation', 'dirty_list', 'table_list', 'increments']
+
+        for i in metadata_keywords:
+            if self.name.startswith("gp_dump") and self.name.endswith(i):
+                return False
+
+        return self.name.startswith("gp_dump") and "post_data" not in self.name
 
     def isConfigFile(self):
         """

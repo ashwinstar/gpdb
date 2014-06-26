@@ -102,6 +102,26 @@ GET_LAST_OPERATION_SQL = """
     ORDER BY objid, staactionname
 """ % GET_ALL_AO_CO_DATATABLES_SQL
 
+def backup_report_file_with_ddboost(master_datadir, backup_dir, dump_dir, timestamp_key=None):
+    if timestamp_key is None:
+        timestamp_key = TIMESTAMP_KEY 
+
+    filename = generate_report_filename(master_datadir, backup_dir, timestamp_key, True, dump_dir)
+    copy_file_to_dd(filename, dump_dir, timestamp_key)
+
+def backup_increments_file_with_ddboost(master_datadir, backup_dir, dump_dir, full_timestamp):
+    filename = generate_increments_filename(master_datadir, backup_dir, full_timestamp, True, dump_dir)
+    copy_file_to_dd(filename, dump_dir, full_timestamp)
+
+def copy_file_to_dd(filename, dump_dir, timestamp_key=None):
+    if timestamp_key is None:
+        timestamp_key = TIMESTAMP_KEY 
+    
+    file = os.path.basename(filename)
+    cmdStr = "gpddboost --copyToDDBoost    --from-file=%s --to-file=%s/%s/%s" % (filename, dump_dir, timestamp_key[0:8], file)
+    cmd = Command('copy file %s to DD machine' % file, cmdStr)
+    cmd.run(validateAfter = True)
+    
 def generate_dump_timestamp(timestamp):
     global TIMESTAMP
     global TIMESTAMP_KEY
@@ -244,24 +264,27 @@ def compare_dict(last_dict, curr_dict):
             diffkeys.add(k)
     return diffkeys
 
-def get_filename_from_filetype(table_type, master_datadir, backup_dir, timestamp_key=None):
+def get_filename_from_filetype(table_type, master_datadir, backup_dir, timestamp_key=None, ddboost=False, dump_dir=None):
     if timestamp_key is None:
         timestamp_key = TIMESTAMP_KEY 
 
     if table_type == 'ao':
-        filename = generate_ao_state_filename(master_datadir, backup_dir, timestamp_key)
+        filename = generate_ao_state_filename(master_datadir, backup_dir, timestamp_key, ddboost, dump_dir)
     elif table_type == 'co':
-        filename = generate_co_state_filename(master_datadir, backup_dir, timestamp_key)
+        filename = generate_co_state_filename(master_datadir, backup_dir, timestamp_key, ddboost, dump_dir)
     else:
         raise Exception('Invalid table type %s provided. Supported table types ao/co.' % table_type)
 
     return filename
 
-def write_state_file(table_type, master_datadir, backup_dir, partition_list):
-    filename = get_filename_from_filetype(table_type, master_datadir, backup_dir)
+def write_state_file(table_type, master_datadir, backup_dir, partition_list, ddboost=False, dump_dir=None):
+    filename = get_filename_from_filetype(table_type, master_datadir, backup_dir, None, ddboost, dump_dir)
 
     write_lines_to_file(filename, partition_list)
     verify_lines_in_file(filename, partition_list)
+
+    if ddboost:
+        copy_file_to_dd(filename, dump_dir)
 
 # return a list of dirty tables
 def get_dirty_tables(master_port, dbname, master_datadir, backup_dir, fulldump_ts, 
@@ -295,17 +318,19 @@ def get_dirty_heap_tables(master_port, dbname):
 def write_dirty_file_to_temp(dirty_tables):
     return create_temp_file_from_list(dirty_tables, 'dirty_backup_list_')
 
-def write_dirty_file(mdd, dirty_tables, backup_dir, timestamp_key=None):
+def write_dirty_file(mdd, dirty_tables, backup_dir, timestamp_key=None, ddboost=False, dump_dir=None):
     if timestamp_key is None:
         timestamp_key = TIMESTAMP_KEY
 
     if dirty_tables is None:
         return None
 
-    dirty_list_file = generate_dirtytable_filename(mdd, backup_dir, timestamp_key)
+    dirty_list_file = generate_dirtytable_filename(mdd, backup_dir, timestamp_key, ddboost, dump_dir)
     write_lines_to_file(dirty_list_file, dirty_tables)
 
     verify_lines_in_file(dirty_list_file, dirty_tables)
+    if ddboost:
+        copy_file_to_dd(dirty_list_file, dump_dir)
 
     return dirty_list_file
 
@@ -345,8 +370,8 @@ def get_last_operation_data(master_port, dbname):
         data.append(line)
     return data
 
-def write_partition_list_file(master_datadir, backup_dir, timestamp_key, master_port, dbname):
-    filter_file = get_filter_file(dbname, master_datadir, backup_dir)
+def write_partition_list_file(master_datadir, backup_dir, timestamp_key, master_port, dbname, ddboost=False, dump_dir=None):
+    filter_file = get_filter_file(dbname, master_datadir, backup_dir, ddboost)
     partition_list_file_name = generate_partition_list_filename(master_datadir, backup_dir, timestamp_key)
 
     if filter_file:
@@ -363,13 +388,19 @@ def write_partition_list_file(master_datadir, backup_dir, timestamp_key, master_
         write_lines_to_file(partition_list_file_name, partition_list)
         verify_lines_in_file(partition_list_file_name, partition_list) 
 
-def write_last_operation_file(master_datadir, backup_dir, rows, timestamp_key=None):
+    if ddboost:
+        copy_file_to_dd(partition_list_file_name, dump_dir)
+
+def write_last_operation_file(master_datadir, backup_dir, rows, timestamp_key=None, ddboost=False, dump_dir=None):
     if timestamp_key is None:
         timestamp_key = TIMESTAMP_KEY
 
-    filename = generate_pgstatlastoperation_filename(master_datadir, backup_dir, timestamp_key)
+    filename = generate_pgstatlastoperation_filename(master_datadir, backup_dir, timestamp_key, ddboost, dump_dir)
     write_lines_to_file(filename, rows)
     verify_lines_in_file(filename, rows) 
+
+    if ddboost:
+        copy_file_to_dd(filename, dump_dir)
 
 def validate_current_timestamp(backup_dir, current=None):
     if current is None:
@@ -386,8 +417,8 @@ def get_backup_dir(master_datadir, backup_dir):
         return backup_dir
     return master_datadir
 
-def update_filter_file(dump_database, master_datadir, backup_dir, master_port):
-    filter_filename = get_filter_file(dump_database, master_datadir, backup_dir)
+def update_filter_file(dump_database, master_datadir, backup_dir, master_port, ddboost=False):
+    filter_filename = get_filter_file(dump_database, master_datadir, backup_dir, ddboost)
     filter_tables = get_lines_from_file(filter_filename)
     tables_sql = "SELECT DISTINCT schemaname||'.'||tablename FROM pg_partitions";
     partitions_sql = "SELECT schemaname||'.'||partitiontablename FROM pg_partitions WHERE schemaname||'.'||tablename='%s';"
@@ -400,16 +431,16 @@ def update_filter_file(dump_database, master_datadir, backup_dir, master_port):
 
     write_lines_to_file(filter_filename, list(set(filter_tables)))
 
-def get_filter_file(dump_database, master_datadir, backup_dir):
-    timestamp = get_latest_full_dump_timestamp(dump_database, get_backup_dir(master_datadir, backup_dir))
+def get_filter_file(dump_database, master_datadir, backup_dir, ddboost=False):
+    timestamp = get_latest_full_dump_timestamp(dump_database, get_backup_dir(master_datadir, backup_dir), ddboost)
     filter_file = generate_filter_filename(master_datadir, backup_dir, timestamp)
     if os.path.isfile(filter_file):
         return filter_file
     return None
 
-def filter_dirty_tables(dirty_tables, dump_database, master_datadir, backup_dir):
-    timestamp = get_latest_full_dump_timestamp(dump_database, get_backup_dir(master_datadir, backup_dir))
-    filter_file = get_filter_file(dump_database, master_datadir, backup_dir)
+def filter_dirty_tables(dirty_tables, dump_database, master_datadir, backup_dir, ddboost=False):
+    timestamp = get_latest_full_dump_timestamp(dump_database, get_backup_dir(master_datadir, backup_dir), ddboost)
+    filter_file = get_filter_file(dump_database, master_datadir, backup_dir, ddboost)
     if filter_file:
         tables_to_filter = get_lines_from_file(filter_file)
         dirty_copy = dirty_tables[:]
@@ -540,8 +571,8 @@ class DumpDatabase(Operation):
                                                         incremental = self.incremental).run()
 
         if self.incremental and backup_utils.dump_prefix \
-                            and get_filter_file(self.dump_database, self.master_datadir, self.backup_dir):
-            filtered_dump_line = self.create_filtered_dump_string(getUserName(), DUMP_DATE, TIMESTAMP_KEY)
+                            and get_filter_file(self.dump_database, self.master_datadir, self.backup_dir, self.ddboost):
+            filtered_dump_line = self.create_filtered_dump_string(getUserName(), DUMP_DATE, TIMESTAMP_KEY, self.ddboost)
             (start, end, rc) = self.perform_dump('Dump process', filtered_dump_line)
             return self.create_dump_outcome(start, end, rc)
         dump_line = self.create_dump_string(getUserName(), DUMP_DATE, TIMESTAMP_KEY)
@@ -593,8 +624,8 @@ class DumpDatabase(Operation):
                 'time_end': end.strftime("%H:%M:%S"),
                 'exit_status': rc}
 
-    def create_filtered_dump_string(self, user_name, dump_date, timestamp_key):
-        filter_filename = get_filter_file(self.dump_database, self.master_datadir, self.backup_dir)
+    def create_filtered_dump_string(self, user_name, dump_date, timestamp_key, ddboost=False):
+        filter_filename = get_filter_file(self.dump_database, self.master_datadir, self.backup_dir, ddboost)
         dump_string = self.create_dump_string(user_name, dump_date, timestamp_key, filter_filename)
         dump_string += ' --incremental-filter=%s' % filter_filename
         return dump_string
@@ -668,7 +699,7 @@ class DumpDatabase(Operation):
         return dump_line
 
 class CreateIncrementsFile(Operation):
-    def __init__(self, dump_database, full_timestamp, timestamp, master_datadir, backup_dir):
+    def __init__(self, dump_database, full_timestamp, timestamp, master_datadir, backup_dir, ddboost, dump_dir):
         self.full_timestamp = full_timestamp
         self.timestamp = timestamp
         self.master_datadir = master_datadir
@@ -676,10 +707,12 @@ class CreateIncrementsFile(Operation):
         self.increments_filename = generate_increments_filename(master_datadir, backup_dir, full_timestamp)
         self.orig_lines_in_file = []
         self.dump_database = dump_database
+        self.ddboost = ddboost
+        self.dump_dir = dump_dir
 
     def execute(self):
         if os.path.isfile(self.increments_filename):
-            CreateIncrementsFile.validate_increments_file(self.dump_database, self.increments_filename, self.master_datadir, self.backup_dir)
+            CreateIncrementsFile.validate_increments_file(self.dump_database, self.increments_filename, self.master_datadir, self.backup_dir, self.ddboost, self.dump_dir)
             self.orig_lines_in_file = get_lines_from_file(self.increments_filename)
 
         with open(self.increments_filename, 'a') as fd:
@@ -702,17 +735,17 @@ class CreateIncrementsFile(Operation):
         return (len(newlines_in_file) + 1)
 
     @staticmethod
-    def validate_increments_file(dump_database, inc_file_name, master_data_dir, backup_dir):
+    def validate_increments_file(dump_database, inc_file_name, master_data_dir, backup_dir, ddboost=False, dump_dir=None):
 
         tstamps = gppylib.operations.backup_utils.get_lines_from_file(inc_file_name)
         for ts in tstamps:
             ts = ts.strip()
             if not ts:
                 continue
-            fn = generate_report_filename(master_data_dir, backup_dir, ts)
+            fn = generate_report_filename(master_data_dir, backup_dir, ts, ddboost, dump_dir)
             ts_in_rpt = None
             try:
-                ts_in_rpt = get_incremental_ts_from_report_file(dump_database, fn)
+                ts_in_rpt = get_incremental_ts_from_report_file(dump_database, fn, ddboost)
             except Exception as e:
                 logger.error(str(e))
 
@@ -1019,8 +1052,8 @@ class ValidateAllDumpDirs(Operation):
         self.master_port = master_port
         self.dump_dir = dump_dir
     def execute(self):
-	dir = self.backup_dir if self.backup_dir is not None else self.master_datadir
-	try:
+        dir = self.backup_dir if self.backup_dir is not None else self.master_datadir
+        try:
             ValidateDumpDirs(dir, self.dump_dir).run()
         except DumpDirCreateFailed, e:
             raise ExceptionNoStackTraceNeeded('Could not create %s on master. Cannot continue.' % dir)

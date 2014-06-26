@@ -2602,13 +2602,34 @@ cleanup:
 int 
 isFileToBeCopied(const char *filename)
 {
-	if (!strncmp(filename, "gp_global_1_1_", strlen("gp_global_1_1_")))
+	if (strstr(filename, "gp_global_1_1_"))
 		return 1;
 
-	if (!strncmp(filename, "gp_cdatabase_1_1_", strlen("gp_cdatabase_1_1_")))
+	if (strstr(filename, "gp_cdatabase_1_1_"))
 		return 1;
 
 	if (strstr(filename, "_post_data"))
+		return 1;
+
+	if (strstr(filename, ".rpt"))
+		return 1;
+
+	if (strstr(filename, "_dirty_list"))
+		return 1;
+
+	if (strstr(filename, "_ao_state_file"))
+		return 1;
+
+	if (strstr(filename, "_co_state_file"))
+		return 1;
+
+	if (strstr(filename, "_last_operation"))
+		return 1;
+
+	if (strstr(filename, "_increments"))
+		return 1;
+
+	if (strstr(filename, "_table_list"))
 		return 1;
 
 	if (strstr(filename, ".tar"))

@@ -19,7 +19,7 @@ from gppylib.operations.backup_utils import generate_report_filename, validate_t
                                             create_temp_file_from_list, get_timestamp_from_increments_filename, get_full_timestamp_for_incremental,\
                                             check_funny_chars_in_tablenames, expand_partition_tables, populate_filter_tables, expand_partitions_and_populate_filter_file, \
                                             generate_files_filename, generate_pipes_filename, generate_master_config_filename, generate_segment_config_filename, \
-                                            generate_global_prefix, generate_master_dbdump_prefix, \
+                                            generate_global_prefix, generate_master_dbdump_prefix, get_ddboost_backup_directory, \
                                             generate_master_status_prefix, generate_seg_dbdump_prefix, generate_seg_status_prefix, \
                                             generate_dbdump_prefix, generate_createdb_filename, generate_filter_filename, backup_file_with_nbu, \
                                             restore_file_with_nbu, generate_global_filename, generate_cdatabase_filename, check_file_dumped_with_nbu
@@ -245,6 +245,15 @@ class BackupUtilsTestCase(unittest.TestCase):
         report_file = '/tmp/foo/foo/gp_dump_20130104133924.rpt'
         result = check_cdatabase_exists(dbname, report_file) 
         self.assertTrue(result)
+
+    @patch('gppylib.operations.backup_utils.Command.run')
+    @patch('gppylib.operations.dump.Command.get_results', return_value=CommandResult(0, "CREATE DATABASE", "", True, False))
+    def test31_check_cdatabase_exists(self, mock1, mock2):
+        dbname = 'bkdb'
+        report_file = '/tmp/foo/foo/gp_dump'
+        ddboost = True
+        result = check_cdatabase_exists(dbname, report_file, ddboost) 
+        self.assertFalse(result)
 
     def test30_get_backup_directory(self):
         mdd = '/data'
@@ -478,6 +487,22 @@ class BackupUtilsTestCase(unittest.TestCase):
         self.assertEqual(ts, expected_output)
 
     @patch('gppylib.operations.backup_utils.check_cdatabase_exists', return_value=True)
+    @patch('gppylib.operations.backup_utils.get_lines_from_file', return_value=['Backup Type: Full', 'Timestamp Key: xxx34567891234', 'gp_dump utility finished successfully.'])
+    def test61_get_full_ts_from_report_file_with_ddboost(self, mock1, mock2):
+        expected_output = None
+        ddboost = True
+        ts = get_full_ts_from_report_file('testdb', 'foo', ddboost)
+        self.assertEqual(ts, expected_output)
+
+    @patch('gppylib.operations.backup_utils.check_cdatabase_exists', return_value=True)
+    @patch('gppylib.operations.backup_utils.get_lines_from_file', return_value=['Backup Type: Full', 'Timestamp Key: 01234567891234', 'gp_dump utility finished successfully.'])
+    def test61_get_full_ts_from_report_file_with_ddboost(self, mock1, mock2):
+        expected_output = '01234567891234'
+        ddboost = True
+        ts = get_full_ts_from_report_file('testdb', 'foo', ddboost)
+        self.assertEqual(ts, expected_output)
+
+    @patch('gppylib.operations.backup_utils.check_cdatabase_exists', return_value=True)
     @patch('gppylib.operations.backup_utils.get_lines_from_file', return_value=['Backup Type: Incremental'])
     def test62_get_incremental_ts_from_report_file(self, mock1, mock2):
         expected_output = None
@@ -655,6 +680,16 @@ class BackupUtilsTestCase(unittest.TestCase):
         output = generate_pgstatlastoperation_filename(master_data_dir, backup_dir, timestamp)
         self.assertEquals(output, expected_output)
 
+    def test88_generate_pgstatlastoperation_filename_with_ddboost(self):
+        master_data_dir = '/data'
+        backup_dir = None
+        timestamp = '20120731093030'
+        expected_output = '/data/backup/DCA-35/20120731/gp_dump_20120731093030_last_operation'
+        ddboost = True
+        dump_dir = 'backup/DCA-35'
+        output = generate_pgstatlastoperation_filename(master_data_dir, backup_dir, timestamp, ddboost, dump_dir)
+        self.assertEquals(output, expected_output)
+
     def test89_generate_ao_state_filename(self):
         master_data_dir = os.environ.get('MASTER_DATA_DIRECTORY')
         backup_dir = None
@@ -671,6 +706,16 @@ class BackupUtilsTestCase(unittest.TestCase):
         output = generate_ao_state_filename(master_data_dir, backup_dir, timestamp)
         self.assertEqual(output, expected_output)
         
+    def test91_generate_ao_state_filename_with_ddboost(self):
+        master_data_dir = '/data'
+        backup_dir = '/tmp'
+        timestamp = '20120731093030'
+        expected_output = '/data/backup/DCA-35/20120731/gp_dump_20120731093030_ao_state_file'
+        ddboost = True
+        dump_dir = 'backup/DCA-35'
+        output = generate_ao_state_filename(master_data_dir, backup_dir, timestamp, ddboost, dump_dir)
+        self.assertEqual(output, expected_output)
+        
     def test91_generate_co_state_filename(self):
         master_data_dir = os.environ.get('MASTER_DATA_DIRECTORY')
         backup_dir = None
@@ -685,6 +730,16 @@ class BackupUtilsTestCase(unittest.TestCase):
         timestamp = '20120731093030'
         expected_output = '%s/db_dumps/20120731/gp_dump_20120731093030_co_state_file' % backup_dir
         output = generate_co_state_filename(master_data_dir, backup_dir, timestamp)
+        self.assertEqual(output, expected_output)
+
+    def test93_generate_co_state_filename_with_ddboost(self):
+        master_data_dir = '/data'
+        backup_dir = '/tmp'
+        timestamp = '20120731093030'
+        expected_output = '/data/backup/DCA-35/20120731/gp_dump_20120731093030_co_state_file'
+        ddboost = True
+        dump_dir = 'backup/DCA-35'
+        output = generate_co_state_filename(master_data_dir, backup_dir, timestamp, ddboost, dump_dir)
         self.assertEqual(output, expected_output)
 
     @patch('gppylib.operations.backup_utils.get_dump_dirs', return_value=[])
@@ -982,6 +1037,18 @@ class BackupUtilsTestCase(unittest.TestCase):
         backup_utils.dump_prefix = ''
         self.assertEquals(output, expected_output)
  
+    def test01_generate_report_filename_with_prefix(self):
+        master_data_dir = '/data'
+        backup_dir = None
+        timestamp = '20120731093030'
+        backup_utils.dump_prefix = 'foo_'
+        expected_output = '/data/backup/DCA-35/20120731/%sgp_dump_20120731093030.rpt' % backup_utils.dump_prefix
+        ddboost = True
+        dump_dir = 'backup/DCA-35'
+        output = generate_report_filename(master_data_dir, backup_dir, timestamp, ddboost, dump_dir)
+        backup_utils.dump_prefix = ''
+        self.assertEquals(output, expected_output)
+ 
     def test00_generate_ao_state_filename_with_prefix(self):
         master_data_dir = '/data'
         backup_dir = None
@@ -1012,6 +1079,18 @@ class BackupUtilsTestCase(unittest.TestCase):
         backup_utils.dump_prefix = ''
         self.assertEquals(output, expected_output)
 
+    def test01_generate_increments_filename_with_prefix(self):
+        master_data_dir = '/data'
+        backup_dir = None
+        timestamp = '20120731093030'
+        backup_utils.dump_prefix = 'foo_'
+        expected_output = '/data/backup/DCA-35/20120731/%sgp_dump_20120731093030_increments' % backup_utils.dump_prefix
+        ddboost = True
+        dump_dir = 'backup/DCA-35'
+        output = generate_increments_filename(master_data_dir, backup_dir, timestamp, ddboost, dump_dir)
+        backup_utils.dump_prefix = ''
+        self.assertEquals(output, expected_output)
+
     def test00_generate_pgstatlastoperation_filename_with_prefix(self):
         master_data_dir = '/data'
         backup_dir = None
@@ -1029,6 +1108,18 @@ class BackupUtilsTestCase(unittest.TestCase):
         backup_utils.dump_prefix = 'foo_'
         expected = '/data/db_dumps/20121204/%sgp_dump_20121204090000_dirty_list' % backup_utils.dump_prefix
         result = generate_dirtytable_filename(mdd, backup_dir, timestamp)
+        backup_utils.dump_prefix = ''
+        self.assertEquals(expected, result)
+
+    def test01_generate_dirtytable_filename_with_prefix(self):
+        mdd = '/data'
+        backup_dir = None
+        timestamp = '20121204090000'
+        backup_utils.dump_prefix = 'foo_'
+        ddboost = True
+        dump_dir = 'backup/DCA-35'
+        expected = '/data/backup/DCA-35/20121204/%sgp_dump_20121204090000_dirty_list' % backup_utils.dump_prefix
+        result = generate_dirtytable_filename(mdd, backup_dir, timestamp, ddboost, dump_dir)
         backup_utils.dump_prefix = ''
         self.assertEquals(expected, result)
 
@@ -1165,6 +1256,16 @@ class BackupUtilsTestCase(unittest.TestCase):
         backup_utils.dump_prefix = ''
         self.assertEquals(expected_output, cdatabase_file)
 
+    @patch('gppylib.operations.backup_utils.get_ddboost_backup_directory', return_value='backup/DCA-35')
+    def test01_convert_reportfilename_to_cdatabasefilename_with_prefix(self, mock1):
+        report_file = '/tmp/foo/foo/bar_gp_dump_20130104133924.rpt'
+        expected_output = 'backup/DCA-35/20130104/bar_gp_cdatabase_1_1_20130104133924'
+        backup_utils.dump_prefix = 'bar_'
+        ddboost = True
+        cdatabase_file = convert_reportfilename_to_cdatabasefilename(report_file, ddboost)
+        backup_utils.dump_prefix = ''
+        self.assertEquals(expected_output, cdatabase_file)
+
     def test00_generate_master_config_filename(self):
         timestamp = '20120731093030'
         backup_utils.dump_prefix = 'foo_'
@@ -1230,6 +1331,18 @@ class BackupUtilsTestCase(unittest.TestCase):
         backup_dir = None
         timestamp = '20120731093030'
         expected_output = '/data/db_dumps/20120731/%sgp_cdatabase_1_1_%s' % (backup_utils.dump_prefix, timestamp)
+        output = generate_createdb_filename(master_datadir, None, timestamp)
+        backup_utils.dump_prefix = ''
+        self.assertEquals(output, expected_output)
+
+    def test01_generate_createdb_filename(self):
+        backup_utils.dump_prefix = 'foo_'
+        master_datadir = '/data'
+        backup_dir = None
+        timestamp = '20120731093030'
+        expected_output = '/data/db_dumps/20120731/%sgp_cdatabase_1_1_%s' % (backup_utils.dump_prefix, timestamp)
+        ddboost = True
+        dump_dir = 'backup/DCA-35'
         output = generate_createdb_filename(master_datadir, None, timestamp)
         backup_utils.dump_prefix = ''
         self.assertEquals(output, expected_output)
@@ -1536,3 +1649,27 @@ class BackupUtilsTestCase(unittest.TestCase):
         hostname = "sdw"
 
         self.assertFalse(check_file_dumped_with_nbu(netbackup_service_host, netbackup_filepath, hostname))
+
+    
+    @patch('gppylib.operations.backup_utils.Command.run')
+    @patch('gppylib.operations.dump.Command.get_results', return_value=CommandResult(0, "Data Domain Hostname:qadd01\nData Domain Boost Username:metro\n \
+            Default Backup Directory:/backup/DCA-35\nData Domain default log level:WARNING", "", True, False))
+    def test00_get_ddboost_backup_directory(self, mock1, mock2):
+        expected_output = '/backup/DCA-35'
+        result = get_ddboost_backup_directory()
+        self.assertEquals(result, expected_output)
+
+    @patch('gppylib.operations.backup_utils.Command.run')
+    @patch('gppylib.operations.dump.Command.get_results', return_value=CommandResult(0, "Data Domain Hostname:qadd01\nData Domain Boost Username:metro\n \
+            Deffult Backup Directory:/backup/DCA-35\nData Domain default log level:WARNING", "", True, False))
+    def test01_get_ddboost_backup_directory(self, mock1, mock2):
+        with self.assertRaisesRegexp(Exception, 'from command gpddboost --show-config not in expected format'):
+            get_ddboost_backup_directory()
+
+    @patch('gppylib.operations.backup_utils.Command.run')
+    @patch('gppylib.operations.dump.Command.get_results', return_value=CommandResult(0, "Data Domain Hostname:qadd01\nData Domain Boost Username:metro\n \
+            Default Backup Directory:\nData Domain default log level:WARNING", "", True, False))
+    def test02_get_ddboost_backup_directory(self, mock1, mock2):
+        with self.assertRaisesRegexp(Exception, 'DDBOOST default backup directory is not configured. Or the format of the line has changed'):
+            get_ddboost_backup_directory()
+

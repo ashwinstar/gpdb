@@ -1,4 +1,5 @@
-#!/usr/bin/env python #
+#!/usr/bin/env python
+#
 # Copyright (c) Greenplum Inc 2012. All Rights Reserved. 
 #
 
@@ -17,7 +18,8 @@ from gppylib.operations.dump import DumpDatabase, DumpGlobal, compare_dict, crea
                                     CreateIncrementsFile, PostDumpDatabase, get_dirty_tables, validate_current_timestamp, MailEvent,\
                                     validate_modcount, generate_dump_timestamp, get_filter_file, filter_dirty_tables, get_backup_dir, \
                                     update_filter_file, backup_state_files_with_nbu, backup_cdatabase_file_with_nbu, backup_report_file_with_nbu, \
-                                    backup_global_file_with_nbu, backup_config_files_with_nbu
+                                    backup_global_file_with_nbu, backup_config_files_with_nbu, backup_report_file_with_ddboost, \
+                                    backup_increments_file_with_ddboost, copy_file_to_dd
 from mock import patch, MagicMock, Mock
 
 class DumpTestCase(unittest.TestCase):
@@ -178,11 +180,11 @@ class DumpTestCase(unittest.TestCase):
             CreateIncrementsFile.validate_increments_file('testdb', '/tmp/fn', '/data', None)
 
     def test08_CreateIncrementsFile_init(self):
-        obj = CreateIncrementsFile('testdb', '20121225000000', '20121226000000', '/data', None)
+        obj = CreateIncrementsFile('testdb', '20121225000000', '20121226000000', '/data', None, False, None)
         self.assertEquals(obj.increments_filename, '/data/db_dumps/20121225/gp_dump_20121225000000_increments')
     
     def test09_CreateIncrementsFile_execute(self):
-        obj = CreateIncrementsFile('testdb', '20121225000000', '20121226000000', '/data', None)
+        obj = CreateIncrementsFile('testdb', '20121225000000', '20121226000000', '/data', None, False, None)
         obj.increments_filename = os.path.join(os.getcwd(), 'test.increments')
         if os.path.isfile(obj.increments_filename):
             os.remove(obj.increments_filename)
@@ -191,7 +193,7 @@ class DumpTestCase(unittest.TestCase):
         os.remove(obj.increments_filename)
 
     def test10_CreateIncrementsFile_execute(self):
-        obj = CreateIncrementsFile('testdb', '20121225000000', '20121226000000', '/data', None)
+        obj = CreateIncrementsFile('testdb', '20121225000000', '20121226000000', '/data', None, False, None)
         obj.increments_filename = os.path.join(os.getcwd(), 'test.increments')
         with open(obj.increments_filename, 'w') as fd:
             fd.write('20121225100000')
@@ -201,7 +203,7 @@ class DumpTestCase(unittest.TestCase):
 
     @patch('gppylib.operations.dump.CreateIncrementsFile.validate_increments_file')
     def test11_CreateIncrementsFile_execute(self, mock1):
-        obj = CreateIncrementsFile('testdb', '20121225000000', '20121226000000', '/data', None)
+        obj = CreateIncrementsFile('testdb', '20121225000000', '20121226000000', '/data', None, False, None)
         obj.increments_filename = os.path.join(os.getcwd(), 'test.increments')
         with open(obj.increments_filename, 'w') as fd:
             fd.write('20121225100000\n')
@@ -211,7 +213,7 @@ class DumpTestCase(unittest.TestCase):
 
     @patch('gppylib.operations.backup_utils.get_lines_from_file', return_value = [])
     def test12_CreateIncrementsFile_execute(self, mock1):
-        obj = CreateIncrementsFile('testdb', '20121225000000', '20121226000000', '/data', None)
+        obj = CreateIncrementsFile('testdb', '20121225000000', '20121226000000', '/data', None, False, None)
         obj.increments_filename = os.path.join(os.getcwd(), 'test.increments')
         with self.assertRaisesRegexp(Exception, 'File not written to'):
             result = obj.execute()
@@ -220,7 +222,7 @@ class DumpTestCase(unittest.TestCase):
     @patch('gppylib.operations.backup_utils.get_lines_from_file', return_value = ['20121225100000'])
     @patch('gppylib.operations.dump.CreateIncrementsFile.validate_increments_file')
     def test13_CreateIncrementsFile_execute(self, mock1, mock2):
-        obj = CreateIncrementsFile('testdb', '20121225000000', '20121226000000', '/data', None)
+        obj = CreateIncrementsFile('testdb', '20121225000000', '20121226000000', '/data', None, False, None)
         obj.increments_filename = os.path.join(os.getcwd(), 'test.increments')
         with open(obj.increments_filename, 'w') as fd:
             fd.write('20121225100000\n')
@@ -231,7 +233,7 @@ class DumpTestCase(unittest.TestCase):
     @patch('gppylib.operations.backup_utils.get_lines_from_file', return_value = ['20121225100001', '20121226000000'])
     @patch('gppylib.operations.dump.CreateIncrementsFile.validate_increments_file')
     def test14_CreateIncrementsFile_execute(self, mock1, mock2):
-        obj = CreateIncrementsFile('testdb', '20121225000000', '20121226000000', '/data', None)
+        obj = CreateIncrementsFile('testdb', '20121225000000', '20121226000000', '/data', None, False, None)
         obj.increments_filename = os.path.join(os.getcwd(), 'test.increments')
         with open(obj.increments_filename, 'w') as fd:
             fd.write('20121225100000\n')
@@ -445,6 +447,32 @@ class DumpTestCase(unittest.TestCase):
         self.assertEqual(result, expected_output)
         self.remove_backup_dirs(dump_dirs=['20121212'])
  
+    def test_get_filename_from_filetype_01_with_ddboost(self):
+        table_type = 'ao'
+        master_datadir = 'foo'
+        backup_dir = None
+        timestamp_key = '20121212010101'
+        self.create_backup_dirs(dump_dirs=['20121212'])
+        ddboost = True
+        dump_dir = 'backup/DCA-35'
+        expected_output = 'foo/backup/DCA-35/20121212/gp_dump_%s_ao_state_file' % (timestamp_key) 
+        result = get_filename_from_filetype(table_type, master_datadir, backup_dir, timestamp_key, ddboost, dump_dir)
+        self.assertEqual(result, expected_output)
+        self.remove_backup_dirs(dump_dirs=['20121212'])
+ 
+    def test_get_filename_from_filetype_02_with_ddboost(self):
+        table_type = 'co'
+        master_datadir = 'foo'
+        backup_dir = None
+        timestamp_key = '20121212010101'
+        self.create_backup_dirs(dump_dirs=['20121212'])
+        ddboost = True
+        dump_dir = 'backup/DCA-35'
+        expected_output = 'foo/backup/DCA-35/20121212/gp_dump_%s_co_state_file' % (timestamp_key) 
+        result = get_filename_from_filetype(table_type, master_datadir, backup_dir, timestamp_key, ddboost, dump_dir)
+        self.assertEqual(result, expected_output)
+        self.remove_backup_dirs(dump_dirs=['20121212'])
+
     def test_get_filename_from_filetype_01(self):
         table_type = 'co'
         master_datadir = 'foo' 
@@ -2109,6 +2137,23 @@ class DumpGlobalTestCase(unittest.TestCase):
             seg.getSegmentDataDirectory.return_value = "/data"
 
         backup_config_files_with_nbu(master_datadir, backup_dir, dump_dir, master_port, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword, timestamp_key)
+    
+    @patch('gppylib.operations.dump.generate_report_filename', result='foo.rpt')
+    @patch('gppylib.operations.dump.copy_file_to_dd')
+    def test_backup_report_file_with_ddboost_00(self,  mock1, mock2):
+        master_datadir = '/data'
+        backup_dir = None
+        dump_dir = 'backup/DCA-35'
+        backup_report_file_with_ddboost(master_datadir, backup_dir, dump_dir)
+
+    @patch('gppylib.operations.dump.generate_increments_filename', result='foo.increments')
+    @patch('gppylib.operations.dump.copy_file_to_dd')
+    def test_backup_increments_file_with_ddboost_00(self,  mock1, mock2):
+        master_datadir = '/data'
+        backup_dir = None
+        dump_dir = 'backup/DCA-35'
+        
+        backup_increments_file_with_ddboost(master_datadir, backup_dir, dump_dir, full_timestamp='20140101')
 
 class MailEventTestCase(unittest.TestCase):
 

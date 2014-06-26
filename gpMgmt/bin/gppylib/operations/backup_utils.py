@@ -93,19 +93,59 @@ def check_successful_dump(dbname, report_file_contents):
             return True
     return False
 
+def get_ddboost_backup_directory():
+    """
+        The gpddboost --show-config command, gives us all the ddboost \
+            configuration details.
+        Third line of the command output gives us the backup directory \
+            configured with ddboost.
+    """
+    cmd_str = 'gpddboost --show-config'
+    cmd = Command('Get the ddboost backup directory', cmd_str)
+    cmd.run(validateAfter = True)
+    
+    config = cmd.get_results().stdout.splitlines() 
+    for line in config:
+        if line.strip().startswith("Default Backup Directory:"):
+            dir = line.split(':')[-1].strip()
+            if dir is None or dir == "":
+                logger.error("Expecting format: Default Backup Directory:<dir>")
+                raise Exception("DDBOOST default backup directory is not configured. Or the format of the line has changed")
+            return dir
+
+    logger.error("Could not find Default Backup Directory:<dir> in stdout")
+    raise Exception("Output: %s from command %s not in expected format." % (config, cmd_str))
+
+
 # raise exception for bad data
-def convert_reportfilename_to_cdatabasefilename(report_file):
+def convert_reportfilename_to_cdatabasefilename(report_file, ddboost=False):
     (dirname, fname) = os.path.split(report_file)
     ts = fname[-18:-4]
+    if ddboost:
+        dirname = get_ddboost_backup_directory()
+        dirname = "%s/%s" % (dirname, ts[0:8])
     return "%s/%sgp_cdatabase_1_1_%s" % (dirname, dump_prefix, ts)
 
-def check_cdatabase_exists(dbname, report_file):
+def get_lines_from_dd_file(filename):
+    cmd = Command('DDBoost copy of master dump file',
+                  'gpddboost --readFile --from-file=%s'
+                    % (filename))
+
+    cmd.run(validateAfter = True)
+    contents = cmd.get_results().stdout.splitlines()
+    return contents
+
+def check_cdatabase_exists(dbname, report_file, ddboost=False):
     try:
-        filename = convert_reportfilename_to_cdatabasefilename(report_file) 
+        filename = convert_reportfilename_to_cdatabasefilename(report_file, ddboost) 
     except Exception as e:
         return False
 
-    cdatabase_contents = get_lines_from_file(filename)
+    if ddboost:
+        cdatabase_contents = get_lines_from_dd_file(filename)
+    else:
+        cdatabase_contents = get_lines_from_file(filename, ddboost)
+
     for line in cdatabase_contents:
         if 'CREATE DATABASE' in line:
             parts = line.split()
@@ -115,13 +155,13 @@ def check_cdatabase_exists(dbname, report_file):
                 return True
     return False
 
-def get_type_ts_from_report_file(dbname, report_file, backup_type):
+def get_type_ts_from_report_file(dbname, report_file, backup_type, ddboost=False):
     report_file_contents = get_lines_from_file(report_file)
 
     if not check_successful_dump(dbname, report_file_contents):
         return None
 
-    if not check_cdatabase_exists(dbname, report_file):
+    if not check_cdatabase_exists(dbname, report_file, ddboost):
         return None
 
     if check_backup_type(report_file_contents, backup_type):
@@ -129,11 +169,11 @@ def get_type_ts_from_report_file(dbname, report_file, backup_type):
 
     return None
 
-def get_full_ts_from_report_file(dbname, report_file):
-    return get_type_ts_from_report_file(dbname, report_file, 'Full')
+def get_full_ts_from_report_file(dbname, report_file, ddboost=False):
+    return get_type_ts_from_report_file(dbname, report_file, 'Full', ddboost)
 
-def get_incremental_ts_from_report_file(dbname, report_file):
-    return get_type_ts_from_report_file(dbname, report_file, 'Incremental')
+def get_incremental_ts_from_report_file(dbname, report_file, ddboost=False):
+    return get_type_ts_from_report_file(dbname, report_file, 'Incremental', ddboost)
 
 def get_timestamp_val(report_file_contents):
     for line in report_file_contents:
@@ -156,12 +196,16 @@ def check_backup_type(report_file_contents, backup_type):
                 return True
     return False
 
-def get_lines_from_file(fname):
+def get_lines_from_file(fname, ddboost=None):
     content = []
-    with open(fname) as fd:
-        for line in fd:
-            content.append(line.rstrip())
-    return content
+    if ddboost:
+        contents = get_lines_from_dd_file(fname)
+        return contents
+    else:
+        with open(fname) as fd:
+            for line in fd:
+                content.append(line.rstrip())
+        return content
 
 def write_lines_to_file(filename, lines):
     with open(filename, 'w') as fp:
@@ -210,19 +254,27 @@ def get_backup_directory(master_data_dir, backup_dir, timestamp):
 
     return ("%s/%s/%s" % (use_dir, DUMP_DIR, timestamp[0:8]))
 
-def generate_report_filename(master_data_dir, backup_dir, timestamp):
+def generate_report_filename(master_data_dir, backup_dir, timestamp, ddboost=False, dump_dir=None):
+    if ddboost:
+        return "%s/%s/%s/%sgp_dump_%s.rpt" % (master_data_dir, dump_dir, timestamp[0:8], dump_prefix, timestamp)
     use_dir = get_backup_directory(master_data_dir, backup_dir, timestamp)
     return "%s/%sgp_dump_%s.rpt" % (use_dir, dump_prefix, timestamp)
 
-def generate_increments_filename(master_data_dir, backup_dir, timestamp):
+def generate_increments_filename(master_data_dir, backup_dir, timestamp, ddboost=False, dump_dir=None):
+    if ddboost:
+        return "%s/%s/%s/%sgp_dump_%s_increments" % (master_data_dir, dump_dir, timestamp[0:8], dump_prefix, timestamp)
     use_dir = get_backup_directory(master_data_dir, backup_dir, timestamp)
     return "%s/%sgp_dump_%s_increments" % (use_dir, dump_prefix, timestamp)
 
-def generate_pgstatlastoperation_filename(master_data_dir, backup_dir, timestamp):
+def generate_pgstatlastoperation_filename(master_data_dir, backup_dir, timestamp, ddboost=False, dump_dir=None):
+    if ddboost:
+        return "%s/%s/%s/%sgp_dump_%s_last_operation" % (master_data_dir, dump_dir, timestamp[0:8], dump_prefix, timestamp)
     use_dir = get_backup_directory(master_data_dir, backup_dir, timestamp)
     return "%s/%sgp_dump_%s_last_operation" % (use_dir, dump_prefix, timestamp)
 
-def generate_dirtytable_filename(master_data_dir, backup_dir, timestamp):
+def generate_dirtytable_filename(master_data_dir, backup_dir, timestamp, ddboost=False, dump_dir=None):
+    if ddboost:
+        return "%s/%s/%s/%sgp_dump_%s_dirty_list" % (master_data_dir, dump_dir, timestamp[0:8], dump_prefix, timestamp)
     use_dir = get_backup_directory(master_data_dir, backup_dir, timestamp)
     return "%s/%sgp_dump_%s_dirty_list" % (use_dir, dump_prefix, timestamp)
 
@@ -238,11 +290,15 @@ def generate_partition_list_filename(master_data_dir, backup_dir, timestamp):
     use_dir = get_backup_directory(master_data_dir, backup_dir, timestamp)
     return "%s/%sgp_dump_%s_table_list" % (use_dir, dump_prefix, timestamp)
 
-def generate_ao_state_filename(master_data_dir, backup_dir, timestamp):
+def generate_ao_state_filename(master_data_dir, backup_dir, timestamp, ddboost=False, dump_dir=None):
+    if ddboost:
+        return "%s/%s/%s/%sgp_dump_%s_ao_state_file" % (master_data_dir, dump_dir, timestamp[0:8], dump_prefix, timestamp)
     use_dir = get_backup_directory(master_data_dir, backup_dir, timestamp)
     return "%s/%sgp_dump_%s_ao_state_file" % (use_dir, dump_prefix, timestamp)
  
-def generate_co_state_filename(master_data_dir, backup_dir, timestamp):
+def generate_co_state_filename(master_data_dir, backup_dir, timestamp, ddboost=False, dump_dir=None):
+    if ddboost:
+        return "%s/%s/%s/%sgp_dump_%s_co_state_file" % (master_data_dir, dump_dir, timestamp[0:8], dump_prefix, timestamp)
     use_dir = get_backup_directory(master_data_dir, backup_dir, timestamp)
     return "%s/%sgp_dump_%s_co_state_file" % (use_dir, dump_prefix, timestamp)
 
@@ -285,7 +341,9 @@ def generate_dbdump_prefix():
 def generate_createdb_prefix():
     return '%sgp_cdatabase_1_1_' % (dump_prefix)
 
-def generate_createdb_filename(master_datadir, backup_dir, timestamp):
+def generate_createdb_filename(master_datadir, backup_dir, timestamp, ddboost=False, dump_dir=None):
+    if ddboost:
+        return '%s/%s/%s/%s%s' % (master_datadir, dump_dir, timestamp[0:8], generate_createdb_prefix(), timestamp)
     use_dir = get_backup_directory(master_datadir, backup_dir, timestamp)
     return '%s/%s%s' % (use_dir, generate_createdb_prefix(), timestamp) 
 
@@ -342,8 +400,12 @@ def get_timestamp_from_increments_filename(filename):
         raise Exception("Invalid increments file '%s' passed to get_timestamp_from_increments_filename" % filename)
     return parts[-2].strip()
 
-def get_full_timestamp_for_incremental(dbname, backup_dir, incremental_timestamp):
-    pattern = '%s/db_dumps/[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]/%sgp_dump_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_increments' % (backup_dir, dump_prefix)
+def get_full_timestamp_for_incremental(dbname, backup_dir, incremental_timestamp, ddboost=False, dump_dir=None):
+    if ddboost:
+        pattern = '%s/%s/[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]/%sgp_dump_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_increments' % (backup_dir, dump_dir, dump_prefix)
+    else:
+        pattern = '%s/db_dumps/[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]/%sgp_dump_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_increments' % (backup_dir, dump_prefix)
+
     increments_files = glob.glob(pattern)
 
     for increments_file in increments_files:
@@ -355,7 +417,7 @@ def get_full_timestamp_for_incremental(dbname, backup_dir, incremental_timestamp
     return None
 
 # backup_dir will be either MDD or some other directory depending on call
-def get_latest_full_dump_timestamp(dbname, backup_dir):
+def get_latest_full_dump_timestamp(dbname, backup_dir, ddboost=False):
     if not backup_dir:
         raise Exception('Invalid None param to get_latest_full_dump_timestamp')
 
@@ -377,7 +439,7 @@ def get_latest_full_dump_timestamp(dbname, backup_dir):
         dump_report_files = sorted(dump_report_files, key=lambda x: int(x.split('_')[-1].split('.')[0]), reverse=True)
         for dump_report_file in dump_report_files:
             logger.debug('Checking for latest timestamp in report file %s' % os.path.join(dump_dir, dump_report_file))
-            ts = get_full_ts_from_report_file(dbname, os.path.join(dump_dir, dump_report_file))
+            ts = get_full_ts_from_report_file(dbname, os.path.join(dump_dir, dump_report_file), ddboost)
             logger.debug('Timestamp = %s' % ts)
             if ts is not None:
                 return ts

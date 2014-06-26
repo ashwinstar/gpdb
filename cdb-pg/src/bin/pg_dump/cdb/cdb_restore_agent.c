@@ -94,6 +94,8 @@ static char *ddboostPg = NULL;
 #endif
 
 
+#define DUMP_PREFIX (dump_prefix==NULL?"":dump_prefix)
+
 static void usage(const char *progname);
 
 typedef struct option optType;
@@ -1545,9 +1547,9 @@ static char *formDDBoostFileName(char *pszBackupKey, bool isPostData, char *dd_b
 
        	memset(szFileNamePrefix, 0, (1+PATH_NAME_MAX));
 	if (dd_boost_dir)
-        	sprintf(szFileNamePrefix, "%s/gp_dump_%d_%d_", dd_boost_dir, instid, segid);
+        	snprintf(szFileNamePrefix, 1 + PATH_NAME_MAX, "%s/%sgp_dump_%d_%d_", dd_boost_dir, DUMP_PREFIX, instid, segid);
 	else	
-        	sprintf(szFileNamePrefix, "%s/gp_dump_%d_%d_", dir_name, instid, segid);
+        	snprintf(szFileNamePrefix, 1 + PATH_NAME_MAX, "%s/%sgp_dump_%d_%d_", dir_name, DUMP_PREFIX, instid, segid);
 
         /* Now add up the length of the pieces */
         len += strlen(szFileNamePrefix);

@@ -470,9 +470,13 @@ Feature: Validate command line arguments
         And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
         When the user runs "gpcrondump -a -x fullbkdb -b"
         Then gpcrondump should return a return code of 0
+        And gpcrondump should print Bypassing disk space check to stdout
+        And gpcrondump should not print Validating disk space to stdout
         And table "public.ao_index_table" is assumed to be in dirty state in "fullbkdb"
         When the user runs "gpcrondump -a -x fullbkdb -b --incremental"
         Then gpcrondump should return a return code of 0
+        And gpcrondump should print Bypassing disk space checks for incremental backup to stdout
+        And gpcrondump should not print Validating disk space to stdout
 
     @backupfire
     Scenario: gpdbrestore -b with Full timestamp
@@ -767,14 +771,6 @@ Feature: Validate command line arguments
         And verify that there is a "ao" table "ao_part_table" in "fullbkdb" with data
         And verify that there is a "heap" table "heap_table" in "fullbkdb" with data
         And verify that there is no table "co_part_table" in "fullbkdb"
-
-    @backupsmoke
-    Scenario: Negative test for incremental with ddboost option
-        Given the database is running
-        And there is a "heap" table "heap_table" with compression "None" in "bkdb" with data
-        When the user runs "gpcrondump -a -x bkdb --ddboost --incremental"
-        Then gpcrondump should return a return code of 2
-        And gpcrondump should print ddboost can not be selected with incremental backup to stdout 
 
     Scenario: gpcrondump should generate a timestamp and pass it to gp_dump
         Given the database is running

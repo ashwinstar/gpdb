@@ -109,51 +109,6 @@ class GpCronDumpTestCase(unittest.TestCase):
   
     @patch('gpcrondump.GpCronDump._get_master_port')
     @patch('gpcrondump.validate_current_timestamp')
-    def test_options5(self, mock, mock2):
-        options = GpCronDumpTestCase.Options()
-        options.ddboost = True 
-        options.incremental = True
-        with self.assertRaisesRegexp(Exception, 'ddboost can not be selected with incremental backup'):
-            cron = GpCronDump(options, None)
-
-    @patch('gpcrondump.GpCronDump._get_master_port')
-    @patch('gpcrondump.validate_current_timestamp')
-    def test_options6(self, mock, mock2):
-        options = GpCronDumpTestCase.Options()
-        options.ddboost_verify = True 
-        options.incremental = True
-        with self.assertRaisesRegexp(Exception, 'ddboost can not be selected with incremental backup'):
-            cron = GpCronDump(options, None)
-
-    @patch('gpcrondump.GpCronDump._get_master_port')
-    @patch('gpcrondump.validate_current_timestamp')
-    def test_options7(self, mock, mock2):
-        options = GpCronDumpTestCase.Options()
-        options.ddboost_config_remove = True 
-        options.incremental = True
-        with self.assertRaisesRegexp(Exception, 'ddboost can not be selected with incremental backup'):
-            cron = GpCronDump(options, None)
-
-    @patch('gpcrondump.GpCronDump._get_master_port')
-    @patch('gpcrondump.validate_current_timestamp')
-    def test_options8(self, mock, mock2):
-        options = GpCronDumpTestCase.Options()
-        options.ddboost_user = 'abcde' 
-        options.incremental = True
-        with self.assertRaisesRegexp(Exception, 'ddboost can not be selected with incremental backup'):
-            cron = GpCronDump(options, None)
-
-    @patch('gpcrondump.GpCronDump._get_master_port')
-    @patch('gpcrondump.validate_current_timestamp')
-    def test_options9(self, mock, mock2):
-        options = GpCronDumpTestCase.Options()
-        options.ddboost_hosts = 'abcde' 
-        options.incremental = True
-        with self.assertRaisesRegexp(Exception, 'ddboost can not be selected with incremental backup'):
-            cron = GpCronDump(options, None)
-
-    @patch('gpcrondump.GpCronDump._get_master_port')
-    @patch('gpcrondump.validate_current_timestamp')
     def test_options10(self, mock, mock2):
         options = GpCronDumpTestCase.Options()
         backup_utils.dump_prefix = 'foo'

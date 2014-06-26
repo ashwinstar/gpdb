@@ -16,6 +16,7 @@ from sets import Set
 
 import re
 import stat
+import time
 
 try:
     import gppylib
@@ -37,7 +38,8 @@ try:
                                         validate_current_timestamp, generate_dump_timestamp, get_dirty_heap_tables, \
                                         DUMP_DIR, filter_dirty_tables, get_filter_file, update_filter_file, \
                                         backup_cdatabase_file_with_nbu, backup_report_file_with_nbu, \
-                                        backup_global_file_with_nbu, backup_state_files_with_nbu, backup_config_files_with_nbu
+                                        backup_global_file_with_nbu, backup_state_files_with_nbu, backup_config_files_with_nbu, \
+                                        backup_report_file_with_ddboost, backup_increments_file_with_ddboost
     from gppylib.operations.backup_utils import get_latest_full_dump_timestamp, check_funny_chars_in_tablenames, \
                                                 expand_partitions_and_populate_filter_file, get_lines_from_file, \
                                                 remove_file_from_segments, validate_timestamp, write_lines_to_file, \
@@ -169,22 +171,12 @@ class GpCronDump(Operation):
                 else:
                     raise ExceptionNoStackTraceNeeded("Must supply -x <database name> because $PGDATABASE is not set")
 
-        if self.free_space_percent and self.incremental:
-            raise Exception('-f option cannot be selected with incremental backup')
-
-        if options.bypass_disk_check:
-            self.free_space_percent = None
+        self.ddboost = options.ddboost
 
         if options.backup_set is not None:
             logger.info("-w is no longer supported, will continue with dump of primary segments.")
 
-        self.ddboost = options.ddboost
 
-        if self.incremental and (self.ddboost or bool(self.ddboost_verify) or bool(self.ddboost_hosts) or bool(self.ddboost_user) or bool(self.ddboost_config_remove)):
-            raise Exception('ddboost can not be selected with incremental backup')
-
-        if backup_utils.dump_prefix and (self.ddboost or bool(self.ddboost_verify) or bool(self.ddboost_hosts) or bool(self.ddboost_user) or bool(self.ddboost_config_remove)):
-            raise Exception('ddboost can not be selected with prefix option')
         if self.list_backup_files and (self.ddboost or bool(self.ddboost_verify) or bool(self.ddboost_hosts) or bool(self.ddboost_user) or bool(self.ddboost_config_remove)):
             raise Exception('list backup files not supported with ddboost option')
 
@@ -213,6 +205,29 @@ class GpCronDump(Operation):
         self.max_streams = options.max_streams
         self.quiet = options.quiet
         self.verbose = options.verbose
+
+        # disk space checks
+        if self.free_space_percent and self.ddboost:
+            raise Exception('-f option cannot be selected with ddboost')
+
+        if self.free_space_percent and self.incremental:
+            raise Exception('-f option cannot be selected with incremental backup')
+
+        if self.free_space_percent: 
+            self.free_space_percent = int(self.free_space_percent)    
+        else:
+            self.free_space_percent = FREE_SPACE_PERCENT
+
+        if self.ddboost:
+            self.free_space_percent = None
+            logger.info('Bypassing disk space checks due to DDBoost parameters')
+        elif self.incremental:
+            self.free_space_percent = None
+            logger.info('Bypassing disk space checks for incremental backup')
+        elif options.bypass_disk_check:
+            logger.info("Bypassing disk space check as '-b' option is specified")
+            self.free_space_percent = None
+
         if self.ddboost:
             if (not self.replicate and self.max_streams is not None) or (self.replicate and self.max_streams is None):
                 raise ExceptionNoStackTraceNeeded("--max-streams must be specified along with --replicate")
@@ -225,8 +240,6 @@ class GpCronDump(Operation):
                 # List of tuples (dbname, timestamp), to be replicated to remote
                 # Data Domain after they are backed up to local Data Domain.
                 self.dump_timestamps = []
-            self.free_space_percent = None
-            logger.info('Bypassing disk space checks due to DDBoost parameters')
             if self.backup_dir is not None:
                 raise ExceptionNoStackTraceNeeded('-u cannot be used with DDBoost parameters.')
             dd = gpmfr.DDSystem("local")
@@ -280,15 +293,8 @@ class GpCronDump(Operation):
         if ('--inserts' in self.output_options or '--oids' in self.output_options or '--column-inserts' in self.output_options) and self.incremental:
             raise Exception('--inserts, --column-inserts, --oids cannot be selected with incremental backup')
 
-        if self.free_space_percent: 
-            self.free_space_percent = int(self.free_space_percent)    
-        else:
-            self.free_space_percent = FREE_SPACE_PERCENT
-
         if self.incremental:
-            self.free_space_percent = None
-            logger.info('Bypassing disk space checks for incremental backup')
-            self.full_dump_timestamp = get_latest_full_dump_timestamp(self.dump_databases[0], self.getBackupDirectoryRoot())
+            self.full_dump_timestamp = get_latest_full_dump_timestamp(self.dump_databases[0], self.getBackupDirectoryRoot(), self.ddboost)
 
     def getBackupDirectoryRoot(self):
         if self.backup_dir:
@@ -677,10 +683,10 @@ class GpCronDump(Operation):
                                                         self.full_dump_timestamp, ao_partition_list,
                                                         co_partition_list, last_operation_list)
                     if backup_utils.dump_prefix and \
-                       get_filter_file(dump_database, self.master_datadir, self.backup_dir):
-                        update_filter_file(dump_database, self.master_datadir, self.backup_dir, self.master_port)
+                       get_filter_file(dump_database, self.master_datadir, self.backup_dir, self.ddboost):
+                        update_filter_file(dump_database, self.master_datadir, self.backup_dir, self.master_port, self.ddboost)
                     dirty_partitions = filter_dirty_tables(dirty_partitions, dump_database, self.master_datadir,
-                                                           self.backup_dir)
+                                                           self.backup_dir, self.ddboost)
                     dirty_file = write_dirty_file_to_temp(dirty_partitions)
 
                 (include_file, exclude_file) = self.get_include_exclude_for_dump_database(dirty_file, dump_database)
@@ -723,11 +729,16 @@ class GpCronDump(Operation):
                     backup_cdatabase_file_with_nbu(self.master_datadir, self.backup_dir, self.dump_dir, self.netbackup_service_host, self.netbackup_policy, self.netbackup_schedule, self.netbackup_block_size, self.netbackup_keyword)
                     backup_report_file_with_nbu(self.master_datadir, self.backup_dir, self.dump_dir, self.netbackup_service_host, self.netbackup_policy, self.netbackup_schedule, self.netbackup_block_size, self.netbackup_keyword)
 
+                if self.ddboost:
+                    backup_report_file_with_ddboost(self.master_datadir, self.backup_dir, self.dump_dir)
+
                 if self.incremental:
                     if os.path.isfile(dirty_file):
+                        if self.ddboost:
+                            time.sleep(5)
                         os.remove(dirty_file)
                         remove_file_from_segments(self.master_port, dirty_file)
-                    write_dirty_file(self.master_datadir, dirty_partitions, self.backup_dir)
+                    write_dirty_file(self.master_datadir, dirty_partitions, self.backup_dir, None, self.ddboost, self.dump_dir)
 
                 if include_file is not None and os.path.exists(include_file): 
                     os.remove(include_file)
@@ -736,9 +747,9 @@ class GpCronDump(Operation):
                     os.remove(exclude_file)
                     remove_file_from_segments(self.master_port, exclude_file)
 
-                write_state_file('ao', self.master_datadir, self.backup_dir, ao_partition_list)
-                write_state_file('co', self.master_datadir, self.backup_dir, co_partition_list)
-                write_last_operation_file(self.master_datadir, self.backup_dir, last_operation_list)
+                write_state_file('ao', self.master_datadir, self.backup_dir, ao_partition_list, self.ddboost, self.dump_dir)
+                write_state_file('co', self.master_datadir, self.backup_dir, co_partition_list, self.ddboost, self.dump_dir)
+                write_last_operation_file(self.master_datadir, self.backup_dir, last_operation_list, timestamp_key=None, ddboost=self.ddboost, dump_dir=self.dump_dir)
 
                 if self.netbackup_service_host and self.netbackup_policy and self.netbackup_schedule:
                     backup_state_files_with_nbu(self.master_datadir, self.backup_dir, self.netbackup_service_host, self.netbackup_policy, self.netbackup_schedule, self.netbackup_block_size, self.netbackup_keyword)
@@ -757,8 +768,13 @@ class GpCronDump(Operation):
                                                 full_timestamp = self.full_dump_timestamp,
                                                 timestamp = post_dump_outcome['timestamp'],
                                                 master_datadir = self.master_datadir,
-                                                backup_dir = self.backup_dir ).run()
-                        write_partition_list_file(self.master_datadir, self.backup_dir, post_dump_outcome['timestamp'], self.master_port, dump_database)
+                                                backup_dir = self.backup_dir, 
+                                                ddboost = self.ddboost, dump_dir = self.dump_dir ).run()
+                        if self.ddboost:
+                            backup_increments_file_with_ddboost(self.master_datadir, self.backup_dir, self.dump_dir, self.full_dump_timestamp)
+
+                        write_partition_list_file(self.master_datadir, self.backup_dir, post_dump_outcome['timestamp'], \
+                                                  self.master_port, dump_database, self.ddboost, self.dump_dir)
 
             finally:
                 thread_stop.set()
@@ -980,7 +996,7 @@ class GpCronDump(Operation):
 
     def _list_filter_tables(self):
         db = self.dump_databases[0]
-        filter_filename = get_filter_file(db, self.master_datadir, self.backup_dir)
+        filter_filename = get_filter_file(db, self.master_datadir, self.backup_dir, self.ddboost)
         logger.info("---------------------------------------------------")
         if not filter_filename:
             logger.info('No filter file found for database %s and prefix %s.' % (db, backup_utils.dump_prefix[:-1]))
@@ -1058,7 +1074,7 @@ class GpCronDump(Operation):
         else:
             if self.incremental:
                 logger.info("Dump type                            = Incremental")
-                filter_name = get_filter_file(dump_database, self.master_datadir, self.backup_dir)
+                filter_name = get_filter_file(dump_database, self.master_datadir, self.backup_dir, self.ddboost)
                 if filter_name is not None:
                     logger.info("Filtering tables using:")
                     logger.info("\t Prefix                        = %s" % (backup_utils.dump_prefix[:-1]))

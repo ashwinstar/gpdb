@@ -2392,7 +2392,7 @@ static char *formDDBoostFileName(char *pszBackupKey, bool isPostData, bool isCom
        segid = GpIdentity.dbid;
 
 	memset(szFileNamePrefix, 0, sizeof(szFileNamePrefix));
-       sprintf(szFileNamePrefix, "gp_dump_%d_%d_", instid, segid);
+       snprintf(szFileNamePrefix, 1 + MAX_PATH_NAME, "%sgp_dump_%d_%d_", DUMP_PREFIX, instid, segid);
 
       /* Now add up the length of the pieces */
        len += strlen(szFileNamePrefix);

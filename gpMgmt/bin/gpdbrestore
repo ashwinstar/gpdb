@@ -158,8 +158,6 @@ class GpdbRestore(Operation):
                 raise ExceptionNoStackTraceNeeded("-R cannot be used with DDBoost parameters.")
             elif self.backup_dir:
                 raise ExceptionNoStackTraceNeeded('-u cannot be used with DDBoost parameters.')
-            elif backup_utils.dump_prefix:
-                raise ExceptionNoStackTraceNeeded('--prefix cannot be used with DDBoost parameters.')
             dd = gpmfr.DDSystem("local")
             self.dump_dir = dd.defaultBackupDir
             # Ugly hack to propagate backup directory different from "db_dumps".
@@ -215,7 +213,8 @@ class GpdbRestore(Operation):
             raise Exception('--list-backup is not supported for restore with full timestamps')
 
         if is_begin_incremental_run(self.master_datadir, self.backup_dir, info['restore_timestamp'], self.no_plan):
-            plan_file = create_restore_plan(self.master_datadir, self.backup_dir, info['restore_timestamp'], info['restore_db'], self.ddboost)
+            plan_file = create_restore_plan(self.master_datadir, self.backup_dir, info['restore_timestamp'], info['restore_db'], \
+                         self.ddboost, self.dump_dir)
 
             if self.list_backup and self.db_timestamp is not None:
                 return self._list_backup_timestamps(plan_file)
