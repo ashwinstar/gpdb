@@ -2428,7 +2428,20 @@ InitializeLDAPConnection(Port *port, LDAP **ldap)
 	int			ldapversion = LDAP_VERSION3;
 	int			r;
 
-	*ldap = ldap_init(port->hba->ldapserver, port->hba->ldapport);
+	if (strncmp(port->hba->ldapserver, "ldaps://", 8) == 0 ||
+		strncmp(port->hba->ldapserver, "ldap://",  7) == 0)
+	{
+		if ((r = ldap_initialize(ldap, port->hba->ldapserver)) != LDAP_SUCCESS)
+		{
+			ereport(LOG, (errmsg("could not initialize LDAP: code: %d, msg: %s", r, ldap_err2string(r))));
+			*ldap = NULL;
+		}
+	}
+	else
+	{
+		*ldap = ldap_init(port->hba->ldapserver, port->hba->ldapport);
+	}
+
 	if (!*ldap)
 	{
 #ifndef WIN32
@@ -2500,7 +2513,7 @@ InitializeLDAPConnection(Port *port, LDAP **ldap)
 		{
 			ldap_unbind(*ldap);
 			ereport(LOG,
-			 (errmsg("could not start LDAP TLS session: error code %d", r)));
+			 (errmsg("could not start LDAP TLS session: error code '%d', error message: %s, server: %s, port: %d", r, ldap_err2string(r), port->hba->ldapserver, port->hba->ldapport)));
 			return STATUS_ERROR;
 		}
 	}

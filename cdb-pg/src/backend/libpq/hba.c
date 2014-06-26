@@ -1422,6 +1422,17 @@ parse_hba_line(List *line, int line_num, HbaLine *parsedline)
 								line_num, HbaFileName)));
 			return false;
 		}
+
+		if (parsedline->ldaptls && strncmp(parsedline->ldapserver, "ldaps://", 8) == 0)
+		{
+			ereport(LOG,
+					(errcode(ERRCODE_CONFIG_FILE_ERROR),
+					 errmsg("cannot use 'ldaptls' with 'ldapserver' start with 'ldaps://'"),
+					 errcontext("line %d of configuration file \"%s\"",
+								line_num, HbaFileName)));
+			return false;
+
+		}
 	}
 
 	if (parsedline->auth_method == uaRADIUS)
