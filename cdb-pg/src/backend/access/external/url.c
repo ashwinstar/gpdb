@@ -521,9 +521,9 @@ fill_buffer(URL_FILE *file, int want)
 	fd_set 	fdread;
 	fd_set 	fdwrite;
 	fd_set 	fdexcep;
-	int 	maxfd;
+	int 	maxfd = 0;
 	struct 	timeval timeout;
-	int 	nfds, e;
+	int 	nfds = 0, e = 0;
 	int     timeout_count = 0;
 	curlctl_t* curl = &file->u.curl;
 
@@ -624,9 +624,9 @@ fill_buffer(URL_FILE *file, int want)
 	if (curl->still_running == 0) 
 	{
 		elog(LOG, "quit fill_buffer due to still_running = 0, bot = %d, top = %d, want = %d, "
-				"for_write = %d, error = %d, eof = %d, datalen = %d",
+				"for_write = %d, error = %d, eof = %d, datalen = %d, maxfd = %d, nfds = %d, e = %d",
 				curl->in.bot, curl->in.top, want, curl->for_write, curl->error, 
-				curl->eof, curl->block.datalen);
+				curl->eof, curl->block.datalen, maxfd, nfds, e);
 	}
 
 
