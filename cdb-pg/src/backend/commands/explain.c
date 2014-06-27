@@ -1174,6 +1174,9 @@ explain_outNode(StringInfo str,
                 int         nSenders = slice->numGangMembersToBeActive;
 				int         nReceivers = 0;
 
+				/* scale the number of rows by the number of segments sending data */
+				scaleFactor = nSenders;
+				
 				switch (pMotion->motionType)
 				{
 					case MOTIONTYPE_HASH:
@@ -1188,7 +1191,10 @@ explain_outNode(StringInfo str,
 							nReceivers = getgpsegmentCount();
 						}
 						else
+						{
+							scaleFactor = 1;
 							pname = "Gather Motion";
+						}
 						break;
 					case MOTIONTYPE_EXPLICIT:
 						nReceivers = getgpsegmentCount();
@@ -1201,8 +1207,7 @@ explain_outNode(StringInfo str,
 
 				appendStringInfo(str, "%s %d:%d", pname,
 						nSenders, nReceivers);
-				/* scale the number of rows by the number of segments sending data */
-				scaleFactor = nSenders;
+
 				appendGangAndDirectDispatchInfo(str, planstate, pMotion->motionID);
 				pname = "";
 
