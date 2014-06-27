@@ -536,7 +536,6 @@ AppendOnlyRelHashNew(Oid relid, bool *exists)
 }
 
 #define SEGFILE_CAPACITY_THRESHOLD	0.9
-#define SEGFILE_TUPCOUNT_DIFF_THRESHOLD 65536
 
 /*
  * segfileMaxRowThreshold
@@ -1086,7 +1085,6 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 	bool				segno_chosen = false;
 	AORelHashEntryData	*aoentry = NULL;
 	TransactionId 		CurrentXid = GetTopTransactionId();
-	int64               min_tupcount;
 
 	switch(Gp_role)
 	{
@@ -1123,7 +1121,7 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 									 aoentry->txns_using_rel)));
 
 			/*
-			 * Now pick the smallest segment that is not in use and is not over the
+			 * Now pick the not in use segment and is not over the
 			 * allowed size threshold (90% full).
 			 *
 			 * However, if we already picked a segno for a previous statement
@@ -1132,16 +1130,14 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 			 *
 			 * Never use segno 0 for inserts (unless in utility mode)
 			 */
-			min_tupcount = INT64_MAX;
 			for (i = 1 ; i < MAX_AOREL_CONCURRENCY ; i++)
 			{
 				AOSegfileStatus *segfilestat = &aoentry->relsegfiles[i];
 
 				if(!segfilestat->isfull)
 				{
-					if(segfilestat->state == AVAILABLE && 
-					   !usedByConcurrentTransaction(segfilestat, i) &&
-					   segfilestat->total_tupcount < min_tupcount)
+					if(segfilestat->state == AVAILABLE && !segno_chosen &&
+					   !usedByConcurrentTransaction(segfilestat, i))
 					{
 						/*
 						 * this segno is avaiable and not full. use it.
@@ -1152,7 +1148,6 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 						 */
 						usesegno = i;
 						segno_chosen = true;
-						min_tupcount = segfilestat->total_tupcount - SEGFILE_TUPCOUNT_DIFF_THRESHOLD;
 					}
 
 					if(segfilestat->xid == CurrentXid)

@@ -177,3 +177,4 @@ test: co_nestloop_idxscan
 test: pg_stat_last_operation
 test: plan_size
 test: partindex_test
+# end of tests

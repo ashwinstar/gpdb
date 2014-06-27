@@ -335,6 +335,12 @@ SELECT pg_total_relation_size('aosizetest_1') < pg_total_relation_size('aosizete
 DROP TABLE aosizetest_1;
 DROP TABLE aosizetest_2;
 
+DROP TABLE IF EXISTS ao_selection;
+CREATE TABLE ao_selection (a INT, b INT) WITH (appendonly=true);
+INSERT INTO ao_selection VALUES (generate_series(1,100000), generate_series(1,10000));
+SELECT count(*) from gp_fastsequence WHERE objid IN (SELECT segrelid FROM pg_appendonly WHERE relid IN (SELECT oid FROM pg_class WHERE relname='ao_selection'));
+INSERT INTO ao_selection values (generate_series(1,100000), generate_series(1,10000));
+SELECT count(*) FROM gp_fastsequence WHERE objid IN (SELECT segrelid FROM pg_appendonly WHERE relid IN (SELECT oid FROM pg_class WHERE relname='ao_selection'));
 -------------------- 
 -- supported sql 
 --------------------
@@ -345,3 +351,4 @@ DROP TABLE tenk_ao3;
 DROP TABLE tenk_ao4;
 DROP TABLE tenk_ao5;
 DROP TABLE aowithoids;
+DROP TABLE ao_selection;
