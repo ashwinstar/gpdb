@@ -2513,7 +2513,8 @@ InitializeLDAPConnection(Port *port, LDAP **ldap)
 		{
 			ldap_unbind(*ldap);
 			ereport(LOG,
-			 (errmsg("could not start LDAP TLS session: error code '%d', error message: %s, server: %s, port: %d", r, ldap_err2string(r), port->hba->ldapserver, port->hba->ldapport)));
+			 (errmsg("could not start LDAP TLS session: error code '%d', error message: %s, server: %s, port: %d", r, 
+					 ldap_err2string(r), port->hba->ldapserver, port->hba->ldapport)));
 			return STATUS_ERROR;
 		}
 	}
