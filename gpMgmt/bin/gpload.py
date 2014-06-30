@@ -114,7 +114,9 @@ valid_tokens = {
     "reuse_tables": {'parse_children': False, 'parent': 'preload'},
     "sql": {'parse_children': True, 'parent': 'gpload'},
     "before": {'parse_children': False, 'parent': 'sql'},
-    "after": {'parse_children': False, 'parent': 'sql'}}
+    "after": {'parse_children': False, 'parent': 'sql'},
+    "external": {'parse_children': True, 'parent': 'gpload'},
+    "schema": {'parse_children': False, 'parent': 'external'}}
 
 _abbrevs = [
     (1<<50L, ' PB'),
@@ -1962,9 +1964,8 @@ class gpload:
     # This function will return the SQL to run in order to find out whether
     # such a table exists.
     # 
-    def get_reuse_exttable_query(self, formatType, formatOpts, limitStr, errorTableOid, from_cols):
-        
-        sql = """select attrelid::regclass
+    def get_reuse_exttable_query(self, formatType, formatOpts, limitStr, errorTableOid, from_cols, schemaName):
+        sqlFormat = """select attrelid::regclass
                  from (
                         select 
                             attrelid, 
@@ -1977,17 +1978,35 @@ class gpload:
                             join
                             pg_class
                             on (pg_class.oid = attrelid)
+                            %s
                         where 
                             relstorage = 'x' and
                             relname like 'ext_gpload_reusable_%%' and
                             attnum > 0 and
-                            not attisdropped
-                    
+                            not attisdropped and %s
                     ) pgattr 
                     join 
                     pg_exttable pgext 
                     on(pgattr.attrelid = pgext.reloid) 
                     """
+        joinStr = ""
+        conditionStr = ""
+       
+        # if schemaName is None, find the resuable ext table which is visible to
+        # current search path. Else find the resuable ext table under the specific
+        # schema, and this needs to join pg_namespace.
+        if schemaName is None:
+            joinStr = ""
+            conditionStr = "pg_table_is_visible(pg_class.oid)"
+        else:
+            joinStr = """join
+                         pg_namespace pgns
+                         on(pg_class.relnamespace = pgns.oid)
+                      """
+            conditionStr = "pgns.nspname = '%s'" % schemaName
+
+        sql = sqlFormat % (joinStr, conditionStr)
+
         if errorTableOid:
             sql += " WHERE pgext.fmterrtbl = %d\n " % errorTableOid
         else:
@@ -2068,6 +2087,13 @@ class gpload:
                 pass
         return None 
     
+    def get_ext_schematable(self, schemaName, tableName):
+        if schemaName == None:
+            return tableName
+        else:
+            schemaTable = "%s.%s" % (schemaName, tableName)
+            return schemaTable
+
     # 
     # Create a new external table or find a reusable external table to use for this operation
     #    
@@ -2140,6 +2166,10 @@ class gpload:
             self.control_file_error("gpload:input:error_table requires " +
                     "gpload:input:error_limit to be specified")
 
+        self.extSchemaName = self.getconfig('gpload:external:schema', unicode, None)
+        if self.extSchemaName == '%':
+            self.extSchemaName = self.schema
+
         # get the list of columns to use in the extnernal table
         if not self.from_cols_from_user:
             # don't put values serial columns
@@ -2155,12 +2185,13 @@ class gpload:
         if self.reuse_tables == True:
                          
             if (not self.error_table or self.error_table_oid): 
-                sql = self.get_reuse_exttable_query(formatType, formatOpts, limitStr, self.error_table_oid, from_cols)
+                sql = self.get_reuse_exttable_query(formatType, formatOpts, limitStr, self.error_table_oid, from_cols, self.extSchemaName)
                 resultList = self.db.query(sql.encode('utf-8')).getresult()
                 if len(resultList) > 0:
                     # found an external table to reuse. no need to create one. we're done here.
                     self.extTableName = (resultList[0])[0]
-                    self.log(self.INFO, "reusing external table %s" % self.extTableName)
+                    self.extSchemaTable = self.extTableName
+                    self.log(self.INFO, "reusing external table %s" % self.extSchemaTable)
                     return
 
             # didn't find an existing external table suitable for reuse. Format a reusable
@@ -2170,9 +2201,9 @@ class gpload:
             self.extTableName = "ext_gpload_reusable_%s" % self.unique_suffix
             self.log(self.INFO, "did not find an external table to reuse. creating %s" % self.extTableName)
         
-        
         # construct a CREATE EXTERNAL TABLE statement and execute it
-        sql = "create external table %s" % self.extTableName
+        self.extSchemaTable = self.get_ext_schematable(self.extSchemaName, self.extTableName)
+        sql = "create external table %s" % self.extSchemaTable
         sql += "(%s)" % ','.join(map(lambda a:'%s %s' % (a[0], a[1]), from_cols))
 
         sql += "location(%s) "%locationStr
@@ -2189,9 +2220,6 @@ class gpload:
                 self.control_file_error("error_limit must be 2 or higher")
             sql += "segment reject limit %s "%limitStr
         
-        self.log(self.LOG, sql)
-        
-
         try:
             self.db.query(sql.encode('utf-8'))
         except Exception, e:
@@ -2200,7 +2228,7 @@ class gpload:
         # set up to drop the external table at the end of operation, unless user
         # specified the 'reuse_tables' option, in which case we don't drop
         if self.reuse_tables == False:
-            self.cleanupSql.append('drop external table if exists %s'%self.extTableName)
+            self.cleanupSql.append('drop external table if exists %s'%self.extSchemaTable)
 
 		
     # 
@@ -2317,7 +2345,7 @@ class gpload:
         sql = 'INSERT INTO %s' % dest
         sql += ' (%s)' % ','.join(map(lambda a:a[0], cols))
         sql += ' SELECT %s' % ','.join(map(lambda a:a[2], cols))
-        sql += ' FROM %s' % self.extTableName
+        sql += ' FROM %s' % self.extSchemaTable
 
         # cktan: progress thread is not reliable. revisit later.
         #progress = Progress(self,self.ports)

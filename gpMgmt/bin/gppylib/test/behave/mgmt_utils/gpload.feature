@@ -125,3 +125,53 @@ Feature: gpload tests
         And database "testdb" exists
         When the user runs command "gpload -f gppylib/test/behave/mgmt_utils/steps/data/gpload_target_not_exist.yml"
         Then the client program should print table "tablenot11exists" not found in any database schema to stdout
+
+    @gpload_ext_schema
+    Scenario: gpload create external table with specific schema if external:schema is set in yaml file
+        Given the database is running
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        When the user runs the query "create table tbl1 (id int, msg text) distributed by (id)" on "testdb"
+        When the user runs the query "create schema gpload_ext_schema" on "testdb"
+        When the user runs command "gpload -f gppylib/test/behave/mgmt_utils/steps/data/gpload_ext_schema_specified.yml"
+        When execute sql "select count(*) from pg_tables where schemaname='gpload_ext_schema'" in db "testdb" and store result in the context
+        Then validate that following rows are in the stored rows
+            | count   |
+            | 1       |
+
+
+    Scenario: gpload create external table with the same schema as output:table if external:schema is '%' and output:table contain a schema
+        Given the database is running
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        When the user runs the query "create schema gpload_ext_schema" on "testdb"
+        When the user runs the query "create table gpload_ext_schema.tbl1 (id int, msg text) distributed by (id)" on "testdb"
+        When the user runs command "gpload -f gppylib/test/behave/mgmt_utils/steps/data/gpload_ext_schema_percent_sign.yml"
+        When execute sql "select count(*) from pg_tables where schemaname='gpload_ext_schema'" in db "testdb" and store result in the context
+        Then validate that following rows are in the stored rows
+            | count   |
+            | 2       |
+
+    Scenario: gpload create external table with the current schema in search_path if external:schema is '%' and output:table dosen't contain a schema
+        Given the database is running
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        When the user runs the query "create table tbl1 (id int, msg text) distributed by (id)" on "testdb"
+        When the user runs command "gpload -f gppylib/test/behave/mgmt_utils/steps/data/gpload_ext_schema_percent_sign_no_schema.yml"
+        When execute sql "select count(*) from pg_tables where schemaname='public' and tablename like 'ext_gpload_reusable%'" in db "testdb" and store result in the context
+        Then validate that following rows are in the stored rows
+            | count   |
+            | 1       |
+
+
+    Scenario: gpload create external table with the current schema in the search_path  if external:schema is not set in yaml file
+        Given the database is running
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        When the user runs the query "create schema gpload_ext_schema" on "testdb"
+        When the user runs the query "create table tbl1 (id int, msg text) distributed by (id)" on "testdb"
+        When the user runs command "gpload -f gppylib/test/behave/mgmt_utils/steps/data/gpload_ext_schema_unspecified.yml"
+        When execute sql "select count(*) from pg_tables where schemaname='gpload_ext_schema'" in db "testdb" and store result in the context
+        Then validate that following rows are in the stored rows
+            | count   |
+            | 1       |
