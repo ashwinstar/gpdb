@@ -103,7 +103,7 @@ extern void HandleSingleRowError(CdbSreh *cdbsreh);
 extern void ReportSrehResults(CdbSreh *cdbsreh, int total_rejected);
 extern void SendNumRowsRejected(int numrejected);
 extern void ValidateErrorTableMetaData(Relation rel);
-extern bool IsErrorTable(Oid relid);
+extern bool IsErrorTable(Relation rel);
 extern void SetErrorTableVerdict(CdbSreh *cdbsreh, int total_rejected);
 extern bool IsRejectLimitReached(CdbSreh *cdbsreh);
 extern void emitSameTxnWarning(void);

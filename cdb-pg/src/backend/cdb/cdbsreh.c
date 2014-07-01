@@ -13,6 +13,7 @@
 #include "catalog/catquery.h"
 #include "catalog/gp_policy.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_exttable.h"
 #include "catalog/pg_depend.h"
 #include "catalog/pg_type.h"
 #include "cdb/cdbdisp.h"
@@ -442,7 +443,7 @@ ValidateErrorTableMetaData(Relation rel)
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("error table \"%s\" is a partitioned table",
 						relname),
-				 errdetail("Both root and child partition are not allowed as error table")));
+				 errdetail("Either root or child partition are not allowed as an error table")));
 
 	/*
 	 * Verify this table has no constraints.
@@ -532,35 +533,49 @@ VerifyErrorTableAttr(Form_pg_attribute *attr,
  * definition of Error Table, it satisfies the current requirements.
  */
 bool
-IsErrorTable(Oid relid)
+IsErrorTable(Relation rel)
 {
-	cqContext	   *pcqCtx;
+	cqContext	   *pcqCtx, *pcqCtxExt, ctxExt;
 	HeapTuple		tup;
+	Relation		extrel;
 	bool			result = false;
 
+	/* fast path to quick check */
+	if (!RelationIsHeap(rel))
+		return false;
+
+	/*
+	 * Otherwise, go deeper and play with pg_depend...
+	 */
 	pcqCtx = caql_beginscan(NULL,
 							cql("SELECT * FROM pg_depend "
 								" WHERE refclassid = :1 "
-								" AND refobjid = :2 ",
+								" AND refobjid = :2 "
+								" AND refobjsubid = :3 ",
 								ObjectIdGetDatum(RelationRelationId),
-								ObjectIdGetDatum(relid)));
+								ObjectIdGetDatum(RelationGetRelid(rel)),
+								Int32GetDatum(0)));
+
+	extrel = relation_open(ExtTableRelationId, AccessShareLock);
+	pcqCtxExt = caql_addrel(cqclr(&ctxExt), extrel);
 
 	while (HeapTupleIsValid(tup = caql_getnext(pcqCtx)))
 	{
 		Form_pg_depend dep = (Form_pg_depend) GETSTRUCT(tup);
-		Relation		depRel;
+		Oid				fmterrtbl;
 
-		depRel = try_relation_open(dep->objid, AccessShareLock, false);
-		if (RelationIsValid(depRel))
+		fmterrtbl = caql_getoid(pcqCtxExt,
+								cql("SELECT fmterrtbl FROM pg_exttable "
+									" WHERE reloid = :1",
+									ObjectIdGetDatum(dep->objid)));
+		if (RelationGetRelid(rel) == fmterrtbl)
 		{
-			if (RelationIsExternal(depRel))
-				result = true;
-			relation_close(depRel, AccessShareLock);
-
-			if (result)
-				break;
+			result = true;
+			break;
 		}
 	}
+
+	relation_close(extrel, AccessShareLock);
 
 	caql_endscan(pcqCtx);
 

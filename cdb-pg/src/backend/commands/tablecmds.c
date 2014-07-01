@@ -3878,7 +3878,7 @@ ATVerifyObject(AlterTableStmt *stmt, Relation rel)
 	 * We disallow all ALTER commands with an error table.  Note it is still
 	 * allowed to RENAME.
 	 */
-	if (IsErrorTable(RelationGetRelid(rel)))
+	if (IsErrorTable(rel))
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("\"%s\" is an error table",
