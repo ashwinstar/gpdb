@@ -81,6 +81,8 @@ typedef struct SysScanDescData
 	Relation	irel;			/* NULL if doing heap scan */
 	HeapScanDesc scan;			/* only valid in heap-scan case */
 	IndexScanDesc iscan;		/* only valid in index-scan case */
+
+	HiddenScanDesc hscan;		/* scan for "hidden" tuple if any */
 } SysScanDescData;
 
 typedef SysScanDescData *SysScanDesc;

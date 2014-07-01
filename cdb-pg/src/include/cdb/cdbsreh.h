@@ -12,6 +12,7 @@
 #define CDBSREH_H
 
 #include "c.h"
+#include "fmgr.h"
 #include "cdb/cdbcopy.h"
 #include "utils/memutils.h"
 
@@ -92,12 +93,14 @@ typedef struct CdbSreh
 	MemoryContext badrowcontext;	/* per-badrow evaluation context */
 	char	   filename[256];		/* "uri [filename]" */
 
+	bool	log_to_file;		/* or log into file? */
+	Oid		relid;				/* parent relation id */
 } CdbSreh;
 
-extern CdbSreh *makeCdbSreh(bool is_keep, bool reusing_existing_errtable, 
-							int rejectlimit, 
+extern CdbSreh *makeCdbSreh(bool is_keep, bool reusing_existing_errtable,
+							int rejectlimit,
 							bool is_limit_in_rows, RangeVar *errtbl,
-							char *filename, char *relname);
+							char *filename, char *relname, bool log_to_file);
 extern void destroyCdbSreh(CdbSreh *cdbsreh);
 extern void HandleSingleRowError(CdbSreh *cdbsreh);
 extern void ReportSrehResults(CdbSreh *cdbsreh, int total_rejected);
@@ -108,6 +111,10 @@ extern void SetErrorTableVerdict(CdbSreh *cdbsreh, int total_rejected);
 extern bool IsRejectLimitReached(CdbSreh *cdbsreh);
 extern void emitSameTxnWarning(void);
 extern void VerifyRejectLimit(char rejectlimittype, int rejectlimit);
+
+extern bool ErrorLogDelete(Oid databaseId, Oid relationId);
+extern Datum gp_read_error_log(PG_FUNCTION_ARGS);
+extern Datum gp_truncate_error_log(PG_FUNCTION_ARGS);
 
 
 #endif /* CDBSREH_H */

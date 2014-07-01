@@ -60,6 +60,7 @@
 static void AlterFunctionOwner_internal(cqContext *pcqCtx,
 										Relation rel, HeapTuple tup, 
 										Oid newOwnerId);
+static void CheckForModifySystemFunc(Oid funcOid, List *funcName);
 
 /*
  *	 Examine the RETURNS clause of the CREATE FUNCTION statement
@@ -1042,6 +1043,9 @@ RemoveFunction(RemoveFuncStmt *stmt)
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_PROC,
 					   NameListToString(functionName));
 
+	/* check bootstrap object */
+	CheckForModifySystemFunc(funcOid, functionName);
+
 	if (((Form_pg_proc) GETSTRUCT(tup))->proisagg)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
@@ -1206,6 +1210,9 @@ RenameFunction(List *name, List *argtypes, const char *newname)
 		aclcheck_error(aclresult, ACL_KIND_NAMESPACE,
 					   get_namespace_name(namespaceOid));
 
+	/* check bootstrap object */
+	CheckForModifySystemFunc(procOid, name);
+
 	/* rename */
 	namestrcpy(&(procForm->proname), newname);
 	caql_update_current(pcqCtx, tup); /* implicit update of index as well */
@@ -1248,6 +1255,9 @@ AlterFunctionOwner(List *name, List *argtypes, Oid newOwnerId)
 				 errmsg("\"%s\" is an aggregate function",
 						NameListToString(name)),
 				 errhint("Use ALTER AGGREGATE to change owner of aggregate functions.")));
+
+	/* check bootstrap object */
+	CheckForModifySystemFunc(procOid, name);
 
 	AlterFunctionOwner_internal(pcqCtx, rel, tup, newOwnerId);
 
@@ -1411,6 +1421,9 @@ AlterFunction(AlterFunctionStmt *stmt)
 	if (!pg_proc_ownercheck(funcOid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_PROC,
 					   NameListToString(stmt->func->funcname));
+
+	/* check bootstrap object */
+	CheckForModifySystemFunc(funcOid, stmt->func->funcname);
 
 	if (procForm->proisagg)
 		ereport(ERROR,
@@ -2073,4 +2086,14 @@ GetFuncSQLDataAccess(Oid funcOid)
 		elog(ERROR, "invalid data access option for function %u", funcOid);
 
 	return result;
+}
+
+static void
+CheckForModifySystemFunc(Oid funcOid, List *funcName)
+{
+	if (!allowSystemTableModsDDL && funcOid < FirstBootstrapObjectId)
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("permission defined: \"%s\" is a system function",
+						NameListToString(funcName))));
 }

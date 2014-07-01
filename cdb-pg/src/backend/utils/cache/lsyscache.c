@@ -1592,21 +1592,28 @@ func_volatile(Oid funcid)
 char
 func_data_access(Oid funcid)
 {
-	SQLDataAccess sda = GetFuncSQLDataAccess(funcid);
-	switch (sda)
-	{
-		case SDA_NO_SQL:
-			return PRODATAACCESS_NONE;
-		case SDA_CONTAINS_SQL:
-			return PRODATAACCESS_CONTAINS;
-		case SDA_READS_SQL:
-			return PRODATAACCESS_READS;
-		case SDA_MODIFIES_SQL:
-			return PRODATAACCESS_MODIFIES;
-		default:
-			elog(ERROR, "cache lookup failed for function %u", funcid);
-			return '\0';
-	}
+	HeapTuple	tp;
+	char		result;
+	cqContext  *pcqCtx;
+	bool		isnull;
+
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_proc "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(funcid)));
+
+	tp = caql_getnext(pcqCtx);
+
+	if (!HeapTupleIsValid(tp))
+		elog(ERROR, "cache lookup failed for function %u", funcid);
+
+	result = DatumGetChar(
+			caql_getattr(pcqCtx, Anum_pg_proc_prodataaccess, &isnull));
+	Assert(!isnull);
+
+	caql_endscan(pcqCtx);
+	return result;
 }
 
 /*				---------- RELATION CACHE ----------					 */

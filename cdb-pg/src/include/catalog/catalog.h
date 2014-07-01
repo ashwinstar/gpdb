@@ -14,6 +14,7 @@
 #ifndef CATALOG_H
 #define CATALOG_H
 
+#include "access/genam.h"
 #include "utils/relcache.h"
 #include "utils/rel.h"
 
@@ -51,5 +52,11 @@ extern Oid	GetNewOidWithIndex(Relation relation, Relation indexrel);
 extern Oid GetNewRelFileNode(Oid reltablespace, bool relisshared,
 				  Relation pg_class);
 extern bool CheckNewRelFileNodeIsOk(Oid newOid, Oid reltablespace, bool relisshared, Relation pg_class);
+
+/* hiddencat.c */
+extern HeapTuple *GetHiddenPgProcTuples(Relation pg_proc, int *len);
+extern HiddenScanDesc hidden_beginscan(Relation heapRelation, int nkeys, ScanKey key);
+extern HeapTuple hidden_getnext(HiddenScanDesc hscan, ScanDirection direction);
+extern void hidden_endscan(HiddenScanDesc hscan);
 
 #endif   /* CATALOG_H */

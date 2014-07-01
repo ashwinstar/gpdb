@@ -1366,15 +1366,21 @@ InitParseState(CopyState pstate, Relation relation,
 	}
 	else
 	{
-		RangeVar *errtbl_rv;
-		bool	  curTxnCreatedErrtbl = false; /* errtbl created in current txn? */
+		RangeVar   *errtbl_rv = NULL;
+		bool		log_to_file = false;
+		bool		curTxnCreatedErrtbl = false; /* errtbl created in current txn? */
 
 		/* select the SREH mode */
 		if (fmterrtbl == InvalidOid)
 		{
 			/* no error table */
 			pstate->errMode = SREH_IGNORE;
-			errtbl_rv = NULL;
+		}
+		else if (fmterrtbl == RelationGetRelid(relation))
+		{
+			/* errors into file */
+			pstate->errMode = SREH_LOG;
+			log_to_file = true;
 		}
 		else
 		{
@@ -1416,7 +1422,10 @@ InitParseState(CopyState pstate, Relation relation,
 									  islimitinrows,
 									  errtbl_rv,
 									  pstate->filename,
-									  (char *)pstate->cur_relname);
+									  (char *)pstate->cur_relname,
+									  log_to_file);
+
+		pstate->cdbsreh->relid = RelationGetRelid(relation);
 
 		/* if necessary warn the user of the risk of table getting dropped */
 		if (Gp_role == GP_ROLE_DISPATCH && curTxnCreatedErrtbl)

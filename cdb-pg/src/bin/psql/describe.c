@@ -1774,7 +1774,8 @@ describeOneTableDetails(const char *schemaname,
 						         "(SELECT relname "
 						          "FROM pg_class "
 								  "WHERE Oid=x.fmterrtbl) AS errtblname, "
-								  "pg_catalog.pg_encoding_to_char(x.encoding) "
+								  "pg_catalog.pg_encoding_to_char(x.encoding), "
+								  "x.fmterrtbl = x.reloid AS errortofile "
 						  "FROM pg_catalog.pg_exttable x, pg_catalog.pg_class c "
 						  "WHERE x.reloid = c.oid AND c.oid = '%s'\n", oid);
 
@@ -1797,6 +1798,7 @@ describeOneTableDetails(const char *schemaname,
 			char	   *writable = PQgetvalue(result, 0, 6);
 			char	   *errtblname = PQgetvalue(result, 0, 7);
 			char	   *extencoding = PQgetvalue(result, 0, 8);
+			char	   *errortofile = PQgetvalue(result, 0, 9);
 			char       *format;
 
 			/* Writable/Readable */
@@ -1886,7 +1888,12 @@ describeOneTableDetails(const char *schemaname,
 								  (rejlimtype[0] == 'p' ? "percent" : "rows"));
 				printTableAddFooter(&cont, tmpbuf.data);
 
-				if(errtblname && strlen(errtblname) > 0)
+				if (errortofile && errortofile[0] == 't')
+				{
+					printfPQExpBuffer(&tmpbuf, _("Errro Log in File"));
+					printTableAddFooter(&cont, tmpbuf.data);
+				}
+				else if(errtblname && strlen(errtblname) > 0)
 				{
 					printfPQExpBuffer(&tmpbuf, _("Error table: %s"), errtblname);
 					printTableAddFooter(&cont, tmpbuf.data);

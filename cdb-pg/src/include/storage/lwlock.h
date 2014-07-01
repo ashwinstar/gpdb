@@ -92,6 +92,7 @@ typedef enum LWLockId
 	ResQueueLock,
 	FileRepAppendOnlyCommitCountLock,
 	SyncRepLock,
+	ErrorLogLock,
 	FirstWorkfileMgrLock,
 	FirstWorkfileQuerySpaceLock = FirstWorkfileMgrLock + NUM_WORKFILEMGR_PARTITIONS,
 	FirstBufMappingLock = FirstWorkfileQuerySpaceLock + NUM_WORKFILE_QUERYSPACE_PARTITIONS,

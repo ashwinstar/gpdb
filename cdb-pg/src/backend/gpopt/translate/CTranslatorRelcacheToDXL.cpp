@@ -2006,6 +2006,8 @@ CTranslatorRelcacheToDXL::EFuncDataAccess
 		case 'm':
 			efda = CMDFunctionGPDB::EfdaModifiesSQLData;
 			break;
+		case 's':
+			GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature, GPOS_WSZ_LIT("unknown data access"));
 		default:
 			GPOS_ASSERT(!"Invalid data access property");
 	}

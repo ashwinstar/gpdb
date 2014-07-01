@@ -77,6 +77,7 @@
 #include "cdb/cdbvars.h"        /* Gp_role */
 #include "cdb/cdbmirroredflatfile.h"
 #include "cdb/cdbpersistentfilesysobj.h"
+#include "cdb/cdbsreh.h"
 
 
 /*
@@ -2647,6 +2648,11 @@ AtEOXact_RelationCache(bool isCommit)
 				relation->rd_createSubid = InvalidSubTransactionId;
 			else
 			{
+				/*
+				 * In abort, delete the error log file before forgetting
+				 * this relation.
+				 */
+				ErrorLogDelete(MyDatabaseId, RelationGetRelid(relation));
 				RelationClearRelation(relation, false);
 				continue;
 			}
@@ -2717,6 +2723,11 @@ AtEOSubXact_RelationCache(bool isCommit, SubTransactionId mySubid,
 			else
 			{
 				Assert(RelationHasReferenceCountZero(relation));
+				/*
+				 * In abort, delete the error log file before forgetting
+				 * this relation.
+				 */
+				ErrorLogDelete(MyDatabaseId, RelationGetRelid(relation));
 				RelationClearRelation(relation, false);
 				continue;
 			}

@@ -10546,6 +10546,14 @@ DESCR("Returns the optimizer and gpos library versions");
 
 /* TIDYCAT_END_PG_PROC_GEN */
 
+/*
+ *  These are dummy at this point until the next catalog update, but need to be here
+ *  for fmgr generator script as well as unused_oids.
+
+DATA(insert OID = 3000 (gp_read_error_log PGNSP PGUID 12 f f t t v 1 2249 f "25" _null_ _null_ _null_ gp_read_error_log - _null_ r ));
+DATA(insert OID = 3069 (gp_truncate_error_log PGNSP PGUID 12 f f t t v 1 16 f "25" _null_ _null_ _null_ gp_truncate_error_log - _null_ r ));
+
+*/
 
 /*
  * Symbolic values for provolatile column: these indicate whether the result
@@ -10578,6 +10586,8 @@ DESCR("Returns the optimizer and gpos library versions");
 #define PRODATAACCESS_CONTAINS	'c'
 #define PRODATAACCESS_READS		'r'
 #define PRODATAACCESS_MODIFIES	'm'
+/* This is an internal-only data access property. */
+#define PRODATAACCESS_SEGMENT	's'
 
 /*
  * prototypes for functions in pg_proc.c

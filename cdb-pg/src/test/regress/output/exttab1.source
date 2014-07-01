@@ -991,3 +991,105 @@ SELECT ctid, * FROM ext_mpp17980;
 
 DROP EXTERNAL TABLE ext_mpp17980;
 DROP TABLE mpp17980;
+COPY (VALUES('1,2'),('1,2,3'),('1,'),('1')) TO '@abs_srcdir@/data/tableless.csv';
+CREATE TABLE tableless_heap(a int, b int);
+COPY tableless_heap FROM '@abs_srcdir@/data/tableless.csv' CSV LOG ERRORS SEGMENT REJECT LIMIT 10;
+NOTICE:  Found 3 data formatting errors (3 or more input rows). Rejected related input data.
+SELECT relname, linenum, errmsg FROM gp_read_error_log('tableless_heap');
+    relname     | linenum |                errmsg                 
+----------------+---------+---------------------------------------
+ tableless_heap |       2 | extra data after last expected column
+ tableless_heap |       4 | missing data for column "b"
+(2 rows)
+
+create table errlog_save as select * from gp_read_error_log('tableless_heap');
+select count(*) from errlog_save;
+ count 
+-------
+     2
+(1 row)
+
+SELECT gp_truncate_error_log('tableless_heap');
+ gp_truncate_error_log 
+-----------------------
+ t
+(1 row)
+
+SELECT relname, linenum, errmsg FROM gp_read_error_log('tableless_heap');
+ relname | linenum | errmsg 
+---------+---------+--------
+(0 rows)
+
+create external table tableless_ext(a int, b int)
+location ('file://@hostname@@abs_srcdir@/data/tableless.csv')
+format 'csv'
+log errors segment reject limit 10;
+select * from tableless_ext;
+NOTICE:  Found 3 data formatting errors (3 or more input rows). Rejected related input data.
+ a | b 
+---+---
+ 1 |  
+ 1 | 2
+(2 rows)
+
+SELECT relname, linenum, errmsg FROM gp_read_error_log('tableless_ext');
+    relname    | linenum |                errmsg                 
+---------------+---------+---------------------------------------
+ tableless_ext |       2 | extra data after last expected column
+ tableless_ext |       4 | missing data for column "b"
+ tableless_ext |       5 | missing data for column "b"
+(3 rows)
+
+SELECT (gp_read_error_log('tableless_ext')).errmsg;
+                errmsg                 
+---------------------------------------
+ extra data after last expected column
+ missing data for column "b"
+ missing data for column "b"
+(3 rows)
+
+SELECT gp_truncate_error_log('tableless_ext');
+ gp_truncate_error_log 
+-----------------------
+ t
+(1 row)
+
+SELECT relname, linenum, errmsg FROM gp_read_error_log('tableless_ext');
+ relname | linenum | errmsg 
+---------+---------+--------
+(0 rows)
+
+select * from tableless_ext;
+NOTICE:  Found 3 data formatting errors (3 or more input rows). Rejected related input data.
+ a | b 
+---+---
+ 1 |  
+ 1 | 2
+(2 rows)
+
+SELECT gp_truncate_error_log('*');
+ gp_truncate_error_log 
+-----------------------
+ t
+(1 row)
+
+select * from tableless_ext;
+NOTICE:  Found 3 data formatting errors (3 or more input rows). Rejected related input data.
+ a | b 
+---+---
+ 1 |  
+ 1 | 2
+(2 rows)
+
+SELECT gp_truncate_error_log('*.*');
+ gp_truncate_error_log 
+-----------------------
+ t
+(1 row)
+
+SELECT relname, linenum, errmsg FROM gp_read_error_log('tableless_ext');
+ relname | linenum | errmsg 
+---------+---------+--------
+(0 rows)
+
+\! rm @abs_srcdir@/data/tableless.csv

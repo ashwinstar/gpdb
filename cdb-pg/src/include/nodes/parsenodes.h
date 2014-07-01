@@ -1337,6 +1337,7 @@ typedef struct SingleRowErrorDesc
 	bool		is_keep;			/* true if KEEP indicated (COPY only) */
 	bool		is_limit_in_rows;	/* true for ROWS false for PERCENT */
 	bool		reusing_existing_errtable;  /* var used later in trasform... */
+	bool		into_file;			/* log into file not table */
 } SingleRowErrorDesc;
 
 /* ----------------------

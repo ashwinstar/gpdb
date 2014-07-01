@@ -4768,7 +4768,7 @@ OptSingleRowErrorHandling:
 			n->is_keep = $2;
 			n->rejectlimit = $6;
 			n->is_limit_in_rows = $7; /* true for ROWS false for PERCENT */
-			
+
 			/* PERCENT value check */
 			if(!n->is_limit_in_rows && (n->rejectlimit < 1 || n->rejectlimit > 100))
 				ereport(ERROR,
@@ -4780,7 +4780,13 @@ OptSingleRowErrorHandling:
 			   ereport(ERROR,
 					   (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						errmsg("invalid (ROWS) reject limit. Should be 2 or larger")));
-			
+
+			/* translate "no relation" to "into_file" flag */
+			if (n->errtable && n->errtable->relname == NULL)
+			{
+				n->errtable = NULL;
+				n->into_file = true;
+			}
 			$$ = (Node *)n;
 		}
 		| /*EMPTY*/		{ $$ = NULL; }
@@ -4788,6 +4794,14 @@ OptSingleRowErrorHandling:
 	
 OptErrorTableName:
 		LOG_P ERRORS INTO qualified_name 	{ $$ = $4; }
+		| LOG_P ERRORS
+			{
+				$$ = makeNode(RangeVar);
+				$$->catalogname = NULL;
+				$$->schemaname = NULL;
+				$$->relname = NULL;
+				$$->location = @1;
+			}
 		| /*EMPTY*/							{ $$ = NULL; }
 		;
 	

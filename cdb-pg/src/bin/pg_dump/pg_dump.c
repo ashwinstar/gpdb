@@ -7523,6 +7523,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		char	   *customfmt = NULL;
 		bool		isweb = false;
 		bool		iswritable = false;
+		char	   *errortofile = NULL;
 
 		reltypename = "EXTERNAL TABLE";
 
@@ -7542,7 +7543,8 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 					   "SELECT x.location, x.fmttype, x.fmtopts, x.command, "
 							  "x.rejectlimit, x.rejectlimittype, "
 						 "n.nspname AS errnspname, d.relname AS errtblname, "
-					"pg_catalog.pg_encoding_to_char(x.encoding), x.writable "
+				   "pg_catalog.pg_encoding_to_char(x.encoding), x.writable, "
+							  "x.fmterrtbl = x.reloid AS errtofile "
 							  "FROM pg_catalog.pg_class c "
 					 "JOIN pg_catalog.pg_exttable x ON ( c.oid = x.reloid ) "
 				"LEFT JOIN pg_catalog.pg_class d ON ( d.oid = x.fmterrtbl ) "
@@ -7557,7 +7559,8 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 					   "SELECT x.location, x.fmttype, x.fmtopts, x.command, "
 							  "x.rejectlimit, x.rejectlimittype, "
 						 "n.nspname AS errnspname, d.relname AS errtblname, "
-			  "pg_catalog.pg_encoding_to_char(x.encoding), null as writable "
+			 "pg_catalog.pg_encoding_to_char(x.encoding), null as writable, "
+						 "false AS errortofile "
 							  "FROM pg_catalog.pg_class c "
 					 "JOIN pg_catalog.pg_exttable x ON ( c.oid = x.reloid ) "
 				"LEFT JOIN pg_catalog.pg_class d ON ( d.oid = x.fmterrtbl ) "
@@ -7572,7 +7575,8 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 					   "SELECT x.location, x.fmttype, x.fmtopts, x.command, "
 							  "-1 as rejectlimit, null as rejectlimittype,"
 							  "null as errnspname, null as errtblname, "
-							  "null as encoding, null as writable "
+							  "null as encoding, null as writable, "
+							  "false as errortofile "
 					  "FROM pg_catalog.pg_exttable x, pg_catalog.pg_class c "
 							  "WHERE x.reloid = c.oid AND c.oid = '%u'::oid",
 							  tbinfo->dobj.catId.oid);
@@ -7605,6 +7609,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		errtblname = PQgetvalue(res, 0, 7);
 		extencoding = PQgetvalue(res, 0, 8);
 		writable = PQgetvalue(res, 0, 9);
+		errortofile = PQgetvalue(res, 0, 10);
 
 		if ((command && strlen(command) > 0) ||
 			(strncmp(locations + 1, "http", strlen("http")) == 0))
@@ -7734,6 +7739,11 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			{
 				appendPQExpBuffer(q, "\n");
 
+				/* This tells if it's a table-less error logging. */
+				if (errortofile && errortofile[0] == 't')
+				{
+					appendPQExpBuffer(q, "LOG ERRORS ");
+				}
 				/*
 				 * NOTE: error tables get automatically generated if don't
 				 * exist. therefore we must be sure that this statment will be
@@ -7743,7 +7753,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 				 * table oid *should* always be less than its external table
 				 * oid (could that not be true sometimes?)
 				 */
-				if (errtblname && strlen(errtblname) > 0)
+				else if (errtblname && strlen(errtblname) > 0)
 				{
 					appendPQExpBuffer(q, "LOG ERRORS INTO %s.", fmtId(errnspname));
 					appendPQExpBuffer(q, "%s ", fmtId(errtblname));

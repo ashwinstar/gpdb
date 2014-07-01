@@ -9,10 +9,15 @@
 *--------------------------------------------------------------------------
 */
 #include "postgres.h"
+#include <unistd.h>
+#include <sys/stat.h>
+
+#include "gp-libpq-fe.h"
 #include "access/transam.h"
 #include "catalog/catquery.h"
 #include "catalog/gp_policy.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_attribute.h"
 #include "catalog/pg_exttable.h"
 #include "catalog/pg_depend.h"
 #include "catalog/pg_type.h"
@@ -20,7 +25,10 @@
 #include "cdb/cdbpartition.h"
 #include "cdb/cdbsreh.h"
 #include "cdb/cdbvars.h"
+#include "commands/dbcommands.h"
 #include "commands/tablecmds.h"
+#include "funcapi.h"
+#define PQArgBlock PQArgBlock_
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
@@ -41,7 +49,25 @@ static void VerifyErrorTableAttr(Form_pg_attribute *attr,
 								 Oid expected_atttype,
 								 char *relname);
 static void PreprocessByteaData(char *src);
+static void ErrorLogWrite(CdbSreh *cdbsreh);
 
+#define ErrorLogDir "errlog"
+#define ErrorLogFileName(fname, dbId, relId) \
+	snprintf(fname, MAXPGPATH, "errlog/%u_%u", dbId, relId)
+
+/*
+ * Function context for gp_read_error_log
+ */
+typedef struct ReadErrorLogContext
+{
+	FILE	   *fp;					/* file pointer to the error log */
+	char		filename[MAXPGPATH];/* filename of fp */
+	int			numTuples;			/* number of total tuples when dispatch */
+	PGresult  **segResults;			/* dispatch results */
+	int			numSegResults;		/* number of segResults */
+	int			currentResult;		/* current index in segResults to read */
+	int			currentRow;			/* current row in current result */
+} ReadErrorLogContext;
 
 /*
  * makeCdbSreh
@@ -53,7 +79,8 @@ static void PreprocessByteaData(char *src);
 CdbSreh *
 makeCdbSreh(bool is_keep, bool reusing_existing_errtable,
 			int rejectlimit, bool is_limit_in_rows, 
-			RangeVar *errortable, char *filename, char *relname)
+			RangeVar *errortable, char *filename, char *relname,
+			bool log_to_file)
 {
 	CdbSreh	*h;
 
@@ -75,10 +102,12 @@ makeCdbSreh(bool is_keep, bool reusing_existing_errtable,
 	h->errtbl = NULL;
 	h->lastsegid = 0;
 	h->consec_csv_err = 0;
-	
-	snprintf(h->filename,sizeof h->filename,"%s",filename?filename:"<stdin>");
-	
-	
+	AssertImply(log_to_file, errortable == NULL);
+	h->log_to_file = log_to_file;
+
+	snprintf(h->filename, sizeof(h->filename),
+			 "%s", filename ? filename : "<stdin>");
+
 	/* error table was specified open it (and create it first if necessary) */
 	if(errortable)
 		OpenErrorTable(h, errortable);
@@ -140,29 +169,36 @@ void HandleSingleRowError(CdbSreh *cdbsreh)
 	 */
 	if(IsRejectLimitReached(cdbsreh))
 		return;
-	
+
 	/*
-	 * If not using an error table, we don't need to do anything.
-	 *
-	 * However, if we use an error table:
-	 * QE - log the error in the error table.
-	 * QD - send the bad data row to a random QE (via roundrobin).
+	 * If not specified table or file, do nothing.  Otherwise,
+	 * record the error:
+	 *   QD - send the bad data row to a random QE (via roundrobin).
+	 *   QE - log the error in the error table or file.
 	 */
-	if(cdbsreh->errtbl)
+	if (cdbsreh->errtbl || cdbsreh->log_to_file)
 	{
 		if (Gp_role == GP_ROLE_DISPATCH)
 		{
-			cdbCopySendData(cdbsreh->cdbcopy, 
-							GetNextSegid(cdbsreh), 
-							cdbsreh->rawdata, 
+			cdbCopySendData(cdbsreh->cdbcopy,
+							GetNextSegid(cdbsreh),
+							cdbsreh->rawdata,
 							strlen(cdbsreh->rawdata));
 			
 		}
 		else
 		{
-			/* Insert into error table */
-			Insist(Gp_role == GP_ROLE_EXECUTE || Gp_role == GP_ROLE_UTILITY);
-			InsertIntoErrorTable(cdbsreh);
+			if (cdbsreh->errtbl)
+			{
+				/* Insert into error table */
+				Insist(Gp_role == GP_ROLE_EXECUTE || Gp_role == GP_ROLE_UTILITY);
+				InsertIntoErrorTable(cdbsreh);
+			}
+			else
+			{
+				Assert(cdbsreh->log_to_file);
+				ErrorLogWrite(cdbsreh);
+			}
 		}
 		
 	}
@@ -262,13 +298,55 @@ void DropErrorTable(CdbSreh *cdbsreh)
 }
 
 /*
- * InsertIntoErrorTable
- *
- * Insert the information in cdbsreh into the error table we are using.
+ * Returns the fixed schema for error table/error log tuple.
  */
-void InsertIntoErrorTable(CdbSreh *cdbsreh)
+static TupleDesc
+GetErrorTupleDesc(void)
 {
-	HeapTuple	tuple;
+	static TupleDesc tupdesc = NULL, tmp;
+	MemoryContext oldcontext;
+	int natts = NUM_ERRORTABLE_ATTR;
+	FormData_pg_attribute attrs[NUM_ERRORTABLE_ATTR] = {
+		{0,{"cmdtime"},1184,-1,8,1,0,-1,-1,true,'p','d',false,false,false,true,0},
+		{0,{"relname"},25,-1,-1,2,0,-1,-1,false,'x','i',false,false,false,true,0},
+		{0,{"filename"},25,-1,-1,3,0,-1,-1,false,'x','i',false,false,false,true,0},
+		{0,{"linenum"},23,-1,4,4,0,-1,-1,true,'p','i',false,false,false,true,0},
+		{0,{"bytenum"},23,-1,4,5,0,-1,-1,true,'p','i',false,false,false,true,0},
+		{0,{"errmsg"},25,-1,-1,6,0,-1,-1,false,'x','i',false,false,false,true,0},
+		{0,{"rawdata"},25,-1,-1,7,0,-1,-1,false,'x','i',false,false,false,true,0},
+		{0,{"rawbytes"},17,-1,-1,8,0,-1,-1,false,'x','i',false,false,false,true,0}
+	};
+
+	/* If we have created it, use it. */
+	if (tupdesc != NULL)
+		return tupdesc;
+
+	/*
+	 * Keep the tupdesc for long in the cache context.  It should never
+	 * be scribbled.
+	 */
+	oldcontext = MemoryContextSwitchTo(CacheMemoryContext);
+	tmp = CreateTemplateTupleDesc(natts, false);
+	tmp->tdrefcount = 0;
+	tmp->tdtypeid = RECORDOID;
+	tmp->tdtypmod = -1;
+	for (int i = 0; i < natts; i++)
+	{
+		memcpy(tmp->attrs[i], &attrs[i], ATTRIBUTE_FIXED_PART_SIZE);
+		tmp->attrs[i]->attcacheoff = -1;
+	}
+	tmp->attrs[0]->attcacheoff = 0;
+
+	tupdesc = tmp;
+
+	MemoryContextSwitchTo(oldcontext);
+
+	return tupdesc;
+}
+
+static HeapTuple
+FormErrorTuple(CdbSreh *cdbsreh)
+{
 	bool		nulls[NUM_ERRORTABLE_ATTR];
 	Datum		values[NUM_ERRORTABLE_ATTR];
 	MemoryContext oldcontext;
@@ -325,14 +403,32 @@ void InsertIntoErrorTable(CdbSreh *cdbsreh)
 	/*
 	 * And now we can form the input tuple.
 	 */
-	tuple = heap_form_tuple(RelationGetDescr(cdbsreh->errtbl), values, nulls);
+	if (RelationIsValid(cdbsreh->errtbl))
+		return heap_form_tuple(RelationGetDescr(cdbsreh->errtbl), values, nulls);
+	else
+		return heap_form_tuple(GetErrorTupleDesc(), values, nulls);
+}
 
-	MemoryContextSwitchTo(oldcontext);
+/*
+ * InsertIntoErrorTable
+ *
+ * Insert the information in cdbsreh into the error table we are using.
+ * The destination is a regular heap table in a writer gang, and tuplestore
+ * if it's a reader gang.  The tuplestore data will be redirected to
+ * the writer gang in the same session later.
+ * By design the error table rows are inserted in a frozen fashion.
+ */
+void
+InsertIntoErrorTable(CdbSreh *cdbsreh)
+{
+	HeapTuple	tuple;
+
+	tuple = FormErrorTuple(cdbsreh);
 
 	/* store and freeze the tuple */
 	frozen_heap_insert(cdbsreh->errtbl, tuple);
-	
-	heap_freetuple(tuple);	
+
+	heap_freetuple(tuple);
 }
 
 
@@ -772,4 +868,523 @@ void VerifyRejectLimit(char rejectlimittype, int rejectlimit)
 							"must be between 1 and 100 (got %d)", rejectlimit)));
 	}
 
+}
+
+/*
+ * Write into the error log file.  This opens the file every time,
+ * so that we can keep it simple to deal with concurrent write.
+ */
+static void
+ErrorLogWrite(CdbSreh *cdbsreh)
+{
+	HeapTuple	tuple;
+	char		filename[MAXPGPATH];
+	FILE	   *fp;
+	pg_crc32	crc;
+
+	Assert(OidIsValid(cdbsreh->relid));
+	ErrorLogFileName(filename, MyDatabaseId, cdbsreh->relid);
+	tuple = FormErrorTuple(cdbsreh);
+
+	crc = crc32c(crc32cInit(), tuple->t_data, tuple->t_len);
+	crc32cFinish(crc);
+
+	LWLockAcquire(ErrorLogLock, LW_EXCLUSIVE);
+	fp = AllocateFile(filename, "a");
+	if (!fp)
+	{
+		mkdir(ErrorLogDir, S_IRWXU);
+
+		fp = AllocateFile(filename, "a");
+	}
+	if (!fp)
+		ereport(ERROR,
+				(errmsg("could not open \"%s\": %m", filename)));
+
+	/*
+	 * format:
+	 *     0-4: length
+	 *     5-8: crc
+	 *     9-n: tuple data
+	 */
+	if (fwrite(&tuple->t_len, 1, sizeof(tuple->t_len), fp) != sizeof(tuple->t_len))
+		elog(ERROR, "could not write tuple length: %m");
+	if (fwrite(&crc, 1, sizeof(pg_crc32), fp) != sizeof(pg_crc32))
+		elog(ERROR, "could not write checksum: %m");
+	if (fwrite(tuple->t_data, 1, tuple->t_len, fp) != tuple->t_len)
+		elog(ERROR, "could not write tuple data: %m");
+
+	FreeFile(fp);
+	LWLockRelease(ErrorLogLock);
+
+	heap_freetuple(tuple);
+}
+
+/*
+ * Read one tuple and checksum value from the error log file pointed by fp.
+ * This returns NULL whenever we see unexpected read or EOF.
+ */
+static HeapTuple
+ErrorLogRead(FILE *fp, pg_crc32 *crc)
+{
+	uint32		t_len;
+	HeapTuple	tuple = NULL;
+
+	LWLockAcquire(ErrorLogLock, LW_SHARED);
+
+	do
+	{
+		if (fread(&t_len, 1, sizeof(uint32), fp) != sizeof(uint32))
+			break;
+
+		/*
+		 * The tuple is "in-memory" format of HeapTuple.  Allocate
+		 * the whole chunk consectively.
+		 */
+		tuple = palloc(HEAPTUPLESIZE + t_len);
+		tuple->t_len = t_len;
+		ItemPointerSetInvalid(&tuple->t_self);
+		tuple->t_data = (HeapTupleHeader) ((char *) tuple + HEAPTUPLESIZE);
+
+		if (fread(crc, 1, sizeof(pg_crc32), fp) != sizeof(pg_crc32))
+		{
+			tuple = NULL;
+			break;
+		}
+
+		if (fread(tuple->t_data, 1, tuple->t_len, fp) != tuple->t_len)
+		{
+			pfree(tuple);
+			tuple = NULL;
+			break;
+		}
+	} while(0);
+
+	LWLockRelease(ErrorLogLock);
+
+	return tuple;
+}
+
+/*
+ * Utility to convert PGresult cell in text to Datum
+ */
+static Datum
+ResultToDatum(PGresult *result, int row, AttrNumber attnum, PGFunction func, bool *isnull)
+{
+	if (PQgetisnull(result, row, attnum))
+	{
+		*isnull = true;
+		return (Datum) 0;
+	}
+	else
+	{
+		*isnull = false;
+		return DirectFunctionCall3(func,
+				CStringGetDatum(PQgetvalue(result, row, attnum)),
+				ObjectIdGetDatum(InvalidOid), Int32GetDatum(-1));
+	}
+}
+
+/*
+ * gp_read_error_log
+ *
+ * Returns set of error log tuples.
+ */
+Datum
+gp_read_error_log(PG_FUNCTION_ARGS)
+{
+	FuncCallContext	   *funcctx;
+	ReadErrorLogContext *context;
+	HeapTuple			tuple;
+	Datum				result;
+
+	/*
+	 * First call setup
+	 */
+	if (SRF_IS_FIRSTCALL())
+	{
+		MemoryContext	oldcontext;
+		FILE	   *fp;
+		text	   *relname;
+
+		funcctx = SRF_FIRSTCALL_INIT();
+
+		relname = PG_GETARG_TEXT_P(0);
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+		context = palloc0(sizeof(ReadErrorLogContext));
+		funcctx->user_fctx = (void *) context;
+
+		funcctx->tuple_desc = BlessTupleDesc(GetErrorTupleDesc());
+
+		/*
+		 * Though this function is usually executed on segment, we dispatch
+		 * the execution if it happens to be on QD, and combine the results
+		 * into one set.
+		 */
+		if (Gp_role == GP_ROLE_DISPATCH)
+		{
+			int		resultCount = 0;
+			PGresult **results = NULL;
+			StringInfoData sql;
+			StringInfoData errbuf;
+			int		i;
+
+			initStringInfo(&sql);
+			initStringInfo(&errbuf);
+
+			/*
+			 * construct SQL
+			 */
+			appendStringInfo(&sql,
+					"SELECT * FROM pg_catalog.gp_read_error_log('%s') ",
+					text_to_cstring(relname));
+
+			results = cdbdisp_dispatchRMCommand(sql.data, true, &errbuf,
+												&resultCount);
+
+			if (errbuf.len > 0)
+				elog(ERROR, "%s", errbuf.data);
+			Assert(resultCount > 0);
+
+			for (i = 0; i < resultCount; i++)
+			{
+				if (PQresultStatus(results[i]) != PGRES_TUPLES_OK)
+					elog(ERROR, "unexpected result from segment: %d",
+								PQresultStatus(results[i]));
+				context->numTuples += PQntuples(results[i]);
+			}
+
+			pfree(errbuf.data);
+			pfree(sql.data);
+
+			context->segResults = results;
+			context->numSegResults = resultCount;
+		}
+		else
+		{
+			/*
+			 * In QE, read the error log.
+			 */
+			RangeVar	   *relrv;
+			Oid				relid;
+
+			relrv = makeRangeVarFromNameList(textToQualifiedNameList(relname));
+			relid = RangeVarGetRelid(relrv, true);
+
+			/*
+			 * If the relation has gone, silently return no tuples.
+			 */
+			if (OidIsValid(relid))
+			{
+				AclResult aclresult;
+
+				/*
+				 * Requires SELECT priv to read error log.
+				 */
+				aclresult = pg_class_aclcheck(relid, GetUserId(), ACL_SELECT);
+				if (aclresult != ACLCHECK_OK)
+					aclcheck_error(aclresult, ACL_KIND_CLASS, relrv->relname);
+
+				ErrorLogFileName(context->filename, MyDatabaseId, relid);
+				fp = AllocateFile(context->filename, "r");
+				context->fp = fp;
+			}
+		}
+
+		MemoryContextSwitchTo(oldcontext);
+
+		if (Gp_role != GP_ROLE_DISPATCH && !context->fp)
+		{
+			pfree(context);
+			SRF_RETURN_DONE(funcctx);
+		}
+	}
+
+	funcctx = SRF_PERCALL_SETUP();
+	context = (ReadErrorLogContext *) funcctx->user_fctx;
+
+	/*
+	 * Read error log, probably on segments.  We don't check Gp_role, however,
+	 * in case master also wants to read the file.
+	 */
+	if (context->fp)
+	{
+		pg_crc32	crc, written_crc;
+		tuple = ErrorLogRead(context->fp, &written_crc);
+
+		/*
+		 * CRC check.
+		 */
+		if (HeapTupleIsValid(tuple))
+		{
+			crc = crc32c(crc32cInit(), tuple->t_data, tuple->t_len);
+			crc32cFinish(crc);
+
+			if (!EQ_CRC32(crc, written_crc))
+			{
+				elog(LOG, "incorrect checksum in error log %s",
+						  context->filename);
+				tuple = NULL;
+			}
+		}
+
+		/*
+		 * If we found a valid tuple, return it.  Otherwise, fall through
+		 * in the DONE routine.
+		 */
+		if (HeapTupleIsValid(tuple))
+		{
+			/*
+			 * We need to set typmod for the executor to understand
+			 * its type we just blessed.
+			 */
+			HeapTupleHeaderSetTypMod(tuple->t_data,
+									 funcctx->tuple_desc->tdtypmod);
+
+			result = HeapTupleGetDatum(tuple);
+			SRF_RETURN_NEXT(funcctx, result);
+		}
+	}
+
+	/*
+	 * If we got results from dispatch, return all the tuples.
+	 */
+	while (context->currentResult < context->numSegResults)
+	{
+		Datum		values[NUM_ERRORTABLE_ATTR];
+		bool		isnull[NUM_ERRORTABLE_ATTR];
+		PGresult   *segres = context->segResults[context->currentResult];
+		int			row = context->currentRow;
+
+		if (row >= PQntuples(segres))
+		{
+			context->currentRow = 0;
+			context->currentResult++;
+			continue;
+		}
+		context->currentRow++;
+
+		MemSet(isnull, false, sizeof(isnull));
+
+		values[0] = ResultToDatum(segres, row, 0, timestamptz_in, &isnull[0]);
+		values[1] = ResultToDatum(segres, row, 1, textin, &isnull[1]);
+		values[2] = ResultToDatum(segres, row, 2, textin, &isnull[2]);
+		values[3] = ResultToDatum(segres, row, 3, int4in, &isnull[3]);
+		values[4] = ResultToDatum(segres, row, 4, int4in, &isnull[4]);
+		values[5] = ResultToDatum(segres, row, 5, textin, &isnull[5]);
+		values[6] = ResultToDatum(segres, row, 6, textin, &isnull[6]);
+		values[7] = ResultToDatum(segres, row, 7, byteain, &isnull[7]);
+
+		tuple = heap_form_tuple(funcctx->tuple_desc, values, isnull);
+		result = HeapTupleGetDatum(tuple);
+
+		SRF_RETURN_NEXT(funcctx, result);
+	}
+
+	if (context->segResults != NULL)
+	{
+		int		i;
+
+		for (i = 0; i < context->numSegResults; i++)
+			PQclear(context->segResults[i]);
+
+		/* XXX: better to copy to palloc'ed area */
+		free(context->segResults[i]);
+	}
+
+	/*
+	 * Close the file, if we have opened it.
+	 */
+	if (context->fp != NULL)
+	{
+		FreeFile(context->fp);
+		context->fp = NULL;
+	}
+
+	SRF_RETURN_DONE(funcctx);
+}
+
+/*
+ * Delete the error log of the relation and return true if any.
+ * If relationId is InvalidOid, scan the directory to look for
+ * all the files prefixed with the databaseId, and delete them.
+ */
+bool
+ErrorLogDelete(Oid databaseId, Oid relationId)
+{
+	char		filename[MAXPGPATH];
+	bool		result = true;
+
+	if (!OidIsValid(relationId))
+	{
+		DIR	   *dir;
+		struct dirent *de;
+		char   *dirpath = ErrorLogDir;
+		char	prefix[MAXPGPATH];
+
+		if (OidIsValid(databaseId))
+			snprintf(prefix, sizeof(prefix), "%u_", databaseId);
+		dir = AllocateDir(dirpath);
+
+		/*
+		 * If we cannot open the directory, most likely it does not exist.
+		 * Do nothing.
+		 */
+		if (dir == NULL)
+			return false;
+
+		while ((de = ReadDir(dir, dirpath)) != NULL)
+		{
+			if (strcmp(de->d_name, ".") == 0 ||
+				strcmp(de->d_name, "..") == 0 ||
+				strcmp(de->d_name, "/") == 0)
+				continue;
+
+			/*
+			 * If database id is not given, delete all files.
+			 */
+			if (!OidIsValid(databaseId))
+			{
+				LWLockAcquire(ErrorLogLock, LW_EXCLUSIVE);
+				sprintf(filename, "%s/%s", dirpath, de->d_name);
+				unlink(filename);
+				LWLockRelease(ErrorLogLock);
+				continue;
+			}
+
+			/*
+			 * Filter by the database id prefix.
+			 */
+			if (strncmp(de->d_name, prefix, strlen(prefix)) == 0)
+			{
+				int		res;
+				Oid		dummyDbId, relid;
+
+				res = sscanf(de->d_name, "%u_%u", &dummyDbId, &relid);
+				Assert(dummyDbId == databaseId);
+				/*
+				 * Recursively delete the file.
+				 */
+				if (res == 2)
+				{
+					ErrorLogDelete(databaseId, relid);
+				}
+			}
+		}
+
+		FreeDir(dir);
+		return true;
+	}
+	LWLockAcquire(ErrorLogLock, LW_EXCLUSIVE);
+	ErrorLogFileName(filename, databaseId, relationId);
+	if (unlink(filename) < 0)
+		result = false;
+	LWLockRelease(ErrorLogLock);
+
+	return result;
+}
+
+/*
+ * Delete error log of the specified relation.  This returns true from master
+ * iif all segments and master find the relation.
+ */
+Datum
+gp_truncate_error_log(PG_FUNCTION_ARGS)
+{
+	text	   *relname;
+	char	   *relname_str;
+	RangeVar	   *relrv;
+	Oid				relid;
+	bool		allResults = true;
+
+	relname = PG_GETARG_TEXT_P(0);
+
+	/*
+	 * Dispatch the work to segments.
+	 */
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		int			i, resultCount = 0;
+		StringInfoData	sql, errbuf;
+		PGresult  **results;
+
+		initStringInfo(&sql);
+		initStringInfo(&errbuf);
+
+		appendStringInfo(&sql,
+						 "SELECT pg_catalog.gp_truncate_error_log('%s')",
+						 text_to_cstring(relname));
+
+		results = cdbdisp_dispatchRMCommand(sql.data, true, &errbuf,
+											&resultCount);
+
+		if (errbuf.len > 0)
+			elog(ERROR, "%s", errbuf.data);
+		Assert(resultCount > 0);
+
+		for (i = 0; i < resultCount; i++)
+		{
+			Datum		value;
+			bool		isnull;
+
+			if (PQresultStatus(results[i]) != PGRES_TUPLES_OK)
+				ereport(ERROR,
+						(errmsg("unexpected result from segment: %d",
+								PQresultStatus(results[i]))));
+
+			value = ResultToDatum(results[i], 0, 0, boolin, &isnull);
+			allResults &= (!isnull && DatumGetBool(value));
+			PQclear(results[i]);
+		}
+
+		pfree(errbuf.data);
+		pfree(sql.data);
+	}
+
+	relname_str = text_to_cstring(relname);
+	if (strcmp(relname_str, "*.*") == 0)
+	{
+		/*
+		 * Only superuser is allowed to delete log files across database.
+		 */
+		if (!superuser())
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					(errmsg("must be superuser to delete all error log files"))));
+
+		ErrorLogDelete(InvalidOid, InvalidOid);
+	}
+	else if (strcmp(relname_str, "*") == 0)
+	{
+		/*
+		 * Database owner can delete error log files.
+		 */
+		if (!pg_database_ownercheck(MyDatabaseId, GetUserId()))
+			aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_DATABASE,
+						   get_database_name(MyDatabaseId));
+
+		ErrorLogDelete(MyDatabaseId, InvalidOid);
+	}
+	else
+	{
+		relrv = makeRangeVarFromNameList(textToQualifiedNameList(relname));
+		relid = RangeVarGetRelid(relrv, true);
+
+		/* Return false if the relation does not exist. */
+		if (!OidIsValid(relid))
+			PG_RETURN_BOOL(false);
+
+		/*
+		 * Allow only the table owner to truncate error log.
+		 */
+		if (!pg_class_ownercheck(relid, GetUserId()))
+			aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CLASS, relrv->relname);
+
+		/* We don't care if this fails or not. */
+		ErrorLogDelete(MyDatabaseId, relid);
+	}
+
+	/* Return true iif all segments return true. */
+	PG_RETURN_BOOL(allResults);
 }

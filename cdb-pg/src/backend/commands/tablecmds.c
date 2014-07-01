@@ -918,6 +918,7 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 	int						  rejectlimit = -1;
 	int						  encoding = -1;
 	bool					  issreh = false; /* is single row error handling requested? */
+	bool					  logToFile = false; /* log errors into file, not relation */
 	bool					  iswritable = createExtStmt->iswritable;
 	bool					  isweb = createExtStmt->isweb;
 	bool					  shouldDispatch = (Gp_role == GP_ROLE_DISPATCH &&
@@ -1158,7 +1159,14 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 									   errOmitLocation(true)));
 
 		if (singlerowerrorDesc->errtable)
+		{
 			fmtErrTblOid = RangeVarGetRelid(singlerowerrorDesc->errtable, true);
+		}
+		else if (singlerowerrorDesc->into_file)
+		{
+			logToFile = true;
+			fmtErrTblOid = InvalidOid;
+		}
 		else
 			fmtErrTblOid = InvalidOid; /* no err tbl was requested */
 	}
@@ -1241,6 +1249,12 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 			Assert(reloid != InvalidOid);
 		else
 			reloid = RangeVarGetRelid(createExtStmt->relation, true);
+
+		/*
+		 * In the case of error log file, set fmtErrorTblOid to the external table itself.
+		 */
+		if (logToFile)
+			fmtErrTblOid = reloid;
 
 		/*
 		 * create a pg_exttable entry for this external table.

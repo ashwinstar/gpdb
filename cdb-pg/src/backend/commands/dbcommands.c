@@ -62,6 +62,7 @@
 
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbdispatchresult.h"
+#include "cdb/cdbsreh.h"
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbcat.h"
@@ -1606,6 +1607,9 @@ dropdb(const char *dbname, bool missing_ok)
 											persistentSerialNum);
 		}
 	}
+
+	/* Cleanup error log files for this database. */
+	ErrorLogDelete(db_id, InvalidOid);
 
 	/*
 	 * Close pg_database, but keep lock till commit (this is important to

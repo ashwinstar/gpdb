@@ -10,8 +10,8 @@ subdir = src/backend/catalog
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
-OBJS = catalog.o dependency.o heap.o index.o indexing.o namespace.o aclchk.o \
-       gp_global_sequence.o gp_persistent.o \
+OBJS = catalog.o dependency.o heap.o hiddencat.o index.o indexing.o namespace.o \
+	   aclchk.o gp_global_sequence.o gp_persistent.o \
        pg_aggregate.o pg_appendonly.o pg_constraint.o pg_conversion.o pg_depend.o \
        pg_exttable.o pg_extprotocol.o pg_largeobject.o pg_namespace.o \
        pg_operator.o pg_proc.o pg_proc_callback.o pg_shdepend.o \

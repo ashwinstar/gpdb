@@ -1100,6 +1100,8 @@ DoCopy(const CopyStmt *stmt, const char *queryString)
 	{
 		/* Single row error handling requested */
 		SingleRowErrorDesc *sreh;
+		bool		log_to_file = false;
+
 		sreh = (SingleRowErrorDesc *)stmt->sreh;
 
 		if (!is_from)
@@ -1111,6 +1113,15 @@ DoCopy(const CopyStmt *stmt, const char *queryString)
 		{
 			cstate->errMode = SREH_LOG;
 		}
+		else if (sreh->into_file)
+		{
+			cstate->errMode = SREH_LOG;
+			if (sreh->is_keep)
+				ereport(ERROR,
+						(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
+						 errmsg("KEEP may only be specified with an error table")));
+			log_to_file = true;
+		}
 		else
 		{
 			cstate->errMode = SREH_IGNORE;
@@ -1118,7 +1129,6 @@ DoCopy(const CopyStmt *stmt, const char *queryString)
 				ereport(ERROR,
 						(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 						errmsg("KEEP may only be specified with a LOG INTO errortable clause")));
-
 		}
 		cstate->cdbsreh = makeCdbSreh(sreh->is_keep,
 									  sreh->reusing_existing_errtable,
@@ -1126,7 +1136,8 @@ DoCopy(const CopyStmt *stmt, const char *queryString)
 									  sreh->is_limit_in_rows,
 									  sreh->errtable,
 									  stmt->filename,
-									  stmt->relation->relname);
+									  stmt->relation->relname,
+									  log_to_file);
 
 		/* if necessary warn the user of the risk of table getting dropped */
 		if(sreh->errtable && Gp_role == GP_ROLE_DISPATCH && !sreh->reusing_existing_errtable)
@@ -1271,6 +1282,10 @@ DoCopy(const CopyStmt *stmt, const char *queryString)
 							RelationGetRelationName(cstate->rel))));
 
 		tupDesc = RelationGetDescr(cstate->rel);
+
+		/* Update error log info */
+		if (cstate->cdbsreh)
+			cstate->cdbsreh->relid = RelationGetRelid(cstate->rel);
 	}
 	else
 	{
@@ -2511,9 +2526,19 @@ static void CopyFromCreateDispatchCommand(CopyState cstate,
 	{
 		if (cstate->errMode == SREH_LOG)
 		{
-			appendStringInfo(cdbcopy_cmd, " LOG ERRORS INTO %s.%s",
-							 quote_identifier(get_namespace_name(RelationGetNamespace(cstate->cdbsreh->errtbl))),
-							 quote_identifier(RelationGetRelationName(cstate->cdbsreh->errtbl)));
+			if (cstate->cdbsreh->errtbl)
+			{
+				Relation	errtbl = cstate->cdbsreh->errtbl;
+				char	   *namespace, *relname;
+
+				namespace = get_namespace_name(RelationGetNamespace(errtbl));
+				relname = RelationGetRelationName(errtbl);
+				appendStringInfo(cdbcopy_cmd, " LOG ERRORS INTO %s.%s",
+								 quote_identifier(namespace),
+								 quote_identifier(relname));
+			}
+			else
+				appendStringInfoString(cdbcopy_cmd, " LOG ERRORS");
 		}
 
 		appendStringInfo(cdbcopy_cmd, " SEGMENT REJECT LIMIT %d %s",

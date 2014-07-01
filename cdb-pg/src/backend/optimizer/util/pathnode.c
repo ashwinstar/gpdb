@@ -18,6 +18,7 @@
 #include <math.h>
 
 #include "catalog/pg_operator.h"
+#include "catalog/pg_proc.h"
 #include "executor/executor.h"
 #include "miscadmin.h"
 #include "optimizer/clauses.h"              /* contain_mutable_functions() */
@@ -28,6 +29,7 @@
 #include "parser/parse_expr.h"
 #include "parser/parse_oper.h"
 #include "parser/parsetree.h"
+#include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/selfuncs.h"
 #include "utils/syscache.h"
@@ -2264,20 +2266,27 @@ Path *
 create_functionscan_path(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 {
 	Path	   *pathnode = makeNode(Path);
+	char		data_access = PRODATAACCESS_NONE;
 
 	pathnode->pathtype = T_FunctionScan;
 	pathnode->parent = rel;
 	pathnode->pathkeys = NIL;	/* for now, assume unordered result */
 
-    /*
-     * CDB: If expression contains mutable functions, evaluate it on entry db.
-     * Otherwise let it be evaluated in the same slice as its parent operator.
-     */
-    Assert(rte->rtekind == RTE_FUNCTION);
-    if (contain_mutable_functions(rte->funcexpr))
-        CdbPathLocus_MakeEntry(&pathnode->locus);
-    else
-        CdbPathLocus_MakeGeneral(&pathnode->locus);
+	/*
+	 * If the function desires to run on segments, mark randomly-distributed.
+	 * If expression contains mutable functions, evaluate it on entry db.
+	 * Otherwise let it be evaluated in the same slice as its parent operator.
+	 */
+	Assert(rte->rtekind == RTE_FUNCTION);
+
+	if (rte->funcexpr && IsA(rte->funcexpr, FuncExpr))
+		data_access = func_data_access(((FuncExpr *) rte->funcexpr)->funcid);
+	if (data_access == PRODATAACCESS_SEGMENT)
+		CdbPathLocus_MakeStrewn(&pathnode->locus);
+	else if (contain_mutable_functions(rte->funcexpr))
+		CdbPathLocus_MakeEntry(&pathnode->locus);
+	else
+		CdbPathLocus_MakeGeneral(&pathnode->locus);
 
     pathnode->motionHazard = false;
 	

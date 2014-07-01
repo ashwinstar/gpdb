@@ -12494,13 +12494,20 @@ transformSingleRowErrorHandling(ParseState *pstate, CreateStmtContext *cxt,
 {
 
 	/* check if error relation exists already */
-	Oid errreloid = RangeVarGetRelid(sreh->errtable, true);
-	bool errrelexists = OidIsValid(errreloid);
+	Oid errreloid;
+
+	if (sreh->into_file)
+	{
+		/* LOG ERRORS without table name.  Log into file. */
+		return;
+	}
+
+	errreloid = RangeVarGetRelid(sreh->errtable, true);
 
 	/*
 	 * auto-generate a new error table or verify an existing one
 	 */
-	if(errrelexists)
+	if (OidIsValid(errreloid))
 	{
 		/*
 		 * this table already exists in the database. Verify that specified

@@ -61,6 +61,7 @@
 #include "catalog/pg_type.h"
 #include "catalog/gp_fastsequence.h"
 #include "cdb/cdbpartition.h"
+#include "cdb/cdbsreh.h"
 #include "commands/tablecmds.h"
 #include "miscadmin.h"
 #include "optimizer/clauses.h"
@@ -2282,6 +2283,11 @@ heap_drop_with_catalog(Oid relid)
 	 * delete relation tuple
 	 */
 	DeleteRelationTuple(relid);
+
+	/*
+	 * delete error log file
+	 */
+	ErrorLogDelete(MyDatabaseId, relid);
 
 	/*
 	 * append-only table? delete the corresponding pg_appendonly tuple

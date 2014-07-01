@@ -2776,6 +2776,7 @@ _outSingleRowErrorDesc(StringInfo str, SingleRowErrorDesc *node)
 	WRITE_BOOL_FIELD(is_keep);
 	WRITE_BOOL_FIELD(is_limit_in_rows);
 	WRITE_BOOL_FIELD(reusing_existing_errtable);
+	WRITE_BOOL_FIELD(into_file);
 }
 
 static void
