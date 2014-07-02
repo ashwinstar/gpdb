@@ -8,10 +8,9 @@ include $(BLD_TOP)/Makefile.global
 OS=$(word 1,$(subst _, ,$(BLD_ARCH)))
 ARCH=$(shell uname -p)
 
-R_VER=3.1.0
+R_VER=2.13.0.1
 R_REL=1
-R_ABSOLUTE=`cd ../../../../../ && pwd`
-R_DIR=$(R_ABSOLUTE)/ext/$(BLD_ARCH)/R-$(R_VER)
+R_DIR=$(RELENG_TOOLS)/R-$(R_VER)
 R_RPM_FLAGS="--define 'r_dir $(R_DIR)' --define 'r_ver $(R_VER)' --define 'r_rel $(R_REL)'"
 R_RPM=R-$(R_VER)-$(R_REL).$(ARCH).rpm
 R_HOME=$(R_DIR)/lib64/R
@@ -32,7 +31,7 @@ EXTRA_CLEAN+=$(R_RPM) $(PLR_RPM) $(PLR_GPPKG)
 #
 include $(BLD_TOP)/releng/gppkg.mk
 
-gppkg: 
+gppkg: $(R_DIR)
 	$(MAKE) $(R_RPM) RPM_FLAGS=$(R_RPM_FLAGS)
 	$(MAKE) $(PLR_RPM) RPM_FLAGS=$(PLR_RPM_FLAGS)
 	$(MAKE) $(PLR_GPPKG) MAIN_RPM=$(PLR_RPM) DEPENDENT_RPMS=$(R_RPM)
