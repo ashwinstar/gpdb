@@ -2235,7 +2235,6 @@ void load_emcconnect_events_history()
 // return number of records transferred
 int mv_gpdb_emcconnect_records_to_perfmon()
 {	 
-	apr_pool_t* pool = NULL;
 	int e=0;
 	FILE* fp = NULL;
 	int r;
@@ -2281,23 +2280,22 @@ int mv_gpdb_emcconnect_records_to_perfmon()
 			continue;
 		}
 
-		// don't allocate resources unless there are any files to process
-		if  (!pool)
+		apr_pool_t* pool = NULL;
+
+		if (0 != (e = apr_pool_create(&pool, 0)))
 		{
-			if (0 != (e = apr_pool_create(&pool, 0)))
-			{
-				gpmon_warningx(FLINE, e, "apr_pool_create failed while processing emc connect history");
-				pclose(fp);
-				return 0;
-			}
+			gpmon_warningx(FLINE, e, "apr_pool_create failed while processing emc connect history");
+			pclose(fp);
+			return 0;
 		}
 
 		ret = apr_file_append(p, si.emcconnect_tailfile, APR_OS_DEFAULT, pool);	
+		apr_pool_destroy(pool);
+		pool = NULL;
+
 		if (ret != APR_SUCCESS)
 		{
 			gpmon_warningx(FLINE, ret, "failed appending file %s to %s", p, si.emcconnect_tailfile);
-			apr_pool_destroy(pool);
-			pool = NULL;
 			continue;
 		}
 
@@ -2310,11 +2308,6 @@ int mv_gpdb_emcconnect_records_to_perfmon()
 		{
 			gpmon_warningx(FLINE, 0, "failed removing file %s", p);
 		}
-	}
-
-	if (pool)
-	{
-		apr_pool_destroy(pool);
 	}
 
 	pclose(fp);
