@@ -279,6 +279,13 @@ CConfigParamMapping::SConfigMappingElem CConfigParamMapping::m_elem[] =
 		&optimizer_use_external_constant_expression_evaluation_for_ints,
 		false,  // m_fNegate
 		GPOS_WSZ_LIT("Enable constant expression evaluation for integers in the optimizer")
+		},
+
+		{
+		EopttraceApplyLeftOuter2InnerUnionAllLeftAntiSemiJoinDisregardingStats,
+		&optimizer_apply_left_outer_to_union_all_disregarding_stats,
+		false,  // m_fNegate
+		GPOS_WSZ_LIT("Always apply Left Outer Join to Inner Join UnionAll Left Anti Semi Join without looking at stats")
 		}
 
 };

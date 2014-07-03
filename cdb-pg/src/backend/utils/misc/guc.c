@@ -759,6 +759,7 @@ bool		optimizer_analyze_root_partition;
 bool		optimizer_enable_constant_expression_evaluation;
 bool		optimizer_use_external_constant_expression_evaluation_for_ints;
 bool		optimizer_enable_bitmapscan;
+bool		optimizer_apply_left_outer_to_union_all_disregarding_stats;
 
 /* Security */
 bool		gp_reject_internal_tcp_conn = true;
@@ -4066,6 +4067,16 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&optimizer_enable_bitmapscan,
+		false, NULL, NULL
+	},
+
+	{
+		{"optimizer_apply_left_outer_to_union_all_disregarding_stats", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Always apply Left Outer Join to Inner Join UnionAll Left Anti Semi Join without looking at stats."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_apply_left_outer_to_union_all_disregarding_stats,
 		false, NULL, NULL
 	},
 

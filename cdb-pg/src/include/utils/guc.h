@@ -416,6 +416,7 @@ extern bool optimizer_analyze_root_partition;
 extern bool optimizer_enable_constant_expression_evaluation;
 extern bool optimizer_use_external_constant_expression_evaluation_for_ints;
 extern bool optimizer_enable_bitmapscan;
+extern bool optimizer_apply_left_outer_to_union_all_disregarding_stats;
 /**
  * Enable logging of DPE match in optimizer.
  */
