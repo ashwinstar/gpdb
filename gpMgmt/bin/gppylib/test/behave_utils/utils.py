@@ -967,6 +967,7 @@ def install_gppkg(context):
     gppkg_name = os.environ['GPPKG_NAME']
     command    = "gppkg --install %s/%s.gppkg" % (gppkg_path, gppkg_name)
     run_command(context, command)
+    print "Install gppkg command: '%s', stdout: '%s', stderr: '%s'" % (command, context.stdout_message, context.error_message)
 
 def enable_postgis_and_load_test_data_for_postgis_1(context):
     if 'GPHOME' not in os.environ:
