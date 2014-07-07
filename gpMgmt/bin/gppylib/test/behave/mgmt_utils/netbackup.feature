@@ -1,6 +1,15 @@
 @netbackup
 Feature: NetBackup Integration with GPDB
 
+    @nbusetup75
+    Scenario: Setup to load NBU libraries
+        Given the NetBackup "7.5" libraries are loaded
+
+    @nbusetup71
+    Scenario: Setup to load NBU libraries
+        Given the NetBackup "7.1" libraries are loaded
+
+    @nbuall
     Scenario: Valgrind test of gp_dump with netbackup
         Given the database is running
         And the netbackup params have been parsed
@@ -11,6 +20,7 @@ Feature: NetBackup Integration with GPDB
         And there is a backupfile of tables "heap_table, ao_part_table" in "nbutestdb" exists for validation
         When the user runs valgrind with "gp_dump --gp-d=db_dumps --gp-s=p --gp-c nbutestdb" and options " " and suppressions file "netbackup_suppressions.txt" using netbackup
 
+    @nbuall
     Scenario: Valgrind test of gp_dump with netbackup with table filter
         Given the database is running
         And the netbackup params have been parsed
@@ -22,6 +32,7 @@ Feature: NetBackup Integration with GPDB
         And the tables "public.heap_table" are in dirty hack file "/tmp/dirty_hack.txt"
         When the user runs valgrind with "gp_dump --gp-d=db_dumps --gp-s=p --gp-c --table-file=/tmp/dirty_hack.txt nbutestdb" and options " " and suppressions file "netbackup_suppressions.txt" using netbackup
 
+    @nbuall
     Scenario: Valgrind test of gp_restore with netbackup
         Given the database is running
         And the netbackup params have been parsed
@@ -36,6 +47,7 @@ Feature: NetBackup Integration with GPDB
         And the timestamp from gpcrondump is stored
         And the user runs valgrind with "gp_restore" and options "-i --gp-i --gp-l=p -d nbutestdb --gp-c" and suppressions file "netbackup_suppressions.txt" using netbackup
 
+    @nbuall
     Scenario: Valgrind test of gp_restore_agent with netbackup
         Given the database is running
         And the netbackup params have been parsed
@@ -50,6 +62,7 @@ Feature: NetBackup Integration with GPDB
         And the timestamp from gpcrondump is stored
         And the user runs valgrind with "gp_restore_agent" and options "--gp-c /bin/gunzip -s --post-data-schema-only --target-dbid 1 -d nbutestdb" and suppressions file "netbackup_suppressions.txt" using netbackup
 
+    @nbuall
     Scenario: Valgrind test of gp_dump_agent with table file using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -60,6 +73,7 @@ Feature: NetBackup Integration with GPDB
         And there is a "ao" partition table "ao_part_table" with compression "None" in "nbutestdb" with data
         When the user runs valgrind with "./gppylib/test/behave/mgmt_utils/steps/scripts/valgrind_nbu_test_1.sh" and options " " and suppressions file "netbackup_suppressions.txt" using netbackup
 
+    @nbuall
     Scenario: Valgrind test of gp_bsa_dump_agent and gp_bsa_restore_agent
         Given the database is running
         And the netbackup params have been parsed
@@ -73,6 +87,7 @@ Feature: NetBackup Integration with GPDB
         And the user runs restore command "valgrind --suppressions=gppylib/test/behave/mgmt_utils/steps/netbackup_suppressions.txt gp_bsa_restore_agent --netbackup-filename /tmp/dirty_hack.txt" using netbackup
 
     @nbusmoke
+    @nbuall
     Scenario: gpcrondump using NetBackup with non-supported options
         Given the database is running
         And the netbackup params have been parsed
@@ -84,6 +99,7 @@ Feature: NetBackup Integration with GPDB
         And gpcrondump should return a return code of 2
 
     @nbusmoke
+    @nbuall
     Scenario: gpdbrestore using NetBackup with non-supported options
         Given the database is running
         And the netbackup params have been parsed
@@ -103,6 +119,7 @@ Feature: NetBackup Integration with GPDB
         Then gpdbrestore should print -L is not supported with NetBackup to stdout
         And gpdbrestore should return a return code of 2
 
+    @nbuall
     Scenario: gpbrestore with -R using netbackup
         Given the database is running
         And the netbackup params have been parsed
@@ -123,6 +140,7 @@ Feature: NetBackup Integration with GPDB
     ###
     @nbusmoke
     @nbudataset
+    @nbuall
     Scenario Outline: partition table test with data on all segments, with/without compression
         Given there is a "<tabletype>" partition table "<tablename>" with compression "<compressiontype>" in "<dbname>" with data
         Then data for partition table "<tablename>" with partition level "<partlevel>" is distributed across all segments on "<dbname>"
@@ -137,6 +155,7 @@ Feature: NetBackup Integration with GPDB
 
     @nbusmoke
     @nbudataset
+    @nbuall
     Scenario Outline: regular table test with data on all segments, with/without compression
         Given there is a "<tabletype>" table "<tablename>" with compression "<compressiontype>" in "<dbname>" with data
         Then data for table "<tablename>" is distributed across all segments on "<dbname>"
@@ -150,6 +169,7 @@ Feature: NetBackup Integration with GPDB
 
     @nbusmoke
     @nbudataset
+    @nbuall
     Scenario Outline: regular table test with data on all segments, with/without compression and with indexes
         Given there is a "<tabletype>" table "<tablename>" with index "<indexname>" compression "<compressiontype>" in "<dbname>" with data
         Then data for table "<tablename>" is distributed across all segments on "<dbname>"
@@ -163,11 +183,13 @@ Feature: NetBackup Integration with GPDB
 
     @nbusmoke
     @nbudataset
+    @nbuall
     Scenario: Partition tables with mixed storage types
         Given there is a mixed storage partition table "part_mixed_1" in "nbubkdb" with data
         Then data for partition table "part_mixed_1" with partition level "1" is distributed across all segments on "nbubkdb"
         And verify that storage_types of the partition table "part_mixed_1" are as expected in "nbubkdb"
 
+    @nbuall
     Scenario: Full Backup and Restore using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -180,6 +202,7 @@ Feature: NetBackup Integration with GPDB
         And verify that the data of "68" tables in "nbubkdb" is validated after restore
 
     @nbusmoke
+    @nbuall
     Scenario: Full Backup and Restore using NetBackup with --netbackup-block-size option
         Given the database is running
         And the netbackup params have been parsed
@@ -192,6 +215,7 @@ Feature: NetBackup Integration with GPDB
         And verify that the data of "68" tables in "nbubkdb" is validated after restore
 
     @nbusmoke
+    @nbuall
     Scenario: Full Backup and Restore using NetBackup with --netbackup-keyword option
         Given the database is running
         And the netbackup params have been parsed
@@ -203,6 +227,7 @@ Feature: NetBackup Integration with GPDB
         Then gpdbrestore should return a return code of 0
         And verify that the data of "68" tables in "nbubkdb" is validated after restore
 
+    @nbuall
     Scenario: Full Backup and Restore using NetBackup with --netbackup-block-size and --netbackup-keyword options
         Given the database is running
         And the netbackup params have been parsed
@@ -214,6 +239,7 @@ Feature: NetBackup Integration with GPDB
         Then gpdbrestore should return a return code of 0
         And verify that the data of "68" tables in "nbubkdb" is validated after restore
 
+    @nbuall
     Scenario: Full Backup and Restore using NetBackup with keyword exceeding max limit of 100 characters
         Given the database is running
         And the netbackup params have been parsed
@@ -222,6 +248,7 @@ Feature: NetBackup Integration with GPDB
         And gpcrondump should print NetBackup Keyword provided has more than max limit \(100\) characters. Cannot proceed with backup. to stdout
 
     @nbusmoke
+    @nbuall
     Scenario: Full Backup and Restore using NetBackup with -u option
         Given the database is running
         And the netbackup params have been parsed
@@ -235,6 +262,7 @@ Feature: NetBackup Integration with GPDB
         And verify that the data of "68" tables in "nbubkdb" is validated after restore
 
     @nbusmoke
+    @nbuall
     Scenario: Full Backup and Restore with gp_dump using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -248,6 +276,7 @@ Feature: NetBackup Integration with GPDB
         Then gp_restore should return a return code of 0
         And verify that the data of "68" tables in "nbubkdb" is validated after restore
 
+    @nbuall
     Scenario: gp_dump timestamp test using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -264,6 +293,7 @@ Feature: NetBackup Integration with GPDB
         And verify that the data of "68" tables in "nbubkdb" is validated after restore
 
     @nbusmoke
+    @nbuall
     Scenario: Full Backup with option -t and Restore using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -278,6 +308,7 @@ Feature: NetBackup Integration with GPDB
         And verify that the data of "68" tables in "nbubkdb" is validated after restore
 
     @nbusmoke
+    @nbuall
     Scenario: Full Backup with option -T and Restore using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -295,6 +326,7 @@ Feature: NetBackup Integration with GPDB
         And verify that the data of "18" tables in "fullbkdb" is validated after restore
         And verify that there is no table "heap_table" in "fullbkdb"
 
+    @nbuall
     Scenario: Full Backup with option -s and Restore using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -312,6 +344,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is a "heap" table "schema_heap.heap_table" in "fullbkdb" with data
         And verify that there is no table "schema_ao.ao_part_table" in "fullbkdb"
 
+    @nbuall
     Scenario: Full Backup with option -t and Restore after TRUNCATE on filtered tables using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -337,6 +370,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is a "ao" table "schema_ao.ao_part_table" in "fullbkdb" with data
         And verify that there is a "ao" table "public.ao_part_table" in "fullbkdb" with data
 
+    @nbuall
     Scenario: Full Backup with option --exclude-table-file and Restore using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -355,6 +389,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is no table "heap_table" in "fullbkdb"
 
     @nbusmoke
+    @nbuall
     Scenario: Full Backup with option --table-file and Restore using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -372,6 +407,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is a "heap" table "heap_table" in "fullbkdb" with data
         And verify that there is no table "co_part_table" in "fullbkdb"
 
+    @nbuall
     Scenario: Schema only restore of full backup using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -384,6 +420,7 @@ Feature: NetBackup Integration with GPDB
         Then gpdbrestore should return a return code of 0
         And tables names should be identical to stored table names in "nbubkdb"
 
+    @nbuall
     Scenario: Full Backup and Restore for Multiple Schemas with common tablenames using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -411,6 +448,7 @@ Feature: NetBackup Integration with GPDB
         And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
 
     @nbusmoke
+    @nbuall
     Scenario: Full Backup and Restore without compression using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -422,6 +460,7 @@ Feature: NetBackup Integration with GPDB
         Then gpdbrestore should return a return code of 0
         And verify that the data of "68" tables in "nbubkdb" is validated after restore
 
+    @nbuall
     Scenario: Out of Sync timestamp using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -436,6 +475,7 @@ Feature: NetBackup Integration with GPDB
         Then gpcrondump should return a return code of 2
         And gpcrondump should print There is a future dated backup on the system preventing new backups to stdout
 
+    @nbuall
     Scenario: Verify the gpcrondump -o option is not broken due to NetBackup changes
         Given the database is running
         And the netbackup params have been parsed
@@ -454,6 +494,7 @@ Feature: NetBackup Integration with GPDB
         And the dump directories "20130101" should not exist
         And the dump directory for the stored timestamp should exist
 
+    @nbuall
     Scenario: Verify the gpcrondump -c option is not broken due to NetBackup changes
         Given the database is running
         And the netbackup params have been parsed
@@ -472,6 +513,7 @@ Feature: NetBackup Integration with GPDB
         And the dump directories "20130101" should not exist
         And the dump directory for the stored timestamp should exist
 
+    @nbuall
     Scenario: Verify the gpcrondump -g option is not broken due to NetBackup changes
         Given the database is running
         And the netbackup params have been parsed
@@ -483,6 +525,7 @@ Feature: NetBackup Integration with GPDB
         And the timestamp from gpcrondump is stored
         And config files should be backed up on all segments
 
+    @nbuall
     Scenario: Verify the gpcrondump -h option works with full backup using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -498,6 +541,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is a "heap" table "gpcrondump_history" in "schematestdb"
         And verify that the table "gpcrondump_history" in "schematestdb" has dump info for the stored timestamp
 
+    @nbuall
     Scenario: gpdbrestore -u option with full backup timestamp using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -516,6 +560,7 @@ Feature: NetBackup Integration with GPDB
         And verify that the data of "2" tables in "testdb" is validated after restore
         And verify that the tuple count of all appendonly tables are consistent in "testdb"
 
+    @nbuall
     Scenario: gpcrondump -x with multiple databases using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -544,6 +589,7 @@ Feature: NetBackup Integration with GPDB
         And verify that the tuple count of all appendonly tables are consistent in "testdb1"
         And verify that the tuple count of all appendonly tables are consistent in "testdb2"
 
+    @nbuall
     Scenario: gpdbrestore with -T and --table-file should fail using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -559,6 +605,7 @@ Feature: NetBackup Integration with GPDB
         Then gpdbrestore should return a return code of 2
         And gpdbrestore should print Cannot specify -T and --table-file together to stdout
 
+    @nbuall
     Scenario: gpdbrestore with --table-file option using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -577,6 +624,7 @@ Feature: NetBackup Integration with GPDB
         And verify that the data of "2" tables in "testdb1" is validated after restore
         And verify that the tuple count of all appendonly tables are consistent in "testdb1"
 
+    @nbuall
     Scenario: Multiple full backup and restore from first full backup using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -606,6 +654,7 @@ Feature: NetBackup Integration with GPDB
         And verify that the data of "34" tables in "schematestdb" is validated after restore
         And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
 
+    @nbuall
     Scenario: Full backup and restore with external tables using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -625,6 +674,7 @@ Feature: NetBackup Integration with GPDB
         And verify that the tuple count of all appendonly tables are consistent in "testdb1"
         And the file "/tmp/ext_tab" is removed from the system
 
+    @nbuall
     Scenario: gpdbrestore with -T option using netbackup 1
         Given the database is running
         And the netbackup params have been parsed
@@ -643,6 +693,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is no table "heap_table" in "fullbkdb"
         And verify that there is a "ao" table "public.ao_index_table" in "fullbkdb" with data
 
+    @nbuall
     Scenario: gpdbrestore with -T option using netbackup 2
         Given the database is running
         And the netbackup params have been parsed
@@ -663,6 +714,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is no table "heap_table" in "fullbkdb"
         And verify that there is a "ao" table "public.ao_index_table" in "fullbkdb" with data
 
+    @nbuall
     Scenario: gpdbrestore with -T option using netbackup 3
         Given the database is running
         And the netbackup params have been parsed
@@ -682,6 +734,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is no table "heap_table" in "fullbkdb"
         And verify that there is a "ao" table "public.ao_index_table" in "fullbkdb" with data
 
+    @nbuall
     Scenario: gpdbrestore with -T option using netbackup 4
         Given the database is running
         And the netbackup params have been parsed
@@ -701,6 +754,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is no table "heap_table" in "fullbkdb"
         And verify that there is a "ao" table "public.ao_index_table" in "fullbkdb" with data
 
+    @nbuall
     Scenario: gpdbrestore with -T option using netbackup 5
         Given the database is running
         And the netbackup params have been parsed
@@ -718,6 +772,7 @@ Feature: NetBackup Integration with GPDB
         And gpdbrestore should return a return code of 0
         And verify that there is a "ao" table "public.ao_part_table_1_prt_p2_2_prt_3" in "fullbkdb" with data
 
+    @nbuall
     Scenario: gpdbrestore with -T option using netbackup 6
         Given the database is running
         And the netbackup params have been parsed
@@ -734,6 +789,7 @@ Feature: NetBackup Integration with GPDB
         And gpdbrestore should return a return code of 2
         Then gpdbrestore should print No schema name supplied to stdout
 
+    @nbuall
     Scenario: Config files backup using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -746,6 +802,7 @@ Feature: NetBackup Integration with GPDB
         And the timestamp from gpcrondump is stored
         And verify that the config files are backed up with the stored timestamp using netbackup
 
+    @nbuall
     Scenario: Test gpcrondump and gpdbrestore verbose option using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -763,6 +820,7 @@ Feature: NetBackup Integration with GPDB
         And verify that the data of "2" tables in "fullbkdb" is validated after restore
         And verify that the tuple count of all appendonly tables are consistent in "fullbkdb"
 
+    @nbuall
     Scenario: gpdbrestore list_backup option with full timestamp using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -776,6 +834,7 @@ Feature: NetBackup Integration with GPDB
         Then gpdbrestore should return a return code of 2
         And gpdbrestore should print --list-backup is not supported for restore with full timestamps to stdout
 
+    @nbuall
     Scenario: Full Backup with option -t and non-existant table using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -786,6 +845,7 @@ Feature: NetBackup Integration with GPDB
         Then gpcrondump should return a return code of 2
         And gpcrondump should print does not exist in to stdout
 
+    @nbuall
     Scenario: Full Backup with option -T and non-existant table using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -801,6 +861,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is a "ao" table "ao_part_table" in "fullbkdb" with data
         And verify that there is no table "heap_table" in "fullbkdb"
 
+    @nbuall
     Scenario: Funny character table names using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -815,6 +876,7 @@ Feature: NetBackup Integration with GPDB
         And gpcrondump should print Tablename has an invalid character ".n", ":", "," : to stdout
 
     @nbusmoke
+    @nbuall
     Scenario: gp_restore with no ao stats using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -841,6 +903,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there are no aoco stats in "fullbkdb" for table "co_part_table_1_prt_p1_2_prt_1, co_part_table_1_prt_p1_2_prt_2, co_part_table_1_prt_p1_2_prt_3"
         And verify that there are no aoco stats in "fullbkdb" for table "co_part_table_1_prt_p2_2_prt_1, co_part_table_1_prt_p2_2_prt_2, co_part_table_1_prt_p2_2_prt_3"
 
+    @nbuall
     Scenario: Negative tests for table filter options for gpcrondump using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -863,6 +926,7 @@ Feature: NetBackup Integration with GPDB
         Then gpcrondump should print --table-file can not be selected with --exclude-table-file option to stdout
         And gpcrondump should return a return code of 2
 
+    @nbuall
     Scenario: User specified timestamp key for dump using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -884,6 +948,7 @@ Feature: NetBackup Integration with GPDB
         And verify that the data of "11" tables in "testdb" is validated after restore
         And verify that the tuple count of all appendonly tables are consistent in "testdb"
 
+    @nbuall
     Scenario: User specified invalid timestamp key for dump using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -902,6 +967,7 @@ Feature: NetBackup Integration with GPDB
     ######## Add scenario for invalid netbackup params
 
     ######## Restore with NetBackup using invalid timestamp - error message can be improved
+    @nbuall
     Scenario: User specified invalid timestamp key for restore using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -919,6 +985,7 @@ Feature: NetBackup Integration with GPDB
         And gpcrondump should print Failed to get the NetBackup BSA restore object to perform Restore to stdout
 
     @nbusmoke
+    @nbuall
     Scenario: Full Backup and Restore with --prefix option using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -940,6 +1007,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is a "heap" table "heap_table" in "testdb" with data
         And verify that there is a "ao" table "ao_part_table" in "testdb" with data
 
+    @nbuall
     Scenario: Full Backup and Restore with --prefix option for multiple databases using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -966,6 +1034,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is a "ao" table "ao_part_table" in "testdb1" with data
         And verify that there is a "heap" table "heap_table2" in "testdb2" with data
 
+    @nbuall
     Scenario: Full Backup and Restore with -g and --prefix option using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -989,6 +1058,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is a "heap" table "heap_table" in "testdb" with data
         And verify that there is a "ao" table "ao_part_table" in "testdb" with data
 
+    @nbuall
     Scenario: Full Backup and Restore with -G and --prefix option using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1011,6 +1081,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is a "heap" table "heap_table" in "testdb" with data
         And verify that there is a "ao" table "ao_part_table" in "testdb" with data
 
+    @nbuall
     Scenario: Full Backup and Restore with -u and --prefix option using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1034,6 +1105,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is a "heap" table "heap_table" in "testdb" with data
         And verify that there is a "ao" table "ao_part_table" in "testdb" with data
 
+    @nbuall
     Scenario: Multiple Full Backup and Restore with and without prefix using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1053,6 +1125,7 @@ Feature: NetBackup Integration with GPDB
         Then gpdbrestore should return a return code of 0
         And verify that the data of "11" tables in "testdb" is validated after restore
 
+    @nbuall
     Scenario: Multiple Full Backup and Restore with different prefixes using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1083,6 +1156,7 @@ Feature: NetBackup Integration with GPDB
         And verify that the data of "11" tables in "testdb1" is validated after restore
         And verify that the data of "11" tables in "testdb2" is validated after restore
 
+    @nbuall
     Scenario: Restore database without prefix for a dump with prefix using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1099,6 +1173,7 @@ Feature: NetBackup Integration with GPDB
         Then gpdbrestore should return a return code of 2
         And gpdbrestore should print No object matched the specified predicate to stdout
 
+    @nbuall
     Scenario: Full Backup and Restore with -t filter and --prefix option using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1121,6 +1196,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is no table "public.ao_part_table" in "testdb"
         And verify that there is no table "public.heap_table2" in "testdb"
 
+    @nbuall
     Scenario: Full Backup and Restore with -T filter and --prefix option using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1143,6 +1219,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is no table "public.ao_part_table" in "testdb"
         And verify that there is no table "public.heap_table2" in "testdb"
 
+    @nbuall
     Scenario: Full Backup and Restore with --table-file filter and --prefix option using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1166,6 +1243,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is no table "public.ao_part_table" in "testdb"
         And verify that there is no table "public.heap_table2" in "testdb"
 
+    @nbuall
     Scenario: Full Backup and Restore with --exclude-table-file filter and --prefix option using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1189,6 +1267,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is no table "public.ao_part_table" in "testdb"
         And verify that there is no table "public.heap_table2" in "testdb"
 
+    @nbuall
     Scenario: Full Backup and Restore with Multiple Schemas and -t filter and --prefix option using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1222,6 +1301,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is a "ao" table "pepper.ao_table" in "testdb" with data
         And verify that there is a "co" table "pepper.co_table" in "testdb" with data
 
+    @nbuall
     Scenario: Multiple Full Backup and Restore with different prefixes and -K option using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1252,6 +1332,7 @@ Feature: NetBackup Integration with GPDB
         And verify that the data of "11" tables in "testdb1" is validated after restore
         And verify that the data of "11" tables in "testdb2" is validated after restore
 
+    @nbuall
     Scenario: Gpcrondump with no PGPORT set using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1268,6 +1349,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is a "heap" table "heap_table" in "fullbkdb" with data
         And verify that there is a "ao" table "ao_part_table" in "fullbkdb" with data
 
+    @nbuall
     Scenario: Checking for abnormal whitespace using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1285,6 +1367,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is a "heap" table "heap_table" in "fullbkdb" with data
         And verify that there is no table "co_part_table" in "fullbkdb"
 
+    @nbuall
     Scenario: Full Backup and Restore of all tables with -C option using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1302,6 +1385,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is a "ao" table "ao_table" in "fullbkdb"
         And verify that there is a "ao" table "ao_part_table" in "fullbkdb"
 
+    @nbuall
     Scenario: Full Backup and Restore with filtering tables within public and non-public schema using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1345,6 +1429,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is no table "public.co_part_table" in "testdb"
         And verify that the data of "3" tables in "testdb" is validated after restore
 
+    @nbuall
     Scenario: Full Backup and Restore with filtering tables from multiple schemas using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1369,6 +1454,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is no table "pepper.co_table_ex" in "testdb"
         And verify that the data of "1" tables in "testdb" is validated after restore
 
+    @nbuall
     Scenario: Full Backup and Restore of external and ao table using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1408,6 +1494,7 @@ Feature: NetBackup Integration with GPDB
         And psql should not print pymax to stdout
         And verify that the data of "2" tables in "testdb" is validated after restore
 
+    @nbuall
     Scenario: Full Backup and Restore filtering tables with post data objects using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1458,6 +1545,7 @@ Feature: NetBackup Integration with GPDB
         And psql should not print heap_ex_trigger to stdout
         And verify that the data of "6" tables in "testdb" is validated after restore
 
+    @nbuall
     Scenario: Full Backup and Restore dropped database filtering tables with post data objects using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1501,6 +1589,7 @@ Feature: NetBackup Integration with GPDB
         And psql should print \"heap_const_1\" FOREIGN KEY \(column1, column2, column3\) REFERENCES heap_table2\(column1, column2, column3\) to stdout
         And verify that the data of "4" tables in "testdb" is validated after restore
 
+    @nbuall
     Scenario: Full Backup and Restore filtering tables post data objects with -C using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1547,6 +1636,7 @@ Feature: NetBackup Integration with GPDB
         And psql should not print bitmap_co_index to stdout
         And verify that the data of "6" tables in "testdb" is validated after restore
 
+    @nbuall
     Scenario: Full backup and restore for table names with multibyte (chinese) characters using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1562,6 +1652,7 @@ Feature: NetBackup Integration with GPDB
         When the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/select_multi_byte_char.sql testdb"
         Then psql should print 1000 to stdout
 
+    @nbuall
     Scenario: Full Backup with option -T and Restore with exactly 1000 partitions using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1578,6 +1669,7 @@ Feature: NetBackup Integration with GPDB
         Then gpdbrestore should return a return code of 0
         And verify that the data of "1" tables in "testdb" is validated after restore
 
+    @nbuall
     Scenario: Single table restore with shared sequence across multiple tables using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1605,6 +1697,7 @@ Feature: NetBackup Integration with GPDB
         And the user runs "psql -c 'INSERT INTO table2 (price) SELECT * FROM generate_series(2020,2029)' seqtestdb"
         And verify that there are no duplicates in column "column1" of table "public.table2" in "seqtestdb"
 
+    @nbuall
     Scenario: Single table backup of the table with partitions in a separate schema using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1618,6 +1711,7 @@ Feature: NetBackup Integration with GPDB
         When the user runs "gpcrondump -a -v -x testdb -t schema_parent.ao_part_table" using netbackup
         Then gpcrondump should return a return code of 0
 
+    @nbuall
     Scenario: Database backup, while one of the tables have a partition in a separate schema using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1633,6 +1727,7 @@ Feature: NetBackup Integration with GPDB
         When the user runs "gpcrondump -a -v -x testdb -t schema_parent.ao_part_table" using netbackup
         Then gpcrondump should return a return code of 0
 
+    @nbuall
     Scenario: Database backup, while one of the tables have all the partitions in a separate schema using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1648,6 +1743,7 @@ Feature: NetBackup Integration with GPDB
         When the user runs "gpcrondump -a -v -x testdb -t schema_parent.ao_part_table" using netbackup
         Then gpcrondump should return a return code of 0
 
+    @nbuall
     Scenario: Full backup should not backup temp tables while using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1674,6 +1770,7 @@ Feature: NetBackup Integration with GPDB
         Then gpdbrestore should return a return code of 0
         And verify that the data of "40" tables in "testdb" is validated after restore
 
+    @nbuall
     Scenario: Full backup and restore using gpcrondump with pg_class lock using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1692,6 +1789,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is a "heap" table "heap_table" in "fullbkdb" with data
         And verify that there is a "ao" table "ao_part_table" in "fullbkdb" with data
 
+    @nbuall
     Scenario: Full Backup and Restore using gp_dump without no-lock using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1711,6 +1809,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is a "heap" table "heap_table" in "fullbkdb" with data
         And verify that there is a "ao" table "ao_part_table" in "fullbkdb" with data
 
+    @nbuall
     Scenario: Restore -T for full dump should restore metadata/postdata objects for tablenames with English and multibyte (chinese) characters using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1748,6 +1847,7 @@ Feature: NetBackup Integration with GPDB
         And the file "/tmp/describe_ao_index_table_before" is removed from the system
         And the file "/tmp/describe_ao_index_table_after" is removed from the system
 
+    @nbuall
     Scenario: Restore -T for full dump should restore GRANT privileges for tablenames with English and multibyte (chinese) characters using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1823,6 +1923,7 @@ Feature: NetBackup Integration with GPDB
         And the file "/tmp/describe_multi_byte_char_before" is removed from the system
         And the file "/tmp/describe_multi_byte_char_after" is removed from the system
 
+    @nbuall
     Scenario: Redirected Restore (RR) Full Backup and Restore without -e option using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1841,6 +1942,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is a "heap" table "public.heap_table" in "testdb" with data
         And verify that there is a "ao" table "public.ao_part_table" in "testdb" with data
 
+    @nbuall
     Scenario: (RR) Full Backup and Restore with -e option using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1859,6 +1961,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is a "heap" table "public.heap_table" in "testdb" with data
         And verify that there is a "ao" table "public.ao_part_table" in "testdb" with data
 
+    @nbuall
     Scenario: (RR) Full backup and restore with -T using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1877,6 +1980,7 @@ Feature: NetBackup Integration with GPDB
         Then gpdbrestore should return a return code of 0
         And verify that there is a "ao" table "public.ao_index_table" in "testdb" with data
 
+    @nbuall
     Scenario: (RR) Full Backup and Restore with --prefix option using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1897,6 +2001,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is a "heap" table "heap_table" in "testdb1" with data
         And verify that there is a "ao" table "ao_part_table" in "testdb1" with data
 
+    @nbuall
     Scenario: (RR) Full Backup and Restore with --prefix option for multiple databases using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1922,6 +2027,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is a "heap" table "heap_table1" in "testdb" with data
         And verify that there is a "ao" table "ao_part_table" in "testdb" with data
 
+    @nbuall
     Scenario: Full Backup and Restore with the master dump file missing using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1938,6 +2044,7 @@ Feature: NetBackup Integration with GPDB
         Then gpdbrestore should return a return code of 0
         And gpdbrestore should print Backup for given timestamp was performed using NetBackup. Querying NetBackup server to check for the dump file. to stdout
 
+    @nbuall
     Scenario: Full Backup and Restore with the master dump file missing without compression using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1954,6 +2061,7 @@ Feature: NetBackup Integration with GPDB
         Then gpdbrestore should return a return code of 0
         And gpdbrestore should print Backup for given timestamp was performed using NetBackup. Querying NetBackup server to check for the dump file. to stdout
 
+    @nbuall
     Scenario: Uppercase Dbname (UD) Full Backup and Restore using timestamp using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1972,6 +2080,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is a "heap" table "public.heap_table" in "TESTING" with data
         And verify that there is a "ao" table "public.ao_part_table" in "TESTING" with data
 
+    @nbuall
     Scenario: (UD) Full backup and restore with -T using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -1990,6 +2099,7 @@ Feature: NetBackup Integration with GPDB
         And gpdbestore should not print Issue with analyze of to stdout
         And verify that there is a "ao" table "public.ao_index_table" in "TESTING" with data
 
+    @nbuall
     Scenario: (UD) Full Backup and Restore with --prefix option using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -2010,6 +2120,7 @@ Feature: NetBackup Integration with GPDB
         And verify that there is a "heap" table "heap_table" in "TESTING" with data
         And verify that there is a "ao" table "ao_part_table" in "TESTING" with data
 
+    @nbuall
     Scenario: Full backup and Restore should create the gp_toolkit schema with -e option using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -2028,6 +2139,7 @@ Feature: NetBackup Integration with GPDB
         And verify that the data of "10" tables in "testdb" is validated after restore
         And the gp_toolkit schema for "testdb" is verified after restore
 
+    @nbuall
     Scenario: Redirected Restore should create the gp_toolkit schema with -e option using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -2046,6 +2158,7 @@ Feature: NetBackup Integration with GPDB
         And verify that the data of "10" tables in "fullbkdb" is validated after restore
         And the gp_toolkit schema for "fullbkdb" is verified after restore
 
+    @nbuall
     Scenario: Redirected Restore should create the gp_toolkit schema without -e option using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -2065,6 +2178,7 @@ Feature: NetBackup Integration with GPDB
         And verify that the data of "10" tables in "fullbkdb" is validated after restore
         And the gp_toolkit schema for "fullbkdb" is verified after restore
 
+    @nbuall
     Scenario: gpdbrestore with noanalyze using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -2083,6 +2197,7 @@ Feature: NetBackup Integration with GPDB
         And verify that the data of "10" tables in "testdb" is validated after restore
         And verify that the tuple count of all appendonly tables are consistent in "testdb"
 
+    @nbuall
     Scenario: gpdbrestore without noanalyze using NetBackup
         Given the database is running
         And the netbackup params have been parsed
@@ -2101,6 +2216,7 @@ Feature: NetBackup Integration with GPDB
         And verify that the tuple count of all appendonly tables are consistent in "testdb"
 
     @nbusmoke
+    @nbuall
     Scenario: Verify that metadata files get backed up to NetBackup server
         Given the database is running
         And the netbackup params have been parsed

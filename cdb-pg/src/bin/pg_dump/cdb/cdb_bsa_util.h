@@ -2,8 +2,8 @@
 
 #ifdef USE_NETBACKUP
 
-#include <xbsa.h>
-#include <nbbsa.h>
+#include "xbsa.h"
+#include "nbbsa.h"
 
 /* Dump related functions to backup data to NetBackup */
 extern int initBSADumpSession(char *bsaServiceHost, char *nbbsaPolicy, char *nbbsaSchedule, char *nbbsaKeyword);
