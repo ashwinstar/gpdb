@@ -664,6 +664,7 @@ file_set_dirs(char *file)
 			}
 		}
 	}
+
 	if (data_dir == NULL || commit_log_dir == NULL)
 	{
 		fprintf(stderr, "could not extract data directories from %s\n", file);
@@ -2731,6 +2732,7 @@ Dump_AppendOnlyStorage_ContentInfo(
 			contentPtr->sz);
 		break;
 	case DatumStreamVersion_Dense:
+	case DatumStreamVersion_Dense_Enhanced:
 		{
 		uint8 *p = headerPtr;
 		DatumStreamBlock_Dense *densePtr = (DatumStreamBlock_Dense*) p;
@@ -2744,6 +2746,10 @@ Dump_AppendOnlyStorage_ContentInfo(
 		if ( densePtr->orig_4_bytes.flags & DSB_HAS_RLE_COMPRESSION )
 		{
 			printf( " (HAS_RLE_COMPRESSION)");
+		}
+		if ( densePtr->orig_4_bytes.flags & DSB_HAS_DELTA_COMPRESSION )
+		{
+			printf( " (HAS_DELTA_COMPRESSION)");
 		}
 		printf("\n\t logical_row_count: %d physical_datum_count: %d\n\t physical_data_size: %d",
 			densePtr->logical_row_count,
@@ -2760,6 +2766,14 @@ Dump_AppendOnlyStorage_ContentInfo(
 					 rlePtr->compress_bitmap_count,
 					 rlePtr->repeatcounts_count,
 					 rlePtr->repeatcounts_size);
+		}
+		if ( densePtr->orig_4_bytes.flags & DSB_HAS_DELTA_COMPRESSION )
+		{
+			DatumStreamBlock_Delta_Extension *deltaPtr = (DatumStreamBlock_Delta_Extension*) p;
+			 
+			printf("\n\t\t<DELTA Extension> ----");
+			printf("\n\t\t delta_bitmap_count: %d deltas_count: %d deltas_size: %d",
+				deltaPtr->delta_bitmap_count, deltaPtr->deltas_count, deltaPtr->deltas_size);
 		}
 		break;
 		}

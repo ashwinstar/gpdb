@@ -1,6 +1,6 @@
 /*
  * DatumStreamBlock
- * 	Copyright (c) 201, EMC Inc.
+ *	Copyright (c) 201, EMC Inc.
  */
 
 #ifndef DATUMSTREAMBLOCK_H
@@ -11,31 +11,38 @@
 
 typedef enum DatumStreamVersion
 {
-	DatumStreamVersion_Original =  0,		/* first valid version */
-	DatumStreamVersion_Dense = 1,	
-											/* Version used for denser header (higher
-											 * row count) and RLE_TYPE compression
-											 * done by this module.
-											 */
+	DatumStreamVersion_Original = 0,	/* first valid version */
+	DatumStreamVersion_Dense = 1,
 
-	MaxDatumStreamVersion                    /* must always be last */
-} DatumStreamVersion;
+	/*
+	 * Version used for denser header (higher row count) and RLE_TYPE
+	 * compression done by this module.
+	 */
 
-/* 
+	DatumStreamVersion_Dense_Enhanced = 2,		/* Version used for RLE_TYPE
+												 * compression enhanced with
+												 * Delta Range done by this
+												 * module. */
+
+	MaxDatumStreamVersion		/* must always be last */
+}	DatumStreamVersion;
+
+/*
  * Datum Stream Block (Original).
  * 16 bytes header.  Followed by data.
  */
 typedef struct DatumStreamBlock_Orig
 {
-    int16 version; 	/* version number */
-    int16 flags;	/* some flags */
-    int16 ndatum;	/* number of datum, including null */
-    int16 unused;   /* unused */
-    int32 nullsz; 	/* size nullbitmaps */
-    int32 sz;	    /* logical data size, not including header, nullbitmap, and padding */
-} DatumStreamBlock_Orig;
+	int16		version;		/* version number */
+	int16		flags;			/* some flags */
+	int16		ndatum;			/* number of datum, including null */
+	int16		unused;			/* unused */
+	int32		nullsz;			/* size nullbitmaps */
+	int32		sz;				/* logical data size, not including header,
+								 * nullbitmap, and padding */
+}	DatumStreamBlock_Orig;
 
-/* 
+/*
  * Datum Stream Block (Dense).
  *
  * Dense format uses an Append-Only Storage Block header that has a larger RowCount
@@ -47,132 +54,171 @@ typedef struct DatumStreamBlock_Dense
 {
 	struct orig_4_bytes
 	{
-		int16 version;	/* version number */
-		int16 flags;	/* some flags */
-	} orig_4_bytes;
+		int16		version;	/* version number */
+		int16		flags;		/* some flags */
+	}			orig_4_bytes;
 
-	int32 	logical_row_count;	
-						/*
-						  * Number of physical datum PLUS number of NULLs; The logical
-						  * count of rows. 
-						  */
+	int32		logical_row_count;
+	/*
+	  * Number of physical datum PLUS number of NULLs; The logical
+	  * count of rows.
+	  */
 
-	int32	physical_datum_count;	
-						/* Number of physical datum.  May be 0 if block is all NULLs. */
+	int32		physical_datum_count;
+	/* Number of physical datum.  May be 0 if block is all NULLs. */
 
-	int32	physical_data_size;	
-						/* 
-						  * Total data size of all physical datums in block.  Does not
-						  * include header(s), bitmap(s), padding between headers and
-						  * datum area, etc.
-						  */
+	int32		physical_data_size;
+	/*
+	  * Total data size of all physical datums in block.  Does not
+	  * include header(s), bitmap(s), padding between headers and
+	  * datum area, etc.
+	  */
 
-} DatumStreamBlock_Dense;
+}	DatumStreamBlock_Dense;
 
-/* 
+/*
  * Datum Stream Block extension to DatumStreamBlock_Dense with RLE_TYPE compression data.
  * 16 bytes more.
  */
 typedef struct DatumStreamBlock_Rle_Extension
 {
-	int32 	norepeats_null_bitmap_count;
-						/*
-						 * For non-RLE_TYPE compression, if there is a NULL bit-map,
-						 * it will have row_count (see above) number of bits.
-						 *
-						 * However, for RLE_TYPE compression, we do not have a bunch
-						 * of NULL bit-map bits for a repeated item.  We just use one bit
-						 * (a 0, of course, indicating the repeated item is not NULL).  So,
-						 * the NULL bit-map count is different than row_count.
-						 */
-	
-	int32 	compress_bitmap_count;
-						/*
-						 * Number of bits in the compress bit-map.
-						 */
+	int32		norepeats_null_bitmap_count;
+	/*
+	 * For non-RLE_TYPE compression, if there is a NULL bit-map,
+	 * it will have row_count (see above) number of bits.
+	 *
+	 * However, for RLE_TYPE compression, we do not have a bunch
+	 * of NULL bit-map bits for a repeated item.  We just use one bit
+	 * (a 0, of course, indicating the repeated item is not NULL).	So,
+	 * the NULL bit-map count is different than row_count.
+	 */
 
-	int32 	repeatcounts_count;
-						/*
-						 * Total number of repeated items.
-						 *
-						 * Also, the count of the ON bits in the compress bit-map.
-						 */
+	int32		compress_bitmap_count;
+	/*
+	 * Number of bits in the compress bit-map.
+	 */
 
-	int32 	repeatcounts_size;
-						/*
-						 * Total size of the repeat counts array, when you account for
-						 * the different 1, 2, 3, and 4 byte encoding size of each count.
-						 */
-} DatumStreamBlock_Rle_Extension;
+	int32		repeatcounts_count;
+	/*
+	 * Total number of repeated items.
+	 *
+	 * Also, the count of the ON bits in the compress bit-map.
+	 */
+
+	int32		repeatcounts_size;
+	/*
+	 * Total size of the repeat counts array, when you account for
+	 * the different 1, 2, 3, and 4 byte encoding size of each count.
+	 */
+}	DatumStreamBlock_Rle_Extension;
+
+/*
+ * Datum Stream Block extension to Rle_Extension with DeltaRange.
+ * 12 bytes more.
+ */
+typedef struct DatumStreamBlock_Delta_Extension
+{
+	int32		delta_bitmap_count;
+	/*
+	 * Number of bits in the delta bit-map.
+	 */
+
+	int32		deltas_count;
+	/*
+	 * Total number of items stored with delta.
+	 *
+	 * Also, the count of the ON bits in the Delta bit-map.
+	 */
+
+	int32		deltas_size;
+	/*
+	 * Total size of the delta counts array, where you account for
+	 * the different 1, 2, 3, and 4 byte encoding size of each delta.
+	 */
+}	DatumStreamBlock_Delta_Extension;
 
 
 /* Flags */
-enum {
-    DSB_HAS_NULLBITMAP = 		0x1,
-	DSB_HAS_RLE_COMPRESSION = 	0x2,
+enum
+{
+	DSB_HAS_NULLBITMAP = 0x1,
+	DSB_HAS_RLE_COMPRESSION = 0x2,
+	DSB_HAS_DELTA_COMPRESSION = 0x4,
 };
-
 
 typedef struct DatumStreamBitMapWrite
 {
-	uint8	*buffer;
-	int32	bufferSize;
+	uint8	   *buffer;
+	int32		bufferSize;
 
-	uint8 	byteBit;
-	uint8 	*bytePointer;
-	int32 	bitOnCount;
-	int32	bitCount;
-} DatumStreamBitMapWrite;
+	uint8		byteBit;
+	uint8	   *bytePointer;
+	int32		bitOnCount;
+	int32		bitCount;
+}	DatumStreamBitMapWrite;
 
 
 typedef struct DatumStreamBitMapRead
 {
-	uint8	*buffer;
+	uint8	   *buffer;
 
-	uint8	byteBit;
-	uint8	*bytePointer;
-	int32	bitCount;
-	int32	bitPosition;
-} DatumStreamBitMapRead;
+	uint8		byteBit;
+	uint8	   *bytePointer;
+	int32		bitCount;
+	int32		bitPosition;
+#ifdef USE_ASSERT_CHECKING
+	int32		readBitOnCount;
+#endif
+}	DatumStreamBitMapRead;
 
-
-// Inline Forwards.
+/*	Inline Forwards. */
 static inline void DatumStreamBitMapRead_Init(
-	DatumStreamBitMapRead 	*bmr,
-	uint8					*buffer,
-	int32					bitCount);
+						   DatumStreamBitMapRead * bmr,
+						   uint8 * buffer,
+						   int32 bitCount);
 
 static inline bool DatumStreamBitMapRead_IsExhausted(
-	DatumStreamBitMapRead 	*bmr);
+								  DatumStreamBitMapRead * bmr);
 
 static inline void DatumStreamBitMapRead_Next(
-	DatumStreamBitMapRead 	*bmr);
+						   DatumStreamBitMapRead * bmr);
 
 static inline bool DatumStreamBitMapRead_CurrentIsOn(
-	DatumStreamBitMapRead 	*bmr);
+								  DatumStreamBitMapRead * bmr);
+
+#ifdef USE_ASSERT_CHECKING
+static inline int32
+DatumStreamBitMapRead_OnSeenCount(
+								  DatumStreamBitMapRead * bmr)
+{
+	return bmr->readBitOnCount;
+}
+#endif
 
 /*
  * DatumStreamBitMap routines.
  */
 
-static inline int32 DatumStreamBitMap_Size(
-	int32 bitCount)
+static inline int32
+DatumStreamBitMap_Size(
+					   int32 bitCount)
 {
 	return ((bitCount + 7) >> 3);
 }
 
-static inline int32 DatumStreamBitMap_CountOn(
-	uint8					*buffer,
-	int32					bitCount)
+static inline int32
+DatumStreamBitMap_CountOn(
+						  uint8 * buffer,
+						  int32 bitCount)
 {
 	DatumStreamBitMapRead bmr;
 
-	int count;
+	int			count;
 
 	DatumStreamBitMapRead_Init(
-							&bmr,
-							buffer,
-							bitCount);
+							   &bmr,
+							   buffer,
+							   bitCount);
 
 	/*
 	 * Scan the whole bit-map.
@@ -189,25 +235,27 @@ static inline int32 DatumStreamBitMap_CountOn(
 
 	return count;
 }
+
 /*
  * DatumStreamBitMapWrite routines.
  */
 
-// Forward.
+/*	Forward. */
 static inline void DatumStreamBitMapWrite_Set(
-	DatumStreamBitMapWrite 	*bmw);
+						   DatumStreamBitMapWrite * bmw);
 
 /*
  * Initialize writing a bit-map.
  *
- * Writing is automatically positioned BEFORE THE FIRST BIT.  
+ * Writing is automatically positioned BEFORE THE FIRST BIT.
  *
  * Use DatumStreamBitMapWrite_AddBit to add a bit to the bit-map.
  */
-static inline void DatumStreamBitMapWrite_Init(
-	DatumStreamBitMapWrite 	*bmw,
-	uint8					*buffer,
-	int32					bufferSize)
+static inline void
+DatumStreamBitMapWrite_Init(
+							DatumStreamBitMapWrite * bmw,
+							uint8 * buffer,
+							int32 bufferSize)
 {
 	bmw->buffer = buffer;
 	bmw->bufferSize = bufferSize;
@@ -218,12 +266,13 @@ static inline void DatumStreamBitMapWrite_Init(
 	bmw->bitCount = 0;
 }
 
-static inline void DatumStreamBitMapWrite_ZeroFill(
-	DatumStreamBitMapWrite 	*bmw,
-	int32					bitCount)
+static inline void
+DatumStreamBitMapWrite_ZeroFill(
+								DatumStreamBitMapWrite * bmw,
+								int32 bitCount)
 {
-	int32 newSize;
-	int32 bitNumberInByte;
+	int32		newSize;
+	int32		bitNumberInByte;
 
 	/*
 	 * Assert the bit-map is newly initialized.
@@ -241,7 +290,7 @@ static inline void DatumStreamBitMapWrite_ZeroFill(
 #ifdef USE_ASSERT_CHECKING
 		if (newSize > bmw->bufferSize)
 		{
-			elog(ERROR, 
+			elog(ERROR,
 				 "New fill bit-map buffer size %d greater than maximum buffer size %d",
 				 newSize,
 				 bmw->bufferSize);
@@ -251,41 +300,42 @@ static inline void DatumStreamBitMapWrite_ZeroFill(
 		/*
 		 * Zero fill out and set the write variables.
 		 */
-	    memset(bmw->buffer, 0, newSize);
+		memset(bmw->buffer, 0, newSize);
 
 		bitNumberInByte = (bitCount - 1) & 7;
 		bmw->byteBit = 1 << bitNumberInByte;
 
 		bmw->bytePointer = &bmw->buffer[newSize - 1];
-		
+
 		bmw->bitCount = bitCount;
 	}
 }
 
-static inline void DatumStreamBitMapWrite_AddBit(
-	DatumStreamBitMapWrite 	*bmw,
-	bool					on)
+static inline void
+DatumStreamBitMapWrite_AddBit(
+							  DatumStreamBitMapWrite * bmw,
+							  bool on)
 {
 	if (bmw->bitCount == 0)
 	{
 		Assert(bmw->byteBit == 0);
 
-		// Zero first byte of bit-map.
+		/* Zero first byte of bit-map. */
 		(*bmw->bytePointer) = 0;
 
 		bmw->byteBit = 1;
 	}
 	else
 	{
-	    bmw->byteBit <<= 1;
+		bmw->byteBit <<= 1;
 
-	    if(bmw->byteBit == 0)
-	    {
-	    	// Zero next byte of bit-map
-	        *(++bmw->bytePointer) = 0;
+		if (bmw->byteBit == 0)
+		{
+			/* Zero next byte of bit-map */
+			*(++bmw->bytePointer) = 0;
 
-	        bmw->byteBit = 1;
-	    }
+			bmw->byteBit = 1;
+		}
 	}
 	bmw->bitCount++;
 
@@ -295,14 +345,16 @@ static inline void DatumStreamBitMapWrite_AddBit(
 	}
 }
 
-static inline bool DatumStreamBitMapWrite_CurrentIsOn(
-	DatumStreamBitMapWrite 	*bmw)
+static inline bool
+DatumStreamBitMapWrite_CurrentIsOn(
+								   DatumStreamBitMapWrite * bmw)
 {
 	return (((*bmw->bytePointer) & bmw->byteBit) != 0);
 }
 
-static inline void DatumStreamBitMapWrite_Set(
-	DatumStreamBitMapWrite 	*bmw)
+static inline void
+DatumStreamBitMapWrite_Set(
+						   DatumStreamBitMapWrite * bmw)
 {
 	Assert(!DatumStreamBitMapWrite_CurrentIsOn(bmw));
 	(*bmw->bytePointer) |= bmw->byteBit;
@@ -310,45 +362,51 @@ static inline void DatumStreamBitMapWrite_Set(
 	bmw->bitOnCount++;
 }
 
-static inline int32 DatumStreamBitMapWrite_OnCount(
-	DatumStreamBitMapWrite 	*bmw)
+static inline int32
+DatumStreamBitMapWrite_OnCount(
+							   DatumStreamBitMapWrite * bmw)
 {
 	return bmw->bitOnCount;
 }
 
-static inline int32 DatumStreamBitMapWrite_Count(
-	DatumStreamBitMapWrite 	*bmw)
+static inline int32
+DatumStreamBitMapWrite_Count(
+							 DatumStreamBitMapWrite * bmw)
 {
 	return bmw->bitCount;
 }
 
-static inline int32 DatumStreamBitMapWrite_Size(
-	DatumStreamBitMapWrite 	*bmw)
+static inline int32
+DatumStreamBitMapWrite_Size(
+							DatumStreamBitMapWrite * bmw)
 {
 	return DatumStreamBitMap_Size(bmw->bitCount);
 }
 
-static inline int32 DatumStreamBitMapWrite_NextSize(
-	DatumStreamBitMapWrite 	*bmw)
+static inline int32
+DatumStreamBitMapWrite_NextSize(
+								DatumStreamBitMapWrite * bmw)
 {
 	return DatumStreamBitMap_Size(bmw->bitCount + 1);
 }
 
-static inline int32 DatumStreamBitMapWrite_MaxSize(
-	DatumStreamBitMapWrite 	*bmw)
+static inline int32
+DatumStreamBitMapWrite_MaxSize(
+							   DatumStreamBitMapWrite * bmw)
 {
 	return bmw->bufferSize;
 }
 
-static inline void DatumStreamBitMapWrite_CopyToLargerBuffer(
-	DatumStreamBitMapWrite 	*bmw,
-	uint8					*newBuffer,
-	int32					newBufferSize)
+static inline void
+DatumStreamBitMapWrite_CopyToLargerBuffer(
+										  DatumStreamBitMapWrite * bmw,
+										  uint8 * newBuffer,
+										  int32 newBufferSize)
 {
 	Assert(newBufferSize > bmw->bufferSize);
 
 	memcpy(newBuffer, bmw->buffer, DatumStreamBitMapWrite_Size(bmw));
-	
+
 	bmw->bytePointer = newBuffer + (bmw->bytePointer - bmw->buffer);
 
 	bmw->buffer = newBuffer;
@@ -358,43 +416,55 @@ static inline void DatumStreamBitMapWrite_CopyToLargerBuffer(
 /*
  * DatumStreamBitMapRead routines.
  */
-	
+
 /*
  * Initialize reading a bit-map.
  *
  * Reading is automatically positioned BEFORE THE FIRST BIT.
  */
-static inline void DatumStreamBitMapRead_Init(
-	DatumStreamBitMapRead 	*bmr,
-	uint8					*buffer,
-	int32					bitCount)
+static inline void
+DatumStreamBitMapRead_Init(
+						   DatumStreamBitMapRead * bmr,
+						   uint8 * buffer,
+						   int32 bitCount)
 {
 	Assert(bitCount >= 0);
 
-	bmr->buffer =  buffer;
+	bmr->buffer = buffer;
 
 	bmr->bytePointer = buffer;
 	bmr->byteBit = 0;
 	bmr->bitCount = bitCount;
 	bmr->bitPosition = -1;
+
+#ifdef USE_ASSERT_CHECKING
+	bmr->readBitOnCount = 0;
+#endif
+
 }
 
-static inline bool DatumStreamBitMapRead_IsExhausted(
-	DatumStreamBitMapRead 	*bmr)
+static inline bool
+DatumStreamBitMapRead_IsExhausted(
+								  DatumStreamBitMapRead * bmr)
 {
 	return (bmr->bitPosition >= bmr->bitCount - 1);
 }
 
-static inline bool DatumStreamBitMapRead_InRange(
-	DatumStreamBitMapRead 	*bmr)
+static inline bool
+DatumStreamBitMapRead_InRange(
+							  DatumStreamBitMapRead * bmr)
 {
 	return (bmr->bitPosition < bmr->bitCount);
 }
 
-static inline bool DatumStreamBitMapRead_CurrentIsOn(
-	DatumStreamBitMapRead 	*bmr)
+static inline bool
+DatumStreamBitMapRead_CurrentIsOn(
+								  DatumStreamBitMapRead * bmr)
 {
-	// PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG builds...
+	/*
+	 * PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG
+	 * builds...
+	 */
 #ifdef USE_ASSERT_CHECKING
 	if (bmr->bitPosition >= bmr->bitCount)
 	{
@@ -406,16 +476,21 @@ static inline bool DatumStreamBitMapRead_CurrentIsOn(
 	return (((*bmr->bytePointer) & bmr->byteBit) != 0);
 }
 
-static inline int32 DatumStreamBitMapRead_Position(
-	DatumStreamBitMapRead 	*bmr)
+static inline int32
+DatumStreamBitMapRead_Position(
+							   DatumStreamBitMapRead * bmr)
 {
 	return bmr->bitPosition;
 }
 
-static inline void DatumStreamBitMapRead_Next(
-	DatumStreamBitMapRead 	*bmr)
+static inline void
+DatumStreamBitMapRead_Next(
+						   DatumStreamBitMapRead * bmr)
 {
-	// PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG builds...
+	/*
+	 * PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG
+	 * builds...
+	 */
 #ifdef USE_ASSERT_CHECKING
 	if (bmr->bitPosition >= bmr->bitCount)
 	{
@@ -434,26 +509,35 @@ static inline void DatumStreamBitMapRead_Next(
 	}
 	else
 	{
-	    bmr->byteBit <<= 1;
+		bmr->byteBit <<= 1;
 
-	    if(bmr->byteBit == 0)
-	    {
-	        ++bmr->bytePointer;
+		if (bmr->byteBit == 0)
+		{
+			++bmr->bytePointer;
 
-	        bmr->byteBit = 1;
-	    }
+			bmr->byteBit = 1;
+		}
 	}
 	bmr->bitPosition++;
+
+#ifdef USE_ASSERT_CHECKING
+	if (DatumStreamBitMapRead_CurrentIsOn(bmr))
+	{
+		bmr->readBitOnCount++;
+	}
+#endif
 }
 
-static inline int32 DatumStreamBitMapRead_Size(
-	DatumStreamBitMapRead 	*bmr)
+static inline int32
+DatumStreamBitMapRead_Size(
+						   DatumStreamBitMapRead * bmr)
 {
 	return DatumStreamBitMap_Size(bmr->bitCount);
 }
 
-static inline int32 DatumStreamBitMapRead_Count(
-	DatumStreamBitMapRead 	*bmr)
+static inline int32
+DatumStreamBitMapRead_Count(
+							DatumStreamBitMapRead * bmr)
 {
 	return bmr->bitCount;
 }
@@ -470,15 +554,17 @@ static inline int32 DatumStreamBitMapRead_Count(
 #define Int32Compress_LenFieldShift 6
 
 inline static int32 DatumStreamInt32Compress_Decode(
-	uint8 	*buffer,
-	int32	*byteLen);
+								uint8 * buffer,
+								int32 * byteLen);
+
 #ifdef USE_ASSERT_CHECKING
-// Currently only used in an Assert expression.
+/*	Currently only used in an Assert expression. */
 inline static int32 DatumStreamInt32Compress_DecodeLen(
-	uint8 	*buffer);
+								   uint8 * buffer);
 #endif
 
-inline static int32 DatumStreamInt32Compress_Size(int32 value)
+inline static int32
+DatumStreamInt32Compress_Size(int32 value)
 {
 	if (value <= Int32Compress_1ByteLimit)
 	{
@@ -499,46 +585,47 @@ inline static int32 DatumStreamInt32Compress_Size(int32 value)
 	}
 }
 
-inline static int32 DatumStreamInt32Compress_Encode(
-	uint8 	*buffer,
-	int32 	value)
+inline static int32
+DatumStreamInt32Compress_Encode(
+								uint8 * buffer,
+								int32 value)
 {
-	int32	byteLen;
+	int32		byteLen;
 
 	if (value <= Int32Compress_1ByteLimit)
 	{
-		buffer[0] = (uint8)value;
+		buffer[0] = (uint8) value;
 		byteLen = 1;
 	}
 	else if (value <= Int32Compress_2ByteLimit)
 	{
-		buffer[0] = (1 << Int32Compress_LenFieldShift) | (uint8)(value >> 8);
-		buffer[1] = (uint8)(value);
+		buffer[0] = (1 << Int32Compress_LenFieldShift) | (uint8) (value >> 8);
+		buffer[1] = (uint8) (value);
 		byteLen = 2;
 	}
 	else if (value <= Int32Compress_3ByteLimit)
 	{
-		buffer[0] = (2 << Int32Compress_LenFieldShift) | (uint8)(value >> 16);
-		buffer[1] = (uint8)(value >> 8);
-		buffer[2] = (uint8)(value);
+		buffer[0] = (2 << Int32Compress_LenFieldShift) | (uint8) (value >> 16);
+		buffer[1] = (uint8) (value >> 8);
+		buffer[2] = (uint8) (value);
 		byteLen = 3;
 	}
 	else
 	{
 		Assert(value <= Int32Compress_4ByteLimit);
 
-		buffer[0] = (3 << Int32Compress_LenFieldShift) | (uint8)(value >> 24);
-		buffer[1] = (uint8)(value >> 16);
-		buffer[2] = (uint8)(value >> 8);
-		buffer[3] = (uint8)(value);
+		buffer[0] = (3 << Int32Compress_LenFieldShift) | (uint8) (value >> 24);
+		buffer[1] = (uint8) (value >> 16);
+		buffer[2] = (uint8) (value >> 8);
+		buffer[3] = (uint8) (value);
 		byteLen = 4;
 	}
 
 #ifdef USE_ASSERT_CHECKING
 	{
-		int32 decodeLen;
-		int32 decodedValue;
-		int32 decodedLen;
+		int32		decodeLen;
+		int32		decodedValue;
+		int32		decodedLen;
 
 		decodeLen = DatumStreamInt32Compress_DecodeLen(buffer);
 		if (decodeLen != byteLen)
@@ -565,12 +652,13 @@ inline static int32 DatumStreamInt32Compress_Encode(
 }
 
 #ifdef USE_ASSERT_CHECKING
-// Currently only used in an Assert expression.
-inline static int32 DatumStreamInt32Compress_DecodeLen(
-	uint8 	*buffer)
+/*	Currently only used in an Assert expression. */
+inline static int32
+DatumStreamInt32Compress_DecodeLen(
+								   uint8 * buffer)
 {
-	uint8	masked;
-	uint8	lenFieldOnly;
+	uint8		masked;
+	uint8		lenFieldOnly;
 
 	masked = (buffer[0] & Int32Compress_LenFieldMask);
 	lenFieldOnly = masked >> Int32Compress_LenFieldShift;
@@ -579,43 +667,239 @@ inline static int32 DatumStreamInt32Compress_DecodeLen(
 }
 #endif
 
-inline static int32 DatumStreamInt32Compress_Decode(
-	uint8 	*buffer,
-	int32	*byteLen)
+inline static int32
+DatumStreamInt32Compress_Decode(
+								uint8 * buffer,
+								int32 * byteLen)
 {
-	uint8	masked;
-	uint8	lenFieldOnly;
-	int32	len;
-	int32	value = 0;
+	uint8		masked;
+	uint8		lenFieldOnly;
+	int32		len;
+	int32		value = 0;
 
 	masked = (buffer[0] & Int32Compress_LenFieldMask);
 	lenFieldOnly = masked >> Int32Compress_LenFieldShift;
 	len = lenFieldOnly + 1;
 	switch (len)
 	{
-	case 1:
-		value = (buffer[0] & ~Int32Compress_LenFieldMask);
-		break;
-	case 2:
-		value = ((int32)(buffer[0] & ~Int32Compress_LenFieldMask) << 8) |
+		case 1:
+			value = (buffer[0] & ~Int32Compress_LenFieldMask);
+			break;
+		case 2:
+			value = ((int32) (buffer[0] & ~Int32Compress_LenFieldMask) << 8) |
 				buffer[1];
-		break;
-	case 3:
-		value = ((int32)(buffer[0] & ~Int32Compress_LenFieldMask) << 16) |
-				((int32)buffer[1] << 8) |
+			break;
+		case 3:
+			value = ((int32) (buffer[0] & ~Int32Compress_LenFieldMask) << 16) |
+				((int32) buffer[1] << 8) |
 				buffer[2];
-		break;
-	case 4:
-		value = ((int32)(buffer[0] & ~Int32Compress_LenFieldMask) << 24) |
-				((int32)buffer[1] << 16) |
-				((int32)buffer[2] << 8) |
+			break;
+		case 4:
+			value = ((int32) (buffer[0] & ~Int32Compress_LenFieldMask) << 24) |
+				((int32) buffer[1] << 16) |
+				((int32) buffer[2] << 8) |
 				buffer[3];
-		break;
-	default:
-		ereport(FATAL,
-				(errmsg("Unexpected compressed integer byte length %d", 
-			 			len)));
-		break;
+			break;
+		default:
+			ereport(FATAL,
+					(errmsg("Unexpected compressed integer byte length %d",
+							len)));
+			break;
+	}
+
+	*byteLen = len;
+
+	return value;
+}
+
+/*
+ * DatumStreamBlockInt32CompressReserved3.
+ */
+#define Int32CompressReserved3_MaxByteLen 4
+#define Int32CompressReserved3_1ByteLimit 0x1F
+#define Int32CompressReserved3_2ByteLimit 0x1FFF
+#define Int32CompressReserved3_3ByteLimit 0x1FFFFF
+#define Int32CompressReserved3_4ByteLimit 0x1FFFFFFF
+#define Int32CompressReserved3_LenFieldMask 0xC0
+#define Int32CompressReserved3_LenFieldShift 6
+#define Int32CompressReserved3_ReservedFieldMask 0xE0
+#define Int32CompressReserved3_SignPositiveMask 0x20
+
+inline static int32 DatumStreamInt32CompressReserved3_Decode(
+										 uint8 * buffer,
+										 int32 * byteLen,
+										 bool *sign);
+
+#ifdef USE_ASSERT_CHECKING
+/*	Currently only used in an Assert expression. */
+inline static int32 DatumStreamInt32CompressReserved3_DecodeLen(
+											uint8 * buffer);
+#endif
+
+inline static int32
+DatumStreamInt32CompressReserved3_Size(int32 value)
+{
+	if (value <= Int32CompressReserved3_1ByteLimit)
+	{
+		return 1;
+	}
+	else if (value <= Int32CompressReserved3_2ByteLimit)
+	{
+		return 2;
+	}
+	else if (value <= Int32CompressReserved3_3ByteLimit)
+	{
+		return 3;
+	}
+	else
+	{
+		Assert(value <= Int32CompressReserved3_4ByteLimit);
+		return 4;
+	}
+}
+
+inline static int32
+DatumStreamInt32CompressReserved3_Encode(
+										 uint8 * buffer,
+										 int32 value,
+										 bool sign)
+{
+	int32		byteLen;
+
+	if (value <= Int32CompressReserved3_1ByteLimit)
+	{
+		buffer[0] = (uint8) value;
+		byteLen = 1;
+	}
+	else if (value <= Int32CompressReserved3_2ByteLimit)
+	{
+		buffer[0] = (1 << Int32CompressReserved3_LenFieldShift) | (uint8) (value >> 8);
+		buffer[1] = (uint8) (value);
+		byteLen = 2;
+	}
+	else if (value <= Int32CompressReserved3_3ByteLimit)
+	{
+		buffer[0] = (2 << Int32CompressReserved3_LenFieldShift) | (uint8) (value >> 16);
+		buffer[1] = (uint8) (value >> 8);
+		buffer[2] = (uint8) (value);
+		byteLen = 3;
+	}
+	else
+	{
+		Assert(value <= Int32CompressReserved3_4ByteLimit);
+
+		buffer[0] = (3 << Int32CompressReserved3_LenFieldShift) | (uint8) (value >> 24);
+		buffer[1] = (uint8) (value >> 16);
+		buffer[2] = (uint8) (value >> 8);
+		buffer[3] = (uint8) (value);
+		byteLen = 4;
+	}
+
+	/* Set the sign bit if positive */
+	if (sign)
+	{
+		buffer[0] = buffer[0] | Int32CompressReserved3_SignPositiveMask;
+	}
+#ifdef USE_ASSERT_CHECKING
+	{
+		int32		decodeLen;
+		int32		decodedValue;
+		int32		decodedLen;
+		bool		decodedSign;
+
+		decodeLen = DatumStreamInt32CompressReserved3_DecodeLen(buffer);
+		if (decodeLen != byteLen)
+		{
+			elog(ERROR, "integer compress Reserved3 encode / decode length difference (expected %d, found %d)",
+				 byteLen, decodeLen);
+		}
+
+		decodedValue = DatumStreamInt32CompressReserved3_Decode(buffer, &decodedLen, &decodedSign);
+		if (decodedValue != value)
+		{
+			elog(ERROR, "integer compress Reserved3 encode / decode value difference (expected %d, found %d)",
+				 value, decodedValue);
+		}
+
+		if (decodedSign != sign)
+		{
+			elog(ERROR, "integer compress Reserved3 encode / decode sign difference (expected %d, found %d)",
+				 sign, decodedSign);
+		}
+
+		if (decodedLen != byteLen)
+		{
+			elog(ERROR, "integer compress Reserved3 encode / decode length difference #2 (expected %d, found %d)",
+				 byteLen, decodedLen);
+		}
+	}
+#endif
+	return byteLen;
+}
+
+#ifdef USE_ASSERT_CHECKING
+/*	Currently only used in an Assert expression. */
+inline static int32
+DatumStreamInt32CompressReserved3_DecodeLen(
+											uint8 * buffer)
+{
+	uint8		masked;
+	uint8		lenFieldOnly;
+
+	masked = (buffer[0] & Int32CompressReserved3_LenFieldMask);
+	lenFieldOnly = masked >> Int32CompressReserved3_LenFieldShift;
+
+	return lenFieldOnly + 1;
+}
+#endif
+
+inline static int32
+DatumStreamInt32CompressReserved3_Decode(
+										 uint8 * buffer,
+										 int32 * byteLen,
+										 bool *sign)
+{
+	uint8		masked;
+	uint8		lenFieldOnly;
+	int32		len;
+	int32		value = 0;
+
+	masked = (buffer[0] & Int32CompressReserved3_LenFieldMask);
+	lenFieldOnly = masked >> Int32CompressReserved3_LenFieldShift;
+	len = lenFieldOnly + 1;
+
+	if (buffer[0] & Int32CompressReserved3_SignPositiveMask)
+		*sign = true;
+	//Positive
+		else
+		*sign = false;
+	//Negative
+
+		switch (len)
+	{
+		case 1:
+			value = (buffer[0] & ~Int32CompressReserved3_ReservedFieldMask);
+			break;
+		case 2:
+			value = ((int32) (buffer[0] & ~Int32CompressReserved3_ReservedFieldMask) << 8) |
+				buffer[1];
+			break;
+		case 3:
+			value = ((int32) (buffer[0] & ~Int32CompressReserved3_ReservedFieldMask) << 16) |
+				((int32) buffer[1] << 8) |
+				buffer[2];
+			break;
+		case 4:
+			value = ((int32) (buffer[0] & ~Int32CompressReserved3_ReservedFieldMask) << 24) |
+				((int32) buffer[1] << 16) |
+				((int32) buffer[2] << 8) |
+				buffer[3];
+			break;
+		default:
+			ereport(FATAL,
+					(errmsg("Unexpected compressed integer byte length %d",
+							len)));
+			break;
 	}
 
 	*byteLen = len;
@@ -625,12 +909,12 @@ inline static int32 DatumStreamInt32Compress_Decode(
 
 typedef struct DatumStreamTypeInfo
 {
-    /* Info determined by schema */
-    int32 datumlen;		    /* Datum length */
-    int32 typid;            /* type id */
-    char  align;		    /* Align */
-    bool  byval;            /* if it is a by value type */ 
-} DatumStreamTypeInfo;
+	/* Info determined by schema */
+	int32		datumlen;		/* Datum length */
+	int32		typid;			/* type id */
+	char		align;			/* Align */
+	bool		byval;			/* if it is a by value type */
+}	DatumStreamTypeInfo;
 
 #define MAXREPEAT_COUNT 0x3FFFFFFF
 
@@ -639,218 +923,260 @@ typedef struct DatumStreamTypeInfo
 
 typedef struct DatumStreamBlockWrite
 {
-	char		eyecatcher[DatumStreamBlockWrite_EyecatcherLen];	
-								/* 
-								 * Used to validate this is a DatumStreamBlockWrite
-								 * reference.  3 characters plus NUL.
-								 */
+	char		eyecatcher[DatumStreamBlockWrite_EyecatcherLen];
+	/*
+	 * Used to validate this is a DatumStreamBlockWrite
+	 * reference.  3 characters plus NUL.
+	 */
 
-	DatumStreamTypeInfo	*typeInfo;
+	DatumStreamTypeInfo *typeInfo;
 
 	/*
-	 * Version of datum stream  block format -- original or RLE_TYPE,
+	 * Version of datum stream	block format -- original or RLE_TYPE,
 	 */
-	DatumStreamVersion	datumStreamVersion;
+	DatumStreamVersion datumStreamVersion;
 
-	bool	rle_want_compression;
+	bool		rle_want_compression;
+	bool		delta_want_compression;
 
-	int32	initialMaxDatumPerBlock;
-	int32	maxDatumPerBlock;
+	int32		initialMaxDatumPerBlock;
+	int32		maxDatumPerBlock;
 
-	int32	maxDataBlockSize;
+	int32		maxDataBlockSize;
 
-	int		(*errdetailCallback) (void *errdetailArg);
-	void	*errdetailArg;
-	int		(*errcontextCallback) (void *errcontextArg);
-	void	*errcontextArg;
+	int			(*errdetailCallback) (void *errdetailArg);
+	void	   *errdetailArg;
+	int			(*errcontextCallback) (void *errcontextArg);
+	void	   *errcontextArg;
 
-    /* Common current pointer and null bit-map */
-    int32 nth;		    /* Current count of datum in the block, including NULLs. */
-	int32 physical_datum_count;
-    bool  has_null;		/* if we have any NULLs at all */
+	/* Common current pointer and null bit-map */
+	int32		nth;			/* Current count of datum in the block,
+								 * including NULLs. */
+	int32		physical_datum_count;
+	bool		has_null;		/* if we have any NULLs at all */
 
-	DatumStreamBitMapWrite	null_bitmap;
+	DatumStreamBitMapWrite null_bitmap;
 
-    uint8* datump;		/* pointer to datum */
+	uint8	   *datump;			/* pointer to datum */
 
-	int32	always_null_bitmap_count;
+	int32		always_null_bitmap_count;
 
 	/* RLE_TYPE variables */
-	bool 	rle_has_compression;
+	bool		rle_has_compression;
 
-	uint8	*rle_last_item;
-	int32	rle_last_item_size;
-	bool	rle_last_item_is_repeated;
+	uint8	   *rle_last_item;
+	int32		rle_last_item_size;
+	bool		rle_last_item_is_repeated;
 
-	int32	rle_total_repeat_items_written;
+	int32		rle_total_repeat_items_written;
 
-	DatumStreamBitMapWrite	rle_compress_bitmap;
+	DatumStreamBitMapWrite rle_compress_bitmap;
 
-	int32 	rle_repeatcounts_count;
-	int32 	rle_repeatcounts_current_size;
+	int32		rle_repeatcounts_count;
+	int32		rle_repeatcounts_current_size;
 
-    /* Common buffers */
-    MemoryContext memctxt;
+	/* Delta Range variables */
+	bool		delta_has_compression;
+	bool		not_first_datum;
 
-    uint8 *null_bitmap_buffer;
-    int  null_bitmap_buffer_size;
+	/* 8 bytes is max length Delta Compression supports */
+	Datum		compare_item;
 
-    uint8 *datum_buffer;
-    int32  datum_buffer_size;
-	uint8 *datum_afterp;
+	DatumStreamBitMapWrite delta_bitmap;
 
-    /* RLE_TYPE buffers */
-    uint8 *rle_compress_bitmap_buffer;
-    int32  rle_compress_bitmap_buffer_size;
+	int32		deltas_count;
+	int32		deltas_current_size;
 
-    int32 *rle_repeatcounts;
-    int32  rle_repeatcounts_maxcount;
+	/* Common buffers */
+	MemoryContext memctxt;
 
-    /* EOF of current file */
-	int64 savings;
-	int64 remember_savings;
-} DatumStreamBlockWrite;
+	uint8	   *null_bitmap_buffer;
+	int			null_bitmap_buffer_size;
+
+	uint8	   *datum_buffer;
+	int32		datum_buffer_size;
+	uint8	   *datum_afterp;
+
+	/* RLE_TYPE buffers */
+	uint8	   *rle_compress_bitmap_buffer;
+	int32		rle_compress_bitmap_buffer_size;
+
+	int32	   *rle_repeatcounts;
+	int32		rle_repeatcounts_maxcount;
+
+	/* Delta Range buffers */
+	uint8	   *delta_bitmap_buffer;
+	int32		delta_bitmap_buffer_size;
+
+	int32	   *deltas;
+	bool	   *delta_sign;
+	int32		deltas_maxcount;
+
+	/* EOF of current file */
+	int64		savings;
+	int64		remember_savings;
+}	DatumStreamBlockWrite;
 
 #define DatumStreamBlockRead_Eyecatcher "DBE"
 #define DatumStreamBlockRead_EyecatcherLen 4
 
 typedef struct DatumStreamBlockRead
 {
-	// A copy of the type information from DatumStream module since it is
-	// referenced so often.
-	DatumStreamTypeInfo	typeInfo;
+	/* A copy of the type information from DatumStream module since it is */
+	/* referenced so often. */
+	DatumStreamTypeInfo typeInfo;
 
 	/*
-	 * Version of datum stream  block format -- original or RLE_TYPE,
+	 * Version of datum stream	block format -- original or RLE_TYPE,
 	 */
-	DatumStreamVersion	datumStreamVersion;
+	DatumStreamVersion datumStreamVersion;
 
-    /* Common current pointer and null bit-map */
-    int32 	nth;		    /* CURRENT position of datum in the block, including NULLs. */
-	int32 	logical_row_count;		
-							/* 
-							 * Total number of datum in block, including NULLs.
-							 */
+	/* Common current pointer and null bit-map */
+	int32		nth;			/* CURRENT position of datum in the block,
+								 * including NULLs. */
+	int32		logical_row_count;
+	/*
+	 * Total number of datum in block, including NULLs.
+	 */
 
-	uint8* datump;		/* pointer to datum */
-							
-	int32	physical_datum_index;
-	int32	physical_datum_count;
+	uint8	   *datump;			/* pointer to datum */
 
-	uint8	*datum_beginp;
-	uint8	*datum_afterp;
+	int32		physical_datum_index;
+	int32		physical_datum_count;
 
-    bool  	has_null;		/* if we have any NULLs at all */
+	uint8	   *datum_beginp;
+	uint8	   *datum_afterp;
+
+	bool		has_null;		/* if we have any NULLs at all */
 
 	/*
 	 * Pointer to buffer containing the read data.
 	 */
-	uint8	*buffer_beginp;
+	uint8	   *buffer_beginp;
 
-	DatumStreamBitMapRead	null_bitmap;
+	DatumStreamBitMapRead null_bitmap;
 
 	/*
 	 * Information unpacked from the block header, etc.
 	 */
-	uint8	*null_bitmap_beginp;
+	uint8	   *null_bitmap_beginp;
 
-	bool	rle_can_have_compression;
+	bool		rle_can_have_compression;
 
-    uint8	*rle_compress_beginp;
-	uint8	*rle_repeatcountsp;
+	uint8	   *rle_compress_beginp;
+	uint8	   *rle_repeatcountsp;
+	uint8	   *delta_beginp;
+	uint8	   *delta_deltasp;
+	Datum		delta_datum_p;
 
-	int32 	rle_norepeats_null_bitmap_count;
-	int32 	rle_compress_bitmap_count;
-	int32 	rle_repeatcounts_count;
-	int32 	rle_repeatcounts_size;
+	int32		rle_norepeats_null_bitmap_count;
+	int32		rle_compress_bitmap_count;
+	int32		rle_repeatcounts_count;
+	int32		rle_repeatcounts_size;
+
+	bool		delta_item;
+	int32		delta_bitmap_count;
+	int32		deltas_count;
+	int32		deltas_size;
 
 	/* Dense write variables */
-	bool 	rle_block_was_compressed;
+	bool		rle_block_was_compressed;
 
-	DatumStreamBitMapRead	rle_compress_bitmap;
+	DatumStreamBitMapRead rle_compress_bitmap;
 
-	int32	rle_repeatcounts_index;
-	bool	rle_in_repeated_item;
-	int32	rle_repeated_item_count;
+	int32		rle_repeatcounts_index;
+	bool		rle_in_repeated_item;
+	int32		rle_repeated_item_count;
 
-	int32	rle_total_repeat_items_read;
+	int32		rle_total_repeat_items_read;
+
+	/* Delta varibales */
+	bool		delta_block_was_compressed;
+	DatumStreamBitMapRead delta_bitmap;
 
 	/*
 	 * Keep less frequently accessed fields down here for possible better CPU data cache
 	 * performance.
 	 */
-	
-	char		eyecatcher[DatumStreamBlockRead_EyecatcherLen];	
-								/* 
-								 * Used to validate this is a DatumStreamBlockRead
-								 * reference.  3 characters plus NUL.
-								 */
 
-	int32	physical_data_size;
+	char		eyecatcher[DatumStreamBlockRead_EyecatcherLen];
+	/*
+	 * Used to validate this is a DatumStreamBlockRead
+	 * reference.  3 characters plus NUL.
+	 */
 
-	int32	maxDataBlockSize;
+	int32		physical_data_size;
 
-	int		(*errdetailCallback) (void *errdetailArg);
-	void	*errdetailArg;
-	int		(*errcontextCallback) (void *errcontextArg);
-	void	*errcontextArg;
+	int32		maxDataBlockSize;
 
-	MemoryContext	memctxt;
+	int			(*errdetailCallback) (void *errdetailArg);
+	void	   *errdetailArg;
+	int			(*errcontextCallback) (void *errcontextArg);
+	void	   *errcontextArg;
 
-} DatumStreamBlockRead;
+	MemoryContext memctxt;
+
+}	DatumStreamBlockRead;
 
 extern char *DatumStreamVersion_String(DatumStreamVersion datumStreamVersion);
 
 /*
  * varlena header info to string.
  */
-extern char *VarlenaInfoToString(uint8 *p);
-extern char *VarlenaInfoToString2(uint8 *p);
+extern char *VarlenaInfoToString(uint8 * p);
+extern char *VarlenaInfoToString2(uint8 * p);
 
 extern int errdetail_datumstreamblockread(
-	DatumStreamBlockRead 	*dsr);
+							   DatumStreamBlockRead * dsr);
 
 extern int errcontext_datumstreamblockread(
-	DatumStreamBlockRead 	*dsr);
+								DatumStreamBlockRead * dsr);
 
 #ifdef USE_ASSERT_CHECKING
-extern void
-DatumStreamBlockRead_PrintVarlenaInfo(
-								DatumStreamBlockRead *dsr,
-								uint8 *p);
+extern void DatumStreamBlockRead_PrintVarlenaInfo(
+									  DatumStreamBlockRead * dsr,
+									  uint8 * p);
 #endif
 
 #ifdef USE_ASSERT_CHECKING
 extern void DatumStreamBlockRead_CheckDenseGetInvariant(
-	DatumStreamBlockRead 	*dsr);
+											DatumStreamBlockRead * dsr);
 #endif
 
 /* Stream access method */
-inline static void DatumStreamBlockRead_Get(DatumStreamBlockRead *dsr, Datum *datum, bool *null)
+inline static void
+DatumStreamBlockRead_Get(DatumStreamBlockRead * dsr, Datum *datum, bool *null)
 {
-	// PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG builds...
+	/*
+	 * PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG
+	 * builds...
+	 */
 #ifdef USE_ASSERT_CHECKING
 	if (strncmp(dsr->eyecatcher, DatumStreamBlockRead_Eyecatcher, DatumStreamBlockRead_EyecatcherLen) != 0)
 		elog(FATAL, "DatumStreamBlockRead data structure not valid (eyecatcher)");
 #endif
 
 #ifdef USE_ASSERT_CHECKING
-	if (dsr->datumStreamVersion == DatumStreamVersion_Dense)
+	if ((dsr->datumStreamVersion == DatumStreamVersion_Dense) ||
+		(dsr->datumStreamVersion == DatumStreamVersion_Dense_Enhanced))
 	{
 		DatumStreamBlockRead_CheckDenseGetInvariant(dsr);
 	}
 #endif
 
-	if(dsr->has_null && DatumStreamBitMapRead_CurrentIsOn(&dsr->null_bitmap))
+	if (dsr->has_null && DatumStreamBitMapRead_CurrentIsOn(&dsr->null_bitmap))
 	{
-		// PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG builds...
+		/*
+		 * PERFORMANCE EXPERIMENT: Only do integrity and trace checking for
+		 * DEBUG builds...
+		 */
 #ifdef USE_ASSERT_CHECKING
 		if (Debug_appendonly_print_scan_tuple)
 		{
 			ereport(LOG,
 					(errmsg("Datum stream block %s read is returning NULL "
-							"(nth %d)",			
-							DatumStreamVersion_String(dsr->datumStreamVersion),
+							"(nth %d)",
+						  DatumStreamVersion_String(dsr->datumStreamVersion),
 							dsr->nth),
 					 errOmitLocation(true),
 					 errdetail_datumstreamblockread(dsr),
@@ -867,23 +1193,28 @@ inline static void DatumStreamBlockRead_Get(DatumStreamBlockRead *dsr, Datum *da
 	if (dsr->typeInfo.datumlen == -1)
 	{
 #ifdef USE_ASSERT_CHECKING
-		int32 varLen;
+		int32		varLen;
 #endif
+		Assert(dsr->delta_item == false);
+
 		*datum = PointerGetDatum(dsr->datump);
 		Assert(VARATT_IS_SHORT_D(*datum) || !VARATT_IS_EXTERNAL_D(*datum));
-	
-		// PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG builds...
+
+		/*
+		 * PERFORMANCE EXPERIMENT: Only do integrity and trace checking for
+		 * DEBUG builds...
+		 */
 #ifdef USE_ASSERT_CHECKING
 		varLen = VARSIZE_ANY_D(*datum);
-	
+
 		if (varLen < 0 || varLen > dsr->physical_data_size)
 		{
 			ereport(ERROR,
 					(errmsg("Datum stream block %s read variable-length item index %d length too large "
 							"(nth %d, logical row count %d, "
 							"item length %d, total physical data size %d, "
-							"current datum pointer %p, after data pointer %p)",
-							DatumStreamVersion_String(dsr->datumStreamVersion),
+						  "current datum pointer %p, after data pointer %p)",
+						  DatumStreamVersion_String(dsr->datumStreamVersion),
 							dsr->physical_datum_index,
 							dsr->nth,
 							dsr->logical_row_count,
@@ -895,15 +1226,15 @@ inline static void DatumStreamBlockRead_Get(DatumStreamBlockRead *dsr, Datum *da
 					 errdetail_datumstreamblockread(dsr),
 					 errcontext_datumstreamblockread(dsr)));
 		}
-	
+
 		if (dsr->datump + varLen > dsr->datum_afterp)
 		{
 			ereport(ERROR,
 					(errmsg("Datum stream block %s read variable-length item index %d length goes beyond end of block "
 							"(nth %d, logical row count %d, "
 							"item length %d, "
-							"current datum pointer %p, after data pointer %p)",
-							DatumStreamVersion_String(dsr->datumStreamVersion),
+						  "current datum pointer %p, after data pointer %p)",
+						  DatumStreamVersion_String(dsr->datumStreamVersion),
 							dsr->physical_datum_index,
 							dsr->nth,
 							dsr->logical_row_count,
@@ -914,24 +1245,24 @@ inline static void DatumStreamBlockRead_Get(DatumStreamBlockRead *dsr, Datum *da
 					 errdetail_datumstreamblockread(dsr),
 					 errcontext_datumstreamblockread(dsr)));
 		}
-	
+
 		if (Debug_datumstream_read_print_varlena_info)
 		{
 			DatumStreamBlockRead_PrintVarlenaInfo(
-												dsr,
-												dsr->datump);
+												  dsr,
+												  dsr->datump);
 		}
-	
+
 		if (Debug_appendonly_print_scan_tuple)
 		{
 			ereport(LOG,
 					(errmsg("Datum stream block %s read is returning variable-length item #%d "
-							"(nth %d, item begin %p, item offset " INT64_FORMAT ")",
-							DatumStreamVersion_String(dsr->datumStreamVersion),
+					 "(nth %d, item begin %p, item offset " INT64_FORMAT ")",
+						  DatumStreamVersion_String(dsr->datumStreamVersion),
 							dsr->physical_datum_index,
 							dsr->nth,
 							dsr->datump,
-							(int64)(dsr->datump - dsr->datum_beginp)),
+							(int64) (dsr->datump - dsr->datum_beginp)),
 					 errOmitLocation(true),
 					 errdetail_datumstreamblockread(dsr),
 					 errcontext_datumstreamblockread(dsr)));
@@ -940,136 +1271,171 @@ inline static void DatumStreamBlockRead_Get(DatumStreamBlockRead *dsr, Datum *da
 	}
 	else if (!dsr->typeInfo.byval)
 	{
+		Assert(dsr->delta_item == false);
+
 		*datum = PointerGetDatum(dsr->datump);
-		
-			// PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG builds...
+
+		/*
+		 * PERFORMANCE EXPERIMENT: Only do integrity and trace checking for
+		 * DEBUG builds...
+		 */
 #ifdef USE_ASSERT_CHECKING
 		if (Debug_appendonly_print_scan_tuple)
 		{
 			ereport(LOG,
 					(errmsg("Datum stream block %s read is returning fixed-length item #%d "
-							"(nth %d, item size %d, item begin %p, item offset " INT64_FORMAT ")",	
-							DatumStreamVersion_String(dsr->datumStreamVersion),
+							"(nth %d, item size %d, item begin %p, item offset " INT64_FORMAT ")",
+						  DatumStreamVersion_String(dsr->datumStreamVersion),
 							dsr->physical_datum_index,
 							dsr->nth,
 							dsr->typeInfo.datumlen,
 							dsr->datump,
-							(int64)(dsr->datump - dsr->datum_beginp)),
+							(int64) (dsr->datump - dsr->datum_beginp)),
 					 errOmitLocation(true),
 					 errdetail_datumstreamblockread(dsr),
 					 errcontext_datumstreamblockread(dsr)));
 		}
 #endif
-		
+
 	}
 	else
 	{
-		/*
-		 * Performance is so critical we don't use a switch statement here.
-		 */
-		if (dsr->typeInfo.datumlen == 1)
+		if (!dsr->delta_item)
 		{
-			*datum = *(uint8 *) dsr->datump;
-		}
-		else if (dsr->typeInfo.datumlen == 2)
-		{
-			Assert(IsAligned(dsr->datump, 2));
-			*datum = *(uint16 *) dsr->datump;
-		}
-		else if (dsr->typeInfo.datumlen == 4)
-		{
-			Assert(IsAligned(dsr->datump, 4));
-			*datum = *(uint32 *) dsr->datump;
-		}
-		else if (dsr->typeInfo.datumlen == 8)
-		{
-			Assert(IsAligned(dsr->datump, 8) || IsAligned(dsr->datump, 4));
-			*datum = *(Datum *) dsr->datump;
-		}
-		else
-		{
-			*datum = 0;
-			Assert(false);
-		}
+			/*
+			 * Performance is so critical we don't use a switch statement here.
+			 */
+			if (dsr->typeInfo.datumlen == 1)
+			{
+				*datum = *(uint8 *) dsr->datump;
+			}
+			else if (dsr->typeInfo.datumlen == 2)
+			{
+				Assert(IsAligned(dsr->datump, 2));
+				*datum = *(uint16 *) dsr->datump;
+			}
+			else if (dsr->typeInfo.datumlen == 4)
+			{
+				Assert(IsAligned(dsr->datump, 4));
+				*datum = *(uint32 *) dsr->datump;
+			}
+			else if (dsr->typeInfo.datumlen == 8)
+			{
+				Assert(IsAligned(dsr->datump, 8) || IsAligned(dsr->datump, 4));
+				*datum = *(Datum *) dsr->datump;
+			}
+			else
+			{
+				*datum = 0;
+				Assert(false);
+			}
 
-			// PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG builds...
-#ifdef USE_ASSERT_CHECKING
-		if (Debug_appendonly_print_scan_tuple)
-		{
-			ereport(LOG,
-					(errmsg("Datum stream block %s read is returning fixed-length item #%d "
-							"(nth %d, item size %d, item begin %p, item offset " INT64_FORMAT ", integer " INT64_FORMAT ")",			
-							DatumStreamVersion_String(dsr->datumStreamVersion),
-							dsr->physical_datum_index,
-							dsr->nth,
-							dsr->typeInfo.datumlen,
-							dsr->datump,
-							(int64)(dsr->datump - dsr->datum_beginp),
-							(int64)*datum),
-					 errOmitLocation(true),
-					 errdetail_datumstreamblockread(dsr),
-					 errcontext_datumstreamblockread(dsr)));
-		}
-#endif
-		
-	}
-}
-
-inline static int DatumStreamBlockRead_AdvanceOrig(DatumStreamBlockRead *dsr)
-{
-    Assert(dsr);
-	
-    ++dsr->nth;		// Initially, -1.
-
-    /* Advance out of bounds? */
-    if(dsr->nth >= dsr->logical_row_count)
-        return 0;
-
-    if(dsr->has_null)
-    {
-		DatumStreamBitMapRead_Next(&dsr->null_bitmap);
-		Assert(DatumStreamBitMapRead_InRange(&dsr->null_bitmap));
-
-        if (DatumStreamBitMapRead_CurrentIsOn(&dsr->null_bitmap))
-		{
-			// PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG builds...
+			/*
+			 * PERFORMANCE EXPERIMENT: Only do integrity and trace checking
+			 * for DEBUG builds...
+			 */
 #ifdef USE_ASSERT_CHECKING
 			if (Debug_appendonly_print_scan_tuple)
 			{
 				ereport(LOG,
-						(errmsg("Datum stream block read is positioned to NULL "
-							    "(nth %d)",
-							    dsr->nth),
+						(errmsg("Datum stream block %s read is returning fixed-length item #%d "
+								"(nth %d, item size %d, item begin %p, item offset " INT64_FORMAT ", integer " INT64_FORMAT ")",
+						  DatumStreamVersion_String(dsr->datumStreamVersion),
+								dsr->physical_datum_index,
+								dsr->nth,
+								dsr->typeInfo.datumlen,
+								dsr->datump,
+								(int64) (dsr->datump - dsr->datum_beginp),
+								(int64) * datum),
 						 errOmitLocation(true),
 						 errdetail_datumstreamblockread(dsr),
-				         errcontext_datumstreamblockread(dsr)));
+						 errcontext_datumstreamblockread(dsr)));
+			}
+#endif
+		}
+		else
+		{
+			if (dsr->typeInfo.datumlen == 4)
+			{
+				*datum = (uint32) dsr->delta_datum_p;
+			}
+			else if (dsr->typeInfo.datumlen == 8)
+			{
+				*datum = dsr->delta_datum_p;
+			}
+			else
+			{
+				*datum = 0;
+				Assert(false);
+			}
+		}
+	}
+}
+
+inline static int
+DatumStreamBlockRead_AdvanceOrig(DatumStreamBlockRead * dsr)
+{
+	Assert(dsr);
+
+	++dsr->nth;
+	//Initially, -1.
+
+	/* Advance out of bounds? */
+		if (dsr->nth >= dsr->logical_row_count)
+		return 0;
+
+	if (dsr->has_null)
+	{
+		DatumStreamBitMapRead_Next(&dsr->null_bitmap);
+		Assert(DatumStreamBitMapRead_InRange(&dsr->null_bitmap));
+
+		if (DatumStreamBitMapRead_CurrentIsOn(&dsr->null_bitmap))
+		{
+			/*
+			 * PERFORMANCE EXPERIMENT: Only do integrity and trace checking
+			 * for DEBUG builds...
+			 */
+#ifdef USE_ASSERT_CHECKING
+			if (Debug_appendonly_print_scan_tuple)
+			{
+				ereport(LOG,
+					 (errmsg("Datum stream block read is positioned to NULL "
+							 "(nth %d)",
+							 dsr->nth),
+					  errOmitLocation(true),
+					  errdetail_datumstreamblockread(dsr),
+					  errcontext_datumstreamblockread(dsr)));
 			}
 #endif
 
 			return 1;
 		}
-    }
+	}
 
 	Assert(dsr->datump >= dsr->datum_beginp);
-	Assert (dsr->datump < dsr->datum_afterp);
+	Assert(dsr->datump < dsr->datum_afterp);
 
-    ++dsr->physical_datum_index;		// Initially, -1.
+	++dsr->physical_datum_index;
+	//Initially, -1.
 
-	if (dsr->physical_datum_index == 0)
+		if (dsr->physical_datum_index == 0)
 	{
-		// Pre-positioned by block read to first item.
-		
-		// PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG builds...
+		/* Pre-positioned by block read to first item. */
+
+		/*
+		 * PERFORMANCE EXPERIMENT: Only do integrity and trace checking for
+		 * DEBUG builds...
+		 */
 #ifdef USE_ASSERT_CHECKING
 		if (Debug_appendonly_print_scan_tuple)
 		{
 			ereport(LOG,
 					(errmsg("Datum stream block read advance is positioned to first item "
-						    "(nth %d, logical row count %d, item begin %p, item offset " INT64_FORMAT ")",
-						    dsr->nth,
-						    dsr->logical_row_count,
-						    dsr->datump,
-						    (int64)(dsr->datump - dsr->datum_beginp)),
+							"(nth %d, logical row count %d, item begin %p, item offset " INT64_FORMAT ")",
+							dsr->nth,
+							dsr->logical_row_count,
+							dsr->datump,
+							(int64) (dsr->datump - dsr->datum_beginp)),
 					 errOmitLocation(true),
 					 errdetail_datumstreamblockread(dsr),
 					 errcontext_datumstreamblockread(dsr)));
@@ -1078,34 +1444,40 @@ inline static int DatumStreamBlockRead_AdvanceOrig(DatumStreamBlockRead *dsr)
 	}
 	else
 	{
-		// PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG builds...
+		/*
+		 * PERFORMANCE EXPERIMENT: Only do integrity and trace checking for
+		 * DEBUG builds...
+		 */
 #ifdef USE_ASSERT_CHECKING
-		uint8 *item_beginp;
-		
+		uint8	   *item_beginp;
+
 		item_beginp = dsr->datump;
 #endif
 
 		/*
 		 * Advance the item pointer.
 		 */
-	    if(dsr->typeInfo.datumlen == -1)
-	    {
-	        struct varlena *s = (struct varlena *) dsr->datump;
+		if (dsr->typeInfo.datumlen == -1)
+		{
+			struct varlena *s = (struct varlena *) dsr->datump;
 
 			Assert(dsr->datump >= dsr->datum_beginp);
 			Assert(dsr->datump < dsr->datum_afterp);
 
-	        dsr->datump += VARSIZE_ANY(s);
-			
-			/* 
+			dsr->datump += VARSIZE_ANY(s);
+
+			/*
 			 * Skip any possible zero paddings AFTER PREVIOUS varlena data.
 			 */
-	        if(*dsr->datump == 0)
+			if (*dsr->datump == 0)
 			{
-	            dsr->datump = (uint8 *) att_align(dsr->datump, dsr->typeInfo.align);
+				dsr->datump = (uint8 *) att_align(dsr->datump, dsr->typeInfo.align);
 			}
 
-			// PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG builds...
+			/*
+			 * PERFORMANCE EXPERIMENT: Only do integrity and trace checking
+			 * for DEBUG builds...
+			 */
 #ifdef USE_ASSERT_CHECKING
 			if (dsr->datump > dsr->datum_afterp)
 			{
@@ -1113,32 +1485,32 @@ inline static int DatumStreamBlockRead_AdvanceOrig(DatumStreamBlockRead *dsr)
 						(errmsg("Datum stream block read pointer to variable-length item index %d out of bounds "
 								"(nth %d, logical row count %d, "
 								"current datum pointer %p, next datum pointer %p, after data pointer %p)",
-							    dsr->physical_datum_index,
-							    dsr->nth,
-							    dsr->logical_row_count,
-							    item_beginp,
-							    dsr->datump,
-							    dsr->datum_afterp),
+								dsr->physical_datum_index,
+								dsr->nth,
+								dsr->logical_row_count,
+								item_beginp,
+								dsr->datump,
+								dsr->datum_afterp),
 						 errOmitLocation(false),
 						 errdetail_datumstreamblockread(dsr),
-				         errcontext_datumstreamblockread(dsr)));
+						 errcontext_datumstreamblockread(dsr)));
 			}
-			
+
 			if (Debug_appendonly_print_scan_tuple)
 			{
 				ereport(LOG,
 						(errmsg("Datum stream block read advanced to variable-length item index %d "
-							    "(nth %d, logical row count %d, "
-							    "previous item begin %p, previous item offset " INT64_FORMAT ", next item begin %p)",
-							    dsr->physical_datum_index,
-							    dsr->nth,
-							    dsr->logical_row_count,
-							    item_beginp,
-							    (int64)(item_beginp - dsr->datum_beginp),
-							    dsr->datump),
+								"(nth %d, logical row count %d, "
+								"previous item begin %p, previous item offset " INT64_FORMAT ", next item begin %p)",
+								dsr->physical_datum_index,
+								dsr->nth,
+								dsr->logical_row_count,
+								item_beginp,
+								(int64) (item_beginp - dsr->datum_beginp),
+								dsr->datump),
 						 errOmitLocation(true),
 						 errdetail_datumstreamblockread(dsr),
-				         errcontext_datumstreamblockread(dsr)));
+						 errcontext_datumstreamblockread(dsr)));
 			}
 #endif
 		}
@@ -1146,45 +1518,159 @@ inline static int DatumStreamBlockRead_AdvanceOrig(DatumStreamBlockRead *dsr)
 		{
 			dsr->datump += strlen((char *) dsr->datump) + 1;
 		}
-	    else
+		else
 		{
-	        dsr->datump += dsr->typeInfo.datumlen;
-			
-				// PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG builds...
+			dsr->datump += dsr->typeInfo.datumlen;
+
+			/*
+			 * PERFORMANCE EXPERIMENT: Only do integrity and trace checking
+			 * for DEBUG builds...
+			 */
 #ifdef USE_ASSERT_CHECKING
 			if (Debug_appendonly_print_scan_tuple)
 			{
 				ereport(LOG,
 						(errmsg("Datum stream block read advanced to fixed-item item index %d "
-							    "(nth %d, logical row count %d, "
-							    "item size %d, previous item begin %p, previous item offset " INT64_FORMAT ", next item begin %p)",
-							    dsr->physical_datum_index,
-							    dsr->nth,
-							    dsr->logical_row_count,
-							    dsr->typeInfo.datumlen,
-							    item_beginp,
-							    (int64)(item_beginp - dsr->datum_beginp),
-							    dsr->datump),
+								"(nth %d, logical row count %d, "
+								"item size %d, previous item begin %p, previous item offset " INT64_FORMAT ", next item begin %p)",
+								dsr->physical_datum_index,
+								dsr->nth,
+								dsr->logical_row_count,
+								dsr->typeInfo.datumlen,
+								item_beginp,
+								(int64) (item_beginp - dsr->datum_beginp),
+								dsr->datump),
 						 errOmitLocation(true),
 						 errdetail_datumstreamblockread(dsr),
-				         errcontext_datumstreamblockread(dsr)));
+						 errcontext_datumstreamblockread(dsr)));
 			}
 #endif
 
 		}
 	}
 
-    return 1;
+	return 1;
 }
 
-inline static int DatumStreamBlockRead_AdvanceDense(DatumStreamBlockRead *dsr)
+typedef enum Delta_Compression_status
+{
+	DELTA_COMPRESSION_OK = 0,
+	DELTA_COMPRESSION_NOT_APPLIED = 1,
+	DELTA_COMPRESSION_ERROR = 2,
+
+}	Delta_Compression_status;
+
+inline static Delta_Compression_status
+DatumStreamBlockRead_AdvanceDenseDelta(DatumStreamBlockRead * dsr)
+{
+	int64		delta;
+	bool		sign;
+	int32		byteLen;
+
+	if (!dsr->delta_block_was_compressed)
+	{
+		return DELTA_COMPRESSION_NOT_APPLIED;
+	}
+
+	Assert((dsr->typeInfo.datumlen >= 4) && (dsr->typeInfo.datumlen <= 8));
+	Assert(dsr->typeInfo.byval);
+
+	DatumStreamBitMapRead_Next(&dsr->delta_bitmap);
+	Assert(DatumStreamBitMapRead_InRange(&dsr->delta_bitmap));
+
+	if (!DatumStreamBitMapRead_CurrentIsOn(&dsr->delta_bitmap))
+	{
+		/*
+		 * NOT Delta Item
+		 */
+		dsr->delta_item = false;
+
+		uint8	   *d;
+
+		if (dsr->physical_datum_index == -1)
+		{
+			d = dsr->datump;
+		}
+		else
+		{
+			d = dsr->datump + dsr->typeInfo.datumlen;
+		}
+
+		memcpy(&dsr->delta_datum_p, d, dsr->typeInfo.datumlen);
+
+		return DELTA_COMPRESSION_NOT_APPLIED;
+	}
+
+	dsr->delta_item = true;
+
+	/*
+	 * delta_datum_p should contain the current datum value
+	 * So, lets read the delta value and sign and compute it
+	 */
+	delta = DatumStreamInt32CompressReserved3_Decode(dsr->delta_deltasp, &byteLen, &sign);
+	dsr->delta_deltasp += byteLen;
+
+	if (dsr->typeInfo.datumlen == 4)
+	{
+		if (sign)
+		{
+			/* Add delta */
+			*(uint32 *) (&dsr->delta_datum_p) += delta;
+		}
+		else
+		{
+			/* Substract delta */
+			*(uint32 *) (&dsr->delta_datum_p) -= delta;
+		}
+	}
+	else if (dsr->typeInfo.datumlen == 8)
+	{
+		if (sign)
+		{
+			/* Add delta */
+			dsr->delta_datum_p += delta;
+		}
+		else
+		{
+			/* Substract delta */
+			dsr->delta_datum_p -= delta;
+		}
+	}
+	else
+	{
+		dsr->delta_datum_p = 0;
+		Assert(false);
+	}
+
+#ifdef USE_ASSERT_CHECKING
+	if (Debug_appendonly_print_scan_tuple)
+	{
+		ereport(LOG,
+				(errmsg("Datum stream block read Delta value "
+		   "(nth %d, logical row count %d, delta " INT64_FORMAT ", sign %d)",
+						dsr->nth,
+						dsr->logical_row_count,
+						delta,
+						sign),
+				 errOmitLocation(true),
+				 errdetail_datumstreamblockread(dsr),
+				 errcontext_datumstreamblockread(dsr)));
+	}
+#endif
+
+	return DELTA_COMPRESSION_OK;
+}
+
+inline static int
+DatumStreamBlockRead_AdvanceDense(DatumStreamBlockRead * dsr)
 {
 	Assert(dsr);
 
-	++dsr->nth; 	// Initially, -1.
+	++dsr->nth;
+	//Initially, -1.
 
 	/* Advance out of bounds? */
-	if(dsr->nth >= dsr->logical_row_count)
+		if (dsr->nth >= dsr->logical_row_count)
 		return 0;
 
 	if (!dsr->rle_block_was_compressed)
@@ -1192,11 +1678,11 @@ inline static int DatumStreamBlockRead_AdvanceDense(DatumStreamBlockRead *dsr)
 		/*
 		 * A Dense block with optional NULL bit-map.
 		 */
-		if(dsr->has_null)
+		if (dsr->has_null)
 		{
 			DatumStreamBitMapRead_Next(&dsr->null_bitmap);
 			Assert(DatumStreamBitMapRead_InRange(&dsr->null_bitmap));
-		
+
 			if (DatumStreamBitMapRead_CurrentIsOn(&dsr->null_bitmap))
 			{
 				/*
@@ -1223,10 +1709,10 @@ inline static int DatumStreamBlockRead_AdvanceDense(DatumStreamBlockRead *dsr)
 				{
 					ereport(ERROR,
 							(errmsg("Datum stream block read advance NULL bit-map out-of-range "
-									"(nth %d, logical row count %d, NULL bit-map count %d)",
+					 "(nth %d, logical row count %d, NULL bit-map count %d)",
 									dsr->nth,
 									dsr->logical_row_count,
-									DatumStreamBitMapRead_Count(&dsr->null_bitmap)),
+							 DatumStreamBitMapRead_Count(&dsr->null_bitmap)),
 							 errOmitLocation(true),
 							 errdetail_datumstreamblockread(dsr),
 							 errcontext_datumstreamblockread(dsr)));
@@ -1235,10 +1721,10 @@ inline static int DatumStreamBlockRead_AdvanceDense(DatumStreamBlockRead *dsr)
 				{
 					ereport(ERROR,
 							(errmsg("Datum stream block read advance NULL bit-map ON for repeated item "
-									"(nth %d, logical row count %d, NULL bit-map count %d)",
+					 "(nth %d, logical row count %d, NULL bit-map count %d)",
 									dsr->nth,
 									dsr->logical_row_count,
-									DatumStreamBitMapRead_Count(&dsr->null_bitmap)),
+							 DatumStreamBitMapRead_Count(&dsr->null_bitmap)),
 							 errOmitLocation(true),
 							 errdetail_datumstreamblockread(dsr),
 							 errcontext_datumstreamblockread(dsr)));
@@ -1249,10 +1735,10 @@ inline static int DatumStreamBlockRead_AdvanceDense(DatumStreamBlockRead *dsr)
 			{
 				ereport(ERROR,
 						(errmsg("Datum stream block read advance COMPRESS bit-map out-of-range "
-								"(nth %d, logical row count %d, COMPRESS bit-map count %d)",
+				 "(nth %d, logical row count %d, COMPRESS bit-map count %d)",
 								dsr->nth,
 								dsr->logical_row_count,
-								DatumStreamBitMapRead_Count(&dsr->rle_compress_bitmap)),
+					 DatumStreamBitMapRead_Count(&dsr->rle_compress_bitmap)),
 						 errOmitLocation(true),
 						 errdetail_datumstreamblockread(dsr),
 						 errcontext_datumstreamblockread(dsr)));
@@ -1261,10 +1747,10 @@ inline static int DatumStreamBlockRead_AdvanceDense(DatumStreamBlockRead *dsr)
 			{
 				ereport(ERROR,
 						(errmsg("Datum stream block read advance COMPRESS bit-map OFF for repeated item "
-								"(nth %d, logical row count %d, COMPRESS bit-map count %d)",
+				 "(nth %d, logical row count %d, COMPRESS bit-map count %d)",
 								dsr->nth,
 								dsr->logical_row_count,
-								DatumStreamBitMapRead_Count(&dsr->rle_compress_bitmap)),
+					 DatumStreamBitMapRead_Count(&dsr->rle_compress_bitmap)),
 						 errOmitLocation(true),
 						 errdetail_datumstreamblockread(dsr),
 						 errcontext_datumstreamblockread(dsr)));
@@ -1294,32 +1780,32 @@ inline static int DatumStreamBlockRead_AdvanceDense(DatumStreamBlockRead *dsr)
 
 		/*
 		 * The first step of advancing not being inside current repeated item is advancing the
-		 * NULL bit-map.  
+		 * NULL bit-map.
 		 *
 		 * (We only advance the RLE_TYPE compress bit-map inside a non-NULL item)
 		 */
-		if(dsr->has_null)
+		if (dsr->has_null)
 		{
 			DatumStreamBitMapRead_Next(&dsr->null_bitmap);
 #ifdef USE_ASSERT_CHECKING
 			if (!DatumStreamBitMapRead_InRange(&dsr->null_bitmap))
 			{
-//				pg_usleep(300 * 1000000L);
+/*				pg_usleep(300 * 1000000L); */
 				ereport(ERROR,
 						(errmsg("Datum stream block read advance NULL bit-map out-of-range "
-								"(nth %d, logical row count %d, NULL bit-map count %d, "
-								"physical datum count %d, COMPRESS bit-map count %d)",
+					 "(nth %d, logical row count %d, NULL bit-map count %d, "
+					   "physical datum count %d, COMPRESS bit-map count %d)",
 								dsr->nth,
 								dsr->logical_row_count,
-								DatumStreamBitMapRead_Count(&dsr->null_bitmap),
+							  DatumStreamBitMapRead_Count(&dsr->null_bitmap),
 								dsr->physical_datum_count,
-								DatumStreamBitMapRead_Count(&dsr->rle_compress_bitmap)),
+					 DatumStreamBitMapRead_Count(&dsr->rle_compress_bitmap)),
 						 errOmitLocation(true),
 						 errdetail_datumstreamblockread(dsr),
 						 errcontext_datumstreamblockread(dsr)));
 			}
 #endif
-		
+
 			if (DatumStreamBitMapRead_CurrentIsOn(&dsr->null_bitmap))
 			{
 				/*
@@ -1338,10 +1824,10 @@ inline static int DatumStreamBlockRead_AdvanceDense(DatumStreamBlockRead *dsr)
 		{
 			ereport(ERROR,
 					(errmsg("Datum stream block read advance COMPRESS bit-map out-of-range "
-							"(nth %d, logical row count %d, COMPRESS bit-map count %d)",
+				 "(nth %d, logical row count %d, COMPRESS bit-map count %d)",
 							dsr->nth,
 							dsr->logical_row_count,
-							DatumStreamBitMapRead_Count(&dsr->rle_compress_bitmap)),
+					 DatumStreamBitMapRead_Count(&dsr->rle_compress_bitmap)),
 					 errOmitLocation(true),
 					 errdetail_datumstreamblockread(dsr),
 					 errcontext_datumstreamblockread(dsr)));
@@ -1349,8 +1835,8 @@ inline static int DatumStreamBlockRead_AdvanceDense(DatumStreamBlockRead *dsr)
 #endif
 		if (DatumStreamBitMapRead_CurrentIsOn(&dsr->rle_compress_bitmap))
 		{
-			int32 repeatCount;
-			int32 byteLen;
+			int32		repeatCount;
+			int32		byteLen;
 
 			/*
 			 * New repeated item.
@@ -1362,7 +1848,7 @@ inline static int DatumStreamBlockRead_AdvanceDense(DatumStreamBlockRead *dsr)
 			repeatCount = DatumStreamInt32Compress_Decode(dsr->rle_repeatcountsp, &byteLen);
 			dsr->rle_repeatcountsp += byteLen;
 
-			// UNDONE: Integrity check.
+			/* UNDONE: Integrity check. */
 
 			dsr->rle_repeated_item_count = repeatCount;
 			dsr->rle_in_repeated_item = true;
@@ -1373,26 +1859,35 @@ inline static int DatumStreamBlockRead_AdvanceDense(DatumStreamBlockRead *dsr)
 		 */
 	}
 
-	Assert(dsr->datump >= dsr->datum_beginp);
-	Assert (dsr->datump < dsr->datum_afterp);
-
-	++dsr->physical_datum_index;		// Initially, -1.
-
-	if (dsr->physical_datum_index == 0)
+	if (DatumStreamBlockRead_AdvanceDenseDelta(dsr) == DELTA_COMPRESSION_OK)
 	{
-		// Pre-positioned by block read to first item.
-		
-		// PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG builds...
+		return 1;
+	}
+
+	Assert(dsr->datump >= dsr->datum_beginp);
+	Assert(dsr->datump < dsr->datum_afterp);
+
+	++dsr->physical_datum_index;
+	//Initially, -1.
+
+		if (dsr->physical_datum_index == 0)
+	{
+		/* Pre-positioned by block read to first item. */
+
+		/*
+		 * PERFORMANCE EXPERIMENT: Only do integrity and trace checking for
+		 * DEBUG builds...
+		 */
 #ifdef USE_ASSERT_CHECKING
 		if (Debug_appendonly_print_scan_tuple)
 		{
 			ereport(LOG,
 					(errmsg("Datum stream block read advance is positioned to first item "
-						    "(nth %d, logical row count %d, item begin %p, item offset " INT64_FORMAT ")",
-						    dsr->nth,
-						    dsr->logical_row_count,
-						    dsr->datump,
-						    (int64)(dsr->datump - dsr->datum_beginp)),
+							"(nth %d, logical row count %d, item begin %p, item offset " INT64_FORMAT ")",
+							dsr->nth,
+							dsr->logical_row_count,
+							dsr->datump,
+							(int64) (dsr->datump - dsr->datum_beginp)),
 					 errOmitLocation(true),
 					 errdetail_datumstreamblockread(dsr),
 					 errcontext_datumstreamblockread(dsr)));
@@ -1401,36 +1896,42 @@ inline static int DatumStreamBlockRead_AdvanceDense(DatumStreamBlockRead *dsr)
 	}
 	else
 	{
-		// PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG builds...
+		/*
+		 * PERFORMANCE EXPERIMENT: Only do integrity and trace checking for
+		 * DEBUG builds...
+		 */
 #ifdef USE_ASSERT_CHECKING
-		uint8 *item_beginp;
-		
+		uint8	   *item_beginp;
+
 		item_beginp = dsr->datump;
 #endif
 
 		/*
 		 * Advance the item pointer.
 		 */
-		if(dsr->typeInfo.datumlen == -1)
+		if (dsr->typeInfo.datumlen == -1)
 		{
-	        struct varlena *s;
+			struct varlena *s;
 
-	        Assert(dsr->typeInfo.datumlen == -1);
+			Assert(dsr->typeInfo.datumlen == -1);
 			Assert(dsr->datump >= dsr->datum_beginp);
 			Assert(dsr->datump < dsr->datum_afterp);
 
-	        s = (struct varlena *) dsr->datump;
+			s = (struct varlena *) dsr->datump;
 			dsr->datump += VARSIZE_ANY(s);
 
-			/* 
+			/*
 			 * Skip any possible zero paddings AFTER varlena data.
 			 */
-	        if(*dsr->datump == 0)
+			if (*dsr->datump == 0)
 			{
-	            dsr->datump = (uint8 *) att_align(dsr->datump, dsr->typeInfo.align);
+				dsr->datump = (uint8 *) att_align(dsr->datump, dsr->typeInfo.align);
 			}
 
-				// PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG builds...
+			/*
+			 * PERFORMANCE EXPERIMENT: Only do integrity and trace checking
+			 * for DEBUG builds...
+			 */
 #ifdef USE_ASSERT_CHECKING
 			if (dsr->datump > dsr->datum_afterp)
 			{
@@ -1459,7 +1960,7 @@ inline static int DatumStreamBlockRead_AdvanceDense(DatumStreamBlockRead *dsr)
 								dsr->nth,
 								dsr->logical_row_count,
 								item_beginp,
-								(int64)(item_beginp - dsr->datum_beginp),
+								(int64) (item_beginp - dsr->datum_beginp),
 								dsr->datump),
 						 errOmitLocation(true),
 						 errdetail_datumstreamblockread(dsr),
@@ -1480,9 +1981,13 @@ inline static int DatumStreamBlockRead_AdvanceDense(DatumStreamBlockRead *dsr)
 	return 1;
 }
 
-inline static int DatumStreamBlockRead_Advance(DatumStreamBlockRead *dsr)
+inline static int
+DatumStreamBlockRead_Advance(DatumStreamBlockRead * dsr)
 {
-		// PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG builds...
+	/*
+	 * PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG
+	 * builds...
+	 */
 #ifdef USE_ASSERT_CHECKING
 	if (strncmp(dsr->eyecatcher, DatumStreamBlockRead_Eyecatcher, DatumStreamBlockRead_EyecatcherLen) != 0)
 		elog(FATAL, "DatumStreamBlockRead data structure not valid (eyecatcher)");
@@ -1494,75 +1999,76 @@ inline static int DatumStreamBlockRead_Advance(DatumStreamBlockRead *dsr)
 	}
 	else
 	{
-		Assert(dsr->datumStreamVersion == DatumStreamVersion_Dense);
+		Assert((dsr->datumStreamVersion == DatumStreamVersion_Dense) ||
+			 (dsr->datumStreamVersion == DatumStreamVersion_Dense_Enhanced));
 		return DatumStreamBlockRead_AdvanceDense(dsr);
 	}
 }
 
-
-
-inline static int DatumStreamBlockRead_Nth(DatumStreamBlockRead *dsr)
+inline static int
+DatumStreamBlockRead_Nth(DatumStreamBlockRead * dsr)
 {
 	return dsr->nth;
 }
 
-
 extern void DatumStreamBlockRead_GetReadyOrig(
-	DatumStreamBlockRead	*dsr,
-	uint8					*buffer,
-	int32					bufferSize,
-	int64					firstRowNum,
-	int32					rowCount,
-	bool					*hadToAdjustRowCount,
-	int32					*adjustedRowCount);
+								  DatumStreamBlockRead * dsr,
+								  uint8 * buffer,
+								  int32 bufferSize,
+								  int64 firstRowNum,
+								  int32 rowCount,
+								  bool *hadToAdjustRowCount,
+								  int32 * adjustedRowCount);
 extern void DatumStreamBlockRead_GetReadyDense(
-	DatumStreamBlockRead	*dsr,
-	uint8					*buffer,
-	int32					bufferSize,
-	int64					firstRowNum,
-	int32					rowCount,
-	bool					*hadToAdjustRowCount,
-	int32					*adjustedRowCount);
+								   DatumStreamBlockRead * dsr,
+								   uint8 * buffer,
+								   int32 bufferSize,
+								   int64 firstRowNum,
+								   int32 rowCount,
+								   bool *hadToAdjustRowCount,
+								   int32 * adjustedRowCount);
 
 inline static void
 DatumStreamBlockRead_GetReady(
-	DatumStreamBlockRead	*dsr,
-	uint8					*buffer,
-	int32					bufferSize,
-	int64					firstRowNum,
-	int32					rowCount,
-	bool					*hadToAdjustRowCount,
-	int32					*adjustedRowCount)
+							  DatumStreamBlockRead * dsr,
+							  uint8 * buffer,
+							  int32 bufferSize,
+							  int64 firstRowNum,
+							  int32 rowCount,
+							  bool *hadToAdjustRowCount,
+							  int32 * adjustedRowCount)
 {
 	if (dsr->datumStreamVersion == DatumStreamVersion_Original)
 	{
 		return DatumStreamBlockRead_GetReadyOrig(
-												dsr, 
-												buffer, 
-												bufferSize, 
-												firstRowNum, 
-												rowCount,
-												hadToAdjustRowCount,
-												adjustedRowCount);
+												 dsr,
+												 buffer,
+												 bufferSize,
+												 firstRowNum,
+												 rowCount,
+												 hadToAdjustRowCount,
+												 adjustedRowCount);
 	}
 	else
 	{
-		Assert(dsr->datumStreamVersion == DatumStreamVersion_Dense);
+		Assert(dsr->datumStreamVersion == DatumStreamVersion_Dense ||
+			 (dsr->datumStreamVersion == DatumStreamVersion_Dense_Enhanced));
 		return DatumStreamBlockRead_GetReadyDense(
-												dsr, 
-												buffer, 
-												bufferSize, 
-												firstRowNum, 
-												rowCount,
-												hadToAdjustRowCount,
-												adjustedRowCount);
+												  dsr,
+												  buffer,
+												  bufferSize,
+												  firstRowNum,
+												  rowCount,
+												  hadToAdjustRowCount,
+												  adjustedRowCount);
 	}
 }
 
-extern void DatumStreamBlockRead_ResetOrig(DatumStreamBlockRead *dsr);
-extern void DatumStreamBlockRead_ResetDense(DatumStreamBlockRead *dsr);
+extern void DatumStreamBlockRead_ResetOrig(DatumStreamBlockRead * dsr);
+extern void DatumStreamBlockRead_ResetDense(DatumStreamBlockRead * dsr);
 
-inline static void DatumStreamBlockRead_Reset(DatumStreamBlockRead *dsr)
+inline static void
+DatumStreamBlockRead_Reset(DatumStreamBlockRead * dsr)
 {
 	if (dsr->datumStreamVersion == DatumStreamVersion_Original)
 	{
@@ -1570,50 +2076,51 @@ inline static void DatumStreamBlockRead_Reset(DatumStreamBlockRead *dsr)
 	}
 	else
 	{
-		Assert(dsr->datumStreamVersion == DatumStreamVersion_Dense);
+		Assert(dsr->datumStreamVersion == DatumStreamVersion_Dense ||
+			 (dsr->datumStreamVersion == DatumStreamVersion_Dense_Enhanced));
 		DatumStreamBlockRead_ResetDense(dsr);
 	}
 }
 
 
 extern void DatumStreamBlockRead_Init(
-	DatumStreamBlockRead 	*dsr,
-	DatumStreamTypeInfo 	*typeInfo,
-	DatumStreamVersion		datumStreamVersion,
-	bool 					rle_can_have_compression,
-	int						(*errdetailCallback) (void *errdetailArg),
-	void	   				*errdetailArg,
-	int						(*errcontextCallback) (void *errcontextArg),
-	void	   				*errcontextArg);
+						  DatumStreamBlockRead * dsr,
+						  DatumStreamTypeInfo * typeInfo,
+						  DatumStreamVersion datumStreamVersion,
+						  bool rle_can_have_compression,
+						  int (*errdetailCallback) (void *errdetailArg),
+						  void *errdetailArg,
+						  int (*errcontextCallback) (void *errcontextArg),
+						  void *errcontextArg);
 extern void DatumStreamBlockRead_Finish(
-	DatumStreamBlockRead 	*dsr);
+							DatumStreamBlockRead * dsr);
 
 extern void DatumStreamBlockWrite_Init(
-	DatumStreamBlockWrite 	*dsw,
-	DatumStreamTypeInfo 	*typeInfo,
-	DatumStreamVersion		datumStreamVersion,
-	bool 					rle_want_compression,
-	int32					initialMaxDatumPerBlock,
-	int32					maxDatumPerBlock,
-	int32					maxDataBlockSize,
-	int						(*errdetailCallback) (void *errdetailArg),
-	void	   				*errdetailArg,
-	int						(*errcontextCallback) (void *errcontextArg),
-	void	   				*errcontextArg);
+						   DatumStreamBlockWrite * dsw,
+						   DatumStreamTypeInfo * typeInfo,
+						   DatumStreamVersion datumStreamVersion,
+						   bool rle_want_compression,
+						   bool delta_want_compression,
+						   int32 initialMaxDatumPerBlock,
+						   int32 maxDatumPerBlock,
+						   int32 maxDataBlockSize,
+						   int (*errdetailCallback) (void *errdetailArg),
+						   void *errdetailArg,
+						   int (*errcontextCallback) (void *errcontextArg),
+						   void *errcontextArg);
 extern void DatumStreamBlockWrite_Finish(
-	DatumStreamBlockWrite 	*dsw);
+							 DatumStreamBlockWrite * dsw);
 
 extern int DatumStreamBlockWrite_Put(
-	DatumStreamBlockWrite 	*dsw, 
-	Datum 					d, 
-	bool 					null,
-	void					**toFree);
-extern int DatumStreamBlockWrite_Nth(DatumStreamBlockWrite *dsw);
+						  DatumStreamBlockWrite * dsw,
+						  Datum d,
+						  bool null,
+						  void **toFree);
+extern int	DatumStreamBlockWrite_Nth(DatumStreamBlockWrite * dsw);
 extern void DatumStreamBlockWrite_GetReady(
-	DatumStreamBlockWrite *dsw);
+							   DatumStreamBlockWrite * dsw);
 extern int64 DatumStreamBlockWrite_Block(
-	DatumStreamBlockWrite	*dsw,
-	uint8 					*buffer);
+							DatumStreamBlockWrite * dsw,
+							uint8 * buffer);
 
-#endif /* DATUMSTREAMBLOCK_H */
-
+#endif   /* DATUMSTREAMBLOCK_H */

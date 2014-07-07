@@ -1,6 +1,6 @@
 /*
  * Datumstream
- * 	Copyright (c) 2008, Greenplum Inc.
+ *	Copyright (c) 2008, Greenplum Inc.
  */
 
 #ifndef DATUM_STREAM_H
@@ -9,7 +9,7 @@
 #include "catalog/pg_attribute.h"
 #include "utils/datumstreamblock.h"
 
-/* 
+/*
  * Magic number.  Max number of datum in on block.
  * MUST fit in 15 bit, or we overflow ndatum(int16), defined
  * in DatumStreamBlock.
@@ -27,121 +27,123 @@
  * A dense content Append-Only block allows for many more items.
  */
 #define INITIALDATUM_PER_AOCS_DENSE_BLOCK AOSmallContentHeader_MaxRowCount
-// UNDONE: For now, just do Small Content
+/*	UNDONE: For now, just do Small Content */
 #define MAXDATUM_PER_AOCS_DENSE_BLOCK AONonBulkDenseContentHeader_MaxLargeRowCount
 
 typedef struct DatumStreamWrite
 {
-	DatumStreamTypeInfo	typeInfo;
+	DatumStreamTypeInfo typeInfo;
 
 	/*
 	 * Version of datum stream block format -- original or RLE_TYPE,
 	 */
-	DatumStreamVersion	datumStreamVersion;
+	DatumStreamVersion datumStreamVersion;
 
-	bool	rle_want_compression;
+	bool		rle_want_compression;
+	bool		delta_want_compression;
 
-	int32	maxAoBlockSize;
-	int32	maxAoHeaderSize;
+	int32		maxAoBlockSize;
+	int32		maxAoHeaderSize;
 
-	char	*title;
+	char	   *title;
 
-    /* AO Storage */
-    bool need_close_file;
+	/* AO Storage */
+	bool		need_close_file;
 	AppendOnlyStorageAttributes ao_attr;
-    AppendOnlyStorageWrite ao_write;
+	AppendOnlyStorageWrite ao_write;
 
-	int64 blockFirstRowNum;
+	int64		blockFirstRowNum;
 
-	DatumStreamBlockWrite	blockWrite;
+	DatumStreamBlockWrite blockWrite;
 
-    /* 
+	/*
 	 * EOFs of current segment file.
 	 */
-    int64 eof;
-    int64 eofUncompress;
-} DatumStreamWrite;
+	int64		eof;
+	int64		eofUncompress;
+}	DatumStreamWrite;
 
 typedef enum DatumStreamLargeObjectState
 {
-	DatumStreamLargeObjectState_None =  0,
+	DatumStreamLargeObjectState_None = 0,
 	DatumStreamLargeObjectState_HaveAoContent = 1,
 	DatumStreamLargeObjectState_PositionAdvanced = 2,
 	DatumStreamLargeObjectState_Consumed = 3,
 	DatumStreamLargeObjectState_Exhausted = 4,
 
 	MaxDatumStreamLargeObjectState
-} DatumStreamLargeObjectState;
+}	DatumStreamLargeObjectState;
 
 typedef struct DatumStreamRead
 {
 	/*--------------------------------------------------------------------------
 	 * Information for reading blocks.
 	 */
-	 
-	/* Information collected and adjusted for the current block. */
-	int64 blockFirstRowNum;
-	int64 blockFileOffset;
-	int blockRowCount;
 
-    AppendOnlyStorageRead ao_read;
+	/* Information collected and adjusted for the current block. */
+	int64		blockFirstRowNum;
+	int64		blockFileOffset;
+	int			blockRowCount;
+
+	AppendOnlyStorageRead ao_read;
 
 	/*
 	 * Values returned by AppendOnlyStorageRead_GetBlockInfo.
 	 */
 	struct getBlockInfo
 	{
-		int32 	contentLen;
-		int 	execBlockKind;
-		int64 	firstRow; 	 /* is expected to be -1 for pre-4.0 blocks */
-		int 	rowCnt;
-		bool 	isLarge;
-		bool 	isCompressed;
-	} getBlockInfo;
+		int32		contentLen;
+		int			execBlockKind;
+		int64		firstRow;	/* is expected to be -1 for pre-4.0 blocks */
+		int			rowCnt;
+		bool		isLarge;
+		bool		isCompressed;
+	}			getBlockInfo;
 
-	uint8	*buffer_beginp;
+	uint8	   *buffer_beginp;
 
 	/*-------------------------------------------------------------------------
 	 * For better CPU data cache locality, put commonly used variables of
 	 * datumstreamread_get and datumstreamread_advance here.
-	 */	
-	DatumStreamLargeObjectState		largeObjectState;
+	 */
+	DatumStreamLargeObjectState largeObjectState;
 
-	DatumStreamBlockRead	blockRead;
+	DatumStreamBlockRead blockRead;
 
 	/*-------------------------------------------------------------------------
 	 * Less commonly used fields.
 	 */
-	 
-	MemoryContext	memctxt;
 
-	uint8	*large_object_buffer;
-	int32	large_object_buffer_size;
+	MemoryContext memctxt;
 
-    /* EOF of current file */
-    int64 eof;
-    int64 eofUncompress;
+	uint8	   *large_object_buffer;
+	int32		large_object_buffer_size;
+
+	/* EOF of current file */
+	int64		eof;
+	int64		eofUncompress;
 
 	AppendOnlyStorageAttributes ao_attr;
 
 	/*
 	 * Version of datum stream block format -- original or RLE_TYPE,
 	 */
-	DatumStreamVersion	datumStreamVersion;
+	DatumStreamVersion datumStreamVersion;
 
-	DatumStreamTypeInfo	typeInfo;
+	DatumStreamTypeInfo typeInfo;
 
-	bool	rle_can_have_compression;
+	bool		rle_can_have_compression;
+	bool		delta_can_have_compression;
 
-	int32	maxAoBlockSize;
-	int32	maxDataBlockSize;
+	int32		maxAoBlockSize;
+	int32		maxDataBlockSize;
 
-	char	*title;
+	char	   *title;
 
-    /* AO Storage */
-    bool need_close_file;
+	/* AO Storage */
+	bool		need_close_file;
 
-} DatumStreamRead;
+}	DatumStreamRead;
 
 /*
  * A structure contains the state when fetching rows
@@ -153,21 +155,22 @@ typedef struct DatumStreamFetchDescData
 
 	CurrentSegmentFile currentSegmentFile;
 
-	int64 scanNextFileOffset;
-	int64 scanNextRowNum;
+	int64		scanNextFileOffset;
+	int64		scanNextRowNum;
 
-	int64 scanAfterFileOffset;
-	int64 scanLastRowNum;
+	int64		scanAfterFileOffset;
+	int64		scanLastRowNum;
 
 	CurrentBlock currentBlock;
 
-} DatumStreamFetchDescData;
+}	DatumStreamFetchDescData;
 
 typedef DatumStreamFetchDescData *DatumStreamFetchDesc;
 
 /* Stream access method */
-extern void datumstreamread_getlarge(DatumStreamRead *ds, Datum *datum, bool *null);
-inline static void datumstreamread_get(DatumStreamRead *acc, Datum *datum, bool *null)
+extern void datumstreamread_getlarge(DatumStreamRead * ds, Datum *datum, bool *null);
+inline static void
+datumstreamread_get(DatumStreamRead * acc, Datum *datum, bool *null)
 {
 	if (acc->largeObjectState == DatumStreamLargeObjectState_None)
 	{
@@ -181,9 +184,10 @@ inline static void datumstreamread_get(DatumStreamRead *acc, Datum *datum, bool 
 		datumstreamread_getlarge(acc, datum, null);
 	}
 }
-	
-extern int datumstreamread_advancelarge(DatumStreamRead *ds);
-inline static int datumstreamread_advance(DatumStreamRead *acc)
+
+extern int	datumstreamread_advancelarge(DatumStreamRead * ds);
+inline static int
+datumstreamread_advance(DatumStreamRead * acc)
 {
 	if (acc->largeObjectState == DatumStreamLargeObjectState_None)
 	{
@@ -198,8 +202,9 @@ inline static int datumstreamread_advance(DatumStreamRead *acc)
 	}
 }
 
-extern int datumstreamread_nthlarge(DatumStreamRead *ds);
-inline static int datumstreamread_nth(DatumStreamRead *acc)
+extern int	datumstreamread_nthlarge(DatumStreamRead * ds);
+inline static int
+datumstreamread_nth(DatumStreamRead * acc)
 {
 	if (acc->largeObjectState == DatumStreamLargeObjectState_None)
 	{
@@ -214,73 +219,75 @@ inline static int datumstreamread_nth(DatumStreamRead *acc)
 	}
 }
 
-//------------------------------------------------------------------------------
+/* ------------------------------------------------------------------------------ */
 
 extern int datumstreamwrite_put(
-								DatumStreamWrite 	*acc, 
-								Datum 				d,
-								bool 				null,
-								void				**toFree);
-extern int datumstreamwrite_nth(DatumStreamWrite *ds);
+					 DatumStreamWrite * acc,
+					 Datum d,
+					 bool null,
+					 void **toFree);
+extern int	datumstreamwrite_nth(DatumStreamWrite * ds);
 
 /* ctor and dtor */
 extern DatumStreamWrite *create_datumstreamwrite(
-												 char 				*compName, 
-												 int32 				compLevel, 
-												 bool				checksum,
-												 int32				safeFSWriteSize,
-												 int32 				maxsz,
-												 AORelationVersion 	version,
-												 Form_pg_attribute 	attr, 
-												 char 				*relname,
-												 char				*title);
-									   
-extern DatumStreamRead *create_datumstreamread(
-											   char 				*compName, 
-											   int32 				compLevel, 
-											   bool					checksum,
-											   int32				safeFSWriteSize,
-											   int32 				maxsz,
-											   AORelationVersion 	version,
-											   Form_pg_attribute 	attr, 
-											   char 				*relname,
-											   char					*title);
-									   
-extern void datumstreamwrite_open_file(
-									   DatumStreamWrite *ds, 
-									   char *fn, 
-									   int64 eof, 
-									   int64 eofUncompressed,
-									   RelFileNode relFileNode,
-									   int32	segmentFileNum);
-									   
-extern void datumstreamread_open_file(
-									  DatumStreamRead *ds, 
-									  char *fn, 
-									  int64 eof, 
-									  int64 eofUncompressed,
-									  RelFileNode relFileNode,
-									  int32	segmentFileNum);
+						char *compName,
+						int32 compLevel,
+						bool checksum,
+						int32 safeFSWriteSize,
+						int32 maxsz,
+						AORelationVersion version,
+						Form_pg_attribute attr,
+						char *relname,
+						char *title);
 
-extern void datumstreamwrite_close_file(DatumStreamWrite *ds); 
-extern void datumstreamread_close_file(DatumStreamRead *ds); 
-extern void destroy_datumstreamwrite(DatumStreamWrite *ds);
-extern void destroy_datumstreamread(DatumStreamRead *ds);
+extern DatumStreamRead *create_datumstreamread(
+					   char *compName,
+					   int32 compLevel,
+					   bool checksum,
+					   int32 safeFSWriteSize,
+					   int32 maxsz,
+					   AORelationVersion version,
+					   Form_pg_attribute attr,
+					   char *relname,
+					   char *title);
+
+extern void datumstreamwrite_open_file(
+						   DatumStreamWrite * ds,
+						   char *fn,
+						   int64 eof,
+						   int64 eofUncompressed,
+						   RelFileNode relFileNode,
+						   int32 segmentFileNum);
+
+extern void datumstreamread_open_file(
+						  DatumStreamRead * ds,
+						  char *fn,
+						  int64 eof,
+						  int64 eofUncompressed,
+						  RelFileNode relFileNode,
+						  int32 segmentFileNum);
+
+extern void datumstreamwrite_close_file(DatumStreamWrite * ds);
+extern void datumstreamread_close_file(DatumStreamRead * ds);
+extern void destroy_datumstreamwrite(DatumStreamWrite * ds);
+extern void destroy_datumstreamread(DatumStreamRead * ds);
 
 /* Read and Write op */
-extern int64 datumstreamwrite_block(DatumStreamWrite *ds);
-extern int64 datumstreamwrite_lob(DatumStreamWrite *ds, Datum d);
-extern int datumstreamread_block(DatumStreamRead *ds);
-extern void datumstreamread_find(DatumStreamRead *datumStream,
-							 int32 rowNumInBlock);
-extern void datumstreamread_rewind_block(DatumStreamRead *datumStream);
-extern bool datumstreamread_find_block(DatumStreamRead *datumStream,
-								   DatumStreamFetchDesc datumStreamFetchDesc,
-								   int64 rowNum);
+extern int64 datumstreamwrite_block(DatumStreamWrite * ds);
+extern int64 datumstreamwrite_lob(DatumStreamWrite * ds, Datum d);
+extern int	datumstreamread_block(DatumStreamRead * ds);
+extern void datumstreamread_find(DatumStreamRead * datumStream,
+					 int32 rowNumInBlock);
+extern void datumstreamread_rewind_block(DatumStreamRead * datumStream);
+extern bool datumstreamread_find_block(DatumStreamRead * datumStream,
+						   DatumStreamFetchDesc datumStreamFetchDesc,
+						   int64 rowNum);
+
 /*
  * MPP-17061: make sure datumstream_read_block_info was called first for the CO block
  * before calling datumstreamread_block_content.
  */
-extern void datumstreamread_block_content(DatumStreamRead *acc);
+extern void datumstreamread_block_content(DatumStreamRead * acc);
 extern bool init_datumstream_checksum(char *compName, bool checksum);
-#endif /* DATUM_STREAM_H */
+
+#endif   /* DATUM_STREAM_H */
