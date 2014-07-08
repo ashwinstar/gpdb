@@ -606,11 +606,25 @@ static void checkIntTimeType(void)
 	elog(DEBUG1, integerDateTimes ? "Using integer_datetimes" : "Not using integer_datetimes");
 }
 
+static char *get_jni_errmsg(jint jnicode)
+{
+	switch (jnicode)
+	{
+		case -1:        return "unknown error";
+		case -2:        return "thread detached from the VM";
+		case -3:        return "JNI version error";
+		case -4:        return "not enough memory";
+		case -5:        return "VM already created";
+		case -6:        return "invalid arguments";
+		default:        return "unknown error";
+	}
+}
+
 static bool s_firstTimeInit = true;
 
 static void initializeJavaVM(void)
 {
-	jboolean jstat;
+	jint jstat;
 	JavaVMInitArgs vm_args;
 	JVMOptList optList;
 
@@ -676,7 +690,9 @@ static void initializeJavaVM(void)
 	JVMOptList_delete(&optList);
 
 	if(jstat != JNI_OK)
-		ereport(ERROR, (errmsg("Failed to create Java VM")));
+	{
+		elog(ERROR, "Failed to create Java VM: %s", get_jni_errmsg(jstat));
+	}
 
 #if !defined(WIN32)
 	pqsignal(SIGINT,  pljavaStatementCancelHandler);
