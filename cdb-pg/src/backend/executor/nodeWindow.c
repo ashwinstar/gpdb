@@ -3043,12 +3043,11 @@ trimInputBuffer(WindowInputBuffer buffer)
 static void
 resetInputBuffer(WindowState *wstate)
 {
+	int level;
 	bool save_firsttuple = false;
 
 	if (wstate->input_buffer)
 	{
-		int level;
-
 		save_firsttuple = wstate->input_buffer->part_break;
 		if (save_firsttuple)
 		{
@@ -3074,23 +3073,25 @@ resetInputBuffer(WindowState *wstate)
 		wstate->cur_slot_key_break = wstate->numlevels;
 
 		resetFrameBuffers(wstate);
-
-		/* reset transition values */
-		for (level=0; level<wstate->numlevels; level++)
-		{
-			WindowStatePerLevel level_state =
-				(WindowStatePerLevel)&wstate->level_state[level];
-			
-			resetTransValues(level_state, wstate);
-		}
 	}
-
 	else
 	{
 		wstate->input_buffer = (WindowInputBuffer)palloc0(sizeof(WindowInputBufferData));
 		wstate->input_buffer->tuplestore =
 			ntuplestore_create((PlanStateOperatorMemKB((PlanState *) wstate) * 1024L)/2); /* correct? */
 		createFrameBuffers(wstate);
+	}
+
+	/*
+	 * Reset transition values.  This has to be done even if we are
+	 * creating new buffer because the trans values might remain in
+	 * case of rescanning.
+	 */
+	for (level = 0; level < wstate->numlevels; level++)
+	{
+		WindowStatePerLevel level_state = &wstate->level_state[level];
+
+		resetTransValues(level_state, wstate);
 	}
 
 	wstate->input_buffer->writer =
