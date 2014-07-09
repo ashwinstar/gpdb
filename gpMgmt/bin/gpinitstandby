@@ -18,6 +18,7 @@ try:
     from gppylib.db import catalog
     from gppylib.userinput import *
     from gppylib.gp_dbid import GpDbidFile
+    from gppylib.operations.initstandby import update_pg_hba_conf_on_segments
     from gppylib.operations.package import SyncPackages
     from gppylib.operations.filespace import PG_SYSTEM_FILESPACE, GP_TRANSACTION_FILES_FILESPACE, GP_TEMPORARY_FILES_FILESPACE, GetFilespaceEntries, GetFilespaceEntriesDict, MoveFilespaceError
 except ImportError, e:
@@ -371,6 +372,16 @@ def check_and_start_standby():
     logger.info("Successfully started standby master")
 
 #-------------------------------------------------------------------------
+def get_standby_pg_hba_info(standby_host):
+    standby_ips = unix.InterfaceAddrs.remote('get standby ips', standby_host)
+    current_user = unix.UserId.local('get userid')
+    new_section = ['# standby master host ip addresses\n']
+    for ip in standby_ips:
+        cidr_suffix = '/128' if ':' in ip else '/32' # MPP-15889
+        new_section.append('host\tall\t%s\t%s%s\ttrust\n' % (current_user, ip, cidr_suffix))
+    return new_section
+
+#-------------------------------------------------------------------------
 def create_standby(options):
     """Creates the standby master."""
     
@@ -430,6 +441,7 @@ def create_standby(options):
 
         # update the catalog if needed
         update_pg_hba_conf(options, array)
+        update_pg_hba_conf_on_segments(array, options.standby_host)
         array = add_standby_to_catalog(options,
                                        standby_filespace_map)
             
@@ -471,7 +483,6 @@ def create_standby(options):
             undo_catalog_update(options, array)
             undo_file_copy(options, array)
         raise GpInitStandbyException(ex)
-            
             
 #-------------------------------------------------------------------------
 def update_pg_hba_conf(options, array):
