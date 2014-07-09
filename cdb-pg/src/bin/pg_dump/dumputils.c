@@ -659,6 +659,7 @@ do { \
 			CONVERT_PRIV('d', "DELETE");
 			CONVERT_PRIV('x', "REFERENCES");
 			CONVERT_PRIV('t', "TRIGGER");
+			CONVERT_PRIV('D', "TRUNCATE");
 		}
 
 		/* UPDATE */

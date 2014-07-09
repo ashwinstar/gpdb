@@ -13,7 +13,7 @@ test: update delete cluster dependency table_functions conversion sirv_functions
 # namespace will show diff if concurrent work has temporary tables.
 test: without_oid namespace truncate sequence gpdiffcheck gptokencheck olap_setup
 
-test: gp_hashagg gp_dqa exttab1 partition
+test: gp_hashagg gp_dqa exttab1 partition privileges
 test: column_compression rangefuncs_cdb temp
 
 test: gphdfs custom_format gpcopy appendonly filter gpctas gpdist matrix gpdtm_plpgsql

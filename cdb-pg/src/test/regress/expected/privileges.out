@@ -10,14 +10,16 @@ DROP ROLE IF EXISTS regressuser1;
 DROP ROLE IF EXISTS regressuser2;
 DROP ROLE IF EXISTS regressuser3;
 DROP ROLE IF EXISTS regressuser4;
+DROP ROLE IF EXISTS regressuser5;
 RESET client_min_messages;
 -- test proper begins here
 CREATE USER regressuser1;
 CREATE USER regressuser2;
 CREATE USER regressuser3;
 CREATE USER regressuser4;
-CREATE USER regressuser4;	-- duplicate
-ERROR:  role "regressuser4" already exists
+CREATE USER regressuser5;
+CREATE USER regressuser5;	-- duplicate
+ERROR:  role "regressuser5" already exists
 CREATE GROUP regressgroup1;
 CREATE GROUP regressgroup2 WITH USER regressuser1, regressuser2;
 ALTER GROUP regressgroup1 ADD USER regressuser4;
@@ -44,6 +46,7 @@ SELECT * FROM atest1;
 INSERT INTO atest1 VALUES (1, 'one');
 DELETE FROM atest1;
 UPDATE atest1 SET b = 'blech' WHERE a = 213;
+TRUNCATE atest1;
 LOCK atest1 IN ACCESS EXCLUSIVE MODE;
 REVOKE ALL ON atest1 FROM PUBLIC;
 SELECT * FROM atest1;
@@ -64,6 +67,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 GRANT SELECT ON atest2 TO regressuser2;
 GRANT UPDATE ON atest2 TO regressuser3;
 GRANT INSERT ON atest2 TO regressuser4;
+GRANT TRUNCATE ON atest2 TO regressuser5;
 SET SESSION AUTHORIZATION regressuser2;
 SELECT session_user, current_user;
  session_user | current_user 
@@ -99,6 +103,8 @@ SELECT * FROM atest1 FOR UPDATE; -- ok
 SELECT * FROM atest2 FOR UPDATE; -- fail
 ERROR:  permission denied for relation atest2
 DELETE FROM atest2; -- fail
+ERROR:  permission denied for relation atest2
+TRUNCATE atest2; -- fail
 ERROR:  permission denied for relation atest2
 LOCK atest2 IN ACCESS EXCLUSIVE MODE; -- fail
 ERROR:  permission denied for relation atest2
@@ -145,14 +151,13 @@ UPDATE atest2 SET col2 = NULL; -- ok
 UPDATE atest2 SET col2 = NOT col2; -- fails; requires SELECT on atest2
 ERROR:  permission denied for relation atest2
 UPDATE atest2 SET col2 = true FROM atest1 WHERE atest1.a = 5; -- ok
-ERROR:  Cannot parallelize that UPDATE yet
-DETAIL:  Passage of data from one segment to another is not yet supported during UPDATE operations.
-HINT:  The WHERE condition must specify equality between corresponding DISTRIBUTED BY columns of the target table and all joined tables.
 SELECT * FROM atest1 FOR UPDATE; -- fail
 ERROR:  permission denied for relation atest1
 SELECT * FROM atest2 FOR UPDATE; -- fail
 ERROR:  permission denied for relation atest2
 DELETE FROM atest2; -- fail
+ERROR:  permission denied for relation atest2
+TRUNCATE atest2; -- fail
 ERROR:  permission denied for relation atest2
 LOCK atest2 IN ACCESS EXCLUSIVE MODE; -- ok
 COPY atest2 FROM stdin; -- fail
@@ -248,8 +253,8 @@ HINT:  Only superusers may use untrusted languages.
 SET SESSION AUTHORIZATION regressuser1;
 GRANT USAGE ON LANGUAGE sql TO regressuser2; -- fail
 WARNING:  no privileges were granted for "sql"
-CREATE FUNCTION testfunc1(int) RETURNS int AS 'select 2 * $1;' LANGUAGE sql;
-CREATE FUNCTION testfunc2(int) RETURNS int AS 'select 3 * $1;' LANGUAGE sql;
+CREATE FUNCTION testfunc1(int) RETURNS int AS 'select 2 * $1;' LANGUAGE sql CONTAINS SQL;
+CREATE FUNCTION testfunc2(int) RETURNS int AS 'select 3 * $1;' LANGUAGE sql CONTAINS SQL;
 REVOKE ALL ON FUNCTION testfunc1(int), testfunc2(int) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION testfunc1(int), testfunc2(int) TO regressuser2;
 GRANT USAGE ON FUNCTION testfunc1(int) TO regressuser3; -- semantic error
@@ -259,7 +264,7 @@ GRANT ALL PRIVILEGES ON FUNCTION testfunc_nosuch(int) TO regressuser4;
 ERROR:  function testfunc_nosuch(integer) does not exist
 CREATE FUNCTION testfunc4(boolean) RETURNS text
   AS 'select col1 from atest2 where col2 = $1;'
-  LANGUAGE sql SECURITY DEFINER;
+  LANGUAGE sql SECURITY DEFINER READS SQL DATA;
 GRANT EXECUTE ON FUNCTION testfunc4(boolean) TO regressuser3;
 SET SESSION AUTHORIZATION regressuser2;
 SELECT testfunc1(5), testfunc2(5); -- ok
@@ -268,7 +273,7 @@ SELECT testfunc1(5), testfunc2(5); -- ok
         10 |        15
 (1 row)
 
-CREATE FUNCTION testfunc3(int) RETURNS int AS 'select 2 * $1;' LANGUAGE sql; -- fail
+CREATE FUNCTION testfunc3(int) RETURNS int AS 'select 2 * $1;' LANGUAGE sql CONTAINS SQL; -- fail
 ERROR:  permission denied for language sql
 SET SESSION AUTHORIZATION regressuser3;
 SELECT testfunc1(5); -- fail
@@ -278,7 +283,7 @@ ERROR:  permission denied for relation atest2
 SELECT testfunc4(true); -- ok
  testfunc4 
 -----------
- 
+ bar
 (1 row)
 
 SET SESSION AUTHORIZATION regressuser4;
@@ -294,6 +299,11 @@ ERROR:  must be owner of function testfunc1
 DROP FUNCTION testfunc1(int); -- ok
 -- restore to sanity
 GRANT ALL PRIVILEGES ON LANGUAGE sql TO PUBLIC;
+-- truncate
+SET SESSION AUTHORIZATION regressuser5;
+TRUNCATE atest2; -- ok
+TRUNCATE atest3; -- fail
+ERROR:  permission denied for relation atest3
 -- has_table_privilege function
 -- bad-input checks
 select has_table_privilege(NULL,'pg_authid','select');
@@ -303,7 +313,11 @@ select has_table_privilege(NULL,'pg_authid','select');
 (1 row)
 
 select has_table_privilege('pg_shad','select');
-ERROR:  relation "pg_shad" does not exist
+ has_table_privilege 
+---------------------
+ 
+(1 row)
+
 select has_table_privilege('nosuchuser','pg_authid','select');
 ERROR:  role "nosuchuser" does not exist
 select has_table_privilege('pg_authid','sel');
@@ -388,6 +402,12 @@ select has_table_privilege('pg_authid','delete');
  t
 (1 row)
 
+select has_table_privilege('pg_authid','truncate');
+ has_table_privilege 
+---------------------
+ t
+(1 row)
+
 select has_table_privilege(t1.oid,'select')
 from (select oid from pg_class where relname = 'pg_authid') as t1;
  has_table_privilege 
@@ -465,6 +485,12 @@ select has_table_privilege('pg_class','delete');
  f
 (1 row)
 
+select has_table_privilege('pg_class','truncate');
+ has_table_privilege 
+---------------------
+ f
+(1 row)
+
 select has_table_privilege(t1.oid,'select')
 from (select oid from pg_class where relname = 'pg_class') as t1;
  has_table_privilege 
@@ -535,6 +561,12 @@ select has_table_privilege('atest1','update');
 (1 row)
 
 select has_table_privilege('atest1','delete');
+ has_table_privilege 
+---------------------
+ f
+(1 row)
+
+select has_table_privilege('atest1','truncate');
  has_table_privilege 
 ---------------------
  f
@@ -620,3 +652,4 @@ DROP USER regressuser1;
 DROP USER regressuser2;
 DROP USER regressuser3;
 DROP USER regressuser4;
+DROP USER regressuser5;

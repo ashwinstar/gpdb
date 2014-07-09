@@ -1461,6 +1461,8 @@ gp_truncate_error_log(PG_FUNCTION_ARGS)
 	}
 	else
 	{
+		AclResult	aclresult;
+
 		relrv = makeRangeVarFromNameList(textToQualifiedNameList(relname));
 		relid = RangeVarGetRelid(relrv, true);
 
@@ -1471,8 +1473,9 @@ gp_truncate_error_log(PG_FUNCTION_ARGS)
 		/*
 		 * Allow only the table owner to truncate error log.
 		 */
-		if (!pg_class_ownercheck(relid, GetUserId()))
-			aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CLASS, relrv->relname);
+		aclresult = pg_class_aclcheck(relid, GetUserId(), ACL_TRUNCATE);
+		if (aclresult != ACLCHECK_OK)
+			aclcheck_error(aclresult, ACL_KIND_CLASS, relrv->relname);
 
 		/* We don't care if this fails or not. */
 		ErrorLogDelete(MyDatabaseId, relid);

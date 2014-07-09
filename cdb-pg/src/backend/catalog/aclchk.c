@@ -2032,6 +2032,8 @@ string_to_privilege(const char *privname)
 		return ACL_UPDATE;
 	if (strcmp(privname, "delete") == 0)
 		return ACL_DELETE;
+	if (strcmp(privname, "truncate") == 0)
+		return ACL_TRUNCATE;
 	if (strcmp(privname, "references") == 0)
 		return ACL_REFERENCES;
 	if (strcmp(privname, "trigger") == 0)
@@ -2069,6 +2071,8 @@ privilege_to_string(AclMode privilege)
 			return "UPDATE";
 		case ACL_DELETE:
 			return "DELETE";
+		case ACL_TRUNCATE:
+			return "TRUNCATE";
 		case ACL_REFERENCES:
 			return "REFERENCES";
 		case ACL_TRIGGER:
@@ -2311,7 +2315,7 @@ pg_class_aclmask(Oid table_oid, Oid roleid,
 	 * themselves.	ACL_USAGE is if we ever have system sequences.
 	 */
 
-	updating = ((mask & (ACL_INSERT | ACL_UPDATE | ACL_DELETE | ACL_USAGE)) != 0);
+	updating = ((mask & (ACL_INSERT | ACL_UPDATE | ACL_DELETE | ACL_TRUNCATE | ACL_USAGE)) != 0);
 
 	if (updating)
 	{
@@ -2323,7 +2327,7 @@ pg_class_aclmask(Oid table_oid, Oid roleid,
 #ifdef ACLDEBUG
 			elog(DEBUG2, "permission denied for system catalog update");
 #endif
-			mask &= ~(ACL_INSERT | ACL_UPDATE | ACL_DELETE | ACL_USAGE);
+			mask &= ~(ACL_INSERT | ACL_UPDATE | ACL_DELETE | ACL_TRUNCATE | ACL_USAGE);
 		}
 
 		/* 

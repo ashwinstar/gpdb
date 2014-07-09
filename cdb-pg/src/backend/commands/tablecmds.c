@@ -2152,6 +2152,8 @@ ExecuteTruncate(TruncateStmt *stmt)
 static void
 truncate_check_rel(Relation rel)
 {
+	AclResult	aclresult;
+
 	/* Only allow truncate on regular or append-only tables */
 	if (rel->rd_rel->relkind != RELKIND_RELATION)
 			ereport(ERROR,
@@ -2169,8 +2171,10 @@ truncate_check_rel(Relation rel)
 
 
 	/* Permissions checks */
-	if (!pg_class_ownercheck(RelationGetRelid(rel), GetUserId()))
-		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CLASS,
+	aclresult = pg_class_aclcheck(RelationGetRelid(rel), GetUserId(),
+								  ACL_TRUNCATE);
+	if (aclresult != ACLCHECK_OK)
+		aclcheck_error(aclresult, ACL_KIND_CLASS,
 					   RelationGetRelationName(rel));
 
 	if (!allowSystemTableModsDDL && IsSystemRelation(rel))
