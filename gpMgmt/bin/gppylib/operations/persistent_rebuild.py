@@ -119,10 +119,11 @@ class ValidateContentID:
 
         for seg in self.gparray.getDbList():
             status = seg.getSegmentStatus()
+            mode = seg.getSegmentMode()
             c = seg.getSegmentContentId()
             if status == 'u':
                 up_content_ids.add(c)
-            elif status == 'r':
+            if mode == 'r':
                 resync_content_ids.add(c)
 
         for c in self.content_id:
@@ -582,7 +583,7 @@ class RebuildTable:
             if seg.getSegmentContentId() in content_ids:
                 if seg.getSegmentRole() == 'p' and seg.getSegmentStatus() == 'd':
                     raise Exception('Segment %s is down. Cannot continue with persistent table rebuild' % seg.getSegmentDataDirectory())
-                elif seg.getSegmentRole() == 'p' and seg.getSegmentStatus() == 'r':
+                elif seg.getSegmentRole() == 'p' and seg.getSegmentMode() == 'r':
                     raise Exception('Segment %s is in resync. Cannot continue with persistent table rebuild' % seg.getSegmentDataDirectory())
                 elif seg.getSegmentRole() == 'p' and seg.getSegmentStatus() != 'd':
                     valid_dbids.append(seg.getSegmentDbId())

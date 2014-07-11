@@ -161,9 +161,10 @@ class ValidateContentIDTestCase(unittest.TestCase):
             m = Mock()
             m.getSegmentContentId = Mock()
             m.getSegmentContentId.return_value = (i % 3) + 1
+            m.getSegmentStatus.return_value = 'u'
             if i == 1:
                 m.getSegmentStatus = Mock()
-                m.getSegmentStatus.return_value = 'r'
+                m.getSegmentMode.return_value = 'r'
             mock_segs.append(m)
         gparray = Mock()
         gparray.getDbList = Mock()
@@ -762,7 +763,8 @@ class RebuildTableTestCase(unittest.TestCase):
             m.getSegmentDbId.return_value = i 
             m.getSegmentPort.return_value = 5000 + i
             m.getSegmentHostName.return_value = 'mdw%d' % (i + 1) 
-            m.getSegmentStatus.return_value = 'u' if i % 2 else 'r' 
+            m.getSegmentStatus.return_value = 'u' 
+            m.getSegmentMode.return_value = 'r' if i % 2 else 's'
             mock_segs.append(m)
         m = Mock()
         m.getDbList.return_value = mock_segs 
