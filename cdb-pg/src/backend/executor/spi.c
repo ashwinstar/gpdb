@@ -87,6 +87,8 @@ static int _SPI_execute_plan(SPIPlanPtr plan,
 					Datum *Values, const char *Nulls,
 					int pflags); */
 
+static void _SPI_assign_query_mem(QueryDesc * queryDesc);
+
 static int	_SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount);
 
 static void _SPI_error_callback(void *arg);
@@ -1878,6 +1880,39 @@ fail:
 	return my_res;
 }
 
+/*
+ * Assign memory for a query before executing through SPI.
+ * There are two possibilities:
+ *   1. We're not in a function scan. We calculate the
+ * 	    query's limit using the queue.
+ *   2. We're inside a function scan. We use the memory
+ *      allocated to the function scan operator.
+ *
+ */
+static void
+_SPI_assign_query_mem(QueryDesc * queryDesc)
+{
+	if (Gp_role == GP_ROLE_DISPATCH &&
+			ResourceScheduler &&
+			!superuser() &&
+			ActivePortal &&
+			(gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE))
+		{
+			if (!SPI_IsMemoryReserved())
+			{
+				queryDesc->plannedstmt->query_mem =
+					ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt,
+													 ActivePortal->queueId);
+			}
+			else
+			{
+				queryDesc->plannedstmt->query_mem =
+					SPI_GetMemoryReservation();
+			}
+			Assert(queryDesc->plannedstmt->query_mem > 0);
+		}
+}
+
 static int
 _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
 {
@@ -1929,12 +1964,7 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
 						/** TODO: siva - can we ever reach this point? */
 						PortalSetStatus(ActivePortal, PORTAL_QUEUE);
 					
-						if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
-						{
-							queryDesc->plannedstmt->query_mem =
-								ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt, 
-																 ActivePortal->queueId);
-						}
+						_SPI_assign_query_mem(queryDesc);
 
 						ActivePortal->releaseResLock =
 							ResLockPortal(ActivePortal, queryDesc);
@@ -1957,21 +1987,7 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
 						Assert(ActivePortal);
 						Assert(ActivePortal->releaseResLock);
 
-						if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
-						{
-							if (!SPI_IsMemoryReserved())
-							{
-								queryDesc->plannedstmt->query_mem = 
-									ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt,
-																	 ActivePortal->queueId);						
-							}
-							else
-							{
-								queryDesc->plannedstmt->query_mem = 
-									SPI_GetMemoryReservation();
-							}
-							Assert(queryDesc->plannedstmt->query_mem > 0);
-						}
+						_SPI_assign_query_mem(queryDesc);
 					}
 				}
 			}
@@ -1981,18 +1997,24 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
 		 * support is finished, the queryTree field will be gone.
 		 */
 		case CMD_INSERT:
+			_SPI_assign_query_mem(queryDesc);
+
 			if (queryDesc->plannedstmt->returningLists)
 				res = SPI_OK_INSERT_RETURNING;
 			else
 				res = SPI_OK_INSERT;
 			break;
 		case CMD_DELETE:
+			_SPI_assign_query_mem(queryDesc);
+
 			if (queryDesc->plannedstmt->returningLists)
 				res = SPI_OK_DELETE_RETURNING;
 			else
 				res = SPI_OK_DELETE;
 			break;
 		case CMD_UPDATE:
+			_SPI_assign_query_mem(queryDesc);
+
 			if (queryDesc->plannedstmt->returningLists)
 				res = SPI_OK_UPDATE_RETURNING;
 			else
