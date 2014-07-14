@@ -34,3 +34,4 @@ greenplum-loaders-*.bin
 Linux GCC
 Linux\ GCC
 *.swp
+*.pyc

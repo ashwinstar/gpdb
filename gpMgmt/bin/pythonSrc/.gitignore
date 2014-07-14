@@ -5,4 +5,6 @@ pychecker-0.8.18
 pycrypto-2.0.1
 PyGreSQL-4.0
 unittest2-0.5.1
-._paramiko-1.7.6-9
+paramiko-1.7.6-9
+install
+mock-1.0.1

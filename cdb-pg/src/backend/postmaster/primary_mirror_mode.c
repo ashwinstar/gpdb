@@ -2690,3 +2690,33 @@ primaryMirrorGetNewDbid(void)
 
 	return newdbid;
 }
+
+/*
+ * Return true if the postmaster is a quiescent.  Optionally outMirrorMode
+ * is set to the current mirror mode.
+ */
+bool
+isQuiescentMode(PrimaryMirrorMode *outMirrorMode)
+{
+	PrimaryMirrorMode mirrorMode, requestedMode;
+
+	acquireModuleSpinLockAndMaybeStartCriticalSection(false);
+	{
+		mirrorMode = pmModuleState->mode;
+		requestedMode = pmModuleState->requestedTransition.mode;
+	}
+	releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
+
+	if (outMirrorMode)
+		*outMirrorMode = mirrorMode;
+
+	/*
+	 * In initial quiescent mode the mirrorMode is "uninitialized."
+	 */
+	if (mirrorMode == PMModeQuiescentSegment ||
+		(requestedMode == PMModeQuiescentSegment &&
+		 mirrorMode == PMModeUninitialized))
+		return true;
+
+	return false;
+}

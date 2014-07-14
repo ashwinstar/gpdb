@@ -145,7 +145,7 @@ static char **readfile(const char *path);
 static int start_postmaster(void);
 static void read_post_opts(void);
 
-static bool test_postmaster_connection(bool);
+static PGPing test_postmaster_connection(bool);
 static bool postmaster_is_alive(pid_t pid);
 
 static char def_postopts_file[MAXPGPATH];
@@ -438,16 +438,15 @@ start_postmaster(void)
  * Note that the checkpoint parameter enables a Windows service control
  * manager checkpoint, it's got nothing to do with database checkpoints!!
  */
-static bool
+static PGPing
 test_postmaster_connection(bool do_checkpoint __attribute__((unused)))
 {
-	PGconn	   *conn;
-	bool		success = false;
+	PGPing		ret = PQPING_NO_RESPONSE;
 	int			i;
 	char		portstr[32];
 	char	   *p;
 	char	   *q;
-	char		connstr[128]; /* Should be way more than enough! */
+	char		connstr[MAXPGPATH * 2 + 256]; /* Should be way more than enough! */
 	static const char *backend_options = "'-c gp_session_role=utility'";
 
 	*portstr = '\0';
@@ -548,62 +547,60 @@ test_postmaster_connection(bool do_checkpoint __attribute__((unused)))
 
 	for (i = 0; i < wait_seconds; i++)
 	{
-		if ((conn = PQconnectdb(connstr)) != NULL &&
-			(PQstatus(conn) == CONNECTION_OK ||
-			 PQconnectionNeedsPassword(conn)))
-		{
-			PQfinish(conn);
-			success = true;
+		ret = PQping(connstr);
+
+		/*
+		 * In addition to OK/NO_ATTEMPT, we finish checking once it's started
+		 * as mirror or quiescent, which tells we can now send transition
+		 * message to postmaster.
+		 */
+		if (ret == PQPING_OK || ret == PQPING_NO_ATTEMPT ||
+			ret == PQPING_MIRROR_OR_QUIESCENT)
 			break;
-		}
-		else
-		{
-			PQfinish(conn);
 
 #if defined(WIN32)
-			if (do_checkpoint)
-			{
-				/*
-				 * Increment the wait hint by 6 secs (connection timeout +
-				 * sleep) We must do this to indicate to the SCM that our
-				 * startup time is changing, otherwise it'll usually send a
-				 * stop signal after 20 seconds, despite incrementing the
-				 * checkpoint counter.
-				 */
-				status.dwWaitHint += 6000;
-				status.dwCheckPoint++;
-				SetServiceStatus(hStatus, (LPSERVICE_STATUS) &status);
-			}
-
-			else
-#endif
-				print_msg(".");
-
-
+		if (do_checkpoint)
+		{
 			/*
-			 * our connection attempt failed.  
-			 * after two attempts check if the postmaster is still alive before sleeping.
+			 * Increment the wait hint by 6 secs (connection timeout +
+			 * sleep) We must do this to indicate to the SCM that our
+			 * startup time is changing, otherwise it'll usually send a
+			 * stop signal after 20 seconds, despite incrementing the
+			 * checkpoint counter.
 			 */
-			if (i > 1) 
-			{
-				pgpid_t pid = get_pgpid();
-				if (pid == 0)				/* no pid file */
-				{
-					write_stderr(_("%s: PID file \"%s\" does not exist\n"), progname, pid_file);
-					break;
-				}
-				if (! postmaster_is_alive((pid_t) pid))
-				{
-					write_stderr(_("%s: postmaster pid %ld not running\n"), progname, pid);
-					break;
-				}
-			}
-
-			pg_usleep(1000000); /* 1 sec */
+			status.dwWaitHint += 6000;
+			status.dwCheckPoint++;
+			SetServiceStatus(hStatus, (LPSERVICE_STATUS) &status);
 		}
+
+		else
+#endif
+			print_msg(".");
+
+
+		/*
+		 * our connection attempt failed.
+		 * after two attempts check if the postmaster is still alive before sleeping.
+		 */
+		if (i > 1)
+		{
+			pgpid_t pid = get_pgpid();
+			if (pid == 0)				/* no pid file */
+			{
+				write_stderr(_("%s: PID file \"%s\" does not exist\n"), progname, pid_file);
+				return PQPING_NO_RESPONSE;
+			}
+			if (!postmaster_is_alive((pid_t) pid))
+			{
+				write_stderr(_("%s: postmaster pid %ld not running\n"), progname, pid);
+				return PQPING_NO_RESPONSE;
+			}
+		}
+
+		pg_usleep(1000000); /* 1 sec */
 	}
 
-	return success;
+	return ret;
 }
 
 
@@ -772,15 +769,32 @@ do_start(void)
 	{
 		print_msg(_("waiting for server to start..."));
 
-		if (test_postmaster_connection(false) == false)
+		switch (test_postmaster_connection(false))
 		{
-			printf(_("could not start server\n"));
-			exit(1);
-		}
-		else
-		{
-			print_msg(_(" done\n"));
-			print_msg(_("server started\n"));
+			case PQPING_OK:
+				print_msg(_(" done\n"));
+				print_msg(_("server started\n"));
+				break;
+			case PQPING_REJECT:
+				print_msg(_(" stopped waiting\n"));
+				print_msg(_("server is still starting up\n"));
+				break;
+			case PQPING_MIRROR_OR_QUIESCENT:
+				print_msg(_(" done\n"));
+				print_msg(_("server started in mirror or quiescent mode\n"));
+				break;
+			case PQPING_NO_RESPONSE:
+				print_msg(_(" stopped waiting\n"));
+				write_stderr(_("%s: could not start server\n"
+							   "Examine the log output.\n"),
+							 progname);
+				exit(1);
+				break;
+			case PQPING_NO_ATTEMPT:
+				print_msg(_(" failed\n"));
+				write_stderr(_("%s: could not wait for server because of misconfiguration\n"),
+							 progname);
+				exit(1);
 		}
 	}
 	else
@@ -1344,7 +1358,7 @@ pgwin32_ServiceMain(DWORD argc, LPTSTR * argv)
 	if (do_wait)
 	{
 		write_eventlog(EVENTLOG_INFORMATION_TYPE, _("Waiting for server startup...\n"));
-		if (test_postmaster_connection(true) == false)
+		if (test_postmaster_connection(true) != PQPING_OK)
 		{
                 	write_eventlog(EVENTLOG_INFORMATION_TYPE, _("Timed out waiting for server startup\n"));
  			pgwin32_SetServiceStatus(SERVICE_STOPPED);

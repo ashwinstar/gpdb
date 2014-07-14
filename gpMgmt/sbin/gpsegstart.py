@@ -167,30 +167,8 @@ class GpSegStart:
         self.logger                = logger
         self.overall_status        = None
 
-    def isQuiescent(self):
-        if self.mirroringMode == 'quiescent':
-            return True
-        else:
-            return False
-
     def getOverallStatusKeys(self):
         return self.overall_status.dirmap.keys()
-
-    def waitForPostmasters(self, num_attempts=20, sleeptime=15):
-        success = False
-        for i in range(num_attempts):
-            success = self.checkPostmasters(must_be_running=False)
-            if success:
-                break
-            self.logger.info("Waiting %d seconds before checking for PIDs again" % sleeptime)
-            time.sleep(sleeptime)
-
-        if not success:
-            self.logger.info("Did not find PID for some postmasters after multiple attempts.")  
-        else:
-            self.logger.info("All postmasters have started and PID was found")
-
-        return success
 
     # return True if all running
     # return False if not all running
@@ -257,7 +235,7 @@ class GpSegStart:
 
     def __startSegments(self):
         """
-        Start the segments themselves 
+        Start the segments themselves
         """
         self.logger.info("Starting segments... (mirroringMode %s)" % self.mirroringMode)
 
@@ -267,7 +245,6 @@ class GpSegStart:
                                   self.num_cids,
                                   self.era,
                                   self.mirroringMode,
-                                  noWait=(self.mirroringMode == 'quiescent'),
                                   timeout=self.timeout,
                                   specialMode=self.specialMode,
                                   wrapper=self.wrapper,
@@ -500,13 +477,9 @@ class GpSegStart:
         self.__startSegments()
 
         # Being paranoid, we frequently check for postmaster failures.
-        # The postmasters should be running by now unless we're in quiescent mode
+        # The postmasters should be running by now.
         #
-
-        if self.isQuiescent():
-            self.waitForPostmasters()
-        else:
-            self.checkPostmasters(must_be_running=True)
+        self.checkPostmasters(must_be_running=True)
 
         self.__convertSegments()
         self.checkPostmasters(must_be_running=True)

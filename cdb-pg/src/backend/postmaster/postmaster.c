@@ -2985,9 +2985,9 @@ retry1:
 					 errOmitLocation(true),
 					 errmsg(POSTMASTER_IN_RECOVERY_MSG)));
 			break;
-        case CAC_MIRROR_OR_QUIESCENT:
+		case CAC_MIRROR_OR_QUIESCENT:
 			ereport(FATAL,
-					(errcode(ERRCODE_CANNOT_CONNECT_NOW),
+					(errcode(ERRCODE_MIRROR_OR_QUIESCENT),
 					 errSendAlert(true),
 					 errOmitLocation(true),
 					 errmsg("the database system is in mirror or uninitialized mode")));
@@ -4080,8 +4080,22 @@ canAcceptConnections(void)
 	 */
 	if (pmState != PM_RUN)
 	{
+		PrimaryMirrorMode mirrorMode;
+
 		if (Shutdown > NoShutdown)
 			return CAC_SHUTDOWN;	/* shutdown is pending */
+
+		/*
+		 * check to see if we are a quiescent or a mirror.
+		 * We want to tell the client that we are in quiescent mode
+		 * before checking startup or not, because this mode is
+		 * always under startup state.  However, for mirror mode
+		 * we first check whether we are in startup, as that's important
+		 * in other cases.
+		 */
+		if (isQuiescentMode(&mirrorMode))
+			return CAC_MIRROR_OR_QUIESCENT;
+
 		if (!FatalError &&
 			(pmState == PM_STARTUP ||
 			 pmState == PM_STARTUP_PASS2 ||
@@ -4091,18 +4105,8 @@ canAcceptConnections(void)
 			 pmState == PM_RECOVERY_CONSISTENT))
 			return CAC_STARTUP; /* normal startup */
 
-        /* check to see if we are a quiescent or a mirror.
-         */
-        {
-            PrimaryMirrorMode mirrorMode;
-            getPrimaryMirrorStatusCodes(&mirrorMode, NULL, NULL, NULL);
-
-            if ( mirrorMode == PMModeQuiescentSegment ||
-                 mirrorMode == PMModeMirrorSegment)
-            {
-                return CAC_MIRROR_OR_QUIESCENT;
-            }
-        }
+		if (mirrorMode == PMModeMirrorSegment)
+			return CAC_MIRROR_OR_QUIESCENT;
 
 		return CAC_RECOVERY;	/* else must be crash recovery */
 	}
