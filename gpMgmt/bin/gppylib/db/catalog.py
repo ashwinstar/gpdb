@@ -115,8 +115,7 @@ def get_standby_filespace_map(conn):
     sql = """SELECT fsname, fselocation 
     FROM pg_filespace, pg_filespace_entry 
 WHERE pg_filespace.oid = pg_filespace_entry.fsefsoid 
-    AND fsedbid = (SELECT dbid FROM gp_segment_configuration
-                    WHERE role = 'm' AND conetnt = -1)"""
+    AND fsedbid = (SELECT MAX(dbid) FROM gp_segment_configuration WHERE content=-1)"""
     cursor = None
     try:
         cursor = dbconn.execSQL(conn, sql)
