@@ -684,7 +684,8 @@ COptTasks::PdrgPssLoad
 COptimizerConfig *
 COptTasks::PoconfCreate
 	(
-	IMemoryPool *pmp
+	IMemoryPool *pmp,
+	ICostModel *pcm
 	)
 {
 	// get chosen plan number, cost threshold
@@ -702,7 +703,8 @@ COptTasks::PoconfCreate
 						(
 						New(pmp) CEnumeratorConfig(pmp, ullPlanId, ullSamples, dCostThreshold),
 						New(pmp) CStatisticsConfig(dDampingFactorFilter, dDampingFactorJoin, dDampingFactorGroupBy),
-						New(pmp) CCTEConfig(ulCTEInliningCutoff)
+						New(pmp) CCTEConfig(ulCTEInliningCutoff),
+						pcm
 						);
 }
 
@@ -874,8 +876,9 @@ COptTasks::PvOptimizeTask
 			}
 
 			CTranslatorQueryToDXL trquerytodxl(pmp, &mda, &idgtorColId, &idgtorCTE, pmapvarcolid, (Query*) poctx->m_pquery, 0 /* ulQueryLevel */);
-			COptimizerConfig *pocconf = PoconfCreate(pmp);
+
 			ICostModel *pcm = Pcm(pmp, ulSegmentsForCosting);
+			COptimizerConfig *pocconf = PoconfCreate(pmp, pcm);
 			CConstExprEvaluatorProxy ceevalproxy(pmp, &mda);
 			IConstExprEvaluator *pceeval =
 					New(pmp) CConstExprEvaluatorDXL(pmp, &mda, &ceevalproxy);
@@ -884,10 +887,9 @@ COptTasks::PvOptimizeTask
 			if (optimizer_parallel)
 			{
 				// install opt context in TLS
-				pcm->AddRef();
 				pocconf->AddRef();
 				pceeval->AddRef();
-				CAutoOptCtxt aoc(pmp, &mda, pcm, pceeval, pocconf);
+				CAutoOptCtxt aoc(pmp, &mda, pceeval, pocconf);
 				CTranslatorUtils::PreloadMD(pmp, &mda, sysidDefault, (Query*) poctx->m_pquery);
 			}
 
@@ -907,7 +909,6 @@ COptTasks::PvOptimizeTask
 									pdxlnQuery,
 									pdrgpdxlnQueryOutput,
 									pdrgpdxlnCTE,
-									pcm,
 									pceeval,
 									ulSegments,
 									gp_session_id,
@@ -1005,13 +1006,14 @@ COptTasks::PvOptimizeMinidumpTask
 	{
 		ulSegmentsForCosting = ulSegments;
 	}
-	COptimizerConfig *pocconf = PoconfCreate(pmp);
+
 	ICostModel *pcm = Pcm(pmp, ulSegmentsForCosting);
+	COptimizerConfig *pocconf = PoconfCreate(pmp, pcm);
 	CDXLNode *pdxlnResult = NULL;
 
 	GPOS_TRY
 	{
-		pdxlnResult = CMinidumperUtils::PdxlnExecuteMinidump(pmp, poptmdpctxt->m_szFileName, pcm, ulSegments, gp_session_id, gp_command_count, pocconf);
+		pdxlnResult = CMinidumperUtils::PdxlnExecuteMinidump(pmp, poptmdpctxt->m_szFileName, ulSegments, gp_session_id, gp_command_count, pocconf);
 	}
 	GPOS_CATCH_EX(ex)
 	{
@@ -1328,7 +1330,7 @@ COptTasks::PvDXLFromRelStatsTask
 	CMDProviderRelcache *pmdpr = New(pmp) CMDProviderRelcache(pmp);
 	CAutoMDAccessor amda(pmp, pmdpr, sysidDefault);
 	ICostModel *pcm = Pcm(pmp, gpdb::UlSegmentCountGP());
-	CAutoOptCtxt aoc(pmp, amda.Pmda(), pcm, NULL /*pceeval*/, NULL /*poconf*/);
+	CAutoOptCtxt aoc(pmp, amda.Pmda(), NULL /*pceeval*/, pcm);
 
 	DrgPimdobj *pdrgpmdobj = New(pmp) DrgPimdobj(pmp);
 

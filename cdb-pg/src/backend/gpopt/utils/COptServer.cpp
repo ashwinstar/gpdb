@@ -381,9 +381,8 @@ COptServer::PvOptimize
 			  (
 			   pmp,
 			   amda.Pmda(),
-			   New(pmp) CCostModelGPDB(pmp, ulSegments),
 			   NULL /*pceeval*/,
-			   NULL /*poconf*/
+			   New(pmp) CCostModelGPDB(pmp, ulSegments)
 			  );
 
 			// build query context from requested query

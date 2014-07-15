@@ -204,7 +204,7 @@ class COptTasks
 
 		// create optimizer configuration object
 		static
-		COptimizerConfig *PoconfCreate(IMemoryPool *pmp);
+		COptimizerConfig *PoconfCreate(IMemoryPool *pmp, ICostModel *pcm);
 
 		// optimize a query to a physical DXL
 		static
