@@ -17,6 +17,9 @@
 #include "parser/parse_node.h"
 
 
+/* fwd declarations */
+struct GpPolicy;
+
 extern List *parse_analyze(Node *parseTree, const char *sourceText,
 			  Oid *paramTypes, int numParams);
 extern List *parse_analyze_varparams(Node *parseTree, const char *sourceText,
@@ -77,5 +80,7 @@ Node *coerce_partition_value(Node *node, Oid typid, int32 typmod,
 List *transformStorageEncodingClause(List *options);
 List *TypeNameGetStorageDirective(TypeName *typname);
 extern List * form_default_storage_directive(List *enc);
+
+extern struct GpPolicy *createRandomDistribution(int maxattrs);
 
 #endif   /* ANALYZE_H */

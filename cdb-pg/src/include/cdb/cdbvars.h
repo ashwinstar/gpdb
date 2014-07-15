@@ -1201,4 +1201,8 @@ extern void increment_command_count(void);
  * switch to control inverse distribution function strategy.
  */
 extern char *gp_idf_deduplicate_str;
+
+/* default to RANDOM distribution for CREATE TABLE without DISTRIBUTED BY */
+extern bool gp_create_table_random_default_distribution;
+
 #endif   /* GPVARS_H */

@@ -28,6 +28,7 @@
 #include "access/heapam.h"
 #include "access/reloptions.h"
 #include "catalog/catquery.h"
+#include "catalog/gp_policy.h"
 #include "catalog/heap.h"
 #include "catalog/index.h"
 #include "catalog/indexing.h"
@@ -2058,7 +2059,8 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 					if (Gp_role == GP_ROLE_DISPATCH && isBeginning &&
 						stmt->distributedBy == NIL &&
 						stmt->inhRelations == NIL &&
-						stmt->policy == NULL)
+						stmt->policy == NULL &&
+						!gp_create_table_random_default_distribution)
 					{
 						likeDistributedBy = getLikeDistributionPolicy((InhRelation *) element);
 					}
@@ -2241,7 +2243,8 @@ transformCreateExternalStmt(ParseState *pstate, CreateExternalStmt *stmt,
 					if (Gp_role == GP_ROLE_DISPATCH && isBeginning &&
 						stmt->distributedBy == NIL &&
 						stmt->policy == NULL &&
-						iswritable /* dont bother if readable table */ )
+						iswritable /* dont bother if readable table */ &&
+						!gp_create_table_random_default_distribution)
 					{
 						likeDistributedBy = getLikeDistributionPolicy((InhRelation *) element);
 					}
@@ -2700,14 +2703,8 @@ transformETDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 
 		if(distributedBy == NIL && likeDistributedBy == NIL)
 		{
-			/* defaults to DISTRIBUTED RANDOMLY */
-			p = (GpPolicy *) palloc(sizeof(GpPolicy) + maxattrs *
-										 sizeof(p->attrs[0]));
-			p->ptype = POLICYTYPE_PARTITIONED;
-			p->nattrs = 0;
-			p->attrs[0] = 1;
-
-			*policyp = p;
+			/* defaults to DISTRIBUTED RANDOMLY irrespective of the gp_create_table_random_default_distribution guc */
+			*policyp = createRandomDistribution(maxattrs);
 		}
 		else
 		{
@@ -2727,11 +2724,7 @@ transformETDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 		else
 		{
 			/* defaults to DISTRIBUTED RANDOMLY */
-			p = (GpPolicy *) palloc(sizeof(GpPolicy) + maxattrs *
-										 sizeof(p->attrs[0]));
-			p->ptype = POLICYTYPE_PARTITIONED;
-			p->nattrs = 0;
-			p->attrs[0] = 1;
+			p = createRandomDistribution(maxattrs);
 		}
 
 		*policyp = p;
@@ -2751,6 +2744,20 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 	int			maxattrs = 200;
 	int			numUniqueIndexes = 0;
 	Constraint *uniqueindex = NULL;
+
+	if (gp_create_table_random_default_distribution && NIL == distributedBy)
+	{
+		Assert(NIL == likeDistributedBy);
+		*policyp = createRandomDistribution(maxattrs);
+		if (!bQuiet)
+			ereport(NOTICE,
+				(errcode(ERRCODE_SUCCESSFUL_COMPLETION),
+				 errmsg("Using default RANDOM distribution since no distribution was specified."),
+				 errhint("Consider including the 'DISTRIBUTED BY' clause to determine the distribution of rows."),
+				 errOmitLocation(true)));
+
+		return;
+	}
 
 	/*
 	 * utility mode creates can't have a policy.  Only the QD can have policies
@@ -12727,4 +12734,18 @@ transformSingleRowErrorHandling(ParseState *pstate, CreateStmtContext *cxt,
 
 	}
 
+}
+
+/*
+ * create a policy with random distribution
+ */
+GpPolicy *createRandomDistribution(int maxattrs)
+{
+        GpPolicy*       p = NULL;
+        p = (GpPolicy *) palloc(sizeof(GpPolicy) + maxattrs * sizeof(p->attrs[0]));
+        p->ptype = POLICYTYPE_PARTITIONED;
+        p->nattrs = 0;
+        p->attrs[0] = 1;
+
+        return p;
 }

@@ -11,6 +11,7 @@
 #include "postgres.h"
 
 #include "optimizer/clauses.h"
+#include "parser/analyze.h"		/* for createRandomDistribution() */
 #include "parser/parsetree.h"	/* for rt_fetch() */
 #include "utils/lsyscache.h"	/* for getatttypetypmod() */
 #include "nodes/makefuncs.h"	/* for makeVar() */
@@ -284,6 +285,15 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 					Assert(query->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
 					Assert(query->intoPolicy->nattrs >= 0);
 					Assert(query->intoPolicy->nattrs <= 1024);
+				}
+				else if (gp_create_table_random_default_distribution)
+				{
+					targetPolicy = createRandomDistribution(maxattrs);
+					ereport(NOTICE,
+						(errcode(ERRCODE_SUCCESSFUL_COMPLETION),
+						 errmsg("Using default RANDOM distribution since no distribution was specified."),
+						 errhint("Consider including the 'DISTRIBUTED BY' clause to determine the distribution of rows."),
+						 errOmitLocation(true)));
 				}
 				else
 				{
