@@ -529,6 +529,7 @@ delete from direct_dispatch_foo where id = (select max(id2) from direct_dispatch
 INFO:  Dispatch command to ALL contents
 INFO:  Dispatch command to ALL contents
 INFO:  Dispatch command to ALL contents
+INFO:  Dispatch command to ALL contents
 INFO:  Distributed transaction command 'Distributed Prepare' to ALL contents
 INFO:  Distributed transaction command 'Distributed Commit Prepared' to ALL contents
 -- start_ignore
