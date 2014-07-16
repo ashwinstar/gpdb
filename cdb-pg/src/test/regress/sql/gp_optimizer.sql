@@ -846,7 +846,7 @@ END;
 $$ LANGUAGE plpgsql volatile;
 
 -- force_explain
-set optimizer_segments = 2;
+set optimizer_segments = 3;
 explain
 select c.cid cid,
        c.firstname firstname,
@@ -947,7 +947,7 @@ select disable_xform('CXformInnerJoin2NLJoin');
 set optimizer_enable_indexjoin=on;
 
 -- force_explain
-set optimizer_segments = 2;
+set optimizer_segments = 3;
 EXPLAIN 
 SELECT (tt.event_ts / 100000) / 5 * 5 as fivemin, COUNT(*)
 FROM my_tt_agg_opt tt, my_tq_agg_opt_part tq
