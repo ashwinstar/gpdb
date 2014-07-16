@@ -1,7 +1,7 @@
 Pkgname: plr 
 Architecture: #arch
 OS: #os
-Version: ossv8.3.0.12_pv1.1_gpdb4.3 
+Version: ossv8.3.0.12_pv2.0_gpdb4.3 
 GPDBVersion: 4.3
 Description: Provides a procedural language implementation of R for the Greenplum Database. 
 PostInstall:
