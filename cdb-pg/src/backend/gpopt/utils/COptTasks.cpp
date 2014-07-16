@@ -934,7 +934,6 @@ COptTasks::PvOptimizeTask
 			pceeval->Release();
 			pdxlnQuery->Release();
 			pocconf->Release();
-			pcm->Release();
 			pdxlnPlan->Release();
 		}
 	}
@@ -1018,7 +1017,6 @@ COptTasks::PvOptimizeMinidumpTask
 	GPOS_CATCH_EX(ex)
 	{
 		CRefCount::SafeRelease(pdxlnResult);
-		CRefCount::SafeRelease(pcm);
 		CRefCount::SafeRelease(pocconf);
 		GPOS_RETHROW(ex);
 	}
@@ -1036,7 +1034,6 @@ COptTasks::PvOptimizeMinidumpTask
 	poptmdpctxt->m_szDXLResult = SzFromWsz(pstrDXL->Wsz());
 	delete pstrDXL;
 	CRefCount::SafeRelease(pdxlnResult);
-	pcm->Release();
 	pocconf->Release();
 
 	return NULL;
