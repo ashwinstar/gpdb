@@ -8834,7 +8834,7 @@ where c.cid = s.cid and s.date_sk = d.date_sk and
                            ->  Hash  (cost=432.00..432.00 rows=1 width=24)
                                  ->  Table Scan on datedim  (cost=0.00..432.00 rows=1 width=24)
                                        Filter: year = 2001 OR moy = 4
- Settings:  optimizer=on
+ Settings:  optimizer=on; optimizer_segments=3
 (18 rows)
 
 reset optimizer_segments;
@@ -9098,7 +9098,7 @@ ORDER BY 1 asc ;
                                                          ->  Dynamic Index Scan on my_tq_agg_opt_part  (cost=0.00..3.20 rows=1 width=96)
                                                                Index Cond: public.my_tq_agg_opt_part.ets <= "outer".event_ts
                                                                Filter: public.my_tq_agg_opt_part.sym::bpchar = "outer".symbol AND plusone(public.my_tq_agg_opt_part.bid_price) < "outer".trade_price AND "outer".event_ts < public.my_tq_agg_opt_part.end_ts
- Settings:  optimizer=on
+ Settings:  optimizer=on; optimizer_segments=3
 (39 rows)
 
 reset optimizer_segments;
