@@ -8806,6 +8806,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql volatile;
 -- force_explain
+set optimizer_segments = 2;
 explain
 select c.cid cid,
        c.firstname firstname,
@@ -8834,6 +8835,7 @@ where c.cid = s.cid and s.date_sk = d.date_sk and
  Settings:  optimizer=on
 (16 rows)
 
+reset optimizer_segments;
 -- Bitmap indexes
 drop table if exists orca.bm_test;
 NOTICE:  table "bm_test" does not exist, skipping
@@ -9050,6 +9052,7 @@ select disable_xform('CXformInnerJoin2NLJoin');
 
 set optimizer_enable_indexjoin=on;
 -- force_explain
+set optimizer_segments = 2;
 EXPLAIN 
 SELECT (tt.event_ts / 100000) / 5 * 5 as fivemin, COUNT(*)
 FROM my_tt_agg_opt tt, my_tq_agg_opt_part tq
@@ -9102,6 +9105,7 @@ ORDER BY 1 asc ;
  Settings:  optimizer=on
 (39 rows)
 
+reset optimizer_segments;
 reset optimizer_enable_constant_expression_evaluation;
 reset optimizer_enable_indexjoin;
 select enable_xform('CXformInnerJoin2DynamicIndexGetApply');

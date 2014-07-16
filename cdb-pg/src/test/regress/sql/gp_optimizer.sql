@@ -846,6 +846,7 @@ END;
 $$ LANGUAGE plpgsql volatile;
 
 -- force_explain
+set optimizer_segments = 2;
 explain
 select c.cid cid,
        c.firstname firstname,
@@ -854,7 +855,7 @@ select c.cid cid,
 from cust c, sales s, datedim d
 where c.cid = s.cid and s.date_sk = d.date_sk and
       ((d.year = 2001 and lower(s.type) = 't1' and plusone(d.moy) = 5) or (d.moy = 4 and upper(s.type) = 'T2'));
-
+reset optimizer_segments;
 -- Bitmap indexes
 drop table if exists orca.bm_test;
 create table orca.bm_test (i int, t text);
@@ -946,6 +947,7 @@ select disable_xform('CXformInnerJoin2NLJoin');
 set optimizer_enable_indexjoin=on;
 
 -- force_explain
+set optimizer_segments = 2;
 EXPLAIN 
 SELECT (tt.event_ts / 100000) / 5 * 5 as fivemin, COUNT(*)
 FROM my_tt_agg_opt tt, my_tq_agg_opt_part tq
@@ -955,7 +957,7 @@ WHERE tq.sym = tt.symbol AND
       tt.event_ts <  tq.end_ts
 GROUP BY 1
 ORDER BY 1 asc ;
-
+reset optimizer_segments;
 reset optimizer_enable_constant_expression_evaluation;
 reset optimizer_enable_indexjoin;
 
