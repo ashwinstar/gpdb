@@ -5413,6 +5413,10 @@ CTranslatorDXLToPlStmt::PplanCTAS
 	GpPolicy *pdistrpolicy = PdistrpolicyFromCtas(pdxlop);
 	m_pctxdxltoplstmt->AddCtasInfo(pintocl, pdistrpolicy);
 	
+	GPOS_ASSERT(IMDRelation::EreldistrMasterOnly != pdxlop->Ereldistrpolicy());
+	
+	m_fTargetTableDistributed = true;
+	
 	return (Plan *) pplan;
 }
 
