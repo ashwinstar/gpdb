@@ -78,7 +78,9 @@ namespace gpdxl
 
 	using namespace gpopt;
 
+	// fwd decl
 	class CDXLNode;
+	class CDXLPhysicalCTAS;
 
 	//---------------------------------------------------------------------------
 	//	@class:
@@ -756,6 +758,24 @@ namespace gpdxl
 				Plan *pplanParent
 				);
 
+			// translate a CTAS operator
+			Plan *PplanCTAS
+				(
+				const CDXLNode *pdxlnDML,
+				CDXLTranslateContext *pdxltrctxOut,
+				Plan *pplanParent,
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
+				);
+			
+			// translate the into clause for a DXL physical CTAS operator
+			IntoClause *PintoclFromCtas(const CDXLPhysicalCTAS *pdxlop);
+			
+			// translate the distribution policy for a DXL physical CTAS operator
+			GpPolicy *PdistrpolicyFromCtas(const CDXLPhysicalCTAS *pdxlop);
+
+			// translate CTAS storage options
+			List *PlCtasOptions(CDXLCtasStorageOptions::DrgPctasOpt *pdrgpctasopt);
+			
 			// compute directed dispatch segment ids
 			List *PlDirectDispatchSegIds(DrgPdxldatum *pdrgpdxldatum);
 			

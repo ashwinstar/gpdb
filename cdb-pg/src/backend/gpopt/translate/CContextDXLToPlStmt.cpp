@@ -53,7 +53,9 @@ CContextDXLToPlStmt::CContextDXLToPlStmt
 	m_pplRTable(plRTable),
 	m_plPartitionTables(NULL),
 	m_pplSubPlan(plSubPlan),
-	m_ulResultRelation(0)
+	m_ulResultRelation(0),
+	m_pintocl(NULL),
+	m_pdistrpolicy(NULL)
 {
 	m_phmuldxltrctxSharedScan = New(m_pmp) HMUlDxltrctx(m_pmp);
 	m_phmulcteconsumerinfo = New(m_pmp) HMUlCTEConsumerInfo(m_pmp);
@@ -288,6 +290,27 @@ CContextDXLToPlStmt::AddSubplan(Plan *pplan)
 	(* (m_pplSubPlan)) = gpdb::PlAppendElement((*(m_pplSubPlan)), pplan);
 }
 
+//---------------------------------------------------------------------------
+//	@function:
+//		CContextDXLToPlStmt::AddCtasInfo
+//
+//	@doc:
+//		Add CTAS info
+//
+//---------------------------------------------------------------------------
+void
+CContextDXLToPlStmt::AddCtasInfo
+	(
+	IntoClause *pintocl,
+	GpPolicy *pdistrpolicy
+	)
+{
+	GPOS_ASSERT(NULL != pintocl);
+	GPOS_ASSERT(NULL != pdistrpolicy);
+	
+	m_pintocl = pintocl;
+	m_pdistrpolicy = pdistrpolicy;
+}
 
 //---------------------------------------------------------------------------
 //	@function:

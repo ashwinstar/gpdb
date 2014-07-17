@@ -38,6 +38,7 @@ struct Plan;
 struct List;
 struct Var;
 struct ShareInputScan;
+struct GpPolicy;
 
 namespace gpdxl
 {
@@ -126,6 +127,12 @@ namespace gpdxl
 			// hash map of the cte identifiers and the cte consumers with the same cte identifier
 			HMUlCTEConsumerInfo *m_phmulcteconsumerinfo;
 
+			// into clause
+			IntoClause *m_pintocl;
+			
+			// CTAS distribution policy
+			GpPolicy  *m_pdistrpolicy;
+			
 		public:
 			// ctor/dtor
 			CContextDXLToPlStmt
@@ -191,6 +198,22 @@ namespace gpdxl
 			void AddPartitionedTable(OID oid);
 
 			void AddSubplan(Plan * );
+				
+			// add CTAS information
+			void AddCtasInfo(IntoClause *pintocl, GpPolicy *pdistrpolicy);
+			
+			// into clause
+			IntoClause *Pintocl() const
+			{
+				return m_pintocl;
+			}
+
+			// CTAS distribution policy
+			GpPolicy *Pdistrpolicy() const
+			{
+				return m_pdistrpolicy;
+			}
+
 	};
 
 	}

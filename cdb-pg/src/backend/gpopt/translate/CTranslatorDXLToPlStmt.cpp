@@ -21,6 +21,7 @@
 #include "nodes/nodes.h"
 #include "nodes/plannodes.h"
 #include "nodes/primnodes.h"
+#include "catalog/gp_policy.h"
 #include "cdb/cdbutil.h"
 #include "cdb/cdbvars.h"
 #include "utils/uri.h"
@@ -184,6 +185,7 @@ CTranslatorDXLToPlStmt::InitTranslators()
 			{EdxlopPhysicalCTEConsumer, 			&gpopt::CTranslatorDXLToPlStmt::PshscanFromDXLCTEConsumer},
 			{EdxlopPhysicalBitmapTableScan,			&gpopt::CTranslatorDXLToPlStmt::PplanBitmapTableScan},
 			{EdxlopPhysicalDynamicBitmapTableScan,	&gpopt::CTranslatorDXLToPlStmt::PplanBitmapTableScan},
+			{EdxlopPhysicalCTAS, 					&gpopt::CTranslatorDXLToPlStmt::PplanCTAS},
 	};
 
 	const ULONG ulTranslators = GPOS_ARRAY_SIZE(rgTranslators);
@@ -261,6 +263,8 @@ CTranslatorDXLToPlStmt::PplstmtFromDXL
 	}
 	
 	pplstmt->resultRelations = m_plResultRelations;
+	pplstmt->intoClause = m_pctxdxltoplstmt->Pintocl();
+	pplstmt->intoPolicy = m_pctxdxltoplstmt->Pdistrpolicy();
 	
 	SetInitPlanVariables(pplstmt);
 	return pplstmt;
@@ -5346,6 +5350,207 @@ CTranslatorDXLToPlStmt::JtFromEdxljt
 
 	return jt;
 }
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CTranslatorDXLToPlStmt::PplanCTAS
+//
+//	@doc:
+//		Translates a DXL CTAS node 
+//
+//---------------------------------------------------------------------------
+Plan *
+CTranslatorDXLToPlStmt::PplanCTAS
+	(
+	const CDXLNode *pdxlnCTAS,
+	CDXLTranslateContext *pdxltrctxOut,
+	Plan *pplanParent,
+	DrgPdxltrctx *pdrgpdxltrctxPrevSiblings
+	)
+{
+	CDXLPhysicalCTAS *pdxlop = CDXLPhysicalCTAS::PdxlopConvert(pdxlnCTAS->Pdxlop());
+	CDXLNode *pdxlnPrL = (*pdxlnCTAS)[0];
+	CDXLNode *pdxlnChild = (*pdxlnCTAS)[1];
+
+	GPOS_ASSERT(NULL == pdxlop->Pdxlctasopt()->Pdrgpctasopt());
+	
+	CDXLTranslateContext dxltrctxChild(m_pmp, false, pdxltrctxOut->PhmColParam());
+
+	Plan *pplan = PplFromDXL(pdxlnChild, &dxltrctxChild, pplanParent);
+	
+	// fix target list to match the required column names
+	DrgPdxltrctx *pdrgpdxltrctx = New(m_pmp) DrgPdxltrctx(m_pmp);
+	pdrgpdxltrctx->Append(&dxltrctxChild);
+	
+	List *plTargetList = PlTargetListFromProjList
+						(
+						pdxlnPrL,
+						NULL,		// pdxltrctxbt
+						pdrgpdxltrctx,
+						pdxltrctxOut,
+						pplan
+						);
+	gpdb::FreeList(pplan->targetlist);
+	pplan->targetlist = plTargetList;
+	
+	SetParamIds(pplan);
+
+	// cleanup
+	pdrgpdxltrctx->Release();
+
+
+	// translate operator costs
+	TranslatePlanCosts
+		(
+		CDXLPhysicalProperties::PdxlpropConvert(pdxlnCTAS->Pdxlprop())->Pdxlopcost(),
+		&(pplan->startup_cost),
+		&(pplan->total_cost),
+		&(pplan->plan_rows),
+		&(pplan->plan_width)
+		);
+
+	IntoClause *pintocl = PintoclFromCtas(pdxlop);
+	GpPolicy *pdistrpolicy = PdistrpolicyFromCtas(pdxlop);
+	m_pctxdxltoplstmt->AddCtasInfo(pintocl, pdistrpolicy);
+	
+	return (Plan *) pplan;
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CTranslatorDXLToPlStmt::PintoclFromCtas
+//
+//	@doc:
+//		Translates a DXL CTAS into clause 
+//
+//---------------------------------------------------------------------------
+IntoClause *
+CTranslatorDXLToPlStmt::PintoclFromCtas
+	(
+	const CDXLPhysicalCTAS *pdxlop
+	)
+{
+	IntoClause *pintocl = MakeNode(IntoClause);
+	pintocl->rel = MakeNode(RangeVar);
+	pintocl->rel->istemp = pdxlop->FTemporary();
+	pintocl->rel->relname = CTranslatorUtils::SzFromWsz(pdxlop->Pmdname()->Pstr()->Wsz());
+	pintocl->rel->schemaname = NULL;
+	if (NULL != pdxlop->PmdnameSchema())
+	{
+		pintocl->rel->schemaname = CTranslatorUtils::SzFromWsz(pdxlop->PmdnameSchema()->Pstr()->Wsz());
+	}
+	
+	CDXLCtasStorageOptions *pdxlctasopt = pdxlop->Pdxlctasopt();
+	if (NULL != pdxlctasopt->PmdnameTablespace())
+	{
+		pintocl->tableSpaceName = CTranslatorUtils::SzFromWsz(pdxlop->Pdxlctasopt()->PmdnameTablespace()->Pstr()->Wsz());
+	}
+	
+	pintocl->onCommit = (OnCommitAction) pdxlctasopt->Ectascommit(); 
+	pintocl->options = PlCtasOptions(pdxlctasopt->Pdrgpctasopt());
+	
+	// get column names
+	DrgPdxlcd *pdrgpdxlcd = pdxlop->Pdrgpdxlcd();
+	const ULONG ulCols = pdrgpdxlcd->UlLength();
+	pintocl->colNames = NIL;
+	for (ULONG ul = 0; ul < ulCols; ++ul)
+	{
+		const CDXLColDescr *pdxlcd = (*pdrgpdxlcd)[ul];
+
+		CHAR *szColName = CTranslatorUtils::SzFromWsz(pdxlcd->Pmdname()->Pstr()->Wsz());
+		
+		ColumnDef *pcoldef = MakeNode(ColumnDef);
+		pcoldef->colname = szColName;
+		pcoldef->is_local = true;
+
+		pintocl->colNames = gpdb::PlAppendElement(pintocl->colNames, pcoldef);
+
+	}
+
+	return pintocl;
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CTranslatorDXLToPlStmt::PdistrpolicyFromCtas
+//
+//	@doc:
+//		Translates distribution policy given by a physical CTAS operator 
+//
+//---------------------------------------------------------------------------
+GpPolicy *
+CTranslatorDXLToPlStmt::PdistrpolicyFromCtas
+	(
+	const CDXLPhysicalCTAS *pdxlop
+	)
+{
+	DrgPul *pdrgpulDistrCols = pdxlop->PdrgpulDistr();
+
+	const ULONG ulDistrCols = pdrgpulDistrCols->UlSafeLength();
+
+	ULONG ulDistrColsAlloc = 1;
+	if (0 < ulDistrCols)
+	{
+		ulDistrColsAlloc = ulDistrCols;
+	}
+	
+	GpPolicy *pdistrpolicy = (GpPolicy *) gpdb::GPDBAlloc(sizeof(GpPolicy) + 
+															ulDistrColsAlloc * sizeof(AttrNumber));
+	GPOS_ASSERT(IMDRelation::EreldistrHash == pdxlop->Ereldistrpolicy() ||
+				IMDRelation::EreldistrRandom == pdxlop->Ereldistrpolicy());
+	
+	pdistrpolicy->ptype = POLICYTYPE_PARTITIONED;
+	pdistrpolicy->nattrs = 0;
+	if (IMDRelation::EreldistrHash == pdxlop->Ereldistrpolicy())
+	{
+		
+		GPOS_ASSERT(0 < ulDistrCols);
+		pdistrpolicy->nattrs = ulDistrCols;
+		
+		for (ULONG ul = 0; ul < ulDistrCols; ul++)
+		{
+			ULONG ulColPos = *((*pdrgpulDistrCols)[ul]);
+			pdistrpolicy->attrs[ul] = ulColPos + 1;
+		}
+	}
+	return pdistrpolicy;
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CTranslatorDXLToPlStmt::PlCtasOptions
+//
+//	@doc:
+//		Translates CTAS options
+//
+//---------------------------------------------------------------------------
+List *
+CTranslatorDXLToPlStmt::PlCtasOptions
+	(
+	CDXLCtasStorageOptions::DrgPctasOpt *pdrgpctasopt
+	)
+{
+	if (NULL == pdrgpctasopt)
+	{
+		return NIL;
+	}
+	
+	const ULONG ulOptions = pdrgpctasopt->UlLength();
+	List *plOptions = NIL;
+	for (ULONG ul = 0; ul < ulOptions; ul++)
+	{
+		CDXLCtasStorageOptions::CDXLCtasOption *pdxlopt = (*pdrgpctasopt)[ul];
+		CWStringBase *pstrName = pdxlopt->m_pstrName;
+		CWStringBase *pstrValue = pdxlopt->m_pstrValue;
+		DefElem *pdefelem = MakeNode(DefElem);
+		pdefelem->defname = CTranslatorUtils::SzFromWsz(pstrName->Wsz());
+		pdefelem->arg = (Node *) gpdb::PvalMakeString(CTranslatorUtils::SzFromWsz(pstrValue->Wsz()));
+		plOptions = gpdb::PlAppendElement(plOptions, pdefelem);
+	}
+	
+	return plOptions;
+}
+
 
 //---------------------------------------------------------------------------
 //	@function:

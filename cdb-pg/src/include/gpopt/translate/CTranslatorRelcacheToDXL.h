@@ -282,9 +282,6 @@ namespace gpdxl
 			static
 			IMDRelationExternal::Erelextformattype ErelextFormat(char fmtcode);
 
-			// get the distribution policy of the relation
-			static
-			IMDRelation::Ereldistrpolicy Ereldistribution(GpPolicy *pgppolicy);
 
 			// get the distribution columns
 			static
@@ -442,6 +439,10 @@ namespace gpdxl
 			// translate GPDB comparison type
 			static
 			IMDType::ECmpType Ecmpt(ULONG ulCmpt);
+			
+			// get the distribution policy of the relation
+			static
+			IMDRelation::Ereldistrpolicy Ereldistribution(GpPolicy *pgppolicy);
 	};
 }
 

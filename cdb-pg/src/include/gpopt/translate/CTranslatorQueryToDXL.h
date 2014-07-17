@@ -100,7 +100,7 @@ namespace gpdxl
 			NodeTag ent;
 			const WCHAR *m_wsz;
 		};
-
+		
 		private:
 			// memory pool
 			IMemoryPool *m_pmp;
@@ -405,6 +405,15 @@ namespace gpdxl
 			// translate an update query
 			CDXLNode *PdxlnUpdate();
 
+		    // translate a CTAS query
+			CDXLNode *PdxlnCTAS();
+			
+			// translate CTAS storage options
+			CDXLCtasStorageOptions::DrgPctasOpt *Pdrgpctasopt(List *plOptions, IMDRelation::Erelstoragetype *perelstoragetype);
+			
+			// extract storage option value from defelem
+			CWStringDynamic *PstrExtractOptionValue(DefElem *pdefelem);
+			
 			// return resno -> colId mapping of columns to be updated
 			HMIUl *PhmiulUpdateCols();
 

@@ -431,6 +431,7 @@ namespace gpdxl
 			// check required permissions for the range table
 			static 
 			void CheckRTEPermissions(List *plRangeTable);
+		
 	};
 }
 

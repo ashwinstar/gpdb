@@ -51,6 +51,7 @@
 #include "md/IMDAggregate.h"
 #include "md/IMDTypeBool.h"
 #include "md/IMDTypeInt8.h"
+#include "md/CMDIdGPDBCtas.h"
 
 #include "traceflags/traceflags.h"
 
@@ -61,6 +62,8 @@ using namespace gpos;
 using namespace gpopt;
 using namespace gpnaucrates;
 using namespace gpmd;
+
+extern bool	optimizer_enable_ctas;
 
 // OIDs of variants of LEAD window function
 const OID rgOIDLead[] =
@@ -367,13 +370,14 @@ CTranslatorQueryToDXL::CheckSupportedCmdType
 		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature, GPOS_WSZ_LIT("UTILITY command"));
 	}
 
-	if (CMD_SELECT == pquery->commandType && NULL != pquery->intoClause)
-	{
-		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature, GPOS_WSZ_LIT("CTAS"));
-	}
-	
 	if (CMD_SELECT == pquery->commandType)
-	{
+	{		
+		if (!optimizer_enable_ctas && NULL != pquery->intoClause)
+		{
+			GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature, GPOS_WSZ_LIT("CTAS"));
+		}
+		
+		// supported: regular select or CTAS when it is enabled
 		return;
 	}
 
@@ -594,8 +598,13 @@ CTranslatorQueryToDXL::PdxlnFromQuery()
 	switch (m_pquery->commandType)
 	{
 		case CMD_SELECT:
-			return PdxlnFromQueryInternal();
-
+			if (NULL == m_pquery->intoClause)
+			{
+				return PdxlnFromQueryInternal();
+			}
+			
+			return PdxlnCTAS();
+			
 		case CMD_INSERT:
 			return PdxlnInsert();
 
@@ -696,6 +705,236 @@ CTranslatorQueryToDXL::PdxlnInsert()
 	}
 
 	return New(m_pmp) CDXLNode(m_pmp, pdxlopInsert, pdxlnQuery);
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CTranslatorQueryToDXL::PdxlnCTAS
+//
+//	@doc:
+//		Translate a CTAS
+//
+//---------------------------------------------------------------------------
+CDXLNode *
+CTranslatorQueryToDXL::PdxlnCTAS()
+{
+	GPOS_ASSERT(CMD_SELECT == m_pquery->commandType);
+	GPOS_ASSERT(NULL != m_pquery->intoClause);
+
+	CDXLNode *pdxlnQuery = PdxlnFromQueryInternal();
+	
+	IntoClause *pintocl = m_pquery->intoClause;
+		
+	CMDName *pmdnameRel = CDXLUtils::PmdnameFromSz(m_pmp, pintocl->rel->relname);
+	
+	DrgPdxlcd *pdrgpdxlcd = New(m_pmp) DrgPdxlcd(m_pmp);
+	
+	const ULONG ulColumns = gpdb::UlListLength(m_pquery->targetList);
+
+	DrgPul *pdrgpulSource = New(m_pmp) DrgPul(m_pmp);
+	
+	List *plColnames = pintocl->colNames;
+	for (ULONG ul = 0; ul < ulColumns; ul++)
+	{
+		TargetEntry *pte = (TargetEntry *) gpdb::PvListNth(m_pquery->targetList, ul);
+		AttrNumber iResno = pte->resno;
+
+		CDXLNode *pdxlnCol = (*m_pdrgpdxlnQueryOutput)[ul];
+		CDXLScalarIdent *pdxlopIdent = CDXLScalarIdent::PdxlopConvert(pdxlnCol->Pdxlop());
+		pdrgpulSource->Append(New(m_pmp) ULONG(pdxlopIdent->Pdxlcr()->UlID()));
+		
+		CMDName *pmdnameCol = NULL;
+		if (NULL != plColnames && ul < gpdb::UlListLength(plColnames))
+		{
+			ColumnDef *pcoldef = (ColumnDef *) gpdb::PvListNth(plColnames, ul);
+			pmdnameCol = CDXLUtils::PmdnameFromSz(m_pmp, pcoldef->colname);
+		}
+		else
+		{
+			pmdnameCol = New(m_pmp) CMDName(m_pmp, pdxlopIdent->Pdxlcr()->Pmdname()->Pstr());
+		}
+		
+		GPOS_ASSERT(NULL != pmdnameCol);
+		IMDId *pmdid = pdxlopIdent->PmdidType();
+		pmdid->AddRef();
+		CDXLColDescr *pdxlcd = New(m_pmp) CDXLColDescr
+											(
+											m_pmp,
+											pmdnameCol,
+											m_pidgtorCol->UlNextId(),
+											iResno /* iAttno */,
+											pmdid,
+											false /* fDropped */
+											);
+		pdrgpdxlcd->Append(pdxlcd);
+	}
+
+	IMDRelation::Ereldistrpolicy ereldistrpolicy = IMDRelation::EreldistrRandom;
+	DrgPul *pdrgpulDistr = NULL;
+	
+	if (NULL != m_pquery->intoPolicy)
+	{
+		ereldistrpolicy = CTranslatorRelcacheToDXL::Ereldistribution(m_pquery->intoPolicy);
+		
+		if (IMDRelation::EreldistrHash == ereldistrpolicy)
+		{
+			pdrgpulDistr = New(m_pmp) DrgPul(m_pmp);
+
+			for (ULONG ul = 0; ul < (ULONG) m_pquery->intoPolicy->nattrs; ul++)
+			{
+				AttrNumber attno = m_pquery->intoPolicy->attrs[ul];
+				GPOS_ASSERT(0 < attno);
+				pdrgpulDistr->Append(New(m_pmp) ULONG(attno - 1));
+			}
+		}
+	}
+	else
+	{
+		elog(NOTICE, "Table doesn't have 'distributed by' clause. Creating a NULL policy entry.");
+	}
+
+	// TODO: antova - Mar 5, 2014; reserve an OID 
+	OID oid = 1;
+	CMDIdGPDB *pmdid = New(m_pmp) CMDIdGPDBCtas(oid);
+	
+	CMDName *pmdnameTableSpace = NULL;
+	if (NULL != pintocl->tableSpaceName)
+	{
+		pmdnameTableSpace = CDXLUtils::PmdnameFromSz(m_pmp, pintocl->tableSpaceName);
+	}
+	
+	CMDName *pmdnameSchema = NULL;
+	if (NULL != pintocl->rel->schemaname)
+	{
+		pmdnameSchema = CDXLUtils::PmdnameFromSz(m_pmp, pintocl->rel->schemaname);
+	}
+	
+	CDXLCtasStorageOptions::ECtasOnCommitAction ectascommit = (CDXLCtasStorageOptions::ECtasOnCommitAction) pintocl->onCommit;
+	
+	IMDRelation::Erelstoragetype erelstorage = IMDRelation::ErelstorageHeap;
+	CDXLCtasStorageOptions::DrgPctasOpt *pdrgpctasopt = Pdrgpctasopt(pintocl->options, &erelstorage);
+	
+	BOOL fHasOids = gpdb::FInterpretOidsOption(pintocl->options);
+	CDXLLogicalCTAS *pdxlopCTAS = New(m_pmp) CDXLLogicalCTAS
+									(
+									m_pmp, 
+									pmdid,
+									pmdnameSchema,
+									pmdnameRel, 
+									pdrgpdxlcd, 
+									New(m_pmp) CDXLCtasStorageOptions(pmdnameTableSpace, ectascommit, pdrgpctasopt),
+									ereldistrpolicy,
+									pdrgpulDistr,  
+									pintocl->rel->istemp, 
+									fHasOids,
+									erelstorage, 
+									pdrgpulSource
+									);
+
+	return New(m_pmp) CDXLNode(m_pmp, pdxlopCTAS, pdxlnQuery);
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CTranslatorQueryToDXL::Pdrgpctasopt
+//
+//	@doc:
+//		Translate CTAS storage options
+//
+//---------------------------------------------------------------------------
+CDXLCtasStorageOptions::DrgPctasOpt *
+CTranslatorQueryToDXL::Pdrgpctasopt
+	(
+	List *plOptions,
+	IMDRelation::Erelstoragetype *perelstoragetype // output parameter: storage type
+	)
+{
+	if (NULL == plOptions)
+	{
+		return NULL;
+	}
+
+	GPOS_ASSERT(NULL != perelstoragetype);
+	
+	CDXLCtasStorageOptions::DrgPctasOpt *pdrgpctasopt = New(m_pmp) CDXLCtasStorageOptions::DrgPctasOpt(m_pmp);
+	ListCell *plc = NULL;
+	BOOL fAO = false;
+	BOOL fAOCO = false;
+	BOOL fParquet = false;
+	
+	CWStringConst strAppendOnly(GPOS_WSZ_LIT("appendonly"));
+	CWStringConst strOrientation(GPOS_WSZ_LIT("orientation"));
+	CWStringConst strOrientationParquet(GPOS_WSZ_LIT("parquet"));
+	CWStringConst strOrientationColumn(GPOS_WSZ_LIT("column"));
+	
+	ForEach (plc, plOptions)
+	{
+		DefElem *pdefelem = (DefElem *) lfirst(plc);
+		CWStringDynamic *pstrName = CDXLUtils::PstrFromSz(m_pmp, pdefelem->defname);
+		CWStringDynamic *pstrValue = PstrExtractOptionValue(pdefelem);
+		if (pstrName->FEquals(&strAppendOnly) && pstrValue->FEquals(CDXLTokens::PstrToken(EdxltokenTrue)))
+		{
+			fAO = true;
+		}
+		
+		if (pstrName->FEquals(&strOrientation) && pstrValue->FEquals(&strOrientationColumn))
+		{
+			GPOS_ASSERT(!fParquet);
+			fAOCO = true;
+		}
+			
+		if (pstrName->FEquals(&strOrientation) && pstrValue->FEquals(&strOrientationParquet))
+		{
+			GPOS_ASSERT(!fAOCO);
+			fParquet = true;
+		}
+		
+		CDXLCtasStorageOptions::CDXLCtasOption *pdxlctasopt = New(m_pmp) CDXLCtasStorageOptions::CDXLCtasOption(pstrName, pstrValue);
+		pdrgpctasopt->Append(pdxlctasopt);
+	}
+	if (fAOCO)
+	{
+		*perelstoragetype = IMDRelation::ErelstorageAppendOnlyCols;
+	}
+	else if (fAO)
+	{
+		*perelstoragetype = IMDRelation::ErelstorageAppendOnlyRows;
+	}
+	else if (fParquet)
+	{
+		*perelstoragetype = IMDRelation::ErelstorageAppendOnlyParquet;
+	}
+	
+	return pdrgpctasopt;
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CTranslatorQueryToDXL::PstrExtractOptionValue
+//
+//	@doc:
+//		Extract value for storage option
+//
+//---------------------------------------------------------------------------
+CWStringDynamic *
+CTranslatorQueryToDXL::PstrExtractOptionValue
+	(
+	DefElem *pdefelem
+	)
+{
+	GPOS_ASSERT(NULL != pdefelem);
+
+	BOOL fNeedsFree = false;
+	CHAR *szValue = gpdb::SzDefGetString(pdefelem, &fNeedsFree);
+	
+	CWStringDynamic *pstrResult = CDXLUtils::PstrFromSz(m_pmp, szValue);
+	
+	if (fNeedsFree)
+	{
+		gpdb::GPDBFree(szValue);
+	}
+	
+	return pstrResult;
 }
 
 //---------------------------------------------------------------------------

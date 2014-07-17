@@ -176,6 +176,9 @@
 #define ALLOW_get_operator_opclasses
 #define ALLOW_get_index_opclasses
 
+#define ALLOW_interpretOidsOption
+#define ALLOW_defGetString
+
 #include "gpopt/utils/gpdbdefs.h"
 
 #include "gpos/base.h"
@@ -2670,4 +2673,34 @@ gpdb::PexprEvaluate
 	return NULL;
 }
 
+// interpret the value of "With oids" option from a list of defelems
+bool
+gpdb::FInterpretOidsOption
+	(
+	List *plOptions
+	)
+{
+	GP_WRAP_START;
+	{
+		return interpretOidsOption(plOptions);
+	}
+	GP_WRAP_END;
+	return false;
+}
+
+char *
+gpdb::SzDefGetString
+	(
+	DefElem *pdefelem,
+	bool *fNeedFree
+	)
+{
+	GP_WRAP_START;
+	{
+		return defGetString(pdefelem, fNeedFree);
+	}
+	GP_WRAP_END;
+	return NULL;
+}
+ 
 // EOF
