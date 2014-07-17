@@ -3266,7 +3266,7 @@ quickdie_impl()
 	FileRep_resetSpinLocks();
 	primaryMirrorModeResetSpinLocks();
 
-	exit(2);
+	_exit(2);
 }
 
 /*
