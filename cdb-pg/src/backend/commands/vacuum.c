@@ -65,6 +65,7 @@
 #include "storage/procarray.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
+#include "utils/faultinjector.h"
 #include "utils/flatfiles.h"
 #include "utils/fmgroids.h"
 #include "utils/inval.h"
@@ -2198,6 +2199,9 @@ scan_heap(VRelStats *vacrelstats, Relation onerel,
 	 */
 	vacpage = (VacPage) palloc(sizeof(VacPageData) + MaxOffsetNumber * sizeof(OffsetNumber));
 
+	/* Fetch gp_persistent_relation_node information for XLOG. */
+	RelationFetchGpRelationNodeForXLog(onerel);
+
 	for (blkno = 0; blkno < nblocks; blkno++)
 	{
 		Page		page,
@@ -3540,6 +3544,8 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 		pfree(vacrelstats->vtlinks);
 
 	ExecContext_Finish(&ec);
+
+	SIMPLE_FAULT_INJECTOR(RepairFragEnd);
 }
 
 /*

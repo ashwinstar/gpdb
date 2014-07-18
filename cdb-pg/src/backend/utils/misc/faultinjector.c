@@ -274,6 +274,8 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault at the beginning of rxThreadFunc */
 	_("cdb_copy_start_after_dispatch"),
 		/* inject fault in cdbCopyStart after dispatch */
+	_("repair_frag_end"),
+		/* inject fault at the end of repair_frag */
 	_("not recognized"),
 };
 
