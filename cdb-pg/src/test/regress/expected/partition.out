@@ -9268,6 +9268,7 @@ insert into bar select i % 7, i % 6, i % 9, i || 'SOME NUMBER', i % 4 from gener
 insert into bar select i % 7, i % 6, i % 9, i || 'SOME NUMBER', i % 4 from generate_series(1, 10000) i;
 analyze foo_p;
 analyze bar;
+set optimizer_segments = 3;
 explain select foo_p.b, foo_p.t from foo_p left outer join bar on foo_p.a = bar.k  where foo_p.t is not null and foo_p.a = (array[1])[1];
                                                QUERY PLAN                                                
 ---------------------------------------------------------------------------------------------------------
@@ -9294,8 +9295,10 @@ explain select foo_p.b, foo_p.t from foo_p left outer join bar on foo_p.a = bar.
                      Hash Key: bar.k
                      ->  Seq Scan on bar  (cost=0.00..289.25 rows=1117 width=4)
                            Filter: k = ('{1}'::integer[])[1]
-(23 rows)
+ Settings:  optimizer_segments=3
+(24 rows)
 
+reset optimizer_segments;
 drop table if exists foo_p;
 drop table if exists bar;
 -- MPP-18457, MPP-18415 end

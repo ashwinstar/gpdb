@@ -9276,23 +9276,28 @@ insert into bar select i % 7, i % 6, i % 9, i || 'SOME NUMBER', i % 4 from gener
 insert into bar select i % 7, i % 6, i % 9, i || 'SOME NUMBER', i % 4 from generate_series(1, 10000) i;
 analyze foo_p;
 analyze bar;
+set optimizer_segments = 3;
 explain select foo_p.b, foo_p.t from foo_p left outer join bar on foo_p.a = bar.k  where foo_p.t is not null and foo_p.a = (array[1])[1];
-                                              QUERY PLAN                                               
--------------------------------------------------------------------------------------------------------
- Hash Left Join  (cost=0.00..874.15 rows=10250 width=30)
-   Hash Cond: foo_p.a = bar.k
-   ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..434.17 rows=400 width=34)
-         ->  Sequence  (cost=0.00..433.11 rows=200 width=34)
-               ->  Result  (cost=0.00..432.08 rows=500 width=34)
-                     ->  Function Scan on gp_partition_expansion  (cost=10.00..100.00 rows=50 width=4)
-               ->  Dynamic Table Scan on foo_p (partIndex: 1)  (cost=0.00..433.11 rows=200 width=34)
-                     Filter: NOT t IS NULL AND a = (ARRAY[1])[1]
-   ->  Hash  (cost=432.92..432.92 rows=10050 width=4)
-         ->  Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..432.92 rows=20100 width=4)
-               ->  Table Scan on bar  (cost=0.00..431.48 rows=10050 width=4)
- Settings:  optimizer=on
-(12 rows)
+                                                 QUERY PLAN                                                  
+-------------------------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice3; segments: 2)  (cost=0.00..872.85 rows=20500 width=30)
+   ->  Hash Left Join  (cost=0.00..869.56 rows=10250 width=30)
+         Hash Cond: foo_p.a = bar.k
+         ->  Redistribute Motion 2:2  (slice1; segments: 2)  (cost=0.00..434.09 rows=200 width=34)
+               Hash Key: foo_p.a
+               ->  Sequence  (cost=0.00..433.07 rows=200 width=34)
+                     ->  Result  (cost=0.00..432.05 rows=500 width=34)
+                           ->  Function Scan on gp_partition_expansion  (cost=10.00..100.00 rows=50 width=4)
+                     ->  Dynamic Table Scan on foo_p (partIndex: 1)  (cost=0.00..433.07 rows=200 width=34)
+                           Filter: NOT t IS NULL AND a = (ARRAY[1])[1]
+         ->  Hash  (cost=432.45..432.45 rows=10050 width=4)
+               ->  Redistribute Motion 2:2  (slice2; segments: 2)  (cost=0.00..432.45 rows=10050 width=4)
+                     Hash Key: bar.k
+                     ->  Table Scan on bar  (cost=0.00..431.32 rows=10050 width=4)
+ Settings:  optimizer=on; optimizer_segments=3
+(15 rows)
 
+reset optimizer_segments;
 drop table if exists foo_p;
 drop table if exists bar;
 -- MPP-18457, MPP-18415 end
