@@ -1885,20 +1885,20 @@ limit 60; --order 1,2,3
 --end_equivalent
 drop table if exists b;
 NOTICE:  table "b" does not exist, skipping
-create table b (i integer);
+create table with_b (i integer);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-insert into b values(1);
-insert into b values(2);
+insert into with_b values(1);
+insert into with_b values(2);
 --begin_equivalent
-with b1 as (select * from b) select * from (select * from b1 where b1.i =1) AS FOO, b1 FOO2;
+with b1 as (select * from with_b) select * from (select * from b1 where b1.i =1) AS FOO, b1 FOO2;
  i | i 
 ---+---
  1 | 1
  1 | 2
 (2 rows)
 
-select * from (select * from (select * from b) as b1 where b1.i = 1) AS FOO, (select * from b) as foo2;
+select * from (select * from (select * from with_b) as b1 where b1.i = 1) AS FOO, (select * from with_b) as foo2;
  i | i 
 ---+---
  1 | 1

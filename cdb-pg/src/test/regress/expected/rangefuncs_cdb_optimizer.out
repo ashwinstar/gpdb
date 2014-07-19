@@ -13,6 +13,8 @@ SELECT name, setting FROM pg_settings WHERE name LIKE 'enable%';
  enable_tidscan    | on
 (10 rows)
 
+DROP TABLE IF EXISTS foo;
+NOTICE:  table "foo" does not exist, skipping
 CREATE TABLE foo(
   fooid int, foosubid int, fooname text, primary key(fooid,foosubid)
   ) DISTRIBUTED BY (fooid, foosubid);

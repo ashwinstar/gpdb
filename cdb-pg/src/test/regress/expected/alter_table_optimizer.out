@@ -1024,26 +1024,26 @@ create index "testing_idx" on atacc1("........pg.dropped.1........");
 ERROR:  column "........pg.dropped.1........" does not exist
 -- test create as and select into
 insert into atacc1 values (21, 22, 23);
-create table test1 as select * from atacc1;
+create table alter_table_test1 as select * from atacc1;
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'b' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-select * from test1 order by 1,2;
+select * from alter_table_test1 order by 1,2;
  b  | c  | d  
 ----+----+----
  21 | 22 | 23
 (1 row)
 
-drop table test1;
-select * into test2 from atacc1;
+drop table alter_table_test1;
+select * into alter_table_test2 from atacc1;
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'b' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-select * from test2 order by 1,2;
+select * from alter_table_test2 order by 1,2;
  b  | c  | d  
 ----+----+----
  21 | 22 | 23
 (1 row)
 
-drop table test2;
+drop table alter_table_test2;
 -- try dropping all columns
 alter table atacc1 drop c;
 alter table atacc1 drop d;
@@ -1087,41 +1087,41 @@ select * from child;
 drop table child;
 drop table parent;
 -- test copy in/out
-create table test (a int4, b int4, c int4);
+create table alter_table_test (a int4, b int4, c int4);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-insert into test values (1,2,3);
-alter table test drop a;
+insert into alter_table_test values (1,2,3);
+alter table alter_table_test drop a;
 NOTICE:  Dropping a column that is part of the distribution policy forces a NULL distribution policy
-copy test to stdout;
+copy alter_table_test to stdout;
 2	3
-copy test(a) to stdout;
-ERROR:  column "a" of relation "test" does not exist
-copy test("........pg.dropped.1........") to stdout;
-ERROR:  column "........pg.dropped.1........" of relation "test" does not exist
-copy test from stdin;
+copy alter_table_test(a) to stdout;
+ERROR:  column "a" of relation "alter_table_test" does not exist
+copy alter_table_test("........pg.dropped.1........") to stdout;
+ERROR:  column "........pg.dropped.1........" of relation "alter_table_test" does not exist
+copy alter_table_test from stdin;
 ERROR:  extra data after last expected column
-CONTEXT:  COPY test, line 1: "10	11	12"
-select * from test order by 1;
+CONTEXT:  COPY alter_table_test, line 1: "10	11	12"
+select * from alter_table_test order by 1;
  b | c 
 ---+---
  2 | 3
 (1 row)
 
-copy test from stdin;
-select * from test order by 1;
+copy alter_table_test from stdin;
+select * from alter_table_test order by 1;
  b  | c  
 ----+----
   2 |  3
  21 | 22
 (2 rows)
 
-copy test(a) from stdin;
-ERROR:  column "a" of relation "test" does not exist
-copy test("........pg.dropped.1........") from stdin;
-ERROR:  column "........pg.dropped.1........" of relation "test" does not exist
-copy test(b,c) from stdin;
-select * from test order by 1;
+copy alter_table_test(a) from stdin;
+ERROR:  column "a" of relation "alter_table_test" does not exist
+copy alter_table_test("........pg.dropped.1........") from stdin;
+ERROR:  column "........pg.dropped.1........" of relation "alter_table_test" does not exist
+copy alter_table_test(b,c) from stdin;
+select * from alter_table_test order by 1;
  b  | c  
 ----+----
   2 |  3
@@ -1129,7 +1129,7 @@ select * from test order by 1;
  31 | 32
 (3 rows)
 
-drop table test;
+drop table alter_table_test;
 -- test inheritance
 create table dropColumn (a int, b int, e int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
