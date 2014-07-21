@@ -3812,6 +3812,13 @@ PrepareTransaction(void)
 	BufmgrCommit();
 
 	/*
+	 * We cannot prepare if the xid is already aborted for some reason.
+	 * If we proceed with this unexpected state, we'll be unrecoverable.
+	 */
+	if (TransactionIdDidAbort(xid))
+		elog(ERROR, "xid %u is already aborted", xid);
+
+	/*
 	 * Reserve the GID for this transaction. This could fail if the requested
 	 * GID is invalid or already in use.
 	 */
