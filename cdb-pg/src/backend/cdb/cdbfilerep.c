@@ -83,6 +83,20 @@ bool fileRepFullResync = false;
 
 FileRepGpmonInfo_s * fileRepGpmonInfo;
 
+/*
+ * Add a flag to determine whether to re-rank the ipv4 and ipv6 addrs after
+ * getaddrinfo(); when we detect ipv6 is disabled during filerep procedure by
+ * outer cause, do not re-rank the addrs, i.e, choose the ipv4 addrs to send
+ * packets.
+ */
+#ifdef HAVE_IPV6
+static bool prefer_ipv6 = true;
+#else
+static bool prefer_ipv6 = false;
+#endif
+
+void FileRepStats_GpmonCreateSock(void);
+
 void FileRepStats_GpmonSend(int sig);
 
 int gp_perfmon_filerep_interval = 3; // send every 3 seconds, this could be a guc in the future if needed
@@ -3908,15 +3922,14 @@ FileRepStats_ShmemSize(void)
 
 }
 
-
-void FileRepStats_GpmonInit(void)
+void
+FileRepStats_GpmonInit(void)
 {
 
      FileRepGpmonInfo_s *gpmonInfo;
 	 gpmon_packet_t * packet;
 	 gpmon_filerepinfo_t *filerepInfo;
 	 gpmon_filerep_stats_u *stats;
-	 int sock;
 
 	 gpmonInfo = fileRepGpmonInfo;
 
@@ -3985,94 +3998,11 @@ void FileRepStats_GpmonInit(void)
 	 gpmonInfo->lastSend = GetCurrentTimestamp();
 #endif
 
-	int ret;
-	char portNumberStr[32];
-	char *service;
-	struct addrinfo *addrs = NULL, *rp;
-	struct addrinfo hint;
-
-	/* Initialize hint structure */
-	MemSet(&hint, 0, sizeof(hint));
-	hint.ai_socktype = SOCK_DGRAM; /* UDP */
-	hint.ai_family = AF_UNSPEC; /* Allow for any family (v4, v6, perhaps others) */
-
-	/* Without AI_PASSIVE, we bind to localhost rather than ANY address */
-	/* Is this correct?  gpmon's collector will be running locally? */
-
-	//hint.ai_flags = AI_PASSIVE;    /* For wildcard IP address */
-
-
-	snprintf(portNumberStr, sizeof(portNumberStr), "%d", gpperfmon_port);
-	service = portNumberStr;
-
-	ret = pg_getaddrinfo_all(NULL, service, &hint, &addrs);
-	if (ret || !addrs)
-	{
-		if (addrs)
-		pg_freeaddrinfo_all(hint.ai_family, addrs);
-
-		ereport(ERROR,
-				(errmsg("could not translate host addr \"%s\", port \"%d\" to address: %s",
-								"localhost", gpperfmon_port, gai_strerror(ret))));
-		return;
-	}
-
-#ifdef HAVE_IPV6
-	if (addrs->ai_family == AF_INET && addrs->ai_next != NULL && addrs->ai_next->ai_family == AF_INET6)
-	{
-		/*
-		 * We got both an INET and INET6 possibility, but we want to prefer the INET6 one if it works.
-		 * Reverse the order we got from getaddrinfo so that we try things in our preferred order.
-		 * If we got more possibilities (other AFs??), I don't think we care about them, so don't
-		 * worry if the list is more that two, we just rearrange the first two.
-		 */
-		struct addrinfo *temp = addrs->ai_next; 	/* second node */
-		addrs->ai_next = addrs->ai_next->ai_next; 	/* point old first node to third node if any */
-		temp->ai_next = addrs;   					/* point second node to first */
-		addrs = temp;								/* start the list with the old second node */
-	}
-#endif
-
-	memset(&(gpmonInfo->gpaddr),0,sizeof(gpmonInfo->gpaddr));
-	gpmonInfo->gpaddr_len = 0;
-	gpmonInfo->gpsock = 0;
-
-	for (rp = addrs; rp != NULL; rp = rp->ai_next)
-	{
-
-		sock = socket(rp->ai_family, rp->ai_socktype, 0);
-		if (sock == -1)
-		{
-			continue;
-		}
-
-#ifndef WIN32
-		if (fcntl(sock, F_SETFL, O_NONBLOCK) == -1)
-		{
-			elog(WARNING, "fcntl(F_SETFL, O_NONBLOCK) failed");
-		}
-
-		if (fcntl(sock, F_SETFD, 1) == -1)
-		{
-			elog(WARNING, "fcntl(F_SETFD) failed");
-		}
-#endif
-
-		gpmonInfo->gpsock = sock;
-
-		memset(&(gpmonInfo->gpaddr), 0, sizeof(struct sockaddr_storage));
-		memcpy(&(gpmonInfo->gpaddr), rp->ai_addr, rp->ai_addrlen);
-		gpmonInfo->gpaddr_len = rp->ai_addrlen;
-
-		elog(DEBUG1, "FileRepStats_GpmonInit destAddress localhost, port %d\n",
-				 gpperfmon_port);
-
-		return;
-	}
-	elog(WARNING, "gpmon: cannot create socket (%m)");
+	 FileRepStats_GpmonCreateSock();
 }
 
-void FileRepStats_GpmonSend(int sig)
+void
+FileRepStats_GpmonSend(int sig)
 {
 
 	 FileRepGpmonInfo_s *gpmonInfo;
@@ -4184,20 +4114,155 @@ void FileRepStats_GpmonSend(int sig)
 
 	 if (bytesSent != sizeof (gpmon_packet_t))
 	 {
+		 if(errno == ENETUNREACH)
+		 {
+			 /*
+			  * If current failed network address is ipv6, switch to ipv4, vice
+			  * versa; resend the packet, if still failed, log a warning
+			  * message, discard this packet.
+			  */
+#ifdef HAVE_IPV6
+			 if(prefer_ipv6)
+			 {
+				prefer_ipv6 = false;
+			 }
+			 else
+			 {
+				prefer_ipv6 = true;
+			 }
+			 FileRepStats_GpmonCreateSock();
+			 bytesSent = sendto(gpmonInfo->gpsock, packet, sizeof(gpmon_packet_t), 0,
+								(struct sockaddr *) &(gpmonInfo->gpaddr),
+								gpmonInfo->gpaddr_len);
+#endif
+			 if(bytesSent != sizeof(gpmon_packet_t))
+			 {
+				 elog(WARNING, "FileRepStats_GpmonSend: Error when sending file rep stats to perfmon - \
+								only %d bytes of %lu sent - cannot send to localhost by loopback;\n",
+								bytesSent, (unsigned long)sizeof(gpmon_packet_t));
+			 }
+
+		 }
+		 else
+		 {
 			 elog(WARNING, "FileRepStats_GpmonSend: Error when sending file rep stats to perfmon - \
                             only %d bytes of %lu sent; %s\n",
 				  bytesSent, (unsigned long)sizeof(gpmon_packet_t),
 				  strerror(errno)
-				 );
-	 } else
-	 {
-
+				  );
+		 }
+	}
+	else
+	{
 			 elog(DEBUG1, "Sent %d bytes of filerepstats\n", (int)sizeof(gpmon_packet_t));
 			 //after sending out the stats - 0 them again to restart the counts
 			 MemSet(stats, 0, sizeof(gpmon_filerep_stats_u));
 			 gpmonInfo->lastSend = currentTime;
-	 }
+	}
 	return;
+}
+
+/*
+ * Separately wrap the code episode of acquiring local network address in
+ * FileRepStats_GpmonInit(), since we want to call this episode multi-times in
+ * FileRepStats_GpmonSend();
+ */
+void
+FileRepStats_GpmonCreateSock(void)
+{
+	FileRepGpmonInfo_s *gpmonInfo;
+	gpmonInfo = fileRepGpmonInfo;
+	int sock;
+
+	if(gpmonInfo->gpsock != 0)
+	{
+		close(gpmonInfo->gpsock);
+		gpmonInfo->gpsock = 0;
+	}
+
+	int ret;
+	char portNumberStr[32];
+	char *service;
+	struct addrinfo *addrs = NULL, *rp;
+	struct addrinfo hint;
+
+	/* Initialize hint structure, bind to localhost*/
+	MemSet(&hint, 0, sizeof(hint));
+	hint.ai_socktype = SOCK_DGRAM; /* UDP */
+	hint.ai_family = AF_UNSPEC; /* Allow for any family (v4, v6, perhaps others) */
+
+	snprintf(portNumberStr, sizeof(portNumberStr), "%d", gpperfmon_port);
+	service = portNumberStr;
+
+	ret = pg_getaddrinfo_all(NULL, service, &hint, &addrs);
+	if (ret || !addrs)
+	{
+		if (addrs)
+			pg_freeaddrinfo_all(hint.ai_family, addrs);
+
+		ereport(ERROR,
+				(errmsg("could not translate host addr \"%s\", port \"%d\" to address: %s",
+								"localhost", gpperfmon_port, gai_strerror(ret))));
+		return;
+	}
+
+#ifdef HAVE_IPV6
+	/*
+	 * Add prefer_ipv6 flag check, if ipv6 invalid, do not re-rank.
+	 */
+	if (addrs->ai_family == AF_INET && addrs->ai_next != NULL && addrs->ai_next->ai_family == AF_INET6 && prefer_ipv6)
+	{
+		/*
+		 * We got both an INET and INET6 possibility, but we want to prefer the INET6 one if it works.
+		 * Reverse the order we got from getaddrinfo so that we try things in our preferred order.
+		 * If we got more possibilities (other AFs??), I don't think we care about them, so don't
+		 * worry if the list is more that two, we just rearrange the first two.
+		 */
+		struct addrinfo *temp = addrs->ai_next; 	/* second node */
+		addrs->ai_next = addrs->ai_next->ai_next; 	/* point old first node to third node if any */
+		temp->ai_next = addrs;   					/* point second node to first */
+		addrs = temp;								/* start the list with the old second node */
+	}
+#endif
+
+	memset(&(gpmonInfo->gpaddr),0,sizeof(gpmonInfo->gpaddr));
+	gpmonInfo->gpaddr_len = 0;
+	gpmonInfo->gpsock = 0;
+
+	for (rp = addrs; rp != NULL; rp = rp->ai_next)
+	{
+
+		sock = socket(rp->ai_family, rp->ai_socktype, 0);
+		if (sock == -1)
+		{
+			continue;
+		}
+
+#ifndef WIN32
+		if (fcntl(sock, F_SETFL, O_NONBLOCK) == -1)
+		{
+			elog(WARNING, "fcntl(F_SETFL, O_NONBLOCK) failed");
+		}
+
+		if (fcntl(sock, F_SETFD, 1) == -1)
+		{
+			elog(WARNING, "fcntl(F_SETFD) failed");
+		}
+#endif
+
+		gpmonInfo->gpsock = sock;
+
+		memset(&(gpmonInfo->gpaddr), 0, sizeof(struct sockaddr_storage));
+		memcpy(&(gpmonInfo->gpaddr), rp->ai_addr, rp->ai_addrlen);
+		gpmonInfo->gpaddr_len = rp->ai_addrlen;
+
+		elog(DEBUG1, "FileRepStats_GpmonCreateSock destAddress localhost, port %d\n",
+				 gpperfmon_port);
+
+		return;
+	}
+	elog(WARNING, "gpmon: cannot create socket (%m)");
+
 }
 
 /*
