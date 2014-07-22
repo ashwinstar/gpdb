@@ -1631,10 +1631,10 @@ const char *iconv_encodings[] = {
 
 static const char* find_encoding(int encoding_num)
 {
-	if (encoding_num >= sizeof(iconv_encodings))
-	{
-		return NULL;
-	}
+	// Because encodings here are in consistant with those
+	// in gpdb, we have assertion here.
+	ASSERT(encoding_num >= 0 &&
+		   encoding_num < (sizeof(iconv_encodings) / sizeof(char*)));
 	return iconv_encodings[encoding_num];
 }
 
