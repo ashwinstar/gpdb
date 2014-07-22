@@ -1629,7 +1629,6 @@ int main(int argc, const char* const argv[])
 			break;
 	}
 
-	create_log_alert_table();
 	getconfig();
 	read_conf_file(opt.conf_file);
 
@@ -1652,7 +1651,6 @@ int main(int argc, const char* const argv[])
 			gpmon_fatal(FLINE, "\nfailed (1) to open perfmon log file %s\n", mmon_log_filename);
 		}
 	}
-
 
 	/* check port */
 	if (!(0 < ax.port && ax.port < (1 << 16)))
@@ -1685,6 +1683,7 @@ int main(int argc, const char* const argv[])
 		}
 	}
 
+	create_log_alert_table();
 	gpmmon_main();
 
 	cleanup();

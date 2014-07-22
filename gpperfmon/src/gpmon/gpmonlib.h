@@ -43,6 +43,7 @@ typedef int SOCKET;
 #define FMTU64 APR_UINT64_T_FMT
 #define FLINE __FILE__ ":" APR_STRINGIFY(__LINE__)
 #define CHECKMEM(x)  if (x) ; else gpmon_fatal(FLINE, "out of memory")
+#define ASSERT(x)    if (x) ; else gpmon_fatal(FLINE, "Check condition:%s failed", #x)
 
 extern int verbose;
 /* TODO: REMOVE */
