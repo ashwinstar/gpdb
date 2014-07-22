@@ -9,10 +9,11 @@
  *	at predefined 'fault_name. 
  * 
  * The utility is started on master host. Master host sends the fault injection request to specified segment. 
- *		It connects to postmaster on a segment.
- *		Postmaster spawns backend process that sets fault injection request into shared memory.
- *		Shared memory is accessible to all segment processes.
- *		Segment processes are checking shared memory to find if/when fault has to be injected.
+ *			It connects to postmaster on a segment.
+ *			Postmaster spawns backend process that sets fault injection request into shared memory.
+ *			Shared memory is accessible to all segment processes.
+ *			Segment processes are checking shared memory to find if/when fault has to be injected.
+ *
  */
 
 #include "postgres.h"
