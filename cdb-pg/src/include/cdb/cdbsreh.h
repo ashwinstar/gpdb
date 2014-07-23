@@ -31,19 +31,12 @@
 #define NUM_ERRORTABLE_ATTR 8
 #define errtable_cmdtime 1
 #define errtable_relname 2
-#define errtable_filename 3   
-#define errtable_linenum 4    
-#define errtable_bytenum 5    
-#define errtable_errmsg 6    
-#define errtable_rawdata 7    
-#define errtable_rawbytes 8   
-
-/*
- * If the 1st 1000 rows got rejected (ALL of them) - there's no point
- * in resuming the load. Better if we abort even if REJECT LIMIT is more
- * than 1000.
- */
-#define FIRST_1000_BAD(sreh) ((sreh->processed == 1000 && sreh->rejectcount >= 1000) ? (true) : (false))
+#define errtable_filename 3
+#define errtable_linenum 4
+#define errtable_bytenum 5
+#define errtable_errmsg 6
+#define errtable_rawdata 7
+#define errtable_rawbytes 8
 
 /*
  * In cases of invalid csv input data we end up with not being able to parse the
@@ -97,6 +90,8 @@ typedef struct CdbSreh
 	Oid		relid;				/* parent relation id */
 } CdbSreh;
 
+extern int gp_initial_bad_row_limit;
+
 extern CdbSreh *makeCdbSreh(bool is_keep, bool reusing_existing_errtable,
 							int rejectlimit,
 							bool is_limit_in_rows, RangeVar *errtbl,
@@ -108,6 +103,8 @@ extern void SendNumRowsRejected(int numrejected);
 extern void ValidateErrorTableMetaData(Relation rel);
 extern bool IsErrorTable(Relation rel);
 extern void SetErrorTableVerdict(CdbSreh *cdbsreh, int total_rejected);
+extern void ErrorIfRejectLimitReached(CdbSreh *cdbsreh, CdbCopy *cdbCopy);
+extern bool ExceedSegmentRejectHardLimit(CdbSreh *cdbsreh);
 extern bool IsRejectLimitReached(CdbSreh *cdbsreh);
 extern void emitSameTxnWarning(void);
 extern void VerifyRejectLimit(char rejectlimittype, int rejectlimit);

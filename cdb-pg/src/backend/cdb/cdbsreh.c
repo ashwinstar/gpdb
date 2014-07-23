@@ -69,6 +69,16 @@ typedef struct ReadErrorLogContext
 	int			currentRow;			/* current row in current result */
 } ReadErrorLogContext;
 
+typedef enum RejectLimitCode
+{
+	REJECT_NONE = 0,
+	REJECT_FIRST_BAD_LIMIT,
+	REJECT_LIMIT_REACHED,
+	REJECT_UNPARSABLE_CSV,
+} RejectLimitCode;
+
+int gp_initial_bad_row_limit = 1000;
+
 /*
  * makeCdbSreh
  *
@@ -702,29 +712,26 @@ SetErrorTableVerdict(CdbSreh *cdbsreh, int total_rejected)
 	}
 }
 
-/*
- * IsRejectLimitReached
- *
- * Returns true if seg reject limit reached, false otherwise.
- */
-bool IsRejectLimitReached(CdbSreh *cdbsreh)
+/* Identify the reject limit type */
+static RejectLimitCode
+GetRejectLimitCode(CdbSreh *cdbsreh)
 {
-	bool	limit_reached = false;
-	
+	RejectLimitCode code = REJECT_NONE;
+
 	/* special case: check for the case that we are rejecting every single row */
-	if(FIRST_1000_BAD(cdbsreh))
-		return true;
-	
+	if (ExceedSegmentRejectHardLimit(cdbsreh))
+		return REJECT_FIRST_BAD_LIMIT;
+
 	/* special case: check for un-parsable csv format errors */
 	if(CSV_IS_UNPARSABLE(cdbsreh))
-		return true;
-	
+		return REJECT_UNPARSABLE_CSV;
+
 	/* now check if actual reject limit is reached */
 	if(cdbsreh->is_limit_in_rows)
 	{
 		/* limit is in ROWS */
-		
-		limit_reached = (cdbsreh->rejectcount >= cdbsreh->rejectlimit ? true : false);
+		if (cdbsreh->rejectcount >= cdbsreh->rejectlimit)
+			code = REJECT_LIMIT_REACHED;
 	}
 	else
 	{
@@ -734,11 +741,100 @@ bool IsRejectLimitReached(CdbSreh *cdbsreh)
 		if(cdbsreh->processed > gp_reject_percent_threshold)
 		{
 			if( (cdbsreh->rejectcount * 100) / cdbsreh->processed >= cdbsreh->rejectlimit)
-				limit_reached = true;
+				code = REJECT_LIMIT_REACHED;
 		}
 	}
 
-	return limit_reached;
+	return code;
+}
+
+/*
+ * Reports error if we reached segment reject limit. If non-NULL cdbCopy is passed,
+ * it will call cdbCopyEnd to stop QE work before erroring out.
+ * */
+void
+ErrorIfRejectLimitReached(CdbSreh *cdbsreh, CdbCopy *cdbCopy)
+{
+	RejectLimitCode		code;
+
+	code = GetRejectLimitCode(cdbsreh);
+
+	if (code == REJECT_NONE)
+		return;
+
+	/*
+	 * Stop QE copy when we error out.
+	 */
+	if (cdbCopy)
+		cdbCopyEnd(cdbCopy);
+
+	switch (code)
+	{
+		case REJECT_FIRST_BAD_LIMIT:
+			/* the special "first X rows are bad" case */
+			ereport(ERROR,
+					(errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED),
+					 errmsg("All %d first rows in this segment were rejected. "
+							"Aborting operation regardless of REJECT LIMIT value. "
+							"Last error was: %s",
+							gp_initial_bad_row_limit, cdbsreh->errmsg),
+					 errOmitLocation(true)));
+			break;
+		case REJECT_UNPARSABLE_CSV:
+			/* the special "csv un-parsable" case */
+			ereport(ERROR,
+					(errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED),
+					 errmsg("Input includes invalid CSV data that corrupts the "
+							"ability to parse data rows. This usually means "
+							"several unescaped embedded QUOTE characters. "
+							"Data is not parsable. Last error was: %s",
+							cdbsreh->errmsg),
+					 errOmitLocation(true)));
+			break;
+		case REJECT_LIMIT_REACHED:
+			/* the normal case */
+			ereport(ERROR,
+					(errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED),
+					 errmsg("Segment reject limit reached. Aborting operation. "
+							"Last error was: %s",
+							cdbsreh->errmsg),
+					 errOmitLocation(true)));
+			break;
+		default:
+			elog(ERROR, "unknown reject code %d", code);
+	}
+}
+
+/*
+ * Return true if the first bad rows exceed the hard limit.  We assume the
+ * input is not well configured or similar case.  Stop the work regardless of
+ * SEGMENT REJECT LIMIT value before exhausting disk space.  Setting the GUC
+ * value to 0 indicates no hard limit.
+ */
+bool
+ExceedSegmentRejectHardLimit(CdbSreh *cdbsreh)
+{
+	/* Keep going if the hard limit is "unlimited" */
+	if (gp_initial_bad_row_limit == 0)
+		return false;
+
+	/* Stop if all the first bad rows reach to the hard limit. */
+	if (cdbsreh->processed == gp_initial_bad_row_limit &&
+		cdbsreh->rejectcount >= gp_initial_bad_row_limit)
+		return true;
+
+	return false;
+}
+
+/*
+ * IsRejectLimitReached
+ *
+ * Returns true if seg reject limit reached, false otherwise.
+ */
+bool
+IsRejectLimitReached(CdbSreh *cdbsreh)
+{
+	return GetRejectLimitCode(cdbsreh) != REJECT_NONE;
 }
 
 /*

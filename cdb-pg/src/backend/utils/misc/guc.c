@@ -42,6 +42,7 @@
 #include "catalog/pg_type.h"
 #include "cdb/cdbappendonlyam.h"
 #include "cdb/cdbfilerep.h"
+#include "cdb/cdbsreh.h"
 #include "cdb/tupchunk.h"
 #include "commands/async.h"
 #include "commands/vacuum.h"
@@ -5919,6 +5920,15 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&repl_catchup_within_range,
 		1, 0, XLogSegsPerFile, NULL, NULL
+	},
+	{
+		{"gp_initial_bad_row_limit", PGC_USERSET, EXTERNAL_TABLES,
+			gettext_noop("Stops processing when number of the first bad rows exceeding this value"),
+			NULL,
+			GUC_GPDB_ADDOPT
+		},
+		&gp_initial_bad_row_limit,
+		1000, 0, INT_MAX, NULL, NULL
 	},
 
 	/* End-of-list marker */

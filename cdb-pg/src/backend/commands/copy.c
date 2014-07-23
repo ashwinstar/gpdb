@@ -269,48 +269,6 @@ cur_row_rejected = false; /* reset for next run */ \
 cstate->cur_attname = NULL;\
 continue; /* move on to the next data line */
 
-#define IF_REJECT_LIMIT_REACHED_ABORT \
-if (IsRejectLimitReached(cstate->cdbsreh)) \
-{\
-	char *rejectmsg_normal = "Segment reject limit reached. Aborting operation. Last error was:";\
-	char *rejectmsg_allbad = "All 1000 first rows in this segment were rejected. Aborting operation regardless of REJECT LIMIT value. Last error was:";\
-	char *rejectmsg_csv_unparsable = "Input includes invalid CSV data that corrupts the ability to parse data rows. This usually means several unescaped embedded QUOTE characters. Data is not parsable.Last error was:";\
-	char *finalmsg;\
-\
-	if (FIRST_1000_BAD(cstate->cdbsreh))\
-	{\
-		/* the special "first 1000 are bad" case */\
-		finalmsg = (char *) palloc((strlen(cstate->cdbsreh->errmsg) + \
-									strlen(rejectmsg_allbad) + 12 + 1)\
-									* sizeof(char)); \
-		sprintf(finalmsg, "%s %s", rejectmsg_allbad, cstate->cdbsreh->errmsg);\
-	}\
-	else if (CSV_IS_UNPARSABLE(cstate->cdbsreh))\
-	{\
-		/* the special "csv un-parsable" case */\
-		finalmsg = (char *) palloc((strlen(cstate->cdbsreh->errmsg) + \
-									strlen(rejectmsg_csv_unparsable) + 12 + 1)\
-									* sizeof(char)); \
-		sprintf(finalmsg, "%s %s", rejectmsg_csv_unparsable, cstate->cdbsreh->errmsg);\
-	}\
-	else\
-	{\
-		/* the normal case */\
-		finalmsg = (char *) palloc((strlen(cstate->cdbsreh->errmsg) + \
-									strlen(rejectmsg_normal) + 12 + 1)\
-									* sizeof(char)); \
-		sprintf(finalmsg, "%s %s", rejectmsg_normal, cstate->cdbsreh->errmsg);\
-	}\
-\
-	if (Gp_role == GP_ROLE_DISPATCH) \
-		cdbCopyEnd(cdbCopy); \
-\
-	ereport(ERROR, \
-			(errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED), \
-			(errmsg("%s", finalmsg) \
-			),errOmitLocation(true))); \
-}
-
 /*
  * Send copy start/stop messages for frontend copies.  These have changed
  * in past protocol redesigns.
@@ -3094,7 +3052,7 @@ CopyFromDispatch(CopyState cstate)
 
 				if(cur_row_rejected)
 				{
-					IF_REJECT_LIMIT_REACHED_ABORT;
+					ErrorIfRejectLimitReached(cstate->cdbsreh, cdbCopy);
 					QD_GOTO_NEXT_ROW;
 				}
 
@@ -3180,7 +3138,7 @@ CopyFromDispatch(CopyState cstate)
 
 					if(cur_row_rejected)
 					{
-						IF_REJECT_LIMIT_REACHED_ABORT
+						ErrorIfRejectLimitReached(cstate->cdbsreh, cdbCopy);
 						QD_GOTO_NEXT_ROW;
 					}
 				}
@@ -3397,7 +3355,7 @@ CopyFromDispatch(CopyState cstate)
 
 				if(cur_row_rejected)
 				{
-					IF_REJECT_LIMIT_REACHED_ABORT;
+					ErrorIfRejectLimitReached(cstate->cdbsreh, cdbCopy);
 					QD_GOTO_NEXT_ROW;
 				}
 
@@ -3863,7 +3821,7 @@ CopyFrom(CopyState cstate)
 
 				if(cur_row_rejected)
 				{
-					IF_REJECT_LIMIT_REACHED_ABORT;
+					ErrorIfRejectLimitReached(cstate->cdbsreh, cdbCopy);
 					QE_GOTO_NEXT_ROW;
 				}
 
@@ -3941,7 +3899,7 @@ CopyFrom(CopyState cstate)
 
 					if(cur_row_rejected)
 					{
-						IF_REJECT_LIMIT_REACHED_ABORT;
+						ErrorIfRejectLimitReached(cstate->cdbsreh, cdbCopy);
 						QE_GOTO_NEXT_ROW;
 					}
 
@@ -4013,7 +3971,7 @@ CopyFrom(CopyState cstate)
 
 				if(cur_row_rejected)
 				{
-					IF_REJECT_LIMIT_REACHED_ABORT;
+					ErrorIfRejectLimitReached(cstate->cdbsreh, cdbCopy);
 					QE_GOTO_NEXT_ROW;
 				}
 
@@ -4040,7 +3998,7 @@ CopyFrom(CopyState cstate)
 				if (cur_row_rejected)
 				{
 					MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
-					IF_REJECT_LIMIT_REACHED_ABORT;
+					ErrorIfRejectLimitReached(cstate->cdbsreh, cdbCopy);
 					QE_GOTO_NEXT_ROW;
 				}
 

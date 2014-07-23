@@ -803,50 +803,6 @@ else \
 }
 
 /*
- * if in SREH mode and data error occured it was already handled in
- * FILEAM_HANDLE_ERROR. Therefore, skip to the next row before attempting
- * to do any further processing on this one.
- */
-#define FILEAM_IF_REJECT_LIMIT_REACHED_ABORT \
-if (IsRejectLimitReached(pstate->cdbsreh)) \
-{ \
-	char *rejectmsg_normal = "Segment reject limit reached. Aborting operation. Last error was:";\
-	char *rejectmsg_allbad = "All 1000 first rows in this segment were rejected. Aborting operation regardless of REJECT LIMIT value. Last error was:";\
- 	char *rejectmsg_csv_unparsable = "Input includes invalid CSV data that corrupts the ability to parse data rows. This usually means several unescaped embedded QUOTE characters. Data is not parsable.Last error was:";\
-	char *finalmsg;\
-\
- 	if (FIRST_1000_BAD(pstate->cdbsreh))\
- 	{\
- 		/* the special "first 1000 are bad" case */\
- 		finalmsg = (char *) palloc((strlen(pstate->cdbsreh->errmsg) + \
- 									strlen(rejectmsg_allbad) + 12 + 1)\
- 								   * sizeof(char)); \
- 		sprintf(finalmsg, "%s %s", rejectmsg_allbad, pstate->cdbsreh->errmsg);\
- 	}\
- 	else if (CSV_IS_UNPARSABLE(pstate->cdbsreh))\
-  	{\
- 		/* the special "csv un-parsable" case */\
-  		finalmsg = (char *) palloc((strlen(pstate->cdbsreh->errmsg) + \
- 									strlen(rejectmsg_csv_unparsable) + 12 + 1)\
-  								   * sizeof(char)); \
- 		sprintf(finalmsg, "%s %s", rejectmsg_csv_unparsable, pstate->cdbsreh->errmsg);\
-  	}\
-  	else\
-  	{\
- 		/* the normal case */\
-  		finalmsg = (char *) palloc((strlen(pstate->cdbsreh->errmsg) + \
- 									strlen(rejectmsg_normal) + 12 + 1)\
-  								   * sizeof(char)); \
- 		sprintf(finalmsg, "%s %s", rejectmsg_normal, pstate->cdbsreh->errmsg);\
-  	}\
-\
-	ereport(ERROR, \
-			(errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED), \
-			(errmsg("%s", finalmsg) \
-			),errOmitLocation(true))); \
-}
-
-/*
  * parse_next_line
  *
  * Given a buffer of data, extract the next data line from it and parse it
@@ -957,7 +913,7 @@ static DataLineStatus parse_next_line(FileScanDesc scan)
 
 	if(ret_mode == LINE_ERROR)
 	{
-		FILEAM_IF_REJECT_LIMIT_REACHED_ABORT;
+		ErrorIfRejectLimitReached(pstate->cdbsreh, NULL);
 		EXT_RESET_LINEBUF;
 	}
 
@@ -1195,7 +1151,7 @@ externalgettup_custom(FileScanDesc scan)
 					}
 					else
 					{
-						FILEAM_IF_REJECT_LIMIT_REACHED_ABORT
+						ErrorIfRejectLimitReached(pstate->cdbsreh, NULL);
 					}
 
 				}
