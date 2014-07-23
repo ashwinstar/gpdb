@@ -675,6 +675,32 @@ Feature: postgis regression
             | substr                                                                                                 | 
             | {"type":"MultiPolygon","coordinates":[[[[595206.589571491,4516105.18479966],[595214.874357972,4516094.08370369],[595221.417038022,4516085.47920627],[595222.952499512,4516083.21821789],[595224.5418065 |
 
+    Scenario: Linear approximation of closed curve polygon
+        When below sql is executed in "opengeo" db
+            """
+            CREATE TABLE t_postgis_linear(name text, geom geometry)
+            """
+        And below sql is executed in "opengeo" db
+            """
+            INSERT INTO t_postgis_linear VALUES
+                ('curve_polygon',
+                 'CURVEPOLYGON(CIRCULARSTRING(-192.63 96.09,-236.72 -84.3,-262.33
+                  -256.89,-267.71 -409.94,-252.5 -533,-217.73 -617.69,-165.78
+                  -658.24,-100.19 -651.89, -25.42 -599.06,53.44 -503.37,130.99
+                  -371.32,201.97 -211.92,261.53 -36.04,305.62 144.35,331.23
+                  316.94,336.61 469.99,321.4 593.05,286.64 677.74,234.69 718.29,169.09
+                  711.94,94.32 659.11,15.47 563.42,-62.09 431.37,-133.07
+                  271.98,-192.63 96.09))')
+            """
+        When execute sql "SELECT st_isclosed(geom) as closed from t_postgis_linear where name='curve_polygon'" in db "opengeo" and store result in the context
+        Then validate that following rows are in the stored rows
+            | closed |
+            | True   |
+        When execute sql "SELECT st_isclosed(st_curvetoline(geom)) as closed from t_postgis_linear where name='curve_polygon'" in db "opengeo" and store result in the context
+        Then validate that following rows are in the stored rows
+            | closed |
+            | True   |
+
     # TODO:
     #
     # 1) JSON-C: SELECT
