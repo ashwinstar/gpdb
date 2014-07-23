@@ -1494,6 +1494,8 @@ void AppendOnlyStorageRead_SkipCurrentBlock(
 		int32		regularContentLen;
 						// Length of the current regular block's content.
 
+		int32		availableLen;
+
 		/*
 		 * Large content.
 		 *
@@ -1553,6 +1555,20 @@ void AppendOnlyStorageRead_SkipCurrentBlock(
 								largeContentLen)));
 			}
 			Assert(!storageRead->current.isLarge);
+
+			BufferedReadGrowBuffer(&storageRead->bufferedRead,
+								   storageRead->current.overallBlockLen,
+								   &availableLen);
+
+			if (storageRead->current.overallBlockLen != availableLen)
+				ereport(ERROR,
+						(errcode(ERRCODE_GP_INTERNAL_ERROR),
+						 errmsg("Wrong buffer length.  Expected %d byte length"
+								" buffer and got %d ",
+								storageRead->current.overallBlockLen,
+								availableLen),
+						 errdetail_appendonly_read_storage_content_header(storageRead),
+						 errcontext_appendonly_read_storage_block(storageRead)));
 
 			regularContentLen = storageRead->current.uncompressedLen;
 			remainingLargeContentLen -= regularContentLen;
