@@ -535,7 +535,6 @@ LockAcquire(const LOCKTAG *locktag,
 		locallock->lock = NULL;
 		locallock->proclock = NULL;
 		locallock->hashcode = LockTagHashCode(&(localtag.lock));
-		locallock->isFake = false;
 		locallock->nLocks = 0;
 		locallock->numLockOwners = 0;
 		locallock->maxLockOwners = 8;
@@ -684,113 +683,6 @@ LockAcquire(const LOCKTAG *locktag,
 	proclocktag.myProc = MyProc;
 
 	proclock_hashcode = ProcLockHashCode(&proclocktag, hashcode);
-	
-	
-	
-	if (found)
-	{
-		/*
-		 * If I'm not the writer gang, I can do some special stuff
-		 */
-		if (MyProc != lockHolderProcPtr)
-		{
-			SHM_QUEUE		*procLocks = &(lock->procLocks);
-			proclock = (PROCLOCK *) SHMQueueNext(procLocks, procLocks,
-											 offsetof(PROCLOCK, lockLink));
-			while(proclock)
-			{
-				
-				if (MyProc != proclock->tag.myProc && proclock->tag.myProc != 0 && proclock->tag.myLock == lock)
-				{
-					PGPROC		*otherProc = proclocktag.myProc;
-
-					if (otherProc->mppSessionId == gp_session_id)
-					{
-						/*
-						 * One of the owners of the lock is a member of my own session
-						 * 
-						 * If he already has the lock, we don't need to take it out ourselves,
-						 * whether or not it would conflict.
-						 * 
-						 */
-						if (proclock->holdMask & LOCKBIT_ON(lockmode))
-						{	
-							
-							LWLockRelease(partitionLock);
-							if (otherProc == lockHolderProcPtr)
-								elog(DEBUG1,"My writer gang member already owns this lock");
-							else
-								elog(DEBUG1,"Another gang member already owns this lock");
-							/*
-							 * Although we don't really take the lock, we set up a 
-							 * fake locallock to keep track of what we've done, so 
-							 * lockRelease can do the right thing
-							 */
-							locallock->isFake = true;
-							GrantLockLocal(locallock, owner);
-							return LOCKACQUIRE_OK;
-						}
-						if (proclock->holdMask >= LOCKBIT_ON(lockmode))
-						{
-							
-							LWLockRelease(partitionLock);
-							if (otherProc == lockHolderProcPtr)
-								elog(DEBUG1,"My writer gang member already owns some stronger kind of lock");
-							else
-								elog(DEBUG1,"Another gang member already owns some stronger kind of lock");
-							/* 
-							 * If we are a reader gang member, and we are only trying to get an
-							 * AccessShareLock, we know that such a lock is superseeded by any 
-							 * other (stronger) lock on the object by other gang members.
-							 */
-							locallock->isFake = true;
-							GrantLockLocal(locallock, owner);
-							return LOCKACQUIRE_OK;
-						}
-						
-						/*
-						 * If we don't conflict, it's still OK
-						 */
-						if ((lockMethodTable->conflictTab[lockmode] & lock->waitMask) ||
-						    (lockMethodTable->conflictTab[lockmode] & lock->grantMask))
-						{
-							/*
-							 * If we get here, we want to acquire a stronger lock than some other gang member
-							 * has, and we conflict.  We will deadlock if we let this happen
-							 */
-							elog(DEBUG1,"Another gang member already owns some potentially conflicting lock");
-							/*
-							 * We can try granting the higher lock to the other guy
-							 */
-						
-							if (LockCheckConflicts(lockMethodTable, lockmode,
-								lock, proclock, otherProc) == STATUS_OK)
-							{
-							
-								lock->nRequested++;
-								lock->requested[lockmode]++;
-								GrantLock(lock, proclock, lockmode);
-								LWLockRelease(partitionLock);
-								elog(DEBUG1,"Doing special magic with locks");
-								
-								locallock->isFake = true;
-								GrantLockLocal(locallock, owner);
-								return LOCKACQUIRE_OK;
-							}
-							
-							LWLockRelease(partitionLock);
-							if (gp_is_callback)
-								elog(ERROR,"Session has deadlocked itself due to function callback");
-							else
-								elog(ERROR,"Session has deadlocked itself");
-						}
-					}
-				}
-				proclock = (PROCLOCK *) SHMQueueNext(procLocks, &proclock->lockLink,
-											 offsetof(PROCLOCK, lockLink));
-			}
-		}
-	}	
 
 	/*
 	 * Find or create a proclock entry with this tag
@@ -1077,6 +969,11 @@ RemoveLocalLock(LOCALLOCK *locallock)
  * (eg, session and transaction locks do not conflict).
  * So, we must subtract off our own locks when determining whether the
  * requested new lock conflicts with those already held.
+ *
+ * In Greenplum Database, the conflict is more complicated;  not only the
+ * process itself but also other processes within the same MPP session may
+ * have held conflicting locks.  We must take account  into consideration
+ * those MPP session member processes to subtract off the lock mask.
  */
 int
 LockCheckConflicts(LockMethod lockMethodTable,
@@ -1086,7 +983,6 @@ LockCheckConflicts(LockMethod lockMethodTable,
 				   PGPROC *proc)
 {
 	int			numLockModes = lockMethodTable->numLockModes;
-	LOCKMASK	myLocks;
 	LOCKMASK	otherLocks;
 	int			i;
 
@@ -1106,23 +1002,65 @@ LockCheckConflicts(LockMethod lockMethodTable,
 	}
 
 	/*
-	 * Rats.  Something conflicts.	But it could still be my own lock. We have
+	 * Rats.  Something conflicts.	But it could still be our own lock. We have
 	 * to construct a conflict mask that does not reflect our own locks, but
-	 * only lock types held by other processes.
+	 * only lock types held by other sessions.
 	 */
-	myLocks = proclock->holdMask;
 	otherLocks = 0;
 	for (i = 1; i <= numLockModes; i++)
 	{
-		int			myHolding = (myLocks & LOCKBIT_ON(i)) ? 1 : 0;
+		int				ourHolding = 0;
 
-		if (lock->granted[i] > myHolding)
+		/*
+		 * If I'm not part of MPP session, consider I am only one process
+		 * in a session.
+		 */
+		if (proc->mppSessionId <= 0)
+		{
+			LOCKMASK	myLocks = proclock->holdMask;
+			if (myLocks & LOCKBIT_ON(i))
+				ourHolding = 1;
+		}
+		else
+		{
+			SHM_QUEUE	   *procLocks = &(lock->procLocks);
+			PROCLOCK	   *otherProclock =
+					(PROCLOCK *) SHMQueueNext(procLocks, procLocks,
+											  offsetof(PROCLOCK, lockLink));
+			/*
+			 * Go through the proclock queue in the lock.  otherProclock
+			 * may be this process itself.
+			 */
+			while (otherProclock)
+			{
+				PGPROC	   *otherProc = otherProclock->tag.myProc;
+
+				/*
+				 * If processes in my session are holding the lock, mask
+				 * it out so that we won't be blocked by them.
+				 */
+				if (otherProc->mppSessionId == proc->mppSessionId &&
+					otherProclock->holdMask & LOCKBIT_ON(i))
+					ourHolding++;
+
+				otherProclock =
+					(PROCLOCK *) SHMQueueNext(procLocks,
+											  &otherProclock->lockLink,
+											  offsetof(PROCLOCK, lockLink));
+			}
+		}
+
+		/*
+		 * I'll be blocked only if processes outside of the session are
+		 * holding conflicting locks.
+		 */
+		if (lock->granted[i] > ourHolding)
 			otherLocks |= LOCKBIT_ON(i);
 	}
 
 	/*
 	 * now check again for conflicts.  'otherLocks' describes the types of
-	 * locks held by other processes.  If one of these conflicts with the kind
+	 * locks held by other sessions.  If one of these conflicts with the kind
 	 * of lock that I want, there is a conflict and I have to sleep.
 	 */
 	if (!(lockMethodTable->conflictTab[lockmode] & otherLocks))
@@ -1334,7 +1272,6 @@ WaitOnLock(LOCALLOCK *locallock, ResourceOwner owner)
 	LOCKMETHODID lockmethodid = LOCALLOCK_LOCKMETHOD(*locallock);
 	LockMethod	lockMethodTable = LockMethods[lockmethodid];
 	char	   * volatile new_status = NULL;
-	Assert(!locallock->isFake);
 
 	LOCK_PRINT("WaitOnLock: sleeping on lock",
 			   locallock->lock, locallock->tag.mode);
@@ -1588,12 +1525,6 @@ LockRelease(const LOCKTAG *locktag, LOCKMODE lockmode, bool sessionLock)
 	if (locallock->nLocks > 0)
 		return TRUE;
 		
-	if (locallock->isFake)
-	{
-		RemoveLocalLock(locallock);
-		return TRUE;
-	}
-
 	/*
 	 * Otherwise we've got to mess with the shared lock table.
 	 */
@@ -1682,13 +1613,13 @@ LockReleaseAll(LOCKMETHODID lockmethodid, bool allLocks)
 
 	while ((locallock = (LOCALLOCK *) hash_seq_search(&status)) != NULL)
 	{
-		if (locallock->proclock == NULL || locallock->lock == NULL || locallock->isFake)
+		if (locallock->proclock == NULL || locallock->lock == NULL)
 		{
 			/*
 			 * We must've run out of shared memory while trying to set up this
 			 * lock.  Just forget the local entry.
 			 */
-			Assert(locallock->isFake || locallock->nLocks == 0);
+			Assert(locallock->nLocks == 0);
 			RemoveLocalLock(locallock);
 			continue;
 		}
@@ -2168,13 +2099,13 @@ PostPrepare_Locks(TransactionId xid)
 	{
 		locallock->preparable = false;
 
-		if (locallock->proclock == NULL || locallock->lock == NULL || locallock->isFake)
+		if (locallock->proclock == NULL || locallock->lock == NULL)
 		{
 			/*
 			 * We must've run out of shared memory while trying to set up this
 			 * lock.  Just forget the local entry.
 			 */
-			Assert(locallock->isFake || locallock->nLocks == 0);
+			Assert(locallock->nLocks == 0);
 			RemoveLocalLock(locallock);
 			continue;
 		}

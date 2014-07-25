@@ -402,7 +402,6 @@ typedef struct LOCALLOCK
 	PROCLOCK   *proclock;		/* associated PROCLOCK object in shmem */
 	uint32		hashcode;		/* copy of LOCKTAG's hash value */
 	bool		preparable;		/* MPP: During prepare we populate this to avoid MPP-1094 */
-	bool		isFake;			/* For MPP */
 	int64		nLocks;			/* total number of times lock is held */
 	int			numLockOwners;	/* # of relevant ResourceOwners */
 	int			maxLockOwners;	/* allocated size of array */
