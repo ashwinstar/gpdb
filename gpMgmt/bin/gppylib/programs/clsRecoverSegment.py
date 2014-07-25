@@ -974,6 +974,9 @@ class GpRecoverSegmentProgram:
             self.logger.info("Use  gpstate -s  to check the resynchronization progress.")
             self.logger.info("******************************************************************")
 
+        pidfile = os.path.join(gpEnv.getMasterDataDir(), 'gprecoverseg.pid')
+        if os.path.exists(pidfile):
+            os.remove(pidfile)
         os._exit(0)
 
     def cleanup(self):
