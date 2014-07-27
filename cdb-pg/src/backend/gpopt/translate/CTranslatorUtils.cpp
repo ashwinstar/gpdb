@@ -1667,12 +1667,14 @@ CTranslatorUtils::PdrgpulGenerateColIds
 	List *plTargetList,
 	DrgPmdid *pdrgpmdidInput,
 	DrgPul *pdrgpulInput,
+	BOOL *pfOuterRef,  // array of flags indicating if input columns are outer references
 	CIdGenerator *pidgtorColId
 	)
 {
 	GPOS_ASSERT(NULL != plTargetList);
 	GPOS_ASSERT(NULL != pdrgpmdidInput);
 	GPOS_ASSERT(NULL != pdrgpulInput);
+	GPOS_ASSERT(NULL != pfOuterRef);
 	GPOS_ASSERT(NULL != pidgtorColId);
 
 	GPOS_ASSERT(pdrgpmdidInput->UlLength() == pdrgpulInput->UlLength());
@@ -1691,11 +1693,12 @@ CTranslatorUtils::PdrgpulGenerateColIds
 		{
 			ULONG ulColId = ULONG_MAX;
 			IMDId *pmdid = (*pdrgpmdidInput)[ulColPos];
-			if (CMDIdGPDB::PmdidConvert(pmdid)->OidObjectId() != oidExprType)
+			if (CMDIdGPDB::PmdidConvert(pmdid)->OidObjectId() != oidExprType || 
+				pfOuterRef[ulColPos])
 			{
-				// only generate a new column when the type of input column does
-				// not match that of the output column since these are the only
-				// columns that will be casted
+				// generate a new column when:
+				//  (1) the type of input column does not match that of the output column, or
+				//  (2) input column is an outer reference 
 				ulColId = pidgtorColId->UlNextId();
 			}
 			else
@@ -2754,6 +2757,47 @@ CTranslatorUtils::UpdateGrpColMapping
 #endif
 		phmululGrpColPos->FInsert(New(pmp) ULONG (ulUniqueGrpCols), New(pmp) ULONG(ulSortGrpRef));
 		(void) pbsGrpCols->FExchangeSet(ulSortGrpRef);
+	}
+}
+
+
+//---------------------------------------------------------------------------
+//      @function:
+//              CTranslatorUtils::MarkOuterRefs
+//
+//      @doc:
+//		check if given column ids are outer refs in the tree rooted by 
+//		given node
+//---------------------------------------------------------------------------
+void
+CTranslatorUtils::MarkOuterRefs
+	(
+	ULONG *pulColId,  // array of column ids to be checked
+	BOOL *pfOuterRef,  // array of outer ref indicators, initially all set to true by caller 
+	ULONG ulColumns,  // number of columns
+	CDXLNode *pdxln
+	)
+{
+	GPOS_ASSERT(NULL != pulColId);
+	GPOS_ASSERT(NULL != pfOuterRef);
+	GPOS_ASSERT(NULL != pdxln);
+	
+	const CDXLOperator *pdxlop = pdxln->Pdxlop();
+	for (ULONG ulCol = 0; ulCol < ulColumns; ulCol++)
+	{
+		ULONG ulColId = pulColId[ulCol];
+		if (pfOuterRef[ulCol] && pdxlop->FDefinesColumn(ulColId))
+		{
+			// column is defined by operator, reset outer reference flag
+			pfOuterRef[ulCol] = false;
+		}
+	}
+
+	// recursively process children
+	const ULONG ulArity = pdxln->UlArity();
+	for (ULONG ul = 0; ul < ulArity; ul++)
+	{
+		MarkOuterRefs(pulColId, pfOuterRef, ulColumns, (*pdxln)[ul]);
 	}
 }
 

@@ -2337,27 +2337,29 @@ CTranslatorQueryToDXL::PdxlnFromSetOp
 	CDXLNode *pdxlnLeftChild = PdxlnSetOpChild(psetopstmt->larg, pdrgpulLeft, pdrgpmdidLeft, plTargetList);
 	CDXLNode *pdxlnRightChild = PdxlnSetOpChild(psetopstmt->rarg, pdrgpulRight, pdrgpmdidRight, plTargetList);
 
+	// mark outer references in input columns from left child
+	ULONG *pulColId = New(m_pmp) ULONG[pdrgpulLeft->UlLength()];
+	BOOL *pfOuterRef = New(m_pmp) BOOL[pdrgpulLeft->UlLength()];
+	const ULONG ulSize = pdrgpulLeft->UlLength();
+	for (ULONG ul = 0; ul < ulSize; ul++)
+	{
+		pulColId[ul] =  *(*pdrgpulLeft)[ul];
+		pfOuterRef[ul] = true;
+	}
+	CTranslatorUtils::MarkOuterRefs(pulColId, pfOuterRef, ulSize, pdxlnLeftChild);
+
 	DrgPdrgPul *pdrgpdrgulInputColIds = New(m_pmp) DrgPdrgPul(m_pmp);
 	pdrgpdrgulInputColIds->Append(pdrgpulLeft);
 	pdrgpdrgulInputColIds->Append(pdrgpulRight);
 	
-	DrgPul *pdrgpulOutput = NULL;
+	DrgPul *pdrgpulOutput =  CTranslatorUtils::PdrgpulGenerateColIds(m_pmp, plTargetList, pdrgpmdidLeft, pdrgpulLeft, pfOuterRef, m_pidgtorCol);
+ 	GPOS_ASSERT(pdrgpulOutput->UlLength() == pdrgpulLeft->UlLength());
+
+        delete [] pulColId;
+        delete [] pfOuterRef;
 
 	BOOL fCastAcrossInput = FCast(plTargetList, pdrgpmdidLeft) || FCast(plTargetList, pdrgpmdidRight);
 	
-	if (fCastAcrossInput)
-	{
-		// set operation may generate new output column since we need to add casting functions
-		pdrgpulOutput = CTranslatorUtils::PdrgpulGenerateColIds(m_pmp, plTargetList, pdrgpmdidLeft, pdrgpulLeft, m_pidgtorCol);
-		GPOS_ASSERT(pdrgpulOutput->UlLength() == pdrgpulLeft->UlLength());
-	}
-	else
-	{
-		// the set operation outputs the column from the left child
-		pdrgpulLeft->AddRef();
-		pdrgpulOutput = pdrgpulLeft;
-	}
-
 	DrgPdxln *pdrgpdxlnChildren  = New(m_pmp) DrgPdxln(m_pmp);
 	pdrgpdxlnChildren->Append(pdxlnLeftChild);
 	pdrgpdxlnChildren->Append(pdxlnRightChild);

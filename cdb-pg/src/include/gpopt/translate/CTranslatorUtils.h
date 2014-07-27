@@ -304,6 +304,7 @@ namespace gpdxl
 					List *plTargetList,
 					DrgPmdid *pdrgpmdidInput,
 					DrgPul *pdrgpulInput,
+					BOOL *pfOuterRef,
 					CIdGenerator *pidgtorColId
 					);
 
@@ -431,7 +432,11 @@ namespace gpdxl
 			// check required permissions for the range table
 			static 
 			void CheckRTEPermissions(List *plRangeTable);
-		
+
+			// check if given column ids are outer references in the tree rooted by given node
+                        static
+			void MarkOuterRefs(ULONG *pulColId, BOOL *pfOuterRef, ULONG ulColumns, CDXLNode *pdxlnode);
+
 	};
 }
 
