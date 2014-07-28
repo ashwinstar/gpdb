@@ -381,13 +381,10 @@ FormErrorTuple(CdbSreh *cdbsreh)
 		values[errtable_rawbytes - 1] = DirectFunctionCall1(byteain, CStringGetDatum(cdbsreh->rawdata));
 		nulls[errtable_rawbytes - 1] = false;
 	}
-	
+
 	/* file name */
-	if(cdbsreh->filename)
-	{
-		values[errtable_filename - 1] = DirectFunctionCall1(textin, CStringGetDatum(cdbsreh->filename));
-		nulls[errtable_filename - 1] = false;
-	}
+	values[errtable_filename - 1] = DirectFunctionCall1(textin, CStringGetDatum(cdbsreh->filename));
+	nulls[errtable_filename - 1] = false;
 
 	/* relation name */
 	values[errtable_relname - 1] = DirectFunctionCall1(textin, CStringGetDatum(cdbsreh->relname));
