@@ -792,6 +792,9 @@ CTranslatorQueryToDXL::PdxlnCTAS()
 	{
 		elog(NOTICE, "Table doesn't have 'distributed by' clause. Creating a NULL policy entry.");
 	}
+	
+	GPOS_ASSERT(IMDRelation::EreldistrMasterOnly != ereldistrpolicy);
+	m_fHasDistributedTables = true;
 
 	// TODO: antova - Mar 5, 2014; reserve an OID 
 	OID oid = 1;
