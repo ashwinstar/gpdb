@@ -1941,6 +1941,24 @@ spinOffThreads(PGconn *pConn,
 	mpp_msg(logInfo, progname, "Committing transaction on the master database, thereby releasing locks.\n");
 	execCommit(pConn);
 
+	// Create a file on the master to signal to gpcrondump that it can release its pg_class lock
+	// Only do this if no-lock is passed, otherwise it can cause problems if gp_dump is called directly and does its own locks
+	if (pParm->pTargetSegDBData->role == ROLE_MASTER && no_lock)
+	{	
+		char *dumpkey = pParmAr->pData[0].pOptionsData->pszKey;
+		char *filedir = Safe_strdup(pInputOpts->pszReportDirectory);
+		if (filedir == NULL)
+		{
+			filedir = Safe_strdup(getenv("MASTER_DATA_DIRECTORY"));
+		}
+		char *signalFileName = MakeString("%s/gp_lockfile_%s", filedir, &dumpkey[8]);
+		mpp_msg(logInfo, progname, "Signal filename is %s.\n", signalFileName);
+		FILE* sigfile = fopen(signalFileName, "w");
+		fclose(sigfile);
+		free(signalFileName);
+		free(filedir);
+	}
+
 	mpp_msg(logInfo, progname, "Waiting for all remote %s programs to finish.\n", pszAgent);
 
 	/* Wait for all threads to complete */

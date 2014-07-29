@@ -710,7 +710,6 @@ main(int argc, char **argv)
 				break;
 			case 15:
 				break;
-
 			default:
 				fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
 				exit(1);

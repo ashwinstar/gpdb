@@ -48,6 +48,9 @@ try:
     from gppylib.db import dbconn
     from getpass import getpass
     import gppylib.operations.backup_utils
+    from collections import defaultdict
+    import yaml
+    import threading
     
     
 except ImportError, e:
@@ -60,6 +63,8 @@ GPCRONDUMP_PID_FILE = 'gpcrondump.pid'
 FREE_SPACE_PERCENT = 10
 
 logger = gplog.get_default_logger()
+conn = None
+lock_file_name = None
 
 class GpCronDump(Operation):
     def __init__(self, options, args):
@@ -543,6 +548,23 @@ class GpCronDump(Operation):
 
         return (include_file, exclude_file)
 
+    # Thread to poll for existence of a signal file telling us that we can drop the pg_class lock
+    def lock_handler(self, timestamp, thread_stop):
+        dump_dir = get_backup_directory(self.master_datadir, self.backup_dir, timestamp)
+        global lock_file_name
+        lock_file_name = "%s/gp_lockfile_%s" % (dump_dir, timestamp[8:])
+        while (not thread_stop.is_set()):
+            if os.path.exists(lock_file_name):
+                thread_stop.set()
+                global conn
+                if conn:
+                    logger.info("Releasing pg_class lock")
+                    conn.commit()
+                    conn.close()
+                    conn = None
+            thread_stop.wait(5)
+        os.remove(lock_file_name)
+
     def execute(self):
         if bool(self.ddboost_hosts) or bool(self.ddboost_user):
             # check that both options are specified
@@ -598,6 +620,7 @@ class GpCronDump(Operation):
         # current_exit_status := numeric outcome of one particular dump,
         #                        in this loop over the -x arguments
         final_exit_status = current_exit_status = 0
+
         for dump_database in self.dump_databases:
             timestamp = self._get_timestamp_object(self.timestamp_key)
             timestamp_str = timestamp.strftime('%Y%m%d%H%M%S')
@@ -623,8 +646,13 @@ class GpCronDump(Operation):
                 ValidateGpToolkit(database = dump_database,
                                 master_port = self.master_port).run()
 
+            global conn
             conn = None
             try: 
+                thread_stop = threading.Event()
+                lock_thread = threading.Thread(target=self.lock_handler, args=(timestamp_str, thread_stop))
+                lock_thread.start()
+
                 LOCK_TABLE_SQL = "LOCK TABLE pg_catalog.pg_class IN EXCLUSIVE MODE;"
                 conn = dbconn.connect(dbconn.DbURL(port=self.pgport, dbname=dump_database), utility=True)
                 dbconn.execSQL(conn, LOCK_TABLE_SQL)
@@ -728,9 +756,13 @@ class GpCronDump(Operation):
                         write_partition_list_file(self.master_datadir, self.backup_dir, post_dump_outcome['timestamp'], self.master_port, dump_database)
 
             finally:
+                thread_stop.set()
+                if lock_file_name and os.path.exists(lock_file_name):
+                    os.remove(lock_file_name)
                 if conn:
                     conn.commit()
                     conn.close()
+                    conn = None
 
             if self.history:
                 # This certainly does not belong under DumpDatabase, due to CLI assumptions. Note the use of options_list.
