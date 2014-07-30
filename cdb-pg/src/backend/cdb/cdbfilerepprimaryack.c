@@ -892,7 +892,7 @@ FileRepAckPrimary_IsOperationCompleted(
 							"could not complete mirrored request identifier '%s' ack state '%s', "
 							"failover requested",
 							(fileName == NULL) ? "<null>" : fileName,
-							FileRepAckStateToString[entry->fileRepAckState]),
+							(entry == NULL) ? "<entry not found>" : FileRepAckStateToString[entry->fileRepAckState]),
 					 errhint("run gprecoverseg to re-establish mirror connectivity"),
 					 FileRep_errdetail_ShmemAck(),
 					 FileRep_errcontext()));	

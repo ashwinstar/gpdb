@@ -162,6 +162,10 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault during transition to InSync before transition is marked completed */
 	_("filerep_transition_to_change_tracking"),
 		/* inject fault during transition to Change Tracking */
+	_("fileRep_is_operation_completed"),
+		/* inject fault in FileRep Is Operation completed function */
+	_("filerep_immediate_shutdown_request"),
+		/* inject fault just before sending SIGQUIT to child flerep processes */
 	_("checkpoint"),
 		/* inject fault before checkpoint is taken */
 	_("change_tracking_compacting_report"),
@@ -462,6 +466,7 @@ FaultInjector_InjectFaultIfSet(
 	char					databaseNameLocal[NAMEDATALEN];
 	char					tableNameLocal[NAMEDATALEN];
 	int						ii = 0;
+	int cnt = 3600;
 
 	/*
 	 * Return immediately if no fault has been injected ever.  It is
@@ -564,7 +569,8 @@ FaultInjector_InjectFaultIfSet(
 				case FileRepTransitionToInSyncBegin:
 				case FileRepTransitionToInSync:
 				case FileRepTransitionToInSyncMarkCompleted:
-				case FileRepTransitionToInSyncBeforeCheckpoint:	
+				case FileRepTransitionToInSyncBeforeCheckpoint:
+				case FileRepIsOperationCompleted:
 			
 					FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
 					break;
@@ -645,16 +651,20 @@ FaultInjector_InjectFaultIfSet(
 			ereport(LOG, 
 					(errmsg("fault triggered, fault name:'%s' fault type:'%s' ",
 							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],
-							FaultInjectorTypeEnumToString[entryLocal->faultInjectorType])));	
-			for (ii=0; ii < 3600; ii++)
+							FaultInjectorTypeEnumToString[entryLocal->faultInjectorType])));
+			if (entryLocal->faultInjectorIdentifier == FileRepImmediateShutdownRequested)
+				cnt = entryLocal->sleepTime;
+
+			for (ii=0; ii < cnt; ii++)
 			{
 				pg_usleep(1000000L); // sleep for 1 sec (1 sec * 3600 = 1 hour)
 				
 				getFileRepRoleAndState(NULL, &segmentState, NULL, NULL, NULL);
 
-				if (segmentState == SegmentStateShutdownFilerepBackends ||
+				if ((entryLocal->faultInjectorIdentifier != FileRepImmediateShutdownRequested) &&
+					(segmentState == SegmentStateShutdownFilerepBackends ||
 					segmentState == SegmentStateImmediateShutdown ||
-					segmentState == SegmentStateShutdown)
+					segmentState == SegmentStateShutdown))
 				{
 					break;
 				}
@@ -990,6 +1000,8 @@ FaultInjector_NewHashEntry(
 		case FileRepTransitionToInSyncMarkCompleted:
 		case FileRepTransitionToInSyncBeforeCheckpoint:
 		case FileRepTransitionToChangeTracking:
+		case FileRepIsOperationCompleted:
+		case FileRepImmediateShutdownRequested:
 		case TransactionCommitPass1FromCreatePendingToCreated:
 		case TransactionCommitPass1FromDropInMemoryToDropPending:
 		case TransactionCommitPass1FromAbortingCreateNeededToAbortingCreate:

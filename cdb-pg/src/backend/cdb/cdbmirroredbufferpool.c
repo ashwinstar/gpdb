@@ -591,7 +591,6 @@ bool MirroredBufferPool_Flush(
 		}
 		
 		open->mirrorDataLossOccurred =  FileRepPrimary_IsMirrorDataLossOccurred();
-				
 	}
 	
 	if (StorageManagerMirrorMode_DoPrimaryWork(open->mirrorMode) &&
@@ -613,13 +612,12 @@ bool MirroredBufferPool_Flush(
 													  open->segmentFileNum),									
 						FileRepRelationTypeBufferPool) == FALSE)	
 		{
-			if (Debug_filerep_print)
-				ereport(LOG,
-					(errmsg("could not fsync file on mirror "), 
-							FileRep_ReportRelationPath(
-													   open->mirrorFilespaceLocation,
-													   open->relFileNode,
-													   open->segmentFileNum)));
+			ereport(LOG,
+				(errmsg("could not fsync file on mirror "), 
+					FileRep_ReportRelationPath(
+								open->mirrorFilespaceLocation,
+								open->relFileNode,
+								open->segmentFileNum)));
 		} else 
 		{
 				//only include this stat if the fsync was successful
@@ -664,16 +662,17 @@ void MirroredBufferPool_Close(
 					FileRepRelationTypeBufferPool) != 0) 
 		{
 			if (Debug_filerep_print)
+			{
 				ereport(LOG,
-					(errmsg("could not sent file close request to mirror"), 
-							FileRep_ReportRelationPath(
-													   open->mirrorFilespaceLocation,
-													   open->relFileNode,
-													   open->segmentFileNum)));
+				(errmsg("could not sent file close request to mirror"), 
+					FileRep_ReportRelationPath(
+								open->mirrorFilespaceLocation,
+								open->relFileNode,
+								open->segmentFileNum)));
+			}
 		}
 		
 		open->mirrorDataLossOccurred = FileRepPrimary_IsMirrorDataLossOccurred();
-
 	}
 	
 	if (StorageManagerMirrorMode_DoPrimaryWork(open->mirrorMode))

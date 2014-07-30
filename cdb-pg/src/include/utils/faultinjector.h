@@ -76,6 +76,8 @@ typedef enum FaultInjectorIdentifier_e {
 	FileRepTransitionToInSyncMarkCompleted,
 	
 	FileRepTransitionToChangeTracking,
+	FileRepIsOperationCompleted,
+	FileRepImmediateShutdownRequested,
 	
 	Checkpoint,
 	

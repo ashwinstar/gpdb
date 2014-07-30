@@ -335,6 +335,8 @@ class GpInjectFaultProgram:
 			      "filerep_transition_to_sync_before_checkpoint (inject fault during transition to InSync before checkpoint is created), " \
 			      "filerep_transition_to_sync_mark_completed (inject fault during transition to InSync before marking completed), " \
 			      "filerep_transition_to_change_tracking (inject fault during transition to InChangeTracking), " \
+                              "fileRep_is_operation_completed (inject fault in FileRep Is Operation completed function just for ResyncWorker Threads), "\
+                              "filerep_immediate_shutdown_request (inject fault just before sending the shutdown SIGQUIT to child processes), "\
 			      "checkpoint (inject fault before checkpoint is taken), " \
 			      "change_tracking_compacting_report (report if compacting is in progress), " \
 			      "change_tracking_disable (inject fault before fsync to Change Tracking log files), " \

@@ -50,6 +50,7 @@
 #include "utils/guc.h"
 #include "utils/ps_status.h"
 #include "utils/memutils.h"
+#include "utils/faultinjector.h"
 
 
 extern void quickdie(SIGNAL_ARGS); /* is in tcopprot.h */
@@ -2158,6 +2159,13 @@ FileRep_ProcessSignals()
 			FileRep_SetPostmasterReset();
 		else
 		{
+#ifdef FAULT_INJECTOR
+			FaultInjector_InjectFaultIfSet(
+						   FileRepImmediateShutdownRequested,
+						   DDLNotSpecified,
+						   "",	// databaseName
+						   ""); // tableName
+#endif
 			FileRep_SignalChildren(SIGQUIT, false);
 			processExit = true;
 			exitWithImmediateShutdown = true;

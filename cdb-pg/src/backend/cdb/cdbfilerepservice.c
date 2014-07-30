@@ -119,7 +119,7 @@ FileRepSubProcess_ShutdownHandler(SIGNAL_ARGS)
 	if (fileRepProcessType == FileRepProcessTypePrimaryReceiverAck ||
         fileRepProcessType == FileRepProcessTypeMirrorReceiver ||
 		fileRepProcessType == FileRepProcessTypePrimaryRecovery)
-    {
+	{
 		/* workaround for gcov testing */
 		if (Debug_filerep_gcov)
 		{
@@ -134,7 +134,7 @@ FileRepSubProcess_ShutdownHandler(SIGNAL_ARGS)
 		}
 		
 		die(PASS_SIGNAL_ARGS);
-    }
+	}
 
 	if ( FileRepIsBackendSubProcess(fileRepProcessType))
 	{
@@ -164,7 +164,7 @@ FileRepSubProcess_ShutdownHandler(SIGNAL_ARGS)
 					
 		/* call the normal postgres die so that it requests query cancel/procdie */
 		die(PASS_SIGNAL_ARGS);
-    }	
+	}
 }
 
 /*

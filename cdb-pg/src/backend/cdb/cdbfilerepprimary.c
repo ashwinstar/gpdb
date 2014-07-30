@@ -173,7 +173,6 @@ FileRepPrimary_IsMirroringRequired(
 	
 	while (1) 
 	{
-		
 		getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, &isInTransition, &dataStateTransition);
 		
 		switch (fileRepRole) {
@@ -225,7 +224,7 @@ FileRepPrimary_IsMirroringRequired(
 					break;
 				}
 				
-				/* 
+				/*
 				 * If mirror is loss then backends should abort during shutdown in order
 				 * to avoid writing to local side (i.e. checkpoint occur on primary and not on mirror)
 				 */
@@ -235,12 +234,25 @@ FileRepPrimary_IsMirroringRequired(
 					!(isInTransition == TRUE &&
 					  dataStateTransition == DataStateInChangeTracking))
 				{
+					ereport(LOG,
+						(errmsg("failure is detected in segment mirroring during backend shutdown, abort requested, "
+						"mirroring role '%s' "
+						"mirroring state '%s' "
+						"segment state '%s' "
+						"filerep state '%s' "
+						"process name(pid) '%s(%d)' ",
+						FileRepRoleToString[fileRepRole],
+						DataStateToString[dataState],
+						SegmentStateToString[segmentState],
+						FileRepStateToString[FileRepSubProcess_GetState()],
+						FileRepProcessTypeToString[fileRepProcessType],
+						getpid())));
+
 					FileRep_InsertConfigLogEntry("failure is detected in segment mirroring during backend shutdown, abort requested");
-					
 					LWLockReleaseAll();
 					proc_exit(0);
 				}
-				
+
 				if (segmentState != SegmentStateFault &&
 					!(isInTransition == TRUE &&
 					  dataStateTransition == DataStateInChangeTracking)) 
@@ -375,7 +387,7 @@ FileRepPrimary_ConstructAndInsertMessage(
 		
 		if ((! primaryMirrorIsIOSuspended()) && dataState != DataStateInChangeTracking)
 		{
-			ereport(WARNING,	
+			ereport(WARNING,
 					(errmsg("mirror failure, "
 							"could not insert message in ACK table"
 							"failover requested"),  	
@@ -394,7 +406,6 @@ FileRepPrimary_ConstructAndInsertMessage(
 		FileRepPrimary_IsMirroringRequired(
 										   fileRepRelationType,
 										   fileRepOperation);
-		
 		return status;
 	}	
 		
@@ -662,7 +673,17 @@ FileRepPrimary_MirrorFlush(FileRepIdentifier_u		fileRepIdentifier,
 		if (! (dataState == DataStateInResync &&
 			   fileRepRelationType == FileRepRelationTypeFlatFile &&
 			   segmentState != SegmentStateInSyncTransition))
-		{			
+		{
+#ifdef FAULT_INJECTOR
+			if (FileRepPrimary_IsResyncWorker())
+			{
+				FaultInjector_InjectFaultIfSet(
+											   FileRepIsOperationCompleted,
+											   DDLNotSpecified,
+											   "",	// databaseName
+											   ""); // tableName
+			}
+#endif
 			status = FileRepPrimary_ConstructAndInsertMessage(
 															  fileRepIdentifier,
 															  fileRepRelationType,
@@ -1500,9 +1521,7 @@ FileRepPrimary_MirrorVerify(
 	return status;
 }
 
-
-
-bool 
+bool
 FileRepPrimary_IsOperationCompleted(
 			   FileRepIdentifier_u	 fileRepIdentifier,
 			   FileRepRelationType_e fileRepRelationType)
@@ -1518,7 +1537,7 @@ FileRepPrimary_IsOperationCompleted(
 			retval = FileRepAckPrimary_IsOperationCompleted(
 							fileRepIdentifier,									
 						    fileRepRelationType);
-			
+
 			/* suspend if mirror reported fault */
 			if (retval == FALSE)
 			{
@@ -1540,15 +1559,48 @@ FileRepPrimary_IsOperationCompleted(
 					FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
 					FileRepSubProcess_ProcessSignals();
 				}
-				
 				FileRepPrimary_IsMirroringRequired(fileRepRelationType,
-												   FileRepOperationNotSpecified);
+								   FileRepOperationNotSpecified);
 			}
 		}
 	}
-	
+
+	/*
+	 * If fault occured on mirror and segment state is shutDown, with dataState DataStateInSync or DataStateInResync
+	 * best to ERROR here itself. If returned from here primary goes ahead to performs IO only on primary.
+	 * This also covers for case where inserting message for ACK itself had failed, 
+	 * as if entry doesn't exist FileRepAckPrimary_IsOperationCompleted returns FALSE.
+	 * Case for non filerep backends is covered in FileRepPrimary_IsMirroringRequired, 
+	 * hence skipping the same here.
+	 */
+	if (fileRepRole == FileRepPrimaryRole && 
+		(dataState == DataStateInResync || dataState == DataStateInSync) && 
+		FileRepIsBackendSubProcess(fileRepProcessType) &&
+		(segmentState == SegmentStateImmediateShutdown ||
+			segmentState == SegmentStateShutdown ||
+			segmentState == SegmentStateShutdownFilerepBackends) &&
+		fileRepShmemArray[0]->state == FileRepStateFault)
+	{
+		ereport(LOG,
+			(errmsg("failure detected in segment mirroring during shutdown, "
+				"mirroring role '%s' "
+				"mirroring state '%s' "
+				"segment state '%s' "
+				"filerep state '%s' "
+				"process name(pid) '%s(%d)' ",
+				FileRepRoleToString[fileRepRole],
+				DataStateToString[dataState],
+				SegmentStateToString[segmentState],
+				FileRepStateToString[FileRepSubProcess_GetState()],
+				FileRepProcessTypeToString[fileRepProcessType],
+				getpid())));
+
+		elog(ERROR,
+			"failure detected in segment mirroring during shutdown relation type %s",
+			 FileRepRelationTypeToString[fileRepRelationType]);
+	}
+
 	return retval;
-	
 }
 
 XLogRecPtr

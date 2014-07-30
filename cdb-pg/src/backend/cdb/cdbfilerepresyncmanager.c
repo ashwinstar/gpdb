@@ -1110,6 +1110,11 @@ FileRepPrimary_RunResyncManager(void)
 		if (entry.mirrorDataSynchronizationState == MirroredRelDataSynchronizationState_DataSynchronized ||
 			entry.mirrorDataSynchronizationState == MirroredRelDataSynchronizationState_None)
 		{
+			if (Debug_filerep_print)
+			{
+				elog(LOG, "Not adding this entry to hash table %s as DataSynchronized/None %d", 
+					entry.fileName, entry.mirrorDataSynchronizationState);
+			}
 			continue;
 		}
 		
@@ -1163,6 +1168,9 @@ FileRepPrimary_RunResyncManager(void)
 				UnlockRelationForResynchronize(
 											   &entry.relFileNode, 
 											   AccessExclusiveLock);
+
+				if (Debug_filerep_print)
+					elog(LOG, "Not adding this entry to hash table %s", entry.fileName);
 				continue;
 		}
 		
@@ -1462,7 +1470,7 @@ FileRepResync_InsertEntry(
 	char						key[MAXPGPATH+1];
 	
 	snprintf(key, sizeof(key), "%s", entry->fileName);
-	
+
 	if (Debug_filerep_print)
 		elog(LOG, "FileRepResync_InsertEntry() identifier:'%s'  ", key);
 	
@@ -1629,20 +1637,22 @@ FileRepResync_CheckProgress(void)
 										
 					fileRepResyncShmem->blocksSynchronized += entry->mirrorBufpoolResyncChangedPageCount;
 					
-					if (Debug_filerep_print)
-						elog(LOG, "FileRepResync_CheckProgress() identifier:'%s' state:'%d' resyncCompletedCount:'%d' "
-							 "blocks synchronized: " INT64_FORMAT " ", 
-							 entry->fileName,
-							 entry->fileRepResyncState,
-							 fileRepResyncShmem->resyncCompletedCount,
-							 fileRepResyncShmem->blocksSynchronized);					
-						
 					/*
 					 * PersistentFileSysObj_ResynchronizeRelationComplete() issues IOs.
 					 * That may be long operation especially if IO is issued while segment is
 					 * transitioning to change tracking.
 					 */
 					FileRepResync_LockRelease();
+
+					if (Debug_filerep_print)
+					{
+						elog(LOG, "FileRepResync_CheckProgress() identifier:'%s' state:'%d' resyncCompletedCount:'%d' "
+							 "blocks synchronized: " INT64_FORMAT " ", 
+							 entry->fileName,
+							 entry->fileRepResyncState,
+							 fileRepResyncShmem->resyncCompletedCount,
+							 fileRepResyncShmem->blocksSynchronized);
+					}
 
 					PersistentFileSysObj_ResynchronizeRelationComplete(
 							&entry->persistentTid,
@@ -1865,12 +1875,14 @@ FileRepResync_UpdateEntry(
 		Assert(0);
 		status = STATUS_ERROR;
 	}
-	
+
 	if (Debug_filerep_print)
+	{	
 		elog(LOG, "FileRepResync_UpdateEntry() identifier:'%s' state:'%d' resyncCompletedCount:'%d' ",
 			 entry->fileName,
 			 entry->fileRepResyncState,
 			 fileRepResyncShmem->resyncCompletedCount);
+	}
 	
 	FileRepResync_LockRelease();
 	
