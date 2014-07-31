@@ -22,10 +22,7 @@ from gppylib.operations.backup_utils import check_backup_type, generate_dirtytab
                                             get_all_segment_addresses, scp_file_to_hosts, run_pool_command, execute_sql, expand_partition_tables, \
                                             generate_global_prefix, generate_master_dbdump_prefix, \
                                             generate_master_status_prefix, generate_seg_dbdump_prefix, generate_seg_status_prefix, \
-                                            generate_dbdump_prefix, generate_createdb_filename, generate_createdb_prefix, check_dir_writable, \
-                                            generate_ao_state_filename, generate_co_state_filename, generate_pgstatlastoperation_filename, \
-                                            generate_cdatabase_filename, get_backup_directory, generate_master_config_filename, generate_segment_config_filename, \
-                                            generate_global_filename, restore_file_with_nbu, check_file_dumped_with_nbu
+                                            generate_dbdump_prefix, generate_createdb_filename, generate_createdb_prefix, check_dir_writable
 
 from gppylib.operations.utils import RemoteOperation, ParallelOperation
 from gppylib.operations.unix import CheckFile, CheckRemoteDir, MakeRemoteDir, CheckRemotePath
@@ -270,87 +267,6 @@ def restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore
 
     return True
 
-#NetBackup related functions
-def restore_state_files_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size):
-    if (master_datadir is None) and (backup_dir is None):
-        raise Exception('Master data directory and backup directory are both none.')
-    if restore_timestamp is None:
-        raise Exception('Restore timestamp is None.')
-    if netbackup_service_host is None:
-        raise Exception('Netbackup service hostname is None.')
-    restore_file_with_nbu(netbackup_service_host, netbackup_block_size, generate_ao_state_filename(master_datadir, backup_dir, restore_timestamp))
-    restore_file_with_nbu(netbackup_service_host, netbackup_block_size, generate_co_state_filename(master_datadir, backup_dir, restore_timestamp))
-    restore_file_with_nbu(netbackup_service_host, netbackup_block_size, generate_pgstatlastoperation_filename(master_datadir, backup_dir, restore_timestamp))
-
-def restore_report_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size):
-    if (master_datadir is None) and (backup_dir is None):
-        raise Exception('Master data directory and backup directory are both none.')
-    if restore_timestamp is None:
-        raise Exception('Restore timestamp is None.')
-    if netbackup_service_host is None:
-        raise Exception('Netbackup service hostname is None.')
-    restore_file_with_nbu(netbackup_service_host, netbackup_block_size, generate_report_filename(master_datadir, backup_dir, restore_timestamp))
-
-def restore_cdatabase_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size):
-    if (master_datadir is None) and (backup_dir is None):
-        raise Exception('Master data directory and backup directory are both none.')
-    if restore_timestamp is None:
-        raise Exception('Restore timestamp is None.')
-    if netbackup_service_host is None:
-        raise Exception('Netbackup service hostname is None.')
-    restore_file_with_nbu(netbackup_service_host, netbackup_block_size, generate_cdatabase_filename(master_datadir, backup_dir, restore_timestamp))
-
-def restore_config_files_with_nbu(master_datadir, backup_dir, restore_timestamp, master_port, netbackup_service_host, netbackup_block_size):
-    if (master_datadir is None) and (backup_dir is None):
-        raise Exception('Master data directory and backup directory are both none.')
-    if restore_timestamp is None:
-        raise Exception('Restore timestamp is None.')
-    if netbackup_service_host is None:
-        raise Exception('Netbackup service hostname is None.')
-    if master_port is None:
-        raise Exception('Master port is None.')
-    use_dir = get_backup_directory(master_datadir, backup_dir, restore_timestamp)
-    master_config_filename = os.path.join(use_dir, "%s" % generate_master_config_filename(restore_timestamp))
-    restore_file_with_nbu(netbackup_service_host, netbackup_block_size, master_config_filename)
-
-    gparray = GpArray.initFromCatalog(dbconn.DbURL(port = master_port), utility=True)
-    segs = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary(current_role=True)]
-    for seg in segs:
-        use_dir = get_backup_directory(seg.getSegmentDataDirectory(), backup_dir, restore_timestamp)
-        seg_config_filename = os.path.join(use_dir, "%s" % generate_segment_config_filename(seg.getSegmentDbId(), restore_timestamp))
-        seg_host = seg.getSegmentHostName()
-        restore_file_with_nbu(netbackup_service_host, netbackup_block_size, seg_config_filename, seg_host)
-
-def restore_global_file_with_nbu(master_datadir, backup_dir, dump_dir, restore_timestamp, netbackup_service_host, netbackup_block_size):
-    if (master_datadir is None) and (backup_dir is None):
-        raise Exception('Master data directory and backup directory are both none.')
-    if restore_timestamp is None:
-        raise Exception('Restore timestamp is None.')
-    if netbackup_service_host is None:
-        raise Exception('Netbackup service hostname is None.')
-    restore_file_with_nbu(netbackup_service_host, netbackup_block_size, generate_global_filename(master_datadir, backup_dir, dump_dir, restore_timestamp[0:8], restore_timestamp))
-
-def config_files_dumped(master_datadir, backup_dir, restore_timestamp, netbackup_service_host):
-    if (master_datadir is None) and (backup_dir is None):
-        raise Exception('Master data directory and backup directory are both none.')
-    if restore_timestamp is None:
-        raise Exception('Restore timestamp is None.')
-    if netbackup_service_host is None:
-        raise Exception('Netbackup service hostname is None.')
-    use_dir = get_backup_directory(master_datadir, backup_dir, restore_timestamp)
-    master_config_filename = os.path.join(use_dir, "%s" % generate_master_config_filename(restore_timestamp))
-    return check_file_dumped_with_nbu(netbackup_service_host, master_config_filename)
-
-def global_file_dumped(master_datadir, backup_dir, dump_dir, restore_timestamp, netbackup_service_host):
-    if (master_datadir is None) and (backup_dir is None):
-        raise Exception('Master data directory and backup directory are both none.')
-    if restore_timestamp is None:
-        raise Exception('Restore timestamp is None.')
-    if netbackup_service_host is None:
-        raise Exception('Netbackup service hostname is None.')
-    global_filename = generate_global_filename(master_datadir, backup_dir, dump_dir, restore_timestamp[0:8], restore_timestamp)
-    return check_file_dumped_with_nbu(netbackup_service_host, global_filename)
-
 def _build_gpdbrestore_cmd_line(ts, table_file, backup_dir, redirected_restore_db, report_status_dir):
     cmd = 'gpdbrestore -t %s --table-file %s -a -v --noplan --noanalyze --noaostats' % (ts, table_file) 
     if backup_dir is not None:
@@ -367,7 +283,7 @@ def _build_gpdbrestore_cmd_line(ts, table_file, backup_dir, redirected_restore_d
 class RestoreDatabase(Operation):
     def __init__(self, restore_timestamp, no_analyze, drop_db, restore_global, master_datadir, backup_dir, 
                 master_port, dump_dir, ddboost, no_plan, restore_tables, batch_default, no_ao_stats, 
-                redirected_restore_db, report_status_dir, netbackup_service_host, netbackup_block_size):
+                redirected_restore_db, report_status_dir): 
         self.restore_timestamp = restore_timestamp
         self.no_analyze = no_analyze
         self.drop_db = drop_db
@@ -383,8 +299,6 @@ class RestoreDatabase(Operation):
         self.no_ao_stats = no_ao_stats
         self.redirected_restore_db = redirected_restore_db
         self.report_status_dir = report_status_dir
-        self.netbackup_service_host = netbackup_service_host
-        self.netbackup_block_size = netbackup_block_size
 
     def execute(self): 
         (restore_timestamp, restore_db, compress) = ValidateRestoreDatabase(restore_timestamp = self.restore_timestamp,
@@ -392,8 +306,7 @@ class RestoreDatabase(Operation):
                                                                             backup_dir = self.backup_dir,
                                                                             master_port = self.master_port,
                                                                             dump_dir = self.dump_dir,
-                                                                            ddboost = self.ddboost,
-                                                                            netbackup_service_host = self.netbackup_service_host).run()
+                                                                            ddboost = self.ddboost).run()
 
         if self.redirected_restore_db and not self.drop_db:
             restore_db = self.redirected_restore_db
@@ -658,10 +571,6 @@ class RestoreDatabase(Operation):
             restore_line += " -a"
         if no_stats:
             restore_line += " --gp-nostats"
-        if self.netbackup_service_host:
-            restore_line += " --netbackup-service-host=%s" % self.netbackup_service_host
-        if self.netbackup_block_size:
-            restore_line += " --netbackup-block-size=%s" % self.netbackup_block_size
         return restore_line
 
     def _build_post_data_schema_only_restore_line(self, restore_timestamp, restore_db, compress, master_port, 
@@ -730,37 +639,30 @@ class RestoreDatabase(Operation):
 
 class ValidateRestoreDatabase(Operation):
     """ TODO: add other checks. check for _process_createdb? """
-    def __init__(self, restore_timestamp, master_datadir, backup_dir, master_port, dump_dir, ddboost, netbackup_service_host):
+    def __init__(self, restore_timestamp, master_datadir, backup_dir, master_port, dump_dir, ddboost):
         self.restore_timestamp = restore_timestamp
         self.master_datadir = master_datadir
         self.master_port = master_port
         self.dump_dir = dump_dir
         self.ddboost = ddboost
         self.backup_dir = backup_dir
-        self.netbackup_service_host = netbackup_service_host
     def execute(self):
-        (restore_timestamp, restore_db, compress) = ValidateTimestamp(self.restore_timestamp, self.master_datadir, self.backup_dir, self.dump_dir, self.netbackup_service_host, self.ddboost).run() 
+        (restore_timestamp, restore_db, compress) = ValidateTimestamp(self.restore_timestamp, self.master_datadir, self.backup_dir, self.dump_dir, self.ddboost).run() 
         if not self.ddboost:
-            ValidateSegments(restore_timestamp, compress, self.master_port, self.backup_dir, self.dump_dir, self.netbackup_service_host).run()
+            ValidateSegments(restore_timestamp, compress, self.master_port, self.backup_dir, self.dump_dir).run()
         return (restore_timestamp, restore_db, compress)
 
 
 
 class ValidateTimestamp(Operation):
-    def __init__(self, candidate_timestamp, master_datadir, backup_dir, dump_dir, netbackup_service_host, ddboost = False):
+    def __init__(self, candidate_timestamp, master_datadir, backup_dir, dump_dir, ddboost = False):
         self.master_datadir = master_datadir
         self.backup_dir = backup_dir
         self.candidate_timestamp = candidate_timestamp
         self.dump_dir = dump_dir
-        self.netbackup_service_host = netbackup_service_host
         self.ddboost = ddboost
 
     def validate_compressed_file(self, compressed_file):
-        if self.netbackup_service_host:
-            logger.info('Backup for given timestamp was performed using NetBackup. Querying NetBackup server to check for the dump file.')
-            compress = check_file_dumped_with_nbu(self.netbackup_service_host, compressed_file)
-            return compress
-
         compress = os.path.exists(compressed_file)
         if not compress:
             uncompressed_file = compressed_file[:compressed_file.index('.gz')]
@@ -786,13 +688,12 @@ class ValidateTimestamp(Operation):
 
 
 class ValidateSegments(Operation):
-    def __init__(self, restore_timestamp, compress, master_port, backup_dir, dump_dir, netbackup_service_host):
+    def __init__(self, restore_timestamp, compress, master_port, backup_dir, dump_dir):
         self.restore_timestamp = restore_timestamp
         self.compress = compress
         self.master_port = master_port
         self.dump_dir = dump_dir
         self.backup_dir = backup_dir
-        self.netbackup_service_host = netbackup_service_host
     def execute(self): 
         """ TODO: Improve with grouping by host and ParallelOperation dispatch. """
         gparray = GpArray.initFromCatalog(dbconn.DbURL(port=self.master_port), utility=True)   
@@ -803,17 +704,14 @@ class ValidateSegments(Operation):
                 """ Why must every Segment function have the word Segment in it ?! """
                 raise ExceptionNoStackTraceNeeded("Host %s dir %s dbid %d marked as invalid" % (seg.getSegmentHostName(), seg.getSegmentDataDirectory(), seg.getSegmentDbId()))
 
-            if self.netbackup_service_host:
-                logger.info('Backup for the given timestamp was performed using NetBackup. Skipping check for existence of dump file.')
-            else:
-                path = os.path.join(get_restore_dir(seg.getSegmentDataDirectory(), self.backup_dir), self.dump_dir, self.restore_timestamp[0:8])
-                host = seg.getSegmentHostName()
-                path = os.path.join(path, "%s0_%d_%s" % (generate_dbdump_prefix(), seg.getSegmentDbId(), self.restore_timestamp))
-                if self.compress:
-                    path += ".gz"
-                exists = CheckRemotePath(path, host).run()
-                if not exists:
-                    raise ExceptionNoStackTraceNeeded("No dump file on %s at %s" % (seg.getSegmentHostName(), path))
+            path = os.path.join(get_restore_dir(seg.getSegmentDataDirectory(), self.backup_dir), self.dump_dir, self.restore_timestamp[0:8])
+            host = seg.getSegmentHostName()
+            path = os.path.join(path, "%s0_%d_%s" % (generate_dbdump_prefix(), seg.getSegmentDbId(), self.restore_timestamp))
+            if self.compress:
+                path += ".gz"
+            exists = CheckRemotePath(path, host).run()
+            if not exists:
+                raise ExceptionNoStackTraceNeeded("No dump file on %s at %s" % (seg.getSegmentHostName(), path))
 
 def validate_tablenames(table_list):
     for restore_table in table_list:
@@ -972,20 +870,18 @@ class RecoverRemoteDumps(Operation):
 
 
 class GetDumpTables(Operation):
-    def __init__(self, restore_timestamp, master_datadir, backup_dir, dump_dir, ddboost, netbackup_service_host):
+    def __init__(self, restore_timestamp, master_datadir, backup_dir, dump_dir, ddboost): 
         self.master_datadir = master_datadir
         self.restore_timestamp = restore_timestamp
         self.dump_dir = dump_dir
         self.ddboost = ddboost
         self.backup_dir = backup_dir
-        self.netbackup_service_host = netbackup_service_host
 
     def execute(self): 
         (restore_timestamp, restore_db, compress) = ValidateTimestamp(master_datadir = self.master_datadir,
                                                                       backup_dir = self.backup_dir, 
                                                                       candidate_timestamp = self.restore_timestamp,
                                                                       dump_dir = self.dump_dir,
-                                                                      netbackup_service_host = self.netbackup_service_host,
                                                                       ddboost = self.ddboost).run()
         dump_file = os.path.join(get_restore_dir(self.master_datadir, self.backup_dir), self.dump_dir, restore_timestamp[0:8], "%s%s" % (generate_master_dbdump_prefix(), restore_timestamp))
         if compress:

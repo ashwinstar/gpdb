@@ -144,10 +144,6 @@ static char * dump_prefix = NULL;
 /* end cdb additions */
 /*	end cdb specific stuff */
 
-/* NetBackup related variables */
-static char *netbackup_service_host = NULL;
-static char *netbackup_block_size = NULL;
-
 int
 main(int argc, char **argv)
 {
@@ -232,8 +228,6 @@ main(int argc, char **argv)
 		{"gp-f", required_argument, NULL, 12},
 		{"prefix", required_argument, NULL, 13},
 		{"status", required_argument, NULL, 14},
-		{"netbackup-service-host", required_argument, NULL, 15},
-		{"netbackup-block-size", required_argument, NULL, 16},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -439,12 +433,6 @@ main(int argc, char **argv)
 				break;
             /* Hack to pass in the status_file name to cdbbackup.c (gp_restore_launch) */
 			case 14:
-				break;
-			case 15:
-				netbackup_service_host = strdup(optarg);
-				break;
-			case 16:
-				netbackup_block_size = strdup(optarg);
 				break;
 
 
@@ -722,7 +710,6 @@ main(int argc, char **argv)
 			char	   *filterScript = NULL;
 			char	   *postDataFilterScript = NULL;
 			char	   *catPg = NULL;
-			char	   *gpNBURestorePg = NULL;
 
 			pszOnErrorStop = "-v ON_ERROR_STOP=";
 
@@ -751,12 +738,6 @@ main(int argc, char **argv)
 			if ((catPg = testProgramExists("cat")) == NULL)
 			{
 				mpp_err_msg(logError, progname, "cat program not found in path");
-				exit(1);
-			}
-
-			if ((gpNBURestorePg = testProgramExists("gp_bsa_restore_agent")) == NULL)
-			{
-				mpp_err_msg(logError, progname, "NetBackup restore agent \"gp_bsa_restore_agent\" not found in path");
 				exit(1);
 			}
 
@@ -799,8 +780,7 @@ main(int argc, char **argv)
 					/* Non ddboost restore */
 					formSegmentPsqlCommandLine(&pszCmdLine, inputFileSpec, bCompUsed, g_compPg,
 							filterScript, table_filter_file, 
-							g_role, psqlPg, catPg,
-							gpNBURestorePg, netbackup_service_host, netbackup_block_size);
+							g_role, psqlPg, catPg);
 #ifdef USE_DDBOOST
 				}
 #endif
@@ -809,8 +789,7 @@ main(int argc, char **argv)
 			{
                 /* Right now the postdata files will be synced to segment directories before restore */
                 formPostDataSchemaOnlyPsqlCommandLine(&pszCmdLine, inputFileSpec, bCompUsed, g_compPg,
-							postDataFilterScript, table_filter_file, psqlPg, catPg,
-							gpNBURestorePg, netbackup_service_host, netbackup_block_size);
+							postDataFilterScript, table_filter_file, psqlPg, catPg);
 			}
 
 			strcat(pszCmdLine, " -h ");

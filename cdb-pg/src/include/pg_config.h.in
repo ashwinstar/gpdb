@@ -751,10 +751,6 @@
    (--enable-ddboost) */
 #undef USE_DDBOOST
 
-/* Define to 1 to build with NetBackup capabilities.
-   (--enable-netbackup) */
-#undef USE_NETBACKUP
-
 /* Define to 1 to build with debug_break capabilities. (--enable-debugbreak)
    */
 #undef USE_DEBUG_BREAK

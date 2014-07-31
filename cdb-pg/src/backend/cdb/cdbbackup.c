@@ -48,8 +48,6 @@ static void validateBackupDirectory(char *pszBackupDirectory);
 static char *positionToError(char *source);
 static char* parse_prefix_from_params(char *params);
 static char* parse_status_from_params(char *params);
-static char* parse_option_from_params(char *params, char *option);
-static char *queryNBUBackupFilePathName(char *netbackupServiceHost, char *netbackupRestoreFileName);
 
 
 #ifdef USE_DDBOOST
@@ -72,16 +70,6 @@ static char *compPg = NULL,
 			*bkPg = NULL,
 			*dump_prefix = NULL,
 			*statusDirectory = NULL;
-
-/* NetBackup related variables */
-static char *netbackup_service_host = NULL,
-			*netbackup_policy = NULL,
-			*netbackup_schedule = NULL,
-			*netbackup_block_size = NULL,
-			*netbackup_keyword = NULL;
-static int netbackup_enabled = 0;
-static char *gpNBUDumpPg = NULL;
-static char *gpNBUQueryPg = NULL;
 
 typedef enum backup_file_type
 {
@@ -127,26 +115,6 @@ char* parse_status_from_params(char *params)
 	}
 	return NULL;
 }
-
-char* parse_option_from_params(char *params, char *option)
-{
-   if ((params == NULL) || (option == NULL))
-       return NULL;
-   char *temp = strdup(params);
-   if (temp == NULL)
-       ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), errmsg("out of memory")));
-   char *pch = strstr(temp, option);
-   if (pch)
-   {
-       pch = pch + strlen(option);
-       char *ptr = strtok(pch," ");
-       if (ptr == NULL)
-           return NULL;
-      return ptr;
-   }
-   return NULL;
-}
-
 
 /*
  * gp_backup_launch__( TEXT, TEXT, TEXT, TEXT, TEXT ) returns TEXT
@@ -217,12 +185,6 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 
 	dump_prefix = parse_prefix_from_params(pszPassThroughParameters);
 
-	netbackup_service_host = parse_option_from_params(pszPassThroughParameters, "--netbackup-service-host");
-	netbackup_policy = parse_option_from_params(pszPassThroughParameters, "--netbackup-policy");
-	netbackup_schedule = parse_option_from_params(pszPassThroughParameters, "--netbackup-schedule");
-	netbackup_block_size = parse_option_from_params(pszPassThroughParameters, "--netbackup-block-size");
-	netbackup_keyword = parse_option_from_params(pszPassThroughParameters, "--netbackup-keyword");
-
 	/*
 	 * if BackupDirectory is relative, make it absolute based on the directory
 	 * where the database resides
@@ -274,24 +236,6 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 	
 	}
 #endif
-
-	if (strstr(pszPassThroughParameters,"--netbackup-service-host") != NULL)
-	{
-		netbackup_enabled = 1;
-	}
-
-	if (netbackup_enabled)
-	{
-		gpNBUDumpPg = testProgramExists("gp_bsa_dump_agent");
-		if (gpNBUDumpPg == NULL)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-					errmsg("%s not found in PGPATH or PATH (PGPATH: %s | PATH:  %s)",
-					"gp_bsa_dump_agent", getenv("PGPATH"), getenv("PATH")),
-					errhint("Restart the server and try again")));
-		}
-	}
 
 	pszDBName = NULL;
 	pszUserName = (char *) NULL;
@@ -503,28 +447,6 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 	}
 #endif
 
-	if (netbackup_enabled)
-	{
-		len += strlen(gpNBUDumpPg) + 2
-			+ strlen(" --netbackup-service-host ")
-			+ strlen(netbackup_service_host) + 2
-			+ strlen(" --netbackup-policy ")
-			+ strlen(netbackup_policy) + 2
-			+ strlen(" --netbackup-schedule ")
-			+ strlen(netbackup_policy) + 2
-			+ strlen(" --netbackup-filename ");
-		if (netbackup_block_size)
-		{
-			len	+= strlen(" --netbackup-block-size ")
-				+ strlen(netbackup_block_size);
-		}
-		if (netbackup_keyword)
-		{
-			len += strlen(" --netbackup-keyword ")
-				+ strlen(netbackup_keyword);
-		}
-	}
-
 	/* if user selected a compression program */
 	if (pszCompressionProgram[0] != '\0')
 	{
@@ -561,45 +483,6 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
                                 pszStatusFileName, gpDDBoostCmdLine);
         	}
 	}
-	else if (netbackup_enabled)
-	{
-		if (pszCompressionProgram[0] != '\0')
-		{
-				sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2> %s | %s -f | %s --netbackup-service-host %s --netbackup-policy %s --netbackup-schedule %s --netbackup-filename %s",
-					bkPg, pszKeyParm, pszBackupDirectory,
-					port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName,
-					pszStatusFileName, compPg, gpNBUDumpPg, netbackup_service_host,
-					netbackup_policy, netbackup_schedule, pszBackupFileName);
-				if (netbackup_block_size)
-				{
-					strncat(pszCmdLine, " --netbackup-block-size ", strlen(" --netbackup-block-size "));
-					strncat(pszCmdLine, netbackup_block_size, strlen(netbackup_block_size));
-				}
-				if (netbackup_keyword)
-				{
-					strncat(pszCmdLine, " --netbackup-keyword ", strlen(" --netbackup-keyword "));
-					strncat(pszCmdLine, netbackup_keyword, strlen(netbackup_keyword));
-				}
-		}
-		else
-		{
-				sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2> %s | %s --netbackup-service-host %s --netbackup-policy %s --netbackup-schedule %s --netbackup-filename %s",
-					bkPg, pszKeyParm, pszBackupDirectory,
-					port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName,
-					pszStatusFileName, gpNBUDumpPg, netbackup_service_host,
-					netbackup_policy, netbackup_schedule, pszBackupFileName);
-				if (netbackup_block_size)
-				{
-					strncat(pszCmdLine, " --netbackup-block-size ", strlen(" --netbackup-block-size "));
-					strncat(pszCmdLine, netbackup_block_size, strlen(netbackup_block_size));
-				}
-				if (netbackup_keyword)
-				{
-					strncat(pszCmdLine, " --netbackup-keyword ", strlen(" --netbackup-keyword "));
-					strncat(pszCmdLine, netbackup_keyword, strlen(netbackup_keyword));
-				}
-		}
-	}
 	else 
 	{
 		/* if user selected a compression program */
@@ -620,49 +503,6 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 		}
 	}
 #else
-	if (netbackup_enabled)
-	{
-		if (pszCompressionProgram[0] != '\0')
-		{
-			/* gp_dump_agent + options, pipe into compression program, direct
-			 * stdout to backup file and stderr to status file */
-			sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2> %s | %s -f | %s --netbackup-service-host %s --netbackup-policy %s --netbackup-schedule %s --netbackup-filename %s",
-					bkPg, pszKeyParm, pszBackupDirectory,
-					port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName,
-					pszStatusFileName, compPg, gpNBUDumpPg, netbackup_service_host,
-					netbackup_policy, netbackup_schedule, pszBackupFileName);
-			if (netbackup_block_size)
-			{
-				strncat(pszCmdLine, " --netbackup-block-size ", strlen(" --netbackup-block-size "));
-				strncat(pszCmdLine, netbackup_block_size, strlen(netbackup_block_size));
-			}
-			if (netbackup_keyword)
-			{
-				strncat(pszCmdLine, " --netbackup-keyword ", strlen(" --netbackup-keyword "));
-				strncat(pszCmdLine, netbackup_keyword, strlen(netbackup_keyword));
-			}
-		}
-		else
-		{
-			sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2> %s | %s --netbackup-service-host %s --netbackup-policy %s --netbackup-schedule %s --netbackup-filename %s",
-					bkPg, pszKeyParm, pszBackupDirectory,
-					port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName,
-					pszStatusFileName, gpNBUDumpPg, netbackup_service_host,
-					netbackup_policy, netbackup_schedule, pszBackupFileName);
-			if (netbackup_block_size)
-			{
-				strncat(pszCmdLine, " --netbackup-block-size ", strlen(" --netbackup-block-size "));
-				strncat(pszCmdLine, netbackup_block_size, strlen(netbackup_block_size));
-			}
-			if (netbackup_keyword)
-			{
-				strncat(pszCmdLine, " --netbackup-keyword ", strlen(" --netbackup-keyword "));
-				strncat(pszCmdLine, netbackup_keyword, strlen(netbackup_keyword));
-			}
-		}
-	}
-	else
-	{
 	/* if user selected a compression program */
         if (pszCompressionProgram[0] != '\0')
         {
@@ -679,7 +519,6 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
                                 port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName,
                                 pszStatusFileName, pszThrottleCmd);
         }
-	}
 #endif
 
 	elog(LOG, "gp_dump_agent command line: %s", pszCmdLine),
@@ -784,43 +623,6 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 					pszStatusFileName, gpDDBoostCmdLine);
 			}
 		}
-		else if (netbackup_enabled)
-		{
-			if (pszCompressionProgram[0] != '\0')
-			{
-				sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2>> %s | %s -f | %s --netbackup-service-host %s --netbackup-policy %s --netbackup-schedule %s --netbackup-filename %s",
-						bkPg, pszKeyParm, pszBackupDirectory, port, pszUserName, pszPassThroughParameters,
-						pszDataOption, pszDBName, pszStatusFileName, compPg, gpNBUDumpPg, netbackup_service_host,
-						netbackup_policy, netbackup_schedule, pszBackupFileName);
-				if (netbackup_block_size)
-				{
-					strncat(pszCmdLine, " --netbackup-block-size ", strlen(" --netbackup-block-size "));
-					strncat(pszCmdLine, netbackup_block_size, strlen(netbackup_block_size));
-				}
-				if (netbackup_keyword)
-				{
-					strncat(pszCmdLine, " --netbackup-keyword ", strlen(" --netbackup-keyword "));
-					strncat(pszCmdLine, netbackup_keyword, strlen(netbackup_keyword));
-				}
-			}
-			else
-			{
-				sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2>> %s | %s --netbackup-service-host %s --netbackup-policy %s --netbackup-schedule %s --netbackup-filename %s",
-						bkPg, pszKeyParm, pszBackupDirectory, port, pszUserName, pszPassThroughParameters,
-						pszDataOption, pszDBName, pszStatusFileName, gpNBUDumpPg, netbackup_service_host,
-						netbackup_policy, netbackup_schedule, pszBackupFileName);
-				if (netbackup_block_size)
-				{
-					strncat(pszCmdLine, " --netbackup-block-size ", strlen(" --netbackup-block-size "));
-					strncat(pszCmdLine, netbackup_block_size, strlen(netbackup_block_size));
-				}
-				if (netbackup_keyword)
-				{
-					strncat(pszCmdLine, " --netbackup-keyword ", strlen(" --netbackup-keyword "));
-					strncat(pszCmdLine, netbackup_keyword, strlen(netbackup_keyword));
-				}
-			}
-		}
 		else
 		{
 			/* if user selected a compression program */
@@ -842,45 +644,6 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 			}
 		}
 #else
-	if (netbackup_enabled)
-	{
-		if (pszCompressionProgram[0] != '\0')
-		{
-				sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2>> %s | %s -f | %s --netbackup-service-host %s --netbackup-policy %s --netbackup-schedule %s --netbackup-filename %s",
-					bkPg, pszKeyParm, pszBackupDirectory, port, pszUserName, pszPassThroughParameters,
-					pszDataOption, pszDBName, pszStatusFileName, compPg, gpNBUDumpPg, netbackup_service_host,
-					netbackup_policy, netbackup_schedule, pszBackupFileName);
-				if (netbackup_block_size)
-				{
-					strncat(pszCmdLine, " --netbackup-block-size ", strlen(" --netbackup-block-size "));
-					strncat(pszCmdLine, netbackup_block_size, strlen(netbackup_block_size));
-				}
-				if (netbackup_keyword)
-				{
-					strncat(pszCmdLine, " --netbackup-keyword ", strlen(" --netbackup-keyword "));
-					strncat(pszCmdLine, netbackup_keyword, strlen(netbackup_keyword));
-				}
-		}
-		else
-		{
-				sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2>> %s | %s --netbackup-service-host %s --netbackup-policy %s --netbackup-schedule %s --netbackup-filename %s",
-					bkPg, pszKeyParm, pszBackupDirectory, port, pszUserName, pszPassThroughParameters,
-					pszDataOption, pszDBName, pszStatusFileName, gpNBUDumpPg, netbackup_service_host,
-					netbackup_policy, netbackup_schedule, pszBackupFileName);
-				if (netbackup_block_size)
-				{
-					strncat(pszCmdLine, " --netbackup-block-size ", strlen(" --netbackup-block-size "));
-					strncat(pszCmdLine, netbackup_block_size, strlen(netbackup_block_size));
-				}
-				if (netbackup_keyword)
-				{
-					strncat(pszCmdLine, " --netbackup-keyword ", strlen(" --netbackup-keyword "));
-					strncat(pszCmdLine, netbackup_keyword, strlen(netbackup_keyword));
-				}
-		}
-	}
-	else
-	{
 		/* if user selected a compression program */
 		if (pszCompressionProgram[0] != '\0')
 		{
@@ -897,7 +660,6 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 					port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName,
 					pszStatusFileName, pszThrottleCmd);
 		}
-	}
 #endif
 
 		elog(LOG, "gp_dump_agent command line : %s", pszCmdLine),
@@ -1025,8 +787,6 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 
     dump_prefix = parse_prefix_from_params(pszPassThroughParameters);
     statusDirectory = parse_status_from_params(pszPassThroughParameters);
-	netbackup_service_host = parse_option_from_params(pszPassThroughParameters, "--netbackup-service-host");
-	netbackup_block_size = parse_option_from_params(pszPassThroughParameters, "--netbackup-block-size");
 
 	/*
 	 * if BackupDirectory is relative, make it absolute based on the directory
@@ -1048,25 +808,6 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 	/* Form backup file path name */
 	pszBackupFileName = formBackupFilePathName(pszBackupDirectory, pszBackupKey, is_decompress, postDataSchemaOnly);
 	pszStatusFileName = formStatusFilePathName(statusDirectory, pszBackupKey, false);
-
-	if (strstr(pszPassThroughParameters,"--netbackup-service-host") != NULL)
-	{
-		netbackup_enabled = 1;
-	}
-
-	if (netbackup_enabled)
-	{
-		gpNBUQueryPg = testProgramExists("gp_bsa_query_agent");
-		if (gpNBUQueryPg == NULL)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-					errmsg("%s not found in PGPATH or PATH (PGPATH: %s | PATH:  %s)",
-					"gp_bsa_query_agent", getenv("PGPATH"), getenv("PATH")),
-					errhint("Restart the server and try again")));
-		}
-
-	}
 
 #ifdef USE_DDBOOST
         if (strstr(pszPassThroughParameters,"--dd_boost_enabled") != NULL)
@@ -1105,25 +846,13 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 #endif
 		if (0 != stat(pszBackupFileName, &info))
 		{
-			if (netbackup_enabled)
-			{
-				if (strncmp(pszBackupFileName, queryNBUBackupFilePathName(netbackup_service_host, pszBackupFileName), strlen(pszBackupFileName)) != 0)
-					ereport(ERROR,
-						(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-						errmsg("Attempt to restore dbid %d failed. Query to NetBackup server for file %s failed."
-						"The NetBackup server is not running or the given file was not backed up using NetBackup.",
-						target_dbid, pszBackupFileName)));
-			}
-			else
-			{
-				pszBackupFileName = findAcceptableBackupFilePathName(pszBackupDirectory, pszBackupKey, segid);
-				if (pszBackupFileName == NULL)
-					ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg("Attempt to restore dbid %d failed. No acceptable dump file name found "
-						" in directory %s with backup key %s and source dbid key %d", target_dbid,
-						pszBackupDirectory, pszBackupKey, segid)));
-			}
+			pszBackupFileName = findAcceptableBackupFilePathName(pszBackupDirectory, pszBackupKey, segid);
+			if (pszBackupFileName == NULL)
+				ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("Attempt to restore dbid %d failed. No acceptable dump file name found "
+					 " in directory %s with backup key %s and source dbid key %d", target_dbid, 
+					 pszBackupDirectory, pszBackupKey, segid)));
 
 			/*
 		 	* If --gp-c is on make sure our file name has a .gz suffix.
@@ -1242,17 +971,6 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
   	  	+ 20 + 2;            /* --dd_boost_buf_size */
 #endif
 
-	if (netbackup_enabled)
-	{
-		len += strlen(" --netbackup-service-host=")
-			+ 2 + strlen(netbackup_service_host);
-		if (netbackup_block_size)
-		{
-			len += strlen(" --netbackup-block-size=")
-				+ strlen(netbackup_block_size);
-		}
-	}
-
 	/*
 	 * if compression was requested with --gp-c
 	 */
@@ -1283,18 +1001,6 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 				pszPassThroughParameters, pszPassThroughTargetInfo, pszDBName, pszBackupFileName,
 				postDataSchemaOnly ? "2>>" : "2>", pszStatusFileName);
 		}
-		else if (netbackup_enabled)
-		{
-			sprintf(pszCmdLine, "%s --gp-c %s --gp-k %s --netbackup-service-host %s --gp-d %s %s -p %d -U %s %s %s -d %s %s %s %s 2>&2",
-				bkPg, compPg, pszKeyParm, netbackup_service_host, pszBackupDirectory, pszOnErrorStop, port, pszUserName,
-				pszPassThroughParameters, pszPassThroughTargetInfo, pszDBName, pszBackupFileName,
-				postDataSchemaOnly ? "2>>" : "2>", pszStatusFileName);
-			if (netbackup_block_size)
-			{
-				strncat(pszCmdLine, " --netbackup-block-size ", strlen(" --netbackup-block-size "));
-				strncat(pszCmdLine, netbackup_block_size, strlen(netbackup_block_size));
-			}
-		}
 		else
 		{
 			sprintf(pszCmdLine, "%s --gp-c %s --gp-k %s --gp-d %s %s -p %d -U %s %s %s -d %s %s %s %s 2>&2",
@@ -1303,25 +1009,10 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 				postDataSchemaOnly ? "2>>" : "2>", pszStatusFileName);
 		}
 #else
-		if (netbackup_enabled)
-		{
-			sprintf(pszCmdLine, "%s --gp-c %s --gp-k %s --netbackup-service-host %s --gp-d %s %s -p %d -U %s %s %s -d %s %s %s %s 2>&2",
-				bkPg, compPg, pszKeyParm, netbackup_service_host, pszBackupDirectory, pszOnErrorStop, port, pszUserName,
-				pszPassThroughParameters, pszPassThroughTargetInfo, pszDBName, pszBackupFileName,
-				postDataSchemaOnly ? "2>>" : "2>", pszStatusFileName);
-			if (netbackup_block_size)
-			{
-				strncat(pszCmdLine, " --netbackup-block-size ", strlen(" --netbackup-block-size "));
-				strncat(pszCmdLine, netbackup_block_size, strlen(netbackup_block_size));
-			}
-		}
-		else
-		{
-			sprintf(pszCmdLine, "%s --gp-c %s --gp-k %s --gp-d %s %s -p %d -U %s %s %s -d %s %s %s %s 2>&2",
+		sprintf(pszCmdLine, "%s --gp-c %s --gp-k %s --gp-d %s %s -p %d -U %s %s %s -d %s %s %s %s 2>&2",
 				bkPg, compPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName,
 				pszPassThroughParameters, pszPassThroughTargetInfo, pszDBName, pszBackupFileName,
 				postDataSchemaOnly ? "2>>" : "2>", pszStatusFileName);
-		}
 #endif
 
 	}
@@ -1346,18 +1037,6 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 				pszPassThroughTargetInfo, pszDBName, pszBackupFileName,
 				postDataSchemaOnly ? "2>>" : "2>", pszStatusFileName);
 		}
-		else if (netbackup_enabled)
-		{
-			sprintf(pszCmdLine, "%s --gp-k %s --netbackup-service-host %s --gp-d %s %s -p %d -U %s %s %s -d %s %s %s %s 2>&2",
-				bkPg, pszKeyParm, netbackup_service_host, pszBackupDirectory, pszOnErrorStop, port, pszUserName, pszPassThroughParameters,
-				pszPassThroughTargetInfo, pszDBName, pszBackupFileName,
-				postDataSchemaOnly ? "2>>" : "2>", pszStatusFileName);
-			if (netbackup_block_size)
-			{
-				strncat(pszCmdLine, " --netbackup-block-size ", strlen(" --netbackup-block-size "));
-				strncat(pszCmdLine, netbackup_block_size, strlen(netbackup_block_size));
-			}
-		}
 		else
 		{
 			sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s %s -p %d -U %s %s %s -d %s %s %s %s 2>&2",
@@ -1367,27 +1046,12 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 		}
 			
 #else
-		if(netbackup_enabled)
-		{
-			sprintf(pszCmdLine, "%s --gp-k %s --netbackup-service-host %s --gp-d %s %s -p %d -U %s %s %s -d %s %s %s %s 2>&2",
-				bkPg, pszKeyParm, netbackup_service_host, pszBackupDirectory, pszOnErrorStop, port, pszUserName, pszPassThroughParameters,
-				pszPassThroughTargetInfo, pszDBName, pszBackupFileName,
-				postDataSchemaOnly ? "2>>" : "2>", pszStatusFileName);
-			if (netbackup_block_size)
-			{
-				strncat(pszCmdLine, " --netbackup-block-size ", strlen(" --netbackup-block-size "));
-				strncat(pszCmdLine, netbackup_block_size, strlen(netbackup_block_size));
-			}
-		}
-		else
-		{
-			sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s %s -p %d -U %s %s %s -d %s %s %s %s 2>&2",
+		sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s %s -p %d -U %s %s %s -d %s %s %s %s 2>&2",
 				bkPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName, pszPassThroughParameters,
 				pszPassThroughTargetInfo, pszDBName, pszBackupFileName,
 				postDataSchemaOnly ? "2>>" : "2>", pszStatusFileName);
-		}
 #endif
-	}
+		}
 
 
 		elog(LOG, "gp_restore_agent command line: %s", pszCmdLine),
@@ -1959,56 +1623,6 @@ formStatusFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool bIsBac
 	strcat(pszFileName, pszBackupKey);
 
 	return pszFileName;
-}
-/* This function will query NetBackup server to find out if a given filename has been
- * backed up using NetBackup. If the query returns NULL, it implies that the given file
- * was never backed up using that NetBackup server. If the query returns the file path,
- * it implies that the given file has been backed up using the given NetBackup server and
- * it can be restored from that server.
- */
-
-static char *
-queryNBUBackupFilePathName(char *netbackupServiceHost, char *netbackupRestoreFileName)
-{
-   FILE *fp;
-   char resBuff[512];
-   char cmd[512];
-   char *queryResultFileName;
-
-   queryResultFileName = (char *) palloc(sizeof(char) * (1 + strlen(netbackupRestoreFileName)));
-   if (queryResultFileName == NULL)
-   {
-       ereport(ERROR,
-               (errcode(ERRCODE_OUT_OF_MEMORY),
-                errmsg("Failed to allocate memory for query for restore filename to NetBackup server")));
-   }
-
-   snprintf(cmd, (strlen(gpNBUQueryPg) + strlen(" --netbackup-service-host ") + strlen(netbackupServiceHost) + strlen(" --netbackup-filename ") + strlen(netbackupRestoreFileName) + strlen("\n")),
-			"%s --netbackup-service-host %s --netbackup-filename %s\n", gpNBUQueryPg, netbackupServiceHost,  netbackupRestoreFileName);
-   elog(LOG, "NetBackup query restore filename command line: %s", cmd);
-
-   fp = popen(cmd, "r");
-   if (fp == NULL){
-       ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-                       errmsg("Error querying restore filename to NetBackup server"),
-                       errhint("NetBackup server not running or restore file: %s has not been backed up to the NetBackup server", netbackupRestoreFileName)));
-       return NULL;
-   }
-
-   while(fgets(resBuff, strlen(netbackupRestoreFileName), fp) != NULL)
-   {
-       strncat(queryResultFileName, resBuff, (1 + strlen(netbackupRestoreFileName)));
-   }
-
-   if (pclose(fp) != 0)
-   {
-       ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-                       errmsg("Error querying restore filename to NetBackup server"),
-                       errhint("NetBackup server not running or restore file: %s has not been backed up to the NetBackup server", netbackupRestoreFileName)));
-       return NULL;
-   }
-
-   return queryResultFileName;
 }
 
 /* formThrottleCmd(char *pszBackupFileName, int directIO_read_chunk_mb, bool bIsThrottlingEnabled) returns char*

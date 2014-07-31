@@ -73,10 +73,6 @@ static char * shellEscape(const char *shellArg, PQExpBuffer escapeBuf);
 static char *dump_prefix = NULL;
 static char *status_file = NULL;
 
-/* NetBackup related variable */
-static char *netbackup_service_host = NULL;
-static char *netbackup_block_size = NULL;
-
 #ifdef USE_DDBOOST
 static int dd_boost_enabled = 0;
 #endif
@@ -368,8 +364,6 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		{"gp-nostats", no_argument, NULL, 12},
 		{"prefix", required_argument, NULL, 13},
 		{"status", required_argument, NULL, 14},
-		{"netbackup-service-host", required_argument, NULL, 15},
-		{"netbackup-block-size", required_argument, NULL, 16},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -737,14 +731,6 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 			case 14:
 				status_file = Safe_strdup(optarg);
 				pInputOpts->pszPassThroughParms = addPassThroughLongParm("status", status_file, pInputOpts->pszPassThroughParms);
-				break;
-			case 15:
-				netbackup_service_host = Safe_strdup(optarg);
-				pInputOpts->pszPassThroughParms = addPassThroughLongParm("netbackup-service-host", netbackup_service_host, pInputOpts->pszPassThroughParms);
-				break;
-			case 16:
-				netbackup_block_size = Safe_strdup(optarg);
-				pInputOpts->pszPassThroughParms = addPassThroughLongParm("netbackup-block-size", netbackup_block_size, pInputOpts->pszPassThroughParms);
 				break;
 
 			default:

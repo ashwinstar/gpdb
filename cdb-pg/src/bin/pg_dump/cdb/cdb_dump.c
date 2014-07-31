@@ -86,13 +86,6 @@ static char *tableFileName = NULL;	/* file name with tables to dump (--table-fil
 static char *excludeTableFileName = NULL; /* file name with tables to exclude (--exclude-table-file) */
 static char *dump_prefix = NULL;
 
-/* NetBackup related variables */
-static char *netbackup_service_host = NULL;
-static char *netbackup_policy = NULL;
-static char *netbackup_schedule = NULL;
-static char *netbackup_block_size = NULL;
-static char *netbackup_keyword = NULL;
-
 char		g_comment_start[10];
 char		g_comment_end[10];
 static bool bForcePassword = false;
@@ -878,11 +871,6 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		{"prefix", required_argument, NULL, 12},
 		{"incremental-filter", required_argument, NULL, 13},
 		{"no-lock", no_argument, NULL, 14},
-		{"netbackup-service-host", required_argument, NULL, 15},
-		{"netbackup-policy", required_argument, NULL, 16},
-		{"netbackup-schedule", required_argument, NULL, 17},
-		{"netbackup-block-size", required_argument, NULL, 18},
-		{"netbackup-keyword", required_argument, NULL, 19},
 
 		{NULL, 0, NULL, 0}
 	};
@@ -1264,26 +1252,6 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 				break;
 			case 14:
 				no_lock = true;
-				break;
-			case 15:
-				netbackup_service_host = Safe_strdup(optarg);
-				pInputOpts->pszPassThroughParms = addPassThroughLongParm("netbackup-service-host", netbackup_service_host, pInputOpts->pszPassThroughParms);
-				break;
-			case 16:
-				netbackup_policy = Safe_strdup(optarg);
-				pInputOpts->pszPassThroughParms = addPassThroughLongParm("netbackup-policy", netbackup_policy, pInputOpts->pszPassThroughParms);
-				break;
-			case 17:
-				netbackup_schedule = Safe_strdup(optarg);
-				pInputOpts->pszPassThroughParms = addPassThroughLongParm("netbackup-schedule", netbackup_schedule, pInputOpts->pszPassThroughParms);
-				break;
-			case 18:
-				netbackup_block_size = Safe_strdup(optarg);
-				pInputOpts->pszPassThroughParms = addPassThroughLongParm("netbackup-block-size", netbackup_block_size, pInputOpts->pszPassThroughParms);
-				break;
-			case 19:
-				netbackup_keyword = Safe_strdup(optarg);
-				pInputOpts->pszPassThroughParms = addPassThroughLongParm("netbackup-keyword", netbackup_keyword, pInputOpts->pszPassThroughParms);
 				break;
 
 			default:

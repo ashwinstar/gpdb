@@ -14,8 +14,7 @@ import sys
 import tarfile
 import platform
 from datetime import datetime
-import yaml
-from collections import defaultdict
+
 from gppylib.commands.base import Command, ExecutionError, REMOTE
 from gppylib.commands.unix import findCmdInPath, RemoteCopy
 from gppylib.commands.gp import SegmentStart, GpStandbyStart
@@ -342,40 +341,10 @@ def impl(context, HOST, port, dir, ctxt):
     gpfdist = Gpfdist('gpfdist on host %s'%host, dir, port, os.path.join('/tmp','gpfdist.pid'), int(ctxt), host, gp_source_file)
     gpfdist.cleanupGpfdist()
 
-
-def parse_netbackup_params():
+def run_valgrind_command(context, command):
     current_path = os.path.realpath(__file__)
     current_dir = os.path.dirname(current_path)
-    netbackup_yaml_file_path = os.path.join(current_dir, 'data/netbackup_behave_config.yaml')
-    try:
-        nbufile = open(netbackup_yaml_file_path, 'r')
-    except IOError,e:
-        raise Exception("Unable to open file %s: %s" % (netbackup_yaml_file_path, e))
-    try:
-        nbudata = yaml.load(nbufile.read())
-    except yaml.YAMLError, exc:
-        raise Exception("Error reading file %s: %s" % (netbackup_yaml_file_path, exc))
-    finally:
-        nbufile.close()
-
-    if len(nbudata) == 0:
-        raise Exception("The load of the config file %s failed.\
-         No configuration information to continue testing operation." % netbackup_yaml_file_path)
-    else:
-        return nbudata
-
-@given('the netbackup params have been parsed')
-def impl(context):
-    NETBACKUPDICT = defaultdict(dict)
-    NETBACKUPDICT['NETBACKUPINFO'] = parse_netbackup_params()
-    context.netbackup_service_host = NETBACKUPDICT['NETBACKUPINFO']['NETBACKUP_PARAMS']['NETBACKUP_SERVICE_HOST']
-    context.netbackup_policy = NETBACKUPDICT['NETBACKUPINFO']['NETBACKUP_PARAMS']['NETBACKUP_POLICY']
-    context.netbackup_schedule = NETBACKUPDICT['NETBACKUPINFO']['NETBACKUP_PARAMS']['NETBACKUP_SCHEDULE']
-
-def run_valgrind_command(context, command, suppressions_file):
-    current_path = os.path.realpath(__file__)
-    current_dir = os.path.dirname(current_path)
-    cmd_text = "valgrind --suppressions=%s/%s %s" %(current_dir, suppressions_file, command)
+    cmd_text = "valgrind --suppressions=%s/valgrind_suppression.txt %s" %(current_dir, command)
     run_command(context, cmd_text)
     for line in context.error_message.splitlines():
         if 'ERROR SUMMARY' in line:
@@ -402,34 +371,7 @@ def impl(context, command, options):
     elif bnr_tool == 'gp_restore_agent':
         command_str = "%s %s --gp-k %s --gp-d db_dumps/%s -p %s -U %s --target-host localhost --target-port %s db_dumps/%s/gp_dump_1_1_%s_post_data.gz" % (command, options, ts, ts[0:8], port, user, port, ts[0:8], ts) 
         
-    run_valgrind_command(context, command_str, "valgrind_suppression.txt")
-
-@then('the user runs valgrind with "{command}" and options "{options}" and suppressions file "{suppressions_file}" using netbackup')
-@when('the user runs valgrind with "{command}" and options "{options}" and suppressions file "{suppressions_file}" using netbackup')
-def impl(context, command, options, suppressions_file):
-    port = os.environ.get('PGPORT')
-    user = getpass.getuser()
-    if hasattr(context, 'backup_timestamp'):
-        ts = context.backup_timestamp
-    if hasattr(context, 'netbackup_service_host'):
-        netbackup_service_host = context.netbackup_service_host
-    if hasattr(context, 'netbackup_policy'):
-        netbackup_policy = context.netbackup_policy
-    if hasattr(context, 'netbackup_schedule'):
-        netbackup_schedule = context.netbackup_schedule
-    bnr_tool = command.split()[0].strip()
-    if bnr_tool == 'gp_dump':
-        command_str = command + " --netbackup-service-host " + netbackup_service_host + " --netbackup-policy " + netbackup_policy + " --netbackup-schedule " + netbackup_schedule
-    elif bnr_tool == 'gp_dump_agent':
-        command_str = command + ' -p %s' % port + " --netbackup-service-host " + netbackup_service_host + " --netbackup-policy " + netbackup_policy + " --netbackup-schedule " + netbackup_schedule
-    elif bnr_tool == 'gp_restore':
-        command_str = "%s %s --gp-k %s --gp-d db_dumps/%s --gp-r db_dumps/%s --netbackup-service-host %s" % (command, options, context.backup_timestamp, context.backup_timestamp[0:8], context.backup_timestamp[0:8], netbackup_service_host)
-    elif bnr_tool == 'gp_restore_agent':
-        command_str = "%s %s --gp-k %s --gp-d db_dumps/%s -p %s -U %s --target-host localhost --target-port %s db_dumps/%s/gp_dump_1_1_%s_post_data.gz --netbackup-service-host %s" % (command, options, ts, ts[0:8], port, user, port, ts[0:8], ts, netbackup_service_host)
-    else:
-        command_str = "%s %s" % (command, options)
-
-    run_valgrind_command(context, command_str, "netbackup_suppressions.txt")
+    run_valgrind_command(context, command_str)
  
 @when('the timestamp key is stored')
 def impl(context):
@@ -583,10 +525,6 @@ def impl(context, lbl):
 def impl(context):
     context.inc_backup_timestamps = []
 
-@given('there is a list to store the backup timestamps')
-def impl(context):
-    context.backup_timestamp_list = []
-
 @then('the timestamp from gpcrondump is stored in a list')
 @when('the timestamp from gpcrondump is stored in a list')
 def impl(context):
@@ -640,11 +578,6 @@ def impl(context, dir):
         if file.endswith('.diff') and os.path.getsize(os.path.join(dir,file)) > 0:
             # if there is some difference generated into the diff file, raise expception
                 raise Exception ("Found difference between source and destination system, see %s"%file) 
-
-@then('the timestamp from gpcrondump is stored in the backup timestamp list')
-def impl(context):
-    context.backup_timestamp = get_timestamp_from_output(context)
-    context.backup_timestamp_list.append(context.backup_timestamp)
 
 @then('verify that the incremental file has the stored timestamp')
 def impl(context):
@@ -1496,8 +1429,6 @@ def impl(context, elem):
         raise Exception('Expected text "%s" not found in partition list returned by get_partition_state "%s"' % (elem, context.partition_list_res)) 
 
 @given('older backup directories "{dirlist}" exists')
-@when('older backup directories "{dirlist}" exists')
-@then('older backup directories "{dirlist}" exists')
 def impl(context, dirlist):
     dirs = [d.strip() for d in dirlist.split(',')]
 
