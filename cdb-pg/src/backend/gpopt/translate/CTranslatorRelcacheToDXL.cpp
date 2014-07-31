@@ -2467,7 +2467,7 @@ CTranslatorRelcacheToDXL::PdrgpdxlbucketTransformStats
 	CMDIdGPDB *pmdidAttType = New(pmp) CMDIdGPDB(oidAttType);
 	IMDType *pmdtype = Pmdtype(pmp, pmdidAttType);
 
-	// histogram from mcv information
+	// translate MCVs to Orca histogram. Create an empty histogram if there are no MCVs.
 	CHistogram *phistGPDBMCV = PhistTransformGPDBMCV
 							(
 							pmp,
@@ -2479,15 +2479,20 @@ CTranslatorRelcacheToDXL::PdrgpdxlbucketTransformStats
 
 	GPOS_ASSERT(phistGPDBMCV->FValid());
 
-	CHistogram *phistGPDBHist = NULL;
-	ULONG ulHist = 0;
-	CDouble dHistFreq = CDouble(1.0) - dNullFreq - phistGPDBMCV->DFrequency();
+	CDouble dMCVFreq = phistGPDBMCV->DFrequency();
+	BOOL fHasMCV = 0 < ulNumMCVValues && CStatistics::DEpsilon < dMCVFreq;
 
-	// TODO: shene - Jul 23, 2013; The semantics is not very clear here - if there are
-	// no MCVs and no histogram, dHistFreq will be 1.0, which is counter-intuitive
+	CDouble dHistFreq = 0.0;
+	if (1 < ulNumHistValues)
+	{
+		dHistFreq = CDouble(1.0) - dNullFreq - dMCVFreq;
+	}
+	BOOL fHasHist = 1 < ulNumHistValues && CStatistics::DEpsilon < dHistFreq;
+
+	CHistogram *phistGPDBHist = NULL;
 
 	// if histogram has any significant information, then extract it
-	if (dHistFreq > CStatistics::DEpsilon)
+	if (fHasHist)
 	{
 		// histogram from gpdb histogram
 		phistGPDBHist = PhistTransformGPDBHist
@@ -2499,29 +2504,32 @@ CTranslatorRelcacheToDXL::PdrgpdxlbucketTransformStats
 						dDistinct,
 						dHistFreq
 						);
-		ulHist = phistGPDBHist->UlBuckets();
 	}
 
 	DrgPdxlbucket *pdrgpdxlbucket = NULL;
 
-	if (1 - CStatistics::DEpsilon < dHistFreq && 0 < ulHist)
+	if (fHasHist && !fHasMCV)
 	{
 		// if histogram exists and dominates, use histogram only
 		pdrgpdxlbucket = Pdrgpdxlbucket(pmp, pmdtype, phistGPDBHist);
 	}
-
-	else if (1 >= ulHist || CStatistics::DEpsilon > dHistFreq)
+	else if (!fHasHist && fHasMCV)
 	{
-		// if MCV dominates, use MCV only
+		// if MCVs exist and dominate, use MCVs only
 		pdrgpdxlbucket = Pdrgpdxlbucket(pmp, pmdtype, phistGPDBMCV);
 	}
-
-	else
+	else if (fHasHist && fHasMCV)
 	{
-		// otherwise, merge MCV and histogram buckets
+		// both histogram and MCVs exist and have significant info, merge MCV and histogram buckets
 		CHistogram *phistMerged = CStatisticsUtils::PhistMergeMcvHist(pmp, phistGPDBMCV, phistGPDBHist);
 		pdrgpdxlbucket = Pdrgpdxlbucket(pmp, pmdtype, phistMerged);
 		delete phistMerged;
+	}
+	else
+	{
+		// no MCVs nor histogram
+		GPOS_ASSERT(!fHasHist && !fHasMCV);
+		pdrgpdxlbucket = New(pmp) DrgPdxlbucket(pmp);
 	}
 
 	// cleanup
@@ -2608,13 +2616,8 @@ CTranslatorRelcacheToDXL::PhistTransformGPDBHist
 	CDouble dFreqHist
 	)
 {
-	// handle corner case of no histogram
-	if (ulNumHistValues <= 1)
-	{
-		return New(pmp) CHistogram(New(pmp) DrgPbucket(pmp), false /* fWellDefined */);
-	}
+	GPOS_ASSERT(1 < ulNumHistValues);
 
-	GPOS_ASSERT(ulNumHistValues > 1);
 	ULONG ulNumBuckets = ulNumHistValues - 1;
 	CDouble dDistinctPerBucket = dDistinctHist / CDouble(ulNumBuckets);
 	CDouble dFreqPerBucket = dFreqHist / CDouble(ulNumBuckets);
