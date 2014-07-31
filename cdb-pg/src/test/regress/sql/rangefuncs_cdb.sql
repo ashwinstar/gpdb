@@ -108,10 +108,6 @@ select * from foor(1) as (fooid int, f2 int);
 --    Fails: plperl does not support SFRM_Materialize
 select foor(fooid), * from foor(3) as (fooid int, f2 int);
 
--- function over table (executed on segments)
---    Fails: record + motion and plperl does not support SFRM_Materialize
-select foor(fooid), * from foo2;
-
 -- Joining with a table
 select * from foo2, foor(3) z(fooid int, f2 int) where foo2.f2 = z.f2;
 
@@ -174,10 +170,6 @@ select * from fooro(1);
 -- function over function (executed on master)
 select fooro(fooid), * from fooro(3);
 
--- function over table (executed on segments)
---    Fails: can't serialize record
-select fooro(fooid), * from foo2;
-
 -- Joining with a table
 select * from foo2, fooro(3) z where foo2.f2 = z.f2;
 
@@ -231,10 +223,6 @@ select * from foot(1);
 
 -- function over function (executed on master)
 select foot(fooid), * from foot(3);
-
--- function over table (executed on segments)
---    Fails: can't serialize record
-select foot(fooid), * from foo2;
 
 -- Joining with a table
 select * from foo2, foot(3) z where foo2.f2 = z.f2;

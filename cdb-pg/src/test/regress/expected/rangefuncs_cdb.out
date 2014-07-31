@@ -188,10 +188,6 @@ select foor(fooid), * from foor(3) as (fooid int, f2 int);
 ERROR:  Unsupported Perl function "foor"
 DETAIL:  function returning record called in context that cannot accept type record
 CONTEXT:  PL/Perl function "foor"
--- function over table (executed on segments)
---    Fails: record + motion and plperl does not support SFRM_Materialize
-select foor(fooid), * from foo2;
-ERROR:  Can't serialize transient record types (tupser.c:166)
 -- Joining with a table
 select * from foo2, foor(3) z(fooid int, f2 int) where foo2.f2 = z.f2;
  fooid | f2 | fooid | f2 
@@ -302,10 +298,6 @@ select fooro(fooid), * from fooro(3);
  (3,33) |     3 | 33
 (4 rows)
 
--- function over table (executed on segments)
---    Fails: can't serialize record
-select fooro(fooid), * from foo2;
-ERROR:  Can't serialize transient record types (tupser.c:166)
 -- Joining with a table
 select * from foo2, fooro(3) z where foo2.f2 = z.f2;
  fooid | f2 | fooid | f2 
@@ -411,10 +403,6 @@ select foot(fooid), * from foot(3);
  (3,33) |     3 | 33
 (4 rows)
 
--- function over table (executed on segments)
---    Fails: can't serialize record
-select foot(fooid), * from foo2;
-ERROR:  Can't serialize transient record types (tupser.c:166)
 -- Joining with a table
 select * from foo2, foot(3) z where foo2.f2 = z.f2;
  fooid | f2 | fooid | f2 
