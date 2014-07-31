@@ -531,42 +531,6 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
 
     @patch('gppylib.operations.restore.socket.gethostname', return_value='host')
     @patch('gppylib.operations.restore.getpass.getuser', return_value='user')
-    def test_build_schema_only_restore_line_08(self, mock1, mock2):
-        master_datadir = 'foo'
-        restore_timestamp = '20121212121212'
-        restore_db = 'bkdb'
-        compress = False
-        master_port = '5432'
-        table_filter_file = None
-        full_restore_with_filter = False
-        self.restore.netbackup_service_host = "mdw"
-        self.restore.netbackup_block_size = None
-        metadata_file = os.path.join(master_datadir, 'db_dumps', restore_timestamp[0:8], 'gp_dump_1_1_%s.gz' % restore_timestamp)
-        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-l=p -s %s --netbackup-service-host=mdw -d bkdb' % metadata_file
-
-        restore_line = self.restore._build_schema_only_restore_line(restore_timestamp, restore_db, compress, master_port, metadata_file, table_filter_file, full_restore_with_filter)
-        self.assertEqual(restore_line, expected_output)
-
-    @patch('gppylib.operations.restore.socket.gethostname', return_value='host')
-    @patch('gppylib.operations.restore.getpass.getuser', return_value='user')
-    def test_build_schema_only_restore_line_09(self, mock1, mock2):
-        master_datadir = 'foo'
-        restore_timestamp = '20121212121212'
-        restore_db = 'bkdb'
-        compress = False
-        master_port = '5432'
-        table_filter_file = None
-        full_restore_with_filter = False
-        self.restore.netbackup_service_host = "mdw"
-        self.restore.netbackup_block_size = 1024
-        metadata_file = os.path.join(master_datadir, 'db_dumps', restore_timestamp[0:8], 'gp_dump_1_1_%s.gz' % restore_timestamp)
-        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-l=p -s %s --netbackup-service-host=mdw --netbackup-block-size=1024 -d bkdb' % metadata_file
-
-        restore_line = self.restore._build_schema_only_restore_line(restore_timestamp, restore_db, compress, master_port, metadata_file, table_filter_file, full_restore_with_filter)
-        self.assertEqual(restore_line, expected_output)
-
-    @patch('gppylib.operations.restore.socket.gethostname', return_value='host')
-    @patch('gppylib.operations.restore.getpass.getuser', return_value='user')
     def test_build_post_data_schema_only_restore_line_00(self, mock1, mock2):
         master_datadir = 'foo' 
         restore_timestamp = '20121212121212' 
@@ -698,40 +662,6 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         table_filter_file = None
         full_restore_with_filter = True
         expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=/foo/db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-l=p -P --gp-r=/tmp --status=/tmp --gp-c -d bkdb'
-
-        restore_line = self.restore._build_post_data_schema_only_restore_line(restore_timestamp, restore_db, compress, master_port, table_filter_file, full_restore_with_filter)
-        self.assertEqual(restore_line, expected_output)
-
-    @patch('gppylib.operations.restore.socket.gethostname', return_value='host')
-    @patch('gppylib.operations.restore.getpass.getuser', return_value='user')
-    def test_build_post_data_schema_only_restore_line_08(self, mock1, mock2):
-        master_datadir = 'foo'
-        restore_timestamp = '20121212121212'
-        restore_db = 'bkdb'
-        compress = True
-        master_port = '5432'
-        table_filter_file = None
-        full_restore_with_filter = True
-        self.restore.netbackup_service_host = "mdw"
-        self.restore.netbackup_block_size = None
-        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-l=p -P --gp-c --netbackup-service-host=mdw -d bkdb'
-
-        restore_line = self.restore._build_post_data_schema_only_restore_line(restore_timestamp, restore_db, compress, master_port, table_filter_file, full_restore_with_filter)
-        self.assertEqual(restore_line, expected_output)
-
-    @patch('gppylib.operations.restore.socket.gethostname', return_value='host')
-    @patch('gppylib.operations.restore.getpass.getuser', return_value='user')
-    def test_build_post_data_schema_only_restore_line_09(self, mock1, mock2):
-        master_datadir = 'foo'
-        restore_timestamp = '20121212121212'
-        restore_db = 'bkdb'
-        compress = True
-        master_port = '5432'
-        table_filter_file = None
-        full_restore_with_filter = True
-        self.restore.netbackup_service_host = "mdw"
-        self.restore.netbackup_block_size = 1024
-        expected_output = 'gp_restore -i -h host -p 5432 -U user --gp-d=db_dumps/20121212 --gp-i --gp-k=20121212121212 --gp-l=p -P --gp-c --netbackup-service-host=mdw --netbackup-block-size=1024 -d bkdb'
 
         restore_line = self.restore._build_post_data_schema_only_restore_line(restore_timestamp, restore_db, compress, master_port, table_filter_file, full_restore_with_filter)
         self.assertEqual(restore_line, expected_output)

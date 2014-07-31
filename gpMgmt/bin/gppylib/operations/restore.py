@@ -693,10 +693,6 @@ class RestoreDatabase(Operation):
             restore_line += " --gp-f=%s" % table_filter_file
         if compress:
             restore_line += " --gp-c"
-        if self.netbackup_service_host:
-            restore_line += " --netbackup-service-host=%s" % self.netbackup_service_host
-        if self.netbackup_block_size:
-            restore_line += " --netbackup-block-size=%s" % self.netbackup_block_size
         restore_line += " -d %s" % restore_db
         return restore_line
 
@@ -729,10 +725,6 @@ class RestoreDatabase(Operation):
             restore_line += " --gp-f=%s" % table_filter_file
         if compress:
             restore_line += " --gp-c"
-        if self.netbackup_service_host:
-            restore_line += " --netbackup-service-host=%s" % self.netbackup_service_host
-        if self.netbackup_block_size:
-            restore_line += " --netbackup-block-size=%s" % self.netbackup_block_size
         restore_line += " -d %s" % restore_db
         return restore_line
 
@@ -811,7 +803,9 @@ class ValidateSegments(Operation):
                 """ Why must every Segment function have the word Segment in it ?! """
                 raise ExceptionNoStackTraceNeeded("Host %s dir %s dbid %d marked as invalid" % (seg.getSegmentHostName(), seg.getSegmentDataDirectory(), seg.getSegmentDbId()))
 
-            if self.netbackup_service_host is None:
+            if self.netbackup_service_host:
+                logger.info('Backup for the given timestamp was performed using NetBackup. Skipping check for existence of dump file.')
+            else:
                 path = os.path.join(get_restore_dir(seg.getSegmentDataDirectory(), self.backup_dir), self.dump_dir, self.restore_timestamp[0:8])
                 host = seg.getSegmentHostName()
                 path = os.path.join(path, "%s0_%d_%s" % (generate_dbdump_prefix(), seg.getSegmentDbId(), self.restore_timestamp))

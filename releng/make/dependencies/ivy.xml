@@ -36,7 +36,6 @@
       <dependency org="third-party"     name="ext"             rev="2.0"            conf="aix5_ppc_32->aix5_ppc_32;aix5_ppc_64->aix5_ppc_64;hpux_ia64->hpux_ia64;osx105_x86->osx105_x86;rhel4_x86_32->rhel4_x86_32;rhel4_x86_64->rhel4_x86_64;rhel5_x86_32->rhel5_x86_32;rhel5_x86_64->rhel5_x86_64;rhel6_x86_64->rhel6_x86_64;sol9_sparc_32->sol9_sparc_32;sol9_sparc_64->sol9_sparc_64;sol10_x86_32->sol10_x86_32;sol10_sparc_32->sol10_sparc_32;sol10_sparc_64->sol10_sparc_64;suse10_x86_64->suse10_x86_64;suse11_x86_64->suse10_x86_64;sol10_x86_64->sol10_x86_64" />
       <dependency org="xerces"          name="xerces-c"        rev="3.1.1-p1"       conf="osx105_x86->osx105_x86_32;osx105_x86_32->osx105_x86_32;osx105_x86_64->osx105_x86_64;rhel5_x86_64->rhel5_x86_64;sol10_x86_64->sol10_x86_64;suse10_x86_64->suse10_x86_64;suse11_x86_64->suse10_x86_64" />
       <dependency org="R-Project" name="R" rev="3.1.0" conf="osx105_x86->osx105_x86;rhel5_x86_64->rhel5_x86_64;rhel6_x86_64->rhel6_x86_64;suse10_x86_64->suse10_x86_64" /> 
-      <dependency org="NetBackup"       name="SDK-7.1"         rev="7.1"            conf="rhel5_x86_64->rhel5_x86_64" />
-      <dependency org="NetBackup"       name="SDK-7.5"         rev="7.5"            conf="rhel5_x86_64->rhel5_x86_64" />
+      <dependency org="NetBackup"       name="NetBackup"       rev="7.5"            conf="rhel5_x86_64->rhel5_x86_64" />
     </dependencies>
 </ivy-module>

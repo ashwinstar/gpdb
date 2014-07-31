@@ -1215,7 +1215,7 @@ endif
 
 libcopy=(cd $(1) && $(TAR) cf - $(2)) | (cd $(3) && $(TAR) xvf -)$(check_pipe_for_errors)
 
-.PHONY: copy-rsa-libs copy-nbu-libs
+.PHONY: copy-rsa-libs
 
 copy-rsa-libs:
 	# Copy rsa-bsafe libs
@@ -1228,18 +1228,7 @@ ifeq "$(BLD_ARCH)" "rhel5_x86_64"
 	cp -fpr $(BLD_THIRDPARTY_LIB_DIR)/rsa_csp $(INSTLOC)/lib/;
 endif
 
-copy-nbu-libs:
-	#Copy NetBackup libs
-ifeq "$(BLD_ARCH)" "rhel5_x86_64"
-	rm -f $(INSTLOC)/lib/libxbsa64.so;
-	rm -f $(INSTLOC)/lib/libnbclientcST.so;
-	rm -f $(INSTLOC)/lib/libnbbasecST.so;
-	rm -f $(INSTLOC)/lib/libvxcPBXST.so;
-	cp -fpr $(BLD_THIRDPARTY_LIB_DIR)/../Netbackup/nbu71 $(INSTLOC)/lib/;
-	cp -fpr $(BLD_THIRDPARTY_LIB_DIR)/../Netbackup/nbu75 $(INSTLOC)/lib/;
-endif
-
-copylibs : thirdparty-dist copy-rsa-libs copy-nbu-libs
+copylibs : thirdparty-dist copy-rsa-libs
 	if [ `uname -s` = 'SunOS' ]; then cp `ldd $(INSTLOC)/bin/psql | grep gcc | head -1 | awk '{print $$3}'` $(INSTLOC)/lib; fi
 	if [ `uname -s` = 'Darwin' ] ; then \
 	    for lib in `otool -L $(INSTLOC)/bin/psql | egrep 'libssl|libcrypto|libcom_err|libkrb5|curl|readline|numa' | awk '{print $$1}'`; do \

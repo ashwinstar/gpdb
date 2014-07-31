@@ -217,6 +217,10 @@ int endBSADumpSession()
 	/* End the XBSA session  */
 	BSATerminate(BsaHandle);
 
+	/* Free allocated memory */
+	for(i=0; i<5; i++){
+		free(envx[i]);
+	}
 	free(gpBsaBuf);
 
 	return 0;
@@ -410,6 +414,10 @@ int endBSARestoreSession()
 	/* End the XBSA session  */
 	BSATerminate(BsaHandle);
 
+	/* Free allocated memory */
+	for(i=0; i<2; i++){
+		free(envx[i]);
+	}
 	free(gpBsaBuf);
 
 	return 0;

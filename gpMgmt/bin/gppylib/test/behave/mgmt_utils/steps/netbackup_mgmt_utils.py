@@ -4,28 +4,11 @@ import os
 from gppylib.db import dbconn
 from gppylib.test.behave_utils.utils import run_gpcommand
 from gppylib.gparray import GpArray
-from gppylib.test.behave_utils.utils import get_all_hostnames_as_list
 from gppylib.operations.backup_utils import generate_report_filename, generate_global_filename, generate_cdatabase_filename, \
                                             get_backup_directory, generate_master_config_filename, generate_segment_config_filename, \
                                             generate_ao_state_filename, generate_co_state_filename, generate_pgstatlastoperation_filename
 
 master_data_dir = os.environ.get('MASTER_DATA_DIRECTORY')
-
-@given('the NetBackup "{ver}" libraries are loaded')
-def impl(context, ver):
-    hosts = set(get_all_hostnames_as_list(context, 'template1'))
-    gphome = os.environ.get('GPHOME')
-    if ver == '7.5':
-        cpCmd = 'cp -f %s/lib/nbu75/lib/* %s/lib/' % (gphome, gphome)
-    elif ver == '7.1':
-        cpCmd = 'cp -f %s/lib/nbu71/lib/* %s/lib/' % (gphome, gphome)
-
-    for host in hosts:
-        cmd = Command(name='Copy NBU lib files',
-                cmdStr=cpCmd,
-                ctxt=REMOTE,
-                remoteHost=host)
-        cmd.run(validateAfter=True)
 
 @when('the user runs "{cmd_str}" using netbackup')
 def impl(context, cmd_str):

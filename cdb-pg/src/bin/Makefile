@@ -11,13 +11,14 @@
 
 subdir = src/bin
 top_builddir = ../..
-nbu_libdir = ../../../../../../ext/rhel5_x86_64/Netbackup/nbu75/lib
+SUBDIRS = pg_dump pg_dump/cdb
 include $(top_builddir)/src/Makefile.global
 
 unittest-check:
 	$(MAKE) -C gphdfs unittest
-	$(MAKE) -e LD_LIBRARY_PATH=$(LD_LIBRARY_PATH):$(nbu_libdir) -C pg_dump/cdb/test check
-	$(MAKE) -C pg_dump/test check
+ifdef SUBDIRS
+	@for dir in $(SUBDIRS); do if [ -d $$dir/test ]; then $(MAKE) -C $$dir/test check; fi; done
+endif
 
 DIRS = initdb ipcclean pg_basebackup pg_ctl pg_dump \
 	psql scripts pg_config pg_controldata pg_resetxlog \

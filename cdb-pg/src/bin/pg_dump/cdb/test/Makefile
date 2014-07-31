@@ -73,6 +73,5 @@ override MOCK_LIBS += -lDDBoost
 endif
 
 ifeq ($(enable_netbackup), yes)
-override MOCK_LIBS += -L../../../../../../ext/rhel5_x86_64/Netbackup/nbu75/lib -lxbsa64 -lnbclientcST -lnbbasecST -lvxcPBXST
-override CPPFLAGS += -I$(top_builddir)/../ext/$(BLD_ARCH)/Netbackup/nbu75/include
+override MOCK_LIBS += -lxbsa64 -lnbclientcST -lnbbasecST
 endif
