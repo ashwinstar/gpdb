@@ -2556,7 +2556,9 @@ if (1)
 		"pfs.oid fsoid, " .
 		"pfs.fsname, " .
 		"gscp.mode, " .
-		"gscp.status " .
+		"gscp.status, " .
+		"gscm.mode as mmode, " .
+		"gscp.status as mstatus " .
 		"from " .
 		"gp_segment_configuration gscp, pg_filespace_entry fep, " .
 		"gp_segment_configuration gscm, pg_filespace_entry fem, " .
@@ -2611,7 +2613,14 @@ if (1)
 
 	if ($pairs{'Time of latest checkpoint'} eq $pairs_post{'Time of latest checkpoint'})
 	{
-		die ("CHECKPOINT command failed/skipped (pg_control timestamp pre and post the command same \"$pairs{'Time of latest checkpoint'}\"");
+		if ($pairs{'Latest checkpoint location'} eq $pairs_post{'Latest checkpoint location'})
+		{
+			print "Pre-checkpoint ==>.\n";
+			print Data::Dumper->Dump([%pairs]);
+			print "\nPost-checkpoint ==>.\n";
+			print Data::Dumper->Dump([%pairs_post]);
+			die ("CHECKPOINT command failed/skipped (pg_control timestamp pre and post the command same \"$pairs{'Time of latest checkpoint'}\"");
+		}
 	}
 	printdivider();
 
