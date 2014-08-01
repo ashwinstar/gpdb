@@ -413,7 +413,7 @@ OPTIONS
  Specifies the maximum degree of parallelism of the operations performed 
  when migrating a table such as starting gpfdist instances, creating 
  named pipes for the move operations. If not specified, the default is 
- 25. The maximum is 100. 
+ 25. The maximum is 50. 
 
  Specify the --batch-size option to control the the maximum number of 
  tables that gptransfer concurrently processes. 
