@@ -240,8 +240,6 @@ DynamicScan_InitScanStateForNewPartition(ScanState *scanState, DynamicPartitionI
 		scanState->ss_ScanTupleSlot[i].tts_tableOid = newOid;
 	}
 
-	ExecAssignScanProjectionInfo(scanState);
-
 	scanState->tableType = getTableType(scanState->ss_currentRelation);
 }
 
@@ -274,6 +272,7 @@ DynamicScan_InitExpressions(ScanState *scanState, DynamicPartitionIterator *iter
 		/* Initialize child expressions */
 		scanState->ps.qual = (List *)ExecInitExpr((Expr *)scanState->ps.plan->qual, (PlanState*)scanState);
 		scanState->ps.targetlist = (List *)ExecInitExpr((Expr *)scanState->ps.plan->targetlist, (PlanState*)scanState);
+		ExecAssignScanProjectionInfo(scanState);
 
 		MemoryContextSwitchTo(oldCxt);
 	}
