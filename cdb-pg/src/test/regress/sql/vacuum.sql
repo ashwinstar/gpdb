@@ -155,16 +155,24 @@ show vacuum_freeze_min_age;
 select relname from pg_class where relname like 'ao_age_test%'
 order by relname;
 vacuum ao_age_test;
+
+-- Note: in checking age() below, be mindful of not checking absolute
+-- age value in expected output so as to make the test reliable.
+
 -- Assuming no other activity, vacuum needs one transaction ID for
 -- each of the three tables.
-select age(relfrozenxid) from pg_class
+select relname, 0 < age(relfrozenxid) as age_positive,
+       age(relfrozenxid) < 100 as age_within_limit
+from pg_class
 where relname like 'ao_age_test%' and relkind = 'r' order by 1;
 
 -- Vacuum the other two empty tables and verify their age is updated
 -- correctly.
 vacuum ao_empty;
 vacuum aocs_empty;
-select age(relfrozenxid) from pg_class
+select relname, 0 < age(relfrozenxid) as age_positive,
+       age(relfrozenxid) < 100 as age_within_limit
+from pg_class
 where relname in ('ao_empty', 'aocs_empty') order by 1;
 select * from ao_empty;
 select * from aocs_empty;
