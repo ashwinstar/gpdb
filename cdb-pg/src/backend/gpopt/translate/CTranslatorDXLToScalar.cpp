@@ -1713,7 +1713,7 @@ CTranslatorDXLToScalar::PexprArray
 	pexpr->multidims = pdxlop->FMultiDimensional();
 	pexpr->elements = PlistTranslateScalarChildren(pexpr->elements, pdxlnArray, pmapcidvar);
 
-	return (Expr *) pexpr;
+	return (Expr *) gpdb::PnodeFoldArrayexprConstants(pexpr);
 }
 
 //---------------------------------------------------------------------------

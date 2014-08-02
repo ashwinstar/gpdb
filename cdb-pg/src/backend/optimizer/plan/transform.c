@@ -21,10 +21,6 @@
 #include "lib/stringinfo.h"
 #include "catalog/pg_operator.h"
 
-// max size of a folded constant when optimizing queries in Orca
-// Note: this is to prevent OOM issues when trying to serialize very large constants
-// Current limit: 100KB
-#define GPOPT_MAX_FOLDED_CONSTANT_SIZE (100*1024)
 /**
  * Static declarations
  */

@@ -178,6 +178,7 @@
 
 #define ALLOW_interpretOidsOption
 #define ALLOW_defGetString
+#define ALLOW_fold_arrayexpr_constants
 
 #include "gpopt/utils/gpdbdefs.h"
 
@@ -2702,5 +2703,20 @@ gpdb::SzDefGetString
 	GP_WRAP_END;
 	return NULL;
 }
- 
+
+Node *
+gpdb::PnodeFoldArrayexprConstants
+	(
+	ArrayExpr *arrayexpr
+	)
+{
+	GP_WRAP_START;
+	{
+		return fold_arrayexpr_constants(arrayexpr);
+	}
+	GP_WRAP_END;
+	return NULL;
+}
+
+
 // EOF

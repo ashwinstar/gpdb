@@ -1556,6 +1556,36 @@ Query *fold_constants(Query *q, ParamListInfo boundParams, Size max_size)
 						);
 }
 
+/**
+ * fold_arrayexpr_constants
+ *
+ * Fold array expression for optimizer
+ */
+Node *fold_arrayexpr_constants(ArrayExpr *arrayexpr)
+{
+	if (optimizer)
+	{
+		eval_const_expressions_context context;
+
+		context.boundParams = NULL;
+		context.active_fns = NIL;	/* nothing being recursively simplified */
+		context.case_val = NULL;	/* no CASE being examined */
+		context.transform_stable_funcs = true;	/* safe transformations only */
+		context.recurse_queries = false; /* do not recurse into query structures */
+		context.recurse_sublink_testexpr = false; /* do not recurse into sublink test expressions */
+		context.transform_saop = true; /* transform scalar array ops */
+		context.transform_functions_returning_composite_values = true;
+
+		/* when optimizer is on then do not fold functions that return a constant of composite values */
+		context.transform_functions_returning_composite_values = false;
+
+		context.max_size = GPOPT_MAX_FOLDED_CONSTANT_SIZE;
+
+		return eval_const_expressions_mutator((Node *) arrayexpr, &context);
+	}
+
+	return (Node*) arrayexpr;
+}
 
 /*--------------------
  * eval_const_expressions

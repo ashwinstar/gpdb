@@ -557,6 +557,8 @@ namespace gpdb {
 	// extract string value from defelem's value
 	char *SzDefGetString(DefElem *pdefelem, bool *fNeedFree);
 
+	// fold array expression constant values
+	Node *PnodeFoldArrayexprConstants(ArrayExpr *parrayexpr);
 } //namespace gpdb
 
 #define ForEach(cell, l)	\
