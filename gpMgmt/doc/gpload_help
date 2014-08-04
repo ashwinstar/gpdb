@@ -212,6 +212,8 @@ GPLOAD:
     - ENCODING: <database_encoding>
     - ERROR_LIMIT: <integer>
     - ERROR_TABLE: <schema>.<table_name>
+   EXTERNAL:
+    - SCHEMA: <schema> | '%'
    OUTPUT:
     - TABLE: <schema>.<table_name>
     - MODE: insert | update | merge
@@ -433,6 +435,17 @@ ERROR_TABLE - Optional when ERROR_LIMIT is declared. Specifies an error
               If it does not exist, it will be automatically generated. 
               For more information about handling load errors, see the
               "Greenplum Database Database Administrator Guide." 
+
+EXTERNAL - Optional. Defines the schema of the external table database 
+           objects created by gpload. The default is to use the Greenplum 
+           Database search_path. 
+
+SCHEMA - Required when EXTERNAL is declared. The name of the schema of 
+         the external table. If the schema does not exist, an error is returned. 
+
+         If % (percent character) is specified, the schema of the table name 
+         specified by TABLE in the OUTPUT section is used. If the table name 
+         does not specify a schema, the default schema is used.
 
 OUTPUT - Required. Defines the target table and final data column values 
          that are to be loaded into the database. 
