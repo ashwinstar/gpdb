@@ -272,6 +272,8 @@ ExecTriggers(EState *estate, ResultRelInfo *relinfo,
 {
 	TriggerDesc *trigdesc = relinfo->ri_TrigDesc;
 
+	Assert( NULL != trigdesc);
+
 	/* Since GPMD_TRIGGER_INSERT is equal to zero. The result should be negated.
 	 * This is not needed for the rest of the flags.*/
 	int insert = !(eventFlags & GPMD_TRIGGER_INSERT) ? TRIGGER_EVENT_INSERT:0;
@@ -438,9 +440,12 @@ ExecRowTrigger(RowTriggerState *node)
 	PlanState *outerNode = outerPlanState(node);
 	RowTrigger *plannode = (RowTrigger *) node->ps.plan;
 
+	Assert(NULL != outerNode);
+
 	ResultRelInfo *resultRelInfo = outerNode->state->es_result_relation_info;
 
-	Assert(outerNode != NULL);
+	Assert(NULL != resultRelInfo);
+
 	bool processTuple = true;
 	TupleTableSlot *slot = NULL;
 
@@ -479,30 +484,35 @@ ExecRowTrigger(RowTriggerState *node)
 		processTuple = true;
 
 		HeapTuple newtuple = ExecTriggers(outerNode->state, resultRelInfo, tuple,
-								oldTuple, plannode->eventFlags,&processTuple);
-
+								oldTuple, plannode->eventFlags, &processTuple);
 
 		/* A tuple does not get processed if a predicate is not satisfied. */
 		if (processTuple)
 		{
-			/* Return unmodified tuple. */
 			if (newtuple == NULL)
-			{
-				return slot;
-			}
-
-			/* Update output tuple modified by the trigger. We are only interested in a modified
-			 * tuple for before triggers. */
-			if (newtuple != tuple &&
-				(plannode->eventFlags & GPMD_TRIGGER_BEFORE))
-			{
-				/* UPDATE triggers require oldValues */
-				List *colidx = plannode->newValuesColIdx;
-				if (plannode->eventFlags & GPMD_TRIGGER_UPDATE)
+			{	
+				/* Request next tuple to insert if a null new tuple is provided. */
+				if (plannode->eventFlags & GPMD_TRIGGER_INSERT)
 				{
-				    colidx = plannode->oldValuesColIdx;
+					slot = NULL;
+					processTuple = false;
 				}
-				ConstructNewTupleTableSlot(newtuple, node->triggerTuple, colidx->head, values, nulls);
+			}
+			else
+			{
+				/* Update output tuple modified by the trigger. We are only interested in a modified
+			 	* tuple for before triggers. */
+				if (newtuple != tuple &&
+					(plannode->eventFlags & GPMD_TRIGGER_BEFORE))
+				{
+					/* UPDATE triggers require oldValues */
+					List *colidx = plannode->newValuesColIdx;
+					if (plannode->eventFlags & GPMD_TRIGGER_UPDATE)
+					{
+				    		colidx = plannode->oldValuesColIdx;
+					}
+					ConstructNewTupleTableSlot(newtuple, node->triggerTuple, colidx->head, values, nulls);
+				}
 			}
 		}
 	} while (!processTuple);
