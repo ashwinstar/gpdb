@@ -32,6 +32,7 @@
 #include "utils/workfile_mgr.h"
 
 Datum gp_workfile_mgr_clear_cache(PG_FUNCTION_ARGS);
+Datum gp_workfile_mgr_reset_segspace(PG_FUNCTION_ARGS);
 
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
@@ -40,7 +41,7 @@ PG_MODULE_MAGIC;
 PG_FUNCTION_INFO_V1(gp_workfile_mgr_clear_cache);
 
 /*
- * gp_workfile_manager_clear_cache
+ * gp_workfile_mgr_clear_cache
  *    The wrapper for a user-defined C function to clear the workfile cache
  */
 Datum
@@ -51,3 +52,19 @@ gp_workfile_mgr_clear_cache(PG_FUNCTION_ARGS)
 	return Int32GetDatum(n_removed);
 }
 
+PG_FUNCTION_INFO_V1(gp_workfile_mgr_reset_segspace);
+
+/*
+ * gp_workfile_mgr_reset_segspace
+ *    Function to reset the used segspace on a segment
+ *    This directly manipulates the segspace counter and
+ *    should be used for testing purposes only
+ *  Returns the size before the reset
+ */
+Datum
+gp_workfile_mgr_reset_segspace(PG_FUNCTION_ARGS)
+{
+	int64 size = WorkfileSegspace_GetSize();
+	WorkfileSegspace_Commit(0, size);
+	return Int64GetDatum(size);
+}

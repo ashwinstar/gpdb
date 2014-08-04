@@ -278,6 +278,8 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault at the end of repair_frag */
 	_("rebuild_pt_db"),
 		/* inject fault while rebuilding persistent tables (for each db) */
+	_("exec_hashjoin_new_batch"),
+		/* inject fault before switching to a new batch in Hash Join */
 	_("not recognized"),
 };
 
@@ -1103,6 +1105,7 @@ FaultInjector_NewHashEntry(
 		case UpdateCommittedEofInPersistentTable:
 		case ExecSortBeforeSorting:
 		case FaultDuringExecDynamicTableScan:
+		case FaultExecHashJoinNewBatch:
 			
 			if (fileRepRole != FileRepNoRoleConfigured && fileRepRole != FileRepPrimaryRole)
 			{

@@ -759,12 +759,28 @@ workfile_mgr_cleanup_set(const void *resource)
 
 	if (work_set->on_disk)
 	{
-		elog(gp_workfile_caching_loglevel, "workfile mgr cleanup deleting set: key=0x%0xd, size=" INT64_FORMAT " path=%s",
-				work_set->key, work_set->size, work_set->path);
+		ereport(gp_workfile_caching_loglevel,
+				(errmsg("workfile mgr cleanup deleting set: key=0x%0xd, size=" INT64_FORMAT
+				" in_progress_size=" INT64_FORMAT " path=%s",
+				work_set->key,
+				work_set->size,
+				work_set->in_progress_size,
+				work_set->path),
+				errprintstack(true)));
+
 		Assert(NULL == work_set->set_plan);
+
 		workfile_mgr_delete_set_directory(work_set->path);
 
-		elog(gp_workfile_caching_loglevel, "Subtracting " INT64_FORMAT " from workfile diskspace", work_set->size);
+		/*
+		 * The most accurate size of a workset is recorded in work_set->in_progress_size.
+		 * work_set->size is only updated when we close a file, so it lags behind
+		 */
+
+		Assert(work_set->in_progress_size >= work_set->size);
+		int64 size_to_delete = work_set->in_progress_size;
+
+		elog(gp_workfile_caching_loglevel, "Subtracting " INT64_FORMAT " from workfile diskspace", size_to_delete);
 
 		/*
 		 * When subtracting the size of this workset from our accounting,
@@ -774,7 +790,7 @@ workfile_mgr_cleanup_set(const void *resource)
 		CacheEntry *cacheEntry = CACHE_ENTRY_HEADER(resource);
 		bool update_query_space = (cacheEntry->state == CACHE_ENTRY_ACQUIRED);
 
-		WorkfileDiskspace_Commit(0, work_set->size, update_query_space);
+		WorkfileDiskspace_Commit(0, size_to_delete, update_query_space);
 	}
 	else
 	{
@@ -800,8 +816,10 @@ workfile_mgr_close_set(workfile_set *work_set)
 {
 	Assert(work_set!=NULL);
 
-	elog(gp_workfile_caching_loglevel, "closing workfile set: can_be_reused=%d complete=%d location: %s, size=" INT64_FORMAT,
-		 work_set->can_be_reused, work_set->complete, work_set->path, work_set->size);
+	elog(gp_workfile_caching_loglevel, "closing workfile set: can_be_reused=%d complete=%d location: %s, size=" INT64_FORMAT
+			" in_progress_size=" INT64_FORMAT,
+		 work_set->can_be_reused, work_set->complete, work_set->path,
+		 work_set->size, work_set->in_progress_size);
 
 	CacheEntry *cache_entry = CACHE_ENTRY_HEADER(work_set);
 

@@ -391,6 +391,7 @@ class GpInjectFaultProgram:
 			      "cdb_copy_start_after_dispatch (inject fault in cdbCopyStart after dispatch), " \
 			      "repair_frag_end (inject fault at the end of repair_frag), " \
                   "rebuild_pt_db (inject fault while rebuilding persistent tables (for each db))" \
+			      "exec_hashjoin_new_batch (inject fault before switching to a new batch in Hash Join), " \
 			      "all (affects all faults injected, used for 'status' and 'reset'), ") 
         addTo.add_option("-c", "--ddl_statement", dest="ddlStatement", type="string",
                          metavar="ddlStatement",

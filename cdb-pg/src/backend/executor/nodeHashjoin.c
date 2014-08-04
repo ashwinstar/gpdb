@@ -21,6 +21,7 @@
 #include "executor/instrument.h"        /* Instrumentation */
 #include "executor/nodeHash.h"
 #include "executor/nodeHashjoin.h"
+#include "utils/faultinjector.h"
 #include "utils/memutils.h"
 
 #include "cdb/cdbvars.h"
@@ -906,6 +907,15 @@ ExecHashJoinNewBatch(HashJoinState *hjstate)
 	int			curbatch;
 	TupleTableSlot *slot;
 	uint32		hashvalue;
+
+#ifdef FAULT_INJECTOR
+	FaultInjector_InjectFaultIfSet(
+			FaultExecHashJoinNewBatch,
+			DDLNotSpecified,
+			"",  // databaseName
+			""); // tableName
+#endif
+
 
 	HashState *hashState = (HashState *) innerPlanState(hjstate);
 

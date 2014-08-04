@@ -186,6 +186,8 @@ typedef enum FaultInjectorIdentifier_e {
 	RepairFragEnd,
 	RebuildPTDB,
 
+	FaultExecHashJoinNewBatch,
+
 	/* INSERT has to be done before that line */
 	FaultInjectorIdMax,
 	
