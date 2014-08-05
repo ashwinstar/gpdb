@@ -773,16 +773,12 @@ workfile_mgr_cleanup_set(const void *resource)
 		workfile_mgr_delete_set_directory(work_set->path);
 
 		/*
-		 * A workset can have either size > 0 (if it is complete) or
-		 * in_progress_size > 0 (if it is incomplete), but not both.
-		 * Use whichever one is non-zero to adjust our accounting.
+		 * The most accurate size of a workset is recorded in work_set->in_progress_size.
+		 * work_set->size is only updated when we close a file, so it lags behind
 		 */
-		Assert(work_set->size == 0 || work_set->in_progress_size == 0);
-		int64 size_to_delete = work_set->size;
-		if (0 == size_to_delete)
-		{
-			size_to_delete = work_set->in_progress_size;
-		}
+
+		Assert(work_set->in_progress_size >= work_set->size);
+		int64 size_to_delete = work_set->in_progress_size;
 
 		elog(gp_workfile_caching_loglevel, "Subtracting " INT64_FORMAT " from workfile diskspace", size_to_delete);
 
