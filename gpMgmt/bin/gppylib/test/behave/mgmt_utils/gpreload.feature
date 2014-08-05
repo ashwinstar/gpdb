@@ -99,3 +99,35 @@ Feature: gpreload feature to reload data based on columns to sort
         And verify that the compression ratio of "public.co_table_comp" in "testdb" is good
         And verify that the compression ratio of "public.co_part_table_comp" in "testdb" is good
         And verify that the data of tables in "testdb" is validated after reload
+
+    Scenario: gpreload with quicklz compression on leaf partitions
+        Given the database is running
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a "ao" table "ao_table_comp" with compression "quicklz" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table_comp" with compression "quicklz" in "testdb" with data
+        And there is a "co" table "co_table_comp" with compression "quicklz" in "testdb" with data
+        And there is a "co" partition table "co_part_table_comp" with compression "quicklz" in "testdb" with data
+        And all the data from "testdb" is saved for verification
+        And all the compression data from "testdb" is saved for verification
+        When the user runs "gpreload -t gppylib/test/behave/mgmt_utils/steps/data/gpreload_table_file_leaf_partitions -d testdb"
+        Then gpreload should return a return code of 0
+        And verify that the compression ratio of "public.ao_table_comp" in "testdb" is good
+        And verify that the compression ratio of "public.ao_part_table_comp" in "testdb" is good
+        And verify that the compression ratio of "public.co_table_comp" in "testdb" is good
+        And verify that the compression ratio of "public.co_part_table_comp" in "testdb" is good
+        And verify that the data of tables in "testdb" is validated after reload
+
+    Scenario: gpreload with quicklz compression on mid level partitions
+        Given the database is running
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a "ao" table "ao_table_comp" with compression "quicklz" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table_comp" with compression "quicklz" in "testdb" with data
+        And there is a "co" table "co_table_comp" with compression "quicklz" in "testdb" with data
+        And there is a "co" partition table "co_part_table_comp" with compression "quicklz" in "testdb" with data
+        And all the data from "testdb" is saved for verification
+        And all the compression data from "testdb" is saved for verification
+        When the user runs "gpreload -t gppylib/test/behave/mgmt_utils/steps/data/gpreload_table_file_mid_partitions -d testdb"
+        Then gpreload should return a return code of 2
+        And gpreload should print Please specify only leaf partitions or parent table name to stdout

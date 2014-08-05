@@ -231,3 +231,17 @@ class GpReloadTestCase(unittest.TestCase):
     def test_check_indexes_with_indexes_without_continue(self, mock1, mock2, mock3):
         self.reload.interactive=True
         self.assertFalse(self.reload.check_indexes('public', 't1'))
+
+    @patch('gppylib.operations.reload.dbconn.connect')
+    @patch('gppylib.operations.reload.execSQL', side_effect=[[('public', 'x1')], [('public', 'x2')]])
+    def test_get_parent_partition_map(self, mock1, mock2):
+        expected = {('public', 't1'): ('public', 'x1'), ('public', 't2'): ('public', 'x2')}
+        self.reload.table_list = [('public', 't1', 'a b c d'), ('public', 't2', 'd e f g')]
+        self.assertEqual(expected, self.reload.get_parent_partitions())
+
+    @patch('gppylib.operations.reload.dbconn.connect') 
+    @patch('gppylib.operations.reload.execSQL', side_effect=[[('public', 'x1')], []])
+    def test_get_parent_partition_map_non_partition(self, mock1, mock2):
+        expected = {('public', 't1'): ('public', 'x1'), ('public', 't2'): ('public', 't2')}
+        self.reload.table_list = [('public', 't1', 'a b c d'), ('public', 't2', 'd e f g')]
+        self.assertEqual(expected, self.reload.get_parent_partitions())

@@ -19,6 +19,7 @@ class GpReload:
         self.database = options.database
         self.interactive = options.interactive
         self.table_list = []
+        self.parent_partition_map = {}
 
     def validate_table(self, schema_name, table_name):
         with dbconn.connect(dbconn.DbURL(dbname=self.database, port=self.port)) as conn:
@@ -47,6 +48,36 @@ class GpReload:
                 if c[0] not in columns:
                     raise ExceptionNoStackTraceNeeded('Table {schema}.{table} does not have column {col}'
                                                        .format(schema=schema_name, table=table_name, col=c[0]))
+
+    def validate_mid_level_partitions(self, schema_name, table_name):
+        partition_level, max_level = None, None
+        with dbconn.connect(dbconn.DbURL(dbname=self.database, port=self.port)) as conn:
+            parent_schema, parent_table = self.parent_partition_map[(schema_name, table_name)]
+            if (parent_schema, parent_table) == (schema_name, table_name):
+                return
+            try:
+                max_level = dbconn.execSQLForSingleton(conn, 
+                                                   """SELECT max(partitionlevel)
+                                                      FROM pg_partitions
+                                                      WHERE tablename='%s'
+                                                      AND schemaname='%s'
+                                                   """ % (parent_table, parent_schema))
+            except Exception as e:
+                logger.debug('Unable to get the maximum partition level for table %s: (%s)' % (table_name, str(e)))
+
+            try:
+                partition_level = dbconn.execSQLForSingleton(conn,
+                                                         """SELECT partitionlevel
+                                                            FROM pg_partitions
+                                                            WHERE partitiontablename='%s'
+                                                            AND partitionschemaname='%s'
+                                                         """ % (table_name, schema_name))
+            except Exception as e:
+                logger.debug('Unable to get the partition level for table %s: (%s)' % (table_name, str(e)))
+
+            if partition_level != max_level:
+                logger.error('Partition level of the table = %s, Max partition level = %s' % (partition_level, max_level))
+                raise Exception('Mid Level partition %s.%s is not supported by gpreload. Please specify only leaf partitions or parent table name' % (schema_name, table_name))
 
     def validate_options(self):
         if self.table_file is None:
@@ -106,6 +137,7 @@ class GpReload:
 
     def validate_tables(self):
         for schema_name, table_name, sort_column_list in self.table_list:
+            self.validate_mid_level_partitions(schema_name, table_name)
             self.validate_table(schema_name, table_name)
             self.validate_columns(schema_name, table_name, sort_column_list)
 
@@ -137,6 +169,22 @@ class GpReload:
                                        .format(schema=schema_name, table=table_name))
         return size
 
+    def get_parent_partitions(self):
+        with dbconn.connect(dbconn.DbURL(dbname=self.database, port=self.port)) as conn:
+            for schema, table, col_list in self.table_list:
+                PARENT_PARTITION_TABLENAME = """SELECT schemaname, tablename
+                                                FROM pg_partitions
+                                                WHERE partitiontablename='%s' 
+                                                AND partitionschemaname='%s'""" % (table, schema)
+                res = execSQL(conn, PARENT_PARTITION_TABLENAME)
+                for r in res:
+                    self.parent_partition_map[(schema, table)] = (r[0], r[1]) 
+
+                if (schema, table) not in self.parent_partition_map:
+                    self.parent_partition_map[(schema, table)] = (schema, table)
+
+            return self.parent_partition_map 
+
     def reload_tables(self):
         with dbconn.connect(dbconn.DbURL(dbname=self.database, port=self.port)) as conn:
             conn.commit()   #Commit the implicit transaction started by connect
@@ -151,17 +199,19 @@ class GpReload:
                     continue
                 start = time.time()
                 dbconn.execSQL(conn, 'BEGIN')
-                dbconn.execSQL(conn, 'CREATE TEMP TABLE temp_{table} AS SELECT * FROM {schema}.{table}'
+                dbconn.execSQL(conn, """CREATE TEMP TABLE temp_{table} AS SELECT * FROM {schema}.{table}"""
                                      .format(schema=schema_name, table=table_name))
                 temp_row_count = dbconn.execSQLForSingleton(conn, """SELECT count(*) FROM temp_{table}""".format(table=table_name))
                 table_row_count = dbconn.execSQLForSingleton(conn, """SELECT count(*) from {schema}.{table}"""
-                                                            .format(table=table_name, schema=schema_name))
+                                                                    .format(table=table_name, schema=schema_name))
                 if temp_row_count != table_row_count:
                     raise Exception('Row count for temp table(%s) does not match(%s)' % (temp_row_count, table_row_count))
                 dbconn.execSQL(conn, 'TRUNCATE TABLE {schema}.{table}'.format(schema=schema_name, table=table_name))
                 sort_order = ['%s %s' % (c[0], c[1]) for c in sort_column_list]
-                dbconn.execSQL(conn, 'INSERT INTO {schema}.{table} SELECT * FROM temp_{table} ORDER BY {column_list}'
-                                     .format(schema=schema_name, table=table_name, column_list=','.join(sort_order)))
+                parent_schema_name, parent_table_name = self.parent_partition_map[(schema_name, table_name)]
+                dbconn.execSQL(conn, """INSERT INTO {parent_schema}.{parent_table} SELECT * FROM temp_{table} ORDER BY {column_list}"""
+                                     .format(parent_schema=parent_schema_name, parent_table=parent_table_name, 
+                                             table=table_name, column_list=','.join(sort_order)))
                 conn.commit()
                 end = time.time()
                 logger.info('Finished reload for table {schema}.{table} in time {sec} seconds'
@@ -171,6 +221,8 @@ class GpReload:
         self.validate_options()
         logger.info('Validating table file {table_file}'.format(table_file=self.table_file))
         self.table_list = self.validate_table_file()
+        logger.info('Obtaining parent partitions')
+        self.get_parent_partitions()
         logger.info('Validating tables')
         self.validate_tables()
         logger.info('Reloading tables')
