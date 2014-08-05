@@ -3992,7 +3992,7 @@ static struct config_bool ConfigureNamesBool[] =
                         GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
                 },
                 &optimizer_enable_space_pruning,
-                false, NULL, NULL
+                true, NULL, NULL
         },
         {
                 {"optimizer_prefer_multistage_agg", PGC_USERSET, DEVELOPER_OPTIONS,
@@ -4001,7 +4001,7 @@ static struct config_bool ConfigureNamesBool[] =
                         GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
                 },
                 &optimizer_prefer_multistage_agg,
-                false, NULL, NULL
+                true, NULL, NULL
         },
         {
                 {"optimizer_enable_hashjoin_redistribute_broadcast_children", PGC_USERSET, DEVELOPER_OPTIONS,
@@ -4010,7 +4010,7 @@ static struct config_bool ConfigureNamesBool[] =
                         GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
                 },
                 &optimizer_enable_hashjoin_redistribute_broadcast_children,
-                true, NULL, NULL
+                false, NULL, NULL
         },
 	{
 		{"optimizer_enumerate_plans", PGC_USERSET, LOGGING_WHAT,
