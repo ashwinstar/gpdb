@@ -2506,6 +2506,7 @@ set enable_indexscan=on;
 -- Known_opt_diff: OPT-929
 -- end_ignore
 -- force_explain
+set optimizer_segments = 2;
 EXPLAIN 
 SELECT (tt.event_ts / 100000) / 5 * 5 as fivemin, COUNT(*)
 FROM my_tt_agg_small tt, my_tq_agg_small tq
@@ -2515,6 +2516,7 @@ WHERE tq.sym = tt.symbol AND
 GROUP BY 1
 ORDER BY 1 asc ;
 
+reset optimizer_segments;
 SELECT (tt.event_ts / 100000) / 5 * 5 as fivemin, COUNT(*)
 FROM my_tt_agg_small tt, my_tq_agg_small tq
 WHERE tq.sym = tt.symbol AND
