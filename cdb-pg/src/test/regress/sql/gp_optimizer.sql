@@ -832,6 +832,10 @@ select 1 as x where 1 in (2, 3);
 -- MPP-22918: join inner child with universal distribution
 SELECT generate_series(1,10) EXCEPT SELECT 1;
 
+-- MPP-23932: SetOp of const table and volatile function
+SELECT generate_series(1,10) INTERSECT SELECT 1;
+
+SELECT generate_series(1,10) UNION SELECT 1;
 -- Push components of disjunctive predicates
 create table cust(cid integer, firstname text, lastname text) distributed by (cid);
 create table datedim(date_sk integer, year integer, moy integer) distributed by (date_sk);
