@@ -1426,7 +1426,6 @@ COptTasks::PvEvalExprFromDXLTask
 		fReleaseCache = true;
 	}
 
-	CMDProviderRelcache *pmdpRelcache = New(pmp) CMDProviderRelcache(pmp);
 	GPOS_TRY
 	{
 		// set up relcache MD provider

@@ -1839,8 +1839,9 @@ CTranslatorQueryToDXL::PdxlnSimpleGroupBy
 	HMIUl *phmiulOutputCols
 	)
 {
-	if (NULL == pbsGroupByCols && !fHasAggs)
+	if (NULL == pbsGroupByCols)
 	{ 
+		GPOS_ASSERT(!fHasAggs);
 		if (!fGroupingSets)
 		{
 			// no group by needed and not part of a grouping sets query: 
@@ -2795,6 +2796,8 @@ CTranslatorQueryToDXL::PdxlnFromGPDBFromClauseEntry
 		if (NULL == pf)
 		{
 			UnsupportedRTEKind(prte->rtekind);
+
+			return NULL;
 		}
 		
 		return (this->*pf)(prte, ulRTIndex, m_ulQueryLevel);
