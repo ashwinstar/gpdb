@@ -63,6 +63,7 @@ test__ExecSetParamPlan__Check_Dispatch_Results(void **state)
 	QueryDesc *queryDesc = (QueryDesc *)palloc(sizeof(QueryDesc));
 	queryDesc->plannedstmt = plannedstmt;
 	queryDesc->estate = (EState *)palloc(sizeof(EState));
+	queryDesc->estate->es_sliceTable = (SliceTable *) palloc(sizeof(SliceTable));
 	
 	/*Set of functions called within tested function*/
 	expect_any(MemoryContextGetPeakSpace,context);
@@ -78,6 +79,7 @@ test__ExecSetParamPlan__Check_Dispatch_Results(void **state)
 	/* Added to force assertion on queryDesc->estate->interconnect_context;
 	to fail */
 	internalQueryDesc->estate->interconnect_context=NULL;
+	internalQueryDesc->estate->es_sliceTable = (SliceTable *) palloc(sizeof(SliceTable));
 
 	expect_any(CreateQueryDesc,plannedstmt);
 	expect_any(CreateQueryDesc,sourceText);
