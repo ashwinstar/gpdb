@@ -1531,9 +1531,6 @@ CTranslatorDXLToPlStmt::PlimitFromDXLLimit
 	DrgPdxltrctx *pdrgpdxltrctxPrevSiblings
 	)
 {
-	// translate table descriptor into a range table entry
-	CDXLPhysicalLimit *pdxlopLimit = CDXLPhysicalLimit::PdxlopConvert(pdxlnLimit->Pdxlop());
-
 	// create limit node
 	Limit *plimit = MakeNode(Limit);
 
@@ -1802,8 +1799,6 @@ CTranslatorDXLToPlStmt::PplanFunctionScanFromDXLTVF
 	DrgPdxltrctx *pdrgpdxltrctxPrevSiblings
 	)
 {
-	CDXLPhysicalTVF *pdxlopTVF = CDXLPhysicalTVF::PdxlopConvert(pdxlnTVF->Pdxlop());
-
 	// translation context for column mappings
 	CDXLTranslateContextBaseTable dxltrctxbt(m_pmp);
 
@@ -3152,8 +3147,6 @@ CTranslatorDXLToPlStmt::PresultFromDXLResult
 	pplan->plan_node_id = m_pctxdxltoplstmt->UlNextPlanId();
 	pplan->plan_parent_node_id = IPlanId(pplanParent);
 
-	CDXLPhysicalResult *pdxlopResult = CDXLPhysicalResult::PdxlopConvert(pdxlnResult->Pdxlop());
-
 	// translate operator costs
 	TranslatePlanCosts
 		(
@@ -3794,7 +3787,9 @@ CTranslatorDXLToPlStmt::PshscanFromDXLCTEConsumer
 		&(pplan->plan_width)
 		);
 
+#ifdef GPOS_DEBUG
 	DrgPul *pdrgpulCTEColId = pdxlopCTEConsumer->PdrgpulColIds();
+#endif
 
 	// generate the target list of the CTE Consumer
 	pplan->targetlist = NIL;
@@ -3854,8 +3849,6 @@ CTranslatorDXLToPlStmt::PplanSequence
 	Plan *pplan = &(psequence->plan);
 	pplan->plan_node_id = m_pctxdxltoplstmt->UlNextPlanId();
 	pplan->plan_parent_node_id = IPlanId(pplanParent);
-
-	CDXLPhysicalSequence *pdxlop = CDXLPhysicalSequence::PdxlopConvert(pdxlnSequence->Pdxlop());
 
 	// translate operator costs
 	TranslatePlanCosts
