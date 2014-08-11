@@ -59,6 +59,8 @@ InitCommonIndexScanState(IndexScanState *indexstate, IndexScan *node, EState *es
 	 */
 	ExecInitResultTupleSlot(estate, &indexstate->ss.ps);
 	ExecInitScanTupleSlot(estate, &indexstate->ss);
+	/* Initialize result tuple type [JIRA: MPP-24151]. */
+	ExecAssignResultTypeFromTL((PlanState *)indexstate);
 
 	/*
 	 * If eflag contains EXEC_FLAG_REWIND or EXEC_FLAG_BACKWARD or EXEC_FLAG_MARK,
