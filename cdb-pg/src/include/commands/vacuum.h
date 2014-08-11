@@ -182,6 +182,7 @@ typedef struct VPgClassStats
 	VUpdatedStats metadata;
 	BlockNumber rel_pages;
 	double rel_tuples;
+	BlockNumber empty_end_pages;
 } VPgClassStats;
 
 typedef struct VPgStatisticStats

@@ -304,7 +304,8 @@ class GpInjectFaultProgram:
 			      "reset (remove fault injection), status (report fault injection status), " \
 			      "panic_suppress (inject suppressed PANIC in critical section), " \
 			      "segv (inject a SEGV), " \
-			      "interrupt (inject an Interrupt) ")
+			      "interrupt (inject an Interrupt), " \
+			      "checkpoint_and_panic (inject a panic following checkpoint) ")
         addTo.add_option("-z", "--sleep_time_s", dest="sleepTimeSeconds", type="int", default="10" ,
                             metavar="<sleepTime>",
                             help="For 'sleep' faults, the amount of time for the sleep.  Defaults to %default." \
@@ -394,6 +395,9 @@ class GpInjectFaultProgram:
 			      "fault_in_background_writer_main (inject fault in BackgroundWriterMain), " \
 			      "cdb_copy_start_after_dispatch (inject fault in cdbCopyStart after dispatch), " \
 			      "repair_frag_end (inject fault at the end of repair_frag), " \
+			      "vacuum_full_before_truncate (inject fault before truncate in vacuum full), " \
+			      "vacuum_full_after_truncate (inject fault after truncate in vacuum full), " \
+			      "vacuum_relation_end_of_first_round (inject fault at the end of first round of vacuumRelation loop), " \
                   "rebuild_pt_db (inject fault while rebuilding persistent tables (for each db))" \
 			      "exec_hashjoin_new_batch (inject fault before switching to a new batch in Hash Join), " \
 			      "all (affects all faults injected, used for 'status' and 'reset'), ") 

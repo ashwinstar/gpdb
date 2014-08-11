@@ -189,6 +189,10 @@ typedef enum FaultInjectorIdentifier_e {
 	CdbCopyStartAfterDispatch,
 
 	RepairFragEnd,
+	VacuumFullBeforeTruncate,
+	VacuumFullAfterTruncate,
+	VacuumRelationEndOfFirstRound,
+
 	RebuildPTDB,
 
 	FaultExecHashJoinNewBatch,
@@ -235,6 +239,8 @@ typedef enum FaultInjectorType_e {
 	FaultInjectorTypeSegv,
 	
 	FaultInjectorTypeInterrupt,
+
+	FaultInjectorTypeCheckpointAndPanic,
 
 	/* INSERT has to be done before that line */
 	FaultInjectorTypeMax,

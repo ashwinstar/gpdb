@@ -2520,6 +2520,8 @@ typedef struct VacuumStmt
 	 * - Vacuum of indexes on append-only relation based on visimap.
 	 */
 	bool appendonly_compaction_vacuum_prepare;
+
+	bool heap_truncate;			/* true in the 2nd pass for heap vacuum full */
 } VacuumStmt;
 
 /* ----------------------

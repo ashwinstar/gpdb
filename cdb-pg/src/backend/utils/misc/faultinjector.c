@@ -23,6 +23,7 @@
 #include "cdb/cdbfilerep.h"
 #include "cdb/cdbfilerepservice.h"
 #include "cdb/cdbresynchronizechangetracking.h"
+#include "postmaster/checkpoint.h"
 #include "postmaster/service.h"
 #include "storage/spin.h"
 #include "storage/shmem.h"
@@ -50,9 +51,8 @@ typedef struct FaultInjectorShmem_s {
 
 static	FaultInjectorShmem_s *faultInjectorShmem = NULL;
 
-static void LockAcquire(void);
-	
-static void LockRelease(void);
+static void FiLockAcquire(void);
+static void FiLockRelease(void);
 
 static FaultInjectorEntry_s* FaultInjector_LookupHashEntry(
 								FaultInjectorIdentifier_e identifier);
@@ -89,6 +89,7 @@ FaultInjectorTypeEnumToString[] = {
 	_("panic_suppress"),
 	_("segv"),
 	_("interrupt"),
+	_("checkpoint_and_panic"),
 	_("not recognized"),
 };
 
@@ -279,6 +280,12 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault in cdbCopyStart after dispatch */
 	_("repair_frag_end"),
 		/* inject fault at the end of repair_frag */
+	_("vacuum_full_before_truncate"),
+		/* inject fault before truncate in vacuum full */
+	_("vacuum_full_after_truncate"),
+		/* inject fault after truncate in vacuum full */
+	_("vacuum_relation_end_of_first_round"),
+		/* inject fault at the end of first round of vacuumRelation loop */
 	_("rebuild_pt_db"),
 		/* inject fault while rebuilding persistent tables (for each db) */
 	_("exec_hashjoin_new_batch"),
@@ -373,13 +380,13 @@ FaultInjectorDDLStringToEnum(
 }
 
 static void
-LockAcquire(void) 
+FiLockAcquire(void)
 {	
 	SpinLockAcquire(&faultInjectorShmem->lock);
 }
 
 static void
-LockRelease(void) 
+FiLockRelease(void)
 {	
 	SpinLockRelease(&faultInjectorShmem->lock);
 }
@@ -483,15 +490,15 @@ FaultInjector_InjectFaultIfSet(
 		return FALSE;
 
 	getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
-			
-	LockAcquire();
-	
+
+	FiLockAcquire();
+
 	entryShared = FaultInjector_LookupHashEntry(identifier);
 
 	if (entryShared != NULL)
 		memcpy(entryLocal, entryShared, sizeof(FaultInjectorEntry_s));
 
-	LockRelease();
+	FiLockRelease();
 	
 	/* Verify if fault injection is set */
 	
@@ -793,6 +800,22 @@ FaultInjector_InjectFaultIfSet(
 			break;
 		}
 
+		case FaultInjectorTypeCheckpointAndPanic:
+		{
+			if (entryLocal->occurrence != FILEREP_UNDEFINED)
+			{
+				entryLocal->faultInjectorState = FaultInjectorStateCompleted;
+				FaultInjector_UpdateHashEntry(entryLocal);
+			}
+
+			RequestCheckpoint(true, false);
+			ereport(PANIC,
+					(errmsg("fault triggered, fault name:'%s' fault type:'%s' ",
+							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],
+							FaultInjectorTypeEnumToString[entryLocal->faultInjectorType])));
+			break;
+		}
+
 		default:
 			
 			ereport(LOG, 
@@ -920,11 +943,11 @@ FaultInjector_NewHashEntry(
 	FaultInjectorEntry_s	*entryLocal=NULL;
 	bool					exists;
 	int						status = STATUS_OK;
-	
-	LockAcquire();
-		
+
+	FiLockAcquire();
+
 	if ((faultInjectorShmem->faultInjectorSlots + 1) >= FAULTINJECTOR_MAX_SLOTS) {
-		LockRelease();
+		FiLockRelease();
 		status = STATUS_ERROR;
 		ereport(WARNING,
 				(errmsg("could not insert fault injection, no slots available"
@@ -964,7 +987,7 @@ FaultInjector_NewHashEntry(
 				break;
 			default:
 				
-				LockRelease();
+				FiLockRelease();
 				status = STATUS_ERROR;
 				ereport(WARNING,
 						(errmsg("could not insert fault injection, fault type not supported"
@@ -1042,7 +1065,7 @@ FaultInjector_NewHashEntry(
 			
 			if (fileRepRole != FileRepPrimaryRole)
 			{
-				LockRelease();
+				FiLockRelease();
 				status = STATUS_ERROR;
 				ereport(WARNING,
 						(errmsg("could not insert fault injection entry into table, segment not in primary role"
@@ -1072,7 +1095,7 @@ FaultInjector_NewHashEntry(
 			
 			if (fileRepRole != FileRepPrimaryRole && fileRepRole != FileRepMirrorRole)
 			{
-				LockRelease();
+				FiLockRelease();
 				status = STATUS_ERROR;
 				ereport(WARNING,
 						(errmsg("could not insert fault injection entry into table, "
@@ -1095,7 +1118,7 @@ FaultInjector_NewHashEntry(
 			
 			if (fileRepRole != FileRepNoRoleConfigured)
 			{
-				LockRelease();
+				FiLockRelease();
 				status = STATUS_ERROR;
 				ereport(WARNING,
 						(errmsg("could not insert fault injection entry into table, "
@@ -1120,7 +1143,7 @@ FaultInjector_NewHashEntry(
 			
 			if (fileRepRole != FileRepNoRoleConfigured && fileRepRole != FileRepPrimaryRole)
 			{
-				LockRelease();
+				FiLockRelease();
 				status = STATUS_ERROR;
 				ereport(WARNING,
 						(errmsg("could not insert fault injection entry into table, "
@@ -1141,7 +1164,7 @@ FaultInjector_NewHashEntry(
 	entryLocal = FaultInjector_InsertHashEntry(entry->faultInjectorIdentifier, &exists);
 		
 	if (entryLocal == NULL) {
-		LockRelease();
+		FiLockRelease();
 		status = STATUS_ERROR;
 		ereport(WARNING,
 				(errmsg("could not insert fault injection entry into table, no memory, "
@@ -1155,7 +1178,7 @@ FaultInjector_NewHashEntry(
 	}
 		
 	if (exists) {
-		LockRelease();
+		FiLockRelease();
 		status = STATUS_ERROR;
 		ereport(WARNING,
 				(errmsg("could not insert fault injection entry into table, "
@@ -1189,7 +1212,7 @@ FaultInjector_NewHashEntry(
 
 	faultInjectorShmem->faultInjectorSlots++;
 		
-	LockRelease();
+	FiLockRelease();
 	
 	elog(DEBUG1, "FaultInjector_NewHashEntry() identifier:'%s'", 
 		 FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier]);
@@ -1210,16 +1233,16 @@ FaultInjector_UpdateHashEntry(
 	FaultInjectorEntry_s	*entryLocal;
 	bool					exists;
 	int						status = STATUS_OK;
-	
-	LockAcquire();
-	
+
+	FiLockAcquire();
+
 	entryLocal = FaultInjector_InsertHashEntry(entry->faultInjectorIdentifier, &exists);
 	
 	/* entry should be found since fault has not been injected yet */			
 	Assert(entryLocal != NULL);
 	
 	if (!exists) {
-		LockRelease();
+		FiLockRelease();
 		status = STATUS_ERROR;
 		ereport(WARNING,
 				(errmsg("could not update fault injection hash entry with fault injection status, "
@@ -1240,7 +1263,7 @@ FaultInjector_UpdateHashEntry(
 		entryLocal->occurrence = entry->occurrence;
 	}
 	
-	LockRelease();
+	FiLockRelease();
 	
 	ereport(DEBUG1,
 			(errmsg("LOG(fault injector): update fault injection hash entry "
@@ -1276,7 +1299,7 @@ FaultInjector_SetFaultInjection(
 			{
 				hash_seq_init(&hash_status, faultInjectorShmem->hash);
 				
-				LockAcquire();
+				FiLockAcquire();
 				
 				while ((entryLocal = (FaultInjectorEntry_s *) hash_seq_search(&hash_status)) != NULL) {
 					isRemoved = FaultInjector_RemoveHashEntry(entryLocal->faultInjectorIdentifier);
@@ -1284,17 +1307,17 @@ FaultInjector_SetFaultInjection(
 						faultInjectorShmem->faultInjectorSlots--;
 					}					
 				}
-				LockRelease();
+				FiLockRelease();
 				Assert(faultInjectorShmem->faultInjectorSlots == 0);
 			}
 			else
 			{
-				LockAcquire();	
+				FiLockAcquire();
 				isRemoved = FaultInjector_RemoveHashEntry(entry->faultInjectorIdentifier);
 				if (isRemoved == TRUE) {
 					faultInjectorShmem->faultInjectorSlots--;
 				}
-				LockRelease();
+				FiLockRelease();
 			}
 				
 			if (isRemoved == FALSE) {
@@ -1408,7 +1431,7 @@ FaultInjector_IsFaultInjected(
 	bool					retval = FALSE;
 	bool					isRemoved;
 		
-	LockAcquire();
+	FiLockAcquire();
 		
 	entry = FaultInjector_LookupHashEntry(identifier);
 		
@@ -1449,7 +1472,7 @@ FaultInjector_IsFaultInjected(
 	}
 
 exit:
-	LockRelease();						
+	FiLockRelease();
 	
 	if ((isCompleted == TRUE) && (retval == FALSE)) {
 		ereport(WARNING,
