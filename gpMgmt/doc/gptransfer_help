@@ -55,7 +55,8 @@ following types of operations:
 
 * Copy a set of user defined database tables to a destination system. 
   The -f, and -t options copy a specified set of user defined tables and 
-  table data. The -d option copies all user defined tables and table data 
+  table data, and re-creates the table indexes. The -d option copies all 
+  user defined tables and table data, and re-creates the table indexes 
   from a specified database. 
 
   If the destination system is the same as the source system, you must 
@@ -107,8 +108,9 @@ a corresponding filespace must exist on the target system.
 SSH keys must be exchanged between the two systems before using 
 gptransfer. The gptransfer utility connects to the source system with 
 SSH to create the named pipes and start the gpfdist instances. You can 
-use the Greenplum Database gpssh-exkeys utility to exchange keys between 
-Greenplum Database hosts. 
+use the Greenplum Database gpssh-exkeys utility with a list of all the 
+source and destination primary hosts to exchange keys between Greenplum 
+Database hosts. 
 
 Source and destination systems must be able to access the gptransfer 
 work directory. The default directory is the user's home directory. You 
@@ -118,8 +120,9 @@ The gptransfer utility does not move configuration files such as
 postgres.conf and pg_hba.conf. You must set up the destination system 
 configuration separately. 
 
-The gptransfer utility does not move external objects such as jar files, 
-shared object files. You must install the external objects separately. 
+The gptransfer utility does not move external objects such as Greenplum 
+Database extensions, third-party jar files, and shared object files. You 
+must install the external objects separately. 
 
 The gptransfer utility does not move dependent database object unless 
 you specify the --full option. For example, if a table has a default 
@@ -129,7 +132,7 @@ options.
 
 If you move a set of database tables with the -d, -t, and -f options, 
 and the destination table or database does not exist, gptransfer creates 
-it. 
+it. The utility re-creates any indexes on tables before copying data. 
 
 If a table exists on the destination system and one of the options 
 --skip-existing, --truncate, or --drop is not specified, gptransfer 
@@ -167,6 +170,13 @@ total number of segment hosts on the source system.
 For example, a quarter rack V1 DCA has a total of 24 primary segments. 
 The means the source side cannot have more than 24 segment hosts (one 
 and one-half racks). 
+
+When you copy data from a source Greenplum Database system with a larger 
+number of primary segment instances than on the destination system, the 
+data transfer might be slower when compared to a transfer where the 
+source system has fewer segment instances than the destination system. 
+The gptransfer utility uses a different configuration of named pipes and 
+gpfdist instances in the two situations. 
 
 
 *****************************************************
@@ -290,11 +300,11 @@ OPTIONS
  quits. If the destination database or table does not exist, it is 
  created. 
 
- Only the table and table data are copied. Dependent objects are not 
- copied. 
+ Only the table and table data are copied and indexes are re-created. 
+ Dependent objects are not copied. 
 
  You cannot specify views, or system catalog tables. The --full option 
- copies views. 
+ copies user defined views. 
 
  If you specify the -d option to copy all the tables from a database, you 
  do not need to specify individual tables from the database. 
@@ -311,9 +321,10 @@ OPTIONS
 
  The --full option cannot be specified with the -t, -d, or -f options. 
 
- A full migration copies all database objects including, tables, users, 
- roles, functions, and resource queues for all user defined databases. 
- The default databases, postgres, template0 and template1 are not moved. 
+ A full migration copies all database objects including, tables, 
+ indexes, users, roles, functions, and resource queues for all user 
+ defined databases. The default databases, postgres, template0 and 
+ template1 are not moved. 
 
  If a database exists in the destination system, besides the default 
  postgres, template0 and template1 databases, gptransfer returns an error 
@@ -325,6 +336,7 @@ OPTIONS
  Specify the gptransfer log file directory. If not specified, the default 
  is ~/AdminLogs. 
 
+ 
 --max-line-length=<length> 
 
  Sets the maximum allowed data row length in bytes for the gpfidst 
@@ -344,15 +356,15 @@ OPTIONS
 
 --schema-only 
 
- Create only the schemas specified by the command. Do not transfer data. 
+ Create only the schemas specified by the command. Data is not transferred. 
 
  If specified with the --full option, gptransfer replicates the complete 
- database schema, including all tables, views, user defined types (UDT), 
- and user defined functions (UDF) for the source databases. No data is 
- transferred. 
+ database schema, including all tables, indexes, views, user defined 
+ types (UDT), and user defined functions (UDF) for the source databases. 
+ No data is transferred. 
 
  If you specify tables with the -t or -f option with --schema-only, 
- gptransfer creates only the tables. No data is transferred. 
+ gptransfer creates only the tables and indexes. No data is transferred. 
 
  Not valid with the --truncate option. 
 
@@ -427,7 +439,8 @@ OPTIONS
 
  If the destination table or database does not exist, it is created. This 
  option can be specified multiple times to include multiple tables. Only 
- the table and table data are copied. Dependent objects are not copied. 
+ the table and table data are copied and indexes are re-created. 
+ Dependent objects are not copied. 
 
  If the source table does not exist, gptransfer returns an error and 
  quits. 
