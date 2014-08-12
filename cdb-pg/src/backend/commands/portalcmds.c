@@ -291,7 +291,8 @@ PortalCleanup(Portal portal)
 	Assert(portal);
 
 	/* We must make the portal's resource owner current */
-	CurrentResourceOwner = portal->resowner;
+	if (portal->resowner)
+		CurrentResourceOwner = portal->resowner;
 
 	PG_TRY();
 	{
@@ -459,7 +460,8 @@ PersistHoldablePortal(Portal portal)
 	{
 		ActivePortal = portal;
 		ActiveSnapshot = queryDesc->snapshot;
-		CurrentResourceOwner = portal->resowner;
+		if (portal->resowner)
+			CurrentResourceOwner = portal->resowner;
 		PortalContext = PortalGetHeapMemory(portal);
 		QueryContext = portal->queryContext;
 

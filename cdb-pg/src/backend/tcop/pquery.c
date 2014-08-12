@@ -719,7 +719,8 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot)
 	{
 		ActivePortal = portal;
 		ActiveSnapshot = NULL;	/* will be set later */
-		CurrentResourceOwner = portal->resowner;
+		if (portal->resowner)
+			CurrentResourceOwner = portal->resowner;
 		PortalContext = PortalGetHeapMemory(portal);
 
 		MemoryContextSwitchTo(PortalGetHeapMemory(portal));
@@ -1091,7 +1092,8 @@ PortalRun(Portal portal, int64 count, bool isTopLevel,
 	{
 		ActivePortal = portal;
 		ActiveSnapshot = NULL;	/* will be set later */
-		CurrentResourceOwner = portal->resowner;
+		if (portal->resowner)
+			CurrentResourceOwner = portal->resowner;
 		PortalContext = PortalGetHeapMemory(portal);
 		QueryContext = portal->queryContext;
 
@@ -1712,7 +1714,8 @@ PortalRunFetch(Portal portal,
 	{
 		ActivePortal = portal;
 		ActiveSnapshot = NULL;	/* will be set later */
-		CurrentResourceOwner = portal->resowner;
+		if (portal->resowner)
+			CurrentResourceOwner = portal->resowner;
 		PortalContext = PortalGetHeapMemory(portal);
 		QueryContext = portal->queryContext;
 
