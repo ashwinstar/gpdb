@@ -439,9 +439,9 @@ select * from direct_test;
 INFO:  Dispatch command to ALL contents
  key | value 
 -----+-------
+   2 | 100
      | cow
    1 | 100
-   2 | 100
 (3 rows)
 
 prepare test_update (int) as update direct_test set value = 'boo' where key = $1;
@@ -995,10 +995,10 @@ INFO:  Dispatch command to ALL contents
 INFO:  Distributed transaction command 'Distributed Prepare' to ALL contents
 INFO:  Distributed transaction command 'Distributed Commit Prepared' to ALL contents
 EXPLAIN SELECT a.* FROM MPP_22019_a a INNER JOIN MPP_22019_b b ON a.i = b.i WHERE a.j NOT IN (SELECT j FROM MPP_22019_a a2 where a2.j = b.j) and a.i = 1;
-                                                                 QUERY PLAN
---------------------------------------------------------------------------------------------------------------------------------------------
- Result  (cost=0.00..1738.00 rows=1 width=16)
-   ->  Result  (cost=0.00..1738.00 rows=1 width=16)
+                                                           QUERY PLAN                                                           
+--------------------------------------------------------------------------------------------------------------------------------
+ Result  (cost=0.00..1736.00 rows=1 width=16)
+   ->  Result  (cost=0.00..1736.00 rows=1 width=16)
          Filter: (subplan)
          ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..866.00 rows=1 width=24)
                ->  Hash Join  (cost=0.00..865.00 rows=1 width=24)
@@ -1009,20 +1009,18 @@ EXPLAIN SELECT a.* FROM MPP_22019_a a INNER JOIN MPP_22019_b b ON a.i = b.i WHER
                            ->  Table Scan on mpp_22019_b  (cost=0.00..432.00 rows=1 width=16)
                                  Filter: i = 1
          SubPlan 1
-           ->  Result  (cost=0.00..440.00 rows=1 width=1)
+           ->  Result  (cost=0.00..438.00 rows=1 width=1)
                  Filter: "ColRef_0031" = true
-                 ->  Materialize  (cost=0.00..439.00 rows=1 width=8)
-                       ->  Result  (cost=0.00..438.00 rows=1 width=8)
-                             ->  Aggregate  (cost=0.00..437.00 rows=1 width=16)
-                                   ->  Materialize  (cost=0.00..436.00 rows=1 width=16)
-                                         ->  Result  (cost=0.00..435.00 rows=1 width=16)
-                                               ->  Result  (cost=0.00..434.00 rows=1 width=8)
-                                                     Filter: public.mpp_22019_a.j = $1
-                                                     ->  Materialize  (cost=0.00..433.00 rows=1 width=8)
-                                                           ->  Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..432.00 rows=1 width=8)
-                                                                 ->  Table Scan on mpp_22019_a  (cost=0.00..431.00 rows=1 width=8)
+                 ->  Result  (cost=0.00..437.00 rows=1 width=8)
+                       ->  Aggregate  (cost=0.00..436.00 rows=1 width=16)
+                             ->  Result  (cost=0.00..435.00 rows=1 width=16)
+                                   ->  Result  (cost=0.00..434.00 rows=1 width=8)
+                                         Filter: public.mpp_22019_a.j = $1
+                                         ->  Materialize  (cost=0.00..433.00 rows=1 width=8)
+                                               ->  Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..432.00 rows=1 width=8)
+                                                     ->  Table Scan on mpp_22019_a  (cost=0.00..431.00 rows=1 width=8)
  Settings:  optimizer=on
-(25 rows)
+(23 rows)
 
 SELECT a.* FROM MPP_22019_a a INNER JOIN MPP_22019_b b ON a.i = b.i WHERE a.j NOT IN (SELECT j FROM MPP_22019_a a2 where a2.j = b.j) and a.i = 1;
 INFO:  Dispatch command to ALL contents
