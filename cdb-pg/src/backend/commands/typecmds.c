@@ -2758,11 +2758,6 @@ remove_type_encoding(Oid typid)
 {
 	int numDel;
 
-	/* check permissions on type */
-	if (!pg_type_ownercheck(typid, GetUserId()))
-		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_TYPE,
-					   format_type_be(typid));
-
 	numDel = caql_getcount(
 			NULL,
 			cql("DELETE FROM pg_type_encoding "
