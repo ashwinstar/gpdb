@@ -102,8 +102,9 @@ static URL_FILE * alloc_url_file(const char *url);
 static char curl_Error_Buffer[CURL_ERROR_SIZE];
 static char *interpretError(int exitCode, char *buf, size_t buflen, char *err, size_t errlen);
 static const char *getSignalNameFromCode(int signo);
+static void read_err_msg(int fid, StringInfo sinfo);
 static int popen_with_stderr(int *rwepipe, const char *exe, bool forwrite);
-static int pclose_with_stderr(int pid, int *rwepipe, char *buf, int len);
+static int pclose_with_stderr(int pid, int *rwepipe, StringInfo sinfo);
 static bool gp_proto0_write_done(URL_FILE *file);
 static int32  InvokeExtProtocol(void		*ptr, 
 								size_t 		nbytes, 
@@ -1676,8 +1677,8 @@ url_fclose(URL_FILE *file, bool failOnError, const char *relname)
 
 	enum 	fcurl_type_e type = file->type;
 	int 	ret = 0;/* default is good return */
-	int 	errlen = 512;
-	char 	err[512];
+	StringInfoData sinfo;
+	initStringInfo(&sinfo);
 	char* 	url = NULL; 
 	bool    retVal = true;	
 
@@ -1691,7 +1692,7 @@ url_fclose(URL_FILE *file, bool failOnError, const char *relname)
 		case CFTYPE_EXEC:
 		
 			/* close the child process and related pipes */
-			ret = pclose_with_stderr(file->u.exec.pid, file->u.exec.pipes, err, errlen);
+			ret = pclose_with_stderr(file->u.exec.pid, file->u.exec.pipes, &sinfo);
 			url = pstrdup(file->url);	
 			if (ret == 0)
 			{
@@ -1716,17 +1717,18 @@ url_fclose(URL_FILE *file, bool failOnError, const char *relname)
 				 * generates a descriptive message from the exit code.
 				 */
 				char buf[512];
-				
+
 				if (failOnError) free(file);
 				ereport( (failOnError ? ERROR : LOG),
 						(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
 								errmsg("external table %s command ended with %s",
 										(relname ? relname : ""),
-										interpretError(ret, buf, sizeof(buf)/sizeof(char), err, strlen(err))),
+										interpretError(ret, buf, sizeof(buf)/sizeof(char), sinfo.data, sinfo.len)),
 								errdetail("Command: %s", url),
 								errOmitLocation(true)));
 			}
 			pfree(url);
+			pfree(sinfo.data);
 			break;
 
 		case CFTYPE_CURL:
@@ -2802,30 +2804,56 @@ static int popen_with_stderr(int *pipes, const char *exe, bool forwrite)
 }
 
 /*
+ * read err msg from err pipe
+ * */
+static void read_err_msg(int fid, StringInfo sinfo)
+{
+	char ebuf[512];
+	int ebuflen = 512;
+
+	while (true)
+	{
+		int nread = piperead(fid, ebuf, ebuflen);
+
+		if(nread == 0)
+		{
+			break;
+		}
+		else if(nread > 0)
+		{
+			appendBinaryStringInfo(sinfo, ebuf, nread);
+		}
+		else
+		{
+			appendStringInfoString(sinfo, "error string unavailable due to read error");
+			break;
+		}
+	}
+
+	if(sinfo->len > 0){
+		write_log("read err msg from pipe, len:%d msg:%s", sinfo->len, sinfo->data);
+	}
+}
+
+/*
  * pclose_with_stderr
  * 
  * close our data and error pipes and return the child process 
  * termination status. if child terminated with error, 'buf' will
  * point to the error string retrieved from child's stderr.
  */
-static int pclose_with_stderr(int pid, int *pipes, char *buf, int len)
+static int pclose_with_stderr(int pid, int *pipes, StringInfo sinfo)
 {
-	int status, nread;
+	int status;
 	
 	/* close the data pipe. we can now read from error pipe without being blocked */
 	close(pipes[EXEC_DATA_P]);
 	
-	nread = piperead(pipes[EXEC_ERR_P], buf, len); /* read from stderr */
-	
-	if(nread != -1)
-		buf[nread] = 0;
-	else
-		strcpy(buf,"error string unavailable due to read error");
+	read_err_msg(pipes[EXEC_ERR_P], sinfo);
 
 	close(pipes[EXEC_ERR_P]);
 
 #ifndef WIN32
-
 	waitpid(pid, &status, 0);
 #else
     status = -1;
