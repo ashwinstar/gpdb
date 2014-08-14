@@ -18,7 +18,7 @@ Feature: postgis regression
     Scenario: create and check various geometry types
         When below sql is executed in "opengeo" db
             """
-            CREATE TABLE geometries (name varchar, geom geometry)
+            CREATE TABLE geometries (name varchar, geom geometry) DISTRIBUTED BY (name)
             """
         And below sql is executed in "opengeo" db
             """
@@ -555,9 +555,14 @@ Feature: postgis regression
             | st_3ddistance    |
             | 1.73205 |
 
+        When below sql is executed in "opengeo" db
+            """
+            INSERT INTO geometries VALUES ('3DDistancePointA', 'POINT Z (1 1 1)'),
+                   ('3DDistancePointB', 'POINT Z (2 2 2)')
+            """
         When execute following sql in db "opengeo" and store result in the context
             """
-            SELECT Round(ST_3DDistance( 'POINT Z (1 1 1)'::geometry, 'POINT Z (2 2 2)'::geometry)::numeric, 5) 
+            SELECT Round(ST_3DDistance(foo.geom, bar.geom)::numeric, 5) FROM (SELECT geom FROM geometries WHERE name='3DDistancePointB') AS foo, (SELECT geom FROM geometries WHERE name='3DDistancePointA') AS bar
             """
         Then validate that following rows are in the stored rows
             | st_3ddistance    |
@@ -700,6 +705,887 @@ Feature: postgis regression
         Then validate that following rows are in the stored rows
             | closed |
             | True   |
+
+    Scenario: create a linestring dataset for latter test
+        When below sql is executed in "opengeo" db
+            """
+            CREATE TABLE geom_linestrings (id int, geom geometry) DISTRIBUTED BY (id)
+            """
+        And below sql is executed in "opengeo" db
+            """
+            INSERT INTO geom_linestrings VALUES
+                (1, 'LINESTRING(0 0 0, 1 1 1, 2 1 2, 2 2 2)'),
+                (2, 'LINESTRING(0 0 0, 1 1 2, 2 1 2, 2 2 2)'),
+                (3, 'LINESTRING(0 0 0, 1 1 3, 2 1 2, 2 2 2)'),
+                (4, 'LINESTRING(0 0 0, 1 1 4, 2 1 2, 2 2 2)'),
+                (5, 'LINESTRING(0 0 0, 1 1 5, 2 1 2, 2 2 2)'),
+                (6, 'LINESTRING(0 0 0, 1 1 6, 2 1 2, 2 2 2)'),
+                (7, 'LINESTRING(0 0 0, 1 1 7, 2 1 2, 2 2 2)'),
+                (8, 'LINESTRING(0 0 0, 1 1 8, 2 1 2, 2 2 2)'),
+                (9, 'LINESTRING(0 0 0, 1 1 9, 2 1 2, 2 2 2)'),
+                (10, 'LINESTRING(0 0 0, 1 1 10, 2 1 2, 2 2 2)'),
+                (11, 'LINESTRING(0 0 0, 1 1 11, 2 1 2, 2 2 2)'),
+                (12, 'LINESTRING(0 0 0, 1 1 12, 2 1 2, 2 2 2)'),
+                (13, 'LINESTRING(0 0 0, 1 1 13, 2 1 2, 2 2 2)'),
+                (14, 'LINESTRING(0 0 0, 1 1 14, 2 1 2, 2 2 2)'),
+                (15, 'LINESTRING(0 0 0, 1 1 15, 2 1 2, 2 2 2)'),
+                (16, 'LINESTRING(0 0 0, 1 1 16, 2 1 2, 2 2 2)'),
+                (17, 'LINESTRING(0 0 0, 1 1 17, 2 1 2, 2 2 2)'),
+                (18, 'LINESTRING(0 0 0, 1 1 18, 2 1 2, 2 2 2)'),
+                (19, 'LINESTRING(0 0 0, 1 1 19, 2 1 2, 2 2 2)'),
+                (20, 'LINESTRING(0 0 0, 1 1 20, 2 1 2, 2 2 2)'),
+                (21, 'LINESTRING(0 0 0, 1 1 21, 2 1 2, 2 2 2)'),
+                (22, 'LINESTRING(0 0 0, 1 1 22, 2 1 2, 2 2 2)'),
+                (23, 'LINESTRING(0 0 0, 1 1 23, 2 1 2, 2 2 2)'),
+                (24, 'LINESTRING(0 0 0, 1 1 24, 2 1 2, 2 2 2)'),
+                (25, 'LINESTRING(0 0 0, 1 1 25, 2 1 2, 2 2 2)'),
+                (26, 'LINESTRING(0 0 0, 1 1 26, 2 1 2, 2 2 2)')
+            """
+
+    Scenario: create a 2d-linestring dataset for latter test
+        When below sql is executed in "opengeo" db
+            """
+            CREATE TABLE geom_linestrings_2d (id int, geom geometry) DISTRIBUTED BY (id)
+            """
+        And below sql is executed in "opengeo" db
+            """
+            INSERT INTO geom_linestrings_2d VALUES
+                (1, 'LINESTRING(0 0, 1 1, 2 1, 2 2)'),
+                (2, 'LINESTRING(0 0, 1 2, 2 1, 2 2)'),
+                (3, 'LINESTRING(0 0, 1 3, 2 1, 2 2)'),
+                (4, 'LINESTRING(0 0, 1 4, 2 1, 2 2)'),
+                (5, 'LINESTRING(0 0, 1 5, 2 1, 2 2)'),
+                (6, 'LINESTRING(0 0, 1 6, 2 1, 2 2)'),
+                (7, 'LINESTRING(0 0, 1 7, 2 1, 2 2)'),
+                (8, 'LINESTRING(0 0, 1 8, 2 1, 2 2)'),
+                (9, 'LINESTRING(0 0, 1 9, 2 1, 2 2)'),
+                (10, 'LINESTRING(0 0, 1 10, 2 1, 2 2)'),
+                (11, 'LINESTRING(0 0, 1 11, 2 1, 2 2)'),
+                (12, 'LINESTRING(0 0, 1 12, 2 1, 2 2)'),
+                (13, 'LINESTRING(0 0, 1 13, 2 1, 2 2)'),
+                (14, 'LINESTRING(0 0, 1 14, 2 1, 2 2)'),
+                (15, 'LINESTRING(0 0, 1 15, 2 1, 2 2)'),
+                (16, 'LINESTRING(0 0, 1 16, 2 1, 2 2)'),
+                (17, 'LINESTRING(0 0, 1 17, 2 1, 2 2)'),
+                (18, 'LINESTRING(0 0, 1 18, 2 1, 2 2)'),
+                (19, 'LINESTRING(0 0, 1 19, 2 1, 2 2)'),
+                (20, 'LINESTRING(0 0, 1 20, 2 1, 2 2)'),
+                (21, 'LINESTRING(0 0, 1 21, 2 1, 2 2)'),
+                (22, 'LINESTRING(0 0, 1 22, 2 1, 2 2)'),
+                (23, 'LINESTRING(0 0, 1 23, 2 1, 2 2)'),
+                (24, 'LINESTRING(0 0, 1 24, 2 1, 2 2)'),
+                (25, 'LINESTRING(0 0, 1 25, 2 1, 2 2)'),
+                (26, 'LINESTRING(0 0, 1 26, 2 1, 2 2)')
+            """
+
+    Scenario: Applies a 3d affine transformation to the geometry to do things like translate, rotate, scale in one step
+        When execute sql "SELECT ST_AsEWKT(ST_Affine(the_geom, cos(pi()), -sin(pi()), 0, sin(pi()), cos(pi()), 0,  0, 0, 1,  0, 0, 0)) As using_affine, ST_AsEWKT(ST_RotateZ(the_geom, pi())) As using_rotatez FROM (SELECT ST_GeomFromEWKT('LINESTRING(1 2 3, 1 4 3)') As the_geom) As foo" in db "opengeo" and store result in the context
+        Then validate that following rows are in the stored rows
+             | using_affine | using_rotatez |
+             | LINESTRING(-1 -2 3,-1 -4 3) | LINESTRING(-1 -2 3,-1 -4 3) |
+
+    Scenario: Returns Z minima/maxima of a bounding box 2d or 3d or a geometry
+        When execute sql "SELECT ST_ZMin('BOX3D(1 2 3, 4 5 6)')" in db "opengeo" and store result in the context
+        Then validate that following rows are in the stored rows
+             | st_zmin |
+             | 3.0 |
+        When execute sql "SELECT ST_ZMax('BOX3D(1 2 3, 4 5 6)')" in db "opengeo" and store result in the context
+        Then validate that following rows are in the stored rows
+             | st_zmax |
+             | 6.0 |
+
+    Scenario: Returns bounding box expanded in all directions from the bounding box of the input geometry
+        When execute sql "SELECT CAST(ST_Expand(foo.geom, 10) As box2d) FROM (SELECT geom FROM geom_linestrings WHERE id=1) AS foo" in db "opengeo" and store result in the context
+        Then validate that following rows are in the stored rows
+             | st_expand |
+             | BOX(-10 -10,12 12) |
+        When execute sql "SELECT ST_Expand(CAST('BOX3D(778783 2951741 1,794875 2970042.61545891 10)' As box3d),10)" in db "opengeo" and store result in the context
+        Then validate that following rows are in the stored rows
+             | st_expand |
+             | BOX3D(778773 2951731 -9,794885 2970052.61545891 20) |
+        When execute sql " SELECT ST_AsEWKT(ST_Expand(ST_GeomFromEWKT('SRID=2163;POINT(2312980 110676)'),10))" in db "opengeo" and store result in the context
+        Then validate that following rows are in the stored rows
+             | st_asewkt |
+             | SRID=2163;POLYGON((2312970 110666,2312970 110686,2312990 110686,2312990 110666,2312970 110666)) |
+
+    Scenario: Return a BBox which covers the two input polygon
+        When execute sql "SELECT count(ST_Combine_BBox(Box2D(foo.geom), bar.geom)) FROM (SELECT geom FROM geom_linestrings_2d) AS foo, (SELECT geom FROM geom_linestrings_2d) AS bar" in db "opengeo" and store result in the context
+        Then validate that following rows are in the stored rows
+             | count |
+             | 676 |
+
+    Scenario: Return a BBox which covers all of the geometry of the specified column
+       When execute sql "SELECT ST_find_extent('geom_linestrings_2d', 'geom')" in db "opengeo" and store result in the context
+        Then validate that following rows are in the stored rows
+             | st_find_extent |
+             | BOX(0 0,2 26) |
+
+    Scenario: Calculates the 2D or 3D length of a linestring/multilinestring on an ellipsoid
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT round(ST_Length_Spheroid(foo.the_geom, bar.sph_m )) As tot_len,
+                   round(ST_Length_Spheroid(ST_GeometryN(foo.the_geom,1), bar.sph_m)) As len_line1,
+                   round(ST_Length_Spheroid(ST_GeometryN(foo.the_geom,2), bar.sph_m)) As len_line2
+                   FROM (SELECT geom AS the_geom FROM nyc_streets WHERE gid=3) AS foo,
+                   (SELECT CAST('SPHEROID["GRS_1980",6378137,298.257222101]' AS spheroid) AS sph_m) AS bar
+            """
+        Then validate that following rows are in the stored rows
+             | tot_len | len_line1 | len_line2 |
+             | 162112223.0 | 162112223.0 | None |
+
+    Scenario: Calculates the 2D length of a linestring/multilinestring on an ellipsoid
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT round(ST_Length2D_Spheroid(foo.the_geom, bar.sph_m )) As tot_len,
+                   round(ST_Length2D_Spheroid(ST_GeometryN(foo.the_geom,1), bar.sph_m)) As len_line1,
+                   round(ST_Length2D_Spheroid(ST_GeometryN(foo.the_geom,2), bar.sph_m)) As len_line2
+                   FROM (SELECT geom AS the_geom FROM nyc_streets WHERE gid=3) AS foo,
+                   (SELECT CAST('SPHEROID["GRS_1980",6378137,298.257222101]' As spheroid) As sph_m) as bar
+            """
+        Then validate that following rows are in the stored rows
+             | tot_len | len_line1 | len_line2 |
+             | 162112223.0 | 162112223.0 | None |
+
+    Scenario: Is the point geometry inside circle defined by center_x, center_y , radius
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_Point_Inside_Circle(the_geom.geom, 0.5, 2, 3) FROM (SELECT geom FROM nyc_subway_stations WHERE gid=3) AS the_geom
+            """
+        Then validate that following rows are in the stored rows
+             | st_point_inside_circle |
+             | False |
+
+    Scenario: Forces the geometries into XYZ mode
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_AsEWKT(ST_Force_3D(geom)) FROM geometries WHERE name='PolygonWithHole'
+            """
+        Then validate that following rows are in the stored rows
+             | st_asewkt |
+             | POLYGON((0 0 0,10 0 0,10 10 0,0 10 0,0 0 0),(1 1 0,1 2 0,2 2 0,2 1 0,1 1 0)) |
+
+    Scenario: Given a geometry collection, returns the "simplest" representation of the contents
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_AsText(ST_CollectionHomogenize(geom)) FROM geometries WHERE name='Collection'
+            """
+        Then validate that following rows are in the stored rows
+             | st_astext |
+             | GEOMETRYCOLLECTION(POINT(2 0),POLYGON((0 0,1 0,1 1,0 1,0 0))) |
+
+    Scenario: Returns the geometry with vertex order reversed
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_AsText(geom) as line, ST_AsText(ST_Reverse(geom)) As reverseline
+                   FROM geom_linestrings_2d WHERE id=1
+            """
+        Then validate that following rows are in the stored rows
+             | line | reverseline |
+             | LINESTRING(0 0,1 1,2 1,2 2) | LINESTRING(2 2,2 1,1 1,0 0) |
+
+    Scenario: Forces the orientation of the vertices in a polygon to follow the Right-Hand-Rule
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_AsEWKT(ST_ForceRHR(geom)) FROM geometries WHERE name='PolygonWithHole'
+            """
+        Then validate that following rows are in the stored rows
+             | st_asewkt |
+             | POLYGON((0 0,0 10,10 10,10 0,0 0),(1 1,2 1,2 2,1 2,1 1)) |
+
+    Scenario: Returns a Geometry in HEXEWKB format (as text) using either little-endian (NDR) or big-endian (XDR) encoding
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_AsHEXEWKB(geom) FROM geometries WHERE name='PolygonWithHole'
+            """
+        Then validate that following rows are in the stored rows
+             | st_ashexewkb |
+             | 01030000000200000005000000000000000000000000000000000000000000000000002440000000000000000000000000000024400000000000002440000000000000000000000000000024400000000000000000000000000000000005000000000000000000F03F000000000000F03F000000000000F03F0000000000000040000000000000004000000000000000400000000000000040000000000000F03F000000000000F03F000000000000F03F |
+
+    Scenario: Return the Degrees, Minutes, Seconds representation of the given point
+        When below sql is executed in "opengeo" db
+            """
+            INSERT INTO geometries VALUES ('LatlonPoint', 'POINT(-302.2342342 -792.32498)')
+            """
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT (ST_AsLatLonText(geom, 'D degrees, M minutes, S seconds to the C')) FROM geometries WHERE name='LatlonPoint'
+            """
+        Then validate that following rows are in the stored rows
+             | st_aslatlontext |
+             | 72 degrees, 19 minutes, 30 seconds to the S 57 degrees, 45 minutes, 57 seconds to the E |
+
+    Scenario: Creates a LineString from a MultiPoint geometry
+        When below sql is executed in "opengeo" db
+            """
+            INSERT INTO geometries VALUES
+                ('MultiPoint', 'MULTIPOINT(1 2 3, 4 5 6, 7 8 9)')
+            """
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_AsEWKT(ST_LineFromMultiPoint(geom)) FROM geometries WHERE name='MultiPoint'
+            """
+        Then validate that following rows are in the stored rows
+             | st_asewkt |
+             | LINESTRING(1 2 3,4 5 6,7 8 9) |
+
+    Scenario: Returns a set of geometry_dump rows, representing the exterior and interior rings of a polygon
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_AsText((ST_DumpRings(geom)).geom) AS the_geom FROM geometries WHERE name='PolygonWithHole'
+            """
+        Then validate that following rows are in the stored rows
+             | the_geom |
+             | POLYGON((0 0,10 0,10 10,0 10,0 0)) |
+             | POLYGON((1 1,1 2,2 2,2 1,1 1)) |
+
+    Scenario: Return a derived geometry collection value with elements that match the specified range of measures inclusively
+        When below sql is executed in "opengeo" db
+            """
+            INSERT INTO geometries VALUES
+                   ('MultiLinestring', 'MULTILINESTRINGM((1 2 3, 3 4 2, 9 4 3), (1 2 3, 5 4 5))')
+            """
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_AsEWKT(ST_Locate_Between_Measures(geom, 1.5, 3)) FROM geometries WHERE name='MultiLinestring'
+            """
+        Then validate that following rows are in the stored rows
+             | st_asewkt |
+             | GEOMETRYCOLLECTIONM(LINESTRINGM(1 2 3,3 4 2,9 4 3),POINTM(1 2 3)) |
+
+    Scenario: Return a derived geometry with measure elements linearly interpolated between the start and end points
+        When below sql is executed in "opengeo" db
+            """
+            INSERT INTO geometries VALUES
+                   ('MultiLineStringAdd', 'MULTILINESTRINGM((1 0 4, 2 0 4, 4 0 4),(1 0 4, 2 0 4, 4 0 4))')
+            """
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_AsEWKT(ST_AddMeasure(geom,10,70)) AS ewelev FROM geometries WHERE name='MultiLineStringAdd'
+            """
+        Then validate that following rows are in the stored rows
+             | ewelev |
+             | MULTILINESTRINGM((1 0 10,2 0 20,4 0 40),(1 0 40,2 0 50,4 0 70)) |
+
+    Scenario: Returns a "simplified" version of the given geometry using the Douglas-Peucker algorithm
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_Npoints(the_geom) As np_before, ST_NPoints(ST_SimplifyPreserveTopology(the_geom,0.1)) As np01_notbadcircle, ST_NPoints(ST_SimplifyPreserveTopology(the_geom,0.5)) As np05_notquitecircle, ST_NPoints(ST_SimplifyPreserveTopology(the_geom,1)) As np1_octagon, ST_NPoints(ST_SimplifyPreserveTopology(the_geom,10)) As np10_square, ST_NPoints(ST_SimplifyPreserveTopology(the_geom,100)) As np100_stillsquare
+            FROM (SELECT ST_Buffer(geom,10,12) AS the_geom FROM geometries WHERE name='Point') As foo
+            """
+        Then validate that following rows are in the stored rows
+             | np_before | np01_notbadcircle | np05_notquitecircle | np1_octagon | np10_square | np100_stillsquare |
+             |         49|                 33|                   17|            9|            5|                  5|
+
+    Scenario: Returns a geometry that represents the portions of A and B that do not intersect
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT count(ST_SymmetricDifference(foo.geom, bar.geom)) FROM (SELECT geom FROM geom_linestrings_2d) AS foo, (SELECT geom FROM geom_linestrings_2d) As bar
+            """
+        Then validate that following rows are in the stored rows
+             | count |
+             | 676 |
+
+    Scenario: ST_CleanGeometry, a wrapper for ST_MakeValid
+        When below sql is executed in "opengeo" db
+            """
+            INSERT INTO geometries VALUES
+                   ('CleanGeometry', 'POLYGON((-1 -1, -1 0, 1 0, 1 1, 0 1, 0 -1, -1 -1))')
+            """
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_AsText(ST_CleanGeometry(geom)) FROM geometries WHERE name='CleanGeometry'
+            """
+        Then validate that following rows are in the stored rows
+             | st_astext |
+             | MULTIPOLYGON(((-1 -1,-1 0,0 0,0 -1,-1 -1)),((0 0,0 1,1 1,1 0,0 0))) |
+
+    Scenario: Takes as input GML representation of geometry and outputs a PostGIS geometry object
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_AsText(ST_GMLToSQL('
+                        <gml:LineString srsName="EPSG:4269">
+                            <gml:coordinates>
+                                -71.16028,42.258729 -71.160837,42.259112 -71.161143,42.25932
+                            </gml:coordinates>
+                        </gml:LineString>'))
+            """
+        Then validate that following rows are in the stored rows
+             | st_astext |
+             | LINESTRING(-71.16028 42.258729,-71.160837 42.259112,-71.161143 42.25932) |
+
+    Scenario: Return the number of interior rings of the first polygon in the geometry
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_NumInteriorRing(geom) AS num FROM geometries WHERE name='PolygonWithHole'
+            """
+        Then validate that following rows are in the stored rows
+             | num |
+             | 1 |
+
+    Scenario: Makes a point Geometry from WKT with the given SRID
+        When below sql is executed in "opengeo" db
+            """
+            CREATE TABLE t_pt_from_txt (id int, geom_txt text) DISTRIBUTED BY (id)
+            """
+        And below sql is executed in "opengeo" db
+            """
+            INSERT INTO t_pt_from_txt VALUES
+                (1, 'POINT(-71.064544 42.28787)')
+            """
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_PointFromText(geom_txt, 4326) FROM t_pt_from_txt WHERE id=1
+            """
+        Then validate that following rows are in the stored rows
+             | t_pointfromtext |
+             | 0101000020E6100000CB49287D21C451C0F0BF95ECD8244540 |
+
+    Scenario: Creates a geometry instance from a Well-Known Binary geometry representation (WKB) and optional SRID
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_AsEWKT(
+                   ST_GeomFromWKB(E'\\001\\002\\000\\000\\000\\002\\000\\000\\000\\037\\205\\353Q\\270~\\\\\\300\\323Mb\\020X\\231C@\\020X9\\264\\310~\\\\\\300)\\\\\\217\\302\\365\\230C@',4326))
+            """
+        Then validate that following rows are in the stored rows
+             | st_asewkt |
+             | SRID=4326;LINESTRING(-113.98 39.198,-113.981 39.195) |
+
+    Scenario: Returns the 2-dimensional point on g1 that is closest to g2
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_AsText(ST_ClosestPoint(pt.geom,line.geom)) AS cp_pt_line, ST_AsText(ST_ClosestPoint(line.geom,pt.geom)) As cp_line_pt
+            FROM (SELECT geom FROM geometries WHERE name='Point') As pt, (SELECT geom FROM geometries WHERE name='Linestring') As line
+            """
+        Then validate that following rows are in the stored rows
+             | cp_pt_line | cp_line_pt |
+             | POINT(0 0) | POINT(0 0) |
+
+    Scenario: Returns a version of the given geometry with X and Y axis flipped
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_AsEWKT(ST_FlipCoordinates(GeomFromEWKT(geom))) FROM geometries WHERE name='Point'
+            """
+        Then validate that following rows are in the stored rows
+             | st_asewkt |
+             | POINT(0 0) |
+
+    Scenario: Creates a geography instance from a Well-Known Binary geometry representation (WKB)
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_AsText(
+                   ST_GeogFromWKB(E'\\001\\002\\000\\000\\000\\002\\000\\000\\000\\037\\205\\353Q\\270~\\\\\\300\\323Mb\\020X\\231C@\\020X9\\264\\310~\\\\\\300)\\\\\\217\\302\\365\\230C@'))
+            """
+        Then validate that following rows are in the stored rows
+             | st_astext |
+             | LINESTRING(-113.98 39.198,-113.981 39.195) |
+
+    Scenario: Returns linear distance in meters between two lon/lat points
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT round(CAST(ST_Distance_Sphere(ST_Centroid(the_geom), ST_GeomFromText('POINT(-118 38)',4326)) As numeric)) As dist_meters,
+                   round(CAST(ST_Distance(ST_Transform(ST_Centroid(the_geom),32611), ST_Transform(ST_GeomFromText('POINT(-118 38)', 4326),32611)) As numeric)) As dist_utm11_meters,
+                   round(CAST(ST_Distance(ST_Centroid(the_geom), ST_GeomFromText('POINT(-118 38)', 4326)) As numeric)) As dist_degrees,
+                   round(CAST(ST_Distance(ST_Transform(the_geom,32611), ST_Transform(ST_GeomFromText('POINT(-118 38)', 4326),32611)) As numeric)) As min_dist_line_point_meters
+            FROM
+                   (SELECT ST_GeomFromText('LINESTRING(-118.584 38.374,-118.583 38.5)', 4326) As the_geom) as foo
+            """
+        Then validate that following rows are in the stored rows
+             | dist_meters | dist_utm11_meters | dist_degrees | min_dist_line_point_meters |
+             |       70425 |             70438 |            1 |                      65871 |
+
+    Scenario: Returns the 3-dimensional cartesian maximum distance between two geometries in projected units
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT round(ST_3DMaxDistance(
+                           ST_Transform(ST_GeomFromEWKT('SRID=4326;POINT(-72.1235 42.3521 10000)'),2163),
+                           ST_Transform(ST_GeomFromEWKT('SRID=4326;LINESTRING(-72.1260 42.45 15, -72.123 42.1546 20)'),2163)
+                        )) As dist_3d,
+                   round(ST_MaxDistance(
+                           ST_Transform(ST_GeomFromEWKT('SRID=4326;POINT(-72.1235 42.3521 10000)'),2163),
+                           ST_Transform(ST_GeomFromEWKT('SRID=4326;LINESTRING(-72.1260 42.45 15, -72.123 42.1546 20)'),2163)
+                        )) As dist_2d
+            """
+        Then validate that following rows are in the stored rows
+             | dist_3d | dist_2d |
+             | 24384.0 | 22248.0 |
+
+    Scenario: For 3d (z) geometry type Returns true if two geometries 3d distance is within number of units
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_3DDWithin(
+                     ST_Transform(ST_GeomFromEWKT('SRID=4326;POINT(-72.1235 42.3521 4)'),2163),
+                     ST_Transform(ST_GeomFromEWKT('SRID=4326;LINESTRING(-72.1260 42.45 15, -72.123 42.1546 20)'),2163),
+                     126.8) As within_dist_3d,
+                   ST_DWithin(
+                     ST_Transform(ST_GeomFromEWKT('SRID=4326;POINT(-72.1235 42.3521 4)'),2163),
+                     ST_Transform(ST_GeomFromEWKT('SRID=4326;LINESTRING(-72.1260 42.45 15, -72.123 42.1546 20)'),2163),
+                     126.8) As within_dist_2d
+            """
+        Then validate that following rows are in the stored rows
+             | within_dist_3d | within_dist_2d |
+             | False | True |
+
+    Scenario: Returns true if all of the 3D geometries are within the specified distance of one another
+        When below sql is executed in "opengeo" db
+            """
+            INSERT INTO geometries VALUES('3dWithinPoint', 'POINT(1 1 2)')
+            """
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT
+                ST_3DDFullyWithin(foo.geom_a, bar.geom_b, 10) as D3DFullyWithin10,
+                ST_3DDWithin(foo.geom_a, bar.geom_b, 10) as D3DWithin10,
+                ST_DFullyWithin(foo.geom_a, bar.geom_b, 20) as D2DFullyWithin20,
+                ST_3DDFullyWithin(foo.geom_a, bar.geom_b, 20) as D3DFullyWithin20
+            FROM
+                (SELECT geom AS geom_a FROM geometries WHERE name='3dWithinPoint') foo,
+                (SELECT geom As geom_b FROM geom_linestrings WHERE id=1) bar
+            """
+        Then validate that following rows are in the stored rows
+             | d3dfullywithin10 | d3dwithin10 | d2dfullywithin20 | d3dfullywithin20 |
+             | True | True | True | True |
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT
+                Round(ST_3DMaxDistance(foo.geom, bar.geom)) AS max,
+                ST_ASEWKT(ST_3DShortestLine(foo.geom, bar.geom)) AS shortest_line,
+                ST_ASEWKT(ST_3DClosestPoint(foo.geom, bar.geom)) AS closest_point,
+                ST_ASEWKT(ST_3DLongestLine(foo.geom, bar.geom)) AS longest_line
+            FROM
+                (SELECT geom AS geom FROM geom_linestrings WHERE id=2) foo,
+                (SELECT geom As geom FROM geom_linestrings WHERE id=1) bar
+            """
+        Then validate that following rows are in the stored rows
+             | max | shortest_line | closest_point | longest_line |
+             | 3.0 | LINESTRING(0 0 0,0 0 0) | POINT(0 0 0) | LINESTRING(0 0 0,2 2 2) |
+
+    Scenario: Returns TRUE if the Geometries "spatially intersect" in 3d - only for points and linestrings
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_3DIntersects(pt, line), ST_Intersects(pt,line)
+            FROM (SELECT 'POINT(0 0 2)'::geometry As pt, geom As line FROM geom_linestrings WHERE id=1) As foo
+            """
+        Then validate that following rows are in the stored rows
+             | st_3dintersects | st_intersects |
+             | False | True |
+
+    Scenario: Return the coordinate dimension of the ST_Geometry value
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_CoordDim(geom) FROM geom_linestrings WHERE id=1
+            """
+        Then validate that following rows are in the stored rows
+             | st_coorddim |
+             | 3 |
+
+    Scenario: Return a derived geometry (collection) value with elements that intersect the specified range of elevations inclusively
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_AsEWKT(ST_LocateBetweenElevations(geom,2,4)) AS ewelev FROM geom_linestrings WHERE id=1
+            """
+        Then validate that following rows are in the stored rows
+             | ewelev |
+             | MULTILINESTRING((2 1 2,2 2 2)) |
+
+    Scenario: Return the value of the measure dimension of a geometry at the point closed to the provided point
+        When below sql is executed in "opengeo" db
+            """
+            INSERT INTO geometries VALUES('InterpolatePointLine', 'LINESTRING M (0 0 0, 10 0 20)'),
+                        ('InterpolatePointPoint', 'POINT(5 5)')
+            """
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_InterpolatePoint(foo.geom, bar.geom)
+            FROM (SELECT geom FROM geometries WHERE name='InterpolatePointLine') AS foo,
+                 (SELECT geom FROM geometries WHERE name='InterpolatePointPoint') AS bar
+            """
+        Then validate that following rows are in the stored rows
+             | st_interpolatepoint |
+             | 10.0 |
+
+    Scenario: Returns a BOX3D representing the maximum extents of the geometry
+       When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT Box3D(geom) FROM geom_linestrings WHERE id=1
+            """
+        Then validate that following rows are in the stored rows
+             | box3d |
+             | BOX3D(0 0 0,2 2 2) |
+
+    Scenario: Returns a valid_detail (valid,reason,location) row stating if a geometry is valid or not and if not valid, a reason why and a location where
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT * FROM (SELECT ST_IsValidDetail(geom) FROM geom_linestrings WHERE id=1) AS foo
+            """
+        Then validate that following rows are in the stored rows
+             | st_isvaliddetail|
+             | (t,,) |
+
+    Scenario: Return a specified ST_Geometry value from a collection of other geometries
+        When below sql is executed in "opengeo" db
+            """
+            CREATE TABLE t_st_memcollect(id int, geom geometry) DISTRIBUTED BY (id)
+            """
+        And below sql is executed in "opengeo" db
+            """
+            INSERT INTO t_st_memcollect VALUES
+                (1, 'POINT(1 1)')
+            """
+        And below sql is executed in "opengeo" db
+            """
+            INSERT INTO t_st_memcollect VALUES
+                (2, 'POINT(2 2)')
+            """
+        And below sql is executed in "opengeo" db
+            """
+            INSERT INTO t_st_memcollect VALUES
+                (3, 'POINT(1 2)')
+            """
+        #When execute following sql in db "opengeo" and store result in the context
+        #    """
+        #    SELECT ST_AsText(ST_MemCollect(geom)) FROM t_st_memcollect
+        #    """
+        #Then validate that following rows are in the stored rows
+        #     | st_astext |
+        #     | GEOMETRYCOLLECTION(MULTIPOINT(1 1,2 2),POINT(1 2)) |
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_AsText(ST_Collect(geom)) FROM t_st_memcollect
+            """
+        Then validate that "1 1" is in the stored rows
+        And validate that "2 2" is in the stored rows
+        And validate that "1 2" is in the stored rows
+        And validate that "MULTIPOINT(" is in the stored rows
+
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_AsText(ST_Union(geom)) FROM t_st_memcollect
+            """
+        Then validate that "1 1" is in the stored rows
+        And validate that "2 2" is in the stored rows
+        And validate that "1 2" is in the stored rows
+        And validate that "MULTIPOINT(" is in the stored rows
+
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_AsText(ST_MemUnion(geom)) FROM t_st_memcollect
+            """
+        Then validate that "1 1" is in the stored rows
+        And validate that "2 2" is in the stored rows
+        And validate that "1 2" is in the stored rows
+        And validate that "MULTIPOINT(" is in the stored rows
+
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT (ST_Accum(geom)) FROM t_st_memcollect
+            """
+        Then validate that "0101000000000000000000F03F000000000000F03F" is in the stored rows
+        And validate that "010100000000000000000000400000000000000040" is in the stored rows
+        And validate that "0101000000000000000000F03F0000000000000040" is in the stored rows
+
+        #When execute following sql in db "opengeo" and store result in the context
+        #    """
+        #    SELECT ST_AsText(ST_MakeLine(geom)) FROM t_st_memcollect
+        #    """
+        #Then validate that "1 1" is in the stored rows
+        #And validate that "2 2" is in the stored rows
+        #And validate that "1 2" is in the stored rows
+        #And validate that "LINESTRING(" is in the stored rows
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_AsText(ST_Extent(geom)) FROM t_st_memcollect
+            """
+        Then validate that following rows are in the stored rows
+            | st_astext |
+            | POLYGON((1 1,1 2,2 2,2 1,1 1)) |
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_AsText(ST_3DExtent(geom)) FROM t_st_memcollect
+            """
+        Then validate that following rows are in the stored rows
+            | st_astext |
+            | POLYGON((1 1,1 2,2 2,2 1,1 1)) |
+
+    Scenario: Creates a GeometryCollection made up of Polygons from a set of Geometries which contain lines that represents the Polygons edges
+        When below sql is executed in "opengeo" db
+            """
+            CREATE TABLE t_st_polygonize(id int, geom geometry) DISTRIBUTED BY (id)
+            """
+        And below sql is executed in "opengeo" db
+            """
+            INSERT INTO t_st_polygonize VALUES
+                (1, 'LINESTRING(4 11, 4 4, 11 4, 11 11, 4 11)')
+            """
+        And below sql is executed in "opengeo" db
+            """
+            INSERT INTO t_st_polygonize VALUES
+                (2, 'LINESTRING(1 9, 1 5, 5 5, 5 9, 1 9)')
+            """
+       When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_AsText(ST_Polygonize(geom)) FROM t_st_polygonize
+            """
+       Then validate that "POLYGON((4 11,11 11,11 4,4 4,4 11))" is in the stored rows
+       And validate that "POLYGON((1 9,5 9,5 5,1 5,1 9))" is in the stored rows
+
+    Scenario: Spatial indexing using default gist_geometry_ops_2d, and box2df for storage
+        When below sql is executed in "opengeo" db
+            """
+            CREATE TABLE t_st_box2df(id int, geom geometry) DISTRIBUTED BY (id)
+            """
+        And below sql is executed in "opengeo" db
+            """
+            INSERT INTO t_st_box2df VALUES
+                (1, 'POINT(1 1)')
+            """
+        And below sql is executed in "opengeo" db
+            """
+            INSERT INTO t_st_box2df VALUES
+                (2, 'POINT(2 2)')
+            """
+        And below sql is executed in "opengeo" db
+            """
+            INSERT INTO t_st_box2df VALUES
+                (3, 'POINT(3 3)')
+            """
+        And below sql is executed in "opengeo" db
+            """
+            CREATE INDEX idx_box2df on t_st_box2df USING gist(geom)
+            """
+        And below sql is executed in "opengeo" db
+            """
+            SET enable_seqscan=off
+            """
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_AsText(geom) FROM t_st_box2df WHERE ST_X(geom) = 3
+            """
+        And below sql is executed in "opengeo" db
+            """
+            SET enable_seqscan=on
+            """
+        Then validate that following rows are in the stored rows
+             | st_astext |
+             | POINT(3 3) |
+
+    Scenario: Spatial indexing using gist_geometry_ops_nd, and gidx for storage
+        When below sql is executed in "opengeo" db
+            """
+            CREATE TABLE t_st_gidx(id int, geom geometry) DISTRIBUTED BY (id)
+            """
+        And below sql is executed in "opengeo" db
+            """
+            INSERT INTO t_st_gidx VALUES
+                (1, 'POINT(1 1 1)')
+            """
+        And below sql is executed in "opengeo" db
+            """
+            INSERT INTO t_st_gidx VALUES
+                (2, 'POINT(2 2 2)')
+            """
+        And below sql is executed in "opengeo" db
+            """
+            INSERT INTO t_st_gidx VALUES
+                (3, 'POINT(3 3 3)')
+            """
+        And below sql is executed in "opengeo" db
+            """
+            CREATE INDEX idx_gidx on t_st_gidx USING gist(geom gist_geometry_ops_nd)
+            """
+        And below sql is executed in "opengeo" db
+            """
+            SET enable_seqscan=off
+            """
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_AsText(geom) FROM t_st_gidx WHERE ST_X(geom) = 3
+            """
+        And below sql is executed in "opengeo" db
+            """
+            SET enable_seqscan=on
+            """
+        Then validate that following rows are in the stored rows
+             | st_astext |
+             | POINT Z (3 3 3) |
+
+    Scenario: Relationship between two geometries
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_Touches(foo.geom, bar.geom),
+                   ST_Relate(foo.geom, bar.geom),
+                   ST_Crosses(foo.geom, bar.geom),
+                   ST_Covers(foo.geom, bar.geom),
+                   ST_CoveredBy(bar.geom, foo.geom),
+                   ST_ContainsProperly(foo.geom, bar.geom),
+                   ST_Disjoint(foo.geom, bar.geom),
+                   ST_Within(foo.geom, bar.geom),
+                   round(ST_Distance(foo.geom, bar.geom)),
+                   ST_ASEWKT(ST_Difference(foo.geom, bar.geom)) AS difference,
+                   ST_ASEWKT(ST_Intersection(foo.geom, bar.geom)) AS intersection,
+                   ST_Overlaps(foo.geom, bar.geom),
+                   ST_ASEWKT(ST_SymDifference(foo.geom, bar.geom)) AS symdiff,
+                   ST_OrderingEquals(foo.geom, bar.geom),
+                   ST_Equals(foo.geom, bar.geom),
+                   round(ST_HausdorffDistance(foo.geom, bar.geom)),
+                   ST_LineCrossingDirection(foo.geom, bar.geom) AS crossing
+            FROM (SELECT geom FROM geom_linestrings WHERE id=1) AS foo,
+                 (SELECT geom FROM geom_linestrings WHERE id=2) AS bar
+            """
+        Then validate that following rows are in the stored rows
+             | st_touches | st_relate | st_crosses | st_covers | st_coveredby | st_containsproperly | st_disjoint | st_within | st_distance | difference | intersection | st_overlaps | symdiff | st_orderingequals | st_equals | st_hausdorffdistance  | crossing |
+             | False | 1FFF0FFF2 | False | True | True | False | False | True | 0.0 | GEOMETRYCOLLECTION EMPTY | MULTILINESTRING((0 0 0,1 1 1.5),(1 1 1.5,2 1 2),(2 1 2,2 2 2)) | False | GEOMETRYCOLLECTION EMPTY | False | True | 0.0 | 0 |
+
+    Scenario: Geography computation
+        When below sql is executed in "opengeo" db
+            """
+            CREATE TABLE t_geography (name varchar, geog geography) DISTRIBUTED BY (name)
+            """
+        And below sql is executed in "opengeo" db
+            """
+            INSERT INTO t_geography VALUES
+                        ('PointA', 'POINT(-118.4079 33.9434)'),
+                        ('PointB', 'POINT(2.5559 49.0083)'),
+                        ('LineStringA', 'LINESTRING(-118.4079 33.9434, 2.5559 49.0083)'),
+                        ('LineStringB', 'LINESTRING(-119.4079 32.9434, 3.5559 46.0083)')
+            """
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT round(ST_Azimuth(foo.geog, bar.geog)) AS degaz,
+                   round(ST_Azimuth(bar.geog, foo.geog)) AS degazrev,
+                   round(ST_Distance(foo.geog, bar.geog)) AS distance,
+                   ST_ASEWKT(ST_Intersection(line_a.geog, line_b.geog)) AS intersection
+            FROM (SELECT geog FROM t_geography WHERE name='PointA') AS foo,
+                 (SELECT geog FROM t_geography WHERE name='PointB') AS bar,
+                 (SELECT geog FROM t_geography WHERE name='LineStringA') AS line_a,
+                 (SELECT geog FROM t_geography WHERE name='LineStringB') AS line_b
+            """
+        Then validate that following rows are in the stored rows
+             | degaz | degazrev | distance | intersection |
+             | 1.0 | 5.0  | 9124665.0 | SRID=4326;GEOMETRYCOLLECTION EMPTY |
+
+    Scenario: Returns a float between 0 and 1 representing the location of the closest point on LineString to the given Point, as a fraction of total 2d line length
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT round(ST_Line_Locate_Point(bar.geom, foo.geom)) AS location
+            FROM (SELECT geom FROM geometries WHERE name='Point') AS foo,
+                 (SELECT geom FROM geometries WHERE name='Linestring') AS bar
+            """
+        Then validate that following rows are in the stored rows
+             | location |
+             | 0.0 |
+
+    Scenario: Creates a BOX2D defined by the given point geometries
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_ASEWKT(ST_MakeBox2D(foo.geom, bar.geom)) AS box2d
+            FROM (SELECT geom FROM geometries WHERE name='Point') AS foo,
+                 (SELECT geom FROM geometries WHERE name='InterpolatePointPoint') AS bar
+            """
+        Then validate that following rows are in the stored rows
+             | box2d |
+             | POLYGON((0 0,0 5,5 5,5 0,0 0)) |
+
+    Scenario: Creates a BOX3D defined by the given point geometries
+        When below sql is executed in "opengeo" db
+            """
+            INSERT INTO geometries VALUES
+                        ('Box3DPointA', 'POINT(-989502.1875 528439.5625 10)'),
+                        ('Box3DPointB', 'POINT(-987121.375 529933.1875 10)')
+            """
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_3DMakeBox(foo.geom, bar.geom) AS box3d
+            FROM (SELECT geom FROM geometries WHERE name='Box3DPointA') AS foo,
+                 (SELECT geom FROM geometries WHERE name='Box3DPointB') AS bar
+            """
+        Then validate that following rows are in the stored rows
+             | box3d |
+             | BOX3D(-989502.1875 528439.5625 10,-987121.375 529933.1875 10) |
+
+    Scenario: Snap all points of the input geometry to a regular grid
+        When below sql is executed in "opengeo" db
+            """
+            INSERT INTO geometries VALUES
+                        ('SnapToGridLine', 'LINESTRING(-1.1115678 2.123 2.3456 1.11111,4.111111 3.2374897 3.1234 1.1111, -1.11111112 2.123 2.3456 1.1111112)'),
+                        ('SnapToGridPoint', 'POINT(1.12 2.22 3.2 4.4444)')
+            """
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_ASEWKT(ST_SnapToGrid(foo.geom, bar.geom, 0.1, 0.1, 0.1, 0.01)) AS snap
+            FROM (SELECT geom FROM geometries WHERE name='SnapToGridLine') AS foo,
+                 (SELECT geom FROM geometries WHERE name='SnapToGridPoint') AS bar
+            """
+        Then validate that following rows are in the stored rows
+             | snap |
+             | LINESTRING(-1.08 2.12 2.3 1.1144,4.12 3.22 3.1 1.1144,-1.08 2.12 2.3 1.1144) |
+
+    Scenario: Snap segments and vertices of input geometry to vertices of a reference geometry
+        When below sql is executed in "opengeo" db
+            """
+            INSERT INTO geometries VALUES
+                        ('SnapPoly', 'MULTIPOLYGON(((26 125, 26 200, 126 200, 126 125, 26 125),(51 150, 101 150, 76 175, 51 150 )),((151 100, 151 200, 176 175, 151 100)))'),
+                        ('SnapLine', 'LINESTRING (5 107, 54 84, 101 100)')
+            """
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_ASEWKT(ST_Snap(line.geom, poly.geom, ST_Distance(poly.geom, line.geom)*1.01)) AS snap
+            FROM (SELECT geom FROM geometries WHERE name='SnapLine') AS line,
+                 (SELECT geom FROM geometries WHERE name='SnapPoly') AS poly
+            """
+        Then validate that following rows are in the stored rows
+             | snap |
+             | LINESTRING(5 107,26 125,54 84,101 100) |
+
+    Scenario: Returns a collection of geometries resulting by splitting a geometry
+        When below sql is executed in "opengeo" db
+            """
+            INSERT INTO geometries VALUES
+                        ('SplitCircle', 'POINT(100 90)'),
+                        ('SplitLine', 'LINESTRING(10 10,190 190)')
+            """
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_AsText((ST_Dump(ST_Split(circle.buffer, line.geom))).geom) AS split
+            FROM (SELECT geom FROM geometries WHERE name='SplitLine') AS line,
+                 (SELECT ST_Buffer(geom, 50) AS buffer FROM geometries WHERE name='SplitCircle') AS circle
+            """
+        Then validate that following rows are in the stored rows
+             | split |
+             | POLYGON((150 90,149.039264020162 80.2454838991936,146.193976625564 70.8658283817455,141.573480615127 62.2214883490199,135.355339059327 54.6446609406727,127.77851165098 48.4265193848728,119.134171618255 43.8060233744357,109.754516100806 40.9607359798385,100 40,90.2454838991937 40.9607359798385,80.8658283817456 43.8060233744356,72.22148834902 48.4265193848727,64.6446609406727 54.6446609406725,60.1371179574584 60.1371179574584,129.862882042542 129.862882042542,135.355339059327 125.355339059327,141.573480615127 117.77851165098,146.193976625564 109.134171618255,149.039264020162 99.7545161008065,150 90)) |
+             | POLYGON((60.1371179574584 60.1371179574584,58.4265193848728 62.2214883490198,53.8060233744357 70.8658283817454,50.9607359798385 80.2454838991934,50 89.9999999999998,50.9607359798384 99.7545161008062,53.8060233744356 109.134171618254,58.4265193848726 117.77851165098,64.6446609406725 125.355339059327,72.2214883490197 131.573480615127,80.8658283817453 136.193976625564,90.2454838991934 139.039264020161,99.9999999999998 140,109.754516100806 139.039264020162,119.134171618254 136.193976625564,127.77851165098 131.573480615127,129.862882042542 129.862882042542,60.1371179574584 60.1371179574584)) |
+
+    Scenario: Replace point N of linestring with given point. Index is 0-based
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_AsText(ST_SetPoint(foo.geom, 1, bar.geom)) AS set_point
+            FROM (SELECT geom FROM geometries WHERE name='Point') AS bar,
+                 (SELECT geom FROM geom_linestrings_2d WHERE id=3) AS foo
+            """
+        Then validate that following rows are in the stored rows
+             | set_point |
+             | LINESTRING(0 0,0 0,2 1,2 2) |
+
+    # Non-deterministic order of start point and end point of resulted
+	# linestrings in multi-segment env.
+    Scenario: Returns a collection containing paths shared by the two input linestrings/multilinestrings
+        When below sql is executed in "opengeo" db
+            """
+            INSERT INTO geometries VALUES
+                        ('SharedPathsLine', 'LINESTRING(76 175,90 161,126 125,126 156.25,151 100)'),
+                        ('SharedPathsMultiLine', 'MULTILINESTRING((26 125,26 200,126 200,126 125,26 125),(51 150,101 150,76 175,51 150))')
+            """
+        When execute following sql in db "opengeo" and store result in the context
+            """
+            SELECT ST_AsText(ST_SharedPaths(foo.geom, bar.geom)) AS shared_paths
+            FROM (SELECT geom FROM geometries WHERE name='SharedPathsLine') AS bar,
+                 (SELECT geom FROM geometries WHERE name='SharedPathsMultiLine') AS foo
+            """
+        Then validate that "GEOMETRYCOLLECTION(" is in the stored rows
+        Then validate that "MULTILINESTRING EMPTY" is in the stored rows
+        Then validate that "GEOMETRYCOLLECTION" is in the stored rows
+        Then validate that "(101 150,90 161)" is in the stored rows
+        Then validate that "(90 161,76 175)" is in the stored rows
+        Then validate that "(126 156.25,126 125)" is in the stored rows
 
     # TODO:
     #
