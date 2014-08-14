@@ -29,6 +29,7 @@
 #ifndef WIN32
 #include <unistd.h>
 #include <sys/socket.h>
+#include <sys/ioctl.h>
 #include <netinet/in.h>
 #include <netdb.h>
 #include <arpa/inet.h>
@@ -74,15 +75,11 @@ struct block_t
 	char*      	data;
 };
 
-#define FLINE		__FILE__":"APR_STRINGIFY(__LINE__)
-#define GET_SID(r)	((r->tid == NULL ? "" : r->tid))
+/*  Get session id for this request */
+#define GET_SID(r)	((r->sid))
 
-static long REQUEST_SEQ = 0;
-
-static char* datetime(void);
-int gprint(const char* fmt, ...);
-void gfatal(const char* fline, const char* fmt, ...);
-int gwarning(const char* fline, const char* fmt, ...);
+static long REQUEST_SEQ = 0;		/*  sequence number for request */
+static long SESSION_SEQ = 0;		/*  sequence number for session */
 
 static bool base16_decode(char* data);
 
@@ -186,101 +183,6 @@ typedef union address
 }
 address_t;
 
-#if APR_IS_BIGENDIAN
-#define local_htonll(n)  (n)
-#define local_ntohll(n)  (n)
-#else
-#define local_htonll(n)  ((((apr_uint64_t) htonl(n)) << 32LL) | htonl((n) >> 32LL))
-#define local_ntohll(n)  ((((apr_uint64_t) ntohl(n)) << 32LL) | (apr_uint32_t) ntohl(((apr_uint64_t)n) >> 32LL))
-#endif
-
-#define NO_SEQ    0
-#define OPEN_SEQ  1
-/* if VERBOSE mode, print log information */
-#define TR(x)  while (opt.V){printf x;break;}
-/*
- * block_fill_header
- *
- * Prepare a block header for sending to the client. It includes various meta
- * data information such as filename, initial linenumber, etc. This will only
- * get used in PROTO-1. We store this header in block_t->hdr (a blockhdr_t)
- * and PROTO-0 never uses it.
- */
-static void block_fill_header(block_t* b,
-							  const struct fstream_filename_and_offset* fos)
-{
-	blockhdr_t*		h = &b->hdr;
-	apr_int32_t 	len;
-	apr_int64_t 	len8;
-	char*			p = h->hbyte;
-	int 			fname_len = strlen(fos->fname);
-
-	h->hbot = 0;
-
-	/* FILENAME: 'F' + len + fname */
-	*p++ = 'F';
-	len = htonl(fname_len);
-	memcpy(p, &len, 4);
-	p += 4;
-	memcpy(p, fos->fname, fname_len);
-	p += fname_len;
-	TR(("F %u %s\n", (unsigned int)ntohl(len), fos->fname));
-
-	/* OFFSET: 'O' + len + foff */
-	*p++ = 'O';
-	len = htonl(8);
-	len8 = local_htonll(fos->foff);
-	memcpy(p, &len, 4);
-	p += 4;
-	memcpy(p, &len8, 8);
-	p += 8;
-#ifndef WIN32
-	TR(("O %llu\n",(unsigned long long) local_ntohll(len8)));
-#else
-	TR(("O %lu\n",(unsigned long) local_ntohll(len8)));
-#endif
-
-	/* LINENUMBER: 'L' + len + linenumber */
-	*p++ = 'L';
-	len8 = local_htonll(fos->line_number);
-	memcpy(p, &len, 4);
-	p += 4;
-	memcpy(p, &len8, 8);
-	p += 8;
-#ifndef WIN32
-	TR(("L %llu\n",(unsigned long long) local_ntohll(len8)));
-#else
-	TR(("L %lu\n", (unsigned long)local_ntohll(len8)));
-#endif
-
-	/* DATA: 'D' + len */
-	*p++ = 'D';
-	len = htonl(b->top-b->bot);
-	memcpy(p, &len, 4);
-	p += 4;
-	TR(("D %u\n", (unsigned int)ntohl(len)));
-	h->htop = p - h->hbyte;
-	if (h->htop > sizeof(h->hbyte))
-		gfatal(FLINE, "assert failed, h->htop = %d, max = %d\n", h->htop,
-				sizeof(h->hbyte));
-	TR(("header size: %d\n",h->htop-h->hbot));
-}
-
-static unsigned short get_client_port(address_t *clientInformation)
-{
-	//check the family version of client IP address, so you
-	//can know where to cast, either to sockaddr_in or sockaddr_in6
-	//and then grab the port after casting
-	struct sockaddr *sa = (struct sockaddr *)clientInformation;
-	if (sa->sa_family == AF_INET) {
-		struct sockaddr_in *ipv4 = (struct sockaddr_in *)clientInformation;
-		return ipv4->sin_port;
-	} else {
-		struct sockaddr_in6 *ipv6 = (struct sockaddr_in6 *)clientInformation;
-		return ipv6->sin6_port;
-   	}
-}
-
 /*  Global constrol block */
 
 static struct
@@ -305,6 +207,7 @@ static struct
 typedef struct session_t session_t;
 struct session_t
 {
+	long			id;
 	apr_pool_t* 	pool;
 	const char* 	key;
 	const char* 	tid;
@@ -316,20 +219,25 @@ struct session_t
 	int*			active_segids;	/* array indexed by segid. used for write operations
 									   to indicate which segdbs are writing and when each
 									   is done (sent a final request) */
-	apr_int64_t*          seq_segs;       /* array indexed by segid. used for write operations to record the sequence number
+	apr_int64_t*	seq_segs;       /* array indexed by segid. used for write operations to record the sequence number
 						   of data which has been written to disk*/
 	int				maxsegs; 		/* same as request->totalsegs. length of active_segs arr */
 	apr_time_t		mtime; 			/* time when nrequest was modified */
 	struct timeval 	tm;             /* timeout for struct event */
 	struct event   	ev;             /* event we are watching for this session*/
+	apr_hash_t		*requests;
 };
 
 /*  An http request */
 typedef struct request_t request_t;
 struct request_t
 {
-	long			id;
-	apr_int64_t             seq;    /* sequence number */
+	long			id;			/* request id (auto increment) */
+	long			sid;		/* session id (auto increment) */
+	long			bytes; 		/* bytes sent to TCP or receive from TCP */
+	apr_time_t		last; 		/* last timestamp for send/receive data */
+	apr_int64_t     seq;        /* sequence number */
+
 	unsigned short  port;
 	SOCKET 			sock; 		/* the socket */
 	apr_pool_t* 	pool; 		/* memory pool container */
@@ -373,13 +281,37 @@ struct request_t
 	block_t	outblock;	/* next block to send out */
 	char*           line_delim_str;
 	int             line_delim_length;
-	
+
 	/* SSL related */
 	BIO			*io;		/* for the i.o. */
 	BIO			*sbio;		/* for the accept */
 	BIO			*ssl_bio;
 	SSL			*ssl;
 };
+
+
+
+#if APR_IS_BIGENDIAN
+#define local_htonll(n)  (n)
+#define local_ntohll(n)  (n)
+#else
+#define local_htonll(n)  ((((apr_uint64_t) htonl(n)) << 32LL) | htonl((n) >> 32LL))
+#define local_ntohll(n)  ((((apr_uint64_t) ntohl(n)) << 32LL) | (apr_uint32_t) ntohl(((apr_uint64_t)n) >> 32LL))
+#endif
+
+#define NO_SEQ    0
+#define OPEN_SEQ  1
+
+static int ggetpid();
+static void log_gpfdist_status();
+static void log_request_header(const request_t *r);
+
+static void gprint(const request_t *r, const char* fmt, ...);
+static void gprintln(const request_t *r, const char* fmt, ...);
+static void gprintlnif(const request_t *r, const char* fmt, ...);
+static void gfatal(const request_t *r, const char* fmt, ...);
+static void gwarning(const request_t *r, const char* fmt, ...);
+static void gdebug(const request_t *r, const char* fmt, ...);
 
 /* send gp-proto==1 ctl info */
 static void gp1_send_eof(request_t* r);
@@ -388,9 +320,11 @@ static void gp1_send_errmsg(request_t* r, const char* msg);
 static void gp1_send_errfile(request_t* r, apr_file_t* errfile);
 #endif
 
-static char* datetime(void);
+static char* datetime_now(void);
+static char* datetime(apr_time_t t);
 static int setup_read(request_t* r);
 static int setup_write(request_t* r);
+static void setup_do_close(request_t* r);
 static int session_attach(request_t* r);
 static void session_detach(request_t* r);
 static void session_end(session_t* s, int error);
@@ -418,6 +352,93 @@ static void setup_flush_ssl_buffer(request_t* r);
 static void request_cleanup(request_t *r);
 static void request_cleanup_and_free_SSL_resources(int fd, short event, void* arg);
 static int local_send(request_t *r, const char* buf, int buflen);
+
+static int get_unsent_bytes(request_t* r);
+
+/*
+ * block_fill_header
+ *
+ * Prepare a block header for sending to the client. It includes various meta
+ * data information such as filename, initial linenumber, etc. This will only
+ * get used in PROTO-1. We store this header in block_t->hdr (a blockhdr_t)
+ * and PROTO-0 never uses it.
+ */
+static void block_fill_header(const request_t *r, block_t* b,
+							  const struct fstream_filename_and_offset* fos)
+{
+	blockhdr_t*		h = &b->hdr;
+	apr_int32_t 	len;
+	apr_int64_t 	len8;
+	char*			p = h->hbyte;
+	int 			fname_len = strlen(fos->fname);
+
+	h->hbot = 0;
+
+	/* FILENAME: 'F' + len + fname */
+	*p++ = 'F';
+	len = htonl(fname_len);
+	memcpy(p, &len, 4);
+	p += 4;
+	memcpy(p, fos->fname, fname_len);
+	p += fname_len;
+	gdebug(r, "F %u %s", (unsigned int)ntohl(len), fos->fname);
+
+	/* OFFSET: 'O' + len + foff */
+	*p++ = 'O';
+	len = htonl(8);
+	len8 = local_htonll(fos->foff);
+	memcpy(p, &len, 4);
+	p += 4;
+	memcpy(p, &len8, 8);
+	p += 8;
+#ifndef WIN32
+	gdebug(r, "O %llu",(unsigned long long) local_ntohll(len8));
+#else
+	gdebug(r, "O %lu",(unsigned long) local_ntohll(len8));
+#endif
+
+	/* LINENUMBER: 'L' + len + linenumber */
+	*p++ = 'L';
+	len8 = local_htonll(fos->line_number);
+	memcpy(p, &len, 4);
+	p += 4;
+	memcpy(p, &len8, 8);
+	p += 8;
+#ifndef WIN32
+	gdebug(r, "L %llu",(unsigned long long) local_ntohll(len8));
+#else
+	gdebug(r, "L %lu", (unsigned long)local_ntohll(len8));
+#endif
+
+	/* DATA: 'D' + len */
+	*p++ = 'D';
+	len = htonl(b->top-b->bot);
+	memcpy(p, &len, 4);
+	p += 4;
+	gdebug(r, "D %u", (unsigned int)ntohl(len));
+	h->htop = p - h->hbyte;
+	if (h->htop > sizeof(h->hbyte))
+		gfatal(NULL, "assert failed, h->htop = %d, max = %d", h->htop,
+				sizeof(h->hbyte));
+	gdebug(r, "header size: %d",h->htop-h->hbot);
+}
+
+static unsigned short get_client_port(address_t *clientInformation)
+{
+	//check the family version of client IP address, so you
+	//can know where to cast, either to sockaddr_in or sockaddr_in6
+	//and then grab the port after casting
+	struct sockaddr *sa = (struct sockaddr *)clientInformation;
+	if (sa->sa_family == AF_INET) {
+		struct sockaddr_in *ipv4 = (struct sockaddr_in *)clientInformation;
+		return ipv4->sin_port;
+	} else {
+		struct sockaddr_in6 *ipv6 = (struct sockaddr_in6 *)clientInformation;
+		return ipv6->sin6_port;
+	}
+}
+
+
 
 /* Print usage */
 static void usage_error(const char* msg, int print_usage)
@@ -536,7 +557,7 @@ static void parse_command_line(int argc, const char* const argv[],
 	status = apr_getopt_init(&os, pool, argc, argv);
 
 	if (status != APR_SUCCESS)
-		gfatal(FLINE, "apt_getopt_init failed: %s",
+		gfatal(NULL, "apt_getopt_init failed: %s",
 			   apr_strerror(status, apr_errbuf, sizeof(apr_errbuf)));
 
 	while (APR_SUCCESS == (e = apr_getopt_long(os, option, &ch, &arg)))
@@ -721,7 +742,7 @@ static void parse_command_line(int argc, const char* const argv[],
 
 		/* disallow / */
 		if (0 == strcmp(p, "/"))
-			usage_error("Security Error: You cannot specify the root" 
+			usage_error("Security Error: You cannot specify the root"
 						" directory (/) as the certificates directory", 0);
 
 		/* strip ending / */
@@ -774,7 +795,7 @@ static void http_error(request_t* r, int code, const char* msg)
 {
 	char buf[1024];
 	int n;
-	gprint("HTTP ERROR: %s - %d %s\n", r->peer, code, msg);
+	gwarning(r, "HTTP ERROR: %s - %d %s\n", r->peer, code, msg);
 	n = apr_snprintf(buf, sizeof(buf), "HTTP/1.0 %d %s\r\n"
 		"Content-length: 0\r\n"
 		"Expires: 0\r\n"
@@ -795,7 +816,7 @@ static void http_empty(request_t* r)
 		"X-GPFDIST-VERSION: " GP_VERSIONX "\r\n"
 		"Cache-Control: no-cache\r\n"
 		"Connection: close\r\n\r\n";
-	gprint("HTTP EMPTY: %s %s %s - OK\n", r->peer, r->in.req->argv[0], r->in.req->argv[1]);
+	gprint(r, "HTTP EMPTY: %s %s %s - OK\n", r->peer, r->in.req->argv[0], r->in.req->argv[1]);
 	local_send(r, buf, sizeof buf -1);
 }
 
@@ -804,7 +825,7 @@ static void http_continue(request_t* r)
 {
 	static const char buf[] = "HTTP/1.1 100 Continue\r\n\r\n";
 
-	gprint("%s %s %s - Continue\n", r->peer, r->in.req->argv[0], r->in.req->argv[1]);
+	gprintlnif(r, "%s %s %s - Continue", r->peer, r->in.req->argv[0], r->in.req->argv[1]);
 
 	local_send(r, buf, sizeof buf -1);
 }
@@ -825,17 +846,111 @@ static apr_status_t http_ok(request_t* r)
 
 	n = apr_snprintf(buf, sizeof(buf), fmt, r->gp_proto);
 	if (n >= sizeof(buf) - 1)
-		gfatal(FLINE, "internal error - buffer overflow during http_ok");
+		gfatal(r, "internal error - buffer overflow during http_ok");
 
 	m = local_send(r, buf, n);
 	if (m != n)
 	{
-		gprint("%s - socket error\n", r->peer);
+		gprintln(r, "%s - socket error\n", r->peer);
 		return APR_EGENERAL;
 	}
-	gprint("%s %s %s - OK\n", r->peer, r->in.req->argv[0], r->in.req->argv[1]);
+	gprintlnif(r, "%s %s %s - OK", r->peer, r->in.req->argv[0], r->in.req->argv[1]);
 
 	return 0;
+}
+
+static void log_gpfdist_status()
+{
+	char buf[1024];
+	int  i, n;
+
+	int num_sessions = apr_hash_count(gcb.session.tab);
+	gprint(NULL, "---------------------------------------\n");
+	gprint(NULL, "STATUS: total session(s) %d\n", num_sessions);
+
+	apr_hash_index_t* hi = apr_hash_first(gcb.pool, gcb.session.tab);
+	for (i = 0; hi && i < num_sessions; i++, hi = apr_hash_next(hi))
+	{
+		void *entry;
+		apr_hash_this(hi, 0, 0, &entry);
+		session_t *s = (session_t*) entry;
+		if (s == NULL) {
+			gprint(NULL, "session %d: NULL\n", i);
+			continue;
+		}
+		const char *ferror = (s->fstream == NULL ? NULL : fstream_get_error(s->fstream));
+		gprint(NULL, "session %d: tid=%s, fs_error=%s, is_error=%d, nrequest=%d is_get=%d, maxsegs=%d\n",
+				i, s->tid, (ferror == NULL ? "N/A" : ferror), s->is_error, s->nrequest, s->is_get, s->maxsegs);
+		session_active_segs_dump(s);
+	}
+
+	printf("session: [\r\n");
+
+	hi = apr_hash_first(gcb.pool, gcb.session.tab);
+	for (i = 0; hi && i < num_sessions; i++, hi = apr_hash_next(hi))
+	{
+		void *entry;
+		apr_hash_this(hi, 0, 0, &entry);
+		session_t *s = (session_t*) entry;
+		if (s == NULL) {
+			continue;
+		}
+		n = apr_snprintf(buf, sizeof(buf),
+						"\t%s :{\r\n"
+						"\t\tnrequest: %d\r\n"
+						"\t\tis_get: %d\r\n"
+						"\t\tpath: %s\r\n"
+						"\t\trequest: [\r\n",
+						s->tid, s->nrequest,
+						s->is_get,s->path);
+
+		printf("%s\n",buf);
+
+		int j;
+		int num_requests = apr_hash_count(s->requests);
+		apr_hash_index_t* hj = apr_hash_first(s->pool, s->requests);
+		for (j = 0; hj && j < num_requests; j++, hj = apr_hash_next(hj))
+		{
+			void *entry;
+			apr_hash_this(hj,0,0,&entry);
+			request_t *r = (request_t*) entry;
+			if(r == NULL)
+			{
+				continue;
+			}
+			apr_snprintf(buf, sizeof(buf),
+						"\t\t\t%ld : {\r\n"
+						"\t\t\t\tbytes: %ld\r\n"
+						"\t\t\t\tunsent_bytes: %d\r\n"
+						"\t\t\t\tlast: %s\r\n"
+#ifdef WIN32
+						"\t\t\t\tseq: %ld\r\n"
+#else
+						"\t\t\t\tseq: %"APR_INT64_T_FMT"\r\n"
+#endif
+						"\t\t\t\tis_final: %d\r\n"
+						"\t\t\t\tsegid: %d\r\n"
+						"\t\t\t}\r\n",
+						r->id,
+						r->bytes,
+						get_unsent_bytes(r),
+						datetime(r->last),
+#ifdef WIN32
+						(long) r->seq,
+#else
+						r->seq,
+#endif
+						r->is_final,
+						r->segid);
+
+			printf("%s\n",buf);
+		}
+		printf("\t\t]\r\n\t}\r\n");
+	}
+	printf("]\r\n");
+
+
+	gprint(NULL, "---------------------------------------\n");
 }
 
 /*
@@ -848,32 +963,43 @@ static apr_status_t http_ok(request_t* r)
  */
 static apr_status_t send_gpfdist_status(request_t* r)
 {
+	log_gpfdist_status();
+
+	/*
+	 * TODO: return response body is json encoded like:
+	 * {
+	 *   "request_time": "requst_time 2014-08-13 16:17:13",
+	 *   "read_bytes": 1787522407,
+	 *   "total_bytes": 3147292500,
+	 *   "total_sessions": 2,
+	 *   sessions: [
+	 *   	"1" : {
+	 *   	   	"tid": session->tid,
+	 *   	   	"nrequest": session->nrequest,
+	 *		   	"is_get": session->is_get,
+	 *		   	"path": session->path,
+	 *		   	"requests": [
+	 *		   		"segid1": {
+	 *					"bytes": request->bytes,
+	 *					"last": request->last,
+	 *					"seq": request->seq,
+	 *					"is_final": request->is_final,
+	 *					"segid": request->segid,
+	 *
+	 *		   		},
+	 *		   		"segid2": {
+	 *
+	 *		   		}
+	 *		   	]
+	 *   	},
+	 *   	"2" : {
+	 *   	}
+	 *   ]
+	 * }
+	 */
 	char buf[1024];
-	int  i, m, n;
-
-	char *time = datetime();
-	int numses = apr_hash_count(gcb.session.tab);
-	apr_hash_index_t* hi = apr_hash_first(gcb.pool, gcb.session.tab);
-
-	gprint("---------------------------------------\n");
-	gprint("STATUS: total session(s) %d\n", numses);
-	for (i = 0; hi && i < numses; i++, hi = apr_hash_next(hi))
-	{
-		void *entry;
-		apr_hash_this(hi, 0, 0, &entry);
-		session_t *s = (session_t*) entry;
-		if (s == NULL) {
-			gprint("session %d: NULL\n", i);
-			continue;
-		}
-		const char *ferror = (s->fstream == NULL ? NULL : fstream_get_error(s->fstream));
-		gprint("session %d: tid=%s, fs_error=%s, is_error=%d, nrequest=%d is_get=%d, maxsegs=%d\n",
-				i, s->tid, (ferror == NULL ? "N/A" : ferror), s->is_error, s->nrequest, s->is_get, s->maxsegs);
-		session_active_segs_dump(s);
-	}
-	gprint("---------------------------------------\n");
-
-	n = apr_snprintf(buf, sizeof(buf),	"HTTP/1.0 200 ok\r\n"
+	char *time = datetime_now();
+	int n = apr_snprintf(buf, sizeof(buf),	"HTTP/1.0 200 ok\r\n"
 										"Content-type: text/plain\r\n"
 										"Expires: 0\r\n"
 										"X-GPFDIST-VERSION: " GP_VERSIONX "\r\n"
@@ -900,13 +1026,13 @@ static apr_status_t send_gpfdist_status(request_t* r)
 
 
 	if (n >= sizeof buf - 1)
-		gfatal(FLINE, "internal error - buffer overflow during send_gpfdist_status");
+		gfatal(r, "internal error - buffer overflow during send_gpfdist_status");
 
-	m = local_send(r, buf, n);
+	int m = local_send(r, buf, n);
 
 	if (m != n)
 	{
-		gprint("%s - socket error\n", r->peer);
+		gprint(r, "%s - socket error\n", r->peer);
 		return APR_EGENERAL;
 	}
 
@@ -935,7 +1061,7 @@ static void request_end(request_t* r, int error, const char* errmsg)
 		 */
 		apr_file_flush(r->trans.errfile);
 		apr_file_close(r->trans.errfile);
-		TR(("[%s:%ld:%d] request closed stderr file %s\n", GET_SID(r), r->id, r->sock, r->trans.errfilename));
+		gprintln(r, "request closed stderr file %s", r->trans.errfilename);
 
 		/*
 		 * send the first 8K of stderr to the server
@@ -950,7 +1076,7 @@ static void request_end(request_t* r, int error, const char* errmsg)
 		 * remove the temp file
 		 */
 		apr_file_remove(r->trans.errfilename, r->pool);
-		TR(("[%s:%ld:%d] request removed stderr file %s\n", GET_SID(r), r->id, r->sock, r->trans.errfilename));
+		gprintln(r, "request removed stderr file %s", r->trans.errfilename);
 
 		r->trans.errfile = NULL;
 	}
@@ -965,12 +1091,12 @@ static void request_end(request_t* r, int error, const char* errmsg)
 			gp1_send_errmsg(r, errmsg);
 	}
 
-	TR(("[%s] [%s:%ld:%d] request end\n", datetime(), GET_SID(r), r->id, r->sock));
+	gprintlnif(r, "request end");
 
 	/* If we still have a block outstanding, the session is corrupted. */
 	if (r->outblock.top != r->outblock.bot)
 	{
-		gwarning(FLINE, "[%s:%ld:%d] request failure resulting in session failure", GET_SID(r), r->id, r->sock);
+		gwarning(r, "request failure resulting in session failure: top = %d, bot = %d", r->outblock.top, r->outblock.bot);
 		if (s)
 			session_end(s, 1);
 	}
@@ -989,7 +1115,6 @@ static void request_end(request_t* r, int error, const char* errmsg)
 	{
 		request_cleanup(r);
 	}
-
 }
 
 static int local_send(request_t *r, const char* buf, int buflen)
@@ -1007,10 +1132,9 @@ static int local_send(request_t *r, const char* buf, int buflen)
 #endif
 		if ( e == EPIPE || e == ECONNRESET )
 		{
-			gwarning(FLINE, "[%s:%ld:%d]: gpfdist_send failed - the connection was terminated by the client (%d)\n", 
-						GET_SID(r), r->id, r->sock, e);
+			gwarning(r, "gpfdist_send failed - the connection was terminated by the client (%d: %s)", e, strerror(e));
 		} else {
-			gwarning(FLINE, "[%s:%ld:%d]: gpfdist_send failed - due to (%d)\n", GET_SID(r), r->id, r->sock, e);
+			gdebug(r, "gpfdist_send failed - due to (%d: %s)", e, strerror(e));
 		}
 		return ok ? 0 : -1;
 	}
@@ -1069,21 +1193,27 @@ gp1_send_header(request_t*r, char letter, int length)
 static void
 gp1_send_eof(request_t* r)
 {
-	if (!gp1_send_header(r, 'D', 0))
-		TR(("[%s] [%s:%ld:%d] sent EOF\n", datetime(), GET_SID(r), r->id, r->sock));
+	int result = gp1_send_header(r, 'D', 0);
+	gprintln(r, "sent EOF: %s", (result == 0 ? "succeed" : "fail"));
 }
 
 /*
  * Send an error message to the client, using the 'E' message type.
  */
-static void 
+static void
 gp1_send_errmsg(request_t* r, const char* errmsg)
 {
+	gwarning(r, "send error message: %s", errmsg);
+
 	apr_int32_t len = strlen(errmsg);
-	if (!gp1_send_header(r, 'E', len))
+	if (! gp1_send_header(r, 'E', len))
+	{
 		local_sendall(r, errmsg, len);
+	}
 	else
-		gwarning(FLINE, "[%s:%ld:%d] send error message Header failure", GET_SID(r), r->id, r->sock);	
+	{
+		gwarning(r, "failed to send error message");
+	}
 }
 
 #ifdef GPFXDIST
@@ -1103,7 +1233,7 @@ static void gp1_send_errfile(request_t* r, apr_file_t* errfile)
 			if (! gp1_send_header(r, 'E', nbytes))
 			{
 				local_sendall(r, buf, nbytes);
-				TR(("[%d] request sent %"APR_SIZE_T_FMT" stderr bytes to server\n", r->sock, nbytes));
+				gdebug(r, "[%d] request sent %"APR_SIZE_T_FMT" stderr bytes to server", r->sock, nbytes);
 			}
 		}
 	}
@@ -1117,16 +1247,19 @@ static void gp1_send_errfile(request_t* r, apr_file_t* errfile)
  * header (metadata for client such as filename, etc) and the data itself.
  */
 static const char*
-session_get_block(session_t* session, block_t* retblock, char* line_delim_str, int line_delim_length)
+session_get_block(const request_t* r, block_t* retblock, char* line_delim_str, int line_delim_length)
 {
 	int 		size;
 	const int 	whole_rows = 1; /* gpfdist must not read data with partial rows */
 	struct fstream_filename_and_offset fos;
 
+	session_t *session = r->session;
+
 	retblock->bot = retblock->top = 0;
 
 	if (session->is_error || 0 == session->fstream)
 	{
+		gprint(NULL, "session_get_block: end session is_error: %d\n", session->is_error);
 		session_end(session, 0);
 		return 0;
 	}
@@ -1134,11 +1267,12 @@ session_get_block(session_t* session, block_t* retblock, char* line_delim_str, i
 	gcb.read_bytes -= fstream_get_compressed_position(session->fstream);
 
 	/* read data from our filestream as a chunk with whole data rows */
-	
+
 	size = fstream_read(session->fstream, retblock->data, opt.m, &fos, whole_rows, line_delim_str, line_delim_length);
 
 	if (size == 0)
 	{
+		gprint(NULL, "session_get_block end session due to EOF\n");
 		gcb.read_bytes += fstream_get_compressed_size(session->fstream);
 		session_end(session, 0);
 		return 0;
@@ -1149,6 +1283,7 @@ session_get_block(session_t* session, block_t* retblock, char* line_delim_str, i
 	if (size < 0)
 	{
 		const char* ferror = fstream_get_error(session->fstream);
+		gwarning(NULL, "session_get_block end session due to %s", ferror);
 		session_end(session, 1);
 		return ferror;
 	}
@@ -1156,7 +1291,7 @@ session_get_block(session_t* session, block_t* retblock, char* line_delim_str, i
 	retblock->top = size;
 
 	/* fill the block header with meta data for the client to parse and use */
-	block_fill_header(retblock, &fos);
+	block_fill_header(r, retblock, &fos);
 
 	return 0;
 }
@@ -1164,6 +1299,8 @@ session_get_block(session_t* session, block_t* retblock, char* line_delim_str, i
 /* finish the session - close the file */
 static void session_end(session_t* session, int error)
 {
+	gprintln(NULL, "session end.");
+
 	if (error)
 		session->is_error = error;
 
@@ -1177,7 +1314,7 @@ static void session_end(session_t* session, int error)
 /* deallocate session, remove from hashtable */
 static void session_free(session_t* session)
 {
-	gprint("free session %s\n", session->key);
+	gprint(NULL, "free session %s\n", session->key);
 
 	if (session->fstream)
 	{
@@ -1194,6 +1331,8 @@ static void session_free(session_t* session)
 /* detach a request from a session */
 static void session_detach(request_t* r)
 {
+	gprintlnif(r, "detach segment request from session");
+
 	session_t* session = r->session;
 
 	r->session = 0;
@@ -1201,27 +1340,26 @@ static void session_detach(request_t* r)
 	if (session)
 	{
 		if (session->nrequest <= 0)
-			gfatal(FLINE, "internal error - detaching a request from an empty session");
+			gfatal(r, "internal error - detaching a request from an empty session");
 
 		session->nrequest--;
 		session->mtime = apr_time_now();
+		apr_hash_set(session->requests, &r->id, sizeof(r->id), NULL);
+
 		if (session->is_get && session->nrequest == 0)
 		{
-			TR(("[%s] [%s:%ld:%d] session end\n", datetime(), session->tid, r->id, r->sock));
+			gprintln(r, "session has finished all segment requests");
 		}
 
 		/* for auto-tid sessions, we can free it now */
 		if (0 == strncmp("auto-tid.", session->tid, 9))
 		{
 			if (session->nrequest != 0)
-				gfatal(FLINE, "internal error - expected an empty auto-tid session"
-							  "but saw %d requests", session->nrequest);
+				gwarning(r, "internal error - expected an empty auto-tid session but saw %d requests", session->nrequest);
 
 			session_free(session);
 		}
-		else if(!session->is_get &&
-				session->nrequest == 0 &&
-				session_active_segs_isempty(session))
+		else if (! session->is_get && session->nrequest == 0 && session_active_segs_isempty(session))
 		{
 			/*
 			 * free the session if this is a POST request and it's
@@ -1263,13 +1401,15 @@ static void sessions_cleanup(void)
 	session_t*			s;
 	int 				numses;
 
+	gprint(NULL, "remove sessions\n");
+
 	numses = apr_hash_count(gcb.session.tab);
 
 	if (numses == 0)
 		return;
 
 	if (!(session = malloc(sizeof(session_t *) * numses)))
-		gfatal(FLINE, "out of memory in sessions_cleanup");
+		gfatal(NULL, "out of memory in sessions_cleanup");
 
 	hi = apr_hash_first(gcb.pool, gcb.session.tab);
 
@@ -1287,7 +1427,7 @@ static void sessions_cleanup(void)
 
 	for (i = 0; i < n; i++)
 	{
-		gprint("remove out-dated session %s\n", session[i]->key);
+		gprint(NULL, "remove out-dated session %s\n", session[i]->key);
 		session_free(session[i]);
 		session[i] = 0;
 	}
@@ -1303,7 +1443,7 @@ static void sessions_cleanup(void)
 static int session_attach(request_t* r)
 {
 	char key[1024];
-	session_t* session = 0;
+	session_t* session = NULL;
 
 	/*
 	 * create the session key (tid:path)
@@ -1341,8 +1481,7 @@ static int session_attach(request_t* r)
 		 */
 		if (r->is_final)
 		{
-			gprint("[%s:%ld:%d] got a final write request. skipping session creation\n", 
-					GET_SID(r), r->id, r->sock);
+			gprintln(r, "got a final write request. skipping session creation");
 			http_empty(r);
 			request_end(r, 0, 0);
 			return -1;
@@ -1350,7 +1489,7 @@ static int session_attach(request_t* r)
 
 		if (apr_pool_create(&pool, gcb.pool))
 		{
-			gwarning(FLINE, "out of memory");
+			gwarning(r, "out of memory");
 			http_error(r, FDIST_INTERNAL_ERROR, "internal error - out of memory");
 			request_end(r, 1, 0);
 			return -1;
@@ -1387,7 +1526,7 @@ static int session_attach(request_t* r)
             fstream_options.transform = (struct gpfxdist_t*) apr_pcalloc(pool, sizeof(struct gpfxdist_t));
 
             if (! fstream_options.transform)
-                    gfatal(FLINE, "out of memory in session_attach");
+                    gfatal(r, "out of memory in session_attach");
 
             fstream_options.transform->cmd        = r->trans.command;
 			fstream_options.transform->pass_paths = r->trans.paths;
@@ -1395,24 +1534,23 @@ static int session_attach(request_t* r)
             fstream_options.transform->mp         = pool;
 			fstream_options.transform->errfile    = r->trans.errfile;
         }
-		gprint("r->path %s\n", r->path);
+		gprintlnif(r, "r->path %s", r->path);
 #endif
 
 		/* try opening the fstream */
-		gprint("[%s:%ld:%d] new session trying to open the data stream\n", GET_SID(r), r->id, r->sock);
+		gprintlnif(r, "new session trying to open the data stream");
 		fstream = fstream_open(r->path, &fstream_options, &response_code, &response_string);
 
 		if (!fstream)
 		{
-			gwarning(FLINE, "[%s:%ld:%d] reject request from %s, path %s", GET_SID(r), r->id, r->sock, r->peer,
-					r->path);
+			gwarning(r, "reject request from %s, path %s", r->peer, r->path);
 			http_error(r, response_code, response_string);
 			request_end(r, 1, 0);
 			apr_pool_destroy(pool);
 			return -1;
 		}
 
-		gprint("[%s:%ld:%d] new session successfully opened the data stream\n", GET_SID(r), r->id, r->sock);
+		gprintlnif(r, "new session successfully opened the data stream");
 
 		gcb.total_sessions++;
 		gcb.total_bytes += fstream_get_compressed_size(fstream);
@@ -1420,8 +1558,8 @@ static int session_attach(request_t* r)
 		/* allocate session */
 		session = apr_palloc(pool, sizeof(session_t));
 
-		if (session == 0)
-			gfatal(FLINE, "out of memory in session_attach");
+		if (session == NULL)
+			gfatal(r, "out of memory in session_attach");
 
 		memset(session, 0, sizeof(*session));
 
@@ -1429,7 +1567,7 @@ static int session_attach(request_t* r)
 		session->active_segids = (int *) apr_palloc(pool, sizeof(int) * r->totalsegs);
 
 		if (session->active_segids == 0)
-			gfatal(FLINE, "out of memory when allocating active_segids array");
+			gfatal(r, "out of memory when allocating active_segids array");
 
 		memset(session->active_segids, 0, sizeof(int) * r->totalsegs);
 
@@ -1437,11 +1575,12 @@ static int session_attach(request_t* r)
 		session->seq_segs = (apr_int64_t *) apr_palloc(pool, sizeof(apr_int64_t) * r->totalsegs);
 
 		if (session->seq_segs == 0)
-			gfatal(FLINE, "out of memory when allocating seq_segs array");
+			gfatal(r, "out of memory when allocating seq_segs array");
 
 		memset(session->seq_segs, 0, sizeof(apr_int64_t) * r->totalsegs);
 
 		/* initialize session values */
+		session->id = ++SESSION_SEQ;
 		session->tid = apr_pstrdup(pool, r->tid);
 		session->path = apr_pstrdup(pool, r->path);
 		session->key = apr_pstrdup(pool, key);
@@ -1450,14 +1589,15 @@ static int session_attach(request_t* r)
 		session->is_get = r->is_get;
 		session->active_segids[r->segid] = 1; /* mark this segid as active */
 		session->maxsegs = r->totalsegs;
+		session->requests = apr_hash_make(pool);
 
 		if (session->tid == 0 || session->path == 0 || session->key == 0)
-			gfatal(FLINE, "out of memory in session_attach");
+			gfatal(r, "out of memory in session_attach");
 
 		/* insert into hashtable */
 		apr_hash_set(gcb.session.tab, session->key, APR_HASH_KEY_STRING, session);
 
-		gprint("[%s:%ld:%d] new session (%s, %s)\n", GET_SID(r), r->id, r->sock, session->path, session->tid);
+		gprintlnif(r, "new session (%ld): (%s, %s)", session->id, session->path, session->tid);
 	}
 
 	/* found a session in hashtable*/
@@ -1471,9 +1611,9 @@ static int session_attach(request_t* r)
 	}
 
 	/* session already ended. send an empty response, and close. */
-	if (0 == session->fstream)
+	if (NULL == session->fstream)
 	{
-		gprint("[%s:%ld:%d] session already ended. return empty response (OK)\n", GET_SID(r), r->id, r->sock);
+		gprintln(r, "session already ended. return empty response (OK)");
 
 		http_empty(r);
 		request_end(r, 0, 0);
@@ -1493,13 +1633,16 @@ static int session_attach(request_t* r)
 		return -1;
 	}
 
-	gprint("[%s:%ld:%d] joined session (%s, %s)\n", GET_SID(r), r->id, r->sock, session->path, session->tid);
+	gprintlnif(r, "joined session (%s, %s)", session->path, session->tid);
 
 	/* one more request for session */
 	session->nrequest++;
 	session->active_segids[r->segid] = !r->is_final;
 	session->mtime = apr_time_now();
+	apr_hash_set(session->requests, &r->id, sizeof(r->id), r);
+
 	r->session = session;
+	r->sid     = session->id;
 
 	if(!session->is_get)
 		session_active_segs_dump(session);
@@ -1517,7 +1660,7 @@ static void session_active_segs_dump(session_t* session)
 	{
 		int i = 0;
 
-		gprint("active segids in session: ");
+		gprint(NULL, "active segids in session: ");
 
 		for (i = 0 ; i < session->maxsegs ; i++)
 		{
@@ -1559,7 +1702,7 @@ static void do_write(int fd, short event, void* arg)
 	block_t* 	datablock;
 
 	if (fd != r->sock)
-		gfatal(FLINE, "internal error - non matching fd (%d) "
+		gfatal(r, "internal error - non matching fd (%d) "
 					  "and socket (%d)", fd, r->sock);
 
 	/* Loop at most 3 blocks or until we choke on the socket */
@@ -1568,7 +1711,7 @@ static void do_write(int fd, short event, void* arg)
 		/* get a block (or find a remaining block) */
 		if (r->outblock.top == r->outblock.bot)
 		{
-			const char* ferror = session_get_block(r->session, &r->outblock, r->line_delim_str, r->line_delim_length);
+			const char* ferror = session_get_block(r, &r->outblock, r->line_delim_str, r->line_delim_length);
 
 			if (ferror)
 			{
@@ -1603,8 +1746,8 @@ static void do_write(int fd, short event, void* arg)
 					return;
 				}
 
-				TR(("[%s] [%s:%ld:%d] send header bytes %d .. %d (top %d)\n", datetime(), GET_SID(r), r->id,
-					fd, datablock->hdr.hbot, datablock->hdr.hbot + n, datablock->hdr.htop));
+				gdebug(r, "send header bytes %d .. %d (top %d)",
+					datablock->hdr.hbot, datablock->hdr.hbot + n, datablock->hdr.htop);
 
 				datablock->hdr.hbot += n;
 				n = datablock->hdr.htop - datablock->hdr.hbot;
@@ -1635,15 +1778,16 @@ static void do_write(int fd, short event, void* arg)
 			return;
 		}
 
-		TR(("[%s] [%s:%ld:%d] send data bytes off buf %d .. %d (top %d)\n", 
-			datetime(), GET_SID(r), r->id, fd, datablock->bot, 
-			datablock->bot + n, datablock->top));
+		gdebug(r, "send data bytes off buf %d .. %d (top %d)",
+			   datablock->bot, datablock->bot + n, datablock->top);
 
+		r->bytes += n;
+		r->last = apr_time_now();
 		datablock->bot += n;
 
 		if (datablock->top != datablock->bot)
 		{ /* network chocked */
-			TR(("[%s] [%s:%ld:%d] network full\n", datetime(), GET_SID(r), r->id, fd));
+			gdebug(r, "network full");
 			break;
 		}
 	}
@@ -1651,6 +1795,28 @@ static void do_write(int fd, short event, void* arg)
 	/* Set up for this routine to be called again */
 	if (setup_write(r))
 		request_end(r, 1, 0);
+}
+
+/*
+ * Log request header
+ */
+static void log_request_header(const request_t *r)
+{
+	int i;
+
+	/* Hurray, got a request !!! */
+	gprintln(r, "%s requests %s", r->peer,
+			 r->in.req->argv[1] ? r->in.req->argv[1] : "(none)");
+
+	/* print the complete request to the log if in verbose mode */
+	gprintln(r, "got a request at port %d:", r->port);
+	for (i = 0; i < r->in.req->argc; i++)
+		printf(" %s", r->in.req->argv[i]);
+	printf("\n");
+
+	gprintln(r, "request headers:");
+	for (i = 0; i < r->in.req->hc; i++)
+		gprintln(r, "%s:%s", r->in.req->hname[i], r->in.req->hvalue[i]);
 }
 
 /*
@@ -1662,7 +1828,6 @@ static void do_write(int fd, short event, void* arg)
 static void do_read_request(int fd, short event, void* arg)
 {
 	request_t* 	r = (request_t*) arg;
-	int 		n, i;
 	char*		p = NULL;
 	char*		pp = NULL;
 	char*		path = NULL;
@@ -1670,6 +1835,7 @@ static void do_read_request(int fd, short event, void* arg)
 	/* If we timeout, close the request. */
 	if (event & EV_TIMEOUT)
 	{
+		gwarning(r, "do_read_request time out");
 		http_error(r, FDIST_TIMEOUT, "time out");
 		request_end(r, 1, 0);
 		return;
@@ -1690,9 +1856,10 @@ static void do_read_request(int fd, short event, void* arg)
 	}
 
 	/* how many bytes left in the header buf */
-	n = r->in.hbufmax - r->in.hbuftop;
+	int n = r->in.hbufmax - r->in.hbuftop;
 	if (n <= 0)
 	{
+		gwarning(r, "do_read_request internal error. max: %d, top: %d", r->in.hbufmax, r->in.hbuftop);
 		http_error(r, FDIST_INTERNAL_ERROR, "internal error");
 		request_end(r, 1, 0);
 		return;
@@ -1710,7 +1877,7 @@ static void do_read_request(int fd, short event, void* arg)
 		int e = errno;
 		int ok = (e == EINTR || e == EAGAIN);
 #endif
-		gwarning(FLINE, "[%ld:%d]: receive failed. %s(errno=%d)", r->id, r->sock, strerror(errno), errno);
+		gwarning(r, "do_read_request receive failed. errno: %d, msg: %s", errno, strerror(errno));
 		if (!ok)
 		{
 			request_end(r, 1, 0);
@@ -1720,7 +1887,7 @@ static void do_read_request(int fd, short event, void* arg)
 	else if (n == 0)
 	{
 		/* socket close by peer will return 0 */
-		gwarning(FLINE, "[%ld:%d]: receive failed, socket closed by peer. %s(errno=%d)", r->id, r->sock, strerror(errno), errno);
+		gwarning(r, "do_read_request receive failed. socket closed by peer. errno: %d, msg: %s", errno, strerror(errno));
 		request_end(r, 1, 0);
 		return;
 	}
@@ -1733,6 +1900,7 @@ static void do_read_request(int fd, short event, void* arg)
 		if (!r->in.req && r->in.hbuftop >= r->in.hbufmax)
 		{
 			/* not available, but headerbuf is full - send error and close */
+			gwarning(r, "do_read_request bad request");
 			http_error(r, FDIST_BAD_REQUEST, "forbidden");
 			request_end(r, 1, 0);
 			return;
@@ -1747,35 +1915,26 @@ static void do_read_request(int fd, short event, void* arg)
 	{
 		if (setup_read(r))
 		{
+			gwarning(r, "do_read_request, failed to read a complete request");
 			http_error(r, FDIST_INTERNAL_ERROR, "internal error");
 			request_end(r, 1, 0);
 		}
 		return;
 	}
 
-	/* Hurray, got a request !!! */
-	gprint("[%ld:%d] %s requests %s\n", r->id, r->sock, r->peer, 
-			r->in.req->argv[1] ? r->in.req->argv[1] : "(none)");
-
-	/* print the complete request to the log if in verbose mode */
-	if (opt.V)
-	{
-		gprint("[%ld:%d] got a request at port %d:", r->id, r->sock, r->port);
-		for (i = 0; i < r->in.req->argc; i++)
-			TR((" %s", r->in.req->argv[i]));
-		TR(("\n"));
-		gprint("request headers:");
-		for (i = 0; i < r->in.req->hc; i++)
-			TR(("%s:%s\n", r->in.req->hname[i], r->in.req->hvalue[i] ));
-	}
-
 	/* check that the request is validly formatted */
-	if(request_validate(r))
+	if (request_validate(r))
+	{
+		log_request_header(r);
 		return;
+	}
 
 	/* mark it as a GET or PUT request */
 	if (0 == strcmp("GET", r->in.req->argv[0]))
 		r->is_get = 1;
+
+	if (r->is_get || opt.V)
+		log_request_header(r);
 
 	/* make a copy of the path */
 	path = apr_pstrdup(r->pool, r->in.req->argv[1]);
@@ -1853,7 +2012,7 @@ static void do_accept(int fd, short event, void* arg)
 	/* do the accept */
 	if ((sock = accept(fd, (struct sockaddr*) &a, &len)) < 0)
 	{
-		gwarning(FLINE, "accept failed");
+		gwarning(NULL, "accept failed");
 		goto failure;
 	}
 
@@ -1872,7 +2031,7 @@ static void do_accept(int fd, short event, void* arg)
 			return;
 		}
 
-		gprint("[%d] Using SSL\n", (int)sock);
+		gprint(NULL, "[%d] Using SSL\n", (int)sock);
 	}
 	/* set to non-blocking, and close-on-exec */
 #ifdef WIN32
@@ -1883,7 +2042,7 @@ static void do_accept(int fd, short event, void* arg)
 #else
 	if (fcntl(sock, F_SETFL, O_NONBLOCK) == -1)
 	{
-		gwarning(FLINE, "fcntl(F_SETFL, O_NONBLOCK) failed");
+		gwarning(NULL, "fcntl(F_SETFL, O_NONBLOCK) failed");
 		if ( opt.ssl )
 		{
 			handle_ssl_error(sock, sbio, ssl);
@@ -1893,7 +2052,7 @@ static void do_accept(int fd, short event, void* arg)
 	}
 	if (fcntl(sock, F_SETFD, 1) == -1)
 	{
-		gwarning(FLINE, "fcntl(F_SETFD) failed");
+		gwarning(NULL, "fcntl(F_SETFD) failed");
 		if ( opt.ssl )
 		{
 			handle_ssl_error(sock, sbio, ssl);
@@ -1907,16 +2066,16 @@ static void do_accept(int fd, short event, void* arg)
 	setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, (void*) &on, sizeof(on));
 	setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (void*) &on, sizeof(on));
 	linger.l_onoff = 1;
-	linger.l_linger = 0;
+	linger.l_linger = 10;
 	setsockopt(sock, SOL_SOCKET, SO_LINGER, (void*) &linger, sizeof(linger));
 
 	/* create a pool container for this socket */
 	if (apr_pool_create(&pool, gcb.pool))
-		gfatal(FLINE, "out of memory in do_accept");
+		gfatal(NULL, "out of memory in do_accept");
 
 	/* create the request in pool */
 	r = apr_pcalloc(pool, sizeof(request_t));
-	r->port = ntohs(get_client_port((address_t *)&a)); 
+	r->port = ntohs(get_client_port((address_t *)&a));
 	r->id = ++REQUEST_SEQ;
 	r->pool = pool;
 	r->sock = sock;
@@ -1952,8 +2111,8 @@ static void do_accept(int fd, short event, void* arg)
 
 	return;
 
-failure: 
-	gwarning(FLINE, "accept failed");
+failure:
+	gwarning(NULL, "accept failed");
 	return;
 }
 
@@ -1966,7 +2125,7 @@ failure:
 static int setup_write(request_t* r)
 {
 	if (r->sock < 0)
-		gfatal(FLINE, "internal error in setup_write - no socket to use");
+		gwarning(r, "internal error in setup_write - no socket to use");
 	event_del(&r->ev);
 	event_set(&r->ev, r->sock, EV_WRITE, do_write, r);
 	return (event_add(&r->ev, 0));
@@ -1989,7 +2148,7 @@ static int setup_write(request_t* r)
 static int setup_read(request_t* r)
 {
 	if (r->sock < 0)
-		gfatal(FLINE, "internal error in setup_read - no socket to use");
+		gwarning(r, "internal error in setup_read - no socket to use");
 
 	event_del(&r->ev);
 	event_set(&r->ev, r->sock, EV_READ, do_read_request, r);
@@ -2010,7 +2169,7 @@ static void
 print_listening_address(struct addrinfo *rp)
 {
     char full_address[220] = {0};
-	
+
 	if (rp->ai_family == AF_INET)
 	{
 #ifndef WIN32
@@ -2021,7 +2180,7 @@ print_listening_address(struct addrinfo *rp)
 #else
 		/*
 		 * there is no alternative for inet_ntop in windows that works for all Win platforms
-		 * and for IPV6. inet_ntop transform the integer representation of the IP addr. into a string 
+		 * and for IPV6. inet_ntop transform the integer representation of the IP addr. into a string
 	     */
 		sprintf(full_address, "IPV4 socket: IPv4:%d", opt.p);
 #endif
@@ -2039,12 +2198,12 @@ print_listening_address(struct addrinfo *rp)
 #endif
 
 	}
-	else 
+	else
 	{
 		sprintf(full_address, "unknown protocol - %d", rp->ai_family);
 	}
-	
-	gprint("%s\n", full_address);
+
+	gprint(NULL, "%s\n", full_address);
 }
 
 /*
@@ -2090,7 +2249,7 @@ print_addrinfo_list(struct addrinfo *head)
 {
 	struct addrinfo *iter;
 	for (iter = head; iter != NULL; iter = iter->ai_next)
-	{ 
+	{
 		print_listening_address(iter);
 	}
 }
@@ -2130,7 +2289,7 @@ http_setup(void)
 
 	/* setup event priority */
 	if (event_priority_init(10))
-		gwarning(FLINE, "event_priority_init failed");
+		gwarning(NULL, "event_priority_init failed");
 
 
 	/* Try each possible port from opt.p to opt.last_port */
@@ -2146,17 +2305,17 @@ http_setup(void)
 		s = getaddrinfo(hostaddr, service, &hints, &addrs);
 		if (s != 0)
 #if (!defined(WIN32)) || defined(gai_strerror)
-			gfatal(FLINE,"getaddrinfo says %s",gai_strerror(s));
+			gfatal(NULL,"getaddrinfo says %s",gai_strerror(s));
 #else
 			/* Broken mingw header file from old version of mingw doesn't have gai_strerror */
-			gfatal(FLINE,"getaddrinfo says %d",s);
+			gfatal(NULL,"getaddrinfo says %d",s);
 #endif
 
 		addrs = rearrange_addrs(addrs, AF_INET6);
 
-		gprint("Before opening listening sockets - following listening sockets are available:\n");
+		gprint(NULL, "Before opening listening sockets - following listening sockets are available:\n");
 		print_addrinfo_list(addrs);
-		
+
 		/*
 		 * getaddrinfo() returns a list of address structures,
 		 * one for each valid address and family we can use.
@@ -2169,9 +2328,9 @@ http_setup(void)
 		 */
 		for (rp = addrs; rp != NULL; rp = rp->ai_next)
 		{
-			gprint("Trying to open listening socket:\n");
+			gprint(NULL, "Trying to open listening socket:\n");
 			print_listening_address(rp);
-			
+
 			/*
 			 * getaddrinfo gives us all the parameters for the socket() call
 			 * as well as the parameters for the bind() call.
@@ -2180,13 +2339,13 @@ http_setup(void)
 
 			if (f == -1)
 			{
-				gwarning(FLINE, "Creating the socket failed\n");
+				gwarning(NULL, "Creating the socket failed\n");
 				continue;
 			}
-			
+
 #ifndef WIN32
 			if (fcntl(f, F_SETFD, 1) == -1)
-				gfatal(FLINE, "cannot create socket - fcntl(F_SETFD) failed");
+				gfatal(NULL, "cannot create socket - fcntl(F_SETFD) failed");
 
 			/* For the Windows case, we could use SetHandleInformation to remove
 			 the HANDLE_INHERIT property from fd.
@@ -2224,13 +2383,13 @@ http_setup(void)
 				{
 					if ( opt.v )
 					{
-						gwarning(FLINE, "%s (errno = %d), port: %d",
+						gwarning(NULL, "%s (errno = %d), port: %d",
 					               		strerror(errno), errno, opt.p);
 					}
 				}
 				else
 			    {
-					gwarning(FLINE, "%s (errno=%d), port: %d",strerror(errno), errno, opt.p);
+					gwarning(NULL, "%s (errno=%d), port: %d",strerror(errno), errno, opt.p);
 				}
 
 				/* failed on bind, maybe this address family isn't supported */
@@ -2243,7 +2402,7 @@ http_setup(void)
 			{
 				int saved_errno = errno;
 				close(f);
-				gwarning(FLINE, "listen with queue size %d on socket (%d) using port %d failed with error code (%d): %s",
+				gwarning(NULL, "listen with queue size %d on socket (%d) using port %d failed with error code (%d): %s",
 							  opt.z,
 							  (int)f,
 							  opt.p,
@@ -2253,7 +2412,7 @@ http_setup(void)
 			}
 			gcb.listen_socks[gcb.listen_sock_count++] = f;
 
-			gprint("Opening listening socket succeeded\n");
+			gprint(NULL, "Opening listening socket succeeded\n");
 		}
 
 		/* When we get here, we have either succeeded, or tried all address families for this port */
@@ -2268,7 +2427,7 @@ http_setup(void)
 			break;
 
 		if (opt.p >= opt.last_port)
-			gfatal(FLINE, "cannot create socket on port %d "
+			gfatal(NULL, "cannot create socket on port %d "
 						  "(last port is %d)", opt.p, opt.last_port);
 
 		opt.p++;
@@ -2284,11 +2443,11 @@ http_setup(void)
 
 		/* high priority so we accept as fast as possible */
 		if (event_priority_set(&gcb.listen_events[i], 0))
-			gwarning(FLINE, "event_priority_set failed");
+			gwarning(NULL, "event_priority_set failed");
 
 		/* start watching this event */
 		if (event_add(&gcb.listen_events[i], 0))
-			gfatal(FLINE, "cannot set up event on listen socket: %s",
+			gfatal(NULL, "cannot set up event on listen socket: %s",
 						   strerror(errno));
 	}
 }
@@ -2298,8 +2457,11 @@ process_signal(int sig)
 {
 	if (sig == SIGINT || sig == SIGTERM)
 	{
+		gwarning(NULL, "signal %d received. gpfdist exits", sig);
+		log_gpfdist_status();
+		fflush(stdout);
+
 		int i;
-		gwarning(FLINE, "signal %d received. gpfdist exits", sig);
 		for (i = 0; i < gcb.listen_sock_count; i++)
 			if (gcb.listen_socks[i] > 0)
 			{
@@ -2351,7 +2513,7 @@ gnet_parse_request(const char* buf, int* len, apr_pool_t* pool)
 	line = apr_pstrndup(pool, buf, n); /* dup it */
 	req = apr_pcalloc(pool, sizeof(gnet_request_t));
     if (NULL == req) {
-		gfatal(FLINE, "out of memory in gnet_parse_request");
+		gfatal(NULL, "out of memory in gnet_parse_request");
     }
 
 	/* for first line */
@@ -2367,6 +2529,12 @@ gnet_parse_request(const char* buf, int* len, apr_pool_t* pool)
 
 	while (req->argv[req->argc])
 		req->argc++;
+
+	if (last == NULL)
+	{
+		gwarning(NULL, "last is NULL");
+		return req;
+	}
 
 	/* for each subsequent lines */
 	while (0 != (line = apr_strtok(0, "\n", &last)))
@@ -2422,58 +2590,115 @@ static char *gstring_trim(char* s)
 	return s;
 }
 
-static char* datetime(void)
+static char *datetime(apr_time_t t)
 {
 	static char 	buf[100];
-	apr_time_exp_t 	t;
+	apr_time_exp_t 	texp;
 
-	apr_time_exp_lt(&t, apr_time_now());
+	apr_time_exp_lt(&texp, t);
 
-	sprintf(buf, "%04d-%02d-%02d %02d:%02d:%02d", 1900 + t.tm_year, 1
-			+ t.tm_mon, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
+	sprintf(buf, "%04d-%02d-%02d %02d:%02d:%02d", 1900 + texp.tm_year, 1
+			+ texp.tm_mon, texp.tm_mday, texp.tm_hour, texp.tm_min, texp.tm_sec);
 
 	return buf;
 }
 
-int gprint(const char *fmt, ...)
+static char* datetime_now(void)
 {
-	va_list ap;
-
-	if (opt.v)
-	{
-		va_start(ap, fmt);
-		printf("[%s] ", datetime());
-		vprintf(fmt, ap);
-		va_end(ap);
-	}
-	return 0;
+	return datetime(apr_time_now());
 }
 
-void gfatal(const char* fline, const char *fmt, ...)
+/*
+ *  get process id
+ */
+static int ggetpid()
 {
-	va_list ap;
+	static int pid = 0;
+	if (pid == 0) {
+#ifdef WIN32
+		pid = GetCurrentProcessId();
+#else
+		pid = getpid();
+#endif
+	}
 
-	va_start(ap, fmt);
-	printf("[%s] [INTERNAL ERROR %s] ", datetime(), fline);
-	vprintf(fmt, ap);
-	va_end(ap);
+	return pid;
+}
+
+static void _gprint(const request_t *r, const char *level, const char *fmt, va_list args)
+{
+	printf("%s %d %s ", datetime_now(), ggetpid(), level);
+	if (r != NULL)
+	{
+		printf("[%ld:%ld:%d:%d] ", GET_SID(r), r->id, r->segid, r->sock);
+	}
+	vprintf(fmt, args);
+}
+
+void gprint(const request_t *r, const char *fmt, ...)
+{
+	va_list args;
+	va_start(args, fmt);
+	_gprint(r, "INFO", fmt, args);
+	va_end(args);
+}
+
+void gprintln(const request_t *r, const char *fmt, ...)
+{
+	va_list args;
+	va_start(args, fmt);
+	_gprint(r, "INFO", fmt, args);
+	va_end(args);
+	printf("\n");
+}
+
+/*
+ * Print for GET, or POST if Verbose.
+ */
+void gprintlnif(const request_t *r, const char *fmt, ...)
+{
+	if (r != NULL && ! r->is_get && ! opt.V)
+		return;
+
+	va_list args;
+	va_start(args, fmt);
+	_gprint(r, "INFO", fmt, args);
+	va_end(args);
+	printf("\n");
+}
+
+void gfatal(const request_t *r, const char *fmt, ...)
+{
+	va_list args;
+	va_start(args, fmt);
+	_gprint(r, "FATAL", fmt, args);
+	va_end(args);
+
 	printf("\n          ... exiting\n");
-
 	exit(1);
 }
 
-int gwarning(const char* fline, const char *fmt, ...)
+void gwarning(const request_t *r, const char *fmt, ...)
 {
-	va_list ap;
-
-	va_start(ap, fmt);
-	printf("[%s] [WRN %s] ", datetime(), fline);
-	vprintf(fmt, ap);
-	va_end(ap);
+	va_list args;
+	va_start(args, fmt);
+	_gprint(r, "WARN", fmt, args);
+	va_end(args);
 	printf("\n");
-
-	return 0;
 }
+
+void gdebug(const request_t *r, const char *fmt, ...)
+{
+	if (! opt.V)
+		return;
+
+	va_list args;
+	va_start(args, fmt);
+	_gprint(r, "DEBUG", fmt, args);
+	va_end(args);
+	printf("\n");
+}
+
 
 void gfile_printf_then_putc_newline(const char *format, ...)
 {
@@ -2549,13 +2774,17 @@ static void handle_get_request(request_t *r)
 	/* setup to receive EV_WRITE events to write to socket */
 	if (setup_write(r))
 	{
+		gwarning(r, "handle_get_request failed to setup write handler");
 		http_error(r, FDIST_INTERNAL_ERROR, "internal error");
 		request_end(r, 1, 0);
 		return;
 	}
 
 	if (0 != http_ok(r))
+	{
+		gwarning(r, "handle_get_request failed to send HTTP OK");
 		request_end(r, 1, 0);
+	}
 }
 
 static void handle_post_request(request_t *r, int header_end)
@@ -2594,7 +2823,8 @@ static void handle_post_request(request_t *r, int header_end)
 	if(b_continue)
 		http_continue(r);
 
-	gprint("available data to consume %d, starting at offset %d\n", r->in.davailable, r->in.hbuftop);
+	gdebug(r, "available data to consume %d, starting at offset %d",
+		   r->in.davailable, r->in.hbuftop);
 
 	switch (r->seq ) {
 		case OPEN_SEQ:
@@ -2607,14 +2837,14 @@ static void handle_post_request(request_t *r, int header_end)
 			if (session->seq_segs[r->segid] > 0) {
 				/* missing sequence number */
 #ifdef WIN32
-				TR(("[%s] [%s:%ld:%d] got an request missing sequence number, expected sequence number is %ld. \n",
-					datetime(), GET_SID(r), r->id, r->sock, (long)session->seq_segs[r->segid]+1)); 
+				gprintln(r, "got an request missing sequence number, expected sequence number is %ld.",
+					(long)session->seq_segs[r->segid]+1);
 #else
-				TR(("[%s] [%s:%ld:%d] got an request missing sequence number, expected sequence number is %"APR_INT64_T_FMT". \n",
-					datetime(), GET_SID(r), r->id, r->sock, session->seq_segs[r->segid]+1)); 
+				gprintln(r, "got an request missing sequence number, expected sequence number is %"APR_INT64_T_FMT,
+					session->seq_segs[r->segid] + 1);
 #endif
 				http_error(r, FDIST_BAD_REQUEST, "invalid request due to missing sequence number");
-				gwarning(FLINE, "got an request missing sequence number");
+				gwarning(r, "got an request missing sequence number");
 				request_end(r, 1, 0);
 				return;
 			} else {
@@ -2628,24 +2858,23 @@ static void handle_post_request(request_t *r, int header_end)
 			{
 				/* duplicate DATA request, ignore it*/
 #ifdef WIN32
-				TR(("[%s] [%s:%ld:%d] got a duplicate request, sequence number is %ld. \n",
-					datetime(), GET_SID(r), r->id, r->sock, (long)r->seq)); 
+				gdebug(r, "got a duplicate request, sequence number is %ld.", (long) r->seq);
 #else
-				TR(("[%s] [%s:%ld:%d] got a duplicate request, sequence number is %"APR_INT64_T_FMT" . \n",
-					datetime(), GET_SID(r), r->id, r->sock, r->seq)); 
+				gdebug(r, "got a duplicate request, sequence number is %"APR_INT64_T_FMT".",
+					r->seq);
 #endif
 				goto done_processing_request;
 			} else if (session->seq_segs[r->segid] != r->seq - 1) {
 				/* out of order DATA request, ignore it*/
 #ifdef WIN32
-				TR(("[%s] [%s:%ld:%d] got an out of order request, sequence number is %ld, expected sequence number is %ld. \n",
-					datetime(), GET_SID(r), r->id, r->sock, (long)r->seq, (long)session->seq_segs[r->segid]+1)); 
+				gprintln(r, "got an out of order request, sequence number is %ld, expected sequence number is %ld.",
+					(long)r->seq, (long)session->seq_segs[r->segid] + 1);
 #else
-				TR(("[%s] [%s:%ld:%d] got an out of order request, sequence number is %"APR_INT64_T_FMT", expected sequence number is %"APR_INT64_T_FMT". \n",
-					datetime(), GET_SID(r), r->id, r->sock, r->seq, session->seq_segs[r->segid]+1)); 
+				gprintln(r, "got an out of order request, sequence number is %"APR_INT64_T_FMT", expected sequence number is %"APR_INT64_T_FMT,
+					r->seq, session->seq_segs[r->segid] + 1);
 #endif
 				http_error(r, FDIST_BAD_REQUEST, "invalid request due to wrong sequence number");
-				gwarning(FLINE, "got an out of order request");
+				gwarning(r, "got an out of order request");
 				request_end(r, 1, 0);
 				return;
 			}
@@ -2715,6 +2944,7 @@ static void handle_post_request(request_t *r, int header_end)
 #endif
 			if (!ok)
 			{
+				gwarning(r, "handle_post_request receive errno: %d, msg: %s", e, strerror(e));
 			    http_error(r, FDIST_INTERNAL_ERROR, "internal error");
 				request_end(r, 1, 0);
 				return;
@@ -2723,6 +2953,7 @@ static void handle_post_request(request_t *r, int header_end)
 		else if (n == 0)
 		{
 			/* socket close by peer will return 0 */
+			gwarning(r, "handle_post_request socket closed by peer");
 			request_end(r, 1, 0);
 			return;
 		}
@@ -2730,6 +2961,8 @@ static void handle_post_request(request_t *r, int header_end)
 		{
 			/*gprint("received %d bytes from client\n", n);*/
 
+			r->bytes += n;
+			r->last = apr_time_now();
 			r->in.davailable -= n;
 			r->in.dbuftop += n;
 
@@ -2738,11 +2971,12 @@ static void handle_post_request(request_t *r, int header_end)
 			{
 				/* only write up to end of last row */
 				wrote = fstream_write(session->fstream, r->in.dbuf, r->in.dbuftop, 1, r->line_delim_str, r->line_delim_length);
-				gprint("wrote %d bytes to file\n", wrote);
+				gdebug(r, "wrote %d bytes to file", wrote);
 
-				if(wrote == -1)
+				if (wrote == -1)
 				{
 					/* write error */
+					gwarning(r, "handle_post_request, write error: %s", fstream_get_error(session->fstream));
 					http_error(r, FDIST_INTERNAL_ERROR, fstream_get_error(session->fstream));
 					request_end(r, 1, 0);
 					return;
@@ -2765,7 +2999,7 @@ static void handle_post_request(request_t *r, int header_end)
 
 	}
 
-	session->seq_segs[r->segid] = r->seq;	
+	session->seq_segs[r->segid] = r->seq;
 
 done_processing_request:
 
@@ -2785,7 +3019,7 @@ static int request_set_path(request_t *r, const char* d, char* p, char* pp, char
 	 */
 	if (strstr(path, ".."))
 	{
-		gwarning(FLINE, "reject invalid request from %s [%s %s] - request "
+		gwarning(r, "reject invalid request from %s [%s %s] - request "
 						"is using a relative path",
 						r->peer,
 						r->in.req->argv[0],
@@ -2844,15 +3078,14 @@ static int request_validate(request_t *r)
 	/* parse the HTTP request. Expect "GET /path HTTP/1.X" or "PUT /path HTTP/1.X" */
 	if (r->in.req->argc != 3)
 	{
-		gwarning(FLINE, "reject invalid request from %s", r->peer);
+		gprintln(r, "reject invalid request from %s", r->peer);
 		http_error(r, FDIST_BAD_REQUEST, "invalid request");
 		request_end(r, 1, 0);
 		return -1;
 	}
 	if (0 != strncmp("HTTP/1.", r->in.req->argv[2], 7))
 	{
-		gwarning(FLINE, "reject invalid protocol from %s [%s]", r->peer,
-				r->in.req->argv[2]);
+		gprintln(r, "reject invalid protocol from %s [%s]", r->peer, r->in.req->argv[2]);
 		http_error(r, FDIST_BAD_REQUEST, "invalid request");
 		request_end(r, 1, 0);
 		return -1;
@@ -2860,7 +3093,7 @@ static int request_validate(request_t *r)
 	if (0 != strcmp("GET", r->in.req->argv[0]) &&
 		0 != strcmp("POST", r->in.req->argv[0]))
 	{
-		gwarning(FLINE, "reject invalid request from %s [%s %s]", r->peer,
+		gprintln(r, "reject invalid request from %s [%s %s]", r->peer,
 				r->in.req->argv[0], r->in.req->argv[1]);
 		http_error(r, FDIST_BAD_REQUEST, "invalid request");
 		request_end(r, 1, 0);
@@ -2936,7 +3169,7 @@ static int request_parse_gp_headers(request_t *r, int opt_g)
 		{
 			if (NULL == r->in.req->hvalue[i] ||  ((int)strlen(r->in.req->hvalue[i])) % 2 == 1 || !base16_decode(r->in.req->hvalue[i]))
 			{
-				gwarning(FLINE, "reject invalid request from %s, invalid EOL encoding: %s", r->peer, r->in.req->hvalue[i]);
+				gwarning(r, "reject invalid request from %s, invalid EOL encoding: %s", r->peer, r->in.req->hvalue[i]);
 				http_error(r, FDIST_BAD_REQUEST, "invalid EOL encoding");
 				request_end(r, 1, 0);
 				return -1;
@@ -2951,11 +3184,11 @@ static int request_parse_gp_headers(request_t *r, int opt_g)
 #endif
 		else if (0 == strcmp("X-GP-SEQ", r->in.req->hname[i]))
 		{
-			r->seq = atol(r->in.req->hvalue[i]); 
+			r->seq = atol(r->in.req->hvalue[i]);
 			/* sequence number starting from 1 */
 			if(r->seq <= 0)
 			{
-				gwarning(FLINE, "reject invalid request from %s, invalid sequence number: %s", r->peer, r->in.req->hvalue[i]);
+				gwarning(r, "reject invalid request from %s, invalid sequence number: %s", r->peer, r->in.req->hvalue[i]);
 				http_error(r, FDIST_BAD_REQUEST, "invalid sequence number");
 				request_end(r, 1, 0);
 				return -1;
@@ -2967,7 +3200,7 @@ static int request_parse_gp_headers(request_t *r, int opt_g)
 	{
 		if (NULL == r->line_delim_str || (((int)strlen(r->line_delim_str)) != r->line_delim_length))
 		{
-			gwarning(FLINE, "reject invalid request from %s, invalid EOL length: %d, EOL: %s", r->peer, r->line_delim_length, r->line_delim_str);
+			gwarning(r, "reject invalid request from %s, invalid EOL length: %d, EOL: %s", r->peer, r->line_delim_length, r->line_delim_str);
 			http_error(r, FDIST_BAD_REQUEST, "invalid EOL length");
 			request_end(r, 1, 0);
 			return -1;
@@ -2977,9 +3210,7 @@ static int request_parse_gp_headers(request_t *r, int opt_g)
 
 	if (r->gp_proto != 0 && r->gp_proto != 1)
 	{
-		gwarning(FLINE,
-				"reject invalid request from %s [%s %s] - X-GP-PROTO "
-				"invalid '%s'",
+		gwarning(r, "reject invalid request from %s [%s %s] - X-GP-PROTO invalid '%s'",
 				r->peer, r->in.req->argv[0], r->in.req->argv[1], gp_proto);
 		http_error(r, FDIST_BAD_REQUEST, "invalid request (invalid gp-proto)");
 		request_end(r, 1, 0);
@@ -2991,14 +3222,11 @@ static int request_parse_gp_headers(request_t *r, int opt_g)
 
 	if (xid && cid && sn)
 	{
-		r->tid = apr_psprintf(r->pool, "%s.%s.%s.%d", xid, cid, sn,
-							  r->gp_proto);
+		r->tid = apr_psprintf(r->pool, "%s.%s.%s.%d", xid, cid, sn, r->gp_proto);
 	}
 	else if (xid || cid || sn)
 	{
-		gwarning(FLINE,
-				 "reject invalid request from %s [%s %s] - missing X-GP-* "
-				 "header",
+		gwarning(r, "reject invalid request from %s [%s %s] - missing X-GP-* header",
 				 r->peer, r->in.req->argv[0], r->in.req->argv[1]);
 		http_error(r, FDIST_BAD_REQUEST, "invalid request (missing X-GP-* header)");
 		request_end(r, 1, 0);
@@ -3060,13 +3288,13 @@ static int request_set_transform(request_t *r)
     {
         if (r->is_get)
         {
-            gwarning(FLINE, "reject invalid request from %s [%s %s] - unsppported input #transform",
+            gprintln(r, "reject invalid request from %s [%s %s] - unsppported input #transform",
                      r->peer, r->in.req->argv[0], r->in.req->argv[1]);
             http_error(r, FDIST_BAD_REQUEST, "invalid request (unsupported input #transform)");
         }
         else
         {
-            gwarning(FLINE, "reject invalid request from %s [%s %s] - unsppported output #transform",
+            gprintln(r, "reject invalid request from %s [%s %s] - unsppported output #transform",
                      r->peer, r->in.req->argv[0], r->in.req->argv[1]);
             http_error(r, FDIST_BAD_REQUEST, "invalid request (unsupported output #transform)");
         }
@@ -3074,7 +3302,7 @@ static int request_set_transform(request_t *r)
         return -1;
     }
 
-	TR(("[%d] transform: %s\n", r->sock, r->trans.name));
+	gprintln(r, "transform: %s", r->trans.name);
 
 	/*
 	 * propagate details for this transformation
@@ -3095,7 +3323,7 @@ static int request_set_transform(request_t *r)
 			char buf[1024];
 			regerror(rc, saferegex, buf, sizeof(buf));
 
-			gwarning(FLINE, "reject invalid request from %s [%s %s] - path does not match safe regex %s: %s",
+			gprintln(r, "reject invalid request from %s [%s %s] - path does not match safe regex %s: %s",
 					 r->peer, r->in.req->argv[0], r->in.req->argv[1], safe, buf);
 			http_error(r, FDIST_BAD_REQUEST, "invalid request (path does not match safe regex)");
 			request_end(r, 1, 0);
@@ -3103,7 +3331,7 @@ static int request_set_transform(request_t *r)
 		}
 		else
 		{
-			TR(("[%d] safe regex %s matches %s\n", r->sock, safe, r->path));
+			gdebug(r, "[%d] safe regex %s matches %s", r->sock, safe, r->path);
 		}
 	}
 
@@ -3122,7 +3350,7 @@ static int request_set_transform(request_t *r)
 
 		if ((rv = apr_temp_dir_get(&tempdir, mp)) != APR_SUCCESS)
 		{
-			gwarning(FLINE, "request failed from %s [%s %s] - failed to get temporary directory for stderr",
+			gprintln(r, "request failed from %s [%s %s] - failed to get temporary directory for stderr",
 					 r->peer, r->in.req->argv[0], r->in.req->argv[1]);
 			http_error(r, FDIST_INTERNAL_ERROR, "internal error");
 			request_end(r, 1, 0);
@@ -3132,14 +3360,14 @@ static int request_set_transform(request_t *r)
 		tempfilename = apr_pstrcat(mp, tempdir, "/stderrXXXXXX", NULL);
 		if ((rv = apr_file_mktemp(&f, tempfilename, APR_CREATE|APR_WRITE|APR_EXCL, mp)) != APR_SUCCESS)
 		{
-			gwarning(FLINE, "request failed from %s [%s %s] - failed to create temporary file for stderr",
+			gprintln(r, "request failed from %s [%s %s] - failed to create temporary file for stderr",
 					 r->peer, r->in.req->argv[0], r->in.req->argv[1]);
 			http_error(r, FDIST_INTERNAL_ERROR, "internal error");
 			request_end(r, 1, 0);
 			return -1;
 		}
 
-		TR(("[%d] request opened stderr file %s\n", r->sock, tempfilename));
+		gdebug(r, "[%d] request opened stderr file %s\n", r->sock, tempfilename);
 
 		r->trans.errfilename = tempfilename;
 		r->trans.errfile	 = f;
@@ -3148,7 +3376,6 @@ static int request_set_transform(request_t *r)
     return 0;
 }
 #endif
-
 
 /*
  * gpfdist main
@@ -3166,11 +3393,11 @@ int gpfdist_init(int argc, const char* const argv[])
 	 * Comment
 	 */
 	if (0 != apr_app_initialize(&argc, &argv, 0))
-		gfatal(FLINE, "apr_app_initialize failed");
+		gfatal(NULL, "apr_app_initialize failed");
 	atexit(apr_terminate);
 
 	if (0 != apr_pool_create(&gcb.pool, 0))
-		gfatal(FLINE, "apr_app_initialize failed");
+		gfatal(NULL, "apr_app_initialize failed");
 
 	apr_signal_init(gcb.pool);
 
@@ -3533,7 +3760,7 @@ static SSL_CTX *initialize_ctx(void)
 
 	/* Generate random seed */
 	if ( RAND_poll() == 0 )
-		gfatal(FLINE,"Can't generate random seed for SSL");
+		gfatal(NULL,"Can't generate random seed for SSL");
 
 	/* The size of the string will consist of the path and the filename (the longest one) */
 	// +1 for the '/' charachter (/filename)
@@ -3543,7 +3770,7 @@ static SSL_CTX *initialize_ctx(void)
 	fileName = (char *) calloc( (stringSize), sizeof(char) );
 	if ( fileName == NULL )
 	{
-		gfatal (FLINE,"Unable to allocate memory for SSL initialization");
+		gfatal (NULL,"Unable to allocate memory for SSL initialization");
 	}
 
 #ifdef WIN32
@@ -3558,13 +3785,13 @@ static SSL_CTX *initialize_ctx(void)
 	/* Load our keys and certificates*/
 	if (!(SSL_CTX_use_certificate_chain_file(ctx,fileName)))
 	{
-		gfatal(FLINE,"Unable to load the certificate from file: \"%s\"", fileName);
+		gfatal(NULL,"Unable to load the certificate from file: \"%s\"", fileName);
 	}
 	else
 	{
 		if ( opt.v )
 		{
-			gprint("The certificate was successfully loaded from \"%s\"\n",fileName);
+			gprint(NULL, "The certificate was successfully loaded from \"%s\"\n",fileName);
 		}
 	}
 
@@ -3573,13 +3800,13 @@ static SSL_CTX *initialize_ctx(void)
 
 	if (!(SSL_CTX_use_PrivateKey_file(ctx,fileName,SSL_FILETYPE_PEM)))
 	{
-		gfatal (FLINE,"Unable to load the private key from file: \"%s\"", fileName);
+		gfatal (NULL,"Unable to load the private key from file: \"%s\"", fileName);
 	}
 	else
 	{
 		if ( opt.v )
 		{
-			gprint("The private key was successfully loaded from \"%s\"\n",fileName);
+			gprint(NULL, "The private key was successfully loaded from \"%s\"\n",fileName);
 		}
 	}
 
@@ -3589,13 +3816,13 @@ static SSL_CTX *initialize_ctx(void)
 	/* Load the CAs we trust*/
 	if (!(SSL_CTX_load_verify_locations(ctx, fileName,0)))
 	{
-		gfatal (FLINE,"Unable to to load CA from file: \"%s\"", fileName);
+		gfatal (NULL,"Unable to to load CA from file: \"%s\"", fileName);
 	}
 	else
 	{
 		if ( opt.v )
 		{
-			gprint("The CA file successfully loaded from \"%s\"\n",fileName);
+			gprint(NULL, "The CA file successfully loaded from \"%s\"\n",fileName);
 		}
 	}
 
@@ -3661,7 +3888,7 @@ static int gpfdist_SSL_send(const request_t *r, const void *buf, const size_t bu
 				/* This error will be handled in the calling function, do not print it here	*/
 				if (errno != EPIPE)
 				{
-					gwarning(FLINE, "Error during SSL gpfdist_send (Error = %d. errno = %d)", SSL_get_error(r->ssl,n), (int)errno);
+					gwarning(r, "Error during SSL gpfdist_send (Error = %d. errno = %d)", SSL_get_error(r->ssl,n), (int)errno);
 					ERR_print_errors(gcb.bio_err);
 				}
 			}
@@ -3718,7 +3945,7 @@ static void free_SSL_resources(const request_t *r)
  */
 static void handle_ssl_error(SOCKET sock, BIO *sbio, SSL *ssl)
 {
-	gwarning(FLINE, "SSL accept failed");
+	gwarning(NULL, "SSL accept failed");
 	if (opt.v)
 	{
 		ERR_print_errors(gcb.bio_err);
@@ -3741,7 +3968,7 @@ static void flush_ssl_buffer(int fd, short event, void* arg)
 
 	if ( event & EV_TIMEOUT )
 	{
-		gwarning(FLINE,"Buffer flush timeout");
+		gwarning(r, "Buffer flush timeout");
 	}
 
 	if ( BIO_wpending(r->io) )
@@ -3757,7 +3984,7 @@ static void flush_ssl_buffer(int fd, short event, void* arg)
 		// So, even if the BIO_wpending() shows that there is no more pending data in the BIO_SSL buffer,
 		// we might still have data in the socket's buffer that wasn't sent yet.
 
-		TR(("[%s] [%d] SSL cleanup started\n", datetime(), r->sock));
+		gdebug(r, "SSL cleanup started");
 
 		event_del(&r->ev);
 		evtimer_set(&r->ev, request_cleanup_and_free_SSL_resources, r);
@@ -3782,45 +4009,78 @@ static void setup_flush_ssl_buffer(request_t* r)
 	(void)event_add(&r->ev, &r->tm);
 }
 
+
+/*
+ * log unsent/unacked bytes in socket buffer.
+ */
+static int get_unsent_bytes(request_t* r)
+{
+	int unsent_bytes = -1;
+#ifdef __linux__
+	int ret = ioctl(r->sock, TIOCOUTQ, &unsent_bytes);
+	if (ret < 0)
+	{
+		gwarning(r, "failed to use ioctl to get unsent bytes");
+	}
+#endif
+	return unsent_bytes;
+}
+
+static void log_unsent_bytes(request_t* r)
+{
+	gprintlnif(r, "unsent bytes: %d (-1 means not supported)", get_unsent_bytes(r));
+}
+
 /*
  * call close after timeout or EV_READ ready.
  */
-static void do_close(int fd, short event, void *arg) 
+static void do_close(int fd, short event, void *arg)
 {
 	request_t *r		= (request_t *) arg;
 	char buffer[256]	= {0};
 
-	if (event & EV_TIMEOUT) 
+	if (event & EV_TIMEOUT)
 	{
-		gwarning(FLINE, "[%s] [%s:%ld:%d]: gpfdist shutdown the connection, while have not received response from segment",
-				datetime(), GET_SID(r), r->id, r->sock);
+		gwarning(r, "gpfdist shutdown the connection, while have not received response from segment");
 	}
 
 	int ret = read(r->sock, buffer, sizeof(buffer) - 1);
-	if (ret < 0) 
+	if (ret < 0)
 	{
-		gwarning(FLINE, "[%s] [%s:%ld:%d]: gpfdist read error after shutdown. errno: %d, msg: %s", 
-				datetime(), GET_SID(r), r->id, r->sock, errno, strerror(errno));
-	} 
-	else if (ret == 0) 
+		gwarning(r, "gpfdist read error after shutdown. errno: %d, msg: %s", errno, strerror(errno));
+
+#ifdef WIN32
+		int e = WSAGetLastError();
+		bool should_retry = (e == WSAEINTR || e == WSAEWOULDBLOCK);
+#else
+		int e = errno;
+		bool should_retry = (e == EINTR || e == EAGAIN);
+#endif
+		if (should_retry)
+		{
+			setup_do_close(r);
+			return;
+		}
+	}
+	else if (ret == 0)
 	{
-		TR(("[%s] [%s:%ld:%d] peer closed after gpfdist shutdown\n", datetime(), GET_SID(r), r->id, r->sock));
-	} 
-	else 
+		gprintlnif(r, "peer closed after gpfdist shutdown");
+	}
+	else
 	{
-		gwarning(FLINE, "[%s] [%s:%ld:%d]: gpfdist read unexpected data after shutdown %s", 
-				datetime(), GET_SID(r), r->id, r->sock, buffer);
+		gwarning(r, "gpfdist read unexpected data after shutdown %s", buffer);
 	}
 
+	log_unsent_bytes(r);
+
 	ret = closesocket(r->sock);
-	if (ret == 0) 
+	if (ret == 0)
 	{
-		TR(("[%s] [%s:%ld:%d] successfully closed socket\n", datetime(), GET_SID(r), r->id, r->sock));
-	} 
-	else 
+		gprintlnif(r, "successfully closed socket");
+	}
+	else
 	{
-		TR(("[%s] [%s:%ld:%d] failed to close socket. errno: %d, msg: %s\n", 
-				datetime(), GET_SID(r), r->id, r->sock, errno, strerror(errno)));
+		gwarning(r, "failed to close socket. errno: %d, msg: %s", errno, strerror(errno));
 	}
 
 	event_del(&r->ev);
@@ -3841,19 +4101,27 @@ static void request_cleanup(request_t *r)
 	int ret = shutdown(r->sock, SHUT_WR);
 	if (ret == 0)
 	{
-		TR(("[%s] [%s:%ld:%d] successfully shutdown socket\n", datetime(), GET_SID(r), r->id, r->sock));
+		gprintlnif(r, "successfully shutdown socket");
 	}
 	else
 	{
-		TR(("[%s] [%s:%ld:%d] failed to shutdown socket. errno: %d, msg: %s\n", 
-				datetime(), GET_SID(r), r->id, r->sock, errno, strerror(errno))); 
+		gprintln(r, "failed to shutdown socket, errno: %d, msg: %s", errno, strerror(errno));
 	}
 
+	setup_do_close(r);
+}
+
+static void setup_do_close(request_t* r)
+{
+	event_del(&r->ev);
 	event_set(&r->ev, r->sock, EV_READ, do_close, r);
 
 	r->tm.tv_sec = 60;
 	r->tm.tv_usec = 0;
-	event_add(&r->ev, &r->tm);
+	if (0 != event_add(&r->ev, &r->tm))
+	{
+		gfatal(r, "failed to event_add!");
+	}
 }
 
 
@@ -3865,7 +4133,7 @@ static void request_cleanup_and_free_SSL_resources(int fd, short event, void* ar
 {
 	request_t *r = (request_t *)arg;
 
-	TR(("[%s] [%d] SSL cleanup ended\n", datetime(), r->sock));
+	gprintln(r, "SSL cleanup ended");
 
 	/* Clean up request resources */
 	request_cleanup(r);
@@ -3876,21 +4144,20 @@ static void request_cleanup_and_free_SSL_resources(int fd, short event, void* ar
 
 
 /*
- * free_session_cb 
+ * free_session_cb
  * The callback function of session timer
  */
 static void free_session_cb(int fd, short event, void* arg)
 {
-	session_t* session = (session_t *)arg; 
+	session_t* session = (session_t *)arg;
 	/*
-	 * free the session if there's no POST request from other 
-	 * segments since the timer get started.  
+	 * free the session if there's no POST request from other
+	 * segments since the timer get started.
 	 */
-	if (!session->is_get && 
+	if (!session->is_get &&
 		session->nrequest == 0 &&
-		session_active_segs_isempty(session)) 
+		session_active_segs_isempty(session))
 	{
-		session_free(session); 
+		session_free(session);
 	}
 }
-

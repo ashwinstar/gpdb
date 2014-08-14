@@ -577,7 +577,8 @@ fill_buffer(URL_FILE *file, int want)
 
 			if (timeout_count % 12 == 0)
 			{
-				elog(LOG, "suspected intermittent network connectivity issue, continuing to wait for recovery.");
+				elog(LOG, "segment has not received data from gpfdist for about 1 minute, waiting for %d bytes.",
+					 (want - (curl->in.top - curl->in.bot)));
 			}
 
 			if (readable_external_table_timeout != 0 && timeout_count * 5 > readable_external_table_timeout)
@@ -593,7 +594,7 @@ fill_buffer(URL_FILE *file, int want)
 						  curl->for_write, curl->error, curl->eof, curl->block.datalen,
 						  num_easy, num_alive);
 				get_gpfdist_status(file);
-				elog(ERROR, "suspected intermittent network connectivity issue, cancelling the query.");
+				elog(ERROR, "segment has not received data from gpfdist for long time, cancelling the query.");
 				break;
 			} 
 		} 
