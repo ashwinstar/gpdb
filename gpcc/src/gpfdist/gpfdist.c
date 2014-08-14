@@ -2479,7 +2479,7 @@ gnet_parse_request(const char* buf, int* len, apr_pool_t* pool)
 	int empty, completed;
 	const char* p;
 	char* line;
-	char* last;
+	char* last = NULL;
 	char* colon;
 	gnet_request_t* req = 0;
 
@@ -2518,10 +2518,8 @@ gnet_parse_request(const char* buf, int* len, apr_pool_t* pool)
 
 	/* for first line */
 	line = apr_strtok(line, "\n", &last);
-
 	if (!line)
 		line = apr_pstrdup(pool, "");
-
 	line = gstring_trim(line);
 
 	if (0 != apr_tokenize_to_argv(line, &req->argv, pool))
@@ -2570,6 +2568,8 @@ gnet_parse_request(const char* buf, int* len, apr_pool_t* pool)
 		req->hc++;
 
 		if (req->hc >= sizeof(req->hname) / sizeof(req->hname[0]))
+			break;
+		if (last == NULL)
 			break;
 	}
 
