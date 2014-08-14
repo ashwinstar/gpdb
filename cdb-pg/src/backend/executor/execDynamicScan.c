@@ -390,6 +390,14 @@ DynamicScan_CreateIterator(ScanState *scanState, Scan *scan)
 	Assert(NULL != estate);
 
 	DynamicTableScanInfo *partitionInfo = estate->dynamicTableScanInfo;
+
+	/*
+	 * Ensure that the dynahash exists even if the partition selector
+	 * didn't choose any partition for current scan node [MPP-24169].
+	 */
+	InsertPidIntoDynamicTableScanInfo(scan->partIndex, InvalidOid);
+
+	Assert(NULL != estate->dynamicTableScanInfo->pidIndexes);
 	Assert(partitionInfo->numScans >= scan->partIndex);
 	Assert(NULL == partitionInfo->iterators[scan->partIndex - 1]);
 
@@ -406,6 +414,7 @@ DynamicScan_CreateIterator(ScanState *scanState, Scan *scan)
 			 ALLOCSET_DEFAULT_INITSIZE,
 			 ALLOCSET_DEFAULT_MAXSIZE);
 	iterator->partitionOids = partitionInfo->pidIndexes[scan->partIndex - 1];
+	Assert(iterator->partitionOids != NULL);
 	iterator->attMap = NULL;
 	iterator->shouldCallHashSeqTerm = true;
 

@@ -256,12 +256,16 @@ setPidIndex(DynamicIndexScanState *node)
 	EState *estate = indexState->ss.ps.state;
 	DynamicIndexScan *plan = (DynamicIndexScan *)indexState->ss.ps.plan;
 	Assert(estate->dynamicTableScanInfo != NULL);
-	
-	if (estate->dynamicTableScanInfo->pidIndexes != NULL)
-	{
-		Assert(estate->dynamicTableScanInfo->numScans >= plan->scan.partIndex);
-		node->pidxIndex = estate->dynamicTableScanInfo->pidIndexes[plan->scan.partIndex - 1];
-	}
+	/*
+	 * Ensure that the dynahash exists even if the partition selector
+	 * didn't choose any partition for current scan node [MPP-24169].
+	 */
+	InsertPidIntoDynamicTableScanInfo(plan->scan.partIndex, InvalidOid);
+
+	Assert(NULL != estate->dynamicTableScanInfo->pidIndexes);
+	Assert(estate->dynamicTableScanInfo->numScans >= plan->scan.partIndex);
+	node->pidxIndex = estate->dynamicTableScanInfo->pidIndexes[plan->scan.partIndex - 1];
+	Assert(node->pidxIndex != NULL);
 
 	if (optimizer_partition_selection_log)
 	{
@@ -288,11 +292,7 @@ ExecDynamicIndexScan(DynamicIndexScanState *node)
 	if (node->pidxIndex == NULL)
 	{
 		setPidIndex(node);
-
-		if (node->pidxIndex == NULL)
-		{
-			return NULL;
-		}
+		Assert(node->pidxIndex != NULL);
 		
 		hash_seq_init(&node->pidxStatus, node->pidxIndex);
 		node->shouldCallHashSeqTerm = true;

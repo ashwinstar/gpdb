@@ -110,7 +110,9 @@ createPidIndex(int index)
 /*
  * InsertPidIntoDynamicTableScanInfo
  * 		Inserts a partition oid into the dynamicTableScanInfo's
- * 		pidIndexes at the provided index.
+ * 		pidIndexes at the provided index. If partOid is an invalid
+ * 		oid, it doesn't insert that, but ensures that the dynahash
+ * 		exists at the index position in dynamicTableScanInfo.
  */
 void
 InsertPidIntoDynamicTableScanInfo(int32 index, Oid partOid)
@@ -136,13 +138,16 @@ InsertPidIntoDynamicTableScanInfo(int32 index, Oid partOid)
 
 	Assert(dynamicTableScanInfo->pidIndexes[index - 1] != NULL);
 	
+	if (partOid != InvalidOid)
+	{
 #ifdef USE_ASSERT_CHECKING
-	Oid *pidInHash = 
+		Oid *pidInHash =
 #endif
-		hash_search(dynamicTableScanInfo->pidIndexes[index - 1],
-					&partOid, HASH_ENTER, NULL /* foundPtr */);
-	
-	Assert(*pidInHash == partOid);
+			hash_search(dynamicTableScanInfo->pidIndexes[index - 1],
+						&partOid, HASH_ENTER, NULL /* foundPtr */);
+
+		Assert(*pidInHash == partOid);
+	}
 
 	MemoryContextSwitchTo(oldCxt);
 }
