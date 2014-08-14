@@ -12,6 +12,7 @@
 #include "cdb/cdbpartition.h"
 #include "executor/execDynamicScan.h"
 #include "executor/nodeIndexscan.h"
+#include "executor/instrument.h"
 #include "executor/execIndexscan.h"
 #include "parser/parsetree.h"
 #include "utils/memutils.h"
@@ -328,6 +329,13 @@ DynamicScan_InitNextPartition(ScanState *scanState, PartitionInitMethod *partiti
 	{
 		Assert(SCAN_DONE == scanState->scan_state);
 		return false;
+	}
+
+	/* Collect number of partitions scanned in EXPLAIN ANALYZE */
+	if(NULL != scanState->ps.instrument)
+	{
+		Instrumentation *instr = scanState->ps.instrument;
+		instr->numPartScanned ++;
 	}
 
 	DynamicScan_UpdateIteratorPartitionState(iterator, partOid);

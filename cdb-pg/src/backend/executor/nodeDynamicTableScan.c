@@ -11,6 +11,7 @@
 #include "postgres.h"
 
 #include "executor/executor.h"
+#include "executor/instrument.h"
 #include "nodes/execnodes.h"
 #include "executor/nodeDynamicTableScan.h"
 #include "utils/hsearch.h"
@@ -89,6 +90,13 @@ initNextTableToScan(DynamicTableScanState *node)
 			return false;
 		}
 		
+		/* Collect number of partitions scanned in EXPLAIN ANALYZE */
+		if (NULL != scanState->ps.instrument)
+		{
+			Instrumentation *instr = scanState->ps.instrument;
+			instr->numPartScanned ++;
+		}
+
 		/*
 		 * Inside ExecInitScanTupleSlot() we set the tuple table slot's oid
 		 * to range table entry's relid, which for partitioned table always set

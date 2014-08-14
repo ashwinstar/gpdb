@@ -26,6 +26,7 @@ InstrAlloc(int n)
 	Instrumentation *instr = palloc0(n * sizeof(Instrumentation));
 
 	/* we don't need to do any initialization except zero 'em */
+	instr->numPartScanned = 0;
 
 	return instr;
 }

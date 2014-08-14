@@ -2364,6 +2364,51 @@ all_partition_relids(PartitionNode *pn)
 	}
 }
 
+/* Return the pg_class Oids of the relations representing leaf parts of the
+ * PartitionNode tree headed by the argument PartitionNode.
+ *
+ * The caller should be responsible for freeing the list after
+ * using it.
+ */
+List *
+all_leaf_partition_relids(PartitionNode *pn)
+{
+	if (NULL == pn)
+	{
+		return NIL;
+	}
+
+	ListCell *lc;
+	List *leaf_relids = NIL;
+
+	foreach(lc, pn->rules)
+	{
+		PartitionRule *rule = lfirst(lc);
+		if (NULL != rule->children)
+		{
+			leaf_relids = list_concat(leaf_relids, all_leaf_partition_relids(rule->children));
+		}
+		else
+		{
+			leaf_relids = lappend_oid(leaf_relids, rule->parchildrelid);
+		}
+
+	}
+	if (NULL != pn->default_part)
+	{
+		if (NULL != pn->default_part->children)
+		{
+			leaf_relids = list_concat(leaf_relids,
+							  all_leaf_partition_relids(pn->default_part->children));
+		}
+		else
+		{
+			leaf_relids = lappend_oid(leaf_relids, pn->default_part->parchildrelid);
+		}
+	}
+	return leaf_relids;
+}
+
 /* Return the pg_class Oids of the relations representing the parts
  * of the PartitionRule tree headed by the argument PartitionRule.
  *

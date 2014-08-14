@@ -13,6 +13,7 @@
 #include "postgres.h"
 
 #include "executor/executor.h"
+#include "executor/instrument.h"
 #include "nodes/execnodes.h"
 #include "executor/execIndexscan.h"
 #include "executor/nodeIndexscan.h"
@@ -155,6 +156,13 @@ initNextIndexToScan(DynamicIndexScanState *node)
 			/* Return if all parts have been scanned. */
 			node->shouldCallHashSeqTerm = false;
 			return false;
+		}
+
+		/* Collect number of partitions scanned in EXPLAIN ANALYZE */
+		if(NULL != indexState->ss.ps.instrument)
+		{
+			Instrumentation *instr = indexState->ss.ps.instrument;
+			instr->numPartScanned ++;
 		}
 
 		DynamicIndexScan_ReMapColumns(node, *pid);

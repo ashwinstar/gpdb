@@ -13,6 +13,7 @@
 #include "cdb/cdbconn.h"                /* SegmentDatabaseDescriptor */
 #include "cdb/cdbdispatchresult.h"      /* CdbDispatchResults */
 #include "cdb/cdbexplain.h"             /* me */
+#include "cdb/cdbpartition.h"
 #include "cdb/cdbvars.h"                /* Gp_segment */
 #include "executor/executor.h"          /* ExecStateTreeWalker */
 #include "executor/instrument.h"        /* Instrumentation */
@@ -25,6 +26,7 @@
 #include "cdb/cdbgang.h"
 #include "inttypes.h"
 #include "utils/vmem_tracker.h"
+#include "parser/parsetree.h"
 
 /* EXPLAIN ANALYZE statistics for one plan node of a slice */
 typedef struct CdbExplain_StatInst
@@ -45,6 +47,7 @@ typedef struct CdbExplain_StatInst
 	bool        workfileCreated;/* workfile created in this node */
 	instr_time	firststart;		/* Start time of first iteration of node */
 	double		peakMemBalance; /* Max mem account balance */
+	int		numPartScanned; /* Number of part tables scanned */
     int         bnotes;         /* Offset to beginning of node's extra text */
     int         enotes;         /* Offset to end of node's extra text */
 } CdbExplain_StatInst;
@@ -108,6 +111,8 @@ typedef struct CdbExplain_NodeSummary
 	CdbExplain_Agg  totalWorkfileReused;
 	CdbExplain_Agg  totalWorkfileCreated;
     CdbExplain_Agg  peakMemBalance;
+    /* Used for DynamicTableScan, DynamicIndexScan and DynamicBitmapTableScan */
+    CdbExplain_Agg  totalPartTableScanned;
 
     /* insts array info */
     int             segindex0;      /* segment id of insts[0] */
@@ -242,6 +247,8 @@ static void
 cdbexplain_depositStatsToNode(PlanState *planstate, CdbExplain_RecvStatCtx *ctx);
 static int
 cdbexplain_collectExtraText(PlanState *planstate, StringInfo notebuf);
+static int
+cdbexplain_countLeafPartTables(PlanState *planstate);
 
 
 /*
@@ -816,6 +823,7 @@ cdbexplain_collectStatsFromNode(PlanState *planstate, CdbExplain_SendStatCtx *ct
     si->workfileCreated  = instr->workfileCreated;
 	si->peakMemBalance	 = MemoryAccounting_GetPeak(planstate->plan->memoryAccount);
 	si->firststart      = instr->firststart;
+	si->numPartScanned = instr->numPartScanned;
 }                               /* cdbexplain_collectStatsFromNode */
 
 
@@ -940,6 +948,7 @@ cdbexplain_depositStatsToNode(PlanState *planstate, CdbExplain_RecvStatCtx *ctx)
     CdbExplain_DepStatAcc		vmem_reserved;
     CdbExplain_DepStatAcc		memory_accounting_global_peak;
     CdbExplain_DepStatAcc       peakMemBalance;
+    CdbExplain_DepStatAcc       totalPartTableScanned;
     int                         imsgptr;
     int                         nInst;
 
@@ -967,6 +976,7 @@ cdbexplain_depositStatsToNode(PlanState *planstate, CdbExplain_RecvStatCtx *ctx)
 	cdbexplain_depStatAcc_init0(&totalWorkfileReused);
 	cdbexplain_depStatAcc_init0(&totalWorkfileCreated);
     cdbexplain_depStatAcc_init0(&peakMemBalance);
+    cdbexplain_depStatAcc_init0(&totalPartTableScanned);
 
     /* Initialize per-slice accumulators. */
     cdbexplain_depStatAcc_init0(&peakmemused);
@@ -1013,6 +1023,7 @@ cdbexplain_depositStatsToNode(PlanState *planstate, CdbExplain_RecvStatCtx *ctx)
 		cdbexplain_depStatAcc_upd(&totalWorkfileReused, (rsi->workfileReused ? 1 : 0), rsh, rsi, nsi);
 		cdbexplain_depStatAcc_upd(&totalWorkfileCreated, (rsi->workfileCreated ? 1 : 0), rsh, rsi, nsi);
         cdbexplain_depStatAcc_upd(&peakMemBalance, rsi->peakMemBalance, rsh, rsi, nsi);
+        cdbexplain_depStatAcc_upd(&totalPartTableScanned, rsi->numPartScanned, rsh, rsi, nsi);
 
         /* Update per-slice accumulators. */
         cdbexplain_depStatAcc_upd(&peakmemused, rsh->worker.peakmemused, rsh, rsi, nsi);
@@ -1028,6 +1039,7 @@ cdbexplain_depositStatsToNode(PlanState *planstate, CdbExplain_RecvStatCtx *ctx)
 	ns->totalWorkfileReused = totalWorkfileReused.agg;
 	ns->totalWorkfileCreated = totalWorkfileCreated.agg;
     ns->peakMemBalance = peakMemBalance.agg;
+    ns->totalPartTableScanned = totalPartTableScanned.agg;
 
     /* Roll up summary over all nodes of slice into RecvStatCtx. */
     ctx->workmemused_max = Max(ctx->workmemused_max, workmemused.agg.vmax);
@@ -1626,6 +1638,73 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
     }
 	
     /*
+     * Print number of partitioned tables scanned for dynamic scans.
+     */
+    if (0 < ns->totalPartTableScanned.vcnt)
+    {
+    	double nPartTableScanned_avg = cdbexplain_agg_avg(&ns->totalPartTableScanned);
+    	cdbexplain_formatSeg(segbuf, sizeof(segbuf), ns->totalPartTableScanned.imax, ns->ninst);
+    	int numTotalLeafParts = cdbexplain_countLeafPartTables(planstate);
+    	appendStringInfoFill(str, 2 * indent, ' ');
+
+    	/* only 1 segment scans partitions */
+    	if (1 == ns->totalPartTableScanned.vcnt)
+    	{
+    		/* rescan */
+    		if (1 < instr->nloops)
+    		{
+    			double totalPartTableScannedPerRescan = ns->totalPartTableScanned.vmax / instr->nloops;
+    			appendStringInfo(str,
+    			    		"Partitions scanned:  %.0f (out of %d) %s of %.0f scans.\n",
+    			    		totalPartTableScannedPerRescan,
+    			    		numTotalLeafParts,
+    			    		segbuf,
+    			    		instr->nloops);
+    		}
+    		else
+    		{
+    			appendStringInfo(str,
+    						"Partitions scanned:  %.0f (out of %d) %s.\n",
+    						ns->totalPartTableScanned.vmax,
+    						numTotalLeafParts,
+    						segbuf);
+    		}
+
+    	}
+    	else
+    	{
+    		/* rescan */
+    		if (1 < instr->nloops)
+    		{
+    			double totalPartTableScannedPerRescan = nPartTableScanned_avg / instr->nloops;
+    			double maxPartTableScannedPerRescan = ns->totalPartTableScanned.vmax / instr->nloops;
+    			appendStringInfo(str,
+    						"Partitions scanned:  Avg %.1f (out of %d) x %d workers of %.0f scans."
+    						"  Max %.0f parts%s.\n",
+    						totalPartTableScannedPerRescan,
+    						numTotalLeafParts,
+    						ns->totalPartTableScanned.vcnt,
+    						instr->nloops,
+    						maxPartTableScannedPerRescan,
+    						segbuf
+    						);
+    		}
+    		else
+    		{
+    			appendStringInfo(str,
+    						"Partitions scanned:  Avg %.1f (out of %d) x %d workers."
+    						"  Max %.0f parts%s.\n",
+    						nPartTableScanned_avg,
+    						numTotalLeafParts,
+    						ns->totalPartTableScanned.vcnt,
+    						ns->totalPartTableScanned.vmax,
+    						segbuf);
+    		}
+
+    	}
+    }
+	
+    /*
      * Extra message text.
      */
     for (i = 0; i < ns->ninst; i++)
@@ -1933,3 +2012,22 @@ cdbexplain_showExecStatsEnd(struct PlannedStmt *stmt,
         appendStringInfoChar(str, '\n');
     }
 }                               /* cdbexplain_showExecStatsEnd */
+
+static int
+cdbexplain_countLeafPartTables(PlanState *planstate)
+{
+	Assert (IsA(planstate, DynamicTableScanState) || IsA(planstate, DynamicIndexScanState)
+	        || IsA(planstate, BitmapTableScanState));
+	Scan *scan = (Scan *) planstate->plan;
+
+	Oid root_oid = getrelid(scan->scanrelid, planstate->state->es_range_table);
+	Assert (rel_is_partitioned(root_oid));
+
+	PartitionNode *pn = get_parts(root_oid, 0 /* level */, 0 /* parent */, false /* inctemplate */,
+	                              CurrentMemoryContext);
+	List *lRelOids = all_leaf_partition_relids(pn);
+	Assert (list_length(lRelOids) > 0);
+	int count = list_length(lRelOids);
+	list_free(lRelOids);
+	return count;
+}
