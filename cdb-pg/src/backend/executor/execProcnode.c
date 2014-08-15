@@ -1231,46 +1231,44 @@ MultiExecProcNode(PlanState *node)
 
 	CHECK_FOR_INTERRUPTS();
 
+	Assert(NULL != node->plan);
+
 	START_MEMORY_ACCOUNT(node->plan->memoryAccount);
 	{
-
-	if(node->plan)
 		PG_TRACE5(execprocnode__enter, Gp_segment, currentSliceId, nodeTag(node), node->plan->plan_node_id, node->plan->plan_parent_node_id);
 
-	if (node->chgParam != NULL) /* something changed */
-		ExecReScan(node, NULL); /* let ReScan handle this */
+		if (node->chgParam != NULL) /* something changed */
+			ExecReScan(node, NULL); /* let ReScan handle this */
 
-	switch (nodeTag(node))
-	{
-			/*
-			 * Only node types that actually support multiexec will be listed
-			 */
+		switch (nodeTag(node))
+		{
+				/*
+				 * Only node types that actually support multiexec will be listed
+				 */
 
-		case T_HashState:
-			result = MultiExecHash((HashState *) node);
-			break;
+			case T_HashState:
+				result = MultiExecHash((HashState *) node);
+				break;
 
-		case T_BitmapIndexScanState:
-			result = MultiExecBitmapIndexScan((BitmapIndexScanState *) node);
-			break;
+			case T_BitmapIndexScanState:
+				result = MultiExecBitmapIndexScan((BitmapIndexScanState *) node);
+				break;
 
-		case T_BitmapAndState:
-			result = MultiExecBitmapAnd((BitmapAndState *) node);
-			break;
+			case T_BitmapAndState:
+				result = MultiExecBitmapAnd((BitmapAndState *) node);
+				break;
 
-		case T_BitmapOrState:
-			result = MultiExecBitmapOr((BitmapOrState *) node);
-			break;
+			case T_BitmapOrState:
+				result = MultiExecBitmapOr((BitmapOrState *) node);
+				break;
 
-		default:
-			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
-			result = NULL;
-			break;
-	}
+			default:
+				elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
+				result = NULL;
+				break;
+		}
 
-	if(node->plan)
 		PG_TRACE5(execprocnode__exit, Gp_segment, currentSliceId, nodeTag(node), node->plan->plan_node_id, node->plan->plan_parent_node_id);
-
 	}
 	END_MEMORY_ACCOUNT();
 	return result;

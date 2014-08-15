@@ -259,6 +259,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		/* sanity checks: queryDesc must not be started already */
 		Assert(queryDesc != NULL);
 		Assert(queryDesc->estate == NULL);
+		Assert(queryDesc->plannedstmt != NULL);
 
 		Assert(queryDesc->plannedstmt->intoPolicy == NULL
 			   || queryDesc->plannedstmt->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
@@ -465,7 +466,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		{
 
 			/* qDisp should have sent us a slice table via MPPEXEC */
-			if (queryDesc->plannedstmt != NULL && queryDesc->plannedstmt->sliceTable != NULL)
+			if (queryDesc->plannedstmt->sliceTable != NULL)
 			{
 				SliceTable *sliceTable;
 				Slice	   *slice;

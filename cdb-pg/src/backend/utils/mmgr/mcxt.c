@@ -717,7 +717,7 @@ MemoryContextStats_recur(MemoryContext topContext, MemoryContext rootContext,
 				cumMaxHeld = maxHeld;
 
 				/* Move new name into previous name */
-				strncpy(prevChildName, name, MAX_CONTEXT_NAME_SIZE);
+				strncpy(prevChildName, name, MAX_CONTEXT_NAME_SIZE - 1);
 
 				/* The current one is the sole sibling */
 				siblingCount = 1;
