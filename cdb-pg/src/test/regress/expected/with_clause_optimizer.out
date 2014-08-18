@@ -55,15 +55,15 @@ from my_group_sum gs1, my_group_sum gs2
 where gs1.i = gs2.i + 1;
  i | total | total 
 ---+-------+-------
- 4 |   130 |   120
- 2 |   110 |   100
- 8 |   170 |   160
- 6 |   150 |   140
  3 |   120 |   110
- 7 |   160 |   150
- 1 |   100 |    90
- 9 |   180 |   170
  5 |   140 |   130
+ 9 |   180 |   170
+ 1 |   100 |    90
+ 7 |   160 |   150
+ 2 |   110 |   100
+ 6 |   150 |   140
+ 8 |   170 |   160
+ 4 |   130 |   120
 (9 rows)
 
 select gs1.i, gs1.total, gs2.total
@@ -72,15 +72,15 @@ from (select i, sum(value) as total from with_test1 group by i) gs1,
 where gs1.i = gs2.i + 1;
  i | total | total 
 ---+-------+-------
- 3 |   120 |   110
- 7 |   160 |   150
- 1 |   100 |    90
- 9 |   180 |   170
- 5 |   140 |   130
- 4 |   130 |   120
  2 |   110 |   100
- 8 |   170 |   160
  6 |   150 |   140
+ 8 |   170 |   160
+ 4 |   130 |   120
+ 3 |   120 |   110
+ 9 |   180 |   170
+ 1 |   100 |    90
+ 7 |   160 |   150
+ 5 |   140 |   130
 (9 rows)
 
 --end_equivalent
@@ -126,14 +126,16 @@ explain with my_order as (select * from with_test1 order by i)
 select i, count(*)
 from my_order
 group by i;
-                                 QUERY PLAN                                  
------------------------------------------------------------------------------
- Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..4.27 rows=5 width=12)
-   ->  HashAggregate  (cost=0.00..2.09 rows=5 width=12)
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..431.01 rows=10 width=12)
+   ->  GroupAggregate  (cost=0.00..431.01 rows=5 width=12)
          Group By: i
-         ->  Table Scan on with_test1  (cost=0.00..0.20 rows=50 width=4)
- Settings:  optimizer=on
-(5 rows)
+         ->  Sort  (cost=0.00..431.01 rows=50 width=4)
+               Sort Key: i
+               ->  Table Scan on with_test1  (cost=0.00..431.00 rows=50 width=4)
+ Settings:  optimizer=on; optimizer_segments=3
+(7 rows)
 
 -- WITH query used in InitPlan
 --begin_equivalent
@@ -387,62 +389,6 @@ select * from with_test2
 where value < (select max(value) from with_test1);
  i  |    t    | value 
 ----+---------+-------
-  1 | text1   |     1
-  3 | text3   |     3
-  5 | text5   |     5
-  7 | text7   |     7
-  9 | text9   |     9
- 11 | text11  |    11
- 13 | text13  |    13
- 15 | text15  |    15
- 17 | text17  |    17
- 19 | text19  |    19
- 21 | text21  |    21
- 23 | text23  |    23
- 25 | text25  |    25
- 27 | text27  |    27
-  1 | text101 |     1
-  3 | text103 |     3
-  5 | text105 |     5
-  7 | text107 |     7
-  9 | text109 |     9
- 11 | text111 |    11
- 13 | text113 |    13
- 15 | text115 |    15
- 17 | text117 |    17
- 19 | text119 |    19
- 21 | text121 |    21
- 23 | text123 |    23
- 25 | text125 |    25
- 27 | text127 |    27
-  1 | text1   |     1
-  3 | text3   |     3
-  5 | text5   |     5
-  7 | text7   |     7
-  9 | text9   |     9
- 11 | text11  |    11
- 13 | text13  |    13
- 15 | text15  |    15
- 17 | text17  |    17
- 19 | text19  |    19
- 21 | text21  |    21
- 23 | text23  |    23
- 25 | text25  |    25
- 27 | text27  |    27
-  1 | text101 |     1
-  3 | text103 |     3
-  5 | text105 |     5
-  7 | text107 |     7
-  9 | text109 |     9
- 11 | text111 |    11
- 13 | text113 |    13
- 15 | text115 |    15
- 17 | text117 |    17
- 19 | text119 |    19
- 21 | text121 |    21
- 23 | text123 |    23
- 25 | text125 |    25
- 27 | text127 |    27
   0 | text0   |     0
   2 | text2   |     2
   4 | text4   |     4
@@ -503,6 +449,62 @@ where value < (select max(value) from with_test1);
  24 | text124 |    24
  26 | text126 |    26
  28 | text128 |    28
+  1 | text1   |     1
+  3 | text3   |     3
+  5 | text5   |     5
+  7 | text7   |     7
+  9 | text9   |     9
+ 11 | text11  |    11
+ 13 | text13  |    13
+ 15 | text15  |    15
+ 17 | text17  |    17
+ 19 | text19  |    19
+ 21 | text21  |    21
+ 23 | text23  |    23
+ 25 | text25  |    25
+ 27 | text27  |    27
+  1 | text101 |     1
+  3 | text103 |     3
+  5 | text105 |     5
+  7 | text107 |     7
+  9 | text109 |     9
+ 11 | text111 |    11
+ 13 | text113 |    13
+ 15 | text115 |    15
+ 17 | text117 |    17
+ 19 | text119 |    19
+ 21 | text121 |    21
+ 23 | text123 |    23
+ 25 | text125 |    25
+ 27 | text127 |    27
+  1 | text1   |     1
+  3 | text3   |     3
+  5 | text5   |     5
+  7 | text7   |     7
+  9 | text9   |     9
+ 11 | text11  |    11
+ 13 | text13  |    13
+ 15 | text15  |    15
+ 17 | text17  |    17
+ 19 | text19  |    19
+ 21 | text21  |    21
+ 23 | text23  |    23
+ 25 | text25  |    25
+ 27 | text27  |    27
+  1 | text101 |     1
+  3 | text103 |     3
+  5 | text105 |     5
+  7 | text107 |     7
+  9 | text109 |     9
+ 11 | text111 |    11
+ 13 | text113 |    13
+ 15 | text115 |    15
+ 17 | text117 |    17
+ 19 | text119 |    19
+ 21 | text121 |    21
+ 23 | text123 |    23
+ 25 | text125 |    25
+ 27 | text127 |    27
 (116 rows)
 
 --end_equivalent
@@ -514,22 +516,6 @@ where value < (select * from my_max)
 and i < maximum and i > maximum - 10;
  i  |    t    | value 
 ----+---------+-------
- 21 | text21  |    21
- 23 | text23  |    23
- 25 | text25  |    25
- 27 | text27  |    27
- 21 | text121 |    21
- 23 | text123 |    23
- 25 | text125 |    25
- 27 | text127 |    27
- 21 | text21  |    21
- 23 | text23  |    23
- 25 | text25  |    25
- 27 | text27  |    27
- 21 | text121 |    21
- 23 | text123 |    23
- 25 | text125 |    25
- 27 | text127 |    27
  20 | text20  |    20
  22 | text22  |    22
  24 | text24  |    24
@@ -550,6 +536,22 @@ and i < maximum and i > maximum - 10;
  24 | text124 |    24
  26 | text126 |    26
  28 | text128 |    28
+ 21 | text21  |    21
+ 23 | text23  |    23
+ 25 | text25  |    25
+ 27 | text27  |    27
+ 21 | text121 |    21
+ 23 | text123 |    23
+ 25 | text125 |    25
+ 27 | text127 |    27
+ 21 | text21  |    21
+ 23 | text23  |    23
+ 25 | text25  |    25
+ 27 | text27  |    27
+ 21 | text121 |    21
+ 23 | text123 |    23
+ 25 | text125 |    25
+ 27 | text127 |    27
 (36 rows)
 
 select with_test2.* from with_test2, (select max(value) as maximum from with_test1) as my_max
@@ -603,46 +605,6 @@ select * from with_test2
 where value < all (select maximum from my_groupmax);
  i  |    t    | value 
 ----+---------+-------
-  1 | text1   |     1
-  3 | text3   |     3
-  5 | text5   |     5
-  7 | text7   |     7
-  9 | text9   |     9
- 11 | text11  |    11
- 13 | text13  |    13
- 15 | text15  |    15
- 17 | text17  |    17
- 19 | text19  |    19
-  1 | text101 |     1
-  3 | text103 |     3
-  5 | text105 |     5
-  7 | text107 |     7
-  9 | text109 |     9
- 11 | text111 |    11
- 13 | text113 |    13
- 15 | text115 |    15
- 17 | text117 |    17
- 19 | text119 |    19
-  1 | text1   |     1
-  3 | text3   |     3
-  5 | text5   |     5
-  7 | text7   |     7
-  9 | text9   |     9
- 11 | text11  |    11
- 13 | text13  |    13
- 15 | text15  |    15
- 17 | text17  |    17
- 19 | text19  |    19
-  1 | text101 |     1
-  3 | text103 |     3
-  5 | text105 |     5
-  7 | text107 |     7
-  9 | text109 |     9
- 11 | text111 |    11
- 13 | text113 |    13
- 15 | text115 |    15
- 17 | text117 |    17
- 19 | text119 |    19
   0 | text0   |     0
   2 | text2   |     2
   4 | text4   |     4
@@ -683,6 +645,46 @@ where value < all (select maximum from my_groupmax);
  14 | text114 |    14
  16 | text116 |    16
  18 | text118 |    18
+  1 | text1   |     1
+  3 | text3   |     3
+  5 | text5   |     5
+  7 | text7   |     7
+  9 | text9   |     9
+ 11 | text11  |    11
+ 13 | text13  |    13
+ 15 | text15  |    15
+ 17 | text17  |    17
+ 19 | text19  |    19
+  1 | text101 |     1
+  3 | text103 |     3
+  5 | text105 |     5
+  7 | text107 |     7
+  9 | text109 |     9
+ 11 | text111 |    11
+ 13 | text113 |    13
+ 15 | text115 |    15
+ 17 | text117 |    17
+ 19 | text119 |    19
+  1 | text1   |     1
+  3 | text3   |     3
+  5 | text5   |     5
+  7 | text7   |     7
+  9 | text9   |     9
+ 11 | text11  |    11
+ 13 | text13  |    13
+ 15 | text15  |    15
+ 17 | text17  |    17
+ 19 | text19  |    19
+  1 | text101 |     1
+  3 | text103 |     3
+  5 | text105 |     5
+  7 | text107 |     7
+  9 | text109 |     9
+ 11 | text111 |    11
+ 13 | text113 |    13
+ 15 | text115 |    15
+ 17 | text117 |    17
+ 19 | text119 |    19
 (80 rows)
 
 select * from with_test2
@@ -827,26 +829,6 @@ where with_test2.i = my_groupmax.i
 and value < all (select max(value) from with_test1 group by i);
  i |    t    | value | i | maximum 
 ---+---------+-------+---+---------
- 1 | text1   |     1 | 1 |      21
- 3 | text3   |     3 | 3 |      23
- 5 | text5   |     5 | 5 |      25
- 7 | text7   |     7 | 7 |      27
- 9 | text9   |     9 | 9 |      29
- 1 | text101 |     1 | 1 |      21
- 3 | text103 |     3 | 3 |      23
- 5 | text105 |     5 | 5 |      25
- 7 | text107 |     7 | 7 |      27
- 9 | text109 |     9 | 9 |      29
- 1 | text1   |     1 | 1 |      21
- 3 | text3   |     3 | 3 |      23
- 5 | text5   |     5 | 5 |      25
- 7 | text7   |     7 | 7 |      27
- 9 | text9   |     9 | 9 |      29
- 1 | text101 |     1 | 1 |      21
- 3 | text103 |     3 | 3 |      23
- 5 | text105 |     5 | 5 |      25
- 7 | text107 |     7 | 7 |      27
- 9 | text109 |     9 | 9 |      29
  0 | text0   |     0 | 0 |      20
  2 | text2   |     2 | 2 |      22
  4 | text4   |     4 | 4 |      24
@@ -867,6 +849,26 @@ and value < all (select max(value) from with_test1 group by i);
  4 | text104 |     4 | 4 |      24
  6 | text106 |     6 | 6 |      26
  8 | text108 |     8 | 8 |      28
+ 1 | text1   |     1 | 1 |      21
+ 3 | text3   |     3 | 3 |      23
+ 5 | text5   |     5 | 5 |      25
+ 7 | text7   |     7 | 7 |      27
+ 9 | text9   |     9 | 9 |      29
+ 1 | text101 |     1 | 1 |      21
+ 3 | text103 |     3 | 3 |      23
+ 5 | text105 |     5 | 5 |      25
+ 7 | text107 |     7 | 7 |      27
+ 9 | text109 |     9 | 9 |      29
+ 1 | text1   |     1 | 1 |      21
+ 3 | text3   |     3 | 3 |      23
+ 5 | text5   |     5 | 5 |      25
+ 7 | text7   |     7 | 7 |      27
+ 9 | text9   |     9 | 9 |      29
+ 1 | text101 |     1 | 1 |      21
+ 3 | text103 |     3 | 3 |      23
+ 5 | text105 |     5 | 5 |      25
+ 7 | text107 |     7 | 7 |      27
+ 9 | text109 |     9 | 9 |      29
 (40 rows)
 
 --end_equivalent
@@ -936,22 +938,6 @@ select * from with_test1, (select max(value) as maximum from with_test2) as my_m
 where value < (select max(i) from with_test1);
  i |   t    | value | maximum 
 ---+--------+-------+---------
- 1 | text1  |     1 |     299
- 3 | text3  |     3 |     299
- 5 | text5  |     5 |     299
- 7 | text7  |     7 |     299
- 1 | text11 |     1 |     299
- 3 | text13 |     3 |     299
- 5 | text15 |     5 |     299
- 7 | text17 |     7 |     299
- 1 | text1  |     1 |     299
- 3 | text3  |     3 |     299
- 5 | text5  |     5 |     299
- 7 | text7  |     7 |     299
- 1 | text11 |     1 |     299
- 3 | text13 |     3 |     299
- 5 | text15 |     5 |     299
- 7 | text17 |     7 |     299
  0 | text0  |     0 |     299
  2 | text2  |     2 |     299
  4 | text4  |     4 |     299
@@ -972,6 +958,22 @@ where value < (select max(i) from with_test1);
  4 | text14 |     4 |     299
  6 | text16 |     6 |     299
  8 | text18 |     8 |     299
+ 1 | text1  |     1 |     299
+ 3 | text3  |     3 |     299
+ 5 | text5  |     5 |     299
+ 7 | text7  |     7 |     299
+ 1 | text11 |     1 |     299
+ 3 | text13 |     3 |     299
+ 5 | text15 |     5 |     299
+ 7 | text17 |     7 |     299
+ 1 | text1  |     1 |     299
+ 3 | text3  |     3 |     299
+ 5 | text5  |     5 |     299
+ 7 | text7  |     7 |     299
+ 1 | text11 |     1 |     299
+ 3 | text13 |     3 |     299
+ 5 | text15 |     5 |     299
+ 7 | text17 |     7 |     299
 (36 rows)
 
 --end_equivalent
@@ -1151,16 +1153,16 @@ select *
 from my_sum; -- this works
  i | total 
 ---+-------
- 2 |   110
- 6 |   150
- 0 |    90
- 4 |   130
- 8 |   170
  9 |   180
  7 |   160
  5 |   140
  3 |   120
  1 |   100
+ 2 |   110
+ 6 |   150
+ 0 |    90
+ 4 |   130
+ 8 |   170
 (10 rows)
 
 -- name resolution
@@ -1462,38 +1464,6 @@ select with_test2.* from with_test2
 where value < any (select total from my_group_sum where my_group_sum.i = with_test2.i);
  i |    t    | value 
 ---+---------+-------
- 1 | text1   |     1
- 3 | text3   |     3
- 5 | text5   |     5
- 7 | text7   |     7
- 9 | text9   |     9
- 3 | text103 |   103
- 5 | text105 |   105
- 7 | text107 |   107
- 9 | text109 |   109
- 1 | text101 |     1
- 3 | text103 |     3
- 5 | text105 |     5
- 7 | text107 |     7
- 9 | text109 |     9
- 3 | text3   |   103
- 5 | text5   |   105
- 7 | text7   |   107
- 9 | text9   |   109
- 1 | text1   |     1
- 3 | text3   |     3
- 5 | text5   |     5
- 7 | text7   |     7
- 9 | text9   |     9
- 3 | text103 |   103
- 5 | text105 |   105
- 7 | text107 |   107
- 9 | text109 |   109
- 1 | text101 |     1
- 3 | text103 |     3
- 5 | text105 |     5
- 7 | text107 |     7
- 9 | text109 |     9
  0 | text0   |     0
  2 | text2   |     2
  4 | text4   |     4
@@ -1526,6 +1496,38 @@ where value < any (select total from my_group_sum where my_group_sum.i = with_te
  4 | text104 |     4
  6 | text106 |     6
  8 | text108 |     8
+ 1 | text1   |     1
+ 3 | text3   |     3
+ 5 | text5   |     5
+ 7 | text7   |     7
+ 9 | text9   |     9
+ 3 | text103 |   103
+ 5 | text105 |   105
+ 7 | text107 |   107
+ 9 | text109 |   109
+ 1 | text101 |     1
+ 3 | text103 |     3
+ 5 | text105 |     5
+ 7 | text107 |     7
+ 9 | text109 |     9
+ 3 | text3   |   103
+ 5 | text5   |   105
+ 7 | text7   |   107
+ 9 | text9   |   109
+ 1 | text1   |     1
+ 3 | text3   |     3
+ 5 | text5   |     5
+ 7 | text7   |     7
+ 9 | text9   |     9
+ 3 | text103 |   103
+ 5 | text105 |   105
+ 7 | text107 |   107
+ 9 | text109 |   109
+ 1 | text101 |     1
+ 3 | text103 |     3
+ 5 | text105 |     5
+ 7 | text107 |     7
+ 9 | text109 |     9
 (64 rows)
 
 select with_test2.* from with_test2
@@ -1606,38 +1608,6 @@ where value < any (select total from my_group_sum where my_group_sum.i = with_te
 and with_test2.i = my_group_sum.i;
  i |    t    | value 
 ---+---------+-------
- 1 | text1   |     1
- 3 | text3   |     3
- 5 | text5   |     5
- 7 | text7   |     7
- 9 | text9   |     9
- 3 | text103 |   103
- 5 | text105 |   105
- 7 | text107 |   107
- 9 | text109 |   109
- 1 | text101 |     1
- 3 | text103 |     3
- 5 | text105 |     5
- 7 | text107 |     7
- 9 | text109 |     9
- 3 | text3   |   103
- 5 | text5   |   105
- 7 | text7   |   107
- 9 | text9   |   109
- 1 | text1   |     1
- 3 | text3   |     3
- 5 | text5   |     5
- 7 | text7   |     7
- 9 | text9   |     9
- 3 | text103 |   103
- 5 | text105 |   105
- 7 | text107 |   107
- 9 | text109 |   109
- 1 | text101 |     1
- 3 | text103 |     3
- 5 | text105 |     5
- 7 | text107 |     7
- 9 | text109 |     9
  0 | text0   |     0
  2 | text2   |     2
  4 | text4   |     4
@@ -1670,6 +1640,38 @@ and with_test2.i = my_group_sum.i;
  4 | text104 |     4
  6 | text106 |     6
  8 | text108 |     8
+ 1 | text1   |     1
+ 3 | text3   |     3
+ 5 | text5   |     5
+ 7 | text7   |     7
+ 9 | text9   |     9
+ 3 | text103 |   103
+ 5 | text105 |   105
+ 7 | text107 |   107
+ 9 | text109 |   109
+ 1 | text101 |     1
+ 3 | text103 |     3
+ 5 | text105 |     5
+ 7 | text107 |     7
+ 9 | text109 |     9
+ 3 | text3   |   103
+ 5 | text5   |   105
+ 7 | text7   |   107
+ 9 | text9   |   109
+ 1 | text1   |     1
+ 3 | text3   |     3
+ 5 | text5   |     5
+ 7 | text7   |     7
+ 9 | text9   |     9
+ 3 | text103 |   103
+ 5 | text105 |   105
+ 7 | text107 |   107
+ 9 | text109 |   109
+ 1 | text101 |     1
+ 3 | text103 |     3
+ 5 | text105 |     5
+ 7 | text107 |     7
+ 9 | text109 |     9
 (64 rows)
 
 select with_test2.* from with_test2, (select i, sum(value) from with_test1 group by i) as my_group_sum
@@ -1677,70 +1679,70 @@ where value < any (select total from (select i, sum(value) as total from with_te
 and with_test2.i = my_group_sum.i;
  i |    t    | value 
 ---+---------+-------
+ 1 | text1   |     1
+ 3 | text3   |     3
+ 5 | text5   |     5
+ 7 | text7   |     7
+ 9 | text9   |     9
+ 3 | text103 |   103
+ 5 | text105 |   105
+ 7 | text107 |   107
+ 9 | text109 |   109
+ 1 | text101 |     1
+ 3 | text103 |     3
+ 5 | text105 |     5
+ 7 | text107 |     7
+ 9 | text109 |     9
+ 3 | text3   |   103
+ 5 | text5   |   105
+ 7 | text7   |   107
+ 9 | text9   |   109
+ 1 | text1   |     1
+ 3 | text3   |     3
+ 5 | text5   |     5
+ 7 | text7   |     7
+ 9 | text9   |     9
+ 3 | text103 |   103
+ 5 | text105 |   105
+ 7 | text107 |   107
+ 9 | text109 |   109
+ 1 | text101 |     1
+ 3 | text103 |     3
+ 5 | text105 |     5
+ 7 | text107 |     7
+ 9 | text109 |     9
+ 0 | text0   |     0
+ 2 | text2   |     2
+ 4 | text4   |     4
+ 6 | text6   |     6
+ 8 | text8   |     8
+ 2 | text102 |   102
  4 | text104 |   104
+ 6 | text106 |   106
+ 8 | text108 |   108
+ 0 | text100 |     0
+ 2 | text102 |     2
+ 4 | text104 |     4
  6 | text106 |     6
- 6 | text106 |     6
- 4 | text104 |   104
+ 8 | text108 |     8
+ 2 | text2   |   102
+ 4 | text4   |   104
+ 6 | text6   |   106
  8 | text8   |   108
  0 | text0   |     0
- 4 | text4   |   104
- 4 | text104 |     4
- 0 | text100 |     0
- 2 | text2   |   102
- 8 | text108 |     8
+ 2 | text2   |     2
  4 | text4   |     4
  6 | text6   |     6
- 6 | text106 |   106
+ 8 | text8   |     8
  2 | text102 |   102
- 4 | text104 |     4
- 8 | text8   |     8
- 6 | text6   |   106
- 2 | text102 |     2
- 0 | text0   |     0
- 8 | text8   |     8
+ 4 | text104 |   104
+ 6 | text106 |   106
+ 8 | text108 |   108
  0 | text100 |     0
- 6 | text6   |     6
- 8 | text108 |   108
- 6 | text106 |   106
- 4 | text4   |     4
- 2 | text2   |     2
- 2 | text102 |   102
- 8 | text108 |   108
- 8 | text108 |     8
- 2 | text2   |     2
  2 | text102 |     2
- 7 | text7   |   107
- 7 | text7   |     7
- 5 | text105 |   105
- 9 | text9   |     9
- 9 | text109 |   109
- 5 | text105 |   105
- 1 | text1   |     1
- 5 | text5   |   105
- 5 | text105 |     5
- 1 | text101 |     1
- 3 | text3   |   103
- 7 | text107 |   107
- 5 | text5   |     5
- 9 | text109 |     9
- 3 | text103 |   103
- 5 | text105 |     5
- 3 | text103 |     3
- 1 | text1   |     1
- 1 | text101 |     1
- 9 | text9   |     9
- 7 | text107 |   107
- 9 | text109 |     9
- 5 | text5   |     5
- 3 | text3   |     3
- 7 | text107 |     7
- 7 | text7   |     7
- 3 | text103 |   103
- 3 | text3   |     3
- 7 | text107 |     7
- 9 | text109 |   109
- 3 | text103 |     3
- 9 | text9   |   109
+ 4 | text104 |     4
+ 6 | text106 |     6
+ 8 | text108 |     8
 (64 rows)
 
 --end_equivalent
@@ -1894,8 +1896,8 @@ insert into with_b values(2);
 with b1 as (select * from with_b) select * from (select * from b1 where b1.i =1) AS FOO, b1 FOO2;
  i | i 
 ---+---
- 1 | 1
  1 | 2
+ 1 | 1
 (2 rows)
 
 select * from (select * from (select * from with_b) as b1 where b1.i = 1) AS FOO, (select * from with_b) as foo2;
@@ -1908,22 +1910,26 @@ select * from (select * from (select * from with_b) as b1 where b1.i = 1) AS FOO
 --end_equivalent
 -- qual push down test
 explain with t as (select * from with_test1) select * from t where i = 10;
-                                 QUERY PLAN                                  
------------------------------------------------------------------------------
- Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..3.04 rows=1 width=14)
-   ->  Table Scan on with_test1  (cost=0.00..1.02 rows=1 width=14)
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..431.00 rows=1 width=14)
+   ->  Table Scan on with_test1  (cost=0.00..431.00 rows=1 width=14)
          Filter: i = 10
- Settings:  optimizer=on
+ Settings:  optimizer=on; optimizer_segments=3
 (4 rows)
 
 -- MPP-17848
 drop table x;
 ERROR:  table "x" does not exist
 CREATE TABLE x(a int);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into x values(1), (2);
 drop TABLE y;
 ERROR:  table "y" does not exist
 CREATE TABLE y (m integer NOT NULL, n smallint);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'm' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into y values(10, 1);
 insert into y values(20, 1);
 with yy as (
@@ -1935,10 +1941,10 @@ with yy as (
 select * from x, yy;
  a | m  
 ---+----
- 1 | 10
  1 | 20
- 2 | 10
+ 1 | 10
  2 | 20
+ 2 | 10
 (4 rows)
 
 -- End of MPP-17848
@@ -1956,7 +1962,7 @@ SELECT tt.c1, COUNT() over () as fraction
 FROM tt
 GROUP BY tt.c1
 ORDER BY tt.c1;
- c1 | fraction
+ c1 | fraction 
 ----+----------
 (0 rows)
 
