@@ -24,7 +24,10 @@ UPGRADEFILES = $(DATADIR)/upgrade/upg2_catupgrade.sql \
 			   $(DATADIR)/upgrade/upg2_catupgrade_check.sql \
 			   $(DATADIR)/upgrade43/upg2_catupgrade_43.sql
 
-DATAFILES = $(DATADIR)/upgrade43/pg_operator.data $(DATADIR)/upgrade43/pg_type.data
+FIXUPGRADE = fix_ao_upgrade.py
+
+DATAFILES = $(DATADIR)/upgrade43/pg_operator.data $(DATADIR)/upgrade43/pg_type.data \
+		$(DATADIR)/upgrade43/$(FIXUPGRADE)
 
 # This sets things up to create a "contrib" module for upgrade extensions
 MODULE_big = gpupgrade
@@ -46,7 +49,7 @@ gpmodcontrol: $(MODCAT_OBJS)
 
 pg_crc.c: $(top_srcdir)/src/backend/utils/hash/pg_crc.c
 	rm -f $@ && $(LN_S) $< .
-	
+
 crc32c.c: $(top_srcdir)/src/backend/utils/hash/crc32c.c
 	rm -f $@ && $(LN_S) $< .
 
@@ -55,13 +58,13 @@ upgradesql:
 	do \
         sed -e 's/\@gpupgradeschemaname\@/pg_catalog/g' -e 's/\@gpupgradetoolkitschema\@/gp_toolkit/g' $$i.in > $$i; \
 	done
-	
+
 gpmodcontrol_clean:
 	rm -f gpmodcontrol$(X)
 	rm -f $(MODCAT_OBJS)
 	rm -f pg_crc.c
 	rm -f crc32c.c
-	
+
 upgradesql_clean:
 	rm -f $(DATADIR)/upgrade43/*.sql
 
@@ -78,6 +81,7 @@ installupgradefiles: $(UPGRADEFILES) $(DATAFILES)
 	do \
 		$(INSTALL_DATA) $$i '$(DESTDIR)$(datadir)/upgrade/'`basename $$i`; \
 	done
+	chmod +x $(DESTDIR)$(datadir)/upgrade/$(FIXUPGRADE)
 
 gpmodcontrol_unistall:
 	rm -f '$(DESTDIR)$(bindir)'/lib, gpmodcontrol$(X)

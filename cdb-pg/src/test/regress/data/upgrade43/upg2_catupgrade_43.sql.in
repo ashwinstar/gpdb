@@ -387,27 +387,45 @@ SELECT @gpupgradeschemaname@.catDML(
 
 -- Upgrade catalog tables for append-only tables.
 -- 1) add visimap
--- 2) add state column to pg_ao(cs)seg
+-- 2) drop toast relation
+-- 3) record visimap as dependent on parent appendonly table
+-- 4) add state column to pg_ao(cs)seg
 CREATE FUNCTION @gpupgradeschemaname@.upgrade_appendonly_aux(aoRelId oid) RETURNS int AS $$
 DECLARE
   aoSegRelName name;
+  toastRelName name;
+  visimapRow record;
 BEGIN
   EXECUTE 'CREATE TABLE pg_aoseg.pg_aovisimap_' || aoRelid ||
-    ' (segno int, first_row_num bigint, visimap varbit)';
+    ' (segno int, first_row_num bigint, visimap varbit) DISTRIBUTED BY(segno)';
   EXECUTE 'CREATE INDEX pg_aovisimap_' || aoRelid || '_index
     ON pg_aoseg.pg_aovisimap_' || aoRelid || '(segno, first_row_num)';
-  DELETE FROM gp_distribution_policy
-    WHERE localoid = ('pg_aoseg.pg_aovisimap_' || aoRelId)::regclass;
+  SELECT INTO visimapRow reltoastrelid, oid FROM pg_catalog.pg_class
+    WHERE oid = ('pg_aoseg.pg_aovisimap_' || aoRelId)::regclass;
+  DELETE FROM gp_distribution_policy WHERE localoid = visimapRow.oid;
+  PERFORM @gpupgradeschemaname@.catDML(
+    'DELETE FROM pg_catalog.pg_depend WHERE refclassid=1259 and classid=1259 and
+     objid=' || visimapRow.reltoastrelid || ' and
+     refobjid=' || visimapRow.oid);
+  PERFORM @gpupgradeschemaname@.catDML(
+    'UPDATE pg_catalog.pg_class SET relkind=''r'', relnamespace=2200
+     WHERE oid = ' || visimapRow.reltoastrelid);
+  SELECT INTO toastRelName relname FROM pg_class
+    WHERE oid = visimapRow.reltoastrelid;
+  EXECUTE 'DROP TABLE public.' || toastRelName;
+  PERFORM @gpupgradeschemaname@.catDML(
+    'INSERT INTO pg_catalog.pg_depend VALUES (1259, ' || visimapRow.oid
+     || ', 0, 1259, ' || aoRelId || ', 0, ''i'')');
   PERFORM @gpupgradeschemaname@.catDML(
     'UPDATE pg_catalog.pg_appendonly
-     SET visimaprelid = (SELECT oid FROM pg_class
+     SET visimaprelid = (SELECT oid FROM pg_catalog.pg_class
            WHERE relname = ''pg_aovisimap_' || aoRelid || '''
               AND relnamespace = 6104),
-         visimapidxid = (SELECT oid FROM pg_class
+         visimapidxid = (SELECT oid FROM pg_catalog.pg_class
            WHERE relname = ''pg_aovisimap_' || aoRelid || '_index''
              AND relnamespace = 6104) WHERE relid = ' || aoRelid);
   PERFORM @gpupgradeschemaname@.catDML(
-    'UPDATE pg_catalog.pg_class SET relkind = ''m''
+    'UPDATE pg_catalog.pg_class SET relkind=''m'', reltoastrelid=0
        WHERE relname = ''pg_aovisimap_' || aoRelid || '''
          AND relnamespace = 6104');
 
