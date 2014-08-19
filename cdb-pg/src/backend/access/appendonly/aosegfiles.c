@@ -83,14 +83,12 @@ InsertInitialSegnoEntry(AppendOnlyEntry *aoEntry,
 	int			natts = 0;
 	bool	   *nulls;
 	Datum	   *values;
-	ItemPointerData tid;
 
 	Assert(aoEntry != NULL);
 
 	InsertFastSequenceEntry(aoEntry->segrelid,
 							(int64)segno,
-							0,
-							&tid);
+							0);
 
 	pg_aoseg_rel = heap_open(aoEntry->segrelid, RowExclusiveLock);
 
@@ -260,7 +258,6 @@ GetFileSegInfo(Relation parentrel, AppendOnlyEntry *aoEntry, Snapshot appendOnly
 	fsinfo->varblockcount = (int64)DatumGetFloat8(varbcount);
 	fsinfo->modcount = (int64)DatumGetInt64(modcount);
 	fsinfo->state = (int32)DatumGetInt16(state);
-	ItemPointerSetInvalid(&fsinfo->sequence_tid);
 
 	if (fsinfo->eof < 0)
 		ereport(ERROR,
@@ -403,8 +400,6 @@ FileSegInfo **GetAllFileSegInfo_pg_aoseg_rel(
 		Assert(!isNull || appendOnlyMetaDataSnapshot == SnapshotAny);
 		if (!isNull)
 			oneseginfo->state = (int64)DatumGetInt16(state);
-
-		ItemPointerSetInvalid(&oneseginfo->sequence_tid);
 
 		eof_uncompressed = fastgetattr(tuple, Anum_pg_aoseg_eofuncompressed, pg_aoseg_dsc, &isNull);
 

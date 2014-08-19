@@ -179,6 +179,9 @@ typedef enum FaultInjectorIdentifier_e {
 	AppendOnlyDelete,
 	AppendOnlyUpdate,
 
+	ReindexDB,
+	ReindexRelation,
+
 	FaultDuringExecDynamicTableScan,
 
 	FaultInBackgroundWriterMain,

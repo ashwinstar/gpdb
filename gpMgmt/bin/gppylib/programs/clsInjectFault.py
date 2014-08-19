@@ -388,6 +388,8 @@ class GpInjectFaultProgram:
 			      "appendonly_insert (inject fault before an append-only insert), " \
 			      "appendonly_delete (inject fault before an append-only delete), " \
 			      "appendonly_update (inject fault before an append-only update), " \
+                  "reindex_db (inject fault while reindex db is in progress), "\
+                  "reindex_relation (inject fault while reindex relation is in progress), "\
 			      "fault_during_exec_dynamic_table_scan (inject fault during scanning of a partition), " \
 			      "fault_in_background_writer_main (inject fault in BackgroundWriterMain), " \
 			      "cdb_copy_start_after_dispatch (inject fault in cdbCopyStart after dispatch), " \

@@ -40,12 +40,14 @@
 #include "commands/tablespace.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
+#include "nodes/makefuncs.h"
 #include "optimizer/clauses.h"
 #include "parser/parse_agg.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_func.h"
 #include "parser/parsetree.h"
+#include "tcop/utility.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
@@ -54,6 +56,7 @@
 #include "utils/memutils.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
+#include "utils/faultinjector.h"
 
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbdispatchresult.h"
@@ -1628,8 +1631,13 @@ ReindexTable(ReindexStmt *stmt)
 				 errmsg("\"%s\" is not a table",
 						stmt->relation->relname)));
 
-	/* Check permissions */
-	if (!pg_class_ownercheck(heapOid, GetUserId()))
+	/*
+	 * Check appropriate permissions (only on the Master and when not inside
+	 * reindex db - refer to ReindexDatabase for some more context).
+	 */
+	if (Gp_role == GP_ROLE_DISPATCH &&
+		!stmt->name &&
+		!pg_class_ownercheck(heapOid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CLASS,
 					   stmt->relation->relname);
 
@@ -1642,8 +1650,8 @@ ReindexTable(ReindexStmt *stmt)
 
 	caql_endscan(pcqCtx);
 
-	if (!reindex_relation(heapOid, true, true, true, true, &stmt->new_ind_oids,
-						  Gp_role == GP_ROLE_DISPATCH))
+	if (!reindex_relation(heapOid, true, true, true, true,
+							&stmt->new_ind_oids, Gp_role == GP_ROLE_DISPATCH))
 	{
 		if (Gp_role != GP_ROLE_EXECUTE)
 			ereport(NOTICE,
@@ -1667,6 +1675,7 @@ ReindexDatabase(ReindexStmt *stmt)
 	MemoryContext private_context;
 	MemoryContext old;
 	List	   *relids = NIL;
+	Oid     relid;
 	ListCell   *l;
 	bool do_system = stmt->do_system;
 	bool do_user = stmt->do_user;
@@ -1688,7 +1697,8 @@ ReindexDatabase(ReindexStmt *stmt)
 	 * transaction, then our commit- and start-transaction-command calls would
 	 * not have the intended effect!
 	 */
-	PreventTransactionChain((void *) databaseName, "REINDEX DATABASE");
+	if (Gp_role == GP_ROLE_DISPATCH)
+		PreventTransactionChain((void *) databaseName, "REINDEX DATABASE");
 
 	/*
 	 * Create a memory context that will survive forced transaction commits we
@@ -1765,20 +1775,63 @@ ReindexDatabase(ReindexStmt *stmt)
 
 	/* Now reindex each rel in a separate transaction */
 	CommitTransactionCommand();
+
+	SIMPLE_FAULT_INJECTOR(ReindexDB);
+
 	foreach(l, relids)
 	{
-		Oid			relid = lfirst_oid(l);
+		relid                = lfirst_oid(l);
+		Relation         rel = NULL;
 
+		setupRegularDtxContext();
 		StartTransactionCommand();
+
 		/* functions in indexes may want a snapshot set */
 		ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
-		if (reindex_relation(relid, true, true, true, true, NULL, false))
-			ereport(NOTICE,
-					(errmsg("table \"%s\" was reindexed",
-							get_rel_name(relid))));
+
+		/*
+		 * Try to open the relation. If the try fails it may mean that
+		 * someone dropped the relation before we started processing
+		 * (reindexing) it. This should be tolerable. Move on to the next
+		 * one.
+		 */
+		rel = try_heap_open(relid, ShareLock, /*nowait*/false);
+
+		if (rel != NULL)
+		{
+			StringInfoData sqlstmt;
+			char *displayRelName = quote_qualified_identifier(
+								get_namespace_name(get_rel_namespace(relid)),
+								get_rel_name(relid));
+			ReindexStmt      *rs = makeNode(ReindexStmt);
+			RangeVar         *rv = makeRangeVar(
+								get_namespace_name(get_rel_namespace(relid)),
+								get_rel_name(relid), -1);
+			initStringInfo(&sqlstmt);
+
+			/* Build sql statement to reindex the table. */
+			appendStringInfo(&sqlstmt, "REINDEX TABLE %s", displayRelName);
+
+			/* Get ready to reindex a relation */
+			rs->kind = OBJECT_TABLE;
+			rs->relation = rv;
+
+			/*
+			 * set database name in this special case to indicate that we're
+			 * inside reindex db
+			 */
+			rs->name = get_database_name(MyDatabaseId);
+
+			/* Pretend as if we're starting a new command */
+			ProcessUtility((Node *)rs, sqlstmt.data, NULL, false, None_Receiver, NULL);
+
+			/* cleanup */
+			heap_close(rel, ShareLock);
+		}
 		CommitTransactionCommand();
 	}
-	StartTransactionCommand();
 
+	setupRegularDtxContext();
+	StartTransactionCommand();
 	MemoryContextDelete(private_context);
 }

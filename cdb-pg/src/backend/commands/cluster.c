@@ -702,8 +702,8 @@ rebuild_relation(Relation OldHeap, Oid indexOid, ClusterStmt *stmt)
 	 * all-new at this point).	We do not need CommandCounterIncrement()
 	 * because reindex_relation does it.
 	 */
-	reindex_relation(tableOid, false, false, false, false, &stmt->new_ind_oids,
-					 Gp_role == GP_ROLE_DISPATCH);
+	reindex_relation(tableOid, false, false, false, false,
+					 &stmt->new_ind_oids, Gp_role == GP_ROLE_DISPATCH);
 }
 
 /*

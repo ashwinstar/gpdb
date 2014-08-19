@@ -326,8 +326,6 @@ static int open_next_scan_seg(AOCSScanDesc scan)
 				/* If the scan also builds the block directory, initialize it here. */
 				if (scan->buildBlockDirectory)
 				{
-					ItemPointerData tid;
-
 					Assert(scan->blockDirectory != NULL);
 					Assert(scan->aoEntry != NULL);
 
@@ -344,8 +342,7 @@ static int open_next_scan_seg(AOCSScanDesc scan)
                         GetFastSequences(scan->aoEntry->segrelid,
                                          curSegInfo->segno,
                                          curSegInfo->total_tupcount + 1,
-                                         NUM_FAST_SEQUENCES,
-                                         &tid);
+                                         NUM_FAST_SEQUENCES);
 
 					AppendOnlyBlockDirectory_Init_forInsert(scan->blockDirectory,
 															scan->aoEntry,
@@ -359,8 +356,7 @@ static int open_next_scan_seg(AOCSScanDesc scan)
 
                     InsertFastSequenceEntry(scan->aoEntry->segrelid,
 											curSegInfo->segno,
-											firstSequence,
-											&tid);
+											firstSequence);
 				}
 
 				open_all_datumstreamread_segfiles(
@@ -812,8 +808,7 @@ AOCSInsertDesc aocs_insert_init(Relation rel, int segno, bool update_mode)
 		GetFastSequences(desc->aoEntry->segrelid,
 						 segno,
 						 desc->rowCount + 1,
-						 NUM_FAST_SEQUENCES,
-						 &desc->fsInfo->sequence_tid);
+						 NUM_FAST_SEQUENCES);
 	desc->numSequences = NUM_FAST_SEQUENCES;
 
 	/* Set last_sequence value */
@@ -955,17 +950,18 @@ Oid aocs_insert_values(AOCSInsertDesc idesc, Datum *d, bool * null, AOTupleId *a
 	if (idesc->numSequences == 0)
 	{
 		int64 firstSequence;
-		Assert(ItemPointerIsValid(&idesc->fsInfo->sequence_tid));
 
 		firstSequence =
-			GetFastSequencesByTid(&idesc->fsInfo->sequence_tid,
-								  idesc->lastSequence + 1,
-								  NUM_FAST_SEQUENCES);
+			GetFastSequences(idesc->aoEntry->segrelid,
+							 idesc->cur_segno,
+							 idesc->lastSequence + 1,
+							 NUM_FAST_SEQUENCES);
+
 		Assert(firstSequence == idesc->lastSequence + 1);
 		idesc->numSequences = NUM_FAST_SEQUENCES;
 	}
 
-    return InvalidOid;
+	return InvalidOid;
 }
 
 void aocs_insert_finish(AOCSInsertDesc idesc)

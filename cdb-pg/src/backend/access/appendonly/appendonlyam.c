@@ -300,9 +300,7 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 			/* Initialize the block directory for inserts if needed. */
 			if (scan->buildBlockDirectory)
 			{
-				ItemPointerData tid;
-
-                /*
+				/*
 				 * if building the block directory, we need to make sure the
 				 * sequence starts higher than our highest tuple's rownum.  In
 				 * the case of upgraded blocks, the highest tuple will
@@ -311,14 +309,12 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 				 * of the sequence; note that this is not ideal -- if we are at
 				 * least curSegInfo->tupcount + 1 then we don't even need to
 				 * update the sequence value.
-                 */
-                int64 firstSequence =
-                    GetFastSequences(scan->aoEntry->segrelid,
-                                     segno,
-                                     fsinfo->total_tupcount + 1,
-                                     NUM_FAST_SEQUENCES,
-                                     &tid);
-
+				 */
+				int64 firstSequence =
+					GetFastSequences(scan->aoEntry->segrelid,
+									 segno,
+									 fsinfo->total_tupcount + 1,
+									 NUM_FAST_SEQUENCES);
 
 				AppendOnlyBlockDirectory_Init_forInsert(scan->blockDirectory,
 														scan->aoEntry,
@@ -332,8 +328,7 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 
 				InsertFastSequenceEntry(scan->aoEntry->segrelid,
 										segno,
-										firstSequence,
-										&tid);
+										firstSequence);
 			}
 
 			finished_all_files = false;
@@ -2779,15 +2774,13 @@ appendonly_insert_init(Relation rel, Snapshot appendOnlyMetaDataSnapshot, int se
 	 * sequences, since the table may contain indexes at some
 	 * point of time.
 	 */
-	Assert(!ItemPointerIsValid(&aoInsertDesc->fsInfo->sequence_tid));
 	Assert(aoInsertDesc->fsInfo->segno == segno);
 
 	firstSequence =
 		GetFastSequences(aoInsertDesc->aoEntry->segrelid,
 						 segno,
 						 aoInsertDesc->rowCount + 1,
-						 NUM_FAST_SEQUENCES,
-						 &aoInsertDesc->fsInfo->sequence_tid);
+						 NUM_FAST_SEQUENCES);
 	aoInsertDesc->numSequences = NUM_FAST_SEQUENCES;
 
 	/* Set last_sequence value */
@@ -3071,12 +3064,13 @@ appendonly_insert_init(Relation rel, Snapshot appendOnlyMetaDataSnapshot, int se
 	if (aoInsertDesc->numSequences == 0)
 	{
 		int64 firstSequence;
-		Assert(ItemPointerIsValid(&aoInsertDesc->fsInfo->sequence_tid));
 
 		firstSequence =
-			GetFastSequencesByTid(&aoInsertDesc->fsInfo->sequence_tid,
-								  aoInsertDesc->lastSequence + 1,
-								  NUM_FAST_SEQUENCES);
+			GetFastSequences(aoInsertDesc->aoEntry->segrelid,
+							 aoInsertDesc->cur_segno,
+							 aoInsertDesc->lastSequence + 1,
+							 NUM_FAST_SEQUENCES);
+
 		Assert(firstSequence == aoInsertDesc->lastSequence + 1);
 		aoInsertDesc->numSequences = NUM_FAST_SEQUENCES;
 	}

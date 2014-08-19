@@ -1,11 +1,7 @@
 /*
- *  faultinjector.c
- *  
+ * faultinjector.c
+ * Copyright 2009-2010 Greenplum Inc. All rights reserved.
  *
- *  Copyright 2009-2010 Greenplum Inc. All rights reserved. *
- */
-
-/* 
  * GP Fault Injector utility (gpfaultinjector python script) is used 
  * for Greenplum internal testing only. 
  * 
@@ -17,7 +13,6 @@
  *		Postmaster spawns backend process that sets fault injection request into shared memory.
  *		Shared memory is accessible to all segment processes.
  *		Segment processes are checking shared memory to find if/when fault has to be injected.
- *
  */
 
 #include "postgres.h"
@@ -272,6 +267,10 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault before an append-only delete */
 	_("appendonly_update"),
 		/* inject fault before an append-only update */
+	_("reindex_db"),
+		/* inject fault while reindex db is in progress */
+	_("reindex_relation"),
+		/* inject fault while reindex relation is in progress */
 	_("fault_during_exec_dynamic_table_scan"),
 		/* inject fault during scanning of a partition */
 	_("fault_in_background_writer_main"),

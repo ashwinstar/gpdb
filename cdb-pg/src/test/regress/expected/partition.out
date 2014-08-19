@@ -5643,13 +5643,12 @@ select * from locktest;
  g_1_prt_2                  | AccessShareLock     | relation
  g_1_prt_3                  | AccessExclusiveLock | append-only segment file
  g_1_prt_3                  | AccessShareLock     | relation
- gp_fastsequence            | RowExclusiveLock    | relation
  locktest                   | AccessShareLock     | relation
  pg_class                   | AccessShareLock     | relation
  pg_class_oid_index         | AccessShareLock     | relation
  pg_class_relname_nsp_index | AccessShareLock     | relation
  pg_locks                   | AccessShareLock     | relation
-(13 rows)
+(12 rows)
 
 commit;
 -- drop

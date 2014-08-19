@@ -94,8 +94,6 @@ typedef struct AOCSFileSegInfo
 	 */
 	int64 modcount;
 
-	ItemPointerData sequence_tid;
-
 	/* 
 	 * state of the segno.
 	 * The state is only maintained on the segments.

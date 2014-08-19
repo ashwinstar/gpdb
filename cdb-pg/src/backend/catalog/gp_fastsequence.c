@@ -28,8 +28,7 @@ static void update_fastsequence(
 	TupleDesc tupleDesc,
 	Oid objid,
 	int64 objmod,
-	int64 newLastSequence,
-	ItemPointer tid);
+	int64 newLastSequence);
 
 /*
  * InsertFastSequenceEntry
@@ -37,12 +36,9 @@ static void update_fastsequence(
  * Insert a new fast sequence entry for a given object. If the given
  * object already exists in the table, this function replaces the old
  * entry with a fresh initial value.
- *
- * The tid for the new entry is returned.
  */
 void
-InsertFastSequenceEntry(Oid objid, int64 objmod, int64 lastSequence,
-						ItemPointer tid)
+InsertFastSequenceEntry(Oid objid, int64 objmod, int64 lastSequence)
 {
 	Relation gp_fastsequence_rel;
 	TupleDesc tupleDesc;
@@ -80,8 +76,6 @@ InsertFastSequenceEntry(Oid objid, int64 objmod, int64 lastSequence,
 		tuple = heaptuple_form_to(tupleDesc, values, nulls, NULL, NULL);
 		frozen_heap_insert(gp_fastsequence_rel, tuple);
 		CatalogUpdateIndexes(gp_fastsequence_rel, tuple);
-	
-		ItemPointerCopy(&tuple->t_self, tid);
 
 		heap_freetuple(tuple);
 		pfree(values);
@@ -94,15 +88,21 @@ InsertFastSequenceEntry(Oid objid, int64 objmod, int64 lastSequence,
 							tupleDesc,
 							objid,
 							objmod,
-							lastSequence,
-							tid);
+							lastSequence);
 	}
 
 	/*
-	 * Since the tid for this row may be used later in this transaction, 
-	 * we keep the lock until the end of the transaction.
+	 * gp_fastsequence table locking for AO inserts uses bottom up approach
+	 * meaning the locks are first acquired on the segments and later on the
+	 * master.
+	 * Hence, it is essential that we release the lock here to avoid
+	 * any form of master-segment resource deadlock. E.g. A transaction
+	 * trying to reindex gp_fastsequence has acquired a lock on it on the
+	 * master but is blocked on the segment as another transaction which
+	 * is an insert operation has acquired a lock first on segment and is
+	 * trying to acquire a lock on the Master. Deadlock!
 	 */
-	heap_close(gp_fastsequence_rel, NoLock);
+	heap_close(gp_fastsequence_rel, RowExclusiveLock);
 }
 
 /*
@@ -111,8 +111,6 @@ InsertFastSequenceEntry(Oid objid, int64 objmod, int64 lastSequence,
  * If such an entry exists in the table, it is provided in oldTuple. This tuple
  * is updated with the new value. Otherwise, a new tuple is inserted into the
  * table.
- *
- * The tuple id value for the entry is copied out to 'tid'.
  */
 static void
 update_fastsequence(Relation gp_fastsequence_rel,
@@ -120,8 +118,7 @@ update_fastsequence(Relation gp_fastsequence_rel,
 					TupleDesc tupleDesc,
 					Oid objid,
 					int64 objmod,
-					int64 newLastSequence,
-					ItemPointer tid)
+					int64 newLastSequence)
 {
 	Datum *values;
 	bool *nulls;
@@ -142,8 +139,6 @@ update_fastsequence(Relation gp_fastsequence_rel,
 		newTuple = heaptuple_form_to(tupleDesc, values, nulls, NULL, NULL);
 		frozen_heap_insert(gp_fastsequence_rel, newTuple);
 		CatalogUpdateIndexes(gp_fastsequence_rel, newTuple);
-
-		ItemPointerCopy(&newTuple->t_self, tid);
 
 		heap_freetuple(newTuple);
 	}
@@ -172,8 +167,6 @@ update_fastsequence(Relation gp_fastsequence_rel,
 		if (tupleDesc->tdhasoid)
 			HeapTupleSetOid(newTuple, HeapTupleGetOid(oldTuple));
 		heap_inplace_update(gp_fastsequence_rel, newTuple);
-		
-		ItemPointerCopy(&newTuple->t_self, tid);
 
 		heap_freetuple(newTuple);
 	}
@@ -194,12 +187,9 @@ update_fastsequence(Relation gp_fastsequence_rel,
  *
  * The existing entry for objid in the table is updated with a new
  * lastsequence value.
- *
- * The tuple id value for this entry is copied out to 'tid'.
  */
 int64 GetFastSequences(Oid objid, int64 objmod,
-					   int64 minSequence, int64 numSequences,
-					   ItemPointer tid)
+					   int64 minSequence, int64 numSequences)
 {
 	Relation gp_fastsequence_rel;
 	TupleDesc tupleDesc;
@@ -209,8 +199,6 @@ int64 GetFastSequences(Oid objid, int64 objmod,
 	Datum lastSequenceDatum;
 	int64 newLastSequence;
 
-	Assert(tid != NULL);
-	
 	gp_fastsequence_rel = heap_open(FastSequenceRelationId, RowExclusiveLock);
 	tupleDesc = RelationGetDescr(gp_fastsequence_rel);
 	
@@ -245,91 +233,10 @@ int64 GetFastSequences(Oid objid, int64 objmod,
 	}
 	
 	update_fastsequence(gp_fastsequence_rel, tuple, tupleDesc,
-						objid, objmod, newLastSequence, tid);
+						objid, objmod, newLastSequence);
 		
-	/*
-	 * Since the tid for this row may be used later in this transaction, 
-	 * we keep the lock until the end of the transaction.
-	 */
-	heap_close(gp_fastsequence_rel, NoLock);
-
-	return firstSequence;
-}
-
-/*
- * GetFastSequencesByTid
- *
- * Same as GetFastSequences, except that the tuple tid is given, and the tuple id
- * is not valid.
- */
-int64
-GetFastSequencesByTid(ItemPointer tid,
-					  int64 minSequence,
-					  int64 numSequences)
-{
-	Relation gp_fastsequence_rel;
-	TupleDesc tupleDesc;
-	HeapTupleData tuple;
-	Buffer userbuf;
-	bool found = false;
-	Datum lastSequenceDatum;
-	int64 newLastSequence;
-	int64 firstSequence = minSequence;
-	bool isNull;
-	Oid objidDatum;
-	int64 objmodDatum;
-
-	gp_fastsequence_rel = heap_open(FastSequenceRelationId, RowExclusiveLock);
-	tupleDesc = RelationGetDescr(gp_fastsequence_rel);
-
-	Assert(ItemPointerIsValid(tid));
-
-	ItemPointerCopy(tid, &tuple.t_self);
-
-	found = heap_fetch(gp_fastsequence_rel, SnapshotNow, &tuple,
-					   &userbuf, false, NULL);
-	Assert(found);
-	
-	lastSequenceDatum = heap_getattr(&tuple, Anum_gp_fastsequence_last_sequence,
-									 gp_fastsequence_rel->rd_att, &isNull);
-	if (isNull)
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("got an invalid lastsequence number: NULL")));
-	
-	objidDatum = heap_getattr(&tuple, Anum_gp_fastsequence_objid,
-							  gp_fastsequence_rel->rd_att, &isNull);
-	if (isNull)
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("got an invalid objid: NULL")));
-	
-	objmodDatum = heap_getattr(&tuple, Anum_gp_fastsequence_objmod,
-							   gp_fastsequence_rel->rd_att, &isNull);
-	if (isNull)
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("got an invalid objmod: NULL")));
-	
-	if (DatumGetInt64(lastSequenceDatum) + 1 > minSequence)
-		firstSequence = DatumGetInt64(lastSequenceDatum) + 1;
-	newLastSequence = firstSequence + numSequences - 1;
-	
-	update_fastsequence(gp_fastsequence_rel,
-						&tuple,
-						tupleDesc,
-						DatumGetObjectId(objidDatum),
-						DatumGetInt64(objmodDatum),
-						newLastSequence,
-						tid);
-	
-	ReleaseBuffer(userbuf);
-	
-	/*
-	 * Since the tid for this row may be used later in this transaction, 
-	 * we keep the lock until the end of the transaction.
-	 */
-	heap_close(gp_fastsequence_rel, NoLock);
+	/* Refer to the comment at the end of InsertFastSequenceEntry. */
+	heap_close(gp_fastsequence_rel, RowExclusiveLock);
 
 	return firstSequence;
 }

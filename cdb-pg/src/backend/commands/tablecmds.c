@@ -5730,7 +5730,7 @@ ATRewriteTables(List **wqueue,
 			 * It is not legal to reindex without dispatch of the associated
 			 * oids!
 			 */
-			reindex_relation(tab->relid, false, false, false, false, 
+			reindex_relation(tab->relid, false, false, false, false,
 							 poidmap, poidmap && Gp_role == GP_ROLE_DISPATCH);
 		}
 		else

@@ -61,6 +61,7 @@
 #include "utils/relcache.h"
 #include "utils/syscache.h"
 #include "utils/tuplesort.h"
+#include "utils/faultinjector.h"
 
 #include "cdb/cdbvars.h"
 #include "cdb/cdbanalyze.h"
@@ -2915,7 +2916,19 @@ reindex_relation(Oid relid,
 					break;
 				}
 			}
-			Assert(OidIsValid(mapoid));
+
+			if (!OidIsValid(mapoid))
+			{
+				/*
+				 * Apparently, corresponding mapoid for indexOid was not
+				 * found. This could happen if a user creates a new
+				 * index while reindex_relation on the parent relation is
+				 * in progress. Mention it and move on.
+				 */
+				elog(LOG, "index with OID %u not present in the index"
+						  " oid map sent by master. skipping it.", indexOid);
+				continue;
+			}
 		}
 
 		elog(DEBUG5, "reindexing index with OID %u (supplied %u as new OID)",
@@ -2951,12 +2964,15 @@ reindex_relation(Oid relid,
 
 	result = (indexIds != NIL);
 
+	SIMPLE_FAULT_INJECTOR(ReindexRelation);
+
 	/*
 	 * If the relation has a secondary toast rel, reindex that too while we
 	 * still hold the lock on the master table.
 	 */
 	if (toast_too && OidIsValid(toast_relid))
-		result |= reindex_relation(toast_relid, false, false, false, false, oidmap, build_map);
+		result |= reindex_relation(toast_relid, false, false, false, false,
+									oidmap, build_map);
 
 	/* Obtain the aoseg_relid and aoblkdir_relid if the relation is an AO table. */
 	if ((aoseg_too || aoblkdir_too || aovisimap_too) && relIsAO)
@@ -2970,21 +2986,24 @@ reindex_relation(Oid relid,
 	 * still hold the lock on the master table.
 	 */
 	if (aoseg_too && OidIsValid(aoseg_relid))
-		result |= reindex_relation(aoseg_relid, false, false, false, false, oidmap, build_map);
+		result |= reindex_relation(aoseg_relid, false, false, false, false,
+									oidmap, build_map);
 
 	/*
 	 * If an AO rel has a secondary block directory rel, reindex that too while we
 	 * still hold the lock on the master table.
 	 */
 	if (aoblkdir_too && OidIsValid(aoblkdir_relid))
-		result |= reindex_relation(aoblkdir_relid, false, false, false, false, oidmap, build_map);
+		result |= reindex_relation(aoblkdir_relid, false, false, false, false,
+									oidmap, build_map);
 	
 	/*
 	 * If an AO rel has a secondary visibility map rel, reindex that too while we
 	 * still hold the lock on the master table.
 	 */
 	if (aovisimap_too && OidIsValid(aovisimap_relid))
-		result |= reindex_relation(aovisimap_relid, false, false, false, false, oidmap, build_map);
+		result |= reindex_relation(aovisimap_relid, false, false, false, false,
+									oidmap, build_map);
 
 	return result;
 }

@@ -66,11 +66,9 @@ typedef FormData_gp_fastsequence *Form_gp_fastsequence;
 
 /*
  * Insert a new light-weight fast sequence entry for a given object.
- *
- * The tid for the new entry is returned.
  */
-extern void InsertFastSequenceEntry(Oid objid, int64 objmod, int64 lastSequence,
-									ItemPointer tid);
+extern void InsertFastSequenceEntry(Oid objid, int64 objmod,
+									int64 lastSequence);
 
 /*
  * GetFastSequences
@@ -84,22 +82,9 @@ extern void InsertFastSequenceEntry(Oid objid, int64 objmod, int64 lastSequence,
  *
  * The existing entry for objid in the table is updated with a new
  * lastsequence value.
- *
- * The tuple id value for this entry is copied out to 'tid'.
  */
 extern int64 GetFastSequences(Oid objid, int64 objmod,
-							  int64 minSequence, int64 numSequences,
-							  ItemPointer tid);
-
-/*
- * GetFastSequencesByTid
- *
- * Same as GetFastSequences, except that the tuple tid is given, and the tuple id
- * is not valid.
- */
-extern int64 GetFastSequencesByTid(ItemPointer tid,
-								   int64 minSequence,
-								   int64 numSequences);
+							  int64 minSequence, int64 numSequences);
 
 /*
  * RemoveFastSequenceEntry

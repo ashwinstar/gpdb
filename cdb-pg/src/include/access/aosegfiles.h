@@ -107,9 +107,6 @@ typedef struct FileSegInfo
 	 */
 	int64 modcount;
 
-	/* tid for the unique sequence number for this fileseg */
-	ItemPointerData sequence_tid;  
-
 	/* the effective eof for this segno  */
 	int64 eof;
 

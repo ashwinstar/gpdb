@@ -66,15 +66,13 @@ void InsertInitialAOCSFileSegInfo(Oid segrelid, int4 segno, int4 nvp)
     Datum *values = palloc0(sizeof(Datum) * Natts_pg_aocsseg);
     AOCSVPInfo *vpinfo = create_aocs_vpinfo(nvp);
     HeapTuple segtup;
-	ItemPointerData tid;
 	Relation segrel;
 
     segrel = heap_open(segrelid, RowExclusiveLock);
 
 	InsertFastSequenceEntry(segrelid,
 							(int64)segno,
-							0,
-							&tid);
+							0);
 
     values[Anum_pg_aocs_segno-1] = Int32GetDatum(segno);
     values[Anum_pg_aocs_vpinfo-1] = PointerGetDatum(vpinfo);
@@ -175,8 +173,6 @@ GetAOCSFileSegInfo(
 
 	Assert(!null[Anum_pg_aocs_state - 1]);
 	seginfo->state = DatumGetInt16(d[Anum_pg_aocs_state - 1]);
-
-	ItemPointerSetInvalid(&seginfo->sequence_tid);
 
 	Assert(!null[Anum_pg_aocs_vpinfo - 1]);
 	{
@@ -315,8 +311,6 @@ AOCSFileSegInfo **GetAllAOCSFileSegInfo_pg_aocsseg_rel(
 		Assert(!null[Anum_pg_aocs_state - 1] || snapshot == SnapshotAny);
 		if (!null[Anum_pg_aocs_state - 1])
 			seginfo->state = DatumGetInt16(d[Anum_pg_aocs_state - 1]);
-
-		ItemPointerSetInvalid(&seginfo->sequence_tid);
 
 		Assert(!null[Anum_pg_aocs_vpinfo - 1]);
         {
