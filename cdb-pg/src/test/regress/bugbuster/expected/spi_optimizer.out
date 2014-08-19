@@ -76,8 +76,9 @@ begin
 end
 $$ language plpgsql READS SQL DATA;
 select * from (select refcursor (1, 10)) t1, test;
-ERROR:  query plan with multiple segworker groups is not supported (cdbdisp.c:505)
-HINT:  likely caused by a function that reads or modifies data in a distributed table
-CONTEXT:  PL/pgSQL function "refcursor" line 6 at open
+ERROR:  function cannot execute on segment because it accesses relation "public.test" (functions.c:151)  (seg0 slice1 usensimiobmbp.corp.emc.com:18506 pid=17309) (cdbdisp.c:1380)
+DETAIL:
+         SQL statement " select * from test where a >  $1  and b >  $2 "
+PL/pgSQL function "refcursor" line 6 at open
 drop function refcursor(int, int);
 --drop language plpgsql;

@@ -2,6 +2,7 @@
 -- SUBSELECT
 --
 
+set optimizer_segments = 3;
 SELECT 1 AS one WHERE 1 IN (SELECT 1);
 
 SELECT 1 AS zero WHERE 1 NOT IN (SELECT 1);
@@ -696,3 +697,5 @@ where relname like 'gp_%' and gp_segment_id=0
 except 
 select i, relname, relowner from pg_class, generate_series(-1, (select max(content) 
 from gp_configuration)) i order by 1;
+
+reset optimizer_segments;

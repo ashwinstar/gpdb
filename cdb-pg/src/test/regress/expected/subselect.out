@@ -1,6 +1,7 @@
 --
 -- SUBSELECT
 --
+set optimizer_segments = 3;
 SELECT 1 AS one WHERE 1 IN (SELECT 1);
  one 
 -----
@@ -503,16 +504,16 @@ insert into csq_t2 select * from csq_t2_base;
 explain select * from csq_t1 where csq_t1.x >ALL (select csq_t2.x from csq_t2 where csq_t2.y=csq_t1.y) order by 1;
                                                             QUERY PLAN                                                             
 -----------------------------------------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice17; segments: 2)  (cost=0.01..0.02 rows=1 width=8)
+ Gather Motion 2:1  (slice17; segments: 2)  (cost=20329.25..20331.40 rows=863 width=8)
    Merge Key: x
-   ->  Sort  (cost=0.01..0.02 rows=1 width=8)
+   ->  Sort  (cost=20329.25..20331.40 rows=432 width=8)
          Sort Key: public.csq_t1.x
-         ->  Append  (cost=0.00..0.00 rows=1 width=8)
+         ->  Append  (cost=0.00..20287.16 rows=432 width=8)
                ->  Seq Scan on csq_t1_1_prt_1 csq_t1  (cost=0.00..0.00 rows=1 width=8)
                      Filter: (subplan)
                      SubPlan 1
-                       ->  Result  (cost=0.00..0.00 rows=1 width=4)
-                             ->  Append  (cost=0.00..0.00 rows=1 width=4)
+                       ->  Result  (cost=0.00..23.53 rows=2 width=4)
+                             ->  Append  (cost=0.00..23.53 rows=2 width=4)
                                    ->  Result  (cost=0.00..0.01 rows=1 width=4)
                                          Filter: public.csq_t2.y = $0
                                          ->  Materialize  (cost=0.00..0.01 rows=1 width=4)
@@ -533,11 +534,11 @@ explain select * from csq_t1 where csq_t1.x >ALL (select csq_t2.x from csq_t2 wh
                                          ->  Materialize  (cost=0.00..0.01 rows=1 width=4)
                                                ->  Broadcast Motion 2:2  (slice4; segments: 2)  (cost=0.00..0.00 rows=1 width=4)
                                                      ->  Seq Scan on csq_t2_1_prt_4 csq_t2  (cost=0.00..0.00 rows=1 width=4)
-               ->  Seq Scan on csq_t1_1_prt_2 csq_t1  (cost=0.00..12.84 rows=1 width=8)
+               ->  Seq Scan on csq_t1_1_prt_2 csq_t1  (cost=0.00..10143.58 rows=216 width=8)
                      Filter: (subplan)
                      SubPlan 1
-                       ->  Result  (cost=0.00..0.00 rows=1 width=4)
-                             ->  Append  (cost=0.00..0.00 rows=1 width=4)
+                       ->  Result  (cost=0.00..23.53 rows=2 width=4)
+                             ->  Append  (cost=0.00..23.53 rows=2 width=4)
                                    ->  Result  (cost=0.00..0.01 rows=1 width=4)
                                          Filter: public.csq_t2.y = $0
                                          ->  Materialize  (cost=0.00..0.01 rows=1 width=4)
@@ -558,11 +559,11 @@ explain select * from csq_t1 where csq_t1.x >ALL (select csq_t2.x from csq_t2 wh
                                          ->  Materialize  (cost=0.00..0.01 rows=1 width=4)
                                                ->  Broadcast Motion 2:2  (slice8; segments: 2)  (cost=0.00..0.00 rows=1 width=4)
                                                      ->  Seq Scan on csq_t2_1_prt_4 csq_t2  (cost=0.00..0.00 rows=1 width=4)
-               ->  Seq Scan on csq_t1_1_prt_3 csq_t1  (cost=0.00..12.84 rows=1 width=8)
+               ->  Seq Scan on csq_t1_1_prt_3 csq_t1  (cost=0.00..10143.58 rows=216 width=8)
                      Filter: (subplan)
                      SubPlan 1
-                       ->  Result  (cost=0.00..0.00 rows=1 width=4)
-                             ->  Append  (cost=0.00..0.00 rows=1 width=4)
+                       ->  Result  (cost=0.00..23.53 rows=2 width=4)
+                             ->  Append  (cost=0.00..23.53 rows=2 width=4)
                                    ->  Result  (cost=0.00..0.01 rows=1 width=4)
                                          Filter: public.csq_t2.y = $0
                                          ->  Materialize  (cost=0.00..0.01 rows=1 width=4)
@@ -586,8 +587,8 @@ explain select * from csq_t1 where csq_t1.x >ALL (select csq_t2.x from csq_t2 wh
                ->  Seq Scan on csq_t1_1_prt_4 csq_t1  (cost=0.00..0.00 rows=1 width=8)
                      Filter: (subplan)
                      SubPlan 1
-                       ->  Result  (cost=0.00..0.00 rows=1 width=4)
-                             ->  Append  (cost=0.00..0.00 rows=1 width=4)
+                       ->  Result  (cost=0.00..23.53 rows=2 width=4)
+                             ->  Append  (cost=0.00..23.53 rows=2 width=4)
                                    ->  Result  (cost=0.00..0.01 rows=1 width=4)
                                          Filter: public.csq_t2.y = $0
                                          ->  Materialize  (cost=0.00..0.01 rows=1 width=4)
@@ -608,7 +609,8 @@ explain select * from csq_t1 where csq_t1.x >ALL (select csq_t2.x from csq_t2 wh
                                          ->  Materialize  (cost=0.00..0.01 rows=1 width=4)
                                                ->  Broadcast Motion 2:2  (slice16; segments: 2)  (cost=0.00..0.00 rows=1 width=4)
                                                      ->  Seq Scan on csq_t2_1_prt_4 csq_t2  (cost=0.00..0.00 rows=1 width=4)
-(105 rows)
+ Settings:  optimizer_segments=3
+(106 rows)
 
 select * from csq_t1 where csq_t1.x >ALL (select csq_t2.x from csq_t2 where csq_t2.y=csq_t1.y) order by 1; -- expected (4,2)
  x | y 
@@ -630,7 +632,7 @@ insert into mrs_t1 select generate_series(1,20);
 explain select * from mrs_t1 where exists (select x from mrs_t1 where x < -1);
                                            QUERY PLAN                                           
 ------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice2; segments: 2)  (cost=2.27..4.47 rows=10 width=4)
+ Gather Motion 2:1  (slice2; segments: 2)  (cost=2.27..4.47 rows=20 width=4)
    ->  Result  (cost=2.27..4.47 rows=10 width=4)
          One-Time Filter: $0
          InitPlan  (slice3)
@@ -640,7 +642,8 @@ explain select * from mrs_t1 where exists (select x from mrs_t1 where x < -1);
                              ->  Seq Scan on mrs_t1  (cost=0.00..2.25 rows=1 width=0)
                                    Filter: x < (-1)
          ->  Seq Scan on mrs_t1  (cost=0.00..2.20 rows=10 width=4)
-(10 rows)
+ Settings:  optimizer_segments=3
+(11 rows)
 
 select * from mrs_t1 where exists (select x from mrs_t1 where x < -1) order by 1;
  x 
@@ -650,7 +653,7 @@ select * from mrs_t1 where exists (select x from mrs_t1 where x < -1) order by 1
 explain select * from mrs_t1 where exists (select x from mrs_t1 where x = 1);
                                            QUERY PLAN                                           
 ------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice2; segments: 2)  (cost=2.27..4.47 rows=10 width=4)
+ Gather Motion 2:1  (slice2; segments: 2)  (cost=2.27..4.47 rows=20 width=4)
    ->  Result  (cost=2.27..4.47 rows=10 width=4)
          One-Time Filter: $0
          InitPlan  (slice3)
@@ -660,7 +663,8 @@ explain select * from mrs_t1 where exists (select x from mrs_t1 where x = 1);
                              ->  Seq Scan on mrs_t1  (cost=0.00..2.25 rows=1 width=0)
                                    Filter: x = 1
          ->  Seq Scan on mrs_t1  (cost=0.00..2.20 rows=10 width=4)
-(10 rows)
+ Settings:  optimizer_segments=3
+(11 rows)
 
 select * from mrs_t1 where exists (select x from mrs_t1 where x = 1) order by 1;
  x  
@@ -690,14 +694,15 @@ select * from mrs_t1 where exists (select x from mrs_t1 where x = 1) order by 1;
 explain select * from mrs_t1 where x in (select x-95 from mrs_t1) or x < 5;
                                              QUERY PLAN                                             
 ----------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..25.30 rows=6 width=4)
+ Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..25.30 rows=12 width=4)
    ->  Seq Scan on mrs_t1  (cost=0.00..25.30 rows=6 width=4)
          Filter: ((subplan)) OR x < 5
          SubPlan 1
            ->  Materialize  (cost=2.27..2.47 rows=10 width=4)
                  ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.25 rows=10 width=4)
                        ->  Seq Scan on mrs_t1  (cost=0.00..2.25 rows=10 width=4)
-(7 rows)
+ Settings:  optimizer_segments=3
+(8 rows)
 
 select * from mrs_t1 where x in (select x-95 from mrs_t1) or x < 5 order by 1;
  x 
@@ -752,7 +757,8 @@ explain select array(select x from csq_m1); -- no initplan
  Result  (cost=1.01..1.02 rows=1 width=0)
    InitPlan
      ->  Seq Scan on csq_m1  (cost=0.00..1.01 rows=2 width=4)
-(3 rows)
+ Settings:  optimizer_segments=3
+(4 rows)
 
 select array(select x from csq_m1); -- {1}
  ?column? 
@@ -767,7 +773,8 @@ explain select array(select x from csq_d1); -- initplan
    InitPlan  (slice2)
      ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..1.01 rows=1 width=4)
            ->  Seq Scan on csq_d1  (cost=0.00..1.01 rows=1 width=4)
-(4 rows)
+ Settings:  optimizer_segments=3
+(5 rows)
 
 select array(select x from csq_d1); -- {1}
  ?column? 
@@ -833,9 +840,9 @@ select * from csq_m1;
 select * from csq_d1;
  x 
 ---
+ 1
  2
  4
- 1
 (3 rows)
 
 --
@@ -848,9 +855,10 @@ explain select * from csq_m1 where x not in (select x from csq_d1) or x < -100; 
    Filter: (NOT ((subplan))) OR x < (-100)
    SubPlan 1
      ->  Materialize  (cost=2.02..2.04 rows=1 width=4)
-           ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..2.02 rows=1 width=4)
+           ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..2.02 rows=2 width=4)
                  ->  Seq Scan on csq_d1  (cost=0.00..2.02 rows=1 width=4)
-(6 rows)
+ Settings:  optimizer_segments=3
+(7 rows)
 
 select * from csq_m1 where x not in (select x from csq_d1) or x < -100; -- (3)
  x 
@@ -871,7 +879,8 @@ explain select * from csq_d1 where x not in (select x from csq_m1) or x < -100; 
            ->  Materialize  (cost=1.04..1.10 rows=6 width=4)
                  ->  Broadcast Motion 1:2  (slice1)  (cost=0.00..1.03 rows=6 width=4)
                        ->  Seq Scan on csq_m1  (cost=0.00..1.03 rows=6 width=4)
-(7 rows)
+ Settings:  optimizer_segments=3
+(8 rows)
 
 select * from csq_d1 where x not in (select x from csq_m1) or x < -100; -- (4)
  x 
@@ -917,7 +926,8 @@ explain SELECT * FROM csq_r WHERE a IN (SELECT * FROM csq_f(csq_r.a));
          Filter: (subplan)
          SubPlan 1
            ->  Function Scan on csq_f  (cost=0.00..0.01 rows=1 width=4)
-(5 rows)
+ Settings:  optimizer_segments=3
+(6 rows)
 
 SELECT * FROM csq_r WHERE a IN (SELECT * FROM csq_f(csq_r.a));
  a 
@@ -934,7 +944,8 @@ explain SELECT * FROM csq_r WHERE a not IN (SELECT * FROM csq_f(csq_r.a));
          Filter: (subplan)
          SubPlan 1
            ->  Function Scan on csq_f  (cost=0.00..0.01 rows=1 width=4)
-(5 rows)
+ Settings:  optimizer_segments=3
+(6 rows)
 
 SELECT * FROM csq_r WHERE a not IN (SELECT * FROM csq_f(csq_r.a));
  a 
@@ -950,7 +961,8 @@ explain SELECT * FROM csq_r WHERE exists (SELECT * FROM csq_f(csq_r.a));
          Filter: (subplan)
          SubPlan 1
            ->  Function Scan on csq_f  (cost=0.00..0.01 rows=1 width=4)
-(5 rows)
+ Settings:  optimizer_segments=3
+(6 rows)
 
 SELECT * FROM csq_r WHERE exists (SELECT * FROM csq_f(csq_r.a));
  a 
@@ -967,7 +979,8 @@ explain SELECT * FROM csq_r WHERE not exists (SELECT * FROM csq_f(csq_r.a));
          Filter: NOT ((subplan))
          SubPlan 1
            ->  Function Scan on csq_f  (cost=0.00..0.01 rows=1 width=4)
-(5 rows)
+ Settings:  optimizer_segments=3
+(6 rows)
 
 SELECT * FROM csq_r WHERE not exists (SELECT * FROM csq_f(csq_r.a));
  a 
@@ -984,7 +997,8 @@ explain SELECT * FROM csq_r WHERE a > (SELECT csq_f FROM csq_f(csq_r.a) limit 1)
          SubPlan 1
            ->  Limit  (cost=0.00..0.01 rows=1 width=4)
                  ->  Function Scan on csq_f  (cost=0.00..0.01 rows=1 width=4)
-(6 rows)
+ Settings:  optimizer_segments=3
+(7 rows)
 
 SELECT * FROM csq_r WHERE a > (SELECT csq_f FROM csq_f(csq_r.a) limit 1);
  a 
@@ -1000,7 +1014,8 @@ explain SELECT * FROM csq_r WHERE a < ANY (SELECT csq_f FROM csq_f(csq_r.a));
          Filter: (subplan)
          SubPlan 1
            ->  Function Scan on csq_f  (cost=0.00..0.01 rows=1 width=4)
-(5 rows)
+ Settings:  optimizer_segments=3
+(6 rows)
 
 SELECT * FROM csq_r WHERE a < ANY (SELECT csq_f FROM csq_f(csq_r.a));
  a 
@@ -1016,7 +1031,8 @@ explain SELECT * FROM csq_r WHERE a <= ALL (SELECT csq_f FROM csq_f(csq_r.a));
          Filter: (subplan)
          SubPlan 1
            ->  Function Scan on csq_f  (cost=0.00..0.01 rows=1 width=4)
-(5 rows)
+ Settings:  optimizer_segments=3
+(6 rows)
 
 SELECT * FROM csq_r WHERE a <= ALL (SELECT csq_f FROM csq_f(csq_r.a));
  a 
@@ -1052,24 +1068,25 @@ insert into csq_pullup values ('def',3, 1, 'abc');
 explain select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1 where t0.t=t1.t);
                                         QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice1; segments: 2)  (cost=1.06..2.11 rows=2 width=19)
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=1.06..2.11 rows=4 width=19)
    ->  Hash Join  (cost=1.06..2.11 rows=2 width=19)
          Hash Cond: t0.t = "Expr_SUBQUERY".csq_c0
          ->  Seq Scan on csq_pullup t0  (cost=0.00..1.01 rows=1 width=19)
          ->  Hash  (cost=1.04..1.04 rows=1 width=32)
                ->  Subquery Scan "Expr_SUBQUERY"  (cost=1.02..1.04 rows=1 width=32)
                      ->  HashAggregate  (cost=1.02..1.03 rows=1 width=40)
-                           Filter: 1::bigint = count(*)
+                           Filter: 1 = count(*)
                            Group By: t1.t
                            ->  Seq Scan on csq_pullup t1  (cost=0.00..1.01 rows=1 width=4)
-(10 rows)
+ Settings:  optimizer_segments=3
+(11 rows)
 
 select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1 where t0.t=t1.t);
   t  | n | i |  v  
 -----+---+---+-----
- abc | 1 | 2 | xyz
  xyz | 2 | 3 | def
  def | 3 | 1 | abc
+ abc | 1 | 2 | xyz
 (3 rows)
 
 --
@@ -1078,21 +1095,22 @@ select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1 where t
 explain select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1 where t0.t=t1.v);
                                                    QUERY PLAN                                                    
 -----------------------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice2; segments: 2)  (cost=1.09..2.14 rows=2 width=19)
+ Gather Motion 2:1  (slice2; segments: 2)  (cost=1.09..2.14 rows=4 width=19)
    ->  Hash Join  (cost=1.09..2.14 rows=2 width=19)
          Hash Cond: t0.t = "Expr_SUBQUERY".csq_c0
          ->  Seq Scan on csq_pullup t0  (cost=0.00..1.01 rows=1 width=19)
          ->  Hash  (cost=1.08..1.08 rows=1 width=32)
                ->  Subquery Scan "Expr_SUBQUERY"  (cost=1.05..1.08 rows=1 width=32)
                      ->  HashAggregate  (cost=1.05..1.07 rows=1 width=40)
-                           Filter: 1::bigint = count(partial_aggregation.unnamed_attr_2)
+                           Filter: 1 = count(partial_aggregation.unnamed_attr_2)
                            Group By: "?column1?"
                            ->  Redistribute Motion 2:2  (slice1; segments: 2)  (cost=1.02..1.04 rows=1 width=40)
                                  Hash Key: unnamed_attr_1
                                  ->  HashAggregate  (cost=1.02..1.02 rows=1 width=40)
                                        Group By: t1.v::text
                                        ->  Seq Scan on csq_pullup t1  (cost=0.00..1.01 rows=1 width=4)
-(14 rows)
+ Settings:  optimizer_segments=3
+(15 rows)
 
 select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1 where t0.t=t1.v);
   t  | n | i |  v  
@@ -1108,7 +1126,7 @@ select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1 where t
 explain select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1 where t0.n=t1.n);
                                                    QUERY PLAN                                                    
 -----------------------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice3; segments: 2)  (cost=1.09..2.16 rows=2 width=19)
+ Gather Motion 2:1  (slice3; segments: 2)  (cost=1.09..2.16 rows=4 width=19)
    ->  Hash Join  (cost=1.09..2.16 rows=2 width=19)
          Hash Cond: t0.n = "Expr_SUBQUERY".csq_c0
          ->  Redistribute Motion 2:2  (slice1; segments: 2)  (cost=0.00..1.03 rows=1 width=19)
@@ -1117,14 +1135,15 @@ explain select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1
          ->  Hash  (cost=1.08..1.08 rows=1 width=32)
                ->  Subquery Scan "Expr_SUBQUERY"  (cost=1.05..1.08 rows=1 width=32)
                      ->  HashAggregate  (cost=1.05..1.07 rows=1 width=40)
-                           Filter: 1::bigint = count(partial_aggregation.unnamed_attr_2)
+                           Filter: 1 = count(partial_aggregation.unnamed_attr_2)
                            Group By: t1.n
                            ->  Redistribute Motion 2:2  (slice2; segments: 2)  (cost=1.02..1.04 rows=1 width=40)
                                  Hash Key: t1.n
                                  ->  HashAggregate  (cost=1.02..1.02 rows=1 width=40)
                                        Group By: t1.n
                                        ->  Seq Scan on csq_pullup t1  (cost=0.00..1.01 rows=1 width=7)
-(16 rows)
+ Settings:  optimizer_segments=3
+(17 rows)
 
 select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1 where t0.n=t1.n);
   t  | n | i |  v  
@@ -1140,7 +1159,7 @@ select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1 where t
 explain select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1 where t0.n + 1=t1.n + 1);
                                                    QUERY PLAN                                                    
 -----------------------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice3; segments: 2)  (cost=1.10..2.17 rows=2 width=19)
+ Gather Motion 2:1  (slice3; segments: 2)  (cost=1.10..2.17 rows=4 width=19)
    ->  Hash Join  (cost=1.10..2.17 rows=2 width=19)
          Hash Cond: (t0.n + 1::numeric) = "Expr_SUBQUERY".csq_c0
          ->  Redistribute Motion 2:2  (slice1; segments: 2)  (cost=0.00..1.03 rows=1 width=19)
@@ -1149,14 +1168,15 @@ explain select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1
          ->  Hash  (cost=1.09..1.09 rows=1 width=32)
                ->  Subquery Scan "Expr_SUBQUERY"  (cost=1.06..1.09 rows=1 width=32)
                      ->  HashAggregate  (cost=1.06..1.08 rows=1 width=40)
-                           Filter: 1::bigint = count(partial_aggregation.unnamed_attr_2)
+                           Filter: 1 = count(partial_aggregation.unnamed_attr_2)
                            Group By: "?column1?"
                            ->  Redistribute Motion 2:2  (slice2; segments: 2)  (cost=1.02..1.04 rows=1 width=40)
                                  Hash Key: unnamed_attr_1
                                  ->  HashAggregate  (cost=1.02..1.02 rows=1 width=40)
                                        Group By: t1.n + 1::numeric
                                        ->  Seq Scan on csq_pullup t1  (cost=0.00..1.01 rows=1 width=7)
-(16 rows)
+ Settings:  optimizer_segments=3
+(17 rows)
 
 select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1 where t0.n + 1=t1.n + 1);
   t  | n | i |  v  
@@ -1172,7 +1192,7 @@ select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1 where t
 explain select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1 where t0.n + 1=t1.i + 1);
                                                    QUERY PLAN                                                    
 -----------------------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice3; segments: 2)  (cost=1.10..2.18 rows=2 width=19)
+ Gather Motion 2:1  (slice3; segments: 2)  (cost=1.10..2.18 rows=4 width=19)
    ->  Hash Join  (cost=1.10..2.18 rows=2 width=19)
          Hash Cond: (t0.n + 1::numeric) = "Expr_SUBQUERY".csq_c0
          ->  Redistribute Motion 2:2  (slice1; segments: 2)  (cost=0.00..1.03 rows=1 width=19)
@@ -1181,14 +1201,15 @@ explain select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1
          ->  Hash  (cost=1.09..1.09 rows=1 width=32)
                ->  Subquery Scan "Expr_SUBQUERY"  (cost=1.06..1.09 rows=1 width=32)
                      ->  HashAggregate  (cost=1.06..1.08 rows=1 width=40)
-                           Filter: 1::bigint = count(partial_aggregation.unnamed_attr_2)
+                           Filter: 1 = count(partial_aggregation.unnamed_attr_2)
                            Group By: "?column1?"
                            ->  Redistribute Motion 2:2  (slice2; segments: 2)  (cost=1.02..1.05 rows=1 width=40)
                                  Hash Key: unnamed_attr_1
                                  ->  HashAggregate  (cost=1.02..1.03 rows=1 width=40)
                                        Group By: (t1.i + 1)::numeric
                                        ->  Seq Scan on csq_pullup t1  (cost=0.00..1.01 rows=1 width=4)
-(16 rows)
+ Settings:  optimizer_segments=3
+(17 rows)
 
 select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1 where t0.n + 1=t1.i + 1);
   t  | n | i |  v  
@@ -1207,20 +1228,21 @@ select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1 where t
 explain select * from csq_pullup t0 where not exists (select 1 from csq_pullup t1 where t0.t=t1.t and t1.i = 1);
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
- Gather Motion 2:1  (slice1; segments: 2)  (cost=1.02..2.07 rows=2 width=19)
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=1.02..2.07 rows=4 width=19)
    ->  Hash Left Anti Semi Join  (cost=1.02..2.07 rows=2 width=19)
          Hash Cond: t0.t = t1.t
          ->  Seq Scan on csq_pullup t0  (cost=0.00..1.01 rows=1 width=19)
          ->  Hash  (cost=1.01..1.01 rows=1 width=4)
                ->  Seq Scan on csq_pullup t1  (cost=0.00..1.01 rows=1 width=4)
                      Filter: i = 1 AND t IS NOT NULL
-(7 rows)
+ Settings:  optimizer_segments=3
+(8 rows)
 
 select * from csq_pullup t0 where not exists (select 1 from csq_pullup t1 where t0.t=t1.t and t1.i = 1);
   t  | n | i |  v  
 -----+---+---+-----
- xyz | 2 | 3 | def
  abc | 1 | 2 | xyz
+ xyz | 2 | 3 | def
 (2 rows)
 
 --
@@ -1229,7 +1251,7 @@ select * from csq_pullup t0 where not exists (select 1 from csq_pullup t1 where 
 explain select * from csq_pullup t0 where not exists (select 1 from csq_pullup t1 where t0.i=t1.i + 1);
                                            QUERY PLAN                                            
 -------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice2; segments: 2)  (cost=1.07..2.12 rows=2 width=19)
+ Gather Motion 2:1  (slice2; segments: 2)  (cost=1.07..2.12 rows=4 width=19)
    ->  Hash Left Anti Semi Join  (cost=1.07..2.12 rows=2 width=19)
          Hash Cond: t0.i = (t1.i + 1)
          ->  Seq Scan on csq_pullup t0  (cost=0.00..1.01 rows=1 width=19)
@@ -1237,7 +1259,8 @@ explain select * from csq_pullup t0 where not exists (select 1 from csq_pullup t
                ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..1.04 rows=1 width=4)
                      ->  Seq Scan on csq_pullup t1  (cost=0.00..1.01 rows=1 width=4)
                            Filter: (i + 1) IS NOT NULL
-(8 rows)
+ Settings:  optimizer_segments=3
+(9 rows)
 
 select * from csq_pullup t0 where not exists (select 1 from csq_pullup t1 where t0.i=t1.i + 1);
   t  | n | i |  v  
@@ -1265,19 +1288,20 @@ analyze finra_t2;
 explain select * from finra_t1 where x in (select y from finra_t2);
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
- Gather Motion 2:1  (slice1; segments: 2)  (cost=2.07..4.13 rows=2 width=4)
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=2.07..4.13 rows=4 width=4)
    ->  Hash EXISTS Join  (cost=2.07..4.13 rows=2 width=4)
          Hash Cond: finra_t1.x = finra_t2.y
          ->  Seq Scan on finra_t1  (cost=0.00..2.02 rows=1 width=4)
          ->  Hash  (cost=2.03..2.03 rows=2 width=4)
                ->  Seq Scan on finra_t2  (cost=0.00..2.03 rows=2 width=4)
-(6 rows)
+ Settings:  optimizer_segments=3
+(7 rows)
 
 select * from finra_t1 where x in (select y from finra_t2);
  x 
 ---
- 2
  1
+ 2
 (2 rows)
 
 -- start_ignore
@@ -1286,17 +1310,18 @@ select * from finra_t1 where x in (select y from finra_t2);
 explain select * from finra_t1 where x in (select y from finra_t2 union all select y from finra_t2);
                                              QUERY PLAN                                             
 ----------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice2; segments: 2)  (cost=2.19..4.25 rows=2 width=4)
-   ->  Hash EXISTS Join  (cost=2.19..4.25 rows=2 width=4)
+ Gather Motion 2:1  (slice2; segments: 2)  (cost=4.37..6.44 rows=4 width=4)
+   ->  Hash EXISTS Join  (cost=4.37..6.44 rows=2 width=4)
          Hash Cond: finra_t1.x = "IN_subquery".y
          ->  Seq Scan on finra_t1  (cost=0.00..2.02 rows=1 width=4)
-         ->  Hash  (cost=2.15..2.15 rows=2 width=4)
-               ->  Redistribute Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.15 rows=2 width=4)
+         ->  Hash  (cost=4.30..4.30 rows=3 width=4)
+               ->  Redistribute Motion 2:2  (slice1; segments: 2)  (cost=0.00..4.30 rows=3 width=4)
                      Hash Key: "IN_subquery".y
-                     ->  Append  (cost=0.00..2.06 rows=2 width=4)
+                     ->  Append  (cost=0.00..4.12 rows=3 width=4)
                            ->  Seq Scan on finra_t2  (cost=0.00..2.03 rows=2 width=4)
                            ->  Seq Scan on finra_t2  (cost=0.00..2.03 rows=2 width=4)
-(10 rows)
+ Settings:  optimizer_segments=3
+(11 rows)
 
 select * from finra_t1 where x in (select y from finra_t2 union all select y from finra_t2);
  x 
@@ -1316,7 +1341,8 @@ explain select count(*) from finra_t1 where x in (select y from finra_t2);
                      ->  Seq Scan on finra_t1  (cost=0.00..2.02 rows=1 width=4)
                      ->  Hash  (cost=2.03..2.03 rows=2 width=4)
                            ->  Seq Scan on finra_t2  (cost=0.00..2.03 rows=2 width=4)
-(8 rows)
+ Settings:  optimizer_segments=3
+(9 rows)
 
 select count(*) from finra_t1 where x in (select y from finra_t2);
  count 
@@ -1330,19 +1356,20 @@ select count(*) from finra_t1 where x in (select y from finra_t2);
 explain select count(*) from finra_t1 where x in (select y from finra_t2 union all select y from finra_t2);
                                                    QUERY PLAN                                                   
 ----------------------------------------------------------------------------------------------------------------
- Aggregate  (cost=4.32..4.33 rows=1 width=8)
-   ->  Gather Motion 2:1  (slice2; segments: 2)  (cost=4.26..4.30 rows=1 width=8)
-         ->  Aggregate  (cost=4.26..4.27 rows=1 width=8)
-               ->  Hash EXISTS Join  (cost=2.19..4.25 rows=2 width=0)
+ Aggregate  (cost=6.50..6.51 rows=1 width=8)
+   ->  Gather Motion 2:1  (slice2; segments: 2)  (cost=6.45..6.49 rows=1 width=8)
+         ->  Aggregate  (cost=6.45..6.46 rows=1 width=8)
+               ->  Hash EXISTS Join  (cost=4.37..6.44 rows=2 width=0)
                      Hash Cond: finra_t1.x = "IN_subquery".y
                      ->  Seq Scan on finra_t1  (cost=0.00..2.02 rows=1 width=4)
-                     ->  Hash  (cost=2.15..2.15 rows=2 width=4)
-                           ->  Redistribute Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.15 rows=2 width=4)
+                     ->  Hash  (cost=4.30..4.30 rows=3 width=4)
+                           ->  Redistribute Motion 2:2  (slice1; segments: 2)  (cost=0.00..4.30 rows=3 width=4)
                                  Hash Key: "IN_subquery".y
-                                 ->  Append  (cost=0.00..2.06 rows=2 width=4)
+                                 ->  Append  (cost=0.00..4.12 rows=3 width=4)
                                        ->  Seq Scan on finra_t2  (cost=0.00..2.03 rows=2 width=4)
                                        ->  Seq Scan on finra_t2  (cost=0.00..2.03 rows=2 width=4)
-(12 rows)
+ Settings:  optimizer_segments=3
+(13 rows)
 
 select count(*) from finra_t1 where x in (select y from finra_t2 union all select y from finra_t2);
  count 
@@ -1418,7 +1445,8 @@ explain select * from t1 where a=1 and a=2 and a > (select t2.b from t2);
 ------------------------------------------
  Result  (cost=0.00..0.01 rows=1 width=0)
    One-Time Filter: false
-(2 rows)
+ Settings:  optimizer_segments=3
+(3 rows)
 
 select * from t1 where a=1 and a=2 and a > (select t2.b from t2);
  a 
@@ -1435,7 +1463,8 @@ select * from t1 where a=1 and a=2 and a > (select t2.b from t2);
          One-Time Filter: false
    ->  Result  (cost=0.00..0.01 rows=1 width=0)
          One-Time Filter: false
-(5 rows)
+ Settings:  optimizer_segments=3
+(6 rows)
 
 select * from t1 where a=1 and a=2 and a > (select t2.b from t2)
 union all
@@ -1454,7 +1483,8 @@ where t1.a = foo.a;
          One-Time Filter: false
    ->  Result  (cost=0.00..0.01 rows=1 width=0)
          One-Time Filter: false
-(5 rows)
+ Settings:  optimizer_segments=3
+(6 rows)
 
 select * from t1,
 (select * from t1 where a=1 and a=2 and a > (select t2.b from t2)) foo
@@ -1474,7 +1504,7 @@ from gp_configuration)) i order by 1;
    ->  Sort  (cost=402614.97..405984.99 rows=1348008 width=72)
          Sort Key: gp_segment_id, relname, relowner
          ->  Append  (cost=0.00..61946.70 rows=1348008 width=72)
-               ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..14.18 rows=4 width=72)
+               ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..14.18 rows=8 width=72)
                      ->  Subquery Scan "*SELECT* 1"  (cost=0.00..14.18 rows=4 width=72)
                            ->  Seq Scan on pg_class  (cost=0.00..14.11 rows=4 width=72)
                                  Filter: relname ~~ 'gp_%'::text AND gp_segment_id = 0
@@ -1485,5 +1515,7 @@ from gp_configuration)) i order by 1;
                                    ->  Seq Scan on gp_configuration  (cost=0.00..0.00 rows=2 width=2)
                            ->  Function Scan on generate_series i  (cost=0.00..12.50 rows=2000 width=4)
                            ->  Seq Scan on pg_class  (cost=0.00..10.74 rows=1348 width=68)
-(15 rows)
+ Settings:  optimizer_segments=3
+(16 rows)
 
+reset optimizer_segments;
