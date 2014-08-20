@@ -22,7 +22,8 @@ from gppylib.operations.backup_utils import generate_report_filename, validate_t
                                             generate_global_prefix, generate_master_dbdump_prefix, get_ddboost_backup_directory, \
                                             generate_master_status_prefix, generate_seg_dbdump_prefix, generate_seg_status_prefix, \
                                             generate_dbdump_prefix, generate_createdb_filename, generate_filter_filename, backup_file_with_nbu, \
-                                            restore_file_with_nbu, generate_global_filename, generate_cdatabase_filename, check_file_dumped_with_nbu
+                                            restore_file_with_nbu, generate_global_filename, generate_cdatabase_filename, check_file_dumped_with_nbu, \
+                                            get_full_timestamp_for_incremental_with_nbu, get_latest_full_ts_with_nbu
 
 from mock import patch, MagicMock, Mock
 
@@ -1650,7 +1651,6 @@ class BackupUtilsTestCase(unittest.TestCase):
 
         self.assertFalse(check_file_dumped_with_nbu(netbackup_service_host, netbackup_filepath, hostname))
 
-    
     @patch('gppylib.operations.backup_utils.Command.run')
     @patch('gppylib.operations.dump.Command.get_results', return_value=CommandResult(0, "Data Domain Hostname:qadd01\nData Domain Boost Username:metro\n \
             Default Backup Directory:/backup/DCA-35\nData Domain default log level:WARNING", "", True, False))
@@ -1673,3 +1673,204 @@ class BackupUtilsTestCase(unittest.TestCase):
         with self.assertRaisesRegexp(Exception, 'DDBOOST default backup directory is not configured. Or the format of the line has changed'):
             get_ddboost_backup_directory()
 
+    @patch('gppylib.operations.backup_utils.Command.run')
+    @patch('gppylib.operations.backup_utils.Command.get_results', return_value=CommandResult(0, "/tmp/gp_dump_20140701000000_increments\n", "", True, False))
+    @patch('gppylib.operations.backup_utils.restore_file_with_nbu')
+    @patch('gppylib.operations.backup_utils.get_lines_from_file', return_value=['20140701000000', '20140715000000', '20140804000000'])
+    def test00_get_full_timestamp_for_incremental_with_nbu(self, mock1, mock2, mock3, mock4):
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 1024
+        incremental_timestamp = '20140804000000'
+        backup_utils.dump_prefix = ''
+        expected_output = '20140701000000'
+
+        result = get_full_timestamp_for_incremental_with_nbu(netbackup_service_host, netbackup_block_size, incremental_timestamp)
+        self.assertEquals(result, expected_output)
+
+    @patch('gppylib.operations.backup_utils.Command.run')
+    @patch('gppylib.operations.backup_utils.Command.get_results', return_value=CommandResult(0, "/tmp/gp_dump_20140701000000_increments\n", "", True, False))
+    @patch('gppylib.operations.backup_utils.restore_file_with_nbu')
+    @patch('gppylib.operations.backup_utils.get_lines_from_file', return_value=['20140701000000', '20140715000000'])
+    def test01_get_full_timestamp_for_incremental_with_nbu(self, mock1, mock2, mock3, mock4):
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 1024
+        incremental_timestamp = '20140804000000'
+        backup_utils.dump_prefix = ''
+        expected_output = None
+
+        result = get_full_timestamp_for_incremental_with_nbu(netbackup_service_host, netbackup_block_size, incremental_timestamp)
+        self.assertEquals(result, expected_output)
+
+    @patch('gppylib.operations.backup_utils.Command.run')
+    @patch('gppylib.operations.backup_utils.Command.get_results', return_value=CommandResult(0, "", "", True, False))
+    @patch('gppylib.operations.backup_utils.restore_file_with_nbu')
+    @patch('gppylib.operations.backup_utils.get_lines_from_file')
+    def test02_get_full_timestamp_for_incremental_with_nbu(self, mock1, mock2, mock3, mock4):
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 1024
+        incremental_timestamp = '20140804000000'
+        backup_utils.dump_prefix = ''
+        expected_output = None
+
+        result = get_full_timestamp_for_incremental_with_nbu(netbackup_service_host, netbackup_block_size, incremental_timestamp)
+        self.assertEquals(result, expected_output)
+
+    @patch('gppylib.operations.backup_utils.Command.run')
+    @patch('gppylib.operations.backup_utils.Command.get_results', return_value=CommandResult(0, "/tmp/gp_dump_20140701000000_increments\n/tmp/gp_dump_20140801000000_increments\n", "", True, False))
+    @patch('gppylib.operations.backup_utils.restore_file_with_nbu')
+    @patch('gppylib.operations.backup_utils.get_lines_from_file', return_value=['20140701000000', '20140715000000'])
+    def test03_get_full_timestamp_for_incremental_with_nbu(self, mock1, mock2, mock3, mock4):
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 1024
+        incremental_timestamp = '20140804000000'
+        backup_utils.dump_prefix = ''
+        expected_output = None
+
+        result = get_full_timestamp_for_incremental_with_nbu(netbackup_service_host, netbackup_block_size, incremental_timestamp)
+        self.assertEquals(result, expected_output)
+
+    @patch('gppylib.operations.backup_utils.Command.run')
+    @patch('gppylib.operations.backup_utils.Command.get_results', return_value=CommandResult(0, "/tmp/gp_dump_20140701000000_increments\n/tmp/gp_dump_20140801000000_increments\n", "", True, False))
+    @patch('gppylib.operations.backup_utils.restore_file_with_nbu')
+    @patch('gppylib.operations.backup_utils.get_lines_from_file', return_value=['20140710000000', '20140720000000', '20140804000000'])
+    def test04_get_full_timestamp_for_incremental_with_nbu(self, mock1, mock2, mock3, mock4):
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 1024
+        incremental_timestamp = '20140804000000'
+        backup_utils.dump_prefix = ''
+        expected_output = '20140701000000'
+
+        result = get_full_timestamp_for_incremental_with_nbu(netbackup_service_host, netbackup_block_size, incremental_timestamp)
+        self.assertEquals(result, expected_output)
+
+    @patch('gppylib.operations.backup_utils.Command.run')
+    @patch('gppylib.operations.backup_utils.Command.get_results', return_value=CommandResult(0, "/tmp/foo_gp_dump_20140701000000_increments\n/tmp/foo_gp_dump_20140801000000_increments\n", "", True, False))
+    @patch('gppylib.operations.backup_utils.restore_file_with_nbu')
+    @patch('gppylib.operations.backup_utils.get_lines_from_file', return_value=['20140710000000', '20140720000000', '20140804000000'])
+    def test05_get_full_timestamp_for_incremental_with_nbu(self, mock1, mock2, mock3, mock4):
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 1024
+        incremental_timestamp = '20140804000000'
+        backup_utils.dump_prefix = 'foo'
+        expected_output = '20140701000000'
+
+        result = get_full_timestamp_for_incremental_with_nbu(netbackup_service_host, netbackup_block_size, incremental_timestamp)
+        backup_utils.dump_prefix = ''
+        self.assertEquals(result, expected_output)
+
+    @patch('gppylib.operations.backup_utils.Command.run')
+    @patch('gppylib.operations.backup_utils.Command.get_results', return_value=CommandResult(0, "/tmp/foo_gp_dump_20140701000000_increments\n/tmp/foo_gp_dump_20140801000000_increments\n", "", True, False))
+    @patch('gppylib.operations.backup_utils.restore_file_with_nbu')
+    @patch('gppylib.operations.backup_utils.get_lines_from_file', return_value=['20140710000000', '20140720000000'])
+    def test06_get_full_timestamp_for_incremental_with_nbu(self, mock1, mock2, mock3, mock4):
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 1024
+        incremental_timestamp = '20140804000000'
+        backup_utils.dump_prefix = 'foo'
+        expected_output = None
+
+        result = get_full_timestamp_for_incremental_with_nbu(netbackup_service_host, netbackup_block_size, incremental_timestamp)
+        backup_utils.dump_prefix = ''
+        self.assertEquals(result, expected_output)
+
+    @patch('gppylib.operations.backup_utils.Command.run')
+    @patch('gppylib.operations.backup_utils.Command.get_results', return_value=CommandResult(0, "/data/gp_dump_20140701000000.rpt\n", "", True, False))
+    @patch('gppylib.operations.backup_utils.restore_file_with_nbu')
+    @patch('gppylib.operations.backup_utils.get_full_ts_from_report_file', return_value='20140701000000')
+    def test00_get_latest_full_ts_with_nbu(self, mock1, mock2, mock3, mock4):
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 1024
+        backup_utils.dump_prefix = ''
+        dbname = "testdb"
+        backup_dir = "/data"
+        expected_output = '20140701000000'
+
+        result = get_latest_full_ts_with_nbu(netbackup_service_host, netbackup_block_size, dbname, backup_dir)
+        self.assertEquals(result, expected_output)
+
+    @patch('gppylib.operations.backup_utils.Command.run')
+    @patch('gppylib.operations.backup_utils.Command.get_results', return_value=CommandResult(0, "/data/gp_dump_20140701000000.rpt\n", "", True, False))
+    @patch('gppylib.operations.backup_utils.restore_file_with_nbu')
+    @patch('gppylib.operations.backup_utils.get_full_ts_from_report_file', return_value=None)
+    def test01_get_latest_full_ts_with_nbu(self, mock1, mock2, mock3, mock4):
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 1024
+        backup_utils.dump_prefix = ''
+        dbname = "testdb"
+        backup_dir = "/data"
+
+        with self.assertRaisesRegexp(Exception, 'No full backup found for given incremental on the specified NetBackup server'):
+            get_latest_full_ts_with_nbu(netbackup_service_host, netbackup_block_size, dbname, backup_dir)
+
+    @patch('gppylib.operations.backup_utils.Command.run')
+    @patch('gppylib.operations.backup_utils.Command.get_results', return_value=CommandResult(0, "", "", True, False))
+    @patch('gppylib.operations.backup_utils.restore_file_with_nbu')
+    @patch('gppylib.operations.backup_utils.get_full_ts_from_report_file', return_value=None)
+    def test02_get_latest_full_ts_with_nbu(self, mock1, mock2, mock3, mock4):
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 1024
+        backup_utils.dump_prefix = ''
+        dbname = "testdb"
+        backup_dir = "/data"
+
+        with self.assertRaisesRegexp(Exception, 'No full backup found for given incremental on the specified NetBackup server'):
+            get_latest_full_ts_with_nbu(netbackup_service_host, netbackup_block_size, dbname, backup_dir)
+
+    @patch('gppylib.operations.backup_utils.Command.run')
+    @patch('gppylib.operations.backup_utils.Command.get_results', return_value=CommandResult(0, "/tmp/gp_dump_20140701000000.rpt\n/tmp/gp_dump_20140720000000.rpt", "", True, False))
+    @patch('gppylib.operations.backup_utils.restore_file_with_nbu')
+    @patch('gppylib.operations.backup_utils.get_full_ts_from_report_file', return_value=None)
+    def test03_get_latest_full_ts_with_nbu(self, mock1, mock2, mock3, mock4):
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 1024
+        backup_utils.dump_prefix = ''
+        dbname = "testdb"
+        backup_dir = "/data"
+
+        with self.assertRaisesRegexp(Exception, 'No full backup found for given incremental on the specified NetBackup server'):
+            get_latest_full_ts_with_nbu(netbackup_service_host, netbackup_block_size, dbname, backup_dir)
+
+    @patch('gppylib.operations.backup_utils.Command.run')
+    @patch('gppylib.operations.backup_utils.Command.get_results', return_value=CommandResult(0, "/tmp/gp_dump_20140701000000.rpt\n/tmp/gp_dump_20140720000000.rpt", "", True, False))
+    @patch('gppylib.operations.backup_utils.restore_file_with_nbu')
+    @patch('gppylib.operations.backup_utils.get_full_ts_from_report_file', return_value='20140701000000')
+    def test04_get_latest_full_ts_with_nbu(self, mock1, mock2, mock3, mock4):
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 1024
+        backup_utils.dump_prefix = ''
+        dbname = "testdb"
+        backup_dir = "/tmp"
+        expected_output = '20140701000000'
+
+        result = get_latest_full_ts_with_nbu(netbackup_service_host, netbackup_block_size, dbname, backup_dir)
+        self.assertEquals(result, expected_output)
+
+    @patch('gppylib.operations.backup_utils.Command.run')
+    @patch('gppylib.operations.backup_utils.Command.get_results', return_value=CommandResult(0, "/tmp/gp_dump_20140701000000.rpt\n", "", True, False))
+    @patch('gppylib.operations.backup_utils.restore_file_with_nbu')
+    @patch('gppylib.operations.backup_utils.get_full_ts_from_report_file', return_value=None)
+    def test05_get_latest_full_ts_with_nbu(self, mock1, mock2, mock3, mock4):
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 1024
+        backup_utils.dump_prefix = 'foo'
+        dbname = "testdb"
+        backup_dir = "/tmp"
+        expected_output = None
+
+        with self.assertRaisesRegexp(Exception, 'No full backup found for given incremental on the specified NetBackup server'):
+            get_latest_full_ts_with_nbu(netbackup_service_host, netbackup_block_size, dbname, backup_dir)
+        backup_utils.dump_prefix = ''
+
+    @patch('gppylib.operations.backup_utils.Command.run')
+    @patch('gppylib.operations.backup_utils.Command.get_results', return_value=CommandResult(0, "No object matched the specified predicate\n", "", True, False))
+    @patch('gppylib.operations.backup_utils.restore_file_with_nbu')
+    @patch('gppylib.operations.backup_utils.get_full_ts_from_report_file', return_value=None)
+    def test06_get_latest_full_ts_with_nbu(self, mock1, mock2, mock3, mock4):
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 1024
+        backup_utils.dump_prefix = ''
+        dbname = "testdb"
+        backup_dir = "/tmp"
+
+        with self.assertRaisesRegexp(Exception, 'No full backup found for given incremental on the specified NetBackup server'):
+            get_latest_full_ts_with_nbu(netbackup_service_host, netbackup_block_size, dbname, backup_dir)

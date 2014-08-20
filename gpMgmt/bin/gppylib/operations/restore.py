@@ -25,7 +25,8 @@ from gppylib.operations.backup_utils import check_backup_type, generate_dirtytab
                                             generate_dbdump_prefix, generate_createdb_filename, generate_createdb_prefix, check_dir_writable, \
                                             generate_ao_state_filename, generate_co_state_filename, generate_pgstatlastoperation_filename, \
                                             generate_cdatabase_filename, get_backup_directory, generate_master_config_filename, generate_segment_config_filename, \
-                                            generate_global_filename, restore_file_with_nbu, check_file_dumped_with_nbu
+                                            generate_global_filename, restore_file_with_nbu, check_file_dumped_with_nbu, \
+                                            get_full_timestamp_for_incremental_with_nbu
 
 from gppylib.operations.utils import RemoteOperation, ParallelOperation
 from gppylib.operations.unix import CheckFile, CheckRemoteDir, MakeRemoteDir, CheckRemotePath
@@ -43,6 +44,7 @@ logger = gplog.get_default_logger()
 WARN_MARK = '<<<<<'
 DUMP_DIR = 'db_dumps'
 POST_DATA_SUFFIX = '_post_data'
+FULL_DUMP_TS_WITH_NBU = None
 
 # TODO: use CLI-agnostic custom exceptions instead of ExceptionNoStackTraceNeeded
 
@@ -104,10 +106,12 @@ def get_dirty_table_file_contents(master_datadir, backup_dir, timestamp_key):
     dirty_list_file = generate_dirtytable_filename(master_datadir, backup_dir, timestamp_key)
     return get_lines_from_file(dirty_list_file)
 
-def create_plan_file_contents(master_datadir, backup_dir, table_set_from_metadata_file, incremental_restore_timestamps, full_timestamp):
+def create_plan_file_contents(master_datadir, backup_dir, table_set_from_metadata_file, incremental_restore_timestamps, full_timestamp, netbackup_service_host, netbackup_block_size):
     restore_set = {}
     for ts in incremental_restore_timestamps:
         restore_set[ts] = []
+        if netbackup_service_host:
+            restore_file_with_nbu(netbackup_service_host, netbackup_block_size, generate_dirtytable_filename(master_datadir, backup_dir, ts))
         dirty_tables = get_dirty_table_file_contents(master_datadir, backup_dir, ts)
         for dt in dirty_tables:
             if dt in table_set_from_metadata_file:
@@ -137,7 +141,7 @@ def write_to_plan_file(plan_file_contents, plan_file):
 
     return lines_to_write
     
-def create_restore_plan(master_datadir, backup_dir, db_timestamp, dbname, ddboost, dump_dir=None):
+def create_restore_plan(master_datadir, backup_dir, db_timestamp, dbname, ddboost, dump_dir=None, netbackup_service_host=None, netbackup_block_size=None):
     dump_tables = get_partition_list(master_datadir=master_datadir,
                                      backup_dir=backup_dir,
                                      timestamp_key=db_timestamp) 
@@ -146,16 +150,17 @@ def create_restore_plan(master_datadir, backup_dir, db_timestamp, dbname, ddboos
 
     if ddboost: 
         full_timestamp = get_full_timestamp_for_incremental(dbname, master_datadir, db_timestamp, ddboost, dump_dir)
+    elif netbackup_service_host:
+        full_timestamp = get_full_timestamp_for_incremental_with_nbu(netbackup_service_host, netbackup_block_size, db_timestamp)
     else:
         full_timestamp = get_full_timestamp_for_incremental(dbname, get_restore_dir(master_datadir, backup_dir), db_timestamp)
-
 
     if not full_timestamp:
         raise Exception("Could not locate fullbackup associated with ts '%s'. Either increments file or fullback is missing." % db_timestamp)
 
     incremental_restore_timestamps = get_incremental_restore_timestamps(master_datadir, backup_dir, full_timestamp, db_timestamp)
 
-    plan_file_contents = create_plan_file_contents(master_datadir, backup_dir, table_set_from_metadata_file, incremental_restore_timestamps, full_timestamp)
+    plan_file_contents = create_plan_file_contents(master_datadir, backup_dir, table_set_from_metadata_file, incremental_restore_timestamps, full_timestamp, netbackup_service_host, netbackup_block_size)
 
     plan_file = generate_plan_filename(master_datadir, backup_dir, db_timestamp)  
 
@@ -247,7 +252,8 @@ def validate_restore_tables_list(plan_file_contents, restore_tables):
         raise Exception('Invalid tables for -T option: The following tables were not found in plan file : "%s"' % (invalid_tables))
 
 def restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables, 
-                                  redirected_restore_db, report_status_dir, ddboost=False):
+                                  redirected_restore_db, report_status_dir, ddboost=False,
+                                  netbackup_service_host=None, netbackup_block_size=None):
     restore_data = False
     plan_file_items = get_plan_file_contents(master_datadir, backup_dir, timestamp)
     table_file = None
@@ -261,7 +267,7 @@ def restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore
             table_file = get_restore_table_list(table_list.split(','), restore_tables)
             if table_file is None:
                 continue
-            cmd = _build_gpdbrestore_cmd_line(ts, table_file, backup_dir, redirected_restore_db, report_status_dir, ddboost)
+            cmd = _build_gpdbrestore_cmd_line(ts, table_file, backup_dir, redirected_restore_db, report_status_dir, ddboost, netbackup_service_host, netbackup_block_size)
             logger.info('Invoking commandline: %s: ' % cmd)
             Command('Invoking gpdbrestore', cmd).run(validateAfter=True) 
             table_files.append(table_file)
@@ -335,6 +341,29 @@ def restore_global_file_with_nbu(master_datadir, backup_dir, dump_dir, restore_t
         raise Exception('Netbackup service hostname is None.')
     restore_file_with_nbu(netbackup_service_host, netbackup_block_size, generate_global_filename(master_datadir, backup_dir, dump_dir, restore_timestamp[0:8], restore_timestamp))
 
+def restore_partition_list_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size):
+    if (master_datadir is None) and (backup_dir is None):
+        raise Exception('Master data directory and backup directory are both none.')
+    if restore_timestamp is None:
+        raise Exception('Restore timestamp is None.')
+    if netbackup_service_host is None:
+        raise Exception('Netbackup service hostname is None.')
+    restore_file_with_nbu(netbackup_service_host, netbackup_block_size, generate_partition_list_filename(master_datadir, backup_dir, restore_timestamp))
+
+def restore_increments_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size):
+    global FULL_DUMP_TS_WITH_NBU
+    if (master_datadir is None) and (backup_dir is None):
+        raise Exception('Master data directory and backup directory are both none.')
+    if restore_timestamp is None:
+        raise Exception('Restore timestamp is None.')
+    if netbackup_service_host is None:
+        raise Exception('Netbackup service hostname is None.')
+    full_ts = get_full_timestamp_for_incremental_with_nbu(netbackup_service_host, netbackup_block_size, restore_timestamp)
+    if full_ts is not None:
+        restore_file_with_nbu(netbackup_service_host, netbackup_block_size, generate_increments_filename(master_datadir, backup_dir, full_ts))
+    else:
+        raise Exception('Unable to locate full timestamp for given incremental timestamp "%s" using NetBackup' % restore_timestamp)
+
 def config_files_dumped(master_datadir, backup_dir, restore_timestamp, netbackup_service_host):
     if (master_datadir is None) and (backup_dir is None):
         raise Exception('Master data directory and backup directory are both none.')
@@ -356,7 +385,7 @@ def global_file_dumped(master_datadir, backup_dir, dump_dir, restore_timestamp, 
     global_filename = generate_global_filename(master_datadir, backup_dir, dump_dir, restore_timestamp[0:8], restore_timestamp)
     return check_file_dumped_with_nbu(netbackup_service_host, global_filename)
 
-def _build_gpdbrestore_cmd_line(ts, table_file, backup_dir, redirected_restore_db, report_status_dir, ddboost=False):
+def _build_gpdbrestore_cmd_line(ts, table_file, backup_dir, redirected_restore_db, report_status_dir, ddboost=False, netbackup_service_host=None, netbackup_block_size=None):
     cmd = 'gpdbrestore -t %s --table-file %s -a -v --noplan --noanalyze --noaostats' % (ts, table_file) 
     if backup_dir is not None:
         cmd += " -u %s" % backup_dir
@@ -368,6 +397,10 @@ def _build_gpdbrestore_cmd_line(ts, table_file, backup_dir, redirected_restore_d
         cmd += " --report-status-dir=%s" % report_status_dir
     if ddboost:
         cmd += " --ddboost"
+    if netbackup_service_host:
+        cmd += " --netbackup-service-host=%s" % netbackup_service_host
+    if netbackup_block_size:
+        cmd += " --netbackup-block-size=%s" % netbackup_block_size
 
     return cmd
 
@@ -456,7 +489,10 @@ class RestoreDatabase(Operation):
                                           self.restore_timestamp, 
                                           self.restore_tables,
                                           self.redirected_restore_db,
-                                          self.report_status_dir, self.ddboost)
+                                          self.report_status_dir,
+                                          self.ddboost,
+                                          self.netbackup_service_host,
+                                          self.netbackup_block_size)
 
             logger.info("Updating AO/CO statistics on master")
             update_ao_statistics(self.master_port, restore_db)

@@ -15,7 +15,8 @@ from gppylib.operations.restore import RestoreDatabase, create_restore_plan, get
         is_incremental_restore, get_restore_table_list, validate_restore_tables_list, \
         update_ao_stat_func, update_ao_statistics, _build_gpdbrestore_cmd_line, ValidateTimestamp, \
         is_full_restore, restore_state_files_with_nbu, restore_report_file_with_nbu, restore_cdatabase_file_with_nbu, \
-        restore_global_file_with_nbu, restore_config_files_with_nbu, config_files_dumped, global_file_dumped
+        restore_global_file_with_nbu, restore_config_files_with_nbu, config_files_dumped, global_file_dumped, \
+        restore_partition_list_file_with_nbu, restore_increments_file_with_nbu
 import gppylib.operations.backup_utils as backup_utils
 
 
@@ -124,8 +125,10 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         dbname = 'bkdb'
         ddboost = False
         backup_dir = None
+        netbackup_service_host = None
+        netbackup_block_size = None
         self.create_backup_dirs(master_datadir, [db_timestamp[0:8]])
-        plan_file = create_restore_plan(master_datadir, backup_dir, db_timestamp, dbname, ddboost)
+        plan_file = create_restore_plan(master_datadir, backup_dir, db_timestamp, dbname, ddboost, netbackup_service_host, netbackup_block_size)
         self.assertTrue(os.path.isfile(plan_file))
         self.remove_backup_dirs(master_datadir, [db_timestamp[0:8]])
 
@@ -139,8 +142,10 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         dbname = 'bkdb'
         ddboost = False
         backup_dir = None
+        netbackup_service_host = None
+        netbackup_block_size = None
         self.create_backup_dirs(master_datadir, [db_timestamp[0:8]])
-        plan_file = create_restore_plan(master_datadir, backup_dir, db_timestamp, dbname, ddboost)
+        plan_file = create_restore_plan(master_datadir, backup_dir, db_timestamp, dbname, ddboost, netbackup_service_host, netbackup_block_size)
         self.assertTrue(os.path.isfile(plan_file))
         self.remove_backup_dirs(master_datadir, [db_timestamp[0:8]])
 
@@ -153,9 +158,44 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         dbname = 'bkdb'
         ddboost = False
         backup_dir = None
+        netbackup_service_host = None
+        netbackup_block_size = None
         self.create_backup_dirs(master_datadir, [db_timestamp[0:8]])
         with self.assertRaisesRegexp(Exception, 'Could not locate fullbackup associated with ts'):
-            create_restore_plan(master_datadir, backup_dir, db_timestamp, dbname, ddboost)
+            create_restore_plan(master_datadir, backup_dir, db_timestamp, dbname, ddboost, netbackup_service_host, netbackup_block_size)
+        self.remove_backup_dirs(master_datadir, [db_timestamp[0:8]])
+
+    @patch('gppylib.operations.restore.get_partition_list', return_value=[])
+    @patch('gppylib.operations.restore.get_full_timestamp_for_incremental_with_nbu', return_value='20120101000000')
+    @patch('gppylib.operations.restore.get_incremental_restore_timestamps', return_value=['20121212121212', '20121212121211'])
+    @patch('gppylib.operations.restore.get_dirty_table_file_contents', return_value=['public.t1', 'public.t2'])
+    @patch('gppylib.operations.restore.create_plan_file_contents')
+    def test_restore_plan_file_03(self, mock1, mock2, mock3, mock4, mock5):
+        master_datadir = 'foo'
+        db_timestamp = '20140101000000'
+        dbname = 'bkdb'
+        ddboost = False
+        backup_dir = None
+        netbackup_service_host = 'mdw'
+        netbackup_block_size = '1024'
+        self.create_backup_dirs(master_datadir, [db_timestamp[0:8]])
+        plan_file = create_restore_plan(master_datadir, backup_dir, db_timestamp, dbname, ddboost, netbackup_service_host, netbackup_block_size)
+        self.assertTrue(os.path.isfile(plan_file))
+        self.remove_backup_dirs(master_datadir, [db_timestamp[0:8]])
+
+    @patch('gppylib.operations.restore.get_partition_list', return_value=[])
+    @patch('gppylib.operations.restore.get_full_timestamp_for_incremental_with_nbu', return_value=None)
+    def test_restore_plan_file_04(self, mock1, mock2):
+        master_datadir = 'foo'
+        db_timestamp = '01234567891234'
+        dbname = 'bkdb'
+        ddboost = False
+        backup_dir = None
+        netbackup_service_host = 'mdw'
+        netbackup_block_size = '1024'
+        self.create_backup_dirs(master_datadir, [db_timestamp[0:8]])
+        with self.assertRaisesRegexp(Exception, 'Could not locate fullbackup associated with ts'):
+            create_restore_plan(master_datadir, backup_dir, db_timestamp, dbname, ddboost, netbackup_service_host, netbackup_block_size)
         self.remove_backup_dirs(master_datadir, [db_timestamp[0:8]])
 
 
@@ -210,12 +250,16 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         incremental_restore_timestamps = ['20121212121213', '20121212121212', '20121212121211']
         latest_full_timestamp = '20121212121210'
         backup_dir = None
+        netbackup_service_host = None
+        netbackup_block_size = None
         expected_output = {'20121212121213': ['public.t1'], '20121212121212': ['public.t2', 'public.t3'], '20121212121211': ['public.t4'], '20121212121210': []}
-        file_contents = create_plan_file_contents(master_datadir, 
+        file_contents = create_plan_file_contents(master_datadir,
                                                   backup_dir,
-                                                  table_set_from_metadata_file, 
+                                                  table_set_from_metadata_file,
                                                   incremental_restore_timestamps,
-                                                  latest_full_timestamp)
+                                                  latest_full_timestamp,
+                                                  netbackup_service_host,
+                                                  netbackup_block_size)
         self.assertEqual(file_contents, expected_output)
  
     def test_create_plan_file_contents_01(self):
@@ -224,12 +268,16 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         incremental_restore_timestamps = []
         latest_full_timestamp = '20121212121210'
         backup_dir = None
+        netbackup_service_host = None
+        netbackup_block_size = None
         expected_output = {'20121212121210': ['public.t1', 'public.t2', 'public.t3', 'public.t4']}
-        file_contents = create_plan_file_contents(master_datadir, 
+        file_contents = create_plan_file_contents(master_datadir,
                                                   backup_dir,
-                                                  table_set_from_metadata_file, 
+                                                  table_set_from_metadata_file,
                                                   incremental_restore_timestamps,
-                                                  latest_full_timestamp)
+                                                  latest_full_timestamp,
+                                                  netbackup_service_host,
+                                                  netbackup_block_size)
         self.assertEqual(file_contents, expected_output)
  
     @patch('gppylib.operations.restore.get_lines_from_file', side_effect=[['public.t1'], ['public.t1', 'public.t2', 'public.t3'], ['public.t2', 'public.t4']])
@@ -239,12 +287,36 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         incremental_restore_timestamps = ['20121212121213', '20121212121212', '20121212121211']
         latest_full_timestamp = '20121212121210'
         backup_dir = None
+        netbackup_service_host = None
+        netbackup_block_size = None
         expected_output = {'20121212121212': [], '20121212121213': [], '20121212121211': [], '20121212121210': []}
-        file_contents = create_plan_file_contents(master_datadir, 
+        file_contents = create_plan_file_contents(master_datadir,
                                                   backup_dir,
-                                                  table_set_from_metadata_file, 
+                                                  table_set_from_metadata_file,
                                                   incremental_restore_timestamps,
-                                                  latest_full_timestamp)
+                                                  latest_full_timestamp,
+                                                  netbackup_service_host,
+                                                  netbackup_block_size)
+        self.assertEqual(file_contents, expected_output)
+
+    @patch('gppylib.operations.restore.get_lines_from_file', side_effect=[['public.t1'], ['public.t1', 'public.t2', 'public.t3'], ['public.t2', 'public.t4']])
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_create_plan_file_contents_03(self, mock1, mock2):
+        master_datadir = 'foo'
+        table_set_from_metadata_file = []
+        incremental_restore_timestamps = ['20121212121213', '20121212121212', '20121212121211']
+        latest_full_timestamp = '20121212121210'
+        backup_dir = None
+        netbackup_service_host = 'mdw'
+        netbackup_block_size = '1024'
+        expected_output = {'20121212121212': [], '20121212121213': [], '20121212121211': [], '20121212121210': []}
+        file_contents = create_plan_file_contents(master_datadir,
+                                                  backup_dir,
+                                                  table_set_from_metadata_file,
+                                                  incremental_restore_timestamps,
+                                                  latest_full_timestamp,
+                                                  netbackup_service_host,
+                                                  netbackup_block_size)
         self.assertEqual(file_contents, expected_output)
 
     @patch('gppylib.operations.restore.write_lines_to_file')
@@ -791,7 +863,7 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         ts = '20121212121212' 
         backup_utils.dump_prefix = 'bar_'
         expected_output = 'gpdbrestore -t 20121212121212 --table-file foo -a -v --noplan --noanalyze --noaostats --prefix=bar'
-        restore_line = _build_gpdbrestore_cmd_line(ts, 'foo', None, None, None)
+        restore_line = _build_gpdbrestore_cmd_line(ts, 'foo', None, None, None, None, None)
         backup_utils.dump_prefix = '' 
         self.assertEqual(restore_line, expected_output)
 
@@ -801,7 +873,7 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         ts = '20121212121212' 
         backup_utils.dump_prefix = 'bar_'
         expected_output = 'gpdbrestore -t 20121212121212 --table-file foo -a -v --noplan --noanalyze --noaostats --prefix=bar --redirect=redb'
-        restore_line = _build_gpdbrestore_cmd_line(ts, 'foo', None, 'redb', None)
+        restore_line = _build_gpdbrestore_cmd_line(ts, 'foo', None, 'redb', None, None, None)
         backup_utils.dump_prefix = '' 
         self.assertEqual(restore_line, expected_output)
 
@@ -811,7 +883,7 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         ts = '20121212121212' 
         backup_utils.dump_prefix = 'bar_'
         expected_output = 'gpdbrestore -t 20121212121212 --table-file foo -a -v --noplan --noanalyze --noaostats -u /tmp --prefix=bar'
-        restore_line = _build_gpdbrestore_cmd_line(ts, 'foo', '/tmp', None, None)
+        restore_line = _build_gpdbrestore_cmd_line(ts, 'foo', '/tmp', None, None, None, None)
         backup_utils.dump_prefix = '' 
         self.assertEqual(restore_line, expected_output)
 
@@ -822,7 +894,7 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         backup_utils.dump_prefix = 'bar_'
         report_status_dir = '/tmp'
         expected_output = 'gpdbrestore -t 20121212121212 --table-file foo -a -v --noplan --noanalyze --noaostats --prefix=bar --report-status-dir=/tmp'
-        restore_line = _build_gpdbrestore_cmd_line(ts, 'foo', None, None, '/tmp')
+        restore_line = _build_gpdbrestore_cmd_line(ts, 'foo', None, None, '/tmp', None, None)
         backup_utils.dump_prefix = '' 
         self.assertEqual(restore_line, expected_output)
 
@@ -843,7 +915,7 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         ts = '20121212121212' 
         backup_utils.dump_prefix = 'bar_'
         expected_output = 'gpdbrestore -t 20121212121212 --table-file foo -a -v --noplan --noanalyze --noaostats -u /tmp --prefix=bar --redirect=redb'
-        restore_line = _build_gpdbrestore_cmd_line(ts, 'foo', '/tmp', 'redb', None)
+        restore_line = _build_gpdbrestore_cmd_line(ts, 'foo', '/tmp', 'redb', None, None, None)
         backup_utils.dump_prefix = '' 
         self.assertEqual(restore_line, expected_output)
 
@@ -1166,7 +1238,9 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         timestamp = '20121212121212'
         backup_dir = None
         restore_tables = None
-        results = restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables, None, None)
+        netbackup_service_host = None
+        netbackup_block_size = None
+        results = restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables, None, None, netbackup_service_host, netbackup_block_size)
         self.assertTrue(results)
     
     @patch('gppylib.operations.restore.get_plan_file_contents', return_value=[('20121212121212','t1,t2'), ('20121212121211','t3,t4'), ('20121212121210','t5,t6,t7')])
@@ -1176,7 +1250,9 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         timestamp = '20121212121212'
         backup_dir = None
         restore_tables = None
-        results = restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables, 'redb', None)
+        netbackup_service_host = None
+        netbackup_block_size = None
+        results = restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables, 'redb', None, netbackup_service_host, netbackup_block_size)
         self.assertTrue(results)
     
     @patch('gppylib.operations.restore.get_plan_file_contents', return_value=[('20121212121212',''), ('20121212121211',''), ('20121212121210','')])
@@ -1186,8 +1262,10 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         timestamp = '20121212121212'
         backup_dir = None
         restore_tables = None
+        netbackup_service_host = None
+        netbackup_block_size = None
         with self.assertRaisesRegexp(Exception, 'There were no tables to restore. Check the plan file contents for restore timestamp %s' % timestamp):
-            restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables, 'redb', None)
+            restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables, 'redb', None, netbackup_service_host, netbackup_block_size)
     
     @patch('gppylib.operations.restore.get_plan_file_contents', return_value=[('20121212121212','t1,t2'), ('20121212121211','t3,t4'), ('20121212121210','t5,t6,t7')])
     @patch('gppylib.operations.restore.Command.run')
@@ -1196,7 +1274,9 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         timestamp = '20121212121212'
         backup_dir = None
         restore_tables = None
-        self.assertTrue(restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables, 'redb', None))
+        netbackup_service_host = None
+        netbackup_block_size = None
+        self.assertTrue(restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables, 'redb', None, netbackup_service_host, netbackup_block_size))
 
     @patch('gppylib.operations.restore.get_plan_file_contents', return_value=[('20121212121212','t1,t2'), ('20121212121211','t3,t4'), ('20121212121210','t5,t6,t7')])
     @patch('gppylib.operations.restore.Command.run', side_effect=Exception('Error executing gpdbrestore'))
@@ -1205,8 +1285,10 @@ CREATE DATABASE monkey WITH TEMPLATE = template0 ENCODING = 'UTF8' OWNER = thisg
         timestamp = '20121212121212'
         backup_dir = None
         restore_tables = None
+        netbackup_service_host = None
+        netbackup_block_size = None
         with self.assertRaisesRegexp(Exception, 'Error executing gpdbrestore'):
-            restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables, 'redb', None)
+            restore_incremental_data_only(master_datadir, backup_dir, timestamp, restore_tables, 'redb', None, netbackup_service_host, netbackup_block_size)
 
     def test_get_restore_dir_00(self):
         master_datadir = '/foo'
@@ -2138,6 +2220,213 @@ class ValidateTimestampTestCase(unittest.TestCase):
             seg.getSegmentHostName.return_value = "sdw"
 
         restore_config_files_with_nbu(master_datadir, backup_dir, restore_timestamp, master_port, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_partition_list_file_with_nbu_00(self, mock1):
+        master_datadir = "/data"
+        backup_dir = "/datadomain"
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+
+        restore_partition_list_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_partition_list_file_with_nbu_01(self, mock1):
+        master_datadir = "/data"
+        backup_dir = None
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+
+        restore_partition_list_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_partition_list_file_with_nbu_02(self, mock1):
+        master_datadir = None
+        backup_dir = "/datadomain"
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+
+        restore_partition_list_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_partition_list_file_with_nbu_03(self, mock1):
+        master_datadir = None
+        backup_dir = None
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+
+        with self.assertRaisesRegexp(Exception, 'Master data directory and backup directory are both none.'):
+            restore_partition_list_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_partition_list_file_with_nbu_04(self, mock1):
+        master_datadir = "/data"
+        backup_dir = "/datadomain"
+        restore_timestamp = None
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+
+        with self.assertRaisesRegexp(Exception, 'Restore timestamp is None.'):
+            restore_partition_list_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_partition_list_file_with_nbu_05(self, mock1):
+        master_datadir = "/data"
+        backup_dir = "/datadomain"
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = None
+        netbackup_block_size = None
+
+        with self.assertRaisesRegexp(Exception, 'Netbackup service hostname is None.'):
+            restore_partition_list_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_partition_list_file_with_nbu_06(self, mock1):
+        master_datadir = "/data"
+        backup_dir = "/datadomain"
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 1024
+
+        restore_partition_list_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_partition_list_file_with_nbu_07(self, mock1):
+        master_datadir = "/data"
+        backup_dir = None
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 2048
+
+        restore_partition_list_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    def test_restore_partition_list_file_with_nbu_08(self, mock1):
+        master_datadir = None
+        backup_dir = "/datadomain"
+        restore_timestamp = "20141400002014"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 4096
+
+        restore_partition_list_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    @patch('gppylib.operations.restore.get_full_timestamp_for_incremental_with_nbu', return_value='20140707000000')
+    def test_restore_increments_file_with_nbu_00(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = "/datadomain"
+        restore_timestamp = "20140808000000"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+
+        restore_increments_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    @patch('gppylib.operations.restore.get_full_timestamp_for_incremental_with_nbu', return_value='20140707000000')
+    def test_restore_increments_file_with_nbu_01(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = None
+        restore_timestamp = "20140808000000"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+
+        restore_increments_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    @patch('gppylib.operations.restore.get_full_timestamp_for_incremental_with_nbu', return_value='20140707000000')
+    def test_restore_increments_file_with_nbu_02(self, mock1, mock2):
+        master_datadir = None
+        backup_dir = "/datadomain"
+        restore_timestamp = "20140808000000"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+
+        restore_increments_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    @patch('gppylib.operations.restore.get_full_timestamp_for_incremental_with_nbu', return_value='20140707000000')
+    def test_restore_increments_file_with_nbu_03(self, mock1, mock2):
+        master_datadir = None
+        backup_dir = None
+        restore_timestamp = "20140808000000"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+
+        with self.assertRaisesRegexp(Exception, 'Master data directory and backup directory are both none.'):
+            restore_increments_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    @patch('gppylib.operations.restore.get_full_timestamp_for_incremental_with_nbu', return_value='20140707000000')
+    def test_restore_increments_file_with_nbu_04(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = "/datadomain"
+        restore_timestamp = None
+        netbackup_service_host = "mdw"
+        netbackup_block_size = None
+
+        with self.assertRaisesRegexp(Exception, 'Restore timestamp is None.'):
+            restore_increments_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    @patch('gppylib.operations.restore.get_full_timestamp_for_incremental_with_nbu', return_value='20140707000000')
+    def test_restore_increments_file_with_nbu_05(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = "/datadomain"
+        restore_timestamp = "20140808000000"
+        netbackup_service_host = None
+        netbackup_block_size = None
+
+        with self.assertRaisesRegexp(Exception, 'Netbackup service hostname is None.'):
+            restore_increments_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    @patch('gppylib.operations.restore.get_full_timestamp_for_incremental_with_nbu', return_value='20140707000000')
+    def test_restore_increments_file_with_nbu_06(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = "/datadomain"
+        restore_timestamp = "20140808000000"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 1024
+
+        restore_increments_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    @patch('gppylib.operations.restore.get_full_timestamp_for_incremental_with_nbu', return_value='20140707000000')
+    def test_restore_increments_file_with_nbu_07(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = None
+        restore_timestamp = "20140808000000"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 2048
+
+        restore_increments_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    @patch('gppylib.operations.restore.get_full_timestamp_for_incremental_with_nbu', return_value='20140707000000')
+    def test_restore_increments_file_with_nbu_08(self, mock1, mock2):
+        master_datadir = None
+        backup_dir = "/datadomain"
+        restore_timestamp = "20140808000000"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 4096
+
+        restore_increments_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
+
+    @patch('gppylib.operations.restore.restore_file_with_nbu')
+    @patch('gppylib.operations.restore.get_full_timestamp_for_incremental_with_nbu', return_value=None)
+    def test_restore_increments_file_with_nbu_09(self, mock1, mock2):
+        master_datadir = None
+        backup_dir = "/datadomain"
+        restore_timestamp = "20140808000000"
+        netbackup_service_host = "mdw"
+        netbackup_block_size = 4096
+
+        with self.assertRaisesRegexp(Exception, 'Unable to locate full timestamp for given incremental timestamp "20140808000000" using NetBackup'):
+            restore_increments_file_with_nbu(master_datadir, backup_dir, restore_timestamp, netbackup_service_host, netbackup_block_size)
 
     @patch('gppylib.operations.restore.get_backup_directory', return_value="/data")
     @patch('gppylib.operations.restore.generate_master_config_filename', return_value="gp_master_config_20141200002014.tar")

@@ -13,10 +13,12 @@
 
 char                    *BackupFilePathName;
 int						BackupFilePathLength = 0;
-char                    *NetBackupServiceHost;
+char					*NetBackupServiceHost;
+char					*NetBackupQueryObject;
 char					*progname;
 char					*netbackupRestoreFilename = NULL;
 char					*netbackupServiceHost = NULL;
+char					*netbackupQueryObject = NULL;
 extern char				*optarg;
 extern int				optind;
 
@@ -30,6 +32,7 @@ main(int argc, char *argv[])
 	static struct option long_options[] = {
 		{"netbackup-service-host", required_argument, NULL, 1},
 		{"netbackup-filename", required_argument, NULL, 2},
+		{"netbackup-list-dumped-objects", required_argument, NULL, 3},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -60,6 +63,9 @@ main(int argc, char *argv[])
 			case 2:
 				netbackupRestoreFilename = Safe_strdup(optarg);
 				break;
+			case 3:
+				netbackupQueryObject = Safe_strdup(optarg);
+				break;
 			default:
 				fprintf(stderr, _("Wrong option entered. Try \"%s --help\" for more information.\n"), progname);
 				exit(1);
@@ -75,42 +81,66 @@ main(int argc, char *argv[])
 
 	if (netbackupServiceHost == NULL)
 	{
-		mpp_err_msg("ERROR", "gp_bsa_dump_agent", "Need to provide --netbackup-service-host mandatory option.\nTry \"%s --help\" for more information\n", progname);
+		mpp_err_msg("ERROR", "gp_bsa_query_agent", "Need to provide --netbackup-service-host mandatory option.\nTry \"%s --help\" for more information\n", progname);
 		exit(1);
 	}
 
-	if (netbackupRestoreFilename == NULL)
+	if ((netbackupRestoreFilename == NULL) && (netbackupQueryObject == NULL))
 	{
-		mpp_err_msg("ERROR", "gp_bsa_dump_agent", "Need to provide NetBackup Dump File Path.\nTry \"%s --help\" for more information\n", progname);
+		mpp_err_msg("ERROR", "gp_bsa_query_agent", "Need to provide NetBackup Dump File Path or NetBackup Query Object.\nTry \"%s --help\" for more information\n", progname);
+		exit(1);
+	}
+	else if (netbackupRestoreFilename && netbackupQueryObject)
+	{
+		mpp_err_msg("ERROR", "gp_bsa_query_agent", "Cannot provide NetBackup Dump File Path and NetBackup Query Object together.\nTry \"%s --help\" for more information\n", progname);
 		exit(1);
 	}
 
-	BackupFilePathLength = strlen(netbackupRestoreFilename);
-	BackupFilePathName = (char *)malloc(sizeof(char) *(1 + BackupFilePathLength));
-	if(BackupFilePathName == NULL){
-		mpp_err_msg("ERROR", "gp_bsa_query_agent", "Failed to allocate memory for Restore Filename\n");
-		exit(1);
+	if (netbackupRestoreFilename)
+	{
+		BackupFilePathLength = strlen(netbackupRestoreFilename);
+		BackupFilePathName = (char *)malloc(sizeof(char) *(1 + BackupFilePathLength));
+		if(BackupFilePathName == NULL){
+			mpp_err_msg("ERROR", "gp_bsa_query_agent", "Failed to allocate memory for Restore Filename\n");
+			exit(1);
+		}
+		strncpy(BackupFilePathName, netbackupRestoreFilename, (1 + BackupFilePathLength));
 	}
-	strncpy(BackupFilePathName, netbackupRestoreFilename, (1 + BackupFilePathLength));
 
 	NetBackupServiceHost = (char *)malloc(sizeof(char) *(1 + strlen(netbackupServiceHost)));
 	if(NetBackupServiceHost == NULL){
-		mpp_err_msg("ERROR", "gp_bsa_dump_agent", "Failed to allocate memory for NetBackup Service Hostname\n");
+		mpp_err_msg("ERROR", "gp_bsa_query_agent", "Failed to allocate memory for NetBackup Service Hostname\n");
 		exit(1);
 	}
 	strncpy(NetBackupServiceHost, netbackupServiceHost, (1 + strlen(netbackupServiceHost)));
 
+	if (netbackupQueryObject)
+	{
+		NetBackupQueryObject = (char *)malloc(sizeof(char) *(1 + strlen(netbackupQueryObject)));
+		if (NetBackupQueryObject == NULL) {
+			mpp_err_msg("ERROR", "gp_bsa_query_agent", "Failed to allocate memory for NetBackup Query Object\n");
+			exit(1);
+		}
+		strncpy(NetBackupQueryObject, netbackupQueryObject, (1 + strlen(netbackupQueryObject)));
+	}
 
 	if(initBSARestoreSession(NetBackupServiceHost) != 0){
 		mpp_err_msg("ERROR", "gp_bsa_query_agent", "Failed to initialize the NetBackup BSA session to query BSA object\n");
 		exit(1);
 	}
 
-	if(queryBSAObject(BackupFilePathName) == NULL){
-		mpp_err_msg("INFO", "gp_bsa_query_agent", "Query to NetBackup server failed for object: %s\n", BackupFilePathName);
+	if (BackupFilePathName) {
+		if(queryBSAObject(BackupFilePathName) == NULL){
+			mpp_err_msg("INFO", "gp_bsa_query_agent", "Query to NetBackup server failed for object: %s\n", BackupFilePathName);
+		}
+		else {
+			printf("%s\n", (char *)BackupFilePathName);
+		}
 	}
-	else {
-		printf("%s\n", (char *)BackupFilePathName);
+	else if (NetBackupQueryObject) {
+		if (searchBSAObject(NetBackupQueryObject) != 0) {
+			mpp_err_msg("INFO", "gp_bsa_query_agent", "No objects of the format '%s' found on the NetBackup server\n", NetBackupQueryObject);
+		}
 	}
 
 	exit(0);
@@ -131,8 +161,9 @@ help(const char *progname)
 	printf(_("  --netbackup-filename=FILENAME  \n"));
 	printf(_("  NetBackup filename to be queried.\n"));
 	printf(_("  NetBackup filename should be provided to query the NetBackup server.\n\n\n"));
-
-	printf(_("\nIf no file name is provided the utility will fail.\n"));
+	printf(_("  --netbackup-list-dumped-objects=OBJREGEX  \n"));
+	printf(_("  NetBackup objects to be queried.\n"));
+	printf(_("  NetBackup objects to be queried can be provided in the form of a regular expression\n\n\n"));
 }
 
 #else

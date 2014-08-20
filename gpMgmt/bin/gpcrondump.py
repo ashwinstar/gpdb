@@ -39,12 +39,13 @@ try:
                                         DUMP_DIR, filter_dirty_tables, get_filter_file, update_filter_file, \
                                         backup_cdatabase_file_with_nbu, backup_report_file_with_nbu, \
                                         backup_global_file_with_nbu, backup_state_files_with_nbu, backup_config_files_with_nbu, \
-                                        backup_report_file_with_ddboost, backup_increments_file_with_ddboost
+                                        backup_report_file_with_ddboost, backup_increments_file_with_ddboost, \
+                                        backup_dirty_file_with_nbu, backup_increments_file_with_nbu, backup_partition_list_file_with_nbu
     from gppylib.operations.backup_utils import get_latest_full_dump_timestamp, check_funny_chars_in_tablenames, \
                                                 expand_partitions_and_populate_filter_file, get_lines_from_file, \
                                                 remove_file_from_segments, validate_timestamp, write_lines_to_file, \
                                                 verify_lines_in_file, get_backup_directory, generate_pipes_filename, \
-                                                generate_files_filename
+                                                generate_files_filename, get_latest_full_ts_with_nbu
     from gppylib.operations.utils import DEFAULT_NUM_WORKERS
     from gppylib.gparray import GpArray
     from gppylib.db import dbconn
@@ -195,9 +196,6 @@ class GpCronDump(Operation):
             if self.netbackup_schedule is None:
                 raise Exception("NetBackup schedule name (--netbackup-schedule) param should be provided in order to use NetBackup")
 
-        if self.incremental and self.netbackup_service_host:
-            raise Exception('--incremental is not supported with NetBackup')
-
         if self.ddboost and self.netbackup_service_host:
             raise Exception('--ddboost is not supported with NetBackup')
 
@@ -294,7 +292,10 @@ class GpCronDump(Operation):
             raise Exception('--inserts, --column-inserts, --oids cannot be selected with incremental backup')
 
         if self.incremental:
-            self.full_dump_timestamp = get_latest_full_dump_timestamp(self.dump_databases[0], self.getBackupDirectoryRoot(), self.ddboost)
+            if self.netbackup_service_host is None:
+                self.full_dump_timestamp = get_latest_full_dump_timestamp(self.dump_databases[0], self.getBackupDirectoryRoot(), self.ddboost)
+            else:
+                self.full_dump_timestamp = get_latest_full_ts_with_nbu(self.netbackup_service_host, self.netbackup_block_size, self.dump_databases[0], self.getBackupDirectoryRoot())
 
     def getBackupDirectoryRoot(self):
         if self.backup_dir:
@@ -681,12 +682,13 @@ class GpCronDump(Operation):
                     dirty_partitions = get_dirty_tables(self.master_port, dump_database,
                                                         self.master_datadir, self.backup_dir,
                                                         self.full_dump_timestamp, ao_partition_list,
-                                                        co_partition_list, last_operation_list)
+                                                        co_partition_list, last_operation_list,
+                                                        self.netbackup_service_host, self.netbackup_block_size)
                     if backup_utils.dump_prefix and \
-                       get_filter_file(dump_database, self.master_datadir, self.backup_dir, self.ddboost):
-                        update_filter_file(dump_database, self.master_datadir, self.backup_dir, self.master_port, self.ddboost)
+                       get_filter_file(dump_database, self.master_datadir, self.backup_dir, self.ddboost, self.netbackup_service_host, self.netbackup_block_size):
+                        update_filter_file(dump_database, self.master_datadir, self.backup_dir, self.master_port, self.ddboost, self.netbackup_service_host, self.netbackup_policy, self.netbackup_schedule, self.netbackup_block_size, self.netbackup_keyword)
                     dirty_partitions = filter_dirty_tables(dirty_partitions, dump_database, self.master_datadir,
-                                                           self.backup_dir, self.ddboost)
+                                                           self.backup_dir, self.ddboost, self.netbackup_service_host, self.netbackup_block_size)
                     dirty_file = write_dirty_file_to_temp(dirty_partitions)
 
                 (include_file, exclude_file) = self.get_include_exclude_for_dump_database(dirty_file, dump_database)
@@ -739,6 +741,8 @@ class GpCronDump(Operation):
                         os.remove(dirty_file)
                         remove_file_from_segments(self.master_port, dirty_file)
                     write_dirty_file(self.master_datadir, dirty_partitions, self.backup_dir, None, self.ddboost, self.dump_dir)
+                    if self.netbackup_service_host:
+                        backup_dirty_file_with_nbu(self.master_datadir, self.backup_dir, self.netbackup_service_host, self.netbackup_policy, self.netbackup_schedule, self.netbackup_block_size, self.netbackup_keyword)
 
                 if include_file is not None and os.path.exists(include_file): 
                     os.remove(include_file)
@@ -769,12 +773,17 @@ class GpCronDump(Operation):
                                                 timestamp = post_dump_outcome['timestamp'],
                                                 master_datadir = self.master_datadir,
                                                 backup_dir = self.backup_dir, 
-                                                ddboost = self.ddboost, dump_dir = self.dump_dir ).run()
+                                                ddboost = self.ddboost, dump_dir = self.dump_dir,
+                                                netbackup_service_host = self.netbackup_service_host,
+                                                netbackup_block_size = self.netbackup_block_size ).run()
                         if self.ddboost:
                             backup_increments_file_with_ddboost(self.master_datadir, self.backup_dir, self.dump_dir, self.full_dump_timestamp)
 
                         write_partition_list_file(self.master_datadir, self.backup_dir, post_dump_outcome['timestamp'], \
-                                                  self.master_port, dump_database, self.ddboost, self.dump_dir)
+                                                  self.master_port, dump_database, self.ddboost, self.dump_dir, self.netbackup_service_host)
+                        if self.netbackup_service_host:
+                            backup_increments_file_with_nbu(self.master_datadir, self.backup_dir, self.full_dump_timestamp, self.netbackup_service_host, self.netbackup_policy, self.netbackup_schedule, self.netbackup_block_size, self.netbackup_keyword)
+                            backup_partition_list_file_with_nbu(self.master_datadir, self.backup_dir, self.netbackup_service_host, self.netbackup_policy, self.netbackup_schedule, self.netbackup_block_size, self.netbackup_keyword)
 
             finally:
                 thread_stop.set()
@@ -1074,7 +1083,7 @@ class GpCronDump(Operation):
         else:
             if self.incremental:
                 logger.info("Dump type                            = Incremental")
-                filter_name = get_filter_file(dump_database, self.master_datadir, self.backup_dir, self.ddboost)
+                filter_name = get_filter_file(dump_database, self.master_datadir, self.backup_dir, self.ddboost, self.netbackup_service_host)
                 if filter_name is not None:
                     logger.info("Filtering tables using:")
                     logger.info("\t Prefix                        = %s" % (backup_utils.dump_prefix[:-1]))

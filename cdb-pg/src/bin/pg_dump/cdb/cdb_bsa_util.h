@@ -19,5 +19,9 @@ extern int endBSARestoreSession(void);
 
 /* Query related functions to query objects to NetBackup */
 extern char *queryBSAObject(char *BackupFilePathName);
+extern int searchBSAObject(char *NetBackupQueryObject);
+
+/* Cleanup related function to delete objects on NetBackup server */
+extern int deleteBSAObjects(char *NetBackupDeleteObject);
 
 #endif

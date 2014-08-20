@@ -28,7 +28,8 @@ from gppylib.operations.backup_utils import write_lines_to_file, verify_lines_in
                                             generate_master_status_prefix, generate_seg_dbdump_prefix, generate_seg_status_prefix, \
                                             generate_dbdump_prefix, generate_createdb_filename, generate_filter_filename, \
                                             get_latest_full_dump_timestamp, backup_file_with_nbu, generate_cdatabase_filename, \
-                                            generate_global_filename
+                                            generate_global_filename, restore_file_with_nbu, check_file_dumped_with_nbu, \
+                                            get_latest_full_ts_with_nbu
 
 logger = gplog.get_default_logger()
 
@@ -38,6 +39,7 @@ logger = gplog.get_default_logger()
 TIMESTAMP = datetime.now()
 TIMESTAMP_KEY = TIMESTAMP.strftime("%Y%m%d%H%M%S")
 DUMP_DATE = TIMESTAMP.strftime("%Y%m%d") 
+FULL_DUMP_TS_WITH_NBU = None
 
 COMPRESSION_FACTOR = 12                 # TODO: Where did 12 come from?
 
@@ -192,25 +194,34 @@ def get_partition_state(master_port, dbname, catalog_schema, partition_info):
 
     return partition_list
 
-def get_tables_with_dirty_metadata(master_datadir, backup_dir, full_timestamp, cur_pgstatoperations):
-    last_dump_timestamp = get_last_dump_timestamp(master_datadir, backup_dir, full_timestamp)
+def get_tables_with_dirty_metadata(master_datadir, backup_dir, full_timestamp, cur_pgstatoperations, netbackup_service_host=None, netbackup_block_size=None):
+    last_dump_timestamp = get_last_dump_timestamp(master_datadir, backup_dir, full_timestamp, netbackup_service_host, netbackup_block_size)
     old_pgstatoperations_file = generate_pgstatlastoperation_filename(master_datadir, backup_dir, last_dump_timestamp)
+    if netbackup_service_host:
+        restore_file_with_nbu(netbackup_service_host, netbackup_block_size, old_pgstatoperations_file)
     old_pgstatoperations = get_lines_from_file(old_pgstatoperations_file)
     old_pgstatoperations_dict = get_pgstatlastoperations_dict(old_pgstatoperations)
     dirty_tables = compare_metadata(old_pgstatoperations_dict, cur_pgstatoperations)
     return dirty_tables
 
-def get_dirty_partition_tables(table_type, curr_state_partition_list, master_datadir, backup_dir, full_timestamp):
-    last_state_partition_list = get_last_state(table_type, master_datadir, backup_dir, full_timestamp)
+def get_dirty_partition_tables(table_type, curr_state_partition_list, master_datadir, backup_dir, full_timestamp,
+                               netbackup_service_host=None, netbackup_block_size=None):
+    last_state_partition_list = get_last_state(table_type, master_datadir, backup_dir, full_timestamp, netbackup_service_host, netbackup_block_size)
     last_state_dict = create_partition_dict(last_state_partition_list)
     curr_state_dict = create_partition_dict(curr_state_partition_list)
     return compare_dict(last_state_dict, curr_state_dict)
  
-def get_last_state(table_type, master_datadir, backup_dir, full_timestamp):
-    last_ts = get_last_dump_timestamp(master_datadir, backup_dir, full_timestamp)
+def get_last_state(table_type, master_datadir, backup_dir, full_timestamp, netbackup_service_host=None, netbackup_block_size=None):
+    last_ts = get_last_dump_timestamp(master_datadir, backup_dir, full_timestamp, netbackup_service_host, netbackup_block_size)
     last_state_filename = get_filename_from_filetype(table_type, master_datadir, backup_dir, last_ts.strip())
-    if not os.path.isfile(last_state_filename):
-        raise Exception('%s state file does not exist: %s' % (table_type, last_state_filename))
+    if netbackup_service_host is None:
+        if not os.path.isfile(last_state_filename):
+            raise Exception('%s state file does not exist: %s' % (table_type, last_state_filename))
+    else:
+        if check_file_dumped_with_nbu(netbackup_service_host, last_state_filename):
+            if not os.path.exists(last_state_filename):
+                restore_file_with_nbu(netbackup_service_host, netbackup_block_size, last_state_filename)
+
     return get_lines_from_file(last_state_filename)
 
 def compare_metadata(old_pgstatoperations, cur_pgstatoperations):
@@ -233,10 +244,20 @@ def get_pgstatlastoperations_dict(last_operations):
         last_operations_dict[(toks[2], toks[3])] = operation 
     return last_operations_dict
  
-def get_last_dump_timestamp(master_datadir, backup_dir, full_timestamp):
+def get_last_dump_timestamp(master_datadir, backup_dir, full_timestamp, netbackup_service_host=None, netbackup_block_size=None):
+    global FULL_DUMP_TS_WITH_NBU
     increments_filename = generate_increments_filename(master_datadir, backup_dir, full_timestamp)
-    if not os.path.isfile(increments_filename):
-        return full_timestamp
+    if netbackup_service_host is None:
+        if not os.path.isfile(increments_filename):
+            return full_timestamp
+    else:
+        if check_file_dumped_with_nbu(netbackup_service_host, increments_filename):
+            if not os.path.exists(increments_filename):
+                logger.debug('Increments file %s was dumped with NBU, so restoring it now...' % increments_filename)
+                restore_file_with_nbu(netbackup_service_host, netbackup_block_size, increments_filename)
+        else:
+            logger.debug('Increments file %s was NOT dumped with NBU, returning full timestamp as last dump timestamp' % increments_filename)
+            return full_timestamp
 
     lines = get_lines_from_file(increments_filename)
     if not lines:
@@ -288,18 +309,19 @@ def write_state_file(table_type, master_datadir, backup_dir, partition_list, ddb
 
 # return a list of dirty tables
 def get_dirty_tables(master_port, dbname, master_datadir, backup_dir, fulldump_ts, 
-                        ao_partition_list, co_partition_list, last_operation_data):
+                        ao_partition_list, co_partition_list, last_operation_data,
+                        netbackup_service_host, netbackup_block_size):
 
     dirty_heap_tables = get_dirty_heap_tables(master_port, dbname)
 
     dirty_ao_tables = get_dirty_partition_tables('ao', ao_partition_list, master_datadir, 
-                        backup_dir, fulldump_ts)
+                        backup_dir, fulldump_ts, netbackup_service_host, netbackup_block_size)
 
     dirty_co_tables = get_dirty_partition_tables('co', co_partition_list, master_datadir, 
-                        backup_dir, fulldump_ts)
+                        backup_dir, fulldump_ts, netbackup_service_host, netbackup_block_size)
 
     dirty_metadata_set = get_tables_with_dirty_metadata(master_datadir, backup_dir, 
-                        fulldump_ts, last_operation_data)
+                        fulldump_ts, last_operation_data, netbackup_service_host, netbackup_block_size)
 
     return list(dirty_heap_tables | dirty_ao_tables | dirty_co_tables | dirty_metadata_set)
 
@@ -370,8 +392,8 @@ def get_last_operation_data(master_port, dbname):
         data.append(line)
     return data
 
-def write_partition_list_file(master_datadir, backup_dir, timestamp_key, master_port, dbname, ddboost=False, dump_dir=None):
-    filter_file = get_filter_file(dbname, master_datadir, backup_dir, ddboost)
+def write_partition_list_file(master_datadir, backup_dir, timestamp_key, master_port, dbname, ddboost=False, dump_dir=None, netbackup_service_host=None):
+    filter_file = get_filter_file(dbname, master_datadir, backup_dir, ddboost, netbackup_service_host)
     partition_list_file_name = generate_partition_list_filename(master_datadir, backup_dir, timestamp_key)
 
     if filter_file:
@@ -417,8 +439,11 @@ def get_backup_dir(master_datadir, backup_dir):
         return backup_dir
     return master_datadir
 
-def update_filter_file(dump_database, master_datadir, backup_dir, master_port, ddboost=False):
-    filter_filename = get_filter_file(dump_database, master_datadir, backup_dir, ddboost)
+def update_filter_file(dump_database, master_datadir, backup_dir, master_port, ddboost=False, netbackup_service_host=None,
+    netbackup_policy=None, netbackup_schedule=None, netbackup_block_size=None, netbackup_keyword=None):
+    filter_filename = get_filter_file(dump_database, master_datadir, backup_dir, ddboost, netbackup_service_host, netbackup_block_size)
+    if netbackup_service_host:
+        restore_file_with_nbu(netbackup_service_host, netbackup_block_size, filter_filename)
     filter_tables = get_lines_from_file(filter_filename)
     tables_sql = "SELECT DISTINCT schemaname||'.'||tablename FROM pg_partitions";
     partitions_sql = "SELECT schemaname||'.'||partitiontablename FROM pg_partitions WHERE schemaname||'.'||tablename='%s';"
@@ -430,17 +455,41 @@ def update_filter_file(dump_database, master_datadir, backup_dir, master_port, d
             filter_tables.extend([x[0] for x in partitions_list])
 
     write_lines_to_file(filter_filename, list(set(filter_tables)))
+    if netbackup_service_host:
+        backup_file_with_nbu(netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword, filter_filename)
 
-def get_filter_file(dump_database, master_datadir, backup_dir, ddboost=False):
-    timestamp = get_latest_full_dump_timestamp(dump_database, get_backup_dir(master_datadir, backup_dir), ddboost)
+def get_filter_file(dump_database, master_datadir, backup_dir, ddboost=False, netbackup_service_host=None, netbackup_block_size=None):
+    if netbackup_service_host is None:
+        timestamp = get_latest_full_dump_timestamp(dump_database, get_backup_dir(master_datadir, backup_dir), ddboost)
+    else:
+        if FULL_DUMP_TS_WITH_NBU is None:
+            timestamp = get_latest_full_ts_with_nbu(netbackup_service_host, netbackup_block_size, dump_database, get_backup_dir(master_datadir, backup_dir))
+        else:
+            timestamp = FULL_DUMP_TS_WITH_NBU
+        if timestamp is None:
+            raise Exception("No full backup timestamp found for given NetBackup server.")
     filter_file = generate_filter_filename(master_datadir, backup_dir, timestamp)
-    if os.path.isfile(filter_file):
-        return filter_file
-    return None
+    if netbackup_service_host is None:
+        if os.path.isfile(filter_file):
+            return filter_file
+        return None
+    else:
+        if check_file_dumped_with_nbu(netbackup_service_host, filter_file):
+            if not os.path.exists(filter_file):
+                restore_file_with_nbu(netbackup_service_host, netbackup_block_size, filter_file)
+            return filter_file
+        return None
 
-def filter_dirty_tables(dirty_tables, dump_database, master_datadir, backup_dir, ddboost=False):
-    timestamp = get_latest_full_dump_timestamp(dump_database, get_backup_dir(master_datadir, backup_dir), ddboost)
-    filter_file = get_filter_file(dump_database, master_datadir, backup_dir, ddboost)
+def filter_dirty_tables(dirty_tables, dump_database, master_datadir, backup_dir, ddboost=False, netbackup_service_host=None, netbackup_block_size=None):
+    if netbackup_service_host is None:
+        timestamp = get_latest_full_dump_timestamp(dump_database, get_backup_dir(master_datadir, backup_dir), ddboost)
+    else:
+        if FULL_DUMP_TS_WITH_NBU is None:
+            timestamp = get_latest_full_ts_with_nbu(netbackup_service_host, netbackup_block_size, dump_database, get_backup_dir(master_datadir, backup_dir))
+        else:
+            timestamp = FULL_DUMP_TS_WITH_NBU
+
+    filter_file = get_filter_file(dump_database, master_datadir, backup_dir, ddboost, netbackup_service_host, netbackup_block_size)
     if filter_file:
         tables_to_filter = get_lines_from_file(filter_file)
         dirty_copy = dirty_tables[:]
@@ -526,6 +575,39 @@ def backup_config_files_with_nbu(master_datadir, backup_dir, dump_dir, master_po
         host = seg.getSegmentHostName()
         backup_file_with_nbu(netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword, path, host)
 
+def backup_dirty_file_with_nbu(master_datadir, backup_dir, netbackup_service_host, netbackup_policy, netbackup_schedule,
+                               netbackup_block_size, netbackup_keyword, timestamp_key=None):
+    logger.debug("Inside backup_dirty_file_with_nbu\n")
+    if (master_datadir is None) and (backup_dir is None):
+        raise Exception('Master data directory and backup directory are both none.')
+    if timestamp_key is None:
+        timestamp_key = TIMESTAMP_KEY
+
+    backup_file_with_nbu(netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword,
+                         generate_dirtytable_filename(master_datadir, backup_dir, timestamp_key))
+
+def backup_increments_file_with_nbu(master_datadir, backup_dir, full_timestamp, netbackup_service_host, netbackup_policy,
+                                    netbackup_schedule, netbackup_block_size, netbackup_keyword, timestamp_key=None):
+    logger.debug("Inside backup_increments_file_with_nbu\n")
+    if (master_datadir is None) and (backup_dir is None):
+        raise Exception('Master data directory and backup directory are both none.')
+    if timestamp_key is None:
+        timestamp_key = TIMESTAMP_KEY
+
+    backup_file_with_nbu(netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword,
+                         generate_increments_filename(master_datadir, backup_dir, full_timestamp))
+
+def backup_partition_list_file_with_nbu(master_datadir, backup_dir, netbackup_service_host, netbackup_policy, netbackup_schedule,
+                                        netbackup_block_size, netbackup_keyword, timestamp_key=None):
+    logger.debug("Inside backup_partition_list_file_with_nbu\n")
+    if (master_datadir is None) and (backup_dir is None):
+        raise Exception('Master data directory and backup directory are both none.')
+    if timestamp_key is None:
+        timestamp_key = TIMESTAMP_KEY
+
+    backup_file_with_nbu(netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword,
+                         generate_partition_list_filename(master_datadir, backup_dir, timestamp_key))
+
 class DumpDatabase(Operation):
     # TODO: very verbose constructor = room for improvement. in the parent constructor, we could use kwargs
     # to automatically take in all arguments and perhaps do some data type validation.
@@ -571,7 +653,7 @@ class DumpDatabase(Operation):
                                                         incremental = self.incremental).run()
 
         if self.incremental and backup_utils.dump_prefix \
-                            and get_filter_file(self.dump_database, self.master_datadir, self.backup_dir, self.ddboost):
+                            and get_filter_file(self.dump_database, self.master_datadir, self.backup_dir, self.ddboost, self.netbackup_service_host):
             filtered_dump_line = self.create_filtered_dump_string(getUserName(), DUMP_DATE, TIMESTAMP_KEY, self.ddboost)
             (start, end, rc) = self.perform_dump('Dump process', filtered_dump_line)
             return self.create_dump_outcome(start, end, rc)
@@ -607,6 +689,8 @@ class DumpDatabase(Operation):
         if self.include_dump_tables_file[0]:
             shutil.copyfile(self.include_dump_tables_file[0], filter_name)
             verify_lines_in_file(filter_name, get_lines_from_file(self.include_dump_tables_file[0]))
+            if self.netbackup_service_host:
+                backup_file_with_nbu(self.netbackup_service_host, self.netbackup_policy, self.netbackup_schedule, self.netbackup_block_size, self.netbackup_keyword, filter_name)
         elif self.exclude_dump_tables_file[0]:
             filter = get_lines_from_file(self.exclude_dump_tables_file[0])
             partitions = get_user_table_list(self.master_port, self.dump_database)
@@ -616,7 +700,10 @@ class DumpDatabase(Operation):
                 if tablename not in filter:
                     tables.append(tablename)
             write_lines_to_file(filter_name, tables)
+            if self.netbackup_service_host:
+                backup_file_with_nbu(self.netbackup_service_host, self.netbackup_policy, self.netbackup_schedule, self.netbackup_block_size, self.netbackup_keyword, filter_name)
         logger.info('Creating filter file: %s' % filter_name)
+
 
     def create_dump_outcome(self, start, end, rc):
         return {'timestamp_start': start.strftime("%Y%m%d%H%M%S"),
@@ -625,7 +712,7 @@ class DumpDatabase(Operation):
                 'exit_status': rc}
 
     def create_filtered_dump_string(self, user_name, dump_date, timestamp_key, ddboost=False):
-        filter_filename = get_filter_file(self.dump_database, self.master_datadir, self.backup_dir, ddboost)
+        filter_filename = get_filter_file(self.dump_database, self.master_datadir, self.backup_dir, ddboost, self.netbackup_service_host)
         dump_string = self.create_dump_string(user_name, dump_date, timestamp_key, filter_filename)
         dump_string += ' --incremental-filter=%s' % filter_filename
         return dump_string
@@ -699,7 +786,7 @@ class DumpDatabase(Operation):
         return dump_line
 
 class CreateIncrementsFile(Operation):
-    def __init__(self, dump_database, full_timestamp, timestamp, master_datadir, backup_dir, ddboost, dump_dir):
+    def __init__(self, dump_database, full_timestamp, timestamp, master_datadir, backup_dir, ddboost, dump_dir, netbackup_service_host, netbackup_block_size):
         self.full_timestamp = full_timestamp
         self.timestamp = timestamp
         self.master_datadir = master_datadir
@@ -709,10 +796,12 @@ class CreateIncrementsFile(Operation):
         self.dump_database = dump_database
         self.ddboost = ddboost
         self.dump_dir = dump_dir
+        self.netbackup_service_host = netbackup_service_host
+        self.netbackup_block_size = netbackup_block_size
 
     def execute(self):
         if os.path.isfile(self.increments_filename):
-            CreateIncrementsFile.validate_increments_file(self.dump_database, self.increments_filename, self.master_datadir, self.backup_dir, self.ddboost, self.dump_dir)
+            CreateIncrementsFile.validate_increments_file(self.dump_database, self.increments_filename, self.master_datadir, self.backup_dir, self.ddboost, self.dump_dir, self.netbackup_service_host, self.netbackup_block_size)
             self.orig_lines_in_file = get_lines_from_file(self.increments_filename)
 
         with open(self.increments_filename, 'a') as fd:
@@ -735,7 +824,7 @@ class CreateIncrementsFile(Operation):
         return (len(newlines_in_file) + 1)
 
     @staticmethod
-    def validate_increments_file(dump_database, inc_file_name, master_data_dir, backup_dir, ddboost=False, dump_dir=None):
+    def validate_increments_file(dump_database, inc_file_name, master_data_dir, backup_dir, ddboost=False, dump_dir=None, netbackup_service_host=None, netbackup_block_size=None):
 
         tstamps = gppylib.operations.backup_utils.get_lines_from_file(inc_file_name)
         for ts in tstamps:
@@ -745,7 +834,7 @@ class CreateIncrementsFile(Operation):
             fn = generate_report_filename(master_data_dir, backup_dir, ts, ddboost, dump_dir)
             ts_in_rpt = None
             try:
-                ts_in_rpt = get_incremental_ts_from_report_file(dump_database, fn, ddboost)
+                ts_in_rpt = get_incremental_ts_from_report_file(dump_database, fn, ddboost, netbackup_service_host, netbackup_block_size)
             except Exception as e:
                 logger.error(str(e))
 

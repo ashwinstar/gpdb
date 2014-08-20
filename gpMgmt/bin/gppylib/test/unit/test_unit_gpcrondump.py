@@ -310,19 +310,6 @@ class GpCronDumpTestCase(unittest.TestCase):
 
     @patch('gpcrondump.GpCronDump._get_master_port')
     @patch('gpcrondump.validate_current_timestamp')
-    def test_options30(self, mock, mock2):
-        options = GpCronDumpTestCase.Options()
-        options.dump_databases = 'bkdb'
-        options.timestamp_key = True
-        options.incremental = True
-        options.netbackup_service_host = "mdw"
-        options.netbackup_policy = "test_policy"
-        options.netbackup_schedule = "test_schedule"
-        with self.assertRaisesRegexp(Exception, '--incremental is not supported with NetBackup'):
-            GpCronDump(options, None)
-
-    @patch('gpcrondump.GpCronDump._get_master_port')
-    @patch('gpcrondump.validate_current_timestamp')
     def test_get_include_exclude_for_dump_database00(self, mock1, mock2):
         options = GpCronDumpTestCase.Options()
         options.masterDataDirectory = '/tmp/foobar'

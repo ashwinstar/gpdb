@@ -463,4 +463,207 @@ char *queryBSAObject(char *BackupFilePathName)
 	return BackupFilePathName;
 }
 
+
+/* This function will query the NetBackup server for the given object *
+ * (query object expresssion here). If the Query to the NetBackup     *
+ * succeeds, it implies that one or more objects of the given format  *
+ * were backed up to the NetBackup server. If the Query to the server *
+ * fails, it implies that no objects of the given format were dumped  *
+ * to the NetBackup server.                                           */
+
+int searchBSAObject(char *NetBackupQueryObject)
+{
+	/* Populate query descriptor */
+
+	query_desc = (BSA_QueryDescriptor *)malloc(sizeof(BSA_QueryDescriptor));
+	if(query_desc == NULL){
+		mpp_err_msg("ERROR", "gp_bsa_query_agent", "Failed to allocate memory for NetBackup BSA Query Descriptor to Query Dumped Objects\n");
+		return -1;
+	}
+	memset(query_desc, 0x00, sizeof(BSA_QueryDescriptor));
+
+	query_desc->copyType = BSA_CopyType_BACKUP;
+	query_desc->objectType = BSA_ObjectType_FILE;
+	query_desc->objectStatus = BSA_ObjectStatus_MOST_RECENT;
+	strncpy(query_desc->objectOwner.bsa_ObjectOwner, "XBSA Client", (1 + strlen("XBSA Client")));
+	strncpy(query_desc->objectOwner.app_ObjectOwner, "XBSA App", (1 + strlen("XBSA App")));
+	strncpy(query_desc->objectName.pathName, NetBackupQueryObject, (1 + strlen(NetBackupQueryObject)));
+	strncpy(query_desc->objectName.objectSpaceName, "", (1 + strlen("")));
+
+	object_desc = (BSA_ObjectDescriptor *)malloc(sizeof(BSA_ObjectDescriptor));
+	if(object_desc == NULL){
+		mpp_err_msg("ERROR", "gp_bsa_query_agent", "Failed to allocate memory for NetBackup BSA Object Descriptor to Query Dumped Objects\n");
+		return -1;
+	}
+	memset(object_desc, 0x00, sizeof(BSA_ObjectDescriptor));
+
+	/* Query BSA object to check if it has been backed up */
+	status = BSAQueryObject(BsaHandle, query_desc, object_desc);
+	if (status == BSA_RC_SUCCESS) {
+		printf("%s\n", (char *)object_desc->objectName.pathName);
+	}
+	else if (status == BSA_RC_NO_MATCH) {
+		ErrStrSize = 512;
+		NBBSAGetErrorString(status, &ErrStrSize, ErrorString);
+		snprintf(msg, sizeof(msg), "INFO: BSAQueryObject() did not find any object matching the query: %s\n", ErrorString);
+		mpp_err_msg("INFO", "gp_bsa_query_agent", "BSAQueryObject() did not find any object matching the query: %s\n", ErrorString);
+		NBBSALogMsg(BsaHandle, MSERROR, msg, "Restore");
+		BSAEndTxn(BsaHandle, BSA_Vote_ABORT);
+		BSATerminate(BsaHandle);
+		return -1;
+	}
+	else {
+		ErrStrSize = 512;
+		NBBSAGetErrorString(status, &ErrStrSize, ErrorString);
+		snprintf(msg, sizeof(msg), "ERROR: BSAQueryObject() failed with error: %s\n", ErrorString);
+		mpp_err_msg("ERROR", "gp_bsa_query_agent", "BSAQueryObject() failed with error: %s\n", ErrorString);
+		NBBSALogMsg(BsaHandle, MSERROR, msg, "Restore");
+		BSAEndTxn(BsaHandle, BSA_Vote_ABORT);
+		BSATerminate(BsaHandle);
+		return -1;
+	}
+
+	while ((status = BSAGetNextQueryObject(BsaHandle, object_desc)) == BSA_RC_SUCCESS) {
+		printf("%s\n", object_desc->objectName.pathName);
+	}
+
+	if (status != BSA_RC_NO_MORE_DATA) {
+		ErrStrSize = 512;
+		NBBSAGetErrorString(status, &ErrStrSize, ErrorString);
+		snprintf(msg, sizeof(msg), "ERROR: BSAQueryObject() failed with error: %s\n", ErrorString);
+		mpp_err_msg("ERROR", "gp_bsa_query_agent", "BSAQueryObject() failed with error: %s\n", ErrorString);
+		NBBSALogMsg(BsaHandle, MSERROR, msg, "Restore");
+		BSAEndTxn(BsaHandle, BSA_Vote_ABORT);
+		BSATerminate(BsaHandle);
+		return -1;
+	}
+
+	status = BSAEndTxn(BsaHandle, BSA_Vote_COMMIT);
+	if (status != BSA_RC_SUCCESS) {
+		ErrStrSize = 512;
+		NBBSAGetErrorString(status, &ErrStrSize, ErrorString);
+		snprintf(msg, sizeof(msg), "ERROR: BSAEndTxn() failed with error: %s\n", ErrorString);
+		mpp_err_msg("ERROR", "gp_bsa_query_agent", "BSAEndTxn() failed with error: %s\n", ErrorString);
+		NBBSALogMsg(BsaHandle, MSERROR, msg, "Restore");
+		BSAEndTxn(BsaHandle, BSA_Vote_ABORT);
+		BSATerminate(BsaHandle);
+		return -1;
+	}
+
+	return 0;
+}
+
+/* Function to delete BSA objects on NetBackup server. This function  *
+ * will query the NetBackup server for the given object. If the Query *
+ * to the NetBackup server succeeds, it will delete all objects of the*
+ * given format which were backed up to the NetBackup server. If the  *
+ * Query to the server fails, it implies that no objects of the given *
+ * format were dumped to the NetBackup server. So, no objects will be *
+ * deleted.                                                           */
+
+int deleteBSAObjects(char *NetBackupDeleteObject)
+{
+	int del_status;
+	/* Populate query descriptor */
+
+	query_desc = (BSA_QueryDescriptor *)malloc(sizeof(BSA_QueryDescriptor));
+	if(query_desc == NULL){
+		mpp_err_msg("ERROR", "gp_bsa_delete_agent", "Failed to allocate memory for NetBackup BSA Query Descriptor to Query Objects to be deleted\n");
+		return -1;
+	}
+	memset(query_desc, 0x00, sizeof(BSA_QueryDescriptor));
+
+	query_desc->copyType = BSA_CopyType_BACKUP;
+	query_desc->objectType = BSA_ObjectType_FILE;
+	query_desc->objectStatus = BSA_ObjectStatus_MOST_RECENT;
+	strncpy(query_desc->objectOwner.bsa_ObjectOwner, "XBSA Client", (1 + strlen("XBSA Client")));
+	strncpy(query_desc->objectOwner.app_ObjectOwner, "XBSA App", (1 + strlen("XBSA App")));
+	strncpy(query_desc->objectName.pathName, NetBackupDeleteObject, (1 + strlen(NetBackupDeleteObject)));
+	strncpy(query_desc->objectName.objectSpaceName, "", (1 + strlen("")));
+
+	object_desc = (BSA_ObjectDescriptor *)malloc(sizeof(BSA_ObjectDescriptor));
+	if(object_desc == NULL){
+		mpp_err_msg("ERROR", "gp_bsa_delete_agent", "Failed to allocate memory for NetBackup BSA Object Descriptor to Query Objects to be deleted\n");
+		return -1;
+	}
+	memset(object_desc, 0x00, sizeof(BSA_ObjectDescriptor));
+
+	/* Query BSA object to check if it has been backed up */
+	status = BSAQueryObject(BsaHandle, query_desc, object_desc);
+	if (status == BSA_RC_SUCCESS) {
+		printf("Deleting BSA object from NBU server: %s\n", (char *)object_desc->objectName.pathName);
+		del_status = BSADeleteObject(BsaHandle, object_desc->copyId);
+		if (del_status != BSA_RC_SUCCESS) {
+			ErrStrSize = 512;
+			NBBSAGetErrorString(status, &ErrStrSize, ErrorString);
+			snprintf(msg, sizeof(msg), "INFO: BSADeleteObject() failed to delete given BSA objects: %s\n", ErrorString);
+			mpp_err_msg("INFO", "gp_bsa_delete_agent", "BSADeleteObject() did not find any object matching the given format: %s\n", ErrorString);
+			NBBSALogMsg(BsaHandle, MSERROR, msg, "Restore");
+			BSAEndTxn(BsaHandle, BSA_Vote_ABORT);
+			BSATerminate(BsaHandle);
+			return -1;
+		}
+	}
+	else if (status == BSA_RC_NO_MATCH) {
+		ErrStrSize = 512;
+		NBBSAGetErrorString(status, &ErrStrSize, ErrorString);
+		snprintf(msg, sizeof(msg), "INFO: BSAQueryObject() did not find any object matching the query to delete objects: %s\n", ErrorString);
+		mpp_err_msg("INFO", "gp_bsa_delete_agent", "BSAQueryObject() did not find any object matching the query to delete objects: %s\n", ErrorString);
+		NBBSALogMsg(BsaHandle, MSERROR, msg, "Restore");
+		BSAEndTxn(BsaHandle, BSA_Vote_ABORT);
+		BSATerminate(BsaHandle);
+		return -1;
+	}
+	else {
+		ErrStrSize = 512;
+		NBBSAGetErrorString(status, &ErrStrSize, ErrorString);
+		snprintf(msg, sizeof(msg), "ERROR: BSAQueryObject() failed with error: %s\n", ErrorString);
+		mpp_err_msg("ERROR", "gp_bsa_delete_agent", "BSAQueryObject() failed with error: %s\n", ErrorString);
+		NBBSALogMsg(BsaHandle, MSERROR, msg, "Restore");
+		BSAEndTxn(BsaHandle, BSA_Vote_ABORT);
+		BSATerminate(BsaHandle);
+		return -1;
+	}
+
+	while ((status = BSAGetNextQueryObject(BsaHandle, object_desc)) == BSA_RC_SUCCESS) {
+		printf("Deleting BSA object from NBU server: %s\n", (char *)object_desc->objectName.pathName);
+		del_status = BSADeleteObject(BsaHandle, object_desc->copyId);
+		if (del_status != BSA_RC_SUCCESS) {
+			ErrStrSize = 512;
+			NBBSAGetErrorString(status, &ErrStrSize, ErrorString);
+			snprintf(msg, sizeof(msg), "INFO: BSADeleteObject() failed to delete given BSA objects: %s\n", ErrorString);
+			mpp_err_msg("INFO", "gp_bsa_delete_agent", "BSADeleteObject() did not find any object matching the given format: %s\n", ErrorString);
+			NBBSALogMsg(BsaHandle, MSERROR, msg, "Restore");
+			BSAEndTxn(BsaHandle, BSA_Vote_ABORT);
+			BSATerminate(BsaHandle);
+			return -1;
+		}
+	}
+
+	if (status != BSA_RC_NO_MORE_DATA) {
+		ErrStrSize = 512;
+		NBBSAGetErrorString(status, &ErrStrSize, ErrorString);
+		snprintf(msg, sizeof(msg), "ERROR: BSAQueryObject() failed with error: %s\n", ErrorString);
+		mpp_err_msg("ERROR", "gp_bsa_delete_agent", "BSAQueryObject() failed with error: %s\n", ErrorString);
+		NBBSALogMsg(BsaHandle, MSERROR, msg, "Restore");
+		BSAEndTxn(BsaHandle, BSA_Vote_ABORT);
+		BSATerminate(BsaHandle);
+		return -1;
+	}
+
+	status = BSAEndTxn(BsaHandle, BSA_Vote_COMMIT);
+	if (status != BSA_RC_SUCCESS) {
+		ErrStrSize = 512;
+		NBBSAGetErrorString(status, &ErrStrSize, ErrorString);
+		snprintf(msg, sizeof(msg), "ERROR: BSAEndTxn() failed with error: %s\n", ErrorString);
+		mpp_err_msg("ERROR", "gp_bsa_delete_agent", "BSAEndTxn() failed with error: %s\n", ErrorString);
+		NBBSALogMsg(BsaHandle, MSERROR, msg, "Restore");
+		BSAEndTxn(BsaHandle, BSA_Vote_ABORT);
+		BSATerminate(BsaHandle);
+		return -1;
+	}
+
+	return 0;
+}
+
 #endif

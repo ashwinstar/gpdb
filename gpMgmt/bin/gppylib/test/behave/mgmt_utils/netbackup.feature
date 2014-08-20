@@ -88,18 +88,6 @@ Feature: NetBackup Integration with GPDB
 
     @nbusmoke
     @nbuall
-    Scenario: gpcrondump using NetBackup with non-supported options
-        Given the database is running
-        And the netbackup params have been parsed
-        When the user runs "gpcrondump -a --incremental -x bkdb --netbackup-service-host=mdw --netbackup-policy=test_policy --netbackup-schedule=test_schedule"
-        Then gpcrondump should print --incremental is not supported with NetBackup to stdout
-        And gpcrondump should return a return code of 2
-        And the user runs "gpcrondump -a --ddboost -x bkdb --netbackup-service-host=mdw --netbackup-policy=test_policy --netbackup-schedule=test_schedule"
-        And gpcrondump should print --ddboost is not supported with NetBackup to stdout
-        And gpcrondump should return a return code of 2
-
-    @nbusmoke
-    @nbuall
     Scenario: gpdbrestore using NetBackup with non-supported options
         Given the database is running
         And the netbackup params have been parsed
@@ -2240,3 +2228,2198 @@ Feature: NetBackup Integration with GPDB
         Then gpdbrestore should return a return code of 0
         And verify that there is a "heap" table "public.heap_table" in "testdb" with data
         And verify that there is a "ao" table "public.ao_part_table" in "testdb" with data
+
+
+    ######################################################
+    #    STARTING TESTS FOR INCREMENTAL BACKUP WITH NBU  #
+    ######################################################
+
+    @nbusmoke
+    @nbuall
+    @nbuib
+    Scenario: Basic Incremental Backup and Restore with NBU
+        Given the database is running
+        And the netbackup params have been parsed
+        And the database "nbutestdb" does not exist
+        And database "nbutestdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "nbutestdb" with data
+        And there is a "ao" table "ao_table" with compression "quicklz" in "nbutestdb" with data
+        And there are no backup files
+        And all netbackup objects containing "gp_dump" are deleted
+        When the user runs "gpcrondump -a -x nbutestdb -g -G --netbackup-block-size 2048" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        When the user runs "gpcrondump -a --incremental -x nbutestdb -g -G --netbackup-block-size 2048" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And all the data from "nbutestdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp and options " --netbackup-block-size 4096 " using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "public.heap_table" in "nbutestdb" with data
+        And verify that there is a "ao" table "public.ao_table" in "nbutestdb" with data
+
+    @nbuall
+    @nbuib
+    Scenario: Increments File Check With Complicated Scenario
+        Given the database is running
+        And the netbackup params have been parsed
+        And the database "nbutestdb1" does not exist
+        And database "nbutestdb1" exists
+        And there is a "heap" table "heap_table" with compression "None" in "nbutestdb1" with data
+        And there is a "ao" table "ao_table" with compression "quicklz" in "nbutestdb1" with data
+        And the database "nbutestdb2" does not exist
+        And database "nbutestdb2" exists
+        And there is a "heap" table "heap_table" with compression "None" in "nbutestdb2" with data
+        And there is a "ao" table "ao_table" with compression "quicklz" in "nbutestdb2" with data
+        And there are no backup files
+        And there is a list to store the incremental backup timestamps
+        When the user runs "gpcrondump -a -x nbutestdb1 --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the full backup timestamp from gpcrondump is stored
+        When the user runs "gpcrondump -a -x nbutestdb2 --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        When the user runs "gpcrondump -a --incremental -x nbutestdb1 --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored in a list
+        And "dirty_list" file should be created under " "
+        When the user runs "gpcrondump -a --incremental -x nbutestdb1 --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored in a list
+        And "dirty_list" file should be created under " "
+        When the user runs "gpcrondump -a --incremental -x nbutestdb1 --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored in a list
+        And "dirty_list" file should be created under " "
+        And verify that the incremental file has all the stored timestamps
+
+    @nbusmoke
+    @nbuall
+    @nbuib
+    Scenario: Incremental File Check With Different Directory
+        Given the database is running
+        And the netbackup params have been parsed
+        And the database "nbutestdb1" does not exist
+        And database "nbutestdb1" exists
+        And there is a "heap" table "heap_table" with compression "None" in "nbutestdb1" with data
+        And there is a "ao" table "ao_table" with compression "quicklz" in "nbutestdb1" with data
+        And the database "nbutestdb2" does not exist
+        And database "nbutestdb2" exists
+        And there is a "heap" table "heap_table" with compression "None" in "nbutestdb2" with data
+        And there is a "ao" table "ao_table" with compression "quicklz" in "nbutestdb2" with data
+        And there are no backup files
+        And there is a list to store the incremental backup timestamps
+        When the user runs "gpcrondump -a -x nbutestdb1 -u /tmp --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the full backup timestamp from gpcrondump is stored
+        When the user runs "gpcrondump -a -x nbutestdb1" using netbackup
+        Then gpcrondump should return a return code of 0
+        When the user runs "gpcrondump -a --incremental -x nbutestdb1 -u /tmp --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored in a list
+        And "dirty_list" file should be created under "/tmp"
+        When the user runs "gpcrondump -a --incremental -x nbutestdb1 -u /tmp --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored in a list
+        And "dirty_list" file should be created under "/tmp"
+        And verify that the incremental file in "/tmp" has all the stored timestamps
+
+    @nbuall
+    @nbuib
+    Scenario: Simple Plan File Test
+        Given the database is running
+        And the netbackup params have been parsed
+        And there is a "heap" table "heap_table" with compression "None" in "smalldb" with data
+        And there is a "heap" table "heap2_table" with compression "None" in "smalldb" with data
+        And there is a "ao" table "ao_table" with compression "quicklz" in "smalldb" with data
+        And there is a "ao" table "ao2_table" with compression "quicklz" in "smalldb" with data
+        And there is a "co" table "co_table" with compression "None" in "smalldb" with data
+        And there is a "co" table "co2_table" with compression "None" in "smalldb" with data
+        And there are no backup files
+        When the user runs "gpcrondump -a -x smalldb --netbackup-block-size 4096" using netbackup
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts0"
+        And the user runs "gpcrondump -a -x smalldb --incremental --netbackup-block-size 4096" using netbackup
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp is labeled "ts1"
+        And "dirty_list" file should be created under " "
+        And table "public.co_table" is assumed to be in dirty state in "smalldb"
+        And the user runs "gpcrondump -a -x smalldb --incremental --netbackup-block-size 4096" using netbackup
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp is labeled "ts2"
+        And "dirty_list" file should be created under " "
+        And the user runs gpdbrestore with the stored timestamp using netbackup
+        And gpdbrestore should return a return code of 0
+        Then "plan" file should be created under " "
+        And the plan file is validated against "data/plan1"
+
+    @nbusmoke
+    @nbuall
+    @nbuib
+    Scenario: Simple Plan File Test With Partitions
+        Given the database is running
+        And the netbackup params have been parsed
+        And there are no backup files
+        When the user runs "gpcrondump -a -x nbubkdb --netbackup-block-size 4096" using netbackup
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts0"
+        And partition "1" of partition table "ao_part_table" is assumed to be in dirty state in "nbubkdb" in schema "public"
+        And table "public.ao_index_table" is assumed to be in dirty state in "nbubkdb"
+        And the user runs "gpcrondump -a -x nbubkdb --incremental --netbackup-block-size 4096" using netbackup
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp is labeled "ts1"
+        And "dirty_list" file should be created under " "
+        And partition "1" of partition table "co_part_table_comp" is assumed to be in dirty state in "nbubkdb" in schema "public"
+        And the user runs "gpcrondump -a -x nbubkdb --incremental --netbackup-block-size 4096" using netbackup
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp is labeled "ts2"
+        And "dirty_list" file should be created under " "
+        And the user runs gpdbrestore with the stored timestamp using netbackup
+        And gpdbrestore should return a return code of 0
+        Then "plan" file should be created under " "
+        And the plan file is validated against "data/plan2"
+
+    @wip
+    Scenario: Incremental backup of Non-public schema
+        Given the database is running
+        And the netbackup params have been parsed
+        And there are no "dirty_backup_list" tempfiles
+        And database "schematestdb" is created if not exists
+        And there is schema "pepper" exists in "schematestdb"
+        And there is a "heap" table "pepper.heap_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "pepper.ao_table" with compression "None" in "schematestdb" with data
+        And there is a "co" table "pepper.co_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" partition table "pepper.ao_part_table" with compression "quicklz" in "schematestdb" with data
+        And there is a "co" partition table "pepper.co_part_table" with compression "quicklz" in "schematestdb" with data
+        And there is a "ao" table "pepper.ao_index_table" with index "ao_index" compression "None" in "schematestdb" with data
+        And there is a "co" table "pepper.co_index_table" with index "co_index" compression "None" in "schematestdb" with data
+        And there are no backup files
+        When the user runs "gpcrondump -a -x schematestdb --netbackup-block-size 4096" using netbackup
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts0"
+        And partition "1" of partition table "ao_part_table" is assumed to be in dirty state in "schematestdb" in schema "pepper"
+        And table "pepper.ao_index_table" is assumed to be in dirty state in "schematestdb"
+        And the user runs "gpcrondump -a -x schematestdb --incremental --netbackup-block-size 4096" using netbackup
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp is labeled "ts1"
+        And "dirty_list" file should be created under " "
+        And partition "1" of partition table "co_part_table" is assumed to be in dirty state in "schematestdb" in schema "pepper"
+        And the user runs "gpcrondump -a -x schematestdb --incremental --netbackup-block-size 4096" using netbackup
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp is labeled "ts2"
+        And "dirty_list" file should be created under " "
+        And the user runs gpdbrestore with the stored timestamp using netbackup
+        And gpdbrestore should return a return code of 0
+        Then "plan" file should be created under " "
+        And the plan file is validated against "data/plan3"
+        And verify there are no "dirty_backup_list" tempfiles
+
+    @nbuall
+    @nbuib
+    Scenario: Multiple - Incremental backup and restore
+        Given the database is running
+        And the netbackup params have been parsed
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is schema "pepper" exists in "schematestdb"
+        And there is a "heap" table "pepper.heap_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "pepper.ao_table" with compression "None" in "schematestdb" with data
+        And there is a "co" partition table "pepper.co_part_table" with compression "quicklz" in "schematestdb" with data
+        And there are no backup files
+        And there is a list to store the incremental backup timestamps
+        When the user runs "gpcrondump -a -x schematestdb --netbackup-block-size 4096" using netbackup
+        And the full backup timestamp from gpcrondump is stored
+        And gpcrondump should return a return code of 0
+        And table "pepper.ao_table" is assumed to be in dirty state in "schematestdb"
+        And the user runs "gpcrondump -a -x schematestdb --incremental --netbackup-block-size 4096" using netbackup
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored in a list
+        And partition "1" of partition table "co_part_table" is assumed to be in dirty state in "schematestdb" in schema "pepper"
+        And table "pepper.heap_table" is deleted in "schematestdb"
+        And the user runs "gpcrondump -a -x schematestdb --incremental --netbackup-block-size 4096" using netbackup
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored in a list
+        And table "pepper.ao_table" is assumed to be in dirty state in "schematestdb"
+        And the user runs "gpcrondump -a -x schematestdb --incremental --netbackup-block-size 4096" using netbackup
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And all the data from "schematestdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is no table "pepper.heap_table" in "schematestdb"
+        And verify that the data of "10" tables in "schematestdb" is validated after restore
+        And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
+        And verify that the plan file is created for the latest timestamp
+
+    @nbusmoke
+    @nbuall
+    @nbuib
+    Scenario: Simple Incremental Backup for Multiple Schemas with common tablenames
+        Given the database is running
+        And the netbackup params have been parsed
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is schema "pepper" exists in "schematestdb"
+        And there is a "heap" table "pepper.heap_table" with compression "None" in "schematestdb" with data
+        And there is a "heap" table "heap_table" with compression "None" in "schematestdb" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "schematestdb" with data
+        And there is a "heap" partition table "pepper.heap_part_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "pepper.ao_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "pepper.ao_table2" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "ao_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "ao_table2" with compression "None" in "schematestdb" with data
+        And there is a "co" partition table "pepper.co_part_table" with compression "quicklz" in "schematestdb" with data
+        And there is a "co" partition table "co_part_table" with compression "quicklz" in "schematestdb" with data
+        And there is a list to store the incremental backup timestamps
+        And there are no backup files
+        When the user runs "gpcrondump -a -x schematestdb --netbackup-block-size 4096" using netbackup
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts0"
+        And the full backup timestamp from gpcrondump is stored
+        And table "public.ao_table" is assumed to be in dirty state in "schematestdb"
+        And table "pepper.ao_table2" is assumed to be in dirty state in "schematestdb"
+        And partition "1" of partition table "co_part_table" is assumed to be in dirty state in "schematestdb" in schema "pepper"
+        And partition "2" of partition table "co_part_table" is assumed to be in dirty state in "schematestdb" in schema "public"
+        And partition "3" of partition table "co_part_table" is assumed to be in dirty state in "schematestdb" in schema "pepper"
+        And partition "3" of partition table "co_part_table" is assumed to be in dirty state in "schematestdb" in schema "public"
+        And table "public.heap_table2" is deleted in "schematestdb"
+        And the user runs "gpcrondump -a --incremental -x schematestdb --netbackup-block-size 4096" using netbackup
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts1"
+        Then the timestamp from gpcrondump is stored
+        And verify that the "report" file in " " dir contains "Backup Type: Incremental"
+        And "dirty_list" file should be created under " "
+        And all the data from "schematestdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp using netbackup
+        Then gpdbrestore should return a return code of 0
+        And the plan file is validated against "data/plan4"
+        And verify that the data of "33" tables in "schematestdb" is validated after restore
+        And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
+
+    @nbuall
+    @nbuib
+    Scenario: IB TRUNCATE partitioned table 2 times
+        Given the database is running
+        And the netbackup params have been parsed
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is schema "pepper" exists in "schematestdb"
+        And there is a "ao" partition table "pepper.ao_part_table" with compression "quicklz" in "schematestdb" with data
+        And there is a "co" partition table "pepper.co_part_table" with compression "quicklz" in "schematestdb" with data
+        And the user truncates "pepper.ao_part_table" tables in "schematestdb"
+        And the partition table "pepper.ao_part_table" in "schematestdb" is populated with same data
+        And there is a list to store the incremental backup timestamps
+        And there are no backup files
+        When the user runs "gpcrondump -a -x schematestdb --netbackup-block-size 4096" using netbackup
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts0"
+        And the full backup timestamp from gpcrondump is stored
+        And the user truncates "pepper.ao_part_table" tables in "schematestdb"
+        And the partition table "pepper.ao_part_table" in "schematestdb" is populated with similar data
+        And the user runs "gpcrondump -a --incremental -x schematestdb --netbackup-block-size 4096" using netbackup
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts1"
+        Then the timestamp from gpcrondump is stored
+        And all the data from "schematestdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp using netbackup
+        Then gpdbrestore should return a return code of 0
+        And the plan file is validated against "data/plan6"
+        And verify that the data of "18" tables in "schematestdb" is validated after restore
+        And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
+
+    @nbuall
+    @nbuib
+    Scenario: Incremental Backup to test ADD COLUMN with partitions
+        Given the database is running
+        And the netbackup params have been parsed
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is schema "pepper" exists in "schematestdb"
+        And there is a "ao" table "pepper.ao_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" partition table "pepper.ao_part_table" with compression "quicklz" in "schematestdb" with data
+        And there is a "co" partition table "pepper.co_part_table" with compression "quicklz" in "schematestdb" with data
+        And there is a list to store the incremental backup timestamps
+        And there are no backup files
+        When the user runs "gpcrondump -a -x schematestdb -v --netbackup-block-size 4096" using netbackup
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts0"
+        And the full backup timestamp from gpcrondump is stored
+        And the user adds column "foo" with type "int" and default "0" to "pepper.ao_part_table" table in "schematestdb"
+        And the user adds column "foo" with type "int" and default "0" to "pepper.co_part_table" table in "schematestdb"
+        And the user runs "gpcrondump -a --incremental -x schematestdb --netbackup-block-size 4096" using netbackup
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts1"
+        Then the timestamp from gpcrondump is stored
+        And all the data from "schematestdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp using netbackup
+        Then gpdbrestore should return a return code of 0
+        And the plan file is validated against "data/plan8"
+        And verify that the data of "19" tables in "schematestdb" is validated after restore
+        And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
+
+    @nbusmoke
+    @nbuall
+    @nbuib
+    Scenario: Non compressed incremental backup
+        Given the database is running
+        And the netbackup params have been parsed
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is schema "pepper" exists in "schematestdb"
+        And there is a "heap" table "pepper.heap_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "pepper.ao_table" with compression "None" in "schematestdb" with data
+        And there is a "co" partition table "pepper.co_part_table" with compression "quicklz" in "schematestdb" with data
+        And there are no backup files
+        And there is a list to store the incremental backup timestamps
+        When the user runs "gpcrondump -a -x schematestdb -z --netbackup-block-size 4096" using netbackup
+        And the full backup timestamp from gpcrondump is stored
+        And gpcrondump should return a return code of 0
+        And table "pepper.ao_table" is assumed to be in dirty state in "schematestdb"
+        And the user runs "gpcrondump -a -x schematestdb --incremental -z --netbackup-block-size 4096" using netbackup
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored in a list
+        And partition "1" of partition table "co_part_table" is assumed to be in dirty state in "schematestdb" in schema "pepper"
+        And table "pepper.heap_table" is deleted in "schematestdb"
+        And the user runs "gpcrondump -a -x schematestdb --incremental -z --netbackup-block-size 4096" using netbackup
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored in a list
+        And table "pepper.ao_table" is assumed to be in dirty state in "schematestdb"
+        And the user runs "gpcrondump -a -x schematestdb --incremental -z --netbackup-block-size 4096" using netbackup
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And all the data from "schematestdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is no table "pepper.heap_table" in "schematestdb"
+        And verify that the data of "10" tables in "schematestdb" is validated after restore
+        And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
+        And verify that the plan file is created for the latest timestamp
+
+    @nbuall
+    @nbuib
+    Scenario: Rollback Insert
+        Given the database is running
+        And the netbackup params have been parsed
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is schema "pepper" exists in "schematestdb"
+        And there is a "ao" table "pepper.ao_table" with compression "None" in "schematestdb" with data
+        And there is a "co" table "pepper.co_table" with compression "None" in "schematestdb" with data
+        And there is a list to store the incremental backup timestamps
+        And there are no backup files
+        When the user runs "gpcrondump -a -x schematestdb --netbackup-block-size 4096" using netbackup
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts0"
+        And the full backup timestamp from gpcrondump is stored
+        And an insert on "pepper.ao_table" in "schematestdb" is rolled back
+        And table "pepper.co_table" is assumed to be in dirty state in "schematestdb"
+        And the user runs "gpcrondump -a --incremental -x schematestdb --netbackup-block-size 4096" using netbackup
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts1"
+        Then the timestamp from gpcrondump is stored
+        And verify that the "report" file in " " dir contains "Backup Type: Incremental"
+        And "dirty_list" file should be created under " "
+        And all the data from "schematestdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp using netbackup
+        Then gpdbrestore should return a return code of 0
+        And the plan file is validated against "data/plan9"
+        And verify that the data of "2" tables in "schematestdb" is validated after restore
+        And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
+
+    @nbuall
+    @nbuib
+    Scenario: Rollback Truncate Table
+        Given the database is running
+        And the netbackup params have been parsed
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is schema "pepper" exists in "schematestdb"
+        And there is a "ao" table "pepper.ao_table" with compression "None" in "schematestdb" with data
+        And there is a "co" table "pepper.co_table" with compression "None" in "schematestdb" with data
+        And there is a list to store the incremental backup timestamps
+        And there are no backup files
+        When the user runs "gpcrondump -a -x schematestdb --netbackup-block-size 4096" using netbackup
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts0"
+        And the full backup timestamp from gpcrondump is stored
+        And a truncate on "pepper.ao_table" in "schematestdb" is rolled back
+        And table "pepper.co_table" is assumed to be in dirty state in "schematestdb"
+        And the user runs "gpcrondump -a --incremental -x schematestdb --netbackup-block-size 4096" using netbackup
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts1"
+        Then the timestamp from gpcrondump is stored
+        And verify that the "report" file in " " dir contains "Backup Type: Incremental"
+        And "dirty_list" file should be created under " "
+        And all the data from "schematestdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp using netbackup
+        Then gpdbrestore should return a return code of 0
+        And the plan file is validated against "data/plan9"
+        And verify that the data of "2" tables in "schematestdb" is validated after restore
+        And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
+
+    @nbuall
+    @nbuib
+    Scenario: Rollback Alter table
+        Given the database is running
+        And the netbackup params have been parsed
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is schema "pepper" exists in "schematestdb"
+        And there is a "ao" table "pepper.ao_table" with compression "None" in "schematestdb" with data
+        And there is a "co" table "pepper.co_table" with compression "None" in "schematestdb" with data
+        And there is a list to store the incremental backup timestamps
+        And there are no backup files
+        When the user runs "gpcrondump -a -x schematestdb --netbackup-block-size 4096" using netbackup
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts0"
+        And the full backup timestamp from gpcrondump is stored
+        And an alter on "pepper.ao_table" in "schematestdb" is rolled back
+        And table "pepper.co_table" is assumed to be in dirty state in "schematestdb"
+        And the user runs "gpcrondump -a --incremental -x schematestdb --netbackup-block-size 4096" using netbackup
+        And gpcrondump should return a return code of 0
+        And the timestamp is labeled "ts1"
+        Then the timestamp from gpcrondump is stored
+        And verify that the "report" file in " " dir contains "Backup Type: Incremental"
+        And "dirty_list" file should be created under " "
+        And all the data from "schematestdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp using netbackup
+        Then gpdbrestore should return a return code of 0
+        And the plan file is validated against "data/plan9"
+        And verify that the data of "2" tables in "schematestdb" is validated after restore
+        And verify that the tuple count of all appendonly tables are consistent in "schematestdb"
+
+    @nbuall
+    @nbuib
+    Scenario: Verify the gpcrondump -h option works with full and incremental backups
+        Given the database is running
+        And the netbackup params have been parsed
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is schema "pepper" exists in "schematestdb"
+        And there is a "ao" table "pepper.ao_table" with compression "None" in "schematestdb" with data
+        And there is a "co" table "pepper.co_table" with compression "None" in "schematestdb" with data
+        And there are no backup files
+        When the user runs "gpcrondump -a -x schematestdb -h" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And verify that there is a "heap" table "gpcrondump_history" in "schematestdb"
+        And verify that the table "gpcrondump_history" in "schematestdb" has dump info for the stored timestamp
+        When the user runs "gpcrondump -a -x schematestdb -h --incremental" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And verify that there is a "heap" table "gpcrondump_history" in "schematestdb"
+        And verify that the table "gpcrondump_history" in "schematestdb" has dump info for the stored timestamp
+
+    @nbuall
+    @nbuib
+    Scenario: gpdbrestore -u option with incremental backup timestamp
+         Given the database is running
+        And the netbackup params have been parsed
+         And the database "testdb" does not exist
+         And database "testdb" exists
+         And there is a "ao" table "ao_table" with compression "None" in "testdb" with data
+         And there is a "co" table "co_table" with compression "None" in "testdb" with data
+         And there are no backup files
+         When the user runs "gpcrondump -a -x testdb -u /tmp --netbackup-block-size 4096" using netbackup
+         And gpcrondump should return a return code of 0
+         And table "public.ao_table" is assumed to be in dirty state in "testdb"
+         When the user runs "gpcrondump -a -x testdb -u /tmp --incremental --netbackup-block-size 4096" using netbackup
+         And gpcrondump should return a return code of 0
+         And the timestamp from gpcrondump is stored
+         And all the data from "testdb" is saved for verification
+         And there are no backup files
+         And the user runs gpdbrestore with the stored timestamp and options "-u /tmp --verbose" using netbackup
+         And gpdbrestore should return a return code of 0
+         Then verify that the data of "2" tables in "testdb" is validated after restore
+         And verify that the tuple count of all appendonly tables are consistent in "testdb"
+
+    @nbuall
+    @nbuib
+    Scenario: gpcrondump should not track external tables
+         Given the database is running
+        And the netbackup params have been parsed
+         And the database "testdb1" does not exist
+         And database "testdb1" exists
+         And there is a "ao" table "ao_table" with compression "None" in "testdb1" with data
+         And there is a "co" table "co_table" with compression "None" in "testdb1" with data
+         And there is an external table "ext_tab" in "testdb1" with data for file "/tmp/ext_tab"
+         And there are no backup files
+         When the user runs "gpcrondump -a -x testdb1 --netbackup-block-size 4096" using netbackup
+         And gpcrondump should return a return code of 0
+         When the user runs "gpcrondump -a -x testdb1 --incremental --netbackup-block-size 4096" using netbackup
+         And gpcrondump should return a return code of 0
+         And the timestamp from gpcrondump is stored
+         And all the data from "testdb1" is saved for verification
+         And the user runs gpdbrestore with the stored timestamp using netbackup
+         Then gpdbrestore should return a return code of 0
+         And verify that the data of "3" tables in "testdb1" is validated after restore
+         And verify that the tuple count of all appendonly tables are consistent in "testdb1"
+         And verify that there is no "public.ext_tab" in the "dirty_list" file in " "
+         And verify that there is no "public.ext_tab" in the "table_list" file in " "
+         Then the file "/tmp/ext_tab" is removed from the system
+
+    @nbusmoke
+    @nbuall
+    @nbuib
+    Scenario: Incremental restore with table filter
+        Given the database is running
+        And the netbackup params have been parsed
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "ao_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "ao_table2" with compression "None" in "schematestdb" with data
+        And there is a "co" table "co_table" with compression "None" in "schematestdb" with data
+        And there are no backup files
+        When the user runs "gpcrondump -a -x schematestdb --netbackup-block-size 4096" using netbackup
+        And gpcrondump should return a return code of 0
+        And table "ao_table2" is assumed to be in dirty state in "schematestdb"
+        And table "co_table" is assumed to be in dirty state in "schematestdb"
+        And the user runs "gpcrondump -a --incremental -x schematestdb --netbackup-block-size 4096" using netbackup
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And all the data from "schematestdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp and options "-T public.ao_table2,public.co_table --netbackup-block-size 4096" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that exactly "2" tables in "schematestdb" have been restored
+
+    @nbuall
+    @nbuib
+    Scenario: Incremental backup -T test 1
+        Given the database is running
+        And the netbackup params have been parsed
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data
+        When the user runs "gpcrondump -a -x fullbkdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And table "ao_index_table" is assumed to be in dirty state in "fullbkdb"
+        When the user runs "gpcrondump -a -x fullbkdb --incremental --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And all the data from "fullbkdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp and options "-T public.ao_index_table" using netbackup
+        And gpdbrestore should return a return code of 0
+        Then verify that there is no table "ao_part_table" in "fullbkdb"
+        And verify that there is no table "heap_table" in "fullbkdb"
+        And verify that there is a "ao" table "public.ao_index_table" in "fullbkdb" with data
+
+    @nbuall
+    @nbuib
+    Scenario: Incremental backup -T test 2
+        Given the database is running
+        And the netbackup params have been parsed
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data
+        When the user runs "gpcrondump -a -x fullbkdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And table "ao_index_table" is assumed to be in dirty state in "fullbkdb"
+        When the user runs "gpcrondump -a -x fullbkdb --incremental --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And all the data from "fullbkdb" is saved for verification
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        When the user runs gpdbrestore with the stored timestamp and options "-T public.ao_index_table" without -e option using netbackup
+        And gpdbrestore should return a return code of 0
+        Then verify that there is no table "ao_part_table" in "fullbkdb"
+        And verify that there is no table "heap_table" in "fullbkdb"
+        And verify that there is a "ao" table "public.ao_index_table" in "fullbkdb" with data
+
+    @nbuall
+    @nbuib
+    Scenario: Incremental backup -T test 3
+        Given the database is running
+        And the netbackup params have been parsed
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data
+        When the user runs "gpcrondump -a -x fullbkdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And table "ao_index_table" is assumed to be in dirty state in "fullbkdb"
+        When the user runs "gpcrondump -a -x fullbkdb --incremental --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And all the data from "fullbkdb" is saved for verification
+        When the user truncates "public.ao_index_table" tables in "fullbkdb"
+        And the user runs gpdbrestore with the stored timestamp and options "-T public.ao_index_table" without -e option using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is a "ao" table "public.ao_index_table" in "fullbkdb" with data
+
+    @nbuall
+    @nbuib
+    Scenario: Incremental backup -T test 4
+        Given the database is running
+        And the netbackup params have been parsed
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data
+        When the user runs "gpcrondump -a -x fullbkdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And table "ao_index_table" is assumed to be in dirty state in "fullbkdb"
+        When the user runs "gpcrondump -a -x fullbkdb --incremental --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And all the data from "fullbkdb" is saved for verification
+        When table "public.ao_index_table" is deleted in "fullbkdb"
+        And the user runs gpdbrestore with the stored timestamp and options "-T public.ao_index_table" without -e option using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is a "ao" table "public.ao_index_table" in "fullbkdb" with data
+
+    @nbuall
+    @nbuib
+    Scenario: Incremental backup -T test 5
+        Given the database is running
+        And the netbackup params have been parsed
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data
+        When the user runs "gpcrondump -a -x fullbkdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And table "public.ao_part_table_1_prt_p2_2_prt_3" is assumed to be in dirty state in "fullbkdb"
+        When the user runs "gpcrondump -a -x fullbkdb --incremental --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And all the data from "fullbkdb" is saved for verification
+        When the user truncates "public.ao_part_table_1_prt_p2_2_prt_3" tables in "fullbkdb"
+        And the user runs gpdbrestore with the stored timestamp and options "-T public.ao_part_table_1_prt_p2_2_prt_3" without -e option using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is a "ao" table "public.ao_part_table_1_prt_p2_2_prt_3" in "fullbkdb" with data
+
+    @nbuall
+    @nbuib
+    Scenario: Incremental backup -T test 6
+        Given the database is running
+        And the netbackup params have been parsed
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data
+        When the user runs "gpcrondump -a -x fullbkdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And table "public.ao_part_table_1_prt_p2_2_prt_3" is assumed to be in dirty state in "fullbkdb"
+        When the user runs "gpcrondump -a -x fullbkdb --incremental --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        When the user truncates "public.ao_part_table_1_prt_p2_2_prt_3" tables in "fullbkdb"
+        And the user runs gpdbrestore with the stored timestamp and options "-T ao_part_table_1_prt_p2_2_prt_3 --netbackup-block-size 4096" without -e option using netbackup
+        And gpdbrestore should return a return code of 2
+        Then gpdbrestore should print No schema name supplied to stdout
+
+    @nbuall
+    @nbuib
+    Scenario: Incremental backup -T test 7
+        Given the database is running
+        And the netbackup params have been parsed
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data
+        When the user runs "gpcrondump -a -x fullbkdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And table "public.ao_part_table_1_prt_p2_2_prt_3" is assumed to be in dirty state in "fullbkdb"
+        When the user runs "gpcrondump -a -x fullbkdb --incremental --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And all the data from "fullbkdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp and options "-T public.ao_part_table --netbackup-block-size 4096" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is no table "heap_table" in "fullbkdb"
+        And verify that there is no table "ao_index_table" in "fullbkdb"
+        And verify that there is a "ao" table "public.ao_part_table" in "fullbkdb" with data
+
+    @nbuall
+    @nbuib
+    Scenario Outline: Dirty File Scale Test
+        Given the database is running
+        And the netbackup params have been parsed
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+		And there are "<tablecount>" "heap" tables "public.heap_table" with data in "testdb"
+		And there are "10" "ao" tables "public.ao_table" with data in "testdb"
+        When the user runs "gpcrondump -a -x testdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        When table "public.ao_table_1" is assumed to be in dirty state in "testdb"
+        And table "public.ao_table_2" is assumed to be in dirty state in "testdb"
+        And table "public.ao_table_3" is assumed to be in dirty state in "testdb"
+        And table "public.ao_table_4" is assumed to be in dirty state in "testdb"
+        And all the data from "testdb" is saved for verification
+        And the user runs "gpcrondump -a --incremental -x testdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the subdir from gpcrondump is stored
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        When the user runs gp_restore with the the stored timestamp and subdir for metadata only in "testdb" using netbackup
+        Then gp_restore should return a return code of 0
+        When the user runs gpdbrestore with the stored timestamp and options "--noplan" without -e option using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that tables "public.ao_table_5, public.ao_table_6, public.ao_table_7" in "testdb" has no rows
+        And verify that tables "public.ao_table_8, public.ao_table_9, public.ao_table_10" in "testdb" has no rows
+        And verify that the data of the dirty tables under " " in "testdb" is validated after restore
+        Examples:
+        | tablecount |
+        | 95         |
+        | 96         |
+        | 97         |
+        | 195        |
+        | 196        |
+        | 197        |
+
+    @nbuall
+    @nbuib
+    Scenario Outline: Dirty File Scale Test for partitions
+        Given the database is running
+        And the netbackup params have been parsed
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+		And there are "<tablecount>" "heap" tables "public.heap_table" with data in "testdb"
+        And there is a "ao" partition table "ao_table" with compression "None" in "testdb" with data
+        Then data for partition table "ao_table" with partition level "1" is distributed across all segments on "testdb"
+        And verify that partitioned tables "ao_table" in "testdb" have 6 partitions
+        When the user runs "gpcrondump -a -x testdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        When table "public.ao_table_1_prt_p1_2_prt_1" is assumed to be in dirty state in "testdb"
+        And table "public.ao_table_1_prt_p1_2_prt_2" is assumed to be in dirty state in "testdb"
+        And table "public.ao_table_1_prt_p2_2_prt_1" is assumed to be in dirty state in "testdb"
+        And table "public.ao_table_1_prt_p2_2_prt_2" is assumed to be in dirty state in "testdb"
+        And all the data from "testdb" is saved for verification
+        And the user runs "gpcrondump -a --incremental -x testdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the subdir from gpcrondump is stored
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        When the user runs gp_restore with the the stored timestamp and subdir for metadata only in "testdb" using netbackup
+        Then gp_restore should return a return code of 0
+        When the user runs gpdbrestore with the stored timestamp and options "--noplan" without -e option using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that tables "public.ao_table_1_prt_p1_2_prt_3, public.ao_table_1_prt_p2_2_prt_3" in "testdb" has no rows
+        And verify that the data of the dirty tables under " " in "testdb" is validated after restore
+        Examples:
+        | tablecount |
+        | 95         |
+        | 96         |
+        | 97         |
+        | 195        |
+        | 196        |
+        | 197        |
+
+    @nbuall
+    @nbuib
+    Scenario: Incremental table filter gpdbrestore
+        Given the database is running
+        And the netbackup params have been parsed
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+		And there are "2" "heap" tables "public.heap_table" with data in "testdb"
+        And there is a "ao" partition table "ao_part_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table1" with compression "None" in "testdb" with data
+        Then data for partition table "ao_part_table" with partition level "1" is distributed across all segments on "testdb"
+        Then data for partition table "ao_part_table1" with partition level "1" is distributed across all segments on "testdb"
+        And verify that partitioned tables "ao_part_table" in "testdb" have 6 partitions
+        And verify that partitioned tables "ao_part_table1" in "testdb" have 6 partitions
+        When the user runs "gpcrondump -a -x testdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        When table "public.ao_part_table_1_prt_p1_2_prt_1" is assumed to be in dirty state in "testdb"
+        And table "public.ao_part_table_1_prt_p1_2_prt_2" is assumed to be in dirty state in "testdb"
+        And table "public.ao_part_table_1_prt_p2_2_prt_1" is assumed to be in dirty state in "testdb"
+        And table "public.ao_part_table_1_prt_p2_2_prt_2" is assumed to be in dirty state in "testdb"
+        And all the data from "testdb" is saved for verification
+        And the user runs "gpcrondump -a --incremental -x testdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        When the user runs gpdbrestore with the stored timestamp and options "-T public.ao_part_table --netbackup-block-size 4096" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is no table "public.ao_part_table1_1_prt_p1_2_prt_3" in "testdb"
+        And verify that there is no table "public.ao_part_table1_1_prt_p2_2_prt_3" in "testdb"
+        And verify that there is no table "public.ao_part_table1_1_prt_p1_2_prt_2" in "testdb"
+        And verify that there is no table "public.ao_part_table1_1_prt_p2_2_prt_2" in "testdb"
+        And verify that there is no table "public.ao_part_table1_1_prt_p1_2_prt_1" in "testdb"
+        And verify that there is no table "public.ao_part_table1_1_prt_p2_2_prt_1" in "testdb"
+        And verify that there is no table "public.heap_table_1" in "testdb"
+        And verify that there is no table "public.heap_table_2" in "testdb"
+
+    @nbuall
+    @nbuib
+    Scenario: Incremental table filter gpdbrestore with different schema for same tablenames
+        Given the database is running
+        And the netbackup params have been parsed
+        And there are no backup files
+        And database "schematestdb" is created if not exists
+        And there is schema "pepper" exists in "schematestdb"
+		And there are "2" "heap" tables "public.heap_table" with data in "schematestdb"
+        And there is a "ao" partition table "ao_part_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" partition table "ao_part_table1" with compression "None" in "schematestdb" with data
+        And there is a "ao" partition table "pepper.ao_part_table1" with compression "None" in "schematestdb" with data
+        Then data for partition table "ao_part_table" with partition level "1" is distributed across all segments on "schematestdb"
+        Then data for partition table "ao_part_table1" with partition level "1" is distributed across all segments on "schematestdb"
+        Then data for partition table "pepper.ao_part_table1" with partition level "1" is distributed across all segments on "schematestdb"
+        When the user runs "gpcrondump -a -x schematestdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        When table "public.ao_part_table1_1_prt_p1_2_prt_1" is assumed to be in dirty state in "schematestdb"
+        And table "public.ao_part_table1_1_prt_p1_2_prt_2" is assumed to be in dirty state in "schematestdb"
+        And table "public.ao_part_table1_1_prt_p2_2_prt_1" is assumed to be in dirty state in "schematestdb"
+        And table "public.ao_part_table1_1_prt_p2_2_prt_2" is assumed to be in dirty state in "schematestdb"
+        And all the data from "schematestdb" is saved for verification
+        And the user runs "gpcrondump -a --incremental -x schematestdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        When the user runs gpdbrestore with the stored timestamp and options "-T public.ao_part_table1 --netbackup-block-size 4096" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is no table "public.ao_part_table_1_prt_p1_2_prt_3" in "schematestdb"
+        And verify that there is no table "public.ao_part_table_1_prt_p2_2_prt_3" in "schematestdb"
+        And verify that there is no table "public.ao_part_table_1_prt_p1_2_prt_2" in "schematestdb"
+        And verify that there is no table "public.ao_part_table_1_prt_p2_2_prt_2" in "schematestdb"
+        And verify that there is no table "public.ao_part_table_1_prt_p1_2_prt_1" in "schematestdb"
+        And verify that there is no table "public.ao_part_table_1_prt_p2_2_prt_1" in "schematestdb"
+        And verify that there is no table "pepper.ao_part_table1_1_prt_p1_2_prt_3" in "schematestdb"
+        And verify that there is no table "pepper.ao_part_table1_1_prt_p2_2_prt_3" in "schematestdb"
+        And verify that there is no table "pepper.ao_part_table1_1_prt_p1_2_prt_2" in "schematestdb"
+        And verify that there is no table "pepper.ao_part_table1_1_prt_p2_2_prt_2" in "schematestdb"
+        And verify that there is no table "pepper.ao_part_table1_1_prt_p1_2_prt_1" in "schematestdb"
+        And verify that there is no table "pepper.ao_part_table1_1_prt_p2_2_prt_1" in "schematestdb"
+        And verify that there is no table "public.heap_table_1" in "schematestdb"
+        And verify that there is no table "public.heap_table_2" in "schematestdb"
+
+    @nbuall
+    @nbuib
+    Scenario: Incremental table filter gpdbrestore with noplan option
+        Given the database is running
+        And the netbackup params have been parsed
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+		And there are "2" "heap" tables "public.heap_table" with data in "testdb"
+        And there is a "ao" partition table "ao_part_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table1" with compression "None" in "testdb" with data
+        Then data for partition table "ao_part_table" with partition level "1" is distributed across all segments on "testdb"
+        Then data for partition table "ao_part_table1" with partition level "1" is distributed across all segments on "testdb"
+        And verify that partitioned tables "ao_part_table" in "testdb" have 6 partitions
+        And verify that partitioned tables "ao_part_table1" in "testdb" have 6 partitions
+        When the user runs "gpcrondump -a -x testdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        When all the data from "testdb" is saved for verification
+        And the user runs "gpcrondump -a --incremental -x testdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the subdir from gpcrondump is stored
+        And the timestamp from gpcrondump is stored
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        When the user runs gp_restore with the the stored timestamp and subdir for metadata only in "testdb" using netbackup
+        Then gp_restore should return a return code of 0
+        When the user runs gpdbrestore with the stored timestamp and options "-T public.ao_part_table,public.heap_table_1 --noplan" without -e option using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that tables "public.ao_part_table_1_prt_p1_2_prt_3, public.ao_part_table_1_prt_p2_2_prt_3" in "testdb" has no rows
+        And verify that tables "public.ao_part_table_1_prt_p1_2_prt_2, public.ao_part_table_1_prt_p2_2_prt_2" in "testdb" has no rows
+        And verify that tables "public.ao_part_table_1_prt_p1_2_prt_1, public.ao_part_table_1_prt_p2_2_prt_1" in "testdb" has no rows
+        And verify that tables "public.ao_part_table1_1_prt_p1_2_prt_3, public.ao_part_table1_1_prt_p2_2_prt_3" in "testdb" has no rows
+        And verify that tables "public.ao_part_table1_1_prt_p1_2_prt_2, public.ao_part_table1_1_prt_p2_2_prt_2" in "testdb" has no rows
+        And verify that tables "public.ao_part_table1_1_prt_p1_2_prt_1, public.ao_part_table1_1_prt_p2_2_prt_1" in "testdb" has no rows
+        And verify that there is a "heap" table "public.heap_table_1" in "testdb" with data
+
+    @nbuall
+    @nbuib
+    Scenario: gpdbrestore list_backup option
+        Given the database is running
+        And the netbackup params have been parsed
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" table "ao_table" with compression "None" in "fullbkdb" with data
+        And there is a "co" table "co_table" with compression "None" in "fullbkdb" with data
+        And there are no backup files
+        And there is a list to store the incremental backup timestamps
+        When the user runs "gpcrondump -a -x fullbkdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored in a list
+        And table "public.ao_table" is assumed to be in dirty state in "fullbkdb"
+        When the user runs "gpcrondump -a --incremental -x fullbkdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored in a list
+        When the user runs "gpcrondump -a --incremental -x fullbkdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored in a list
+        And table "public.co_table" is assumed to be in dirty state in "fullbkdb"
+        When the user runs "gpcrondump -a --incremental -x fullbkdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored in a list
+        When the user runs "gpcrondump -a --incremental -x fullbkdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        When the user runs gpdbrestore with the stored timestamp to print the backup set with options " " using netbackup
+        Then gpdbrestore should return a return code of 0
+        Then "plan" file should be created under " "
+        And verify that the list of stored timestamps is printed to stdout
+        Then "plan" file is removed under " "
+        When the user runs gpdbrestore with the stored timestamp to print the backup set with options "-a" using netbackup
+        Then gpdbrestore should return a return code of 0
+        Then "plan" file should be created under " "
+        And verify that the list of stored timestamps is printed to stdout
+
+    @nbuall
+    @nbuib
+    Scenario: User specified timestamp key for dump for incremental using NetBackup
+        Given the database is running
+        And the netbackup params have been parsed
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb -K 20130101010101 --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        And verify that "full" dump files using netbackup have stored timestamp in their filename
+        When the user runs "gpcrondump -a --incremental -x testdb -K 20130201010101 --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And verify that "incremental" dump files using netbackup have stored timestamp in their filename
+        And all the data from "testdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that the data of "11" tables in "testdb" is validated after restore
+        And verify that the tuple count of all appendonly tables are consistent in "testdb"
+
+    @nbuall
+    @nbuib
+    Scenario: --list-backup-files option for dump with --incremental
+        Given the database is running
+        And the netbackup params have been parsed
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb -K 20120101010101 --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the full backup timestamp from gpcrondump is stored
+        When the user runs "gpcrondump -a -x testdb -K 20130101010101 --list-backup-files --incremental --verbose --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And gpcrondump should print Added the list of pipe names to the file to stdout
+        And gpcrondump should print Added the list of file names to the file to stdout
+        And gpcrondump should print Successfully listed the names of backup files and pipes to stdout
+        And the timestamp key "20130101010101" for gpcrondump is stored
+        Then "pipes" file should be created under " "
+        Then "regular_files" file should be created under " "
+        And the "pipes" file under " " with options "--incremental" is validated after dump operation
+        And the "regular_files" file under " " with options "--incremental" is validated after dump operation
+        And there are no dump files created under " "
+
+    @nbuall
+    @nbuib
+    Scenario: Incremental Backup with no heap tables, backup at the end
+        Given the database is running
+        And the netbackup params have been parsed
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a "ao" table "ao_table" with compression "None" in "testdb" with data
+        And there is a "co" partition table "co_part_table" with compression "quicklz" in "testdb" with data
+        And there are no backup files
+        And there is a list to store the incremental backup timestamps
+        When the user runs "gpcrondump -a -x testdb --netbackup-block-size 4096" using netbackup
+        And the full backup timestamp from gpcrondump is stored
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored in a list
+        And the timestamp is labeled "ts1"
+        When the user runs "gpcrondump -a -x testdb --incremental --netbackup-block-size 4096" using netbackup
+        And the timestamp from gpcrondump is stored in a list
+        And the timestamp is labeled "ts2"
+        And gpcrondump should return a return code of 0
+        And all the data from "testdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that the data of "10" tables in "testdb" is validated after restore
+        And verify that the tuple count of all appendonly tables are consistent in "testdb"
+        And the plan file is validated against "/data/plan11"
+
+    @nbuall
+    @nbuib
+    Scenario: Incremental Backup with no heap tables, backup in the middle
+        Given the database is running
+        And the netbackup params have been parsed
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a "ao" table "ao_table_1" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_table_2" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_table_3" with compression "None" in "testdb" with data
+        And there is a "co" partition table "co_part_table" with compression "quicklz" in "testdb" with data
+        And there are no backup files
+        And there is a list to store the incremental backup timestamps
+        When the user runs "gpcrondump -a -x testdb --netbackup-block-size 4096" using netbackup
+        And the full backup timestamp from gpcrondump is stored
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored in a list
+        And the timestamp is labeled "ts1"
+        And table "public.ao_table_1" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb --incremental --netbackup-block-size 4096" using netbackup
+        And the timestamp from gpcrondump is stored in a list
+        And the timestamp is labeled "ts2"
+        And gpcrondump should return a return code of 0
+        When the user runs "gpcrondump -a -x testdb --incremental --netbackup-block-size 4096" using netbackup
+        And the timestamp from gpcrondump is stored in a list
+        And the timestamp is labeled "ts3"
+        And table "public.ao_table_3" is assumed to be in dirty state in "testdb"
+        And gpcrondump should return a return code of 0
+        When the user runs "gpcrondump -a -x testdb --incremental --netbackup-block-size 4096" using netbackup
+        And the timestamp from gpcrondump is stored in a list
+        And the timestamp is labeled "ts4"
+        And gpcrondump should return a return code of 0
+        And all the data from "testdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that the data of "12" tables in "testdb" is validated after restore
+        And verify that the tuple count of all appendonly tables are consistent in "testdb"
+        And the plan file is validated against "/data/plan12"
+
+    @nbusmoke
+    @nbuall
+    @nbuib
+    Scenario: Incremental Backup and Restore with --prefix option
+        Given the database is running
+        And the netbackup params have been parsed
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb --prefix=foo --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb --incremental --prefix=foo --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb --incremental --prefix=foo --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And all the data from "testdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp and options "--prefix=foo --netbackup-block-size 4096" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that the data of "11" tables in "testdb" is validated after restore
+
+    @nbusmoke
+    @nbuall
+    @nbuib
+    Scenario: Incremental with multiple full backups having different prefix
+        Given the database is running
+        And the netbackup params have been parsed
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb --prefix=foo --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb --incremental --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And all the data from "testdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that the data of "11" tables in "testdb" is validated after restore
+
+    @nbuall
+    @nbuib
+    Scenario: Incremental backup with prefix based off full backup without prefix
+        Given the database is running
+        And the netbackup params have been parsed
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        And all netbackup objects containing "gp_dump" are deleted
+        When the user runs "gpcrondump -a -x testdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb --incremental --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb --incremental --prefix=foo" using netbackup
+        Then gpcrondump should return a return code of 2
+        And gpcrondump should print No full backup found for given incremental on the specified NetBackup server to stdout
+
+    @nbuall
+    @nbuib
+    Scenario: Restore database without prefix for a dump with prefix
+        Given the database is running
+        And the netbackup params have been parsed
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        And all netbackup objects containing "gp_dump" are deleted
+        When the user runs "gpcrondump -a -x testdb --prefix=foo --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        When the user runs gpdbrestore with the stored timestamp using netbackup
+        Then gpdbrestore should return a return code of 2
+        And gpdbrestore should print No object matched the specified predicate to stdout
+        And gpdbrestore should print Failed to get the NetBackup BSA restore object to perform Restore to stdout
+
+    @nbuall
+    @nbuib
+    Scenario: Multiple full and incrementals with and without prefix
+        Given the database is running
+        And the netbackup params have been parsed
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        When the user runs "gpcrondump -a -x testdb --prefix=foo --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb --incremental --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb --incremental --prefix=foo --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And all the data from "testdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp and options "--prefix=foo --netbackup-block-size 4096" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that the data of "11" tables in "testdb" is validated after restore
+
+    @nbuall
+    @nbuib
+    Scenario: Incremental Backup and Restore with --prefix and -u options
+        Given the database is running
+        And the netbackup params have been parsed
+        And the prefix "foo" is stored
+        And the backup files in "/tmp" are deleted
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb --prefix=foo -u /tmp --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb --incremental --prefix=foo -u /tmp --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And all the data from "testdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp and options "--prefix=foo -u /tmp --netbackup-block-size 4096" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that the data of "11" tables in "testdb" is validated after restore
+
+    @nbuall
+    @nbuib
+    Scenario: Incremental Backup and Restore with -t filter for Full
+        Given the database is running
+        And the netbackup params have been parsed
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb --prefix=foo -t public.ao_index_table -t public.heap_table1 --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "public.ao_index_table"
+        And verify that the "filter" file in " " dir contains "public.heap_table1"
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -x testdb --prefix=foo --incremental  --netbackup-block-size 4096 < gppylib/test/behave/mgmt_utils/steps/data/yes.txt" using netbackup
+        Then gpcrondump should return a return code of 0
+        And gpcrondump should print Filtering tables using: to stdout
+        And gpcrondump should print Prefix                        = foo to stdout
+        And gpcrondump should print Full dump timestamp           = [0-9]{14} to stdout
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        When the user runs "gpcrondump -x testdb --incremental --prefix=foo -a --list-filter-tables --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And gpcrondump should print Filtering testdb for the following tables: to stdout
+        And gpcrondump should print public.ao_index_table to stdout
+        And gpcrondump should print public.heap_table1 to stdout
+        And all the data from "testdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp and options "--prefix=foo --netbackup-block-size 4096" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "public.heap_table1" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_index_table" in "testdb" with data
+        And verify that there is no table "public.ao_part_table" in "testdb"
+        And verify that there is no table "public.heap_table2" in "testdb"
+
+    @nbusmoke
+    @filter
+    @nbuall
+    @nbuib
+    Scenario: Incremental Backup and Restore with -T filter for Full
+        Given the database is running
+        And the netbackup params have been parsed
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb --prefix=foo -T public.ao_part_table -T public.heap_table2 --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "public.ao_index_table"
+        And verify that the "filter" file in " " dir contains "public.heap_table1"
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb --prefix=foo --incremental --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        When the user runs "gpcrondump -x testdb --incremental --prefix=foo -a --list-filter-tables --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And gpcrondump should print Filtering testdb for the following tables: to stdout
+        And gpcrondump should print public.ao_index_table to stdout
+        And gpcrondump should print public.heap_table1 to stdout
+        And all the data from "testdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp and options "--prefix=foo --netbackup-block-size 4096" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "public.heap_table1" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_index_table" in "testdb" with data
+        And verify that there is no table "public.ao_part_table" in "testdb"
+        And verify that there is no table "public.heap_table2" in "testdb"
+
+    @filter
+    @nbuall
+    @nbuib
+    Scenario: Incremental Backup and Restore with --table-file filter for Full
+        Given the database is running
+        And the netbackup params have been parsed
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        And there is a table-file "/tmp/table_file_1" with tables "public.ao_index_table, public.heap_table1"
+        When the user runs "gpcrondump -a -x testdb --prefix=foo --table-file /tmp/table_file_1 --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "public.ao_index_table"
+        And verify that the "filter" file in " " dir contains "public.heap_table1"
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        When the temp files "table_file_1" are removed from the system
+        And the user runs "gpcrondump -a -x testdb --prefix=foo --incremental --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        When the user runs "gpcrondump -x testdb --incremental --prefix=foo -a --list-filter-tables --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And gpcrondump should print Filtering testdb for the following tables: to stdout
+        And gpcrondump should print public.ao_index_table to stdout
+        And gpcrondump should print public.heap_table1 to stdout
+        And all the data from "testdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp and options "--prefix=foo --netbackup-block-size 4096" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "public.heap_table1" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_index_table" in "testdb" with data
+        And verify that there is no table "public.ao_part_table" in "testdb"
+        And verify that there is no table "public.heap_table2" in "testdb"
+
+    @filter
+    @nbuall
+    @nbuib
+    Scenario: Incremental Backup and Restore with --exclude-table-file filter for Full
+        Given the database is running
+        And the netbackup params have been parsed
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        And there is a table-file "/tmp/exclude_table_file_1" with tables "public.ao_part_table, public.heap_table2"
+        When the user runs "gpcrondump -a -x testdb --prefix=foo --exclude-table-file /tmp/exclude_table_file_1 --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "public.ao_index_table"
+        And verify that the "filter" file in " " dir contains "public.heap_table1"
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        When the temp files "exclude_table_file_1" are removed from the system
+        And the user runs "gpcrondump -a -x testdb --prefix=foo --incremental --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        When the user runs "gpcrondump -x testdb --incremental --prefix=foo -a --list-filter-tables --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And gpcrondump should print Filtering testdb for the following tables: to stdout
+        And gpcrondump should print public.ao_index_table to stdout
+        And gpcrondump should print public.heap_table1 to stdout
+        And all the data from "testdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp and options "--prefix=foo --netbackup-block-size 4096" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "public.heap_table1" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_index_table" in "testdb" with data
+        And verify that there is no table "public.ao_part_table" in "testdb"
+        And verify that there is no table "public.heap_table2" in "testdb"
+
+    @filter
+    @nbuall
+    @nbuib
+    Scenario: Multiple Incremental Backups and Restore with -t filter for Full
+        Given the database is running
+        And the netbackup params have been parsed
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb --prefix=foo -t public.ao_index_table -t public.heap_table1 -t public.ao_part_table --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "public.ao_index_table"
+        And verify that the "filter" file in " " dir contains "public.heap_table1"
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb --prefix=foo --incremental --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored in a list
+        And table "public.ao_part_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb --prefix=foo --incremental --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored in a list
+        And table "public.heap_table1" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb --prefix=foo --incremental --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        When the user runs "gpcrondump -x testdb --incremental --prefix=foo -a --list-filter-tables --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And gpcrondump should print Filtering testdb for the following tables: to stdout
+        And gpcrondump should print public.ao_index_table to stdout
+        And gpcrondump should print public.heap_table1 to stdout
+        And all the data from "testdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp and options "--prefix=foo --netbackup-block-size 4096" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "public.heap_table1" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_index_table" in "testdb" with data
+        And verify that partitioned tables "ao_part_table" in "testdb" have 6 partitions
+        And verify that there is no table "public.heap_table2" in "testdb"
+
+    @filter
+    @nbuall
+    @nbuib
+    Scenario: Incremental Backup and Restore with Multiple Schemas and -t filter for Full
+        Given the database is running
+        And the netbackup params have been parsed
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is schema "pepper" exists in "testdb"
+        And there is a "heap" table "pepper.heap_table1" with compression "None" in "testdb" with data
+        And there is a "heap" table "pepper.heap_table2" with compression "None" in "testdb" with data
+        And there is a "ao" table "pepper.ao_table" with compression "None" in "testdb" with data
+        And there is a "co" table "pepper.co_table" with compression "None" in "testdb" with data
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "co" table "co_index_table" with compression "None" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb -K 20120101010101 --prefix=foo -t public.ao_index_table -t public.heap_table1 -t pepper.ao_table -t pepper.heap_table1 --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "public.ao_index_table"
+        And verify that the "filter" file in " " dir contains "public.heap_table1"
+        And verify that the "filter" file in " " dir contains "pepper.ao_table"
+        And verify that the "filter" file in " " dir contains "pepper.heap_table1"
+        And table "public.heap_table1" is assumed to be in dirty state in "testdb"
+        And table "pepper.heap_table1" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb -K 20130101010101 --prefix=foo --incremental --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp key "20130101010101" for gpcrondump is stored
+        And all the data from "testdb" is saved for verification
+        When the user truncates "public.ao_index_table, public.heap_table1" tables in "testdb"
+        And the user truncates "pepper.ao_table, pepper.heap_table1" tables in "testdb"
+        And the user runs "gpdbrestore -a -t 20130101010101 --prefix=foo --netbackup-block-size 4096" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "public.heap_table1" in "testdb" with data
+        And verify that there is a "heap" table "public.heap_table2" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_index_table" in "testdb" with data
+        And verify that there is a "co" table "public.co_index_table" in "testdb" with data
+        And verify that there is a "heap" table "pepper.heap_table1" in "testdb" with data
+        And verify that there is a "heap" table "pepper.heap_table2" in "testdb" with data
+        And verify that there is a "ao" table "pepper.ao_table" in "testdb" with data
+        And verify that there is a "co" table "pepper.co_table" in "testdb" with data
+
+    @filter
+    @nbuall
+    @nbuib
+    Scenario: Multiple Full and Incremental Backups with -t filters for different prefixes in parallel
+        Given the database is running
+        And the netbackup params have been parsed
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_table" with compression "None" in "testdb" with data
+        And there is a "co" table "co_table" with compression "None" in "testdb" with data
+        And the prefix "foo1" is stored
+        When the user runs "gpcrondump -a -x testdb -K 20120101010101 --prefix=foo1 -t public.ao_table -t public.heap_table1 --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "public.ao_table"
+        And verify that the "filter" file in " " dir contains "public.heap_table1"
+        Given the prefix "foo2" is stored
+        When the user runs "gpcrondump -a -x testdb -K 20130101010101 --prefix=foo2 -t public.co_table -t public.heap_table2 --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "public.co_table"
+        And verify that the "filter" file in " " dir contains "public.heap_table2"
+        And table "public.ao_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb -K 20120201010101 --prefix=foo1 --incremental --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And table "public.co_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb -K 20130201010101 --prefix=foo2 --incremental --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        When all the data from "testdb" is saved for verification
+        And the user runs "gpdbrestore -a -e -t 20120201010101 --prefix=foo1 --netbackup-block-size 4096" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "public.heap_table1" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_table" in "testdb" with data
+        And verify that there is no table "public.heap_table2" in "testdb"
+        And verify that there is no table "public.co_table" in "testdb"
+        When the user runs "gpdbrestore -a -e -t 20130201010101 --prefix=foo2 --netbackup-block-size 4096" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "public.heap_table2" in "testdb" with data
+        And verify that there is a "co" table "public.co_table" in "testdb" with data
+        And verify that there is no table "public.heap_table1" in "testdb"
+        And verify that there is no table "public.ao_table" in "testdb"
+
+    @filter
+    @nbuall
+    @nbuib
+    Scenario: Incremental Backup with table filter on Full Backup should update the tracker files
+        Given the database is running
+        And the netbackup params have been parsed
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb --prefix=foo -t public.ao_index_table -t public.heap_table1 --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "public.ao_index_table"
+        And verify that the "filter" file in " " dir contains "public.heap_table1"
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb --prefix=foo --incremental --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And "public.ao_index_table" is marked as dirty in dirty_list file
+        And "public.heap_table1" is marked as dirty in dirty_list file
+        And verify that there is no "public.heap_table2" in the "dirty_list" file in " "
+        And verify that there is no "public.ao_part_table" in the "dirty_list" file in " "
+        And verify that there is no "public.heap_table2" in the "table_list" file in " "
+        And verify that there is no "public.ao_part_table" in the "table_list" file in " "
+        And all the data from "testdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp and options "--prefix=foo --netbackup-block-size 4096" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "public.heap_table1" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_index_table" in "testdb" with data
+        And verify that there is no table "public.ao_part_table" in "testdb"
+        And verify that there is no table "public.heap_table2" in "testdb"
+
+    @filter
+    @nbuall
+    @nbuib
+    Scenario: Filtered Incremental Backup and Restore with -t and added partition
+        Given the database is running
+        And the netbackup params have been parsed
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb --prefix=foo -t public.ao_part_table -t public.heap_table1 --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "public.ao_part_table"
+        And verify that the "filter" file in " " dir contains "public.heap_table1"
+        And partition "3" is added to partition table "public.ao_part_table" in "testdb"
+        When the user runs "gpcrondump -x testdb --prefix=foo --incremental --netbackup-block-size 4096 < gppylib/test/behave/mgmt_utils/steps/data/yes.txt" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And all the data from "testdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp and options "--prefix=foo --netbackup-block-size 4096" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "public.heap_table1" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_part_table" in "testdb" with data
+        And verify that there is no table "public.ao_index_table" in "testdb"
+        And verify that there is no table "public.heap_table2" in "testdb"
+        And verify that partitioned tables "ao_part_table" in "testdb" have 9 partitions
+        And verify that there is partition "3" of "ao" partition table "ao_part_table" in "testdb" in "public"
+        And verify that the data of "14" tables in "testdb" is validated after restore
+
+    @filter
+    @nbuall
+    @nbuib
+    Scenario: Filtered Incremental Backup and Restore with -T and added partition
+        Given the database is running
+        And the netbackup params have been parsed
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb --prefix=foo -T public.ao_index_table -T public.heap_table2 --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "public.ao_part_table"
+        And verify that the "filter" file in " " dir contains "public.heap_table1"
+        And partition "3" is added to partition table "public.ao_part_table" in "testdb"
+        When the user runs "gpcrondump -x testdb --prefix=foo --incremental --netbackup-block-size 4096 < gppylib/test/behave/mgmt_utils/steps/data/yes.txt" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And all the data from "testdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp and options "--prefix=foo --netbackup-block-size 4096" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "public.heap_table1" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_part_table" in "testdb" with data
+        And verify that there is no table "public.ao_index_table" in "testdb"
+        And verify that there is no table "public.heap_table2" in "testdb"
+        And verify that partitioned tables "ao_part_table" in "testdb" have 9 partitions
+        And verify that there is partition "3" of "ao" partition table "ao_part_table" in "testdb" in "public"
+        And verify that the data of "14" tables in "testdb" is validated after restore
+
+    @filter
+    @nbuall
+    @nbuib
+    Scenario: Filtered Incremental Backup and Restore with -t and dropped partition
+        Given the database is running
+        And the netbackup params have been parsed
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb --prefix=foo -t public.ao_part_table -t public.heap_table1 --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "public.ao_part_table"
+        And verify that the "filter" file in " " dir contains "public.heap_table1"
+        And partition "2" is dropped from partition table "public.ao_part_table" in "testdb"
+        When the user runs "gpcrondump -x testdb --prefix=foo --incremental --netbackup-block-size 4096 < gppylib/test/behave/mgmt_utils/steps/data/yes.txt" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And all the data from "testdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp and options "--prefix=foo --netbackup-block-size 4096" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "public.heap_table1" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_part_table" in "testdb" with data
+        And verify that there is no table "public.ao_index_table" in "testdb"
+        And verify that there is no table "public.heap_table2" in "testdb"
+        And verify that partitioned tables "ao_part_table" in "testdb" have 3 partitions
+        And verify that the data of "6" tables in "testdb" is validated after restore
+
+    @filter
+    @nbuall
+    @nbuib
+    Scenario: Filtered Incremental Backup and Restore with -T and dropped partition
+        Given the database is running
+        And the netbackup params have been parsed
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb --prefix=foo -T public.ao_index_table -T public.heap_table2 --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "public.ao_part_table"
+        And verify that the "filter" file in " " dir contains "public.heap_table1"
+        And partition "2" is dropped from partition table "public.ao_part_table" in "testdb"
+        When the user runs "gpcrondump -x testdb --prefix=foo --incremental --netbackup-block-size 4096 < gppylib/test/behave/mgmt_utils/steps/data/yes.txt" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And all the data from "testdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp and options "--prefix=foo --netbackup-block-size 4096" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "public.heap_table1" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_part_table" in "testdb" with data
+        And verify that there is no table "public.ao_index_table" in "testdb"
+        And verify that there is no table "public.heap_table2" in "testdb"
+        And verify that partitioned tables "ao_part_table" in "testdb" have 3 partitions
+        And verify that the data of "6" tables in "testdb" is validated after restore
+
+    @filter
+    @nbuall
+    @nbuib
+    Scenario: Filtered Incremental Backup and Restore with -t and dropped non-partition and partition table
+        Given the database is running
+        And the netbackup params have been parsed
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table1" with compression "quicklz" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table2" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb --prefix=foo -t public.ao_part_table1 -t public.ao_part_table2 -t public.heap_table1 --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "public.ao_part_table1"
+        And verify that the "filter" file in " " dir contains "public.ao_part_table2"
+        And verify that the "filter" file in " " dir contains "public.heap_table1"
+        When table "public.ao_part_table2" is dropped in "testdb"
+        And table "public.heap_table1" is dropped in "testdb"
+        And the user runs "gpcrondump -x testdb --prefix=foo --incremental --netbackup-block-size 4096 < gppylib/test/behave/mgmt_utils/steps/data/yes.txt" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And all the data from "testdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp and options "--prefix=foo --netbackup-block-size 4096" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is a "ao" table "public.ao_part_table1" in "testdb" with data
+        And verify that there is no table "public.ao_index_table" in "testdb"
+        And verify that there is no table "public.heap_table2" in "testdb"
+        And verify that there is no table "public.ao_part_table2" in "testdb"
+        And verify that there is no table "public.heap_table1" in "testdb"
+        And verify that partitioned tables "ao_part_table1" in "testdb" have 6 partitions
+        And verify that the data of "9" tables in "testdb" is validated after restore
+
+    @filter
+    @nbuall
+    @nbuib
+    @nbusmoke
+    Scenario: Filtered Multiple Incremental Backups and Restore with -t and dropped partition between IBs
+        Given the database is running
+        And the netbackup params have been parsed
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb --prefix=foo -t public.ao_part_table -t public.heap_table1 --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "public.ao_part_table"
+        And verify that the "filter" file in " " dir contains "public.heap_table1"
+        When the user runs "gpcrondump -x testdb --prefix=foo --incremental --netbackup-block-size 4096 < gppylib/test/behave/mgmt_utils/steps/data/yes.txt" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And all the data from "testdb" is saved for verification
+        And partition "2" is dropped from partition table "public.ao_part_table" in "testdb"
+        When the user runs "gpcrondump -x testdb --prefix=foo --incremental --netbackup-block-size 4096 < gppylib/test/behave/mgmt_utils/steps/data/yes.txt" using netbackup
+        Then gpcrondump should return a return code of 0
+        When the user runs gpdbrestore with the stored timestamp and options "--prefix=foo" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "public.heap_table1" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_part_table" in "testdb" with data
+        And verify that there is no table "public.ao_index_table" in "testdb"
+        And verify that there is no table "public.heap_table2" in "testdb"
+        And verify that partitioned tables "ao_part_table" in "testdb" have 6 partitions
+        And verify that the data of "10" tables in "testdb" is validated after restore
+        When the user runs "gpcrondump -x testdb --prefix=foo --incremental --netbackup-block-size 4096 < gppylib/test/behave/mgmt_utils/steps/data/yes.txt" using netbackup
+        Then gpcrondump should return a return code of 0
+
+    @nbuall
+    @nbuib
+    Scenario: Incremental Backup and Restore of specified metadata
+        Given the database is running
+        And the netbackup params have been parsed
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "heap" partition table "heap_part_table" with compression "quicklz" in "testdb" with data
+        And there is a "ao" table "ao_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        And there is a "co" table "co_table" with compression "None" in "testdb" with data
+        And there is a "co" partition table "co_part_table" with compression "quicklz" in "testdb" with data
+        And there is a "heap" table "heap_table_ex" with compression "None" in "testdb" with data
+        And there is a "heap" partition table "heap_part_table_ex" with compression "quicklz" in "testdb" with data
+        And there is a "ao" table "ao_table_ex" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table_ex" with compression "quicklz" in "testdb" with data
+        And there is a "co" table "co_table_ex" with compression "None" in "testdb" with data
+        And there is a "co" partition table "co_part_table_ex" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored
+        And table "public.co_table" is assumed to be in dirty state in "testdb"
+        And partition "2" of partition table "ao_part_table" is assumed to be in dirty state in "testdb" in schema "public"
+        When the user runs "gpcrondump -a -x testdb --incremental --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And all the data from "testdb" is saved for verification
+        And there is a file "restore_file" with tables "public.heap_table,public.ao_table,public.co_table,public.ao_part_table"
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        When the user runs gpdbrestore with the stored timestamp and options "--table-file restore_file --netbackup-block-size 4096" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "public.heap_table" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_table" in "testdb" with data
+        And verify that there is a "co" table "public.co_table" in "testdb" with data
+        And verify that there is a "ao" table "public.ao_part_table" in "testdb" with data
+        And verify that there is no table "public.heap_table_ex" in "testdb"
+        And verify that there is no table "public.ao_table_ex" in "testdb"
+        And verify that there is no table "public.co_table_ex" in "testdb"
+        And verify that there is no table "public.heap_part_table_ex" in "testdb"
+        And verify that there is no table "public.ao_part_table_ex" in "testdb"
+        And verify that there is no table "public.co_part_table_ex" in "testdb"
+        And verify that there is no table "public.co_part_table" in "testdb"
+        And verify that there is no table "public.heap_part_table" in "testdb"
+        And verify that partitioned tables "ao_part_table" in "testdb" have 6 partitions
+        And verify that the data of "12" tables in "testdb" is validated after restore
+
+    @nbuall
+    @nbuib
+    Scenario: Incremental Backup and Restore of specified post data objects
+        Given the database is running
+        And the netbackup params have been parsed
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is schema "pepper" exists in "testdb"
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "pepper.heap_table" with compression "None" in "testdb" with data
+        And there is a "heap" partition table "heap_part_table" with compression "quicklz" in "testdb" with data
+        And there is a "ao" table "pepper.ao_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "pepper.ao_part_table" with compression "quicklz" in "testdb" with data
+        And there is a "co" table "co_table" with compression "None" in "testdb" with data
+        And there is a "co" partition table "co_part_table" with compression "quicklz" in "testdb" with data
+        And there is a "heap" table "heap_table_ex" with compression "None" in "testdb" with data
+        And there is a "heap" partition table "heap_part_table_ex" with compression "quicklz" in "testdb" with data
+        And there is a "co" table "pepper.co_table_ex" with compression "None" in "testdb" with data
+        And there is a "co" partition table "pepper.co_part_table_ex" with compression "quicklz" in "testdb" with data
+        And there is a "co" table "public.co_index_table" with index "co_index" compression "None" in "testdb" with data
+        And the user runs "psql -c 'ALTER TABLE ONLY pepper.heap_table ADD CONSTRAINT heap_table_pkey PRIMARY KEY (column1, column2, column3);' testdb"
+        And the user runs "psql -c 'ALTER TABLE ONLY heap_table_ex ADD CONSTRAINT heap_table_pkey PRIMARY KEY (column1, column2, column3);' testdb"
+        And the user runs "psql -c 'ALTER TABLE ONLY pepper.heap_table ADD CONSTRAINT heap_const_1 FOREIGN KEY (column1, column2, column3) REFERENCES heap_table_ex(column1, column2, column3);' testdb"
+        And the user runs "psql -c """create rule heap_co_rule as on insert to pepper.heap_table where column1=100 do instead insert into pepper.co_table_ex values(27, 'restore', '2013-08-19');""" testdb"
+        When the user runs "gpcrondump -a -x testdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored
+        And table "public.co_table" is assumed to be in dirty state in "testdb"
+        And partition "2" of partition table "ao_part_table" is assumed to be in dirty state in "testdb" in schema "pepper"
+        When the user runs "gpcrondump -a -x testdb --incremental --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And all the data from "testdb" is saved for verification
+        And there is a file "restore_file" with tables "pepper.heap_table,pepper.ao_table,public.co_table,pepper.ao_part_table"
+        And table "pepper.heap_table" is dropped in "testdb"
+        And table "pepper.ao_table" is dropped in "testdb"
+        And table "public.co_table" is dropped in "testdb"
+        And table "pepper.ao_part_table" is dropped in "testdb"
+        When the index "bitmap_co_index" in "testdb" is dropped
+        When the user runs gpdbrestore with the stored timestamp and options "--table-file restore_file --netbackup-block-size 4096" without -e option using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "pepper.heap_table" in "testdb" with data
+        And verify that there is a "ao" table "pepper.ao_table" in "testdb" with data
+        And verify that there is a "co" table "public.co_table" in "testdb" with data
+        And verify that there is a "ao" table "pepper.ao_part_table" in "testdb" with data
+        And verify that there is a "heap" table "public.heap_table_ex" in "testdb" with data
+        And verify that there is a "co" table "pepper.co_table_ex" in "testdb" with data
+        And verify that there is a "heap" table "public.heap_part_table_ex" in "testdb" with data
+        And verify that there is a "co" table "pepper.co_part_table_ex" in "testdb" with data
+        And verify that there is a "co" table "public.co_part_table" in "testdb" with data
+        And verify that there is a "heap" table "public.heap_part_table" in "testdb" with data
+        And verify that there is a "co" table "public.co_index_table" in "testdb" with data
+        And the user runs "psql -c '\d pepper.heap_table' testdb"
+        And psql should print \"heap_table_pkey\" PRIMARY KEY, btree \(column1, column2, column3\) to stdout
+        And psql should print heap_co_rule AS\n.*ON INSERT TO pepper.heap_table\n.*WHERE new\.column1 = 100 DO INSTEAD  INSERT INTO pepper.co_table_ex \(column1, column2, column3\) to stdout
+        And psql should print \"heap_const_1\" FOREIGN KEY \(column1, column2, column3\) REFERENCES heap_table_ex\(column1, column2, column3\) to stdout
+        And the user runs "psql -c '\d public.co_index_table' testdb"
+        And psql should not print bitmap_co_index to stdout
+        And verify that the data of "51" tables in "testdb" is validated after restore
+
+    @nbuall
+    @nbuib
+    Scenario: Incremental backup of partitioned tables which have child partitions in different schema
+        Given the database is running
+        And the netbackup params have been parsed
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is schema "schema_parent, schema_child" exists in "testdb"
+        And there is a "ao" table "ao_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "schema_parent.ao_part_table" with compression "None" in "testdb" with data
+        And partition "1" of partition table "schema_parent.ao_part_table" is assumed to be in schema "schema_child" in database "testdb"
+        When the user runs "gpcrondump -a -x testdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the full backup timestamp from gpcrondump is stored
+        And partition "1" of partition table "ao_part_table" is assumed to be in dirty state in "testdb" in schema "schema_parent"
+        When the user runs "gpcrondump -a --incremental -x testdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+
+    @nbuall
+    @nbuib
+    Scenario: Restore -T for incremental dump should restore metadata/postdata objects for tablenames with English and multibyte (chinese) characters
+        Given the database is running
+        And the netbackup params have been parsed
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is schema "schema_heap" exists in "testdb"
+        And there is a "heap" table "schema_heap.heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" table "public.ao_index_table" with index "ao_index" compression "None" in "testdb" with data
+        And there is a "co" table "public.co_index_table" with index "co_index" compression "None" in "testdb" with data
+        And there is a "heap" table "public.heap_index_table" with index "heap_index" compression "None" in "testdb" with data
+        And the user runs "psql -c 'ALTER TABLE ONLY public.heap_index_table ADD CONSTRAINT heap_index_table_pkey PRIMARY KEY (column1, column2, column3);' testdb"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/create_multi_byte_char_tables.sql testdb"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/primary_key_multi_byte_char_table_name.sql testdb"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/index_multi_byte_char_table_name.sql testdb"
+        When the user runs "gpcrondump -a -x testdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/dirty_table_multi_byte_char.sql testdb"
+        When the user runs "gpcrondump --incremental -a -x testdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/describe_multi_byte_char.sql testdb > /tmp/describe_multi_byte_char_before"
+        And the user runs "psql -c '\d public.ao_index_table' testdb > /tmp/describe_ao_index_table_before"
+        When there is a backupfile of tables "ao_index_table, co_index_table, heap_index_table" in "testdb" exists for validation
+        And table "public.ao_index_table" is dropped in "testdb"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/drop_table_with_multi_byte_char.sql testdb"
+        When the user runs gpdbrestore with the stored timestamp and options "--table-file gppylib/test/behave/mgmt_utils/steps/data/include_tables_with_metadata_postdata --netbackup-block-size 4096" without -e option using netbackup
+        Then gpdbrestore should return a return code of 0
+        When the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/select_multi_byte_char_tables.sql testdb"
+        Then psql should print 2000 to stdout 4 times
+        And verify that there is a "ao" table "ao_index_table" in "testdb" with data
+        And verify that there is a "co" table "co_index_table" in "testdb" with data
+        And verify that there is a "heap" table "heap_index_table" in "testdb" with data
+        When the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/describe_multi_byte_char.sql testdb > /tmp/describe_multi_byte_char_after"
+        And the user runs "psql -c '\d public.ao_index_table' testdb > /tmp/describe_ao_index_table_after"
+        Then verify that the contents of the files "/tmp/describe_multi_byte_char_before" and "/tmp/describe_multi_byte_char_after" are identical
+        And verify that the contents of the files "/tmp/describe_ao_index_table_before" and "/tmp/describe_ao_index_table_after" are identical
+        And the file "/tmp/describe_multi_byte_char_before" is removed from the system
+        And the file "/tmp/describe_multi_byte_char_after" is removed from the system
+        And the file "/tmp/describe_ao_index_table_before" is removed from the system
+        And the file "/tmp/describe_ao_index_table_after" is removed from the system
+
+    @nbuall
+    @nbuib
+    Scenario: Restore -T for incremental dump should restore GRANT privileges for tablenames with English and multibyte (chinese) characters
+        Given the database is running
+        And the netbackup params have been parsed
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/create_multi_byte_char_tables.sql testdb"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/primary_key_multi_byte_char_table_name.sql testdb"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/index_multi_byte_char_table_name.sql testdb"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/grant_multi_byte_char_table_name.sql testdb"
+        And the user runs """psql -c "CREATE ROLE test_gpadmin LOGIN ENCRYPTED PASSWORD 'changeme' SUPERUSER INHERIT CREATEDB CREATEROLE RESOURCE QUEUE pg_default;" testdb"""
+        And the user runs """psql -c "CREATE ROLE customer LOGIN ENCRYPTED PASSWORD 'changeme' NOSUPERUSER INHERIT NOCREATEDB NOCREATEROLE RESOURCE QUEUE pg_default;" testdb"""
+        And the user runs """psql -c "CREATE ROLE select_group NOSUPERUSER INHERIT NOCREATEDB NOCREATEROLE RESOURCE QUEUE pg_default;" testdb"""
+        And the user runs """psql -c "CREATE ROLE test_group NOSUPERUSER INHERIT NOCREATEDB NOCREATEROLE RESOURCE QUEUE pg_default;" testdb"""
+        And the user runs """psql -c "CREATE SCHEMA customer AUTHORIZATION test_gpadmin" testdb"""
+        And the user runs """psql -c "GRANT ALL ON SCHEMA customer TO test_gpadmin;" testdb"""
+        And the user runs """psql -c "GRANT ALL ON SCHEMA customer TO customer;" testdb"""
+        And the user runs """psql -c "GRANT USAGE ON SCHEMA customer TO select_group;" testdb"""
+        And the user runs """psql -c "GRANT ALL ON SCHEMA customer TO test_group;" testdb"""
+        And there is a "heap" table "customer.heap_index_table_1" with index "heap_index_1" compression "None" in "testdb" with data
+        And the user runs """psql -c "ALTER TABLE customer.heap_index_table_1 owner to customer" testdb"""
+        And the user runs """psql -c "GRANT ALL ON TABLE customer.heap_index_table_1 TO customer;" testdb"""
+        And the user runs """psql -c "GRANT ALL ON TABLE customer.heap_index_table_1 TO test_group;" testdb"""
+        And the user runs """psql -c "GRANT SELECT ON TABLE customer.heap_index_table_1 TO select_group;" testdb"""
+        And there is a "heap" table "customer.heap_index_table_2" with index "heap_index_2" compression "None" in "testdb" with data
+        And the user runs """psql -c "ALTER TABLE customer.heap_index_table_2 owner to customer" testdb"""
+        And the user runs """psql -c "GRANT ALL ON TABLE customer.heap_index_table_2 TO customer;" testdb"""
+        And the user runs """psql -c "GRANT SELECT, UPDATE, INSERT, DELETE ON TABLE customer.heap_index_table_2 TO test_group;" testdb"""
+        And the user runs """psql -c "GRANT SELECT ON TABLE customer.heap_index_table_2 TO select_group;" testdb"""
+        And there is a "heap" table "customer.heap_index_table_3" with index "heap_index_3" compression "None" in "testdb" with data
+        And the user runs """psql -c "ALTER TABLE customer.heap_index_table_3 owner to customer" testdb"""
+        And the user runs """psql -c "GRANT ALL ON TABLE customer.heap_index_table_3 TO customer;" testdb"""
+        And the user runs """psql -c "GRANT SELECT, UPDATE, INSERT, DELETE ON TABLE customer.heap_index_table_3 TO test_group;" testdb"""
+        And the user runs """psql -c "GRANT SELECT ON TABLE customer.heap_index_table_3 TO select_group;" testdb"""
+        And the user runs """psql -c "ALTER ROLE customer SET search_path = customer, public;" testdb"""
+        When the user runs "psql -c '\d customer.heap_index_table_1' testdb > /tmp/describe_heap_index_table_1_before"
+        And the user runs "psql -c '\dp customer.heap_index_table_1' testdb > /tmp/privileges_heap_index_table_1_before"
+        And the user runs "psql -c '\d customer.heap_index_table_2' testdb > /tmp/describe_heap_index_table_2_before"
+        And the user runs "psql -c '\dp customer.heap_index_table_2' testdb > /tmp/privileges_heap_index_table_2_before"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/describe_multi_byte_char.sql testdb > /tmp/describe_multi_byte_char_before"
+        When the user runs "gpcrondump -x testdb -g -G -a -b -v -u /tmp --rsyncable --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And table "customer.heap_index_table_1" is assumed to be in dirty state in "testdb"
+        And table "customer.heap_index_table_2" is assumed to be in dirty state in "testdb"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/dirty_table_multi_byte_char.sql testdb"
+        When the user runs "gpcrondump --incremental -x testdb -g -G -a -b -v -u /tmp --rsyncable --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        When there is a backupfile of tables "customer.heap_index_table_1, customer.heap_index_table_2, customer.heap_index_table_3" in "testdb" exists for validation
+        And table "customer.heap_index_table_1" is dropped in "testdb"
+        And table "customer.heap_index_table_2" is dropped in "testdb"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/drop_table_with_multi_byte_char.sql testdb"
+        When the user runs gpdbrestore with the stored timestamp and options "--table-file gppylib/test/behave/mgmt_utils/steps/data/include_tables_with_grant_permissions -u /tmp --netbackup-block-size 4096" without -e option using netbackup
+        Then gpdbrestore should return a return code of 0
+        When the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/select_multi_byte_char_tables.sql testdb"
+        Then psql should print 2000 to stdout 4 times
+        And verify that there is a "heap" table "customer.heap_index_table_1" in "testdb" with data
+        And verify that there is a "heap" table "customer.heap_index_table_2" in "testdb" with data
+        And verify that there is a "heap" table "customer.heap_index_table_3" in "testdb" with data
+        When the user runs "psql -c '\d customer.heap_index_table_1' testdb > /tmp/describe_heap_index_table_1_after"
+        And the user runs "psql -c '\dp customer.heap_index_table_1' testdb > /tmp/privileges_heap_index_table_1_after"
+        And the user runs "psql -c '\d customer.heap_index_table_2' testdb > /tmp/describe_heap_index_table_2_after"
+        And the user runs "psql -c '\dp customer.heap_index_table_2' testdb > /tmp/privileges_heap_index_table_2_after"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/describe_multi_byte_char.sql testdb > /tmp/describe_multi_byte_char_after"
+        Then verify that the contents of the files "/tmp/describe_heap_index_table_1_before" and "/tmp/describe_heap_index_table_1_after" are identical
+        And verify that the contents of the files "/tmp/describe_heap_index_table_2_before" and "/tmp/describe_heap_index_table_2_after" are identical
+        And verify that the contents of the files "/tmp/privileges_heap_index_table_1_before" and "/tmp/privileges_heap_index_table_1_after" are identical
+        And verify that the contents of the files "/tmp/privileges_heap_index_table_2_before" and "/tmp/privileges_heap_index_table_2_after" are identical
+        And verify that the contents of the files "/tmp/describe_multi_byte_char_before" and "/tmp/describe_multi_byte_char_after" are identical
+        And the file "/tmp/describe_heap_index_table_1_before" is removed from the system
+        And the file "/tmp/describe_heap_index_table_1_after" is removed from the system
+        And the file "/tmp/privileges_heap_index_table_1_before" is removed from the system
+        And the file "/tmp/privileges_heap_index_table_1_after" is removed from the system
+        And the file "/tmp/describe_heap_index_table_2_before" is removed from the system
+        And the file "/tmp/describe_heap_index_table_2_after" is removed from the system
+        And the file "/tmp/privileges_heap_index_table_2_before" is removed from the system
+        And the file "/tmp/privileges_heap_index_table_2_after" is removed from the system
+        And the file "/tmp/describe_multi_byte_char_before" is removed from the system
+        And the file "/tmp/describe_multi_byte_char_after" is removed from the system
+
+    @nbusmoke
+    @nbuall
+    @nbuib
+    Scenario: (RR) Incremental Backup and Restore
+        Given the database is running
+        And the netbackup params have been parsed
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And the database "testdb" does not exist
+        And there are no backup files
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table1" with compression "quicklz" in "fullbkdb" with data
+        When the user runs "gpcrondump -x fullbkdb -a --netbackup-block-size 1024" using netbackup
+        Then gpcrondump should return a return code of 0
+        And table "public.ao_part_table1" is assumed to be in dirty state in "fullbkdb"
+        When the user runs "gpcrondump -x fullbkdb -a --incremental --netbackup-block-size 1024" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And all the data from "fullbkdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp and options "--redirect=testdb --netbackup-block-size 1024" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that the data of "10" tables in "testdb" is validated after restore
+
+    @nbuall
+    @nbuib
+    Scenario: (RR) Incremental restore with table filter
+        Given the database is running
+        And the netbackup params have been parsed
+        And the database "schematestdb" does not exist
+        And database "schematestdb" exists
+        And the database "testdb" does not exist
+        And there is a "heap" table "heap_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "ao_table" with compression "None" in "schematestdb" with data
+        And there is a "ao" table "ao_table2" with compression "None" in "schematestdb" with data
+        And there is a "co" table "co_table" with compression "None" in "schematestdb" with data
+        And there are no backup files
+        When the user runs "gpcrondump -a -x schematestdb --netbackup-block-size 4096" using netbackup
+        And gpcrondump should return a return code of 0
+        And table "ao_table2" is assumed to be in dirty state in "schematestdb"
+        And table "co_table" is assumed to be in dirty state in "schematestdb"
+        And the user runs "gpcrondump -a --incremental -x schematestdb --netbackup-block-size 4096" using netbackup
+        And gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And all the data from "schematestdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp and options "-T public.ao_table2,public.co_table --redirect=testdb --netbackup-block-size 4096" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that exactly "2" tables in "testdb" have been restored
+
+    @nbuall
+    @nbuib
+    Scenario: (RR) Incremental Backup and Restore with -T filter for Full
+        Given the database is running
+        And the netbackup params have been parsed
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And the database "testdb1" does not exist
+        And there is a list to store the incremental backup timestamps
+        And there is a "heap" table "heap_table1" with compression "None" in "testdb" with data
+        And there is a "heap" table "heap_table2" with compression "None" in "testdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        When the user runs "gpcrondump -a -x testdb --prefix=foo -T public.ao_part_table -T public.heap_table2 --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "public.ao_index_table"
+        And verify that the "filter" file in " " dir contains "public.heap_table1"
+        And table "public.ao_index_table" is assumed to be in dirty state in "testdb"
+        When the user runs "gpcrondump -a -x testdb --prefix=foo --incremental --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        When the user runs "gpcrondump -x testdb --incremental --prefix=foo -a --list-filter-tables --netbackup-block-size 4096" using netbackup
+        And gpcrondump should return a return code of 0
+        And all the data from "testdb" is saved for verification
+        And the user runs gpdbrestore with the stored timestamp and options "--prefix=foo --redirect=testdb1 --netbackup-block-size 4096" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "public.heap_table1" in "testdb1" with data
+        And verify that there is a "ao" table "public.ao_index_table" in "testdb1" with data
+        And verify that there is no table "public.ao_part_table" in "testdb1"
+        And verify that there is no table "public.heap_table2" in "testdb1"
+
+    @nbuall
+    @nbuib
+    Scenario: Filtered Incremental Backup with Partition Table
+        Given the database is running
+        And the netbackup params have been parsed
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data
+        When the user runs "gpcrondump -a -x fullbkdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And table "ao_index_table" is assumed to be in dirty state in "fullbkdb"
+        When the user runs "gpcrondump -a -x fullbkdb --incremental --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And all the data from "fullbkdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp and options "-T public.ao_part_table --netbackup-block-size 4096" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is no table "ao_index_table" in "fullbkdb"
+        And verify that there is no table "heap_table" in "fullbkdb"
+        And verify that there is a "ao" table "public.ao_part_table" in "fullbkdb" with data
+        And verify that the data of "9" tables in "fullbkdb" is validated after restore

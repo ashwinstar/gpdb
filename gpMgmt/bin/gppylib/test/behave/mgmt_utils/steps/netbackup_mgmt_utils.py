@@ -164,6 +164,16 @@ def impl(context, dbname):
     command = 'gp_restore -i --gp-k %s --gp-d db_dumps/%s --gp-i --gp-r db_dumps/%s --gp-l=p -d %s --gp-c --gp-nostats --netbackup-service-host %s' % (ts, context.backup_subdir, context.backup_subdir, dbname, netbackup_service_host)
     run_gpcommand(context, command)
 
+@when('the user runs gp_restore with the the stored timestamp and subdir for metadata only in "{dbname}" using netbackup')
+def impl(context, dbname):
+    if hasattr(context, 'backup_timestamp'):
+        ts = context.backup_timestamp
+    if hasattr(context, 'netbackup_service_host'):
+        netbackup_service_host = context.netbackup_service_host
+    command = 'gp_restore -i --gp-k %s --gp-d db_dumps/%s --gp-i --gp-r db_dumps/%s --gp-l=p -d %s --gp-c -s db_dumps/%s/gp_dump_1_1_%s.gz --netbackup-service-host %s' % \
+                            (ts, context.backup_subdir, context.backup_subdir, dbname, context.backup_subdir, ts, netbackup_service_host)
+    run_gpcommand(context, command)
+
 @when('the user runs gpdbrestore with the backup list stored timestamp and options "{options}" using netbackup')
 def impl(context, options):
     if hasattr(context, 'backup_timestamp_list'):
@@ -396,3 +406,65 @@ def impl(context, filetype, prefix, subdir):
         cmd.run(validateAfter=True)
         if cmd.get_results().stdout.strip() != filename:
             raise Exception('Cdatabase file %s was not backup up to NetBackup server %s successfully' % (filename, netbackup_service_host))
+
+@when('all backup files under "{dir}" for stored dump timestamp are removed')
+def impl(context, dir):
+    if hasattr(context, 'backup_timestamp'):
+        backup_timestamp = context.backup_timestamp
+    else:
+        raise Exception('No dump timestamp was stored from gpcrondump')
+    dump_date = backup_timestamp[0:8]
+
+    if dir.strip():
+        dump_dir = dir.strip()
+    else:
+        dump_dir = master_data_dir
+
+    backup_files_dir = os.path.join(dump_dir, 'db_dumps', dump_date)
+    rm_cmd_str = "rm -rf %s/*" % backup_files_dir
+    rm_cmd = Command("Remove files from dump dir location", rm_cmd_str)
+    rm_cmd.run(validateAfter=True)
+
+def verify_num_files_with_nbu(results, expected_num_files, timestamp):
+    num_files = results.stdout.strip()
+    if num_files != expected_num_files:
+        raise Exception('Expected "%s" files with timestamp key "%s" but found "%s"' % (expected_num_files, timestamp,num_files))
+
+def verify_timestamps_on_master_with_nbu(timestamp, dump_type):
+    list_cmd = 'ls -l %s/db_dumps/%s/*%s* | wc -l' % (master_data_dir, timestamp[:8], timestamp)
+    cmd = Command('verify timestamps on master', list_cmd)
+    cmd.run(validateAfter=True)
+    expected_num_files = '8' if dump_type == 'incremental' else '6'
+    verify_num_files_with_nbu(cmd.get_results(), expected_num_files, timestamp)
+
+def verify_timestamps_on_segments_with_nbu(timestamp):
+    gparray = GpArray.initFromCatalog(dbconn.DbURL())
+    primary_segs = [segdb for segdb in gparray.getDbList() if segdb.isSegmentPrimary()]
+
+    for seg in primary_segs:
+        db_dumps_dir = os.path.join(seg.getSegmentDataDirectory(),
+                                    'db_dumps',
+                                    timestamp[:8])
+        list_cmd = 'ls -l %s/*%s* | wc -l' % (db_dumps_dir, timestamp)
+        cmd = Command('get list of dump files', list_cmd, ctxt=REMOTE, remoteHost=seg.getSegmentHostName())
+        cmd.run(validateAfter=True)
+        verify_num_files_with_nbu(cmd.get_results(), '1', timestamp)
+
+@then('verify that "{dump_type}" dump files using netbackup have stored timestamp in their filename')
+def impl(context, dump_type):
+    if dump_type.strip().lower() != 'full' and dump_type.strip().lower() != 'incremental':
+        raise Exception('Invalid dump type "%s"' % dump_type)
+
+    verify_timestamps_on_master_with_nbu(context.backup_timestamp, dump_type.strip().lower())
+    verify_timestamps_on_segments_with_nbu(context.backup_timestamp)
+
+@given('all netbackup objects containing "{substr}" are deleted')
+@when('all netbackup objects containing "{substr}" are deleted')
+@then('all netbackup objects containing "{substr}" are deleted')
+def impl(context, substr):
+    if hasattr(context, 'netbackup_service_host'):
+        netbackup_service_host = context.netbackup_service_host
+
+    del_cmd_str = "gp_bsa_delete_agent --netbackup-service-host=%s --netbackup-delete-objects=*%s*" % (netbackup_service_host, substr)
+    cmd = Command('Delete the list of objects matching regex on NetBackup server', del_cmd_str)
+    cmd.run(validateAfter=True)

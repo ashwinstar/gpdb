@@ -78,6 +78,16 @@ int BSAGetData(BSA_Handle bsaHandle, BSA_DataBlock32 *dataBlockPtr) {
 	return (int)mock();
 }
 
+/* Mock of BSAGetNextQueryObject function. */
+int BSAGetNextQueryObject(BSA_Handle bsaHandle, BSA_ObjectDescriptor *objectDescriptorPtr) {
+	return (int)mock();
+}
+
+/* Mock of BSADeleteObject function. */
+int BSADeleteObject(BSA_Handle bsaHandle, BSA_UInt64 copyId) {
+	return (int)mock();
+}
+
 /* Unit tests for initBSADumpSession() function */
 void
 test_initBSADumpSession1(void **state)
@@ -1128,6 +1138,276 @@ test_queryBSAObject8(void **state)
 	assert_true(result == NULL);
 }
 
+void
+test_searchBSAObject1(void **state)
+{
+	int result = -1;
+	will_return(BSAQueryObject, BSA_RC_SUCCESS);
+	will_return(BSAGetNextQueryObject, BSA_RC_NO_MORE_DATA);
+	will_return(BSAEndTxn, BSA_RC_SUCCESS);
+	result = searchBSAObject("/tmp/gp_dump*rpt");
+	assert_true(result == 0);
+}
+
+void
+test_searchBSAObject2(void **state)
+{
+	int result = -1;
+	will_return(BSAQueryObject, BSA_RC_SUCCESS);
+	will_return(BSAGetNextQueryObject, BSA_RC_SUCCESS);
+	will_return(BSAGetNextQueryObject, BSA_RC_NO_MORE_DATA);
+	will_return(BSAEndTxn, BSA_RC_SUCCESS);
+	result = searchBSAObject("/tmp/gp_dump*rpt");
+	assert_true(result == 0);
+}
+
+void
+test_searchBSAObject3(void **state)
+{
+	int result = 0;
+	will_return(BSAQueryObject, BSA_RC_ABORT_SYSTEM_ERROR);
+	will_return(BSAEndTxn, BSA_RC_SUCCESS);
+	will_return(BSATerminate, BSA_RC_SUCCESS);
+	result = searchBSAObject("/tmp/gp_dump*rpt");
+	assert_true(result == -1);
+}
+
+void
+test_searchBSAObject4(void **state)
+{
+	int result = 0;
+	will_return(BSAQueryObject, BSA_RC_ACCESS_FAILURE);
+	will_return(BSAEndTxn, BSA_RC_SUCCESS);
+	will_return(BSATerminate, BSA_RC_SUCCESS);
+	result = searchBSAObject("/tmp/gp_dump*rpt");
+	assert_true(result == -1);
+}
+
+void
+test_searchBSAObject5(void **state)
+{
+	int result = 0;
+	will_return(BSAQueryObject, BSA_RC_NO_MATCH);
+	will_return(BSAEndTxn, BSA_RC_SUCCESS);
+	will_return(BSATerminate, BSA_RC_SUCCESS);
+	result = searchBSAObject("/tmp/gp_dump*rpt");
+	assert_true(result == -1);
+}
+
+void
+test_searchBSAObject6(void **state)
+{
+	int result = 0;
+	will_return(BSAQueryObject, BSA_RC_ABORT_SYSTEM_ERROR);
+	will_return(BSAEndTxn, BSA_RC_SUCCESS);
+	will_return(BSATerminate, BSA_RC_SUCCESS);
+	result = searchBSAObject("/tmp/gp_dump*rpt");
+	assert_true(result == -1);
+}
+
+void
+test_searchBSAObject7(void **state)
+{
+	int result = 0;
+	will_return(BSAQueryObject, BSA_RC_SUCCESS);
+	will_return(BSAGetNextQueryObject, BSA_RC_ABORT_SYSTEM_ERROR);
+	will_return(BSAEndTxn, BSA_RC_SUCCESS);
+	will_return(BSATerminate, BSA_RC_SUCCESS);
+	result = searchBSAObject("/tmp/gp_dump*rpt");
+	assert_true(result == -1);
+}
+
+void
+test_searchBSAObject8(void **state)
+{
+	int result = 0;
+	will_return(BSAQueryObject, BSA_RC_SUCCESS);
+	will_return(BSAGetNextQueryObject, BSA_RC_INVALID_CALL_SEQUENCE);
+	will_return(BSAEndTxn, BSA_RC_SUCCESS);
+	will_return(BSATerminate, BSA_RC_SUCCESS);
+	result = searchBSAObject("/tmp/gp_dump*rpt");
+	assert_true(result == -1);
+}
+
+void
+test_searchBSAObject9(void **state)
+{
+	int result = 0;
+	will_return(BSAQueryObject, BSA_RC_SUCCESS);
+	will_return(BSAGetNextQueryObject, BSA_RC_INVALID_HANDLE);
+	will_return(BSAEndTxn, BSA_RC_SUCCESS);
+	will_return(BSATerminate, BSA_RC_SUCCESS);
+	result = searchBSAObject("/tmp/gp_dump*rpt");
+	assert_true(result == -1);
+}
+
+void
+test_searchBSAObject10(void **state)
+{
+	int result = 0;
+	will_return(BSAQueryObject, BSA_RC_SUCCESS);
+	will_return(BSAGetNextQueryObject, BSA_RC_NULL_ARGUMENT);
+	will_return(BSAEndTxn, BSA_RC_SUCCESS);
+	will_return(BSATerminate, BSA_RC_SUCCESS);
+	result = searchBSAObject("/tmp/gp_dump*rpt");
+	assert_true(result == -1);
+}
+
+void
+test_searchBSAObject11(void **state)
+{
+	int result = 0;
+	will_return(BSAQueryObject, BSA_RC_SUCCESS);
+	will_return(BSAGetNextQueryObject, BSA_RC_NO_MORE_DATA);
+	will_return(BSAEndTxn, BSA_RC_ABORT_SYSTEM_ERROR);
+	will_return(BSAEndTxn, BSA_RC_SUCCESS);
+	will_return(BSATerminate, BSA_RC_SUCCESS);
+	result = searchBSAObject("/tmp/gp_dump*rpt");
+	assert_true(result == -1);
+}
+
+void
+test_deleteBSAObjects1(void **state)
+{
+	int result = -1;
+	will_return(BSAQueryObject, BSA_RC_SUCCESS);
+	will_return(BSADeleteObject, BSA_RC_SUCCESS);
+	will_return(BSAGetNextQueryObject, BSA_RC_NO_MORE_DATA);
+	will_return(BSAEndTxn, BSA_RC_SUCCESS);
+	result = deleteBSAObjects("*gp_dump*");
+	assert_true(result == 0);
+}
+
+void
+test_deleteBSAObjects2(void **state)
+{
+	int result = -1;
+	will_return(BSAQueryObject, BSA_RC_SUCCESS);
+	will_return(BSADeleteObject, BSA_RC_SUCCESS);
+	will_return(BSAGetNextQueryObject, BSA_RC_SUCCESS);
+	will_return(BSADeleteObject, BSA_RC_SUCCESS);
+	will_return(BSAGetNextQueryObject, BSA_RC_NO_MORE_DATA);
+	will_return(BSAEndTxn, BSA_RC_SUCCESS);
+	result = deleteBSAObjects("*gp_dump*");
+	assert_true(result == 0);
+}
+
+void
+test_deleteBSAObjects3(void **state)
+{
+	int result = 0;
+	will_return(BSAQueryObject, BSA_RC_SUCCESS);
+	will_return(BSADeleteObject, BSA_RC_ABORT_SYSTEM_ERROR);
+	will_return(BSAEndTxn, BSA_RC_SUCCESS);
+	will_return(BSATerminate, BSA_RC_SUCCESS);
+	result = deleteBSAObjects("*gp_dump*");
+	assert_true(result == -1);
+}
+
+void
+test_deleteBSAObjects4(void **state)
+{
+	int result = 0;
+	will_return(BSAQueryObject, BSA_RC_SUCCESS);
+	will_return(BSADeleteObject, BSA_RC_ACCESS_FAILURE);
+	will_return(BSAEndTxn, BSA_RC_SUCCESS);
+	will_return(BSATerminate, BSA_RC_SUCCESS);
+	result = deleteBSAObjects("*gp_dump*");
+	assert_true(result == -1);
+}
+
+void
+test_deleteBSAObjects5(void **state)
+{
+	int result = 0;
+	will_return(BSAQueryObject, BSA_RC_SUCCESS);
+	will_return(BSADeleteObject, BSA_RC_INVALID_COPYID);
+	will_return(BSAEndTxn, BSA_RC_SUCCESS);
+	will_return(BSATerminate, BSA_RC_SUCCESS);
+	result = deleteBSAObjects("*gp_dump*");
+	assert_true(result == -1);
+}
+
+void
+test_deleteBSAObjects6(void **state)
+{
+	int result = 0;
+	will_return(BSAQueryObject, BSA_RC_SUCCESS);
+	will_return(BSADeleteObject, BSA_RC_SUCCESS);
+	will_return(BSAGetNextQueryObject, BSA_RC_SUCCESS);
+	will_return(BSADeleteObject, BSA_RC_SUCCESS);
+	will_return(BSAGetNextQueryObject, BSA_RC_NO_MORE_DATA);
+	will_return(BSAEndTxn, BSA_RC_SUCCESS);
+	result = deleteBSAObjects("*gp_dump*");
+	assert_true(result == 0);
+}
+
+void
+test_deleteBSAObjects7(void **state)
+{
+	int result = 0;
+	will_return(BSAQueryObject, BSA_RC_SUCCESS);
+	will_return(BSADeleteObject, BSA_RC_SUCCESS);
+	will_return(BSAGetNextQueryObject, BSA_RC_ABORT_SYSTEM_ERROR);
+	will_return(BSAEndTxn, BSA_RC_SUCCESS);
+	will_return(BSATerminate, BSA_RC_SUCCESS);
+	result = deleteBSAObjects("*gp_dump*rpt");
+	assert_true(result == -1);
+}
+
+void
+test_deleteBSAObjects8(void **state)
+{
+	int result = 0;
+	will_return(BSAQueryObject, BSA_RC_SUCCESS);
+	will_return(BSADeleteObject, BSA_RC_SUCCESS);
+	will_return(BSAGetNextQueryObject, BSA_RC_INVALID_CALL_SEQUENCE);
+	will_return(BSAEndTxn, BSA_RC_SUCCESS);
+	will_return(BSATerminate, BSA_RC_SUCCESS);
+	result = deleteBSAObjects("*gp_dump*rpt");
+	assert_true(result == -1);
+}
+
+void
+test_deleteBSAObjects9(void **state)
+{
+	int result = 0;
+	will_return(BSAQueryObject, BSA_RC_SUCCESS);
+	will_return(BSADeleteObject, BSA_RC_SUCCESS);
+	will_return(BSAGetNextQueryObject, BSA_RC_INVALID_HANDLE);
+	will_return(BSAEndTxn, BSA_RC_SUCCESS);
+	will_return(BSATerminate, BSA_RC_SUCCESS);
+	result = deleteBSAObjects("*gp_dump*rpt");
+	assert_true(result == -1);
+}
+
+void
+test_deleteBSAObjects10(void **state)
+{
+	int result = 0;
+	will_return(BSAQueryObject, BSA_RC_SUCCESS);
+	will_return(BSADeleteObject, BSA_RC_SUCCESS);
+	will_return(BSAGetNextQueryObject, BSA_RC_NULL_ARGUMENT);
+	will_return(BSAEndTxn, BSA_RC_SUCCESS);
+	will_return(BSATerminate, BSA_RC_SUCCESS);
+	result = deleteBSAObjects("*foo*");
+	assert_true(result == -1);
+}
+
+void
+test_deleteBSAObjects11(void **state)
+{
+	int result = 0;
+	will_return(BSAQueryObject, BSA_RC_SUCCESS);
+	will_return(BSADeleteObject, BSA_RC_SUCCESS);
+	will_return(BSAGetNextQueryObject, BSA_RC_NO_MORE_DATA);
+	will_return(BSAEndTxn, BSA_RC_ABORT_SYSTEM_ERROR);
+	will_return(BSAEndTxn, BSA_RC_SUCCESS);
+	will_return(BSATerminate, BSA_RC_SUCCESS);
+	result = deleteBSAObjects("*foo*");
+	assert_true(result == -1);
+}
+
 int 
 main(int argc, char* argv[]) 
 {
@@ -1222,7 +1502,29 @@ main(int argc, char* argv[])
 			unit_test(test_queryBSAObject5),
 			unit_test(test_queryBSAObject6),
 			unit_test(test_queryBSAObject7),
-			unit_test(test_queryBSAObject8)
+			unit_test(test_queryBSAObject8),
+			unit_test(test_searchBSAObject1),
+			unit_test(test_searchBSAObject2),
+			unit_test(test_searchBSAObject3),
+			unit_test(test_searchBSAObject4),
+			unit_test(test_searchBSAObject5),
+			unit_test(test_searchBSAObject6),
+			unit_test(test_searchBSAObject7),
+			unit_test(test_searchBSAObject8),
+			unit_test(test_searchBSAObject9),
+			unit_test(test_searchBSAObject10),
+			unit_test(test_searchBSAObject11),
+			unit_test(test_deleteBSAObjects1),
+			unit_test(test_deleteBSAObjects2),
+			unit_test(test_deleteBSAObjects3),
+			unit_test(test_deleteBSAObjects4),
+			unit_test(test_deleteBSAObjects5),
+			unit_test(test_deleteBSAObjects6),
+			unit_test(test_deleteBSAObjects7),
+			unit_test(test_deleteBSAObjects8),
+			unit_test(test_deleteBSAObjects9),
+			unit_test(test_deleteBSAObjects10),
+			unit_test(test_deleteBSAObjects11)
 	};
 	return run_tests(tests);
 }

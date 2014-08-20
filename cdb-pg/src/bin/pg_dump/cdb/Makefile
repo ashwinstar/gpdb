@@ -49,7 +49,7 @@ OBJS= $(PGDUMP_DIR)/pg_backup_db.o $(PGDUMP_DIR)/pg_backup_custom.o \
 
 KEYWRDOBJS = ../keywords.o ../kwlookup.o
 
-all: submake-libpq submake-libpgport cdb_dump cdb_dump_agent cdb_restore cdb_restore_agent gpddboost libgpbsa.so libgpbsa75.so libgpbsa71.so cdb_bsa_dump_agent cdb_bsa_restore_agent cdb_bsa_query_agent
+all: submake-libpq submake-libpgport cdb_dump cdb_dump_agent cdb_restore cdb_restore_agent gpddboost libgpbsa.so libgpbsa75.so libgpbsa71.so cdb_bsa_dump_agent cdb_bsa_restore_agent cdb_bsa_query_agent cdb_bsa_delete_agent
 
 cdb_dump: cdb_dump.o cdb_backup_status.o cdb_seginst.o cdb_backup_state.o cdb_table.o cdb_backup_archiver.o cdb_dump_util.o cdb_dump_include.o $(PGDUMP_DIR)/common.o $(OBJS) $(KEYWRDOBJS) $(libpq_builddir)/libpq.a $(EXTRA_OBJS) 
 	$(CC) $(CFLAGS) cdb_dump.o cdb_backup_status.o cdb_seginst.o cdb_backup_state.o cdb_table.o cdb_backup_archiver.o cdb_dump_util.o cdb_dump_include.o $(PGDUMP_DIR)/common.o $(OBJS) $(KEYWRDOBJS)  $(libpq) $(LDFLAGS) $(LIBS) $(DDBOOSTLIB) -o $@
@@ -87,6 +87,9 @@ cdb_bsa_restore_agent: cdb_bsa_restore_agent.o cdb_dump_util.o $(libpq_builddir)
 cdb_bsa_query_agent: cdb_bsa_query_agent.o cdb_dump_util.o $(libpq_builddir)/libpq.a
 	$(CC) $(CFLAGS) cdb_bsa_query_agent.o cdb_dump_util.o $(libpq) $(LDFLAGS) $(LIBS) $(DDBOOSTLIB) $(GPBSALIB) -o $@
 
+cdb_bsa_delete_agent: cdb_bsa_delete_agent.o cdb_dump_util.o $(libpq_builddir)/libpq.a
+	$(CC) $(CFLAGS) cdb_bsa_delete_agent.o cdb_dump_util.o $(libpq) $(LDFLAGS) $(LIBS) $(DDBOOSTLIB) $(GPBSALIB) -o $@
+
 .PHONY: submake-backend
 submake-backend:
 	$(MAKE) -C $(top_builddir)/src/backend/parser keywords.o
@@ -102,15 +105,16 @@ install: all installdirs
 	$(INSTALL_PROGRAM) cdb_bsa_dump_agent$(X) $(DESTDIR)$(bindir)/gp_bsa_dump_agent$(X)
 	$(INSTALL_PROGRAM) cdb_bsa_restore_agent$(X) $(DESTDIR)$(bindir)/gp_bsa_restore_agent$(X)
 	$(INSTALL_PROGRAM) cdb_bsa_query_agent$(X) $(DESTDIR)$(bindir)/gp_bsa_query_agent$(X)
+	$(INSTALL_PROGRAM) cdb_bsa_delete_agent$(X) $(DESTDIR)$(bindir)/gp_bsa_delete_agent$(X)
 
 installdirs:
 	$(MKDIR_P) $(DESTDIR)$(bindir)
 
 uninstall:
-	rm -f $(addprefix $(DESTDIR)$(bindir)/, cdb_dump$(X) cdb_dump_agent$(X) cdb_restore$(X) cdb_restore_agent$(X) cdb_bsa_dump_agent$(X)  cdb_bsa_restore_agent$(X) cdb_bsa_query_agent$(X))  
+	rm -f $(addprefix $(DESTDIR)$(bindir)/, cdb_dump$(X) cdb_dump_agent$(X) cdb_restore$(X) cdb_restore_agent$(X) cdb_bsa_dump_agent$(X)  cdb_bsa_restore_agent$(X) cdb_bsa_query_agent$(X) cdb_bsa_delete_agent$(X))
 
 clean distclean maintainer-clean:
 	rm -f cdb_dump$(X) cdb_restore$(X) cdb_dump_agent$(X) cdb_restore_agent$(X) cdbheadsync$(X) cdbheadmakeactive$(X) cdb_bsa_dump_agent$(X) cdb_bsa_restore_agent$(X) \
-	cdb_bsa_query_agent$(X) $(OBJS) $(OBJS) cdb_dump.o cdb_restore.o cdb_dump_agent.o cdb_restore_agent.o $(PGDUMP_DIR)/common.o cdb_backup_status.o cdb_dump_include.o cdb_seginst.o \
+	cdb_bsa_query_agent$(X) cdb_bsa_delete_agent$(X) $(OBJS) $(OBJS) cdb_dump.o cdb_restore.o cdb_dump_agent.o cdb_restore_agent.o $(PGDUMP_DIR)/common.o cdb_backup_status.o cdb_dump_include.o cdb_seginst.o \
 	cdb_backup_state.o cdb_table.o cdb_dump_util.o cdb_backup_archiver.o cdbheadsync.o cdbheadmakeactive.o kwlookup.c cdb_ddboost_util.o cdb_bsa_dump_agent.o cdb_bsa_query_agent.o \
-	cdb_bsa_restore_agent.o libgpbsa.so libgpbsa71.so libgpbsa75.so $(KEYWRDOBJS)
+	cdb_bsa_restore_agent.o cdb_bsa_delete_agent.o libgpbsa.so libgpbsa71.so libgpbsa75.so $(KEYWRDOBJS)

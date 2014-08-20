@@ -19,7 +19,8 @@ from gppylib.operations.dump import DumpDatabase, DumpGlobal, compare_dict, crea
                                     validate_modcount, generate_dump_timestamp, get_filter_file, filter_dirty_tables, get_backup_dir, \
                                     update_filter_file, backup_state_files_with_nbu, backup_cdatabase_file_with_nbu, backup_report_file_with_nbu, \
                                     backup_global_file_with_nbu, backup_config_files_with_nbu, backup_report_file_with_ddboost, \
-                                    backup_increments_file_with_ddboost, copy_file_to_dd
+                                    backup_increments_file_with_ddboost, copy_file_to_dd, backup_dirty_file_with_nbu, backup_increments_file_with_nbu, \
+                                    backup_partition_list_file_with_nbu
 from mock import patch, MagicMock, Mock
 
 class DumpTestCase(unittest.TestCase):
@@ -163,28 +164,28 @@ class DumpTestCase(unittest.TestCase):
     @patch('gppylib.operations.dump.get_incremental_ts_from_report_file', return_value='20120330120102')
     def test05_validate_increments_file(self, mock1, mock2):
         # expect no exception to die out of this
-        CreateIncrementsFile.validate_increments_file('testdb', '/tmp/fn', '/data', None)
+        CreateIncrementsFile.validate_increments_file('testdb', '/tmp/fn', '/data', None, None, None)
 
     @patch('gppylib.operations.backup_utils.get_lines_from_file', return_value=['20120330120102', '20120330120103'])
     @patch('gppylib.operations.dump.get_incremental_ts_from_report_file', side_effect=Exception('invalid timestamp'))
     def test06_validate_increments_file(self, mock1, mock2):
 
         with self.assertRaisesRegexp(Exception, "Timestamp '20120330120102' from increments file '/tmp/fn' is not a valid increment"):
-            CreateIncrementsFile.validate_increments_file('testdb', '/tmp/fn', '/data', None)
+            CreateIncrementsFile.validate_increments_file('testdb', '/tmp/fn', '/data', None, None, None)
 
     @patch('gppylib.operations.backup_utils.get_lines_from_file', return_value=['20120330120102', '20120330120103'])
     @patch('gppylib.operations.dump.get_incremental_ts_from_report_file', return_value=None)
     def test07_validate_increments_file(self, mock1, mock2):
 
         with self.assertRaisesRegexp(Exception, "Timestamp '20120330120102' from increments file '/tmp/fn' is not a valid increment"):
-            CreateIncrementsFile.validate_increments_file('testdb', '/tmp/fn', '/data', None)
+            CreateIncrementsFile.validate_increments_file('testdb', '/tmp/fn', '/data', None, None, None)
 
     def test08_CreateIncrementsFile_init(self):
-        obj = CreateIncrementsFile('testdb', '20121225000000', '20121226000000', '/data', None, False, None)
+        obj = CreateIncrementsFile('testdb', '20121225000000', '20121226000000', '/data', None, False, None, None, None)
         self.assertEquals(obj.increments_filename, '/data/db_dumps/20121225/gp_dump_20121225000000_increments')
     
     def test09_CreateIncrementsFile_execute(self):
-        obj = CreateIncrementsFile('testdb', '20121225000000', '20121226000000', '/data', None, False, None)
+        obj = CreateIncrementsFile('testdb', '20121225000000', '20121226000000', '/data', None, False, None, None, None)
         obj.increments_filename = os.path.join(os.getcwd(), 'test.increments')
         if os.path.isfile(obj.increments_filename):
             os.remove(obj.increments_filename)
@@ -193,7 +194,7 @@ class DumpTestCase(unittest.TestCase):
         os.remove(obj.increments_filename)
 
     def test10_CreateIncrementsFile_execute(self):
-        obj = CreateIncrementsFile('testdb', '20121225000000', '20121226000000', '/data', None, False, None)
+        obj = CreateIncrementsFile('testdb', '20121225000000', '20121226000000', '/data', None, False, None, None, None)
         obj.increments_filename = os.path.join(os.getcwd(), 'test.increments')
         with open(obj.increments_filename, 'w') as fd:
             fd.write('20121225100000')
@@ -203,7 +204,7 @@ class DumpTestCase(unittest.TestCase):
 
     @patch('gppylib.operations.dump.CreateIncrementsFile.validate_increments_file')
     def test11_CreateIncrementsFile_execute(self, mock1):
-        obj = CreateIncrementsFile('testdb', '20121225000000', '20121226000000', '/data', None, False, None)
+        obj = CreateIncrementsFile('testdb', '20121225000000', '20121226000000', '/data', None, False, None, None, None)
         obj.increments_filename = os.path.join(os.getcwd(), 'test.increments')
         with open(obj.increments_filename, 'w') as fd:
             fd.write('20121225100000\n')
@@ -213,7 +214,7 @@ class DumpTestCase(unittest.TestCase):
 
     @patch('gppylib.operations.backup_utils.get_lines_from_file', return_value = [])
     def test12_CreateIncrementsFile_execute(self, mock1):
-        obj = CreateIncrementsFile('testdb', '20121225000000', '20121226000000', '/data', None, False, None)
+        obj = CreateIncrementsFile('testdb', '20121225000000', '20121226000000', '/data', None, False, None, None, None)
         obj.increments_filename = os.path.join(os.getcwd(), 'test.increments')
         with self.assertRaisesRegexp(Exception, 'File not written to'):
             result = obj.execute()
@@ -222,7 +223,7 @@ class DumpTestCase(unittest.TestCase):
     @patch('gppylib.operations.backup_utils.get_lines_from_file', return_value = ['20121225100000'])
     @patch('gppylib.operations.dump.CreateIncrementsFile.validate_increments_file')
     def test13_CreateIncrementsFile_execute(self, mock1, mock2):
-        obj = CreateIncrementsFile('testdb', '20121225000000', '20121226000000', '/data', None, False, None)
+        obj = CreateIncrementsFile('testdb', '20121225000000', '20121226000000', '/data', None, False, None, None, None)
         obj.increments_filename = os.path.join(os.getcwd(), 'test.increments')
         with open(obj.increments_filename, 'w') as fd:
             fd.write('20121225100000\n')
@@ -233,7 +234,7 @@ class DumpTestCase(unittest.TestCase):
     @patch('gppylib.operations.backup_utils.get_lines_from_file', return_value = ['20121225100001', '20121226000000'])
     @patch('gppylib.operations.dump.CreateIncrementsFile.validate_increments_file')
     def test14_CreateIncrementsFile_execute(self, mock1, mock2):
-        obj = CreateIncrementsFile('testdb', '20121225000000', '20121226000000', '/data', None, False, None)
+        obj = CreateIncrementsFile('testdb', '20121225000000', '20121226000000', '/data', None, False, None, None, None)
         obj.increments_filename = os.path.join(os.getcwd(), 'test.increments')
         with open(obj.increments_filename, 'w') as fd:
             fd.write('20121225100000\n')
@@ -566,6 +567,22 @@ class DumpTestCase(unittest.TestCase):
         output = get_last_state(table_type, master_datadir, backup_dir, full_timestamp)
         self.assertEqual(output, expected_output)
 
+    @patch('gppylib.operations.dump.get_last_dump_timestamp', return_value='20121212121212')
+    @patch('gppylib.operations.dump.os.path.isfile', return_value=True)
+    @patch('gppylib.operations.dump.get_lines_from_file', return_value=[])
+    @patch('gppylib.operations.dump.check_file_dumped_with_nbu', return_value=True)
+    @patch('gppylib.operations.dump.restore_file_with_nbu')
+    def test_get_last_state_03(self, mock1, mock2, mock3, mock4, mock5):
+        table_type = 'ao'
+        master_datadir = 'foo'
+        backup_dir = None
+        full_timestamp = '20121212010101'
+        netbackup_service_host = "mdw"
+        netbackup_block_size = "1024"
+        expected_output = []
+        output = get_last_state(table_type, master_datadir, backup_dir, full_timestamp, netbackup_service_host, netbackup_block_size)
+        self.assertEqual(output, expected_output)
+
     def test_compare_dict_00(self):
         last_dict = {'pepper.t1':'100', 'pepper.t2':'200'}
         curr_dict = {'pepper.t1':'200', 'pepper.t2':'200'}
@@ -656,6 +673,33 @@ class DumpTestCase(unittest.TestCase):
         expected = '20120930093000'
         result = get_last_dump_timestamp(master_datadir, backup_dir, full_timestamp)
         self.assertEqual(result, expected) 
+
+    @patch('gppylib.operations.dump.generate_increments_filename')
+    @patch('gppylib.operations.dump.get_lines_from_file', return_value = [' 20120930093000 \n  \n  '])
+    @patch('gppylib.operations.dump.check_file_dumped_with_nbu', return_value=True)
+    @patch('gppylib.operations.dump.restore_file_with_nbu')
+    @patch('gppylib.operations.dump.os.path.exists', return_value=True)
+    def test_get_last_dump_timestamp_04(self, mock1, mock2, mock3, mock4, mock5):
+        master_datadir = 'foo'
+        backup_dir = None
+        full_timestamp = '20121212010101'
+        netbackup_service_host = "mdw"
+        netbackup_block_size = "1024"
+        expected = '20120930093000'
+        result = get_last_dump_timestamp(master_datadir, backup_dir, full_timestamp, netbackup_service_host, netbackup_block_size)
+        self.assertEqual(result, expected)
+
+    @patch('gppylib.operations.dump.generate_increments_filename')
+    @patch('gppylib.operations.dump.check_file_dumped_with_nbu', return_value=False)
+    def test_get_last_dump_timestamp_05(self, mock1, mock2):
+        master_datadir = 'foo'
+        backup_dir = None
+        full_timestamp = '20121212010101'
+        netbackup_service_host = "mdw"
+        netbackup_block_size = "1024"
+        expected = '20121212010101'
+        result = get_last_dump_timestamp(master_datadir, backup_dir, full_timestamp, netbackup_service_host, netbackup_block_size)
+        self.assertEqual(result, expected)
 
     def test_get_pgstatlastoperations_dict_00(self):
         last_operations = ['public,t1,1234,ALTER,,201212121212:101010']
@@ -771,13 +815,27 @@ class DumpTestCase(unittest.TestCase):
 
     @patch('gppylib.operations.dump.get_last_dump_timestamp', return_value='20121212010100')
     @patch('gppylib.operations.dump.get_lines_from_file', return_value = ['pepper,t1,1234,ALTER,CHANGE COLUMN,201212121212:102510', 'pepper,t2,2234,TRUNCATE,,201212121213:102510'])
-    def test_get_tables_with_dirty_metadata_02(self, mock1, mock2):
+    def test_get_tables_with_dirty_metadata_05(self, mock1, mock2):
         expected_output = set(['public.t1'])
         master_datadir = 'foo' 
         backup_dir = None
         full_timestamp = '20121212010101'
         cur_pgstatoperations = ['public,t1,1234,ALTER,CHANGE COLUMN,201212121212:102510', 'pepper,t2,2234,TRUNCATE,,201212121213:102510']
         dirty_tables = get_tables_with_dirty_metadata(master_datadir, backup_dir, full_timestamp, cur_pgstatoperations)
+        self.assertEqual(dirty_tables, expected_output)
+
+    @patch('gppylib.operations.dump.get_last_dump_timestamp', return_value='20121212010100')
+    @patch('gppylib.operations.dump.get_lines_from_file', return_value = ['pepper,t1,1234,ALTER,CHANGE COLUMN,201212121212:102510', 'pepper,t2,2234,TRUNCATE,,201212121213:102510'])
+    @patch('gppylib.operations.dump.restore_file_with_nbu')
+    def test_get_tables_with_dirty_metadata_06(self, mock1, mock2, mock3):
+        expected_output = set(['public.t1'])
+        master_datadir = 'foo'
+        backup_dir = None
+        full_timestamp = '20121212010101'
+        cur_pgstatoperations = ['public,t1,1234,ALTER,CHANGE COLUMN,201212121212:102510', 'pepper,t2,2234,TRUNCATE,,201212121213:102510']
+        netbackup_service_host = "mdw"
+        netbackup_block_size = "1024"
+        dirty_tables = get_tables_with_dirty_metadata(master_datadir, backup_dir, full_timestamp, cur_pgstatoperations, netbackup_service_host, netbackup_block_size)
         self.assertEqual(dirty_tables, expected_output)
 
     @patch('gppylib.operations.dump.get_last_state', return_value=['pepper, t1, 100', 'pepper, t2, 200'])
@@ -789,6 +847,19 @@ class DumpTestCase(unittest.TestCase):
         curr_state_partition_list = ['pepper, t3, 300', 'pepper, t1, 200']
         expected_output = set(['pepper.t3', 'pepper.t1'])
         result = get_dirty_partition_tables(table_type, curr_state_partition_list, master_datadir, backup_dir, full_timestamp)
+        self.assertEqual(result, expected_output)
+
+    @patch('gppylib.operations.dump.get_last_state', return_value=['pepper, t1, 100', 'pepper, t2, 200'])
+    def test_get_dirty_partition_tables_01(self, mock1):
+        master_datadir = 'foo'
+        backup_dir = None
+        full_timestamp = '20121212010101'
+        table_type = 'ao'
+        curr_state_partition_list = ['pepper, t3, 300', 'pepper, t1, 200']
+        netbackup_service_host = "mdw"
+        netbackup_block_size = "1024"
+        expected_output = set(['pepper.t3', 'pepper.t1'])
+        result = get_dirty_partition_tables(table_type, curr_state_partition_list, master_datadir, backup_dir, full_timestamp, netbackup_service_host, netbackup_block_size)
         self.assertEqual(result, expected_output)
 
    
@@ -804,8 +875,10 @@ class DumpTestCase(unittest.TestCase):
         ao_partition_list = []
         co_partition_list = []
         last_operation_data = []
+        netbackup_service_host = None
+        netbackup_block_size = None
         dirty_tables = get_dirty_tables(master_port, dbname, master_datadir, backup_dir, fulldump_ts,
-                         ao_partition_list, co_partition_list, last_operation_data)     
+                         ao_partition_list, co_partition_list, last_operation_data, netbackup_service_host, netbackup_block_size)
         expected_output = ['public.heap_table1', 'public.ao_t1', 'public.ao_t2', 'public.co_t1', 'public.co_t2', 'public.ao_t3', 'public.co_t3']
         self.assertEqual(dirty_tables.sort(), expected_output.sort())
 
@@ -979,6 +1052,24 @@ class DumpTestCase(unittest.TestCase):
         finally:
             backup_utils.dump_prefix = ''
 
+    @patch('os.path.isfile', return_value=False)
+    @patch('gppylib.operations.dump.get_latest_full_ts_with_nbu', return_value='20130101010101')
+    @patch('gppylib.operations.dump.check_file_dumped_with_nbu', return_value=True)
+    @patch('gppylib.operations.dump.restore_file_with_nbu')
+    def test_get_filter_file_file_exists_on_nbu(self, mock1, mock2, mock3, mock4):
+        import gppylib.operations.backup_utils as backup_utils
+        backup_utils.dump_prefix = 'metro_'
+        master_datadir = '/foo'
+        backup_dir = None
+        dump_database = 'testdb'
+        netbackup_service_host = "mdw"
+        netbackup_block_size = "1024"
+        expected_output = '/foo/db_dumps/20130101/metro_gp_dump_20130101010101_filter'
+        try:
+            self.assertEquals(expected_output, get_filter_file(dump_database, master_datadir, backup_dir, netbackup_service_host, netbackup_block_size))
+        finally:
+            backup_utils.dump_prefix = ''
+
     @patch('gppylib.operations.dump.get_lines_from_file', return_value=['public.t1', 'pepper.t2'])
     @patch('gppylib.operations.dump.get_latest_full_dump_timestamp', return_value='20130101010101')
     @patch('gppylib.operations.dump.get_filter_file', return_value='/foo/metro_gp_dump_20130101010101_filter')
@@ -1007,6 +1098,24 @@ class DumpTestCase(unittest.TestCase):
         dirty_tables = ['public.t1', 'public.t2', 'pepper.t1', 'pepper.t2']
         try:
             self.assertEquals(sorted(dirty_tables), sorted(filter_dirty_tables(dirty_tables, dump_database, master_datadir, backup_dir)))
+        finally:
+            backup_utils.dump_prefix = ''
+
+    @patch('gppylib.operations.dump.get_lines_from_file', return_value=['public.t1', 'pepper.t2'])
+    @patch('gppylib.operations.dump.get_filter_file', return_value='/foo/metro_gp_dump_20130101010101_filter')
+    @patch('gppylib.operations.dump.get_latest_full_ts_with_nbu', return_value='20130101010101')
+    def test_filter_dirty_tables_with_filter_with_nbu(self, mock1, mock2, mock3):
+        import gppylib.operations.backup_utils as backup_utils
+        backup_utils.dump_prefix = 'metro_'
+        master_datadir = '/foo'
+        backup_dir = None
+        dump_database = 'testdb'
+        netbackup_service_host = "mdw"
+        netbackup_block_size = "1024"
+        dirty_tables = ['public.t1', 'public.t2', 'pepper.t1', 'pepper.t2']
+        expected_output = ['public.t1', 'pepper.t2']
+        try:
+            self.assertEquals(sorted(expected_output), sorted(filter_dirty_tables(dirty_tables, dump_database, master_datadir, backup_dir, netbackup_service_host, netbackup_block_size)))
         finally:
             backup_utils.dump_prefix = ''
 
@@ -1078,6 +1187,28 @@ class DumpGlobalTestCase(unittest.TestCase):
         
         update_filter_file(dump_database, master_datadir, backup_dir, master_port) 
         contents = get_lines_from_file(filter_filename) 
+        expected_result = ['public.heap_table1','public.ao_part_table','public.ao_part_table_1_prt_p1', 'public.ao_part_table_1_prt_p2']
+        self.assertEqual(expected_result.sort(), contents.sort())
+        os.remove(filter_filename)
+
+    @patch('gppylib.operations.dump.get_filter_file', return_value = '/tmp/update_test')
+    @patch('gppylib.operations.dump.get_lines_from_file', return_value = ['public.heap_table1','public.ao_part_table','public.ao_part_table_1_prt_p1', 'public.ao_part_table_1_prt_p2'])
+    @patch('gppylib.operations.dump.execute_sql', return_value = [('public','ao_part_table','ao_part_table_1_prt_p1')])
+    @patch('gppylib.operations.dump.restore_file_with_nbu')
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    def test_update_filter_file_02(self, mock1, mock2, mock3, mock4, mock5):
+        master_datadir = '/tmp'
+        backup_dir = None
+        dump_database = 'testdb'
+        master_port = 5432
+        filter_filename = '/tmp/update_test'
+        netbackup_service_host = "mdw"
+        netbackup_policy = "nbu_policy"
+        netbackup_schedule = "nbu_schedule"
+        netbackup_block_size = "1024"
+
+        update_filter_file(dump_database, master_datadir, backup_dir, master_port, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size)
+        contents = get_lines_from_file(filter_filename)
         expected_result = ['public.heap_table1','public.ao_part_table','public.ao_part_table_1_prt_p1', 'public.ao_part_table_1_prt_p2']
         self.assertEqual(expected_result.sort(), contents.sort())
         os.remove(filter_filename)
@@ -2154,6 +2285,547 @@ class DumpGlobalTestCase(unittest.TestCase):
         dump_dir = 'backup/DCA-35'
         
         backup_increments_file_with_ddboost(master_datadir, backup_dir, dump_dir, full_timestamp='20140101')
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_dirtytable_filename')
+    def test_backup_dirty_file_with_nbu_00(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = "/tmp"
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        netbackup_block_size = 100
+        netbackup_keyword = None
+
+        backup_dirty_file_with_nbu(master_datadir, backup_dir, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_dirty_file_with_nbu_01(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = None
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        netbackup_block_size = 100
+        netbackup_keyword = None
+
+        backup_dirty_file_with_nbu(master_datadir, backup_dir, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_dirty_file_with_nbu_02(self, mock1, mock2):
+        master_datadir = None
+        backup_dir = "/tmp"
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        netbackup_block_size = 100
+        netbackup_keyword = None
+
+        backup_dirty_file_with_nbu(master_datadir, backup_dir, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_dirty_file_with_nbu_03(self, mock1, mock2):
+        master_datadir = None
+        backup_dir = None
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        netbackup_block_size = 100
+        netbackup_keyword = None
+
+        with self.assertRaisesRegexp(Exception, 'Master data directory and backup directory are both none.'):
+            backup_dirty_file_with_nbu(master_datadir, backup_dir, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_dirty_file_with_nbu_04(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = "/tmp"
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        timestamp_key = "20140014000000"
+        netbackup_block_size = 100
+        netbackup_keyword = None
+
+        backup_dirty_file_with_nbu(master_datadir, backup_dir, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword, timestamp_key)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_dirty_file_with_nbu_05(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = None
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        timestamp_key = "20140014000000"
+        netbackup_block_size = 100
+        netbackup_keyword = None
+
+        backup_dirty_file_with_nbu(master_datadir, backup_dir, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword, timestamp_key)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_dirty_file_with_nbu_06(self, mock1, mock2):
+        master_datadir = None
+        backup_dir = "/tmp"
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        timestamp_key = "20140014000000"
+        netbackup_block_size = 100
+        netbackup_keyword = None
+
+        backup_dirty_file_with_nbu(master_datadir, backup_dir, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword, timestamp_key)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_dirty_file_with_nbu_07(self, mock1, mock2):
+        master_datadir = None
+        backup_dir = "/tmp"
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        netbackup_block_size = None
+        netbackup_keyword = None
+
+        backup_dirty_file_with_nbu(master_datadir, backup_dir, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_dirty_file_with_nbu_08(self, mock1, mock2):
+        master_datadir = None
+        backup_dir = "/tmp"
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        timestamp_key = "20140014000000"
+        netbackup_block_size = None
+        netbackup_keyword = None
+
+        backup_dirty_file_with_nbu(master_datadir, backup_dir, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword, timestamp_key)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_dirty_file_with_nbu_09(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = "/tmp"
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        netbackup_block_size = 100
+        netbackup_keyword = "foo"
+
+        backup_dirty_file_with_nbu(master_datadir, backup_dir, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_dirty_file_with_nbu_10(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = None
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        netbackup_block_size = 100
+        netbackup_keyword = "foo"
+
+        backup_dirty_file_with_nbu(master_datadir, backup_dir, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_dirty_file_with_nbu_11(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = "/tmp"
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        timestamp_key = "20140014000000"
+        netbackup_block_size = 100
+        netbackup_keyword = "foo"
+
+        backup_dirty_file_with_nbu(master_datadir, backup_dir, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword, timestamp_key)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_dirty_file_with_nbu_12(self, mock1, mock2):
+        master_datadir = None
+        backup_dir = "/tmp"
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        timestamp_key = "20140014000000"
+        netbackup_block_size = None
+        netbackup_keyword = "foo"
+
+        backup_dirty_file_with_nbu(master_datadir, backup_dir, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword, timestamp_key)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_dirtytable_filename')
+    def test_backup_increments_file_with_nbu_00(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = "/tmp"
+        full_timestamp = "20130101000000"
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        netbackup_block_size = 100
+        netbackup_keyword = None
+
+        backup_increments_file_with_nbu(master_datadir, backup_dir, full_timestamp, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_increments_file_with_nbu_01(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = None
+        full_timestamp = "20130101000000"
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        netbackup_block_size = 100
+        netbackup_keyword = None
+
+        backup_increments_file_with_nbu(master_datadir, backup_dir, full_timestamp, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_increments_file_with_nbu_02(self, mock1, mock2):
+        master_datadir = None
+        backup_dir = "/tmp"
+        full_timestamp = "20130101000000"
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        netbackup_block_size = 100
+        netbackup_keyword = None
+
+        backup_increments_file_with_nbu(master_datadir, backup_dir, full_timestamp, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_increments_file_with_nbu_03(self, mock1, mock2):
+        master_datadir = None
+        backup_dir = None
+        full_timestamp = "20130101000000"
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        netbackup_block_size = 100
+        netbackup_keyword = None
+
+        with self.assertRaisesRegexp(Exception, 'Master data directory and backup directory are both none.'):
+            backup_increments_file_with_nbu(master_datadir, backup_dir, full_timestamp, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_increments_file_with_nbu_04(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = "/tmp"
+        full_timestamp = "20130101000000"
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        timestamp_key = "20140014000000"
+        netbackup_block_size = 100
+        netbackup_keyword = None
+
+        backup_increments_file_with_nbu(master_datadir, backup_dir, full_timestamp, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword, timestamp_key)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_increments_file_with_nbu_05(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = None
+        full_timestamp = "20130101000000"
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        timestamp_key = "20140014000000"
+        netbackup_block_size = 100
+        netbackup_keyword = None
+
+        backup_increments_file_with_nbu(master_datadir, backup_dir, full_timestamp, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword, timestamp_key)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_increments_file_with_nbu_06(self, mock1, mock2):
+        master_datadir = None
+        backup_dir = "/tmp"
+        full_timestamp = "20130101000000"
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        timestamp_key = "20140014000000"
+        netbackup_block_size = 100
+        netbackup_keyword = None
+
+        backup_increments_file_with_nbu(master_datadir, backup_dir, full_timestamp, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword, timestamp_key)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_increments_file_with_nbu_07(self, mock1, mock2):
+        master_datadir = None
+        backup_dir = "/tmp"
+        full_timestamp = "20130101000000"
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        netbackup_block_size = None
+        netbackup_keyword = None
+
+        backup_increments_file_with_nbu(master_datadir, backup_dir, full_timestamp, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_increments_file_with_nbu_08(self, mock1, mock2):
+        master_datadir = None
+        backup_dir = "/tmp"
+        full_timestamp = "20130101000000"
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        timestamp_key = "20140014000000"
+        netbackup_block_size = None
+        netbackup_keyword = None
+
+        backup_increments_file_with_nbu(master_datadir, backup_dir, full_timestamp, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword, timestamp_key)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_increments_file_with_nbu_09(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = "/tmp"
+        full_timestamp = "20130101000000"
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        netbackup_block_size = 100
+        netbackup_keyword = "foo"
+
+        backup_increments_file_with_nbu(master_datadir, backup_dir, full_timestamp, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_increments_file_with_nbu_10(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = None
+        full_timestamp = "20130101000000"
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        netbackup_block_size = 100
+        netbackup_keyword = "foo"
+
+        backup_increments_file_with_nbu(master_datadir, backup_dir, full_timestamp, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_increments_file_with_nbu_11(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = "/tmp"
+        full_timestamp = "20130101000000"
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        timestamp_key = "20140014000000"
+        netbackup_block_size = 100
+        netbackup_keyword = "foo"
+
+        backup_increments_file_with_nbu(master_datadir, backup_dir, full_timestamp, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword, timestamp_key)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_increments_file_with_nbu_12(self, mock1, mock2):
+        master_datadir = None
+        backup_dir = "/tmp"
+        full_timestamp = "20130101000000"
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        timestamp_key = "20140014000000"
+        netbackup_block_size = None
+        netbackup_keyword = "foo"
+
+        backup_increments_file_with_nbu(master_datadir, backup_dir, full_timestamp, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword, timestamp_key)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_dirtytable_filename')
+    def test_backup_partition_list_file_with_nbu_00(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = "/tmp"
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        netbackup_block_size = 100
+        netbackup_keyword = None
+
+        backup_partition_list_file_with_nbu(master_datadir, backup_dir, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_partition_list_file_with_nbu_01(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = None
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        netbackup_block_size = 100
+        netbackup_keyword = None
+
+        backup_partition_list_file_with_nbu(master_datadir, backup_dir, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_partition_list_file_with_nbu_02(self, mock1, mock2):
+        master_datadir = None
+        backup_dir = "/tmp"
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        netbackup_block_size = 100
+        netbackup_keyword = None
+
+        backup_partition_list_file_with_nbu(master_datadir, backup_dir, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_partition_list_file_with_nbu_03(self, mock1, mock2):
+        master_datadir = None
+        backup_dir = None
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        netbackup_block_size = 100
+        netbackup_keyword = None
+
+        with self.assertRaisesRegexp(Exception, 'Master data directory and backup directory are both none.'):
+            backup_partition_list_file_with_nbu(master_datadir, backup_dir, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_partition_list_file_with_nbu_04(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = "/tmp"
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        timestamp_key = "20140014000000"
+        netbackup_block_size = 100
+        netbackup_keyword = None
+
+        backup_partition_list_file_with_nbu(master_datadir, backup_dir, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword, timestamp_key)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_partition_list_file_with_nbu_05(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = None
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        timestamp_key = "20140014000000"
+        netbackup_block_size = 100
+        netbackup_keyword = None
+
+        backup_partition_list_file_with_nbu(master_datadir, backup_dir, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword, timestamp_key)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_partition_list_file_with_nbu_06(self, mock1, mock2):
+        master_datadir = None
+        backup_dir = "/tmp"
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        timestamp_key = "20140014000000"
+        netbackup_block_size = 100
+        netbackup_keyword = None
+
+        backup_partition_list_file_with_nbu(master_datadir, backup_dir, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword, timestamp_key)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_partition_list_file_with_nbu_07(self, mock1, mock2):
+        master_datadir = None
+        backup_dir = "/tmp"
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        netbackup_block_size = None
+        netbackup_keyword = None
+
+        backup_partition_list_file_with_nbu(master_datadir, backup_dir, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_partition_list_file_with_nbu_08(self, mock1, mock2):
+        master_datadir = None
+        backup_dir = "/tmp"
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        timestamp_key = "20140014000000"
+        netbackup_block_size = None
+        netbackup_keyword = None
+
+        backup_partition_list_file_with_nbu(master_datadir, backup_dir, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword, timestamp_key)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_partition_list_file_with_nbu_09(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = "/tmp"
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        netbackup_block_size = 100
+        netbackup_keyword = "foo"
+
+        backup_partition_list_file_with_nbu(master_datadir, backup_dir, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_partition_list_file_with_nbu_10(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = None
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        netbackup_block_size = 100
+        netbackup_keyword = "foo"
+
+        backup_partition_list_file_with_nbu(master_datadir, backup_dir, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_partition_list_file_with_nbu_11(self, mock1, mock2):
+        master_datadir = "/data"
+        backup_dir = "/tmp"
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        timestamp_key = "20140014000000"
+        netbackup_block_size = 100
+        netbackup_keyword = "foo"
+
+        backup_partition_list_file_with_nbu(master_datadir, backup_dir, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword, timestamp_key)
+
+    @patch('gppylib.operations.dump.backup_file_with_nbu')
+    @patch('gppylib.operations.dump.generate_cdatabase_filename')
+    def test_backup_partition_list_file_with_nbu_12(self, mock1, mock2):
+        master_datadir = None
+        backup_dir = "/tmp"
+        netbackup_service_host = "mdw"
+        netbackup_policy = "test_policy"
+        netbackup_schedule = "test_schedule"
+        timestamp_key = "20140014000000"
+        netbackup_block_size = None
+        netbackup_keyword = "foo"
+
+        backup_partition_list_file_with_nbu(master_datadir, backup_dir, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword, timestamp_key)
 
 class MailEventTestCase(unittest.TestCase):
 

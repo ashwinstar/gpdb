@@ -14,10 +14,16 @@ top_builddir = ../..
 nbu_libdir = ../../../../../../ext/rhel5_x86_64/Netbackup/nbu75/lib
 include $(top_builddir)/src/Makefile.global
 
+ifeq "$(findstring -ftest-coverage,$(CFLAGS))" ""
 unittest-check:
 	$(MAKE) -C gphdfs unittest
 	$(MAKE) -e LD_LIBRARY_PATH=$(LD_LIBRARY_PATH):$(nbu_libdir) -C pg_dump/cdb/test check
 	$(MAKE) -C pg_dump/test check
+else
+unittest-check:
+	$(MAKE) -C gphdfs unittest
+	$(MAKE) -C pg_dump/test check
+endif
 
 DIRS = initdb ipcclean pg_basebackup pg_ctl pg_dump \
 	psql scripts pg_config pg_controldata pg_resetxlog \

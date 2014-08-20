@@ -135,7 +135,7 @@ def get_lines_from_dd_file(filename):
     contents = cmd.get_results().stdout.splitlines()
     return contents
 
-def check_cdatabase_exists(dbname, report_file, ddboost=False):
+def check_cdatabase_exists(dbname, report_file, ddboost=False, netbackup_service_host=None, netbackup_block_size=None):
     try:
         filename = convert_reportfilename_to_cdatabasefilename(report_file, ddboost) 
     except Exception as e:
@@ -143,6 +143,9 @@ def check_cdatabase_exists(dbname, report_file, ddboost=False):
 
     if ddboost:
         cdatabase_contents = get_lines_from_dd_file(filename)
+    elif netbackup_service_host:
+        restore_file_with_nbu(netbackup_service_host, netbackup_block_size, filename)
+        cdatabase_contents = get_lines_from_file(filename)
     else:
         cdatabase_contents = get_lines_from_file(filename, ddboost)
 
@@ -155,13 +158,13 @@ def check_cdatabase_exists(dbname, report_file, ddboost=False):
                 return True
     return False
 
-def get_type_ts_from_report_file(dbname, report_file, backup_type, ddboost=False):
+def get_type_ts_from_report_file(dbname, report_file, backup_type, ddboost=False, netbackup_service_host=None, netbackup_block_size=None):
     report_file_contents = get_lines_from_file(report_file)
 
     if not check_successful_dump(dbname, report_file_contents):
         return None
 
-    if not check_cdatabase_exists(dbname, report_file, ddboost):
+    if not check_cdatabase_exists(dbname, report_file, ddboost, netbackup_service_host, netbackup_block_size):
         return None
 
     if check_backup_type(report_file_contents, backup_type):
@@ -169,11 +172,11 @@ def get_type_ts_from_report_file(dbname, report_file, backup_type, ddboost=False
 
     return None
 
-def get_full_ts_from_report_file(dbname, report_file, ddboost=False):
-    return get_type_ts_from_report_file(dbname, report_file, 'Full', ddboost)
+def get_full_ts_from_report_file(dbname, report_file, ddboost=False, netbackup_service_host=None, netbackup_block_size=None):
+    return get_type_ts_from_report_file(dbname, report_file, 'Full', ddboost, netbackup_service_host, netbackup_block_size)
 
-def get_incremental_ts_from_report_file(dbname, report_file, ddboost=False):
-    return get_type_ts_from_report_file(dbname, report_file, 'Incremental', ddboost)
+def get_incremental_ts_from_report_file(dbname, report_file, ddboost=False, netbackup_service_host=None, netbackup_block_size=None):
+    return get_type_ts_from_report_file(dbname, report_file, 'Incremental', ddboost, netbackup_service_host, netbackup_block_size)
 
 def get_timestamp_val(report_file_contents):
     for line in report_file_contents:
@@ -533,3 +536,49 @@ def generate_global_filename(master_datadir, backup_dir, dump_dir, dump_date, ti
 def generate_cdatabase_filename(master_data_dir, backup_dir, timestamp):
     use_dir = get_backup_directory(master_data_dir, backup_dir, timestamp)
     return "%s/%sgp_cdatabase_1_1_%s" % (use_dir, dump_prefix, timestamp)
+
+def get_full_timestamp_for_incremental_with_nbu(netbackup_service_host, netbackup_block_size, incremental_timestamp):
+    if dump_prefix:
+        get_inc_files_cmd = "gp_bsa_query_agent --netbackup-service-host=%s --netbackup-list-dumped-objects=%sgp_dump_*_increments" % (netbackup_service_host, dump_prefix)
+    else:
+        get_inc_files_cmd = "gp_bsa_query_agent --netbackup-service-host=%s --netbackup-list-dumped-objects=gp_dump_*_increments" % netbackup_service_host
+
+    cmd = Command("Query NetBackup server to get the list of increments files backed up", get_inc_files_cmd)
+    cmd.run(validateAfter=True)
+    files_list = cmd.get_results().stdout.split('\n')
+
+    for line in files_list:
+        fname = line.strip()
+        restore_file_with_nbu(netbackup_service_host, netbackup_block_size, fname)
+        contents = get_lines_from_file(fname)
+        if incremental_timestamp in contents:
+            full_timestamp = get_timestamp_from_increments_filename(fname)
+            return full_timestamp
+
+    return None
+
+def get_latest_full_ts_with_nbu(netbackup_service_host, netbackup_block_size, dbname, backup_dir):
+    if dump_prefix:
+        get_rpt_files_cmd = "gp_bsa_query_agent --netbackup-service-host=%s --netbackup-list-dumped-objects=%sgp_dump_*.rpt" % (netbackup_service_host, dump_prefix)
+    else:
+        get_rpt_files_cmd = "gp_bsa_query_agent --netbackup-service-host=%s --netbackup-list-dumped-objects=gp_dump_*.rpt" % netbackup_service_host
+
+    cmd = Command("Query NetBackup server to get the list of report files backed up", get_rpt_files_cmd)
+    cmd.run(validateAfter=True)
+    files_list = cmd.get_results().stdout.split('\n')
+
+    for line in files_list:
+        fname = line.strip()
+        if fname == '':
+            continue
+        if backup_dir not in fname:
+            continue
+        if ("No object matched the specified predicate" in fname) or ("No objects of the format" in fname):
+            return None
+        restore_file_with_nbu(netbackup_service_host, netbackup_block_size, fname)
+        ts = get_full_ts_from_report_file(dbname, fname, netbackup_service_host=netbackup_service_host, netbackup_block_size=netbackup_block_size)
+        logger.debug('Timestamp = %s' % ts)
+        if ts is not None:
+            return ts
+
+    raise Exception('No full backup found for given incremental on the specified NetBackup server')
