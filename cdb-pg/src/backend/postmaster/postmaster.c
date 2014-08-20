@@ -7988,6 +7988,9 @@ StartChildProcess(AuxProcType type)
         case CheckerProcess:
         case BootstrapProcess:
             break;
+		default:
+			elog(ERROR, "Unknown auxiliary process type %d", type);
+			break;
 	}
 
 #ifdef EXEC_BACKEND

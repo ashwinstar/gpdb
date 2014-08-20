@@ -75,6 +75,7 @@ static void cleanup(void);
  */
 
 Relation	boot_reldesc;		/* current relation descriptor */
+AuxProcType MyAuxProcType = NotAnAuxProcess;
 
 /*
  * In the lexical analyzer, we need to get the reference number quickly from
@@ -219,7 +220,6 @@ AuxiliaryProcessMain(int argc, char *argv[])
 {
 	char	   *progname = argv[0];
 	int			flag;
-	AuxProcType auxType = CheckerProcess;
 	char	   *userDoption = NULL;
 	char		stack_base;
 
@@ -264,6 +264,8 @@ AuxiliaryProcessMain(int argc, char *argv[])
 		argc--;
 	}
 
+	MyAuxProcType = CheckerProcess;
+
 	while ((flag = getopt(argc, argv, "B:c:d:D:Fr:x:y:-:")) != -1)
 	{
 		switch (flag)
@@ -294,7 +296,7 @@ AuxiliaryProcessMain(int argc, char *argv[])
 				strlcpy(OutputFileName, optarg, MAXPGPATH);
 				break;
 			case 'x':
-				auxType = atoi(optarg);
+				MyAuxProcType = atoi(optarg);
 				break;
 			case 'c':
 			case '-':
@@ -344,7 +346,7 @@ AuxiliaryProcessMain(int argc, char *argv[])
 	{
 		const char *statmsg;
 
-		switch (auxType)
+		switch (MyAuxProcType)
 		{
 			case StartupProcess:
 				statmsg = "startup process";
@@ -418,7 +420,8 @@ AuxiliaryProcessMain(int argc, char *argv[])
 	 * to be initialized.
 	 * It is temporary fix to handle that here as an exception.
 	 */
-	if (IsUnderPostmaster && (auxType != FilerepProcess && auxType != FilerepResetPeerProcess))
+	if (IsUnderPostmaster && (MyAuxProcType != FilerepProcess &&
+							  MyAuxProcType != FilerepResetPeerProcess))
 	{
 		/*
 		 * Create a PGPROC so we can use LWLocks.  In the EXEC_BACKEND case,
@@ -440,7 +443,7 @@ AuxiliaryProcessMain(int argc, char *argv[])
 	 */
 	SetProcessingMode(NormalProcessing);
 
-	switch (auxType)
+	switch (MyAuxProcType)
 	{
 		case CheckerProcess:
 			bootstrap_signals();
@@ -500,7 +503,7 @@ AuxiliaryProcessMain(int argc, char *argv[])
 			proc_exit(1); /* should never return */
 
 		default:
-			elog(PANIC, "unrecognized process type: %d", auxType);
+			elog(PANIC, "unrecognized process type: %d", MyAuxProcType);
 			proc_exit(1);
 	}
 }

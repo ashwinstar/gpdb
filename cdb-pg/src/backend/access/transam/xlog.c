@@ -198,7 +198,16 @@ bool		XLOG_DEBUG = false;
 int			sync_method = DEFAULT_SYNC_METHOD;
 static int	open_sync_bit = DEFAULT_SYNC_FLAGBIT;
 
-#define XLOG_SYNC_BIT  (enableFsync ? open_sync_bit : 0)
+/*
+ * walreceiver process receives xlog data from walsender process.
+ * It needs to write the xlog data as soon as it receives and the amount it receives.
+ * As the amount of data received by it to write cannot be guaranteed to be
+ * OS/FS block size aligned, should never use O_DIRECT for the same.
+ * Also, as code is not expecting O_DIRECT to be used for xlog writes on walreceiver,
+ * the buffer pointer to perform xlog writes is not made usre to be OS/FS blocks size aligned.
+ */
+#define XLOG_SYNC_BIT  (enableFsync && (MyAuxProcType != WalReceiverProcess) ? \
+						open_sync_bit : 0)
 
 bool am_startup = false;
 

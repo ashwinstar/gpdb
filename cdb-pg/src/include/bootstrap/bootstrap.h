@@ -65,21 +65,4 @@ extern int	boot_yyparse(void);
 
 extern int	boot_yylex(void);
 extern void boot_yyerror(const char *str);
-
-typedef enum
-{
-	CheckerProcess,
-	BootstrapProcess,
-	StartupProcess,
-	StartupPass2Process,
-	StartupPass3Process,
-	StartupPass4Process,
-	BgWriterProcess,
-	CheckpointProcess,
-	WalWriterProcess,
-	WalReceiverProcess,
-	FilerepProcess,
-	FilerepResetPeerProcess
-} AuxProcType;
-
 #endif   /* BOOTSTRAP_H */

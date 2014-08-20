@@ -435,4 +435,28 @@ extern void pg_bindtextdomain(const char *domain);
 
 extern int64 db_dir_size(const char *path); /* implemented in dbsize.c */
 
+/*
+ * Auxiliary-process type identifiers.  These used to be in bootstrap.h
+ * but it seems saner to have them here, with the ProcessingMode stuff.
+ * The MyAuxProcType global is defined and set in bootstrap.c.
+ */
+typedef enum
+{
+	NotAnAuxProcess = -1,
+	CheckerProcess = 0,
+	BootstrapProcess,
+	StartupProcess,
+	StartupPass2Process,
+	StartupPass3Process,
+	StartupPass4Process,
+	BgWriterProcess,
+	CheckpointProcess,
+	WalWriterProcess,
+	WalReceiverProcess,
+	FilerepProcess,
+	FilerepResetPeerProcess
+} AuxProcType;
+
+extern AuxProcType MyAuxProcType; /* bootstrap.c */
+
 #endif   /* MISCADMIN_H */
