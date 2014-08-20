@@ -2,7 +2,7 @@
 
 import thread
 import os
-from gppylib.commands.base import Command, ExecutionError, REMOTE, WorkerPool
+from gppylib.commands.base import Command, ExecutionError, REMOTE, WorkerPool, CommandResult
 from gppylib.db import dbconn
 from gppylib.test.behave_utils.utils import run_gpcommand, getRows
 from gppylib.gparray import GpArray
@@ -24,6 +24,17 @@ def impl(context, table_name, lock_mode, conn, dbname):
     dbconn.execSQL(conn, query) 
     context.conn = conn
 
+@when('the user runs the query "{query}" in database "{dbname}" in a worker pool "{poolname}" as soon as pg_class is locked')
+@then('the user runs the query "{query}" in database "{dbname}" in a worker pool "{poolname}" as soon as pg_class is locked')
+def impl(context, query, dbname, poolname):
+    pool = WorkerPool(numWorkers=1)
+    cmd = on_unlock(query,dbname)
+    pool.addCommand(cmd)
+    if not hasattr(context, 'pool'):
+        context.pool = {}
+    context.pool[poolname] = pool
+    context.cmd = cmd
+
 @when('the user runs the "{cmd}" in a worker pool "{poolname}"')
 @then('the user runs the "{cmd}" in a worker pool "{poolname}"')
 def impl(context, cmd, poolname):
@@ -35,18 +46,48 @@ def impl(context, cmd, poolname):
     context.pool[poolname] = pool
     context.cmd = cmd
  
+class on_unlock(Command):
+    def __init__(self, query, dbname):
+        self.dbname = dbname
+        self.query = query
+        self.result = 1
+        self.completed = False
+        self.halt = False
+        Command.__init__(self, 'on unlock', 'on unlock', ctxt=None, remoteHost=None)
+
+    def get_results(self):
+        return CommandResult(self.result, '', '', self.completed, self.halt)
+
+    def run(self):
+        while check_pg_class_lock(self.dbname) != 1:
+            pass
+        with dbconn.connect(dbconn.DbURL(dbname=self.dbname)) as conn:
+            dbconn.execSQL(conn, self.query)
+
+        self.result = 0
+        self.completed = True
+        self.halt = False
+
+def check_pg_class_lock(dbname):
+   seg_count = 1
+
+   query = """select count(*) 
+            from pg_locks 
+            where relation in (select oid from pg_class where relname='pg_class') 
+                  and locktype='relation' and mode='ExclusiveLock'"""
+   row_count = getRows(dbname, query)[0][0]
+   return row_count
+
 @given('the "{backup_pg}" has a lock on the pg_class table in "{dbname}"')
 @when('the "{backup_pg}" has a lock on the pg_class table in "{dbname}"')
 @then('the "{backup_pg}" has a lock on the pg_class table in "{dbname}"')
 def impl(context, dbname, backup_pg):
     seg_count = 1
-
-    query = """select count(*) 
-             from pg_locks 
-             where relation in (select oid from pg_class where relname='pg_class') 
-                   and locktype='relation' and mode='ExclusiveLock'"""
-
-    row_count = getRows(dbname, query)[0][0]
+    timeout = 2
+    while timeout > 0:
+        row_count = check_pg_class_lock(dbname)
+        time.sleep(1)
+        timeout -= 1
     if row_count != seg_count:
         raise Exception("Incorrect (number of) lock/locks on pg_class, expected count = %s, received count = %s" % (seg_count, row_count))
 
@@ -56,8 +97,8 @@ def impl(context, poolname):
     pool = context.pool[poolname]
     if pool:
         pool.join()
-        for context.cmd in pool.getCompletedItems():
-            result = context.cmd.get_results()
+        for c in pool.getCompletedItems():
+            result = c.get_results()
             context.ret_code = result.rc 
             context.stdout_message = result.stdout
             context.error_message = result.stderr 
@@ -66,6 +107,7 @@ def impl(context, poolname):
     else:
         raise Exception('Worker pool is None.Probably behave step to initialize the worker pool is missing.')
 
+@given('the user drops "{tablename}" in "{dbname}" in a worker pool "{poolname}"')
 @then('the user drops "{tablename}" in "{dbname}" in a worker pool "{poolname}"')
 @when('the user drops "{tablename}" in "{dbname}" in a worker pool "{poolname}"')
 def impl(context, tablename, dbname, poolname):

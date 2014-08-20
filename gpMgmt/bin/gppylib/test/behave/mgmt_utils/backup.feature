@@ -4493,52 +4493,38 @@ Feature: Validate command line arguments
         Then gpdbrestore should return a return code of 0
         And verify that the data of "40" tables in "testdb" is validated after restore
 
-    Scenario: Full backup and restore using gpcrondump with pg_class lock
+    Scenario: Full backup and restore using gpcrondump with drop table in the middle
         Given the database is running
         And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data and 1000000 rows
         And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
         And there is a backupfile of tables "heap_table, ao_part_table" in "fullbkdb" exists for validation
-        When the user runs the "gpcrondump -a -x fullbkdb" in a worker pool "w1"
-        And this test sleeps for "2" seconds
-        And the "gpcrondump" has a lock on the pg_class table in "fullbkdb"
-        And the worker pool "w1" is cleaned up
+        And all the data from "fullbkdb" is saved for verification
+        Then the user runs the query "drop table heap_table" in database "fullbkdb" in a worker pool "w1" as soon as pg_class is locked
+        And the user runs "gpcrondump -a -x fullbkdb"
         Then gpcrondump should return a return code of 0
         And the timestamp from gpcrondump is stored
-        And all the data from "fullbkdb" is saved for verification
+        And the worker pool "w1" is cleaned up
         And the user runs gpdbrestore with the stored timestamp
         And gpdbrestore should return a return code of 0
         And verify that there is a "heap" table "heap_table" in "fullbkdb" with data
-        And verify that there is a "ao" table "ao_part_table" in "fullbkdb" with data
 
-    Scenario: Incremental backup and restore using gpcrondump with pg_class lock and drop table
+    @42backupsmoke
+    Scenario: Full backup and restore with pending drop table transaction
         Given the database is running
         And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data and 1000000 rows
         And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data
         And there is a backupfile of tables "heap_table, ao_part_table" in "fullbkdb" exists for validation
-        When the user runs "gpcrondump -a -x fullbkdb"
-        Then gpcrondump should return a return code of 0
-        And the full backup timestamp from gpcrondump is stored
-        And there is a "heap" table "heap_table_1" with compression "None" in "fullbkdb" with data and 1000000 rows
         And all the data from "fullbkdb" is saved for verification
-        And the user locks "heap_table" in "access exclusive mode" using connection "conn1" on "fullbkdb"
-        Then the user runs the "gpcrondump -a -x fullbkdb --incremental" in a worker pool "w1"
-        And this test sleeps for "2" seconds
-        And the user drops "heap_table" in "fullbkdb" in a worker pool "w2"
-        And this test sleeps for "2" seconds
-        And the user closes the connection "conn1"
-        And this test sleeps for "2" seconds
-        And the "gpcrondump" has a lock on the pg_class table in "fullbkdb"
-        And the worker pool "w1" is cleaned up
-        Then gpcrondump should return a return code of 0
-        And the timestamp from gpcrondump is stored
+        And the user drops "heap_table" in "fullbkdb" in a worker pool "w1"
+        Then the user runs the "gpcrondump -a -x fullbkdb" in a worker pool "w2"
         And the worker pool "w2" is cleaned up
+        And the timestamp from gpcrondump is stored
+        And the worker pool "w1" is cleaned up
         And the user runs gpdbrestore with the stored timestamp
         And gpdbrestore should return a return code of 0
-        And verify that there is a "heap" table "heap_table" in "fullbkdb" with data
-        And verify that there is a "heap" table "public.heap_table_1" in "fullbkdb" with data
+        And verify that there is no table "heap_table" in "fullbkdb"
         And verify that there is a "ao" table "ao_part_table" in "fullbkdb" with data
 
-    @foo
     Scenario: Full Backup and Restore using gp_dump without no-lock
         Given the database is running
         And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data and 1000000 rows
@@ -4546,7 +4532,6 @@ Feature: Validate command line arguments
         And there is a backupfile of tables "heap_table, ao_part_table" in "fullbkdb" exists for validation
         When the user runs the "gp_dump --gp-d=db_dumps --gp-s=p --gp-c fullbkdb" in a worker pool "w1"
         And this test sleeps for "1" seconds
-        And the "gp_dump" has a lock on the pg_class table in "fullbkdb"
         And the worker pool "w1" is cleaned up
         Then gp_dump should return a return code of 0
         And the timestamp from gp_dump is stored and subdir is " "
@@ -4565,7 +4550,6 @@ Feature: Validate command line arguments
         And there is a backupfile of tables "heap_table, ao_part_table" in "fullbkdb" exists for validation
         When the user runs the "gp_dump --gp-s=p --gp-c --no-lock fullbkdb" in a worker pool "w1"
         And this test sleeps for "2" seconds
-        And verify that "gp_dump" has no lock on the pg_class table in "fullbkdb"
         And the worker pool "w1" is cleaned up
         Then gp_dump should return a return code of 0
 
