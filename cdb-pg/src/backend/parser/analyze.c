@@ -1430,7 +1430,11 @@ co_explicitly_disabled(List *opts)
 		if (need_free_arg)
 		{
 			pfree(arg);
+			arg = NULL;
 		}
+
+		AssertImply(need_free_arg, NULL == arg);
+
 		if (result)
 		{
 			return true;
@@ -1481,7 +1485,10 @@ is_aocs(List *opts)
 		if (need_free_arg)
 		{
 			pfree(arg);
+			arg = NULL;
 		}
+
+		AssertImply(need_free_arg, NULL == arg);
 	}
 	if (!found_ao)
 		aovalue = isDefaultAO();
@@ -1529,11 +1536,17 @@ encodings_overlap(List *a, List *b, bool test_conflicts)
 						if (need_free_ela)
 						{
 							pfree(ela_str);
+							ela_str = NULL;
 						}
 						if (need_free_elb)
 						{
 							pfree(elb_str);
+							elb_str = NULL;
 						}
+
+						AssertImply(need_free_ela, NULL == ela_str);
+						AssertImply(need_free_elb, NULL == elb_str);
+
 						if (result != 0)
 						{
 							return true;
@@ -3458,7 +3471,10 @@ fillin_encoding(List *list)
 			if (need_free_arg)
 			{
 				pfree(arg);
+				arg = NULL;
 			}
+
+			AssertImply(need_free_arg, NULL == arg);
 		}
 		else if (pg_strcasecmp("compresslevel", el->defname) == 0)
 		{
@@ -7271,7 +7287,11 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 					if (need_free_value)
 					{
 						pfree(widthname_str);
+						widthname_str = NULL;
 					}
+
+					AssertImply(need_free_value, NULL == widthname_str);
+
 					pWithList = list_delete_cell(pWithList, def_lc, prev_lc);
 					((AlterPartitionCmd *)pStoreAttr)->arg1 =
 							(Node *)pWithList;
@@ -8531,7 +8551,11 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 					if (need_free_value)
 					{
 						pfree(relname_str);
+						relname_str = NULL;
 					}
+
+					AssertImply(need_free_value, NULL == relname_str);
+
 					prtstr[0] = '\0';
 					pWithList = list_delete_cell(pWithList, def_lc, prev_lc);
 					((AlterPartitionCmd *)pStoreAttr)->arg1 =

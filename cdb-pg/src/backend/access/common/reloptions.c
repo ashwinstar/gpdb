@@ -327,7 +327,10 @@ transformRelOptions(Datum oldOptions, List *defList,
 			if (need_free_value)
 			{
 				pfree(value);
+				value = NULL;
 			}
+
+			AssertImply(need_free_value, NULL == value);
 
 			astate = accumArrayResult(astate, PointerGetDatum(t),
 									  false, TEXTOID,

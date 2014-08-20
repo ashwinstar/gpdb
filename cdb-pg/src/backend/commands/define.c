@@ -171,7 +171,11 @@ defGetBoolean(DefElem *def)
 				if (need_free_value)
 				{
 					pfree(sval);
+					sval = NULL;
 				}
+
+				AssertImply(need_free_value, NULL == sval);
+
 				return result;
 			}
 			break;

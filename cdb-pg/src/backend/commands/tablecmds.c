@@ -18295,7 +18295,10 @@ static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols,
 			if (need_free_value)
 			{
 				pfree(val);
+				val = NULL;
 			}
+
+			AssertImply(need_free_value, NULL == val);
 
 			if (len > maxlen)
 				ereport(ERROR,
