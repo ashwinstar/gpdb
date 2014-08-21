@@ -691,9 +691,9 @@ void gpdb_get_hostlist(int* hostcnt, host_t** host_table, apr_pool_t* global_poo
 			    "JOIN gp_segment_configuration on (dbid = fsedbid) WHERE fsefsoid = (select oid from pg_filespace where fsname='pg_system') "
 		  	    "GROUP BY (hostname, address, is_master) order by hostname";
 
-	if (0 != (e = apr_pool_create(&pool, NULL)))
+	if (0 != (e = apr_pool_create_alloc(&pool, NULL)))
 	{
-		gpmon_fatalx(FLINE, e, "apr_pool_create failed");
+		gpmon_fatalx(FLINE, e, "apr_pool_create_alloc failed");
 	}
 
 	const char* errmsg = gpdb_exec(&conn, &result, QUERY);

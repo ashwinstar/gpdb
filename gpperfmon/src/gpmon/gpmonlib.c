@@ -1051,6 +1051,30 @@ apr_status_t gpdb_debug_string_lookup_table()
 	return APR_SUCCESS;
 }
 
+/*
+ * Create apr_pool_t with parent as well as a new allocator which belongs to
+ * itself so that when calling apr_pool_destroy, the free memory inside this
+ * pool would be returned to OS. (MPP-23751)
+ */
+apr_status_t apr_pool_create_alloc(apr_pool_t ** newpool, apr_pool_t *parent)
+{
+	apr_status_t rv;
+	apr_allocator_t *allocator;
+	if ((rv = apr_allocator_create(&allocator)) != APR_SUCCESS)
+	{
+		return rv;
+	}
+	if ((rv = apr_pool_create_ex(newpool, parent, NULL, allocator)) != APR_SUCCESS)
+	{
+		apr_allocator_destroy(allocator);
+		return rv;
+	}
+	// This function is only for internal use, so newpool can't be NULL.
+	apr_allocator_owner_set(allocator, *newpool);
+
+	return APR_SUCCESS;
+}
+
 unsigned int gpdb_getnode_number_metrics(PerfmonNodeType type)
 {
 	QenodeNamesDescriptor* desc;

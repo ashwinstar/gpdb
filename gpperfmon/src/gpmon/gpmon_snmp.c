@@ -1519,7 +1519,7 @@ void remove_vertical_bar_from_null_terminated_string(char* str, unsigned int buf
 int alert_status_table_creation()
 {
 	int e;
-	if (0 != (e = apr_pool_create(&si.alert_status_table_pool, 0)))
+	if (0 != (e = apr_pool_create_alloc(&si.alert_status_table_pool, 0)))
 	{
 		gpmon_warningx(FLINE, e, "unable to allocate memory pool from alert_status_table_creation in snmp module\n");
 		return 1;
@@ -2282,9 +2282,9 @@ int mv_gpdb_emcconnect_records_to_perfmon()
 
 		apr_pool_t* pool = NULL;
 
-		if (0 != (e = apr_pool_create(&pool, 0)))
+		if (0 != (e = apr_pool_create_alloc(&pool, 0)))
 		{
-			gpmon_warningx(FLINE, e, "apr_pool_create failed while processing emc connect history");
+			gpmon_warningx(FLINE, e, "apr_pool_create_alloc failed while processing emc connect history");
 			pclose(fp);
 			return 0;
 		}

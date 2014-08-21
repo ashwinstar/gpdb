@@ -794,10 +794,10 @@ static void* harvest_main(apr_thread_t* thread_, void* arg_)
 			apr_pool_t* pool; /* create this pool so we can destroy it each loop */
 
 
-			if (0 != (e = apr_pool_create(&pool, ax.pool)))
+			if (0 != (e = apr_pool_create_alloc(&pool, ax.pool)))
 			{
 				interuptable_sleep(30); // sleep to prevent loop of forking process and failing
-				gpmon_fatalx(FLINE, e, "apr_pool_create failed");
+				gpmon_fatalx(FLINE, e, "apr_pool_create_alloc failed");
 				return (void*)1;
 			}
 
@@ -962,10 +962,10 @@ static void gpmmon_main(void)
 	/* MPP-3974.  Hawks systems don't like devpoll */
 	setenv("EVENT_NODEVPOLL", "1", 1);
 
-	if (0 != (e = apr_pool_create(&ax.pool, 0)))
+	if (0 != (e = apr_pool_create_alloc(&ax.pool, 0)))
 	{
 		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
-		gpmon_fatalx(FLINE, e, "apr_pool_create failed");
+		gpmon_fatalx(FLINE, e, "apr_pool_create_alloc failed");
 	}
 
 	if (0 != (e = apr_env_get(&ax.gphome, "GPHOME", ax.pool)))
@@ -1500,10 +1500,10 @@ static void parse_command_line(int argc, const char* const argv[])
 
 	apr_pool_t* pool;
 
-	if (0 != (e = apr_pool_create(&pool, 0)))
+	if (0 != (e = apr_pool_create_alloc(&pool, 0)))
 	{
 		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
-		gpmon_fatalx(FLINE, e, "apr_pool_create failed");
+		gpmon_fatalx(FLINE, e, "apr_pool_create_alloc failed");
 	}
 
 	bin_start = argv[0] + strlen(argv[0]) - 1;
@@ -1959,7 +1959,7 @@ static void getconfig(void)
 
 	if (pool == NULL)
 	{
-		if (APR_SUCCESS != (rc = apr_pool_create(&pool, NULL)))
+		if (APR_SUCCESS != (rc = apr_pool_create_alloc(&pool, NULL)))
 		{
 			interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 			gpmon_fatalx(FLINE, rc, "Failed to create APR pool\n");

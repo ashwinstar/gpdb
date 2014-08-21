@@ -440,7 +440,7 @@ apr_status_t agg_create(agg_t** retagg, apr_int64_t generation, apr_pool_t* pare
 	apr_pool_t* pool;
 	agg_t* agg;
 
-	if (0 != (e = apr_pool_create(&pool, parent_pool)))
+	if (0 != (e = apr_pool_create_alloc(&pool, parent_pool)))
 		return e;
 
 	agg = apr_pcalloc(pool, sizeof(*agg));
@@ -1286,9 +1286,9 @@ static double get_cpu_skew(qdnode_t* qdnode)
     if (!qdnode)
         return 0.0f;
 
-    if (0 != (e = apr_pool_create(&tmp_pool, 0)))
+    if (0 != (e = apr_pool_create_alloc(&tmp_pool, 0)))
 	{
-        gpmon_warningx(FLINE, e, "apr_pool_create failed");
+        gpmon_warningx(FLINE, e, "apr_pool_create_alloc failed");
         return 0.0f;
 	}
 
@@ -1385,9 +1385,9 @@ static double get_row_skew(qdnode_t* qdnode)
     if (!qdnode)
         return 0.0f;
 
-    if (0 != (e = apr_pool_create(&tmp_pool, 0)))
+    if (0 != (e = apr_pool_create_alloc(&tmp_pool, 0)))
 	{
-        gpmon_warningx(FLINE, e, "apr_pool_create failed");
+        gpmon_warningx(FLINE, e, "apr_pool_create_alloc failed");
         return 0.0f;
 	}
 

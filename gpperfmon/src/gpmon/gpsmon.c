@@ -1046,9 +1046,9 @@ static void gx_gettcpcmd(SOCKET sock, short event, void* arg)
 	/* make new  hashtabs for next cycle */
 	{
 		apr_pool_t* newpool;
-		if (0 != (e = apr_pool_create(&newpool, gx.pool)))
+		if (0 != (e = apr_pool_create_alloc(&newpool, gx.pool)))
 		{
-			gpsmon_fatalx(FLINE, e, "apr_pool_create failed");
+			gpsmon_fatalx(FLINE, e, "apr_pool_create_alloc failed");
 		}
 		/* qexec hash table */
 		gx.qexectab = apr_hash_make(newpool);
@@ -2087,9 +2087,9 @@ static void setup_gx(int port, apr_int64_t signature)
 	apr_pool_t* subpool;
 
 	/* set up pool */
-	if (0 != (e = apr_pool_create(&gx.pool, 0)))
+	if (0 != (e = apr_pool_create_alloc(&gx.pool, 0)))
 	{
-		gpsmon_fatalx(FLINE, e, "apr_pool_create failed");
+		gpsmon_fatalx(FLINE, e, "apr_pool_create_alloc failed");
 	}
 
 	/* set up port, event */
@@ -2100,9 +2100,9 @@ static void setup_gx(int port, apr_int64_t signature)
 		gpsmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), "event_init failed");
 	}
 
-	if (0 != (e = apr_pool_create(&subpool, gx.pool)))
+	if (0 != (e = apr_pool_create_alloc(&subpool, gx.pool)))
 	{
-		gpsmon_fatalx(FLINE, e, "apr_pool_create failed");
+		gpsmon_fatalx(FLINE, e, "apr_pool_create_alloc failed");
 	}
 
 	/* qexec hash table */
@@ -2372,9 +2372,9 @@ static void parse_command_line(int argc, const char* const argv[])
 	{ NULL, 0, 0, NULL } };
 	apr_pool_t* pool;
 
-	if (0 != (e = apr_pool_create(&pool, 0)))
+	if (0 != (e = apr_pool_create_alloc(&pool, 0)))
 	{
-		gpsmon_fatalx(FLINE, e, "apr_pool_create failed");
+		gpsmon_fatalx(FLINE, e, "apr_pool_create_alloc failed");
 	}
 
 	bin_start = argv[0] + strlen(argv[0]) - 1;
