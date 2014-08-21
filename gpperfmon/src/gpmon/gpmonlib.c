@@ -1054,7 +1054,7 @@ apr_status_t gpdb_debug_string_lookup_table()
 /*
  * Create apr_pool_t with parent as well as a new allocator which belongs to
  * itself so that when calling apr_pool_destroy, the free memory inside this
- * pool would be returned to OS. (MPP-23751)
+ * pool will be returned to OS. (MPP-23751)
  */
 apr_status_t apr_pool_create_alloc(apr_pool_t ** newpool, apr_pool_t *parent)
 {
