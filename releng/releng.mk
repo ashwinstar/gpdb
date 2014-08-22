@@ -42,7 +42,7 @@ BLD_TYPE=opt
 
 OBJDIR_DEFAULT = .obj.$(UNAME_ALL)$(ARCH_FLAGS).$(BLD_TYPE)
 
-GREP_SED_VAR = $(BLD_TOP)/releng/make/dependencies/ivy.xml | sed -e 's|\(.*\)rev="\(.*\)"[ ]*conf\(.*\)|\2|'
+GREP_SED_VAR = $(BLD_TOP)/releng/make/dependencies/ivy.xml | sed -e 's|\(.*\)rev="\(.*\)"[ \t]*conf\(.*\)|\2|'
 
 XERCES_VER  = $(shell grep "\"xerces-c\""   $(GREP_SED_VAR))
 LIBGPOS_VER = $(shell grep "\"libgpos\""    $(GREP_SED_VAR))
@@ -90,6 +90,7 @@ endif
 ifeq "$(BLD_ARCH)" "sol10_x86_64"
 LIBSTDC++_LIBDIR = $(LIBSTDC++_BASEDIR)/lib/amd64
 endif
+
 
 ## ---------------------------------------
 ## R-Project support
