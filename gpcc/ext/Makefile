@@ -30,7 +30,7 @@ endif
 
 JSON=json-c-0.6
 LIBEVENT=libevent-1.4.6-stable
-OPENSSL=openssl-0.9.8za
+OPENSSL=openssl-0.9.8zb
 
 ifeq "$(BLD_ARCH)" "win32"
 MINGWRANLIB=/usr/bin/i686-pc-mingw32-ranlib
