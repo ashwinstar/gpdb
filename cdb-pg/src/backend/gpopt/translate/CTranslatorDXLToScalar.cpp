@@ -1441,14 +1441,21 @@ CTranslatorDXLToScalar::PconstOid
 	)
 {
 	CDXLDatumOid *pdxldatumOid = CDXLDatumOid::PdxldatumConvert(pdxldatum);
-	Datum datum = gpdb::DDatumFromInt32(pdxldatumOid->OidValue());
 
 	Const *pconst = MakeNode(Const);
 	pconst->consttype = CMDIdGPDB::PmdidConvert(pdxldatumOid->Pmdid())->OidObjectId();
 	pconst->constbyval = pdxldatumOid->FByValue();
 	pconst->constisnull = pdxldatumOid->FNull();
 	pconst->constlen = pdxldatumOid->UlLength();
-	pconst->constvalue = datum;
+
+	if (pconst->constisnull)
+	{
+		pconst->constvalue = (Datum) 0;
+	}
+	else
+	{
+		pconst->constvalue = gpdb::DDatumFromInt32(pdxldatumOid->OidValue());
+	}
 
 	return pconst;
 }
@@ -1469,14 +1476,21 @@ CTranslatorDXLToScalar::PconstInt2
 	)
 {
 	CDXLDatumInt2 *pdxldatumint2 = CDXLDatumInt2::PdxldatumConvert(pdxldatum);
-	Datum datum = gpdb::DDatumFromInt16(pdxldatumint2->SValue());
 
 	Const *pconst = MakeNode(Const);
 	pconst->consttype = CMDIdGPDB::PmdidConvert(pdxldatumint2->Pmdid())->OidObjectId();
 	pconst->constbyval = pdxldatumint2->FByValue();
 	pconst->constisnull = pdxldatumint2->FNull();
 	pconst->constlen = pdxldatumint2->UlLength();
-	pconst->constvalue = datum;
+
+	if (pconst->constisnull)
+	{
+		pconst->constvalue = (Datum) 0;
+	}
+	else
+	{
+		pconst->constvalue = gpdb::DDatumFromInt16(pdxldatumint2->SValue());
+	}
 
 	return pconst;
 }
@@ -1497,14 +1511,21 @@ CTranslatorDXLToScalar::PconstInt4
 	)
 {
 	CDXLDatumInt4 *pdxldatumint4 = CDXLDatumInt4::PdxldatumConvert(pdxldatum);
-	Datum datum = gpdb::DDatumFromInt32(pdxldatumint4->IValue());
 
 	Const *pconst = MakeNode(Const);
 	pconst->consttype = CMDIdGPDB::PmdidConvert(pdxldatumint4->Pmdid())->OidObjectId();
 	pconst->constbyval = pdxldatumint4->FByValue();
 	pconst->constisnull = pdxldatumint4->FNull();
 	pconst->constlen = pdxldatumint4->UlLength();
-	pconst->constvalue = datum;
+
+	if (pconst->constisnull)
+	{
+		pconst->constvalue = (Datum) 0;
+	}
+	else
+	{
+		pconst->constvalue = gpdb::DDatumFromInt32(pdxldatumint4->IValue());
+	}
 
 	return pconst;
 }
@@ -1524,14 +1545,21 @@ CTranslatorDXLToScalar::PconstInt8
 	)
 {
 	CDXLDatumInt8 *pdxldatumint8 = CDXLDatumInt8::PdxldatumConvert(pdxldatum);
-	Datum datum = gpdb::DDatumFromInt64(pdxldatumint8->LValue());
 
 	Const *pconst = MakeNode(Const);
 	pconst->consttype = CMDIdGPDB::PmdidConvert(pdxldatumint8->Pmdid())->OidObjectId();
 	pconst->constbyval = pdxldatumint8->FByValue();
 	pconst->constisnull = pdxldatumint8->FNull();
 	pconst->constlen = pdxldatumint8->UlLength();
-	pconst->constvalue = datum;
+
+	if (pconst->constisnull)
+	{
+		pconst->constvalue = (Datum) 0;
+	}
+	else
+	{
+		pconst->constvalue = gpdb::DDatumFromInt64(pdxldatumint8->LValue());
+	}
 
 	return pconst;
 }
@@ -1551,14 +1579,22 @@ CTranslatorDXLToScalar::PconstBool
 	)
 {
 	CDXLDatumBool *pdxldatumbool = CDXLDatumBool::PdxldatumConvert(pdxldatum);
-	Datum datum = gpdb::DDatumFromBool(pdxldatumbool->FValue());
 
 	Const *pconst = MakeNode(Const);
 	pconst->consttype = CMDIdGPDB::PmdidConvert(pdxldatumbool->Pmdid())->OidObjectId();
 	pconst->constbyval = pdxldatumbool->FByValue();
 	pconst->constisnull = pdxldatumbool->FNull();
 	pconst->constlen = pdxldatumbool->UlLength();
-	pconst->constvalue = datum;
+
+	if (pconst->constisnull)
+	{
+		pconst->constvalue = (Datum) 0;
+	}
+	else
+	{
+		pconst->constvalue = gpdb::DDatumFromBool(pdxldatumbool->FValue());
+	}
+
 
 	return pconst;
 }
