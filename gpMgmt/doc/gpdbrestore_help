@@ -64,7 +64,11 @@ The gpdbrestore utility provides the following functionality:
 * Allows you to restore particular tables only (-T option) instead of 
   the entire database. Note that single tables are not automatically 
   dropped or truncated prior to restore. 
+  
+  Performs an ANALYZE operation on the tables that are restored. You can 
+  disable the ANALYZE operation by specifying the option --noanalyze. 
 
+  
 * Can restore global objects such as roles and tablespaces (-G option). 
 
 * Detects if the backup set is primary segments only or primary and 
@@ -170,14 +174,13 @@ OPTIONS
  
 --noanalyze
 
-The ANALYZE command is not run after a successful restore. The default 
-is to run the ANALYZE command after a restore. This option is useful if 
-running ANALYZE on tables in your database requires a significant amount 
-of time. 
+ The ANALYZE command is not run after a successful restore. The default 
+ is to run the ANALYZE command on restored tables. This option is useful 
+ if running ANALYZE on the tables requires a significant amount of time. 
 
-If this option is specified, you should run ANALYZE manually on 
-restored tables. Failure to run ANALYZE following a restore might result 
-in poor database performance. 
+ If this option is specified, you should run ANALYZE manually on 
+ restored tables. Failure to run ANALYZE following a restore might result 
+ in poor database performance. 
 
 
 --noplan 
