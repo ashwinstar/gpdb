@@ -16,7 +16,8 @@ gpcrondump -x database_name
      [--prefix <prefix_string> [--list-filter-tables] ]
      [-c] [-z] [-r] [-f <free_space_percent>] [-b] [-h] [-j | -k] 
      [-g] [-G] [-C] [-d <master_data_directory>] [-B <parallel_processes>] 
-     [-a] [-q] [-y <reportfile>] [-l <logfile_directory>] [-v]
+     [-a] [-q] [-y <reportfile>] [-l <logfile_directory>]
+     [--email-file <path_to_file> ] [-v]
      { [-E encoding] [--inserts | --column-inserts] [--oids]
      [--no-owner | --use-set-session-authorization] 
      [--no-privileges] [--rsyncable] 
@@ -82,13 +83,26 @@ The following is a list of the codes that gpcrondump returns.
 **********************
 EMAIL NOTIFICATIONS
 **********************
-To have gpcrondump send out status email notifications, you must place a 
-file named mail_contacts in the home directory of the Greenplum 
-superuser (gpadmin) or in the same directory as the gpcrondump utility 
-($GPHOME/bin). This file should contain one email address per line. 
-gpcrondump will issue a warning if it cannot locate a mail_contacts file 
-in either location. If both locations have a mail_contacts file, then 
-the one in $HOME takes precedence. 
+
+To have gpcrondump send email notifications with the completion status 
+after a back up operation completes, you must place a file named 
+mail_contacts in the home directory of the Greenplum superuser (gpadmin) 
+or in the same directory as the gpcrondump utility ($GPHOME/bin). This 
+file should contain one email address per line. gpcrondump will issue a 
+warning if it cannot locate a mail_contacts file in either location. If 
+both locations have a mail_contacts file, then the one in $HOME takes 
+precedence. 
+
+You can customize the email Subject and From lines of the email 
+notifications that gpcrondump sends after a back up completes for a 
+database. You specify the option --email-file with the location of a 
+YAML file that contains email Subject and From lines that gpcrondump 
+uses. See the section "File Format for Customized Emails" for 
+information about the format of the YAML file. 
+
+NOTE: The UNIX mail utility must be running on Greenplum Database host
+and must be configured to allow the Greenplum superuser (gpadmin) to 
+send email. 
 
 
 *****************************************************
@@ -281,6 +295,16 @@ OPTIONS
  Character set encoding of dumped data. Defaults to the encoding of the 
  database being dumped. See the Greenplum Database Reference Guide for 
  the list of supported character sets. 
+
+
+-email-file <path_to_file>
+
+ Specify the fully-qualified location of the YAML file that contains the 
+ customized Subject and From lines that are used when gpcrondump sends 
+ notification emails about a database back up. 
+
+ See the section "File Format for Customized Emails" for information 
+ about the format of the YAML file. 
 
 
 -f <free_space_percent> 
@@ -621,6 +645,43 @@ OPTIONS
 
  Displays the online help. 
 
+ 
+*****************************************************
+File Format for Customized Emails
+*****************************************************
+
+You can configure gpcrondump to send an email notification after a back 
+up operation completes for a database. To customize the From and Subject 
+lines of the email that are sent for a database, you create a YAML file 
+and specify the location of the file with the option --email-file. In 
+the YAML file, you can specify a different From and Subject line for 
+each database that gpcrondump backs up. This is the format of the YAML 
+file to specify a custom From and Subject line for a database: 
+
+EMAIL_DETAILS:
+    -
+        DBNAME: <database_name>
+        FROM: <from_user>
+        SUBJECT: <subject_text>
+
+
+When email notification is configured for gpcrondump, the <from_user> and 
+the <subject_text> are the strings that gpcrondump uses in the email 
+notification after completing the back up for <database_name>. 
+
+This example YAML file specifies different From and Subject lines for 
+the databases testdb100 and testdb200. 
+
+EMAIL_DETAILS:
+    -
+        DBNAME: testdb100
+        FROM: RRP_MPE2_DCA_1
+        SUBJECT: backup completed for Database 'testdb100'
+
+    -
+        DBNAME: testdb200
+        FROM: Report_from_DCDDEV_host
+        SUBJECT: Completed backup for database 'testdb200'
 
 
 *****************************************************
