@@ -21,8 +21,13 @@ gpcrondump -x database_name
      { [-E encoding] [--inserts | --column-inserts] [--oids]
      [--no-owner | --use-set-session-authorization] 
      [--no-privileges] [--rsyncable] 
-     [--ddboost [--replicate --max-streams <max_IO_streams> 
-     [--ddboost-skip-ping] ] ] }
+     { [--ddboost [--replicate --max-streams <max_IO_streams> 
+     [--ddboost-skip-ping] ] ] } |
+     { [--netbackup-service-host <netbackup_server> 
+     --netbackup-policy <netbackup_policy> 
+     --netbackup-schedule <netbackup_schedule> 
+     [--netbackup-block-size <size> ] 
+     [--netbackup-keyword <keyword> ] } }
      
 gpcrondump --ddboost-host <ddboost_hostname> 
     [--ddboost-host ddboost_hostname ... ]
@@ -71,6 +76,18 @@ IMPORTANT: Incremental backups are not supported with Data Domain Boost.
 You cannot use Data Domain Boost with a full backup if you plan to 
 create incremental backups that use the full backup. 
 
+
+**********************
+NetBackup
+**********************
+
+Greenplum Database must be configured to communicate with the Symantec 
+NetBackup master server that is used to backup the database. See the 
+"Greenplum Database Administrator Guide" for information on 
+configuring Greenplum Database and NetBackup and backing up and 
+restoring with NetBackup. 
+
+
 **********************
 Return Codes
 **********************
@@ -80,6 +97,7 @@ The following is a list of the codes that gpcrondump returns.
    1 - Dump completed, but one or more warnings were generated
    2 - Dump failed with a fatal error
 
+   
 **********************
 EMAIL NOTIFICATIONS
 **********************
@@ -103,6 +121,19 @@ information about the format of the YAML file.
 NOTE: The UNIX mail utility must be running on Greenplum Database host
 and must be configured to allow the Greenplum superuser (gpadmin) to 
 send email. 
+
+
+**********************
+Limitations
+**********************
+
+* Incremental backup is not supported when backing up with Data Domain 
+  Boost or NetBackup. You cannot use Data Domain Boost or NetBackup to 
+  perform a full backup if you plan to create incremental backups that use 
+  the full backup. 
+
+* NetBackup is not compatible with DDBoost. Both NetBackup and DDBoost 
+  cannot be used in a single back up operation. 
 
 
 *****************************************************
@@ -148,9 +179,9 @@ OPTIONS
  If --ddboost is specified, only the old files on Data Domain Boost are 
  deleted. 
 
- This option is not supported with the -u option. 
+ This option is not supported with the -u option.
 
-
+ 
 -C (clean catalog before restore) 
 
  Clean out the catalog schema prior to restoring database objects. 
@@ -206,9 +237,9 @@ OPTIONS
 
  You can run a mixed backup that writes to both a local disk and Data 
  Domain. If you want to use a backup directory on your local disk other 
- than the default, use the –u option. For more information about mixed 
- backups and Data Domain Boost, see the Greenplum Database System 
- Administrator Guide. 
+ than the default, use the -u option. For more information about mixed 
+ backups and Data Domain Boost, see "Backing Up and Restoring Databases"
+ in the "Greenplum Database Administrator Guide." 
 
  If --incremental is specified, this option is not supported. 
 
@@ -220,8 +251,11 @@ OPTIONS
  To maximize Data Domain deduplication benefits, retain at least 30 days 
  of backups. 
 
- Note: The -b, -c, -f, -G, -g, -R, and -u options change if --ddboost is 
+ NOTE: The -b, -c, -f, -G, -g, -R, and -u options change if --ddboost is 
  specified. See the options for details. 
+
+ The DDBoost backup options are not supported if the NetBackup options 
+ are specified. 
 
 
 --ddboost-host ddboost_hostname
@@ -267,7 +301,7 @@ OPTIONS
  In the example, the --ddboost-backupdir option specifies the backup 
  directory gp_production in the Data Domain Storage Unit GPDB. 
 
- Note: If there is more than one operating system user using Data Domain 
+ NOTE: If there is more than one operating system user using Data Domain 
  Boost for backup and restore operations, repeat this configuration 
  process for each of those users. 
 
@@ -313,7 +347,7 @@ OPTIONS
  files, specifies a percentage of free disk space that should remain 
  after the dump completes. The default is 10 percent. 
 
- Note: This is option is not supported if --ddboost or --incremental is 
+ NOTE: This is option is not supported if --ddboost or --incremental is 
  specified. 
 
 
@@ -394,9 +428,9 @@ OPTIONS
  WARNING: gpcrondump does not check for available disk space prior to 
  performing an incremental backup.
 
- IMPORTANT: Incremental backup cannot be used with Data Domain Boost. You 
- cannot use the Data Domain Boost options with a full backup if you plan 
- to perform incremental backups. 
+ IMPORTANT: Incremental backup cannot be used with Data Domain Boost or 
+ Symantic NetBackup. You cannot use the Data Domain Boost or NetBackup 
+ options with a full backup if you plan to perform incremental backups. 
 
 
 --inserts 
@@ -461,7 +495,51 @@ OPTIONS
 
  The directory to write the log file. Defaults to ~/gpAdminLogs. 
 
+ 
+--netbackup-block-size <size>
 
+ Specify the block size of data being transferred to the Symantec 
+ NetBackup server. The default is 512 bytes. NetBackup options are not 
+ supported if DDBoost backup options are specified or if the 
+ --incremental option is specified. 
+
+
+--netbackup-keyword <keyword>
+
+ Specify a keyword for the backup that is transferred to the Symantec 
+ NetBackup server. NetBackup adds the keyword property and the specified 
+ <keyword> value to the NetBackup .img files that are created for the 
+ backup. 
+
+ The minimum length is 1 character, and the maximum length is 100 
+ characters. 
+
+ NetBackup options are not supported if DDBoost backup options are 
+ specified or if the --incremental option is specified. 
+
+
+--netbackup-service-host netbackup_server 
+
+ The NetBackup master server that Greenplum Database connects to when 
+ backing up to NetBackup. NetBackup options are not supported if DDBoost 
+ backup options are specified or if the --incremental option is 
+ specified. 
+
+
+--netbackup-policy <netbackup_policy> 
+
+ The name of the NetBackup policy created for backing up Greenplum 
+ Database. NetBackup options are not supported if DDBoost backup options 
+ are specified or if the --incremental option is specified. 
+
+
+--netbackup-schedule <netbackup_schedule> 
+
+ The name of the NetBackup schedule created for backing up Greenplum 
+ Database. NetBackup options are not supported if DDBoost backup options 
+ are specified or if the --incremental option is specified. 
+
+ 
 --no-owner 
 
  Do not output commands to set object ownership. 
@@ -738,7 +816,17 @@ full backup.
 
   gpcrondump -x mydatabase --incremental --prefix user_backup --list-filter-tables
 
+  
+This command backs up the database customer and specifies a NetBackup 
+policy and schedule that are defined on the NetBackup master server 
+nbu_server1. A block size of 1024 bytes is used to transfer data to the 
+NetBackup server. 
 
+  gpcrondump -x customer --netbackup-service-host=nbu_server1 
+    --netbackup-policy=gpdb_cust --netbackup-schedule=gpdb_backup 
+    --netbackup-block-size=1024
+
+ 
 *****************************************************
 SEE ALSO
 *****************************************************
