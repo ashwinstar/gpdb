@@ -541,6 +541,19 @@ help(void)
 
 
 /*
+ *Build the WITH clause for resource queue dump
+ */
+static void 
+buildWithClause(const char *resname, const char *ressetting, PQExpBuffer buf)
+{
+	if (0 == strncmp("memory_limit", resname, 12) && (strncmp(ressetting, "-1", 2) != 0))
+        	appendPQExpBuffer(buf, " %s='%s'", resname, ressetting);
+	else
+		appendPQExpBuffer(buf, " %s=%s", resname, ressetting);
+}
+
+
+/*
  * Dump resource queues
  */
 static void
@@ -691,7 +704,8 @@ dumpResQueues(PGconn *conn)
 				bWith = true;
 				appendPQExpBuffer(buf, "\n WITH (");
 			}
-			appendPQExpBuffer(buf, " %s=%s", resname, ressetting);
+
+			buildWithClause(resname, ressetting, buf);
 
 		}
 
