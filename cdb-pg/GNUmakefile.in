@@ -16,6 +16,7 @@ all:
 	$(MAKE) -C contrib/changetrackingdump all
 	$(MAKE) -C contrib/formatter all
 	$(MAKE) -C contrib/formatter_fixedwidth all
+	$(MAKE) -C contrib/fuzzystrmatch all
 	$(MAKE) -C contrib/extprotocol all	
 	$(MAKE) -C contrib/gp_sparse_vector all
 	$(MAKE) -C contrib/orafce all
@@ -33,6 +34,7 @@ install:
 	$(MAKE) -C contrib/changetrackingdump $@
 	$(MAKE) -C contrib/formatter $@
 	$(MAKE) -C contrib/formatter_fixedwidth $@
+	$(MAKE) -C contrib/fuzzystrmatch $@
 	$(MAKE) -C contrib/extprotocol $@
 	$(MAKE) -C contrib/gp_sparse_vector $@
 	$(MAKE) -C contrib/orafce $@
@@ -50,6 +52,7 @@ installdirs uninstall:
 	$(MAKE) -C contrib/changetrackingdump $@
 	$(MAKE) -C contrib/formatter $@
 	$(MAKE) -C contrib/formatter_fixedwidth $@
+	$(MAKE) -C contrib/fuzzystrmatch $@
 	$(MAKE) -C contrib/extprotocol $@
 	$(MAKE) -C contrib/gp_sparse_vector $@
 	$(MAKE) -C contrib/orafce $@
@@ -75,6 +78,7 @@ clean:
 	$(MAKE) -C contrib/changetrackingdump $@
 	$(MAKE) -C contrib/formatter $@
 	$(MAKE) -C contrib/formatter_fixedwidth $@
+	$(MAKE) -C contrib/fuzzystrmatch $@
 	$(MAKE) -C contrib/extprotocol $@
 	$(MAKE) -C contrib/gp_sparse_vector $@
 	$(MAKE) -C contrib/orafce $@
