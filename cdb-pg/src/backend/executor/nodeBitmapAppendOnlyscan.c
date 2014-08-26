@@ -317,6 +317,8 @@ BitmapAppendOnlyScanNext(BitmapAppendOnlyScanState *node)
 			if (tbmres->ntuples == 0)
 				continue;
 
+			/* Make sure we never cross 15-bit offset number [MPP-24326] */
+			Assert(tbmres->ntuples <= INT16_MAX + 1);
 			Gpmon_M_Incr(GpmonPktFromBitmapAppendOnlyScanState(node), GPMON_BITMAPAPPENDONLYSCAN_PAGE);
 			CheckSendPlanStateGpmonPkt(&node->ss.ps);
 
@@ -329,10 +331,14 @@ BitmapAppendOnlyScanNext(BitmapAppendOnlyScanState *node)
 
 			node->baos_lossy = (tbmres->ntuples < 0);
 			if (!node->baos_lossy)
+			{
 				node->baos_ntuples = tbmres->ntuples;
+			}
 			else
-				node->baos_ntuples = MAX_TUPLES_PER_PAGE;
-				
+			{
+				/* Iterate over the first 2^15 tuples [MPP-24326] */
+				node->baos_ntuples = INT16_MAX + 1;
+			}
 		}
 		else
 		{
@@ -355,11 +361,19 @@ BitmapAppendOnlyScanNext(BitmapAppendOnlyScanState *node)
 		 * Must account for lossy page info...
 		 */
 		if (node->baos_lossy)
+		{
 			psuedoHeapOffset = node->baos_cindex;	// We are iterating through all items.
+		}
 		else
 		{
 			Assert(node->baos_cindex <= tbmres->ntuples);
 			psuedoHeapOffset = tbmres->offsets[node->baos_cindex];
+
+			/*
+			 * Ensure that the reserved 16-th bit is always ON for offsets from
+			 * lossless bitmap pages [MPP-24326].
+			 */
+			Assert(((uint16)(psuedoHeapOffset & 0x8000)) > 0);
 		}
 
 		/*
