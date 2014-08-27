@@ -148,6 +148,9 @@ BitmapAOScanNext(ScanState *scanState)
 
 	TBMIterateResult *tbmres = (TBMIterateResult *)node->tbmres;
 
+	/* Make sure we never cross 15-bit offset number [MPP-24326] */
+	Assert(tbmres->ntuples <= INT16_MAX + 1);
+
 	OffsetNumber psuedoHeapOffset;
 	ItemPointerData psudeoHeapTid;
 	AOTupleId aoTid;
@@ -166,7 +169,8 @@ BitmapAOScanNext(ScanState *scanState)
 
 			if (node->isLossyBitmapPage)
 			{
-				iterator->nTuples = MAX_TUPLES_PER_PAGE;
+				/* Iterate over the first 2^15 tuples [MPP-24326] */
+				iterator->nTuples = INT16_MAX + 1;
 			}
 			else
 			{
@@ -211,6 +215,12 @@ BitmapAOScanNext(ScanState *scanState)
 		{
 			Assert(iterator->tupleIndex <= tbmres->ntuples);
 			psuedoHeapOffset = tbmres->offsets[iterator->tupleIndex];
+
+			/*
+			 * Ensure that the reserved 16-th bit is always ON for offsets from
+			 * lossless bitmap pages [MPP-24326].
+			 */
+			Assert(((uint16)(psuedoHeapOffset & 0x8000)) > 0);
 		}
 
 		/*
