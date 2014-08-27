@@ -42,6 +42,7 @@
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
+#include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "utils/fmgroids.h"
@@ -1610,9 +1611,17 @@ func_data_access(Oid funcid)
 
 	result = DatumGetChar(
 			caql_getattr(pcqCtx, Anum_pg_proc_prodataaccess, &isnull));
-	Assert(!isnull);
-
 	caql_endscan(pcqCtx);
+
+	/*
+	 * In upgrade mode, allow prodataaccess to be NULL, to handle the
+	 * case where prodataaccess column has not been added to pg_proc
+	 * yet. This is specifically to handle catDML().
+	 */
+	if (gp_upgrade_mode && isnull)
+		return PRODATAACCESS_NONE;
+
+	Assert(!isnull);
 	return result;
 }
 
