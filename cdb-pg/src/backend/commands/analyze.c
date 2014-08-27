@@ -481,7 +481,7 @@ void analyzeStmt(VacuumStmt *stmt, List *relids)
 					 * Is the relation the right kind?
 					 */
 					ereport(WARNING,
-							(errmsg("skipping \"%s\" --- cannot analyze indexes, views, external tables or special system tables",
+							(errmsg("skipping \"%s\" --- cannot analyze indexes, views or special system tables",
 									RelationGetRelationName(candidateRelation))));
 					relation_close(candidateRelation, ShareUpdateExclusiveLock);
 				}
@@ -777,6 +777,14 @@ static void analyzeRelation(Relation relation, List *lAttributeNames, bool rooto
 	/**
 	 * Step 1: estimate reltuples, relpages for the relation. 
 	 */
+	if ('x' == relation->rd_rel->relstorage)
+	{
+		/* for external tables, we keep the default numbers (reltuples=1e+06, relpages=1000) in heap.c when they are created */
+		elog(elevel, "ANALYZE skipping external table %s.", RelationGetRelationName(relation));
+
+		return;
+	}
+
 	analyzeEstimateReltuplesRelpages(relationOid, &estimatedRelTuples, &estimatedRelPages, rootonly);
 	
 	elog(elevel, "ANALYZE estimated reltuples=%f, relpages=%f for table %s", estimatedRelTuples, estimatedRelPages, RelationGetRelationName(relation));
