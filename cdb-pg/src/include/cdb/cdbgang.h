@@ -55,6 +55,8 @@ typedef struct Gang
 	bool		all_valid_segdbs_connected;
 	bool		allocated;
 
+	/* MPP-24003: pointer to array of segment database info for each reader and writer gang. */
+	struct		CdbComponentDatabaseInfo *segment_database_info;
 } Gang;
 
 extern Gang *allocateGang(GangType type, int size, int content, char *portal_name);

@@ -727,6 +727,9 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 										  sizeof(SegmentDatabaseDescriptor));
 
 	Assert(cdb_component_dbs->total_segment_dbs > 0);
+
+	newGangDefinition->segment_database_info = &cdb_component_dbs->segment_db_info[0];
+
 	/*
 	 * We loop through the segment_db_info.  Each item has a segindex.
 	 * They are sorted by segindex, and there can be > 1 segment_db_info for
@@ -2377,6 +2380,12 @@ disconnectAndDestroyGang(Gang *gp)
 	/*
 	 * Discard the segment array and the cluster descriptor
 	 */
+	if(gp->segment_database_info) /* in case of NULL in entrydb gang. */
+	{
+		pfree(gp->segment_database_info);
+		gp->segment_database_info = NULL;
+	}
+
 	pfree(gp->db_descriptors);
 	gp->db_descriptors = NULL;
 	gp->size = 0;
