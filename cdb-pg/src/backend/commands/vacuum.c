@@ -1099,21 +1099,6 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 	}
 
 	/*
-	 * Greenplum Database: send a scary warning message about vacuum full. 
-	 * its not safe for large tables.
-	 */
-	if (vacstmt->full)
-	{
-		if (Gp_role == GP_ROLE_DISPATCH)
-			ereport(NOTICE,
-					(errcode(ERRCODE_WARNING),
-					 errmsg("'VACUUM FULL' is not safe for large tables and has "
-							"been known to yield unpredictable runtimes."),
-					 errhint("Use 'VACUUM' instead.")));
-	}
-
-
-	/*
 	 * Send info about dead objects to the statistics collector, unless we are
 	 * in autovacuum --- autovacuum.c does this for itself.
 	 */
