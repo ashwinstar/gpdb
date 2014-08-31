@@ -1151,6 +1151,7 @@ copydocs :
 		cp -r $(INSTLOC)/doc/postgresql/contrib/* $(INSTLOC)/docs/contrib ; \
 	    fi ; \
 	    echo "Copying $(BLD_TOP)/languages/PLJAVA/PLJAVA_README" ; \
+	    mkdir -p $(INSTLOC)/share/postgresql/pljava ; \
 	    cp -p $(BLD_TOP)/languages/PLJAVA/PLJAVA_README $(INSTLOC)/share/postgresql/pljava ; \
 	fi
 	@if [ -d $(INSTLOC)/doc ] ; then \
