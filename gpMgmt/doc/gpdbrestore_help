@@ -202,7 +202,7 @@ OPTIONS
  Symantec NetBackup server. The default is 512 bytes. 
 
  NetBackup options are not supported if DDBoost backup options are 
- specified or if the --incremental option is specified. 
+ specified. 
 
  
 --netbackup-service-host <netbackup_server> 
@@ -369,10 +369,8 @@ Restore global objects only (roles and tablespaces):
 gpdbrestore -G 
 
 
-The the following options are not supported when restoring a backup set 
+NOTE: The -R option is not supported when restoring a backup set 
 that includes incremental backups. 
-  --ddboost
-  -R
 
 If you restore from a backup set that contains an incremental backup, all the files in 
 the backup set must be available to gpdbrestore. For example, the following 

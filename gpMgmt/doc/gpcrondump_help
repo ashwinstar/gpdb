@@ -127,13 +127,14 @@ send email.
 Limitations
 **********************
 
-* Incremental backup is not supported when backing up with Data Domain 
-  Boost or NetBackup. You cannot use Data Domain Boost or NetBackup to 
-  perform a full backup if you plan to create incremental backups that use 
-  the full backup. 
-
 * NetBackup is not compatible with DDBoost. Both NetBackup and DDBoost 
   cannot be used in a single back up operation. 
+
+* For incremental back up sets, a full backup and associated incremental 
+  backups, the backup set must be on a single device. For example, a 
+  backup set must all be on a file system. The backup set cannot have some 
+  backups on the local file system and others on a Data Domain system or a 
+  NetBackup system. 
 
 
 *****************************************************
@@ -237,16 +238,13 @@ OPTIONS
 
  You can run a mixed backup that writes to both a local disk and Data 
  Domain. If you want to use a backup directory on your local disk other 
- than the default, use the -u option. For more information about mixed 
- backups and Data Domain Boost, see "Backing Up and Restoring Databases"
- in the "Greenplum Database Administrator Guide." 
-
- If --incremental is specified, this option is not supported. 
+ than the default, use the -u option. Mixed backups are not supported 
+ with incremental backups. For more information about mixed backups and 
+ Data Domain Boost, see "Backing Up and Restoring Databases" in the 
+ "Greenplum Database Administrator Guide." 
 
  IMPORTANT: Never use the Greenplum Database default backup options with 
- Data Domain Boost. Also, incremental backups are not supported with Data 
- Domain Boost. You cannot use the Data Domain Boost options with a full 
- backup if you plan to perform incremental backups. 
+ Data Domain Boost.  
 
  To maximize Data Domain deduplication benefits, retain at least 30 days 
  of backups. 
@@ -428,9 +426,10 @@ OPTIONS
  WARNING: gpcrondump does not check for available disk space prior to 
  performing an incremental backup.
 
- IMPORTANT: Incremental backup cannot be used with Data Domain Boost or 
- Symantic NetBackup. You cannot use the Data Domain Boost or NetBackup 
- options with a full backup if you plan to perform incremental backups. 
+ IMPORTANT: An incremental back up set, a full backup and associated 
+ incremental backups, must be on a single device. For example, a the 
+ backups in a backup set must all be on a file system or must all be on a 
+ Data Domain system. 
 
 
 --inserts 
