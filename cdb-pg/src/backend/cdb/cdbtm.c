@@ -633,6 +633,15 @@ isCurrentDtxActive(void)
 	return (currentGxact != NULL);
 }
 
+DtxState
+getCurrentDtxState(void)
+{
+	if (currentGxact != NULL)
+		return currentGxact->state;
+
+	return DTX_STATE_NONE;
+}
+
 static void
 doPrepareTransaction(void)
 {
@@ -756,6 +765,13 @@ doNotifyingCommitPrepared(void)
 		elog(PANIC, "Distribute transaction identifier too long (%d)",
 			 (int)strlen(currentGxact->gid));
 
+#ifdef FAULT_INJECTOR
+	FaultInjector_InjectFaultIfSet(
+								   DtmBroadcastCommitPrepared,
+								   DDLNotSpecified,
+								   "",	// databaseName
+								   ""); // tableName
+#endif
 	succeeded = doDispatchDtxProtocolCommand(DTX_PROTOCOL_COMMAND_COMMIT_PREPARED, /* flags */ 0,
 											 currentGxact->gid, currentGxact->gxid,
 											 &badGangs, /* raiseError */ false,
@@ -799,14 +815,6 @@ doNotifyingCommitPrepared(void)
 		elog(DTM_DEBUG5, "The distributed transaction 'Commit Prepared' broadcast succeeded to all the segments for gid = %s.",
 			 currentGxact->gid);
 	}
-
-#ifdef FAULT_INJECTOR
-	FaultInjector_InjectFaultIfSet(
-								   DtmBroadcastCommitPrepared,
-								   DDLNotSpecified,
-								   "",	// databaseName
-								   ""); // tableName
-#endif
 
 	/*
 	 * Global locking order: ProcArrayLock then DTM lock since

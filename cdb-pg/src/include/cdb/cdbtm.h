@@ -322,6 +322,7 @@ extern void dtmPreCommand(const char *debugCaller, const char *debugDetail, Plan
 							bool needsTwoPhaseCommit, bool dispatchToPrimaries, bool dispatchToMirrors );
 extern bool isCurrentDtxTwoPhase(void);
 extern bool isCurrentDtxActive(void);
+extern DtxState getCurrentDtxState(void);
 
 extern void sendDtxExplicitBegin(void);
 extern int dtxCurrentPhase1Count(void);

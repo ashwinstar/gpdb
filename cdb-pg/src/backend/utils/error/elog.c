@@ -74,6 +74,7 @@
 #include "utils/ps_status.h"
 
 #include "cdb/cdbvars.h"  /*Gp_segment */
+#include "cdb/cdbtm.h"
 #include "utils/ps_status.h"    /* get_ps_display_username() */
 #include "cdb/cdbselect.h"
 #include "pgtime.h"
@@ -343,6 +344,42 @@ errstart(int elevel, const char *filename, int lineno,
                 proc_exit_inprogress)
                 elevel = FATAL;
         }
+
+	/*
+	 * If master process hits FATAL, post PREPARE but before COMMIT / ABORT on segment,
+	 * just master process dies silently, leaves dangling prepared xact on segment.
+	 * This also introduces inconsistency in the cluster, as xact is commited on master
+	 * and some segments and still in-progress on few others.
+	 * Hence converting FATAL to PANIC, here to reset master and perform full recovery 
+	 * instead, which would clean the dangling transaction update to COMMIT / ABORT.
+	 */
+	if ((elevel == FATAL) && (Gp_role == GP_ROLE_DISPATCH))
+	{
+		switch (getCurrentDtxState())
+		{
+		case DTX_STATE_PREPARING:
+		case DTX_STATE_PREPARED:
+		case DTX_STATE_INSERTING_COMMITTED:
+		case DTX_STATE_INSERTED_COMMITTED:
+		case DTX_STATE_FORCED_COMMITTED:
+		case DTX_STATE_NOTIFYING_COMMIT_PREPARED:
+		case DTX_STATE_NOTIFYING_ABORT_SOME_PREPARED:
+		case DTX_STATE_NOTIFYING_ABORT_PREPARED:
+		case DTX_STATE_RETRY_COMMIT_PREPARED:
+		case DTX_STATE_RETRY_ABORT_PREPARED:
+			elevel = PANIC;
+			break;
+
+		case DTX_STATE_NONE:
+		case DTX_STATE_ACTIVE_NOT_DISTRIBUTED:
+		case DTX_STATE_ACTIVE_DISTRIBUTED:
+		case DTX_STATE_INSERTING_FORGET_COMMITTED:
+		case DTX_STATE_INSERTED_FORGET_COMMITTED:
+		case DTX_STATE_NOTIFYING_ABORT_NO_PREPARED:
+		case DTX_STATE_CRASH_COMMITTED:
+			break;
+		}
+	}
 
         /*
          * If the error level is ERROR or more, errfinish is not going to
