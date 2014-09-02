@@ -294,6 +294,13 @@ CConfigParamMapping::SConfigMappingElem CConfigParamMapping::m_elem[] =
 		&optimizer_apply_left_outer_to_union_all_disregarding_stats,
 		false,  // m_fNegate
 		GPOS_WSZ_LIT("Always apply Left Outer Join to Inner Join UnionAll Left Anti Semi Join without looking at stats")
+		},
+
+		{
+		EopttraceRemoveOrderBelowDML,
+		&optimizer_remove_order_below_dml,
+		false,  // m_fNegate
+		GPOS_WSZ_LIT("Remove OrderBy below a DML operation")
 		}
 
 };

@@ -762,6 +762,7 @@ bool		optimizer_use_external_constant_expression_evaluation_for_ints;
 bool		optimizer_enable_bitmapscan;
 bool		optimizer_apply_left_outer_to_union_all_disregarding_stats;
 bool		optimizer_enable_ctas;
+bool		optimizer_remove_order_below_dml;
 
 /* Security */
 bool		gp_reject_internal_tcp_conn = true;
@@ -4110,6 +4111,16 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&optimizer_enable_ctas,
+		false, NULL, NULL
+	},
+
+	{
+		{"optimizer_remove_order_below_dml", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Remove OrderBy below a DML operation"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_remove_order_below_dml,
 		false, NULL, NULL
 	},
 
