@@ -18,7 +18,3 @@ DROP FUNCTION metaphone (text,int);
 DROP FUNCTION levenshtein (text,text,int,int,int);
 
 DROP FUNCTION levenshtein (text,text);
-
-DROP FUNCTION levenshtein_less_equal (text,text,int);
-
-DROP FUNCTION levenshtein_less_equal (text,text,int,int,int,int);
