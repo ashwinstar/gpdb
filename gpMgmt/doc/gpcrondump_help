@@ -499,8 +499,7 @@ OPTIONS
 
  Specify the block size of data being transferred to the Symantec 
  NetBackup server. The default is 512 bytes. NetBackup options are not 
- supported if DDBoost backup options are specified or if the 
- --incremental option is specified. 
+ supported if DDBoost backup options are specified.
 
 
 --netbackup-keyword <keyword>
@@ -514,29 +513,28 @@ OPTIONS
  characters. 
 
  NetBackup options are not supported if DDBoost backup options are 
- specified or if the --incremental option is specified. 
+ specified.
 
 
 --netbackup-service-host netbackup_server 
 
  The NetBackup master server that Greenplum Database connects to when 
  backing up to NetBackup. NetBackup options are not supported if DDBoost 
- backup options are specified or if the --incremental option is 
- specified. 
+ backup options are specified. 
 
 
 --netbackup-policy <netbackup_policy> 
 
  The name of the NetBackup policy created for backing up Greenplum 
  Database. NetBackup options are not supported if DDBoost backup options 
- are specified or if the --incremental option is specified. 
+ are specified.. 
 
 
 --netbackup-schedule <netbackup_schedule> 
 
  The name of the NetBackup schedule created for backing up Greenplum 
  Database. NetBackup options are not supported if DDBoost backup options 
- are specified or if the --incremental option is specified. 
+ are specified. 
 
  
 --no-owner 
