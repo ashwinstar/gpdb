@@ -72,10 +72,6 @@ gpcrondump is used to schedule Data Domain Boost backup and restore
 operations. gpcrondump is also used to set or remove one-time 
 credentials for Data Domain Boost. 
 
-IMPORTANT: Incremental backups are not supported with Data Domain Boost. 
-You cannot use Data Domain Boost with a full backup if you plan to 
-create incremental backups that use the full backup. 
-
 
 **********************
 NetBackup
