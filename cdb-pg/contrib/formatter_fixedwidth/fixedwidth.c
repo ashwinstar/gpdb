@@ -58,7 +58,7 @@ typedef struct {
 	int            buflen;
 	bytea         *buffer;
 	StringInfoData one_val;
-	StringInfoData one_field;
+	StringInfoData one_field;	/* temporary string buffer for string expansion */
 	int            lineno;
 	bool		   convert; 	/* true - perform conversion on column value. false - don't */
 } format_t;
@@ -198,7 +198,7 @@ load_format_config(FormatConfig *format_config, FunctionCallInfo fcinfo)
  * an encoding conversion will modify the original string or not
  * and return the answer. The input string remains *unmodified*.
  * While at it, the encoding converter also verifies that the
- * input string is valid in the clinet (external table) encoding.
+ * input string is valid in the client (external table) encoding.
  */
 static bool
 encoding_check_str(FunctionCallInfo fcinfo, char *str, int len, bool is_import)
@@ -287,33 +287,28 @@ make_val_with_blanks(FunctionCallInfo fcinfo, char *value, int field_size, Strin
 	if (value)
 	{
 		sz = strlen(value);
+		appendBinaryStringInfo(buf, value, sz);
+
+		/*
+		 * convert value from server encoding to external table encoding. Since
+		 * it is possible that the encoded string will vary in size from the
+		 * original string we must re-adjust if necessary
+		 */
+		encoding_encode_strinfo(fcinfo, buf, false /* export */);
 		
+		sz = buf->len;
 		if (sz > field_size)
 			ereport(ERROR,
 					(errcode(ERRCODE_STRING_DATA_LENGTH_MISMATCH),
 					 errmsg("The size of the value cannot be bigger than the field size value: %s, size: %d, field_size %d",
 							value, sz, field_size)));			
-		
-		appendBinaryStringInfo(buf, value, sz);
 		appendStringInfoFill(buf, field_size - sz, ' ');
 	}
 	else 
 	{
 		appendStringInfoFill(buf, field_size, ' ');
 	}
-	
-	/* assert */
-	if(buf->len != field_size)
-		ereport(ERROR,
-				(errcode(ERRCODE_GP_INTERNAL_ERROR),
-				 errmsg("Internal error in fixed width formatter. size mismatch in field export")));
 
-	/*
-	 * convert value from server encoding to external table encoding. Since
-	 * it is possible that the encoded string will vary in size from the
-	 * original string we must re-adjust if necessary
-	 */
-	encoding_encode_strinfo(fcinfo, buf, false /* export */);
 
 	if(buf->len != field_size)
 	{

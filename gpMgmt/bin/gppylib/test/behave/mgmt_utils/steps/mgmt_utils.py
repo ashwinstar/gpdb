@@ -1930,6 +1930,16 @@ def impl(context, dirname):
     if not os.path.isdir(dirname):
         raise Exception("directory '%s' not created" % dirname)
 
+@given('the file "{filename}" exists under "{directory}" in current working directory')
+def impl(context, filename, directory):
+    directory = os.path.join(os.getcwd(), directory)
+    if not os.path.isdir(directory):
+        raise Exception("directory '%s' not exists" % directory)
+    filepath = os.path.join(directory, filename)
+    open(filepath, 'a').close()
+    if not os.path.exists(filepath):
+        raise Exception("file '%s' not created" % filepath)
+
 @given('the directory "{dirname}" does not exist in current working directory')
 def impl(context, dirname):
     dirname = os.path.join(os.getcwd(), dirname)

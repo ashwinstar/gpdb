@@ -274,3 +274,32 @@ Feature: gpfdist configure timeout value
         And the user runs command "cat ./gpfdist.log"
         Then the client program should print 400 invalid request to stdout
 
+    @writable_external_table_encoding_conversion
+    Scenario: guarantee right encoding conversion when write into external table
+        Given the database is running
+        And database "gpfdistdb" is created if not exists
+        And the "gpfdist" process is killed
+        And the external table "wet_encoding_conversion" does not exist in "gpfdistdb"
+        And the directory "extdata" exists in current working directory
+        And the file "wet_encoding_conversion.txt" exists under "extdata" in current working directory
+        When below sql is executed in "gpfdistdb" db
+             """
+             CREATE WRITABLE EXTERNAL TABLE wet_encoding_conversion
+             (
+               c1 VARCHAR(10)
+             )
+             LOCATION ('gpfdist://localhost:8091/wet_encoding_conversion.txt')
+             FORMAT 'Custom'
+             (
+             FORMATTER=fixedwidth_out,
+             c1=10,
+             null='',
+             line_delim=E'\n'
+             )ENCODING 'gb18030'
+             """
+        And the user runs "gpfdist -p 8091 -V -d extdata & "
+        And the user runs "psql gpfdistdb -f gppylib/test/behave/mgmt_utils/steps/data/gpfdist_encoding_conversion.sql"
+        And the user runs command "wc -l extdata/wet_encoding_conversion.txt"
+        Then the client program should print 1 to stdout
+        And the "gpfdist" process is killed
+        And the file "extdata/wet_encoding_conversion.txt" is removed from the system
