@@ -1420,7 +1420,8 @@ DynamicScan_RescanIndex(IndexScanState *indexScanState, ExprContext *exprCtxt, b
 	 */
 	Assert(SCAN_FIRST == indexScanState->ss.scan_state ||
 			SCAN_NEXT == indexScanState->ss.scan_state ||
-			SCAN_DONE == indexScanState->ss.scan_state);
+			SCAN_DONE == indexScanState->ss.scan_state ||
+			SCAN_RESCAN == indexScanState->ss.scan_state);
 
 	Assert(NULL != indexScanState->iss_RuntimeContext);
 
