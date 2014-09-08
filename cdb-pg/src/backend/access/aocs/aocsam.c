@@ -683,16 +683,18 @@ ReadNext:
 /* XXX Right now, we put each column to different files */
 static void OpenAOCSDatumStreams(AOCSInsertDesc desc)
 {
-    char *basepath = relpath(desc->aoi_rel->rd_node);
-    char fn[MAXPGPATH];
+	char *basepath = relpath(desc->aoi_rel->rd_node);
+	char fn[MAXPGPATH];
 	int32	fileSegNo;
+	ItemPointerData persistentTid;
+	int64 persistentSerialNum;
 
-    AOCSFileSegInfo *seginfo;
+	AOCSFileSegInfo *seginfo;
 
-    TupleDesc tupdesc = RelationGetDescr(desc->aoi_rel);
-    int nvp = tupdesc->natts;
+	TupleDesc tupdesc = RelationGetDescr(desc->aoi_rel);
+	int nvp = tupdesc->natts;
 
-    desc->ds = (DatumStreamWrite **) palloc0(sizeof(DatumStreamWrite *) * nvp);
+	desc->ds = (DatumStreamWrite **) palloc0(sizeof(DatumStreamWrite *) * nvp);
 
 	/*
 	* In order to append to this file segment entry we must first
@@ -709,21 +711,53 @@ static void OpenAOCSDatumStreams(AOCSInsertDesc desc)
 								AccessExclusiveLock,
 								/* dontWait */ false);
 
-    open_ds_write(desc->aoi_rel,
-    		desc->ds, tupdesc, NULL, desc->aoEntry->version);
+	open_ds_write(desc->aoi_rel,
+			desc->ds, tupdesc, NULL, desc->aoEntry->version);
 
-    /* Now open seg info file and get eof mark. */
-    seginfo = GetAOCSFileSegInfo(
-    					desc->aoi_rel, 
-    					desc->aoEntry, 
-    					desc->appendOnlyMetaDataSnapshot, 
-    					desc->cur_segno);
+	/* Now open seg info file and get eof mark. */
+	seginfo = GetAOCSFileSegInfo(
+								 desc->aoi_rel,
+								 desc->aoEntry,
+								 desc->appendOnlyMetaDataSnapshot,
+								 desc->cur_segno);
+
 	if (seginfo == NULL)
 	{
-		InsertInitialAOCSFileSegInfo(desc->aoEntry->segrelid, desc->cur_segno, nvp);
+		if(gp_appendonly_verify_eof)
+		{
+			/*
+			 * If the entry(s) is(are) not found in the aocseg table, then it(they)
+			 * better not be in gp_relation_node table too.
+			 * But, we avoid this check for segment # 0 because it is typically used
+			 * by operations similar to CTAS etc and the order followed is to first
+			 * add to gp_persistent_relation_node (thus gp_relation_node) and later
+			 * to pg_aocsseg table.
+			 */
+			for (int i=0; i < nvp; i++)
+			{
+				if (desc->cur_segno > 0 &&
+					ReadGpRelationNode(desc->aoi_rel->rd_node.relNode,
+									   (i * AOTupleId_MultiplierSegmentFileNum) + desc->cur_segno,
+									   &persistentTid,
+									   &persistentSerialNum))
+				{
+					elog(ERROR, "Found gp_relation_node entry for relation name %s, "
+					"relation Oid %u, relfilenode %u, segment file #%d "
+					"at PTID: %s, PSN: " INT64_FORMAT " when not expected ",
+					desc->aoi_rel->rd_rel->relname.data,
+					desc->aoi_rel->rd_id,
+					desc->aoi_rel->rd_node.relNode,
+					(i * AOTupleId_MultiplierSegmentFileNum) + desc->cur_segno,
+					ItemPointerToString(&persistentTid),
+					persistentSerialNum);
+				}
+			}
+		}
 
+		InsertInitialAOCSFileSegInfo(desc->aoEntry->segrelid, desc->cur_segno, nvp);
 		seginfo = NewAOCSFileSegInfo(desc->cur_segno, nvp);
 	}
+
 	desc->fsInfo = seginfo;
 
 	/* Never insert into a segment that is awaiting a drop */
@@ -731,19 +765,19 @@ static void OpenAOCSDatumStreams(AOCSInsertDesc desc)
 
 	desc->rowCount = seginfo->total_tupcount;
 
-    for(int i=0; i<nvp; ++i)
-    {
-        AOCSVPInfoEntry *e = getAOCSVPEntry(seginfo, i);
+	for(int i=0; i<nvp; ++i)
+	{
+		AOCSVPInfoEntry *e = getAOCSVPEntry(seginfo, i);
 
 		FormatAOSegmentFileName(basepath, seginfo->segno, i, &fileSegNo, fn);
 		Assert(strlen(fn) + 1 <= MAXPGPATH);
 
-        datumstreamwrite_open_file(desc->ds[i], fn, e->eof, e->eof_uncompressed,
+		datumstreamwrite_open_file(desc->ds[i], fn, e->eof, e->eof_uncompressed,
 				desc->aoi_rel->rd_node,
 				fileSegNo);
-    }
+	}
 
-    pfree(basepath);
+	pfree(basepath);
 }
 
 static inline void

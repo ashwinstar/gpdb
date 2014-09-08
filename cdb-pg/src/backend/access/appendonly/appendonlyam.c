@@ -43,6 +43,7 @@
 #include "cdb/cdbappendonlystorage.h"
 #include "cdb/cdbappendonlystorageformat.h"
 #include "cdb/cdbappendonlystoragelayer.h"
+#include "cdb/cdbpersistentfilesysobj.h"
 #include "access/aomd.h"
 #include "access/heapam.h"
 #include "access/hio.h"
@@ -460,6 +461,8 @@ SetCurrentFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
 	int32			fileSegNo;
 	ItemPointerData persistentTid;
 	int64			persistentSerialNum;
+	int64                   appendOnlyNewEof;
+
 
 	/* Make the 'segment' file name */
 	MakeAOSegmentFileName(aoInsertDesc->aoi_rel,
@@ -485,14 +488,40 @@ SetCurrentFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
 
 	/* Now, get the information for the file segment we are going to append to. */
 	aoInsertDesc->fsInfo = GetFileSegInfo(
-									aoInsertDesc->aoi_rel,
-									aoInsertDesc->aoEntry,
-									aoInsertDesc->appendOnlyMetaDataSnapshot,
-									aoInsertDesc->cur_segno);
+										  aoInsertDesc->aoi_rel,
+										  aoInsertDesc->aoEntry,
+										  aoInsertDesc->appendOnlyMetaDataSnapshot,
+										  aoInsertDesc->cur_segno);
+   
 	if (aoInsertDesc->fsInfo == NULL)
 	{
-		InsertInitialSegnoEntry(aoInsertDesc->aoEntry, aoInsertDesc->cur_segno);
+		/*
+		 * If the entry is not found in the pg_aoseg table, then it better not
+		 * be in gp_relation_node table too.
+		 * But, we avoid this check for segment # 0 because it is typically used
+		 * by operations similar to CTAS etc and the order followed is to first
+		 * add to gp_persistent_relation_node (thus gp_relation_node) and later
+		 * to pg_aoseg table.
+		 */
+		if (gp_appendonly_verify_eof && 
+			aoInsertDesc->cur_segno > 0 &&
+			ReadGpRelationNode(aoInsertDesc->aoi_rel->rd_node.relNode,
+							   aoInsertDesc->cur_segno,
+							   &persistentTid,
+							   &persistentSerialNum))
+		{
+			elog(ERROR, "Found gp_relation_node entry for relation name %s, "
+			"relation Oid %u, relfilenode %u, segment file #%d "
+			"at PTID: %s, PSN: " INT64_FORMAT " when not expected",
+			aoInsertDesc->aoi_rel->rd_rel->relname.data,
+			aoInsertDesc->aoi_rel->rd_id,
+			aoInsertDesc->aoi_rel->rd_node.relNode,
+			aoInsertDesc->cur_segno,
+			ItemPointerToString(&persistentTid),
+			persistentSerialNum);
+		}
 
+		InsertInitialSegnoEntry(aoInsertDesc->aoEntry, aoInsertDesc->cur_segno);
 		aoInsertDesc->fsInfo = NewFileSegInfo(aoInsertDesc->cur_segno);
 	}
 
@@ -530,12 +559,44 @@ SetCurrentFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
 					&persistentTid,
 					&persistentSerialNum))
 		{
-			elog(ERROR, "Did not find gp_relation_node entry for relation name %s, relation id %u, relfilenode %u, segment file #%d, logical eof " INT64_FORMAT,
-				 aoInsertDesc->aoi_rel->rd_rel->relname.data,
-				 aoInsertDesc->aoi_rel->rd_id,
-				 aoInsertDesc->aoi_rel->rd_node.relNode,
-				 aoInsertDesc->cur_segno,
-				 eof);
+			elog(ERROR, "Did not find gp_relation_node entry for relation name"
+						" %s, relation id %u, relfilenode %u, segment file #%d,"
+						" logical eof " INT64_FORMAT,
+						aoInsertDesc->aoi_rel->rd_rel->relname.data,
+						aoInsertDesc->aoi_rel->rd_id,
+						aoInsertDesc->aoi_rel->rd_node.relNode,
+						aoInsertDesc->cur_segno,
+						eof);
+		}
+		
+
+		if (gp_appendonly_verify_eof)
+		{
+			/* Get EOF from gp_persistent_relation_node */
+			appendOnlyNewEof = PersistentFileSysObj_ReadEof(
+											    PersistentFsObjType_RelationFile,
+											    &persistentTid);
+
+			/*
+			 * Verify if EOF from gp_persistent_relation_node < EOF from pg_aoseg
+			 *
+			 * Note:- EOF from gp_persistent_relation_node has to be less than the
+			 * EOF from pg_aoseg because inside a transaction the actual EOF where
+			 * the data is inserted has to be greater than or equal to Persistent
+			 * Table (PT) stored EOF as persistent table EOF value is updated at the
+			 * end of the transaction.
+			 */
+		    if (eof < appendOnlyNewEof)
+		    {					
+				elog(ERROR, "Unexpected EOF for relation name %s, relfilenode %u, "
+							"segment file %d. EOF from gp_persistent_relation_node "
+							INT64_FORMAT " greater than current EOF " INT64_FORMAT,
+							aoInsertDesc->aoi_rel->rd_rel->relname.data,
+							aoInsertDesc->aoi_rel->rd_node.relNode,
+							aoInsertDesc->cur_segno,
+							appendOnlyNewEof,
+							eof);
+			}
 		}
 	}
 

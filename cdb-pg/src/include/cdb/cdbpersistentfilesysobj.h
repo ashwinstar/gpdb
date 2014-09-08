@@ -18,6 +18,7 @@
 #include "cdb/cdbpersistentstore.h"
 #include "cdb/cdbdoublylinked.h"
 #include "storage/smgr.h"
+#include "catalog/gp_persistent.h"
 
 typedef struct PersistentFileSysObjSharedData
 {
@@ -388,6 +389,26 @@ inline static void FilespaceScanToken_Init(
 	token->beginScan = false;
 	token->done = false;
 }
+
+inline static int64 PersistentFileSysObj_ReadEof(
+		PersistentFsObjType 	fsObjType,
+		ItemPointer             persistentTid)
+{
+		Datum                   values[Natts_gp_persistent_relation_node];
+		HeapTuple               tupleCopy;
+		int64                   persistentEof;
+
+		/* Get EOF from gp_persistent_relation_node */
+		PersistentFileSysObj_ReadTuple(
+									   fsObjType,
+									   persistentTid,
+									   values,
+									   &tupleCopy);
+		persistentEof = DatumGetInt64(values[Anum_gp_persistent_relation_node_mirror_append_only_new_eof - 1]);
+		heap_freetuple(tupleCopy);
+		return persistentEof;
+}
+
 extern bool PersistentFileSysObj_FilespaceScan(
 	FilespaceScanToken				*filespaceScanToken,
 	Oid 							*filespaceOid,
@@ -444,4 +465,6 @@ extern void PersistentFileSysObj_ActivateStandby(
 								   bool flushToXLog);
 
 extern void PersistentFileSysObj_DoGlobalSequenceScan(void);
+
+
 #endif   /* CDBPERSISTENTFILESYSOBJ_H */

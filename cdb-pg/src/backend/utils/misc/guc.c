@@ -313,6 +313,7 @@ bool        Master_mirroring_administrator_disable = false;
 int			gp_max_local_distributed_cache = 1024;
 bool		gp_appendonly_verify_block_checksums = false;
 bool 		gp_appendonly_verify_write_block = false;
+bool        gp_appendonly_verify_eof = true;
 bool		gp_appendonly_compaction = true;
 int         gp_appendonly_compaction_threshold = 0;
 bool		gp_heap_require_relhasoids_match = true;
@@ -2127,6 +2128,16 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&gp_appendonly_verify_write_block,
 		false, NULL, NULL
+	},
+
+	{
+		{"gp_appendonly_verify_eof", PGC_USERSET, DEVELOPER_OPTIONS,
+		 gettext_noop("Verify append-only eof integrity before writing."),
+		 NULL,
+		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		},
+		&gp_appendonly_verify_eof,
+		true, NULL, NULL
 	},
 
 	{
