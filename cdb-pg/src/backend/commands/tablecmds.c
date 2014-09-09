@@ -3897,15 +3897,32 @@ ATVerifyObject(AlterTableStmt *stmt, Relation rel)
 	}
 
 	/*
-	 * We disallow all ALTER commands with an error table.  Note it is still
-	 * allowed to RENAME.
+	 * We disallow all ALTER commands with an error table.  Note, RENAME,
+	 * SET SCHEMA and SET DISTRIBUTED RANDOMLY are allowed.
 	 */
 	if (IsErrorTable(rel))
-		ereport(ERROR,
-				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("\"%s\" is an error table",
-						RelationGetRelationName(rel)),
-				 errdetail("ALTER TABLE is not allowed on error tables")));
+	{
+		ListCell *lcmd;
+
+		foreach(lcmd, stmt->cmds)
+		{
+			AlterTableCmd *cmd = (AlterTableCmd *) lfirst(lcmd);
+
+			switch(cmd->subtype)
+			{
+				case AT_SetDistributedBy:
+					/* We check the type of operation later in prep. */
+					break;
+				default:
+					ereport(ERROR,
+							(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+							 errmsg("\"%s\" is an error table",
+									RelationGetRelationName(rel)),
+							 errdetail("ALTER TABLE is not allowed on error tables")));
+					break;
+			}
+		}
+	}
 }
 
 /*
@@ -4536,6 +4553,26 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 						heap_close(ptrel, AccessShareLock);
 					}
 				}
+			}
+
+			/*
+			 * We can check this on only QD, since QE gets different
+			 * tree structure than the one from the normal SQL parsing.
+			 */
+			if (Gp_role == GP_ROLE_DISPATCH && IsErrorTable(rel) && !recursing)
+			{
+				List	   *dist_cnames = lsecond((List *) cmd->def);
+
+				/*
+				 * Error table cannot change the policy to non-random.
+				 */
+				if (dist_cnames &&
+					!(list_length(dist_cnames) == 1 && linitial(dist_cnames) == NIL))
+					ereport(ERROR,
+							(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+							 errmsg("\"%s\" is an error table",
+									RelationGetRelationName(rel)),
+							 errdetail("Only random distribution is allowed on error tables")));
 			}
 			ATSimplePermissions(rel, false);
 			ATSimpleRecursion(wqueue, rel, cmd, recurse);
