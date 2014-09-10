@@ -15,7 +15,9 @@
 
 #include "access/attnum.h"
 #include "access/htup.h"
+#include "catalog/gp_policy.h"
 #include "nodes/pg_list.h"
+#include "utils/relcache.h"
 
 /* I/O function selector for get_type_io_data */
 typedef enum IOFuncSelector
@@ -168,6 +170,7 @@ Oid get_check_constraint_relid(Oid oidCheckconstraint);
 extern bool has_subclass_fast(Oid relationId);
 extern bool has_subclass(Oid relationId);
 extern bool has_parquet_children(Oid relationId);
+extern GpPolicy *relation_policy(Relation rel);
 
 extern bool get_cast_func(Oid oidSrc, Oid oidDest, bool *is_binary_coercible, Oid *oidCastFunc);
 

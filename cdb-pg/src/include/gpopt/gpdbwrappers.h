@@ -50,6 +50,7 @@ struct LogicalIndexes;
 struct LogicalIndexInfo;
 struct ParseState;
 struct DefElem;
+struct GpPolicy;
 
 namespace gpdb {
 
@@ -458,8 +459,12 @@ namespace gpdb {
 	// check whether a relation is inherited
 	bool FHasSubclass(Oid oidRel);
 
-        // check whether a relation has parquet children
-        bool FHasParquetChildren(Oid oidRel);
+    // check whether a relation has parquet children
+    bool FHasParquetChildren(Oid oidRel);
+    
+    // return the distribution policy of a relation; if the table is partitioned
+    // and the parts are distributed differently, return Random distribution
+    GpPolicy *Pdistrpolicy(Relation rel);
         
 	// does a relation exist with the given oid
 	bool FRelationExists(Oid oid);

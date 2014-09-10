@@ -485,7 +485,7 @@ CTranslatorRelcacheToDXL::Pmdrel
 	ULONG *pulAttnoMapping = PulAttnoMapping(pmp, pdrgpmdcol, ulMaxCols);
 
 	// get distribution policy
-	GpPolicy *pgppolicy = rel->rd_cdbpolicy;
+	GpPolicy *pgppolicy = gpdb::Pdistrpolicy(rel);
 	IMDRelation::Ereldistrpolicy ereldistribution = Ereldistribution(pgppolicy);
 
 	// get distribution columns

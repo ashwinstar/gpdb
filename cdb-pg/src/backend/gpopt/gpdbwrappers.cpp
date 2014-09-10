@@ -180,6 +180,7 @@
 #define ALLOW_defGetString
 #define ALLOW_fold_arrayexpr_constants
 #define ALLOW_has_parquet_children
+#define ALLOW_relation_policy
 
 #include "gpopt/utils/gpdbdefs.h"
 
@@ -2239,6 +2240,20 @@ gpdb::FHasParquetChildren
         }
         GP_WRAP_END;
         return false;
+}
+
+GpPolicy *
+gpdb::Pdistrpolicy
+	(
+	Relation rel
+	)
+{
+    GP_WRAP_START;
+    {
+    	return relation_policy(rel);
+    }
+    GP_WRAP_END;
+    return NULL;
 }
 
 bool

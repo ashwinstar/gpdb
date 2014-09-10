@@ -55,6 +55,10 @@ attstatsslot_getattr(cqContext	*pcqCtx,
 					 AttrNumber	 attnum, bool *isnull);
 
 
+static bool
+GpPolicyEqualPartTables(Relation relRoot, Relation relChild);
+
+
 /*				---------- AMOP CACHES ----------						 */
 
 /*
@@ -3919,3 +3923,103 @@ has_parquet_children(Oid relationId)
 	list_free(child_oids);
 	return false;
 }
+
+/*
+ *  relation_policy
+ *  Return the distribution policy of a table. If the table is partitioned, and 
+ *  the parts have different distribution, return Random distribution
+*/
+GpPolicy *
+relation_policy(Relation rel)
+{
+	Assert(NULL != rel);
+	if (PART_STATUS_NONE == rel_part_status(rel->rd_id))
+	{
+		/* not a partitioned table */
+		return rel->rd_cdbpolicy;
+	}
+	
+	GpPolicy *rootPolicy = rel->rd_cdbpolicy;
+	Assert(NULL != rootPolicy && "Partitioned tables cannot be master-only");
+	
+	if (POLICYTYPE_PARTITIONED == rootPolicy->ptype && 0 == rootPolicy->nattrs)
+	{
+		/* root partition policy already marked as Random */
+		return rootPolicy;
+	}
+	
+	List *child_oids = find_all_inheritors(rel->rd_id);
+	ListCell *lc = NULL;
+	int	maxattrs = 200;
+	
+	foreach (lc, child_oids)
+	{
+		Oid oidChild = lfirst_oid(lc);
+		Relation relChild = RelationIdGetRelation(oidChild);
+		Assert(NULL != relChild);
+		
+		if (!GpPolicyEqualPartTables(rel, relChild))
+		{
+			/* child and root have different distributions*/
+			list_free(child_oids);
+			RelationClose(relChild);
+
+			/* return a random distribution */
+			GpPolicy *policy = (GpPolicy *) palloc(sizeof(GpPolicy) + maxattrs * sizeof(policy->attrs[0]));
+			policy->ptype = POLICYTYPE_PARTITIONED;
+			policy->nattrs = 0;
+			policy->attrs[0] = 1;
+			return policy;
+		}
+		
+		RelationClose(relChild);
+	}
+	list_free(child_oids);
+	
+	/* all children match the root's distribution policy */
+	return rootPolicy;
+}
+
+/*
+ *  GpPolicyEqualPartTables
+ *  Check if the distribution policies of a child and root partition are equal
+*/
+bool
+GpPolicyEqualPartTables(Relation relRoot, Relation relChild)
+{
+	GpPolicy *rootPolicy = relRoot->rd_cdbpolicy;
+	GpPolicy *childPolicy = relChild->rd_cdbpolicy;
+	
+	Assert(NULL != rootPolicy && NULL != childPolicy && "Partitioned tables cannot be master-only");
+	Assert(POLICYTYPE_PARTITIONED == rootPolicy->ptype && POLICYTYPE_PARTITIONED == childPolicy->ptype && "Partitioned tables cannot be master-only");
+	if (rootPolicy->nattrs != childPolicy->nattrs)
+	{
+		/* root and child distributed on a different number of columns */
+		return false;
+	}
+	
+	/* remap attributes in case of dropped columns */
+	AttrMap *map = NULL;
+	map_part_attrs(relRoot, relChild, &map, false /*throw*/); 
+
+	if (NULL == map)
+	{
+		/* no dropped attributes: check simple equality */
+		return GpPolicyEqual(rootPolicy, childPolicy);
+	}
+	
+	for (int i = 0; i < rootPolicy->nattrs; i++)
+	{
+		AttrNumber remapped_parent_attr = attrMap(map, rootPolicy->attrs[i]);
+		
+		if (remapped_parent_attr != childPolicy->attrs[i])
+		{
+			pfree(map);
+			return false;
+		}
+	}
+	
+	pfree(map);
+	return true;
+}
+
