@@ -664,11 +664,10 @@ heap_test_override_reloptions(char relkind, StdRdOptions *stdRdOptions, int *saf
 
 	/*
 	 * Normally, appendonly tables don't use checksum on the data.
-	 * If the override is specified - use the override value.
 	 */
-	if (Test_checksum_override)
+	if (enable_checksum_on_tables)
 	{
-		stdRdOptions->checksum = Test_checksum_override;
+		stdRdOptions->checksum = enable_checksum_on_tables;
 	}
 
 	/*

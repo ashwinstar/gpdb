@@ -304,14 +304,14 @@ bool		Test_print_direct_dispatch_info = false;
 bool 		gp_test_orientation_override = false;
 bool		gp_permit_persistent_metadata_update = false;
 bool		gp_permit_relation_node_change = false;
-bool 		Test_checksum_override = false;
+bool 		enable_checksum_on_tables = true;
 bool		Test_enable_broken_quicklz3 = false;
 int         Test_compresslevel_override = 0;
 int			Test_blocksize_override = 0;
 int			Test_safefswritesize_override = 0;
 bool        Master_mirroring_administrator_disable = false;
 int			gp_max_local_distributed_cache = 1024;
-bool		gp_appendonly_verify_block_checksums = false;
+bool		gp_appendonly_verify_block_checksums = true;
 bool 		gp_appendonly_verify_write_block = false;
 bool        gp_appendonly_verify_eof = true;
 bool		gp_appendonly_compaction = true;
@@ -2117,7 +2117,7 @@ static struct config_bool ConfigureNamesBool[] =
 		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&gp_appendonly_verify_block_checksums,
-		false, NULL, NULL
+		true, NULL, NULL
 	},
 
 	{
@@ -3062,13 +3062,13 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"test_checksum_override", PGC_SUSET, DEVELOPER_OPTIONS,
-			gettext_noop("For testing purposes, change the default of the checksum create table option."),
+		{"enable_checksum_on_tables", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Change the default of the checksum create table option."),
 			NULL,
 			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
-		&Test_checksum_override,
-		false, NULL, NULL
+		&enable_checksum_on_tables,
+		true, NULL, NULL
 	},
 
 	{

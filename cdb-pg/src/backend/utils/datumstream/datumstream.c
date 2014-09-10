@@ -325,7 +325,7 @@ init_datumstream_typeinfo(
 bool
 init_datumstream_checksum(char *compName, bool checksum)
 {
-	return (checksum && (pg_strcasecmp(compName, "rle_type") == 0));
+	return (checksum);
 }
 
 /*

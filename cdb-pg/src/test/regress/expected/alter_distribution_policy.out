@@ -668,16 +668,16 @@ select relname, a.blocksize, compresslevel, compresstype, checksum from pg_class
 relname  like 'atsdb%' and c.oid = a.relid order by 1;
     relname    | blocksize | compresslevel | compresstype | checksum 
 ---------------+-----------+---------------+--------------+----------
- atsdb         |     32768 |             0 |              | f
- atsdb_1_prt_1 |     32768 |             0 |              | f
- atsdb_1_prt_2 |     32768 |             0 |              | f
- atsdb_1_prt_3 |     32768 |             0 |              | f
- atsdb_1_prt_4 |     32768 |             0 |              | f
- atsdb_1_prt_5 |     32768 |             0 |              | f
- atsdb_1_prt_6 |     32768 |             0 |              | f
- atsdb_1_prt_7 |     32768 |             0 |              | f
- atsdb_1_prt_8 |     32768 |             0 |              | f
- atsdb_1_prt_9 |     32768 |             0 |              | f
+ atsdb         |     32768 |             0 |              | t
+ atsdb_1_prt_1 |     32768 |             0 |              | t
+ atsdb_1_prt_2 |     32768 |             0 |              | t
+ atsdb_1_prt_3 |     32768 |             0 |              | t
+ atsdb_1_prt_4 |     32768 |             0 |              | t
+ atsdb_1_prt_5 |     32768 |             0 |              | t
+ atsdb_1_prt_6 |     32768 |             0 |              | t
+ atsdb_1_prt_7 |     32768 |             0 |              | t
+ atsdb_1_prt_8 |     32768 |             0 |              | t
+ atsdb_1_prt_9 |     32768 |             0 |              | t
 (10 rows)
 
 select * from atsdb order by 1, 2, 3;

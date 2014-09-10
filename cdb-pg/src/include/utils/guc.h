@@ -152,7 +152,7 @@ extern bool	Test_enable_broken_quicklz3;
 extern bool gp_test_orientation_override;
 extern bool	gp_permit_persistent_metadata_update;
 extern bool gp_permit_relation_node_change;
-extern bool Test_checksum_override;
+extern bool enable_checksum_on_tables;
 extern int  Test_compresslevel_override;
 extern int	Test_blocksize_override;
 extern int  Test_safefswritesize_override;

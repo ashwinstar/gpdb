@@ -835,7 +835,8 @@ bool AppendOnlyStorageRead_ReadNextBlock(
 	 *   3. Examine specific header.
 	 * [ 4. Verify the block checksum ]
 	 */
-	if (storageRead->storageAttributes.checksum)
+	if (storageRead->storageAttributes.checksum &&
+		gp_appendonly_verify_block_checksums)
 	{
 		if (!AppendOnlyStorageFormat_VerifyHeaderChecksum(
 													header,

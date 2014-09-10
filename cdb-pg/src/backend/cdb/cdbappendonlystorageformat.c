@@ -23,17 +23,13 @@ AppendOnlyStorageFormat_ComputeHeaderChecksum(
 	
 	Assert(headerPtr != NULL);
 
-	INIT_CRC32(crc);
-
 	/* 
 	 * Compute CRC of the header. The header length does not include the
 	 * header checksum.
 	 */
-	COMP_CRC32(crc, 
-	           headerPtr, 
-	           headerLen);
+        crc = crc32c(crc32cInit(), headerPtr, headerLen);
+        crc32cFinish(crc);
 
-	/* BUG: This routine does not return a correct CRC32, since it never calls FIN_CRC32 */
 	return crc;
 }
 
@@ -54,17 +50,12 @@ AppendOnlyStorageFormat_ComputeBlockChecksum(
 	 */
 	dataOffset = headerLen + sizeof(pg_crc32);
 
-	INIT_CRC32(crc);
-
 	/* Compute CRC of the header. */
-	COMP_CRC32(crc, 
-	           headerPtr + dataOffset, 
-	           overallBlockLen - dataOffset);
+        crc = crc32c(crc32cInit(), headerPtr + dataOffset, overallBlockLen - dataOffset);
+        crc32cFinish(crc);
 
-	/* BUG: This routine does not return a correct CRC32, since it never calls FIN_CRC32 */
 	return crc;
 }
-
 
 int32 
 AppendOnlyStorageFormat_RegularHeaderLenNeeded(
