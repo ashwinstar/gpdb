@@ -216,12 +216,31 @@ namespace gpdxl
 				const CDXLNode *pdxlnSubPlan,
 				CMappingColIdVar *pmapcidvar
 				);
-
+			
+			// build subplan node
 			SubPlan *PsubplanFromChildPlan
 				(
 				Plan *pplanChild,
+				SubLinkType slink,
 				CContextDXLToPlStmt *pctxdxltoplstmt
 				);
+
+			// translate subplan test expression
+			Expr *PexprSubplanTestExpr
+        			(
+        			CDXLNode *pdxlnTestExpr,
+				SubLinkType slink,
+        			CMappingColIdVar *pmapcidvar
+        			);
+			
+			// translate subplan parameters
+			void TranslateSubplanParams
+        			(
+        			SubPlan *psubplan,
+        			CDXLTranslateContext *pdxltrctx,
+        			const DrgPdxlcr *pdrgdxlcrOuterRefs,
+				CMappingColIdVar *pmapcidvar
+       	 			);
 
 			CHAR *SzSubplanAlias(ULONG ulPlanId);
 

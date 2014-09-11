@@ -2801,4 +2801,90 @@ CTranslatorUtils::MarkOuterRefs
 	}
 }
 
+//---------------------------------------------------------------------------
+//      @function:
+//              CTranslatorUtils::Slink
+//
+//      @doc:
+//              Map DXL Subplan type to GPDB SubLinkType
+//
+//---------------------------------------------------------------------------
+SubLinkType
+CTranslatorUtils::Slink
+        (
+        EdxlSubPlanType edxlsubplantype
+        )
+{
+        GPOS_ASSERT(EdxlSubPlanTypeSentinel > edxlsubplantype);
+        ULONG rgrgulMapping[][2] =
+                {
+                {EdxlSubPlanTypeScalar, EXPR_SUBLINK},
+                {EdxlSubPlanTypeExists, EXISTS_SUBLINK},
+                {EdxlSubPlanTypeNotExists, NOT_EXISTS_SUBLINK},
+                {EdxlSubPlanTypeAny, ANY_SUBLINK},
+                {EdxlSubPlanTypeAll, ALL_SUBLINK}
+                };
+
+        const ULONG ulArity = GPOS_ARRAY_SIZE(rgrgulMapping);
+        SubLinkType slink = EXPR_SUBLINK;
+	BOOL fFound = false;
+        for (ULONG ul = 0; ul < ulArity; ul++)
+        {
+                ULONG *pulElem = rgrgulMapping[ul];
+                if ((ULONG) edxlsubplantype == pulElem[0])
+                {
+                        slink = (SubLinkType) pulElem[1];
+                        fFound = true;
+			break;
+                }
+        }
+
+	GPOS_ASSERT(fFound && "Invalid SubPlanType");
+
+        return slink;
+}
+
+
+//---------------------------------------------------------------------------
+//      @function:
+//              CTranslatorUtils::Edxlsubplantype
+//
+//      @doc:
+//              Map GPDB SubLinkType to DXL subplan type
+//
+//---------------------------------------------------------------------------
+EdxlSubPlanType
+CTranslatorUtils::Edxlsubplantype
+        (
+        SubLinkType slink
+        )
+{
+        ULONG rgrgulMapping[][2] =
+                {
+                {EXPR_SUBLINK, EdxlSubPlanTypeScalar},
+                {EXISTS_SUBLINK , EdxlSubPlanTypeExists},
+                {NOT_EXISTS_SUBLINK, EdxlSubPlanTypeNotExists},
+                {ANY_SUBLINK, EdxlSubPlanTypeAny},
+                {ALL_SUBLINK, EdxlSubPlanTypeAll}
+                };
+
+        const ULONG ulArity = GPOS_ARRAY_SIZE(rgrgulMapping);
+        EdxlSubPlanType edxlsubplantype = EdxlSubPlanTypeScalar;
+	BOOL fFound = false;
+        for (ULONG ul = 0; ul < ulArity; ul++)
+        {
+                ULONG *pulElem = rgrgulMapping[ul];
+                if ((ULONG) slink == pulElem[0])
+                {
+                        edxlsubplantype = (EdxlSubPlanType) pulElem[1];
+                        fFound = true;
+			break;
+                }
+        }
+
+	 GPOS_ASSERT(fFound && "Invalid SubLinkType");
+
+        return edxlsubplantype;
+}
+
 // EOF

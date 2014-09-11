@@ -1005,28 +1005,21 @@ SELECT * FROM csq_r WHERE a <= ALL (SELECT csq_f FROM csq_f(csq_r.a));
 -- fails: correlation in distributed subplan
 -- force_explain
 explain SELECT * FROM csq_r WHERE a IN (SELECT csq_f FROM csq_f(csq_r.a),csq_r);
-                                                               QUERY PLAN                                                                
------------------------------------------------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..1724.04 rows=1 width=4)
-   ->  Result  (cost=0.00..1724.04 rows=1 width=4)
-         Filter: CASE WHEN "ColRef_0022" = (-1)::bigint THEN NULL::bigint ELSE COALESCE("ColRef_0022", 0::bigint) END > 0::bigint
-         ->  Result  (cost=0.00..1724.03 rows=500 width=16)
-               ->  Table Scan on csq_r  (cost=0.00..1724.02 rows=500 width=16)
-               SubPlan 1
-                 ->  Result  (cost=0.00..862.00 rows=2 width=8)
-                       ->  Aggregate  (cost=0.00..862.00 rows=2 width=16)
-                             ->  Result  (cost=0.00..862.00 rows=2 width=8)
-                                   Filter: $0 = csq_f OR csq_f IS NULL
-                                   ->  Result  (cost=0.00..862.00 rows=2 width=16)
-                                         ->  Nested Loop  (cost=0.00..862.00 rows=2 width=8)
-                                               Join Filter: true
-                                               ->  Result  (cost=0.00..0.00 rows=1 width=8)
-                                                     ->  Result  (cost=0.00..0.00 rows=1 width=1)
-                                               ->  Materialize  (cost=0.00..431.00 rows=2 width=1)
-                                                     ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..431.00 rows=2 width=1)
-                                                           ->  Table Scan on csq_r  (cost=0.00..431.00 rows=1 width=1)
+                                                QUERY PLAN
+-----------------------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..1724.00 rows=1 width=4)
+   ->  Table Scan on csq_r  (cost=0.00..1724.00 rows=1 width=4)
+         Filter: (subplan)
+         SubPlan 1
+           ->  Nested Loop  (cost=0.00..862.00 rows=2 width=8)
+                 Join Filter: true
+                 ->  Result  (cost=0.00..0.00 rows=1 width=8)
+                       ->  Result  (cost=0.00..0.00 rows=1 width=1)
+                 ->  Materialize  (cost=0.00..431.00 rows=2 width=1)
+                       ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..431.00 rows=2 width=1)
+                             ->  Table Scan on csq_r  (cost=0.00..431.00 rows=1 width=1)
  Settings:  optimizer=on; optimizer_segments=3
-(19 rows)
+(12 rows)
 
 --
 -- Test pullup of expr CSQs to joins

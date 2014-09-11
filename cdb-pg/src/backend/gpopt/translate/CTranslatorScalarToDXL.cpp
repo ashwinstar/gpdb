@@ -240,7 +240,7 @@ CTranslatorScalarToDXL::PdxlnSubPlanFromSubPlan
 	DrgPmdid *pdrgmdid = New(m_pmp) DrgPmdid(m_pmp);
 
 	ListCell *plc = NULL;
-	ULONG ul;
+	ULONG ul = 0;
 
 	ForEachWithCount (plc, psubplan->args, ul)
 	{
@@ -281,11 +281,19 @@ CTranslatorScalarToDXL::PdxlnSubPlanFromSubPlan
 		pdrgdxlcr->Append(pdxlcr);
 		pdrgmdid->Append(New(m_pmp) CMDIdGPDB(pvar->vartype));
 	}
+	
+	// translate subplan test expression
+	CDXLNode *pdxlnTestExpr = NULL;
+	if (NULL != psubplan->testexpr)
+	{	
+		pdxlnTestExpr = PdxlnScOpFromExpr((Expr *)psubplan->testexpr, pmapvarcolid);
+	}
 
 	IMDId *pmdid = New(m_pmp) CMDIdGPDB(psubplan->firstColType);
 
 	// create the DXL node holding the scalar subplan
-	CDXLNode *pdxln = New(m_pmp) CDXLNode(m_pmp, New(m_pmp) CDXLScalarSubPlan(m_pmp, pmdid, pdrgdxlcr, pdrgmdid));
+	EdxlSubPlanType edxlsubplantype = CTranslatorUtils::Edxlsubplantype(psubplan->subLinkType);
+	CDXLNode *pdxln = New(m_pmp) CDXLNode(m_pmp, New(m_pmp) CDXLScalarSubPlan(m_pmp, pmdid, pdrgdxlcr, pdrgmdid, edxlsubplantype, pdxlnTestExpr));
 
 	// get the actual sub plan from the plstmt
 	Plan *pplanChild = (Plan *) gpdb::PvListNth(m_pplstmt->subplans, psubplan->plan_id - 1);

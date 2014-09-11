@@ -437,6 +437,13 @@ namespace gpdxl
                         static
 			void MarkOuterRefs(ULONG *pulColId, BOOL *pfOuterRef, ULONG ulColumns, CDXLNode *pdxlnode);
 
+			// map DXL Subplan type to GPDB SubLinkType
+			static
+			SubLinkType Slink(EdxlSubPlanType edxlsubplantype);
+
+			 // map GPDB SubLinkType to DXL Subplan type
+			static
+			EdxlSubPlanType Edxlsubplantype(SubLinkType slink);
 	};
 }
 
