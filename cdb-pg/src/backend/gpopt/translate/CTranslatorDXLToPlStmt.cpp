@@ -5650,7 +5650,7 @@ CTranslatorDXLToPlStmt::PplanBitmapTableScan
 							(
 							pdxlnRecheckCond,
 							&dxltrctxbt,
-							NULL,	  // pdrgpdxltrctx
+							pdrgpdxltrctxPrevSiblings,
 							pdxltrctxOut,
 							pplan
 							);
@@ -5662,6 +5662,7 @@ CTranslatorDXLToPlStmt::PplanBitmapTableScan
 								pmdrel,
 								pdxltabdesc,
 								&dxltrctxbt,
+								pdrgpdxltrctxPrevSiblings,
 								pdbts
 								);
 	SetParamIds(pplan);
@@ -5686,6 +5687,7 @@ CTranslatorDXLToPlStmt::PplanBitmapAccessPath
 	const IMDRelation *pmdrel,
 	const CDXLTableDescr *pdxltabdesc,
 	CDXLTranslateContextBaseTable *pdxltrctxbt,
+	DrgPdxltrctx *pdrgpdxltrctxPrevSiblings,
 	BitmapTableScan *pdbts
 	)
 {
@@ -5699,6 +5701,7 @@ CTranslatorDXLToPlStmt::PplanBitmapAccessPath
 				pmdrel,
 				pdxltabdesc,
 				pdxltrctxbt,
+				pdrgpdxltrctxPrevSiblings,
 				pdbts
 				);
 	}
@@ -5710,7 +5713,8 @@ CTranslatorDXLToPlStmt::PplanBitmapAccessPath
 			pdxltrctxOut, 
 			pmdrel, 
 			pdxltabdesc, 
-			pdxltrctxbt, 
+			pdxltrctxbt,
+			pdrgpdxltrctxPrevSiblings,
 			pdbts
 			);
 }
@@ -5731,6 +5735,7 @@ CTranslatorDXLToPlStmt::PplanBitmapBoolOp
 	const IMDRelation *pmdrel,
 	const CDXLTableDescr *pdxltabdesc,
 	CDXLTranslateContextBaseTable *pdxltrctxbt,
+	DrgPdxltrctx *pdrgpdxltrctxPrevSiblings,
 	BitmapTableScan *pdbts
 	)
 {
@@ -5742,8 +5747,26 @@ CTranslatorDXLToPlStmt::PplanBitmapBoolOp
 	CDXLNode *pdxlnLeft = (*pdxlnBitmapBoolOp)[0];
 	CDXLNode *pdxlnRight = (*pdxlnBitmapBoolOp)[1];
 	
-	Plan *pplanLeft = PplanBitmapAccessPath(pdxlnLeft, pdxltrctxOut, pmdrel, pdxltabdesc, pdxltrctxbt, pdbts);
-	Plan *pplanRight = PplanBitmapAccessPath(pdxlnRight, pdxltrctxOut, pmdrel, pdxltabdesc, pdxltrctxbt, pdbts);
+	Plan *pplanLeft = PplanBitmapAccessPath
+						(
+						pdxlnLeft,
+						pdxltrctxOut,
+						pmdrel,
+						pdxltabdesc,
+						pdxltrctxbt,
+						pdrgpdxltrctxPrevSiblings,
+						pdbts
+						);
+	Plan *pplanRight = PplanBitmapAccessPath
+						(
+						pdxlnRight,
+						pdxltrctxOut,
+						pmdrel,
+						pdxltabdesc,
+						pdxltrctxbt,
+						pdrgpdxltrctxPrevSiblings,
+						pdbts
+						);
 	List *plChildPlans = ListMake2(pplanLeft, pplanRight);
 
 	Plan *pplan = NULL;
@@ -5785,6 +5808,7 @@ CTranslatorDXLToPlStmt::PplanBitmapIndexProbe
 	const IMDRelation *pmdrel,
 	const CDXLTableDescr *pdxltabdesc,
 	CDXLTranslateContextBaseTable *pdxltrctxbt,
+	DrgPdxltrctx *pdrgpdxltrctxPrevSiblings,
 	BitmapTableScan *pdbts
 	)
 {
@@ -5825,7 +5849,7 @@ CTranslatorDXLToPlStmt::PplanBitmapIndexProbe
 		pmdrel,
 		pdxltrctxOut,
 		pdxltrctxbt,
-		NULL,  // pdrgpdxltrctxPrevSiblings
+		pdrgpdxltrctxPrevSiblings,
 		pplan,
 		&plIndexConditions,
 		&plIndexOrigConditions,

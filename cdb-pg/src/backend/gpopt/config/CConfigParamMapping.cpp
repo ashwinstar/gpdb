@@ -364,18 +364,17 @@ CConfigParamMapping::PbsPack
 	// disable index-join if the corresponding GUC is turned off
 	if (!optimizer_enable_indexjoin)
 	{
-		(void) pbs->FExchangeSet(GPOPT_DISABLE_XFORM_TF(CXform::ExfInnerJoin2IndexGetApply));
-		(void) pbs->FExchangeSet(GPOPT_DISABLE_XFORM_TF(CXform::ExfInnerJoin2DynamicIndexGetApply));
-		(void) pbs->FExchangeSet(GPOPT_DISABLE_XFORM_TF(CXform::ExfInnerJoin2PartialDynamicIndexGetApply));
+		CBitSet *pbsIndexJoin = CXform::PbsIndexJoinXforms(pmp);
+		pbs->Union(pbsIndexJoin);
+		pbsIndexJoin->Release();
 	}
 
 	// disable bitmap scan if the corresponding GUC is turned off
 	if (!optimizer_enable_bitmapscan)
 	{
-		(void) pbs->FExchangeSet(GPOPT_DISABLE_XFORM_TF(CXform::ExfSelect2BitmapTableGet));
-		(void) pbs->FExchangeSet(GPOPT_DISABLE_XFORM_TF(CXform::ExfSelect2DynamicBitmapTableGet));
-		(void) pbs->FExchangeSet(GPOPT_DISABLE_XFORM_TF(CXform::ExfSelect2BitmapBoolOp));
-		(void) pbs->FExchangeSet(GPOPT_DISABLE_XFORM_TF(CXform::ExfSelect2DynamicBitmapBoolOp));
+		CBitSet *pbsBitmapScan = CXform::PbsBitmapIndexXforms(pmp);
+		pbs->Union(pbsBitmapScan);
+		pbsBitmapScan->Release();
 	}
 
 	return pbs;

@@ -672,6 +672,7 @@ namespace gpdxl
 				const IMDRelation *pmdrel,
 				const CDXLTableDescr *pdxltabdesc,
 				CDXLTranslateContextBaseTable *pdxltrctxbt,
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings,
 				BitmapTableScan *pdbts
 				);
 
@@ -683,6 +684,7 @@ namespace gpdxl
 				const IMDRelation *pmdrel,
 				const CDXLTableDescr *pdxltabdesc,
 				CDXLTranslateContextBaseTable *pdxltrctxbt,
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings,
 				BitmapTableScan *pdbts
 				);
 			
@@ -694,6 +696,7 @@ namespace gpdxl
 				const IMDRelation *pmdrel,
 				const CDXLTableDescr *pdxltabdesc,
 				CDXLTranslateContextBaseTable *pdxltrctxbt,
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings,
 				BitmapTableScan *pdbts
 				);
 
