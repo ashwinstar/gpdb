@@ -2886,8 +2886,8 @@ pg_xlog
 		$cmd_template .= 
 			'find MYDIR -type f  ' . 
 			$ignore_cmd .
-			'| xargs perl MYPRESH1  ' .
 			'| sort  ' .
+			'| xargs perl MYPRESH1  ' .
 			'| perl -i -ple \'s|MYDIR||gm \' ' . 
 			# strip out [hostname] prefix
 			'| perl -i -ple \'s|^\\s*\\[.*\\]\\s*||gm \'  ' ;
