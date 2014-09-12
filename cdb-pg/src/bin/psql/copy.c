@@ -354,6 +354,11 @@ do_copy(const char *args)
 		PQclear(result);
 	}
 
+	if (result != NULL)
+	{
+		PQclear(result);
+	}
+
 	if (options->file != NULL)
 	{
 		if (fclose(copystream) != 0)
