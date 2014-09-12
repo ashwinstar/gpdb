@@ -132,6 +132,12 @@ namespace gpdxl
 			// does the query have distributed tables
 			BOOL m_fHasDistributedTables;
 
+			// top query is a DML
+			BOOL m_fTopDMLQuery;
+
+			// this is a CTAS query
+			BOOL m_fCTASQuery;
+
 			// hash map that maintains the list of CTEs defined at a particular query level
 			HMUlCTEListEntry *m_phmulCTEEntries;
 
@@ -143,6 +149,21 @@ namespace gpdxl
 			
 			// CTE producer IDs defined at the current query level
 			HMUlF *m_phmulfCTEProducers;
+
+			//ctor
+			// private constructor, called from the public factory function PtrquerytodxlInstance
+			CTranslatorQueryToDXL
+				(
+				IMemoryPool *pmp,
+				CMDAccessor *pmda,
+				CIdGenerator *pidgtorColId,
+				CIdGenerator *pidgtorCTE,
+				CMappingVarColId *pmapvarcolid,
+				Query *pquery,
+				ULONG ulQueryLevel,
+				BOOL fTopDMLQuery,
+				HMUlCTEListEntry *phmulCTEEntries  // hash map between query level -> list of CTEs defined at that level
+				);
 
 			// private copy ctor
 			CTranslatorQueryToDXL(const CTranslatorQueryToDXL&);
@@ -444,21 +465,10 @@ namespace gpdxl
 			// with the colid at the same position in the "To" list
 			HMIUl *PhmiulRemapColIds(IMemoryPool *pmp, HMIUl *phmiul, DrgPul *pdrgpulFrom, DrgPul *pdrgpulTo) const;
 
+			// true iff this query or one of its ancestors is a DML query
+			BOOL FDMLQuery();
+
 		public:
-
-			//ctor
-			CTranslatorQueryToDXL
-				(
-				IMemoryPool *pmp,
-				CMDAccessor *pmda,
-				CIdGenerator *pidgtorColId,
-				CIdGenerator *pidgtorCTE,
-				CMappingVarColId *pmapvarcolid,
-				Query *pquery,
-				ULONG ulQueryLevel,
-				HMUlCTEListEntry *phmulCTEEntries = NULL // hash map between query level -> list of CTEs defined at that level
-				);
-
 			// dtor
 			~CTranslatorQueryToDXL();
 
@@ -486,6 +496,19 @@ namespace gpdxl
 			// return the list of CTEs
 			DrgPdxln *PdrgpdxlnCTE() const;
 
+			// factory function
+			static
+			CTranslatorQueryToDXL *PtrquerytodxlInstance
+				(
+				IMemoryPool *pmp,
+				CMDAccessor *pmda,
+				CIdGenerator *pidgtorColId,
+				CIdGenerator *pidgtorCTE,
+				CMappingVarColId *pmapvarcolid,
+				Query *pquery,
+				ULONG ulQueryLevel,
+				HMUlCTEListEntry *phmulCTEEntries = NULL // hash map between query level -> list of CTEs defined at that level
+				);
 	};
 }
 #endif // GPDXL_CTranslatorQueryToDXL_H

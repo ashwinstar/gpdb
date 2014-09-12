@@ -31,6 +31,7 @@
 #include "utils/numeric.h"
 
 #include "gpos/base.h"
+#include "gpos/common/CAutoP.h"
 #include "gpos/string/CWStringDynamic.h"
 
 #include "dxl/operators/CDXLDatumBool.h"
@@ -1718,7 +1719,8 @@ CTranslatorScalarToDXL::PdxlnQuantifiedSubqueryFromSublink
 {
 	CMappingVarColId *pmapvarcolidCopy = pmapvarcolid->PmapvarcolidCopy(m_pmp);
 
-	CTranslatorQueryToDXL trquerytodxl
+	CAutoP<CTranslatorQueryToDXL> ptrquerytodxl;
+	ptrquerytodxl = CTranslatorQueryToDXL::PtrquerytodxlInstance
 							(
 							m_pmp,
 							m_pmda,
@@ -1730,10 +1732,10 @@ CTranslatorScalarToDXL::PdxlnQuantifiedSubqueryFromSublink
 							m_phmulCTEEntries
 							);
 
-	CDXLNode *pdxlnInner = trquerytodxl.PdxlnFromQueryInternal();
+	CDXLNode *pdxlnInner = ptrquerytodxl->PdxlnFromQueryInternal();
 
-	DrgPdxln *pdrgpdxlnQueryOutput = trquerytodxl.PdrgpdxlnQueryOutput();
-	DrgPdxln *pdrgpdxlnCTE = trquerytodxl.PdrgpdxlnCTE();
+	DrgPdxln *pdrgpdxlnQueryOutput = ptrquerytodxl->PdrgpdxlnQueryOutput();
+	DrgPdxln *pdrgpdxlnCTE = ptrquerytodxl->PdrgpdxlnCTE();
 	CUtils::AddRefAppend(m_pdrgpdxlnCTE, pdrgpdxlnCTE);
 
 	if (1 != pdrgpdxlnQueryOutput->UlLength())
@@ -1741,7 +1743,7 @@ CTranslatorScalarToDXL::PdxlnQuantifiedSubqueryFromSublink
 		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature, GPOS_WSZ_LIT("Non-Scalar Subquery"));
 	}
 
-	m_fHasDistributedTables = m_fHasDistributedTables || trquerytodxl.FHasDistributedTables();
+	m_fHasDistributedTables = m_fHasDistributedTables || ptrquerytodxl->FHasDistributedTables();
 
 	CDXLNode *pdxlnIdent = (*pdrgpdxlnQueryOutput)[0];
 	GPOS_ASSERT(NULL != pdxlnIdent);
@@ -1823,7 +1825,8 @@ CTranslatorScalarToDXL::PdxlnScSubqueryFromSublink
 	CMappingVarColId *pmapvarcolidCopy = pmapvarcolid->PmapvarcolidCopy(m_pmp);
 
 	Query *pquerySublink = (Query *) psublink->subselect;
-	CTranslatorQueryToDXL trquerytodxl
+	CAutoP<CTranslatorQueryToDXL> ptrquerytodxl;
+	ptrquerytodxl = CTranslatorQueryToDXL::PtrquerytodxlInstance
 							(
 							m_pmp,
 							m_pmda,
@@ -1834,15 +1837,15 @@ CTranslatorScalarToDXL::PdxlnScSubqueryFromSublink
 							m_ulQueryLevel + 1,
 							m_phmulCTEEntries
 							);
-	CDXLNode *pdxlnSubQuery = trquerytodxl.PdxlnFromQueryInternal();
+	CDXLNode *pdxlnSubQuery = ptrquerytodxl->PdxlnFromQueryInternal();
 
-	DrgPdxln *pdrgpdxlnQueryOutput = trquerytodxl.PdrgpdxlnQueryOutput();
+	DrgPdxln *pdrgpdxlnQueryOutput = ptrquerytodxl->PdrgpdxlnQueryOutput();
 
 	GPOS_ASSERT(1 == pdrgpdxlnQueryOutput->UlLength());
 
-	DrgPdxln *pdrgpdxlnCTE = trquerytodxl.PdrgpdxlnCTE();
+	DrgPdxln *pdrgpdxlnCTE = ptrquerytodxl->PdrgpdxlnCTE();
 	CUtils::AddRefAppend(m_pdrgpdxlnCTE, pdrgpdxlnCTE);
-	m_fHasDistributedTables = m_fHasDistributedTables || trquerytodxl.FHasDistributedTables();
+	m_fHasDistributedTables = m_fHasDistributedTables || ptrquerytodxl->FHasDistributedTables();
 
 	// get dxl scalar identifier
 	CDXLNode *pdxlnIdent = (*pdrgpdxlnQueryOutput)[0];
@@ -2013,7 +2016,8 @@ CTranslatorScalarToDXL::PdxlnExistSubqueryFromSublink
 	GPOS_ASSERT(NULL != psublink);
 	CMappingVarColId *pmapvarcolidCopy = pmapvarcolid->PmapvarcolidCopy(m_pmp);
 
-	CTranslatorQueryToDXL trquerytodxl
+	CAutoP<CTranslatorQueryToDXL> ptrquerytodxl;
+	ptrquerytodxl = CTranslatorQueryToDXL::PtrquerytodxlInstance
 							(
 							m_pmp,
 							m_pmda,
@@ -2024,11 +2028,11 @@ CTranslatorScalarToDXL::PdxlnExistSubqueryFromSublink
 							m_ulQueryLevel + 1,
 							m_phmulCTEEntries
 							);
-	CDXLNode *pdxlnRoot = trquerytodxl.PdxlnFromQueryInternal();
+	CDXLNode *pdxlnRoot = ptrquerytodxl->PdxlnFromQueryInternal();
 	
-	DrgPdxln *pdrgpdxlnCTE = trquerytodxl.PdrgpdxlnCTE();
+	DrgPdxln *pdrgpdxlnCTE = ptrquerytodxl->PdrgpdxlnCTE();
 	CUtils::AddRefAppend(m_pdrgpdxlnCTE, pdrgpdxlnCTE);
-	m_fHasDistributedTables = m_fHasDistributedTables || trquerytodxl.FHasDistributedTables();
+	m_fHasDistributedTables = m_fHasDistributedTables || ptrquerytodxl->FHasDistributedTables();
 	
 	CDXLNode *pdxln = New(m_pmp) CDXLNode(m_pmp, New (m_pmp) CDXLScalarSubqueryExists(m_pmp));
 	pdxln->AddChild(pdxlnRoot);

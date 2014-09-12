@@ -552,10 +552,20 @@ COptTasks::PvDXLFromQueryTask
 	{
 		CAutoMDAccessor amda(pmp, pmdpr, sysidDefault);
 
-		CTranslatorQueryToDXL trquerytodxl(pmp, amda.Pmda(), pidgtorCol, pidgtorCTE, pmapvarcolid, (Query*)poctx->m_pquery, 0 /* ulQueryLevel */);
-		CDXLNode *pdxlnQuery = trquerytodxl.PdxlnFromQuery();
-		DrgPdxln *pdrgpdxlnQueryOutput = trquerytodxl.PdrgpdxlnQueryOutput();
-		DrgPdxln *pdrgpdxlnCTE = trquerytodxl.PdrgpdxlnCTE();
+		CAutoP<CTranslatorQueryToDXL> ptrquerytodxl;
+		ptrquerytodxl = CTranslatorQueryToDXL::PtrquerytodxlInstance
+						(
+						pmp,
+						amda.Pmda(),
+						pidgtorCol,
+						pidgtorCTE,
+						pmapvarcolid,
+						(Query*)poctx->m_pquery,
+						0 /* ulQueryLevel */
+						);
+		CDXLNode *pdxlnQuery = ptrquerytodxl->PdxlnFromQuery();
+		DrgPdxln *pdrgpdxlnQueryOutput = ptrquerytodxl->PdrgpdxlnQueryOutput();
+		DrgPdxln *pdrgpdxlnCTE = ptrquerytodxl->PdrgpdxlnCTE();
 		GPOS_ASSERT(NULL != pdrgpdxlnQueryOutput);
 
 		delete pidgtorCol;
@@ -875,7 +885,17 @@ COptTasks::PvOptimizeTask
 				ulSegmentsForCosting = ulSegments;
 			}
 
-			CTranslatorQueryToDXL trquerytodxl(pmp, &mda, &idgtorColId, &idgtorCTE, pmapvarcolid, (Query*) poctx->m_pquery, 0 /* ulQueryLevel */);
+			CAutoP<CTranslatorQueryToDXL> ptrquerytodxl;
+			ptrquerytodxl = CTranslatorQueryToDXL::PtrquerytodxlInstance
+							(
+							pmp,
+							&mda,
+							&idgtorColId,
+							&idgtorCTE,
+							pmapvarcolid,
+							(Query*) poctx->m_pquery,
+							0 /* ulQueryLevel */
+							);
 
 			ICostModel *pcm = Pcm(pmp, ulSegmentsForCosting);
 			COptimizerConfig *pocconf = PoconfCreate(pmp, pcm);
@@ -893,13 +913,13 @@ COptTasks::PvOptimizeTask
 				CTranslatorUtils::PreloadMD(pmp, &mda, sysidDefault, (Query*) poctx->m_pquery);
 			}
 
-			CDXLNode *pdxlnQuery = trquerytodxl.PdxlnFromQuery();
-			DrgPdxln *pdrgpdxlnQueryOutput = trquerytodxl.PdrgpdxlnQueryOutput();
-			DrgPdxln *pdrgpdxlnCTE = trquerytodxl.PdrgpdxlnCTE();
+			CDXLNode *pdxlnQuery = ptrquerytodxl->PdxlnFromQuery();
+			DrgPdxln *pdrgpdxlnQueryOutput = ptrquerytodxl->PdrgpdxlnQueryOutput();
+			DrgPdxln *pdrgpdxlnCTE = ptrquerytodxl->PdrgpdxlnCTE();
 			GPOS_ASSERT(NULL != pdrgpdxlnQueryOutput);
 
 			BOOL fMasterOnly = !optimizer_enable_motions ||
-						(!optimizer_enable_motions_masteronly_queries && !trquerytodxl.FHasDistributedTables());
+						(!optimizer_enable_motions_masteronly_queries && !ptrquerytodxl->FHasDistributedTables());
 			CAutoTraceFlag atf(EopttraceDisableMotions, fMasterOnly);
 
 			pdxlnPlan = COptimizer::PdxlnOptimize

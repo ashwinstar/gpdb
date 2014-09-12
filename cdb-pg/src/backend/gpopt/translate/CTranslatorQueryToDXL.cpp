@@ -136,6 +136,7 @@ CTranslatorQueryToDXL::CTranslatorQueryToDXL
 	CMappingVarColId *pmapvarcolid,
 	Query *pquery,
 	ULONG ulQueryLevel,
+	BOOL fTopDMLQuery,
 	HMUlCTEListEntry *phmulCTEEntries
 	)
 	:
@@ -147,6 +148,8 @@ CTranslatorQueryToDXL::CTranslatorQueryToDXL
 	m_pmapvarcolid(pmapvarcolid),
 	m_ulQueryLevel(ulQueryLevel),
 	m_fHasDistributedTables(false),
+	m_fTopDMLQuery(fTopDMLQuery),
+	m_fCTASQuery(false),
 	m_phmulCTEEntries(NULL),
 	m_pdrgpdxlnQueryOutput(NULL),
 	m_pdrgpdxlnCTE(NULL),
@@ -225,6 +228,41 @@ CTranslatorQueryToDXL::CTranslatorQueryToDXL
 									m_pdrgpdxlnCTE
 									);
 
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CTranslatorQueryToDXL::PtrquerytodxlInstance
+//
+//	@doc:
+//		Factory function
+//
+//---------------------------------------------------------------------------
+CTranslatorQueryToDXL *
+CTranslatorQueryToDXL::PtrquerytodxlInstance
+	(
+	IMemoryPool *pmp,
+	CMDAccessor *pmda,
+	CIdGenerator *pidgtorColId,
+	CIdGenerator *pidgtorCTE,
+	CMappingVarColId *pmapvarcolid,
+	Query *pquery,
+	ULONG ulQueryLevel,
+	HMUlCTEListEntry *phmulCTEEntries
+	)
+{
+	return New(pmp) CTranslatorQueryToDXL
+		(
+		pmp,
+		pmda,
+		pidgtorColId,
+		pidgtorCTE,
+		pmapvarcolid,
+		pquery,
+		ulQueryLevel,
+		false,  // fTopDMLQuery
+		phmulCTEEntries
+		);
 }
 
 //---------------------------------------------------------------------------
@@ -602,7 +640,7 @@ CTranslatorQueryToDXL::PdxlnFromQuery()
 			{
 				return PdxlnFromQueryInternal();
 			}
-			
+
 			return PdxlnCTAS();
 			
 		case CMD_INSERT:
@@ -721,6 +759,7 @@ CTranslatorQueryToDXL::PdxlnCTAS()
 	GPOS_ASSERT(CMD_SELECT == m_pquery->commandType);
 	GPOS_ASSERT(NULL != m_pquery->intoClause);
 
+	m_fCTASQuery = true;
 	CDXLNode *pdxlnQuery = PdxlnFromQueryInternal();
 	
 	IntoClause *pintocl = m_pquery->intoClause;
@@ -1737,8 +1776,11 @@ CTranslatorQueryToDXL::PdxlnLgLimit
 		return pdxlnChild;
 	}
 
-	// create the logical limit operator
-	CDXLNode *pdxlnLimit = New(m_pmp) CDXLNode(m_pmp, New(m_pmp) CDXLLogicalLimit(m_pmp));
+	// do not remove limit if it is immediately under a DML (JIRA: GPSQL-2669)
+	// otherwise we may increase the storage size because there are less opportunities for compression
+	BOOL fTopLevelLimit = (m_fTopDMLQuery && 1 == m_ulQueryLevel) || (m_fCTASQuery && 0 == m_ulQueryLevel);
+	CDXLNode *pdxlnLimit =
+			New(m_pmp) CDXLNode(m_pmp, New(m_pmp) CDXLLogicalLimit(m_pmp, fTopLevelLimit));
 
 	// create a sorting col list
 	CDXLNode *pdxlnSortColList = New(m_pmp) CDXLNode(m_pmp, New(m_pmp) CDXLScalarSortColList(m_pmp));
@@ -2598,7 +2640,18 @@ CTranslatorQueryToDXL::PdxlnSetOpChild
 			GPOS_ASSERT(NULL != pqueryDerTbl);
 
 			CMappingVarColId *pmapvarcolid = m_pmapvarcolid->PmapvarcolidCopy(m_pmp);
-			CTranslatorQueryToDXL trquerytodxl(m_pmp, m_pmda, m_pidgtorCol, m_pidgtorCTE, pmapvarcolid, pqueryDerTbl, m_ulQueryLevel + 1, m_phmulCTEEntries);
+			CTranslatorQueryToDXL trquerytodxl
+					(
+					m_pmp,
+					m_pmda,
+					m_pidgtorCol,
+					m_pidgtorCTE,
+					pmapvarcolid,
+					pqueryDerTbl,
+					m_ulQueryLevel + 1,
+					FDMLQuery(),
+					m_phmulCTEEntries
+					);
 
 			// translate query representing the derived table to its DXL representation
 			CDXLNode *pdxln = trquerytodxl.PdxlnFromQueryInternal();
@@ -3271,7 +3324,19 @@ CTranslatorQueryToDXL::PdxlnFromDerivedTable
 	GPOS_ASSERT(NULL != pqueryDerTbl);
 
 	CMappingVarColId *pmapvarcolid = m_pmapvarcolid->PmapvarcolidCopy(m_pmp);
-	CTranslatorQueryToDXL trquerytodxl(m_pmp, m_pmda, m_pidgtorCol, m_pidgtorCTE, pmapvarcolid, pqueryDerTbl, m_ulQueryLevel + 1, m_phmulCTEEntries);
+
+	CTranslatorQueryToDXL trquerytodxl
+		(
+		m_pmp,
+		m_pmda,
+		m_pidgtorCol,
+		m_pidgtorCTE,
+		pmapvarcolid,
+		pqueryDerTbl,
+		m_ulQueryLevel + 1,
+		FDMLQuery(),
+		m_phmulCTEEntries
+		);
 
 	// translate query representing the derived table to its DXL representation
 	CDXLNode *pdxlnDerTbl = trquerytodxl.PdxlnFromQueryInternal();
@@ -3949,7 +4014,18 @@ CTranslatorQueryToDXL::ConstructCTEProducerList
 		// those defined at prior query levels
 		CMappingVarColId *pmapvarcolid = m_pmapvarcolid->PmapvarcolidCopy(ulCteQueryLevel);
 
-		CTranslatorQueryToDXL trquerytodxl(m_pmp, m_pmda, m_pidgtorCol, m_pidgtorCTE, pmapvarcolid, pqueryCte, ulCteQueryLevel + 1, m_phmulCTEEntries);
+		CTranslatorQueryToDXL trquerytodxl
+			(
+			m_pmp,
+			m_pmda,
+			m_pidgtorCol,
+			m_pidgtorCTE,
+			pmapvarcolid,
+			pqueryCte,
+			ulCteQueryLevel + 1,
+			FDMLQuery(),
+			m_phmulCTEEntries
+			);
 
 		// translate query representing the cte table to its DXL representation
 		CDXLNode *pdxlnCteChild = trquerytodxl.PdxlnFromQueryInternal();
@@ -4171,5 +4247,18 @@ CTranslatorQueryToDXL::PhmiulRemapColIds
 	return phmiulResult;
 }
 
+//---------------------------------------------------------------------------
+//	@function:
+//		CTranslatorQueryToDXL::PhmiulRemapColIds
+//
+//	@doc:
+//		True iff this query or one of its ancestors is a DML query
+//
+//---------------------------------------------------------------------------
+BOOL
+CTranslatorQueryToDXL::FDMLQuery()
+{
+	return (m_fTopDMLQuery || m_pquery->resultRelation != 0);
+}
 
 // EOF

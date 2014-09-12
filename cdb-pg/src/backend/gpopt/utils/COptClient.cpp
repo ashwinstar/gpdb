@@ -37,6 +37,7 @@
 
 #include "gpos/_api.h"
 #include "gpos/base.h"
+#include "gpos/common/CAutoP.h"
 #include "gpos/common/CBitSetIter.h"
 #include "gpos/error/CErrorHandlerStandard.h"
 #include "gpos/io/COstreamString.h"
@@ -235,16 +236,17 @@ COptClient::SendRequest
 	CIdGenerator *pidgtorCol = New(m_pmp) CIdGenerator(GPDXL_COL_ID_START);
 	CIdGenerator *pidgtorCTE = New(m_pmp) CIdGenerator(GPDXL_CTE_ID_START);
 	CMappingVarColId *pmapvarcolid = New(m_pmp) CMappingVarColId(m_pmp);
-	CTranslatorQueryToDXL *ptrquerytodxl = New(m_pmp) CTranslatorQueryToDXL
-			(
-			m_pmp,
-			pmda,
-			pidgtorCol,
-			pidgtorCTE,
-			pmapvarcolid,
-			m_pquery,
-			0
-			);
+	CAutoP<CTranslatorQueryToDXL> ptrquerytodxl;
+	ptrquerytodxl = CTranslatorQueryToDXL::PtrquerytodxlInstance
+					(
+					m_pmp,
+					pmda,
+					pidgtorCol,
+					pidgtorCTE,
+					pmapvarcolid,
+					m_pquery,
+					0 // ulQueryLevel
+					);
 
 	CDXLNode *pdxlnRoot = ptrquerytodxl->PdxlnFromQuery();
 	DrgPdxln *pdrgpdxlnQueryOutput = ptrquerytodxl->PdrgpdxlnQueryOutput();
