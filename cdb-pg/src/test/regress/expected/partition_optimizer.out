@@ -5639,20 +5639,19 @@ insert into g values(1), (2), (3);
 -- Known_opt_diff: MPP-20936
 -- end_ignore
 select * from locktest;
-    coalesce     |        mode         |         locktype         
------------------+---------------------+--------------------------
- g               | RowExclusiveLock    | relation
- g_1_prt_1       | AccessExclusiveLock | append-only segment file
- g_1_prt_1       | AccessShareLock     | relation
- g_1_prt_2       | AccessExclusiveLock | append-only segment file
- g_1_prt_2       | AccessShareLock     | relation
- g_1_prt_3       | AccessExclusiveLock | append-only segment file
- g_1_prt_3       | AccessShareLock     | relation
- gp_fastsequence | RowExclusiveLock    | relation
- locktest        | AccessShareLock     | relation
- pg_class        | AccessShareLock     | relation
- pg_locks        | AccessShareLock     | relation
-(11 rows)
+ coalesce  |        mode         |         locktype         
+-----------+---------------------+--------------------------
+ g         | RowExclusiveLock    | relation
+ g_1_prt_1 | AccessExclusiveLock | append-only segment file
+ g_1_prt_1 | AccessShareLock     | relation
+ g_1_prt_2 | AccessExclusiveLock | append-only segment file
+ g_1_prt_2 | AccessShareLock     | relation
+ g_1_prt_3 | AccessExclusiveLock | append-only segment file
+ g_1_prt_3 | AccessShareLock     | relation
+ locktest  | AccessShareLock     | relation
+ pg_class  | AccessShareLock     | relation
+ pg_locks  | AccessShareLock     | relation
+(10 rows)
 
 commit;
 -- drop
