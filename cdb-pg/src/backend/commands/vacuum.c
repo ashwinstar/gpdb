@@ -1150,6 +1150,7 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 			vacstmt->appendonly_compaction_segno = NIL;
 			vacstmt->appendonly_compaction_insert_segno = NIL;
 			vacstmt->appendonly_compaction_vacuum_cleanup = false;
+			vacstmt->appendonly_relation_empty = false;
 		}
 
 		/*
@@ -1822,12 +1823,16 @@ vacuum_rel(Relation onerel, VacuumStmt *vacstmt, LOCKMODE lmode, List *updated_s
 	 * Remember the relation's TOAST and AO segments relations for later
 	 */
 	toast_relid = onerel->rd_rel->reltoastrelid;
-	if (RelationIsAoRows(onerel) ||
-		RelationIsAoCols(onerel))
+	if (RelationIsAoRows(onerel) || RelationIsAoCols(onerel))
+	{
 		GetAppendOnlyEntryAuxOids(RelationGetRelid(onerel), SnapshotNow,
 								  &aoseg_relid, NULL,
 								  &aoblkdir_relid, NULL,
 								  &aovisimap_relid, NULL);
+		vacstmt->appendonly_relation_empty =
+				AppendOnlyCompaction_IsRelationEmpty(onerel);
+	}
+
 
 	/*
 	 * Switch to the table owner's userid, so that any index functions are
@@ -1857,12 +1862,15 @@ vacuum_rel(Relation onerel, VacuumStmt *vacstmt, LOCKMODE lmode, List *updated_s
 	SetUserIdAndContext(save_userid, save_secdefcxt);
 
 	/*
-	 * If the relation has a secondary toast rel, vacuum that too while we
-	 * still hold the session lock on the master table.  We do this in
-	 * cleanup phase when it's AO table.
+	 * If the relation has a secondary toast rel, vacuum that too
+	 * while we still hold the session lock on the master table.  We
+	 * do this in cleanup phase when it's AO table or in prepare phase
+	 * if it's an empty AO table.
 	 */
 	if ((RelationIsHeap(onerel) && toast_relid != InvalidOid) ||
-		(!RelationIsHeap(onerel) && vacstmt->appendonly_compaction_vacuum_cleanup))
+		(!RelationIsHeap(onerel) && (
+				vacstmt->appendonly_compaction_vacuum_cleanup ||
+				vacstmt->appendonly_relation_empty)))
 	{
 		Relation toast_rel = open_relation_and_check_permission(vacstmt, toast_relid,
 																RELKIND_TOASTVALUE, false);
@@ -1875,7 +1883,8 @@ vacuum_rel(Relation onerel, VacuumStmt *vacstmt, LOCKMODE lmode, List *updated_s
 		}
 	}
 
-	if (vacstmt->appendonly_compaction_vacuum_cleanup)
+	if (vacstmt->appendonly_compaction_vacuum_cleanup ||
+		vacstmt->appendonly_relation_empty)
 	{
 		/* do the same for an AO segments table, if any */
 		if (aoseg_relid != InvalidOid)

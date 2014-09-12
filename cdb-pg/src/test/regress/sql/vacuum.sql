@@ -177,6 +177,19 @@ where relname in ('ao_empty', 'aocs_empty') order by 1;
 select * from ao_empty;
 select * from aocs_empty;
 
+-- Verify that age of appendonly auxiliary tables is update by vacuum.
+select 0 < age(relfrozenxid) as age_positive,
+       age(relfrozenxid) < 100 as age_within_limit
+from pg_class c, pg_appendonly a
+where c.oid = a.segrelid and
+	   (a.relid = 'ao_empty'::regclass or
+	    a.relid = 'aocs_empty'::regclass);
+-- Verify that age of toast table is updated by vacuum.
+select 0 < age(relfrozenxid) as age_positive,
+       age(relfrozenxid) < 100 as age_within_limit
+from pg_class where oid in (select reltoastrelid from pg_class
+       where relname = 'ao_empty' or relname = 'aocs_empty');
+
 -- Verify that index is displayed by \d after vacuum.
 \d ao_empty;
 \d aocs_empty;

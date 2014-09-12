@@ -2521,6 +2521,13 @@ typedef struct VacuumStmt
 	 */
 	bool appendonly_compaction_vacuum_prepare;
 
+	/*
+	 * MPP-24168: If the appendonly table is empty, we should vacuum
+	 * auxiliary tables in prepare phase itself.  Othewise, age of
+	 * auxiliary heap relations never gets updated.
+	 */
+	bool appendonly_relation_empty;
+
 	bool heap_truncate;			/* true in the 2nd pass for heap vacuum full */
 } VacuumStmt;
 

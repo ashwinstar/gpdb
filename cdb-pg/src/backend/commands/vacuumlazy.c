@@ -232,7 +232,7 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 			 * the cleanup phase, when we would have computed the
 			 * correct values for stats.
 			 */
-			if (AppendOnlyCompaction_IsRelationEmpty(onerel))
+			if (vacstmt->appendonly_relation_empty)
 			{
 				update_relstats = true;
 				/*
