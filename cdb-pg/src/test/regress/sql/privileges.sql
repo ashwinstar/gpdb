@@ -1,7 +1,7 @@
 --
 -- Test access privileges
 --
-
+set optimizer=off;
 -- Clean up in case a prior regression run failed
 
 -- Suppress NOTICE messages when users/groups don't exist
@@ -373,3 +373,4 @@ DROP USER regressuser2;
 DROP USER regressuser3;
 DROP USER regressuser4;
 DROP USER regressuser5;
+reset optimizer;
