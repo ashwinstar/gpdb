@@ -623,7 +623,13 @@ open_alert_log_file()
         gpperfmon_log_alert_level != GPPERFMON_LOG_ALERT_LEVEL_NONE)
     {
         alert_log_level_opened = true;
-        mkdir(gp_perf_mon_directory, 0700);
+        if(mkdir(gp_perf_mon_directory, 0700) == -1)
+		{
+			ereport(WARNING,
+			        (errcode_for_file_access(),
+			         (errmsg("could not create log file directory \"%s\": %m",
+					  gp_perf_mon_directory))));
+		}
         char *alert_file_name = logfile_getname(time(NULL), gp_perf_mon_directory, alert_file_pattern);
         alertLogFile = fopen(alert_file_name, "a");
         if (!alertLogFile)

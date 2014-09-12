@@ -1556,6 +1556,7 @@ apr_hash_t *get_active_queries(apr_pool_t *pool)
 			"error creating GPDB client connection to dynamically "
 			"check/create gpperfmon partitions: %s",
 		PQerrorMessage(conn));
+		PQfinish(conn);
 		return NULL;
 	}
 
@@ -1844,6 +1845,7 @@ void create_log_alert_table()
 			"error creating gpdb client connection to dynamically "
 			"check/create gpperfmon partitions: %s",
 		PQerrorMessage(conn));
+		PQfinish(conn);
 		return;
 	}
 
