@@ -1911,9 +1911,9 @@ FileRep_SignalChildren(int signal, bool backendsOnly)
 	for (ii=0; ii < MaxFileRepSubProc; ii++) {
 		FileRepSubProc *subProc = &FileRepSubProcList[ii];
 
-		if (subProc->pid == 0) {
-		    continue;
-        }
+		if (subProc->pid <= 0) {
+			continue;
+		}
 
         if ( backendsOnly &&
              ! FileRepIsBackendSubProcess( subProc->fileRepProcessType)) {
@@ -2640,7 +2640,11 @@ FileRep_StartChildProcess(FileRepProcessType_e type)
 		/* it is set in Main routine: FileRep_SetState(FileRepStateFault); */
 	}
 
-	FileRepSubProcList[type].pid = pid;
+	/* Do not set failed pid. */
+	if (pid > 0)
+		FileRepSubProcList[type].pid = pid;
+	else
+		FileRepSubProcList[type].pid = 0;
 
 	/* in parent, successful fork */
 	return pid;
