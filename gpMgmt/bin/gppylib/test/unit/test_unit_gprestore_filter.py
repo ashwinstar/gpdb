@@ -7,7 +7,7 @@ from gppylib import gplog
 from mock import patch
 from gppylib.mainUtils import ExceptionNoStackTraceNeeded
 from gprestore_filter import get_table_schema_set, extract_schema, extract_table, \
-                            process_data, get_table_info, process_schema, check_valid_table, check_dropped_table
+                            process_data, get_table_info, process_schema, check_valid_schema, check_valid_table, check_dropped_table
 
 
 logger = gplog.get_unittest_logger()
@@ -1696,6 +1696,30 @@ CREATE TABLE ao_part_table (
         os.remove(infile)
         os.remove(outfile)
 
+    def test_check_valid_schema01(self):
+        dump_schemas = set(['schema1', 'schema2'])
+        name = 'schema1'
+        output = check_valid_schema(name, dump_schemas) 
+        self.assertEquals(output, True)
+
+    def test_check_valid_schema02(self):
+        dump_schemas = set(['schema1', 'schema2'])
+        name = 'schema3'
+        output = check_valid_schema(name, dump_schemas)
+        self.assertEquals(output, False)
+
+    def test_check_valid_schema03(self):
+        dump_schemas = set(['schema1', 'schema2'])
+        name = ''
+        output = check_valid_schema(name, dump_schemas)
+        self.assertEquals(output, False)
+
+    def test_check_valid_schema04(self):
+        dump_schemas = set()
+        name = 'schema1'
+        output = check_valid_schema(name, dump_schemas)
+        self.assertEquals(output, False)
+
     def test_check_valid_table01(self):
         dump_tables = [('public', 'ao_part_table')]
         name = 'ao_part_table'
@@ -2000,6 +2024,356 @@ CREATE TABLE ao_part_table (
             results = fd.read()
         self.assertEquals(results, expected_out)
       
+
+    def test_process_schema_single_table(self):
+        test_case_buf = """--
+-- Greenplum Database database dump
+--
+
+SET statement_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = off;
+SET check_function_bodies = false;
+SET client_min_messages = warning;
+SET escape_string_warning = off;
+
+SET default_with_oids = false;
+
+--
+-- Name: SCHEMA public; Type: COMMENT; Schema: -; Owner: dcddev
+--
+
+COMMENT ON SCHEMA public IS 'Standard public schema';
+
+
+--
+-- Name: user_schema_a; Type: SCHEMA; Schema: -; Owner: user_role_a
+--
+
+CREATE SCHEMA user_schema_a;
+
+
+ALTER SCHEMA user_schema_a OWNER TO user_role_a;
+
+--
+-- Name: user_schema_b; Type: SCHEMA; Schema: -; Owner: user_role_a
+--
+
+CREATE SCHEMA user_schema_b;
+
+
+ALTER SCHEMA user_schema_b OWNER TO user_role_a;
+
+--
+-- Name: user_schema_c; Type: SCHEMA; Schema: -; Owner: user_role_a
+--
+
+CREATE SCHEMA user_schema_c;
+
+
+ALTER SCHEMA user_schema_c OWNER TO user_role_a;
+
+--
+-- Name: user_schema_d; Type: SCHEMA; Schema: -; Owner: user_role_a
+--
+
+CREATE SCHEMA user_schema_d;
+
+
+ALTER SCHEMA user_schema_d OWNER TO user_role_a;
+
+--
+-- Name: user_schema_e; Type: SCHEMA; Schema: -; Owner: user_role_a
+--
+
+CREATE SCHEMA user_schema_e;
+
+
+ALTER SCHEMA user_schema_e OWNER TO user_role_a;
+
+--
+-- Name: plpgsql; Type: PROCEDURAL LANGUAGE; Schema: -; Owner: dcddev
+--
+
+CREATE PROCEDURAL LANGUAGE plpgsql;
+ALTER FUNCTION plpgsql_call_handler() OWNER TO dcddev;
+ALTER FUNCTION plpgsql_validator(oid) OWNER TO dcddev;
+
+
+SET search_path = user_schema_a, pg_catalog;
+
+SET default_tablespace = '';
+
+--
+-- Name: user_table; Type: TABLE; Schema: user_schema_a; Owner: user_role_b; Tablespace: 
+--
+
+CREATE TABLE user_table (
+    a character(1) NOT NULL,
+    b character(60)
+) DISTRIBUTED BY (a);
+
+
+ALTER TABLE user_schema_a.user_table OWNER TO user_role_b;
+
+SET search_path = user_schema_b, pg_catalog;
+
+--
+-- Name: test_table; Type: TABLE; Schema: user_schema_b; Owner: dcddev; Tablespace: 
+--
+
+CREATE TABLE test_table (
+    a integer
+) DISTRIBUTED BY (a);
+
+
+ALTER TABLE user_schema_b.test_table OWNER TO dcddev;
+
+SET search_path = user_schema_c, pg_catalog;
+
+--
+-- Name: test_table; Type: TABLE; Schema: user_schema_c; Owner: user_role_b; Tablespace: 
+--
+
+CREATE TABLE test_table (
+    a integer
+) DISTRIBUTED BY (a);
+
+
+ALTER TABLE user_schema_c.test_table OWNER TO user_role_b;
+
+SET search_path = user_schema_d, pg_catalog;
+
+--
+-- Name: test_table; Type: TABLE; Schema: user_schema_d; Owner: dcddev; Tablespace: 
+--
+
+CREATE TABLE test_table (
+    a integer
+) DISTRIBUTED BY (a);
+
+
+ALTER TABLE user_schema_d.test_table OWNER TO dcddev;
+
+SET search_path = user_schema_e, pg_catalog;
+
+--
+-- Name: test_table; Type: TABLE; Schema: user_schema_e; Owner: dcddev; Tablespace: 
+--
+
+CREATE TABLE test_table (
+    a integer
+) DISTRIBUTED BY (a);
+
+
+ALTER TABLE user_schema_e.test_table OWNER TO dcddev;
+
+SET search_path = user_schema_a, pg_catalog;
+
+--
+-- Data for Name: user_table; Type: TABLE DATA; Schema: user_schema_a; Owner: user_role_b
+--
+
+COPY user_table (a, b) FROM stdin;
+\.
+
+
+SET search_path = user_schema_b, pg_catalog;
+
+--
+-- Data for Name: test_table; Type: TABLE DATA; Schema: user_schema_b; Owner: dcddev
+--
+
+COPY test_table (a) FROM stdin;
+\.
+
+
+SET search_path = user_schema_c, pg_catalog;
+
+--
+-- Data for Name: test_table; Type: TABLE DATA; Schema: user_schema_c; Owner: dcddev
+--
+
+COPY test_table (a) FROM stdin;
+\.
+
+
+SET search_path = user_schema_d, pg_catalog;
+
+--
+-- Data for Name: test_table; Type: TABLE DATA; Schema: user_schema_d; Owner: dcddev
+--
+
+COPY test_table (a) FROM stdin;
+\.
+
+
+SET search_path = user_schema_e, pg_catalog;
+
+--
+-- Data for Name: test_table; Type: TABLE DATA; Schema: user_schema_e; Owner: dcddev
+--
+
+COPY test_table (a) FROM stdin;
+\.
+
+
+--
+-- Name: public; Type: ACL; Schema: -; Owner: dcddev
+--
+
+REVOKE ALL ON SCHEMA public FROM PUBLIC;
+REVOKE ALL ON SCHEMA public FROM dcddev;
+GRANT ALL ON SCHEMA public TO dcddev;
+GRANT ALL ON SCHEMA public TO PUBLIC;
+
+
+--
+-- Name: user_schema_b; Type: ACL; Schema: -; Owner: user_role_a
+--
+
+REVOKE ALL ON SCHEMA user_schema_b FROM PUBLIC;
+REVOKE ALL ON SCHEMA user_schema_b FROM user_role_a;
+GRANT ALL ON SCHEMA user_schema_b TO user_role_a;
+
+--
+-- Name: user_schema_a; Type: ACL; Schema: -; Owner: user_role_a
+--
+
+REVOKE ALL ON SCHEMA user_schema_a FROM PUBLIC;
+REVOKE ALL ON SCHEMA user_schema_a FROM user_role_a;
+GRANT ALL ON SCHEMA user_schema_a TO user_role_a;
+
+
+SET search_path = user_schema_a, pg_catalog;
+
+--
+-- Name: user_table; Type: ACL; Schema: user_schema_a; Owner: user_role_b
+--
+
+REVOKE ALL ON TABLE user_table FROM PUBLIC;
+REVOKE ALL ON TABLE user_table FROM user_role_b;
+GRANT ALL ON TABLE user_table TO user_role_b;
+
+
+--
+-- Greenplum Database database dump complete
+--
+"""
+
+        dump_schemas = ['user_schema_a', 'user_schema_e']
+        dump_tables = [('user_schema_a', 'user_table'), ('user_schema_e', 'test_table')]
+
+        infile = '/tmp/test_schema.in'
+        outfile = '/tmp/test_schema.out'
+        with open(infile, 'w') as fd:
+            fd.write(test_case_buf)
+            
+        with open(infile, 'r') as fdin:
+            with open(outfile, 'w') as fdout:
+                process_schema(dump_schemas, dump_tables, fdin, fdout)
+
+        expected_out = """SET statement_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = off;
+SET check_function_bodies = false;
+SET client_min_messages = warning;
+SET escape_string_warning = off;
+
+SET default_with_oids = false;
+
+--
+-- Name: user_schema_a; Type: SCHEMA; Schema: -; Owner: user_role_a
+--
+
+CREATE SCHEMA user_schema_a;
+
+
+ALTER SCHEMA user_schema_a OWNER TO user_role_a;
+
+--
+-- Name: user_schema_e; Type: SCHEMA; Schema: -; Owner: user_role_a
+--
+
+CREATE SCHEMA user_schema_e;
+
+
+ALTER SCHEMA user_schema_e OWNER TO user_role_a;
+
+--
+SET search_path = user_schema_a, pg_catalog;
+
+SET default_tablespace = '';
+
+--
+-- Name: user_table; Type: TABLE; Schema: user_schema_a; Owner: user_role_b; Tablespace: 
+--
+
+CREATE TABLE user_table (
+    a character(1) NOT NULL,
+    b character(60)
+) DISTRIBUTED BY (a);
+
+
+ALTER TABLE user_schema_a.user_table OWNER TO user_role_b;
+
+SET search_path = user_schema_e, pg_catalog;
+
+--
+-- Name: test_table; Type: TABLE; Schema: user_schema_e; Owner: dcddev; Tablespace: 
+--
+
+CREATE TABLE test_table (
+    a integer
+) DISTRIBUTED BY (a);
+
+
+ALTER TABLE user_schema_e.test_table OWNER TO dcddev;
+
+SET search_path = user_schema_a, pg_catalog;
+
+--
+-- Data for Name: user_table; Type: TABLE DATA; Schema: user_schema_a; Owner: user_role_b
+--
+
+COPY user_table (a, b) FROM stdin;
+\.
+
+
+SET search_path = user_schema_e, pg_catalog;
+
+--
+-- Data for Name: test_table; Type: TABLE DATA; Schema: user_schema_e; Owner: dcddev
+--
+
+COPY test_table (a) FROM stdin;
+\.
+
+
+--
+SET search_path = user_schema_a, pg_catalog;
+
+--
+-- Name: user_table; Type: ACL; Schema: user_schema_a; Owner: user_role_b
+--
+
+REVOKE ALL ON TABLE user_table FROM PUBLIC;
+REVOKE ALL ON TABLE user_table FROM user_role_b;
+GRANT ALL ON TABLE user_table TO user_role_b;
+
+
+--
+-- Greenplum Database database dump complete
+--
+"""
+
+        with open(outfile, 'r') as fd:
+            results = fd.read()
+        self.assertEquals(results, expected_out)
+        
+        os.remove(infile)
+        os.remove(outfile)
+
     def test_check_dropped_table00(self):
         line = 'DROP TABLE public.ao_part_table;'
         dump_tables = [('public', 'ao_part_table')]
@@ -2223,6 +2597,15 @@ SET escape_string_warning = off;
 SET default_with_oids = false;
 
 --
+-- Name: user_schema_a; Type: SCHEMA; Schema: -; Owner: user_role_a
+--
+
+CREATE SCHEMA user_schema_a;
+
+
+ALTER SCHEMA user_schema_a OWNER TO user_role_a;
+
+--
 SET search_path = user_schema_a, pg_catalog;
 
 SET default_tablespace = '';
@@ -2379,6 +2762,15 @@ SET escape_string_warning = off;
 SET default_with_oids = false;
 
 --
+-- Name: 测试_schema; Type: SCHEMA; Schema: -; Owner: user_role_a
+--
+
+CREATE SCHEMA "测试_schema";
+
+
+ALTER SCHEMA "测试_schema" OWNER TO user_role_a;
+
+--
 SET search_path = "测试_schema", pg_catalog;
 
 --
@@ -2533,6 +2925,15 @@ SET escape_string_warning = off;
 SET default_with_oids = false;
 
 --
+-- Name: Áá_schema; Type: SCHEMA; Schema: -; Owner: user_role_a
+--
+
+CREATE SCHEMA "Áá_schema";
+
+
+ALTER SCHEMA "Áá_schema" OWNER TO user_role_a;
+
+--
 SET search_path = "Áá_schema", pg_catalog;
 
 --
@@ -2685,6 +3086,15 @@ SET client_min_messages = warning;
 SET escape_string_warning = off;
 
 SET default_with_oids = false;
+
+--
+-- Name: Ж_schema; Type: SCHEMA; Schema: -; Owner: user_role_a
+--
+
+CREATE SCHEMA "Ж_schema";
+
+
+ALTER SCHEMA "Ж_schema" OWNER TO user_role_a;
 
 --
 SET search_path = "Ж_schema", pg_catalog;

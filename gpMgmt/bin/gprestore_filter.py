@@ -60,6 +60,8 @@ def process_schema(dump_schemas, dump_tables, fdin, fdout):
             else:
                 output = False
         elif line[:3] == comment_start_expr and line.startswith(comment_expr):
+            # Parse the line using get_table_info for SCHEMA relation type as well,
+            # if type is SCHEMA, then the value of name returned is schema's name, and returned schema is represented by '-'
             name, type, schema = get_table_info(line)
             output = False
             passedDropSchemaSection = True
@@ -74,6 +76,10 @@ def process_schema(dump_schemas, dump_tables, fdin, fdout):
                     line_buff = line 
             elif type in ['ACL']:
                 output = check_valid_table(schema, name, dump_tables)
+                if output:
+                    search_path = True
+            elif type in ['SCHEMA']:
+                output = check_valid_schema(name, dump_schemas)
                 if output:
                     search_path = True
         elif (line[:3] == comment_start_expr) and (line.startswith(comment_data_expr_a) or line.startswith(comment_data_expr_b)):
@@ -102,6 +108,13 @@ def process_schema(dump_schemas, dump_tables, fdin, fdout):
 
         if output:
             fdout.write(line)
+
+def check_valid_schema(name, dump_schemas):
+    if name in dump_schemas:
+        output = True
+    else:
+        output = False
+    return output
 
 def check_valid_table(schema, name, dump_tables):
     if (schema, name) in dump_tables:
