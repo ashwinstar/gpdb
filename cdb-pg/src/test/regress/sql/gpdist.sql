@@ -1,5 +1,5 @@
 -- Try to verify that rows end up in the right place.
-set optimizer=off;
+
 drop table if exists T;
 drop table if exists U;
 drop table if exists W;
@@ -386,4 +386,3 @@ create table mpp5746_2 as select * from mpp5746;
 select gp_segment_id, * from mpp5746 except
 select gp_segment_id, * from mpp5746_2;
 drop table mpp5746, mpp5746_2;
-reset optimizer;

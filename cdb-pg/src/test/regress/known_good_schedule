@@ -139,7 +139,7 @@ ignore: gpic
 ignore: gpic_bigtup
 test: filter
 test: gpctas
-ignore: gpdist
+test: gpdist
 test: matrix
 test: gpdtm_plpgsql
 ignore: gp_portal_error

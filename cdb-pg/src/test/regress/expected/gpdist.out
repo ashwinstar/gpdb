@@ -1,5 +1,4 @@
 -- Try to verify that rows end up in the right place.
-set optimizer=off;
 drop table if exists T;
 NOTICE:  table "t" does not exist, skipping
 drop table if exists U;
@@ -461,4 +460,3 @@ select gp_segment_id, * from mpp5746_2;
 (0 rows)
 
 drop table mpp5746, mpp5746_2;
-reset optimizer;

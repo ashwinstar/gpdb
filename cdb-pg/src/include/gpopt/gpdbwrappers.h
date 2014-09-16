@@ -465,6 +465,10 @@ namespace gpdb {
     // return the distribution policy of a relation; if the table is partitioned
     // and the parts are distributed differently, return Random distribution
     GpPolicy *Pdistrpolicy(Relation rel);
+    
+    // return true if the table is partitioned and hash-distributed, and one of  
+    // the child partitions is randomly distributed
+    BOOL FChildPartDistributionMismatch(Relation rel);
         
 	// does a relation exist with the given oid
 	bool FRelationExists(Oid oid);

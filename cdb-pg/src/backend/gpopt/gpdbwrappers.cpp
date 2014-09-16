@@ -181,6 +181,7 @@
 #define ALLOW_fold_arrayexpr_constants
 #define ALLOW_has_parquet_children
 #define ALLOW_relation_policy
+#define ALLOW_child_distribution_mismatch
 
 #include "gpopt/utils/gpdbdefs.h"
 
@@ -2254,6 +2255,20 @@ gpdb::Pdistrpolicy
     }
     GP_WRAP_END;
     return NULL;
+}
+
+BOOL
+gpdb::FChildPartDistributionMismatch
+	(
+	Relation rel
+	)
+{
+    GP_WRAP_START;
+    {
+    	return child_distribution_mismatch(rel);
+    }
+    GP_WRAP_END;
+    return false;
 }
 
 bool

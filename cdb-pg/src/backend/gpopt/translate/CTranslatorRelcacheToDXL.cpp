@@ -487,7 +487,8 @@ CTranslatorRelcacheToDXL::Pmdrel
 	// get distribution policy
 	GpPolicy *pgppolicy = gpdb::Pdistrpolicy(rel);
 	IMDRelation::Ereldistrpolicy ereldistribution = Ereldistribution(pgppolicy);
-
+	BOOL fChildDistributionMismatch = gpdb::FChildPartDistributionMismatch(rel);
+	
 	// get distribution columns
 	DrgPul *pdrpulDistrCols = NULL;
 	if (IMDRelation::EreldistrHash == ereldistribution)
@@ -605,6 +606,7 @@ CTranslatorRelcacheToDXL::Pmdrel
 							pdrgpmdcol,
 							pdrpulDistrCols,
 							pdrgpulPartKeys,
+							fChildDistributionMismatch,
 							pdrgpdrgpulKeys,
 							pdrgpmdidIndexes,
 							pdrgpmdidTriggers,

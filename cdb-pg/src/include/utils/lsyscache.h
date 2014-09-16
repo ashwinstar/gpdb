@@ -171,6 +171,7 @@ extern bool has_subclass_fast(Oid relationId);
 extern bool has_subclass(Oid relationId);
 extern bool has_parquet_children(Oid relationId);
 extern GpPolicy *relation_policy(Relation rel);
+extern bool child_distribution_mismatch(Relation rel);
 
 extern bool get_cast_func(Oid oidSrc, Oid oidDest, bool *is_binary_coercible, Oid *oidCastFunc);
 
