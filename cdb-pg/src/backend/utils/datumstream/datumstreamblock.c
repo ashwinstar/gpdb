@@ -3516,22 +3516,25 @@ DatumStreamBlockWrite_PutDense(
 		 */
 	}
 
-	/*
-	 * RLE done with its checks and if we are here means not repeated/exceding the MAX_REPEAT_COUNT
-	 * in either case, now should check for Delta if supported and if it falls within range,
-	 * should store Delta instead of storing the pysical datum
-	 */
-	delta_status = DatumStreamBlockWrite_PerformDeltaCompression(dsw, d);
-	/* Should return from here if we have performed DeltaCompression */
-	switch (delta_status)
+	if (dsw->delta_want_compression)
 	{
-		case DELTA_COMPRESSION_OK:
-			return 0;
-		case DELTA_COMPRESSION_ERROR:
-			return -1;
-		case DELTA_COMPRESSION_NOT_APPLIED:
-			break;
-			/* FALL through */
+		/*
+		 * RLE done with its checks and if we are here means not repeated/exceding the MAX_REPEAT_COUNT
+		 * in either case, now should check for Delta if supported and if it falls within range,
+		 * should store Delta instead of storing the pysical datum
+		 */
+		delta_status = DatumStreamBlockWrite_PerformDeltaCompression(dsw, d);
+		/* Should return from here if we have performed DeltaCompression */
+		switch (delta_status)
+		{
+			case DELTA_COMPRESSION_OK:
+				return 0;
+			case DELTA_COMPRESSION_ERROR:
+				return -1;
+			case DELTA_COMPRESSION_NOT_APPLIED:
+				break;
+				/* FALL through */
+		}
 	}
 
 	if (!DatumStreamBlockWrite_DenseHasSpaceItem(dsw, dsw->typeInfo->datumlen))
@@ -3550,7 +3553,11 @@ DatumStreamBlockWrite_PutDense(
 	DatumStreamBlockWrite_PutFixedLength(dsw, d);
 
 	DatumStreamBlockWrite_DenseIncrItem(dsw, rle_last_item, dsw->typeInfo->datumlen);
-	DatumStreamBlockWrite_DeltaMaintain(dsw, d);
+
+	if (dsw->delta_want_compression)
+	{
+		DatumStreamBlockWrite_DeltaMaintain(dsw, d);
+	}
 
 	if (Debug_appendonly_print_insert_tuple)
 	{

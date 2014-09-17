@@ -1859,9 +1859,12 @@ DatumStreamBlockRead_AdvanceDense(DatumStreamBlockRead * dsr)
 		 */
 	}
 
-	if (DatumStreamBlockRead_AdvanceDenseDelta(dsr) == DELTA_COMPRESSION_OK)
+	if (dsr->delta_block_was_compressed)
 	{
-		return 1;
+		if (DatumStreamBlockRead_AdvanceDenseDelta(dsr) == DELTA_COMPRESSION_OK)
+		{
+			return 1;
+		}
 	}
 
 	Assert(dsr->datump >= dsr->datum_beginp);
