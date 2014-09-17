@@ -761,7 +761,7 @@ CTranslatorDXLToScalar::PexprSubplanTestExpr
 	
 	GPOS_ASSERT(NULL != pdxlnTestExpr);
 	GPOS_ASSERT(2 == pdxlnTestExpr->UlArity());
-        GPOS_ASSERT(ANY_SUBLINK == slink);
+        GPOS_ASSERT(ANY_SUBLINK == slink || ALL_SUBLINK == slink);
 
 	CDXLNode *pdxlnOuterChild = (*pdxlnTestExpr)[0];
         CDXLNode *pdxlnInnerChild = (*pdxlnTestExpr)[1];
