@@ -3059,11 +3059,13 @@ CREATE OR REPLACE FUNCTION ST_Collect(geom1 geometry, geom2 geometry)
 	LANGUAGE 'c' IMMUTABLE;
 
 -- Availability: 1.2.2
-CREATE AGGREGATE ST_MemCollect(
-	sfunc = ST_collect,
-	basetype = geometry,
-	stype = geometry
-	);
+-- NOTE: On a Greenplum Database with multiple segments, the aggregate might return different answers if it
+--       is called several times repeatedly, so comment this out.
+-- CREATE AGGREGATE ST_MemCollect(
+-- 	sfunc = ST_collect,
+-- 	basetype = geometry,
+-- 	stype = geometry
+-- 	);
 
 -- Availability: 1.2.2
 CREATE OR REPLACE FUNCTION ST_Collect(geometry[])
@@ -3175,12 +3177,14 @@ CREATE AGGREGATE ST_Polygonize (
 	);
 
 -- Availability: 1.2.2
-CREATE AGGREGATE ST_MakeLine (
-	BASETYPE = geometry,
-	SFUNC = pgis_geometry_accum_transfn,
-	STYPE = pgis_abs,
-	FINALFUNC = pgis_geometry_makeline_finalfn
-	);
+-- NOTE: On a Greenplum Database with multiple segments, the aggregate might return different answers if it
+--       is called several times repeatedly, so comment this out.
+-- CREATE AGGREGATE ST_MakeLine (
+-- 	BASETYPE = geometry,
+-- 	SFUNC = pgis_geometry_accum_transfn,
+-- 	STYPE = pgis_abs,
+-- 	FINALFUNC = pgis_geometry_makeline_finalfn
+-- 	);
 
 
 

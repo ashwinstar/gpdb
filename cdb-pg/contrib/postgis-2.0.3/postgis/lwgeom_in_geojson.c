@@ -489,7 +489,10 @@ PG_FUNCTION_INFO_V1(geom_from_geojson);
 Datum geom_from_geojson(PG_FUNCTION_ARGS)
 {
 #ifndef HAVE_LIBJSON
-	elog(ERROR, "You need JSON-C for ST_GeomFromGeoJSON");
+	ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				errmsg("function not supported"),
+				errdetail("for the absence of support for JSON in greenplum database.")));
 	PG_RETURN_NULL();
 #else /* HAVE_LIBJSON  */
 

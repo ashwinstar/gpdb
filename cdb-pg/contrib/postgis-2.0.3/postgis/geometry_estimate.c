@@ -1357,6 +1357,12 @@ Datum geometry_analyze_2d(PG_FUNCTION_ARGS)
 PG_FUNCTION_INFO_V1(geometry_estimated_extent);
 Datum geometry_estimated_extent(PG_FUNCTION_ARGS)
 {
+	ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				errmsg("function not supported"),
+				errdetail("it requires table column statistics for user defined data types that are not available with Greenplum Database.")));
+	PG_RETURN_NULL();
+
 	text *txnsp = NULL;
 	text *txtbl = NULL;
 	text *txcol = NULL;

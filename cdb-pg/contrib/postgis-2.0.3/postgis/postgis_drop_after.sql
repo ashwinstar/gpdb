@@ -28,6 +28,8 @@ DROP AGGREGATE IF EXISTS collect(geometry); -- Deprecated in 1.2.3, Dropped in 2
 DROP AGGREGATE IF EXISTS st_geomunion(geometry);
 DROP AGGREGATE IF EXISTS accum_old(geometry);
 DROP AGGREGATE IF EXISTS st_accum_old(geometry);
+DROP AGGREGATE IF EXISTS ST_MakeLine(geometry);
+DROP AGGREGATE IF EXISTS ST_MemCollect(geometry);
 
 -- BEGIN Management functions that now have default param for typmod --
 -- DROP FUNCTION IF EXISTS AddGeometryColumn(varchar,varchar,varchar,varchar,integer,varchar,integer);
