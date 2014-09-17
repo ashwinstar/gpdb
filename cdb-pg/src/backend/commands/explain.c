@@ -1285,10 +1285,11 @@ explain_outNode(StringInfo str,
 									 quote_identifier(rte->eref->aliasname));
 
 				/* Print partIndex for DynamicTableScan */
-				if (IsA(plan, DynamicTableScan))
+				if (IsA(plan, DynamicTableScan) || IsA(plan, DynamicIndexScan) ||
+					(IsA(plan, BitmapTableScan) && INVALID_PART_INDEX != ((Scan *)plan)->partIndex))
 				{
 					appendStringInfo(str, " (partIndex: %d)",
-									 ((DynamicTableScan *)plan)->partIndex);
+									 ((Scan *)plan)->partIndex);
 				}
 			}
 			break;
