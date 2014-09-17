@@ -60,16 +60,18 @@ public class ConnectorUtil
 		 * Scheme could be hdfs or maprfs
 		 * 
 		 * NOTE: Unless the version is MR, we're going to use ordinary
-		 * hdfs://. 		 * 
-		 * NOTE: MapR isn't really an URI because of its "///" notation.
-		 * MapR also does not use port.
+		 * hdfs://.
 		 */
+		String uri = inputURI.getHost();
+		if (inputURI.getPort() != -1) {
+			uri += ":"+inputURI.getPort();
+		}
+
 	    if (connVer.startsWith("gpmr")) {
 	    	conf.set("fs.maprfs.impl", "com.mapr.fs.MapRFileSystem");
-	    	conf.set("fs.default.name", "maprfs:///"+inputURI.getHost());
+	    	conf.set("fs.default.name", "maprfs://" + uri);
 	    } else {
-	    	String uri = "hdfs://"+inputURI.getHost()+":"+inputURI.getPort();
-	    	conf.set("fs.default.name", uri);
+	    	conf.set("fs.default.name", "hdfs://" + uri);
 	    }
 	}
 }
