@@ -1288,7 +1288,7 @@ explain_outNode(StringInfo str,
 				if (isDynamicScan((Scan *)plan))
 				{
 					appendStringInfo(str, " (partIndex: %d)",
-									 ((Scan *)plan)->partIndex);
+									 ((Scan *)plan)->partIndexPrintable);
 				}
 			}
 			break;

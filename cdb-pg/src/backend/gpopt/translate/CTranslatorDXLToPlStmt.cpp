@@ -3950,6 +3950,7 @@ CTranslatorDXLToPlStmt::PplanDTS
 
 	pdts->scanrelid = iRel;
 	pdts->partIndex = pdxlop->UlPartIndexId();
+	pdts->partIndexPrintable = pdxlop->UlPartIndexIdPrintable();
 
 	Plan *pplan = &(pdts->plan);
 	pplan->plan_node_id = m_pctxdxltoplstmt->UlNextPlanId();
@@ -4026,6 +4027,7 @@ CTranslatorDXLToPlStmt::PplanDIS
 
 	pdis->scan.scanrelid = iRel;
 	pdis->scan.partIndex = pdxlop->UlPartIndexId();
+	pdis->scan.partIndexPrintable = pdxlop->UlPartIndexIdPrintable();
 
 	CMDIdGPDB *pmdidIndex = CMDIdGPDB::PmdidConvert(pdxlop->Pdxlid()->Pmdid());
 	const IMDIndex *pmdindex = m_pmda->Pmdindex(pmdidIndex);
@@ -5567,6 +5569,7 @@ CTranslatorDXLToPlStmt::PplanBitmapTableScan
 	)
 {
 	ULONG ulPartIndex = INVALID_PART_INDEX;
+	ULONG ulPartIndexPrintable = INVALID_PART_INDEX;
 	const CDXLTableDescr *pdxltabdesc = NULL;
 	BOOL fDynamic = false;
 
@@ -5583,6 +5586,7 @@ CTranslatorDXLToPlStmt::PplanBitmapTableScan
 		pdxltabdesc = pdxlopDynamic->Pdxltabdesc();
 
 		ulPartIndex = pdxlopDynamic->UlPartIndexId();
+		ulPartIndexPrintable = pdxlopDynamic->UlPartIndexIdPrintable();
 		fDynamic = true;
 	}
 
@@ -5608,6 +5612,7 @@ CTranslatorDXLToPlStmt::PplanBitmapTableScan
 	BitmapTableScan *pdbts = MakeNode(BitmapTableScan);
 	pdbts->scan.scanrelid = iRel;
 	pdbts->scan.partIndex = ulPartIndex;
+	pdbts->scan.partIndexPrintable = ulPartIndexPrintable;
 
 	Plan *pplan = &(pdbts->scan.plan);
 	pplan->plan_node_id = m_pctxdxltoplstmt->UlNextPlanId();

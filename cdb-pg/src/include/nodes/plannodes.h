@@ -445,6 +445,7 @@ typedef struct Scan
 	 * we set it to INVALID_PART_INDEX.
 	 */
 	int32 		partIndex;
+	int32 		partIndexPrintable;
 } Scan;
 
 /* ----------------

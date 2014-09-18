@@ -2865,6 +2865,7 @@ _readDynamicTableScan(const char **str)
 	READ_LOCALS(DynamicTableScan);
 	readScanInfo(str, (Scan *)local_node);
 	READ_INT_FIELD(partIndex);
+	READ_INT_FIELD(partIndexPrintable);
 	READ_DONE();
 }
 
@@ -3550,6 +3551,7 @@ void readScanInfo(const char ** str, Scan *local_node)
 	READ_UINT_FIELD(scanrelid);
 
 	READ_INT_FIELD(partIndex);
+	READ_INT_FIELD(partIndexPrintable);
 }
 
 void readPlanInfo(const char ** str, Plan *local_node)

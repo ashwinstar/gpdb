@@ -2069,7 +2069,7 @@ CTranslatorPlStmtToDXL::PdxlnDynamicTableScan
 
 	CDXLTableDescr *pdxltabdesc = CTranslatorUtils::Pdxltabdesc(m_pmp, m_pmda, m_pidgtor, prte);
 
-	CDXLPhysicalDynamicTableScan *pdxlop = New(m_pmp) CDXLPhysicalDynamicTableScan(m_pmp, pdxltabdesc, pdts->partIndex);
+	CDXLPhysicalDynamicTableScan *pdxlop = New(m_pmp) CDXLPhysicalDynamicTableScan(m_pmp, pdxltabdesc, pdts->partIndex, pdts->partIndexPrintable);
 
 	CDXLNode *pdxln = New(m_pmp) CDXLNode(m_pmp, pdxlop);
 	pdxln->SetProperties(pdxlprop);

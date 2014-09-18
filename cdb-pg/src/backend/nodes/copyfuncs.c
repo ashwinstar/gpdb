@@ -348,6 +348,7 @@ CopyScanFields(Scan *from, Scan *newnode)
 
 	COPY_SCALAR_FIELD(scanrelid);
 	COPY_SCALAR_FIELD(partIndex);
+	COPY_SCALAR_FIELD(partIndexPrintable);
 }
 
 /*
@@ -429,6 +430,7 @@ _copyDynamicTableScan(DynamicTableScan *from)
 	DynamicTableScan *newnode = makeNode(DynamicTableScan);
 	CopyScanFields((Scan *) from, (Scan *) newnode);
 	COPY_SCALAR_FIELD(partIndex);
+	COPY_SCALAR_FIELD(partIndexPrintable);
 
 	return newnode;
 }

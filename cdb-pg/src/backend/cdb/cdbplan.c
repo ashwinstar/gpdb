@@ -304,6 +304,7 @@ plan_tree_mutator(Node *node,
 				FLATCOPY(newTableScan, tableScan, DynamicTableScan);
 				SCANMUTATE(newTableScan, tableScan);
 				newTableScan->partIndex = tableScan->partIndex;
+				newTableScan->partIndexPrintable = tableScan->partIndexPrintable;
 				return (Node *) newTableScan;
 			}
 			break;

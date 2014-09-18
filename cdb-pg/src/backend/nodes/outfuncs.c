@@ -354,6 +354,7 @@ _outScanInfo(StringInfo str, Scan *node)
 	}
 
 	WRITE_INT_FIELD(partIndex);
+	WRITE_INT_FIELD(partIndexPrintable);
 }
 
 /*
@@ -528,6 +529,7 @@ _outDynamicTableScan(StringInfo str, DynamicTableScan *node)
 	WRITE_NODE_TYPE("DYNAMICTABLESCAN");
 	_outScanInfo(str, (Scan *)node);
 	WRITE_INT_FIELD(partIndex);
+	WRITE_INT_FIELD(partIndexPrintable);
 }
 
 static void
