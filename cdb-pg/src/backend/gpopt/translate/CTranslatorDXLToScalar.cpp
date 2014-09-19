@@ -753,9 +753,11 @@ CTranslatorDXLToScalar::PexprSubplanTestExpr
         CMappingColIdVar *pmapcidvar
         )
 {
-        if (EXPR_SUBLINK == slink)
+        if (EXPR_SUBLINK == slink ||
+	    EXISTS_SUBLINK == slink ||
+	    NOT_EXISTS_SUBLINK == slink)
         {
-		// expr sublink has no test expression
+		// expr/exists/not-exists sublinks have no test expression
 		return NULL;
         }
 	

@@ -902,19 +902,16 @@ SELECT * FROM csq_r WHERE a not IN (SELECT * FROM csq_f(csq_r.a));
 
 -- force_explain
 explain SELECT * FROM csq_r WHERE exists (SELECT * FROM csq_f(csq_r.a));
-                                  QUERY PLAN                                  
+                                  QUERY PLAN
 ------------------------------------------------------------------------------
- Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..862.04 rows=1 width=4)
-   ->  Result  (cost=0.00..862.04 rows=1 width=4)
-         Filter: COALESCE("ColRef_0012", 0::bigint) > 0::bigint
-         ->  Result  (cost=0.00..862.03 rows=500 width=16)
-               ->  Table Scan on csq_r  (cost=0.00..862.02 rows=500 width=16)
-               SubPlan 1
-                 ->  Aggregate  (cost=0.00..0.00 rows=1 width=8)
-                       ->  Result  (cost=0.00..0.00 rows=1 width=1)
-                             ->  Result  (cost=0.00..0.00 rows=1 width=1)
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..862.00 rows=1 width=4)
+   ->  Table Scan on csq_r  (cost=0.00..862.00 rows=1 width=4)
+         Filter: (subplan)
+         SubPlan 1
+           ->  Result  (cost=0.00..0.00 rows=1 width=1)
+                 ->  Result  (cost=0.00..0.00 rows=1 width=1)
  Settings:  optimizer=on; optimizer_segments=3
-(10 rows)
+(7 rows)
 
 SELECT * FROM csq_r WHERE exists (SELECT * FROM csq_f(csq_r.a));
  a 
@@ -924,19 +921,16 @@ SELECT * FROM csq_r WHERE exists (SELECT * FROM csq_f(csq_r.a));
 
 -- force_explain
 explain SELECT * FROM csq_r WHERE not exists (SELECT * FROM csq_f(csq_r.a));
-                                  QUERY PLAN                                  
+                                  QUERY PLAN
 ------------------------------------------------------------------------------
- Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..862.04 rows=1 width=4)
-   ->  Result  (cost=0.00..862.04 rows=1 width=4)
-         Filter: COALESCE("ColRef_0012", 0::bigint) = 0::bigint
-         ->  Result  (cost=0.00..862.03 rows=500 width=16)
-               ->  Table Scan on csq_r  (cost=0.00..862.02 rows=500 width=16)
-               SubPlan 1
-                 ->  Aggregate  (cost=0.00..0.00 rows=1 width=8)
-                       ->  Result  (cost=0.00..0.00 rows=1 width=1)
-                             ->  Result  (cost=0.00..0.00 rows=1 width=1)
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..862.00 rows=1 width=4)
+   ->  Table Scan on csq_r  (cost=0.00..862.00 rows=1 width=4)
+         Filter: (subplan)
+         SubPlan 1
+           ->  Result  (cost=0.00..0.00 rows=1 width=1)
+                 ->  Result  (cost=0.00..0.00 rows=1 width=1)
  Settings:  optimizer=on; optimizer_segments=3
-(10 rows)
+(7 rows)
 
 SELECT * FROM csq_r WHERE not exists (SELECT * FROM csq_f(csq_r.a));
  a 

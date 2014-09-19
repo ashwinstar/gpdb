@@ -255,7 +255,7 @@ ExecScanSubPlan(SubPlanState *node,
 	 * (ROWCOMPARE_SUBLINK doesn't allow multiple tuples from the subplan.)
 	 * NULL results from the combining operators are handled according to the
 	 * usual SQL semantics for OR and AND.	The result for no input tuples is
-	 * FALSE for ANY_SUBLINK, TRUE for ALL_SUBLINK, NULL for
+	 * FALSE for ANY_SUBLINK, TRUE for {ALL_SUBLINK, NOT_EXISTS_SUBLINK}, NULL for
 	 * ROWCOMPARE_SUBLINK.
 	 *
 	 * For EXPR_SUBLINK we require the subplan to produce no more than one
@@ -268,7 +268,7 @@ ExecScanSubPlan(SubPlanState *node,
 	 * that we produce a zero-element array if no tuples are produced (this is
 	 * a change from pre-8.3 behavior of returning NULL).
 	 */
-	result = BoolGetDatum(subLinkType == ALL_SUBLINK);
+	result = BoolGetDatum(subLinkType == ALL_SUBLINK || subLinkType == NOT_EXISTS_SUBLINK);
 	*isNull = false;
 
 	for (slot = ExecProcNode(planstate);
@@ -280,10 +280,15 @@ ExecScanSubPlan(SubPlanState *node,
 		int			col;
 		ListCell   *plst;
 
-		if (subLinkType == EXISTS_SUBLINK)
+		if (subLinkType == EXISTS_SUBLINK || subLinkType == NOT_EXISTS_SUBLINK)
 		{
 			found = true;
-			result = BoolGetDatum(true);
+			bool val = true;
+			if (subLinkType == NOT_EXISTS_SUBLINK)
+			{
+				val = false;
+			}
+			result = BoolGetDatum(val);
 			break;
 		}
 
@@ -1149,14 +1154,19 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 		{
 			int			i = 1;
 
-			if (subLinkType == EXISTS_SUBLINK)
+			if (subLinkType == EXISTS_SUBLINK || subLinkType == NOT_EXISTS_SUBLINK)
 			{
 				/* There can be only one param... */
 				int			paramid = linitial_int(subplan->setParam);
 				ParamExecData *prm = &(econtext->ecxt_param_exec_vals[paramid]);
 
 				prm->execPlan = NULL;
-				prm->value = BoolGetDatum(true);
+				bool val = true;
+				if (subLinkType == NOT_EXISTS_SUBLINK)
+				{
+					val = false;
+				}
+				prm->value = BoolGetDatum(val);
 				prm->isnull = false;
 				found = true;
 
@@ -1222,14 +1232,19 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 
 		if (!found)
 		{
-			if (subLinkType == EXISTS_SUBLINK)
+			if (subLinkType == EXISTS_SUBLINK || subLinkType == NOT_EXISTS_SUBLINK)
 			{
 				/* There can be only one param... */
 				int			paramid = linitial_int(subplan->setParam);
 				ParamExecData *prm = &(econtext->ecxt_param_exec_vals[paramid]);
 
 				prm->execPlan = NULL;
-				prm->value = BoolGetDatum(false);
+				bool val = false;
+                                if (subLinkType == NOT_EXISTS_SUBLINK)
+                                {
+                                        val = true;
+                                }
+				prm->value = BoolGetDatum(val);
 				prm->isnull = false;
 			}
 			else
