@@ -27,11 +27,14 @@ gphdfs:
                 -Dgphdgnet.version=gpmr-1.0-gnet-1.0.0.1 \
                 -Dgpgnet.src=1.0
 	$(ANT) clean
+	#gpmr-1.2 uses hadoop-core-2.0.0-mr1-cdh4.1.2.jar to build, the same as cdh4.1
 	$(ANT) dist -Dorg=org.apache.hadoop \
                 -Dname=hadoop-core \
-                -Drevision=0.20.2 \
+                -Drevision=2.0.0-mr1-cdh4.1.2 \
+                -Dhadoop-common.revision=2.0.0-cdh4.1.2 \
                 -Dgphdgnet.version=gpmr-1.2-gnet-1.0.0.1 \
-                -Dgpgnet.src=1.0
+                -Dgpgnet.src=1.2 \
+                -Dgpgnet.configuration=hadoop2
 	$(ANT) clean
 	$(ANT) dist -Dorg=org.apache.hadoop \
                 -Dname=hadoop-core \
