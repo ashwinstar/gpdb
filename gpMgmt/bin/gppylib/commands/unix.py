@@ -115,6 +115,48 @@ def check_pid(pid):
     else:
         return True
 
+"""
+Given the data directory, port and pid for a segment, 
+kill -9 all the processes associated with that segment.
+If pid is -1, then the postmaster is already stopped, 
+so we check for any leftover processes for that segment 
+and kill -9 those processes
+E.g postgres: port 45002, logger process
+    postgres: port 45002, sweeper process
+    postgres: port 45002, checkpoint process
+"""
+def kill_9_segment_processes(datadir, port, pid):
+    logger.info('Killing processes for segment %s' % datadir)
+        
+    pid_list = []
+
+    # pid is the pid of the postgres process.
+    # pid can be -1 if the process is down already
+    if pid != -1:
+        pid_list = [pid]
+
+    cmd = Command('get a list of processes to kill -9', cmdStr='ps ux | grep "[p]ostgres:\s*port\s*%s" | awk \'{print $2}\'' % (port))
+
+    try:
+        cmd.run(validateAfter=True)
+    except Exception as e:
+        logger.warning('Unable to get the pid list of processes for segment %s: (%s)' % (datadir, str(e)))
+        return
+
+    results = cmd.get_results()
+    results = results.stdout.strip().split('\n')
+    
+    for result in results:
+        if result:
+            pid_list.append(int(result))
+
+    for pid in pid_list:
+        # Try to kill -9 the process.
+        # We ignore any errors 
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except Exception as e:
+            logger.error('Failed to kill processes for segment %s: (%s)' % (datadir, str(e)))
 
 def logandkill(pid, sig):
     msgs = {

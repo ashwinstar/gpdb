@@ -27,6 +27,7 @@ from gppylib.db import catalog
 from gppylib.db import dbconn
 from gppylib import pgconf
 from gppylib.gpcoverage import GpCoverage
+from gppylib.commands.gp import is_pid_postmaster
 
 description = ("""
 This utility is NOT SUPPORTED and is for internal-use only.
@@ -68,6 +69,7 @@ class SegStop(base.Command):
     def run(self):
         try:
             self.datadir, self.port = self.get_datadir_and_port()
+
             cmd = gp.SegmentStop('segment shutdown', self.datadir, mode=self.mode, timeout=self.timeout)
             cmd.run()
 
@@ -82,10 +84,9 @@ class SegStop(base.Command):
                     status = SegStopStatus(self.datadir, True, "Shutdown Succeeded")
                     self.result = status
                     is_shutdown = True
-
                 # MPP-16171
                 # 
-                if self.mode == 'immediate':
+                elif self.mode == 'immediate':
                     status = SegStopStatus(self.datadir, True, "Shutdown Immediate")
                     self.result = status
                     is_shutdown = True
@@ -111,6 +112,10 @@ class SegStop(base.Command):
 
                 status = SegStopStatus(self.datadir,False,"Shutdown failed: rc: %d stdout: %s stderr: %s. Will attempt forceful termination of processes" % (results.rc,results.stdout,results.stderr))
                 self.result = status
+            try:
+                unix.kill_9_segment_processes(self.datadir, self.port, mypid)
+            except Exception as e:
+                logger.error('Failed forceful termination of segment %s: (%s)' % (self.datadir, str(e)))
 
             return self.result
         except Exception as e:
@@ -134,7 +139,7 @@ class GpSegStop:
                             "But we were expecting it to be: '%s'\n"
                             "Please review and correct" % (self.actual_gpversion,self.expected_gpversion))                
         self.logger = logger
-    
+   
     ######
     def run(self):
         results  = []

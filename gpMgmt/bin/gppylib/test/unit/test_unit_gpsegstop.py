@@ -36,7 +36,9 @@ class SegStopTestCase(unittest.TestCase):
     @patch('gppylib.commands.base.Command.run')
     @patch('gppylib.commands.base.Command.get_results', return_value=CommandResult(0, '', '',True, False))
     @patch('gppylib.commands.gp.SegmentIsShutDown.is_shutdown', return_value=True)
-    def test_run(self, mock1, mock2, mock3):
+    @patch('gpsegstop.unix.kill_9_segment_processes')
+    @patch('gpsegstop.pg.ReadPostmasterTempFile.getResults', return_value=(True, 1234, '/tmp/gpseg0'))
+    def test_run(self, mock1, mock2, mock3, mock4, mock5):
         self.segstop.db = '/tmp/gpseg0:1234'
         self.segstop.mode = 'smart'
         self.segstop.timeout = '10'
@@ -48,7 +50,8 @@ class SegStopTestCase(unittest.TestCase):
     @patch('gppylib.commands.base.Command.get_results', return_value=CommandResult(1, '', '',True, False))
     @patch('gpsegstop.pg.ReadPostmasterTempFile.getResults', return_value=(True, 1234, '/tmp/gpseg0'))
     @patch('gpsegstop.unix.kill_sequence')
-    def test_run_with_error(self, mock1, mock2, mock3, mock4):
+    @patch('gpsegstop.unix.kill_9_segment_processes')
+    def test_run_with_error(self, mock1, mock2, mock3, mock4, mock5):
         self.segstop.db = '/tmp/gpseg0:1234'
         self.segstop.mode = 'smart'
         self.segstop.timeout = '10'
@@ -61,7 +64,8 @@ class SegStopTestCase(unittest.TestCase):
     @patch('gppylib.commands.gp.SegmentIsShutDown.is_shutdown', return_value=False)
     @patch('gpsegstop.pg.ReadPostmasterTempFile.getResults', return_value=(True, 1234, '/tmp/gpseg0'))
     @patch('gpsegstop.unix.kill_sequence')
-    def test_run_with_pg_controldata_error(self, mock1, mock2, mock3, mock4, mock5):
+    @patch('gpsegstop.unix.kill_9_segment_processes')
+    def test_run_with_pg_controldata_error(self, mock1, mock2, mock3, mock4, mock5, mock6):
         self.segstop.db = '/tmp/gpseg0:1234'
         self.segstop.mode = 'smart'
         self.segstop.timeout = '10'
@@ -72,7 +76,9 @@ class SegStopTestCase(unittest.TestCase):
     @patch('gppylib.commands.base.Command.run')
     @patch('gppylib.commands.base.Command.get_results', return_value=CommandResult(0, '', '',True, False))
     @patch('gppylib.commands.gp.SegmentIsShutDown.is_shutdown', return_value=False)
-    def test_run_with_pg_controldata_error_in_immediate_mode(self, mock1, mock2, mock3):
+    @patch('gpsegstop.pg.ReadPostmasterTempFile.getResults', return_value=(True, 1234, '/tmp/gpseg0'))
+    @patch('gpsegstop.unix.kill_9_segment_processes')
+    def test_run_with_pg_controldata_error_in_immediate_mode(self, mock1, mock2, mock3, mock4, mock5):
         self.segstop.db = '/tmp/gpseg0:1234'
         self.segstop.mode = 'immediate'
         self.segstop.timeout = '10'
@@ -86,14 +92,14 @@ class SegStopTestCase(unittest.TestCase):
     @patch('gpsegstop.pg.ReadPostmasterTempFile.getResults', return_value=(True, 1234, '/tmp/gpseg0'))
     @patch('gpsegstop.unix.kill_sequence')
     @patch('gpsegstop.unix.check_pid', return_value=False)
-    def test_run_with_kill_error(self, mock1, mock2, mock3, mock4, mock5, mock6):
+    @patch('gpsegstop.unix.kill_9_segment_processes')
+    def test_run_with_kill_error(self, mock1, mock2, mock3, mock4, mock5, mock6, mock7):
         self.segstop.db = '/tmp/gpseg0:1234'
         self.segstop.mode = 'immediate'
         self.segstop.timeout = '10'
         expected = SegStopStatus('/tmp/gpseg0', True, 'Shutdown Immediate')
         result = self.segstop.run()
         self.assertEqual(str(expected), str(result))
-
 
 #------------------------------- Mainline --------------------------------
 if __name__ == '__main__':
