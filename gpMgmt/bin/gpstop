@@ -24,7 +24,7 @@ try:
     from gppylib import pgconf
     from gppylib.commands import unix
     from gppylib.commands import gp
-    from gppylib.commands.gp import SEGMENT_TIMEOUT_DEFAULT
+    from gppylib.commands.gp import SEGMENT_STOP_TIMEOUT_DEFAULT
     from gppylib.commands import base
     from gppylib.commands import pg
     from gppylib.commands import dca
@@ -61,7 +61,7 @@ class GpStop:
     def __init__(self,mode,master_datadir=None,
                  parallel=DEFAULT_NUM_WORKERS,quiet=False,masteronly=False,sighup=False,
                  interactive=False,stopstandby=False,restart=False,
-                 timeout=SEGMENT_TIMEOUT_DEFAULT):
+                 timeout=SEGMENT_STOP_TIMEOUT_DEFAULT):
         self.mode=mode
         self.master_datadir=master_datadir
         self.pool = None
@@ -267,8 +267,8 @@ class GpStop:
                 logger.info("Will wait for shutdown to complete, this may take some time if")
                 logger.info("there are a large number of active complex transactions, please wait...")
             else:
-                if self.timeout == SEGMENT_TIMEOUT_DEFAULT:
-                    logger.info("Using standard WAIT mode of %s seconds" % SEGMENT_TIMEOUT_DEFAULT)
+                if self.timeout == SEGMENT_STOP_TIMEOUT_DEFAULT:
+                    logger.info("Using standard WAIT mode of %s seconds" % SEGMENT_STOP_TIMEOUT_DEFAULT)
                 else:
                     logger.info("Using WAIT mode of %s seconds" % self.timeout)
         pass
@@ -629,7 +629,7 @@ class GpStop:
 
         addTo.add_option('-B', '--parallel', type="int", default=DEFAULT_NUM_WORKERS, metavar="<parallel_processes>",
                             help='number of segment hosts to run in parallel. Default is %d' % DEFAULT_NUM_WORKERS)
-        addTo.add_option('-t', '--timeout', dest='timeout', default=SEGMENT_TIMEOUT_DEFAULT, type='int',
+        addTo.add_option('-t', '--timeout', dest='timeout', default=SEGMENT_STOP_TIMEOUT_DEFAULT, type='int',
                            help='time to wait for segment stop (in seconds)')
 
         parser.set_defaults(verbose=False, filters=[], slice=(None, None))
@@ -662,8 +662,8 @@ class GpStop:
             raise ProgramArgumentValidationException("Invalid value for parallel degree: %s" % options.parallel )
 
         # Don't allow them to go below default
-        if options.timeout < SEGMENT_TIMEOUT_DEFAULT:
-            raise ProgramArgumentValidationException("Invalid timeout value.  Must be greater than %s seconds." % SEGMENT_TIMEOUT_DEFAULT)
+        if options.timeout < SEGMENT_STOP_TIMEOUT_DEFAULT:
+            raise ProgramArgumentValidationException("Invalid timeout value.  Must be greater than %s seconds." % SEGMENT_STOP_TIMEOUT_DEFAULT)
 
         if args:
             raise ProgramArgumentValidationException("Argument %s is invalid.  Is an option missing a parameter?" % args[-1])

@@ -21,7 +21,7 @@ from gppylib import gplog
 from gppylib.commands import base
 from gppylib.commands import unix
 from gppylib.commands import gp
-from gppylib.commands.gp import SEGMENT_TIMEOUT_DEFAULT
+from gppylib.commands.gp import SEGMENT_STOP_TIMEOUT_DEFAULT
 from gppylib.commands import pg
 from gppylib.db import catalog
 from gppylib.db import dbconn
@@ -126,7 +126,7 @@ class SegStop(base.Command):
 #-------------------------------------------------------------------------    
 class GpSegStop:
     ######
-    def __init__(self,dblist,mode,gpversion,timeout=SEGMENT_TIMEOUT_DEFAULT):
+    def __init__(self,dblist,mode,gpversion,timeout=SEGMENT_STOP_TIMEOUT_DEFAULT):
         self.dblist=dblist
         self.mode=mode
         self.expected_gpversion=gpversion
@@ -185,7 +185,7 @@ class GpSegStop:
                           help="expected software version")
         parser.add_option("-m", "--mode", dest="mode",metavar="<MODE>",
                           help="how to shutdown. modes are smart,fast, or immediate")
-        parser.add_option("-t", "--timeout", dest="timeout", type="int", default=SEGMENT_TIMEOUT_DEFAULT,
+        parser.add_option("-t", "--timeout", dest="timeout", type="int", default=SEGMENT_STOP_TIMEOUT_DEFAULT,
                           help="seconds to wait")
         return parser
 

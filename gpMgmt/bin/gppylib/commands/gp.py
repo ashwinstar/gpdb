@@ -26,6 +26,7 @@ GPHOME=os.environ.get('GPHOME')
 
 #Default timeout for segment start
 SEGMENT_TIMEOUT_DEFAULT=600
+SEGMENT_STOP_TIMEOUT_DEFAULT=120
 
 #"Command not found" return code in bash
 COMMAND_NOT_FOUND=127
@@ -349,7 +350,7 @@ class MasterStart(Command):
 
 #-----------------------------------------------
 class MasterStop(Command):
-    def __init__(self,name,dataDir,mode='smart',timeout=SEGMENT_TIMEOUT_DEFAULT, ctxt=LOCAL,remoteHost=None):
+    def __init__(self,name,dataDir,mode='smart',timeout=SEGMENT_STOP_TIMEOUT_DEFAULT, ctxt=LOCAL,remoteHost=None):
         self.dataDir = dataDir
         self.cmdStr = str( PgCtlStopArgs(dataDir, mode, True, timeout) )
         Command.__init__(self, name, self.cmdStr, ctxt, remoteHost)
@@ -559,7 +560,7 @@ class SendFilerepVerifyMessage(Command):
 #-----------------------------------------------
 class SegmentStop(Command):
     def __init__(self, name, dataDir,mode='smart', nowait=False, ctxt=LOCAL, 
-                 remoteHost=None, timeout=SEGMENT_TIMEOUT_DEFAULT):
+                 remoteHost=None, timeout=SEGMENT_STOP_TIMEOUT_DEFAULT):
 
         self.cmdStr = str( PgCtlStopArgs(dataDir, mode, not nowait, timeout) )
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
@@ -815,7 +816,7 @@ class GpSegChangeMirrorModeCmd(Command):
 
 #-----------------------------------------------
 class GpSegStopCmd(Command):
-    def __init__(self, name, gphome, version,mode,dbs,timeout=SEGMENT_TIMEOUT_DEFAULT,
+    def __init__(self, name, gphome, version,mode,dbs,timeout=SEGMENT_STOP_TIMEOUT_DEFAULT,
                  verbose=False, ctxt=LOCAL, remoteHost=None):
         self.gphome=gphome
         self.dblist=dbs
