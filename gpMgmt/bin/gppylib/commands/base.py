@@ -96,7 +96,16 @@ class WorkerPool(object):
             print " "    
         self.join()
         
-        
+    def print_progress(self, command_count):
+        while True:
+            num_completed = self.completed_queue.qsize()
+            num_completed_percentage = 0
+            if command_count:
+                num_completed_percentage = float(num_completed) / command_count
+            logger.info('%0.2f%% of jobs completed' % (num_completed_percentage * 100))
+            if num_completed >= command_count:
+                return
+            time.sleep(10)
     
     def join(self):
         self.work_queue.join()

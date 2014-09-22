@@ -384,7 +384,7 @@ class GpStop:
             self.pool.addCommand(cmd)
             dispatch_count+=1
         
-        self.pool.wait_and_printdots(dispatch_count,self.quiet)    
+        self.pool.print_progress(dispatch_count)   
         pass
         
     
