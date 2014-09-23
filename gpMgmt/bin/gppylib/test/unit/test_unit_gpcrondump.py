@@ -4,7 +4,7 @@ import os, sys
 import unittest2 as unittest
 from datetime import datetime
 from gppylib import gplog
-from gpcrondump import GpCronDump, FREE_SPACE_PERCENT
+from gpcrondump import GpCronDump, FREE_SPACE_PERCENT, CATALOG_SCHEMA
 from gppylib.operations.utils import DEFAULT_NUM_WORKERS
 from mock import patch, Mock
 from gppylib.mainUtils import ExceptionNoStackTraceNeeded
@@ -70,6 +70,362 @@ class GpCronDumpTestCase(unittest.TestCase):
             self.netbackup_schedule = None
             self.netbackup_block_size = None
             self.netbackup_keyword = None
+            self.include_schema_file = None
+            self.exclude_schema_file = None
+            self.exclude_dump_schema = None
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_option_schema_filter_1(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.include_schema_file = '/tmp/foo'
+        options.incremental = True
+        with self.assertRaisesRegexp(Exception, '--schema-file option can not be selected with incremental backup'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_option_schema_filter_2(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.exclude_schema_file = '/tmp/foo'
+        options.incremental = True
+        with self.assertRaisesRegexp(Exception, '--exclude-schema-file option can not be selected with incremental backup'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_schema_filter_3(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.exclude_dump_schema = 'foo'
+        options.incremental = True
+        with self.assertRaisesRegexp(Exception, '-S option can not be selected with incremental backup'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_schema_filter_4(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.dump_schema = 'foo'
+        options.incremental = True
+        with self.assertRaisesRegexp(Exception, '-s option can not be selected with incremental backup'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_schema_filter_5(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.dump_schema = 'foo'
+        options.exclude_schema_file = '/tmp/foo'
+        with self.assertRaisesRegexp(Exception, '-s can not be selected with --exclude-schema-file option'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_schema_filter_6(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.dump_schema = 'foo'
+        options.include_schema_file = '/tmp/foo'
+        with self.assertRaisesRegexp(Exception, '-s can not be selected with --schema-file option'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_schema_filter_7(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.dump_schema = 'foo'
+        options.exclude_dump_schema = 'foo'
+        with self.assertRaisesRegexp(Exception, '-s can not be selected with -S option'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_schema_filter_8(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.exclude_dump_schema = 'foo'
+        options.exclude_schema_file = '/tmp/foo'
+        with self.assertRaisesRegexp(Exception, '-S can not be selected with --exclude-schema-file option'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_schema_filter_9(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.exclude_dump_schema = 'foo'
+        options.include_schema_file = '/tmp/foo'
+        with self.assertRaisesRegexp(Exception, '-S can not be selected with --schema-file option'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_schema_filter_10(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.exclude_schema_file = 'foo'
+        options.include_schema_file = '/tmp/foo'
+        with self.assertRaisesRegexp(Exception, '--exclude-schema-file can not be selected with --schema-file option'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_schema_filter_11(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.exclude_schema_file = 'foo'
+        options.include_dump_tables_file = '/tmp/foo'
+        with self.assertRaisesRegexp(Exception, '--table-file and --exclude-table-file can not be selected with --exclude-schema-file option'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_schema_filter_12(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.exclude_schema_file = 'foo'
+        options.exclude_dump_tables_file = '/tmp/foo'
+        with self.assertRaisesRegexp(Exception, '--table-file and --exclude-table-file can not be selected with --exclude-schema-file option'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_schema_filter_13(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.include_schema_file = 'foo'
+        options.exclude_dump_tables_file = '/tmp/foo'
+        with self.assertRaisesRegexp(Exception, '--table-file and --exclude-table-file can not be selected with --schema-file option'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_schema_filter_14(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.include_schema_file = 'foo'
+        options.include_dump_tables_file = '/tmp/foo'
+        with self.assertRaisesRegexp(Exception, '--table-file and --exclude-table-file can not be selected with --schema-file option'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_schema_filter_15(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.dump_schema = 'foo'
+        options.include_dump_tables_file = '/tmp/foo'
+        with self.assertRaisesRegexp(Exception, '--table-file and --exclude-table-file can not be selected with -s option'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_schema_filter_16(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.dump_schema = 'foo'
+        options.exclude_dump_tables_file = '/tmp/foo'
+        with self.assertRaisesRegexp(Exception, '--table-file and --exclude-table-file can not be selected with -s option'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_schema_filter_17(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.exclude_dump_schema = 'foo'
+        options.include_dump_tables_file = '/tmp/foo'
+        with self.assertRaisesRegexp(Exception, '--table-file and --exclude-table-file can not be selected with -S option'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_schema_filter_18(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.exclude_dump_schema = 'foo'
+        options.exclude_dump_tables_file = '/tmp/foo'
+        with self.assertRaisesRegexp(Exception, '--table-file and --exclude-table-file can not be selected with -S option'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_schema_filter_19(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.exclude_schema_file = 'foo'
+        options.exclude_dump_tables = '/tmp/foo'
+        with self.assertRaisesRegexp(Exception, '-t and -T can not be selected with --exclude-schema-file option'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_schema_filter_20(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.exclude_schema_file = 'foo'
+        options.include_dump_tables = '/tmp/foo'
+        with self.assertRaisesRegexp(Exception, '-t and -T can not be selected with --exclude-schema-file option'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_schema_filter_21(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.include_schema_file = 'foo'
+        options.exclude_dump_tables = '/tmp/foo'
+        with self.assertRaisesRegexp(Exception, '-t and -T can not be selected with --schema-file option'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_schema_filter_22(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.include_schema_file = 'foo'
+        options.include_dump_tables = '/tmp/foo'
+        with self.assertRaisesRegexp(Exception, '-t and -T can not be selected with --schema-file option'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_schema_filter_23(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.dump_schema = 'foo'
+        options.exclude_dump_tables = '/tmp/foo'
+        with self.assertRaisesRegexp(Exception, '-t and -T can not be selected with -s option'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_schema_filter_24(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.dump_schema = 'foo'
+        options.include_dump_tables = '/tmp/foo'
+        with self.assertRaisesRegexp(Exception, '-t and -T can not be selected with -s option'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_schema_filter_25(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.exclude_dump_schema = 'foo'
+        options.exclude_dump_tables = '/tmp/foo'
+        with self.assertRaisesRegexp(Exception, '-t and -T can not be selected with -S option'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_schema_filter_26(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.exclude_dump_schema = 'foo'
+        options.include_dump_tables = '/tmp/foo'
+        with self.assertRaisesRegexp(Exception, '-t and -T can not be selected with -S option'):
+            cron = GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_schema_filter_27(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.dump_schema = ['information_schema']
+        with self.assertRaisesRegexp(Exception, "can not specify catalog schema 'information_schema' using -s option"):
+            GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_schema_filter_28(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.exclude_dump_schema = ['information_schema']
+        with self.assertRaisesRegexp(Exception, "can not specify catalog schema 'information_schema' using -S option"):
+            GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    @patch('gpcrondump.get_lines_from_file', return_value=['public', 'information_schema'])
+    def test_options_schema_filter_29(self, mock, mock2, mock3):
+        options = GpCronDumpTestCase.Options()
+        options.exclude_schema_file = '/tmp/foo'
+        with self.assertRaisesRegexp(Exception, "can not exclude catalog schema 'information_schema' in schema file '/tmp/foo'"):
+            GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    @patch('gpcrondump.get_lines_from_file', return_value=['public', 'information_schema'])
+    def test_options_schema_filter_30(self, mock, mock2, mock3):
+        options = GpCronDumpTestCase.Options()
+        options.include_schema_file = '/tmp/foo'
+        with self.assertRaisesRegexp(Exception, "can not include catalog schema 'information_schema' in schema file '/tmp/foo'"):
+            GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    @patch('gpcrondump.get_lines_from_file', return_value=['public', 'information_schema'])
+    def test_options_schema_filter_31(self, mock, mock2, mock3):
+        options = GpCronDumpTestCase.Options()
+        options.dump_schema = 'public'
+        with self.assertRaisesRegexp(Exception, "can not include catalog schema 'information_schema' in schema file '/tmp/foo'"):
+            GpCronDump(options, None)
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_schema_filter_31(self, mock, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.masterDataDirectory = '/tmp/foobar'
+        gpcd = GpCronDump(options, None)
+        dbname = 'foo'
+        timestamp = '20141016010101'
+        file = gpcd.get_schema_list_file(dbname, timestamp)
+        self.assertEquals(file, None)
+ 
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_schema_filter_32(self, mock1, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.dump_schema = ['public']
+        gpcd = GpCronDump(options, None)
+        dbname = 'foo'
+        timestamp = '20141016010101'
+        file = gpcd.get_schema_list_file(dbname, timestamp)
+        self.assertTrue(file.startswith('/tmp/schema_list'))
+
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    def test_options_schema_filter_33(self, mock1, mock2):
+        options = GpCronDumpTestCase.Options()
+        options.include_schema_file = '/tmp/foo'
+        backup_utils.write_lines_to_file('/tmp/foo', ['public'])
+        gpcd = GpCronDump(options, None)
+        dbname = 'foo'
+        timestamp = '20141016010101'
+        file = gpcd.get_schema_list_file(dbname, timestamp)
+        self.assertTrue(file.startswith('/tmp/foo'))
+        if os.path.exists('/tmp/foo'):
+            os.remove('/tmp/foo')
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    @patch('gpcrondump.get_include_schema_list_from_exclude_schema', return_value=['public'])
+    def test_options_schema_filter_34(self, mock1, mock2, mock3):
+        options = GpCronDumpTestCase.Options()
+        options.exclude_schema_file = '/tmp/foo'
+        backup_utils.write_lines_to_file('/tmp/foo', ['public'])
+        gpcd = GpCronDump(options, None)
+        dbname = 'foo'
+        timestamp = '20141016010101'
+        file = gpcd.get_schema_list_file(dbname, timestamp)
+        self.assertTrue(file.startswith('/tmp/schema_list'))
+        if os.path.exists('/tmp/foo'):
+            os.remove('/tmp/foo')
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    @patch('gpcrondump.get_include_schema_list_from_exclude_schema', return_value=['public'])
+    def test_options_schema_filter_35(self, mock1, mock2, mock3):
+        options = GpCronDumpTestCase.Options()
+        options.exclude_dump_schema = 'public'
+        gpcd = GpCronDump(options, None)
+        dbname = 'foo'
+        timestamp = '20141016010101'
+        file = gpcd.get_schema_list_file(dbname, timestamp)
+        self.assertTrue(file.startswith('/tmp/schema_list'))
+
+    @patch('gpcrondump.GpCronDump._get_master_port')
+    @patch('gpcrondump.validate_current_timestamp')
+    @patch('gpcrondump.get_lines_from_file', return_value=['public'])
+    @patch('gpcrondump.get_user_table_list_for_schema', return_value=['public', 'table1', 'public', 'table2'])
+    def test_options_schema_filter_36(self, mock1, mock2, mock3, mock4):
+        options = GpCronDumpTestCase.Options()
+        gpcd = GpCronDump(options, None)
+        dbname = 'foo'
+        schema_file = '/tmp/foo'
+        inc = gpcd.generate_include_table_list_from_schema_file(dbname, schema_file)
+        self.assertTrue(inc.startswith('/tmp/include_dump_tables_file'))
 
     @patch('gpcrondump.GpCronDump._get_master_port')
     @patch('gpcrondump.validate_current_timestamp')

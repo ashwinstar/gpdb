@@ -8,6 +8,7 @@
 # import mainUtils FIRST to get python version check
 from gppylib.mainUtils import *
 import gpmfr
+import shutil
 from datetime import datetime
 import sys
 import socket
@@ -39,13 +40,16 @@ try:
                                         DUMP_DIR, filter_dirty_tables, get_filter_file, update_filter_file, \
                                         backup_cdatabase_file_with_nbu, backup_report_file_with_nbu, \
                                         backup_global_file_with_nbu, backup_state_files_with_nbu, backup_config_files_with_nbu, \
-                                        backup_report_file_with_ddboost, backup_increments_file_with_ddboost, \
-                                        backup_dirty_file_with_nbu, backup_increments_file_with_nbu, backup_partition_list_file_with_nbu
+                                        backup_report_file_with_ddboost, backup_increments_file_with_ddboost, backup_schema_file_with_ddboost, \
+                                        backup_dirty_file_with_nbu, backup_increments_file_with_nbu, \
+                                        backup_schema_file_with_nbu, backup_partition_list_file_with_nbu, \
+                                        get_user_table_list_for_schema, get_include_schema_list_from_exclude_schema
     from gppylib.operations.backup_utils import get_latest_full_dump_timestamp, check_funny_chars_in_tablenames, \
                                                 expand_partitions_and_populate_filter_file, get_lines_from_file, \
                                                 remove_file_from_segments, validate_timestamp, write_lines_to_file, \
                                                 verify_lines_in_file, get_backup_directory, generate_pipes_filename, \
-                                                generate_files_filename, get_latest_full_ts_with_nbu
+                                                generate_files_filename, get_latest_full_ts_with_nbu, create_temp_file_from_list, \
+                                                generate_schema_filename
     from gppylib.operations.utils import DEFAULT_NUM_WORKERS
     from gppylib.gparray import GpArray
     from gppylib.db import dbconn
@@ -64,6 +68,14 @@ INJECT_ROLLBACK = False
 EXECNAME = 'gpcrondump'
 GPCRONDUMP_PID_FILE = 'gpcrondump.pid'
 FREE_SPACE_PERCENT = 10
+CATALOG_SCHEMA = [
+ 'gp_toolkit',
+ 'information_schema',
+ 'pg_aoseg',
+ 'pg_bitmapindex',
+ 'pg_catalog',
+ 'pg_toast'
+]
 
 logger = gplog.get_default_logger()
 conn = None
@@ -94,6 +106,9 @@ class GpCronDump(Operation):
         self.free_space_percent = options.free_space_percent
         self.clear_dumps = options.clear_dumps
         self.dump_schema = options.dump_schema
+        self.include_schema_file = options.include_schema_file
+        self.exclude_schema_file = options.exclude_schema_file
+        self.exclude_dump_schema = options.exclude_dump_schema
         self.dump_databases = options.dump_databases
         self.dump_global = options.dump_global
         self.clear_catalog_dumps = options.clear_catalog_dumps
@@ -136,6 +151,8 @@ class GpCronDump(Operation):
         if self.exclude_dump_tables is None: self.exclude_dump_tables = []  
         if self.output_options is None: self.output_options = []
         if self.ddboost_hosts is None: self.ddboost_hosts = []
+        if self.dump_schema is None: self.dump_schema = []
+        if self.exclude_dump_schema is None: self.exclude_dump_schema = []
 
         if options.report_dir:
             logger.warn("-y is a deprecacted option.  Report files are always generated with the backup set.")
@@ -249,6 +266,66 @@ class GpCronDump(Operation):
         else:
             self.dump_dir = DUMP_DIR
 
+        # Cannot combine include and exclude schema filters
+        if self.exclude_schema_file and self.dump_schema:
+            raise Exception('-s can not be selected with --exclude-schema-file option')
+
+        if self.include_schema_file and self.dump_schema:
+            raise Exception('-s can not be selected with --schema-file option')
+
+        if self.dump_schema and self.exclude_dump_schema:
+            raise Exception('-s can not be selected with -S option')
+
+        if self.exclude_schema_file and self.exclude_dump_schema:
+            raise Exception('-S can not be selected with --exclude-schema-file option')
+
+        if self.include_schema_file and self.exclude_dump_schema:
+            raise Exception('-S can not be selected with --schema-file option')
+
+        if self.include_schema_file and self.exclude_schema_file:
+            raise Exception('--exclude-schema-file can not be selected with --schema-file option')
+
+
+        # Incremental selections not allowed with schema filters
+        if self.dump_schema and self.incremental:
+            raise Exception('-s option can not be selected with incremental backup')
+            
+        if self.exclude_dump_schema and self.incremental:
+            raise Exception('-S option can not be selected with incremental backup')
+
+        if self.include_schema_file and self.incremental:
+            raise Exception('--schema-file option can not be selected with incremental backup')
+    
+        if self.exclude_schema_file and self.incremental:
+            raise Exception('--exclude-schema-file option can not be selected with incremental backup')
+
+
+        # Cannot combine table and schema filters
+        if self.exclude_schema_file and (self.include_dump_tables_file or self.exclude_dump_tables_file):
+            raise Exception('--table-file and --exclude-table-file can not be selected with --exclude-schema-file option')
+
+        if self.include_schema_file and (self.include_dump_tables_file or self.exclude_dump_tables_file):
+            raise Exception('--table-file and --exclude-table-file can not be selected with --schema-file option')
+
+        if self.dump_schema and (self.include_dump_tables_file or self.exclude_dump_tables_file):
+            raise Exception('--table-file and --exclude-table-file can not be selected with -s option')
+
+        if self.exclude_dump_schema and (self.include_dump_tables_file or self.exclude_dump_tables_file):
+            raise Exception('--table-file and --exclude-table-file can not be selected with -S option')
+
+        if self.exclude_schema_file and (self.include_dump_tables or self.exclude_dump_tables):
+            raise Exception('-t and -T can not be selected with --exclude-schema-file option')
+
+        if self.include_schema_file and (self.include_dump_tables or self.exclude_dump_tables):
+            raise Exception('-t and -T can not be selected with --schema-file option')
+
+        if self.dump_schema and (self.include_dump_tables or self.exclude_dump_tables):
+            raise Exception('-t and -T can not be selected with -s option')
+
+        if self.exclude_dump_schema and (self.include_dump_tables or self.exclude_dump_tables):
+            raise Exception('-t and -T can not be selected with -S option')
+
+
         if self.include_dump_tables and self.incremental:
             raise Exception('include table list can not be selected with incremental backup')
             
@@ -261,14 +338,14 @@ class GpCronDump(Operation):
         if self.exclude_dump_tables_file and self.incremental:
             raise Exception('exclude table file can not be selected with incremental backup')
 
-        if self.dump_schema and self.incremental:
-            raise Exception('-s option can not be selected with incremental backup')
-
         if self.clear_dumps and self.incremental:
             raise Exception('-c option can not be selected with incremental backup')
 
         if self.clear_catalog_dumps and self.incremental:
             raise Exception('-C option can not be selected with incremental backup')
+
+        if self.include_schema_file and self.include_dump_tables:
+            raise Exception('-t can not be selected with --schema-file option')
 
         if self.include_dump_tables and self.include_dump_tables_file:
             raise Exception('-t can not be selected with --table-file option')
@@ -291,12 +368,36 @@ class GpCronDump(Operation):
         if ('--inserts' in self.output_options or '--oids' in self.output_options or '--column-inserts' in self.output_options) and self.incremental:
             raise Exception('--inserts, --column-inserts, --oids cannot be selected with incremental backup')
 
+        if self.include_schema_file or self.dump_schema or self.exclude_schema_file or self.exclude_dump_schema:
+            self.validate_dump_schema()
+
         if self.incremental:
             if self.netbackup_service_host is None:
                 self.full_dump_timestamp = get_latest_full_dump_timestamp(self.dump_databases[0], self.getBackupDirectoryRoot(), self.ddboost)
             else:
                 self.full_dump_timestamp = get_latest_full_ts_with_nbu(self.netbackup_service_host, self.netbackup_block_size, self.dump_databases[0], self.getBackupDirectoryRoot())
 
+    def validate_dump_schema(self):
+        if self.dump_schema:
+            for schema in self.dump_schema:
+                if schema in CATALOG_SCHEMA:
+                    raise Exception("can not specify catalog schema '%s' using -s option" % schema)
+        elif self.include_schema_file:
+            schema_list = get_lines_from_file(self.include_schema_file)
+            for schema in schema_list:
+                if schema in CATALOG_SCHEMA:
+                    raise Exception("can not include catalog schema '%s' in schema file '%s'" % (schema, self.include_schema_file))
+        elif self.exclude_dump_schema:
+            for schema in self.exclude_dump_schema:
+                if schema in CATALOG_SCHEMA:
+                    raise Exception("can not specify catalog schema '%s' using -S option" % schema)
+        elif self.exclude_schema_file:
+            schema_list = get_lines_from_file(self.exclude_schema_file)
+            for schema in schema_list:
+                if schema in CATALOG_SCHEMA:
+                    raise Exception("can not exclude catalog schema '%s' in schema file '%s'" % (schema, self.exclude_schema_file))
+            
+            
     def getBackupDirectoryRoot(self):
         if self.backup_dir:
             return self.backup_dir
@@ -315,7 +416,7 @@ class GpCronDump(Operation):
 
     # check if one of gpcrondump option was specified, except of ddboost options
     def only_ddboost_options(self):
-        return ((self.dump_databases is None) and (self.dump_schema is None)
+        return ((self.dump_databases is None) and (not self.dump_schema)
                 and (self.backup_dir is None)
                 and not (self.include_dump_tables or self.output_options or self.clear_dumps_only or self.pre_vacuum
 					     or self.clear_dumps_only or self.dump_global or self.rollback or self.exclude_dump_tables
@@ -526,6 +627,49 @@ class GpCronDump(Operation):
         else:
             raise ExceptionNoStackTraceNeeded('Failed to connect to DD_host with DD_user and the DD_password')
 
+    # Creating a temp file from the schema list provided by user,
+    # if include_schema_file is not provided else returns include_schema_file
+    def get_schema_list_file(self, dbname, timestamp):
+        schema_file = None
+        if self.include_schema_file:                                                    
+            schema_file = self.include_schema_file                                             
+        elif self.dump_schema:                                                                           
+            schema_file = create_temp_file_from_list(self.dump_schema, 'schema_list')   
+            self.dump_schema = []                                                       
+        elif self.exclude_dump_schema:
+            schema_list = get_include_schema_list_from_exclude_schema(
+                            self.exclude_dump_schema, CATALOG_SCHEMA, 
+                            self.master_port, dbname)
+            schema_file = create_temp_file_from_list(schema_list, 'schema_list')   
+            self.exclude_dump_schema = []                                                       
+        elif self.exclude_schema_file:
+            schema_list = get_include_schema_list_from_exclude_schema(
+                            get_lines_from_file(self.exclude_schema_file), 
+                            CATALOG_SCHEMA, self.master_port, dbname)
+            schema_file = create_temp_file_from_list(schema_list, 'schema_list')
+    
+        return schema_file
+
+    # This method is called only when prefix option is specified with schema filter,
+    # for full backup.
+    # Method updates the include_dump_tables_file based on the schema list provided,
+    # i.e All the tables in the specified schema's are added to the include_dump_tables_file.
+    # Any following incremental backup with that prefix, will have the same functionality as 
+    # incremenatal backup with table filters.
+
+    def generate_include_table_list_from_schema_file(self, dbname, schema_file):
+        include_file = None
+
+        dump_schemas = get_lines_from_file(schema_file)
+        table_list = []
+        for schema in dump_schemas:
+            tables = get_user_table_list_for_schema(self.master_port, dbname, schema)
+            for table in tables:
+                table_name = table[0].strip() + "." + table[1].strip()
+                table_list.append(table_name)
+        return create_temp_file_from_list(table_list, 'include_dump_tables_file')
+
+
     def get_include_exclude_for_dump_database(self, dirty_file, dbname):
         include_file = None
         exclude_file = None
@@ -559,6 +703,7 @@ class GpCronDump(Operation):
                                                                           'exclude_dump_tables_file')
 
         return (include_file, exclude_file)
+
 
     # Thread to poll for existence of a signal file telling us that we can drop the pg_class lock
     def lock_handler(self, timestamp, thread_stop):
@@ -693,13 +838,21 @@ class GpCronDump(Operation):
                                                         co_partition_list, last_operation_list,
                                                         self.netbackup_service_host, self.netbackup_block_size)
                     if backup_utils.dump_prefix and \
-                       get_filter_file(dump_database, self.master_datadir, self.backup_dir, self.ddboost, self.netbackup_service_host, self.netbackup_block_size):
-                        update_filter_file(dump_database, self.master_datadir, self.backup_dir, self.master_port, self.ddboost, self.netbackup_service_host, self.netbackup_policy, self.netbackup_schedule, self.netbackup_block_size, self.netbackup_keyword)
+                       get_filter_file(dump_database, self.master_datadir, self.backup_dir, self.ddboost,
+                                      self.netbackup_service_host, self.netbackup_block_size):
+                        update_filter_file(dump_database, self.master_datadir, self.backup_dir, self.master_port,
+                                            self.ddboost, self.netbackup_service_host, self.netbackup_policy,
+                                            self.netbackup_schedule, self.netbackup_block_size, self.netbackup_keyword)
                     dirty_partitions = filter_dirty_tables(dirty_partitions, dump_database, self.master_datadir,
-                                                           self.backup_dir, self.ddboost, self.netbackup_service_host, self.netbackup_block_size)
+                                                           self.backup_dir, self.ddboost, self.netbackup_service_host,
+                                                           self.netbackup_block_size)
                     dirty_file = write_dirty_file_to_temp(dirty_partitions)
 
+                schema_file = self.get_schema_list_file(dump_database, timestamp_str)
                 (include_file, exclude_file) = self.get_include_exclude_for_dump_database(dirty_file, dump_database)
+
+                if backup_utils.dump_prefix and schema_file and not self.incremental:
+                    include_file = self.generate_include_table_list_from_schema_file(dump_database, schema_file)
 
                 dump_outcome = DumpDatabase(dump_database = dump_database,
                                             dump_schema = self.dump_schema,
@@ -723,7 +876,8 @@ class GpCronDump(Operation):
                                             netbackup_schedule = self.netbackup_schedule,
                                             netbackup_block_size = self.netbackup_block_size,
                                             netbackup_keyword = self.netbackup_keyword,
-                                            incremental = self.incremental).run()
+                                            incremental = self.incremental,
+                                            include_schema_file = schema_file).run()
     
                 post_dump_outcome = PostDumpDatabase(timestamp_start = dump_outcome['timestamp_start'],
                                                      compress = self.compress,
@@ -738,9 +892,6 @@ class GpCronDump(Operation):
                 if self.netbackup_service_host and self.netbackup_policy and self.netbackup_schedule:
                     backup_cdatabase_file_with_nbu(self.master_datadir, self.backup_dir, self.dump_dir, self.netbackup_service_host, self.netbackup_policy, self.netbackup_schedule, self.netbackup_block_size, self.netbackup_keyword)
                     backup_report_file_with_nbu(self.master_datadir, self.backup_dir, self.dump_dir, self.netbackup_service_host, self.netbackup_policy, self.netbackup_schedule, self.netbackup_block_size, self.netbackup_keyword)
-
-                if self.ddboost:
-                    backup_report_file_with_ddboost(self.master_datadir, self.backup_dir, self.dump_dir)
 
                 if self.incremental:
                     if os.path.isfile(dirty_file):
@@ -758,13 +909,30 @@ class GpCronDump(Operation):
                 if exclude_file is not None and os.path.exists(exclude_file):
                     os.remove(exclude_file)
                     remove_file_from_segments(self.master_port, exclude_file)
+                if schema_file:
+                    schema_filename = generate_schema_filename(self.master_datadir, self.backup_dir, timestamp_str, self.ddboost, self.dump_dir)
+                    shutil.copyfile(schema_file, schema_filename)
+                    remove_file_from_segments(self.master_port, schema_file)
+                if schema_file is not None and os.path.exists(schema_file): 
+                    os.remove(schema_file)
 
                 write_state_file('ao', self.master_datadir, self.backup_dir, ao_partition_list, self.ddboost, self.dump_dir)
                 write_state_file('co', self.master_datadir, self.backup_dir, co_partition_list, self.ddboost, self.dump_dir)
                 write_last_operation_file(self.master_datadir, self.backup_dir, last_operation_list, timestamp_key=None, ddboost=self.ddboost, dump_dir=self.dump_dir)
 
                 if self.netbackup_service_host and self.netbackup_policy and self.netbackup_schedule:
-                    backup_state_files_with_nbu(self.master_datadir, self.backup_dir, self.netbackup_service_host, self.netbackup_policy, self.netbackup_schedule, self.netbackup_block_size, self.netbackup_keyword)
+                    backup_state_files_with_nbu(self.master_datadir, self.backup_dir, self.netbackup_service_host, 
+                            self.netbackup_policy, self.netbackup_schedule, self.netbackup_block_size, self.netbackup_keyword)
+                    schema_filename = generate_schema_filename(self.master_datadir, self.backup_dir, timestamp_str, self.ddboost, self.dump_dir)
+                    if os.path.exists(schema_filename) and not self.incremental:
+                        backup_schema_file_with_nbu(self.master_datadir, self.backup_dir, self.netbackup_service_host, 
+                            self.netbackup_policy, self.netbackup_schedule, self.netbackup_block_size, self.netbackup_keyword)
+
+                if self.ddboost:
+                    backup_report_file_with_ddboost(self.master_datadir, self.backup_dir, self.dump_dir)
+                    schema_filename = generate_schema_filename(self.master_datadir, self.backup_dir, timestamp_str, self.ddboost, self.dump_dir)
+                    if os.path.exists(schema_filename) and not self.incremental:
+                        backup_schema_file_with_ddboost(self.master_datadir, self.backup_dir, self.dump_dir)
 
                 current_exit_status = max(dump_outcome['exit_status'], post_dump_outcome['exit_status'])
                 if self.replicate and current_exit_status == 0:
@@ -1102,7 +1270,7 @@ class GpCronDump(Operation):
             else:
                 logger.info("Dump type                            = Full database")
         logger.info("Database to be dumped                = %s" % dump_database)
-        if self.dump_schema is not None:
+        if self.dump_schema:
             logger.info("Schema to be dumped                  = %s" % self.dump_schema) 
         if self.backup_dir is not None:
             logger.info("Dump directory                       = %s" % self.backup_dir)
@@ -1199,8 +1367,10 @@ class GpCronDump(Operation):
 
     def _validate_dump_target(self):
         if len(self.dump_databases) > 1:
-            if self.dump_schema is not None:
-                raise ExceptionNoStackTraceNeeded("Cannot supply schema name if multiple database dumps are requested")
+            if self.dump_schema or self.include_schema_file is not None:
+                raise ExceptionNoStackTraceNeeded("Cannot include specific schema if multiple database dumps are requested")
+            if self.exclude_dump_schema or self.exclude_schema_file is not None:
+                raise ExceptionNoStackTraceNeeded("Cannot exclude specific schema if multiple database dumps are requested")
             if len(self.include_dump_tables) > 0 or self.include_dump_tables_file is not None:
                 raise ExceptionNoStackTraceNeeded("Cannot supply a table dump list if multiple database dumps are requested")
             if len(self.exclude_dump_tables) > 0 or self.exclude_dump_tables_file is not None:
@@ -1210,8 +1380,10 @@ class GpCronDump(Operation):
         for dump_database in self.dump_databases:              
             ValidateDatabaseExists(database = dump_database, master_port = self.master_port).run()
                                
-        if self.dump_schema is not None:
-            ValidateSchemaExists(database = self.dump_databases[0], schema = self.dump_schema,
+        if self.dump_schema:
+            for schema in self.dump_schema:
+                ValidateSchemaExists(database = self.dump_databases[0], 
+                                 schema = schema,
                                  master_port = self.master_port).run() 
     
     def _validate_run_program(self):
@@ -1309,8 +1481,14 @@ def create_parser():
                      help="Clear old dump directories [default: do not clear]. Will remove the oldest dump directory other than the current dump directory.")
     addTo.add_option('-o', action='store_true', dest='clear_dumps_only', default=False,
                      help="Clear dump files only. Do not run a dump. Like -c, this will clear the oldest dump directory, other than the current dump directory.")
-    addTo.add_option('-s', dest='dump_schema', metavar="<schema name>",
-                     help="Dump the schema contained within the database name supplied via -x")
+    addTo.add_option('-s', action='append', dest='dump_schema', metavar="<schema name>",
+                     help="Dump the schema contained within the database name supplied via -x. Option can be used more than once")
+    addTo.add_option('--schema-file', dest='include_schema_file', metavar="<filename>",
+                     help="Dump tables from only the schema named in this file for the specified database. Option can be used only once.")
+    addTo.add_option('-S', action='append', dest='exclude_dump_schema', metavar="<schema name>",
+                     help="Exclude the specified schema's, in database specified through -x, from the dump.")
+    addTo.add_option('--exclude-schema-file', dest='exclude_schema_file', metavar="<filename>",
+                     help="Exclude the schemas named in this file from the dump. Option can be used only once.")
     addTo.add_option('-x', dest='dump_databases', metavar="<database name,...>",
                      help="Database name(s) to dump. Multiple database names will preclude the schema and table options.")
     addTo.add_option('-g', action='store_true', dest='dump_config', default=False,

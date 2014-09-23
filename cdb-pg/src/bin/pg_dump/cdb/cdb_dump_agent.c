@@ -163,6 +163,7 @@ static char *g_pszCDBOutputDirectory = NULL;
 static char *g_LastMsg = NULL;
 static StatusOpList *g_pStatusOpList = NULL;
 static char tableFileName[300];
+static char schemaFileName[300];
 static char *dump_prefix = NULL;
 
 static const char *logInfo = "INFO";
@@ -456,6 +457,7 @@ main(int argc, char **argv)
 		{"netbackup-block-size", required_argument, NULL, 14},
 		{"netbackup-keyword", required_argument, NULL, 15},
 		{"no-lock", no_argument, NULL, 16},
+		{"schema-file", required_argument, NULL, 17},
 		{NULL, 0, NULL, 0}
 	};
 	int			optindex;
@@ -670,7 +672,6 @@ main(int argc, char **argv)
 				include_everything = false;
                 strcpy(tableFileName, optarg);
 				break;
-
 			case 4: 			/*	--exclude-table-file */
 				if (!open_file_and_append_to_list(optarg, &table_exclude_patterns, "exclude tables list"))
 				{
@@ -715,6 +716,18 @@ main(int argc, char **argv)
 			case 16:
 				no_lock = true;
 				break;
+			case 17:            /*  --schema-file */
+				if (!open_file_and_append_to_list(optarg, &schema_include_patterns, "include schema list"))
+				{
+					fprintf(stderr,
+						_("%s: invalid --schema-file option -- can't open file %s\n"),
+							progname, optarg);
+					exit(1);
+				}
+				include_everything = false;
+				strncpy(schemaFileName, optarg, sizeof(optarg)+1);
+				break;
+
 			default:
 				fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
 				exit(1);

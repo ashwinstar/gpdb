@@ -9,6 +9,7 @@ import time
 import unittest2 as unittest
 from datetime import datetime
 from gppylib.commands.base import CommandResult
+from gppylib.operations.backup_utils import write_lines_to_file
 from gppylib.operations.dump import DumpDatabase, DumpGlobal, compare_dict, create_partition_dict, \
                                     get_dirty_heap_tables, get_filename_from_filetype,\
                                     get_partition_list, get_partition_state, get_last_dump_timestamp, get_lines_from_file,\
@@ -20,7 +21,8 @@ from gppylib.operations.dump import DumpDatabase, DumpGlobal, compare_dict, crea
                                     update_filter_file, backup_state_files_with_nbu, backup_cdatabase_file_with_nbu, backup_report_file_with_nbu, \
                                     backup_global_file_with_nbu, backup_config_files_with_nbu, backup_report_file_with_ddboost, \
                                     backup_increments_file_with_ddboost, copy_file_to_dd, backup_dirty_file_with_nbu, backup_increments_file_with_nbu, \
-                                    backup_partition_list_file_with_nbu
+                                    backup_partition_list_file_with_nbu, get_include_schema_list_from_exclude_schema, backup_schema_file_with_ddboost, \
+                                    update_filter_file_with_dirty_list
 from mock import patch, MagicMock, Mock
 
 class DumpTestCase(unittest.TestCase):
@@ -47,7 +49,9 @@ class DumpTestCase(unittest.TestCase):
                                 netbackup_policy=None,
                                 netbackup_schedule=None,
                                 netbackup_block_size=None,
-                                netbackup_keyword=None)
+                                netbackup_keyword=None,
+                                incremental=False,
+                                include_schema_file=None)
 
     def create_backup_dirs(self, top_dir=os.getcwd(), dump_dirs=[]):
         if dump_dirs is None:
@@ -978,6 +982,14 @@ class DumpTestCase(unittest.TestCase):
         self.assertEqual(ts_key, TIMESTAMP_KEY)
         self.assertEqual(ts_key[0:8], DUMP_DATE)
 
+    def test_create_dump_line_00(self):
+        import gppylib.operations.backup_utils as backup_utils
+        self.dumper.include_schema_file = '/tmp/foo'
+        output = self.dumper.create_dump_string('dcddev', '20121212', '01234567891234')
+        expected_output = """gp_dump -p 0 -U dcddev --gp-d=/data/master/p1/db_dumps/20121212 --gp-r=/data/master/p1/db_dumps/20121212 --gp-s=p --gp-k=01234567891234 --no-lock --gp-c --no-expand-children -n "\\"testschema\\"" testdb --table-file=/tmp/table_list.txt --schema-file=/tmp/foo"""
+        backup_utils.dump_prefix = ''
+        self.assertEquals(output, expected_output)
+
     def test00_create_dump_line_with_prefix(self):
         import gppylib.operations.backup_utils as backup_utils
         backup_utils.dump_prefix = 'foo_'
@@ -1069,6 +1081,59 @@ class DumpTestCase(unittest.TestCase):
             self.assertEquals(expected_output, get_filter_file(dump_database, master_datadir, backup_dir, netbackup_service_host, netbackup_block_size))
         finally:
             backup_utils.dump_prefix = ''
+
+
+    def test_update_filter_file_with_dirty_list_00(self):
+        filter_file = '/tmp/foo'
+        write_lines_to_file(filter_file, ['public.t1'])
+        dirty_tables = ['public.t1', 'public.t2']
+        expected_output = ['public.t1', 'public.t2']
+        update_filter_file_with_dirty_list(filter_file, dirty_tables)
+        output = get_lines_from_file(filter_file)
+        try:
+            self.assertEquals(expected_output, output)
+        finally:
+            if os.path.exists(filter_file):
+                os.remove(filter_file)
+
+    def test_update_filter_file_with_dirty_list_01(self):
+        filter_file = '/tmp/foo'
+        write_lines_to_file(filter_file, ['public.t1'])
+        dirty_tables = ['public.t1']
+        expected_output = ['public.t1']
+        update_filter_file_with_dirty_list(filter_file, dirty_tables)
+        output = get_lines_from_file(filter_file)
+        try:
+            self.assertEquals(expected_output, output)
+        finally:
+            if os.path.exists(filter_file):
+                os.remove(filter_file)
+
+    def test_update_filter_file_with_dirty_list_02(self):
+        filter_file = '/tmp/foo'
+        write_lines_to_file(filter_file, ['public.t1', 'public.t2'])
+        dirty_tables = ['public.t2']
+        expected_output = ['public.t1', 'public.t2']
+        update_filter_file_with_dirty_list(filter_file, dirty_tables)
+        output = get_lines_from_file(filter_file)
+        try:
+            self.assertEquals(expected_output, output)
+        finally:
+            if os.path.exists(filter_file):
+                os.remove(filter_file)
+
+    def test_update_filter_file_with_dirty_list_03(self):
+        filter_file = '/tmp/foo'
+        write_lines_to_file(filter_file, [])
+        dirty_tables = ['public.t1', 'public.t2']
+        expected_output = ['public.t1', 'public.t2']
+        update_filter_file_with_dirty_list(filter_file, dirty_tables)
+        output = get_lines_from_file(filter_file)
+        try:
+            self.assertEquals(expected_output, output)
+        finally:
+            if os.path.exists(filter_file):
+                os.remove(filter_file)
 
     @patch('gppylib.operations.dump.get_lines_from_file', return_value=['public.t1', 'pepper.t2'])
     @patch('gppylib.operations.dump.get_latest_full_dump_timestamp', return_value='20130101010101')
@@ -2269,6 +2334,14 @@ class DumpGlobalTestCase(unittest.TestCase):
 
         backup_config_files_with_nbu(master_datadir, backup_dir, dump_dir, master_port, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword, timestamp_key)
     
+    @patch('gppylib.operations.dump.generate_schema_filename', result='foo_schema')
+    @patch('gppylib.operations.dump.copy_file_to_dd')
+    def backup_schema_file_with_ddboost_00(self,  mock1, mock2):
+        master_datadir = '/data'
+        backup_dir = None
+        dump_dir = 'backup/DCA-35'
+        backup_schema_file_with_ddboost(master_datadir, backup_dir, dump_dir)
+
     @patch('gppylib.operations.dump.generate_report_filename', result='foo.rpt')
     @patch('gppylib.operations.dump.copy_file_to_dd')
     def test_backup_report_file_with_ddboost_00(self,  mock1, mock2):
@@ -2826,6 +2899,26 @@ class DumpGlobalTestCase(unittest.TestCase):
         netbackup_keyword = "foo"
 
         backup_partition_list_file_with_nbu(master_datadir, backup_dir, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword, timestamp_key)
+
+    @patch('gppylib.operations.dump.execute_sql', return_value = [['gp_toolkit'], ['pg_toast'], ['pg_bitmapindex'], ['bar'], ['foo'], ['pg_catalog'], ['public'], ['information_schema']])
+    def test_get_include_schema_list_from_exclude_schema_00(self, mock1):
+        master_port = "5432"
+        dbname = 'testdb'
+        catalog_schema_list = ['gp_toolkit', 'information_schema']
+        exclude_schema_list = ['public', 'foo']
+        expected_result = ['bar']
+        output = get_include_schema_list_from_exclude_schema(exclude_schema_list, catalog_schema_list, master_port, dbname)
+        self.assertEqual(expected_result.sort(), output.sort())
+
+    @patch('gppylib.operations.dump.execute_sql', return_value = [['gp_toolkit'], ['pg_toast'], ['pg_bitmapindex'], ['bar'], ['foo'], ['pg_catalog'], ['public'], ['information_schema']])
+    def test_get_include_schema_list_from_exclude_schema_01(self, mock1):
+        master_port = "5432"
+        dbname = 'testdb'
+        catalog_schema_list = ['gp_toolkit', 'information_schema']
+        exclude_schema_list = []
+        expected_result = ['public', 'foo', 'bar']
+        output = get_include_schema_list_from_exclude_schema(exclude_schema_list, catalog_schema_list, master_port, dbname)
+        self.assertEqual(expected_result.sort(), output.sort())
 
 class MailEventTestCase(unittest.TestCase):
 

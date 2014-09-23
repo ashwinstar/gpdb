@@ -29,7 +29,7 @@ from gppylib.operations.backup_utils import write_lines_to_file, verify_lines_in
                                             generate_dbdump_prefix, generate_createdb_filename, generate_filter_filename, \
                                             get_latest_full_dump_timestamp, backup_file_with_nbu, generate_cdatabase_filename, \
                                             generate_global_filename, restore_file_with_nbu, check_file_dumped_with_nbu, \
-                                            get_latest_full_ts_with_nbu
+                                            get_latest_full_ts_with_nbu, generate_schema_filename
 
 logger = gplog.get_default_logger()
 
@@ -63,6 +63,13 @@ SELECT ALLTABLES.oid, ALLTABLES.schemaname, ALLTABLES.tablename FROM
     UNION (SELECT distinct schemaname, tablename FROM pg_partitions))) as DATATABLES 
 
 WHERE ALLTABLES.schemaname = DATATABLES.schemaname and ALLTABLES.tablename = DATATABLES.tablename AND ALLTABLES.oid not in (select reloid from pg_exttable) AND ALLTABLES.schemaname NOT LIKE 'pg_temp_%'
+"""
+
+GET_ALL_USER_TABLES_FOR_SCHEMA_SQL = """
+SELECT n.nspname AS schemaname, c.relname AS tablename
+    FROM pg_class c LEFT JOIN pg_namespace n ON n.oid = c.relnamespace
+    LEFT JOIN pg_tablespace t ON t.oid = c.reltablespace
+    WHERE c.relkind = 'r'::"char" AND c.oid > 16384 AND n.nspname = '%s'
 """
 
 GET_ALL_USER_TABLES_SQL = """
@@ -103,6 +110,24 @@ GET_LAST_OPERATION_SQL = """
     AND objid IN (SELECT oid FROM (%s) as AOCODATATABLES)
     ORDER BY objid, staactionname
 """ % GET_ALL_AO_CO_DATATABLES_SQL
+
+GET_ALL_SCHEMAS_SQL = "SELECT nspname from pg_namespace;"
+
+def get_include_schema_list_from_exclude_schema(exclude_schema_list, catalog_schema_list, master_port, dbname):
+    include_schema_list = []
+    schema_list = execute_sql(GET_ALL_SCHEMAS_SQL, master_port, dbname)
+    for schema in schema_list:
+        if schema[0].strip() not in exclude_schema_list and schema[0].strip() not in catalog_schema_list:
+            include_schema_list.append(schema[0])
+
+    return include_schema_list
+
+def backup_schema_file_with_ddboost(master_datadir, backup_dir, dump_dir, timestamp_key=None):
+    if timestamp_key is None:
+        timestamp_key = TIMESTAMP_KEY 
+
+    filename = generate_schema_filename(master_datadir, backup_dir, timestamp_key, True, dump_dir)
+    copy_file_to_dd(filename, dump_dir, timestamp_key)
 
 def backup_report_file_with_ddboost(master_datadir, backup_dir, dump_dir, timestamp_key=None):
     if timestamp_key is None:
@@ -381,6 +406,10 @@ def get_partition_list(master_port, dbname):
 def get_user_table_list(master_port, dbname):
     return execute_sql(GET_ALL_USER_TABLES_SQL, master_port, dbname)
 
+def get_user_table_list_for_schema(master_port, dbname, schema):
+    sql = GET_ALL_USER_TABLES_FOR_SCHEMA_SQL % schema
+    return execute_sql(sql, master_port, dbname)
+
 def get_last_operation_data(master_port, dbname):
     # oid, action, subtype, timestamp
     rows = execute_sql(GET_LAST_OPERATION_SQL, master_port, dbname)
@@ -480,7 +509,19 @@ def get_filter_file(dump_database, master_datadir, backup_dir, ddboost=False, ne
             return filter_file
         return None
 
-def filter_dirty_tables(dirty_tables, dump_database, master_datadir, backup_dir, ddboost=False, netbackup_service_host=None, netbackup_block_size=None):
+def update_filter_file_with_dirty_list(filter_file, dirty_tables):
+    filter_list = []
+    if filter_file:
+        filter_list = get_lines_from_file(filter_file)
+    
+        for table in dirty_tables:
+            if table not in filter_list:
+                filter_list.append(table)
+
+        write_lines_to_file(filter_file, filter_list)
+
+def filter_dirty_tables(dirty_tables, dump_database, master_datadir, backup_dir, ddboost=False, 
+                        netbackup_service_host=None, netbackup_block_size=None):
     if netbackup_service_host is None:
         timestamp = get_latest_full_dump_timestamp(dump_database, get_backup_dir(master_datadir, backup_dir), ddboost)
     else:
@@ -489,13 +530,28 @@ def filter_dirty_tables(dirty_tables, dump_database, master_datadir, backup_dir,
         else:
             timestamp = FULL_DUMP_TS_WITH_NBU
 
+    schema_filename = generate_schema_filename(master_datadir, backup_dir, timestamp, ddboost)
     filter_file = get_filter_file(dump_database, master_datadir, backup_dir, ddboost, netbackup_service_host, netbackup_block_size)
     if filter_file:
         tables_to_filter = get_lines_from_file(filter_file)
         dirty_copy = dirty_tables[:]
         for table in dirty_copy:
             if table not in tables_to_filter:
-                dirty_tables.remove(table)
+                if os.path.exists(schema_filename):
+                    schemas_to_filter = get_lines_from_file(schema_filename)
+                    table_schema = table.split('.')[0].strip() 
+                    if table_schema not in schemas_to_filter:
+                        dirty_tables.remove(table)
+                else:
+                    dirty_tables.remove(table)
+
+    # Schema Level Backup :
+    # Any newly added partition to the schema's in schema file is added to the
+    # filter file for it to be backed up.
+    # Newly added partition can be obtained from dirty table list file.
+    if os.path.exists(schema_filename):
+        update_filter_file_with_dirty_list(filter_file, dirty_tables)
+
     return dirty_tables
 
 def backup_state_files_with_nbu(master_datadir, backup_dir, netbackup_service_host, netbackup_policy, netbackup_schedule,
@@ -513,6 +569,17 @@ def backup_state_files_with_nbu(master_datadir, backup_dir, netbackup_service_ho
                          get_filename_from_filetype('co', master_datadir, backup_dir, timestamp_key))
     backup_file_with_nbu(netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword,
                          generate_pgstatlastoperation_filename(master_datadir, backup_dir, timestamp_key))
+
+def backup_schema_file_with_nbu(master_datadir, backup_dir, netbackup_service_host, netbackup_policy, netbackup_schedule,
+                                netbackup_block_size, netbackup_keyword, timestamp_key=None):
+    logger.debug("Inside backup_schema_file_with_nbu\n")
+    if (master_datadir is None) and (backup_dir is None):
+        raise Exception('Master data directory and backup directory are both none.')
+    if timestamp_key is None:
+        timestamp_key = TIMESTAMP_KEY
+
+    backup_file_with_nbu(netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword,
+                         generate_schema_filename(master_datadir, backup_dir, timestamp_key))
 
 def backup_cdatabase_file_with_nbu(master_datadir, backup_dir, dump_dir, netbackup_service_host, netbackup_policy, netbackup_schedule,
                                    netbackup_block_size, netbackup_keyword, timestamp_key=None):
@@ -611,7 +678,11 @@ def backup_partition_list_file_with_nbu(master_datadir, backup_dir, netbackup_se
 class DumpDatabase(Operation):
     # TODO: very verbose constructor = room for improvement. in the parent constructor, we could use kwargs
     # to automatically take in all arguments and perhaps do some data type validation.
-    def __init__(self, dump_database, dump_schema, include_dump_tables, exclude_dump_tables, include_dump_tables_file, exclude_dump_tables_file, backup_dir, free_space_percent, compress, clear_catalog_dumps, encoding, output_options, batch_default, master_datadir, master_port, dump_dir, ddboost, netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword, incremental=False):
+    def __init__(self, dump_database, dump_schema, include_dump_tables, exclude_dump_tables, include_dump_tables_file, 
+                exclude_dump_tables_file, backup_dir, free_space_percent, compress, clear_catalog_dumps, 
+                encoding, output_options, batch_default, master_datadir, master_port, dump_dir, ddboost, 
+                netbackup_service_host, netbackup_policy, netbackup_schedule, netbackup_block_size, netbackup_keyword, 
+                incremental=False, include_schema_file=None):
         self.dump_database = dump_database
         self.dump_schema = dump_schema
         self.include_dump_tables = include_dump_tables
@@ -635,6 +706,7 @@ class DumpDatabase(Operation):
         self.netbackup_schedule = netbackup_schedule
         self.netbackup_block_size = netbackup_block_size
         self.netbackup_keyword = netbackup_keyword
+        self.include_schema_file = include_schema_file
 
     def execute(self):
         self.exclude_dump_tables = ValidateDumpDatabase(dump_database = self.dump_database,
@@ -650,7 +722,8 @@ class DumpDatabase(Operation):
                                                         master_datadir = self.master_datadir,
                                                         master_port = self.master_port,
                                                         dump_dir = self.dump_dir,
-                                                        incremental = self.incremental).run()
+                                                        incremental = self.incremental,
+                                                        include_schema_file = self.include_schema_file).run()
 
         if self.incremental and backup_utils.dump_prefix \
                             and get_filter_file(self.dump_database, self.master_datadir, self.backup_dir, self.ddboost, self.netbackup_service_host):
@@ -763,7 +836,7 @@ class DumpDatabase(Operation):
         These options get passed-through gp_dump to gp_dump_agent.
         Commented out lines use escaping that would be reasonable, if gp_dump escaped properly.
         """
-        if self.dump_schema is not None:
+        if self.dump_schema:
             logger.info("Adding schema name %s" % self.dump_schema)
             dump_line += " -n \"\\\"%s\\\"\"" % self.dump_schema
             #dump_line += " -n \"%s\"" % self.dump_schema
@@ -780,6 +853,8 @@ class DumpDatabase(Operation):
             dump_line += " --table-file=%s" % self.include_dump_tables_file
         if self.exclude_dump_tables_file[0] is not None:
             dump_line += " --exclude-table-file=%s" % self.exclude_dump_tables_file
+        if self.include_schema_file is not None and not backup_utils.dump_prefix:
+           dump_line += " --schema-file=%s" % self.include_schema_file 
         for opt in self.output_options:
             dump_line += " %s" % opt
 
@@ -975,7 +1050,8 @@ class NoDumpFile(Exception): pass
 class ValidateDumpDatabase(Operation):
     def __init__(self, dump_database, dump_schema, include_dump_tables, exclude_dump_tables, 
                  include_dump_tables_file, exclude_dump_tables_file, backup_dir, 
-                 free_space_percent, compress, batch_default, master_datadir, master_port, dump_dir, incremental):
+                 free_space_percent, compress, batch_default, master_datadir, master_port, 
+                 dump_dir, incremental, include_schema_file):
         self.dump_database = dump_database
         self.dump_schema = dump_schema
         self.include_dump_tables = include_dump_tables
@@ -990,14 +1066,21 @@ class ValidateDumpDatabase(Operation):
         self.master_port = master_port
         self.dump_dir = dump_dir
         self.incremental = incremental
+        self.include_schema_file = include_schema_file
 
     def execute(self):
         ValidateDatabaseExists(database = self.dump_database,
                                master_port = self.master_port).run()
 
-        if self.dump_schema is not None:
+        dump_schemas= []
+        if self.dump_schema:
+            dump_schemas = self.dump_schema
+        elif self.include_schema_file is not None:
+            dump_schemas = get_lines_from_file(self.include_schema_file)
+
+        for schema in dump_schemas:
             ValidateSchemaExists(database = self.dump_database,
-                                 schema = self.dump_schema,
+                                 schema = schema,
                                  master_port = self.master_port).run()
 
         ValidateCluster(master_port = self.master_port).run()
@@ -1274,9 +1357,10 @@ class ValidateIncludeTargets(Operation):
                                       master_port = self.master_port).run()
             if not exists:
                 raise ExceptionNoStackTraceNeeded("Table %s does not exist in %s database" % (dump_table, self.dump_database))
-            if self.dump_schema is not None:
-                if self.dump_schema != schema:
-                    raise ExceptionNoStackTraceNeeded("Schema name %s not same as schema on %s" % (self.dump_schema, dump_table))
+            if self.dump_schema:
+                for dump_schema in self.dump_schema:
+                    if dump_schema != schema:
+                        raise ExceptionNoStackTraceNeeded("Schema name %s not same as schema on %s" % (dump_schema, dump_table))
 
 
 
@@ -1311,11 +1395,13 @@ class ValidateExcludeTargets(Operation):
                                       database = self.dump_database, 
                                       master_port = self.master_port).run()
             if exists:
-                if self.dump_schema != schema:
-                    logger.info("Adding table %s to exclude list" % dump_table)
-                    rebuild_excludes.append(dump_table)
-                else:
-                    logger.warn("Schema dump request and exclude table %s not in that schema, ignoring" % dump_table)
+                if self.dump_schema:
+                    for dump_schema in self.dump_schema:
+                        if dump_schema != schema:
+                            logger.info("Adding table %s to exclude list" % dump_table)
+                            rebuild_excludes.append(dump_table)
+                        else:
+                            logger.warn("Schema dump request and exclude table %s not in that schema, ignoring" % dump_table)
             else:
                 logger.warn("Exclude table %s does not exist in %s database, ignoring" % (dump_table, self.dump_database))
         if len(rebuild_excludes) == 0:

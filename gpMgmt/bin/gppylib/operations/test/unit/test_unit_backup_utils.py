@@ -23,7 +23,7 @@ from gppylib.operations.backup_utils import generate_report_filename, validate_t
                                             generate_master_status_prefix, generate_seg_dbdump_prefix, generate_seg_status_prefix, \
                                             generate_dbdump_prefix, generate_createdb_filename, generate_filter_filename, backup_file_with_nbu, \
                                             restore_file_with_nbu, generate_global_filename, generate_cdatabase_filename, check_file_dumped_with_nbu, \
-                                            get_full_timestamp_for_incremental_with_nbu, get_latest_full_ts_with_nbu
+                                            get_full_timestamp_for_incremental_with_nbu, get_latest_full_ts_with_nbu, generate_schema_filename
 
 from mock import patch, MagicMock, Mock
 
@@ -49,6 +49,58 @@ class BackupUtilsTestCase(unittest.TestCase):
             shutil.rmtree(backup_dir)
             if os.path.exists(backup_dir):
                 raise Exception('Failed to remove directory %s' % backup_dir)
+
+    def test_generate_schema_filename_00(self):
+        master_data_dir = '/data'
+        backup_dir = None
+        timestamp = '20120731093030'
+        expected_output = '/data/db_dumps/20120731/gp_dump_20120731093030_schema'
+        output = generate_schema_filename(master_data_dir, backup_dir, timestamp)
+        self.assertEquals(output, expected_output)
+
+    def test_generate_schema_filename_01(self):
+        master_data_dir = '/data'
+        backup_dir = '/datadomain'
+        timestamp = '20120731093030'
+        expected_output = '/datadomain/db_dumps/20120731/gp_dump_20120731093030_schema'
+        output = generate_schema_filename(master_data_dir, backup_dir, timestamp)
+        self.assertEquals(output, expected_output)
+
+    def test_generate_schema_filename_02(self):
+        master_data_dir = None
+        backup_dir = '/datadomain'
+        timestamp = '20120731093030'
+        expected_output = '/datadomain/db_dumps/20120731/gp_dump_20120731093030_schema'
+        output = generate_schema_filename(master_data_dir, backup_dir, timestamp)
+        self.assertEquals(output, expected_output)
+
+    def test_generate_schema_filename_03(self):
+        master_data_dir = None
+        backup_dir = None
+        timestamp = '20120731093030'
+        with self.assertRaisesRegexp(Exception, 'Can not locate backup directory with existing parameters'):
+            generate_schema_filename(master_data_dir, backup_dir, timestamp)
+
+    def test_generate_schema_filename_04(self):
+        master_data_dir = '/data'
+        backup_dir = None
+        timestamp = None
+        with self.assertRaisesRegexp(Exception, 'Can not locate backup directory without timestamp'):
+            generate_schema_filename(master_data_dir, backup_dir, timestamp)
+
+    def test_generate_schema_filename_05(self):
+        master_data_dir = '/data'
+        backup_dir = None
+        timestamp = 'xx120731093030'
+        with self.assertRaisesRegexp(Exception, 'Invalid timestamp'):
+            generate_schema_filename(master_data_dir, backup_dir, timestamp)
+
+    def test_generate_schema_filename_06(self):
+        master_data_dir = '/data'
+        backup_dir = None
+        timestamp = '2012'
+        with self.assertRaisesRegexp(Exception, 'Invalid timestamp'):
+            generate_schema_filename(master_data_dir, backup_dir, timestamp)
 
     def test00_generate_report_filename(self):
         master_data_dir = '/data'

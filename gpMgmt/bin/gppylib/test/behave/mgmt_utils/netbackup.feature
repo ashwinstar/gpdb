@@ -4423,3 +4423,314 @@ Feature: NetBackup Integration with GPDB
         And verify that there is no table "heap_table" in "fullbkdb"
         And verify that there is a "ao" table "public.ao_part_table" in "fullbkdb" with data
         And verify that the data of "9" tables in "fullbkdb" is validated after restore
+
+    @nbuall
+    @nbuslb
+    Scenario: Full Backup with multiple -S option and Restore
+        Given the database is running
+        And the netbackup params have been parsed
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is schema "schema_heap, schema_ao, schema_heap1" exists in "fullbkdb"
+        And there is a "heap" table "schema_heap.heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "heap" table "schema_heap1.heap_table1" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "schema_ao.ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a backupfile of tables "schema_heap1.heap_table1, schema_heap.heap_table, schema_ao.ao_part_table" in "fullbkdb" exists for validation
+        When the user runs "gpcrondump -a -x fullbkdb -S schema_heap -S schema_heap1 --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And verify that the "report" file in " " dir contains "Backup Type: Full"
+        When the user runs gpdbrestore with the stored timestamp and options " --netbackup-block-size 4096" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is no table "schema_heap.heap_table" in "fullbkdb"
+        And verify that there is no table "schema_heap1.heap_table1" in "fullbkdb"
+        And verify that there is a "ao" table "schema_ao.ao_part_table" in "fullbkdb" with data
+
+    @nbuall
+    @nbuslb
+    Scenario: Full Backup with multiple -s option and Restore
+        Given the database is running
+        And the netbackup params have been parsed
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is schema "schema_heap, schema_ao, schema_heap1" exists in "fullbkdb"
+        And there is a "heap" table "schema_heap.heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "heap" table "schema_heap1.heap_table1" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "schema_ao.ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a backupfile of tables "schema_heap.heap_table, schema_ao.ao_part_table, schema_heap1.heap_table1" in "fullbkdb" exists for validation
+        When the user runs "gpcrondump -a -x fullbkdb -s schema_heap -s schema_heap1 --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And verify that the "report" file in " " dir contains "Backup Type: Full"
+        When the user runs gpdbrestore with the stored timestamp and options " --netbackup-block-size 4096" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "schema_heap.heap_table" in "fullbkdb" with data
+        And verify that there is a "heap" table "schema_heap1.heap_table1" in "fullbkdb" with data
+        And verify that there is no table "schema_ao.ao_part_table" in "fullbkdb"
+
+    @nbuall
+    @nbuslb
+    Scenario: Full Backup with option -S and Restore
+        Given the database is running
+        And the netbackup params have been parsed
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is schema "schema_heap, schema_ao" exists in "fullbkdb"
+        And there is a "heap" table "schema_heap.heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "schema_ao.ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a backupfile of tables "schema_heap.heap_table, schema_ao.ao_part_table" in "fullbkdb" exists for validation
+        When the user runs "gpcrondump -a -x fullbkdb -S schema_heap --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And verify that the "report" file in " " dir contains "Backup Type: Full"
+        When the user runs gpdbrestore with the stored timestamp and options " --netbackup-block-size 4096" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is no table "schema_heap.heap_table" in "fullbkdb"
+        And verify that there is a "ao" table "schema_ao.ao_part_table" in "fullbkdb" with data
+
+    @nbuall
+    @nbuslb
+    Scenario: Full Backup with option -s and Restore
+        Given the database is running
+        And the netbackup params have been parsed
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is schema "schema_heap, schema_ao" exists in "fullbkdb"
+        And there is a "heap" table "schema_heap.heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "schema_ao.ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a backupfile of tables "schema_heap.heap_table, schema_ao.ao_part_table" in "fullbkdb" exists for validation
+        When the user runs "gpcrondump -a -x fullbkdb -s schema_heap --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And verify that the "report" file in " " dir contains "Backup Type: Full"
+        When the user runs gpdbrestore with the stored timestamp and options " --netbackup-block-size 4096" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "schema_heap.heap_table" in "fullbkdb" with data
+        And verify that there is no table "schema_ao.ao_part_table" in "fullbkdb"
+
+    @nbuall
+    @nbuslb
+    Scenario: Full Backup with option --exclude-schema-file and Restore
+        Given the database is running
+        And the netbackup params have been parsed
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is schema "schema_heap, schema_ao, schema_heap1" exists in "fullbkdb"
+        And there is a "heap" table "schema_heap.heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "heap" table "schema_heap1.heap_table1" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "schema_ao.ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a backupfile of tables "schema_heap.heap_table, schema_ao.ao_part_table, schema_heap1.heap_table1" in "fullbkdb" exists for validation
+        And there is a file "exclude_file" with tables "schema_heap1,schema_ao" 
+        When the user runs "gpcrondump -a -x fullbkdb --exclude-schema-file exclude_file --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And verify that the "report" file in " " dir contains "Backup Type: Full"
+        When the user runs gpdbrestore with the stored timestamp and options " --netbackup-block-size 4096" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "schema_heap.heap_table" in "fullbkdb" with data
+        And verify that there is no table "schema_ao.ao_part_table" in "fullbkdb"
+        And verify that there is no table "schema_heap1.heap_table" in "fullbkdb"
+
+    @nbuall
+    @nbuslb
+    Scenario: Full Backup with option --schema-file and Restore
+        Given the database is running
+        And the netbackup params have been parsed
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is schema "schema_heap, schema_ao, schema_heap1" exists in "fullbkdb"
+        And there is a "heap" table "schema_heap.heap_table" with compression "None" in "fullbkdb" with data
+        And there is a "heap" table "schema_heap1.heap_table1" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "schema_ao.ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a backupfile of tables "schema_heap.heap_table, schema_ao.ao_part_table, schema_heap1.heap_table1" in "fullbkdb" exists for validation
+        And there is a file "include_file" with tables "schema_heap,schema_ao" 
+        When the user runs "gpcrondump -a -x fullbkdb --schema-file include_file --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        And verify that the "report" file in " " dir contains "Backup Type: Full"
+        When the user runs gpdbrestore with the stored timestamp and options " --netbackup-block-size 4096" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And verify that there is a "heap" table "schema_heap.heap_table" in "fullbkdb" with data
+        And verify that there is a "ao" table "schema_ao.ao_part_table" in "fullbkdb" with data
+        And verify that there is no table "schema_heap1.heap_table" in "fullbkdb"
+
+    @nbuall
+    @nbuslb
+    Scenario: Full Backup and Restore with --prefix option
+        Given the database is running
+        And the netbackup params have been parsed
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "testdb" does not exist
+        And database "testdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "testdb" with data
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "testdb" with data
+        And there is a backupfile of tables "heap_table, ao_part_table" in "testdb" exists for validation
+        When the user runs "gpcrondump -a -x testdb --prefix=foo --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored 
+        When the user runs gpdbrestore with the stored timestamp and options " --prefix=foo --netbackup-block-size 4096" using netbackup
+        Then gpdbrestore should return a return code of 0
+        And there should be dump files under " " with prefix "foo"
+        And verify that there is a "heap" table "heap_table" in "testdb" with data
+        And verify that there is a "ao" table "ao_part_table" in "testdb" with data
+
+    @nbuslb
+    @nbuall
+    Scenario: Incremental Backup and Restore with -s filter for Full
+        Given the database is running
+        And the netbackup params have been parsed
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is schema "schema_heap, schema_ao, schema_heap1" exists in "fullbkdb"
+        And there is a "heap" table "schema_heap.heap_table1" with compression "None" in "fullbkdb" with data
+        And there is a "heap" table "schema_heap1.heap_table2" with compression "None" in "fullbkdb" with data
+        And there is a "ao" table "schema_ao.ao_index_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "schema_ao.ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        When the user runs "gpcrondump -a -x fullbkdb --prefix=foo -s schema_ao -s schema_heap --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored 
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "schema_ao.ao_index_table"
+        And verify that the "filter" file in " " dir contains "schema_heap.heap_table1"
+        And there is a "heap" table "schema_heap.heap_table2" with compression "None" in "fullbkdb" with data
+        And table "schema_heap.heap_table1" is dropped in "fullbkdb"
+        When the user runs "gpcrondump -a -x fullbkdb --prefix=foo --incremental --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And all the data from "fullbkdb" is saved for verification
+        And the user runs "psql -c 'drop table schema_heap.heap_table2' fullbkdb"
+        And the user runs "psql -c 'drop table schema_ao.ao_index_table' fullbkdb"
+        And the user runs "psql -c 'drop table schema_ao.ao_part_table' fullbkdb"
+        #When the user runs "gpdbrestore --prefix=foo -a" using netbackup
+        When the user runs gpdbrestore with the stored timestamp and options " --prefix=foo -a --netbackup-block-size 4096" without -e option using netbackup
+        Then gpdbrestore should return a return code of 0 
+        And verify that there is a "heap" table "schema_heap.heap_table2" in "fullbkdb" with data
+        And verify that there is a "ao" table "schema_ao.ao_index_table" in "fullbkdb" with data
+        And verify that there is no table "schema_heap.heap_table1" in "fullbkdb"
+        And verify that there is a "ao" table "schema_ao.ao_part_table" in "fullbkdb" with data
+
+    @nbuall
+    @nbuslb
+    Scenario: Incremental Backup and Restore with --schema-file filter for Full
+        Given the database is running
+        And the netbackup params have been parsed
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is schema "schema_heap, schema_ao, schema_heap1" exists in "fullbkdb"
+        And there is a "heap" table "schema_heap.heap_table1" with compression "None" in "fullbkdb" with data
+        And there is a "heap" table "schema_heap1.heap_table2" with compression "None" in "fullbkdb" with data
+        And there is a "ao" table "schema_ao.ao_index_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "schema_ao.ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a table-file "/tmp/schema_file" with tables "schema_ao,schema_heap"
+        When the user runs "gpcrondump -a -x fullbkdb --prefix=foo --schema-file /tmp/schema_file --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored 
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "schema_ao.ao_index_table"
+        And verify that the "filter" file in " " dir contains "schema_heap.heap_table1"
+        And there is a "heap" table "schema_heap.heap_table2" with compression "None" in "fullbkdb" with data
+        And table "schema_heap.heap_table1" is dropped in "fullbkdb"
+        When the user runs "gpcrondump -a -x fullbkdb --prefix=foo --incremental --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And all the data from "fullbkdb" is saved for verification
+        And the user runs "psql -c 'drop table schema_heap.heap_table2' fullbkdb"
+        And the user runs "psql -c 'drop table schema_ao.ao_index_table' fullbkdb"
+        And the user runs "psql -c 'drop table schema_ao.ao_part_table' fullbkdb"
+        #When the user runs "gpdbrestore --prefix=foo -a" using netbackup
+        When the user runs gpdbrestore with the stored timestamp and options " --prefix=foo -a --netbackup-block-size 4096" without -e option using netbackup
+        Then gpdbrestore should return a return code of 0 
+        And verify that there is no table "schema_heap.heap_table1" in "fullbkdb"
+        And verify that there is a "heap" table "schema_heap.heap_table2" in "fullbkdb" with data
+        And verify that there is a "ao" table "schema_ao.ao_index_table" in "fullbkdb" with data
+        And verify that there is a "ao" table "schema_ao.ao_part_table" in "fullbkdb" with data
+
+    @nbuall
+    @nbuslb
+    Scenario: Incremental Backup and Restore with --exclude-schema-file filter for Full
+        Given the database is running
+        And the netbackup params have been parsed
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is schema "schema_heap, schema_ao, schema_heap1" exists in "fullbkdb"
+        And there is a "heap" table "schema_heap.heap_table1" with compression "None" in "fullbkdb" with data
+        And there is a "heap" table "schema_heap1.heap_table2" with compression "None" in "fullbkdb" with data
+        And there is a "ao" table "schema_ao.ao_index_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "schema_ao.ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a table-file "/tmp/schema_file" with tables "schema_heap1,schema_heap"
+        When the user runs "gpcrondump -a -x fullbkdb --prefix=foo --exclude-schema-file /tmp/schema_file --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored 
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "schema_ao.ao_index_table"
+        And there is a "heap" table "schema_heap.heap_table2" with compression "None" in "fullbkdb" with data
+        And table "schema_ao.ao_index_table" is dropped in "fullbkdb"
+        And table "schema_ao.ao_part_table" is assumed to be in dirty state in "fullbkdb"
+        When the user runs "gpcrondump -a -x fullbkdb --prefix=foo --incremental --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And all the data from "fullbkdb" is saved for verification
+        And the user runs "psql -c 'drop table schema_ao.ao_index_table' fullbkdb"
+        And the user runs "psql -c 'drop table schema_ao.ao_part_table' fullbkdb"
+        #When the user runs "gpdbrestore --prefix=foo -a" using netbackup
+        When the user runs gpdbrestore with the stored timestamp and options " --prefix=foo -a --netbackup-block-size 4096" without -e option using netbackup
+        Then gpdbrestore should return a return code of 0 
+        And verify that there is a "heap" table "schema_heap.heap_table1" in "fullbkdb" with data
+        And verify that there is a "heap" table "schema_heap.heap_table2" in "fullbkdb" with data
+        And verify that there is no table "schema_ao.ao_index_table" in "fullbkdb"
+        And verify that there is a "ao" table "schema_ao.ao_part_table" in "fullbkdb" with data
+
+    @nbuall
+    @nbuslb
+    Scenario: Incremental Backup and Restore with -S filter for Full
+        Given the database is running
+        And the netbackup params have been parsed
+        And the prefix "foo" is stored
+        And there are no backup files
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is a list to store the incremental backup timestamps
+        And there is schema "schema_heap, schema_ao, schema_heap1" exists in "fullbkdb"
+        And there is a "heap" table "schema_heap.heap_table1" with compression "None" in "fullbkdb" with data
+        And there is a "heap" table "schema_heap1.heap_table2" with compression "None" in "fullbkdb" with data
+        And there is a "ao" table "schema_ao.ao_index_table" with compression "None" in "fullbkdb" with data
+        And there is a "ao" partition table "schema_ao.ao_part_table" with compression "quicklz" in "fullbkdb" with data
+        And there is a table-file "/tmp/schema_file" with tables "schema_heap1,schema_heap"
+        When the user runs "gpcrondump -a -x fullbkdb --prefix=foo -S schema_heap1 -S schema_heap --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0
+        And the timestamp from gpcrondump is stored
+        And the full backup timestamp from gpcrondump is stored 
+        And "_filter" file should be created under " "
+        And verify that the "filter" file in " " dir contains "schema_ao.ao_index_table"
+        And there is a "heap" table "schema_heap.heap_table2" with compression "None" in "fullbkdb" with data
+        And table "schema_ao.ao_part_table" is assumed to be in dirty state in "fullbkdb"
+        And table "schema_ao.ao_index_table" is dropped in "fullbkdb"
+        When the user runs "gpcrondump -a -x fullbkdb --prefix=foo --incremental --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored
+        And the timestamp from gpcrondump is stored in a list
+        And all the data from "fullbkdb" is saved for verification
+        And the user runs "psql -c 'drop table schema_ao.ao_part_table' fullbkdb"
+        When the user runs gpdbrestore with the stored timestamp and options " --prefix=foo -a --netbackup-block-size 4096" without -e option using netbackup
+        Then gpdbrestore should return a return code of 0 
+        And verify that there is a "heap" table "schema_heap.heap_table1" in "fullbkdb" with data
+        And verify that there is a "heap" table "schema_heap.heap_table2" in "fullbkdb" with data
+        And verify that there is no table "schema_ao.ao_index_table" in "fullbkdb"
+        And verify that there is a "ao" table "schema_ao.ao_part_table" in "fullbkdb" with data
+

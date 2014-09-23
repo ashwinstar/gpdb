@@ -257,6 +257,12 @@ def get_backup_directory(master_data_dir, backup_dir, timestamp):
 
     return ("%s/%s/%s" % (use_dir, DUMP_DIR, timestamp[0:8]))
 
+def generate_schema_filename(master_data_dir, backup_dir, timestamp, ddboost=False, dump_dir=None):
+    if ddboost:
+        return "%s/%s/%s/%sgp_dump_%s_schema" % (master_data_dir, dump_dir, timestamp[0:8], dump_prefix, timestamp)
+    use_dir = get_backup_directory(master_data_dir, backup_dir, timestamp)
+    return "%s/%sgp_dump_%s_schema" % (use_dir, dump_prefix, timestamp)
+
 def generate_report_filename(master_data_dir, backup_dir, timestamp, ddboost=False, dump_dir=None):
     if ddboost:
         return "%s/%s/%s/%sgp_dump_%s.rpt" % (master_data_dir, dump_dir, timestamp[0:8], dump_prefix, timestamp)

@@ -121,7 +121,7 @@ class BackupFile(object):
         Returns True if the file is a database dump.  Config files, cdatabase
         files are not dump files.
         """
-        metadata_keywords = ['rpt', 'ao_state_file', 'co_state_file', \
+        metadata_keywords = ['rpt', 'ao_state_file', 'co_state_file', 'schema', \
                         'last_operation', 'dirty_list', 'table_list', 'increments']
 
         for i in metadata_keywords:

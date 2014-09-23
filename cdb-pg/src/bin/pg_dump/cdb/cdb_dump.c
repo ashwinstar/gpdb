@@ -83,6 +83,7 @@ static char *selectTableName = NULL;	/* name of a single table to dump */
 static char *selectSchemaName = NULL;	/* name of a single schema to dump */
 
 static char *tableFileName = NULL;	/* file name with tables to dump (--table-file)	*/
+static char *schemaFileName = NULL;	/* file name with tables to dump (--schema-file)	*/
 static char *excludeTableFileName = NULL; /* file name with tables to exclude (--exclude-table-file) */
 static char *dump_prefix = NULL;
 
@@ -448,7 +449,6 @@ transformPassThroughParms(InputOptions *pInputOpts)
 static bool
 copyFilesToSegments(InputOptions *pInputOpts, SegmentDatabaseArray *segDBAr)
 {
-
 
 	if ((tableFileName == NULL) && (excludeTableFileName == NULL))
 		return true; /* nothing to do */
@@ -883,6 +883,7 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		{"netbackup-schedule", required_argument, NULL, 17},
 		{"netbackup-block-size", required_argument, NULL, 18},
 		{"netbackup-keyword", required_argument, NULL, 19},
+		{"schema-file", required_argument, NULL, 20},
 
 		{NULL, 0, NULL, 0}
 	};
@@ -1284,6 +1285,25 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 			case 19:
 				netbackup_keyword = Safe_strdup(optarg);
 				pInputOpts->pszPassThroughParms = addPassThroughLongParm("netbackup-keyword", netbackup_keyword, pInputOpts->pszPassThroughParms);
+				break;
+			case 20:
+				/* schema-file option */
+				if (schemaFileName != NULL)
+				{
+					mpp_err_msg_cache(logError, progname, "Can't use --schema-file option more than once\n");
+					goto cleanup;
+				}
+
+				if (!open_file_and_append_to_list(optarg, &schema_include_patterns, "include schema list"))
+				{
+					mpp_err_msg_cache(logError, progname, "can't open file %s. Invalid --schema-file parameter\n",
+							optarg);
+					goto cleanup;
+				}
+
+				/* extract file name without path, and add it to passed params */
+				addFileNameParam("schema-file", optarg, pInputOpts);
+				include_everything = false;
 				break;
 
 			default:
