@@ -799,8 +799,9 @@ CTranslatorDXLToScalar::PexprSubplanTestExpr
 	// second arg must be an EXEC param which is replaced during query execution with subplan output
         Param *pparam = MakeNode(Param);
         pparam->paramkind = PARAM_EXEC;
-        pparam->paramid = 0;
-        pparam->paramtype = oidInnerType;
+	CContextDXLToPlStmt *pctxdxltoplstmt = (dynamic_cast<CMappingColIdVarPlStmt*>(pmapcidvar))->Pctxdxltoplstmt();
+	pparam->paramid = pctxdxltoplstmt->UlNextParamId();
+	pparam->paramtype = oidInnerType;
 
         plistArgs = gpdb::PlAppendElement(plistArgs, pparam);
         popexpr->args = plistArgs;
