@@ -1817,7 +1817,8 @@ explain_outNode(StringInfo str,
 		explain_outNode(str, outerPlan(plan),
 						outerPlanState(planstate),
 						(IsA(plan, BitmapHeapScan) |
-						 IsA(plan, BitmapAppendOnlyScan)) ? outer_plan : NULL,
+						 IsA(plan, BitmapAppendOnlyScan) |
+						 IsA(plan, BitmapTableScan)) ? outer_plan : NULL,
 						indent + 3, es);
 	}
     else if (skip_outer)
