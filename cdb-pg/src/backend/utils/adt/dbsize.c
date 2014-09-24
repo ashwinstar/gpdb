@@ -605,7 +605,11 @@ calculate_total_relation_size(Oid Relid)
 	int64		size;
 	ListCell   *cell;
 
-	heapRel = relation_open(Relid, AccessShareLock);
+	heapRel = try_relation_open(Relid, AccessShareLock, false);
+
+	if (!RelationIsValid(heapRel))
+		return 0;
+
 	toastOid = heapRel->rd_rel->reltoastrelid;
 
 	if (RelationIsAoRows(heapRel) || RelationIsAoCols(heapRel))
@@ -627,11 +631,14 @@ calculate_total_relation_size(Oid Relid)
 			Oid			idxOid = lfirst_oid(cell);
 			Relation	iRel;
 
-			iRel = relation_open(idxOid, AccessShareLock);
+			iRel = try_relation_open(idxOid, AccessShareLock, false);
 
-			size += calculate_relation_size(iRel); 
+			if (RelationIsValid(iRel))
+			{
+				size += calculate_relation_size(iRel); 
 
-			relation_close(iRel, AccessShareLock);
+				relation_close(iRel, AccessShareLock);
+			}
 		}
 
 		list_free(index_oids);
@@ -670,7 +677,15 @@ pg_total_relation_size_oid(PG_FUNCTION_ARGS)
 {
 	int64		size = 0;
 	Oid			relOid = PG_GETARG_OID(0);
-	
+
+	/*
+	 * While we scan pg_class with an MVCC snapshot,
+	 * someone else might drop the table. It's better to return NULL for
+	 * already-dropped tables than throw an error and abort the whole query.
+	 */
+	if (!OidIsValid(get_rel_name(relOid)))
+		PG_RETURN_NULL();
+
 	size = calculate_total_relation_size(relOid);
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
@@ -728,7 +743,10 @@ pg_total_relation_size_name(PG_FUNCTION_ARGS)
 		relid = get_relname_relid(relrv->relname, namespaceId);
 	}
 	else
-		relid = RangeVarGetRelid(relrv, false);
+		relid = RangeVarGetRelid(relrv, true);
+
+	if (!OidIsValid(relid))
+		PG_RETURN_NULL();
 
 	size = calculate_total_relation_size(relid);
 	
