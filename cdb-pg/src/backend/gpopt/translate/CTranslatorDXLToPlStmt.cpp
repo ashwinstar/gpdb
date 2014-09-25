@@ -22,6 +22,7 @@
 #include "nodes/plannodes.h"
 #include "nodes/primnodes.h"
 #include "catalog/gp_policy.h"
+#include "catalog/pg_exttable.h"
 #include "cdb/cdbutil.h"
 #include "cdb/cdbvars.h"
 #include "utils/uri.h"
@@ -452,16 +453,21 @@ CTranslatorDXLToPlStmt::SetParamIds(Plan* pplan)
 void
 CTranslatorDXLToPlStmt::MapLocationsFile
 	(
-	const IMDRelationExternal *pmdrelext,
+	OID oidRel,
 	char **rgszSegFileMap,
 	CdbComponentDatabases *pcdbCompDB
 	)
 {
 	// extract file path and name from URI strings and assign them a primary segdb
-	const ULONG ulLocations = pmdrelext->UlLocations();
-	for (ULONG ulLoc = 0; ulLoc < ulLocations; ulLoc++)
+	
+	ExtTableEntry *extentry = gpdb::Pexttable(oidRel);
+
+	ListCell *plcLocation = NULL;
+	ForEach (plcLocation, extentry->locations)
 	{
-		const CHAR *szUri = CTranslatorUtils::SzFromWsz(pmdrelext->PstrLocation(ulLoc)->Wsz());
+		Value* pvLocation = (Value *)lfirst(plcLocation);
+		CHAR *szUri = pvLocation->val.str;
+		
 		Uri *pUri = gpdb::PuriParseExternalTable(szUri);
 
 		BOOL fCandidateFound = false;
@@ -495,7 +501,7 @@ CTranslatorDXLToPlStmt::MapLocationsFile
 			GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiDXL2PlStmtExternalScanError,
 					GPOS_WSZ_LIT("Could not assign a segment database for external file"));
 		}
-	}
+	}	
 }
 
 //---------------------------------------------------------------------------
@@ -513,7 +519,7 @@ CTranslatorDXLToPlStmt::MapLocationsFile
 void
 CTranslatorDXLToPlStmt::MapLocationsFdist
 	(
-	const IMDRelationExternal *pmdrelext,
+	OID oidRel,
 	char **rgszSegFileMap,
 	CdbComponentDatabases *pcdbCompDB,
 	Uri *pUri,
@@ -522,7 +528,10 @@ CTranslatorDXLToPlStmt::MapLocationsFdist
 {
 	ULONG ulParticipatingSegments = ulTotalPrimaries;
 	ULONG ulMaxParticipants = ulParticipatingSegments;
-	const ULONG ulLocations = pmdrelext->UlLocations();
+	
+	ExtTableEntry *extentry = gpdb::Pexttable(oidRel);
+
+	const ULONG ulLocations = gpdb::UlListLength(extentry->locations);
 	if (URI_GPFDIST == pUri->protocol || URI_GPFDISTS == pUri->protocol)
 	{
 		ulMaxParticipants = ulLocations * gp_external_max_segs;
@@ -548,9 +557,11 @@ CTranslatorDXLToPlStmt::MapLocationsFdist
 	ULONG ulModifiedLocations = 0;
 	while (!fDone)
 	{
-		for (ULONG ulLoc = 0; ulLoc < ulLocations; ulLoc++)
+		ListCell *plcLocation = NULL;
+		ForEach (plcLocation, extentry->locations)
 		{
-			CHAR *szUri = CTranslatorUtils::SzFromWsz(pmdrelext->PstrLocation(ulLoc)->Wsz());
+			Value* pvLocation = (Value *)lfirst(plcLocation);
+			CHAR *szUri = pvLocation->val.str;
 			plModifiedLocations = gpdb::PlAppendElement(plModifiedLocations, gpdb::PvalMakeString(szUri));
 			ulModifiedLocations ++;
 
@@ -633,15 +644,16 @@ CTranslatorDXLToPlStmt::MapLocationsFdist
 void
 CTranslatorDXLToPlStmt::MapLocationsExecute
 	(
-	const IMDRelationExternal *pmdrelext,
+	OID oidRel,
 	char **rgszSegFileMap,
 	CdbComponentDatabases *pcdbCompDB,
 	const ULONG ulTotalPrimaries
 	)
 {
-	const CHAR *szCommand = CTranslatorUtils::SzFromWsz(pmdrelext->PstrCommand()->Wsz());
+	ExtTableEntry *extentry = gpdb::Pexttable(oidRel);
+	CHAR *szCommand = extentry->command;
 	const CHAR *szPrefix = "execute:";
-
+	
 	StringInfo si = gpdb::SiMakeStringInfo();
 	gpdb::AppendStringInfo(si, szPrefix, szCommand);
 	CHAR *szPrefixedCommand = PStrDup(si->data);
@@ -651,8 +663,9 @@ CTranslatorDXLToPlStmt::MapLocationsExecute
 	si = NULL;
 
 	// get the ON clause (execute location) information
-	CHAR *szOnClause = CTranslatorUtils::SzFromWsz(pmdrelext->PstrLocation(0)->Wsz());
-
+	Value *pvOnClause = (Value *) gpdb::PvListNth(extentry->locations, 0);
+	CHAR *szOnClause = pvOnClause->val.str;
+	
 	if (0 == gpos::clib::IStrCmp(szOnClause, "ALL_SEGMENTS"))
 	{
 		MapLocationsExecuteAllSegments(szPrefixedCommand, rgszSegFileMap, pcdbCompDB);
@@ -919,10 +932,12 @@ CTranslatorDXLToPlStmt::MapLocationsHdfs
 List*
 CTranslatorDXLToPlStmt::PlExternalScanUriList
 	(
-	const IMDRelationExternal *pmdrelext
+	OID oidRel
 	)
 {
-	if (pmdrelext->FWritable())
+	ExtTableEntry *extentry = gpdb::Pexttable(oidRel);
+	
+	if (extentry->iswritable)
 	{
 		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiDXL2PlStmtExternalScanError,
 				GPOS_WSZ_LIT("It is not possible to read from a WRITABLE external table. Create the table as READABLE instead."));
@@ -944,14 +959,11 @@ CTranslatorDXLToPlStmt::PlExternalScanUriList
     rgszSegFileMap = (char **) gpdb::GPDBAlloc(ulTotalPrimaries * sizeof(char *));
     gpos::clib::PvMemSet(rgszSegFileMap, 0, ulTotalPrimaries * sizeof(char *));
 
-	const ULONG ulLocations = pmdrelext->UlLocations();
-	GPOS_ASSERT(0 < ulLocations);
-
 	// is this an EXECUTE table or a LOCATION (URI) table
 	BOOL fUsingExecute = false;
 	BOOL fUsingLocation = false;
-	const CWStringDynamic *pstrCommand = pmdrelext->PstrCommand();
-	if (NULL != pstrCommand)
+	const CHAR *szCommand = extentry->command;
+	if (NULL != szCommand)
 	{
 		if (!gp_external_enable_exec)
 		{
@@ -965,25 +977,27 @@ CTranslatorDXLToPlStmt::PlExternalScanUriList
 		fUsingLocation = true;
 	}
 
+	GPOS_ASSERT(0 < gpdb::UlListLength(extentry->locations));
+	
 	CHAR *szFirstUri = NULL;
 	Uri *pUri = NULL;
 	if (!fUsingExecute)
 	{
-		szFirstUri = CTranslatorUtils::SzFromWsz(pmdrelext->PstrLocation(0)->Wsz());
+		szFirstUri = ((Value *) gpdb::PvListNth(extentry->locations, 0))->val.str;
 		pUri = gpdb::PuriParseExternalTable(szFirstUri);
 	}
 
 	if (fUsingLocation && (URI_FILE == pUri->protocol || URI_HTTP == pUri->protocol))
 	{
-		MapLocationsFile(pmdrelext, rgszSegFileMap, pcdbCompDB);
+		MapLocationsFile(oidRel, rgszSegFileMap, pcdbCompDB);
 	}
 	else if (fUsingLocation && (URI_GPFDIST == pUri->protocol || URI_GPFDISTS == pUri->protocol || URI_CUSTOM == pUri->protocol))
 	{
-		MapLocationsFdist(pmdrelext, rgszSegFileMap, pcdbCompDB, pUri, ulTotalPrimaries);
+		MapLocationsFdist(oidRel, rgszSegFileMap, pcdbCompDB, pUri, ulTotalPrimaries);
 	}
 	else if (fUsingExecute)
 	{
-		MapLocationsExecute(pmdrelext, rgszSegFileMap, pcdbCompDB, ulTotalPrimaries);
+		MapLocationsExecute(oidRel, rgszSegFileMap, pcdbCompDB, ulTotalPrimaries);
 	}
 	else if (fUsingLocation && URI_GPHDFS == pUri->protocol)
 	{
@@ -1015,33 +1029,7 @@ CTranslatorDXLToPlStmt::PlExternalScanUriList
 	return plFileNames;
 }
 
-//---------------------------------------------------------------------------
-//	@function:
-//		CTranslatorDXLToPlStmt::CExternalScanFormatType
-//
-//	@doc:
-//		Return the char representation of external scan format type
-//
-//---------------------------------------------------------------------------
-CHAR
-CTranslatorDXLToPlStmt::CExternalScanFormatType
-	(
-	IMDRelationExternal::Erelextformattype erelextformat
-	)
-{
-	switch (erelextformat)
-	{
-		case IMDRelationExternal::ErelextformatCSV:
-			return 'c';
-		case IMDRelationExternal::ErelextformatText:
-			return 't';
-		case IMDRelationExternal::ErelextformatCustom:
-			return 'b';
-		default:
-			GPOS_ASSERT(!"Unrecognized format type");
-			return '\0';
-	}
-}
+
 //---------------------------------------------------------------------------
 //	@function:
 //		CTranslatorDXLToPlStmt::PtsFromDXLTblScan
@@ -1082,14 +1070,16 @@ CTranslatorDXLToPlStmt::PtsFromDXLTblScan
 	if (IMDRelation::ErelstorageExternal == pmdrel->Erelstorage())
 	{
 		const IMDRelationExternal *pmdrelext = dynamic_cast<const IMDRelationExternal*>(pmdrel);
-
+		OID oidRel = CMDIdGPDB::PmdidConvert(pmdrel->Pmdid())->OidObjectId();
+		ExtTableEntry *pextentry = gpdb::Pexttable(oidRel);
+		
 		// create external scan node
 		ExternalScan *pes = MakeNode(ExternalScan);
 		pes->scan.scanrelid = iRel;
-		pes->uriList = PlExternalScanUriList(pmdrelext);
-		Value *pval = gpdb::PvalMakeString(CTranslatorUtils::SzFromWsz(pmdrelext->PstrFormatOptions()->Wsz()));
+		pes->uriList = PlExternalScanUriList(oidRel);
+		Value *pval = gpdb::PvalMakeString(pextentry->fmtopts);
 		pes->fmtOpts = ListMake1(pval);
-		pes->fmtType = CExternalScanFormatType(pmdrelext->Erelextformat());
+		pes->fmtType = pextentry->fmtcode;
 		pes->isMasterOnly = (IMDRelation::EreldistrMasterOnly == pmdrelext->Ereldistribution());
 		pes->rejLimit = pmdrelext->IRejectLimit();
 		pes->rejLimitInRows = pmdrelext->FRejLimitInRows();
@@ -1104,7 +1094,7 @@ CTranslatorDXLToPlStmt::PtsFromDXLTblScan
 			pes->fmterrtbl = CMDIdGPDB::PmdidConvert(pmdidFmtErrTbl)->OidObjectId();
 		}
 
-		pes->encoding = pmdrelext->UlEncoding();
+		pes->encoding = pextentry->encoding;
 		pes->scancounter = m_ulExternalScanCounter++;
 
 		pplan = &(pes->scan.plan);

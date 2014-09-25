@@ -278,10 +278,6 @@ namespace gpdxl
 			static
 			CDXLNode *PdxlnDefaultColumnValue(IMemoryPool *pmp, CMDAccessor *pmda, TupleDesc rd_att, AttrNumber attrno);
 
-			// get the format type of an external relation
-			static
-			IMDRelationExternal::Erelextformattype ErelextFormat(char fmtcode);
-
 
 			// get the distribution columns
 			static

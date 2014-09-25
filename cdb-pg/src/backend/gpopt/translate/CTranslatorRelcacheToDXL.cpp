@@ -538,28 +538,6 @@ CTranslatorRelcacheToDXL::Pmdrel
 	{
 		ExtTableEntry *extentry = gpdb::Pexttable(oid);
 
-		// get locations
-		DrgPstr *pdrgpstrLocations = New(pmp) DrgPstr(pmp);
-		ListCell *plcLocation = NULL;
-		ForEach (plcLocation, extentry->locations)
-		{
-			Value* pvLocation = (Value *)lfirst(plcLocation);
-			CWStringDynamic *pstrLocation = CDXLUtils::PstrFromSz(pmp, pvLocation->val.str);
-			pdrgpstrLocations->Append(pstrLocation);
-		}
-
-		// get format options
-		CHAR *szFormatOptions = extentry->fmtopts;
-		CWStringDynamic *pstrformatOptions = CDXLUtils::PstrFromSz(pmp, szFormatOptions);
-
-		// get command
-		CHAR *szCommand = extentry->command;
-		CWStringDynamic *pstrCommand = NULL;
-		if (NULL != szCommand)
-		{
-			pstrCommand = CDXLUtils::PstrFromSz(pmp, szCommand);
-		}
-
 		// get format error table id
 		IMDId *pmdidFmtErrTbl = NULL;
 		if (InvalidOid != extentry->fmterrtbl)
@@ -579,12 +557,6 @@ CTranslatorRelcacheToDXL::Pmdrel
 							pdrgpmdidIndexes,
 							pdrgpmdidTriggers,
 							pdrgpmdidCheckConstraints,
-							pdrgpstrLocations,
-							ErelextFormat(extentry->fmtcode),
-							pstrformatOptions,
-							pstrCommand,
-							extentry->encoding,
-							extentry->iswritable,
 							extentry->rejectlimit,
 							('r' == extentry->rejectlimittype),
 							pmdidFmtErrTbl
@@ -755,34 +727,6 @@ CTranslatorRelcacheToDXL::PdxlnDefaultColumnValue
 							(Expr *) pnode,
 							NULL /* pmapvarcolid --- subquery or external variable are not supported in default expression */
 							);
-}
-
-//---------------------------------------------------------------------------
-//	@function:
-//		CTranslatorRelcacheToDXL::ErelextFormat
-//
-//	@doc:
-//		Return the format type of an external relation
-//
-//---------------------------------------------------------------------------
-IMDRelationExternal::Erelextformattype
-CTranslatorRelcacheToDXL::ErelextFormat
-	(
-	char fmtcode
-	)
-{
-	switch (fmtcode)
-	{
-		case 'c':
-			return IMDRelationExternal::ErelextformatCSV;
-		case 't':
-			return IMDRelationExternal::ErelextformatText;
-		case 'b':
-			return IMDRelationExternal::ErelextformatCustom;
-		default:
-			GPOS_ASSERT(!"Unrecognized external table format");
-			return IMDRelationExternal::ErelextformatSentinel;
-	}
 }
 
 //---------------------------------------------------------------------------

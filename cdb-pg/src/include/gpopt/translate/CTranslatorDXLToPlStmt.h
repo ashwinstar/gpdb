@@ -166,7 +166,7 @@ namespace gpdxl
 			// segment mapping for tables with LOCATION http:// or file://
 			void MapLocationsFile
 					(
-					const IMDRelationExternal *pmdrelext,
+					OID oidRel,
 					char **rgszSegFileMap,
 					CdbComponentDatabases *pcdbCompDB
 					);
@@ -174,7 +174,7 @@ namespace gpdxl
 			// segment mapping for tables with LOCATION gpfdist(s):// or custom protocol
 			void MapLocationsFdist
 					(
-					const IMDRelationExternal *pmdrelext,
+					OID oidRel,
 					char **rgszSegFileMap,
 					CdbComponentDatabases *pcdbCompDB,
 					Uri *pUri,
@@ -184,7 +184,7 @@ namespace gpdxl
 			// segment mapping for tables with EXECUTE 'cmd' ON.
 			void MapLocationsExecute
 					(
-					const IMDRelationExternal *pmdrelext,
+					OID oidRel,
 					char **rgszSegFileMap,
 					CdbComponentDatabases *pcdbCompDB,
 					const ULONG ulTotalPrimaries
@@ -243,10 +243,7 @@ namespace gpdxl
 					);
 
 			// list of URIs for external scan
-			List* PlExternalScanUriList(const IMDRelationExternal *pmdrelext);
-
-			// return the char representation of external scan format type
-			CHAR CExternalScanFormatType(IMDRelationExternal::Erelextformattype erelextformat);
+			List* PlExternalScanUriList(OID oidRel);
 
 			// walker to set index var attno's
 			static
