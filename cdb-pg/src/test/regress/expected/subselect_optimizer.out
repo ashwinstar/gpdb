@@ -502,17 +502,16 @@ NOTICE:  CREATE TABLE will create partition "csq_t2_1_prt_4" for table "csq_t2"
 insert into csq_t1 select * from csq_t1_base;
 insert into csq_t2 select * from csq_t2_base;
 explain select * from csq_t1 where csq_t1.x >ALL (select csq_t2.x from csq_t2 where csq_t2.y=csq_t1.y) order by 1;
-                                                                 QUERY PLAN                                                                  
+                                                                 QUERY PLAN
 ---------------------------------------------------------------------------------------------------------------------------------------------
  Result  (cost=0.00..1293.00 rows=1 width=16)
    Filter: (subplan)
-   ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..431.00 rows=1 width=16)
-         Merge Key: csq_t1.x
-         ->  Sequence  (cost=0.00..431.00 rows=1 width=16)
-               ->  Result  (cost=0.00..431.00 rows=1 width=16)
-                     ->  Function Scan on gp_partition_expansion  (cost=10.00..100.00 rows=50 width=4)
-               ->  Sort  (cost=0.00..431.00 rows=1 width=16)
-                     Sort Key: csq_t1.x
+   ->  Sort  (cost=0.00..431.00 rows=1 width=16)
+         Sort Key: csq_t1.x
+         ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..431.00 rows=1 width=16)
+               ->  Sequence  (cost=0.00..431.00 rows=1 width=16)
+                     ->  Result  (cost=0.00..431.00 rows=1 width=16)
+                           ->  Function Scan on gp_partition_expansion  (cost=10.00..100.00 rows=50 width=4)
                      ->  Dynamic Table Scan on csq_t1 (partIndex: 1)  (cost=0.00..431.00 rows=1 width=16)
    SubPlan 1
      ->  Result  (cost=0.00..431.00 rows=1 width=1)
@@ -529,7 +528,7 @@ explain select * from csq_t1 where csq_t1.x >ALL (select csq_t2.x from csq_t2 wh
                                                            ->  Function Scan on gp_partition_expansion  (cost=10.00..100.00 rows=50 width=4)
                                                      ->  Dynamic Table Scan on csq_t2 (partIndex: 2)  (cost=0.00..431.00 rows=1 width=16)
  Settings:  optimizer=on; optimizer_segments=3
-(25 rows)
+(24 rows)
 
 select * from csq_t1 where csq_t1.x >ALL (select csq_t2.x from csq_t2 where csq_t2.y=csq_t1.y) order by 1; -- expected (4,2)
  x | y 
@@ -863,17 +862,16 @@ INSERT INTO csq_r VALUES (1);
 -- with a correlated argument
 -- force_explain
 explain SELECT * FROM csq_r WHERE a IN (SELECT * FROM csq_f(csq_r.a));
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
- Result  (cost=0.00..862.00 rows=1 width=4)
-   Filter: a = ((subplan))
-   ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..431.00 rows=1 width=4)
-         ->  Table Scan on csq_r  (cost=0.00..431.00 rows=1 width=4)
-   SubPlan 1
-     ->  Result  (cost=0.00..0.00 rows=1 width=8)
-           ->  Result  (cost=0.00..0.00 rows=1 width=1)
+                                  QUERY PLAN
+------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..862.00 rows=1 width=4)
+   ->  Table Scan on csq_r  (cost=0.00..862.00 rows=1 width=4)
+         Filter: a = ((subplan))
+         SubPlan 1
+           ->  Result  (cost=0.00..0.00 rows=1 width=8)
+                 ->  Result  (cost=0.00..0.00 rows=1 width=1)
  Settings:  optimizer=on; optimizer_segments=3
-(8 rows)
+(7 rows)
 
 SELECT * FROM csq_r WHERE a IN (SELECT * FROM csq_f(csq_r.a));
  a 
@@ -883,17 +881,16 @@ SELECT * FROM csq_r WHERE a IN (SELECT * FROM csq_f(csq_r.a));
 
 -- force_explain
 explain SELECT * FROM csq_r WHERE a not IN (SELECT * FROM csq_f(csq_r.a));
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
- Result  (cost=0.00..862.00 rows=1 width=4)
-   Filter: a <> ((subplan))
-   ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..431.00 rows=1 width=4)
-         ->  Table Scan on csq_r  (cost=0.00..431.00 rows=1 width=4)
-   SubPlan 1
-     ->  Result  (cost=0.00..0.00 rows=1 width=8)
-           ->  Result  (cost=0.00..0.00 rows=1 width=1)
+                                  QUERY PLAN
+------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..862.00 rows=1 width=4)
+   ->  Table Scan on csq_r  (cost=0.00..862.00 rows=1 width=4)
+         Filter: a <> ((subplan))
+         SubPlan 1
+           ->  Result  (cost=0.00..0.00 rows=1 width=8)
+                 ->  Result  (cost=0.00..0.00 rows=1 width=1)
  Settings:  optimizer=on; optimizer_segments=3
-(8 rows)
+(7 rows)
 
 SELECT * FROM csq_r WHERE a not IN (SELECT * FROM csq_f(csq_r.a));
  a 
@@ -939,18 +936,17 @@ SELECT * FROM csq_r WHERE not exists (SELECT * FROM csq_f(csq_r.a));
 
 -- force_explain
 explain SELECT * FROM csq_r WHERE a > (SELECT csq_f FROM csq_f(csq_r.a) limit 1);
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
- Result  (cost=0.00..862.00 rows=1 width=4)
-   Filter: a > ((subplan))
-   ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..431.00 rows=1 width=4)
-         ->  Table Scan on csq_r  (cost=0.00..431.00 rows=1 width=4)
-   SubPlan 1
-     ->  Limit  (cost=0.00..0.00 rows=1 width=8)
-           ->  Result  (cost=0.00..0.00 rows=1 width=8)
-                 ->  Result  (cost=0.00..0.00 rows=1 width=1)
+                                  QUERY PLAN
+------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..862.00 rows=1 width=4)
+   ->  Table Scan on csq_r  (cost=0.00..862.00 rows=1 width=4)
+         Filter: a > ((subplan))
+         SubPlan 1
+           ->  Limit  (cost=0.00..0.00 rows=1 width=8)
+                 ->  Result  (cost=0.00..0.00 rows=1 width=8)
+                       ->  Result  (cost=0.00..0.00 rows=1 width=1)
  Settings:  optimizer=on; optimizer_segments=3
-(9 rows)
+(8 rows)
 
 SELECT * FROM csq_r WHERE a > (SELECT csq_f FROM csq_f(csq_r.a) limit 1);
  a 
@@ -959,17 +955,16 @@ SELECT * FROM csq_r WHERE a > (SELECT csq_f FROM csq_f(csq_r.a) limit 1);
 
 -- force_explain
 explain SELECT * FROM csq_r WHERE a < ANY (SELECT csq_f FROM csq_f(csq_r.a));
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
- Result  (cost=0.00..862.00 rows=1 width=4)
-   Filter: a < ((subplan))
-   ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..431.00 rows=1 width=4)
-         ->  Table Scan on csq_r  (cost=0.00..431.00 rows=1 width=4)
-   SubPlan 1
-     ->  Result  (cost=0.00..0.00 rows=1 width=8)
-           ->  Result  (cost=0.00..0.00 rows=1 width=1)
+                                  QUERY PLAN
+------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..862.00 rows=1 width=4)
+   ->  Table Scan on csq_r  (cost=0.00..862.00 rows=1 width=4)
+         Filter: a < ((subplan))
+         SubPlan 1
+           ->  Result  (cost=0.00..0.00 rows=1 width=8)
+                 ->  Result  (cost=0.00..0.00 rows=1 width=1)
  Settings:  optimizer=on; optimizer_segments=3
-(8 rows)
+(7 rows)
 
 SELECT * FROM csq_r WHERE a < ANY (SELECT csq_f FROM csq_f(csq_r.a));
  a 
@@ -978,17 +973,16 @@ SELECT * FROM csq_r WHERE a < ANY (SELECT csq_f FROM csq_f(csq_r.a));
 
 -- force_explain
 explain SELECT * FROM csq_r WHERE a <= ALL (SELECT csq_f FROM csq_f(csq_r.a));
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
- Result  (cost=0.00..862.00 rows=1 width=4)
-   Filter: a <= ((subplan))
-   ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..431.00 rows=1 width=4)
-         ->  Table Scan on csq_r  (cost=0.00..431.00 rows=1 width=4)
-   SubPlan 1
-     ->  Result  (cost=0.00..0.00 rows=1 width=8)
-           ->  Result  (cost=0.00..0.00 rows=1 width=1)
+                                  QUERY PLAN
+------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..862.00 rows=1 width=4)
+   ->  Table Scan on csq_r  (cost=0.00..862.00 rows=1 width=4)
+         Filter: a <= ((subplan))
+         SubPlan 1
+           ->  Result  (cost=0.00..0.00 rows=1 width=8)
+                 ->  Result  (cost=0.00..0.00 rows=1 width=1)
  Settings:  optimizer=on; optimizer_segments=3
-(8 rows)
+(7 rows)
 
 SELECT * FROM csq_r WHERE a <= ALL (SELECT csq_f FROM csq_f(csq_r.a));
  a 
