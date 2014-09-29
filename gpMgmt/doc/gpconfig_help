@@ -150,9 +150,9 @@ Displays the online help.
 EXAMPLES
 *****************************************************
 
-Set the work_mem setting to 120MB on the master only:
+Set the statement_mem setting to 120MB on the master only:
 
-gpconfig -c work_mem -v 120MB --masteronly
+gpconfig -c statement_mem -v 120MB --masteronly
 
 
 Set the max_connections setting to 100 on all segments 
