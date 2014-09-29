@@ -1,5 +1,7 @@
 package com.emc.greenplum.gpdb.hadoop.io;
 
+import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -7,8 +9,11 @@ import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.DataOutputStream;
 import java.io.DataInputStream;
+import java.io.PrintWriter;
 
 import org.apache.hadoop.io.Writable;
+
+import com.emc.greenplum.gpdb.hdfsconnector.HDFSWriter;
 
 
 /**
@@ -127,7 +132,6 @@ public class GPDBWritable implements Writable {
 		this.readFields(dis);
 	}
 	
-
 	/**
 	 *  Implement {@link org.apache.hadoop.io.Writable#readFields(DataInput)} 
 	 */
@@ -142,7 +146,7 @@ public class GPDBWritable implements Writable {
 		if (version != this.VERSION) {
 			throw new IOException("Current GPDBWritable version(" +
 					this.VERSION + ") does not match input version(" +
-					version+")");
+					version+")" + HDFSWriter.getLineData());
 		}
 		
 		/* Extract Column Type */
@@ -159,7 +163,7 @@ public class GPDBWritable implements Writable {
 			else if (enumType == DBType.SMALLINT.ordinal()) { colType[i] = SMALLINT; coldbtype[i] = DBType.SMALLINT;}
 			else if (enumType == DBType.BYTEA.ordinal())    { colType[i] = BYTEA; coldbtype[i] = DBType.BYTEA;}
 			else if (enumType == DBType.TEXT.ordinal())     { colType[i] = TEXT; coldbtype[i] = DBType.TEXT; }
-			else throw new IOException("Unknown GPDBWritable.DBType ordinal value");
+			else throw new IOException("Unknown GPDBWritable.DBType ordinal value, DBType:" + enumType + HDFSWriter.getLineData());
 		}
 		
 		/* Extract null bit array */
@@ -216,7 +220,7 @@ public class GPDBWritable implements Writable {
 					}
 					
 					default:
-						throw new IOException("Unknown GPDBWritable ColType");
+						throw new IOException("Unknown GPDBWritable ColType, ColType:" + colType + HDFSWriter.getLineData());
 				}				
 			}
 		}

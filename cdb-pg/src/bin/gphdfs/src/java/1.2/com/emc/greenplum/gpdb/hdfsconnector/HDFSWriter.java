@@ -26,6 +26,8 @@ import org.apache.hadoop.mapreduce.lib.output.*;
 import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.ByteBuffer;
+import java.util.Arrays;
 
 public class HDFSWriter
 {
@@ -150,28 +152,101 @@ public class HDFSWriter
 	    return codecClass;
 	}
 
-	
+	static final int pushBackBufferLen = 15000;
+
+	static int preLen=0;
+	static int preBufferLen = 0;
+	static byte[] preData = new byte[pushBackBufferLen];
+
+	static int thisLen=0;
+	static int thisBufferLen = 0;
+	static byte[] thisData = new byte[pushBackBufferLen];
+
+	/**
+	 * get line info when error occurs
+	 */
+	public static String getLineData(){
+		return " thisLen: " + thisLen + " thisData:" + bytesToHex(thisData, thisBufferLen)
+				+" preLen:" + preLen + " preData:" + bytesToHex(preData, preBufferLen);
+	}
+
+	/**
+	 * transfer a byte array to a hex string
+	 */
+	final protected static char[] hexArray = "0123456789ABCDEF".toCharArray();
+	private static String bytesToHex(byte[] bytes, int length) {
+		if (bytes == null) {
+			return "null";
+		}
+
+		if (bytes.length == 0 || length == 0) {
+			return "empty";
+		}
+
+		char[] hexChars = new char[length * 2];
+		for ( int j = 0; j < length; j++ ) {
+			int v = bytes[j] & 0xFF;
+			hexChars[j * 2] = hexArray[v >>> 4];
+			hexChars[j * 2 + 1] = hexArray[v & 0x0F];
+		}
+		return new String(hexChars);
+	}
+
 	/**
 	 * Write as GPDBOutputFormat, which is SequenceFile <LongWritable, GPDBWritable>
 	 */
 	protected void writeGPDBWritableFormat() throws IOException, InterruptedException {
 		RecordWriter<LongWritable, GPDBWritable> rw = getGPDBRecordWriter();
 		LongWritable segIDWritable = new LongWritable(segid);
-		
-		DataInputStream dis = new DataInputStream(instream);
-		
+
+		PushbackInputStream pStream = new PushbackInputStream(instream, pushBackBufferLen);
+		DataInputStream dis = new DataInputStream(pStream);
+
 		// Read from Std-in to construct "value"
 		try {
-			while(true) {
+			byte[] lenData = new byte[4];
+
+			while (true) {
+				int read = pStream.read(lenData);
+
+				ByteBuffer wrapped = ByteBuffer.wrap(lenData);
+				thisLen = wrapped.getInt();
+
+				if (read == -1) {
+					break;
+				} else if (read < 4) {
+					thisBufferLen = 0;
+					throw new IOException("not enough length data, readLen:" + read + HDFSWriter.getLineData());
+				} else {
+					thisBufferLen = thisLen - 4;
+					if (thisLen > pushBackBufferLen) {
+						thisBufferLen = pushBackBufferLen - 4;
+					}
+
+					int dataLen = pStream.read(thisData, 0, thisBufferLen);
+					if (dataLen < thisBufferLen) {
+						thisBufferLen = (dataLen == -1) ? 0 : dataLen;
+						throw new IOException("not enough context data, realLen:" + dataLen + HDFSWriter.getLineData());
+					}
+
+					pStream.unread(thisData, 0, thisBufferLen);
+
+					pStream.unread(lenData);
+				}
+
 				GPDBWritable gw = new GPDBWritable();
 				gw.readFields(dis);
 				rw.write(segIDWritable, gw);
+
+				preLen = thisLen;
+				preBufferLen = thisBufferLen;
+				System.arraycopy(thisData, 0, preData, 0, thisBufferLen);
 			}
 		} catch (EOFException e) {}
-		
+
 		rw.close(fakeTaskCtx);
 	}
-	
+
 	/**
 	 * Write as TextOutputFormat
 	 */
