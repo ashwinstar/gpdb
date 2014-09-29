@@ -3,6 +3,7 @@ COMMAND NAME: gpsnmpd
 Reports on the health and state of a Greenplum Database system 
 through SNMP.
 
+The gpsnmpd agent is deprecated and will be removed in a future release.
 
 *****************************************************
 SYNOPSIS

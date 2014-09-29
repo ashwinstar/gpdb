@@ -2,6 +2,7 @@ COMMAND NAME: gpdetective
 
 Collects diagnostic information from a running Greenplum Database system.
 
+The gpdetective utility is deprecated and will be removed in a future release.
 
 *****************************************************
 SYNOPSIS
