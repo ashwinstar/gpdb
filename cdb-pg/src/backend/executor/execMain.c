@@ -3670,10 +3670,11 @@ OpenIntoRel(QueryDesc *queryDesc)
 											  targetPolicy,  	/* MPP */
 											  reloptions,
 											  allowSystemTableModsDDL,
+											  /* valid_opts */false,
 											  &intoComptypeOid, 	/* MPP */
 						 					  &persistentTid,
 						 					  &persistentSerialNum);
-	
+
 	FreeTupleDesc(tupdesc);
 	
 	/*

@@ -24,8 +24,4 @@ s/\(COptTasks\.cpp:\d+\)//
 m/\(cdbdisp\.c:\d+\)/
 s/\(cdbdisp\.c:\d+\)//
 
-#Ignore cheecksum
-m/^Checksum:.*/
-s/^Checksum:.*//
-
 -- end_matchsubs

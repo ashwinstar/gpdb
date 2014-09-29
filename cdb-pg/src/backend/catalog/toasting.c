@@ -283,6 +283,7 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 										   NULL, /* CDB POLICY */
 										   (Datum) 0,
 										   true,
+										   /* valid_opts */ false,
 										   comptypeOid,
 										   /* persistentTid */ NULL,
 										   /* persistentSerialNum */ NULL);

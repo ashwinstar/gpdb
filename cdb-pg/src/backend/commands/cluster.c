@@ -813,6 +813,7 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
                                           NULL,                         /*CDB*/
 										  reloptions,
 										  allowSystemTableModsDDL,
+										  /* valid_opts */ true,
 										  comptypeOid,
 						 				  /* persistentTid */ NULL,
 						 				  /* persistentSerialNum */ NULL);

@@ -62,6 +62,7 @@ extern Oid heap_create_with_catalog(const char *relname,
                          const struct GpPolicy *policy,    /* MPP */
 						 Datum reloptions,
 						 bool allow_system_table_mods,
+						 bool valid_opts,
 						 Oid *comptypeOid, /* MPP */
 						 ItemPointer persistentTid,
 						 int64 *persistentSerialNum);

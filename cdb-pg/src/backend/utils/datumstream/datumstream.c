@@ -316,19 +316,6 @@ init_datumstream_typeinfo(
 }
 
 /*
- * FIXME: This function is added in the interim until we figure out
- * why we honor checksum flag only if RLE compression is used.	The
- * argument "checksum" is user specified checksum flag obtained from
- * pg_attribute_encoding.  We currently honor that flag only if
- * compression type is RLE!
- */
-bool
-init_datumstream_checksum(char *compName, bool checksum)
-{
-	return (checksum);
-}
-
-/*
  * DeltaRange compression supported for folowing datatypes
  * INTEGER, BIGINT, DATE, TIME and TIMESTAMP
  */
@@ -394,7 +381,7 @@ init_datumstream_info(
 
 	*datumStreamVersion = DatumStreamVersion_Original;
 
-	ao_attr->checksum = init_datumstream_checksum(compName, checksum);
+	ao_attr->checksum = checksum;
 	/*
 	 * The original version didn't bother to populate these fields...
 	 */

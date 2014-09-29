@@ -1351,6 +1351,7 @@ heap_create_with_catalog(const char *relname,
                          const struct GpPolicy *policy,
                          Datum reloptions,
 						 bool allow_system_table_mods,
+						 bool valid_opts,
 						 Oid *comptypeOid,
 						 ItemPointer persistentTid,
 						 int64 *persistentSerialNum)
@@ -1380,7 +1381,8 @@ heap_create_with_catalog(const char *relname,
 	 * Also, check for override (debug) GUCs.
 	 * During upgrade, do not validate because we accept tidycat options as well.
 	 */
-	stdRdOptions = (StdRdOptions*) heap_reloptions(relkind, reloptions, !gp_upgrade_mode);
+	stdRdOptions = (StdRdOptions*) heap_reloptions(
+			relkind, reloptions, valid_opts ? false : !gp_upgrade_mode);
 	heap_test_override_reloptions(relkind, stdRdOptions, &safefswritesize);
 	appendOnlyRel = stdRdOptions->appendonly;
 	validateAppendOnlyRelOptions(appendOnlyRel,
@@ -1397,6 +1399,7 @@ heap_create_with_catalog(const char *relname,
             relstorage = RELSTORAGE_AOCOLS;
 		else
 			relstorage = RELSTORAGE_AOROWS;
+		reloptions = transformAOStdRdOptions(stdRdOptions, reloptions);
 	}
 
 	/* MPP-8058: disallow OIDS on column-oriented tables */

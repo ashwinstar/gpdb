@@ -93,6 +93,7 @@ ignore: foreign_key
 test: cluster
 test: dependency
 test: guc
+test: dsp
 ignore: combocid
 test: limit
 ignore: plpgsql

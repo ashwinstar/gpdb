@@ -33,6 +33,7 @@
 #include "access/gin.h"
 #include "access/transam.h"
 #include "access/aosegfiles.h"
+#include "access/reloptions.h"
 #include "access/twophase.h"
 #include "access/xact.h"
 #include "access/xlog_internal.h"
@@ -54,6 +55,7 @@
 #include "libpq/password_hash.h"
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
+#include "nodes/makefuncs.h"
 #include "optimizer/cost.h"
 #include "optimizer/paths.h"
 #include "optimizer/planmain.h"
@@ -255,6 +257,8 @@ extern const char *gpvars_assign_gp_resqueue_priority_default_value(const char *
 
 static const char *assign_password_hash_algorithm(const char *newval,
 												  bool doit, GucSource source);
+static const char *assign_gp_default_storage_options(
+		const char *newval, bool doit, GucSource source);
 /*
  * GUC option variables that are exported from this module
  */
@@ -307,7 +311,6 @@ bool		Test_print_direct_dispatch_info = false;
 bool 		gp_test_orientation_override = false;
 bool		gp_permit_persistent_metadata_update = false;
 bool		gp_permit_relation_node_change = false;
-bool 		enable_checksum_on_tables = true;
 bool		Test_enable_broken_quicklz3 = false;
 int         Test_compresslevel_override = 0;
 int			Test_blocksize_override = 0;
@@ -739,6 +742,12 @@ bool		gp_reject_internal_tcp_conn = true;
 
 /* plpgsql plancache GUC */
 bool gp_plpgsql_clear_cache_always = false;
+
+/*
+ * Default storage options GUC.  Value is comma-separated name=value
+ * pairs.  E.g. "appendonly=true,orientation=column"
+ */
+char *gp_default_storage_options = NULL;
 
 /*
  * Displayable names for context types (enum GucContext)
@@ -3066,16 +3075,6 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"enable_checksum_on_tables", PGC_SUSET, DEVELOPER_OPTIONS,
-			gettext_noop("Change the default of the checksum create table option."),
-			NULL,
-			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&enable_checksum_on_tables,
-		true, NULL, NULL
-	},
-
-	{
 		{"test_enable_broken_quicklz3", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("For testing purposes, allow using quicklz level 3 compression."),
 			NULL,
@@ -3945,7 +3944,7 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"gp_disable_catalog_access_on_segment", PGC_USERSET, DEVELOPER_OPTIONS,
 		 gettext_noop("Disables non-builtin object access on segments"),
-		 NULL, 
+		 NULL,
 		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
 		},
 		&gp_disable_catalog_access_on_segment,
@@ -7359,6 +7358,15 @@ static struct config_string ConfigureNamesString[] =
 		"default", NULL, NULL
 	},
 
+	{
+		{"gp_default_storage_options", PGC_USERSET, APPENDONLY_TABLES,
+			gettext_noop("Default options for appendonly storage."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&gp_default_storage_options, "", assign_gp_default_storage_options, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, NULL, NULL, NULL
@@ -7829,7 +7837,6 @@ InitializeGUCOptions(void)
 	int			i;
 	char	   *env;
 	long		stack_rlimit;
-
 	/*
 	 * Before log_line_prefix could possibly receive a nonempty setting, make
 	 * sure that timezone processing is minimally alive (see elog.c).
@@ -9935,6 +9942,13 @@ set_config_by_name(PG_FUNCTION_ARGS)
 	/* Get the GUC variable name */
 	name = DatumGetCString(DirectFunctionCall1(textout, PG_GETARG_DATUM(0)));
 
+	if (pg_strncasecmp(name, "gp_default_storage_options",
+					   strlen("gp_default_storage_options")) == 0)
+	{
+		elog(ERROR, "changing \"gp_default_storage_options\" GUC using "
+			 "pg_catalog.set_config() is not currently supported");
+	}
+
 	/* Get the desired value or set to NULL for a reset request */
 	if (PG_ARGISNULL(1))
 		value = NULL;
@@ -11191,7 +11205,6 @@ ParseLongOption(const char *string, char **name, char **value)
 		if (*cp == '-')
 			*cp = '_';
 }
-
 
 /*
  * Handle options fetched from pg_database.datconfig or pg_authid.rolconfig.
@@ -12703,5 +12716,114 @@ show_allow_system_table_mods(void)
 		return "NONE";
 }
 
+/*
+ * Malloc a new string representing current storage_opts.
+ */
+static char *
+storageOptToString(void)
+{
+	StringInfoData buf;
+	char *ret;
+	const StdRdOptions *ao_opts = currentAOStorageOptions();
+	initStringInfo(&buf);
+	appendStringInfo(&buf, "%s=%s", SOPT_APPENDONLY,
+					 ao_opts->appendonly ? "true" : "false");
+	appendStringInfo(&buf, ",%s=%d,", SOPT_BLOCKSIZE,
+					 ao_opts->blocksize);
+	if (ao_opts->compresstype)
+	{
+		appendStringInfo(&buf, "%s=%s,", SOPT_COMPTYPE,
+						 ao_opts->compresstype);
+		appendStringInfo(&buf, "%s=%d,", SOPT_COMPLEVEL,
+						 ao_opts->compresslevel);
+	}
+	else
+	{
+		/* Compression is turned off. */
+		Assert(ao_opts->compresslevel == 0);
+		appendStringInfo(&buf, "%s=none,", SOPT_COMPTYPE);
+	}
+	appendStringInfo(&buf, "%s=%s,", SOPT_CHECKSUM,
+					 ao_opts->checksum ? "true" : "false");
+	appendStringInfo(&buf, "%s=%s", SOPT_ORIENTATION,
+					 ao_opts->columnstore ? "column" : "row");
+	ret = strdup(buf.data);
+	if (ret == NULL)
+		elog(ERROR, "out of memory");
+	pfree(buf.data);
+	return ret;
+}
+
+/*
+ * Parse new value of storage options.  Update both, the GUC and
+ * global ao_storage_opts object.
+ */
+static const char *
+assign_gp_default_storage_options(const char *newval,
+								  bool doit, GucSource source)
+{
+	if (source == PGC_S_DEFAULT || newval[0] == '\0')
+	{
+		/*
+		 * Reset/init case, newval = "none".
+		 */
+		if (doit)
+			resetDefaultAOStorageOpts();
+	}
+	else
+	{
+		PG_TRY();
+		{
+			/* Value of "appendonly" option if one is specified. */
+			bool aovalue = false;
+			StdRdOptions *newopts = (StdRdOptions *)
+					palloc0(sizeof(StdRdOptions));
+			Datum newopts_datum = parseAOStorageOpts(newval, &aovalue);
+			/*
+			 * Perform identical validations as in case of options
+			 * specified in a WITH() clause.
+			 */
+			resetAOStorageOpts(newopts);
+			parse_validate_reloptions(newopts, newopts_datum,
+									  /* validate */ true, RELKIND_RELATION);
+			validateAppendOnlyRelOptions(
+					newopts->appendonly,
+					newopts->blocksize,
+					gp_safefswritesize,
+					newopts->compresslevel,
+					newopts->compresstype,
+					newopts->checksum,
+					RELKIND_RELATION,
+					newopts->columnstore);
+			/*
+			 * All validations succeeded, it is safe to udpate global
+			 * appendonly storage options.
+			 */
+			if (doit)
+			{
+				newopts->appendonly = aovalue;
+				setDefaultAOStorageOpts(newopts);
+			}
+		}
+		PG_CATCH();
+		{
+			if (source >= PGC_S_INTERACTIVE)
+				PG_RE_THROW();
+			else
+			{
+				/*
+				 * We are in the middle of backend / postmaster
+				 * startup.  The configured value is bad, proceed with
+				 * factory defaults.
+				 */
+				elog(WARNING, "Unable to set gp_default_storage_options to '%s'",
+					 newval);
+				resetDefaultAOStorageOpts();
+			}
+		}
+		PG_END_TRY();
+	}
+	return doit ? storageOptToString() : newval;
+}
 
 #include "guc-file.c"

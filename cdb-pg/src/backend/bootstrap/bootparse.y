@@ -406,6 +406,7 @@ Boot_CreateStmt:
 													  NULL,			/*CDB*/
 													  (Datum) 0,
 													  true,
+													  /* valid_opts */ false,
 													  &typid,
 						 					  		  /* persistentTid */ NULL,
 						 					  		  /* persistentSerialNum */ NULL);

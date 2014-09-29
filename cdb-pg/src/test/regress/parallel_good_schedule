@@ -20,14 +20,14 @@ test: gphdfs custom_format gpcopy appendonly filter gpctas gpdist matrix gpdtm_p
 test: notin with_clause eagerfree toast mapred gpparams tidycat tidycat2 aocs
 test: ic gp_numeric_agg foreign_data gp_toolkit
 test: filespace orafunk trig xml auth_constraint role rle portals_updatable plpgsql_cache percentile timeseries resource_queue_function gp_optimizer co_nestloop_idxscan pg_stat_last_operation
-test: plan_size partindex_test direct_dispatch partition_pruning_with_fn guc
+test: plan_size partindex_test direct_dispatch partition_pruning_with_fn guc dsp
 
 # vacuum needs to be serial
 test: vacuum
 
 test: create_type union olap_group olap_window_seq
 test: create_table
-test: create_function_2 errors copy
+test: create_function_2 errors copy alter_table_aocs
 test: create_operator create_misc subselect join aggregates random arrays btree_index
 test: hash_index limit prepare rowtypes resource_queue
 test: create_index create_view select select_into portals portals_p2

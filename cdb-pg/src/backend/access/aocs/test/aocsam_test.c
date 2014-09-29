@@ -20,10 +20,10 @@ test__aocs_begin_headerscan(void **state)
 	RelationData reldata;
 	AppendOnlyEntry aoentry;
 	aoentry.version = 1;
+	aoentry.checksum = true;
 	FormData_pg_class pgclass;
 	reldata.rd_rel = &pgclass;
 	StdRdOptions opt;
-	opt.checksum = false;
 	opt.blocksize = 8192*5;
 	StdRdOptions *opts[1];
 	opts[0] = &opt;
@@ -31,9 +31,6 @@ test__aocs_begin_headerscan(void **state)
 	strncpy(&pgclass.relname.data[0], "mock_relation", 13);
 	expect_value(RelationGetAttributeOptions, rel, &reldata);
 	will_return(RelationGetAttributeOptions, &opts);
-	expect_any(init_datumstream_checksum, compName);
-	expect_any(init_datumstream_checksum, checksum);
-	will_return(init_datumstream_checksum, false);
 	expect_any(AppendOnlyStorageRead_Init, storageRead);
 	expect_any(AppendOnlyStorageRead_Init, memoryContext);
 	expect_any(AppendOnlyStorageRead_Init, maxBufferLen);
@@ -73,12 +70,10 @@ test__aocs_addcol_init(void **state)
 	opts[3]->compresstype = "rle_type";
 	opts[3]->compresslevel = 2;
 	opts[3]->blocksize = 8192;
-	opts[3]->checksum = true;
 	opts[4] = (StdRdOptions *) malloc(sizeof(StdRdOptions));
 	opts[4]->compresstype = "none";
 	opts[4]->compresslevel = 0;
 	opts[4]->blocksize = 8192*2;
-	opts[4]->checksum = false;
 
 	/* One call to RelationGetAttributeOptions() */
 	expect_any(RelationGetAttributeOptions, rel);
@@ -90,7 +85,7 @@ test__aocs_addcol_init(void **state)
 	expect_value(create_datumstreamwrite, compLevel, 2);
 	expect_value(create_datumstreamwrite, compLevel, 0);
 	expect_value(create_datumstreamwrite, checksum, true);
-	expect_value(create_datumstreamwrite, checksum, false);
+	expect_value(create_datumstreamwrite, checksum, true);
 	expect_value(create_datumstreamwrite, safeFSWriteSize, 0);
 	expect_value(create_datumstreamwrite, safeFSWriteSize, 0);
 	expect_value(create_datumstreamwrite, maxsz, 8192);
@@ -106,6 +101,7 @@ test__aocs_addcol_init(void **state)
 	will_return_count(create_datumstreamwrite, NULL, 2);
 
 	aoentry.version = 1;
+	aoentry.checksum = true;
 	reldata.rd_att = (TupleDesc) malloc(sizeof(struct tupleDesc));
 	reldata.rd_att->attrs =
 			(Form_pg_attribute *) malloc(sizeof(Form_pg_attribute *) * nattr);

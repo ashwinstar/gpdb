@@ -239,6 +239,7 @@ static int	dumpBlobComments(Archive *AH, void *arg __attribute__((unused)));
 static void dumpDatabase(Archive *AH);
 static void dumpEncoding(Archive *AH);
 static void dumpStdStrings(Archive *AH);
+static void dumpAOStorageOpts(Archive *AH);
 static const char *getAttrName(int attrnum, TableInfo *tblInfo);
 static const char *fmtCopyColumnList(const TableInfo *ti);
 
@@ -1276,7 +1277,7 @@ dumpMain(bool oids, const char *dumpencoding, int outputBlobs, int plainText, Re
 	/* First the special ENCODING and STDSTRINGS entries. */
 	dumpEncoding(g_fout);
 	dumpStdStrings(g_fout);
-
+	dumpAOStorageOpts(g_fout);
 	/* The database item is always next, unless we don't want it at all */
 	if (include_everything && !dataOnly)
 		dumpDatabase(g_fout);
@@ -1937,6 +1938,43 @@ dumpStdStrings(Archive *AH)
 	destroyPQExpBuffer(qry);
 }
 
+/*
+ * Reset gp_default_storage_options GUC to factory defaults.  This
+ * allows us to generate CREATE TABLE DMLs from pg_class.reloptions in
+ * WITH () clause.
+ */
+static void
+dumpAOStorageOpts(Archive *AH)
+{
+	PQExpBuffer qry = createPQExpBuffer();
+	PGresult *res;
+	if (g_verbose)
+		mpp_err_msg(logInfo, progname, "initializing gp_default_storage_options"
+					" GUC\n");
+
+	res = PQexec(g_conn, "SET gp_default_storage_options=''");
+	if (PQresultStatus(res) != PGRES_COMMAND_OK)
+	{
+		mpp_err_msg(logError, progname, "could not initialize "
+					"gp_default_storage_options: %s\n", PQerrorMessage(g_conn));
+		exit_nicely();
+	}
+	PQclear(res);
+	res = PQexec(g_conn, "SHOW gp_default_storage_options");
+	if (PQntuples(res) != 1)
+	{
+		mpp_err_msg(logError, progname, "could not read "
+					"gp_default_storage_options: %s\n", PQerrorMessage(g_conn));
+		exit_nicely();
+	}
+	appendPQExpBuffer(qry, "SET gp_default_storage_options = '%s';\n",
+					  PQgetvalue(res, 0, 0));
+	PQclear(res);
+	ArchiveEntry(AH, nilCatalogId, createDumpId(), "AOSTORAGEOPTS",
+				 NULL, NULL, "", false, "AOSTORAGEOPTS", qry->data, "",
+				 NULL, NULL, 0, NULL, NULL);
+	destroyPQExpBuffer(qry);
+}
 
 /*
  * hasBlobs:

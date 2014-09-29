@@ -121,6 +121,7 @@ CreateAOAuxiliaryTable(
 											     NULL, /* GP Policy */
 											     (Datum) 0,
 											     true,
+												 /* valid_opts */ false,
 											     aoauxiliaryComptypeOid,
 											     /* persistentTid */ NULL,
 											     /* persistentSerialNum */ NULL);

@@ -140,10 +140,29 @@ class Guc:
             except:
                 return "invalid value for max_connections"
 
-        if self.name == 'unix_socket_permissions':
+        elif self.name == 'unix_socket_permissions':
             if newval[0] != '0':
                 logger.warn('Permission not entered in octal format.It was interpreted as Decimal.  %s in Octal = 0%s' % (newval, int(newval, 8)))
-
+        elif self.name == "gp_default_storage_options":
+            newval = newval.strip()
+            # Value must be enclosed in single quotes else postgres
+            # will fail to start due to syntax errors in config file.
+            if (not newval.startswith("'")) or (not newval.endswith("'")):
+                return ("Value must be enclosed in single quotes: '...'")
+            newval = newval.strip("'")
+            # Ensure that newval is of the form 'name=value,...'.
+            for pair in newval.split(","):
+                try:
+                    name, value = pair.strip().split("=")
+                    name = name.strip()
+                    value = value.strip()
+                    if re.match("^[a-z][a-z]*$", name) is None:
+                        return ("Invalid option name \"%s\"" % name)
+                    if re.match("^[a-z0-9_][a-z0-9_]*$", value) is None:
+                        return ("Invalid value \"%s\" for option %s" %
+                                (value, name))
+                except ValueError:
+                    return ("Valid values are of the form 'name=value,...'.")
         return "ok"
 
     def Print(self):
@@ -263,6 +282,10 @@ options = parseargs()
 
 if options.debug:
     enable_verbose_logging()
+
+if options.masteronly and options.entry == "gp_default_storage_options":
+    logger.fatal("gp_default_storage_options is not a masteronly parameter.")
+    sys.exit(1)
 
 try:
     dburl = dbconn.DbURL()

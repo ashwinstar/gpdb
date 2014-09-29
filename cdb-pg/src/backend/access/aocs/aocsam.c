@@ -127,9 +127,8 @@ static void open_all_datumstreamread_segfiles(Relation rel,
  * means all columns.
  */
 static void
-open_ds_write(Relation rel,
-        DatumStreamWrite **ds, TupleDesc relationTupleDesc, bool *proj,
-		AORelationVersion version)
+open_ds_write(Relation rel, DatumStreamWrite **ds, TupleDesc relationTupleDesc,
+			  bool *proj, AORelationVersion version, bool checksum)
 {
 	int		nvp = relationTupleDesc->natts;
 	StdRdOptions 	**opts = RelationGetAttributeOptions(rel);
@@ -141,7 +140,6 @@ open_ds_write(Relation rel,
 		char *ct;
 		int32 clvl;
 		int32 blksz;
-		bool checksum;
 
 		StringInfoData titleBuf;
 
@@ -151,26 +149,16 @@ open_ds_write(Relation rel,
 						 RelationGetRelationName(rel),
 						 i + 1,
 						 NameStr(attr->attname));
-		
+
 		/*
-		 * If the column has column specific encoding, we use those. Note
-		 * that even if the user specified no encoding for this column,
-		 * we will have represented that as compresstype=none.
+		 * We always record all the three column specific attributes
+		 * for each column of a column oriented table.  Note: checksum
+		 * is a table level attribute.
 		 */
-		if (opts[i])
-		{
-			ct = opts[i]->compresstype;
-			clvl = opts[i]->compresslevel;
-			blksz = opts[i]->blocksize;
-			checksum = opts[i]->checksum;
-		}
-		else
-		{
-			ct = "none";
-			clvl = 0;
-			blksz = DEFAULT_APPENDONLY_BLOCK_SIZE;
-			checksum = false;
-		}
+		Assert(opts[i]);
+		ct = opts[i]->compresstype;
+		clvl = opts[i]->compresslevel;
+		blksz = opts[i]->blocksize;
 
 		ds[i] = create_datumstreamwrite(
 									ct, 
@@ -191,9 +179,8 @@ open_ds_write(Relation rel,
  * means all columns.
  */
 static void
-open_ds_read(Relation rel,
-        DatumStreamRead **ds, TupleDesc relationTupleDesc, bool *proj,
-		AORelationVersion version)
+open_ds_read(Relation rel, DatumStreamRead **ds, TupleDesc relationTupleDesc,
+			 bool *proj, AORelationVersion version, bool checksum)
 {
 	int		nvp = relationTupleDesc->natts;
 	StdRdOptions 	**opts = RelationGetAttributeOptions(rel);
@@ -205,32 +192,21 @@ open_ds_read(Relation rel,
 		char *ct;
 		int32 clvl;
 		int32 blksz;
-		bool checksum;
 
 		/*
-		 * If the column has column specific encoding, we use those. Note
-		 * that even if the user specified no encoding for this column,
-		 * we will have represented that as compresstype=none.
+		 * We always record all the three column specific attributes
+		 * for each column of a column oriented table.  Note: checksum
+		 * is a table level attribute.
 		 */
-		if (opts[i])
-		{
-			ct = opts[i]->compresstype;
-			clvl = opts[i]->compresslevel;
-			blksz = opts[i]->blocksize;
-			checksum = opts[i]->checksum;
-		}
-		else
-		{
-			ct = "none";
-			clvl = 0;
-			blksz = DEFAULT_APPENDONLY_BLOCK_SIZE;
-			checksum = false;
-		}
+		Assert(opts[i]);
+		ct = opts[i]->compresstype;
+		clvl = opts[i]->compresslevel;
+		blksz = opts[i]->blocksize;
 
 		if (proj[i])
 		{
 			StringInfoData titleBuf;
-			
+
 			// UNDONE: Need to track and dispose of this storage...
 			initStringInfo(&titleBuf);
 			appendStringInfo(&titleBuf, "Scan of Append-Only Column-Oriented relation '%s', column #%d '%s'",
@@ -239,12 +215,12 @@ open_ds_read(Relation rel,
 							 NameStr(attr->attname));
 
 			ds[i] = create_datumstreamread(
-										ct, 
+										ct,
 										clvl,
 										checksum,
 										/* safeFSWriteSize */ false,	// UNDONE: Need to wire down pg_appendonly column
-										blksz, 
-										version, 
+										blksz,
+										version,
 										attr,
 										RelationGetRelationName(rel),
 										/* title */ titleBuf.data);
@@ -290,8 +266,8 @@ static void aocs_initscan(AOCSScanDesc scan)
     ItemPointerSet(&scan->cdb_fake_ctid, 0, 0);
     scan->cur_seg_row = 0;
 
-    open_ds_read(scan->aos_rel,
-    		scan->ds, scan->relationTupleDesc, scan->proj, scan->aoEntry->version);
+    open_ds_read(scan->aos_rel, scan->ds, scan->relationTupleDesc,
+				 scan->proj, scan->aoEntry->version, scan->aoEntry->checksum);
 
     pgstat_count_heap_scan(scan->aos_rel);
 }
@@ -711,8 +687,8 @@ static void OpenAOCSDatumStreams(AOCSInsertDesc desc)
 								AccessExclusiveLock,
 								/* dontWait */ false);
 
-	open_ds_write(desc->aoi_rel,
-			desc->ds, tupdesc, NULL, desc->aoEntry->version);
+	open_ds_write(desc->aoi_rel, desc->ds, tupdesc, NULL,
+				  desc->aoEntry->version, desc->aoEntry->checksum);
 
 	/* Now open seg info file and get eof mark. */
 	seginfo = GetAOCSFileSegInfo(
@@ -1275,30 +1251,19 @@ aocs_fetch_init(Relation relation,
 			char *ct;
 			int32 clvl;
 			int32 blksz;
-			bool checksum;
-			
+
 			StringInfoData titleBuf;
 
 			/*
-			 * If the column has column specific encoding, we use those. Note
-			 * that even if the user specified no encoding for this column,
-			 * we will have represented that as compresstype=none.
+			 * We always record all the three column specific
+			 * attributes for each column of a column oriented table.
+			 * Note: checksum is a table level attribute.
 			 */
-			if (opts[colno])
-			{
-				ct = opts[colno]->compresstype;
-				clvl = opts[colno]->compresslevel;
-				blksz = opts[colno]->blocksize;
-				checksum = opts[colno]->checksum;
-			}
-			else
-			{
-				ct = "none";
-				clvl = 0;
-				blksz = DEFAULT_APPENDONLY_BLOCK_SIZE;
-				checksum = false;
-			}
-			
+			Assert(opts[colno]);
+			ct = opts[colno]->compresstype;
+			clvl = opts[colno]->compresslevel;
+			blksz = opts[colno]->blocksize;
+
 			// UNDONE: Need to track and dispose of this storage...
 			initStringInfo(&titleBuf);
 			appendStringInfo(&titleBuf, "Fetch from Append-Only Column-Oriented relation '%s', column #%d '%s'",
@@ -1313,7 +1278,7 @@ aocs_fetch_init(Relation relation,
 				create_datumstreamread(
 								   ct,
 								   clvl,
-								   checksum,
+								   aoentry->checksum,
 									/* safeFSWriteSize */ false,	// UNDONE: Need to wire down pg_appendonly column
 								   blksz,
 								   aoentry->version,
@@ -1770,14 +1735,10 @@ aocs_begin_headerscan(Relation rel,
 	AppendOnlyStorageAttributes ao_attr;
 	StdRdOptions 	**opts = RelationGetAttributeOptions(rel);
 
-	int32 blocksize = DEFAULT_APPENDONLY_BLOCK_SIZE;
-	ao_attr.checksum = false;
-	if (opts[colno])
-	{
-		ao_attr.checksum = init_datumstream_checksum(opts[colno]->compresstype,
-													 opts[colno]->checksum);
-		blocksize = opts[colno]->blocksize;
-	}
+	Assert(opts[colno]);
+
+	ao_attr.checksum = aoentry->checksum;
+
 	/*
 	 * We are concerned with varblock headers only, not their content.
 	 * Therefore, don't waste cycles in decompressing the content.
@@ -1791,7 +1752,7 @@ aocs_begin_headerscan(Relation rel,
 	hdesc = palloc(sizeof(AOCSHeaderScanDescData));
 	AppendOnlyStorageRead_Init(&hdesc->ao_read,
 							   NULL, // current memory context
-							   blocksize,
+							   opts[colno]->blocksize,
 							   RelationGetRelationName(rel),
 							   "ALTER TABLE ADD COLUMN scan",
 							   &ao_attr);
@@ -1846,7 +1807,6 @@ aocs_addcol_init(Relation rel,
 	char *ct;
 	int32 clvl;
 	int32 blksz;
-	bool checksum;
 	AOCSAddColumnDesc desc;
 	int i;
 	int iattr;
@@ -1868,22 +1828,12 @@ aocs_addcol_init(Relation rel,
 	for (i = 0; i < num_newcols; ++i, ++iattr)
 	{
 		Form_pg_attribute attr = rel->rd_att->attrs[iattr];
-		if (opts[iattr])
-		{
-			ct = opts[iattr]->compresstype;
-			clvl = opts[iattr]->compresslevel;
-			blksz = opts[iattr]->blocksize;
-			checksum = opts[iattr]->checksum;
-		}
-		else
-		{
-			ct = "none";
-			clvl = 0;
-			blksz = DEFAULT_APPENDONLY_BLOCK_SIZE;
-			checksum = false;
-		}
+		Assert(opts[iattr]);
+		ct = opts[iattr]->compresstype;
+		clvl = opts[iattr]->compresslevel;
+		blksz = opts[iattr]->blocksize;
 		desc->dsw[i] = create_datumstreamwrite(
-				ct, clvl, checksum, 0, blksz /* safeFSWriteSize */,
+				ct, clvl, aoentry->checksum, 0, blksz /* safeFSWriteSize */,
 				aoentry->version, attr, RelationGetRelationName(rel),
 				"ALTER TABLE ADD COLUMN new segfile");
 	}

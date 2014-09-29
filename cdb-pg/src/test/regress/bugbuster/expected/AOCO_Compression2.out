@@ -163,7 +163,7 @@ NOTICE:  CREATE TABLE will create implicit sequence "co_crtb_with_strg_dir_and_c
  a40    | bit varying(5)              |                                                                                  | extended | zlib             | 1                 | 1048576    | 
  a41    | smallint                    |                                                                                  | plain    | zlib             | 1                 | 1048576    | 
  a42    | integer                     |                                                                                  | plain    | quicklz          | 1                 | 32768      | 
-Checksum: f
+Checksum: t
 Indexes:
     "co_crtb_with_strg_dir_and_col_ref_1_idx_bitmap" bitmap (a1)
     "co_crtb_with_strg_dir_and_col_ref_1_idx_btree" btree (a9)
@@ -428,7 +428,7 @@ NOTICE:  CREATE TABLE will create partition "co_cr_sub_partquicklz8192_1_uncompr
  a40    | bit varying(5)              |                                                                          | extended | quicklz          | 1                 | 8192       | 
  a41    | smallint                    |                                                                          | plain    | quicklz          | 1                 | 8192       | 
  a42    | integer                     |                                                                          | plain    | quicklz          | 1                 | 8192       | 
-Checksum: f
+Checksum: t
 Indexes:
     "co_cr_sub_partquicklz8192_1_idx_bitmap_1_prt_1_2_prt_sp2" bitmap (a1)
     "co_cr_sub_partquicklz8192_1_idx_btree_1_prt_1_2_prt_sp2" btree (a9)
@@ -554,7 +554,7 @@ NOTICE:  CREATE TABLE will create partition "co_cr_sub_partquicklz8192_1_1_prt_n
  a40    | bit varying(5)              |                                                                          | extended | none             | 0                 | 32768      | 
  a41    | smallint                    |                                                                          | plain    | none             | 0                 | 32768      | 
  a42    | integer                     |                                                                          | plain    | none             | 0                 | 32768      | 
-Checksum: f
+Checksum: t
 Indexes:
     "co_cr_sub_partquicklz8192_1_1_prt_new_p_2_prt_sp1_a1_key" bitmap (a1)
     "co_cr_sub_partquicklz8192_1_1_prt_new_p_2_prt_sp1_a9_key" btree (a9)
@@ -619,7 +619,7 @@ NOTICE:  CREATE TABLE will create partition "co_cr_sub_partquicklz8192_1_1_prt_d
  a40    | bit varying(5)              |                                                                          | extended | none             | 0                 | 32768      | 
  a41    | smallint                    |                                                                          | plain    | none             | 0                 | 32768      | 
  a42    | integer                     |                                                                          | plain    | none             | 0                 | 32768      | 
-Checksum: f
+Checksum: t
 Indexes:
     "co_cr_sub_partquicklz8192_1_1_prt_df_p_2_prt_sp2_a1_key" bitmap (a1)
     "co_cr_sub_partquicklz8192_1_1_prt_df_p_2_prt_sp2_a9_key" btree (a9)
@@ -695,7 +695,7 @@ NOTICE:  exchanged partition "sp1" of partition for rank 1 of relation "co_cr_su
  a40    | bit varying(5)              |                                                                               | extended | zlib             | 1                 | 32768      | 
  a41    | smallint                    |                                                                               | plain    | zlib             | 1                 | 32768      | 
  a42    | integer                     |                                                                               | plain    | zlib             | 1                 | 32768      | 
-Checksum: f
+Checksum: t
 Check constraints:
     "co_cr_sub_partquicklz8192_1_1_prt_1_2_prt_sp1_check" CHECK (a2 = 'M    '::bpchar)
     "co_cr_sub_partquicklz8192_1_1_prt_1_check" CHECK (a1 >= 1 AND a1 < 1001)
@@ -895,7 +895,7 @@ NOTICE:  CREATE TABLE will create partition "co_cr_sub_partquicklz8192_1_2_uncom
  a40    | bit varying(5)              |                                                                            | extended | quicklz          | 1                 | 8192       | 
  a41    | smallint                    |                                                                            | plain    | quicklz          | 1                 | 8192       | 
  a42    | integer                     |                                                                            | plain    | quicklz          | 1                 | 8192       | 
-Checksum: f
+Checksum: t
 Indexes:
     "co_cr_sub_partquicklz8192_1_2_idx_bitmap_1_prt_p1_2_prt_2" bitmap (a1)
     "co_cr_sub_partquicklz8192_1_2_idx_btree_1_prt_p1_2_prt_2" btree (a9)
@@ -1024,7 +1024,7 @@ NOTICE:  CREATE TABLE will create partition "co_cr_sub_partquicklz8192_1_2_1_prt
  a40    | bit varying(5)              |                                                                            | extended | none             | 0                 | 32768      | 
  a41    | smallint                    |                                                                            | plain    | none             | 0                 | 32768      | 
  a42    | integer                     |                                                                            | plain    | none             | 0                 | 32768      | 
-Checksum: f
+Checksum: t
 Indexes:
     "co_cr_sub_partquicklz8192_1_2_1_prt_new_p_2_prt_3_a1_key" bitmap (a1)
     "co_cr_sub_partquicklz8192_1_2_1_prt_new_p_2_prt_3_a9_key" btree (a9)
@@ -1092,7 +1092,7 @@ NOTICE:  CREATE TABLE will create partition "co_cr_sub_partquicklz8192_1_2_1_prt
  a40    | bit varying(5)              |                                                                            | extended | none             | 0                 | 32768      | 
  a41    | smallint                    |                                                                            | plain    | none             | 0                 | 32768      | 
  a42    | integer                     |                                                                            | plain    | none             | 0                 | 32768      | 
-Checksum: f
+Checksum: t
 Indexes:
     "co_cr_sub_partquicklz8192_1_2_1_prt_df_p_2_prt_2_a1_key" bitmap (a1)
     "co_cr_sub_partquicklz8192_1_2_1_prt_df_p_2_prt_2_a9_key" btree (a9)
@@ -1167,7 +1167,7 @@ Alter table co_cr_sub_partquicklz8192_1_2 alter partition p2 exchange partition 
  a40    | bit varying(5)              |                                                                                 | extended | zlib             | 1                 | 32768      | 
  a41    | smallint                    |                                                                                 | plain    | zlib             | 1                 | 32768      | 
  a42    | integer                     |                                                                                 | plain    | zlib             | 1                 | 32768      | 
-Checksum: f
+Checksum: t
 Check constraints:
     "co_cr_sub_partquicklz8192_1_2_1_prt_p2_2_prt_2_check" CHECK (a1 >= 1 AND a1 < 1001)
     "co_cr_sub_partquicklz8192_1_2_1_prt_p2_check" CHECK (a2 = 'M    '::bpchar)
@@ -1227,7 +1227,7 @@ NOTICE:  CREATE TABLE will create partition "co_cr_sub_partquicklz8192_1_2_1_prt
  a40    | bit varying(5)              |                                                                            | extended | quicklz          | 1                 | 8192       | 
  a41    | smallint                    |                                                                            | plain    | quicklz          | 1                 | 8192       | 
  a42    | integer                     |                                                                            | plain    | quicklz          | 1                 | 8192       | 
-Checksum: f
+Checksum: t
 Indexes:
     "co_cr_sub_partquicklz8192_1_2_1_prt_p1_2_prt_splita_a1_key" bitmap (a1)
     "co_cr_sub_partquicklz8192_1_2_1_prt_p1_2_prt_splita_a9_key" btree (a9)
@@ -1448,7 +1448,7 @@ NOTICE:  CREATE TABLE will create partition "co_wt_sub_partrle_type8192_1_uncomp
  a40    | bit varying(5)              |                                                                           | extended | rle_type         | 1                 | 8192       | 
  a41    | smallint                    |                                                                           | plain    | rle_type         | 1                 | 8192       | 
  a42    | integer                     |                                                                           | plain    | rle_type         | 1                 | 8192       | 
-Checksum: f
+Checksum: t
 Indexes:
     "co_wt_sub_partrle_type8192_1_idx_bitmap_1_prt_1_2_prt_sp2" bitmap (a1)
     "co_wt_sub_partrle_type8192_1_idx_btree_1_prt_1_2_prt_sp2" btree (a9)
@@ -1571,7 +1571,7 @@ NOTICE:  CREATE TABLE will create partition "co_wt_sub_partrle_type8192_1_1_prt_
  a40    | bit varying(5)              |                                                                           | extended | zlib             | 1                 | 32768      | 
  a41    | smallint                    |                                                                           | plain    | zlib             | 1                 | 32768      | 
  a42    | integer                     |                                                                           | plain    | zlib             | 1                 | 32768      | 
-Checksum: f
+Checksum: t
 Indexes:
     "co_wt_sub_partrle_type8192_1_1_prt_new_p_2_prt_sp1_a1_key" bitmap (a1)
     "co_wt_sub_partrle_type8192_1_1_prt_new_p_2_prt_sp1_a9_key" btree (a9)
@@ -1636,7 +1636,7 @@ NOTICE:  CREATE TABLE will create partition "co_wt_sub_partrle_type8192_1_1_prt_
  a40    | bit varying(5)              |                                                                           | extended | rle_type         | 1                 | 8192       | 
  a41    | smallint                    |                                                                           | plain    | rle_type         | 1                 | 8192       | 
  a42    | integer                     |                                                                           | plain    | rle_type         | 1                 | 8192       | 
-Checksum: f
+Checksum: t
 Indexes:
     "co_wt_sub_partrle_type8192_1_1_prt_df_p_2_prt_sp2_a1_key" bitmap (a1)
     "co_wt_sub_partrle_type8192_1_1_prt_df_p_2_prt_sp2_a9_key" btree (a9)
@@ -1712,7 +1712,7 @@ NOTICE:  exchanged partition "sp1" of partition for rank 1 of relation "co_wt_su
  a40    | bit varying(5)              |                                                                                | extended | zlib             | 1                 | 32768      | 
  a41    | smallint                    |                                                                                | plain    | zlib             | 1                 | 32768      | 
  a42    | integer                     |                                                                                | plain    | zlib             | 1                 | 32768      | 
-Checksum: f
+Checksum: t
 Check constraints:
     "co_wt_sub_partrle_type8192_1_1_prt_1_2_prt_sp1_check" CHECK (a2 = 'M    '::bpchar)
     "co_wt_sub_partrle_type8192_1_1_prt_1_check" CHECK (a1 >= 1 AND a1 < 1001)
@@ -1909,7 +1909,7 @@ NOTICE:  CREATE TABLE will create partition "co_wt_sub_partrle_type8192_1_2_unco
  a40    | bit varying(5)              |                                                                             | extended | rle_type         | 1                 | 8192       | 
  a41    | smallint                    |                                                                             | plain    | rle_type         | 1                 | 8192       | 
  a42    | integer                     |                                                                             | plain    | rle_type         | 1                 | 8192       | 
-Checksum: f
+Checksum: t
 Indexes:
     "co_wt_sub_partrle_type8192_1_2_idx_bitmap_1_prt_p1_2_prt_2" bitmap (a1)
     "co_wt_sub_partrle_type8192_1_2_idx_btree_1_prt_p1_2_prt_2" btree (a9)
@@ -2035,7 +2035,7 @@ NOTICE:  CREATE TABLE will create partition "co_wt_sub_partrle_type8192_1_2_1_pr
  a40    | bit varying(5)              |                                                                             | extended | rle_type         | 1                 | 8192       | 
  a41    | smallint                    |                                                                             | plain    | rle_type         | 1                 | 8192       | 
  a42    | integer                     |                                                                             | plain    | rle_type         | 1                 | 8192       | 
-Checksum: f
+Checksum: t
 Indexes:
     "co_wt_sub_partrle_type8192_1_2_1_prt_new_p_2_prt_3_a1_key" bitmap (a1)
     "co_wt_sub_partrle_type8192_1_2_1_prt_new_p_2_prt_3_a9_key" btree (a9)
@@ -2103,7 +2103,7 @@ NOTICE:  CREATE TABLE will create partition "co_wt_sub_partrle_type8192_1_2_1_pr
  a40    | bit varying(5)              |                                                                             | extended | rle_type         | 1                 | 8192       | 
  a41    | smallint                    |                                                                             | plain    | rle_type         | 1                 | 8192       | 
  a42    | integer                     |                                                                             | plain    | rle_type         | 1                 | 8192       | 
-Checksum: f
+Checksum: t
 Indexes:
     "co_wt_sub_partrle_type8192_1_2_1_prt_df_p_2_prt_2_a1_key" bitmap (a1)
     "co_wt_sub_partrle_type8192_1_2_1_prt_df_p_2_prt_2_a9_key" btree (a9)
@@ -2178,7 +2178,7 @@ Alter table co_wt_sub_partrle_type8192_1_2 alter partition p1 exchange partition
  a40    | bit varying(5)              |                                                                                  | extended | zlib             | 1                 | 32768      | 
  a41    | smallint                    |                                                                                  | plain    | zlib             | 1                 | 32768      | 
  a42    | integer                     |                                                                                  | plain    | zlib             | 1                 | 32768      | 
-Checksum: f
+Checksum: t
 Check constraints:
     "co_wt_sub_partrle_type8192_1_2_1_prt_p1_2_prt_2_check" CHECK (a1 >= 1 AND a1 < 1001)
     "co_wt_sub_partrle_type8192_1_2_1_prt_p1_check" CHECK (a2 = 'M    '::bpchar)
@@ -2238,7 +2238,7 @@ NOTICE:  CREATE TABLE will create partition "co_wt_sub_partrle_type8192_1_2_1_pr
  a40    | bit varying(5)              |                                                                             | extended | rle_type         | 1                 | 8192       | 
  a41    | smallint                    |                                                                             | plain    | rle_type         | 1                 | 8192       | 
  a42    | integer                     |                                                                             | plain    | rle_type         | 1                 | 8192       | 
-Checksum: f
+Checksum: t
 Indexes:
     "co_wt_sub_partrle_type8192_1_2_1_prt_p2_2_prt_splita_a1_key" bitmap (a1)
     "co_wt_sub_partrle_type8192_1_2_1_prt_p2_2_prt_splita_a9_key" btree (a9)
@@ -2462,7 +2462,7 @@ NOTICE:  CREATE TABLE will create partition "ao_wt_sub_partzlib8192_5_uncompr_1_
 Compression Type: zlib
 Compression Level: 5
 Block Size: 8192
-Checksum: f
+Checksum: t
 Indexes:
     "ao_wt_sub_partzlib8192_5_idx_bitmap_1_prt_1_2_prt_sp2" bitmap (a1)
     "ao_wt_sub_partzlib8192_5_idx_btree_1_prt_1_2_prt_sp2" btree (a9)
@@ -2585,7 +2585,7 @@ NOTICE:  CREATE TABLE will create partition "ao_wt_sub_partzlib8192_5_1_prt_new_
  a40    | bit varying(5)              |                                                                       | extended | zlib             | 1                 | 32768      | 
  a41    | smallint                    |                                                                       | plain    | zlib             | 1                 | 32768      | 
  a42    | integer                     |                                                                       | plain    | zlib             | 1                 | 32768      | 
-Checksum: f
+Checksum: t
 Indexes:
     "ao_wt_sub_partzlib8192_5_1_prt_new_p_2_prt_sp1_a1_key" bitmap (a1)
     "ao_wt_sub_partzlib8192_5_1_prt_new_p_2_prt_sp1_a9_key" btree (a9)
@@ -2653,7 +2653,7 @@ NOTICE:  CREATE TABLE will create partition "ao_wt_sub_partzlib8192_5_1_prt_df_p
 Compression Type: zlib
 Compression Level: 5
 Block Size: 8192
-Checksum: f
+Checksum: t
 Indexes:
     "ao_wt_sub_partzlib8192_5_1_prt_df_p_2_prt_sp2_a1_key" bitmap (a1)
     "ao_wt_sub_partzlib8192_5_1_prt_df_p_2_prt_sp2_a9_key" btree (a9)
@@ -2732,7 +2732,7 @@ NOTICE:  exchanged partition "sp1" of partition for rank 1 of relation "ao_wt_su
 Compression Type: zlib
 Compression Level: 1
 Block Size: 32768
-Checksum: f
+Checksum: t
 Check constraints:
     "ao_wt_sub_partzlib8192_5_1_prt_1_2_prt_sp1_check" CHECK (a2 = 'M    '::bpchar)
     "ao_wt_sub_partzlib8192_5_1_prt_1_check" CHECK (a1 >= 1 AND a1 < 1001)
@@ -2932,7 +2932,7 @@ NOTICE:  CREATE TABLE will create partition "ao_wt_sub_partzlib8192_5_2_uncompr_
 Compression Type: zlib
 Compression Level: 5
 Block Size: 8192
-Checksum: f
+Checksum: t
 Indexes:
     "ao_wt_sub_partzlib8192_5_2_idx_bitmap_1_prt_p1_2_prt_2" bitmap (a1)
     "ao_wt_sub_partzlib8192_5_2_idx_btree_1_prt_p1_2_prt_2" btree (a9)
@@ -3061,7 +3061,7 @@ NOTICE:  CREATE TABLE will create partition "ao_wt_sub_partzlib8192_5_2_1_prt_ne
 Compression Type: zlib
 Compression Level: 5
 Block Size: 8192
-Checksum: f
+Checksum: t
 Indexes:
     "ao_wt_sub_partzlib8192_5_2_1_prt_new_p_2_prt_3_a1_key" bitmap (a1)
     "ao_wt_sub_partzlib8192_5_2_1_prt_new_p_2_prt_3_a9_key" btree (a9)
@@ -3132,7 +3132,7 @@ NOTICE:  CREATE TABLE will create partition "ao_wt_sub_partzlib8192_5_2_1_prt_df
 Compression Type: zlib
 Compression Level: 5
 Block Size: 8192
-Checksum: f
+Checksum: t
 Indexes:
     "ao_wt_sub_partzlib8192_5_2_1_prt_df_p_2_prt_2_a1_key" bitmap (a1)
     "ao_wt_sub_partzlib8192_5_2_1_prt_df_p_2_prt_2_a9_key" btree (a9)
@@ -3210,7 +3210,7 @@ Alter table ao_wt_sub_partzlib8192_5_2 alter partition p1 exchange partition FOR
 Compression Type: zlib
 Compression Level: 1
 Block Size: 32768
-Checksum: f
+Checksum: t
 Check constraints:
     "ao_wt_sub_partzlib8192_5_2_1_prt_p1_2_prt_2_check" CHECK (a1 >= 1 AND a1 < 1001)
     "ao_wt_sub_partzlib8192_5_2_1_prt_p1_check" CHECK (a2 = 'M    '::bpchar)
@@ -3273,7 +3273,7 @@ NOTICE:  CREATE TABLE will create partition "ao_wt_sub_partzlib8192_5_2_1_prt_p2
 Compression Type: zlib
 Compression Level: 5
 Block Size: 8192
-Checksum: f
+Checksum: t
 Indexes:
     "ao_wt_sub_partzlib8192_5_2_1_prt_p2_2_prt_splita_a1_key" bitmap (a1)
     "ao_wt_sub_partzlib8192_5_2_1_prt_p2_2_prt_splita_a9_key" btree (a9)
@@ -3421,7 +3421,7 @@ NOTICE:  CREATE TABLE will create implicit sequence "ao_crtb_with_row_quicklz_81
 Compression Type: quicklz
 Compression Level: 1
 Block Size: 8192
-Checksum: f
+Checksum: t
 Indexes:
     "ao_crtb_with_row_quicklz_8192_1_idx_bitmap" bitmap (a1)
     "ao_crtb_with_row_quicklz_8192_1_idx_btree" btree (a9)
@@ -3865,7 +3865,7 @@ NOTICE:  CREATE TABLE will create implicit sequence "co_create_type_rle_type_819
  a4     | date_rle_type      |                                                                             | plain   | rle_type         | 4                 | 8192       | 
  a5     | varchar_rle_type   |                                                                             | plain   | rle_type         | 4                 | 8192       | 
  a6     | timestamp_rle_type |                                                                             | plain   | rle_type         | 4                 | 8192       | 
-Checksum: f
+Checksum: t
 Has OIDs: no
 Options: appendonly=true, orientation=column
 Distributed randomly
@@ -3920,7 +3920,7 @@ Alter type int_rle_type set default encoding (compresstype=quicklz,compresslevel
  a5              | varchar_rle_type   |                                                                             | plain   | rle_type         | 4                 | 8192       | 
  a6              | timestamp_rle_type |                                                                             | plain   | rle_type         | 4                 | 8192       | 
  new_cl          | int_rle_type       | default '5'::int_rle_type                                                   | plain   | quicklz          | 1                 | 32768      | 
-Checksum: f
+Checksum: t
 Has OIDs: no
 Options: appendonly=true, orientation=column
 Distributed randomly
@@ -3952,7 +3952,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
  col2   | integer           |           | plain    | zlib             | 5                 | 32768      | 
  col3   | character varying |           | extended | zlib             | 5                 | 32768      | 
  col4   | character(44)     |           | extended | zlib             | 5                 | 32768      | 
-Checksum: f
+Checksum: t
 Has OIDs: no
 Options: appendonly=true, orientation=column
 Distributed by: (col1)
@@ -3961,6 +3961,6 @@ insert into mpp17012_compress_test2 values('a',generate_series(1,250),'ksjdhfksd
 select get_ao_compression_ratio('mpp17012_compress_test2');
  get_ao_compression_ratio 
 --------------------------
-                    38.44
+                    36.75
 (1 row)
 

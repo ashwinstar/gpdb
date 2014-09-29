@@ -621,34 +621,52 @@ dummy_compression_validator(PG_FUNCTION_ARGS)
 bool
 compresstype_is_valid(char *comptype)
 {
-	NameData	compname;
-	bool		found = false;
+	bool found = false;
+	int i;
 
-	compname = comptype_to_name(comptype);
-
-	found = (0 !=
-			 caql_getcount(
-					 NULL,
-					 cql("SELECT COUNT(*) FROM pg_compression "
-						 " WHERE compname = :1 ",
-						 NameGetDatum(&compname))));
-		
+	/*
+	 * Hard-coding compresstypes is bad, agreed.  But there isn't a
+	 * better way in sight at this point.  Lookup into pg_compression
+	 * catalog table is not possible because this method is used to
+	 * validate value of gp_default_storage_options GUC (among other
+	 * things).  If the GUC is set in postgresql.conf, we get here
+	 * before IsNormalProcessingMode() is true.
+	 *
+	 * Whenever the list of supported compresstypes is changed, this
+	 * must change!
+	 */
+	static const char *const valid_comptypes[] =
+			{"quicklz", "zlib", "rle_type", "none"};
+	for (i = 0; !found && i < ARRAY_SIZE(valid_comptypes); ++i)
+	{
+		if (pg_strcasecmp(valid_comptypes[i], comptype) == 0)
+			found = true;
+	}
 	return found;
 }
 
-/* 
- * Make encoding (compresstype = none, blocksize=...). We do this for the case
- * where the user has not specified an encoding for the column.
+/*
+ * Make encoding (compresstype = none, blocksize=...) based on
+ * currently configured defaults.
  */
 List *
 default_column_encoding_clause(void)
 {
-	DefElem *e1 = makeDefElem("compresstype", (Node *)makeString("none"));
-	DefElem *e2 = makeDefElem("blocksize",
-					(Node *)makeInteger(DEFAULT_APPENDONLY_BLOCK_SIZE));
-	DefElem *e3 = makeDefElem("compresslevel",
-							  (Node *)makeInteger(0));
-
+	const StdRdOptions *ao_opts = currentAOStorageOptions();
+	DefElem *e1, *e2, *e3;
+	if (ao_opts->compresstype)
+	{
+		e1 = makeDefElem("compresstype",
+						 (Node *)makeString(pstrdup(ao_opts->compresstype)));
+	}
+	else
+	{
+		e1 = makeDefElem("compresstype", (Node *)makeString("none"));
+	}
+	e2 = makeDefElem("blocksize",
+					 (Node *)makeInteger(ao_opts->blocksize));
+	e3 = makeDefElem("compresslevel",
+					 (Node *)makeInteger(ao_opts->compresslevel));
 	return list_make3(e1, e2, e3);
 }
 

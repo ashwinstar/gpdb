@@ -784,6 +784,7 @@ DefineRelation_int(CreateStmt *stmt,
                                           stmt->policy,  /*CDB*/
                                           reloptions,
 										  allowSystemTableModsDDL,
+										  /* valid_opts */ false,
 										  &stmt->oidInfo.comptypeOid,
 										  &persistentTid,
 										  &persistentSerialNum);

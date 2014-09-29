@@ -192,7 +192,8 @@ RelationGetAttributeOptions(Relation rel)
 	for (i = 0; i < RelationGetNumberOfAttributes(rel); i++)
 	{
 		if (DatumGetPointer(dats[i]) != NULL)
-			opts[i] = (StdRdOptions *)heap_reloptions(0, dats[i], false);
+			opts[i] = (StdRdOptions *)heap_reloptions(
+					RELKIND_RELATION, dats[i], false);
 	}
 
 	return opts;

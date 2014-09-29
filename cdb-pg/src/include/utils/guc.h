@@ -425,6 +425,18 @@ extern char  *gp_hadoop_home;    /* $HADOOP_HOME on all segments */
 /* Time based authentication GUC */
 extern char  *gp_auth_time_override_str;
 
+extern char  *gp_default_storage_options;
+/* Storage option names */
+#define SOPT_FILLFACTOR    "fillfactor"
+#define SOPT_APPENDONLY    "appendonly"
+#define SOPT_BLOCKSIZE     "blocksize"
+#define SOPT_COMPTYPE      "compresstype"
+#define SOPT_COMPLEVEL     "compresslevel"
+#define SOPT_CHECKSUM      "checksum"
+#define SOPT_ORIENTATION   "orientation"
+/* Max number of chars needed to hold value of a storage option. */
+#define MAX_SOPT_VALUE_LEN 15
+
 extern void SetConfigOption(const char *name, const char *value,
 				GucContext context, GucSource source);
 
@@ -535,5 +547,7 @@ extern const char *assign_search_path(const char *newval,
 /* in access/transam/xlog.c */
 extern const char *assign_xlog_sync_method(const char *method,
 						bool doit, GucSource source);
+
+extern StdRdOptions *defaultStdRdOptions(char relkind);
 
 #endif   /* GUC_H */

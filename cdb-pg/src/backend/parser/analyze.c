@@ -1436,6 +1436,9 @@ is_aocs(List *opts)
 {
 	bool found_ao = false;
 	bool found_cs = false;
+	bool aovalue = false;
+	bool csvalue = false;
+
 	ListCell *lc;
 
 	foreach(lc, opts)
@@ -1449,18 +1452,23 @@ is_aocs(List *opts)
 
 		arg = defGetString(el);
 
-		if (pg_strcasecmp("appendonly", el->defname) == 0 &&
-			pg_strcasecmp("true", arg) == 0)
+		if (pg_strcasecmp("appendonly", el->defname) == 0)
 		{
 			found_ao = true;
+			if (!parse_bool(arg, &aovalue))
+				elog(ERROR, "invalid value for option \"appendonly\"");
 		}
-		else if (pg_strcasecmp("orientation", el->defname) == 0 &&
-				 pg_strcasecmp("column", arg) == 0)
+		else if (pg_strcasecmp("orientation", el->defname) == 0)
 		{
 			found_cs = true;
+			csvalue = pg_strcasecmp("column", arg) == 0;
 		}
 	}
-	return (found_ao && found_cs);
+	if (!found_ao)
+		aovalue = isDefaultAO();
+	if (!found_cs)
+		csvalue = isDefaultAOCS();
+	return (aovalue && csvalue);
 }
 
 /*
@@ -1516,6 +1524,18 @@ List *
 transformStorageEncodingClause(List *options)
 {
 	Datum d;
+	ListCell *lc;
+	DefElem *dl;
+	foreach(lc, options)
+	{
+		dl = (DefElem *) lfirst(lc);
+		if (pg_strncasecmp(dl->defname, SOPT_CHECKSUM, strlen(SOPT_CHECKSUM))
+			== 0)
+		{
+			elog(ERROR, "\"%s\" is not a column specific option.",
+				 SOPT_CHECKSUM);
+		}
+	}
 	List *extra = list_make2(makeDefElem("appendonly",
 										 (Node *)makeString("true")),
 							 makeDefElem("orientation",
@@ -1531,7 +1551,7 @@ transformStorageEncodingClause(List *options)
 	d = transformRelOptions(PointerGetDatum(NULL),
 									  list_concat(extra, options),
 									  true, false);
-	(void)heap_reloptions(0, d, true);
+	(void)heap_reloptions(RELKIND_RELATION, d, true);
 
 	return options;
 }
@@ -1740,6 +1760,9 @@ form_default_storage_directive(List *enc)
 			continue;
 		if (pg_strcasecmp("tablename", el->defname) == 0)
 			continue;
+		/* checksum is not a column specific attribute. */
+		if (pg_strcasecmp("checksum", el->defname) == 0)
+			continue;
 		out = lappend(out, copyObject(el));
 	}
 	return out;
@@ -1819,7 +1842,7 @@ transformAttributeEncoding(List *stenc, CreateStmt *stmt, CreateStmtContext cxt)
 		deflt = makeNode(ColumnReferenceStorageDirective);
 		deflt->deflt = true;
 		deflt->encoding = transformStorageEncodingClause(tmpenc);
-	}	
+	}
 
 	/*
 	 * Loop over all columns. If a column has a column reference storage clause
@@ -3362,7 +3385,10 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 }
 
 /*
- * Add any missing encoding attributes (compresstype = none, blocksize=...).
+ * Add any missing encoding attributes (compresstype = none,
+ * blocksize=...).  The column specific encoding attributes supported
+ * today are compresstype, compresslevel and blocksize.  Refer to
+ * pg_compression.c for more info.
  */
 static List *
 fillin_encoding(List *list)
@@ -3372,21 +3398,14 @@ fillin_encoding(List *list)
 	char *cmplevel = NULL;
 	bool foundBlockSize = false;
 	char *arg;
-	DefElem *e1 = makeDefElem("compresstype", (Node *) makeString("none"));
-	DefElem *e2 = makeDefElem("compresslevel",
-							  (Node *) makeInteger(0));  /* compress level 0 */
-	DefElem *e2b = makeDefElem("compresslevel",
-							   (Node *) makeInteger(1)); /* compress level 1 */
-	DefElem *e3 = makeDefElem("blocksize",
-						(Node *)makeInteger(DEFAULT_APPENDONLY_BLOCK_SIZE));
-	DefElem *zlibComp = makeDefElem("compresstype",
-									(Node *)makeString("zlib"));
 	List *retList = list;
 	ListCell *lc;
+	DefElem *el;
+	const StdRdOptions *ao_opts = currentAOStorageOptions();
 
 	foreach(lc, list)
 	{
-		DefElem *el = lfirst(lc);
+		el = lfirst(lc);
 
 		if (pg_strcasecmp("compresstype", el->defname) == 0)
 		{
@@ -3403,31 +3422,76 @@ fillin_encoding(List *list)
 			foundBlockSize = true;
 	}
 
-	if (foundCompressType == false)
+	if (foundCompressType == false && cmplevel == NULL)
 	{
-		/*
-		 * We actually support "compresslevel=N" and default the compression
-		 * type to zlib (see default_reloptions()). There's no pleasant way to
-		 * factor out the common code. We only add zlib compression for non-zero
-		 * N in compresslevel=N (we check if N is meaningful to zlib later).
-		*/
-		if (cmplevel && strcmp(cmplevel, "0") != 0)
-			retList = lappend(retList, zlibComp);
-		else
-			retList = lappend(retList, e1);
+		/* No compression option specified, use current defaults. */
+		arg = ao_opts->compresstype ?
+				pstrdup(ao_opts->compresstype) : "none";
+		el = makeDefElem("compresstype", (Node *) makeString(arg));
+		retList = lappend(retList, el);
+		el = makeDefElem("compresslevel",
+						 (Node *) makeInteger(ao_opts->compresslevel));
+		retList = lappend(retList, el);
 	}
-
-	if (!cmplevel)
+	else if (foundCompressType == false && cmplevel)
 	{
-		if (foundCompressType == false || foundCompressTypeNone == true)
-			retList = lappend(retList, e2);   /* no compress type => compresslevel = 0 */
+		if (strcmp(cmplevel, "0") == 0)
+		{
+			/*
+			 * User wants to disable compression by specifying
+			 * compresslevel=0.
+			 */
+			el = makeDefElem("compresstype", (Node *) makeString("none"));
+			retList = lappend(retList, el);
+		}
 		else
-			retList = lappend(retList, e2b);  /* compress type, but no compress level => compress level = 1 */
+		{
+			/*
+			 * User wants to enable compression by specifying non-zero
+			 * compresslevel.  Therefore, choose default compresstype
+			 * if configured, otherwise use zlib.
+			 */
+			if (ao_opts->compresstype &&
+				strcmp(ao_opts->compresstype, "none") != 0)
+			{
+				arg = pstrdup(ao_opts->compresstype);
+			}
+			else
+			{
+				arg = AO_DEFAULT_COMPRESSTYPE;
+			}
+			el = makeDefElem("compresstype", (Node *) makeString(arg));
+			retList = lappend(retList, el);
+		}
 	}
-
+	else if (foundCompressType && cmplevel == NULL)
+	{
+		if (foundCompressTypeNone)
+		{
+			/*
+			 * User wants to disable compression by specifying
+			 * compresstype=none.
+			 */
+			el = makeDefElem("compresslevel", (Node *) makeInteger(0));
+			retList = lappend(retList, el);
+		}
+		else
+		{
+			/*
+			 * Valid compresstype specified.  Use default
+			 * compresslevel if it's non-zero, otherwise use 1.
+			 */
+			el = makeDefElem("compresslevel",
+							 (Node *) makeInteger(ao_opts->compresslevel > 0 ?
+												  ao_opts->compresslevel : 1));
+			retList = lappend(retList, el);
+		}
+	}
 	if (foundBlockSize == false)
-		retList = lappend(retList, e3);
-
+	{
+		el = makeDefElem("blocksize", (Node *) makeInteger(ao_opts->blocksize));
+		retList = lappend(retList, el);
+	}
 	return retList;
 }
 
