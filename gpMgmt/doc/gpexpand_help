@@ -36,6 +36,11 @@ PREREQUISITES
 
 * Enough disk space on your segment hosts to temporarily hold a 
   copy of your largest table. 
+* When redistributing data, Greenplum Database must be running in 
+  production mode. Greenplum Database cannot be restricted mode or in 
+  master mode. The gpstart options -R or -m cannot be specified to start 
+  Greenplum Database. 
+  
   
 ******************************************************
 DESCRIPTION
