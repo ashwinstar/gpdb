@@ -155,6 +155,20 @@ FileRepSubProcess_ShutdownHandler(SIGNAL_ARGS)
 					FileRepResync_Cleanup();
 				}
 				
+				/*
+				 * We remove ourself from LW waiter list (if applicable).
+				 *
+				 * If the current backend is waiting on a LWLock and exits w/o
+				 * any cleanup (remove from waiters list) it can cause a breakage
+				 * in the LWlock's waiters linked list after it dies. This can
+				 * lead to unpleasant issues causing starvation for subsequent
+				 * waiters because the current backend is already dead without
+				 * assigning the LWLock to the next waiter.
+				 *
+				 * XXX Side note - Although implemented here, avoid exiting
+				 * inside an signal handler.
+				 */
+				LWLockWaitCancel();
 				LWLockReleaseAll();
 
 				proc_exit(0);
