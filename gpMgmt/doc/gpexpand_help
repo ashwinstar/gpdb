@@ -36,7 +36,7 @@ PREREQUISITES
 
 * Enough disk space on your segment hosts to temporarily hold a 
   copy of your largest table. 
-
+  
 ******************************************************
 DESCRIPTION
 ******************************************************
@@ -72,6 +72,8 @@ tables to their original distribution policy. If gpexpand completes
 the reorganization of all tables before the specified duration, 
 it displays a success message and ends. 
 
+NOTE: Data redistribution should be performed during low-use hours. 
+Redistribution can divided into batches over an extended period. 
 
 ******************************************************
 OPTIONS
