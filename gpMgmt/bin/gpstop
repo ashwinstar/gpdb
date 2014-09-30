@@ -114,6 +114,7 @@ class GpStop:
                     self._stop_master()                                
                     self._stop_standby()            
                     self._stop_segments()                                
+                    self._remove_shared_memory_and_semaphores()
                     self.cleanup()
                 finally:
                     # Reenable Ctrl-C
@@ -132,8 +133,31 @@ class GpStop:
                     # MPP-15208
                     return 2 
         return 0
-    
-    
+   
+    ######
+    def _remove_shared_memory_and_semaphores(self):
+        logger.info('Cleaning up leftover shared memory and semaphores')
+        cluster_hosts = set([gphost.hostname for gphost in self.hostcache.get_hosts()])
+        cluster_hosts.add(self.gparray.master.getSegmentHostName())
+        if self.gparray.standbyMaster:
+            cluster_hosts.add(self.gparray.standbyMaster.getSegmentHostName())
+
+        for host in cluster_hosts: 
+            cmd = Command('cleanup shared memory semaphores', cmdStr='ipcclean', ctxt=REMOTE, remoteHost=host)
+            self.pool.addCommand(cmd)
+        self.pool.join()
+        
+        for item in self.pool.getCompletedItems():
+            result = item.get_results()
+            if result.rc != 0:
+                if not 'nothing removed' in result.stdout:
+                    err_msg = ''
+                    if result.stdout:
+                        err_msg += result.stdout
+                    if result.stderr:
+                        err_msg += ':' + result.stderr
+                    logger.warning('Unable to clean shared memory and semaphores (%s)' % (err_msg))
+
     ######
     def cleanup(self):
         if self.pool:
