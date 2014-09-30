@@ -588,12 +588,17 @@ FileRepSubProcess_InitializeResyncManagerProcess(void)
 	SetProcessingMode(NormalProcessing);
 
 	InitBufferPoolAccess();
+
 	/*
-	 * Add my PGPROC struct to the ProcArray.
+	 * Don't add Filerep backend subprocesses to the proc array.
 	 *
-	 * Once I have done this, I am visible to other backends!
+	 * This avoids any deadlock situations during Filerep transition. E.g. If
+	 * a normal backend has acquired ProcArrayLock and is waiting for Filerep
+	 * transition to finish, the Filerep backend subprocesses will deadlock
+	 * forever as they can't acquire the ProcArray lock to remove themselves
+	 * from the ProcArray. This directly causes the transition to stall and thus
+	 * the whole system.
 	 */
-	InitProcessPhase2();
 	
 	/*
 	 * Initialize my entry in the shared-invalidation manager's array of

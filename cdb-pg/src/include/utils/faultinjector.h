@@ -195,6 +195,8 @@ typedef enum FaultInjectorIdentifier_e {
 
 	RebuildPTDB,
 
+	ProcArray_Add,
+
 	FaultExecHashJoinNewBatch,
 
 	/* INSERT has to be done before that line */

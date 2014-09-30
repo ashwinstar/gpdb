@@ -42,6 +42,7 @@
 #include "cdb/cdbtm.h"
 #include "utils/guc.h"
 #include "utils/memutils.h"
+#include "utils/faultinjector.h"
 
 #include "access/xact.h"		/* setting the shared xid */
 
@@ -132,6 +133,14 @@ ProcArrayAdd(PGPROC *proc)
 	ProcArrayStruct *arrayP = procArray;
 
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+
+#ifdef FAULT_INJECTOR
+	FaultInjector_InjectFaultIfSet(
+		ProcArray_Add,
+		DDLNotSpecified,
+		"", // databaseName
+		""); // tableName
+#endif
 
 	if (arrayP->numProcs >= arrayP->maxProcs)
 	{

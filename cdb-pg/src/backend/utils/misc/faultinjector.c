@@ -288,6 +288,8 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault at the end of first round of vacuumRelation loop */
 	_("rebuild_pt_db"),
 		/* inject fault while rebuilding persistent tables (for each db) */
+	_("procarray_add"),
+		/* inject fault while adding PGPROC to procarray */
 	_("exec_hashjoin_new_batch"),
 		/* inject fault before switching to a new batch in Hash Join */
 	_("not recognized"),
