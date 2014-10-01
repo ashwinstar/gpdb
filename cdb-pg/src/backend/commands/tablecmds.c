@@ -90,6 +90,7 @@
 #include "parser/parser.h"
 #include "rewrite/rewriteHandler.h"
 #include "storage/backendid.h"
+#include "storage/procsignal.h"
 #include "storage/smgr.h"
 #include "tcop/utility.h"
 #include "utils/acl.h"
@@ -17520,6 +17521,16 @@ PreCommit_on_commit_actions(void)
 {
 	ListCell   *l;
 	List	   *oids_to_truncate = NIL;
+
+	/*
+	 * We skip this operation in the catchup handler, especially
+	 * between prepare and commit state, as we may not see the heap
+	 * that has just been created in the prepared transaction that
+	 * is not visible yet.  Skipping this under the catchup handler
+	 * should be ok in known cases.
+	 */
+	if (AmIInSIGUSR1Handler())
+		return;
 
 	foreach(l, on_commits)
 	{
