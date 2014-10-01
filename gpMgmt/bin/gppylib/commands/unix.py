@@ -126,7 +126,7 @@ E.g postgres: port 45002, logger process
     postgres: port 45002, checkpoint process
 """
 def kill_9_segment_processes(datadir, port, pid):
-    logger.info('Killing processes for segment %s' % datadir)
+    logger.info('Terminating processes for segment %s' % datadir)
         
     pid_list = []
 
