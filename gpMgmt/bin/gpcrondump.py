@@ -568,14 +568,22 @@ class GpCronDump(Operation):
         while (not thread_stop.is_set()):
             if os.path.exists(lock_file_name):
                 thread_stop.set()
-                global conn
-                if conn:
-                    logger.info("Releasing pg_class lock")
-                    conn.commit()
-                    conn.close()
-                    conn = None
+                try:
+                    global conn
+                    if conn:
+                        logger.info("Releasing pg_class lock")
+                        conn.commit()
+                        conn.close()
+                        conn = None
+                    else:
+                        logger.debug("Did not release pg_class lock because connection was already closed.")
+                except Exception, e:
+                    logger.info("Failed to release pg_class lock, backup will proceed as normal.")
             thread_stop.wait(5)
-        os.remove(lock_file_name)
+        try:
+            os.remove(lock_file_name)
+        except Exception, e:
+            logger.info("Failed to remove signal file %s, backup will proceed without releasing pg_class lock." % lock_file_name)
 
     def execute(self):
         if bool(self.ddboost_hosts) or bool(self.ddboost_user):
@@ -787,13 +795,15 @@ class GpCronDump(Operation):
 
             finally:
                 thread_stop.set()
-                if lock_file_name and os.path.exists(lock_file_name):
-                    os.remove(lock_file_name)
-                if conn:
-                    conn.commit()
-                    conn.close()
-                    conn = None
-
+                try:
+                    if lock_file_name and os.path.exists(lock_file_name):
+                        os.remove(lock_file_name)
+                    if conn:
+                        conn.commit()
+                        conn.close()
+                        conn = None
+                except Exception, e:
+                    logger.debug("Failed to remove signal file or close connection, lock_handler thread probably already got to it.")
             if self.history:
                 # This certainly does not belong under DumpDatabase, due to CLI assumptions. Note the use of options_list.
                 UpdateHistoryTable(dump_database = dump_database,

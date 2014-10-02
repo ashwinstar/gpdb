@@ -65,7 +65,6 @@ class on_unlock(Command):
             pass
         with dbconn.connect(dbconn.DbURL(dbname=self.dbname)) as conn:
             dbconn.execSQL(conn, self.query)
-
         self.result = 0
         self.completed = True
         self.halt = False
@@ -73,9 +72,9 @@ class on_unlock(Command):
 def check_pg_class_lock(dbname):
    seg_count = 1
 
-   query = """select count(*) 
-            from pg_locks 
-            where relation in (select oid from pg_class where relname='pg_class') 
+   query = """select count(*)
+            from pg_locks
+            where relation in (select oid from pg_class where relname='pg_class')
                   and locktype='relation' and mode='ExclusiveLock'"""
    row_count = getRows(dbname, query)[0][0]
    return row_count
@@ -101,11 +100,11 @@ def impl(context, poolname):
         pool.join()
         for c in pool.getCompletedItems():
             result = c.get_results()
-            context.ret_code = result.rc 
+            context.ret_code = result.rc
             context.stdout_message = result.stdout
-            context.error_message = result.stderr 
-        pool.haltWork()    
-        pool.joinWorkers() 
+            context.error_message = result.stderr
+        pool.haltWork()
+        pool.joinWorkers()
     else:
         raise Exception('Worker pool is None.Probably behave step to initialize the worker pool is missing.')
 

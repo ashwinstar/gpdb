@@ -1953,8 +1953,22 @@ spinOffThreads(PGconn *pConn,
 		}
 		char *signalFileName = MakeString("%s/gp_lockfile_%s", filedir, &dumpkey[8]);
 		mpp_msg(logInfo, progname, "Signal filename is %s.\n", signalFileName);
+		bool success = false;
 		FILE* sigfile = fopen(signalFileName, "w");
-		fclose(sigfile);
+		if (sigfile != NULL)
+		{
+			fclose(sigfile);
+			FILE* sigcheck = fopen(signalFileName, "r");
+			if (sigcheck != NULL)
+			{
+				fclose(sigcheck);
+				success = true;
+			}
+		}
+		if (!success)
+		{
+			mpp_msg(logInfo, progname, "Failed to create signal file, gpcrondump will not release pg_class lock early.\n");
+		}
 		free(signalFileName);
 		free(filedir);
 	}

@@ -117,6 +117,7 @@ bool		schemaOnly;
 bool		dataOnly;
 bool		aclsSkip;
 bool        incrementalBackup;
+bool		no_lock;
 static char	*incrementalFilter = NULL;
 
 /* MPP additions start */
@@ -454,6 +455,7 @@ main(int argc, char **argv)
 		{"netbackup-schedule", required_argument, NULL, 13},
 		{"netbackup-block-size", required_argument, NULL, 14},
 		{"netbackup-keyword", required_argument, NULL, 15},
+		{"no-lock", no_argument, NULL, 16},
 		{NULL, 0, NULL, 0}
 	};
 	int			optindex;
@@ -709,6 +711,9 @@ main(int argc, char **argv)
 			case 14:
 				break;
 			case 15:
+				break;
+			case 16:
+				no_lock = true;
 				break;
 			default:
 				fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
