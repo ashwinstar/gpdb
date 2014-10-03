@@ -5544,8 +5544,6 @@ CTranslatorDXLToPlStmt::PplanCTAS
 						pdxltrctxOut,
 						pplan
 						);
-	gpdb::FreeList(pplan->targetlist);
-	pplan->targetlist = plTargetList;
 	
 	SetParamIds(pplan);
 
@@ -5571,6 +5569,20 @@ CTranslatorDXLToPlStmt::PplanCTAS
 	
 	m_fTargetTableDistributed = true;
 	
+	// Add a result node on top with the correct projection list
+	Result *presult = MakeNode(Result);
+	Plan *pplanResult = &(presult->plan);
+	pplanResult->plan_node_id = m_pctxdxltoplstmt->UlNextPlanId();
+	pplanResult->plan_parent_node_id = IPlanId(pplanParent);
+	pplanResult->nMotionNodes = pplan->nMotionNodes;
+	pplanResult->lefttree = pplan;
+	pplan->plan_parent_node_id = IPlanId(pplanResult);
+
+	pplanResult->targetlist = plTargetList;
+	SetParamIds(pplanResult);
+
+	pplan = (Plan *) presult;
+
 	return (Plan *) pplan;
 }
 
