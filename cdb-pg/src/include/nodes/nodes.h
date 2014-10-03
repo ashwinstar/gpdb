@@ -97,6 +97,7 @@ typedef enum NodeTag
 	T_SplitUpdate,
 	T_RowTrigger,
 	T_AssertOp,
+	T_PartitionSelector,
 	T_Plan_End,
 	/* this one isn't a subclass of Plan: */
 	T_PlanInvalItem,
@@ -154,6 +155,7 @@ typedef enum NodeTag
 	T_SplitUpdateState,
 	T_RowTriggerState,
 	T_AssertOpState,
+	T_PartitionSelectorState,
 	T_PlanState_End,
 
 	/*
@@ -208,6 +210,9 @@ typedef enum NodeTag
     T_AggOrder,
 	T_PercentileExpr,
 	T_DMLActionExpr,
+	T_PartOidExpr,
+	T_PartBoundExpr,
+	T_PartBoundInclusionExpr,
 
 	/*
 	 * TAGS FOR EXPRESSION STATE NODES (execnodes.h)
@@ -239,6 +244,9 @@ typedef enum NodeTag
 	T_WindowRefExprState,
 	T_GroupingFuncExprState,
 	T_PercentileExprState,
+	T_PartOidExprState,
+	T_PartBoundExprState,
+	T_PartBoundInclusionExprState,
 
 	/*
 	 * TAGS FOR PLANNER NODES (relation.h)
@@ -482,6 +490,7 @@ typedef enum NodeTag
 	T_FormatterData,            /* in access/formatter.h */
 	T_ExtProtocolData,          /* in access/extprotocol.h */
 	T_ExtProtocolValidatorData, /* in access/extprotocol.h */
+	T_PartitionConstraints,     /* in executor/nodePartitionSelector.h */
 	
     /* CDB: tags for random other stuff */
     T_CdbExplain_StatHdr = 950,             /* in cdb/cdbexplain.c */

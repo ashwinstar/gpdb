@@ -57,9 +57,9 @@ increaseScanArraySize(int newMaxPartIndex)
 	{
 		newNumScans = newMaxPartIndex;
 	}
-	
+
 	dynamicTableScanInfo->numScans = newNumScans;
-	
+
 	if (dynamicTableScanInfo->pidIndexes == NULL)
 	{
 		dynamicTableScanInfo->pidIndexes = (HTAB **)
@@ -75,7 +75,7 @@ increaseScanArraySize(int newMaxPartIndex)
 					 dynamicTableScanInfo->numScans * sizeof(HTAB*));
 
 		dynamicTableScanInfo->iterators = repalloc(dynamicTableScanInfo->iterators,
-				 dynamicTableScanInfo->numScans * sizeof(DynamicPartitionIterator*));
+				dynamicTableScanInfo->numScans * sizeof(DynamicPartitionIterator*));
 
 		for (int scanNo = oldNumScans; scanNo < dynamicTableScanInfo->numScans; scanNo++)
 		{
@@ -100,7 +100,7 @@ createPidIndex(int index)
 	hashCtl.entrysize = sizeof(Oid);
 	hashCtl.hash = oid_hash;
 	hashCtl.hcxt = dynamicTableScanInfo->memoryContext;
-	
+
 	return hash_create("Dynamic Table Scan Pid Index",
 					   INITIAL_NUM_PIDS,
 					   &hashCtl,
@@ -169,54 +169,6 @@ gp_partition_propagation(PG_FUNCTION_ARGS)
 	PG_RETURN_VOID();
 }
 
-/*
- * findPartitionMetadataEntry
- *   Find PartitionMetadata object for a given partition oid from a list.
- */
-static PartitionMetadata *
-findPartitionMetadataEntry(List *partsMetadata, Oid partOid)
-{
-	ListCell *lc = NULL;
-	PartitionMetadata *metadata = NULL;
-	
-	foreach (lc, partsMetadata)
-	{
-		metadata = (PartitionMetadata *)lfirst(lc);
-		if (metadata->partsAndRules->part->parrelid == partOid)
-		{
-			return metadata;
-		}
-	}
-
-	return NULL;
-}
-
-/*
- * createValueArrays
- *   Create an Datum/bool array that will be used to populate partition key value.
- *
- * The size of this array is based on the attribute number of the partition key.
- */
-static void
-createValueArrays(int keyAttno, Datum **values, bool **isnull)
-{
-	*values = palloc0(keyAttno * sizeof(Datum));
-	*isnull = palloc(keyAttno * sizeof(bool));
-	
-	MemSet(*isnull, true, keyAttno * sizeof(bool));
-}
-
-/*
- * freeValueArrays
- *    Free Datum/bool array.
- */
-static void
-freeValueArrays(Datum *values, bool *isnull)
-{
-	pfree(values);
-	pfree(isnull);
-}
-
 PG_FUNCTION_INFO_V1(gp_partition_selection);
 
 /*
@@ -225,8 +177,6 @@ PG_FUNCTION_INFO_V1(gp_partition_selection);
  * satisfies the given partition key value.
  *
  * This function assumes that there is only one partition key in this level.
- * Currently, this function also assumes that the parent partition is the root
- * partition.
  *
  * If no such a child partition is found, return NULL.
  */
@@ -243,17 +193,22 @@ gp_partition_selection(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 	}
 	
-	PartitionMetadata *metadata =
-		findPartitionMetadataEntry(dynamicTableScanInfo->partsMetadata,
-								   parentOid);
-	if (metadata == NULL)
+	PartitionNode *partsAndRules = NULL;
+	PartitionAccessMethods *accessMethods = NULL;
+
+	findPartitionMetadataEntry(dynamicTableScanInfo->partsMetadata,
+							   parentOid,
+							   &partsAndRules,
+							   &accessMethods);
+
+	if (NULL == partsAndRules)
 	{
 		PG_RETURN_NULL();
 	}
 
-	Assert(metadata->partsAndRules != NULL &&
-		   metadata->accessMethods != NULL);
-	Partition *part = metadata->partsAndRules->part;
+	Assert(partsAndRules != NULL);
+	Assert(accessMethods != NULL);
+	Partition *part = partsAndRules->part;
 
 	Assert(part->parnatts == 1);
 	AttrNumber partAttno = part->paratts[0];
@@ -273,15 +228,15 @@ gp_partition_selection(PG_FUNCTION_ARGS)
 	}
 
 	/* set the memory context for the access methods */
-	metadata->accessMethods->part_cxt = dynamicTableScanInfo->memoryContext;
+	accessMethods->part_cxt = dynamicTableScanInfo->memoryContext;
 	
 	MemoryContext oldCxt = MemoryContextSwitchTo(dynamicTableScanInfo->memoryContext);
 
-	Oid childOid = selectPartition(metadata->partsAndRules,
+	Oid childOid = selectPartition(partsAndRules,
 								   values,
 								   isnull,
 								   tupDesc,
-								   metadata->accessMethods);
+								   accessMethods);
 
 	MemoryContextSwitchTo(oldCxt);
 
@@ -310,7 +265,7 @@ gp_partition_selection(PG_FUNCTION_ARGS)
  */
 typedef struct PartitionIterator
 {
-	PartitionMetadata *metadata;
+	PartitionNode *partsAndRules;
 
 	/*
 	 * The cell to the next PartitionRule.
@@ -341,18 +296,20 @@ static PartitionIterator *
 createPartitionIterator(Oid parentOid)
 {
 	PartitionIterator *partitionIterator = palloc(sizeof(PartitionIterator));
-	PartitionMetadata *metadata =
-		findPartitionMetadataEntry(dynamicTableScanInfo->partsMetadata,
-								   parentOid);
-	partitionIterator->metadata = metadata;
+	PartitionAccessMethods *accessMethods = NULL;
+
+	findPartitionMetadataEntry(dynamicTableScanInfo->partsMetadata,
+							   parentOid,
+							   &(partitionIterator->partsAndRules),
+							   &accessMethods);
+
 	partitionIterator->currentRule = NULL;
 	partitionIterator->nextRuleCell = NULL;
 	
-	Assert(metadata != NULL);
-	Assert(metadata->partsAndRules != NULL);
-	partitionIterator->nextRuleCell = list_head(metadata->partsAndRules->rules);
+	Assert(NULL != partitionIterator->partsAndRules);
+	partitionIterator->nextRuleCell = list_head(partitionIterator->partsAndRules->rules);
 	partitionIterator->defaultPartReturned = true;
-	if (metadata->partsAndRules->default_part != NULL)
+	if (NULL != partitionIterator->partsAndRules->default_part)
 	{
 		partitionIterator->defaultPartReturned = false;
 	}
@@ -365,9 +322,6 @@ PG_FUNCTION_INFO_V1(gp_partition_expansion);
 /*
  * gp_partition_expansion
  *   Find all child partition oids for the given parent oid.
- *
- * Currently, this function also assumes that the parent partition is the root
- * partition.
  *
  * This function is a set-returning function, returning a set of
  * child oids.
@@ -416,10 +370,9 @@ gp_partition_expansion(PG_FUNCTION_ARGS)
 	 */
 	if (!partitionIterator->defaultPartReturned)
 	{
-		Assert(partitionIterator->metadata != NULL &&
-			   partitionIterator->metadata->partsAndRules != NULL &&
-			   partitionIterator->metadata->partsAndRules->default_part != NULL);
-		PartitionRule *defaultPart = partitionIterator->metadata->partsAndRules->default_part;
+		Assert(NULL != partitionIterator->partsAndRules);
+		Assert(NULL != partitionIterator->partsAndRules->default_part);
+		PartitionRule *defaultPart = partitionIterator->partsAndRules->default_part;
 		Oid childOid = defaultPart->parchildrelid;
 		partitionIterator->defaultPartReturned = true;
 
@@ -686,10 +639,9 @@ findNextRecordForRange(InverseContext *inverseContext)
 	/* Return the default partition if any. */
 	else if (!partitionIterator->defaultPartReturned)
 	{
-		Assert(partitionIterator->metadata != NULL &&
-			   partitionIterator->metadata->partsAndRules != NULL &&
-			   partitionIterator->metadata->partsAndRules->default_part != NULL);
-		PartitionRule *defaultPart = partitionIterator->metadata->partsAndRules->default_part;
+		Assert(NULL != partitionIterator->partsAndRules);
+		Assert(NULL != partitionIterator->partsAndRules->default_part);
+		PartitionRule *defaultPart = partitionIterator->partsAndRules->default_part;
 		setInverseRecordForDefaultPart(defaultPart,
 									   inverseContext->values,
 									   inverseContext->nulls,
@@ -758,10 +710,9 @@ findNextRecordForList(InverseContext *inverseContext)
 	/* Return the default partition if any. */
 	else if (!partitionIterator->defaultPartReturned)
 	{
-		Assert(partitionIterator->metadata != NULL &&
-			   partitionIterator->metadata->partsAndRules != NULL &&
-			   partitionIterator->metadata->partsAndRules->default_part != NULL);
-		PartitionRule *defaultPart = partitionIterator->metadata->partsAndRules->default_part;
+		Assert(NULL != partitionIterator->partsAndRules);
+		Assert(NULL != partitionIterator->partsAndRules->default_part);
+		PartitionRule *defaultPart = partitionIterator->partsAndRules->default_part;
 		setInverseRecordForDefaultPart(defaultPart,
 									   inverseContext->values,
 									   inverseContext->nulls,
@@ -785,11 +736,9 @@ createInverseContext(Oid parentOid)
 
 	PartitionIterator *partitionIterator = createPartitionIterator(parentOid);
 
-	PartitionMetadata *metadata = partitionIterator->metadata;
-	Assert(metadata != NULL &&
-		   metadata->partsAndRules != NULL &&
-		   metadata->partsAndRules->part != NULL);
-	switch(metadata->partsAndRules->part->parkind)
+	Assert(NULL != partitionIterator->partsAndRules);
+	Assert(NULL != partitionIterator->partsAndRules->part);
+	switch(partitionIterator->partsAndRules->part->parkind)
 	{
 		case 'r':
 			inverseContext = palloc(sizeof(InverseContextForRange));
@@ -806,7 +755,7 @@ createInverseContext(Oid parentOid)
 
 		default:
 			elog(ERROR, "partitioning kind '%c' not allowed",
-				 metadata->partsAndRules->part->parkind);
+					partitionIterator->partsAndRules->part->parkind);
 	}
 
 	return inverseContext;
@@ -847,7 +796,7 @@ findPartitionKeyType(Oid parentOid,
 
 /*
  * gp_partition_inverse
- *   Returns all child partitition oids with their constarints for a given parent oid.
+ *   Returns all child partition oids with their constraints for a given parent oid.
  *
  * Currently, this function assumes that the parent partition is the root partition.
  *
@@ -876,13 +825,12 @@ gp_partition_inverse(PG_FUNCTION_ARGS)
 		funcCallContext->user_fctx = createInverseContext(parentOid);
 		inverseContext = (InverseContext *)funcCallContext->user_fctx;
 
-		Assert(inverseContext != NULL &&
-			   inverseContext->partitionIterator != NULL);
-		PartitionMetadata *metadata = inverseContext->partitionIterator->metadata;
-		Assert(metadata != NULL &&
-			   metadata->partsAndRules != NULL &&
-			   metadata->partsAndRules->part != NULL);
-		Partition *part = metadata->partsAndRules->part;
+		Assert(NULL != inverseContext);
+		Assert(NULL != inverseContext->partitionIterator);
+		Assert(NULL != inverseContext->partitionIterator->partsAndRules);
+
+		Partition *part = inverseContext->partitionIterator->partsAndRules->part;
+		Assert(NULL != part);
 
 		Oid typeOid = 0;
 		int32 typeMod = 0;

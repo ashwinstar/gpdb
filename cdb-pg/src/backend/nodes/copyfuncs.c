@@ -1129,6 +1129,29 @@ _copyAssertOp(const AssertOp *from)
 	return newnode;
 }
 
+/*
+ * _copyPartitionSelector
+ */
+static PartitionSelector *
+_copyPartitionSelector(const PartitionSelector *from)
+{
+	PartitionSelector *newnode = makeNode(PartitionSelector);
+
+	/*
+	 * copy node superclass fields
+	 */
+	CopyPlanFields((Plan *) from, (Plan *) newnode);
+
+	COPY_SCALAR_FIELD(relid);
+	COPY_SCALAR_FIELD(nLevels);
+	COPY_NODE_FIELD(levelEqExpressions);
+	COPY_NODE_FIELD(levelExpressions);
+	COPY_NODE_FIELD(residualPredicate);
+	COPY_NODE_FIELD(propagationExpression);
+	COPY_NODE_FIELD(printablePredicate);
+
+	return newnode;
+}
 
 /* ****************************************************************
  *					   primnodes.h copy functions
@@ -2491,6 +2514,36 @@ static DMLActionExpr *
 _copyDMLActionExpr(const DMLActionExpr *from)
 {
 	DMLActionExpr *newnode = makeNode(DMLActionExpr);
+
+	return newnode;
+}
+
+static PartOidExpr *
+_copyPartOidExpr(const PartOidExpr *from)
+{
+	PartOidExpr *newnode = makeNode(PartOidExpr);
+	COPY_SCALAR_FIELD(level);
+
+	return newnode;
+}
+
+static PartBoundExpr *
+_copyPartBoundExpr(const PartBoundExpr *from)
+{
+	PartBoundExpr *newnode = makeNode(PartBoundExpr);
+	COPY_SCALAR_FIELD(level);
+	COPY_SCALAR_FIELD(boundType);
+	COPY_SCALAR_FIELD(isLowerBound);
+
+	return newnode;
+}
+
+static PartBoundInclusionExpr *
+_copyPartBoundInclusionExpr(const PartBoundInclusionExpr *from)
+{
+	PartBoundInclusionExpr *newnode = makeNode(PartBoundInclusionExpr);
+	COPY_SCALAR_FIELD(level);
+	COPY_SCALAR_FIELD(isLowerBound);
 
 	return newnode;
 }
@@ -4383,6 +4436,9 @@ copyObject(void *from)
 		case T_AssertOp:
 			retval = _copyAssertOp(from);
 			break;
+		case T_PartitionSelector:
+			retval = _copyPartitionSelector(from);
+			break;
 
 			/*
 			 * PRIMITIVE NODES
@@ -4941,6 +4997,15 @@ copyObject(void *from)
 			break;
 		case T_DMLActionExpr:
 			retval = _copyDMLActionExpr(from);
+			break;
+		case T_PartOidExpr:
+			retval = _copyPartOidExpr(from);
+			break;
+		case T_PartBoundExpr:
+			retval = _copyPartBoundExpr(from);
+			break;
+		case T_PartBoundInclusionExpr:
+			retval = _copyPartBoundInclusionExpr(from);
 			break;
 		case T_RangeTblEntry:
 			retval = _copyRangeTblEntry(from);

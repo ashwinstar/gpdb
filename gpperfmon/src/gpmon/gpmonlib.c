@@ -528,6 +528,7 @@ const char* gpdb_getnodestatus(PerfmonNodeStatus status)
 #define QENODE_TYPE_UNIQUE "Unique"
 #define QENODE_TYPE_VALUES_SCAN "Values Scan"
 #define QENODE_TYPE_WINDOW "Window"
+#define QENODE_TYPE_PARTITIONSELECTOR "Partition Selector"
 
 /* Units for node measurements */
 #define QENODE_UNIT_ROWS "Rows"

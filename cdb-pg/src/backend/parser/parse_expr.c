@@ -2482,6 +2482,15 @@ exprType(Node *expr)
 		case T_DMLActionExpr:
 			type = INT4OID;
 			break;
+		case T_PartOidExpr:
+			type = OIDOID;
+			break;
+		case T_PartBoundExpr:
+			type = ((PartBoundExpr *) expr)->boundType;
+			break;
+		case T_PartBoundInclusionExpr:
+			type = BOOLOID;
+			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(expr));
 			type = InvalidOid;	/* keep compiler quiet */

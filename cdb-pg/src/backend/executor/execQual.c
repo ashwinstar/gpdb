@@ -43,6 +43,7 @@
 #include "commands/typecmds.h"
 #include "executor/execdebug.h"
 #include "executor/nodeAgg.h"
+#include "executor/nodePartitionSelector.h"
 #include "executor/nodeSubplan.h"
 #include "funcapi.h"
 #include "miscadmin.h"
@@ -172,6 +173,15 @@ static Datum ExecEvalFieldStore(FieldStoreState *fstate,
 static Datum ExecEvalRelabelType(GenericExprState *exprstate,
 					ExprContext *econtext,
 					bool *isNull, ExprDoneCond *isDone);
+static Datum ExecEvalPartOidExpr(PartOidExprState *exprstate,
+						ExprContext *econtext,
+						bool *isNull, ExprDoneCond *isDone);
+static Datum ExecEvalPartBoundExpr(PartBoundExprState *exprstate,
+						ExprContext *econtext,
+						bool *isNull, ExprDoneCond *isDone);
+static Datum ExecEvalPartBoundInclusionExpr(PartBoundInclusionExprState *exprstate,
+								ExprContext *econtext,
+								bool *isNull, ExprDoneCond *isDone);
 static bool ExecIsExprUnsafeToConst_walker(Node *node, void *context);
 static bool ExecIsExprUnsafeToConst(Node *node);
 
@@ -4187,6 +4197,89 @@ ExecEvalRelabelType(GenericExprState *exprstate,
 	return ExecEvalExpr(exprstate->arg, econtext, isNull, isDone);
 }
 
+/* ----------------------------------------------------------------
+ *		ExecEvalPartOidExpr
+ *
+ *		Evaluate a PartOidExpr
+ * ----------------------------------------------------------------
+ */
+static Datum ExecEvalPartOidExpr(PartOidExprState *exprstate,
+						ExprContext *econtext,
+						bool *isNull, ExprDoneCond *isDone)
+{
+	PartitionConstraints *constraint = exprstate->acceptedLeafPart;
+	if (NULL != constraint)
+	{
+		return UInt32GetDatum(constraint->pRule->parchildrelid);
+	}
+
+	if (isDone)
+	{
+		*isDone = ExprSingleResult;
+	}
+
+	return PointerGetDatum(NULL);
+}
+
+/* ----------------------------------------------------------------
+ *		ExecEvalPartBoundExpr
+ *
+ *		Evaluate a PartBoundExpr
+ * ----------------------------------------------------------------
+ */
+static Datum ExecEvalPartBoundExpr(PartBoundExprState *exprstate,
+						ExprContext *econtext,
+						bool *isNull, ExprDoneCond *isDone)
+{
+	PartBoundExpr *expr = (PartBoundExpr *) exprstate->xprstate.expr;
+	PartitionConstraints *constraint = (PartitionConstraints *) exprstate->levelPartConstraints[expr->level];
+	Assert (NULL != constraint);
+	Const *con = constraint->upperBound;
+	if (expr->isLowerBound)
+	{
+		con = constraint->lowerBound;
+	}
+
+	if (isDone)
+	{
+		*isDone = ExprSingleResult;
+	}
+
+	if (NULL != con)
+	{
+		*isNull = con->constisnull;
+		return con->constvalue;
+	}
+
+	/* return NULL if no upper bound or lower bound exists */
+	*isNull = true;
+	return PointerGetDatum(NULL);
+}
+
+/* ----------------------------------------------------------------
+ *		ExecEvalPartBoundInclusionExpr
+ *
+ *		Evaluate a PartBoundInclusionExpr
+ * ----------------------------------------------------------------
+ */
+static Datum ExecEvalPartBoundInclusionExpr(PartBoundInclusionExprState *exprstate,
+							ExprContext *econtext,
+							bool *isNull, ExprDoneCond *isDone)
+{
+	PartBoundInclusionExpr *expr = (PartBoundInclusionExpr *) exprstate->xprstate.expr;
+	PartitionConstraints *constraint = (PartitionConstraints *) exprstate->levelPartConstraints[expr->level];
+	Assert (NULL != constraint);
+	if (isDone)
+	{
+		*isDone = ExprSingleResult;
+	}
+	*isNull = false;
+	if (expr->isLowerBound)
+	{
+		return BoolGetDatum(constraint->lbInclusive);
+	}
+	return BoolGetDatum(constraint->upInclusive);
+}
 
 /* ----------------------------------------------------------------
  *    ExecEvalCurrentOfExpr
@@ -4949,6 +5042,44 @@ ExecInitExpr(Expr *node, PlanState *parent)
 				/* Don't fall through to the "common" code below */
 				return (ExprState *) outlist;
 			}
+		case T_PartOidExpr:
+			{
+				Insist(parent && IsA(parent, PartitionSelectorState));
+				PartitionSelectorState *psstate = (PartitionSelectorState *) parent;
+				PartOidExprState *exprstate = makeNode(PartOidExprState);
+#if USE_ASSERT_CHECKING
+				PartOidExpr *expr = (PartOidExpr *) node;
+				Assert (expr->level == ((PartitionSelector *) psstate->ps.plan)->nLevels - 1 &&
+						"PartOidExpr can only refer to leaf level.");
+#endif
+				exprstate->xprstate.evalfunc = (ExprStateEvalFunc) ExecEvalPartOidExpr;
+				exprstate->acceptedLeafPart = psstate->acceptedLeafPart;
+
+				state = (ExprState *) exprstate;
+			}
+			break;
+		case T_PartBoundExpr:
+			{
+				Insist(parent && IsA(parent, PartitionSelectorState));
+				PartitionSelectorState *psstate = (PartitionSelectorState *) parent;
+				PartBoundExprState *exprstate = makeNode(PartBoundExprState);
+				exprstate->xprstate.evalfunc = (ExprStateEvalFunc) ExecEvalPartBoundExpr;
+				exprstate->levelPartConstraints = psstate->levelPartConstraints;
+
+				state = (ExprState *) exprstate;
+			}
+			break;
+		case T_PartBoundInclusionExpr:
+			{
+				Insist(parent && IsA(parent, PartitionSelectorState));
+				PartitionSelectorState *psstate = (PartitionSelectorState *) parent;
+				PartBoundInclusionExprState *exprstate = makeNode(PartBoundInclusionExprState);
+				exprstate->xprstate.evalfunc = (ExprStateEvalFunc) ExecEvalPartBoundInclusionExpr;
+				exprstate->levelPartConstraints = psstate->levelPartConstraints;
+
+				state = (ExprState *) exprstate;
+			}
+			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d",
 				 (int) nodeTag(node));

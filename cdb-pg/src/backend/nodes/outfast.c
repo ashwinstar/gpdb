@@ -963,6 +963,24 @@ _outAssertOp(StringInfo str, AssertOp *node)
 	_outPlanInfo(str, (Plan *) node);
 }
 
+/*
+ * _outPartitionSelector
+ */
+static void
+_outPartitionSelector(StringInfo str, PartitionSelector *node)
+{
+	WRITE_NODE_TYPE("PARTITIONSELECTOR");
+
+	WRITE_INT_FIELD(relid);
+	WRITE_INT_FIELD(nLevels);
+	WRITE_NODE_FIELD(levelEqExpressions);
+	WRITE_NODE_FIELD(levelExpressions);
+	WRITE_NODE_FIELD(residualPredicate);
+	WRITE_NODE_FIELD(propagationExpression);
+	WRITE_NODE_FIELD(printablePredicate);
+
+	_outPlanInfo(str, (Plan *) node);
+}
 
 /*****************************************************************************
  *
@@ -2910,6 +2928,33 @@ _outDMLActionExpr(StringInfo str, DMLActionExpr *node)
 }
 
 static void
+_outPartOidExpr(StringInfo str, PartOidExpr *node)
+{
+	WRITE_NODE_TYPE("PARTOIDEXPR");
+
+	WRITE_INT_FIELD(level);
+}
+
+static void
+_outPartBoundExpr(StringInfo str, PartBoundExpr *node)
+{
+	WRITE_NODE_TYPE("PARTBOUNDEXPR");
+
+	WRITE_INT_FIELD(level);
+	WRITE_OID_FIELD(boundType);
+	WRITE_BOOL_FIELD(isLowerBound);
+}
+
+static void
+_outPartBoundInclusionExpr(StringInfo str, PartBoundInclusionExpr *node)
+{
+	WRITE_NODE_TYPE("PARTBOUNDINCLUSIONEXPR");
+
+	WRITE_INT_FIELD(level);
+	WRITE_BOOL_FIELD(isLowerBound);
+}
+
+static void
 _outColumnDef(StringInfo str, ColumnDef *node)
 {
 	WRITE_NODE_TYPE("COLUMNDEF");
@@ -3803,6 +3848,9 @@ _outNode(StringInfo str, void *obj)
 			case T_AssertOp:
 				_outAssertOp(str, obj);
 				break;
+			case T_PartitionSelector:
+				_outPartitionSelector(str, obj);
+				break;
 			case T_Alias:
 				_outAlias(str, obj);
 				break;
@@ -4385,6 +4433,18 @@ _outNode(StringInfo str, void *obj)
 
 			case T_DMLActionExpr:
 				_outDMLActionExpr(str, obj);
+				break;
+
+			case T_PartOidExpr:
+				_outPartOidExpr(str, obj);
+				break;
+
+			case T_PartBoundExpr:
+				_outPartBoundExpr(str, obj);
+				break;
+
+			case T_PartBoundInclusionExpr:
+				_outPartBoundInclusionExpr(str, obj);
 				break;
 
 			case T_CreateTrigStmt:

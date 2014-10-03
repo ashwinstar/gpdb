@@ -1264,7 +1264,7 @@ get_rel_oids(List *relids, const RangeVar *vacrel, const char *stmttype,
 		{
 			PartitionNode *pn;
 
-	   		pn = get_parts(relid, 0, 0, false, CurrentMemoryContext);
+	   		pn = get_parts(relid, 0, 0, false, CurrentMemoryContext, true /*includesubparts*/);
 
 			prels = all_partition_relids(pn);
 		}

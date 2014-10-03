@@ -137,7 +137,7 @@ extern List *
 all_partition_relids(PartitionNode *pn);
 
 extern Node *
-get_relation_part_constraints(Oid rootOid, bool *fDefaultPartition);
+get_relation_part_constraints(Oid rootOid, List **defaultLevels);
 
 extern List *
 all_prule_relids(PartitionRule *prule);
@@ -170,7 +170,7 @@ partition_get_policies_attrs(PartitionNode *pn,
 /* RelationBuildPartitionDesc is built from get_parts */
 extern PartitionNode *
 get_parts(Oid relid, int2 level, Oid parent, bool inctemplate,
-		  MemoryContext mcxt);
+		  MemoryContext mcxt, bool includesubparts);
 
 extern Oid 
 rel_partition_get_root(Oid relid);
@@ -267,5 +267,19 @@ LogSelectedPartitionOids(HTAB *pidIndex);
 
 extern List *
 all_leaf_partition_relids(PartitionNode *pn);
+
+extern void
+findPartitionMetadataEntry(List *partsMetadata, Oid partOid, PartitionNode **partsAndRules,
+							PartitionAccessMethods **accessMethods);
+
+extern void
+createValueArrays(int keyAttno, Datum **values, bool **isnull);
+
+extern void
+freeValueArrays(Datum *values, bool *isnull);
+
+extern PartitionRule*
+get_next_level_matched_partition(PartitionNode *partnode, Datum *values, bool *isnull,
+								TupleDesc tupdesc, PartitionAccessMethods *accessMethods);
 
 #endif   /* CDBPARTITION_H */

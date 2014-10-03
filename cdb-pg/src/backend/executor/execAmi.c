@@ -34,6 +34,7 @@
 #include "executor/nodeMergejoin.h"
 #include "executor/nodeMotion.h"
 #include "executor/nodeNestloop.h"
+#include "executor/nodePartitionSelector.h"
 #include "executor/nodeResult.h"
 #include "executor/nodeSetOp.h"
 #include "executor/nodeSort.h"
@@ -240,6 +241,9 @@ ExecReScan(PlanState *node, ExprContext *exprCtxt)
 
 		case T_ShareInputScanState:
 			ExecShareInputScanReScan((ShareInputScanState *) node, exprCtxt);
+			break;
+		case T_PartitionSelectorState:
+			ExecReScanPartitionSelector((PartitionSelectorState *) node, exprCtxt);
 			break;
 			
 		default:
@@ -606,6 +610,7 @@ ExecEagerFree(PlanState *node)
 		case T_DynamicTableScanState:
 		case T_DynamicIndexScanState:
 		case T_SequenceState:
+		case T_PartitionSelectorState:
 			break;
 
 		case T_TableScanState:

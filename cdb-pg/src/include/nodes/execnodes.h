@@ -28,7 +28,6 @@
 #include "gpmon/gpmon.h"                /* gpmon_packet_t */
 #include "utils/memaccounting.h"
 
-
 struct CdbDispatchResults;              /* in cdbdispatchresult.h */
 struct CdbExplain_ShowStatCtx;          /* private, in "cdb/cdbexplain.c" */
 struct ChunkTransportState;             /* #include "cdb/cdbinterconnect.h" */
@@ -884,6 +883,42 @@ typedef struct BoolExprState
         ExprState        xprstate;
         List           *args;                        /* states of argument expression(s) */
 } BoolExprState;
+
+/* ----------------
+ *                PartOidExprState node
+ * ----------------
+ */
+typedef struct PartOidExprState
+{
+	ExprState     xprstate;
+
+	/* accepted leaf PartitionConstraints for current tuple */
+	struct PartitionConstraints *acceptedLeafPart;
+} PartOidExprState;
+
+/* ----------------
+ *                PartBoundExprState node
+ * ----------------
+ */
+typedef struct PartBoundExprState
+{
+	ExprState     xprstate;
+
+	/* accepted partitions for all levels */
+	struct PartitionConstraints **levelPartConstraints;
+} PartBoundExprState;
+
+/* ----------------
+ *                PartBoundInclusionExprState node
+ * ----------------
+ */
+typedef struct PartBoundInclusionExprState
+{
+	ExprState     xprstate;
+
+	/* accepted partitions for all levels */
+	struct PartitionConstraints **levelPartConstraints;
+} PartBoundInclusionExprState;
 
 /* ----------------
  *                SubPlanState node
@@ -2420,6 +2455,24 @@ typedef struct MotionState
         int numInputSegs;           /* the number of segments on the sending slice */
 } MotionState;
 
+/*
+ * ExecNode for PartitionSelector.
+ * This operator contains a Plannode in PlanState.
+ */
+typedef struct PartitionSelectorState
+{
+	PlanState ps;                                       /* its first field is NodeTag */
+	PartitionNode *rootPartitionNode;                   /* PartitionNode for root table */
+	PartitionAccessMethods *accessMethods;              /* Access method for partition */
+	struct PartitionConstraints **levelPartConstraints; /* accepted partitions for all levels */
+	struct PartitionConstraints *acceptedLeafPart;      /* accepted leaf PartitionConstraints for current tuple */
+	List *levelEqExprStates;                            /* ExprState for equality expressions for all levels */
+	List *levelExprStates;                              /* ExprState for general expressions for all levels */
+	ExprState *residualPredicateExprState;              /* ExprState for evaluating residual predicate */
+	ExprState *propagationExprState;                    /* ExprState for evaluating propagation expression */
+
+} PartitionSelectorState;
+
 extern void sendInitGpmonPkts(Plan *node, EState *estate);
 extern void initGpmonPktForResult(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
 extern void initGpmonPktForAppend(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
@@ -2455,6 +2508,7 @@ extern void initGpmonPktForWindow(Plan *planNode, gpmon_packet_t *gpmon_pkt, ESt
 extern void initGpmonPktForRepeat(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
 extern void initGpmonPktForDefunctOperators(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
 extern void initGpmonPktForDML(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForPartitionSelector(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
 /*
  * The funcion pointers to init gpmon package for each plan node. 
  * The order of the function pointers are the same as the one defined in

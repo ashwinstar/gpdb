@@ -118,6 +118,9 @@ CTranslatorDXLToScalar::PexprFromDXLNodeScalar
 		{EdxlopScalarArray, &CTranslatorDXLToScalar::PexprArray},
 		{EdxlopScalarArrayRef, &CTranslatorDXLToScalar::PexprArrayRef},
 		{EdxlopScalarDMLAction, &CTranslatorDXLToScalar::PexprDMLAction},
+		{EdxlopScalarPartOid, &CTranslatorDXLToScalar::PexprPartOid},
+		{EdxlopScalarPartBound, &CTranslatorDXLToScalar::PexprPartBound},
+		{EdxlopScalarPartBoundInclusion, &CTranslatorDXLToScalar::PexprPartBoundInclusion},
 	};
 
 	const ULONG ulTranslators = GPOS_ARRAY_SIZE(rgTranslators);
@@ -614,7 +617,9 @@ CTranslatorDXLToScalar::PparamFromDXLNodeScInitPlan
 	// Since an init plan is not a scalar node, we create a new DXLTranslator to handle its translation
 	CContextDXLToPlStmt *pctxdxltoplstmt = (dynamic_cast<CMappingColIdVarPlStmt*>(pmapcidvar))->Pctxdxltoplstmt();
 	CTranslatorDXLToPlStmt trdxltoplstmt(m_pmp, m_pmda, pctxdxltoplstmt, m_ulSegments);
-	Plan *pplanChild = trdxltoplstmt.PplFromDXL(pdxlnChild, pdxltrctxOut, pplan);
+	DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = New(m_pmp) DrgPdxltrctx(m_pmp);
+	Plan *pplanChild = trdxltoplstmt.PplFromDXL(pdxlnChild, pdxltrctxOut, pplan, pdrgpdxltrctxPrevSiblings);
+	pdrgpdxltrctxPrevSiblings->Release();
 
 	// Step 2: Add the generated child to the root plan's subplan list
 	pctxdxltoplstmt->AddSubplan(pplanChild);
@@ -712,7 +717,9 @@ CTranslatorDXLToScalar::PsubplanFromDXLNodeScSubPlan
 							(dynamic_cast<CMappingColIdVarPlStmt*>(pmapcidvar))->Pctxdxltoplstmt(),
 							m_ulSegments
 							);
-	Plan *pplanChild = trdxltoplstmt.PplFromDXL(pdxlnChild, pdxltrctxOut, pplan);
+	DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = New(m_pmp) DrgPdxltrctx(m_pmp);
+	Plan *pplanChild = trdxltoplstmt.PplFromDXL(pdxlnChild, pdxltrctxOut, pplan, pdrgpdxltrctxPrevSiblings);
+	pdrgpdxltrctxPrevSiblings->Release();
 
 	GPOS_ASSERT(NULL != pplanChild->targetlist && 1 <= gpdb::UlListLength(pplanChild->targetlist));
 
@@ -1766,6 +1773,78 @@ CTranslatorDXLToScalar::PconstGeneric
 
 //---------------------------------------------------------------------------
 //	@function:
+//		CTranslatorDXLToScalar::PexprPartOid
+//
+//	@doc:
+//		Translates a DXL part oid into a GPDB part oid
+//
+//---------------------------------------------------------------------------
+Expr *
+CTranslatorDXLToScalar::PexprPartOid
+	(
+	const CDXLNode *pdxlnPartOid,
+	CMappingColIdVar * //pmapcidvar
+	)
+{
+	CDXLScalarPartOid *pdxlop = CDXLScalarPartOid::PdxlopConvert(pdxlnPartOid->Pdxlop());
+
+	PartOidExpr *pexpr = MakeNode(PartOidExpr);
+	pexpr->level = pdxlop->UlLevel();
+
+	return (Expr *) pexpr;
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CTranslatorDXLToScalar::PexprPartBound
+//
+//	@doc:
+//		Translates a DXL part bound into a GPDB part bound
+//
+//---------------------------------------------------------------------------
+Expr *
+CTranslatorDXLToScalar::PexprPartBound
+	(
+	const CDXLNode *pdxlnPartBound,
+	CMappingColIdVar * //pmapcidvar
+	)
+{
+	CDXLScalarPartBound *pdxlop = CDXLScalarPartBound::PdxlopConvert(pdxlnPartBound->Pdxlop());
+
+	PartBoundExpr *pexpr = MakeNode(PartBoundExpr);
+	pexpr->level = pdxlop->UlLevel();
+	pexpr->boundType = CMDIdGPDB::PmdidConvert(pdxlop->PmdidType())->OidObjectId();
+	pexpr->isLowerBound = pdxlop->FLower();
+
+	return (Expr *) pexpr;
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CTranslatorDXLToScalar::PexprPartBoundInclusion
+//
+//	@doc:
+//		Translates a DXL part bound inclusion into a GPDB part bound inclusion
+//
+//---------------------------------------------------------------------------
+Expr *
+CTranslatorDXLToScalar::PexprPartBoundInclusion
+	(
+	const CDXLNode *pdxlnPartBoundIncl,
+	CMappingColIdVar * //pmapcidvar
+	)
+{
+	CDXLScalarPartBoundInclusion *pdxlop = CDXLScalarPartBoundInclusion::PdxlopConvert(pdxlnPartBoundIncl->Pdxlop());
+
+	PartBoundInclusionExpr *pexpr = MakeNode(PartBoundInclusionExpr);
+	pexpr->level = pdxlop->UlLevel();
+	pexpr->isLowerBound = pdxlop->FLower();
+
+	return (Expr *) pexpr;
+}
+
+//---------------------------------------------------------------------------
+//	@function:
 //		CTranslatorDXLToScalar::PexprFromDXLNodeScId
 //
 //	@doc:
@@ -1792,13 +1871,13 @@ CTranslatorDXLToScalar::PexprFromDXLNodeScId
 	else
 	{
 		// outer ref -> create param node
-		pexprResult = (Expr *) pmapcidvarplstmt->PparamFromDXLNodeScId(pdxlop);	
+		pexprResult = (Expr *) pmapcidvarplstmt->PparamFromDXLNodeScId(pdxlop);
 	}
 
 	if (NULL  == pexprResult)
 	{
 		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiDXL2PlStmtAttributeNotFound, pdxlop->Pdxlcr()->UlID());
-	}	
+	}
 	return pexprResult;
 }
 
@@ -2010,6 +2089,58 @@ CTranslatorDXLToScalar::FBoolean
 	CDXLScalar *pdxlop = dynamic_cast<CDXLScalar*>(pdxln->Pdxlop());
 
 	return pdxlop->FBoolean(pmda);
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CTranslatorDXLToScalar::FConstTrue
+//
+//	@doc:
+//		Check if the operator is a "true" bool constant
+//
+//---------------------------------------------------------------------------
+BOOL
+CTranslatorDXLToScalar::FConstTrue
+	(
+	CDXLNode *pdxln,
+	CMDAccessor *pmda
+	)
+{
+	GPOS_ASSERT(NULL != pdxln);
+	if (!FBoolean(pdxln, pmda) || EdxlopScalarConstValue != pdxln->Pdxlop()->Edxlop())
+	{
+		return false;
+	}
+
+	CDXLScalarConstValue *pdxlop = CDXLScalarConstValue::PdxlopConvert(pdxln->Pdxlop());
+	CDXLDatumBool *pdxldatumbool = CDXLDatumBool::PdxldatumConvert(const_cast<CDXLDatum *>(pdxlop->Pdxldatum()));
+
+	return pdxldatumbool->FValue();
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CTranslatorDXLToScalar::FConstNull
+//
+//	@doc:
+//		Check if the operator is a NULL constant
+//
+//---------------------------------------------------------------------------
+BOOL
+CTranslatorDXLToScalar::FConstNull
+	(
+	CDXLNode *pdxln
+	)
+{
+	GPOS_ASSERT(NULL != pdxln);
+	if (EdxlopScalarConstValue != pdxln->Pdxlop()->Edxlop())
+	{
+		return false;
+	}
+
+	CDXLScalarConstValue *pdxlop = CDXLScalarConstValue::PdxlopConvert(pdxln->Pdxlop());
+
+	return pdxlop->Pdxldatum()->FNull();
 }
 
 // EOF

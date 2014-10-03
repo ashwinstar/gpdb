@@ -1128,12 +1128,12 @@ Node *
 gpdb::PnodePartConstraintRel
 	(
 	Oid oidRel,
-	bool *pfDefaultConstraint
+	List **pplDefaultLevels
 	)
 {
 	GP_WRAP_START;
 	{
-		return get_relation_part_constraints(oidRel, pfDefaultConstraint);
+		return get_relation_part_constraints(oidRel, pplDefaultLevels);
 	}
 	GP_WRAP_END;
 	return NULL;
@@ -1350,12 +1350,13 @@ gpdb::PpnParts
 	int2 level,
 	Oid parent,
 	bool inctemplate,
-	MemoryContext mcxt
+	MemoryContext mcxt,
+	bool includesubparts
 	)
 {
 	GP_WRAP_START;
 	{
-		return get_parts(relid, level, parent, inctemplate, mcxt);
+		return get_parts(relid, level, parent, inctemplate, mcxt, includesubparts);
 	}
 	GP_WRAP_END;
 	return NULL;

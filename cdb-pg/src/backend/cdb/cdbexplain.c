@@ -2048,7 +2048,8 @@ cdbexplain_countLeafPartTables(PlanState *planstate)
 	Assert (rel_is_partitioned(root_oid));
 
 	PartitionNode *pn = get_parts(root_oid, 0 /* level */, 0 /* parent */, false /* inctemplate */,
-	                              CurrentMemoryContext);
+	                              CurrentMemoryContext, true /* include subparts */);
+
 	List *lRelOids = all_leaf_partition_relids(pn);
 	Assert (list_length(lRelOids) > 0);
 	int count = list_length(lRelOids);

@@ -4442,7 +4442,8 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 								  0, /**/
 								  InvalidOid, /**/
 								  false, /**/
-								  CurrentMemoryContext);
+								  CurrentMemoryContext,
+								  true /*includesubparts*/);
 				
 				all_oids = lcons_oid(RelationGetRelid(rel), all_partition_relids(pnode));
 				

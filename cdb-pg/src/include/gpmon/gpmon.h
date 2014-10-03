@@ -466,6 +466,7 @@ typedef enum PerfmonNodeType
     PMNT_Unique,
     PMNT_ValuesScan,
     PMNT_Window,
+    PMNT_PartitionSelector,
 	PMNT_MAXIMUM_ENUM
 
 } PerfmonNodeType;

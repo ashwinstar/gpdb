@@ -793,10 +793,11 @@ static void indexParts(PartitionIndexNode **np, bool isDefault)
 /*
  * getPartConstraints
  *   Given an OID, returns a Node that represents all the check constraints
- *   on the table AND'd together. 
+ *   on the table AND'd together, only if these constraints cover the keys in
+ *   the given list. Otherwise, it returns NULL
  */
 static Node *
-getPartConstraints(Oid partOid, Oid rootOid)
+getPartConstraints(Oid partOid, Oid rootOid, List *partKey)
 {
 	cqContext       *pcqCtx;
 	cqContext       cqc;
@@ -805,8 +806,10 @@ getPartConstraints(Oid partOid, Oid rootOid)
 	Node            *conExpr;
 	Node            *result = NULL;
 	Datum           conBinDatum;
+	Datum			conKeyDatum;
 	char            *conBin;
 	bool            conbinIsNull = false;
+	bool			conKeyIsNull = false;
 	char            conType = 'c';
 	AttrMap		*map;
 
@@ -828,6 +831,9 @@ getPartConstraints(Oid partOid, Oid rootOid)
 				" WHERE conrelid = :1 AND contype = :2",
 				ObjectIdGetDatum(partOid), CharGetDatum(conType)));
 
+	// list of keys referenced in the found constraints
+	List *keys = NIL;
+
 	while (HeapTupleIsValid(conTup = caql_getnext(pcqCtx)))
 	{
 		/* Fetch the constraint expression in parsetree form */
@@ -835,7 +841,6 @@ getPartConstraints(Oid partOid, Oid rootOid)
 				RelationGetDescr(conRel), &conbinIsNull);
 
 		Assert (!conbinIsNull);
-
 		/* map the attnums in constraint expression to root attnums */
 		conBin = TextDatumGetCString(conBinDatum);
 		conExpr = stringToNode(conBin);
@@ -845,10 +850,44 @@ getPartConstraints(Oid partOid, Oid rootOid)
 			result = (Node *)make_andclause(list_make2(result, conExpr));
 		else
 			result = conExpr;
+
+		// fetch the key associated with this constraint
+		conKeyDatum = heap_getattr(conTup, Anum_pg_constraint_conkey,
+				RelationGetDescr(conRel), &conKeyIsNull);
+		Datum *dats = NULL;
+		int numKeys = 0;
+
+		// extract key elements
+		deconstruct_array(DatumGetArrayTypeP(conKeyDatum), INT2OID, 2, true, 's', &dats, NULL, &numKeys);
+		for (int i = 0; i < numKeys; i++)
+		{
+			int16 key_elem =  DatumGetInt16(dats[i]);
+			keys = lappend_int(keys, key_elem);
+		}
 	}
 
 	caql_endscan(pcqCtx);
 	heap_close(conRel, AccessShareLock);
+
+	ListCell *lc = NULL;
+	foreach (lc, partKey)
+	{
+		int partKeyCol = lfirst_int(lc);
+
+		if (list_find_int(keys, partKeyCol) < 0)
+		{
+			// passed in key is not found in the constraint. return NULL
+			if (NULL != result)
+			{
+				pfree(result);
+			}
+
+			result = NULL;
+			break;
+		}
+	}
+
+	list_free(keys);
 	return result;
 }
 
@@ -857,50 +896,60 @@ getPartConstraints(Oid partOid, Oid rootOid)
  *  return the part constraints for a partitioned table given the oid of the root
  */
 Node *
-get_relation_part_constraints(Oid rootOid, bool *fDefaultPartition)
+get_relation_part_constraints(Oid rootOid, List **defaultLevels)
 {
-	*fDefaultPartition = false;
 	if (!rel_is_partitioned(rootOid))
 	{
 		return NULL;
 	}
 
-	PartitionNode *pn = get_parts(rootOid, 0 /*level*/, 0 /*parent*/, false /* inctemplate */, CurrentMemoryContext);
-	Assert(NULL != pn);
-	List *partOids = all_partition_relids(pn);
+	// get number of partitioning levels
+	List *partkeys = rel_partition_keys_ordered(rootOid);
+	int nLevels = list_length(partkeys);
 
-	Node *partCons = NULL;
 	Node *allCons = NULL;
-	ListCell *lc = NULL;
-	foreach(lc, partOids)
+	for (int level = 0; level < nLevels; level++)
 	{
-		Oid partOid = lfirst_oid(lc);
-		// fetch part constraint mapped to root
-		partCons = getPartConstraints(partOid, rootOid);
-		
-		if (NULL == partCons)
-		{
-			// default partition has NULL constriant in GPDB's catalog
-			*fDefaultPartition = true;
-			continue;
-		}
+		List *partKey = (List *) list_nth(partkeys, level);
 
-		// OR them to current constraints
-		if (NULL == allCons)
+		PartitionNode *pn = get_parts(rootOid, level, 0 /*parent*/, false /* inctemplate */, CurrentMemoryContext, false /*includesubparts*/);
+
+		Assert(NULL != pn);
+		List *partOids = all_partition_relids(pn);
+
+		Node *partCons = NULL;
+		ListCell *lc = NULL;
+		foreach(lc, partOids)
 		{
-			allCons = partCons;
-		}
-		else
-		{
-			allCons = (Node *) mergeIntervals(allCons, partCons);
+			Oid partOid = lfirst_oid(lc);
+			// fetch part constraint mapped to root
+			partCons = getPartConstraints(partOid, rootOid, partKey);
+
+			if (NULL == partCons)
+			{
+				// default partition has NULL constriant in GPDB's catalog
+				*defaultLevels = lappend_int(*defaultLevels, level);
+				continue;
+			}
+
+			// OR them to current constraints
+			if (NULL == allCons)
+			{
+				allCons = partCons;
+			}
+			else
+			{
+				allCons = (Node *) mergeIntervals(allCons, partCons);
+			}
 		}
 	}
-	
+
 	if (NULL == allCons)
 	{
 		allCons = makeBoolConst(false /*value*/, false /*isnull*/);
 	}
 
+	list_free(partkeys);
 	return allCons;
 }
 
@@ -997,7 +1046,7 @@ generateLogicalIndexPred(LogicalIndexes *li,
 			if (partOid != root)
 			{	 
 				/* fetch part constraint mapped to root */
-				conList = getPartConstraints(partOid, root);
+				conList = getPartConstraints(partOid, root, NIL /*partKey*/);
 	
 				/* OR them to current constraints */
 				if (li->logicalIndexInfo[*curIdx]->partCons)
@@ -1042,7 +1091,7 @@ generateLogicalIndexPred(LogicalIndexes *li,
 		 * the defaultLevels information, in addition to ANY constraint on the default
 		 * part.
 		 */
-		li->logicalIndexInfo[*curIdx]->partCons = getPartConstraints(node->parchildrelid, root);
+		li->logicalIndexInfo[*curIdx]->partCons = getPartConstraints(node->parchildrelid, root, NIL /*partKey*/);
 
 		/* get the level on which partitioning key is default */
 		li->logicalIndexInfo[*curIdx]->defaultLevels = list_copy(node->defaultLevels);

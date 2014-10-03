@@ -47,5 +47,6 @@ OBJS = execAmi.o execGrouping.o execHHashagg.o execJunk.o execMain.o \
        nodeAssertOp.o \
        nodeSplitUpdate.o \
        nodeDML.o \
-       execDML.o 
+       execDML.o \
+       nodePartitionSelector.o
 include $(top_srcdir)/src/backend/common.mk

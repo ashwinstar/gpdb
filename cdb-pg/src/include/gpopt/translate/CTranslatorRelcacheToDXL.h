@@ -310,8 +310,8 @@ namespace gpdxl
 				IMemoryPool *pmp, 
 				CMDAccessor *pmda, 
 				const IMDRelation *pmdrel, 
-				Node *pnodePartCnstr, 
-				BOOL fDefaultPartition,
+				Node *pnodePartCnstr,
+				DrgPul *pdrgpulDefaultParts,
 				BOOL fUnbounded
 				);
 
@@ -327,7 +327,7 @@ namespace gpdxl
 				CMDAccessor *pmda, 
 				DrgPdxlcd *pdrgpdxlcd, 
 				Node *pnodePartCnstr, 
-				BOOL fDefaultPartition,
+				DrgPul *pdrgpulDefaultParts,
 				BOOL fUnbounded
 				);
 	

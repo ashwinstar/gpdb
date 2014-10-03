@@ -7115,7 +7115,7 @@ pg_get_partition_template_def_worker(Oid relid, int prettyFlags,
 		truncateStringInfo(&sid2, 0);
 
 		pnt = get_parts(relid, 
-						templatelevel, 0, true, CurrentMemoryContext);
+						templatelevel, 0, true, CurrentMemoryContext, true /*includesubparts*/);
 		get_partition_recursive(pnt, &headc, &bodyc, &leveldone, 
 								bLeafTablename);
 

@@ -1168,14 +1168,30 @@ typedef struct PlanInvalItem
 		ItemPointerData tupleId;	/* TID of the object's catalog tuple */
 	} PlanInvalItem;
 
-
-
-/**
- * TODO: Consider moving these structs to a separate header
+/*
+ * ----------------
+ * PartitionSelector node
+ *
+ * PartitionSelector finds a set of leaf partition OIDs given the root table
+ * OID and optionally selection predicates.
+ *
+ * It hides the logic of partition selection and propagation instead of
+ * polluting the plan with it to make a plan look consistent and easy to
+ * understand. It will be easy to locate where partition selection happens
+ * in a plan.
+ * ----------------
  */
-	
+typedef struct PartitionSelector
+{
+	Plan        plan;
+	Oid			relid;					 /* OID of target relation */
+	int         nLevels;                 /* number of partition levels */
+	List        *levelEqExpressions;     /* equality expressions used for individual levels */
+	List        *levelExpressions;       /* predicates used for individual levels */
+	Node        *residualPredicate;      /* residual predicate (to be applied at the end) */
+	Node        *propagationExpression;  /* propagation expression */
+	Node        *printablePredicate;     /* printable predicate (for explain purposes) */
+
+} PartitionSelector;
 
 #endif   /* PLANNODES_H */
-
-
-

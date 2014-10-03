@@ -193,14 +193,15 @@ CMappingColIdVarPlStmt::PvarFromDXLNodeScId
 			GPOS_ASSERT(NULL != pte);
 			idxVarno = 0;
 		}
-		else if(NULL != pte)
+		else if (NULL != pte)
 		{
 			// identifier comes from left child
 			idxVarno = OUTER;
 		}
 		else
 		{
-			if (2 > m_pdrgpdxltrctx->UlSafeLength())
+			const ULONG ulContexts = m_pdrgpdxltrctx->UlSafeLength();
+			if (2 > ulContexts)
 			{
 				// there are no more children. col id not found in this tree
 				// and must be an outer ref
@@ -213,11 +214,26 @@ CMappingColIdVarPlStmt::PvarFromDXLNodeScId
 			GPOS_ASSERT(NULL != pdxltrctxRight);
 
 			pte = pdxltrctxRight->Pte(ulColId);
-			GPOS_ASSERT(NULL != pte);
 			idxVarno = INNER;
+
+			// check any additional contexts if col is still not found yet
+			for (ULONG ul = 2; NULL == pte && ul < ulContexts; ul++)
+			{
+				const CDXLTranslateContext *pdxltrctx = (*m_pdrgpdxltrctx)[ul];
+				GPOS_ASSERT(NULL != pdxltrctx);
+
+				pte = pdxltrctx->Pte(ulColId);
+				if (NULL == pte)
+				{
+					continue;
+				}
+
+				Var *pv = (Var*) pte->expr;
+				idxVarno = pv->varno;
+			}
+
+			GPOS_ASSERT(NULL != pte);
 		}
-		
-		GPOS_ASSERT(NULL != pte);
 
 		attno = pte->resno;
 

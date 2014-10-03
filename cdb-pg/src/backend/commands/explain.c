@@ -21,6 +21,7 @@
 #include "commands/prepare.h"
 #include "commands/trigger.h"
 #include "executor/instrument.h"
+#include "nodes/pg_list.h"
 #include "nodes/print.h"
 #include "optimizer/clauses.h"
 #include "optimizer/planner.h"
@@ -1238,6 +1239,9 @@ explain_outNode(StringInfo str,
 		case T_AssertOp:
 			pname = "Assert";
 			break;
+		case T_PartitionSelector:
+			pname = "Partition Selector";
+			break;
 		case T_RowTrigger:
  			pname = "RowTrigger";
  			break;
@@ -1701,6 +1705,21 @@ explain_outNode(StringInfo str,
 			{
 				show_upper_qual(plan->qual,
 								"Assert Cond",
+								NULL, outerPlan(plan),
+								NULL, NULL,
+								str, indent, es);
+			}
+			break;
+		case T_PartitionSelector:
+			{
+				List *list_qual = NULL;
+				Node *printablePredicate = ((PartitionSelector *) plan)->printablePredicate;
+				if (NULL != printablePredicate)
+				{
+					list_qual = list_make1(printablePredicate);
+				}
+				show_upper_qual(list_qual,
+								"Filter",
 								NULL, outerPlan(plan),
 								NULL, NULL,
 								str, indent, es);

@@ -388,11 +388,11 @@ select f1, ss1 as relabel from
      from int4_tbl a) ss;
      f1      |  relabel   
 -------------+------------
-      123456 | 2147607103
- -2147483647 |          0
            0 | 2147607103
      -123456 | 2147483647
   2147483647 | 2147483647
+      123456 | 2147607103
+ -2147483647 |          0
 (5 rows)
 
 --
@@ -502,16 +502,15 @@ NOTICE:  CREATE TABLE will create partition "csq_t2_1_prt_4" for table "csq_t2"
 insert into csq_t1 select * from csq_t1_base;
 insert into csq_t2 select * from csq_t2_base;
 explain select * from csq_t1 where csq_t1.x >ALL (select csq_t2.x from csq_t2 where csq_t2.y=csq_t1.y) order by 1;
-                                                                 QUERY PLAN
----------------------------------------------------------------------------------------------------------------------------------------------
+                                                                QUERY PLAN                                                                
+------------------------------------------------------------------------------------------------------------------------------------------
  Result  (cost=0.00..1293.00 rows=1 width=16)
    Filter: (subplan)
    ->  Sort  (cost=0.00..431.00 rows=1 width=16)
          Sort Key: csq_t1.x
          ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..431.00 rows=1 width=16)
                ->  Sequence  (cost=0.00..431.00 rows=1 width=16)
-                     ->  Result  (cost=0.00..431.00 rows=1 width=16)
-                           ->  Function Scan on gp_partition_expansion  (cost=10.00..100.00 rows=50 width=4)
+                     ->  Partition Selector  (cost=10.00..100.00 rows=50 width=4)
                      ->  Dynamic Table Scan on csq_t1 (partIndex: 1)  (cost=0.00..431.00 rows=1 width=16)
    SubPlan 1
      ->  Result  (cost=0.00..431.00 rows=1 width=1)
@@ -524,11 +523,10 @@ explain select * from csq_t1 where csq_t1.x >ALL (select csq_t2.x from csq_t2 wh
                                    ->  Materialize  (cost=0.00..431.00 rows=1 width=16)
                                          ->  Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..431.00 rows=1 width=16)
                                                ->  Sequence  (cost=0.00..431.00 rows=1 width=16)
-                                                     ->  Result  (cost=0.00..431.00 rows=1 width=16)
-                                                           ->  Function Scan on gp_partition_expansion  (cost=10.00..100.00 rows=50 width=4)
+                                                     ->  Partition Selector  (cost=10.00..100.00 rows=50 width=4)
                                                      ->  Dynamic Table Scan on csq_t2 (partIndex: 2)  (cost=0.00..431.00 rows=1 width=16)
  Settings:  optimizer=on; optimizer_segments=3
-(24 rows)
+(22 rows)
 
 select * from csq_t1 where csq_t1.x >ALL (select csq_t2.x from csq_t2 where csq_t2.y=csq_t1.y) order by 1; -- expected (4,2)
  x | y 
@@ -1119,9 +1117,9 @@ explain select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1
 select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1 where t0.n=t1.n);
   t  | n | i |  v  
 -----+---+---+-----
- xyz | 2 | 3 | def
  def | 3 | 1 | abc
  abc | 1 | 2 | xyz
+ xyz | 2 | 3 | def
 (3 rows)
 
 --
@@ -1148,9 +1146,9 @@ explain select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1
 select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1 where t0.n + 1=t1.n + 1);
   t  | n | i |  v  
 -----+---+---+-----
- abc | 1 | 2 | xyz
  xyz | 2 | 3 | def
  def | 3 | 1 | abc
+ abc | 1 | 2 | xyz
 (3 rows)
 
 --
@@ -1177,9 +1175,9 @@ explain select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1
 select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1 where t0.n + 1=t1.i + 1);
   t  | n | i |  v  
 -----+---+---+-----
- abc | 1 | 2 | xyz
  xyz | 2 | 3 | def
  def | 3 | 1 | abc
+ abc | 1 | 2 | xyz
 (3 rows)
 
 --
@@ -1304,8 +1302,8 @@ explain select * from finra_t1 where x in (select y from finra_t2 union all sele
 select * from finra_t1 where x in (select y from finra_t2 union all select y from finra_t2);
  x 
 ---
- 1
  2
+ 1
 (2 rows)
 
 explain select count(*) from finra_t1 where x in (select y from finra_t2);
@@ -1487,21 +1485,21 @@ select i, relname, relowner from pg_class, generate_series(-1, (select max(conte
 from gp_configuration)) i order by 1;
                                                QUERY PLAN                                               
 --------------------------------------------------------------------------------------------------------
- SetOp Except  (cost=402614.97..416095.04 rows=134801 width=72)
-   ->  Sort  (cost=402614.97..405984.99 rows=1348008 width=72)
+ SetOp Except  (cost=268837.63..277837.70 rows=90001 width=72)
+   ->  Sort  (cost=268837.63..271087.65 rows=900008 width=72)
          Sort Key: gp_segment_id, relname, relowner
-         ->  Append  (cost=0.00..61946.70 rows=1348008 width=72)
-               ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..14.18 rows=8 width=72)
-                     ->  Subquery Scan "*SELECT* 1"  (cost=0.00..14.18 rows=4 width=72)
-                           ->  Seq Scan on pg_class  (cost=0.00..14.11 rows=4 width=72)
+         ->  Append  (cost=0.00..44023.34 rows=900008 width=72)
+               ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..10.82 rows=8 width=72)
+                     ->  Subquery Scan "*SELECT* 1"  (cost=0.00..10.82 rows=4 width=72)
+                           ->  Seq Scan on pg_class  (cost=0.00..10.75 rows=4 width=72)
                                  Filter: relname ~~ 'gp_%'::text AND gp_segment_id = 0
-               ->  Subquery Scan "*SELECT* 2"  (cost=0.02..61932.52 rows=1348000 width=72)
-                     ->  Nested Loop  (cost=0.02..48452.52 rows=1348000 width=72)
+               ->  Subquery Scan "*SELECT* 2"  (cost=0.02..44012.52 rows=900000 width=72)
+                     ->  Nested Loop  (cost=0.02..35012.52 rows=900000 width=72)
                            InitPlan  (slice2)
                              ->  Aggregate  (cost=0.01..0.02 rows=1 width=2)
                                    ->  Seq Scan on gp_configuration  (cost=0.00..0.00 rows=2 width=2)
                            ->  Function Scan on generate_series i  (cost=0.00..12.50 rows=2000 width=4)
-                           ->  Seq Scan on pg_class  (cost=0.00..10.74 rows=1348 width=68)
+                           ->  Seq Scan on pg_class  (cost=0.00..8.50 rows=900 width=68)
  Settings:  optimizer=on; optimizer_segments=3
 (16 rows)
 

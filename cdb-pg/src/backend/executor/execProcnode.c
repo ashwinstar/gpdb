@@ -120,6 +120,7 @@
 #include "executor/nodeUnique.h"
 #include "executor/nodeValuesscan.h"
 #include "executor/nodeWindow.h"
+#include "executor/nodePartitionSelector.h"
 #include "miscadmin.h"
 #include "tcop/tcopprot.h"
 #include "cdb/cdbvars.h"
@@ -673,6 +674,16 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 			}
 			END_MEMORY_ACCOUNT();
  			break;
+		case T_PartitionSelector:
+			curMemoryAccount = CREATE_EXECUTOR_MEMORY_ACCOUNT(isAlienPlanNode, node, PartitionSelector);
+
+			START_MEMORY_ACCOUNT(curMemoryAccount);
+			{
+			result = (PlanState *) ExecInitPartitionSelector((PartitionSelector *) node,
+															estate, eflags);
+			}
+			END_MEMORY_ACCOUNT();
+			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
 			result = NULL;		/* keep compiler quiet */
@@ -837,7 +848,8 @@ ExecProcNode(PlanState *node)
 		&&Exec_Jmp_DML,
 		&&Exec_Jmp_SplitUpdate,
 		&&Exec_Jmp_RowTrigger,
-		&&Exec_Jmp_AssertOp
+		&&Exec_Jmp_AssertOp,
+		&&Exec_Jmp_PartitionSelector
 	};
 
 	COMPILE_ASSERT((T_Plan_End - T_Plan_Start) == (T_PlanState_End - T_PlanState_Start));
@@ -1014,6 +1026,10 @@ Exec_Jmp_RowTrigger:
 
 Exec_Jmp_AssertOp:
 	result = ExecAssertOp((AssertOpState *) node);
+	goto Exec_Jmp_Done;
+
+Exec_Jmp_PartitionSelector:
+	result = ExecPartitionSelector((PartitionSelectorState *) node);
 	goto Exec_Jmp_Done;
 
 Exec_Jmp_Done:
@@ -1418,6 +1434,9 @@ ExecCountSlotsNode(Plan *node)
 		case T_RowTrigger:
  			return ExecCountSlotsRowTrigger((RowTrigger *) node);
 
+		case T_PartitionSelector:
+			return ExecCountSlotsPartitionSelector((PartitionSelector *) node);
+
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
 			break;
@@ -1717,6 +1736,9 @@ ExecEndNode(PlanState *node)
 		case T_RowTriggerState:
  			ExecEndRowTrigger((RowTriggerState *) node);
  			break;
+		case T_PartitionSelectorState:
+			ExecEndPartitionSelector((PartitionSelectorState *) node);
+			break;
 
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));

@@ -238,7 +238,7 @@ namespace gpdb {
 	List *PlCheckConstraint(Oid oidRel);
 
 	// part constraint expression tree
-	Node *PnodePartConstraintRel(Oid oidRel, bool *pfDefaultConstraint);
+	Node *PnodePartConstraintRel(Oid oidRel, List **pplDefaultLevels);
 
 	// get the cast function for the specified source and destination types
 	bool FCastFunc(Oid oidSrc, Oid oidDest, bool *is_binary_coercible, Oid *oidCastFunc);
@@ -286,7 +286,7 @@ namespace gpdb {
 	List *PlPartitionAttrs(Oid oid);
 
 	// parts of a partitioned table
-	PartitionNode *PpnParts(Oid relid, int2 level, Oid parent, bool inctemplate, MemoryContext mcxt);
+	PartitionNode *PpnParts(Oid relid, int2 level, Oid parent, bool inctemplate, MemoryContext mcxt, bool includesubparts);
 
 	// keys of the relation with the given oid
 	List *PlRelationKeys(Oid relid);

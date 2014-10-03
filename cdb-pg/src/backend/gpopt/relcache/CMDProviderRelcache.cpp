@@ -79,27 +79,4 @@ CMDProviderRelcache::PstrObject
 	return pstr;
 }
 
-//---------------------------------------------------------------------------
-//	@function:
-//		CMDProviderRelcache::PmdidFunc
-//
-//	@doc:
-//		Returns the mdid for the requested type
-//
-//---------------------------------------------------------------------------
-IMDId *
-CMDProviderRelcache::PmdidFunc
-	(
-	IMemoryPool *pmp,
-	CSystemId , // sysid
-	IMDFunction::EFuncType eft
-	)
-	const
-{
-	// find id of requested function by the function name
-	const WCHAR *wszFuncName = IMDFunction::WszFuncName(eft);
-
-	return CTranslatorRelcacheToDXL::PmdidFunc(pmp, wszFuncName);
-}
-
 // EOF

@@ -262,7 +262,7 @@ namespace gpdxl
 				const CDXLNode *pdxln,
 				CDXLTranslateContext *pdxltrctxOut,
 				Plan *pplanParent,
-				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
 				);
 
 			// main translation routine for DXL tree -> PlannedStmt
@@ -294,7 +294,7 @@ namespace gpdxl
 				const CDXLNode *pdxlnTblScan,
 				CDXLTranslateContext *pdxltrctxOut,
 				Plan *pplanParent,
-				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
 				);
 
 			// translate DXL index scan node into a IndexScan node
@@ -303,7 +303,7 @@ namespace gpdxl
 				const CDXLNode *pdxlnIndexScan,
 				CDXLTranslateContext *pdxltrctxOut,
 				Plan *pplanParent,
-				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
 				);
 
 			// translates a DXL index scan node into a IndexScan node
@@ -314,7 +314,7 @@ namespace gpdxl
 				CDXLTranslateContext *pdxltrctxOut,
 				Plan *pplanParent,
 				BOOL fIndexOnlyScan,
-				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
 				);
 
 			// translate DXL hash join into a HashJoin node
@@ -323,7 +323,7 @@ namespace gpdxl
 				const CDXLNode *pdxlnHJ,
 				CDXLTranslateContext *pdxltrctxOut,
 				Plan *pplanParent,
-				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
 				);
 
 			// translate DXL nested loop join into a NestLoop node
@@ -332,7 +332,7 @@ namespace gpdxl
 				const CDXLNode *pdxlnNLJ,
 				CDXLTranslateContext *pdxltrctxOut,
 				Plan *pplanParent,
-				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
 				);
 
 			// translate DXL merge join into a MergeJoin node
@@ -341,7 +341,7 @@ namespace gpdxl
 				const CDXLNode *pdxlnMJ,
 				CDXLTranslateContext *pdxltrctxOut,
 				Plan *pplanParent,
-				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
 				);
 
 			// translate DXL motion node into GPDB Motion plan node
@@ -350,7 +350,7 @@ namespace gpdxl
 				const CDXLNode *pdxlnMotion,
 				CDXLTranslateContext *pdxltrctxOut,
 				Plan *pplanParent,
-				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
 				);
 
 			// translate DXL motion node
@@ -359,7 +359,7 @@ namespace gpdxl
 				const CDXLNode *pdxlnMotion,
 				CDXLTranslateContext *pdxltrctxOut,
 				Plan *pplanParent,
-				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
 				);
 
 			// translate DXL duplicate sensitive redistribute motion node into 
@@ -369,7 +369,7 @@ namespace gpdxl
 				const CDXLNode *pdxlnMotion,
 				CDXLTranslateContext *pdxltrctxOut,
 				Plan *pplanParent,
-				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
 				);
 
 			// translate DXL aggregate node into GPDB Agg plan node
@@ -378,7 +378,7 @@ namespace gpdxl
 				const CDXLNode *pdxlnMotion,
 				CDXLTranslateContext *pdxltrctxOut,
 				Plan *pplanParent,
-				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
 				);
 
 			// translate DXL window node into GPDB window node
@@ -387,7 +387,7 @@ namespace gpdxl
 				const CDXLNode *pdxlnMotion,
 				CDXLTranslateContext *pdxltrctxOut,
 				Plan *pplanParent,
-				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
 				);
 
 			// translate the DXL window frame into GPDB window frame node
@@ -405,7 +405,7 @@ namespace gpdxl
 				const CDXLNode *pdxlnSort,
 				CDXLTranslateContext *pdxltrctxOut,
 				Plan *pplanParent,
-				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
 				);
 
 			// translate a DXL node into a Hash node
@@ -414,7 +414,7 @@ namespace gpdxl
 				const CDXLNode *pdxln,
 				CDXLTranslateContext *pdxltrctxOut,
 				Plan *pplanParent,
-				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
 				);
 
 			// translate DXL Limit node into a Limit node
@@ -423,7 +423,7 @@ namespace gpdxl
 				const CDXLNode *pdxlnLimit,
 				CDXLTranslateContext *pdxltrctxOut,
 				Plan *pplanParent,
-				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
 				);
 
 			// translate DXL TVF into a GPDB Function Scan node
@@ -432,7 +432,7 @@ namespace gpdxl
 				const CDXLNode *pdxlnTVF,
 				CDXLTranslateContext *pdxltrctxOut,
 				Plan *pplanParent,
-				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
 				);
 
 			Plan *PsubqscanFromDXLSubqScan
@@ -440,7 +440,7 @@ namespace gpdxl
 				const CDXLNode *pdxlnSubqScan,
 				CDXLTranslateContext *pdxltrctxOut,
 				Plan *pplanParent,
-				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
 				);
 
 			Plan *PresultFromDXLResult
@@ -448,7 +448,7 @@ namespace gpdxl
 				const CDXLNode *pdxlnResult,
 				CDXLTranslateContext *pdxltrctxOut,
 				Plan *pplanParent,
-				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
 				);
 
 			Plan *PappendFromDXLAppend
@@ -456,7 +456,7 @@ namespace gpdxl
 				const CDXLNode *pdxlnAppend,
 				CDXLTranslateContext *pdxltrctxOut,
 				Plan *pplanParent,
-				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
 				);
 
 			Plan *PmatFromDXLMaterialize
@@ -464,7 +464,7 @@ namespace gpdxl
 				const CDXLNode *pdxlnMaterialize,
 				CDXLTranslateContext *pdxltrctxOut,
 				Plan *pplanParent,
-				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
 				);
 
 			Plan *PshscanFromDXLSharedScan
@@ -472,7 +472,7 @@ namespace gpdxl
 				const CDXLNode *pdxlnSharedScan,
 				CDXLTranslateContext *pdxltrctxOut,
 				Plan *pplanParent,
-				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
 				);
 
 			// translate a sequence operator
@@ -481,7 +481,7 @@ namespace gpdxl
 				const CDXLNode *pdxlnSequence,
 				CDXLTranslateContext *pdxltrctxOut,
 				Plan *pplanParent,
-				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
 				);
 
 			// translate a dynamic table scan operator
@@ -490,7 +490,7 @@ namespace gpdxl
 				const CDXLNode *pdxlnDTS,
 				CDXLTranslateContext *pdxltrctxOut,
 				Plan *pplanParent,
-				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
 				);	
 			
 			// translate a dynamic index scan operator
@@ -499,7 +499,7 @@ namespace gpdxl
 				const CDXLNode *pdxlnDIS,
 				CDXLTranslateContext *pdxltrctxOut,
 				Plan *pplanParent,
-				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
 				);
 			
 			// translate a DML operator
@@ -508,7 +508,7 @@ namespace gpdxl
 				const CDXLNode *pdxlnDML,
 				CDXLTranslateContext *pdxltrctxOut,
 				Plan *pplanParent,
-				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
 				);
 
 			// translate a Split operator
@@ -517,7 +517,7 @@ namespace gpdxl
 				const CDXLNode *pdxlnSplit,
 				CDXLTranslateContext *pdxltrctxOut,
 				Plan *pplanParent,
-				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
 				);
 			
 			// translate a row trigger operator
@@ -526,7 +526,7 @@ namespace gpdxl
 				const CDXLNode *pdxlnRowTrigger,
 				CDXLTranslateContext *pdxltrctxOut,
 				Plan *pplanParent,
-				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
 				);
 
 			// translate an Assert operator
@@ -535,7 +535,7 @@ namespace gpdxl
 				const CDXLNode *pdxlnAssert,
 				CDXLTranslateContext *pdxltrctxOut,
 				Plan *pplanParent,
-				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
 				);
 
 			// Initialize spooling information
@@ -554,7 +554,7 @@ namespace gpdxl
 				const CDXLNode *pdxlnCTEProducer,
 				CDXLTranslateContext *pdxltrctxOut,
 				Plan *pplanParent,
-				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
 				);
 
 			// translate a CTE consumer into a GPDB share input scan
@@ -563,7 +563,7 @@ namespace gpdxl
 				const CDXLNode *pdxlnCTEConsumer,
 				CDXLTranslateContext *pdxltrctxOut,
 				Plan *pplanParent,
-				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
 				);
 
 			// translate a (dynamic) bitmap table scan operator
@@ -572,7 +572,26 @@ namespace gpdxl
 				const CDXLNode *pdxlnBitmapScan,
 				CDXLTranslateContext *pdxltrctxOut,
 				Plan *pplanParent,
-				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
+				);
+
+			// translate a DXL PartitionSelector into a GPDB PartitionSelector
+			Plan *PplanPartitionSelector
+				(
+				const CDXLNode *pdxlnPartitionSelector,
+				CDXLTranslateContext *pdxltrctxOut,
+				Plan *pplanParent,
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
+				);
+
+			// translate DXL filter list into GPDB filter list
+			List *PlFilterList
+				(
+				const CDXLNode *pdxlnFilterList,
+				const CDXLTranslateContextBaseTable *pdxltrctxbt,
+				DrgPdxltrctx *pdrgpdxltrctx,
+				CDXLTranslateContext *pdxltrctxOut,
+				Plan *pplanParent
 				);
 
 			// create range table entry from a CDXLPhysicalTVF node

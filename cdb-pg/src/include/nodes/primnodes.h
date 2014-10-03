@@ -1422,4 +1422,38 @@ typedef struct DMLActionExpr
 	Expr        xpr;
 } DMLActionExpr;
 
+/*
+ * PartOidExpr
+ * Represents the expression which holds a part oid in a PartitionSelector operator
+ */
+typedef struct PartOidExpr
+{
+	Expr		xpr;
+	int 		level;			/* partitioning level */
+} PartOidExpr;
+
+/*
+ * PartBoundExpr
+ * Represents the expression which holds a part boundary in a PartitionSelector operator
+ */
+typedef struct PartBoundExpr
+{
+	Expr		xpr;
+	int 		level;			/* partitioning level */
+	Oid 		boundType;		/* the return type of this boundary - same as part key */
+	bool 		isLowerBound;	/* lower (min) or upper (max) bound */
+} PartBoundExpr;
+
+/*
+ * PartBoundInclusionExpr
+ * Represents the expression which determines whether a part boundary is inclusive or not
+ * in a PartitionSelector operator
+ */
+typedef struct PartBoundInclusionExpr
+{
+	Expr		xpr;
+	int			level;			/* partitioning level */
+	bool		isLowerBound;	/* lower (min) or upper (max) bound */
+} PartBoundInclusionExpr;
+
 #endif   /* PRIMNODES_H */

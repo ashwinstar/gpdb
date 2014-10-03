@@ -221,6 +221,24 @@ plan_tree_mutator(Node *node,
 				return (Node *) newAssert;
 			}
 
+		case T_PartitionSelector:
+			{
+				PartitionSelector *partsel = (PartitionSelector *) node;
+				PartitionSelector *newPartsel = NULL;
+
+				FLATCOPY(newPartsel, partsel, PartitionSelector);
+				PLANMUTATE(newPartsel, partsel);
+				MUTATE(newPartsel->levelEqExpressions, partsel->levelEqExpressions, List *);
+				MUTATE(newPartsel->levelExpressions, partsel->levelExpressions, List *);
+				MUTATE(newPartsel->residualPredicate, partsel->residualPredicate, Node *);
+				MUTATE(newPartsel->propagationExpression, partsel->propagationExpression, Node *);
+				MUTATE(newPartsel->printablePredicate, partsel->printablePredicate, Node *);
+				newPartsel->nLevels = partsel->nLevels;
+				newPartsel->relid = partsel->relid;
+
+				return (Node *) newPartsel;
+			}
+
 		case T_BitmapAnd:
 			{
 				BitmapAnd  *old = (BitmapAnd *) node;

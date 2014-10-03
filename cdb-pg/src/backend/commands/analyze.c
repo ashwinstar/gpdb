@@ -374,7 +374,7 @@ void analyzeStmt(VacuumStmt *stmt, List *relids)
 		else if (rel_is_partitioned(relationOid) && !stmt->rootonly)
 		{
 			PartitionNode *pn = get_parts(relationOid, 0 /*level*/ ,
-		 	 	            0 /*parent*/, false /* inctemplate */, CurrentMemoryContext);
+		 	 	            0 /*parent*/, false /* inctemplate */, CurrentMemoryContext, true /*includesubparts*/);
 			Assert(pn);
 			lRelOids = all_partition_relids(pn);
 			lRelOids = lappend_oid(lRelOids, relationOid);
@@ -1378,7 +1378,7 @@ static void analyzeEstimateReltuplesRelpages(Oid relationOid, float4 *relTuples,
 			(optimizer_analyze_root_partition || rootonly))
 	{
 		PartitionNode *pn = get_parts(relationOid, 0 /*level*/ ,
-				0 /*parent*/, false /* inctemplate */, CurrentMemoryContext);
+				0 /*parent*/, false /* inctemplate */, CurrentMemoryContext, true /*includesubparts*/);
 		Assert(pn);
 		allRelOids = all_partition_relids(pn);
 	}

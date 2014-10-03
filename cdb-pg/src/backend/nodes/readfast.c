@@ -389,6 +389,39 @@ _readDMLActionExpr(const char ** str)
 	READ_DONE();
 }
 
+static PartOidExpr *
+_readPartOidExpr(const char ** str)
+{
+	READ_LOCALS(PartOidExpr);
+
+	READ_INT_FIELD(level);
+
+	READ_DONE();
+}
+
+static PartBoundExpr *
+_readPartBoundExpr(const char ** str)
+{
+	READ_LOCALS(PartBoundExpr);
+
+	READ_INT_FIELD(level);
+	READ_OID_FIELD(boundType);
+	READ_BOOL_FIELD(isLowerBound);
+
+	READ_DONE();
+}
+
+static PartBoundInclusionExpr *
+_readPartBoundInclusionExpr(const char ** str)
+{
+	READ_LOCALS(PartBoundInclusionExpr);
+
+	READ_INT_FIELD(level);
+	READ_BOOL_FIELD(isLowerBound);
+
+	READ_DONE();
+}
+
 /*
  * _readRowMarkClause
  */
@@ -3453,6 +3486,27 @@ _readAssertOp(const char ** str)
 	READ_DONE();
 }
 
+/*
+ * _readPartitionSelector
+ */
+static PartitionSelector *
+_readPartitionSelector(const char ** str)
+{
+	READ_LOCALS(PartitionSelector);
+
+	READ_INT_FIELD(relid);
+	READ_INT_FIELD(nLevels);
+	READ_NODE_FIELD(levelEqExpressions);
+	READ_NODE_FIELD(levelExpressions);
+	READ_NODE_FIELD(residualPredicate);
+	READ_NODE_FIELD(propagationExpression);
+	READ_NODE_FIELD(printablePredicate);
+
+	readPlanInfo(str, (Plan *)local_node);
+
+	READ_DONE();
+}
+
 
 /*
  * _readVacuumStmt
@@ -4013,6 +4067,9 @@ readNodeBinary(const char ** str)
 			case T_AssertOp:
 				return_value = _readAssertOp(str);
 				break;
+			case T_PartitionSelector:
+				return_value = _readPartitionSelector(str);
+				break;
 			case T_Alias:
 				return_value = _readAlias(str);
 				break;
@@ -4428,6 +4485,15 @@ readNodeBinary(const char ** str)
 				break;
 			case T_DMLActionExpr:
 				return_value = _readDMLActionExpr(str);
+				break;
+			case T_PartOidExpr:
+				return_value = _readPartOidExpr(str);
+				break;
+			case T_PartBoundExpr:
+				return_value = _readPartBoundExpr(str);
+				break;
+			case T_PartBoundInclusionExpr:
+				return_value = _readPartBoundInclusionExpr(str);
 				break;
 			case T_RowMarkClause:
 				return_value = _readRowMarkClause(str);

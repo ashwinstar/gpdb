@@ -139,6 +139,9 @@ expression_tree_walker(Node *node,
 		case T_RangeTblRef:
 		case T_OuterJoinInfo:
 		case T_DMLActionExpr:
+		case T_PartOidExpr:
+		case T_PartBoundExpr:
+		case T_PartBoundInclusionExpr:
 			/* primitive node types with no expression subnodes */
 			break;
 		case T_Aggref:
@@ -849,6 +852,19 @@ plan_tree_walker(Node *node,
 				return true;
 			break;
 
+		case T_PartitionSelector:
+			if (walk_plan_node_fields((Plan *) node, walker, context))
+				return true;
+			if (walker((Node *) ((PartitionSelector *) node)->levelEqExpressions, context))
+				return true;
+			if (walker((Node *) ((PartitionSelector *) node)->levelExpressions, context))
+				return true;
+			if (walker(((PartitionSelector *) node)->residualPredicate, context))
+				return true;
+			if (walker(((PartitionSelector *) node)->propagationExpression, context))
+				return true;
+			break;
+
 		case T_Repeat:
 			if (walk_plan_node_fields((Plan *) node, walker, context))
 				return true;
@@ -1143,6 +1159,9 @@ plan_tree_walker(Node *node,
 		case T_SetOperationStmt:
 		case T_InClauseInfo:
 		case T_TableValueExpr:
+		case T_PartOidExpr:
+		case T_PartBoundExpr:
+		case T_PartBoundInclusionExpr:
 
 		default:
 			return expression_tree_walker(node, walker, context);

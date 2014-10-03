@@ -70,10 +70,6 @@ namespace gpmd
 			virtual
 			CWStringBase *PstrObject(IMemoryPool *pmp, CMDAccessor *pmda, IMDId *pmdid) const;
 
-			// return the mdid for the requested function type
-			virtual
-			IMDId *PmdidFunc(IMemoryPool *pmp, CSystemId sysid, IMDFunction::EFuncType) const;
-
 			// return the mdid for the requested type
 			virtual
 			IMDId *Pmdid

@@ -313,9 +313,14 @@ CTranslatorUtils::Pdxltabdesc
 		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature, GPOS_WSZ_LIT("Inherited tables"));
 	}
 	
-	if (1 < pmdrel->UlPartColumns() || gpdb::FRelPartIsInterior(oidRel))
+	if (1 < pmdrel->UlPartColumns())
 	{
-		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature, GPOS_WSZ_LIT("Multi-level partitioning"));
+		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature, GPOS_WSZ_LIT("Multi-level partitioned tables"));
+	}
+
+	if (gpdb::FRelPartIsInterior(oidRel))
+	{
+		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature, GPOS_WSZ_LIT("Query on intermediate partition"));
 	}
 	
 	// look up table name

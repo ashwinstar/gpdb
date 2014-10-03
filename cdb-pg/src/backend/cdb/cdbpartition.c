@@ -74,6 +74,9 @@ constraint_diffs(List *cons_a, List *cons_b, bool match_names, List **missing, L
 
 static void add_template_encoding_clauses(Oid relid, Oid paroid, List *stenc);
 
+static PartitionNode *
+findPartitionNodeEntry(PartitionNode *partitionNode, Oid partOid);
+
 /*
  * Hash keys are null-terminated C strings assumed to be stably 
  * allocated. We accomplish this by allocating them in a context 
@@ -119,7 +122,8 @@ static bool compare_partn_opfuncid(PartitionNode *partnode,
 								   TupleDesc tupdesc);
 static PartitionNode *
 selectListPartition(PartitionNode *partnode, Datum *values, bool *isnull,
-					TupleDesc tupdesc, PartitionAccessMethods *accessMethods, Oid *found);
+					TupleDesc tupdesc, PartitionAccessMethods *accessMethods,
+					Oid *foundOid, PartitionRule **prule);
 static void
 get_range_oper(int keyno, PartitionRangeState *rs, Oid typid, bool is_lt);
 static int
@@ -128,10 +132,11 @@ range_test(Datum tupval, Oid typid, PartitionRangeState *rs, int keyno,
 static PartitionNode *
 selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 					 TupleDesc tupdesc, PartitionAccessMethods *accessMethods,
-					 Oid *found, int *pSearch);
+					 Oid *foundOid, int *pSearch, PartitionRule **prule);
 static PartitionNode *
 selectHashPartition(PartitionNode *partnode, Datum *values, bool *isnull,
-					TupleDesc tupdesc, PartitionAccessMethods *accessMethods, Oid *found);
+					TupleDesc tupdesc, PartitionAccessMethods *accessMethods,
+					Oid *found, PartitionRule **prule);
 static Oid
 selectPartition1(PartitionNode *partnode, Datum *values, bool *isnull,
 				 TupleDesc tupdesc, PartitionAccessMethods *accessMethods,
@@ -1965,14 +1970,16 @@ partMakePartition(HeapTuple tuple, TupleDesc tupdesc, MemoryContext mcxt)
  * hence, the Oid) of the given part itself is not included in the
  * result.
  *
- *    relid			--	pg_class.oid of the partitioned table
- *    level			--	partitioning level
- *    parent		--	pg_partition_rule.oid of the parent of 
- *    inctemplate	--	should the tree include template rules?
+ *    relid				--	pg_class.oid of the partitioned table
+ *    level				--	partitioning level
+ *    parent			--	pg_partition_rule.oid of the parent of
+ *    inctemplate		--	should the tree include template rules?
+ *    mcxt				--	memory context
+ *    includesubparts	--	whether or not to include sub partitions
  */
 PartitionNode *
 get_parts(Oid relid, int2 level, Oid parent, bool inctemplate,
-		  MemoryContext mcxt)
+		  MemoryContext mcxt, bool includesubparts)
 {
 	PartitionNode *pnode = NULL;
 	MemoryContext oldcxt;
@@ -2027,21 +2034,35 @@ get_parts(Oid relid, int2 level, Oid parent, bool inctemplate,
 	 */
 	rel = heap_open(PartitionRuleRelationId, AccessShareLock);
 
-	pcqCtx = caql_beginscan(
-			caql_addrel(cqclr(&cqc), rel), 
-			cql("SELECT * FROM pg_partition_rule "
-				" WHERE paroid = :1 "
-				" AND parparentrule = :2 ",
-				ObjectIdGetDatum(pnode->part->partid),
-				ObjectIdGetDatum(parent)));
+	if (includesubparts)
+	{
+		pcqCtx = caql_beginscan(
+				caql_addrel(cqclr(&cqc), rel),
+				cql("SELECT * FROM pg_partition_rule "
+					" WHERE paroid = :1 "
+					" AND parparentrule = :2 ",
+					ObjectIdGetDatum(pnode->part->partid),
+					ObjectIdGetDatum(parent)));
+	}
+	else
+	{
+		pcqCtx = caql_beginscan(
+				caql_addrel(cqclr(&cqc), rel),
+				cql("SELECT * FROM pg_partition_rule "
+					" WHERE paroid = :1 ",
+					ObjectIdGetDatum(pnode->part->partid)));
+	}
 	
 	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
 	{
 		PartitionRule *rule;
 		
 		rule = ruleMakePartitionRule(tuple, RelationGetDescr(rel), mcxt);
-		rule->children = get_parts(relid, level + 1, rule->parruleid,
-								   inctemplate, mcxt);
+		if (includesubparts)
+		{
+			rule->children = get_parts(relid, level + 1, rule->parruleid,
+								   	   inctemplate, mcxt, true /*includesubparts*/);
+		}
 		
 		if (rule->parisdefault)
 			pnode->default_part = rule;
@@ -2077,7 +2098,7 @@ RelationBuildPartitionDescByOid(Oid relid, bool inctemplate)
 	PartitionNode *n;
 	MemoryContext mcxt = CurrentMemoryContext;
 
-	n = get_parts(relid, 0, 0, inctemplate, mcxt);
+	n = get_parts(relid, 0, 0, inctemplate, mcxt, true /*includesubparts*/);
 
 	return n;
 }
@@ -2591,10 +2612,12 @@ static List *rel_get_part_path(Oid relid)
 		return NIL;
 	
 	/* call the guts of RelationBuildPartitionDesc */
-	pNode = get_parts(masteroid, 0, 0, false, mcxt);
+	pNode = get_parts(masteroid, 0, 0, false, mcxt, true /*includesubparts*/);
 	
 	if (!pNode)
+	{
 		return NIL;
+	}
 	
 	part = pNode->part;
 	
@@ -3032,9 +3055,21 @@ static bool compare_partn_opfuncid(PartitionNode *partnode,
 	return true;
 } /* end compare_partn_opfuncid */
 
+/*
+ *	Given a partition-by-list PartitionNode, search for
+ *	a part that matches the given datum value.
+ *
+ *	Input parameters:
+ *	partnode: the PartitionNode that we search for matched parts
+ *	values, isnull: datum values to search for parts
+ *	tupdesc: TupleDesc for retrieving values
+ *	accessMethods: PartitionAccessMethods
+ *	foundOid: output parameter for matched part Oid
+ *	prule: output parameter for matched part PartitionRule
+ */
 static PartitionNode *
 selectListPartition(PartitionNode *partnode, Datum *values, bool *isnull,
-					TupleDesc tupdesc, PartitionAccessMethods *accessMethods, Oid *found)
+					TupleDesc tupdesc, PartitionAccessMethods *accessMethods, Oid *foundOid, PartitionRule **prule)
 {
 	ListCell *lc;
 	Partition *part = partnode->part;
@@ -3059,7 +3094,7 @@ selectListPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 	if (accessMethods && accessMethods->part_cxt)
 		oldcxt = MemoryContextSwitchTo(accessMethods->part_cxt);
 	
-	*found = InvalidOid;
+	*foundOid = InvalidOid;
 	
 	/* With LIST, we have no choice at the moment except to be exhaustive */
 	foreach(lc, partnode->rules)
@@ -3148,7 +3183,8 @@ selectListPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 		
 		if (matched)
 		{
-			*found = rule->parchildrelid;
+			*foundOid = rule->parchildrelid;
+			*prule = rule;
 			
 			/* go to the next level */
 			if (oldcxt)
@@ -3265,12 +3301,12 @@ range_test(Datum tupval, Oid typid, PartitionRangeState *rs, int keyno,
 
 /*
  * Given a partition specific part, a tuple as represented by d and isnull and
- * a list of rules, return an Oid in *found or the next set of rules.
+ * a list of rules, return an Oid in *foundOid or the next set of rules.
  */
 static PartitionNode *
 selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 					 TupleDesc tupdesc, PartitionAccessMethods *accessMethods,
-					 Oid *found, int *pSearch)
+					 Oid *foundOid, int *pSearch, PartitionRule **prule)
 {
 	List *rules = partnode->rules;
 	int high = list_length(rules) - 1;
@@ -3322,7 +3358,7 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 	if (accessMethods && accessMethods->part_cxt)
 		oldcxt = MemoryContextSwitchTo(accessMethods->part_cxt);
 	
-	*found = InvalidOid;
+	*foundOid = InvalidOid;
 	
 	/*
 	 * Use a binary search to try and pin point the region within the set of
@@ -3392,8 +3428,9 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 		/* special case, we matched */
 		if (partnode->part->parnatts == 1)
 		{
-			*found = rule->parchildrelid;
-			
+			*foundOid = rule->parchildrelid;
+			*prule = rule;
+	
 			pNode = rule->children;
 			goto l_fin_range;
 		}
@@ -3442,8 +3479,9 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 			
 			if (matched)
 			{
-				*found = rule->parchildrelid;
-				
+				*foundOid = rule->parchildrelid;
+				*prule = rule;
+	
 				pNode = rule->children;
 				goto l_fin_range;
 			}
@@ -3493,7 +3531,8 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 				break;
 			if (matched)
 			{
-				*found = rule->parchildrelid;
+				*foundOid = rule->parchildrelid;
+				*prule = rule;
 				
 				pNode = rule->children;
 				goto l_fin_range;
@@ -3522,7 +3561,7 @@ l_fin_range:
 /* select partition via hash */
 static PartitionNode *
 selectHashPartition(PartitionNode *partnode, Datum *values, bool *isnull,
-					TupleDesc tupdesc, PartitionAccessMethods *accessMethods, Oid *found)
+					TupleDesc tupdesc, PartitionAccessMethods *accessMethods, Oid *found, PartitionRule **prule)
 {
 	uint32 hash = 0;
 	int i;
@@ -3560,6 +3599,7 @@ selectHashPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 	rule = (PartitionRule *)list_nth(partnode->rules, part);
 	
 	*found = rule->parchildrelid;
+	*prule = rule;
 	
 	if (oldcxt)
 		MemoryContextSwitchTo(oldcxt);
@@ -3584,6 +3624,7 @@ selectPartition1(PartitionNode *partnode, Datum *values, bool *isnull,
 	Oid relid = InvalidOid;
 	Partition *part = partnode->part;
 	PartitionNode *pn = NULL;
+	PartitionRule *prule = NULL;
 	
 	if (ppn_out)
 		*ppn_out = NULL;
@@ -3593,15 +3634,15 @@ selectPartition1(PartitionNode *partnode, Datum *values, bool *isnull,
 	{
 		case 'r': /* range */
 			pn = selectRangePartition(partnode, values, isnull, tupdesc,
-									  accessMethods, &relid, pSearch);
+									  accessMethods, &relid, pSearch, &prule);
 			break;
 		case 'h': /* hash */
 			pn = selectHashPartition(partnode, values, isnull, tupdesc,
-									 accessMethods, &relid);
+									 accessMethods, &relid, &prule);
 			break;
 		case 'l': /* list */
 			pn = selectListPartition(partnode, values, isnull, tupdesc,
-									 accessMethods, &relid);
+									 accessMethods, &relid, &prule);
 			break;
 		default:
 			elog(ERROR, "unrecognized partitioning kind '%c'",
@@ -3653,6 +3694,54 @@ selectPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 {
 	return selectPartition1(partnode, values, isnull, tupdesc, accessMethods,
 							NULL, NULL);
+}
+
+/*
+ * get_next_level_matched_partition()
+ *
+ * Given pdata and prules, try to find a suitable partition for the input key.
+ * values is an array of datums representing the partitioning key, isnull
+ * tells us which of those is NULL. It will return NULL if no part matches.
+ *
+ * Input parameters:
+ * partnode: the PartitionNode that we search for matched parts
+ * values, isnull: datum values to search for parts
+ * tupdesc: TupleDesc for retrieving values
+ * accessMethods: PartitionAccessMethods
+ *
+ * return: PartitionRule of which constraints match the input key
+ */
+PartitionRule*
+get_next_level_matched_partition(PartitionNode *partnode, Datum *values, bool *isnull,
+								TupleDesc tupdesc, PartitionAccessMethods *accessMethods)
+{
+	Oid relid = InvalidOid;
+	Partition *part = partnode->part;
+	PartitionRule *prule = NULL;
+
+	/* what kind of partition? */
+	switch (part->parkind)
+	{
+		case 'r': /* range */
+			selectRangePartition(partnode, values, isnull, tupdesc,
+								accessMethods, &relid, NULL, &prule);
+			break;
+		case 'l': /* list */
+			selectListPartition(partnode, values, isnull, tupdesc,
+								accessMethods, &relid, &prule);
+			break;
+		default:
+			elog(ERROR, "unrecognized partitioning kind '%c'",
+				 part->parkind);
+			break;
+	}
+
+	if (NULL != prule)
+	{
+		return prule;
+	}
+	/* retry a default */
+	return partnode->default_part;
 }
 
 /*
@@ -4286,7 +4375,8 @@ atpxPart_validate_spec(
 							   pNode->part->parlevel + 1,
 							   InvalidOid, /* no parent for template */
 							   true,
-							   CurrentMemoryContext
+							   CurrentMemoryContext,
+							   true /*includesubparts*/
 							   );
 	}
 	
@@ -4550,7 +4640,8 @@ atpxPart_validate_spec(
 											   pNode2->part->parlevel + 1,
 											   InvalidOid, /* no parent for template */
 											   true,
-											   CurrentMemoryContext
+											   CurrentMemoryContext,
+											   true /*includesubparts*/
 											   );
 					}
 					
@@ -8016,7 +8107,6 @@ checkUniqueConstraintVsPartitioning(Relation rel, AttrNumber *indattr, int nidxa
 static bool IsLeafPartitionNode(PartitionNode *p)
 {
 	Assert(p);
-	Assert(list_length(p->rules) > 0);
 
 	/**
 	 * If all of the rules have no children, this is a leaf partition.
@@ -8482,4 +8572,113 @@ LogSelectedPartitionOids(HTAB *pidIndex)
 
 	elog(LOG, "DPE matched partitions: %s", DebugPartitionOid(elements, numPartitions));
 	pfree(elements);
+}
+
+/*
+ * findPartitionMetadataEntry
+ *   Find PartitionMetadata object for a given partition oid from a list.
+ *
+ * Input arguments:
+ * partsMetadata: list of PartitionMetadata
+ * partOid: Part Oid
+ * partsAndRules: output parameter for matched PartitionNode
+ * accessMethods: output parameter for PartitionAccessMethods
+ *
+ */
+void
+findPartitionMetadataEntry(List *partsMetadata, Oid partOid, PartitionNode **partsAndRules, PartitionAccessMethods **accessMethods)
+{
+	ListCell *lc = NULL;
+	foreach (lc, partsMetadata)
+	{
+		PartitionMetadata *metadata = (PartitionMetadata *)lfirst(lc);
+		*partsAndRules = findPartitionNodeEntry(metadata->partsAndRules, partOid);
+
+		if (NULL != *partsAndRules)
+		{
+			// accessMethods define the lookup access methods for partitions, one for each level
+			*accessMethods = metadata->accessMethods;
+			return;
+		}
+	}
+}
+
+/*
+ * findPartitionNodeEntry
+ *   Find PartitionNode object for a given partition oid
+ *
+ * Input arguments:
+ * partsMetadata: list of PartitionMetadata
+ * partOid: Part Oid
+ * return: matched PartitionNode
+ */
+static PartitionNode *
+findPartitionNodeEntry(PartitionNode *partitionNode, Oid partOid)
+{
+	if (NULL == partitionNode)
+	{
+		return NULL;
+	}
+
+	Assert(NULL != partitionNode->part);
+	if (partitionNode->part->parrelid == partOid)
+	{
+		return partitionNode;
+	}
+
+	/*
+	 * check recursively in child parts in case we have the oid of an
+	 * intermediate node
+	 */
+	PartitionNode *childNode = NULL;
+	ListCell *lcChild = NULL;
+	foreach (lcChild, partitionNode->rules)
+	{
+		PartitionRule *childRule = (PartitionRule *) lfirst(lcChild);
+		childNode = findPartitionNodeEntry(childRule->children, partOid);
+		if (NULL != childNode)
+		{
+			return childNode;
+		}
+	}
+
+	/*
+	 * check recursively in the default part, if any
+	 */
+	if (NULL != partitionNode->default_part)
+	{
+		childNode = findPartitionNodeEntry(partitionNode->default_part->children, partOid);
+	}
+
+	return childNode;
+}
+
+/*
+ * createValueArrays
+ *   Create an Datum/bool array that will be used to populate partition key value.
+ *
+ * The size of this array is based on the attribute number of the partition key.
+ */
+void
+createValueArrays(int keyAttno, Datum **values, bool **isnull)
+{
+	*values = palloc0(keyAttno * sizeof(Datum));
+	*isnull = palloc(keyAttno * sizeof(bool));
+	Assert (NULL != values);
+	Assert (NULL != isnull);
+
+	MemSet(*isnull, true, keyAttno * sizeof(bool));
+}
+
+/*
+ * freeValueArrays
+ *    Free Datum/bool array.
+ */
+void
+freeValueArrays(Datum *values, bool *isnull)
+{
+	Assert (NULL != values);
+	Assert (NULL != isnull);
+	pfree(values);
+	pfree(isnull);
 }

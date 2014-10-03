@@ -352,6 +352,27 @@ namespace gpdxl
 				CMappingColIdVar *pmapcidvar
 				);
 
+			// translate a scalar part oid into an Expr
+			Expr *PexprPartOid
+				(
+				const CDXLNode *pdxlnPartOid,
+				CMappingColIdVar *pmapcidvar
+				);
+
+			// translate a scalar part bound into an Expr
+			Expr *PexprPartBound
+				(
+				const CDXLNode *pdxlnPartBound,
+				CMappingColIdVar *pmapcidvar
+				);
+
+			// translate a scalar part bound inclusion into an Expr
+			Expr *PexprPartBoundInclusion
+				(
+				const CDXLNode *pdxlnPartBoundIncl,
+				CMappingColIdVar *pmapcidvar
+				);
+
 			// translate a scalar ident into an Expr
 			Expr *PexprFromDXLNodeScId
 				(
@@ -370,6 +391,14 @@ namespace gpdxl
 			// checks if the operator return a boolean result
 			static
 			BOOL FBoolean(CDXLNode *pdxln, CMDAccessor *pmda);
+
+			// check if the operator is a "true" bool constant
+			static
+			BOOL FConstTrue(CDXLNode *pdxln, CMDAccessor *pmda);
+
+			// check if the operator is a NULL constant
+			static
+			BOOL FConstNull(CDXLNode *pdxln);
 
 			// are there subqueries in the tree
 			BOOL FHasSubqueries() const

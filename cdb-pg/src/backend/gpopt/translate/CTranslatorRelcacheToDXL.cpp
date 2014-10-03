@@ -1129,12 +1129,28 @@ CTranslatorRelcacheToDXL::PmdindexPartTable
 	Node *pnodePartCnstr = pidxinfo->partCons;
 	List *plDefaultLevels = pidxinfo->defaultLevels;
 	
+	// get number of partitioning levels
+	List *plPartKeys = gpdb::PlPartitionAttrs(oidRel);
+	const ULONG ulLevels = gpdb::UlListLength(plPartKeys);
+	gpdb::FreeList(plPartKeys);
+
 	// get relation constraints
-	BOOL fDefaultPartitionRel = false;
-	Node *pnodePartCnstrRel = gpdb::PnodePartConstraintRel(oidRel, &fDefaultPartitionRel);
-	
-	BOOL fUnbounded = (NULL == pnodePartCnstr) && (NIL == plDefaultLevels) && fDefaultPartitionRel;
-	BOOL fDefaultPartition = fUnbounded || FDefaultPartition(plDefaultLevels, 0 /*ulLevel*/);
+	List *plDefaultLevelsRel = NIL;
+	Node *pnodePartCnstrRel = gpdb::PnodePartConstraintRel(oidRel, &plDefaultLevelsRel);
+
+	BOOL fUnbounded = (NULL == pnodePartCnstr) && (NIL == plDefaultLevels);
+	DrgPul *pdrgpulDefaultLevels = New(pmp) DrgPul(pmp);
+	for (ULONG ul = 0; ul < ulLevels; ul++)
+	{
+		BOOL fDefaultLevel = FDefaultPartition(plDefaultLevelsRel, ul);
+
+		fUnbounded = fUnbounded && fDefaultLevel;
+		if (fDefaultLevel || FDefaultPartition(plDefaultLevels, ul))
+		{
+			pdrgpulDefaultLevels->Append(New(pmp) ULONG(ul));
+		}
+	}
+
 	BOOL fPartial = (NULL != pnodePartCnstr || NIL != plDefaultLevels);
 
 	if (NULL == pnodePartCnstr)
@@ -1146,12 +1162,11 @@ CTranslatorRelcacheToDXL::PmdindexPartTable
 		}
 		else
 		{
-			GPOS_ASSERT(fDefaultPartition);
 			pnodePartCnstr = gpdb::PnodeMakeBoolConst(false /*value*/, false /*isull*/);
 		}
 	}
 		
-	CMDPartConstraintGPDB *pmdpartcnstr = PmdpartcnstrIndex(pmp, pmda, pmdrel, pnodePartCnstr, fDefaultPartition, fUnbounded);
+	CMDPartConstraintGPDB *pmdpartcnstr = PmdpartcnstrIndex(pmp, pmda, pmdrel, pnodePartCnstr, pdrgpulDefaultLevels, fUnbounded);
 	
 	pmdrel->Pmdid()->AddRef();
 	pmdidIndex->AddRef();
@@ -2734,7 +2749,7 @@ CTranslatorRelcacheToDXL::PdrgpulPartKeys
 	DrgPul *pdrgpulPartKeys = New(pmp) DrgPul(pmp);
 
 	MemoryContext mcxt = CurrentMemoryContext;
-	PartitionNode *pn = gpdb::PpnParts(oid, 0 /*level*/, 0 /*parent*/, false /*inctemplate*/, mcxt);
+	PartitionNode *pn = gpdb::PpnParts(oid, 0 /*level*/, 0 /*parent*/, false /*inctemplate*/, mcxt, true /*includesubparts*/);
 	GPOS_ASSERT(NULL != pn);
 	
 	if (gpdb::FHashPartitioned(pn->part->parkind))
@@ -2955,8 +2970,8 @@ CTranslatorRelcacheToDXL::PmdpartcnstrIndex
 	IMemoryPool *pmp,
 	CMDAccessor *pmda,
 	const IMDRelation *pmdrel,
-	Node *pnodePartCnstr, 
-	BOOL fDefaultPartition,
+	Node *pnodePartCnstr,
+	DrgPul *pdrgpulDefaultParts,
 	BOOL fUnbounded
 	)
 {
@@ -2983,7 +2998,7 @@ CTranslatorRelcacheToDXL::PmdpartcnstrIndex
 		pdrgpdxlcd->Append(pdxlcd);
 	}
 	
-	CMDPartConstraintGPDB *pmdpartcnstr = PmdpartcnstrFromNode(pmp, pmda, pdrgpdxlcd, pnodePartCnstr, fDefaultPartition, fUnbounded);
+	CMDPartConstraintGPDB *pmdpartcnstr = PmdpartcnstrFromNode(pmp, pmda, pdrgpdxlcd, pnodePartCnstr, pdrgpulDefaultParts, fUnbounded);
 	
 	pdrgpdxlcd->Release();
 
@@ -3008,8 +3023,26 @@ CTranslatorRelcacheToDXL::PmdpartcnstrRelation
 	)
 {
 	// get the part constraints
-	BOOL fDefaultPartition = false;
-	Node *pnode = gpdb::PnodePartConstraintRel(oidRel, &fDefaultPartition);
+	List *plDefaultLevelsRel = NIL;
+	Node *pnode = gpdb::PnodePartConstraintRel(oidRel, &plDefaultLevelsRel);
+
+	List *plPartKeys = gpdb::PlPartitionAttrs(oidRel);
+	const ULONG ulLevels = gpdb::UlListLength(plPartKeys);
+	gpdb::FreeList(plPartKeys);
+
+	BOOL fUnbounded = true;
+	DrgPul *pdrgpulDefaultLevels = New(pmp) DrgPul(pmp);
+	for (ULONG ul = 0; ul < ulLevels; ul++)
+	{
+		if (FDefaultPartition(plDefaultLevelsRel, ul))
+		{
+			pdrgpulDefaultLevels->Append(New(pmp) ULONG(ul));
+		}
+		else
+		{
+			fUnbounded = false;
+		}
+	}
 
 	DrgPdxlcd *pdrgpdxlcd = New(pmp) DrgPdxlcd(pmp);
 	const ULONG ulColumns = pdrgpmdcol->UlLength();
@@ -3033,7 +3066,7 @@ CTranslatorRelcacheToDXL::PmdpartcnstrRelation
 		pdrgpdxlcd->Append(pdxlcd);
 	}
 	
-	CMDPartConstraintGPDB *pmdpartcnstr = PmdpartcnstrFromNode(pmp, pmda, pdrgpdxlcd, pnode, fDefaultPartition, fDefaultPartition /*fUnbounded*/);
+	CMDPartConstraintGPDB *pmdpartcnstr = PmdpartcnstrFromNode(pmp, pmda, pdrgpdxlcd, pnode, pdrgpulDefaultLevels, fUnbounded);
 	
 	pdrgpdxlcd->Release();
 
@@ -3055,7 +3088,7 @@ CTranslatorRelcacheToDXL::PmdpartcnstrFromNode
 	CMDAccessor *pmda,
 	DrgPdxlcd *pdrgpdxlcd,
 	Node *pnodeCnstr,
-	BOOL fDefaultPartition,
+	DrgPul *pdrgpulDefaultParts,
 	BOOL fUnbounded
 	)
 {
@@ -3089,7 +3122,7 @@ CTranslatorRelcacheToDXL::PmdpartcnstrFromNode
 	// cleanup
 	delete pmapvarcolid;
 
-	return New(pmp) CMDPartConstraintGPDB(pdxlnScalar, fDefaultPartition, fUnbounded);
+	return New(pmp) CMDPartConstraintGPDB(pmp, pdxlnScalar, pdrgpulDefaultParts, fUnbounded);
 }
 
 //---------------------------------------------------------------------------
