@@ -381,13 +381,6 @@ static void pljavaDieHandler(int signum)
 	}
 }
 
-static void pljavaQuickDieHandler(int signum)
-{
-	/* Just die. No ereporting here since we don't know what thread this is.
-	 */
-	exit(1);
-}
-
 static sigjmp_buf recoverBuf;
 static void terminationTimeoutHandler(int signum)
 {
@@ -697,7 +690,6 @@ static void initializeJavaVM(void)
 #if !defined(WIN32)
 	pqsignal(SIGINT,  pljavaStatementCancelHandler);
 	pqsignal(SIGTERM, pljavaDieHandler);
-	pqsignal(SIGQUIT, pljavaQuickDieHandler);
 #endif
 	elog(DEBUG1, "JavaVM created");
 
