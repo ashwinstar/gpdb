@@ -144,6 +144,16 @@ void
 proc_exit_prepare(int code)
 {
 	/*
+	 * If we came here from any critical section, we don't have safe way to
+	 * clean up shared memory or transaction state.  Though it's not a pleasant
+	 * solution, this is better than messing up database.  This is the least
+	 * desirable bail-out, and whenever you should see this situation, you
+	 * should consider to resolve the actual programming error.
+	 */
+	if (CritSectionCount > 0)
+		elog(PANIC, "process is dying from critical secion");
+
+	/*
 	 * Once we set this flag, we are committed to exit.  Any ereport() will
 	 * NOT send control back to the main loop, but right back here.
 	 */
