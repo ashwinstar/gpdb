@@ -27,14 +27,36 @@ def populate_filter_tables(table, rows, non_partition_tables, partition_leaves):
             partition_leaf = schema_name.strip() + '.' + partition_leaf_name.strip()
             partition_leaves.append(partition_leaf)
     return (non_partition_tables, partition_leaves)
-                    
-def expand_partition_tables(dbname, filter_tables):
+
+def get_all_parent_tables(dbname):
+    SQL = "SELECT DISTINCT (schemaname || '.' || tablename) FROM pg_partitions"
+    data = []
+    with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
+        curs = dbconn.execSQL(conn, SQL)
+        data = curs.fetchall()
+    return set([d[0] for d in data])
+
+global_parent_table_set = None
+def is_parent_table(dbname, tablename):
+    global global_parent_table_set 
+    if global_parent_table_set is None:
+        global_parent_table_set = get_all_parent_tables(dbname)
+    if tablename in global_parent_table_set:
+        return True
+    else:
+        return False
+
+def list_to_quoted_string(filter_tables):
+    filter_string = "'" + "', '".join([t.strip() for t in filter_tables]) + "'"
+    return filter_string
+
+def convert_parents_to_leafs(dbname, parents):
     partition_leaves_sql = """
-                           SELECT x.partitionschemaname, x.partitiontablename 
+                           SELECT x.partitionschemaname || '.' || x.partitiontablename 
                            FROM (
                                 SELECT distinct schemaname, tablename, partitionschemaname, partitiontablename, partitionlevel 
                                 FROM pg_partitions 
-                                WHERE tablename = '%s' and schemaname = '%s'
+                                WHERE schemaname || '.' || tablename in (%s)
                                 ) as X, 
                            (SELECT schemaname, tablename maxtable, max(partitionlevel) maxlevel 
                             FROM pg_partitions 
@@ -42,23 +64,47 @@ def expand_partition_tables(dbname, filter_tables):
                            ) as Y
                            WHERE x.schemaname = y.schemaname and x.tablename = Y.maxtable and x.partitionlevel = Y.maxlevel;
 """
+    if not parents:
+        return []
+
+    conn = dbconn.connect(dbconn.DbURL(dbname=dbname))
+    partition_sql = partition_leaves_sql % list_to_quoted_string(parents)
+    curs = dbconn.execSQL(conn, partition_sql)
+    rows = curs.fetchall()
+    return [r[0] for r in rows]
+
+
+#input: list of tables to be filtered
+#output: same list but parent tables converted to leafs
+def expand_partition_tables(dbname, filter_tables):
 
     if filter_tables is None:
-        return
+        return None
+    parent_tables = list()
+    non_parent_tables = list()
+    expanded_list = list()
+    for table in filter_tables:
+        if is_parent_table(dbname, table):
+            parent_tables.append(table)
+        else:
+            non_parent_tables.append(table)
 
-    non_partition_tables = []
-    partition_leaves = []
+    expanded_list += non_parent_tables
+  
+    local_batch_size = 1000
+    for (s, e) in get_batch_from_list(len(parent_tables), local_batch_size):
+        parent_table_batch = parent_tables[s:e]
+        tmp = convert_parents_to_leafs(dbname, parent_tables)
+        expanded_list += tmp
 
-    with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
-        for table in filter_tables:
-            (schemaname, tablename) = table.split('.')
-            partition_sql = partition_leaves_sql % (tablename, schemaname)
-            curs = dbconn.execSQL(conn, partition_sql)
-            rows = curs.fetchall()
-            (non_partition_tables, partition_leaves) =  \
-                    populate_filter_tables(table, rows, non_partition_tables, partition_leaves)
-    return non_partition_tables + partition_leaves 
+    return expanded_list
 
+def get_batch_from_list(length, batch_size):
+    indices = []
+    for i in range(0,length, batch_size):
+        indices.append((i,i+batch_size))
+    return indices
+        
 def create_temp_file_from_list(entries, prefix):
 
     if entries is None:

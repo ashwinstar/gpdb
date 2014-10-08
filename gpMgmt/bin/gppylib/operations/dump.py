@@ -1447,25 +1447,21 @@ class ValidateSchemaExists(Operation):
             if conn is not None:
                 conn.close()
 
-
-
 class CheckTableExists(Operation):
-    """ TODO: move this to gppylib.operations.common? """
+    all_tables = None 
     def __init__(self, database, schema, table, master_port):
         self.database = database
         self.schema = schema
         self.table = table
         self.master_port = master_port
+        if CheckTableExists.all_tables is None: 
+            CheckTableExists.all_tables = set()
+            for (schema, table) in get_user_table_list(self.master_port, self.database):
+                CheckTableExists.all_tables.add((schema, table))
     def execute(self):
-        try:
-            dburl = dbconn.DbURL(port=self.master_port, dbname=self.database)
-            conn = dbconn.connect(dburl)
-            count = execSQLForSingleton(conn, "select count(*) from pg_class, pg_namespace where pg_class.relname = '%s' and pg_class.relnamespace = pg_namespace.oid and pg_namespace.nspname = '%s'" % (self.table, self.schema))
-            return count > 0
-        finally:
-            if conn is not None:
-                conn.close()
-
+        if (self.schema, self.table) in CheckTableExists.all_tables:
+            return True 
+        return False
 
 class ValidateCluster(Operation):
     def __init__(self, master_port):

@@ -23,7 +23,7 @@ from gppylib.operations.backup_utils import generate_report_filename, validate_t
                                             generate_master_status_prefix, generate_seg_dbdump_prefix, generate_seg_status_prefix, \
                                             generate_dbdump_prefix, generate_createdb_filename, generate_filter_filename, backup_file_with_nbu, \
                                             restore_file_with_nbu, generate_global_filename, generate_cdatabase_filename, check_file_dumped_with_nbu, \
-                                            get_full_timestamp_for_incremental_with_nbu, get_latest_full_ts_with_nbu, generate_schema_filename
+                                            get_full_timestamp_for_incremental_with_nbu, get_latest_full_ts_with_nbu, generate_schema_filename, get_batch_from_list, list_to_quoted_string
 
 from mock import patch, MagicMock, Mock
 
@@ -1033,6 +1033,65 @@ class BackupUtilsTestCase(unittest.TestCase):
         contents = get_lines_from_file(result)
         self.assertEqual(contents.sort(), partition_list.sort())
         os.remove(result)
+
+    def test_get_batch_from_list00(self):
+        batch = 1000
+        length = 3033
+        expected = [(0,1000), (1000,2000), (2000,3000), (3000,4000)]
+        indices = get_batch_from_list(length, batch)
+        self.assertEqual(expected, indices)
+
+    def test_get_batch_from_list01(self):
+        batch = 1000
+        length = 1
+        expected = [(0,1000)]
+        indices = get_batch_from_list(length, batch)
+        self.assertEqual(expected, indices)
+
+    def test_get_batch_from_list02(self):
+        batch = 1000
+        length = 1000
+        expected = [(0,1000)]
+        indices = get_batch_from_list(length, batch)
+        self.assertEqual(expected, indices)
+
+    def test_get_batch_from_list03(self):
+        batch = 1000
+        length = 0
+        expected = []
+        indices = get_batch_from_list(length, batch)
+        self.assertEqual(expected, indices)
+
+    def test_get_batch_from_list04(self):
+        batch = 1000
+        length = 2000
+        expected = [(0,1000), (1000,2000)]
+        indices = get_batch_from_list(length, batch)
+        self.assertEqual(expected, indices)
+
+    def test_list_to_quoted_string00(self):
+        input = ['public.ao_table', 'public.co_table']
+        expected = "'public.ao_table', 'public.co_table'"
+        output = list_to_quoted_string(input)
+        self.assertEqual(expected, output)
+
+    def test_list_to_quoted_string01(self):
+        input = ['   public.ao_table', 'public.co_table   ']
+        expected = "'public.ao_table', 'public.co_table'"
+        output = list_to_quoted_string(input)
+        self.assertEqual(expected, output)
+
+    def test_list_to_quoted_string02(self):
+        input = ['public.ao_table']
+        expected = "'public.ao_table'"
+        output = list_to_quoted_string(input)
+        self.assertEqual(expected, output)
+
+    def test_list_to_quoted_string03(self):
+        input = []
+        expected = "''"
+        output = list_to_quoted_string(input)
+        self.assertEqual(expected, output)
 
     def test01_generate_files_filename(self):
         master_data_dir = '/data'

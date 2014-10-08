@@ -4619,6 +4619,7 @@ Feature: Validate command line arguments
         And verify that there is a "heap" table "heap_table" in "fullbkdb" with data
 
     @42backupsmoke
+    @wip
     Scenario: Full backup and restore with pending drop table transaction
         Given the database is running
         And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data and 1000000 rows
@@ -4635,6 +4636,7 @@ Feature: Validate command line arguments
         And verify that there is no table "heap_table" in "fullbkdb"
         And verify that there is a "ao" table "ao_part_table" in "fullbkdb" with data
 
+    @wip
     Scenario: Full Backup and Restore using gp_dump without no-lock
         Given the database is running
         And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data and 1000000 rows
