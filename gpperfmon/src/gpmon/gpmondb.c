@@ -125,7 +125,7 @@ static bool should_recreate_from_result(PGresult	*result,
 		char iconv[MAX_ICONV_CMD_LEN];
 		snprintf(iconv, sizeof(iconv), "iconv -f %s -t %s -c", encoding, encoding);
 		const char gpperfmoncat[] = "gpperfmoncat.sh";
-		if (strncmp(cmd, iconv, sizeof(iconv)))
+		if (strncmp(cmd, iconv, sizeof(iconv)) != 0)
 		{
 			if (!script_exist && encoding_num == expected_encoding_num)
 			{
@@ -1835,6 +1835,58 @@ static void gpdb_change_alert_table_owner(PGconn *conn, const char *owner)
 	gpdb_exec_ddl(conn, query);
 }
 
+/*
+ * Upgrade: alter distributed key of log_alert_history from logsegment to logtime
+ */
+void upgrade_log_alert_table_distributed_key(PGconn* conn)
+{
+	if (conn == NULL)
+	{
+		TR0(("Can't upgrade log_alert_history: conn is NULL\n"));
+		return;
+	}
+
+	const char* qry = "SELECT d.nspname||'.'||a.relname as tablename, b.attname as distributed_key\
+	    FROM pg_class  a\
+	    INNER JOIN pg_attribute b on a.oid=b.attrelid\
+	    INNER JOIN gp_distribution_policy c on a.oid = c.localoid\
+	    INNER JOIN pg_namespace d on a.relnamespace = d.oid\
+	    WHERE a.relkind = 'r' AND b.attnum = any(c.attrnums) AND a.relname = 'log_alert_history'";
+
+	PGresult* result = NULL;
+	const char* errmsg = gpdb_exec_only(conn, &result, qry);
+
+	if (errmsg != NULL)
+	{
+		gpmon_warning(FLINE, "GPDB error %s\n\tquery: %s\n", errmsg, qry);
+	}
+	else
+	{
+		if (PQntuples(result) > 0)
+		{
+			// check if current distributed key is logsegment
+			const char* current_distributed_key = PQgetvalue(result, 0, 1);
+			if (current_distributed_key == NULL)
+			{
+				TR0(("could not find distributed key of log_alert_history\n"));
+				PQclear(result);
+				return;
+			}
+			if (strcmp(current_distributed_key, "logsegment") == 0)
+			{
+				TR0(("[INFO] log_alert_history: Upgrading log_alert_history table to use logsegment as distributed key\n"));
+				qry = "alter table public.log_alert_history set distributed by (logtime);";
+				gpdb_exec_ddl(conn, qry);
+			}
+		}
+	}
+
+	PQclear(result);
+	return;
+}
+
+
+
 // to mitigate upgrade hassle.
 void create_log_alert_table()
 {
@@ -1849,20 +1901,21 @@ void create_log_alert_table()
 		return;
 	}
 
-	const char *qry= "select tablename from pg_tables "
-					"where tablename = 'log_alert_history' "
-					"and schemaname = 'public' ;";
+	const char *qry= "SELECT tablename FROM pg_tables "
+					"WHERE tablename = 'log_alert_history' "
+					"AND schemaname = 'public' ;";
 
-	const bool has_history_table =
-		gpdb_exec_search_for_at_least_one_row(qry, conn);
+	const bool has_history_table = gpdb_exec_search_for_at_least_one_row(qry, conn);
 
 	char owner[MAX_OWNER_LENGTH] = {};
 	bool success_get_owner = gpdb_get_gpperfmon_owner(conn, owner, sizeof(owner));
 
+	// log_alert_history: create table if not exist or alter it to use correct
+	// distribution key.
 	if (!has_history_table)
 	{
 		qry = "BEGIN; CREATE TABLE public.log_alert_history (LIKE "
-			"gp_toolkit.__gp_log_master_ext) DISTRIBUTED BY (logsegment) "
+			"gp_toolkit.__gp_log_master_ext) DISTRIBUTED BY (logtime) "
 			"PARTITION BY range (logtime)(START (date '2010-01-01') "
 			"END (date '2010-02-01') EVERY (interval '1 month')); COMMIT;";
 
@@ -1871,7 +1924,16 @@ void create_log_alert_table()
 
 		gpdb_exec_ddl(conn, qry);
 	}
+	else
+	{
+		/*
+		* Upgrade: alter distributed key of log_alert_history from logsegment to logtime
+		*/
+		upgrade_log_alert_table_distributed_key(conn);
+	}
 
+	// log_alert_now/log_alert_tail: change to use 'gpperfmoncat.sh' from 'iconv/cat' to handle
+	// encoding issue.
 	if (recreate_alert_tables_if_needed(conn, owner))
 	{
 		if (success_get_owner)

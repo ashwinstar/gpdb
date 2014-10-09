@@ -234,7 +234,7 @@ CREATE EXTERNAL WEB TABLE public.gp_log_master_ext (LIKE gp_toolkit.__gp_log_mas
 
 -- TABLE: log_alert_history 
 --   (like gp_toolkit.__gp_log_master_ext)
-CREATE TABLE public.log_alert_history (LIKE gp_toolkit.__gp_log_master_ext) distributed by (logsegment) partition by range (logtime)(start (date '2010-01-01') end (date '2010-02-01') EVERY (interval '1 month'));
+CREATE TABLE public.log_alert_history (LIKE gp_toolkit.__gp_log_master_ext) distributed by (logtime) partition by range (logtime)(start (date '2010-01-01') end (date '2010-02-01') EVERY (interval '1 month'));
 
 -- TABLE: log_alert_tail 
 --   (like gp_toolkit.__gp_log_master_ext)

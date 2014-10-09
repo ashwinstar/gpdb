@@ -1854,7 +1854,7 @@ spinOffThreads(PGconn *pConn,
 			   ThreadParmArray * pParmAr)
 {
 	int			i;
-	ThreadParm *pParm;
+	ThreadParm *pParm = NULL;
 
 	pthread_cond_init(&MyCondVar, NULL);
 	pthread_mutex_init(&MyMutex, NULL);

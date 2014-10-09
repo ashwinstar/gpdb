@@ -3028,7 +3028,7 @@ DatumStreamBlockWrite_PerformDeltaCompression(
 											  DatumStreamBlockWrite * dsw,
 											  Datum d)
 {
-	int64		delta;
+	int64		delta = 0;
 	bool		positive_delta = true;
 
 	if (!dsw->delta_want_compression)
