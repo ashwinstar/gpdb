@@ -282,6 +282,8 @@ bool		gp_selectivity_damping_sigsort = true;
 
 int			gp_hashjoin_tuples_per_bucket = 5;
 int			gp_hashagg_groups_per_bucket = 5;
+int			gp_hashjoin_metadata_memory_percent = 20;
+
 
 /* default value to 0, which means we do not try to control number of spill batches */
 int 		gp_hashagg_spillbatch_min = 0;

@@ -50,6 +50,7 @@ ExecHashTableExplainBatches(HashJoinTable   hashtable,
                             int             ibatch_end,
                             const char     *title);
 static void ExecHashTableReallocBatchData(HashJoinTable hashtable, int new_nbatch);
+static int ExecChoosePrimeNBuckets(int nbuckets);
 
 void ExecChooseHashTableSize(double ntuples, int tupwidth,
 						int *numbuckets,
@@ -58,6 +59,12 @@ void ExecChooseHashTableSize(double ntuples, int tupwidth,
 						);
 
 #define BLOOMVAL(hk)  (((uint64)1) << (((hk) >> 13) & 0x3f))
+
+/* Amount of metadata memory required per batch */
+#define MD_MEM_PER_BATCH 	(sizeof(HashJoinBatchData *) + sizeof(HashJoinBatchData))
+
+/* Amount of metadata memory required per bucket */
+#define MD_MEM_PER_BUCKET (sizeof(HashJoinTuple) + sizeof(uint64))
 
 /* ----------------------------------------------------------------
  *		ExecHash
@@ -385,6 +392,32 @@ ExecHashTableCreate(HashState *hashState, HashJoinState *hjstate, List *hashOper
      */
 	oldcxt = MemoryContextSwitchTo(hashtable->hashCxt);
 
+#ifdef HJDEBUG
+	{
+		/* Memory needed to allocate hashtable->batches, which consists of nbatch pointers */
+		int md_batch_size =  (nbatch * sizeof(hashtable->batches[0])) / (1024 * 1024);
+		/* Memory needed to allocate hashtable->batches entries, which consist of nbatch HashJoinBatchData structures */
+		int md_batch_data_size = (nbatch * sizeof(HashJoinBatchData)) / (1024 * 1024);
+
+		/* Memory needed to allocate hashtable->buckets, which consists of nbuckets  HashJoinTuple structures*/
+		int md_buckets_size = (nbuckets * sizeof(HashJoinTuple)) / (1024 * 1024);
+
+		/* Memory needed to allocate hashtable->bloom, which consists of nbuckets int64 values */
+		int md_bloom_size = (nbuckets * sizeof(uint64)) / (1024 * 1024);
+
+		/* Total memory needed for the hashtable metadata */
+		int md_tot = md_batch_size + md_batch_data_size + md_buckets_size + md_bloom_size;
+
+		elog(LOG, "About to allocate HashTable. HT_MEMORY=%dMB Memory needed for metadata: MDBATCH_ARR=%dMB, MDBATCH_DATA=%dMB, MDBUCKETS_ARR=%dMB, MDBLOOM_ARR=%dMB, TOTAL=%dMB",
+				(int) (hashtable->spaceAllowed / (1024 * 1024)),
+				md_batch_size, md_batch_data_size, md_buckets_size, md_bloom_size, md_tot);
+
+		elog(LOG, "sizeof(hashtable->batches[0])=%d, sizeof(HashJoinBatchData)=%d, sizeof(HashJoinTuple)=%d, sizeof(uint64)=%d",
+				(int) sizeof(hashtable->batches[0]), (int) sizeof(HashJoinBatchData),
+				(int) sizeof(HashJoinTuple), (int) sizeof(uint64));
+	}
+#endif
+
     /* array of BatchData ptrs */
     hashtable->batches =
         (HashJoinBatchData **)palloc(nbatch * sizeof(hashtable->batches[0]));
@@ -433,8 +466,26 @@ static const int hprimes[] = {
 	67108913, 134217773, 268435463, 536870951, 1073741831
 };
 
-
-
+/*
+ * We want nbuckets to be prime so as to avoid having bucket and batch
+ * numbers depend on only some bits of the hash code.  Choose the next
+ * larger prime from the list in hprimes[].  (This also enforces that
+ * nbuckets is not very small, by the simple expedient of not putting any
+ * very small entries in hprimes[].)
+ */
+static int
+ExecChoosePrimeNBuckets(int nbuckets)
+{
+	for (int i = 0; i < (int) lengthof(hprimes); i++)
+	{
+		if (hprimes[i] >= nbuckets)
+		{
+			nbuckets = hprimes[i];
+			break;
+		}
+	}
+	return nbuckets;
+}
 
 void
 ExecChooseHashTableSize(double ntuples, int tupwidth,
@@ -447,7 +498,6 @@ ExecChooseHashTableSize(double ntuples, int tupwidth,
 	long		hash_table_bytes;
 	int			nbatch;
 	int			nbuckets;
-	int			i;
 
 	/* num tuples is a global number. We should be receiving only part of that */
 	if (Gp_role == GP_ROLE_EXECUTE)
@@ -486,14 +536,82 @@ ExecChooseHashTableSize(double ntuples, int tupwidth,
 
 		lbuckets = (hash_table_bytes / tupsize) / gp_hashjoin_tuples_per_bucket;
 		lbuckets = Min(lbuckets, INT_MAX / 32);
-		nbuckets = (int) lbuckets;
+
+		/* Pick the closest prime number for the number of buckets */
+		nbuckets = ExecChoosePrimeNBuckets((int) lbuckets);
 
 		dbatch = ceil(inner_rel_bytes / hash_table_bytes);
 		dbatch = Min(dbatch, INT_MAX / 32);
 		minbatch = (int) dbatch;
 		nbatch = 2;
 		while (nbatch < minbatch)
+		{
 			nbatch <<= 1;
+		}
+
+		/* Check to see if we're capping the number of workfiles we allow per query */
+		if (gp_workfile_limit_files_per_query > 0)
+		{
+			int nbatch_lower = nbatch;
+			/*
+			 * We create two files per batch during spilling - one for
+			 * outer and one of inner side. Lower the nbatch if necessary
+			 * to fit under that limit. Don't go below two batches,
+			 * because in that case we're basically disabling spilling.
+			 */
+			while ((nbatch_lower * 2 > gp_workfile_limit_files_per_query) && (nbatch_lower > 2))
+			{
+				nbatch_lower >>= 1;
+			}
+
+			Assert(nbatch_lower <= nbatch);
+			if (nbatch_lower != nbatch)
+			{
+				elog(LOG,"HashJoin: Too many batches computed: nbatch=%d. gp_workfile_limit_files_per_query=%d, using nbatch=%d instead",
+						nbatch, gp_workfile_limit_files_per_query, nbatch_lower);
+				nbatch = nbatch_lower;
+			}
+		}
+
+		/*
+		 * Check to see if we're capping the amount of memory allowed for
+		 * hasthable metadata (MPP-22417)
+		 */
+		if (gp_hashjoin_metadata_memory_percent > 0)
+		{
+			/* Compute how much memory we are willing to use for batch metadata */
+			long md_mem_for_batches = ((float) hash_table_bytes * (((float) gp_hashjoin_metadata_memory_percent) / 100))
+						- (nbuckets * MD_MEM_PER_BUCKET);
+
+			if (md_mem_for_batches < 0)
+			{
+				/* We are already out of metadata memory, we can't execute query. Error out */
+				ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
+						errmsg(ERRMSG_GP_INSUFFICIENT_STATEMENT_MEMORY)));
+			}
+
+			if (nbatch * MD_MEM_PER_BATCH > md_mem_for_batches)
+			{
+				/*
+				 * We're trying to allocate too many batches, it won't fit.
+				 * Reduce the number of batches such that it fits in available metadata memory.
+				 */
+				int nbatch_lower = nbatch;
+				while (nbatch_lower > 1 && nbatch_lower * MD_MEM_PER_BATCH > md_mem_for_batches)
+				{
+					nbatch_lower >>= 1;
+				}
+
+				Assert(nbatch_lower <= nbatch);
+				elog(LOG,"HashJoin: Too many batches computed: nbatch=%d. Memory required for metadata=%dMB, available=%dMB. Chose nbatch=%d instead",
+						nbatch, (int) (nbatch * MD_MEM_PER_BATCH) / (1024 * 1024),
+						(int) md_mem_for_batches / (1024 * 1024),
+						nbatch_lower);
+
+				nbatch = nbatch_lower;
+			}
+		}
+
 	}
 	else
 	{
@@ -523,25 +641,10 @@ ExecChooseHashTableSize(double ntuples, int tupwidth,
 		dbuckets = ceil(dbuckets);
 		dbuckets = Min(dbuckets, INT_MAX);
 
-		nbuckets = (int)dbuckets;
+		/* Pick the closest prime number for the number of buckets */
+		nbuckets = ExecChoosePrimeNBuckets((int) dbuckets);
 
 		nbatch = 1;
-	}
-
-	/*
-	 * We want nbuckets to be prime so as to avoid having bucket and batch
-	 * numbers depend on only some bits of the hash code.  Choose the next
-	 * larger prime from the list in hprimes[].  (This also enforces that
-	 * nbuckets is not very small, by the simple expedient of not putting any
-	 * very small entries in hprimes[].)
-	 */
-	for (i = 0; i < (int) lengthof(hprimes); i++)
-	{
-		if (hprimes[i] >= nbuckets)
-		{
-			nbuckets = hprimes[i];
-			break;
-		}
 	}
 
 	*numbuckets = nbuckets;

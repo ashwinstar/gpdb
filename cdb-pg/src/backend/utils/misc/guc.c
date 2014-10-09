@@ -5647,17 +5647,27 @@ static struct config_int ConfigureNamesInt[] =
 		{"gp_hashjoin_tuples_per_bucket", PGC_USERSET, GP_ARRAY_TUNING,
 		 gettext_noop("Target density of hashtable used by Hashjoin during execution"),
 		 gettext_noop("A smaller value will tend to produce larger hashtables, which increases join performance"),
-		 GUC_NOT_IN_SAMPLE
+		 GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
 		},
 		&gp_hashjoin_tuples_per_bucket,
 		5, 1, 25, NULL, NULL
 	},
 
 	{
+		{"gp_hashjoin_metadata_memory_percent", PGC_USERSET, GP_ARRAY_TUNING,
+		gettext_noop("Percentage of the operator memory allowed to store hashtable metadata. Set to 0 for unlimited amount of metadata memory."),
+		gettext_noop("A small value can cause certain queries to fail, a large or unbounded value can cause the system to run out of memory"),
+		GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL | GUC_GPDB_ADDOPT
+		},
+		&gp_hashjoin_metadata_memory_percent,
+		20, 0, INT_MAX, NULL, NULL
+	},
+
+	{
 		{"gp_hashagg_groups_per_bucket", PGC_USERSET, GP_ARRAY_TUNING,
 		 gettext_noop("Target density of hashtable used by Hashagg during execution"),
 		 gettext_noop("A smaller value will tend to produce larger hashtables, which increases agg performance"),
-		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL | GUC_GPDB_ADDOPT
 		},
 		&gp_hashagg_groups_per_bucket,
 		5, 1, 25, NULL, NULL
