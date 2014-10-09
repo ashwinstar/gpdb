@@ -233,8 +233,11 @@ plan_tree_mutator(Node *node,
 				MUTATE(newPartsel->residualPredicate, partsel->residualPredicate, Node *);
 				MUTATE(newPartsel->propagationExpression, partsel->propagationExpression, Node *);
 				MUTATE(newPartsel->printablePredicate, partsel->printablePredicate, Node *);
+				MUTATE(newPartsel->staticPartOids, partsel->staticPartOids, List *);
+				MUTATE(newPartsel->staticScanIds, partsel->staticScanIds, List *);
 				newPartsel->nLevels = partsel->nLevels;
 				newPartsel->relid = partsel->relid;
+				newPartsel->staticSelection = partsel->staticSelection;
 
 				return (Node *) newPartsel;
 			}

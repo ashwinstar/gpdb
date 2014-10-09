@@ -61,7 +61,8 @@ OBJS = cdbanalyze.o \
 	   cdbtm.o cdbtmutils.o \
 	   cdbutil.o \
 	   cdbvars.o cdbvarblock.o \
-	   cdbpersistentcheck.o
+	   cdbpersistentcheck.o \
+	   partitionselection.o
 
 ifeq ($(PORTNAME),cygwin)
 .LIBPATTERNS := $(filter-out %.so,$(.LIBPATTERNS))

@@ -1183,14 +1183,17 @@ typedef struct PlanInvalItem
  */
 typedef struct PartitionSelector
 {
-	Plan        plan;
-	Oid			relid;					 /* OID of target relation */
-	int         nLevels;                 /* number of partition levels */
-	List        *levelEqExpressions;     /* equality expressions used for individual levels */
-	List        *levelExpressions;       /* predicates used for individual levels */
-	Node        *residualPredicate;      /* residual predicate (to be applied at the end) */
-	Node        *propagationExpression;  /* propagation expression */
-	Node        *printablePredicate;     /* printable predicate (for explain purposes) */
+	Plan		plan;
+	Oid 		relid;  				/* OID of target relation */
+	int 		nLevels;				/* number of partition levels */
+	List		*levelEqExpressions;	/* equality expressions used for individual levels */
+	List		*levelExpressions;  	/* predicates used for individual levels */
+	Node		*residualPredicate; 	/* residual predicate (to be applied at the end) */
+	Node		*propagationExpression; /* propagation expression */
+	Node		*printablePredicate;	/* printable predicate (for explain purposes) */
+	bool		staticSelection;    	/* static selection performed? */
+	List		*staticPartOids;    	/* list of statically selected parts */
+	List		*staticScanIds;     	/* scan ids used to propagate statically selected part oids */
 
 } PartitionSelector;
 

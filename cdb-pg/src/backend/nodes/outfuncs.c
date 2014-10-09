@@ -1028,6 +1028,9 @@ _outPartitionSelector(StringInfo str, PartitionSelector *node)
 	WRITE_NODE_FIELD(residualPredicate);
 	WRITE_NODE_FIELD(propagationExpression);
 	WRITE_NODE_FIELD(printablePredicate);
+	WRITE_BOOL_FIELD(staticSelection);
+	WRITE_NODE_FIELD(staticPartOids);
+	WRITE_NODE_FIELD(staticScanIds);
 
 	_outPlanInfo(str, (Plan *) node);
 }

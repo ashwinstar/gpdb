@@ -268,6 +268,9 @@ LogSelectedPartitionOids(HTAB *pidIndex);
 extern List *
 all_leaf_partition_relids(PartitionNode *pn);
 
+extern int
+countLeafPartTables(Oid rootOid);
+
 extern void
 findPartitionMetadataEntry(List *partsMetadata, Oid partOid, PartitionNode **partsAndRules,
 							PartitionAccessMethods **accessMethods);

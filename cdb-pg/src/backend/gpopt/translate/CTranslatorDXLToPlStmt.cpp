@@ -25,6 +25,7 @@
 #include "catalog/pg_exttable.h"
 #include "cdb/cdbutil.h"
 #include "cdb/cdbvars.h"
+#include "cdb/partitionselection.h"
 #include "utils/uri.h"
 #include "gpos/base.h"
 
@@ -3272,7 +3273,9 @@ CTranslatorDXLToPlStmt::PplanPartitionSelector
 	DrgPdxltrctx *pdrgpdxltrctxWithSiblings = New(m_pmp) DrgPdxltrctx(m_pmp);
 
 	CDXLTranslateContext dxltrctxChild(m_pmp, false, pdxltrctxOut->PhmColParam());
-	if (EdxlpsIndexChild == pdxlnPartitionSelector->UlArity() - 1)
+
+	BOOL fHasChild = (EdxlpsIndexChild == pdxlnPartitionSelector->UlArity() - 1);
+	if (fHasChild)
 	{
 		// translate child plan
 		pdxlnChild = (*pdxlnPartitionSelector)[EdxlpsIndexChild];
@@ -3327,6 +3330,18 @@ CTranslatorDXLToPlStmt::PplanPartitionSelector
 	if (!m_pdxlsctranslator->FConstTrue(pdxlnPrintableFilter, m_pmda))
 	{
 		ppartsel->printablePredicate = (Node *) m_pdxlsctranslator->PexprFromDXLNodeScalar(pdxlnPrintableFilter, &mapcidvarplstmt);
+	}
+
+	ppartsel->staticPartOids = NIL;
+	ppartsel->staticScanIds = NIL;
+	ppartsel->staticSelection = (optimizer_static_partition_selection && !fHasChild);
+
+	if (ppartsel->staticSelection)
+	{
+		SelectedParts *sp = gpdb::SpStaticPartitionSelection(ppartsel);
+		ppartsel->staticPartOids = sp->partOids;
+		ppartsel->staticScanIds = sp->scanIds;
+		gpdb::GPDBFree(sp);
 	}
 
 	SetParamIds(pplan);

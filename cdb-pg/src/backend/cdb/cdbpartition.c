@@ -2430,6 +2430,25 @@ all_leaf_partition_relids(PartitionNode *pn)
 	return leaf_relids;
 }
 
+/*
+ * Return the number of leaf parts of the partitioned table with the given oid
+ */
+int
+countLeafPartTables(Oid rootOid)
+{
+	Assert (rel_is_partitioned(rootOid));
+
+	PartitionNode *pn = get_parts(rootOid, 0 /* level */, 0 /* parent */, false /* inctemplate */,
+	                              CurrentMemoryContext, true /* include subparts */);
+
+	List *lRelOids = all_leaf_partition_relids(pn);
+	Assert (list_length(lRelOids) > 0);
+	int count = list_length(lRelOids);
+	list_free(lRelOids);
+	pfree(pn);
+	return count;
+}
+
 /* Return the pg_class Oids of the relations representing the parts
  * of the PartitionRule tree headed by the argument PartitionRule.
  *

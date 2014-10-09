@@ -3501,6 +3501,9 @@ _readPartitionSelector(const char ** str)
 	READ_NODE_FIELD(residualPredicate);
 	READ_NODE_FIELD(propagationExpression);
 	READ_NODE_FIELD(printablePredicate);
+	READ_BOOL_FIELD(staticSelection);
+	READ_NODE_FIELD(staticPartOids);
+	READ_NODE_FIELD(staticScanIds);
 
 	readPlanInfo(str, (Plan *)local_node);
 

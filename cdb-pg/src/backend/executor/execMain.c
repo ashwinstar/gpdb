@@ -1506,6 +1506,21 @@ InitializeQueryPartsMetadata(PlannedStmt *plannedstmt, EState *estate)
 	MemoryContextSwitchTo(oldContext);
 }
 
+/*
+ * InitializePartsMetadata
+ *   Initialize partitioning metadata for the given partitioned table oid
+ */
+List *
+InitializePartsMetadata(Oid rootOid)
+{
+	PartitionMetadata *metadata = palloc(sizeof(PartitionMetadata));
+	metadata->partsAndRules = BuildPartitionNodeFromRoot(rootOid);
+	Assert(metadata->partsAndRules != NULL);
+
+	metadata->accessMethods = createPartitionAccessMethods(num_partition_levels(metadata->partsAndRules));
+	return list_make1(metadata);
+}
+
 /* ----------------------------------------------------------------
  *		InitPlan
  *

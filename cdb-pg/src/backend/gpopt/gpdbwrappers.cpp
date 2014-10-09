@@ -182,6 +182,7 @@
 #define ALLOW_has_parquet_children
 #define ALLOW_relation_policy
 #define ALLOW_child_distribution_mismatch
+#define ALLOW_static_part_selection
 
 #include "gpopt/utils/gpdbdefs.h"
 
@@ -2765,5 +2766,18 @@ gpdb::PnodeFoldArrayexprConstants
 	return NULL;
 }
 
+SelectedParts *
+gpdb::SpStaticPartitionSelection
+	(
+	PartitionSelector *ps
+	)
+{
+	GP_WRAP_START;
+	{
+		return static_part_selection(ps);
+	}
+	GP_WRAP_END;
+	return NULL;
+}
 
 // EOF

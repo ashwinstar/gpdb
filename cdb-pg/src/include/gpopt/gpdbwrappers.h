@@ -51,6 +51,8 @@ struct LogicalIndexInfo;
 struct ParseState;
 struct DefElem;
 struct GpPolicy;
+struct PartitionSelector;
+struct SelectedParts;
 
 namespace gpdb {
 
@@ -571,6 +573,10 @@ namespace gpdb {
 
 	// fold array expression constant values
 	Node *PnodeFoldArrayexprConstants(ArrayExpr *parrayexpr);
+
+	// static partition selection given a PartitionSelector node
+	SelectedParts *SpStaticPartitionSelection(PartitionSelector *ps);
+
 } //namespace gpdb
 
 #define ForEach(cell, l)	\

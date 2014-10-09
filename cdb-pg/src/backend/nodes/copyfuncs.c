@@ -1149,6 +1149,9 @@ _copyPartitionSelector(const PartitionSelector *from)
 	COPY_NODE_FIELD(residualPredicate);
 	COPY_NODE_FIELD(propagationExpression);
 	COPY_NODE_FIELD(printablePredicate);
+	COPY_SCALAR_FIELD(staticSelection);
+	COPY_NODE_FIELD(staticPartOids);
+	COPY_NODE_FIELD(staticScanIds);
 
 	return newnode;
 }

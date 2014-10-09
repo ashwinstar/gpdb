@@ -230,6 +230,7 @@ extern void map_part_attrs_from_targetdesc(TupleDesc target, TupleDesc part, Att
 extern PartitionState *createPartitionState(PartitionNode *partsAndRules, int resultPartSize);
 extern TupleTableSlot *reconstructMatchingTupleSlot(TupleTableSlot *slot,
 													ResultRelInfo *resultRelInfo);
+extern List *InitializePartsMetadata(Oid rootOid);
 
 /*
  * prototypes from functions in execProcnode.c

@@ -13,21 +13,6 @@
 #ifndef NODEPARTITIONSELECTOR_H
 #define NODEPARTITIONSELECTOR_H
 
-/* ----------------
- *                PartitionConstraints node
- *                used during PartitionSelector
- * ----------------
- */
-typedef struct PartitionConstraints
-{
-	NodeTag type;
-	PartitionRule * pRule;
-	Const *lowerBound;
-	Const *upperBound;
-	bool lbInclusive;
-	bool upInclusive;
-} PartitionConstraints;
-
 extern TupleTableSlot* ExecPartitionSelector(PartitionSelectorState *node);
 extern PartitionSelectorState* ExecInitPartitionSelector(PartitionSelector *node, EState *estate, int eflags);
 extern void ExecEndPartitionSelector(PartitionSelectorState *node);

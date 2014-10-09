@@ -36,6 +36,7 @@
 #include "utils/resscheduler.h"
 #include "cdb/cdbdisp.h"                /* CheckDispatchResult() */
 #include "cdb/cdbexplain.h"             /* cdbexplain_recvExecStats */
+#include "cdb/cdbpartition.h"
 #include "cdb/cdbpullup.h"              /* cdbpullup_targetlist() */
 #include "cdb/cdbutil.h"
 #include "cdb/cdbvars.h"
@@ -109,6 +110,9 @@ static void
 show_motion_keys(Plan *plan, List *hashExpr, int nkeys, AttrNumber *keycols,
 			     const char *qlabel,
                  StringInfo str, int indent, ExplainState *es);
+static void
+show_static_part_selection(Plan *plan, int indent, StringInfo str);
+
 static const char *explain_get_index_name(Oid indexId);
 
 /*
@@ -1723,6 +1727,7 @@ explain_outNode(StringInfo str,
 								NULL, outerPlan(plan),
 								NULL, NULL,
 								str, indent, es);
+				show_static_part_selection(plan, indent, str);
 			}
 			break;
 		default:
@@ -2401,6 +2406,28 @@ show_motion_keys(Plan *plan, List *hashExpr, int nkeys, AttrNumber *keycols,
     }
 }                               /* show_motion_keys */
 
+/*
+ * Show the number of statically selected partitions if available.
+ */
+static void
+show_static_part_selection(Plan *plan, int indent, StringInfo str)
+{
+	PartitionSelector *ps = (PartitionSelector *) plan;
+
+	if (! ps->staticSelection)
+	{
+		return;
+	}
+
+	int nPartsSelected = list_length(ps->staticPartOids);
+	int nPartsTotal = countLeafPartTables(ps->relid);
+	for (int i = 0; i < indent; i++)
+	{
+		appendStringInfoString(str, "  ");
+	}
+
+	appendStringInfo(str, "  Partitions selected:  %d (out of %d)\n", nPartsSelected, nPartsTotal);
+}
 
 /*
  * Fetch the name of an index in an EXPLAIN
