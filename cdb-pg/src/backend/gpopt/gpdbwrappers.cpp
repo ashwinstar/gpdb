@@ -114,6 +114,7 @@
 #define ALLOW_list_free
 #define ALLOW_list_nth_int
 #define ALLOW_list_nth_oid
+#define ALLOW_list_member_oid
 #define ALLOW_freeListAndNull
 #define ALLOW_lookup_type_cache
 #define ALLOW_makeString
@@ -1664,7 +1665,6 @@ gpdb::IListNth
 	return 0;
 }
 
-
 Oid
 gpdb::OidListNth
 	(
@@ -1678,6 +1678,21 @@ gpdb::OidListNth
 	}
 	GP_WRAP_END;
 	return 0;
+}
+
+bool
+gpdb::FMemberOid
+	(
+	List *list,
+	Oid oid
+	)
+{
+	GP_WRAP_START;
+	{
+		return list_member_oid(list, oid);
+	}
+	GP_WRAP_END;
+	return false;
 }
 
 void

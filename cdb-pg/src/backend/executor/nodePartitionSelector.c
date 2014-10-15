@@ -116,11 +116,19 @@ ExecInitPartitionSelector(PartitionSelector *node, EState *estate, int eflags)
 TupleTableSlot *
 ExecPartitionSelector(PartitionSelectorState *node)
 {
+	PartitionSelector *ps = (PartitionSelector *) node->ps.plan;
+	if (ps->staticSelection)
+	{
+		/* propagate the part oids obtained via static partition selection */
+		partition_propagation(ps->staticPartOids, ps->staticScanIds);
+		node->acceptedLeafPart = NULL;
+		return NULL;
+	}
+
 	/* Retrieve PartitionNode and access method from root table.
 	 * We cannot do it during node initialization as
 	 * DynamicTableScanInfo is not properly initialized yet.
 	 */
-	PartitionSelector *ps = (PartitionSelector *) node->ps.plan;
 	if (NULL == node->rootPartitionNode)
 	{
 		Assert(NULL != dynamicTableScanInfo);
@@ -150,27 +158,18 @@ ExecPartitionSelector(PartitionSelectorState *node)
 		}
 	}
 
-	if (ps->staticSelection)
-	{
-		/* propagate the part oids obtained via static partition selection */
-		Assert (NULL == inputSlot);
-		partition_propagation(ps->staticPartOids, ps->staticScanIds);
-	}
-	else
-	{
-		/* partition elimination with the given input tuple */
-		SelectedParts *selparts = processLevel(node, 0 /* level */, inputSlot);
+	/* partition elimination with the given input tuple */
+	SelectedParts *selparts = processLevel(node, 0 /* level */, inputSlot);
 
-		/* partition propagation */
-		if (NULL != ps->propagationExpression)
-		{
-			partition_propagation(selparts->partOids, selparts->scanIds);
-		}
-
-		list_free(selparts->partOids);
-		list_free(selparts->scanIds);
-		pfree(selparts);
+	/* partition propagation */
+	if (NULL != ps->propagationExpression)
+	{
+		partition_propagation(selparts->partOids, selparts->scanIds);
 	}
+
+	list_free(selparts->partOids);
+	list_free(selparts->scanIds);
+	pfree(selparts);
 
 	TupleTableSlot *candidateOutputSlot = NULL;
 	if (NULL != inputSlot)

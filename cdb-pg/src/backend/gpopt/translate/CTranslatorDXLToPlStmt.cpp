@@ -3343,6 +3343,12 @@ CTranslatorDXLToPlStmt::PplanPartitionSelector
 		ppartsel->staticScanIds = sp->scanIds;
 		gpdb::GPDBFree(sp);
 	}
+	else
+	{
+		// if we cannot do static elimination then add this partitioned table oid
+		// to the planned stmt so we can ship the constraints with the plan
+		m_pctxdxltoplstmt->AddPartitionedTable(ppartsel->relid);
+	}
 
 	SetParamIds(pplan);
 
@@ -4117,7 +4123,6 @@ CTranslatorDXLToPlStmt::PplanDTS
 	prte->requiredPerms |= ACL_SELECT;
 
 	m_pctxdxltoplstmt->AddRTE(prte);
-	m_pctxdxltoplstmt->AddPartitionedTable(prte->relid);
 
 	// create dynamic scan node
 	DynamicTableScan *pdts = MakeNode(DynamicTableScan);
@@ -4195,7 +4200,6 @@ CTranslatorDXLToPlStmt::PplanDIS
 	GPOS_ASSERT(NULL != prte);
 	prte->requiredPerms |= ACL_SELECT;
 	m_pctxdxltoplstmt->AddRTE(prte);
-	m_pctxdxltoplstmt->AddPartitionedTable(prte->relid);
 
 	DynamicIndexScan *pdis = MakeNode(DynamicIndexScan);
 
@@ -4352,11 +4356,6 @@ CTranslatorDXLToPlStmt::PplanDML
 	GPOS_ASSERT(NULL != prte);
 	prte->requiredPerms |= aclmode;
 	m_pctxdxltoplstmt->AddRTE(prte);
-	
-	if (pmdrel->FPartitioned())
-	{
-		m_pctxdxltoplstmt->AddPartitionedTable(prte->relid);
-	}
 	
 	CDXLNode *pdxlnPrL = (*pdxlnDML)[0];
 	CDXLNode *pdxlnChild = (*pdxlnDML)[1];
@@ -5790,10 +5789,6 @@ CTranslatorDXLToPlStmt::PplanBitmapTableScan
 	prte->requiredPerms |= ACL_SELECT;
 
 	m_pctxdxltoplstmt->AddRTE(prte);
-	if (fDynamic)
-	{
-		m_pctxdxltoplstmt->AddPartitionedTable(prte->relid);
-	}
 
 	BitmapTableScan *pdbts = MakeNode(BitmapTableScan);
 	pdbts->scan.scanrelid = iRel;

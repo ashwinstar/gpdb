@@ -356,6 +356,9 @@ namespace gpdb {
 	// return the nth element in a list of oids
 	Oid OidListNth(List *list, int n);
 
+	// check whether the given oid is a member of the given list
+	bool FMemberOid(List *list, Oid oid);
+
 	// free list
 	void FreeList(List *plist);
 

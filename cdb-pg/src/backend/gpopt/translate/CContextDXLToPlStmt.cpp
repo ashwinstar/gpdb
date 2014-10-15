@@ -273,7 +273,10 @@ CContextDXLToPlStmt::AddPartitionedTable
 	OID oid
 	)
 {
-	m_plPartitionTables = gpdb::PlAppendOid(m_plPartitionTables, oid);
+	if (!gpdb::FMemberOid(m_plPartitionTables, oid))
+	{
+		m_plPartitionTables = gpdb::PlAppendOid(m_plPartitionTables, oid);
+	}
 }
 
 //---------------------------------------------------------------------------
