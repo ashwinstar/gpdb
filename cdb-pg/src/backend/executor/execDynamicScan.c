@@ -1308,8 +1308,17 @@ DynamicScan_BeginIndexPartition(IndexScanState *indexScanState, bool initQual, b
 				DynamicScan_InitIndexExpressions(indexScanState, initQual, initTargetList);
 			}
 
-			/* A new relation would require us to recompute runtime keys */
-			indexScanState->iss_RuntimeKeysReady = !isNewRelation;
+			/*
+			 * Either a rescan requires recomputation of runtime keys (if an expression context is
+			 * provided during rescan) or we have a new relation that must recompute index's runtime
+			 * keys. Therefore, we need to preserve an already outstanding request for recomputation
+			 * [MPP-24628] even if we don't have a new relation.
+			 */
+			if (indexScanState->iss_RuntimeKeysReady)
+			{
+				/* A new relation would require us to recompute runtime keys */
+				indexScanState->iss_RuntimeKeysReady = !isNewRelation;
+			}
 		}
 	}
 	else if (SCAN_FIRST != indexScanState->ss.scan_state &&
