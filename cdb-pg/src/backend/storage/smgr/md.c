@@ -857,12 +857,26 @@ mdunlink(
 	pfree(path);
 
 	/* If the zero segment didn't exist raise an error if requested */
-	if (segmentFileNum == 0 && !ignoreNonExistence)
+	if (segmentFileNum == 0)
 	{
-		primaryError = ENOENT;
-		status = false;
+		if (!ignoreNonExistence)
+		{
+			primaryError = ENOENT;
+			status = false;
+		}
+		else
+		{
+			/* 
+			 * Mirror can still have the file, so lets attempt to delete 
+			 * atleast zero segment file.
+			 */
+			int temp_primaryError = 0;
+			MirroredBufferPool_Drop(&rnode, segmentFileNum, relationName, 
+						primaryOnly, isRedo, &temp_primaryError,
+						mirrorDataLossOccurred);
+		}
 	}
-		
+
 	/* second pass perform the drops in reverse order: important for REDO */
 	for(segmentFileNum--; segmentFileNum >= 0; segmentFileNum--)
 	{
