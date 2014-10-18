@@ -1473,11 +1473,19 @@ CQueryMutators::PqueryConvertToDerivedTable
 	RangeTblRef *prtref = MakeNode(RangeTblRef);
 	prtref->rtindex = 1;
 
+	// intoClause, if not null, must be set on the top query, not on the derived table
+	IntoClause *origIntoClause = pqueryDrvd->intoClause;
+	pqueryDrvd->intoClause = NULL;
+	struct GpPolicy* origIntoPolicy = pqueryDrvd->intoPolicy;
+	pqueryDrvd->intoPolicy = NULL;
+
 	// create a new top-level query with the new RTE in its from clause
 	Query *pqueryNew = MakeNode(Query);
 	pqueryNew->cteList = plCteOriginal;
 	pqueryNew->hasAggs = false;
 	pqueryNew->rtable = gpdb::PlAppendElement(pqueryNew->rtable, prte);
+	pqueryNew->intoClause = origIntoClause;
+	pqueryNew->intoPolicy = origIntoPolicy;
 
 	FromExpr *pfromexpr = MakeNode(FromExpr);
 	pfromexpr->quals = NULL;

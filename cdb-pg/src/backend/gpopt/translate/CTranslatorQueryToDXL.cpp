@@ -776,6 +776,10 @@ CTranslatorQueryToDXL::PdxlnCTAS()
 	for (ULONG ul = 0; ul < ulColumns; ul++)
 	{
 		TargetEntry *pte = (TargetEntry *) gpdb::PvListNth(m_pquery->targetList, ul);
+		if (pte->resjunk)
+		{
+			continue;
+		}
 		AttrNumber iResno = pte->resno;
 
 		CDXLNode *pdxlnCol = (*m_pdrgpdxlnQueryOutput)[ul];
