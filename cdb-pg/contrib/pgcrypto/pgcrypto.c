@@ -32,10 +32,12 @@
 #include "postgres.h"
 
 #include <ctype.h>
+#include <openssl/fips.h>
 
 #include "fmgr.h"
 #include "parser/scansup.h"
 #include "utils/builtins.h"
+#include "utils/guc.h"
 
 #include "px.h"
 #include "px-crypt.h"
@@ -50,6 +52,48 @@ static void *find_provider(text *name, PFN pf, char *desc, int silent);
 
 /* SQL function: hash(bytea, text) returns bytea */
 PG_FUNCTION_INFO_V1(pg_digest);
+
+/* GUC variables */
+bool pgcrypto_fips = false;
+
+/*
+ * _PG_init()			- library load-time initialization
+ *
+ * DO NOT make this static nor change its name!
+ */
+void		_PG_init(void);
+void
+_PG_init(void)
+{
+	static bool inited = false;
+	if (inited)
+		return;
+
+	/*
+	 * Initialize pgcrypto's GUCs.
+	 */
+	DefineCustomBoolVariable("pgcrypto.fips",
+							 gettext_noop("If true, pgcrypto will operate in fips mode"),
+							 NULL,
+							 &pgcrypto_fips,
+							 PGC_USERSET,
+							 NULL, NULL);
+
+	if(pgcrypto_fips)
+	{
+		int ret = FIPS_mode_set(1);
+		if(ret != 1)
+    	{
+			ereport(ERROR,
+				(errcode(ERRCODE_EXTERNAL_ROUTINE_INVOCATION_EXCEPTION),
+				 errmsg("openssl FIPS mode initialization failed")));
+    	}
+	}
+
+	inited = true;
+}
+
+
 
 Datum
 pg_digest(PG_FUNCTION_ARGS)
@@ -138,6 +182,11 @@ pg_gen_salt(PG_FUNCTION_ARGS)
 	text	   *res;
 	char		buf[PX_MAX_SALT_LEN + 1];
 
+	if (pgcrypto_fips)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("gen_salt is insecure in fips mode")));
+
 	arg0 = PG_GETARG_TEXT_P(0);
 
 	len = VARSIZE(arg0) - VARHDRSZ;
@@ -170,6 +219,11 @@ pg_gen_salt_rounds(PG_FUNCTION_ARGS)
 	int			len;
 	text	   *res;
 	char		buf[PX_MAX_SALT_LEN + 1];
+
+	if (pgcrypto_fips)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("gen_salt is insecure in fips mode")));
 
 	arg0 = PG_GETARG_TEXT_P(0);
 	rounds = PG_GETARG_INT32(1);
@@ -209,6 +263,11 @@ pg_crypt(PG_FUNCTION_ARGS)
 			   *cres,
 			   *resbuf;
 	text	   *res;
+
+	if (pgcrypto_fips)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("crypt is insecure in fips mode")));
 
 	arg0 = PG_GETARG_TEXT_P(0);
 	arg1 = PG_GETARG_TEXT_P(1);

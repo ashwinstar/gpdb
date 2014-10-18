@@ -89,6 +89,7 @@ static const struct error_desc px_err_list[] = {
 
 	/* fake this as PXE_PGP_CORRUPT_DATA */
 	{PXE_MBUF_SHORT_READ, "Corrupt data"},
+	{PXE_NOT_ALLOWED_FIPS, "This algorithm not allowed in FIPS mode"},
 
 	{0, NULL},
 };
@@ -111,7 +112,12 @@ px_resolve_alias(const PX_Alias *list, const char *name)
 	while (list->name)
 	{
 		if (pg_strcasecmp(list->alias, name) == 0)
-			return list->name;
+		{
+			if (pgcrypto_fips && !list->fips)
+				return fips_crypto_algo_str;
+			else
+				return list->name;
+		}
 		list++;
 	}
 	return name;
@@ -437,5 +443,7 @@ err1:
 		px_cipher_free(cx->cipher);
 	px_free(cx);
 	px_free(buf);
+    if (err == PXE_NOT_ALLOWED_FIPS)
+		return PXE_NOT_ALLOWED_FIPS;
 	return PXE_NO_CIPHER;
 }

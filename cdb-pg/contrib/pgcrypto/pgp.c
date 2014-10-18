@@ -55,6 +55,7 @@ struct digest_info
 	const char *name;
 	int			code;
 	const char *int_name;
+	char 		fips;
 };
 
 struct cipher_info
@@ -64,30 +65,33 @@ struct cipher_info
 	const char *int_name;
 	int			key_len;
 	int			block_len;
+	char		fips;
 };
 
+/* last field is FIPS mode flag */
 static const struct digest_info digest_list[] = {
-	{"md5", PGP_DIGEST_MD5},
-	{"sha1", PGP_DIGEST_SHA1},
-	{"sha-1", PGP_DIGEST_SHA1},
-	{"ripemd160", PGP_DIGEST_RIPEMD160},
-	{"sha256", PGP_DIGEST_SHA256},
-	{"sha384", PGP_DIGEST_SHA384},
-	{"sha512", PGP_DIGEST_SHA512},
-	{NULL, 0}
+	{"md5", PGP_DIGEST_MD5, NULL, 0},
+	{"sha1", PGP_DIGEST_SHA1,NULL, 1},
+	{"sha-1", PGP_DIGEST_SHA1, NULL, 1},
+	{"ripemd160", PGP_DIGEST_RIPEMD160, NULL, 0},
+	{"sha256", PGP_DIGEST_SHA256, NULL, 1},
+	{"sha384", PGP_DIGEST_SHA384, NULL, 1},
+	{"sha512", PGP_DIGEST_SHA512, NULL, 1},
+	{NULL, 0, NULL, 0}
 };
 
+/* last field is FIPS mode flag */
 static const struct cipher_info cipher_list[] = {
-	{"3des", PGP_SYM_DES3, "3des-ecb", 192 / 8, 64 / 8},
-	{"cast5", PGP_SYM_CAST5, "cast5-ecb", 128 / 8, 64 / 8},
-	{"bf", PGP_SYM_BLOWFISH, "bf-ecb", 128 / 8, 64 / 8},
-	{"blowfish", PGP_SYM_BLOWFISH, "bf-ecb", 128 / 8, 64 / 8},
-	{"aes", PGP_SYM_AES_128, "aes-ecb", 128 / 8, 128 / 8},
-	{"aes128", PGP_SYM_AES_128, "aes-ecb", 128 / 8, 128 / 8},
-	{"aes192", PGP_SYM_AES_192, "aes-ecb", 192 / 8, 128 / 8},
-	{"aes256", PGP_SYM_AES_256, "aes-ecb", 256 / 8, 128 / 8},
-	{"twofish", PGP_SYM_TWOFISH, "twofish-ecb", 256 / 8, 128 / 8},
-	{NULL, 0, NULL}
+	{"3des", PGP_SYM_DES3, "3des-ecb", 192 / 8, 64 / 8, 1},
+	{"cast5", PGP_SYM_CAST5, "cast5-ecb", 128 / 8, 64 / 8, 0},
+	{"bf", PGP_SYM_BLOWFISH, "bf-ecb", 128 / 8, 64 / 8, 0},
+	{"blowfish", PGP_SYM_BLOWFISH, "bf-ecb", 128 / 8, 64 / 8, 0},
+	{"aes", PGP_SYM_AES_128, "aes-ecb", 128 / 8, 128 / 8, 1},
+	{"aes128", PGP_SYM_AES_128, "aes-ecb", 128 / 8, 128 / 8, 1},
+	{"aes192", PGP_SYM_AES_192, "aes-ecb", 192 / 8, 128 / 8, 1},
+	{"aes256", PGP_SYM_AES_256, "aes-ecb", 256 / 8, 128 / 8, 1},
+	{"twofish", PGP_SYM_TWOFISH, "twofish-ecb", 256 / 8, 128 / 8, 0},
+	{NULL, 0, NULL, 0, 0, 0}
 };
 
 static const struct cipher_info *
@@ -107,8 +111,15 @@ pgp_get_digest_code(const char *name)
 	const struct digest_info *i;
 
 	for (i = digest_list; i->name; i++)
+	{
 		if (pg_strcasecmp(i->name, name) == 0)
-			return i->code;
+		{
+			if (pgcrypto_fips && !i->fips)
+				return PXE_NOT_ALLOWED_FIPS;
+			else
+				return i->code;
+		}
+	}
 	return PXE_PGP_UNSUPPORTED_HASH;
 }
 
@@ -118,8 +129,15 @@ pgp_get_cipher_code(const char *name)
 	const struct cipher_info *i;
 
 	for (i = cipher_list; i->name; i++)
+	{
 		if (pg_strcasecmp(i->name, name) == 0)
-			return i->code;
+		{
+			if (pgcrypto_fips && !i->fips)
+				return PXE_NOT_ALLOWED_FIPS;
+			else
+				return i->code;
+		}
+	}
 	return PXE_PGP_UNSUPPORTED_CIPHER;
 }
 

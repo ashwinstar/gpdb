@@ -1,6 +1,6 @@
 Pkgname: pgcrypto
 Architecture: #arch
-Version: ossv1.1_pv1.1_gpdb4.3
+Version: ossv1.1_pv1.2_gpdb4.3
 OS: #os
 GPDBVersion: 4.3
 Description: Pgcrypto provides cryptographic functions for the Greenplum Database. 

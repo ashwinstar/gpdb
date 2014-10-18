@@ -80,6 +80,7 @@ void		px_free(void *p);
 #define PXE_NO_RANDOM				-17
 #define PXE_DECRYPT_FAILED			-18
 
+#define PXE_NOT_ALLOWED_FIPS		-49
 #define PXE_MBUF_SHORT_READ			-50
 
 #define PXE_PGP_CORRUPT_DATA		-100
@@ -114,6 +115,9 @@ typedef struct px_hmac PX_HMAC;
 typedef struct px_cipher PX_Cipher;
 typedef struct px_combo PX_Combo;
 
+extern bool pgcrypto_fips;
+#define fips_crypto_algo_str "ILLEGAL_FIPS_ALGO"
+
 struct px_digest
 {
 	unsigned	(*result_size) (PX_MD *h);
@@ -132,8 +136,9 @@ struct px_digest
 
 struct px_alias
 {
-	char	   *alias;
-	char	   *name;
+	char		*alias;
+	char		*name;
+	char		fips;
 };
 
 struct px_hmac

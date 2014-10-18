@@ -256,6 +256,7 @@ digest_free(PX_MD *h)
 	px_free(h);
 }
 
+
 static int	px_openssl_initialized = 0;
 
 /* PUBLIC functions */
@@ -843,24 +844,25 @@ ossl_aes_cbc_decrypt(PX_Cipher *c, const uint8 *data, unsigned dlen,
 
 /*
  * aliases
+ * third field is FIPS boolean flag
  */
 
 static PX_Alias ossl_aliases[] = {
-	{"bf", "bf-cbc"},
-	{"blowfish", "bf-cbc"},
-	{"blowfish-cbc", "bf-cbc"},
-	{"blowfish-ecb", "bf-ecb"},
-	{"blowfish-cfb", "bf-cfb"},
-	{"des", "des-cbc"},
-	{"3des", "des3-cbc"},
-	{"3des-ecb", "des3-ecb"},
-	{"3des-cbc", "des3-cbc"},
-	{"cast5", "cast5-cbc"},
-	{"aes", "aes-cbc"},
-	{"rijndael", "aes-cbc"},
-	{"rijndael-cbc", "aes-cbc"},
-	{"rijndael-ecb", "aes-ecb"},
-	{NULL}
+	{"bf", "bf-cbc", 0},
+	{"blowfish", "bf-cbc", 0},
+	{"blowfish-cbc", "bf-cbc", 0},
+	{"blowfish-ecb", "bf-ecb", 0},
+	{"blowfish-cfb", "bf-cfb", 0},
+	{"des", "des-cbc", 0},
+	{"3des", "des3-cbc", 1},
+	{"3des-ecb", "des3-ecb", 1},
+	{"3des-cbc", "des3-cbc", 1},
+	{"cast5", "cast5-cbc", 0},
+	{"aes", "aes-cbc", 1},
+	{"rijndael", "aes-cbc", 0},
+	{"rijndael-cbc", "aes-cbc", 0},
+	{"rijndael-ecb", "aes-ecb", 0},
+	{NULL, NULL, 0}
 };
 
 static const struct ossl_cipher ossl_bf_cbc = {
@@ -925,20 +927,21 @@ struct ossl_cipher_lookup
 {
 	const char *name;
 	const struct ossl_cipher *ciph;
+	char fips;
 };
 
 static const struct ossl_cipher_lookup ossl_cipher_types[] = {
-	{"bf-cbc", &ossl_bf_cbc},
-	{"bf-ecb", &ossl_bf_ecb},
-	{"bf-cfb", &ossl_bf_cfb},
-	{"des-ecb", &ossl_des_ecb},
-	{"des-cbc", &ossl_des_cbc},
-	{"des3-ecb", &ossl_des3_ecb},
-	{"des3-cbc", &ossl_des3_cbc},
-	{"cast5-ecb", &ossl_cast_ecb},
-	{"cast5-cbc", &ossl_cast_cbc},
-	{"aes-ecb", &ossl_aes_ecb},
-	{"aes-cbc", &ossl_aes_cbc},
+	{"bf-cbc", &ossl_bf_cbc, 0},
+	{"bf-ecb", &ossl_bf_ecb, 0},
+	{"bf-cfb", &ossl_bf_cfb, 0},
+	{"des-ecb", &ossl_des_ecb, 0},
+	{"des-cbc", &ossl_des_cbc, 0},
+	{"des3-ecb", &ossl_des3_ecb, 1},
+	{"des3-cbc", &ossl_des3_cbc, 1},
+	{"cast5-ecb", &ossl_cast_ecb, 0},
+	{"cast5-cbc", &ossl_cast_cbc, 0},
+	{"aes-ecb", &ossl_aes_ecb, 1},
+	{"aes-cbc", &ossl_aes_cbc, 1},
 	{NULL}
 };
 
@@ -952,11 +955,20 @@ px_find_cipher(const char *name, PX_Cipher **res)
 	ossldata   *od;
 
 	name = px_resolve_alias(ossl_aliases, name);
+	if (pgcrypto_fips)
+		if(!strcmp(name, fips_crypto_algo_str))
+			return PXE_NOT_ALLOWED_FIPS;
+
 	for (i = ossl_cipher_types; i->name; i++)
 		if (!strcmp(i->name, name))
 			break;
+
 	if (i->name == NULL)
 		return PXE_NO_CIPHER;
+
+	if (pgcrypto_fips)
+		if (!i->fips) 
+			return PXE_NOT_ALLOWED_FIPS;
 
 	od = px_alloc(sizeof(*od));
 	memset(od, 0, sizeof(*od));
