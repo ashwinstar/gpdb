@@ -735,10 +735,11 @@ resetFrameBuffers(WindowState * wstate)
 				ntuplestore_create_accessor(level_state->frame_buffer->tuplestore, false);
 			level_state->lead_reader =
 				ntuplestore_create_accessor(level_state->frame_buffer->tuplestore, false);
-			level_state->num_trail_rows = 0;
-			level_state->num_lead_rows = 0;
-			level_state->lead_ready = false;
 		}
+
+		level_state->num_trail_rows = 0;
+		level_state->num_lead_rows = 0;
+		level_state->lead_ready = false;
 	}
 }
 
@@ -6294,6 +6295,8 @@ void
 ExecReScanWindow(WindowState * node, ExprContext *exprCtxt)
 {
 	Assert(node);
+
+	resetFrameBuffers(node);
 
 	ExecEagerFreeWindow(node);
 
