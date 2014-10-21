@@ -595,7 +595,6 @@ CTranslatorDXLToPlStmt::MapLocationsFdist
 	ForEach (plc, plModifiedLocations)
 	{
 		const CHAR *szUri = (CHAR *) strVal(lfirst(plc));
-		pUri = gpdb::PuriParseExternalTable(szUri);
 
 		BOOL fCandidateFound = false;
 		BOOL fMatchFound = false;
@@ -707,6 +706,8 @@ CTranslatorDXLToPlStmt::MapLocationsExecute
 		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiDXL2PlStmtExternalScanError,
 				GPOS_WSZ_LIT("Invalid ON clause"));
 	}
+
+	gpdb::GPDBFree(szPrefixedCommand);
 }
 
 //---------------------------------------------------------------------------
