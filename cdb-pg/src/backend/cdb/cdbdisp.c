@@ -648,7 +648,9 @@ cdbdisp_dispatchToGang(struct CdbDispatcherState *ds,
 
 		if (qeResult == NULL)
 		{
-			dispatchResults->writer_gang->dispatcherActive = true;
+			/* writer_gang could be NULL if this is an extended query. */
+			if (dispatchResults->writer_gang)
+				dispatchResults->writer_gang->dispatcherActive = true;
 			elog(FATAL, "could not allocate resources for segworker communication");
 		}
 
