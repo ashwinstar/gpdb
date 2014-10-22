@@ -9286,7 +9286,7 @@ explain select foo_p.b, foo_p.t from foo_p left outer join bar on foo_p.a = bar.
                Hash Key: foo_p.a
                ->  Sequence  (cost=0.00..431.07 rows=200 width=34)
                      ->  Partition Selector  (cost=10.00..100.00 rows=50 width=4)
-                     ->  Dynamic Table Scan on foo_p (partIndex: 1)  (cost=0.00..431.07 rows=200 width=34)
+                     ->  Dynamic Table Scan on foo_p (dynamic scan id: 1)  (cost=0.00..431.07 rows=200 width=34)
                            Filter: NOT t IS NULL AND a = ('{1}'::integer[])[1]
          ->  Hash  (cost=431.45..431.45 rows=10050 width=4)
                ->  Redistribute Motion 2:2  (slice2; segments: 2)  (cost=0.00..431.45 rows=10050 width=4)

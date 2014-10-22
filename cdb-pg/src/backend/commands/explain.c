@@ -1292,10 +1292,10 @@ explain_outNode(StringInfo str,
 					appendStringInfo(str, " %s",
 									 quote_identifier(rte->eref->aliasname));
 
-				/* Print partIndex for DynamicTableScan */
+				/* Print dynamic scan id for dytnamic scan operators */
 				if (isDynamicScan((Scan *)plan))
 				{
-					appendStringInfo(str, " (partIndex: %d)",
+					appendStringInfo(str, " (dynamic scan id: %d)",
 									 ((Scan *)plan)->partIndexPrintable);
 				}
 			}

@@ -512,7 +512,7 @@ explain select * from csq_t1 where csq_t1.x >ALL (select csq_t2.x from csq_t2 wh
                ->  Sequence  (cost=0.00..431.00 rows=1 width=16)
                      ->  Partition Selector  (cost=10.00..100.00 rows=50 width=4)
                            Partitions selected:  4 (out of 4)
-                     ->  Dynamic Table Scan on csq_t1 (partIndex: 1)  (cost=0.00..431.00 rows=1 width=16)
+                     ->  Dynamic Table Scan on csq_t1 (dynamic scan id: 1)  (cost=0.00..431.00 rows=1 width=16)
    SubPlan 1
      ->  Result  (cost=0.00..431.00 rows=1 width=1)
            Filter: "ColRef_0022" = true
@@ -526,7 +526,7 @@ explain select * from csq_t1 where csq_t1.x >ALL (select csq_t2.x from csq_t2 wh
                                                ->  Sequence  (cost=0.00..431.00 rows=1 width=16)
                                                      ->  Partition Selector  (cost=10.00..100.00 rows=50 width=4)
                                                            Partitions selected:  4 (out of 4)
-                                                     ->  Dynamic Table Scan on csq_t2 (partIndex: 2)  (cost=0.00..431.00 rows=1 width=16)
+                                                     ->  Dynamic Table Scan on csq_t2 (dynamic scan id: 2)  (cost=0.00..431.00 rows=1 width=16)
  Settings:  optimizer=on; optimizer_segments=3
 (24 rows)
 

@@ -8030,9 +8030,9 @@ explain select * from orca.t_date where user_id=9;
          ->  Partition Selector  (cost=10.00..100.00 rows=50 width=4)
          ->  Result  (cost=0.00..435.93 rows=1 width=32)
                ->  Append  (cost=0.00..435.93 rows=1 width=32)
-                     ->  Dynamic Index Scan on t_date (partIndex: 1)  (cost=0.00..2.93 rows=1 width=88)
+                     ->  Dynamic Index Scan on t_date (dynamic scan id: 1)  (cost=0.00..2.93 rows=1 width=88)
                            Index Cond: user_id = 9::numeric
-                     ->  Dynamic Table Scan on t_date (partIndex: 1)  (cost=0.00..432.00 rows=1 width=88)
+                     ->  Dynamic Table Scan on t_date (dynamic scan id: 1)  (cost=0.00..432.00 rows=1 width=88)
                            Filter: user_id = 9::numeric
  Settings:  optimizer=on; optimizer_segments=3
 (10 rows)
@@ -8083,9 +8083,9 @@ explain select * from orca.t_text where user_id=9;
          ->  Partition Selector  (cost=10.00..100.00 rows=50 width=4)
          ->  Result  (cost=0.00..435.93 rows=1 width=32)
                ->  Append  (cost=0.00..435.93 rows=1 width=32)
-                     ->  Dynamic Index Scan on t_text (partIndex: 1)  (cost=0.00..2.93 rows=1 width=88)
+                     ->  Dynamic Index Scan on t_text (dynamic scan id: 1)  (cost=0.00..2.93 rows=1 width=88)
                            Index Cond: user_id = 9::numeric
-                     ->  Dynamic Table Scan on t_text (partIndex: 1)  (cost=0.00..432.00 rows=1 width=88)
+                     ->  Dynamic Table Scan on t_text (dynamic scan id: 1)  (cost=0.00..432.00 rows=1 width=88)
                            Filter: user_id = 9::numeric
  Settings:  optimizer=on; optimizer_segments=3
 (10 rows)
@@ -8148,7 +8148,7 @@ explain select * from orca.t_employee where user_id = 2;
  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..0.02 rows=1 width=32)
    ->  Sequence  (cost=0.00..0.02 rows=1 width=32)
          ->  Partition Selector  (cost=10.00..100.00 rows=50 width=4)
-         ->  Dynamic Index Scan on t_employee (partIndex: 1)  (cost=0.00..1.07 rows=1 width=32)
+         ->  Dynamic Index Scan on t_employee (dynamic scan id: 1)  (cost=0.00..1.07 rows=1 width=32)
                Index Cond: user_id = 2::numeric
  Settings:  optimizer=on; optimizer_segments=3
 (6 rows)
@@ -8197,9 +8197,9 @@ explain select * from orca.t_ceeval_ints where user_id=4;
          ->  Partition Selector  (cost=10.00..100.00 rows=50 width=4)
          ->  Result  (cost=0.00..435.93 rows=1 width=32)
                ->  Append  (cost=0.00..435.93 rows=1 width=32)
-                     ->  Dynamic Index Scan on t_ceeval_ints (partIndex: 1)  (cost=0.00..2.93 rows=1 width=88)
+                     ->  Dynamic Index Scan on t_ceeval_ints (dynamic scan id: 1)  (cost=0.00..2.93 rows=1 width=88)
                            Index Cond: user_id = 4::numeric
-                     ->  Dynamic Table Scan on t_ceeval_ints (partIndex: 1)  (cost=0.00..432.00 rows=1 width=88)
+                     ->  Dynamic Table Scan on t_ceeval_ints (dynamic scan id: 1)  (cost=0.00..432.00 rows=1 width=88)
                            Filter: user_id = 4::numeric
  Settings:  optimizer=on; optimizer_segments=3
 (10 rows)
@@ -8932,7 +8932,7 @@ explain select * from orca.bm_dyn_test where i=2 and t='2';
          Filter: t = '2'::text
          ->  Sequence  (cost=0.00..0.00 rows=1 width=24)
                ->  Partition Selector  (cost=10.00..100.00 rows=50 width=4)
-               ->  Bitmap Table Scan on bm_dyn_test (partIndex: 1)  (cost=0.00..0.01 rows=1 width=24)
+               ->  Bitmap Table Scan on bm_dyn_test (dynamic scan id: 1)  (cost=0.00..0.01 rows=1 width=24)
                      Recheck Cond: i = 2
                      ->  Bitmap Index Scan on bm_dyn_test_idx_1_prt_part0  (cost=0.00..0.00 rows=0 width=0)
                            Index Cond: i = 2
@@ -9111,14 +9111,14 @@ ORDER BY 1 asc ;
                                                                Join Filter: true
                                                                ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..431.00 rows=2 width=88)
                                                                      ->  Shared Scan (share slice:id 1:0)  (cost=0.00..431.00 rows=1 width=88)
-                                                               ->  Dynamic Index Scan on my_tq_agg_opt_part (partIndex: 1)  (cost=0.00..0.02 rows=1 width=96)
+                                                               ->  Dynamic Index Scan on my_tq_agg_opt_part (dynamic scan id: 1)  (cost=0.00..0.02 rows=1 width=96)
                                                                      Index Cond: public.my_tq_agg_opt_part.ets <= "outer".event_ts AND public.my_tq_agg_opt_part.end_ts > "outer".event_ts
                                                                      Filter: public.my_tq_agg_opt_part.sym::bpchar = "outer".symbol AND plusone(public.my_tq_agg_opt_part.bid_price) < "outer".trade_price
                                                          ->  Nested Loop  (cost=0.00..431.03 rows=1 width=184)
                                                                Join Filter: true
                                                                ->  Broadcast Motion 2:2  (slice2; segments: 2)  (cost=0.00..431.00 rows=2 width=88)
                                                                      ->  Shared Scan (share slice:id 2:0)  (cost=0.00..431.00 rows=1 width=88)
-                                                               ->  Dynamic Index Scan on my_tq_agg_opt_part (partIndex: 1)  (cost=0.00..0.02 rows=1 width=96)
+                                                               ->  Dynamic Index Scan on my_tq_agg_opt_part (dynamic scan id: 1)  (cost=0.00..0.02 rows=1 width=96)
                                                                      Index Cond: public.my_tq_agg_opt_part.ets <= "outer".event_ts
                                                                      Filter: public.my_tq_agg_opt_part.sym::bpchar = "outer".symbol AND plusone(public.my_tq_agg_opt_part.bid_price) < "outer".trade_price AND "outer".event_ts < public.my_tq_agg_opt_part.end_ts
  Settings:  optimizer=on; optimizer_segments=3
