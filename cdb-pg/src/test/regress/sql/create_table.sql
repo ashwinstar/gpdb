@@ -305,13 +305,13 @@ select attrnums from gp_distribution_policy where
 drop table if exists foo;
 drop table if exists bar;
 create table foo (a varchar(15), b int) distributed by (b);
-create table bar as select * from foo;
+create table bar as select * from foo distributed by (b);
 select attrnums from gp_distribution_policy where localoid='bar'::regclass;
 
 drop table if exists foo;
 drop table if exists bar;
 create table foo (a int, b varchar(15)) distributed by (b);
-create table bar as select * from foo;
+create table bar as select * from foo distributed by (b);
 select attrnums from gp_distribution_policy where localoid='bar'::regclass;
 
 drop table if exists foo;
@@ -323,7 +323,7 @@ col_with_default_drop_default character varying(30) DEFAULT 'test1',
 col_with_constraint numeric UNIQUE
 ) DISTRIBUTED BY (col_with_constraint);
 
-CREATE TABLE bar AS SELECT * FROM foo;
+CREATE TABLE bar AS SELECT * FROM foo distributed by (col_with_constraint);
 select attrnums from gp_distribution_policy where localoid='bar'::regclass;
 
 drop table if exists foo;

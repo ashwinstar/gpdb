@@ -28,7 +28,7 @@ drop table if exists ctas_baz;
 create table ctas_foo as select * from generate_series(1, 100);
 create table ctas_bar as select a.generate_series as a, b.generate_series as b from ctas_foo a, ctas_foo b;
 
-create table ctas_baz as select 'delete me' as action, * from ctas_bar;
+create table ctas_baz as select 'delete me' as action, * from ctas_bar distributed by (a);
 -- "action" has no type.
 \d ctas_baz
 select action, b from ctas_baz order by 1,2 limit 5;
