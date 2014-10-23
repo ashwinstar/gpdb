@@ -744,7 +744,6 @@ int gfile_open(gfile_t* fd, const char* fpath, int flags, int* response_code, co
 				   		  NULL, GetLastError(),
 						  MAKELANGID(LANG_ENGLISH, SUBLANG_DEFAULT),
 						  (LPSTR) & msg, 0, NULL);
-			CloseHandle(pipe);
 			gfile_printf_then_putc_newline("could not create pipe: %s", msg);
 
 			if (GetLastError() != ERROR_PIPE_BUSY)
