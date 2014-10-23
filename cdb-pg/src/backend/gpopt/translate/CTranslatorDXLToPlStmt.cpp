@@ -5729,7 +5729,22 @@ CTranslatorDXLToPlStmt::PlCtasOptions
 		CWStringBase *pstrValue = pdxlopt->m_pstrValue;
 		DefElem *pdefelem = MakeNode(DefElem);
 		pdefelem->defname = CTranslatorUtils::SzFromWsz(pstrName->Wsz());
-		pdefelem->arg = (Node *) gpdb::PvalMakeString(CTranslatorUtils::SzFromWsz(pstrValue->Wsz()));
+
+		if (!pdxlopt->m_fNull)
+		{
+			NodeTag argType = (NodeTag) pdxlopt->m_ulType;
+
+			GPOS_ASSERT(T_Integer == argType || T_String == argType);
+			if (T_Integer == argType)
+			{
+				pdefelem->arg = (Node *) gpdb::PvalMakeInteger(CTranslatorUtils::LFromStr(pstrValue));
+			}
+			else
+			{
+				pdefelem->arg = (Node *) gpdb::PvalMakeString(CTranslatorUtils::SzFromWsz(pstrValue->Wsz()));
+			}
+		}
+
 		plOptions = gpdb::PlAppendElement(plOptions, pdefelem);
 	}
 	

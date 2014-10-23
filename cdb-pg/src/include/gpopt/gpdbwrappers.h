@@ -372,6 +372,9 @@ namespace gpdb {
 	// create a value node for a string
 	Value *PvalMakeString(char *str);
 
+	// create a value node for an integer
+	Value *PvalMakeInteger(long i);
+
 	// create a bool constant
 	Node *PnodeMakeBoolConst(bool value, bool isnull);
 

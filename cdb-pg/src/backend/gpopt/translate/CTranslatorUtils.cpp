@@ -2434,6 +2434,25 @@ CTranslatorUtils::PlAttnosFromColids
 
 //---------------------------------------------------------------------------
 //	@function:
+//		CTranslatorUtils::LFromStr
+//
+//	@doc:
+//		Parses a long integer value from a string
+//
+//---------------------------------------------------------------------------
+LINT
+CTranslatorUtils::LFromStr
+	(
+	const CWStringBase *pstr
+	)
+{
+	CHAR *sz = SzFromWsz(pstr->Wsz());
+	CHAR *pcEnd = NULL;
+	return gpos::clib::LStrToL(sz, &pcEnd, 10);
+}
+
+//---------------------------------------------------------------------------
+//	@function:
 //		CTranslatorUtils::IFromStr
 //
 //	@doc:
@@ -2446,9 +2465,7 @@ CTranslatorUtils::IFromStr
 	const CWStringBase *pstr
 	)
 {
-	CHAR *sz = SzFromWsz(pstr->Wsz());
-	CHAR *pcEnd = NULL;
-	return (INT) gpos::clib::LStrToL(sz, &pcEnd, 10);
+	return (INT) LFromStr(pstr);
 }
 
 //---------------------------------------------------------------------------

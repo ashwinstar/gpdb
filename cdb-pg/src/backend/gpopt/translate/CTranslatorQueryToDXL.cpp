@@ -917,25 +917,46 @@ CTranslatorQueryToDXL::Pdrgpctasopt
 	{
 		DefElem *pdefelem = (DefElem *) lfirst(plc);
 		CWStringDynamic *pstrName = CDXLUtils::PstrFromSz(m_pmp, pdefelem->defname);
-		CWStringDynamic *pstrValue = PstrExtractOptionValue(pdefelem);
-		if (pstrName->FEquals(&strAppendOnly) && pstrValue->FEquals(CDXLTokens::PstrToken(EdxltokenTrue)))
-		{
-			fAO = true;
-		}
+		CWStringDynamic *pstrValue = NULL;
 		
-		if (pstrName->FEquals(&strOrientation) && pstrValue->FEquals(&strOrientationColumn))
+		BOOL fNullArg = (NULL == pdefelem->arg);
+
+		// pdefelem->arg is NULL for queries of the form "create table t with (oids) as ... "
+		if (fNullArg)
 		{
-			GPOS_ASSERT(!fParquet);
-			fAOCO = true;
+			// we represent null options as an empty arg string and set the IsNull flag on
+			pstrValue = New(m_pmp) CWStringDynamic(m_pmp);
 		}
+		else
+		{
+			pstrValue = PstrExtractOptionValue(pdefelem);
+
+			if (pstrName->FEquals(&strAppendOnly) && pstrValue->FEquals(CDXLTokens::PstrToken(EdxltokenTrue)))
+			{
+				fAO = true;
+			}
 			
-		if (pstrName->FEquals(&strOrientation) && pstrValue->FEquals(&strOrientationParquet))
-		{
-			GPOS_ASSERT(!fAOCO);
-			fParquet = true;
+			if (pstrName->FEquals(&strOrientation) && pstrValue->FEquals(&strOrientationColumn))
+			{
+				GPOS_ASSERT(!fParquet);
+				fAOCO = true;
+			}
+
+			if (pstrName->FEquals(&strOrientation) && pstrValue->FEquals(&strOrientationParquet))
+			{
+				GPOS_ASSERT(!fAOCO);
+				fParquet = true;
+			}
 		}
-		
-		CDXLCtasStorageOptions::CDXLCtasOption *pdxlctasopt = New(m_pmp) CDXLCtasStorageOptions::CDXLCtasOption(pstrName, pstrValue);
+
+		NodeTag argType = T_Null;
+		if (!fNullArg)
+		{
+			argType = pdefelem->arg->type;
+		}
+
+		CDXLCtasStorageOptions::CDXLCtasOption *pdxlctasopt =
+				New(m_pmp) CDXLCtasStorageOptions::CDXLCtasOption(argType, pstrName, pstrValue, fNullArg);
 		pdrgpctasopt->Append(pdxlctasopt);
 	}
 	if (fAOCO)
@@ -972,7 +993,7 @@ CTranslatorQueryToDXL::PstrExtractOptionValue
 
 	BOOL fNeedsFree = false;
 	CHAR *szValue = gpdb::SzDefGetString(pdefelem, &fNeedsFree);
-	
+
 	CWStringDynamic *pstrResult = CDXLUtils::PstrFromSz(m_pmp, szValue);
 	
 	if (fNeedsFree)

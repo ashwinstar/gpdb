@@ -118,6 +118,7 @@
 #define ALLOW_freeListAndNull
 #define ALLOW_lookup_type_cache
 #define ALLOW_makeString
+#define ALLOW_makeInteger
 #define ALLOW_makeBoolConst
 #define ALLOW_makeTargetEntry
 #define ALLOW_makeVar
@@ -1750,6 +1751,19 @@ gpdb::PvalMakeString
 	}
 	GP_WRAP_END;
 	return NULL;
+}
+
+Value *
+gpdb::PvalMakeInteger
+	(
+	long i
+	)
+{
+	GP_WRAP_START;
+	{
+		return makeInteger(i);
+	}
+	GP_WRAP_END;
 }
 
 Node *

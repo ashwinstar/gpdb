@@ -387,6 +387,10 @@ namespace gpdxl
 			static
 			List *PlAttnosFromColids(DrgPul *pdrgpul, CDXLTranslateContext *pdxltrctx);
 			
+			// parse string value into a Long Integer
+			static
+			LINT LFromStr(const CWStringBase *pstr);
+
 			// parse string value into an Integer
 			static
 			INT IFromStr(const CWStringBase *pstr);
