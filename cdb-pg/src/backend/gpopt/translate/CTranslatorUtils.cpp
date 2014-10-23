@@ -23,6 +23,7 @@
 #include "nodes/parsenodes.h"
 #include "access/sysattr.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_trigger.h"
 #include "optimizer/walkers.h"
 #include "utils/rel.h"
 
@@ -53,6 +54,7 @@
 #include "md/CMDIdRelStats.h"
 #include "md/IMDAggregate.h"
 #include "md/IMDRelation.h"
+#include "md/IMDTrigger.h"
 #include "md/IMDIndex.h"
 #include "md/IMDTypeBool.h"
 #include "md/IMDTypeInt2.h"
@@ -2908,5 +2910,80 @@ CTranslatorUtils::Edxlsubplantype
 
         return edxlsubplantype;
 }
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CTranslatorUtils::FRelHasTriggers
+//
+//	@doc:
+//		Check whether there are triggers for the given operation on
+//		the given relation
+//
+//---------------------------------------------------------------------------
+BOOL
+CTranslatorUtils::FRelHasTriggers
+	(
+	IMemoryPool *pmp,
+	CMDAccessor *pmda,
+	const IMDRelation *pmdrel,
+	const EdxlDmlType edxldmltype
+	)
+{
+	const ULONG ulTriggers = pmdrel->UlTriggers();
+	for (ULONG ul = 0; ul < ulTriggers; ul++)
+	{
+		if (FApplicableTrigger(pmda, pmdrel->PmdidTrigger(ul), edxldmltype))
+		{
+			return true;
+		}
+	}
+
+	// if table is partitioned, check for triggers on child partitions as well
+	INT iType = 0;
+	if (Edxldmlinsert == edxldmltype)
+	{
+		iType = TRIGGER_TYPE_INSERT;
+	}
+	else if (Edxldmldelete == edxldmltype)
+	{
+		iType = TRIGGER_TYPE_DELETE;
+	}
+	else
+	{
+		GPOS_ASSERT(Edxldmlupdate == edxldmltype);
+		iType = TRIGGER_TYPE_UPDATE;
+	}
+
+	OID oidRel = CMDIdGPDB::PmdidConvert(pmdrel->Pmdid())->OidObjectId();
+	return gpdb::FChildTriggers(oidRel, iType);
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CTranslatorUtils::FApplicableTrigger
+//
+//	@doc:
+//		Check whether the given trigger is applicable to the given DML operation
+//
+//---------------------------------------------------------------------------
+BOOL
+CTranslatorUtils::FApplicableTrigger
+	(
+	CMDAccessor *pmda,
+	IMDId *pmdidTrigger,
+	const EdxlDmlType edxldmltype
+	)
+{
+	const IMDTrigger *pmdtrigger = pmda->Pmdtrigger(pmdidTrigger);
+	if (!pmdtrigger->FEnabled())
+	{
+		return false;
+	}
+
+	return ((Edxldmlinsert == edxldmltype && pmdtrigger->FInsert()) ||
+			(Edxldmldelete == edxldmltype && pmdtrigger->FDelete()) ||
+			(Edxldmlupdate == edxldmltype && pmdtrigger->FUpdate()));
+}
+
 
 // EOF

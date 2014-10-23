@@ -477,7 +477,11 @@ namespace gpdb {
     // return true if the table is partitioned and hash-distributed, and one of  
     // the child partitions is randomly distributed
     BOOL FChildPartDistributionMismatch(Relation rel);
-        
+
+    // return true if the table is partitioned and any of the child partitions
+    // have a trigger of the given type
+    BOOL FChildTriggers(Oid oid, int triggerType);
+
 	// does a relation exist with the given oid
 	bool FRelationExists(Oid oid);
 

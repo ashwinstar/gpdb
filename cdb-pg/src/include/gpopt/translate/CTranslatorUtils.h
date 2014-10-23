@@ -445,9 +445,18 @@ namespace gpdxl
 			static
 			SubLinkType Slink(EdxlSubPlanType edxlsubplantype);
 
-			 // map GPDB SubLinkType to DXL Subplan type
+			// map GPDB SubLinkType to DXL Subplan type
 			static
 			EdxlSubPlanType Edxlsubplantype(SubLinkType slink);
+
+			// check whether there are triggers for the given operation on
+			// the given relation
+			static
+			BOOL FRelHasTriggers(IMemoryPool *pmp, CMDAccessor *pmda, const IMDRelation *pmdrel, const EdxlDmlType edxldmltype);
+
+			// check whether the given trigger is applicable to the given DML operation
+			static
+			BOOL FApplicableTrigger(CMDAccessor *pmda, IMDId *pmdidTrigger, const EdxlDmlType edxldmltype);
 	};
 }
 

@@ -677,6 +677,10 @@ CTranslatorQueryToDXL::PdxlnInsert()
 
 	CDXLTableDescr *pdxltabdesc = CTranslatorUtils::Pdxltabdesc(m_pmp, m_pmda, m_pidgtorCol, prte, &m_fHasDistributedTables);
 	const IMDRelation *pmdrel = m_pmda->Pmdrel(pdxltabdesc->Pmdid());
+	if (CTranslatorUtils::FRelHasTriggers(m_pmp, m_pmda, pmdrel, Edxldmlinsert))
+	{
+		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature, GPOS_WSZ_LIT("INSERT with triggers"));
+	}
 
 	const ULONG ulLenTblCols = pmdrel->UlColumns() - pmdrel->UlSystemColumns();
 	const ULONG ulLenTL = gpdb::UlListLength(m_pquery->targetList);
@@ -1068,12 +1072,16 @@ CTranslatorQueryToDXL::PdxlnDelete()
 	const RangeTblEntry *prte = (RangeTblEntry *) gpdb::PvListNth(m_pquery->rtable, m_pquery->resultRelation - 1);
 
 	CDXLTableDescr *pdxltabdesc = CTranslatorUtils::Pdxltabdesc(m_pmp, m_pmda, m_pidgtorCol, prte, &m_fHasDistributedTables);
+	const IMDRelation *pmdrel = m_pmda->Pmdrel(pdxltabdesc->Pmdid());
+	if (CTranslatorUtils::FRelHasTriggers(m_pmp, m_pmda, pmdrel, Edxldmldelete))
+	{
+		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature, GPOS_WSZ_LIT("DELETE with triggers"));
+	}
 
 	ULONG ulCtid = 0;
 	ULONG ulSegmentId = 0;
 	GetCtidAndSegmentId(&ulCtid, &ulSegmentId);
 
-	const IMDRelation *pmdrel = m_pmda->Pmdrel(pdxltabdesc->Pmdid());
 	DrgPul *pdrgpulDelete = New(m_pmp) DrgPul(m_pmp);
 
 	const ULONG ulRelColumns = pmdrel->UlColumns();
@@ -1113,6 +1121,11 @@ CTranslatorQueryToDXL::PdxlnUpdate()
 	const RangeTblEntry *prte = (RangeTblEntry *) gpdb::PvListNth(m_pquery->rtable, m_pquery->resultRelation - 1);
 
 	CDXLTableDescr *pdxltabdesc = CTranslatorUtils::Pdxltabdesc(m_pmp, m_pmda, m_pidgtorCol, prte, &m_fHasDistributedTables);
+	const IMDRelation *pmdrel = m_pmda->Pmdrel(pdxltabdesc->Pmdid());
+	if (CTranslatorUtils::FRelHasTriggers(m_pmp, m_pmda, pmdrel, Edxldmlupdate))
+	{
+		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature, GPOS_WSZ_LIT("UPDATE with triggers"));
+	}
 
 	ULONG ulCtidColId = 0;
 	ULONG ulSegmentIdColId = 0;
@@ -1120,7 +1133,6 @@ CTranslatorQueryToDXL::PdxlnUpdate()
 	
 	ULONG ulTupleOidColId = 0;
 	
-	const IMDRelation *pmdrel = m_pmda->Pmdrel(pdxltabdesc->Pmdid());
 
 	BOOL fHasOids = pmdrel->FHasOids();
 	if (fHasOids)

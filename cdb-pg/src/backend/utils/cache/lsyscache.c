@@ -35,6 +35,7 @@
 #include "catalog/pg_type.h"
 #include "cdb/cdbpartition.h"
 #include "commands/tablecmds.h"
+#include "commands/trigger.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "parser/parse_clause.h"			/* for sort_op_can_sort() */
@@ -3895,7 +3896,7 @@ get_index_opclasses(Oid oidIndex)
 /*
  *  has_parquet_children
  *  Check if relation has a Parquet child relation
-*/
+ */
 bool
 has_parquet_children(Oid relationId)
 {
@@ -3924,7 +3925,7 @@ has_parquet_children(Oid relationId)
 /*
  *  relation_policy
  *  Return the distribution policy of a table. 
-*/
+ */
 GpPolicy *
 relation_policy(Relation rel)
 {
@@ -3935,11 +3936,11 @@ relation_policy(Relation rel)
 }
 
 /*
- *  relation_policy
+ *  child_distribution_mismatch
  *  Return true if the table is partitioned and one of its children has a
  *  different distribution policy. The only allowed mismatch is for the parent
  *  to be hash distributed, and its child part to be randomly distributed.
-*/
+ */
 bool
 child_distribution_mismatch(Relation rel)
 {
@@ -3949,26 +3950,26 @@ child_distribution_mismatch(Relation rel)
 		/* not a partitioned table */
 		return false;
 	}
-	
+
 	GpPolicy *rootPolicy = rel->rd_cdbpolicy;
 	Assert(NULL != rootPolicy && "Partitioned tables cannot be master-only");
-	
+
 	if (POLICYTYPE_PARTITIONED == rootPolicy->ptype && 0 == rootPolicy->nattrs)
 	{
 		/* root partition policy already marked as Random, no mismatch possible as
 		 * all children must be random as well */
 		return false;
 	}
-	
+
 	List *child_oids = find_all_inheritors(rel->rd_id);
 	ListCell *lc = NULL;
-	
+
 	foreach (lc, child_oids)
 	{
 		Oid oidChild = lfirst_oid(lc);
 		Relation relChild = RelationIdGetRelation(oidChild);
 		Assert(NULL != relChild);
-		
+
 		GpPolicy *childPolicy = relChild->rd_cdbpolicy;
 		if (POLICYTYPE_PARTITIONED == childPolicy->ptype && 0 == childPolicy->nattrs)
 		{
@@ -3979,10 +3980,63 @@ child_distribution_mismatch(Relation rel)
 
 		RelationClose(relChild);
 	}
-	
+
 	list_free(child_oids);
-	
+
 	/* all children match the root's distribution policy */
 	return false;
 }
 
+/*
+ *  child_triggers
+ *  Return true if the table is partitioned and any of the child partitions
+ *  have a trigger of the given type.
+ */
+bool
+child_triggers(Oid relationId, int32 triggerType)
+{
+	Assert(InvalidOid != relationId);
+	if (PART_STATUS_NONE == rel_part_status(relationId))
+	{
+		/* not a partitioned table */
+		return false;
+	}
+
+	List *childOids = find_all_inheritors(relationId);
+	ListCell *lc = NULL;
+
+	bool found = false;
+	foreach (lc, childOids)
+	{
+		Oid oidChild = lfirst_oid(lc);
+		Relation relChild = RelationIdGetRelation(oidChild);
+		Assert(NULL != relChild);
+
+		if (0 < relChild->rd_rel->reltriggers && NULL == relChild->trigdesc)
+		{
+			RelationBuildTriggers(relChild);
+			if (NULL == relChild->trigdesc)
+			{
+				relChild->rd_rel->reltriggers = 0;
+			}
+		}
+
+		for (int i = 0; i < relChild->rd_rel->reltriggers && !found; i++)
+		{
+			Trigger trigger = relChild->trigdesc->triggers[i];
+			found = trigger_enabled(trigger.tgoid) &&
+					(get_trigger_type(trigger.tgoid) & triggerType) == triggerType;
+		}
+
+		RelationClose(relChild);
+		if (found)
+		{
+			break;
+		}
+	}
+
+	list_free(childOids);
+	
+	/* no child triggers matching the given type */
+	return found;
+}

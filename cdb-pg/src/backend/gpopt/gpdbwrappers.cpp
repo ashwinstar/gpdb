@@ -184,6 +184,7 @@
 #define ALLOW_has_parquet_children
 #define ALLOW_relation_policy
 #define ALLOW_child_distribution_mismatch
+#define ALLOW_child_triggers
 #define ALLOW_static_part_selection
 
 #include "gpopt/utils/gpdbdefs.h"
@@ -2297,6 +2298,21 @@ gpdb::FChildPartDistributionMismatch
     GP_WRAP_START;
     {
     	return child_distribution_mismatch(rel);
+    }
+    GP_WRAP_END;
+    return false;
+}
+
+BOOL
+gpdb::FChildTriggers
+	(
+	Oid oid,
+	int triggerType
+	)
+{
+    GP_WRAP_START;
+    {
+    	return child_triggers(oid, triggerType);
     }
     GP_WRAP_END;
     return false;
