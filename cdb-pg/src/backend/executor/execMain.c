@@ -2350,6 +2350,9 @@ ExecEndPlan(PlanState *planstate, EState *estate)
 			ExecClearTuple(resultRelInfo->ri_resultSlot);
 		}
 
+		if (resultRelInfo->ri_PartitionParent)
+			relation_close(resultRelInfo->ri_PartitionParent, AccessShareLock);
+
 		/* Close indices and then the relation itself */
 		ExecCloseIndices(resultRelInfo);
 		heap_close(resultRelInfo->ri_RelationDesc, NoLock);

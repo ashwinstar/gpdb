@@ -287,6 +287,12 @@ typedef struct ResultRelInfo
 	struct AttrMap			*ri_partInsertMap;
 	struct TupleTableSlot			*ri_partSlot;
 	struct TupleTableSlot *ri_resultSlot;
+	/* Parent relation in checkPartitionUpdate */
+	Relation				ri_PartitionParent;
+	/* tupdesc_match for checkPartitionUpdate */
+	int						ri_PartCheckTupDescMatch;
+	/* Attribute map in checkPartitionUpdate */
+	struct AttrMap		   *ri_PartCheckMap;
 } ResultRelInfo;
 
 typedef struct ShareNodeEntry
