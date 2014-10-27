@@ -893,7 +893,7 @@ typedef struct PartOidExprState
 	ExprState     xprstate;
 
 	/* accepted leaf PartitionConstraints for current tuple */
-	struct PartitionConstraints *acceptedLeafPart;
+	struct PartitionConstraints **acceptedLeafPart;
 } PartOidExprState;
 
 /* ----------------
@@ -2465,7 +2465,7 @@ typedef struct PartitionSelectorState
 	PartitionNode *rootPartitionNode;                   /* PartitionNode for root table */
 	PartitionAccessMethods *accessMethods;              /* Access method for partition */
 	struct PartitionConstraints **levelPartConstraints; /* accepted partitions for all levels */
-	struct PartitionConstraints *acceptedLeafPart;      /* accepted leaf PartitionConstraints for current tuple */
+	struct PartitionConstraints *acceptedLeafPart;     /* accepted leaf PartitionConstraints for current tuple */
 	List *levelEqExprStates;                            /* ExprState for equality expressions for all levels */
 	List *levelExprStates;                              /* ExprState for general expressions for all levels */
 	ExprState *residualPredicateExprState;              /* ExprState for evaluating residual predicate */

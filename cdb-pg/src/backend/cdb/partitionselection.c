@@ -502,12 +502,24 @@ processLevel(PartitionSelectorState *node, int level, TupleTableSlot *inputTuple
 				shouldPropagate = eval_part_qual(exprstate, node, inputTuple);
 			}
 
-			if (shouldPropagate && NULL != ps->propagationExpression)
+			if (shouldPropagate)
 			{
-				selparts->partOids = lappend_oid(selparts->partOids, partConstraint->pRule->parchildrelid);
-				int scanId = eval_propagation_expression(node, partConstraint->pRule->parchildrelid);
-				selparts->scanIds = lappend_int(selparts->scanIds, scanId);
-				node->acceptedLeafPart = partConstraint;
+				if (NULL != ps->propagationExpression)
+				{
+					selparts->partOids = lappend_oid(selparts->partOids, partConstraint->pRule->parchildrelid);
+					int scanId = eval_propagation_expression(node, partConstraint->pRule->parchildrelid);
+					selparts->scanIds = lappend_int(selparts->scanIds, scanId);
+				}
+				else
+				{
+					/*
+					 * We'll need this partConstraint to evaluate the PartOidExpr of the
+					 * PartitionSelector operator's target list. Save it in node->acceptedLeafPart.
+					 * PartOidExprState.acceptedLeafPart also points to this partConstraint,
+					 * so we must save it here (GPSQL-2956).
+					 */
+					node->acceptedLeafPart = partConstraint;
+				}
 			}
 		}
 		/* Recursively call this function for next level's partition elimination */

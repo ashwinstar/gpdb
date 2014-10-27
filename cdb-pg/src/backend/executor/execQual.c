@@ -4207,16 +4207,18 @@ static Datum ExecEvalPartOidExpr(PartOidExprState *exprstate,
 						ExprContext *econtext,
 						bool *isNull, ExprDoneCond *isDone)
 {
-	PartitionConstraints *constraint = exprstate->acceptedLeafPart;
-	if (NULL != constraint)
-	{
-		return UInt32GetDatum(constraint->pRule->parchildrelid);
-	}
 
 	if (isDone)
 	{
 		*isDone = ExprSingleResult;
 	}
+
+	PartitionConstraints *constraint = *exprstate->acceptedLeafPart;
+	if (NULL != constraint)
+	{
+		return UInt32GetDatum(constraint->pRule->parchildrelid);
+	}
+
 
 	return PointerGetDatum(NULL);
 }
@@ -5053,7 +5055,13 @@ ExecInitExpr(Expr *node, PlanState *parent)
 						"PartOidExpr can only refer to leaf level.");
 #endif
 				exprstate->xprstate.evalfunc = (ExprStateEvalFunc) ExecEvalPartOidExpr;
-				exprstate->acceptedLeafPart = psstate->acceptedLeafPart;
+				/*
+				 * exprstate->acceptedLeafPart is a double pointer, pointing
+				 * to the field in the PartitionSelector state that will
+				 * be holding the actual PartitionConstraints value (GPSQL-2956)
+				 * computed for each tuple.
+				 */
+				exprstate->acceptedLeafPart = &psstate->acceptedLeafPart;
 
 				state = (ExprState *) exprstate;
 			}
