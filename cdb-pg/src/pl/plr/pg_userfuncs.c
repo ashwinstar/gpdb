@@ -2,7 +2,7 @@
  * PL/R - PostgreSQL support for R as a
  *	      procedural language (PL)
  *
- * Copyright (c) 2003-2010 by Joseph E. Conway
+ * Copyright (c) 2003-2013 by Joseph E. Conway
  * ALL RIGHTS RESERVED
  * 
  * Joe Conway <mail@joeconway.com>
@@ -40,6 +40,18 @@ extern char **environ;
 
 static ArrayType *plr_array_create(FunctionCallInfo fcinfo,
 								   int numelems, int elem_start);
+
+/*-----------------------------------------------------------------------------
+ * plr_version :
+ *		output PL/R version string
+ *----------------------------------------------------------------------------
+ */
+PG_FUNCTION_INFO_V1(plr_version);
+Datum
+plr_version(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_TEXT_P(PG_STR_GET_TEXT(PLR_VERSION));
+}
 
 /*-----------------------------------------------------------------------------
  * reload_modules :
@@ -543,7 +555,7 @@ plr_get_raw(PG_FUNCTION_ARGS)
 	brptr = VARDATA(bresult);
 	memcpy(brptr, (char *) RAW(result), rsize - VARHDRSZ);
 
-	UNPROTECT(2);
+	UNPROTECT(3);
 
 	PG_RETURN_BYTEA_P(bresult);
 }

@@ -1588,7 +1588,7 @@ ifeq "$(EMBED_GPPKG_CONTENTS)" "true"
 	rm -rf plr-staging
 	mkdir plr-staging
 	pushd plr-staging; \
-	tar xvf $(INSTLOC)/../plr-2.0-rhel5-x86_64.gppkg; \
+	tar xvf $(INSTLOC)/../plr-2.1-rhel5-x86_64.gppkg; \
 	rpm2cpio *.rpm | cpio -idm; \
 	rpm2cpio deps/*.rpm | cpio -idm; \
 	rsync -auv temp/* $(INSTLOC); \

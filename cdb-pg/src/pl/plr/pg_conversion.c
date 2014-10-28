@@ -2,7 +2,7 @@
  * PL/R - PostgreSQL support for R as a
  *	      procedural language (PL)
  *
- * Copyright (c) 2003-2010 by Joseph E. Conway
+ * Copyright (c) 2003-2013 by Joseph E. Conway
  * ALL RIGHTS RESERVED
  * 
  * Joe Conway <mail@joeconway.com>
@@ -41,6 +41,7 @@ static Datum get_trigger_tuple(SEXP rval, plr_function *function,
 									FunctionCallInfo fcinfo, bool *isnull);
 static Datum get_tuplestore(SEXP rval, plr_function *function,
 									FunctionCallInfo fcinfo, bool *isnull);
+static Datum get_simple_array_datum(SEXP rval, Oid typelem, bool *isnull);
 static Datum get_array_datum(SEXP rval, plr_function *function, int col, bool *isnull);
 static Datum get_frame_array_datum(SEXP rval, plr_function *function, int col,
 																bool *isnull);
@@ -63,6 +64,7 @@ static Tuplestorestate *get_generic_tuplestore(SEXP rval,
 											 AttInMetadata *attinmeta,
 											 MemoryContext per_query_ctx,
 											 bool retset);
+static SEXP coerce_to_char(SEXP rval);
 
 extern char *last_R_error_msg;
 
@@ -126,7 +128,7 @@ pg_scalar_get_r(Datum dvalue, Oid arg_typid, FmgrInfo arg_out_func)
 						 errdetail("R expression evaluation error caught in \"unserialize\".")));
 		}
 
-		UNPROTECT(2);
+		UNPROTECT(3);
 	}
 
 	return result;
@@ -315,6 +317,132 @@ pg_array_get_r(Datum dvalue, FmgrInfo out_func, int typlen, bool typbyval, char 
 			setAttrib(result, R_DimSymbol, matrix_dims);
 			UNPROTECT(1);
 		}
+
+		UNPROTECT(1);	/* result */
+	}
+
+	return result;
+}
+
+/*
+ * Given an array pg datums, convert to a multi-row R vector.
+ */
+SEXP
+pg_datum_array_get_r(Datum *elem_values, bool *elem_nulls, int numels, bool has_nulls,
+					 Oid element_type, FmgrInfo out_func, bool typbyval)
+{
+	/*
+	 * Loop through and convert each scalar value.
+	 * Use the converted values to build an R vector.
+	 */
+	SEXP		result;
+	int			i;
+	bool		fast_track_type;
+
+	switch (element_type)
+	{
+		case INT4OID:
+		case FLOAT8OID:
+			fast_track_type = true;
+			break;
+		default:
+			fast_track_type = false;
+	}
+
+	/*
+	 * Special case for pass-by-value data types, if the following conditions are met:
+	 * 		designated fast_track_type
+	 * 		no NULL elements
+	 * 		1 dimensional array only
+	 * 		at least one element
+	 */
+	if (fast_track_type &&
+		 typbyval &&
+		 !has_nulls &&
+		 (numels > 0))
+	{
+		SEXP	matrix_dims;
+
+		/* get new vector of the appropriate type and length */
+		PROTECT(result = get_r_vector(element_type, numels));
+
+		/* keep this in sync with switch above -- fast_track_type only */
+		switch (element_type)
+		{
+			case INT4OID:
+				Assert(sizeof(int) == 4);
+				memcpy(INTEGER_DATA(result), elem_values, numels * sizeof(int));
+				break;
+			case FLOAT8OID:
+				Assert(sizeof(double) == 8);
+				memcpy(NUMERIC_DATA(result), elem_values, numels * sizeof(double));
+				break;
+			default:
+				/* Everything else is error */
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("direct array passthrough attempted for unsupported type")));
+		}
+
+		/* attach dimensions */
+		PROTECT(matrix_dims = allocVector(INTSXP, 1));
+		INTEGER_DATA(matrix_dims)[0] = numels;
+		setAttrib(result, R_DimSymbol, matrix_dims);
+		UNPROTECT(1);
+
+		UNPROTECT(1);	/* result */
+	}
+	else
+	{
+		SEXP	matrix_dims;
+
+		/* array is empty */
+		if (numels == 0)
+		{
+			PROTECT(result = get_r_vector(element_type, 0));
+			UNPROTECT(1);
+
+			return result;
+		}
+
+		/* get new vector of the appropriate type and length */
+		PROTECT(result = get_r_vector(element_type, numels));
+
+		/* Convert all values to their R form and build the vector */
+		for (i = 0; i < numels; i++)
+		{
+			char	   *value;
+			Datum		itemvalue;
+			bool		isnull;
+
+			isnull = elem_nulls[i];
+			itemvalue = elem_values[i];
+
+			if (!isnull)
+			{
+				value = DatumGetCString(FunctionCall3(&out_func,
+													  itemvalue,
+													  (Datum) 0,
+													  Int32GetDatum(-1)));
+			}
+			else
+				value = NULL;
+
+			/*
+			 * Note that pg_get_one_r() replaces NULL values with
+			 * the NA value appropriate for the data type.
+			 */
+			pg_get_one_r(value, element_type, &result, i);
+			if (value != NULL)
+				pfree(value);
+		}
+
+		/* attach dimensions */
+		PROTECT(matrix_dims = allocVector(INTSXP, 1));
+		INTEGER_DATA(matrix_dims)[0] = numels;
+		setAttrib(result, R_DimSymbol, matrix_dims);
+		UNPROTECT(1);
+
 		UNPROTECT(1);	/* result */
 	}
 
@@ -368,7 +496,7 @@ pg_tuple_get_r_frame(int ntuples, HeapTuple *tuples, TupleDesc tupdesc)
 		bool		typbyval;
 		char		typdelim;
 		Oid			typoutput,
-					elemtypelem;
+					typioparam;
 		FmgrInfo	outputproc;
 		char		typalign;
 
@@ -396,7 +524,7 @@ pg_tuple_get_r_frame(int ntuples, HeapTuple *tuples, TupleDesc tupdesc)
 		{
 			PROTECT(fldvec = NEW_LIST(nr));
 			get_type_io_data(typelem, IOFunc_output, &typlen, &typbyval,
-							 &typalign, &typdelim, &elemtypelem, &typoutput);
+							 &typalign, &typdelim, &typioparam, &typoutput);
 
 			fmgr_info(typoutput, &outputproc);
 		}
@@ -553,6 +681,17 @@ r_get_pg(SEXP rval, plr_function *function, FunctionCallInfo fcinfo)
 	bool	isnull = false;
 	Datum	result;
 
+	if (function->result_typid != BYTEAOID &&
+		(TYPEOF(rval) == CLOSXP ||
+		 TYPEOF(rval) == PROMSXP ||
+		 TYPEOF(rval) == LANGSXP ||
+		 TYPEOF(rval) == ENVSXP))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATA_EXCEPTION),
+				 errmsg("incorrect function return type"),
+				 errdetail("R return value type cannot be mapped to PostgreSQL return type."),
+				 errhint("Try BYTEA as the PostgreSQL return type.")));
+
 	if (CALLED_AS_TRIGGER(fcinfo))
 		result = get_trigger_tuple(rval, function, fcinfo, &isnull);
 	else if (function->result_istuple || fcinfo->flinfo->fn_retset)
@@ -575,6 +714,30 @@ r_get_pg(SEXP rval, plr_function *function, FunctionCallInfo fcinfo)
 
 	if (isnull)
 		fcinfo->isnull = true;
+
+	return result;
+}
+
+/*
+ * Similar to r_get_pg, given an R value, convert to its pg representation
+ * Other than scalar, currently only prepared to be used with simple 1D vector
+ */
+Datum
+get_datum(SEXP rval, Oid typid, Oid typelem, FmgrInfo in_func, bool *isnull)
+{
+	Datum	result;
+
+	/* short circuit if return value is Null */
+	if (rval == R_NilValue || isNull(rval))	/* probably redundant */
+	{
+		*isnull = true;
+		return (Datum) 0;
+	}
+
+	if (typelem == InvalidOid)
+		result = get_scalar_datum(rval, typid, in_func, isnull);
+	else
+		result = get_simple_array_datum(rval, typelem, isnull);
 
 	return result;
 }
@@ -671,7 +834,7 @@ get_trigger_tuple(SEXP rval, plr_function *function, FunctionCallInfo fcinfo, bo
 		{
 			SEXP	obj;
 
-			PROTECT(obj = AS_CHARACTER(dfcol));
+			PROTECT(obj = coerce_to_char(dfcol));
 			SET_VECTOR_ELT(result, j, obj);
 			UNPROTECT(1);
 		}
@@ -683,7 +846,7 @@ get_trigger_tuple(SEXP rval, plr_function *function, FunctionCallInfo fcinfo, bo
 			{
 				if(TAG(t) == R_LevelsSymbol)
 				{
-					PROTECT(SETCAR(t, AS_CHARACTER(CAR(t))));
+					PROTECT(SETCAR(t, coerce_to_char(CAR(t))));
 					UNPROTECT(1);
 					break;
 				}
@@ -744,7 +907,7 @@ get_trigger_tuple(SEXP rval, plr_function *function, FunctionCallInfo fcinfo, bo
 			if (values[j] != NULL)
 				pfree(values[j]);
 	}
-
+	UNPROTECT(1);
 	MemoryContextSwitchTo(oldcontext);
 
 	if (tuple)
@@ -851,7 +1014,7 @@ get_scalar_datum(SEXP rval, Oid result_typid, FmgrInfo result_in_func, bool *isn
 	 */
 	if (result_typid != BYTEAOID)
 	{
-		PROTECT(obj = AS_CHARACTER(rval));
+		PROTECT(obj = coerce_to_char(rval));
 		if (STRING_ELT(obj, 0) == NA_STRING)
 		{
 			UNPROTECT(1);
@@ -1016,10 +1179,16 @@ get_frame_array_datum(SEXP rval, plr_function *function, int col, bool *isnull)
 			/* internal error */
 			elog(ERROR, "plr: bad internal representation of data.frame");
 
-		if (ATTRIB(dfcol) == R_NilValue)
-			PROTECT(obj = AS_CHARACTER(dfcol));
+		/*
+		 * Not sure about this test. Need to reliably detect
+		 * factors and do the alternative assignment ONLY for them.
+		 * For the moment this locution seems to work correctly.
+		 */
+		if (ATTRIB(dfcol) == R_NilValue ||
+			TYPEOF(CAR(ATTRIB(dfcol))) != STRSXP)
+			PROTECT(obj = coerce_to_char(dfcol));
 		else
-			PROTECT(obj = AS_CHARACTER(CAR(ATTRIB(dfcol))));
+			PROTECT(obj = coerce_to_char(CAR(ATTRIB(dfcol))));
 
 		if (j == 0)
 		{
@@ -1061,6 +1230,96 @@ get_frame_array_datum(SEXP rval, plr_function *function, int col, bool *isnull)
 	else
 		array = construct_md_array(dvalues, nulls, ndims, dims, lbs,
 									result_elem, typlen, typbyval, typalign);
+
+	dvalue = PointerGetDatum(array);
+
+	return dvalue;
+}
+
+/* return simple, one dimensional array */
+static Datum
+get_simple_array_datum(SEXP rval, Oid typelem, bool *isnull)
+{
+	Datum		dvalue;
+	SEXP		obj;
+	SEXP		rdims;
+	const char *value;
+	int16		typlen;
+	bool		typbyval;
+	char		typdelim;
+	Oid			typinput,
+				typioparam;
+	FmgrInfo	in_func;
+	char		typalign;
+	int			i;
+	Datum	   *dvalues = NULL;
+	ArrayType  *array;
+	int			nitems;
+	int		   *dims;
+	int		   *lbs;
+	bool	   *nulls;
+	bool		have_nulls = FALSE;
+	int			ndims = 1;
+
+	dims = palloc(ndims * sizeof(int));
+	lbs = palloc(ndims * sizeof(int));
+
+	/*
+	 * get the element type's in_func
+	 */
+	get_type_io_data(typelem, IOFunc_output, &typlen, &typbyval,
+					 &typalign, &typdelim, &typioparam, &typinput);
+
+	perm_fmgr_info(typinput, &in_func);
+
+	PROTECT(rdims = getAttrib(rval, R_DimSymbol));
+	if (length(rdims) > 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("greater than 1-dimensional arrays are " \
+						"not supported in this context")));
+
+	dims[0] = INTEGER(rdims)[0];
+	lbs[0] = 1;
+	UNPROTECT(1);
+
+	nitems = dims[0];
+	if (nitems == 0)
+	{
+		*isnull = true;
+		return (Datum) 0;
+	}
+
+	dvalues = (Datum *) palloc(nitems * sizeof(Datum));
+	nulls = (bool *) palloc(nitems * sizeof(bool));
+	PROTECT(obj =  coerce_to_char(rval));
+
+	for (i = 0; i < nitems; i++)
+	{
+		value = CHAR(STRING_ELT(obj, i));
+
+		if (STRING_ELT(obj, i) == NA_STRING || value == NULL)
+		{
+			nulls[i] = TRUE;
+			have_nulls = TRUE;
+		}
+		else
+		{
+			nulls[i] = FALSE;
+			dvalues[i] = FunctionCall3(&in_func,
+										CStringGetDatum(value),
+										(Datum) 0,
+										Int32GetDatum(-1));
+		}
+	}
+	UNPROTECT(1);
+
+	if (!have_nulls)
+		array = construct_md_array(dvalues, NULL, ndims, dims, lbs,
+									typelem, typlen, typbyval, typalign);
+	else
+		array = construct_md_array(dvalues, nulls, ndims, dims, lbs,
+									typelem, typlen, typbyval, typalign);
 
 	dvalue = PointerGetDatum(array);
 
@@ -1152,7 +1411,7 @@ get_md_array_datum(SEXP rval, int ndims, plr_function *function, int col, bool *
 	nitems = nr * nc * nz;
 	dvalues = (Datum *) palloc(nitems * sizeof(Datum));
 	nulls = (bool *) palloc(nitems * sizeof(bool));
-	PROTECT(obj =  AS_CHARACTER(rval));
+	PROTECT(obj =  coerce_to_char(rval));
 
 	for (i = 0; i < nr; i++)
 	{
@@ -1291,18 +1550,34 @@ get_generic_array_datum(SEXP rval, plr_function *function, int col, bool *isnull
 		 typbyval &&
 		 !has_na)
 	{
-		dims[0] = objlen;
-		lbs[0] = 1;
+		int32		nbytes = 0;
+		int32		dataoffset;
 
 		if (TYPEOF(rval) == INTSXP)
+		{
+			nbytes = objlen * sizeof(INTEGER_DATA(rval));
 			dvalues = (Datum *) INTEGER_DATA(rval);
+		}
 		else if (TYPEOF(rval) == REALSXP)
+		{
+			nbytes = objlen * sizeof(NUMERIC_DATA(rval));
 			dvalues = (Datum *) NUMERIC_DATA(rval);
+		}
 		else
 			elog(ERROR, "attempted to passthrough invalid R datatype to Postgresql");
 
-		array = construct_md_array(dvalues, NULL, ndims, dims, lbs,
-									result_elem, typlen, typbyval, typalign);
+		dims[0] = objlen;
+		lbs[0] = 1;
+		dataoffset = 0;			/* marker for no null bitmap */
+
+		array = (ArrayType *) palloc0(nbytes + ARR_OVERHEAD_NONULLS(ndims));
+		SET_VARSIZE(array, nbytes + ARR_OVERHEAD_NONULLS(ndims));
+		array->ndim = ndims;
+		array->dataoffset = dataoffset;
+		array->elemtype = result_elem;
+		memcpy(ARR_DIMS(array), dims, ndims * sizeof(int));
+		memcpy(ARR_LBOUND(array), lbs, ndims * sizeof(int));
+		memcpy(ARR_DATA_PTR(array), dvalues, nbytes);
 
 		dvalue = PointerGetDatum(array);
 	}
@@ -1311,7 +1586,7 @@ get_generic_array_datum(SEXP rval, plr_function *function, int col, bool *isnull
 		/* original code */
 		dvalues = (Datum *) palloc(objlen * sizeof(Datum));
 		nulls = (bool *) palloc(objlen * sizeof(bool));
-		PROTECT(obj =  AS_CHARACTER(rval));
+		PROTECT(obj =  coerce_to_char(rval));
 
 		/* Loop is needed here as result value might be of length > 1 */
 		for(i = 0; i < objlen; i++)
@@ -1414,7 +1689,7 @@ get_frame_tuplestore(SEXP rval,
 		{
 			SEXP	obj;
 
-			PROTECT(obj = AS_CHARACTER(dfcol));
+			PROTECT(obj = coerce_to_char(dfcol));
 			SET_VECTOR_ELT(result, j, obj);
 			UNPROTECT(1);
 		}
@@ -1429,7 +1704,7 @@ get_frame_tuplestore(SEXP rval,
 				SEXP	objcell;
 
 				PROTECT(dfcolcell = VECTOR_ELT(dfcol, i));
-				PROTECT(objcell = AS_CHARACTER(dfcolcell));
+				PROTECT(objcell = coerce_to_char(dfcolcell));
 				SET_VECTOR_ELT(obj, i, objcell);
 				UNPROTECT(2);
 			}
@@ -1445,7 +1720,7 @@ get_frame_tuplestore(SEXP rval,
 			{
 				if(TAG(t) == R_LevelsSymbol)
 				{
-					PROTECT(SETCAR(t, AS_CHARACTER(CAR(t))));
+					PROTECT(SETCAR(t, coerce_to_char(CAR(t))));
 					UNPROTECT(1);
 					break;
 				}
@@ -1605,7 +1880,7 @@ get_matrix_tuplestore(SEXP rval,
 
 	values = (char **) palloc(nc * sizeof(char *));
 
-	PROTECT(obj =  AS_CHARACTER(rval));
+	PROTECT(obj =  coerce_to_char(rval));
 	for(i = 0; i < nr; i++)
 	{
 		for (j = 0; j < nc; j++)
@@ -1671,8 +1946,7 @@ get_generic_tuplestore(SEXP rval,
 	MemoryContextSwitchTo(oldcontext);
 
 	values = (char **) palloc(nc * sizeof(char *));
-
-	PROTECT(obj =  AS_CHARACTER(rval));
+	PROTECT(obj = coerce_to_char(rval));
 
 	for(i = 0; i < nr; i++)
 	{
@@ -1700,4 +1974,36 @@ get_generic_tuplestore(SEXP rval,
 	MemoryContextSwitchTo(oldcontext);
 
 	return tupstore;
+}
+
+static SEXP
+coerce_to_char(SEXP rval)
+{
+	SEXP	obj = NULL;
+
+	switch (TYPEOF(rval))
+	{
+		case LISTSXP:
+		case NILSXP:
+		case SYMSXP:
+		case VECSXP:
+		case EXPRSXP:
+		case LGLSXP:
+		case INTSXP:
+		case REALSXP:
+		case CPLXSXP:
+		case STRSXP:
+		case RAWSXP:
+			PROTECT(obj = AS_CHARACTER(rval));
+			break;
+		default:
+			ereport(ERROR,
+			(errcode(ERRCODE_DATA_EXCEPTION),
+				errmsg("data type coercion error"),
+				errdetail("R object is not an expected " \
+						  "data type; examine your R code")));
+	}
+	UNPROTECT(1);
+
+	return obj;
 }

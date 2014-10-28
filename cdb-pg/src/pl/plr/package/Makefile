@@ -17,8 +17,8 @@ R_RPM=R-$(R_VER)-$(R_REL).$(ARCH).rpm
 R_HOME=$(R_DIR)/lib64/R
 
 PLR_DIR=`cd .. && pwd`
-PLR_GPPKG_VER=ossv8.3.0.12_pv2.0_gpdb4.3
-PLR_VER=2.0
+PLR_GPPKG_VER=ossv8.3.0.15_pv2.1_gpdb4.3
+PLR_VER=2.1
 PLR_REL=1
 PLR_RPM_FLAGS="--define 'plr_dir $(PLR_DIR)' --define 'plr_ver $(PLR_VER)' --define 'plr_rel $(PLR_REL)' --define 'r_ver $(R_VER)' --define 'r_dir $(R_DIR)'"
 PLR_RPM=plr-$(PLR_VER)-$(PLR_REL).$(ARCH).rpm

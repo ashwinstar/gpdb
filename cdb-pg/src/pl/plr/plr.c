@@ -2,7 +2,7 @@
  * PL/R - PostgreSQL support for R as a
  *	      procedural language (PL)
  *
- * Copyright (c) 2003-2010 by Joseph E. Conway
+ * Copyright (c) 2003-2013 by Joseph E. Conway
  * ALL RIGHTS RESERVED
  * 
  * Joe Conway <mail@joeconway.com>
@@ -48,15 +48,7 @@ static bool	plr_be_init_done = false;
 /* namespace OID for the PL/R language handler function */
 static Oid plr_nspOid = InvalidOid;
 
-/* 
- * A global variable defined by R runtime that controls whether signals are 
- * handled by R's handlers or ignored.
- * By default, R initializes it to FALSE. In PLR, the better option is to 
- * disable R's handler so that the embedding process can have more control 
- * over how the signals are processed. 
- */ 
-extern Rboolean R_interrupts_suspended; 
-extern int		R_SignalHandlers;
+int R_SignalHandlers = 1;  /* Exposed in R_interface.h */
 
 /*
  * defines
@@ -180,11 +172,19 @@ static plr_function *do_compile(FunctionCallInfo fcinfo,
 								HeapTuple procTup,
 								plr_func_hashkey *hashkey);
 static SEXP plr_parse_func_body(const char *body);
-static SEXP plr_convertargs(plr_function *function, Datum *arg, bool *argnull);
+static SEXP plr_convertargs(plr_function *function, Datum *arg, bool *argnull, FunctionCallInfo fcinfo);
 static void plr_error_callback(void *arg);
 static Oid getNamespaceOidFromFunctionOid(Oid fnOid);
 static bool haveModulesTable(Oid nspOid);
 static char *getModulesSql(Oid nspOid);
+#ifdef HAVE_WINDOW_FUNCTIONS
+static void WinGetFrameData(WindowObject winobj, int argno, Datum *dvalues, bool *isnull, int *numels, bool *has_nulls);
+#endif
+//static void plr_resolve_polymorphic_argtypes(int numargs,
+//											 Oid *argtypes, char *argmodes,
+//											 Node *call_expr, bool forValidator,
+//											 const char *proname);
+
 static char **fetchArgNames(HeapTuple procTup, int nargs);
 
 /*
@@ -208,12 +208,9 @@ plr_call_handler(PG_FUNCTION_ARGS)
 		elog(ERROR, "SPI_connect failed");
 	plr_SPI_context = CurrentMemoryContext;
 	MemoryContextSwitchTo(plr_caller_context);
-	R_SignalHandlers = 0;
+
 	/* initialize R if needed */
 	plr_init_all(fcinfo->flinfo->fn_oid);
-
-	/* reset the flag to TRUE to make sure that R's handlers are disabled. */ 
-	R_interrupts_suspended = true; 
 
 	if (CALLED_AS_TRIGGER(fcinfo))
 		retval = plr_trigger_handler(fcinfo);
@@ -227,8 +224,7 @@ void
 load_r_cmd(const char *cmd)
 {
 	SEXP		cmdSexp,
-				cmdexpr,
-				ans = R_NilValue;
+				cmdexpr;
 	int			i,
 				status;
 
@@ -260,7 +256,7 @@ load_r_cmd(const char *cmd)
 	/* Loop is needed here as EXPSEXP may be of length > 1 */
 	for(i = 0; i < length(cmdexpr); i++)
 	{
-		ans = R_tryEval(VECTOR_ELT(cmdexpr, i), R_GlobalEnv, &status);
+		R_tryEval(VECTOR_ELT(cmdexpr, i), R_GlobalEnv, &status);
 		if(status != 0)
 		{
 			if (last_R_error_msg)
@@ -291,7 +287,6 @@ PLR_CLEANUP
 {
 	char   *buf;
 	char   *tmpdir = getenv("R_SESSION_TMPDIR");
-	int		ret;
 
 	R_dot_Last();
 	R_RunExitFinalizers();
@@ -299,6 +294,7 @@ PLR_CLEANUP
 
 	if(tmpdir)
 	{
+		int		rv;
 		/*
 		 * length needed = 'rm -rf ""' == 9
 		 * plus 1 for NULL terminator
@@ -307,8 +303,10 @@ PLR_CLEANUP
 		buf = (char *) palloc(9 + 1 + strlen(tmpdir));
 		sprintf(buf, "rm -rf \"%s\"", tmpdir);
 
-		/* ignoring return value, but silence the compiler */
-		ret = system(buf);
+		/* ignoring return value */
+		rv = system(buf);
+		if (rv != 0)
+			; /* do nothing */
 	}
 }
 
@@ -317,9 +315,7 @@ plr_atexit(void)
 {
 	/* only react during plr startup */
 	if (plr_pm_init_done)
-	{
 		return;
-	}
 
 	ereport(ERROR,
 			(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
@@ -339,7 +335,7 @@ plr_init(void)
 {
 	char	   *r_home;
 	int			rargc;
-	char	   *rargv[] = {"PL/R", "--silent", "--no-save", "--no-restore"};
+	char	   *rargv[] = {"PL/R", "--slave", "--silent", "--no-save", "--no-restore"};
 
 	/* refuse to init more than once */
 	if (plr_pm_init_done)
@@ -382,6 +378,11 @@ plr_init(void)
 	atexit(plr_atexit);
 
 	/*
+	 * Stop R using its own signal handlers
+	 */
+	R_SignalHandlers = 0;
+
+	/*
 	 * When initialization fails, R currently exits. Check the return
 	 * value anyway in case this ever gets fixed
 	 */
@@ -405,10 +406,6 @@ plr_init(void)
 	R_Interactive = false;
 #endif
 
-	/* 
-	 * This will instruct the RVM to bypass its own signal handlers. 
-	 */
-	R_interrupts_suspended = true; 
 
 	plr_pm_init_done = true;
 }
@@ -723,7 +720,7 @@ plr_trigger_handler(PG_FUNCTION_ARGS)
 	PROTECT(fun = function->fun);
 
 	/* Convert all call arguments */
-	PROTECT(rargs = plr_convertargs(function, arg, argnull));
+	PROTECT(rargs = plr_convertargs(function, arg, argnull, fcinfo));
 
 	/* Call the R function */
 	PROTECT(rvalue = call_r_func(fun, rargs));
@@ -761,7 +758,7 @@ plr_func_handler(PG_FUNCTION_ARGS)
 	PROTECT(fun = function->fun);
 
 	/* Convert all call arguments */
-	PROTECT(rargs = plr_convertargs(function, fcinfo->arg, fcinfo->argnull));
+	PROTECT(rargs = plr_convertargs(function, fcinfo->arg, fcinfo->argnull, fcinfo));
 
 	/* Call the R function */
 	PROTECT(rvalue = call_r_func(fun, rargs));
@@ -959,6 +956,11 @@ do_compile(FunctionCallInfo fcinfo,
 	function->fn_xmin = HeapTupleHeaderGetXmin(procTup->t_data);
 	function->fn_tid = procTup->t_self;
 
+#ifdef HAVE_WINDOW_FUNCTIONS
+	/* Flag for window functions */
+	function->iswindow = procStruct->proiswindow;
+#endif
+
 	/* Lookup the pg_language tuple by Oid*/
 	langTup = SearchSysCache(LANGOID,
 							 ObjectIdGetDatum(procStruct->prolang),
@@ -1102,8 +1104,8 @@ do_compile(FunctionCallInfo fcinfo,
 				function->result_elem = InvalidOid;
 			
 			/*
-			* if we have an array type, get the element type's in_func
-			*/
+			 * if we have an array type, get the element type's in_func
+			 */
 			if (function->result_elem != InvalidOid)
 			{
 				int16		typlen;
@@ -1142,11 +1144,31 @@ do_compile(FunctionCallInfo fcinfo,
 	if (!is_trigger)
 	{
 		int		i;
+		// bool		forValidator = false;
+		// int			numargs;
+		// Oid		   *argtypes;
+		// char	  **argnames;
+		// char	   *argmodes;
+
+		// numargs = get_func_arg_info(procTup,
+		// 							&argtypes, &argnames, &argmodes);
+
+		// plr_resolve_polymorphic_argtypes(numargs, argtypes, argmodes,
+		// 									 fcinfo->flinfo->fn_expr,
+		// 									 forValidator,
+		// 									 function->proname);
 		GET_ARG_NAMES;
 
 		function->nargs = procStruct->pronargs;
 		for (i = 0; i < function->nargs; i++)
 		{
+			// char		argmode = argmodes ? argmodes[i] : PROARGMODE_IN;
+
+			// if (argmode != PROARGMODE_IN &&
+			// 	argmode != PROARGMODE_INOUT &&
+			// 	argmode != PROARGMODE_VARIADIC)
+			// 	continue;
+
 			/*
 			 * Since we already did the replacement of polymorphic
 			 * argument types by actual argument types while computing
@@ -1190,6 +1212,9 @@ do_compile(FunctionCallInfo fcinfo,
 
 			perm_fmgr_info(typeStruct->typoutput, &(function->arg_out_func[i]));
 
+			/* save argument typbyval in case we need for optimization in conversions */
+			function->arg_typbyval[i] = typeStruct->typbyval;
+
 			/*
 			 * Is argument type an array? get_element_type will return InvalidOid
 			 * instead of actual element type if the type is not a varlena array.
@@ -1228,6 +1253,18 @@ do_compile(FunctionCallInfo fcinfo,
 			}
 		}
 		FREE_ARG_NAMES;
+
+#ifdef HAVE_WINDOW_FUNCTIONS
+		if (function->iswindow)
+		{
+			for (i = 0; i < function->nargs; i++)
+			{
+				appendStringInfo(proc_internal_args, ",");
+				SET_FRAME_ARG_NAME;
+			}
+			SET_FRAME_XARG_NAMES;
+		}
+#endif
 	}
 	else
 	{
@@ -1385,10 +1422,9 @@ plr_parse_func_body(const char *body)
     SEXP	tmp;
 	int		status;
 
-	PROTECT(rbody = NEW_CHARACTER(1));
-	SET_STRING_ELT(rbody, 0, COPY_TO_USER_STRING(body));
+	PROTECT(rbody = mkString(body));
+	PROTECT(tmp = R_PARSEVECTOR(rbody, -1, &status));
 
-	tmp = PROTECT(R_PARSEVECTOR(rbody, -1, &status));
 	if (tmp != R_NilValue)
 		PROTECT(fun = VECTOR_ELT(tmp, 0));
 	else
@@ -1466,17 +1502,31 @@ call_r_func(SEXP fun, SEXP rargs)
 }
 
 static SEXP
-plr_convertargs(plr_function *function, Datum *arg, bool *argnull)
+plr_convertargs(plr_function *function, Datum *arg, bool *argnull, FunctionCallInfo fcinfo)
 {
 	int		i;
+	int		m = 1;
+	int		c = 0;
 	SEXP	rargs,
 			el;
 
+#ifdef HAVE_WINDOW_FUNCTIONS
+	if (function->iswindow)
+	{
+		/*
+		 * For WINDOW functions, create an array of R objects with
+		 * the number of elements equal to twice the number of arguments.
+		 */
+		m = 2;
+		c = 2;
+	}
+#endif
+
 	/*
 	 * Create an array of R objects with the number of elements
-	 * equal to the number of arguments.
+	 * as a function of the number of arguments.
 	 */
-	PROTECT(rargs = allocVector(VECSXP, function->nargs));
+	PROTECT(rargs = allocVector(VECSXP, c + (m * function->nargs)));
 
 	/*
 	 * iterate over the arguments, convert each of them and put them in
@@ -1484,43 +1534,139 @@ plr_convertargs(plr_function *function, Datum *arg, bool *argnull)
 	 */
 	for (i = 0; i < function->nargs; i++)
 	{
-		if (argnull[i])
+#ifdef HAVE_WINDOW_FUNCTIONS
+		if (!function->iswindow)
 		{
-			/* fast track for null arguments */
-			PROTECT(el = R_NilValue);
-		}
-		else if (function->arg_is_rel[i])
-		{
-			/* for tuple args, convert to a one row data.frame */
-			CONVERT_TUPLE_TO_DATAFRAME;
-		}
-		else if (function->arg_elem[i] == InvalidOid)
-		{
-			/* for scalar args, convert to a one row vector */
-			Datum		dvalue = arg[i];
-			Oid			arg_typid = function->arg_typid[i];
-			FmgrInfo	arg_out_func = function->arg_out_func[i];
+#endif
+			if (argnull[i])
+			{
+				/* fast track for null arguments */
+				PROTECT(el = R_NilValue);
+			}
+			else if (function->arg_is_rel[i])
+			{
+				/* for tuple args, convert to a one row data.frame */
+				CONVERT_TUPLE_TO_DATAFRAME;
+			}
+			else if (function->arg_elem[i] == InvalidOid)
+			{
+				/* for scalar args, convert to a one row vector */
+				Datum		dvalue = arg[i];
+				Oid			arg_typid = function->arg_typid[i];
+				FmgrInfo	arg_out_func = function->arg_out_func[i];
 
-			PROTECT(el = pg_scalar_get_r(dvalue, arg_typid, arg_out_func));
+				PROTECT(el = pg_scalar_get_r(dvalue, arg_typid, arg_out_func));
+			}
+			else
+			{
+				/* better be a pg array arg, convert to a multi-row vector */
+				Datum		dvalue = (Datum) PG_DETOAST_DATUM(arg[i]);
+				FmgrInfo	out_func = function->arg_elem_out_func[i];
+				int			typlen = function->arg_elem_typlen[i];
+				bool		typbyval = function->arg_elem_typbyval[i];
+				char		typalign = function->arg_elem_typalign[i];
+
+				PROTECT(el = pg_array_get_r(dvalue, out_func, typlen, typbyval, typalign));
+			}
+			SET_VECTOR_ELT(rargs, i, el);
+			UNPROTECT(1);
+#ifdef HAVE_WINDOW_FUNCTIONS
 		}
 		else
 		{
-			/* better be a pg array arg, convert to a multi-row vector */
-			Datum		dvalue = (Datum) PG_DETOAST_DATUM(arg[i]);
-			FmgrInfo	out_func = function->arg_elem_out_func[i];
-			int			typlen = function->arg_elem_typlen[i];
-			bool		typbyval = function->arg_elem_typbyval[i];
-			char		typalign = function->arg_elem_typalign[i];
+			Datum			dvalue;
+			bool			isnull;
+			WindowObject	winobj = PG_WINDOW_OBJECT();
 
-			PROTECT(el = pg_array_get_r(dvalue, out_func, typlen, typbyval, typalign));
+			/* get datum for the current row of the window frame */
+			dvalue = WinGetFuncArgInFrame(winobj, i, 0, WINDOW_SEEK_CURRENT, false, &isnull, NULL);
+
+			if (isnull)
+			{
+				/* fast track for null arguments */
+				PROTECT(el = R_NilValue);
+			}
+			else if (function->arg_is_rel[i])
+			{
+				/* keep compiler quiet */
+				el = R_NilValue;
+
+				elog(ERROR, "Tuple arguments not supported in PL/R Window Functions");
+			}
+			else if (function->arg_elem[i] == InvalidOid)
+			{
+				/* for scalar args, convert to a one row vector */
+				Oid			arg_typid = function->arg_typid[i];
+				FmgrInfo	arg_out_func = function->arg_out_func[i];
+
+				PROTECT(el = pg_scalar_get_r(dvalue, arg_typid, arg_out_func));
+			}
+			else
+			{
+				/* better be a pg array arg, convert to a multi-row vector */
+				FmgrInfo	out_func = function->arg_elem_out_func[i];
+				int			typlen = function->arg_elem_typlen[i];
+				bool		typbyval = function->arg_elem_typbyval[i];
+				char		typalign = function->arg_elem_typalign[i];
+
+				dvalue = (Datum) PG_DETOAST_DATUM(dvalue);
+				PROTECT(el = pg_array_get_r(dvalue, out_func, typlen, typbyval, typalign));
+			}
+			SET_VECTOR_ELT(rargs, i, el);
+			UNPROTECT(1);
 		}
-
-		SET_VECTOR_ELT(rargs, i, el);
-		UNPROTECT(1);
+#endif
 	}
 
-	UNPROTECT(1);
+#ifdef HAVE_WINDOW_FUNCTIONS
+	/* now get an array of datums for the entire window frame for each argument */
+	if (function->iswindow)
+	{
+		WindowObject	winobj = PG_WINDOW_OBJECT();
+		int64			totalrows = WinGetPartitionRowCount(winobj);
+		int				numels = 0;
 
+		for (i = 0; i < function->nargs; i++)
+		{
+			Datum		   *dvalues = palloc0(totalrows * sizeof(Datum));
+			bool		   *isnulls = palloc0(totalrows * sizeof(bool));
+			Oid				datum_typid;
+			FmgrInfo		datum_out_func;
+			bool			datum_typbyval;
+			bool			has_nulls;
+
+			WinGetFrameData(winobj, i, dvalues, isnulls, &numels, &has_nulls);
+
+			datum_typid = function->arg_typid[i];
+			datum_out_func = function->arg_out_func[i];
+			datum_typbyval = function->arg_typbyval[i];
+			PROTECT(el = pg_datum_array_get_r(dvalues, isnulls, numels, has_nulls,
+											  datum_typid, datum_out_func, datum_typbyval));
+
+			/*
+			 * We already set function->nargs arguments
+			 * so we must start with a function->nargs
+			 */
+			SET_VECTOR_ELT(rargs, function->nargs + i, el);
+
+			UNPROTECT(1);
+		}
+
+		/* fnumrows */
+		PROTECT(el = NEW_NUMERIC(1));
+		NUMERIC_DATA(el)[0] = (double) numels;
+		SET_VECTOR_ELT(rargs, m * function->nargs + 0, el);
+		UNPROTECT(1);
+
+		/* prownum */
+		PROTECT(el = NEW_NUMERIC(1));
+		NUMERIC_DATA(el)[0] = (double) WinGetCurrentPosition(winobj) + 1;;
+		SET_VECTOR_ELT(rargs, m * function->nargs + 1, el);
+		UNPROTECT(1);
+	}
+#endif
+
+	UNPROTECT(1);
 	return(rargs);
 }
 
@@ -1533,6 +1679,7 @@ plr_error_callback(void *arg)
 	if (arg)
 		errcontext("In PL/R function %s", (char *) arg);
 }
+
 
 /*
  * Fetch the argument names, if any, from the proargnames field of the
@@ -1686,3 +1833,106 @@ pg_unprotect(int n, char *fn, int ln)
 	unprotect(n);
 }
 #endif /* DEBUGPROTECT */
+
+#ifdef HAVE_WINDOW_FUNCTIONS
+/*
+ * WinGetFrameData
+ *		Evaluate a window function's argument expression on a specified
+ *		window frame, returning an array of Datums for the frame
+ *
+ * argno: argument number to evaluate (counted from 0)
+ * isnull: output argument, receives isnull status of result
+ */
+static void
+WinGetFrameData(WindowObject winobj, int argno, Datum *dvalues, bool *isnulls, int *numels, bool *has_nulls)
+{
+	int64		i = 0;
+
+	*has_nulls = false;
+	for(;;)
+	{
+		Datum	lcl_dvalue;
+		bool	lcl_isnull;
+		bool	isout;
+		bool	set_mark;
+
+		if (i > 0)
+			set_mark = false;
+		else
+			set_mark = true;
+
+		lcl_dvalue = WinGetFuncArgInFrame(winobj, argno, i, WINDOW_SEEK_HEAD,
+										  set_mark, &lcl_isnull, &isout);
+
+		if (!isout)
+		{
+			dvalues[i] = lcl_dvalue;
+			isnulls[i] = lcl_isnull;
+			if (lcl_isnull)
+				*has_nulls = true;
+		}
+		else
+		{
+			*numels = i;
+			break;
+		}
+
+		i++;
+	};
+}
+#endif
+
+/*
+ * swiped out of plpgsql pl_comp.c
+ *
+ * This is the same as the standard resolve_polymorphic_argtypes() function,
+ * but with a special case for validation: assume that polymorphic arguments
+ * are integer, integer-array or integer-range.  Also, we go ahead and report
+ * the error if we can't resolve the types.
+ */
+
+// static void
+// plr_resolve_polymorphic_argtypes(int numargs,
+// 								 Oid *argtypes, char *argmodes,
+// 								 Node *call_expr, bool forValidator,
+// 								 const char *proname)
+// {
+// 	int			i;
+// 
+// 	if (!forValidator)
+// 	{
+// 		/* normal case, pass to standard routine */
+// 		if (!resolve_polymorphic_argtypes(numargs, argtypes, argmodes,
+// 										  call_expr))
+// 			ereport(ERROR,
+// 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+// 					 errmsg("could not determine actual argument "
+// 							"type for polymorphic function \"%s\"",
+// 							proname)));
+// 	}
+// 	else
+// 	{
+// 		/* special validation case */
+// 		for (i = 0; i < numargs; i++)
+// 		{
+// 			switch (argtypes[i])
+// 			{
+// 				case ANYELEMENTOID:
+// 				case ANYNONARRAYOID:
+// 				case ANYENUMOID:		/* XXX dubious */
+// 					argtypes[i] = INT4OID;
+// 					break;
+// 				case ANYARRAYOID:
+// 					argtypes[i] = INT4ARRAYOID;
+// 					break;
+// #ifdef ANYRANGEOID
+// 				case ANYRANGEOID:
+// 					argtypes[i] = INT4RANGEOID;
+// 					break;
+// #endif
+// 				default:
+// 					break;
+// 			}
+// 		}
+// 	}
+// }

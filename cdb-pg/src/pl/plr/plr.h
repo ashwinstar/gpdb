@@ -2,7 +2,7 @@
  * PL/R - PostgreSQL support for R as a
  *	      procedural language (PL)
  *
- * Copyright (c) 2003-2010 by Joseph E. Conway
+ * Copyright (c) 2003-2013 by Joseph E. Conway
  * ALL RIGHTS RESERVED
  * 
  * Joe Conway <mail@joeconway.com>
@@ -33,12 +33,22 @@
 #ifndef PLR_H
 #define PLR_H
 
+#define PLR_VERSION		"08.03.00.15"
+
 #include "postgres.h"
 
 #include "fmgr.h"
 #include "funcapi.h"
 #include "miscadmin.h"
+#if PG_VERSION_NUM >= 80400
+#include "windowapi.h"
+#endif
 #include "access/heapam.h"
+#if PG_VERSION_NUM >= 90300
+#include "access/htup_details.h"
+#else
+#include "access/htup.h"
+#endif
 #include "catalog/catversion.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_namespace.h"
@@ -59,6 +69,7 @@
 #endif
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/rel.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 
@@ -97,6 +108,8 @@
 #endif
 #if !defined(WIN32) && !defined(WIN64)
 #include "Rinterface.h"
+#else
+extern int R_SignalHandlers;
 #endif
 #include "Rinternals.h"
 #include "Rdefines.h"
@@ -134,8 +147,14 @@
 #error "This version of PL/R only builds with PostgreSQL 8.2 or later"
 #elif PG_VERSION_NUM < 80300
 #define PG_VERSION_82_COMPAT
-#else
+#elif PG_VERSION_NUM < 80400
 #define PG_VERSION_83_COMPAT
+#else
+#define PG_VERSION_84_COMPAT
+#endif
+
+#ifdef PG_VERSION_84_COMPAT
+#define HAVE_WINDOW_FUNCTIONS
 #endif
 
 #ifdef DEBUGPROTECT
@@ -371,6 +390,14 @@ extern void R_RunExitFinalizers(void);
 		else \
 			appendStringInfo(proc_internal_args, "arg%d", i + 1); \
 	} while (0)
+#define SET_FRAME_ARG_NAME \
+	do { \
+		appendStringInfo(proc_internal_args, "farg%d", i + 1); \
+	} while (0)
+#define SET_FRAME_XARG_NAMES \
+	do { \
+		appendStringInfo(proc_internal_args, ",fnumrows,prownum"); \
+	} while (0)
 #define FREE_ARG_NAMES \
 	do { \
 		if (argnames) \
@@ -389,6 +416,7 @@ extern void R_RunExitFinalizers(void);
 			ErrorData  *edata; \
 			SWITCHTO_PLR_SPI_CONTEXT(temp_context); \
 			edata = CopyErrorData(); \
+			MemoryContextSwitchTo(temp_context); \
 			error("error in SQL statement : %s", edata->message); \
 		}
 #define PLR_PG_END_TRY() \
@@ -443,6 +471,7 @@ typedef struct plr_function
 	char			   *result_fld_elem_typalign;
 	int					nargs;
 	Oid					arg_typid[FUNC_MAX_ARGS];
+	bool				arg_typbyval[FUNC_MAX_ARGS];
 	FmgrInfo			arg_out_func[FUNC_MAX_ARGS];
 	Oid					arg_elem[FUNC_MAX_ARGS];
 	FmgrInfo			arg_elem_out_func[FUNC_MAX_ARGS];
@@ -451,6 +480,9 @@ typedef struct plr_function
 	char				arg_elem_typalign[FUNC_MAX_ARGS];
 	int					arg_is_rel[FUNC_MAX_ARGS];
 	SEXP				fun;	/* compiled R function */
+#ifdef HAVE_WINDOW_FUNCTIONS
+	bool				iswindow;
+#endif
 }	plr_function;
 
 /* compiled function hash table */
@@ -478,8 +510,11 @@ extern SEXP call_r_func(SEXP fun, SEXP rargs);
 /* argument and return value conversion functions */
 extern SEXP pg_scalar_get_r(Datum dvalue, Oid arg_typid, FmgrInfo arg_out_func);
 extern SEXP pg_array_get_r(Datum dvalue, FmgrInfo out_func, int typlen, bool typbyval, char typalign);
+extern SEXP pg_datum_array_get_r(Datum *elem_values, bool *elem_nulls, int numels, bool has_nulls,
+								 Oid element_type, FmgrInfo out_func, bool typbyval);
 extern SEXP pg_tuple_get_r_frame(int ntuples, HeapTuple *tuples, TupleDesc tupdesc);
 extern Datum r_get_pg(SEXP rval, plr_function *function, FunctionCallInfo fcinfo);
+extern Datum get_datum(SEXP rval, Oid typid, Oid typelem, FmgrInfo in_func, bool *isnull);
 extern Datum get_scalar_datum(SEXP rval, Oid result_typ, FmgrInfo result_in_func, bool *isnull);
 
 /* Postgres support functions installed into the R interpreter */
@@ -497,6 +532,7 @@ extern SEXP plr_SPI_lastoid(void);
 extern void throw_r_error(const char **msg);
 
 /* Postgres callable functions useful in conjunction with PL/R */
+extern Datum plr_version(PG_FUNCTION_ARGS);
 extern Datum reload_plr_modules(PG_FUNCTION_ARGS);
 extern Datum install_rcmd(PG_FUNCTION_ARGS);
 extern Datum plr_array_push(PG_FUNCTION_ARGS);
