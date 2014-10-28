@@ -422,6 +422,7 @@ BEGIN
   SELECT INTO toastRelName relname FROM pg_class
     WHERE oid = visimapRow.reltoastrelid;
   EXECUTE 'DROP TABLE public.' || toastRelName;
+  EXECUTE 'ALTER TABLE pg_aoseg.pg_aovisimap_' || aoRelid || ' ALTER visimap SET STORAGE PLAIN';
   PERFORM @gpupgradeschemaname@.catDML(
     'INSERT INTO pg_catalog.pg_depend VALUES (1259, ' || visimapRow.oid
      || ', 0, 1259, ' || aoRelId || ', 0, ''i'')');
