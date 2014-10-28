@@ -313,6 +313,15 @@ CREATE VIEW @gpupgradeschemaname@.pg_stat_replication AS
     WHERE S.usesysid = U.oid AND
             S.procpid = W.pid;
 
+-- Set permission to the same as pg_stat_activity.
+SELECT catDML('
+UPDATE @gpupgradeschemaname@.pg_class
+  SET relacl = (
+    SELECT relacl
+    FROM @gpupgradeschemaname@.pg_class
+    WHERE relnamespace = 11 AND relname = ''pg_stat_activity'')
+WHERE relnamespace = 11 AND relname = ''pg_stat_replication''');
+
 -- Drop gp_master_mirroring.  Due to persistent table, we should have two ways.
 -- 1) DROP TABLE, 2) manually delete catalog.  To drop table, we need to delete
 -- pg_depend first.  Also for catalog relations, we don't have type dependency
