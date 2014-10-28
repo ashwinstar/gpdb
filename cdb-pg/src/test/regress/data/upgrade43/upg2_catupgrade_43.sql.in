@@ -397,9 +397,9 @@ DECLARE
   visimapRow record;
 BEGIN
   EXECUTE 'CREATE TABLE pg_aoseg.pg_aovisimap_' || aoRelid ||
-    ' (segno int, first_row_num bigint, visimap varbit) DISTRIBUTED BY(segno)';
+    ' (segno int, first_row_no bigint, visimap varbit) DISTRIBUTED BY(segno)';
   EXECUTE 'CREATE INDEX pg_aovisimap_' || aoRelid || '_index
-    ON pg_aoseg.pg_aovisimap_' || aoRelid || '(segno, first_row_num)';
+    ON pg_aoseg.pg_aovisimap_' || aoRelid || '(segno, first_row_no)';
   SELECT INTO visimapRow reltoastrelid, oid FROM pg_catalog.pg_class
     WHERE oid = ('pg_aoseg.pg_aovisimap_' || aoRelId)::regclass;
   DELETE FROM gp_distribution_policy WHERE localoid = visimapRow.oid;
