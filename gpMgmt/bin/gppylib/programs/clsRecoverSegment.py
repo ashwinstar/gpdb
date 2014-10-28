@@ -98,6 +98,25 @@ class PortAssigner:
 
 
 #-------------------------------------------------------------------------
+class RemoteQueryCommand(base.Command):
+    def __init__(self, qname, query, hostname, port, dbname=None):
+        self.qname = qname
+        self.query = query
+        self.hostname = hostname
+        self.port = port
+        self.dbname = dbname or os.environ.get('PGDATABASE', None) or 'template1'
+        self.res = None
+
+    def get_results(self):
+        return self.res
+
+    def run(self):
+        logger.debug('Executing query (%s:%s) for segment (%s:%s) on database (%s)' % (self.qname, self.query, self.hostname, self.port, self.dbname))
+        with dbconn.connect(dbconn.DbURL(hostname=self.hostname, port=self.port, dbname=self.dbname), utility=True) as conn:
+            res = dbconn.execSQL(conn, self.query)
+            self.res = res.fetchall()
+
+#-------------------------------------------------------------------------
 class GpRecoverSegmentProgram:
 
     #
@@ -796,6 +815,336 @@ class GpRecoverSegmentProgram:
         
         return res
 
+    def _get_dblist(self):
+        #template0 does not accept any connections so we exclude it 
+        with dbconn.connect(dbconn.DbURL()) as conn:
+            res = dbconn.execSQL(conn, "SELECT datname FROM PG_DATABASE WHERE datname != 'template0'")
+        return res.fetchall()
+
+    def _check_persistent_tables(self, segments):
+        queries = []
+
+        # Checks on FILESPACE
+        qname = 'gp_persistent_filespace_node  <=> pg_filespace'
+        query = """
+        SELECT  coalesce(f.oid, p.filespace_oid) as filespace_oid, 
+                f.fsname as "filespace"
+        FROM (SELECT * FROM gp_persistent_filespace_node 
+              WHERE persistent_state = 2) p 
+        FULL OUTER JOIN (SELECT oid, fsname FROM pg_filespace 
+                         WHERE oid != 3052) f 
+        ON (p.filespace_oid = f.oid)
+        WHERE  (p.filespace_oid is NULL OR f.oid is NULL)
+        """
+        queries.append([qname, query])
+
+        qname = 'gp_persistent_filespace_node  <=> gp_global_sequence'
+        query = """
+        SELECT  p.filespace_oid, f.fsname as "filespace", 
+                case when p.persistent_state = 0 then 'free'
+                     when p.persistent_state = 1 then 'create pending'
+                     when p.persistent_state = 2 then 'created'
+                     when p.persistent_state = 3 then 'drop pending'
+                     when p.persistent_state = 4 then 'abort create'
+                     when p.persistent_state = 5 then 'JIT create pending'
+                     when p.persistent_state = 6 then 'bulk load create pending'
+                else 'unknown state: ' || p.persistent_state
+                end as persistent_state,
+                       p.persistent_serial_num, s.sequence_num
+        FROM    gp_global_sequence s, gp_persistent_filespace_node p
+        LEFT JOIN pg_filespace f ON (f.oid = p.filespace_oid)
+        WHERE   s.ctid = '(0,4)' and p.persistent_serial_num > s.sequence_num
+        """
+        queries.append([qname, query])
+
+        qname = 'gp_persistent_database_node   <=> pg_database'
+        query = """
+        SELECT coalesce(d.oid, p.database_oid) as database_oid,
+               d.datname as database
+        FROM (SELECT * FROM gp_persistent_database_node 
+              WHERE persistent_state = 2) p
+        FULL OUTER JOIN pg_database d 
+        ON (d.oid = p.database_oid)
+        WHERE (d.datname is null or p.database_oid is null)
+        """
+        queries.append([qname, query])
+
+        qname = 'gp_persistent_database_node   <=> pg_tablespace'
+        query = """
+        SELECT  coalesce(t.oid, p.database_oid) as database_oid, 
+                t.spcname as tablespace
+        FROM (SELECT * FROM gp_persistent_database_node 
+              WHERE persistent_state = 2) p
+        LEFT OUTER JOIN (SELECT oid, spcname FROM pg_tablespace 
+                       WHERE oid != 1664) t
+        ON (t.oid = p.tablespace_oid)
+        WHERE  t.spcname is null
+        """
+        queries.append([qname, query])
+
+        qname = 'gp_persistent_database_node   <=> gp_global_sequence'
+        query = """
+        SELECT  p.database_oid, p.tablespace_oid, d.datname as "database",
+                case when p.persistent_state = 0 then 'free'
+                     when p.persistent_state = 1 then 'create pending'
+                     when p.persistent_state = 2 then 'created'
+                     when p.persistent_state = 3 then 'drop pending'
+                     when p.persistent_state = 4 then 'abort create'
+                     when p.persistent_state = 5 then 'JIT create pending'
+                     when p.persistent_state = 6 then 'bulk load create pending'
+                else 'unknown state: ' || p.persistent_state
+                end as persistent_state,
+                       p.persistent_serial_num, s.sequence_num
+        FROM    gp_global_sequence s, gp_persistent_database_node p
+        LEFT JOIN pg_database d ON (d.oid = p.database_oid)
+        WHERE   s.ctid = '(0,2)' and p.persistent_serial_num > s.sequence_num
+        """
+        queries.append([qname, query])
+    
+        # Checks on TABLESPACE
+        qname = 'gp_persistent_tablespace_node <=> pg_tablespace'
+        query = """
+        SELECT  coalesce(t.oid, p.tablespace_oid) as tablespace_oid, 
+                t.spcname as tablespace
+        FROM (SELECT * FROM gp_persistent_tablespace_node 
+              WHERE persistent_state = 2) p 
+        FULL OUTER JOIN (
+             SELECT oid, spcname FROM pg_tablespace WHERE oid not in (1663, 1664)
+             ) t ON (t.oid = p.tablespace_oid)
+        WHERE  t.spcname is null or p.tablespace_oid is null
+        """
+        queries.append([qname, query])
+
+        qname = 'gp_persistent_tablespace_node <=> pg_filespace'
+        query = """
+        SELECT  p.filespace_oid, f.fsname as "filespace"
+        FROM (SELECT * FROM gp_persistent_tablespace_node 
+              WHERE persistent_state = 2) p
+        LEFT OUTER JOIN pg_filespace f 
+        ON (f.oid = p.filespace_oid)
+        WHERE  f.fsname is null
+        """
+        queries.append([qname, query])
+
+        qname = 'gp_persistent_tablespace_node <=> gp_global_sequence'
+        query = """
+        SELECT  p.filespace_oid, p.tablespace_oid, t.spcname as "tablespace",
+                case when p.persistent_state = 0 then 'free'
+                     when p.persistent_state = 1 then 'create pending'
+                     when p.persistent_state = 2 then 'created'
+                     when p.persistent_state = 3 then 'drop pending'
+                     when p.persistent_state = 4 then 'abort create'
+                     when p.persistent_state = 5 then 'JIT create pending'
+                     when p.persistent_state = 6 then 'bulk load create pending'
+                else 'unknown state: ' || p.persistent_state
+                end as persistent_state,
+                       p.persistent_serial_num, s.sequence_num
+        FROM    gp_global_sequence s, gp_persistent_tablespace_node p
+        LEFT JOIN pg_tablespace t ON (t.oid = p.tablespace_oid)
+        WHERE   s.ctid = '(0,3)' and p.persistent_serial_num > s.sequence_num
+        """
+        queries.append([qname, query])
+    
+        # Checks on RELATION
+        qname = 'gp_persistent_relation_node   <=> pg_tablespace'
+        query = """
+        SELECT  distinct p.tablespace_oid
+        FROM (SELECT *
+              FROM gp_persistent_relation_node 
+              WHERE persistent_state = 2 
+              AND database_oid in (
+                  SELECT oid
+                  FROM pg_database 
+                  WHERE datname = current_database()
+                  UNION ALL
+                  SELECT 0)) p
+        LEFT OUTER JOIN pg_tablespace t 
+        ON (t.oid = p.tablespace_oid)
+        WHERE  t.oid is null
+        """
+        queries.append([qname, query])
+
+        qname = 'gp_persistent_relation_node   <=> pg_database'
+        query = """
+        SELECT  datname, oid, count(*)
+        FROM (
+                SELECT  d.datname as datname, p.database_oid as oid
+                FROM (SELECT * 
+                      FROM gp_persistent_relation_node 
+                      WHERE database_oid != 0 AND persistent_state = 2
+                     ) p
+                full outer join pg_database d ON (d.oid = p.database_oid)
+            ) x
+        GROUP BY 1,2
+        HAVING  datname is null or oid is null or count(*) < 100
+        """
+        queries.append([qname, query])
+
+        qname = 'gp_persistent_relation_node   <=> gp_relation_node'
+        query = """
+        SELECT  coalesce(p.relfilenode_oid, r.relfilenode_oid) as relfilenode,
+                p.ctid, r.persistent_tid
+        FROM  (
+                SELECT p.ctid, p.*
+                FROM gp_persistent_relation_node p
+                WHERE persistent_state = 2 AND p.database_oid in (
+                    SELECT oid FROM pg_database WHERE datname = current_database()
+                    UNION ALL
+                    SELECT 0
+                )
+        ) p
+        FULL OUTER JOIN gp_relation_node r
+        ON (p.relfilenode_oid = r.relfilenode_oid and
+            p.segment_file_num = r.segment_file_num)
+        WHERE  (p.relfilenode_oid is NULL OR 
+                r.relfilenode_oid is NULL OR 
+                p.ctid != r.persistent_tid)
+        """
+        queries.append([qname, query])
+    
+        qname = 'gp_persistent_relation_node   <=> pg_class'
+        query = """
+        SELECT  coalesce(p.relfilenode_oid, c.relfilenode) as relfilenode,
+                c.nspname, c.relname, c.relkind, c.relstorage
+        FROM (
+                SELECT *
+                FROM gp_persistent_relation_node
+                WHERE persistent_state = 2 AND database_oid in (
+                    SELECT oid FROM pg_database WHERE datname = current_database()
+                    UNION ALL
+                    SELECT 0
+                )
+        ) p
+        FULL OUTER JOIN (
+            SELECT  n.nspname, c.relname, c.relfilenode, c.relstorage, c.relkind
+            FROM  pg_class c 
+            LEFT OUTER JOIN pg_namespace n ON (c.relnamespace = n.oid)
+            WHERE  c.relstorage not in ('v', 'x', 'f')
+        ) c ON (p.relfilenode_oid = c.relfilenode)
+        WHERE  p.relfilenode_oid is NULL OR c.relfilenode is NULL
+        """
+        queries.append([qname, query])
+
+        qname = 'gp_persistent_relation_node   <=> gp_global_sequence'
+        query = """
+        SELECT  p.tablespace_oid, p.database_oid, p.relfilenode_oid,
+                p.segment_file_num, 
+                case when p.persistent_state = 0 then 'free'
+                     when p.persistent_state = 1 then 'create pending'
+                     when p.persistent_state = 2 then 'created'
+                     when p.persistent_state = 3 then 'drop pending'
+                     when p.persistent_state = 4 then 'abort create'
+                     when p.persistent_state = 5 then 'JIT create pending'
+                     when p.persistent_state = 6 then 'bulk load create pending'
+                else 'unknown state: ' || p.persistent_state
+                end as persistent_state,
+                       p.persistent_serial_num, s.sequence_num
+        FROM    gp_global_sequence s, gp_persistent_relation_node p
+        LEFT JOIN pg_tablespace t ON (t.oid = p.tablespace_oid)
+        WHERE   s.ctid = '(0,1)' and p.persistent_serial_num > s.sequence_num
+        """
+        queries.append([qname, query])
+
+        # Look for extra/missing files in the filesystem
+        #
+        # Note: heap tables only ever store segment_file_num 0 in the persistent
+        # tables, while ao/co tables will store every segment_file_num that they
+        # use.  This results in the segment_file_num/relstorage where clause.
+        qname = 'gp_persistent_relation_node   <=> filesystem'
+        query = """
+        SELECT coalesce(a.tablespace_oid, b.tablespace_oid) as tablespace_oid,
+               coalesce(a.database_oid, b.database_oid) as database_oid,
+               coalesce(a.relfilenode_oid, b.relfilenode_oid) as relfilenode_oid,
+               coalesce(a.segment_file_num, b.segment_file_num) as segment_file_num,
+               a.relfilenode_oid is null as filesystem,
+               b.relfilenode_oid is null as persistent,
+               b.relkind, b.relstorage
+        FROM   gp_persistent_relation_node a
+        FULL OUTER JOIN (
+               SELECT p.*, c.relkind, c.relstorage
+               FROM   gp_persistent_relation_node_check() p
+               LEFT OUTER JOIN pg_class c 
+               ON (p.relfilenode_oid = c.relfilenode)
+               WHERE (p.segment_file_num = 0 or c.relstorage != 'h')
+        ) b ON (a.tablespace_oid   = b.tablespace_oid    and
+               a.database_oid     = b.database_oid      and
+               a.relfilenode_oid  = b.relfilenode_oid   and
+               a.segment_file_num = b.segment_file_num)
+        WHERE (a.relfilenode_oid is null OR 
+	          (a.persistent_state = 2 and b.relfilenode_oid is null))  and
+              coalesce(a.database_oid, b.database_oid) in (
+        SELECT oid
+        FROM pg_database
+        WHERE datname = current_database()
+        UNION ALL
+        SELECT 0
+      );
+        """
+        queries.append([qname, query])
+
+        # Look for databases in the filesystem that have been dropped but still
+        # have dangling files.
+        qname = 'pg_database                   <=> filesystem'
+        query = """
+        SELECT tablespace_oid, database_oid, count(*)
+        FROM   gp_persistent_relation_node_check() p 
+        LEFT OUTER JOIN pg_database d 
+        ON (p.database_oid = d.oid) 
+        WHERE  d.oid is null and database_oid != 0
+        GROUP BY tablespace_oid, database_oid;
+        """
+        queries.append([qname, query])
+
+        qname = 'check for duplicate persistent table entries'
+        query = """
+          SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+          
+          -- distribute catalog table from master, so that we can avoid to gather
+          CREATE TEMPORARY TABLE _tmp_master ON COMMIT DROP AS
+              SELECT gp_segment_id segid, tablespace_oid, database_oid, relfilenode_oid, segment_file_num, mirror_existence_state FROM gp_persistent_relation_node;
+          SELECT tablespace_oid, database_oid, relfilenode_oid, segment_file_num, total, array_agg(segid order by segid) as segids
+          FROM (
+              SELECT segid, tablespace_oid, database_oid, relfilenode_oid, segment_file_num, count(*) as total
+              FROM (
+                   select segid, tablespace_oid, database_oid, relfilenode_oid, segment_file_num from _tmp_master
+                   where mirror_existence_state != 6 
+                   union all
+                   select gp_segment_id as segid, tablespace_oid, database_oid, relfilenode_oid, segment_file_num from gp_dist_random('gp_persistent_relation_node') 
+                   where mirror_existence_state != 6 
+              ) all_segments 
+                LEFT OUTER JOIN pg_database d ON (all_segments.database_oid = d.oid)
+              WHERE d.datname = '{dbname}'
+              GROUP BY segid, tablespace_oid, database_oid, relfilenode_oid, segment_file_num 
+              HAVING count(*) > 1
+          ) rowresult 
+          GROUP BY tablespace_oid, database_oid, relfilenode_oid, segment_file_num, total
+        """
+
+        dbnames = self._get_dblist()
+        self.__pool.empty_completed_items()
+        for qname, query in queries:
+            for dbname in dbnames:
+                for seg in segments:
+                    cmd = RemoteQueryCommand(qname, query.format(dbname=dbname[0]), seg.getSegmentHostName(), seg.getSegmentPort(), dbname[0])
+                    self.__pool.addCommand(cmd)
+
+        #Query for duplicate entries should not be run on segments. It should only be done on the master
+        for dbname in dbnames:
+            self.__pool.addCommand(RemoteQueryCommand(qname, query.format(dbname=dbname[0]), 'localhost', os.environ['PGPORT'], dbname[0]))
+
+        self.__pool.join()
+
+        persistent_check_failed = False
+        for item in self.__pool.getCompletedItems():
+            res = item.get_results()
+            if res:
+                logger.error('Persistent table check %s failed on host %s:%s.' % (item.qname, item.hostname, item.port))
+                logger.debug('Result = %s' % res)
+                persistent_check_failed = True
+
+        if persistent_check_failed:
+            raise Exception('Persistent tables check failed. Please fix the persistent tables issues before running recoverseg')
+
     def run(self):
         if self.__options.parallelDegree < 1 or self.__options.parallelDegree > 64:
             raise ProgramArgumentValidationException("Invalid parallelDegree provided with -B argument: %d" % self.__options.parallelDegree)
@@ -915,6 +1264,15 @@ class GpRecoverSegmentProgram:
         # figure out what needs to be done
         mirrorBuilder = self.getRecoveryActionsBasedOnOptions(gpEnv, gpArray)
 
+
+        if not self.__options.skip_persistent_check:
+            failed_segs = [seg for seg in gpArray.getSegDbList() if seg.isSegmentDown()]
+            failed_seg_peers = self.findAndValidatePeersForFailedSegments(gpArray, failed_segs)
+            logger.info('Performing persistent table check')
+            self._check_persistent_tables(failed_seg_peers)
+        else:
+            logger.info('Skipping persistent table check')
+
         if self.__options.outputSampleConfigFile is not None:
             # just output config file and done
             self.outputToFile(mirrorBuilder, gpArray, self.__options.outputSampleConfigFile)
@@ -1032,6 +1390,9 @@ class GpRecoverSegmentProgram:
 
         addTo = OptionGroup(parser, "Recovery Options")
         parser.add_option_group(addTo)
+        addTo.add_option('--skip-persistent-check', None, default=False, action='store_true',
+                            dest="skip_persistent_check",
+                            help="Skip persistent table check")
         addTo.add_option('-F', None, default=False, action='store_true',
                             dest="forceFullResynchronization",
                             metavar="<forceFullResynchronization>",
