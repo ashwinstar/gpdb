@@ -507,6 +507,7 @@ const char* gpdb_getnodestatus(PerfmonNodeStatus status)
 #define QENODE_TYPE_NESTED_LOOP_REVERSE_IN_JOIN "Nested Loop Reverse In Join"
 #define QENODE_TYPE_NESTED_LOOP_UNIQUE_OUTER_JOIN "Nested Loop Unique Outer Join"
 #define QENODE_TYPE_NESTED_LOOP_UNIQUE_INNER_JOIN "Nested Loop Unique Inner Join"
+#define QENODE_TYPE_PARTITIONSELECTOR "Partition Selector"
 #define QENODE_TYPE_RESULT "Result"
 #define QENODE_TYPE_REPEAT "Repeat"
 #define QENODE_TYPE_ROWTRIGGER "Row Trigger"
@@ -528,7 +529,6 @@ const char* gpdb_getnodestatus(PerfmonNodeStatus status)
 #define QENODE_TYPE_UNIQUE "Unique"
 #define QENODE_TYPE_VALUES_SCAN "Values Scan"
 #define QENODE_TYPE_WINDOW "Window"
-#define QENODE_TYPE_PARTITIONSELECTOR "Partition Selector"
 
 /* Units for node measurements */
 #define QENODE_UNIT_ROWS "Rows"
@@ -912,6 +912,11 @@ QenodeNamesDescriptor nodetype_string_lookup[PMNT_MAXIMUM_ENUM] =
 	},
 	{PMNT_NestedLoopUniqueInnerJoin, QENODE_TYPE_NESTED_LOOP_UNIQUE_INNER_JOIN, 
 		{QENODE_MEASURE_ROWS_IN }, 
+		{QENODE_UNIT_ROWS },
+		1
+	},
+	{PMNT_PartitionSelector, QENODE_TYPE_PARTITIONSELECTOR,
+		{QENODE_MEASURE_ROWS_IN },
 		{QENODE_UNIT_ROWS },
 		1
 	},

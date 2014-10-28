@@ -446,6 +446,7 @@ typedef enum PerfmonNodeType
     PMNT_NestedLoopReverseInJoin,
     PMNT_NestedLoopUniqueOuterJoin,
     PMNT_NestedLoopUniqueInnerJoin,
+    PMNT_PartitionSelector,
     PMNT_Result,
     PMNT_Repeat,
     PMNT_RowTrigger,
@@ -466,7 +467,6 @@ typedef enum PerfmonNodeType
     PMNT_Unique,
     PMNT_ValuesScan,
     PMNT_Window,
-    PMNT_PartitionSelector,
 	PMNT_MAXIMUM_ENUM
 
 } PerfmonNodeType;
