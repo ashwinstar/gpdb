@@ -1829,6 +1829,7 @@ _equalReindexStmt(ReindexStmt *a, ReindexStmt *b)
 	COMPARE_SCALAR_FIELD(do_system);
 	COMPARE_SCALAR_FIELD(do_user);
 	COMPARE_NODE_FIELD(new_ind_oids);
+	COMPARE_SCALAR_FIELD(relid);
 
 	return true;
 }

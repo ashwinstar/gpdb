@@ -1629,12 +1629,6 @@ ProcessUtility(Node *parsetree,
 							 (int) stmt->kind);
 						break;
 				}
-
-				if (Gp_role == GP_ROLE_DISPATCH)
-				{
-					if (stmt->kind != OBJECT_DATABASE)
-						CdbDispatchUtilityStatement((Node *) stmt, "ProcessUtility");
-				}
 			}
 			break;
 

@@ -3850,6 +3850,7 @@ _copyReindexStmt(ReindexStmt *from)
 	COPY_SCALAR_FIELD(do_system);
 	COPY_SCALAR_FIELD(do_user);
 	COPY_NODE_FIELD(new_ind_oids);
+	COPY_SCALAR_FIELD(relid);
 
 	return newnode;
 }

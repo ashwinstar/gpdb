@@ -2163,6 +2163,7 @@ _outReindexStmt(StringInfo str, ReindexStmt *node)
 	WRITE_BOOL_FIELD(do_system);
 	WRITE_BOOL_FIELD(do_user);
 	WRITE_NODE_FIELD(new_ind_oids);
+	WRITE_OID_FIELD(relid);
 }
 
 

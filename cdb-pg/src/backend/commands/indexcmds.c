@@ -42,6 +42,7 @@
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/clauses.h"
+#include "optimizer/prep.h"
 #include "parser/parse_agg.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_expr.h"
@@ -1597,6 +1598,69 @@ ReindexIndex(ReindexStmt *stmt)
 		map = list_concat(map, extra_oids);
 
 		stmt->new_ind_oids = lappend(stmt->new_ind_oids, map);
+
+		CdbDispatchUtilityStatement((Node *) stmt, "ProcessUtility");
+	}
+}
+
+/*
+ * Perform REINDEX on each relation of the relids list.  The caller should
+ * close the transaction before calling this since it opens and closes a
+ * transaction per relation.  This is designed for QD/utility, and is not
+ * useful for QE.
+ */
+static void
+ReindexRelationList(List *relids)
+{
+	ListCell   *lc;
+
+	/* The caller should have closed transaction (see function comments). */
+	Assert(!IsTransactionOrTransactionBlock());
+	Assert(Gp_role != GP_ROLE_EXECUTE);
+
+	foreach (lc, relids)
+	{
+		Oid			relid = lfirst_oid(lc);
+		Relation	rel = NULL;
+
+		setupRegularDtxContext();
+		StartTransactionCommand();
+
+		/* functions in indexes may want a snapshot set */
+		ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
+
+		/*
+		 * Try to open the relation. If the try fails it may mean that
+		 * someone dropped the relation before we started processing
+		 * (reindexing) it. This should be tolerable. Move on to the next
+		 * one.
+		 */
+		rel = try_heap_open(relid, ShareLock, false);
+
+		if (rel != NULL)
+		{
+			ReindexStmt	   *stmt;
+
+			stmt = makeNode(ReindexStmt);
+
+			stmt->relid = relid;
+			stmt->kind = OBJECT_TABLE;
+
+			/* perform reindex locally */
+			if (!reindex_relation(relid, true, true, true, true,
+								  &stmt->new_ind_oids, Gp_role == GP_ROLE_DISPATCH))
+				ereport(NOTICE,
+					(errmsg("table \"%s\" has no indexes",
+							RelationGetRelationName(rel))));
+			/* no need to dispatch if the relation has no indexes. */
+			else if (Gp_role == GP_ROLE_DISPATCH)
+				CdbDispatchUtilityStatement((Node *) stmt, NULL);
+
+			/* keep lock until end of transaction (which comes soon) */
+			heap_close(rel, NoLock);
+		}
+
+		CommitTransactionCommand();
 	}
 }
 
@@ -1607,57 +1671,104 @@ ReindexIndex(ReindexStmt *stmt)
 void
 ReindexTable(ReindexStmt *stmt)
 {
-	Oid			heapOid;
-	HeapTuple	tuple;
-	cqContext  *pcqCtx;
-
-	heapOid = RangeVarGetRelid(stmt->relation, false);
-
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(heapOid)));
-
-	tuple = caql_getnext(pcqCtx);
-
-	if (!HeapTupleIsValid(tuple))		/* shouldn't happen */
-		elog(ERROR, "cache lookup failed for relation %u", heapOid);
-
-	if (((Form_pg_class) GETSTRUCT(tuple))->relkind != RELKIND_RELATION &&
-		((Form_pg_class) GETSTRUCT(tuple))->relkind != RELKIND_TOASTVALUE)
-		ereport(ERROR,
-				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("\"%s\" is not a table",
-						stmt->relation->relname)));
+	Oid			relid;
+	MemoryContext	private_context, oldcontext;
+	List	   *prels = NIL, *relids = NIL;
+	ListCell   *lc;
 
 	/*
-	 * Check appropriate permissions (only on the Master and when not inside
-	 * reindex db - refer to ReindexDatabase for some more context).
+	 * QE simply performs reindex work.  All other work has been done in QD.
 	 */
-	if (Gp_role == GP_ROLE_DISPATCH &&
-		!stmt->name &&
-		!pg_class_ownercheck(heapOid, GetUserId()))
-		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CLASS,
-					   stmt->relation->relname);
-
-	/* Can't reindex shared tables except in standalone mode */
-	if (((Form_pg_class) GETSTRUCT(tuple))->relisshared && IsUnderPostmaster)
-		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("shared table \"%s\" can only be reindexed in stand-alone mode",
-						stmt->relation->relname)));
-
-	caql_endscan(pcqCtx);
-
-	if (!reindex_relation(heapOid, true, true, true, true,
-							&stmt->new_ind_oids, Gp_role == GP_ROLE_DISPATCH))
+	if (Gp_role == GP_ROLE_EXECUTE)
 	{
-		if (Gp_role != GP_ROLE_EXECUTE)
-			ereport(NOTICE,
-				(errmsg("table \"%s\" has no indexes",
-						stmt->relation->relname)));
+		reindex_relation(stmt->relid, true, true, true, true,
+						 &stmt->new_ind_oids, false);
+		return;
 	}
+
+	relid = RangeVarGetRelid(stmt->relation, false);
+
+	/*
+	 * Gather child partition relations.
+	 */
+	if (rel_is_partitioned(relid))
+	{
+		PartitionNode *pn;
+
+		pn = get_parts(relid, 0, 0, false, CurrentMemoryContext);
+		prels = all_partition_relids(pn);
+	}
+	else if (rel_is_child_partition(relid))
+		prels = find_all_inheritors(relid);
+
+	/*
+	 * Create a memory context that will survive forced transaction commits we
+	 * do below.  Since it is a child of PortalContext, it will go away
+	 * eventually even if we suffer an error; there's no need for special
+	 * abort cleanup logic.
+	 */
+	private_context = AllocSetContextCreate(PortalContext,
+											"ReindexTable",
+											ALLOCSET_DEFAULT_MINSIZE,
+											ALLOCSET_DEFAULT_INITSIZE,
+											ALLOCSET_DEFAULT_MAXSIZE);
+	oldcontext = MemoryContextSwitchTo(private_context);
+	relids = lappend_oid(relids, relid);
+	relids = list_concat_unique_oid(relids, prels);
+	MemoryContextSwitchTo(oldcontext);
+
+	/* various checks on each partition */
+	foreach (lc, relids)
+	{
+		Oid			heapOid = lfirst_oid(lc);
+		HeapTuple	tuple;
+		cqContext  *pcqCtx;
+		Form_pg_class pg_class_tuple;
+
+		pcqCtx = caql_beginscan(
+				NULL,
+				cql("SELECT * FROM pg_class "
+					" WHERE oid = :1 ",
+					ObjectIdGetDatum(heapOid)));
+
+		tuple = caql_getnext(pcqCtx);
+
+		if (!HeapTupleIsValid(tuple))		/* shouldn't happen */
+			elog(ERROR, "cache lookup failed for relation %u", heapOid);
+
+		pg_class_tuple = (Form_pg_class) GETSTRUCT(tuple);
+		if (pg_class_tuple->relkind != RELKIND_RELATION &&
+			pg_class_tuple->relkind != RELKIND_TOASTVALUE)
+			ereport(ERROR,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					 errmsg("\"%s\" is not a table",
+							NameStr(pg_class_tuple->relname))));
+
+		/*
+		 * Check appropriate permissions
+		 */
+		if (!pg_class_ownercheck(heapOid, GetUserId()))
+			aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CLASS,
+						   NameStr(pg_class_tuple->relname));
+
+		/* Can't reindex shared tables except in standalone mode */
+		if (((Form_pg_class) GETSTRUCT(tuple))->relisshared && IsUnderPostmaster)
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("shared table \"%s\" can only be reindexed in stand-alone mode",
+							NameStr(pg_class_tuple->relname))));
+
+		caql_endscan(pcqCtx);
+	}
+
+	/* Now reindex each rel in a separate transaction */
+	CommitTransactionCommand();
+
+	ReindexRelationList(relids);
+
+	setupRegularDtxContext();
+	StartTransactionCommand();
+	MemoryContextDelete(private_context);
 }
 
 /*
@@ -1675,13 +1786,12 @@ ReindexDatabase(ReindexStmt *stmt)
 	MemoryContext private_context;
 	MemoryContext old;
 	List	   *relids = NIL;
-	Oid     relid;
-	ListCell   *l;
 	bool do_system = stmt->do_system;
 	bool do_user = stmt->do_user;
 	const char *databaseName = stmt->name;
 
 	AssertArg(databaseName);
+	Assert(Gp_role != GP_ROLE_EXECUTE);
 
 	if (strcmp(databaseName, get_database_name(MyDatabaseId)) != 0)
 		ereport(ERROR,
@@ -1778,58 +1888,7 @@ ReindexDatabase(ReindexStmt *stmt)
 
 	SIMPLE_FAULT_INJECTOR(ReindexDB);
 
-	foreach(l, relids)
-	{
-		relid                = lfirst_oid(l);
-		Relation         rel = NULL;
-
-		setupRegularDtxContext();
-		StartTransactionCommand();
-
-		/* functions in indexes may want a snapshot set */
-		ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
-
-		/*
-		 * Try to open the relation. If the try fails it may mean that
-		 * someone dropped the relation before we started processing
-		 * (reindexing) it. This should be tolerable. Move on to the next
-		 * one.
-		 */
-		rel = try_heap_open(relid, ShareLock, /*nowait*/false);
-
-		if (rel != NULL)
-		{
-			StringInfoData sqlstmt;
-			char *displayRelName = quote_qualified_identifier(
-								get_namespace_name(get_rel_namespace(relid)),
-								get_rel_name(relid));
-			ReindexStmt      *rs = makeNode(ReindexStmt);
-			RangeVar         *rv = makeRangeVar(
-								get_namespace_name(get_rel_namespace(relid)),
-								get_rel_name(relid), -1);
-			initStringInfo(&sqlstmt);
-
-			/* Build sql statement to reindex the table. */
-			appendStringInfo(&sqlstmt, "REINDEX TABLE %s", displayRelName);
-
-			/* Get ready to reindex a relation */
-			rs->kind = OBJECT_TABLE;
-			rs->relation = rv;
-
-			/*
-			 * set database name in this special case to indicate that we're
-			 * inside reindex db
-			 */
-			rs->name = get_database_name(MyDatabaseId);
-
-			/* Pretend as if we're starting a new command */
-			ProcessUtility((Node *)rs, sqlstmt.data, NULL, false, None_Receiver, NULL);
-
-			/* cleanup */
-			heap_close(rel, ShareLock);
-		}
-		CommitTransactionCommand();
-	}
+	ReindexRelationList(relids);
 
 	setupRegularDtxContext();
 	StartTransactionCommand();

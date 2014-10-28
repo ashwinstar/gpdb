@@ -942,6 +942,7 @@ _readReindexStmt(void)
 	READ_BOOL_FIELD(do_system);
 	READ_BOOL_FIELD(do_user);
 	READ_NODE_FIELD(new_ind_oids);
+	READ_OID_FIELD(relid);
 
 	READ_DONE();
 
