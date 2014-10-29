@@ -290,6 +290,10 @@ CREATE OR REPLACE VIEW @gpupgradeschemaname@.pg_stat_activity AS
     WHERE S.datid = D.oid AND
             S.usesysid = U.oid;
 
+-- INSERT pg_stat_get_wal_senders into pg_depend as a pinned object, so that
+-- CREATE VIEW won't create unnecessary dependency.
+SELECT catDML('
+  INSERT INTO pg_catalog.pg_depend VALUES(0, 0, 0, ''pg_catalog.pg_proc''::regclass, 3099, 0, ''p'')');
 -- A new system view.  Although the initdb rule of system view is it has oid
 -- less than FirstNormalObjectId, during upgrade we create one above that.
 CREATE VIEW @gpupgradeschemaname@.pg_stat_replication AS
