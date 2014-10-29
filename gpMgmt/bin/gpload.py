@@ -2113,8 +2113,17 @@ class gpload:
             if formatType=='csv':
                 formatOpts += "delimiter ',' "
         elif len(delimiterValue) != 1:
-            self.control_file_warning("A delimiter must have a length of one. Special characters must be quoted. gpload will assume this is a sql escape character sequence.")
-            formatOpts += "delimiter %s " % self.getconfig('gpload:input:delimiter', unicode)
+            # is a escape sequence character like '\x1B' or '\u001B'?
+            if len(delimiterValue.decode('unicode-escape')) == 1:
+                formatOpts += "delimiter '%s' " % \
+                    self.getconfig('gpload:input:delimiter', unicode)
+            # is a escape string syntax support by gpdb like E'\x1B' or E'\x\u001B'
+            elif len(delimiterValue.lstrip("E'").rstrip("'").decode('unicode-escape')) ==1:
+                formatOpts += "delimiter %s " % self.getconfig('gpload:input:delimiter', unicode)
+            else:
+                self.control_file_warning('''A delimiter must be single ASCII charactor, you can also use unprintable characters(for example: '\\x1c' / E'\\x1c' or '\\u001c' / E'\\u001c' ''')
+                self.control_file_error("Invalid delimiter, gpload quit immediately")
+                sys.exit(2);
         else:
             formatOpts += "delimiter %s " % \
                 quote(self.getconfig('gpload:input:delimiter', unicode))
