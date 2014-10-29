@@ -377,6 +377,12 @@ CConfigParamMapping::PbsPack
 		pbsBitmapScan->Release();
 	}
 
+	// disable outerjoin to unionall transformation if GUC is turned off
+	if (!optimizer_enable_outerjoin_to_unionall_rewrite)
+	{
+		 pbs->FExchangeSet(GPOPT_DISABLE_XFORM_TF(CXform::ExfLeftOuter2InnerUnionAllLeftAntiSemiJoin));
+	}
+
 	return pbs;
 }
 

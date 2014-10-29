@@ -760,6 +760,7 @@ bool		optimizer_analyze_root_partition;
 bool		optimizer_enable_constant_expression_evaluation;
 bool		optimizer_use_external_constant_expression_evaluation_for_ints;
 bool		optimizer_enable_bitmapscan;
+bool		optimizer_enable_outerjoin_to_unionall_rewrite;
 bool		optimizer_apply_left_outer_to_union_all_disregarding_stats;
 bool		optimizer_enable_ctas;
 bool		optimizer_remove_order_below_dml;
@@ -4094,6 +4095,16 @@ static struct config_bool ConfigureNamesBool[] =
 		&optimizer_enable_bitmapscan,
 		false, NULL, NULL
 	},
+
+        {
+                {"optimizer_enable_outerjoin_to_unionall_rewrite", PGC_USERSET, DEVELOPER_OPTIONS,
+                        gettext_noop("Enable rewriting Left Outer Join to UnionAll"),
+                        NULL,
+                        GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+                },
+                &optimizer_enable_outerjoin_to_unionall_rewrite,
+		false, NULL, NULL
+        },
 
 	{
 		{"optimizer_apply_left_outer_to_union_all_disregarding_stats", PGC_USERSET, DEVELOPER_OPTIONS,
