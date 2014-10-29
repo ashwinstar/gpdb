@@ -1394,6 +1394,17 @@ explain_outNode(StringInfo str,
 								 quote_identifier(valsname));
 			}
 			break;
+		case T_PartitionSelector:
+			{
+				PartitionSelector *ps = (PartitionSelector *)plan;
+				char *relname = get_rel_name(ps->relid);
+				appendStringInfo(str, " for %s", quote_identifier(relname));
+				if (0 != ps->scanId)
+				{
+					appendStringInfo(str, " (dynamic scan id: %d)", ps->scanId);
+				}
+			}
+			break;
 		default:
 			break;
 	}

@@ -3496,6 +3496,7 @@ _readPartitionSelector(const char ** str)
 
 	READ_INT_FIELD(relid);
 	READ_INT_FIELD(nLevels);
+	READ_INT_FIELD(scanId);
 	READ_NODE_FIELD(levelEqExpressions);
 	READ_NODE_FIELD(levelExpressions);
 	READ_NODE_FIELD(residualPredicate);

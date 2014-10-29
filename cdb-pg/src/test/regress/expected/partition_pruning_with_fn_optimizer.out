@@ -38,7 +38,7 @@ explain select * from ds_4 where month_id = '200800';
 --------------------------------------------------------------------------------------------
  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..431.00 rows=1 width=80)
    ->  Sequence  (cost=0.00..431.00 rows=1 width=80)
-         ->  Partition Selector  (cost=10.00..100.00 rows=50 width=4)
+         ->  Partition Selector for ds_4 (dynamic scan id: 1)  (cost=10.00..100.00 rows=50 width=4)
                Filter: month_id::text = '200800'::text
          ->  Dynamic Table Scan on ds_4 (dynamic scan id: 1)  (cost=0.00..431.00 rows=1 width=80)
                Filter: month_id::text = '200800'::text
@@ -54,7 +54,7 @@ explain select * from ds_4 where month_id::int = 200800;
 --------------------------------------------------------------------------------------------
  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..431.00 rows=1 width=80)
    ->  Sequence  (cost=0.00..431.00 rows=1 width=80)
-         ->  Partition Selector  (cost=10.00..100.00 rows=50 width=4)
+         ->  Partition Selector for ds_4 (dynamic scan id: 1)  (cost=10.00..100.00 rows=50 width=4)
          ->  Dynamic Table Scan on ds_4 (dynamic scan id: 1)  (cost=0.00..431.00 rows=1 width=80)
                Filter: int4(month_id) = 200800
  Settings:  optimizer=on
@@ -69,7 +69,7 @@ explain select * from ds_4 where month_id::int - 801 < 200000;
 --------------------------------------------------------------------------------------------
  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..431.00 rows=1 width=80)
    ->  Sequence  (cost=0.00..431.00 rows=1 width=80)
-         ->  Partition Selector  (cost=10.00..100.00 rows=50 width=4)
+         ->  Partition Selector for ds_4 (dynamic scan id: 1)  (cost=10.00..100.00 rows=50 width=4)
          ->  Dynamic Table Scan on ds_4 (dynamic scan id: 1)  (cost=0.00..431.00 rows=1 width=80)
                Filter: (int4(month_id) - 801) < 200000
  Settings:  optimizer=on
@@ -81,7 +81,7 @@ explain select * from ds_4 where month_id::int - 801 < 200000 OR count_vas > 10;
 --------------------------------------------------------------------------------------------
  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..431.00 rows=1 width=80)
    ->  Sequence  (cost=0.00..431.00 rows=1 width=80)
-         ->  Partition Selector  (cost=10.00..100.00 rows=50 width=4)
+         ->  Partition Selector for ds_4 (dynamic scan id: 1)  (cost=10.00..100.00 rows=50 width=4)
          ->  Dynamic Table Scan on ds_4 (dynamic scan id: 1)  (cost=0.00..431.00 rows=1 width=80)
                Filter: (int4(month_id) - 801) < 200000 OR count_vas > 10
  Settings:  optimizer=on
@@ -96,7 +96,7 @@ explain select * from ds_4 where month_id::int - 801 < 200000 AND count_vas > 10
 --------------------------------------------------------------------------------------------
  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..431.00 rows=1 width=80)
    ->  Sequence  (cost=0.00..431.00 rows=1 width=80)
-         ->  Partition Selector  (cost=10.00..100.00 rows=50 width=4)
+         ->  Partition Selector for ds_4 (dynamic scan id: 1)  (cost=10.00..100.00 rows=50 width=4)
          ->  Dynamic Table Scan on ds_4 (dynamic scan id: 1)  (cost=0.00..431.00 rows=1 width=80)
                Filter: (int4(month_id) - 801) < 200000 AND count_vas > 10
  Settings:  optimizer=on
@@ -111,7 +111,7 @@ explain select * from ds_4 where case when month_id = '200800' then 100 else 2 e
 --------------------------------------------------------------------------------------------
  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..431.00 rows=1 width=80)
    ->  Sequence  (cost=0.00..431.00 rows=1 width=80)
-         ->  Partition Selector  (cost=10.00..100.00 rows=50 width=4)
+         ->  Partition Selector for ds_4 (dynamic scan id: 1)  (cost=10.00..100.00 rows=50 width=4)
          ->  Dynamic Table Scan on ds_4 (dynamic scan id: 1)  (cost=0.00..431.00 rows=1 width=80)
                Filter: CASE WHEN month_id::text = '200800'::text THEN 100 ELSE 2 END = 100
  Settings:  optimizer=on
@@ -126,7 +126,7 @@ explain select * from ds_4 where case when month_id = '200800' then NULL else 2 
 -------------------------------------------------------------------------------------------------------
  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..431.00 rows=1 width=80)
    ->  Sequence  (cost=0.00..431.00 rows=1 width=80)
-         ->  Partition Selector  (cost=10.00..100.00 rows=50 width=4)
+         ->  Partition Selector for ds_4 (dynamic scan id: 1)  (cost=10.00..100.00 rows=50 width=4)
          ->  Dynamic Table Scan on ds_4 (dynamic scan id: 1)  (cost=0.00..431.00 rows=1 width=80)
                Filter: CASE WHEN month_id::text = '200800'::text THEN NULL::integer ELSE 2 END IS NULL
  Settings:  optimizer=on
@@ -141,7 +141,7 @@ explain select * from ds_4 where case when month_id::int = 200800 then count_vas
 --------------------------------------------------------------------------------------------
  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..431.00 rows=1 width=80)
    ->  Sequence  (cost=0.00..431.00 rows=1 width=80)
-         ->  Partition Selector  (cost=10.00..100.00 rows=50 width=4)
+         ->  Partition Selector for ds_4 (dynamic scan id: 1)  (cost=10.00..100.00 rows=50 width=4)
          ->  Dynamic Table Scan on ds_4 (dynamic scan id: 1)  (cost=0.00..431.00 rows=1 width=80)
                Filter: CASE WHEN int4(month_id) = 200800 THEN count_vas ELSE 2 END IS NULL
  Settings:  optimizer=on
@@ -156,7 +156,7 @@ explain select * from ds_4 where month_id::int in (200801, 1,55,6,6,6,6,66,565,6
 -----------------------------------------------------------------------------------------------------
  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..431.00 rows=1 width=80)
    ->  Sequence  (cost=0.00..431.00 rows=1 width=80)
-         ->  Partition Selector  (cost=10.00..100.00 rows=50 width=4)
+         ->  Partition Selector for ds_4 (dynamic scan id: 1)  (cost=10.00..100.00 rows=50 width=4)
          ->  Dynamic Table Scan on ds_4 (dynamic scan id: 1)  (cost=0.00..431.00 rows=1 width=80)
                Filter: int4(month_id) = ANY ('{200801,1,55,6,6,6,6,66,565,65,65,200803}'::integer[])
  Settings:  optimizer=on
@@ -230,7 +230,7 @@ explain select * from ds_2 where month_id::int in (200808, 1315) order by month_
    ->  Sort  (cost=0.00..431.00 rows=1 width=80)
          Sort Key: month_id
          ->  Sequence  (cost=0.00..431.00 rows=1 width=80)
-               ->  Partition Selector  (cost=10.00..100.00 rows=50 width=4)
+               ->  Partition Selector for ds_2 (dynamic scan id: 1)  (cost=10.00..100.00 rows=50 width=4)
                ->  Dynamic Table Scan on ds_2 (dynamic scan id: 1)  (cost=0.00..431.00 rows=1 width=80)
                      Filter: int4(month_id) = ANY ('{200808,1315}'::integer[])
  Settings:  optimizer=on; optimizer_segments=2
@@ -247,7 +247,7 @@ explain  select * from ds_2 where month_id::int in (200808, 200801, 2008010) ord
    ->  Sort  (cost=0.00..431.00 rows=1 width=80)
          Sort Key: month_id
          ->  Sequence  (cost=0.00..431.00 rows=1 width=80)
-               ->  Partition Selector  (cost=10.00..100.00 rows=50 width=4)
+               ->  Partition Selector for ds_2 (dynamic scan id: 1)  (cost=10.00..100.00 rows=50 width=4)
                ->  Dynamic Table Scan on ds_2 (dynamic scan id: 1)  (cost=0.00..431.00 rows=1 width=80)
                      Filter: int4(month_id) = ANY ('{200808,200801,2008010}'::integer[])
  Settings:  optimizer=on; optimizer_segments=2

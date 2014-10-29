@@ -236,6 +236,7 @@ plan_tree_mutator(Node *node,
 				MUTATE(newPartsel->staticPartOids, partsel->staticPartOids, List *);
 				MUTATE(newPartsel->staticScanIds, partsel->staticScanIds, List *);
 				newPartsel->nLevels = partsel->nLevels;
+				newPartsel->scanId = partsel->scanId;
 				newPartsel->relid = partsel->relid;
 				newPartsel->staticSelection = partsel->staticSelection;
 

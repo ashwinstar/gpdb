@@ -5,7 +5,7 @@
 SELECT gp_opt_version();
                            gp_opt_version                            
 ---------------------------------------------------------------------
- GPOPT version: 1.504, GPOS version: 1.109, Xerces version: 3.1.1-p1
+ GPOPT version: 1.505, GPOS version: 1.109, Xerces version: 3.1.1-p1
 (1 row)
 
 -- master only tables
@@ -8027,7 +8027,7 @@ explain select * from orca.t_date where user_id=9;
 ----------------------------------------------------------------------------------------------------------
  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..431.02 rows=1 width=32)
    ->  Sequence  (cost=0.00..431.02 rows=1 width=32)
-         ->  Partition Selector  (cost=10.00..100.00 rows=50 width=4)
+         ->  Partition Selector for t_date (dynamic scan id: 1)  (cost=10.00..100.00 rows=50 width=4)
          ->  Result  (cost=0.00..435.93 rows=1 width=32)
                ->  Append  (cost=0.00..435.93 rows=1 width=32)
                      ->  Dynamic Index Scan on t_date (dynamic scan id: 1)  (cost=0.00..2.93 rows=1 width=88)
@@ -8080,7 +8080,7 @@ explain select * from orca.t_text where user_id=9;
 ----------------------------------------------------------------------------------------------------------
  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..431.02 rows=1 width=32)
    ->  Sequence  (cost=0.00..431.02 rows=1 width=32)
-         ->  Partition Selector  (cost=10.00..100.00 rows=50 width=4)
+         ->  Partition Selector for t_text (dynamic scan id: 1)  (cost=10.00..100.00 rows=50 width=4)
          ->  Result  (cost=0.00..435.93 rows=1 width=32)
                ->  Append  (cost=0.00..435.93 rows=1 width=32)
                      ->  Dynamic Index Scan on t_text (dynamic scan id: 1)  (cost=0.00..2.93 rows=1 width=88)
@@ -8147,7 +8147,7 @@ explain select * from orca.t_employee where user_id = 2;
 ---------------------------------------------------------------------------------
  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..0.02 rows=1 width=32)
    ->  Sequence  (cost=0.00..0.02 rows=1 width=32)
-         ->  Partition Selector  (cost=10.00..100.00 rows=50 width=4)
+         ->  Partition Selector for t_employee (dynamic scan id: 1)  (cost=10.00..100.00 rows=50 width=4)
          ->  Dynamic Index Scan on t_employee (dynamic scan id: 1)  (cost=0.00..1.07 rows=1 width=32)
                Index Cond: user_id = 2::numeric
  Settings:  optimizer=on; optimizer_segments=3
@@ -8194,7 +8194,7 @@ explain select * from orca.t_ceeval_ints where user_id=4;
 -----------------------------------------------------------------------------------------------------------------
  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..431.02 rows=1 width=32)
    ->  Sequence  (cost=0.00..431.02 rows=1 width=32)
-         ->  Partition Selector  (cost=10.00..100.00 rows=50 width=4)
+         ->  Partition Selector for t_ceeval_ints (dynamic scan id: 1)  (cost=10.00..100.00 rows=50 width=4)
          ->  Result  (cost=0.00..435.93 rows=1 width=32)
                ->  Append  (cost=0.00..435.93 rows=1 width=32)
                      ->  Dynamic Index Scan on t_ceeval_ints (dynamic scan id: 1)  (cost=0.00..2.93 rows=1 width=88)
@@ -8931,7 +8931,7 @@ explain select * from orca.bm_dyn_test where i=2 and t='2';
    ->  Result  (cost=0.00..0.00 rows=1 width=24)
          Filter: t = '2'::text
          ->  Sequence  (cost=0.00..0.00 rows=1 width=24)
-               ->  Partition Selector  (cost=10.00..100.00 rows=50 width=4)
+               ->  Partition Selector for bm_dyn_test (dynamic scan id: 1)  (cost=10.00..100.00 rows=50 width=4)
                ->  Bitmap Table Scan on bm_dyn_test (dynamic scan id: 1)  (cost=0.00..0.01 rows=1 width=24)
                      Recheck Cond: i = 2
                      ->  Bitmap Index Scan on bm_dyn_test_idx_1_prt_part0  (cost=0.00..0.00 rows=0 width=0)
@@ -9104,7 +9104,7 @@ ORDER BY 1 asc ;
                                              ->  Materialize  (cost=0.00..431.00 rows=1 width=1)
                                                    ->  Table Scan on my_tt_agg_opt  (cost=0.00..431.00 rows=1 width=88)
                                        ->  Sequence  (cost=0.00..862.05 rows=1 width=8)
-                                             ->  Partition Selector  (cost=10.00..100.00 rows=50 width=4)
+                                             ->  Partition Selector for my_tq_agg_opt_part (dynamic scan id: 1)  (cost=10.00..100.00 rows=50 width=4)
                                              ->  Result  (cost=0.00..862.05 rows=1 width=8)
                                                    ->  Append  (cost=0.00..862.05 rows=1 width=8)
                                                          ->  Nested Loop  (cost=0.00..431.03 rows=1 width=184)

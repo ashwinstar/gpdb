@@ -1144,6 +1144,7 @@ _copyPartitionSelector(const PartitionSelector *from)
 
 	COPY_SCALAR_FIELD(relid);
 	COPY_SCALAR_FIELD(nLevels);
+	COPY_SCALAR_FIELD(scanId);
 	COPY_NODE_FIELD(levelEqExpressions);
 	COPY_NODE_FIELD(levelExpressions);
 	COPY_NODE_FIELD(residualPredicate);

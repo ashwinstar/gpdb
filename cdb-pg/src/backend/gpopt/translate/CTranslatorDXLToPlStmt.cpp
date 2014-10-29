@@ -3255,6 +3255,7 @@ CTranslatorDXLToPlStmt::PplanPartitionSelector
 	CDXLPhysicalPartitionSelector *pdxlopPartSel = CDXLPhysicalPartitionSelector::PdxlopConvert(pdxlnPartitionSelector->Pdxlop());
 	const ULONG ulLevels = pdxlopPartSel->UlLevels();
 	ppartsel->nLevels = ulLevels;
+	ppartsel->scanId = pdxlopPartSel->UlScanId();
 	ppartsel->relid = CMDIdGPDB::PmdidConvert(pdxlopPartSel->PmdidRel())->OidObjectId();
 
 	// translate operator costs

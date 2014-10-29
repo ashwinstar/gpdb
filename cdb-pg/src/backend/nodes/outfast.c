@@ -973,6 +973,7 @@ _outPartitionSelector(StringInfo str, PartitionSelector *node)
 
 	WRITE_INT_FIELD(relid);
 	WRITE_INT_FIELD(nLevels);
+	WRITE_INT_FIELD(scanId);
 	WRITE_NODE_FIELD(levelEqExpressions);
 	WRITE_NODE_FIELD(levelExpressions);
 	WRITE_NODE_FIELD(residualPredicate);

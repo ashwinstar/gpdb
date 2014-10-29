@@ -1186,6 +1186,7 @@ typedef struct PartitionSelector
 	Plan		plan;
 	Oid 		relid;  				/* OID of target relation */
 	int 		nLevels;				/* number of partition levels */
+	int32 		scanId; 				/* id of the corresponding dynamic scan */
 	List		*levelEqExpressions;	/* equality expressions used for individual levels */
 	List		*levelExpressions;  	/* predicates used for individual levels */
 	Node		*residualPredicate; 	/* residual predicate (to be applied at the end) */
