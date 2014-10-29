@@ -1890,7 +1890,7 @@ describeOneTableDetails(const char *schemaname,
 
 				if (errortofile && errortofile[0] == 't')
 				{
-					printfPQExpBuffer(&tmpbuf, _("Errro Log in File"));
+					printfPQExpBuffer(&tmpbuf, _("Error Log in File"));
 					printTableAddFooter(&cont, tmpbuf.data);
 				}
 				else if(errtblname && strlen(errtblname) > 0)
