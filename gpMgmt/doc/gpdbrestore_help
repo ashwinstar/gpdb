@@ -15,7 +15,8 @@ gpdbrestore { -t <timestamp_key> { [-L]
      [--noplan]  [--noanalyze]  [-u <backup_directory>] [--list-backup]
      [--prefix <prefix_string> ] [--report-status-dir <report_directory> ]
      [-T <schema>.<table> [,...]] [--table-file <file_name>]
-     [-e] [-G] [-B <parallel_processes>] 
+     [--truncate] [-e] [-G] 
+     [-B <parallel_processes>] 
      [-d <master_data_directory>] [-a] [-q] [-l <logfile_directory>] 
      [-v] [--ddboost ]
      [--redirect <database_name> ]
@@ -313,6 +314,11 @@ OPTIONS
  Specify a file <file_name> that contains a list of table names to restore. 
  The file contains any number of table names, listed one per line. See 
  the -T option for information about restoring specific tables. 
+
+
+--truncate
+
+ Truncate table data before restoring data to the table from the backup.
 
 
 -u <backup_directory> 
