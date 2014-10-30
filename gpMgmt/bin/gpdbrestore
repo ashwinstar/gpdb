@@ -40,7 +40,7 @@ try:
                                            restore_report_file_with_nbu, restore_cdatabase_file_with_nbu, \
                                            restore_config_files_with_nbu, restore_global_file_with_nbu, \
                                            restore_partition_list_file_with_nbu, restore_increments_file_with_nbu, \
-                                           config_files_dumped, global_file_dumped
+                                           config_files_dumped, global_file_dumped, truncate_restore_tables
     import gppylib.operations.backup_utils as backup_utils
     import gppylib.operations.restore as restore
 
@@ -94,11 +94,18 @@ class GpdbRestore(Operation):
         self.list_backup = options.list_backup
         self.redirected_restore_db = options.redirected_restore_db
         self.report_status_dir = options.report_status_dir
+        self.truncate = options.truncate
         # NetBackup params
         self.netbackup_service_host = options.netbackup_service_host
         self.netbackup_block_size = options.netbackup_block_size
         if options.local_dump_prefix: 
             backup_utils.dump_prefix = options.local_dump_prefix + '_'
+
+        if self.truncate and not (self.restore_tables or self.table_file):
+            raise Exception('--truncate can be specified only with -T or --table-file option')
+
+        if self.truncate and self.drop_db:
+            raise Exception('Cannot specify --truncate and -e together')
 
         if self.table_file and self.restore_tables:
             raise Exception('Cannot specify -T and --table-file together')
@@ -209,6 +216,9 @@ class GpdbRestore(Operation):
 
         if not is_incremental_restore(self.master_datadir, self.backup_dir, info['restore_timestamp']) and self.list_backup:
             raise Exception('--list-backup is not supported for restore with full timestamps')
+
+        if self.restore_tables and self.truncate:
+            truncate_restore_tables(self.restore_tables, self.master_port, info['restore_db'])
 
         if is_begin_incremental_run(self.master_datadir, self.backup_dir, info['restore_timestamp'], self.no_plan):
             if self.netbackup_service_host:
@@ -556,6 +566,8 @@ def create_parser():
                      help="Database name to which the data needs to be restored for the given timestamp")
     addTo.add_option('--report-status-dir', dest='report_status_dir', metavar='<report_status_dir>',
                      help="Writable directory for report and status file creation")
+    addTo.add_option('--truncate', action='store_true', dest='truncate', default=False,
+                     help="Truncate's the restore tables specified using -T and --table-file option")
     addTo.add_option('--netbackup-service-host', dest='netbackup_service_host', metavar="<server name>",
                      help="NetBackup service hostname")
     addTo.add_option('--netbackup-block-size', dest='netbackup_block_size', metavar="<block size>",

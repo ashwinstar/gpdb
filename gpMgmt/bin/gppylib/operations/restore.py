@@ -404,6 +404,17 @@ def _build_gpdbrestore_cmd_line(ts, table_file, backup_dir, redirected_restore_d
 
     return cmd
 
+def truncate_restore_tables(restore_tables, master_port, dbname):
+    for table in restore_tables:
+        qry = 'Truncate %s' % table
+        try:
+            dburl = dbconn.DbURL(port=master_port, dbname=dbname)
+            conn = dbconn.connect(dburl)
+            execSQL(conn, qry)
+            conn.commit()
+        except Exception as e:
+            raise Exception("Could not truncate table %s\n. Error: %s" (table, str(e)))
+
 class RestoreDatabase(Operation):
     def __init__(self, restore_timestamp, no_analyze, drop_db, restore_global, master_datadir, backup_dir, 
                 master_port, dump_dir, ddboost, no_plan, restore_tables, batch_default, no_ao_stats, 

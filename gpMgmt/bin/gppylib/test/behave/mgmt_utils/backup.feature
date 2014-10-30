@@ -138,6 +138,17 @@ Feature: Validate command line arguments
         And gpcrondump should print --exclude-schema-file can not be selected with --schema-file option to stdout
         And the user runs "psql -c 'drop schema schema_heap cascade;' bkdb" 
 
+    @backupfire
+    @truncate
+    Scenario: gpdbrestore with --truncate option
+        When the user runs "gpdbrestore -t 20140101010101 --truncate -a" 
+        Then gpdbrestore should return a return code of 2
+        And gpdbrestore should print --truncate can be specified only with -T or --table-file option to stdout
+        When the user runs "gpdbrestore -t 20140101010101 --truncate -e -T public.foo -a" 
+        Then gpdbrestore should return a return code of 2
+        And gpdbrestore should print Cannot specify --truncate and -e together to stdout
+
+
     ### 
     ### Any tests that require this data set should come after
     ###
@@ -1717,8 +1728,6 @@ Feature: Validate command line arguments
 
     @backupfire
     Scenario: Full backup -T test 2 
-
-
         Given the database is running
         And the database "fullbkdb" does not exist
         And database "fullbkdb" exists
@@ -1736,6 +1745,27 @@ Feature: Validate command line arguments
         Then verify that there is no table "ao_part_table" in "fullbkdb"
         And verify that there is no table "heap_table" in "fullbkdb"
         And verify that there is a "ao" table "public.ao_index_table" in "fullbkdb" with data
+
+    @backupfire
+    @truncate
+    Scenario: Full backup and restore with -T and --truncate
+        Given the database is running
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data 
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data 
+        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data 
+        When the user runs "gpcrondump -a -x fullbkdb"
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored 
+        And all the data from "fullbkdb" is saved for verification
+        And the user runs "gpdbrestore -T public.ao_index_table -a --truncate" with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And verify that there is a "ao" table "public.ao_index_table" in "fullbkdb" with data
+        And verify that the restored table "public.ao_index_table" in database "fullbkdb" is analyzed
+        And the user runs "gpdbrestore -T public.ao_part_table_1_prt_p1_2_prt_1 -a --truncate" with the stored timestamp
+        And gpdbrestore should return a return code of 0
+        And verify that there is a "ao" table "public.ao_part_table" in "fullbkdb" with data
 
     @backupfire
     Scenario: Full backup -T test 3

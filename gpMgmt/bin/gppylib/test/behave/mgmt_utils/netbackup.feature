@@ -4734,3 +4734,24 @@ Feature: NetBackup Integration with GPDB
         And verify that there is no table "schema_ao.ao_index_table" in "fullbkdb"
         And verify that there is a "ao" table "schema_ao.ao_part_table" in "fullbkdb" with data
 
+    @nbuall
+    @truncate
+    Scenario: Full backup and restore with -T and --truncate
+        Given the database is running
+        And the netbackup params have been parsed
+        And there are no backup files
+        And the database "fullbkdb" does not exist
+        And database "fullbkdb" exists
+        And there is a "heap" table "heap_table" with compression "None" in "fullbkdb" with data 
+        And there is a "ao" partition table "ao_part_table" with compression "quicklz" in "fullbkdb" with data 
+        And there is a "ao" table "ao_index_table" with compression "None" in "fullbkdb" with data 
+        When the user runs "gpcrondump -a -x fullbkdb --netbackup-block-size 4096" using netbackup
+        Then gpcrondump should return a return code of 0 
+        And the timestamp from gpcrondump is stored 
+        And all the data from "fullbkdb" is saved for verification
+        When the user runs gpdbrestore with the stored timestamp and options " -T public.ao_index_table --truncate -a --netbackup-block-size 4096" without -e option using netbackup
+        And gpdbrestore should return a return code of 0 
+        And verify that there is a "ao" table "public.ao_index_table" in "fullbkdb" with data 
+        And verify that the restored table "public.ao_index_table" in database "fullbkdb" is analyzed
+        And gpdbrestore should return a return code of 0 
+        And verify that there is a "ao" table "public.ao_part_table" in "fullbkdb" with data 
