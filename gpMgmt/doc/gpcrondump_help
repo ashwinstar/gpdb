@@ -9,8 +9,9 @@ SYNOPSIS
 *****************************************************
 
 gpcrondump -x database_name 
-     [-s <schema> | -t <schema>.<table> | -T <schema>.<table>] 
-     [--table-file="<filename>" | --exclude-table-file="<filename>"] 
+     [-s <schema> | -S <schema> | -t <schema>.<table> | -T <schema>.<table>] 
+     [--table-file=<filename> | --exclude-table-file=<filename>] 
+     [--schema-file=<filename> | --exclude-schema-file=<filename>] 
      [-u backup_directory] [-R post_dump_script] [--incremental] 
      [ -K <timestamp> [--list-backup-files] ] 
      [--prefix <prefix_string> [--list-filter-tables] ]
@@ -614,20 +615,42 @@ OPTIONS
  differentiate between a compressed file created with this option, and 
  one created without it. 
 
+-s <schema_name>
 
--s <schema_name> 
+ Dump all the tables that are qualified by the specified schema in the 
+ database. The -s option can be specified multiple times. System catalog 
+ schemas are not supported. If you want to specify multiple schemas, you 
+ can also use the --schema-file=<filename> option in order not to exceed 
+ the maximum token limit. 
 
- Dump only the named schema in the named database. 
+ Only a set of tables or set of schemas can be specified. For example, 
+ the -s option cannot be specified with the -t option. 
 
  If --incremental is specified, this option is not supported. 
 
 
+-S <schema_name>
+
+ A schema name to exclude from the database dump. The -S option can be 
+ specified multiple times. If you want to specify multiple schemas, you 
+ can also use the --exclude-schema-file=<filename> option in order not to 
+ exceed the maximum token limit. 
+
+ Only a set of tables or set of schemas can be specified. For example, 
+ this option cannot be specified with the -t option. 
+
+ If --incremental is specified, this option is not supported.
+ 
+ 
 -t <schema>.<table>
 
  Dump only the named table in this database. The -t option can be 
  specified multiple times. If you want to specify multiple tables, you 
- can also use the --table-file="<filename>" option in order not to exceed the 
+ can also use the --table-file=<filename> option in order not to exceed the 
  maximum token limit. 
+ 
+ Only a set of tables or set of schemas can be specified. For example, 
+ this option cannot be specified with the -s option. 
 
  If --incremental is specified, this option is not supported. 
 
@@ -636,21 +659,51 @@ OPTIONS
 
  A table name to exclude from the database dump. The -T option can be 
  specified multiple times. If you want to specify multiple tables, you 
- can also use the --exclude-table-file="<filename>" option in order not to 
+ can also use the --exclude-table-file=<filename> option in order not to 
  exceed the maximum token limit. 
+
+ Only a set of tables or set of schemas can be specified. For example, 
+ this option cannot be specified with the -s option. 
 
  If --incremental is specified, this option is not supported. 
 
+ 
+--exclude-schema-file=<filename>
 
---exclude-table-file="<filename>"
+ Excludes all the tables that are qualified by the specified schemas 
+ listed in the <filename> from the database dump. The file <filename> 
+ contains any number of schemas, listed one per line. 
+
+ Only a set of tables or set of schemas can be specified. For example, 
+ this option cannot be specified with the -t option. 
+
+ If --incremental is specified, this option is not supported. 
+
+ 
+--exclude-table-file=<filename>
 
  Excludes all tables listed in the <filename> from the database dump. The 
  file <filename> contains any number of tables, listed one per line. 
-
+ 
+ Only a set of tables or set of schemas can be specified. For example, 
+ this option cannot be specified with the -s option. 
+ 
  If --incremental is specified, this option is not supported. 
 
 
---table-file="<filename>" 
+--schema-file=<filename>
+
+ Dumps only the tables that are qualified by the schemas listed in the 
+ <filename>. The file <filename> contains any number of schemas, listed one 
+ per line. 
+
+ Only a set of tables or set of schemas can be specified. For example, 
+ this option cannot be specified with the -t option. 
+
+ If --incremental is specified, this option is not supported. 
+
+ 
+--table-file=<filename>
 
  Dumps only the tables listed in the <filename>. The file <filename> contains 
  any number of tables, listed one per line. 
