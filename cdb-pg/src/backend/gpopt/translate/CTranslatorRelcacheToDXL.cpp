@@ -1167,7 +1167,8 @@ CTranslatorRelcacheToDXL::PmdindexPartTable
 	}
 		
 	CMDPartConstraintGPDB *pmdpartcnstr = PmdpartcnstrIndex(pmp, pmda, pmdrel, pnodePartCnstr, pdrgpulDefaultLevels, fUnbounded);
-	
+
+	pdrgpulDefaultLevels->Release();
 	pmdrel->Pmdid()->AddRef();
 	pmdidIndex->AddRef();
 	
@@ -3067,7 +3068,8 @@ CTranslatorRelcacheToDXL::PmdpartcnstrRelation
 	}
 	
 	CMDPartConstraintGPDB *pmdpartcnstr = PmdpartcnstrFromNode(pmp, pmda, pdrgpdxlcd, pnode, pdrgpulDefaultLevels, fUnbounded);
-	
+
+	pdrgpulDefaultLevels->Release();	
 	pdrgpdxlcd->Release();
 
 	return pmdpartcnstr;
@@ -3122,6 +3124,7 @@ CTranslatorRelcacheToDXL::PmdpartcnstrFromNode
 	// cleanup
 	delete pmapvarcolid;
 
+	pdrgpulDefaultParts->AddRef();
 	return New(pmp) CMDPartConstraintGPDB(pmp, pdxlnScalar, pdrgpulDefaultParts, fUnbounded);
 }
 
