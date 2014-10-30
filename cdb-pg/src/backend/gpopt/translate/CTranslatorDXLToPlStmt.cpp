@@ -5526,6 +5526,43 @@ CTranslatorDXLToPlStmt::JtFromEdxljt
 //		CTranslatorDXLToPlStmt::PplanCTAS
 //
 //	@doc:
+//		Sets the vartypmod fields in the target entries of the given target list
+//
+//---------------------------------------------------------------------------
+void
+CTranslatorDXLToPlStmt::SetVarTypMod
+	(
+	const CDXLPhysicalCTAS *pdxlop,
+	List *plTargetList
+	)
+{
+	GPOS_ASSERT(NULL != plTargetList);
+
+	DrgPi *pdrgpi = pdxlop->PdrgpiVarTypeMod();
+	GPOS_ASSERT(pdrgpi->UlLength() == list_length(plTargetList));
+
+	ULONG ul = 0;
+	ListCell *plc = NULL;
+	ForEach (plc, plTargetList)
+	{
+		TargetEntry *pte = (TargetEntry *) lfirst(plc);
+		GPOS_ASSERT(IsA(pte, TargetEntry));
+
+		if (IsA(pte->expr, Var))
+		{
+			pte->expr;
+			Var *var = (Var*) pte->expr;
+			var->vartypmod = *(*pdrgpi)[ul];
+		}
+		++ul;
+	}
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CTranslatorDXLToPlStmt::PplanCTAS
+//
+//	@doc:
 //		Translates a DXL CTAS node 
 //
 //---------------------------------------------------------------------------
@@ -5560,6 +5597,7 @@ CTranslatorDXLToPlStmt::PplanCTAS
 						pdxltrctxOut,
 						pplan
 						);
+	SetVarTypMod(pdxlop, plTargetList);
 	
 	SetParamIds(pplan);
 

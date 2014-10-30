@@ -786,6 +786,10 @@ namespace gpdxl
 				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = NULL // translation contexts of previous siblings
 				);
 			
+			// sets the vartypmod fields in the target entries of the given target list
+			static
+			void SetVarTypMod(const CDXLPhysicalCTAS *pdxlop, List *plTargetList);
+
 			// translate the into clause for a DXL physical CTAS operator
 			IntoClause *PintoclFromCtas(const CDXLPhysicalCTAS *pdxlop);
 			

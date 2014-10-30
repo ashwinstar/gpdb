@@ -775,6 +775,7 @@ CTranslatorQueryToDXL::PdxlnCTAS()
 	const ULONG ulColumns = gpdb::UlListLength(m_pquery->targetList);
 
 	DrgPul *pdrgpulSource = New(m_pmp) DrgPul(m_pmp);
+	DrgPi* pdrgpiVarTypMod = New(m_pmp) DrgPi(m_pmp);
 	
 	List *plColnames = pintocl->colNames;
 	for (ULONG ul = 0; ul < ulColumns; ul++)
@@ -785,6 +786,8 @@ CTranslatorQueryToDXL::PdxlnCTAS()
 			continue;
 		}
 		AttrNumber iResno = pte->resno;
+		int iVarTypMod = gpdb::IExprTypeMod((Node*)pte->expr);
+		pdrgpiVarTypMod->Append(New(m_pmp) INT(iVarTypMod));
 
 		CDXLNode *pdxlnCol = (*m_pdrgpdxlnQueryOutput)[ul];
 		CDXLScalarIdent *pdxlopIdent = CDXLScalarIdent::PdxlopConvert(pdxlnCol->Pdxlop());
@@ -878,7 +881,8 @@ CTranslatorQueryToDXL::PdxlnCTAS()
 									pintocl->rel->istemp, 
 									fHasOids,
 									erelstorage, 
-									pdrgpulSource
+									pdrgpulSource,
+									pdrgpiVarTypMod
 									);
 
 	return New(m_pmp) CDXLNode(m_pmp, pdxlopCTAS, pdxlnQuery);
