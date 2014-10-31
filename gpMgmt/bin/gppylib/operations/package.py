@@ -48,7 +48,7 @@ GPHOME = dereference_symlink(gp.get_gphome())
 GPPKG_EXTENSION = '.gppkg'
 SPECFILE_NAME = 'gppkg_spec.yml'
 SPECFILE_REQUIRED_TAGS = ['pkgname', 'version', 'architecture', 'os', 'description', 'gpdbversion']
-SPECFILE_OPTIONAL_TAGS = ['preinstall', 'postinstall', 'preuninstall', 'postuninstall']
+SPECFILE_OPTIONAL_TAGS = ['preinstall', 'postinstall', 'preuninstall', 'postuninstall', 'postupdate']
 
 # TODO: AK: Our interactions with the internal RPM database could benefit from an abstraction layer
 # that hides the underlying commands used for installation, uninstallation, queries, etc.
@@ -129,7 +129,7 @@ class Gppkg:
         This class stores all the information about a gppkg
     '''
                 
-    def __init__(self, pkg, pkgname, main_rpm, version, architecture, os, gpdbversion, description, abspath, preinstall, postinstall, preuninstall, postuninstall, dependencies, file_list):
+    def __init__(self, pkg, pkgname, main_rpm, version, architecture, os, gpdbversion, description, abspath, preinstall, postinstall, preuninstall, postuninstall, postupdate, dependencies, file_list):
         ''' 
             The constructor takes the following arguments
             pkg             The complete package name e.g pgcrypto-1.0-Darwin-i386.gppkg        TODO: AK: This is an awful variable name. Change to "package_filename".
@@ -145,6 +145,7 @@ class Gppkg:
             postinstall     The cluster level postinstallation hooks
             preuninstall    The cluster level preuninstallation hooks
             postuninstall   The cluster level postuninstallation hooks
+            postupdate      The cluster level postupdate hooks
             dependencies    The dependencies of the package. e.g Geos, Proj in case of PostGIS
             file_list       The list of files present in the package
         '''        
@@ -164,6 +165,7 @@ class Gppkg:
         self.postinstall = postinstall
         self.preuninstall = preuninstall
         self.postuninstall = postuninstall
+        self.postupdate = postupdate
         self.dependencies = dependencies
         self.file_list = file_list
 
@@ -441,7 +443,7 @@ class ValidateInstallPackage(Operation):
         rpm_set = set([self.gppkg.main_rpm] + self.gppkg.dependencies)
         rpm_install_string = ' '.join([os.path.join(TEMP_EXTRACTION_PATH, rpm) for rpm in rpm_set])
         if self.is_update:
-            rpm_install_command = 'rpm --test -U %s --dbpath %s --prefix %s' % (rpm_install_string, RPM_DATABASE, RPM_INSTALLATION_PATH)
+            rpm_install_command = 'rpm --test -U --force %s --dbpath %s --prefix %s' % (rpm_install_string, RPM_DATABASE, RPM_INSTALLATION_PATH)
         else:
             rpm_install_command = 'rpm --test -i %s --dbpath %s --prefix %s' % (rpm_install_string, RPM_DATABASE, RPM_INSTALLATION_PATH)
         cmd = Command('Validating rpm installation', rpm_install_command)
@@ -680,7 +682,7 @@ class InstallPackageLocally(Operation):
 
         if rpm_set:
             if self.is_update:
-                rpm_install_command = 'rpm -U %s --dbpath %s --prefix=%s'
+                rpm_install_command = 'rpm -U --force %s --dbpath %s --prefix=%s'
             else:
                 rpm_install_command = 'rpm -i %s --dbpath %s --prefix=%s'
             rpm_install_command = rpm_install_command % \
@@ -1107,6 +1109,13 @@ class UpdatePackage(Operation):
 
         # update package on master
         UpdatePackageLocally(srcFile).run()
+
+        # perform any post-update steps
+        PerformHooks(hooks = self.gppkg.postupdate,
+                     master_host = self.master_host,
+                     standby_host = self.standby_host,
+                     segment_host_list = self.segment_host_list).run()
+
 
         logger.info('%s successfully updated.' % (self.gppkg.pkg))
 
