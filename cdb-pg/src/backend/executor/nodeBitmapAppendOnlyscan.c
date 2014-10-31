@@ -400,8 +400,6 @@ BitmapAppendOnlyScanNext(BitmapAppendOnlyScanState *node)
       	if (TupIsNull(slot))
 			continue;
 
-		Assert(ItemPointerIsValid(slot_get_ctid(slot)));
-
 		pgstat_count_heap_fetch(node->ss.ss_currentRelation);
 
 		/*
