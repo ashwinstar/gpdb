@@ -89,5 +89,12 @@ class buildMirrorSegmentsTestCase(unittest.TestCase):
         host = 'h1'
         self.assertEqual(self.buildMirrorSegs.dereference_remote_symlink(datadir, host), '/tmp/seg0')
 
+    def test_ensureSharedMemCleaned_no_segments(self):
+        self.buildMirrorSegs._GpMirrorListToBuild__ensureSharedMemCleaned(Mock(), [])
+
+    @patch('gppylib.gparray.GpDB.getSegmentHostName', side_effect=['foo1', 'foo2'])
+    def test_ensureSharedMemCleaned(self, mock1):
+        self.buildMirrorSegs._GpMirrorListToBuild__ensureSharedMemCleaned(Mock(), [Mock(), Mock()])
+
 if __name__ == '__main__':
     unittest.main()

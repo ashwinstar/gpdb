@@ -4,7 +4,7 @@ import pickle
 import shutil
 import errno
 
-from gppylib.commands.base import Command, REMOTE
+from gppylib.commands.base import Command, REMOTE, WorkerPool
 from gppylib.operations import Operation
 from gppylib.operations.utils import RemoteOperation
 
@@ -159,3 +159,32 @@ class RemoveTree(Operation):
         self.path = path
     def execute(self):
         return shutil.rmtree(self.path)
+
+class CleanSharedMem(Operation):
+    def __init__(self, segments):
+        self.segments = segments
+
+    def execute(self):
+        pool = WorkerPool()
+        try:
+            for seg in self.segments:
+                datadir = seg.getSegmentDataDirectory()
+                postmaster_pid_file = '%s/postmaster.pid' % datadir
+                shared_mem = None
+                if os.path.isfile(postmaster_pid_file):
+                    with open(postmaster_pid_file) as fp:
+                        shared_mem = fp.readlines()[-1].split()[-1].strip()
+                if shared_mem:
+                    cmd = Command('clean up shared memory', cmdStr="ipcrm -m %s" % shared_mem) 
+                    pool.addCommand(cmd)
+                pool.join()
+
+            for item in pool.getCompletedItems():
+                result = item.get_results()
+
+                if result.rc != 0:
+                    raise Exception('Unable to clean up shared memory for segment: (%s)' % (result.stderr))
+        finally:
+            pool.haltWork()
+            pool.joinWorkers()
+            pool = None

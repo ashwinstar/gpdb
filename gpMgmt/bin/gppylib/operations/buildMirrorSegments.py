@@ -15,9 +15,10 @@ from gppylib.commands import base
 from gppylib.gparray import GpArray
 from gppylib import gphostcache
 from gppylib.testold.testUtils import *
-from gppylib.operations import startSegments
+from gppylib.operations import startSegments, Operation
 from gppylib.gp_era import read_era
-from gppylib.operations.utils import ParallelOperation
+from gppylib.operations.utils import ParallelOperation, RemoteOperation
+from gppylib.operations.unix import CleanSharedMem 
 from gppylib.operations.filespace import PG_SYSTEM_FILESPACE, GP_TRANSACTION_FILES_FILESPACE, GP_TEMPORARY_FILES_FILESPACE, GetMoveOperationList, GetFilespaceEntriesDict, GetFilespaceEntries, GetCurrentFilespaceEntries, RollBackFilespaceChanges, UpdateFlatFiles, FileType, MoveFilespaceError
 from gppylib.commands.gp import is_pid_postmaster, get_pid_from_remotehost
 from gppylib.commands.unix import check_pid_on_remotehost
@@ -46,7 +47,7 @@ gDatabaseSubDirectories = [
         "pg_multixact/members",
         "pg_multixact/offsets",
         "base/1"
-        ]
+         ]
 
 #
 # Database files that may exist in the root directory and need deleting 
@@ -315,6 +316,7 @@ class GpMirrorListToBuild:
                 copyDirectives.append(d)
 
         self.__ensureStopped(gpEnv, toStopDirectives)
+        self.__ensureSharedMemCleaned(gpEnv, toStopDirectives)
         self.__ensureMarkedDown(gpEnv, toEnsureMarkedDown)
         self.__cleanUpSegmentDirectories(cleanupDirectives)
         self.__copySegmentDirectories(gpEnv, gpArray, copyDirectives)
@@ -672,6 +674,28 @@ class GpMirrorListToBuild:
             return datadir
         return results.stdout.strip()
 
+    def __ensureSharedMemCleaned(self, gpEnv, directives):
+        """
+
+        @param directives a list of the GpStopSegmentDirectoryDirective values indicating which segments to cleanup 
+
+        """
+
+        if len(directives) == 0:
+            return
+
+        logger.info('Ensuring that shared memory is cleaned up for stopped segments')
+        segments = [d.getSegment() for d in directives]
+        segmentsByHost = GpArray.getSegmentsByHostName(segments)
+        operation_list = [RemoteOperation(CleanSharedMem(segments), host=hostName) for hostName, segments in segmentsByHost.items()]
+        ParallelOperation(operation_list).run()
+
+        for operation in operation_list:
+            try:
+                operation.get_ret()
+            except Exception as e:
+                logger.warning('Unable to clean up shared memory for stopped segments on host (%s)' % operation.host)
+        
     def __ensureStopped(self, gpEnv, directives):
         """
 
