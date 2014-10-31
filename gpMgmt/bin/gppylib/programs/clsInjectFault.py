@@ -389,8 +389,8 @@ class GpInjectFaultProgram:
 			      "appendonly_insert (inject fault before an append-only insert), " \
 			      "appendonly_delete (inject fault before an append-only delete), " \
 			      "appendonly_update (inject fault before an append-only update), " \
-                  "reindex_db (inject fault while reindex db is in progress), "\
-                  "reindex_relation (inject fault while reindex relation is in progress), "\
+			      "reindex_db (inject fault while reindex db is in progress), "\
+			      "reindex_relation (inject fault while reindex relation is in progress), "\
 			      "fault_during_exec_dynamic_table_scan (inject fault during scanning of a partition), " \
 			      "fault_in_background_writer_main (inject fault in BackgroundWriterMain), " \
 			      "cdb_copy_start_after_dispatch (inject fault in cdbCopyStart after dispatch), " \
@@ -398,10 +398,11 @@ class GpInjectFaultProgram:
 			      "vacuum_full_before_truncate (inject fault before truncate in vacuum full), " \
 			      "vacuum_full_after_truncate (inject fault after truncate in vacuum full), " \
 			      "vacuum_relation_end_of_first_round (inject fault at the end of first round of vacuumRelation loop), " \
-                  "rebuild_pt_db (inject fault while rebuilding persistent tables (for each db)), " \
-                  "procarray_add (inject fault while adding PGPROC to procarray), " \
+			      "rebuild_pt_db (inject fault while rebuilding persistent tables (for each db)), " \
+			      "procarray_add (inject fault while adding PGPROC to procarray), " \
 			      "exec_hashjoin_new_batch (inject fault before switching to a new batch in Hash Join), " \
 			      "fts_wait_for_shutdown (pause FTS before committing changes), " \
+			      "runaway_cleanup (inject fault before starting the cleanup for a runaway query)" \
 			      "all (affects all faults injected, used for 'status' and 'reset'), ") 
         addTo.add_option("-c", "--ddl_statement", dest="ddlStatement", type="string",
                          metavar="ddlStatement",

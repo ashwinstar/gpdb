@@ -57,7 +57,7 @@
 #include "utils/syscache.h"
 #include "utils/tqual.h"  		/* SharedSnapshot */
 #include "pgstat.h"
-
+#include "utils/session_state.h"
 
 static HeapTuple GetDatabaseTuple(const char *dbname);
 static HeapTuple GetDatabaseTupleByOid(Oid dboid);
@@ -457,13 +457,6 @@ InitCommunication(void)
 		 */
 		CreateSharedMemoryAndSemaphores(true, 0);
 	}
-
-	/*
-	 * We only call GPMemoryProtectInit() through CreateSharedMemoryAndSemaphores()
-	 * if not under postmaster. However, we need to initialize per-process OOM
-	 * tracking data structures regardless of IsUnderPostMaster status.
-	 */
-	InitPerProcessOOMTracking();
 }
 
 /*
@@ -563,6 +556,11 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	 * Once I have done this, I am visible to other backends!
 	 */
 	InitProcessPhase2();
+
+	/* Initialize SessionState entry */
+	SessionState_Init();
+	/* Initialize memory protection */
+	GPMemoryProtect_Init();
 
 	/*
 	 * Initialize my entry in the shared-invalidation manager's array of
@@ -1065,6 +1063,17 @@ ShutdownPostgres(int code, Datum arg)
 {
 	/* Make sure we've killed any active transaction */
 	AbortOutOfAnyTransaction();
+
+	/*
+	 * If there was a segment OOM for which we haven't already reported
+	 * our usage, report now.
+	 */
+	ReportOOMConsumption();
+
+	/* Disable memory protection */
+	GPMemoryProtect_Shutdown();
+	/* Release SessionState entry */
+	SessionState_Shutdown();
 
 	/*
 	 * User locks are not released by transaction end, so be sure to release

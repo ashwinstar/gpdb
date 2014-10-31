@@ -57,6 +57,7 @@
 #include "cdb/cdbgang.h"
 #include "cdb/cdbvars.h"  /*Gp_is_writer*/
 #include "utils/atomic.h"
+#include "utils/session_state.h"
 
 /* GUC variables */
 int			DeadlockTimeout = 1000;
@@ -1787,6 +1788,25 @@ void ProcNewMppSessionId(int *newSessionId)
 
     *newSessionId = MyProc->mppSessionId =
 		gp_atomic_add_32(&ProcGlobal->mppLocalProcessCounter, 1);
+
+    /*
+     * Make sure that our SessionState entry correctly records our
+     * new session id.
+     */
+    if (NULL != MySessionState)
+    {
+    	/* This should not happen outside of dispatcher on the master */
+    	Assert(GpIdentity.segindex == MASTER_CONTENT_ID && Gp_role == GP_ROLE_DISPATCH);
+
+    	ereport(gp_sessionstate_loglevel, (errmsg("ProcNewMppSessionId: changing session id (old: %d, new: %d), pinCount: %d, activeProcessCount: %d",
+    			MySessionState->sessionId, *newSessionId, MySessionState->pinCount, MySessionState->activeProcessCount), errprintstack(true)));
+
+#ifdef USE_ASSERT_CHECKING
+    	MySessionState->isModifiedSessionId = true;
+#endif
+
+    	MySessionState->sessionId = *newSessionId;
+    }
 }
 
 /*

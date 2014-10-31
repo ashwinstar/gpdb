@@ -249,6 +249,9 @@ MemoryAccounting_SwitchAccount(struct MemoryAccount* desiredAccount);
 extern void
 MemoryAccounting_Reset(void);
 
+extern void
+MemoryAccounting_ResetPeakBalance(void);
+
 extern uint32
 MemoryAccounting_Serialize(StringInfoData* buffer);
 

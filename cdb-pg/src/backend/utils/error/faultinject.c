@@ -16,6 +16,7 @@
 #include "storage/buffile.h"
 
 #include "postmaster/syslogger.h"
+#include "utils/vmem_tracker.h"
 
 #include <unistd.h>
 
@@ -178,7 +179,7 @@ gp_fault_inject_impl(int32 reason, int64 arg)
 		case GP_FAULT_SEG_AVAILABLE:
 		case GP_FAULT_SEG_SET_VMEMMAX:
 		case GP_FAULT_SEG_GET_VMEMMAX:
-			return gp_mp_fault(reason, arg); 
+			return VmemTracker_Fault(reason, arg);
 
                 case GP_FAULT_LOG_LONGMSG:
                         elog(LOG, 

@@ -17,6 +17,8 @@
 #include "tcop/dest.h"
 #include "utils/array.h"
 
+#define MAX_MAX_BACKENDS (INT_MAX / BLCKSZ)
+
 struct StringInfoData;                  /* #include "lib/stringinfo.h" */
 
 

@@ -55,6 +55,7 @@
 #include "utils/resscheduler.h"
 #include "access/distributedlog.h"
 #include "access/clog.h"
+#include "utils/vmem_tracker.h"
 
 #include "cdb/cdbgang.h"
 #include "cdb/cdbvars.h" /* Gp_role, Gp_is_writer, interconnect_setup_timeout */
@@ -3729,7 +3730,6 @@ CommitTransaction(void)
 	Assert(LocalDistribXactRef_IsNil(&localDistribXactRef));
 
 	freeGangsForPortal(NULL);
-
 }
 
 

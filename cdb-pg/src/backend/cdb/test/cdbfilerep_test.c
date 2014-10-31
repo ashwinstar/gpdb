@@ -20,6 +20,7 @@ test__FileRep_StartChildProcess(void **state)
 			sizeof(FileRepSubProcListInitial));
 
 	will_return(fork_process, -1);
+	will_be_called(RedZoneHandler_DetectRunawaySession);
 
 	pid = FileRep_StartChildProcess(FileRepProcessTypeMirrorConsumerAppendOnly1);
 

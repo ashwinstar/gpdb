@@ -15,6 +15,7 @@ test__resetSessionForPrimaryGangLoss(void **state)
 	PROC_HDR	dummyGlobal;
 	PGPROC		dummyProc;
 
+	will_be_called(RedZoneHandler_DetectRunawaySession);
 	will_return(ProcCanSetMppSessionId, true);
 
 	/* Assum we have created a temporary namespace. */

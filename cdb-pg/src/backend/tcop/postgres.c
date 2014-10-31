@@ -96,6 +96,7 @@
 #include "executor/nodeFunctionscan.h"
 #include "cdb/cdbfilerep.h"
 #include "postmaster/primary_mirror_mode.h"
+#include "utils/vmem_tracker.h"
 
 extern int	optind;
 extern char *optarg;
@@ -1389,8 +1390,8 @@ CheckDebugDtmActionProtocol(DtxProtocolCommand dtxProtocolCommand,
 	if (Debug_dtm_action_nestinglevel == 0)
 	{
 		return (Debug_dtm_action_target == DEBUG_DTM_ACTION_TARGET_PROTOCOL &&
-			Debug_dtm_action_protocol == dtxProtocolCommand &&
-			Debug_dtm_action_segment == Gp_segment);
+				Debug_dtm_action_protocol == dtxProtocolCommand &&
+				Debug_dtm_action_segment == Gp_segment);
 	}
 	else
 	{
@@ -1449,7 +1450,7 @@ exec_mpp_dtx_protocol_command(
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),"exec_mpp_dtx_protocol_command calling EndCommand for dtxProtocolCommand = %d (%s) gid = %s",
 		 dtxProtocolCommand, loggingStr, gid);
 
-	if (Debug_dtm_action == DEBUG_DTM_ACTION_FAIL_END_COMMAND && 
+	if (Debug_dtm_action == DEBUG_DTM_ACTION_FAIL_END_COMMAND &&
 		CheckDebugDtmActionProtocol(dtxProtocolCommand, contextInfo))
 	{
 		elog(ERROR,"Raise error for debug_dtm_action = %d, debug_dtm_action_protocol = %s",
@@ -4460,10 +4461,10 @@ PostgresMain(int argc, char *argv[],
 		 */
 		debug_query_string = NULL;
 
-		/*
+			/*
 		 * Abort the current transaction in order to recover.
-		 */
-		AbortCurrentTransaction();
+			 */
+			AbortCurrentTransaction();
 
 		topErrLevel = elog_getelevel();
 		if (topErrLevel <= ERROR)
@@ -4494,6 +4495,9 @@ PostgresMain(int argc, char *argv[],
 		/* We don't have a transaction command open anymore */
 		xact_started = false;
 
+		/* Inform Vmem tracker that the current process has finished cleanup */
+		RunawayCleaner_RunawayCleanupDoneForProcess(false /* ignoredCleanup */);
+
 		/* Now we can allow interrupts again */
 		RESUME_INTERRUPTS();
 	}
@@ -4522,6 +4526,8 @@ PostgresMain(int argc, char *argv[],
 		 */
 		MemoryContextSwitchTo(MessageContext);
 		MemoryContextResetAndDeleteChildren(MessageContext);
+		VmemTracker_ResetMaxVmemReserved();
+		MemoryAccounting_ResetPeakBalance();
 
 		initStringInfo(&input_message);
 
@@ -4614,7 +4620,9 @@ PostgresMain(int argc, char *argv[],
 					elog(FATAL, "could not set timer for client wait timeout");
 		}
 
+		IdleTracker_DeactivateProcess();
 		firstchar = ReadCommand(&input_message);
+		IdleTracker_ActivateProcess();
 
 		if (!IsTransactionOrTransactionBlock()){
 			/* Reset memory accounting */

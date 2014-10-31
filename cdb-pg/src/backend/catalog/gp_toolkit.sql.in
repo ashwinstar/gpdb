@@ -2178,6 +2178,8 @@ LANGUAGE SQL;
 
 REVOKE ALL ON FUNCTION %%JETPACK_PREFIX%%workfile_cache_clear() FROM public;
 
+--------------------------------------------------------------------------------
+
 -- Finalize install
 COMMIT;
 

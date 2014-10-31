@@ -25,7 +25,6 @@ cdbbufferedread_REAL_OBJS=\
 	$(top_srcdir)/src/backend/utils/adt/datum.o \
 	$(top_srcdir)/src/backend/utils/adt/like.o \
 	$(top_srcdir)/src/backend/utils/error/elog.o \
-	$(top_srcdir)/src/backend/utils/hash/dynahash.o \
 	$(top_srcdir)/src/backend/utils/hash/hashfn.o \
 	$(top_srcdir)/src/backend/utils/mb/mbutils.o \
 	$(top_srcdir)/src/backend/utils/mb/wchar.o \
@@ -59,7 +58,6 @@ cdbbackup_REAL_OBJS=\
 	$(top_srcdir)/src/backend/utils/adt/datum.o \
 	$(top_srcdir)/src/backend/utils/adt/like.o \
 	$(top_srcdir)/src/backend/utils/error/elog.o \
-	$(top_srcdir)/src/backend/utils/hash/dynahash.o \
 	$(top_srcdir)/src/backend/utils/hash/hashfn.o \
 	$(top_srcdir)/src/backend/utils/mb/mbutils.o \
 	$(top_srcdir)/src/backend/utils/mb/wchar.o \
@@ -92,7 +90,6 @@ cdbdisp_REAL_OBJS=\
 	$(top_srcdir)/src/backend/utils/adt/datum.o \
 	$(top_srcdir)/src/backend/utils/adt/like.o \
 	$(top_srcdir)/src/backend/utils/error/elog.o \
-	$(top_srcdir)/src/backend/utils/hash/dynahash.o \
 	$(top_srcdir)/src/backend/utils/hash/hashfn.o \
 	$(top_srcdir)/src/backend/utils/mb/mbutils.o \
 	$(top_srcdir)/src/backend/utils/mb/wchar.o \
@@ -121,11 +118,11 @@ cdbgang_REAL_OBJS=\
 	$(top_srcdir)/src/backend/utils/adt/datum.o \
 	$(top_srcdir)/src/backend/utils/adt/like.o \
 	$(top_srcdir)/src/backend/utils/error/elog.o \
-	$(top_srcdir)/src/backend/utils/hash/dynahash.o \
 	$(top_srcdir)/src/backend/utils/hash/hashfn.o \
 	$(top_srcdir)/src/backend/utils/mb/mbutils.o \
 	$(top_srcdir)/src/backend/utils/mb/wchar.o \
 	$(top_srcdir)/src/backend/utils/misc/guc.o \
+	$(top_srcdir)/src/backend/utils/mmgr/vmem_tracker.o \
 	$(top_srcdir)/src/port/strlcpy.o \
 	$(top_srcdir)/src/port/pgsleep.o \
 	$(top_srcdir)/src/port/path.o \

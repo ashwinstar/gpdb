@@ -87,6 +87,7 @@
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbappendonlyblockdirectory.h"
 #include "cdb/memquota.h"
+#include "utils/vmem_tracker.h"
 
 #ifdef USE_CONNECTEMC
 #include "emcconnect/api.h"
@@ -186,6 +187,8 @@ static const char *assign_optimizer_minidump(const char *newval,
 static const char *assign_min_error_statement(const char *newval, bool doit,
 						   GucSource source);
 static const char *assign_gp_workfile_caching_loglevel(const char *newval,
+						   bool doit, GucSource source);
+static const char *assign_gp_sessionstate_loglevel(const char *newval,
 						   bool doit, GucSource source);
 static const char *assign_time_slice_report_level(const char *newval, bool doit,
 						   GucSource source);
@@ -532,6 +535,7 @@ static char *log_min_error_statement_str;
 static char *log_destination_string;
 static char *gp_log_format_string;
 static char *gp_workfile_caching_loglevel_str;
+static char *gp_sessionstate_loglevel_str;
 static char *explain_memory_verbosity_str;
 
 #ifdef HAVE_SYSLOG
@@ -4102,7 +4106,7 @@ static struct config_int ConfigureNamesInt[] =
 			NULL
 		},
 		&MaxBackends,
-		200, 10, INT_MAX / BLCKSZ, NULL, NULL
+		200, 10, MAX_MAX_BACKENDS, NULL, NULL
 	},
 
 	{
@@ -5565,6 +5569,16 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"runaway_detector_activation_percent", PGC_POSTMASTER, RESOURCES_MEM,
+			gettext_noop("The runaway detector activates if the used vmem exceeds this percentage of the vmem quota. Set to 100 to disable runaway detection."),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		},
+		&runaway_detector_activation_percent,
+		80, 0, 100, NULL, NULL
+	},
+
+	{
 		{"gp_vmem_protect_segworker_cache_limit", PGC_POSTMASTER, RESOURCES_MEM,
 			gettext_noop("Max virtual memory limit (in MB) for a segworker to be cachable."),
 			NULL,
@@ -6393,6 +6407,19 @@ static struct config_string ConfigureNamesString[] =
 		},
 		&gp_workfile_caching_loglevel_str,
 		"debug1", assign_gp_workfile_caching_loglevel, NULL
+	},
+
+	{
+		{"gp_sessionstate_loglevel", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Sets the logging level for session state debugging messages"),
+			gettext_noop("Valid values are DEBUG5, DEBUG4, DEBUG3, DEBUG2, "
+						 "DEBUG1, LOG, NOTICE, WARNING, and ERROR. Each level includes all the "
+						 "levels that follow it. The later the level, the fewer messages are "
+						 "sent."),
+			GUC_GPDB_ADDOPT | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_sessionstate_loglevel_str,
+		"debug1", assign_gp_sessionstate_loglevel, NULL
 	},
 
 	{
@@ -11663,6 +11690,13 @@ assign_gp_workfile_caching_loglevel(const char *newval,
 						bool doit, GucSource source)
 {
 	return (assign_msglvl(&gp_workfile_caching_loglevel, newval, doit, source));
+}
+
+static const char *
+assign_gp_sessionstate_loglevel(const char *newval,
+						bool doit, GucSource source)
+{
+	return (assign_msglvl(&gp_sessionstate_loglevel, newval, doit, source));
 }
 
 static const char *

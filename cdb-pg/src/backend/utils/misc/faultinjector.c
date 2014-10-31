@@ -296,6 +296,8 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault before switching to a new batch in Hash Join */
 	_("fts_wait_for_shutdown"),
 		/* pause FTS process before committing changes, until shutdown */
+	_("runaway_cleanup"),
+		/* inject fault before cleaning up a runaway query */		
 	_("not recognized"),
 };
 
@@ -1147,6 +1149,7 @@ FaultInjector_NewHashEntry(
 		case ExecSortBeforeSorting:
 		case FaultDuringExecDynamicTableScan:
 		case FaultExecHashJoinNewBatch:
+		case RunawayCleanup:
 			
 			if (fileRepRole != FileRepNoRoleConfigured && fileRepRole != FileRepPrimaryRole)
 			{

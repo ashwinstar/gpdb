@@ -68,6 +68,7 @@
 #include "cdb/memquota.h"
 #include "executor/spi.h"
 #include "utils/workfile_mgr.h"
+#include "utils/session_state.h"
 
 shmem_startup_hook_type shmem_startup_hook = NULL;
 
@@ -121,8 +122,6 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		PGShmemHeader *seghdr;
 		Size		size;
 		int			numSemas;
-
-		GPMemoryProtectReset();
 
 		/*
 		 * Size of the Postgres shared-memory block is estimated via
@@ -231,6 +230,9 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		/* might as well round it off to a multiple of a typical page size */
 		size = add_size(size, BLCKSZ - (size % BLCKSZ));
 
+		/* Consider the size of the SessionState array */
+		size = add_size(size, SessionState_ShmemSize());
+
 		/*
 		 * Create the shmem segment
 		 */
@@ -243,8 +245,6 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		 */
 		numSemas = ProcGlobalSemas();
 		numSemas += SpinlockSemas();
-
-		numSemas += MemProtSemas(); /* memory protection */
 
 		if (GPAreFileReplicationStructuresRequired()) 
 		{
@@ -340,8 +340,10 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		InitProcGlobal(PostmasterGetMppLocalProcessCounter());
 	}
 
-    /* Setup Mem Protection */
-    GPMemoryProtectInit();
+	/* Initialize SessionState shared memory array */
+	SessionState_ShmemInit();
+	/* Initialize vmem protection */
+	GPMemoryProtect_ShmemInit();
 
 	CreateSharedProcArray();
 	LocalDistribXact_ShmemCreate();
@@ -355,7 +357,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	 *		 because this happens at postmaster startup time when we don't
 	 *		 know who we are.  
 	 */
-	CreateSharedSnapshotArray(); 
+	CreateSharedSnapshotArray();
 
 	/*
 	 * Set up shared-inval messaging

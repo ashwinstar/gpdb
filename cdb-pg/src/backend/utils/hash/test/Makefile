@@ -35,6 +35,7 @@ dynahash_REAL_OBJS=\
 	$(top_srcdir)/src/port/thread.o \
 	$(top_srcdir)/src/timezone/localtime.o \
 	$(top_srcdir)/src/timezone/strftime.o \
-	$(top_srcdir)/src/timezone/pgtz.o
+	$(top_srcdir)/src/timezone/pgtz.o \
+	$(top_srcdir)/src/backend/utils/misc/size.o
 
 include ../../../../Makefile.mock

@@ -19,6 +19,7 @@
 #include "cdb/cdbvars.h"
 #include "access/xact.h"
 #include "miscadmin.h"
+#include "utils/vmem_tracker.h"
 
 #define MEMORY_REPORT_FILE_NAME_LENGTH 255
 
@@ -206,10 +207,20 @@ MemoryAccounting_Reset()
 		Assert((RolloverMemoryAccount->allocated - RolloverMemoryAccount->freed) +
 				(SharedChunkHeadersMemoryAccount->allocated - SharedChunkHeadersMemoryAccount->freed) ==
 				MemoryAccountingOutstandingBalance);
-		MemoryAccountingPeakBalance = MemoryAccountingOutstandingBalance;
+		MemoryAccounting_ResetPeakBalance();
 	}
 
 	InitMemoryAccounting();
+}
+
+/*
+ * MemoryAccounting_ResetPeakBalance
+ *		Resets the peak memory account balance by setting it to the current balance.
+ */
+void
+MemoryAccounting_ResetPeakBalance()
+{
+	MemoryAccountingPeakBalance = MemoryAccountingOutstandingBalance;
 }
 
 /*
@@ -532,7 +543,7 @@ MemoryAccounting_ToCSV(MemoryAccount *root, StringInfoData *str, char *prefix)
 
 	uint32 totalWalked = 0;
 
-	int64 vmem_reserved = getMOPHighWaterMark();
+	int64 vmem_reserved = VmemTracker_GetMaxReservedVmemBytes();
 
 	/*
 	 * Add vmem reserved as reported by memprot. We report the vmem reserved in the
@@ -615,7 +626,7 @@ MemoryAccounting_SaveToLog()
 
 	uint32 totalWalked = 0;
 
-	int64 vmem_reserved = getMOPHighWaterMark();
+	int64 vmem_reserved = VmemTracker_GetMaxReservedVmemBytes();
 
 	/* Write the header for the subsequent lines of memory usage information */
     write_stderr("memory: account_name, child_id, parent_id, quota, peak, allocated, freed, current\n");

@@ -72,6 +72,7 @@
 #include "utils/elog.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
+#include "storage/ipc.h"
 
 /* ----------------------------------------------------------------
  *		global counters for number of tuples processed, retrieved,
@@ -384,7 +385,13 @@ FreeExecutorState(EState *estate)
 	if (!estate->es_is_subquery &&
 		estate->dynamicTableScanInfo != NULL)
 	{
-		Assert(dynamicTableScanInfo != estate->dynamicTableScanInfo);
+		/*
+		 * In case of an abnormal termination such as elog(FATAL) we jump directly to
+		 * proc_exit, instead of finishing ExecutorRun() that was supposed to restore
+		 * dynamicTableScanInfo. Therefore, in such case we cannot assert that
+		 * dynamicTableScanInfo != estate->dynamicTableScanInfo [JIRA: MPP-23562]
+		 */
+		Assert(proc_exit_inprogress || dynamicTableScanInfo != estate->dynamicTableScanInfo);
 		freeDynamicTableScanInfo(estate->dynamicTableScanInfo);
 		estate->dynamicTableScanInfo = NULL;
 	}

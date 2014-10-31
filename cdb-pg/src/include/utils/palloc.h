@@ -165,13 +165,11 @@ extern int max_chunks_per_query;
 
 extern PGDLLIMPORT MemoryContext TopMemoryContext;
 
+extern bool MemoryProtection_IsOwnerThread(void);
 extern void InitPerProcessOOMTracking(void);
-extern void GPMemoryProtectInit(void);
-extern void GPMemoryProtectReset(void);
-extern int64 getMOPHighWaterMark(void);
-extern int getMOPChunksReserved(void);
-extern int64 getMOPCurrentMemoryUsage(void);
-extern int MemProtSemas(void);
+extern void GPMemoryProtect_ShmemInit(void);
+extern void GPMemoryProtect_Init(void);
+extern void GPMemoryProtect_Shutdown(void);
 extern void UpdateTimeAtomically(volatile OOMTimeType* time_var);
 
 /*
@@ -183,8 +181,9 @@ extern void UpdateTimeAtomically(volatile OOMTimeType* time_var);
  */
 #define ReportOOMConsumption()\
 {\
-	if (pthread_equal(main_tid, pthread_self()) && gp_mp_inited && *segmentOOMTime >= oomTrackerStartTime && *segmentOOMTime > alreadyReportedOOMTime)\
+	if (gp_mp_inited && *segmentOOMTime >= oomTrackerStartTime && *segmentOOMTime > alreadyReportedOOMTime)\
 	{\
+		Assert(MemoryProtection_IsOwnerThread());\
 		UpdateTimeAtomically(&alreadyReportedOOMTime);\
 		write_stderr("One or more query execution processes ran out of memory on this segment. Logging memory usage.");\
 		MemoryAccounting_SaveToLog();\
@@ -197,12 +196,6 @@ extern void *gp_malloc(int64 sz);
 extern void *gp_calloc(int64 nmemb, int64 sz); 
 extern void *gp_realloc(void *ptr, int64 sz, int64 newsz); 
 extern void gp_free2(void *ptr, int64 sz); 
-
-/* Current dynamic memory allocation in bytes. */
-extern uint64 gp_vmem_used(void);
-
-/* Maximum allowed dynamic memory allocation in bytes. */
-extern uint64 gp_vmem_max(void);
 
 #else
 #define gp_malloc(sz) malloc(sz)

@@ -35,6 +35,7 @@
 #include "libpq/pqsignal.h"
 #include "tcop/tcopprot.h"
 #include "cdb/cdbvars.h"
+#include "utils/vmem_tracker.h"
 
 /* Sender-related routines */
 static void SegmentInfoSender(void);
@@ -172,7 +173,7 @@ NON_EXEC_STATIC void SegmentInfoSenderMain(int argc, char *argv[])
 	 * Save gp_vmem_protect_limit value in bytes.
 	 * This value cannot change after starting the server.
 	 */
-	mem_alloc_max = gp_vmem_max();
+	mem_alloc_max = VmemTracker_GetVmemLimitBytes();
 
 	/* Init gpmon connection */
 	gpmon_init();
@@ -264,7 +265,7 @@ UpdateSegmentInfoGpmonPkt(gpmon_packet_t *gpmon_pkt)
 	Assert(gpmon_pkt);
 	Assert(GPMON_PKTTYPE_SEGINFO == gpmon_pkt->pkttype);
 
-	uint64 mem_alloc_used = gp_vmem_used();
+	uint64 mem_alloc_used = VmemTracker_GetVmemLimitBytes() - VmemTracker_GetAvailableVmemBytes();
 	uint64 mem_alloc_available = mem_alloc_max - mem_alloc_used;
 	gpmon_pkt->u.seginfo.dynamic_memory_used = mem_alloc_used;
 	gpmon_pkt->u.seginfo.dynamic_memory_available =	mem_alloc_available;

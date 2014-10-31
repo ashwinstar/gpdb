@@ -1520,7 +1520,7 @@ test__MemoryAccounting_SaveToFile__GeneratesCorrectString(void **state)
 
 		if (ownerType ==  MEMORY_STAT_TYPE_VMEM_RESERVED)
 		{
-			int64 vmem_reserved = getMOPHighWaterMark();
+			int64 vmem_reserved = VmemTracker_GetMaxReservedVmemBytes();
 
 			assert_true(peak == vmem_reserved && allocated == vmem_reserved && freed == 0);
 		}

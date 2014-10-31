@@ -24,6 +24,7 @@
 #include "cdb/memquota.h"
 #include "cdb/cdbgang.h"
 #include "inttypes.h"
+#include "utils/vmem_tracker.h"
 
 /* EXPLAIN ANALYZE statistics for one plan node of a slice */
 typedef struct CdbExplain_StatInst
@@ -667,7 +668,7 @@ cdbexplain_collectSliceStats(PlanState                 *planstate,
     out_worker->peakmemused =
         (double)MemoryContextGetPeakSpace(estate->es_query_cxt);
 
-    out_worker->vmem_reserved = (double) getMOPHighWaterMark();
+    out_worker->vmem_reserved = (double) VmemTracker_GetMaxReservedVmemBytes();
 
     out_worker->memory_accounting_global_peak = (double) MemoryAccountingPeakBalance;
 

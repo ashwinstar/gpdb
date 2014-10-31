@@ -201,6 +201,8 @@ typedef enum FaultInjectorIdentifier_e {
 
 	FtsWaitForShutdown,
 
+	RunawayCleanup,
+
 	/* INSERT has to be done before that line */
 	FaultInjectorIdMax,
 	

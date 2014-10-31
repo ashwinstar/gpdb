@@ -89,6 +89,12 @@ extern void ProcessInterrupts(void);
 extern void BackoffBackendTick(void);
 extern bool gp_enable_resqueue_priority;
 
+/*
+ * We don't want to include the entire vmem_tracker.h, and so,
+ * declare the only function we use from vmem_tracker.h.
+ */
+extern void RedZoneHandler_DetectRunawaySession(void);
+
 #ifndef WIN32
 
 #ifdef USE_TEST_UTILS
@@ -118,6 +124,7 @@ do { \
 	if (gp_enable_resqueue_priority)	\
 		BackoffBackendTick(); \
 	ReportOOMConsumption(); \
+	RedZoneHandler_DetectRunawaySession();\
 } while(0)
 #else
 #define CHECK_FOR_INTERRUPTS() \
@@ -127,6 +134,7 @@ do { \
 	if (gp_enable_resqueue_priority)	\
 		BackoffBackendTick(); \
 	ReportOOMConsumption(); \
+	RedZoneHandler_DetectRunawaySession();\
 } while(0)
 #endif   /* USE_TEST_UTILS */
 
