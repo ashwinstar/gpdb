@@ -10247,13 +10247,6 @@ set_config_by_name(PG_FUNCTION_ARGS)
 	/* Get the GUC variable name */
 	name = DatumGetCString(DirectFunctionCall1(textout, PG_GETARG_DATUM(0)));
 
-	if (pg_strncasecmp(name, "gp_default_storage_options",
-					   strlen("gp_default_storage_options")) == 0)
-	{
-		elog(ERROR, "changing \"gp_default_storage_options\" GUC using "
-			 "pg_catalog.set_config() is not currently supported");
-	}
-
 	/* Get the desired value or set to NULL for a reset request */
 	if (PG_ARGISNULL(1))
 		value = NULL;
@@ -10276,6 +10269,20 @@ set_config_by_name(PG_FUNCTION_ARGS)
 					  PGC_S_SESSION,
 					  is_local,
 					  true);
+
+    if (Gp_role == GP_ROLE_DISPATCH && !IsBootstrapProcessingMode() &&
+        strcmp(name, "gp_use_dispatch_agent") != 0)
+    {
+			StringInfoData buffer;
+			initStringInfo(&buffer);
+			appendStringInfo(&buffer, "SET ");
+			if (is_local)
+					appendStringInfo(&buffer, "LOCAL ");
+			appendStringInfo(&buffer, "%s TO '%s'", name, value);
+			CdbDoCommandOnAllGangs(buffer.data,
+								   false /* cancelOnError */,
+								   false /* no two phase commit */);
+    }
 
 	/* get the new current value */
 	new_value = GetConfigOptionByName(name, NULL);

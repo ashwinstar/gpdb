@@ -224,67 +224,34 @@ alter database dsp1 set
 alter database dsp1 set	gp_default_storage_options=
 	"compresstype=quicklz,compresslevel=0";
 
-set gp_default_storage_options='compresstype=none';
+-- set_config() tests
+select pg_catalog.set_config('gp_default_storage_options',
+    'appendonly=true, orientation=column', false);
 show gp_default_storage_options;
--- compresstype should be correctly inferred.
-create table ao2 (a int, b int) with
-    (appendonly=true, compresslevel=4) distributed by (a);
-\d ao2
--- MPP-25073 verify if compresstype=none is represented as NULL.
-set gp_default_storage_options='';
-create table ao4 (a int, b int) with (appendonly=true)
-    distributed by (a);
-\d ao4
-select reloptions from pg_class where relname = 'ao4';
-select compresstype from pg_appendonly where relid = 'ao4'::regclass;
-set gp_default_storage_options='appendonly=true,compresstype=NONE';
-create table co10 (a int, b int, c int) with (orientation=column)
-    distributed by (a);
-select attnum,attoptions from pg_attribute_encoding
-    where attrelid = 'co10'::regclass order by attnum;
-select compresstype from pg_appendonly where relid = 'co10'::regclass;
-
--- compression disabled by default, enable in WITH clause
-set gp_default_storage_options = 'appendonly=true';
+create table co8 (a int, b float);
+\d+ co8
+-- ensure that set_config() has propagated to segments by insert and
+-- select into a column oriented table.
+insert into co8 select i, i/2 from generate_series(1,10)i;
+select count(b) from co8;
+begin;
+select pg_catalog.set_config('gp_default_storage_options',
+    'compresslevel=2', true);
 show gp_default_storage_options;
--- compresstype only
-create table ao5 (a int, b int) with (compresstype=quicklz)
-    distributed by (a);
-\d ao5
-insert into ao5 select i, i from generate_series(1,10)i;
--- compresslevel only
-create table ao6 with (compresslevel=4) as select * from ao5
-    distributed by (a);
-\d ao6
--- both compresstype and compresslevel
-create table ao7 with (compresstype=zlib, compresslevel=3) as
-    select * from ao6 distributed by (a);
-\d ao7
-
--- compression enabled by default, disable in WITH clause
-set gp_default_storage_options = 'appendonly=true, compresstype=quicklz';
+create table ao1 (a int, b int) with (appendonly=true);
+\d+ ao1;
+insert into ao1 select i, i from generate_series(1,100)i;
+select count(*) from ao1;
+end;
+-- GUC should be reset after end of transaction.
 show gp_default_storage_options;
--- compresstype only
-create table ao8 with (compresstype=none) as select * from ao7
-    distributed by (a);
-\d ao8
--- compresslevel only
-create table ao9 with (compresslevel=0) as select * from ao8
-    distributed by (a);
-\d ao9
-select * from ao9 limit 4 order by 1;
-create table ao10 with (compresslevel=0, compresstype=none)
-    as select * from ao9 distributed by (a);
-\d ao10
-
--- MPP-14504: we need to allow compresstype=none with compresslevel>0
-create table ao11 (a int, b int) with (compresstype=none, compresslevel=2)
-    distributed by (a);
-\d ao11
-set gp_default_storage_options='compresstype=none,compresslevel=2';
-show gp_default_storage_options;
-create table ao12 (a int, b int) with (appendonly=true);
-\d ao12
+-- verify reset happendon on segments by create, insert, select.
+create table co9 (x int, y float);
+\d+ co9
+-- ensure that set_config() has propagated to segments by insert and
+-- select into a column oriented table.
+insert into co9 select i, i/2 from generate_series(1,10)i;
+select count(y) from co9;
 
 -- cleanup
 \c postgres
