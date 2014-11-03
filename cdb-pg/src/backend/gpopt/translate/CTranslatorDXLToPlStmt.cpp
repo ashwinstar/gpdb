@@ -5539,7 +5539,7 @@ CTranslatorDXLToPlStmt::SetVarTypMod
 	GPOS_ASSERT(NULL != plTargetList);
 
 	DrgPi *pdrgpi = pdxlop->PdrgpiVarTypeMod();
-	GPOS_ASSERT(pdrgpi->UlLength() == list_length(plTargetList));
+	GPOS_ASSERT(pdrgpi->UlLength() == gpdb::UlListLength(plTargetList));
 
 	ULONG ul = 0;
 	ListCell *plc = NULL;
