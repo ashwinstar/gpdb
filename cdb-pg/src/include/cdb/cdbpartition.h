@@ -248,7 +248,7 @@ extern void RemovePartitionEncodingByRelidAttribute(Oid relid, AttrNumber attnum
 extern Datum *get_partition_encoding_attoptions(Relation rel, Oid paroid);
 
 extern LogicalIndexes * BuildLogicalIndexInfo(Oid relid);
-extern Oid getPhysicalIndexRelid(LogicalIndexInfo *iInfo, Oid partOid);
+extern Oid getPhysicalIndexRelid(LogicalIndexInfo *iInfo, Oid rootOid, Oid partOid);
 extern Oid	exprType(Node *expr);
 extern Node *makeBoolConst(bool value, bool isnull);
 

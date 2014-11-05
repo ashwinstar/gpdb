@@ -19,9 +19,6 @@ extern void
 InitRuntimeKeysContext(IndexScanState *indexstate);
 
 extern void
-FreeRuntimeKeysContext(IndexScanState *indexstate);
-
-extern void
 ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 					List *quals, List *strategies, List *subtypes,
 					ScanKey *scanKeys, int *numScanKeys,

@@ -668,7 +668,6 @@ bool gp_log_stack_trace_lines;
 bool		enable_seqscan = true;
 bool		enable_indexscan = true;
 bool		enable_bitmapscan = true;
-bool		force_bitmap_table_scan = false;
 bool		enable_tidscan = true;
 bool		enable_sort = true;
 bool		enable_hashagg = true;
@@ -1167,15 +1166,6 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_GPDB_ADDOPT | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_workfile_caching,
-		false, NULL, NULL
-	},
-	{
-		{"force_bitmap_table_scan", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Forces bitmap table scan instead of bitmap heap/ao/aoco scan."),
-			NULL,
-			GUC_GPDB_ADDOPT | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&force_bitmap_table_scan,
 		false, NULL, NULL
 	},
 	{

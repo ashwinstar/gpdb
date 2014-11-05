@@ -155,27 +155,9 @@ ExecEndSequence(SequenceState *node)
 void
 ExecReScanSequence(SequenceState *node, ExprContext *exprCtxt)
 {
-	for (int i = 0; i < node->numSubplans; i++)
-	{
-		PlanState  *subnode = node->subplans[i];
-
-		/*
-		 * ExecReScan doesn't know about my subplans, so I have to do
-		 * changed-parameter signaling myself.
-		 */
-		if (node->ps.chgParam != NULL)
-		{
-			UpdateChangedParamSet(subnode, node->ps.chgParam);
-		}
-
-		/*
-		 * Always rescan the inputs immediately, to ensure we can pass down
-		 * any outer tuple that might be used in index quals.
-		 */
-		ExecReScan(subnode, exprCtxt);
-	}
-
-	node->initState = true;
+	ereport(ERROR,
+			(errcode(ERRCODE_GP_INTERNAL_ERROR),
+			 errmsg("Rescan is not supported in Sequence operator.")));
 }
 
 void

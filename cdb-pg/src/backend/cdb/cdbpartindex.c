@@ -1156,17 +1156,53 @@ createPartsIndexResult(Oid root)
  * have to be mapped to the root.
  */
 Oid
-getPhysicalIndexRelid(LogicalIndexInfo *iInfo, Oid partOid)
+getPhysicalIndexRelid(LogicalIndexInfo *iInfo,
+			Oid rootOid,
+			Oid partOid)
 {
 	HeapTuple       tup;
 	cqContext       cqc;
 	cqContext       *pcqCtx;
 	Oid             resultOid = InvalidOid;
+	AttrNumber	*attMap = NULL;
 	IndexInfo	*ii;
 	Relation	indexRelation;
 	bool		indKeyEqual;
 
 	indexRelation = heap_open(IndexRelationId, AccessShareLock);
+
+	/* get the attrmap */
+	Relation rootRel = heap_open(rootOid, AccessShareLock);
+	Relation partRel = heap_open(partOid, AccessShareLock);
+
+	TupleDesc rootTupDesc = rootRel->rd_att;
+	TupleDesc partTupDesc = partRel->rd_att;
+
+	/* We don't handle the case if attnums are not mapped to the root */
+	attMap = varattnos_map(rootTupDesc, partTupDesc);
+
+	/* are we done here ? */
+	heap_close(rootRel, AccessShareLock);
+	heap_close(partRel, AccessShareLock);
+
+	if (attMap)
+	{
+		/* map the attrnos if necessary */
+		for (int i = 0; i < iInfo->nColumns; i++)
+		{
+			if (iInfo->indexKeys[i] != 0)
+				iInfo->indexKeys[i] = attMap[(iInfo->indexKeys[i]) - 1];
+		}
+
+		/* map the attrnos in the indExprs and indPred */
+		Expr *predExpr = (Expr *)iInfo->indPred;
+		change_varattnos_of_a_node((Node *)predExpr, attMap);
+		iInfo->indPred = (List *)predExpr;
+
+		Expr *exprsExpr = (Expr *)iInfo->indExprs;
+		change_varattnos_of_a_node((Node *)exprsExpr, attMap);
+		iInfo->indExprs = (List *)exprsExpr;
+	}
 
 	/* now look up pg_index using indrelid */
 	pcqCtx = caql_beginscan(

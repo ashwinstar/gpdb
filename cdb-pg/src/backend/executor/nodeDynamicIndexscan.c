@@ -17,7 +17,6 @@
 #include "nodes/execnodes.h"
 #include "executor/execIndexscan.h"
 #include "executor/nodeIndexscan.h"
-#include "executor/execDynamicScan.h"
 #include "executor/nodeDynamicIndexscan.h"
 #include "cdb/cdbpartition.h"
 #include "parser/parsetree.h"
@@ -52,12 +51,9 @@ DynamicIndexScanState *
 ExecInitDynamicIndexScan(DynamicIndexScan *node, EState *estate, int eflags)
 {
 	/* check for unsupported flags */
-	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
+	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK | EXEC_FLAG_REWIND)));
 
 	DynamicIndexScanState *dynamicIndexScanState = makeNode(DynamicIndexScanState);
-
-	dynamicIndexScanState->indexScanState.ss.scan_state = SCAN_INIT;
-
 
 	/*
 	 * This context will be reset per-partition to free up per-partition
@@ -72,67 +68,16 @@ ExecInitDynamicIndexScan(DynamicIndexScan *node, EState *estate, int eflags)
 	IndexScanState *indexState = &(dynamicIndexScanState->indexScanState);
 
 	InitCommonIndexScanState((IndexScanState *)dynamicIndexScanState, (IndexScan *)node, estate, eflags);
-	/* We don't support eager free in DynamicIndexScan */
-	indexState->ss.ps.delayEagerFree = true;
 
-	InitRuntimeKeysContext(indexState);
+	/*
+	 * We are shallow copying, without any palloc. The idea is, we will deep copy
+	 * node->logicalIndexInfo later on from dynamicIndexScanState->logicalIndexInfo
+	 */
+	dynamicIndexScanState->logicalIndexInfo = node->logicalIndexInfo;
 
 	initGpmonPktForDynamicIndexScan((Plan *)node, &indexState->ss.ps.gpmon_pkt, estate);
 
 	return dynamicIndexScanState;
-}
-
-static bool
-DynamicIndexScan_ReMapColumns(DynamicIndexScanState *scanState, Oid newOid)
-{
-	Assert(OidIsValid(newOid));
-
-	IndexScan *indexScan = (IndexScan *) scanState->indexScanState.ss.ps.plan;
-
-	if (!isDynamicScan(&indexScan->scan))
-	{
-		return false;
-	}
-
-	Oid oldOid = scanState->columnLayoutOid;
-
-	if (!OidIsValid(oldOid))
-	{
-		/* Very first partition */
-
-		oldOid = rel_partition_get_root(newOid);
-	}
-
-	Assert(OidIsValid(oldOid));
-
-	if (oldOid == newOid)
-	{
-		/*
-		 * If we have only one partition and we are rescanning
-		 * then we can have this scenario.
-		 */
-
-		return false;
-	}
-
-	AttrNumber	*attMap = DynamicScan_GetColumnMapping(oldOid, newOid);
-
-	scanState->columnLayoutOid = newOid;
-
-	if (attMap)
-	{
-		IndexScan_MapLogicalIndexInfo(indexScan->logicalIndexInfo, attMap, indexScan->scan.scanrelid);
-		change_varattnos_of_a_varno((Node*)indexScan->scan.plan.targetlist, attMap, indexScan->scan.scanrelid);
-		change_varattnos_of_a_varno((Node*)indexScan->indexqual, attMap, indexScan->scan.scanrelid);
-
-		pfree(attMap);
-
-		return true;
-	}
-	else
-	{
-		return false;
-	}
 }
 
 /*
@@ -165,21 +110,31 @@ initNextIndexToScan(DynamicIndexScanState *node)
 			instr->numPartScanned ++;
 		}
 
-		DynamicIndexScan_ReMapColumns(node, *pid);
+		Oid rootOid = rel_partition_get_root(*pid);
 
+		MemoryContextReset(node->partitionMemoryContext);
+		MemoryContext oldCxt = MemoryContextSwitchTo(node->partitionMemoryContext);
 		/*
-		 * The is the oid of the partition of an *index*. Note: a partitioned table
-		 * has a root and a set of partitions (may be multi-level). An index
-		 * on a partitioned table also has a root and a set of index partitions.
-		 * We started at table level, and now we are fetching the oid of an index
-		 * partition.
+		 * Note, in ExecInitDynamicIndexScan we shallow-copied this pointer into
+		 * DynamicIndexScanState's logicalIndexInfo. So, on the very first partition,
+		 * we just overwrite the previous pointer with new allocation. Later for each
+		 * partition, we free the previous partition's allocation by
+		 * resetting our per-partition memory context. So, there should not
+		 * be any memory leak
 		 */
+		dynamicIndexScan->logicalIndexInfo = palloc0(sizeof(LogicalIndexInfo));
+		/* Restore the original logicalIndexInfo */
+		CopyLogicalIndexInfo(node->logicalIndexInfo, dynamicIndexScan->logicalIndexInfo);
+		MemoryContextSwitchTo(oldCxt);
+
 		Oid pindex = getPhysicalIndexRelid(dynamicIndexScan->logicalIndexInfo,
+					 rootOid,
 					 *pid);
 
 		Assert(OidIsValid(pindex));
 
 		Relation currentRelation = OpenScanRelationByOid(*pid);
+		Assert(NULL == indexState->ss.ss_currentRelation);
 		indexState->ss.ss_currentRelation = currentRelation;
 
 		for (int i=0; i < DYNAMICINDEXSCAN_NSLOTS; i++)
@@ -191,14 +146,19 @@ initNextIndexToScan(DynamicIndexScanState *node)
 
 		ScanState *scanState = (ScanState *)node;
 
-		MemoryContextReset(node->partitionMemoryContext);
-		MemoryContext oldCxt = MemoryContextSwitchTo(node->partitionMemoryContext);
+		if ( NULL != scanState->ps.plan->targetlist )
+		{
+			/* Update targetlist to the current partition.
+			 * This is important for heterogeneous partitions (e.g. dropped attributes.)
+			 */
+			scanState->ps.plan->targetlist =
+				GetPartitionTargetlist(scanState->ss_currentRelation->rd_att,
+						scanState->ps.plan->targetlist);
 
-		/* Initialize child expressions */
-		scanState->ps.qual = (List *)ExecInitExpr((Expr *)scanState->ps.plan->qual, (PlanState*)scanState);
-		scanState->ps.targetlist = (List *)ExecInitExpr((Expr *)scanState->ps.plan->targetlist, (PlanState*)scanState);
-
-		MemoryContextSwitchTo(oldCxt);
+			/* Update attribute number in expression target list. */
+			UpdateGenericExprState(scanState->ps.plan->targetlist,
+					 scanState->ps.targetlist);
+		}
 
 		ExecAssignScanProjectionInfo(scanState);
 
@@ -222,28 +182,14 @@ initNextIndexToScan(DynamicIndexScanState *node)
 						   NULL,
 						   NULL);
 
-		ExprContext *econtext = indexState->iss_RuntimeContext;		/* context for runtime keys */
-
-		if (indexState->iss_NumRuntimeKeys != 0)
-		{
-			ExecIndexEvalRuntimeKeys(econtext,
-									 indexState->iss_RuntimeKeys,
-									 indexState->iss_NumRuntimeKeys);
-		}
-
-		indexState->iss_RuntimeKeysReady = true;
+		InitRuntimeKeysContext(indexState);
+		indexState->iss_RuntimeKeysReady = false;
 
 		/*
 		 * Initialize result tuple type and projection info.
 		 */
 		ExecAssignResultTypeFromTL(&indexState->ss.ps);
 		ExecAssignScanProjectionInfo(&indexState->ss);
-
-		indexState->iss_ScanDesc = index_beginscan(currentRelation,
-				indexState->iss_RelationDesc,
-				estate->es_snapshot,
-				indexState->iss_NumScanKeys,
-				indexState->iss_ScanKeys);
 
 		indexState->ss.scan_state = SCAN_SCAN;
 	}
@@ -268,11 +214,11 @@ setPidIndex(DynamicIndexScanState *node)
 	 * Ensure that the dynahash exists even if the partition selector
 	 * didn't choose any partition for current scan node [MPP-24169].
 	 */
-	InsertPidIntoDynamicTableScanInfo(plan->scan.partIndex, InvalidOid);
+	InsertPidIntoDynamicTableScanInfo(plan->partIndex, InvalidOid);
 
 	Assert(NULL != estate->dynamicTableScanInfo->pidIndexes);
-	Assert(estate->dynamicTableScanInfo->numScans >= plan->scan.partIndex);
-	node->pidxIndex = estate->dynamicTableScanInfo->pidIndexes[plan->scan.partIndex - 1];
+	Assert(estate->dynamicTableScanInfo->numScans >= plan->partIndex);
+	node->pidxIndex = estate->dynamicTableScanInfo->pidIndexes[plan->partIndex - 1];
 	Assert(node->pidxIndex != NULL);
 
 	if (optimizer_partition_selection_log)
@@ -324,6 +270,8 @@ ExecDynamicIndexScan(DynamicIndexScanState *node)
 		else
 		{
 			CleanupOnePartition(indexState);
+
+			indexState->ss.scan_state = SCAN_INIT;
 		}
 	}
 	return slot;
@@ -344,29 +292,17 @@ CleanupOnePartition(IndexScanState *indexState)
 
 	if ((indexState->ss.scan_state & SCAN_SCAN) != 0)
 	{
-		Assert(indexState->iss_ScanDesc != NULL);
-		Assert(indexState->iss_RelationDesc != NULL);
-		Assert(indexState->ss.ss_currentRelation != NULL);
-
-		index_endscan(indexState->iss_ScanDesc);
-		indexState->iss_ScanDesc = NULL;
-
 		index_close(indexState->iss_RelationDesc, NoLock);
-		indexState->iss_RelationDesc = NULL;
-
 		ExecCloseScanRelation(indexState->ss.ss_currentRelation);
 		indexState->ss.ss_currentRelation = NULL;
 	}
-
-	indexState->ss.scan_state = SCAN_INIT;
 }
 
 /*
- * Ends current scan by closing relations, and ending hash
- * iteration
+ * Release resources of DynamicIndexScan
  */
-static void
-DynamicIndexScanEndCurrentScan(DynamicIndexScanState *node)
+void 
+ExecEndDynamicIndexScan(DynamicIndexScanState *node)
 {
 	IndexScanState *indexState = &(node->indexScanState);
 
@@ -377,22 +313,12 @@ DynamicIndexScanEndCurrentScan(DynamicIndexScanState *node)
 		hash_seq_term(&node->pidxStatus);
 		node->shouldCallHashSeqTerm = false;
 	}
-}
 
-/*
- * Release resources of DynamicIndexScan
- */
-void 
-ExecEndDynamicIndexScan(DynamicIndexScanState *node)
-{
-	DynamicIndexScanEndCurrentScan(node);
-
-	IndexScanState *indexState = &(node->indexScanState);
-
-	FreeRuntimeKeysContext((IndexScanState *) node);
 	EndPlanStateGpmonPkt(&indexState->ss.ps);
 
 	MemoryContextDelete(node->partitionMemoryContext);
+
+	Assert(NULL == node->indexScanState.ss.ss_currentRelation);
 }
 
 /*
@@ -401,38 +327,8 @@ ExecEndDynamicIndexScan(DynamicIndexScanState *node)
 void 
 ExecDynamicIndexReScan(DynamicIndexScanState *node, ExprContext *exprCtxt)
 {
-	DynamicIndexScanEndCurrentScan(node);
-
-	/* Force reloading the hash table */
-	node->pidxIndex = NULL;
-
-	/* Context for runtime keys */
-	ExprContext *econtext = node->indexScanState.iss_RuntimeContext;
-
-	if (econtext)
-	{
-		/*
-		 * If we are being passed an outer tuple, save it for runtime key
-		 * calc.  We also need to link it into the "regular" per-tuple
-		 * econtext, so it can be used during indexqualorig evaluations.
-		 */
-		if (exprCtxt != NULL)
-		{
-			econtext->ecxt_outertuple = exprCtxt->ecxt_outertuple;
-			ExprContext *stdecontext = node->indexScanState.ss.ps.ps_ExprContext;
-			stdecontext->ecxt_outertuple = exprCtxt->ecxt_outertuple;
-		}
-
-		/*
-		 * Reset the runtime-key context so we don't leak memory as each outer
-		 * tuple is scanned.  Note this assumes that we will recalculate *all*
-		 * runtime keys on each call.
-		 */
-		ResetExprContext(econtext);
-	}
-
-	Gpmon_M_Incr(GpmonPktFromDynamicIndexScanState(node), GPMON_DYNAMICINDEXSCAN_RESCAN);
-	CheckSendPlanStateGpmonPkt(&node->indexScanState.ss.ps);
+	/* Rescan not supported */
+	insist_log(false, "dynamic index rescan is not supported");
 }
 
 /*

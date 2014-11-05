@@ -35,12 +35,9 @@ ExecInitDynamicTableScan(DynamicTableScan *node, EState *estate, int eflags)
 
 	DynamicTableScanState *state = makeNode(DynamicTableScanState);
 	
-	state->tableScanState.ss.scan_state = SCAN_INIT;
+	InitScanStateInternal((ScanState *)state, (Plan *)node, estate, eflags);
 
-	/* We do not open the relation. We open it later, per-partition. */
-	InitScanStateInternal((ScanState *)state, (Plan *)node, estate, eflags, false /* initCurrentRelation */);
-
-	Oid reloid = getrelid(node->scanrelid, estate->es_range_table);
+	Oid reloid = getrelid(node->scan.scanrelid, estate->es_range_table);
 
 	Assert(OidIsValid(reloid));
 
@@ -49,7 +46,7 @@ ExecInitDynamicTableScan(DynamicTableScan *node, EState *estate, int eflags)
 	/* lastRelOid is used to remap varattno for heterogeneous partitions */
 	state->lastRelOid = reloid;
 
-	state->scanrelid = node->scanrelid;
+	state->scanrelid = node->scan.scanrelid;
 
 	/*
 	 * This context will be reset per-partition to free up per-partition
@@ -272,9 +269,7 @@ ExecEndDynamicTableScan(DynamicTableScanState *node)
 	{
 		hash_seq_term(&node->pidStatus);
 	}
-
-	/* We do not close the relation. We closed it in DynamicScan_CleanupOneRelation. */
-	FreeScanRelationInternal((ScanState *)node, false /* closeCurrentRelation */);
+	FreeScanRelationInternal((ScanState *)node);
 	EndPlanStateGpmonPkt(&node->tableScanState.ss.ps);
 }
 

@@ -21,7 +21,6 @@
 #include "executor/nodeDynamicIndexscan.h"
 #include "executor/nodeBitmapAnd.h"
 #include "executor/nodeBitmapHeapscan.h"
-#include "executor/nodeBitmapTableScan.h"
 #include "executor/nodeBitmapIndexscan.h"
 #include "executor/nodeBitmapOr.h"
 #include "executor/nodeExternalscan.h"
@@ -145,10 +144,6 @@ ExecReScan(PlanState *node, ExprContext *exprCtxt)
 
 		case T_DynamicTableScanState:
 			ExecDynamicTableReScan((DynamicTableScanState *) node, exprCtxt);
-			break;
-
-		case T_BitmapTableScanState:
-			ExecBitmapTableReScan((BitmapTableScanState *) node, exprCtxt);
 			break;
 
 		case T_DynamicIndexScanState:
@@ -639,10 +634,6 @@ ExecEagerFree(PlanState *node)
 			ExecEagerFreeBitmapAppendOnlyScan((BitmapAppendOnlyScanState *)node);
 			break;
 			
-		case T_BitmapTableScanState:
-			ExecEagerFreeBitmapTableScan((BitmapTableScanState *)node);
-			break;
-
 		case T_FunctionScanState:
 			ExecEagerFreeFunctionScan((FunctionScanState *)node);
 			break;

@@ -575,23 +575,6 @@ set_plan_refs(PlannerGlobal *glob, Plan *plan, const int rtoffset)
 			fix_scan_list(glob, splan->bitmapqualorig, rtoffset);
 		}
 			break;
-		case T_BitmapTableScan:
-		{
-			BitmapTableScan *splan = (BitmapTableScan *) plan;
-
-			if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
-				return  cdb_insert_result_node(glob, plan, rtoffset);
-
-			splan->scan.scanrelid += rtoffset;
-
-			splan->scan.plan.targetlist =
-			fix_scan_list(glob, splan->scan.plan.targetlist, rtoffset);
-			splan->scan.plan.qual =
-			fix_scan_list(glob, splan->scan.plan.qual, rtoffset);
-			splan->bitmapqualorig =
-			fix_scan_list(glob, splan->bitmapqualorig, rtoffset);
-		}
-			break;
 		case T_TidScan:
 		{
 			TidScan    *splan = (TidScan *) plan;

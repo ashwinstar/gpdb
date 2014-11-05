@@ -326,7 +326,6 @@ plan_tree_mutator(Node *node,
 				FLATCOPY(newTableScan, tableScan, DynamicTableScan);
 				SCANMUTATE(newTableScan, tableScan);
 				newTableScan->partIndex = tableScan->partIndex;
-				newTableScan->partIndexPrintable = tableScan->partIndexPrintable;
 				return (Node *) newTableScan;
 			}
 			break;
@@ -413,20 +412,6 @@ plan_tree_mutator(Node *node,
 			}
 			break;
 		
-		case T_BitmapTableScan:
-			{
-				BitmapTableScan  *bmtablescan = (BitmapTableScan *) node;
-				BitmapTableScan  *newbmtablescan = NULL;
-
-				FLATCOPY(newbmtablescan, bmtablescan, BitmapTableScan);
-				SCANMUTATE(newbmtablescan, bmtablescan);
-
-				MUTATE(newbmtablescan->bitmapqualorig, bmtablescan->bitmapqualorig, List *);
-
-				return (Node *) newbmtablescan;
-			}
-			break;
-
 		case T_TidScan:
 			{
 				TidScan    *tidscan = (TidScan *) node;

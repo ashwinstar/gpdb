@@ -22,7 +22,7 @@ alter table orca.s add column d int;
 insert into orca.s select i, i/2 from generate_series(1,30) i;
 set optimizer_log=on;
 set optimizer=on;
-set optimizer_enable_indexjoin=on;
+set optimizer_enable_indexjoin=off;
 ----------------------------------------------------------------------
 -- expected fall back to the planner
 select sum(distinct a), count(distinct b) from orca.r;
@@ -3444,12 +3444,12 @@ explain  select * from orca.r, orca.s where r.a is not distinct from s.c;
 explain select * from orca.r, orca.s where r.a = s.c;
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
- Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..431.21 rows=30 width=16)
-   ->  Nested Loop  (cost=0.00..431.21 rows=15 width=16)
-         Join Filter: true
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..862.01 rows=30 width=16)
+   ->  Hash Join  (cost=0.00..862.01 rows=15 width=16)
+         Hash Cond: s.c = r.a
          ->  Table Scan on s  (cost=0.00..431.00 rows=15 width=8)
-         ->  Index Scan using r_a on r  (cost=0.00..0.21 rows=1 width=8)
-               Index Cond: r.a = s.c
+         ->  Hash  (cost=431.00..431.00 rows=10 width=8)
+               ->  Table Scan on r  (cost=0.00..431.00 rows=10 width=8)
  Settings:  optimizer=on; optimizer_segments=3
 (7 rows)
 
@@ -8026,14 +8026,15 @@ set optimizer_plan_id = 2;
 explain select * from orca.t_date where user_id=9;
                                                 QUERY PLAN                                                
 ----------------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..431.02 rows=1 width=32)
-   ->  Sequence  (cost=0.00..431.02 rows=1 width=32)
-         ->  Partition Selector for t_date (dynamic scan id: 1)  (cost=10.00..100.00 rows=50 width=4)
-         ->  Result  (cost=0.00..435.93 rows=1 width=32)
-               ->  Append  (cost=0.00..435.93 rows=1 width=32)
-                     ->  Dynamic Index Scan on t_date (dynamic scan id: 1)  (cost=0.00..2.93 rows=1 width=88)
+ Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..437.00 rows=1 width=32)
+   ->  Sequence  (cost=0.00..437.00 rows=1 width=32)
+         ->  Partition Selector for t_date (dynamic scan id: 1)  (cost=10.00..100.00 rows=34 width=4)
+               Partitions selected:  6 (out of 6)
+         ->  Result  (cost=0.00..437.00 rows=1 width=32)
+               ->  Append  (cost=0.00..437.00 rows=1 width=32)
+                     ->  Dynamic Index Scan on t_date  (cost=0.00..6.00 rows=1 width=88)
                            Index Cond: user_id = 9::numeric
-                     ->  Dynamic Table Scan on t_date (dynamic scan id: 1)  (cost=0.00..432.00 rows=1 width=88)
+                     ->  Dynamic Table Scan on t_date (partIndex: 3)  (cost=0.00..432.00 rows=1 width=88)
                            Filter: user_id = 9::numeric
  Settings:  optimizer=on; optimizer_segments=3
 (10 rows)
@@ -8079,14 +8080,15 @@ set optimizer_plan_id = 2;
 explain select * from orca.t_text where user_id=9;
                                                 QUERY PLAN                                                
 ----------------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..431.02 rows=1 width=32)
-   ->  Sequence  (cost=0.00..431.02 rows=1 width=32)
-         ->  Partition Selector for t_text (dynamic scan id: 1)  (cost=10.00..100.00 rows=50 width=4)
-         ->  Result  (cost=0.00..435.93 rows=1 width=32)
-               ->  Append  (cost=0.00..435.93 rows=1 width=32)
-                     ->  Dynamic Index Scan on t_text (dynamic scan id: 1)  (cost=0.00..2.93 rows=1 width=88)
+ Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..437.00 rows=1 width=32)
+   ->  Sequence  (cost=0.00..437.00 rows=1 width=32)
+         ->  Partition Selector for t_text (dynamic scan id: 1)  (cost=10.00..100.00 rows=34 width=4)
+               Partitions selected:  3 (out of 3)
+         ->  Result  (cost=0.00..437.00 rows=1 width=32)
+               ->  Append  (cost=0.00..437.00 rows=1 width=32)
+                     ->  Dynamic Index Scan on t_text  (cost=0.00..6.00 rows=1 width=88)
                            Index Cond: user_id = 9::numeric
-                     ->  Dynamic Table Scan on t_text (dynamic scan id: 1)  (cost=0.00..432.00 rows=1 width=88)
+                     ->  Dynamic Table Scan on t_text (partIndex: 3)  (cost=0.00..431.00 rows=1 width=88)
                            Filter: user_id = 9::numeric
  Settings:  optimizer=on; optimizer_segments=3
 (10 rows)
@@ -8145,11 +8147,12 @@ select disable_xform('CXformDynamicGet2DynamicTableScan');
 
 explain select * from orca.t_employee where user_id = 2;
                                    QUERY PLAN                                    
----------------------------------------------------------------------------------
- Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..0.02 rows=1 width=32)
-   ->  Sequence  (cost=0.00..0.02 rows=1 width=32)
-         ->  Partition Selector for t_employee (dynamic scan id: 1)  (cost=10.00..100.00 rows=50 width=4)
-         ->  Dynamic Index Scan on t_employee (dynamic scan id: 1)  (cost=0.00..1.07 rows=1 width=32)
+----------------------------------------------------------------------------------------------------------
+ Gather Motion 1:1  (slice1; segments: 1)  (cost=0.00..6.00 rows=1 width=32)
+   ->  Sequence  (cost=0.00..6.00 rows=1 width=32)
+         ->  Partition Selector for t_employee (dynamic scan id: 1)  (cost=10.00..100.00 rows=34 width=4)
+               Partitions selected:  2 (out of 2)
+         ->  Dynamic Index Scan on t_employee  (cost=0.00..6.00 rows=1 width=32)
                Index Cond: user_id = 2::numeric
  Settings:  optimizer=on; optimizer_segments=3
 (6 rows)
@@ -8195,14 +8198,15 @@ set optimizer_plan_id = 2;
 explain select * from orca.t_ceeval_ints where user_id=4;
                                                    QUERY PLAN                                                    
 -----------------------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..431.02 rows=1 width=32)
-   ->  Sequence  (cost=0.00..431.02 rows=1 width=32)
-         ->  Partition Selector for t_ceeval_ints (dynamic scan id: 1)  (cost=10.00..100.00 rows=50 width=4)
-         ->  Result  (cost=0.00..435.93 rows=1 width=32)
-               ->  Append  (cost=0.00..435.93 rows=1 width=32)
-                     ->  Dynamic Index Scan on t_ceeval_ints (dynamic scan id: 1)  (cost=0.00..2.93 rows=1 width=88)
+ Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..437.00 rows=1 width=32)
+   ->  Sequence  (cost=0.00..437.00 rows=1 width=32)
+         ->  Partition Selector for t_ceeval_ints (dynamic scan id: 1)  (cost=10.00..100.00 rows=34 width=4)
+               Partitions selected:  3 (out of 3)
+         ->  Result  (cost=0.00..437.00 rows=1 width=32)
+               ->  Append  (cost=0.00..437.00 rows=1 width=32)
+                     ->  Dynamic Index Scan on t_ceeval_ints  (cost=0.00..6.00 rows=1 width=88)
                            Index Cond: user_id = 4::numeric
-                     ->  Dynamic Table Scan on t_ceeval_ints (dynamic scan id: 1)  (cost=0.00..432.00 rows=1 width=88)
+                     ->  Dynamic Table Scan on t_ceeval_ints (partIndex: 3)  (cost=0.00..431.00 rows=1 width=88)
                            Filter: user_id = 4::numeric
  Settings:  optimizer=on; optimizer_segments=3
 (10 rows)
@@ -8651,41 +8655,6 @@ SELECT f3, myagg3(f1) from (select * from array_table order by f1 limit 10) as f
  c  | {3,6}
 (3 rows)
 
--- Functions that are wrongly annotated in the catalog as NOSQL
-CREATE TABLE orca.test_part (i int) PARTITION BY RANGE(i) (start(1) exclusive end(2) inclusive);
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-NOTICE:  CREATE TABLE will create partition "test_part_1_prt_1" for table "test_part"
-CREATE TABLE orca.test_distributed(i int);
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-INSERT INTO orca.test_distributed SELECT i from generate_series(1,2) i;
--- Function pg_get_partition_rule_def(oid, bool)
-SELECT pg_get_partition_rule_def(pr1.oid, true) AS partitionboundary ,n.nspname AS schemaname, cl.relname AS tablename 
-FROM orca.test_distributed, pg_namespace n, pg_namespace n2, pg_class cl
-LEFT JOIN pg_tablespace sp ON cl.reltablespace = sp.oid, pg_class cl2
-LEFT JOIN pg_tablespace sp3 ON cl2.reltablespace = sp3.oid, pg_partition pp, pg_partition_rule pr1
-WHERE pp.paristemplate = false AND pp.parrelid = cl.oid AND pr1.paroid = pp.oid AND cl2.oid = pr1.parchildrelid
-AND cl.relnamespace = n.oid AND cl2.relnamespace = n2.oid and cl.relname ='test_part';
-           partitionboundary           | schemaname | tablename 
----------------------------------------+------------+-----------
- START (1) EXCLUSIVE END (2) INCLUSIVE | orca       | test_part
- START (1) EXCLUSIVE END (2) INCLUSIVE | orca       | test_part
-(2 rows)
-
--- Function pg_get_partition_rule_def(oid)
-SELECT pg_get_partition_rule_def(pr1.oid) AS partitionboundary ,n.nspname AS schemaname, cl.relname AS tablename 
-FROM orca.test_distributed, pg_namespace n, pg_namespace n2, pg_class cl
-LEFT JOIN pg_tablespace sp ON cl.reltablespace = sp.oid, pg_class cl2
-LEFT JOIN pg_tablespace sp3 ON cl2.reltablespace = sp3.oid, pg_partition pp, pg_partition_rule pr1
-WHERE pp.paristemplate = false AND pp.parrelid = cl.oid AND pr1.paroid = pp.oid AND cl2.oid = pr1.parchildrelid
-AND cl.relnamespace = n.oid AND cl2.relnamespace = n2.oid and cl.relname ='test_part';
-           partitionboundary           | schemaname | tablename 
----------------------------------------+------------+-----------
- START (1) EXCLUSIVE END (2) INCLUSIVE | orca       | test_part
- START (1) EXCLUSIVE END (2) INCLUSIVE | orca       | test_part
-(2 rows)
-
 -- MPP-22453: wrong result in indexscan when the indexqual compares different data types
 create table mpp22453(a int, d date);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
@@ -8866,171 +8835,8 @@ where c.cid = s.cid and s.date_sk = d.date_sk and
 (18 rows)
 
 reset optimizer_segments;
--- Bitmap indexes
-drop table if exists orca.bm_test;
-NOTICE:  table "bm_test" does not exist, skipping
-create table orca.bm_test (i int, t text);
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-insert into orca.bm_test select i % 10, (i % 10)::text  from generate_series(1, 100) i;
-create index bm_test_idx on orca.bm_test using bitmap (i);
-set optimizer_enable_bitmapscan=on;
-explain select * from orca.bm_test where i=2 and t='2';
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
- Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..0.01 rows=2 width=6)
-   ->  Bitmap Table Scan on bm_test  (cost=0.00..0.01 rows=1 width=6)
-         Recheck Cond: i = 2
-         Filter: t = '2'::text
-         ->  Bitmap Index Scan on bm_test_idx  (cost=0.00..0.00 rows=0 width=0)
-               Index Cond: i = 2
- Settings:  optimizer=on; optimizer_segments=3
-(7 rows)
-
-select * from orca.bm_test where i=2 and t='2';
- i | t 
----+---
- 2 | 2
- 2 | 2
- 2 | 2
- 2 | 2
- 2 | 2
- 2 | 2
- 2 | 2
- 2 | 2
- 2 | 2
- 2 | 2
-(10 rows)
-
-reset optimizer_enable_bitmapscan;
--- Dynamic bitmap indexes
-drop table if exists orca.bm_dyn_test;
-NOTICE:  table "bm_dyn_test" does not exist, skipping
-create table orca.bm_dyn_test (i int, to_be_dropped char(5), j int, t text) distributed by (i) partition by list(j)
-  (partition part0 values(0) with (appendonly=true, compresslevel=5, orientation=column),
-   partition part1 values(1),
-   partition part2 values(2) with (appendonly=true, compresslevel=5, orientation=row),
-   partition part3 values(3), partition part4 values(4));
-NOTICE:  CREATE TABLE will create partition "bm_dyn_test_1_prt_part0" for table "bm_dyn_test"
-NOTICE:  CREATE TABLE will create partition "bm_dyn_test_1_prt_part1" for table "bm_dyn_test"
-NOTICE:  CREATE TABLE will create partition "bm_dyn_test_1_prt_part2" for table "bm_dyn_test"
-NOTICE:  CREATE TABLE will create partition "bm_dyn_test_1_prt_part3" for table "bm_dyn_test"
-NOTICE:  CREATE TABLE will create partition "bm_dyn_test_1_prt_part4" for table "bm_dyn_test"
-insert into orca.bm_dyn_test select i % 10, 'drop', i % 5, (i % 10)::text  from generate_series(1, 100) i;
-create index bm_dyn_test_idx on orca.bm_dyn_test using bitmap (i);
-NOTICE:  building index for child partition "bm_dyn_test_1_prt_part0"
-NOTICE:  building index for child partition "bm_dyn_test_1_prt_part1"
-NOTICE:  building index for child partition "bm_dyn_test_1_prt_part2"
-NOTICE:  building index for child partition "bm_dyn_test_1_prt_part3"
-NOTICE:  building index for child partition "bm_dyn_test_1_prt_part4"
-alter table orca.bm_dyn_test drop column to_be_dropped;
-alter table orca.bm_dyn_test add partition part5 values(5);
-NOTICE:  CREATE TABLE will create partition "bm_dyn_test_1_prt_part5" for table "bm_dyn_test"
-insert into orca.bm_dyn_test values(2, 5, '2');
-set optimizer_enable_bitmapscan=on;
-explain select * from orca.bm_dyn_test where i=2 and t='2';
-                                                 QUERY PLAN                                                 
-------------------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..0.00 rows=1 width=24)
-   ->  Result  (cost=0.00..0.00 rows=1 width=24)
-         Filter: t = '2'::text
-         ->  Sequence  (cost=0.00..0.00 rows=1 width=24)
-               ->  Partition Selector for bm_dyn_test (dynamic scan id: 1)  (cost=10.00..100.00 rows=50 width=4)
-               ->  Bitmap Table Scan on bm_dyn_test (dynamic scan id: 1)  (cost=0.00..0.01 rows=1 width=24)
-                     Recheck Cond: i = 2
-                     ->  Bitmap Index Scan on bm_dyn_test_idx_1_prt_part0  (cost=0.00..0.00 rows=0 width=0)
-                           Index Cond: i = 2
- Settings:  optimizer=on; optimizer_segments=3
-(10 rows)
-
-select * from orca.bm_dyn_test where i=2 and t='2';
- i | j | t 
----+---+---
- 2 | 5 | 2
- 2 | 2 | 2
- 2 | 2 | 2
- 2 | 2 | 2
- 2 | 2 | 2
- 2 | 2 | 2
- 2 | 2 | 2
- 2 | 2 | 2
- 2 | 2 | 2
- 2 | 2 | 2
- 2 | 2 | 2
-(11 rows)
-
-reset optimizer_enable_bitmapscan;
--- Now, create a partial index
-drop table if exists orca.bm_dyn_test_onepart;
-NOTICE:  table "bm_dyn_test_onepart" does not exist, skipping
-create table orca.bm_dyn_test_onepart (i int, to_be_dropped char(5), j int, t text)
-  distributed by (i) partition by list(j)
-  (partition part0 values(0) with (appendonly=true, compresslevel=5, orientation=column),
-   partition part1 values(1),
-   partition part2 values(2) with (appendonly=true, compresslevel=5, orientation=row),
-   partition part3 values(3), partition part4 values(4));
-NOTICE:  CREATE TABLE will create partition "bm_dyn_test_onepart_1_prt_part0" for table "bm_dyn_test_onepart"
-NOTICE:  CREATE TABLE will create partition "bm_dyn_test_onepart_1_prt_part1" for table "bm_dyn_test_onepart"
-NOTICE:  CREATE TABLE will create partition "bm_dyn_test_onepart_1_prt_part2" for table "bm_dyn_test_onepart"
-NOTICE:  CREATE TABLE will create partition "bm_dyn_test_onepart_1_prt_part3" for table "bm_dyn_test_onepart"
-NOTICE:  CREATE TABLE will create partition "bm_dyn_test_onepart_1_prt_part4" for table "bm_dyn_test_onepart"
-insert into orca.bm_dyn_test_onepart select i % 10, 'drop', i % 5, (i % 10)::text  from generate_series(1, 100) i;
-create index bm_test_idx_part on orca.bm_dyn_test_onepart_1_prt_part2 using bitmap (i);
-alter table orca.bm_dyn_test_onepart drop column to_be_dropped;
-alter table orca.bm_dyn_test_onepart add partition part5 values(5);
-NOTICE:  CREATE TABLE will create partition "bm_dyn_test_onepart_1_prt_part5" for table "bm_dyn_test_onepart"
-insert into orca.bm_dyn_test_onepart values(2, 5, '2');
-set optimizer_enable_bitmapscan=on;
-select disable_xform('CXformDynamicGet2DynamicTableScan');
-                 disable_xform                 
------------------------------------------------
- CXformDynamicGet2DynamicTableScan is disabled
-(1 row)
-
-explain select * from orca.bm_dyn_test_onepart where i=2 and t='2';
-                                                           QUERY PLAN                                                            
----------------------------------------------------------------------------------------------------------------------------------
- Gather Motion 1:1  (slice1; segments: 1)  (cost=0.00..48.03 rows=6 width=40)
-   ->  Append  (cost=0.00..48.03 rows=3 width=40)
-         ->  Append-only Columnar Scan on bm_dyn_test_onepart_1_prt_part0 bm_dyn_test_onepart  (cost=0.00..8.00 rows=1 width=40)
-               Filter: i = 2 AND t = '2'::text
-         ->  Seq Scan on bm_dyn_test_onepart_1_prt_part1 bm_dyn_test_onepart  (cost=0.00..8.00 rows=1 width=40)
-               Filter: i = 2 AND t = '2'::text
-         ->  Append-only Scan on bm_dyn_test_onepart_1_prt_part2 bm_dyn_test_onepart  (cost=0.00..8.00 rows=1 width=40)
-               Filter: i = 2 AND t = '2'::text
-         ->  Seq Scan on bm_dyn_test_onepart_1_prt_part3 bm_dyn_test_onepart  (cost=0.00..8.00 rows=1 width=40)
-               Filter: i = 2 AND t = '2'::text
-         ->  Seq Scan on bm_dyn_test_onepart_1_prt_part4 bm_dyn_test_onepart  (cost=0.00..8.00 rows=1 width=40)
-               Filter: i = 2 AND t = '2'::text
-         ->  Seq Scan on bm_dyn_test_onepart_1_prt_part5 bm_dyn_test_onepart  (cost=0.00..8.00 rows=1 width=40)
-               Filter: i = 2 AND t = '2'::text
- Settings:  optimizer=on; optimizer_segments=3
-(15 rows)
-
-select * from orca.bm_dyn_test_onepart where i=2 and t='2';
- i | j | t 
----+---+---
- 2 | 2 | 2
- 2 | 2 | 2
- 2 | 2 | 2
- 2 | 2 | 2
- 2 | 2 | 2
- 2 | 2 | 2
- 2 | 2 | 2
- 2 | 2 | 2
- 2 | 2 | 2
- 2 | 2 | 2
- 2 | 5 | 2
-(11 rows)
-
-select enable_xform('CXformDynamicGet2DynamicTableScan');
-                 enable_xform                 
-----------------------------------------------
- CXformDynamicGet2DynamicTableScan is enabled
-(1 row)
-
-reset optimizer_enable_bitmapscan;
 set optimizer_enable_constant_expression_evaluation=on;
+-- test indexjoin with heterogeneous indexes
 CREATE TABLE my_tt_agg_opt (
     symbol character(16),
     event_ts bigint,
@@ -9080,7 +8886,12 @@ select disable_xform('CXformInnerJoin2NLJoin');
 (1 row)
 
 set optimizer_enable_partial_index=on;
-set optimizer_enable_indexjoin=on;
+select disable_xform('CXformInnerJoin2PartialDynamicIndexGetApply');
+                      disable_xform                      
+---------------------------------------------------------
+ CXformInnerJoin2PartialDynamicIndexGetApply is disabled
+(1 row)
+
 -- force_explain
 set optimizer_segments = 3;
 EXPLAIN 
@@ -9092,46 +8903,33 @@ WHERE tq.sym = tt.symbol AND
       tt.event_ts <  tq.end_ts
 GROUP BY 1
 ORDER BY 1 asc ;
-                                                                                                                            QUERY PLAN                                                                                                                             
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- GroupAggregate  (cost=0.00..1293.05 rows=1 width=16)
-   Group By: fivemin
-   ->  Gather Motion 2:1  (slice3; segments: 2)  (cost=0.00..1293.05 rows=1 width=16)
-         Merge Key: fivemin
-         ->  Result  (cost=0.00..1293.05 rows=1 width=16)
-               ->  GroupAggregate  (cost=0.00..1293.05 rows=1 width=16)
-                     Group By: fivemin
-                     ->  Sort  (cost=0.00..1293.05 rows=1 width=8)
-                           Sort Key: fivemin
-                           ->  Result  (cost=0.00..1293.05 rows=1 width=8)
-                                 ->  Sequence  (cost=0.00..1293.05 rows=1 width=8)
-                                       ->  Shared Scan (share slice:id 3:0)  (cost=0.00..431.00 rows=1 width=1)
-                                             ->  Materialize  (cost=0.00..431.00 rows=1 width=1)
-                                                   ->  Table Scan on my_tt_agg_opt  (cost=0.00..431.00 rows=1 width=88)
-                                       ->  Sequence  (cost=0.00..862.05 rows=1 width=8)
-                                             ->  Partition Selector for my_tq_agg_opt_part (dynamic scan id: 1)  (cost=10.00..100.00 rows=50 width=4)
-                                             ->  Result  (cost=0.00..862.05 rows=1 width=8)
-                                                   ->  Append  (cost=0.00..862.05 rows=1 width=8)
-                                                         ->  Nested Loop  (cost=0.00..431.03 rows=1 width=184)
-                                                               Join Filter: true
-                                                               ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..431.00 rows=2 width=88)
-                                                                     ->  Shared Scan (share slice:id 1:0)  (cost=0.00..431.00 rows=1 width=88)
-                                                               ->  Dynamic Index Scan on my_tq_agg_opt_part (dynamic scan id: 1)  (cost=0.00..0.02 rows=1 width=96)
-                                                                     Index Cond: public.my_tq_agg_opt_part.ets <= "outer".event_ts AND public.my_tq_agg_opt_part.end_ts > "outer".event_ts
-                                                                     Filter: public.my_tq_agg_opt_part.sym::bpchar = "outer".symbol AND plusone(public.my_tq_agg_opt_part.bid_price) < "outer".trade_price
-                                                         ->  Nested Loop  (cost=0.00..431.03 rows=1 width=184)
-                                                               Join Filter: true
-                                                               ->  Broadcast Motion 2:2  (slice2; segments: 2)  (cost=0.00..431.00 rows=2 width=88)
-                                                                     ->  Shared Scan (share slice:id 2:0)  (cost=0.00..431.00 rows=1 width=88)
-                                                               ->  Dynamic Index Scan on my_tq_agg_opt_part (dynamic scan id: 1)  (cost=0.00..0.02 rows=1 width=96)
-                                                                     Index Cond: public.my_tq_agg_opt_part.ets <= "outer".event_ts
-                                                                     Filter: public.my_tq_agg_opt_part.sym::bpchar = "outer".symbol AND plusone(public.my_tq_agg_opt_part.bid_price) < "outer".trade_price AND "outer".event_ts < public.my_tq_agg_opt_part.end_ts
+                                                                QUERY PLAN                                                                 
+-------------------------------------------------------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice3; segments: 2)  (cost=0.21..0.21 rows=1 width=16)
+   Merge Key: fivemin
+   ->  Sort  (cost=0.21..0.21 rows=1 width=16)
+         Sort Key: partial_aggregation.unnamed_attr_1
+         ->  HashAggregate  (cost=0.19..0.20 rows=1 width=16)
+               Group By: "?column1?"
+               ->  Redistribute Motion 2:2  (slice2; segments: 2)  (cost=0.14..0.17 rows=1 width=16)
+                     Hash Key: unnamed_attr_1
+                     ->  HashAggregate  (cost=0.14..0.15 rows=1 width=16)
+                           Group By: tt.event_ts / 100000 / 5 * 5
+                           ->  Hash Join  (cost=0.01..0.13 rows=2 width=8)
+                                 Hash Cond: tq.sym::bpchar = tt.symbol
+                                 Join Filter: plusone(tq.bid_price) < tt.trade_price AND tt.event_ts >= tq.ets AND tt.event_ts < tq.end_ts
+                                 ->  Redistribute Motion 2:2  (slice1; segments: 2)  (cost=0.00..0.04 rows=1 width=98)
+                                       Hash Key: tq.sym::bpchar
+                                       ->  Append  (cost=0.00..0.00 rows=1 width=98)
+                                             ->  Seq Scan on my_tq_agg_opt_part_1_prt_p1 tq  (cost=0.00..0.00 rows=1 width=98)
+                                             ->  Seq Scan on my_tq_agg_opt_part_1_prt_p2 tq  (cost=0.00..0.00 rows=1 width=98)
+                                 ->  Hash  (cost=0.00..0.00 rows=1 width=108)
+                                       ->  Seq Scan on my_tt_agg_opt tt  (cost=0.00..0.00 rows=1 width=108)
  Settings:  optimizer=on; optimizer_segments=3
-(33 rows)
+(21 rows)
 
 reset optimizer_segments;
 reset optimizer_enable_constant_expression_evaluation;
-reset optimizer_enable_indexjoin;
 reset optimizer_enable_partial_index;
 select enable_xform('CXformInnerJoin2DynamicIndexGetApply');
                   enable_xform                   

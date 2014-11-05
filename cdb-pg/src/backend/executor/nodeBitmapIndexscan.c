@@ -24,9 +24,7 @@
 
 #include "access/genam.h"
 #include "cdb/cdbvars.h"
-#include "cdb/cdbpartition.h"
 #include "executor/execdebug.h"
-#include "executor/execDynamicScan.h"
 #include "executor/instrument.h"
 #include "executor/nodeBitmapIndexscan.h"
 #include "executor/nodeIndexscan.h"
@@ -35,8 +33,6 @@
 #include "utils/lsyscache.h"
 #include "nodes/tidbitmap.h"
 
-#define BITMAPINDEXSCAN_NSLOTS 0
-
 /* ----------------------------------------------------------------
  *		MultiExecBitmapIndexScan(node)
  * ----------------------------------------------------------------
@@ -44,41 +40,44 @@
 Node *
 MultiExecBitmapIndexScan(BitmapIndexScanState *node)
 {
-	IndexScanState *scanState = (IndexScanState*)node;
-
+	IndexScanDesc scandesc;
+	bool		doscan;
 	Node 		*bitmap = NULL;
 
 	/* must provide our own instrumentation support */
-	if (scanState->ss.ps.instrument)
+	if (node->ss.ps.instrument)
+		InstrStartNode(node->ss.ps.instrument);
+
+	/*
+	 * extract necessary information from index scan node
+	 */
+	scandesc = node->biss_ScanDesc;
+
+	/*
+	 * If we have runtime keys and they've not already been set up, do it now.
+	 * Array keys are also treated as runtime keys; note that if ExecReScan
+	 * returns with biss_RuntimeKeysReady still false, then there is an empty
+	 * array key so we should do nothing.
+	 */
+	if (!node->biss_RuntimeKeysReady &&
+		(node->biss_NumRuntimeKeys != 0 || node->biss_NumArrayKeys != 0))
 	{
-		InstrStartNode(scanState->ss.ps.instrument);
+		ExecReScan((PlanState *) node, NULL);
+		doscan = node->biss_RuntimeKeysReady;
 	}
-	bool partitionIsReady = DynamicScan_BeginIndexPartition(scanState, false /* initQual */,
-			false /* initTargetList */, true /* supportsArrayKeys */,
-			true /* isMultiScan */);
+	else
+		doscan = true;
 
-	Assert(partitionIsReady);
-
-	if (!partitionIsReady)
-	{
-		DynamicScan_EndIndexPartition(scanState);
-		return NULL;
-	}
-
-	bool doscan = node->indexScanState.iss_RuntimeKeysReady;
-
-	IndexScanDesc scandesc = scanState->iss_ScanDesc;
 
 	/* Get bitmap from index */
 	while (doscan)
 	{
 		bitmap = index_getmulti(scandesc, node->bitmap);
 
-		if ((NULL != bitmap) &&
-			!(IsA(bitmap, HashBitmap) || IsA(bitmap, StreamBitmap)))
-		{
+		if ((bitmap != NULL) &&
+			!(IsA(bitmap, HashBitmap) ||
+			  IsA(bitmap, StreamBitmap)))
 			elog(ERROR, "unrecognized result from bitmap index scan");
-		}
 
 		CHECK_FOR_INTERRUPTS();
 
@@ -86,32 +85,20 @@ MultiExecBitmapIndexScan(BitmapIndexScanState *node)
 			break;
 
         /* CDB: If EXPLAIN ANALYZE, let bitmap share our Instrumentation. */
-        if (scanState->ss.ps.instrument)
-        {
-            tbm_bitmap_set_instrument(bitmap, scanState->ss.ps.instrument);
-        }
+        if (node->ss.ps.instrument)
+            tbm_bitmap_set_instrument(bitmap, node->ss.ps.instrument);
 
 		if(node->bitmap == NULL)
-		{
 			node->bitmap = (Node *)bitmap;
-		}
-
-		doscan = ExecIndexAdvanceArrayKeys(scanState->iss_ArrayKeys,
-											   scanState->iss_NumArrayKeys);
-		if (doscan)
-		{
-			/* reset index scan */
-			index_rescan(scanState->iss_ScanDesc, scanState->iss_ScanKeys);
-		}
+		doscan = ExecIndexAdvanceArrayKeys(node->biss_ArrayKeys,
+											   node->biss_NumArrayKeys);
+		if (doscan)			/* reset index scan */
+			index_rescan(node->biss_ScanDesc, node->biss_ScanKeys);
 	}
-
-	DynamicScan_EndIndexPartition(scanState);
 
 	/* must provide our own instrumentation support */
-	if (scanState->ss.ps.instrument)
-	{
-		InstrStopNode(scanState->ss.ps.instrument, 1 /* nTuples */);
-	}
+	if (node->ss.ps.instrument)
+		InstrStopNode(node->ss.ps.instrument, 1 /* XXX */);
 
 	return (Node *) bitmap;
 }
@@ -126,16 +113,59 @@ MultiExecBitmapIndexScan(BitmapIndexScanState *node)
 void
 ExecBitmapIndexReScan(BitmapIndexScanState *node, ExprContext *exprCtxt)
 {
-	IndexScanState *scanState = (IndexScanState*)node;
+	ExprContext *econtext;
 
-	DynamicScan_RescanIndex(scanState, exprCtxt, false, false, true);
+	econtext = node->biss_RuntimeContext;		/* context for runtime keys */
+
+	if (econtext)
+	{
+		/*
+		 * If we are being passed an outer tuple, save it for runtime key
+		 * calc.
+		 */
+		if (exprCtxt != NULL)
+			econtext->ecxt_outertuple = exprCtxt->ecxt_outertuple;
+
+		/*
+		 * Reset the runtime-key context so we don't leak memory as each outer
+		 * tuple is scanned.  Note this assumes that we will recalculate *all*
+		 * runtime keys on each call.
+		 */
+		ResetExprContext(econtext);
+	}
+
+	/*
+	 * If we are doing runtime key calculations (ie, the index keys depend on
+	 * data from an outer scan), compute the new key values.
+	 *
+	 * Array keys are also treated as runtime keys; note that if we return
+	 * with biss_RuntimeKeysReady still false, then there is an empty array
+	 * key so no index scan is needed.
+	 */
+	if (node->biss_NumRuntimeKeys != 0)
+		ExecIndexEvalRuntimeKeys(econtext,
+								 node->biss_RuntimeKeys,
+								 node->biss_NumRuntimeKeys);
+	if (node->biss_NumArrayKeys != 0)
+		node->biss_RuntimeKeysReady =
+			ExecIndexEvalArrayKeys(econtext,
+								   node->biss_ArrayKeys,
+								   node->biss_NumArrayKeys);
+	else
+		node->biss_RuntimeKeysReady = true;
+
+	/* reset index scan */
+	if (node->biss_RuntimeKeysReady)
+		index_rescan(node->biss_ScanDesc, node->biss_ScanKeys);
 
 	/* Sanity check */
-	if ((node->bitmap) && (!IsA(node->bitmap, HashBitmap) && !IsA(node->bitmap, StreamBitmap)))
+	if (node->bitmap)
 	{
-		ereport(ERROR,
-				(errcode(ERRCODE_GP_INTERNAL_ERROR),
-				 errmsg("the returning bitmap in nodeBitmapIndexScan is invalid.")));
+		if (!IsA(node->bitmap, HashBitmap) &&
+			!IsA(node->bitmap, StreamBitmap))
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_INTERNAL_ERROR),
+					 errmsg("the returning bitmap in nodeBitmapIndexScan is corrupted.")));
 	}
 
 	/* reset hashBitmap */
@@ -150,8 +180,8 @@ ExecBitmapIndexReScan(BitmapIndexScanState *node, ExprContext *exprCtxt)
 		/* XXX: put in own memory context? */
 		node->bitmap = NULL;
 	}
-	Gpmon_M_Incr(GpmonPktFromBitmapIndexScanState(node), GPMON_BITMAPINDEXSCAN_RESCAN);
-	CheckSendPlanStateGpmonPkt(&scanState->ss.ps);
+     	Gpmon_M_Incr(GpmonPktFromBitmapIndexScanState(node), GPMON_BITMAPINDEXSCAN_RESCAN);
+    	CheckSendPlanStateGpmonPkt(&node->ss.ps);
 }
 
 /* ----------------------------------------------------------------
@@ -161,12 +191,23 @@ ExecBitmapIndexReScan(BitmapIndexScanState *node, ExprContext *exprCtxt)
 void
 ExecEndBitmapIndexScan(BitmapIndexScanState *node)
 {
-	IndexScanState *scanState = (IndexScanState*)node;
+	Relation	indexRelationDesc;
+	IndexScanDesc indexScanDesc;
 
-	DynamicScan_EndIndexScan(scanState);
-	Assert(SCAN_END == scanState->ss.scan_state);
+	/*
+	 * extract information from the node
+	 */
+	indexRelationDesc = node->biss_RelationDesc;
+	indexScanDesc = node->biss_ScanDesc;
 
-	EndPlanStateGpmonPkt(&scanState->ss.ps);
+	/*
+	 * close the index relation
+	 */
+	index_endscan(indexScanDesc);
+
+	index_close(indexRelationDesc, NoLock);
+
+	EndPlanStateGpmonPkt(&node->ss.ps);
 }
 
 /* ----------------------------------------------------------------
@@ -179,6 +220,7 @@ BitmapIndexScanState *
 ExecInitBitmapIndexScan(BitmapIndexScan *node, EState *estate, int eflags)
 {
 	BitmapIndexScanState *indexstate;
+	bool		relistarget;
 
 	/* check for unsupported flags */
 	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
@@ -187,22 +229,99 @@ ExecInitBitmapIndexScan(BitmapIndexScan *node, EState *estate, int eflags)
 	 * create state structure
 	 */
 	indexstate = makeNode(BitmapIndexScanState);
+	indexstate->ss.ps.plan = (Plan *) node;
+	indexstate->ss.ps.state = estate;
 
-	IndexScanState *scanState = (IndexScanState*)indexstate;
+	/*
+	 * Miscellaneous initialization
+	 *
+	 * We do not need a standard exprcontext for this node, though we may
+	 * decide below to create a runtime-key exprcontext
+	 */
 
-	scanState->ss.ps.plan = (Plan *) node;
-	scanState->ss.ps.state = estate;
+	/*
+	 * initialize child expressions
+	 *
+	 * We don't need to initialize targetlist or qual since neither are used.
+	 *
+	 * Note: we don't initialize all of the indexqual expression, only the
+	 * sub-parts corresponding to runtime keys (see below).
+	 */
 
-	DynamicScan_BeginIndexScan(scanState, false, false, true);
+#define BITMAPINDEXSCAN_NSLOTS 0
 
 	/*
 	 * We do not open or lock the base relation here.  We assume that an
 	 * ancestor BitmapHeapScan node is holding AccessShareLock (or better) on
 	 * the heap relation throughout the execution of the plan tree.
 	 */
-	Assert(NULL == scanState->ss.ss_currentRelation);
 
-	initGpmonPktForBitmapIndexScan((Plan *)node, &scanState->ss.ps.gpmon_pkt, estate);
+	indexstate->ss.ss_currentRelation = NULL;
+
+	/*
+	 * Open the index relation.
+	 *
+	 * If the parent table is one of the target relations of the query, then
+	 * InitPlan already opened and write-locked the index, so we can avoid
+	 * taking another lock here.  Otherwise we need a normal reader's lock.
+	 */
+	relistarget = ExecRelationIsTargetRelation(estate, node->scan.scanrelid);
+	indexstate->biss_RelationDesc = index_open(node->indexid,
+									 relistarget ? NoLock : AccessShareLock);
+
+	/*
+	 * Initialize index-specific scan state
+	 */
+	indexstate->biss_RuntimeKeysReady = false;
+
+	/*
+	 * build the index scan keys from the index qualification
+	 */
+	ExecIndexBuildScanKeys((PlanState *) indexstate,
+						   indexstate->biss_RelationDesc,
+						   node->indexqual,
+						   node->indexstrategy,
+						   node->indexsubtype,
+						   &indexstate->biss_ScanKeys,
+						   &indexstate->biss_NumScanKeys,
+						   &indexstate->biss_RuntimeKeys,
+						   &indexstate->biss_NumRuntimeKeys,
+						   &indexstate->biss_ArrayKeys,
+						   &indexstate->biss_NumArrayKeys);
+
+	/*
+	 * If we have runtime keys or array keys, we need an ExprContext to
+	 * evaluate them. We could just create a "standard" plan node exprcontext,
+	 * but to keep the code looking similar to nodeIndexscan.c, it seems
+	 * better to stick with the approach of using a separate ExprContext.
+	 */
+	if (indexstate->biss_NumRuntimeKeys != 0 ||
+		indexstate->biss_NumArrayKeys != 0)
+	{
+		ExprContext *stdecontext = indexstate->ss.ps.ps_ExprContext;
+
+		ExecAssignExprContext(estate, &indexstate->ss.ps);
+		indexstate->biss_RuntimeContext = indexstate->ss.ps.ps_ExprContext;
+		indexstate->ss.ps.ps_ExprContext = stdecontext;
+	}
+	else
+	{
+		indexstate->biss_RuntimeContext = NULL;
+	}
+
+	/*
+	 * Initialize scan descriptor.
+	 */
+	indexstate->biss_ScanDesc =
+		index_beginscan_multi(indexstate->biss_RelationDesc,
+							  estate->es_snapshot,
+							  indexstate->biss_NumScanKeys,
+							  indexstate->biss_ScanKeys);
+	/*
+	 * all done.
+	 */
+
+	initGpmonPktForBitmapIndexScan((Plan *)node, &indexstate->ss.ps.gpmon_pkt, estate);
 
 	return indexstate;
 }
@@ -218,7 +337,7 @@ ExecCountSlotsBitmapIndexScan(BitmapIndexScan *node)
 void
 initGpmonPktForBitmapIndexScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
 {
-	Assert(NULL != planNode && NULL != gpmon_pkt && IsA(planNode, BitmapIndexScan));
+	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, BitmapIndexScan));
 
 	{
 		char *relname = get_rel_name(((BitmapIndexScan *)planNode)->indexid);
@@ -227,10 +346,8 @@ initGpmonPktForBitmapIndexScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState
 		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, PMNT_BitmapIndexScan,
 							 (int64)planNode->plan_rows, 
 							 relname);
-		if (NULL != relname)
-		{
+		if (relname)
 			pfree(relname);
-		}
 	}
 	
 }

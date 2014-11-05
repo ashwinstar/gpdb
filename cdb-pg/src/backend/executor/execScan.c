@@ -23,6 +23,29 @@
 #include <unistd.h>
 
 /*
+ * ScanMethod
+ *   Methods that are relevant to support scans on various table types.
+ */
+typedef struct ScanMethod
+{
+	/* Function that scans the table. */
+	TupleTableSlot *(*accessMethod)(ScanState *scanState);
+
+	/* Functions that initiate or terminate a scan. */
+	void (*beginScanMethod)(ScanState *scanState);
+	void (*endScanMethod)(ScanState *scanState);
+
+	/* Function that does rescan. */
+	void (*reScanMethod)(ScanState *scanState);
+
+	/* Function that does MarkPos in a scan. */
+	void (*markPosMethod)(ScanState *scanState);
+
+	/* Function that does RestroPos in a scan. */
+	void (*restrPosMethod)(ScanState *scanState);
+} ScanMethod;
+
+/*
  * getScanMethod
  *   Return ScanMethod for a given table type.
  *
@@ -281,41 +304,17 @@ tlist_matches_tupdesc(PlanState *ps, List *tlist, Index varno, TupleDesc tupdesc
 }
 
 /*
- * InitScanStateRelationDetails
- *   Opens a relation and sets various relation specific ScanState fields.
- */
-void
-InitScanStateRelationDetails(ScanState *scanState, Plan *plan, EState *estate)
-{
-	Assert(NULL != scanState);
-	PlanState *planState = &scanState->ps;
-
-	/* Initialize child expressions */
-	planState->targetlist = (List *)ExecInitExpr((Expr *)plan->targetlist, planState);
-	planState->qual = (List *)ExecInitExpr((Expr *)plan->qual, planState);
-
-	Relation currentRelation = ExecOpenScanRelation(estate, ((Scan *)plan)->scanrelid);
-	scanState->ss_currentRelation = currentRelation;
-	ExecAssignScanType(scanState, RelationGetDescr(currentRelation));
-	ExecAssignScanProjectionInfo(scanState);
-
-	scanState->tableType = getTableType(scanState->ss_currentRelation);
-}
-
-/*
  * InitScanStateInternal
  *   Initialize ScanState common variables for various Scan node.
  */
 void
-InitScanStateInternal(ScanState *scanState, Plan *plan, EState *estate,
-		int eflags, bool initCurrentRelation)
+InitScanStateInternal(ScanState *scanState, Plan *plan, EState *estate, int eflags)
 {
 	Assert(IsA(plan, SeqScan) ||
 		   IsA(plan, AppendOnlyScan) ||
 		   IsA(plan, AOCSScan) ||
 		   IsA(plan, TableScan) ||
-		   IsA(plan, DynamicTableScan) ||
-		   IsA(plan, BitmapTableScan));
+		   IsA(plan, DynamicTableScan));
 
 	PlanState *planState = &scanState->ps;
 
@@ -335,9 +334,18 @@ InitScanStateInternal(ScanState *scanState, Plan *plan, EState *estate,
 	 * at that time. Also, for dynamic table scan, we do not need to open the
 	 * parent partition relation.
 	 */
-	if (initCurrentRelation)
+	if (!IsA(plan, DynamicTableScan))
 	{
-		InitScanStateRelationDetails(scanState, plan, estate);
+		/* Initialize child expressions */
+		planState->targetlist = (List *)ExecInitExpr((Expr *)plan->targetlist, planState);
+		planState->qual = (List *)ExecInitExpr((Expr *)plan->qual, planState);
+
+		Relation currentRelation = ExecOpenScanRelation(estate, ((Scan *)plan)->scanrelid);
+		scanState->ss_currentRelation = currentRelation;
+		ExecAssignScanType(scanState, RelationGetDescr(currentRelation));
+		ExecAssignScanProjectionInfo(scanState);
+
+		scanState->tableType = getTableType(scanState->ss_currentRelation);
 	}
 
 	/* Initialize result tuple type. */
@@ -359,13 +367,13 @@ InitScanStateInternal(ScanState *scanState, Plan *plan, EState *estate,
  *   Free ScanState common variables initialized in InitScanStateInternal.
  */
 void
-FreeScanRelationInternal(ScanState *scanState, bool closeCurrentRelation)
+FreeScanRelationInternal(ScanState *scanState)
 {
 	ExecFreeExprContext(&scanState->ps);
 	ExecClearTuple(scanState->ps.ps_ResultTupleSlot);
 	ExecClearTuple(scanState->ss_ScanTupleSlot);
 
-	if (closeCurrentRelation)
+	if (!IsA(scanState->ps.plan, DynamicTableScan))
 	{
 		ExecCloseScanRelation(scanState->ss_currentRelation);
 	}

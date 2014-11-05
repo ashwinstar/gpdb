@@ -64,9 +64,6 @@ increaseScanArraySize(int newMaxPartIndex)
 	{
 		dynamicTableScanInfo->pidIndexes = (HTAB **)
 			palloc0(dynamicTableScanInfo->numScans * sizeof(HTAB*));
-
-		Assert(dynamicTableScanInfo->iterators == NULL);
-		dynamicTableScanInfo->iterators = palloc0(dynamicTableScanInfo->numScans * sizeof(DynamicPartitionIterator*));
 	}
 	else
 	{
@@ -74,13 +71,9 @@ increaseScanArraySize(int newMaxPartIndex)
 			repalloc(dynamicTableScanInfo->pidIndexes,
 					 dynamicTableScanInfo->numScans * sizeof(HTAB*));
 
-		dynamicTableScanInfo->iterators = repalloc(dynamicTableScanInfo->iterators,
-				dynamicTableScanInfo->numScans * sizeof(DynamicPartitionIterator*));
-
 		for (int scanNo = oldNumScans; scanNo < dynamicTableScanInfo->numScans; scanNo++)
 		{
 			dynamicTableScanInfo->pidIndexes[scanNo] = NULL;
-			dynamicTableScanInfo->iterators[scanNo] = NULL;
 		}
 	}
 }
