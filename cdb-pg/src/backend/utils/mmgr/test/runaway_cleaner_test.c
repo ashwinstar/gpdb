@@ -25,6 +25,21 @@
 	expect_value(elog_finish, elevel, LOG_LEVEL); \
 	expect_any(elog_finish, fmt); \
 
+#define EXPECT_EREPORT(LOG_LEVEL)     \
+	expect_any(errstart, elevel); \
+	expect_any(errstart, filename); \
+	expect_any(errstart, lineno); \
+	expect_any(errstart, funcname); \
+	expect_any(errstart, domain); \
+	if (LOG_LEVEL < ERROR) \
+	{ \
+    	will_return(errstart, false); \
+	} \
+    else \
+    { \
+    	will_return_with_sideeffect(errstart, false, &_ExceptionalCondition, NULL);\
+    } \
+
 /* MySessionState will use the address of this global variable */
 static SessionState fakeSessionState;
 
@@ -114,17 +129,22 @@ test__RunawayCleaner_StartCleanup__StartsCleanupIfPossible(void **state)
 
 	static fakeLatestRunawayVersion = 10;
 	latestRunawayVersion = &fakeLatestRunawayVersion;
+	*latestRunawayVersion = 10;
+
 	/*
-	 * Set beginCleanupRunawayVersion to less than *latestRunawayVersino
+	 * Set beginCleanupRunawayVersion to less than *latestRunawayVersion
 	 * to trigger a cleanup
 	 */
 	beginCleanupRunawayVersion = 1;
 	endCleanupRunawayVersion = 1;
+	isProcessActive = true;
 
 	/* Make sure the cleanup goes through */
 	vmemTrackerInited = true;
 	CritSectionCount = 0;
 	InterruptHoldoffCount = 0;
+	/* We need a valid gp_command_count to execute cleanup */
+	gp_command_count = 1;
 	will_return(superuser, false);
 
 #ifdef FAULT_INJECTOR
@@ -135,13 +155,7 @@ test__RunawayCleaner_StartCleanup__StartsCleanupIfPossible(void **state)
 	will_be_called(FaultInjector_InjectFaultIfSet);
 #endif
 
-	EXPECT_ELOG(ERROR);
-
-	/* The following methods are called for logging runaway information */
-	will_be_called(VmemTracker_ConvertVmemChunksToMB);
-	expect_value(VmemTracker_ConvertVmemChunksToMB, chunks, MySessionState->sessionVmem);
-	will_be_called(VmemTracker_GetAvailableVmemMB);
-	will_be_called(RedZoneHandler_GetRedZoneLimitMB);
+	EXPECT_EREPORT(ERROR);
 
 	PG_TRY();
 	{
@@ -253,16 +267,17 @@ test__RunawayCleaner_StartCleanup__IgnoresCleanupInHoldoffInterrupt(void **state
  * if optional cleanup
  */
 void
-test__RunawayCleaner_RunawayCleanupDoneForProcess__IgnoresCleanupCountdownIfOptional(void **state)
+test__RunawayCleaner_RunawayCleanupDoneForProcess__IgnoresCleanupIfNotRequired(void **state)
 {
 #define CLEANUP_COUNTDOWN 2
-
 	InitFakeSessionState(2 /* activeProcessCount */,
 			CLEANUP_COUNTDOWN /* cleanupCountdown */,
 			RunawayStatus_PrimaryRunawaySession /* runawayStatus */, 2 /* pinCount */, 12345 /* vmem */);
 
 	static EventVersion fakeLatestRunawayVersion = 10;
 	latestRunawayVersion = &fakeLatestRunawayVersion;
+	*latestRunawayVersion = 10;
+
 	/*
 	 * Set beginCleanupRunawayVersion to less than *latestRunawayVersino
 	 * to trigger a cleanup
@@ -270,59 +285,52 @@ test__RunawayCleaner_RunawayCleanupDoneForProcess__IgnoresCleanupCountdownIfOpti
 	beginCleanupRunawayVersion = 1;
 	endCleanupRunawayVersion = 1;
 
-	/* Make sure the cleanup goes through */
+	/* Make sure the cleanup is not ignored for vmem initialization */
 	vmemTrackerInited = true;
-	/* Simulate an activation where we see a pending optional cleanup */
+	/* Simulate a deactivation before the runaway */
 	deactivationVersion = *latestRunawayVersion - 1;
-	activationVersion = *latestRunawayVersion + 1;
-	isProcessActive = true;
+	activationVersion = *latestRunawayVersion - 1;
+	isProcessActive = false;
 
 	CritSectionCount = 0;
 	InterruptHoldoffCount = 0;
 
-	will_return(superuser, false);
-#ifdef FAULT_INJECTOR
-	expect_value(FaultInjector_InjectFaultIfSet, identifier, RunawayCleanup);
-	expect_value(FaultInjector_InjectFaultIfSet, ddlStatement, DDLNotSpecified);
-	expect_value(FaultInjector_InjectFaultIfSet, databaseName, "");
-	expect_value(FaultInjector_InjectFaultIfSet, tableName, "");
-	will_be_called(FaultInjector_InjectFaultIfSet);
-#endif
+	RunawayCleaner_StartCleanup();
 
-	EXPECT_ELOG(ERROR);
-
-	/* The following methods are called for logging runaway information */
-	will_be_called(VmemTracker_ConvertVmemChunksToMB);
-	expect_value(VmemTracker_ConvertVmemChunksToMB, chunks, MySessionState->sessionVmem);
-	will_be_called(VmemTracker_GetAvailableVmemMB);
-	will_be_called(RedZoneHandler_GetRedZoneLimitMB);
-
-	PG_TRY();
-	{
-		RunawayCleaner_StartCleanup();
-		assert_false("Cleanup didn't throw error");
-	}
-	PG_CATCH();
-	{
-		/*
-		 * Simulate PostgresMain error handler that calls RunawayCleaner_RunawayCleanupDoneForProcess
-		 * at the end of cleanup
-		 */
-		RunawayCleaner_RunawayCleanupDoneForProcess(false /* ignoredCleanup */);
-	}
-	PG_END_TRY();
-
-	assert_true(beginCleanupRunawayVersion == *latestRunawayVersion);
-	/* Cleanup is done, without ever throwing an ERROR */
-	assert_true(endCleanupRunawayVersion == beginCleanupRunawayVersion);
+	/* The cleanup shouldn't even start as the QE was deactivated at the time of the runaway*/
+	assert_true(beginCleanupRunawayVersion == 1);
+	assert_true(endCleanupRunawayVersion == 1);
 
 	/*
 	 * cleanupCountdown should not be decremented as this was an optional cleanup
 	 */
 	assert_true(MySessionState->cleanupCountdown == CLEANUP_COUNTDOWN);
+	assert_true(MySessionState->runawayStatus == RunawayStatus_PrimaryRunawaySession);
 
-	deactivationVersion = 0;
-	activationVersion = 0;
+	/*
+	 * Now simulate a scenario where the we activated but the runaway happened
+	 * before the activation
+	 */
+	beginCleanupRunawayVersion = 2;
+	endCleanupRunawayVersion = 2;
+
+	/* Another runaway happened after the last cleanup */
+	*latestRunawayVersion = beginCleanupRunawayVersion + 2;
+	activationVersion = 5;
+	deactivationVersion = 3;
+	isProcessActive = true;
+
+	RunawayCleaner_StartCleanup();
+
+	/* The cleanup shouldn't even start as the runaway event happened before the QE became active */
+	assert_true(beginCleanupRunawayVersion == 2);
+	assert_true(endCleanupRunawayVersion == 2);
+
+	/*
+	 * cleanupCountdown should not be decremented as this was an optional cleanup
+	 */
+	assert_true(MySessionState->cleanupCountdown == CLEANUP_COUNTDOWN);
+	assert_true(MySessionState->runawayStatus == RunawayStatus_PrimaryRunawaySession);
 }
 
 /*
@@ -364,31 +372,34 @@ test__RunawayCleaner_RunawayCleanupDoneForProcess__PreventsDuplicateCleanup(void
 {
 	InitFakeSessionState(2 /* activeProcessCount */,
 			2 /* cleanupCountdown */,
-			RunawayStatus_PrimaryRunawaySession /* runawayStatus */, 2 /* pinCount */, 12345 /* vmem */);
+			RunawayStatus_PrimaryRunawaySession /* runawayStatus */, CLEANUP_COUNTDOWN /* pinCount */, 12345 /* vmem */);
 
 	static fakeLatestRunawayVersion = 10;
 	latestRunawayVersion = &fakeLatestRunawayVersion;
+	*latestRunawayVersion = 10;
 	/*
 	 * Some imaginary cleanup begin/end event version. The idea is to ensure
 	 * that once the RunawayCleaner_RunawayCleanupDoneForProcess call returns
 	 * we will have both set to latestRunawayVersion
 	 */
-	beginCleanupRunawayVersion = 1;
+	beginCleanupRunawayVersion = *latestRunawayVersion;
 	endCleanupRunawayVersion = 0;
 
 	/* Make sure the cleanup goes through */
 	vmemTrackerInited = true;
-	isProcessActive = false;
+	isProcessActive = true;
 
 	RunawayCleaner_RunawayCleanupDoneForProcess(false /* ignoredCleanup */);
-	/* Nothing got cleaned as the process is not active */
-	assert_true(MySessionState->cleanupCountdown == 2);
-	/*
-	 * But we still have updated the cleanup timestamp to prevent
-	 * duplicate cleanup
-	 */
+	/* cleanupCountdown should be adjusted */
+	assert_true(MySessionState->cleanupCountdown == CLEANUP_COUNTDOWN - 1);
+
 	assert_true(beginCleanupRunawayVersion == endCleanupRunawayVersion);
 	assert_true(beginCleanupRunawayVersion == *latestRunawayVersion);
+
+	/* Second call shouldn't change anything */
+	RunawayCleaner_RunawayCleanupDoneForProcess(false /* ignoredCleanup */);
+	/* cleanupCountdown is unchanged */
+	assert_true(MySessionState->cleanupCountdown == CLEANUP_COUNTDOWN - 1);
 }
 
 /*
@@ -529,7 +540,7 @@ main(int argc, char* argv[])
             	unit_test(test__RunawayCleaner_StartCleanup__StartsCleanupIfPossible),
             	unit_test(test__RunawayCleaner_StartCleanup__IgnoresCleanupInCriticalSection),
             	unit_test(test__RunawayCleaner_StartCleanup__IgnoresCleanupInHoldoffInterrupt),
-            	unit_test(test__RunawayCleaner_RunawayCleanupDoneForProcess__IgnoresCleanupCountdownIfOptional),
+            	unit_test(test__RunawayCleaner_RunawayCleanupDoneForProcess__IgnoresCleanupIfNotRequired),
             	unit_test(test__RunawayCleaner_RunawayCleanupDoneForProcess__IgnoresDuplicateCalls),
             	unit_test(test__RunawayCleaner_RunawayCleanupDoneForProcess__PreventsDuplicateCleanup),
             	unit_test(test__RunawayCleaner_RunawayCleanupDoneForProcess__UndoDeactivation),

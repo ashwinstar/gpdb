@@ -39,10 +39,10 @@ extern volatile EventVersion *latestRunawayVersion;
 #define CLEANUP_COUNTDOWN_BEFORE_RUNAWAY -1
 
 /* The runaway version for which this process started cleaning up */
-EventVersion beginCleanupRunawayVersion = 0;
+static EventVersion beginCleanupRunawayVersion = 0;
 
 /* The runaway version for which this process finished cleaning up */
-EventVersion endCleanupRunawayVersion = 0;
+static EventVersion endCleanupRunawayVersion = 0;
 
 void RunawayCleaner_Init(void);
 void RunawayCleaner_StartCleanup(void);
@@ -58,6 +58,38 @@ RunawayCleaner_Init()
 	endCleanupRunawayVersion = 0;
 }
 
+/* Returns true if the current process should start a runaway cleanup */
+static bool
+RunawayCleaner_ShouldStartRunawayCleanup()
+{
+	if (NULL != MySessionState && MySessionState->runawayStatus != RunawayStatus_NotRunaway &&
+			beginCleanupRunawayVersion != *latestRunawayVersion)
+	{
+		AssertImply(isProcessActive, activationVersion >= deactivationVersion);
+		AssertImply(!isProcessActive, deactivationVersion >= activationVersion);
+
+		/*
+		 * We are marked as runaway. Therefore, if the runaway version happened before deactivation,
+		 * we must have a version counter increment
+		 */
+		AssertImply(*latestRunawayVersion < deactivationVersion && !isProcessActive, activationVersion < deactivationVersion);
+
+		if (isProcessActive && *latestRunawayVersion > activationVersion)
+		{
+			Assert(activationVersion >= deactivationVersion);
+			/* Active process and the runaway event came after the activation */
+			return true;
+		}
+		else if (!isProcessActive && *latestRunawayVersion < deactivationVersion &&
+				*latestRunawayVersion > activationVersion)
+		{
+			/* Inactive process, must have been called after a process is deactivated */
+			return true;
+		}
+	}
+
+	return false;
+}
 /*
  * Starts a runaway cleanup by triggering an ERROR if the VMEM tracker is active
  * and a commit is not already in progress. Otherwise, it marks the process as clean.
@@ -75,15 +107,14 @@ RunawayCleaner_StartCleanup()
 	 * during cleanup), we can observe that the cleanup already started from this runaway
 	 * event, and therefore we skip duplicate cleanup.
 	 */
-	if (NULL != MySessionState && MySessionState->runawayStatus != RunawayStatus_NotRunaway &&
-			beginCleanupRunawayVersion != *latestRunawayVersion)
+	if (RunawayCleaner_ShouldStartRunawayCleanup())
 	{
 		Assert(beginCleanupRunawayVersion < *latestRunawayVersion);
 		Assert(endCleanupRunawayVersion < *latestRunawayVersion);
 		/* We don't want to cleanup multiple times for same runaway event */
 		beginCleanupRunawayVersion = *latestRunawayVersion;
 
-		if (CritSectionCount == 0 && InterruptHoldoffCount == 0 && vmemTrackerInited &&
+		if (CritSectionCount == 0 && InterruptHoldoffCount == 0 && vmemTrackerInited && gp_command_count > 0 &&
 			/* Super user is terminated only when it's the primary runaway consumer (i.e., the top consumer) */
 			(!superuser() || MySessionState->runawayStatus == RunawayStatus_PrimaryRunawaySession))
 		{
@@ -95,14 +126,15 @@ RunawayCleaner_StartCleanup()
 			""); // tableName
 #endif
 
-			elog(ERROR, "Canceling query because of high VMEM usage. Used: %dMB, available %dMB, red zone: %dMB",
+			ereport(ERROR, (errmsg("Canceling query because of high VMEM usage. Used: %dMB, available %dMB, red zone: %dMB",
 					VmemTracker_ConvertVmemChunksToMB(MySessionState->sessionVmem), VmemTracker_GetAvailableVmemMB(),
-					RedZoneHandler_GetRedZoneLimitMB());
+					RedZoneHandler_GetRedZoneLimitMB()), errprintstack(true)));
 		}
 
 		/*
-		 * If we cannot error out because of a commit in progress,
-		 * simply declare this process as clean
+		 * If we cannot error out because of a critical section or a being a super user
+		 * or for some other reason (such as the QE is not running any valid command, i.e.,
+		 * gp_command_count is not positive) simply declare this process as clean
 		 */
 		RunawayCleaner_RunawayCleanupDoneForProcess(true /* ignoredCleanup */);
 	}
@@ -159,98 +191,67 @@ void
 RunawayCleaner_RunawayCleanupDoneForProcess(bool ignoredCleanup)
 {
 	/*
-	 * Ensure everyone in this function is responding to a single
-	 * OOM event, as we are not using locking extensively and if
-	 * the process is in deactivated state, it is not guaranteed to see
-	 * a single runaway event as it does not have the leverage on
-	 * cleanupCoundown, and multiple runaway events may be seen
-	 * during the course of this method.
+	 * If we don't have an ongoing cleanup, or we already finished
+	 * cleanup once for the current runaway event, then don't do anything
 	 */
-	EventVersion chosenRunawayEventVersion = *latestRunawayVersion;
+	if (beginCleanupRunawayVersion != *latestRunawayVersion ||
+			endCleanupRunawayVersion == beginCleanupRunawayVersion)
+	{
+		/* Either we never started cleanup, or we already finished */
+		return;
+	}
+
+	/* Disable repeating call */
+	endCleanupRunawayVersion = beginCleanupRunawayVersion;
+
+	Assert(NULL != MySessionState);
+	/*
+	 * As the current cleanup holds leverage on the  cleanupCountdown,
+	 * the session must stay as runaway until *at least* the current
+	 * process marks itself clean
+	 */
+	Assert(MySessionState->runawayStatus != RunawayStatus_NotRunaway);
+
+	/* We only cleanup if we were active when the runaway event happened */
+	Assert((!isProcessActive && *latestRunawayVersion < deactivationVersion &&
+			*latestRunawayVersion > activationVersion) ||
+			(*latestRunawayVersion > activationVersion &&
+			(activationVersion >= deactivationVersion && isProcessActive)));
 
 	/*
-	 * If we error out again after cleaning up a runaway event (not necessarily
-	 * a runaway cleanup error, but could be any error), this method would be
-	 * called again from PostgresMain error handler. We don't want to record
-	 * every cleanup as a runaway cleanup. Particularly, we don't want to
-	 * decrement the cleanupCountdown multiple times for a single runaway
-	 * event. Therefore, each call to this method records the runaway event
-	 * version for which it finished cleanup in endCleanupRunawayVersion.
-	 * Later on, no matter how many times we call this method during regular
-	 * error handling, we will not execute duplicate cleanup as the
-	 * endCleanupRunawayVersion is already set to the most recent runaway
-	 * event version.
+	 * We don't reactivate if the process is already active or a deactivated
+	 * process never errored out during deactivation (i.e., failed to complete
+	 * deactivation)
 	 */
-	if (NULL != MySessionState && MySessionState->runawayStatus != RunawayStatus_NotRunaway &&
-			endCleanupRunawayVersion != chosenRunawayEventVersion)
+	if (!isProcessActive && !ignoredCleanup)
+	{
+		Assert(1 == *isRunawayDetector);
+		Assert(0 < MySessionState->cleanupCountdown);
+		/*
+		 * As the process threw ERROR instead of going into ReadCommand() blocking
+		 * state, we have to reactivate the process from its current Deactivated
+		 * state
+		 */
+		IdleTracker_ActivateProcess();
+	}
+
+	Assert(0 < MySessionState->cleanupCountdown);
+#if USE_ASSERT_CHECKING
+	int cleanProgress =
+#endif
+			gp_atomic_add_32(&MySessionState->cleanupCountdown, -1);
+	Assert(0 <= cleanProgress);
+
+	bool finalCleaner = compare_and_swap_32((uint32*) &MySessionState->cleanupCountdown,
+			0, CLEANUP_COUNTDOWN_BEFORE_RUNAWAY);
+
+	if (finalCleaner)
 	{
 		/*
-		 * This process threw ERROR to cleanup at the time of deactivation.
-		 * Therefore, we need to "reactivate" it before we consider it
-		 * clean as we are no longer going to enter blocking state
-		 * in ReadCommand in immediate future.
-		 *
-		 * Note: in this case, the process does hold leverage on cleanupCountdown
-		 * as it is responding to a pre-deactivation era runaway event.
+		 * The final cleaner is responsible to reset the runaway flag,
+		 * and enable the runaway detection process.
 		 */
-		if (beginCleanupRunawayVersion == chosenRunawayEventVersion &&
-				chosenRunawayEventVersion < deactivationVersion &&
-				(activationVersion < deactivationVersion /* Runaway event would ensure
-				that the activationVersion is strictly smaller than deactivationVersion */&&
-				 !isProcessActive) && !ignoredCleanup)
-		{
-			Assert(1 == *isRunawayDetector);
-			Assert(0 < MySessionState->cleanupCountdown);
-			/*
-			 * As the process threw ERROR instead of going into ReadCommand() blocking
-			 * state, we have to reactivate the process from its current Deactivated
-			 * state
-			 */
-			IdleTracker_ActivateProcess();
-		}
-		/*
-		 * Setting beginCleanupRunawayVersion would prohibit this process
-		 * to become terminator in the future for the same runaway event
-		 */
-		beginCleanupRunawayVersion = chosenRunawayEventVersion;
-		/*
-		 * Setting endCleanupRunawayVersion would block multiple
-		 * cleanup by the same process for a single runaway event
-		 */
-		endCleanupRunawayVersion = beginCleanupRunawayVersion;
-
-		/* We only decrement if we were active when the runaway event happened */
-		if (chosenRunawayEventVersion < deactivationVersion ||
-				(chosenRunawayEventVersion > activationVersion &&
-				(activationVersion >= deactivationVersion /* Unlike rollbacking deactivation
-				in previous if block, we need a ">=" here as between previous deactivation and
-				reactivation there may not be any runaway event, and therefore activationVersion
-				may be equal to deactivationVersion */ && isProcessActive)))
-		{
-			/*
-			 * In this case, this process is holding a cleanupCountdown, so no other
-			 * runaway event is possible unless this one is finished cleanup.
-			 */
-			Assert(chosenRunawayEventVersion == *latestRunawayVersion);
-			Assert(0 < MySessionState->cleanupCountdown);
-#if USE_ASSERT_CHECKING
-			int cleanProgress =
-#endif
-					gp_atomic_add_32(&MySessionState->cleanupCountdown, -1);
-			Assert(0 <= cleanProgress);
-
-			bool finalCleaner = compare_and_swap_32((uint32*) &MySessionState->cleanupCountdown,
-					0, CLEANUP_COUNTDOWN_BEFORE_RUNAWAY);
-
-			if (finalCleaner)
-			{
-				/*
-				 * The final cleaner is responsible to reset the runaway flag,
-				 * and enable the runaway detection process.
-				 */
-				RunawayCleaner_RunawayCleanupDoneForSession();
-			}
-		}
+		RunawayCleaner_RunawayCleanupDoneForSession();
 	}
 }
 
