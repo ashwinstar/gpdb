@@ -39,14 +39,14 @@ GRANT EXECUTE ON FUNCTION session_state_memory_entries_f() TO public;
 
 --------------------------------------------------------------------------------
 -- @view: 
---        session_state_memory_entries
+--        session_level_memory_consumption
 --
 -- @doc:
 --        List of memory usage entries for sessions
 --        
 --------------------------------------------------------------------------------
 
-CREATE VIEW session_state_memory_entries AS
+CREATE VIEW session_level_memory_consumption AS
 WITH all_entries AS (
    SELECT C.*
           FROM gp_toolkit.__gp_localid, session_state_memory_entries_f() AS C (
@@ -89,6 +89,6 @@ FROM all_entries M LEFT OUTER JOIN
 pg_stat_activity as S
 ON M.sessionid = S.sess_id;
 
-GRANT SELECT ON session_state_memory_entries TO public;
+GRANT SELECT ON session_level_memory_consumption TO public;
 
 COMMIT;
