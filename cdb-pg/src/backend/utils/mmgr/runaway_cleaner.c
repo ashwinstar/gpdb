@@ -69,21 +69,23 @@ RunawayCleaner_ShouldStartRunawayCleanup()
 		AssertImply(!isProcessActive, deactivationVersion >= activationVersion);
 
 		/*
-		 * We are marked as runaway. Therefore, if the runaway version happened before deactivation,
+		 * We are marked as runaway. Therefore, if the runaway event happened before deactivation,
 		 * we must have a version counter increment
 		 */
 		AssertImply(*latestRunawayVersion < deactivationVersion && !isProcessActive, activationVersion < deactivationVersion);
 
 		if (isProcessActive && *latestRunawayVersion > activationVersion)
 		{
-			Assert(activationVersion >= deactivationVersion);
 			/* Active process and the runaway event came after the activation */
 			return true;
 		}
 		else if (!isProcessActive && *latestRunawayVersion < deactivationVersion &&
 				*latestRunawayVersion > activationVersion)
 		{
-			/* Inactive process, must have been called after a process is deactivated */
+			/*
+			 * The process is deactivated, but there is a pending runaway event before
+			 * the deactivation for which this process never cleaned up
+			 */
 			return true;
 		}
 	}
@@ -92,7 +94,7 @@ RunawayCleaner_ShouldStartRunawayCleanup()
 }
 /*
  * Starts a runaway cleanup by triggering an ERROR if the VMEM tracker is active
- * and a commit is not already in progress. Otherwise, it marks the process as clean.
+ * and a commit is not already in progress. Otherwise, it marks the process as clean
  */
 void
 RunawayCleaner_StartCleanup()
@@ -105,7 +107,7 @@ RunawayCleaner_StartCleanup()
 	 * beginCleanupRunawayVersion to the runaway version for which we started cleaning
 	 * up. Later on, if we reenter this method (e.g., another CHECK_FOR_INTERRUPTS()
 	 * during cleanup), we can observe that the cleanup already started from this runaway
-	 * event, and therefore we skip duplicate cleanup.
+	 * event, and therefore we skip duplicate cleanup
 	 */
 	if (RunawayCleaner_ShouldStartRunawayCleanup())
 	{
@@ -114,7 +116,9 @@ RunawayCleaner_StartCleanup()
 		/* We don't want to cleanup multiple times for same runaway event */
 		beginCleanupRunawayVersion = *latestRunawayVersion;
 
-		if (CritSectionCount == 0 && InterruptHoldoffCount == 0 && vmemTrackerInited && gp_command_count > 0 &&
+		if (CritSectionCount == 0 && InterruptHoldoffCount == 0 && vmemTrackerInited &&
+			gp_command_count > 0 /* Cleaning up QEs that are not executing a valid command
+			may cause the QD to get stuck [MPP-24950] */ &&
 			/* Super user is terminated only when it's the primary runaway consumer (i.e., the top consumer) */
 			(!superuser() || MySessionState->runawayStatus == RunawayStatus_PrimaryRunawaySession))
 		{
@@ -132,7 +136,7 @@ RunawayCleaner_StartCleanup()
 		}
 
 		/*
-		 * If we cannot error out because of a critical section or a being a super user
+		 * If we cannot error out because of a critical section or because we are a super user
 		 * or for some other reason (such as the QE is not running any valid command, i.e.,
 		 * gp_command_count is not positive) simply declare this process as clean
 		 */
@@ -191,8 +195,8 @@ void
 RunawayCleaner_RunawayCleanupDoneForProcess(bool ignoredCleanup)
 {
 	/*
-	 * If we don't have an ongoing cleanup, or we already finished
-	 * cleanup once for the current runaway event, then don't do anything
+	 * We don't do anything if we don't have an ongoing cleanup, or we already finished
+	 * cleanup once for the current runaway event
 	 */
 	if (beginCleanupRunawayVersion != *latestRunawayVersion ||
 			endCleanupRunawayVersion == beginCleanupRunawayVersion)
@@ -207,7 +211,7 @@ RunawayCleaner_RunawayCleanupDoneForProcess(bool ignoredCleanup)
 	Assert(NULL != MySessionState);
 	/*
 	 * As the current cleanup holds leverage on the  cleanupCountdown,
-	 * the session must stay as runaway until *at least* the current
+	 * the session must stay as runaway at least until the current
 	 * process marks itself clean
 	 */
 	Assert(MySessionState->runawayStatus != RunawayStatus_NotRunaway);
