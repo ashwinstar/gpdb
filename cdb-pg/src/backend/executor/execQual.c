@@ -4208,6 +4208,9 @@ static Datum ExecEvalPartOidExpr(PartOidExprState *exprstate,
 						bool *isNull, ExprDoneCond *isDone)
 {
 
+	Assert(NULL != exprstate);
+	Assert(NULL != isNull);
+
 	if (isDone)
 	{
 		*isDone = ExprSingleResult;
@@ -4216,10 +4219,11 @@ static Datum ExecEvalPartOidExpr(PartOidExprState *exprstate,
 	PartitionConstraints *constraint = *exprstate->acceptedLeafPart;
 	if (NULL != constraint)
 	{
+		*isNull = false;
 		return UInt32GetDatum(constraint->pRule->parchildrelid);
 	}
 
-
+	*isNull = true;
 	return PointerGetDatum(NULL);
 }
 
