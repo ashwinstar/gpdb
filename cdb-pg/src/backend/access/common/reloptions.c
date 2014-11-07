@@ -543,7 +543,7 @@ transformAOStdRdOptions(StdRdOptions *opts, Datum withOpts)
 	char intval[MAX_SOPT_VALUE_LEN];
 	Datum *withDatums = NULL;
 	text *t;
-	int len, i, nWithOpts = 0;
+	int len, i, withLen, soptLen, nWithOpts = 0;
 	ArrayType *withArr;
 	ArrayBuildState *astate = NULL;
 	bool foundAO = false, foundBlksz = false, foundComptype = false,
@@ -570,12 +570,19 @@ transformAOStdRdOptions(StdRdOptions *opts, Datum withOpts)
 			t = DatumGetTextP(withDatums[i]);
 			strval = VARDATA(t);
 			/*
+			 * Text datums are usually not null terminated.  We must
+			 * never access beyond their length.
+			 */
+			withLen = VARSIZE(t) - VARHDRSZ;
+
+			/*
 			 * withDatums[i] may not be used directly.  It may be
 			 * e.g. "aPPendOnly=tRue".  Therefore we don't set it as
 			 * reloptions as is.
 			 */
-			if (pg_strncasecmp(strval, SOPT_APPENDONLY,
-							   strlen(SOPT_APPENDONLY)) == 0)
+			soptLen = strlen(SOPT_APPENDONLY);
+			if (withLen > soptLen &&
+				pg_strncasecmp(strval, SOPT_APPENDONLY, soptLen) == 0)
 			{
 				foundAO = true;
 				strval = opts->appendonly ? "true" : "false";
@@ -587,8 +594,9 @@ transformAOStdRdOptions(StdRdOptions *opts, Datum withOpts)
 				astate = accumArrayResult(astate, PointerGetDatum(t), false,
 										  TEXTOID, CurrentMemoryContext);
 			}
-			if (pg_strncasecmp(strval, SOPT_BLOCKSIZE,
-							   strlen(SOPT_BLOCKSIZE)) == 0)
+			soptLen = strlen(SOPT_BLOCKSIZE);
+			if (withLen > soptLen &&
+				pg_strncasecmp(strval, SOPT_BLOCKSIZE, soptLen) == 0)
 			{
 				foundBlksz = true;
 				snprintf(intval, MAX_SOPT_VALUE_LEN, "%d", opts->blocksize);
@@ -600,9 +608,9 @@ transformAOStdRdOptions(StdRdOptions *opts, Datum withOpts)
 				astate = accumArrayResult(astate, PointerGetDatum(t), false,
 										  TEXTOID, CurrentMemoryContext);
 			}
-
-			if (pg_strncasecmp(strval, SOPT_COMPTYPE,
-							   strlen(SOPT_COMPTYPE)) == 0)
+			soptLen = strlen(SOPT_COMPTYPE);
+			if (withLen > soptLen &&
+				pg_strncasecmp(strval, SOPT_COMPTYPE, soptLen) == 0)
 			{
 				foundComptype = true;
 				Assert(opts->compresstype != NULL);
@@ -615,8 +623,9 @@ transformAOStdRdOptions(StdRdOptions *opts, Datum withOpts)
 				astate = accumArrayResult(astate, PointerGetDatum(t), false,
 										  TEXTOID, CurrentMemoryContext);
 			}
-			if (pg_strncasecmp(strval, SOPT_COMPLEVEL,
-							   strlen(SOPT_COMPLEVEL)) == 0)
+			soptLen = strlen(SOPT_COMPLEVEL);
+			if (withLen > soptLen &&
+				pg_strncasecmp(strval, SOPT_COMPLEVEL, soptLen) == 0)
 			{
 				foundComplevel = true;
 				snprintf(intval, MAX_SOPT_VALUE_LEN, "%d", opts->compresslevel);
@@ -628,9 +637,9 @@ transformAOStdRdOptions(StdRdOptions *opts, Datum withOpts)
 				astate = accumArrayResult(astate, PointerGetDatum(t), false,
 										  TEXTOID, CurrentMemoryContext);
 			}
-
-			if (pg_strncasecmp(strval, SOPT_CHECKSUM,
-							   strlen(SOPT_CHECKSUM)) == 0)
+			soptLen = strlen(SOPT_CHECKSUM);
+			if (withLen > soptLen &&
+				pg_strncasecmp(strval, SOPT_CHECKSUM, soptLen) == 0)
 			{
 				foundChecksum = true;
 				strval = opts->checksum ? "true" : "false";
@@ -642,8 +651,9 @@ transformAOStdRdOptions(StdRdOptions *opts, Datum withOpts)
 				astate = accumArrayResult(astate, PointerGetDatum(t), false,
 										  TEXTOID, CurrentMemoryContext);
 			}
-			if (pg_strncasecmp(strval, SOPT_ORIENTATION,
-							   strlen(SOPT_ORIENTATION)) == 0)
+			soptLen = strlen(SOPT_ORIENTATION);
+			if (withLen > soptLen &&
+				pg_strncasecmp(strval, SOPT_ORIENTATION, soptLen) == 0)
 			{
 				foundOrientation = true;
 				strval = opts->columnstore ? "column" : "row";
@@ -659,8 +669,9 @@ transformAOStdRdOptions(StdRdOptions *opts, Datum withOpts)
 			 * Record fillfactor only if it's specified in WITH
 			 * clause.  Default fillfactor is assumed otherwise.
 			 */
-			if (pg_strncasecmp(strval, SOPT_FILLFACTOR,
-							   strlen(SOPT_FILLFACTOR)) == 0)
+			soptLen = strlen(SOPT_FILLFACTOR);
+			if (withLen > soptLen &&
+				pg_strncasecmp(strval, SOPT_FILLFACTOR, soptLen) == 0)
 			{
 				snprintf(intval, MAX_SOPT_VALUE_LEN, "%d", opts->fillfactor);
 				len = VARHDRSZ + strlen(SOPT_FILLFACTOR) + 1 + strlen(intval);
