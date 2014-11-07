@@ -498,37 +498,42 @@ AppendOnlyBlockDirectory_GetEntry(
 		minipageInfo->numMinipageEntries > 0)
 	{
 		Assert(blockDirectory->currentSegmentFileInfo != NULL);
-		
-		/*
-		 * Check if the existing minipage contains the requested
-		 * rowNum. If so, just get it.
-		 */
-		entry_no = find_minipage_entry(minipageInfo->minipage,
+
+		MinipageEntry *firstentry =
+			&minipageInfo->minipage->entry[0];
+		if (rowNum >= firstentry->firstRowNum)
+		{
+			/*
+			 * Check if the existing minipage contains the requested
+			 * rowNum. If so, just get it.
+			 */
+			entry_no = find_minipage_entry(minipageInfo->minipage,
 									   minipageInfo->numMinipageEntries,
 									   rowNum);
-		if (entry_no != -1)
-		{
-			return set_directoryentry_range(blockDirectory,
+			if (entry_no != -1)
+			{
+				return set_directoryentry_range(blockDirectory,
 									 columnGroupNo,
 									 entry_no,
 									 directoryEntry);
 
-		}
+			}
 
-		/*
-		 * The given rowNum may point to a tuple that does not exist
-		 * in the AO table any more, either because of cancellation of
-		 * an insert, or due to crashes during an insert. If this is
-		 * the case, rowNum is smaller than the highest entry in
-		 * the in-memory minipage entry.
-		 */
-		else
-		{
-			MinipageEntry *entry =
-				&minipageInfo->minipage->entry[minipageInfo->numMinipageEntries - 1];
-			
-			if (rowNum < entry->firstRowNum + entry->rowCount - 1)
-				return false;
+			/*
+			 * The given rowNum may point to a tuple that does not exist
+			 * in the AO table any more, either because of cancellation of
+			 * an insert, or due to crashes during an insert. If this is
+			 * the case, rowNum is smaller than the highest entry in
+			 * the in-memory minipage entry.
+			 */
+			else
+			{
+				MinipageEntry *entry =
+					&minipageInfo->minipage->entry[minipageInfo->numMinipageEntries - 1];
+				
+				if (rowNum < entry->firstRowNum + entry->rowCount - 1)
+					return false;
+			}
 		}
 	}
 
