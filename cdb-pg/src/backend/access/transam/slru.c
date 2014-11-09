@@ -560,6 +560,24 @@ SimpleLruWritePage(SlruCtl ctl, int slotno, SlruFlush fdata)
 }
 
 /*
+ * Generate the file name for flat file.
+ */
+static void
+SlruFlatFileName(SlruCtl ctl, char *path, char *simpleFileName)
+{
+	char *dir = ctl->Dir;
+
+	if (isTxnDir(ctl->Dir))
+	{
+		dir = makeRelativeToTxnFilespace(ctl->Dir);
+	}
+
+	if (snprintf(path, MAXPGPATH, "%s/%s", dir, simpleFileName) > MAXPGPATH)
+	{
+		ereport(ERROR, (errmsg("cannot generate path %s/%s", dir, simpleFileName)));
+	}
+}
+/*
  * Physical read of a (previously existing) page into a buffer slot
  *
  * On failure, we cannot just ereport(ERROR) since caller has put state in
@@ -578,12 +596,10 @@ SlruPhysicalReadPage(SlruCtl ctl, int pageno, int slotno)
 	int			offset = rpageno * BLCKSZ;
 	char		simpleFileName[MAXPGPATH];
 	char		path[MAXPGPATH];
-	int			nbytes;
+	int			fd;
 
-	MirroredFlatFileOpen	mirroredOpen;
-
-	SlruFileName(ctl, path, segno);
 	SlruSimpleFileName(simpleFileName, segno);
+	SlruFlatFileName(ctl, path, simpleFileName);
 
 	/*
 	 * In a crash-and-restart situation, it's possible for us to receive
@@ -592,16 +608,8 @@ SlruPhysicalReadPage(SlruCtl ctl, int pageno, int slotno)
 	 * SlruPhysicalWritePage).	Hence, if we are InRecovery, allow the case
 	 * where the file doesn't exist, and return zeroes instead.
 	 */
-	
-	if (MirroredFlatFile_Open(
-						&mirroredOpen,
-						ctl->Dir,
-						simpleFileName,
-						O_RDWR | PG_BINARY,
-						S_IRUSR | S_IWUSR,
-						/* suppressError */ true,
-						/* atomic operation */ false,
-						/*isMirrorRecovery */ false))
+	fd = BasicOpenFile(path, O_RDWR | PG_BINARY, S_IRUSR | S_IWUSR);
+	if (fd < 0)
 	{
 		if (errno != ENOENT || !InRecovery)
 		{
@@ -617,20 +625,28 @@ SlruPhysicalReadPage(SlruCtl ctl, int pageno, int slotno)
 		return true;
 	}
 
-	if ((nbytes = MirroredFlatFile_Read(
-						&mirroredOpen,
-						offset,
-						shared->page_buffer[slotno],
-						BLCKSZ)) != BLCKSZ)
+	if (lseek(fd, (off_t) offset, SEEK_SET) < 0)
 	{
-		slru_errcause = SLRU_READ_FAILED;
+		slru_errcause = SLRU_SEEK_FAILED;
 		slru_errno = errno;
-		MirroredFlatFile_Close(&mirroredOpen);
+		close(fd);
 		return false;
 	}
 
-	// UNDONE: We don't have a suppressError for close...
-	MirroredFlatFile_Close(&mirroredOpen);
+	if (read(fd, shared->page_buffer[slotno], BLCKSZ) != BLCKSZ)
+	{
+		slru_errcause = SLRU_READ_FAILED;
+		slru_errno = errno;
+		close(fd);
+		return false;
+	}
+
+	if (close(fd))
+	{
+		slru_errcause = SLRU_CLOSE_FAILED;
+		slru_errno = errno;
+		return false;
+	}
 
 	return true;
 }
