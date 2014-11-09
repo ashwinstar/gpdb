@@ -268,7 +268,7 @@ extern void FileRepIpc_ShmemInit(void);
 /*
  * Block
  */
-extern void FileRep_IpcWait(PGSemaphoreData sem);
+extern void FileRep_IpcWait(PGSemaphoreData sem, int *refCount, LWLockId lockId);
 
 /*
  * Unblock

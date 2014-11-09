@@ -696,7 +696,7 @@ FileRepMirror_RunConsumer(void)
 				break;
 			}
 			
-			FileRep_IpcWait(fileRepIpcArray[fileRepShmem->ipcArrayIndex]->semC);
+			FileRep_IpcWait(fileRepIpcArray[fileRepShmem->ipcArrayIndex]->semC, &fileRepIpcArray[fileRepShmem->ipcArrayIndex]->refCountSemC, FileRepShmemLock);
 			
 			LWLockAcquire(FileRepShmemLock, LW_EXCLUSIVE);
 

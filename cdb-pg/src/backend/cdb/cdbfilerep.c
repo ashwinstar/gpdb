@@ -583,9 +583,15 @@ FileRepIpc_ShmemReInit(void)
 }
 
 void
-FileRep_IpcWait(PGSemaphoreData sem)
+FileRep_IpcWait(PGSemaphoreData sem, int *refCount, LWLockId lockId)
 {
-	PGSemaphoreLockInterruptable(&sem);
+	bool success = PGSemaphoreLockInterruptable(&sem);
+	if (!success)
+	{
+		LWLockAcquire(lockId, LW_EXCLUSIVE);
+		(*refCount)--;
+		LWLockRelease(lockId);
+	}
 }
 
 void
@@ -1139,7 +1145,7 @@ FileRep_ReserveShmem(
 			}
 			else
 			{
-				FileRep_IpcWait(fileRepIpcArray[fileRepShmem->ipcArrayIndex]->semP);
+				FileRep_IpcWait(fileRepIpcArray[fileRepShmem->ipcArrayIndex]->semP, &fileRepIpcArray[fileRepShmem->ipcArrayIndex]->refCountSemP, lockId); 
 			}
 		}
 	}

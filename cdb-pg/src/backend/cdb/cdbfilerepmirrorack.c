@@ -403,7 +403,7 @@ FileRepAckMirror_RunSender(void)
 				break;
 			}
 			
-			FileRep_IpcWait(fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->semC);
+			FileRep_IpcWait(fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->semC, &fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->refCountSemC, FileRepAckShmemLock);
 						
 			LWLockAcquire(FileRepAckShmemLock, LW_EXCLUSIVE); 
 			

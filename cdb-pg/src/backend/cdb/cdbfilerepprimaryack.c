@@ -646,7 +646,7 @@ FileRepAckPrimary_NewHashEntry(
 			}
 			else
 			{
-				FileRep_IpcWait(fileRepIpcArray[fileRepAckHashShmem->ipcArrayIndex]->semC);
+				FileRep_IpcWait(fileRepIpcArray[fileRepAckHashShmem->ipcArrayIndex]->semC, &fileRepIpcArray[fileRepAckHashShmem->ipcArrayIndex]->refCountSemC, FileRepAckHashShmemLock);
 			}	
 			
 			continue;
@@ -863,7 +863,7 @@ FileRepAckPrimary_IsOperationCompleted(
 			}
 			else
 			{
-				FileRep_IpcWait(fileRepIpcArray[fileRepAckHashShmem->ipcArrayIndex]->semP);
+				FileRep_IpcWait(fileRepIpcArray[fileRepAckHashShmem->ipcArrayIndex]->semP, &fileRepIpcArray[fileRepAckHashShmem->ipcArrayIndex]->refCountSemP, FileRepAckHashShmemLock);
 			}			
 			
 			/*
@@ -1020,7 +1020,7 @@ FileRepAckPrimary_RunConsumer(void)
 				break;
 			}
 			
-			FileRep_IpcWait(fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->semC);
+			FileRep_IpcWait(fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->semC, &fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->refCountSemC, FileRepAckShmemLock);
 			
 			LWLockAcquire(FileRepAckShmemLock, LW_EXCLUSIVE);
 			
@@ -1263,7 +1263,7 @@ FileRepAckPrimary_RunConsumerVerification(
 			break;
 		}
 		
-		FileRep_IpcWait(fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->semC);
+		FileRep_IpcWait(fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->semC, &fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->refCountSemC, FileRepAckShmemLock);
 		
 		LWLockAcquire(FileRepAckShmemLock, LW_EXCLUSIVE);
 		

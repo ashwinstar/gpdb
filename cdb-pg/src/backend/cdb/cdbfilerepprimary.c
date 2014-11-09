@@ -1788,7 +1788,7 @@ FileRepPrimary_RunSender(void)
 				break;
 			}
 			
-			FileRep_IpcWait(fileRepIpcArray[fileRepShmem->ipcArrayIndex]->semC);
+			FileRep_IpcWait(fileRepIpcArray[fileRepShmem->ipcArrayIndex]->semC, &fileRepIpcArray[fileRepShmem->ipcArrayIndex]->refCountSemC, FileRepShmemLock);
 			
 			//pg_usleep(1000L); /* 1 ms */
 			
