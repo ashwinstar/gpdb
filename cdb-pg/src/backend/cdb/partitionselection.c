@@ -532,6 +532,8 @@ processLevel(PartitionSelectorState *node, int level, TupleTableSlot *inputTuple
 		}
 	}
 
+	list_free(satisfiedPartConstraints);
+
 	/* After finish iteration, reset this level's PartitionConstraints */
 	node->levelPartConstraints[level] = NULL;
 
