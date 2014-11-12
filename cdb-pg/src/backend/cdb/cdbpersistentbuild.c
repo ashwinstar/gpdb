@@ -296,13 +296,6 @@ static void PersistentBuild_PopulateGpRelationNode(
 			/*
 			 * Append-Only.
 			 */
-			if (dbInfoRel->physicalSegmentFilesCount == 0 ||
-				dbInfoRel->physicalSegmentFiles[0].segmentFileNum != 0)
-			{
-				elog(ERROR, "Physical segment file #0 missing for relation '%s'",
-				     dbInfoRel->relname);
-			}
-
 			/*
 			 * Merge physical file existence and ao[cs]seg catalog logical EOFs .
 			 */
