@@ -20,7 +20,7 @@
 from gppylib.mainUtils import *
 
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
-import os, sys, getopt, socket, StringIO, signal
+import os, sys, getopt, socket, StringIO, signal, time
 from gppylib import gparray, gplog, pgconf, userinput, utils 
 from gppylib.util import gp_utils
 from gppylib.commands import base, gp, pg, unix
@@ -1145,6 +1145,52 @@ class GpRecoverSegmentProgram:
         if persistent_check_failed:
             raise Exception('Persistent tables check failed. Please fix the persistent tables issues before running recoverseg')
 
+    """
+    The method uses gp_primarymirror to get the status of all the segments which are up and running.
+    It checks to see if the segmentState field in the output is "Ready". If even one of the segments
+    is not in ready state, then we fail. 
+    """
+    def _check_segment_state(self, confProvider):
+        logger.info('Checking if segments are ready')
+        gpArray = confProvider.loadSystemConfig(useUtilityMode=True)
+        segments = [seg for seg in gpArray.getDbList() if seg.isSegmentUp() and not seg.isSegmentMaster() and not seg.isSegmentStandby()]
+        for seg in segments:
+            cmd = gp.SendFilerepTransitionStatusMessage(name='Get segment status',
+                                              msg=gp.SEGMENT_STATUS_GET_STATUS,
+                                              dataDir=seg.getSegmentDataDirectory(),
+                                              port=seg.getSegmentPort(),
+                                              ctxt=gp.REMOTE,
+                                              remoteHost=seg.getSegmentHostName())
+            self.__pool.addCommand(cmd)
+        self.__pool.join()
+  
+        for item in self.__pool.getCompletedItems():
+            result = item.get_results()
+            if 'segmentState: Ready' not in result.stderr:
+                raise Exception('Not ready to connect to database %s' % result.stderr)
+
+    """
+    When a primary segment goes down and its mirror has not yet failed over to Change Tracking, 
+    If we try to start a transaction it will fail. This results in the python scripts which try
+    to run queries return a confusing error message. The solution here is to use gp_primarymirror
+    to check the status of all the primary segments and make sure they are in "Ready" state. If
+    they are not, then we retry for a maximum of 5 times before giving up.
+    """
+    def _check_database_connection(self, confProvider):
+        retry = 0
+        MAX_RETRIES = 5 
+        while retry < MAX_RETRIES:
+            try:
+                self._check_segment_state(confProvider)
+            except Exception as e:
+                logger.debug('Encountered error %s' % str(e))
+                logger.info('Unable to connect to database. Retrying %s' % (retry + 1))
+            else:
+                return True
+            retry += 1
+            time.sleep(5)
+        return False
+
     def run(self):
         if self.__options.parallelDegree < 1 or self.__options.parallelDegree > 64:
             raise ProgramArgumentValidationException("Invalid parallelDegree provided with -B argument: %d" % self.__options.parallelDegree)
@@ -1171,6 +1217,10 @@ class GpRecoverSegmentProgram:
         faultProberInterface.getFaultProber().initializeProber(gpEnv.getMasterPort())
 
         confProvider = configInterface.getConfigurationProvider().initializeProvider(gpEnv.getMasterPort())
+
+        if not self._check_database_connection(confProvider):
+            raise Exception('Unable to connect to database and start transaction')
+
         gpArray = confProvider.loadSystemConfig(useUtilityMode=False) 
 
         # Make sure gpArray and segments are in agreement on current state of system.
