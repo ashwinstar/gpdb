@@ -46,4 +46,6 @@ extern List *getExprListFromTargetList(List *tlist, int numCols, AttrNumber *col
 extern void remove_unused_initplans(Plan *plan, PlannerInfo *root);
 
 extern int32 cdbhash_const(Const *pconst, int iSegments);
+extern int32 cdbhash_const_list(List *plConsts, int iSegments);
+
 #endif   /* CDBMUTATE_H */

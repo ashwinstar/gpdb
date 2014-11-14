@@ -30,6 +30,7 @@
 #include "gpos/base.h"
 
 #include "dxl/operators/CDXLNode.h"
+#include "dxl/operators/CDXLDirectDispatchInfo.h"
 
 #include "gpopt/mdcache/CMDAccessor.h"
 #include "gpopt/translate/CTranslatorDXLToPlStmt.h"
@@ -272,6 +273,29 @@ CTranslatorDXLToPlStmt::PplstmtFromDXL
 	pplstmt->intoPolicy = m_pctxdxltoplstmt->Pdistrpolicy();
 	
 	SetInitPlanVariables(pplstmt);
+	
+	if (CMD_SELECT == m_cmdtype && NULL != pdxln->Pdxlddinfo())
+	{
+		List *plDirectDispatchSegIds = PlDirectDispatchSegIds(pdxln->Pdxlddinfo());
+		pplan->directDispatch.contentIds = plDirectDispatchSegIds;
+		pplan->directDispatch.isDirectDispatch = (NIL != plDirectDispatchSegIds);
+		
+		if (pplan->directDispatch.isDirectDispatch)
+		{
+			List *plMotions = gpdb::PlExtractNodesPlan(pplstmt->planTree, T_Motion, true /*descendIntoSubqueries*/);
+			ListCell *plc = NULL;
+			ForEach(plc, plMotions)
+			{
+				Motion *pmotion = (Motion *) lfirst(plc);
+				GPOS_ASSERT(IsA(pmotion, Motion));
+				GPOS_ASSERT(gpdb::FMotionGather(pmotion));
+				
+				pmotion->plan.directDispatch.isDirectDispatch = true;
+				pmotion->plan.directDispatch.contentIds = pplan->directDispatch.contentIds;
+			}
+		}
+	}
+	
 	return pplstmt;
 }
 
@@ -4412,7 +4436,7 @@ CTranslatorDXLToPlStmt::PplanDML
 
 	if (CMD_INSERT == m_cmdtype && 0 == pplan->nMotionNodes)
 	{
-		List *plDirectDispatchSegIds = PlDirectDispatchSegIds(pdxlop->PdrgpdxldatumDirectDispatchInfo());
+		List *plDirectDispatchSegIds = PlDirectDispatchSegIds(pdxlop->Pdxlddinfo());
 		pplan->directDispatch.contentIds = plDirectDispatchSegIds;
 		pplan->directDispatch.isDirectDispatch = (NIL != plDirectDispatchSegIds);
 	}
@@ -4447,24 +4471,35 @@ CTranslatorDXLToPlStmt::PplanDML
 List *
 CTranslatorDXLToPlStmt::PlDirectDispatchSegIds
 	(
-	DrgPdxldatum *pdrgpdxldatum
+	CDXLDirectDispatchInfo *pdxlddinfo
 	)
 {
-	if (0 == pdrgpdxldatum->UlSafeLength())
+	if (!optimizer_direct_dispatch || NULL == pdxlddinfo)
 	{
 		return NIL;
 	}
 	
-	CDXLDatum *pdxldatum = (*pdrgpdxldatum)[0];
+	DrgPdrgPdxldatum *pdrgpdrgpdxldatum = pdxlddinfo->Pdrgpdrgpdxldatum();
 	
-	ULONG ulHashCode = UlCdbHash(pdxldatum);
-	
-	const ULONG ulDatums = pdrgpdxldatum->UlLength();
-	for (ULONG ul = 1; ul < ulDatums; ul++)
+	if (0 == pdrgpdrgpdxldatum->UlSafeLength())
 	{
-		ULONG ulNewHash = UlCdbHash((*pdrgpdxldatum)[ul]);
-		if (ulHashCode != ulNewHash)
+		return NIL;
+	}
+	
+	DrgPdxldatum *pdrgpdxldatum = (*pdrgpdrgpdxldatum)[0];
+	GPOS_ASSERT(0 < pdrgpdxldatum->UlLength());
+		
+	ULONG ulHashCode = UlCdbHash(pdrgpdxldatum);
+	const ULONG ulLength = pdrgpdrgpdxldatum->UlLength();
+	for (ULONG ul = 0; ul < ulLength; ul++)
+	{
+		DrgPdxldatum *pdrgpdxldatumDisj = (*pdrgpdrgpdxldatum)[ul];
+		GPOS_ASSERT(0 < pdrgpdxldatumDisj->UlLength());
+		ULONG ulHashCodeNew = UlCdbHash(pdrgpdxldatumDisj);
+		
+		if (ulHashCode != ulHashCodeNew)
 		{
+			// values don't hash to the same segment
 			return NIL;
 		}
 	}
@@ -4484,13 +4519,24 @@ CTranslatorDXLToPlStmt::PlDirectDispatchSegIds
 ULONG
 CTranslatorDXLToPlStmt::UlCdbHash
 	(
-	CDXLDatum *pdxldatum
+	DrgPdxldatum *pdrgpdxldatum
 	)
 {
-	Const *pconst = (Const *) m_pdxlsctranslator->PconstFromDXLDatum(pdxldatum);
-	ULONG ulHash = gpdb::ICdbHash(pconst, m_ulSegments);
+	List *plConsts = NIL;
+	
+	const ULONG ulLength = pdrgpdxldatum->UlLength();
+	
+	for (ULONG ul = 0; ul < ulLength; ul++)
+	{
+		CDXLDatum *pdxldatum = (*pdrgpdxldatum)[ul];
+		
+		Const *pconst = (Const *) m_pdxlsctranslator->PconstFromDXLDatum(pdxldatum);
+		plConsts = gpdb::PlAppendElement(plConsts, pconst);
+	}
 
-	gpdb::GPDBFree(pconst);
+	ULONG ulHash = gpdb::ICdbHashList(plConsts, m_ulSegments);
+
+	gpdb::FreeListDeep(plConsts);
 	
 	return ulHash;
 }

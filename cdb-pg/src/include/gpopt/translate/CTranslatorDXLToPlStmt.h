@@ -81,6 +81,7 @@ namespace gpdxl
 	// fwd decl
 	class CDXLNode;
 	class CDXLPhysicalCTAS;
+	class CDXLDirectDispatchInfo;
 
 	//---------------------------------------------------------------------------
 	//	@class:
@@ -800,10 +801,10 @@ namespace gpdxl
 			List *PlCtasOptions(CDXLCtasStorageOptions::DrgPctasOpt *pdrgpctasopt);
 			
 			// compute directed dispatch segment ids
-			List *PlDirectDispatchSegIds(DrgPdxldatum *pdrgpdxldatum);
+			List *PlDirectDispatchSegIds(CDXLDirectDispatchInfo *pdxlddinfo);
 			
 			// hash a DXL datum with GPDB's hash function
-			ULONG UlCdbHash(CDXLDatum *pdxldatum);
+			ULONG UlCdbHash(DrgPdxldatum *pdrgpdxldatum);
 
 	};
 }

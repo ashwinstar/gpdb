@@ -173,6 +173,8 @@
 #define ALLOW_resolve_generic_type
 #define ALLOW_has_subclass
 #define ALLOW_cdbhash_const
+#define ALLOW_cdbhash_const_list
+
 #define ALLOW_ExecCheckRTPerms
 #define ALLOW_evaluate_expr
 #define ALLOW_get_operator_opclasses
@@ -186,6 +188,7 @@
 #define ALLOW_child_distribution_mismatch
 #define ALLOW_child_triggers
 #define ALLOW_static_part_selection
+#define ALLOW_isMotionGather
 
 #include "gpopt/utils/gpdbdefs.h"
 
@@ -1712,6 +1715,20 @@ gpdb::FreeList
 }
 
 void
+gpdb::FreeListDeep
+	(
+	List *plist
+	)
+{
+	GP_WRAP_START;
+	{
+		list_free_deep(plist);
+		return;
+	}
+	GP_WRAP_END;
+}
+
+void
 gpdb::FreeListAndNull
 	(
 	List **listPtrPtr
@@ -1723,6 +1740,20 @@ gpdb::FreeListAndNull
 		return;
 	}
 	GP_WRAP_END;
+}
+
+bool
+gpdb::FMotionGather
+	(
+	const Motion *pmotion
+	)
+{
+	GP_WRAP_START;
+	{
+		return isMotionGather(pmotion);
+	}
+	GP_WRAP_END;
+	return false;
 }
 
 TypeCacheEntry *
@@ -2677,6 +2708,22 @@ gpdb::ICdbHash
 	GP_WRAP_START;
 	{
 		return cdbhash_const(pconst, iSegments);	
+	}
+	GP_WRAP_END;
+	return 0;
+}
+
+// hash a list of const values with GPDB's hash function
+int32 
+gpdb::ICdbHashList
+	(
+	List *plConsts,
+	int iSegments
+	)
+{
+	GP_WRAP_START;
+	{
+		return cdbhash_const_list(plConsts, iSegments);	
 	}
 	GP_WRAP_END;
 	return 0;

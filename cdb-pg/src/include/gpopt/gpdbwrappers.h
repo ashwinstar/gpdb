@@ -53,6 +53,7 @@ struct DefElem;
 struct GpPolicy;
 struct PartitionSelector;
 struct SelectedParts;
+struct Motion;
 
 namespace gpdb {
 
@@ -361,11 +362,17 @@ namespace gpdb {
 
 	// free list
 	void FreeList(List *plist);
+	
+	// deep free of a list
+	void FreeListDeep(List *plist);
 
 	// if pplist is non-NULL, and *pplist is non-NULL then free the list and set
 	// *pplist to NULL
 	void FreeListAndNull(List **pplist);
 
+	// is this a Gather motion
+	bool FMotionGather(const Motion *pmotion);
+	
 	// lookup type cache
 	TypeCacheEntry *PtceLookup(Oid type_id, int flags);
 
@@ -558,6 +565,9 @@ namespace gpdb {
 	
 	// hash a const value with GPDB's hash function
 	int32 ICdbHash(Const *pconst, int iSegments);
+	
+	// hash a list of const values with GPDB's hash function
+	int32 ICdbHashList(List *plConsts, int iSegments);
 	
 	// check permissions on range table 
 	void CheckRTPermissions(List *plRangeTable);

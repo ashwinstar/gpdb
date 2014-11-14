@@ -2445,6 +2445,44 @@ cdbhash_const(Const *pconst, int iSegments)
 	return cdbhashreduce(pcdbhash);	
 }
 
+/* 
+ * Hash a list of const values with GPDB's hash function
+ */
+int32 
+cdbhash_const_list(List *plConsts, int iSegments)
+{
+	Assert(0 < list_length(plConsts));
+	
+	CdbHash *pcdbhash = makeCdbHash(iSegments, HASH_FNV_1);
+	cdbhashinit(pcdbhash);
+
+	ListCell   *lc = NULL;
+
+	foreach(lc, plConsts)
+	{
+		Const *pconst = (Const *) lfirst(lc);
+		Assert(IsA(pconst, Const));
+		
+		if (pconst->constisnull)
+		{
+			cdbhashnull(pcdbhash);
+		}
+		else
+		{
+			Assert(isGreenplumDbHashable(pconst->consttype));
+			Oid oidType = pconst->consttype;
+				
+			if (typeIsArrayType(oidType))
+			{
+				oidType = ANYARRAYOID;
+			}
+			cdbhash(pcdbhash, pconst->constvalue, oidType);
+		}		
+	}
+
+	return cdbhashreduce(pcdbhash);
+}
+
 /*
  * return the IDs of RTEs that are referenced in the given plan
  */

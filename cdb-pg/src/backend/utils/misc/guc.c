@@ -741,8 +741,9 @@ bool		optimizer_enable_materialize;
 bool		optimizer_enable_partition_propagation;
 bool		optimizer_enable_partition_selection;
 bool		optimizer_enable_outerjoin_rewrite;
-bool            optimizer_enable_space_pruning;
-bool            optimizer_prefer_multistage_agg;
+bool        optimizer_enable_space_pruning;
+bool        optimizer_prefer_multistage_agg;
+bool		optimizer_direct_dispatch;
 bool		optimizer_enable_hashjoin_redistribute_broadcast_children;
 bool		optimizer_enumerate_plans;
 bool		optimizer_sample_plans;
@@ -3998,6 +3999,15 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&optimizer_enable_outerjoin_rewrite,
+		true, NULL, NULL
+	},
+	{
+		{"optimizer_direct_dispatch", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable direct dispatch in the optimizer."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_direct_dispatch,
 		true, NULL, NULL
 	},
         {
