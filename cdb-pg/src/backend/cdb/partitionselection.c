@@ -488,6 +488,7 @@ processLevel(PartitionSelectorState *node, int level, TupleTableSlot *inputTuple
 	{
 		PartitionConstraints *partConstraint = (PartitionConstraints *) lfirst(lc);
 		node->levelPartConstraints[level] = partConstraint;
+		bool freeConstraint = true;
 
 		/* If we already in the leaf level */
 		if (level == ps->nLevels - 1)
@@ -519,6 +520,7 @@ processLevel(PartitionSelectorState *node, int level, TupleTableSlot *inputTuple
 					 * so we must save it here (GPSQL-2956).
 					 */
 					node->acceptedLeafPart = partConstraint;
+					freeConstraint = false;
 				}
 			}
 		}
@@ -529,6 +531,11 @@ processLevel(PartitionSelectorState *node, int level, TupleTableSlot *inputTuple
 			selparts->partOids = list_concat(selparts->partOids, selpartsChild->partOids);
 			selparts->scanIds = list_concat(selparts->scanIds, selpartsChild->scanIds);
 			pfree(selpartsChild);
+		}
+
+		if (freeConstraint)
+		{
+			pfree(partConstraint);
 		}
 	}
 

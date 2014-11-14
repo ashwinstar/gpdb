@@ -186,8 +186,11 @@ ExecPartitionSelector(PartitionSelectorState *node)
 	}
 
 	/* reset acceptedLeafPart */
-	node->acceptedLeafPart = NULL;
-
+	if (NULL != node->acceptedLeafPart)
+	{
+		pfree(node->acceptedLeafPart);
+		node->acceptedLeafPart = NULL;
+	}
 	return candidateOutputSlot;
 }
 
