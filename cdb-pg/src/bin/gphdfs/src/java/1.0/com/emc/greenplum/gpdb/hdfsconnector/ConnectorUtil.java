@@ -62,16 +62,16 @@ public class ConnectorUtil
 		 * NOTE: Unless the version is MR, we're going to use ordinary
 		 * hdfs://.
 		 */
-		String uri = inputURI.getHost();
-		if (inputURI.getPort() != -1) {
-			uri += ":"+inputURI.getPort();
-		}
+		if (connVer.startsWith("gpmr")) {
+			conf.set("fs.maprfs.impl", "com.mapr.fs.MapRFileSystem");
+			conf.set("fs.default.name", "maprfs:///" + inputURI.getHost());
+		} else {
+			String uri = inputURI.getHost();
+			if (inputURI.getPort() != -1) {
+				uri += ":"+inputURI.getPort();
+			}
 
-	    if (connVer.startsWith("gpmr")) {
-	    	conf.set("fs.maprfs.impl", "com.mapr.fs.MapRFileSystem");
-	    	conf.set("fs.default.name", "maprfs://" + uri);
-	    } else {
-	    	conf.set("fs.default.name", "hdfs://" + uri);
-	    }
+			conf.set("fs.default.name", "hdfs://" + uri);
+		}
 	}
 }

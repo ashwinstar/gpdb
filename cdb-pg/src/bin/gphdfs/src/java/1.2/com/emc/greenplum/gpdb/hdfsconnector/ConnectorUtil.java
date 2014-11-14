@@ -52,17 +52,17 @@ public class ConnectorUtil
 		 * NOTE: Unless the version is MR, we're going to use ordinary
 		 * hdfs://. 
 		 */
-		String uri = inputURI.getHost();
-		if (inputURI.getPort() != -1) {
-			uri += ":" + inputURI.getPort();
-		}
+		if (connVer.startsWith("gpmr")) {
+			conf.set("fs.maprfs.impl", "com.mapr.fs.MapRFileSystem");
+			conf.set("fs.defaultFS", "maprfs:///" + inputURI.getHost());
+		} else {
+			String uri = inputURI.getHost();
+			if (inputURI.getPort() != -1) {
+				uri += ":" + inputURI.getPort();
+			}
 
-	    if (connVer.startsWith("gpmr")) {
-	    	conf.set("fs.maprfs.impl", "com.mapr.fs.MapRFileSystem");
-			conf.set("fs.defaultFS", "maprfs://" + uri);
-	    } else {
 			conf.set("fs.defaultFS", "hdfs://" + uri);
-	    }
+		}
 	}
 
 	protected static final String HADOOP_SECURITY_USER_KEYTAB_FILE = 
