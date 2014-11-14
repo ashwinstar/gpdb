@@ -8,6 +8,7 @@ bin/gpdebug
 bin/gpfaultinjector
 bin/gptorment.pl
 bin/gpverify
+bin/gp_filedump
 bin/lib/gpgetconfig.py
 bin/lib/gpsnap.py
 bin/pgbench
