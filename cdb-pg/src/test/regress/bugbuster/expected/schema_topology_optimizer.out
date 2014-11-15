@@ -1185,7 +1185,7 @@ Append-Only Table "public.test"
 Compression Type: zlib
 Compression Level: 3
 Block Size: 32768
-Checksum: f
+Checksum: t
 Distributed by: (a)
 
 \echo -- end_ignore
@@ -1208,7 +1208,7 @@ Append-Only Table "public.new_test"
 Compression Type: zlib
 Compression Level: 3
 Block Size: 32768
-Checksum: f
+Checksum: t
 Distributed by: (a)
 
 \echo -- end_ignore
@@ -1227,7 +1227,7 @@ Append-Only Table "public.test"
 Compression Type: zlib
 Compression Level: 3
 Block Size: 32768
-Checksum: f
+Checksum: t
 Distributed by: (a)
 
 \echo -- end_ignore
@@ -3525,7 +3525,7 @@ NOTICE:  CREATE TABLE will create partition "co_compr_part_2_1_prt_5_2_prt_sp2" 
  a40    | bit varying(5)              |                                                              | extended | rle_type         | 4                 | 32768      | 
  a41    | smallint                    |                                                              | plain    | rle_type         | 4                 | 32768      | 
  a42    | integer                     |                                                              | plain    | rle_type         | 4                 | 32768      | 
-Checksum: f
+Checksum: t
 Check constraints:
     "co_compr_part_2_1_prt_1_2_prt_sp1_check" CHECK (a2 = 'M    '::bpchar)
     "co_compr_part_2_1_prt_1_check" CHECK (a1 >= 1 AND a1 < 1001)
@@ -3597,7 +3597,7 @@ NOTICE:  CREATE TABLE will create partition "co_compr_part_2_1_prt_new_p_2_prt_d
  a40    | bit varying(5)              |                                                              | extended | none             | 0                 | 32768      | 
  a41    | smallint                    |                                                              | plain    | none             | 0                 | 32768      | 
  a42    | integer                     |                                                              | plain    | none             | 0                 | 32768      | 
-Checksum: f
+Checksum: t
 Check constraints:
     "co_compr_part_2_1_prt_new_p_2_prt_sp1_check" CHECK (a2 = 'M    '::bpchar)
     "co_compr_part_2_1_prt_new_p_check" CHECK (a1 >= 5050 AND a1 < 5061)
@@ -3659,7 +3659,7 @@ NOTICE:  CREATE TABLE will create partition "co_compr_part_2_1_prt_df_p_2_prt_df
  a40    | bit varying(5)              |                                                              | extended | none             | 0                 | 32768      | 
  a41    | smallint                    |                                                              | plain    | none             | 0                 | 32768      | 
  a42    | integer                     |                                                              | plain    | none             | 0                 | 32768      | 
-Checksum: f
+Checksum: t
 Check constraints:
     "co_compr_part_2_1_prt_df_p_2_prt_sp1_check" CHECK (a2 = 'M    '::bpchar)
 Inherits: co_compr_part_2_1_prt_df_p
@@ -4034,7 +4034,7 @@ NOTICE:  CREATE TABLE will create implicit sequence "co_compr_type_tb_id_seq" fo
  a4     | date_type1      |                                                               | plain   | zlib             | 2                 | 32768      | 
  a5     | varchar_type1   |                                                               | plain   | zlib             | 9                 | 32768      | 
  a6     | timestamp_type1 |                                                               | plain   | rle_type         | 4                 | 32768      | 
-Checksum: f
+Checksum: t
 Has OIDs: no
 Options: appendonly=true, orientation=column
 Distributed randomly
@@ -4151,7 +4151,7 @@ Alter type int_type1 set default encoding (compresstype=rle_type,compresslevel=3
  a4              | date_type1      |                                                               | plain   | zlib             | 2                 | 32768      | 
  a5              | varchar_type1   |                                                               | plain   | zlib             | 9                 | 32768      | 
  a6              | timestamp_type1 |                                                               | plain   | rle_type         | 4                 | 32768      | 
-Checksum: f
+Checksum: t
 Has OIDs: no
 Options: appendonly=true, orientation=column
 Distributed randomly
@@ -4245,7 +4245,7 @@ CREATE INDEX co_compr_quicklz_with_idx_btree ON co_compr_quicklz_with(a9);
  a40    | bit varying(5)              |                                                                    | extended | quicklz          | 1                 | 32768      | 
  a41    | smallint                    |                                                                    | plain    | quicklz          | 1                 | 32768      | 
  a42    | integer                     |                                                                    | plain    | quicklz          | 1                 | 32768      | 
-Checksum: f
+Checksum: t
 Indexes:
     "co_compr_quicklz_with_idx_bitmap" bitmap (a1)
     "co_compr_quicklz_with_idx_btree" btree (a9)
@@ -4404,7 +4404,7 @@ CREATE INDEX co_compr_zlib_with_idx_btree ON co_compr_zlib_with(a9);
  a40    | bit varying(5)              |                                                                 | extended | zlib             | 1                 | 32768      | 
  a41    | smallint                    |                                                                 | plain    | zlib             | 1                 | 32768      | 
  a42    | integer                     |                                                                 | plain    | zlib             | 1                 | 32768      | 
-Checksum: f
+Checksum: t
 Indexes:
     "co_compr_zlib_with_idx_bitmap" bitmap (a1)
     "co_compr_zlib_with_idx_btree" btree (a9)
