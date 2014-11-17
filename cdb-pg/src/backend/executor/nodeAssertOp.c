@@ -79,7 +79,8 @@ ExecInitAssertOp(AssertOp *node, EState *estate, int eflags)
 {
 
 	/* Check for unsupported flags */
-	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK | EXEC_FLAG_REWIND)));
+	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
+	Assert(outerPlan(node) != NULL);
 
 	AssertOpState *assertOpState = makeNode(AssertOpState);
 	assertOpState->ps.plan = (Plan *)node;
@@ -126,6 +127,20 @@ ExecInitAssertOp(AssertOp *node, EState *estate, int eflags)
 	initGpmonPktForAssertOp((Plan *)node, &assertOpState->ps.gpmon_pkt, estate);
 
 	return assertOpState;
+}
+
+/* Rescan AssertOp */
+void
+ExecReScanAssertOp(AssertOpState *node, ExprContext *exprCtxt)
+{
+	/*
+	 * If chgParam of subnode is not null then plan will be re-scanned by
+	 * first ExecProcNode.  However, if caller is passing us an exprCtxt
+	 * then forcibly rescan the subnode now, so that we can pass the
+	 * exprCtxt down to the subnode (needed for gated indexscan).
+	 */
+	if (node->ps.lefttree->chgParam == NULL || exprCtxt != NULL)
+		ExecReScan(node->ps.lefttree, exprCtxt);
 }
 
 /* Release Resources Requested by AssertOp node. */

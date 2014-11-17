@@ -16,6 +16,7 @@
 #include "executor/instrument.h"
 #include "executor/nodeAgg.h"
 #include "executor/nodeAppend.h"
+#include "executor/nodeAssertOp.h"
 #include "executor/nodeTableScan.h"
 #include "executor/nodeDynamicTableScan.h"
 #include "executor/nodeDynamicIndexscan.h"
@@ -114,6 +115,10 @@ ExecReScan(PlanState *node, ExprContext *exprCtxt)
 
 		case T_AppendState:
 			ExecReScanAppend((AppendState *) node, exprCtxt);
+			break;
+
+		case T_AssertOpState:
+			ExecReScanAssertOp((AssertOpState *) node, exprCtxt);
 			break;
 
 		case T_BitmapAndState:
@@ -587,6 +592,7 @@ ExecEagerFree(PlanState *node)
 	{
 		/* No need for eager free */
 		case T_AppendState:
+		case T_AssertOpState:
 		case T_BitmapAndState:
 		case T_BitmapOrState:
 		case T_BitmapIndexScanState:
@@ -755,6 +761,7 @@ ExecEagerFreeChildNodes(PlanState *node, bool subplanDone)
 	
 	switch(nodeTag(node))
 	{
+		case T_AssertOpState:
 		case T_BitmapIndexScanState:
 		case T_LimitState:
 		case T_RepeatState:
