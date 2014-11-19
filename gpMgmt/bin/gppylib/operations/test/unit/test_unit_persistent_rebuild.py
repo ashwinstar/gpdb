@@ -120,24 +120,6 @@ class ValidateContentIDTestCase(unittest.TestCase):
         with self.assertRaisesRegexp(Exception, 'The following content ids are not present in gp_segment_configuration: 1, 2, 3'):
             self.contentid_validator._validate_content_id()
 
-    def test_validate_content_id_with_both_segments_down(self):
-        mock_segs = []
-        for i in range(6):
-            m = Mock()
-            m.getSegmentContentId = Mock()
-            m.getSegmentContentId.return_value = (i % 3) + 1
-            if (i % 3) == 1:
-                m.getSegmentStatus = Mock()
-                m.getSegmentStatus.return_value = 'd'
-            mock_segs.append(m)
-        gparray = Mock()
-        gparray.getDbList = Mock()
-        gparray.getDbList.return_value = mock_segs 
-        self.contentid_validator.gparray = gparray
-        self.contentid_validator.content_id = [1, 2, 3]
-        with self.assertRaisesRegexp(Exception, 'The following content ids are down: 2'):
-            self.contentid_validator._validate_content_id()
-
     def test_validate_content_id_with_primary_segment_down(self):
         mock_segs = []
         for i in range(6):
@@ -154,25 +136,6 @@ class ValidateContentIDTestCase(unittest.TestCase):
         self.contentid_validator.gparray = gparray
         self.contentid_validator.content_id = [1, 2, 3]
         self.contentid_validator._validate_content_id()
-
-    def test_validate_content_id_with_resync(self):
-        mock_segs = []
-        for i in range(6):
-            m = Mock()
-            m.getSegmentContentId = Mock()
-            m.getSegmentContentId.return_value = (i % 3) + 1
-            m.getSegmentStatus.return_value = 'u'
-            if i == 1:
-                m.getSegmentStatus = Mock()
-                m.getSegmentMode.return_value = 'r'
-            mock_segs.append(m)
-        gparray = Mock()
-        gparray.getDbList = Mock()
-        gparray.getDbList.return_value = mock_segs 
-        self.contentid_validator.gparray = gparray
-        self.contentid_validator.content_id = [1, 2, 3]
-        with self.assertRaisesRegexp(Exception, 'The following content ids are in resync'):
-            self.contentid_validator._validate_content_id()
 
     def test_validate_content_id_with_change_tracking_segments(self):
         mock_segs = []

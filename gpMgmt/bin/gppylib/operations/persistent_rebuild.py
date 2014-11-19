@@ -130,12 +130,20 @@ class ValidateContentID:
             if c not in up_content_ids:
                 down_content_ids.add(c)
 
+        resync_content_ids_skip = set()
+        for c in self.content_id:
+            if c in resync_content_ids:
+                resync_content_ids_skip.add(c)
+
+        self.content_id = [c for c in self.content_id if c not in down_content_ids and c not in resync_content_ids_skip]
+
         if len(down_content_ids) > 0:
-            raise Exception('The following content ids are down: %s' % ', '.join(map(str, down_content_ids)))
+            logger.warning('The following content ids are down: %s, skipping' % ', '.join(map(str, down_content_ids)))
 
         if len(resync_content_ids) > 0:
-            logger.error('Rebuild of persistent tables is not supported with segments in resync mode')
-            raise Exception('The following content ids are in resync mode: %s' % ', '.join(map(str, resync_content_ids)))
+            logger.warning('The following content ids are in resync mode: %s' % ', '.join(map(str, resync_content_ids)))
+            if len(resync_content_ids_skip) > 0:
+                logger.warning('Skipping content ids from the list that are in resync mode: %s' % ', '.join(map(str, resync_content_ids_skip)))
 
         return self.content_id
 
@@ -789,7 +797,7 @@ class RebuildPersistentTables(Operation):
 
     def _stop_database(self):
         cmd = GpStop('Stop the greenplum database')
-        cmd.run(validateAfter=True)
+        cmd.run(validateAfter=False)
 
     def _start_database(self, admin_mode=False):
         """
