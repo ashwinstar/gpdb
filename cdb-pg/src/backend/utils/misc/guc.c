@@ -746,6 +746,7 @@ bool        optimizer_enable_space_pruning;
 bool        optimizer_prefer_multistage_agg;
 bool		optimizer_direct_dispatch;
 bool		optimizer_enable_hashjoin_redistribute_broadcast_children;
+bool		optimizer_enable_assert_maxonerow;
 bool		optimizer_enumerate_plans;
 bool		optimizer_sample_plans;
 int			optimizer_plan_id;
@@ -4036,6 +4037,15 @@ static struct config_bool ConfigureNamesBool[] =
                         GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
                 },
                 &optimizer_enable_hashjoin_redistribute_broadcast_children,
+                false, NULL, NULL
+        },
+        {
+                {"optimizer_enable_assert_maxonerow", PGC_USERSET, DEVELOPER_OPTIONS,
+                        gettext_noop("Enable Assert MaxOneRow plans to check number of rows at runtime."),
+                        NULL,
+                        GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+                },
+                &optimizer_enable_assert_maxonerow,
                 false, NULL, NULL
         },
 	{

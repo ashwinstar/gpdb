@@ -383,6 +383,12 @@ CConfigParamMapping::PbsPack
 		 pbs->FExchangeSet(GPOPT_DISABLE_XFORM_TF(CXform::ExfLeftOuter2InnerUnionAllLeftAntiSemiJoin));
 	}
 
+	// disable Assert MaxOneRow plans if GUC is turned off
+	if (!optimizer_enable_assert_maxonerow)
+	{
+		 pbs->FExchangeSet(GPOPT_DISABLE_XFORM_TF(CXform::ExfMaxOneRow2Assert));
+	}
+
 	if (!optimizer_enable_partial_index)
 	{
 		CBitSet *pbsHeterogeneousIndex = CXform::PbsHeterogeneousIndexXforms(pmp);
