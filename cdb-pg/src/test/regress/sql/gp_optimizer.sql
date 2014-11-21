@@ -23,7 +23,7 @@ insert into orca.s select i, i/2 from generate_series(1,30) i;
 
 set optimizer_log=on;
 set optimizer=on;
-set optimizer_enable_indexjoin=off;
+set optimizer_enable_indexjoin=on;
 ----------------------------------------------------------------------
 -- expected fall back to the planner
 select sum(distinct a), count(distinct b) from orca.r;
@@ -776,8 +776,6 @@ INSERT INTO array_table values(7,array[3],'a');
 INSERT INTO array_table values(8,array[3],'b');
 SELECT f3, myagg3(f1) from (select * from array_table order by f1 limit 10) as foo GROUP BY f3 ORDER BY f3;
 
---start_ignore
--- MPP-24977: fix optimization of queries using pg_get_partition_rule_def
 -- Functions that are wrongly annotated in the catalog as NOSQL
 CREATE TABLE orca.test_part (i int) PARTITION BY RANGE(i) (start(1) exclusive end(2) inclusive);
 CREATE TABLE orca.test_distributed(i int);
@@ -798,8 +796,6 @@ LEFT JOIN pg_tablespace sp ON cl.reltablespace = sp.oid, pg_class cl2
 LEFT JOIN pg_tablespace sp3 ON cl2.reltablespace = sp3.oid, pg_partition pp, pg_partition_rule pr1
 WHERE pp.paristemplate = false AND pp.parrelid = cl.oid AND pr1.paroid = pp.oid AND cl2.oid = pr1.parchildrelid
 AND cl.relnamespace = n.oid AND cl2.relnamespace = n2.oid and cl.relname ='test_part';
-
---end_ignore
 
 -- MPP-22453: wrong result in indexscan when the indexqual compares different data types
 create table mpp22453(a int, d date);
@@ -874,8 +870,6 @@ from cust c, sales s, datedim d
 where c.cid = s.cid and s.date_sk = d.date_sk and
       ((d.year = 2001 and lower(s.type) = 't1' and plusone(d.moy) = 5) or (d.moy = 4 and upper(s.type) = 'T2'));
 reset optimizer_segments;
-
---start_ignore
 -- Bitmap indexes
 drop table if exists orca.bm_test;
 create table orca.bm_test (i int, t text);
@@ -931,11 +925,7 @@ select * from orca.bm_dyn_test_onepart where i=2 and t='2';
 select enable_xform('CXformDynamicGet2DynamicTableScan');
 reset optimizer_enable_bitmapscan;
 
---end_ignore
-
 set optimizer_enable_constant_expression_evaluation=on;
-
--- test indexjoin with heterogeneous indexes
 
 CREATE TABLE my_tt_agg_opt (
     symbol character(16),
@@ -969,11 +959,11 @@ select disable_xform('CXformInnerJoin2IndexGetApply');
 select disable_xform('CXformInnerJoin2NLJoin');
 
 set optimizer_enable_partial_index=on;
-select disable_xform('CXformInnerJoin2PartialDynamicIndexGetApply');
+set optimizer_enable_indexjoin=on;
 
 -- force_explain
 set optimizer_segments = 3;
-EXPLAIN
+EXPLAIN 
 SELECT (tt.event_ts / 100000) / 5 * 5 as fivemin, COUNT(*)
 FROM my_tt_agg_opt tt, my_tq_agg_opt_part tq
 WHERE tq.sym = tt.symbol AND
@@ -984,6 +974,7 @@ GROUP BY 1
 ORDER BY 1 asc ;
 reset optimizer_segments;
 reset optimizer_enable_constant_expression_evaluation;
+reset optimizer_enable_indexjoin;
 reset optimizer_enable_partial_index;
 
 select enable_xform('CXformInnerJoin2DynamicIndexGetApply');

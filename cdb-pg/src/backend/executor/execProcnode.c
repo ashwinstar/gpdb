@@ -89,6 +89,7 @@
 #include "executor/nodeBitmapAnd.h"
 #include "executor/nodeBitmapHeapscan.h"
 #include "executor/nodeBitmapIndexscan.h"
+#include "executor/nodeBitmapTableScan.h"
 #include "executor/nodeBitmapOr.h"
 #include "executor/nodeBitmapAppendOnlyscan.h"
 #include "executor/nodeExternalscan.h"
@@ -233,6 +234,25 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 	 */
 	bool isAlienPlanNode = !((currentSliceId == origSliceIdInPlan) ||
 			(nodeTag(node) == T_Motion && ((Motion*)node)->motionID == currentSliceId));
+
+	/*
+	 * As of 03/28/2014, there is no support for BitmapTableScan
+	 * in the planner/optimizer. Therefore, for testing purpose
+	 * we treat Bitmap Heap/AO/AOCO as BitmapTableScan, if the guc
+	 * force_bitmap_table_scan is true.
+	 *
+	 * TODO rahmaf2 04/01/2014: remove all "fake" BitmapTableScan
+	 * once the planner/optimizer is capable of generating BitmapTableScan
+	 * nodes. [JIRA: MPP-23177]
+	 */
+	if (force_bitmap_table_scan)
+	{
+		if (IsA(node, BitmapHeapScan) ||
+				IsA(node, BitmapAppendOnlyScan))
+		{
+			node->type = T_BitmapTableScan;
+		}
+	}
 
 	switch (nodeTag(node))
 	{
@@ -385,6 +405,17 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 			START_MEMORY_ACCOUNT(curMemoryAccount);
 			{
 			result = (PlanState *) ExecInitBitmapAppendOnlyScan((BitmapAppendOnlyScan*) node,
+														        estate, eflags);
+			}
+			END_MEMORY_ACCOUNT();
+			break;
+
+		case T_BitmapTableScan:
+			curMemoryAccount = CREATE_EXECUTOR_MEMORY_ACCOUNT(isAlienPlanNode, node, BitmapTableScan);
+
+			START_MEMORY_ACCOUNT(curMemoryAccount);
+			{
+			result = (PlanState *) ExecInitBitmapTableScan((BitmapTableScan*) node,
 														        estate, eflags);
 			}
 			END_MEMORY_ACCOUNT();
@@ -794,6 +825,7 @@ ExecProcNode(PlanState *node)
 		&&Exec_Jmp_BitmapIndexScan,
 		&&Exec_Jmp_BitmapHeapScan,
 		&&Exec_Jmp_BitmapAppendOnlyScan,
+		&&Exec_Jmp_BitmapTableScan,
 		&&Exec_Jmp_TidScan,
 		&&Exec_Jmp_SubqueryScan,
 		&&Exec_Jmp_FunctionScan,
@@ -899,6 +931,10 @@ Exec_Jmp_BitmapHeapScan:
 
 Exec_Jmp_BitmapAppendOnlyScan:
 	result = ExecBitmapAppendOnlyScan((BitmapAppendOnlyScanState *) node);
+	goto Exec_Jmp_Done;
+
+Exec_Jmp_BitmapTableScan:
+	result = ExecBitmapTableScan((BitmapTableScanState *) node);
 	goto Exec_Jmp_Done;
 
 Exec_Jmp_TidScan:
@@ -1317,6 +1353,9 @@ ExecCountSlotsNode(Plan *node)
 		case T_BitmapAppendOnlyScan:
 			return ExecCountSlotsBitmapAppendOnlyScan((BitmapAppendOnlyScan*) node);
 			
+		case T_BitmapTableScan:
+			return ExecCountSlotsBitmapTableScan((BitmapTableScan *) node);
+
 		case T_TidScan:
 			return ExecCountSlotsTidScan((TidScan *) node);
 
@@ -1592,6 +1631,10 @@ ExecEndNode(PlanState *node)
 
 		case T_BitmapAppendOnlyScanState:
 			ExecEndBitmapAppendOnlyScan((BitmapAppendOnlyScanState *) node);
+			break;
+
+		case T_BitmapTableScanState:
+			ExecEndBitmapTableScan((BitmapTableScanState *) node);
 			break;
 
 		case T_TidScanState:

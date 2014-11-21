@@ -347,6 +347,8 @@ CopyScanFields(Scan *from, Scan *newnode)
 	CopyPlanFields((Plan *) from, (Plan *) newnode);
 
 	COPY_SCALAR_FIELD(scanrelid);
+	COPY_SCALAR_FIELD(partIndex);
+	COPY_SCALAR_FIELD(partIndexPrintable);
 }
 
 /*
@@ -428,6 +430,7 @@ _copyDynamicTableScan(DynamicTableScan *from)
 	DynamicTableScan *newnode = makeNode(DynamicTableScan);
 	CopyScanFields((Scan *) from, (Scan *) newnode);
 	COPY_SCALAR_FIELD(partIndex);
+	COPY_SCALAR_FIELD(partIndexPrintable);
 
 	return newnode;
 }
@@ -472,6 +475,24 @@ copyIndexScanFields(const IndexScan *from, IndexScan *newnode)
 	COPY_NODE_FIELD(indexstrategy);
 	COPY_NODE_FIELD(indexsubtype);
 	COPY_SCALAR_FIELD(indexorderdir);
+
+	/*
+	 * If we don't have a valid partIndex, we also don't have
+	 * a valid logicalIndexInfo (it should be set to NULL). So,
+	 * we don't copy.
+	 */
+	if (isDynamicScan(&from->scan))
+	{
+		Assert(NULL != ((IndexScan *) from)->logicalIndexInfo);
+		Assert(NULL == newnode->logicalIndexInfo);
+		newnode->logicalIndexInfo = palloc(sizeof(LogicalIndexInfo));
+
+		CopyLogicalIndexInfo(((IndexScan *) from)->logicalIndexInfo, newnode->logicalIndexInfo);
+	}
+	else
+	{
+		Assert(newnode->logicalIndexInfo == NULL);
+	}
 }
 
 /*
@@ -498,10 +519,6 @@ _copyDynamicIndexScan(const DynamicIndexScan *from)
 	/* DynamicIndexScan has some content from IndexScan */
 	copyIndexScanFields((IndexScan *)from, (IndexScan *)newnode);
 
-	COPY_SCALAR_FIELD(partIndex);
-	
-	newnode->logicalIndexInfo = palloc(sizeof(LogicalIndexInfo));
-	CopyLogicalIndexInfo(((DynamicIndexScan *) from)->logicalIndexInfo, newnode->logicalIndexInfo);
 	return newnode;
 }
 
@@ -513,19 +530,8 @@ _copyBitmapIndexScan(BitmapIndexScan *from)
 {
 	BitmapIndexScan *newnode = makeNode(BitmapIndexScan);
 
-	/*
-	 * copy node superclass fields
-	 */
-	CopyScanFields((Scan *) from, (Scan *) newnode);
-
-	/*
-	 * copy remainder of node
-	 */
-	COPY_SCALAR_FIELD(indexid);
-	COPY_NODE_FIELD(indexqual);
-	COPY_NODE_FIELD(indexqualorig);
-	COPY_NODE_FIELD(indexstrategy);
-	COPY_NODE_FIELD(indexsubtype);
+	/* DynamicIndexScan has some content from IndexScan */
+	copyIndexScanFields((IndexScan *)from, (IndexScan *)newnode);
 
 	return newnode;
 }
@@ -569,6 +575,27 @@ _copyBitmapAppendOnlyScan(BitmapAppendOnlyScan *from)
 	 */
 	COPY_NODE_FIELD(bitmapqualorig);
 	COPY_SCALAR_FIELD(isAORow);
+
+	return newnode;
+}
+
+/*
+ * _copyBitmapTableScan
+ */
+static BitmapTableScan *
+_copyBitmapTableScan(BitmapTableScan *from)
+{
+	BitmapTableScan *newnode = makeNode(BitmapTableScan);
+
+	/*
+	 * copy node superclass fields
+	 */
+	CopyScanFields((Scan *) from, (Scan *) newnode);
+
+	/*
+	 * copy remainder of node
+	 */
+	COPY_NODE_FIELD(bitmapqualorig);
 
 	return newnode;
 }
@@ -4337,6 +4364,9 @@ copyObject(void *from)
 			break;
 		case T_BitmapAppendOnlyScan:
 			retval = _copyBitmapAppendOnlyScan(from);
+			break;
+		case T_BitmapTableScan:
+			retval = _copyBitmapTableScan(from);
 			break;
 		case T_TidScan:
 			retval = _copyTidScan(from);

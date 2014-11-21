@@ -30,6 +30,7 @@
 
 #include "access/attnum.h"
 #include "nodes/nodes.h"
+#include "nodes/plannodes.h"
 
 #include "gpos/base.h"
 
@@ -566,6 +567,15 @@ namespace gpdxl
 				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
 				);
 
+			// translate a (dynamic) bitmap table scan operator
+			Plan *PplanBitmapTableScan
+				(
+				const CDXLNode *pdxlnBitmapScan,
+				CDXLTranslateContext *pdxltrctxOut,
+				Plan *pplanParent,
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings // translation contexts of previous siblings
+				);
+
 			// translate a DXL PartitionSelector into a GPDB PartitionSelector
 			Plan *PplanPartitionSelector
 				(
@@ -669,6 +679,42 @@ namespace gpdxl
 				List **pplHashExprTypesOut,
 				CDXLTranslateContext *pdxltrctxOut,
 				Plan *pplanParent
+				);
+
+			// translate the tree of bitmap index operators that are under a (dynamic) bitmap table scan
+			Plan *PplanBitmapAccessPath
+				(
+				const CDXLNode *pdxlnBitmapAccessPath,
+				CDXLTranslateContext *pdxltrctxOut,
+				const IMDRelation *pmdrel,
+				const CDXLTableDescr *pdxltabdesc,
+				CDXLTranslateContextBaseTable *pdxltrctxbt,
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings,
+				BitmapTableScan *pdbts
+				);
+
+			// translate a bitmap bool op expression
+			Plan *PplanBitmapBoolOp
+				(
+				const CDXLNode *pdxlnBitmapBoolOp,
+				CDXLTranslateContext *pdxltrctxOut,
+				const IMDRelation *pmdrel,
+				const CDXLTableDescr *pdxltabdesc,
+				CDXLTranslateContextBaseTable *pdxltrctxbt,
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings,
+				BitmapTableScan *pdbts
+				);
+			
+			// translate CDXLScalarBitmapIndexProbe into BitmapIndexScan
+			Plan *PplanBitmapIndexProbe
+				(
+				const CDXLNode *pdxlnBitmapIndexProbe,
+				CDXLTranslateContext *pdxltrctxOut,
+				const IMDRelation *pmdrel,
+				const CDXLTableDescr *pdxltabdesc,
+				CDXLTranslateContextBaseTable *pdxltrctxbt,
+				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings,
+				BitmapTableScan *pdbts
 				);
 
 			void TranslateSortCols

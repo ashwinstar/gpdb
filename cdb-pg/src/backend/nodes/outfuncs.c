@@ -352,6 +352,9 @@ _outScanInfo(StringInfo str, Scan *node)
 			_outNode(str,rte);
 		}
 	}
+
+	WRITE_INT_FIELD(partIndex);
+	WRITE_INT_FIELD(partIndexPrintable);
 }
 
 /*
@@ -526,6 +529,7 @@ _outDynamicTableScan(StringInfo str, DynamicTableScan *node)
 	WRITE_NODE_TYPE("DYNAMICTABLESCAN");
 	_outScanInfo(str, (Scan *)node);
 	WRITE_INT_FIELD(partIndex);
+	WRITE_INT_FIELD(partIndexPrintable);
 }
 
 static void
@@ -547,27 +551,6 @@ _outExternalScan(StringInfo str, ExternalScan *node)
 }
 
 static void
-outIndexScanFields(StringInfo str, IndexScan *node)
-{
-	_outScanInfo(str, (Scan *) node);
-
-	WRITE_OID_FIELD(indexid);
-	WRITE_NODE_FIELD(indexqual);
-	WRITE_NODE_FIELD(indexqualorig);
-	WRITE_NODE_FIELD(indexstrategy);
-	WRITE_NODE_FIELD(indexsubtype);
-	WRITE_ENUM_FIELD(indexorderdir, ScanDirection);
-}
-
-static void
-_outIndexScan(StringInfo str, IndexScan *node)
-{
-	WRITE_NODE_TYPE("INDEXSCAN");
-
-	outIndexScanFields(str, node);
-}
-
-static void
 outLogicalIndexInfo(StringInfo str, LogicalIndexInfo *node)
 {
 	WRITE_OID_FIELD(logicalIndexOid);
@@ -586,22 +569,8 @@ outLogicalIndexInfo(StringInfo str, LogicalIndexInfo *node)
 }
 
 static void
-_outDynamicIndexScan(StringInfo str, DynamicIndexScan *node)
+outIndexScanFields(StringInfo str, IndexScan *node)
 {
-	WRITE_NODE_TYPE("DYNAMICINDEXSCAN");
-
-	outIndexScanFields(str, (IndexScan *)node);
-
-	WRITE_INT_FIELD(partIndex);
-	
-	outLogicalIndexInfo(str, node->logicalIndexInfo);
-}
-
-static void
-_outBitmapIndexScan(StringInfo str, BitmapIndexScan *node)
-{
-	WRITE_NODE_TYPE("BITMAPINDEXSCAN");
-
 	_outScanInfo(str, (Scan *) node);
 
 	WRITE_OID_FIELD(indexid);
@@ -609,6 +578,41 @@ _outBitmapIndexScan(StringInfo str, BitmapIndexScan *node)
 	WRITE_NODE_FIELD(indexqualorig);
 	WRITE_NODE_FIELD(indexstrategy);
 	WRITE_NODE_FIELD(indexsubtype);
+	WRITE_ENUM_FIELD(indexorderdir, ScanDirection);
+
+	if (isDynamicScan(&node->scan))
+	{
+		Assert(node->logicalIndexInfo);
+		outLogicalIndexInfo(str, node->logicalIndexInfo);
+	}
+	else
+	{
+		Assert(node->logicalIndexInfo == NULL);
+	}
+}
+
+static void
+_outIndexScan(StringInfo str, IndexScan *node)
+{
+	WRITE_NODE_TYPE("INDEXSCAN");
+
+	outIndexScanFields(str, node);
+}
+
+static void
+_outDynamicIndexScan(StringInfo str, DynamicIndexScan *node)
+{
+	WRITE_NODE_TYPE("DYNAMICINDEXSCAN");
+
+	outIndexScanFields(str, (IndexScan *)node);
+}
+
+static void
+_outBitmapIndexScan(StringInfo str, BitmapIndexScan *node)
+{
+	WRITE_NODE_TYPE("BITMAPINDEXSCAN");
+
+	outIndexScanFields(str, (IndexScan *)node);
 }
 
 static void
@@ -630,6 +634,16 @@ _outBitmapAppendOnlyScan(StringInfo str, BitmapAppendOnlyScan *node)
 
 	WRITE_NODE_FIELD(bitmapqualorig);
 	WRITE_BOOL_FIELD(isAORow);
+}
+
+static void
+_outBitmapTableScan(StringInfo str, BitmapTableScan *node)
+{
+	WRITE_NODE_TYPE("BITMAPTABLESCAN");
+
+	_outScanInfo(str, (Scan *) node);
+
+	WRITE_NODE_FIELD(bitmapqualorig);
 }
 
 static void
@@ -4092,6 +4106,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_BitmapAppendOnlyScan:
 				_outBitmapAppendOnlyScan(str, obj);
+				break;
+			case T_BitmapTableScan:
+				_outBitmapTableScan(str, obj);
 				break;
 			case T_TidScan:
 				_outTidScan(str, obj);

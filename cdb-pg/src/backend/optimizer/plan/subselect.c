@@ -1177,6 +1177,11 @@ finalize_plan(PlannerInfo *root, Plan *plan, List *rtable,
 							  &context);
 			break;
 
+		case T_BitmapTableScan:
+			finalize_primnode((Node *) ((BitmapTableScan *) plan)->bitmapqualorig,
+							  &context);
+			break;
+
 		case T_TidScan:
 			finalize_primnode((Node *) ((TidScan *) plan)->tidquals,
 							  &context);

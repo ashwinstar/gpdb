@@ -64,6 +64,10 @@ extern BitmapAppendOnlyPath *create_bitmap_appendonly_path(PlannerInfo *root,
 														   Path *bitmapqual,
 														   RelOptInfo *outer_rel,
 														   bool isAORow);
+extern BitmapTableScanPath *create_bitmap_table_scan_path(PlannerInfo *root,
+						RelOptInfo *rel,
+						Path *bitmapqual,
+						RelOptInfo *outer_rel);
 extern BitmapAndPath *create_bitmap_and_path(PlannerInfo *root,
 					   RelOptInfo *rel,
 					   List *bitmapquals);

@@ -434,6 +434,18 @@ typedef struct Scan
 {
 	Plan		plan;
 	Index		scanrelid;		/* relid is index into the range table */
+
+	/*
+	 * The index to an internal array structure that
+	 * contains oids of the parts that need to be scanned.
+	 *
+	 * This internal structure is maintained in EState.
+	 *
+	 * Note: if the scan is not "dynamic" (i.e., not using optimizer),
+	 * we set it to INVALID_PART_INDEX.
+	 */
+	int32 		partIndex;
+	int32 		partIndexPrintable;
 } Scan;
 
 /* ----------------
@@ -447,6 +459,29 @@ typedef Scan SeqScan;
  *   Scan node that captures different table types.
  */
 typedef Scan TableScan;
+
+/* ----------------
+ *		index type information
+ */
+typedef enum LogicalIndexType
+{
+	INDTYPE_BTREE = 0,
+	INDTYPE_BITMAP = 1
+} LogicalIndexType;
+
+typedef struct LogicalIndexInfo
+{
+	Oid	logicalIndexOid;	/* OID of the logical index */
+	int	nColumns;		/* Number of columns in the index */
+	AttrNumber	*indexKeys;	/* column numbers of index keys */
+	List	*indPred;		/* predicate if partial index, or NIL */
+	List	*indExprs;		/* index on expressions */
+	bool	indIsUnique;		/* unique index */
+	LogicalIndexType indType;  /* index type: btree or bitmap */
+	Node	*partCons;		/* concatenated list of check constraints
+					 * of each partition on which this index is defined */
+	List	*defaultLevels;		/* Used to identify a default partition */
+} LogicalIndexInfo;
 
 /* ----------------
  *		index scan node
@@ -480,30 +515,10 @@ typedef struct IndexScan
 	List	   *indexstrategy;	/* integer list of strategy numbers */
 	List	   *indexsubtype;	/* OID list of strategy subtypes */
 	ScanDirection indexorderdir;	/* forward or backward or don't care */
+
+	/* logical index to use */
+	LogicalIndexInfo *logicalIndexInfo;
 } IndexScan;
-
-/* ----------------
- *		index type information
- */
-typedef enum LogicalIndexType
-{
-	INDTYPE_BTREE = 0, 
-	INDTYPE_BITMAP = 1
-} LogicalIndexType;
-
-typedef struct LogicalIndexInfo
-{
-	Oid	logicalIndexOid;	/* OID of the logical index */
-	int	nColumns;		/* Number of columns in the index */
-	AttrNumber	*indexKeys;	/* column numbers of index keys */
-	List	*indPred;		/* predicate if partial index, or NIL */
-	List	*indExprs;		/* index on expressions */
-	bool	indIsUnique;		/* unique index */
-	LogicalIndexType indType;  /* index type: btree or bitmap */
-	Node	*partCons;		/* concatenated list of check constraints 
-					 * of each partition on which this index is defined */
-	List	*defaultLevels;		/* Used to identify a default partition */
-} LogicalIndexInfo;
 
 /*
  * DynamicIndexScan
@@ -511,44 +526,7 @@ typedef struct LogicalIndexInfo
  *   The primary application of this operator is to be used
  *   for partition tables.
 */
-typedef struct DynamicIndexScan
-{
-	/* Contains the plan and position of range table */
-	Scan scan;
-	/* OID of logical index to use */
-	Oid indexid;
-	/* List of index quals (OpExprs) */
-	List	   *indexqual;
-	/* List of index quals in original form */
-	List	   *indexqualorig;
-
-	/* Indexstrategy and indexsubtype are lists corresponding one-to-one
-	 * with indexqual. They give information about the indexable operators
-	 * that appear at the top of each indexqual. For example,
-	 * searchstrategy= equality and indexsubtype is a particularity
-	 * of the search strategy like the input data type.
-	 * For example, in the btree AM nondefault operators can have right-hand input data
-	 * types different from opcintype and their amopsubtype
-	 * is equal to the right-hand input data type (see pg_amop.h). */
-
-	/* Integer list of strategy numbers */
-	List	   *indexstrategy;
-	/* OID list of strategy subtypes */
-	List	   *indexsubtype;
-	/* Specifies scan direction (forward, backward, or don't care) */
-	ScanDirection indexorderdir;
-	/*
-	 * The index to an internal array structure that
-	 * contains oids of the parts that need to be scanned.
-	 *
-	 * This internal structure is maintained in EState.
-	 */
-	int partIndex;
-	
-	/* logical index to use */
-	LogicalIndexInfo *logicalIndexInfo;
-
-} DynamicIndexScan;
+typedef IndexScan DynamicIndexScan;
 
 /* ----------------
  *		bitmap index scan node
@@ -569,15 +547,7 @@ typedef struct DynamicIndexScan
  * (such as for targeted dispatch)
  * ----------------
  */
-typedef struct BitmapIndexScan
-{
-	Scan		scan;
-	Oid			indexid;		/* OID of index to scan */
-	List	   *indexqual;		/* list of index quals (OpExprs) */
-	List	   *indexqualorig;	/* the same in original form */
-	List	   *indexstrategy;	/* integer list of strategy numbers */
-	List	   *indexsubtype;	/* OID list of strategy subtypes */
-} BitmapIndexScan;
+typedef IndexScan BitmapIndexScan;
 
 /* ----------------
  *		bitmap sequential scan node
@@ -607,23 +577,19 @@ typedef struct BitmapAppendOnlyScan
 	bool       isAORow; /* If this is for AO Row tables */
 } BitmapAppendOnlyScan;
 
+/* ----------------
+ *		bitmap table scan node
+ *
+ * This is a copy of BitmapHeapScan
+ * ----------------
+ */
+typedef BitmapHeapScan BitmapTableScan;
+
 /*
  * DynamicTableScan
  *   Scan a list of tables that will be determined at run time.
  */
-typedef struct DynamicTableScan
-{
-	Scan scan;
-
-	/*
-	 * The index to an internal array structure, in which each element
-	 * maintains unique identifiers to the tables that are involved in
-	 * a dynamic table scan.
-	 *
-	 * This internal array structure is maintained in EState.
-	 */
-	int partIndex;
-} DynamicTableScan;
+typedef Scan DynamicTableScan;
 
 /* ----------------
  *		tid scan node
@@ -837,6 +803,7 @@ extern void set_plan_share_type_xslice(Plan *p);
 extern int get_plan_driver_slice(Plan *p);
 extern void set_plan_driver_slice(Plan *P, int slice);
 extern void incr_plan_nsharer_xslice(Plan *p);
+extern bool isDynamicScan(const Scan *scan);
 
 /* ----------------
  *		shareinputscan node

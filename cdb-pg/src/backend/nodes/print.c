@@ -531,6 +531,8 @@ char * plannode_type(Plan *p)
 			return "VALUESSCAN";
 		case T_BitmapAppendOnlyScan:
 			return "BITMAPAPPENDONLYSCAN";
+		case T_BitmapTableScan:
+			return "BITMAPTABLESCAN";
 		case T_Join:
 			return "JOIN";
 		case T_NestLoop:

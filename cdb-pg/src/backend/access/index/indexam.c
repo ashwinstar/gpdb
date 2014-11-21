@@ -239,38 +239,22 @@ index_beginscan(Relation heapRelation,
 				Snapshot snapshot,
 				int nkeys, ScanKey key)
 {
-	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_DECLARE;
-
-	IndexScanDesc scan;
-
-	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_ENTER;
-
-	scan = index_beginscan_internal(indexRelation, nkeys, key);
-
-	/*
-	 * Save additional parameters into the scandesc.  Everything else was set
-	 * up by RelationGetIndexScan.
-	 */
-	scan->is_multiscan = false;
-	scan->heapRelation = heapRelation;
-	scan->xs_snapshot = snapshot;
-
-	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_EXIT;
-
-	return scan;
+	return index_beginscan_generic(heapRelation, indexRelation,
+			snapshot, nkeys, key, false /* isMultiscan */);
 }
 
 /*
- * index_beginscan_multi - start a scan of an index 
+ * index_beginscan_generic - start a scan of an index
  * 							with amgetmulti
  *
  * As above, caller had better be holding some lock on the parent heap
  * relation, even though it's not explicitly mentioned here.
  */
 IndexScanDesc
-index_beginscan_multi(Relation indexRelation,
-					   Snapshot snapshot,
-					   int nkeys, ScanKey key)
+index_beginscan_generic(Relation heapRelation,
+						Relation indexRelation,
+						Snapshot snapshot,
+						int nkeys, ScanKey key, bool isMultiscan)
 {
 	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_DECLARE;
 
@@ -284,7 +268,8 @@ index_beginscan_multi(Relation indexRelation,
 	 * Save additional parameters into the scandesc.  Everything else was
 	 * set up by RelationGetIndexScan.
 	 */
-	scan->is_multiscan = true;
+	scan->is_multiscan = isMultiscan;
+	scan->heapRelation = heapRelation;
 	scan->xs_snapshot = snapshot;
 
 	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_EXIT;

@@ -1640,13 +1640,22 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
     /*
      * Print number of partitioned tables scanned for dynamic scans.
      */
-    if (0 <= ns->totalPartTableScanned.vcnt && (T_DynamicTableScanState == planstate->type
+    if (0 <= ns->totalPartTableScanned.vcnt && (T_BitmapTableScanState == planstate->type
+    	|| T_DynamicTableScanState == planstate->type
     	|| T_DynamicIndexScanState == planstate->type))
     {
     	double nPartTableScanned_avg = cdbexplain_agg_avg(&ns->totalPartTableScanned);
     	if (0 == nPartTableScanned_avg)
     	{
     		bool displayPartitionScanned = true;
+    		if (T_BitmapTableScanState == planstate->type)
+    		{
+    			ScanState *scanState = (ScanState *) planstate;
+    			if (!isDynamicScan((Scan *)scanState->ps.plan))
+    			{
+    				displayPartitionScanned = false;
+    			}
+    		}
 
     		if (displayPartitionScanned)
     		{
@@ -2031,7 +2040,8 @@ cdbexplain_showExecStatsEnd(struct PlannedStmt *stmt,
 static int
 cdbexplain_countLeafPartTables(PlanState *planstate)
 {
-	Assert (IsA(planstate, DynamicTableScanState) || IsA(planstate, DynamicIndexScanState));
+	Assert (IsA(planstate, DynamicTableScanState) || IsA(planstate, DynamicIndexScanState)
+	        || IsA(planstate, BitmapTableScanState));
 	Scan *scan = (Scan *) planstate->plan;
 
 	Oid root_oid = getrelid(scan->scanrelid, planstate->state->es_range_table);

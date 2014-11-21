@@ -2062,14 +2062,14 @@ CTranslatorPlStmtToDXL::PdxlnDynamicTableScan
 	// construct DXL dynamic table scan operator
 
 	// construct table descriptor for the scan node from the range table entry
-	RangeTblEntry *prte = (RangeTblEntry *) gpdb::PvListNth(m_pplstmt->rtable, (pdts->scan.scanrelid) - 1);
+	RangeTblEntry *prte = (RangeTblEntry *) gpdb::PvListNth(m_pplstmt->rtable, (pdts->scanrelid) - 1);
 
 	GPOS_ASSERT(NULL != prte);
 	GPOS_ASSERT(RTE_RELATION == prte->rtekind);
 
 	CDXLTableDescr *pdxltabdesc = CTranslatorUtils::Pdxltabdesc(m_pmp, m_pmda, m_pidgtor, prte);
 
-	CDXLPhysicalDynamicTableScan *pdxlop = New(m_pmp) CDXLPhysicalDynamicTableScan(m_pmp, pdxltabdesc, pdts->partIndex, pdts->partIndex);
+	CDXLPhysicalDynamicTableScan *pdxlop = New(m_pmp) CDXLPhysicalDynamicTableScan(m_pmp, pdxltabdesc, pdts->partIndex, pdts->partIndexPrintable);
 
 	CDXLNode *pdxln = New(m_pmp) CDXLNode(m_pmp, pdxlop);
 	pdxln->SetProperties(pdxlprop);
@@ -2077,10 +2077,10 @@ CTranslatorPlStmtToDXL::PdxlnDynamicTableScan
 	// construct projection list
 
 	CMappingVarColId mapvarcolid(m_pmp);
-	mapvarcolid.LoadTblColumns(DEFAULT_QUERY_LEVEL, ULONG(pdts->scan.scanrelid), pdxltabdesc);
+	mapvarcolid.LoadTblColumns(DEFAULT_QUERY_LEVEL, ULONG(pdts->scanrelid), pdxltabdesc);
 
 	// construct projection list
-	CDXLNode *pdxlnPrL = PdxlnPrLFromTL((pdts->scan.plan).targetlist, &mapvarcolid);
+	CDXLNode *pdxlnPrL = PdxlnPrLFromTL((pdts->plan).targetlist, &mapvarcolid);
 
 	pdxln->AddChild(pdxlnPrL); 		// project list
 
