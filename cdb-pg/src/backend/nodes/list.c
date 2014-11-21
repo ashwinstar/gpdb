@@ -459,7 +459,6 @@ int list_find(List *list, void *datum)
 	ListCell *cell;
 	int i = 0;
 
-	Assert(IsIntegerList(list));
 	check_list_invariants(list);
 
 	foreach(cell, list)
@@ -493,7 +492,7 @@ int list_find_oid(List *list, Oid datum)
 	ListCell *cell;
 	int i = 0;
 
-	Assert(IsIntegerList(list));
+	Assert(IsOidList(list));
 	check_list_invariants(list);
 
 	foreach(cell, list)
@@ -510,7 +509,7 @@ int list_find_ptr(List *list, void *datum)
 	ListCell *cell;
 	int i = 0;
 
-	Assert(IsIntegerList(list));
+	Assert(IsPointerList(list));
 	check_list_invariants(list);
 
 	foreach(cell, list)
