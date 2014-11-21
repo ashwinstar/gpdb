@@ -7998,13 +7998,12 @@ explain select count(*) over (order by i), count(*) over (partition by i order b
                Sort Key: i, j
                ->  Window  (cost=0.00..431.00 rows=1 width=24)
                      Order By: i
-                     ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..431.00 rows=1 width=16)
-                           Merge Key: i
-                           ->  Sort  (cost=0.00..431.00 rows=1 width=16)
-                                 Sort Key: i
+                     ->  Sort  (cost=0.00..431.00 rows=1 width=16)
+                           Sort Key: i
+                           ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..431.00 rows=1 width=16)
                                  ->  Table Scan on redundant_sort_check  (cost=0.00..431.00 rows=1 width=16)
  Settings:  gp_enable_sequential_window_plans=on; optimizer=on; optimizer_segments=3
-(14 rows)
+(13 rows)
 
 -- End of MPP-13710
 -- MPP-13879
