@@ -730,7 +730,7 @@ mdcreate(
 					mirrorDataLossTrackingSessionNum,
 					primaryError,
 					mirrorDataLossOccurred);
-	if (primaryError != 0)
+	if (*primaryError != 0)
 	{
 		int			savePrimaryError = *primaryError;
 
