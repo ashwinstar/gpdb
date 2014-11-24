@@ -1747,6 +1747,10 @@ CTranslatorRelcacheToDXL::Pmdagg
 	// preliminary function
 	BOOL fSplittable = !fOrdered && gpdb::FAggHasPrelimFunc(oidAgg);
 	
+	// cannot use hash agg for ordered aggs or aggs without a prelim func
+	// due to the fact that hashAgg may spill
+	BOOL fHashAggCapable = !fOrdered && gpdb::FAggHasPrelimFunc(oidAgg);
+
 	CMDAggregateGPDB *pmdagg = New(pmp) CMDAggregateGPDB
 											(
 											pmp,
@@ -1755,7 +1759,8 @@ CTranslatorRelcacheToDXL::Pmdagg
 											pmdidTypeResult,
 											pmdidTypeIntermediate,
 											fOrdered,
-											fSplittable
+											fSplittable,
+											fHashAggCapable
 											);
 	return pmdagg;
 }
