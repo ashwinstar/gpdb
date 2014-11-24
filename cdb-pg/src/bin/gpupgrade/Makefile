@@ -31,7 +31,7 @@ DATAFILES = $(DATADIR)/upgrade43/pg_operator.data $(DATADIR)/upgrade43/pg_type.d
 
 # This sets things up to create a "contrib" module for upgrade extensions
 MODULE_big = gpupgrade
-OBJS= gpviewcp.o
+OBJS= gpviewcp.o truncate_acl.o
 include $(top_srcdir)/contrib/contrib-global.mk
 
 # In addition to the contrib module we are also building the gpmodcontrol program and the upgrade scripts

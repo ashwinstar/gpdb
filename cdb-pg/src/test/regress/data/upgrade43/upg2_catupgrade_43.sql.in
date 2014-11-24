@@ -236,6 +236,31 @@ SELECT * FROM __@gpupgradeschemaname@_gpmigrator.pg_operator_load;
 
 DROP EXTERNAL WEB TABLE __@gpupgradeschemaname@_gpmigrator.pg_operator_load;
 
+CREATE OR REPLACE FUNCTION __@gpupgradeschemaname@_gpmigrator.gp_add_truncate_priv_for_owner(aclitem[], oid) RETURNS aclitem[] AS
+'$libdir/gpupgrade' LANGUAGE C IMMUTABLE STRICT;
+
+
+-- For new TRUNCATE privileges.
+-- If relacl is not NULL, we always need to add the bit for TRUNCATE
+-- on the AclItem with grantor = owner, even if there is not
+-- grantor == owner AclItem.  Suppose owner role A grants SELECT
+-- privilege to role B, and role B grants SELECT to A, resulting
+-- relacl = 'A=r/B' and relowner = A.  Now, A used to be able to
+-- truncate in the previous version, and we want to keep it, so we
+-- need to add 'A=D/A', not 'A=rD/B'.  Otherwise, A would not really
+-- be able to revoke TRUNCATE after upgrade, only B would.
+-- We don't want to do this for catalog tables, though, as fresh install
+-- wouldn't allow truncate on these tables.
+SELECT catDML($$
+	UPDATE pg_catalog.pg_class SET relacl = __@gpupgradeschemaname@_gpmigrator.gp_add_truncate_priv_for_owner(relacl, relowner)
+	WHERE oid > 10000
+		AND relnamespace <> (SELECT oid FROM pg_namespace WHERE nspname = 'pg_catalog')
+		AND relkind = 'r'
+		AND relacl IS NOT NULL;
+$$);
+
+DROP FUNCTION __@gpupgradeschemaname@_gpmigrator.gp_add_truncate_priv_for_owner(aclitem[], oid);
+
 DROP SCHEMA __@gpupgradeschemaname@_gpmigrator;
 --
 -- Partition management functions for the optimizer
