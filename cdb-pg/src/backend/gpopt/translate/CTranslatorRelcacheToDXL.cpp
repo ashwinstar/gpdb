@@ -2209,7 +2209,18 @@ CTranslatorRelcacheToDXL::PimdobjColStats
 					&pdrgfMCVFrequencies, &iNumMCVFrequencies
 			);
 
-	GPOS_ASSERT(iNumMCVValues == iNumMCVFrequencies);
+	if (iNumMCVValues != iNumMCVFrequencies)
+	{
+		// if the number of MCVs and number of MCFs do not match, we discard the MCVs and MCFs
+		gpdb::FreeAttrStatsSlot(oidAttType, pdrgdatumMCVValues, iNumMCVValues, pdrgfMCVFrequencies, iNumMCVFrequencies);
+		iNumMCVValues = 0;
+		iNumMCVFrequencies = 0;
+		pdrgdatumMCVValues = NULL;
+		pdrgfMCVFrequencies = NULL;
+
+		elog(LOG, "The number of most common values and frequencies do not match on column %ls of table %ls.",
+				pmdcol->Mdname().Pstr()->Wsz(), pmdrel->Mdname().Pstr()->Wsz());
+	}
 
 	// fix mcv frequencies (sometimes they can add up to more than 1.0)
 	NormalizeFrequencies(pdrgfMCVFrequencies, (ULONG) iNumMCVValues);
