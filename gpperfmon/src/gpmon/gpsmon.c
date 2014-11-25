@@ -52,6 +52,10 @@ static struct
 	// The timeout in seconds for smon to restart if no requests
 	// come during that period.
 	apr_uint64_t terminate_timeout;
+	// If gpsmon ignores query exec packets. We add this flag
+	// due to out of memory issue on gpmmon when segment number or
+	// splice number or partition number is big. [JIRA: MPP-25017]. 
+	bool do_ignore_qexec_packet;
 } opt = { 0 };
 
 int verbose = 0; /* == opt.v */
@@ -1686,6 +1690,12 @@ static void gx_recvqexec(gpmon_packet_t* pkt)
 	if (pkt->pkttype != GPMON_PKTTYPE_QEXEC)
 		gpsmon_fatal(FLINE, "assert failed; expected pkttype qexec");
 
+	if (opt.do_ignore_qexec_packet)
+	{
+		// We don't call gpmon_warning here because the number of
+		// packet is big, and we would make log boating.
+		return;
+	}
 	p = &pkt->u.qexec;
 
 	/* fill in the tstart / tduration */
@@ -2347,6 +2357,11 @@ static void usage(const char* msg)
 	fprintf(stdout, "\t-?:\tprint this help screen\n");
 	fprintf(stdout, "\t-v:\tverbose\n");
 	fprintf(stdout, "\t-D:\trun in debug mode; don't run as daemon\n");
+	fprintf(stdout, "\t-l:\tlog directory\n");
+	fprintf(stdout, "\t-m:\tmax log size\n");
+	fprintf(stdout, "\t-t:\tterminate timeout\n"),
+	fprintf(stdout, "\t-a:\titerator aggregate\n");
+	fprintf(stdout, "\t-i:\tignore qexec packet\n");
 	if (msg)
 		fprintf(stdout, "%s\n\n", msg);
 
@@ -2369,6 +2384,7 @@ static void parse_command_line(int argc, const char* const argv[])
 	{ NULL, 'm', 1, "max log size" },
 	{ NULL, 't', 1, "terminate timeout" },
 	{ NULL, 'a', 0, "iterator aggregate" },
+	{ NULL, 'i', 0, "ignore qexec packet" },
 	{ NULL, 0, 0, NULL } };
 	apr_pool_t* pool;
 
@@ -2387,6 +2403,7 @@ static void parse_command_line(int argc, const char* const argv[])
 	opt.v = opt.D = 0;
 	opt.max_log_size = 0;
 	opt.terminate_timeout = 0;
+	opt.do_ignore_qexec_packet = false;
 
 	if (0 != (e = apr_getopt_init(&os, pool, argc, argv)))
 	{
@@ -2417,6 +2434,9 @@ static void parse_command_line(int argc, const char* const argv[])
 			break;
 		case 't':
 			opt.terminate_timeout = apr_atoi64(arg);
+			break;
+		case 'i':
+			opt.do_ignore_qexec_packet = true;
 			break;
 		}
 	}
