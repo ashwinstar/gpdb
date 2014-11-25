@@ -1228,6 +1228,16 @@ agg_retrieve_direct(AggState *aggstate)
 			 */
 			ResetExprContext(econtext);
 
+			MemoryContextResetAndDeleteChildren(aggstate->aggcontext);
+
+			int aggno = 0;
+			for(aggno = 0; aggno < aggstate->numaggs; aggno++)
+			{
+				AggStatePerGroup pergroupstate = &pergroup[aggno];
+				pergroupstate->transValue = 0;
+				pergroupstate->transValueIsNull = true;
+			}
+
 			/*
 			 * Initialize working state for a new input tuple group
 			 */
