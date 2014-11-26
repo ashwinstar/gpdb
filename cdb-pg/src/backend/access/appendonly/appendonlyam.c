@@ -2272,10 +2272,14 @@ appendonly_fetch(
 	if (aoFetchDesc->currentBlock.have)
 	{
 		if (segmentFileNum == aoFetchDesc->currentSegmentFile.num &&
-			segmentFileNum == aoFetchDesc->blockDirectory.currentSegmentFileNum)
+			segmentFileNum == aoFetchDesc->blockDirectory.currentSegmentFileNum &&
+			segmentFileNum == aoFetchDesc->executorReadBlock.segmentFileNum)
 		{
 			if (rowNum >= aoFetchDesc->currentBlock.firstRowNum &&
-				rowNum <= aoFetchDesc->currentBlock.lastRowNum)
+				rowNum <= aoFetchDesc->currentBlock.lastRowNum &&
+				AppendOnlyBlockDirectoryEntry_RangeHasRow(
+                                                        &aoFetchDesc->currentBlock.blockDirectoryEntry,
+                                                        rowNum))
 			{
 				if (!isSnapshotAny && !AppendOnlyVisimap_IsVisible(&aoFetchDesc->visibilityMap, aoTupleId))
 				{
