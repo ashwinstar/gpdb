@@ -522,7 +522,7 @@ processLevel(PartitionSelectorState *node, int level, TupleTableSlot *inputTuple
 					 * PartOidExprState.acceptedLeafPart also points to this partConstraint,
 					 * so we must save it here (GPSQL-2956).
 					 */
-					node->acceptedLeafPart = partConstraint;
+					*node->acceptedLeafPart = partConstraint;
 					freeConstraint = false;
 				}
 			}
@@ -619,6 +619,8 @@ initPartitionSelection(bool isRunTime, PartitionSelector *node, EState *estate)
 		psstate->levelExprStates = lappend(psstate->levelExprStates,
 								ExecInitExpr(generalExpr, (PlanState *) psstate));
 	}
+
+	psstate->acceptedLeafPart = (PartitionConstraints **) palloc0(sizeof(void *));
 
 	psstate->residualPredicateExprState = ExecInitExpr((Expr *) node->residualPredicate,
 									(PlanState *) psstate);

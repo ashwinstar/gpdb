@@ -5065,7 +5065,7 @@ ExecInitExpr(Expr *node, PlanState *parent)
 				 * be holding the actual PartitionConstraints value (GPSQL-2956)
 				 * computed for each tuple.
 				 */
-				exprstate->acceptedLeafPart = &psstate->acceptedLeafPart;
+				exprstate->acceptedLeafPart = psstate->acceptedLeafPart;
 
 				state = (ExprState *) exprstate;
 			}
