@@ -424,6 +424,7 @@ extern bool optimizer_enable_ctas;
 extern bool optimizer_remove_order_below_dml;
 extern bool optimizer_static_partition_selection;
 extern bool optimizer_enable_partial_index;
+extern bool optimizer_dml_triggers;
 extern bool optimizer_direct_dispatch;
 extern bool optimizer_control;	/* controls whether the user can change the setting of the "optimizer" guc */
 

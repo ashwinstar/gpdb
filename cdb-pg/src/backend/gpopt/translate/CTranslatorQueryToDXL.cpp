@@ -64,6 +64,7 @@ using namespace gpnaucrates;
 using namespace gpmd;
 
 extern bool	optimizer_enable_ctas;
+extern bool optimizer_dml_triggers;
 
 // OIDs of variants of LEAD window function
 const OID rgOIDLead[] =
@@ -677,7 +678,7 @@ CTranslatorQueryToDXL::PdxlnInsert()
 
 	CDXLTableDescr *pdxltabdesc = CTranslatorUtils::Pdxltabdesc(m_pmp, m_pmda, m_pidgtorCol, prte, &m_fHasDistributedTables);
 	const IMDRelation *pmdrel = m_pmda->Pmdrel(pdxltabdesc->Pmdid());
-	if (CTranslatorUtils::FRelHasTriggers(m_pmp, m_pmda, pmdrel, Edxldmlinsert))
+	if (!optimizer_dml_triggers && CTranslatorUtils::FRelHasTriggers(m_pmp, m_pmda, pmdrel, Edxldmlinsert))
 	{
 		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature, GPOS_WSZ_LIT("INSERT with triggers"));
 	}
@@ -1077,7 +1078,7 @@ CTranslatorQueryToDXL::PdxlnDelete()
 
 	CDXLTableDescr *pdxltabdesc = CTranslatorUtils::Pdxltabdesc(m_pmp, m_pmda, m_pidgtorCol, prte, &m_fHasDistributedTables);
 	const IMDRelation *pmdrel = m_pmda->Pmdrel(pdxltabdesc->Pmdid());
-	if (CTranslatorUtils::FRelHasTriggers(m_pmp, m_pmda, pmdrel, Edxldmldelete))
+	if (!optimizer_dml_triggers && CTranslatorUtils::FRelHasTriggers(m_pmp, m_pmda, pmdrel, Edxldmldelete))
 	{
 		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature, GPOS_WSZ_LIT("DELETE with triggers"));
 	}
@@ -1126,7 +1127,7 @@ CTranslatorQueryToDXL::PdxlnUpdate()
 
 	CDXLTableDescr *pdxltabdesc = CTranslatorUtils::Pdxltabdesc(m_pmp, m_pmda, m_pidgtorCol, prte, &m_fHasDistributedTables);
 	const IMDRelation *pmdrel = m_pmda->Pmdrel(pdxltabdesc->Pmdid());
-	if (CTranslatorUtils::FRelHasTriggers(m_pmp, m_pmda, pmdrel, Edxldmlupdate))
+	if (!optimizer_dml_triggers && CTranslatorUtils::FRelHasTriggers(m_pmp, m_pmda, pmdrel, Edxldmlupdate))
 	{
 		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature, GPOS_WSZ_LIT("UPDATE with triggers"));
 	}

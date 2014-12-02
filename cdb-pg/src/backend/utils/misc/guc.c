@@ -770,6 +770,7 @@ bool		optimizer_enable_ctas;
 bool		optimizer_remove_order_below_dml;
 bool		optimizer_static_partition_selection;
 bool		optimizer_enable_partial_index;
+bool		optimizer_dml_triggers;
 
 /* Security */
 bool		gp_reject_internal_tcp_conn = true;
@@ -4186,6 +4187,16 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&optimizer_enable_partial_index,
 		true, NULL, NULL
+	},
+
+	{
+		{"optimizer_dml_triggers", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Support DML with triggers."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_dml_triggers,
+		false, NULL, NULL
 	},
 
 	{
