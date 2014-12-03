@@ -423,6 +423,8 @@ SELECT @gpupgradeschemaname@.catDML(
      'UPDATE pg_catalog.pg_appendonly SET visimaprelid = 0::oid, visimapidxid = 0::oid, minorversion = 1;'
 );
 
+DROP SCHEMA IF EXISTS __@gpupgradeschemaname@_gpmigrator_uao;
+CREATE SCHEMA __@gpupgradeschemaname@_gpmigrator_uao;
 -- Upgrade catalog tables for append-only tables.
 -- 1) add visimap
 -- 2) drop toast relation
@@ -432,6 +434,7 @@ CREATE FUNCTION @gpupgradeschemaname@.upgrade_appendonly_aux(aoRelId oid) RETURN
 DECLARE
   aoSegRelName name;
   toastRelName name;
+  tempNameSpaceOid  oid;
   visimapRow record;
 BEGIN
   EXECUTE 'CREATE TABLE pg_aoseg.pg_aovisimap_' || aoRelid ||
@@ -445,12 +448,17 @@ BEGIN
     'DELETE FROM pg_catalog.pg_depend WHERE refclassid=1259 and classid=1259 and
      objid=' || visimapRow.reltoastrelid || ' and
      refobjid=' || visimapRow.oid);
+  -- In order to drop a toast table, we need move it under a normal namespace and
+  -- change relkind so it looks like a normal heap table.  Otherwise, DROP would
+  -- refuse to delete a toast table directly.
+  SELECT INTO tempNameSpaceOid oid FROM pg_namespace
+    WHERE nspname = '__@gpupgradeschemaname@_gpmigrator_uao';
   PERFORM @gpupgradeschemaname@.catDML(
-    'UPDATE pg_catalog.pg_class SET relkind=''r'', relnamespace=2200
-     WHERE oid = ' || visimapRow.reltoastrelid);
+    'UPDATE pg_catalog.pg_class SET relkind=''r'', relnamespace=' || tempNameSpaceOid ||
+    ' WHERE oid = ' || visimapRow.reltoastrelid);
   SELECT INTO toastRelName relname FROM pg_class
     WHERE oid = visimapRow.reltoastrelid;
-  EXECUTE 'DROP TABLE public.' || toastRelName;
+  EXECUTE 'DROP TABLE __@gpupgradeschemaname@_gpmigrator_uao.' || toastRelName;
   EXECUTE 'ALTER TABLE pg_aoseg.pg_aovisimap_' || aoRelid || ' ALTER visimap SET STORAGE PLAIN';
   PERFORM @gpupgradeschemaname@.catDML(
     'INSERT INTO pg_catalog.pg_depend VALUES (1259, ' || visimapRow.oid
@@ -494,3 +502,4 @@ SELECT 'select @gpupgradeschemaname@.upgrade_appendonly_aux(' || relid::text || 
 \! rm appendonly_upgrade.sql
 
 DROP FUNCTION @gpupgradeschemaname@.upgrade_appendonly_aux(oid);
+DROP SCHEMA __@gpupgradeschemaname@_gpmigrator_uao;
