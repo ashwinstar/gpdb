@@ -1060,22 +1060,30 @@ select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1 where t
 -- text, varchar
 --
 explain select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1 where t0.t=t1.v);
-                                                      QUERY PLAN                                                       
------------------------------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..1293.08 rows=1 width=19)
-   ->  Result  (cost=0.00..1293.08 rows=1 width=19)
+                                                           QUERY PLAN
+--------------------------------------------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..862.00 rows=1 width=19)
+   ->  Result  (cost=0.00..862.00 rows=1 width=19)
          Filter: 1 = COALESCE("ColRef_0023", 0::bigint)
-         ->  Result  (cost=0.00..1293.07 rows=500 width=40)
-               ->  Table Scan on csq_pullup  (cost=0.00..1293.05 rows=500 width=40)
-               SubPlan 1
-                 ->  Aggregate  (cost=0.00..431.00 rows=2 width=8)
-                       ->  Result  (cost=0.00..431.00 rows=2 width=1)
-                             Filter: $0 = public.csq_pullup.v::text
-                             ->  Materialize  (cost=0.00..431.00 rows=2 width=4)
-                                   ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..431.00 rows=2 width=4)
-                                         ->  Table Scan on csq_pullup  (cost=0.00..431.00 rows=1 width=4)
+         ->  Result  (cost=0.00..862.00 rows=1 width=40)
+               ->  Hash Left Join  (cost=0.00..862.00 rows=1 width=27)
+                     Hash Cond: public.csq_pullup.t = public.csq_pullup.v::text
+                     ->  Table Scan on csq_pullup  (cost=0.00..431.00 rows=1 width=19)
+                     ->  Hash  (cost=431.00..431.00 rows=1 width=12)
+                           ->  GroupAggregate  (cost=0.00..431.00 rows=1 width=12)
+                                 Group By: public.csq_pullup.v
+                                 ->  Sort  (cost=0.00..431.00 rows=1 width=12)
+                                       Sort Key: public.csq_pullup.v
+                                       ->  Redistribute Motion 2:2  (slice1; segments: 2)  (cost=0.00..431.00 rows=1 width=12)
+                                             Hash Key: public.csq_pullup.v
+                                             ->  Result  (cost=0.00..431.00 rows=1 width=12)
+                                                   ->  GroupAggregate  (cost=0.00..431.00 rows=1 width=12)
+                                                         Group By: public.csq_pullup.v
+                                                         ->  Sort  (cost=0.00..431.00 rows=1 width=4)
+                                                               Sort Key: public.csq_pullup.v
+                                                               ->  Table Scan on csq_pullup  (cost=0.00..431.00 rows=1 width=4)
  Settings:  optimizer=on; optimizer_segments=3
-(13 rows)
+(21 rows)
 
 select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1 where t0.t=t1.v);
   t  | n | i |  v  
