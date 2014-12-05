@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <sys/stat.h>
@@ -38,10 +39,12 @@
 mmon_options_t opt = { 0 };
 
 static const apr_uint64_t smon_terminate_safe_factor = 240;
+static const apr_uint64_t recv_timeout_factor = 10;
 
 // If smon doesn't receive any request from mmon,
 // it simply kill itself to restart.
 static apr_uint64_t smon_terminate_timeout = 0;
+static apr_uint64_t recv_timeout = 0;
 
 /* gpmmon host */
 static struct
@@ -451,6 +454,20 @@ static apr_status_t conm_connect(SOCKET* retsock, const char* ipstr, int port, b
 	{
 		e = APR_FROM_OS_ERROR(errno);
 		gpmon_warningx(FLINE, e, "connect system call failed");
+		goto bail;
+	}
+
+	struct timeval tv;
+	tv.tv_sec = recv_timeout;
+	tv.tv_usec = 0;
+	if (setsockopt(sock,
+				   SOL_SOCKET,
+				   SO_RCVTIMEO,
+				   (char*)&tv,
+				   sizeof(tv)) < 0)
+	{
+		e = APR_FROM_OS_ERROR(errno);
+		gpmon_fatalx(FLINE, e, "failed to set SO_RCVTIMEO");
 		goto bail;
 	}
 
@@ -1398,6 +1415,7 @@ static int read_conf_file(char *conffile)
 	}
 
 	smon_terminate_timeout = opt.q * smon_terminate_safe_factor;
+	recv_timeout = opt.q * recv_timeout_factor;
 
 	/* check for valid entries */
 	if (!section_found)
@@ -1897,7 +1915,7 @@ static apr_status_t sendpkt(int sock, const gp_smon_to_mmon_packet_t* pkt)
 	return 0;
 }
 /* recv data through a sock */
-static apr_status_t recv_data(int sock, char* data, size_t data_size, bool loop_until_all_recv )
+static apr_status_t recv_data(int sock, char* data, size_t data_size)
 {
 	char* p = data;
 	char* q = p + data_size;
@@ -1906,25 +1924,17 @@ static apr_status_t recv_data(int sock, char* data, size_t data_size, bool loop_
 		int n = recv(sock, p, q - p, 0);
 		if (n == -1)
 		{
-			switch (errno)
-			{
-			case EINTR:
-			case EAGAIN:
+			// because we use blocking recv. if errno = EAGAIN,
+			// it means timeout happened.
+			if (errno == EINTR)
 				continue;
-			}
 			return APR_FROM_OS_ERROR(errno);
 		}
+		// because we use blocking recv, it indicates gpsmon
+		// shutdown or closed connection when n = 0.
+		if (n == 0)
+			return APR_FROM_OS_ERROR(EINTR);	
 		p += n;
-		if (loop_until_all_recv)
-		{ // loop until we get all the data
-			if (p == (char*) &data)
-			{
-				return APR_FROM_OS_ERROR(EINTR);
-			}
-		} else if (n == 0)
-		{ // didn't get data this time so return an error
-			return APR_FROM_OS_ERROR(EINTR);
-		}
 	}
 
 	TR2(("read data from sock %d\n", sock));
@@ -1937,18 +1947,18 @@ static apr_status_t recvpkt(int sock, gp_smon_to_mmon_packet_t* pkt, bool loop_u
 	int e = 0;
 
 	//receive the header
-	if (0 != (e = recv_data(sock, (char *)&pkt->header, sizeof(gp_smon_to_mmon_header_t), loop_until_all_recv))) {
+	if (0 != (e = recv_data(sock, (char *)&pkt->header, sizeof(gp_smon_to_mmon_header_t)))) {
 		return e;
 	}
 
 	if (pkt->header.pkttype == GPMON_PKTTYPE_QEXEC)
 	{
 		// Get the data portion, then get the line
-		if (0 != (e = recv_data(sock, (char *)&pkt->u.qexec_packet.data, sizeof(qexec_packet_data_t), loop_until_all_recv)))
+		if (0 != (e = recv_data(sock, (char *)&pkt->u.qexec_packet.data, sizeof(qexec_packet_data_t))))
 		{
 			return e;
 		}
-		if (0 != (e = recv_data(sock, qexec_mmon_temp_line, pkt->u.qexec_packet.data.size_of_line, loop_until_all_recv)))
+		if (0 != (e = recv_data(sock, qexec_mmon_temp_line, pkt->u.qexec_packet.data.size_of_line)))
 		{
 			return e;
 		}
@@ -1958,8 +1968,7 @@ static apr_status_t recvpkt(int sock, gp_smon_to_mmon_packet_t* pkt, bool loop_u
 	else
 	{
 		//receive the union packet
-		if (0 != (e = recv_data(sock, (char *)&pkt->u, get_size_by_pkttype_smon_to_mmon(pkt->header.pkttype), loop_until_all_recv)))
-		{
+		if (0 != (e = recv_data(sock, (char *)&pkt->u, get_size_by_pkttype_smon_to_mmon(pkt->header.pkttype)))) {
 			return e;
 		}
 	}
