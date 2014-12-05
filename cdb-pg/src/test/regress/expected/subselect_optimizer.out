@@ -1,6 +1,7 @@
 --
 -- SUBSELECT
 --
+set optimizer_enable_master_only_queries = on;
 set optimizer_segments = 3;
 SELECT 1 AS one WHERE 1 IN (SELECT 1);
  one 

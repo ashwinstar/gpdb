@@ -9,13 +9,12 @@ explain
 SELECT attnum::information_schema.cardinal_number 
 from pg_attribute 
 where attnum > 0 and attrelid = 'r'::regclass;
-                                                QUERY PLAN                                                
-----------------------------------------------------------------------------------------------------------
- Result  (cost=0.00..1.02 rows=1 width=8)
-   ->  Index Scan using pg_attribute_relid_attnum_index on pg_attribute  (cost=0.00..0.02 rows=1 width=2)
-         Index Cond: attrelid = 17862449::oid AND attnum > 0
- Settings:  optimizer=on
-(4 rows)
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Seq Scan on pg_attribute  (cost=0.00..49.89 rows=11 width=2)
+   Filter: attnum > 0 AND attrelid = 8609819::oid
+ Settings:  optimizer=off; optimizer_segments=3
+(3 rows)
 
 SELECT attnum::information_schema.cardinal_number 
 from pg_attribute 
@@ -37,15 +36,12 @@ from (SELECT attnum::information_schema.cardinal_number
       from pg_attribute 
       where attnum > 0 and attrelid = 'r'::regclass) q
 where attnum=2;
-                                                   QUERY PLAN                                                   
-----------------------------------------------------------------------------------------------------------------
- Result  (cost=0.00..2.02 rows=1 width=8)
-   Filter: attnum::integer = 2
-   ->  Result  (cost=0.00..1.02 rows=1 width=8)
-         ->  Index Scan using pg_attribute_relid_attnum_index on pg_attribute  (cost=0.00..0.02 rows=1 width=2)
-               Index Cond: attrelid = 17862449::oid AND attnum > 0
- Settings:  optimizer=on
-(6 rows)
+                                                  QUERY PLAN                                                  
+--------------------------------------------------------------------------------------------------------------
+ Seq Scan on pg_attribute  (cost=0.00..62.83 rows=2 width=2)
+   Filter: attnum > 0 AND attrelid = 8609819::oid AND attnum::information_schema.cardinal_number::integer = 2
+ Settings:  optimizer=off; optimizer_segments=3
+(3 rows)
 
 SELECT *
 from (SELECT attnum::information_schema.cardinal_number 

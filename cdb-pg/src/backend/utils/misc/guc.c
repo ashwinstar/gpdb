@@ -772,6 +772,7 @@ bool		optimizer_remove_order_below_dml;
 bool		optimizer_static_partition_selection;
 bool		optimizer_enable_partial_index;
 bool		optimizer_dml_triggers;
+bool 		optimizer_enable_master_only_queries;
 
 /* Security */
 bool		gp_reject_internal_tcp_conn = true;
@@ -4033,6 +4034,17 @@ static struct config_bool ConfigureNamesBool[] =
                 &optimizer_enable_space_pruning,
                 true, NULL, NULL
         },
+
+        {
+                {"optimizer_enable_master_only_queries", PGC_USERSET, DEVELOPER_OPTIONS,
+                        gettext_noop("Process master only queries via the optimizer."),
+                        NULL,
+                        GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+                },
+                &optimizer_enable_master_only_queries,
+                false, NULL, NULL
+        },
+
         {
                 {"optimizer_prefer_multistage_agg", PGC_USERSET, DEVELOPER_OPTIONS,
                         gettext_noop("Prefer multistage aggregates in the optimizer."),

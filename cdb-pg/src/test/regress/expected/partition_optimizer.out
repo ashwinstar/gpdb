@@ -5546,50 +5546,48 @@ NOTICE:  CREATE TABLE will create partition "g_1_prt_6" for table "g"
 NOTICE:  CREATE TABLE will create partition "g_1_prt_7" for table "g"
 NOTICE:  CREATE TABLE will create partition "g_1_prt_8" for table "g"
 NOTICE:  CREATE TABLE will create partition "g_1_prt_9" for table "g"
--- start_ignore
--- Known_opt_diff: MPP-20936
--- end_ignore
 select * from locktest;
-        coalesce        |        mode         | locktype 
-------------------------+---------------------+----------
- g                      | AccessExclusiveLock | relation
- gp_distribution_policy | RowExclusiveLock    | relation
- locktest               | AccessShareLock     | relation
- pg_class               | AccessShareLock     | relation
- pg_class               | RowExclusiveLock    | relation
- pg_depend              | RowExclusiveLock    | relation
- pg_locks               | AccessShareLock     | relation
- pg_partition           | AccessShareLock     | relation
- pg_partition           | RowExclusiveLock    | relation
- pg_partition_rule      | RowExclusiveLock    | relation
- pg_type                | RowExclusiveLock    | relation
- toast index            | AccessExclusiveLock | relation
- toast table            | ShareLock           | relation
-(13 rows)
+          coalesce          |        mode         | locktype 
+----------------------------+---------------------+----------
+ g                          | AccessExclusiveLock | relation
+ gp_distribution_policy     | RowExclusiveLock    | relation
+ locktest                   | AccessShareLock     | relation
+ pg_class                   | AccessShareLock     | relation
+ pg_class                   | RowExclusiveLock    | relation
+ pg_class_oid_index         | AccessShareLock     | relation
+ pg_class_relname_nsp_index | AccessShareLock     | relation
+ pg_depend                  | RowExclusiveLock    | relation
+ pg_locks                   | AccessShareLock     | relation
+ pg_partition               | AccessShareLock     | relation
+ pg_partition               | RowExclusiveLock    | relation
+ pg_partition_rule          | RowExclusiveLock    | relation
+ pg_type                    | RowExclusiveLock    | relation
+ toast index                | AccessExclusiveLock | relation
+ toast table                | ShareLock           | relation
+(15 rows)
 
 commit;
 -- drop
 begin;
 drop table g;
--- start_ignore
--- Known_opt_diff: MPP-20936
--- end_ignore
 select * from locktest;
-        coalesce        |        mode         | locktype 
-------------------------+---------------------+----------
- dropped table          | AccessExclusiveLock | relation
- dropped table          | AccessExclusiveLock | relation
- dropped table          | AccessExclusiveLock | relation
- gp_distribution_policy | RowExclusiveLock    | relation
- locktest               | AccessShareLock     | relation
- pg_class               | AccessShareLock     | relation
- pg_class               | RowExclusiveLock    | relation
- pg_depend              | RowExclusiveLock    | relation
- pg_locks               | AccessShareLock     | relation
- pg_partition           | RowExclusiveLock    | relation
- pg_partition_rule      | RowExclusiveLock    | relation
- pg_type                | RowExclusiveLock    | relation
-(12 rows)
+          coalesce          |        mode         | locktype 
+----------------------------+---------------------+----------
+ dropped table              | AccessExclusiveLock | relation
+ dropped table              | AccessExclusiveLock | relation
+ dropped table              | AccessExclusiveLock | relation
+ gp_distribution_policy     | RowExclusiveLock    | relation
+ locktest                   | AccessShareLock     | relation
+ pg_class                   | AccessShareLock     | relation
+ pg_class                   | RowExclusiveLock    | relation
+ pg_class_oid_index         | AccessShareLock     | relation
+ pg_class_relname_nsp_index | AccessShareLock     | relation
+ pg_depend                  | RowExclusiveLock    | relation
+ pg_locks                   | AccessShareLock     | relation
+ pg_partition               | RowExclusiveLock    | relation
+ pg_partition_rule          | RowExclusiveLock    | relation
+ pg_type                    | RowExclusiveLock    | relation
+(14 rows)
 
 commit;
 -- AO table (ao segments, block directory won't exist after create)
@@ -5608,23 +5606,25 @@ NOTICE:  CREATE TABLE will create partition "g_1_prt_3" for table "g"
 -- Known_opt_diff: MPP-20936
 -- end_ignore
 select * from locktest;
-        coalesce        |        mode         | locktype 
-------------------------+---------------------+----------
- g                      | AccessExclusiveLock | relation
- gp_distribution_policy | RowExclusiveLock    | relation
- locktest               | AccessShareLock     | relation
- pg_appendonly          | RowExclusiveLock    | relation
- pg_class               | AccessShareLock     | relation
- pg_class               | RowExclusiveLock    | relation
- pg_depend              | RowExclusiveLock    | relation
- pg_locks               | AccessShareLock     | relation
- pg_partition           | AccessShareLock     | relation
- pg_partition           | RowExclusiveLock    | relation
- pg_partition_rule      | RowExclusiveLock    | relation
- pg_type                | RowExclusiveLock    | relation
- toast index            | AccessExclusiveLock | relation
- toast table            | ShareLock           | relation
-(14 rows)
+          coalesce          |        mode         | locktype 
+----------------------------+---------------------+----------
+ g                          | AccessExclusiveLock | relation
+ gp_distribution_policy     | RowExclusiveLock    | relation
+ locktest                   | AccessShareLock     | relation
+ pg_appendonly              | RowExclusiveLock    | relation
+ pg_class                   | AccessShareLock     | relation
+ pg_class                   | RowExclusiveLock    | relation
+ pg_class_oid_index         | AccessShareLock     | relation
+ pg_class_relname_nsp_index | AccessShareLock     | relation
+ pg_depend                  | RowExclusiveLock    | relation
+ pg_locks                   | AccessShareLock     | relation
+ pg_partition               | AccessShareLock     | relation
+ pg_partition               | RowExclusiveLock    | relation
+ pg_partition_rule          | RowExclusiveLock    | relation
+ pg_type                    | RowExclusiveLock    | relation
+ toast index                | AccessExclusiveLock | relation
+ toast table                | ShareLock           | relation
+(16 rows)
 
 commit;
 begin;
@@ -5638,19 +5638,21 @@ insert into g values(1), (2), (3);
 -- Known_opt_diff: MPP-20936
 -- end_ignore
 select * from locktest;
- coalesce  |        mode         |         locktype         
------------+---------------------+--------------------------
- g         | RowExclusiveLock    | relation
- g_1_prt_1 | AccessExclusiveLock | append-only segment file
- g_1_prt_1 | AccessShareLock     | relation
- g_1_prt_2 | AccessExclusiveLock | append-only segment file
- g_1_prt_2 | AccessShareLock     | relation
- g_1_prt_3 | AccessExclusiveLock | append-only segment file
- g_1_prt_3 | AccessShareLock     | relation
- locktest  | AccessShareLock     | relation
- pg_class  | AccessShareLock     | relation
- pg_locks  | AccessShareLock     | relation
-(10 rows)
+          coalesce          |        mode         |         locktype         
+----------------------------+---------------------+--------------------------
+ g                          | RowExclusiveLock    | relation
+ g_1_prt_1                  | AccessExclusiveLock | append-only segment file
+ g_1_prt_1                  | AccessShareLock     | relation
+ g_1_prt_2                  | AccessExclusiveLock | append-only segment file
+ g_1_prt_2                  | AccessShareLock     | relation
+ g_1_prt_3                  | AccessExclusiveLock | append-only segment file
+ g_1_prt_3                  | AccessShareLock     | relation
+ locktest                   | AccessShareLock     | relation
+ pg_class                   | AccessShareLock     | relation
+ pg_class_oid_index         | AccessShareLock     | relation
+ pg_class_relname_nsp_index | AccessShareLock     | relation
+ pg_locks                   | AccessShareLock     | relation
+(12 rows)
 
 commit;
 -- drop
@@ -5660,26 +5662,28 @@ drop table g;
 -- Known_opt_diff: MPP-20936
 -- end_ignore
 select * from locktest;
-        coalesce        |        mode         | locktype 
-------------------------+---------------------+----------
- dropped table          | AccessExclusiveLock | relation
- dropped table          | AccessExclusiveLock | relation
- dropped table          | AccessExclusiveLock | relation
- dropped table          | AccessExclusiveLock | relation
- dropped table          | AccessExclusiveLock | relation
- dropped table          | AccessExclusiveLock | relation
- dropped table          | AccessExclusiveLock | relation
- gp_distribution_policy | RowExclusiveLock    | relation
- locktest               | AccessShareLock     | relation
- pg_appendonly          | RowExclusiveLock    | relation
- pg_class               | AccessShareLock     | relation
- pg_class               | RowExclusiveLock    | relation
- pg_depend              | RowExclusiveLock    | relation
- pg_locks               | AccessShareLock     | relation
- pg_partition           | RowExclusiveLock    | relation
- pg_partition_rule      | RowExclusiveLock    | relation
- pg_type                | RowExclusiveLock    | relation
-(17 rows)
+          coalesce          |        mode         | locktype 
+----------------------------+---------------------+----------
+ dropped table              | AccessExclusiveLock | relation
+ dropped table              | AccessExclusiveLock | relation
+ dropped table              | AccessExclusiveLock | relation
+ dropped table              | AccessExclusiveLock | relation
+ dropped table              | AccessExclusiveLock | relation
+ dropped table              | AccessExclusiveLock | relation
+ dropped table              | AccessExclusiveLock | relation
+ gp_distribution_policy     | RowExclusiveLock    | relation
+ locktest                   | AccessShareLock     | relation
+ pg_appendonly              | RowExclusiveLock    | relation
+ pg_class                   | AccessShareLock     | relation
+ pg_class                   | RowExclusiveLock    | relation
+ pg_class_oid_index         | AccessShareLock     | relation
+ pg_class_relname_nsp_index | AccessShareLock     | relation
+ pg_depend                  | RowExclusiveLock    | relation
+ pg_locks                   | AccessShareLock     | relation
+ pg_partition               | RowExclusiveLock    | relation
+ pg_partition_rule          | RowExclusiveLock    | relation
+ pg_type                    | RowExclusiveLock    | relation
+(19 rows)
 
 commit;
 -- Indexing
@@ -5711,18 +5715,20 @@ NOTICE:  building index for child partition "g_1_prt_9"
 -- Known_opt_diff: MPP-20936
 -- end_ignore
 select * from locktest;
-     coalesce      |        mode         | locktype 
--------------------+---------------------+----------
- g                 | ShareLock           | relation
- g_idx             | AccessExclusiveLock | relation
- locktest          | AccessShareLock     | relation
- pg_class          | AccessShareLock     | relation
- pg_class          | RowExclusiveLock    | relation
- pg_locks          | AccessShareLock     | relation
- pg_partition      | AccessShareLock     | relation
- pg_partition_rule | AccessShareLock     | relation
- pg_type           | RowExclusiveLock    | relation
-(9 rows)
+          coalesce          |        mode         | locktype 
+----------------------------+---------------------+----------
+ g                          | ShareLock           | relation
+ g_idx                      | AccessExclusiveLock | relation
+ locktest                   | AccessShareLock     | relation
+ pg_class                   | AccessShareLock     | relation
+ pg_class                   | RowExclusiveLock    | relation
+ pg_class_oid_index         | AccessShareLock     | relation
+ pg_class_relname_nsp_index | AccessShareLock     | relation
+ pg_locks                   | AccessShareLock     | relation
+ pg_partition               | AccessShareLock     | relation
+ pg_partition_rule          | AccessShareLock     | relation
+ pg_type                    | RowExclusiveLock    | relation
+(11 rows)
 
 commit;
 -- test select locking
@@ -5736,13 +5742,15 @@ select * from g where i = 1;
 -- Known_opt_diff: MPP-20936
 -- end_ignore
 select * from locktest;
- coalesce |      mode       | locktype 
-----------+-----------------+----------
- g        | AccessShareLock | relation
- locktest | AccessShareLock | relation
- pg_class | AccessShareLock | relation
- pg_locks | AccessShareLock | relation
-(4 rows)
+          coalesce          |      mode       | locktype 
+----------------------------+-----------------+----------
+ g                          | AccessShareLock | relation
+ locktest                   | AccessShareLock | relation
+ pg_class                   | AccessShareLock | relation
+ pg_class_oid_index         | AccessShareLock | relation
+ pg_class_relname_nsp_index | AccessShareLock | relation
+ pg_locks                   | AccessShareLock | relation
+(6 rows)
 
 commit;
 begin;
@@ -5752,13 +5760,15 @@ insert into g values(3, 'f');
 -- Known_opt_diff: MPP-20936
 -- end_ignore
 select * from locktest;
- coalesce |       mode       | locktype 
-----------+------------------+----------
- g        | RowExclusiveLock | relation
- locktest | AccessShareLock  | relation
- pg_class | AccessShareLock  | relation
- pg_locks | AccessShareLock  | relation
-(4 rows)
+          coalesce          |       mode       | locktype 
+----------------------------+------------------+----------
+ g                          | RowExclusiveLock | relation
+ locktest                   | AccessShareLock  | relation
+ pg_class                   | AccessShareLock  | relation
+ pg_class_oid_index         | AccessShareLock  | relation
+ pg_class_relname_nsp_index | AccessShareLock  | relation
+ pg_locks                   | AccessShareLock  | relation
+(6 rows)
 
 commit;
 -- delete locking
@@ -5768,13 +5778,15 @@ delete from g where i = 4;
 -- Known_opt_diff: MPP-20936
 -- end_ignore
 select * from locktest;
- coalesce |      mode       | locktype 
-----------+-----------------+----------
- g        | ExclusiveLock   | relation
- locktest | AccessShareLock | relation
- pg_class | AccessShareLock | relation
- pg_locks | AccessShareLock | relation
-(4 rows)
+          coalesce          |      mode       | locktype 
+----------------------------+-----------------+----------
+ g                          | ExclusiveLock   | relation
+ locktest                   | AccessShareLock | relation
+ pg_class                   | AccessShareLock | relation
+ pg_class_oid_index         | AccessShareLock | relation
+ pg_class_relname_nsp_index | AccessShareLock | relation
+ pg_locks                   | AccessShareLock | relation
+(6 rows)
 
 commit;
 -- drop index
@@ -5784,22 +5796,24 @@ drop table g;
 -- Known_opt_diff: MPP-20936
 -- end_ignore
 select * from locktest;
-        coalesce        |        mode         | locktype 
-------------------------+---------------------+----------
- dropped table          | AccessExclusiveLock | relation
- dropped table          | AccessExclusiveLock | relation
- dropped table          | AccessExclusiveLock | relation
- dropped table          | AccessExclusiveLock | relation
- gp_distribution_policy | RowExclusiveLock    | relation
- locktest               | AccessShareLock     | relation
- pg_class               | AccessShareLock     | relation
- pg_class               | RowExclusiveLock    | relation
- pg_depend              | RowExclusiveLock    | relation
- pg_locks               | AccessShareLock     | relation
- pg_partition           | RowExclusiveLock    | relation
- pg_partition_rule      | RowExclusiveLock    | relation
- pg_type                | RowExclusiveLock    | relation
-(13 rows)
+          coalesce          |        mode         | locktype 
+----------------------------+---------------------+----------
+ dropped table              | AccessExclusiveLock | relation
+ dropped table              | AccessExclusiveLock | relation
+ dropped table              | AccessExclusiveLock | relation
+ dropped table              | AccessExclusiveLock | relation
+ gp_distribution_policy     | RowExclusiveLock    | relation
+ locktest                   | AccessShareLock     | relation
+ pg_class                   | AccessShareLock     | relation
+ pg_class                   | RowExclusiveLock    | relation
+ pg_class_oid_index         | AccessShareLock     | relation
+ pg_class_relname_nsp_index | AccessShareLock     | relation
+ pg_depend                  | RowExclusiveLock    | relation
+ pg_locks                   | AccessShareLock     | relation
+ pg_partition               | RowExclusiveLock    | relation
+ pg_partition_rule          | RowExclusiveLock    | relation
+ pg_type                    | RowExclusiveLock    | relation
+(15 rows)
 
 commit;
 -- MPP-5159
@@ -9274,8 +9288,8 @@ analyze foo_p;
 analyze bar;
 set optimizer_segments = 3;
 explain select foo_p.b, foo_p.t from foo_p left outer join bar on foo_p.a = bar.k  where foo_p.t is not null and foo_p.a = (array[1])[1];
-                                                QUERY PLAN                                                 
------------------------------------------------------------------------------------------------------------
+                                                   QUERY PLAN                                                    
+-----------------------------------------------------------------------------------------------------------------
  Gather Motion 2:1  (slice3; segments: 2)  (cost=0.00..866.85 rows=20500 width=30)
    ->  Hash Left Join  (cost=0.00..864.56 rows=10250 width=30)
          Hash Cond: foo_p.a = bar.k
@@ -9283,6 +9297,7 @@ explain select foo_p.b, foo_p.t from foo_p left outer join bar on foo_p.a = bar.
                Hash Key: foo_p.a
                ->  Sequence  (cost=0.00..431.07 rows=200 width=34)
                      ->  Partition Selector for foo_p (dynamic scan id: 1)  (cost=10.00..100.00 rows=50 width=4)
+                           Partitions selected:  6 (out of 6)
                      ->  Dynamic Table Scan on foo_p (dynamic scan id: 1)  (cost=0.00..431.07 rows=200 width=34)
                            Filter: NOT t IS NULL AND a = ('{1}'::integer[])[1]
          ->  Hash  (cost=431.45..431.45 rows=10050 width=4)
@@ -9290,7 +9305,7 @@ explain select foo_p.b, foo_p.t from foo_p left outer join bar on foo_p.a = bar.
                      Hash Key: bar.k
                      ->  Table Scan on bar  (cost=0.00..431.32 rows=10050 width=4)
  Settings:  optimizer=on; optimizer_segments=3
-(14 rows)
+(15 rows)
 
 reset optimizer_segments;
 drop table if exists foo_p;

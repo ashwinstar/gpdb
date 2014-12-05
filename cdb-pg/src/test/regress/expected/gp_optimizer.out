@@ -8,6 +8,7 @@ SELECT gp_opt_version();
  GPOPT version: 1.520, GPOS version: 1.113, Xerces version: 3.1.1-p1
 (1 row)
 
+set optimizer_enable_master_only_queries = on;
 -- master only tables
 create schema orca;
 create table orca.r();

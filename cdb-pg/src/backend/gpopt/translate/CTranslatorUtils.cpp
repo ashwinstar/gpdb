@@ -78,6 +78,7 @@ using namespace gpmd;
 using namespace gpos;
 using namespace gpopt;
 
+extern bool optimizer_enable_master_only_queries;
 
 //---------------------------------------------------------------------------
 //	@function:
@@ -339,7 +340,14 @@ CTranslatorUtils::Pdxltabdesc
 	{
 		*pfDistributedTable = true;
 	}
+	else if (!optimizer_enable_master_only_queries && (IMDRelation::EreldistrMasterOnly == ereldist))
+		{
+			// fall back to the planner for queries on master-only table if they are disabled with Orca. This is due to
+			// the fact that catalog tables (master-only) are not analyzed often and will result in Orca producing
+			// inferior plans.
 
+			GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature, GPOS_WSZ_LIT("Queries on master-only tables"));
+		}
 	// add columns from md cache relation object to table descriptor
 	for (ULONG ul = 0; ul < ulLen; ul++)
 	{

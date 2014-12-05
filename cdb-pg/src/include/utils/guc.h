@@ -428,6 +428,7 @@ extern bool optimizer_enable_partial_index;
 extern bool optimizer_dml_triggers;
 extern bool optimizer_direct_dispatch;
 extern bool optimizer_control;	/* controls whether the user can change the setting of the "optimizer" guc */
+extern bool optimizer_enable_master_only_queries;
 
 /**
  * Enable logging of DPE match in optimizer.
