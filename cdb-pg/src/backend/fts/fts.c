@@ -965,7 +965,7 @@ probeUpdateConfig(FtsSegmentStatusChange *changes, int changeCount)
 	bool primary;
 	bool changelogging;
 	int i;
-	char desc[VARHDRSZ + SQL_CMD_BUF_SIZE];
+	char desc[SQL_CMD_BUF_SIZE];
 	cqContext cqc_config, cqc_hist;
 	/*
 	 * Commit/abort transaction below will destroy
@@ -1005,13 +1005,13 @@ probeUpdateConfig(FtsSegmentStatusChange *changes, int changeCount)
 				TimestampTzGetDatum(GetCurrentTimestamp());
 		histvals[Anum_gp_configuration_history_dbid-1] =
 				Int16GetDatum(changes[i].dbid);
-		snprintf(VARDATA(desc), SQL_CMD_BUF_SIZE,
-				 "'FTS: content %d fault marking status %s%s role %c'",
+		snprintf(desc, sizeof(desc),
+				 "FTS: content %d fault marking status %s%s role %c",
 				 change->segindex, valid ? "UP" : "DOWN",
 				 (changelogging) ? " mode: change-tracking" : "",
 				 primary ? 'p' : 'm');
-		SET_VARSIZE(desc, strlen(VARDATA(desc)) + 1);
-		histvals[Anum_gp_configuration_history_desc-1] = PointerGetDatum(desc);
+		histvals[Anum_gp_configuration_history_desc-1] =
+					CStringGetTextDatum(desc);
 		caql_beginscan(&cqc_hist,
 					   cql("INSERT INTO gp_configuration_history", NULL));
 
@@ -1208,7 +1208,7 @@ FtsMarkSegmentsInSync(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseInf
 	bool repls[Natts_gp_segment_configuration] = { false };
 	Datum histvals[Natts_gp_configuration_history];
 	bool histnulls[Natts_gp_configuration_history] = { false };
-	char desc[SQL_CMD_BUF_SIZE];
+	char *desc = "FTS: changed segment to insync from resync.";
 	cqContext cqc_config, cqc_hist;
 	/*
 	 * Commit/abort transaction below will destroy
@@ -1273,12 +1273,8 @@ FtsMarkSegmentsInSync(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseInf
 			TimestampTzGetDatum(GetCurrentTimestamp());
 	histvals[Anum_gp_configuration_history_dbid-1] =
 			Int16GetDatum(primary->dbid);
-	snprintf(desc, sizeof(desc),
-			 "FTS: changed segment to insync from resync.");
-	histvals[Anum_gp_configuration_history_desc-1] = PointerGetDatum(desc);
-	SET_VARSIZE_SHORT(
-			DatumGetPointer(histvals[Anum_gp_configuration_history_desc-1]),
-			strlen(desc)+1);
+	histvals[Anum_gp_configuration_history_desc-1] =
+				CStringGetTextDatum(desc);
 	histtuple = caql_form_tuple(&cqc_hist, histvals, histnulls);
 	caql_insert(&cqc_hist, histtuple);
 	histvals[Anum_gp_configuration_history_dbid-1] =
