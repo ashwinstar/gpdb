@@ -667,6 +667,7 @@ CTranslatorDXLToScalar::PsubplanFromDXLNodeScSubPlan
 	)
 {
 	CDXLTranslateContext *pdxltrctxOut = (dynamic_cast<CMappingColIdVarPlStmt*>(pmapcidvar))->PpdxltrctxOut();
+	
 	CContextDXLToPlStmt *pctxdxltoplstmt = (dynamic_cast<CMappingColIdVarPlStmt*>(pmapcidvar))->Pctxdxltoplstmt();
 
 	CDXLScalarSubPlan *pdxlop = CDXLScalarSubPlan::PdxlopConvert(pdxlnSubPlan->Pdxlop());
@@ -679,18 +680,27 @@ CTranslatorDXLToScalar::PsubplanFromDXLNodeScSubPlan
 	const DrgPmdid *pdrgmdidOuterRefs = pdxlop->DrgmdidOuterRefs();
 
 	const ULONG ulLen = pdrgdxlcrOuterRefs->UlLength();
-	// insert outer reference mappings in the translate context
+	
+	// create a copy of the translate context: the param mappings from the outer scope get copied in the constructor
+	CDXLTranslateContext dxltrctxSubplan(m_pmp, pdxltrctxOut->FParentAggNode(), pdxltrctxOut->PhmColParam());
+	
+	// insert new outer ref mappings in the subplan translate context
 	for (ULONG ul = 0; ul < ulLen; ul++)
 	{
 		IMDId *pmdid = (*pdrgmdidOuterRefs)[ul];
 		CDXLColRef *pdxlcr = (*pdrgdxlcrOuterRefs)[ul];
 		ULONG ulColid = pdxlcr->UlID();
 		
-		if (NULL == pdxltrctxOut->Pmecolidparamid(ulColid))
+		if (NULL == dxltrctxSubplan.Pmecolidparamid(ulColid))
 		{
 			// keep outer reference mapping to the original column for subsequent subplans
 			CMappingElementColIdParamId *pmecolidparamid = New (m_pmp) CMappingElementColIdParamId(ulColid, pctxdxltoplstmt->UlNextParamId(), pmdid);
-			pdxltrctxOut->FInsertParamMapping(ulColid, pmecolidparamid);
+			
+#ifdef GPOS_DEBUG
+			BOOL fInserted =
+#endif
+			dxltrctxSubplan.FInsertParamMapping(ulColid, pmecolidparamid);
+			GPOS_ASSERT(fInserted);
 		}
 	}
 
@@ -718,7 +728,7 @@ CTranslatorDXLToScalar::PsubplanFromDXLNodeScSubPlan
 							m_ulSegments
 							);
 	DrgPdxltrctx *pdrgpdxltrctxPrevSiblings = New(m_pmp) DrgPdxltrctx(m_pmp);
-	Plan *pplanChild = trdxltoplstmt.PplFromDXL(pdxlnChild, pdxltrctxOut, pplan, pdrgpdxltrctxPrevSiblings);
+	Plan *pplanChild = trdxltoplstmt.PplFromDXL(pdxlnChild, &dxltrctxSubplan, pplan, pdrgpdxltrctxPrevSiblings);
 	pdrgpdxltrctxPrevSiblings->Release();
 
 	GPOS_ASSERT(NULL != pplanChild->targetlist && 1 <= gpdb::UlListLength(pplanChild->targetlist));
@@ -738,7 +748,7 @@ CTranslatorDXLToScalar::PsubplanFromDXLNodeScSubPlan
         }
 
 	// translate other subplan params
-	TranslateSubplanParams(psubplan, pdxltrctxOut, pdrgdxlcrOuterRefs, pmapcidvar);
+	TranslateSubplanParams(psubplan, &dxltrctxSubplan, pdrgdxlcrOuterRefs, pmapcidvar);
 
 	return (Expr *)psubplan;
 }
