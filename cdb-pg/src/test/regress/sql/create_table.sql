@@ -175,22 +175,22 @@ CREATE TABLE aggtest (
 CREATE TABLE hash_i4_heap (
 	seqno 		int4,
 	random 		int4
-);
+) distributed by (seqno);
 
 CREATE TABLE hash_name_heap (
 	seqno 		int4,
 	random 		name
-);
+) distributed by (seqno);
 
 CREATE TABLE hash_txt_heap (
 	seqno 		int4,
 	random 		text
-);
+) distributed by (seqno);
 
 CREATE TABLE hash_f8_heap (
 	seqno		int4,
 	random 		float8
-);
+) distributed by (seqno);
 
 -- don't include the hash_ovfl_heap stuff in the distribution
 -- the data set is too large for what it's worth
@@ -236,7 +236,8 @@ CREATE TABLE array_index_op_test (
 create table dupconstr (
 						i int,
 						j int constraint test CHECK (j > 10),
-						CONSTRAINT test UNIQUE (i,j));
+						CONSTRAINT test UNIQUE (i,j))
+						distributed by (i);
 
 -- MPP-2764: distributed randomly is not compatible with primary key or unique
 -- constraints
@@ -257,7 +258,7 @@ create unique index distrand_idx on distrand(i);
 drop table distrand; 
 
 -- Make sure distribution policy determined from CTAS actually works, MPP-101
-create table distpol as select random(), 1 as a, 2 as b;
+create table distpol as select random(), 1 as a, 2 as b distributed by (random);
 select attrnums from gp_distribution_policy where 
   localoid = 'distpol'::regclass;
 drop table distpol;
@@ -266,7 +267,7 @@ select attrnums from gp_distribution_policy where
   localoid = 'distpol'::regclass;
 drop table distpol;
 -- now test that MPP-101 /actually/ works
-create table distpol (i int, j int, k int);
+create table distpol (i int, j int, k int) distributed by (i);
 alter table distpol add primary key (j);
 select attrnums from gp_distribution_policy where 
   localoid = 'distpol'::regclass;

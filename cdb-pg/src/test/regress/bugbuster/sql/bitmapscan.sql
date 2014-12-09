@@ -37,7 +37,7 @@ create table mpp4593_bmbug (dt date, ind int, s bigint);
 create index bmbug_idx on mpp4593_bmbug using bitmap(ind, dt);
 -- Test Bitmap Indexscan
 drop table if exists test;
-create table test (a integer, b integer);
+create table test (a integer, b integer) distributed by (a);
 insert into test select a, a%25 from generate_series(1,100) a;
 create index test_a on test (a);
 set enable_seqscan=off;
@@ -60,7 +60,7 @@ select * from test where a>100;
 -- Test Bitmap Heapscan + Bitmap OR + Bitmap Indexscan
 
 drop table if exists test;
-create table test (a integer, b integer);
+create table test (a integer, b integer) distributed by (a);
 insert into test select a, a%25 from generate_series(1,100) a;
 
 -- Test on 2 btrees
@@ -144,7 +144,7 @@ select * from test where a<1 or b>30;
 select * from test where a<1 or b>30;
 -- Test ArrayKeys
 drop table if exists test;
-create table test (a integer, b integer);
+create table test (a integer, b integer) distributed by (a);
 insert into test select a, a%25 from generate_series(1,100) a;
 create index test_a on test (a);
 set enable_seqscan=off;

@@ -71,7 +71,7 @@ select count(*) from atsdb_ao;
 drop table atsdb_ao;
 
 -- Check divergent distribution policies for partitioning.
-create table atsdb (i int, j int, k int) partition by range(k)
+create table atsdb (i int, j int, k int) distributed by (i) partition by range(k)
 (start(1) end(4) every(1));
 alter table atsdb_1_prt_2 set distributed by (j);
 alter table atsdb_1_prt_3 set distributed randomly;
@@ -101,7 +101,7 @@ select count(*) from atsdb;
 
 -- compare distribution: we create a table, identical to the partitioned table,
 -- and compare how the tuples have been distributed.
-create table atsdb_1 (like atsdb_1_prt_1);
+create table atsdb_1 (like atsdb_1_prt_1) distributed by (i);
 copy atsdb_1 from stdin delimiter '|';
 1|1|1
 2|1|1
@@ -113,7 +113,7 @@ copy atsdb_1 from stdin delimiter '|';
 select gp_segment_id, * from atsdb where k = 1 except 
 select gp_segment_id, * from atsdb_1;
 
-create table atsdb_2 (like atsdb_1_prt_2);
+create table atsdb_2 (like atsdb_1_prt_2) distributed by (i);
 copy atsdb_2 from stdin delimiter '|';
 1|1|2
 2|1|2
@@ -186,7 +186,7 @@ randomly;
 drop table atsdb;
 
 -- Check that we correctly cascade for partitioned tables
-create table atsdb (i int, j int, k int) partition by range(k)
+create table atsdb (i int, j int, k int) distributed by (i) partition by range(k)
 (start(1) end(10) every(1));
 insert into atsdb select i+2, i+1, i from generate_series(1, 9) i;
 select * from distcheck where rel like 'atsdb%';
@@ -204,7 +204,7 @@ drop view distcheck;
 
 -- MPP-5452
 -- Should succeed
-create table atsdb (i int, k int) partition by range(i) (start (1) end(10)
+create table atsdb (i int, k int) distributed by (i) partition by range(i) (start (1) end(10)
 every(1));
 alter table atsdb alter partition for(rank(5)) set distributed by (i);
 alter table atsdb alter partition for(rank(5)) set distributed by (i);
@@ -275,7 +275,8 @@ CREATE TABLE mpp5754 (
              N_NAME CHAR(25),
              N_REGIONKEY INTEGER,
              N_COMMENT VARCHAR(152)
-             ) with (appendonly = true, checksum = true);
+             ) with (appendonly = true, checksum = true)
+             distributed by (N_NATIONKEY);
 
 copy mpp5754 from stdin with delimiter '|';
 0|ALGERIA|0| haggle. carefully final deposits detect slyly agai
@@ -2067,7 +2068,7 @@ select * from alter_distpol_g order by 1;
 drop table alter_distpol_g;
 
 -- MPP-6332
-create table abc (a int, b int, c int);
+create table abc (a int, b int, c int) distributed by (a);
 Alter table abc set distributed randomly;
 Alter table abc set with (reorganize=false) distributed randomly;
 drop table abc;

@@ -8,7 +8,7 @@ CREATE SCHEMA test_schema_1
        CREATE TABLE abc (
               a serial,
               b int UNIQUE
-       );
+       ) DISTRIBUTED BY (b);
 NOTICE:  CREATE TABLE will create implicit sequence "abc_a_seq" for serial column "abc.a"
 NOTICE:  CREATE TABLE / UNIQUE will create implicit index "abc_b_key" for table "abc"
 -- verify that the objects were created

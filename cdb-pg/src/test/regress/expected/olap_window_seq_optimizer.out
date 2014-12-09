@@ -4066,13 +4066,14 @@ select date_key, bcookie, time_key, event_type,
             else 0
  end
 ) AS time_check
-from fact_test;
+from fact_test
+order by date_key, bcookie, time_key, event_type, time_check;
  date_key | bcookie | time_key | event_type | time_check 
 ----------+---------+----------+------------+------------
  20070101 | A       |      101 | c          |          0
  20070101 | A       |      101 | p          |          0
- 20070101 | A       | 10100101 | p          |          1
  20070101 | A       | 10100101 | p          |          0
+ 20070101 | A       | 10100101 | p          |          1
  20070101 | A       | 20100101 | p          |          1
  20070101 | B       |      100 | c          |          0
  20070101 | B       |      101 | p          |          0

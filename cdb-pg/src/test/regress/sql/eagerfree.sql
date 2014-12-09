@@ -1,17 +1,17 @@
 drop table if exists smallt;
 
-create table smallt (i int, t text, d date);
+create table smallt (i int, t text, d date) distributed by (i);
 insert into smallt select i%10, 'text ' || (i%15), '2011-01-01'::date + ((i%20) || ' days')::interval
 from generate_series(0, 99) i;
 
 drop table if exists bigt;
 
-create table bigt (i int, t text, d date);
+create table bigt (i int, t text, d date) distributed by (i);
 insert into bigt select i/10, 'text ' || (i/15), '2011-01-01'::date + ((i/20) || ' days')::interval
 from generate_series(0, 999999) i;
 
 drop table if exists smallt2;
-create table smallt2 (i int, t text, d date);
+create table smallt2 (i int, t text, d date) distributed by (i);
 insert into smallt2 select i%5, 'text ' || (i%10), '2011-01-01'::date + ((i%15) || ' days')::interval
 from generate_series(0, 49) i;
 

@@ -1,5 +1,5 @@
 drop table if exists with_test1 cascade;
-create table with_test1 (i int, t text, value int);
+create table with_test1 (i int, t text, value int) distributed by (i);
 insert into with_test1 select i%10, 'text' || i%20, i%30 from generate_series(0, 99) i;
 
 drop table if exists with_test2 cascade;

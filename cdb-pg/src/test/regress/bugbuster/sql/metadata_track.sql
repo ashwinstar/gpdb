@@ -184,7 +184,7 @@ drop table mdt_part_tbl_split_list;
           kind varchar(10),
           len interval hour to minute,
           CONSTRAINT production UNIQUE(date_prod)
-          );
+          ) distributed by (date_prod);
 
           ALTER TABLE mdt_films DROP CONSTRAINT production RESTRICT;
 
@@ -196,7 +196,7 @@ drop table mdt_part_tbl_split_list;
           kind varchar(10),
           len interval hour to minute,
           CONSTRAINT production UNIQUE(date_prod)
-          );
+          ) distributed by (date_prod);
 
           ALTER TABLE mdt_films1 DROP CONSTRAINT production CASCADE;
 
@@ -221,7 +221,7 @@ CREATE TABLE mdt_test_column(
     date_column date,
     col_with_constraint numeric UNIQUE,
     col_with_default_text character varying(30) DEFAULT 'test1'
-    );
+    ) distributed by (col_with_constraint);
 
     ALTER TABLE mdt_test_column DROP COLUMN toast_col ;
 
@@ -240,7 +240,7 @@ CREATE TABLE mdt_test_column(
     date_column date,
     col_with_constraint numeric UNIQUE,
     col_with_default_text character varying(30) DEFAULT 'test1'
-    );
+    ) distributed by (col_with_constraint);
 
     ALTER TABLE mdt_test_column1 DROP COLUMN non_toast_col ;
 
@@ -385,7 +385,7 @@ drop table mdt_table_set_storage_parameters2;
           effective TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
           price NUMERIC(9,2),
           UNIQUE (apn, effective)
-          );
+          ) distributed by (apn, effective);
 
           CREATE TABLE mdt_stock(
           mdt_stock_apn CHARACTER(15) NOT NULL,

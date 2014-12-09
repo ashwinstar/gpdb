@@ -11,7 +11,7 @@ CREATE SCHEMA test_schema_1
        CREATE TABLE abc (
               a serial,
               b int UNIQUE
-       );
+       ) DISTRIBUTED BY (b);
 
 -- verify that the objects were created
 SELECT COUNT(*) FROM pg_class WHERE relnamespace =

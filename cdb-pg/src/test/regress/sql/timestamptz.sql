@@ -267,7 +267,8 @@ create table dttm_com
 t1 timestamp not null,
 t2 timestamp not null,
 d1 date not null,
-d2 date not null );
+d2 date not null )
+distributed by (id);
 insert into dttm_com values
      (1, now(), current_timestamp, now(), current_date),
      (2, current_timestamp, localtimestamp::date, current_date::date, date_in(date_out(current_date))),

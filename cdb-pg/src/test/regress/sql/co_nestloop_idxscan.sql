@@ -4,8 +4,9 @@
 
 
 create schema co_nestloop_idxscan;
-create table co_nestloop_idxscan.foo (id bigint, data text) with (appendonly=true, orientation=column);
-create table co_nestloop_idxscan.bar (id bigint);
+create table co_nestloop_idxscan.foo (id bigint, data text) with (appendonly=true, orientation=column)
+distributed by (id);
+create table co_nestloop_idxscan.bar (id bigint) distributed by (id);
 
 -- Changing the text to be smaller doesn't repro the issue
 insert into co_nestloop_idxscan.foo select 1, repeat('xxxxxxxxxx', 100000);

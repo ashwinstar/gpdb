@@ -1378,6 +1378,7 @@ CREATE TABLE REGION (
                     R_NAME CHAR(25),
                     R_COMMENT VARCHAR(152)
                     )
+distributed by (r_regionkey)
 partition by hash (r_regionkey) partitions 1
 subpartition by hash (r_name) subpartitions 3
 ,subpartition by hash (r_comment) subpartitions 2
@@ -3454,6 +3455,7 @@ drop domain domainvarchar, domainnumeric, domainint4, domaintext;
 
 -- Test index inheritance with partitions
 create table ti (i int not null, j int)
+distributed by (i)
 partition by range (j) 
 (start(1) end(3) every(1));
 create unique index ti_pkey on ti(i);
@@ -3481,7 +3483,7 @@ select schemaname, tablename from pg_tables where schemaname = 'public' and tabl
 drop table anotherit;
 
 -- test table constraint inheritance
-create table it (i int) partition by range(i) (start(1) end(3) every(1));
+create table it (i int) distributed by (i) partition by range(i) (start(1) end(3) every(1));
 select schemaname, tablename, indexname from pg_indexes where schemaname = 'public' and tablename like 'it%';
 alter table it add primary key(i);
 select schemaname, tablename, indexname from pg_indexes where schemaname = 'public' and tablename like 'it%';
@@ -4423,6 +4425,7 @@ drop table if exists at cascade;
 
 create table tc
     (a int, b int, c int, primary key(a) )
+    distributed by (a)
     partition by range (b)
     ( 
         default partition d,
@@ -4431,6 +4434,7 @@ create table tc
 
 create table cc
     (a int primary key, b int, c int)
+    distributed by (a)
     partition by range (b)
     ( 
         default partition d,
@@ -4439,6 +4443,7 @@ create table cc
 
 create table at
     (a int, b int, c int)
+    distributed by (a)
     partition by range (b)
     ( 
         default partition d,

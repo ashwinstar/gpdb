@@ -919,7 +919,8 @@ select date_key, bcookie, time_key, event_type,
             else 0
  end
 ) AS time_check
-from fact_test;
+from fact_test
+order by date_key, bcookie, time_key, event_type, time_check;
 drop table fact_test;
 
 -- MPP-1929

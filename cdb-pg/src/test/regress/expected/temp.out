@@ -140,12 +140,10 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 ERROR:  ON COMMIT can only be used on temporary tables
 -- Test foreign keys
 BEGIN;
-CREATE TEMP TABLE temptest1(col int PRIMARY KEY);
+CREATE TEMP TABLE temptest1(col int PRIMARY KEY) DISTRIBUTED BY (col);
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "temptest1_pkey" for table "temptest1"
 CREATE TEMP TABLE temptest2(col int REFERENCES temptest1)
   ON COMMIT DELETE ROWS;
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'col' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 WARNING:  Referential integrity (FOREIGN KEY) constraints are not supported in Greenplum Database, will not be enforced.
 INSERT INTO temptest1 VALUES (1);
 INSERT INTO temptest2 VALUES (1);
@@ -162,11 +160,9 @@ SELECT * FROM temptest2;
 (0 rows)
 
 BEGIN;
-CREATE TEMP TABLE temptest3(col int PRIMARY KEY) ON COMMIT DELETE ROWS;
+CREATE TEMP TABLE temptest3(col int PRIMARY KEY) ON COMMIT DELETE ROWS DISTRIBUTED BY (col);
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "temptest3_pkey" for table "temptest3"
 CREATE TEMP TABLE temptest4(col int REFERENCES temptest3);
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'col' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 WARNING:  Referential integrity (FOREIGN KEY) constraints are not supported in Greenplum Database, will not be enforced.
 COMMIT;
 ERROR:  unsupported ON COMMIT and foreign key combination

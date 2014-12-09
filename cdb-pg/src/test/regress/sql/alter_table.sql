@@ -213,11 +213,11 @@ alter table pg_toast_stud_emp rename to stud_emp;
 
 -- FOREIGN KEY CONSTRAINT adding TEST
 
-CREATE TABLE tmp2 (a int primary key);
+CREATE TABLE tmp2 (a int primary key) distributed by (a);
 
 CREATE TABLE tmp3 (a int, b int);
 
-CREATE TABLE tmp4 (a int, b int, unique(a,b));
+CREATE TABLE tmp4 (a int, b int, unique(a,b)) distributed by (a);
 
 CREATE TABLE tmp5 (a int, b int);
 
@@ -263,7 +263,7 @@ DROP TABLE tmp2;
 -- Note: these tables are TEMP to avoid name conflicts when this test
 -- is run in parallel with foreign_key.sql.
 
-CREATE TEMP TABLE PKTABLE (ptest1 int PRIMARY KEY);
+CREATE TEMP TABLE PKTABLE (ptest1 int PRIMARY KEY) distributed by (ptest1);
 CREATE TEMP TABLE FKTABLE (ftest1 inet);
 -- This next should fail, because inet=int does not exist
 ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1) references pktable;
@@ -281,7 +281,8 @@ DROP TABLE pktable cascade;
 DROP TABLE fktable;
 
 CREATE TEMP TABLE PKTABLE (ptest1 int, ptest2 inet,
-                           PRIMARY KEY(ptest1, ptest2));
+                           PRIMARY KEY(ptest1, ptest2))
+                           distributed by (ptest1);
 -- This should fail, because we just chose really odd types
 CREATE TEMP TABLE FKTABLE (ftest1 cidr, ftest2 timestamp);
 ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1, ftest2) references pktable;
@@ -414,7 +415,7 @@ drop table atacc1;
 
 -- test unique constraint adding
 
-create table atacc1 ( test int ) with oids;
+create table atacc1 ( test int ) with oids distributed by (test);
 -- add a unique constraint
 alter table atacc1 add constraint atacc_test1 unique (test);
 -- insert first value
@@ -428,7 +429,7 @@ alter table atacc1 add constraint atacc_oid1 unique(oid);
 drop table atacc1;
 
 -- let's do one where the unique constraint fails when added
-create table atacc1 ( test int );
+create table atacc1 ( test int ) distributed by (test);
 -- insert soon to be failing rows
 insert into atacc1 (test) values (2);
 insert into atacc1 (test) values (2);
@@ -439,13 +440,13 @@ drop table atacc1;
 
 -- let's do one where the unique constraint fails
 -- because the column doesn't exist
-create table atacc1 ( test int );
+create table atacc1 ( test int ) distributed by (test);
 -- add a unique constraint (fails)
 alter table atacc1 add constraint atacc_test1 unique (test1);
 drop table atacc1;
 
 -- something a little more complicated
-create table atacc1 ( test int, test2 int);
+create table atacc1 ( test int, test2 int) distributed by (test);
 -- add a unique constraint
 alter table atacc1 add constraint atacc_test1 unique (test, test2);
 -- insert initial value
@@ -461,7 +462,8 @@ drop table atacc1;
 -- MPP-20466 Dis-allow duplicate constraint names for same table
 create table dupconstr (
 						i int,
-						j int constraint test CHECK (j > 10));
+						j int constraint test CHECK (j > 10))
+						distributed by (i);
 -- should fail because of duplicate constraint name
 alter table dupconstr add constraint test unique (i);
 alter table dupconstr add constraint test primary key (i);
@@ -469,7 +471,7 @@ alter table dupconstr add constraint test primary key (i);
 drop table dupconstr;
 
 -- lets do some naming tests
-create table atacc1 (test int, test2 int, unique(test));
+create table atacc1 (test int, test2 int, unique(test)) distributed by (test);
 alter table atacc1 add unique (test2);
 -- should fail for @@ second one @@
 insert into atacc1 (test2, test) values (3, 3);
@@ -478,7 +480,7 @@ drop table atacc1;
 
 -- test primary key constraint adding
 
-create table atacc1 ( test int ) with oids;
+create table atacc1 ( test int ) with oids distributed by (test);
 -- add a primary key constraint
 alter table atacc1 add constraint atacc_test1 primary key (test);
 -- insert first value
@@ -498,7 +500,7 @@ alter table atacc1 add constraint atacc_oid1 primary key(oid);
 drop table atacc1;
 
 -- let's do one where the primary key constraint fails when added
-create table atacc1 ( test int );
+create table atacc1 ( test int ) distributed by (test);
 -- insert soon to be failing rows
 insert into atacc1 (test) values (2);
 insert into atacc1 (test) values (2);
@@ -508,7 +510,7 @@ insert into atacc1 (test) values (3);
 drop table atacc1;
 
 -- let's do another one where the primary key constraint fails when added
-create table atacc1 ( test int );
+create table atacc1 ( test int ) distributed by (test);
 -- insert soon to be failing row
 insert into atacc1 (test) values (NULL);
 -- add a primary key (fails)
@@ -518,14 +520,14 @@ drop table atacc1;
 
 -- let's do one where the primary key constraint fails
 -- because the column doesn't exist
-create table atacc1 ( test int );
+create table atacc1 ( test int ) distributed by (test);
 -- add a primary key constraint (fails)
 alter table atacc1 add constraint atacc_test1 primary key (test1);
 drop table atacc1;
 
 -- adding a new column as primary key to a non-empty table.
 -- should fail unless the column has a non-null default value.
-create table atacc1 ( test int );
+create table atacc1 ( test int ) distributed by (test);
 insert into atacc1 (test) values (0);
 -- add a primary key column without a default (fails).
 alter table atacc1 add column test2 int primary key;
@@ -534,7 +536,7 @@ alter table atacc1 add column test2 int default 0 primary key;
 drop table atacc1;
 
 -- something a little more complicated
-create table atacc1 ( test int, test2 int);
+create table atacc1 ( test int, test2 int) distributed by (test);
 -- add a primary key constraint
 alter table atacc1 add constraint atacc_test1 primary key (test, test2);
 -- try adding a second primary key - should fail
@@ -553,7 +555,7 @@ insert into atacc1 (test,test2) values (5,5);
 drop table atacc1;
 
 -- lets do some naming tests
-create table atacc1 (test int, test2 int, primary key(test));
+create table atacc1 (test int, test2 int, primary key(test)) distributed by (test);
 -- only first should succeed
 insert into atacc1 (test2, test) values (3, 3);
 insert into atacc1 (test2, test) values (2, 3);
@@ -571,7 +573,7 @@ alter table non_existent alter column bar drop not null;
 
 -- test setting columns to null and not null and vice versa
 -- test checking for null values and primary key
-create table atacc1 (test int not null) with oids;
+create table atacc1 (test int not null) with oids distributed by (test);
 alter table atacc1 add constraint "atacc1_pkey" primary key (test);
 alter table atacc1 alter column test drop not null;
 alter table atacc1 drop constraint "atacc1_pkey";
@@ -668,7 +670,8 @@ alter table pg_class drop column relname;
 alter table nosuchtable drop column bar;
 
 -- test dropping columns
-create table atacc1 (a int4 not null, b int4, c int4 not null, d int4) with oids;
+create table atacc1 (a int4 not null, b int4, c int4 not null, d int4) with oids
+distributed by (a);
 insert into atacc1 values (1, 2, 3, 4);
 alter table atacc1 drop a;
 alter table atacc1 drop a;
@@ -757,7 +760,7 @@ alter table atacc1 add unique(a);
 alter table atacc1 add unique("........pg.dropped.1........");
 alter table atacc1 add check (a > 3);
 alter table atacc1 add check ("........pg.dropped.1........" > 3);
-create table atacc2 (id int4 unique);
+create table atacc2 (id int4 unique) distributed by (id);
 alter table atacc1 add foreign key (a) references atacc2(id);
 alter table atacc1 add foreign key ("........pg.dropped.1........") references atacc2(id);
 alter table atacc2 add foreign key (id) references atacc1(a);
@@ -1027,7 +1030,8 @@ drop domain mytype cascade;
 alter table foo alter f1 TYPE varchar(10);
 
 create table anothertab (atcol1 serial8, atcol2 boolean,
-	constraint anothertab_chk check (atcol1 <= 3));
+	constraint anothertab_chk check (atcol1 <= 3))
+	distributed by (atcol1);
 
 insert into anothertab (atcol1, atcol2) values (default, true);
 insert into anothertab (atcol1, atcol2) values (default, false);
@@ -1063,7 +1067,7 @@ select * from anothertab order by 1,2;
 
 drop table anothertab;
 
-create table another (f1 int, f2 text);
+create table another (f1 int, f2 text) distributed by (f1);
 
 insert into another values(1, 'one');
 insert into another values(2, 'two');
@@ -1103,7 +1107,7 @@ select non_strict(NULL);
 create schema alter1;
 create schema alter2;
 
-create table alter1.t1(f1 serial primary key, f2 int check (f2 > 0));
+create table alter1.t1(f1 serial primary key, f2 int check (f2 > 0)) distributed by (f1);
 
 create view alter1.v1 as select * from alter1.t1;
 

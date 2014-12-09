@@ -1611,7 +1611,8 @@ create table dttm_com
 t1 timestamp not null,
 t2 timestamp not null,
 d1 date not null,
-d2 date not null );
+d2 date not null )
+distributed by (id);
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "dttm_com_pkey" for table "dttm_com"
 insert into dttm_com values
      (1, now(), current_timestamp, now(), current_date),

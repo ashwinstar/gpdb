@@ -470,9 +470,9 @@ from yy
 -- (as seen in early 8.2.x releases)
 --
 
-create temp table zt1 (f1 int primary key);
-create temp table zt2 (f2 int primary key);
-create temp table zt3 (f3 int primary key);
+create temp table zt1 (f1 int primary key) distributed by (f1);
+create temp table zt2 (f2 int primary key) distributed by (f2);
+create temp table zt3 (f3 int primary key) distributed by (f3);
 insert into zt1 values(53);
 insert into zt2 values(53);
 
@@ -493,7 +493,7 @@ where f2 = 53;
 set enable_hashjoin to on;
 set enable_mergejoin to off;
 set enable_nestloop to off;
-create table nhtest (i numeric(10, 2));
+create table nhtest (i numeric(10, 2)) distributed by (i);
 insert into nhtest values(100000.22);
 insert into nhtest values(300000.19);
 explain select * from nhtest a join nhtest b using (i);

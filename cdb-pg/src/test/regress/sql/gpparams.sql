@@ -47,7 +47,7 @@ CREATE TABLE in_product (
     product_taken smallint,
     product_score double precision,
     date_inserted date NOT NULL
-);
+) distributed by (alias_id);
 
 
 --
@@ -58,7 +58,7 @@ CREATE TABLE module_job_parameters (
     mod_job_id integer NOT NULL,
     key character varying(50) NOT NULL,
     value character varying(50)
-);
+) distributed by (mod_job_id);
 
 --
 -- Name: module_targets; Type: TABLE; Schema: public; Owner: gpadmin; Tablespace: 

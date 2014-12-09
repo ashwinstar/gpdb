@@ -6,7 +6,7 @@ CREATE TABLE trigger_test (
         i int,
         v varchar,
 		foo rowcompnest
-);
+) distributed by (i);
 
 CREATE OR REPLACE FUNCTION trigger_data() RETURNS trigger LANGUAGE plperl AS $$
 

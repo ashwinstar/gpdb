@@ -43,7 +43,7 @@ CREATE TABLE mpp3033a (
         stringu1        name,
         stringu2        name,
         string4         name
-) partition by hash (unique1) partitions 4;
+) distributed by (unique1) partition by hash (unique1) partitions 4;
 
 CREATE TABLE mpp3033b (
         unique1         int4,
@@ -62,7 +62,7 @@ CREATE TABLE mpp3033b (
         stringu1        name,
         stringu2        name,
         string4         name
-) partition by hash (unique1)
+) distributed by (unique1) partition by hash (unique1)
 subpartition by hash (unique2)
 (
 partition aa (subpartition cc, subpartition dd),
@@ -275,7 +275,7 @@ CREATE TABLE mpp3033a (
         stringu1        name,
         stringu2        name,
         string4         name
-) partition by list (unique1) (
+) distributed by (unique1) partition by list (unique1) (
 partition aa values (1,2,3,4,5,6,7,8,9,10),
 partition bb values (11,12,13,14,15,16,17,18,19,20),
 default partition default_part
@@ -298,7 +298,7 @@ CREATE TABLE mpp3033b (
         stringu1        name,
         stringu2        name,
         string4         name
-) partition by list (unique1)
+) distributed by (unique1) partition by list (unique1)
 subpartition by list (unique2)
 (
 partition aa values (1,2,3,4,5,6,7,8,9,10) (subpartition cc values (1,2,3), subpartition dd values (4,5,6) ),
@@ -503,7 +503,7 @@ CREATE TABLE mpp3033a (
         stringu1        name,
         stringu2        name,
         string4         name
-) partition by range (unique1)
+) distributed by (unique1) partition by range (unique1)
 ( partition aa start (0) end (1000) every (100), default partition default_part );
 
 CREATE TABLE mpp3033b (
@@ -523,7 +523,7 @@ CREATE TABLE mpp3033b (
         stringu1        name,
         stringu2        name,
         string4         name
-) partition by range (unique1)
+) distributed by (unique1) partition by range (unique1)
 subpartition by range (unique2) subpartition template ( start (0) end (1000) every (500) )
 ( start (0) end (1000) every (200));
 alter table mpp3033b add default partition default_part;

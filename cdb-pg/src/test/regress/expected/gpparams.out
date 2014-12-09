@@ -45,9 +45,7 @@ CREATE TABLE in_product (
     product_taken smallint,
     product_score double precision,
     date_inserted date NOT NULL
-);
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'alias_id' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+) distributed by (alias_id);
 --
 -- Name: module_job_parameters; Type: TABLE; Schema: public; Owner: xsl; Tablespace: 
 --
@@ -55,9 +53,7 @@ CREATE TABLE module_job_parameters (
     mod_job_id integer NOT NULL,
     key character varying(50) NOT NULL,
     value character varying(50)
-);
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'mod_job_id' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+) distributed by (mod_job_id);
 --
 -- Name: module_targets; Type: TABLE; Schema: public; Owner: gpadmin; Tablespace: 
 --

@@ -2336,11 +2336,11 @@ from yy
 -- regression test for improper pushing of constants across outer-join clauses
 -- (as seen in early 8.2.x releases)
 --
-create temp table zt1 (f1 int primary key);
+create temp table zt1 (f1 int primary key) distributed by (f1);
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "zt1_pkey" for table "zt1"
-create temp table zt2 (f2 int primary key);
+create temp table zt2 (f2 int primary key) distributed by (f2);
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "zt2_pkey" for table "zt2"
-create temp table zt3 (f3 int primary key);
+create temp table zt3 (f3 int primary key) distributed by (f3);
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "zt3_pkey" for table "zt3"
 insert into zt1 values(53);
 insert into zt2 values(53);
@@ -2367,9 +2367,7 @@ where f2 = 53;
 set enable_hashjoin to on;
 set enable_mergejoin to off;
 set enable_nestloop to off;
-create table nhtest (i numeric(10, 2));
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+create table nhtest (i numeric(10, 2)) distributed by (i);
 insert into nhtest values(100000.22);
 insert into nhtest values(300000.19);
 explain select * from nhtest a join nhtest b using (i);

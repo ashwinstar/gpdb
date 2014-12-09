@@ -32,7 +32,7 @@ CREATE TABLE customer_off (
     c_acctbal numeric(15,2) NOT NULL,
     c_mktsegment character(10) NOT NULL,
     c_comment character varying(117) NOT NULL
-);
+) distributed by (c_custkey);
 
 CREATE TABLE customer_on (
     c_custkey integer NOT NULL,
@@ -43,7 +43,7 @@ CREATE TABLE customer_on (
     c_acctbal numeric(15,2) NOT NULL,
     c_mktsegment character(10) NOT NULL,
     c_comment character varying(117) NOT NULL
-);
+) distributed by (c_custkey);
 
 set gp_enable_fast_sri=off;
 
@@ -336,7 +336,7 @@ insert into pt values(36, 35, 35, 'A');
 insert into pt values(37, 35, 35, 'A');
 insert into pt values(38, 35, 35, 'A');
 
-create table pt_1 (like pt_1_prt_1);
+create table pt_1 (like pt_1_prt_1) distributed by (i);
 insert into pt_1 values(35, 35, 35, 'A');
 insert into pt_1 values(36, 35, 35, 'A');
 insert into pt_1 values(37, 35, 35, 'A');
@@ -349,7 +349,7 @@ alter table only pt_1_prt_2 set distributed by (j);
 insert into pt values(45, 45, 45, 'B');
 insert into pt values(45, 46, 46, 'B');
 insert into pt values(45, 47, 47, 'B');
-create table pt_2 (like pt_1_prt_2_2_prt_2);
+create table pt_2 (like pt_1_prt_2_2_prt_2) distributed by (i);
 insert into pt_2 values(45, 45, 45, 'B');
 insert into pt_2 values(45, 46, 46, 'B');
 insert into pt_2 values(45, 47, 47, 'B');
@@ -361,7 +361,7 @@ alter table pt_1_prt_2_2_prt_1 set distributed by (j);
 insert into pt values(45, 45, 45, 'A');
 insert into pt values(45, 46, 46, 'A');
 insert into pt values(45, 47, 47, 'A');
-create table pt_3 (like pt_1_prt_2_2_prt_1);
+create table pt_3 (like pt_1_prt_2_2_prt_1) distributed by (i);
 insert into pt_3 values(45, 45, 45, 'A');
 insert into pt_3 values(45, 46, 46, 'A');
 insert into pt_3 values(45, 47, 47, 'A');
@@ -374,8 +374,8 @@ select * from pt order by 1, 2, 3, 4;
 drop table pt, pt_1, pt_2, pt_3;
 
 -- Make sure all array types work
-create table mpp5746 (c _int4);
-create table mpp5746_2 (c int4[]);
+create table mpp5746 (c _int4) distributed by (c);
+create table mpp5746_2 (c int4[]) distributed by (c);
 insert into mpp5746 select array[i] from generate_series(1, 100) i;
 insert into mpp5746_2 select array[i] from generate_series(1, 100) i;
 select gp_segment_id, * from mpp5746 except

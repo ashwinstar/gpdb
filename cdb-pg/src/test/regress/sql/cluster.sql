@@ -3,13 +3,14 @@
 --
 
 CREATE TABLE clstr_tst_s (rf_a SERIAL PRIMARY KEY,
-	b INT);
+	b INT) DISTRIBUTED BY (rf_a);
 
 CREATE TABLE clstr_tst (a SERIAL PRIMARY KEY,
 	b INT,
 	c TEXT,
 	d TEXT,
-	CONSTRAINT clstr_tst_con FOREIGN KEY (b) REFERENCES clstr_tst_s);
+	CONSTRAINT clstr_tst_con FOREIGN KEY (b) REFERENCES clstr_tst_s)
+	DISTRIBUTED BY (a);
 
 CREATE INDEX clstr_tst_b ON clstr_tst (b);
 CREATE INDEX clstr_tst_c ON clstr_tst (c);
@@ -105,9 +106,9 @@ WHERE pg_class.oid=indexrelid
 
 -- Verify that clustering all tables does in fact cluster the right ones
 CREATE USER clstr_user;
-CREATE TABLE clstr_1 (a INT PRIMARY KEY);
-CREATE TABLE clstr_2 (a INT PRIMARY KEY);
-CREATE TABLE clstr_3 (a INT PRIMARY KEY);
+CREATE TABLE clstr_1 (a INT PRIMARY KEY) DISTRIBUTED BY (a);
+CREATE TABLE clstr_2 (a INT PRIMARY KEY) DISTRIBUTED BY (a);
+CREATE TABLE clstr_3 (a INT PRIMARY KEY) DISTRIBUTED BY (a);
 ALTER TABLE clstr_1 OWNER TO clstr_user;
 ALTER TABLE clstr_3 OWNER TO clstr_user;
 GRANT SELECT ON clstr_2 TO clstr_user;

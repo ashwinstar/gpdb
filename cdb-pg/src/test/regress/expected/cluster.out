@@ -2,14 +2,15 @@
 --  CLUSTER
 --
 CREATE TABLE clstr_tst_s (rf_a SERIAL PRIMARY KEY,
-	b INT);
+	b INT) DISTRIBUTED BY (rf_a);
 NOTICE:  CREATE TABLE will create implicit sequence "clstr_tst_s_rf_a_seq" for serial column "clstr_tst_s.rf_a"
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "clstr_tst_s_pkey" for table "clstr_tst_s"
 CREATE TABLE clstr_tst (a SERIAL PRIMARY KEY,
 	b INT,
 	c TEXT,
 	d TEXT,
-	CONSTRAINT clstr_tst_con FOREIGN KEY (b) REFERENCES clstr_tst_s);
+	CONSTRAINT clstr_tst_con FOREIGN KEY (b) REFERENCES clstr_tst_s)
+	DISTRIBUTED BY (a);
 NOTICE:  CREATE TABLE will create implicit sequence "clstr_tst_a_seq" for serial column "clstr_tst.a"
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "clstr_tst_pkey" for table "clstr_tst"
 WARNING:  Referential integrity (FOREIGN KEY) constraints are not supported in Greenplum Database, will not be enforced.
@@ -310,11 +311,11 @@ WHERE pg_class.oid=indexrelid
 
 -- Verify that clustering all tables does in fact cluster the right ones
 CREATE USER clstr_user;
-CREATE TABLE clstr_1 (a INT PRIMARY KEY);
+CREATE TABLE clstr_1 (a INT PRIMARY KEY) DISTRIBUTED BY (a);
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "clstr_1_pkey" for table "clstr_1"
-CREATE TABLE clstr_2 (a INT PRIMARY KEY);
+CREATE TABLE clstr_2 (a INT PRIMARY KEY) DISTRIBUTED BY (a);
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "clstr_2_pkey" for table "clstr_2"
-CREATE TABLE clstr_3 (a INT PRIMARY KEY);
+CREATE TABLE clstr_3 (a INT PRIMARY KEY) DISTRIBUTED BY (a);
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "clstr_3_pkey" for table "clstr_3"
 ALTER TABLE clstr_1 OWNER TO clstr_user;
 ALTER TABLE clstr_3 OWNER TO clstr_user;

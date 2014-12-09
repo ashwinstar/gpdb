@@ -355,7 +355,7 @@ bool		Debug_datumstream_block_write_check_integrity = false;
 bool		Debug_datumstream_read_print_varlena_info = false;
 bool		Debug_datumstream_write_use_small_initial_buffers = false;
 bool		gp_temporary_files_filespace_repair = false;
-bool		gp_create_table_random_default_distribution = false;
+bool		gp_create_table_random_default_distribution = true;
 
 int			explain_memory_verbosity = 0;
 char* 		memory_profiler_run_id = "none";
@@ -3698,7 +3698,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&gp_create_table_random_default_distribution,
-		false, NULL, NULL
+		true, NULL, NULL
 	},
 
 	{

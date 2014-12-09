@@ -212,7 +212,7 @@ NOTICE:  ALTER TABLE / ADD UNIQUE will create implicit index "mdt_distributors_n
           kind varchar(10),
           len interval hour to minute,
           CONSTRAINT production UNIQUE(date_prod)
-          );
+          ) distributed by (date_prod);
 NOTICE:  CREATE TABLE / UNIQUE will create implicit index "mdt_films_date_prod_key" for table "mdt_films"
           ALTER TABLE mdt_films DROP CONSTRAINT production RESTRICT;
           CREATE TABLE mdt_films1 (
@@ -223,7 +223,7 @@ NOTICE:  CREATE TABLE / UNIQUE will create implicit index "mdt_films_date_prod_k
           kind varchar(10),
           len interval hour to minute,
           CONSTRAINT production UNIQUE(date_prod)
-          );
+          ) distributed by (date_prod);
 NOTICE:  CREATE TABLE / UNIQUE will create implicit index "mdt_films1_date_prod_key" for table "mdt_films1"
           ALTER TABLE mdt_films1 DROP CONSTRAINT production CASCADE;
 drop table mdt_distributors;
@@ -245,7 +245,7 @@ CREATE TABLE mdt_test_column(
     date_column date,
     col_with_constraint numeric UNIQUE,
     col_with_default_text character varying(30) DEFAULT 'test1'
-    );
+    ) distributed by (col_with_constraint);
 NOTICE:  CREATE TABLE / UNIQUE will create implicit index "mdt_test_column_col_with_constraint_key" for table "mdt_test_column"
     ALTER TABLE mdt_test_column DROP COLUMN toast_col ;
 --drop non toast column
@@ -263,7 +263,7 @@ NOTICE:  CREATE TABLE / UNIQUE will create implicit index "mdt_test_column_col_w
     date_column date,
     col_with_constraint numeric UNIQUE,
     col_with_default_text character varying(30) DEFAULT 'test1'
-    );
+    ) distributed by (col_with_constraint);
 NOTICE:  CREATE TABLE / UNIQUE will create implicit index "mdt_test_column1_col_with_constraint_key" for table "mdt_test_column1"
     ALTER TABLE mdt_test_column1 DROP COLUMN non_toast_col ;
 drop table mdt_test_column;
@@ -372,7 +372,7 @@ drop table mdt_table_set_storage_parameters2;
           effective TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
           price NUMERIC(9,2),
           UNIQUE (apn, effective)
-          );
+          ) distributed by (apn, effective);
 NOTICE:  CREATE TABLE / UNIQUE will create implicit index "mdt_price_change_apn_key" for table "mdt_price_change"
           CREATE TABLE mdt_stock(
           mdt_stock_apn CHARACTER(15) NOT NULL,

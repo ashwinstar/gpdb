@@ -400,7 +400,7 @@ CREATE TABLE emp
     fname varchar(100),
     lname varchar(200),
     salary numeric(10, 0)
-);
+) distributed by (empid);
 
 CREATE TABLE dept
 (

@@ -366,6 +366,9 @@ drop table if exists mrs_u2;
 
 drop table if exists csq_m1;
 create table csq_m1();
+set allow_system_table_mods='DML';
+delete from gp_distribution_policy where localoid='csq_m1'::regclass;
+reset allow_system_table_mods;
 alter table csq_m1 add column x int;
 insert into csq_m1 values(1);
 
@@ -421,6 +424,9 @@ ORDER BY a.attnum
 
 drop table if exists csq_m1;
 create table csq_m1();
+set allow_system_table_mods='DML';
+delete from gp_distribution_policy where localoid='csq_m1'::regclass;
+reset allow_system_table_mods;
 alter table csq_m1 add column x int;
 insert into csq_m1 values(1),(2),(3);
 
@@ -461,7 +467,7 @@ select count(*) from csq_t1 t1 where a > ( select avg(a)::int from csq_t1 t2 whe
 -- correlation in a func expr
 --
 CREATE FUNCTION csq_f(a int) RETURNS int AS $$ select $1 $$ LANGUAGE SQL CONTAINS SQL;
-CREATE TABLE csq_r(a int);
+CREATE TABLE csq_r(a int) distributed by (a);
 INSERT INTO csq_r VALUES (1);
 
 -- subqueries shouldn't be pulled into a join if the from clause has a function call
@@ -515,7 +521,7 @@ explain SELECT * FROM csq_r WHERE a IN (SELECT csq_f FROM csq_f(csq_r.a),csq_r);
 --
 
 drop table if exists csq_pullup;
-create table csq_pullup(t text, n numeric, i int, v varchar(10));
+create table csq_pullup(t text, n numeric, i int, v varchar(10)) distributed by (t);
 insert into csq_pullup values ('abc',1, 2, 'xyz');
 insert into csq_pullup values ('xyz',2, 3, 'def');  
 insert into csq_pullup values ('def',3, 1, 'abc'); 
@@ -593,10 +599,10 @@ select * from csq_pullup t0 where not exists (select 1 from csq_pullup t1 where 
 drop table if exists finra_t1;
 drop table if exists finra_t2;
 
-create table finra_t1(x int);
+create table finra_t1(x int) distributed by (x);
 insert into finra_t1 values(1),(2);
 
-create table finra_t2(y int);
+create table finra_t2(y int) distributed by (y);
 insert into finra_t2 values(1),(2),(2);
 
 analyze finra_t1;

@@ -1488,7 +1488,7 @@ create database alter_table_db;
           kind varchar(10),
           len interval hour to minute,
           CONSTRAINT production UNIQUE(date_prod)
-          );
+          ) distributed by (date_prod);
 
 	  insert into films values ('aaa','Heavenly Life',1,'2008-03-03','good','2 hr 30 mins');
           insert into films values ('bbb','Beautiful Mind',2,'2007-05-05','good','1 hr 30 mins');
@@ -1503,7 +1503,7 @@ create database alter_table_db;
           effective TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
           price NUMERIC(9,2),
           UNIQUE (apn, effective)
-          );
+          ) distributed by (apn, effective);
 
 	  insert into price_change (apn,price) values ('a',765);
           insert into price_change (apn,price) values ('b',766);
@@ -1664,7 +1664,7 @@ create database alter_table_db;
     date_column date,
     col_with_constraint numeric UNIQUE,
     col_with_default_text character varying(30) DEFAULT 'test1'
-    );
+    ) distributed by (col_with_constraint);
 
     insert into test_drop_column values ('0_zero', 0, '0_zero', 0, 0, 0, '{0}', 0, '2004-10-19 10:23:54', '2004-10-19 10:23:54+02', '1-1-2000',0);
     insert into test_drop_column values ('1_zero', 1, '1_zero', 1, 1, 1, '{1}', 1, '2005-10-19 10:23:54', '2005-10-19 10:23:54+02', '1-1-2001',1);
@@ -2392,7 +2392,7 @@ BEGIN;
     date_column date,
     col_with_constraint numeric UNIQUE,
     col_with_default_text character varying(30) DEFAULT 'test1'
-    );
+    ) distributed by (col_with_constraint);
 
     insert into test_drop_column values ('0_zero', 0, '0_zero', 0, 0, 0, '{0}', 0, '2004-10-19 10:23:54', '2004-10-19 10:23:54+02', '1-1-2000',0);
     insert into test_drop_column values ('1_zero', 1, '1_zero', 1, 1, 1, '{1}', 1, '2005-10-19 10:23:54', '2005-10-19 10:23:54+02', '1-1-2001',1);
@@ -3215,7 +3215,8 @@ before_rename_col int4,
 change_datatype_col numeric,
 a_ts_without timestamp without time zone,
 b_ts_with timestamp with time zone,
-date_column date) ;
+date_column date)
+distributed by (text_col);
 
 CREATE UNIQUE INDEX heap_table_unq_idx ON heap_table_unique_index (numeric_col);
 

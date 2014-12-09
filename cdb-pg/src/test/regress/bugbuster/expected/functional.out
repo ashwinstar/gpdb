@@ -536,7 +536,7 @@ CREATE TABLE emp
     fname varchar(100),
     lname varchar(200),
     salary numeric(10, 0)
-);
+) distributed by (empid);
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "emp_pkey" for table "emp"
 CREATE TABLE dept
 (

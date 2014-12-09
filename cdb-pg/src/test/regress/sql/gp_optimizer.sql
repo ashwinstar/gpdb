@@ -10,12 +10,19 @@ SELECT gp_opt_version();
 create schema orca;
 
 create table orca.r();
+set allow_system_table_mods='DML';
+delete from gp_distribution_policy where localoid='orca.r'::regclass;
+reset allow_system_table_mods;
+
 alter table orca.r add column a int;
 alter table orca.r add column b int;
 
 insert into orca.r select i, i/3 from generate_series(1,20) i;
 
 create table orca.s();
+set allow_system_table_mods='DML';
+delete from gp_distribution_policy where localoid='orca.s'::regclass;
+reset allow_system_table_mods;
 alter table orca.s add column c int;
 alter table orca.s add column d int;
 
@@ -117,14 +124,14 @@ select count(*) from orca.foo x where x.x1 > (select count(*)+1 from orca.bar1 y
 set optimizer=off;
 
 drop table orca.r cascade;
-create table orca.r(a int, b int);
+create table orca.r(a int, b int) distributed by (a);
 create unique index r_a on orca.r(a);
 create index r_b on orca.r(b);
 
 insert into orca.r select i, i%3 from generate_series(1,20) i;
 
 drop table orca.s;
-create table orca.s(c int, d int);
+create table orca.s(c int, d int) distributed by (c);
 
 insert into orca.s select i%7, i%2 from generate_series(1,30) i;
 

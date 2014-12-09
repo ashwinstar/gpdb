@@ -33,7 +33,7 @@ CREATE TABLE direct_test_partition (trans_id int, date date, amount decimal(9,2)
 
 create unique index direct_test_uk on direct_test_partition(trans_id);
 
-create table direct_test_range_partition (a int, b int, c int, d int) partition by range(d) (start(1) end(10) every(1));
+create table direct_test_range_partition (a int, b int, c int, d int) distributed by (a) partition by range(d) (start(1) end(10) every(1));
 insert into direct_test_range_partition select i, i+1, i+2, i+3 from generate_series(1, 2) i;
 
 create table direct_test_type_real (real1 real, smallint1 smallint, boolean1 boolean, int1 int, double1 double precision, date1 date, numeric1 numeric) distributed by (real1);
@@ -512,10 +512,10 @@ SELECT * FROM direct_test_type_int2 WHERE 2147483648::int8 = id;
 SELECT * FROM direct_test_type_int2 WHERE -2147483649::int8 = id;
 
 -- tests with subplans (MPP-22019)
-CREATE TABLE MPP_22019_a ( i INT, j INT);
+CREATE TABLE MPP_22019_a ( i INT, j INT) DISTRIBUTED BY (i);
 INSERT INTO MPP_22019_a (
  SELECT i, i * i FROM generate_series(1, 10) AS i);
-CREATE TABLE MPP_22019_b (i INT, j INT);
+CREATE TABLE MPP_22019_b (i INT, j INT) DISTRIBUTED BY (i);
 INSERT INTO MPP_22019_b (SELECT i, i * i FROM generate_series(1, 10) AS i);
 EXPLAIN SELECT a.* FROM MPP_22019_a a INNER JOIN MPP_22019_b b ON a.i = b.i WHERE a.j NOT IN (SELECT j FROM MPP_22019_a a2 where a2.j = b.j) and a.i = 1;
 SELECT a.* FROM MPP_22019_a a INNER JOIN MPP_22019_b b ON a.i = b.i WHERE a.j NOT IN (SELECT j FROM MPP_22019_a a2 where a2.j = b.j) and a.i = 1;

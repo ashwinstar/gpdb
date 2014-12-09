@@ -228,7 +228,7 @@ create index hash_f8_index_3 on hash_f8_heap(random) where seqno > 1000;
 -- Unfortunately this only tests about half the code paths because there are
 -- no concurrent updates happening to the table at the same time.
 
-CREATE TABLE concur_heap (f1 text, f2 text);
+CREATE TABLE concur_heap (f1 text, f2 text) distributed by (f1);
 -- empty table
 CREATE INDEX CONCURRENTLY concur_index1 ON concur_heap(f2,f1);
 -- MPP-9772, MPP-9773: re-enable CREATE INDEX CONCURRENTLY (off by default)
@@ -435,7 +435,7 @@ drop table bm_test;
 
 -- unique index with null value tests
 drop table if exists ijk;
-create table ijk(i int, j int, k int);
+create table ijk(i int, j int, k int) distributed by (i);
 insert into ijk values (1, 1, 3);
 insert into ijk values (1, 2, 4);
 insert into ijk values (1, 3, NULL);
@@ -451,7 +451,7 @@ create unique index ijk_ijk on ijk(i,j,k);
 
 set gp_enable_mk_sort=on;
 drop table if exists ijk;
-create table ijk(i int, j int, k int);
+create table ijk(i int, j int, k int) distributed by (i);
 insert into ijk values (1, 1, 3);
 insert into ijk values (1, 2, 4);
 insert into ijk values (1, 3, NULL);

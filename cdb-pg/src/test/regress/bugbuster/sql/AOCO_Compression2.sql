@@ -1559,7 +1559,8 @@ col3 varchar,
 col4 character(44),
 DEFAULT COLUMN ENCODING (COMPRESSTYPE=zlib, compresslevel=5)
 )
-WITH (APPENDONLY=true, ORIENTATION=column, OIDS=FALSE);
+WITH (APPENDONLY=true, ORIENTATION=column, OIDS=FALSE)
+distributed by (col1);
 \d+ mpp17012_compress_test2
 insert into mpp17012_compress_test2 values('a',generate_series(1,250),'ksjdhfksdhfksdhfksjhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh','bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
 select get_ao_compression_ratio('mpp17012_compress_test2');
