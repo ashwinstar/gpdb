@@ -68,7 +68,7 @@ ExecMaterial(MaterialState *node)
 	dir = estate->es_direction;
 	forward = ScanDirectionIsForward(dir);
 
-	ts = (NTupleStore *) node->ts_state;
+	ts = node->ts_state->matstore;
 	tsa = (NTupleStoreAccessor *) node->ts_pos;
 
 	ma = (Material *) node->ss.ps.plan;
@@ -151,7 +151,7 @@ ExecMaterial(MaterialState *node)
 		}
 		
 		Assert(ts && tsa);
-		node->ts_state = (void *) ts;
+		node->ts_state->matstore = ts;
 		node->ts_pos = (void *) tsa;
 
         /* CDB: Offer extra info for EXPLAIN ANALYZE. */
@@ -353,7 +353,7 @@ ExecInitMaterial(Material *node, EState *estate, int eflags)
 										EXEC_FLAG_MARK)) != 0;
 
 	matstate->eof_underlying = false;
-	matstate->ts_state = NULL;
+	matstate->ts_state = palloc0(sizeof(GenericTupStore));
 	matstate->ts_pos = NULL;
 	matstate->ts_markpos = NULL;
 	matstate->share_lk_ctxt = NULL;
@@ -477,7 +477,7 @@ ExecEndMaterial(MaterialState *node)
 	/*
 	 * Release tuplestore resources for cases where EagerFree doesn't do it
 	 */
-	if (node->ts_state != NULL)
+	if (node->ts_state->matstore != NULL)
 	{
 		Material   *ma = (Material *) node->ss.ps.plan;
 		if (ma->share_type == SHARE_MATERIAL_XSLICE && node->share_lk_ctxt)
@@ -518,8 +518,10 @@ ExecMaterialMarkPos(MaterialState *node)
 	/*
 	 * if we haven't materialized yet, just return.
 	 */
-	if (!node->ts_state)
+	if (NULL == node->ts_state->matstore)
+	{
 		return;
+	}
 
 	Assert(node->ts_pos);
 
@@ -553,8 +555,10 @@ ExecMaterialRestrPos(MaterialState *node)
 	/*
 	 * if we haven't materialized yet, just return.
 	 */
-	if (!node->ts_state)
+	if (NULL == node->ts_state->matstore)
+	{
 		return;
+	}
 
 	Assert(node->ts_pos && node->ts_markpos);
 	ntuplestore_acc_seek((NTupleStoreAccessor *) node->ts_pos, (NTupleStorePos *) node->ts_markpos);
@@ -567,16 +571,18 @@ ExecMaterialRestrPos(MaterialState *node)
 void
 DestroyTupleStore(MaterialState *node)
 {
-	Assert(node);
+	Assert(NULL != node);
+	Assert(NULL != node->ts_state);
+	Assert(NULL != node->ts_state->matstore);
 
 	ntuplestore_destroy_accessor((NTupleStoreAccessor *) node->ts_pos);
-	ntuplestore_destroy((NTupleStore *) node->ts_state);
+	ntuplestore_destroy(node->ts_state->matstore);
 	if(node->ts_markpos)
 	{
 		pfree(node->ts_markpos);
 	}
 
-	node->ts_state = NULL;
+	node->ts_state->matstore = NULL;
 	node->ts_pos = NULL;
 	node->ts_markpos = NULL;
 	node->eof_underlying = false;
@@ -633,7 +639,7 @@ ExecMaterialReScan(MaterialState *node, ExprContext *exprCtxt)
 		 * If tuple store is empty, then either we have not materialized yet
 		 * or tuple store was destroyed after a previous execution of materialize.
 		 */
-		if (!node->ts_state)
+		if (NULL == node->ts_state->matstore)
 		{
 			/*
 			 *  If tuple store was destroyed before, then materialize is part of subquery
@@ -695,7 +701,7 @@ ExecEagerFreeMaterial(MaterialState *node)
 	 * bumps up the reference count in their initializations and decrement
 	 * it in either EagerFree or ExecEnd.
 	 */
-	if (ma->share_type == SHARE_MATERIAL || ma->share_type == SHARE_SORT)
+	if (ma->share_type == SHARE_MATERIAL)
 	{
 		ShareNodeEntry	   *snEntry;
 
@@ -708,7 +714,7 @@ ExecEagerFreeMaterial(MaterialState *node)
 	/*
 	 * Release tuplestore resources
 	 */
-	if (node->ts_state != NULL)
+	if (NULL != node->ts_state->matstore)
 	{
 		if (ma->share_type == SHARE_MATERIAL_XSLICE && node->share_lk_ctxt)
 		{

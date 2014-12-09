@@ -2047,6 +2047,20 @@ typedef struct HashJoinState
  */
 
 /* ----------------
+ *         Generic tuplestore structure
+ *                used to communicate between ShareInputScan nodes,
+ *                Materialize and Sort
+ *
+ * ----------------
+ */
+typedef union GenericTupStore
+{
+	struct NTupleStore        *matstore;     /* Used by Materialize */
+	struct Tuplesortstate_mk  *sortstore_mk; /* Used by Sort when gp_enable_mk_sort = true */
+	struct Tuplesortstate     *sortstore;    /* Used by Sort when gp_enable_mk_sort = false */
+} GenericTupStore;
+
+/* ----------------
  *         MaterialState information
  *
  *                materialize nodes are used to materialize the results
@@ -2057,17 +2071,17 @@ typedef struct HashJoinState
  */
 typedef struct MaterialState
 {
-        ScanState        ss;                                /* its first field is NodeTag */
+        ScanState           ss;                  /* its first field is NodeTag */
         bool                randomAccess;        /* need random access to subplan output? */
-        bool                eof_underlying; /* reached end of underlying plan? */
-        bool                ts_destroyed; /* called destroy tuple store? */
+        bool                eof_underlying;      /* reached end of underlying plan? */
+        bool                ts_destroyed;        /* called destroy tuple store? */
 
-        void           *ts_state;            /* private state of tuplestore.c */
-        void       *ts_pos;
-        void            *ts_markpos;
-        void                  *share_lk_ctxt;
+        GenericTupStore     *ts_state;            /* private state of tuplestore.c */
+        void                *ts_pos;
+        void                *ts_markpos;
+        void                *share_lk_ctxt;
 
-        bool cached_workfiles_found;  /* true if found matching and usable cached workfiles */
+        bool                cached_workfiles_found;  /* true if found matching and usable cached workfiles */
 } MaterialState;
 
 /* ----------------
@@ -2083,7 +2097,7 @@ typedef struct ShareInputScanState
          * Depends on share_type, we should have a tuplestore_state, tuplestore_pos
          * or tuplesort_state, tuplesort_pos
          */
-        void                 *ts_state;
+        GenericTupStore      *ts_state;
         void                 *ts_pos;
         void                 *ts_markpos; 
 
@@ -2104,21 +2118,19 @@ extern void shareinput_create_bufname_prefix(char* p, int size, int share_id);
  */
 typedef struct SortState
 {
-        ScanState        ss;                                /* its first field is NodeTag */
-        bool                randomAccess;        /* need random access to sort output? */
-        bool                sort_Done;                /* sort completed yet? */
-        void           *tuplesortstate; /* private state of tuplesort.c */
+        ScanState           ss;              /* its first field is NodeTag */
+        bool                randomAccess;    /* need random access to sort output? */
+        bool                sort_Done;       /* sort completed yet? */
+        GenericTupStore     *tuplesortstate; /* private state of tuplesort.c */
         /* CDB */ /* limit state */                
-        ExprState  *limitOffset;        /* OFFSET parameter, or NULL if none */
-        ExprState  *limitCount;                /* COUNT parameter, or NULL if none */
-        bool                noduplicates;   /* true if discard duplicate rows */
+        ExprState           *limitOffset;    /* OFFSET parameter, or NULL if none */
+        ExprState           *limitCount;     /* COUNT parameter, or NULL if none */
+        bool                noduplicates;    /* true if discard duplicate rows */
 
-        void                 *share_lk_ctxt;
+        void                *share_lk_ctxt;
 
-        /* true if found matching and usable cached workfiles */
-        bool cached_workfiles_found;
-        /* set after loading cached workfiles */
-        bool cached_workfiles_loaded;
+        bool                cached_workfiles_found; /* true if found matching and usable cached workfiles */
+        bool                cached_workfiles_loaded; /* set after loading cached workfiles */
 } SortState;
 
 /* ---------------------

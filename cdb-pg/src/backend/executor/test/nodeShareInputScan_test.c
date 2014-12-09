@@ -54,7 +54,8 @@ test__ExecEagerFreeShareInputScan_SHARE_MATERIAL(void **state)
 
 	sisc->ts_markpos = NULL;
 	sisc->ts_pos = FIXED_POINTER_VAL;
-	sisc->ts_state = FIXED_POINTER_VAL;
+	sisc->ts_state = (GenericTupStore *) palloc0(sizeof(GenericTupStore));
+	sisc->ts_state->matstore = FIXED_POINTER_VAL;
 	sisc->freed = false;
 
 	plan->share_type = SHARE_MATERIAL;

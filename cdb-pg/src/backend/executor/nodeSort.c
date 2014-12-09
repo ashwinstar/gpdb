@@ -66,9 +66,13 @@ ExecSort(SortState *node)
 	dir = estate->es_direction;
 
 	if(gp_enable_mk_sort)
-		tuplesortstate_mk = (Tuplesortstate_mk *) node->tuplesortstate;
+	{
+		tuplesortstate_mk = node->tuplesortstate->sortstore_mk;
+	}
 	else
-		tuplesortstate = (Tuplesortstate *) node->tuplesortstate;
+	{
+		tuplesortstate = node->tuplesortstate->sortstore;
+	}
 
 	/*
 	 * In Window node, we might need to call ExecSort again even when
@@ -175,9 +179,13 @@ ExecSort(SortState *node)
 		}
 
 		if(gp_enable_mk_sort)
-			node->tuplesortstate = (void *) tuplesortstate_mk;
+		{
+			node->tuplesortstate->sortstore_mk = tuplesortstate_mk;
+		}
 		else
-			node->tuplesortstate = (void *) tuplesortstate;
+		{
+			node->tuplesortstate->sortstore = tuplesortstate;
+		}
 
 		/* CDB */
 		{
@@ -307,9 +315,11 @@ ExecSort(SortState *node)
 			slot = ExecProcNode(outerNode);
 
 			if (TupIsNull(slot))
+			{
 				break;
+			}
 
-                        CheckSendPlanStateGpmonPkt(&node->ss.ps);
+			CheckSendPlanStateGpmonPkt(&node->ss.ps);
 			if(gp_enable_mk_sort)
 				tuplesort_puttupleslot_mk(tuplesortstate_mk, slot);
 			else
@@ -329,11 +339,15 @@ ExecSort(SortState *node)
 		 * Complete the sort.
 		 */
 		if(gp_enable_mk_sort)
+		{
 			tuplesort_performsort_mk(tuplesortstate_mk);
+		}
 		else
+		{
 			tuplesort_performsort(tuplesortstate);
+		}
 
-                CheckSendPlanStateGpmonPkt(&node->ss.ps);
+		CheckSendPlanStateGpmonPkt(&node->ss.ps);
 		/*
 		 * restore to user specified direction
 		 */
@@ -433,7 +447,7 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 		sortstate->randomAccess = true;
 
 	sortstate->sort_Done = false;
-	sortstate->tuplesortstate = NULL;
+	sortstate->tuplesortstate = palloc0(sizeof(GenericTupStore));
 	sortstate->share_lk_ctxt = NULL;
 	ExecSortResetWorkfileState(sortstate);
 
@@ -590,13 +604,18 @@ ExecSortMarkPos(SortState *node)
 	 * if we haven't sorted yet, just return
 	 */
 	if (!node->sort_Done)
+	{
 		return;
+	}
 
 	if(gp_enable_mk_sort)
-		tuplesort_markpos_mk((Tuplesortstate_mk *) node->tuplesortstate);
+	{
+		tuplesort_markpos_mk(node->tuplesortstate->sortstore_mk);
+	}
 	else
-		tuplesort_markpos((Tuplesortstate *) node->tuplesortstate);
-
+	{
+		tuplesort_markpos(node->tuplesortstate->sortstore);
+	}
 }
 
 /* ----------------------------------------------------------------
@@ -612,15 +631,21 @@ ExecSortRestrPos(SortState *node)
 	 * if we haven't sorted yet, just return.
 	 */
 	if (!node->sort_Done)
+	{
 		return;
+	}
 
 	/*
 	 * restore the scan to the previously marked position
 	 */
 	if(gp_enable_mk_sort)
-		tuplesort_restorepos_mk((Tuplesortstate_mk *) node->tuplesortstate);
+	{
+		tuplesort_restorepos_mk(node->tuplesortstate->sortstore_mk);
+	}
 	else
-		tuplesort_restorepos((Tuplesortstate *) node->tuplesortstate);
+	{
+		tuplesort_restorepos(node->tuplesortstate->sortstore);
+	}
 }
 
 void
@@ -632,7 +657,9 @@ ExecReScanSort(SortState *node, ExprContext *exprCtxt)
 	 * re-scan it at all.
 	 */
 	if (!node->sort_Done)
+	{
 		return;
+	}
 
 	/* must drop pointer to sort result tuple */
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
@@ -645,16 +672,18 @@ ExecReScanSort(SortState *node, ExprContext *exprCtxt)
 	 */
 	if (((PlanState *) node)->lefttree->chgParam != NULL ||
 		!node->randomAccess ||
-		node->tuplesortstate == NULL)
+		(NULL == node->tuplesortstate->sortstore_mk && NULL == node->tuplesortstate->sortstore))
 	{
 		node->sort_Done = false;
-		if (node->tuplesortstate != NULL)
+
+		if (gp_enable_mk_sort && NULL != node->tuplesortstate->sortstore_mk)
 		{
-			if(gp_enable_mk_sort)
-				tuplesort_end_mk((Tuplesortstate_mk *) node->tuplesortstate);
-			else
-				tuplesort_end((Tuplesortstate *) node->tuplesortstate);
-			node->tuplesortstate = NULL;
+			tuplesort_end_mk(node->tuplesortstate->sortstore_mk);
+		}
+
+		if (!gp_enable_mk_sort && NULL != node->tuplesortstate->sortstore)
+		{
+			tuplesort_end(node->tuplesortstate->sortstore);
 		}
 
 		/*
@@ -662,14 +691,20 @@ ExecReScanSort(SortState *node, ExprContext *exprCtxt)
 		 * first ExecProcNode.
 		 */
 		if (((PlanState *) node)->lefttree->chgParam == NULL)
+		{
 			ExecReScan(((PlanState *) node)->lefttree, exprCtxt);
+		}
 	}
 	else
 	{
 		if(gp_enable_mk_sort)
-			tuplesort_rescan_mk((Tuplesortstate_mk *) node->tuplesortstate);
+		{
+			tuplesort_rescan_mk(node->tuplesortstate->sortstore_mk);
+		}
 		else
-			tuplesort_rescan((Tuplesortstate *) node->tuplesortstate);
+		{
+			tuplesort_rescan(node->tuplesortstate->sortstore);
+		}
 	}
 }
 
@@ -683,13 +718,16 @@ ExecSortExplainEnd(PlanState *planstate, struct StringInfoData *buf)
 {
 	SortState *sortstate = (SortState *)planstate;
 	
-	if (sortstate->tuplesortstate != NULL)
+	if (gp_enable_mk_sort && NULL != sortstate->tuplesortstate->sortstore_mk)
 	{
-		if (gp_enable_mk_sort)
-			tuplesort_finalize_stats_mk((Tuplesortstate_mk *)sortstate->tuplesortstate);
-		else
-			tuplesort_finalize_stats((Tuplesortstate *)sortstate->tuplesortstate);
+		tuplesort_finalize_stats_mk(sortstate->tuplesortstate->sortstore_mk);
 	}
+
+	if (!gp_enable_mk_sort && NULL != sortstate->tuplesortstate->sortstore)
+	{
+		tuplesort_finalize_stats(sortstate->tuplesortstate->sortstore);
+	}
+
 }                               /* ExecSortExplainEnd */
 
 void
@@ -719,14 +757,17 @@ ExecEagerFreeSort(SortState *node)
 	 * bumps up the reference count in their initializations and decrement
 	 * it in either EagerFree or ExecEnd.
 	 */
-	if (plan->share_type == SHARE_MATERIAL || plan->share_type == SHARE_SORT)
+	Assert(SHARE_MATERIAL != plan->share_type && SHARE_MATERIAL_XSLICE != plan->share_type);
+	if (SHARE_SORT == plan->share_type)
 	{
 		ShareNodeEntry	   *snEntry;
 
 		snEntry = ExecGetShareNodeEntry(estate, plan->share_id, false);
 
 		if (snEntry->refcount > 0)
+		{
 			return;
+		}
 	}
 
 	/* clean out the tuple table */
@@ -735,22 +776,30 @@ ExecEagerFreeSort(SortState *node)
 	/* must drop pointer to sort result tuple */
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 
-	if (node->tuplesortstate != NULL)
+	if (NULL != node->tuplesortstate->sortstore || NULL != node->tuplesortstate->sortstore_mk)
 	{
 		Sort *sort = (Sort *) node->ss.ps.plan;
 
+		/* If this is a producer for a ShareScan, then wait for all consumers to be done */
+		/* XXX gcaragea: In Materialize, we moved this to End instead of EF, since EF might be too early to do it */
 		if(sort->share_type == SHARE_SORT_XSLICE && NULL != node->share_lk_ctxt)
 		{
 			shareinput_writer_waitdone(node->share_lk_ctxt, sort->share_id, sort->nsharer_xslice);
 		}
 
 		if(gp_enable_mk_sort)
-			tuplesort_end_mk((Tuplesortstate_mk *) node->tuplesortstate);
+		{
+			tuplesort_end_mk(node->tuplesortstate->sortstore_mk);
+			node->tuplesortstate->sortstore_mk = NULL;
+		}
 		else
-			tuplesort_end((Tuplesortstate *) node->tuplesortstate);
+		{
+			tuplesort_end(node->tuplesortstate->sortstore);
+			node->tuplesortstate->sortstore = NULL;
+
+		}
 
 		ExecSortResetWorkfileState(node);
-		node->tuplesortstate = NULL;
 	}
 }
 
