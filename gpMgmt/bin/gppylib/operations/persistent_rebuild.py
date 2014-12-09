@@ -889,6 +889,33 @@ class RebuildPersistentTables(Operation):
         if not input:
             raise Exception('Aborting rebuild due to user request') 
 
+    def dump_restore_info(self):
+        """
+        dump all object information into files, retrieve the information into object later on
+        """
+        for name, obj in [('dbid_info', self.dbid_info), ('global_pt_file', GLOBAL_PERSISTENT_FILES), ('per_db_pt_file', PER_DATABASE_PERSISTENT_FILES)]:
+            restore_file = os.path.join(os.path.expanduser('~'), 'pt_files_restore_' + name + '_' + TIMESTAMP)
+            with open(restore_file, 'wb') as fw:
+                pickle.dump(obj, fw)
+
+    def load_restore_info(self, timestamp=None):
+        """
+        load the object information from dump file
+        """
+        dbid_info_restore_file = os.path.join(os.path.expanduser('~'), 'pt_files_restore_dbid_info_' + timestamp)
+        with open(dbid_info_restore_file, 'rb') as fr:
+            self.dbid_info = pickle.load(fr)
+
+        global_pt_file_restore_file = os.path.join(os.path.expanduser('~'), 'pt_files_restore_global_pt_file_' + timestamp)
+        with open(global_pt_file_restore_file, 'rb') as fr:
+            global GLOBAL_PERSISTENT_FILES
+            GLOBAL_PERSISTENT_FILES = pickle.load(fr)
+
+        per_db_pt_file_restore_file = os.path.join(os.path.expanduser('~'), 'pt_files_restore_per_db_pt_file_' + timestamp)
+        with open(per_db_pt_file_restore_file, 'rb') as fr:
+            global PER_DATABASE_PERSISTENT_FILES
+            PER_DATABASE_PERSISTENT_FILES = pickle.load(fr)
+
     def run(self):
 
         """
@@ -898,13 +925,38 @@ class RebuildPersistentTables(Operation):
         self.print_warning()
         self.print_warning()
 
-        self.gparray = GpArray.initFromCatalog(dbconn.DbURL())
-
         logger.info('Checking for platform')
         self._check_platform()
 
         logger.info('Checking for md5sum program')
         self._check_md5_prog()
+
+        """
+        If the restore fails, we do not attempt to restart the database since a restore is only done
+        when the PT rebuild has not succeeded. It might be dangerous to start the database when the 
+        PT rebuild has failed in the middle and we cannot restore the original files safely.
+        """
+        if self.restore:
+            """
+            We want to stop the database so that we can restore the persistent table files.
+            """
+            logger.info('Stopping Greenplum database')
+            self._stop_database()
+
+            logger.info('Loading global and per database persistent table files information from restore file,  %s' % self.restore)
+            self.load_restore_info(self.restore)
+
+            logger.info('Restoring global and per database persistent table files from backup %s' % self.restore)
+            try:
+                RunBackupRestore(self.dbid_info, self.restore, self.batch_size).restore()
+            except Exception as e:
+                raise
+            else:
+                logger.info('Starting Greenplum database')
+                self._start_database()
+                return
+
+        self.gparray = GpArray.initFromCatalog(dbconn.DbURL())
 
         logger.info('Checking for database version')
         self._check_database_version()
@@ -936,22 +988,6 @@ class RebuildPersistentTables(Operation):
         """
         logger.info('Stopping Greenplum database')
         self._stop_database()
-
-        """
-        If the restore fails, we do not attempt to restart the database since a restore is only done
-        when the PT rebuild has not succeeded. It might be dangerous to start the database when the 
-        PT rebuild has failed in the middle and we cannot restore the original files safely.
-        """
-        if self.restore:
-            logger.info('Restoring global and per database persistent table files from backup %s' % self.restore)
-            try:
-                RunBackupRestore(self.dbid_info, self.restore, self.batch_size).restore()
-            except Exception as e:
-                raise 
-            else:
-                logger.info('Starting Greenplum database')
-                self._start_database()
-                return            
    
         """
         If a backup fails, we still attempt to restart the database since the original files are 
@@ -961,6 +997,12 @@ class RebuildPersistentTables(Operation):
         logger.info('Backup timestamp = %s' % TIMESTAMP)
         try:
             RunBackupRestore(self.dbid_info, TIMESTAMP, self.batch_size).backup()
+
+            """
+            After we have created the backup copies with timestamp, we save the restore information
+            """
+            logger.info('Dumpping restore information about global and per database persistent table files')
+            self.dump_restore_info()
         except Exception as e:
             logger.info('Starting Greenplum database')
             self._start_database()
