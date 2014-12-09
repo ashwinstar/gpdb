@@ -238,9 +238,13 @@ class COptTasks
 		static
 		BOOL FErrorOut(gpos::CException &exc);
 
-                // generate an instance of optimizer cost model
-                static
-                ICostModel *Pcm(IMemoryPool *pmp, ULONG ulSegments);
+		// set cost model parameters
+		static
+		void SetCostModelParams(ICostModel *pcm);
+
+		// generate an instance of optimizer cost model
+		static
+		ICostModel *Pcm(IMemoryPool *pmp, ULONG ulSegments);
 
 	public:
 

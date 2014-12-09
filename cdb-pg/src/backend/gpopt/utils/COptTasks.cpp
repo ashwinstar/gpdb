@@ -796,25 +796,67 @@ COptTasks::FErrorOut
 }
 
 //---------------------------------------------------------------------------
-//      @function:
-//              COptTasks::Pcm
+//		@function:
+//			COptTasks::SetCostModelParams
 //
 //      @doc:
-//              Generate an instance of optimizer cost model
+//			Set cost model parameters
+//
+//---------------------------------------------------------------------------
+void
+COptTasks::SetCostModelParams
+	(
+	ICostModel *pcm
+	)
+{
+	GPOS_ASSERT(NULL != pcm);
+
+	if (optimizer_nestloop_factor > 1.0)
+	{
+		// change NLJ cost factor
+		ICostModelParams::SCostParam *pcp = NULL;
+		if (OPTIMIZER_GPDB_CALIBRATED == optimizer_cost_model)
+		{
+			pcp = pcm->Pcp()->PcpLookup(CCostModelParamsGPDB::EcpNLJFactor);
+		}
+		else
+		{
+			pcp = pcm->Pcp()->PcpLookup(CCostModelParamsGPDBLegacy::EcpNLJFactor);
+		}
+		CDouble dNLJFactor(optimizer_nestloop_factor);
+		pcm->Pcp()->SetParam(pcp->UlId(), dNLJFactor, dNLJFactor - 0.5, dNLJFactor + 0.5);
+	}
+}
+
+
+//---------------------------------------------------------------------------
+//      @function:
+//			COptTasks::Pcm
+//
+//      @doc:
+//			Generate an instance of optimizer cost model
 //
 //---------------------------------------------------------------------------
 ICostModel *
 COptTasks::Pcm
-        (
-        IMemoryPool *pmp,
-        ULONG ulSegments
-        )
+	(
+	IMemoryPool *pmp,
+	ULONG ulSegments
+	)
 {
-        if (OPTIMIZER_GPDB_CALIBRATED == optimizer_cost_model)
-        {
-               return New(pmp) CCostModelGPDB(pmp, ulSegments);
-        }
-        return New(pmp) CCostModelGPDBLegacy(pmp, ulSegments);
+	ICostModel *pcm = NULL;
+	if (OPTIMIZER_GPDB_CALIBRATED == optimizer_cost_model)
+	{
+		pcm = New(pmp) CCostModelGPDB(pmp, ulSegments);
+	}
+	else
+	{
+		pcm = New(pmp) CCostModelGPDBLegacy(pmp, ulSegments);
+	}
+
+	SetCostModelParams(pcm);
+
+	return pcm;
 }
 
 //---------------------------------------------------------------------------
