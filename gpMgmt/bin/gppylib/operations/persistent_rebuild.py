@@ -123,7 +123,7 @@ class ValidateContentID:
             c = seg.getSegmentContentId()
             if status == 'u':
                 up_content_ids.add(c)
-            if mode == 'r':
+            if mode == 'r' and status == 'u':
                 resync_content_ids.add(c)
 
         for c in self.content_id:
