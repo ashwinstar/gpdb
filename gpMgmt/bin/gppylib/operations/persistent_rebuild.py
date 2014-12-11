@@ -796,7 +796,7 @@ class RebuildPersistentTables(Operation):
             raise Exception('This tool is not supported on Greenplum version lower than 4.1.0.0')
 
     def _stop_database(self):
-        cmd = GpStop('Stop the greenplum database')
+        cmd = GpStop('Stop the greenplum database', fast=True)
         cmd.run(validateAfter=False)
 
     def _start_database(self, admin_mode=False):
