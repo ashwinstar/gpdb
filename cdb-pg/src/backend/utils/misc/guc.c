@@ -4706,7 +4706,7 @@ static struct config_int ConfigureNamesInt[] =
 			gettext_noop("Threshold of the ratio of dirty data in a segment file over which the file"
 					     " will be compacted during lazy vacuum."),
 			NULL,
-			GUC_SUPERUSER_ONLY | GUC_NO_SHOW_ALL
+			GUC_SUPERUSER_ONLY 
 		},
 		&gp_appendonly_compaction_threshold,
 		10, 0, 100, NULL, NULL
