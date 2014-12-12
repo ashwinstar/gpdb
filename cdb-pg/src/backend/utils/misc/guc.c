@@ -4058,7 +4058,7 @@ static struct config_bool ConfigureNamesBool[] =
                         GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
                 },
                 &optimizer_enable_assert_maxonerow,
-                false, NULL, NULL
+                true, NULL, NULL
         },
 	{
 		{"optimizer_enumerate_plans", PGC_USERSET, LOGGING_WHAT,
