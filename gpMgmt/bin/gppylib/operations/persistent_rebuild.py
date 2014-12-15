@@ -33,6 +33,8 @@ DEFAULT_BATCH_SIZE = 16
 SYSTEM_FSOID = 3052
 DEFAULT_DATABASE = 'postgres'
 TIMESTAMP = datetime.now().strftime("%Y%m%d%H%M%S")
+BACKUP_LOG_DIR='/tmp'
+BACKUP_LOG_PREFIX = 'pt_bkup_info_'
 GLOBAL_PERSISTENT_FILES = []
 PER_DATABASE_PERSISTENT_FILES = defaultdict(list)  #The key for this dictionary is the dboid and
                                                    #the value is a list containing the list of 
@@ -338,6 +340,7 @@ class BackupPersistentTableFiles:
         self.batch_size = batch_size
         self.md5_validator = None
         self.pool = None
+        self.backup_log = os.path.join(BACKUP_LOG_DIR, BACKUP_LOG_PREFIX + timestamp)
         self.GLOBAL_PERSISTENT_FILES = global_pt_filenames 
         self.PER_DATABASE_PERSISTENT_FILES = perdb_pt_filenames 
 
@@ -381,26 +384,38 @@ class BackupPersistentTableFiles:
         the list
         """
         failures = []
-        for di in self.dbid_info:
-            src_files, dest_files = [], []
-            host, dbid = di.hostname, di.dbid 
-            datadir = di.filespace_dirs[SYSTEM_FSOID] 
-            for f in self.GLOBAL_PERSISTENT_FILES:
-                src_files.append('%s/global/%s*' % (datadir, f)) 
-                dest_files.append('%s/global/pt_files_bk_%s/%s*' % (datadir, self.timestamp, f))
+        if os.path.exists(self.backup_log) and os.path.isfile(self.backup_log):
+            mode = 'a'
+        else:
+            mode = 'w'
+        with open(self.backup_log, mode) as fw_bkup:
+            fw_bkup.write('************************************************\n')
+            fw_bkup.write("Global persistent files backup\n")
+            for di in self.dbid_info:
+                src_files, dest_files = [], []
+                host, dbid = di.hostname, di.dbid
+                fw_bkup.write("Backup of dbid: %s\n" % dbid)
+                datadir = di.filespace_dirs[SYSTEM_FSOID]
+                for f in self.GLOBAL_PERSISTENT_FILES:
+                    src_file = '%s/global/%s*' % (datadir, f)
+                    dest_file = '%s/global/pt_files_bk_%s/%s*' % (datadir, self.timestamp, f)
+                    src_files.append(src_file)
+                    dest_files.append(dest_file)
+                    if not restore:
+                        fw_bkup.write(src_file + "    =>    " + dest_file + "\n")
 
-            logger.debug('Source files = %s' % src_files)
-            logger.debug('Destination files = %s' % dest_files)
+                logger.debug('Source files = %s' % src_files)
+                logger.debug('Destination files = %s' % dest_files)
 
-            try:
-                if not restore:
-                    self._copy_pt_files(src_files, dest_files, host, restore)
-                else:
-                    self._copy_pt_files(dest_files, src_files, host, restore)
-            except Exception as e:
-                failures.append((di, str(e)))
-                op = 'Backup' if not restore else 'Restore'
-                logger.error('%s failed for segment %s: %s' % (op, di.filespace_dirs[SYSTEM_FSOID], str(e)))
+                try:
+                    if not restore:
+                        self._copy_pt_files(src_files, dest_files, host, restore)
+                    else:
+                        self._copy_pt_files(dest_files, src_files, host, restore)
+                except Exception as e:
+                    failures.append((di, str(e)))
+                    op = 'Backup' if not restore else 'Restore'
+                    logger.error('%s failed for segment %s: %s' % (op, di.filespace_dirs[SYSTEM_FSOID], str(e)))
         if failures:
             op = 'Backup' if not restore else 'Restore'
             raise Exception('%s of global persistent files failed' % op)
@@ -412,42 +427,55 @@ class BackupPersistentTableFiles:
         the list
         """
         failures = []
-        for di in self.dbid_info:
-            host, dbid = di.hostname, di.dbid 
-            for fsoid, fsdir in di.filespace_dirs.items():
-                if fsoid not in di.fs_to_ts_map:
-                    continue
-                for tsoid in di.fs_to_ts_map[fsoid]:
-                    if tsoid not in di.ts_to_dboid_map:
+        if os.path.exists(self.backup_log) and os.path.isfile(self.backup_log):
+            mode = 'a'
+        else:
+            mode = 'w'
+        with open(self.backup_log, mode) as fw_bkup:
+            fw_bkup.write('************************************************\n')
+            fw_bkup.write("Per database persistent table files backup\n\n")
+            for di in self.dbid_info:
+                host, dbid = di.hostname, di.dbid
+                fw_bkup.write("Backup of dbid: %s\n" % dbid)
+                for fsoid, fsdir in di.filespace_dirs.items():
+                    if fsoid not in di.fs_to_ts_map:
                         continue
-                    for dboid in di.ts_to_dboid_map[tsoid]:
-                        if fsoid != SYSTEM_FSOID:
-                            base_dir = tsoid 
-                        else:
-                            base_dir = 'base'
-                        src_files, dest_files = [], []
-                        if dboid in self.PER_DATABASE_PERSISTENT_FILES:
-                            file_list = self.PER_DATABASE_PERSISTENT_FILES[dboid]
-                        else:
-                            #This corresponds to template0. We cannot connect to template0
-                            #hence the relfilenodeid will never change.
-                            file_list = ['5094', '5095']
-                        for f in file_list:
-                            src_files.append('%s/%s/%s/%s*' % (fsdir, base_dir, dboid, f))
-                            dest_files.append('%s/%s/%s/pt_files_bk_%s/%s*' % (fsdir, base_dir, dboid, self.timestamp, f))
-
-                        logger.debug('Source files = %s' % src_files)
-                        logger.debug('Destination files = %s' % dest_files)
-
-                        try:
-                            if not restore:
-                                self._copy_pt_files(src_files, dest_files, host, restore)
+                    for tsoid in di.fs_to_ts_map[fsoid]:
+                        if tsoid not in di.ts_to_dboid_map:
+                            continue
+                        for dboid in di.ts_to_dboid_map[tsoid]:
+                            if fsoid != SYSTEM_FSOID:
+                                base_dir = tsoid
                             else:
-                                self._copy_pt_files(dest_files, src_files, host, restore)
-                        except Exception as e:
-                            failures.append((di, str(e)))
-                            op = 'Backup' if not restore else 'Restore'
-                            logger.error('%s of per database persistent files failed for %s: %s' % (op, di.filespace_dirs[SYSTEM_FSOID], str(e)))
+                                base_dir = 'base'
+                            src_files, dest_files = [], []
+                            if dboid in self.PER_DATABASE_PERSISTENT_FILES:
+                                file_list = self.PER_DATABASE_PERSISTENT_FILES[dboid]
+                            else:
+                                #This corresponds to template0. We cannot connect to template0
+                                #hence the relfilenodeid will never change.
+                                file_list = ['5094', '5095']
+                            for f in file_list:
+                                src_file = '%s/%s/%s/%s*' % (fsdir, base_dir, dboid, f)
+                                dest_file = '%s/%s/%s/pt_files_bk_%s/%s*' % (fsdir, base_dir, dboid, self.timestamp, f)
+                                src_files.append(src_file)
+                                dest_files.append(dest_file)
+                                if not restore:
+                                    fw_bkup.write(src_file + "    =>    " + dest_file + "\n")
+
+                            logger.debug('Source files = %s' % src_files)
+                            logger.debug('Destination files = %s' % dest_files)
+
+                            try:
+                                if not restore:
+                                    self._copy_pt_files(src_files, dest_files, host, restore)
+                                else:
+                                    self._copy_pt_files(dest_files, src_files, host, restore)
+                            except Exception as e:
+                                failures.append((di, str(e)))
+                                op = 'Backup' if not restore else 'Restore'
+                                logger.error('%s of per database persistent files failed for %s: %s' % (op, di.filespace_dirs[SYSTEM_FSOID], str(e)))
+
         if failures:
             op = 'Backup' if not restore else 'Restore'
             raise Exception(' %s of per db persistent files failed' % op)
@@ -781,6 +809,8 @@ class RebuildPersistentTables(Operation):
         self.has_mirrors = None
         self.gparray = None
         self.pool = None
+        self.backup_log = os.path.join(BACKUP_LOG_DIR, BACKUP_LOG_PREFIX + TIMESTAMP)
+        self.restore_state_file_location = '/tmp'
 
     def _check_database_version(self):
         """
@@ -894,7 +924,7 @@ class RebuildPersistentTables(Operation):
         dump all object information into files, retrieve the information into object later on
         """
         for name, obj in [('dbid_info', self.dbid_info), ('global_pt_file', GLOBAL_PERSISTENT_FILES), ('per_db_pt_file', PER_DATABASE_PERSISTENT_FILES)]:
-            restore_file = os.path.join(os.path.expanduser('~'), 'pt_files_restore_' + name + '_' + TIMESTAMP)
+            restore_file = os.path.join(self.restore_state_file_location, name + '_' + TIMESTAMP)
             with open(restore_file, 'wb') as fw:
                 pickle.dump(obj, fw)
 
@@ -902,16 +932,18 @@ class RebuildPersistentTables(Operation):
         """
         load the object information from dump file
         """
-        dbid_info_restore_file = os.path.join(os.path.expanduser('~'), 'pt_files_restore_dbid_info_' + timestamp)
+        pt_restore_files = [os.path.join(self.restore_state_file_location, name + '_' + timestamp) for name in ['dbid_info', 'global_pt_file', 'per_db_pt_file']]
+
+        dbid_info_restore_file = pt_restore_files[0]
         with open(dbid_info_restore_file, 'rb') as fr:
             self.dbid_info = pickle.load(fr)
 
-        global_pt_file_restore_file = os.path.join(os.path.expanduser('~'), 'pt_files_restore_global_pt_file_' + timestamp)
+        global_pt_file_restore_file = pt_restore_files[1]
         with open(global_pt_file_restore_file, 'rb') as fr:
             global GLOBAL_PERSISTENT_FILES
             GLOBAL_PERSISTENT_FILES = pickle.load(fr)
 
-        per_db_pt_file_restore_file = os.path.join(os.path.expanduser('~'), 'pt_files_restore_per_db_pt_file_' + timestamp)
+        per_db_pt_file_restore_file = pt_restore_files[2]
         with open(per_db_pt_file_restore_file, 'rb') as fr:
             global PER_DATABASE_PERSISTENT_FILES
             PER_DATABASE_PERSISTENT_FILES = pickle.load(fr)
@@ -1012,6 +1044,8 @@ class RebuildPersistentTables(Operation):
                 logger.info('Starting Greenplum database')
                 self._start_database()
                 return
+        finally:
+            logger.info("To check list of files backed up, see %s on host of the contents: %s" %(self.backup_log, ', '.join(map(str, valid_contentids))))
 
         """
         All the PT rebuild should be performed in utility mode in order to prevent
@@ -1068,9 +1102,10 @@ class RebuildPersistentTables(Operation):
         self._start_database()
 
         if failures:
-            raise Exception('Persistent table rebuild was not completed succesfully')
+            raise Exception('Persistent table rebuild was not completed succesfully and was reset back')
         else:
             logger.info('Completed rebuild of persistent tables')
+            logger.info('To verify, please run: $GPHOME/bin/lib/gpcheckcat -R persistent -A')
 
 if __name__ == '__main__':
     pass
