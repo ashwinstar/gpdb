@@ -3,6 +3,7 @@
 --
 set optimizer_enable_master_only_queries = on;
 set optimizer_segments = 3;
+set optimizer_nestloop_factor = 1.0;
 SELECT 1 AS one WHERE 1 IN (SELECT 1);
  one 
 -----
@@ -1511,3 +1512,4 @@ from gp_configuration)) i order by 1;
 (16 rows)
 
 reset optimizer_segments;
+reset optimizer_nestloop_factor;

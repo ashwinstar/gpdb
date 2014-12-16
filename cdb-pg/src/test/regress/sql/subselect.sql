@@ -3,6 +3,7 @@
 --
 set optimizer_enable_master_only_queries = on;
 set optimizer_segments = 3;
+set optimizer_nestloop_factor = 1.0;
 SELECT 1 AS one WHERE 1 IN (SELECT 1);
 
 SELECT 1 AS zero WHERE 1 NOT IN (SELECT 1);
@@ -705,6 +706,7 @@ select i, relname, relowner from pg_class, generate_series(-1, (select max(conte
 from gp_configuration)) i order by 1;
 
 reset optimizer_segments;
+<<<<<<< HEAD
 
 --
 -- apply parallelization for subplan MPP-24563
@@ -758,3 +760,4 @@ explain SELECT  cc, sum(nn) over() FROM v1_mpp_20470;
 
 drop view v1_mpp_20470;
 drop table t_mpp_20470;
+reset optimizer_nestloop_factor;

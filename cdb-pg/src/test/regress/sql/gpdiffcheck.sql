@@ -63,11 +63,13 @@ select row_number() over (), c1, c2, c3 from gpd1;
 set gp_segments_for_planner=4;
 set optimizer_segments=4;
 set gp_cost_hashjoin_chainwalk=on;
+set optimizer_nestloop_factor = 1.0;
 explain analyze select a.* from gpd1 as a, gpd1 as b where b.c1 in (select max(c1) from gpd1);
 explain select a.* from gpd1 as a, gpd1 as b where b.c1 in (select max(c1) from gpd1);
 select a.* from gpd1 as a, gpd1 as b where b.c1 in (select max(c1) from gpd1);
 set gp_segments_for_planner=40;
 set optimizer_segments=40;
+set optimizer_nestloop_factor = 1.0;
 explain select a.* from gpd1 as a, gpd1 as b where b.c1 in (select max(c1) from gpd1);
 select a.* from gpd1 as a, gpd1 as b where b.c1 in (select max(c1) from gpd1);
 explain analyze select a.* from gpd1 as a, gpd1 as b where b.c1 in (select max(c1) from gpd1);
@@ -122,6 +124,6 @@ select substring('gpmatchsubs2' || now(), 1,  25);
 
 select substring('gpmatchignore1' || now(), 1,  25);
 select substring('gpmatchignore2' || now(), 1,  25);
-
+reset optimizer_nestloop_factor;
 -- 
 

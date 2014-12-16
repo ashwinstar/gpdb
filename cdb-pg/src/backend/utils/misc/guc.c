@@ -6571,7 +6571,7 @@ static struct config_real ConfigureNamesReal[] =
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&optimizer_nestloop_factor,
-		1.0, 1.0, DBL_MAX, NULL, NULL
+		1024.0, 1.0, DBL_MAX, NULL, NULL
 	},
 
 /* End-of-list marker */

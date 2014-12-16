@@ -4742,6 +4742,7 @@ insert into bar select i % 7, i % 6, i % 9, i || 'SOME NUMBER', i % 4 from gener
 analyze foo_p;
 analyze bar;
 set optimizer_segments = 3;
+set optimizer_nestloop_factor = 1.0;
 explain select foo_p.b, foo_p.t from foo_p left outer join bar on foo_p.a = bar.k  where foo_p.t is not null and foo_p.a = (array[1])[1];
 reset optimizer_segments;
 drop table if exists foo_p;
@@ -4953,3 +4954,4 @@ alter table t split partition for(1) at (2) into (partition p11, partition p22);
 insert into  t values(1,2,'a');
 select * from t;
 -- END MPP-19105
+reset optimizer_nestloop_factor;

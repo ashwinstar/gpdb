@@ -2477,6 +2477,7 @@ CREATE INDEX my_tq_agg_small_ets_end_ts_ix ON my_tq_agg_small USING btree (ets, 
 analyze my_tq_agg_small;
 analyze my_tt_agg_small;
 set optimizer_enable_indexjoin=on;
+set optimizer_nestloop_factor = 1.0;
 -- force_explain
 EXPLAIN 
 SELECT (tt.event_ts / 100000) / 5 * 5 as fivemin, COUNT(*)
@@ -2507,6 +2508,7 @@ set enable_indexscan=on;
 -- end_ignore
 -- force_explain
 set optimizer_segments = 2;
+set optimizer_nestloop_factor = 1.0;
 EXPLAIN 
 SELECT (tt.event_ts / 100000) / 5 * 5 as fivemin, COUNT(*)
 FROM my_tt_agg_small tt, my_tq_agg_small tq
@@ -2517,6 +2519,7 @@ GROUP BY 1
 ORDER BY 1 asc ;
 
 reset optimizer_segments;
+reset optimizer_nestloop_factor;
 SELECT (tt.event_ts / 100000) / 5 * 5 as fivemin, COUNT(*)
 FROM my_tt_agg_small tt, my_tq_agg_small tq
 WHERE tq.sym = tt.symbol AND
