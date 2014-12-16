@@ -115,9 +115,10 @@ class ValidateContentID:
             content, then it mean both primary and mirror are down. Hence down_content_ids will only 
             be populated if both the primary and mirror are down and not if only one of them is down.
         """
-        up_content_ids = set([seg.getSegmentContentId() for seg in self.gparray.getDbList() if seg.getSegmentStatus() != 'd'])
-        down_content_ids = set()
+        up_content_ids = set()
         resync_content_ids = set()
+        resync_content_ids_to_rebuild = set()
+        resync_content_ids_notto_rebuild = set()
 
         for seg in self.gparray.getDbList():
             status = seg.getSegmentStatus()
@@ -127,25 +128,22 @@ class ValidateContentID:
                 up_content_ids.add(c)
             if mode == 'r' and status == 'u':
                 resync_content_ids.add(c)
-
-        for c in self.content_id:
-            if c not in up_content_ids:
-                down_content_ids.add(c)
-
-        resync_content_ids_skip = set()
         for c in self.content_id:
             if c in resync_content_ids:
-                resync_content_ids_skip.add(c)
+                resync_content_ids_to_rebuild.add(c)
 
-        self.content_id = [c for c in self.content_id if c not in down_content_ids and c not in resync_content_ids_skip]
+        resync_content_ids_notto_rebuild = resync_content_ids.difference(resync_content_ids_to_rebuild)
 
-        if len(down_content_ids) > 0:
-            logger.warning('The following content ids are down: %s, skipping' % ', '.join(map(str, down_content_ids)))
-
-        if len(resync_content_ids) > 0:
-            logger.warning('The following content ids are in resync mode: %s' % ', '.join(map(str, resync_content_ids)))
-            if len(resync_content_ids_skip) > 0:
-                logger.warning('Skipping content ids from the list that are in resync mode: %s' % ', '.join(map(str, resync_content_ids_skip)))
+        if len(resync_content_ids_to_rebuild) > 0:
+            raise Exception('Can not rebuild persistent tables for content ids that are in resync mode: %s' % ', '.join(map(str, resync_content_ids_to_rebuild)))
+        if len(resync_content_ids_notto_rebuild) > 0:
+            warning_msgs=  ['****************************************************', 'There are some other content ids which are in resync.',
+                            'Start rebuild process may change their current status.', '****************************************************']
+            for warning_msg in warning_msgs:
+                logger.warning(warning_msg)
+            input = ask_yesno(None, 'Do you still wish to continue ?', 'N')
+            if not input:
+                raise Exception('Aborting rebuild due to user request')
 
         return self.content_id
 
@@ -390,7 +388,7 @@ class BackupPersistentTableFiles:
             mode = 'w'
         with open(self.backup_log, mode) as fw_bkup:
             fw_bkup.write('************************************************\n')
-            fw_bkup.write("Global persistent files backup\n")
+            fw_bkup.write("Global persistent files backup\n\n")
             for di in self.dbid_info:
                 src_files, dest_files = [], []
                 host, dbid = di.hostname, di.dbid
@@ -799,7 +797,7 @@ class RunBackupRestore:
         self._run_backup_restore(host_to_dbid_info_map, validate=True)
 
 class RebuildPersistentTables(Operation):
-    def __init__(self, content_id, contentid_file, backup, restore, batch_size):
+    def __init__(self, content_id, contentid_file, backup, restore, batch_size, mode):
         self.content_id = content_id
         self.contentid_file = contentid_file
         self.backup = backup
@@ -811,6 +809,7 @@ class RebuildPersistentTables(Operation):
         self.pool = None
         self.backup_log = os.path.join(BACKUP_LOG_DIR, BACKUP_LOG_PREFIX + TIMESTAMP)
         self.restore_state_file_location = '/tmp'
+        self.shutdown_mode = mode
 
     def _check_database_version(self):
         """
@@ -826,7 +825,16 @@ class RebuildPersistentTables(Operation):
             raise Exception('This tool is not supported on Greenplum version lower than 4.1.0.0')
 
     def _stop_database(self):
-        cmd = GpStop('Stop the greenplum database', fast=True)
+        """
+        Set the validateAfter to be False in case if there are any segments' postmaster process killed,
+        and after shutdown, gpstop still returns non zero status code
+        """
+        if self.shutdown_mode == 'fast':
+            cmd = GpStop('Stop the greenplum database', fast=True)
+        elif self.shutdown_mode == 'immediate':
+            cmd = GpStop('Stop the greenplum database', force=True)
+        else:
+            cmd = GpStop('Stop the greenplum database')
         cmd.run(validateAfter=False)
 
     def _start_database(self, admin_mode=False):
@@ -1033,7 +1041,7 @@ class RebuildPersistentTables(Operation):
             """
             After we have created the backup copies with timestamp, we save the restore information
             """
-            logger.info('Dumpping restore information about global and per database persistent table files')
+            logger.info('Dumpping restore information of global and per database persistent table files')
             self.dump_restore_info()
         except Exception as e:
             logger.info('Starting Greenplum database')

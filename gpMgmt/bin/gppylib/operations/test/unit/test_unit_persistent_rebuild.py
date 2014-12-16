@@ -137,6 +137,45 @@ class ValidateContentIDTestCase(unittest.TestCase):
         self.contentid_validator.content_id = [1, 2, 3]
         self.contentid_validator._validate_content_id()
 
+    def test_validate_content_id_with_resync(self):
+        mock_segs = []
+        for i in range(6):
+            m = Mock()
+            m.getSegmentContentId.return_value = (i % 3) + 1
+            m.getSegmentStatus.return_value = 'u'
+            if i == 1:
+                m.getSegmentMode.return_value = 'r'
+            else:
+                m.getSegmentMode.return_value = 's'
+            mock_segs.append(m)
+        gparray = Mock()
+        gparray.getDbList = Mock()
+        gparray.getDbList.return_value = mock_segs 
+        self.contentid_validator.gparray = gparray
+        self.contentid_validator.content_id = [1, 2, 3]
+        with self.assertRaisesRegexp(Exception, 'Can not rebuild persistent tables for content ids that are in resync mode'):
+            self.contentid_validator._validate_content_id()
+
+    @patch('gppylib.operations.persistent_rebuild.ask_yesno', return_value=False)
+    def test_validate_content_id_with_some_others_resync(self, mock1):
+        mock_segs = []
+        for i in range(6):
+            m = Mock()
+            m.getSegmentContentId.return_value = (i % 3) + 1
+            m.getSegmentStatus.return_value = 'u'
+            if m.getSegmentContentId.return_value in (1, 2):
+                m.getSegmentMode.return_value = 'r'
+            else:
+                m.getSegmentMode.return_value = 's'
+            mock_segs.append(m)
+        gparray = Mock()
+        gparray.getDbList = Mock()
+        gparray.getDbList.return_value = mock_segs
+        self.contentid_validator.gparray = gparray
+        self.contentid_validator.content_id = [3]
+        with self.assertRaisesRegexp(Exception, 'Aborting rebuild due to user request'):
+            self.contentid_validator._validate_content_id()
+
     def test_validate_content_id_with_change_tracking_segments(self):
         mock_segs = []
         for i in range(6):
@@ -1125,7 +1164,8 @@ class RebuildPersistentTableTestCase(unittest.TestCase):
                                                                 contentid_file = None,
                                                                 backup=None,
                                                                 restore=None,
-                                                                batch_size=None)
+                                                                batch_size=None,
+                                                                mode=None)
 
     @patch('gppylib.operations.persistent_rebuild.platform.system', return_value='Linux')
     def test_check_platform_linux(self, mock1):
