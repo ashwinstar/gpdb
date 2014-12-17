@@ -1164,8 +1164,7 @@ class RebuildPersistentTableTestCase(unittest.TestCase):
                                                                 contentid_file = None,
                                                                 backup=None,
                                                                 restore=None,
-                                                                batch_size=None,
-                                                                mode=None)
+                                                                batch_size=None)
 
     @patch('gppylib.operations.persistent_rebuild.platform.system', return_value='Linux')
     def test_check_platform_linux(self, mock1):

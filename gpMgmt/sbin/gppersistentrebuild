@@ -48,7 +48,6 @@ class GpPersistentRebuild(Operation):
         self.backup = options.backup
         self.restore = options.restore
         self.batch_size = options.batch_size
-        self.mode = options.mode
 
     def run(self):
         if not self.batch_size:
@@ -73,8 +72,7 @@ class GpPersistentRebuild(Operation):
                                 content_id=self.content_id,
                                 backup=self.backup,
                                 restore=self.restore,
-                                batch_size=self.batch_size,
-                                mode=self.mode).run()
+                                batch_size=self.batch_size).run()
        
         return 0
         
@@ -96,9 +94,6 @@ def create_parser():
                      help="Restore the backup corresponding to the specified timestamp")
     addTo.add_option('-B', '--batch-size', metavar='<batch size>', type="int",
                      help="Batch size for Worker pool")
-    addTo.add_option('-M', '--mode', type='choice', choices=['fast', 'immediate', 'smart'],
-                     metavar='fast|immediate|smart', action='store', default='smart',
-                     help='set the method of shutdown, default is smart')
     parser.add_option_group(addTo)
 
     parser.setHelp([

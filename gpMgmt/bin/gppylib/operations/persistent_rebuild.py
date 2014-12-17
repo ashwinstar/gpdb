@@ -9,7 +9,8 @@
 # it is provided by or on behalf of Pivotal Software, Inc.
 
 import base64
-import os
+import fileinput
+import os, re
 import pickle
 import platform
 import re
@@ -797,7 +798,7 @@ class RunBackupRestore:
         self._run_backup_restore(host_to_dbid_info_map, validate=True)
 
 class RebuildPersistentTables(Operation):
-    def __init__(self, content_id, contentid_file, backup, restore, batch_size, mode):
+    def __init__(self, content_id, contentid_file, backup, restore, batch_size):
         self.content_id = content_id
         self.contentid_file = contentid_file
         self.backup = backup
@@ -809,7 +810,7 @@ class RebuildPersistentTables(Operation):
         self.pool = None
         self.backup_log = os.path.join(BACKUP_LOG_DIR, BACKUP_LOG_PREFIX + TIMESTAMP)
         self.restore_state_file_location = '/tmp'
-        self.shutdown_mode = mode
+        self.gpperfmon_file = '/tmp/gpperfmon_guc'
 
     def _check_database_version(self):
         """
@@ -826,15 +827,10 @@ class RebuildPersistentTables(Operation):
 
     def _stop_database(self):
         """
-        Set the validateAfter to be False in case if there are any segments' postmaster process killed,
-        and after shutdown, gpstop still returns non zero status code
+        Set the validateAfter to be False in case if there are any segments' postmaster 
+        process killed, cause gpstop will return non zero status code
         """
-        if self.shutdown_mode == 'fast':
-            cmd = GpStop('Stop the greenplum database', fast=True)
-        elif self.shutdown_mode == 'immediate':
-            cmd = GpStop('Stop the greenplum database', force=True)
-        else:
-            cmd = GpStop('Stop the greenplum database')
+        cmd = GpStop('Stop the greenplum database', fast=True)
         cmd.run(validateAfter=False)
 
     def _start_database(self, admin_mode=False):
@@ -964,7 +960,6 @@ class RebuildPersistentTables(Operation):
         """
         self.print_warning()
         self.print_warning()
-
         logger.info('Checking for platform')
         self._check_platform()
 
@@ -1022,6 +1017,14 @@ class RebuildPersistentTables(Operation):
         logger.info('Getting information about persistent table filenames')
         self._get_persistent_table_filenames()
 
+        """ 
+        If we want to start persistent table rebuild instead of only making backup, first need to save 
+        the gpperfmon guc value into a file, then disable gpperfmon before shutdown cluster.
+        """
+        if not self.backup:
+            self.dump_gpperfmon_guc()
+            self.disable_gpperfmon()
+
         """
         We want to stop the database so that we can backup
         the persistent table files.
@@ -1037,13 +1040,15 @@ class RebuildPersistentTables(Operation):
         logger.info('Backup timestamp = %s' % TIMESTAMP)
         try:
             RunBackupRestore(self.dbid_info, TIMESTAMP, self.batch_size).backup()
-
             """
             After we have created the backup copies with timestamp, we save the restore information
             """
             logger.info('Dumpping restore information of global and per database persistent table files')
             self.dump_restore_info()
         except Exception as e:
+            if not self.backup:
+                logger.info('Setting back gpperfmon guc')
+                self.restore_gpperfmon_guc()
             logger.info('Starting Greenplum database')
             self._start_database()
             raise
@@ -1106,6 +1111,9 @@ class RebuildPersistentTables(Operation):
         or we have succesfully replaced the original PT files and reset the
         xlog. Hence it is safe to restart the database
         """
+        logger.info('Setting back gpperfmon guc')
+        self.restore_gpperfmon_guc()
+
         logger.info('Starting Greenplum database')
         self._start_database()
 
@@ -1113,7 +1121,40 @@ class RebuildPersistentTables(Operation):
             raise Exception('Persistent table rebuild was not completed succesfully and was reset back')
         else:
             logger.info('Completed rebuild of persistent tables')
-            logger.info('To verify, please run: $GPHOME/bin/lib/gpcheckcat -R persistent -A')
+            logger.info('To verify, run: $GPHOME/bin/lib/gpcheckcat -R persistent -A')
+
+    def dump_gpperfmon_guc(self):
+        """
+        We want to save the gpperfmon guc value into a file, in case the rebuild process failed in the middle, so that
+        the restore process can still pick up its original value and reset back.
+        """
+        GET_GPPERFMON_VALUE = """show gp_enable_gpperfmon;"""
+        with dbconn.connect(dbconn.DbURL(dbname=DEFAULT_DATABASE)) as conn:
+            res = dbconn.execSQL(conn, GET_GPPERFMON_VALUE)
+            for r in res:
+                gpperfmon_guc = r[0]
+        logger.debug('Got gp_enable_gpperfmon guc value: %s' % gpperfmon_guc)
+        logger.info('Dumping gp_enable_gpperfmon guc information into file: %s' % self.gpperfmon_file)
+        with open(self.gpperfmon_file, 'w') as fw:
+            fw.write('gp_enable_gpperfmon=%s'% gpperfmon_guc)
+ 
+    def disable_gpperfmon(self):
+        logger.info('Disabling gpperfmon')
+        cmd = Command(name = 'Run gpconfig to set gpperfmon guc value off', cmdStr = 'gpconfig -c gp_enable_gpperfmon -v off')
+        cmd.run(validateAfter = True)
+
+    def restore_gpperfmon_guc(self):
+        """Read the guc value from dump file and reset it from postgresql.conf on master """
+        logger.debug('Retriving original gp_enable_gpperfmon guc value')
+        with open(self.gpperfmon_file, 'r') as fr:
+            content = fr.readlines();
+            gpperfmon_guc_info = content[0].strip()
+        postgres_config_file = os.path.join(os.environ.get('MASTER_DATA_DIRECTORY'), 'postgresql.conf')
+        logger.debug('Resetting guc %s' % gpperfmon_guc_info)
+        for line in fileinput.FileInput(postgres_config_file, inplace = 1):
+            line = re.sub('(\s*)gp_enable_gpperfmon(\s*)=(\w+)', gpperfmon_guc_info, line)
+            print str(re.sub('\n', '', line))
+        logger.info('Completed reset of guc gp_enable_gpperfmon')
 
 if __name__ == '__main__':
     pass
