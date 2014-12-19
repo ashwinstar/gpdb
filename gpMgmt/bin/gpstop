@@ -31,6 +31,8 @@ try:
     from gppylib.gpcoverage import GpCoverage
     from gppylib.utils import TableLogger
     from gppylib.gp_era import GpEraFile
+    from gppylib.operations.unix import CleanSharedMem
+    from gppylib.operations.utils import ParallelOperation, RemoteOperation
 except ImportError, e:    
     sys.exit('ERROR: Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
@@ -116,7 +118,7 @@ class GpStop:
                     self._stop_segments()                                
                     self._stop_gpmmon()
                     self._stop_gpsmon()
-                    self._remove_shared_memory_and_semaphores()
+                    self._remove_shared_memory()
                     self.cleanup()
                 finally:
                     # Reenable Ctrl-C
@@ -197,28 +199,37 @@ class GpStop:
                 logger.warning('Failed to stop gpsmon process on host %s: (%s)' % (item.remoteHost, result.stderr))
 
     ######
-    def _remove_shared_memory_and_semaphores(self):
-        logger.info('Cleaning up leftover shared memory and semaphores')
-        cluster_hosts = set([gphost.hostname for gphost in self.hostcache.get_hosts()])
-        cluster_hosts.add(self.gparray.master.getSegmentHostName())
-        if self.gparray.standbyMaster:
-            cluster_hosts.add(self.gparray.standbyMaster.getSegmentHostName())
+    def _remove_shared_memory(self):
+        """
+        If segment processes fail to stop even after the alotted time limit of 2 minutes, we proceed 
+        to forcibly terminate the processes. This might leave shared memory and semaphores uncleaned. 
+        CleanSharedMem class uses the ipcrm command to remove shared memory.
+        ipcrm will only remove shared memory once all the processes that have attached to 
+        the shared memory segment have exited. Hence it is safe to call this on all segments.
+        Semaphores however cannot be removed in this manner since we don't know which semaphores
+        are still being used. Hence we leave it to the user to clean up semaphores when it
+        is safe.
+        """
 
-        for host in cluster_hosts: 
-            cmd = Command('cleanup shared memory semaphores', cmdStr='ipcclean', ctxt=REMOTE, remoteHost=host)
-            self.pool.addCommand(cmd)
-        self.pool.join()
+        logger.info('Cleaning up leftover shared memory')
+        cluster_hosts = set([gphost for gphost in self.hostcache.get_hosts()])
+
+        operations = []
+        for gphost in cluster_hosts:
+            operations.append(RemoteOperation(CleanSharedMem(gphost.dbs), gphost.hostname))
+
+        operations.append(RemoteOperation(CleanSharedMem([self.gparray.master]), self.gparray.master.getSegmentHostName()))
         
-        for item in self.pool.getCompletedItems():
-            result = item.get_results()
-            if result.rc != 0:
-                if not 'nothing removed' in result.stdout:
-                    err_msg = ''
-                    if result.stdout:
-                        err_msg += result.stdout
-                    if result.stderr:
-                        err_msg += ':' + result.stderr
-                    logger.warning('Unable to clean shared memory and semaphores (%s)' % (err_msg))
+        if self.gparray.standbyMaster:
+            operations.append(RemoteOperation(CleanSharedMem([self.gparray.standbyMaster]), self.gparray.standbyMaster.getSegmentHostName()))
+
+        ParallelOperation(operations).run()
+
+        for operation in operations:
+            try:
+                operation.get_ret()
+            except Exception as e:
+                logger.warning('Unable to clean shared memory (%s)' % str(e))
 
     ######
     def cleanup(self):
