@@ -717,6 +717,7 @@ TransactionIdIsCurrentTransactionId(TransactionId xid)
 	bool isCurrentTransactionId = false;
 	int32 index = 0;
 	uint32 cnt = 0;
+	uint32 sub = 0;
 #ifdef WATCH_VISIBILITY_IN_ACTION
 	WatchBufferOffset = 0;
 
@@ -785,7 +786,30 @@ TransactionIdIsCurrentTransactionId(TransactionId xid)
 										" subcnt %d", 
 										 SharedLocalSnapshotSlot->total_subcnt);
 #endif
-		isCurrentTransactionId = FindXidInXidBuffer(&subxbuf, xid, &cnt, &index);
+		/*
+		 * Cursor readers cannot directly access the writer shared
+		 * snapshot -- since it may have been modified by the writer
+		 * since we were declared. But for normal reader if sub-transactions
+		 * fit in-memory can leverage the writers array instead of subxbuf.
+		 */
+		if ( (!QEDtxContextInfo.cursorContext) && 
+			(SharedLocalSnapshotSlot->inmemory_subcnt == 
+				SharedLocalSnapshotSlot->total_subcnt))
+		{
+			for (sub = 0; sub < SharedLocalSnapshotSlot->total_subcnt; sub++)
+			{
+				if (TransactionIdEquals(xid, SharedLocalSnapshotSlot->subxids[sub]))
+				{
+					isCurrentTransactionId = true;
+					break;
+				}
+			}
+		}
+		else
+		{
+			isCurrentTransactionId = FindXidInXidBuffer(&subxbuf, xid, &cnt, &index);
+		}
+
 		if (isCurrentTransactionId)
 		{
 #ifdef WATCH_VISIBILITY_IN_ACTION
@@ -2760,13 +2784,16 @@ GetSubXidsInXidBuffer(void)
 	int64 size;
 	int64 read_size;
 
-	ResetXidBuffer(&subxbuf);
 	/*
+	 * We only add subxids to the subxbuf, if it doen't fit the 
+	 * writers SharedSnapshot slot inmemory limit. Else we can refer the writers 
+	 * SharedSnapshot array itself as earlier to Subtransaction Limit Removal feature.
 	 * Check if there are any ids in file.
 	 */
 	if (SharedLocalSnapshotSlot->inmemory_subcnt !=
 	    SharedLocalSnapshotSlot->total_subcnt)
 	{
+		ResetXidBuffer(&subxbuf);
 		if (subxip_file == 0)
 		{
 			subxip_file = OpenTemporaryFile(
@@ -2810,11 +2837,11 @@ GetSubXidsInXidBuffer(void)
 			size -= read_size;
 		}
 		pfree(subxids);
-	}
 
-	AddSortedToXidBuffer(&subxbuf,
+		AddSortedToXidBuffer(&subxbuf,
 			    (TransactionId *)(SharedLocalSnapshotSlot->subxids),
 			    SharedLocalSnapshotSlot->inmemory_subcnt);
+	}
 }
 
 /*
