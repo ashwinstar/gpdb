@@ -63,6 +63,7 @@
  *-------------------------------------------------------------------------
  */
 
+#include <inttypes.h>
 #include "postgres.h"
 
 #include "utils/memutils.h"
@@ -196,6 +197,13 @@ static void AllocSet_GetStats(MemoryContext context, uint64 *nBlocks, uint64 *nC
 static void AllocSetReleaseAccountingForAllAllocatedChunks(MemoryContext context);
 static void AllocSetUpdateGenerationForAllAllocatedChunks(MemoryContext context);
 
+static void dump_allocset_block(FILE *file, AllocBlock block);
+static void dump_allocset_blocks(FILE *file, AllocBlock blocks);
+static void dump_allocset_freelist(FILE *file, AllocSet set);
+static void dump_mc_for(FILE *file, MemoryContext mc);
+void dump_mc(const char *fname, MemoryContext mc);
+void dump_tmc(const char *fname);
+
 #ifdef MEMORY_CONTEXT_CHECKING
 static void AllocSetCheck(MemoryContext context);
 #endif
@@ -219,6 +227,97 @@ static MemoryContextMethods AllocSetMethods = {
 	,AllocSetCheck
 #endif
 };
+
+static void dump_allocset_block(FILE *file, AllocBlock block)
+{
+	// block start/free/end pointer
+	fprintf(file, "\t%p|%p|%p\n", block, block->freeptr, block->endptr);
+
+	AllocChunk chunk = (AllocChunk) (((char *)block) + ALLOC_BLOCKHDRSZ);
+	while ((char *) chunk < (char *) block->freeptr)
+	{
+		fprintf(file, "\t\tchunk|%p|%ld", chunk, chunk->size);
+
+#ifdef MEMORY_CONTEXT_CHECKING
+		fprintf(file, "%ld", chunk->requested_size);
+#endif
+
+		fprintf(file, "\n");
+
+		chunk = (AllocChunk) ((char *) chunk + chunk->size + ALLOC_CHUNKHDRSZ);
+	}
+}
+
+static void dump_allocset_blocks(FILE *file, AllocBlock blocks)
+{
+	AllocBlock block = blocks;
+	while (block != NULL)
+	{
+		dump_allocset_block(file, block);
+		block = block->next;
+	}
+}
+
+static void dump_allocset_freelist(FILE *file, AllocSet set)
+{
+	if (set == NULL)
+		return;
+
+	int size = 8;
+
+	for (int i = 0; i < ALLOCSET_NUM_FREELISTS; i++)
+	{
+		AllocChunk chunk = set->freelist[i];
+
+		while (chunk != NULL)
+		{
+			fprintf(file, "\t\tfreelist_%d|%p|%ld", size << i, chunk, chunk->size);
+
+#ifdef MEMORY_CONTEXT_CHECKING
+			fprintf(file, "%ld", chunk->requested_size);
+#endif
+
+			fprintf(file, "\n");
+
+			chunk = (AllocChunk) chunk->sharedHeader;
+		}
+	}
+}
+
+static void dump_mc_for(FILE *file, MemoryContext mc)
+{
+	if (mc == NULL)
+		return;
+
+	AllocSet set = (AllocSet) mc;
+	fprintf(file, "%p|%p|%d|%s|%"PRIu64"|%"PRIu64"|%ld|%ld|%ld|%ld|%d", mc, mc->parent, mc->type, mc->name,
+			mc->allBytesAlloc, mc->allBytesFreed, mc->maxBytesHeld,
+			set->initBlockSize, set->maxBlockSize, set->nextBlockSize, set->isReset);
+
+#ifdef CDB_PALLOC_CALLER_ID
+	fprintf(file, "|%s|%d", (mc->callerFile == NULL ? "NA" : mc->callerFile), mc->callerLine);
+#endif
+
+	fprintf(file, "\n");
+
+	dump_allocset_blocks(file, set->blocks);
+	dump_allocset_freelist(file, set);
+
+	dump_mc_for(file, mc->nextchild);
+	dump_mc_for(file, mc->firstchild);
+}
+
+void dump_mc(const char *fname, MemoryContext mc)
+{
+	FILE *ofile = fopen(fname, "w+");
+	dump_mc_for(ofile, mc);
+	fclose(ofile);
+}
+
+void dump_tmc(const char *fname)
+{
+	dump_mc(fname, TopMemoryContext);
+}
 
 
 /* ----------
@@ -1760,7 +1859,7 @@ AllocSetCheck(MemoryContext context)
 				elog(WARNING, "problem in alloc set %s: req size > alloc size for chunk %p in block %p (%s:%d)",
 					 name, chunk, block, CDB_MCXT_WHERE(&set->header));
 			}
-                        
+
 			if (chsize < (1 << ALLOC_MINBITS))
 			{
 				Assert(!"Memory Context Error");

@@ -369,6 +369,14 @@ Datum matrix_add(PG_FUNCTION_ARGS)
 	ndim  = ARR_NDIM(n);
 	ntype = ARR_ELEMTYPE(n);
 
+	if (ndim == 0)
+	{
+		if (PG_ARGISNULL(0))
+			PG_RETURN_NULL();
+		else
+			PG_RETURN_ARRAYTYPE_P(PG_GETARG_ARRAYTYPE_P(0));
+	}
+
 	/* Typecheck the input arrays, we only handle fixed length numeric data. */
 	if (ntype != INT2OID   && ntype != INT4OID && ntype != INT8OID && 
 		ntype != FLOAT4OID && ntype != FLOAT8OID)
