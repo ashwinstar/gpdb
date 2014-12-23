@@ -27,7 +27,8 @@ extern List *FetchPortalTargetList(Portal portal);
 extern List *FetchStatementTargetList(Node *stmt);
 
 extern void PortalStart(Portal portal, ParamListInfo params,
-						Snapshot snapshot);
+						Snapshot snapshot,
+						const char *seqServerHost, int seqServerPort);
 
 extern void PortalSetResultFormat(Portal portal, int nFormats,
 					  int16 *formats);

@@ -223,10 +223,6 @@ CreatePortal(const char *name, bool allowDup, bool dupSilent)
 					(errcode(ERRCODE_DUPLICATE_CURSOR),
 					 errmsg("closing existing cursor \"%s\"",
 							name)));
-
-		/* Decoupled Portal and SequenceServer (MPP-20504). */
-		TeardownSequenceServer();
-
 		PortalDrop(portal, false);
 	}
 
@@ -370,8 +366,7 @@ PortalCreateHoldStore(Portal portal)
 
 /*
  * PortalDrop
- *	Destroy the portal.
- *	The caller should release additional resources/services (e.g.  Sequence Server.)
+ *		Destroy the portal.
  */
 void
 PortalDrop(Portal portal, bool isTopCommit)
@@ -382,6 +377,8 @@ PortalDrop(Portal portal, bool isTopCommit)
 	if (PortalGetStatus(portal) == PORTAL_ACTIVE) 
 		elog(ERROR, "cannot drop active or queued portal");
 
+	TeardownSequenceServer();
+
 	/*
 	 * Remove portal from hash table.  Because we do this first, we will not
 	 * come back to try to remove the portal again if there's any error in the
@@ -390,11 +387,11 @@ PortalDrop(Portal portal, bool isTopCommit)
 	 */
 	PortalHashTableDelete(portal);
 
-	if (portal->releaseResLock)
-	{
-		portal->releaseResLock = false;
-		ResUnLockPortal(portal);
-	}
+    if (portal->releaseResLock)
+    {
+        portal->releaseResLock = false;
+        ResUnLockPortal(portal);
+    }
 
 	/* let portalcmds.c clean up the state it knows about */
 	if (portal->cleanup)
@@ -478,9 +475,6 @@ DropDependentPortals(MemoryContext queryContext)
 {
 	HASH_SEQ_STATUS status;
 	PortalHashEnt *hentry;
-
-	/* Decoupled Portal and SequenceServer (MPP-20504). */
-	TeardownSequenceServer();
 
 	hash_seq_init(&status, PortalHashTable);
 
@@ -608,9 +602,6 @@ AtCommit_Portals(void)
 
 	hash_seq_init(&status, PortalHashTable);
 
-	/* Decoupled Portal and SequenceServer (MPP-20504). */
-	TeardownSequenceServer();
-
 	while ((hentry = (PortalHashEnt *) hash_seq_search(&status)) != NULL)
 	{
 		Portal		portal = hentry->portal;
@@ -709,9 +700,6 @@ AtCleanup_Portals(void)
 	HASH_SEQ_STATUS status;
 	PortalHashEnt *hentry;
 
-	/* Decoupled Portal and SequenceServer (MPP-20504). */
-	TeardownSequenceServer();
-
 	hash_seq_init(&status, PortalHashTable);
 
 	while ((hentry = (PortalHashEnt *) hash_seq_search(&status)) != NULL)
@@ -777,8 +765,8 @@ AtSubAbort_Portals(SubTransactionId mySubid,
 	HASH_SEQ_STATUS status;
 	PortalHashEnt *hentry;
 
-	UnusedArg(parentSubid);
-	UnusedArg(parentXactOwner);
+    UnusedArg(parentSubid);
+    UnusedArg(parentXactOwner);
 
 	hash_seq_init(&status, PortalHashTable);
 
@@ -855,9 +843,6 @@ AtSubCleanup_Portals(SubTransactionId mySubid)
 {
 	HASH_SEQ_STATUS status;
 	PortalHashEnt *hentry;
-
-	/* Decoupled Portal and SequenceServer (MPP-20504). */
-	TeardownSequenceServer();
 
 	hash_seq_init(&status, PortalHashTable);
 

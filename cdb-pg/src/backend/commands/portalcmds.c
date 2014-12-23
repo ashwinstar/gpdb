@@ -36,7 +36,6 @@
 #include "cdb/cdbgang.h"
 #include "cdb/cdbtm.h"
 #include "cdb/cdbvars.h"
-#include "cdb/ml_ipc.h"
 #include "postmaster/backoff.h"
 
 extern char *savedSeqServerHost;
@@ -161,11 +160,12 @@ PerformCursorOpen(PlannedStmt *stmt, ParamListInfo params,
 			portal->cursorOptions |= CURSOR_OPT_NO_SCROLL;
 	}
 	*/
-
+	
 	/*
 	 * Start execution, inserting parameters if any.
 	 */
-	PortalStart(portal, params, ActiveSnapshot);
+	PortalStart(portal, params, ActiveSnapshot,
+				savedSeqServerHost, savedSeqServerPort);
 
 	Assert(portal->strategy == PORTAL_ONE_SELECT);
 

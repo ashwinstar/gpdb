@@ -621,26 +621,29 @@ SetupSequenceServer(const char *host, int port)
 {
 	if (host != NULL)
 	{
-		/*
-		 * See MPP-10162: certain PL/PGSQL functions may call us multiple
-		 * times without an intervening Teardown.
-		 */
-		if (savedSeqServerHost != NULL)
+		if (savedSeqServerHost != host)
 		{
-			free(savedSeqServerHost);
-			savedSeqServerHost = NULL;
-			savedSeqServerPort = 0;
-		}
+			/*
+			 * See MPP-10162: certain PL/PGSQL functions may call us multiple
+			 * times without an intervening Teardown.
+			 */
+			if (savedSeqServerHost != NULL)
+			{
+				free(savedSeqServerHost);
+				savedSeqServerHost = NULL;
+				savedSeqServerPort = 0;
+			}
 
-		/*
-		 * Don't use MemoryContexts -- they make error handling
-		 * difficult here.
-		 */
-		savedSeqServerHost = strdup(host);
+			/*
+			 * Don't use MemoryContexts -- they make error handling
+			 * difficult here.
+			 */
+			savedSeqServerHost = strdup(host);
 
-		if (savedSeqServerHost == NULL)
-		{
-			elog(ERROR, "SetupSequenceServer: memory allocation failed.");
+			if (savedSeqServerHost == NULL)
+			{
+				elog(ERROR, "SetupSequenceServer: memory allocation failed.");
+			}
 		}
 
 		Assert(port != 0);
@@ -664,12 +667,12 @@ TeardownSequenceServer(void)
 		savedSeqServerFd = -1;
 	}
 
-	if (savedSeqServerHost != NULL)
-	{
-		free(savedSeqServerHost);
-		savedSeqServerHost = NULL;
-		savedSeqServerPort = 0;
-	}
+	/*
+	 * Note, we are not releasing the savedSeqServerHost here (MPP-25193). This may result
+	 * in a small memory leak. However, we still free this during SetupSequenceServer call.
+	 * Therefore, in the worse case there would be only one savedSeqServerHost instance
+	 * leaking, irrespective of how many portals we have, which is rather unnoticeable.
+	 */
 }
 
 static void
@@ -720,8 +723,8 @@ setupSeqServerConnection(char *seqServerHost, uint16 seqServerPort)
 	{
 		pg_freeaddrinfo_all(hint.ai_family, addrs);
 		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-						errmsg("Interconnect Error: Could not connect to seqserver."),
-		                errdetail("%m%s", "connect")));
+						errmsg("Interconnect Error: Could not connect to seqserver (connection: %d, host: %s, port: %d).", savedSeqServerFd, seqServerHost, seqServerPort),
+		                errdetail("%m%s", "connect"), errprintstack(true)));
 	}
 
 	pg_freeaddrinfo_all(hint.ai_family, addrs);

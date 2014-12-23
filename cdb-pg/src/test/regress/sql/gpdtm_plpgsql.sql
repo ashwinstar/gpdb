@@ -282,7 +282,6 @@ INSERT INTO dtm_plpg_foo SELECT * FROM dtm_plpg_foo LIMIT 10000;
 FETCH c0;
 CLOSE c0;
 COMMIT;
-
 --
 -- Sequence server test for an extended query
 --

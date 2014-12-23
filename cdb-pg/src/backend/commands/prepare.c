@@ -22,7 +22,6 @@
 #include "catalog/pg_type.h"
 #include "commands/explain.h"
 #include "commands/prepare.h"
-#include "cdb/ml_ipc.h"
 #include "executor/executor.h"
 #include "funcapi.h"
 #include "miscadmin.h"
@@ -259,15 +258,11 @@ ExecuteQuery(ExecuteStmt *stmt, const char *queryString,
 					  stmt_list,
 					  qcontext);
 
-	/* Do not start SequenceServer for cursors (MPP-20504). */
-	if (!portal->is_extended_query)
-	{
-		SetupSequenceServer(savedSeqServerHost, savedSeqServerPort);
-	}
 	/*
 	 * Run the portal to completion.
 	 */
-	PortalStart(portal, paramLI, ActiveSnapshot);
+	PortalStart(portal, paramLI, ActiveSnapshot,
+				savedSeqServerHost, savedSeqServerPort);
 
 	(void) PortalRun(portal, 
 					FETCH_ALL, 
@@ -277,9 +272,6 @@ ExecuteQuery(ExecuteStmt *stmt, const char *queryString,
 					 completionTag);
 
 	PortalDrop(portal, false);
-
-	/* Decoupled Portal and SequenceServer (MPP-20504). */
-	TeardownSequenceServer();
 
 	if (estate)
 		FreeExecutorState(estate);
