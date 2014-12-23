@@ -24,6 +24,9 @@ from time import localtime, strftime
 import time
 import getopt
 
+TIMESTAMP = datetime.now().strftime("%Y%m%d%H%M%S")
+REPAIR_SCRIPT='runsql_%s.sh' % TIMESTAMP
+
 try:
     from gppylib.db import dbconn
     from gppylib.gplog import *
@@ -3401,7 +3404,42 @@ def duplicatePersistentEntryQuery(catname, pkey, excol, state):
           """.format(catalog=catname, pkey=','.join(pkey), excol=excol, state=state, dbname=GV.dbname)
     return qry
 
-
+############################################################################
+# Help populating repair part for all tested types
+# All functions dependent on results stored in global variable GV
+############################################################################
+name_repair = {
+    "segment":
+    {
+         "description": "Check if needs repairing segment",
+         "fn": lambda maybeRemove, catmod_guc, seg: checkSegmentRepair(maybeRemove, catmod_guc, seg)
+    },
+    "reindex":
+    {
+         "description": "Check if needs repair file for reindex",
+         "fn": lambda: checkReindexRepair()
+    },
+    "constraints":
+    {
+         "description": "Check if needs repair file to fix constraints",
+         "fn": lambda: checkConstraintsRepair()
+    },
+    "owners":
+    {
+         "description": "Check if needs repair file to fix messed up ownership",
+         "fn": lambda: checkOwnersRepair()
+    },
+    "schemas":
+    {
+         "description": "Check if needs repair file to fix schema related issues",
+         "fn": lambda: checkSchemaRepair()
+    },
+    "policies":
+    {
+         "description": "Check if needs repair file to fix distribution policy",
+         "fn": lambda: checkPoliciesRepair()
+    }
+}
 
 ############################################################################
 # version = X.X : run this test as part of running all tests on gpdb <= X.X  
@@ -3614,7 +3652,7 @@ def runAllTests():
         # build a script to run these files
         script = ''
         # if repair script already exist, do not have to add extra script type to head
-        if not os.path.isfile(os.path.join(GV.opt['-g'], 'runsql.sh')):
+        if not os.path.isfile(os.path.join(GV.opt['-g'], REPAIR_SCRIPT)):
             script = '#!/bin/bash\ncd $(dirname $0)\n'
         # set allow_system_table_mods GUC for gpdb >= 4.2
         catmod_guc = ""
@@ -3635,37 +3673,20 @@ def runAllTests():
         dbids = dbids.union(GV.DemoteConstraint.keys())
 
         for seg in dbids:
-            # dbid.host.port.dbname.sql
             script += '\n%secho "Repairing segment %i"' % (maybeRemove, seg)
-            run_sql_script = generate_repair_sql_unique(maybeRemove, catmod_guc, seg)
-            script += run_sql_script
+            segment_repair_script = name_test["segment"]["fn"](maybeRemove, catmod_guc, seg)
+            script += segment_repair_script
 
-        if len(GV.Reindex) > 0:
-            script += 'echo "Reindexing potentially damaged bitmap indexes"\n'
-            run_psql_script = generate_repair_sql('reindex')
-            script += run_psql_script
-        if len(GV.Constraints) > 0:
-            script += 'echo "Dropping invalid unique constraints"\n'
-            run_psql_script = generate_repair_sql('removeconstraints')
-            script += run_psql_script
-        if len(GV.Owners) > 0:
-            # Previously we removed duplicate statements from the "Owners" list
-            # by casting it through a "list(set(...))", however this does not work
-            # since the order of items in the list is important for correct
-            # results.
-            script += 'echo "Correcting table ownership"\n'
-            run_psql_script = generate_repair_sql('fixowners')
-            script += run_psql_script
-        if len(GV.Schemas) > 0:
-            # Remove leaked temporary schemas
-            script += 'echo "Dropping temporary schemas"\n'
-            run_psql_script = generate_repair_sql('fixnamespace')
-            script += run_psql_script
-        if len(GV.Policies) > 0:
-            # changes to distribution policies
-            script += 'echo "Fixing distribution policies"\n'
-            run_psql_script = generate_repair_sql('fixdistribution')
-            script += run_psql_script
+        c = GV.cfg[1]
+        for name in name_repair:
+            # skip checking on the segment repeatedly
+            if name in ['segment']:
+                continue
+            description, repair_filename = name_repair[name]["fn"]()
+            if repair_filename != None:
+                    script += description
+                    script += 'psql -X -a -h %s -p %i -f %s "%s" > %s.out 2>&1\n' % \
+                              (c['hostname'], c['port'], repair_filename, GV.dbname, repair_filename)
 
         generate_repair_script(script)
 
@@ -3673,41 +3694,9 @@ def runAllTests():
         logger.warn('[WARN]: unable to generate repairs for some issues')
     logger.info("Check complete")
 
-def generate_repair_sql(type):
-    # dbid.host.port.dbname.type.sql
-    filename = '%s.%s.sql' % (GV.dbname, type)
-    fullpath = '%s/%s' % (GV.opt['-g'], filename)
-    try:
-        file = open(fullpath, 'w')
-    except Exception, e:
-        logger.fatal('Unable to create file "%s": %s' % (fullpath, str(e)))
-        sys.exit(1)
-    if type == 'reindex':
-        for r in GV.Reindex:
-            file.write('REINDEX INDEX %s;\n' % r)
-    elif type == 'removeconstraints':
-        GV.Constraints = list(set(GV.Constraints))
-        for r in GV.Constraints:
-            file.write('%s\n' % r)
-    elif type == 'fixowners':
-        for r in GV.Owners:
-            file.write('%s\n' % r)
-    elif type == 'fixnamespace':
-        for s in GV.Schemas:
-            file.write('DROP SCHEMA IF EXISTS "%s" CASCADE;\n' % s)
-    elif type == 'fixdistribution':
-        for r in GV.Policies:
-            file.write('%s\n' % r)
-    file.close()
-
-    c = GV.cfg[1]
-    run_psql_script = 'psql -X -a -h %s -p %i -f %s "%s" > %s.out 2>&1\n' % \
-        (c['hostname'], c['port'], filename, GV.dbname, filename)
-    return run_psql_script
-
 def generate_repair_script(script):
     try:
-        path = '%s/runsql.sh' % GV.opt['-g']
+        path = '%s/%s' % (GV.opt['-g'], REPAIR_SCRIPT)
         file = open(path, 'a')
         file.write(script)
         file.close()
@@ -3717,12 +3706,114 @@ def generate_repair_script(script):
         sys.exit(1)
 
     myprint('')
-    myprint('[INFO]: repair scripts generated in directory %s' % GV.opt['-g'])
+    myprint('[INFO]: repair scripts generated: %s' % path)
 
-def generate_repair_sql_unique(maybeRemove, catmod_guc, seg):
-    # dbid.host.port.dbname.sql
+def checkReindexRepair():
+    if len(GV.Reindex) > 0:
+        # dbname.type.timestamp.sql
+        filename = '%s.%s.%s.sql' % (GV.dbname, "reindex", TIMESTAMP)
+        fullpath = '%s/%s' % (GV.opt['-g'], filename)
+        try:
+            file = open(fullpath, 'w')
+        except Exception, e:
+            logger.fatal('Unable to create file "%s": %s' % (fullpath, str(e)))
+            sys.exit(1)
+
+        description = 'echo "Reindexing potentially damaged bitmap indexes"\n'
+        for r in GV.Reindex:
+            file.write('REINDEX INDEX %s;\n' % r)
+        file.close()
+        return description, filename
+    else:
+        return None, None
+
+def checkConstraintsRepair():
+    if len(GV.Constraints) > 0:
+        # dbname.type.timestamp.sql
+        filename = '%s.%s.%s.sql' % (GV.dbname, "removeconstraints", TIMESTAMP)
+        fullpath = '%s/%s' % (GV.opt['-g'], filename)
+        try:
+            file = open(fullpath, 'w')
+        except Exception, e:
+            logger.fatal('Unable to create file "%s": %s' % (fullpath, str(e)))
+            sys.exit(1)
+
+        description = 'echo "Dropping invalid unique constraints"\n'
+        GV.Constraints = list(set(GV.Constraints))
+        for r in GV.Constraints:
+            file.write('%s\n' % r)
+        file.close()
+        return description, filename
+    else:
+        return None, None
+
+def checkOwnersRepair():
+    if len(GV.Owners) > 0:
+        # Previously we removed duplicate statements from the "Owners" list
+        # by casting it through a "list(set(...))", however this does not work
+        # since the order of items in the list is important for correct results.
+
+        # dbname.type.timestamp.sql
+        filename = '%s.%s.%s.sql' % (GV.dbname, "fixowners", TIMESTAMP)
+        fullpath = '%s/%s' % (GV.opt['-g'], filename)
+        try:
+            file = open(fullpath, 'w')
+        except Exception, e:
+            logger.fatal('Unable to create file "%s": %s' % (fullpath, str(e)))
+            sys.exit(1)
+
+        description = 'echo "Correcting table ownership"\n'
+        for r in GV.Owners:
+            file.write('%s\n' % r)
+        file.close()
+        return description, filename
+    else:
+        return None, None
+
+def checkSchemaRepair():
+    # Remove leaked temporary schemas
+    if len(GV.Schemas) > 0:
+        # dbname.type.timestamp.sql
+        filename = '%s.%s.%s.sql' % (GV.dbname, "fixnamespace", TIMESTAMP)
+        fullpath = '%s/%s' % (GV.opt['-g'], filename)
+        try:
+            file = open(fullpath, 'w')
+        except Exception, e:
+            logger.fatal('Unable to create file "%s": %s' % (fullpath, str(e)))
+            sys.exit(1)
+
+        description = 'echo "Dropping temporary schemas"\n'
+        for s in GV.Schemas:
+            file.write('DROP SCHEMA IF EXISTS "%s" CASCADE;\n' % s)
+        file.close()
+        return description, filename
+    else:
+        return None, None
+
+def checkPoliciesRepair():
+    # changes to distribution policies
+    if len(GV.Policies) > 0:
+        # dbname.type.timestamp.sql
+        filename = '%s.%s.%s.sql' % (GV.dbname, "fixdistribution", TIMESTAMP)
+        fullpath = '%s/%s' % (GV.opt['-g'], filename)
+        try:
+            file = open(fullpath, 'w')
+        except Exception, e:
+            logger.fatal('Unable to create file "%s": %s' % (fullpath, str(e)))
+            sys.exit(1)
+
+        description = 'echo "Fixing distribution policies"\n'
+        for r in GV.Policies:
+            file.write('%s\n' % r)
+        file.close()
+        return description, filename
+    else:
+        return None, None
+
+def checkSegmentRepair():
+    # dbid.host.port.dbname.timestamp.sql
     c = GV.cfg[seg]
-    filename = '%i.%s.%i.%s.sql' % (seg, c['hostname'], c['port'], GV.dbname)
+    filename = '%i.%s.%i.%s.%s.sql' % (seg, c['hostname'], c['port'], GV.dbname, TIMESTAMP)
     filename = filename.replace(' ', '_')
     fullpath = '%s/%s' % (GV.opt['-g'], filename)
     try:
@@ -3757,7 +3848,6 @@ def generate_repair_sql_unique(maybeRemove, catmod_guc, seg):
                         dbname = GV.dbname)
 
     return run_psql_script
-
 #-------------------------------------------------------------------------------
 def getCatalog():
     # Establish a connection to the master & looks up info in the catalog
@@ -4651,17 +4741,6 @@ if __name__ == '__main__':
     if GV.version < "4.0":
         myprint("Error: only Greenplum database version >= 4.0 are supported\n")
         sys.exit(GV.retcode)
-
-    # cleanup old repair script if existed under the directory
-    if GV.opt['-g'] != None:
-        repair_script = os.path.join(GV.opt['-g'], 'runsql.sh')
-        try:
-            if os.path.isfile(repair_script):
-                os.remove(repair_script)
-        except Exception, e:
-            logger.fatal('Unable to remove old repair script "%s": %s' %
-                         (repair_script, str(e)))
-            sys.exit(1)
 
     GV.cfg = getGPConfiguration()
     GV.report_cfg = getReportConfiguration()
