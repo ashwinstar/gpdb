@@ -426,8 +426,11 @@ class GetDbIdInfoTestCase(unittest.TestCase):
 
 class BackupPersistentTableFilesTestCase(unittest.TestCase):
     def setUp(self):
-        self.backup_persistent_files = BackupPersistentTableFiles(dbid_info=None, perdb_pt_filenames=['5094', '5095'],
-                                                                  global_pt_filenames=['5090', '5091', '5092', '5093'],
+        self.backup_persistent_files = BackupPersistentTableFiles(dbid_info=None,
+                                                                  perdb_pt_filenames={2:{17088L:['5094', '5095'],1L: [5094L, 5095L]},
+                                                                                      3:{17088L:['5094', '5095'],1L: [5094L, 5095L]}},
+                                                                  global_pt_filenames={2: ['5090', '5091', '5092', '5093'],
+                                                                                       3: ['5090', '5091', '5092', '5093']},
                                                                   timestamp='20140604101010')
 
     @patch('os.makedirs')
@@ -1234,10 +1237,21 @@ class RebuildPersistentTableTestCase(unittest.TestCase):
     @patch('gppylib.operations.persistent_rebuild.dbconn.connect')
     @patch('gppylib.operations.persistent_rebuild.dbconn.DbURL')
     def test_get_persistent_table_filenames(self, mock1, mock2, mock3):
+        d1 = DbIdInfo(2, 3, 5002, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        self.rebuild_persistent_table.dbid_info = [d1]
         self.rebuild_persistent_table._get_persistent_table_filenames()
+        expected_global = defaultdict(defaultdict)
+        expected_files = [5090, 5091, 5092, 5093]
+        expected_dbid = {3:expected_files}
+        expected_global = {'h1':expected_dbid}
+        expected_perdb_pt_files = defaultdict(defaultdict)
+        exp_pt_files = [5094, 16992]
+        exp_dboid = {123:exp_pt_files}
+        exp_dbid = {3:exp_dboid}
+        expected_perdb_pt_file = {'h1':exp_dbid}
         from gppylib.operations.persistent_rebuild import GLOBAL_PERSISTENT_FILES, PER_DATABASE_PERSISTENT_FILES
-        self.assertEqual(GLOBAL_PERSISTENT_FILES, [5090, 5091, 5092, 5093])
-        self.assertEqual(PER_DATABASE_PERSISTENT_FILES, defaultdict(list, {123: [5094, 16992]}))
+        self.assertEqual(GLOBAL_PERSISTENT_FILES, expected_global)
+        self.assertEqual(PER_DATABASE_PERSISTENT_FILES, expected_perdb_pt_file)
 
 if __name__ == '__main__':
     unittest.main()

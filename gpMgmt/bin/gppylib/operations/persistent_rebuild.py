@@ -36,10 +36,11 @@ DEFAULT_DATABASE = 'postgres'
 TIMESTAMP = datetime.now().strftime("%Y%m%d%H%M%S")
 BACKUP_LOG_DIR='/tmp'
 BACKUP_LOG_PREFIX = 'pt_bkup_info_'
-GLOBAL_PERSISTENT_FILES = []
-PER_DATABASE_PERSISTENT_FILES = defaultdict(list)  #The key for this dictionary is the dboid and
-                                                   #the value is a list containing the list of 
-                                                   #relfilenode ids of the perdb pt files (5094, 5095)
+GLOBAL_PERSISTENT_FILES = defaultdict(defaultdict) # {segment: {dbid1: [file1, file2], dbid2: [file3, file4]}}
+PER_DATABASE_PERSISTENT_FILES = defaultdict(defaultdict)  # {dbid1:{dboid1:[list],dboid2:[list]},
+                                                          #  dbid2:{dboid1:[list],dboid2:[list]}},
+                                                          # 'list' containing the list of
+                                                          # relfilenode ids of the perdb pt files (5094, 5095)
 
 class ValidateContentID:
     '''
@@ -395,7 +396,8 @@ class BackupPersistentTableFiles:
                 host, dbid = di.hostname, di.dbid
                 fw_bkup.write("Backup of dbid: %s\n" % dbid)
                 datadir = di.filespace_dirs[SYSTEM_FSOID]
-                for f in self.GLOBAL_PERSISTENT_FILES:
+                for f in self.GLOBAL_PERSISTENT_FILES[dbid]:
+                    logger.debug('global persistent file for dbid %s = %s' % (dbid, f))
                     src_file = '%s/global/%s*' % (datadir, f)
                     dest_file = '%s/global/pt_files_bk_%s/%s*' % (datadir, self.timestamp, f)
                     src_files.append(src_file)
@@ -448,8 +450,8 @@ class BackupPersistentTableFiles:
                             else:
                                 base_dir = 'base'
                             src_files, dest_files = [], []
-                            if dboid in self.PER_DATABASE_PERSISTENT_FILES:
-                                file_list = self.PER_DATABASE_PERSISTENT_FILES[dboid]
+                            if dboid in self.PER_DATABASE_PERSISTENT_FILES[dbid]:
+                                file_list = self.PER_DATABASE_PERSISTENT_FILES[dbid][dboid]
                             else:
                                 #This corresponds to template0. We cannot connect to template0
                                 #hence the relfilenodeid will never change.
@@ -768,14 +770,16 @@ class RunBackupRestore:
             option = '--backup'
             err_msg = 'Backup of persistent table files failed'
 
+        verbose_logging = '--verbose' if gplog.logging_is_verbose() else ''
+
         try:
             for host in host_to_dbid_info_map:
                 pickled_backup_dbid_info = base64.urlsafe_b64encode(pickle.dumps(host_to_dbid_info_map[host]))
-                pickled_per_database_persistent_files = base64.urlsafe_b64encode(pickle.dumps(PER_DATABASE_PERSISTENT_FILES))
-                pickled_global_persistent_files = base64.urlsafe_b64encode(pickle.dumps(GLOBAL_PERSISTENT_FILES))
-                cmdStr = """$GPHOME/sbin/gppersistent_backup.py --timestamp %s %s %s --batch-size %s --perdbpt %s --globalpt %s""" %\
+                pickled_per_database_persistent_files = base64.urlsafe_b64encode(pickle.dumps(PER_DATABASE_PERSISTENT_FILES[host]))
+                pickled_global_persistent_files = base64.urlsafe_b64encode(pickle.dumps(GLOBAL_PERSISTENT_FILES[host]))
+                cmdStr = """$GPHOME/sbin/gppersistent_backup.py --timestamp %s %s %s --batch-size %s --perdbpt %s --globalpt %s %s""" %\
                         (self.timestamp, option, pickled_backup_dbid_info, self.batch_size, pickled_per_database_persistent_files,
-                         pickled_global_persistent_files)
+                         pickled_global_persistent_files, verbose_logging)
                 cmd = Command('backup pt files on a host', cmdStr=cmdStr, ctxt=REMOTE, remoteHost=host)
                 self.pool.addCommand(cmd) 
             self.pool.join()
@@ -882,29 +886,39 @@ class RebuildPersistentTables(Operation):
         PER_DATABASE_PT_FILES_QUERY = """SELECT relfilenode FROM pg_class WHERE oid IN (5094, 5095)"""
         GLOBAL_PT_FILES_QUERY = """SELECT relfilenode FROM pg_class WHERE oid IN (5090, 5091, 5092, 5093)"""
 
-        databases = []
-        with dbconn.connect(dbconn.DbURL(dbname=DEFAULT_DATABASE)) as conn:
-            res = dbconn.execSQL(conn, GLOBAL_PT_FILES_QUERY)
-            for r in res:
-                GLOBAL_PERSISTENT_FILES.append(r[0])
+        databases = defaultdict(list)
+        for dbidinfo in self.dbid_info:
+            hostname = dbidinfo.hostname
+            port = dbidinfo.port
+            dbid = dbidinfo.dbid
+            globalfiles = []
+            with dbconn.connect(dbconn.DbURL(dbname=DEFAULT_DATABASE, hostname=hostname, port=port), utility=True) as conn:
+                res = dbconn.execSQL(conn, GLOBAL_PT_FILES_QUERY)
+                for r in res: 
+                    globalfiles.append(r[0])
+                res = dbconn.execSQL(conn, GET_ALL_DATABASES)
+                for r in res: 
+                    databases[hostname,port].append((dbid, r[0], r[1]))
 
-            res = dbconn.execSQL(conn, GET_ALL_DATABASES)
-            for r in res:
-                databases.append((r[0], r[1]))
-    
+            GLOBAL_PERSISTENT_FILES[hostname][dbid] = globalfiles
+
         logger.debug('GLOBAL_PERSISTENT_FILES = %s' % GLOBAL_PERSISTENT_FILES)
-
-        """
-        We have to connect to each database to get the relfilenode ids for per db
-        persistent files.
-        """
-        for dboid, database in databases:
-            if database == 'template0': #Connections to template0 are not allowed so we skip
-                continue
-            with dbconn.connect(dbconn.DbURL(dbname=database)) as conn:
-                res = dbconn.execSQL(conn, PER_DATABASE_PT_FILES_QUERY)
-                for r in res:
-                    PER_DATABASE_PERSISTENT_FILES[dboid].append(r[0])
+     
+        """  
+        We have to connect to each database in all segments to get the  
+        relfilenode ids for per db persistent files.
+        """  
+        for hostname, port in databases:
+            dblist = databases[(hostname, port)]
+            ptfiles_dboid = defaultdict(list)
+            for dbid, dboid, database in dblist:
+                if database == 'template0': #Connections to template0 are not allowed so we skip 
+                    continue
+                with dbconn.connect(dbconn.DbURL(dbname=database, hostname=hostname, port=port), utility=True) as conn:
+                    res = dbconn.execSQL(conn, PER_DATABASE_PT_FILES_QUERY)
+                    for r in res: 
+                        ptfiles_dboid[dboid].append(r[0])
+                PER_DATABASE_PERSISTENT_FILES[hostname][dbid] = ptfiles_dboid
 
         logger.debug('PER_DATABASE_PERSISTENT_FILES = %s' % PER_DATABASE_PERSISTENT_FILES)
 
