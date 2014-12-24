@@ -80,6 +80,7 @@
 
 #include "executor/spi.h"
 
+#define MaxPolicyAttributeNumber MaxHeapAttributeNumber
 /* temporary rule to control whether we generate RULEs or not -- for testing */
 bool        enable_partition_rules = false;
 
@@ -2693,7 +2694,7 @@ transformETDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 						 bool iswritable,
 						 bool onmaster)
 {
-	int			maxattrs = 200;
+	int			maxattrs = MaxPolicyAttributeNumber;
 	GpPolicy*	p = NULL;
 
 	/*
@@ -2754,7 +2755,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 	ListCell   *keys = NULL;
 	GpPolicy  *policy = NULL;
 	int			colindex = 0;
-	int			maxattrs = 200;
+	int			maxattrs = MaxPolicyAttributeNumber;
 	int			numUniqueIndexes = 0;
 	Constraint *uniqueindex = NULL;
 
@@ -12516,7 +12517,7 @@ setQryDistributionPolicy(SelectStmt *stmt, Query *qry)
 
 	GpPolicy  *policy = NULL;
 	int			colindex = 0;
-	int			maxattrs = 200;
+	int			maxattrs = MaxPolicyAttributeNumber;
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;

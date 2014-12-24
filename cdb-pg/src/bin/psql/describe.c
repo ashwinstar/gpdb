@@ -27,7 +27,7 @@ static bool describeOneTableDetails(const char *schemaname,
 						const char *relationname,
 						const char *oid,
 						bool verbose);
-static int add_distributed_by_footer(const char* oid, PQExpBufferData *inoutbuf, PQExpBufferData buf);
+static int add_distributed_by_footer(const char* oid, PQExpBufferData *inoutbuf, PQExpBufferData *buf);
 static void add_tablespace_footer(printTableContent *const cont, char relkind,
 					  Oid tablespace, const bool newline);
 static void add_role_attribute(PQExpBuffer buf, const char *const str);
@@ -1901,7 +1901,7 @@ describeOneTableDetails(const char *schemaname,
 			}
 
 			if(writable[0] == 't')
-				if(add_distributed_by_footer(oid, &tmpbuf, buf))
+				if(add_distributed_by_footer(oid, &tmpbuf, &buf))
 					goto error_return;
 
 			add_tablespace_footer(&cont, tableinfo.relkind, tableinfo.tablespace, true);
@@ -2489,7 +2489,7 @@ describeOneTableDetails(const char *schemaname,
 
 		/* mpp addition start: dump distributed by clause */
 		resetPQExpBuffer(&tmpbuf);
-		add_distributed_by_footer(oid, &tmpbuf, buf);
+		add_distributed_by_footer(oid, &tmpbuf, &buf);
 		printTableAddFooter(&cont, tmpbuf.data);
 		add_tablespace_footer(&cont, tableinfo.relkind, tableinfo.tablespace,
 							  true);
@@ -2542,18 +2542,18 @@ error_return:
 }
 
 static int
-add_distributed_by_footer(const char* oid, PQExpBufferData *inoutbuf, PQExpBufferData buf)
+add_distributed_by_footer(const char* oid, PQExpBufferData *inoutbuf, PQExpBufferData *buf)
 {
 	PGresult   *result1 = NULL,
 			   *result2 = NULL;
 
-	printfPQExpBuffer(&buf,
+	printfPQExpBuffer(buf,
 			 "SELECT attrnums\n"
 					  "FROM pg_catalog.gp_distribution_policy t\n"
 					  "WHERE localoid = '%s' ",
 					  oid);
 
-	result1 = PSQLexec(buf.data, false);
+	result1 = PSQLexec(buf->data, false);
 	if (!result1)
 	{
 		/* Error:  Well, so what?  Best to continue */
@@ -2587,7 +2587,7 @@ add_distributed_by_footer(const char* oid, PQExpBufferData *inoutbuf, PQExpBuffe
 				dist_colname = PQgetvalue(result2, 0, 0);
 				if (!dist_colname)
 					return 1;
-				printfPQExpBuffer(&buf, "Distributed by: (%s",
+				printfPQExpBuffer(buf, "Distributed by: (%s",
 								  dist_colname);
 				PQclear(result2);
 				dist_colname = NULL;
@@ -2609,19 +2609,19 @@ add_distributed_by_footer(const char* oid, PQExpBufferData *inoutbuf, PQExpBuffe
 					dist_colname = PQgetvalue(result2, 0, 0);
 					if (!dist_colname)
 						return 1;
-					appendPQExpBuffer(&buf, ", %s", dist_colname);
+					appendPQExpBuffer(buf, ", %s", dist_colname);
 					PQclear(result2);
 					col = strchr(col,',');
 				}
-				appendPQExpBuffer(&buf, ")");
+				appendPQExpBuffer(buf, ")");
 				termPQExpBuffer(&tempbuf);
 			}
 			else
 			{
-				printfPQExpBuffer(&buf, "Distributed randomly");
+				printfPQExpBuffer(buf, "Distributed randomly");
 			}
 
-			appendPQExpBuffer(inoutbuf, "%s", pg_strdup(buf.data));
+			appendPQExpBuffer(inoutbuf, "%s", pg_strdup(buf->data));
 		}
 
 		PQclear(result1);
