@@ -5691,10 +5691,16 @@ ATRewriteTables(List **wqueue,
 		if (tab->newvals && relstorage == RELSTORAGE_AOCOLS)
 		{
 			/*
-			 * ADD COLUMN case for AOCS relation: avoid rewriting the
-			 * whole relation.
+			 * ADD COLUMN for CO can be optimized only if it is the
+			 * only subcommand being performed.
 			 */
-			if (ATAocsNoRewrite(tab))
+			bool canOptimize = true;
+			for (int i=0; i < AT_NUM_PASSES && canOptimize; ++i)
+			{
+				if (i != AT_PASS_ADD_COL && tab->subcmds[i])
+					canOptimize = false;
+			}
+			if (canOptimize && ATAocsNoRewrite(tab))
 				continue;
 		}
 		/*
@@ -6019,7 +6025,8 @@ ATAocsNoRewrite(AlteredTableInfo *tab)
 	/*
 	 * only ADD COLUMN subcommand is supported at this time
 	 */
-	if (!tab->subcmds[AT_PASS_ADD_COL])
+	List *addColCmds = tab->subcmds[AT_PASS_ADD_COL];
+	if (addColCmds == NULL)
 		return false;
 
 	estate = CreateExecutorState();
@@ -6089,7 +6096,7 @@ ATAocsNoRewrite(AlteredTableInfo *tab)
 			   RelationGetDescr(rel)->natts * sizeof(bool));
 
 		sdesc = aocs_begin_headerscan(rel, aoEntry, scancol);
-		idesc = aocs_addcol_init(rel, aoEntry, list_length(tab->newvals));
+		idesc = aocs_addcol_init(rel, aoEntry, list_length(addColCmds));
 
 		/* Loop over all appendonly segments */
 		for (segi = 0; segi < nseg; ++segi)

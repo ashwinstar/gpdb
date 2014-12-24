@@ -247,6 +247,16 @@ delete from addcol7 where new2 is null;
 vacuum addcol7;
 select * from addcol7 where tag2 like 'p%' order by user_id;
 
+create table addcol8 (a int, b varchar(10), c int, d int)
+   with (appendonly=true, orientation=column);
+insert into addcol8 select i, 'abc'||i, i, i from generate_series(1,10)i;
+alter table addcol8
+   alter column b type varchar(20),
+   add column e float default 1,
+   drop column c;
+select * from addcol8 order by a;
+\d addcol8
+
 -- cleanup so as not to affect other installcheck tests
 -- (e.g. column_compression).
 drop schema aocs_addcol cascade;
