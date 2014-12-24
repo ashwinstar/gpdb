@@ -154,7 +154,8 @@ def interactive():
                 GV.session.verbose=GV.opt['-v']
                 GV.session.login(GV.opt['-h'], GV.USER)
                 GV.session.echoCommand=GV.opt['-e']
-            GV.session.executeCommand("source {0}/greenplum_path.sh".format(os.environ["GPHOME"]))
+            if GV.opt['-s']:
+                GV.session.executeCommand("source {0}/greenplum_path.sh".format(os.environ["GPHOME"]))
             GV.session.cmdloop()
         except pexpect.EOF:
             print '\n[Unexpected EOF from some hosts...]'
