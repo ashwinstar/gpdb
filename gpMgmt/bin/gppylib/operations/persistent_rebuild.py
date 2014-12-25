@@ -34,7 +34,6 @@ DEFAULT_BATCH_SIZE = 16
 SYSTEM_FSOID = 3052
 DEFAULT_DATABASE = 'postgres'
 TIMESTAMP = datetime.now().strftime("%Y%m%d%H%M%S")
-BACKUP_LOG_DIR='/tmp'
 BACKUP_LOG_PREFIX = 'pt_bkup_info_'
 GLOBAL_PERSISTENT_FILES = defaultdict(defaultdict) # {segment: {dbid1: [file1, file2], dbid2: [file3, file4]}}
 PER_DATABASE_PERSISTENT_FILES = defaultdict(defaultdict)  # {dbid1:{dboid1:[list],dboid2:[list]},
@@ -340,7 +339,6 @@ class BackupPersistentTableFiles:
         self.batch_size = batch_size
         self.md5_validator = None
         self.pool = None
-        self.backup_log = os.path.join(BACKUP_LOG_DIR, BACKUP_LOG_PREFIX + timestamp)
         self.GLOBAL_PERSISTENT_FILES = global_pt_filenames 
         self.PER_DATABASE_PERSISTENT_FILES = perdb_pt_filenames 
 
@@ -384,17 +382,16 @@ class BackupPersistentTableFiles:
         the list
         """
         failures = []
-        if os.path.exists(self.backup_log) and os.path.isfile(self.backup_log):
-            mode = 'a'
-        else:
-            mode = 'w'
-        with open(self.backup_log, mode) as fw_bkup:
-            fw_bkup.write('************************************************\n')
-            fw_bkup.write("Global persistent files backup\n\n")
-            for di in self.dbid_info:
-                src_files, dest_files = [], []
-                host, dbid = di.hostname, di.dbid
-                fw_bkup.write("Backup of dbid: %s\n" % dbid)
+        for di in self.dbid_info:
+            src_files, dest_files = [], []
+            host, dbid = di.hostname, di.dbid
+            datadir = di.filespace_dirs[SYSTEM_FSOID]
+            if not os.path.isdir(datadir):
+                os.makedirs(datadir)
+            backup_log = os.path.join(datadir, BACKUP_LOG_PREFIX+self.timestamp)
+            with open(backup_log, 'a') as fw_bkup:
+                fw_bkup.write('************************************************\n')
+                fw_bkup.write("Global persistent files backup\n\n")
                 datadir = di.filespace_dirs[SYSTEM_FSOID]
                 for f in self.GLOBAL_PERSISTENT_FILES[dbid]:
                     logger.debug('global persistent file for dbid %s = %s' % (dbid, f))
@@ -408,15 +405,15 @@ class BackupPersistentTableFiles:
                 logger.debug('Source files = %s' % src_files)
                 logger.debug('Destination files = %s' % dest_files)
 
-                try:
-                    if not restore:
-                        self._copy_pt_files(src_files, dest_files, host, restore)
-                    else:
-                        self._copy_pt_files(dest_files, src_files, host, restore)
-                except Exception as e:
-                    failures.append((di, str(e)))
-                    op = 'Backup' if not restore else 'Restore'
-                    logger.error('%s failed for segment %s: %s' % (op, di.filespace_dirs[SYSTEM_FSOID], str(e)))
+            try:
+                if not restore:
+                    self._copy_pt_files(src_files, dest_files, host, restore)
+                else:
+                    self._copy_pt_files(dest_files, src_files, host, restore)
+            except Exception as e:
+                failures.append((di, str(e)))
+                op = 'Backup' if not restore else 'Restore'
+                logger.error('%s failed for segment %s: %s' % (op, di.filespace_dirs[SYSTEM_FSOID], str(e)))
         if failures:
             op = 'Backup' if not restore else 'Restore'
             raise Exception('%s of global persistent files failed' % op)
@@ -428,19 +425,17 @@ class BackupPersistentTableFiles:
         the list
         """
         failures = []
-        if os.path.exists(self.backup_log) and os.path.isfile(self.backup_log):
-            mode = 'a'
-        else:
-            mode = 'w'
-        with open(self.backup_log, mode) as fw_bkup:
-            fw_bkup.write('************************************************\n')
-            fw_bkup.write("Per database persistent table files backup\n\n")
-            for di in self.dbid_info:
-                host, dbid = di.hostname, di.dbid
-                fw_bkup.write("Backup of dbid: %s\n" % dbid)
-                for fsoid, fsdir in di.filespace_dirs.items():
-                    if fsoid not in di.fs_to_ts_map:
-                        continue
+        for di in self.dbid_info:
+            host, dbid = di.hostname, di.dbid
+            for fsoid, fsdir in di.filespace_dirs.items():
+                if fsoid not in di.fs_to_ts_map:
+                    continue
+                if not os.path.isdir(fsdir):
+                    os.makedirs(fsdir)
+                backup_log = os.path.join(fsdir, BACKUP_LOG_PREFIX+self.timestamp)
+                with open(backup_log, 'a') as fw_bkup:
+                    fw_bkup.write('************************************************\n')
+                    fw_bkup.write("Per database persistent table files backup\n\n")
                     for tsoid in di.fs_to_ts_map[fsoid]:
                         if tsoid not in di.ts_to_dboid_map:
                             continue
@@ -812,7 +807,6 @@ class RebuildPersistentTables(Operation):
         self.has_mirrors = None
         self.gparray = None
         self.pool = None
-        self.backup_log = os.path.join(BACKUP_LOG_DIR, BACKUP_LOG_PREFIX + TIMESTAMP)
         self.restore_state_file_location = '/tmp'
         self.gpperfmon_file = '/tmp/gpperfmon_guc'
 
@@ -1072,7 +1066,7 @@ class RebuildPersistentTables(Operation):
                 self._start_database()
                 return
         finally:
-            logger.info("To check list of files backed up, see %s on host of the contents: %s" %(self.backup_log, ', '.join(map(str, valid_contentids))))
+            logger.info("To check list of files backed up, see %s under data directory of contents: %s" %(BACKUP_LOG_PREFIX + TIMESTAMP, ', '.join(map(str, valid_contentids))))
 
         """
         All the PT rebuild should be performed in utility mode in order to prevent
