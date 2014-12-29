@@ -93,6 +93,8 @@ The following options are valid for heap and index files:
   -S  Force block size to [blocksize]
   -x  Force interpreted formatting of block items as index items
   -y  Force interpreted formatting of block items as heap items
+  -B  Deparse the input block directory file
+  -D  Disable dead tuple info while deparsing block directory file
 
 The following options are valid for control files:
   -c  Interpret the file listed as a control file

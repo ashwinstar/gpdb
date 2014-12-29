@@ -85,6 +85,7 @@ static void     FormatBinary(unsigned int numBytes, unsigned int startIndex);
 static void     DumpBinaryBlock();
 static void     DumpFileContents();
 static void     build_tupdesc(void);
+static void 	DeparseMiniPage(struct Minipage *minipage, uint32 numEntries, char *deparsed);
 
 void           *
 MemoryContextAllocZeroImpl(MemoryContext context, Size size, const char *sfile, const char *sfunc, int sline)
@@ -620,6 +621,12 @@ file_set_dirs(char *file)
 	int             pos = len;
 	int             seps_seen = 0;	/* how man seperators have we seen? */
 
+	if (file[0] != '/')
+	{
+		fprintf(stderr, "Filename %s should be absolute pathname\n", file);
+		exit(1);
+	}
+
 	for (pos = len - 1; pos >= 0; pos--)
 	{
 		/* Fix for WIN32 */
@@ -646,6 +653,11 @@ file_set_dirs(char *file)
 						strncpy(data_dir, file, pos + 1 - GSTRLEN);
 						strcat(data_dir, "base/1");
 					}
+					else
+					{
+						data_dir = malloc((pos + 1) * sizeof(char));
+						strncpy(data_dir, file, pos);
+					}
 				}
 				else
 				{
@@ -660,6 +672,13 @@ file_set_dirs(char *file)
 				commit_log_dir = malloc((pos + strlen("/pg_clog") + 1) * sizeof(char));
 				strncpy(commit_log_dir, file, pos);
 				strcat(commit_log_dir, "/pg_clog");
+				DIR *dir = opendir(commit_log_dir);
+				if (dir == NULL)
+				{
+					fprintf(stderr, "Utility should be run from the base data directory\n");
+					exit(1);
+				}
+
 				break;
 			}
 		}
@@ -715,6 +734,8 @@ DisplayOptions(unsigned int validOptions)
 		"  -L  Compression level (1-4) default=1 if not specified\n"
 		"  -M  Checksum option for AppendOnly files. By default tool considers checksums not present\n"
 		"  -O  Orientation of AppendOnly table (row or column). Default is column.\n\n"
+		"  -B  Deparse the input block directory file.\n\n"
+		"  -D  Disable dead tuple info while deparsing the block directory file.\n\n"
 		 "\nReport bugs to <rhdb@sources.redhat.com>\n");
 }
 
@@ -1125,7 +1146,20 @@ ConsumeOptions(int numOptions, char **options)
 					 * Do not interpret the data. Format
 					 * to hex and ascii.
 					 */
-
+				case 'B':
+					blockDirectoryFile = 1;
+					SET_OPTION(itemOptions, DEPARSE_HEAP, 'p');
+					SET_OPTION(itemOptions, ITEM_DETAIL, 'i');
+					if (itemOptions & ITEM_INDEX)
+					{
+						rc = OPT_RC_INVALID;
+						printf("Error: Options <p> and <x> are "
+						   "mutually exclusive.\n");
+					}
+					break;
+				case 'D':
+					disableDeadTupleInfo = 1;
+					break;
 				default:
 					rc = OPT_RC_INVALID;
 					printf("Error: Unknown option <%c>.\n", optionString[y]);
@@ -1136,6 +1170,12 @@ ConsumeOptions(int numOptions, char **options)
 					break;
 			}
 		}
+	}
+
+	if (disableDeadTupleInfo && !(blockDirectoryFile))
+	{
+		fprintf(stderr, "-D option should be used with -B\n");
+		exit(1);
 	}
 
 	if (rc == OPT_RC_DUPLICATE)
@@ -1828,6 +1868,7 @@ FormatItem(unsigned int numBytes, unsigned int startIndex,
 			unsigned int    localHoff;
 			bits8          *localBits;
 			unsigned int    localBitOffset;
+			unsigned int    xmax;
 
 			HeapTupleHeader htup = (HeapTupleHeader) (&buffer[startIndex]);
 
@@ -1836,6 +1877,10 @@ FormatItem(unsigned int numBytes, unsigned int startIndex,
 			localNatts = HeapTupleHeaderGetNatts(htup);
 			localHoff = htup->t_hoff;
 			localBitOffset = offsetof(HeapTupleHeaderData, t_bits);
+
+			xmax = HeapTupleHeaderGetXmax(htup);
+			if (blockDirectoryFile && disableDeadTupleInfo && xmax > 0 && (infoMask & HEAP_XMAX_COMMITTED))
+				return;
 
 			printf("  XMIN: %u  XMAX: %u  CMAX|XVAC: %u",
 			       HeapTupleHeaderGetXmin(htup),
@@ -2076,6 +2121,7 @@ FormatItem(unsigned int numBytes, unsigned int startIndex,
 								strcat(deparsed, buf);
 
 							}
+							break;
 						case INT2OID:
 							{
 								char            buf[7];
@@ -2101,6 +2147,26 @@ FormatItem(unsigned int numBytes, unsigned int startIndex,
 							strcat(deparsed, "<cannot deparse _aclitem>");
 							break;
 						default:
+							if (blockDirectoryFile)
+							{
+								struct varlena *value = DatumGetPointer(datum);
+								struct Minipage *mp = (struct Minipage *) value;
+								strcat(deparsed, "\nMinipage Info");
+								char           *tmp = malloc(64);
+								Assert(tmp != NULL);
+
+								strncat(deparsed, "\n    Version       : ", strlen("\n    Version       : "));
+								pg_ltoa(DatumGetInt32(mp->version), tmp);
+								strncat(deparsed, tmp, 32);
+								strncat(deparsed, "\n    NumOfEntries  : ", strlen("\n    NumOfEntries  : "));
+								pg_ltoa(DatumGetInt64(mp->nEntry), tmp);
+								strncat(deparsed, tmp, 64);
+								strncat(deparsed, "\n", strlen("\n"));
+								DeparseMiniPage(mp, mp->nEntry, deparsed);
+								if (tmp)
+									free(tmp);
+							}
+							else
 							{
 								char            buf[256];
 
@@ -2114,7 +2180,13 @@ FormatItem(unsigned int numBytes, unsigned int startIndex,
 				}
 				//if (deparsed)
 					deparsed[strlen(deparsed) - 1] = '\0';
-				printf("Deparsed data: \"%s\"\n", deparsed);
+				if (blockDirectoryFile)
+				{
+					printf("Deparsed data: \nBlock Directory contents:\n");
+					printf("\tSegNo|ColumnGroupNo|FirstRowNo\n\t\"%s\"\n", deparsed);
+				}
+				else
+					printf("Deparsed data: \"%s\"\n", deparsed);
 			}
 			/*
 			 * As t_bits is a variable length array, determine
@@ -2155,6 +2227,50 @@ FormatItem(unsigned int numBytes, unsigned int startIndex,
 			printf("\n");
 		}
 	}
+}
+
+static void
+DeparseMiniPage(struct Minipage *minipage, uint32 numEntries, char *deparsed)
+{
+	int start_no, end_no;
+
+	if (minipage == NULL)
+		return;
+	
+	strncat(deparsed, "    Entries per page:", strlen("    Entries per page:"));
+	strncat(deparsed, "\n\tFirstRowNum  FileOffSet  RowCount", strlen("\n\tFirstRowNum  RowCount  FileOffSet"));
+	strncat(deparsed, "\n\t--------------------------------\n", strlen("\n\t--------------------------------\n"));
+
+	start_no = 0;
+	Assert(numEntries > 0);
+	end_no = numEntries - 1;
+	MinipageEntry *entry;
+	char           *tmp = malloc(64);
+	Assert(tmp != NULL);
+	while (start_no <= end_no)
+	{
+		entry = &(minipage->entry[start_no]);
+
+		Assert(entry->firstRowNum > 0);
+		Assert(entry->rowCount > 0);
+
+		Assert(entry != NULL);
+		pg_ltoa(DatumGetInt64(entry->firstRowNum), tmp);
+		strncat(deparsed, "\t", strlen("\t"));
+		strncat(deparsed, tmp, 64);
+		strncat(deparsed, "\t", strlen("\t"));
+		pg_ltoa(DatumGetInt64(entry->fileOffset), tmp);
+		strncat(deparsed, tmp, 64);
+		strncat(deparsed, "\t", strlen("\t"));
+		pg_ltoa(DatumGetInt64(entry->rowCount), tmp);
+		strncat(deparsed, tmp, 64);
+		strncat(deparsed, "\n", strlen("\n"));
+
+		start_no = start_no + 1;
+
+	}
+	if (tmp)
+		free(tmp);
 }
 
 

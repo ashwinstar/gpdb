@@ -68,6 +68,10 @@ blockSwitches;
 static int blockStart = -1;	// -R [start]: Block range start 
 static int blockEnd = -1;	// -R [end]: Block range end
 
+// Option to parse the block directory file
+static bool blockDirectoryFile = 0;
+static bool disableDeadTupleInfo = 0;
+
 // Options for Item formatting operations
 static unsigned int itemOptions = 0;
 typedef enum
