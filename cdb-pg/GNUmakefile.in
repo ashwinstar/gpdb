@@ -24,6 +24,7 @@ all:
 	$(MAKE) -C contrib/gp_internal_tools all
 	$(MAKE) -C contrib/gp_cancel_query all
 	$(MAKE) -C contrib/gp_filedump all
+	$(MAKE) -C contrib/indexscan all
 	@echo "All of Greenplum Database successfully made. Ready to install."
 
 install: 
@@ -42,6 +43,7 @@ install:
 	$(MAKE) -C contrib/gp_internal_tools $@
 	$(MAKE) -C contrib/gp_cancel_query $@
 	$(MAKE) -C contrib/gp_filedump $@
+	$(MAKE) -C contrib/indexscan $@ 
 	@echo "Greenplum Database installation complete."
 
 installdirs uninstall:
@@ -60,6 +62,7 @@ installdirs uninstall:
 	$(MAKE) -C contrib/gp_internal_tools $@
 	$(MAKE) -C contrib/gp_cancel_query $@
 	$(MAKE) -C contrib/gp_filedump $@
+	$(MAKE) -C contrib/indexscan $@ 
 
 distprep:
 #	$(MAKE) -C doc $@
@@ -86,6 +89,7 @@ clean:
 	$(MAKE) -C contrib/gp_internal_tools $@
 	$(MAKE) -C contrib/gp_cancel_query $@
 	$(MAKE) -C contrib/gp_filedump $@
+	$(MAKE) -C contrib/indexscan $@
 # Garbage from autoconf:
 	@rm -rf autom4te.cache/
 
