@@ -4702,11 +4702,10 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"gp_appendonly_compaction_threshold", PGC_SUSET, APPENDONLY_TABLES,
+		{"gp_appendonly_compaction_threshold", PGC_USERSET, APPENDONLY_TABLES,
 			gettext_noop("Threshold of the ratio of dirty data in a segment file over which the file"
 					     " will be compacted during lazy vacuum."),
-			NULL,
-			GUC_SUPERUSER_ONLY 
+			NULL
 		},
 		&gp_appendonly_compaction_threshold,
 		10, 0, 100, NULL, NULL
