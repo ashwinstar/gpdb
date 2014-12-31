@@ -457,6 +457,10 @@ namespace gpdxl
 			// check whether the given trigger is applicable to the given DML operation
 			static
 			BOOL FApplicableTrigger(CMDAccessor *pmda, IMDId *pmdidTrigger, const EdxlDmlType edxldmltype);
+			
+			// check whether there are NOT NULL or CHECK constraints for the given relation
+			static
+			BOOL FRelHasConstraints(const IMDRelation *pmdrel);
 	};
 }
 

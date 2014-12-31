@@ -65,6 +65,7 @@ using namespace gpmd;
 
 extern bool	optimizer_enable_ctas;
 extern bool optimizer_dml_triggers;
+extern bool optimizer_dml_constraints;
 
 // OIDs of variants of LEAD window function
 const OID rgOIDLead[] =
@@ -683,6 +684,12 @@ CTranslatorQueryToDXL::PdxlnInsert()
 		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature, GPOS_WSZ_LIT("INSERT with triggers"));
 	}
 
+	BOOL fRelHasConstraints = CTranslatorUtils::FRelHasConstraints(pmdrel);
+	if (!optimizer_dml_constraints && fRelHasConstraints)
+	{
+		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature, GPOS_WSZ_LIT("INSERT with constraints"));
+	}
+	
 	const ULONG ulLenTblCols = pmdrel->UlColumns() - pmdrel->UlSystemColumns();
 	const ULONG ulLenTL = gpdb::UlListLength(m_pquery->targetList);
 	GPOS_ASSERT(ulLenTblCols >= ulLenTL);
@@ -1131,6 +1138,12 @@ CTranslatorQueryToDXL::PdxlnUpdate()
 	{
 		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature, GPOS_WSZ_LIT("UPDATE with triggers"));
 	}
+	
+	if (!optimizer_dml_constraints && CTranslatorUtils::FRelHasConstraints(pmdrel))
+	{
+		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature, GPOS_WSZ_LIT("UPDATE with constraints"));
+	}
+	
 
 	ULONG ulCtidColId = 0;
 	ULONG ulSegmentIdColId = 0;

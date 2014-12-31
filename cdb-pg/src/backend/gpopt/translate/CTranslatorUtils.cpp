@@ -2993,5 +2993,37 @@ CTranslatorUtils::FApplicableTrigger
 			(Edxldmlupdate == edxldmltype && pmdtrigger->FUpdate()));
 }
 
+//---------------------------------------------------------------------------
+//	@function:
+//		CTranslatorUtils::FRelHasConstraints
+//
+//	@doc:
+//		Check whether there are constraints for the given relation
+//
+//---------------------------------------------------------------------------
+BOOL
+CTranslatorUtils::FRelHasConstraints
+	(
+	const IMDRelation *pmdrel
+	)
+{
+	if (0 < pmdrel->UlCheckConstraints())
+	{
+		return true;
+	}
+	
+	const ULONG ulCols = pmdrel->UlColumns();
+	
+	for (ULONG ul = 0; ul < ulCols; ul++)
+	{
+		const IMDColumn *pmdcol = pmdrel->Pmdcol(ul);
+		if (!pmdcol->FSystemColumn() && !pmdcol->FNullable())
+		{
+			return true;
+		}
+	}
+	
+	return false;
+}
 
 // EOF

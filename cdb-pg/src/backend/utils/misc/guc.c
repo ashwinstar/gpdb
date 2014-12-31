@@ -772,6 +772,7 @@ bool		optimizer_remove_order_below_dml;
 bool		optimizer_static_partition_selection;
 bool		optimizer_enable_partial_index;
 bool		optimizer_dml_triggers;
+bool		optimizer_dml_constraints;
 bool 		optimizer_enable_master_only_queries;
 
 /* Security */
@@ -4210,6 +4211,16 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&optimizer_dml_triggers,
 		false, NULL, NULL
+	},
+	
+	{
+		{"optimizer_dml_constraints", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Support DML with CHECK constraints and NOT NULL constraints."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_dml_constraints,
+		true, NULL, NULL
 	},
 
 	{
