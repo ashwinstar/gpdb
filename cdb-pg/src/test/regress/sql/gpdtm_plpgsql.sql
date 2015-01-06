@@ -321,3 +321,48 @@ INSERT INTO test_parse_arr (b)
 				) AS q;
 
 SELECT * FROM test_parse_arr ORDER BY a;
+
+--
+-- Test if sequence server information outlives a plpgsql exception and corresponding subtransaction rollback (MPP-25193)
+--
+
+CREATE OR REPLACE FUNCTION date_converter(input_date character varying) RETURNS date
+    AS $$
+declare
+ v_date date;
+BEGIN
+	return input_date::date;
+exception
+	when others then
+		return '1900-01-01';
+END;
+$$
+LANGUAGE plpgsql SECURITY DEFINER;
+
+drop table if exists source_table;
+CREATE TABLE source_table
+(
+id int,
+created text
+);
+
+insert into source_table select generate_series(1,10), '2015-01-06'::date;
+insert into source_table values (11, '0000-00-00');
+insert into source_table select generate_series(12,21), '2015-01-06'::date;
+
+CREATE SEQUENCE test_seq START 1;
+
+drop table if exists dest_table;
+CREATE TABLE dest_table
+(
+id int,
+created timestamp with time zone
+);
+
+insert into dest_table select nextval('test_seq'::regclass), date_converter(created) from source_table;
+select count(1) from dest_table;
+
+drop table dest_table;
+drop sequence test_seq;
+drop table source_table;
+drop FUNCTION date_converter(input_date character varying);
