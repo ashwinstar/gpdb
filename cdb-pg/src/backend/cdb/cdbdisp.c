@@ -1817,30 +1817,8 @@ thread_DispatchOut(DispatchCommandParms *pParms)
              */
 			if (PQisBusy(dispatchResult->segdbDesc->conn))
 			{
-				PGresult   *pRes;
-				ExecStatusType resultStatus;
-				
 				write_log("Trying to send to busy connection %s  %d %d asyncStatus %d",
 					dispatchResult->segdbDesc->whoami, i, db_count, dispatchResult->segdbDesc->conn->asyncStatus);
-
-				/*
-				 * We weren't expecting the session to be in use!, let's see what it says 
-				 */
-				pRes = PQgetResult(dispatchResult->segdbDesc->conn);
-				if (pRes != NULL) /* null is OK ? */
-				{
-					resultStatus = PQresultStatus(pRes);
-					write_log("ResultStatus = %s\n", PQresStatus(resultStatus));
-					write_log("%s", PQerrorMessage(dispatchResult->segdbDesc->conn));
-				}
-				else
-				{
-					write_log("result was null\n");
-					write_log("%s", PQerrorMessage(dispatchResult->segdbDesc->conn));
-					/* Assert() is not safe to call from a thread */
-					if (PQisBusy(dispatchResult->segdbDesc->conn)) 
-						write_log("Bug!... PQisBusy when we didn't expect it");
-				}
 			}
 
 			if (PQstatus(dispatchResult->segdbDesc->conn) == CONNECTION_BAD)
