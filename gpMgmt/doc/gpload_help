@@ -363,13 +363,13 @@ FORMAT - Optional. Specifies the format of the source data file(s) - either plai
          if not specified. For more information about the format of the source
          data, see the "Greenplum Database Database Administrator Guide."
 
-DELIMITER - Optional. Specifies a single ASCII character that separates columns 
-            within each row (line) of data. The default is a tab character in 
-            TEXT mode, a comma in CSV mode. You can also specify a non-printable
-            ASCII character via an escape sequence using the Unicode 
-            representation of the ASCII character. For example, "\u001B" 
-            represents the escape character. The Unicode representation must be 
-            encoded in double-quotes ( " ) instead of quotes ( ' ).
+DELIMITER - Optional. Specifies a single ASCII character that separates columns
+            within each row (line) of data. The default is a tab character in TEXT
+            mode, a comma in CSV mode. You can also specify a non-printable ASCII
+            character or a non-printable unicode character, for example: "\x1B" or
+            "\u001B". The escape string syntax, E'<character-code>', is also
+            supported for non-printable characters. The ASCII or unicode character
+            must be enclosed in single quotes. For example: E'\x1B' or E'\u001B'. 
 
 ESCAPE - Specifies the single character that is used for C escape sequences
         (such as \n,\t,\100, and so on) and for escaping data characters 
