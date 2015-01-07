@@ -8,7 +8,7 @@ SYNOPSIS
 *****************************************************
 
 gpssh { -f <hostfile_gpssh> | -h <hostname> [-h <hostname> ...] } 
-[-u userid] [-v] [-e] [<bash_command>]
+[-u userid] [-s] [-v] [-e] [<bash_command>]
 
 gpssh -? 
 
@@ -82,7 +82,16 @@ OPTIONS
  Specifies a single host name that will participate in this SSH session. 
  You can use the -h option multiple times to specify multiple host names.
 
+ 
+-s
 
+ Optional. If specified, before executing any commands on the target 
+ host, gpssh sources the file greenplum_path.sh in the directory 
+ specified by the $GPHOME environment variable. 
+
+ This option is valid for both interactive mode and single command mode. 
+
+ 
 -u <userid>
 
  Specifies the userid for this SSH session. 
