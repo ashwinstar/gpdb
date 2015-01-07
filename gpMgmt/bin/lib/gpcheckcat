@@ -3673,8 +3673,8 @@ def runAllTests():
         dbids = dbids.union(GV.DemoteConstraint.keys())
 
         for seg in dbids:
-            script += '\n%secho "Repairing segment %i"' % (maybeRemove, seg)
-            segment_repair_script = name_test["segment"]["fn"](maybeRemove, catmod_guc, seg)
+            script += '\n%secho "Repairing segment %i"\n' % (maybeRemove, seg)
+            segment_repair_script = name_repair["segment"]["fn"](maybeRemove, catmod_guc, seg)
             script += segment_repair_script
 
         c = GV.cfg[1]
@@ -3719,7 +3719,7 @@ def checkReindexRepair():
             logger.fatal('Unable to create file "%s": %s' % (fullpath, str(e)))
             sys.exit(1)
 
-        description = 'echo "Reindexing potentially damaged bitmap indexes"\n'
+        description = '\necho "Reindexing potentially damaged bitmap indexes"\n'
         for r in GV.Reindex:
             file.write('REINDEX INDEX %s;\n' % r)
         file.close()
@@ -3738,7 +3738,7 @@ def checkConstraintsRepair():
             logger.fatal('Unable to create file "%s": %s' % (fullpath, str(e)))
             sys.exit(1)
 
-        description = 'echo "Dropping invalid unique constraints"\n'
+        description = '\necho "Dropping invalid unique constraints"\n'
         GV.Constraints = list(set(GV.Constraints))
         for r in GV.Constraints:
             file.write('%s\n' % r)
@@ -3762,7 +3762,7 @@ def checkOwnersRepair():
             logger.fatal('Unable to create file "%s": %s' % (fullpath, str(e)))
             sys.exit(1)
 
-        description = 'echo "Correcting table ownership"\n'
+        description = '\necho "Correcting table ownership"\n'
         for r in GV.Owners:
             file.write('%s\n' % r)
         file.close()
@@ -3782,7 +3782,7 @@ def checkSchemaRepair():
             logger.fatal('Unable to create file "%s": %s' % (fullpath, str(e)))
             sys.exit(1)
 
-        description = 'echo "Dropping temporary schemas"\n'
+        description = '\necho "Dropping temporary schemas"\n'
         for s in GV.Schemas:
             file.write('DROP SCHEMA IF EXISTS "%s" CASCADE;\n' % s)
         file.close()
@@ -3802,7 +3802,7 @@ def checkPoliciesRepair():
             logger.fatal('Unable to create file "%s": %s' % (fullpath, str(e)))
             sys.exit(1)
 
-        description = 'echo "Fixing distribution policies"\n'
+        description = '\necho "Fixing distribution policies"\n'
         for r in GV.Policies:
             file.write('%s\n' % r)
         file.close()
@@ -3810,7 +3810,7 @@ def checkPoliciesRepair():
     else:
         return None, None
 
-def checkSegmentRepair():
+def checkSegmentRepair(maybeRemove, catmod_guc, seg):
     # dbid.host.port.dbname.timestamp.sql
     c = GV.cfg[seg]
     filename = '%i.%s.%i.%s.%s.sql' % (seg, c['hostname'], c['port'], GV.dbname, TIMESTAMP)
@@ -3837,7 +3837,7 @@ def checkSegmentRepair():
     file.write('BEGIN;\n');
     for line in li:
         file.write(line + '\n')
-        file.write('COMMIT;\n');
+    file.write('COMMIT;\n');
     file.close()
 
     run_psql_script= '''{maybe}env PGOPTIONS="-c gp_session_role=utility {guc}" psql -X -a -h {hostname} -p {port} -f {fname} "{dbname}" > {fname}.out'''.format(
