@@ -6,6 +6,7 @@
 select relname from pg_class where relnamespace in (select oid from pg_namespace where nspname = 'gp_toolkit') order by relname;
                 relname                 
 ----------------------------------------
+ __gp_aovisimap_hidden_t
  __gp_fullname
  __gp_is_append_only
  __gp_localid
@@ -54,6 +55,6 @@ select relname from pg_class where relnamespace in (select oid from pg_namespace
  gp_workfile_entries
  gp_workfile_usage_per_query
  gp_workfile_usage_per_segment
-(48 rows)
+(49 rows)
 
 \c regression

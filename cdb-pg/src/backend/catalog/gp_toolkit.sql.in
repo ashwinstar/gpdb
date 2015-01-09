@@ -1968,6 +1968,44 @@ AS '%%AO_CO_DIAGNOSTICS_MODULE%%', 'gp_aoseg_name_wrapper'
 LANGUAGE C STRICT;
 GRANT EXECUTE ON FUNCTION %%JETPACK_PREFIX_AUX%%aoseg_name(text) TO public;
 
+CREATE TYPE %%JETPACK_PREFIX_AUX%%aovisimap_hidden_t AS (seg int, hidden bigint, total bigint);
+CREATE FUNCTION %%JETPACK_PREFIX_AUX%%aovisimap_hidden_typed(oid)
+    RETURNS SETOF %%JETPACK_PREFIX_AUX%%aovisimap_hidden_t AS $$
+    SELECT * FROM %%JETPACK_PREFIX_AUX%%aovisimap_hidden_info($1);
+$$ LANGUAGE SQL;
+
+CREATE FUNCTION %%JETPACK_PREFIX_AUX%%aovisimap_compaction_info(ao_oid oid,
+    OUT content int, OUT datafile int, OUT compaction_possible boolean,
+    OUT hidden_tupcount bigint, OUT total_tupcount bigint, OUT percent_hidden numeric)
+    RETURNS SETOF RECORD AS $$
+DECLARE
+    hinfo_row RECORD;
+    threshold float;
+BEGIN
+    EXECUTE 'show gp_appendonly_compaction_threshold' INTO threshold;
+    FOR hinfo_row IN SELECT gp_segment_id,
+    %%JETPACK_PREFIX_AUX%%aovisimap_hidden_typed(ao_oid)::%%JETPACK_PREFIX_AUX%%aovisimap_hidden_t
+    FROM gp_dist_random('gp_id') LOOP
+        content := hinfo_row.gp_segment_id;
+        datafile := (hinfo_row.__%%JETPACK_OBJECT_PREFIX%%aovisimap_hidden_typed).seg;
+        hidden_tupcount := (hinfo_row.__%%JETPACK_OBJECT_PREFIX%%aovisimap_hidden_typed).hidden;
+        total_tupcount := (hinfo_row.__%%JETPACK_OBJECT_PREFIX%%aovisimap_hidden_typed).total;
+        compaction_possible := false;
+        IF total_tupcount > 0 THEN
+            percent_hidden := (100 * hidden_tupcount / total_tupcount::numeric)::numeric(5,2);
+        ELSE
+            percent_hidden := 0::numeric(5,2);
+        END IF;
+        IF percent_hidden > threshold THEN
+            compaction_possible := true;
+        END IF;
+        RETURN NEXT;
+    END LOOP;
+    RAISE NOTICE 'gp_appendonly_compaction_threshold = %', threshold;
+    RETURN;
+END;
+$$ LANGUAGE plpgsql;
+
 -- Workfile views
 --------------------------------------------------------------------------------
 

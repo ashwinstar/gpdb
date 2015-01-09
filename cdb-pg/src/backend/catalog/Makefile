@@ -53,6 +53,7 @@ gp_toolkit.sql: gp_toolkit.sql.in
 	-e 's/%%JETPACK_NAME%%/$(JETPACK_NAME)/g' \
 	-e 's/%%JETPACK_SCHEMA%%/$(JETPACK_SCHEMA)/g' \
 	-e 's/%%JETPACK_PREFIX%%/$(JETPACK_PREFIX)/g' \
+	-e 's/%%JETPACK_OBJECT_PREFIX%%/$(JETPACK_OBJECT_PREFIX)/g' \
 	-e 's/%%JETPACK_PREFIX_AUX%%/$(JETPACK_PREFIX_AUX)/g' \
 	-e 's/%%AO_CO_DIAGNOSTICS_MODULE%%/$(AO_CO_DIAGNOSTICS_PATHNAME)/g' \
 	-e 's/%%WORKFILE_MODULE%%/$(WORKFILE_PATHNAME)/g' \
@@ -138,6 +139,7 @@ install-data: $(BKIFILES) installdirs
 	$(INSTALL_DATA) $(call vpathsearch,cdb_external_extensions.sql) '$(DESTDIR)$(datadir)/cdb_external_extensions.sql'
 	$(INSTALL_DATA) $(srcdir)/sql_features.txt '$(DESTDIR)$(datadir)/sql_features.txt'
 	$(INSTALL_DATA) $(call vpathsearch,gp_toolkit.sql) '$(DESTDIR)$(datadir)/gp_toolkit.sql'
+	$(INSTALL_DATA) $(call vpathsearch,compaction_info.sql) '$(DESTDIR)$(datadir)/compaction_info.sql'
 
 installdirs:
 	$(MKDIR_P) '$(DESTDIR)$(datadir)'
