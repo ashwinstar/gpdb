@@ -38,7 +38,7 @@ You are now connected to database "gptest" as user "tangp3".
  col037 | real                        |                                              | plain    | none             | 0                 | 32768      | 
  col039 | time without time zone      |                                              | plain    | none             | 0                 | 32768      | 
  col040 | timestamp without time zone |                                              | plain    | none             | 0                 | 32768      | 
-Checksum: f
+Checksum: t
 Has OIDs: no
 Options: orientation=column, appendonly=true
 Distributed by: (a)
@@ -87,7 +87,7 @@ Distributed by: (a)
  col037 | real                        |                                              | plain    | none             | 0                 | 32768      | 
  col039 | time without time zone      |                                              | plain    | none             | 0                 | 32768      | 
  col040 | timestamp without time zone |                                              | plain    | none             | 0                 | 32768      | 
-Checksum: f
+Checksum: t
 Has OIDs: no
 Options: orientation=column, appendonly=true
 Distributed by: (a)

@@ -40,7 +40,7 @@ You are now connected to database "gptest" as user "tangp3".
 Compression Type: None
 Compression Level: 0
 Block Size: 32768
-Checksum: f
+Checksum: t
 Has OIDs: no
 Options: appendonly=true
 Distributed by: (a)
@@ -92,7 +92,7 @@ Distributed by: (a)
 Compression Type: None
 Compression Level: 0
 Block Size: 32768
-Checksum: f
+Checksum: t
 Has OIDs: no
 Options: appendonly=true
 Distributed by: (a)

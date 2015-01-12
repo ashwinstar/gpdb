@@ -152,7 +152,7 @@ def impl(context, tabletype, table_name, compression_type, dbname, rowcount):
 @then('verify the metadata dump file syntax under "{directory}" for comments and types')
 def impl(context, directory):
     names = ["Name", "Data", "Data for Name"]
-    types = ["TABLE", "TABLE DATA", "EXTERNAL TABLE", "ACL", "CONSTRAINT", "COMMENT", "PROCEDURAL LANGUAGE", "SCHEMA"]
+    types = ["TABLE", "TABLE DATA", "EXTERNAL TABLE", "ACL", "CONSTRAINT", "COMMENT", "PROCEDURAL LANGUAGE", "SCHEMA", "AOSTORAGEOPTS"]
     master_dump_dir = directory if len(directory.strip()) != 0 else master_data_dir
     timestamp = context.backup_timestamp
     metadata_file = '%s/db_dumps/%s/gp_dump_1_1_%s.gz' % (master_dump_dir, timestamp[0:8], timestamp)

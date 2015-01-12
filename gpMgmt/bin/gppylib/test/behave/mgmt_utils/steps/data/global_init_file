@@ -66,4 +66,7 @@ s/cpp:\d+/cpp:LINENUMBER/
 m/cdbdisp\.c:\d+/
 s/\.c:\d+/\.c:LINENUMBER/
 
+m/Checksum: \w+/
+s/Checksum: \w+//
+
 -- end_matchsubs
