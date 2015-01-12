@@ -140,8 +140,10 @@ expression_tree_walker(Node *node,
 		case T_OuterJoinInfo:
 		case T_DMLActionExpr:
 		case T_PartOidExpr:
+		case T_PartDefaultExpr:
 		case T_PartBoundExpr:
 		case T_PartBoundInclusionExpr:
+		case T_PartBoundOpenExpr:
 			/* primitive node types with no expression subnodes */
 			break;
 		case T_Aggref:
@@ -1160,8 +1162,10 @@ plan_tree_walker(Node *node,
 		case T_InClauseInfo:
 		case T_TableValueExpr:
 		case T_PartOidExpr:
+		case T_PartDefaultExpr:
 		case T_PartBoundExpr:
 		case T_PartBoundInclusionExpr:
+		case T_PartBoundOpenExpr:
 
 		default:
 			return expression_tree_walker(node, walker, context);

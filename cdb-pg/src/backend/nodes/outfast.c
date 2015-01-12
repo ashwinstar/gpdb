@@ -2940,6 +2940,14 @@ _outPartOidExpr(StringInfo str, PartOidExpr *node)
 }
 
 static void
+_outPartDefaultExpr(StringInfo str, PartDefaultExpr *node)
+{
+	WRITE_NODE_TYPE("PARTDEFAULTEXPR");
+
+	WRITE_INT_FIELD(level);
+}
+
+static void
 _outPartBoundExpr(StringInfo str, PartBoundExpr *node)
 {
 	WRITE_NODE_TYPE("PARTBOUNDEXPR");
@@ -2951,6 +2959,15 @@ _outPartBoundExpr(StringInfo str, PartBoundExpr *node)
 
 static void
 _outPartBoundInclusionExpr(StringInfo str, PartBoundInclusionExpr *node)
+{
+	WRITE_NODE_TYPE("PARTBOUNDOPENEXPR");
+
+	WRITE_INT_FIELD(level);
+	WRITE_BOOL_FIELD(isLowerBound);
+}
+
+static void
+_outPartBoundOpenExpr(StringInfo str, PartBoundOpenExpr *node)
 {
 	WRITE_NODE_TYPE("PARTBOUNDINCLUSIONEXPR");
 
@@ -4443,12 +4460,20 @@ _outNode(StringInfo str, void *obj)
 				_outPartOidExpr(str, obj);
 				break;
 
+			case T_PartDefaultExpr:
+				_outPartDefaultExpr(str, obj);
+				break;
+
 			case T_PartBoundExpr:
 				_outPartBoundExpr(str, obj);
 				break;
 
 			case T_PartBoundInclusionExpr:
 				_outPartBoundInclusionExpr(str, obj);
+				break;
+
+			case T_PartBoundOpenExpr:
+				_outPartBoundOpenExpr(str, obj);
 				break;
 
 			case T_CreateTrigStmt:

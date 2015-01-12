@@ -903,6 +903,18 @@ typedef struct PartOidExprState
 } PartOidExprState;
 
 /* ----------------
+ *                PartDefaultExprState node
+ * ----------------
+ */
+typedef struct PartDefaultExprState
+{
+	ExprState     xprstate;
+
+	/* accepted partitions for all levels */
+	struct PartitionConstraints **levelPartConstraints;
+} PartDefaultExprState;
+
+/* ----------------
  *                PartBoundExprState node
  * ----------------
  */
@@ -925,6 +937,18 @@ typedef struct PartBoundInclusionExprState
 	/* accepted partitions for all levels */
 	struct PartitionConstraints **levelPartConstraints;
 } PartBoundInclusionExprState;
+
+/* ----------------
+ *                PartBoundOpenExprState node
+ * ----------------
+ */
+typedef struct PartBoundOpenExprState
+{
+	ExprState     xprstate;
+
+	/* accepted partitions for all levels */
+	struct PartitionConstraints **levelPartConstraints;
+} PartBoundOpenExprState;
 
 /* ----------------
  *                SubPlanState node

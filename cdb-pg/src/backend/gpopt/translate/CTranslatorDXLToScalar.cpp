@@ -119,8 +119,10 @@ CTranslatorDXLToScalar::PexprFromDXLNodeScalar
 		{EdxlopScalarArrayRef, &CTranslatorDXLToScalar::PexprArrayRef},
 		{EdxlopScalarDMLAction, &CTranslatorDXLToScalar::PexprDMLAction},
 		{EdxlopScalarPartOid, &CTranslatorDXLToScalar::PexprPartOid},
+		{EdxlopScalarPartDefault, &CTranslatorDXLToScalar::PexprPartDefault},
 		{EdxlopScalarPartBound, &CTranslatorDXLToScalar::PexprPartBound},
 		{EdxlopScalarPartBoundInclusion, &CTranslatorDXLToScalar::PexprPartBoundInclusion},
+		{EdxlopScalarPartBoundOpen, &CTranslatorDXLToScalar::PexprPartBoundOpen},
 	};
 
 	const ULONG ulTranslators = GPOS_ARRAY_SIZE(rgTranslators);
@@ -1806,6 +1808,29 @@ CTranslatorDXLToScalar::PexprPartOid
 
 //---------------------------------------------------------------------------
 //	@function:
+//		CTranslatorDXLToScalar::PexprPartDefault
+//
+//	@doc:
+//		Translates a DXL part default into a GPDB part default
+//
+//---------------------------------------------------------------------------
+Expr *
+CTranslatorDXLToScalar::PexprPartDefault
+	(
+	const CDXLNode *pdxlnPartDefault,
+	CMappingColIdVar * //pmapcidvar
+	)
+{
+	CDXLScalarPartDefault *pdxlop = CDXLScalarPartDefault::PdxlopConvert(pdxlnPartDefault->Pdxlop());
+
+	PartDefaultExpr *pexpr = MakeNode(PartDefaultExpr);
+	pexpr->level = pdxlop->UlLevel();
+
+	return (Expr *) pexpr;
+}
+
+//---------------------------------------------------------------------------
+//	@function:
 //		CTranslatorDXLToScalar::PexprPartBound
 //
 //	@doc:
@@ -1847,6 +1872,30 @@ CTranslatorDXLToScalar::PexprPartBoundInclusion
 	CDXLScalarPartBoundInclusion *pdxlop = CDXLScalarPartBoundInclusion::PdxlopConvert(pdxlnPartBoundIncl->Pdxlop());
 
 	PartBoundInclusionExpr *pexpr = MakeNode(PartBoundInclusionExpr);
+	pexpr->level = pdxlop->UlLevel();
+	pexpr->isLowerBound = pdxlop->FLower();
+
+	return (Expr *) pexpr;
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CTranslatorDXLToScalar::PexprPartBoundOpen
+//
+//	@doc:
+//		Translates a DXL part bound openness into a GPDB part bound openness
+//
+//---------------------------------------------------------------------------
+Expr *
+CTranslatorDXLToScalar::PexprPartBoundOpen
+	(
+	const CDXLNode *pdxlnPartBoundOpen,
+	CMappingColIdVar * //pmapcidvar
+	)
+{
+	CDXLScalarPartBoundOpen *pdxlop = CDXLScalarPartBoundOpen::PdxlopConvert(pdxlnPartBoundOpen->Pdxlop());
+
+	PartBoundOpenExpr *pexpr = MakeNode(PartBoundOpenExpr);
 	pexpr->level = pdxlop->UlLevel();
 	pexpr->isLowerBound = pdxlop->FLower();
 

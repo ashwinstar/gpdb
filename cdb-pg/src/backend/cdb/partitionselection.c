@@ -54,10 +54,30 @@ construct_part_constraints_range(PartitionRule *rule)
 	PartitionConstraints *constraint = makeNode(PartitionConstraints);
 	Assert (NULL != constraint);
 	constraint->pRule = rule;
+	constraint->defaultPart = rule->parisdefault;
+	if (constraint->defaultPart)
+	{
+		return constraint;
+	}
 
-	/* retrieve lowerBound information */
+	/* retrieve boundary information */
+	if (NULL == rule->parrangestart && NULL == rule->parrangeend)
+	{
+		/* partition with only the NULL value */
+		constraint->lowerBound = NULL;
+		constraint->lbInclusive = true;
+		constraint->lbOpen = false;
+		constraint->upperBound = NULL;
+		constraint->upInclusive = true;
+		constraint->upOpen = false;
+
+		return constraint;
+	}
+
 	if (NULL == rule->parrangestart)
 	{
+		/* open lower bound */
+		constraint->lbOpen = true;
 		constraint->lowerBound = NULL;
 		constraint->lbInclusive = false;
 	}
@@ -69,11 +89,13 @@ construct_part_constraints_range(PartitionRule *rule)
 		Assert (IsA(lowerBound, Const));
 		constraint->lowerBound = (Const *) lowerBound;
 		constraint->lbInclusive = rule->parrangestartincl;
+		constraint->lbOpen = false;
 	}
 
-	/* retrieve upperBound information */
 	if (NULL == rule->parrangeend)
 	{
+		/* open upper bound */
+		constraint->upOpen = true;
 		constraint->upperBound = NULL;
 		constraint->upInclusive = false;
 	}
@@ -85,8 +107,10 @@ construct_part_constraints_range(PartitionRule *rule)
 		Assert (IsA(upperBound, Const));
 		constraint->upperBound = (Const *) upperBound;
 		constraint->upInclusive = rule->parrangeendincl;
+		constraint->upOpen = false;
 	}
 
+	Assert (!constraint->upOpen || !constraint->lbOpen);
 	return constraint;
 }
 
@@ -106,15 +130,12 @@ construct_part_constraints_list(PartitionRule *rule)
 	List *result = NIL;
 
 	/* default part */
-	if (NULL == rule->parlistvalues)
+	if (NULL == rule->parlistvalues || rule->parisdefault)
 	{
 		PartitionConstraints *constraint = makeNode(PartitionConstraints);
 		Assert (NULL != constraint);
 		constraint->pRule = rule;
-		constraint->lowerBound = NULL;
-		constraint->upperBound = NULL;
-		constraint->lbInclusive = false;
-		constraint->upInclusive = false;
+		constraint->defaultPart = true;
 		result = lappend(result, constraint);
 		return result;
 	}
@@ -131,10 +152,13 @@ construct_part_constraints_list(PartitionRule *rule)
 		PartitionConstraints *constraint = makeNode(PartitionConstraints);
 		Assert (NULL != constraint);
 		constraint->pRule = rule;
+		constraint->defaultPart = false;
 		constraint->lowerBound = (Const *) value;
 		constraint->lbInclusive = true;
+		constraint->lbOpen = false;
 		constraint->upperBound = (Const *) value;
 		constraint->upInclusive = true;
+		constraint->upOpen = false;
 
 		result = lappend(result, constraint);
 	}
@@ -174,7 +198,7 @@ construct_part_constraints(PartitionRule *rule, char parkind)
  *		eval_part_qual
  *
  *		Evaluate a qualification expression that consists of
- *		PartBoundExpr, PartBoundInclusionExpr
+ *		PartDefaultExpr, PartBoundExpr, PartBoundInclusionExpr, PartBoundOpenExpr
  *
  *		Return true is passed, otherwise false.
  *
@@ -323,10 +347,7 @@ partition_constraints(PartitionNode *pn)
 	{
 		PartitionConstraints *constraint = makeNode(PartitionConstraints);
 		constraint->pRule = pn->default_part;
-		constraint->lowerBound = NULL;
-		constraint->upperBound = NULL;
-		constraint->lbInclusive = false;
-		constraint->upInclusive = false;
+		constraint->defaultPart = true;
 		result = lappend(result, constraint);
 	}
 	return result;

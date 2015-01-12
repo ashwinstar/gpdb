@@ -399,6 +399,16 @@ _readPartOidExpr(const char ** str)
 	READ_DONE();
 }
 
+static PartDefaultExpr *
+_readPartDefaultExpr(const char ** str)
+{
+	READ_LOCALS(PartDefaultExpr);
+
+	READ_INT_FIELD(level);
+
+	READ_DONE();
+}
+
 static PartBoundExpr *
 _readPartBoundExpr(const char ** str)
 {
@@ -415,6 +425,17 @@ static PartBoundInclusionExpr *
 _readPartBoundInclusionExpr(const char ** str)
 {
 	READ_LOCALS(PartBoundInclusionExpr);
+
+	READ_INT_FIELD(level);
+	READ_BOOL_FIELD(isLowerBound);
+
+	READ_DONE();
+}
+
+static PartBoundOpenExpr *
+_readPartBoundOpenExpr(const char ** str)
+{
+	READ_LOCALS(PartBoundOpenExpr);
 
 	READ_INT_FIELD(level);
 	READ_BOOL_FIELD(isLowerBound);
@@ -4493,11 +4514,17 @@ readNodeBinary(const char ** str)
 			case T_PartOidExpr:
 				return_value = _readPartOidExpr(str);
 				break;
+			case T_PartDefaultExpr:
+				return_value = _readPartDefaultExpr(str);
+				break;
 			case T_PartBoundExpr:
 				return_value = _readPartBoundExpr(str);
 				break;
 			case T_PartBoundInclusionExpr:
 				return_value = _readPartBoundInclusionExpr(str);
+				break;
+			case T_PartBoundOpenExpr:
+				return_value = _readPartBoundOpenExpr(str);
 				break;
 			case T_RowMarkClause:
 				return_value = _readRowMarkClause(str);

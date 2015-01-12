@@ -2531,6 +2531,15 @@ _copyPartOidExpr(const PartOidExpr *from)
 	return newnode;
 }
 
+static PartDefaultExpr *
+_copyPartDefaultExpr(const PartDefaultExpr *from)
+{
+	PartDefaultExpr *newnode = makeNode(PartDefaultExpr);
+	COPY_SCALAR_FIELD(level);
+
+	return newnode;
+}
+
 static PartBoundExpr *
 _copyPartBoundExpr(const PartBoundExpr *from)
 {
@@ -2546,6 +2555,16 @@ static PartBoundInclusionExpr *
 _copyPartBoundInclusionExpr(const PartBoundInclusionExpr *from)
 {
 	PartBoundInclusionExpr *newnode = makeNode(PartBoundInclusionExpr);
+	COPY_SCALAR_FIELD(level);
+	COPY_SCALAR_FIELD(isLowerBound);
+
+	return newnode;
+}
+
+static PartBoundOpenExpr *
+_copyPartBoundOpenExpr(const PartBoundOpenExpr *from)
+{
+	PartBoundOpenExpr *newnode = makeNode(PartBoundOpenExpr);
 	COPY_SCALAR_FIELD(level);
 	COPY_SCALAR_FIELD(isLowerBound);
 
@@ -5005,11 +5024,17 @@ copyObject(void *from)
 		case T_PartOidExpr:
 			retval = _copyPartOidExpr(from);
 			break;
+		case T_PartDefaultExpr:
+			retval = _copyPartDefaultExpr(from);
+			break;
 		case T_PartBoundExpr:
 			retval = _copyPartBoundExpr(from);
 			break;
 		case T_PartBoundInclusionExpr:
 			retval = _copyPartBoundInclusionExpr(from);
+			break;
+		case T_PartBoundOpenExpr:
+			retval = _copyPartBoundOpenExpr(from);
 			break;
 		case T_RangeTblEntry:
 			retval = _copyRangeTblEntry(from);

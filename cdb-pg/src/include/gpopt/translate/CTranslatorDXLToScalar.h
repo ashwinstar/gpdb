@@ -359,6 +359,13 @@ namespace gpdxl
 				CMappingColIdVar *pmapcidvar
 				);
 
+			// translate a scalar part default into an Expr
+			Expr *PexprPartDefault
+				(
+				const CDXLNode *pdxlnPartDefault,
+				CMappingColIdVar *pmapcidvar
+				);
+
 			// translate a scalar part bound into an Expr
 			Expr *PexprPartBound
 				(
@@ -370,6 +377,13 @@ namespace gpdxl
 			Expr *PexprPartBoundInclusion
 				(
 				const CDXLNode *pdxlnPartBoundIncl,
+				CMappingColIdVar *pmapcidvar
+				);
+
+			// translate a scalar part bound openness into an Expr
+			Expr *PexprPartBoundOpen
+				(
+				const CDXLNode *pdxlnPartBoundOpen,
 				CMappingColIdVar *pmapcidvar
 				);
 

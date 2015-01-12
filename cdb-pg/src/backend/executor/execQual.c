@@ -176,10 +176,16 @@ static Datum ExecEvalRelabelType(GenericExprState *exprstate,
 static Datum ExecEvalPartOidExpr(PartOidExprState *exprstate,
 						ExprContext *econtext,
 						bool *isNull, ExprDoneCond *isDone);
+static Datum ExecEvalPartDefaultExpr(PartDefaultExprState *exprstate,
+						ExprContext *econtext,
+						bool *isNull, ExprDoneCond *isDone);
 static Datum ExecEvalPartBoundExpr(PartBoundExprState *exprstate,
 						ExprContext *econtext,
 						bool *isNull, ExprDoneCond *isDone);
 static Datum ExecEvalPartBoundInclusionExpr(PartBoundInclusionExprState *exprstate,
+								ExprContext *econtext,
+								bool *isNull, ExprDoneCond *isDone);
+static Datum ExecEvalPartBoundOpenExpr(PartBoundOpenExprState *exprstate,
 								ExprContext *econtext,
 								bool *isNull, ExprDoneCond *isDone);
 static bool ExecIsExprUnsafeToConst_walker(Node *node, void *context);
@@ -4228,6 +4234,32 @@ static Datum ExecEvalPartOidExpr(PartOidExprState *exprstate,
 }
 
 /* ----------------------------------------------------------------
+ *		ExecEvalPartDefaultExpr
+ *
+ *		Evaluate a PartDefaultExpr
+ * ----------------------------------------------------------------
+ */
+static Datum ExecEvalPartDefaultExpr(PartDefaultExprState *exprstate,
+						ExprContext *econtext,
+						bool *isNull, ExprDoneCond *isDone)
+{
+	Assert(NULL != exprstate);
+	Assert(NULL != isNull);
+
+	PartDefaultExpr *expr = (PartDefaultExpr *) exprstate->xprstate.expr;
+	PartitionConstraints *constraint = (PartitionConstraints *) exprstate->levelPartConstraints[expr->level];
+	Assert (NULL != constraint);
+
+	if (isDone)
+	{
+		*isDone = ExprSingleResult;
+	}
+	*isNull = false;
+
+	return BoolGetDatum(constraint->defaultPart);
+}
+
+/* ----------------------------------------------------------------
  *		ExecEvalPartBoundExpr
  *
  *		Evaluate a PartBoundExpr
@@ -4237,6 +4269,9 @@ static Datum ExecEvalPartBoundExpr(PartBoundExprState *exprstate,
 						ExprContext *econtext,
 						bool *isNull, ExprDoneCond *isDone)
 {
+	Assert(NULL != exprstate);
+	Assert(NULL != isNull);
+
 	PartBoundExpr *expr = (PartBoundExpr *) exprstate->xprstate.expr;
 	PartitionConstraints *constraint = (PartitionConstraints *) exprstate->levelPartConstraints[expr->level];
 	Assert (NULL != constraint);
@@ -4272,6 +4307,9 @@ static Datum ExecEvalPartBoundInclusionExpr(PartBoundInclusionExprState *exprsta
 							ExprContext *econtext,
 							bool *isNull, ExprDoneCond *isDone)
 {
+	Assert(NULL != exprstate);
+	Assert(NULL != isNull);
+
 	PartBoundInclusionExpr *expr = (PartBoundInclusionExpr *) exprstate->xprstate.expr;
 	PartitionConstraints *constraint = (PartitionConstraints *) exprstate->levelPartConstraints[expr->level];
 	Assert (NULL != constraint);
@@ -4285,6 +4323,34 @@ static Datum ExecEvalPartBoundInclusionExpr(PartBoundInclusionExprState *exprsta
 		return BoolGetDatum(constraint->lbInclusive);
 	}
 	return BoolGetDatum(constraint->upInclusive);
+}
+
+/* ----------------------------------------------------------------
+ *		ExecEvalPartBoundOpenExpr
+ *
+ *		Evaluate a PartBoundOpenExpr
+ * ----------------------------------------------------------------
+ */
+static Datum ExecEvalPartBoundOpenExpr(PartBoundOpenExprState *exprstate,
+							ExprContext *econtext,
+							bool *isNull, ExprDoneCond *isDone)
+{
+	Assert(NULL != exprstate);
+	Assert(NULL != isNull);
+
+	PartBoundOpenExpr *expr = (PartBoundOpenExpr *) exprstate->xprstate.expr;
+	PartitionConstraints *constraint = (PartitionConstraints *) exprstate->levelPartConstraints[expr->level];
+	Assert (NULL != constraint);
+	if (isDone)
+	{
+		*isDone = ExprSingleResult;
+	}
+	*isNull = false;
+	if (expr->isLowerBound)
+	{
+		return BoolGetDatum(constraint->lbOpen);
+	}
+	return BoolGetDatum(constraint->upOpen);
 }
 
 /* ----------------------------------------------------------------
@@ -5070,6 +5136,17 @@ ExecInitExpr(Expr *node, PlanState *parent)
 				state = (ExprState *) exprstate;
 			}
 			break;
+		case T_PartDefaultExpr:
+			{
+				Insist(parent && IsA(parent, PartitionSelectorState));
+				PartitionSelectorState *psstate = (PartitionSelectorState *) parent;
+				PartDefaultExprState *exprstate = makeNode(PartDefaultExprState);
+				exprstate->xprstate.evalfunc = (ExprStateEvalFunc) ExecEvalPartDefaultExpr;
+				exprstate->levelPartConstraints = psstate->levelPartConstraints;
+
+				state = (ExprState *) exprstate;
+			}
+			break;
 		case T_PartBoundExpr:
 			{
 				Insist(parent && IsA(parent, PartitionSelectorState));
@@ -5087,6 +5164,17 @@ ExecInitExpr(Expr *node, PlanState *parent)
 				PartitionSelectorState *psstate = (PartitionSelectorState *) parent;
 				PartBoundInclusionExprState *exprstate = makeNode(PartBoundInclusionExprState);
 				exprstate->xprstate.evalfunc = (ExprStateEvalFunc) ExecEvalPartBoundInclusionExpr;
+				exprstate->levelPartConstraints = psstate->levelPartConstraints;
+
+				state = (ExprState *) exprstate;
+			}
+			break;
+		case T_PartBoundOpenExpr:
+			{
+				Insist(parent && IsA(parent, PartitionSelectorState));
+				PartitionSelectorState *psstate = (PartitionSelectorState *) parent;
+				PartBoundOpenExprState *exprstate = makeNode(PartBoundOpenExprState);
+				exprstate->xprstate.evalfunc = (ExprStateEvalFunc) ExecEvalPartBoundOpenExpr;
 				exprstate->levelPartConstraints = psstate->levelPartConstraints;
 
 				state = (ExprState *) exprstate;

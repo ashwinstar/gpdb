@@ -211,8 +211,10 @@ typedef enum NodeTag
 	T_PercentileExpr,
 	T_DMLActionExpr,
 	T_PartOidExpr,
+	T_PartDefaultExpr,
 	T_PartBoundExpr,
 	T_PartBoundInclusionExpr,
+	T_PartBoundOpenExpr,
 
 	/*
 	 * TAGS FOR EXPRESSION STATE NODES (execnodes.h)
@@ -245,8 +247,10 @@ typedef enum NodeTag
 	T_GroupingFuncExprState,
 	T_PercentileExprState,
 	T_PartOidExprState,
+	T_PartDefaultExprState,
 	T_PartBoundExprState,
 	T_PartBoundInclusionExprState,
+	T_PartBoundOpenExprState,
 
 	/*
 	 * TAGS FOR PLANNER NODES (relation.h)

@@ -2485,10 +2485,16 @@ exprType(Node *expr)
 		case T_PartOidExpr:
 			type = OIDOID;
 			break;
+		case T_PartDefaultExpr:
+			type = BOOLOID;
+			break;
 		case T_PartBoundExpr:
 			type = ((PartBoundExpr *) expr)->boundType;
 			break;
 		case T_PartBoundInclusionExpr:
+			type = BOOLOID;
+			break;
+		case T_PartBoundOpenExpr:
 			type = BOOLOID;
 			break;
 		default:

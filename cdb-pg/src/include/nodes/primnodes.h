@@ -1433,6 +1433,16 @@ typedef struct PartOidExpr
 } PartOidExpr;
 
 /*
+ * PartDefaultExpr
+ * Represents the expression which determines whether this a part is a default part
+ */
+typedef struct PartDefaultExpr
+{
+	Expr		xpr;
+	int 		level;			/* partitioning level */
+} PartDefaultExpr;
+
+/*
  * PartBoundExpr
  * Represents the expression which holds a part boundary in a PartitionSelector operator
  */
@@ -1455,5 +1465,17 @@ typedef struct PartBoundInclusionExpr
 	int			level;			/* partitioning level */
 	bool		isLowerBound;	/* lower (min) or upper (max) bound */
 } PartBoundInclusionExpr;
+
+/*
+ * PartBoundOpenExpr
+ * Represents the expression which determines whether a part boundary is open (unbounded) or not
+ * in a PartitionSelector operator
+ */
+typedef struct PartBoundOpenExpr
+{
+	Expr		xpr;
+	int			level;			/* partitioning level */
+	bool		isLowerBound;	/* lower (min) or upper (max) bound */
+} PartBoundOpenExpr;
 
 #endif   /* PRIMNODES_H */

@@ -23,10 +23,13 @@ typedef struct PartitionConstraints
 {
 	NodeTag type;
 	PartitionRule * pRule;
+	bool defaultPart;
 	Const *lowerBound;
 	Const *upperBound;
 	bool lbInclusive;
 	bool upInclusive;
+	bool lbOpen;
+	bool upOpen;
 } PartitionConstraints;
 
 /* ----------------
