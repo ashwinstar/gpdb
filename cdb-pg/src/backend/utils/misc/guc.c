@@ -186,6 +186,7 @@ static const char *assign_optimizer_log_failure(const char *newval,
 							bool doit, GucSource source);
 static const char *assign_optimizer_minidump(const char *newval,
 							bool doit, GucSource source);
+static bool assign_optimizer(bool newval, bool doit, GucSource source);
 static const char *assign_optimizer_cost_model(const char *newval,
                                                         bool doit, GucSource source);
 static const char *assign_min_error_statement(const char *newval, bool doit,
@@ -702,6 +703,7 @@ bool fts_diskio_check = false;
 bool gp_disable_catalog_access_on_segment = false;
 
 /* ORCA related gucs */
+bool		optimizer_control = true;
 bool		optimizer;
 bool		optimizer_log;
 bool		optimizer_partition_selection_log;
@@ -3694,7 +3696,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&optimizer,
-		false, NULL, NULL
+		false, assign_optimizer, NULL
 	},
 
 	{
@@ -4000,6 +4002,15 @@ static struct config_bool ConfigureNamesBool[] =
 		&optimizer_direct_dispatch,
 		true, NULL, NULL
 	},
+    {
+    	{"optimizer_control", PGC_SUSET, DEVELOPER_OPTIONS,
+    		gettext_noop("Allow/disallow turning the optimizer on or off."),
+    		NULL,
+    		GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+    	},
+    	&optimizer_control,
+    	true, NULL, NULL
+    },
         {
                 {"optimizer_enable_space_pruning", PGC_USERSET, DEVELOPER_OPTIONS,
                         gettext_noop("Enable space pruning in the optimizer."),
@@ -12516,6 +12527,28 @@ assign_ssl(bool newval, bool doit, GucSource source)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("SSL is not supported by this build")));
 #endif
+	return true;
+}
+
+static bool
+assign_optimizer(bool newval, bool doit, GucSource source)
+{
+	if (!optimizer_control)
+	{
+		if (source >= PGC_S_INTERACTIVE)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("cannot change the value of \"optimizer\"")));
+		}
+
+		/* source == PGC_S_OVERRIDE means do it anyway, eg at xact abort */
+		if (source != PGC_S_OVERRIDE)
+		{
+			return false;
+		}
+	}
+
 	return true;
 }
 
