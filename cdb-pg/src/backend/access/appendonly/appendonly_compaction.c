@@ -612,7 +612,20 @@ AppendOnlyTruncateToEOF(Relation aorel)
 
 		/* Re-fetch under the write lock to get latest committed eof. */
 		fsinfo = GetFileSegInfo(aorel, aoEntry, SnapshotNow, segno);
-		
+
+		/*
+		 * This should not occur since this segfile info was found by the
+		 * "all" method, but better to catch for trouble shooting
+		 * (possibly index corruption?)
+		 */
+		if (fsinfo == NULL)
+			elog(ERROR, "file seginfo for AO relation %s %u/%u/%u (segno=%u) is missing",
+				 relname,
+				 aorel->rd_node.spcNode,
+				 aorel->rd_node.dbNode,
+				 aorel->rd_node.relNode,
+				 segno);
+
 		AppendOnlySegmentFileTruncateToEOF(aorel, fsinfo);
 		pfree(fsinfo);
 	}
@@ -692,6 +705,20 @@ AppendOnlyCompact(Relation aorel,
 
 		/* Re-fetch under the write lock to get latest committed eof. */
 		fsinfo = GetFileSegInfo(aorel, aoEntry, SnapshotNow, segno);
+
+		/*
+		 * This should not occur since this segfile info was found by the
+		 * "all" method, but better to catch for trouble shooting
+		 * (possibly index corruption?)
+		 */
+		if (fsinfo == NULL)
+			elog(ERROR, "file seginfo for AO relation %s %u/%u/%u (segno=%u) is missing",
+				 relname,
+				 aorel->rd_node.spcNode,
+				 aorel->rd_node.dbNode,
+				 aorel->rd_node.relNode,
+				 segno);
+
 		if (AppendOnlyCompaction_ShouldCompact(aorel, aoEntry,
 				fsinfo->segno, fsinfo->total_tupcount, isFull))
 		{
