@@ -84,7 +84,7 @@ AlterTableCreateAoVisimapTableWithOid(Oid relOid, Oid newOid, Oid newIndexOid,
 	indexInfo->ii_ExpressionsState = NIL;
 	indexInfo->ii_Predicate = NIL;
 	indexInfo->ii_PredicateState = NIL;
-	indexInfo->ii_Unique = false;
+	indexInfo->ii_Unique = true;
 	indexInfo->ii_Concurrent = false;
 
 	classObjectId[0] = INT4_BTREE_OPS_OID;
