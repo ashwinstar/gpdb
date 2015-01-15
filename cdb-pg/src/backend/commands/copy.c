@@ -5346,6 +5346,11 @@ CopyReadAttributesCSV(CopyState cstate, bool *nulls, int *attr_offsets,
 						(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 						 errmsg("extra data after last expected column"),
 						 errOmitLocation(true)));
+			if (cur == NULL)
+				ereport(ERROR,
+						(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+						 errmsg("extra data after last expected column"),
+						 errOmitLocation(true)));
 
 			if (in_quote)
 			{
@@ -5397,6 +5402,12 @@ CopyReadAttributesCSV(CopyState cstate, bool *nulls, int *attr_offsets,
 		{
 			/* check whether raw input matched null marker */
 			input_len = end_cursor - start_cursor;
+
+			if (cur == NULL)
+				ereport(ERROR,
+						(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+						 errmsg("extra data after last expected column"),
+						 errOmitLocation(true)));
 
 			if(num_phys_attrs > 0)
 			{
