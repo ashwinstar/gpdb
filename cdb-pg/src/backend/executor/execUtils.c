@@ -803,7 +803,7 @@ ExecBuildProjectionInfo(List *targetList,
 	else
 	{
 		projInfo->pi_itemIsDone = (ExprDoneCond *)
-			palloc(len * sizeof(ExprDoneCond));
+			palloc0(len * sizeof(ExprDoneCond));
 		projInfo->pi_varSlotOffsets = NULL;
 		projInfo->pi_varNumbers = NULL;
 	}
@@ -824,6 +824,24 @@ void
 ExecAssignProjectionInfo(PlanState *planstate,
 						 TupleDesc inputDesc)
 {
+	ProjectionInfo* pi = planstate->ps_ProjInfo;
+	if (NULL != pi)
+	{
+		if (NULL != pi->pi_varNumbers)
+		{
+			pfree(pi->pi_varNumbers);
+		}
+		if (NULL != pi->pi_varSlotOffsets)
+		{
+			pfree(pi->pi_varSlotOffsets);
+		}
+		if (NULL != pi->pi_itemIsDone)
+		{
+			pfree(pi->pi_itemIsDone);
+		}
+		pfree(pi);
+	}
+
 	planstate->ps_ProjInfo =
 		ExecBuildProjectionInfo(planstate->targetlist,
 								planstate->ps_ExprContext,

@@ -198,8 +198,6 @@ initNextIndexToScan(DynamicIndexScanState *node)
 		scanState->ps.qual = (List *)ExecInitExpr((Expr *)scanState->ps.plan->qual, (PlanState*)scanState);
 		scanState->ps.targetlist = (List *)ExecInitExpr((Expr *)scanState->ps.plan->targetlist, (PlanState*)scanState);
 
-		MemoryContextSwitchTo(oldCxt);
-
 		ExecAssignScanProjectionInfo(scanState);
 
 		EState *estate = indexState->ss.ps.state;
@@ -222,6 +220,8 @@ initNextIndexToScan(DynamicIndexScanState *node)
 						   NULL,
 						   NULL);
 
+		MemoryContextSwitchTo(oldCxt);
+
 		ExprContext *econtext = indexState->iss_RuntimeContext;		/* context for runtime keys */
 
 		if (indexState->iss_NumRuntimeKeys != 0)
@@ -236,6 +236,12 @@ initNextIndexToScan(DynamicIndexScanState *node)
 		/*
 		 * Initialize result tuple type and projection info.
 		 */
+		TupleDesc td = indexState->ss.ps.ps_ResultTupleSlot->tts_tupleDescriptor;
+		if (td)
+		{
+			pfree(td);
+			td = NULL;
+		}
 		ExecAssignResultTypeFromTL(&indexState->ss.ps);
 		ExecAssignScanProjectionInfo(&indexState->ss);
 
@@ -325,6 +331,7 @@ ExecDynamicIndexScan(DynamicIndexScanState *node)
 		{
 			CleanupOnePartition(indexState);
 		}
+
 	}
 	return slot;
 }

@@ -409,6 +409,10 @@ MemoryAccounting_GetAccountName(MemoryAccount *memoryAccount)
 			return "X_AssertOp";
 		case MEMORY_OWNER_TYPE_Exec_AlienShared:
 			return "X_Alien";
+		case MEMORY_OWNER_TYPE_Exec_BitmapTableScan:
+			return "X_BitmapTableScan";
+		case MEMORY_OWNER_TYPE_Exec_PartitionSelector:
+			return "X_PartitionSelector";
 		default:
 			Assert(false);
 			break;

@@ -1162,7 +1162,7 @@ getPhysicalIndexRelid(LogicalIndexInfo *iInfo, Oid partOid)
 	cqContext       cqc;
 	cqContext       *pcqCtx;
 	Oid             resultOid = InvalidOid;
-	IndexInfo	*ii;
+	IndexInfo	*ii = NULL;
 	Relation	indexRelation;
 	bool		indKeyEqual;
 
@@ -1179,6 +1179,12 @@ getPhysicalIndexRelid(LogicalIndexInfo *iInfo, Oid partOid)
 	while (HeapTupleIsValid(tup = caql_getnext(pcqCtx)))
 	{
 		Form_pg_index indForm = (Form_pg_index) GETSTRUCT(tup);
+
+		if (NULL != ii)
+		{
+			pfree(ii);
+			ii = NULL;
+		}
 
 		ii = populateIndexInfo(pcqCtx, tup, indForm);
 
@@ -1216,6 +1222,12 @@ getPhysicalIndexRelid(LogicalIndexInfo *iInfo, Oid partOid)
 		}
 		
 		// TODO: antova - Mar 28, 2014; compare if this is a bitmap index
+	}
+
+	if (NULL != ii)
+	{
+		pfree(ii);
+		ii = NULL;
 	}
 
 	caql_endscan(pcqCtx);
