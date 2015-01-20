@@ -2222,21 +2222,21 @@ CTranslatorRelcacheToDXL::PimdobjColStats
 				pmdcol->Mdname().Pstr()->Wsz(), pmdrel->Mdname().Pstr()->Wsz());
 	}
 
-	// fix mcv frequencies (sometimes they can add up to more than 1.0)
-	NormalizeFrequencies(pdrgfMCVFrequencies, (ULONG) iNumMCVValues);
-
-	(void) gpdb::FGetAttrStatsSlot
-			(
-					heaptupleStats,
-					oidAttType,
-					-1,
-					STATISTIC_KIND_HISTOGRAM,
-					InvalidOid,
-					&pdrgdatumHistValues, &iNumHistValues,
-					NULL, NULL);
-
 	Form_pg_statistic fpsStats = (Form_pg_statistic) GETSTRUCT(heaptupleStats);
 
+	// null frequency and NDV
+	CDouble dNullFrequency(0.0);
+	int iNullNDV = 0;
+	if (CStatistics::DEpsilon < fpsStats->stanullfrac)
+	{
+		dNullFrequency = fpsStats->stanullfrac;
+		iNullNDV = 1;
+	}
+
+	// fix mcv and null frequencies (sometimes they can add up to more than 1.0)
+	NormalizeFrequencies(pdrgfMCVFrequencies, (ULONG) iNumMCVValues, &dNullFrequency);
+
+	// column width
 	CDouble dWidth = CDouble(fpsStats->stawidth);
 
 	// calculate total number of distinct values
@@ -2252,13 +2252,6 @@ CTranslatorRelcacheToDXL::PimdobjColStats
 	}
 	dDistinct = dDistinct.FpCeil();
 
-	// number of nulls
-	CDouble dNullFrequency(fpsStats->stanullfrac);
-	if (dNullFrequency < CStatistics::DEpsilon)
-	{
-		dNullFrequency = 0.0;
-	}
-
 	// total MCV frequency
 	CDouble dMCFSum = 0.0;
 	for (ULONG ul = 0; ul < iNumMCVValues; ul++)
@@ -2267,20 +2260,33 @@ CTranslatorRelcacheToDXL::PimdobjColStats
 	}
 
 	// ndistinct and frequency of remaining tuples
-	// that are not covered by MCV or histogram
+	// that are not covered by MCV, histogram or Nulls
 	CDouble dDistinctRemain = 0.0;
 	CDouble dFreqRemain = 0.0;
 
 	// there will be remaining tuples when both conditions below are met:
 	// 1. no GPDB histogram is available
-	// 2. the MCVs do not cover all the tuples, i.e. sum(MCFs) < 1 && dDistinct > iNumMCVValues
-	if (1 >= iNumHistValues && 1 - CStatistics::DEpsilon > dMCFSum && 0 < dDistinct - iNumMCVValues)
+	// 2. the MCVs and Nulls do not cover all the tuples, i.e. sum(MCFs) + null_frac < 1 && dDistinct > iNumMCVValues + iNullNDV
+	if (1 >= iNumHistValues &&
+		1 - CStatistics::DEpsilon > dMCFSum + dNullFrequency &&
+		0 < dDistinct - iNumMCVValues - iNullNDV)
 	{
-		dDistinctRemain = dDistinct - iNumMCVValues;
-		dFreqRemain = 1 - dMCFSum;
+		dDistinctRemain = dDistinct - iNumMCVValues - iNullNDV;
+		dFreqRemain = 1 - dMCFSum - dNullFrequency;
 	}
 
-	// transform all the bits and pieces from pg_stats
+	// get histogram datums from pg_statistic entry
+	(void) gpdb::FGetAttrStatsSlot
+			(
+					heaptupleStats,
+					oidAttType,
+					-1,
+					STATISTIC_KIND_HISTOGRAM,
+					InvalidOid,
+					&pdrgdatumHistValues, &iNumHistValues,
+					NULL, NULL);
+
+	// transform all the bits and pieces from pg_statistic
 	// to a single bucket structure
 	DrgPdxlbucket *pdrgpdxlbucketTransformed =
 			PdrgpdxlbucketTransformStats
@@ -2915,16 +2921,17 @@ void
 CTranslatorRelcacheToDXL::NormalizeFrequencies
 	(
 	float4 *pdrgf,
-	ULONG ulLength
+	ULONG ulLength,
+	CDouble *pdNullFrequency
 	)
 {
-	if (ulLength == 0)
+	if (ulLength == 0 && (*pdNullFrequency) < 1.0)
 	{
 		return;
 	}
 
-	CDouble dTotal = CDouble(pdrgf[0]);
-	for (ULONG ul=1; ul<ulLength; ul++)
+	CDouble dTotal = *pdNullFrequency;
+	for (ULONG ul = 0; ul < ulLength; ul++)
 	{
 		dTotal = dTotal + CDouble(pdrgf[ul]);
 	}
@@ -2934,16 +2941,17 @@ CTranslatorRelcacheToDXL::NormalizeFrequencies
 		float4 fDenom = (float4) (dTotal + CStatistics::DEpsilon).DVal();
 
 		// divide all values by the total
-		for (ULONG ul=0; ul<ulLength; ul++)
+		for (ULONG ul = 0; ul < ulLength; ul++)
 		{
 			pdrgf[ul] = pdrgf[ul] / fDenom;
 		}
+		*pdNullFrequency = *pdNullFrequency / fDenom;
 	}
 
 #ifdef GPOS_DEBUG
 	// recheck
-	CDouble dTotalRecheck = CDouble(pdrgf[0]);
-	for (ULONG ul=1; ul<ulLength; ul++)
+	CDouble dTotalRecheck = *pdNullFrequency;
+	for (ULONG ul = 0; ul < ulLength; ul++)
 	{
 		dTotalRecheck = dTotalRecheck + CDouble(pdrgf[ul]);
 	}

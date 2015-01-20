@@ -268,7 +268,7 @@ namespace gpdxl
 
 			// fix frequencies if they add up to more than 1.0
 			static
-			void NormalizeFrequencies(float4 *pdrgf, ULONG ulLength);
+			void NormalizeFrequencies(float4 *pdrgf, ULONG ulLength, CDouble *pdNullFrequency);
 
 			// get the relation columns
 			static
