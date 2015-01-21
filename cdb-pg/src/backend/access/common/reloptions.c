@@ -197,11 +197,19 @@ setDefaultAOStorageOpts(StdRdOptions *copy)
 		ao_storage_opts.compresstype = NULL;
 	}
 	memcpy(&ao_storage_opts, copy, sizeof(ao_storage_opts));
-	if (copy->compresstype)
+	if (copy->compresstype != NULL)
 	{
-		ao_storage_opts.compresstype = strdup(copy->compresstype);
-		if (!ao_storage_opts.compresstype)
-			elog(ERROR, "out of memory");
+		if (pg_strcasecmp(copy->compresstype, "none") == 0)
+		{
+			/* Represent compresstype=none as NULL (MPP-25073). */
+			ao_storage_opts.compresstype = NULL;
+		}
+		else
+		{
+			ao_storage_opts.compresstype = strdup(copy->compresstype);
+			if (ao_storage_opts.compresstype == NULL)
+				elog(ERROR, "out of memory");
+		}
 	}
 }
 
@@ -627,8 +635,12 @@ transformAOStdRdOptions(StdRdOptions *opts, Datum withOpts)
 				pg_strncasecmp(strval, SOPT_COMPTYPE, soptLen) == 0)
 			{
 				foundComptype = true;
-				Assert(opts->compresstype != NULL);
-				strval = opts->compresstype;
+				/*
+				 * Record "none" as compresstype in reloptions if it
+				 * was explicitly specified in WITH clause.
+				 */
+				strval = (opts->compresstype != NULL) ?
+						opts->compresstype : "none";
 				len = VARHDRSZ + strlen(SOPT_COMPTYPE) + 1 + strlen(strval);
 				/* +1 leaves room for sprintf's trailing null */
 				t = (text *) palloc(len + 1);
@@ -730,9 +742,9 @@ transformAOStdRdOptions(StdRdOptions *opts, Datum withOpts)
 	 * need to check compresstype here as by the time we get here,
 	 * "opts" should have been set by default_reloptions() correctly.
 	 */
-	if (opts->compresslevel > AO_DEFAULT_COMPRESSLEVEL)
+	if (opts->compresslevel > AO_DEFAULT_COMPRESSLEVEL &&
+		opts->compresstype != NULL)
 	{
-		Assert(opts->compresstype);
 		if (!foundComptype && (
 				(pg_strcasecmp(opts->compresstype, AO_DEFAULT_COMPRESSTYPE) == 0
 				 && opts->compresslevel == 1 && !foundComplevel) ||
@@ -1250,13 +1262,10 @@ parse_validate_reloptions(StdRdOptions *result, Datum reloptions,
 		}
 	}
 
-	if (result->appendonly && result->compresstype != NULL &&
-		pg_strcasecmp(result->compresstype, "none") != 0)
-	{
+	if (result->appendonly && result->compresstype != NULL)
 		if (result->compresslevel == AO_DEFAULT_COMPRESSLEVEL)
 			result->compresslevel = setDefaultCompressionLevel(
 					result->compresstype);
-	}
 }
 
 /**

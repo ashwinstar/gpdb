@@ -111,7 +111,6 @@ InsertAppendOnlyEntry(Oid relid,
 	}
 	else
 	{
-		Assert(compresslevel == 0);
 		nulls[Anum_pg_appendonly_compresstype - 1] = true;
 	}
 	
@@ -447,7 +446,6 @@ GetAppendOnlyEntryFromTuple(
 	
 	if(isNull)
 	{
-		Assert(DatumGetInt16(compresslevel) == 0);
 		aoentry->compresstype = NULL;
 	}
 	else

@@ -486,13 +486,210 @@ show gp_default_storage_options;
 
 -- negative tests - database level
 alter database dsp1 set gp_default_storage_options="compresslevel=-12";
-ERROR:  invalid value for option "compresslevel" (reloptions.c:463)
+ERROR:  invalid value for option "compresslevel" (reloptions.c:485)
 alter database dsp1 set
 	gp_default_storage_options="appendonly=false,checksum=invalid";
 ERROR:  invalid bool value "invalid" for storage option "checksum" (reloptions.c:124)
 alter database dsp1 set	gp_default_storage_options=
 	"compresstype=quicklz,compresslevel=0";
 ERROR:  compresstype can't be used with compresslevel 0
+set gp_default_storage_options='compresstype=none';
+show gp_default_storage_options;
+                            gp_default_storage_options                            
+----------------------------------------------------------------------------------
+ appendonly=false,blocksize=32768,compresstype=none,checksum=true,orientation=row
+(1 row)
+
+-- compresstype should be correctly inferred.
+create table ao2 (a int, b int) with
+    (appendonly=true, compresslevel=4) distributed by (a);
+\d ao2
+Append-Only Table "public.ao2"
+ Column |  Type   | Modifiers 
+--------+---------+-----------
+ a      | integer | 
+ b      | integer | 
+Compression Type: zlib
+Compression Level: 4
+Block Size: 32768
+Checksum: t
+Distributed by: (a)
+
+-- MPP-25073 verify if compresstype=none is represented as NULL.
+set gp_default_storage_options='';
+create table ao4 (a int, b int) with (appendonly=true)
+    distributed by (a);
+\d ao4
+Append-Only Table "public.ao4"
+ Column |  Type   | Modifiers 
+--------+---------+-----------
+ a      | integer | 
+ b      | integer | 
+Compression Type: None
+Compression Level: 0
+Block Size: 32768
+Checksum: t
+Distributed by: (a)
+
+select reloptions from pg_class where relname = 'ao4';
+    reloptions     
+-------------------
+ {appendonly=true}
+(1 row)
+
+select compresstype from pg_appendonly where relid = 'ao4'::regclass;
+ compresstype 
+--------------
+ 
+(1 row)
+
+set gp_default_storage_options='appendonly=true,compresstype=NONE';
+create table co10 (a int, b int, c int) with (orientation=column)
+    distributed by (a);
+select attnum,attoptions from pg_attribute_encoding
+    where attrelid = 'co10'::regclass order by attnum;
+ attnum |                     attoptions                      
+--------+-----------------------------------------------------
+      1 | {compresstype=none,blocksize=32768,compresslevel=0}
+      2 | {compresstype=none,blocksize=32768,compresslevel=0}
+      3 | {compresstype=none,blocksize=32768,compresslevel=0}
+(3 rows)
+
+select compresstype from pg_appendonly where relid = 'co10'::regclass;
+ compresstype 
+--------------
+ 
+(1 row)
+
+-- compression disabled by default, enable in WITH clause
+set gp_default_storage_options = 'appendonly=true';
+show gp_default_storage_options;
+                           gp_default_storage_options                            
+---------------------------------------------------------------------------------
+ appendonly=true,blocksize=32768,compresstype=none,checksum=true,orientation=row
+(1 row)
+
+-- compresstype only
+create table ao5 (a int, b int) with (compresstype=quicklz)
+    distributed by (a);
+\d ao5
+Append-Only Table "public.ao5"
+ Column |  Type   | Modifiers 
+--------+---------+-----------
+ a      | integer | 
+ b      | integer | 
+Compression Type: quicklz
+Compression Level: 1
+Block Size: 32768
+Checksum: t
+Distributed by: (a)
+
+insert into ao5 select i, i from generate_series(1,10)i;
+-- compresslevel only
+create table ao6 with (compresslevel=4) as select * from ao5
+    distributed by (a);
+\d ao6
+Append-Only Table "public.ao6"
+ Column |  Type   | Modifiers 
+--------+---------+-----------
+ a      | integer | 
+ b      | integer | 
+Compression Type: zlib
+Compression Level: 4
+Block Size: 32768
+Checksum: t
+Distributed by: (a)
+
+-- both compresstype and compresslevel
+create table ao7 with (compresstype=zlib, compresslevel=3) as
+    select * from ao6 distributed by (a);
+\d ao7
+Append-Only Table "public.ao7"
+ Column |  Type   | Modifiers 
+--------+---------+-----------
+ a      | integer | 
+ b      | integer | 
+Compression Type: zlib
+Compression Level: 3
+Block Size: 32768
+Checksum: t
+Distributed by: (a)
+
+-- compression enabled by default, disable in WITH clause
+set gp_default_storage_options = 'appendonly=true, compresstype=quicklz';
+show gp_default_storage_options;
+                                     gp_default_storage_options                                     
+----------------------------------------------------------------------------------------------------
+ appendonly=true,blocksize=32768,compresstype=quicklz,compresslevel=1,checksum=true,orientation=row
+(1 row)
+
+-- compresstype only
+create table ao8 with (compresstype=none) as select * from ao7
+    distributed by (a);
+\d ao8
+Append-Only Table "public.ao8"
+ Column |  Type   | Modifiers 
+--------+---------+-----------
+ a      | integer | 
+ b      | integer | 
+Compression Type: none
+Compression Level: 1
+Block Size: 32768
+Checksum: t
+Distributed by: (a)
+
+-- compresslevel only
+create table ao9 with (compresslevel=0) as select * from ao8
+    distributed by (a);
+ERROR:  compresstype can't be used with compresslevel 0
+\d ao9
+select * from ao9 limit 4 order by 1;
+ERROR:  syntax error at or near "order"
+LINE 1: select * from ao9 limit 4 order by 1;
+                                  ^
+create table ao10 with (compresslevel=0, compresstype=none)
+    as select * from ao9 distributed by (a);
+ERROR:  relation "ao9" does not exist
+LINE 2:     as select * from ao9 distributed by (a);
+                             ^
+\d ao10
+-- MPP-14504: we need to allow compresstype=none with compresslevel>0
+create table ao11 (a int, b int) with (compresstype=none, compresslevel=2)
+    distributed by (a);
+\d ao11
+Append-Only Table "public.ao11"
+ Column |  Type   | Modifiers 
+--------+---------+-----------
+ a      | integer | 
+ b      | integer | 
+Compression Type: none
+Compression Level: 2
+Block Size: 32768
+Checksum: t
+Distributed by: (a)
+
+set gp_default_storage_options='compresstype=none,compresslevel=2';
+show gp_default_storage_options;
+                                    gp_default_storage_options                                    
+--------------------------------------------------------------------------------------------------
+ appendonly=false,blocksize=32768,compresstype=none,compresslevel=2,checksum=true,orientation=row
+(1 row)
+
+create table ao12 (a int, b int) with (appendonly=true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+\d ao12
+Append-Only Table "public.ao12"
+ Column |  Type   | Modifiers 
+--------+---------+-----------
+ a      | integer | 
+ b      | integer | 
+Compression Type: None
+Compression Level: 2
+Block Size: 32768
+Checksum: t
+Distributed by: (a)
+
 -- cleanup
 \c postgres
 drop database dsp1;

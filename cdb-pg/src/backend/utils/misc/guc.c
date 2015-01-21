@@ -13046,14 +13046,19 @@ storageOptToString(void)
 	{
 		appendStringInfo(&buf, "%s=%s,", SOPT_COMPTYPE,
 						 ao_opts->compresstype);
-		appendStringInfo(&buf, "%s=%d,", SOPT_COMPLEVEL,
-						 ao_opts->compresslevel);
 	}
 	else
 	{
-		/* Compression is turned off. */
-		Assert(ao_opts->compresslevel == 0);
 		appendStringInfo(&buf, "%s=none,", SOPT_COMPTYPE);
+	}
+	/*
+	 * MPP-14504: we seem to allow compresslevel > 0 even when
+	 * compression is disabled.
+	 */
+	if (ao_opts->compresslevel > 0)
+	{
+		appendStringInfo(&buf, "%s=%d,", SOPT_COMPLEVEL,
+						 ao_opts->compresslevel);
 	}
 	appendStringInfo(&buf, "%s=%s,", SOPT_CHECKSUM,
 					 ao_opts->checksum ? "true" : "false");
