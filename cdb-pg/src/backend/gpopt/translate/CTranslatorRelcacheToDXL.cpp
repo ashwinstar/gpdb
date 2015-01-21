@@ -2259,6 +2259,17 @@ CTranslatorRelcacheToDXL::PimdobjColStats
 		dMCFSum = dMCFSum + CDouble(pdrgfMCVFrequencies[ul]);
 	}
 
+	// get histogram datums from pg_statistic entry
+	(void) gpdb::FGetAttrStatsSlot
+			(
+					heaptupleStats,
+					oidAttType,
+					-1,
+					STATISTIC_KIND_HISTOGRAM,
+					InvalidOid,
+					&pdrgdatumHistValues, &iNumHistValues,
+					NULL, NULL);
+
 	// ndistinct and frequency of remaining tuples
 	// that are not covered by MCV, histogram or Nulls
 	CDouble dDistinctRemain = 0.0;
@@ -2274,17 +2285,6 @@ CTranslatorRelcacheToDXL::PimdobjColStats
 		dDistinctRemain = dDistinct - iNumMCVValues - iNullNDV;
 		dFreqRemain = 1 - dMCFSum - dNullFrequency;
 	}
-
-	// get histogram datums from pg_statistic entry
-	(void) gpdb::FGetAttrStatsSlot
-			(
-					heaptupleStats,
-					oidAttType,
-					-1,
-					STATISTIC_KIND_HISTOGRAM,
-					InvalidOid,
-					&pdrgdatumHistValues, &iNumHistValues,
-					NULL, NULL);
 
 	// transform all the bits and pieces from pg_statistic
 	// to a single bucket structure
