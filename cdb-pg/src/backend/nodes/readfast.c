@@ -3499,7 +3499,7 @@ _readAssertOp(const char ** str)
 {
 	READ_LOCALS(AssertOp);
 
-	READ_STRING_FIELD(errmessage);  
+	READ_NODE_FIELD(errmessage);
 	READ_INT_FIELD(errcode);
 
 	readPlanInfo(str, (Plan *)local_node);

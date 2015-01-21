@@ -30,16 +30,68 @@ ExecAssertOpExplainEnd(PlanState *planstate, struct StringInfoData *buf)
 }
 
 /*
+ * Check for assert violations and error out, if any.
+ */
+static void
+CheckForAssertViolations(AssertOpState* node, TupleTableSlot* slot)
+{
+	AssertOp* plannode = (AssertOp*) node->ps.plan;
+	ExprContext* econtext = node->ps.ps_ExprContext;
+	ResetExprContext(econtext);
+	List* predicates = node->ps.qual;
+	/* Arrange for econtext's scan tuple to be the tuple under test */
+	econtext->ecxt_outertuple = slot;
+	/*
+	 * Run in short-lived per-tuple context while computing expressions.
+	 */
+	MemoryContext oldContext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
+	StringInfoData errorString;
+	initStringInfo(&errorString);
+
+	ListCell *l = NULL;
+	Assert(list_length(predicates) == list_length(plannode->errmessage));
+
+	int violationCount = 0;
+	int listIndex = 0;
+	foreach(l, predicates)
+	{
+		ExprState *clause = (ExprState *) lfirst(l);
+		bool isNull = false;
+		Datum expr_value = ExecEvalExpr(clause, econtext, &isNull, NULL);
+
+		if (!isNull && !DatumGetBool(expr_value))
+		{
+			Value *valErrorMessage = (Value*) list_nth(plannode->errmessage,
+					listIndex);
+
+			Assert(NULL != valErrorMessage && IsA(valErrorMessage, String) &&
+					0 < strlen(strVal(valErrorMessage)));
+
+			appendStringInfo(&errorString, "%s\n", strVal(valErrorMessage));
+			violationCount++;
+		}
+
+		listIndex++;
+	}
+
+	if (0 < violationCount)
+	{
+		ereport(ERROR,
+				(errcode(plannode->errcode), errmsg("One or more assertions failed"), errdetail("%s", errorString.data), errOmitLocation(true)));
+
+	}
+	pfree(errorString.data);
+	MemoryContextSwitchTo(oldContext);
+	ResetExprContext(econtext);
+}
+
+/*
  * Evaluate Constraints (in node->ps.qual) and project output TupleTableSlot.
  * */
 TupleTableSlot*
 ExecAssertOp(AssertOpState *node)
 {
-
 	PlanState *outerNode = outerPlanState(node);
-	AssertOp *plannode = (AssertOp *) node->ps.plan;
-	ProjectionInfo *projInfo = node->ps.ps_ProjInfo;
-
 	TupleTableSlot *slot = ExecProcNode(outerNode);
 
 	if (TupIsNull(slot))
@@ -47,27 +99,9 @@ ExecAssertOp(AssertOpState *node)
 		return NULL;
 	}
 
-	ExprContext *econtext = node->ps.ps_ExprContext;
+	CheckForAssertViolations(node, slot);
 
-    ResetExprContext(econtext);
-
-	List* predicates = node->ps.qual;
-
-	/* Arrange for econtext's scan tuple to be the tuple under test */
-	econtext->ecxt_outertuple = slot;
-
-	if (!ExecQual(predicates, econtext, true))
-	{
-		ereport(ERROR,
-				(errcode(plannode->errcode),
-				 errmsg("%s",plannode->errmessage),
-				 errOmitLocation(true)));
-
-	}
-
-	ResetExprContext(econtext);
-
-	return ExecProject(projInfo, NULL);
+	return ExecProject(node->ps.ps_ProjInfo, NULL);
 }
 
 /**

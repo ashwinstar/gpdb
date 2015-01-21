@@ -2839,7 +2839,8 @@ alter table foo_p exchange partition for(rank(6)) with table bar_p;
 -- but we do now, so the following tries to insert a value that can't go
 -- in part 6.
 insert into bar_p values(10, 10);
-ERROR:  Check constraint for table bar_p violated  (seg1 qpvm4:40001 pid=10156)
+ERROR:  One or more assertions failed  (seg1 antova-mbp.local:40011 pid=36151)
+DETAIL:  Check constraint foo_p_1_prt_6_check for table bar_p was violated
 drop table foo_p;
 select * from bar_p;
  i | j 

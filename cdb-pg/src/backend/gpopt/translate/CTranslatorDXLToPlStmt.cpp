@@ -1536,6 +1536,39 @@ CTranslatorDXLToPlStmt::TranslateIndexConditions
 
 //---------------------------------------------------------------------------
 //	@function:
+//		CTranslatorDXLToPlStmt::PlTranslateAssertConstraints
+//
+//	@doc:
+//		Translate the constraints from an Assert node into a list of quals
+//
+//---------------------------------------------------------------------------
+List *
+CTranslatorDXLToPlStmt::PlTranslateAssertConstraints
+	(
+	CDXLNode *pdxlnAssertConstraintList,
+	CDXLTranslateContext *pdxltrctxOut,
+	DrgPdxltrctx *pdrgpdxltrctx,
+	Plan *pplanParent
+	)
+{
+	List *plQuals = NIL;
+
+	// build colid->var mapping
+	CMappingColIdVarPlStmt mapcidvarplstmt(m_pmp, NULL /*pdxltrctxbt*/, pdrgpdxltrctx, pdxltrctxOut, m_pctxdxltoplstmt, pplanParent);
+
+	const ULONG ulArity = pdxlnAssertConstraintList->UlArity();
+	for (ULONG ul = 0; ul < ulArity; ul++)
+	{
+		CDXLNode *pdxlnpdxlnAssertConstraint = (*pdxlnAssertConstraintList)[ul];
+		Expr *pexprAssertConstraint = m_pdxlsctranslator->PexprFromDXLNodeScalar((*pdxlnpdxlnAssertConstraint)[0], &mapcidvarplstmt);
+		plQuals = gpdb::PlAppendElement(plQuals, pexprAssertConstraint);
+	}
+
+	return plQuals;
+}
+
+//---------------------------------------------------------------------------
+//	@function:
 //		CTranslatorDXLToPlStmt::PlimitFromDXLLimit
 //
 //	@doc:
@@ -4669,7 +4702,9 @@ CTranslatorDXLToPlStmt::PplanAssert
 	GPOS_ASSERT(GPOS_SQLSTATE_LENGTH == clib::UlStrLen(szErrorCode));
 	
 	passert->errcode = MAKE_SQLSTATE(szErrorCode[0], szErrorCode[1], szErrorCode[2], szErrorCode[3], szErrorCode[4]);
-	passert->errmessage = CTranslatorUtils::SzFromWsz(pdxlopAssert->Pstr()->Wsz());
+	CDXLNode *pdxlnFilter = (*pdxlnAssert)[CDXLPhysicalAssert::EdxlassertIndexFilter];
+
+	passert->errmessage = CTranslatorUtils::PlAssertErrorMsgs(pdxlnFilter);
 
 	// translate operator costs
 	TranslatePlanCosts
@@ -4693,28 +4728,32 @@ CTranslatorDXLToPlStmt::PplanAssert
 	pplan->nMotionNodes = pplanChild->nMotionNodes;
 
 	CDXLNode *pdxlnPrL = (*pdxlnAssert)[CDXLPhysicalAssert::EdxlassertIndexProjList];
-	CDXLNode *pdxlnFilter = (*pdxlnAssert)[CDXLPhysicalAssert::EdxlassertIndexFilter];
 
 	List *plQuals = NULL;
 
 	DrgPdxltrctx *pdrgpdxltrctx = New(m_pmp) DrgPdxltrctx(m_pmp);
 	pdrgpdxltrctx->Append(const_cast<CDXLTranslateContext*>(&dxltrctxChild));
 
-	TranslateProjListAndFilter
-		(
-		pdxlnPrL,
-		pdxlnFilter,
-		NULL,		// translate context for the base table
-		pdrgpdxltrctx,
-		&pplan->targetlist,
-		&plQuals,
-		pdxltrctxOut,
-		pplan
-		);
+	// translate proj list
+	pplan->targetlist = PlTargetListFromProjList
+				(
+				pdxlnPrL,
+				NULL,			// translate context for the base table
+				pdrgpdxltrctx,
+				pdxltrctxOut,
+				pplan
+				);
 
-
-	pplan->qual = plQuals;
-
+	// translate assert constraints
+	pplan->qual = PlTranslateAssertConstraints
+					(
+					pdxlnFilter,
+					pdxltrctxOut,
+					pdrgpdxltrctx,
+					pplan
+					);
+	
+	GPOS_ASSERT(gpdb::UlListLength(pplan->qual) == gpdb::UlListLength(passert->errmessage));
 	SetParamIds(pplan);
 
 	// cleanup

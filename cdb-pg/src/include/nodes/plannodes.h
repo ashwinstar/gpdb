@@ -1134,7 +1134,7 @@ typedef struct AssertOp
 	
 	Plan 			plan;
 	int				errcode;		/* SQL error code */
-	char 			*errmessage;	/* error message */
+	List 			*errmessage;	/* error message */
 
 } AssertOp;
 

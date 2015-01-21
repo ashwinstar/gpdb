@@ -3026,4 +3026,36 @@ CTranslatorUtils::FRelHasConstraints
 	return false;
 }
 
+//---------------------------------------------------------------------------
+//	@function:
+//		CTranslatorUtils::PlAssertErrorMsgs
+//
+//	@doc:
+//		Construct a list of error messages from a list of assert constraints 
+//
+//---------------------------------------------------------------------------
+List *
+CTranslatorUtils::PlAssertErrorMsgs
+	(
+	CDXLNode *pdxlnAssertConstraintList
+	)
+{
+	GPOS_ASSERT(NULL != pdxlnAssertConstraintList);
+	GPOS_ASSERT(EdxlopScalarAssertConstraintList == pdxlnAssertConstraintList->Pdxlop()->Edxlop());
+	
+	List *plErrorMsgs = NIL;
+	const ULONG ulConstraints = pdxlnAssertConstraintList->UlArity();
+	
+	for (ULONG ul = 0; ul < ulConstraints; ul++)
+	{
+		CDXLNode *pdxlnConstraint = (*pdxlnAssertConstraintList)[ul];
+		CDXLScalarAssertConstraint *pdxlopConstraint = CDXLScalarAssertConstraint::PdxlopConvert(pdxlnConstraint->Pdxlop());
+		CWStringBase *pstrErrorMsg = pdxlopConstraint->PstrErrorMsg();
+		plErrorMsgs = gpdb::PlAppendElement(plErrorMsgs, gpdb::PvalMakeString(SzFromWsz(pstrErrorMsg->Wsz())));
+	}
+	
+	return plErrorMsgs;
+}
+
+
 // EOF

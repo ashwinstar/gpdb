@@ -777,6 +777,15 @@ namespace gpdxl
 				DrgPdxltrctx *pdrgpdxltrctxPrevSiblings,
 				Plan *pplanParent
 				);
+			
+			// translate the assert constraints
+			List *PlTranslateAssertConstraints
+				(
+				CDXLNode *pdxlnFilter,
+				CDXLTranslateContext *pdxltrctxOut,
+				DrgPdxltrctx *pdrgpdxltrctx,
+				Plan *pplanParent
+				);
 
 			// translate a CTAS operator
 			Plan *PplanCTAS

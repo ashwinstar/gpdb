@@ -11,7 +11,8 @@ INSERT INTO serialTest VALUES ('foo');
 INSERT INTO serialTest VALUES ('bar');
 INSERT INTO serialTest VALUES ('force', 100);
 INSERT INTO serialTest VALUES ('wrong', NULL);
-ERROR:  Not null constraint for table serialtest violated  (seg0 usxxshenem1.local:40000 pid=57615)
+ERROR:  One or more assertions failed  (seg0 antova-mbp.local:40010 pid=33679)
+DETAIL:  Not null constraint for column f2 of table serialtest was violated
  
 SELECT * FROM serialTest ORDER BY 2;
   f1   | f2  

@@ -610,13 +610,13 @@ cdbdisp_dumpDispatchResult(CdbDispatchResult       *dispatchResult,
             if (dtl)
             {
                 oneTrailingNewline(buf);
-                appendStringInfo(buf, "\t %s", dtl);
+                appendStringInfo(buf, "%s", dtl);
             }
 			
             if (ctx)
             {
                 oneTrailingNewline(buf);
-                appendStringInfo(buf, "\t %s", ctx);
+                appendStringInfo(buf, "%s", ctx);
             }
 
             if (!verbose)

@@ -1007,7 +1007,7 @@ _outAssertOp(StringInfo str, AssertOp *node)
 {
 	WRITE_NODE_TYPE("AssertOp");
 
-	WRITE_STRING_FIELD(errmessage);
+	WRITE_NODE_FIELD(errmessage);
 	WRITE_INT_FIELD(errcode);
 	
 	_outPlanInfo(str, (Plan *) node);

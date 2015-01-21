@@ -311,7 +311,8 @@ alter table atacc1 add constraint atacc_test1 check (test>3);
 -- end_ignore
 -- should fail
 insert into atacc1 (test) values (2);
-ERROR:  Check constraint for table atacc1 violated  (seg1 usxxshenem1.local:40001 pid=85314)
+ERROR:  One or more assertions failed  (seg0 antova-mbp.local:40010 pid=87501)
+DETAIL:  Check constraint atacc_test1 for table atacc1 was violated
 -- should succeed
 insert into atacc1 (test) values (4);
 drop table atacc1;
@@ -342,7 +343,8 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 alter table atacc1 add constraint atacc_test1 check (test+test2<test3*4);
 -- should fail
 insert into atacc1 (test,test2,test3) values (4,4,2);
-ERROR:  Check constraint for table atacc1 violated  (seg1 usxxshenem1.local:40001 pid=85314)
+ERROR:  One or more assertions failed  (seg0 antova-mbp.local:40010 pid=87501)
+DETAIL:  Check constraint atacc_test1 for table atacc1 was violated
 -- should succeed
 insert into atacc1 (test,test2,test3) values (4,4,5);
 drop table atacc1;
@@ -353,7 +355,8 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 alter table atacc1 add check (test2>test);
 -- should fail for $2
 insert into atacc1 (test2, test) values (3, 4);
-ERROR:  Check constraint for table atacc1 violated  (seg1 usxxshenem1.local:40001 pid=85314)
+ERROR:  One or more assertions failed  (seg0 antova-mbp.local:40010 pid=87501)
+DETAIL:  Check constraint atacc1_check for table atacc1 was violated
 drop table atacc1;
 -- inheritance related tests
 create table atacc1 (test int);
@@ -371,7 +374,8 @@ ERROR:  new row for relation "atacc2" violates check constraint "foo"  (seg1 usx
 insert into atacc2 (test2) values (3);
 -- fail and then succeed on atacc3
 insert into atacc3 (test2) values (-3);
-ERROR:  Check constraint for table atacc3 violated  (seg0 usxxshenem1.local:40000 pid=85313)
+ERROR:  One or more assertions failed  (seg0 antova-mbp.local:40010 pid=87501)
+DETAIL:  Check constraint foo for table atacc3 was violated
 insert into atacc3 (test2) values (3);
 drop table atacc3;
 drop table atacc2;
@@ -543,7 +547,8 @@ ERROR:  duplicate key violates unique constraint "atacc1_pkey"  (seg1 usxxshenem
 insert into atacc1 (test) values (4);
 -- inserting NULL should fail
 insert into atacc1 (test) values(NULL);
-ERROR:  Not null constraint for table atacc1 violated  (seg0 usxxshenem1.local:40000 pid=85313)
+ERROR:  One or more assertions failed  (seg0 antova-mbp.local:40010 pid=87501)
+DETAIL:  Not null constraint for column test of table atacc1 was violated
 -- try adding a second primary key (should fail)
 alter table atacc1 add constraint atacc_oid1 primary key(oid);
 ERROR:  multiple primary keys for table "atacc1" are not allowed
@@ -607,11 +612,16 @@ insert into atacc1 (test,test2) values (4,4);
 insert into atacc1 (test,test2) values (4,4);
 ERROR:  duplicate key violates unique constraint "atacc1_pkey"  (seg1 usxxshenem1.local:40001 pid=85314)
 insert into atacc1 (test,test2) values (NULL,3);
-ERROR:  Not null constraint for table atacc1 violated  (seg0 usxxshenem1.local:40000 pid=85313)
+ERROR:  One or more assertions failed  (seg0 antova-mbp.local:40010 pid=87501)
+DETAIL:  Not null constraint for column test of table atacc1 was violated
 insert into atacc1 (test,test2) values (3, NULL);
-ERROR:  Not null constraint for table atacc1 violated  (seg0 usxxshenem1.local:40000 pid=85313)
+ERROR:  One or more assertions failed  (seg0 antova-mbp.local:40010 pid=87501)
+DETAIL:  Not null constraint for column test2 of table atacc1 was violated
 insert into atacc1 (test,test2) values (NULL,NULL);
-ERROR:  Not null constraint for table atacc1 violated  (seg0 usxxshenem1.local:40000 pid=85313)
+ERROR:  One or more assertions failed  (seg0 antova-mbp.local:40010 pid=87501)
+DETAIL:  
+Not null constraint for column test of table atacc1 was violated
+Not null constraint for column test2 of table atacc1 was violated
 -- should all succeed
 insert into atacc1 (test,test2) values (4,5);
 insert into atacc1 (test,test2) values (5,4);
@@ -625,7 +635,8 @@ insert into atacc1 (test2, test) values (3, 3);
 insert into atacc1 (test2, test) values (2, 3);
 ERROR:  duplicate key violates unique constraint "atacc1_pkey"  (seg0 usxxshenem1.local:40000 pid=85313)
 insert into atacc1 (test2, test) values (1, NULL);
-ERROR:  Not null constraint for table atacc1 violated  (seg0 usxxshenem1.local:40000 pid=85313)
+ERROR:  One or more assertions failed  (seg0 antova-mbp.local:40010 pid=87501)
+DETAIL:  Not null constraint for column test of table atacc1 was violated
 drop table atacc1;
 -- alter table / alter column [set/drop] not null tests
 -- try altering system catalogs, should fail
@@ -683,7 +694,8 @@ alter table parent alter a set not null;
 insert into parent values (NULL);
 ERROR:  null value in column "a" violates not-null constraint  (seg0 usxxshenem1.local:40000 pid=85313)
 insert into child (a, b) values (NULL, 'foo');
-ERROR:  Not null constraint for table child violated  (seg0 usxxshenem1.local:40000 pid=85313)
+ERROR:  One or more assertions failed  (seg0 antova-mbp.local:40010 pid=90951)
+DETAIL:  Not null constraint for column a of table child was violated
 alter table parent alter a drop not null;
 insert into parent values (NULL);
 insert into child (a, b) values (NULL, 'foo');
@@ -697,11 +709,13 @@ insert into parent values (NULL);
 ERROR:  null value in column "a" violates not-null constraint  (seg0 usxxshenem1.local:40000 pid=85313)
 alter table child alter a set not null;
 insert into child (a, b) values (NULL, 'foo');
-ERROR:  Not null constraint for table child violated  (seg0 usxxshenem1.local:40000 pid=85313)
+ERROR:  One or more assertions failed  (seg1 antova-mbp.local:40011 pid=87502)
+DETAIL:  Not null constraint for column a of table child was violated
 delete from child;
 alter table child alter a set not null;
 insert into child (a, b) values (NULL, 'foo');
-ERROR:  Not null constraint for table child violated  (seg0 usxxshenem1.local:40000 pid=85313)
+ERROR:  One or more assertions failed  (seg1 antova-mbp.local:40011 pid=87502)
+DETAIL:  Not null constraint for column a of table child was violated
 drop table child;
 drop table parent;
 -- test setting and removing default values
@@ -1370,7 +1384,8 @@ alter table p1 add column f2 text;
 NOTICE:  merging definition of column "f2" for child "c1"
 insert into p1 values (1,2,'abc');
 insert into c1 values(11,'xyz',33,0); -- should fail
-ERROR:  Check constraint for table c1 violated  (seg0 usxxshenem1.local:40000 pid=85313)
+ERROR:  One or more assertions failed  (seg0 antova-mbp.local:40010 pid=90951)
+DETAIL:  Check constraint c1_a1_check for table c1 was violated
 insert into c1 values(11,'xyz',33,22);
 select * from p1 order by 1,2,3;
  f1 | a1 | f2  
@@ -1482,7 +1497,8 @@ select * from anothertab order by 1,2;
 (2 rows)
 
 insert into anothertab (atcol1, atcol2) values (45, null); -- fails
-ERROR:  Check constraint for table anothertab violated  (seg0 usxxshenem1.local:40000 pid=85313)
+ERROR:  One or more assertions failed  (seg0 antova-mbp.local:40010 pid=87501)
+DETAIL:  Check constraint anothertab_chk for table anothertab was violated
 insert into anothertab (atcol1, atcol2) values (default, null);
 select * from anothertab order by 1,2;
  atcol1 | atcol2 
