@@ -189,6 +189,7 @@
 #define ALLOW_child_triggers
 #define ALLOW_static_part_selection
 #define ALLOW_isMotionGather
+#define ALLOW_estimate_rel_size
 
 #include "gpopt/utils/gpdbdefs.h"
 
@@ -2372,6 +2373,23 @@ gpdb::PlRelationOids(void)
 	}
 	GP_WRAP_END;
 	return NIL;
+}
+
+void
+gpdb::EstimateRelationSize
+	(
+	Relation rel,
+	int32 *attr_widths,
+	BlockNumber *pages,
+	double *tuples
+	)
+{
+	GP_WRAP_START;
+	{
+		estimate_rel_size(rel, attr_widths, pages, tuples);
+		return;
+	}
+	GP_WRAP_END;
 }
 
 void

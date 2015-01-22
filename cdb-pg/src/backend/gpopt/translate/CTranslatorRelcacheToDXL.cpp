@@ -2112,11 +2112,22 @@ CTranslatorRelcacheToDXL::PimdobjRelStats
 	// CMDName ctor created a copy of the string
 	delete pstrRelName;
 
-	CDouble dRows(rel->rd_rel->reltuples);
+	double rows = 0.0;
+	BlockNumber pages = 0;
+	GpPolicy *pgppolicy = gpdb::Pdistrpolicy(rel);
+	if (!pgppolicy ||pgppolicy->ptype != POLICYTYPE_PARTITIONED)
+	{
+		gpdb::EstimateRelationSize(rel, NULL, &pages, &rows);
+	}
+	else
+	{
+		rows = rel->rd_rel->reltuples;
+	}
+
 	pmdidRelStats->AddRef();
 	
 	BOOL fEmptyStats = false;
-	if (dRows == CDouble(0.0))
+	if (rows == 0.0)
 	{
 		fEmptyStats = true;
 	}
@@ -2126,7 +2137,7 @@ CTranslatorRelcacheToDXL::PimdobjRelStats
 												pmp,
 												pmdidRelStats,
 												pmdname,
-												dRows,
+												CDouble(rows),
 												fEmptyStats
 												);
 	gpdb::CloseRelation(rel);

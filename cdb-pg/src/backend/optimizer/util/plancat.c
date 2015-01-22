@@ -56,9 +56,6 @@
 
 /* GUC parameter */
 
-
-static void estimate_rel_size(Relation rel, int32 *attr_widths,
-				  BlockNumber *pages, double *tuples);
 static List *get_relation_constraints(PlannerInfo *root,
 									  Oid relationObjectId, RelOptInfo *rel,
 									  bool include_notnull);
@@ -491,7 +488,7 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
  * relation's attr_width[] cache; we fill this in if we have need to compute
  * the attribute widths for estimation purposes.
  */
-static void
+void
 estimate_rel_size(Relation rel, int32 *attr_widths,
 				  BlockNumber *pages, double *tuples)
 {

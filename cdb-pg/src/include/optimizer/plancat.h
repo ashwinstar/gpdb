@@ -16,12 +16,15 @@
 #define PLANCAT_H
 
 #include "nodes/relation.h"
+#include "utils/relcache.h"
 
 
 extern void get_relation_info(PlannerInfo *root, Oid relationObjectId,
 				  bool inhparent, RelOptInfo *rel);
 
 extern void get_external_relation_info(Oid relationObjectId, RelOptInfo *rel);
+
+extern void estimate_rel_size(Relation rel, int32 *attr_widths, BlockNumber *pages, double *tuples);
 
 extern bool relation_excluded_by_constraints(PlannerInfo *root, RelOptInfo *rel,
 								 RangeTblEntry *rte);
