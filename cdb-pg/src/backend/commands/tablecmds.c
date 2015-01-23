@@ -13328,6 +13328,72 @@ make_distro_str(List *lwith, List *ldistro)
 }
 
 /*
+ * Check if distribution key compatible with unique index
+ */
+static void checkUniqueIndexCompatible(Relation rel, GpPolicy *pol)
+{
+	List *indexoidlist = RelationGetIndexList(rel);
+	ListCell *indexoidscan = NULL;
+	Bitmapset *polbm = NULL;
+	int i = 0;
+
+	if(pol == NULL || pol->nattrs == 0)
+		return;
+
+	for (i = 0; i < pol->nattrs; i++)
+		polbm = bms_add_member(polbm, pol->attrs[i]);
+
+	/* Loop over all indexes on the relation */
+	foreach(indexoidscan, indexoidlist)
+	{
+		Oid			indexoid = lfirst_oid(indexoidscan);
+		HeapTuple	indexTuple;
+		Form_pg_index indexStruct;
+		int			i;
+		cqContext  *pidxCtx;
+		Bitmapset  *indbm = NULL;
+
+		pidxCtx = caql_beginscan(
+				NULL,
+				cql("SELECT * FROM pg_index "
+					" WHERE indexrelid = :1 ",
+					ObjectIdGetDatum(indexoid)));
+
+		indexTuple = caql_getnext(pidxCtx);
+
+		if (!HeapTupleIsValid(indexTuple))
+			elog(ERROR, "cache lookup failed for index %u", indexoid);
+		indexStruct = (Form_pg_index) GETSTRUCT(indexTuple);
+
+		/* If the index is not a unique key, skip the check */
+		if (indexStruct->indisunique)
+		{
+			for (i = 0; i < indexStruct->indnatts; i++)
+			{
+				indbm = bms_add_member(indbm, indexStruct->indkey.values[i]);
+			}
+
+			if (!bms_is_subset(polbm, indbm))
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("UNIQUE INDEX and DISTRIBUTED BY definitions incompatible"),
+						 errhint("the DISTRIBUTED BY columns must be equal to "
+								 "or a left-subset of the UNIQUE INDEX columns."),
+						 errOmitLocation(true)));
+			}
+
+			bms_free(indbm);
+		}
+
+		caql_endscan(pidxCtx);
+	}
+
+	list_free(indexoidlist);
+	bms_free(polbm);
+}
+
+/*
  * ALTER TABLE SET DISTRIBUTED BY
  *
  * set distribution policy for rel
@@ -13704,10 +13770,13 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 					}
 				}
 			}
+
+			checkUniqueIndexCompatible(rel, policy);
 		}
 
 		if (!ldistro)
 			ldistro = make_dist_clause(rel);
+
 
 		/* Step (b) - build CTAS */
 		queryDesc = build_ctas_with_dist(rel, ldistro,
