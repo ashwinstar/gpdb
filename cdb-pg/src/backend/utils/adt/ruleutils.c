@@ -1827,8 +1827,16 @@ make_viewdef(StringInfo buf, HeapTuple ruletup, TupleDesc rulettc,
 		return;
 	}
 
-	ev_relation = heap_open(ev_class, AccessShareLock);
-
+	/*
+	 * MPP-25160: pg_rewrite was scanned using MVCC snapshot, someone
+ 	 * else might drop a view that was visible then. We return nothing
+ 	 * in buf in this case.
+	 */
+	ev_relation = try_relation_open(ev_class, AccessShareLock, false);
+	if (ev_relation == NULL)
+	{
+		return;
+	}
 	get_query_def(query, buf, NIL, RelationGetDescr(ev_relation),
 				  prettyFlags, 0);
 	appendStringInfo(buf, ";");
