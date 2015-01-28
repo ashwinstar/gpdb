@@ -1,10 +1,10 @@
 subdir=src/backend/access/common
 top_builddir=../../../../..
 
-TARGETS=reloptions
+TARGETS=reloptions tupdesc
 
 # Objects from backend, which don't need to be mocked but need to be linked.
-reloptions_REAL_OBJS=\
+COMMON_REAL_OBJS=\
 	$(top_srcdir)/src/backend/access/hash/hashfunc.o \
 	$(top_srcdir)/src/backend/access/transam/filerepdefs.o \
 	$(top_srcdir)/src/backend/bootstrap/bootparse.o \
@@ -35,4 +35,10 @@ reloptions_REAL_OBJS=\
 	$(top_srcdir)/src/timezone/localtime.o \
 	$(top_srcdir)/src/timezone/pgtz.o \
 
+reloptions_REAL_OBJS=\
+	$(COMMON_REAL_OBJS) \
+	
+tupdesc_REAL_OBJS=\
+	$(COMMON_REAL_OBJS) \
+	
 include ../../../../Makefile.mock
