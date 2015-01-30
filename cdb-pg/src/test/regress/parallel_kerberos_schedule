@@ -1,0 +1,40 @@
+# do not include any partition table tests in this group
+# test 'partition' checks on pg_partition, pg_partition_templates without
+# any filters.
+test: boolean char name varchar text int2 int4
+test: int8 oid float4 float8 bit numeric strings
+test: numerology point lseg box path polygon circle
+test: date time timetz timestamp timestamptz interval abstime reltime
+test: tinterval inet comments oidjoins type_sanity opr_sanity geometry
+test: horology insert create_function_1 copyselect constraints create_aggregate
+test: drop_if_exists select_having information_schema case indexjoin naivebayes distributed_transactions
+test: update delete cluster dependency table_functions conversion sirv_functions
+
+# namespace will show diff if concurrent work has temporary tables.
+test: without_oid namespace truncate sequence gpdiffcheck gptokencheck olap_setup
+
+test: gp_hashagg gp_dqa exttab1 partition privileges
+test: column_compression rangefuncs_cdb temp
+
+test: gphdfs custom_format gpcopy appendonly filter gpctas gpdist matrix gpdtm_plpgsql
+test: notin with_clause eagerfree toast mapred gpparams tidycat tidycat2 aocs
+test: ic gp_numeric_agg foreign_data gp_toolkit
+test: filespace orafunk trig xml auth_constraint role rle portals_updatable plpgsql_cache percentile timeseries resource_queue_function gp_optimizer co_nestloop_idxscan pg_stat_last_operation
+test: plan_size partindex_test direct_dispatch partition_pruning_with_fn dsp
+
+# vacuum needs to be serial
+test: vacuum
+
+test: create_type union olap_group olap_window_seq
+test: create_table
+test: create_function_2 errors copy alter_table_aocs
+test: create_operator create_misc subselect join aggregates random arrays btree_index
+test: hash_index limit prepare rowtypes resource_queue
+test: create_index create_view select select_into portals portals_p2
+test: select_distinct select_distinct_on select_views
+
+# alter_table and alter_distribution_policy cannot be in a parallel group as
+# it does ddls on catalog tables making other queries in the group wait which
+# would finish much faster otherwise
+test: alter_table
+test: alter_distribution_policy
