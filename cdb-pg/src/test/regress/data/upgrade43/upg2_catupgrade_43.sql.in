@@ -439,7 +439,7 @@ DECLARE
 BEGIN
   EXECUTE 'CREATE TABLE pg_aoseg.pg_aovisimap_' || aoRelid ||
     ' (segno int, first_row_no bigint, visimap varbit) DISTRIBUTED BY(segno)';
-  EXECUTE 'CREATE INDEX pg_aovisimap_' || aoRelid || '_index
+  EXECUTE 'CREATE UNIQUE INDEX pg_aovisimap_' || aoRelid || '_index
     ON pg_aoseg.pg_aovisimap_' || aoRelid || '(segno, first_row_no)';
   SELECT INTO visimapRow reltoastrelid, oid FROM pg_catalog.pg_class
     WHERE oid = ('pg_aoseg.pg_aovisimap_' || aoRelId)::regclass;
