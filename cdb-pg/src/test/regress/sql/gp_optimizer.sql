@@ -904,6 +904,7 @@ alter table orca.bm_dyn_test add partition part5 values(5);
 insert into orca.bm_dyn_test values(2, 5, '2');
 
 set optimizer_enable_bitmapscan=on;
+-- gather on 1 segment because of direct dispatch
 explain select * from orca.bm_dyn_test where i=2 and t='2';
 select * from orca.bm_dyn_test where i=2 and t='2';
 
@@ -927,6 +928,7 @@ insert into orca.bm_dyn_test_onepart values(2, 5, '2');
 set optimizer_enable_bitmapscan=on;
 select disable_xform('CXformDynamicGet2DynamicTableScan');
 
+-- gather on 1 segment because of direct dispatch
 explain select * from orca.bm_dyn_test_onepart where i=2 and t='2';
 select * from orca.bm_dyn_test_onepart where i=2 and t='2';
 

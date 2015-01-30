@@ -5,7 +5,7 @@
 SELECT gp_opt_version();
                            gp_opt_version                            
 ---------------------------------------------------------------------
- GPOPT version: 1.536, GPOS version: 1.116, Xerces version: 3.1.1-p1
+ GPOPT version: 1.537, GPOS version: 1.116, Xerces version: 3.1.1-p1
 (1 row)
 
 set optimizer_enable_master_only_queries = on;
@@ -8931,18 +8931,19 @@ alter table orca.bm_dyn_test add partition part5 values(5);
 NOTICE:  CREATE TABLE will create partition "bm_dyn_test_1_prt_part5" for table "bm_dyn_test"
 insert into orca.bm_dyn_test values(2, 5, '2');
 set optimizer_enable_bitmapscan=on;
+-- gather on 1 segment because of direct dispatch
 explain select * from orca.bm_dyn_test where i=2 and t='2';
-                                                 QUERY PLAN                                                 
-------------------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..0.00 rows=1 width=24)
-   ->  Result  (cost=0.00..0.00 rows=1 width=24)
-         Filter: t = '2'::text
-         ->  Sequence  (cost=0.00..0.00 rows=1 width=24)
-               ->  Partition Selector for bm_dyn_test (dynamic scan id: 1)  (cost=10.00..100.00 rows=50 width=4)
-               ->  Bitmap Table Scan on bm_dyn_test (dynamic scan id: 1)  (cost=0.00..0.01 rows=1 width=24)
-                     Recheck Cond: i = 2
-                     ->  Bitmap Index Scan on bm_dyn_test_idx_1_prt_part0  (cost=0.00..0.00 rows=0 width=0)
-                           Index Cond: i = 2
+                                                QUERY PLAN                                                 
+-----------------------------------------------------------------------------------------------------------
+ Gather Motion 1:1  (slice1; segments: 1)  (cost=0.00..0.00 rows=1 width=24)
+   ->  Sequence  (cost=0.00..0.00 rows=1 width=24)
+         ->  Partition Selector for bm_dyn_test (dynamic scan id: 1)  (cost=10.00..100.00 rows=50 width=4)
+               Partitions selected:  6 (out of 6)
+         ->  Bitmap Table Scan on bm_dyn_test (dynamic scan id: 1)  (cost=0.00..0.00 rows=1 width=24)
+               Recheck Cond: i = 2
+               Filter: t = '2'::text
+               ->  Bitmap Index Scan on bm_dyn_test_idx_1_prt_part0  (cost=0.00..0.00 rows=0 width=0)
+                     Index Cond: i = 2
  Settings:  optimizer=on; optimizer_segments=3
 (10 rows)
 
@@ -8990,6 +8991,7 @@ select disable_xform('CXformDynamicGet2DynamicTableScan');
  CXformDynamicGet2DynamicTableScan is disabled
 (1 row)
 
+-- gather on 1 segment because of direct dispatch
 explain select * from orca.bm_dyn_test_onepart where i=2 and t='2';
                                                            QUERY PLAN                                                            
 ---------------------------------------------------------------------------------------------------------------------------------
