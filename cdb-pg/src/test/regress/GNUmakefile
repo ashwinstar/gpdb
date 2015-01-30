@@ -159,7 +159,7 @@ installcheck-good: all ./current_good_schedule
 	$(pg_regress_call)  --psqldir=$(PSQLDIR) --schedule=$(srcdir)/current_good_schedule --srcdir=$(abs_srcdir); \
 	else \
 	bash kerberos/setup_test.sh; \
-	PGUSER="gpadmin/kerberos-test" $(pg_regress_call)  --psqldir=$(PSQLDIR) --schedule=./current_good_schedule --srcdir=$(abs_srcdir) --host=`hostname`; \
+	PGUSER="gpadmin/kerberos-test" $(pg_regress_call)  --psqldir=$(PSQLDIR) --schedule=./kerberos_schedule --srcdir=$(abs_srcdir) --host=`hostname`; \
 	fi
 
 installcheck-good-serial: all ./current_good_schedule-serial upg2-setup ugpart-setup
