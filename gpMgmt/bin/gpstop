@@ -160,7 +160,7 @@ class GpStop:
             except Exception as e:
                 logger.error('Error while stopping gpmmon process (%s)' % str(e))
         else:
-            logger.warning('No leftover gpmmon process found')
+            logger.info('No leftover gpmmon process found')
 
     ######
     def _stop_gpsmon(self):
@@ -185,7 +185,7 @@ class GpStop:
                 gpsmon_found = False
 
         if not gpsmon_found:
-            logger.warning('No leftover gpsmon processes on some hosts. not attempting forceful termination on these hosts')
+            logger.info('No leftover gpsmon processes on some hosts. not attempting forceful termination on these hosts')
 
         for host in valid_hosts:
             cmd = Command('kill all the gpsmon processes', cmdStr="ps -ef | grep '[g]psmon -m' | awk '{print \$2}' | xargs kill -9",
