@@ -5964,7 +5964,7 @@ CTranslatorDXLToPlStmt::PplanBitmapTableScan
 		pdxlnPrL,
 		pdxlnFilter,
 		&dxltrctxbt,	// translate context for the base table
-		NULL,			// pdxltrctxLeft and pdxltrctxRight,
+		pdrgpdxltrctxPrevSiblings,
 		&pplan->targetlist,
 		&plQuals,
 		pdxltrctxOut,
