@@ -12,6 +12,7 @@ import signal
 import subprocess
 import sys
 from threading import Event, Thread, Timer
+from decimal import Decimal
 import time
 try:
     from gppylib import gplog, gpsubprocess
@@ -736,12 +737,12 @@ class Scheduler(object):
         self._deleteFiles(self.backupSet.backupFiles, self.sourceDD)
 
     def _totalKBytes(self):
-        return reduce(lambda x,y: long(x+y),
-                      map(lambda f: f.size/1000, self.backupSet.backupFiles))
+        totalBytes = sum(long(file.size) for file in self.backupSet.backupFiles)
+        return Decimal(totalBytes) / 1000
 
     def _transferedKBytes(self):
-        return reduce(lambda x,y: long(x+y),
-                      map(lambda w: w.bytesSent/1000, self.replWorkers))
+        bytesSent = sum(long(worker.bytesSent) for worker in self.replWorkers)
+        return Decimal(bytesSent) / 1000
 
     def _cleanup(self):
         """
