@@ -12,7 +12,7 @@ Provides:       pgcrypto = %{pgcrypto_ver}
 %description
 The Pgcrypto package provides cryptographic package for the Greenplum Database.
 
-%install
+%build
 mkdir -p %{buildroot}/temp
 make -C %{pgcrypto_dir} install prefix=%{buildroot}/temp
 

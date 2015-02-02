@@ -12,7 +12,7 @@ Provides:       perl = %{perl_ver}, /bin/sh
 %description
 The Perl package provides Perl for PL/Perl. 
 
-%install
+%build
 mkdir -p %{buildroot}/temp/ext/perl-%{perl_ver}
 cp -r %{perl_dir}/*   %{buildroot}/temp/ext/perl-%{perl_ver}
 

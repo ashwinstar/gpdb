@@ -14,7 +14,7 @@ Requires:       jre = %{jre_ver}
 %description
 The PL/Java package provides Procedural language implementation of Java for Greenplum Database. 
 
-%install
+%build
 mkdir -p %{buildroot}/temp
 make -C %{pljava_dir} install prefix=%{buildroot}/temp
 

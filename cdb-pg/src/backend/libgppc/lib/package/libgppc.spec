@@ -12,7 +12,7 @@ Provides:       libgppc = %{libgppc_ver}
 %description
 Libgppc provides an abstract layer for external UDFs
 
-%install
+%build
 mkdir -p %{buildroot}/temp
 make -C %{libgppc_dir} install prefix=%{buildroot}/temp
 

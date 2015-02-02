@@ -13,7 +13,7 @@ Requires:       R = %{r_ver}
 %description
 The PL/R modules provides Procedural language implementation of R for Greenplum Database.
 
-%install
+%build
 mkdir -p %{buildroot}/temp
 make -C %{plr_dir} install prefix=%{buildroot}/temp R_HOME=%{r_dir}/lib64/R
 

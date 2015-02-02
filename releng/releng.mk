@@ -71,7 +71,7 @@ ifeq "$(BLD_ARCH)" "rhel5_x86_32"
 LIBSTDC++_LIBDIR = $(LIBSTDC++_BASEDIR)/lib
 endif
 
-ifeq "$(BLD_ARCH)" "rhel5_x86_64"
+ifneq "$(findstring $(BLD_ARCH),rhel5_x86_64 rhel6_x86_64)" ""
 LIBSTDC++_LIBDIR = $(LIBSTDC++_BASEDIR)/lib64
 endif
 

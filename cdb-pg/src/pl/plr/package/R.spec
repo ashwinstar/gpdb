@@ -13,7 +13,7 @@ Provides:       R = %{r_ver}, /bin/sh
 %description
 The R module provides the R statistics language.
 
-%install
+%build
 mkdir -p %{buildroot}/temp/ext/R-%{r_ver}
 cp -r %{r_dir}/*  %{buildroot}/temp/ext/R-%{r_ver}
 

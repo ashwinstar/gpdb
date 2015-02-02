@@ -12,7 +12,7 @@ Provides:       ddboostlib = %{ddboostlib_ver}
 %description
 The DDBoostlib package updates the Data Domain services for the Greenplum database.
 
-%install
+%build
 mkdir -p %{buildroot}/temp/lib
 cp -rf %{ddboostlib_dir}/../../../../../../ext/%{bld_arch}/lib/libDDBoost.so %{buildroot}/temp/lib/
 

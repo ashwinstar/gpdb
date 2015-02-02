@@ -150,7 +150,6 @@ define tmpBLD_THIRDPARTY_LIBS_BASE
 	emcconnect/1.1
 	json-c/0.6
 	gimli/1.1.54
-	krb5/1.6.2
 	libedit/3.0
 	libesmtp/1.0.4-p1
 	libevent/1.4.6
@@ -170,10 +169,6 @@ endif
 BLD_THIRDPARTY_LIBS_BASE:=$(strip $(tmpBLD_THIRDPARTY_LIBS_BASE))
 
 define unusedAUTHLIBS
-	curl/7.17.1
-	krb5/1.6.2
-	openldap/2.3.38
-	openssl/0.9.8g
 endef
 
 # ------------------------------------------------------------------------------------------------
@@ -281,39 +276,23 @@ $(INSTLOC)/lib/%: $(BLD_THIRDPARTY_EXCEPTIONS_DIRS)/lib/%
 
 .PHONY: thirdparty-integrate thirdparty-delete thirdparty-revert
 
-thirdparty-integrate: $(foreach tplib,$(BLD_THIRDPARTY_LIBS_BASE),$(BLD_THIRDPARTY)/$(BLD_ARCH)/$(tplib).base) \
-			  $(foreach tplib,$(BLD_THIRDPARTY_LIBS_EXCEPTIONS),$(BLD_THIRDPARTY)/$(BLD_ARCH)/$(BLD_$(tplib)_ID))
-	p4 resolve -at $(BLD_THIRDPARTY)/...
-	@echo "Remember to submit these!"
-
-$(foreach tplib,$(BLD_THIRDPARTY_LIBS_BASE),$(BLD_THIRDPARTY)/$(BLD_ARCH)/$(tplib).base):
-	p4 integrate -d //tools/$(notdir $(@D))/$(basename $(@F))/dist/$(BLD_ARCH)/... $(BLD_THIRDPARTY)/$(BLD_ARCH)/...
-
-$(foreach tplib,$(BLD_THIRDPARTY_LIBS_EXCEPTIONS),$(BLD_THIRDPARTY)/$(BLD_ARCH)/$(BLD_$(tplib)_ID)):
-	p4 integrate -d //tools/$(notdir $(@D))/$(@F)/dist/%%1/... $(BLD_THIRDPARTY)/%%1/$(notdir $(@D))/$(@F)/...
-
 thirdparty-delete:
 	@# --- remove base library files one by one based on lists in checksum files ---
 	@if [ x"$(BLD_THIRDPARTY_LIBS_BASE_TO_REMOVE)" != x"" ]; then \
 	    for i in $(foreach tplib,$(BLD_THIRDPARTY_LIBS_BASE_TO_REMOVE),$(subst /,-,$(tplib))); do \
 	        for j in `cat $(BLD_THIRDPARTY)/$(BLD_ARCH)/checksums.$$i | awk '{print $$2}'`; do \
-	            echo "p4 delete $(BLD_THIRDPARTY)/$(BLD_ARCH)/$$j"; \
-	            p4 delete $(BLD_THIRDPARTY)/$(BLD_ARCH)/$$j; \
+	            echo "rm -vrf $(BLD_THIRDPARTY)/$(BLD_ARCH)/$$j"; \
+	            rm -vrf $(BLD_THIRDPARTY)/$(BLD_ARCH)/$$j; \
 	        done; \
-	        p4 delete $(BLD_THIRDPARTY)/$(BLD_ARCH)/checksums.$$i; \
+	        echo "rm -rvf $(BLD_THIRDPARTY)/$(BLD_ARCH)/checksums.$$i"; \
+	        rm -rvf $(BLD_THIRDPARTY)/$(BLD_ARCH)/checksums.$$i; \
 	    done; \
 	fi
 	@# --- remove exceptions library files as sets as they each have their own directory structure ---
 	@if [ x"$(BLD_THIRDPARTY_LIBS_EXCEPTIONS_TO_REMOVE)" != x"" ]; then \
 	    for i in $(BLD_THIRDPARTY_LIBS_EXCEPTIONS_TO_REMOVE); do \
-	        echo "p4 delete $(BLD_THIRDPARTY)/$(BLD_ARCH)/$$i/..."; \
-	        p4 delete $(BLD_THIRDPARTY)/$(BLD_ARCH)/$$i/...; \
+	        echo "rm -rvf $(BLD_THIRDPARTY)/$(BLD_ARCH)/$$i/..."; \
+	        rm -rvf $(BLD_THIRDPARTY)/$(BLD_ARCH)/$$i/...; \
 	    done; \
 	fi
-	@echo "Remember to submit these!"
-
-thirdparty-revert:
-	p4 revert $(BLD_THIRDPARTY)/...
-	@echo "`date` -- INFO:  Files have been reverted."
-
 endif

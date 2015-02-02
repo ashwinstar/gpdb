@@ -12,7 +12,7 @@ Provides:       proj = %{proj_ver}
 %description
 The Proj module provides cartographic projections library which is used by PostGIS.
 
-%install
+%build
 mkdir -p %{buildroot}/temp/lib
 cp -rf %{proj_dir}/lib/libproj* %{buildroot}/temp/lib
 

@@ -13,7 +13,7 @@ Requires:       geos = %{geos_ver}, proj = %{proj_ver}
 %description
 The PostGIS module provides geospatial extensions for Greenplum Database.
 
-%install
+%build
 make -C %{postgis_dir} install prefix=%{buildroot}/temp 
 
 %files

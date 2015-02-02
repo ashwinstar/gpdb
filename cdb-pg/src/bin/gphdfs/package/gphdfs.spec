@@ -14,7 +14,7 @@ Requires:       jre = %{jre_ver}
 %description
 The gphdfs rpm provides gphdfs library for the Greenplum Database.
 
-%install
+%build
 mkdir -p %{buildroot}/temp
 make -C %{gphdfs_dir} install prefix=%{buildroot}/temp
 

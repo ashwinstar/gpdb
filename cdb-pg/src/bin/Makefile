@@ -11,7 +11,7 @@
 
 subdir = src/bin
 top_builddir = ../..
-nbu_libdir = ../../../../../../ext/rhel5_x86_64/Netbackup/nbu75/lib
+nbu_libdir = ../../../../../../ext/$(BLD_ARCH)/Netbackup/nbu75/lib
 include $(top_builddir)/src/Makefile.global
 
 ifeq "$(findstring -ftest-coverage,$(CFLAGS))" ""
