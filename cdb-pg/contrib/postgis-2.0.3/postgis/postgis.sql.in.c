@@ -4987,7 +4987,7 @@ $$
 		; 
 		
 
-		var_resultgeom := ST_MakeLine(geom) 
+		var_resultgeom := ST_MakeLine(array_agg(geom))
 			FROM ST_Dump(cavering) As foo;
 
 		IF ST_IsSimple(var_resultgeom) THEN

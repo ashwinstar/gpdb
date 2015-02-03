@@ -12,13 +12,6 @@ select 'ST_MakeLine1', ST_AsText(ST_MakeLine(
  'LINESTRING(1 1, 10 0)'::geometry
 ));
 
-select 'ST_MakeLine_agg1', ST_AsText(ST_MakeLine(g)) from (
- values ('POINT(0 0)'),
-        ('LINESTRING(1 1, 10 0)'),
-        ('LINESTRING(10 0, 20 20)'),
-        ('POINT(40 4)')
-) as foo(g);
-
 -- postgis-users/2006-July/012788.html
 select ST_makebox2d('SRID=3;POINT(0 0)', 'SRID=3;POINT(1 1)');
 select ST_makebox2d('POINT(0 0)', 'SRID=3;POINT(1 1)');
